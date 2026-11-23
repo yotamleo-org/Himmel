@@ -231,6 +231,26 @@ test("the Shift page draws Waiting, Running and Shipped over a mid-shift fixture
   expect(html).not.toContain("No shift is open");
 });
 
+test("10764: an open signature and an owed proof the operator owes are numbered Needs you items, and the empty state is not printed", () => {
+  const owed = { state: "ok" as const, unread: [], items: [
+    { actor: "operator" as const, source: "unsigned spec" as const, key: "HIMMEL-9", title: "sign the v1.1.3 spec", ctx: "SPEC CLEAN", act: "sign the spec" },
+    { actor: "operator" as const, source: "owed ledger" as const, key: null, title: "run the VM upgrade proof", ctx: "o2 (proof) in owed.jsonl", act: "run the proof" },
+    { actor: "chief" as const, source: "owed ledger" as const, key: null, title: "chief validates a proof", ctx: "o3 (proof)", act: "x" },
+  ] };
+  const v = viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [], boards: [board], owed });
+  expect(v.waiting.map((w) => w.title)).toEqual(["sign the v1.1.3 spec", "run the VM upgrade proof"]);
+  const html = renderShift(v, {});
+  expect(html).toContain('<ol class="sh-list needs-you"><li><b>Needs you:</b>');
+  expect(html).toContain("run the VM upgrade proof");
+  expect(html).not.toContain("Nothing is waiting on you.");
+  const unread = renderShift(viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [], boards: [board], owed: { state: "absent", reason: "no bucket" } }), {});
+  expect(unread).not.toContain("Nothing is waiting on you.");
+  expect(unread).toContain("could not be read");
+  const partial = renderShift(viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [], boards: [board], owed: { ...owed, unread: ["owed ledger"] } }), {});
+  expect(partial).toContain("What you owe could not be read (owed ledger)");
+  expect(partial).toContain("run the VM upgrade proof");
+});
+
 test("the Shift page with no open shift says so and names the last shift", () => {
   const rows = [row("2026-10-27T08:00+01:00")];
   const html = renderShift(viewOf({ now: T("2026-10-27T22:00+01:00"), rows, snap: snap(null), id: null, merged: [], boards: [] }), {});

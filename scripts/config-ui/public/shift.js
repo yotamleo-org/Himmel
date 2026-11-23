@@ -108,8 +108,9 @@ function chiefsHtml(v) {
 }
 
 function waitingHtml(v, ui) {
-  if (!v.waiting.length) return none("Nothing is waiting on you.");
-  return `<ul class="sh-list">${v.waiting.map((w) => `<li><span class="pill ${w.kind === "GO" ? "ok" : "warn"}">${esc(w.kind)}</span> ${ticketLink(w.ticket)} ${esc(w.detail || w.title)} ${prRef(w.pr, ui)}${w.chief ? ` <span class="ro">${esc(w.chief)}</span>` : ""}${w.since ? ` <span class="ro">since ${esc(clock(w.since))}</span>` : ""}</li>`).join("")}</ul><p class="sub">Answer these where they live: <a href="${fleetOf(ui)}">Fleet</a>.</p>`;
+  const unread = v.owedUnread ? none(`What you owe could not be read (${v.owedUnread}): this list may be short.`) : "";
+  if (!v.waiting.length) return unread || none("Nothing is waiting on you.");
+  return `${unread}<ol class="sh-list needs-you">${v.waiting.map((w) => `<li><b>Needs you:</b> <span class="pill ${w.kind === "GO" ? "ok" : "warn"}">${esc(w.kind)}</span> ${ticketLink(w.ticket)} ${esc(w.detail || w.title)} ${prRef(w.pr, ui)}${w.chief ? ` <span class="ro">${esc(w.chief)}</span>` : ""}${w.since ? ` <span class="ro">since ${esc(clock(w.since))}</span>` : ""}</li>`).join("")}</ol><p class="sub">Answer these where they live: <a href="${fleetOf(ui)}">Fleet</a>.</p>`;
 }
 
 // A live chief whose board is absent or failed to build is said so: its legs are unknown, never an empty fleet.

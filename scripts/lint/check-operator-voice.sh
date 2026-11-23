@@ -7,6 +7,8 @@
 # "shortly", "in a moment", "in an hour", "done by tonight", "ready by 6 pm". A measured
 # past duration ("took 50 min", "took an hour") is a fact and passes, and so does a
 # deadline the system enforces ("expires in 6 h", decision 1238). A line naming "time estimate" states the rule and is skipped.
+# It also fails on a literal "Your action: none" (outside quotes in a .md file; rule 9, decision 1256): the
+# operator's inbox is listed item by item, never declared empty.
 #
 # Usage:
 #   check-operator-voice.sh [--ticket] [<file>...]
@@ -90,10 +92,10 @@ for f in "${FILES[@]}"; do
             else if (l ~ /(^|[^a-z])(in a moment|back in a)([^a-z]|$)/) hit = "in a moment"
             else if (l ~ ("(^|[^a-z])(done|ready|back|finished) by (" target "([^a-z]|$)|" clock ")")) hit = "by <time>"
             else if (l ~ ("(^|[^a-z0-9_])in " w)) hit = "in a <unit>"
-            if (hit != "") {
-                t = raw; sub(/^[[:space:]]+/, "", t)
-                printf "%s:%d: time estimate (%s): %s\n", file, NR, hit, substr(t, 1, 160)
-            }
+            t = raw; sub(/^[[:space:]]+/, "", t)
+            if (hit != "") printf "%s:%d: time estimate (%s): %s\n", file, NR, hit, substr(t, 1, 160)
+            q = tolower(raw); if (file ~ /\.md$/) gsub(/"[^"]*"/, "", q)
+            if (q ~ /(^|[^a-z])your action: *none([^a-z]|$)/) printf "%s:%d: empty operator inbox (Your action: none): %s\n", file, NR, substr(t, 1, 160)
         }' "$f")" || { echo "check-operator-voice: awk failed on $f" >&2; exit 2; }
     if [ -n "$out" ]; then
         printf '%s\n' "$out"

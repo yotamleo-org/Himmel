@@ -16,6 +16,7 @@ import { basename, dirname, join, relative, sep } from "node:path";
 import { execFile } from "node:child_process";
 import { findDoc, readBoardFile } from "./agui/board";
 import { acquireLock } from "./lock";
+import type { Owed, OwedItem } from "./board";
 import { REDACTED } from "../himmelctl/lib/redact.js";
 
 export type Opts = { idleMin: number; cuts: string[]; minHours: number };
@@ -328,6 +329,7 @@ export type View = {
   mergedUnread: boolean; // the merged-PR list could not be read: Shipped is unknown, not empty
   boardMissing: string[]; boardError: { chief: string; error: string }[]; // live chiefs whose board is absent or failed to build: Running is unknown for them, not empty
   waiting: Waiting[]; running: Running[]; shipped: { number: number; title: string; mergedAt: string; chief: string | null }[]; carried: Carried[]; gap: Gap[];
+  owedUnread?: string | null;
   pager: { prev: string | null; next: string | null };
   last: { id: string; name: string; opened: string; closed: string; chiefs: number; shipped: number | null } | null;
 };
@@ -335,10 +337,11 @@ export type View = {
 const prOf = (l?: Leg) => (typeof l?.pr?.number === "number" ? l.pr.number : null);
 const titleOf = (l?: Leg) => String(l?.goal || l?.description || "").slice(0, 200);
 
-// The live boards' rows: Waiting = what the data marks as the operator's (the chief doc's open decisions); the board's needs_you
+// The live boards' rows: Waiting = the chief doc's open decisions and every operator item readOwed finds; the board's needs_you
 // (go, decide, unblock, act) are the chief's own steps and never Waiting. Running = live and PR-open workers that are not waiting (a red CI stays Running: it is the worker's to fix).
-export function rowsOf(boards: Board[]): { waiting: Waiting[]; running: Running[] } {
+export function rowsOf(boards: Board[], owed: OwedItem[] = []): { waiting: Waiting[]; running: Running[] } {
   const waiting: Waiting[] = [], running: Running[] = [];
+  for (const i of owed) if (i.actor === "operator") waiting.push({ kind: i.source, ticket: i.key, title: i.title, detail: `${i.title}: ${i.ctx}; action: ${i.act}`, since: null, pr: null, chief: "" });
   for (const b of boards) {
     const chief = b.console?.name ?? "";
     const waits = new Set<string>();
@@ -357,7 +360,7 @@ export function rowsOf(boards: Board[]): { waiting: Waiting[]; running: Running[
 }
 
 // The page's whole read. id selects a closed shift (its row), none selects the current one.
-export function viewOf(o0: { now: number; rows: Row[]; snap: Snapshot; id: string | null; merged: Pr[] | null; boards: Board[]; boardMissing?: string[]; boardError?: { chief: string; error: string }[]; opts?: Opts }): View {
+export function viewOf(o0: { now: number; rows: Row[]; snap: Snapshot; id: string | null; merged: Pr[] | null; boards: Board[]; boardMissing?: string[]; boardError?: { chief: string; error: string }[]; opts?: Opts; owed?: Owed }): View {
   const o = { ...o0, merged: o0.merged ?? [] };
   const opts = o.opts ?? DEFAULTS;
   const empty: View = { state: "none", shift: null, chiefs: [], buckets: [], mergedUnread: o0.merged === null, boardMissing: [], boardError: [], waiting: [], running: [], shipped: [], carried: [], gap: [], pager: { prev: null, next: null }, last: null };
@@ -383,9 +386,10 @@ export function viewOf(o0: { now: number; rows: Row[]; snap: Snapshot; id: strin
   if (!open) return { ...empty, state: "idle", last, pager: pager(null) };
   const off = open.offsetMin;
   const c = chiefsOf(o.snap.spans, o.merged, open.opened, null, o.now, off);
-  const { waiting, running } = rowsOf(o.boards);
+  const { waiting, running } = rowsOf(o.boards, o.owed?.state === "ok" ? o.owed.items : []);
   return {
     ...empty, state: "open", last, pager: pager(null), chiefs: c.chiefs, gap: c.gap, buckets: open.buckets, boardMissing: o.boardMissing ?? [], boardError: o.boardError ?? [], waiting, running,
+    owedUnread: !o.owed ? null : o.owed.state !== "ok" ? o.owed.reason : o.owed.unread.length ? o.owed.unread.join(", ") : null,
     shipped: shipped(open.opened, null, c.chiefs),
     shift: { id: iso(open.opened, off), name: nameOf(open.opened, off, opts), opened: iso(open.opened, off), closed: null, why: null, zone: zoneOf(off), nextCut: iso(nextCut(open.opened, off, opts), off), minutes: Math.round((o.now - open.opened) / MIN) },
   };

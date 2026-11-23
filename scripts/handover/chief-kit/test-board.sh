@@ -1492,6 +1492,21 @@ done
 lacks 'a <script> in a worker bullet is escaped in the user view' "$uhtml" '<script>alert(1)'
 contains 'the user view fits a phone width' "$uhtml" 'name="viewport" content="width=device-width, initial-scale=1"'
 lacks 'the user view loads nothing from the network' "$uhtml" 'http'
+printf '%s\n' '{"op":"add","id":"o1","kind":"step","text":"sign the v1.1.3 release spec","key":"HIMMEL-9","actor":"operator"}' '{"op":"add","id":"o2","kind":"proof","text":"run the VM upgrade proof","actor":"operator"}' '{"op":"add","id":"o3","kind":"proof","text":"chief validates a proof"}' > "$B/owed.jsonl"
+HIMMEL_JIRA_MIRROR="$W/no-mirror" run --view user --out "$W/user-owed.html" >/dev/null; rc=$?
+uhtml="$(cat "$W/user-owed.html" 2>/dev/null)"
+contains '10764: the user board numbers what you owe as Needs you items' "$(section_of waiting)" '<ol><li><b>Needs you:</b>'
+contains '10764: an open signature is a Needs you item on the user board' "$(section_of waiting)" '<b>HIMMEL-9</b> sign the v1.1.3 release spec'
+contains '10764: an owed proof marked for the operator is a Needs you item on the user board' "$(section_of waiting)" 'run the VM upgrade proof'
+lacks '10764: a chief-owed ledger row is not on the user board' "$(section_of waiting)" 'chief validates a proof'
+lacks '10764: the user board does not say nothing waits while items are open' "$(section_of waiting)" 'nothing is waiting on you'
+BOARD_BUN=/bin/false run --view user --out "$W/user-owed-unread.html" >/dev/null; rc=$?
+contains '10764: an unread owed source is said, never an empty inbox' "$(cat "$W/user-owed-unread.html" 2>/dev/null)" 'what you owe could not be read'
+rm -f "$B/owed.jsonl"
+mkdir "$B/owed.jsonl"
+HIMMEL_JIRA_MIRROR="$W/no-mirror" run --view user --out "$W/user-owed-partial.html" >/dev/null; rc=$?
+contains '10764: one owed source unread while others read is still said' "$(grep -o 'what you owe could not be read ([^)]*' "$W/user-owed-partial.html" 2>/dev/null)" 'owed ledger'
+rmdir "$B/owed.jsonl"
 run --view nope --out "$W/nope.html" >/dev/null 2>&1; rc=$?
 same 'an unknown --view is a usage error' "rc=$rc" 'rc=2'
 run --view user --changed --out "$W/user-changed.html" >/dev/null 2>&1; rc=$?

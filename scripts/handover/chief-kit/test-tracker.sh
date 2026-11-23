@@ -1546,6 +1546,23 @@ mkdir -p "$W/bk9611-empty/release/v1.1.3"
 v9611render --owed-dir "$W/bk9611-empty"
 contains 'a readable source with nothing owed says nothing is waiting' "$(grep -F 'data-section="waiting"' "$v9611out")" 'nothing is waiting on you'
 not_contains 'a page with nothing chief-owed has no Chief owes group' "$(cat "$v9611out")" 'data-section="chief-owes"'
+printf '%s\n' '{"op":"add","id":"o1","kind":"step","text":"sign the v1.1.3 release spec","actor":"operator"}' \
+    '{"op":"add","id":"o2","kind":"proof","text":"run the VM upgrade proof","actor":"operator"}' \
+    '{"op":"add","id":"o3","kind":"proof","text":"chief validates a proof"}' \
+    '{"op":"add","id":"o4","kind":"step","text":"a closed operator step","actor":"operator"}' '{"op":"close","ref":"o4","key":"1290"}' > "$W/bk9611-empty/owed.jsonl"
+v9611render --owed-dir "$W/bk9611-empty"
+w10764="$(grep -F 'data-section="waiting"' "$v9611out")"
+contains '10764: an operator-marked signature in the owed ledger is a numbered Needs you item' "$w10764" '<ol class="needs-you"><li class="owed"><b>Needs you:</b> sign the v1.1.3 release spec'
+contains '10764: an operator-marked owed proof is listed' "$w10764" 'run the VM upgrade proof'
+not_contains '10764: the empty state is not printed while an operator item is open' "$w10764" 'nothing is waiting on you'
+not_contains '10764: a chief-owed or closed ledger row is not the operator item' "$w10764" 'chief validates a proof'
+not_contains '10764: a closed operator row is not listed' "$w10764" 'a closed operator step'
+mv "$W/bk9611-empty/owed.jsonl" "$W/bk9611-empty/owed.keep"; mkdir "$W/bk9611-empty/owed.jsonl"
+v9611render --owed-dir "$W/bk9611-empty"
+w10764u="$(grep -F 'data-section="waiting"' "$v9611out")"
+contains '10764: an unreadable owed ledger is named as the owed ledger' "$w10764u" 'owed ledger unread'
+not_contains '10764: an unreadable owed ledger is not called a critic file' "$w10764u" 'critic file'
+rmdir "$W/bk9611-empty/owed.jsonl"; mv "$W/bk9611-empty/owed.keep" "$W/bk9611-empty/owed.jsonl"
 
 for t in 442 443 444 445 446 447 448 449 450; do
     cat='To Do'; st='To Do'; res='Done'

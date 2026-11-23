@@ -764,8 +764,29 @@ else
     tldr_default="**${inprog_count}** in-flight · ${stale_shown} · **${done_count}** Done · Backlog: on the Board"
 fi
 
-order_default=$(
+needs_lines=""
+owed_unread=""
+owed_reader="$SCRIPT_DIR/../config-ui/board.ts"
+if [ -f "$owed_reader" ]; then
+    owed_tsv=$("${BRIEFING_BUN:-bun}" -e 'const { readOwed } = await import(process.argv.at(-1)); const o = readOwed(process.env);
+if (o.state !== "ok") console.log("UNREAD\t" + o.reason);
+else if (o.unread.length) console.log("UNREAD\t" + o.unread.join(", "));
+if (o.state === "ok") for (const i of o.items) if (i.actor === "operator") console.log(["ITEM", i.key || "", i.title, i.act].map((s) => String(s).replace(/[\t\n]/g, " ")).join("\t"));' "$owed_reader" 2>/dev/null) \
+        || owed_tsv=$'UNREAD\tthe owed reader did not run'
+    needs_lines=$(printf '%s\n' "$owed_tsv" | awk -F'\t' '$1=="ITEM"{ printf "Needs you: %s%s (action: %s)\n", ($2 != "" ? $2 " " : ""), $3, $4 }')
+    owed_unread=$(printf '%s\n' "$owed_tsv" | awk -F'\t' '$1=="UNREAD"{ print $2; exit }')
+fi
+
+owed_block=$(
     n=1
+    if [ -n "$owed_unread" ]; then printf '_What you owe could not be read (%s): this list may be short._\n' "$owed_unread"; fi
+    while IFS= read -r l; do
+        if [ -n "$l" ]; then printf '%d. %s\n' "$n" "$l"; n=$((n+1)); fi
+    done <<< "$needs_lines"
+)
+order_default=$(
+    if [ -n "$owed_block" ]; then printf '%s\n' "$owed_block"; fi
+    n=$(printf '%s\n' "$needs_lines" | awk 'NF{c++} END{print c+1}')
     [ "$stale_count" -gt 0 ] && { printf '%d. Prune %s stale branch(es)%s.\n' "$n" "$stale_count" "$(cmd_hint clean)"; n=$((n+1)); }
     [ "$open_prs" -gt 0 ] && { printf '%d. Review/merge %s open PR(s)%s.\n' "$n" "$open_prs" "$(cmd_hint pr-check)"; n=$((n+1)); }
     [ "$inprog_count" -gt 0 ] && { printf '%d. Advance %s In-Progress ticket(s).\n' "$n" "$inprog_count"; n=$((n+1)); }
@@ -818,7 +839,7 @@ ${inprogress_raw}"
     elif llm_out=$($CLAUDE_CMD --settings "$llm_settings" --model "$LLM_MODEL" "$llm_prompt" </dev/null 2>/dev/null); then
         llm_status="ok"
         t=$(extract_block "$llm_out" TLDR);    if [ -n "$t" ]; then tldr_final="$t"; else echo "WARNING: --llm TLDR block empty; using heuristic" >&2; fi
-        o=$(extract_block "$llm_out" ORDER);   if [ -n "$o" ]; then order_final="$o"; else echo "WARNING: --llm ORDER block empty; using heuristic" >&2; fi
+        o=$(extract_block "$llm_out" ORDER);   if [ -n "$o" ]; then order_final=$(if [ -n "$owed_block" ]; then printf '%s\n' "$owed_block"; fi; printf '%s\n' "$o"); else echo "WARNING: --llm ORDER block empty; using heuristic" >&2; fi
     else
         llm_status="failed"
         echo "WARNING: --llm: '$CLAUDE_CMD' failed; using deterministic heuristics" >&2
@@ -1000,7 +1021,7 @@ EOF
     else
         printf -- '- Release progress: not available (the generator reads no release input)\n'
     fi
-    printf -- '- Next step: %s\n\n' "$(printf '%s\n' "$order_final" | awk 'NF{print; exit}')"
+    printf -- '- Next step: %s\n\n' "$(printf '%s\n' "$order_final" | awk 'NF && !/^_What you owe could not be read/{print; exit}')"
     printf '## 👥 Chiefs\n\n'
     if [ "$shifts_n" -gt 0 ]; then
         printf '| Chief | Span | PRs merged | Shift |\n|---|---|---|---|\n%s\n\n' "$chiefs_rows"
