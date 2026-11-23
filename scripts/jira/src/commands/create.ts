@@ -531,8 +531,8 @@ interface ParentState {
  * read, leaves the request as it was (the ticket is filed either way).
  */
 export async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; remainder?: boolean; backlog?: boolean; fixVersion?: string }>(o: T): Promise<T> {
-  if (o.followUpOf === undefined || o.fixVersion !== undefined || o.backlog || o.proposedVersion !== undefined || o.why?.trim()) return o;
-  const parentKey = o.followUpOf;
+  if (hasOwnPlacement(o)) return o;
+  const parentKey = o.followUpOf!;
   let parent: ParentState['fields'];
   let versions: Awaited<ReturnType<typeof fetchVersions>>;
   try {
@@ -558,6 +558,24 @@ export async function followUpIntake<T extends IntakeOptions & { followUpOf?: st
   const facts = `follow-up of ${parentKey} (${status}), which is in ${current}${isFrozen ? ' (frozen)' : ''}`;
   const why = o.remainder ? `${facts}; ${parentKey} cannot close without this ticket, which holds its remainder` : facts;
   return { ...o, proposedVersion: target, why, evidence };
+}
+
+type PlacementChoice = { followUpOf?: string; fixVersion?: string; backlog?: boolean; proposedVersion?: string; why?: string };
+const hasOwnPlacement = (o: PlacementChoice): boolean => o.followUpOf === undefined || o.fixVersion !== undefined || !!o.backlog || o.proposedVersion !== undefined || !!o.why?.trim();
+
+export async function closedParentPlacement(o: PlacementChoice & { type: string }): Promise<{ fixVersion: string; priority?: string } | undefined> {
+  if (hasOwnPlacement(o) || !/^(bug|task|story)$/i.test(o.type)) return undefined;
+  try {
+    const parent = (await request<ParentState & { fields: { priority?: { name?: string } } }>('GET', `/issue/${o.followUpOf}?fields=project,status,fixVersions,priority`)).fields;
+    if (parent.status?.statusCategory?.key !== 'done') return undefined;
+    const versions = await fetchVersions(parent.project.key);
+    const current = earliestUnreleased(versions);
+    if (current === undefined || parent.fixVersions?.some((v) => v.name === current) !== true) return undefined;
+    if (frozenDate(versions.find((v) => v.name === current)?.description) !== undefined) return undefined;
+    return { fixVersion: current, ...(parent.priority?.name ? { priority: parent.priority.name } : {}) };
+  } catch {
+    return undefined;
+  }
 }
 
 export function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions, testProject = false): void {
@@ -713,7 +731,7 @@ export function registerCreate(program: Command): void {
     )
     .option(
       '--follow-up-of <key>',
-      "File this as a follow-up of <key>: stamps the residual label and links it to <key>. With no version of its own, its INTAKE asks for <key>'s current version (an open parent; a Done parent gets none) and states parent, status and version",
+      "File this as a follow-up of <key>: stamps the residual label and links it to <key>. With no version of its own, its INTAKE asks for <key>'s current version (an open parent; a Done parent in the current unfrozen version is filed into it at its priority) and states parent, status and version",
     )
     .option(
       '--remainder',
