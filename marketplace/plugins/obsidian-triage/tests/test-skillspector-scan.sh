@@ -34,6 +34,9 @@ cat > "$stub" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" > "$STUB_ARGV"
 printf '%s\n' "${SKILLSPECTOR_PROVIDER-unset}" > "$STUB_PROVIDER"
+if [ -n "${STUB_NET-}" ]; then
+    if [ -r /proc/net/dev ]; then awk -F: 'NR>2 {gsub(/ /,"",$1); print $1}' /proc/net/dev | sort | tr '\n' ' ' > "$STUB_NET"; else printf 'no-proc' > "$STUB_NET"; fi
+fi
 if [ -n "${STUB_REPLAY-}" ]; then cat "$STUB_REPLAY"; else printf '{"risk_assessment":{"score":0},"issues":[]}\n'; fi # read-sink-ok: hermetic test stub, replays a fixture path the test itself set
 exit "${STUB_RC:-0}"
 EOF
@@ -43,10 +46,21 @@ skill="$tmpdir/skill"
 mkdir -p "$skill"
 printf '# a skill\n' > "$skill/SKILL.md"
 
+shimbin="$tmpdir/shimbin"
+mkdir -p "$shimbin"
+cat > "$shimbin/unshare" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB_UNSHARE"
+while [ "$#" -gt 0 ]; do case "$1" in --) shift; break ;; *) shift ;; esac; done
+exec "$@"
+EOF
+chmod +x "$shimbin/unshare"
+
 run() { # run <report> [env assignments...] -- runs the wrapper hermetically
     local report="$1"; shift
-    rm -f "$tmpdir/argv" "$tmpdir/provider"
+    rm -f "$tmpdir/argv" "$tmpdir/provider" "$tmpdir/unshare"
     env -u SKILLSPECTOR_PROVIDER STUB_ARGV="$tmpdir/argv" STUB_PROVIDER="$tmpdir/provider" \
+        STUB_UNSHARE="$tmpdir/unshare" PATH="$shimbin:$PATH" \
         SKILLSPECTOR_BIN="$stub" "$@" bash "$SUT" "$skill" "$report" 2>"$tmpdir/err"
 }
 
@@ -174,6 +188,67 @@ grep -qF 'pre-canonical' "$HC" && s=ok || s=missing
 assert "dispatch decides --skill-scan on the pre-canonical source url" ok "$s"
 grep -qF 'canonicalization strips' "$HC" && s=ok || s=missing
 assert "dispatch states why the canonical url cannot carry the tree path" ok "$s"
+
+echo "Test 11: the scan runs with the network denied"
+run "$tmpdir/n1.json" SKILLSPECTOR_PROVIDER=ollama; rc=$?
+assert "wrapper runs (rc 0) through unshare" 0 "$rc"
+assert "the scanner is launched in a new user and network namespace" \
+    "--user --map-root-user --net -- $stub scan $skill --no-llm --format json" "$(tail -n 1 "$tmpdir/unshare" 2>/dev/null)"
+
+denybin="$tmpdir/denybin"
+mkdir -p "$denybin"
+printf '#!/usr/bin/env bash\necho "unshare: unshare failed: Operation not permitted" >&2\nexit 1\n' > "$denybin/unshare"
+chmod +x "$denybin/unshare"
+rm -f "$tmpdir/argv"
+env -u SKILLSPECTOR_PROVIDER SKILLSPECTOR_PROVIDER=ollama STUB_ARGV="$tmpdir/argv" STUB_PROVIDER="$tmpdir/provider" \
+    PATH="$denybin:$PATH" SKILLSPECTOR_BIN="$stub" bash "$SUT" "$skill" "$tmpdir/n2.json" 2>"$tmpdir/err"; rc=$?
+assert "no network namespace on this host is refused (rc 2)" 2 "$rc"
+[ -e "$tmpdir/argv" ] && r=ran || r=not-run
+assert "no network namespace never invokes skillspector" not-run "$r"
+[ -e "$tmpdir/n2.json" ] && r=written || r=none
+assert "no network namespace writes no report" none "$r"
+grep -qF 'api.osv.dev' "$tmpdir/err" && r=ok || r=missing
+assert "the refusal names the api.osv.dev lookup it prevents" ok "$r"
+
+rm -f "$tmpdir/argv" "$tmpdir/net"
+env -u SKILLSPECTOR_PROVIDER SKILLSPECTOR_PROVIDER=ollama STUB_ARGV="$tmpdir/argv" STUB_PROVIDER="$tmpdir/provider" \
+    STUB_NET="$tmpdir/net" SKILLSPECTOR_BIN="$stub" bash "$SUT" "$skill" "$tmpdir/n3.json" 2>"$tmpdir/err"; rc=$?
+if unshare --user --map-root-user --net -- true >/dev/null 2>&1; then
+    assert "real namespace: wrapper runs (rc 0)" 0 "$rc"
+    assert "real namespace: the scanner sees only loopback" "lo " "$(cat "$tmpdir/net" 2>/dev/null)"
+else
+    assert "no real namespace: wrapper refuses (rc 2)" 2 "$rc"
+    [ -e "$tmpdir/argv" ] && r=ran || r=not-run
+    assert "no real namespace: skillspector never runs" not-run "$r"
+fi
+
+osv_ex='{"outcome":"partial","phase":"static","reason_code":"analyzer_runtime_error","path":"package-lock.json","fatal":false,"analyzers":["static_patterns_supply_chain_dependencies_analyzer_runtime_error"],"error_class":"ConnectError"}'
+ref_ex='{"outcome":"partial","phase":"reference_resolution","reason_code":"reference_missing","path":"SKILL.md","fatal":false}'
+other_ex='{"outcome":"partial","phase":"static","reason_code":"static_parse_limit","path":"a.js","fatal":false,"analyzers":["static_patterns_x"]}'
+degraded='"limitations":["Analyzer static_patterns_supply_chain status: degraded."]'
+offline_body() {
+    printf '{"risk_assessment":{"score":24},"issues":[{"severity":"HIGH"}],"execution_successful":true,"analysis_completeness":{"is_complete":false,"status":"partial","execution_successful":true,"partially_inspected_files":%s,"entirely_uninspected_files":0,"ledger_exceptions":[%s],%s}}\n' "$2" "$1" "$3"
+}
+offline_body "$osv_ex,$ref_ex" 1 "$degraded" > "$tmpdir/osv-ok.json"
+out="$(run "$tmpdir/n4.json" SKILLSPECTOR_PROVIDER=ollama STUB_REPLAY="$tmpdir/osv-ok.json")"; rc=$?
+assert "a report whose only gap is the denied OSV lookup is stored (rc 0)" 0 "$rc"
+printf '%s' "$out" | grep -qF 'deps=offline-fallback' && r=ok || r=missing
+assert "the summary says the dependency lookup used the offline fallback" ok "$r"
+out="$(run "$tmpdir/n4b.json" SKILLSPECTOR_PROVIDER=ollama)"
+printf '%s' "$out" | grep -qF 'deps=offline-fallback' && r=present || r=absent
+assert "a complete report carries no offline-fallback note" absent "$r"
+
+n=0
+for bad in "$(offline_body "$osv_ex,$other_ex" 2 "$degraded")" \
+    "$(offline_body "$osv_ex" 2 "$degraded")" \
+    "$(offline_body "$osv_ex" 1 '"limitations":["Analyzer static_patterns_supply_chain status: degraded.","Analyzer x status: failed."]')" \
+    "$(offline_body "${osv_ex/ConnectError/ReadTimeout}" 1 "$degraded")" \
+    "$(offline_body "$ref_ex" 0 '"limitations":[]')"; do
+    n=$((n+1))
+    printf '%s\n' "$bad" > "$tmpdir/osv-bad$n.json"
+    run "$tmpdir/nb$n.json" SKILLSPECTOR_PROVIDER=ollama STUB_REPLAY="$tmpdir/osv-bad$n.json"; rc=$?
+    assert "incomplete beyond the denied OSV lookup (case $n) is unavailable (rc 3)" 3 "$rc"
+done
 
 echo "skillspector-scan tests: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

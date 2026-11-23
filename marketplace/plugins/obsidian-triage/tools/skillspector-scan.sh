@@ -8,11 +8,18 @@
 #
 # Usage: skillspector-scan.sh <skill-dir> <report.json>
 #   Exit codes: 0 scan ran and the report was stored; 1 bad usage;
-#   2 refused (SKILLSPECTOR_PROVIDER unset or not the no-egress value);
+#   2 refused (SKILLSPECTOR_PROVIDER unset or not the no-egress value, or the
+#     network cannot be denied on this host);
 #   3 unavailable (skillspector missing, failed, or produced no JSON).
 #   Env: SKILLSPECTOR_PROVIDER must be `ollama` (local, no egress): upstream
 #   defaults an unset provider to nv_build, which sends skill text to
 #   build.nvidia.com. SKILLSPECTOR_BIN overrides the binary (tests stub it).
+#   No egress: Stage 1 always posts lockfile package names and versions to
+#   api.osv.dev and has no switch to skip it (2.12.0), so the scan runs in an
+#   empty network namespace (`unshare --user --net`); where that is
+#   unavailable (macOS, user namespaces disabled) the wrapper refuses. The
+#   failed lookup is the one gap accepted in a report; the summary then says
+#   deps=offline-fallback.
 #   This wrapper never installs anything; pip install belongs in a throwaway
 #   sandbox or the test VM.
 
@@ -41,12 +48,18 @@ if ! command -v "$bin" >/dev/null 2>&1; then
     exit 3
 fi
 
+netdeny=(unshare --user --map-root-user --net --)
+if ! "${netdeny[@]}" true >/dev/null 2>&1; then
+    echo "skillspector-scan: refused: cannot run the scan with the network denied here (needs unshare with unprivileged user namespaces); Stage 1 would send lockfile package names to api.osv.dev" >&2
+    exit 2
+fi
+
 out="$(mktemp "${TMPDIR:-/tmp}/skillspector-scan.XXXXXX")" || exit 3
 trap 'rm -f "$out"' EXIT
 
 # rc 1 is skillspector's HIGH-finding exit, so the report decides there; any
 # other non-zero rc is a crash and never yields a stored report.
-"$bin" scan "$skill_dir" --no-llm --format json > "$out" 2>/dev/null
+"${netdeny[@]}" "$bin" scan "$skill_dir" --no-llm --format json > "$out" 2>/dev/null
 scan_rc=$?
 if [ "$scan_rc" -ne 0 ] && [ "$scan_rc" -ne 1 ]; then
     echo "skillspector-scan: unavailable: skillspector failed (rc $scan_rc)" >&2
@@ -60,10 +73,26 @@ const ac = r.analysis_completeness;
 if (r.execution_successful !== undefined && typeof r.execution_successful !== "boolean") process.exit(1);
 if (ac && ac.is_complete !== undefined && typeof ac.is_complete !== "boolean") process.exit(1);
 if (r.execution_successful === false) process.exit(1);
-if (ac && ac.is_complete === false) process.exit(1);
+const osvAnalyzer = "static_patterns_supply_chain_dependencies_analyzer_runtime_error";
+const isOsvDenied = (e) => !!e && e.reason_code === "analyzer_runtime_error" && e.error_class === "ConnectError" &&
+    Array.isArray(e.analyzers) && e.analyzers.length === 1 && e.analyzers[0] === osvAnalyzer;
+let offline = false;
+if (ac && ac.is_complete === false) {
+    const ex = Array.isArray(ac.ledger_exceptions) ? ac.ledger_exceptions : [];
+    const osv = ex.filter(isOsvDenied);
+    const lims = Array.isArray(ac.limitations) ? ac.limitations : [null];
+    offline = osv.length > 0 &&
+        ex.every((e) => isOsvDenied(e) || (!!e && e.reason_code === "reference_missing")) &&
+        lims.every((l) => l === "Analyzer static_patterns_supply_chain status: degraded.") &&
+        ac.entirely_uninspected_files === 0 &&
+        typeof ac.partially_inspected_files === "number" &&
+        ac.partially_inspected_files <= new Set(osv.map((e) => e.path)).size;
+    if (!offline) process.exit(1);
+}
 const issues = r.issues;
 const high = issues.filter((i) => i.severity === "HIGH").length;
-console.log("score=" + score + " issues=" + issues.length + " high=" + high);
+console.log("score=" + score + " issues=" + issues.length + " high=" + high +
+    (offline ? " deps=offline-fallback (api.osv.dev not reached; dependency CVEs checked against the static fallback list only)" : ""));
 ' "$out" 2>/dev/null)" || summary=""
 if [ -z "$summary" ]; then
     echo "skillspector-scan: unavailable: skillspector produced no complete scan report (need risk_assessment.score, an issues array, and no failed or incomplete run)" >&2

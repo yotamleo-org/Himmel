@@ -690,7 +690,9 @@ full runbook.
 
 - **Ingest:** `/luna-ingest <url> --skill-scan` runs Phase 3.7 over each skill directory of the source repo and writes `skill_scan:` plus a `## Skill scan (advisory)` section, with the reports in `<repo-slug>.skillspector/` beside the note.
 - **Clips:** `/harvest-clips` passes `--skill-scan` for a clipped `/tree/<branch>/.../skills/...` URL, so a clipped skill is scanned before it is used.
-- **No egress:** the wrapper refuses (rc 2) unless `SKILLSPECTOR_PROVIDER=ollama`; upstream defaults an unset provider to `nv_build`, which sends skill text to build.nvidia.com.
+- **No egress:** nothing leaves the machine. Two calls are stopped:
+  - **Provider:** the wrapper refuses (rc 2) unless `SKILLSPECTOR_PROVIDER=ollama`. Upstream defaults an unset provider to `nv_build`, which sends skill text to build.nvidia.com.
+  - **OSV lookup:** Stage 1 always posts the package names and versions from a skill's lockfile to api.osv.dev, and SkillSpector 2.12.0 has no switch to skip it. So the wrapper runs the scanner in an empty network namespace (`unshare --user --map-root-user --net`), where the lookup fails and SkillSpector checks the dependencies against its small built-in list instead. The summary line then ends `deps=offline-fallback`. Where the namespace cannot be made (macOS, or Linux with unprivileged user namespaces disabled), the wrapper refuses with rc 2 and does not scan.
 - **No install:** the wrapper never installs SkillSpector (rc 3 when missing). `pip install` belongs in a throwaway sandbox or the test VM.
 - Tests: `tests/test-skillspector-scan.sh` (hermetic stub; replays two real reports captured from skillspector 2.12.0 @182a4753 on the pilot fixtures under `tests/fixtures/skillspector/`).
 
