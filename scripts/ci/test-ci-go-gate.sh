@@ -61,11 +61,11 @@ lines = open(ci_yml).read().split("\n")
 
 CHEAP = {"plan", "ci-quick", "secret-scan", "bwk-awk-mktemp-gate", "unchecked-mktemp-range",
          "commit-lint", "jira-cli-smoke", "claude-startup", "guardrail-matrices",
-         "doc-invariants", "lint", "plugin-version-bump", "critic-eval"}
+         "doc-invariants", "lint", "plugin-version-bump"}
 HEAVY = {"leak-classes", "git-env-scrub", "lanes-and-trust-suites", "bun-suites",
          "node-suites", "security-scan", "shell-unit-shard", "shell-unit"}
 EXEMPT = {"guard-corpus-full"}
-PR_ONLY = {"plan", "plugin-version-bump", "critic-eval"}  # their base condition already names pull_request
+PR_ONLY = {"plan", "plugin-version-bump"}  # their base condition already names pull_request
 
 fails = 0
 def ok(m): print("ok - " + m)

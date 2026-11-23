@@ -154,7 +154,7 @@ responding_model}` under `case_evidence[<case>].critics[<critic>]` of the
 The panel metrics count every completed case; a critic counts only the cases
 it answered. `coverage` counts each category per critic. `decision_eligible`
 and `ineligibility_reasons` follow the execution provenance rules under "The
-merge gate". n is small (12 defects, 2 per class): a per-class
+eval gate". n is small (12 defects, 2 per class): a per-class
 number is a direction, not a measurement.
 
 ## Open and sealed seeds
@@ -422,23 +422,17 @@ compares a call with itself) and `quoting` (an unquoted exclude argument). The
 pairs add to the 22 + 22 above; adding them changed `config.fixture_set`, so
 they start a new eval-compare series and need the base re-baseline sweeps.
 
-## The merge gate
+## The eval gate
+
+The critic-eval merge gate was removed (operator decisions 1251 and 1252,
+2026-11-23): CI no longer runs it, no PR waits on a sweep, and the bypass rows
+are gone. Its redesign is a separate core spec. The harness stays: `score.py gate`
+still gives the verdict for a base and a head pair of sweeps, described below.
 
 `cbs.txt` lists the critic behaviour set: every path whose change can move what
-the panel reports (a `dir/` prefix or a glob at the same `/` depth). A PR that
-changes one of them, at its base or its head, merges only when the eval says the
-change lost nothing.
+the panel reports (a `dir/` prefix or a glob at the same `/` depth).
 
-**The paid eval is the default route** (operator policy, 2026-11-12). A
-critic change gets its four sweeps without asking the operator whether to
-spend: the chief launches them as soon as the PR's head is final. The operator's
-go code on the launch (above) authorises the billing flag for that worker; it is
-not a decision about whether to run the eval. Only skipping the eval needs an
-operator decision, recorded as a `gate-bypass.tsv` row (item 5). The gate's
-failure line says so.
-
-1. The chief sweeps twice at the tree the gate compares against (on CI's merge
-   ref, main as that ref was built) and twice at the PR's head (`run.sh`,
+1. A comparison sweeps twice at the base tree and twice at the head (`run.sh`,
    above), and records each sweep with
    `score.py export-row <outputs-dir>`: one `results.jsonl` row carrying the
    tree's `cbs_hash` and `confighash`, the `outputs_sha256` of the bundle and
@@ -460,13 +454,8 @@ failure line says so.
    the fields and metrics it claims and printed `scorer identity unverified`; a
    value a scoring repair moved still differs. A row naming a scorer must name
    the running one.
-3. CI runs `scripts/ci/check-critic-eval.sh <base> HEAD` as the standalone
-   `critic-eval` job, which has no fail-fast twin, so a red gate never cancels
-   the run's other jobs. HEAD is the PR's merge ref, so the gate's diff base is
-   `HEAD^1`, the main that ref was built on, not the event's `<base>`, which
-   stays at the main the PR opened on; elsewhere the diff base is `<base>`.
-   With no CBS path changed it passes; otherwise it runs
-   `score.py gate`, which reads the head tree's `results.jsonl`:
+3. `score.py gate` reads the head tree's `results.jsonl` and prints one
+   verdict:
    - **unmeasured** (fail): the running scorer has no clean identity, no row
      carries its `scorer_sha256`, or fewer than 2 distinct rows (by `run_id`
      and bundle) of it at the base or the head `cbs_hash` for the head tree's
@@ -530,51 +519,14 @@ running scorer replaces its older row, and a null identity matches nothing.
 from before it still exports. Old rows carry no `scorer_sha256`: until rows of
 the current scorer are promoted, every critic-behaviour PR is unmeasured.
 
-Two rules sit in front of that eval check. Neither reads its input from the
-PR's own tree, so a PR cannot retag its own files or add its own bypass. The
-`# unexecuted:` tags are read at the diff base, which a push rebuilds on newer
-main. The bypass file is read at the default branch's tip as CI's checkout
-fetched it (`refs/remotes/origin/<base branch>`); when that cannot be read the
-gate falls back to the diff base and prints one line naming the missing input.
-A tag or row a change needs must be on main, and needs no merge into the
-branch. So a merged tag exempts every open PR whose merge ref is rebuilt after
-it lands, not only PRs opened later: a tag-only `cbs.txt` change needs a
-trust-reviewed GO (this directory is a trust path).
+`cbs.txt` marks each path the sweep never executes with a comment line
+`# unexecuted: <path>`: `run.sh` feeds `critic-panel.sh` directly, so a change
+to such a file gives the base and head sweeps identical critics and the eval
+can only read noise. `score.py` ignores comments, so the hash and the path list
+are unchanged. Tag a path only after tracing that no sweep call reaches it.
 
-4. **A path the sweep never executes needs no eval rows.** `run.sh` feeds
-   `critic-panel.sh` directly, so a change to a file the sweep never runs gives
-   the base and head sweeps identical critics and the eval can only read noise.
-   `cbs.txt` marks each such path with a comment line `# unexecuted: <path>`
-   (`score.py` ignores comments, so the hash and the path list are unchanged).
-   When every changed CBS path is tagged, the gate passes and prints "only paths
-   the sweep never executes changed: ...; a judge GO covers them": the review is
-   a judge GO, not eval rows. One changed CBS path that is not tagged puts the
-   whole diff back on the eval check. Tag a path only after tracing that no
-   sweep call reaches it.
-5. **An operator bypass is a recorded row.** `gate-bypass.tsv` holds one row per
-   bypass: `pr`, a `head` sha prefix of 7 or more hex digits (a new row writes
-   the full 40-hex head), the `decision` id, and the `reason`, separated by
-   tabs. The gate reads the file at the default branch's tip (else at the diff
-   base), never from the PR's own tree, so a row landed on main after the PR
-   opened counts without being merged into the branch. The gate honours a row only for its PR
-   number (`CHECK_CRITIC_EVAL_PR`, else the `refs/pull/<n>/merge` of
-   `GITHUB_REF`) at its head (the head given; on CI's `refs/pull/<n>/merge`
-   also the merge ref's second parent, which is the PR head), and prints a `BYPASS honoured` line with the decision and reason. A row
-   for another PR, or for another head it does not carry to (below), does nothing. A malformed row (wrong column
-   count, a non-numeric PR, a prefix under 7 hex digits, an empty decision or
-   reason) fails the gate closed. A row lands by a chief-ruled change of its own.
-   A row also carries to a later head of the same PR: the row's head resolves
-   to a commit in the checkout, is an ancestor of the head, and no CBS path
-   (expanded at both ends), `cbs.txt`, `scripts/cr/known-findings.json` or
-   `scripts/cr/known-findings.sh` differs between the two. The gate then prints
-   a second `BYPASS carried to head` line. A head that does not resolve, is not
-   an ancestor, or changed any of those files falls through to the eval check.
-
-The hashes are of the merge ref: a later critic change on main changes the head
-`cbs_hash`, and also the base rows' `cbs_hash`, which is the diff base's
-(`HEAD^1` on CI's merge ref), so the rows no longer count and the PR is swept
-again; the base sweeps run at main as the merge ref was built, not at the main
-the PR opened on. Every CBS path, this directory and `scripts/eval/lib/` (every
-module `score.py` can import) are trust paths (`scripts/ci/ci-trust-paths.txt`),
-as are `scripts/ci/` and `.github/`, since `ci.yml` runs the gate script from
-the PR's merge ref, so a PR cannot weaken its own gate.
+The hashes are of the swept trees: a later critic change on main changes the
+head `cbs_hash`, and also the base rows' `cbs_hash`, so older rows no longer
+count and the pair is swept again. Every CBS path, this directory and
+`scripts/eval/lib/` (every module `score.py` can import) are trust paths
+(`scripts/ci/ci-trust-paths.txt`).

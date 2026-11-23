@@ -65,7 +65,7 @@ fi
 # payloads of two CI runs (name/status/conclusion kept):
 # pr-fail-fast-jobs-green.json = run 39034533470 (every job finished green),
 # pr-fail-fast-jobs-failed.json = run 39045466700 (plugin-version-bump red).
-NO_TWIN=" shell-unit guard-corpus-full critic-eval "
+NO_TWIN=" shell-unit guard-corpus-full "
 # needs.<job>.result, not failure() alone: failure() is also true when only an
 # ancestor (plan) failed, which would fire every twin downstream of it.
 twin_if() { echo "failure() && needs.$1.result == 'failure' && github.event_name == 'pull_request'"; }
