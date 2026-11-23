@@ -43,11 +43,14 @@
 #   [dup-name]        two or more scanned SKILL.md files share the same
 #                     `name:` value (routing collision risk).
 #
-#   [size-fail]       body is at least SKILL_LINT_FAIL_BYTES (default 60000)
-#                     bytes — a true outlier: split it into a core body plus
-#                     reference files the body reads on demand. Exit 1.
-#   [size-warn]       body is at least SKILL_LINT_WARN_BYTES (default 20000)
-#                     bytes — the trim target. Advisory: printed, exit code
+#   [size-fail]       body is MORE than SKILL_LINT_FAIL_BYTES (default 20000)
+#                     bytes (exactly 20000 passes, 20001 fails; bytes, not
+#                     characters, so a multibyte body is never counted more
+#                     leniently): split it into a core body plus reference
+#                     files the body reads on demand. Exit 1.
+#   [size-warn]       body is at least SKILL_LINT_WARN_BYTES (default 16000,
+#                     80% of the limit) bytes — an early heads-up before the
+#                     body reaches the fail line. Advisory: printed, exit code
 #                     unchanged. Both thresholds are env-overridable integers
 #                     (at most 15 digits).
 #
@@ -169,8 +172,8 @@ done
 # In-scope path patterns (ERE, matched against a repo-root-relative path).
 IN_SCOPE_RE='^(marketplace/plugins/[^/]+/skills/[^/]+/SKILL\.md|\.claude/skills/[^/]+/SKILL\.md|plugins/(himmel-gh|himmel-jira)/skills/[^/]+/SKILL\.md|marketplace/plugins/[^/]+/commands/[^/]+\.md|\.claude/commands/[^/]+\.md)$'
 
-WARN_BYTES="${SKILL_LINT_WARN_BYTES:-20000}"
-FAIL_BYTES="${SKILL_LINT_FAIL_BYTES:-60000}"
+WARN_BYTES="${SKILL_LINT_WARN_BYTES:-16000}"
+FAIL_BYTES="${SKILL_LINT_FAIL_BYTES:-20000}"
 case "$WARN_BYTES$FAIL_BYTES" in
     *[!0-9]*|'') printf 'skill-lint: SKILL_LINT_WARN_BYTES/SKILL_LINT_FAIL_BYTES must be integers\n' >&2; exit 2 ;;
 esac
@@ -280,8 +283,8 @@ while IFS= read -r f && IFS= read -r content_src; do
     _allowed=0
     case "$ALLOWED" in *$'\n'"$_rel"$'\n'*) _allowed=1 ;; esac
     if [ "$_allowed" -eq 0 ]; then
-        if [ "$_bytes" -ge "$FAIL_BYTES" ]; then
-            file_report="$file_report  [size-fail] body is $_bytes bytes (fail threshold $FAIL_BYTES) — split into a core body plus on-demand reference files"$'\n'
+        if [ "$_bytes" -gt "$FAIL_BYTES" ]; then
+            file_report="$file_report  [size-fail] body is $_bytes bytes (limit $FAIL_BYTES) — split into a core body plus on-demand reference files, or allowlist it with a reason in scripts/lint/skill-size-allowlist.txt"$'\n'
             file_issues=$((file_issues + 1))
         elif [ "$_bytes" -ge "$WARN_BYTES" ]; then
             printf '%s:\n  [size-warn] body is %s bytes (warn threshold %s, fail %s)\n' "$f" "$_bytes" "$WARN_BYTES" "$FAIL_BYTES"
