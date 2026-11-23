@@ -530,7 +530,7 @@ console.log(found.size === 1 ? [...found][0] : "");
         "" \
         "$batch_list" >"$jira_body_file"
 
-    if printf '%s\n' "$candidates" | grep -Eq '^[^[:space:]:]+(:[0-9]+)?:[[:space:]]*(LOW|IMPROVEMENT|DEFERRED)[[:space:]]*:'; then
+    if grep -Eq '^[^[:space:]:]+(:[0-9]+)?:[[:space:]]*(LOW|IMPROVEMENT|DEFERRED)[[:space:]]*:' <<<"$candidates"; then
         batch_priority=Medium
     else
         batch_priority=Low
