@@ -792,7 +792,7 @@ assert_eq "RED 10735: line 1 of the HIMMEL-10561 ask is the go and no reply with
 assert_eq "RED 10735: line 2 names the ticket, worker, model and effort" "HIMMEL-10561 Y10561a on opus-5-5 high" "$(printf '%s\n' "$ASK" | sed -n 2p)"
 assert_eq "RED 10735: line 3 names the flag and the guard it skips" "flag HIMMEL_HOOK_INTEGRITY_BYPASS_OK (skips block-worker-write-fence)" "$(printf '%s\n' "$ASK" | sed -n 3p)"
 assert_eq "RED 10735: line 4 is the chief's word" "Chief: GO" "$(printf '%s\n' "$ASK" | sed -n 4p)"
-assert_eq "RED 10735: the last line is the expiry and the brief sha" "yes" "$(printf '%s\n' "$ASK" | sed -n '$p' | grep -qE '^Expires 6 h · brief sha [0-9a-f]{12}$' && echo yes)"
+assert_eq "RED 10735: the last line is the expiry and the brief sha" "yes" "$(grep -qE '^Expires 6 h · brief sha [0-9a-f]{12}$' <<<"${ASK##*$'\n'}" && echo yes)"
 n=$(printf '%s' "$ASK" | LC_ALL=C wc -c | tr -d ' ')
 assert_eq "RED 10735: the HIMMEL-10561 ask is at most 300 bytes (it was $n)" "yes" "$([ "$n" -le 300 ] && echo yes)"
 assert_absent "RED 10735: the brief description is not in the ask" "switched-off" "$ASK"
@@ -836,7 +836,7 @@ wait_for "$D/sent" "brief sha"
 ASK=$(last_ask)
 n=$(printf '%s' "$ASK" | LC_ALL=C wc -c | tr -d ' ')
 assert_eq "RED 10735: five long flags, a decision, the API lane and a 60-character NO stay at most 400 bytes (it was $n)" "yes" "$([ "$n" -le 400 ] && echo yes)"
-assert_eq "RED 10735: line 1 still leads with the code" "yes" "$(printf '%s\n' "$ASK" | sed -n 1p | grep -qE '^go [A-Z2-9]{6} → launch' && echo yes)"
+assert_eq "RED 10735: line 1 still leads with the code" "yes" "$(grep -qE '^go [A-Z2-9]{6} → launch' <<<"${ASK%%$'\n'*}" && echo yes)"
 assert_contains "10735: the flag line names all five flags" "WORKER_SESSION_CONTEXT_HANDOFF_OK, HIMMEL_HOOK_INTEGRITY_BYPASS_OK, SUBAGENT_PARK_GUARD_DISABLE, HIMMEL_BILLED_OK, SKIP_SECURITY_REVIEW" "$ASK"
 assert_contains "10735: the tag line names the decision, the paid run and the API account" "DECISION 12345 · PAID RUN · API account auto" "$ASK"
 stop

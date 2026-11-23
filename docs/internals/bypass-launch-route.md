@@ -47,7 +47,7 @@ the flag in a worker's launch script. Both shapes are now refused. Instead:
 
 3. The daemon sends the operator a short ask on Telegram, the code first:
 
-   ```
+   ```text
    go IQF5ED → launch · no IQF5ED → refuse
    <ticket> <worker> on opus-5-5 high
    flag HIMMEL_HOOK_INTEGRITY_BYPASS_OK (skips block-worker-write-fence)
