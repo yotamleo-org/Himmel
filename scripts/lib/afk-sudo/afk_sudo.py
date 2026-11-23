@@ -21,7 +21,8 @@ file (a repo file is agent-writable). Off by default: the station config ships
                               the notice bot. --with-nonce, that nonce on stdin: sets enabled: false and denies every
                               pending request. Takes nothing that turns anything on)
   afk-sudo run-result ID [--stream stdout|stderr]
-  afk-sudo grant-request      --session S --cwd DIR [--ticket T] [--why W]   (the command's bytes on stdin)
+  afk-sudo grant-request      --session S --cwd DIR [--ticket T] [--why W] [--desc D]   (the command's bytes on stdin; D is
+                              the Bash call's own description, shown on the notice as the agent's claim)
   afk-sudo grant-spend        --session S --sha256 H --cwd DIR
   afk-sudo mode [-- ARGV...]   (with ARGV it adds `admits=true|false`: whether run-request's mode would take that argv)
 
@@ -624,7 +625,7 @@ def make_grant_builder(spec):
         rec = {"v": 1, "id": rid, "kind": "grant", "cmd": spec["cmd"], "cmd_sha256": spec["sha"], "words": spec["words"],
                "files": [e for e, _ in spec["files"]], "targets": spec["targets"], "cwd": spec["cwd"],
                "cwd_dev_ino": spec["cwd_dev_ino"], "session": spec["session"], "ticket": spec["ticket"],
-               "blocked_by": spec["why"], "created": created, "expires": expires}
+               "blocked_by": spec["why"], "desc": spec["desc"], "created": created, "expires": expires}
         digest = rec_hash(rec)
         for d in (RECORDS, FILES, os.path.join(FILES, rid)):
             private_dir(d)
@@ -718,6 +719,7 @@ MSG_CAP = 3500
 EL_CAP, EL_KEEP = 120, 100
 ARGS_SHOWN = 10
 SCRIPT_LINES, LINE_KEEP = 10, 100
+HEAD_DESC, HEAD_REASON, HEAD_CMD = 75, 56, 85
 
 
 def notice_token():
@@ -936,23 +938,60 @@ def facts(rec, nonce, mode, cls, digest, bodies, stdin_text):
     return text, cut
 
 
-def grant_facts(rec, nonce, ttl, digest, bodies):
+def word_cut(s, n):
+    """(s, False) when it fits n characters, else (its leading whole words, True); the caller appends the …."""
+    if len(s) <= n:
+        return s, False
+    c = s[:n]
+    if " " in c:
+        c = c[:c.rindex(" ")]
+    return c.rstrip(), True
+
+
+def plain_reason(why):
+    """The classifier's reason in plain words, one short line: `[Code from External] runs a fetched package` reads
+    `Code from External — runs a fetched package`; ("" when there is none)."""
+    m = re.match(r"\s*\[([^\]\n]{1,60})\]\s*(.*)", why or "", re.S)
+    cat, rest = (m.group(1), " ".join(m.group(2).split())) if m else ("", " ".join((why or "").split()))
+    room = HEAD_REASON - len(cat) - 3 if cat else HEAD_REASON
+    out = esc(cat)[0] if cat else ""
+    if rest and room >= 10:
+        t, c = word_cut(rest, room)
+        return out + (" — " if cat else "") + esc(t)[0] + ("…" if c else "")
+    return out + ("…" if rest else "")
+
+
+def grant_facts(rec, nonce, ttl, digest):
     """The grant notice (HTML, at most MSG_CAP) and whether anything was cut (the full request is then attached).
-    Built from root's frozen record only, never from the classifier-denial log."""
+    Built from root's frozen record only, never from the classifier-denial log. The head is five lines, six when the
+    command has more than one: the exact reply, what the agent says the command does (its claim), the refusal reason
+    in plain words, the first line of the raw command (unverified: the agent's text), `…(+n lines)` for the rest of
+    it, and the chief's view. A file the command runs shows its path and
+    sha256 only, never its text."""
     rid, cmd = rec["id"], rec["cmd"]
     left = max(1, round((rec["expires"] - now()) / 60))
     cwd, cut = elem(rec["cwd"], EL_CAP, EL_KEEP)
-    head = [f"🔓 AFK grant {rid} · expires {time.strftime('%H:%MZ', time.gmtime(rec['expires']))} ({left} min) · nonce <b>{nonce}</b>",
-            f"Session: {esc(rec['session'])[0]} · {esc(rec['ticket'])[0]}",
-            f"cwd: {cwd}",
-            f"Approving lets this exact command skip the permission classifier once, in this session and cwd, within "
-            f"{max(1, ttl // 60)} min of the code. Guards still run."]
     lines = cmd.splitlines() or [""]
+    desc, dcut = word_cut(rec.get("desc") or "", HEAD_DESC)
+    first, fcut = word_cut(lines[0], HEAD_CMD)
+    reason = plain_reason(rec.get("blocked_by"))
+    head = [f"approve {rid} <b>{nonce}</b> &lt;code&gt; → run once · deny {rid} {nonce} → refuse",
+            "The agent says: " + (esc(desc)[0] + ("…" if dcut else "") if desc else "(no description given)"),
+            "The classifier says: " + (reason or "(no reason given)"),
+            f"Command (unverified): $ {esc(first)[0]}" + ("…" if fcut else "")]
+    if len(lines) > 1:
+        head.append(f"…(+{len(lines) - 1} lines)")
+    head.append("Chief: no view")
+    facts_lines = [f"Session: {esc(rec['session'])[0]} · {esc(rec['ticket'])[0]} · expires "
+                   f"{time.strftime('%H:%MZ', time.gmtime(rec['expires']))} ({left} min)",
+                   f"cwd: {cwd}",
+                   f"Approving lets this exact command skip the permission classifier once, in this session and cwd, within "
+                   f"{max(1, ttl // 60)} min of the code. Guards still run."]
     body = [f"command ({len(cmd.encode())} bytes, sha256 {rec['cmd_sha256'][:8]}):"]
     for line in lines[:SCRIPT_LINES]:
-        t, c = elem(line, 300, 300)
+        t, c = word_cut(line, 300)
         cut |= c
-        body.append(t)
+        body.append(f"⟦{esc(t)[0]}⟧" + ("…" if c else ""))
     if len(lines) > SCRIPT_LINES:
         body.append(f"…(+{len(lines) - SCRIPT_LINES} lines)")
         cut = True
@@ -961,26 +1000,12 @@ def grant_facts(rec, nonce, ttl, digest, bodies):
         t, c = elem(f["path"], EL_CAP, EL_KEEP)
         cut |= c
         body.append(f"file {t} sha256 {f['sha256'][:8]}" + (f" ⚠️ <b>{', '.join(marks)}</b>" if marks else ""))
-    room = SCRIPT_LINES
-    for path, text in bodies:
-        flines = text.splitlines() or [""]
-        body.append(f"{esc('file ' + path, EL_KEEP)[0]}:")
-        for line in flines[:room]:
-            t, c = elem(line, LINE_KEEP, LINE_KEEP)
-            cut |= c
-            body.append(t)
-        if len(flines) > room:
-            body.append(f"…(+{len(flines) - room} lines)")
-            cut = True
-        room = max(0, room - len(flines))
-    if rec.get("blocked_by"):
-        body.append(f"Refused by (claim): {esc(rec['blocked_by'], 300)[0]}")
     tail = [f"hash {digest[:8]} {digest[8:16]}…"]
-    text = "\n".join(head + body + tail)
+    mark = ["TRUNCATED, full request attached"]
+    text = "\n".join(head + (mark if cut else []) + facts_lines + body + tail)
     if len(text) > MSG_CAP - 40:
-        text, cut = "\n".join(head + ["command and files: see the attached request"] + tail), True
-    if cut:
-        text = "TRUNCATED, full request attached\n" + text
+        cut = True
+        text = "\n".join(head + mark + facts_lines + ["command and files: see the attached request"] + tail)
     return text, cut
 
 
@@ -1256,7 +1281,8 @@ def grant_request(broker, config, args):
         return 5
     st = os.stat(cwd)
     spec = {"cmd": cmd, "raw": raw, "sha": sha, "words": words, "files": files, "targets": targets, "cwd": cwd,
-            "cwd_dev_ino": [st.st_dev, st.st_ino], "session": meta["session"], "ticket": meta["ticket"], "why": clean(args.why, 300)}
+            "cwd_dev_ino": [st.st_dev, st.st_ino], "session": meta["session"], "ticket": meta["ticket"], "why": clean(args.why, 300),
+            "desc": clean((args.desc.strip().splitlines() or [""])[0], 200)}
     ttl = grant_ttl(config)
     broker.retain = prune
     rid, expires, nonce = broker.request("grant", f"grant {sha[:12]}", make_grant_builder(spec),
@@ -1265,7 +1291,7 @@ def grant_request(broker, config, args):
         rec = load_record(rid)
         bodies = [(f["path"], read_copy(rid, f"f{i}")) for i, f in enumerate(rec["files"]) if f["shown"]]
         ok = send_notice(broker, config, token, rec, nonce, None, None, bodies=bodies,
-                         built=grant_facts(rec, nonce, ttl, rec_hash(rec), bodies))
+                         built=grant_facts(rec, nonce, ttl, rec_hash(rec)))
     except BaseException as e:
         broker.withdraw(rid, "notice-failed", reason=exc_reason(e))
         raise
@@ -1725,6 +1751,7 @@ def main(argv):
     gr.add_argument("--ticket", default="")
     gr.add_argument("--cwd", required=True)
     gr.add_argument("--why", default="")
+    gr.add_argument("--desc", default="")
     o = sub.add_parser("op-request")
     o.add_argument("--session", required=True)
     o.add_argument("--ticket", required=True)

@@ -67,6 +67,15 @@ export READY_CHECK_ANCHOR="$ANCHOR"
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
+if [ -n "${STUB_REPO_CWD:-}" ]; then
+    case "$*" in
+        "repo view"*|"pr view "*"--json title"*)
+            case " $* " in
+                *" -R "*|*" --repo "*) ;;
+                *) [ "$(pwd -P)" = "$STUB_REPO_CWD" ] || { echo "gh: the repo here is not himmel" >&2; exit 1; } ;;
+            esac ;;
+    esac
+fi
 case "${STUB_GH_RL:-}:$*" in
     1:*|trust:"repo view --json nameWithOwner"*|trust:"repo view --json defaultBranchRef"*)
         echo "GraphQL: API rate limit already exceeded for user ID 1. (RATE_LIMIT)" >&2; exit 1 ;;
@@ -145,6 +154,14 @@ run 77 "$SHA"
 check "no pair: exit 0" "$RC" "0"
 lacks "no pair: no SENDMESSAGE to=" "$OUT" "SENDMESSAGE to="
 contains "no pair: says it skipped" "$OUT" "SENDMESSAGE skipped"
+
+FOREIGN="$tmp/foreign"; git init -q "$FOREIGN"
+RG_REPO_CWD=$(cd "$READY_REPO" && pwd -P)
+OUT=$(cd "$FOREIGN" && STUB_REPO_CWD="$RG_REPO_CWD" bash "$SCRIPT" --to worker --token tok 77 "$SHA" 2>&1); RC=$?
+check    "foreign cwd: exit 0" "$RC" "0"
+contains "foreign cwd: TRUST none, the repo read found himmel" "$OUT" "TRUST: none"
+contains "foreign cwd: the title read found the PR" "$OUT" "TICKET: HIMMEL-1 In Review"
+contains "foreign cwd: the GO line is printed" "$OUT" "SENDMESSAGE to=worker :: GO 77 $SHA, token tok"
 
 # --- 4. no CR-ledger row at the head -------------------------------------------
 export READY_STUB_HEAD="$SHA2"

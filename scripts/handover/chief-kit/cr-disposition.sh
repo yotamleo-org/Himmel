@@ -68,7 +68,11 @@ fi
 # shellcheck source=scripts/lib/git-clean.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/git-clean.sh" 2>/dev/null && git_env_scrub
-common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""  # swallow-ok: empty fails closed on the next line
+# shellcheck source=scripts/lib/gate-repo-resolver.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/gate-repo-resolver.sh" || { echo "cr-disposition: cannot load scripts/lib/gate-repo-resolver.sh" >&2; exit 2; }
+GATE_DIR=$(gate_repo_dir cr-disposition "" "") || exit 2
+common=$(git -C "$GATE_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""  # swallow-ok: empty fails closed on the next line
 [ -n "$common" ] || { echo "cr-disposition: not in a git repo, so there is no CR ledger" >&2; exit 2; }
 LEDGER="$common/cr-critic-scores.jsonl"
 GH_ERRF=$(mktemp "${TMPDIR:-/tmp}/cr-disposition-gh.XXXXXX" 2>/dev/null) || GH_ERRF=/dev/null  # swallow-ok: no stderr capture only loses the rate-limit wording
@@ -90,9 +94,9 @@ if [ -z "${GH_CMD:-}" ] && [ -f "$HERE/../../lib/gh-read.sh" ]; then
 fi
 BRANCH_RC=0
 if [ "$CRD_T" -gt 0 ] && [ -n "$_TIMEOUT_BIN" ]; then
-    BRANCH=$("$_TIMEOUT_BIN" -k 5 "$CRD_T" "$GH" pr view "$PR" --json headRefName -q .headRefName 2>"$GH_ERRF") || BRANCH_RC=$?
+    BRANCH=$(cd "$GATE_DIR" && "$_TIMEOUT_BIN" -k 5 "$CRD_T" "$GH" pr view "$PR" --json headRefName -q .headRefName 2>"$GH_ERRF") || BRANCH_RC=$?
 else
-    BRANCH=$("$GH" pr view "$PR" --json headRefName -q .headRefName 2>"$GH_ERRF") || BRANCH_RC=$?
+    BRANCH=$(cd "$GATE_DIR" && "$GH" pr view "$PR" --json headRefName -q .headRefName 2>"$GH_ERRF") || BRANCH_RC=$?
 fi
 [ "$BRANCH_RC" -eq 0 ] || BRANCH=""
 CRD_REFUSED_TOK=""

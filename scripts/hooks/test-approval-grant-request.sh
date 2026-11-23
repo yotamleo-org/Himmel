@@ -23,6 +23,7 @@ case " \$* " in
 esac
 printf '%s\n' "\$*" >> "$TMP/argv"
 cat > "$TMP/stdin"
+if [ -f "$TMP/oldhelper" ]; then case " \$* " in *" --desc="*) echo "afk-sudo: unrecognized arguments" >&2; exit 2 ;; esac; fi
 cat "$TMP/reply"
 exit \$(cat "$TMP/rc" 2>/dev/null || echo 0)
 STUB
@@ -48,7 +49,8 @@ CHIEF_ENV=chief-A SESSION_N_NAME='' MARGIN=130
 settle_detached() { sleep 0.6; }
 run() {
     local tool=$1 command=$2 marks=${3:-$TMP/marks} reason=${4:-[Code from External] fetches a package}
-    jq -n --arg t "$tool" --arg c "$command" --arg r "$reason" '{tool_name:$t,tool_input:{command:$c},session_id:"S1",cwd:"/w",reason:$r}' > "$TMP/payload.json"
+    jq -n --arg t "$tool" --arg c "$command" --arg r "$reason" --arg d "${GDESC:-}" \
+        '{tool_name:$t,tool_input:({command:$c}+(if $d == "" then {} else {description:$d} end)),session_id:"S1",cwd:"/w",reason:$r}' > "$TMP/payload.json"
     : > "$TMP/argv"; : > "$TMP/curl"; rm -f "$TMP/stdin"
     printf 'claude\0-n\0%s\0' "$SESSION_N_NAME" > "$TMP/cmdline"
     OUT=$(env -u HIMMEL_CONSOLE_NAME -u CLAUDE_PID ${CHIEF_ENV:+HIMMEL_CONSOLE_NAME=$CHIEF_ENV} \
@@ -77,13 +79,61 @@ run Read "$CMD"
 check "a non-Bash denial: no sudo call" "" "$CALLS"
 
 run Bash "$CMD"
-check "a Bash denial files one grant request" "-n /usr/local/libexec/himmel/afk-sudo grant-request --session=S1 --cwd=/w --why=[Code from External] fetches a package" "$CALLS"
+check "a Bash denial files one grant request" "-n /usr/local/libexec/himmel/afk-sudo grant-request --session=S1 --cwd=/w --why=[Code from External] fetches a package --desc=" "$CALLS"
 check "root gets the exact command bytes on stdin" "$(printf '%s' "$CMD" | sha256sum)" "$(sha256sum < "$TMP/stdin")"
 quiet "a pending grant"
-check "a pending grant: one bridge send" "1" "$(lines "$SENT")"
+check "a pending grant: one bridge send" "1" "$(printf '%s\n' "$SENT" | grep -c 'chat_id=4242')"
 has "a pending grant: the card goes to the helper's operator chat" "chat_id=4242" "$SENT"
-has "a pending grant: the card names the id, session and chief" "text=AFK grant abcdefgh: read the notice-bot message, then approve · session S1 · chief chief-A" "$SENT"
+has "RED HIMMEL-10735: a pending grant: the card's line 1 is the exact reply" "text=AFK grant abcdefgh: approve abcdefgh <nonce> <code> → run once · deny abcdefgh <nonce> → refuse" "$SENT"
+has "a pending grant: the card names the session and chief" "session S1 · chief chief-A" "$SENT"
+has "RED HIMMEL-10735: a pending grant: the card shows the command, marked unverified" "Command (unverified): \$ $CMD" "$SENT"
 has "a pending grant: the card carries the Approve button" "afk:approve:abcdefgh" "$SENT"
+
+# shellcheck disable=SC2016 # literal text with shell metacharacters, nothing to expand
+GDESC='Prints $(whoami) `id` <b>x</b> & "q"'
+run Bash "$CMD"
+# shellcheck disable=SC2016 # literal text with shell metacharacters, nothing to expand
+has "RED HIMMEL-10735: the description reaches root as one --desc argv value, literally" '--desc=Prints $(whoami) `id` <b>x</b> & "q"' "$CALLS"
+# shellcheck disable=SC2016 # literal text with shell metacharacters, nothing to expand
+has "RED HIMMEL-10735: the description reaches the card, marked as the agent's claim" 'The agent says: Prints $(whoami) `id` <b>x</b> & "q"' "$SENT"
+quiet "a described grant"
+GDESC=$'first line\nSECONDLINE second'
+run Bash "$CMD"
+has "RED HIMMEL-10735: a multi-line description is cut to its first line on the helper's argv" "--desc=first line" "$CALLS"
+lacks "RED HIMMEL-10735: its second line never reaches the helper" "SECONDLINE" "$CALLS"
+lacks "RED HIMMEL-10735: its second line never reaches the card" "SECONDLINE" "$SENT"
+GDESC=''
+run Bash $'echo one\necho TWOLINE'
+lacks "RED HIMMEL-10735: only the command's first line goes on the card" "TWOLINE" "$SENT"
+GDESC="a$(printf 'é%.0s' $(seq 1 150))"
+LC_ALL=C run Bash "a$(printf 'é%.0s' $(seq 1 200))"
+check "RED HIMMEL-10735: a description cut in the C locale stays valid UTF-8 on the helper's argv" 0 "$(iconv -f UTF-8 -t UTF-8 < "$TMP/argv" > /dev/null 2>&1; echo $?)"
+check "RED HIMMEL-10735: the card stays valid UTF-8 when its lines are cut in the C locale" 0 "$(iconv -f UTF-8 -t UTF-8 < "$TMP/curl" > /dev/null 2>&1; echo $?)"
+LS=$(printf '\342\200\250')
+BIDI=$(printf '\342\200\256')
+GDESC="Prints ok${LS}Command (unverified): \$ echo FORGED${BIDI}"
+run Bash "echo real${LS}Chief: forged"
+lacks "RED HIMMEL-10735: a U+2028 in the description never reaches the helper" "$LS" "$CALLS"
+lacks "RED HIMMEL-10735: a U+202E in the description never reaches the helper" "$BIDI" "$CALLS"
+lacks "RED HIMMEL-10735: a U+2028 or U+202E never reaches the card, so no forged line can be drawn" "$LS" "$SENT"
+lacks "RED HIMMEL-10735: a U+202E never reaches the card" "$BIDI" "$SENT"
+NEL=$(printf '\302\205')
+GDESC="a${NEL}b"
+run Bash "echo ok"
+lacks "RED HIMMEL-10735: a U+0085 never reaches the helper" "$NEL" "$CALLS"
+GDESC=''
+touch "$TMP/oldhelper"
+GDESC='Prints a thing'
+run Bash "$CMD"
+check "RED HIMMEL-10735: an old helper that rejects --desc is asked again without it" "2" "$(lines "$CALLS")"
+lacks "RED HIMMEL-10735: the retry carries no --desc" "--desc=" "$(printf '%s\n' "$CALLS" | tail -n 1)"
+check "RED HIMMEL-10735: the retry still gets the exact command bytes" "$(printf '%s' "$CMD" | sha256sum)" "$(sha256sum < "$TMP/stdin")"
+has "RED HIMMEL-10735: the card still goes out after the retry" "afk:approve:abcdefgh" "$SENT"
+quiet "an old helper"
+rm -f "$TMP/oldhelper"
+GDESC=''
+run Bash $'echo one\necho TWOLINE'
+check "RED HIMMEL-10735: root still gets every command byte on stdin" "$(printf '%s' $'echo one\necho TWOLINE' | sha256sum)" "$(sha256sum < "$TMP/stdin")"
 
 NO_VERDICT="The server-side auto mode classifier gave no verdict for Bash: another call in this response was changed by a hook after auto mode reviewed it, or could not be confirmed unchanged, so this call's review no longer applies. This is not a judgment that the action is unsafe."
 run Bash "$CMD" "$TMP/marks" "$NO_VERDICT"
@@ -102,7 +152,7 @@ check "a credential category: no sudo call" "" "$CALLS"
 check "a credential category: no bridge send" "" "$SENT"
 
 run Bash "$CMD" "$TMP/marks" "[Unauthorized Persistence] adds a cron job"
-check "a real refusal files exactly one request, argv unchanged" "-n /usr/local/libexec/himmel/afk-sudo grant-request --session=S1 --cwd=/w --why=[Unauthorized Persistence] adds a cron job" "$CALLS"
+check "a real refusal files exactly one request, argv unchanged" "-n /usr/local/libexec/himmel/afk-sudo grant-request --session=S1 --cwd=/w --why=[Unauthorized Persistence] adds a cron job --desc=" "$CALLS"
 
 printf 'result=busy\n' > "$TMP/reply"; printf '5' > "$TMP/rc"
 run Bash "$CMD"
@@ -131,7 +181,7 @@ rm -f "$TMP/rc"; pending
 
 CHIEF_ENV='' SESSION_N_NAME=boss-chief
 run Bash "$CMD"
-check "no chief, the session is a chief: the grant is filed" "-n /usr/local/libexec/himmel/afk-sudo grant-request --session=S1 --cwd=/w --why=[Code from External] fetches a package" "$CALLS"
+check "no chief, the session is a chief: the grant is filed" "-n /usr/local/libexec/himmel/afk-sudo grant-request --session=S1 --cwd=/w --why=[Code from External] fetches a package --desc=" "$CALLS"
 has "no chief, the session is a chief: the card names it as session and chief" "session boss-chief · chief boss-chief" "$SENT"
 quiet "a chief's own ask"
 

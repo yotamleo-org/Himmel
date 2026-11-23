@@ -346,6 +346,7 @@ function readyGoNextCommands() {
     mkdirSync(lib, { recursive: true });
     copyFileSync(join(REPO_ROOT, 'scripts/handover/chief-kit/ready-go.sh'), join(kit, 'ready-go.sh'));
     copyFileSync(join(REPO_ROOT, 'scripts/lib/git-clean.sh'), join(lib, 'git-clean.sh'));
+    copyFileSync(join(REPO_ROOT, 'scripts/lib/gate-repo-resolver.sh'), join(lib, 'gate-repo-resolver.sh'));
     writeFileSync(join(kit, 'ready-check.sh'), 'echo "[PASS] 7. coverage"\necho "READY-CHECK PASS"\n');
     writeFileSync(join(lib, 'go-gate.sh'), 'trust_path_check() { printf "%s\\n" "${STUB_TRUST:-none}"; }\n');
     writeFileSync(join(dir, 'gh'), '#!/usr/bin/env bash\ncase "$*" in\n*nameWithOwner*) echo o/r;;\n*defaultBranchRef*) echo main;;\n*title*) echo "fix(x): [HIMMEL-1] t";;\nesac\n', { mode: 0o755 });
