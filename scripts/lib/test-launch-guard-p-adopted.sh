@@ -128,6 +128,10 @@ reset
 jset "$SH" '.hooks.PreToolUse += [{"matcher":"Edit","hooks":[{"type":"command","command":"echo adopter-edit","timeout":7}]}]
   | (.hooks.PreToolUse[] | select(any(.hooks[]; .command | contains("block-edit-on-main.sh"))) | .matcher) = "Edit"'
 lgp "$S"; expect "short_matcher_refuses" 1 "matcher for block-edit-on-main does not cover Write: re-run adopt --repair-matchers"
+cp "$SH" "$work/short.json"
+( cd "$S" && bash "$adopt" --repair-matchers --dry-run --target "$S" ) > "$work/repair-dry.log" 2>&1
+cmp -s "$SH" "$work/short.json" && pass "repair_matchers_dry_run_writes_nothing" \
+  || fail "repair_matchers_dry_run_writes_nothing" "$(cat "$work/repair-dry.log")"
 others() { jq -c '[.hooks.PreToolUse[] | .matcher as $m | .hooks[] | select(.command | test("scripts/hooks/") | not) | {m: $m, h: .}], del(.hooks.PreToolUse)' "$1"; }
 before=$(others "$SH")
 ( cd "$S" && bash "$adopt" --repair-matchers --target "$S" ) > "$work/repair.log" 2>&1 \
@@ -143,6 +147,13 @@ case "$(git -C "$S" status --porcelain --ignored=no)" in
 esac
 grep -qxF '.claude/settings.local.json' "$S/.worktreeinclude" 2>/dev/null && pass "worktreeinclude_holds_local_file" \
   || fail "worktreeinclude_holds_local_file" "$(cat "$S/.worktreeinclude" 2>&1)"
+
+P="$work/prewt"; new_repo "$P"
+printf 'keep-me\n' > "$P/.worktreeinclude"
+adopt_into "$P"
+bk=$(find "$HIMMEL_PROVENANCE_DIR/provenance-backups" -name '*-.worktreeinclude' -newer "$P/.git/HEAD" | head -n 1)
+[ -n "$bk" ] && [ "$(cat "$bk")" = "keep-me" ] && pass "worktreeinclude_backup_is_preimage" \
+  || fail "worktreeinclude_backup_is_preimage" "backup=[$bk] content=[$( [ -n "$bk" ] && cat "$bk")]"
 
 echo "--- $fails failure(s)"
 [ "$fails" -eq 0 ]

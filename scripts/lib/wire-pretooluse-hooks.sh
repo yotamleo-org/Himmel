@@ -220,12 +220,16 @@ WIRE_REPAIR_MATCHERS_JQ='
 '
 
 repair_pretooluse_matchers() {
-  local settings="$1" specs="$2" out
+  local settings="$1" specs="$2" dry="${3:-0}" out
   [[ -f "$settings" ]] || return 0
   out=$(jq --argjson specs "$specs" "$WIRE_REPAIR_MATCHERS_JQ" "$settings") || {
     echo "wire-pretooluse-hooks: $settings is not valid JSON -- not repaired" >&2; return 1; }
   if [ "$(printf '%s' "$out" | jq -cS .)" = "$(jq -cS . "$settings")" ]; then
     echo "  matchers already cover every tool -> $settings"
+    return 0
+  fi
+  if [ "$dry" = 1 ]; then
+    echo "DRY: repair PreToolUse matchers -> $settings"
     return 0
   fi
   printf '%s\n' "$out" > "$settings.repair.tmp" && mv "$settings.repair.tmp" "$settings" || return 1

@@ -505,7 +505,7 @@ wire_local_trio() {
 ensure_worktreeinclude() {
   [[ -e "$TARGET/.git" ]] || return 0
   [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
-  local f="$TARGET/.worktreeinclude" line=".claude/settings.local.json" op=create
+  local f="$TARGET/.worktreeinclude" line=".claude/settings.local.json" op=create before=""
   local -a pre=(--pre-absent)
   [[ -f "$f" ]] && grep -qxF "$line" "$f" && return 0
   if [[ $DRY_RUN -eq 1 ]]; then
@@ -513,13 +513,16 @@ ensure_worktreeinclude() {
     return 0
   fi
   if [[ -f "$f" ]]; then
-    op=replace; pre=(--pre-file "$f" --backup)
+    before="$(mktemp "${TMPDIR:-/tmp}/adopt-wtinclude.XXXXXX")" || return 1
+    cp -p "$f" "$before" || { rm -f "$before"; return 1; }
+    op=replace; pre=(--pre-file "$before" --backup)
     [[ -s "$f" && -n "$(tail -c1 "$f")" ]] && echo >> "$f"
   fi
   printf '%s\n' "$line" >> "$f"
   prov_record "$op" file "$f" --scope project --class code --row adopter-scripts \
     --writer adopt.sh "${pre[@]}" --post-file "$f" \
     || echo "  warning: provenance record failed for $f (uninstall will keep it)" >&2
+  [[ -n "$before" ]] && rm -f "$before"
   echo "  .worktreeinclude: added $line"
 }
 
@@ -527,9 +530,9 @@ repair_matchers() {
   local shared="$TARGET/.claude/settings.json" local_f="$TARGET/.claude/settings.local.json" specs
   # shellcheck disable=SC2016
   specs=$(wire_chain_specs '$CLAUDE_PROJECT_DIR') || return 1
-  repair_pretooluse_matchers "$shared" "$specs" || return 1
+  repair_pretooluse_matchers "$shared" "$specs" "$DRY_RUN" || return 1
   specs=$(wire_trio_specs "$HIMMEL_ROOT" node bash) || return 1
-  repair_pretooluse_matchers "$local_f" "$specs"
+  repair_pretooluse_matchers "$local_f" "$specs" "$DRY_RUN"
 }
 
 # Keep worktrees out of `git add -A` (they would stage as embedded repos).
