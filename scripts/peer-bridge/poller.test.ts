@@ -4,6 +4,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Chain, readChain, submitSpool } from "./chain";
+import { notifyFile, renderNotify } from "./notify";
 import type { Config } from "./config";
 import { ackToken, digestFile } from "./digests";
 import { admit, createGateState, noteAdmitted } from "./gate";
@@ -80,7 +81,7 @@ const rootUpdate = (text: string, over: Record<string, unknown> = {}) => ({ upda
 const askRoot = (id = "a1b2c3d4", body = "how do I x?") => rootUpdate(`/peer@${OUR_NAME}\n#ask:question id=${id}\n${body}`);
 const outbox = (e: Env) => readChain(join(e.peerDir, "outbox.jsonl"));
 const wakeLines = (e: Env) => {
-  try { return readFileSync(join(e.cfg.bridgeRoot, "sessions", "__chat__", "outbox.jsonl"), "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l).text as string); } catch { return []; }
+  return readChain(notifyFile(e.stateDir)).map(r => renderNotify(r as any, e.cfg.himmelRoot).text);
 };
 const readResult = (e: Env, name: string) => JSON.parse(readFileSync(join(e.peerDir, "spool", "results", name), "utf8"));
 function filesUnder(dir: string): string[] {
@@ -928,6 +929,6 @@ test("m7: the bad-signature tripwire survives a restart", async () => {
   const again = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
   await again.recover();
   await again.processBatch([bad()]);
-  expect(wakeLines(e)).toEqual(["peer example: 3 bad signatures in 1 h"]);
+  expect(wakeLines(e)).toEqual(["peer example · 3 bad signatures in 1 h"]);
   TE.dropStation(other);
 });

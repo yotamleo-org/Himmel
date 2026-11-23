@@ -20,6 +20,7 @@ import { resolveCapacity, resolveReq, resolveRes, type JobRecord } from "./resol
 import { currentSigningKey, sign } from "./sign";
 import { PeerTelegram, RetryAfter, TelegramError } from "./telegram";
 import { MAX_AUTO_PER_HOUR, Threads, templateLine, type Action, type ThreadRec } from "./threads";
+import { notifyFile } from "./notify";
 import { Tripwire, Waker } from "./wake";
 
 export type TgLike = Pick<PeerTelegram, "getUpdates" | "sendMessage" | "getChatMember">;
@@ -72,7 +73,7 @@ export class Poller {
     this.cfg = deps.cfg;
     this.now = deps.clock ?? Date.now;
     this.log = deps.log ?? ((l: string) => console.error(l));
-    this.waker = new Waker(this.cfg, this.now);
+    this.waker = new Waker(this.cfg, this.chain, notifyFile(this.deps.stateDir), this.now);
   }
 
   static async create(deps: PollerDeps): Promise<Poller> {
@@ -535,7 +536,7 @@ export class Poller {
         return;
       }
       this.threads = Threads.load(this.threads.all(), this.threadOpts());
-      this.waker = new Waker(this.cfg, this.now);
+      this.waker = new Waker(this.cfg, this.chain, notifyFile(this.deps.stateDir), this.now);
       await this.chain.append(this.file(peer, "outbox.jsonl"), { kind: "confirmed", chat_id: rec.chatId, ts: this.ts() });
       await this.ensureUsername();
       writeResult(dir, name, { ok: true });

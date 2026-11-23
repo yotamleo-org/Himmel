@@ -38,7 +38,7 @@ export const WAKE_LABELS = [
   "closed", "declined", "peer message", "answer on a closed thread", "message on a closed thread", "cap hit",
 ] as const;
 export type WakeLabel = (typeof WAKE_LABELS)[number];
-export type WakeEvent = { peer: string; root: number; label: WakeLabel; replyBy?: number };
+export type WakeEvent = { peer: string; root: number; dir: Dir; label: WakeLabel; replyBy?: number };
 export type Action =
   | { send: { peer: string; tpl: Tpl; root: number; by?: Date } }
   | { resend: { peer: string; root: number } }
@@ -119,7 +119,7 @@ export class Threads {
       return { closingSent: true };
     }
     if (rec.auto >= MAX_AUTO_PER_THREAD || this.hourly(rec.peer, now) >= MAX_AUTO_PER_HOUR) {
-      actions.push({ wake: { peer: rec.peer, root: rec.root, label: "cap hit" } });
+      actions.push({ wake: { peer: rec.peer, root: rec.root, dir: rec.dir, label: "cap hit" } });
       return {};
     }
     actions.push({ send: { peer: rec.peer, tpl, root: rec.root, by } });
@@ -134,7 +134,7 @@ export class Threads {
   }
 
   private wake(actions: Action[], rec: ThreadRec, label: WakeLabel, replyBy?: number) {
-    actions.push({ wake: { peer: rec.peer, root: rec.root, label, ...(replyBy ? { replyBy } : {}) } });
+    actions.push({ wake: { peer: rec.peer, root: rec.root, dir: rec.dir, label, ...(replyBy ? { replyBy } : {}) } });
   }
 
   private clampDeferred(rec: ThreadRec, by: number | undefined, now: number): number {
