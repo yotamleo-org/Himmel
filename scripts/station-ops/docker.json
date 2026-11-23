@@ -1,0 +1,8 @@
+{"name": "docker",
+ "version": 1,
+ "run_as": "root",
+ "timeout_s": 120,
+ "effect": "starts or stops docker.service, docker.socket and containerd.service until the next reboot; it never enables or disables them at boot, so a Docker that is off at boot stays off at boot",
+ "params": {
+  "action": {"enum": ["start", "stop"]}
+ }}

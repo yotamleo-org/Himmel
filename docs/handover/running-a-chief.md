@@ -1302,6 +1302,16 @@ so no launch starts on extra usage. Plain `set` replaces it with a one-window we
 The Done-when for this change needs the operator to walk this once at a real
 switch and record the result (and the cache-probe verdict from step 1) in the PR.
 
+## Docker on the station
+
+Docker is off on the station by default (the operator keeps it out of the boot).
+A chief that needs it for a suite files
+`afk-sudo op-request --session <S> --ticket <T> docker action=start`, which the
+operator approves with a Telegram code, and stops it again with `action=stop`
+when the suite is done. The op only starts and stops it for the current boot and
+never changes whether it starts at boot (`docs/internals/afk-sudo.md`, the
+`docker` op).
+
 ## Controlling the VM CI runner
 
 Two VirtualBox VMs (`himmel-ci-1`, `himmel-ci-2`, cloned from the
