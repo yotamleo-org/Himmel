@@ -5,7 +5,7 @@
 # place, where REPO_ROOT == the clone and scripts/telegram always exists —
 # none of them exercise the bundle branches this suite targets.
 #
-# The bundle is built by copying the 16-file POSIX closure (design doc
+# The bundle is built by copying the 18-file POSIX closure (design doc
 # standalone-undo.md §3.2) from THIS checkout into a scratch dir,
 # mirroring the real relative layout, so the bundle's own uninstall.sh can
 # source its own scripts/lib/*.sh exactly as it does in the real clone.
@@ -65,7 +65,7 @@ case "$REAL_HOME" in
     *) echo "PASS the operator's real \$HOME is not under this suite's \$TMP" ;;
 esac
 
-# --- Build the bundle: the 16-file POSIX closure, mirrored relative layout --
+# --- Build the bundle: the 18-file POSIX closure, mirrored relative layout --
 BUNDLE="$TMP/prov/uninstall"
 
 build_bundle() {
@@ -74,7 +74,7 @@ build_bundle() {
     cp "$SRC_SCRIPTS/install/uninstall-manifest.tsv" "$BUNDLE/scripts/install/uninstall-manifest.tsv"
     for f in provenance-read.sh provenance-identity.sh provenance.sh canon-path.sh qmd-bin.sh \
              unwire-statusline.sh unwire-himmel-repo.sh unwire-luna-vault.sh \
-             unwire-handover-dir.sh unwire-pretooluse-hooks.sh unwire-hud-config.sh \
+             unwire-handover-dir.sh unwire-pretooluse-hooks.sh wire-pretooluse-hooks.sh claude-config-dir.sh unwire-hud-config.sh \
              unwire-user-claude-md.sh; do
         cp "$SRC_SCRIPTS/lib/$f" "$BUNDLE/scripts/lib/$f"
     done
@@ -253,7 +253,7 @@ cp "$SRC_SCRIPTS/uninstall.sh" "$BUNDLE_NOMARKER/scripts/uninstall.sh"
 cp "$SRC_SCRIPTS/install/uninstall-manifest.tsv" "$BUNDLE_NOMARKER/scripts/install/uninstall-manifest.tsv"
 for f in provenance-read.sh provenance-identity.sh provenance.sh canon-path.sh qmd-bin.sh \
          unwire-statusline.sh unwire-himmel-repo.sh unwire-luna-vault.sh \
-         unwire-handover-dir.sh unwire-pretooluse-hooks.sh unwire-hud-config.sh \
+         unwire-handover-dir.sh unwire-pretooluse-hooks.sh wire-pretooluse-hooks.sh claude-config-dir.sh unwire-hud-config.sh \
          unwire-user-claude-md.sh; do
     cp "$SRC_SCRIPTS/lib/$f" "$BUNDLE_NOMARKER/scripts/lib/$f"
 done
@@ -293,7 +293,7 @@ build_versioned() {
     cp "$SRC_SCRIPTS/install/uninstall-manifest.tsv" "$ver_dir/scripts/install/uninstall-manifest.tsv"
     for f in provenance-read.sh provenance-identity.sh provenance.sh canon-path.sh qmd-bin.sh \
              unwire-statusline.sh unwire-himmel-repo.sh unwire-luna-vault.sh \
-             unwire-handover-dir.sh unwire-pretooluse-hooks.sh unwire-hud-config.sh \
+             unwire-handover-dir.sh unwire-pretooluse-hooks.sh wire-pretooluse-hooks.sh claude-config-dir.sh unwire-hud-config.sh \
              unwire-user-claude-md.sh; do
         cp "$SRC_SCRIPTS/lib/$f" "$ver_dir/scripts/lib/$f"
     done
