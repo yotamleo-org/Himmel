@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-chief-wait.sh — Exercises chief-wait.sh, the chief's
+# test-chief-wait-e.sh — Exercises chief-wait.sh, the chief's
 # one event waiter: silent while nothing changes, exits with exactly one WAKE
 # block on a Telegram inbox line or a confirmed change of the tick's action
 # key. tick.sh and the bank verdict are stubbed (CHIEF_WAIT_TICK /
@@ -11,9 +11,6 @@
 #
 # Linux-only: this suite uses GNU
 # timeout and touch -d, so run-shell-tests.sh skips it off-Linux.
-#
-# Fifth part of the chief-wait suite: the (su) cases onward. The split is
-# described in test-chief-wait.sh.
 #
 # Run: bash scripts/handover/chief-kit/test-chief-wait-e.sh
 set -u

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-chief-wait.sh — Exercises chief-wait.sh, the chief's
+# test-chief-wait-b.sh — Exercises chief-wait.sh, the chief's
 # one event waiter: silent while nothing changes, exits with exactly one WAKE
 # block on a Telegram inbox line or a confirmed change of the tick's action
 # key. tick.sh and the bank verdict are stubbed (CHIEF_WAIT_TICK /
@@ -11,9 +11,6 @@
 #
 # Linux-only: this suite uses GNU
 # timeout and touch -d, so run-shell-tests.sh skips it off-Linux.
-#
-# Fourth part of the chief-wait suite: the (vmrun) to (cs) cases. The split is
-# described in test-chief-wait.sh.
 #
 # Run: bash scripts/handover/chief-kit/test-chief-wait-b.sh
 set -u
@@ -151,7 +148,6 @@ check "(wx) a waiter with nothing to wake for is still running" "running" "$rc"
 check "(wx) and the quiet window took 4 to 5 samples" "yes" "$([ $((wx1 - wx0)) -ge 4 ] && [ $((wx1 - wx0)) -le 5 ] && echo yes || echo "no: $((wx1 - wx0))")"
 stop_waiter "$WPID"
 
-# tracker_line is shared with the (w) block in test-chief-wait-d.sh.
 tracker_line() { sed "s/ denials=none/ tracker=$1 denials=none/" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
 
 # --- (v) vmrun= wakes only on a class move TO DEAD / STUCK / DISAGREE; the

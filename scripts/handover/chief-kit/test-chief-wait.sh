@@ -9,11 +9,6 @@
 # control: today's Monitor-arm shape, which runs tick.sh on every arm, fails the
 # idle cases).
 #
-# Split in five parts of about 250 s each so none nears its CI cap under shard
-# load: this file holds (ws) to the denial-stuck rows; test-chief-wait-c.sh
-# holds (a) to (p); test-chief-wait-d.sh (w) to (rv); test-chief-wait-b.sh
-# (vmrun) to (cs); test-chief-wait-e.sh (su) onward.
-#
 # Run: bash scripts/handover/chief-kit/test-chief-wait.sh
 set -u
 KP=HIMMEL
