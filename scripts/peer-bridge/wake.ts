@@ -76,8 +76,8 @@ export class Waker {
     const last = this.lastByThread.get(key);
     if (last !== undefined && now - last < COALESCE_MS) return "coalesced";
     if (!(await this.spendWake(ev.peer, now))) return "capped";
-    this.lastByThread.set(key, now);
     await this.append({ kind: "notify", type: "wake", peer: ev.peer, root: ev.root, dir: ev.dir, label: ev.label, ...(ev.replyBy ? { replyBy: ev.replyBy } : {}), ...(message_id ? { message_id } : {}), ts: now });
+    this.lastByThread.set(key, now);
     if (message_id) this.charged.set(`${ev.peer}:${message_id}`, "fallback-wake");
     return "sent";
   }

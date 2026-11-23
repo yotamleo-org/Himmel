@@ -161,3 +161,12 @@ test("an escalation whose append failed is not charged, so a retry on the same W
   expect(await w.escalate(esc(7))).toBe("escalated");
   expect(recs().filter(r => r.type === "escalate").map(r => r.message_id)).toEqual([7]);
 });
+
+test("a wake whose append failed does not coalesce its retry", async () => {
+  const { w, recs, S } = setup();
+  writeFileSync(join(S, "notify"), "not a dir");
+  await expect(w.wake({ peer: "example", root: 12, dir: "in", label: "new question" })).rejects.toThrow();
+  rmSync(join(S, "notify"));
+  expect(await w.wake({ peer: "example", root: 12, dir: "in", label: "new question" })).toBe("sent");
+  expect(recs().filter(r => r.type === "wake")).toHaveLength(1);
+});
