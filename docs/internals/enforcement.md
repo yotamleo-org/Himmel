@@ -3269,19 +3269,43 @@ command through unchecked, since there is no tracked-vs-untracked distinction
 to enforce; any OTHER `git rev-parse` failure (git absent, a transient error)
 still fails closed.
 
-### `block-busy-loop.sh` — plugin sleepless busy-loop deny
+### `block-busy-loop.sh` — plugin sleepless busy-loop and station load deny
 
 Fires on Bash, from the himmel-ops plugin lane
 (`marketplace/plugins/himmel-ops/hooks/block-busy-loop.sh`, wired as
 `${CLAUDE_PLUGIN_ROOT}/hooks/block-busy-loop.sh`), so it fires in an adopter
 repo too, not only a himmel checkout. A himmel session keeps it through the
-user-scope plugin. Denies a `while`/`until ...; do :; done` (or `do true`)
-loop with no `sleep`, which spins a core at 100 % CPU (split out of
-`require-quiet-run.sh`). The deny names a `sleep N` body and
-the portable pid wait `while kill -0 <pid>; do sleep 1; done`, and no repo script. Each deny appends one
-JSONL row (`ts`, `session_id`, `decision`, `loop`, `body`) to `BUSY_LOOP_LOG`
-(default `~/.claude/busy-loop-guard/denials.jsonl`). The match is textual, so
-a heredoc or quoted string holding a whole busy loop is refused as well. Fails
+user-scope plugin. It refuses a call that loads the machine's CPU or memory
+the way a session recreates a slow CI host (operator decision, 2026-11-23),
+in five shapes:
+
+- `loop`: a `while`/`until ...; do :; done` (or `do true`) loop with no
+  `sleep`, which spins a core at 100 % CPU (split out of
+  `require-quiet-run.sh`), also inside a quoted `bash -c` or python string;
+- `lang-loop`: a python `while True: pass`, a node `while (true) {}` or
+  `for (;;) {}`;
+- `load-tool`: `taskset`, `numactl`, `stress` or `stress-ng` at command
+  position (behind `sudo`, `env`, `nice`, `timeout N` and the like too), or
+  as a quoted argv element; a tool name inside a commit message or a grep
+  pattern is not a command and passes;
+- `null-sink`: `yes` redirected to `/dev/null`, `dd` from `/dev/zero` or
+  `/dev/random` into `/dev/null`;
+- `script-file`: a `.sh`/`.bash`/`.py`/`.js`/`.mjs`/`.cjs` token naming a text
+  file of at most 1 MiB that git does not track and whose text holds one of
+  the shapes above (at most 16 files read; a symlink only when its target is
+  inside the cwd). A tracked suite is never read, so a suite that carries a
+  loop as payload text keeps running.
+
+The deny names the three routes that reproduce a load-dependent failure (a
+deadline or timing seam in the test, a CI run, a test VM); a `loop` deny also
+names a `sleep N` body and the portable pid wait
+`while kill -0 <pid>; do sleep 1; done`. It names no repo script. Each deny
+appends one JSONL row (`ts`, `session_id`, `decision`, `shape`, `detail`,
+`loop`, `body`) to `BUSY_LOOP_LOG` (default
+`~/.claude/busy-loop-guard/denials.jsonl`). The match is textual: a binary, a
+file named through a variable, a tracked file or a loop with a non-empty body
+passes, and that remainder is a ceilings-ledger row whose structural fix is a
+CPU cap on the worker's scope. Fails
 OPEN on a missing `jq`, an unparseable payload or a non-Bash tool. Bypass:
 `BUSY_LOOP_BYPASS=1` (launching shell, session-sticky). Spec:
 `marketplace/plugins/himmel-ops/hooks/test-block-busy-loop.sh`.

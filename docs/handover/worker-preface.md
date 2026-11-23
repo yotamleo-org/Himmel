@@ -112,6 +112,7 @@ file you touched**: `bash scripts/cr/impacted-suites.sh`, each run as one litera
 with counts; local or `= CI`: `scripts/cr/pr-check-ref/33-step3-impacted.md`.
 Restore-to-HEAD, sandbox and corpus-replay rules (destructive
 commands are VM-only): `worker-sections/shell-and-tests.md`.
+**Never load the station** (busy loops, `taskset`, stress tools, memory hogs) to recreate CI: use a deadline or timing seam in the test, CI or a test VM. [enforced: block-busy-loop]
 
 ## Shipping
 

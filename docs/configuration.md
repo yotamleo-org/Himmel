@@ -451,7 +451,7 @@ plugin is installed. Scripts live under `scripts/hooks/`, or under
 | `guard-chief-foreground` *(plugin)* | a chief running a long chief-kit script in the foreground | auth-gated | `CHIEF_FG_OK=1` |
 | `guard-judge-writes` *(plugin)* | a judge session (`HIMMEL_CONSOLE_JUDGE=1`) making an outward or mutating call | HARD | none: launch without `--judge` |
 | `guard-rm-writes` *(plugin)* | a raw write to a release state directory's authority files or to `~/.config/himmel/release/` | HARD | none: the Jira CLI's `release` op is the writer |
-| `block-busy-loop` *(plugin)* | a sleepless `while`/`until … do :; done` loop | auth-gated | `BUSY_LOOP_BYPASS=1` |
+| `block-busy-loop` *(plugin)* | a sleepless `while`/`until … do :; done` loop, a python or node spin loop, `taskset`/`numactl`/`stress`/`stress-ng`, `yes` or `dd` into `/dev/null`, or an untracked script file holding one of them | auth-gated | `BUSY_LOOP_BYPASS=1` |
 | `block-vault-sweep` *(plugin)* | opt-in (`HIMMEL_VAULT_SWEEP_DENY=1`): the first hand sweep of the notes in a session | auth-gated | `HIMMEL_VAULT_SWEEP_BYPASS=1` |
 | `peer-taint-gate` *(plugin)* | a session that read peer text or runs as a peer desk: every call but the two peer-bridge shapes; any session: a call naming the bridge state or key dir | HARD | none |
 | `inject-minerva-critic` *(plugin)* | a brainstorming, writing-plans or grilling Skill call made without `/minerva` | warn-only (injects context) | `MINERVA_HOOK_DISABLE=1` |
