@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -38,9 +38,15 @@ vi.mock('node:child_process', async (orig) => {
   return { ...m, execFileSync, execFile };
 });
 const rmRunSeen = vi.hoisted(() => ({ opts: null as { judgeTimeoutMs?: number } | null }));
+// While set, the CLI's operator fence walks this fake process tree instead of the real one.
+const fenceTree = vi.hoisted(() => ({ at: null as { procRoot: string; hostNsPath: string } | null }));
 vi.mock('../release/engine.js', async (orig) => {
   const m = await orig<typeof import('../release/engine.js')>();
-  return { ...m, rmRun: ((c, j, o) => { rmRunSeen.opts = o ?? null; return m.rmRun(c, j, o); }) as typeof m.rmRun };
+  return {
+    ...m,
+    rmRun: ((c, j, o) => { rmRunSeen.opts = o ?? null; return m.rmRun(c, j, o); }) as typeof m.rmRun,
+    operatorFence: ((c) => m.operatorFence(fenceTree.at ? { ...c, ...fenceTree.at } : c)) as typeof m.operatorFence,
+  };
 });
 // The run options the repair command hands to the repair, as the last call saw them.
 const repairSeen = vi.hoisted(() => ({ opts: null as { apply?: boolean; refuse?: unknown } | null }));
@@ -55,10 +61,11 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { ctxFor, JUDGE_API_BUDGET_USD, JUDGE_API_PASS_ENV, JUDGE_CACHE, JUDGE_SELECTION_NOTE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, judgeSkill, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge, routedJudgeArgs } from './release.js';
+import { backlogAlerts, ctxFor, JUDGE_API_BUDGET_USD, JUDGE_API_PASS_ENV, JUDGE_CACHE, JUDGE_SELECTION_NOTE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, judgeSkill, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge, routedJudgeArgs } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import * as engineMod from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
+import { doorJudge } from '../release/door.js';
 import { appendChain, loadKey, readChain } from '../release/ledger.js';
 import type { OperatorRow } from '../release/types.js';
 
@@ -192,9 +199,17 @@ describe('jira release', () => {
     }
   });
 
-  it('refuses a ruling authority outside rm, operator and import', async () => {
+  it('claim and rule are parked: both refuse with the door message and write nothing (I8)', async () => {
+    const vf = join(root, 'verbatim.txt');
+    await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', vf);
+    await run('request', 'R1', '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'found work');
+    const before = readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8');
+    const door = 'placement is by the door; rm-run rules every request';
+    await expect(run('claim', 'R1')).rejects.toThrow(door);
     await expect(run('rule', 'R1', '--req', 'Q-R1-0001', '--outcome', 'ADMIT', '--op', 'add', '--to', 'v1',
-      '--sector', 's', '--ground', 'regression', '--authority', 'RM')).rejects.toThrow(/--authority is rm, operator or import/);
+      '--sector', 's', '--ground', 'regression', '--authority', 'rm')).rejects.toThrow(door);
+    expect(readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8')).toBe(before);
+    expect(existsSync(join(root, 'state', 'R1', 'rulings.jsonl')) ? readFileSync(join(root, 'state', 'R1', 'rulings.jsonl'), 'utf8') : '').toBe('');
   });
 
   it('folds a batch file, prints every skipped key with its terminal and resolution, and reopens', async () => {
@@ -243,6 +258,8 @@ describe('jira release rm-run', () => {
     vi.stubEnv('HIMMEL_PROFILE_SETTINGS_DIR', join(root, 'profiles'));
     // the judge run appends its launch row beside this path, never under the real HOME
     vi.stubEnv('HIMMEL_API_CREDIT_STATE', join(root, 'credit', 'ledger.json'));
+    // These cases test the parked model judge, which only the explicit opt-in reaches.
+    vi.stubEnv('HIMMEL_RM_JUDGE', 'model');
   });
 
   async function oneRequest() {
@@ -504,16 +521,14 @@ describe('jira release rm-run', () => {
     process.exitCode = 0;
   });
 
-  it('rm-run takes --ruling and --chief-override; the override needs a reason and the console marker, and the old --console-override is an unknown option', async () => {
-    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'admissions-ledger.jsonl'));
+  it('rm-run has no count to lift: --ruling, --chief-override and the old --console-override are unknown options', async () => {
     await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt'));
     const mirror = join(root, 'no-mirror');
-    await run('rm-run', 'R1', '--mirror-root', mirror, '--ruling', '98');
+    await run('rm-run', 'R1', '--mirror-root', mirror);
     expect(out.at(-1)).toBe('RM-RUN R1: nothing pending');
-    await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--chief-override', 'big pass')).rejects.toThrow(/HIMMEL_CONSOLE=1/);
     vi.stubEnv('HIMMEL_CONSOLE', '1');
-    await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--chief-override', ' ')).rejects.toThrow(/needs a reason/);
-    await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--chief-override', 'big pass', '--ruling', '98')).rejects.toThrow(/not both/);
+    await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--ruling', '98')).rejects.toThrow(/unknown option '--ruling'/);
+    await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--chief-override', 'big pass')).rejects.toThrow(/unknown option '--chief-override'/);
     vi.stubEnv('HIMMEL_LEGACY_NAMES', '1');
     await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--console-override', 'big pass')).rejects.toThrow(/unknown option '--console-override'/);
   });
@@ -1299,9 +1314,10 @@ describe('routedJudge', () => {
     expect(got[0]).toMatchObject({ reason: 'from-fallback' });
   });
 
-  it('judgeFor: the himmel mirror routes, any other mirror (a SALUS one, or slice A\'s no-mirror) is liveJudge', () => {
+  it('judgeFor: the door places every mirror by default (I3); only HIMMEL_RM_JUDGE=model reaches the parked judges', () => {
     const w = world({ judge: ['B'] });
-    void w;
+    for (const m of [defaultRoot('HIMMEL'), defaultRoot('SALUS'), join(root, 'no-mirror')]) expect(judgeFor(ctxFor('R1', m))).toBe(doorJudge);
+    vi.stubEnv('HIMMEL_RM_JUDGE', 'model');
     expect(judgeFor(ctxFor('R1', defaultRoot('HIMMEL')))).toBe(routedJudge);
     expect(judgeFor(ctxFor('R1', defaultRoot('SALUS')))).toBe(liveJudge);
     expect(judgeFor(ctxFor('R1', join(root, 'no-mirror')))).toBe(liveJudge);
@@ -2095,7 +2111,7 @@ describe('a request for operator work carries the operator\'s words', () => {
       const m = gateMirror({ key: 'HIMMEL-9953' });
       expect(await refusal(ask(m, ...intake('HIMMEL-9953'), '--required-by', 'HIMMEL-9953'))).toMatch(/names another ticket key/);
       expect(await refusal(ask(m, ...intake('HIMMEL-9953'), '--required-by', 'nine'))).toMatch(/names another ticket key/);
-      expect(await refusal(ask(m, ...intake('HIMMEL-9953'), '--required-by', 'HIMMEL-9914', '--evidence', '{"follow_up_of":"HIMMEL-1"}'))).toMatch(/contradicts --required-by/);
+      expect(await refusal(ask(m, ...intake('HIMMEL-9953'), '--required-by', 'HIMMEL-9914', '--evidence', '{"follow_up_of":"HIMMEL-1"}'))).toMatch(/may not carry follow_up_of; pass --required-by/);
       expect(existsSync(requestsFile())).toBe(false);
     });
 
@@ -2169,5 +2185,183 @@ describe('a request for operator work carries the operator\'s words', () => {
     decisionFile();
     expect(await refusal(decide('--op', 'add', '--to', 'v1.1.3'))).toMatch(/--words or --verbatim-file/);
     expect(await refusal(decide('--op', 'add', '--to', 'v1.1.3', '--words', WORDS, '--verbatim-file', join(root, 'verbatim.txt')))).toMatch(/--words or --verbatim-file/);
+  });
+});
+
+// The chief's door and the evidence fence on `request`, the door's alerts, and the live read's labels.
+describe('the door at the request entry point', () => {
+  const vf = () => join(root, 'verbatim.txt');
+  const declared = () => run('operator', 'declare', 'v1.1.3', '--versions', 'v1.1.3,v1.1.4', '--decision', '106', '--verbatim-file', vf());
+  type Issue = { key: string; labels?: string[]; priority?: string; fixVersions?: string[] };
+  const doorMirror = (...issues: Issue[]): string => {
+    const dir = join(root, 'door-mirror');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-22T00:00:00Z' }));
+    for (const i of issues) {
+      writeFileSync(join(dir, `${i.key}.md`), `---\nkey: ${JSON.stringify(i.key)}\nstatus: "To Do"\nstatusCategory: "To Do"\ntype: "Task"\n`
+        + `priority: ${JSON.stringify(i.priority ?? 'Medium')}\nlabels: ${JSON.stringify(i.labels ?? [])}\nfixVersions: ${JSON.stringify(i.fixVersions ?? [])}\n---\n`);
+    }
+    return dir;
+  };
+  const ask = (mir: string, ...a: string[]) => run('request', 'v1.1.3', '--mirror-root', mir, ...a);
+  const intake = (key: string, to = 'v1.1.3') => ['--verb', 'INTAKE', '--key', key, '--from', 'backlog', '--to', to, '--why', 'the chief places it after the review'];
+  const refusal = async (p: Promise<unknown>): Promise<string> => {
+    try {
+      await p;
+    } catch (e) {
+      return (e as Error).message;
+    }
+    throw new Error('expected a refusal');
+  };
+  const requests = () => {
+    const path = join(root, 'state', 'v1.1.3', 'requests.jsonl');
+    return existsSync(path) ? readChain<Record<string, unknown>>(path, loadKey(join(root, 'keys', 'v1.1.3.key'))).verified : [];
+  };
+  // A process tree with no fence marker, or with one on the parent.
+  const tree = (marker: Record<string, string> = {}) => {
+    const procRoot = mkdtempSync(join(root, 'proc-'));
+    for (const [pid, ppid, uid, env] of [[300, 200, 1000, {}], [200, 100, 1000, marker], [100, 1, 1000, {}], [1, 0, 0, null]] as const) {
+      mkdirSync(join(procRoot, String(pid)));
+      writeFileSync(join(procRoot, String(pid), 'status'), `Name:\tp\nPPid:\t${ppid}\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\nNSpid:\t${pid}\n`);
+      if (env) writeFileSync(join(procRoot, String(pid), 'environ'), Object.entries({ PATH: '/usr/bin', ...env }).map(([k, v]) => `${k}=${v}\0`).join(''));
+    }
+    mkdirSync(join(procRoot, '300', 'ns'));
+    symlinkSync('pid:[4026531836]', join(procRoot, '300', 'ns', 'pid'));
+    symlinkSync('user:[4026531837]', join(procRoot, '300', 'ns', 'user'));
+    symlinkSync('300', join(procRoot, 'self'));
+    const hostNsPath = join(procRoot, 'host-ns-ref');
+    writeFileSync(hostNsPath, 'pid:[4026531836] user:[4026531837]\n');
+    return { procRoot, hostNsPath };
+  };
+
+  beforeEach(() => {
+    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'admissions-ledger.jsonl'));
+    fenceTree.at = tree();
+  });
+  afterEach(() => {
+    fenceTree.at = null;
+  });
+
+  it('the evidence fence refuses each field only its own path writes, one at a time, and files nothing (I12, T8)', async () => {
+    await declared();
+    const m = doorMirror({ key: 'K-2' });
+    for (const [field, value] of [['chief_placement', { reason: 'x' }], ['operator_record', 'O-v1.1.3-0001'], ['filed_by', 'bridge'], ['operator_update', 7],
+      ['bridge_chat', 1], ['remainder', true], ['follow_up_of', 'K-1']] as const) {
+      expect(await refusal(ask(m, ...intake('K-2'), '--evidence', JSON.stringify({ [field]: value })))).toMatch(new RegExp(`--evidence may not carry ${field}`));
+    }
+    expect(requests()).toEqual([]);
+  });
+
+  it('the fence lets a PR number and the typed --required-by through (I12)', async () => {
+    await declared();
+    const m = doorMirror({ key: 'K-2' }, { key: 'K-3' });
+    await ask(m, ...intake('K-2'), '--evidence', '{"pr":12}');
+    await ask(m, ...intake('K-3'), '--required-by', 'K-1');
+    expect(requests().map((r) => r.evidence)).toEqual([{ pr: 12 }, { follow_up_of: 'K-1', remainder: true }]);
+  });
+
+  it('--chief-reason is the console session\'s only, and never under a worker (I12)', async () => {
+    await declared();
+    const m = doorMirror({ key: 'K-2' });
+    expect(await refusal(ask(m, ...intake('K-2'), '--chief-reason', 'the release needs it'))).toMatch(/--chief-reason refused: .*HIMMEL_CONSOLE=1/);
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    fenceTree.at = tree({ HIMMEL_CONSOLE_LEG: '1' });
+    expect(await refusal(ask(m, ...intake('K-2'), '--chief-reason', 'the release needs it'))).toMatch(/--chief-reason refused: .*chief-spawned worker/);
+    expect(requests()).toEqual([]);
+  });
+
+  it('with both checks passing, --chief-reason writes chief_placement and steps past the words gate on a High ticket (I12, D-j)', async () => {
+    await declared();
+    const m = doorMirror({ key: 'K-2', priority: 'High' });
+    expect(await refusal(ask(m, ...intake('K-2')))).toMatch(/--decision <n> --words/);
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    await ask(m, ...intake('K-2'), '--chief-reason', 'the release needs it');
+    const [row] = requests();
+    expect(row).toMatchObject({ key: 'K-2', to_v: 'v1.1.3', state: 'open', evidence: { chief_placement: { reason: 'the release needs it' } } });
+    expect((row.evidence as { chief_placement: { ts: string } }).chief_placement.ts).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('--chief-reason never places a key later than a version it holds, nor in the backlog while it holds one (P5)', async () => {
+    await declared();
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    const m = doorMirror({ key: 'K-2', fixVersions: ['v1.1.3'] });
+    expect(await refusal(ask(m, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1.1.4', '--why', 'the chief places it after the review', '--chief-reason', 'later')))
+      .toMatch(/cannot place K-2 in v1\.1\.4, later than v1\.1\.3/);
+    expect(await refusal(ask(m, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'backlog', '--why', 'the chief places it after the review', '--chief-reason', 'out')))
+      .toMatch(/cannot send K-2 to the backlog while it holds v1\.1\.3/);
+    expect(requests()).toEqual([]);
+  });
+
+  it('--chief-reason joins a waiting request as the same request, and refuses a claimed one (P11)', async () => {
+    await declared();
+    const m = doorMirror({ key: 'K-2' }, { key: 'K-3' });
+    await ask(m, ...intake('K-2', 'v1.1.4'));
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    await ask(m, ...intake('K-2'), '--chief-reason', 'the release needs it');
+    const rows = requests();
+    expect(rows.map((r) => r.req)).toEqual(['Q-v1.1.3-0001', 'Q-v1.1.3-0001']);
+    expect(Object.keys(rows[1]).sort()).toEqual(Object.keys(rows[0]).sort());
+    expect(rows[1]).toMatchObject({ state: 'open', to_v: 'v1.1.4', evidence: { chief_placement: { reason: 'the release needs it' } } });
+    vi.stubEnv('HIMMEL_CONSOLE', '');
+    await ask(m, ...intake('K-3'));
+    const doc = '/abs/rm-doc.md';
+    const rm = { ...ctxFor('v1.1.3', m), env: { ...process.env, HIMMEL_RELEASE_MANAGER: '1', HIMMEL_CONSOLE_LEG: '1', HIMMEL_RM_DOC: doc, HIMMEL_RM_RELEASE: 'v1.1.3' } };
+    engineMod.leaseAcquire(rm, { expectEpoch: 0, doc, session: 'rm-1' });
+    engineMod.claim(rm);
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    expect(await refusal(ask(m, ...intake('K-3'), '--chief-reason', 'the release needs it'))).toMatch(/Q-v1\.1\.3-0002 on K-3 is claimed; ask again after the run/);
+  });
+});
+
+describe('the door\'s alerts after rm-run (N4, I13)', () => {
+  const mirror = (key: string, priority: string, labels: string[]) => {
+    const dir = join(root, 'alert-mirror');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-22T00:00:00Z' }));
+    writeFileSync(join(dir, `${key}.md`), `---\nkey: "${key}"\nstatus: "To Do"\nstatusCategory: "To Do"\ntype: "Task"\npriority: "${priority}"\nlabels: ${JSON.stringify(labels)}\nfixVersions: []\n---\n`);
+    return dir;
+  };
+  const line = (key: string, verb: string, op: string, outcome: string, ground: string) =>
+    `RULING R-R1-0001 Q-R1-0001 ${verb} ${key} ${op} backlog→backlog ${outcome} backlog sector=s — ${ground}: the reason`;
+
+  it('a door BACKLOG on a security key still alerts; a door line raises no High alert; a non-door High BACKLOG does', async () => {
+    const sec = ctxFor('R1', mirror('K-2', 'Medium', ['security']));
+    expect(await backlogAlerts(sec, 'R1', [line('K-2', 'INTAKE', 'none', 'BACKLOG', 'door:mild-no-next')]))
+      .toEqual(['RM-RUN R1 alert: K-2 security BACKLOG: the reason']);
+    const high = ctxFor('R1', mirror('K-3', 'High', []));
+    expect(await backlogAlerts(high, 'R1', [line('K-3', 'INTAKE', 'none', 'BACKLOG', 'door:operator-standing:R-R1-0009')])).toEqual([]);
+    expect(await backlogAlerts(high, 'R1', [line('K-3', 'INTAKE', 'none', 'BACKLOG', 'frozen-set')])).toEqual(['RM-RUN R1 alert: K-3 High BACKLOG: the reason']);
+  });
+
+  it('a door AD-HOC no change and a door KEEP print nothing (I13)', async () => {
+    const high = ctxFor('R1', mirror('K-3', 'High', ['security']));
+    expect(await backlogAlerts(high, 'R1', [
+      line('K-3', 'INTAKE', 'none', 'AD-HOC', 'door:operator-standing:R-R1-0009'),
+      line('K-3', 'REVERSION', 'keep', 'KEEP', 'door:only-operator-moves-out'),
+    ])).toEqual([]);
+  });
+});
+
+describe('liveJira.issue reads the labels and takes the run\'s signal (R3-F1, F4)', () => {
+  it('asks Jira for labels, returns them on the snapshot, and passes the signal on', async () => {
+    vi.mocked(request).mockReset();
+    vi.mocked(request).mockImplementation((async () => ({ fields: {
+      status: { name: 'In Progress', statusCategory: { name: 'In Progress' } }, issuetype: { name: 'Task' }, priority: null,
+      fixVersions: [], resolution: null, labels: ['operator-directed'],
+    } })) as never);
+    const stop = new AbortController();
+    const got = await liveJira.issue('HIMMEL-7', { signal: stop.signal });
+    const [method, path, body, writer, opts] = vi.mocked(request).mock.calls[0] as unknown[];
+    expect([method, body, writer]).toEqual(['GET', undefined, undefined]);
+    expect(String(path)).toMatch(/^\/issue\/HIMMEL-7\?fields=.*\blabels\b/);
+    expect((opts as { signal?: AbortSignal }).signal).toBe(stop.signal);
+    expect(got).toMatchObject({ key: 'HIMMEL-7', labels: ['operator-directed'], priority: '', statusCategory: 'In Progress', sector: null });
+  });
+
+  it('adds labels with one update call', async () => {
+    vi.mocked(request).mockReset();
+    vi.mocked(request).mockImplementation((async () => undefined) as never);
+    await liveJira.addLabels('HIMMEL-7', ['backlog']);
+    expect(vi.mocked(request).mock.calls[0]).toEqual(['PUT', '/issue/HIMMEL-7', { update: { labels: [{ add: 'backlog' }] } }]);
   });
 });

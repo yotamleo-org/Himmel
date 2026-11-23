@@ -196,17 +196,22 @@ async function fetchWithDeadline(
   init: RequestInit,
   isRead: boolean,
   bytes = false,
+  caller?: AbortSignal,
 ): Promise<{ res: Response; body: string | Buffer }> {
   const ms = requestDeadlineMs();
+  const stopped = () => new Error(`Jira request aborted by its caller: ${what}`);
   let waited = 0;
   for (let attempt = 0; ; attempt++) {
+    if (caller?.aborted) throw stopped();
     let res: Response;
     let body: string | Buffer;
-    const signal = AbortSignal.timeout(ms);
+    const deadline = AbortSignal.timeout(ms);
+    const signal = caller ? AbortSignal.any([deadline, caller]) : deadline;
     try {
       res = await fetch(url, { ...init, signal });
       body = bytes ? Buffer.from(await res.arrayBuffer()) : await res.text();
     } catch (err) {
+      if (caller?.aborted) throw stopped();
       if (!signal.aborted) throw err;
       throw new Error(
         `Jira request timed out after ${ms} ms: ${what}` +
@@ -217,7 +222,12 @@ async function fetchWithDeadline(
     const wait = retryAfterMs(res) ?? RETRY_BACKOFF_MS * 2 ** attempt;
     if (wait > RETRY_AFTER_CAP_MS || waited + wait > RETRY_TOTAL_CAP_MS) return { res, body };
     waited += wait;
-    await new Promise((ok) => setTimeout(ok, wait));
+    await new Promise<void>((ok) => {
+      const timer = setTimeout(done, wait);
+      function done() { clearTimeout(timer); caller?.removeEventListener('abort', done); ok(); }
+      caller?.addEventListener('abort', done, { once: true });
+    });
+    if (caller?.aborted) throw stopped();
   }
 }
 
@@ -281,6 +291,7 @@ export async function requestAt<T>(
   body?: unknown,
   auth: string = authHeader(),
   writer?: string,
+  opts: { signal?: AbortSignal } = {},
 ): Promise<T> {
   const base = baseUrl();
   const url = `${base}${apiBase}${path}`;
@@ -295,7 +306,7 @@ export async function requestAt<T>(
       Accept: 'application/json',
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  }, isJiraRead(apiBase, method, path)) as { res: Response; body: string };
+  }, isJiraRead(apiBase, method, path), false, opts.signal) as { res: Response; body: string };
   assertAuthenticated(res);
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${text}`);
   const parsed = (text.trim() ? JSON.parse(text) : {}) as T;
@@ -304,8 +315,8 @@ export async function requestAt<T>(
 }
 
 // `writer` names the code path that chose a Fix Version, for the journal; a hand path passes nothing.
-export const request = <T>(method: string, path: string, body?: unknown, writer?: string) =>
-  requestAt<T>('/rest/api/3', method, path, body, undefined, writer);
+export const request = <T>(method: string, path: string, body?: unknown, writer?: string, opts?: { signal?: AbortSignal }) =>
+  requestAt<T>('/rest/api/3', method, path, body, undefined, writer, opts);
 export const agileRequest = <T>(method: string, path: string, body?: unknown) =>
   requestAt<T>('/rest/agile/1.0', method, path, body);
 export const confluenceV2 = <T>(method: string, path: string, body?: unknown) =>

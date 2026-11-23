@@ -7,7 +7,6 @@ import { journalPath, readVersionWrites, type Getter, type VersionWriteRow } fro
 import { appendChain, contentSha, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain } from './ledger.js';
 import { SECTOR_OPT_OUT, sectorField } from '../commands/sector.js';
 import { appendAdmission, assertAdmissionsWritable, readAdmissions, readAdmissionsTolerant, type Admission } from '../commands/admissions-ledger.js';
-import { checkConsoleOverride } from '../commands/intake-gate.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
 import { checkWords, decisionsDirFor, resolveDecision } from './verbatim.js';
 import { asksOperator, type TicketFacts } from './operator-work.js';
@@ -507,7 +506,20 @@ export function reopen(ctx: Ctx, o: { key: string; from: string }): EventRow {
 
 export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
   if (ctx.env.HIMMEL_RELEASE_MANAGER === '1') throw new Error('release request: the chief writes requests; the RM claims them');
-  return locked(ctx, (l) => fileRequest(ctx, l, o));
+  return locked(ctx, (l) => {
+    const placement = ((o.evidence ?? {}) as Record<string, unknown>).chief_placement;
+    if (placement !== undefined) {
+      // The chief's placement joins a request already waiting on the key (P11): the same row again, its state kept.
+      const waiting = [...latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).values()]
+        .find((r) => r.key === o.key && (r.state === 'open' || r.state.startsWith('claimed:')));
+      if (waiting?.state.startsWith('claimed:')) throw new Error(`release request: ${waiting.req} on ${o.key} is claimed; ask again after the run`);
+      if (waiting) {
+        const { prev: _p, mac: _m, ...rest } = waiting;
+        return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...rest, evidence: { ...((waiting.evidence ?? {}) as Record<string, unknown>), chief_placement: placement } });
+      }
+    }
+    return fileRequest(ctx, l, o);
+  });
 }
 
 // The filing, on state a caller loaded under the release lock and still holds: it takes no lock, because the lock is not re-entrant.
@@ -533,14 +545,35 @@ const relationOf = (r: { evidence?: unknown }): string => canon(Object.fromEntri
   return v === undefined ? [] : [[k, v]];
 })));
 
+const pointerOf = (r: { evidence?: unknown }): unknown => ((r.evidence ?? {}) as Record<string, unknown>).operator_record;
+
+// The merge also carries the door's `operator_record` pointer, so a request rule O queues onto a waiting one keeps it.
 function withRelation(ctx: Ctx, k: Buffer, dup: RequestRow, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
   const want = relationOf(o);
-  if (want === '{}' || want === relationOf(dup)) return dup;
+  const relation = want !== '{}' && want !== relationOf(dup);
+  const pointer = pointerOf(o) !== undefined && pointerOf(o) !== pointerOf(dup);
+  if (!relation && !pointer) return dup;
   const { prev: _p, mac: _m, ...rest } = dup;
   const evidence = { ...((dup.evidence ?? {}) as Record<string, unknown>) };
-  for (const key of RELATION) delete evidence[key];
-  Object.assign(evidence, JSON.parse(want));
+  if (relation) {
+    for (const key of RELATION) delete evidence[key];
+    Object.assign(evidence, JSON.parse(want));
+  }
+  if (pointer) evidence.operator_record = pointerOf(o);
   return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), k, { ...rest, evidence });
+}
+
+/** Each key's required parent: the newest non-withdrawn request of the key that states a relation; `remainder: false` clears it. */
+export function requiredParentOf(history: RequestRow[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const r of history) {
+    if (r.state.startsWith('withdrawn')) continue;
+    if (relationOf(r) === '{}') continue;
+    const e = r.evidence as { follow_up_of?: unknown; remainder?: unknown };
+    if (e.remainder === true && typeof e.follow_up_of === 'string') out[r.key] = e.follow_up_of;
+    else delete out[r.key];
+  }
+  return out;
 }
 
 // The op a request into a version asks for, as a record of the operator's words names it: an INTAKE from backlog adds, anything else moves.
@@ -772,7 +805,9 @@ export function claim(ctx: Ctx): RequestRow[] {
         out.push(appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...rest, ts: ts(ctx), state: mine }));
       }
     }
-    return out;
+    const byKey = new Map<string, RequestRow[]>();
+    for (const r of out) byKey.set(r.key, [...(byKey.get(r.key) ?? []), r]);
+    return [...byKey.values()].flatMap((rs) => [...rs.filter((r) => pointerOf(r) !== undefined), ...rs.filter((r) => pointerOf(r) === undefined)]);
   });
 }
 
@@ -876,6 +911,9 @@ function replacedByGoverning(prior: RulingRow | undefined, governing: OperatorRo
   return Date.parse(governing.ts) > Date.parse(rulings.find((r) => r.id === prior.id)?.ts ?? prior.ts);
 }
 
+const citesGoverning = (authority: RulingRow['authority'], governing: OperatorRow | undefined): boolean =>
+  authority.kind === 'operator' && governing !== undefined && authority.ref === governing.id;
+
 export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
   return locked(ctx, (l) => {
     const lease = rmFence(ctx, l);
@@ -945,6 +983,7 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       op = restored;
       authority = { kind: 'operator', ref: governing.id };
     }
+    if (citesGoverning(authority, governing)) op = restored;
     if (authority.kind === 'operator') {
       if (!scopeOk({ authority, key: req.key, op }, ops, l.decl.current)) throw new Error(`release rule: ${authority.ref ?? '(no ref)'} does not cover ${req.key} ${op.kind} ${op.from_v}→${op.to_v}`);
     }
@@ -1043,7 +1082,8 @@ function phaseRow(ctx: Ctx, r: RulingRow, phase: RulingRow['phase'], extra: Part
 // Runs a ruling from its newest phase to receipted. Idempotent: the comment id
 // in the receipted row is the idempotency key, and a replay finds the comment
 // by its marker before it would post another.
-export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['phase']; line: string }> {
+export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['phase']; line: string; note?: string }> {
+  let note: string | undefined;
   return lockedAsync(ctx, async (l) => {
     const lease = rmFence(ctx, l);
     const rows = readChain<RulingRow>(f(ctx, 'rulings.jsonl'), l.k);
@@ -1156,14 +1196,33 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       }
       // Every INTAKE ruling settles the filer's proposal, so its proposed-* label goes before the receipt; a failure leaves the ruling applied for a replay.
       if (last.verb === 'INTAKE') await clearProposedLabels(ctx.jira, last.key);
+      note = await backlogLabel(ctx.jira as DoorJiraPort, last);
       const marker = `[release-ruling ${id}]`;
       const authority = last.authority.kind === 'rm' ? 'rm' : `${last.authority.kind} ${last.authority.ref}`;
       const commentId = await ctx.jira.findComment(last.key, marker)
         ?? await ctx.jira.addComment(last.key, `${marker} ${rulingLine(last)}\n\nAuthority: ${authority}. Audit copy; the release ledger is the record.`);
       last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'receipted', { comment_id: commentId }));
     }
-    return { phase: last.phase, line: rulingLine(last) };
+    return { phase: last.phase, line: rulingLine(last), ...(note ? { note } : {}) };
   });
+}
+
+/** The port the door's run uses: the label write and a live read the run can abort. */
+export type DoorJiraPort = JiraPort & {
+  addLabels?(key: string, labels: string[]): Promise<void>;
+  issue?(key: string, opts?: { signal?: AbortSignal }): Promise<IssueSnap | null>;
+};
+
+async function backlogLabel(jira: DoorJiraPort, r: RulingRow): Promise<string | undefined> {
+  if (!r.ground.startsWith('door:')) return undefined;
+  const cur = await jira.fixVersions(r.key);
+  if (cur.length) {
+    if ((r.op.kind === 'add' || r.op.kind === 'move') && r.op.to_v && (await jira.labels(r.key)).includes('backlog')) await jira.removeLabels(r.key, ['backlog']);
+    return undefined;
+  }
+  if (!jira.addLabels) return `the backlog label on ${r.key}: this Jira port cannot add labels`;
+  await jira.addLabels(r.key, ['backlog']);
+  return undefined;
 }
 
 // --- state ---------------------------------------------------------------------------
@@ -1463,9 +1522,22 @@ export interface RuledDecision {
   ref?: string | null;
   blocks?: string[];
   delivered?: string;
+  /** A request of another verb the door's rule O table queues under the operator's record; rmRun files it. */
+  queue?: QueuedRequest;
 }
 
-export type Decision = HoldDecision | RuledDecision;
+export interface QueuedRequest { verb: Verb; from_v: string | null; to_v: string | null; operator_record: string }
+
+// The door closes the request as refused, with no ruling: rmRun calls refuse(), never rule().
+export interface RefuseDecision {
+  req: string;
+  outcome: 'REFUSE';
+  ground: string;
+  reason: string;
+  queue?: QueuedRequest;
+}
+
+export type Decision = HoldDecision | RuledDecision | RefuseDecision;
 
 // The ruling of a standing blocker pull: ADMIT under O-<R>-blocker-pull, with no model call. The shape is
 // mechanical; rule() checks the mirror and a newer operator record.
@@ -1525,6 +1597,7 @@ function deliveredDecision(now: Loaded, mirror: ReturnType<typeof readMirror>, q
 }
 
 const isHold = (d: Decision): d is HoldDecision => d.outcome === 'HOLD';
+const isRefuse = (d: Decision): d is RefuseDecision => d.outcome === 'REFUSE';
 
 const authorityOf = (d: RuledDecision): Authority =>
   ({ kind: d.authority ?? 'rm', ref: d.ref ?? null, ...(d.blocks ? { blocks: d.blocks } : {}), ...(d.delivered ? { delivered: d.delivered } : {}) });
@@ -1548,6 +1621,10 @@ export interface JudgeInput {
   operator: OperatorRow[];
   rulings: RulingRow[];
   issues: IssueSnap[];
+  /** Ruling id to its first (intent) ts, for every listed ruling. */
+  ruled_at?: Record<string, string>;
+  /** Asked key to the parent its requests require (requiredParentOf). */
+  required_parent?: Record<string, string>;
 }
 
 export type Judge = (input: JudgeInput, opts?: { signal?: AbortSignal }) => Promise<Decision[]>;
@@ -1566,26 +1643,70 @@ function unfinishedRulings(rulings: Chain<RulingRow>): string[] {
   return [...last.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied').map((r) => r.id);
 }
 
-// The mirror row when it names a sector; else the live snapshot (a ticket filed since the last mirror sync),
-// else whatever the mirror holds. A Jira that cannot answer, or not within LIVE_LOOKUP_MS, leaves the mirror's view.
+// Every asked key (and every required parent) is read live and laid over its mirror row field by field; an empty
+// live field keeps the mirror's. At most LIVE_READS reads are open at once, each aborted at LIVE_LOOKUP_MS; once
+// LIVE_POOL_MS has passed since the first read, no further read opens. A key with no live answer keeps its mirror row.
 export const LIVE_LOOKUP_MS = 15_000;
-async function issueFor(ctx: Ctx, key: string, mirrored: IssueSnap | undefined): Promise<IssueSnap | undefined> {
-  if (mirrored?.sector || !ctx.jira.issue) return mirrored;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const deadline = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), LIVE_LOOKUP_MS); });
-    return (await Promise.race([ctx.jira.issue(key), deadline])) ?? mirrored;
-  } catch {
-    return mirrored;
-  } finally {
-    clearTimeout(timer);
-  }
+export const LIVE_POOL_MS = 60_000;
+export const LIVE_READS = 8;
+
+function overlay(mirrored: IssueSnap | undefined, live: IssueSnap): IssueSnap {
+  if (!mirrored) return live;
+  const out: Record<string, unknown> = { ...mirrored };
+  for (const [k, v] of Object.entries(live)) if (v !== null && v !== undefined && v !== '') out[k] = v;
+  return out as unknown as IssueSnap;
+}
+
+async function liveIssues(ctx: Ctx, keys: string[], mirrored: Map<string, IssueSnap> | null): Promise<{ issues: IssueSnap[]; fallback: Set<string> }> {
+  const jira = ctx.jira as DoorJiraPort;
+  const fallback = new Set<string>();
+  let open = 0;
+  let first: number | undefined;
+  const waiters: Array<() => void> = [];
+  const left = () => (first === undefined ? LIVE_POOL_MS : LIVE_POOL_MS - (Date.now() - first));
+  const slot = async (): Promise<boolean> => {
+    for (;;) {
+      if (open < LIVE_READS) break;
+      if (left() <= 0) return false;
+      const freed = await new Promise<boolean>((resolve) => {
+        const wake = () => { clearTimeout(timer); resolve(true); };
+        const timer = setTimeout(() => { waiters.splice(waiters.indexOf(wake), 1); resolve(false); }, left());
+        waiters.push(wake);
+      });
+      if (!freed) return false;
+    }
+    if (left() <= 0) return false;
+    first ??= Date.now();
+    open++;
+    return true;
+  };
+  const one = async (key: string): Promise<IssueSnap | undefined> => {
+    const m = mirrored?.get(key);
+    if (!jira.issue) return m;
+    if (!(await slot())) { fallback.add(key); return m; }
+    const stop = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // The slot frees when the read settles, whether or not it heeds the abort.
+    const read = Promise.resolve().then(() => jira.issue!(key, { signal: stop.signal })).finally(() => { open--; waiters.shift()?.(); });
+    try {
+      const live = await Promise.race([read, new Promise<undefined>((resolve) => { timer = setTimeout(() => { stop.abort(); resolve(undefined); }, LIVE_LOOKUP_MS); })]);
+      if (live === undefined) { fallback.add(key); return m; }
+      return live ? overlay(m, live) : m;
+    } catch {
+      fallback.add(key);
+      return m;
+    } finally {
+      clearTimeout(timer);
+      read.catch(() => undefined);
+    }
+  };
+  const got = await Promise.all(keys.map(one));
+  return { issues: got.flatMap((i) => i ?? []), fallback };
 }
 
 // Takes the lease, finishes older unreceipted rulings, claims, asks the judge once, rules and
 // applies through the engine, and releases the lease. Decisions come only from
 // the judge, never from the caller.
-export const BULK_MOVE_LIMIT = 20;
 
 // Puts a claimed request back to open so the next run claims it again.
 function unclaim(ctx: Ctx, req: string): void {
@@ -1700,10 +1821,6 @@ export interface RmRunOptions {
   pid?: number;
   /** Called once the judge answers or fails: how many requests it was asked and how long it took (decision 815). */
   onJudge?: (requests: number, ms: number) => void;
-  /** A decision ref that covers a run moving more than BULK_MOVE_LIMIT open tickets in the current version. */
-  ruling?: string;
-  /** The chief's reason for the same, console marker only; one ledger row records it with the count. */
-  chiefOverride?: string;
 }
 
 // The last line of an rm-run that refused anything: how many requests the engine refused, so a refusal is not
@@ -1713,16 +1830,18 @@ export function rmRunSummary(release: string, lines: string[]): string | null {
   return n ? `RM-RUN ${release} summary: ${n} refused` : null;
 }
 
+// Rule O's follow-up: the request the operator's record still owes, filed by the RM under that record's pointer.
+function queueRequest(ctx: Ctx, q: RequestRow, queue: QueuedRequest): string {
+  return locked(ctx, (l) => {
+    rmFence(ctx, l);
+    return fileRequest(ctx, l, {
+      from: 'rm', verb: queue.verb, key: q.key, from_v: queue.from_v, to_v: queue.to_v,
+      why: `the operator's ${queue.operator_record} still owes this ${queue.verb}`, evidence: { operator_record: queue.operator_record },
+    }).req;
+  });
+}
+
 export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promise<string[]> {
-  const ruling = o.ruling?.trim();
-  if (o.ruling !== undefined && !ruling) throw new Error('rm-run: --ruling needs a decision ref');
-  let override: string | undefined;
-  if (o.chiefOverride !== undefined) {
-    if (ruling) throw new Error('rm-run: pass --ruling or --chief-override, not both');
-    override = checkConsoleOverride(o.chiefOverride);
-  } else if (ruling) {
-    assertAdmissionsWritable();
-  }
   const l = loadOrThrow(ctx);
   const pending = [...latestRequests(l.requests).values()].filter((r) => r.state === 'open' || r.state.startsWith('claimed:'));
   if (!pending.length && !unfinishedRulings(l.rulings).length) return [`RM-RUN ${ctx.release}: nothing pending`];
@@ -1736,41 +1855,55 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
   const halt = () => { if (stop.signal.aborted) throw stopReason(stop.signal); };
   let failed: Error | undefined;
   let refused: JudgeReplyError | undefined;
-  // Open tickets this run moves into or out of the current version; an operator ruling with a ref is already covered.
-  const current = l.decl.current;
-  let mirrorIssues: ReturnType<typeof readMirror>['issues'] = null;
-  let moved = 0;
-  const bulkHeld = (key: string, op: Op, operatorRef: boolean): boolean => {
-    if (!['add', 'remove', 'move'].includes(op.kind) || (op.from_v !== current && op.to_v !== current)) return false;
-    if (operatorRef || terminalOf(mirrorIssues?.get(key)) !== null) return false;
-    if (moved >= BULK_MOVE_LIMIT && !ruling && override === undefined) return true;
-    moved++;
-    return false;
+  const queue = (q: RequestRow, d: { queue?: QueuedRequest }) => {
+    if (!d.queue) return;
+    try {
+      lines.push(`QUEUED ${queueRequest(rctx, q, d.queue)}: ${d.queue.verb} ${q.key} for ${d.queue.operator_record}`);
+    } catch (e) {
+      lines.push(`PENDING queue ${q.req}: ${(e as Error).message}`);
+    }
   };
-  const heldNote = `bulk guard: ${current} already takes ${BULK_MOVE_LIMIT} open moves in one run; rerun with --ruling <decision-ref> or --chief-override "<reason>"`;
   try {
     halt();
-    mirrorIssues = readMirror(ctx.mirrorRoot).issues;
     // A replayed intent is from an older epoch: apply settles it by readback or voids and reopens its request,
-    // so it writes no fixVersion here and is not a move of this run (a voided one is counted when re-ruled below).
+    // so it writes no fixVersion here.
     for (const id of unfinishedRulings(loadOrThrow(ctx).rulings)) {
       halt();
       try {
-        lines.push((await apply(rctx, id)).line);
+        const got = await apply(rctx, id);
+        lines.push(got.line);
+        if (got.note) lines.push(`PENDING ${id}: ${got.note}`);
       } catch (e) {
         lines.push(`PENDING ${id}: ${(e as Error).message}`);
       }
     }
-    const claimed = claim(rctx);
+    // One request per key per run: the first claimed request of a key is ruled; the rest wait, unclaimed, for the next run.
+    const seen = new Set<string>();
+    const claimed: RequestRow[] = [];
+    for (const q of claim(rctx)) {
+      if (seen.has(q.key)) unclaim(rctx, q.req);
+      else { seen.add(q.key); claimed.push(q); }
+    }
     if (claimed.length) {
       const now = loadOrThrow(ctx);
-      // A standing blocker pull is ruled mechanically; only the other requests go to the judge.
+      // A standing blocker pull is ruled mechanically; only the other requests go to the door.
       const mirror = readMirror(ctx.mirrorRoot);
       const delivered = deliveredDecisions(now, mirror, claimed, ctx.deliveredPr);
       const asked = claimed.filter((q) => !isPullRequest(q) && !delivered.has(q.req));
+      const history = now.requests.verified;
+      const required_parent = requiredParentOf(history);
       const keys = new Set(asked.map((r) => r.key));
-      const receipted = now.rulings.verified.filter((r) => r.phase === 'receipted');
-      const issues = (await Promise.all([...keys].map((k) => issueFor(ctx, k, mirror.issues?.get(k))))).flatMap((i) => i ?? []);
+      const parents = [...keys].flatMap((k) => required_parent[k] ? [required_parent[k]] : []);
+      const ruled_at: Record<string, string> = {};
+      const newest = new Map<string, RulingRow>();
+      for (const r of now.rulings.verified) {
+        ruled_at[r.id] ??= r.ts;
+        newest.set(r.id, r);
+      }
+      const settled = [...newest.values()].filter((r) => r.phase === 'applied' || r.phase === 'receipted');
+      const receipted = settled.filter((r) => r.phase === 'receipted');
+      const live = await liveIssues(ctx, [...new Set([...keys, ...parents])], mirror.issues);
+      const issues = live.issues;
       halt();
       let decisions: Decision[];
       const judgeStart = Date.now();
@@ -1779,8 +1912,8 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
           release: ctx.release, current: now.decl.current, versions: now.decl.versions, requests: asked,
           records: reduceLoaded(now, mirror).records.filter((r) => keys.has(r.key)),
           operator: judgeOperatorRows(ctx.release, now.operator.verified, asked, issues, receipted),
-          rulings: [...new Set([...receipted.filter((r) => keys.has(r.key)), ...receipted.slice(-40)])],
-          issues,
+          rulings: [...new Set([...settled.filter((r) => keys.has(r.key)), ...receipted.slice(-40)])],
+          issues, ruled_at, required_parent,
         }, { signal: stop.signal }), stop, o.judgeTimeoutMs);
       } catch (e) {
         if (e instanceof JudgeReplyError) {
@@ -1796,6 +1929,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
         let id: string;
         let d = delivered.get(q.req) ?? decisions.find((x) => x?.req === q.req);
         const pulled = isPullRequest(q);
+        const facts = live.fallback.has(q.key) ? ' (mirror facts)' : '';
         try {
           if (pulled) {
             const got = pullDecision(now, mirror, q);
@@ -1807,29 +1941,33 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
             d = got;
           }
           if (!d) throw new Error('the judge returned no decision');
+          if (isRefuse(d)) {
+            lines.push(`REFUSED ${q.req}: ${d.ground}: ${d.reason}${facts}`);
+            refuse(rctx, q.req, `${d.ground}: ${d.reason}${facts}`);
+            queue(q, d);
+            continue;
+          }
           if (isHold(d)) {
             lines.push(`HELD ${q.req}: ${d.reason}`);
             if (isRepair(q)) hold(rctx, q.req, d.reason);
             continue;
           }
-          if (bulkHeld(q.key, { kind: d.op, from_v: d.from ?? null, to_v: d.to ?? null }, d.authority === 'operator' && !!d.ref)) {
-            unclaim(rctx, q.req);
-            lines.push(`PENDING ${q.req}: ${heldNote}`);
-            continue;
-          }
           id = rule(rctx, {
             req: q.req, outcome: d.outcome, op: { kind: d.op, from_v: d.from ?? null, to_v: d.to ?? null }, sector: d.sector ?? '',
-            ground: d.ground ?? '', reason: d.reason ?? '', supersedes: d.supersedes ?? [],
+            ground: d.ground ?? '', reason: `${d.reason ?? ''}${facts}`, supersedes: d.supersedes ?? [],
             authority: authorityOf(d),
           }).id;
         } catch (e) {
           lines.push(`REFUSED ${q.req}: ${(e as Error).message}`);
-          // A request the judge never answered stays claimed for the next run.
+          // A request the door never answered stays claimed for the next run.
           if (d || pulled) refuse(rctx, q.req, (e as Error).message);
           continue;
         }
+        queue(q, d);
         try {
-          lines.push((await apply(rctx, id)).line);
+          const got = await apply(rctx, id);
+          lines.push(got.line);
+          if (got.note) lines.push(`PENDING ${id}: ${got.note}`);
         } catch (e) {
           lines.push(`PENDING ${id}: ${(e as Error).message}`);
         }
@@ -1842,17 +1980,6 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
     // Cleanup never hides the rulings already made or the error that ended the run.
     unlink();
     if (failed) failNote(rctx, failed, lines);
-    try {
-      if (moved > BULK_MOVE_LIMIT && (ruling || override !== undefined)) {
-        appendAdmission({
-          version: current, key: `rm-run:${ctx.release}`, kind: 'override',
-          reason: `bulk ${moved} open moves in ${current}: ${ruling ? `lifted by ruling ${ruling}` : override}`, ...(ruling ? { ruling } : {}),
-        });
-        if (ruling) lines.push(`bulk ${moved} lifted by ruling ${ruling}`);
-      }
-    } catch (e) {
-      lines.push(`PENDING lift row: ${(e as Error).message}`);
-    }
     try {
       leaseRelease(rctx);
     } catch (e) {
