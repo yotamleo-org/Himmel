@@ -79,8 +79,6 @@ VDIR="$HANDOVER_DIR/u/$VBUCKET/verdicts"
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
-# STUB_CWD_GH=1: gh as it is outside a clone of o/r - a call naming no repo reads the cwd's clone
-# (the anchor is o/r, any other clone is some/other, no clone fails), and o/r's PR 77 exists only there
 stub_cwd_nwo() {
     if [ "$(pwd -P)" = "$(cd "$AUTO_GO_ANCHOR" && pwd -P)" ]; then printf 'o/r\n'
     elif git rev-parse --git-dir >/dev/null 2>&1; then printf 'some/other\n'
