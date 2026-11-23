@@ -756,7 +756,6 @@ def reconcile(attempts, rows, history, deadline, effects=True):
 
 
 def unlaunched(doc, timeout=10):
-    """No session ever ran on the doc: no marker bullet, a free queue lock and no claude process naming it."""
     script = ('. "$1/ticket-status.sh"; m=$(ts_marker_newest "$2"); rc=$?; [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || exit 1; '
               '[ -z "$m" ] || exit 1; if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then "$TICKET_STATUS_QUEUE_LOCK" status "$2"; '
               'else bash "$1/../handover/queue-lock.sh" status "$2"; fi >/dev/null 2>&1 || exit 1; _ts_no_live_session_on "$2"')
@@ -767,8 +766,7 @@ def unlaunched(doc, timeout=10):
 
 
 def ownership_check(attempts, manifest, doc, name, keys):
-    """begin's family ownership refusals, shared with the read-only admit a dry run uses. The launching manifest's own
-    row for the doc being launched is no owner while no session ever ran on the doc; True when that row was passed."""
+    """begin's family ownership refusals, shared with the read-only admit a dry run uses."""
     if any(r['doc'] == doc or r['name'] == name or set(r['keys']) & set(keys) for r in attempts.values()):
         raise Refused('family already owns worker or ticket')
     legacy_deadline = time.monotonic() + 5

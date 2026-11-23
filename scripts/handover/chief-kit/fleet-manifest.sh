@@ -56,9 +56,6 @@
 # but may register intent while paused. Runtime commitment serializes with set
 # through these same manifest/anchor locks. --pending marks a new preregistration,
 # never a live owner or permission; unrecognized legacy ownership stays protected.
-# A plain add (no --pending) writes a pending row too for a doc no session ever ran on
-# (no marker bullet, a free queue lock, no claude process naming it); a doc with any of
-# those is written as a live row, the legacy owner a launch still refuses beside.
 #
 # Location: next to the chief doc, named after it —
 # <chief doc stem>.fleet.json.
