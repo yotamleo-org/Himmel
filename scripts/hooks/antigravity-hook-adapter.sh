@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
-# Antigravity hook adapter for himmel.
-# Bridges Antigravity camelCase protojson hook payloads to himmel's Claude-shaped
-# guardrails and translates exit-2 blocks into Antigravity's PreToolUse JSON
-# deny envelope (`{"decision":"deny","reason":"..."}` + exit 0).
 # Clean PreToolUse pass MUST emit zero bytes on stdout + exit 0 (emitting `{}`
 # fails closed as a deny in Antigravity's Go hook runner).
-# Bash 3.2-safe (no mapfile, no associative arrays).
 set -u
 
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \

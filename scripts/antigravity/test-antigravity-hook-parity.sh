@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Inventory parity drift gate for the Antigravity lane (.agents/hooks.json +
-# scripts/hooks/antigravity-hook-adapter.sh + .agents/skills.json).
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.." || exit 1

@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Through-adapter end-to-end suite for the Antigravity lane.
-# Drives scripts/hooks/antigravity-hook-adapter.sh with frozen camelCase
-# Antigravity payloads against real himmel guardrails.
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"

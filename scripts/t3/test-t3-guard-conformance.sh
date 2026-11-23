@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Shared multi-harness T3 Code guard conformance runner.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
