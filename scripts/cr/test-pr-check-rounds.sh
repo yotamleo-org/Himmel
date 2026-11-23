@@ -3,9 +3,6 @@
 # Bash 3.2-safe; no network or paid critic calls.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
-# The suite runs in three parts so each fits a CI shard: this file alone is
-# part a, and test-pr-check-rounds-b.sh / -c.sh run it with --part b / c. The
-# fixture and the helpers the later parts use stay outside the part gates.
 rounds_part=a
 if [ "${1:-}" = --part ]; then
     case "${2:-}" in
@@ -1595,7 +1592,6 @@ assert_has "$fixpath_out" "pr-check: delta round 4 on fixpath (from $cap_r3_head
 (cd "$repo" && bash "$fx/scripts/cr/clear-review-marker.sh" fixpath >"$tmp/fixpath-clear2.out" 2>&1); fixpath_clear2_rc=$?
 assert_eq "$fixpath_clear2_rc" "0" "the fix head clears after the one delta round"
 if [ -e "$git_dir/cr-pending/fixpath" ]; then fail "the delta round's rows clear the marker"; else pass "the delta round's rows clear the marker"; fi
-# The fix trigger records itself as fix (part b adds the scope triggers beside it).
 assert_has "$(cat "$git_dir/cr-review-rounds/fixpath.delta")" " fix" "the fix trigger still records fix"
 
 fi
