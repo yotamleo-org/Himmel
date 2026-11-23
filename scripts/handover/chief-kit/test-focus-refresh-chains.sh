@@ -23,6 +23,7 @@ unset GH_REPO HIMMEL_CONSOLE_DOC HANDOVER_DIR HIMMEL_CONFIG_DIR
 export HOME="$tmp/home"; mkdir -p "$HOME"   # no row reads the operator's own config
 export FX="$tmp/fx" TICKET_STATUS_STATE_DIR="$tmp/state" JIRA_PROJECT_KEY=HIMMEL USER_SLUG=fxuser
 export HANDOVER_DIR="$tmp/handover"
+export HIMMEL_CORE_CHECK_BATCH=off
 export FOCUS_REFRESH_BUDGET=60
 mkdir -p "$tmp/bin" "$FX" "$tmp/state"
 

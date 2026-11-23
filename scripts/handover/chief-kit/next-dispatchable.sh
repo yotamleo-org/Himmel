@@ -1187,22 +1187,27 @@ CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'BYPASS-NEEDS-SPEC', 'UNKNOWN')
 CORE_FIELDS = {'CORE': 3, 'BYPASS': 4, 'BYPASS-NEEDS-SPEC': 4}  # tokens a core-check line needs: CORE <K> <match>, BYPASS <K> <kind> <reason...>, BYPASS-NEEDS-SPEC <K> <kind> <missing...>
 
 def core_run(args, ok_rc, project):
-    # (stdout, '') for a run whose exit code is in ok_rc, else (None, why). A missing CLI, node or a timeout is never an answer.
+    # (stdout, '', 'ok') for a run whose exit code is in ok_rc, else (None, why, kind) with kind exit | timeout | absent.
+    # A missing CLI, node or a timeout is never an answer. NEXT_DISPATCH_CORE_TIMEOUT (a whole number of seconds, 1 to 120) shortens the wait.
+    t = os.environ.get('NEXT_DISPATCH_CORE_TIMEOUT', '')
+    timeout = int(t) if t.isascii() and t.isdigit() and 1 <= int(t) <= 120 else 120
     try:
         cli = os.environ.get('NEXT_DISPATCH_JIRA_CLI')
         if not cli:
             common = subprocess.run(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], cwd=repo, capture_output=True, text=True, timeout=20, check=True).stdout.strip()
             cli = os.path.join(os.path.dirname(common), 'scripts/jira/dist/index.js')
         if not os.path.isfile(cli):
-            return None, 'no built jira CLI at %s' % cli
+            return None, 'no built jira CLI at %s' % cli, 'absent'
         # cwd inside the CLI's own checkout: it runs `git rev-parse` from its cwd
-        r = subprocess.run(['node', cli] + args, capture_output=True, text=True, timeout=120, cwd=os.path.dirname(os.path.abspath(cli)),
+        r = subprocess.run(['node', cli] + args, capture_output=True, text=True, timeout=timeout, cwd=os.path.dirname(os.path.abspath(cli)),
                            env=dict(os.environ, JIRA_PROJECT_KEY=os.environ.get('JIRA_PROJECT_KEY', project)))
+    except subprocess.TimeoutExpired as e:
+        return None, 'the jira CLI could not run (%s)' % e, 'timeout'
     except (OSError, subprocess.SubprocessError) as e:
-        return None, 'the jira CLI could not run (%s)' % e
+        return None, 'the jira CLI could not run (%s)' % e, 'absent'
     if r.returncode not in ok_rc:
-        return None, '%s exited %d: %s' % (args[1], r.returncode, (r.stderr or r.stdout).strip()[:200])
-    return r.stdout, ''
+        return None, '%s exited %d: %s' % (args[1], r.returncode, (r.stderr or r.stdout).strip()[:200]), 'exit'
+    return r.stdout, '', 'ok'
 
 def core_lines(out, keys, spec=False):
     # The one line each key got (gen-briefs.py per_key_lines); a key with no line is absent from the result.
@@ -1234,13 +1239,43 @@ def core_spec_pass(cs):
     for i in cs:
         groups.setdefault(tuple(i['files']), []).append(i['key'])
     items = list(groups.items())
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=min(8, len(items))) as pool:
-        results = list(pool.map(lambda g: core_run(['release', 'core-check', '--paths', ','.join(g[0]), '--mirror', mdir, '--key'] + g[1], (0,), project), items))
-    verdict = {}
-    for (_, ks), (out, why) in zip(items, results):
-        if out is None:
+    texts = None  # one core-check answer per group, in order
+    if os.environ.get('HIMMEL_CORE_CHECK_BATCH') != 'off':
+        # ONE `release core-check-batch` process answers every group (the per-group path below costs one process each)
+        import json, tempfile
+        fd, bpath = tempfile.mkstemp(prefix='nd-core-batch.', suffix='.json')
+        try:
+            with os.fdopen(fd, 'w') as fh:
+                json.dump([{'paths': ','.join(g[0]), 'keys': g[1]} for g in items], fh)
+            out, why, kind = core_run(['release', 'core-check-batch', bpath, '--mirror', mdir], (0,), project)
+        finally:
+            try: os.unlink(bpath)
+            except OSError: pass
+        if out is None and kind != 'exit':
             return fail(why)
+        if out is not None:
+            heads = [l for l in out.splitlines() if re.fullmatch(r'== \d+', l)]
+            if heads == ['== %d' % n for n in range(1, len(items) + 1)]:
+                texts, cur = [], None
+                for l in out.splitlines():
+                    if re.fullmatch(r'== \d+', l):
+                        texts.append([]); cur = texts[-1]
+                    elif cur is not None:
+                        cur.append(l)
+                texts = ['\n'.join(t) for t in texts]
+        if texts is None:
+            print('# WARN CORE-CHECK-BATCH-FALLBACK %s' % ('headers' if out is not None else kind))
+    if texts is None:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(8, len(items))) as pool:
+            results = list(pool.map(lambda g: core_run(['release', 'core-check', '--paths', ','.join(g[0]), '--mirror', mdir, '--key'] + g[1], (0,), project), items))
+        texts = []
+        for out, why, _ in results:
+            if out is None:
+                return fail(why)
+            texts.append(out)
+    verdict = {}
+    for (_, ks), out in zip(items, texts):
         got = core_lines(out, ks)
         if len(got) != len(ks):
             return fail('core-check printed no parseable line for %s' % ', '.join(k for k in ks if k not in got))
@@ -1259,7 +1294,7 @@ def core_spec_pass(cs):
         if verb == 'CORE':
             core.append(i['key'])
     if core:
-        out, why = core_run(['release', 'spec-check', '--mirror', mdir] + core, (0, 1), project)
+        out, why, _ = core_run(['release', 'spec-check', '--mirror', mdir] + core, (0, 1), project)
         if out is None:
             return fail(why)
         got = core_lines(out, core, spec=True)

@@ -36,6 +36,7 @@ BUCKET="$WORK/bucket"; REPO="$WORK/repo"; mkdir -p "$REPO"
 # No bus identity, so relay-batch never reaches the real himmel-bus store.
 unset HIMMEL_BUS_NAME
 export HIMMEL_FLAG_PR_SIZE_GATE=0
+export HIMMEL_CORE_CHECK_BATCH=off
 
 cat > "$WORK/wt.sh" <<'EOF'
 #!/usr/bin/env bash

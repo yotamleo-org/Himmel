@@ -1575,6 +1575,10 @@ jobs:
       # the same way; a missing build fails it by name (PREREQUISITE-ABSENT), and the shell-unit shards, which lack the build, never run it.
       - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/readiness-adapter -- bash scripts/handover/chief-kit/readiness-adapter-suite.sh
+      # core-check-batch-cases/suite.sh drives next-dispatchable.sh over the built jira CLI through a counting wrapper (one core-check-batch per
+      # scan, its CPU, the fallbacks); a missing build fails it by name (PREREQUISITE-ABSENT) and the shell-unit shards never run it.
+      - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/core-check-batch -- bash scripts/handover/chief-kit/core-check-batch-cases/suite.sh
 
   # Nothing built or ran the jira dist CLI end to end; the unit suite
   # mocks `request`, so a broken tsc build or a dist that crashes at startup merged
