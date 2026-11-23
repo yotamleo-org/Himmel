@@ -1546,11 +1546,10 @@ RELEASE_LINE_RE = {
     'spec-check': re.compile(r'SPEC ok (\S+) \S.*|SPEC-STALE (\S+)(?: .*)?|NO-SPEC (\S+)(?: .*)?'
                              r'|SPEC-NEEDS-OPERATOR (\S+) \S.* \S+ \S+|SPEC-SIGNER-UNKNOWN (\S+) \S+ \S.*'),
 }
+RELEASE_ANSWER_EXITS = {'signer-check': (0,), 'spec-check': (0, 1)}
 
 
 def release_check(verb, keys, extra=()):
-    """{key: its line} from one `jira release <verb>` through the TRACKER_JIRA seam; None when it exits other than 0
-    (spec-check: 0 or 1, its answer whenever a key is not SPEC ok) or prints no parseable line for a key."""
     cli, pk = jira_cli(), jira_project_key()
     cmd = (['node', cli] if cli.endswith('.js') else [cli]) + ['release', verb] + (['--mirror', MIRROR] if MIRROR else []) + list(extra) + list(keys)
     try:
@@ -1558,7 +1557,7 @@ def release_check(verb, keys, extra=()):
                            env=dict(os.environ, JIRA_PROJECT_KEY=pk))
     except (OSError, subprocess.SubprocessError):
         return None
-    if r.returncode not in ((0, 1) if verb == 'spec-check' else (0,)):
+    if r.returncode not in RELEASE_ANSWER_EXITS[verb]:
         return None
     got = {}
     for l in r.stdout.splitlines():
@@ -1569,8 +1568,7 @@ def release_check(verb, keys, extra=()):
 
 
 def operator_owed(handover_dir, chief_doc, version, opn, mir):
-    """(operator items, source read, unread critic files, chief-owed items): unsigned specs without the marker are chief-owed,
-    unless release signer-check names the operator; a signed key spec-check reads SPEC-NEEDS-OPERATOR is the operator's."""
+    """(operator items, source read, unread critic files, chief-owed items)."""
     items, chief_owes, readable, unread = [], [], False, []
     if handover_dir:
         signed, signed_ticket_numbers = set(), set()
