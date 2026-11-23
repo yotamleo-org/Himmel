@@ -113,7 +113,7 @@ bus_stamp() {
         [ -e "$f" ] && files+=("$f")
     done
     [ "${#files[@]}" -gt 0 ] || { printf 'none\n'; return 0; }
-    stat -c '%n %s %y' -- "${files[@]}" 2>/dev/null || stat -f '%N %z %m' -- "${files[@]}" 2>/dev/null
+    stat -c '%n %s %y' -- "${files[@]}" 2>/dev/null || stat -f '%N %z %Fm' -- "${files[@]}" 2>/dev/null
 }
 
 unread() {

@@ -402,7 +402,7 @@ ncalls() { wc -l < "$BUSC" | tr -d ' '; }
 printf '0\n' > "$BUSV"
 brun 30 0 "$BROOT"
 c="$(ncalls)"
-[ "$RUN_RC" -eq 0 ] && [ "$c" -le 1 ] && pass "30 idle polls with no bus change start node at most once (got $c)" || fail "idle polls started node $c times, rc=$RUN_RC"
+[ "$RUN_RC" -eq 0 ] && [ "$c" -eq 1 ] && pass "30 idle polls with no bus change start node exactly once (got $c)" || fail "idle polls started node $c times, rc=$RUN_RC"
 
 printf '0\n' > "$BUSV"
 brun 30 0 "$BROOT" bg
