@@ -3285,14 +3285,17 @@ in five shapes:
 - `lang-loop`: a python `while True: pass`, a node `while (true) {}` or
   `for (;;) {}`;
 - `load-tool`: `taskset`, `numactl`, `stress` or `stress-ng` at command
-  position (behind `sudo`, `env`, `nice`, `timeout N` and the like too, and
+  position (after `do`, `then`, `else`, `elif`, `if`, `while`, `until` or
+  `!`, behind `sudo`, `env`, `nice`, `timeout N` and the like too, and
   inside the string of a `bash -c`), as a quoted element of an argv list, or
   as a quoted name followed by a flag; a tool name inside a commit message or
   a grep pattern is not a command and passes;
 - `null-sink`: `yes` redirected to `/dev/null`, `dd` from `/dev/zero` or
   `/dev/random` into `/dev/null`;
-- `script-file`: a `.sh`/`.bash`/`.py`/`.js`/`.mjs`/`.cjs` token naming a text
-  file of at most 1 MiB that git does not track and whose text holds one of
+- `script-file`: a `.sh`/`.bash`/`.py`/`.js`/`.mjs`/`.cjs` token in run
+  position (the command word, or the first operand of `sh`, `bash`, `python`,
+  `node`, `bun`, `deno`, `source` or `.`; a `git add`, `rm` or `cat` operand is
+  not read) naming a text file of at most 1 MiB that git does not track and whose text holds one of
   the shapes above (at most 16 files read; a symlink only when its target is
   inside the cwd). A tracked suite is never read, so a suite that carries a
   loop as payload text keeps running.

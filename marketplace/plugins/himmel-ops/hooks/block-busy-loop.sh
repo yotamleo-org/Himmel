@@ -13,15 +13,17 @@
 #   lang-loop   a python `while True: pass` (or `while 1:`, or `...`), a node
 #               `while (true) {}` or `for (;;) {}`.
 #   load-tool   taskset, numactl, stress or stress-ng at command position (the
-#               start, after ; & | ( ` { or a newline, behind sudo, env, nice,
-#               nohup, exec, command, time, timeout N, a flag or VAR=x), also
+#               start, after ; & | ( ` { or a newline, behind do, then, else,
+#               elif, if, while, until, !, sudo, env, nice, nohup, exec,
+#               command, time, timeout N, a flag or VAR=x), also
 #               inside the quoted string of a `sh -c`/`bash -c`, or as a quoted
 #               element of an argv list (`["taskset", ...]`), or as a quoted
 #               name followed by a flag (`"stress-ng --cpu 4"`).
 #   null-sink   `yes` redirected to /dev/null; `dd` reading /dev/zero or
 #               /dev/random into /dev/null.
-#   script-file an unquoted token ending .sh .bash .py .js .mjs .cjs that names
-#               a regular text file of at most 1 MiB that git does not track,
+#   script-file a token ending .sh .bash .py .js .mjs .cjs in run position (the
+#               command word, or the first operand of sh, bash, python, node,
+#               bun, deno, source or .) that names a regular text file of at most 1 MiB that git does not track,
 #               whose text holds one of the shapes above. A `cd <dir>` earlier
 #               in the command moves the base a relative token resolves from.
 #               At most 16 files are read. A symlink is read only when its one
@@ -72,7 +74,7 @@ BUSY_LOOP_RE='(^|[^[:alnum:]_-])(while|until)[[:space:]][^;]*[;[:space:]]+do[[:s
 PY_LOOP_RE='(^|[^[:alnum:]_])while[[:space:]]+(True|1)[[:space:]]*:[[:space:]]*(pass|\.\.\.)([^[:alnum:]_]|$)'
 JS_WHILE_RE='(^|[^[:alnum:]_])while[[:space:]]*\([[:space:]]*(true|1)[[:space:]]*\)[[:space:]]*(\{[[:space:]]*\}|;)'
 JS_FOR_RE='(^|[^[:alnum:]_])for[[:space:]]*\([[:space:]]*;[[:space:]]*;[[:space:]]*\)[[:space:]]*(\{[[:space:]]*\}|;)'
-CMD_POS="(^|[;&|(\`{${NL}])[[:space:]]*((sudo|env|nice|nohup|exec|command|time|timeout|-[^[:space:]]+|[0-9]+[smhd]?|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*([^[:space:];&|]*/)?"
+CMD_POS="(^|[;&|(\`{${NL}])[[:space:]]*((sudo|env|nice|nohup|exec|command|time|timeout|do|then|else|elif|if|while|until|!|-[^[:space:]]+|[0-9]+[smhd]?|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*([^[:space:];&|]*/)?"
 TOOL_RE="${CMD_POS}(taskset|numactl|stress-ng|stress)([[:space:];&|)]|\$)"
 ARGV_RE="([[,][[:space:]]*['\"](taskset|numactl|stress-ng|stress)['\"]|['\"](taskset|numactl|stress-ng|stress)[[:space:]]+-)"
 SHELL_C_RE='(^|[^[:alnum:]_./-])(ba|z|da|k)?sh[[:space:]]+(-[[:alnum:]]+[[:space:]]+)*-[[:alnum:]]*c[[:space:]]*$'
@@ -163,12 +165,29 @@ if ! match_shapes "$cmd" "$semi_blanked" "$emptied$shell_code"; then
     prev=""
     read_count=0
     set -f
-    for tok in ${run_text//[;&|()<>]/ }; do
+    at_start=1
+    interp=0
+    for tok in ${run_text//[;&|()<>{\}\`$NL]/ ; }; do
         if [ "$prev" = "cd" ]; then
             case $tok in /*) next=$tok ;; *) next=$base/$tok ;; esac
             [ -d "$next" ] && base=$next
         fi
         prev=$tok
+        run_pos=$((at_start + interp))
+        case $tok in
+            ";") at_start=1 interp=0 prev=""
+                continue ;;
+            sudo|env|nice|nohup|exec|command|time|timeout|do|then|else|elif|if|while|until|"!"|[0-9]*|[A-Za-z_]*=*)
+                [ "$at_start" = 1 ] && continue ;;
+            -*) { [ "$at_start" = 1 ] || [ "$interp" = 1 ]; } && continue ;;
+            sh|bash|zsh|dash|ksh|python|python[0-9]*|node|bun|deno|source|.|*/sh|*/bash|*/zsh|*/python*|*/node)
+                if [ "$at_start" = 1 ]; then
+                    at_start=0 interp=1
+                    continue
+                fi ;;
+        esac
+        at_start=0 interp=0
+        [ "$run_pos" -gt 0 ] || continue
         case $tok in *.sh|*.bash|*.py|*.js|*.mjs|*.cjs) ;; *) continue ;; esac
         [ "$read_count" -lt 16 ] || break
         read_count=$((read_count + 1))
