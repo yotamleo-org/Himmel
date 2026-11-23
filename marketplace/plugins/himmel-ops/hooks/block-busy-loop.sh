@@ -194,7 +194,7 @@ if ! match_shapes "$cmd" "$semi_blanked" "$emptied$shell_code"; then
                 continue ;;
             ";") at_start=1 interp=0 prev=""
                 continue ;;
-            -c)
+            -c|-[[:alnum:]]*c)
                 if [ "$interp" = 1 ]; then
                     at_start=1 interp=0
                     continue
