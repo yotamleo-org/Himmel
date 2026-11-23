@@ -2568,8 +2568,6 @@ cmd_next() {
     predecessor_base="$(basename "$predecessor_doc")"
     predecessor_stem="${predecessor_base%.md}"
     CHIEF_BUS_PREDECESSOR="$predecessor_stem"
-    # The predecessor's own chain name is read from its doc name, never from --name, so
-    # `--name <new>-chief` can rename the chain; --name only names the successor.
     if [[ "$predecessor_stem" =~ ^.*-nextleg-[0-9]{4}-[0-9]{2}-[0-9]{2}([A-Z]{1,2})-.+$ ]]; then
         predecessor_letter="${BASH_REMATCH[1]}"
     else
