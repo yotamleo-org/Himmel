@@ -525,7 +525,8 @@ interface ParentState {
  * A follow-up of an open parent in the current version asks for that version;
  * the why states only facts (parent, status, version), plus the parent's
  * remainder when the caller declares it with --remainder. A Done or closed
- * parent asks for none and the why says so. Parent, status and version go in
+ * parent in the current version never reaches here (closedParentPlacement files it
+ * into that version); one that is elsewhere asks for none and the why says so. Parent, status and version go in
  * the request's evidence. Explicit wins: a version, --backlog, --proposed-version or --why
  * keeps its meaning. A parent with no current version, or one that cannot be
  * read, leaves the request as it was (the ticket is filed either way).
@@ -736,7 +737,7 @@ export function registerCreate(program: Command): void {
     )
     .option(
       '--follow-up-of <key>',
-      "File this as a follow-up of <key>: stamps the residual label and links it to <key>. With no version of its own, its INTAKE asks for <key>'s current version (an open parent; a Done parent gets none) and states parent, status and version",
+      "File this as a follow-up of <key>: stamps the residual label and links it to <key>. With no version of its own, its INTAKE asks for <key>'s current version (an open parent; a Done parent in the current unfrozen version is filed into it at its priority) and states parent, status and version",
     )
     .option(
       '--remainder',
