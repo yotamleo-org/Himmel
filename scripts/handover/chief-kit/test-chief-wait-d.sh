@@ -14,6 +14,7 @@
 #
 # Run: bash scripts/handover/chief-kit/test-chief-wait-d.sh
 set -u
+[ "$(uname -s)" = Linux ] || { echo "SKIP: chief-wait.sh is Linux-only"; exit 0; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WAIT="${CHIEF_WAIT:-$HERE/chief-wait.sh}"
 

@@ -387,9 +387,7 @@ _suite_timeout_for() {
       # idle box, 1206s killed at the 600s default under CI load (PR 4733, 1.63x). 2700s is the loaded figure
       # (802 x 1.63 = 1307) x2 (the loaded-budget rule).
       printf '2700' ;;
-    scripts/handover/chief-kit/test-chief-wait.sh|*/scripts/handover/chief-kit/test-chief-wait.sh)
-      printf '1200' ;;
-    scripts/handover/chief-kit/test-chief-wait-b.sh|*/scripts/handover/chief-kit/test-chief-wait-b.sh)
+    scripts/handover/chief-kit/test-chief-wait.sh|scripts/handover/chief-kit/test-chief-wait-[b-e].sh|*/scripts/handover/chief-kit/test-chief-wait.sh|*/scripts/handover/chief-kit/test-chief-wait-[b-e].sh)
       printf '1200' ;;
     scripts/eval/review-panel/test-review-panel.sh|*/scripts/eval/review-panel/test-review-panel.sh)
       # 60 real case repos: 291s local, killed at 2 x 600s on Linux CI (PR 4477
@@ -861,7 +859,7 @@ scripts/vm/test-provenance-roundtrip-dry.sh  # skipped off-Linux only — same f
 scripts/upstreams/test-apply-drift-bump.sh   # skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); same reason as the other off-Linux skips in this list
 scripts/release/test-tarball-vs-clone.sh     # skipped off-Linux only — converge-check.sh's hook-diff walk (scripts/release/converge-check.sh:154) uses GNU find's -printf (absent from BSD/macOS find), documented there as \`# gnu-ok: only ever runs on the Linux guest\` — the tarball converge check is Linux-guest-only by design
 scripts/handover/chief-kit/test-chief-wait.sh    # skipped off-Linux only — chief-wait.sh's own \`# PLATFORM GUARD: the chief kit is Linux-only\` (chief-wait.sh:79), and this suite's bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\` throughout — the chief kit is Linux-only by design; same reason as the other off-Linux skips in this list
-scripts/handover/chief-kit/test-chief-wait-b.sh  # skipped off-Linux only — second half of test-chief-wait.sh above, same chief-kit Linux-only-by-design PLATFORM GUARD (chief-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-chief-wait-b.sh  # skipped off-Linux only — part of test-chief-wait.sh above, same chief-kit Linux-only-by-design PLATFORM GUARD (chief-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; same reason as the other off-Linux skips in this list
 scripts/handover/chief-kit/test-board.sh           # skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (board.mjs:21: \"tick.sh reads pgrep, atq and the konsole launch logs\"); same reason as the other off-Linux skips in this list
 scripts/handover/chief-kit/test-tick.sh            # skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (tick.sh:12-14: \"pgrep, atq, /tmp suite locks, and claudex/konsole\"); same reason as the other off-Linux skips in this list
 scripts/handover/chief-kit/test-tick-fields.sh     # skipped off-Linux only — second half of test-tick.sh above (split at the fails= section so neither half nears the 600 s cap), same chief-kit Linux-only-by-design PLATFORM GUARD and the same tick.sh; both halves source tick-test-fixture.sh, a helper that is not a suite; same reason as the other off-Linux skips in this list
