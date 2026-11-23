@@ -166,6 +166,12 @@ a row is stale when its brief or pr key is Done in the Jira mirror or its PR is 
 gh call, no Jira call. hreg=? when it fails. In chief-wait's action key whole: the value moving wakes once, and
 chief-wait pages each new ask once with its paste-ready grant command (monitors.md). Seam: HOLDS_MIRROR.
 
+relaunch=<none|?|<PR>:<resume doc>[,...]> follows ext-prs= and is ABSENT unless the --doc queue: line holds a HELD
+entry with a trigger and a resume doc (orphan-pr-check.sh --held, the reader orphan-pr-check.sh itself uses).
+Such an entry keeps its PRs out of unowned-prs=; it is listed here once its trigger fired: wake=pr:<n> no longer
+in the open-PR list, wake=done:<KEY> Done in the Jira mirror, wake=file:<path> present. A trailing ? item = a failed PR
+list or mirror read for some entry, never a fired trigger; the fired entries before it still stand. chief-wait.sh wakes `WAKE relaunch-owed <PR> <resume doc>` on it.
+
 focus=<state> sdrift=<n>:<sig8> stale=<n>:<KEY>,... follow wt-ceiling= and are ABSENT unless a
 focus-state file sits beside the console doc and --status does not read skip: focus= is
 focus-refresh.sh --status (FAILED:<stage> or DIRTY:<age>), sdrift= the drift line of the
@@ -2901,6 +2907,12 @@ if [ -n "$cloud_tsv" ] && [ -f "$cloud_tsv" ]; then
         [ $(( $(date +%s) - c_at )) -le "$cloud_window_s" ] && owner_keys="$owner_keys$c_key "
     done < "$cloud_tsv"
 fi
+held_tsv=""
+held_read_failed=""
+if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
+    held_tsv="$(bash "$HERE/orphan-pr-check.sh" --held --doc "$console_doc" 2>/dev/null | awk -F'\t' '$2 != "-" && $3 != "-" && $4 != "-"')" || { held_tsv=""; held_read_failed=1; }  # swallow-ok: a failed read prints relaunch=? below
+fi
+held_names="$(printf '%s\n' "$held_tsv" | awk -F'\t' 'NF { n = split($4, a, ","); for (i = 1; i <= n; i++) print a[i] }')"
 unowned_grace_min="${TICK_UNOWNED_GRACE_MIN:-10}"
 prs=""
 unowned_prs=""
@@ -2916,7 +2928,9 @@ while IFS=$'\t' read -r pr pr_branch pr_draft _ pr_fork pr_updated pr_red pr_hea
     pr_key="$(ticket_key "$pr_branch")"
     if [ -n "$pr_key" ]; then
         case "$owner_keys" in *" $pr_key "*) continue ;; esac
+        if grep -qxF -- "$pr_key" <<< "$held_names"; then continue; fi
     fi
+    if grep -qxF -- "$pr" <<< "$held_names"; then continue; fi
     pr_at="$(date -d "$pr_updated" +%s 2>/dev/null)" || continue  # gnu-ok: Linux-only kit
     pr_age=$(( ($(date +%s) - pr_at) / 60 ))
     [ "$pr_age" -ge "$unowned_grace_min" ] || continue
@@ -2930,6 +2944,30 @@ done <<< "$pr_out"
 [ -n "$ext_prs" ] || ext_prs=none
 # A failed read is not an all-clear: `?` lets the waiter keep its marker instead of counting it as none.
 [ -z "${pr_read_failed:-}" ] || { prs='?'; unowned_prs='?'; ext_prs='?'; }
+relaunch=""
+[ -z "$held_read_failed" ] || relaunch='?'
+if [ -n "$held_tsv" ]; then
+    relaunch_unknown=""
+    open_nums=" $(printf '%s\n' "$pr_out" | cut -f1 | tr '\n' ' ') "
+    while IFS=$'\t' read -r h_subj h_trig h_res _; do
+        [ -n "$h_subj" ] || continue
+        h_fired=""
+        case "$h_trig" in
+            pr:*)
+                if [ -n "${pr_read_failed:-}" ]; then relaunch_unknown=1
+                else case "$open_nums" in *" ${h_trig#pr:} "*) ;; *) h_fired=1 ;; esac
+                fi ;;
+            done:*)
+                h_mirror="$tick_mirror_default/${h_trig#done:}.md"
+                if [ ! -r "$h_mirror" ]; then relaunch_unknown=1
+                elif grep -qx 'statusCategory: "Done"' <<< "$(awk 'NR == 1 { next } $0 == "---" { exit } { print }' "$h_mirror")"; then h_fired=1
+                fi ;;
+            file:*) [ ! -e "${h_trig#file:}" ] || h_fired=1 ;;
+        esac
+        [ -z "$h_fired" ] || relaunch="$(csv_add "$relaunch" "$h_subj:$h_res")"
+    done <<< "$held_tsv"
+    if [ -n "$relaunch_unknown" ]; then relaunch="$(csv_add "$relaunch" '?')"; elif [ -z "$relaunch" ]; then relaunch=none; fi
+fi
 
 # hreg=<live workers with no rows>/<stale rows>/<pending trust-path asks>: the holds register's own
 # state, read from local files by holds.py summary (no gh, no Jira call; the open PRs are the prs= read above).
@@ -4942,6 +4980,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'ci-red issues: %s\n' "$cired_summary"
     printf 'unowned-prs: %s\n' "$unowned_prs"
     printf 'ext-prs: %s\n' "$ext_prs"
+    [ -z "$relaunch" ] || printf 'relaunch: %s\n' "$relaunch"
     [ "$dispatch_summary" = none ] || printf 'dispatch: %s\n' "$dispatch_summary"
     printf 'subscription usage budget: %s\n' "$bank"
     [ -z "$vmspend" ] || printf 'vm spend today: %s\n' "$vmspend"
@@ -5057,6 +5096,7 @@ else
     compact_field prs "$prs"
     compact_field unowned-prs "$unowned_prs"
     compact_field ext-prs "$ext_prs"
+    compact_field relaunch "$relaunch"
     compact_field dispatch "$dispatch_summary"
     compact_field cadence "$cadence_summary"
     compact_field review "$review_summary"

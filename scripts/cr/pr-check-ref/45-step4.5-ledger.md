@@ -165,11 +165,11 @@
    clears.
 
    **A `[pre-existing]` Important is deferred by an amend row, never downgraded.**
-   At rounds 2 and 3, `critic-pre-existing-tag.py` tags an Important finding on code older than the PR
+   On every increment round below the cap (and on a full round 2 or 3), `critic-pre-existing-tag.py` tags an Important finding on code older than the PR
    `[pre-existing]` and sets the ledger field `pre_existing=true` with an amend row
    (`ledger-append.sh amend --set pre_existing=true`). Only that field counts. An Important whose text
    merely says `[pre-existing]` still blocks, a Critical always blocks whatever it carries (I1), and a
-   `[context]` finding, round 1 and round 4+ are never tagged. A line the critic was shown is never
+   `[context]` finding, round 1 and every round past the cap are never tagged. A line the critic was shown is never
    tagged either: one inside any hunk of the reviewed diff, its context lines and the neighbours of a
    deletion included, because the change may have broken it. Leave a tagged Important open (no
    `severity=sug`, no hand-written `agreed` or `fixed`), give it its own class with an amend
