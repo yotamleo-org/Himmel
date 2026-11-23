@@ -19,7 +19,7 @@ import json, os, re, subprocess, sys, tempfile
 
 CONTROL = ["merge-blocked", "token-in-output", "hold-ask-operator", "hold-ask-stuck", "denial-stuck", "config-audit",
            "monitor-chat-down", "chief-reply", "recover-failed", "cadence:security-audit", "cadence:snyk-scan"]
-PIN_PENDING = ["merge-blocked", "token-in-output", "config-audit", "recover-failed"]
+PIN_PENDING = ["merge-blocked", "token-in-output", "recover-failed"]
 NAMED = {"bypass-ask": ("escalate", "scripts/station-ops/bypass-launchd.sh"),
          "bypass-failed": ("escalate", "scripts/station-ops/bypass-launchd.sh"),
          "bypass-result": ("monitor", "scripts/station-ops/bypass-launchd.sh"),
@@ -28,6 +28,8 @@ NAMED = {"bypass-ask": ("escalate", "scripts/station-ops/bypass-launchd.sh"),
          "cadence:graph-key-*": ("escalate", "scripts/graphify/semantic-update.sh")}
 NAMED_PINNED = ["cadence:graph-key-*", "version-approval", "claude-only-clear"]
 METHOD3 = ["vault-stall", "vm-maintain-cadence", "graph-channel-publish", "librarian"]
+REPAIR_VERBS = ["doctor-fix", "rerun:rollup"]
+ESCALATE_TO = ["chief", "operator"]
 FAMILY = re.compile(r"^cadence:[a-z0-9]+-[a-z0-9]+-")
 CALL = re.compile(r"(?:cadence-alert\.sh|\$ALERT|\$alert)[\"']?\s+fail\s+(\S+)")
 EMIT = re.compile(r"cadence-alert\.sh[\"']?\s+fail\s+(\S+)")
@@ -199,6 +201,51 @@ if want("docs"):
         if not re.search(r"^\|\s*`%s`\s*\|\s*%s\s*\|" % (re.escape(r["kind"]), re.escape(r["class"])), text, re.M):
             err("docs", "%s has no table row with class %s in the doc" % (r["kind"], r["class"]))
 
+def on_alert_action(e):
+    nonempty = lambda v: isinstance(v, str) and v.strip() != ""
+    do = e.get("do")
+    if do == "repair":
+        return None if e.get("verb") in REPAIR_VERBS else "verb %s is not in the allow-list %s" % (e.get("verb"), ", ".join(REPAIR_VERBS))
+    if do == "escalate":
+        if e.get("to") not in ESCALATE_TO:
+            return "escalate to %s is not one of %s" % (e.get("to"), ", ".join(ESCALATE_TO))
+        return None if nonempty(e.get("reason")) else "escalate needs a non-empty reason"
+    if do == "info":
+        return None if nonempty(e.get("why")) else "info needs a non-empty why"
+    return "do %s is not repair, escalate or info" % do
+
+
+if want("on-alert"):
+    for r in rows:
+        if r["class"] != "monitor":
+            continue
+        k, oa = r["kind"], r.get("on-alert")
+        if oa is None:
+            err("on-alert", "%s has no on-alert" % k)
+        elif isinstance(oa, dict):
+            if "match" in oa:
+                err("on-alert", "%s: a single on-alert has no match" % k)
+            m = on_alert_action(oa)
+            if m:
+                err("on-alert", "%s: %s" % (k, m))
+        elif isinstance(oa, list) and oa and all(isinstance(e, dict) for e in oa):
+            for i, e in enumerate(oa):
+                if i < len(oa) - 1:
+                    if "match" not in oa[i]:
+                        err("on-alert", "%s: entry %d has no match and is not the last" % (k, i))
+                    else:
+                        try:
+                            re.compile(e["match"])
+                        except (re.error, TypeError):
+                            err("on-alert", "%s: entry %d match %r is not a regex" % (k, i, e["match"]))
+                m = on_alert_action(e)
+                if m:
+                    err("on-alert", "%s: entry %d: %s" % (k, i, m))
+            if "match" in oa[-1]:
+                err("on-alert", "%s: the list has no fallback (its last entry has a match)" % k)
+        else:
+            err("on-alert", "%s: on-alert is neither one entry nor a non-empty list of entries" % k)
+
 print("\n".join(errs))
 sys.exit(1 if errs else 0)
 PY
@@ -351,6 +398,16 @@ grep -v '^| `merge-blocked` ' "$DOC" > "$T/doc-no-row.md"
 lint_dirty "a doc copy with a kind's row removed fails the lint naming the kind" "merge-blocked has no table row" --table "$TABLE" --only docs --doc "$T/doc-no-row.md"
 sed 's/^| `token-in-output` | escalate |/| `token-in-output` | monitor |/' "$DOC" > "$T/doc-wrong-class.md"
 lint_dirty "a doc row with the wrong class fails the lint" "token-in-output has no table row with class escalate" --table "$TABLE" --only docs --doc "$T/doc-wrong-class.md"
+
+lint_clean "W1: every monitor row carries one valid on-alert" --table "$TABLE" --only on-alert
+mut "$T/oa-none.json" '[r.pop("on-alert", None) for r in t["kinds"] if r["kind"]=="cadence:rollup"]'
+lint_dirty "W1: a monitor row with no on-alert fails the lint" "cadence:rollup has no on-alert" --table "$T/oa-none.json" --only on-alert
+mut "$T/oa-noreason.json" '[r.update({"on-alert":{"do":"escalate","to":"chief","reason":""}}) for r in t["kinds"] if r["kind"]=="cadence:ledger-drift"]'
+lint_dirty "W1: an escalate with an empty reason fails the lint" "cadence:ledger-drift: escalate needs a non-empty reason" --table "$T/oa-noreason.json" --only on-alert
+mut "$T/oa-verb.json" '[r.update({"on-alert":{"do":"repair","verb":"rerun:pipeline"}}) for r in t["kinds"] if r["kind"]=="cadence:rollup"]'
+lint_dirty "W1: a repair verb outside the allow-list fails the lint" "cadence:rollup: verb rerun:pipeline is not in the allow-list" --table "$T/oa-verb.json" --only on-alert
+mut "$T/oa-nofallback.json" '[r.update({"on-alert":[{"match":"^C1-guardrail$","do":"repair","verb":"doctor-fix"}]}) for r in t["kinds"] if r["kind"]=="cadence:himmel-doctor"]'
+lint_dirty "W1: a list with no fallback fails the lint" "cadence:himmel-doctor: the list has no fallback" --table "$T/oa-nofallback.json" --only on-alert
 
 lint_clean "the whole lint passes on the real table" --table "$TABLE" --emitters-file "$T/emitters" --doc "$DOC"
 

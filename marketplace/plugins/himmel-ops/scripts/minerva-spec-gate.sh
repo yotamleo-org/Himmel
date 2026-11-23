@@ -8,6 +8,11 @@
 #      `## Approaches`, the name superpowers 7.x brainstorming writes, counts.
 #   3. a `## Definition of done` section with at least one line.
 # Every missing item is named on stderr (all of them, not just the first).
+# It then runs `bun scripts/telegram/chief-route.ts sign-shape <spec> [--plan
+# <plan>]` from the himmel checkout ($HIMMEL_REPO, else the one holding this
+# script), the plan being the spec's front-matter `plan:` path. Only its exit 3
+# refuses (its SIGN-SHAPE REFUSED lines are printed); when it cannot run, the
+# gate prints `NOTE: sign-shape not run (<why>)` and does not refuse.
 # bash 3.2-safe; needs python3 (the same dependency as effort-assess).
 #
 # minerva-spec-gate.sh <spec.md> --readiness MANIFEST --source-head SHA — the
@@ -320,8 +325,44 @@ section_has_body 'Alternatives considered' || section_has_body 'Approaches' \
   || add "alternatives: no '## Alternatives considered' (or brainstorming's '## Approaches') section with content"
 section_has_body 'Definition of done' || add "definition of done: no '## Definition of done' section with content"
 
-if [ -n "$missing" ]; then
-  printf 'minerva-spec-gate: REFUSED — do not start the spec critic. Missing:\n%s' "$missing" >&2
+sign_shape_checkout(){
+  local d
+  case "${HIMMEL_REPO:-}" in /*) [ -f "$HIMMEL_REPO/scripts/telegram/chief-route.ts" ] && { printf '%s' "$HIMMEL_REPO"; return; };; esac
+  d="$(cd "$(dirname "$0")" && pwd -P)"
+  while [ -n "$d" ] && [ "$d" != "/" ]; do
+    [ -f "$d/scripts/telegram/chief-route.ts" ] && { printf '%s' "$d"; return; }
+    d="$(dirname "$d")"
+  done
+}
+
+shape=""
+repo="$(sign_shape_checkout)"
+if [ -z "$repo" ]; then
+  echo "NOTE: sign-shape not run (no himmel checkout with scripts/telegram/chief-route.ts)" >&2
+elif ! command -v bun >/dev/null 2>&1; then
+  echo "NOTE: sign-shape not run (bun not found)" >&2
+else
+  set -- "$spec"
+  planref="$(awk 'NR == 1 && $0 != "---" { exit } NR > 1 && $0 == "---" { exit } NR > 1 && /^plan:[[:space:]]/ { sub(/^plan:[[:space:]]+/, ""); sub(/[[:space:]]+\(.*$/, ""); gsub(/`/, ""); print; exit }' "$spec")"
+  if [ -n "$planref" ]; then
+    sdir="$(dirname "$spec")"
+    for cand in "$planref" "$sdir/$planref" "$sdir/../../$planref"; do
+      case "$cand" in /*|"$sdir"/*) [ -f "$cand" ] && { set -- "$spec" --plan "$cand"; break; };; esac
+    done
+    [ "$#" -eq 1 ] && echo "NOTE: the plan $planref was not found; sign-shape read the spec only" >&2
+  fi
+  shape="$(bun "$repo/scripts/telegram/chief-route.ts" sign-shape "$@" 2>&1)"; rc=$?
+  if [ "$rc" -eq 3 ] && printf '%s\n' "$shape" | grep -q '^SIGN-SHAPE REFUSED: '; then
+    shape="$(printf '%s\n' "$shape" | grep '^SIGN-SHAPE REFUSED: ')"
+  else
+    [ "$rc" -eq 0 ] || echo "NOTE: sign-shape not run (exit $rc: $(printf '%s' "$shape" | head -n 1))" >&2
+    shape=""
+  fi
+fi
+
+if [ -n "$missing" ] || [ -n "$shape" ]; then
+  [ -z "$missing" ] || printf 'minerva-spec-gate: REFUSED — do not start the spec critic. Missing:\n%s' "$missing" >&2
+  [ -z "$shape" ] || printf 'minerva-spec-gate: REFUSED — the spec signer cannot read this shape; fix it before the critic:\n%s\n' "$shape" >&2
   exit 1
 fi
 echo "minerva-spec-gate: ok"

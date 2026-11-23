@@ -247,6 +247,14 @@ describe('jira release', () => {
     await expect(run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt')))
       .rejects.toThrow(/chief-spawned worker/);
   });
+
+  it('reviewed is refused inside a chief-spawned worker and needs exactly one of --ruling and --through', async () => {
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '1');
+    await expect(run('reviewed', 'R1', '--ruling', 'R-R1-0001', '--reason', 'checked')).rejects.toThrow(/chief-spawned worker/);
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+    await expect(run('reviewed', 'R1', '--reason', 'checked')).rejects.toThrow(/exactly one of --ruling and --through/);
+    await expect(run('reviewed', 'R1', '--ruling', 'R-R1-0001', '--through', 'R-R1-0002', '--reason', 'checked')).rejects.toThrow(/exactly one of --ruling and --through/);
+  });
 });
 
 describe('jira release rm-run', () => {

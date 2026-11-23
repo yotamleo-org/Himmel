@@ -243,7 +243,10 @@ A refusal is final for that attempt: do not edit the return, write the index by 
 section, then run `bash "$S/minerva-spec-gate.sh" <spec-file>`. A non-zero exit
 means the spec lacks the estimate record, alternatives or definition of done:
 it names what is missing — fix the spec (back to 1a/1b), re-run the gate, and
-only dispatch the critic once it prints `ok`. Never skip it, and in `autonomous`
+only dispatch the critic once it prints `ok`. The gate also runs `sign-shape`: a
+`SIGN-SHAPE REFUSED` line names a tickets line or a residual line the signer
+cannot read. Re-run the gate before every re-critic, after you write that round's
+dispositions. Never skip it, and in `autonomous`
 mode the gate still applies (the answers go to ASSUMPTIONS, the record path stays
 in the spec). The critic reads the estimate record and may challenge sigma.
 
@@ -372,8 +375,12 @@ critic did not end with that line, append it yourself (`<count>` = the findings
 in the return). Never edit the critic's text. `jira release operator spec`
 signs the spec with the last round's file and hashes it. It refuses a last line
 in any other form. The normal `FINDINGS` path requires the spec's
-`## Critic rounds` section to give each residual a
-`- R<n>: fixed|ASSUMPTION|ceiling|deferred → HIMMEL-<n>` line. If that check fails
+`## Critic rounds` section to give each residual one line that names the round
+and the finding id as the critic wrote it:
+`- R<round>-<id>: fixed|ASSUMPTION|ceiling|deferred → HIMMEL-<n>`, for example
+`- R3-F27: deferred → HIMMEL-<n>`. Use `P` for a plan finding (`- P3-P17: fixed`),
+and write one id per line; a line listing several ids is refused. Advisory panel
+rows are not critic findings: write them as `- advisory <id>: <disposition>`. If that check fails
 on frozen capped artifacts, the frozen nonblocking carry route below may apply.
 
 **Seal each return to the bytes the critic read.** Straight after saving a return,
@@ -590,7 +597,10 @@ from the target repo before any hand-off. A non-zero exit names each gap:
 - a missing or ungrepped Fact ownership row → back to the spec (1b);
 - an invariant with no named test → back to the plan (Stage 3).
 
-Do not hand off until it prints `ok`, in either mode.
+Do not hand off until it prints `ok`, in either mode. After the last
+dispositions are written, re-run the gate on the spec too: `bash
+"$S/minerva-spec-gate.sh" <spec-file>`, so a residual line the signer cannot
+read is fixed before the signing.
 
 - If mode is `autonomous` (Stage 0) **AND** the output contains `execute`: do NOT
   stop — **invoke `lean-skills:subagent-driven-development`** on the hardened plan

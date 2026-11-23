@@ -2678,6 +2678,48 @@ A_API_KEY = \"$c97_dummy\""
 fi
 rm -rf "$c97_t"
 
+c98_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c98.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+c98_b="$c98_t/root/u/himmel"
+mkdir -p "$c98_b" "$c98_t/home" "$c98_t/claude" "$c98_t/proc"
+# shellcheck disable=SC2016
+printf '#!/usr/bin/env bash\nls "$CLAUDE_SESSIONS_PROC"\n' > "$c98_t/pgrep"; chmod +x "$c98_t/pgrep"
+c98_session() { mkdir -p "$c98_t/proc/$1"; printf 'claude\0-n\0%s\0' "$2" > "$c98_t/proc/$1/cmdline"; }
+c98_doc() {
+    local e
+    e=$(( $(date +%s) - $4 * 60 ))
+    printf '%s\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE x\n- 09:30 %s x\n' "$2" "$3" > "$c98_b/$1.md"
+    touch -t "$(date -d "@$e" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$e" +%Y%m%d%H%M.%S)" "$c98_b/$1.md"
+}
+c98_run() { HIMMEL_DOCTOR_WRAPPED_MIN=15 HANDOVER_DIR="$c98_t/root" HIMMEL_BUCKET_DIR="$c98_b" HOME="$c98_t/home" CLAUDE_DIR="$c98_t/claude" \
+    CLAUDE_SESSIONS_PROC="$c98_t/proc" CLAUDE_SESSIONS_PGREP="$c98_t/pgrep" bash "$DOC" --root "$REPO_ROOT" --no-color --only C98 2>&1; }
+echo "== C98: a wrapped, lock-free worker and chief still open 20 min later -> WARN naming each =="
+c98_doc W1 '# T-1 — a wrapped worker — worker W1' WRAPPED 20
+c98_doc AR '# AR — CHIEF — successor to AQ.md (fill signal 45 %)' WRAPPED 20
+c98_doc T-5-N5-task-2026-11-20 '# T-5 — a dated doc run under its undated session name — worker N5' WRAPPED 20
+c98_session 301 W1-r2; c98_session 302 AR; c98_session 303 T-5-N5-task
+out="$(c98_run)"
+if grepq "$out" -F 'WARN C98-wrapped-window' && grepq "$out" -F 'W1 (worker)' && grepq "$out" -F 'AR (chief)' && grepq "$out" -F 'T-5-N5-task-2026-11-20 (worker)' && grepq "$out" -F 'close-wrapped-worker.sh --check'; then pass "C98 WARN names each lingering wrapped window, a dated doc under its undated session name too"; else fail "C98 lingering -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C98: control: working, freshly wrapped and session-less docs -> OK =="
+rm -f "$c98_b/T-5-N5-task-2026-11-20.md"
+c98_doc W1 '# T-1 — a working worker — worker W1' LIVE 20
+c98_doc AR '# AR — CHIEF — successor to AQ.md (fill signal 45 %)' WRAPPED 5
+c98_doc Z1 '# T-3 — a wrapped worker whose window is gone — worker Z1' WRAPPED 20
+out="$(c98_run)"
+if grepq "$out" -F 'OK   C98-wrapped-window' && ! grepq "$out" -E '(WARN|INFO) C98'; then pass "C98 OK with no lingering wrapped window"; else fail "C98 control -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C98: an aged doc of a live session that cannot be read is INFO, never OK =="
+c98_doc U1 '# T-6 — an unreadable wrapped worker — worker U1' WRAPPED 20
+c98_session 304 U1; chmod 000 "$c98_b/U1.md"
+out="$(c98_run)"
+chmod 644 "$c98_b/U1.md"; rm -rf "$c98_t/proc/304"
+if [ "$(id -u)" = 0 ]; then pass "C98 unreadable doc -> skipped as root (chmod does not block root)"
+elif grepq "$out" -F 'INFO C98-wrapped-window' && grepq "$out" -F 'U1' && ! grepq "$out" -E '(OK  |WARN) C98'; then pass "C98 INFO names an unreadable doc"; else fail "C98 unreadable doc -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C98: a census that exits 3 with no rows is INFO, never OK =="
+printf '#!/usr/bin/env bash\nexit 3\n' > "$c98_t/pgrep3"; chmod +x "$c98_t/pgrep3"
+out="$(HIMMEL_DOCTOR_WRAPPED_MIN=15 HANDOVER_DIR="$c98_t/root" HIMMEL_BUCKET_DIR="$c98_b" HOME="$c98_t/home" CLAUDE_DIR="$c98_t/claude" \
+    CLAUDE_SESSIONS_PROC="$c98_t/proc" CLAUDE_SESSIONS_PGREP="$c98_t/pgrep3" bash "$DOC" --root "$REPO_ROOT" --no-color --only C98 2>&1)"
+if grepq "$out" -F 'INFO C98-wrapped-window' && ! grepq "$out" -E '(OK  |WARN) C98'; then pass "C98 INFO on a failed census"; else fail "C98 census rc 3 -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c98_t"
+
 printed_keys() {
     awk '/^[[:space:]]*#/ { next }
     {

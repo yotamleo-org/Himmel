@@ -114,8 +114,10 @@
   "requests": {
     "open": [],
     "claimed": [],
-    "oldest_open": null
+    "oldest_open": null,
+    "pending_keys": []
   },
+  "current": "v1",
   "heads": {
     "rulings": "",
     "operator": "",
@@ -123,6 +125,9 @@
     "requests": "",
     "mirror": null
   },
+  "priority_review": [],
+  "chief_placements": [],
+  "asks_apart": [],
   "refused_asks": [
     {
       "key": "ABC-2",

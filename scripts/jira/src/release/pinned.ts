@@ -360,6 +360,56 @@ export function declaredTickets(specText: string): string[] | null {
   return keys;
 }
 
+export const FINDING_ID = '[A-Za-z][\\w.-]*';
+export const FINDING_LINE = new RegExp(`^[-*] \\*\\*(${FINDING_ID})\\*\\* \\(([^)]*)\\)`);
+export const FINDING_SEVERITIES = ['major', 'medium', 'minor'] as const;
+export const findingTags = (parenthetical: string): string[] => parenthetical.replace(/`[^`]*(`|$)/g, '').split(';').map(s => s.trim());
+
+export function findingIds(text: string): string[] {
+  const ids: string[] = [];
+  for (const line of text.split('\n')) {
+    const m = FINDING_LINE.exec(line);
+    if (!m || !(FINDING_SEVERITIES as readonly string[]).includes(findingTags(m[2])[0])) continue;
+    if (ids.includes(m[1])) throw new Error(`duplicate ${m[1]}`);
+    ids.push(m[1]);
+  }
+  return ids;
+}
+
+const DISPOSITION_WORD = '(?:fixed|ASSUMPTION|ceiling|ponytail|deferred)';
+const LEGACY_LINE = /^\s*[-*]\s+R(\d+):\s+(fixed|ASSUMPTION|ceiling|ponytail|deferred → HIMMEL-\d+)\b/;
+const QUALIFIED_LINE = new RegExp(`^\\s*[-*]\\s+([RP])(\\d+)[- ](${FINDING_ID}):\\s+(?:fixed|ASSUMPTION|ceiling|ponytail|deferred (?:→|->) HIMMEL-\\d+)\\b`);
+const ID_LIST_LINE = new RegExp(`^\\s*[-*]\\s+R\\d+:\\s+(?=[A-Za-z][\\w.-]*\\d)${FINDING_ID}(?:\\s*,\\s*(?:${FINDING_ID}|\\d+))*\\s+${DISPOSITION_WORD}\\b`);
+const NEAR_MISS_LINE = new RegExp(`^\\s*[-*]\\s+([RP])(\\d+)[- ][^\\s:]+:\\s*${DISPOSITION_WORD}\\b`);
+
+export function criticRounds(specText: string): string[] {
+  const lines = specText.split('\n');
+  const start = lines.findIndex((l) => /^##\s+critic rounds\s*$/i.test(l));
+  if (start < 0) return [];
+  const end = lines.slice(start + 1).findIndex((l) => /^##?\s/.test(l));
+  return lines.slice(start + 1, end < 0 ? lines.length : start + 1 + end);
+}
+
+export type QualifiedResidual ={ kind: Kind; round: number; id: string; line: string };
+export type ResidualLines = { legacy: Set<number>; qualified: QualifiedResidual[]; idList: string[]; nearMiss: string[] };
+
+export function parseResidualLines(section: readonly string[]): ResidualLines {
+  const out: ResidualLines = { legacy: new Set(), qualified: [], idList: [], nearMiss: [] };
+  const heads: { kind: Kind; round: number; line: string }[] = [];
+  for (const line of section) {
+    const q = QUALIFIED_LINE.exec(line);
+    const legacy = q ? null : LEGACY_LINE.exec(line);
+    const near = q || legacy ? null : NEAR_MISS_LINE.exec(line);
+    if (q) out.qualified.push({ kind: q[1] === 'R' ? 'spec' : 'plan', round: Number(q[2]), id: q[3], line });
+    else if (legacy) out.legacy.add(Number(legacy[1]));
+    else if (ID_LIST_LINE.test(line)) out.idList.push(line);
+    else if (near) heads.push({ kind: near[1] === 'R' ? 'spec' : 'plan', round: Number(near[2]), line });
+  }
+  const top = (kind: Kind) => Math.max(-1, ...out.qualified.filter(q => q.kind === kind).map(q => q.round));
+  out.nearMiss = heads.filter(h => h.round === top(h.kind)).map(h => h.line);
+  return out;
+}
+
 const REVIEWED = /^Reviewed: spec ([0-9a-f]{64})\b/gm;
 
 export function reviewedSpecHashes(text: string): string[] {

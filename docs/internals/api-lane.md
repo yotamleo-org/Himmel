@@ -1,7 +1,7 @@
 # The API lane: failure alert and subscription fallback
 
 `scripts/api-lane/claude-api.sh` runs one print-mode `claude` call billed to an
-API account (`HIMMEL_API_ACCOUNT=A|B|C|D|auto`; auto only for the himmel graph pass, or a kind the role map maps) instead of the subscription. It is
+API account (`HIMMEL_API_ACCOUNT=A|B|C|D|auto`; auto only from the himmel repo; any kind, by the role map or the default order) instead of the subscription. It is
 OFF unless the launching shell sets `HIMMEL_API_LANE=on`. This page covers what
 happens when a call on it fails. The launcher's header lists the
 full argument and environment contract.
@@ -213,11 +213,11 @@ Wherever an output names an account's key, it shows only the key's last 4 charac
 `api-credit-state.mjs accounts` listing (its `key` field), the config UI's account table, doctor C92 and the lane's
 key-id and key-rejected lines. An account with no readable key file shows `key: none`. Nothing prints more of a key.
 
-Auto routing is off for every call except the himmel semantic graph pass. `HIMMEL_API_ACCOUNT=auto` is accepted
-only with `HIMMEL_API_KIND=graphify` (or a kind the role map maps, see below) and a caller whose git common dir is the launcher's own checkout. For the
+Auto routing is for the himmel repo only. `HIMMEL_API_ACCOUNT=auto` is accepted for any kind (the role map or the
+default order picks the accounts, see below) and a caller whose git common dir is the launcher's own checkout. For the
 graph pass, `semantic-update.sh` judges the corpus repo once, before any pick, in both the batch and the synchronous
 path (the shim runs the lane from a scratch directory, so it hands the judged repo over in
-`HIMMEL_API_AUTO_REPO_DIR`). Any other kind, or a graph pass over another repo (the luna graph map), exits 2 before
+`HIMMEL_API_AUTO_REPO_DIR`). A call from another repo (the luna graph map), exits 2 before
 any spawn or batch submit, with no subscription fallback. Naming the account (`HIMMEL_API_ACCOUNT=A`, `B`, `C` or
 `D`) works for every kind and every repo, judge, critic, bulk and cull included.
 
@@ -237,15 +237,16 @@ secret, only role names and account letters:
 
 - **Known roles** are the `ROLES` export of `scripts/lib/api-roles.mjs`, the one owner of reading, validating and
   writing the file: `graphify`, `judge` and `critic`. `probe` and `other` are never roles. Critics route on auto
-  through the role map (operator decision 1066): a PR critic on auto uses the accounts its `critic` entry names, and
-  with no entry it is refused like any other unmapped kind.
-- **No map means the default.** With no file, the graph pass uses every configured account and every other kind is
-  refused (exit 2, no alert, no fallback). A role with no entry gets the same default.
+  through the role map (operator decision 1066): a PR critic on auto uses the accounts its `critic` entry names.
+- **No entry means the default order (decision 1185).** Under auto, a kind with no role entry, a missing file, or a
+  kind outside `ROLES` is served from every configured account in the default order, the order the judge uses; the
+  critic is served this way, from a temp directory too (`critic-first-pass.sh` passes `HIMMEL_API_AUTO_REPO_DIR`, the
+  launcher's own repo, so the same-repo check holds). Only a broken map refuses (`walk <kind>` exit 3, no alert, no
+  fallback), and a critic call never takes the subscription fallback.
 - **Four states.** `absent` (no file): the default. `valid`: the map. `partial` (the file parses but an entry has an
   error): the live entries apply, each ignored role falls back to the default. `invalid` (not JSON, `version` is not 1
-  or `roles` is not an object): the whole file is ignored and the default applies, with `invalid-role-map:<reason>`.
-  For every kind but the graph walk a broken map only takes away widening; it never refuses what the default allows
-  and never touches `config.json`. The graph walk refuses instead, see below.
+  or `roles` is not an object): the whole file is ignored and every auto call refuses (`walk <kind>` exit 3, `invalid-role-map:<reason>`); fix or
+  remove the file. A broken map never touches `config.json`; the graph walk's refusal is described below.
 - **Dropped letters.** An unknown role (`unknown-role:<name>`) is ignored. An unknown letter in a list
   (`unknown-account:<role>:<letter>`) is dropped and the entry stays live with the rest: `judge: ["B", "E"]` routes
   to B. An empty or non-array list (`empty-role:<role>`) is ignored. A duplicate letter is deduped silently. A known

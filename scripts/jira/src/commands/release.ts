@@ -21,12 +21,12 @@ import { checkConsoleOverride } from './intake-gate.js';
 import { attemptLaunch, repairStateOf } from '../release/repair-state.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
+import { coreCheckBatch, coreGroupLines, loadCoreInputs } from './core-check.js';
 import {
-  ack, apply, bucketCheck, chainFault, clearProposedLabels, coreBypass, coreSnapshot, coveringRecord, declare, decisionWords, fold, freeze, operatorFence, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, reopen, request as releaseRequest, requestOnRecord, requestWithWords, rmRun, rmRunSummary, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
+  ack, apply, bucketCheck, chainFault, clearProposedLabels, coreBypass, coreSnapshot, coveringRecord, declare, decisionWords, fold, freeze, operatorFence, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, reopen, request as releaseRequest, requestOnRecord, requestWithWords, reviewed, rmRun, rmRunSummary, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
   type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
-import { coreMatch, expandPaths, loadCorePatterns, sizeGuard } from '../release/core.js';
 import { releaseDir, releaseKeyPath, releaseRoot } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
 import type { VersionLines } from '../release/lines.js';
@@ -715,7 +715,7 @@ async function admissionBudgets(versions: string[]): Promise<Record<string, numb
   return out;
 }
 
-const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'core-check', 'bucket-check']);
+const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'core-check', 'core-check-batch', 'bucket-check']);
 
 /** Each repair read carries its own deadline: the fetch has none, so a hung read must end the run, not hang it. */
 export const REPAIR_READ_DEADLINE_MS = 5000;
@@ -851,18 +851,18 @@ export function registerRelease(program: Command): void {
       if (o.changeClass !== undefined && o.changeClass !== 'rename' && o.changeClass !== 'bulk') {
         throw new Error('release core-check: --change-class is rename or bulk');
       }
-      const patterns = loadCorePatterns(o.corePaths ?? join(repoRoot, 'scripts', 'ci', 'core-paths.txt'));
-      const tracked = execFileSync('git', ['ls-files'], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-        .split('\n').filter(Boolean);
-      const guard = sizeGuard(patterns, tracked, o.widenReason);
-      if (guard.line) console.log(guard.line);
-      const paths = expandPaths(list(o.paths), tracked);
-      const mirror = o.mirror ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null);
-      const records = [...readOperatorRecords('core-bypass'), ...readOperatorRecords('core-snapshot')]
-        .sort((a, b) => a.ts.localeCompare(b.ts));
-      const issues = mirror ? readMirrorFilesUnverified(mirror).issues : null;
-      for (const l of coreMatch(paths, o.key, { patterns, changeClass: o.changeClass, docsOnly: !!o.docsOnly, issues, records })) console.log(l);
+      const inputs = loadCoreInputs(o);
+      if (inputs.guardLine) console.log(inputs.guardLine);
+      for (const l of coreGroupLines(inputs, o.paths, o.key, { changeClass: o.changeClass, docsOnly: o.docsOnly })) console.log(l);
     });
+
+  rel.command('core-check-batch <file>')
+    .description('core-check for many groups in one process: <file> is a JSON list of {"paths": "<the --paths string>", "keys": [...]}; '
+      + 'prints an optional CORE-PATHS-WIDE line, then per group "== <n>" and that group\'s core-check lines; any fault prints nothing and exits 1')
+    .option('--core-paths <file>', 'Core list (default: scripts/ci/core-paths.txt of this checkout)')
+    .option('--widen-reason <why>', 'Let a core list matching more than 2 % of tracked files proceed, with this reason on the record')
+    .option('--mirror <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror); a key with no mirror file is UNKNOWN')
+    .action((file: string, o: { corePaths?: string; widenReason?: string; mirror?: string }) => coreCheckBatch(file, o));
 
   rel.command('repair <release>')
     .description('Classify every Fix Version mismatch into one lane and print the plan as JSON; a dry run writes nothing, --apply files, folds and writes the held file (the chief)')
@@ -994,6 +994,17 @@ export function registerRelease(program: Command): void {
     .action((release: string, o: { ruling: string; reason: string; mirrorRoot?: string }) => {
       const e = ack(ctxFor(release, o.mirrorRoot), { ruling: o.ruling, reason: o.reason });
       console.log(`ACK ${e.key}@${e.ruling}: ${e.reason}`);
+    });
+
+  rel.command('reviewed <release>')
+    .description('Clear an entry of the priority review, chief placements or asks apart: one signed events row (the chief)')
+    .option('--ruling <id>', 'The listed ruling (R-<R>-NNNN) to clear')
+    .option('--through <id>', 'Clear every entry of that ruling\'s own list up to and including it')
+    .requiredOption('--reason <text>', 'What you checked or relayed')
+    .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
+    .action((release: string, o: { ruling?: string; through?: string; reason: string; mirrorRoot?: string }) => {
+      const e = reviewed(ctxFor(release, o.mirrorRoot), { ruling: o.ruling, through: o.through, reason: o.reason });
+      console.log(`REVIEWED ${e.key}@${e.ruling}${e.through === undefined ? '' : ' (through)'}: ${e.reason}`);
     });
 
   rel.command('rm-run <release>')

@@ -698,7 +698,7 @@ mkdir -p "$TMP/node-only"
 ln -sf "$(PATH="${PATH#"$BIN":}" command -v node)" "$TMP/node-only/node"
 as_session env PATH="$TMP/node-only:$PATH" "${CA_ALERT[@]}" >/dev/null 2>&1
 eq "CAS2 a real session's config alert sends its Telegram message" "$(calls bun)" 1
-has "CAS2 the sender is told the operator chat" "$REC" "reply 12345"
+has "CAS2 the sender is told the operator chat" "$REC" "reply --kind config-audit 12345"
 
 # JP rows: release apply, release rm-run and jira create post to Jira.
 if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; then

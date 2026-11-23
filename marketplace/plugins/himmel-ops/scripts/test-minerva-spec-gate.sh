@@ -77,4 +77,52 @@ expect_refuse "empty ## Approaches" "alternatives" "$td/empty-approaches.md"
 mkspec_raw "$td/approaches-considered.md" "## Approaches considered" "## Definition of done"
 expect_refuse "prefix-only ## Approaches heading" "alternatives" "$td/approaches-considered.md"
 
+repo="$(cd "$here/../../../.." && pwd)"; export HIMMEL_REPO="$repo"
+if ! command -v bun >/dev/null 2>&1 || [ ! -f "$repo/scripts/telegram/chief-route.ts" ]; then
+  echo "SKIP: sign-shape rows need bun and chief-route.ts"; exit 1
+fi
+mkshape(){
+  local f="$1" fm="$2"; shift 2
+  { [ "$fm" = "-" ] || printf -- '---\n%s\n---\n' "$fm"
+    echo "# Spec"; echo; echo "Estimate record: $td/est.json"; echo
+    echo "## Alternatives considered"; echo "1. keep it"; echo
+    echo "## Definition of done"; echo "- the gate runs sign-shape"; echo
+    echo "## Critic rounds"; echo
+    for l in "$@"; do echo "$l"; done; echo
+    echo "## Next"; echo "- none"
+  } >"$f"
+}
+expect_shape_refuse(){
+  local out rc label="$1" needle="$2" spec="$3"; shift 3
+  out="$(env "$@" bash "$gate" "$spec" 2>&1)"; rc=$?
+  [ "$rc" -ne 0 ] && ok "$label: non-zero exit" || bad "$label: expected non-zero exit"
+  case "$out" in *"SIGN-SHAPE REFUSED"*"$needle"*) ok "$label: names $needle";; *) bad "$label: output lacks a SIGN-SHAPE REFUSED line with [$needle]: $out";; esac
+  case "$out" in *"NOTE: sign-shape not run"*) bad "$label: refused without running sign-shape";; esac
+}
+mkshape "$td/HIMMEL-1-g1.md" "tickets: HIMMEL-1" "- R1: F1, F2 fixed"
+expect_shape_refuse "G-R1 id-list line" "R1: F1, F2 fixed" "$td/HIMMEL-1-g1.md"
+rel=HIMMEL-2
+mkshape "$td/HIMMEL-1-g2.md" "tickets: HIMMEL-1 (Relates: $rel)" "- R1-F1: fixed"
+expect_shape_refuse "G-R2 key-shaped tickets annotation" "tickets line" "$td/HIMMEL-1-g2.md"
+mkshape "$td/HIMMEL-1-g3.md" "tickets: HIMMEL-1" "- R1-F1: fixed"; g3="$td/HIMMEL-1-g3.md"
+out="$(bash "$gate" "$g3" 2>&1)" && ok "G-R3 bare tickets line and a qualified line pass" || bad "G-R3 should pass: $out"
+out_dir="$td/outside"; mkdir -p "$out_dir/empty" "$out_dir/stub/scripts/telegram" "$out_dir/stub/scripts/lib"
+cp "$gate" "$out_dir/gate.sh"
+out="$(HIMMEL_REPO="$out_dir/empty" bash "$out_dir/gate.sh" "$g3" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && case "$out" in *"NOTE: sign-shape not run"*) true;; *) false;; esac \
+  && ok "G-R4 no checkout: NOTE and pass" || bad "G-R4 expected a NOTE and exit 0 (rc=$rc): $out"
+printf '%s\n' 'console.error("usage: bun chief-route.ts <verb>"); process.exit(1);' >"$out_dir/stub/scripts/telegram/chief-route.ts"
+: >"$out_dir/stub/scripts/lib/initiative-workers.sh"
+out="$(HIMMEL_REPO="$out_dir/stub" bash "$out_dir/gate.sh" "$g3" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && case "$out" in *"NOTE: sign-shape not run"*) true;; *) false;; esac \
+  && ok "G-R5 verb absent: NOTE and pass" || bad "G-R5 expected a NOTE and exit 0 (rc=$rc): $out"
+mkdir -p "$td/specs/plans"; printf -- '---\ntickets: HIMMEL-1 (Relates: HIMMEL-2)\n---\n# Plan\n' >"$td/specs/plans/HIMMEL-1-plan.md"
+mkshape "$td/HIMMEL-1-g6.md" "tickets: HIMMEL-1
+plan: specs/plans/HIMMEL-1-plan.md (r2)" "- R1-F1: fixed"
+expect_shape_refuse "G-R6 the named plan's tickets line" "HIMMEL-1-plan.md" "$td/HIMMEL-1-g6.md"
+{ printf -- '---\ntickets: HIMMEL-1\n---\nKey: HIMMEL-2\n'; sed 1,3d "$td/HIMMEL-1-g3.md"; } >"$td/HIMMEL-1-g7.md"
+expect_shape_refuse "G-R7 Key header disagrees with tickets" "HIMMEL-1-g7.md" "$td/HIMMEL-1-g7.md"
+mkshape "$td/HIMMEL-1-g8.md" "tickets: HIMMEL-1" "- R1-F1: fixed" "- R1-F1x: deferred → later"
+expect_shape_refuse "G-R8 near-miss at the highest round" "R1-F1x: deferred → later" "$td/HIMMEL-1-g8.md"
+
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

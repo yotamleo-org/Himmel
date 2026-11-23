@@ -4472,7 +4472,7 @@ test("capped fold requires Key declarations in real sealed returns", async () =>
     const f = await finishCappedRounds({ ticketReturn: kind });
     const path = kind === "spec" ? f.args.specReturn : f.args.planReturn;
     expect([...readFileSync(path, "utf8").matchAll(/^Keys?:\s*(.+)$/gm)]).toHaveLength(0);
-    await expect(runCapped(f.args)).rejects.toThrow("header must declare");
+    await expect(runCapped(f.args)).rejects.toThrow("return must declare");
   }
 });
 
@@ -4635,7 +4635,7 @@ test("capped proof shared shape validation", async () => {
 
 test("capped fold strict declarations and complete seal grammar", async () => {
   for (const fault of ["bracket", "missing-key", "unknown-key", "duplicate-key"]) {
-    const text = `---\ntickets: ${fault === "bracket" ? "[" : ""}${cappedKey}\n---\nKey: ${fault === "unknown-key" ? "HIMMEL-99" : cappedKey}\n${fault === "duplicate-key" ? `Key: ${cappedKey}\n` : ""}## Body\n`;
+    const text = `---\ntickets: ${fault === "bracket" ? "[" : ""}${cappedKey}${fault === "missing-key" ? ` (Relates: HIMMEL-99)` : ""}\n---\nKey: ${fault === "unknown-key" ? "HIMMEL-99" : cappedKey}\n${fault === "duplicate-key" ? `Key: ${cappedKey}\n` : ""}## Body\n`;
     const f = await cappedFixture({ specText: fault === "missing-key" ? text.replace(`Key: ${cappedKey}\n`, "") : text });
     await expect(runCapped(f.args)).rejects.toThrow();
   }
@@ -5025,7 +5025,7 @@ test("G0a v1 control: the shipped --key path refuses the real-shaped group heade
   expect(typeof lib.buildGroupFixture, "group builder").toBe("function");
   const f = await lib.buildGroupFixture(realpathSync(root()));
   const res = await routeCli("capped-fold", "--key", f.anchor, "--spec", f.spec, "--plan", f.plan, "--spec-return", b1Kind(f, "spec").at(-1)!, "--plan-return", b1Kind(f, "plan").at(-1)!);
-  expect(res.out).toBe(""); expect(res.code).toBe(1); expect(res.err).toBe(`capped-fold: capped-fold: header must declare only ${f.anchor}\n`);
+  expect(res.out).toBe(""); expect(res.code).toBe(1); expect(res.err).toBe(`capped-fold: capped-fold: tickets must declare only ${f.anchor}\n`);
 }, S1B);
 
 test("G0b v1 control: the shipped --key path refuses the legacy known-single header at refusedCap, beside the same control", async () => {
@@ -5545,6 +5545,7 @@ const p1Cases = () => {
   return { bad, ids, refuses, accepts };
 };
 const P1_DECLARED = `capped-fold: header must declare only ${cappedKey}`;
+const P1_RETURN = `capped-fold: return must declare only ${cappedKey}`;
 const P1_ONE_CARRIED: P1Want = { rounds: [3, 3], residuals: [1, 0], carried: [["spec", "F1", "minor", 3]] };
 
 test("P1 newer returns in every supplied directory: round 3 is accepted, then a copied round 4 is refused as unaccounted", async () => {
@@ -5612,7 +5613,7 @@ test("P1 Key declarations in real sealed returns: a Ticket line in the documents
     const f = await finishCappedRounds({ ticketReturn: kind });
     const path = kind === "spec" ? f.args.specReturn : f.args.planReturn;
     expect([...readFileSync(path, "utf8").matchAll(/^Keys?:\s*(.+)$/gm)]).toHaveLength(0);
-    c.refuses(`declarations/ticket-line-in-${kind}-return`, f.args, P1_DECLARED);
+    c.refuses(`declarations/ticket-line-in-${kind}-return`, f.args, P1_RETURN);
   }
   expect(c.ids).toHaveLength(4); expect(c.bad).toEqual([]);
 }, S1B);
@@ -5743,9 +5744,9 @@ test("P1 recording checkout bound: a copied tree and a removed original are each
 test("P1 strict declarations and complete seal grammar: four malformed headers and five malformed returns", async () => {
   const c = p1Cases();
   for (const fault of ["bracket", "missing-key", "unknown-key", "duplicate-key"]) {
-    const text = `---\ntickets: ${fault === "bracket" ? "[" : ""}${cappedKey}\n---\nKey: ${fault === "unknown-key" ? "HIMMEL-99" : cappedKey}\n${fault === "duplicate-key" ? `Key: ${cappedKey}\n` : ""}## Body\n`;
+    const text = `---\ntickets: ${fault === "bracket" ? "[" : ""}${cappedKey}${fault === "missing-key" ? ` (Relates: HIMMEL-99)` : ""}\n---\nKey: ${fault === "unknown-key" ? "HIMMEL-99" : cappedKey}\n${fault === "duplicate-key" ? `Key: ${cappedKey}\n` : ""}## Body\n`;
     const f = await cappedFixture({ specText: fault === "missing-key" ? text.replace(`Key: ${cappedKey}\n`, "") : text });
-    c.refuses(`grammar/header-${fault}`, f.args, fault === "bracket" ? `capped-fold: tickets must declare only ${cappedKey}` : P1_DECLARED);
+    c.refuses(`grammar/header-${fault}`, f.args, fault === "bracket" || fault === "missing-key" ? `capped-fold: tickets must declare only ${cappedKey}` : P1_DECLARED);
   }
   for (const fault of ["extra-read", "bad-read", "bad-seal", "huge-count", "body-key"]) {
     const f = await cappedFixture();
@@ -5753,7 +5754,7 @@ test("P1 strict declarations and complete seal grammar: four malformed headers a
       : text.replace("SPEC FINDINGS 1", `${fault === "extra-read" ? `READ ${"a".repeat(64)} alien.md` : fault === "bad-read" ? "READ unknown spec.md" : "CONTENT-SHA256 unknown spec.md"}\nSPEC FINDINGS 1`));
     c.refuses(`grammar/return-${fault}`, f.args, { "extra-read": `ENOENT: no such file or directory, realpath '${join(dirname(f.spec), "alien.md")}'`,
       "bad-read": "capped-fold: malformed seal or READ quote", "bad-seal": "capped-fold: malformed seal or READ quote",
-      "huge-count": "capped-fold: invalid finding count", "body-key": P1_DECLARED }[fault]!);
+      "huge-count": "capped-fold: invalid finding count", "body-key": P1_RETURN }[fault]!);
   }
   expect(c.ids).toHaveLength(9); expect(c.bad).toEqual([]);
 }, S1B);
@@ -5871,7 +5872,7 @@ type P2Fault = { opts?: Parameters<typeof cappedFixture>[0]; apply?: (f: any) =>
 const P2_FAULTS: Record<string, P2Fault> = {
   retkey: { apply: f => { const p = join(dirname(f.spec), `HIMMEL-99-fixture.md.critic-spec-r${f.args.specReturn.match(/r(\d+)\.md$/)![1]}.md`); copyFileSync(f.args.specReturn, p); f.args.specReturn = p; },
     message: () => "capped-fold: return filename/folder key disagrees" },
-  decl: { apply: f => editCappedReturn(f, f.args.specReturn, t => t.replace(`Key: ${cappedKey}`, "Key: HIMMEL-99")), message: () => P1_DECLARED },
+  decl: { apply: f => editCappedReturn(f, f.args.specReturn, t => t.replace(`Key: ${cappedKey}`, "Key: HIMMEL-99")), message: () => P1_RETURN },
   old: { apply: f => { f.args.specReturn = f.verdicts[0]; }, message: () => "capped-fold: not the actual latest real spec round" },
   reviewed: { apply: f => editCappedReturn(f, f.args.specReturn, t => t.replace(/^Reviewed: .*\n/m, "")), message: () => "capped-fold: spec must review the current spec exactly once" },
   cap: { opts: { rounds: 2 }, message: () => "capped-fold: findings have not reached the refused round cap" },
@@ -6448,7 +6449,7 @@ test("3c v1Policy keeps its strict decisions: one quote shape, exactly minor or 
   for (const line of [`READ-SHA256 ${S}  ${p}`, `READ-SHA256 ${p} ${S}`, `READ-SHA256 ${S}   ${p}`, `READ-SHA256 ${S.toUpperCase()} ${p}`, "READ", "READ-SHA256"]) expect(() => v1.quotes(line), line).toThrow(C3_MALFORMED);
   for (const ok of ["minor", "medium"]) expect(v1.headingOk(ok), ok).toBe(true);
   for (const bad of ["medium; Fact overlap", "major", "Minor", " medium", "minor; regression", ""]) expect(v1.headingOk(bad), bad).toBe(false);
-  expect(() => v1.declaration("Fixture: no key\n", cappedKey)).toThrow(`capped-fold: header must declare only ${cappedKey}`);
+  expect(() => v1.declaration("Fixture: no key\n", cappedKey)).toThrow(`capped-fold: return must declare only ${cappedKey}`);
   expect(() => v1.declaration(`Key: ${cappedKey}\n`, cappedKey)).not.toThrow();
   expect(() => v1.reviewed("Fixture: none\n", specSha, "spec")).toThrow("capped-fold: spec must review the current spec exactly once");
   expect(() => v1.reviewed(`Reviewed: spec ${specSha}\n`, specSha, "plan")).not.toThrow();
@@ -6589,7 +6590,7 @@ test("C2 v2 cap: the refusedCap closure shape carries its minors under legacy an
   await c3Expect(f, "spec", got.spec, 5, 0, []); await c3Expect(f, "plan", got.plan, 4, 0, [["P4", "minor"], ["P5", "minor"]]);
   expect(readFileSync(b1Kind(f, "spec").at(-1)!, "utf8")).toMatch(/^READ-SHA256 [0-9a-f]{64}  \/\S+$/m);
   expect(readFileSync(b1Kind(f, "plan").at(-1)!, "utf8")).toMatch(/^READ-SHA256 \/\S+ [0-9a-f]{64}$/m);
-  expect(await c3Message(c3Kind(f, "spec", route.v1Policy)), "the strict v1 policy refuses the same real bytes at its own first step").toBe(`capped-fold: header must declare only ${key}`);
+  expect(await c3Message(c3Kind(f, "spec", route.v1Policy)), "the strict v1 policy refuses the same real bytes at its own first step").toBe(`capped-fold: return must declare only ${key}`);
   const finding = (id: string) => `- **${id}** (minor) a wording note`;
   const specCapped = await c3Build([1, 2, 3].map(round => ({ kind: "spec" as const, round, findings: finding("F1") })).concat([1, 2].map(round => ({ kind: "plan" as const, round, findings: round === 2 ? finding("P1") : "" }))));
   await c3Expect(specCapped, "spec", await c3Kind(specCapped, "spec", route.v2Policy([cappedKey])), 3, 0, [["F1", "minor"]]);
@@ -6686,7 +6687,7 @@ test("D6 v2 declarations: Key and Reviewed absent or equal are accepted, wrong o
   for (const kind of ["spec", "plan"] as const) { const text = readFileSync(b1Kind(control, kind).at(-1)!, "utf8"); expect(lines(text, "Key:").length, `${kind} control Key`).toBe(1); expect(lines(text, "Reviewed:").length, `${kind} control Reviewed`).toBe(1); }
   await c3Expect(control, "spec", await c3Kind(control, "spec", policy), 3, 0, [["F1", "minor"]]); await c3Expect(control, "plan", await c3Kind(control, "plan", policy), 3, 0, []);
   const strip = (pattern: RegExp) => (text: string) => text.replace(pattern, "");
-  const strictHeader = `capped-fold: header must declare only ${cappedKey}`; const strictReviewed = "capped-fold: spec must review the current spec exactly once";
+  const strictHeader = `capped-fold: return must declare only ${cappedKey}`; const strictReviewed = "capped-fold: spec must review the current spec exactly once";
   for (const [what, edit, strict] of [["both absent", strip(/^(?:Key|Reviewed): .*\n/gm), strictHeader], ["Key absent", strip(/^Key: .*\n/m), strictHeader], ["Reviewed absent", strip(/^Reviewed: .*\n/m), strictReviewed]] as const) {
     const f = await cappedFixture(); await c3Edit(f, "spec", edit); await c3Edit(f, "plan", edit);
     const got = await c3Both(f, policy); await c3Expect(f, "spec", got.spec, 3, 0, [["F1", "minor"]]); await c3Expect(f, "plan", got.plan, 3, 0, []);
@@ -7302,7 +7303,7 @@ test("D3 the anchor must be one of the keys, and the spec, the plan and the retu
 
 test("G0a v2 goal: --keys over the real new-stem group fixture prints the exact proof, validated, with its five history pins and member-absence pin, and writes nothing", async () => {
   const f = await f3Group();
-  const refused = p1Cli("--key", f.anchor, ...f3Argv(f).slice(2)); expect(refused.out).toBe(""); expect(refused.err, "the v1 control still refuses the group header").toBe(`capped-fold: capped-fold: header must declare only ${f.anchor}\n`);
+  const refused = p1Cli("--key", f.anchor, ...f3Argv(f).slice(2)); expect(refused.out).toBe(""); expect(refused.err, "the v1 control still refuses the group tickets line").toBe(`capped-fold: capped-fold: tickets must declare only ${f.anchor}\n`);
   const proof = await f3Cli(f, { epoch: 1, rounds: [3, 3], carried: [["spec", "F1", "medium"], ["plan", "P1", "minor"]], history: f.earlier });
   expect(proof.keys).toHaveLength(7); expect(proof.pins.filter((p: any) => p.role === "history")).toHaveLength(5);
   expect(JSON.stringify(await f3Fold(f)), "in process equals the verb").toBe(JSON.stringify(proof));
@@ -7492,7 +7493,7 @@ test("T4 the --keys argv: exactly one of --key and --keys, each flag once; both 
   await c3Edit(control, "spec", text => text.replace(/^Fixture:/m, "Key: HIMMEL-99\nFixture:"));
   const refusal = p1Cli("--keys", cappedKey, "--spec", control.spec, "--plan", control.plan, "--spec-return", control.args.specReturn, "--plan-return", control.args.planReturn);
   expect(refusal, "--keys never falls back to v1: a refusal carries the v2 words").toEqual(want(`capped-fold: ${C3_KEYS}\n`));
-  expect(p1Fold(control.args).err, "--key refuses the same bytes with its own words").toBe("capped-fold: capped-fold: header must declare only HIMMEL-10205\n");
+  expect(p1Fold(control.args).err, "--key refuses the same bytes with its own words").toBe("capped-fold: capped-fold: return must declare only HIMMEL-10205\n");
 }, S1B);
 
 test("D7 through the fold: a spec head or a plan header that declares one key of many, a superset or two lines refuses before the ledger is read, and one equal line passes", async () => {
@@ -7891,4 +7892,91 @@ test("DoD 11: the capped fold refuses while a restore check is owed", async () =
   expect((await restore(t.specs)).err).toBe("");
   const route = await import("./chief-route");
   await expect(route.cappedLedger(t.specs, CAP_KEY, route.cappedReader(t.specs, CAP_KEY))).rejects.toThrow("capped-fold: a restore check is owed: R1 (decision 1096) in spec round 4");
+});
+
+test("T-T1..T-T4: v1 capped-fold reads the tickets line with the one parser", async () => {
+  const headerless = (tickets: string) => `---\ntickets: ${tickets}\n---\n` + fixtureSpecText.replace(/^---\ntickets: .*\n---\n/, "") + "\nReference: HIMMEL-8626 remains a body reference.\n";
+  const kinds = (r: P1Run) => ["tickets must declare only", "header must declare only"].filter(t => r.err.includes(t));
+  const titled = await cappedFixture({ specText: headerless(`${cappedKey} (a title)`) });
+  expect(kinds(p1Fold(titled.args)), "T-T1: a titled tickets line with no Key header passes the v1 header checks").toEqual([]);
+  const relates = await cappedFixture({ specText: headerless(`${cappedKey} (Relates: HIMMEL-2)`) });
+  expect(p1Fold(relates.args).err, "T-T2: a key-shaped annotation still refuses on --key").toBe(p1Line(`capped-fold: tickets must declare only ${cappedKey}`));
+  expect(p1Cli("--keys", cappedKey, ...p1Flags(relates.args).slice(2)).err, "T-T2: and on --keys").toContain("tickets must declare only");
+  const keyless = await cappedFixture();
+  await editCappedReturn(keyless, keyless.args.specReturn, text => text.replace(/^Keys?: .*\n/m, ""));
+  expect(p1Fold(keyless.args).err, "T-T3: a return with no Key line names the return").toBe(p1Line(`capped-fold: return must declare only ${cappedKey}`));
+  const bare = await cappedFixture();
+  expect(kinds(p1Fold(bare.args)), "T-T4: a bare tickets line with one Key header passes (control)").toEqual([]);
+});
+
+const signShape = (...argv: string[]): P1Run => {
+  const p = Bun.spawnSync(["bun", P1_ROUTE, "sign-shape", ...argv], { stdout: "pipe", stderr: "pipe", timeout: 60_000 });
+  return { code: p.exitCode, signal: p.signalCode ?? null, out: p.stdout.toString(), err: p.stderr.toString() };
+};
+const shapeFile = (name: string, text: string) => { const d = join(root(), "specs", "designs"); mkdirSync(d, { recursive: true }); const p = join(d, name); writeFileSync(p, text); return p; };
+const shapeSpec = (tickets: string | null, rounds: string[] = [], head = "") =>
+  `${tickets === null ? "" : `---\ntickets: ${tickets}\n---\n`}${head}# A spec\n\n## Critic rounds\n\n${rounds.join("\n")}\n\n## Next\n`;
+
+test("T-G1, T-G2, T-G1b, T-G4, T-G5: sign-shape refuses the shapes the signer cannot read", () => {
+  const g1 = signShape(shapeFile("HIMMEL-1-a.md", shapeSpec("HIMMEL-1", ["- R1: F1, F2 fixed"])));
+  expect(g1.code, "T-G1").toBe(3); expect(g1.out).toMatch(/^SIGN-SHAPE REFUSED: .*R1: F1, F2 fixed/m);
+  const g2 = signShape(shapeFile("HIMMEL-1-b.md", shapeSpec(`HIMMEL-1 (Relates: HIMMEL-2)`)));
+  expect(g2.code, "T-G2 refuse").toBe(3); expect(g2.out).toMatch(/^SIGN-SHAPE REFUSED: /m);
+  expect(signShape(shapeFile("HIMMEL-1-c.md", shapeSpec("HIMMEL-1", ["- R1-F1: fixed"]))), "T-G2 clean").toEqual({ code: 0, signal: null, out: "SIGN-SHAPE OK\n", err: "" });
+  const g1b = signShape(shapeFile("HIMMEL-1-d.md", shapeSpec("HIMMEL-1", ["- R3-F2: fixed", "- R3-F2x: deferred → later"])));
+  expect(g1b.code, "T-G1b").toBe(3); expect(g1b.out).toContain("R3-F2x: deferred → later");
+  expect(signShape(shapeFile("HIMMEL-1-e.md", shapeSpec("HIMMEL-1", [], "Key: HIMMEL-2\n"))).code, "T-G4 header disagrees").toBe(3);
+  expect(signShape(shapeFile("HIMMEL-3-f.md", shapeSpec("HIMMEL-1"))).code, "T-G4 file-name key undeclared").toBe(3);
+  expect(signShape(shapeFile("HIMMEL-1-g.md", shapeSpec("HIMMEL-1, HIMMEL-2"))).code, "T-G4 file-name key among two").toBe(0);
+  expect(signShape(shapeFile("HIMMEL-1-h.md", shapeSpec(null))).out, "T-G5 no tickets line").toBe("SIGN-SHAPE OK\n");
+  const plan = shapeFile("HIMMEL-1-plan.md", shapeSpec(`HIMMEL-1 (Relates: HIMMEL-2)`));
+  expect(signShape(shapeFile("HIMMEL-1-i.md", shapeSpec(null)), "--plan", plan).code, "T-G5 the plan's tickets line").toBe(3);
+  expect(signShape().code, "usage").toBe(2);
+});
+
+test("T-G3: sign-shape and the signer agree on every row of the shared table", async () => {
+  const { RESIDUAL_ROWS } = await import("../jira/src/release/test-residual-fixtures.ts");
+  const { checkResiduals } = await import("../jira/src/release/spec-sign.ts");
+  const { parseResidualLines } = await import("../jira/src/release/pinned.ts");
+  const returnsFor = (section: string[]) => {
+    const q = parseResidualLines(section).qualified;
+    return (["spec", "plan"] as const).map(kind => {
+      const round = Math.max(1, ...q.filter(x => x.kind === kind).map(x => x.round));
+      const ids = [...new Set(q.filter(x => x.kind === kind && x.round === round).map(x => x.id))];
+      const v = kind.toUpperCase();
+      return { path: `/s/specs/designs/S.md.critic-${kind}-r${round}.md`, text: `${ids.map(id => `- **${id}** (minor) one`).join("\n")}\n\n${ids.length ? `${v} FINDINGS ${ids.length}` : `${v} CLEAN`}\n` };
+    });
+  };
+  const verdicts = (drop?: string) => RESIDUAL_ROWS.map((row, i) => {
+    const section = [...row.context, row.line];
+    const shape = signShape(shapeFile(`HIMMEL-1-t${i}.md`, shapeSpec("HIMMEL-1", section))).code === 0;
+    const returns = returnsFor(row.context);
+    const residuals = returns.reduce((n, r) => n + (r.text.match(/^- \*\*/gm)?.length ?? 0), 0);
+    const signerSection = row.line === drop ? row.context : section;
+    let signer = true; try { checkResiduals(shapeSpec("HIMMEL-1", signerSection), residuals, returns); } catch { signer = false; }
+    return `${row.line} :: ${shape ? "pass" : "refuse"} / ${signer ? "pass" : "refuse"}`;
+  });
+  const agree = RESIDUAL_ROWS.map(row => `${row.line} :: ${["idList", "nearMiss"].includes(row.cls) ? "refuse / refuse" : "pass / pass"}`);
+  expect(verdicts()).toEqual(agree);
+  const dropped = RESIDUAL_ROWS.find(r => r.cls === "idList")!.line;
+  expect(verdicts(dropped).filter((v, i) => v !== agree[i]), "control: dropping one refuse row from the signer side breaks only that row").toEqual([`${dropped} :: refuse / pass`]);
+});
+
+test("T-T5: v1, v2, the signer's binding and sign-shape agree on one tickets table", async () => {
+  const { declaredTickets } = await import("../jira/src/release/pinned.ts");
+  const rows: [string, boolean][] = [[cappedKey, true], [`${cappedKey} (a title)`, true], [`[${cappedKey}]`, true], [`${cappedKey} ()`, true], [`${cappedKey} (Relates: HIMMEL-2)`, false]];
+  const got = await Promise.all(rows.map(async ([tickets]) => {
+    const specText = `---\ntickets: ${tickets}\n---\n` + fixtureSpecText.replace(/^---\ntickets: .*\n---\n/, "") + "\nReference: HIMMEL-8626 remains a body reference.\n";
+    const f = await cappedFixture({ specText });
+    const declares = (r: P1Run) => !/(?:tickets|header) must declare only/.test(r.err);
+    const signer = JSON.stringify(declaredTickets(specText)) === JSON.stringify([cappedKey]);
+    return [declares(p1Fold(f.args)), declares(p1Cli("--keys", cappedKey, ...p1Flags(f.args).slice(2))), signer, signShape(f.spec).code === 0];
+  }));
+  expect(got).toEqual(rows.map(([, ok]) => [ok, ok, ok, ok]));
+});
+
+test("T-C1: FINDING_LINE is the one imported grammar with the base source", async () => {
+  const { FINDING_LINE } = await import("../jira/src/release/pinned.ts");
+  expect(FINDING_LINE.source).toBe(String.raw`^[-*] \*\*([A-Za-z][\w.-]*)\*\* \(([^)]*)\)`);
+  expect(readFileSync(P1_ROUTE, "utf8")).not.toMatch(/^const FINDING_LINE\b/m);
 });

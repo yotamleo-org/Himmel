@@ -410,26 +410,24 @@ case "${HIMMEL_CLAUDE_LANE:-}" in ""|native) ;; *) refuse "conflicting lane HIMM
 KIND="${HIMMEL_API_KIND:-other}"
 case "$KIND" in ""|*[!A-Za-z0-9._-]*) refuse "HIMMEL_API_KIND has characters outside [A-Za-z0-9._-]" ;; esac
 ROLE_ACCTS=""
-if [ "$HIMMEL_API_ACCOUNT" = auto ] && [ "$KIND" = graphify ]; then
+if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   _walk_rc=0
-  ROLE_ACCTS="$(node "$REPO/scripts/lib/api-roles.mjs" walk graphify)" || _walk_rc=$?
+  ROLE_ACCTS="$(node "$REPO/scripts/lib/api-roles.mjs" walk "$KIND")" || _walk_rc=$?
+  _walk_what="$KIND"; [ "$KIND" != graphify ] || _walk_what="graph"
   if [ "$_walk_rc" -eq 3 ]; then
-    echo "claude-api: refused: graph role map broken (${ROLE_ACCTS#refuse }); fix or remove roles.json" >&2
-    fail_over 2 refused-role-map "graph role map broken"; exit 2
+    echo "claude-api: refused: $_walk_what role map broken (${ROLE_ACCTS#refuse }); fix or remove roles.json" >&2
+    fail_over 2 refused-role-map "$_walk_what role map broken"; exit 2
   fi
   if [ "$_walk_rc" -ne 0 ] || ! llm_backend_api_account_list_ok "$ROLE_ACCTS"; then
-    echo "claude-api: refused: the graph walk cannot be read (api-roles.mjs walk graphify exit $_walk_rc)" >&2
-    fail_over 2 refused-role-map "graph walk unreadable"; exit 2
+    echo "claude-api: refused: the $_walk_what walk cannot be read (api-roles.mjs walk $KIND exit $_walk_rc)" >&2
+    fail_over 2 refused-role-map "$_walk_what walk unreadable"; exit 2
   fi
-elif [ "$HIMMEL_API_ACCOUNT" = auto ]; then
-  ROLE_ACCTS="$(node "$REPO/scripts/lib/api-roles.mjs" accounts "$KIND")" || ROLE_ACCTS=""
-  llm_backend_api_account_list_ok "$ROLE_ACCTS" || ROLE_ACCTS=""
 fi
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   _auto_here="${HIMMEL_API_AUTO_REPO_DIR:-$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)}"
   _auto_own="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
-  { [ "$KIND" = graphify ] || [ -n "$ROLE_ACCTS" ]; } && [ -n "$_auto_own" ] && [ "$_auto_here" = "$_auto_own" ] ||
-    { POLICY_REPO="${_auto_here:-none}"; refuse_policy "auto routing is for the himmel graph pass only (kind $KIND, repo ${_auto_here:-none}); name HIMMEL_API_ACCOUNT=$LLM_API_ACCOUNTS_TEXT"; }
+  [ -n "$_auto_own" ] && [ "$_auto_here" = "$_auto_own" ] ||
+    { POLICY_REPO="${_auto_here:-none}"; refuse_policy "auto routing is for the himmel repo only (kind $KIND, repo ${_auto_here:-none}); name HIMMEL_API_ACCOUNT=$LLM_API_ACCOUNTS_TEXT"; }
 fi
 CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
 case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac

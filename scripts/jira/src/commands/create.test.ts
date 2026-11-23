@@ -1100,15 +1100,16 @@ describe('create — unplaced follow-up', () => {
         throw e;
       }
     };
-    type Parent = { versions?: string[]; status?: string; done?: boolean; fail?: Error; frozen?: boolean; next?: 'open' | 'frozen' | 'none' };
+    type Parent = { versions?: string[]; status?: string; done?: boolean; fail?: Error; frozen?: boolean; next?: 'open' | 'frozen' | 'none'; priority?: string };
     const parentIs = (p: Parent) => {
       const base = mockRequest.getMockImplementation()!;
       mockRequest.mockImplementation(async (method: string, path: string) => {
-        if (method === 'GET' && path === '/issue/HIMMEL-5?fields=project,status,fixVersions') {
+        if (method === 'GET' && (path === '/issue/HIMMEL-5?fields=project,status,fixVersions' || path === '/issue/HIMMEL-5?fields=project,status,fixVersions,priority')) {
           if (p.fail) throw p.fail;
           return {
             fields: {
               project: { key: 'HIMMEL' },
+              ...(p.priority ? { priority: { name: p.priority } } : {}),
               status: { name: p.status ?? 'In Progress', statusCategory: { key: p.done ? 'done' : 'indeterminate' } },
               fixVersions: (p.versions ?? ['v1.1.3']).map((name) => ({ name })),
             },
@@ -1153,14 +1154,51 @@ describe('create — unplaced follow-up', () => {
       expect(posted()).toBe(false);
     });
 
-    it('RED 9002 done: a Done parent gets no version, and the why says the parent is closed', async () => {
-      parentIs({ status: 'Done', done: true });
+    it('RED 10588: a follow-up of a closed parent in the current version lands in that version at the parent\'s priority, linked to it', async () => {
+      parentIs({ status: 'Done', done: true, priority: 'High' });
       await file('--follow-up-of', 'HIMMEL-5', '--remainder');
-      expect(queued()).toEqual([expect.objectContaining({
-        to_v: null,
-        why: 'follow-up of HIMMEL-5, which is closed (Done)',
-        evidence: { follow_up_of: 'HIMMEL-5', parent_status: 'Done', parent_version: 'v1.1.3', remainder: true },
-      })]);
+      expect(issueBody().fields['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+      expect(issueBody().fields['priority']).toEqual({ name: 'High' });
+      expect(queued()).toEqual([]);
+      expect(mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue')![3]).toBe('create-followup');
+      expect(mockRequest.mock.calls.some((x) => x[0] === 'POST' && String(x[1]).includes('issueLink'))).toBe(true);
+    });
+
+    it('10588 control: an Epic follow-up of a closed parent keeps the old behaviour', async () => {
+      parentIs({ status: 'Done', done: true, priority: 'High' });
+      await file('--follow-up-of', 'HIMMEL-5', '--type', 'Epic');
+      expect(issueBody().fields['fixVersions']).toBeUndefined();
+      expect(issueBody().fields['priority']).toBeUndefined();
+    });
+
+    it('10588 control: the caller\'s own priority is kept on a closed parent\'s follow-up', async () => {
+      parentIs({ status: 'Done', done: true, priority: 'High' });
+      await file('--follow-up-of', 'HIMMEL-5', '--priority', 'Low');
+      expect(issueBody().fields['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+      expect(issueBody().fields['priority']).toEqual({ name: 'Low' });
+    });
+
+    it('10588 control: a closed parent with no current version keeps the backlog request', async () => {
+      parentIs({ status: 'Done', done: true, priority: 'High', versions: ['v1.0.0'] });
+      await file('--follow-up-of', 'HIMMEL-5');
+      expect(issueBody().fields['fixVersions']).toBeUndefined();
+      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: 'follow-up of HIMMEL-5, which is closed (Done)' })]);
+    });
+
+    it('10588 control: a caller\'s own version is unchanged and the parent is not read', async () => {
+      parentIs({ status: 'Done', done: true, priority: 'High' });
+      await file('--follow-up-of', 'HIMMEL-5', '--fix-version', 'v1.1.4');
+      expect(issueBody().fields['fixVersions']).toEqual([{ name: 'v1.1.4' }]);
+      expect(issueBody().fields['priority']).toBeUndefined();
+      expect(parentRead()).toBe(false);
+    });
+
+    it('10588 control: an explicit backlog choice is unchanged', async () => {
+      parentIs({ status: 'Done', done: true, priority: 'High' });
+      await file('--follow-up-of', 'HIMMEL-5', '--backlog', '--proposed-version', 'backlog', '--why', 'waits in the backlog');
+      expect(issueBody().fields['fixVersions']).toBeUndefined();
+      expect(issueBody().fields['priority']).toBeUndefined();
+      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: 'waits in the backlog' })]);
     });
 
     it('RED C2: a follow-up of a parent in a frozen current version asks for that version, and the why says it is frozen', async () => {

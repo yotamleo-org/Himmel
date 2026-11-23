@@ -1236,8 +1236,12 @@ export interface StateOut extends ReleaseState {
   admissions_today: Record<string, number>;
   /** owner_gone is present (true) only for a held lease whose recorded owner pid is absent on this host: the proof rm-run's own reclaim uses. */
   lease: (Omit<Lease, 'mac'> & { owner_pid?: number; owner_host?: string; owner_gone?: true }) | null;
-  requests: { open: string[]; claimed: string[]; /** ts of the oldest open request, null with none. */ oldest_open: string | null };
+  requests: { open: string[]; claimed: string[]; /** ts of the oldest open request, null with none. */ oldest_open: string | null; pending_keys: string[] };
+  current: string | null;
   heads: { rulings: string; operator: string; events: string; requests: string; mirror: string | null };
+  priority_review: PriorityReview[];
+  chief_placements: ChiefPlacement[];
+  asks_apart: AskApart[];
   refused_asks: RefusedAsk[];
   /** Every verified `words: 1` O- row: the records a hold line may cite. */
   words_records: WordsRecord[];
@@ -1248,6 +1252,10 @@ export interface StateOut extends ReleaseState {
   /** Required-remainder children (request evidence `remainder: true`) of an open current-version parent that are open outside the version. A read of existing evidence: it admits nothing. */
   remainder_conflicts: RemainderConflict[];
 }
+
+export interface PriorityReview { key: string; ruling: string; ground: string }
+export interface ChiefPlacement { key: string; ruling: string; reason: string }
+export interface AskApart { key: string; ruling: string; version: string; parent: string; parent_version: string }
 
 export interface UnfinishedRuling {
   ruling: string; req: string; key: string; phase: 'intent' | 'applied'; op: string;
@@ -1357,6 +1365,65 @@ export function ack(ctx: Ctx, o: { ruling: string; reason: string }): EventRow {
   });
 }
 
+type ReviewList = 'priority' | 'chief' | 'apart';
+const PRIORITY_GROUND = /^door:(serious:.+|mild|mild-no-next|rest-of:.+|operator-ask|operator-ask:.+|started|operator-undeclared:.+)$/;
+const APART_GROUND = /^door:(?:operator-ask-apart|operator-apart):(.+)@([^@]+)$/;
+const listOf = (ground: string): ReviewList | null =>
+  (ground === 'door:chief' ? 'chief' : APART_GROUND.test(ground) ? 'apart' : PRIORITY_GROUND.test(ground) ? 'priority' : null);
+
+interface ReviewLists { priority_review: PriorityReview[]; chief_placements: ChiefPlacement[]; asks_apart: AskApart[]; listed: Map<string, string> }
+
+function reviewLists(l: Loaded): ReviewLists {
+  const receipts: RulingRow[] = [];
+  const order = new Map<string, number>();
+  for (const r of l.rulings.verified) {
+    if (r.phase !== 'receipted' || order.has(r.id) || listOf(r.ground) === null) continue;
+    order.set(r.id, receipts.length);
+    receipts.push(r);
+  }
+  const reviews = l.events.verified.filter((e) => e.kind === 'reviewed');
+  const covered = (r: RulingRow): boolean => reviews.some((e) => {
+    if (e.through === undefined) return e.ruling === r.id;
+    const upTo = order.get(e.through);
+    return upTo !== undefined && listOf(receipts[upTo].ground) === listOf(r.ground) && order.get(r.id)! <= upTo;
+  });
+  const out: ReviewLists = { priority_review: [], chief_placements: [], asks_apart: [], listed: new Map() };
+  const tuples = new Map<string, RulingRow[]>();
+  for (const r of receipts) {
+    const m = APART_GROUND.exec(r.ground);
+    if (m) {
+      const t = JSON.stringify([r.key, r.op.to_v ?? r.op.from_v ?? 'backlog', m[1], m[2]]);
+      tuples.set(t, [...(tuples.get(t) ?? []), r]);
+    } else if (!covered(r)) {
+      if (listOf(r.ground) === 'chief') out.chief_placements.push({ key: r.key, ruling: r.id, reason: r.reason });
+      else out.priority_review.push({ key: r.key, ruling: r.id, ground: r.ground });
+      out.listed.set(r.id, r.key);
+    }
+  }
+  const open = [...tuples].filter(([, rs]) => !rs.some(covered)).sort(([, a], [, b]) => order.get(a.at(-1)!.id)! - order.get(b.at(-1)!.id)!);
+  for (const [t, rs] of open) {
+    const [key, version, parent, parentVersion] = JSON.parse(t) as string[];
+    out.asks_apart.push({ key, ruling: rs.at(-1)!.id, version, parent, parent_version: parentVersion });
+    for (const r of rs) out.listed.set(r.id, r.key);
+  }
+  return out;
+}
+
+export function reviewed(ctx: Ctx, o: { ruling?: string; through?: string; reason: string }): EventRow {
+  operatorFence(ctx);
+  if (!o.reason.trim()) throw new Error('release reviewed: --reason says what was checked or relayed');
+  if ((o.ruling === undefined) === (o.through === undefined)) throw new Error('release reviewed: name exactly one of --ruling and --through');
+  const id = (o.ruling ?? o.through)!;
+  return locked(ctx, (l) => {
+    if (l.events.bad.length) throw new Error(`release: events.jsonl does not verify (${l.events.bad[0]})`);
+    const key = reviewLists(l).listed.get(id);
+    if (key === undefined) throw new Error(`release reviewed: ${id} is no listed entry of ${ctx.release}'s priority review, chief placements or asks apart`);
+    return appendChain<EventRow>(f(ctx, 'events.jsonl'), l.k, {
+      ts: ts(ctx), kind: 'reviewed', key, from: null, to: null, ruling: id, ...(o.through === undefined ? {} : { through: id }), reason: o.reason.trim(),
+    });
+  });
+}
+
 function admissionsToday(ctx: Ctx, l: Loaded): Record<string, number> {
   const today = ts(ctx).slice(0, 10);
   const counts: Record<string, number> = Object.fromEntries(l.decl.versions.map((v) => [v, 0]));
@@ -1370,7 +1437,8 @@ function admissionsToday(ctx: Ctx, l: Loaded): Record<string, number> {
 export function state(ctx: Ctx): StateOut {
   const l = load(ctx);
   const empty = {
-    admissions_today: {}, lease: null, requests: { open: [], claimed: [], oldest_open: null }, heads: { rulings: '', operator: '', events: '', requests: '', mirror: null },
+    admissions_today: {}, lease: null, requests: { open: [], claimed: [], oldest_open: null, pending_keys: [] }, current: null,
+    heads: { rulings: '', operator: '', events: '', requests: '', mirror: null }, priority_review: [], chief_placements: [], asks_apart: [],
     refused_asks: [], words_records: [], asks_operator_keys: [], unfinished_rulings: [], remainder_conflicts: [],
   };
   if ('unknown' in l) return { ...unknownState(ctx.release, l.unknown), ...empty };
@@ -1385,13 +1453,19 @@ export function state(ctx: Ctx): StateOut {
   const open: string[] = [];
   const claimed: string[] = [];
   let oldestOpen: string | null = null;
+  const pendingKeys = new Set<string>();
   if (l.requests.bad.length) s.integrity.push(...l.requests.bad.map((b) => `requests.jsonl ${b}`));
   for (const r of latestOrEmpty(l.requests).values()) {
     if (r.state === 'open') {
       open.push(r.req);
+      pendingKeys.add(r.key);
       if (oldestOpen === null || r.ts < oldestOpen) oldestOpen = r.ts;
-    } else if (r.state.startsWith('claimed:')) claimed.push(r.req);
+    } else if (r.state.startsWith('claimed:')) {
+      claimed.push(r.req);
+      pendingKeys.add(r.key);
+    }
   }
+  const { listed: _listed, ...lists } = reviewLists(l);
   const { mac: _m, ...leaseOut } = lease ?? ({} as Lease);
   const unfinished = unfinishedOf(l.rulings, l.events.verified, l.operator.verified, ctx, mirror.issues, lease);
   return {
@@ -1399,8 +1473,10 @@ export function state(ctx: Ctx): StateOut {
     status: lease ? s.status : 'UNKNOWN',
     admissions_today: admissionsToday(ctx, l),
     lease: lease ? { ...leaseOut, ...(!lease.released && ownerGone(lease) ? { owner_gone: true as const } : {}) } : null,
-    requests: { open, claimed, oldest_open: oldestOpen },
+    requests: { open, claimed, oldest_open: oldestOpen, pending_keys: [...pendingKeys].sort((a, b) => a.localeCompare(b, 'en', { numeric: true })) },
+    current: l.decl.current,
     heads: { rulings: l.rulings.head, operator: l.operator.head, events: l.events.head, requests: l.requests.head, mirror: mirror.sync },
+    ...lists,
     refused_asks: refusedAsks(l, mirror.issues),
     words_records: wordsRecords(l),
     asks_operator_keys: asksOperatorKeys(mirror.issues),

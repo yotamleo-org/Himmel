@@ -824,7 +824,8 @@
   "scripts/lib/wire-pretooluse-hooks.sh": {
     "reason": "names the PowerShell tool for guard coverage or transcript parsing",
     "lines": [
-      "      spec(\"block-read-secrets\"; \"Bash|PowerShell|Read|Grep\") ]"
+      "      spec(\"block-read-secrets\"; \"Bash|PowerShell|Read|Grep\") ]",
+      "  {\"name\":\"block-read-secrets\",\"matcher\":\"Bash|PowerShell|Read|Grep\",\"script\":\"scripts/hooks/block-read-secrets.sh\",\"aliases\":[]},"
     ]
   },
   "scripts/lint/check-history-comments.sh": {

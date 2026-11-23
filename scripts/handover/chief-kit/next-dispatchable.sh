@@ -307,6 +307,8 @@ nd_left=$((nd_deadline - SECONDS))
 [ "$nd_left" -gt 0 ] || nd_left=1
 ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$nd_left"} python3 -I - > "$nd_out" <<'PY' &
 import datetime, json, math, os, re, subprocess, sys, tempfile, time
+sys.stdout.reconfigure(errors='backslashreplace')
+sys.stderr.reconfigure(errors='backslashreplace')
 
 why_key = os.environ.get('ND_WHY_TICKET', '')
 
@@ -329,7 +331,7 @@ top = int(os.environ['ND_TOP']); mirror = os.environ['ND_MIRROR']
 repo = os.environ['ND_REPO']
 sys.path.insert(0, os.path.join(repo, 'scripts', 'lib'))
 from env_alias import legacy_names_on
-from fleet_runtime import owned_rows, WorkerStates
+from fleet_runtime import owned_rows, WorkerStates, worker_keys as gate_keys, title_keys as fr_title_keys
 worker_state = WorkerStates()  # one run: each doc's worker state is asked once, and each directory's manifests are read once for all of them
 
 RATE_LIMIT_RE = re.compile(r'rate limit|RATE_LIMIT|abuse detection|secondary rate', re.I)
@@ -468,38 +470,92 @@ def scope_of(body):
     return {'files': files, 'src': 'description', 'reads': reads, 'no_scope': not (files or reads or NO_WRITE_RE.search(desc)), 'nowrite': False}
 
 MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b')
-TITLE_KEY_RE = re.compile(r'([A-Z]+)-(\d+)((?:\s*\(?\s*(?:[/+,&]\s*)+\(?\s*\d+\b)*)')  # KEY-1 / 2, KEY-1 + 2, KEY-1 (+2, +3)
 
 def title_keys(lines):
     # every ticket a worker doc's H1 title names, `KEY-1 / 2 / 3` shorthand included: a bundle worker owns more tickets than its file name lists
-    h1 = next((l for l in lines if l.startswith('# ')), '')
-    return [('%s-%s' % (p, n)) for p, n, _ in TITLE_KEY_RE.findall(h1)] + \
-           [('%s-%s' % (p, x)) for p, _, rest in TITLE_KEY_RE.findall(h1) for x in re.findall(r'\d+', rest)]
+    return fr_title_keys(next((l for l in lines if l.startswith('# ')), ''))
 WRITES_LEAD = '> **Writes:**'
 OWN_LINE_RE = re.compile(r'^\W*Tickets?\b|^description:')  # the lines of a doc that name the tickets it carries
-PRIOR_LINE_RE = re.compile(r'Original brief|Read first|successor of|Prior art', re.I)
-DOC_NAME_RE = re.compile(r'[\w.+@-]+\.md')
+DOC_NAME_RE = re.compile(r'[\w./~+@-]+\.md')
+SIDECARS = ('.worker-preface.md', '.worker-contract.md')
+FILE_KEY_RE = re.compile(r'[A-Z]+-\d+(?!\d|-\d{2}-\d{2})')
 
-def owned_keys(doc, lines):
-    # the tickets a live worker's doc claims. A worker with no Writes line is scope-less, so its doc says all it owns: the full keys on its
-    # Ticket and description lines, and the title keys of the predecessor doc it names, count too. Over-holding a parent or prior-art key
-    # costs liveness while the worker lives, never safety.
-    keys = title_keys(lines)
-    if any(l.startswith(WRITES_LEAD) for l in lines):
-        return keys
-    for l in lines:
-        if OWN_LINE_RE.match(l):
-            keys += re.findall(r'[A-Z]+-\d+', l)
-    for l in lines:
-        if PRIOR_LINE_RE.search(l):
-            for name in DOC_NAME_RE.findall(l):
-                prior = os.path.join(os.path.dirname(doc), os.path.basename(name))
-                if os.path.isfile(prior) and os.path.realpath(prior) != os.path.realpath(doc):
-                    try:
-                        keys += title_keys(open(prior, encoding='utf-8', errors='replace').read().splitlines())
-                    except OSError:
-                        pass  # swallow-ok: an unreadable prior doc adds no key; the worker still owns the rest
+def above_results(lines):
+    return lines[:next((i for i, l in enumerate(lines) if l.startswith('## Results')), len(lines))]
+
+def scope_less(lines, paths, parse_ok, sibling):
+    if sibling or not parse_ok:
+        return True
+    writes = [l for l in lines if l.startswith(WRITES_LEAD)]
+    return not writes or (not paths and not any(l[len(WRITES_LEAD):].strip() == 'none named' for l in writes))
+
+_folder_index = {}
+_title_of = {}
+
+def folder_index(folder):
+    if folder not in _folder_index:
+        try:
+            listed = sorted(os.listdir(folder))
+        except OSError:
+            listed = None
+        index = None if listed is None else {}
+        for name in listed or []:
+            if name.endswith('.md') and not name.endswith(SIDECARS):
+                for k in set(re.findall(r'[A-Z]+-\d+', name)):
+                    index.setdefault(k, []).append(name)
+        _folder_index[folder] = index
+    return _folder_index[folder]
+
+def title_of(path):
+    if path not in _title_of:
+        try:
+            with open(path, encoding='utf-8', errors='replace') as f:
+                _title_of[path] = title_keys(f.read().splitlines())
+        except OSError:
+            _title_of[path] = None
+    return _title_of[path]
+
+def family_keys(doc, lines, seeds, who):
+    folder, own = os.path.dirname(doc), os.path.basename(doc)
+    names = []
+    here = os.path.realpath(folder)
+    for l in above_results(lines):
+        for ref in DOC_NAME_RE.findall(l):
+            where, name = os.path.split(os.path.expanduser(ref))
+            if where and os.path.realpath(os.path.join(folder, where)) != here:
+                continue
+            if name != own and not name.endswith(SIDECARS) and name not in names and os.path.lexists(os.path.join(folder, name)):
+                names.append(name)
+    index = folder_index(folder)
+    if index is None:
+        owner_unknown(who, 'family folder %s unreadable' % folder, REMEDY_DOC, keys=FILE_KEY_RE.findall(own))
+        index = {}
+    for seed in dict.fromkeys(seeds):
+        if seed not in mirror_keys:
+            continue
+        rx = re.compile(r'(?<![A-Za-z0-9])' + re.escape(seed) + r'(?!\d)')
+        names += [n for n in index.get(seed, []) if n != own and n not in names and rx.search(n)]
+    keys = []
+    for name in names:
+        got = title_of(os.path.join(folder, name))
+        if got is None:
+            owner_unknown(who, 'family doc %s unreadable' % name, REMEDY_DOC, keys=FILE_KEY_RE.findall(name))
+        else:
+            keys += got
     return keys
+
+def owned_keys(doc, lines, who, scopeless):
+    keys = title_keys(lines)
+    if not scopeless:
+        return keys
+    try:
+        gkeys = gate_keys(doc)
+    except UnicodeDecodeError:
+        gkeys = []
+        owner_unknown(who, 'doc %s unreadable' % os.path.basename(doc), REMEDY_DOC, keys=FILE_KEY_RE.findall(os.path.basename(doc)))
+    own_line = lambda ls: [k for l in ls if OWN_LINE_RE.match(l) for k in re.findall(r'[A-Z]+-\d+', l)]
+    seeds = FILE_KEY_RE.findall(os.path.basename(doc)) + keys + gkeys + own_line(above_results(lines))
+    return keys + gkeys + own_line(lines) + family_keys(doc, lines, seeds, who)
 SERIES_LEAD = '> **Series:**'
 SERIES_ITEM_RE = re.compile(r'(?<![\w.-])\d+\.\s+([A-Z]+-\d+)')
 SERIES_ID_RE = re.compile(r'(?!\d+\.\s)(\S+)\s+(\S+)')  # "<sid> <ledger path> - read ...": what follows the lead on the Series line S2a writes
@@ -591,6 +647,7 @@ def issue_from_match(m, txt):
 issues = {}
 try:
     names = sorted(n for n in os.listdir(mirror) if re.match(r'^[A-Z]+-\d+\.md$', n))
+    mirror_keys = {n[:-3] for n in names}
 except OSError as e:
     load_failure('mirror missing or unreadable (%s)' % e)  # an error, never an empty pool
 try:
@@ -1241,10 +1298,14 @@ WITHHELD = 'RESUME, IN CI, STACKABLE, SERIES FAMILY, To Do, DESIGN, NEXT-TIER'
 REMEDY_DOC = "restore the doc, record the worker's end, or fleet-manifest.sh remove <manifest> <label>"
 REMEDY_MANIFEST = 'repair or delete the manifest file (fleet-manifest.sh refuses an invalid one)'
 REMEDY_FLEET = 'restore or pass a readable --workers-from manifest'
+REMEDY_OWN_MANIFEST = 'repair the manifest file by hand (fleet-manifest.sh refuses an invalid one) or pass a readable --workers-from manifest'
 OWNER_UNKNOWN_DROP = 'owner unknown: a named worker source could not be fully read (see the # owner unknown line)'
+OWNER_UNKNOWN_DROP_NONE = 'owner unknown: no worker source named (see the # owner unknown line)'
+sourceless = False
 owner_unknown_lines = set()
 
 def printable(text):
+    text = '%s' % (text,)
     if text.isascii() and text.isprintable():
         return text
     enc = sys.stdout.encoding or 'utf-8'
@@ -1271,15 +1332,34 @@ def owner_unknown(owner, why, remedy, keys=()):
         owner_unknown_lines.add(line)
         unknown_notes.append(line)
 live_workers = []
+holds_py = os.environ['ND_HOLDS']
 worker_keys = set(os.environ.get('ND_OWNERS', '').split())
 owner = {k: 'the --owners list' for k in worker_keys}
 resume_only = os.environ.get('ND_RESUME_ONLY') == '1'
+def sibling_shape_refused(parsed):
+    if not isinstance(parsed, dict):
+        return True
+    return any(k in parsed and not isinstance(parsed[k], list) for k in ('workers', 'legs'))
+
+def own_rows_refused(rows):
+    return not isinstance(rows, list) or any(not isinstance(r, dict) or ('doc' in r and not isinstance(r['doc'], str)) or isinstance(r.get('label'), (list, dict)) for r in rows)
+
 if workers_from and not os.path.isfile(workers_from):
     owner_unknown('the fleet', 'manifest %s missing' % os.path.basename(workers_from), REMEDY_FLEET)
 if workers_from and os.path.isfile(workers_from):
     try:
-        manifest_workers(json.load(open(workers_from)))  # validate legacy-array policy before shared ownership
-        for worker in owned_rows(workers_from):
+        own_manifest = json.load(open(workers_from))
+        own_rows = None
+        if not sibling_shape_refused(own_manifest):
+            manifest_workers(own_manifest)
+            try:
+                own_rows = owned_rows(workers_from)
+            except (TypeError, AttributeError, KeyError):
+                own_rows = None
+        if own_rows is None or own_rows_refused(own_rows):
+            owner_unknown('the fleet', 'manifest %s malformed' % os.path.basename(workers_from), REMEDY_OWN_MANIFEST)
+            own_rows = []
+        for worker in own_rows:
             doc = worker.get('doc', '')
             if doc:
                 manifest_docs.add(os.path.realpath(doc))
@@ -1297,8 +1377,16 @@ if workers_from and os.path.isfile(workers_from):
             state = worker_state(doc)
             if state == 'wrapped':
                 continue
-            for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)) + owned_keys(doc, lines):
-                worker_keys.add(k); owner.setdefault(k, 'live worker %s' % worker.get('label', '?'))
+            try:
+                r = subprocess.run([sys.executable, '-I', holds_py, 'parse', doc, '--repo', repo], capture_output=True, text=True, timeout=30)
+                if r.returncode != 0:
+                    raise subprocess.SubprocessError(r.stderr.strip())
+                paths, parse_ok, parse_err = [l.split('\t', 1)[1] for l in r.stdout.splitlines() if '\t' in l], True, None
+            except (OSError, subprocess.SubprocessError) as e:
+                paths, parse_ok, parse_err = [], False, e
+            who = 'live worker %s' % printable('%s' % worker.get('label', '?'))
+            for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)) + owned_keys(doc, lines, who, scope_less(lines, paths, parse_ok, sibling=False)):
+                worker_keys.add(k); owner.setdefault(k, who)
             def block(i):  # a wrapped line continues on the "> " lines under it, up to the next "> **" field or a blank
                 text = lines[i]
                 for nxt in lines[i + 1:]:
@@ -1306,7 +1394,7 @@ if workers_from and os.path.isfile(workers_from):
                         break
                     text += ' ' + nxt[2:]
                 return text
-            live_workers.append((worker.get('label', '?'), doc, lines, re.findall(r'[A-Z]+-\d+', os.path.basename(doc))))
+            live_workers.append((worker.get('label', '?'), doc, lines, re.findall(r'[A-Z]+-\d+', os.path.basename(doc)), paths, parse_ok, parse_err))
             sl = [i for i, l in enumerate(lines) if l.startswith(SERIES_LEAD)] if stacked else []
             items = set(SERIES_ITEM_RE.findall(block(sl[0]))) if sl else set()
             sid_m = SERIES_ID_RE.match(lines[sl[0]][len(SERIES_LEAD):].strip()) if sl else None
@@ -1319,11 +1407,6 @@ if workers_from and os.path.isfile(workers_from):
 # in no manifest but its own. Read the chain's other manifests (same bucket, same prefix and chief name, any
 # letter) for ownership of a ticket only: shared terminal evidence releases it, and a sibling manifest that
 # cannot be read, is refused by its shape or holds a doc that cannot be opened is an owner unknown.
-def sibling_shape_refused(parsed):
-    if not isinstance(parsed, dict):
-        return True
-    return any(k in parsed and not isinstance(parsed[k], list) for k in ('workers', 'legs'))
-
 chain_m = re.match(r'^(.+)-nextleg-\d{4}-\d{2}-\d{2}[A-Z]+-(.+)\.fleet\.json$', os.path.basename(workers_from)) if workers_from else None
 if chain_m:
     sib_dir = os.path.dirname(os.path.abspath(workers_from))
@@ -1369,13 +1452,14 @@ if chain_m:
             if sstate == 'wrapped':
                 continue
             swho = 'live worker %s of the chief on %s' % (printable('%s' % worker.get('label', '?')), printable(sib[:-len('.fleet.json')]))
-            for k in sfiles + owned_keys(sdoc, slines):
+            for k in sfiles + owned_keys(sdoc, slines, swho, not sdoc_unreadable and scope_less(slines, [], True, sibling=True)):
                 worker_keys.add(k); owner.setdefault(k, swho)
             if sdoc_unreadable:
                 owner_unknown(swho, 'doc %s unreadable' % os.path.basename(sdoc), REMEDY_DOC, keys=sfiles)
 if pool_only and not workers_from and not worker_keys:
-    workers_unknown = owners_unknown = True
     print('next-dispatchable: no RESUME rows: --priority-pool-only has no worker source (--owners or --workers-from)', file=sys.stderr)
+    owner_unknown('the fleet', 'no worker source named', 'pass --workers-from <manifest> or --owners <keys>')
+    sourceless = True
 # cloud sessions own their ticket too: the same file and 48h window tick reads
 cloud_tsv = os.path.join(os.path.dirname(os.environ['ND_DOC']), 'cloud-sessions.tsv') if os.environ.get('ND_DOC') else ''
 if cloud_tsv and os.path.isfile(cloud_tsv):
@@ -1830,7 +1914,6 @@ for i in issues.values() if not pr_unknown else ():
     if partial_resume(i['key']) and i['key'] not in worker_keys and i['key'] not in pr_keys and resume_eligible(i):
         override_from_parts(i, live_answers([dict(remainder_of(pr, i['key']), pr=pr) for pr in partials[i['key']]]))
 
-holds_py = os.environ['ND_HOLDS']
 # A KEEP replacement becomes executable only after its validation action closed.
 # Read the existing ledger once; metadata supplies routing, never permission.
 owed_bucket = os.path.dirname(os.environ.get('ND_DOC') or os.environ.get('ND_WORKERS_FROM') or '')
@@ -1842,26 +1925,21 @@ if owed_bucket and os.path.lexists(os.path.join(owed_bucket, 'owed.jsonl')):
         print('# next-dispatchable: owed next-step state unreadable: ' + str(exc), file=sys.stderr)
         sys.exit(3)
 
-for label, doc, lines, wkeys in live_workers:
-    try:
-        r = subprocess.run([sys.executable, '-I', holds_py, 'parse', doc, '--repo', repo], capture_output=True, text=True, timeout=30)
-        if r.returncode != 0:
-            raise subprocess.SubprocessError(r.stderr.strip())
-    except (OSError, subprocess.SubprocessError) as e:
+for label, doc, lines, wkeys, mine, parse_ok, parse_err in live_workers:
+    if not parse_ok:
         workers_unknown = True
-        note_unknown('live worker %s' % label)
-        print('next-dispatchable: live worker %s: holds.py parse of %s failed (%s): its files are unknown' % (label, os.path.basename(doc), e), file=sys.stderr)
+        note_unknown('live worker %s' % printable(label))
+        print('next-dispatchable: live worker %s: holds.py parse of %s failed (%s): its files are unknown' % (printable(label), printable(os.path.basename(doc)), parse_err), file=sys.stderr)
         continue
-    mine = [l.split('\t', 1)[1] for l in r.stdout.splitlines() if '\t' in l]
     held += [(f, 'live worker %s' % label, True) for f in mine]
     if os.environ.get('ND_WHY') == '1':
         for f in dict.fromkeys(mine):
             if not concrete(f):
-                print('# warn: %s holds directory %s' % (label, f))
-    if not mine and not any(l[len(WRITES_LEAD):].strip() == 'none named' for l in lines if l.startswith(WRITES_LEAD)):  # "none named" is what gen-briefs writes for a worker that writes nothing
+                print('# warn: %s holds directory %s' % (printable(label), f))
+    if scope_less(lines, mine, parse_ok, sibling=False):
         workers_unknown = True  # a scope that yields no paths could be hiding the worker's files
-        note_unknown('live worker %s' % label)
-        print('next-dispatchable: live worker %s yields no held paths (no Writes line in %s): its files are unknown' % (label, os.path.basename(doc)), file=sys.stderr)
+        note_unknown('live worker %s' % printable(label))
+        print('next-dispatchable: live worker %s yields no held paths (no Writes line in %s): its files are unknown' % (printable(label), printable(os.path.basename(doc))), file=sys.stderr)
 
 # stacked_series: every ledger under <bucket>/series/ (the bucket is the --workers-from manifest's directory), read through
 # series-ledger.py, is a holder. An item holds its writes as `series <sid>` until it is abandoned or gh reports every PR of its
@@ -2034,7 +2112,7 @@ for i in cands:
         if pr_unknown:  # an unread PR list could hide an open PR that owns the ticket
             drop(i, 'open PRs unknown (gh failed): ownership cannot be checked')
         elif named_unknown:
-            drop(i, OWNER_UNKNOWN_DROP)
+            drop(i, OWNER_UNKNOWN_DROP_NONE if sourceless else OWNER_UNKNOWN_DROP)
         else:
             free.append(i)
         continue
@@ -2043,12 +2121,12 @@ for i in cands:
         drop(i, 'no-scope (nothing says what it writes: a chief question)')
         continue
     if named_unknown and not pr_unknown:
-        drop(i, OWNER_UNKNOWN_DROP)
+        drop(i, OWNER_UNKNOWN_DROP_NONE if sourceless else OWNER_UNKNOWN_DROP)
         continue
     if stacked and held_hits(i):
         stack = stackable_on(i)
         if stack:
-            stackable_rows.append((i, 'STACKABLE %s %s' % (i['key'], stack[2]), 'stackable on %s (%d/%d)' % (stack[0], stack[1], SERIES_CAP)))
+            stackable_rows.append((i, 'STACKABLE %s %s' % (i['key'], printable(stack[2])), 'stackable on %s (%d/%d)' % (stack[0], stack[1], SERIES_CAP)))
             continue  # judged in emit_stackable once it is classified: a ticket that would be BLOCKED is not offered
     if pr_unknown:
         drop(i, 'open PRs unknown (gh failed): ownership cannot be checked')
@@ -2105,7 +2183,7 @@ for k, pr, who, due in owed_rows:
     if named and os.environ.get('ND_WHY') == '1':
         staging_why(issues[k])
 for sid, wdoc in series_orphans:
-    print('SERIES-ORPHAN %s %s' % (sid, wdoc))
+    print('SERIES-ORPHAN %s %s' % (sid, printable(wdoc)))
 
 def family_of(f):
     # a path's directory family: the first two path components, as scripts/cleanup/cleanup-batch.sh cuts it
@@ -2155,7 +2233,7 @@ def say_overlaps(i, against_listed=True):
     pairs = held_hits(i) + ([(f, 'listed ' + k) for f, k in picked_hits(i)] if against_listed else [])
     src = ' (from %s)' % i['src'] if os.environ.get('ND_WHY') == '1' else ''
     for f, who in dict.fromkeys(pairs):
-        say('# overlap %s %s with %s%s' % (i['key'], f, who, src))
+        say('# overlap %s %s with %s%s' % (i['key'], f, printable(who), src))
     if i['key'] in outside_idle:
         num, days = outside_idle[i['key']]
         say('# overlap %s also named by outside PR %s (idle %dd)' % (i['key'], num, days))
