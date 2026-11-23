@@ -557,7 +557,8 @@ aw_main '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","c
 got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")
 case "$got" in "2:list scripts/ci/ci-trust-paths.txt is missing on acme/widget@main"*adopted*) ;; *) fail "9k: a repo wired to the himmel hook chain with no env line and no list was not refused: $got" ;; esac
 mkdir -p "$CA/scripts/guardrails"; printf '[{"nwo":"Acme/Widget","merge_allowed":true}]\n' > "$CA/scripts/guardrails/himmel-adopted.json"
-aw_main '{"env":{}}' -
+aw_main '{"env":{}}' - || fail "9k: the registry-only setup did not commit"
+[ "$(lg -C "$AW" show main:.claude/settings.json)" = '{"env":{}}' ] || fail "9k: the registry-only case still carries a hook or env adoption route"
 got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")
 case "$got" in "2:list scripts/ci/ci-trust-paths.txt is missing on acme/widget@main"*adopted*) ;; *) fail "9k: a repo listed in himmel-adopted.json with no hook was not refused: $got" ;; esac
 printf 'not json\n' > "$CA/scripts/guardrails/himmel-adopted.json"
