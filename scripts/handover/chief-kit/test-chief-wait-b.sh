@@ -701,6 +701,7 @@ cat > "$STUB/close-doc.sh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB/close.calls"
 for a in "$@"; do d="$a"; done
+[ ! -f "$STUB/sleep.$(basename "$d" .md)" ] || exec sleep 30
 rc="$(cat "$STUB/rc.$(basename "$d" .md)" 2>/dev/null)"
 [ -z "$rc" ] || [ "$rc" -eq 0 ] || { [ -f "$STUB/close.msg" ] && cat "$STUB/close.msg" >&2 || echo "close-wrapped-worker: refusing - stub rc $rc" >&2; }
 exit "${rc:-0}"
@@ -770,6 +771,20 @@ CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT
     timeout 8 bash "$WAIT" "$I" --doc "$WORK/sw3/AT.md" --workers "N1.md" > "$WORK/sw3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(cs3) refusals ahead in the census never starve a later candidate past CHIEF_WAIT_SWEEP_MAX" "yes" "$(grep -qxF -- "$WORK/sw3/W1.md" "$STUB/close.calls" && echo yes)"
 check "(cs3) and the refused ones are still retried" "yes|yes" "$(grep -qxF -- "$WORK/sw3/H1.md" "$STUB/close.calls" && echo yes)|$(grep -qxF -- "$WORK/sw3/H2.md" "$STUB/close.calls" && echo yes)"
+reset_stub; rm -f "$STUB"/rc.* "$STUB"/sleep.*
+mkdir -p "$WORK/sw4"; printf '# AT — CHIEF — successor to none — first console of the chain\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE AT\n' > "$WORK/sw4/AT.md"
+sw_doc sw4 G1 '# HIMMEL-1 — worker G1' WRAPPED
+sw_doc sw4 G2 '# HIMMEL-2 — worker G2' WRAPPED
+: > "$STUB/close.calls"; : > "$STUB/sleep.G1"; : > "$STUB/sleep.G2"
+rm -rf "$SWPROC"; sw_session 401 G1; sw_session 402 G2
+I="$(new_inbox sw4)"
+CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT_CLOSE="$STUB/close-doc.sh" CHIEF_WAIT_SWEEP_MAX=1 CHIEF_WAIT_CLOSE_TIMEOUT=1 CHIEF_WAIT_CLOSE_HANGS=2 \
+    start "$I" "$WORK/sw4.out" --doc "$WORK/sw4/AT.md" --workers "N1.md"
+n=0
+while [ "$n" -lt 300 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+rm -f "$STUB"/sleep.*
+check "(cs4) a hung close the rotation skips for a sample keeps its streak: two hangs in a row on it still wake" "WAKE predecessor-open rc=124" "$(head -n1 "$WORK/sw4.out")"
 unset CHIEF_WAIT_CLOSE CHIEF_WAIT_SWEEP_MIN CHIEF_WAIT_SWEEP_MAX
 
 # --- (su) --succession: the successor's one wake -----------------------------

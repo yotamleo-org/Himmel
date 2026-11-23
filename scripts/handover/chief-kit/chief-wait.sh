@@ -1958,7 +1958,7 @@ pred_file="$inbox.wait.predecessor"
 sweep_turn_file="$inbox.wait.sweep-turn"
 close_cmd="${CHIEF_WAIT_CLOSE:-$HERE/close-wrapped-worker.sh}"
 pred_hangs=0
-pred_hang_list=""; pred_hang_old=""
+pred_hang_list=""; pred_hang_old=""; pred_tried=""
 pred_hang_max="${CHIEF_WAIT_CLOSE_HANGS:-3}"
 case "$pred_hang_max" in ''|*[!0-9]*|0) pred_hang_max=3 ;; esac
 pred_hang_max=$((10#$pred_hang_max))
@@ -1975,6 +1975,7 @@ pred_mark() { # <state> <doc>: the doc's one marker line
 }
 close_one() { # <doc> <--chief|--worker> <bullet>: prints the WAKE block and returns 0 only for an unexpected refusal
     local doc="$1" errf rc n
+    pred_tried="$pred_tried$doc"$'\n'
     errf="$(mktemp "$pred_file.XXXXXX" 2>/dev/null)" || return 1
     if [ "$2" = --chief ]; then
         timeout -k 5 "${CHIEF_WAIT_CLOSE_TIMEOUT:-60}" bash "$close_cmd" --chief "$doc" </dev/null >/dev/null 2>"$errf" 9>&-; rc=$?  # gnu-ok: Linux-only kit
@@ -2034,8 +2035,8 @@ sweep_candidates() { # <bucket dir> <named predecessor doc or ''>: prints `<chie
         END { if (f != "") emit() }' "${docs[@]}" 2>/dev/null  # swallow-ok: an unreadable doc is no candidate
 }
 predecessor_close() { # prints the WAKE block and returns 0 only for an unexpected refusal
-    local pred pdoc="" dir l lines=() total start i kind doc
-    pred_hang_old="$pred_hang_list"; pred_hang_list=""; pred_hangs=0
+    local pred pdoc="" dir l lines=() total start i kind doc n
+    pred_hang_old="$pred_hang_list"; pred_hang_list=""; pred_hangs=0; pred_tried=$'\n'
     [ -n "$console_doc" ] && [ -f "$console_doc" ] || return 1
     dir="$(dirname "$console_doc")"
     pred="$(sed -n '1s/.* successor to \([^ ]*\.md\).*/\1/p' "$console_doc")"
@@ -2058,6 +2059,10 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
         l="${lines[$(( (start + i) % total ))]}"; kind="${l%%$'\t'*}"; doc="${l#*$'\t'}"
         close_one "$doc" "--$kind" "LIVE — wrapped $kind $(basename "$doc" .md) was WRAPPED and lock-free; the waiter closed its window" && return 0
     done
+    while IFS=$'\t' read -r n doc; do
+        [ -n "$doc" ] || continue
+        case "$pred_tried" in *$'\n'"$doc"$'\n'*) ;; *) pred_hang_list="$pred_hang_list$n	$doc"$'\n' ;; esac
+    done <<< "$pred_hang_old"
     return 1
 }
 
