@@ -351,7 +351,9 @@ What the peer's operator sets up once:
    `~/.config/himmel/peer-bridge/tart.known_hosts` (mode 600), for example
    `ssh-keyscan <ip> | sed 's/^[^ ]*/himmel-peerjob-guest/'`. Every clone shares
    that host key, so SSH checks it strictly. A missing file, or one not mode 600,
-   makes every verb refuse (exit 2), so the unit does not restart.
+   makes every job verb refuse (exit 2), so the unit does not restart. Three
+   verbs skip the check: `vm-destroy` and `golden-record` never use it, and
+   `vm-sweep` deletes leftover job VMs first and refuses only after that.
 3. **Serve and allow.** Add `run-suite` to that peer's `serves`, list the suites
    with `setup.ts allow-suite`, and leave `approve["run-suite"]` at `tty`, so each
    job waits for a typed `yes` from `jobs.ts approve`, unless you choose `auto`.
