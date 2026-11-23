@@ -270,10 +270,8 @@ if [ "$RESUME" -eq 1 ]; then
         resume_refuse diverged "local $L and origin $O have diverged; nothing created - reconcile by hand (git -C $PRIMARY_WORKTREE log --oneline --graph $L $O)"
     fi
     if [ "$STALE" -eq 1 ]; then
-        _wt_before=$(git -C "$PRIMARY_WORKTREE" worktree list --porcelain | grep -c '^worktree ' || true)
-        git -C "$PRIMARY_WORKTREE" worktree prune --expire now
-        _wt_after=$(git -C "$PRIMARY_WORKTREE" worktree list --porcelain | grep -c '^worktree ' || true)
-        echo "pruned stale registrations ($((_wt_before - _wt_after)))"
+        git -C "$PRIMARY_WORKTREE" worktree remove --force "$_reg_path" || resume_refuse stale-registration "could not remove the stale registration of '$BRANCH' at $_reg_path"
+        echo "removed the stale registration of $BRANCH ($_reg_path)"
     fi
     if command -v flock >/dev/null 2>&1; then
         exec 9>"$COMMON_DIR_ABS/himmel-worktree-create.lock"

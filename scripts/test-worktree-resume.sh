@@ -202,12 +202,21 @@ refused "stale-tracking-none: dead tracking ref never used, refused none" "workt
 [ ! -e "$(wt_dir $B8)" ] && [ -z "$(g for-each-ref "refs/heads/$B8")" ] && _pass "stale-tracking-none: no branch created from the dead tip" || _fail "stale-tracking-none: no branch created" "branch or worktree exists"
 
 B9=fix/r-stale-reg
+B9o=fix/r-stale-other
 push_branch "$B9" sr1
+push_branch "$B9o" so1
 run bash "$WT" resume "$B9" --no-install
-rm -rf "$(wt_dir $B9)"
+run bash "$WT" resume "$B9o" --no-install
+rm -rf "$(wt_dir $B9)" "$(wt_dir $B9o)"
 run bash "$WT" resume "$B9" --no-install
-if [ "$rc" -eq 0 ] && grep -Fq "pruned stale registrations" "$OUT" && [ -d "$(wt_dir $B9)" ]; then _pass "stale-registration: pruned, then attached"
+if [ "$rc" -eq 0 ] && grep -Fq "removed the stale registration of $B9" "$OUT" && [ -d "$(wt_dir $B9)" ]; then _pass "stale-registration: removed, then attached"
 else _fail "stale-registration" "rc=$rc out=[$(cat "$OUT")] err=[$(cat "$ERR")]"; fi
+wl="$(g worktree list --porcelain)"
+case "$wl" in
+*"$(wt_dir $B9o)"*) _pass "stale-registration: another branch's stale registration is left alone" ;;
+*) _fail "stale-registration-scoped" "another branch's registration was pruned" ;;
+esac
+g worktree prune
 
 B10=fix/r-ceil
 push_branch "$B10" c1

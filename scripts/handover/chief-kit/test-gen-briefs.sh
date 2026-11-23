@@ -953,6 +953,10 @@ for word in origin none unknown; do
     [ "$word" != unknown ] || has "10776 G5.unknown: says origin could not be reached" "$t" "origin could not be reached"
 done
 git -C "$ADP" worktree add -q "$ADP/.claude/worktrees/fix+himmel-9001-plain-fix" fix/himmel-9001-plain-fix
+t="$(unset GEN_BRIEFS_NO_WT_CHECK GEN_BRIEFS_WORKTREE_CMD; python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/rs-resume.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp-nw-ok" --repo "$ADP" --handover-root "$WORK/hr" --no-worktree 2>&1)"; rc=$?
+[ "$rc" = 0 ] && pass "10776 G6 --no-worktree with an existing resume worktree generates" || fail "10776 G6 rc=$rc: $t"
+has "10776 G6 the brief names the tip the worktree is at" "$(cat "$WORK"/hr/tester/adp-nw-ok/$KP-9001-N901-*.md 2>/dev/null)" "resumes at \`$ADPBASE\` (existing worktree)"
+lacks "10776 G6 and does not claim to be cut from the base" "$(cat "$WORK"/hr/tester/adp-nw-ok/$KP-9001-N901-*.md 2>/dev/null)" "cut from"
 # A salus-marked repo (a .salus marker, or a phi-roots entry) searches nothing: a query would send the ticket title off the machine.
 SAL="$WORK/salus-repo"; git init -q "$SAL"; : > "$SAL/.salus"
 rc=0; GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/sal" --repo "$SAL" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/sal.out" 2>"$WORK/sal.err" || rc=$?
