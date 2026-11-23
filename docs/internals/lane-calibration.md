@@ -465,59 +465,75 @@ and the chief or a native worker runs `ledger-append.sh amend` for it, which sig
 
 ### Gemini 4 on the T3 Antigravity lane
 
-The T3 Antigravity lane offers the whole Gemini 4 family. Google has no prompt
-guide for any of these models. The rules below come from each model's
-"what's new" page and from Google's
-[thinking](https://aistudio.google.com/docs/thinking) and
-[choosing a model](https://aistudio.google.com/docs/choosing-a-model) pages.
-The family maps to the Claude tiers like this (operator ruling, 2026-11-23,
-replacing Decision 1249's Neon = `opus`): **Carbon = Opus, Neon = Sonnet,
-Hydrogen = Haiku.** Route a Gemini child exactly as you would route the Claude
-tier it maps to. Argon and 3.8 Flash stay unranked until they are measured.
+The T3 Antigravity lane offers the whole Gemini 4 family. The rules below come
+from each model's "what's new" page, from Google's
+[thinking](https://aistudio.google.com/docs/thinking),
+[choosing a model](https://aistudio.google.com/docs/choosing-a-model) and
+[prompting strategies](https://aistudio.google.com/docs/prompting-strategies)
+pages, and from Antigravity's [model list](https://antigravity.google/docs/models).
+Google also links a
+[Carbon developer guide](https://aistudio.google.com/learn/gemini-4-carbon-developer-guide)
+on prompting and multi-agent patterns. It renders only in a browser, so it is
+not folded in yet.
 
-| Model | Claude tier | What Google says it is for | `thought_level` (default) | Per-hop output (non-streaming) |
-|---|---|---|---|---|
-| [`gemini-4-carbon`](https://aistudio.google.com/docs/whats-new-gemini-4-carbon) | Opus | The strongest reasoner. Use it for the hardest, longest work: architecture, debugging, security, deep research and checking a large codebase | low, **medium**, high | 32,768 |
-| [`gemini-4-neon`](https://aistudio.google.com/docs/whats-new-gemini-4-neon) | Sonnet | The daily driver, between Hydrogen and Carbon. Use it for multi-file refactors, repo-wide debugging and long tool sessions | low, medium, **high**, xhigh | 65,536 |
-| [`gemini-4-argon`](https://aistudio.google.com/docs/whats-new-gemini-4-argon) | unranked | A lighter Carbon at the same per-token price, for everyday feature work and fast loops | low, **medium**, high | 32,768 |
-| [`gemini-4-hydrogen`](https://aistudio.google.com/docs/whats-new-gemini-4-hydrogen) | Haiku | Fast and the cheapest of the four. Use it for quick tasks, fast tool loops and parallel children. Google says it flags missing context instead of guessing | low, medium, **high**, xhigh | 65,536 |
-| [`gemini-3.8-flash`](https://aistudio.google.com/docs/whats-new-gemini-3.8) | unranked | The previous-generation Flash. Google names Hydrogen as its upgrade | low, **medium**, high | 64K output limit |
+**Claude tiers (Decision 1325): Carbon = Opus, Neon = Sonnet, Hydrogen = Haiku.**
+Argon and 3.8 Flash stay unranked. The mapping says which Claude tier's work a
+Gemini model fits. It does not make Gemini an implementation lane: ruling 34
+keeps implementation on Claude tiers until the operator rules otherwise.
+The evidence column records where the sources disagree with the ruling. The
+ruling still binds.
 
-The T3 catalog also lists `Orchestrator (Carbon|Neon|Argon)`
-(`gemini-pro-orchestrator*`). Google's model docs do not document these models.
-Leave them unused until they are probed.
+| Model | Claude tier | Evidence for the tier | `thought_level` (default) |
+|---|---|---|---|
+| [`gemini-4-carbon`](https://aistudio.google.com/docs/whats-new-gemini-4-carbon) | Opus | Agrees. Google calls it its "strongest reasoning model". Antigravity offers it as a planner beside Opus 5.5. It scores level with Opus 5.5 on the [Artificial Analysis](https://artificialanalysis.ai/) index | low, **medium**, high |
+| [`gemini-4-neon`](https://aistudio.google.com/docs/whats-new-gemini-4-neon) | Sonnet | **Disagrees on capability.** Price ($3/$15) and Google's "between Hydrogen and Carbon" fit Sonnet. But its [model card](https://deepmind.google/models/model-cards/gemini-4-neon/) reports it ahead of Opus 5.5 on 11 of 13 benchmarks, Artificial Analysis also ranks it level with Opus, and Antigravity makes it the default planner, the slot Opus 5.5 can take | low, medium, **high**, xhigh |
+| [`gemini-4-argon`](https://aistudio.google.com/docs/whats-new-gemini-4-argon) | unranked | Same price as Carbon, less thinking per turn. Carbon is built on it. Antigravity offers it as a planner. One third-party index puts it between Sonnet 5.5 and Haiku 5.5. Too thin to rank | low, **medium**, high |
+| [`gemini-4-hydrogen`](https://aistudio.google.com/docs/whats-new-gemini-4-hydrogen) | Haiku | **Disagrees on role.** It is the cheapest of the four. But Google calls it its "default general-purpose model", and Antigravity makes it the default executor, the slot Sonnet 5.5 can take. Third-party indexes put it well above Haiku 5.5 | low, medium, **high**, xhigh |
+| [`gemini-3.8-flash`](https://aistudio.google.com/docs/whats-new-gemini-3.8) | unranked | No tier evidence found. Google calls it previous-generation and names Hydrogen as its upgrade | low, **medium**, high |
 
-**Picking a model.** The same rules as for Claude apply. Neon is the default
-implementer, as Sonnet is. Hydrogen takes bulk and mechanical work that ends in
-a machine check, under the same limits as Haiku: never trust paths, hooks or
-the judge. Carbon takes the one hard call and anything that needs orchestration,
-as Opus does. Google's own escalation fits this: move to Carbon when Neon at
-`high` or `xhigh` gets stuck. Google's pairing is Carbon to diagnose or plan,
-then Hydrogen to make the edits, in one session that carries
-`previous_interaction_id`. Google calls Hydrogen its everyday default because it
-is the cheapest model. That is a cost default, not a tier, so it does not
-override this mapping.
+The Orchestrator entries (`gemini-pro-orchestrator*`) are Antigravity pairs of a
+planner (Neon by default, or Carbon or Argon) and an executor (Hydrogen). Their
+effort is fixed and cannot be set. Treat one as an Opus-planner and
+Sonnet-executor team, never as a single tier.
+
+**Picking a model.** Pick the Gemini model the way you would pick the Claude
+tier it maps to. Use Carbon for the one hard call. Google's escalation is to
+move to Carbon when Neon at `high` or `xhigh` gets stuck. Google's pairing is
+Carbon or Neon to diagnose or plan, then Hydrogen to make the edits, in one
+session that carries `previous_interaction_id`. In Antigravity:
+- Neon's window is up to 512K, not the API's 1M.
+- Carbon is offered on the Ultra and Enterprise plans only.
+- Models in one group share a 5-hour limit and a weekly limit. Argon has its
+  own quota pool.
 
 **Rules for every Gemini 4 brief:**
-- Start at the default `thought_level` and step down when quality holds. Google
-  says to evaluate every level and keep the lowest one that meets the bar.
+- Start at the default `thought_level` and step down while quality holds. Google
+  says to try every level and keep the lowest one that meets the bar.
   `minimal` is rejected. `xhigh` (Neon and Hydrogen only) is for hard multi-step
-  work: on simple prompts it overthinks and can use up the output budget.
-- Thinking and the answer share one output budget. Never set a small output
-  cap. To cut cost, lower `thought_level`. Carbon and Argon spend the most
-  thinking per turn, and Google says to raise any cap under 32K to at least
-  32,768.
-- Never set `temperature`, `top_p` or `top_k`. Gemini 4 ignores them, and out-of-range
-  values return 400.
-- Declare tools natively. If a system prompt asks for raw-text JSON tool calls,
-  the model can return `MALFORMED_FUNCTION_CALL`.
+  work. On simple prompts it overthinks and can use up the output budget.
+- Thinking and the answer share one output budget. Never set a small output cap;
+  to cut cost, lower `thought_level`. Carbon thinks more per turn than Argon.
+  Google says to raise any cap under 32K to at least 32,768. The per-hop limit
+  for Carbon and Argon is 32,768 on the thinking page but 65,536 on their
+  what's-new pages. For long output use background mode with a cap of 131,072
+  or 262,144.
+- Never set `temperature`, `top_p` or `top_k`. Carbon and Argon ignore them.
+  Neon and Hydrogen return 400 on a value out of range.
+- Declare tools natively, or constrain JSON with structured outputs. A system
+  prompt that asks for raw-text JSON tool calls can return
+  `MALFORMED_FUNCTION_CALL`.
 - Brief it precisely and directly, without persuasive wording. Use one kind of
   delimiter per brief, XML tags or Markdown headings. Put the context first and
-  the question last. Do not ask it to think step by step, because it already does
-  ([prompting strategies](https://aistudio.google.com/docs/prompting-strategies)).
-- Gemini 4 caches only implicitly, on prompts of 4,096 tokens or more. Keep the
-  fixed part of the brief (rules, tools, reference text) at the top and the
-  same every time.
+  the question last. Include few-shot examples when the output has a shape.
+  Tell it to say when information is missing rather than guess. Do not ask for
+  step-by-step reasoning, because it already thinks; "think very hard" still
+  helps on hard problems.
+- Give today's date. Neon's knowledge cutoff is March 2026.
+- For agent work, have it plan before acting, keep going until the task is done
+  and cap its retries. Google's agentic system-instruction template covers this.
+- Gemini 4 caches only implicitly, on prompts of 4,096 tokens or more, at a 95%
+  discount. Keep the fixed part of the brief (rules, tools, reference text) at
+  the top and the same every time.
 
 ## The hermes `himmel_agent` default and the ox-alpha record
 
