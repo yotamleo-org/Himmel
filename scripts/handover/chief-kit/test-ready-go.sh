@@ -67,8 +67,6 @@ export READY_CHECK_ANCHOR="$ANCHOR"
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
-# STUB_REPO_CWD: the himmel checkout. A repo-name or title read that names no repo and runs anywhere else
-# is what a bare gh does in the caller's folder: it answers for the wrong repo, so here it fails.
 if [ -n "${STUB_REPO_CWD:-}" ]; then
     case "$*" in
         "repo view"*|"pr view "*"--json title"*)
