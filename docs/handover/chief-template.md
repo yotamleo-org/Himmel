@@ -18,6 +18,8 @@ Run these, in order, and write the result as the first bullet under
 1. **One batch, one turn** — all of these as parallel tool calls:
    - **`ListAgents`**: who is alive; a worker absent here is gone, never relay it as live.
    - **`ToolSearch`** `select:SendMessage` (deferred).
+   - **`Read`** the station's standing-rules file, `{{STATE_DIR}}/specs/standing-rules.md`:
+     every rule in it is in force (`## The station's standing-rules file`).
    - **`Read`** each `specs/decisions/chief-decisions-<date>.md` `decisions:` names.
    - **`Read`** every direction companion file that the line of `## Current direction`
      beginning `Full original text` names (under `{{STATE_DIR}}`) while an OPERATOR or CHIEF
@@ -236,6 +238,15 @@ bare `clean.sh` sweep for a worker. long-running.txt: `run_in_background` (a sho
   manager**, never a direct fixVersions write: `chief-sections/release-manager.md`. [prose]
 - **Weekly standards duty** (cadence stale): `chief-sections/weekly-duty.md`. [prose]
 - **Owed** items are `owe.sh` rows: `chief-sections/owed.md`. [prose]
+
+## The station's standing-rules file
+
+Not the list above: that list is himmel's chief contract, the same on every station.
+`{{STATE_DIR}}/specs/standing-rules.md` holds THIS station's own working rules, one per line.
+`chief.sh` seeds it from `{{REPO}}/docs/handover/standing-rules-template.md` when the
+station has none, and never overwrites it after that. The chief edits it when a ruling
+settles into a lasting rule. The operator corrects it, and an operator correction wins.
+It is private station state: keep it out of `CLAUDE.md` and out of the tree.
 
 ## Handing over
 

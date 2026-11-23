@@ -4050,4 +4050,31 @@ check "10006 an unreadable ledger does not refuse next" "$rc91" "0"
 check "10006 an unreadable ledger is said on stderr" "$(printf '%s\n' "$out91" | grep -c 'owed ledger .* is unreadable')" "1"
 check "10006 an unreadable ledger is said in the HANDOFF" "$(grep -c 'owed.jsonl could not be read' "$(ow_handoff own10006f)")" "1"
 
+sr_template="$fixture_repo/docs/handover/standing-rules-template.md"
+sr_file="$root/tester/seedrules/specs/standing-rules.md"
+sr_docA="$root/tester/seedrules/DEMO-nextleg-${today}A-chief.md"
+sr_out="$(chief new --bucket seedrules 2>&1)"
+HANDOVER_DIR="$root" bash "$QL" release "$sr_docA" "$(token_of "$sr_out")" >/dev/null 2>&1
+check "standing rules: a first chief start on an empty bucket seeds the file from the template" \
+    "$([ -f "$sr_template" ] && cmp -s "$sr_template" "$sr_file" && echo seeded)" "seeded"
+check "standing rules: the new chief doc names the station's standing-rules file" \
+    "$(grep -cF "$sr_file" "$sr_docA" 2>/dev/null | awk '{ print ($1 > 0) ? "named" : "absent" }')" "named"
+printf '%s\n' '# Standing rules' '1. A rule the chief wrote by hand.' > "$sr_file" 2>/dev/null
+sr_before="$(cksum < "$sr_file" 2>/dev/null)"
+sr_out="$(chief new --bucket seedrules 2>&1)"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/seedrules/DEMO-nextleg-${today}B-chief.md" "$(token_of "$sr_out")" >/dev/null 2>&1
+check "standing rules: a second chief start leaves a hand-edited file byte-identical" \
+    "$(cksum < "$sr_file" 2>/dev/null)" "$sr_before"
+station_private_hits() {
+    [ -f "$1" ] || { echo missing; return; }
+    { grep -iE '/home/|/Users/|\baccounts? [A-D]\b|\b[A-Z][A-Z0-9]+-[0-9]+\b' "$1"; leak_scan "$1"; } | grep -c .
+}
+check "standing rules: the shipped template carries no station path, account letter or ticket id" \
+    "$(station_private_hits "$REPO_REAL/docs/handover/standing-rules-template.md")" "0"
+sr_planted="$tmp/standing-rules-planted.md"
+cp "$REPO_REAL/docs/handover/standing-rules-template.md" "$sr_planted" 2>/dev/null || : > "$sr_planted"
+printf '%s\n' 'Read /home/fixture/notes.md first.' 'Route paid calls to account A.' >> "$sr_planted"
+check "standing rules: control: a planted home path and account letter make the same check fail" \
+    "$(station_private_hits "$sr_planted")" "2"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
