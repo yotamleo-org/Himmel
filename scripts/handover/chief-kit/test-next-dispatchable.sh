@@ -5071,6 +5071,50 @@ z8="$(z_run --workers-from "$Z_DIR/HIMMEL-nextleg-2026-11-22ZA-own-chief.fleet.j
 has "10557 Z8.lim: another chain's scope-less worker does not hold its Ticket-line key here" "$z8" "RESUME${TAB}HIMMEL-96"
 z_orphan Z8.lim "$z8"
 
+PD="$WORK/nd10257"; PDM="$PD/m/HIMMEL"; PDB="$PD/b"; mkdir -p "$PDM" "$PDB" "$PD/rel"
+printf 'v1.0.1\tfalse\t\n' > "$PD/m/HIMMEL.versions.tsv"
+(
+    M="$PDM"
+    mk "$KP-9701" "In Progress" Highest '[]' '["v1.0.1"]' '[]' "owed proof only" "Edit scripts/lib/pd-9701.sh."
+    mk "$KP-9702" "In Progress" Highest '[]' '["v1.0.1"]' '[]' "gated on a chief question" "Edit scripts/lib/pd-9702.sh."
+    mk "$KP-9703" "In Progress" High '[]' '["v1.0.1"]' '[]' "done on main" "Edit scripts/lib/pd-9703.sh."
+    mk "$KP-9704" "In Progress" High '[]' '["v1.0.1"]' '[]' "true remainder" "Edit scripts/lib/pd-9704.sh."
+    mk "$KP-9705" "In Progress" Medium '[]' '["v1.0.1"]' '[]' "gated by a readiness c row" "Edit scripts/lib/pd-9705.sh."
+    mk "$KP-9706" "To Do" Medium '[]' '["v1.0.1"]' '[]' "the open blocker of 9705" "Edit scripts/lib/pd-9706.sh."
+)
+printf '# chief\n\n## Live state\n\npool-disposition: %s question decision 977\n' "$KP-9702" > "$PDB/chief.md"
+mkfleet "$PDB/fleet.json"
+bash "$HERE/owe.sh" add --bucket "$PDB" --chief fixture --kind proof --key "$KP-9701" --text 'run the 11-16 replay' >/dev/null
+HIMMEL_RELEASE_STATE_DIR="$PD/rel" bash "$HERE/readiness.sh" append v1.0.1 "$KP-9705" c --evidence fixture --blocker "$KP-9706" --by fixture --mirror "$PDM" >/dev/null 2>&1 \
+    || fail "10257: could not seed the readiness c row"
+PDG="$PD/git"; mkdir -p "$PDG"
+git -C "$PDG" init -q -b main && git -C "$PDG" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m "fix(x): [$KP-9703] the last slice" \
+    || fail "10257: could not build the fixture main"
+cat > "$PD/jira" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PD_JIRA_LOG"
+[ "$1" = get ] && printf '%s\tTask\tTo Do\tstub\n' "$2"
+EOF
+chmod +x "$PD/jira"; export PD_JIRA_LOG="$PD/jira.log"; : > "$PD_JIRA_LOG"
+pd_run() { HIMMEL_RELEASE_STATE_DIR="$PD/rel" NEXT_DISPATCH_GIT_DIR="$PDG" NEXT_DISPATCH_JIRA_CMD="$PD/jira" NEXT_DISPATCH_MIRROR="$PDM" NEXT_DISPATCH_GH_CMD="$WORK/gh" \
+    bash "$SUT" --resume-only --top 40 --doc "$PDB/chief.md" --workers-from "$PDB/fleet.json" 2>/dev/null; }
+pd1="$(pd_run)"
+has "10257: the true remainder is RESUME" "$pd1" "RESUME${TAB}$KP-9704${TAB}"
+lacks "10257: an owed-proof-only ticket fills no RESUME slot" "$pd1" "RESUME${TAB}$KP-9701${TAB}"
+lacks "10257: a ticket gated on a chief question fills no RESUME slot" "$pd1" "RESUME${TAB}$KP-9702${TAB}"
+lacks "10257: a done-on-main ticket fills no RESUME slot" "$pd1" "RESUME${TAB}$KP-9703${TAB}"
+lacks "10257: a ticket a live readiness c row gates fills no RESUME slot" "$pd1" "RESUME${TAB}$KP-9705${TAB}"
+check "10257: the owed-proof ticket prints as # pool-owed" "1" "$(printf '%s\n' "$pd1" | grep -c "^# pool-owed $KP-9701 open owed proof o1: run the 11-16 replay\$")"
+check "10257: the chief question prints as # pool-gated with its gate named" "1" "$(printf '%s\n' "$pd1" | grep -c "^# pool-gated $KP-9702 pool-disposition question decision 977\$")"
+check "10257: the readiness c row prints as # pool-gated with its blocker named" "1" "$(printf '%s\n' "$pd1" | grep -c "^# pool-gated $KP-9705 readiness c blocker=$KP-9706\$")"
+check "10257: the done-on-main ticket prints as # pool-done-candidate" "1" "$(printf '%s\n' "$pd1" | grep -c "^# pool-done-candidate $KP-9703 ")"
+lacks "10257: the dispatcher writes no Jira status" "$(cat "$PD/jira.log")" "transition"
+printf '# chief\n\n## Live state\n\nlegs: none\n' > "$PDB/chief.md"
+pd2="$(pd_run)"
+lacks "10257: a cleared gate leaves no # pool-gated line" "$pd2" "# pool-gated $KP-9702"
+check "10257: a cleared gate returns the ticket to RESUME at its old rank, ahead of the lower-priority remainder" \
+    "$KP-9702 $KP-9704" "$(printf '%s\n' "$pd2" | awk -F'\t' '$1 == "RESUME" {printf "%s%s", s, $2; s=" "}')"
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
