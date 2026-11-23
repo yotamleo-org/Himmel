@@ -325,7 +325,7 @@ check_self_protect_cmd() {
 
     local mentions_protected=0
     case "$c" in
-        *.agents/*|*.agents|*.gemini/config*|*.gemini/settings.json*)
+        *.agents*|*.gemini*)
             mentions_protected=1
             ;;
         *userdata/providers/antigravity*)

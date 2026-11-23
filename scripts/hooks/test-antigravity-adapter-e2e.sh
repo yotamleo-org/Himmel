@@ -258,6 +258,22 @@ assert_deny "run_command writing .agents/skills/x/SKILL.md denied" "self-protect
     "$(make_pre run_command '{"CommandLine":"echo x > .agents/skills/x/SKILL.md"}')"
 assert_deny "run_command reading .agents/skills/x/SKILL.md denied (default-deny)" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"cat .agents/skills/x/SKILL.md"}')"
+assert_deny "run_command mv .agents x denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"mv .agents x"}')"
+assert_deny "run_command cd .agents && rm hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"cd .agents && rm hooks.json"}')"
+assert_deny "run_command cp hooks.json .agents trailing space denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"cp hooks.json .agents "}')"
+assert_deny "run_command cd .agents; rm hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"cd .agents; rm hooks.json"}')"
+assert_deny "run_command cd .agents&&rm hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"cd .agents&&rm hooks.json"}')"
+assert_deny "run_command mv .agents<tab>x denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"mv .agents\tx"}')"
+assert_deny "run_command cd ~/.gemini && mv config c2 denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"cd ~/.gemini && mv config c2"}')"
+assert_deny "run_command ls ~/.gemini (no subpath) denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"ls ~/.gemini"}')"
 assert_pass "read_file on worktree .agents/hooks.json allowed" \
     "$(make_pre read_file "$(jq -cn --arg p "$WT_REPO/.agents/hooks.json" '{Path:$p}')")"
 assert_pass "read_file on worktree .agents/skills/x/SKILL.md allowed" \
