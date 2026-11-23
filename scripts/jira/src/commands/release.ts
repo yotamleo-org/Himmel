@@ -23,7 +23,7 @@ import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import { coreCheckBatch, coreGroupLines, loadCoreInputs } from './core-check.js';
 import {
-  ack, apply, bucketCheck, chainFault, clearProposedLabels, coreBypass, coreSnapshot, coveringRecord, declare, decisionWords, fold, freeze, operatorFence, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, releaseForProject, reopen, request as releaseRequest, requestOnRecord, requestWithWords, reviewed, rmRun, rmRunSummary, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
+  ack, apply, bucketCheck, clearProposedLabels, coreBypass, coreSnapshot, declare, decisionWords, fold, freeze, operatorFence, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, releaseForProject, reopen, request as releaseRequest, requestWithWords, reviewed, rmRun, rmRunSummary, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
   type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { signerCheck, specSigner, type SignerAlert } from '../release/spec-sign.js';
@@ -32,7 +32,7 @@ import { releaseDir, releaseKeyPath, releaseRoot } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
 import type { VersionLines } from '../release/lines.js';
 import { mergedPrOf } from '../release/close-placement.js';
-import { asksOperator, isSerious, operatorWorkOf, type TicketFacts } from '../release/operator-work.js';
+import { isSerious, type TicketFacts } from '../release/operator-work.js';
 import type { IssueSnap, Op, OperatorKind, Verb } from '../release/types.js';
 
 // `jira release <sub>`: the CLI face of the release engine.
@@ -150,32 +150,6 @@ export { asksOperator, type TicketFacts } from '../release/operator-work.js';
 
 export type Origin = 'cli' | 'create' | 'close-fold' | 'repair';
 
-export function isGated(o: { verb: Verb; to_v: string | null; origin: Origin; ticket: TicketFacts | null; env: NodeJS.ProcessEnv | Record<string, string | undefined>; evidence?: Record<string, unknown> }): boolean {
-  if (o.verb !== 'INTAKE' && o.verb !== 'REVERSION') return false;
-  if (o.to_v === null || (o.origin !== 'cli' && o.origin !== 'create')) return false;
-  if (o.env.HIMMEL_CONSOLE_LEG === '1' || o.env.HIMMEL_RELEASE_MANAGER === '1') return false;
-  if (o.evidence?.chief_placement !== undefined) return false;
-  return o.ticket === null || (o.ticket.open && asksOperator(o.ticket));
-}
-
-function gateRefusal(ctx: Ctx, o: { verb: Verb; key: string; from_v: string | null; to_v: string | null; origin: Origin; ticket: TicketFacts | null }): string {
-  const words = '--decision <n> --words "<the operator\'s exact words>"';
-  const fix = o.origin === 'create'
-    ? `  add ${words} to this command`
-    : `  jira release request ${ctx.release} --verb ${o.verb} --key ${o.key} --from ${o.from_v ?? 'backlog'} --to ${o.to_v} --why "<why>" ${words}`;
-  const where = '  (<n>: specs/decisions/verbatim-decision-<n>-*.txt)';
-  // The CLI request cites a words record already on file; the create path does not, so only the request names that way.
-  // A chain that does not verify to its end is read by no citation, and the refusal says so instead of offering one.
-  const fault = o.origin === 'cli' ? chainFault(ctx) : undefined;
-  const cite = o.origin !== 'cli' ? null : fault !== undefined
-    ? `${fault}, so no record on file is cited (run \`jira release state ${ctx.release}\`)`
-    : `cite one on file that already names ${o.key} and exactly this placement (a words record newer than the key's last ruling is cited with no --decision), or record them`;
-  if (o.ticket === null) {
-    return `release request: ${o.key} could not be read (not in the mirror, and the live read failed), so it may be operator work; run \`jira mirror\` and ask again, or name the operator's words${cite === null ? '' : `: ${cite}`}:\n${fix}\n${where}`;
-  }
-  return `release request: ${o.key} is ${operatorWorkOf(o.ticket)}; a request that places it needs a record of the operator's words${cite === null ? '' : `: ${cite}`}.\n${fix}\n${where}`;
-}
-
 export async function ticketFacts(ctx: Ctx, key: string): Promise<TicketFacts | null> {
   const snap = readMirror(ctx.mirrorRoot).issues?.get(key);
   if (snap) return { labels: snap.labels ?? [], priority: snap.priority, open: terminalOf(snap) === null };
@@ -193,7 +167,7 @@ export async function ticketFacts(ctx: Ctx, key: string): Promise<TicketFacts | 
 
 /**
  * Refuses a request the release manager could only reject: a placeholder why,
- * a gated request (isGated) that names no decision, an INTAKE for a ticket the
+ * an INTAKE for a ticket the
  * mirror reads as closed outside the release, or a REVERSION / DISCHARGE from a
  * version the mirror does not hold the key in. No mirror, or an undeclared
  * release, skips the key checks.
@@ -207,8 +181,6 @@ export function refuseRequest(ctx: Ctx, o: {
   if (why.length < 8 || tail.length < 3 || PLACEHOLDER.test(tail)) {
     throw new RequestRefused(`release request: "${o.why}" is a placeholder why; say in one line why ${o.key} needs the release manager`);
   }
-  const ticket = o.ticket ?? null;
-  if (o.decision === undefined && isGated({ ...o, ticket, env: ctx.env })) throw new RequestRefused(gateRefusal(ctx, { ...o, ticket }));
   const { issues, sync } = readMirror(ctx.mirrorRoot);
   const snap = issues?.get(o.key);
   const versions = snap ? state(ctx).versions : [];
@@ -941,7 +913,7 @@ export function registerRelease(program: Command): void {
     .option('--to <version>', 'Target version, or backlog', 'backlog')
     .requiredOption('--why <text>', 'One line: why the request exists')
     .option('--evidence <json>', 'Evidence object as JSON', '{}')
-    .option('--decision <n>', 'The operator decision whose words place an operator-directed or High ticket (its specs/decisions verbatim file); omit it when a words record already on file names the key and exactly this placement, which is then cited')
+    .option('--decision <n>', 'The operator decision whose words this request records (its specs/decisions verbatim file); optional for every filer, since the door rules the request')
     .option('--words <text>', 'The operator\'s exact words in that file; with --decision, recorded as an O- record the request cites')
     .option('--required-by <key>', 'The open current-version ticket that cannot close without this one: records the remainder in the evidence (follow_up_of, remainder)')
     .option('--chief-reason <reason>', 'The chief places the ticket at --to with this reason (console session only, never from a worker); never later than a version the key holds')
@@ -969,21 +941,7 @@ export function registerRelease(program: Command): void {
       if (o.decision !== undefined && o.words === undefined) throw new RequestRefused('release request: --decision needs --words "<the operator\'s exact words>"');
       if (o.words !== undefined && o.decision === undefined) throw new RequestRefused('release request: --words needs --decision <n>, the decision whose file holds them');
       const row = { verb: o.verb as Verb, key: o.key, from_v: ver(o.from), to_v: ver(o.to), why: o.why };
-      const ev = evidence as Record<string, unknown>;
-      const scoped = isGated({ ...row, origin: 'cli', ticket: null, env: ctx.env, evidence: ev });
-      const ticket = scoped && o.decision === undefined ? await ticketFacts(ctx, o.key) : null;
-      // A gated ask with no --decision is placed by a words record already on file that names this key and exactly this placement.
-      const cited = scoped && o.decision === undefined && isGated({ ...row, origin: 'cli', ticket, env: ctx.env, evidence: ev }) ? coveringRecord(ctx, row) : undefined;
-      refuseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, origin: 'cli', ticket, decision: o.decision ?? cited?.decision ?? undefined });
-      if (cited) {
-        const got = requestOnRecord(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' });
-        if (!got) throw new RequestRefused(`release request: ${cited.id} no longer covers ${o.key}; ask again`);
-        if ((got.request.evidence as { operator?: unknown } | null)?.operator === got.operator.id) {
-          console.log(`OPERATOR ${got.operator.id} (decision ${got.operator.decision}, the operator's words already on file; no new record)`);
-        }
-        console.log(`REQ ${got.request.req}`);
-        return;
-      }
+      refuseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, origin: 'cli' });
       if (o.decision !== undefined && o.words !== undefined) {
         const got = requestWithWords(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' }, { decision: o.decision, words: o.words });
         console.log(`OPERATOR ${got.operator.id} (decision ${o.decision}, the operator's words)`);
