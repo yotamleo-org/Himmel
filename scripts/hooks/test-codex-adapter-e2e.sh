@@ -1,17 +1,4 @@
 #!/usr/bin/env bash
-# Through-adapter e2e for the codex-direct lane. Drives
-# .codex/codex-hook-adapter.sh END-TO-END: stdin = a codex-shaped PreToolUse
-# JSON, CLAUDE_PROJECT_DIR pointed at THIS checkout so the adapter runs the REAL
-# guardrails under scripts/hooks/. Asserts the exit-2 block is translated into
-# Codex's JSON `permissionDecision:"deny"` for BOTH:
-#   (a) a secret-read payload through block-read-secrets.sh, and
-#   (b) an external-write payload through block-terminal-write-fence.sh
-#       (the guard this ticket adds).
-# Plus an ALLOW passthrough (a benign command through the new guard must NOT
-# emit a deny). Companion to scripts/hooks/test-codex-run-hook.sh, which proves
-# the wrapper+adapter mechanics on a synthetic guardrail; this proves the real
-# guardrails deny through the adapter. Hermetic: no network, no fixtures needed
-# (both deny cases classify by the payload alone).
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
