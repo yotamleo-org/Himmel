@@ -1492,8 +1492,6 @@ handoff_template="$template_dir/chief-handoff-template.md"
 kit="$repo/scripts/handover/chief-kit"
 standing_rules_template="$template_dir/standing-rules-template.md"
 
-# seed_standing_rules -- give a station with no standing-rules file a copy of
-# the shipped template; an existing file (or symlink) is never overwritten.
 seed_standing_rules() {
     local f="$state_dir/specs/standing-rules.md"
     { [ -e "$f" ] || [ -L "$f" ]; } && return 0
