@@ -1160,7 +1160,15 @@ describe('create — unplaced follow-up', () => {
       expect(issueBody().fields['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
       expect(issueBody().fields['priority']).toEqual({ name: 'High' });
       expect(queued()).toEqual([]);
+      expect(mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue')![3]).toBe('create-followup');
       expect(mockRequest.mock.calls.some((x) => x[0] === 'POST' && String(x[1]).includes('issueLink'))).toBe(true);
+    });
+
+    it('10588 control: an Epic follow-up of a closed parent keeps the old behaviour', async () => {
+      parentIs({ status: 'Done', done: true, priority: 'High' });
+      await file('--follow-up-of', 'HIMMEL-5', '--type', 'Epic');
+      expect(issueBody().fields['fixVersions']).toBeUndefined();
+      expect(issueBody().fields['priority']).toBeUndefined();
     });
 
     it('10588 control: the caller\'s own priority is kept on a closed parent\'s follow-up', async () => {

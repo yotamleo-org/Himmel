@@ -229,7 +229,7 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   preflightIntake(intake, fields, title, testProject);
   if (run.check) return { disposition: 'checked' };
 
-  const writer = createWriterOf(options, { placed: fields['fixVersions'] !== undefined, inherited, residual, bugDefault });
+  const writer = createWriterOf(options, { placed: fields['fixVersions'] !== undefined, inherited: inherited ?? closedParent?.fixVersion, residual, bugDefault });
   const result = await postIssue(fields, writer);
   const key = result.key;
   writeJiraBreadcrumb(key);

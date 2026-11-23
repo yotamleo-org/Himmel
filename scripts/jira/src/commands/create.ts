@@ -563,8 +563,8 @@ export async function followUpIntake<T extends IntakeOptions & { followUpOf?: st
 type PlacementChoice = { followUpOf?: string; fixVersion?: string; backlog?: boolean; proposedVersion?: string; why?: string };
 const hasOwnPlacement = (o: PlacementChoice): boolean => o.followUpOf === undefined || o.fixVersion !== undefined || !!o.backlog || o.proposedVersion !== undefined || !!o.why?.trim();
 
-export async function closedParentPlacement(o: PlacementChoice): Promise<{ fixVersion: string; priority?: string } | undefined> {
-  if (hasOwnPlacement(o)) return undefined;
+export async function closedParentPlacement(o: PlacementChoice & { type: string }): Promise<{ fixVersion: string; priority?: string } | undefined> {
+  if (hasOwnPlacement(o) || !/^(bug|task|story)$/i.test(o.type)) return undefined;
   try {
     const parent = (await request<ParentState & { fields: { priority?: { name?: string } } }>('GET', `/issue/${o.followUpOf}?fields=project,status,fixVersions,priority`)).fields;
     if (parent.status?.statusCategory?.key !== 'done') return undefined;
