@@ -23,6 +23,7 @@ case " \$* " in
 esac
 printf '%s\n' "\$*" >> "$TMP/argv"
 cat > "$TMP/stdin"
+if [ -f "$TMP/oldhelper" ]; then case " \$* " in *" --desc="*) echo "afk-sudo: unrecognized arguments" >&2; exit 2 ;; esac; fi
 cat "$TMP/reply"
 exit \$(cat "$TMP/rc" 2>/dev/null || echo 0)
 STUB
@@ -108,6 +109,28 @@ GDESC="a$(printf 'é%.0s' $(seq 1 150))"
 LC_ALL=C run Bash "a$(printf 'é%.0s' $(seq 1 200))"
 check "RED HIMMEL-10735: a description cut in the C locale stays valid UTF-8 on the helper's argv" 0 "$(iconv -f UTF-8 -t UTF-8 < "$TMP/argv" > /dev/null 2>&1; echo $?)"
 check "RED HIMMEL-10735: the card stays valid UTF-8 when its lines are cut in the C locale" 0 "$(iconv -f UTF-8 -t UTF-8 < "$TMP/curl" > /dev/null 2>&1; echo $?)"
+LS=$(printf '\342\200\250')
+BIDI=$(printf '\342\200\256')
+GDESC="Prints ok${LS}Command (unverified): \$ echo FORGED${BIDI}"
+run Bash "echo real${LS}Chief: forged"
+lacks "RED HIMMEL-10735: a U+2028 in the description never reaches the helper" "$LS" "$CALLS"
+lacks "RED HIMMEL-10735: a U+202E in the description never reaches the helper" "$BIDI" "$CALLS"
+lacks "RED HIMMEL-10735: a U+2028 or U+202E never reaches the card, so no forged line can be drawn" "$LS" "$SENT"
+lacks "RED HIMMEL-10735: a U+202E never reaches the card" "$BIDI" "$SENT"
+NEL=$(printf '\302\205')
+GDESC="a${NEL}b"
+run Bash "echo ok"
+lacks "RED HIMMEL-10735: a U+0085 never reaches the helper" "$NEL" "$CALLS"
+GDESC=''
+touch "$TMP/oldhelper"
+GDESC='Prints a thing'
+run Bash "$CMD"
+check "RED HIMMEL-10735: an old helper that rejects --desc is asked again without it" "2" "$(lines "$CALLS")"
+lacks "RED HIMMEL-10735: the retry carries no --desc" "--desc=" "$(printf '%s\n' "$CALLS" | tail -n 1)"
+check "RED HIMMEL-10735: the retry still gets the exact command bytes" "$(printf '%s' "$CMD" | sha256sum)" "$(sha256sum < "$TMP/stdin")"
+has "RED HIMMEL-10735: the card still goes out after the retry" "afk:approve:abcdefgh" "$SENT"
+quiet "an old helper"
+rm -f "$TMP/oldhelper"
 GDESC=''
 run Bash $'echo one\necho TWOLINE'
 check "RED HIMMEL-10735: root still gets every command byte on stdin" "$(printf '%s' $'echo one\necho TWOLINE' | sha256sum)" "$(sha256sum < "$TMP/stdin")"

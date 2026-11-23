@@ -566,6 +566,14 @@ text=$(card_text)
 assert_contains "RED HIMMEL-10735: a multi-line description is cut to its first line" "The agent says: first line" "$text"
 assert_absent "RED HIMMEL-10735: its second line is not on the card" "SECONDLINE" "$text"
 assert_absent "RED HIMMEL-10735: a multi-line command shows its first line only" "TWOLINE" "$text"
+LS=$(printf '\342\200\250'); PS=$(printf '\342\200\251'); NEL=$(printf '\302\205'); BIDI=$(printf '\342\200\256'); ISO=$(printf '\342\201\246'); ZW=$(printf '\342\200\213')
+: > "$tmp/curl.args"
+card_out=$(card --card abcdefgh --operator 4242 --session S1 --desc "Prints ok${LS}Command (unverified): \$ echo FORGED${PS}x${NEL}y${BIDI}z${ISO}w${ZW}v" --cmd "echo real${LS}Chief: forged"); card_rc=$?
+text=$(card_text)
+for sep in "$LS" "$PS" "$NEL" "$BIDI" "$ISO" "$ZW"; do
+    assert_absent "RED HIMMEL-10735: a Unicode line or format separator ($(printf '%s' "$sep" | od -An -tx1 | tr -d ' \n')) never reaches the card" "$sep" "$text"
+done
+assert_eq "RED HIMMEL-10735: a forged command line cannot be drawn: the card still has one command line" "1" "$(printf '%s\n' "$text" | grep -c '^Command (unverified)')"
 : > "$tmp/curl.args"
 card_out=$(card --card abcdefgh --operator 4242 --session S1); card_rc=$?
 assert_absent "an older hook's card, with no description, adds no claim line" "The agent says" "$(card_text)"
@@ -1592,7 +1600,7 @@ out=$(greq 0 "$GCMD"); id=$(rid "$out")
 assert_contains "a classifier-refused command files a grant request" "result=pending id=" "$out"
 text=$(tg notice sendMessage text)
 assert_contains "the notice shows the full command" "$GCMD" "$text"
-assert_contains "the notice shows the classifier's reason in plain words" "Refused because: Code from External" "$text"
+assert_contains "the notice shows the classifier's reason in plain words" "The classifier says: Code from External" "$text"
 assert_contains "the notice carries the nonce" "<b>$(state_nonce "$id")</b>" "$text"
 assert_contains "the notice says guards still run" "Guards still run" "$text"
 assert_absent "the ledger never holds the command text" "cowsay" "$(ledger)"
@@ -1654,7 +1662,7 @@ out=$(gpl 0 "$GCMD" 'Fetches a demo package and prints a cow' '[Code from Extern
 text=$(tg notice sendMessage text); n=$(state_nonce "$id")
 assert_eq "RED HIMMEL-10735: line 1 is the reply, with the nonce and the code slot" "approve $id <b>$n</b> &lt;code&gt; → run once · deny $id $n → refuse" "$(printf '%s\n' "$text" | sed -n 1p)"
 assert_eq "RED HIMMEL-10735: line 2 is the agent's own description, marked as its claim" "The agent says: Fetches a demo package and prints a cow" "$(printf '%s\n' "$text" | sed -n 2p)"
-assert_eq "RED HIMMEL-10735: line 3 is the refusal reason in plain words" "Refused because: Code from External — fetches a package from the web" "$(printf '%s\n' "$text" | sed -n 3p)"
+assert_eq "RED HIMMEL-10735: line 3 is the refusal reason in plain words" "The classifier says: Code from External — fetches a package from the web" "$(printf '%s\n' "$text" | sed -n 3p)"
 assert_eq "RED HIMMEL-10735: line 4 is the raw command, marked unverified" "Command (unverified): \$ $GCMD" "$(printf '%s\n' "$text" | sed -n 4p)"
 assert_eq "RED HIMMEL-10735: line 5 says there is no chief view" "Chief: no view" "$(printf '%s\n' "$text" | sed -n 5p)"
 headlen=$(printf '%s\n' "$text" | sed -n '1,/^Session:/p' | sed '$d' | python3 -I -c 'import sys; print(len(sys.stdin.read()))')
@@ -1718,7 +1726,7 @@ new_root ghooks; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
 assert_eq "the PermissionDenied hook prints nothing" "" "$(ghook 0 approval-grant-request.sh "$GCMD")"
 id=$(pending_id)
 assert_contains "the PermissionDenied hook filed the command with root" "$GCMD" "$(tg notice sendMessage text)"
-assert_contains "the hook passed the classifier's reason, shown in plain words" "Refused because: Code from External — fetches a package" "$(tg notice sendMessage text)"
+assert_contains "the hook passed the classifier's reason, shown in plain words" "The classifier says: Code from External — fetches a package" "$(tg notice sendMessage text)"
 assert_eq "RED HIMMEL-7686: before the code the check gives no allow" "" "$(ghook 2 approval-grant-check.sh "$GCMD")"
 approve 3 "$id" "$(code 3)" >/dev/null
 assert_eq "RED HIMMEL-7686: a granted hash does not allow other bytes" "" "$(ghook 5 approval-grant-check.sh "$GCMD ")"

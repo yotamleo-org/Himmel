@@ -91,12 +91,18 @@ if [ -z "$chief" ]; then
 fi
 export HIMMEL_CONSOLE_NAME="$chief"
 
-desc=$(jq -r '.tool_input.description // "" | tostring' <<<"$input" 2>/dev/null | head -n 1 | tr -d '\000-\037' | cut -c1-200 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)  # swallow-ok: a missing description reads as empty and the card omits the line
-cmd1=$(jq -r '.tool_input.command' <<<"$input" 2>/dev/null | head -n 1 | tr -d '\000-\037' | cut -c1-300 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)  # swallow-ok: a missing command line reads as empty and the card omits the line
+drop_invisible='s/[\p{Cc}\p{Cf}\x{2028}\x{2029}]//g'
+desc=$(jq -r '.tool_input.description // "" | tostring' <<<"$input" 2>/dev/null | head -n 1 | perl -CSD -pe "$drop_invisible" 2>/dev/null | cut -c1-200 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)  # swallow-ok: a missing description reads as empty and the card omits the line
+cmd1=$(jq -r '.tool_input.command' <<<"$input" 2>/dev/null | head -n 1 | perl -CSD -pe "$drop_invisible" 2>/dev/null | cut -c1-300 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)  # swallow-ok: a missing command line reads as empty and the card omits the line
 
 reply=$(jq -j '.tool_input.command' <<<"$input" 2>/dev/null |
     sudo -n "$HELPER" grant-request --session="$session" --cwd="$cwd" --why="$reason" --desc="$desc" 2>/dev/null)
 result=$(printf '%s\n' "$reply" | sed -n 's/^result=\([a-z0-9:-]*\).*/\1/p' | head -1)
+if [ -z "$result" ]; then
+    reply=$(jq -j '.tool_input.command' <<<"$input" 2>/dev/null |
+        sudo -n "$HELPER" grant-request --session="$session" --cwd="$cwd" --why="$reason" 2>/dev/null)
+    result=$(printf '%s\n' "$reply" | sed -n 's/^result=\([a-z0-9:-]*\).*/\1/p' | head -1)
+fi
 field() { printf '%s\n' "$reply" | sed -n "s/^result=pending.* $1=\([^ ]*\).*/\1/p" | head -1; }
 case "$result" in
     pending)

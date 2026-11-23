@@ -329,7 +329,11 @@ approval, and the worker's retry passes the classifier for that one call.
    (`PermissionDenied`, matcher `Bash`) pipes the command's exact bytes to
    `sudo -n afk-sudo grant-request --session S --cwd D --why <reason> --desc <description>`,
    where the description is the Bash call's own `description` field, first line only, at
-   most 200 characters, control characters dropped (empty when the call has none). It prints nothing
+   most 200 characters, with every control (Cc), format and bidi (Cf) character and U+2028
+   and U+2029 dropped, so no line separator can draw a forged line on the card (empty when
+   the call has none, or when `perl` is missing). An empty reply from the helper, as an
+   older helper that does not know `--desc` gives, makes the hook ask once more without
+   `--desc`, so a grant never fails closed on version skew. It prints nothing
    and exits 0 on every path. It files only a reason with a bracketed classifier category
    (`[Unauthorized Persistence]`): a no-verdict denial, "Classifier unavailable" or a
    credential, secret, token or exfiltration category files nothing.
@@ -357,8 +361,8 @@ approval, and the worker's retry passes the classifier for that one call.
    never from the classifier-denial log. Its head is five lines (six when the command has
    more than one line), at most 400 characters:
    `approve <id> <nonce> <code> → run once · deny <id> <nonce> → refuse`; `The agent says:
-   <description>` (the agent's claim, cut at a word boundary at 75); `Refused because:
-   <classifier category> — <reason>` (cut at 60); `Command (unverified): $ <first
+   <description>` (the agent's claim, cut at a word boundary at 75); `The classifier says:
+   <classifier category> — <reason>` (cut at 56); `Command (unverified): $ <first
    line>` (cut at a word boundary at 85, then `…(+n lines)` on its own line); `Chief: no view`
    (the permission hook files the ask, so no chief has a view). A cut ask adds
    `TRUNCATED, full request attached` under the head, never above it. Below the head: the

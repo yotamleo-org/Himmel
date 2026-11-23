@@ -719,7 +719,7 @@ MSG_CAP = 3500
 EL_CAP, EL_KEEP = 120, 100
 ARGS_SHOWN = 10
 SCRIPT_LINES, LINE_KEEP = 10, 100
-HEAD_DESC, HEAD_REASON, HEAD_CMD = 75, 60, 85
+HEAD_DESC, HEAD_REASON, HEAD_CMD = 75, 56, 85
 
 
 def notice_token():
@@ -977,7 +977,7 @@ def grant_facts(rec, nonce, ttl, digest):
     reason = plain_reason(rec.get("blocked_by"))
     head = [f"approve {rid} <b>{nonce}</b> &lt;code&gt; → run once · deny {rid} {nonce} → refuse",
             "The agent says: " + (esc(desc)[0] + ("…" if dcut else "") if desc else "(no description given)"),
-            "Refused because: " + (reason or "(no reason given)"),
+            "The classifier says: " + (reason or "(no reason given)"),
             f"Command (unverified): $ {esc(first)[0]}" + ("…" if fcut else "")]
     if len(lines) > 1:
         head.append(f"…(+{len(lines) - 1} lines)")
