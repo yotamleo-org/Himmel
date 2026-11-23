@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
 # scripts/handover/test-hop-brief.sh - hermetic suite for hop-brief.py and its two modules,
 # scripts/lib/transcript_deliveries.py (the delivery classifier) and scripts/lib/handover_tokens.py (the token helper).
-#
-# The fixture transcript is built in a temp dir from the real row shapes: a chief's cross-session message is an
-# isMeta user row whose <cross-session-message> tag carries from-name; a subagent hand-back starts like a
-# cross-session message and carries no tag. Bus records are made by formatRecord itself, through node.
-# No model call, no launch, no real transcript.
-#
 # check() evals its condition, so the single quotes are deliberate.
 # shellcheck disable=SC2016,SC2034
 set -u

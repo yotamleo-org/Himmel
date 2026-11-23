@@ -7,17 +7,6 @@ caller passes in; this module reads no handover doc except through chief_names(d
 
   python3 -I transcript_deliveries.py --count <jsonl>...   counts per kind, no text
 
-A user row (and a queued_command's prompt) is sorted in this order: the wake line; a cross-session
-start with a <cross-session-message> tag (the sender is its from-name); isMeta or isCompactSummary;
-a monitor start; then classify_trigger of scripts/eval/chief-load-inventory.py. A cross-session
-start with no tag is the shape of a subagent hand-back and falls to classify_trigger.
-
-Each pattern constant has one owner, pinned by a row of scripts/handover/test-hop-brief.sh: BUS_HEAD
-formatRecord (himmel-bus lib/deliver.mjs), READ_PREFIX readOne (himmel-bus server/index.mjs), WAKE_LINE
-bus-idle-waker.sh, the two STARTS classify (usage-attribution.sh), CHIEF_CLAUSE gen-briefs.py, SUCCESSION
-append-results.sh, SUCCESSION_BULLET the current_chief walk of guard-worker-context-handoff.sh.
-KINDS maps a kind to (eligible, delivery); a cross-session item is a delivery iff its sender is a chief.
-
 Exit: 0 ok, 2 usage, 3 an unreadable transcript.
 """
 
@@ -217,7 +206,6 @@ def classify_rows(rows):
 
 
 def classify(rows, chiefs):
-    """-> [(item, eligible, delivery)] for the given chief names."""
     items, _ = classify_rows(rows)
     return [(it, it.eligible(chiefs), it.delivery(chiefs)) for it in items]
 

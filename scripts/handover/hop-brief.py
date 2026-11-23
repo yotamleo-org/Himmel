@@ -72,9 +72,6 @@ def carried(text):
 
 
 def select(rows, chiefs, budget):
-    """The one selection function of write and verify.
-    -> dict(items: eligible items by id, texts: scrubbed text by id, must: [ids], selected: [ids],
-            newest_delivery: item or None, unreadable: [items])"""
     classified = td.classify(rows, chiefs)
     eligible = [it for it, el, _ in classified if el]
     deliveries = [it for it, _, dl in classified if dl]
@@ -111,7 +108,6 @@ def select(rows, chiefs, budget):
 
 
 def background_tasks(rows):
-    """Background Bash calls and Agent calls with no completion and no TaskStop: [(task id, description)]."""
     started, done = [], set()
     calls = {}
     for _, d in rows:
@@ -292,7 +288,6 @@ def cmd_write(a):
 
 
 def brief_items(lines):
-    """-> {item id: carried text} as the brief holds them."""
     items, i = {}, 0
     while i < len(lines):
         m = ITEM.match(lines[i])
