@@ -37,8 +37,7 @@
 # line there and in the owning chief's console inbox (--chief, else HIMMEL_CONSOLE_NAME) when that inbox exists.
 # chief-kit/launch-confirm.sh --since <epoch> reads the lines after that attempt's LAUNCH-START to confirm it started.
 # Once a launch passes its checks the launcher writes <signal-file> itself, so the chief never touches it; a launch that
-# cannot write it is refused (`cannot write the start signal`, exit 2). <deadline-epoch> no longer delays the start; it
-# still sizes the fleet reservation.
+# cannot write it is refused (`cannot write the start signal`, exit 2).
 #
 # --dry-run: prints the argv this would hand to headed-arm.sh (name, doc,
 # signal, deadline, log, model, resolved context) plus the worker env this
