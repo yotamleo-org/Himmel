@@ -2698,17 +2698,22 @@ record_conflicts() {
 # check-commit-msg) and the target status from reconcile-config.json, so
 # this and `reconcile-backlog.mjs` share one source of truth for "what
 # status does a closed ticket move to" per project.
-# _jira_fold_request <repo_root> <key> <version> <pr> <sha> <what failed> — a closed
-# ticket the merge could not place: print a WARN and file a Done-fold INTAKE into
-# <version> for the release manager. The outcome rides the audit line as fold-request=.
 _jira_fold_request() {
-    local repo_root="$1" key="$2" cur="$3" pr_num="$4" pr_sha="$5" what="$6" out rc=0 req
-    if [ -z "$cur" ]; then
-        echo "merge-on-green: WARN $key closed with no fixVersion ($what); no unreleased version to fold into: place it by hand" >&2
+    local repo_root="$1" key="$2" jcur="$3" pr_num="$4" pr_sha="$5" what="$6" out rc=0 req decls rel cur
+    decls=$(cd "$repo_root" && node scripts/jira/dist/index.js release for-project "${key%%-*}" --json 2>/dev/null) || rc=$?  # swallow-ok: rc is read below
+    if [ "$rc" -ne 0 ]; then
+        echo "merge-on-green: WARN $key closed unplaced ($what); the declared release of ${key%%-*} could not be read (rc=$rc), so no Done-fold request was filed" >&2
+        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fold-request=failed"
+        return 0
+    fi
+    rel=$(printf '%s' "$decls" | jq -r 'if type == "array" and length == 1 then (.[0].release // "") else "" end' 2>/dev/null) || rel=""  # swallow-ok: unparsed output reads as no release
+    cur=$(printf '%s' "$decls" | jq -r 'if type == "array" and length == 1 then (.[0].current // "") else "" end' 2>/dev/null) || cur=""  # swallow-ok: unparsed output reads as no current
+    if [ -z "$rel" ] || [ -z "$cur" ]; then
+        echo "merge-on-green: WARN $key closed unplaced ($what); no single declared release names ${key%%-*} (Jira current ${jcur:-none}): place it by hand" >&2
         JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT fold-request=none"
         return 0
     fi
-    out=$(cd "$repo_root" && node scripts/jira/dist/index.js release request "$cur" --verb INTAKE --key "$key" --to "$cur" \
+    out=$(cd "$repo_root" && node scripts/jira/dist/index.js release request "$rel" --verb INTAKE --key "$key" --to "$cur" \
         --why "merged in PR #$pr_num @ ${pr_sha:0:12}: Done folds into $cur, the merge could not place it" \
         --evidence "{\"pr\":$pr_num,\"sha\":\"$pr_sha\"}" 2>&1) || rc=$?
     req=$(printf '%s\n' "$out" | sed -n 's/^REQ //p' | head -n 1)

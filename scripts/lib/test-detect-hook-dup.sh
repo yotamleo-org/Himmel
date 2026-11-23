@@ -27,7 +27,8 @@ printf '%s' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command
 out=$(bash "$det" "$user" "$td/proj/.claude/settings.json" "/opt/himmel" 2>&1)
 grep -q "wired at BOTH user and project scope" <<<"$out" && check "SC5 warns on non-himmel dup" yes yes || check "SC5 warns on non-himmel dup" no yes
 grep -q "auto-approve-safe-bash" <<<"$out" && check "SC5 lists the dup hook" yes yes || check "SC5 lists the dup hook" no yes
-grep -q "unwire-pretooluse-hooks.sh --scope project --target $td/proj" <<<"$out" && check "SC5 prints remediation target" yes yes || check "SC5 remediation" no yes
+check "SC5 advises no unwire (launch-guard needs the project chain)" "$(printf '%s' "$out" | grep -c 'unwire')" "0"
+grep -q "Keep the project copy" <<<"$out" && check "SC5 says keep the project copy" yes yes || check "SC5 says keep the project copy" no yes
 
 # ── SC5b: in-repo (project == himmel's own settings) → SILENT ───────────────
 # This case exercises the REAL project settings.json. That file is in

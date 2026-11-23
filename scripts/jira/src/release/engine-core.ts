@@ -3,12 +3,12 @@ import { join } from 'node:path';
 import { releaseKeyPath, releaseRoot } from './paths.js';
 import { appendChain, contentSha, loadKey, readChain, readSigned, withLock, type Chain } from './ledger.js';
 import { FENCE_MARKERS, walk } from './fence-ancestry.js';
-import type { Baseline, Declaration, EventRow, IssueSnap, OperatorKind, OperatorRow, RequestRow, RulingRow } from './types.js';
+import type { Baseline, Declaration, EventRow, IssueSnap, Op, OperatorKind, OperatorRow, RequestRow, RulingRow } from './types.js';
 
 export interface JiraPort {
   fixVersions(key: string): Promise<string[]>;
   newestFixVersionEntry(key: string): Promise<{ id: string; ts: string }>;
-  setFixVersion(key: string, op: 'add' | 'remove', version: string): Promise<void>;
+  setFixVersion(key: string, op: 'add' | 'remove', version: string, leave?: { by: string; op?: Op }): Promise<void>;
   findComment(key: string, marker: string): Promise<string | null>;
   addComment(key: string, markdown: string): Promise<string>;
   labels(key: string): Promise<string[]>;

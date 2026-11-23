@@ -183,7 +183,7 @@ u_suite_setup() {
 U_REPO="$TMP/u-repo"
 mkdir -p "$U_REPO/.git/hooks" "$U_REPO/scripts/machine-setup" "$U_REPO/scripts/lib" "$U_REPO/docs/setup"
 cp "$(dirname "$CLI")/machine-setup/uninstall-plugins.sh" "$U_REPO/scripts/machine-setup/"
-for helper in unwire-statusline unwire-himmel-repo unwire-luna-vault unwire-handover-dir unwire-pretooluse-hooks; do
+for helper in unwire-statusline unwire-himmel-repo unwire-luna-vault unwire-handover-dir unwire-pretooluse-hooks wire-pretooluse-hooks provenance canon-path claude-config-dir; do
     cp "$(dirname "$CLI")/lib/$helper.sh" "$U_REPO/scripts/lib/"
 done
 cp "$(dirname "$CLI")/../docs/setup/settings-template.json" "$U_REPO/docs/setup/"

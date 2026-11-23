@@ -15,6 +15,9 @@ import { request } from '../client.js';
 import { appendAdmission, readAdmissions } from './admissions-ledger.js';
 import { execFileSync } from 'node:child_process';
 import { registerVersionFreeze, probes, mainCiGreen, parseFrozen } from './version-freeze.js';
+import { leaveCheck, type Leave } from '../release/leave.js';
+import { mechanismOf, requestedSet } from '../release/version-writes.js';
+import type { OperatorRow } from '../release/types.js';
 
 const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
 const mockAppend = appendAdmission as unknown as ReturnType<typeof vi.fn>;
@@ -509,6 +512,31 @@ describe('version-freeze / version-ready / version-defer', () => {
     );
     await expect(run(['version-defer', 'HIM-2', '--version', 'v1.1.3', '--reason', 'moves to v1.1.4'])).rejects.toThrow(/was not changed/);
     expect(mockAppend).not.toHaveBeenCalled();
+  });
+
+  it('version-defer under the leave check: refused without --by, passes with the covering move record, and its rollback is an own-add undo', async () => {
+    const O1: OperatorRow = { id: 'O-1', kind: 'decision', ts: '2026-11-01T00:00:00Z', decision: '1', keys: ['HIM-2'], op: 'move', from_v: 'v1.1.3', to_v: 'v1.1.4' };
+    const w = { description: FROZEN_DESC, fixVersions: { 'HIM-2': ['v1.1.3'] } };
+    world(w);
+    const base = mockRequest.getMockImplementation()!;
+    const own = new Set<string>();
+    mockRequest.mockImplementation(async (method: string, path: string, body?: never, writer?: string, opts?: { leave?: Leave }) => {
+      if (method === 'PUT' && path === '/issue/HIM-2' && (body as { update?: { fixVersions?: unknown } } | undefined)?.update?.fixVersions) {
+        const before = [...w.fixVersions['HIM-2']];
+        const after = requestedSet(before, body);
+        const verdict = leaveCheck({ key: 'HIM-2', before, after, mechanism: mechanismOf(writer), leave: opts?.leave, ownAdds: own,
+          decls: [{ release: 'R', project: 'HIM', current: 'v1.1.3', versions: ['v1.1.3', 'v1.1.4'] }], ops: new Map([['R', new Map([['O-1', O1]])]]), released: new Set() });
+        if (!verdict.ok) throw new Error(verdict.reason);
+        for (const v of after ?? []) if (!before.includes(v)) own.add(v);
+      }
+      return base(method, path, body);
+    });
+    await expect(run(['version-defer', 'HIM-2', '--version', 'v1.1.3', '--to', 'v1.1.4', '--reason', 'moves to v1.1.4'])).rejects.toThrow(/v1\.1\.4 was taken off again/);
+    expect(w.fixVersions['HIM-2']).toEqual(['v1.1.3']);
+    expect(mockAppend).not.toHaveBeenCalled();
+    own.clear();
+    await run(['version-defer', 'HIM-2', '--version', 'v1.1.3', '--to', 'v1.1.4', '--reason', 'moves to v1.1.4', '--by', 'O-1']);
+    expect(w.fixVersions['HIM-2']).toEqual(['v1.1.4']);
   });
 
   it('version-defer without the console marker is refused before any write', async () => {

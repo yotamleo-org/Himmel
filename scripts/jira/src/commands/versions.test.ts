@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Command } from 'commander';
 import { readVersionWrites } from '../release/version-writes.js';
+import { declare, operatorDecision, type Ctx, type JiraPort } from '../release/engine.js';
 
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
@@ -25,6 +27,7 @@ import {
   setFixVersion,
   assertVersionExists,
   earliestUnreleased,
+  registerVersions,
 } from './versions.js';
 
 interface Call {
@@ -260,6 +263,67 @@ describe('setFixVersion names its writer', () => {
     wire();
     await setFixVersion('HIMMEL-374', 'add', 'v1.0.0');
     expect(readVersionWrites(journal).map((r) => r.mechanism)).toEqual(['hand']);
+  });
+});
+
+describe('fix-version --remove and the leave check', () => {
+  let dir: string;
+  const releaseCtx = (): Ctx => ({ release: 'R1', dir: join(dir, 'release', 'R1'), keyPath: join(dir, 'keys', 'R1.key'), env: {},
+    now: () => new Date('2026-11-23T10:00:00.000Z'), jira: {} as JiraPort, mirrorRoot: null });
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'versions-leave-'));
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(dir, 'release'));
+    vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(dir, 'keys'));
+    vi.stubEnv('HIMMEL_VERSION_WRITES', '');
+    vi.stubEnv('HIMMEL_VERSION_WRITER', '');
+    vi.stubEnv('HOME', join(dir, 'home'));
+    mkdirSync(join(dir, 'home', '.himmel', 'state', 'jira-mirror'), { recursive: true });
+    writeFileSync(join(dir, 'home', '.himmel', 'state', 'jira-mirror', 'HIMMEL.versions.tsv'), 'v1.0.0\tfalse\t\tfalse\nv1.0.1\tfalse\t\tfalse\n');
+    declare(releaseCtx(), { project: 'HIMMEL', versions: ['v1.0.0', 'v1.0.1'], decision: '1', verbatim: 'R1 = v1.0.0 + v1.0.1', mode: 'observe' });
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function wire(start: string[]): { held: () => string[]; puts: () => number } {
+    let held = [...start];
+    let puts = 0;
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: { method?: string; body?: string } = {}) => {
+      if ((init.method ?? 'GET') === 'PUT') {
+        puts++;
+        for (const op of (JSON.parse(String(init.body)) as { update: { fixVersions: Array<{ remove?: { name: string } }> } }).update.fixVersions) {
+          held = held.filter((v) => v !== op.remove?.name);
+        }
+        return { ok: true, status: 204, text: async () => '' };
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ fields: { fixVersions: held.map((name) => ({ name })) } }) };
+    }));
+    return { held: () => held, puts: () => puts };
+  }
+
+  async function cli(...args: string[]): Promise<void> {
+    const p = new Command();
+    p.exitOverride();
+    registerVersions(p);
+    await p.parseAsync(['node', 'jira', ...args]);
+  }
+
+  it('is refused without --by, before any PUT', async () => {
+    const t = wire(['v1.0.0']);
+    await expect(cli('fix-version', 'HIMMEL-374', '--remove', 'v1.0.0')).rejects.toThrow(/open version v1\.0\.0 with no operator record/);
+    expect(t.puts()).toBe(0);
+    expect(t.held()).toEqual(['v1.0.0']);
+  });
+
+  it('passes with --by naming the covering operator record', async () => {
+    const t = wire(['v1.0.0']);
+    const o = operatorDecision(releaseCtx(), { decision: '2', keys: ['HIMMEL-374'], op: 'remove', from_v: 'v1.0.0', to_v: null, verbatim: 'x' });
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await cli('fix-version', 'HIMMEL-374', '--remove', 'v1.0.0', '--by', o.id);
+    expect(t.puts()).toBe(1);
+    expect(t.held()).toEqual([]);
   });
 });
 

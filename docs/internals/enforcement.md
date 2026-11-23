@@ -4603,9 +4603,10 @@ if this PreToolUse hook is bypassed or disabled.
 It fires on every MCP call (matcher `mcp__.*`): in `.claude/settings.json` as
 its own entry after `block-backend-tier.sh`; in `.codex/hooks.json`, whose
 PreToolUse matchers must stay disjoint, as one `mcp__.*` chain
-`mcp-policy.sh+block-backend-tier.sh` (so in Codex, backend-tier's fail-closed
-jq branches also cover non-Atlassian MCP calls, pinned in
-`test-mcp-policy.sh` §8). As shipped it **always allows**. It classifies each
+`mcp-policy.sh+block-backend-tier.sh+guard-t3-thread-tools.sh+block-t3code-unwatch-open-pr.sh`
+(`mcp-policy.sh` first so denies still leave an audit line; backend-tier's
+fail-closed jq branches also cover non-Atlassian MCP calls, pinned in
+`test-mcp-policy.sh` §8 and `test-codex-hook-parity.sh`). As shipped it **always allows**. It classifies each
 call against the registry `scripts/guardrails/mcp-policy.json` and records what
 it *would* do:
 

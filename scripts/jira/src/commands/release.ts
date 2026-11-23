@@ -23,7 +23,7 @@ import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import { coreCheckBatch, coreGroupLines, loadCoreInputs } from './core-check.js';
 import {
-  ack, apply, bucketCheck, chainFault, clearProposedLabels, coreBypass, coreSnapshot, coveringRecord, declare, decisionWords, fold, freeze, operatorFence, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, reopen, request as releaseRequest, requestOnRecord, requestWithWords, reviewed, rmRun, rmRunSummary, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
+  ack, apply, bucketCheck, chainFault, clearProposedLabels, coreBypass, coreSnapshot, coveringRecord, declare, decisionWords, fold, freeze, operatorFence, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, releaseForProject, reopen, request as releaseRequest, requestOnRecord, requestWithWords, reviewed, rmRun, rmRunSummary, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
   type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
@@ -43,8 +43,8 @@ export const liveJira: JiraPort & { addLabels(key: string, labels: string[]): Pr
     return (got.fields?.fixVersions ?? []).map((v) => v.name ?? '');
   },
   newestFixVersionEntry: (key) => newestFixVersionEntry(<T>(path: string) => request<T>('GET', path), key),
-  async setFixVersion(key, op, version) {
-    await setFixVersion(key, op, version, 'rm-apply');
+  async setFixVersion(key, op, version, leave) {
+    await setFixVersion(key, op, version, 'rm-apply', leave);
     writeJiraBreadcrumb(key);
   },
   async findComment(key, marker) {
@@ -835,6 +835,16 @@ export function registerRelease(program: Command): void {
     .action(async (keys: string[], o: { mirror: string }) => {
       const lines = await bucketCheck(process.env, keys, o.mirror, { get: repairGetter(), deadlineMs: REPAIR_READ_DEADLINE_MS, now: new Date() });
       for (const l of lines) console.log(l);
+    });
+
+  rel.command('for-project <project>')
+    .description('The verified declarations naming the project, as [{release, current, versions}]; [] when none does. '
+      + 'Exits 1 when the release root cannot be resolved or a declaration that could name it does not parse or verify. Read-only')
+    .option('--json', 'Print JSON (the only output form)')
+    .action((project: string) => {
+      const decls = releaseForProject(process.env, project);
+      if (decls === 'unreadable') throw new Error(`release for-project: the declarations naming ${project} cannot be read (set USER_SLUG or HIMMEL_RELEASE_STATE_DIR, and check each release.json)`);
+      console.log(JSON.stringify(decls.map(({ release, current, versions }) => ({ release, current, versions }))));
     });
 
   rel.command('core-check')
