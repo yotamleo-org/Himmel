@@ -3315,8 +3315,11 @@ lacks 'P2b other-key warning never pairs with settled own PR' "$P_OUT" 'PR #7101
 mkdir -p "$P/core"
 cat > "$P/core/index.js" <<'EOF'
 const fs = require('fs'), a = process.argv.slice(2);
-fs.appendFileSync(process.env.P_CORE_LOG, a.join(' ') + '\n');
-if (a[1] === 'core-check') {
+fs.appendFileSync(process.env.P_CORE_LOG, a.join(' ') + (a[1] === 'core-check-batch' ? ' ' + fs.readFileSync(a[2], 'utf8') : '') + '\n');
+if (a[1] === 'core-check-batch') {
+  if (process.env.P_CORE_VERB === 'FAIL') { console.error('fixture refused'); process.exit(5); }
+  JSON.parse(fs.readFileSync(a[2], 'utf8')).forEach((g, i) => { console.log('== ' + (i + 1)); for (const k of g.keys) console.log((process.env.P_CORE_VERB || 'CORE') + ' ' + k + ' fixture'); });
+} else if (a[1] === 'core-check') {
   if (process.env.P_CORE_VERB === 'FAIL') { console.error('fixture refused'); process.exit(5); }
   for (const k of a.slice(a.indexOf('--key') + 1)) console.log((process.env.P_CORE_VERB || 'CORE') + ' ' + k + ' fixture');
 } else for (const k of a.filter(x => /^HIMMEL-\d+$/.test(x))) console.log((process.env.P_SPEC_VERB || 'NO-SPEC') + ' ' + k + ' fixture');
@@ -3329,9 +3332,9 @@ for status in 'To Do' 'In Progress'; do
     if [ "$status" = 'To Do' ]; then
         p_verdict 'P6(a)' 1; has 'P6(a) core spec gate' "$P_OUT" 'core-no-spec: NO-SPEC'; has 'P6(a) proof gate' "$P_OUT" 'no-proof:'
     else p_verdict 'P6(b)' 0; lacks 'P6(b) no To Do gates' "$P_OUT" 'core-no-spec:'; lacks 'P6(b) no proof gate' "$P_OUT" 'no-proof:'; fi
-    [ "$(grep -c '^release core-check ' "$P_CORE_LOG")" = 1 ] && pass "P6 $status one core read" || fail "P6 $status core count"
+    [ "$(grep -c '^release core-check-batch ' "$P_CORE_LOG")" = 1 ] && [ "$(grep -c '^release core-check ' "$P_CORE_LOG")" = 0 ] && pass "P6 $status one core read" || fail "P6 $status core count"
     lacks "P6 $status no other key" "$(cat "$P_CORE_LOG")" HIMMEL-11002
-    has "P6 $status key-only core argv" "$(cat "$P_CORE_LOG")" '--key HIMMEL-11001'
+    has "P6 $status key-only core argv" "$(cat "$P_CORE_LOG")" '"keys": ["HIMMEL-11001"]'
 done
 for verb in UNKNOWN FAIL BYPASS-NEEDS-SPEC; do
     p_reset; p_mk HIMMEL-11001; P_CLI="$P/core/index.js"; P_CORE_VERB="$verb"

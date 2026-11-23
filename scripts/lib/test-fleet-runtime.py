@@ -13,8 +13,9 @@ import tempfile
 import unittest
 from unittest import mock
 
+os.environ['HIMMEL_CORE_CHECK_BATCH'] = 'off'
 ROOT = Path(__file__).resolve().parents[2]
-WRITER = ROOT / 'scripts/handover/chief-kit/fleet-manifest.sh'
+WRITER =ROOT / 'scripts/handover/chief-kit/fleet-manifest.sh'
 ENTRYPOINTS = Path(os.environ.get('FLEET_RUNTIME_ENTRYPOINTS', ROOT))
 
 
