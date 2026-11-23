@@ -149,7 +149,7 @@ readable_script() {
         p=$target
     fi
     [ -f "$p" ] && [ -r "$p" ] || return 1
-    [ "$(wc -c <"$p" 2>/dev/null | tr -d ' ')" -le 1048576 ] 2>/dev/null || return 1
+    [ "$(wc -c <"$p" 2>/dev/null | tr -d ' ')" -le 1048576 ] 2>/dev/null || return 1  # read-sink-ok: a script the command itself runs, only sized and matched for load shapes, never sent anywhere
     grep -Iq . "$p" 2>/dev/null || return 1
     if command -v git >/dev/null 2>&1 &&
         git -C "$(dirname "$p")" ls-files --error-unmatch -- "$(basename "$p")" >/dev/null 2>&1; then
