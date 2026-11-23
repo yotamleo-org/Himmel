@@ -1689,6 +1689,85 @@ r10628seal "$bkr" "$kr" 3 'SPEC CLEAN' "RESTORE-BREAKS r1 decision 1096 $tok"
 v9611render --owed-dir "$bkr"
 contains 'R10628-tracker: after RESTORE-BREAKS the finding is back under Waiting on you' "$(r10628waiting)" 'r1 (reverses-ruling)'
 
+for t in 457 458 459 460 461 462 463; do
+    printf '%s\n' '---' "key: \"HIMMEL-$t\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
+        '---' "# HIMMEL-$t: signer ticket $t" > "$vp/HIMMEL-$t.md"
+done
+bk="$W/bk10644"
+mkdir -p "$bk/release/v1.1.3" "$bk/specs/designs"
+for s in 457-marked 458-slice 459-plain 460-unknown; do
+    printf '%s\n' '---' "tickets: HIMMEL-${s%%-*}" '---' '# spec' > "$bk/specs/designs/HIMMEL-$s.md"
+    printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-$s.md.critic-spec-r1.md"
+done
+printf '%s\n' '---' 'tickets: HIMMEL-458, HIMMEL-457' '---' '# slice spec' > "$bk/specs/designs/HIMMEL-458-slice.md"
+for t in 461 462 463; do
+    printf '{"kind":"spec","keys":["HIMMEL-%s"],"spec_path":"%s/specs/designs/HIMMEL-%s-signed.md"}\n' "$t" "$bk" "$t"
+done > "$bk/release/v1.1.3/operator.jsonl"
+seed "$bk"
+cat > "$W/s5jira" <<S5JIRA
+#!/bin/sh
+printf '%s\n' "\$*" >> "$W/s5-args"
+mode="\$(cat "$W/s5-mode")"
+[ "\$1" = release ] || exit 1
+verb="\$2"; shift 2
+spec=''; keys=''
+while [ \$# -gt 0 ]; do
+    case "\$1" in --spec) spec="\$2"; shift 2 ;; --mirror) shift 2 ;; *) keys="\$keys \$1"; shift ;; esac
+done
+[ "\$mode" = exit2 ] && exit 2
+for k in \$keys; do
+    [ "\$mode" = noline ] && { [ "\$k" = HIMMEL-457 ] || [ "\$k" = HIMMEL-461 ]; } && continue
+    if [ "\$verb" = signer-check ]; then
+        case "\$k" in
+            HIMMEL-457) echo "SIGNER \$k operator O-v1.1.3-0900" ;;
+            HIMMEL-458) case "\$spec" in *HIMMEL-458-slice.md) echo "SIGNER \$k operator O-v1.1.3-0900 via HIMMEL-457" ;; *) echo "SIGNER \$k chief default" ;; esac ;;
+            HIMMEL-460) echo "UNKNOWN \$k release v1.1.3 chain unreadable" ;;
+            *) echo "SIGNER \$k chief default" ;;
+        esac
+    else
+        case "\$k" in
+            HIMMEL-461) echo "SPEC-NEEDS-OPERATOR \$k $bk/specs/designs/HIMMEL-461-signed.md C-v1.1.3-0901 O-v1.1.3-0900" ;;
+            HIMMEL-462) echo "SPEC-SIGNER-UNKNOWN \$k C-v1.1.3-0902 release v1.1.3 chain unreadable" ;;
+            *) echo "SPEC ok \$k $bk/specs/designs/HIMMEL-\${k#HIMMEL-}-signed.md C-v1.1.3-0903" ;;
+        esac
+    fi
+done
+[ "\$verb" = spec-check ] && exit 1
+exit 0
+S5JIRA
+chmod +x "$W/s5jira"
+s5render() {
+    local o
+    : > "$W/s5-args"
+    printf '%s\n' "$1" > "$W/s5-mode"
+    o="$(TRACKER_JIRA="$W/s5jira" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" \
+        --prs-file "$W/vp-prs7.json" --chains-file "$W/vp-chains9611.json" --workers-dir "$W/wk9611" --owed-dir "$bk" \
+        --jira-base-url https://jira.example.test --out "$v9611out" 2>&1)" || fail "S5-tracker: the render failed: $o" >&2
+    w10644="$(grep -F 'data-section="waiting"' "$v9611out")"
+    c10644="$(grep -F 'data-section="chief-owes"' "$v9611out")"
+}
+s5render ok
+contains 'S5-tracker: an unsigned critic-clean spec of a marked key is an operator item, not chief-owed' "$w10644" 'HIMMEL-457-marked.md: latest critic round 1 reads SPEC CLEAN'
+not_contains 'S5-tracker: the marked key is not chief-owed' "$c10644" 'HIMMEL-457-marked.md'
+contains 'S5-tracker: the marked key names the governing record' "$w10644" 'signer-check: SIGNER HIMMEL-457 operator O-v1.1.3-0900'
+contains 'S5-tracker: signer-check is asked with the spec file' "$(cat "$W/s5-args")" "--spec $bk/specs/designs/HIMMEL-458-slice.md"
+contains 'S5-tracker: an unsigned slice spec whose header names a marked ticket is an operator item through its via line' "$w10644" 'SIGNER HIMMEL-458 operator O-v1.1.3-0900 via HIMMEL-457'
+not_contains 'S5-tracker: the via slice key is not chief-owed' "$c10644" 'HIMMEL-458-slice.md'
+contains 'S5-tracker: control: a spec signer-check gives the chief stays chief-owed' "$c10644" 'HIMMEL-459-plain.md: latest critic round 1'
+contains 'S5-tracker: an UNKNOWN signer stays with the chief naming why' "$c10644" 'signer unread: release v1.1.3 chain unreadable'
+contains 'S5-tracker: a SPEC-NEEDS-OPERATOR line is an operator item naming the chief signature' "$w10644" "needs the operator&#x27;s own signature: chief signature C-v1.1.3-0901 does not count (O-v1.1.3-0900)"
+contains 'S5-tracker: a SPEC-SIGNER-UNKNOWN line stays with the chief naming why' "$c10644" 'chief signature C-v1.1.3-0902 cannot be checked: signer records unreadable: release v1.1.3 chain unreadable'
+not_contains 'S5-tracker: a chief row from before a station flip (SPEC ok) stays signed' "$w10644$c10644" 'HIMMEL-463'
+equals 'S5-tracker: spec-check is asked once, for the keys with a spec row' "$(grep -c '^release spec-check' "$W/s5-args")" 1
+not_contains 'S5-tracker: a read release check is not named unread' "$w10644" 'unread, rows unchanged'
+for mode in exit2 noline; do
+    s5render "$mode"
+    contains "S5-tracker: a signer-check that fails ($mode) is listed as unread" "$w10644" 'release signer-check unread, rows unchanged'
+    contains "S5-tracker: a spec-check that fails ($mode) is listed as unread" "$w10644" 'release spec-check unread, rows unchanged'
+    contains "S5-tracker: an unread signer leaves the marked key where it was ($mode)" "$c10644" 'HIMMEL-457-marked.md: latest critic round 1'
+    not_contains "S5-tracker: an unread spec-check lists no signed key ($mode)" "$w10644$c10644" 'C-v1.1.3-090'
+done
+
 s4="$W/s4"
 mkdir -p "$s4/mirror" "$s4/wk"
 s4mk() {

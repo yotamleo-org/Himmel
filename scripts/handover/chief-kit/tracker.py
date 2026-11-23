@@ -1541,8 +1541,36 @@ def owed_ledger_items(handover_dir, unread):
     return out
 
 
+RELEASE_LINE_RE = {
+    'signer-check': re.compile(r'SIGNER (\S+) (?:chief|operator) \S+(?: via \S+)?|UNKNOWN (\S+) \S.*'),
+    'spec-check': re.compile(r'SPEC ok (\S+) \S.*|SPEC-STALE (\S+)(?: .*)?|NO-SPEC (\S+)(?: .*)?'
+                             r'|SPEC-NEEDS-OPERATOR (\S+) \S.* \S+ \S+|SPEC-SIGNER-UNKNOWN (\S+) \S+ \S.*'),
+}
+
+
+def release_check(verb, keys, extra=()):
+    """{key: its line} from one `jira release <verb>` through the TRACKER_JIRA seam; None when it exits other than 0
+    (spec-check: 0 or 1, its answer whenever a key is not SPEC ok) or prints no parseable line for a key."""
+    cli, pk = jira_cli(), jira_project_key()
+    cmd = (['node', cli] if cli.endswith('.js') else [cli]) + ['release', verb] + (['--mirror', MIRROR] if MIRROR else []) + list(extra) + list(keys)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60, cwd=os.path.dirname(os.path.abspath(cli)),
+                           env=dict(os.environ, JIRA_PROJECT_KEY=pk))
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode not in ((0, 1) if verb == 'spec-check' else (0,)):
+        return None
+    got = {}
+    for l in r.stdout.splitlines():
+        m = RELEASE_LINE_RE[verb].fullmatch(l.strip())
+        if m:
+            got.setdefault(next(g for g in m.groups() if g), l.strip())
+    return got if all(k in got for k in keys) else None
+
+
 def operator_owed(handover_dir, chief_doc, version, opn, mir):
-    """(operator items, source read, unread critic files, chief-owed items): unsigned specs without the marker are chief-owed."""
+    """(operator items, source read, unread critic files, chief-owed items): unsigned specs without the marker are chief-owed,
+    unless release signer-check names the operator; a signed key spec-check reads SPEC-NEEDS-OPERATOR is the operator's."""
     items, chief_owes, readable, unread = [], [], False, []
     if handover_dir:
         signed, signed_ticket_numbers = set(), set()
@@ -1588,11 +1616,39 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
                 if k and int(k.group(1)) in opn and int(k.group(1)) not in signed_ticket_numbers and spec_id(spec) not in signed and (last == 'SPEC CLEAN' or rnd >= status['cap']):
                     n = int(k.group(1))
                     critical = operator_critical(spec, f, critical_re, unread)
-                    (items if critical else chief_owes).append(OwedRow(('unsigned spec', n, clip(opn[n]['title'], 100),
-                                  '%s: latest critic round %d reads %s, no spec row in operator.jsonl' % (
-                                      os.path.basename(spec), rnd, last if re.fullmatch(r'SPEC (?:CLEAN|FINDINGS \d+)', last) else 'no verdict line'),
-                                  'reconcile the unread spec evidence' if critical is None else 'sign the spec, or rule on its findings'),
-                                  'unknown' if critical is None else 'operator' if critical else 'chief'))
+                    ctx = '%s: latest critic round %d reads %s, no spec row in operator.jsonl' % (
+                        os.path.basename(spec), rnd, last if re.fullmatch(r'SPEC (?:CLEAN|FINDINGS \d+)', last) else 'no verdict line')
+                    line = ''
+                    if not critical:
+                        path = spec if spec.endswith('.md') else spec + '.md'
+                        got = release_check('signer-check', ['HIMMEL-%d' % n], ['--spec', path] if os.path.isfile(path) else [])
+                        if got is None:
+                            unread += [] if 'release signer-check' in unread else ['release signer-check']
+                        else:
+                            line = got['HIMMEL-%d' % n]
+                    marked = line.split()[:1] + line.split()[2:3] == ['SIGNER', 'operator']
+                    if marked:
+                        ctx += '; signer-check: ' + line
+                    elif line.startswith('UNKNOWN '):
+                        ctx += '; signer unread: ' + line.split(None, 2)[2]
+                    actor = 'operator' if critical or marked else 'unknown' if critical is None else 'chief'
+                    (items if actor == 'operator' else chief_owes).append(OwedRow(('unsigned spec', n, clip(opn[n]['title'], 100), ctx,
+                                  'sign the spec as yours, or lift the mark' if marked else
+                                  'reconcile the unread spec evidence' if critical is None else 'sign the spec, or rule on its findings'), actor))
+            signed_keys = ['HIMMEL-%d' % n for n in sorted(signed_ticket_numbers) if n in opn]
+            got = release_check('spec-check', signed_keys) if signed_keys else {}
+            if got is None:
+                unread.append('release spec-check')
+            for key, line in sorted((got or {}).items()):
+                n, t = int(key[7:]), line.split()
+                if t[0] == 'SPEC-NEEDS-OPERATOR':
+                    items.append(OwedRow(('signed spec', n, clip(opn[n]['title'], 100),
+                                          "needs the operator's own signature: chief signature %s does not count (%s)" % (t[-2], t[-1]),
+                                          'sign the spec as yours (--signer operator --supersedes %s), or lift the mark' % t[-2]), 'operator'))
+                elif t[0] == 'SPEC-SIGNER-UNKNOWN':
+                    chief_owes.append(OwedRow(('signed spec', n, clip(opn[n]['title'], 100),
+                                               'chief signature %s cannot be checked: signer records unreadable: %s' % (t[2], line.split(None, 3)[3]),
+                                               'repair the release named, then re-run'), 'chief'))
             for n, crit in sorted((int(key[7:]), st.get('critical_open')) for key, st in (status or {'keys': {}})['keys'].items()
                                   if re.fullmatch(r'HIMMEL-\d+', key) and isinstance(st, dict)):
                 if n in opn and isinstance(crit, list) and crit:
@@ -1889,12 +1945,13 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
     wait = [k for k in sorted(opn, key=order.get) if set(OPERATOR_LABELS) & set(opn[k].get('labels', []))]
     owed, owed_read, owed_unread, chief_owes, holds_unread = operator_owed(bucket_dir, chief_doc, version, opn, mir)
     nwait = len(wait) + len(owed)
-    critic_unread = [u for u in owed_unread if u != 'owed.jsonl']
-    waithtml = '<section data-section="waiting" data-count="%d" data-actor="operator"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s%s%s</h2>%s</section>' % (
+    critic_unread = [u for u in owed_unread if u != 'owed.jsonl' and not u.startswith('release ')]
+    waithtml = '<section data-section="waiting" data-count="%d" data-actor="operator"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s%s%s%s</h2>%s</section>' % (
         nwait, nwait, '' if owed_read else ' <span class="n">no operator-owed source read</span>',
         ' <span class="n">%d critic file%s unread, skipped: %s</span>' % (
             len(critic_unread), '' if len(critic_unread) == 1 else 's', esc(', '.join(critic_unread))) if critic_unread else '',
         ' <span class="n">owed ledger unread</span>' if 'owed.jsonl' in owed_unread else '',
+        ''.join(' <span class="n">%s unread, rows unchanged</span>' % esc(u) for u in owed_unread if u.startswith('release ')),
         ' <span class="n">pool holds unread: %s</span>' % esc(', '.join(holds_unread)) if holds_unread else '',
         '<ol class="needs-you">%s</ol>' % (''.join('<li><b>Needs you:</b> %s %s <span class="own">Jira %s · %s</span></li>' % (
             key_html(k), esc(clip(opn[k]['title'], 100)), esc(jcol[k]), esc(', '.join(sorted(set(OPERATOR_LABELS) & set(opn[k]['labels']))))) for k in wait)
