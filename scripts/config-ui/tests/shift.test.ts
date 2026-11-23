@@ -246,6 +246,9 @@ test("10764: an open signature and an owed proof the operator owes are numbered 
   const unread = renderShift(viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [], boards: [board], owed: { state: "absent", reason: "no bucket" } }), {});
   expect(unread).not.toContain("Nothing is waiting on you.");
   expect(unread).toContain("could not be read");
+  const partial = renderShift(viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [], boards: [board], owed: { ...owed, unread: ["owed ledger"] } }), {});
+  expect(partial).toContain("What you owe could not be read (owed ledger)");
+  expect(partial).toContain("run the VM upgrade proof");
 });
 
 test("the Shift page with no open shift says so and names the last shift", () => {

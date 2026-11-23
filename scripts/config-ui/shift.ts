@@ -389,7 +389,7 @@ export function viewOf(o0: { now: number; rows: Row[]; snap: Snapshot; id: strin
   const { waiting, running } = rowsOf(o.boards, o.owed?.state === "ok" ? o.owed.items : []);
   return {
     ...empty, state: "open", last, pager: pager(null), chiefs: c.chiefs, gap: c.gap, buckets: open.buckets, boardMissing: o.boardMissing ?? [], boardError: o.boardError ?? [], waiting, running,
-    owedUnread: o.owed && o.owed.state !== "ok" ? o.owed.reason : null,
+    owedUnread: !o.owed ? null : o.owed.state !== "ok" ? o.owed.reason : o.owed.unread.length ? o.owed.unread.join(", ") : null,
     shipped: shipped(open.opened, null, c.chiefs),
     shift: { id: iso(open.opened, off), name: nameOf(open.opened, off, opts), opened: iso(open.opened, off), closed: null, why: null, zone: zoneOf(off), nextCut: iso(nextCut(open.opened, off, opts), off), minutes: Math.round((o.now - open.opened) / MIN) },
   };

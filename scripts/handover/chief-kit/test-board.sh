@@ -1503,6 +1503,10 @@ lacks '10764: the user board does not say nothing waits while items are open' "$
 BOARD_BUN=/bin/false run --view user --out "$W/user-owed-unread.html" >/dev/null; rc=$?
 contains '10764: an unread owed source is said, never an empty inbox' "$(cat "$W/user-owed-unread.html" 2>/dev/null)" 'what you owe could not be read'
 rm -f "$B/owed.jsonl"
+mkdir "$B/owed.jsonl"
+HIMMEL_JIRA_MIRROR="$W/no-mirror" run --view user --out "$W/user-owed-partial.html" >/dev/null; rc=$?
+contains '10764: one owed source unread while others read is still said' "$(grep -o 'what you owe could not be read ([^)]*' "$W/user-owed-partial.html" 2>/dev/null)" 'owed ledger'
+rmdir "$B/owed.jsonl"
 run --view nope --out "$W/nope.html" >/dev/null 2>&1; rc=$?
 same 'an unknown --view is a usage error' "rc=$rc" 'rc=2'
 run --view user --changed --out "$W/user-changed.html" >/dev/null 2>&1; rc=$?

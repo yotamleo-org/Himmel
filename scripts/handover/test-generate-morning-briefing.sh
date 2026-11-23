@@ -420,6 +420,9 @@ assert_absent "10764: a chief-owed ledger row is not the operator's" "chief vali
 assert_absent "10764: no empty-inbox line while items are open" "Nothing waiting on you" "$file"
 out=$(BRIEFING_BUN=/bin/false run_script --since "$MARKER" --out "$TMP_ROOT/owed-unread.md")
 assert_contains "10764: an unread owed source is said" "What you owe could not be read" "$(cat "$TMP_ROOT/owed-unread.md")"
+rm -f "$OW_BK/owed.jsonl"; mkdir "$OW_BK/owed.jsonl"
+out=$(HIMMEL_BUCKET_DIR="$OW_BK" HIMMEL_JIRA_MIRROR="$TMP_ROOT/no-mirror" run_script --since "$MARKER" --out "$TMP_ROOT/owed-partial.md")
+assert_contains "10764: one owed source unread while others read is still said" "owed ledger" "$(grep -o 'What you owe could not be read ([^)]*' "$TMP_ROOT/owed-partial.md")"
 
 # Test 14: --llm splices enriched blocks -----------------------------
 

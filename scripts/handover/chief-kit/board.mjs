@@ -552,7 +552,7 @@ if (opt.view === 'user') {
     let owed;
     try {
         const o = JSON.parse(owedRun.stdout);
-        owed = o.state === 'ok' ? { items: o.items.filter((i) => i.actor === 'operator'), unread: '' } : { items: [], unread: o.reason };
+        owed = o.state === 'ok' ? { items: o.items.filter((i) => i.actor === 'operator'), unread: (o.unread || []).join(', ') } : { items: [], unread: o.reason };
     } catch {
         owed = { items: [], unread: 'the owed reader did not run' };
     }

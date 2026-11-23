@@ -770,7 +770,8 @@ owed_reader="$SCRIPT_DIR/../config-ui/board.ts"
 if [ -f "$owed_reader" ]; then
     owed_tsv=$("${BRIEFING_BUN:-bun}" -e 'const { readOwed } = await import(process.argv.at(-1)); const o = readOwed(process.env);
 if (o.state !== "ok") console.log("UNREAD\t" + o.reason);
-else for (const i of o.items) if (i.actor === "operator") console.log(["ITEM", i.key || "", i.title, i.act].map((s) => String(s).replace(/[\t\n]/g, " ")).join("\t"));' "$owed_reader" 2>/dev/null) \
+else if (o.unread.length) console.log("UNREAD\t" + o.unread.join(", "));
+if (o.state === "ok") for (const i of o.items) if (i.actor === "operator") console.log(["ITEM", i.key || "", i.title, i.act].map((s) => String(s).replace(/[\t\n]/g, " ")).join("\t"));' "$owed_reader" 2>/dev/null) \
         || owed_tsv=$'UNREAD\tthe owed reader did not run'
     needs_lines=$(printf '%s\n' "$owed_tsv" | awk -F'\t' '$1=="ITEM"{ printf "Needs you: %s%s (action: %s)\n", ($2 != "" ? $2 " " : ""), $3, $4 }')
     owed_unread=$(printf '%s\n' "$owed_tsv" | awk -F'\t' '$1=="UNREAD"{ print $2; exit }')
