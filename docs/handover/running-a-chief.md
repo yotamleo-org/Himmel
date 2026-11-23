@@ -356,10 +356,12 @@ effort guidance, including the chief's own wake-up budget, is in
   touches a core path is neither core nor not-core by default. It reads
   `REVIEW`, and you or a judge rule it case by case, per slice.
 - **Where a signed spec lives.** The spec lives in the state repo bucket,
-  `specs/designs/<KEY>-<slug>-<date>.md`. It counts as signed once you record
-  the operator's approval with `jira release operator spec <release> --keys
-  <K,…> --spec <file> --verdict <file> --verdict <file> --decision <n>
-  --verbatim-file <f>`. The two `--verdict` files are the last-round critic
+  `specs/designs/<KEY>-<slug>-<date>.md`. You, the chief, sign it after the
+  critic rounds, unless the operator marked it as his (see "Who signs a spec"
+  below): `jira release operator spec <release> --keys <K,…> --spec <file>
+  --verdict <file> --verdict <file> --decision <n> --verbatim-file <f>`. The
+  operator signs his own with `--signer operator --words "<his exact words>"`
+  in place of `--verbatim-file`. The two `--verdict` files are the last-round critic
   returns minerva saved beside the spec, `<spec>.critic-spec-r<n>.md` and
   `<spec>.critic-plan-r<n>.md`. Pass the spec's plan as `--plan <file>` (in
   `specs/designs/` or `specs/plans/`): the trace lint reads each invariant's
@@ -440,6 +442,65 @@ effort guidance, including the chief's own wake-up budget, is in
     `operator.jsonl` does not verify, or when a parent step is needed for a key
     missing from the mirror. A `spec-review` row is never checked for a
     signer.
+  - **Recording who signs.** Only the operator's words set a record:
+    `jira release operator spec-signer <release> --signer chief|operator
+    [--keys <K,…>] --decision <n> --words "<his exact words>" [--mirror-root
+    <dir>]`. The words must sit in the decision's verbatim file outside a chief
+    gloss and name every key (the full key or its bare number; a PR number, a
+    decision number, a version or a path does not count). With `--keys` and
+    `--signer operator` it marks the keys; with `--signer chief` it lifts the
+    mark. Without `--keys` it sets the station default; a station default of
+    `chief` needs words holding both "chief" and "sign". A lift needs a decision
+    newer than every record of the key and its parent, and a station `chief`
+    record one newer than the newest station record. A mark is never refused
+    for its decision. Running the same record again prints the existing row.
+    A worker cannot write a record: the operator fence refuses it.
+  - **What a mark tells the operator.** Before the row is written the
+    operator gets a Telegram line with his words. For a mark it names every
+    live, fresh spec row the mark voids, with the keys you signed in each
+    (`K mark voids O-<id> for <keys>`, or `K mark voids no signature`), and an
+    emergency bypass the key holds (`K bypassed (<kind>): the mark does not
+    bind while it is`); the same lines print on stdout. A lift or a station
+    `chief` record whose alert fails is not written; a mark, or a station
+    `operator` record, is written with a `WARN`.
+  - **The refusals when you sign.** `operator spec` refuses your signature
+    while a ticket the row covers (its `--keys` and its spec's header tickets)
+    is at `operator` and the operator does not sign it in that row. A marked
+    key, a header ticket that is marked and the station default each get their
+    own message, with the operator's signing command and the lift or station
+    command. So a mark binds the whole spec: your signature for slice keys
+    alone, on a spec whose header names a marked ticket, is refused. The
+    keep-every-key and held-key rules (`scripts/jira/src/release/spec-sign.ts:396-407`)
+    run first, then the signer state; an unreadable state refuses every
+    signature, yours and his.
+  - **The operator's signature.** `operator spec ... --signer operator
+    --decision <n> --words "<his words>"` signs as the operator the keys his
+    words name (the row's `operator_keys`); any other key in the row is yours.
+    For a key at `operator` the decision must be newer than every record of the
+    key, its parent and the station default in force. He gets a Telegram line
+    naming his keys and the ones you signed; if it fails, no row is written.
+  - **The alert seams.** The alert runs `scripts/handover/chief-kit/spec-signer-alert.sh`
+    for 30 seconds at most. It is refused, and nothing is written where it
+    must succeed, while `MERGE_BLOCK_ALERT_CMD`, `TELEGRAM_ACCESS_PATH` or
+    `BRIDGE_ROOT` is set and `HIMMEL_TEST_FIXTURE` is not `1`.
+  - **`signer-check`.** `jira release signer-check <K…> [--spec <file>]
+    [--mirror <dir>]` prints, per key, `SIGNER <K> chief|operator <record
+    id|default>`, `SIGNER <K> operator <record id> via <V>` (the key's chief
+    row covers a marked V, or with `--spec` the spec's header names V at
+    `operator`), or `UNKNOWN <K> <why>`. It is read-only and exits 0.
+  - **What a mark does not stop.** A worker already launched on your
+    signature, and that worker's merge. `spec-check` is read at dispatch and
+    launch only (`gen-briefs.py`, `brief-lint.sh`, `next-dispatchable.sh`; no
+    merge gate reads it), so halt such a worker yourself when the operator
+    asks.
+  - **Standing rule 18, whole.** The chief signs specs after the critic
+    rounds; send the operator only a spend grant, a ToS or account change,
+    public policy, a reversal of his own ruling, a change to a `CLAUDE.md`
+    rule, relaxing a guard, or a spec he marked as his to sign. The mark is one
+    of seven; the other six still go to him.
+  - The core paths are the dispatch and launch gates
+    (`scripts/ci/core-paths.txt:15`) and the release engine
+    (`scripts/ci/core-paths.txt:21`) among the others listed above.
 - **The gate is enforced, with no flag.** `gen-briefs.py` refuses a core
   worker with no `SPEC ok`, `next-dispatchable.sh` lists such a ticket as a
   `DESIGN` row, and `brief-lint.sh` (run at every launch, even one that skips
@@ -1297,8 +1358,9 @@ with only minor or medium findings. It is built and tested only in hermetic fixt
 each flag once. Both together, an empty, repeated or trailing-comma key, or a missing flag exits 1 with a
 `capped-fold:` message. It is read-only, prints one JSON line and grants no authority. A signing is
 `jira release operator spec <release> --keys <K,...> --spec <file> --plan <file> --verdict <file> --verdict <file>
---decision <n> --verbatim-file <f>`, and `--source-root <path>` names where the spec's citations are read: the primary
-or a registered live linked worktree of this repository (default: the primary).
+--decision <n> --verbatim-file <f>` for the chief, or with `--signer operator --words "<his exact words>"` in place of
+`--verbatim-file` for a spec the operator marked as his, and `--source-root <path>` names where the spec's citations
+are read: the primary or a registered live linked worktree of this repository (default: the primary).
 
 **2. The producer route and its order.** Only `jira release operator spec` takes it, and only after the normal
 residual-disposition check has refused. One key runs the shipped `--key` verifier first; only when that verifier exits

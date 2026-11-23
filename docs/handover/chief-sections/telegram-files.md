@@ -137,8 +137,9 @@ with only minor or medium findings. It is built and tested only in hermetic fixt
 each flag once. Both together, an empty, repeated or trailing-comma key, or a missing flag exits 1 with a
 `capped-fold:` message. It is read-only, prints one JSON line and grants no authority. A signing is
 `jira release operator spec <release> --keys <K,...> --spec <file> --plan <file> --verdict <file> --verdict <file>
---decision <n> --verbatim-file <f>`, and `--source-root <path>` names where the spec's citations are read: the primary
-or a registered live linked worktree of this repository (default: the primary).
+--decision <n> --verbatim-file <f>` for the chief, or with `--signer operator --words "<his exact words>"` in place of
+`--verbatim-file` for a spec the operator marked as his, and `--source-root <path>` names where the spec's citations
+are read: the primary or a registered live linked worktree of this repository (default: the primary).
 
 **2. The producer route and its order.** Only `jira release operator spec` takes it, and only after the normal
 residual-disposition check has refused. One key runs the shipped `--key` verifier first; only when that verifier exits

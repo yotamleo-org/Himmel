@@ -8,8 +8,10 @@ import { contentSha, readChain } from './ledger.js';
 import { namesKey } from './verbatim.js';
 import { KEY_IN } from './judge-input.js';
 import type { IssueSnap, OperatorKind, OperatorRow } from './types.js';
-import { type Ctx, f, operatorFence, lockedAcross, readMirror, appendOperator, type ReleaseRecord, readOperatorRecords, readSignerState } from './engine-core.js';
-import { effectiveSigner, parentOf, signerOf, voidingTicket, type SignerState } from './signer.js';
+import { type Ctx, f, operatorFence, lockedAcross, readMirror, readMirrorFilesUnverified, appendOperator, type ReleaseRecord, readOperatorRecords, readSignerState } from './engine-core.js';
+import { effectiveSigner, outranks, parentOf, signerOf, voidingTicket, type SignerState } from './signer.js';
+import { pathIndependentBypass } from './core.js';
+import { decisionWords } from './operator-acts.js';
 
 const fileSha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
@@ -321,10 +323,44 @@ function appendSpec(ctx: Ctx, k: Buffer, row: Omit<OperatorRow, 'id' | 'ts'>): O
   }
 }
 
+/** The operator's Telegram line for a spec-signer record or an operator signature; `notes` carries a mark's bypass and voids clauses. */
+export interface SignerAlert {
+  kind: 'record' | 'signature';
+  scope: string;
+  signer: 'chief' | 'operator';
+  decision: string;
+  words: string;
+  notes: string[];
+  chiefSigned: string[];
+}
+
+const alertFailed = (rc: number) => `the operator alert exited ${rc}${rc === 77 ? ' (the send was refused)' : ''}`;
+
+function chiefRefusal(release: string, keys: string[], chiefKeys: string[], t: string, g: OperatorRow): string {
+  const verb = 'release operator spec';
+  const lift = (k: string) => `jira release operator spec-signer ${release} --signer chief --keys ${k} --decision <n> --words "<his words>"`;
+  if (!g.keys?.length) {
+    return `${verb}: the station default (${g.id}, decision ${g.decision}) is the operator's own signature; a chief signature is refused. `
+      + `The operator signs it: jira release operator spec ${release} --keys ${keys.join(',')} ... --signer operator --decision <n> --words "<his words naming ${keys.join(', ')}>" [--supersedes <live spec row>]; `
+      + `or he sets the default back: jira release operator spec-signer ${release} --signer chief --decision <n> --words "<his words>"`;
+  }
+  const marked = `${t} is marked for the operator's own signature (${g.id}, decision ${g.decision})`;
+  if (keys.includes(t)) {
+    return `${verb}: ${marked}; a chief signature is refused. The operator signs it: jira release operator spec ${release} --keys ${t} ... --signer operator --decision <n> --words "<his words naming ${t}>" [--supersedes <live spec row>]; or he lifts the mark: ${lift(t)}`;
+  }
+  return `${verb}: the spec names ${t} in its header, and ${marked}; a chief signature for ${chiefKeys.join(', ')} on this spec is refused. `
+    + `The operator signs it with ${t} among the keys: jira release operator spec ${release} --keys ${[t, ...keys].join(',')} ... --signer operator --decision <n> --words "<his words naming ${t}>" [--supersedes <live spec row of ${t}>]; or he lifts the mark: ${lift(t)}`;
+}
+
 export function signSpec(ctx: Ctx, o: {
-  keys: string[]; spec: string; verdicts: string[]; decision: string; verbatim: string; supersedes?: string; plan?: string; sourceRoot?: string;
+  keys: string[]; spec: string; verdicts: string[]; decision: string; verbatim?: string; supersedes?: string; plan?: string; sourceRoot?: string;
+  signer?: 'chief' | 'operator'; words?: string; alert?: (a: SignerAlert) => number;
 }): OperatorRow {
   operatorFence(ctx);
+  const signer = o.signer ?? 'chief';
+  if (signer === 'operator' && !o.alert) throw new Error('release operator spec: --signer operator needs the operator alert; no record written');
+  if (signer === 'operator' && o.words === undefined) throw new Error('release operator spec: --signer operator needs --words, the operator\'s exact words');
+  if (signer === 'chief' && o.verbatim === undefined) throw new Error('release operator spec: a chief signature needs --decision and --verbatim-file');
   if (!o.keys.length) throw new Error('release operator spec: --keys names the keys the spec covers');
   const spec = resolve(o.spec);
   if (!existsSync(spec)) throw new Error(`release operator spec: spec not found: ${spec}`);
@@ -369,15 +405,105 @@ export function signSpec(ctx: Ctx, o: {
       const k = held.keys?.find((x) => o.keys.includes(x));
       throw new Error(`release operator spec: ${k} is already signed in ${held.id}; re-sign with --supersedes ${held.id}`);
     }
+    const s = readSignerState(ctx.env, ctx.mirrorRoot);
+    if (s.unreadable) throw new Error(`release operator spec: the signer records are unreadable (${s.unreadable}); repair the chain first; no record written`);
+    const keys = [...new Set(o.keys)];
+    const operatorKeys = signer === 'operator' ? keys.filter((k) => namesKey(o.words as string, k, { bare: true })) : [];
+    const chiefKeys = keys.filter((k) => !operatorKeys.includes(k));
+    const now = ctx.now().toISOString();
+    const atOperator = new Map<string, OperatorRow>();
+    for (const t of new Set([...keys, ...headerTickets(bytes.toString('utf8'))])) {
+      const e = effectiveSigner(t, now, s);
+      if ('unreadable' in e) throw new Error(`release operator spec: the signer records are unreadable for ${t} (${e.unreadable}); no record written`);
+      if (e.signer === 'operator' && e.governing !== 'default') atOperator.set(t, e.governing);
+    }
+    const voided = chiefKeys.length ? [...atOperator.keys()].find((t) => !operatorKeys.includes(t)) : undefined;
+    if (voided) throw new Error(chiefRefusal(ctx.release, keys, chiefKeys, voided, atOperator.get(voided) as OperatorRow));
+    const words = signer === 'operator' ? decisionWords(ctx, o.decision, o.words as string) : null;
+    for (const k of signer === 'operator' ? keys.filter((x) => atOperator.has(x)) : []) {
+      if (!outranks(o.decision, 'signature', k, now, s)) {
+        throw new Error(`release operator spec: decision ${o.decision} does not outrank the signer records of ${k}; the words that set its signer cannot sign under it`);
+      }
+    }
     checkInputs();
     checkSource();
+    if (o.alert && signer === 'operator') {
+      const rc = o.alert({ kind: 'signature', scope: operatorKeys.join(', '), signer, decision: o.decision, words: o.words as string, notes: [], chiefSigned: chiefKeys });
+      if (rc !== 0) throw new Error(`release operator spec: ${alertFailed(rc)}; no record written`);
+    }
     return appendSpec(ctx, l.k, {
       kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha,
       plan_path: o.plan ? plan : null, plan_sha256: planSha, verdicts,
       ...(source ? { source_root: source.root, source_head: source.head } : {}),
-      supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim, ...(capped ? { capped_carry: capped } : {}),
+      supersedes: o.supersedes ?? null, residuals, ...(capped ? { capped_carry: capped } : {}), signer,
+      ...(words ? { operator_keys: operatorKeys, verbatim: o.words, ...words } : { verbatim: o.verbatim }),
     });
   });
+}
+
+const sameKeys = (a: string[], b: string[]) => a.length === b.length && a.every((k) => b.includes(k));
+
+/**
+ * `release operator spec-signer`: the operator's words set who signs, for the station (no keys) or per key:
+ * a key record with signer operator marks the key, one with signer chief lifts the mark.
+ */
+export function specSigner(ctx: Ctx, o: { signer: 'chief' | 'operator'; keys?: string[]; decision: string; words: string; alert: (a: SignerAlert) => number }):
+  { row: OperatorRow; notes: string[]; warn: string | null } {
+  const verb = 'release operator spec-signer';
+  operatorFence(ctx);
+  if (o.signer !== 'chief' && o.signer !== 'operator') throw new Error(`${verb}: --signer is chief or operator, not '${String(o.signer)}'`);
+  const keys = [...new Set(o.keys ?? [])];
+  const words = decisionWords(ctx, o.decision, o.words);
+  const unnamed = keys.find((k) => !namesKey(o.words, k, { bare: true }));
+  if (unnamed) throw new Error(`${verb}: the words do not name ${unnamed}; a key record needs the operator's words naming each key`);
+  if (!keys.length && o.signer === 'chief' && !(/chief/i.test(o.words) && /sign/i.test(o.words))) {
+    throw new Error(`${verb}: a station default of chief needs words holding both "chief" and "sign"; these words do not`);
+  }
+  return lockedAcross(ctx, (l) => {
+    const s = readSignerState(ctx.env, ctx.mirrorRoot);
+    if (s.unreadable) throw new Error(`${verb}: the signer records are unreadable (${s.unreadable}); repair the chain first; no alert sent, no record written`);
+    const newest = s.records.filter((r) => sameKeys(r.keys ?? [], keys)).at(-1);
+    if (newest && newest.signer === o.signer && newest.decision === o.decision && newest.verbatim === o.words) return { row: newest, notes: [], warn: null };
+    const now = ctx.now().toISOString();
+    if (o.signer === 'chief' && !keys.length && !outranks(o.decision, 'station', null, now, s)) {
+      throw new Error(`${verb}: decision ${o.decision} does not outrank the station records; a station default of chief needs newer words`);
+    }
+    for (const k of o.signer === 'chief' ? keys : []) {
+      if (!s.issues?.get(k) && s.records.some((r) => r.keys?.length)) throw new Error(`${verb}: ${k} is not in the Jira mirror, so its parent's records cannot be read; no record written`);
+      if (!outranks(o.decision, 'lift', k, now, s)) throw new Error(`${verb}: decision ${o.decision} does not outrank the signer records of ${k}; a lift needs newer words`);
+    }
+    const notes = o.signer === 'operator' && keys.length ? markNotes(ctx, keys, s, now) : [];
+    const rc = o.alert({ kind: 'record', scope: keys.length ? keys.join(', ') : 'the station default', signer: o.signer, decision: o.decision, words: o.words, notes, chiefSigned: [] });
+    let warn: string | null = null;
+    if (rc !== 0) {
+      if (o.signer === 'chief') throw new Error(`${verb}: ${alertFailed(rc)}; no record written`);
+      warn = `WARN ${verb}: ${alertFailed(rc)}; the ${keys.length ? 'mark' : 'record'} is written anyway`;
+    }
+    const row = appendOperator(ctx, l.k, { kind: 'spec-signer', decision: o.decision, ...(keys.length ? { keys } : {}), signer: o.signer, verbatim: o.words, ...words });
+    return { row, notes, warn };
+  });
+}
+
+function markNotes(ctx: Ctx, marked: string[], s: SignerState, now: string): string[] {
+  const snaps = readMirrorFilesUnverified(ctx.mirrorRoot).issues;
+  const snapshots = readOperatorRecords('core-snapshot', ctx.env);
+  const notes: string[] = [];
+  for (const k of marked) {
+    const snap = snaps?.get(k);
+    const by = snap ? pathIndependentBypass(k, snap, snapshots) : null;
+    if (by) notes.push(`${k} bypassed (${by}): the mark does not bind while it is`);
+  }
+  const { live, newest } = liveOf(readOperatorRecords('spec', ctx.env));
+  const withMark: SignerState = { ...s, issues: s.issues ?? snaps ?? null, records: [...s.records, { id: 'this mark', kind: 'spec-signer', ts: now, decision: null, keys: marked, signer: 'operator' }] };
+  for (const m of marked) {
+    const voids = live.filter((r) => staleReason(r) === null).flatMap((r) => {
+      const hit = (coveredBy(r) ?? []).filter((t) => t === m || parentOf(snaps?.get(t)) === m);
+      const v = hit.length ? voidingTicket(r, hit, r.ts, withMark, (t) => operatorSignedFor(r, t, newest)) : null;
+      return v && 'ticket' in v ? [`${m} mark voids ${r.id} for ${(r.keys ?? []).filter((k) => signerOf(r, k) === 'chief').join(', ')}`] : [];
+    });
+    notes.push(...(voids.length ? voids : [`${m} mark voids no signature`]));
+  }
+  return notes;
 }
 
 const KEY_LINE = /^Keys?:\s*(.+)$/gm;
@@ -450,6 +576,25 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
 
 export type SpecAnswer = { ok: true } | { missing: string };
 
+function liveOf(rows: ReleaseRecord[]): { live: ReleaseRecord[]; newest: (k: string) => ReleaseRecord | undefined } {
+  const superseded = new Set(rows.flatMap((r) => r.supersedes ?? []));
+  const live = rows.map((r, i) => ({ r, i })).filter(({ r }) => !superseded.has(r.id))
+    .sort((a, b) => a.r.ts.localeCompare(b.r.ts) || a.i - b.i).map(({ r }) => r);
+  return { live, newest: (k: string) => live.filter((r) => r.keys?.includes(k)).at(-1) };
+}
+
+function coveredBy(r: OperatorRow): string[] | null {
+  const pin = r.spec_path ? pinnedSha(r.spec_path) : null;
+  if (!pin || !('bytes' in pin) || pin.sha256 !== r.spec_sha256) return null;
+  return [...new Set([...(r.keys ?? []), ...headerTickets(pin.bytes.toString('utf8'))])];
+}
+
+function operatorSignedFor(r: OperatorRow, v: string, newest: ((k: string) => ReleaseRecord | undefined) | undefined): boolean {
+  if (r.keys?.includes(v) || !newest) return false;
+  const own = newest(v);
+  return !!own && own.kind === 'spec' && staleReason(own) === null && signerOf(own, v) === 'operator' && own.spec_sha256 === r.spec_sha256;
+}
+
 function staleReason(r: ReleaseRecord): string | null {
   const pins = [
     { role: 'spec', path: r.spec_path ?? '', sha256: r.spec_sha256 },
@@ -506,13 +651,7 @@ export function specCheck(env: Record<string, string | undefined>, keys: string[
 } = {}): { lines: string[]; ok: boolean; warnings: string[]; answer: Map<string, SpecAnswer> } {
   const kinds = opts.kinds ?? ['spec'];
   const records = (opts.records ?? readOperatorRecords(kinds, env)).filter((r) => kinds.includes(r.kind));
-  const newestOf = kinds.map((kind) => {
-    const rows = records.filter((r) => r.kind === kind);
-    const superseded = new Set(rows.flatMap((r) => r.supersedes ?? []));
-    const live = rows.map((r, i) => ({ r, i })).filter(({ r }) => !superseded.has(r.id))
-      .sort((a, b) => a.r.ts.localeCompare(b.r.ts) || a.i - b.i).map(({ r }) => r);
-    return (k: string) => live.filter((r) => r.keys?.includes(k)).at(-1);
-  });
+  const newestOf = kinds.map((kind) => liveOf(records.filter((r) => r.kind === kind)).newest);
   const issues = opts.issues !== undefined ? opts.issues : (mirrorRoot ? readMirror(mirrorRoot).issues : null);
   const warnings: string[] = [];
   const answer = new Map<string, SpecAnswer>();
@@ -523,16 +662,9 @@ export function specCheck(env: Record<string, string | undefined>, keys: string[
     if (signerOf(r, signingKey) === 'operator') return null;
     const s = (signerState ??= readSignerState(env, mirrorRoot));
     if (!s.records.length && !s.unreadable) return null;
-    const pin = r.spec_path ? pinnedSha(r.spec_path) : null;
-    const text = pin && 'bytes' in pin && pin.sha256 === r.spec_sha256 ? pin.bytes.toString('utf8') : null;
-    const covered = [...new Set([...(r.keys ?? []), ...(text === null ? [] : headerTickets(text))])];
-    const signedForSpec = (v: string) => {
-      if (r.keys?.includes(v) || !specNewest) return false;
-      const own = specNewest(v);
-      return !!own && own.kind === 'spec' && staleReason(own) === null && signerOf(own, v) === 'operator' && own.spec_sha256 === r.spec_sha256;
-    };
+    const covered = coveredBy(r);
     const mine = effectiveSigner(k, r.ts, s);
-    const voided = text === null ? { unreadable: `${r.spec_path}: the spec bytes changed after the check` } : voidingTicket(r, covered, r.ts, s, signedForSpec);
+    const voided = covered === null ? { unreadable: `${r.spec_path}: the spec bytes changed after the check` } : voidingTicket(r, covered, r.ts, s, (v) => operatorSignedFor(r, v, specNewest));
     const why = 'unreadable' in mine ? mine.unreadable : voided && 'unreadable' in voided ? voided.unreadable : null;
     if (why !== null) return { line: `SPEC-SIGNER-UNKNOWN ${k} ${r.id} ${why}`, missing: `signer records unreadable: ${why}` };
     const gov = (g: OperatorRow | 'default') => (typeof g === 'string' ? g : g.id);
@@ -580,4 +712,34 @@ export function specCheck(env: Record<string, string | undefined>, keys: string[
     }
   });
   return { lines, ok: lines.every((l) => l.startsWith('SPEC ok ')), warnings, answer };
+}
+
+/**
+ * `release signer-check`: per key, who must sign it now, and the marked ticket V that voids the chief for it,
+ * through its newest live, fresh spec row or, with specText, a ticket the spec's header names.
+ */
+export function signerCheck(env: Record<string, string | undefined>, keys: string[], mirrorRoot: string | null, o: { specText?: string; now?: Date } = {}): string[] {
+  const s = readSignerState(env, mirrorRoot);
+  const now = (o.now ?? new Date()).toISOString();
+  const { newest } = liveOf(readOperatorRecords('spec', env));
+  const header = o.specText === undefined ? [] : headerTickets(o.specText);
+  const gov = (g: OperatorRow | 'default') => (typeof g === 'string' ? g : g.id);
+  return keys.map((k) => {
+    const e = effectiveSigner(k, now, s);
+    if ('unreadable' in e) return `UNKNOWN ${k} ${e.unreadable}`;
+    if (e.signer === 'operator') return `SIGNER ${k} operator ${gov(e.governing)}`;
+    const r = newest(k);
+    if (r && staleReason(r) === null && signerOf(r, k) === 'chief') {
+      const covered = coveredBy(r);
+      const v = covered && voidingTicket(r, covered, r.ts, s, (t) => operatorSignedFor(r, t, newest));
+      if (v && 'unreadable' in v) return `UNKNOWN ${k} ${v.unreadable}`;
+      if (v) return `SIGNER ${k} operator ${gov(v.governing)} via ${v.ticket}`;
+    }
+    for (const t of header.filter((x) => x !== k)) {
+      const h = effectiveSigner(t, now, s);
+      if ('unreadable' in h) return `UNKNOWN ${k} ${h.unreadable}`;
+      if (h.signer === 'operator') return `SIGNER ${k} operator ${gov(h.governing)} via ${t}`;
+    }
+    return `SIGNER ${k} chief ${gov(e.governing)}`;
+  });
 }

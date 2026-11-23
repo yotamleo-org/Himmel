@@ -36,8 +36,8 @@ export function namesKey(words: string, key: string, o: { bare: boolean }): bool
   if (new RegExp(`\\b${escapeRe(key)}(?!\\d)`).test(words)) return true;
   const n = /-(\d+)$/.exec(key)?.[1];
   if (!o.bare || !n) return false;
-  for (const m of words.matchAll(new RegExp(`(?<![A-Za-z0-9-])${n}(?!\\d)`, 'g'))) {
-    if (!/(?:#|\b(?:pr|pull|decision|v))\s*$/i.test(words.slice(0, m.index))) return true;
+  for (const m of words.matchAll(new RegExp(`(?<![A-Za-z0-9./-])${n}(?![A-Za-z0-9-])`, 'g'))) {
+    if (!/(?:#|\b(?:prs?|pulls?|decisions?|v)\s*:?)\s*$/i.test(words.slice(0, m.index))) return true;
   }
   return false;
 }
