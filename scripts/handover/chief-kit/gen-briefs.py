@@ -126,6 +126,12 @@ Worktrees: `scripts/worktree.sh new <branch> --no-prune` from --repo
 (GEN_BRIEFS_WORKTREE_CMD replaces it, called as `$CMD <branch>`, tests;
 --no-worktree skips it, but refuses a worker whose worktree does not exist yet and prints the
 worktree.sh line to run; it never creates one).
+A worker with `worktree_mode: resume` (or `inherited.mode: resume` and no `worktree_mode`) is a branch that already exists, so its
+worktree comes back through `scripts/worktree.sh resume <branch>` (an adopter: `_new-worktree.sh <branch> --resume --no-install`;
+GEN_BRIEFS_WORKTREE_CMD is then called as `$CMD <branch> resume`). The call prints `RESUMED <path> <branch> <sha> <state>`; no brief
+is written unless the worktree's HEAD is that sha, and the brief says `resumes at <sha> (<state>)` where a new branch says `cut from <base>`.
+`worktree_mode` is `new` (the default) or `resume`; any other value is refused. With --no-worktree, the refusal for a resume worker
+runs `resume --check` and names `resume` unless the branch exists nowhere.
 An adopted --repo (a git checkout with no scripts/handover/chief-kit/headed-arm-worker.sh of its own)
 uses himmel's copy of every script instead: the worktree is made by this checkout's `scripts/_new-worktree.sh
 <branch> --no-install` run inside the adopter, and each launcher names this checkout's headed-arm-worker.sh and
@@ -614,6 +620,8 @@ def validate(worker, i, repo):
         validate_grants(worker, repo)
     if 'inherited' in worker:
         validate_inherited(worker)
+    if worker.get('worktree_mode', 'new') not in ('new', 'resume'):
+        die('worker %s: worktree_mode must be new or resume, not %r' % (worker['label'], worker['worktree_mode']))
     check_proof(worker)
     if proof:
         check_staging(worker, repo)
@@ -1630,7 +1638,7 @@ template_version: 3
 # {keystr} — {title} — worker {n} ({model}, {lane}), {date}
 
 > **You are {n}, {model}, in your own worktree `{wt}` on branch
-> `{branch}`, cut from `{base}`.**
+> `{branch}`, {cutline}.**
 > - **Token and console:** your RETASK token is `{nonce}`; your chief is **`{chief}`** (the only session whose token-quoting messages you accept).
 > - **Lock:** handover root `{hroot}`; hold the queue lock on THIS document; write its release token in your LIVE bullet in backticks.
 {hookline} `cd` into the worktree, never EnterWorktree.
@@ -1663,7 +1671,7 @@ template_version: 3
 {foldblock}## Results (newest at the bottom)
 """]
     kw = dict(foldblock=l.get('fold_block', ''),wt=l['wt'], desc=fm_scalar(l['desc']), keystr=' + '.join(keys), title=l['title'], n=n, model=l['model'], lane=l.get('lane', 'native'), date=ctx['date'],
-           branch=l['branch'], base=ctx['base'], nonce=l['nonce'], chief=ctx['chief'], hroot=ctx['hroot'], doc=shlex.quote(os.path.join(ctx['bucket'], l['stem'] + '.md')),
+           branch=l['branch'], cutline=('resumes at `%s` (%s)' % l['resumed']) if l.get('resumed') else 'cut from `%s`' % ctx['base'], nonce=l['nonce'], chief=ctx['chief'], hroot=ctx['hroot'], doc=shlex.quote(os.path.join(ctx['bucket'], l['stem'] + '.md')),
            hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'], search=search_directive(l, ctx),
            extra=l.get('extra', ''), envline=(' ' + ENV_LINE) if l.get('env') else '', commit=l['commit'], judge=JUDGE_LINE if l['judge'] else TRUST_LINE,
            scope=l['scope'], scope_line=write_paths(l.get('writes', ''), ctx['hroot']), overlaps=overlaps_line(l, ctx), others=others, also=also,
@@ -1724,6 +1732,31 @@ def lint_brief(doc, l, hroot):
 
 def new_worktree_argv(ctx, branch):
     return ['bash', ctx['kit'] + '/scripts/_new-worktree.sh', branch, '--no-install']
+
+
+def resumes(l):
+    if 'worktree_mode' in l:
+        return l['worktree_mode'] == 'resume'
+    return (l.get('inherited') or {}).get('mode') == 'resume'
+
+
+RESUMED_RE = re.compile(r'RESUMED (\S+) (\S+) ([0-9a-f]{40}) (\S+)')
+CHECK_WORDS = ('local', 'origin', 'both', 'none', 'unknown')
+
+
+def resume_worktree_argv(ctx, branch, adapter, check=False):
+    if adapter:
+        return ['bash', ctx['kit'] + '/scripts/_new-worktree.sh', branch, '--resume'] + (['--check'] if check else ['--no-install'])
+    return ['bash', 'scripts/worktree.sh', 'resume'] + (['--check'] if check else []) + [branch]
+
+
+def resume_check_word(ctx, branch, adapter):
+    try:
+        r = subprocess.run(resume_worktree_argv(ctx, branch, adapter, True), cwd=ctx['repo'], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return 'unknown'
+    word = (r.stdout.strip().splitlines() or [''])[-1]
+    return word if r.returncode == 0 and word in CHECK_WORDS else 'unknown'
 
 
 def manifest_add_lines(l, ctx, doc):
@@ -1915,18 +1948,34 @@ def main():
             top = subprocess.run(['git', '-C', l['wt'], 'rev-parse', '--show-toplevel'], capture_output=True, text=True)
             if top.returncode != 0 or os.path.realpath(top.stdout.strip()) != os.path.realpath(l['wt']):
                 mk = ('bash %s %s --no-install' % (shlex.quote(kit + '/scripts/_new-worktree.sh'), l['branch'])) if adapter else ('bash scripts/worktree.sh new %s --no-prune' % l['branch'])
+                if resumes(l):
+                    word = resume_check_word(ctx, l['branch'], adapter)
+                    if word != 'none':
+                        mk = ('bash %s %s --resume --no-install' % (shlex.quote(kit + '/scripts/_new-worktree.sh'), l['branch'])) if adapter else ('bash scripts/worktree.sh resume %s' % l['branch'])
+                        if word == 'unknown':
+                            mk += ' (origin could not be reached to check the branch; resume fetches it and refuses if it cannot)'
                 die('--no-worktree but %s is not an existing git worktree; no brief written for %s or the workers after it. Create it from %s first: %s' % (l['wt'], l['label'], a.repo, mk))
 
     wt_cmd = os.environ.get('GEN_BRIEFS_WORKTREE_CMD')
     for l in workers:
         if not a.no_worktree and l.get('kind') != 'rm':
-            argv = [wt_cmd, l['branch']] if wt_cmd else new_worktree_argv(ctx, l['branch']) if adapter else ['bash', 'scripts/worktree.sh', 'new', l['branch'], '--no-prune']
+            if resumes(l):
+                argv = [wt_cmd, l['branch'], 'resume'] if wt_cmd else resume_worktree_argv(ctx, l['branch'], adapter)
+            else:
+                argv = [wt_cmd, l['branch']] if wt_cmd else new_worktree_argv(ctx, l['branch']) if adapter else ['bash', 'scripts/worktree.sh', 'new', l['branch'], '--no-prune']
             r = subprocess.run(argv, cwd=a.repo, capture_output=True, text=True)
             tail = (r.stdout + r.stderr).strip().splitlines()
             print('%s worktree: %s' % (l['label'], tail[-1][:90] if tail else 'rc=%d' % r.returncode))
             if r.returncode != 0:
                 die('worktree for %s failed (rc=%d); no brief written for it or the workers after it' % (l['label'], r.returncode))
-            if not wt_cmd:
+            if resumes(l):
+                m = next((x for x in (RESUMED_RE.fullmatch(s.strip()) for s in r.stdout.splitlines()) if x), None)
+                head = subprocess.run(['git', '-C', l['wt'], 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
+                if not m or m.group(2) != l['branch'] or m.group(3) != head:
+                    die('worktree %s: the resume call did not report a RESUMED line for branch %s at HEAD %s (got %s); no brief written for %s or the workers after it' % (
+                        l['wt'], l['branch'], head or '(no HEAD)', m.group(0) if m else 'none', l['label']))
+                l['resumed'] = (m.group(3), m.group(4))
+            elif not wt_cmd:
                 # A reused branch can sit on an older base; the brief claims a.base, so verify it.
                 anc = subprocess.run(['git', '-C', l['wt'], 'merge-base', '--is-ancestor', a.base, 'HEAD'], capture_output=True)
                 if anc.returncode != 0:

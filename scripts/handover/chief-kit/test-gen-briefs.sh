@@ -901,8 +901,19 @@ cp "$HERE/brief-lint.sh" "$KIT/scripts/handover/chief-kit/"; cp -R "$HERE/../../
 export ADP_WT_LOG="$WORK/adp-wt.log"
 cat > "$KIT/scripts/_new-worktree.sh" <<'EOF'
 #!/usr/bin/env bash
-[ "$2" = --no-install ] || { echo "_new-worktree.sh stub: unexpected 2nd argument [$2]" >&2; exit 64; }
-printf '%s|%s|%s\n' "$PWD" "$1" "$2" >> "$ADP_WT_LOG"
+case "$2" in
+--no-install) ;;
+--resume) [ "$3" = --no-install ] || [ "$3" = --check ] || { echo "_new-worktree.sh stub: unexpected 3rd argument [$3]" >&2; exit 64; } ;;
+*) echo "_new-worktree.sh stub: unexpected 2nd argument [$2]" >&2; exit 64 ;;
+esac
+printf '%s|%s|%s%s\n' "$PWD" "$1" "$2" "${3:+|$3}" >> "$ADP_WT_LOG"
+if [ "$2" = --resume ]; then
+    [ "$3" = --check ] && { echo "${ADP_CHECK_WORD:-origin}"; exit 0; }
+    w="$PWD/.claude/worktrees/${1//\//+}"
+    git worktree add -q "$w" "$1"
+    echo "RESUMED $w $1 $(git -C "$w" rev-parse HEAD) only-local"
+    exit 0
+fi
 git worktree add -q "$PWD/.claude/worktrees/${1//\//+}" -b "$1"
 EOF
 ADP="$WORK/adapter"; git init -q "$ADP" && git -C "$ADP" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
@@ -926,6 +937,22 @@ lacks "the adopter brief names no jira-himmel search" "$AB" "-c jira-himmel"
 lacks "the adopter brief names no worker-graph lookup" "$AB" "worker-graph.sh"
 bash "$HERE/brief-lint.sh" "$WORK"/hr/tester/adp/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-adp.err"; rc=$?
 [ "$rc" = 0 ] && pass "the adopter brief passes brief-lint.sh" || fail "adopter brief brief-lint rc=$rc: $(cat "$WORK/lint-adp.err")"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["worktree_mode"]="resume"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/rs-resume.json"
+git -C "$ADP" worktree remove --force "$ADP/.claude/worktrees/fix+himmel-9001-plain-fix"
+: > "$ADP_WT_LOG"
+rc=0; env -u GEN_BRIEFS_WORKTREE_CMD python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/rs-resume.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp-rs" --repo "$ADP" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/adp-rs.out" 2>"$WORK/adp-rs.err" || rc=$?
+[ "$rc" = 0 ] && has "10776 G4 the adopter worktree is resumed by _new-worktree.sh --resume --no-install" "$(cat "$ADP_WT_LOG")" "$ADP|fix/himmel-9001-plain-fix|--resume|--no-install" || fail "10776 G4 rc=$rc: $(cat "$WORK/adp-rs.err")"
+has "10776 G4 the adopter brief says where it resumes" "$(cat "$WORK"/hr/tester/adp-rs/$KP-9001-N901-*.md 2>/dev/null)" "resumes at \`$ADPBASE\` (only-local)"
+git -C "$ADP" worktree remove --force "$ADP/.claude/worktrees/fix+himmel-9001-plain-fix"
+for word in origin none unknown; do
+    t="$(unset GEN_BRIEFS_NO_WT_CHECK GEN_BRIEFS_WORKTREE_CMD; ADP_CHECK_WORD=$word python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/rs-resume.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp-nw-$word" --repo "$ADP" --handover-root "$WORK/hr" --no-worktree 2>&1)"; rc=$?
+    case "$word" in
+    none) has "10776 G5.$word: a branch nowhere is told to create it" "$t" "fix/himmel-9001-plain-fix --no-install"; lacks "10776 G5.$word: and not to resume it" "$t" "--resume" ;;
+    *) has "10776 G5.$word: the hint names resume" "$t" "fix/himmel-9001-plain-fix --resume --no-install" ;;
+    esac
+    [ "$word" != unknown ] || has "10776 G5.unknown: says origin could not be reached" "$t" "origin could not be reached"
+done
+git -C "$ADP" worktree add -q "$ADP/.claude/worktrees/fix+himmel-9001-plain-fix" fix/himmel-9001-plain-fix
 # A salus-marked repo (a .salus marker, or a phi-roots entry) searches nothing: a query would send the ticket title off the machine.
 SAL="$WORK/salus-repo"; git init -q "$SAL"; : > "$SAL/.salus"
 rc=0; GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/sal" --repo "$SAL" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/sal.out" 2>"$WORK/sal.err" || rc=$?
@@ -2600,6 +2627,60 @@ EOF
     has "$id and the mixed PR's need is still named" "$o" "HIMMEL-9824 guest-credential (operator,"
 }
 test_generator_mixed_proof_staging_and_selected_text
+
+test_generator_resume_worktree() {
+    local id="10776" rwt="$WORK/wt-resume.sh" rb="$WORK/rs-bucket" t sha
+    cat > "$rwt" <<'EOF'
+#!/usr/bin/env bash
+printf '%s|%s\n' "$1" "${2:-}" >> "$WT_LOG"
+w="$PWD/.claude/worktrees/$(printf '%s' "$1" | tr / +)"; mkdir -p "$w"
+if [ "${2:-}" = resume ]; then
+    rm -rf "$PWD/.claude/rs-$(printf '%s' "$1" | tr / +).git" "$w/.git"
+    git init -q --separate-git-dir "$PWD/.claude/rs-$(printf '%s' "$1" | tr / +).git" "$w"
+    git -C "$w" -c user.name=t -c user.email=t@t commit -q --allow-empty -m r
+    [ "${RS_BAD_SHA:-0}" = 1 ] && { echo "RESUMED $w $1 0000000000000000000000000000000000000000 only-origin"; exit 0; }
+    echo "RESUMED $w $1 $(git -C "$w" rev-parse HEAD) only-origin"
+else
+    echo "created worktree $1"
+fi
+EOF
+    chmod +x "$rwt"
+    rsgo() {
+        local f="$1" b="$2"; shift 2
+        rm -rf "$b"; : > "$WT_LOG"
+        env "$@" GEN_BRIEFS_WORKTREE_CMD="$rwt" python3 "$SUT" "$f" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief BZ --bucket "$b" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/w" --deadline 1791475000 2>&1
+    }
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["worktree_mode"]="resume"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/rs-resume.json"
+    t="$(rsgo "$WORK/rs-resume.json" "$rb" RS_X=1)"; local rc=$?
+    [ "$rc" = 0 ] && pass "$id G1 a worktree_mode resume worker generates" || fail "$id G1 rc=$rc: $t"
+    has "$id G1 the stub was called as <branch> resume" "$(cat "$WT_LOG")" "fix/himmel-9001-plain-fix|resume"
+    sha="$(git -C "$REPO/.claude/worktrees/fix+himmel-9001-plain-fix" rev-parse HEAD 2>/dev/null)"
+    has "$id G1 the brief says where it resumes" "$(cat "$rb"/$KP-9001-N901-*.md 2>/dev/null)" "resumes at \`$sha\` (only-origin)"
+    lacks "$id G1 and no longer claims to be cut from the base" "$(cat "$rb"/$KP-9001-N901-*.md 2>/dev/null)" "cut from"
+    rm -rf "$REPO/.claude/worktrees/fix+himmel-9001-plain-fix"
+    t="$(rsgo "$WORK/workers.json" "$rb" RS_X=1)"; rc=$?
+    [ "$rc" = 0 ] && [ "$(cat "$WT_LOG")" = $'fix/himmel-9001-plain-fix|\nfix/himmel-9002-hook-fix|' ] && pass "$id G1.ctl no worktree_mode: the new path, called as before" || fail "$id G1.ctl rc=$rc log=$(cat "$WT_LOG"): $t"
+    has "$id G1.ctl the brief is cut from the base" "$(cat "$rb"/$KP-9001-N901-*.md 2>/dev/null)" "cut from \`4ccb59dd6de2eba962c75f136096cd7b721ae312\`"
+    rm -rf "$REPO/.claude/worktrees/fix+himmel-9001-plain-fix"
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["worktree_mode"]="bogus"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/rs-bogus.json"
+    t="$(rsgo "$WORK/rs-bogus.json" "$rb" RS_X=1)"; rc=$?
+    [ "$rc" = 1 ] && has "$id G2 a bad worktree_mode is refused naming the label" "$t" "N901" && [ -z "$(ls "$rb" 2>/dev/null)" ] && [ ! -s "$WT_LOG" ] && pass "$id G2 nothing written, no worktree call" || fail "$id G2 rc=$rc: $t"
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["inherited"]={"pr":4242,"authors":["a-person"],"mode":"resume"}; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/rs-inh.json"
+    t="$(rsgo "$WORK/rs-inh.json" "$rb" RS_X=1)"; rc=$?
+    [ "$rc" = 0 ] && has "$id G3 inherited resume without worktree_mode calls resume" "$(cat "$WT_LOG")" "fix/himmel-9001-plain-fix|resume" || fail "$id G3 rc=$rc: $t"
+    rm -rf "$REPO/.claude/worktrees/fix+himmel-9001-plain-fix"
+    t="$(rsgo "$WORK/rs-resume.json" "$rb" RS_BAD_SHA=1)"; rc=$?
+    [ "$rc" = 1 ] && has "$id G1.sha a worktree whose HEAD is not the printed sha writes no brief" "$t" "RESUMED" && [ -z "$(ls "$rb"/$KP-9001-N901-*.md 2>/dev/null)" ] && pass "$id G1.sha refused, no brief" || fail "$id G1.sha rc=$rc: $t"
+    rm -rf "$REPO/.claude/worktrees/fix+himmel-9001-plain-fix"
+    RSC="$WORK/rs-chk"; mkdir -p "$RSC/scripts/handover/chief-kit"; git init -q "$RSC"; : > "$RSC/scripts/handover/chief-kit/headed-arm-worker.sh"
+    # shellcheck disable=SC2016  # the stand-in's body is literal text
+    printf '#!/usr/bin/env bash\n[ "$2" = --check ] && echo "${RS_CHECK_WORD:-origin}"\n' > "$RSC/scripts/worktree.sh"
+    t="$(unset GEN_BRIEFS_NO_WT_CHECK GEN_BRIEFS_WORKTREE_CMD; RS_CHECK_WORD=origin python3 "$SUT" "$WORK/rs-resume.json" --base 4ccb59d --chief BZ --bucket "$WORK/rs-nw" --repo "$RSC" --handover-root "$WORK/handovers" --no-worktree 2>&1)"; rc=$?
+    [ "$rc" = 1 ] && has "$id G5 a branch on origin: the hint names worktree.sh resume" "$t" "bash scripts/worktree.sh resume fix/himmel-9001-plain-fix" || fail "$id G5 plain rc=$rc: $t"
+    t="$(unset GEN_BRIEFS_NO_WT_CHECK GEN_BRIEFS_WORKTREE_CMD; RS_CHECK_WORD=none python3 "$SUT" "$WORK/rs-resume.json" --base 4ccb59d --chief BZ --bucket "$WORK/rs-nw2" --repo "$RSC" --handover-root "$WORK/handovers" --no-worktree 2>&1)"; rc=$?
+    [ "$rc" = 1 ] && has "$id G5 a branch nowhere: the hint names worktree.sh new" "$t" "bash scripts/worktree.sh new fix/himmel-9001-plain-fix --no-prune" || fail "$id G5 plain none rc=$rc: $t"
+}
+test_generator_resume_worktree
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

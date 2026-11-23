@@ -73,6 +73,28 @@ check "42d a non-worktree scratch resume_cwd is unaffected (rc 0)" "$rc42" "0"
 printf -- '---\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' > "$tmp/c42-doc.md"
 rc42=0; out42="$(bash "$SCRIPT" --dry-run --no-profile PROJ-42-worker "$tmp/c42-doc.md" /tmp/nosig 99999999999 "$tmp/c42.log" claude-sonnet-5 2>&1)" || rc42=$?
 check "42e a doc with no resume_cwd is unaffected (rc 0)" "$rc42" "0"
+
+h_origin="$tmp/h-origin.git"; git init -q --bare "$h_origin"
+repoH="$tmp/repoH"; git clone -q "$h_origin" "$repoH" 2>/dev/null
+git -C "$repoH" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+mkdir -p "$repoH/scripts"; cp -R "$HERE/../../." "$repoH/scripts/"
+git -C "$repoH" branch -q -M main
+git -C "$repoH" push -q origin main
+git -C "$repoH" branch -q feat/h-only-origin; git -C "$repoH" push -q origin feat/h-only-origin; git -C "$repoH" branch -q -D feat/h-only-origin
+dry42 "$repoH/.claude/worktrees/feat+h-only-origin"
+check "H1 a branch only on origin: refused (rc 2)" "$rc42" "2"
+contains "H1 the hint names worktree.sh resume" "$out42" "bash scripts/worktree.sh resume feat/h-only-origin"
+dry42 "$repoH/.claude/worktrees/feat+h-nowhere"
+contains "H1.none a branch nowhere: the hint still names new" "$out42" "bash scripts/worktree.sh new feat/h-nowhere --no-prune"
+git -C "$repoH" remote set-url origin "$tmp/h-no-such-origin.git"
+dry42 "$repoH/.claude/worktrees/feat+h-only-origin"
+contains "H1.unk origin unreachable: the hint names resume" "$out42" "bash scripts/worktree.sh resume feat/h-only-origin"
+contains "H1.unk and says origin could not be reached" "$out42" "origin could not be reached"
+repoA="$tmp/repoA"; mkdir -p "$repoA/.claude/worktrees"; git -C "$repoA" init -q
+git -C "$repoA" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$repoA" branch -q feat/h-adopt
+dry42 "$repoA/.claude/worktrees/feat+h-adopt"
+contains "H1.adopt an adopter repo: the hint names _new-worktree.sh --resume" "$out42" "_new-worktree.sh feat/h-adopt --resume --no-install"
 printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$repo42/.claude/worktrees/feat+missing-42" > "$tmp/c42-doc.md"
 d42="$tmp/c42"; mk_launch_stubs "$d42" "PROJ-42-real"
 rc=0
