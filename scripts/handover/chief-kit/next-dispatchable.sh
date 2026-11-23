@@ -1154,7 +1154,8 @@ def core_lines(out, keys, spec=False):
         t = line.split()
         if spec and t[:2] == ['SPEC', 'ok'] and len(t) >= 4:
             got[t[2]] = line
-        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC') if spec else t[0] in CORE_VERBS) and len(t) >= CORE_FIELDS.get(t[0], 2):
+        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC', 'SPEC-NEEDS-OPERATOR', 'SPEC-SIGNER-UNKNOWN') if spec else t[0] in CORE_VERBS) \
+                and len(t) >= ({'SPEC-NEEDS-OPERATOR': 5, 'SPEC-SIGNER-UNKNOWN': 4} if spec else CORE_FIELDS).get(t[0], 2):
             got[t[1]] = line  # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
     return {k: got[k] for k in keys if k in got}
 
@@ -1207,9 +1208,22 @@ def core_spec_pass(cs):
         got = core_lines(out, core, spec=True)
         if len(got) != len(core):
             return fail('spec-check printed no parseable line for %s' % ', '.join(k for k in core if k not in got))
+        withheld = {}
         for k in core:
-            if not got[k].startswith('SPEC ok'):
-                design[k] = got[k].split()[0]
+            t = got[k].split()
+            if t[0] == 'SPEC-NEEDS-OPERATOR':
+                withheld[k] = ('spec-needs-operator ' + t[-1], "needs the operator's own signature (%s)" % t[-1])
+            elif t[0] == 'SPEC-SIGNER-UNKNOWN':
+                u = ' '.join(t[3:])
+                withheld[k] = ('spec-signer-unknown ' + u, 'signer records unreadable: ' + u)
+            elif t[:2] != ['SPEC', 'ok']:
+                design[k] = t[0]
+        for i in keep:
+            if i['key'] in withheld:
+                if why_key:
+                    core_problem[i['key']] = withheld[i['key']][1]
+                drop(i, withheld[i['key']][0])
+        keep = [i for i in keep if i['key'] not in withheld]
     return keep
 
 if not why_key and cands and os.environ.get('ND_RESUME_ONLY') != '1':  # --resume-only lists no To Do row
