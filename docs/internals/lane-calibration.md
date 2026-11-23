@@ -253,6 +253,33 @@ prompts work unchanged). Fold into the brief when it is more than one step:
   configuration, a change recomputes the whole request. The claudex lane routes
   through a gateway, so assume a change throws the cache away there.
 
+**Prompting a Gemini 4 Carbon child** (T3 Antigravity lane, `gemini-4-carbon`).
+Google has no standalone Carbon prompt guide yet. These rules come from its
+Carbon pages
+([what's new](https://aistudio.google.com/docs/whats-new-gemini-4-carbon),
+[thinking](https://aistudio.google.com/docs/thinking),
+[prompting strategies](https://aistudio.google.com/docs/prompting-strategies),
+[choosing a model](https://aistudio.google.com/docs/choosing-a-model)):
+- Pick Carbon for the one hard call: long, deep work that needs checking, or
+  when Neon at `high`/`xhigh` gets stuck. Use Hydrogen for everyday edits and
+  parallel children. Use Carbon or Neon to diagnose or design, then pass the
+  edits to Hydrogen. Carbon is unranked here until it is measured.
+- `thought_level` is `low`, `medium` (default) or `high`. Carbon has no `xhigh`
+  and no `minimal`. Start at `medium`, which Google recommends for complex code
+  and agent work. Go to `high` only for the hardest tasks. `low` loses quality on
+  hard tasks.
+- Carbon overthinks: it spends more thinking tokens per turn than Argon, and the
+  output budget covers thinking and answer together. Give it a long turn, never
+  a small output cap. To cut cost, lower `thought_level` instead.
+- Never set `temperature`, `top_p` or `top_k`. Gemini 4 ignores them.
+- Brief it the way we brief Claude, with four changes. Be precise and direct,
+  without persuasive wording. Use one kind of delimiter per brief, XML tags or
+  Markdown headings. Put the context first and the question last. Do not ask it
+  to think step by step, because it already thinks.
+- Carbon caches only implicitly, on prompts of 4,096 tokens or more. Keep the
+  fixed part of the brief (rules, tools, reference text) at the top and the same
+  every time.
+
 **Known stale rows.** The `[1m]` suffix table below was measured on Haiku 4.5;
 Haiku 5.5 is natively 1M and takes no suffix, and its rows are unmeasured. The
 OpenRouter lane now defaults to `anthropic/claude-haiku-5.5`;
