@@ -1256,10 +1256,11 @@ new_root dk
 mkdir -p "$R/units"
 cat > "$R/bin/systemctl" <<'FAKESYSTEMCTL'
 #!/bin/sh
-# usage: systemctl is-active --quiet UNIT | start UNIT | stop UNIT; units are files in $HIMMEL_OPS_ROOT/units
+# usage: systemctl is-active UNIT | start UNIT | stop UNIT; units are files in $HIMMEL_OPS_ROOT/units
 echo "$@" >> "$HIMMEL_OPS_ROOT/systemctl.calls"
 case "$1" in
-    is-active) [ -e "$HIMMEL_OPS_ROOT/units/$3" ] ;;
+    is-active) [ -e "$HIMMEL_OPS_ROOT/probe-fail" ] && { echo "Failed to connect to bus" >&2; exit 1; }
+        if [ -e "$HIMMEL_OPS_ROOT/units/$2" ]; then echo active; else echo inactive; exit 3; fi ;;
     start) [ -e "$HIMMEL_OPS_ROOT/start-fail" ] && { echo "Failed to start $2: Unit not found." >&2; exit 5; }
         : > "$HIMMEL_OPS_ROOT/units/$2" ;;
     stop) rm -f "$HIMMEL_OPS_ROOT/units/$2" ;;
@@ -1292,8 +1293,8 @@ assert_absent "--check makes no stop call" "stop " "$(dk_calls)"
 out=$(op docker --action stop)
 assert_contains "stop is changed" "result=changed" "$out"
 assert_eq "stop leaves no unit active" "" "$(dk_active)"
-assert_eq "stop runs service, socket, containerd in that order" "stop docker.service
-stop docker.socket
+assert_eq "stop runs socket, service, containerd in that order" "stop docker.socket
+stop docker.service
 stop containerd.service" "$(dk_calls | grep '^stop ')"
 assert_contains "a second stop is unchanged" "result=unchanged" "$(op docker --action stop)"
 rm -f "$R/units/docker.socket"; : > "$R/units/docker.service"
@@ -1312,6 +1313,9 @@ assert_contains "RED: a failing systemctl start is result=failed" "result=failed
 assert_contains "the failure names the unit and the reason" "systemctl start containerd.service failed: Failed to start containerd.service: Unit not found." "$out"
 assert_eq "RED: the failed start left nothing active" "" "$(dk_active)"
 rm -f "$R/start-fail"
+touch "$R/probe-fail"
+assert_contains "RED: a failing state probe is result=failed, not unchanged" "result=failed detail=cannot read the state of docker.socket" "$(op docker --action stop)"
+rm -f "$R/probe-fail"
 op docker --action start >/dev/null; op docker --action stop >/dev/null
 assert_absent "RED: no systemctl call was ever an enable" "enable" "$(dk_calls)"
 assert_absent "RED: no systemctl call was ever a disable" "disable" "$(dk_calls)"

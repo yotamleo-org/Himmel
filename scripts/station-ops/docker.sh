@@ -6,7 +6,9 @@
 #   docker.sh [--check] --id ID --operator-user U --action start|stop
 #
 # Acts on three fixed units and nothing else: containerd.service, docker.socket, docker.service. Start order is
-# containerd, socket, service; stop order is the reverse (service first, so the socket cannot start it again). It runs
+# containerd, socket, service; stop order is socket, service, containerd (socket first, so a client cannot re-activate
+# the service while it stops). A probe that fails or a state other than active, inactive or failed is result=failed, and
+# every unit is re-read after the run, so a unit not in the target state is failed, never changed. It runs
 # only `systemctl start`, `stop` and `is-active`: it never enables or disables a unit, so a Docker that is off at boot
 # stays off at boot and the operator's boot configuration is untouched.
 # Idempotent: with every unit already in the target state the run reports result=unchanged. --check reports
@@ -43,13 +45,23 @@ done
 [[ $id =~ ^[A-Za-z0-9-]{1,40}$ ]] || id=-
 case $action in
     start) units="containerd.service docker.socket docker.service"; want=active ;;
-    stop) units="docker.service docker.socket containerd.service"; want=inactive ;;
+    stop) units="docker.socket docker.service containerd.service"; want=inactive ;;
     *) bad action "must be start or stop" ;;
 esac
 
+state_of() {
+    local s
+    s=$(systemctl is-active "$1" 2>/dev/null)
+    case $s in
+        active) now=active ;;
+        inactive | failed) now=inactive ;;
+        *) die "cannot read the state of $1: ${s:-no answer from systemctl}" ;;
+    esac
+}
+
 todo=''
 for u in $units; do
-    if systemctl is-active --quiet "$u" 2>/dev/null; then now=active; else now=inactive; fi
+    state_of "$u"
     [ "$now" = "$want" ] || todo="$todo $u"
 done
 todo=${todo# }
@@ -59,6 +71,10 @@ if [ $check -eq 1 ]; then say would-change "will $action: $todo"; exit 0; fi
 
 for u in $todo; do
     err=$(systemctl "$action" "$u" 2>&1) || die "systemctl $action $u failed: $(printf '%s' "${err%%$'\n'*}" | cut -c1-120)"
+done
+for u in $units; do
+    state_of "$u"
+    [ "$now" = "$want" ] || die "$u is $now after the $action, not $want"
 done
 [ "$action" = start ] && past=started || past=stopped
 say changed "$past: $todo; not enabled or disabled at boot, lasts until the next reboot"
