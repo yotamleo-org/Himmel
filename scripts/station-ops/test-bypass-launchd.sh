@@ -767,6 +767,33 @@ if command -v flock >/dev/null 2>&1; then
 else
     echo "SKIP - fleet locator row (fleet-manifest.sh needs util-linux flock)"
 fi
+
+echo "== 10866: the row the daemon writes before a go-code launch is a pending registration the fleet admits =="
+if command -v flock >/dev/null 2>&1; then
+    setup fleet-admit
+    MF="$B/HIMMEL-nextleg-2026-11-13A-roadmap-chief.fleet.json"
+    FM="$REPO_ROOT/scripts/handover/chief-kit/fleet-manifest.sh"
+    bash "$FM" control init "$MF" --target 4 >/dev/null 2>&1
+    bash "$FM" control set "$MF" --mode active --expect-gen 1 >/dev/null 2>&1
+    admit() { env HOME="$D" HIMMEL_FLEET_SLOTS="$D/slots" HIMMEL_POLICY_FOLLOWS_HOME=1 \
+        bash "$FM" runtime admit --doc "$BRIEF" --manifest "$MF" --name "$(basename "$BRIEF" .md)" 2>&1; }
+    start
+    CODE=$(ask_code r)
+    reply "$OPERATOR" "$OPERATOR" "go $CODE"
+    wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+    stop
+    assert_eq "RED 10866: the daemon's row for the brief is a pending registration" "pending" \
+        "$(jq -r --arg d "$BRIEF" '.workers[] | select(.doc == $d) | .registration // "none"' "$MF" 2>/dev/null)"
+    out=$(admit)
+    assert_absent "RED 10866: the fleet admits the go-code launch on the daemon's own row" "unknown legacy family ownership" "$out"
+    assert_contains "RED 10866: the admit for the daemon's row is managed" '"managed": true' "$out"
+    LEGACY="$B/HIMMEL-1-N2-earlier.md"
+    printf -- '---\ndescription: "a live legacy worker"\n---\n# brief\n' > "$LEGACY"
+    jq -n --arg d "$LEGACY" '{schema: 1, workers: [{doc: $d, label: "N2", lane: "native", added: "2026-11-01T00:00:00Z"}]}' > "$B/earlier-chief.fleet.json"
+    assert_contains "10866 control: a genuine legacy owner of the same ticket still refuses the admit" "unknown legacy family ownership" "$(admit)"
+else
+    echo "SKIP - fleet admit rows (fleet-manifest.sh needs util-linux flock)"
+fi
 setup fleet-none
 start
 CODE=$(ask_code r)

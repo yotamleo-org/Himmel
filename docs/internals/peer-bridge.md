@@ -410,6 +410,15 @@ It starts a fresh interactive `claude` session in an empty 0700 dir
 (`S/desk/<peer>/`) with `PEER_DESK=<peer>` set and no CLAUDE.md. It refuses if
 the dir holds `.claude`, `CLAUDE.md`, `CLAUDE.local.md` or `.mcp.json`.
 
+The desk starts with no MCP server, plugin, skill or user hook. `desk.sh` passes
+`--strict-mcp-config` with an empty `--mcp-config`, `--setting-sources project`
+(so the user settings never load), `--tools Bash`, `--permission-mode default`
+and `--disable-slash-commands`. It writes `S/desk/<peer>.mcp.json` and
+`S/desk/<peer>.settings.json` (mode 0600, beside the desk dir, never in it) at
+each launch; the settings file wires only the taint gate and the read-secrets
+guard, from the himmel root's tracked scripts. The gate also denies any tool but
+Bash when `PEER_DESK` is set, so a tool the flags missed is still refused.
+
 In the desk the taint gate allows only two Bash command shapes, each a single
 line with no control byte:
 
@@ -450,8 +459,8 @@ removes the taint files and appends who cleared it and when to
 ### Why `/clear` does not weaken the gate
 
 - A tainted session cannot run `/clear` itself: the gate denies every tool except
-  Bash and Monitor, and only the two command shapes pass. A `/clear` in a tainted
-  session is the operator typing it.
+  Bash and Monitor (a desk denies Monitor too: only Bash), and only the two
+  command shapes pass. A `/clear` in a tainted session is the operator typing it.
 - `/clear` wipes the context. While tainted, the session could write no files and
   could start only the two command shapes, so nothing the peer said has been
   carried anywhere that outlives the context.
@@ -492,8 +501,9 @@ claim.
   after the Telegram call resends with the same id and the peer dedups it.
 - **The taint gate.** A tainted session or a desk may run only the two command
   shapes. The gate is a PreToolUse hook on every tool in the plugin lane, with a
-  byte-identical copy for Codex. It fails closed once a bridge dir exists, and is
-  a no-op on a station with no bridge.
+  byte-identical copy for Codex; a desk loads the tracked copy from its own
+  settings file, not through the plugin. It fails closed once a bridge dir
+  exists, and is a no-op on a station with no bridge.
 - **The fence.** Digests print inside a per-record fence whose marker carries an
   HMAC over a nonce. Only a marker whose HMAC verifies taints a session, so a
   copy of the marker in a doc, a CI log or an issue taints nothing.

@@ -10,7 +10,10 @@ vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: vi.fn(() => 'HIMM
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { registerRelease } from '../commands/release.js';
-import { alternativesOf, coreMatch, deadAlternatives, loadCorePatterns, sizeGuard } from './core.js';
+import { alternativesOf, coreMatch, deadAlternatives, loadCorePatterns, pathIndependentBypass, sizeGuard } from './core.js';
+import { readSignerState } from './engine-core.js';
+import type { SignerState } from './signer.js';
+import type { IssueSnap, OperatorRow } from './types.js';
 
 // scripts/jira/src/release -> repo root
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
@@ -319,5 +322,85 @@ describe('core-check decides each key on its own', () => {
     for (const [p, why] of [['scripts/handover/*.sh', /glob/], [`/abs/${MOG}`, /absolute/], ['../elsewhere/a.sh', /outside the repository/]] as const) {
       await expect(run('core-check', '--paths', p, '--mirror', dir, '--key', 'K-5')).rejects.toThrow(why);
     }
+  });
+});
+
+describe('the core bypass reads who signs', () => {
+  const MOG = 'scripts/handover/merge-on-green.sh';
+  const T0 = '2026-11-01T00:00:00.000Z';
+  const T1 = '2026-11-02T00:00:00.000Z';
+  const T2 = '2026-11-03T00:00:00.000Z';
+  const snap = (key: string, o: Partial<IssueSnap> = {}): IssueSnap => ({
+    key, status: 'To Do', type: 'Task', priority: 'Medium', fixVersions: [], resolution: null, ...o,
+  });
+  const issues = new Map<string, IssueSnap>([
+    ['K-2', snap('K-2', { type: 'Bug', priority: 'Highest' })],
+    ...['K-5', 'K-6', 'K-7', 'K-8', 'K-9'].map((k) => [k, snap(k)] as [string, IssueSnap]),
+  ]);
+  const bypass = (id: string, ts: string, key: string, decision = '412'): OperatorRow => ({ id, kind: 'core-bypass', ts, decision, keys: [key] });
+  const snapshotRow = (id: string, key: string): OperatorRow => ({ id, kind: 'core-snapshot', ts: T0, decision: null, keys: [key] });
+  const signerRec = (id: string, ts: string, signer: 'chief' | 'operator', keys?: string[]): OperatorRow => ({
+    id, kind: 'spec-signer', ts, decision: '1170', signer, ...(keys ? { keys } : {}),
+  });
+  const ctxOf = (records: OperatorRow[], signer: SignerState) => ({ patterns: [`^${MOG}$`], issues, records, signer });
+  const stateOf = (records: OperatorRow[], unreadable: string | null = null): SignerState => ({ records, unreadable, issues });
+
+  it('with no spec-signer record, every fixture key keeps its core-check line (I9)', () => {
+    const records = [bypass('O-1', T0, 'K-5'), snapshotRow('O-2', 'K-6')];
+    expect(coreMatch([MOG], ['K-2', 'K-5', 'K-6', 'K-7', 'K-4'], ctxOf(records, { records: [], unreadable: null, issues: null }))).toEqual([
+      'BYPASS K-2 emergency Bug at Highest', 'BYPASS K-5 operator O-1 decision 412', 'BYPASS K-6 grandfathered O-2 core-snapshot', `CORE K-7 ${MOG}`, 'UNKNOWN K-4',
+    ]);
+  });
+
+  it('with CoreCtx.signer from readSignerState on that incomplete fixture mirror and no record, every core-check answer is kept (I9, I15)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'core-release-'));
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'release'));
+    vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+    vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
+    const words = join(root, 'verbatim.txt');
+    writeFileSync(words, 'let K-5 through\n');
+    const keysFile = join(root, 'in-flight.txt');
+    writeFileSync(keysFile, 'K-6\n');
+    await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', words);
+    await run('operator', 'core-bypass', 'R1', '--keys', 'K-5', '--decision', '412', '--verbatim-file', words);
+    await run('operator', 'core-snapshot', 'R1', '--keys-file', keysFile);
+    const dir = mirrorOf([{ key: 'K-5' }, { key: 'K-6' }, { key: 'K-1', type: 'Bug' }], { lastSync: '2026-11-01T00:00:00.000Z', complete: false });
+    expect(readSignerState(process.env, dir)).toEqual({ records: [], unreadable: null, issues: null });
+    out = [];
+    await run('core-check', '--paths', MOG, '--mirror', dir, '--key', 'K-5', 'K-6', 'K-1');
+    expect(out).toEqual(['BYPASS K-5 operator O-R1-0002 decision 412', 'BYPASS K-6 grandfathered O-R1-0003 core-snapshot', 'BYPASS K-1 bug issue type Bug']);
+  });
+
+  it('a marked key\'s operator core-bypass gives no BYPASS whatever its decision; under a station operator default a bypass written before it counts and one after does not; with both rows on one key, the earlier one still counts (filter, then newest) (I11, I13)', () => {
+    const records = [
+      bypass('O-1', T0, 'K-5', '99999'), bypass('O-2', T0, 'K-6'), bypass('O-3', T0, 'K-8'),
+      bypass('O-4', T2, 'K-7'), bypass('O-5', T2, 'K-8'),
+    ];
+    const signer = stateOf([signerRec('M-5', T2, 'operator', ['K-5']), signerRec('ST', T1, 'operator')]);
+    expect(coreMatch([MOG], ['K-5', 'K-6', 'K-7', 'K-8'], ctxOf(records, signer))).toEqual([
+      `CORE K-5 ${MOG}`, 'BYPASS K-6 operator O-2 decision 412', `CORE K-7 ${MOG}`, 'BYPASS K-8 operator O-3 decision 412',
+    ]);
+  });
+
+  it('an unreadable state drops every operator core-bypass and keeps a snapshot; an emergency still bypasses a marked key (I13)', () => {
+    const records = [bypass('O-1', T0, 'K-5'), bypass('O-2', T0, 'K-2'), snapshotRow('O-3', 'K-6')];
+    expect(coreMatch([MOG], ['K-5', 'K-6'], ctxOf(records, stateOf([], 'release R2: its key does not load')))).toEqual([
+      `CORE K-5 ${MOG}`, 'BYPASS K-6 grandfathered O-3 core-snapshot',
+    ]);
+    expect(coreMatch([MOG], ['K-2'], ctxOf(records, stateOf([signerRec('M-2', T0, 'operator', ['K-2'])])))).toEqual(['BYPASS K-2 emergency Bug at Highest']);
+  });
+
+  it('a CoreCtx with records and no signer throws; a paths-only caller is unchanged (I13)', () => {
+    expect(() => coreMatch([MOG], ['K-5'], { patterns: [`^${MOG}$`], issues, records: [] })).toThrow(/signer state/);
+    expect(coreMatch([MOG], ['K-5'], { patterns: [`^${MOG}$`] })).toEqual([`CORE K-5 ${MOG}`]);
+  });
+
+  it('pathIndependentBypass gives the emergency, Bug and snapshot answers (I13)', () => {
+    expect(pathIndependentBypass('K-2', issues.get('K-2') as IssueSnap, [])).toBe('emergency Bug at Highest');
+    expect(pathIndependentBypass('K-1', snap('K-1', { labels: ['regression'] }), [])).toBe('emergency label regression');
+    expect(pathIndependentBypass('K-1', snap('K-1', { type: 'Bug' }), [])).toBe('bug issue type Bug');
+    expect(pathIndependentBypass('K-6', snap('K-6'), [snapshotRow('O-3', 'K-6'), bypass('O-1', T0, 'K-6')])).toBe('grandfathered O-3 core-snapshot');
+    expect(pathIndependentBypass('K-5', snap('K-5'), [bypass('O-1', T0, 'K-5')])).toBeNull();
   });
 });

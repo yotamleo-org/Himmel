@@ -156,6 +156,7 @@ git init -q "$ROOT/ready-repo"
 # check 19 fetches origin/main and reads origin/main..<head>: a real head
 SHA=$(ready_pass_repo "$ROOT/ready-repo") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 export PATH="$ROOT/ready-bin:$PATH" READY_STUB_HEAD="$SHA"
+[ "$(ready_pass_owner_review)" = "$READY_PASS_OWNER_LINE" ] || fail "ready-check's owner-review line over the ready-pass fixture"
 ready_pass_ledger "$ROOT/ready-repo" "$SHA"
 cd "$ROOT/ready-repo" || { echo "FAIL: cd into the ready repo" >&2; exit 1; }
 export HIMMEL_REPO="$ROOT/ready-repo"

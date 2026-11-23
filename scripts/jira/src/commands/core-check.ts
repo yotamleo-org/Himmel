@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { coreMatch, expandPaths, loadCorePatterns, sizeGuard, type ChangeClass } from '../release/core.js';
 import { readMirrorFilesUnverified, readOperatorRecords } from '../release/engine.js';
+import { readSignerState } from '../release/engine-core.js';
+import type { SignerState } from '../release/signer.js';
 import type { IssueSnap, OperatorRow } from '../release/types.js';
 import { defaultRoot } from './mirror.js';
 import { list } from './release.js';
@@ -18,6 +20,7 @@ export interface CoreInputs {
   guardLine: string | null;
   issues: Map<string, IssueSnap> | null;
   records: OperatorRow[];
+  signer: SignerState;
 }
 
 export function loadCoreInputs(o: CoreInputOpts): CoreInputs {
@@ -29,14 +32,14 @@ export function loadCoreInputs(o: CoreInputOpts): CoreInputs {
   const records = [...readOperatorRecords('core-bypass'), ...readOperatorRecords('core-snapshot')]
     .sort((a, b) => a.ts.localeCompare(b.ts));
   const issues = mirror ? readMirrorFilesUnverified(mirror).issues : null;
-  return { patterns, tracked, guardLine: guard.line, issues, records };
+  return { patterns, tracked, guardLine: guard.line, issues, records, signer: readSignerState(process.env, mirror) };
 }
 
 export function coreGroupLines(
   inputs: CoreInputs, paths: string, keys: string[], o: { changeClass?: ChangeClass; docsOnly?: boolean } = {},
 ): string[] {
-  const { patterns, tracked, issues, records } = inputs;
-  return coreMatch(expandPaths(list(paths), tracked), keys, { patterns, changeClass: o.changeClass, docsOnly: !!o.docsOnly, issues, records });
+  const { patterns, tracked, issues, records, signer } = inputs;
+  return coreMatch(expandPaths(list(paths), tracked), keys, { patterns, changeClass: o.changeClass, docsOnly: !!o.docsOnly, issues, records, signer });
 }
 
 const BATCH = 'release core-check-batch';

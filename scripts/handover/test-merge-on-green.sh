@@ -1205,6 +1205,7 @@ STUB
     GO_OLD=$(ready_pass_repo "$GO_READY_REPO" old) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
     ready_pass_bin "$GO_READY_REPO/.bin"
     ready_pass_ledger "$GO_READY_REPO" "$GO_SHA" "$GO_OLD"
+    if [ "$(PATH="$GO_READY_REPO/.bin:$PATH" READY_STUB_HEAD="$GO_SHA" ready_pass_owner_review)" = "$READY_PASS_OWNER_LINE" ]; then pass; else fail "ready-check's owner-review line over the ready-pass fixture"; fi
 }
 
 # Sourced with MOG_LIB_ONLY=1, this file stops here: the helpers above (run_mog,

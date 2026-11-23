@@ -13,7 +13,10 @@
 # Prepend <dir> to PATH for the go.sh call only.
 ready_pass_bin() {
     export GH_PR_SNAPSHOT_CACHE_DIR="$1/snapshot-cache"
-    mkdir -p "$1" || return 1
+    mkdir -p "$1" "$1/envroot" "$1/quota" || return 1
+    READY_PASS_DIR="$1"
+    export GH_READ_ENV_ROOT="$1/envroot" HIMMEL_QUOTA_DIR="$1/quota" READY_STUB_GATE_FILE="$1/owner-gate.mjs"
+    printf "console.log('codeowner-review-gate: PASS — yotamleo has admin permission — not an outside PR');\n" > "$1/owner-gate.mjs"
     cat > "$1/gh" <<'STUB'
 #!/usr/bin/env bash
 # READY_STUB_BODY / READY_STUB_TITLE (set, even to empty) replace the PR body and title a suite's GO is written for;
@@ -37,6 +40,18 @@ case "$*" in
         printf '%s' '[{"messageHeadline":"fix(x): [HIMMEL-1] t (#1)","messageBody":"Platforms tested: linux\nSecurity reviewed: manual"}]'
         exit 0 ;;
     *"--json body"*) printf '%b' "${READY_STUB_BODY-$DEFAULT_BODY}"; exit 0 ;;
+    # owner-review reads (ready-check's owner-review line): the base read, the required-set reads and the gate script,
+    # answered as an owner PR whose gate script prints the rule-a PASS. Any other owner-review read hits the sentinel.
+    # the quota probe the required-set read runs first: a healthy budget, never a call to GitHub
+    "api -i graphql -f query={rateLimit{remaining}}"|"api -i user")
+        printf 'HTTP/2.0 200 OK\r\nX-Ratelimit-Limit: 5000\r\nX-Ratelimit-Remaining: 4900\r\nX-Ratelimit-Reset: %s\r\n\r\n{}\n' "$(( $(date +%s) + 3000 ))"; exit 0 ;;
+    "api repos/"*"/pulls/"*" --jq [.base.ref,.base.sha,.head.sha]|@tsv") printf 'main\t0123456789abcdef0123456789abcdef01234567\t%s\n' "${READY_STUB_HEAD:-}"; exit 0 ;;
+    "api repos/{owner}/{repo}/rules/branches/"*)
+        printf '%s' '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"codeowner-review-gate","integration_id":15368}]}}]'; exit 0 ;;
+    "api repos/{owner}/{repo}/branches/"*"/protection/required_status_checks") echo "gh: Branch not protected (HTTP 404)" >&2; exit 1 ;;
+    "api -H Accept: application/vnd.github.raw repos/"*"/contents/scripts/ci/codeowner-review-gate.mjs?ref="*) cat "${READY_STUB_GATE_FILE:?}"; exit $? ;;
+    "api repos/"*"/collaborators/"*|"api -H Accept: application/vnd.github.raw repos/"*"/contents/.github/CODEOWNERS"*|"api --paginate repos/"*"/reviews?"*|"api --paginate repos/"*"/files?"*|"api repos/{owner}/{repo}/"*)
+        printf '%s\n' "$*" >> "${READY_STUB_SENTINEL_LOG:-/dev/null}"; echo "ready-pass gh: unanswered owner-review read: $*" >&2; exit 1 ;;
     'api repos/'*'/pulls/'*) printf '%s\n' "${READY_STUB_HEAD:-}"; exit 0 ;;
     *':pullRequest(number:'*)
         jq -n --arg h "${READY_STUB_HEAD:-}" --arg args "$*" --arg b "${READY_STUB_GQL_BRANCH-${READY_STUB_BRANCH:-b}}" --arg t "${READY_STUB_TITLE-fix(x): t (#1)}" \
@@ -71,6 +86,13 @@ exit 1
 STUB
     chmod +x "$1/gh"
 }
+
+READY_PASS_CHIEFKIT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ready_pass_owner_review() {
+    READY_STUB_SENTINEL_LOG="${READY_PASS_DIR:-/dev/null}/sentinel.log" bash "$READY_PASS_CHIEFKIT/ready-check.sh" --owner-review "${1:-83}" 2>/dev/null
+}
+# shellcheck disable=SC2034  # read by the suites that source this fixture
+READY_PASS_OWNER_LINE='owner-review: not-required (rule-a: yotamleo has admin permission; check at head: none)'
 
 # ready_pass_ledger <repo> <sha>... - record an ok CR-ledger row per sha in
 # <repo>'s git-common-dir (what ready-check's check 4 reads), through the

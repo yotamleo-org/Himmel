@@ -132,6 +132,7 @@ usage: fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--pend
        fleet-manifest.sh control set <manifest> --mode paused|shadow|active [--target N] --expect-gen G
        fleet-manifest.sh attempt bind <manifest> <doc> --attempt-id A
        fleet-manifest.sh attempt settle <manifest> <doc> --attempt-id A --phase launched|refused|unknown
+add writes a pending row for a doc no session ever ran on (no marker bullet, free lock, no claude on it), with or without --pending
 USAGE
 }
 
@@ -391,6 +392,12 @@ EOD
                 exit 2 ;;
         esac
     done
+    fresh_docs=$'\n'
+    if [ "$pending" != true ]; then
+        for doc in "$@"; do
+            [ "$(python3 -I "$HERE/../../lib/fleet_runtime.py" unlaunched --doc "$doc")" != true ] || fresh_docs="$fresh_docs$doc"$'\n'
+        done
+    fi
 fi
 
 # prim-ok: a 30 s bounded flock held on fd 9 for the rest of the script; with_lock waits without limit and wraps one command
@@ -441,7 +448,9 @@ for arg in "$@"; do
             echo "fleet-manifest: $arg is already listed with a different lane/lockless/arm; remove it first, then add it again: $arg" >&2
             exit 1
         fi
-        cur="$(printf '%s\n' "$cur" | jq --arg wk "$wk" --arg d "$arg" --arg l "$label" --arg t "$now" --arg ln "$lane" --argjson ll "$lockless" --arg ar "$arm" --argjson pending "$pending" \
+        row_pending=$pending
+        case "$fresh_docs" in *$'\n'"$arg"$'\n'*) row_pending=true ;; esac
+        cur="$(printf '%s\n' "$cur" | jq --arg wk "$wk" --arg d "$arg" --arg l "$label" --arg t "$now" --arg ln "$lane" --argjson ll "$lockless" --arg ar "$arm" --argjson pending "$row_pending" \
             'if any(.[$wk][]; .doc == $d) then .[$wk] |= map(if .doc == $d and $ar != "" and (.arm // "") == "" then . + {arm: $ar} else . end) else .[$wk] += [{doc: $d, label: $l, added: $t, lane: $ln} + (if $ll then {lockless: true} else {} end) + (if $ar != "" then {arm: $ar} else {} end) + (if $pending then {registration:"pending"} else {} end)] end')" || exit 1
     else
         cur="$(printf '%s\n' "$cur" | jq --arg wk "$wk" --arg a "$arg" \

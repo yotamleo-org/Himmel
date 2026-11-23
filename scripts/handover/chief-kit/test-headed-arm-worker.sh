@@ -2685,6 +2685,7 @@ ready_pass_bin "$tmp/ready26"
 # check 19 fetches origin/main and reads origin/main..<head>: a real head
 sha26=$(ready_pass_repo "$primary26") || sha26=""
 ready_pass_ledger "$primary26" "$sha26"
+check "ready-check's owner-review line over the ready-pass fixture" "$(PATH="$tmp/ready26:$PATH" READY_STUB_HEAD="$sha26" ready_pass_owner_review)" "$READY_PASS_OWNER_LINE"
 go_root26="$(cd "$primary26" && HANDOVER_DIR="$primary26/handovers" bash -c '. "$1/../../lib/handover-path.sh" && . "$1/../../lib/go-gate.sh" && go_resolve_root "$1/../../.."' _ "$HERE" 2>/dev/null)" || go_root26=""
 case "$go_root26" in
   "$tmp"/?*) echo "ok - HANDOVER_DIR e2e: resolved GO root [$go_root26] is inside the suite's temp dir"; go_root26_ok=1 ;;
@@ -3063,6 +3064,14 @@ check "29c ... and no inbox line" "$(wc -l < "$lr_inbox")" "$lr_before"
 lr_rc=0; HIMMEL_CONSOLE_NAME=lr-chief bash "$SCRIPT" --profile worker-impl PROJ-29-N3-short "$lr_doc" >/dev/null 2>&1 || lr_rc=$?
 check "29d a usage refusal exits 2" "$lr_rc" "2"
 contains "29d ... and the chief inbox names the session" "$(cat "$lr_inbox")" "LAUNCH-REFUSED PROJ-29-N3-short"
+lr_other_inbox="${lr_inbox%/*}/inherited-chief.md"; : > "$lr_other_inbox"
+lr_inh_log="$tmp/inherited-29h.log"
+lr_rc=0; HIMMEL_CONSOLE_NAME=lr-chief LOG="$lr_inh_log" NAME=inherited-session CHIEF_NAME=inherited-chief bash "$SCRIPT" --profile worker-impl PROJ-29-N8-inherit "$lr_doc" >/dev/null 2>&1 || lr_rc=$?
+check "29h a usage refusal with LOG, NAME and CHIEF_NAME exported exits 2" "$lr_rc" "2"
+check "29h ... never writes the inherited LOG" "$([ -e "$lr_inh_log" ] && echo wrote || echo none)" "none"
+check "29h ... never routes to the inherited CHIEF_NAME" "$(wc -c < "$lr_other_inbox" | tr -d ' ')" "0"
+not_contains "29h ... never names the inherited NAME" "$(cat "$lr_inbox")" "inherited-session"
+contains "29h ... names the scanned session to the scanned chief" "$(cat "$lr_inbox")" "LAUNCH-REFUSED PROJ-29-N8-inherit"
 lr_form="$(sed -n '/^setsid nohup bash scripts\/handover\/chief-kit\/headed-arm-worker.sh/,/&$/p' "$HERE/../../../docs/handover/running-a-chief.md")"
 contains "29e the documented launch form passes --fleet" "$lr_form" "--fleet"
 not_contains "29e the documented launch form no longer sends stderr to /dev/null" "$lr_form" ">/dev/null 2>&1"
