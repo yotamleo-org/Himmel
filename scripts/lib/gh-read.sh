@@ -175,11 +175,11 @@ _ghr_summary() {
         case "$a" in
             --json|--jq|-q|--template|-t|-f|-F|--field|--raw-field|-H|--header) skip=1 ;;
             --json=*|--jq=*|--template=*|--field=*|--raw-field=*|--header=*|-f?*|-F?*|-q?*|-t?*|-H?*) ;;
-            *) out="$out $a" ;;
+            *) out="$out ${a%%\?*}" ;;
         esac
     done
     out="${out# }"
-    out=$(printf '%s' "$out" | tr '\n\t' '  ' | sed -E 's/\?[^ ]*//g; s/(gh[opsur]_|github_pat_)[A-Za-z0-9_]+/<redacted>/g')
+    out=$(printf '%s' "$out" | tr '\n\t' '  ' | sed -E 's/(gh[opsur]_|github_pat_)[A-Za-z0-9_]+/<redacted>/g')
     printf '%s' "${out:0:120}"
 }
 

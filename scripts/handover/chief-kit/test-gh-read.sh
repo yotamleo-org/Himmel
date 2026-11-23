@@ -324,6 +324,9 @@ check "G6b an api read names its path without its query string" \
     "main core http404 api repos/o/r/actions/runs" "$(sed -n 2p "$W/used")"
 lacks "G6c no row carries a 40-hex token from the query" "0123456789abcdef0123456789abcdef01234567" "$(cat "$W/used")"
 : > "$W/used"
+GH_STUB_READFAIL=notfound GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api "search/issues?q=private terms" --jq '.x' >/dev/null 2>&1
+check "G6h a query value with a space is dropped whole" "main core http404 api search/issues" "$(sed -n 2p "$W/used")"
+: > "$W/used"
 GH_STUB_READFAIL=notfound GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api "repos/o/r/contents/ghp_SECRETDUMMY0123456789" >/dev/null 2>&1
 check "G6g a prefixed token in the path is masked" "main core http404 api repos/o/r/contents/<redacted>" "$(sed -n 2p "$W/used")"
 : > "$W/used"
