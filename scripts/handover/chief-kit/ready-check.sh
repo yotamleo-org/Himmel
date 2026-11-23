@@ -710,8 +710,8 @@ owner_review_mode() {
     set -- $OR_PRS
     [ "$#" -le 1 ] || multi=1
     dir=$(mktemp -d "${TMPDIR:-/tmp}/ready-check-owner-snap.XXXXXX" 2>/dev/null) || { echo "ready-check: no scratch dir; nothing was judged" >&2; exit 2; }  # swallow-ok: a failed read becomes unknown below, never not-required  # prim-ok: ready-check sources no prim.sh
-    or_snapshots "$dir" "$@"
     end=$(( $(date +%s) + OR_DEADLINE ))
+    or_snapshots "$dir" "$@"
     for p in "$@"; do
         left=$(( end - $(date +%s) ))
         if [ "$left" -le 0 ]; then line="unknown (gate: deadline)"
