@@ -133,7 +133,7 @@ if k1_shell_ok "$mut"; then bad "K1 a step-level shell: bash passes for defaults
 else ok "K1 a step-level shell: bash is not defaults.run.shell"; fi
 if [ "$(sort -u <<< "$refs" | grep -c .)" -eq 1 ]; then ok "K2 every job names the same default ref"; else bad "K2 the jobs name different default refs: $(sort -u <<< "$refs" | tr '\n' ' ')"; fi
 # K7: every job pins the rebuilt CI image.
-if [ "$(sort -u <<< "$refs" | grep .)" = "ghcr.io/yotamleo-org/himmel-ci@sha256:45109f7d530dfb15e31565ccc267514b003c35c5a9e86604d7561a09db7c65b6" ]; then ok "K7 every job pins the rebuilt CI image digest"; else bad "K7 the jobs pin $(sort -u <<< "$refs" | tr '\n' ' ') instead of the rebuilt image digest"; fi
+if [ "$(sort -u <<< "$refs" | grep .)" = "ghcr.io/yotamleo-org/himmel-ci@sha256:7b665f956e8dd18bb3b3944e04aa20d5ae3576d5e648d482e2ae91356035d404" ]; then ok "K7 every job pins the rebuilt CI image digest"; else bad "K7 the jobs pin $(sort -u <<< "$refs" | tr '\n' ' ') instead of the rebuilt image digest"; fi
 
 # K4: the evaluator is not vacuous -- the old form lets a fork into the image.
 D='ghcr.io/yotamleo-org/himmel-ci@sha256:2222222222222222222222222222222222222222222222222222222222222222'
