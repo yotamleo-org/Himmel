@@ -1931,7 +1931,7 @@ for label, doc, lines, wkeys, mine, parse_ok, parse_err in live_workers:
         note_unknown('live worker %s' % printable(label))
         print('next-dispatchable: live worker %s: holds.py parse of %s failed (%s): its files are unknown' % (printable(label), printable(os.path.basename(doc)), parse_err), file=sys.stderr)
         continue
-    held += [(f, 'live worker %s' % printable(label), True) for f in mine]
+    held += [(f, 'live worker %s' % label, True) for f in mine]
     if os.environ.get('ND_WHY') == '1':
         for f in dict.fromkeys(mine):
             if not concrete(f):
@@ -2008,7 +2008,7 @@ if stacked and workers_from:
                     states = branch_states(it['publish_branch'])
                     if states and all(s in ('MERGED', 'CLOSED') for s in states):
                         continue
-                held += [(w, 'series %s' % printable(sid), True) for w in (it.get('writes') or []) if isinstance(w, str) and w]
+                held += [(w, 'series %s' % sid, True) for w in (it.get('writes') or []) if isinstance(w, str) and w]
             writer = led['writer']
             if time.time() - last_activity(led, path) > SERIES_ORPHAN_S and not has_live_bullet(writer) and os.path.realpath(writer) not in manifest_docs:
                 series_orphans.append((sid, writer))
@@ -2233,7 +2233,7 @@ def say_overlaps(i, against_listed=True):
     pairs = held_hits(i) + ([(f, 'listed ' + k) for f, k in picked_hits(i)] if against_listed else [])
     src = ' (from %s)' % i['src'] if os.environ.get('ND_WHY') == '1' else ''
     for f, who in dict.fromkeys(pairs):
-        say('# overlap %s %s with %s%s' % (i['key'], f, who, src))
+        say('# overlap %s %s with %s%s' % (i['key'], f, printable(who), src))
     if i['key'] in outside_idle:
         num, days = outside_idle[i['key']]
         say('# overlap %s also named by outside PR %s (idle %dd)' % (i['key'], num, days))
