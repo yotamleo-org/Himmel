@@ -103,6 +103,22 @@ put rule.md '8. No time estimates: no "in about 15 min", no ETA, no "shortly".'
 run "$T/rule.md"
 if [ "$RC" -eq 0 ]; then pass "rule statement -> 0"; else fail "rule line exit $RC: $OUT"; fi
 
+put none.md 'Status: 3 PRs merged. Your action: none.'
+run "$T/none.md"
+if [ "$RC" -eq 1 ] && has "none.md:1: empty operator inbox"; then pass "Your action: none -> 1"; else fail "Your action: none exit $RC: $OUT"; fi
+
+put none-rule.md '9. No status line reads "Your action: none" while an item waits. Your action: sign the spec.'
+run "$T/none-rule.md"
+if [ "$RC" -eq 0 ]; then pass "quoted rule and a real action -> 0"; else fail "Your action control exit $RC: $OUT"; fi
+
+put none.json '{ "status": { "template": "Merged. Your action: none." } }'
+run "$T/none.json"
+if [ "$RC" -eq 1 ] && has "none.json:1: empty operator inbox"; then pass "JSON template Your action: none -> 1"; else fail "JSON Your action: none exit $RC: $OUT"; fi
+
+put none-reply.ts '    await reply("Merged. Your action: none.");'
+run "$T/none-reply.ts"
+if [ "$RC" -eq 1 ] && has "none-reply.ts:1: empty operator inbox"; then pass "double-quoted TS reply Your action: none -> 1"; else fail "TS Your action: none exit $RC: $OUT"; fi
+
 run "$T/absent.md"
 if [ "$RC" -eq 2 ]; then pass "missing file -> 2"; else fail "missing file exit $RC: $OUT"; fi
 

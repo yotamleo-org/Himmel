@@ -55,8 +55,8 @@ assert_empty() {
   fi
 }
 
-ANTIGRAVITY_ONLY="block-terminal-write-fence.sh"
-ANTIGRAVITY_REQUIRED="block-edit-on-main.sh block-read-secrets.sh block-backend-tier.sh block-docker-privesc.sh block-rogue-claude-schedule.sh block-merged-pr-commit.sh block-terminal-write-fence.sh block-edit-live-settings.sh block-chokepoint-env-prefix.sh block-rogue-codex-exec.sh require-quiet-run.sh block-tail-pipe-on-gates.sh block-jira-compound-write.sh block-write-into-main-checkout.sh guard-t3-thread-tools.sh block-t3code-unwatch-open-pr.sh mcp-policy.sh peer-taint-gate.sh peer-taint-resume.sh record-primary-baseline.sh detect-dirty-primary.sh record-hook-integrity.sh"
+ANTIGRAVITY_ONLY="block-terminal-write-fence.sh block-antigravity-read-fence.sh"
+ANTIGRAVITY_REQUIRED="block-edit-on-main.sh block-read-secrets.sh block-antigravity-read-fence.sh block-graphify-egress.sh block-backend-tier.sh block-docker-privesc.sh block-rogue-claude-schedule.sh block-merged-pr-commit.sh block-terminal-write-fence.sh block-edit-live-settings.sh block-chokepoint-env-prefix.sh block-rogue-codex-exec.sh require-quiet-run.sh block-tail-pipe-on-gates.sh block-jira-compound-write.sh block-write-into-main-checkout.sh guard-t3-thread-tools.sh block-t3code-unwatch-open-pr.sh mcp-policy.sh peer-taint-gate.sh peer-taint-resume.sh record-primary-baseline.sh detect-dirty-primary.sh record-hook-integrity.sh"
 ANTIGRAVITY_POST_EXEMPT="detect-token-in-output.sh peer-taint-mark.sh"
 
 echo "== antigravity hook inventory parity =="
@@ -84,7 +84,6 @@ const claudeBashExempt = {
   "guard-readiness-tools.sh": "Native Claude readiness role only",
   "block-subagent-release-operator.sh": "Relies on Claude agent_id payload field omitted by Antigravity (C-1215)",
   "block-subagent-park.sh": "Relies on Claude agent_id and Monitor/run_in_background fields omitted by Antigravity (C-1215)",
-  "block-graphify-egress.sh": "Deferred to S2b read/egress fence slice",
   "block-agent-native-egress.sh": "Plugin-local guard; Antigravity MCP allowlist denies agent-native-dispatch",
   "block-busy-loop.sh": "Plugin-local guard outside scripts/hooks/",
   "block-vault-sweep.sh": "Plugin-local guard outside scripts/hooks/"

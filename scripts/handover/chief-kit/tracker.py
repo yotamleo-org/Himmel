@@ -1513,6 +1513,34 @@ def operator_critical(spec, critic, critical_re, unread):
     return None if unknown else False
 
 
+def owed_ledger_items(handover_dir, unread):
+    try:
+        lines = open(os.path.join(handover_dir, 'owed.jsonl'), encoding='utf-8').read().splitlines()
+    except FileNotFoundError:
+        return []
+    except (OSError, UnicodeDecodeError):
+        unread.append('owed.jsonl')
+        return []
+    adds, closed = {}, set()
+    for l in lines:
+        try:
+            r = json.loads(l)
+        except ValueError:
+            continue
+        if isinstance(r, dict) and r.get('op') == 'add' and isinstance(r.get('id'), str):
+            adds[r['id']] = r
+        elif isinstance(r, dict) and r.get('op') == 'close' and isinstance(r.get('ref'), str):
+            closed.add(r['ref'])
+    out = []
+    for i, r in adds.items():
+        if i in closed or r.get('actor') != 'operator':
+            continue
+        k = re.fullmatch(r'HIMMEL-(\d+)', str(r.get('key') or ''))
+        out.append(('owed ledger', int(k.group(1)) if k else None, clip(str(r.get('text') or i), 140), '%s (%s) in owed.jsonl' % (i, r.get('kind')),
+                    'run the proof' if r.get('kind') == 'proof' else 'do what the row names'))
+    return out
+
+
 def operator_owed(handover_dir, chief_doc, version, opn, mir):
     """(operator items, source read, unread critic files, chief-owed items): unsigned specs without the marker are chief-owed."""
     items, chief_owes, readable, unread = [], [], False, []
@@ -1580,6 +1608,7 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
                     answered = handoff_answered(handover_dir, hand[-1], l)
                     (chief_owes if answered else items).append(('handoff', None, clip(l.strip(), 140), os.path.basename(hand[-1]),
                                                                 'the chief records the operator answer' if answered else 'answer the open item'))
+        items += owed_ledger_items(handover_dir, unread)
         try:
             drift_rows = open(os.path.join(handover_dir, 'focus-drift.txt'), encoding='utf-8').read().splitlines()
         except (OSError, UnicodeDecodeError):
@@ -1860,14 +1889,16 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
     wait = [k for k in sorted(opn, key=order.get) if set(OPERATOR_LABELS) & set(opn[k].get('labels', []))]
     owed, owed_read, owed_unread, chief_owes, holds_unread = operator_owed(bucket_dir, chief_doc, version, opn, mir)
     nwait = len(wait) + len(owed)
-    waithtml = '<section data-section="waiting" data-count="%d" data-actor="operator"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s%s</h2>%s</section>' % (
+    critic_unread = [u for u in owed_unread if u != 'owed.jsonl']
+    waithtml = '<section data-section="waiting" data-count="%d" data-actor="operator"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s%s%s</h2>%s</section>' % (
         nwait, nwait, '' if owed_read else ' <span class="n">no operator-owed source read</span>',
         ' <span class="n">%d critic file%s unread, skipped: %s</span>' % (
-            len(owed_unread), '' if len(owed_unread) == 1 else 's', esc(', '.join(owed_unread))) if owed_unread else '',
+            len(critic_unread), '' if len(critic_unread) == 1 else 's', esc(', '.join(critic_unread))) if critic_unread else '',
+        ' <span class="n">owed ledger unread</span>' if 'owed.jsonl' in owed_unread else '',
         ' <span class="n">pool holds unread: %s</span>' % esc(', '.join(holds_unread)) if holds_unread else '',
-        '<ul>%s</ul>' % (''.join('<li>%s %s <span class="own">Jira %s · %s</span></li>' % (
+        '<ol class="needs-you">%s</ol>' % (''.join('<li><b>Needs you:</b> %s %s <span class="own">Jira %s · %s</span></li>' % (
             key_html(k), esc(clip(opn[k]['title'], 100)), esc(jcol[k]), esc(', '.join(sorted(set(OPERATOR_LABELS) & set(opn[k]['labels']))))) for k in wait)
-            + ''.join('<li class="owed">%s%s <span class="own">%s · %s · action: %s</span></li>' % (
+            + ''.join('<li class="owed"><b>Needs you:</b> %s%s <span class="own">%s · %s · action: %s</span></li>' % (
                 key_html(n) + ' ' if n else '', esc(t), esc(src), esc(ctx), esc(act)) for src, n, t, ctx, act in owed))
         if nwait else '<div class="empty">%s</div>' % ('nothing is waiting on you' if owed_read else
                                                        'no operator-owed source read: the Jira labels name no waiting ticket, and that is all that was checked'))
