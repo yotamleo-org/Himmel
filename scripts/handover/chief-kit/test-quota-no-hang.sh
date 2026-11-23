@@ -335,8 +335,10 @@ drive_cr_disposition() {
     cd "$GATE_REPO" || return 0
     AFFECT_FN=affect_cr_disposition RATE_BOUND=5
     for m in $(modes_for); do
+        EXTRA_ENV="HIMMEL_REPO=$GATE_REPO"
         run_mode cr-disposition.sh "$m" 6 2 bash "$script" check 77 "$SHA"
     done
+    EXTRA_ENV=""
 }
 
 drive_ready_check() {

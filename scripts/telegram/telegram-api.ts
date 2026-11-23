@@ -3,6 +3,60 @@ import { basename } from "node:path";
 
 const API = (t: string, m: string) => `https://api.telegram.org/bot${t}/${m}`;
 type F = typeof fetch;
+
+const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+function isCodeAlone(s: string): boolean {
+  if (/\n/.test(s) || /[.!?]$/.test(s)) return false;
+  if (!/\s/.test(s)) return /\d/.test(s);
+  return /^[a-z.\/~$]/.test(s) && !/,\s/.test(s) && !/\*\*[^*]+\*\*/.test(s) && /[*_`$|&;<>=\\]/.test(s);
+}
+
+function code(s: string): string {
+  return s.split(/(`[^`\n]+`)/).map((seg, i) => i % 2 === 1 ? `<code>${esc(seg.slice(1, -1))}</code>` : esc(seg)).join("");
+}
+
+function inline(line: string): string {
+  let out = "";
+  let last = 0;
+  for (const m of line.matchAll(/`[^`\n]+`|\*\*(?:[^*\n`]|`[^`\n]*`)+\*\*/g)) {
+    const t = m[0];
+    out += esc(line.slice(last, m.index)) + (t[0] === "`" ? `<code>${esc(t.slice(1, -1))}</code>` : `<b>${code(t.slice(2, -2))}</b>`);
+    last = m.index + t.length;
+  }
+  return out + esc(line.slice(last));
+}
+
+export function toTelegramHtml(text: string): string {
+  const trimmed = text.trim();
+  if (isCodeAlone(trimmed)) return `<code>${esc(trimmed)}</code>`;
+  const lines = text.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const oneLine = /^```(.+?)```\s*$/.exec(lines[i]);
+    if (oneLine) {
+      out.push(`<pre>${esc(oneLine[1])}</pre>`);
+      continue;
+    }
+    if (/^```/.test(lines[i])) {
+      const rest = lines[i].slice(3);
+      let j = i + 1;
+      const closeAt = lines.findIndex((l, k) => k > i && /^```\s*$/.test(l));
+      const body: string[] = rest && !(closeAt > 0 && /^[A-Za-z0-9_+#.-]+$/.test(rest)) ? [rest] : [];
+      while (j < lines.length && !/^```\s*$/.test(lines[j])) body.push(lines[j++]);
+      out.push(`<pre>${esc(body.join("\n"))}</pre>`);
+      i = j;
+      continue;
+    }
+    const bullet = /^(\s*)[-*] (.*)$/.exec(lines[i]);
+    out.push(bullet ? `${bullet[1]}• ${inline(bullet[2])}` : inline(lines[i]));
+  }
+  const first = lines[0];
+  const next = lines[1];
+  if (lines.length > 1 && first.trim() && first.length <= 100 && !/\*\*|`|^\s*[-*] /.test(first)
+      && (next.trim() === "" || /^\s*([-*]|\d+\.) /.test(next))) out[0] = `<b>${out[0]}</b>`;
+  return out.join("\n");
+}
 // A non-ok response (e.g. a Telegram-API-side Bad Gateway storm)
 // THROWS instead of returning []. poller.ts's main loop already wraps getUpdates
 // in a try/catch for network errors; folding the API-level failure into that same
@@ -87,11 +141,11 @@ export type SendResult = { ok: true; messageId: number } | { ok: false; code: nu
 type Attempt = SendResult & { retryAfter?: number; description?: string };
 const NOT_SENT_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"]);
 
-async function sendOnce(token: string, chat_id: number, text: string, o: SendOpts, f: F, signal?: AbortSignal): Promise<Attempt> {
+async function sendOnce(token: string, chat_id: number, text: string, o: SendOpts, f: F, signal?: AbortSignal, html = false): Promise<Attempt> {
   let res: Response;
   try {
     res = await f(API(token, "sendMessage"), { method: "POST", ...(signal ? { signal } : {}),
-      headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id, text, ...(Number.isSafeInteger(o.replyToMessageId) && o.replyToMessageId! > 0 ? { reply_parameters: { message_id: o.replyToMessageId, allow_sending_without_reply: true } } : {}), ...(o.replyMarkup ? { reply_markup: o.replyMarkup } : {}), ...(o.noPreview ? { link_preview_options: { is_disabled: true } } : {}) }) });
+      headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id, text, ...(html ? { parse_mode: "HTML" } : {}), ...(Number.isSafeInteger(o.replyToMessageId) && o.replyToMessageId! > 0 ? { reply_parameters: { message_id: o.replyToMessageId, allow_sending_without_reply: true } } : {}), ...(o.replyMarkup ? { reply_markup: o.replyMarkup } : {}), ...(o.noPreview ? { link_preview_options: { is_disabled: true } } : {}) }) });
   } catch (e: any) {
     const code = e?.code ?? e?.cause?.code;
     return { ok: false, code: null, kind: typeof code === "string" && NOT_SENT_CODES.has(code) ? "not-sent" : "maybe-sent" };
@@ -108,9 +162,10 @@ export async function sendMessageResult(token: string, chat_id: number, text: st
 }
 
 export async function sendMessage(token: string, chat_id: number, text: string,
-    f: F = fetch, sleep: (ms:number)=>Promise<void> = (ms)=>Bun.sleep(ms), receipt?: (messageId: number) => void, replyToMessageId?: number, replyMarkup?: object): Promise<boolean> {
+    f: F = fetch, sleep: (ms:number)=>Promise<void> = (ms)=>Bun.sleep(ms), receipt?: (messageId: number) => void, replyToMessageId?: number, replyMarkup?: object, format?: boolean): Promise<boolean> {
+  let html = format ? toTelegramHtml(text) : null;
   for (let attempt = 0; attempt < 5; attempt++) {
-    const r = await sendOnce(token, chat_id, text, { replyToMessageId, replyMarkup }, f);
+    const r = await sendOnce(token, chat_id, html ?? text, { replyToMessageId, replyMarkup }, f, undefined, html !== null);
     if (r.ok) { if (r.messageId > 0) receipt?.(r.messageId); return true; }
     if (r.code === null) {
       // A lost response is indistinguishable from a failed send; retrying can duplicate alerts.
@@ -118,6 +173,7 @@ export async function sendMessage(token: string, chat_id: number, text: string,
       return false;
     }
     if (r.code === 429) { if (attempt < 4) await sleep((r.retryAfter ?? 1) * 1000); continue; }
+    if (html !== null && r.code === 400 && /can't parse entities/i.test(String(r.description ?? ""))) { html = null; continue; }
     if (r.kind === "permanent") {           // permanent client error → log + drop (never loop)
       console.error(`[telegram] sendMessage ${r.code} chat=${redactChatId(chat_id)}: ${r.description ?? ""}`);
       return false;

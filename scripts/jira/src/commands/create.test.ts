@@ -1254,10 +1254,11 @@ describe('create — unplaced follow-up', () => {
       expect(process.exitCode).toBeUndefined();
     });
 
-    it('a gated --follow-up-of create is refused without --decision and filed with it', async () => {
+    it('an operator-directed --follow-up-of create files with no words, and with them records them', async () => {
       parentIs({});
-      await expect(file('--follow-up-of', 'HIMMEL-5', '--labels', 'operator-directed')).rejects.toThrow(/needs a record of the operator's words/);
-      expect(posted()).toBe(false);
+      await file('--follow-up-of', 'HIMMEL-5', '--labels', 'operator-directed');
+      expect(posted()).toBe(true);
+      expect(queued().at(-1)).toMatchObject({ to_v: 'v1.1.3', evidence: { follow_up_of: 'HIMMEL-5' } });
       mkdirSync(join(baseRoot, 'specs', 'decisions'), { recursive: true });
       writeFileSync(join(baseRoot, 'specs', 'decisions', 'verbatim-decision-9-op.txt'), 'Operator:\n\n"Approved one more round"\n');
       await file('--follow-up-of', 'HIMMEL-5', '--labels', 'operator-directed', '--decision', '9', '--words', 'Approved one more round');
@@ -1602,8 +1603,9 @@ describe('create — intake gate for a frozen version', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('refuses a Task into a frozen version with no gate, naming the gates, without POSTing', async () => {
-    await expect(file('Task', '--fix-version', 'v1.1.3')).rejects.toThrow(/v1\.1\.3 is frozen.*--gate critical\|regression\|must:/s);
+  it('refuses a Task into a frozen version with no gate, sending the filer to the door, without POSTing', async () => {
+    await expect(file('Task', '--fix-version', 'v1.1.3')).rejects.toThrow(
+      /v1\.1\.3 is frozen \(2026-10-20\): file with --proposed-version <v>, the version the operator named, or v1\.1\.3 when the operator named none; the door places it \(--gate critical\|regression\|must:/);
     expect(created()).toBeUndefined();
     expect(ledger()).toEqual([]);
   });
@@ -2113,11 +2115,13 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
     const requests = () => readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>);
     const gated = ['--labels', 'operator-directed', '--proposed-version', 'v1.1.3'];
 
-    it('a gated create with no --decision is refused before the POST, naming --decision and --words', async () => {
+    it('an operator-directed or High create with no --decision files, and its INTAKE names no operator record', async () => {
       await declare();
-      await expect(file('Task', ...gated)).rejects.toThrow(/needs a record of the operator's words[\s\S]*--decision <n> --words/);
-      await expect(file('Task', '--priority', 'High', '--proposed-version', 'v1.1.3')).rejects.toThrow(/is High; .*needs a record of the operator's words/);
-      expect(posted()).toBe(false);
+      await file('Task', ...gated);
+      expect(posted()).toBe(true);
+      expect(requests().at(-1)).toMatchObject({ key: 'HIMMEL-77', to_v: 'v1.1.3', evidence: {}, state: 'open' });
+      await file('Task', '--priority', 'High', '--proposed-version', 'v1.1.3');
+      expect(operatorDecisions()).toEqual([]);
     });
 
     it('bad words are refused before the POST', async () => {

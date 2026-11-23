@@ -125,9 +125,14 @@ prompts; the script saves the outgoing content first (a plain copy).
 
 **Your tab runs in a memory-capped systemd scope** (`HIMMEL_WORKER_SESSION_MEMORY_MAX`,
 default 12G, swap capped the same). A model-loading or burst run stays under
-it: a run that exceeds the cap is OOM-killed alone, not the station. Bound a
-load test yourself (one allocator, a small cap, `timeout 60`) rather than
-leaning on the cap.
+it: a run that exceeds the cap is OOM-killed alone, not the station.
+
+**Never load the station to recreate CI.** A failure that only shows on a slow
+or busy host is reproduced by a deadline or timing seam in the test (inject the
+clock or the budget), by a CI run, or on a test VM. Busy loops in any language,
+`taskset`/`numactl` pinning, stress tools and memory hogs are not a repro on
+the station: they stall every session on it (operator decision, 2026-11-23).
+`block-busy-loop.sh` refuses the common shapes; the rule covers the rest.
 
 An observation meant to be "clean" runs through `scripts/lib/clean-sandbox.sh
 [--keep VAR]... -- <cmd>` (`env -i`, prints the env it passed), never a

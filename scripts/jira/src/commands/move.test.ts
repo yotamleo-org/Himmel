@@ -274,17 +274,19 @@ describe('jira move into a version, for operator work', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('a gated move --proposed-version is refused without --decision and filed with it', async () => {
-    await expect(move()).rejects.toThrow(/exit/);
-    expect(vi.mocked(process.exit).mock.calls[0]).toEqual([1]);
-    expect(vi.mocked(console.error).mock.calls.map((c) => String(c[0])).join('\n'))
-      .toMatch(/the target create was refused, nothing was written: release request: NEW is operator-directed; a request that places it needs a record of the operator's words/);
-    expect(posted()).toBe(false);
+  const lastRequest = () => JSON.parse(readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8').trim().split('\n').at(-1) ?? '{}');
+
+  it('an operator-directed move --proposed-version files with no words, and the door rules its INTAKE', async () => {
+    await move();
+    expect(posted()).toBe(true);
+    expect(lastRequest()).toMatchObject({ key: 'HIMMEL-78', to_v: 'v1.1.3', state: 'open', evidence: {} });
+  });
+
+  it('an operator-directed move --proposed-version with --decision and --words still records them', async () => {
     mkdirSync(join(root, 'specs', 'decisions'), { recursive: true });
     writeFileSync(join(root, 'specs', 'decisions', 'verbatim-decision-9-op.txt'), 'Operator:\n\n"Approved one more round"\n');
     await move('--decision', '9', '--words', 'Approved one more round');
     expect(posted()).toBe(true);
-    const last = JSON.parse(readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8').trim().split('\n').at(-1) ?? '{}');
-    expect(last).toMatchObject({ key: 'HIMMEL-78', to_v: 'v1.1.3', evidence: { operator: expect.stringMatching(/^O-R1-\d{4}$/) } });
+    expect(lastRequest()).toMatchObject({ key: 'HIMMEL-78', to_v: 'v1.1.3', evidence: { operator: expect.stringMatching(/^O-R1-\d{4}$/) } });
   });
 });

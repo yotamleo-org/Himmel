@@ -20,8 +20,7 @@
 #   install-himmel-codex.sh --plugins=himmel-ops,handover
 #   install-himmel-codex.sh --dry-run       # report intended changes, mutate nothing
 #
-# Default plugin set (all @himmel): himmel-ops handover obsidian-triage telegram-himmel
-# — defined in himmel-plugin-set.conf (also what startup-health requires to stay registered).
+# The default plugin set comes from himmel-plugin-set.conf, shared with startup-health.
 # Env overrides: CODEX_BIN (codex CLI path).
 set -euo pipefail
 

@@ -154,7 +154,7 @@ new_case c7b
     MERGE_BLOCK_ALERT_DIR="$CASE/sentinels" TELEGRAM_ACCESS_PATH="$ACCESS" \
     merge_block_alert octo/demo 42 aaaaaaaaaaaa "rule" 2>>"$CASE/err"
 )
-if grep -q 'chief-route.ts reply 555 MERGE-BLOCKED octo/demo#42' "$CASE/bun.log"; then pass; else fail "7: control — with a sandbox BRIDGE_ROOT the default sender runs bun chief-route.ts reply <chat> (got: $(cat "$CASE/bun.log"))"; fi
+if grep -q 'chief-route.ts reply --kind merge-blocked 555 MERGE-BLOCKED octo/demo#42 @aaaaaaaaaaaa' "$CASE/bun.log"; then pass; else fail "7: control — with a sandbox BRIDGE_ROOT the default sender runs bun chief-route.ts reply --kind merge-blocked <chat> (got: $(cat "$CASE/bun.log"))"; fi
 
 # --- 7c. a hung MERGE_BLOCK_ALERT_CMD is bounded ---------------
 # The seam runs under the same bound as the bun send, so a sender that never
@@ -342,6 +342,10 @@ eq "16: with no kind the seam gets two arguments, as before" "2|555|page two|" "
 )
 if grep -q 'chief-route.ts reply --kind worker-silent 555 page three$' "$CASE/bun.log"; then pass; else fail "16: the default sender runs chief-route.ts reply --kind worker-silent <chat> <text> (got: $(cat "$CASE/bun.log"))"; fi
 if grep -q 'chief-route.ts reply 555 page four$' "$CASE/bun.log"; then pass; else fail "16: with no kind the default sender is unchanged (got: $(cat "$CASE/bun.log"))"; fi
+
+new_case c18
+( MERGE_BLOCK_ALERT_CMD="$TMP/bin/argc-sender" run_alert "$CASE" octo/demo 42 aaaaaaaaaaaa "required check(s) FAILED: tests" )
+eq "18: the merge-blocked DM passes its kind as the third argument" "3|555|MERGE-BLOCKED octo/demo#42 @aaaaaaaaaaaa: required check(s) FAILED: tests|merge-blocked" "$(cat "$CASE/alerts.log")"
 
 if command -v bun >/dev/null 2>&1; then
     cat > "$TMP/bin/route-sender" <<'EOF'

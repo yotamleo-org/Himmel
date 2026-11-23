@@ -187,6 +187,15 @@ if [ "$(uname -s)" = Linux ]; then
     if [ "$(sent_count)" = "$((before + 1))" ]; then pass "control: the next run with a working sender pages"; else fail "next run did not page (count=$(sent_count), before=$before)"; fi
 fi
 
+cat >"$TMP/kind-send.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s|%s\n' "$#" "${3-}" >>"$KIND_LOG"
+EOF
+chmod +x "$TMP/kind-send.sh"
+j_post Bash s-kind "T=$TOK_GHP" | env HIMMEL_TEST_FIXTURE=1 TOKEN_ALERT_DIR="$TMP/kind-alerts" MERGE_BLOCK_ALERT_CMD="$TMP/kind-send.sh" \
+    TELEGRAM_ACCESS_PATH="$TMP/access.json" KIND_LOG="$TMP/kind.log" bash "$HOOK" >"$TMP/out" 2>"$TMP/err"
+if [ "$(cat "$TMP/kind.log" 2>/dev/null)" = "3|token-in-output" ]; then pass "the DM passes the token-in-output kind"; else fail "DM kind (got: $(cat "$TMP/kind.log" 2>/dev/null))"; fi
+
 # 12. The sentinel never holds the token.
 # grep exits 1 only on a clean "no match"; an error (2, a missing dir) fails.
 grep -rqF -e "$TOK_GHO" -e "$TOK_PAT" -e "$TOK_GHP" "$TMP/alerts"

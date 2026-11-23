@@ -147,7 +147,15 @@
 #                               to worker-event all record it. Once per READY head or other bullet;
 #                               a repeat READY of a named head folds like ready_fold. Checked after
 #                               the tick key, so a tick change wakes first. The payload carries no
-#                               bullet text.
+#                               bullet text. Any other wake of a sampled pass ends its block with the
+#                               events no wake named yet whose token this sample's tails= shows, saved
+#                               key or not (marker_carry), and records them.
+#   WAKE worker-request <label>  the same, for a newest marker bullet led by any other marker that
+#                               carries a REQUEST word (PUSH-REQUEST, JUDGE-REQUEST) or QUESTION; once
+#                               per bullet, and a tails= move never names it.
+#   WAKE worker-doc-missing <label> <path> [writes=<original>]  with --workers-from, once per path:
+#                               a manifest row whose doc does not exist, or a -RESUME doc with no
+#                               marker bullet whose original beside it holds a newer one.
 #   WAKE ready-mismatch <value>  the tick's ready-mismatch= carries ALERT: on entering ALERT and
 #                               when its flagged or NO-GO count rises (<inbox>.wait.readymismatch keeps
 #                               `<flagged> <nogo>`, removed when ALERT leaves). The tick line follows.
@@ -672,7 +680,7 @@ lookonly_carry() {
         rm -f "$housekeeping_file" "$housekeeping_file.since"
     fi
 }
-trap 'lookonly_carry; digest_flush; heartbeat exited "$exit_reason"' EXIT
+trap '[ -z "${marker_carry_on:-}" ] || marker_carry; lookonly_carry; digest_flush; heartbeat exited "$exit_reason"' EXIT
 trap "exit_reason='signal-TERM'; exit 143" TERM
 trap "exit_reason='signal-INT'; exit 130" INT
 trap "exit_reason='signal-HUP'; exit 129" HUP
@@ -2756,7 +2764,8 @@ marker_key() {
             m=READY ;;
         BLOCKED*) m=BLOCKED ;;
         FINDING*) m=FINDING ;;
-        *) return 1 ;;
+        *) [[ $rest =~ (^|[^A-Za-z0-9_])([A-Z]+-)*(REQUEST|QUESTION)([^A-Za-z0-9_]|$) ]] || return 1
+           m=REQUEST ;;
     esac
     printf '%s %s %s\tWAKE worker-%s %s\n' "$1" "$m" "$(printf '%s\n' "$2" | cksum | cut -d' ' -f1)" "$(printf '%s' "$m" | tr '[:upper:]' '[:lower:]')" "$1"
 }
@@ -2776,10 +2785,33 @@ EOF
 marker_tok() {
     local m
     m="$(printf '%s' "${2#WAKE worker-}" | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')"
+    if [ "$m" = REQUEST ]; then
+        printf '%s\n' "$3" | tr ',' '\n' | awk -v p="$1:" 'index($0, p) == 1 { t = substr($0, length(p) + 1); sub(/[^A-Za-z0-9_-].*/, "", t)
+            if (t != "" && t != "READY" && t != "BLOCKED" && t != "FINDING") { print; exit } }'
+        return
+    fi
     printf '%s\n' "$3" | tr ',' '\n' | awk -v p="$1:$m" 'index($0, p) == 1 && substr($0, length(p) + 1, 1) !~ /[A-Za-z0-9_]/ { print; exit }'
 }
+worker_doc_events() {
+    local label ldoc sib
+    [ -n "$legs_from" ] || return 0
+    while IFS=$'\t' read -r label ldoc; do
+        [ -n "$label" ] && [ -n "$ldoc" ] || continue
+        if [ ! -f "$ldoc" ]; then
+            printf '%s\tDOC-MISSING %s\tWAKE worker-doc-missing %s %s\n' "$label" "$ldoc" "$label" "$ldoc"
+            continue
+        fi
+        case "$ldoc" in *-RESUME.md) ;; *) continue ;; esac
+        sib="${ldoc%-RESUME.md}.md"
+        [ -f "$sib" ] && [ "$sib" -nt "$ldoc" ] || continue
+        [ -z "$(newest_marker_bullet "$ldoc")" ] && [ -n "$(newest_marker_bullet "$sib")" ] || continue
+        printf '%s\tDOC-MISSING %s\tWAKE worker-doc-missing %s %s writes=%s\n' "$label" "$ldoc" "$label" "$ldoc" "$sib"
+    done <<EOF
+$(jq -r "$JQ_W"'W[]? | [.label, .doc] | @tsv' "$legs_from")
+EOF
+}
 worker_marker_wake() {
-    local ev label k w m tok keys="" out="" st ct ldoc cur last
+    local ev label k w m tok keys="" out="" st ct ldoc cur last any="${1:-}"
     ev="$(worker_marker_events)"
     st=",$(key_field tails "$saved"),"; ct=",$(key_field tails "$key"),"
     while IFS=$'\t' read -r label k w; do
@@ -2788,7 +2820,7 @@ worker_marker_wake() {
         m="$(printf '%s' "${w#WAKE worker-}" | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')"
         tok="$(marker_tok "$label" "$w" "$ct")"
         [ -n "$tok" ] || continue
-        case "$st" in *",$tok,"*) ;; *) continue ;; esac
+        [ -n "$any" ] || case "$st" in *",$tok,"*) ;; *) continue ;; esac
         if [ "$m" = READY ]; then
             cur=""; last=""
             [ ! -f "$ready_file" ] || cur="$(awk -F'\t' -v l="$label" '$1 == l { c = $2 } END { print c }' "$ready_file")"
@@ -2800,9 +2832,23 @@ worker_marker_wake() {
     done <<EOF
 $ev
 EOF
+    while IFS=$'\t' read -r label k w; do
+        [ -n "$k" ] || continue
+        grep -qxF -- "$k" "$marker_woke_file" 2>/dev/null && continue
+        out="$out$w"$'\n'; keys="$keys$k"$'\n'
+    done <<EOF
+$(worker_doc_events)
+EOF
     [ -n "$out" ] || return 1
     printf '%s' "$out"
     printf '%s' "$keys" >> "$marker_woke_file"
+}
+marker_carry_on=""
+marker_carry() {
+    [ -n "$marker_carry_on" ] && [ -n "$key" ] || return 0
+    [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" != 1 ] || return 0
+    case "$exit_reason" in wake-worker-marker) return 0 ;; wake-*) ;; *) return 0 ;; esac
+    worker_marker_wake any || return 0
 }
 marker_note() {
     local ev label k w ct
@@ -2812,6 +2858,7 @@ marker_note() {
     while IFS=$'\t' read -r label k w; do
         [ -n "$k" ] || continue
         case " $1 " in *" $label "*) ;; *) continue ;; esac
+        case "$w" in "WAKE worker-request "*) continue ;; esac
         [ -n "$(marker_tok "$label" "$w" "$ct")" ] || continue
         grep -qxF -- "$k" "$marker_woke_file" 2>/dev/null || printf '%s\n' "$k" >> "$marker_woke_file"
     done <<EOF
@@ -2993,6 +3040,7 @@ if [ ! -e "$inbox.announced" ] && command -v bun >/dev/null 2>&1; then
     timeout -k 2 15 bun "$REPO/scripts/telegram/chief-route.ts" announce "$inbox" 9>&- >/dev/null 2>&1 || true  # gnu-ok: Linux-only kit
 fi
 while :; do
+    marker_carry_on=""
     # Telegram first: it is the cheap check and the operator's line. Peek, print
     # the header, then let --once stream the lines: each line is on stdout
     # before its cursor moves, so a kill mid-wake replays, never drops.
@@ -3116,6 +3164,7 @@ while :; do
         fi
         if close_sweep_woke; then exit_reason='wake-predecessor-open'; exit 0; fi
         sample "$@" 9>&-
+        marker_carry_on=1
         if [ -z "$key" ] && [ "$fail_step" = "tick-exit:2" ]; then
             printf 'WAKE tick-usage rc=2%s\n' "${tick_err:+ $tick_err}"
             exit_reason='wake-tick-usage'; exit 0

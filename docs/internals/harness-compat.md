@@ -844,8 +844,8 @@ node scripts/agents-md/generate.mjs --check
 
 ### 3. Plugins / marketplace — works
 
-`config.toml` registers the himmel marketplace + `handover@himmel`,
-`obsidian-triage@himmel`, `telegram-himmel@himmel` (enabled). A few **external**
+`config.toml` registers the himmel marketplace and enables `himmel-ops@himmel`,
+`handover@himmel` and `obsidian-triage@himmel` by default. A few **external**
 plugins' `hooks.json` (warp, hookify, ralph-loop, security-guidance) carry a
 top-level `description` key that Codex **before `rust-v0.143.0`** rejects
 ("unknown field description") — Codex skips just those hooks and runs normally
@@ -885,8 +885,8 @@ unavailable, or a `docs-audit` lane). It does **not** dispatch the Claude
 follow-up once the shared `cr-context.sh` assembler lands.
 
 Tier-A skills split by **delivery mechanism**: the enabled himmel plugins
-(`handover@himmel`, `obsidian-triage@himmel`, `telegram-himmel@himmel`) carry
-their own skills/commands. The **himmel-ops** skills (minerva, stuck-playbook,
+(`handover@himmel` and `obsidian-triage@himmel`) carry their own
+skills/commands. The **himmel-ops** skills (minerva, stuck-playbook,
 vm, himmel-doctor, himmel-update) require `himmel-ops@himmel` enabled in
 user-global `~/.codex/config.toml` — provisioned **reproducibly** by
 `scripts/codex/install-himmel-codex.sh` (the codex-CLI half of

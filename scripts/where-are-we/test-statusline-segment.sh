@@ -287,7 +287,7 @@ fi
 
 # --- Cases 18-21: the ledger-slice cache -------------------------------------
 # A stub node that counts its calls then runs the real node, so a cache hit is
-# observable as "no new call". The cache key is the ledger path + size + mtime.
+# observable as "no new call".
 REALNODE="$(command -v node 2>/dev/null || true)"
 COUNTER="$TMP/node-calls"
 COUNTNODE="$TMP/countnode.sh"
@@ -310,7 +310,6 @@ if [ -n "$REALNODE" ] && { command -v timeout >/dev/null 2>&1 || command -v gtim
         fail "unchanged ledger -> calls after 1st=$n1 after 2nd=$n2 o1='$o1' o2='$o2'"
     fi
 
-    # 19: an appended entry changes size+mtime, so the cache misses and the new entry shows.
     printf '%s\n' '{"ts":"2026-01-02T00:00:00Z","source":"jira","key":"HIMMEL-538","kind":"ticket","status":"in-review"}' >> "$CLEDGER"
     o3="$(crun "$CDIR" "$CLEDGER")"; n3="$(calls)"
     if [ "$n3" = 2 ] && grepq "$o3" -F 'in-review' && ! grepq "$o3" -F 'in-progress'; then
@@ -335,9 +334,8 @@ if [ -n "$REALNODE" ] && { command -v timeout >/dev/null 2>&1 || command -v gtim
     SDIR="$TMP/slice-link"; mkdir -p "$SDIR"
     SLEDGER="$TMP/ledger-link.jsonl"; cp "$LEDGER_INPROG" "$SLEDGER"
     ssz="$(stat -c %s "$SLEDGER" 2>/dev/null || stat -f %z "$SLEDGER")"
-    smt="$(stat -c %Y "$SLEDGER" 2>/dev/null || stat -f %m "$SLEDGER")"
     sino="$(stat -c %i "$SLEDGER" 2>/dev/null || stat -f %i "$SLEDGER")"
-    printf '%s\n%s\n' "$SLEDGER|$ssz $smt $sino" '- status: FORGED' > "$TMP/forged-target"
+    printf '%s\n%s\n' "$SLEDGER|$sino $ssz" '- status: FORGED' > "$TMP/forged-target"
     ln -s "$TMP/forged-target" "$SDIR/where-are-we-slice-HIMMEL-538.txt"
     before="$(cat "$TMP/forged-target")"
     rm -f "$COUNTER"
@@ -362,6 +360,51 @@ if [ -n "$REALNODE" ] && { command -v timeout >/dev/null 2>&1 || command -v gtim
         pass "same size and mtime, new inode -> cache miss, new content shown"
     else
         fail "same size and mtime, new inode -> calls=$n8 o7='$o7' o8='$o8'"
+    fi
+
+    ADIR="$TMP/slice-append"; mkdir -p "$ADIR"
+    ALEDGER="$TMP/ledger-append.jsonl"; cp "$LEDGER_INPROG" "$ALEDGER"
+    rm -f "$COUNTER"
+    o9="$(crun "$ADIR" "$ALEDGER")"
+    printf '%s\n' '{"ts":"2026-01-03T00:00:00Z","source":"jira","key":"HIMMEL-999","kind":"ticket","status":"done"}' >> "$ALEDGER"
+    o10="$(crun "$ADIR" "$ALEDGER")"; n10="$(calls)"
+    if [ "$n10" = 1 ] && [ "$o9" = "$o10" ] && grepq "$o10" -F 'in-progress'; then
+        pass "appended record for another key -> cache kept, no node started"
+    else
+        fail "appended record for another key -> calls=$n10 o9='$o9' o10='$o10'"
+    fi
+
+    printf '%s\n' '{"ts":"2026-01-03T12:00:00Z","source":"jira","key":"HIMMEL-\u0035\u0033\u0038","kind":"ticket","status":"done"}' >> "$ALEDGER"
+    o10b="$(crun "$ADIR" "$ALEDGER")"; n10b="$(calls)"
+    if [ "$n10b" = 2 ] && grepq "$o10b" -F 'done'; then
+        pass "appended record naming this key through a \\u escape -> cache miss, new status shown"
+    else
+        fail "appended record naming this key through a \\u escape -> calls=$n10b o10b='$o10b'"
+    fi
+
+    printf '%s' '{"ts":"2026-01-04T00:00:00Z","source":"jira","key":"HIMMEL-998"' >> "$ALEDGER"
+    crun "$ADIR" "$ALEDGER" >/dev/null; n11="$(calls)"
+    if [ "$n11" = 3 ]; then
+        pass "torn appended tail -> cache miss, node runs"
+    else
+        fail "torn appended tail -> calls=$n11"
+    fi
+
+    TDIR="$TMP/slice-timeout"; mkdir -p "$TDIR"
+    TLEDGER="$TMP/ledger-timeout.jsonl"; cp "$LEDGER_INPROG" "$TLEDGER"
+    crun "$TDIR" "$TLEDGER" >/dev/null
+    printf '%s\n' '{"ts":"2026-01-05T00:00:00Z","source":"handover","key":"HIMMEL-538","kind":"ticket","next_action":"n"}' >> "$TLEDGER"
+    trun() { HIMMEL_WHERE_ARE_WE=1 HANDOVER_DIR="$HROOT" HIMMEL_WHERE_ARE_WE_ROLLUP_DIR="$TDIR" \
+             HIMMEL_WHERE_ARE_WE_NODE_BIN="$hangnode" HIMMEL_WHERE_ARE_WE_NODE_TIMEOUT=1 \
+             bash "$SUT" --branch "$BR" --ledger "$TLEDGER" </dev/null 2>/dev/null; }
+    o12="$(trun)"
+    touch -d '2 hours ago' "$TDIR/where-are-we-slice-HIMMEL-538.txt" 2>/dev/null \
+        || touch -t "$(date -v-2H +%Y%m%d%H%M 2>/dev/null)" "$TDIR/where-are-we-slice-HIMMEL-538.txt"
+    o13="$(trun)"
+    if grepq "$o12" -F 'in-progress' && ! grepq "$o13" -F 'in-progress' && grepq "$o13" -F '⎇ HIMMEL-538'; then
+        pass "node timeout -> last cached slice served; an entry over an hour old is not"
+    else
+        fail "node timeout -> o12='$o12' o13='$o13'"
     fi
 else
     pass "ledger-slice cache cases -> SKIPPED (no node or no timeout/gtimeout on this host)"
