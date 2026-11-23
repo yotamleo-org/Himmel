@@ -547,6 +547,15 @@ const consoleName = basename(docPath, '.md');
 // budget) are in no section on purpose: neither is running, and neither is the user's to answer.
 // The operator board, its archive and its json are not touched.
 if (opt.view === 'user') {
+    const owedRun = spawnSync(process.env.BOARD_BUN || 'bun', ['-e', `const { readOwed } = await import(${JSON.stringify(join(HERE, '..', '..', 'config-ui', 'board.ts'))}); console.log(JSON.stringify(readOwed(process.env)));`],
+        { encoding: 'utf8', timeout: 30000, env: { ...process.env, HIMMEL_BUCKET_DIR: bucket } });
+    let owed;
+    try {
+        const o = JSON.parse(owedRun.stdout);
+        owed = o.state === 'ok' ? { items: o.items.filter((i) => i.actor === 'operator'), unread: '' } : { items: [], unread: o.reason };
+    } catch {
+        owed = { items: [], unread: 'the owed reader did not run' };
+    }
     const prTitle = (n) => ((openByNum.get(n) || {}).title || '');
     const waitingLegs = workers.filter((l) => l.phase !== 'WRAPPED' && l.phase !== 'MERGED'
         && (l.phase === 'READY' || l.phase === 'BLOCKED' || l.tail === 'FINDING'));
@@ -558,11 +567,12 @@ if (opt.view === 'user') {
             ? { ticket: l.ticket, goal: goalOf(prTitle(l.prNum)) || l.desc, tag: `GO · PR #${l.prNum}` }
             : { ticket: l.ticket, goal: goalOf(prTitle(l.prNum)) || l.desc, tag: 'question', text: l.last.replace(/^(?:\d{1,2}:\d{2}\s+)?[A-Z][A-Z-]*[A-Z]\s*[—–:-]*\s*/, '') })),
         ...decisions.map((d) => ({ tag: 'decision', text: d })),
+        ...owed.items.map((i) => ({ ticket: i.key || '', goal: i.title, tag: i.source, text: `${i.ctx}; action: ${i.act}` })),
     ];
     const shipped = (mergedPrs || []).map((p) => ({ ticket: (/\[([A-Z][A-Z0-9]*-\d+)\]/.exec(p.title) || [])[1] || '', goal: goalOf(p.title), tag: `PR #${p.number}` }));
     const userOut = resolve(opt.out || join(bucket, 'chief-shift-board.html'));
     const userTmp = `${userOut}.tmp${process.pid}`;
-    writeFileSync(userTmp, renderUserBoard({ stamp, running, waiting, shipped, shippedNote: mergedPrs ? '' : 'merged PRs unavailable' }));
+    writeFileSync(userTmp, renderUserBoard({ stamp, running, waiting, shipped, shippedNote: mergedPrs ? '' : 'merged PRs unavailable', owedUnread: owed.unread }));
     renameSync(userTmp, userOut);
     console.log(userOut);
     process.exit(0);

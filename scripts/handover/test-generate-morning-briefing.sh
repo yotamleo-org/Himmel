@@ -408,6 +408,19 @@ assert_contains "tldr 1 in-flight" "**1** in-flight" "$file"
 assert_contains "tldr links the Board" "Backlog: on the Board" "$file"
 assert_contains "order advance"    "Advance 1 In-Progress ticket(s)." "$file"
 
+echo "TEST: 10764 — what the operator owes is numbered Needs you items, never an empty inbox"
+OW_BK="$TMP_ROOT/owed-bucket"; mkdir -p "$OW_BK"
+printf '%s\n' '{"op":"add","id":"o1","kind":"step","text":"sign the v1.1.3 release spec","key":"HIMMEL-9","actor":"operator"}' \
+    '{"op":"add","id":"o2","kind":"proof","text":"run the VM upgrade proof","actor":"operator"}' '{"op":"add","id":"o3","kind":"proof","text":"chief validates a proof"}' > "$OW_BK/owed.jsonl"
+out=$(HIMMEL_BUCKET_DIR="$OW_BK" HIMMEL_JIRA_MIRROR="$TMP_ROOT/no-mirror" run_script --since "$MARKER" --out "$TMP_ROOT/owed.md")
+file=$(cat "$TMP_ROOT/owed.md")
+assert_contains "10764: an open signature is the first numbered Needs you item" "1. Needs you: HIMMEL-9 sign the v1.1.3 release spec" "$file"
+assert_contains "10764: an owed proof marked for the operator is listed" "2. Needs you: run the VM upgrade proof" "$file"
+assert_absent "10764: a chief-owed ledger row is not the operator's" "chief validates a proof" "$file"
+assert_absent "10764: no empty-inbox line while items are open" "Nothing waiting on you" "$file"
+out=$(BRIEFING_BUN=/bin/false run_script --since "$MARKER" --out "$TMP_ROOT/owed-unread.md")
+assert_contains "10764: an unread owed source is said" "What you owe could not be read" "$(cat "$TMP_ROOT/owed-unread.md")"
+
 # Test 14: --llm splices enriched blocks -----------------------------
 
 echo "TEST: --llm splices multi-line enriched blocks"

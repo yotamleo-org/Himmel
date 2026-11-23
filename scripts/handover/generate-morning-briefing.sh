@@ -764,8 +764,24 @@ else
     tldr_default="**${inprog_count}** in-flight · ${stale_shown} · **${done_count}** Done · Backlog: on the Board"
 fi
 
+needs_lines=""
+owed_unread=""
+owed_reader="$SCRIPT_DIR/../config-ui/board.ts"
+if [ -f "$owed_reader" ]; then
+    owed_tsv=$("${BRIEFING_BUN:-bun}" -e 'const { readOwed } = await import(process.argv.at(-1)); const o = readOwed(process.env);
+if (o.state !== "ok") console.log("UNREAD\t" + o.reason);
+else for (const i of o.items) if (i.actor === "operator") console.log(["ITEM", i.key || "", i.title, i.act].map((s) => String(s).replace(/[\t\n]/g, " ")).join("\t"));' "$owed_reader" 2>/dev/null) \
+        || owed_tsv=$'UNREAD\tthe owed reader did not run'
+    needs_lines=$(printf '%s\n' "$owed_tsv" | awk -F'\t' '$1=="ITEM"{ printf "Needs you: %s%s (action: %s)\n", ($2 != "" ? $2 " " : ""), $3, $4 }')
+    owed_unread=$(printf '%s\n' "$owed_tsv" | awk -F'\t' '$1=="UNREAD"{ print $2; exit }')
+fi
+
 order_default=$(
     n=1
+    if [ -n "$owed_unread" ]; then printf '_What you owe could not be read (%s): this list may be short._\n' "$owed_unread"; fi
+    while IFS= read -r l; do
+        if [ -n "$l" ]; then printf '%d. %s\n' "$n" "$l"; n=$((n+1)); fi
+    done <<< "$needs_lines"
     [ "$stale_count" -gt 0 ] && { printf '%d. Prune %s stale branch(es)%s.\n' "$n" "$stale_count" "$(cmd_hint clean)"; n=$((n+1)); }
     [ "$open_prs" -gt 0 ] && { printf '%d. Review/merge %s open PR(s)%s.\n' "$n" "$open_prs" "$(cmd_hint pr-check)"; n=$((n+1)); }
     [ "$inprog_count" -gt 0 ] && { printf '%d. Advance %s In-Progress ticket(s).\n' "$n" "$inprog_count"; n=$((n+1)); }

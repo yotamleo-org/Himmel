@@ -153,10 +153,10 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
 //      in the round ledger (chief-route.ts round-status) is at the cap, and <bucket>/release/<version>/operator.jsonl has no `spec` row naming
 //      that spec file; and an open ticket whose ledger holds an operator-critical finding the operator has not ruled on, at any round;
 //   2. a `queue:` segment or `pool-disposition:` line of the newest chief doc's `## Live state` that names the operator;
-//   3. the newest *HANDOFF.md of the bucket, its `## Open operator items` lines.
+//   3. the newest *HANDOFF.md of the bucket, its `## Open operator items` lines;
 // A source that cannot be read is named in `unread`; when none can be read the whole read is absent with the reasons, never an empty list.
 export type OwedActor = "chief" | "operator" | "worker" | "external" | "unknown";
-export type OwedItem = { actor: OwedActor; source: "unsigned spec" | "operator-critical finding" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker" | "pool hold"; key: string | null; title: string; ctx: string; act: string; label?: string; since?: number };
+export type OwedItem = { actor: OwedActor; source: "unsigned spec" | "operator-critical finding" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker" | "pool hold" | "owed ledger"; key: string | null; title: string; ctx: string; act: string; label?: string; since?: number };
 export type Owed = { state: "ok"; items: OwedItem[]; unread: string[]; skipped?: string[] } | Absent;
 const OWED_SOURCES = ["unsigned specs", "handoff items", "chief doc lines"];
 type RoundKey = { spec?: unknown; critical_open?: { id: string; class: string; kind: string; round: number; verdict_path: string }[]; error?: string };
@@ -361,6 +361,26 @@ function unclosedItems(doc: string, env: Env): OwedItem[] {
   }
   return items;
 }
+function ledgerItems(bucket: string): OwedItem[] {
+  let text: string;
+  try { text = readText(join(bucket, "owed.jsonl")); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return []; throw e; }
+  const adds = new Map<string, Record<string, unknown>>(), closed = new Set<string>();
+  for (const l of text.split("\n")) {
+    try {
+      const r = JSON.parse(l);
+      if (r?.op === "add" && typeof r.id === "string") adds.set(r.id, r);
+      else if (r?.op === "close" && typeof r.ref === "string") closed.add(r.ref);
+    } catch { continue; }
+  }
+  const items: OwedItem[] = [];
+  for (const [id, r] of adds) {
+    if (closed.has(id) || r.actor !== "operator") continue;
+    const key = typeof r.key === "string" && /^[A-Z][A-Z0-9]*-\d+$/.test(r.key) ? r.key : null;
+    items.push({ actor: "operator", source: "owed ledger", key, title: clip(String(r.text ?? id), 140), ctx: `${id} (${String(r.kind)}) in owed.jsonl`,
+      act: r.kind === "proof" ? "run the proof" : "do what the row names" });
+  }
+  return items;
+}
 function newestChiefDoc(env: Env): string | undefined {
   if (env.HIMMEL_CHIEF_DOC) return env.HIMMEL_CHIEF_DOC;
   if (!env.HANDOVER_DIR) return undefined;
@@ -425,6 +445,7 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
     if (!running) miss("unsigned specs", "no running version");
     else tryRead("unsigned specs", () => specItems(bucket, running!, open, unknownKeys, skipped, unread, env), "none");
     tryRead("handoff items", () => handoffItems(bucket), `no Open operator items section in the newest HANDOFF under ${bucket}`);
+    try { items.push(...ledgerItems(bucket)); } catch (e) { miss("owed ledger", (e as Error).message); }
   }
   if (!doc) miss("chief doc lines", "no chief doc: none found under the handover root, and HIMMEL_CHIEF_DOC is not set");
   else tryRead("chief doc lines", () => {
