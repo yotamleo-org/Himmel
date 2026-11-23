@@ -56,7 +56,9 @@ git -C "$MAIN_REPO" init -q -b main
 git -C "$MAIN_REPO" remote add origin https://github.com/o/r.git
 git -C "$MAIN_REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 git -C "$MAIN_REPO" worktree add -q -b feat/test "$WT_REPO"
-mkdir -p "$WT_REPO/.agents" "$MAIN_REPO/.agents"
+mkdir -p "$WT_REPO/.agents/skills/x" "$MAIN_REPO/.agents"
+printf '{}\n' > "$WT_REPO/.agents/hooks.json"
+printf 'ok\n' > "$WT_REPO/.agents/skills/x/SKILL.md"
 printf 'ok\n' > "$WT_REPO/work.txt"
 printf 'ok\n' > "$MAIN_REPO/work.txt"
 
@@ -249,16 +251,20 @@ assert_deny "run_command rg ANSI-C --pre=rm x .agents/hooks.json denied" "self-p
     "$(make_pre run_command '{"CommandLine":"rg $'\''--pre=rm'\'' x .agents/hooks.json"}')"
 assert_deny "run_command rg brace-expanded --pre=rm x .agents/hooks.json denied" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"rg --{pre,x}=rm x .agents/hooks.json"}')"
-assert_pass "run_command benign rg PreToolUse .agents/hooks.json allowed" \
+assert_deny "run_command rg PreToolUse .agents/hooks.json denied (default-deny)" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"rg PreToolUse .agents/hooks.json"}')"
-assert_pass "run_command git show HEAD:.agents/hooks.json allowed" \
+assert_deny "run_command git show HEAD:.agents/hooks.json denied (default-deny)" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"git show HEAD:.agents/hooks.json"}')"
-assert_pass "run_command git -C wt status .agents/hooks.json allowed" \
+assert_deny "run_command git -C wt status .agents/hooks.json denied (default-deny)" "self-protect" \
     "$(make_pre run_command "$(jq -cn --arg c "git -C $WT_REPO status .agents/hooks.json" '{CommandLine:$c}')")"
 assert_deny "run_command writing .agents/skills/x/SKILL.md denied" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"echo x > .agents/skills/x/SKILL.md"}')"
-assert_pass "run_command reading .agents/skills/x/SKILL.md allowed" \
+assert_deny "run_command reading .agents/skills/x/SKILL.md denied (default-deny)" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"cat .agents/skills/x/SKILL.md"}')"
+assert_pass "read_file on worktree .agents/hooks.json allowed" \
+    "$(make_pre read_file "$(jq -cn --arg p "$WT_REPO/.agents/hooks.json" '{Path:$p}')")"
+assert_pass "read_file on worktree .agents/skills/x/SKILL.md allowed" \
+    "$(make_pre read_file "$(jq -cn --arg p "$WT_REPO/.agents/skills/x/SKILL.md" '{Path:$p}')")"
 assert_deny "read_file with empty Path denied" "empty" \
     "$(make_pre read_file '{"Path":""}')"
 

@@ -317,98 +317,6 @@ check_self_protect_path() {
     return 0
 }
 
-git_readonly_subcmd() {
-    case "$1" in *'$'*|*'*'*|*'?'*|*'['*|*'{'*) return 1 ;; esac
-    (
-        IFS=$' \t\n'
-        set -f
-        # shellcheck disable=SC2086
-        set -- $1
-        [ $# -ge 2 ] || exit 1
-        shift
-        while [ $# -gt 0 ]; do
-            case "$1" in
-                -C)
-                    [ $# -ge 2 ] || exit 1
-                    shift 2
-                    ;;
-                --no-pager|--no-optional-locks|--literal-pathspecs)
-                    shift
-                    ;;
-                -*)
-                    exit 1
-                    ;;
-                *)
-                    break
-                    ;;
-            esac
-        done
-        [ $# -ge 1 ] || exit 1
-        sub_lc="$(lower_str "$1")"
-        case "$sub_lc" in
-            status|log|show) ;;
-            *) exit 1 ;;
-        esac
-        shift
-        while [ $# -gt 0 ]; do
-            opt_lc="$(lower_str "$1")"
-            case "$opt_lc" in
-                --out*|-o*|--ext*|--textc*|--filt*|--open*) exit 1 ;;
-            esac
-            shift
-        done
-        exit 0
-    )
-}
-
-rg_readonly_cmd() {
-    case "$1" in *'$'*|*'*'*|*'?'*|*'['*|*'{'*) return 1 ;; esac
-    (
-        IFS=$' \t\n'
-        set -f
-        # shellcheck disable=SC2086
-        set -- $1
-        [ $# -ge 2 ] || exit 1
-        shift
-        while [ $# -gt 0 ]; do
-            opt_lc="$(lower_str "$1")"
-            case "$opt_lc" in
-                --pre|--pre=*|--pre-glob|--pre-glob=*|--hostname-bin|--hostname-bin=*|--search-zip|--search-zip=*)
-                    exit 1
-                    ;;
-            esac
-            shift
-        done
-        exit 0
-    )
-}
-
-is_simple_readonly_cmd() {
-    local raw_c="$1" c_lc="" first="" first_lc=""
-    c_lc="$(lower_str "$raw_c")"
-    # shellcheck disable=SC2016
-    case "$c_lc" in
-        *'>'*|*'<'*|*';'*|*'&'*|*'|'*|*'$('*|*'`'*|*$'\n'*|*' -i '*|*' -i'|*'--in-place'*|*'--output'*)
-            return 1
-            ;;
-    esac
-    first="${raw_c#"${raw_c%%[![:space:]]*}"}"
-    first="${first%%[[:space:]]*}"
-    first_lc="$(lower_str "$first")"
-    case "$first_lc" in
-        cat|head|tail|ls|stat|wc|grep|jq|diff) return 0 ;;
-        rg)
-            rg_readonly_cmd "$raw_c"
-            return $?
-            ;;
-        git)
-            git_readonly_subcmd "$raw_c"
-            return $?
-            ;;
-        *) return 1 ;;
-    esac
-}
-
 check_self_protect_cmd() {
     local cmd="$1" c="" raw_c=""
     raw_c="${cmd//[\"\'\\]/}"
@@ -440,9 +348,7 @@ check_self_protect_cmd() {
     esac
 
     if [ "$mentions_protected" -eq 1 ]; then
-        if ! is_simple_readonly_cmd "$raw_c"; then
-            emit_deny "antigravity-hook-adapter: self-protect denies mutating .agents/**, ~/.gemini/config, or T3 Antigravity home via run_command"
-        fi
+        emit_deny "antigravity-hook-adapter: self-protect denies run_command referencing .agents/**, ~/.gemini/config, or T3 Antigravity home (use read_file to inspect)"
     fi
     return 0
 }
