@@ -107,7 +107,6 @@ scripts/ci/test-check-actions-pinned.sh	pr	static-gate
 scripts/ci/test-check-ci-install-locks.sh	pr	static-gate
 scripts/ci/test-check-claude-md-budget.sh	pr	static-gate
 scripts/ci/test-check-commit-range.sh	pr	trust-path
-scripts/ci/test-check-critic-eval.sh	pr	trust-path
 scripts/ci/test-check-doc-literals.sh	pr	trust-path
 scripts/ci/test-check-docs-decision-records.sh	pr	trust-path
 scripts/ci/test-check-flags.sh	pr	trust-path

@@ -26,7 +26,7 @@ session, and it is set only on the operator's own reply.
 
 ## What it replaces
 
-Earlier, the chief ran the critic-eval sweep itself
+Earlier, the chief ran the reviewer eval sweep itself
 (`HIMMEL_BILLED_OK=1 bash scripts/eval/review-panel/run.sh ...`), or exported
 the flag in a worker's launch script. Both shapes are now refused. Instead:
 
@@ -56,11 +56,10 @@ the flag in a worker's launch script. Both shapes are now refused. Instead:
    `headed-arm-worker.sh`. A reply of `no <code>` launches nothing, and so do
    6 h with no reply.
 
-For a critic change, the paid eval is the default route
-(`scripts/eval/review-panel/README.md`, "The merge gate"). The chief launches
-the sweep without asking whether to spend. The go code authorises the flag for
-that one launch; it is not a decision about whether to run the eval. Only
-skipping the eval needs an operator decision, as a `gate-bypass.tsv` row.
+No CI check requires a reviewer eval sweep: the critic-eval merge gate was
+removed (decisions 1251 and 1252, `scripts/eval/review-panel/README.md`). A
+paid sweep runs only on an operator decision, and its go code authorises the
+flag for that one launch.
 
 ## How the flag list is built
 

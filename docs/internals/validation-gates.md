@@ -193,7 +193,7 @@ joins any panel until the operator enables per-token billing.
 ## 4. Human checkpoints (first-class, bounded)
 
 - **Merge needs the chief's GO on the operator's authority** (§1). The lane-gate verdict feeds it, never replaces it.
-  `--admin`/gate-bypass remain HARD-vetoed.
+  `--admin` and any gate bypass remain HARD-vetoed.
 - **`/code-review ultra`** stays the operator-triggered top escalation, recorded
   as a one-action operator step.
 - **Batching bound:** the review surface batches into the consolidated morning
