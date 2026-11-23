@@ -28,6 +28,13 @@
 #   WAKE tick changed=<f,...>   the tick's ACTION KEY changed and the change
 #     usage=<verdict>           held for two consecutive samples; usage= is the
 #   TICK ...                    usage-preflight verdict word the key carries.
+#   WAKE budget-recovered from=<word> usage=PROCEED  a good sample reads PROCEED and
+#   <budget-nudge.sh out>       <inbox>.wait.usage (the last good verdict word) holds a
+#   TICK ...                    refusing word (SKIPPED-BANK, SKIPPED-FLEET, BANK-STALE,
+#                               BANK-UNKNOWN); no debounce, once per flip. The waiter runs
+#                               budget-nudge.sh on the --workers-from manifest (one bus nudge
+#                               per live worker) and folds usage=PROCEED into the saved key,
+#                               so no WAKE tick changed=usage follows. Seam: CHIEF_WAIT_NUDGE.
 #   WAKE underfilled capacity=UNDERFILLED:<n> the tick's capacity
 #   <tick line>                 field says live < cap with no launch for
 #   <next-dispatchable.sh out>  TICK_UNDERFILL_MIN; on the streak's first sample, and
@@ -756,6 +763,19 @@ bank_word() {
         PROCEED|SKIPPED-BANK|SKIPPED-FLEET|BANK-STALE|BANK-UNKNOWN) printf '%s\n' "$out" ;;
         *) return 1 ;;
     esac
+}
+
+# usage_recovered: saves this good sample's verdict word to <inbox>.wait.usage; true (setting
+# recovered_from) when it is PROCEED and the saved word was a refusing one. No saved word (a
+# first sample) is no flip; a failed read never reaches here, so it keeps the saved word.
+usage_file="$inbox.wait.usage"
+usage_recovered() {
+    local now="${key##*usage=}" was
+    was="$(sed -n 1p "$usage_file" 2>/dev/null)"  # swallow-ok: no file is no saved word
+    [ "$now" != "$was" ] || return 1
+    printf '%s\n' "$now" | atomic_write "$usage_file" 2>/dev/null || return 1  # swallow-ok: an unwritable marker wakes nothing, never twice
+    [ "$now" = PROCEED ] || return 1
+    case "$was" in SKIPPED-BANK|SKIPPED-FLEET|BANK-STALE|BANK-UNKNOWN) recovered_from="$was" ;; *) return 1 ;; esac
 }
 
 field() { # <name> <tick line>
@@ -3174,6 +3194,14 @@ while :; do
         if [ -n "$key" ]; then
             fail_streak=0
             fail_woke && save_key "${saved:-$key}"
+            if usage_recovered; then
+                printf 'WAKE budget-recovered from=%s usage=PROCEED\n' "$recovered_from"
+                # gnu-ok: Linux-only kit (timeout). A nudge that fails or hangs never suppresses the wake.
+                [ -z "$legs_from" ] || timeout -k 5 60 bash "${CHIEF_WAIT_NUDGE:-$HERE/budget-nudge.sh}" "$legs_from" 2>&1 9>&- || true  # swallow-ok: the wake stands; the chief reads the nudge lines
+                printf '%s\n' "$tick_line"
+                [ -z "$saved" ] || { saved="${saved%usage=*}usage=PROCEED"; save_key "$saved"; }
+                exit_reason='wake-budget-recovered'; exit 0
+            fi
             # the worker-event wake carries the tick line and saves its key, so a re-arm
             # does not wake again on the same tails=/acts= move
             intake_clock "$(field INTAKE "$tick_line")" || true  # swallow-ok: rc 1 only says INTAKE is zero (the clock was cleared)
