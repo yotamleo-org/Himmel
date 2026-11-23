@@ -2520,7 +2520,7 @@ cmd_next() {
     [ -f "$console_template" ] || { err "missing template $console_template"; exit 2; }
     [ -f "$handoff_template" ] || { err "missing template $handoff_template"; exit 2; }
 
-    local predecessor_doc predecessor_base predecessor_stem predecessor_prefix_part predecessor_letter predecessor_live_state predecessor_board predecessor_tracker
+    local predecessor_doc predecessor_base predecessor_stem predecessor_letter predecessor_live_state predecessor_board predecessor_tracker
     predecessor_doc="$(resolve_predecessor)" || { err "no predecessor console doc found under $state_dir for '$name' — pass --doc <path>"; exit 1; }
     # An explicit --doc / CHIEF_DOC is used as given, with no existence
     # check inside resolve_predecessor (the auto-discovery branches already
@@ -2568,16 +2568,12 @@ cmd_next() {
     predecessor_base="$(basename "$predecessor_doc")"
     predecessor_stem="${predecessor_base%.md}"
     CHIEF_BUS_PREDECESSOR="$predecessor_stem"
-    predecessor_prefix_part="${predecessor_stem%-"$name"}"
-    [ "$predecessor_prefix_part" = "$predecessor_stem" ] && predecessor_prefix_part="${predecessor_stem%-"$old_name"}"
-    if [ "$predecessor_prefix_part" = "$predecessor_stem" ]; then
-        err "cannot parse predecessor doc name '$predecessor_base' (expected suffix '-$name.md' or '-$old_name.md')"
-        exit 1
-    fi
-    if [[ "$predecessor_prefix_part" =~ ^.*-nextleg-[0-9]{4}-[0-9]{2}-[0-9]{2}([A-Z]{1,2})$ ]]; then
+    # The predecessor's own chain name is read from its doc name, never from --name, so
+    # `--name <new>-chief` can rename the chain; --name only names the successor.
+    if [[ "$predecessor_stem" =~ ^.*-nextleg-[0-9]{4}-[0-9]{2}-[0-9]{2}([A-Z]{1,2})-.+$ ]]; then
         predecessor_letter="${BASH_REMATCH[1]}"
     else
-        err "cannot parse a letter from predecessor doc name '$predecessor_base'"
+        err "cannot parse predecessor doc name '$predecessor_base' (expected <prefix>-nextleg-<date><letter>-<name>.md)"
         exit 1
     fi
     # An explicit --date pre-mints a NEW day's chain (the whole point: a
