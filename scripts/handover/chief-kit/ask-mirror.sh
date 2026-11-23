@@ -9,12 +9,15 @@
 # sha256("<session_id>|<doc>")) exists for a held *-chief or *-console lock, the check
 # stop-chief-idle-guard.sh makes. A worker, judge or any other session posts nothing.
 #
-# Each block is posted with `chief-route.ts reply --chief <name> --kind chief-reply operator`.
-# A fenced code block inside the block, or right after it, is left out of the ask and posted
-# alone as the next message (rule 5). A block is sent once: its key, sha256 of chief name,
-# ask and code, goes to <handover root>/.ask-mirror/<chief>.sent after a successful post,
-# so a repeated ask is skipped and a changed one is sent again. A failed post is an
-# owe.sh step row in the chief's bucket, and the block is tried again on the next reply.
+# Each block is posted with `chief-route.ts reply --chief <name> --owed ask-<key16> --doc
+# <chief doc> --kind chief-reply operator`: an owed send, which the poller retries until
+# Telegram returns a message id and which chief-route records as a DELIVERED line in the
+# chief doc. A fenced code block inside the block, or right after it, is left out of the
+# ask and posted alone as the next message (rule 5). A block is sent once: its key, sha256
+# of chief name, ask and code, goes to <handover root>/.ask-mirror/<chief>.sent once both
+# posts are delivered, so a repeated ask is skipped and a changed one is sent again. A post
+# with no delivery receipt is an owe.sh step row in the chief's bucket; the next reply
+# carrying the block asks again, and the owed send queues nothing twice.
 #
 # Always exits 0 with no stdout: it never blocks the stop.
 # Test seams: ASK_MIRROR_ROUTE replaces `bun <repo>/scripts/telegram/chief-route.ts`;
@@ -118,11 +121,11 @@ mkdir -p "$state_dir" 2>/dev/null || exit 0
 
 post() {
     if [ -n "${ASK_MIRROR_ROUTE:-}" ]; then
-        "$ASK_MIRROR_ROUTE" reply --chief "$chief" --kind chief-reply operator "$1" >/dev/null
+        "$ASK_MIRROR_ROUTE" reply --chief "$chief" --owed "$1" --doc "$chief_doc" --kind chief-reply operator "$2" >/dev/null
     elif command -v timeout >/dev/null 2>&1; then
-        timeout 60 bun "$REPO/scripts/telegram/chief-route.ts" reply --chief "$chief" --kind chief-reply operator "$1" >/dev/null
+        timeout 90 bun "$REPO/scripts/telegram/chief-route.ts" reply --chief "$chief" --owed "$1" --doc "$chief_doc" --kind chief-reply operator "$2" >/dev/null
     else
-        bun "$REPO/scripts/telegram/chief-route.ts" reply --chief "$chief" --kind chief-reply operator "$1" >/dev/null
+        bun "$REPO/scripts/telegram/chief-route.ts" reply --chief "$chief" --owed "$1" --doc "$chief_doc" --kind chief-reply operator "$2" >/dev/null
     fi
 }
 
@@ -133,12 +136,13 @@ while IFS= read -r row; do
     code="$(printf '%s' "$row" | jq -r '.code')"
     [ -n "$key" ] && [ -n "$ask" ] || continue
     grep -qxF "$key" "$sent" 2>/dev/null && continue
-    if post "$ask" && { [ -z "$code" ] || post "$code"; }; then
+    okey="ask-$(printf '%s' "$key" | cut -c1-16)"
+    if post "$okey" "$ask" && { [ -z "$code" ] || post "$okey-code" "$code"; }; then
         printf '%s\n' "$key" >> "$sent"
     else
         line="$(printf '%s' "$ask" | tr '\n\t' '  ')"
         bash "$OWE_SH" add --bucket "${chief_doc%/*}" --chief "$chief" --kind step \
-            --text "Telegram ask not sent, post it by hand: $line" --identity "$key" >/dev/null 2>&1 \
+            --text "Telegram ask not delivered, check the bridge: $line" --identity "$key" >/dev/null 2>&1 \
             || echo "ask-mirror: post failed and the owed row was not written for: $line" >&2
     fi
 done <<EOF

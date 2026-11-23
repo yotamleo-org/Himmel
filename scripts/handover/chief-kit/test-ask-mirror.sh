@@ -44,7 +44,7 @@ cat > "$STUB" <<'EOF'
 #!/usr/bin/env bash
 # records: one line per call, args joined by |, newlines in the text as \n
 out=""; for a in "$@"; do out="$out|$(printf '%s' "$a" | awk 'BEGIN{ORS="\\n"} {print}' | sed 's/\\n$//')"; done
-printf '%s\n' "${out#|}" >> "$ASK_MIRROR_TEST_CALLS"
+printf '%s\n' "${out#|}" | sed -E 's/\|ask-[0-9a-f]{16}/|ask-K/' >> "$ASK_MIRROR_TEST_CALLS"
 [ "${ASK_MIRROR_TEST_FAIL:-0}" = 1 ] && { echo "stub: send failed" >&2; exit 1; }
 echo escalate
 EOF
@@ -67,7 +67,7 @@ run chief-sid "$ASK"
 check "R1 rc 0" "$(cat "$TMP/rc")" "rc=0"
 check "R1 one post" "$(ncalls)" "1"
 check "R1 posted the block as written, kind chief-reply, to operator" "$(cat "$CALLS")" \
-    "reply|--chief|FIX-nextleg-chief|--kind|chief-reply|operator|Needs you: approve the bypass for the station restart. Blocks: the bridge fix.\nReply yes to run it."
+    "reply|--chief|FIX-nextleg-chief|--owed|ask-K|--doc|$CHIEF_DOC|--kind|chief-reply|operator|Needs you: approve the bypass for the station restart. Blocks: the bridge fix.\nReply yes to run it."
 
 echo "R2: a reply with no ask posts nothing"
 run chief-sid "All merged. Waiting on two workers."
@@ -96,9 +96,9 @@ GO-7731
 run chief-sid "$CODE_ASK"
 check "R6 two posts" "$(ncalls)" "2"
 check "R6 first is the ask without the code" "$(sed -n 1p "$CALLS")" \
-    "reply|--chief|FIX-nextleg-chief|--kind|chief-reply|operator|Needs you: type this code to approve the merge."
+    "reply|--chief|FIX-nextleg-chief|--owed|ask-K|--doc|$CHIEF_DOC|--kind|chief-reply|operator|Needs you: type this code to approve the merge."
 check "R6 second is the code alone" "$(sed -n 2p "$CALLS")" \
-    "reply|--chief|FIX-nextleg-chief|--kind|chief-reply|operator|GO-7731"
+    "reply|--chief|FIX-nextleg-chief|--owed|ask-K-code|--doc|$CHIEF_DOC|--kind|chief-reply|operator|GO-7731"
 
 echo "R7: a failed post leaves an owed row and is retried next time"
 export ASK_MIRROR_TEST_FAIL=1
@@ -108,7 +108,7 @@ check "R7 tried once" "$(ncalls)" "1"
 owed="$HANDOVER_DIR/owed.jsonl"
 check "R7 owed row written in the chief's bucket" \
     "$(jq -r 'select(.op=="add") | .kind + " " + .chief + " " + .text' "$owed" 2>/dev/null)" \
-    "step FIX-nextleg-chief Telegram ask not sent, post it by hand: Needs you: sign the release notes."
+    "step FIX-nextleg-chief Telegram ask not delivered, check the bridge: Needs you: sign the release notes."
 run chief-sid "Needs you: sign the release notes."
 check "R7 retry adds no second owed row" "$(jq -r 'select(.op=="add") | .id' "$owed" 2>/dev/null | wc -l | tr -d ' ')" "1"
 unset ASK_MIRROR_TEST_FAIL
@@ -126,7 +126,7 @@ TR="$TMP/transcript.jsonl"
 : > "$CALLS"
 jq -cn --arg t "$TR" '{session_id:"chief-sid", hook_event_name:"Stop", stop_hook_active:false, transcript_path:$t}' | bash "$SCRIPT"
 check "R8 transcript ask posted" "$(cat "$CALLS")" \
-    "reply|--chief|FIX-nextleg-chief|--kind|chief-reply|operator|Needs you: pick the release day."
+    "reply|--chief|FIX-nextleg-chief|--owed|ask-K|--doc|$CHIEF_DOC|--kind|chief-reply|operator|Needs you: pick the release day."
 
 echo "R9: junk payload exits 0 and posts nothing"
 : > "$CALLS"
