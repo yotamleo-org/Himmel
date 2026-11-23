@@ -470,27 +470,33 @@ guide for any of these models. The rules below come from each model's
 "what's new" page and from Google's
 [thinking](https://aistudio.google.com/docs/thinking) and
 [choosing a model](https://aistudio.google.com/docs/choosing-a-model) pages.
-Only Neon has a himmel tier (`opus`, by Decision 1249). The others stay
-unranked until they are measured.
+The family maps to the Claude tiers like this (operator ruling, 2026-11-23,
+replacing Decision 1249's Neon = `opus`): **Carbon = Opus, Neon = Sonnet,
+Hydrogen = Haiku.** Route a Gemini child exactly as you would route the Claude
+tier it maps to. Argon and 3.8 Flash stay unranked until they are measured.
 
-| Model | What Google says it is for | `thought_level` (default) | Per-hop output (non-streaming) |
-|---|---|---|---|
-| [`gemini-4-carbon`](https://aistudio.google.com/docs/whats-new-gemini-4-carbon) | The strongest reasoner. Use it for the hardest architecture, debugging, security and science work, for long runs and for deep checking | low, **medium**, high | 32,768 |
-| [`gemini-4-neon`](https://aistudio.google.com/docs/whats-new-gemini-4-neon) | Between Hydrogen and Carbon. Use it for multi-file refactors, repo-wide debugging and long tool sessions. It finishes faster than Carbon, with fewer tokens | low, medium, **high**, xhigh | 65,536 |
-| [`gemini-4-argon`](https://aistudio.google.com/docs/whats-new-gemini-4-argon) | A lighter Carbon at the same per-token price, for everyday feature work and fast loops | low, **medium**, high | 32,768 |
-| [`gemini-4-hydrogen`](https://aistudio.google.com/docs/whats-new-gemini-4-hydrogen) | The everyday default and the cheapest of the four: coding, tool agents, parallel children. Google says it flags missing context instead of guessing | low, medium, **high**, xhigh | 65,536 |
-| [`gemini-3.8-flash`](https://aistudio.google.com/docs/whats-new-gemini-3.8) | The previous-generation Flash. Google points it at Hydrogen as the upgrade | low, **medium**, high | 64K output limit |
+| Model | Claude tier | What Google says it is for | `thought_level` (default) | Per-hop output (non-streaming) |
+|---|---|---|---|---|
+| [`gemini-4-carbon`](https://aistudio.google.com/docs/whats-new-gemini-4-carbon) | Opus | The strongest reasoner. Use it for the hardest, longest work: architecture, debugging, security, deep research and checking a large codebase | low, **medium**, high | 32,768 |
+| [`gemini-4-neon`](https://aistudio.google.com/docs/whats-new-gemini-4-neon) | Sonnet | The daily driver, between Hydrogen and Carbon. Use it for multi-file refactors, repo-wide debugging and long tool sessions | low, medium, **high**, xhigh | 65,536 |
+| [`gemini-4-argon`](https://aistudio.google.com/docs/whats-new-gemini-4-argon) | unranked | A lighter Carbon at the same per-token price, for everyday feature work and fast loops | low, **medium**, high | 32,768 |
+| [`gemini-4-hydrogen`](https://aistudio.google.com/docs/whats-new-gemini-4-hydrogen) | Haiku | Fast and the cheapest of the four. Use it for quick tasks, fast tool loops and parallel children. Google says it flags missing context instead of guessing | low, medium, **high**, xhigh | 65,536 |
+| [`gemini-3.8-flash`](https://aistudio.google.com/docs/whats-new-gemini-3.8) | unranked | The previous-generation Flash. Google names Hydrogen as its upgrade | low, **medium**, high | 64K output limit |
 
 The T3 catalog also lists `Orchestrator (Carbon|Neon|Argon)`
 (`gemini-pro-orchestrator*`). Google's model docs do not document these models.
 Leave them unused until they are probed.
 
-**Picking a model.** Default to Hydrogen. Move to Neon when the work is a
-multi-file change or a long tool session. Move to Carbon when Neon at `high` or
-`xhigh` gets stuck, or for the one hard call. Google's pairing is Carbon (or Neon)
-to diagnose or plan, then Hydrogen to make the edits, in one session that
-carries `previous_interaction_id`. Argon is Carbon at lower token spend. Use it
-when Carbon's depth is not needed.
+**Picking a model.** The same rules as for Claude apply. Neon is the default
+implementer, as Sonnet is. Hydrogen takes bulk and mechanical work that ends in
+a machine check, under the same limits as Haiku: never trust paths, hooks or
+the judge. Carbon takes the one hard call and anything that needs orchestration,
+as Opus does. Google's own escalation fits this: move to Carbon when Neon at
+`high` or `xhigh` gets stuck. Google's pairing is Carbon to diagnose or plan,
+then Hydrogen to make the edits, in one session that carries
+`previous_interaction_id`. Google calls Hydrogen its everyday default because it
+is the cheapest model. That is a cost default, not a tier, so it does not
+override this mapping.
 
 **Rules for every Gemini 4 brief:**
 - Start at the default `thought_level` and step down when quality holds. Google
