@@ -171,11 +171,10 @@ class Runtime(unittest.TestCase):
         self.assertEqual(row['attempt']['attempt_id'], 'two')
 
     def test_unknown_legacy_registration_is_not_adopted(self):
+        self.own_live_row(lock=11)
         self.active()
-        data = json.loads(self.m.read_text())
-        data['workers'][0].pop('registration')
-        self.m.write_text(json.dumps(data))
-        self.rt('begin', ok=False)
+        p = self.rt('begin', ok=False)
+        self.assertIn('unknown legacy family ownership', p.stderr)
         owners = json.loads(self.call('runtime', 'owners', '--manifest', self.m).stdout)
         self.assertEqual(len(owners), 1)
         ack = json.loads(self.call('control', 'ack', self.m).stdout)
@@ -765,6 +764,52 @@ exit 1''')
         self.assertEqual(files(), before)
         p = self.rt('begin', aid='third', ok=False)
         self.assertIn('unknown legacy family ownership', p.stderr)
+
+    def own_live_row(self, lock=0):
+        data = json.loads(self.m.read_text())
+        data['workers'][0].pop('registration')
+        self.m.write_text(json.dumps(data))
+        self.env = dict(self.env, TICKET_STATUS_QUEUE_LOCK=self.stub('queue-lock-%d' % lock, 'exit %d' % lock))
+
+    def test_begin_admits_a_doc_only_its_own_manifest_lists_as_live_while_no_session_ran(self):
+        self.own_live_row()
+        self.active()
+        self.rt('begin', aid='own')
+        row = json.loads(self.m.read_text())['workers'][0]
+        self.assertEqual((row['registration'], row['attempt']['attempt_id']), ('pending', 'own'))
+
+    def test_begin_still_refuses_its_own_manifest_row_while_the_worker_holds_its_lock(self):
+        self.own_live_row(lock=11)
+        self.doc.write_text(self.doc.read_text() + '\n## Results\n\n- 10:00 LIVE — started\n')
+        self.active()
+        p = self.rt('begin', aid='own', ok=False)
+        self.assertIn('unknown legacy family ownership', p.stderr)
+
+    def test_begin_still_refuses_its_own_manifest_row_while_a_claude_session_is_on_the_doc(self):
+        self.own_live_row()
+        self.active()
+        code = 'import ctypes,time; ctypes.CDLL(None).prctl(15,b"claude",0,0,0); time.sleep(30)'
+        live = subprocess.Popen(['claude', '-c', code], executable=sys.executable, env=dict(self.env, WORKER_SESSION_DOC=str(self.doc)))
+        time.sleep(.2)
+        try:
+            p = self.rt('begin', aid='own', ok=False)
+        finally:
+            live.terminate()
+            live.wait(timeout=5)
+        self.assertIn('unknown legacy family ownership', p.stderr)
+
+    def test_a_doc_not_yet_written_is_unlaunched(self):
+        p = subprocess.run(['python3', '-I', str(ROOT / 'scripts/lib/fleet_runtime.py'), 'unlaunched', '--doc', str(self.bucket / 'missing.md')],
+                           env=self.env, capture_output=True, text=True, timeout=35)
+        self.assertEqual(p.stdout.strip(), 'true', p.stderr)
+
+    def test_a_sibling_manifest_row_refuses_and_names_its_file_and_row(self):
+        self.active()
+        sibling = self.bucket / 'earlier-chief.fleet.json'
+        sibling.write_text(json.dumps({'schema': 1, 'control': json.loads(self.m.read_text())['control'],
+                                       'workers': [{'doc': str(self.doc.resolve()), 'label': 'N1', 'lane': 'native'}]}))
+        p = self.rt('begin', aid='sib', ok=False)
+        self.assertIn('unknown legacy family ownership: %s row %s' % (sibling, self.doc.resolve()), p.stderr)
 
     def live_worker(self):
         self.active()
