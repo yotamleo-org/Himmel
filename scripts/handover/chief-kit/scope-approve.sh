@@ -194,7 +194,7 @@ else
         [ "$bad" = 0 ] || { word REFUSED "$key" path; continue; }
         csv="$(printf '%s\n' "$writes" | paste -sd, -)"
         core_out="$(node "$CLI" release core-check --paths "$csv" --key "$key" --mirror "$MIRROR" 2>/dev/null)"; core_rc=$?  # swallow-ok: the exit code is read on the next line and anything but exit 0 with one NOT-CORE line refuses the row
-        if [ "$core_rc" != 0 ] || [ "$core_out" != "NOT-CORE $key" ]; then word REFUSED "$key" core; continue; fi
+        if [ "$core_rc" != 0 ] || [ "$core_out" != "NOT-CORE $key" ]; then word REFUSED "$key" "core (rc=$core_rc: $(printf '%s' "$core_out" | head -n 1 | cut -c1-120))"; continue; fi
         { printf 'readiness: scope-batch %s approved by %s\n' "$id" "$chief"; while IFS= read -r p; do printf 'Writes: %s\n' "$p"; done <<< "$writes"; } > "$T/lines.$key"
         if [ "$mode" = dry ]; then
             say "WOULD-POST $key"; sed 's/^/  | /' "$T/lines.$key"; n_wouldpost=$((n_wouldpost + 1)); continue
