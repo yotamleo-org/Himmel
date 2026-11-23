@@ -4102,4 +4102,29 @@ printf '%s\n' 'Read /home/fixture/notes.md first.' 'Route paid calls to account 
 check "standing rules: control: a planted home path and account letter make the same check fail" \
     "$(station_private_hits "$sr_planted")" "2"
 
+out10906="$(chief new --bucket ren10906 --name recovery-chief)"
+tok10906="$(token_of "$out10906")"
+pred10906="$root/tester/ren10906/DEMO-nextleg-${today}A-recovery-chief.md"
+succ10906="$root/tester/ren10906/DEMO-nextleg-${today}B-v113-chief.md"
+printf '{"schema":1,"workers":["/x/worker10906.md"]}\n' > "${pred10906%.md}.fleet.json"
+rc10906=0
+chief next --bucket ren10906 --name v113-chief --doc "$pred10906" >"$tmp/ren10906.out" 2>&1 || rc10906=$?
+check "10906 next --name <new>-chief with an old-name --doc exits 0" "$rc10906" "0"
+check "10906 the successor doc takes the new name" "$([ -f "$succ10906" ] && echo yes || echo no)" "yes"
+check "10906 the manifest is carried from the predecessor's real path" "$(cat "${succ10906%.md}.fleet.json" 2>/dev/null)" '{"schema":1,"workers":["/x/worker10906.md"]}'
+check "10906 the HANDOFF is written beside the predecessor's real stem" "$([ -f "$root/tester/ren10906/DEMO-nextleg-${today}A-recovery-chief-HANDOFF.md" ] && echo yes || echo no)" "yes"
+check "10906 the successor doc names the predecessor's real doc" "$(grep -cF 'DEMO-nextleg-'"${today}"'A-recovery-chief.md' "$succ10906" 2>/dev/null | awk '{print ($1>0)?"yes":"no"}')" "yes"
+HANDOVER_DIR="$root" bash "$QL" release "$pred10906" "$tok10906" >/dev/null 2>&1
+out10906b="$(chief new --bucket same10906)"
+tok10906b="$(token_of "$out10906b")"
+chief next --bucket same10906 >/dev/null 2>&1
+check "10906 a same-name next still writes the B doc under the same name" "$([ -f "$root/tester/same10906/DEMO-nextleg-${today}B-chief.md" ] && echo yes || echo no)" "yes"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/same10906/DEMO-nextleg-${today}A-chief.md" "$tok10906b" >/dev/null 2>&1
+out10906c="$(chief new --bucket pfx10906 --name night-chief)"
+tok10906c="$(token_of "$out10906c")"
+chief next --bucket pfx10906 --prefix OTH69 --doc "$root/tester/pfx10906/DEMO-nextleg-${today}A-night-chief.md" >/dev/null 2>&1
+check "10906 no --name and a --doc under another prefix keeps the doc's chain name" "$([ -f "$root/tester/pfx10906/OTH69-nextleg-${today}B-night-chief.md" ] && echo yes || echo no)" "yes"
+check "10906 no --name and a --doc under another prefix never mints a bare chief successor" "$([ -f "$root/tester/pfx10906/OTH69-nextleg-${today}B-chief.md" ] && echo yes || echo no)" "no"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/pfx10906/DEMO-nextleg-${today}A-night-chief.md" "$tok10906c" >/dev/null 2>&1
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
