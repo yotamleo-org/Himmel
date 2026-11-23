@@ -42,6 +42,7 @@ tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 export HOME="$tmp/home" HANDOVER_DIR="$tmp/h" TICKET_STATUS_STATE_DIR="$tmp/ts-none" HIMMEL_ADMISSIONS_LEDGER="$tmp/ledger-none.jsonl"
 mkdir -p "$HOME" "$HANDOVER_DIR"
+export HIMMEL_RELEASE_STATE_DIR="$tmp/state" HIMMEL_RELEASE_KEY_DIR="$tmp/keys" HIMMEL_CONSOLE='' HIMMEL_CONSOLE_LEG='' HIMMEL_RELEASE_MANAGER=''
 unset JIRA_PROJECT_KEY HIMMEL_JIRA_MIRROR SCOPE_APPROVE_TEST SCOPE_APPROVE_JIRA_CLI SCOPE_APPROVE_ND SCOPE_APPROVE_MIRROR SCOPE_APPROVE_REPO
 
 M="$tmp/mirror"; B="$tmp/batch"; ST="$tmp/stub"; REPO="$tmp/repo"; STATE="$tmp/state"
