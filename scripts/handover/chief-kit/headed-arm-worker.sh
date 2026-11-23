@@ -264,7 +264,7 @@ if [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ] && [ -n "$_LR_LOG" ]; then
 fi 2>/dev/null
 # shellcheck disable=SC2329  # called from _launch_refusal_exit, which only the EXIT trap invokes
 _launch_refused_notify() {
-    local name="${NAME:-${_LR_NAME:-}}" log="${LOG:-$_LR_LOG}" chief="${CHIEF_NAME:-$_LR_CHIEF}" reason root inbox guard_rc=0
+    local name="$_LR_NAME" log="$_LR_LOG" chief="$_LR_CHIEF" reason root inbox guard_rc=0
     [ -n "$name" ] || name='<unnamed>'
     reason="$_LAUNCH_REFUSAL_LINE"
     [ -n "$reason" ] || reason="${_LAUNCH_REFUSAL_CAUSE:-refused} (exit $1, full refusal on the launcher stderr)"
@@ -902,6 +902,7 @@ if [ "$#" -lt 5 ]; then
 fi
 
 NAME="$1"; DOC="$2"; SIGNAL="$3"; DEADLINE="$4"; LOG="$5"; MODEL="${6:-}"
+_LR_NAME="$NAME" _LR_LOG="$LOG"
 _launch_attempt_start
 if [ "$DRY_RUN" -ne 1 ]; then
     # shellcheck source=scripts/lib/fleet-launch.sh
@@ -2054,6 +2055,7 @@ else
 fi
 # the bus registration below names this chief as the worker's own.
 BUS_CHIEF="$CHIEF_NAME"
+_LR_CHIEF="$CHIEF_NAME"
 # the bus identity is the launcher's alone. A caller-preset or
 # ambient HIMMEL_BUS_* (a chief's own HIMMEL_BUS_NAME is live in its shell)
 # must never reach a worker - only the name registered below does - and neither
