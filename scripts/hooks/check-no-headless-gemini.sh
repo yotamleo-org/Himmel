@@ -28,7 +28,7 @@ set -uo pipefail
 # Left side: require `gemini` to be at the start of a word (not part
 # of an identifier like `mygemini`). Match command-position patterns
 # only: `\bgemini\b` followed by space-then-flag.
-PATTERN='(^|[^A-Za-z0-9_-])gemini[[:space:]]+(-p|--prompt|--bg)($|[^A-Za-z0-9_-])'
+PATTERN='(^|[^A-Za-z0-9_-])(gemini|agy)[[:space:]]+(-p|--prompt|--bg)($|[^A-Za-z0-9_-])'
 
 # argv-array spawns keep the flags in a separate array
 # (`spawnSync('gemini', args)`), so PATTERN cannot see `-p`. Parity with the
@@ -41,7 +41,7 @@ if ! { [ -r "$_join_lib" ] && . "$_join_lib"; } 2>/dev/null; then
     echo "check-no-headless-gemini: cannot load $_join_lib — refusing" >&2
     exit 1
 fi
-SPAWN_PATTERN=$(headless_spawn_pattern 'gemini(\.exe|\.cmd)?')
+SPAWN_PATTERN=$(headless_spawn_pattern '(gemini|agy)(\.exe|\.cmd)?')
 # A call may span lines: the join window runs at most SPAWN_WINDOW code lines.
 SPAWN_WINDOW=8
 
