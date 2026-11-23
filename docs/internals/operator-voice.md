@@ -51,8 +51,12 @@ The chief carries these rules as its reply style (`docs/handover/chief-adhd-brie
    detail (decision 1235). `scripts/lint/check-operator-voice.sh` fails when an
    operator-bound prompt, reply kind or bridge reply carries an estimate, and with
    `--ticket` when a ticket draft's top line does.
-9. **Never write "nothing needed from you".** Operator: "tell me when it is needed and
-   never in ticket".
+9. **Never write "nothing needed from you", and keep his inbox at zero.** Operator:
+   "tell me when it is needed and never in ticket". A status line never reads "Your
+   action: none" or "nothing needed" while a decision, command, signature or proof
+   waits on him: every open item for him is a numbered `Needs you:` item, urgent or
+   not. Operator: "if anything is pending on me it needs me, we're leading zero
+   inbox" (decision 1256).
 10. **A ticket opens with one plain line for him; the rest stays agent-facing in
     full.** Operator: "the rest of the ticket should be also agent facing with more
     items otherwise we might have one sentence specs [...] but sometimes the spec can
@@ -64,7 +68,8 @@ The chief carries these rules as its reply style (`docs/handover/chief-adhd-brie
     boundary:** between paragraphs, lines or sentences, never inside a word, a code
     block, a command or a link, so every copyable piece arrives whole.
 
-Rules 1 to 5, 7, 11 and 12 were refined with the operator on 2026-11-23 (decision 1240).
+Rules 1 to 5, 7, 11 and 12 were refined with the operator on 2026-11-23 (decision
+1240), and rule 9 the same day (decision 1256).
 
 ## Samples the operator confirmed
 

@@ -27,7 +27,10 @@ shape every reply so it can be acted on at a glance. The full guide, with his wo
 8. No time estimates: no "in about 15 min", no ETA, no "shortly", no "I send it when
    done". A measured past duration ("took 50 min") is a fact, and a deadline the
    system enforces (a code that expires) stays, stated plainly (decision 1238).
-9. Never write "nothing needed from you": say only when he is needed.
+9. Never write "nothing needed from you": say only when he is needed. Keep his
+   inbox at zero: while any decision, command, signature or proof waits on him, no
+   status line reads "Your action: none" or "nothing needed"; list every open item
+   for him as a numbered `Needs you:` item, urgent or not (decision 1256).
 10. Multi-step work is a numbered list, one bounded action per step, at most 5 items.
 11. After he answers, stay quiet: no "got it", "working on it" or "done" unless he
     asked for the result, something failed, or you need him again.
