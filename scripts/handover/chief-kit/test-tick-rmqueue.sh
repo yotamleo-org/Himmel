@@ -537,5 +537,25 @@ check '8731 U4: and that set is then the baseline: no second wake' '' "$(cw_wait
 rm -f "$W/cw/consoles/c.md.wait.state"
 check '8731 U4: a set already present when the waiter has no saved key is its baseline: wakes nobody' '' "$(cw_wait 8 | grep '^WAKE ' || true)"
 
+statel() {
+    printf '{"status":"%s","versions":["v1.1.3","v1.1.4"],"lease":null,"requests":{"open":[],"claimed":[],"oldest_open":null},"priority_review":%s,"chief_placements":%s,"asks_apart":%s}\n' "${4:-OK}" "$1" "$2" "$3" > "$W/state.json"
+}
+mkdoc R1
+reset; statel '[]' '[]' '[]'
+rc0=0; out="$(tick)" || rc0=$?
+check 'S1b: empty lists print no prio-review, chief-placed or ask-apart field' '||' "$(field prio-review "$out")|$(field chief-placed "$out")|$(field ask-apart "$out")"
+reset; statel '[{"key":"K-2","ruling":"R-R1-0002","ground":"door:mild"},{"key":"K-3","ruling":"R-R1-0003","ground":"door:started"}]' \
+    '[{"key":"K-5","ruling":"R-R1-0005","reason":"the chief placed it"}]' \
+    '[{"key":"K-7","ruling":"R-R1-0007","version":"v1.1.4","parent":"P-1","parent_version":"v1.1.3"},{"key":"K-8","ruling":"R-R1-0008","version":"backlog","parent":"P-2","parent_version":"v1.1.3"}]'
+rc1=0; out="$(tick)" || rc1=$?
+check 'S1b: prio-review= counts the priority review and names its oldest key' '2:K-2' "$(field prio-review "$out")"
+check 'S1b: chief-placed= counts the chief placements and names each key' '1:K-5' "$(field chief-placed "$out")"
+check 'S1b: ask-apart= counts the asks apart and names each key' '2:K-7,K-8' "$(field ask-apart "$out")"
+check 'S1b: listed entries never change the tick exit code' "$rc0" "$rc1"
+check 'S1b: none of the three fields is a row of the wake table (outside the action key)' '' "$(cut -f1 "$HERE/wake-rules.tsv" | grep -xE 'prio-review|chief-placed|ask-apart' || true)"
+reset; statel '[{"key":"K-2","ruling":"R-R1-0002","ground":"door:mild"}]' '[{"key":"K-5","ruling":"R-R1-0005","reason":"r"}]' '[]' DEGRADED
+out="$(tick)"
+check 'S1b: a state that is not OK prints none of the three fields' '||' "$(field prio-review "$out")|$(field chief-placed "$out")|$(field ask-apart "$out")"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

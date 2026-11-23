@@ -76,6 +76,18 @@ release is declared (`jira release state <R>` prints a status other than
   "<why the refusal is right>"`; the ack is refused for an operator-asked key, for a
   key the mirror does not hold, and inside a worker you spawned. With the mirror
   unreadable a refused ask's `asks_operator` reads `null`, and the tick skips the field.
+- **The door's placements come to you as three lists.** `jira release state <R> --json`
+  lists each receipted door ruling you have not yet cleared: `priority_review` (a priority
+  or carry-over placement: serious, mild, rest-of, operator-ask, started, undeclared, with
+  its ground), `chief_placements` (a `door:chief` placement, with its reason) and
+  `asks_apart` (an operator ask placed apart from its parent, one entry per key, version,
+  parent and parent version; a second ruling of the same tuple adds none). The tick prints
+  `prio-review=<n>:<oldest KEY>`, `chief-placed=<n>:<KEY>,...` and `ask-apart=<n>:<KEY>,...`,
+  each absent at zero and outside the waiter's action key. Check or relay an entry, then
+  clear it with `jira release reviewed <R> --ruling <R-id> --reason "<what you checked>"`,
+  or clear a list up to one entry with `--through <R-id>`: it clears only that entry's own
+  list, so a priority sweep never closes a chief placement or an ask apart. The verb is
+  refused inside a worker you spawned. The `reviewed` row changes no placement.
 - **Explicit changes and blocked recovery.**
 
   A pending request keeps its known required-parent relation when a repeat omits

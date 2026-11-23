@@ -126,7 +126,7 @@ export interface RequestRow {
   mac?: string;
 }
 
-export type EventKind = 'ruled' | 'fold' | 'reopen' | 'out-of-band' | 'emergency' | 'ack';
+export type EventKind = 'ruled' | 'fold' | 'reopen' | 'out-of-band' | 'emergency' | 'ack' | 'reviewed';
 
 export interface EventRow {
   ts: string;
@@ -135,6 +135,7 @@ export interface EventRow {
   from: string | null;
   to: string | null;
   ruling?: string;
+  through?: string;
   reason?: string;
   pr?: number;
   sha?: string;

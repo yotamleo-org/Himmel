@@ -208,6 +208,11 @@ empty set): the state read is not OK, the state's mirror input is UNKNOWN (the e
 unfinished_rulings is not a list of rows that each carry a key and a ruling id. It is in chief-wait's action key (wake-rules.tsv):
 one wake for a set, another only when the set changes, and a ? keeps the last known set.
 
+prio-review=<n>:<oldest KEY>, chief-placed=<n>:<KEY>,... and ask-apart=<n>:<KEY>,... follow rm-blocked= and read the
+same OK state's priority_review, chief_placements and asks_apart: the door's placements the chief has not yet cleared
+with `jira release reviewed <R> (--ruling <id> | --through <id>) --reason "<line>"`. Each is absent at zero and when the
+state read is not OK. Not in chief-wait's action key, and never part of the exit code.
+
 held=<n>:<sig8> unfiled=<n> repair=off:<why> follow rm-queue= and are ABSENT unless set: held= is
 the version repair's held key count and the first 8 hex of its held signature, unfiled= the signed records no
 request carries yet, each elided at zero, all read from release/<R>/repair-state.json, the one record the jira CLI
@@ -3477,6 +3482,24 @@ if rows:
     fi
 fi
 
+prio_review="" chief_placed="" ask_apart=""
+if [ -n "$rm_rel" ] && [ "${rm_status:-}" = OK ]; then
+    # shellcheck disable=SC2016  # the python program is single-quoted on purpose
+    read -r prio_review chief_placed ask_apart < <(printf '%s' "$rm_json" | python3 -I -c '
+import json, re, sys
+d = json.load(sys.stdin)
+clean = lambda s: re.sub(r"[^A-Za-z0-9._-]", "_", str(s))
+def rows(name):
+    v = d.get(name)
+    return [r for r in v if isinstance(r, dict) and r.get("key")] if isinstance(v, list) else []
+p, c, a = rows("priority_review"), rows("chief_placements"), rows("asks_apart")
+print("%d:%s" % (len(p), clean(p[0]["key"])) if p else "-", "%d:%s" % (len(c), ",".join(clean(r["key"]) for r in c)) if c else "-", "%d:%s" % (len(a), ",".join(clean(r["key"]) for r in a)) if a else "-")
+' 2>/dev/null) || true  # swallow-ok: an unparseable state prints none of the three fields
+    [ "$prio_review" != - ] || prio_review=""
+    [ "$chief_placed" != - ] || chief_placed=""
+    [ "$ask_apart" != - ] || ask_apart=""
+fi
+
 rm_refused=""
 rf_stem="${console_doc##*/}"
 rf_stem="${rf_stem%.md}"
@@ -5044,6 +5067,9 @@ if [ "$verbose" -eq 1 ]; then
     printf 'rm-queue: %s\n' "$rm_queue"
     [ -z "$rm_refused" ] || printf 'rm-refused: %s\n' "$rm_refused"
     [ -z "$rm_blocked" ] || printf 'rm-blocked: %s\n' "$rm_blocked"
+    [ -z "$prio_review" ] || printf 'prio-review: %s\n' "$prio_review"
+    [ -z "$chief_placed" ] || printf 'chief-placed: %s\n' "$chief_placed"
+    [ -z "$ask_apart" ] || printf 'ask-apart: %s\n' "$ask_apart"
     [ -z "$held_summary" ] || printf 'repair held: %s\n' "$held_summary"
     [ -z "$unfiled_summary" ] || printf 'repair unfiled: %s\n' "$unfiled_summary"
     [ -z "$repair_summary" ] || printf 'repair: %s\n' "$repair_summary"
@@ -5175,6 +5201,9 @@ else
     compact_field rm-queue "$rm_queue"
     compact_field rm-refused "$rm_refused"
     compact_field rm-blocked "$rm_blocked"
+    compact_field prio-review "$prio_review"
+    compact_field chief-placed "$chief_placed"
+    compact_field ask-apart "$ask_apart"
     compact_field held "$held_summary"
     compact_field unfiled "$unfiled_summary"
     compact_field repair "$repair_summary"
