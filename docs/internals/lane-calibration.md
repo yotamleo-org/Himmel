@@ -253,33 +253,6 @@ prompts work unchanged). Fold into the brief when it is more than one step:
   configuration, a change recomputes the whole request. The claudex lane routes
   through a gateway, so assume a change throws the cache away there.
 
-**Prompting a Gemini 4 Carbon child** (T3 Antigravity lane, `gemini-4-carbon`).
-Google has no standalone Carbon prompt guide yet. These rules come from its
-Carbon pages
-([what's new](https://aistudio.google.com/docs/whats-new-gemini-4-carbon),
-[thinking](https://aistudio.google.com/docs/thinking),
-[prompting strategies](https://aistudio.google.com/docs/prompting-strategies),
-[choosing a model](https://aistudio.google.com/docs/choosing-a-model)):
-- Pick Carbon for the one hard call: long, deep work that needs checking, or
-  when Neon at `high`/`xhigh` gets stuck. Use Hydrogen for everyday edits and
-  parallel children. Use Carbon or Neon to diagnose or design, then pass the
-  edits to Hydrogen. Carbon is unranked here until it is measured.
-- `thought_level` is `low`, `medium` (default) or `high`. Carbon has no `xhigh`
-  and no `minimal`. Start at `medium`, which Google recommends for complex code
-  and agent work. Go to `high` only for the hardest tasks. `low` loses quality on
-  hard tasks.
-- Carbon overthinks: it spends more thinking tokens per turn than Argon, and the
-  output budget covers thinking and answer together. Give it a long turn, never
-  a small output cap. To cut cost, lower `thought_level` instead.
-- Never set `temperature`, `top_p` or `top_k`. Gemini 4 ignores them.
-- Brief it the way we brief Claude, with four changes. Be precise and direct,
-  without persuasive wording. Use one kind of delimiter per brief, XML tags or
-  Markdown headings. Put the context first and the question last. Do not ask it
-  to think step by step, because it already thinks.
-- Carbon caches only implicitly, on prompts of 4,096 tokens or more. Keep the
-  fixed part of the brief (rules, tools, reference text) at the top and the same
-  every time.
-
 **Known stale rows.** The `[1m]` suffix table below was measured on Haiku 4.5;
 Haiku 5.5 is natively 1M and takes no suffix, and its rows are unmeasured. The
 OpenRouter lane now defaults to `anthropic/claude-haiku-5.5`;
@@ -489,6 +462,56 @@ keyed reader (`review-round.sh`, `clear-review-marker.sh`, `cr-disposition.sh`,
 `AMEND-REQUEST <pr> <head> <finding-id> deferred_to=<KEY> fu_class=<class> reason=<why out of scope>`
 (a `hardening` request also carries `fu_why=<unseen-failure|no-check|vacuous-check|no-recovery|silent-rot>`),
 and the chief or a native worker runs `ledger-append.sh amend` for it, which signs the row.
+
+### Gemini 4 on the T3 Antigravity lane
+
+The T3 Antigravity lane offers the whole Gemini 4 family. Google has no prompt
+guide for any of these models. The rules below come from each model's
+"what's new" page and from Google's
+[thinking](https://aistudio.google.com/docs/thinking) and
+[choosing a model](https://aistudio.google.com/docs/choosing-a-model) pages.
+Only Neon has a himmel tier (`opus`, by Decision 1249). The others stay
+unranked until they are measured.
+
+| Model | What Google says it is for | `thought_level` (default) | Per-hop output (non-streaming) |
+|---|---|---|---|
+| [`gemini-4-carbon`](https://aistudio.google.com/docs/whats-new-gemini-4-carbon) | The strongest reasoner. Use it for the hardest architecture, debugging, security and science work, for long runs and for deep checking | low, **medium**, high | 32,768 |
+| [`gemini-4-neon`](https://aistudio.google.com/docs/whats-new-gemini-4-neon) | Between Hydrogen and Carbon. Use it for multi-file refactors, repo-wide debugging and long tool sessions. It finishes faster than Carbon, with fewer tokens | low, medium, **high**, xhigh | 65,536 |
+| [`gemini-4-argon`](https://aistudio.google.com/docs/whats-new-gemini-4-argon) | A lighter Carbon at the same per-token price, for everyday feature work and fast loops | low, **medium**, high | 32,768 |
+| [`gemini-4-hydrogen`](https://aistudio.google.com/docs/whats-new-gemini-4-hydrogen) | The everyday default and the cheapest of the four: coding, tool agents, parallel children. Google says it flags missing context instead of guessing | low, medium, **high**, xhigh | 65,536 |
+| [`gemini-3.8-flash`](https://aistudio.google.com/docs/whats-new-gemini-3.8) | The previous-generation Flash. Google points it at Hydrogen as the upgrade | low, **medium**, high | 64K output limit |
+
+The T3 catalog also lists `Orchestrator (Carbon|Neon|Argon)`
+(`gemini-pro-orchestrator*`). Google's model docs do not document these models.
+Leave them unused until they are probed.
+
+**Picking a model.** Default to Hydrogen. Move to Neon when the work is a
+multi-file change or a long tool session. Move to Carbon when Neon at `high` or
+`xhigh` gets stuck, or for the one hard call. Google's pairing is Carbon (or Neon)
+to diagnose or plan, then Hydrogen to make the edits, in one session that
+carries `previous_interaction_id`. Argon is Carbon at lower token spend. Use it
+when Carbon's depth is not needed.
+
+**Rules for every Gemini 4 brief:**
+- Start at the default `thought_level` and step down when quality holds. Google
+  says to evaluate every level and keep the lowest one that meets the bar.
+  `minimal` is rejected. `xhigh` (Neon and Hydrogen only) is for hard multi-step
+  work: on simple prompts it overthinks and can use up the output budget.
+- Thinking and the answer share one output budget. Never set a small output
+  cap. To cut cost, lower `thought_level`. Carbon and Argon spend the most
+  thinking per turn, and Google says to raise any cap under 32K to at least
+  32,768.
+- Never set `temperature`, `top_p` or `top_k`. Gemini 4 ignores them, and out-of-range
+  values return 400.
+- Declare tools natively. If a system prompt asks for raw-text JSON tool calls,
+  the model can return `MALFORMED_FUNCTION_CALL`.
+- Brief it precisely and directly, without persuasive wording. Use one kind of
+  delimiter per brief, XML tags or Markdown headings. Put the context first and
+  the question last. Do not ask it to think step by step, because it already does
+  ([prompting strategies](https://aistudio.google.com/docs/prompting-strategies)).
+- Gemini 4 caches only implicitly, on prompts of 4,096 tokens or more. Keep the
+  fixed part of the brief (rules, tools, reference text) at the top and the
+  same every time.
 
 ## The hermes `himmel_agent` default and the ox-alpha record
 
