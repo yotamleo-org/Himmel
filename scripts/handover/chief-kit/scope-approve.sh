@@ -17,7 +17,7 @@
 #   scope-approve: batch <id> cleared=<a> stays=<b> unknown=<c> skipped=<d> refused=<e> failed=<f>
 # --dry-run prints each comment body it would post and posts, records and refreshes nothing.
 # --verify runs only the refresh and the per-key check for the keys in <batch-file>.posted, posting nothing.
-# Exit: 0 every posted key cleared; 1 any STAYS, UNKNOWN or FAILED; 2 usage or an unreadable batch file.
+# Exit: 0 every posted key cleared; 1 any STAYS, UNKNOWN or FAILED; 2 usage, an unreadable batch file, or a sidecar that cannot be written (nothing is posted).
 #
 # Test seams, honoured only with SCOPE_APPROVE_TEST=1: SCOPE_APPROVE_JIRA_CLI, SCOPE_APPROVE_ND, SCOPE_APPROVE_MIRROR,
 # SCOPE_APPROVE_REPO, SCOPE_APPROVE_POST_TIMEOUT. Otherwise the primary checkout's built Jira CLI and ND, the project's
