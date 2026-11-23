@@ -740,9 +740,9 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
   // CR_FLOOR_FALLBACK=claude-only eligibility tracking. claudeOk
   // is a PRESENT-model check, mirroring the nonClaudeResponders normalisation
   // just below (trim+lowercase, model must actually equal "claude") - it is
-  // MONOTONIC ("Claude was ever ok at this head"), never cleared by a later
-  // row, consistent with how responders/nonClaudeResponders are counted, not
-  // reset, elsewhere in this same pass. availByModel holds the LAST avail row
+  // monotonic ("Claude was ever ok at this head"), cleared only by a later
+  // record-failed row for that model, which also subtracts that model from
+  // responders/nonClaudeResponders, elsewhere in this same pass. availByModel holds the LAST avail row
   // seen per non-claude model, ANY status - not just ok - so an exhausted
   // (unavailable) lane is visible even when it never recovered. Plain
   // last-write-wins (each line just overwrites the Map entry, in file order)
