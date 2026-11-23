@@ -785,6 +785,24 @@ exit 1''')
         p = self.rt('begin', aid='own', ok=False)
         self.assertIn('unknown legacy family ownership', p.stderr)
 
+    def test_begin_still_refuses_its_own_manifest_row_while_a_claude_session_is_on_the_doc(self):
+        self.own_live_row()
+        self.active()
+        code = 'import ctypes,time; ctypes.CDLL(None).prctl(15,b"claude",0,0,0); time.sleep(30)'
+        live = subprocess.Popen(['claude', '-c', code], executable=sys.executable, env=dict(self.env, WORKER_SESSION_DOC=str(self.doc)))
+        time.sleep(.2)
+        try:
+            p = self.rt('begin', aid='own', ok=False)
+        finally:
+            live.terminate()
+            live.wait(timeout=5)
+        self.assertIn('unknown legacy family ownership', p.stderr)
+
+    def test_a_doc_not_yet_written_is_unlaunched(self):
+        p = subprocess.run(['python3', '-I', str(ROOT / 'scripts/lib/fleet_runtime.py'), 'unlaunched', '--doc', str(self.bucket / 'missing.md')],
+                           env=self.env, capture_output=True, text=True, timeout=35)
+        self.assertEqual(p.stdout.strip(), 'true', p.stderr)
+
     def test_a_sibling_manifest_row_refuses_and_names_its_file_and_row(self):
         self.active()
         sibling = self.bucket / 'earlier-chief.fleet.json'

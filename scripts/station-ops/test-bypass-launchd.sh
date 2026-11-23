@@ -789,7 +789,7 @@ if command -v flock >/dev/null 2>&1; then
     assert_contains "RED 10866: the admit for the daemon's row is managed" '"managed": true' "$out"
     LEGACY="$B/HIMMEL-1-N2-earlier.md"
     printf -- '---\ndescription: "a live legacy worker"\n---\n# brief\n' > "$LEGACY"
-    bash "$FM" add "$B/earlier-chief.fleet.json" "$LEGACY" --lane native >/dev/null 2>&1
+    jq -n --arg d "$LEGACY" '{schema: 1, workers: [{doc: $d, label: "N2", lane: "native", added: "2026-11-01T00:00:00Z"}]}' > "$B/earlier-chief.fleet.json"
     assert_contains "10866 control: a genuine legacy owner of the same ticket still refuses the admit" "unknown legacy family ownership" "$(admit)"
 else
     echo "SKIP - fleet admit rows (fleet-manifest.sh needs util-linux flock)"
