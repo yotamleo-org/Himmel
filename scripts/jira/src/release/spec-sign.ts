@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pinnedSha, pinnedRead, boundedDirectoryNames, selectDecisionNames, reviewedSpecHashes, returnSha, canonicalDirectoryNames, returnDirectories, checkLatestReturns, declaredTickets, keyOf, memberLedgerState, optionalReturnAgreement, parseManifest, validateCappedFoldProofShape, validateCappedProofShape, type AnyCappedProof, type CappedFoldProof, type CappedLedgerProof, type FilePin, type MemberAbsencePin } from './pinned.js';
+import { pinnedSha, pinnedRead, boundedDirectoryNames, selectDecisionNames, reviewedSpecHashes, returnSha, canonicalDirectoryNames, returnDirectories, checkLatestReturns, declaredTickets, keyOf, CRITIC_FILE, criticRounds, findingIds, parseResidualLines, type Kind, memberLedgerState, optionalReturnAgreement, parseManifest, validateCappedFoldProofShape, validateCappedProofShape, type AnyCappedProof, type CappedFoldProof, type CappedLedgerProof, type FilePin, type MemberAbsencePin } from './pinned.js';
 import { contentSha, readChain } from './ledger.js';
 import { namesKey } from './verbatim.js';
 import { KEY_IN } from './judge-input.js';
@@ -88,8 +88,6 @@ function lintSpec(spec: string, plan: string, verb?: string, sourceRoot = checko
 
 const VERDICT = /^(SPEC|PLAN) (CLEAN|FINDINGS (\d+))$/;
 
-const DISPOSITION = /^\s*[-*]\s+R(\d+):\s+(fixed|ASSUMPTION|ceiling|ponytail|deferred → HIMMEL-\d+)\b/;
-
 type VerdictKind = 'SPEC' | 'PLAN';
 
 interface VerdictFile { path: string; sha256: string; kind: VerdictKind; last: string; residuals: number; text: string }
@@ -118,39 +116,70 @@ function readVerdicts(paths: string[], verb: string, need: { required: VerdictKi
   };
 }
 
-function criticRounds(specText: string): string[] {
-  const lines = specText.split('\n');
-  const start = lines.findIndex((l) => /^##\s+critic rounds\s*$/i.test(l));
-  if (start < 0) return [];
-  const end = lines.slice(start + 1).findIndex((l) => /^##?\s/.test(l));
-  return lines.slice(start + 1, end < 0 ? lines.length : start + 1 + end);
-}
+type GivenReturn = { path: string; text: string };
 
-function checkResiduals(specText: string, residuals: number): void {
-  if (!residuals) return;
-  const done = new Set(criticRounds(specText).flatMap((l) => DISPOSITION.exec(l)?.[1] ?? []));
-  if (done.size < residuals) {
-    throw new Error(`release operator spec: the verdicts carry ${residuals} residual findings and the spec's ## Critic rounds section has `
-      + `${done.size} dispositioned (one '- R<n>: fixed|ASSUMPTION|ceiling|deferred → HIMMEL-<n>' line each)`);
+function matchResiduals(lines: string[], residuals: number, returns: GivenReturn[], verb: string, countRefusal: (done: number) => string): void {
+  const parsed = parseResidualLines(lines);
+  if (parsed.idList.length) {
+    throw new Error(`${verb}: a residual line names several findings at once; write one 'R<round>-<id>: <disposition>' line each: `
+      + parsed.idList.map((l) => l.trim()).join(' | '));
   }
+  if (!parsed.qualified.length) {
+    if (residuals && parsed.legacy.size < residuals) throw new Error(countRefusal(parsed.legacy.size));
+    return;
+  }
+  if (parsed.nearMiss.length) {
+    throw new Error(`${verb}: a residual line at the highest round does not parse as '<R|P><round>-<id>: <disposition>': `
+      + parsed.nearMiss.map((l) => l.trim()).join(' | '));
+  }
+  const problems: string[] = [];
+  const given = new Map<Kind, number>();
+  for (const r of returns) {
+    const name = basename(r.path);
+    const last = r.text.split('\n').map((l) => l.trim()).filter(Boolean).at(-1) ?? '';
+    const verdict = VERDICT.exec(last);
+    const m = CRITIC_FILE.exec(name);
+    if (!m || !verdict) { problems.push(`${name} is not a critic return name with a SPEC|PLAN verdict line`); continue; }
+    const kind = (m[2] ?? m[5]) as Kind;
+    const round = Number(m[3] ?? m[4]);
+    if (kind.toUpperCase() !== verdict[1]) { problems.push(`${name} is a ${kind} return by name but its verdict line is '${last}'`); continue; }
+    let ids: string[];
+    try { ids = findingIds(r.text); } catch (e) { problems.push(`return ids do not parse: ${(e as Error).message}`); continue; }
+    const count = Number(verdict[3] ?? 0);
+    if (ids.length !== count) { problems.push(`return ids do not parse: ${name} has ${ids.length} finding headings for '${last}'`); continue; }
+    given.set(kind, round);
+    const tag = `${kind === 'spec' ? 'R' : 'P'}${round}`;
+    const at = parsed.qualified.filter((q) => q.kind === kind && q.round === round);
+    const missing = ids.filter((id) => !at.some((q) => q.id === id));
+    if (missing.length) problems.push(`no '${tag}-<id>' line for ${missing.join(', ')} of ${name}`);
+    for (const q of at) if (!ids.includes(q.id)) problems.push(`${tag}-${q.id} names no finding of ${name}`);
+  }
+  for (const q of parsed.qualified) {
+    const round = given.get(q.kind);
+    if (round !== undefined && q.round > round) problems.push(`'${q.line.trim()}' is later than the given ${q.kind} return, round ${round}`);
+  }
+  if (problems.length) throw new Error(`${verb}: ${problems.join('; ')}`);
 }
 
-function checkRoundResiduals(specText: string, names: string[], residuals: number, verb: string): void {
-  if (!residuals) return;
-  const done = new Set<string>();
+export function checkResiduals(specText: string, residuals: number, returns: GivenReturn[]): void {
+  matchResiduals(criticRounds(specText), residuals, returns, 'release operator spec', (done) =>
+    `release operator spec: the verdicts carry ${residuals} residual findings and the spec's ## Critic rounds section has `
+      + `${done} dispositioned (one '- R<n>: fixed|ASSUMPTION|ceiling|deferred → HIMMEL-<n>' line each)`);
+}
+
+export function checkRoundResiduals(specText: string, names: string[], residuals: number, verb: string, returns: GivenReturn[]): void {
+  const inBlocks: string[] = [];
   let inBlock = false;
   for (const l of criticRounds(specText)) {
     if (/^-?\s*Round \d+:/.test(l)) {
       inBlock = names.some((n) => l.includes(n));
       continue;
     }
-    const m = inBlock ? DISPOSITION.exec(l) : null;
-    if (m) done.add(m[1]);
+    if (inBlock) inBlocks.push(l);
   }
-  if (done.size < residuals) {
-    throw new Error(`${verb}: the verdicts carry ${residuals} residual findings and their round blocks hold ${done.size} dispositioned `
+  matchResiduals(inBlocks, residuals, returns, verb, (done) =>
+    `${verb}: the verdicts carry ${residuals} residual findings and their round blocks hold ${done} dispositioned `
       + `(one '- R<n>: fixed|ASSUMPTION|ceiling|deferred → HIMMEL-<n>' line each, under the '- Round <n>: … <verdict file>' line)`);
-  }
 }
 
 interface CappedInputs {
@@ -305,7 +334,7 @@ export function signSpec(ctx: Ctx, o: {
   const bytes = readFileSync(spec);
   const specSha = createHash('sha256').update(bytes).digest('hex');
   const planSha = o.plan ? fileSha(plan) : null;
-  const capped = cappedFallback(() => checkResiduals(bytes.toString('utf8'), residuals), {
+  const capped = cappedFallback(() => checkResiduals(bytes.toString('utf8'), residuals, files), {
     keys: [...new Set(o.keys)], spec: { path: spec, sha256: specSha }, plan: o.plan ? { path: plan, sha256: planSha! } : undefined, files, residuals,
   }, true);
   const source = o.sourceRoot === undefined ? undefined : sourceIdentity(o.sourceRoot);
@@ -391,7 +420,7 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
   if ((clean || specVerdict.residuals === 0) && reviewedSha !== specPin.sha256) {
     throw new Error(`${verb}: ${specVerdict.last} reviewed ${reviewedSha}, not the spec's bytes ${specPin.sha256}; run the spec critic on the final spec`);
   }
-  const capped = cappedFallback(() => checkRoundResiduals(specText, files.map((x) => basename(x.path)), residuals, verb), {
+  const capped = cappedFallback(() => checkRoundResiduals(specText, files.map((x) => basename(x.path)), residuals, verb, files), {
     keys, spec: { path: spec, sha256: specPin.sha256 }, plan: { path: plan, sha256: planPin.sha256 }, files, residuals,
   });
   lintSpec(spec, plan, verb);
