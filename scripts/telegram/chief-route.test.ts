@@ -841,6 +841,29 @@ test("HIMMEL-9974 (e) with no paragraph break a reply splits at lines, then sent
   for (const b of w.slice(0, -1)) expect(b).toMatch(/x$/);
 });
 
+test("HIMMEL-10730 (f) mid-word: a word that fits in a part is never cut, even with no sentence break near the limit", async () => {
+  const text = Array.from({ length: 900 }, (_, i) => `word${i}`).join(" ");
+  const body = unmarked(operatorOutbox((await route(["operator", text])).r).map((m) => m.text));
+  expect(body.join("")).toBe(text);
+  for (const b of body.slice(0, -1)) expect(b).toMatch(/ $/);
+});
+
+test("HIMMEL-10730 (g) mid-code: with no free break before it, a backtick span that crosses the limit moves whole to the next part", async () => {
+  const cmd = "`bash scripts/handover/chief-kit/go.sh grant the ticket now and then check it twice`";
+  const text = `${"x".repeat(2960)}${cmd} ${filler(400)}`;
+  const body = unmarked(operatorOutbox((await route(["operator", text])).r).map((m) => m.text));
+  expect(body.join("")).toBe(text);
+  expect(body.some((b) => b.includes(cmd))).toBe(true);
+});
+
+test("HIMMEL-10730 (h) mid-URL: with no free break before it, a link that crosses the limit moves whole to the next part", async () => {
+  const url = `https://github.com/login/device?code=${"q".repeat(80)}`;
+  const text = `${"x".repeat(2960)}${url} ${filler(400)}`;
+  const body = unmarked(operatorOutbox((await route(["operator", text])).r).map((m) => m.text));
+  expect(body.join("")).toBe(text);
+  expect(body.some((b) => b.includes(url))).toBe(true);
+});
+
 test("a silent kind with --satellite speaks nothing, queues nothing and exits 0", async () => {
   const x = await route(["--kind", "worker-silent", "--satellite", "assist_satellite.kitchen", "operator", "x"], { env: { HA_URL: "", HA_TOKEN: "" } });
   expect(x.code).toBe(0);

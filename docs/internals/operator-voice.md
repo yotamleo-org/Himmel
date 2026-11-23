@@ -9,19 +9,29 @@ make sure this over simplification doesn't reduce our agent understanding".
 The chief carries these rules as its reply style (`docs/handover/chief-adhd-brief.md`).
 
 1. **Message him as little as possible: only what needs him.** A decision, an
-   approval, a code, a mistake. What an agent is doing or waiting on never goes to
-   Telegram. Operator: "waiting on chief never to telegram user doesn't care, only
-   things that require the user. we want to message the user as little as possible."
-2. **Lead with what he must know or do, in plain words, in a few short lines.** He
-   asks if he wants more. Operator: "The Telegram messages are mobile. It needs to be
-   extremely short and to the point."
-3. **No ticket, PR or decision numbers in his text: say what the thing is.** Operator:
-   "when you try and give a user like a ticket ID, he needs to manually go and check
-   and look at it up". The chief keeps the key beside each message in its own notes,
-   so his "yes" maps to the right ticket.
+   approval, a code, a mistake that affects him, loses work or needs his input. What
+   an agent is doing or waiting on never goes to Telegram, and neither does a hiccup
+   the system healed itself (rule 7). Operator: "waiting on chief never to telegram
+   user doesn't care, only things that require the user. we want to message the user
+   as little as possible."
+2. **Lead with what he must know or do, in plain words, in 1 to 3 short lines, one
+   thought per line.** No mini-paragraphs: he reads on a phone. He asks if he wants
+   more. Operator: "The Telegram messages are mobile. It needs to be extremely short
+   and to the point."
+3. **No ticket, PR or decision numbers, file paths or internal jargon in his text:
+   say what the thing is.** "restarting the Telegram bridge", not "bouncing the
+   poller". Operator: "when you try and give a user like a ticket ID, he needs to
+   manually go and check and look at it up". The chief keeps the key beside each
+   message in its own notes, so his "yes" maps to the right ticket. With two options
+   or several asks, number them so he can answer in a few characters: `1 yes 2 no`.
 4. **Ask once, only for what no agent can do or look up,** with a recommended answer
-   worded so "yes" accepts it. The ask starts with `Needs you:`.
-5. **A code he must type goes alone in its own message.** Operator: "If you want the
+   worded so "yes" accepts it, and say what "yes" sets off. Keep at most one ask open
+   when you can. The ask starts with `Needs you:`, and that line carries what is
+   blocked and, when there is one, when the ask expires. The link goes in the same
+   message and the code right after it (rule 5), never "yes" first and the link
+   later.
+5. **A code he must type, or a command he must paste, goes alone in its own
+   message,** sent straight after the `Needs you:` line. Operator: "If you want the
    code, give the code and say, I need your approval for blah, blah, blah, and please
    type this code."
 6. **Every ask goes to Telegram and the console.** Operator: "everything that needs
@@ -30,6 +40,8 @@ The chief carries these rules as its reply style (`docs/handover/chief-adhd-brie
 7. **A mistake names its cause and its follow-up,** the fix or a ticket in the current
    version at High priority. Operator: "we need mistakes to be diagnosed and always
    have a followup so we do self evolve" and "always to current version as high".
+   A hiccup the system healed itself gets the same diagnosis and ticket, but stays
+   in the console and the doc: no Telegram message.
 8. **No time estimates.** No "in about 15 min", no ETA, no "shortly", no "I send it
    when done". A measured past duration ("took 50 min") is a fact. A deadline the
    system enforces (a code or request that expires) stays, stated plainly: "expires
@@ -46,11 +58,19 @@ The chief carries these rules as its reply style (`docs/handover/chief-adhd-brie
     items otherwise we might have one sentence specs [...] but sometimes the spec can
     be only one sentence if its clear and understandable." The shape:
     `docs/internals/jira-plugin.md` (Ticket shape).
+11. **After he answers, stay quiet.** No "got it", "working on it" or "done" unless he
+    asked for the result, something failed, or you need him again.
+12. **Telegram text stays clean on a phone, and a long message splits only at a clean
+    boundary:** between paragraphs, lines or sentences, never inside a word, a code
+    block, a command or a link, so every copyable piece arrives whole.
+
+Rules 1 to 5, 7, 11 and 12 were refined with the operator on 2026-11-23 (decision 1240).
 
 ## Samples the operator confirmed
 
-> 9 workers stopped: I closed the window they ran in. Nothing lost, restarting them.
-> So it can't happen again: workers get their own window. Ticket filed.
+> 9 workers stopped: I closed the window they ran in.
+> Nothing lost; restarting them.
+> So it can't happen again, workers get their own window. Ticket filed.
 
 > Needs you: approve GitHub sign-in for the test machine at github.com/login/device
 
