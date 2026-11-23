@@ -673,7 +673,8 @@ _cfp_claude_invoke() {
             _cc_err="$_cc_dir/stderr"
             _cc_branch="$(git branch --show-current 2>/dev/null || true)"  # swallow-ok: an empty branch is recorded as empty
             _cc_head="$(git rev-parse HEAD 2>/dev/null || true)"  # swallow-ok: an empty head is recorded as empty
-            _cc_out="$(cd "$_cc_dir" && HIMMEL_API_FALLBACK=off HIMMEL_API_KIND=critic HIMMEL_API_JOB_ID="cr-claude-critic-$$" \
+            _cc_repo="$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"  # swallow-ok: empty leaves the launcher's own same-repo check to refuse
+            _cc_out="$(cd "$_cc_dir" && HIMMEL_API_AUTO_REPO_DIR="$_cc_repo" HIMMEL_API_FALLBACK=off HIMMEL_API_KIND=critic HIMMEL_API_JOB_ID="cr-claude-critic-$$" \
                 HIMMEL_API_BRANCH="${CR_TARGET_BRANCH:-$_cc_branch}" HIMMEL_API_HEAD="${CR_TARGET_HEAD:-$_cc_head}" HIMMEL_API_PR="${CR_TARGET_PR:-}" \
                 HIMMEL_API_TOOLS='' \
                 bash "${CFP_CLAUDE_API_LAUNCHER:-$SCRIPT_DIR/../api-lane/claude-api.sh}" \
