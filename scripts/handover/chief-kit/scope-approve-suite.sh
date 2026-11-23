@@ -112,7 +112,7 @@ BATCH=20261123T0000-SCOPE-801
 fresh() { rm -rf "$M" "$B" "$ST/issues" "$ST/cli.log"; mkdir -p "$M" "$B" "$ST/issues"; : > "$STATE/status-events.jsonl"; unset ND_MIRROR_OVERRIDE STUB_POST; }
 tkt() {
     jq -n --arg k "$1" --arg t "${2:-Task}" '{key:$k, fields:{summary:"fixture", issuetype:{name:$t}, status:{name:"To Do", statusCategory:{name:"To Do"}}, priority:{name:"Medium"},
-        labels:[], fixVersions:[{name:"v1.0.1"}], created:"2026-11-20T00:00:00.000+0000", updated:"2026-11-20T00:00:00.000+0000",
+        labels:[], created:"2026-11-20T00:00:00.000+0000", updated:"2026-11-20T00:00:00.000+0000",
         description:{type:"doc",version:1,content:[
             {type:"paragraph",content:[{type:"text",text:"Something vague that names no file."}]},
             {type:"paragraph",content:[{type:"text",text:"DoD"}]},{type:"paragraph",content:[{type:"text",text:"- the row is green"}]},
