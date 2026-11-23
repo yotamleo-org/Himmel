@@ -35,16 +35,16 @@ to **other coding harnesses** — Codex first — so an operator can decide what
 
 ## Frame matrix
 
-| Surface | Claude Code | Codex | Cursor | Copilot CLI |
-|---|---|---|---|---|
-| **PreToolUse guardrail hooks** | native | ✅ Claude-compatible engine (`ClaudeHooksEngine`); same stdin schema, but blocks via JSON `permissionDecision:"deny"` **not exit 2** — himmel bridges via `.codex/run-hook.sh`→`codex-hook-adapter.sh` | ✅ `.cursor/hooks.json`; events **camelCase** (`preToolUse`, `beforeShellExecution`); **fails OPEN** unless `failClosed:true` | ✅ `.github/hooks/*.json`; camel/Pascal; **fails CLOSED**; ⚠️ headless `-p` disables repo hooks unless `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` |
-| **pre-commit / pre-push git gates** | ✅ | ✅ harness-independent (git runs them) | ✅ | ✅ |
-| **Plugins / marketplace** | native | ✅ marketplaces + `@himmel` plugins load (`config.toml`) | ✅ marketplace exists (`.cursor-plugin/plugin.json`) — *corrects "no marketplace"* | ✅ `marketplace.json` registries (`copilot plugin marketplace add`) |
-| **Skills** | native | ✅ native skill loading | ✅ `SKILL.md`; reads `.cursor/skills` **+ `.claude/skills` + `.codex/skills`** | ✅ `SKILL.md`; reads `.github/skills` **+ `.claude/skills`** |
-| **Slash commands** | `.claude/commands/` | ⚠️ own slash surface; `.claude/commands/` don't auto-load | ✅ `.cursor/commands/*.md` | ⚠️ via plugins/skills/agents (`/name`); dedicated file unverified |
-| **Instruction file** | `CLAUDE.md` (always loaded) | ⚠️ **`AGENTS.md` only** | `.cursor/rules/*.mdc` + **`AGENTS.md`** | **`AGENTS.md`** (also reads `CLAUDE.md`) |
-| **Subagents** | `.claude/agents/*.md` | ⚠️ `.codex/agents/*.toml` | ✅ `.cursor/agents/*.md` (reads **`.claude/agents`**) | ✅ `*.agent.md` (`.github/agents/`) |
-| **Interactive questions (`AskUserQuestion`)** | native tool | ❌ no equivalent question-tool → **degrades to a conversational prose question** | ❌ same | ❌ same |
+| Surface | Claude Code | Codex | Antigravity (T3 Code) | Cursor | Copilot CLI |
+|---|---|---|---|---|---|
+| **PreToolUse guardrail hooks** | native | ✅ Claude-compatible engine (`ClaudeHooksEngine`); same stdin schema, but blocks via JSON `permissionDecision:"deny"` **not exit 2** — himmel bridges via `.codex/run-hook.sh`→`codex-hook-adapter.sh` | ✅ `.agents/hooks.json` (single named spec, camelCase protojson stdin); **fails CLOSED** on error/timeout/`{}`; clean pass = empty stdout + exit 0, deny = `{"decision":"deny","reason":"..."}` + exit 0 — bridged via `scripts/hooks/antigravity-hook-adapter.sh` (primary-resolved, `*_OK` stripped) | ✅ `.cursor/hooks.json`; events **camelCase** (`preToolUse`, `beforeShellExecution`); **fails OPEN** unless `failClosed:true` | ✅ `.github/hooks/*.json`; camel/Pascal; **fails CLOSED**; ⚠️ headless `-p` disables repo hooks unless `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` |
+| **pre-commit / pre-push git gates** | ✅ | ✅ harness-independent (git runs them) | ✅ harness-independent (git runs them) | ✅ | ✅ |
+| **Plugins / marketplace** | native | ✅ marketplaces + `@himmel` plugins load (`config.toml`) | ⚠️ `.agents/` workspace customizations (no Claude marketplace) | ✅ marketplace exists (`.cursor-plugin/plugin.json`) — *corrects "no marketplace"* | ✅ `marketplace.json` registries (`copilot plugin marketplace add`) |
+| **Skills** | native | ✅ native skill loading | ✅ `.agents/skills/*/SKILL.md` + `.agents/skills.json` (`exclude` supported; `pr-check` excluded) | ✅ `SKILL.md`; reads `.cursor/skills` **+ `.claude/skills` + `.codex/skills`** | ✅ `SKILL.md`; reads `.github/skills` **+ `.claude/skills`** |
+| **Slash commands** | `.claude/commands/` | ⚠️ own slash surface; `.claude/commands/` don't auto-load | ⚠️ skills/prompts only | ✅ `.cursor/commands/*.md` | ⚠️ via plugins/skills/agents (`/name`); dedicated file unverified |
+| **Instruction file** | `CLAUDE.md` (always loaded) | ⚠️ **`AGENTS.md` only** | **`AGENTS.md`** + `.agents/rules/*.md` (YAML `trigger: always_on` required) | `.cursor/rules/*.mdc` + **`AGENTS.md`** | **`AGENTS.md`** (also reads `CLAUDE.md`) |
+| **Subagents** | `.claude/agents/*.md` | ⚠️ `.codex/agents/*.toml` | ✅ `invoke_subagent` (hooks fire inside children; `swarm`/`run_workflow`/`schedule` denied) | ✅ `.cursor/agents/*.md` (reads **`.claude/agents`**) | ✅ `*.agent.md` (`.github/agents/`) |
+| **Interactive questions (`AskUserQuestion`)** | native tool | ❌ no equivalent question-tool → **degrades to a conversational prose question** | ✅ native `ask_question` tool | ❌ same | ❌ same |
 
 > **Status (2026-06-21):** Cursor / Copilot columns are now
 > audited (web + official docs). Several earlier hints were **stale** and are

@@ -738,6 +738,7 @@ scripts/guardrails/* scripts/hooks/test-wired-hooks-integrity-resolution.sh
 scripts/handover/queue-lock.sh scripts/hooks/test-wired-hooks-integrity-resolution.sh
 .claude/settings.json scripts/hooks/test-wired-hooks-integrity-resolution.sh
 .codex/hooks.json scripts/hooks/test-wired-hooks-integrity-resolution.sh
+.agents/hooks.json scripts/hooks/test-wired-hooks-integrity-resolution.sh
 marketplace/plugins/*/hooks/* scripts/hooks/test-wired-hooks-integrity-resolution.sh
 marketplace/plugins/*/scripts/* scripts/hooks/test-wired-hooks-integrity-resolution.sh
 scripts/guardrails/* scripts/lib/test-override-env.sh
@@ -747,6 +748,14 @@ scripts/*test-*.sh scripts/lib/test-red-control-extraction-lint.sh
 scripts/hooks/* scripts/testing/test-unwired-hooks.sh
 .claude/settings.json scripts/testing/test-unwired-hooks.sh
 .codex/hooks.json scripts/testing/test-unwired-hooks.sh
+.agents/hooks.json scripts/testing/test-unwired-hooks.sh
+.agents/hooks.json scripts/antigravity/test-antigravity-hook-parity.sh
+.agents/skills.json scripts/antigravity/test-antigravity-hook-parity.sh
+scripts/hooks/antigravity-hook-adapter.sh scripts/antigravity/test-antigravity-hook-parity.sh
+scripts/hooks/antigravity-hook-adapter.sh scripts/hooks/test-antigravity-adapter-e2e.sh
+scripts/hooks/antigravity-hook-adapter.sh scripts/t3/test-t3-guard-conformance.sh
+scripts/hooks/guard-t3-thread-tools.sh scripts/t3/test-t3-guard-conformance.sh
+scripts/hooks/block-t3code-unwatch-open-pr.sh scripts/t3/test-t3-guard-conformance.sh
 .pre-commit-config.yaml scripts/testing/test-unwired-hooks.sh
 .pre-commit-hooks.yaml scripts/testing/test-unwired-hooks.sh
 docs/setup/settings-template.json scripts/testing/test-unwired-hooks.sh

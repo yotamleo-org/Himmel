@@ -42,7 +42,7 @@ run_case() {
     local dir="$TMP_ROOT/$name"
     mkdir -p "$dir/scripts/parity" "$dir/scripts/lib" "$dir/docs/internals" "$dir/src"
     cp "$REPO/scripts/parity/test-ws5-invariants.sh" "$REPO/scripts/parity/t12-no-bloat-lib.sh" "$dir/scripts/parity/"
-    printf '| gemini | deferred |\n' > "$dir/docs/internals/lane-parity.md"
+    printf '| copilot | deferred |\n' > "$dir/docs/internals/lane-parity.md"
     printf '# fixture\n' > "$dir/CLAUDE.md"
     printf 'export const x = 1;\n' > "$dir/src/a.ts"
     local g=(git -C "$dir" -c user.name=t -c user.email=t@t -c commit.gpgsign=false -c core.hooksPath=/dev/null)
