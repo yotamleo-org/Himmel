@@ -1490,6 +1490,23 @@ template_dir="${CHIEF_TEMPLATE_DIR:-$repo/docs/handover}"
 console_template="$template_dir/chief-template.md"
 handoff_template="$template_dir/chief-handoff-template.md"
 kit="$repo/scripts/handover/chief-kit"
+standing_rules_template="$template_dir/standing-rules-template.md"
+
+seed_standing_rules() {
+    local f="$state_dir/specs/standing-rules.md" tmp
+    { [ -e "$f" ] || [ -L "$f" ]; } && return 0
+    [ -f "$standing_rules_template" ] || { err "WARNING missing $standing_rules_template, $f not seeded"; return 0; }
+    if ! { mkdir -p "$state_dir/specs" && tmp=$(mktemp "$state_dir/specs/.standing-rules.XXXXXX"); }; then
+        err "WARNING could not seed $f"
+        return 0
+    fi
+    if cp "$standing_rules_template" "$tmp" && chmod 644 "$tmp" && ln "$tmp" "$f"; then
+        echo "standing-rules: seeded $f"
+    elif ! [ -e "$f" ]; then
+        err "WARNING could not seed $f"
+    fi
+    rm -f "$tmp"
+}
 
 # --- new --------------------------------------------------------------
 cmd_new() {
@@ -1518,6 +1535,7 @@ cmd_new() {
     fi
 
     mkdir -p "$state_dir"
+    seed_standing_rules
     # Claim a letter by ATOMIC EXCLUSIVE CREATE, never scan-then-create (the
     # repo's own convention — see headed-arm.sh): two
     # concurrent `new` runs racing a plain find_free_letter could both pick
@@ -2621,6 +2639,7 @@ cmd_next() {
     # advance — `next` computes exactly one successor letter, never a range
     # to retry across.
     mkdir -p "$state_dir"
+    seed_standing_rules
     local legacy_doc="$state_dir/${prefix}-nextleg-${successor_date}${successor_letter}-${old_name}.md"
     if [ -e "$legacy_doc" ]; then
         err "successor letter ${successor_letter} is already held by $legacy_doc, refusing to claim it twice"
