@@ -23,7 +23,6 @@ process.on('exit', () => { rmSync(T, { recursive: true, force: true }); for (con
 const DUMMY = 'sk-ant-dummy-not-a-real-key-0000';
 const HEAD = 'a'.repeat(40);
 const OLD = 'b'.repeat(40);
-// each case gets its own PR number so the real judge-dir under /tmp/claude-<uid> never collides, across processes too
 let nextPr = 100000000 + process.pid * 1000;
 
 const STUB = `#!/bin/bash
