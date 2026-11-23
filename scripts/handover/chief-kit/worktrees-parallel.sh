@@ -61,7 +61,7 @@ while [ $# -gt 0 ]; do
         *) BRANCHES+=("$1"); shift ;;
     esac
 done
-case "$FAN_OUT" in ''|*[!0-9]*|0) echo "ERR worktrees-parallel: --fan-out needs a positive integer" >&2; usage ;; esac
+case "$FAN_OUT" in ''|*[!0-9]*|0*) echo "ERR worktrees-parallel: --fan-out needs a positive integer" >&2; usage ;; esac
 [ "${#BRANCHES[@]}" -gt 0 ] || usage
 
 bad=0

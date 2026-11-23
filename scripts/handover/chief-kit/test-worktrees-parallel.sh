@@ -138,6 +138,18 @@ else
     _fail "$NAME" "rc=$rc max=${max:-none} out=[$(cat "$TMPBASE/out")] err=[$(cat "$TMPBASE/err")]"
 fi
 
+NAME="--fan-out 0 and 00 are refused (xargs -P 0 is unbounded), nothing created"
+ok=1
+for z in 0 00; do
+    rc=0; run_par --no-prune --fan-out "$z" fix/zero-a || rc=$?
+    { [ "$rc" -eq 2 ] && [ ! -e "$(wt fix/zero-a)" ]; } || ok=0
+done
+if [ "$ok" -eq 1 ]; then
+    _pass "$NAME"
+else
+    _fail "$NAME" "rc=$rc err=[$(cat "$TMPBASE/err")]"
+fi
+
 NAME="the default fan-out is 4"
 rm -f "$TMPBASE/concurrency"
 rc=0; run_par --no-prune fix/def-a fix/def-b fix/def-c fix/def-d fix/def-e fix/def-f || rc=$?
