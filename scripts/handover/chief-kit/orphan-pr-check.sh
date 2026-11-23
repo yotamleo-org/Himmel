@@ -173,7 +173,7 @@ held_entries() {
 stale_key_done() {
     local f="$stale_mirror/$1.md" v
     [ -f "$f" ] && [ -r "$f" ] || return 2
-    v="$(head -c 4096 "$f" 2>/dev/null | LC_ALL=C sed -n 's/^statusCategory: "\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' | head -n 1)"  # gnu-ok: head -c is in the Linux-only kit; swallow-ok: an unreadable file reads as not Done
+    v="$(head -c 4096 "$f" 2>/dev/null | LC_ALL=C sed -n 's/^statusCategory: "\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' | head -n 1)"  # gnu-ok: head -c is in the Linux-only kit; swallow-ok: an unreadable file reads as not Done; read-sink-ok: the path is <mirror>/<KEY>.md for a key the reader matched as ^[A-Z][A-Z0-9_]*-[0-9]+$, and only the Done comparison reaches a verdict, never a prompt
     v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"
     [ "$v" = Done ] && return 0
     return 1
