@@ -238,8 +238,11 @@ rm -rf "$(wt_dir $B12)"
 g remote set-url origin "$TMPBASE/no-such-origin.git"
 run bash "$WT" resume "$B12" --no-install
 refused "stale-plus-fetch-failed: refused" "fetch-failed"
-if g worktree list --porcelain | grep -Fq "$(wt_dir $B12)"; then _pass "stale-plus-fetch-failed: the stale registration is still listed"
-else _fail "stale-plus-fetch-failed" "registration was pruned by a refused call"; fi
+wl="$(g worktree list --porcelain)"
+case "$wl" in
+*"$(wt_dir $B12)"*) _pass "stale-plus-fetch-failed: the stale registration is still listed" ;;
+*) _fail "stale-plus-fetch-failed" "registration was pruned by a refused call" ;;
+esac
 g remote set-url origin "$ORIGIN"
 g worktree prune
 
