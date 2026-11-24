@@ -215,6 +215,12 @@ state read is not OK. Each OK read writes rm-lists-<doc stem>.tsv under $TICK_ST
 then the reason, or the version, parent and parent version); any other read deletes it. Not in chief-wait's action key
 (chief-wait reads the tsv: WAKE chief-placed, WAKE ask-apart), and never part of the exit code.
 
+unplaced=<new>[,pending=<n>][,legacy=<n>][,stale-label=<n>] and serious-later=<n>:<oldest KEY> follow ask-apart= and read
+`intake-backfill.sh --unplaced --list --since-door` over the same OK state read (the tick reads no date of its own; the script
+owns the door's date): the open tickets with no version and no backlog label, and the High or Highest tickets in a version later
+than the declared current one. Each is ABSENT at zero and when the state read is not OK; the buckets after new print only when
+non-zero. Neither is in chief-wait's action key, and neither is part of the exit code.
+
 held=<n>:<sig8> unfiled=<n> repair=off:<why> follow rm-queue= and are ABSENT unless set: held= is
 the version repair's held key count and the first 8 hex of its held signature, unfiled= the signed records no
 request carries yet, each elided at zero, all read from release/<R>/repair-state.json, the one record the jira CLI
@@ -3552,6 +3558,35 @@ elif [ -n "$rf_stem" ]; then
     rm -f "$rf_dir/rm-lists-$rf_stem.tsv"
 fi
 
+unplaced_f="" serious_later=""
+if [ -n "$rm_rel" ] && [ "${rm_status:-}" = OK ]; then
+    up_state="$(mktemp "${TICK_TMPDIR:-${TMPDIR:-/tmp}}/tick-unplaced-state.XXXXXX" 2>/dev/null)" || up_state=""  # swallow-ok: no file leaves both fields off
+    if [ -n "$up_state" ]; then
+        printf '%s' "$rm_json" > "$up_state"
+        up_sut="${TICK_UNPLACED_PROBE:-$HERE/intake-backfill.sh}"
+        up_out="$(JIRA_PROJECT_KEY="$tick_project_key" timeout -k 2 "$(tick_bound 30)" bash "$up_sut" --unplaced --list --state "$up_state" --since-door 2>/dev/null)" || up_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read leaves both fields off
+        rm -f "$up_state"
+        read -r unplaced_f serious_later < <(printf '%s\n' "$up_out" | python3 -I -c '
+import re, sys
+lines = sys.stdin.read().splitlines()
+rows = [l.split("\t") for l in lines if "\t" in l]
+rest = [l for l in lines if "\t" not in l]
+m = re.fullmatch(r"pending=(\d+) legacy=(\d+) stale-label=(\d+) serious-later=(\d+)", rest[1]) if len(rest) == 2 else None
+if not (m and re.fullmatch(r"\d+", rest[0])):
+    print("- -")
+    sys.exit(0)
+new = int(rest[0])
+p, lg, st, sl = (int(x) for x in m.groups())
+tot = new + p + lg + st
+u = "%d" % new + "".join(",%s=%d" % (k, v) for k, v in (("pending", p), ("legacy", lg), ("stale-label", st)) if v)
+oldest = next((r[0] for r in rows if len(r) == 2 and r[1] == "serious-later" and re.fullmatch(r"[A-Z]+-\d+", r[0])), "")
+print(u if tot else "-", ("%d:%s" % (sl, oldest) if oldest else "%d" % sl) if sl else "-")
+' 2>/dev/null) || true  # swallow-ok: unreadable output leaves both fields off
+        [ "$unplaced_f" != - ] || unplaced_f=""
+        [ "$serious_later" != - ] || serious_later=""
+    fi
+fi
+
 # held=<n>:<sig8> unfiled=<n> repair=off:<why>: the version repair's state, READ from release/<R>/repair-state.json, the one
 # record `jira release repair --apply` (and `release repair-state`) writes; the tick writes no repair file. held= and
 # unfiled= come from its held_keys (the held key count with the first 8 hex of held_signature) and unfiled, each elided
@@ -5087,6 +5122,8 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$prio_review" ] || printf 'prio-review: %s\n' "$prio_review"
     [ -z "$chief_placed" ] || printf 'chief-placed: %s\n' "$chief_placed"
     [ -z "$ask_apart" ] || printf 'ask-apart: %s\n' "$ask_apart"
+    [ -z "$unplaced_f" ] || printf 'unplaced: %s\n' "$unplaced_f"
+    [ -z "$serious_later" ] || printf 'serious-later: %s\n' "$serious_later"
     [ -z "$held_summary" ] || printf 'repair held: %s\n' "$held_summary"
     [ -z "$unfiled_summary" ] || printf 'repair unfiled: %s\n' "$unfiled_summary"
     [ -z "$repair_summary" ] || printf 'repair: %s\n' "$repair_summary"
@@ -5221,6 +5258,8 @@ else
     compact_field prio-review "$prio_review"
     compact_field chief-placed "$chief_placed"
     compact_field ask-apart "$ask_apart"
+    compact_field unplaced "$unplaced_f"
+    compact_field serious-later "$serious_later"
     compact_field held "$held_summary"
     compact_field unfiled "$unfiled_summary"
     compact_field repair "$repair_summary"

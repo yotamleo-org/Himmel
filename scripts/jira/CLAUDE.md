@@ -63,6 +63,9 @@ helpers.
   into a version, then needs a requested INTAKE. Open tickets
   that already have no version: `scripts/handover/chief-kit/intake-backfill.sh` prints a
   proposed version for each (dry run; `--commands` adds the lines for one rm-run).
+  The model release judge is parked: the door (`src/release/door.ts`) places each INTAKE by fixed rules, and `--backlog`
+  does not keep a mild ticket out of the next version. `intake-backfill.sh --unplaced` counts the open tickets with no
+  version and no backlog label (read-only; the tick's `unplaced=` and `serious-later=` read it).
 - `create --operator-update <update_id>` (digits only) is the Telegram bridge's pointer to the
   operator's update: the INTAKE evidence gains `operator_update`, `filed_by: bridge` and `bridge_chat`;
   no words are recorded. Refused before any Jira call unless `HIMMEL_BRIDGE_SESSION=1` with no worker or

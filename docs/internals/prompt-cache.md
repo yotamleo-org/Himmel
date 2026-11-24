@@ -185,7 +185,9 @@ so a late-vs-early gap is read from the transcript when a row is close;
 upgrade path: add a per-gap context column when a judge lands within 10 % of
 break-even.
 
-### The release judge call
+### The release judge call (parked)
+
+The release judge is parked: the door places each request with no model call, so this section describes the call only under `HIMMEL_RM_JUDGE=model`.
 
 `rm-run`'s judge is not a subagent: it is a one-turn `claude -p` call in a fresh session and a fresh temp directory,
 and nothing reads back what it caches. Its environment (`liveJudgeEnv` in `scripts/jira/src/commands/release.ts`)
@@ -235,7 +237,7 @@ Re-measure with the `idle-gap` command below over the worker transcripts of the
 ## Direct API calls: a cached prefix
 
 `scripts/api-lane/cache-report.mjs` groups `launches.jsonl` by kind, model and
-organization. It leaves out rows whose `lane` is `native` (the release judge's one-turn call has no tier to advise).
+organization. It leaves out rows whose `lane` is `native` (the parked release judge's one-turn call has no tier to advise).
 On 2026-10-31 the untagged `other | sonnet` group (graphify's
 claude-api shim) read 3 % over 442 runs on one organization (19.5 M tokens written,
 0.6 M read) while `eval` read 91 %. Two fixes:

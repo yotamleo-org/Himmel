@@ -15,7 +15,7 @@ feature's own switch.
 |---|---|---|
 | `scripts/api-lane/judge-call.sh` | API lane | always (a chief's verdict question) |
 | `scripts/api-lane/bulk-call.sh` | API lane | always |
-| `jira release rm-run` (release manager) | the subscription | only in the himmel repo with `judge` mapped in `roles.json` (see [The role map](#the-role-map)); there the launcher's fallback is off, and a failed lane call, a policy refusal included, makes `rm-run` rule the batch once on the subscription itself; a timed-out call ends the run |
+| `jira release rm-run` (release manager) | none: the model judge is parked and the door places each request with no call; the rest of this row is the parked judge's route (`HIMMEL_RM_JUDGE=model`) | only in the himmel repo with `judge` mapped in `roles.json` (see [The role map](#the-role-map)); there the launcher's fallback is off, and a failed lane call, a policy refusal included, makes `rm-run` rule the batch once on the subscription itself; a timed-out call ends the run |
 | `scripts/cr/critic-first-pass.sh` (claude critic) | the registry row's provider | provider `claude-api`; with the lane off, the refusal alerts (one per hour) and the critic is skipped; a critic never runs on the subscription, for any refusal or failure; a policy refusal (exit 2 with the launcher's `claude-api: policy refusal:` line) makes the critic print `claude critic BROKE` and exit 1, never a clean skip |
 | `scripts/graphify/graph-cadence.sh --semantic` | `claude-cli` when run bare; the armed `graph-publish-himmel` runner passes `claude-api` on auto | `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` |
 | `scripts/cleanup/steering-cull-cadence.sh` | `claude-cli` | `STEERING_CULL_BACKEND=claude-api`, or `arm --backend claude-api --api-account A\|B\|C\|D` |
@@ -163,7 +163,9 @@ The fallback appends one row to the same `launches.jsonl` as the API call:
 
 The API call's own row and its reservation are settled as before.
 
-### The native release judge row
+### The native release judge row (parked)
+
+The release judge is parked: the door places requests with no model call, so this writer fires only under `HIMMEL_RM_JUDGE=model`.
 
 `launches.jsonl` has a second writer: the release judge's subscription run (`liveJudge` in
 `scripts/jira/src/commands/release.ts`) appends one `kind=judge` row per run, after the call returns. It is not
@@ -328,7 +330,7 @@ secret, only role names and account letters:
   off (`HIMMEL_API_LANE` unset) the cadence refuses the whole fire (exit 1) before any call; a direct call of
   `semantic-update.sh` refuses with exit 2 and says no API semantic call is made. Either way graphify makes no API semantic call. The
   `claude-cli` backend does not read the lane: it draws the subscription.
-- **The judge opt-in.** With `judge` mapped, the release judge tries the mapped account through the launcher first
+- **The judge opt-in (parked judge only).** With `judge` mapped, the release judge tries the mapped account through the launcher first
   (fallback off, no tools, an empty working directory, a two-dollar cap) and answers from the subscription on any
   failure. With `judge` unmapped it never touches the launcher. Only the himmel project's mirror reaches this route.
 - **Tools.** `node scripts/lib/api-roles.mjs check` prints the map state, warnings and `ROLES`;

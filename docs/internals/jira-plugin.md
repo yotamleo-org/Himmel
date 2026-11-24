@@ -413,8 +413,8 @@ Sector configured the release manager's prompt allows a null sector, a ruling wi
 `sector=none` and applies; `release rule --sector` (and the MCP `sector`) is optional unless a field
 is configured. Configured, a ruling
 without a sector is refused (`REFUSED <req>: release rule: a ruling without a sector refuses`, the request
-is closed and a re-filed one gets a new id) and the judge HOLDs a sectorless request (nothing is ruled: a
-version-repair request is set aside as held, any other request stays claimed). A missing config.json or an absent
+is closed and a re-filed one gets a new id) and the door HOLDs a sectorless request (nothing is ruled: a
+version-repair request is set aside as held, any other request stays claimed; the model judge is parked). A missing config.json or an absent
 `jira.sectorField` means sectors are off; malformed JSON or a non-string value throws instead. Code:
 `scripts/jira/src/commands/sector.ts` (config + options) and `sector-setup.ts`.
 
@@ -423,6 +423,11 @@ placed at filing, never defaulted silently. `--proposed-version <v>` files it wi
 `proposed-<v>` label and no fixVersion and queues its INTAKE request toward `<v>` in the
 same call; `--backlog` alone is refused: it needs `--proposed-version backlog`
 and a one-line `--why`, and then files the `backlog` label with no fixVersion.
+The door places the ticket from its priority, so `--backlog` does not keep a mild ticket out of the next version: the
+label comes off when rule M places it. The backlog is reached only by an operator record, or when no next version is declared.
+Besides the door, `create` still places a ticket at filing in three cases, a second placer: `bugDefault` (a Bug with no
+placement takes the active version), blocker inheritance (`--blocks` takes the target's version) and split inheritance
+(`--split-from` takes the source's version). No residual branch is left to file a ticket for the old `nextOpen` route.
 `--proposed-version` cannot be combined with `--fix-version` or `--gate`, applies to a Bug, Task or
 Story only, and a named version must exist and be unreleased. The same rule covers a Task or Story, so no ticket
 is filed without at least a proposed version; a residual (`--residual-of`, `--follow-up-of`) routes itself to a version
