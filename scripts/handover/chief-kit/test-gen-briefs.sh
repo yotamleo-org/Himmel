@@ -228,7 +228,7 @@ has "the worker preface's HALT/WRAP step passes --queue-doc" "$(tr '\n' ' ' < "$
 # (a copy whose resume_cwd is a plain directory: the worktree check is a later gate and the copy leaves D1 alone; the lint needs an absolute one)
 printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$WORK/preflight.sh"
 mkdir -p "$WORK/arm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$D1" > "$WORK/arm/HIMMEL-9001-N901-copy.md"
-rc=0; arm_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --fleet "$(arm_manifest "$WORK/arm" "$WORK/arm/$KP-9001-N901-copy.md")" --profile worker-impl $KP-9001-N901 "$WORK/arm/$KP-9001-N901-copy.md" "$WORK/arm/signal" 9999999999 "$WORK/arm/log" claude-sonnet-5-5 2>&1)" || rc=$?
+rc=0; arm_out="$(HIMMEL_CONSOLE_NAME='' HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --fleet "$(arm_manifest "$WORK/arm" "$WORK/arm/$KP-9001-N901-copy.md")" --profile worker-impl $KP-9001-N901 "$WORK/arm/$KP-9001-N901-copy.md" "$WORK/arm/signal" 9999999999 "$WORK/arm/log" claude-sonnet-5-5 2>&1)" || rc=$?
 [ "$rc" = 0 ] && pass "a generated brief arms through headed-arm-worker.sh (brief-lint gate)" || fail "generated brief refused by headed-arm-worker.sh rc=$rc: $arm_out"
 
 b1="$(cat "$D1" 2>/dev/null)"; b2="$(cat "$D2" 2>/dev/null)"

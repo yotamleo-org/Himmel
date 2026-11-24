@@ -318,7 +318,7 @@ _lr_json() {
 # shellcheck disable=SC2329  # called by the EXIT trap and the attempt start
 _lr_phase() {
     case "$1" in
-        brief-lint|denial-unacked|handover-root|unguarded-checkout|worktree-missing) echo brief-validation ;;
+        brief-lint|chief-mismatch|denial-unacked|handover-root|unguarded-checkout|worktree-missing) echo brief-validation ;;
         bank-exhausted|fleet-cap|fleet-duplicate|fleet-paused) echo usage-preflight ;;
         bus-register|bus-name-too-long) echo bus-registration ;;
         headed-arm|dedup-indeterminate|konsole-up-claude-unseen|signal|start-signal) echo handoff ;;
@@ -402,7 +402,8 @@ HEADED_ARM_UNAME="${HEADED_ARM_UNAME:-$(uname -s 2>/dev/null)}"
 export HEADED_ARM_UNAME
 
 usage() {
-    echo "usage: headed-arm-worker.sh [--dry-run] [--headless] [--fleet <manifest>] [--ignore-denials] [--no-prior-art-check] [--lane native|claudex|openrouter|deepseek] (--profile <name[,name...]> | --no-profile) [--relay] [--judge] [--consult] [--rm-release <R>] [--chief <name>] [--context-guard compact|handoff|none] <session-name> <handover-doc> <signal-file> <deadline-epoch> <log> [model]" >&2
+    echo "usage: headed-arm-worker.sh [--dry-run] [--headless] [--fleet <manifest>] [--ignore-denials] [--no-prior-art-check] [--lane native|claudex|openrouter|deepseek] (--profile <name[,name...]> | --no-profile) [--relay] [--judge] [--consult] [--rm-release <R>] [--chief <name>] [--rewrite-chief] [--context-guard compact|handoff|none] <session-name> <handover-doc> <signal-file> <deadline-epoch> <log> [model]" >&2
+    echo "  --rewrite-chief: a brief that names another chief than --chief / HIMMEL_CONSOLE_NAME is refused; with this flag an unrun brief's chief name and RETASK nonce are rewritten in place to the launching chief instead" >&2
     echo "  --context-guard: the worker context guard (default none = off, except a Sonnet launch on a profile that sets one: worker-impl hands off, worker-eval compacts); see docs/internals/worker-context-guard.md" >&2
 }
 
@@ -552,6 +553,7 @@ worker_env_drop_prefix() {
 
 DRY_RUN=0
 RELAY=0
+REWRITE_CHIEF=0
 JUDGE=0
 CONSULT=0
 RM=0              # --profile release-manager
@@ -578,6 +580,7 @@ while :; do
     case "${1:-}" in
         --dry-run) DRY_RUN=1; shift ;;
         --relay) RELAY=1; shift ;;
+        --rewrite-chief) REWRITE_CHIEF=1; shift ;;
         --judge) JUDGE=1; shift ;;
         --consult) CONSULT=1; shift ;;
         --ignore-denials) IGNORE_DENIALS=1; shift ;;
@@ -2049,10 +2052,11 @@ _chief_name_ok() {
 # worker_propagate_env's name clash and reach the worker unvalidated, so drop it -
 # only the name resolved below (or none) may propagate.
 worker_env_drop_token HIMMEL_CONSOLE_NAME
+_chief_explicit=""
 if [ -n "$CHIEF_FLAG" ]; then
-    CHIEF_NAME="$CHIEF_FLAG"
+    CHIEF_NAME="$CHIEF_FLAG"; _chief_explicit="$CHIEF_FLAG"
 elif _chief_name_ok "${HIMMEL_CONSOLE_NAME:-}"; then
-    CHIEF_NAME="$HIMMEL_CONSOLE_NAME"
+    CHIEF_NAME="$HIMMEL_CONSOLE_NAME"; _chief_explicit="$HIMMEL_CONSOLE_NAME"
 else
     CHIEF_NAME=""
     # shellcheck source=../../lib/session-name.sh
@@ -2076,6 +2080,87 @@ fi
 # the bus registration below names this chief as the worker's own.
 BUS_CHIEF="$CHIEF_NAME"
 _LR_CHIEF="$CHIEF_NAME"
+if [ "$RELAY" -eq 0 ] && [ "$READONLY_ROLE" -eq 0 ] && [ -f "$DOC" ] && [ -r "$DOC" ]; then
+    _cc_refuse() {
+        _launch_refusal_note chief-mismatch "$1"
+        echo "headed-arm-worker: refusing launch: $1" >&2
+        exit 2
+    }
+    _cc_lib="$(dirname "$0")/../../lib"
+    _cc_letter_re='[0-9]{4}-[0-9]{2}-[0-9]{2}([A-Z]+)-'
+    # shellcheck disable=SC2016  # the backticks are literal brief text
+    _cc_nonce="$(sed -n 's/^> \*\*RETASK:\*\* your nonce is `\([^`]*\)`.*/\1/p' "$DOC" | head -1)"
+    _cc_launch_letter=""
+    if [[ "$_chief_explicit" =~ $_cc_letter_re ]]; then _cc_launch_letter="${BASH_REMATCH[1]}"; fi
+    [ "$REWRITE_CHIEF" -eq 0 ] || [ -n "$_chief_explicit" ] || _cc_refuse "--rewrite-chief: no explicit launching chief (pass --chief <name>) for $DOC"
+    _cc_rc=0
+    _cc_chain="$(python3 -I -B -c 'import sys
+sys.path.insert(0, sys.argv[1])
+import transcript_deliveries as t
+print("\n".join(t.chief_names(open(sys.argv[2], encoding="utf-8").read())))' "$_cc_lib" "$DOC" 2>/dev/null)" || _cc_rc=$?
+    [ "$_cc_rc" -eq 0 ] || _cc_refuse "$DOC: cannot read the chief chain"
+    _cc_brief="$(printf '%s\n' "$_cc_chain" | tail -n 1)"
+    if [ -z "$_cc_brief" ]; then
+        if sed '/^## Results/q' "$DOC" | grep -Fq 'your chief is'; then
+            _cc_refuse "$DOC has a chief clause the launcher cannot read"
+        fi
+        echo "headed-arm-worker: note: chief check skipped (no chief clause)" >&2
+    elif [ -z "$_chief_explicit" ]; then
+        echo "headed-arm-worker: note: chief check skipped (no explicit launching chief)" >&2
+    elif [ "$_cc_brief" = "$_chief_explicit" ]; then
+        if [ -n "$_cc_launch_letter" ] && [ -n "$_cc_nonce" ] && [ "${_cc_nonce%%-*}" != "$_cc_launch_letter" ]; then
+            echo "headed-arm-worker: note: $DOC's nonce letter ${_cc_nonce%%-*} differs from the launcher's $_cc_launch_letter" >&2
+        fi
+    elif [ "$REWRITE_CHIEF" -eq 0 ]; then
+        _cc_refuse "$DOC names chief $_cc_brief, the launcher is $_chief_explicit"
+    else
+        # shellcheck source=../../lib/worker-identity.sh
+        . "$(dirname "$0")/../../lib/worker-identity.sh"
+        [ ! -L "$DOC" ] || _cc_refuse "--rewrite-chief: $DOC is a symlink"
+        ! worker_doc_has_run "$DOC" || _cc_refuse "--rewrite-chief: $DOC has already run (a resumed worker keeps its token)"
+        [ -n "$_cc_nonce" ] || _cc_refuse "--rewrite-chief: $DOC has no RETASK line"
+        _cc_rest="${_cc_nonce#*-}"; _cc_tail="${_cc_rest##*-}"
+        case "$_cc_nonce" in *-*-*) ;; *) _cc_refuse "--rewrite-chief: the nonce $_cc_nonce in $DOC has no <letter>-<middle>-<8 hex> shape" ;; esac
+        { [ "${#_cc_tail}" -eq 8 ] && case "$_cc_tail" in *[!0-9a-f]*) false ;; *) true ;; esac; } \
+            || _cc_refuse "--rewrite-chief: the nonce $_cc_nonce in $DOC does not end in 8 hex"
+        _cc_new_letter="${_cc_launch_letter:-${_cc_nonce%%-*}}"
+        _cc_new_nonce="$_cc_new_letter-${_cc_rest%-*}-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+        if [ "$DRY_RUN" -eq 1 ]; then
+            echo "would rewrite chief $_cc_brief to $_chief_explicit"
+        else
+            _cc_tmp="$(mktemp "$(dirname "$DOC")/.rewrite-chief.XXXXXX")" || _cc_refuse "--rewrite-chief: cannot create a temp file beside $DOC"
+            # shellcheck disable=SC2016  # the python source is one literal argument
+            if python3 -I -B -c 'import re, shutil, sys
+sys.path.insert(0, sys.argv[1])
+import transcript_deliveries as t
+doc, old, new, onon, nnon, out = sys.argv[2:8]
+lines = open(doc, encoding="utf-8", newline="").read().splitlines(True)
+in_results = False
+clause_done = False
+for i, line in enumerate(lines):
+    if re.match(r"^## Results(\s|$)", line):
+        in_results = True
+    if not in_results:
+        line = line.replace(onon, nnon)
+    if not clause_done and not line.startswith("> | ") and t.CHIEF_CLAUSE_RE.search(line):
+        line = line.replace("your chief is **`%s`**" % old, "your chief is **`%s`**" % new, 1)
+        clause_done = True
+    lines[i] = line
+open(out, "w", encoding="utf-8", newline="").write("".join(lines))
+shutil.copymode(doc, out)' "$_cc_lib" "$DOC" "$_cc_brief" "$_chief_explicit" "$_cc_nonce" "$_cc_new_nonce" "$_cc_tmp" && mv -f "$_cc_tmp" "$DOC"; then  # prim-ok: renamed over the same path so the queue-lock path never changes
+                _cc_msg="rewrote chief $_cc_brief to $_chief_explicit; new RETASK nonce $_cc_new_nonce (record it in the chief doc's Live state)"
+                echo "$_cc_msg"
+                [ -z "$LOG" ] || echo "$_cc_msg" >> "$LOG"
+            else
+                rm -f "$_cc_tmp"
+                _cc_refuse "--rewrite-chief: could not rewrite $DOC"
+            fi
+        fi
+    fi
+    unset -f _cc_refuse
+    unset -v _cc_lib _cc_letter_re _cc_nonce _cc_launch_letter _cc_rc _cc_chain _cc_brief _cc_rest _cc_tail _cc_new_letter _cc_new_nonce _cc_tmp _cc_msg
+fi
+unset -v _chief_explicit
 # the bus identity is the launcher's alone. A caller-preset or
 # ambient HIMMEL_BUS_* (a chief's own HIMMEL_BUS_NAME is live in its shell)
 # must never reach a worker - only the name registered below does - and neither
