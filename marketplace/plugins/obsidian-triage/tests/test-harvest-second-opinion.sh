@@ -307,6 +307,139 @@ assert "flag-only write: a mid-write edit is kept" "kept" "$(field "$r" EDIT)"
 r="$(race thin)"
 assert "thin-partial write: a mid-write edit is kept" "kept" "$(field "$r" EDIT)"
 
+cat > "$tmp/kill.py" <<'PY'
+import importlib.util, io, os, signal, sys
+tool, root, mode, action = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+os.environ.pop("HARVEST_SCRAPE_DENY", None)
+spec = importlib.util.spec_from_file_location("h", tool)
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.TODAY = "2026-11-24"
+from pathlib import Path
+vault = Path(root) / f"kill-{mode}-{action}"
+clippings = vault / "Clippings"
+clippings.mkdir(parents=True, exist_ok=True)
+clip = clippings / "c.md"
+flag = mode in ("so", "flag", "thin")
+canonical = "https://example.org/a"
+fm_extra = "harvest_flag: injection-suspect\n" if flag else ("enrichment_status: ok\nneeds_thread: true\n" if mode == "reflag" else "")
+body = "A plain body.\n" if flag or mode == "reflag" else ("\n".join("word " * 40 for _ in range(12)) + "\n" if mode == "cb" else "short.\n")
+src = "" if flag or mode == "reflag" else f"type: article\nsource: {canonical}\n"
+orig = f"---\ntitle: x\n{src}{fm_extra}---\n{body}"
+clip.write_text(orig, encoding="utf-8")
+clip.chmod(0o640)
+(vault / "orig").write_text(orig, encoding="utf-8")
+real_open = io.open
+class Dying:
+    def __init__(self, f): self.f = f
+    def write(self, data):
+        self.f.write(data[: len(data) // 2]); self.f.flush()
+        if action == "kill":
+            os.kill(os.getpid(), signal.SIGKILL)
+        raise OSError("disk full")
+    def __getattr__(self, n): return getattr(self.f, n)
+    def __enter__(self): self.f.__enter__(); return self
+    def __exit__(self, *a): return self.f.__exit__(*a)
+def dying_open(file, mode="r", *a, **k):
+    f = real_open(file, mode, *a, **k)
+    return Dying(f) if action in ("kill", "raise") and any(c in mode for c in "wax+") else f
+review = lambda text: {"codex": "benign", "guard": "safe", "passages": [], "guard_ids": [], "downgrade": True}
+class Chain:
+    remaining = 3
+    last_backend = None
+    def scrape(self, url):
+        return "word " * 400
+io.open = dying_open
+text = clip.read_text(encoding="utf-8")
+fm, fm_raw, b, ok = m.parse_frontmatter(text)
+try:
+    if mode == "reflag":
+        m.run_reflag_silent_partials(vault, False)
+    elif mode in ("fc", "cb"):
+        r = m.process_clip(clip, dry_run=False, chain=Chain(), url_rules=m.UrlRules())
+        print("RESULT", r[1][:60])
+    elif mode == "yt":
+        m.write_youtube_harvest(clip, text, fm_raw, b, canonical, {"title": "t", "transcript": [{"ts": "0:01", "tx": "hi"}]}, [])
+    elif mode == "flag":
+        m.persist_flag_only(clip, text, fm_raw, b, ["x"])
+    elif mode == "thin":
+        m.persist_thin_partial(clip, text, fm, fm_raw, b, None, [])
+    elif mode == "defer":
+        m.bump_defer(clip)
+    else:
+        m.apply_second_opinion(clip, review_fn=review)
+except Exception as e:
+    print("RAISED", type(e).__name__)
+PY
+killrun() {
+  "$PY" -I "$tmp/kill.py" "$TOOL" "$tmp" "$1" "$2" >"$tmp/kill.out" 2>&1
+  killrc=$?
+  kdir="$tmp/kill-$1-$2"
+  if cmp -s "$kdir/Clippings/c.md" "$kdir/orig"; then killclip=intact; else killclip=changed; fi
+  strays="$(find "$kdir/Clippings" -mindepth 1 ! -name c.md | sort | tr '\n' ' ')"
+  case "$strays" in *.md" "*) killmdstray=yes ;; *) killmdstray=no ;; esac
+  killmode="$("$PY" -I -c 'import os, sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$kdir/Clippings/c.md")"
+}
+for site in so flag thin yt fc cb reflag defer; do
+  killrun "$site" none
+  assert "write site $site: the control run changes the clip, so the harness reaches the write" "changed" "$killclip"
+  assert "write site $site: a landed write keeps the clip's file mode" "640" "$killmode"
+  case "$site" in cb) want="harvested via clip-body" ;; fc) want="harvested via firecrawl" ;; *) want="" ;; esac
+  if [ -n "$want" ]; then assert "write site $site: the control run goes through the $want writer" "yes" "$(grep -q "$want" "$tmp/kill.out" && echo yes || echo no)"; fi
+  killrun "$site" kill
+  assert "write site $site: the writer was killed mid-write" "137" "$killrc"
+  assert "write site $site: a writer killed mid-write leaves the old clip byte for byte" "intact" "$killclip"
+  assert "write site $site: a killed writer leaves nothing a next run would read as a clip" "no" "$killmdstray"
+  killrun "$site" raise
+  assert "write site $site: a write that raises after a partial write leaves the old clip byte for byte" "intact" "$killclip"
+  assert "write site $site: a write that raises leaves no stray file behind" "" "$strays"
+done
+
+sweepv="$tmp/vault-sweep"
+mkdir -p "$sweepv/Clippings/sub"
+printf -- '---\ntitle: done\ntype: article\nsource: https://example.com/done\nharvest_status: partial\nharvest_needs_attention: true\n---\n%s\n' "$filler" > "$sweepv/Clippings/done.md"
+cp "$sweepv/Clippings/done.md" "$tmp/done.orig"
+for stale in "$sweepv/Clippings/.harvest-ab12cd_9.tmp" "$sweepv/Clippings/sub/.harvest-zz00yy11.tmp"; do printf 'half a clip' > "$stale"; done
+for keep in "$sweepv/Clippings/.harvest-short.tmp" "$sweepv/Clippings/.harvest-ab12cd_9.tmp.md" "$sweepv/Clippings/notes.tmp" "$sweepv/Clippings/sub/.harvest-ab12cd_9.txt"; do printf 'not ours' > "$keep"; done
+"$PY" -I "$TOOL" "$sweepv" >/dev/null 2>&1
+assert "a stale temp file in the Clippings root is gone after a run" "no" "$([ -e "$sweepv/Clippings/.harvest-ab12cd_9.tmp" ] && echo yes || echo no)"
+assert "a stale temp file in a subfolder is gone after a run" "no" "$([ -e "$sweepv/Clippings/sub/.harvest-zz00yy11.tmp" ] && echo yes || echo no)"
+if cmp -s "$sweepv/Clippings/done.md" "$tmp/done.orig"; then ok "a real clip beside the stale temp file is byte-identical"; else bad "a real clip beside the stale temp file is byte-identical"; fi
+kept=""
+for keep in .harvest-short.tmp .harvest-ab12cd_9.tmp.md notes.tmp sub/.harvest-ab12cd_9.txt; do [ -e "$sweepv/Clippings/$keep" ] && kept="$kept $keep"; done
+cat > "$tmp/sweeprace.py" <<'PY'
+import importlib.util, os, sys, threading, time
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("h", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+clippings = Path(sys.argv[2]) / "Clippings"
+clippings.mkdir(parents=True, exist_ok=True)
+clip = clippings / "live.md"
+clip.write_text("old\n", encoding="utf-8")
+at_replace = threading.Event()
+real_replace = os.replace
+def slow_replace(a, b):
+    at_replace.set()
+    time.sleep(1.5)
+    real_replace(a, b)
+os.replace = slow_replace
+def sweeper():
+    at_replace.wait(10)
+    m._sweep_stale_tmp(clippings)
+t = threading.Thread(target=sweeper); t.start()
+try:
+    with m._clip_lock(clip):
+        m._atomic_write(clip, "new\n")
+    print("WRITE ok")
+except Exception as e:
+    print("WRITE", type(e).__name__)
+t.join()
+print("CLIP", clip.read_text(encoding="utf-8").strip())
+PY
+sr="$("$PY" -I "$tmp/sweeprace.py" "$TOOL" "$tmp/sweeprace-vault" 2>&1)"
+assert "a sweep that starts while a writer holds the lock waits: the write still lands" "WRITE ok" "$(printf '%s\n' "$sr" | sed -n 1p)"
+assert "a sweep that starts while a writer holds the lock leaves the new clip in place" "CLIP new" "$(printf '%s\n' "$sr" | sed -n 2p)"
+assert "a file that does not match the helper's prefix, length and suffix exactly is left alone" " .harvest-short.tmp .harvest-ab12cd_9.tmp.md notes.tmp sub/.harvest-ab12cd_9.txt" "$kept"
+
 echo "---"
 echo "harvest-second-opinion: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
