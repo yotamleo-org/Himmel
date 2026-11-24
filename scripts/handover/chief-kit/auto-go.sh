@@ -275,9 +275,6 @@ fi
 add_check 2 pass
 
 # --- 3. ready-go.sh: the output the chief reads by hand ------------------------------------------------
-# The completion contract comes from the brief, which the PR body's completes-ticket line may only narrow from yes to no, and
-# it drives both the checks and the merge line: --jira-transition present exactly when the contract is yes. Anything but a
-# `Completes ticket: yes` line (no, no line, a read error) is contract no, so a partial merge records its remainder first.
 JT=""; CONTRACT=no
 BRIEF_YES_RC=0
 grep -qE '^> \*\*Completes ticket:\*\* yes([^A-Za-z0-9_-]|$)' "$WORKER_DOC" || BRIEF_YES_RC=$?
