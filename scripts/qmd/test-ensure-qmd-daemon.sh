@@ -1254,6 +1254,12 @@ set_show ActiveEnterTimestampMonotonic "$C" 9000000
 run_boot --boot-order-check
 [ "$rc" -eq 1 ] || fail "(z13e) order not declared: expected rc 1, got $rc ($out)"
 case "$out" in *"does not order before $C"*) ;; *) fail "(z13e) order not declared: no refusal line ($out)" ;; esac
+set_show Before "$U" "$C"
+set_show ActiveEnterTimestampMonotonic "$U" 5000000
+rm -f "$state/show-ActiveEnterTimestampMonotonic-$C"
+run_boot --boot-order-check
+[ "$rc" -eq 1 ] || fail "(z13f) unreadable chief start time: expected rc 1, got $rc ($out)"
+case "$out" in *"cannot read the start time of $C"*) ;; *) fail "(z13f) unreadable chief start time: no refusal line ($out)" ;; esac
 echo "ok (z13): --boot-order-check proves qmd started before the chief launcher, and fails on the other orders"
 
 echo "PASS: all ensure-qmd-daemon cases"

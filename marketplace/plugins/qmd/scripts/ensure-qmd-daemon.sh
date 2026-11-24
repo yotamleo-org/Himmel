@@ -129,8 +129,8 @@ install_boot_unit() {
 boot_show() { "$QMD_SYSTEMCTL" --user show -p "$1" --value "$2" 2>/dev/null; }
 boot_mono() {
   local t
-  t="$(boot_show ActiveEnterTimestampMonotonic "$1")"
-  case "$t" in ''|*[!0-9]*) t=0 ;; esac
+  t="$(boot_show ActiveEnterTimestampMonotonic "$1")" || return 1
+  case "$t" in ''|*[!0-9]*) return 1 ;; esac
   echo "$((10#$t))"
 }
 
@@ -141,8 +141,8 @@ boot_order_check() {
     *" $boot_before "*) ;;
     *) echo "boot-order: $boot_unit does not order before $boot_before (Before=${before:-none}); run --install-boot-unit"; return 1 ;;
   esac
-  q="$(boot_mono "$boot_unit")"
-  c="$(boot_mono "$boot_before")"
+  q="$(boot_mono "$boot_unit")" || { echo "boot-order: cannot read the start time of $boot_unit"; return 1; }
+  c="$(boot_mono "$boot_before")" || { echo "boot-order: cannot read the start time of $boot_before"; return 1; }
   if [ "$q" -eq 0 ]; then
     echo "boot-order: $boot_unit did not start this boot"
     return 1
