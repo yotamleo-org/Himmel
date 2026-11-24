@@ -2885,7 +2885,7 @@ check_ticket_comments() {
     fi
     key=""
     lib="$(cd "$SELF_DIR/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir leaves the key unread, reported just below
-    if [ -n "$title" ] && printf '%s' "$title" | grep -Eq '[A-Za-z][A-Za-z0-9]*-[0-9]+' && [ -f "$lib/ticket-status.sh" ]; then
+    if [ -n "$title" ] && grep -Eq '[A-Za-z][A-Za-z0-9]*-[0-9]+' <<< "$title" && [ -f "$lib/ticket-status.sh" ]; then
         key=$(
             # shellcheck source=/dev/null
             . "$lib/ticket-status.sh" 2>/dev/null  # swallow-ok: declare -F on the next line decides
@@ -2899,7 +2899,9 @@ check_ticket_comments() {
     fi
     root=$(. "$lib/handover-path.sh" 2>/dev/null && handover_root 2>/dev/null) || root=""  # swallow-ok: no handover root reads as no doc, just below
     docs=""
-    [ -z "$root" ] || docs=$(find "$root" -maxdepth 4 -type f -name "${key}-N*.md" -not -path '*/specs/*' 2>/dev/null | sort)  # swallow-ok: an unreadable root reads as no doc, just below
+    if [ -n "$root" ]; then
+        docs=$(find "$root" -maxdepth 4 -type f -name "${key}-N*.md" -not -path '*/specs/*' 2>/dev/null | sort)  # gnu-ok: BSD find takes -maxdepth too
+    fi
     if [ -z "$docs" ]; then
         echo "[WARN] 21. ticket comments of $key not checked: no worker handover doc named $key-N*.md under ${root:-<no handover root>}"
         return 0
