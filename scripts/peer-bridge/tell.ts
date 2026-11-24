@@ -1,9 +1,4 @@
 // tell.ts <peer> --kind status|info --text '...'   |   tell.ts <peer> --status <draft>
-// A station Claude session (the chief) queues a one-line draft for a configured
-// peer. Nothing leaves until the operator approves the draft with a signed tap on
-// Telegram; the poller re-checks everything and is the authority. Refused: a desk,
-// a session that read peer text, a session whose transcript names a salus or PHI
-// path, a stale poller or operator bot. Every output line is fixed vocabulary.
 // Exit: 0 drafted or a status line, 2 refused (names the rule), 3 refused before
 // any check of the text, 4 queued but unconfirmed: do not resend.
 import fs from "node:fs";
