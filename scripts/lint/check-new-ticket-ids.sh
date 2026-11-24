@@ -59,8 +59,6 @@ git rev-parse -q --verify "$base^{commit}" >/dev/null || die "cannot read the ba
 
 git -c core.quotePath=false diff "$@" --name-status --find-renames --diff-filter=ACMRT > "$W/status" || die "git diff failed"
 git -c core.quotePath=false diff "$@" -U0 --text --no-color --no-ext-diff --find-renames --diff-filter=ACMRT > "$W/diff" || die "git diff failed"
-git -c core.quotePath=false ls-files --eol 2>/dev/null | awk -F'\t' 'index($1, "i/-text") == 1 { print $2 }' > "$W/bin" || die "git ls-files failed"
-
 grep -q "$(printf '\t')\"" "$W/status"
 case $? in
     0) die "git quotes a changed path (a double quote, backslash or control character in its name)" ;;
@@ -68,8 +66,33 @@ case $? in
     *) die "grep failed on the changed paths" ;;
 esac
 
+tipspec=":"
+[ "$mode" = "range" ] && tipspec="$tip:"
+awk -F'\t' '{ print $NF }' "$W/status" > "$W/touched" || die "awk failed"
+: > "$W/bin"
+while IFS= read -r p; do
+    git show "$tipspec$p" > "$W/blob" 2>/dev/null || die "cannot read $p at the tip"
+    all="$(head -c 8000 "$W/blob" | wc -c)"
+    txt="$(head -c 8000 "$W/blob" | tr -d '\000' | wc -c)"
+    [ "$all" = "$txt" ] || printf '%s\n' "$p" >> "$W/bin"
+done < "$W/touched"
+
 awk -F'\t' -v keyre="$KEY_RE" '
-    ($1 ~ /^[ACR]/) && ($NF ~ keyre) && !(($1 ~ /^[CR]/) && ($2 ~ keyre)) { printf "%s: ticket id in the file name\n", $NF }
+    function keys_of(s, set,   r, m) {
+        r = s
+        while (match(r, keyre)) {
+            m = substr(r, RSTART, RLENGTH)
+            sub(/^[^A-Za-z0-9]/, "", m); sub(/[^0-9]$/, "", m)
+            set[m] = 1
+            r = substr(r, RSTART + RLENGTH)
+        }
+    }
+    $1 ~ /^[ACR]/ {
+        split("", nk); split("", ok)
+        keys_of($NF, nk)
+        if ($1 ~ /^[CR]/) keys_of($2, ok)
+        for (k in nk) if (!(k in ok)) { printf "%s: ticket id in the file name\n", $NF; break }
+    }
 ' "$W/status" > "$W/names" || die "awk failed"
 
 awk -v keyre="$KEY_RE" -v binlist="$W/bin" '

@@ -91,6 +91,11 @@ printf 'plain\n' > "$R/docs/pr-$KEY.json"; stage
 if [ "$RC" -eq 1 ] && has "docs/pr-$KEY.json: ticket id in the file name"; then pass "file name key refused"; else fail "file name -> rc=$RC: $OUT"; fi
 mkrepo
 git -C "$R" mv docs/a.md "docs/a-$KEY.md"; stage; want "renaming to a key name refused" 1
+mkrepo
+git -C "$R" mv docs/a.md "docs/a-$KEY.md"; git -C "$R" commit -q -m "name with key"
+git -C "$R" mv "docs/a-$KEY.md" "docs/b-$KEY.md"; stage; want "renaming and keeping the same key passes" 0
+git -C "$R" commit -q -m "same key"
+git -C "$R" mv "docs/b-$KEY.md" "docs/b-$KEY2.md"; stage; want "renaming to a different key refused" 1
 
 echo "== 7. a line that starts like a diff header is still judged as content =="
 mkrepo
@@ -120,6 +125,19 @@ git -C "$R" commit -q -am "clean"
 tip_clean="$(git -C "$R" rev-parse HEAD)"
 gate --range "$tip_clean" --tip HEAD; want "empty range passes" 0
 gate --range "$base" --tip "$base"; want "base to itself passes" 0
+mkrepo
+base="$(git -C "$R" rev-parse HEAD)"
+printf 'z %s\n' "$KEY" >> "$R/docs/a.md"
+git -C "$R" commit -q -am "text with key"
+text_tip="$(git -C "$R" rev-parse HEAD)"
+printf '\000\001binary now\n' > "$R/docs/a.md"
+git -C "$R" commit -q -am "now binary"
+gate --range "$base" --tip "$text_tip"; want "a file binary only in a later commit is judged as text at the tip" 1
+git -C "$R" checkout -q -b other "$base"
+printf '\000\001 %s\n' "$KEY" > "$R/docs/blob.bin"
+git -C "$R" add -A; git -C "$R" commit -q -m "binary with key"
+printf 'plain\n' > "$R/docs/blob.bin"
+gate --range "$base" --tip other; want "binary at the tip is skipped whatever the index holds" 0
 
 echo "== 11. cannot evaluate is exit 2, never a pass =="
 mkrepo
