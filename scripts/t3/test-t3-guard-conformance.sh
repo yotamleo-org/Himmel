@@ -17,7 +17,9 @@ export HOME="$TMP/home"
 export RUN_HOOK_CHAIN_RUN_LOG="$TMP/hook-runs.jsonl"
 export RUN_HOOK_CHAIN_SKIP_LOG="$TMP/hook-skips.jsonl"
 export HIMMEL_ANTIGRAVITY_PROJECT_DIR="$REPO"
-mkdir -p "$HOME/.himmel" "$TMP/bin"
+export T3CODE_HOME="$TMP/t3home"
+mkdir -p "$HOME/.himmel" "$T3CODE_HOME/userdata" "$TMP/bin"
+printf '{"providerInstances":{"claudeBypass":{"driver":"claudeAgent","environment":[{"name":"AGENTS_MD_OK","value":"1"}]}}}\n' > "$T3CODE_HOME/userdata/settings.json"
 
 cat > "$TMP/bin/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -111,26 +113,26 @@ run_antigravity() {
     fi
 }
 
-ARGS_OFF_ALLOW='{"title":"Work","message":"go","modelSelection":{"instanceId":"antigravity","model":"gemini-4-neon"}}'
+ARGS_BYPASS='{"title":"Work","message":"go","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}'
 ARGS_CHIEF_TITLE='{"action":"rename","title":"ops-chief"}'
 ARGS_UNWATCH_OPEN='{"url":"https://github.com/o/r/pull/123"}'
 ARGS_BENIGN='{"toolSummary":"Read env"}'
 ARGS_SEND='{"threadId":"thread-1","message":"hello"}'
 
 echo "== T3 guard conformance: claude =="
-run_claude guard-t3-thread-tools.sh t3_thread_launch "$ARGS_OFF_ALLOW" deny "off-allowlist instance denied"
+run_claude guard-t3-thread-tools.sh t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied"
 run_claude guard-t3-thread-tools.sh t3_thread_update "$ARGS_CHIEF_TITLE" deny "-chief title denied"
 run_claude block-t3code-unwatch-open-pr.sh unwatch_pull_request "$ARGS_UNWATCH_OPEN" deny "unwatch OPEN PR denied"
 run_claude guard-t3-thread-tools.sh t3_environment_read "$ARGS_BENIGN" allow "benign T3 read allowed"
 
 echo "== T3 guard conformance: codex =="
-run_codex t3_thread_launch "$ARGS_OFF_ALLOW" deny "off-allowlist instance denied"
+run_codex t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied"
 run_codex t3_thread_update "$ARGS_CHIEF_TITLE" deny "-chief title denied"
 run_codex unwatch_pull_request "$ARGS_UNWATCH_OPEN" deny "unwatch OPEN PR denied"
 run_codex t3_environment_read "$ARGS_BENIGN" allow "benign T3 read allowed"
 
 echo "== T3 guard conformance: antigravity =="
-run_antigravity t3_thread_launch "$ARGS_OFF_ALLOW" deny "off-allowlist instance denied"
+run_antigravity t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied"
 run_antigravity t3_thread_update "$ARGS_CHIEF_TITLE" deny "-chief title denied"
 run_antigravity unwatch_pull_request "$ARGS_UNWATCH_OPEN" deny "unwatch OPEN PR denied"
 run_antigravity t3_environment_read "$ARGS_BENIGN" allow "benign T3 read allowed"

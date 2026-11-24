@@ -427,7 +427,8 @@ chain_deny "Codex PowerShell chain denies a live settings write (block-edit-live
 
 TMP_T3_STUB="$(mktemp -d "${TMPDIR:-/tmp}/codex-parity-t3.XXXXXX")" || exit 1
 trap 'rm -rf "$TMP_T3_STUB"' EXIT
-mkdir -p "$TMP_T3_STUB/home/.himmel" "$TMP_T3_STUB/bin"
+mkdir -p "$TMP_T3_STUB/home/.himmel" "$TMP_T3_STUB/home/.t3/userdata" "$TMP_T3_STUB/bin"
+printf '{"providerInstances":{"claudeBypass":{"driver":"claudeAgent","environment":[{"name":"AGENTS_MD_OK","value":"1"}]}}}\n' > "$TMP_T3_STUB/home/.t3/userdata/settings.json"
 cat > "$TMP_T3_STUB/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '{"state":"OPEN","mergeStateStatus":"BLOCKED","reviewDecision":""}\n'
@@ -440,13 +441,13 @@ mcp_chain_deny() {
     | sed -n 's/.*run-hook\.sh --sandbox \([^ ]*\).*/\1/p')"
   payload="$(jq -cn --arg t "$tool" --argjson a "$args" --arg d "$PWD" \
     '{hook_event_name:"PreToolUse",tool_name:$t,tool_input:$a,cwd:$d}')"
-  out="$(printf '%s' "$payload" | HOME="$TMP_T3_STUB/home" PATH="$TMP_T3_STUB/bin:$PATH" CLAUDE_PROJECT_DIR="$PWD" bash .codex/codex-hook-adapter.sh "$chain" 2>&1 || true)"
+  out="$(printf '%s' "$payload" | HOME="$TMP_T3_STUB/home" T3CODE_HOME="$TMP_T3_STUB/home/.t3" PATH="$TMP_T3_STUB/bin:$PATH" CLAUDE_PROJECT_DIR="$PWD" bash .codex/codex-hook-adapter.sh "$chain" 2>&1 || true)"
   case "$out" in
     *'"permissionDecision":"deny"'*) echo "  ok   $label";;
     *) echo "  FAIL $label: no deny ($out)"; fails=$((fails + 1));;
   esac
 }
-mcp_chain_deny "Codex MCP chain denies off-allowlist T3 instance (guard-t3-thread-tools)" "mcp__t3-code__t3_thread_launch" '{"title":"Work","modelSelection":{"instanceId":"antigravity","model":"gemini-4-neon"}}'
+mcp_chain_deny "Codex MCP chain denies a bypass T3 instance (guard-t3-thread-tools)" "mcp__t3-code__t3_thread_launch" '{"title":"Work","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}'
 mcp_chain_deny "Codex MCP chain denies -chief T3 thread title (guard-t3-thread-tools)" "mcp__t3-code__t3_thread_update" '{"action":"rename","title":"ops-chief"}'
 mcp_chain_deny "Codex MCP chain denies unwatch on OPEN PR (block-t3code-unwatch-open-pr)" "mcp__t3-code__unwatch_pull_request" '{"url":"https://github.com/o/r/pull/123"}'
 
