@@ -188,6 +188,24 @@ does, the command waits for the operator.
   be asked again after the restart. The daemon does one thing at a time, so a
   change that lands while it waits on a go is found when that wait ends: the
   hold and its cards can come up to one ask wait (6 h) after the change.
+- **A go code is asked only for a launch that can start.** Before it sends the
+  ask, the daemon runs the launcher's own `headed-arm-worker.sh --dry-run` with
+  the request's brief, model, chief and fleet manifest, in the launch's
+  environment: the same admission a real launch makes (fleet manifest rows, a
+  paused fleet, the fleet cap, the bank). Nothing is claimed or started. On a
+  refusal it logs `REFUSED-PREFLIGHT <brief> rc=<n> <reason>`, appends the
+  same line to the chief's console inbox
+  (`<bridge root>/consoles/<chief>.md`, when that file exists), sends the
+  operator nothing, and the request ends `<name>.req.refused`; the chief fixes
+  the cause and files a new request. After the go, the daemon runs the dry-run
+  again, because the fleet can fill while the ask waits. A refusal there does
+  not spend the go: the log says `REFUSED-PREFLIGHT after go <brief> ...`, the
+  chief is told, the request stays `<name>.req.pending` with the go code kept
+  in `<name>.req.held`, and no `GRANT` line is written. When the chief has fixed
+  the cause it touches `<name>.req.pending`; the daemon then logs `RETRY`,
+  runs the dry-run again and, if it passes, launches on the same go code
+  without a second ask. A passing dry-run changes nothing in the ask and the
+  grant, and the request still needs the operator's go code.
 - **Failures are reported.** A launcher that exits non-zero within the settle
   window logs `LAUNCH-FAILED <brief> rc=<n>`, and the request ends `.failed`.
 - **It is bounded.** `--until <YYYY-MM-DD>` is required and may be at most 7

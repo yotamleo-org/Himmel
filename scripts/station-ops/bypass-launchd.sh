@@ -30,6 +30,10 @@
 # The operator id is allowFrom[0] of the bridge access.json (TELEGRAM_ACCESS_PATH); the inbound journal is
 # BRIDGE_ROOT/inbound.jsonl. Test seams: BYPASSD_SEND (a program given the message), BYPASSD_LAUNCHER (run in
 # place of headed-arm-worker.sh with its arguments), BYPASSD_POLL, BYPASSD_SETTLE.
+# Before the ask, and again after the go, it runs the launcher's own --dry-run with the request's brief, model, chief and
+# fleet manifest. A refusal before the ask logs REFUSED-PREFLIGHT <base> rc=<n> <reason>, tells the chief's console inbox and
+# sends the operator nothing (the request ends .refused). A refusal after the go keeps the go: the request stays
+# <name>.req.pending beside <name>.req.held, the chief is told, and a touch of <name>.req.pending tries it again.
 # --check runs the start checks (not the Claude-session refusal, the lock, --until or the operator id) and, with
 # --request, the request check the loop runs. It prints accepted or refused: <reason>, then daemon: none, daemon: live
 # pid=<p> or daemon: live pid=<p>, holding (<cause>). It takes no lock and sends nothing. Exit 0 accepted, 1 refused,
@@ -112,6 +116,27 @@ send() {
 field() { sed -n "s/^$1=//p" "$2" | head -n 1; }
 refuse() { mv "$1" "$1.refused"; log "REFUSED $2 $1"; send bypass-result "bypass-launchd refused $(basename "$1"): $2"; }
 live() { [ ! -e "$Q/stop" ] && [ "$(date +%s)" -lt "$EXPIRES" ]; }
+launch_env() {
+    env "${strip[@]}" -u WORKER_SESSION_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL -u WORKER_SESSION_API_LANE -u WORKER_SESSION_API_ACCOUNT \
+        -u HEADED_ARM_LAUNCHER_ENV -u HEADED_ARM_LAUNCHER_ENV_LINES "${envs[@]}" "$@"
+}
+tell_chief() {
+    local f="${INBOUND%/*}/consoles/$1.md"
+    [ -f "$f" ] || return 0
+    printf -- '- %s %s\n' "$(date +%H:%M)" "$2" >>"$f" 2>/dev/null
+    return 0
+}
+preflight() {
+    local out rc line fl=()
+    mkdir -p "$W"
+    [ -f "$BUCKET/$chief.fleet.json" ] && fl=(--fleet "$BUCKET/$chief.fleet.json")
+    out=$(launch_env bash "$LAUNCHER" --dry-run --profile worker-impl ${fl[@]+"${fl[@]}"} --chief "$chief" "$base" "$brief" "$W/sig-$base" "$EXPIRES" "$W/$base.log" "$model" 2>&1)
+    rc=$?
+    [ "$rc" -ne 0 ] || return 0
+    line=$(printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | tail -n 1 | LC_ALL=C tr -d '\000-\037' | cut -c1-200)
+    PF_REASON="rc=$rc ${line:-refused}"
+    return 1
+}
 
 check_request() {
     local f row in_reg text tier src why="" fl=()
@@ -254,15 +279,69 @@ trap release_lock EXIT
 rm -f "$Q/.hold"
 log "start pid=$$ until=$until head=${HEAD_SHA:0:12} self=${L_SELF:0:12} registry=${L_REG:0:12} tiers=${L_TIERS:0:12} grantable=$grantable"
 
+after_go() {
+    local req=$1 code=$2 sha=$3 fleet=() lp lrc
+    if ! live || [ -L "$brief" ] || [ "$(sha256_of "$brief")" != "$sha" ]; then
+        mv "$req.pending" "$req.refused"; log "REFUSED after go $base (stop, expiry, or brief changed since the ask)"
+        send bypass-result "bypass launch $base: refused after your go, the brief changed or the queue stopped. Nothing ran."; return 0
+    fi
+    if stale_now; then
+        mv "$req.pending" "$req"; log "STALE after go $base: go not used, re-queued"
+        send bypass-result "bypass launch $base: your go was not used, the daemon runs older code than its checkout ($STALE_CAUSE). Nothing ran; the request waits for a restart and will be asked again." # t13b-ok: operator-facing text naming the existing bypass daemon, no process is started
+        hold; return 3
+    fi
+    if ! preflight; then
+        printf 'go=%s\nsha=%s\n' "$code" "$sha" >"$req.held"
+        log "REFUSED-PREFLIGHT after go $base $PF_REASON (go kept, touch $req.pending to retry)"
+        tell_chief "$chief" "REFUSED-PREFLIGHT after go $base $PF_REASON — the operator's go is kept, nothing ran; fix the cause, then touch $req.pending to retry"
+        return 0
+    fi
+    printf 'granted_at=%s\ngo=%s\nsha=%s\n' "$(date -u +%FT%TZ)" "$code" "$sha" >>"$req.pending"
+    log "GRANT $base env=${envs[*]} decision=${decision:-none} go=$code"
+    mkdir -p "$W"
+    [ -f "$BUCKET/$chief.fleet.json" ] && bash "$KIT/fleet-manifest.sh" add "$BUCKET/$chief.fleet.json" "$brief" --lane native --pending >>"$LOG" 2>&1 \
+        && fleet=(--fleet "$BUCKET/$chief.fleet.json")
+    launch_env "${DETACH[@]}" bash "$LAUNCHER" \
+        --profile worker-impl ${fleet[@]+"${fleet[@]}"} --chief "$chief" "$base" "$brief" "$W/sig-$base" "$EXPIRES" "$W/$base.log" "$model" \
+        >"$W/$base.launch.out" 2>&1 &
+    lp=$!; sleep "${BYPASSD_SETTLE:-12}"; touch "$W/sig-$base"
+    if ! kill -0 "$lp" 2>/dev/null; then
+        wait "$lp"; lrc=$?
+        if [ "$lrc" -ne 0 ]; then
+            mv "$req.pending" "$req.failed"; log "LAUNCH-FAILED $base rc=$lrc"
+            send bypass-failed "bypass launch $base: FAILED (rc $lrc), see $W/$base.launch.out"; return 0
+        fi
+    fi
+    mv "$req.pending" "$req.done"; log "LAUNCHED $base"
+    send bypass-result "bypass launch $base: launched with ${envs[*]} (approved by your go code). Launch log $W/$base.launch.out"
+    return 0
+}
+
 while :; do
     [ -e "$Q/stop" ] && { log "stop file"; exit 0; }
     [ "$(date +%s)" -ge "$EXPIRES" ] && { log "expired $until"; exit 0; }
     [ -n "$HOLDING" ] || ! stale_now || hold
     if [ -n "$HOLDING" ]; then tell_held; sleep "$POLL"; continue; fi
+    for held in "$Q"/*.req.held; do
+        [ -e "$held" ] || continue
+        req=${held%.held}
+        [ -f "$req.pending" ] || { rm -f "$held"; continue; }
+        [ "$req.pending" -nt "$held" ] || continue
+        code=$(field go "$held"); sha=$(field sha "$held"); rm -f "$held"
+        check_request "$req.pending" || { mv "$req.pending" "$req.refused"; log "REFUSED $REASON $req"; continue; }
+        log "RETRY $base: the request was touched since its go was held"
+        after_go "$req" "$code" "$sha" || [ $? -ne 3 ] || break
+    done
+    [ -z "$HOLDING" ] || continue
     for req in "$Q"/*.req; do
         [ -e "$req" ] || continue
         if stale_now; then hold; break; fi
         check_request "$req" || { refuse "$req" "$REASON"; continue; }
+        if ! preflight; then
+            mv "$req" "$req.refused"; log "REFUSED-PREFLIGHT $base $PF_REASON"
+            tell_chief "$chief" "REFUSED-PREFLIGHT $base $PF_REASON — the operator was not asked; fix the cause and file a new request"
+            continue
+        fi
         code=$(LC_ALL=C tr -dc 'A-Z2-9' </dev/urandom | head -c 6)
         off=$(wc -c 2>/dev/null <"$INBOUND") || off=0; off=${off//[[:space:]]/}
         sha=$(sha256_of "$brief"); [ ${#sha} -eq 64 ] || { refuse "$req" "brief unreadable"; continue; }
@@ -286,35 +365,7 @@ Expires 6 h · brief sha ${sha:0:12}"
         if [ "$verdict" != go ]; then
             mv "$req.pending" "$req.$verdict"; log "$verdict $base"; send bypass-result "bypass launch $base: $verdict, nothing ran."; continue
         fi
-        if ! live || [ -L "$brief" ] || [ "$(sha256_of "$brief")" != "$sha" ]; then
-            mv "$req.pending" "$req.refused"; log "REFUSED after go $base (stop, expiry, or brief changed since the ask)"
-            send bypass-result "bypass launch $base: refused after your go, the brief changed or the queue stopped. Nothing ran."; continue
-        fi
-        if stale_now; then
-            mv "$req.pending" "$req"; log "STALE after go $base: go not used, re-queued"
-            send bypass-result "bypass launch $base: your go was not used, the daemon runs older code than its checkout ($STALE_CAUSE). Nothing ran; the request waits for a restart and will be asked again." # t13b-ok: operator-facing text naming the existing bypass daemon, no process is started
-            hold; break
-        fi
-        printf 'granted_at=%s\ngo=%s\nsha=%s\n' "$(date -u +%FT%TZ)" "$code" "$sha" >>"$req.pending"
-        log "GRANT $base env=${envs[*]} decision=${decision:-none} go=$code"
-        mkdir -p "$W"
-        fleet=()
-        [ -f "$BUCKET/$chief.fleet.json" ] && bash "$KIT/fleet-manifest.sh" add "$BUCKET/$chief.fleet.json" "$brief" --lane native --pending >>"$LOG" 2>&1 \
-            && fleet=(--fleet "$BUCKET/$chief.fleet.json")
-        env "${strip[@]}" -u WORKER_SESSION_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL -u WORKER_SESSION_API_LANE -u WORKER_SESSION_API_ACCOUNT \
-            -u HEADED_ARM_LAUNCHER_ENV -u HEADED_ARM_LAUNCHER_ENV_LINES "${envs[@]}" "${DETACH[@]}" bash "$LAUNCHER" \
-            --profile worker-impl ${fleet[@]+"${fleet[@]}"} --chief "$chief" "$base" "$brief" "$W/sig-$base" "$EXPIRES" "$W/$base.log" "$model" \
-            >"$W/$base.launch.out" 2>&1 &
-        lp=$!; sleep "${BYPASSD_SETTLE:-12}"; touch "$W/sig-$base"
-        if ! kill -0 "$lp" 2>/dev/null; then
-            wait "$lp"; lrc=$?
-            if [ "$lrc" -ne 0 ]; then
-                mv "$req.pending" "$req.failed"; log "LAUNCH-FAILED $base rc=$lrc"
-                send bypass-failed "bypass launch $base: FAILED (rc $lrc), see $W/$base.launch.out"; continue
-            fi
-        fi
-        mv "$req.pending" "$req.done"; log "LAUNCHED $base"
-        send bypass-result "bypass launch $base: launched with ${envs[*]} (approved by your go code). Launch log $W/$base.launch.out"
+        after_go "$req" "$code" "$sha" || [ $? -ne 3 ] || break
     done
     sleep "$POLL"
 done
