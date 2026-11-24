@@ -44,6 +44,8 @@
 #      marker nor a documented non-status bullet - nothing written
 #   5  write failed (e.g. disk full) after the heading/newline checks passed
 #   7  bucket-gitleaks.sh finds a secret in the bullet - nothing written
+#   8  a PROOF / LIVE-PROOF bullet is not `<KEY> <row-id> PASS|FAIL <date> <artifact>` - nothing written
+#   9  its PROOF line could not be put on the ticket - nothing written
 #
 # Platform guard: POSIX bash 3.2+, no GNU-only flags.
 set -u
@@ -165,6 +167,23 @@ if [ -n "$scan" ]; then
         exit 7
     fi
 fi
+
+proof_re='^(LIVE-)?PROOF ([A-Za-z][A-Za-z0-9]*-[0-9]+) (o[1-9][0-9]*) (PASS|FAIL) ([0-9]{4}-[0-9]{2}-[0-9]{2}) ([A-Za-z0-9._/:#@=+,%~-]+)( .*)?$'
+case "$lead" in
+    PROOF|LIVE-PROOF)
+        case "$TEXT" in
+            "PROOF VERDICT"*|"LIVE-PROOF VERDICT"*) ;;
+            *)
+                if ! [[ $TEXT =~ $proof_re ]]; then
+                    echo "append-results: a $lead bullet reads '$lead <KEY> <row-id> PASS|FAIL <YYYY-MM-DD> <artifact>' (row id o<n>, artifact one word: a path or doc:line) - refusing, nothing written" >&2
+                    exit 8
+                fi
+                if ! bash "$(dirname "${BASH_SOURCE[0]}")/proof-comment.sh" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}" "${BASH_REMATCH[5]}" "${BASH_REMATCH[6]}" >&2; then
+                    echo "append-results: the PROOF line did not reach ${BASH_REMATCH[2]} - nothing written; fix the ticket write and re-run" >&2
+                    exit 9
+                fi ;;
+        esac ;;
+esac
 
 # append under the lock every doc writer shares (worker-doc-lock.sh),
 # so a rewrite in flight (the launcher's session_ids:, inbox-send.sh,

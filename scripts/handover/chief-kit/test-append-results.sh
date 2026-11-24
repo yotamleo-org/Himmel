@@ -312,5 +312,41 @@ printf '# worker\n\nYour RETASK token is X-15.\n\n## Results (newest at the bott
 WORKER_SESSION_JIRA_STATUS=0 bash "$SCRIPT" "$d14b" "LIVE fixture" >/dev/null 2>&1
 check "14: with a Chief Rulings section after Results the bullet lands at its end, in doc order" "$(sed -n '9,10p' "$d14b" | sed 's/^- [0-9:]* //' | tr '\n' '|')" "ruling|LIVE fixture|"
 
+K1=HIMMEL-1; K2=HIMMEL-2
+JIRA15="$tmp/jira15"
+cat > "$JIRA15" <<'STUB'
+#!/bin/sh
+echo "$*" >> "$STUB_DIR/calls.log"
+case "$1" in
+    comment) [ -z "${STUB_FAIL:-}" ] || exit 1; printf '%s\n' "$3" >> "$STUB_DIR/comments.$2" ;;
+    comments) cat "$STUB_DIR/comments.$2" 2>/dev/null; exit 0 ;;
+esac
+STUB
+chmod +x "$JIRA15"
+export OWE_JIRA_CLI="$JIRA15" STUB_DIR="$tmp"
+d15="$tmp/HIMMEL-9-CH-fixture-2026-11-24-chief.md"
+printf '# chief\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n' > "$d15"
+rc=0; bash "$SCRIPT" "$d15" "PROOF HIMMEL-1 o87 PASS 2026-11-23 doc:706" >/dev/null 2>&1 || rc=$?
+check "15: a PROOF bullet appends rc 0" "$rc" 0
+check "15: the bullet is in the doc" "$(grep -c " PROOF $K1 o87 PASS 2026-11-23 doc:706\$" "$d15")" 1
+check "15: the ticket carries the PROOF line keyed by the row id" "$(cat "$tmp/comments.$K1" 2>/dev/null)" "PROOF o87 PASS 2026-11-23 doc:706"
+rc=0; bash "$SCRIPT" "$d15" "LIVE-PROOF HIMMEL-2 o3 FAIL 2026-11-23 specs/audits/slice-a.md capacity none, link confirmed" >/dev/null 2>&1 || rc=$?
+check "15: a LIVE-PROOF bullet with a trailing note appends rc 0" "$rc" 0
+check "15: the LIVE-PROOF line is on its own ticket without the note" "$(cat "$tmp/comments.$K2" 2>/dev/null)" "PROOF o3 FAIL 2026-11-23 specs/audits/slice-a.md"
+rm -f "$tmp/calls.log"; before15="$(cat "$d15")"
+rc=0; bash "$SCRIPT" "$d15" "PROOF slice A passed, link confirmed" >/dev/null 2>&1 || rc=$?
+check "15: a PROOF bullet with no key and row id is refused rc 8" "$rc" 8
+check "15: a refused PROOF bullet leaves the doc unchanged" "$(cat "$d15")" "$before15"
+check "15: a refused PROOF bullet calls nothing" "$(cat "$tmp/calls.log" 2>/dev/null)" ""
+rc=0; STUB_FAIL=1 bash "$SCRIPT" "$d15" "PROOF HIMMEL-1 o88 PASS 2026-11-23 doc:729" >/dev/null 2>&1 || rc=$?
+check "15: a ticket that refuses the comment fails rc 9" "$rc" 9
+check "15: a failed mirror leaves the doc unchanged" "$(cat "$d15")" "$before15"
+rm -f "$tmp/calls.log"
+rc=0; bash "$SCRIPT" "$d15" "PROOF VERDICT CLOSE evidence=specs/audits/x.md" >/dev/null 2>&1 || rc=$?
+check "15: a PROOF VERDICT bullet is not a result line and appends" "$rc" 0
+rc=0; bash "$SCRIPT" "$d15" "MERGED PROOF in a free text" >/dev/null 2>&1 || rc=$?
+check "15: a bullet that does not lead with PROOF is not mirrored" "$(cat "$tmp/calls.log" 2>/dev/null)" ""
+unset OWE_JIRA_CLI STUB_DIR
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "$fails FAILED"; exit 1

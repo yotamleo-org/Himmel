@@ -6,6 +6,7 @@
 # Usage:
 #   owe.sh add   --bucket <dir> --chief <name> --kind ticket|proof|ruling|step --text <one line> [--key <KEY>]
 #   owe.sh close --bucket <dir> --id <oN> --key <ticket key | sha | decision id>
+#                [--proof-result PASS|FAIL --proof-artifact <path|doc:line> [--ticket <KEY>]]
 #   owe.sh list  --bucket <dir> [--all] [--json]
 # add also accepts --identity <full sha256> and --metadata <allowlisted JSON>,
 # or --metadata-stdin (one JSON value, at most 1 MiB, mutually exclusive).
@@ -18,9 +19,15 @@
 # `list` prints each open row as TAB-separated id, kind, epoch, key, chief, text (a tab or
 # newline in the text becomes a space); --all adds the closed rows, the key being the closing
 # one. OWE_NOW_EPOCH replaces the clock (tests).
+# A close of a proof row (kind proof, no action: a live proof the chief owes) needs --proof-result
+# and --proof-artifact, and writes the ticket comment `PROOF <row-id> PASS|FAIL <YYYY-MM-DD> <artifact>`
+# itself (proof-comment.sh, read back before the row closes); the ticket is --ticket, else the row's
+# key. A validate-proof row and a close with outcome metadata are the chief's decision path and need none;
+# any other row takes the flags too and then writes the same comment. OWE_JIRA_CLI replaces the Jira CLI.
 #
 # Exit codes: 0 done, 1 close of an unknown or already closed id, 2 usage or a refused value,
-# 3 the bucket directory is absent, 4 the ledger is unreadable, cannot be opened for append or cannot be flocked.
+# 3 the bucket directory is absent, 4 the ledger is unreadable, cannot be opened for append or cannot be flocked,
+# 5 a proof close whose ticket comment could not be written or read back (the row stays open).
 # Without flock (macOS) the ledger is locked by with_lock (scripts/lib/prim.sh) on <bucket>/owed.jsonl.lock,
 # removed on release; a lock left by a killed run makes owe.sh exit 1 with a with_lock message until removed.
 #
@@ -29,7 +36,7 @@ set -u
 
 usage() {
     echo "usage: owe.sh add --bucket <dir> --chief <name> --kind ticket|proof|ruling|step --text <text> [--key <KEY>] [--identity <sha256>] [--metadata <JSON> | --metadata-stdin]" >&2
-    echo "       owe.sh close --bucket <dir> --id <oN> --key <key|sha|decision id>" >&2
+    echo "       owe.sh close --bucket <dir> --id <oN> --key <key|sha|decision id> [--proof-result PASS|FAIL --proof-artifact <path|doc:line> [--ticket <KEY>]]" >&2
     echo "       owe.sh list --bucket <dir> [--all] [--json]" >&2
     exit 2
 }
@@ -39,6 +46,7 @@ OWE_ARGV=("$@")
 CMD="$1"; shift
 BUCKET=""; CHIEF=""; KIND=""; TEXT=""; KEY=""; ID=""; ALL=0; HAVE_TEXT=0; HAVE_KEY=0
 IDENTITY=""; METADATA='{}'; JSON=0; METADATA_STDIN=0; HAVE_METADATA=0
+PROOF_RESULT=""; PROOF_ARTIFACT=""; TICKET=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --bucket) [ "$#" -ge 2 ] || usage; BUCKET="$2"; shift 2 ;;
@@ -47,6 +55,9 @@ while [ "$#" -gt 0 ]; do
         --text) [ "$#" -ge 2 ] || usage; TEXT="$2"; HAVE_TEXT=1; shift 2 ;;
         --key) [ "$#" -ge 2 ] || usage; KEY="$2"; HAVE_KEY=1; shift 2 ;;
         --id) [ "$#" -ge 2 ] || usage; ID="$2"; shift 2 ;;
+        --proof-result) [ "$#" -ge 2 ] || usage; PROOF_RESULT="$2"; shift 2 ;;
+        --proof-artifact) [ "$#" -ge 2 ] || usage; PROOF_ARTIFACT="$2"; shift 2 ;;
+        --ticket) [ "$#" -ge 2 ] || usage; TICKET="$2"; shift 2 ;;
         --all) ALL=1; shift ;;
         --json) JSON=1; shift ;;
         --identity) [ "$#" -ge 2 ] || usage; IDENTITY="$2"; shift 2 ;;
@@ -207,6 +218,27 @@ case "$CMD" in
         ' >/dev/null 2>&1 || { echo 'owe: refused close metadata' >&2; exit 2; }
         [ -n "$ID" ] || usage
         case "$KEY" in ''|*[[:space:]]*|*$'\037'*) echo "owe: close needs --key (a ticket key, sha or decision id), one word" >&2; exit 2 ;; esac
+        prow=""
+        if [ -s "$F" ] && ledger_ok; then
+            prow="$(jq -rs --arg id "$ID" '([.[] | select(.op == "close") | .ref]) as $c
+                | [.[] | select(.op == "add" and .id == $id and ($c | index($id) | not))] | .[0] // empty
+                | [.kind, (.action // ""), (.key // "")] | join("\u001f")' "$F")" || prow=""
+        fi
+        if [ -n "$prow" ]; then
+            IFS=$'\037' read -r pkind pact pkey <<< "$prow"
+            needs=0
+            if [ "$pkind" = proof ] && [ -z "$pact" ] && ! printf '%s' "$METADATA" | jq -e 'has("outcome")' >/dev/null 2>&1; then needs=1; fi
+            if [ "$needs" -eq 1 ] || [ -n "$PROOF_RESULT$PROOF_ARTIFACT$TICKET" ]; then
+                if [ -z "$PROOF_RESULT" ] || [ -z "$PROOF_ARTIFACT" ]; then
+                    echo "owe: closing proof row $ID needs --proof-result PASS|FAIL and --proof-artifact <path|doc:line>; the close writes the ticket comment 'PROOF <row-id> PASS|FAIL <YYYY-MM-DD> <artifact>' itself" >&2
+                    exit 2
+                fi
+                ticket="${TICKET:-$pkey}"
+                [ -n "$ticket" ] || { echo "owe: proof row $ID has no ticket key; pass --ticket <KEY> to say where its PROOF line goes" >&2; exit 2; }
+                day="$(jq -nr --argjson e "$NOW" '$e | todate | .[0:10]')"
+                bash "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/proof-comment.sh" "$ticket" "$ID" "$PROOF_RESULT" "$day" "$PROOF_ARTIFACT" || exit "$?"
+            fi
+        fi
         [ ! -e "$F" ] || lock_ledger
         ledger_ok || { echo "owe: $F is unreadable" >&2; exit 4; }
         [ -s "$F" ] || { echo "owe: no open row '$ID'" >&2; exit 1; }
