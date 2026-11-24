@@ -1,15 +1,7 @@
 # himmel-bypass-launchd.service: systemd USER unit for the bypass launch daemon (scripts/station-ops/bypass-launchd.sh).
 # Written by `himmelctl bypass on` (scripts/station-ops/bypass-service.sh), which fills in the placeholders; re-run it rather than
 # editing the installed copy. Spec: docs/internals/bypass-launch-route.md, "Run it as a service".
-#
-# The daemon reads trust inputs from its environment (the operator id file, the inbound journal, HOME), and any process of the same user can
-# change the user manager's environment with `systemctl --user set-environment`. So the unit pins what the script reads, unsets the names bash
-# and the loader honour, and starts bash as `-p` (privileged mode ignores BASH_ENV, ENV, SHELLOPTS, BASHOPTS, CDPATH, GLOBIGNORE and imported
-# functions); the script refuses to run under the manager without -p and runs every child from an empty environment plus an allowlist.
-# PATH holds system directories only: a user directory first would let a planted git, jq or loginctl answer the checks.
-# NotifyAccess=all because the heartbeat is sent by systemd-notify, a child of the main process. The unit sets no privilege-lock flag on purpose: launched workers keep sudo.
-# KillMode=process so a restart never kills the workers the daemon launched (each is setsid-detached).
-# RestartPreventExitStatus=3 is "already running"; every other failure, a signal death and a watchdog timeout restart.
+# NotifyAccess=all because the heartbeat is sent by systemd-notify, a child of the main process.
 [Unit]
 Description=himmel bypass launch daemon (go-code route)
 After=network-online.target

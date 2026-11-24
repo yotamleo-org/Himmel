@@ -10,10 +10,7 @@
 #                                             himmel-update's hook: try-restart an enabled, running unit whose script changed
 #   bypass-service.sh render [--bucket <dir>] print the unit (or plist) with its placeholders filled
 #
-# on, off and restart refuse inside a Claude session (CLAUDECODE). status and restart-if-changed do not: restart-if-changed only ever
-# issues is-enabled, is-active, show and try-restart (macOS: print, kickstart -k); it never renders, writes the unit, the plist or the
-# record, never runs daemon-reload, enable, reset-failed, set-environment, link, edit or bootstrap, and never starts an inactive unit.
-# A Claude session can still start the unit with plain systemctl/launchctl calls (a separate follow-up ticket adds the Bash guard).
+# on, off and restart refuse inside a Claude session (CLAUDECODE). status and restart-if-changed do not.
 # Exit: 0 ok; 1 not ok (on: a hand-started daemon holds the bucket; status: not running or stale; restart-if-changed: failed); 2 refused or bad use.
 # Test seams: systemctl, loginctl, launchctl on PATH; HIMMELCTL_SYSTEMD_USER_UNIT_DIR; HOME; BYPASSD_SERVICE_OS; BYPASSD_CONFIRM_SECS.
 set -uo pipefail

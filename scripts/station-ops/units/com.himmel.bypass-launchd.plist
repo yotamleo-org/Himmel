@@ -1,10 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- LaunchAgent for the bypass launch daemon (scripts/station-ops/bypass-launchd.sh). Written by `himmelctl bypass on`
-     (scripts/station-ops/bypass-service.sh), which fills in the placeholders; re-run it rather than editing the installed copy.
-     bash starts with -p so BASH_ENV, SHELLOPTS and BASHOPTS from the launchd environment are ignored; PATH holds system directories only;
-     the script takes HOME from the passwd entry and refuses a differing one. launchd has no watchdog: the daemon runs its own watcher.
-     Not run on a Mac by the change that added it. -->
+     (scripts/station-ops/bypass-service.sh), which fills in the placeholders; re-run it rather than editing the installed copy. -->
 <plist version="1.0">
 <dict>
     <key>Label</key>

@@ -10,8 +10,7 @@
 # (on Linux, put setsid before nohup.) Or `himmelctl bypass on` installs the service unit (systemd user unit, macOS LaunchAgent)
 # that starts it as /bin/bash -p ... --until forever; docs/internals/bypass-launch-route.md, "Run it as a service".
 # It stops at --until 00:00Z (at most 7 days ahead) or when <bucket>/bypass-queue/stop exists. `--until forever` is accepted only
-# under the unit: BYPASSD_SERVICE=1 and the service manager's own main process is this pid (systemctl --user show -p MainPID, or
-# launchctl print). A Claude session can still start the unit with plain systemctl/launchctl calls (a separate follow-up ticket adds the Bash guard).
+# under the unit (docs/internals/bypass-launch-route.md).
 #
 # A chief requests a launch by writing <bucket>/bypass-queue/<anything>.req holding these lines:
 #   brief=<absolute brief path directly in the bucket>   model=<allowlisted model id>   chief=<chief session name>
@@ -38,10 +37,6 @@
 # pid=<p> or daemon: live pid=<p>, holding (<cause>). It takes no lock and sends nothing. Exit 0 accepted, 1 refused,
 # 2 a start check failed.
 # Exit 0 stopped or expired; 3 already running (the only code the unit does not restart); 2 refused to start; 1 any other failure.
-# Under the unit (BYPASSD_SERVICE=1 plus the manager's marker: INVOCATION_ID on Linux, XPC_SERVICE_NAME=com.himmel.bypass-launchd on
-# macOS) the manager's environment is not trusted: it must run as bash -p, takes HOME from the passwd entry (refusing a differing
-# $HOME), pins PATH to the system directories, ignores every BYPASSD_* seam and TELEGRAM_ACCESS_PATH / BRIDGE_ROOT, and runs every
-# child (launcher, preflight, fleet-manifest, sender) from an empty environment plus a named allowlist (child_base below).
 set -uo pipefail
 
 die() { echo "bypass-launchd: $*" >&2; exit 2; }

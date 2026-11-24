@@ -468,8 +468,8 @@ function parseArgs(argv) {
     yes: false,        // ensure/scope/deps ensure/deps upgrade: --yes
     scopeVerb: null,   // scope: 'set' | 'get' | 'status' (null = none given)
     trustVerb: null,   // trust: 'on' | 'off' | 'status' (null = none given)
-    bypassVerb: null,  // bypass: 'on' | 'off' | 'restart' | 'status' (null = none given)
-    bucket: null,      // bypass on: --bucket <dir>
+    bypassVerb: null,
+    bucket: null,
     bridgeVerb: null,  // bridge: 'enable' (null = none given)
     targetScope: null, // scope set: 'project' | 'user' (null = none given)
     depsVerb: null,    // deps: status|ensure|upgrade (consumed positionally, see the 'deps' case)
@@ -616,12 +616,10 @@ function parseArgs(argv) {
       case 'bridge':
         if (!setSubcommand('bridge')) return args;
         break;
-      // the bypass launch daemon as a service unit.
       case 'bypass':
         if (!setSubcommand('bypass')) return args;
         break;
       case 'restart':
-        // ONLY meaningful under `bypass`; anywhere else it is the unknown-argument error.
         if (args.subcommand !== 'bypass') {
           console.error(`himmelctl: unknown argument: ${a}`);
           console.error("Run 'himmelctl --help' for usage.");
@@ -8024,9 +8022,6 @@ async function cmdTrust(args) {
   return typeof r.status === 'number' ? r.status : 1;
 }
 
-// `himmelctl bypass on|off|restart|status [--bucket <dir>]`: the bypass launch daemon as a service unit. All the work is
-// scripts/station-ops/bypass-service.sh (also what himmel-update calls); this only parses and hands over. The unit serves the
-// primary checkout, so a run from a linked worktree names the primary's script.
 function cmdBypass(args) {
   if (args.bypassVerb === null) {
     console.error('himmelctl: bypass requires a verb: on|off|restart|status');
