@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { PeerMsgRec } from "./gate";
-import { ACK_BY, ANSWER_BY, CLOSE_BY, Threads, templateLine, type Action, type ThreadRec } from "./threads";
+import { ACK_BY, ANSWER_BY, CLOSE_BY, Threads, effectiveRoute, templateLine, type Action, type ThreadRec } from "./threads";
 import { CHAT, H, MIN, T0, clock, inbound, mkThread, rootMsg, sig, states, threadsOf } from "./testlib-threads";
 
 type DL = "same" | "null" | number; // an absolute offset from `now` in ms, null, or unchanged
@@ -66,7 +66,7 @@ function run(c: Cell): { actions: Action[]; rec: ThreadRec } {
   if (c.ev === "deadline") actions = t.tick(NOW);
   else if (c.ev === "ours:answer") actions = t.onOutbound({ peer: "example", chat: CHAT, root: 100, kind: "answer", isRoot: false });
   else if (c.ev === "ours:decline") actions = t.decline("example", 100);
-  else actions = t.onInbound(inbound(c.ev, 100, c.by ? { by: Math.floor(c.by / 1000) } : {}));
+  else actions = t.onInbound(inbound(c.ev, 100, c.by ? { by: Math.floor(c.by / 1000) } : {})).actions;
   return { actions, rec: t.get("example", 100)! };
 }
 
@@ -91,7 +91,7 @@ test("table: the 12 h reminder wakes an OPEN inbound thread once", () => {
 test("a new inbound root allocates OPEN with a 24 h reply_by, a receipt and a wake", () => {
   const clk = clock(T0);
   const t = threadsOf([], clk);
-  const a = t.onInbound(rootMsg("ask:question", 200));
+  const a = t.onInbound(rootMsg("ask:question", 200)).actions;
   expect(sig(a)).toEqual(["state:OPEN", "send:receipt", "wake:new question"]);
   const rec = states(a)[0];
   expect(rec).toMatchObject({ dir: "in", alloc: T0, deadline: T0 + 24 * H, remindAt: T0 + 12 * H, auto: 1 });
@@ -111,39 +111,39 @@ test("a template from the peer is never answered or receipted, in any state", ()
     for (const state of dir === "out" ? ["SENT", "AWAITING", "NUDGED", "ANSWERED", "CLOSED"] : ["OPEN", "DEFERRED", "ANSWERED"]) {
       for (const tag of ["tpl:receipt", "tpl:nudge", "tpl:deferred", "tpl:closing", "tpl:declined-kind", "tpl:busy"]) {
         const t = threadsOf([mkThread(dir, state, { deadline: ["CLOSED", "ANSWERED"].includes(state) && dir === "in" || state === "CLOSED" ? null : T0 + 24 * H })], clock(NOW));
-        expect(sig(t.onInbound(inbound(tag, 100))).filter(s => s.startsWith("send:"))).toEqual([]);
+        expect(sig(t.onInbound(inbound(tag, 100)).actions).filter(s => s.startsWith("send:"))).toEqual([]);
       }
     }
   }
   const t = threadsOf([], clock(T0));
-  expect(t.onInbound(rootMsg("tpl:receipt", 400))).toEqual([]);
+  expect(t.onInbound(rootMsg("tpl:receipt", 400)).actions).toEqual([]);
 });
 
 test("peer text that sets answer_by or reply_by changes no deadline", () => {
   const t = threadsOf([mkThread("out", "AWAITING")], clock(NOW));
-  t.onInbound(inbound("untagged", 100, { text: "answer_by=1m reply_by=1m close_by=1m" }));
+  t.onInbound(inbound("untagged", 100, { text: "answer_by=1m reply_by=1m close_by=1m" })).actions;
   expect(t.get("example", 100)!.deadline).toBe(T0 + 24 * H);
 });
 
 test("a hostile by=2099 is clamped to alloc + 73 h, and a second deferred changes nothing", () => {
   const t = threadsOf([mkThread("out", "AWAITING")], clock(NOW));
   const far = Date.UTC(2099, 11, 31) / 1000;
-  t.onInbound(inbound("tpl:deferred", 100, { by: far }));
+  t.onInbound(inbound("tpl:deferred", 100, { by: far })).actions;
   expect(t.get("example", 100)!.deadline).toBe(T0 + 73 * H);
-  const again = t.onInbound(inbound("tpl:deferred", 100, { by: far, id: "0a0b0c0e" }));
+  const again = t.onInbound(inbound("tpl:deferred", 100, { by: far, id: "0a0b0c0e" })).actions;
   expect(again).toEqual([]);
 });
 
 test("a deferred with a short by= never shortens our own 24 h wait", () => {
   const now = T0 + 5 * H;
   const t = threadsOf([mkThread("out", "AWAITING")], clock(now));
-  t.onInbound(inbound("tpl:deferred", 100, { by: (now + 60 * MIN) / 1000 }));
+  t.onInbound(inbound("tpl:deferred", 100, { by: (now + 60 * MIN) / 1000 })).actions;
   expect(t.get("example", 100)!.deadline).toBe(now + 24 * H);
 });
 
 test("a message on a terminal thread wakes and never reopens it", () => {
   const t = threadsOf([mkThread("out", "EXPIRED", { deadline: null })], clock(NOW));
-  expect(sig(t.onInbound(inbound("answer", 100)))).toEqual(["wake:answer on a closed thread"]);
+  expect(sig(t.onInbound(inbound("answer", 100)).actions)).toEqual(["wake:answer on a closed thread"]);
   expect(t.get("example", 100)!.state).toBe("EXPIRED");
   expect(t.get("example", 100)!.deadline).toBeNull();
 });
@@ -154,7 +154,7 @@ test("DEFERRED followed by a decline sends declined-kind", () => {
 });
 
 test("a reply on an unknown root queues nothing", () => {
-  expect(threadsOf([], clock(NOW)).onInbound(inbound("answer", 999))).toEqual([]);
+  expect(threadsOf([], clock(NOW)).onInbound(inbound("answer", 999)).actions).toEqual([]);
 });
 
 test("per-thread cap: the 4th automatic message becomes a wake, closing still goes from its reserved slot", () => {
@@ -235,7 +235,7 @@ function twoBridges(opts: { skewB?: number; offline?: [number, number]; hours?: 
   const wakes: string[] = [];
   const deliver = (to: Side, rec: PeerMsgRec) => {
     if (!to.online) { to.queue.push(rec); return; }
-    apply(to, to.t.onInbound(rec));
+    apply(to, to.t.onInbound(rec).actions);
   };
   const apply = (side: Side, actions: Action[]) => {
     const other = side === A ? B : A;
@@ -291,4 +291,60 @@ test("two bridges: clocks skewed by +10 min and -10 min still end terminal on bo
     const { A, B, ROOT } = twoBridges({ hours: 98, skewB });
     expect(bothTerminal(A, B, ROOT)).toEqual([null, null]);
   }
+});
+
+test("onInbound reports opened, answered-now and other", () => {
+  const t = threadsOf([], clock(NOW));
+  expect(t.onInbound(rootMsg("ask:question", 300)).transition).toBe("opened");
+  expect(t.onInbound(inbound("ask:info", 300)).transition).toBe("other");
+  expect(t.onInbound(rootMsg("tpl:receipt", 301)).transition).toBe("other");
+  for (const state of ["SENT", "AWAITING", "NUDGED"]) {
+    const u = threadsOf([mkThread("out", state, { deadline: NOW + H })], clock(NOW));
+    const r = u.onInbound(inbound("answer", 100));
+    expect(r.transition).toBe("answered-now");
+    expect(sig(r.actions)).toEqual(["state:ANSWERED", "wake:answer"]);
+  }
+  const answered = threadsOf([mkThread("out", "ANSWERED", { deadline: NOW + H })], clock(NOW));
+  expect(answered.onInbound(inbound("answer", 100)).transition).toBe("other");
+  const closed = threadsOf([mkThread("out", "CLOSED", { deadline: null })], clock(NOW));
+  expect(closed.onInbound(inbound("answer", 100)).transition).toBe("other");
+});
+
+test("effectiveRoute table", () => {
+  const models = ["escalate", "ack", "drop", null] as const;
+  const table: [string, string, string[]][] = [
+    ["question", "opened", ["escalate", "escalate", "drop", "escalate"]],
+    ["status", "opened", ["escalate", "ack", "drop", "escalate"]],
+    ["info", "opened", ["escalate", "ack", "drop", "escalate"]],
+    ["answer", "answered-now", ["escalate", "escalate", "escalate", "escalate"]],
+    ["other", "other", ["escalate", "drop", "drop", "escalate"]],
+  ];
+  for (const [kind, transition, want] of table) models.forEach((m, i) => expect([kind, transition, m, effectiveRoute(kind, transition as any, m)]).toEqual([kind, transition, m, want[i]]));
+  for (const m of models) {
+    expect(effectiveRoute("answer", "opened", m)).toBe("escalate");
+    expect(effectiveRoute("status", "answered-now", m)).toBe("escalate");
+  }
+});
+
+test("ack sends only closing; drop sends nothing", () => {
+  const t = threadsOf([], clock(NOW));
+  t.onInbound(rootMsg("status", 310));
+  const a = t.ack("example", 310);
+  expect(sig(a)).toEqual(["state:ACKED", "send:closing"]);
+  expect(t.get("example", 310)!.deadline).toBeNull();
+  t.onInbound(rootMsg("info", 311));
+  const d = t.drop("example", 311);
+  expect(sig(d)).toEqual(["state:DROPPED"]);
+  expect(t.get("example", 311)!.deadline).toBeNull();
+});
+
+test("ack and drop on a terminal thread emit nothing", () => {
+  const t = threadsOf([mkThread("in", "ANSWERED", { deadline: null, root: 320 })], clock(NOW));
+  expect(t.ack("example", 320)).toEqual([]);
+  expect(t.drop("example", 320)).toEqual([]);
+  expect(t.ack("example", 999)).toEqual([]);
+  t.onInbound(rootMsg("status", 321));
+  t.ack("example", 321);
+  expect(t.ack("example", 321)).toEqual([]);
+  expect(t.drop("example", 321)).toEqual([]);
 });

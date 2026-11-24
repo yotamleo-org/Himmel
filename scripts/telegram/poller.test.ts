@@ -4040,6 +4040,14 @@ test("R2.5 an operator line queued while a monitoring send hangs is sent within 
   } finally { stop(); }
 });
 
+test("the flush tick runs the peer notify flush beside the outbox flush; a hung outbox send does not hold it", async () => {
+  const r = root();
+  await replyViaOutbox(r, OPCHAT, "first");
+  let peer = 0;
+  const stop = startFlushTimers({ root: r, send: () => new Promise<boolean>(() => {}), flushMs: 10, monitorMs: 10_000, monitor: () => null, peerFlush: async () => { peer++; } });
+  try { expect(await waitFor(() => peer >= 3)).toBe(true); } finally { stop(); }
+});
+
 test("R2.6 the monitoring keys come from the bridge env file only; a non-group or the bridge's own bot reads as unset; the down-after knob is clamped and fixture-only", async () => {
   const dir = mkdtempSync(join(tmpdir(), "bridgecfg-"));
   const cfg = join(dir, "bridge-config");

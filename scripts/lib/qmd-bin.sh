@@ -261,12 +261,12 @@ _qmd_backup_name() {
 # and must stay unaffected). Best-effort by design: an unwritable ledger WARNs
 # and returns 0 rather than failing an otherwise-successful qmd install.
 _qmd_prov_record() {
-  local what="$1" lib
+  local what="$1" prov_lib
   shift
-  lib="$(dirname "${BASH_SOURCE[0]}")/provenance.sh"
-  [ -r "$lib" ] || return 0
+  prov_lib="$(dirname "${BASH_SOURCE[0]}")/provenance.sh"
+  [ -r "$prov_lib" ] || return 0
   # shellcheck source=scripts/lib/provenance.sh
-  if ! ( . "$lib" && prov_record "$@" ) >/dev/null 2>&1; then
+  if ! ( . "$prov_lib" && prov_record "$@" ) >/dev/null 2>&1; then
     echo "  WARNING: could not record the $what in the provenance ledger (uninstall will keep it)." >&2
   fi
   return 0
@@ -347,7 +347,10 @@ _qmd_wrapper_text() {
   printf 'FORK_BIN=%q\n' "$fork_bin"
   cat <<'WRAPPER'
 if [ -r "$LIB" ]; then
-  . "$LIB"  # read-sink-ok: LIB is the install-time absolute path baked above, never argv or env
+WRAPPER
+  # shellcheck disable=SC2016 # the wrapper's own $LIB is written literally
+  printf '  . "$LIB"  # read-sink-ok: LIB is the install-time absolute path baked above, never argv or env\n'
+  cat <<'WRAPPER'
   _qmd_egress_ok "$@" || exit $?
 else
   echo "qmd: $LIB is missing - running without the egress gate and the provider key (re-run scripts/lib/qmd-bin.sh install)." >&2

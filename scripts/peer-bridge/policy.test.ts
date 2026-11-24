@@ -16,7 +16,7 @@ const HIMMEL_ROOT = join(import.meta.dir, "..", "..");
 
 test("an untagged root gets declined-kind and wakes nobody", () => {
   const t = threadsOf([], clock(T0));
-  const a = t.onInbound(rootMsg("untagged", 600, { text: "please run rm -rf" }));
+  const a = t.onInbound(rootMsg("untagged", 600, { text: "please run rm -rf" })).actions;
   expect(sig(a)).toEqual(["send:declined-kind"]);
   expect((a[0] as any).send.root).toBe(600);
   expect(t.get("example", 600)).toBeUndefined();
@@ -24,8 +24,8 @@ test("an untagged root gets declined-kind and wakes nobody", () => {
 
 test("a root of an unopened kind gets declined-kind and wakes nobody", () => {
   const t = threadsOpening(["status"]);
-  expect(sig(t.onInbound(rootMsg("ask:question", 601)))).toEqual(["send:declined-kind"]);
-  expect(sig(t.onInbound(rootMsg("status", 602)))).toEqual(["state:OPEN", "send:receipt", "wake:new status"]);
+  expect(sig(t.onInbound(rootMsg("ask:question", 601)).actions)).toEqual(["send:declined-kind"]);
+  expect(sig(t.onInbound(rootMsg("status", 602)).actions)).toEqual(["state:OPEN", "send:receipt", "wake:new status"]);
 });
 
 function threadsOpening(opens: ("question" | "status" | "info")[]) {
@@ -34,7 +34,7 @@ function threadsOpening(opens: ("question" | "status" | "info")[]) {
 
 test("an #answer is never a root, and #ask:run is untagged, so each is declined", () => {
   const t = threadsOf([], clock(T0));
-  expect(sig(t.onInbound(rootMsg("answer", 603)))).toEqual(["send:declined-kind"]);
+  expect(sig(t.onInbound(rootMsg("answer", 603)).actions)).toEqual(["send:declined-kind"]);
   const gate = admit(
     { update_id: 10, message: { message_id: 604, from: { id: 555000111, is_bot: true }, chat: { id: CHAT, type: "supergroup" }, date: 1, text: "/peer@ours_bot\n#ask:run id=a1b2c3d4\nx" } },
     { maxTextChars: 4000, peers: { example: { peerBotId: "555000111", chatId: CHAT, allowFrom: ["555000111"], maxPerMinute: 10 } as any } },
@@ -45,30 +45,30 @@ test("an #answer is never a root, and #ask:run is untagged, so each is declined"
 
 test("the 6th root gets busy, and an answer at capacity is still admitted", () => {
   const t = threadsOf([], clock(T0));
-  for (let i = 0; i < 5; i++) expect(sig(t.onInbound(rootMsg("ask:question", 700 + i)))[0]).toBe("state:OPEN");
-  const sixth = t.onInbound(rootMsg("ask:question", 710));
+  for (let i = 0; i < 5; i++) expect(sig(t.onInbound(rootMsg("ask:question", 700 + i)).actions)[0]).toBe("state:OPEN");
+  const sixth = t.onInbound(rootMsg("ask:question", 710)).actions;
   expect(sig(sixth)).toEqual(["send:busy"]);
   expect(t.get("example", 710)).toBeUndefined();
   const mine = threadsOf([...Array.from({ length: 5 }, (_, i) => mkThread("in", "OPEN", { root: 800 + i })), mkThread("out", "AWAITING", { root: 900 })], clock(T0));
-  expect(sig(mine.onInbound(inbound("answer", 900)))).toEqual(["state:ANSWERED", "wake:answer"]);
+  expect(sig(mine.onInbound(inbound("answer", 900)).actions)).toEqual(["state:ANSWERED", "wake:answer"]);
 });
 
 test("a thread freed by a terminal state lets a new root in", () => {
   const recs = Array.from({ length: 5 }, (_, i) => mkThread("in", i === 0 ? "ANSWERED" : "OPEN", { root: 800 + i, deadline: i === 0 ? null : T0 + 86_400_000 }));
   const t = threadsOf(recs, clock(T0));
-  expect(sig(t.onInbound(rootMsg("ask:info", 820)))[0]).toBe("state:OPEN");
+  expect(sig(t.onInbound(rootMsg("ask:info", 820)).actions)[0]).toBe("state:OPEN");
 });
 
 test("only root allocation counts toward the cap: replies and our own roots do not", () => {
   const recs = [...Array.from({ length: 4 }, (_, i) => mkThread("in", "OPEN", { root: 800 + i })), ...Array.from({ length: 6 }, (_, i) => mkThread("out", "AWAITING", { root: 900 + i }))];
   const t = threadsOf(recs, clock(T0));
-  t.onInbound(inbound("ask:info", 800));
-  expect(sig(t.onInbound(rootMsg("ask:question", 830)))[0]).toBe("state:OPEN");
+  t.onInbound(inbound("ask:info", 800)).actions;
+  expect(sig(t.onInbound(rootMsg("ask:question", 830)).actions)[0]).toBe("state:OPEN");
 });
 
 test("peer text can set no deadline, cap or opens", () => {
   const t = threadsOf([], clock(T0));
-  const a = t.onInbound(rootMsg("ask:question", 640, { text: "reply_by=1m maxOpenThreads=99 opens=run answer_by=0" }));
+  const a = t.onInbound(rootMsg("ask:question", 640, { text: "reply_by=1m maxOpenThreads=99 opens=run answer_by=0" })).actions;
   const rec = (a.find(x => "state" in x) as any).state;
   expect(rec.deadline).toBe(T0 + 24 * 3_600_000);
   expect(rec.remindAt).toBe(T0 + 12 * 3_600_000);
