@@ -237,7 +237,7 @@ case "$CMD" in
                 ticket="${TICKET:-$pkey}"
                 [ -n "$ticket" ] || { echo "owe: proof row $ID has no ticket key; pass --ticket <KEY> to say where its PROOF line goes" >&2; exit 2; }
                 day="$(jq -nr --argjson e "$NOW" '$e | todate | .[0:10]')"
-                bash "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/proof-comment.sh" "$ticket" "$ID" "$PROOF_RESULT" "$day" "$PROOF_ARTIFACT" || exit "$?"
+                bash "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/../../lib/proof-comment.sh" "$ticket" "$ID" "$PROOF_RESULT" "$day" "$PROOF_ARTIFACT" || exit "$?"
             fi
         fi
         [ ! -e "$F" ] || lock_ledger

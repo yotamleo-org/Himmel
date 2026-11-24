@@ -178,7 +178,7 @@ case "$lead" in
                     echo "append-results: a $lead bullet reads '$lead <KEY> <row-id> PASS|FAIL <YYYY-MM-DD> <artifact>' (row id o<n>, artifact one word: a path or doc:line) - refusing, nothing written" >&2
                     exit 8
                 fi
-                if ! bash "$(dirname "${BASH_SOURCE[0]}")/proof-comment.sh" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}" "${BASH_REMATCH[5]}" "${BASH_REMATCH[6]}" >&2; then
+                if ! bash "$(dirname "${BASH_SOURCE[0]}")/../../lib/proof-comment.sh" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}" "${BASH_REMATCH[5]}" "${BASH_REMATCH[6]}" >&2; then
                     echo "append-results: the PROOF line did not reach ${BASH_REMATCH[2]} - nothing written; fix the ticket write and re-run" >&2
                     exit 9
                 fi ;;

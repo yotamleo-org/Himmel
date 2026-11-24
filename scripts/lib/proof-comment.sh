@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/proof-comment.sh - put one live proof result on its ticket as the
+# scripts/lib/proof-comment.sh - put one live proof result on its ticket as the
 # machine-readable line a gate reads by owed row id:
 #   PROOF <row-id> PASS|FAIL <YYYY-MM-DD> <artifact>
 #
@@ -33,7 +33,7 @@ cli="${OWE_JIRA_CLI:-}"
 if [ -z "$cli" ]; then
     kit="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
     common=""
-    if . "$kit/../../lib/git-clean.sh" 2>/dev/null; then
+    if . "$kit/git-clean.sh" 2>/dev/null; then
         if ! common="$(git_clean -C "$kit" rev-parse --path-format=absolute --git-common-dir)"; then common=""; fi
     fi
     [ -n "$common" ] && cli="$(dirname "$common")/scripts/jira/dist/index.js"
