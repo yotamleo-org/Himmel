@@ -30,10 +30,6 @@
 # The operator id is allowFrom[0] of the bridge access.json (TELEGRAM_ACCESS_PATH); the inbound journal is
 # BRIDGE_ROOT/inbound.jsonl. Test seams: BYPASSD_SEND (a program given the message), BYPASSD_LAUNCHER (run in
 # place of headed-arm-worker.sh with its arguments), BYPASSD_POLL, BYPASSD_SETTLE.
-# Before the ask, and again after the go, it runs the launcher's own --dry-run with the request's brief, model, chief and
-# fleet manifest. A refusal before the ask logs REFUSED-PREFLIGHT <base> rc=<n> <reason>, tells the chief's console inbox and
-# sends the operator nothing (the request ends .refused). A refusal after the go keeps the go: the request stays
-# <name>.req.pending beside <name>.req.held, the chief is told, and a touch of <name>.req.pending tries it again.
 # --check runs the start checks (not the Claude-session refusal, the lock, --until or the operator id) and, with
 # --request, the request check the loop runs. It prints accepted or refused: <reason>, then daemon: none, daemon: live
 # pid=<p> or daemon: live pid=<p>, holding (<cause>). It takes no lock and sends nothing. Exit 0 accepted, 1 refused,
