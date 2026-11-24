@@ -130,6 +130,39 @@ test('X07-7: a hook that only echoes both words, or has a non-command type, read
   }
 });
 
+const replaceNth = (text, needle, replacement, n) => {
+  let at = -1;
+  for (let i = 0; i <= n; i += 1) at = text.indexOf(needle, at + 1);
+  return text.slice(0, at) + replacement + text.slice(at + needle.length);
+};
+
+test('X07-7: a script, runner or launcher whose name only ends like the emitted one reads unknown', () => {
+  const bad = [
+    'bash /tmp/not-queue-lock.sh self-heartbeat',
+    'bash "/tmp/not-queue-lock.sh" self-heartbeat',
+    ROUTED_HB.replaceAll('/scripts/lib/run-node.sh', '/scripts/lib/not-run-node.sh'),
+    ROUTED_HB.replaceAll('/hooks/run-hook-with-bash.js', '/hooks/not-run-hook-with-bash.js'),
+    ROUTED_HB.replaceAll('/handover/queue-lock.sh', '/handover/not-queue-lock.sh'),
+  ];
+  for (const command of bad) {
+    const r = readSelfHeartbeatEffectiveness({ layers: [layer('project', withCommand({ type: 'command', command }))] });
+    assert.equal(r.state, 'unknown', command);
+  }
+});
+
+test('X07-7: a routed command that tests one path and runs another reads unknown', () => {
+  const bad = [
+    replaceNth(ROUTED_HB, '/scripts/lib/run-node.sh', '/elsewhere/run-node.sh', 0),
+    replaceNth(ROUTED_HB, '/scripts/lib/run-node.sh', '/elsewhere/run-node.sh', 1),
+    replaceNth(ROUTED_HB, '/scripts/hooks/run-hook-with-bash.js', '/elsewhere/run-hook-with-bash.js', 1),
+    replaceNth(ROUTED_HB, '/scripts/handover/queue-lock.sh', '/elsewhere/queue-lock.sh', 1),
+  ];
+  for (const command of bad) {
+    const r = readSelfHeartbeatEffectiveness({ layers: [layer('project', withCommand({ type: 'command', command }))] });
+    assert.equal(r.state, 'unknown', command);
+  }
+});
+
 test('X07-7: a command naming only one of the two words stays ineffective, not unknown (the control for the rows above)', () => {
   for (const command of ['true', 'bash queue-lock.sh acquire', 'bash self-heartbeat.sh']) {
     const r = readSelfHeartbeatEffectiveness({ layers: [layer('project', withCommand({ type: 'prompt', command }))] });

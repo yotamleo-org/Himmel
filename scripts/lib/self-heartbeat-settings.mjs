@@ -75,14 +75,14 @@ function readLayerBytes(path) {
 }
 
 const PATH_TOKEN = '(?:"(?:[^"`$\\\\\\n]|\\$(?:\\{[A-Za-z_]\\w*\\}|[A-Za-z_]\\w*(?!\\w)))*"|[A-Za-z0-9_./~-]+)';
-const pathEnding = (tail) => `${PATH_TOKEN}(?<=${tail}"?)`;
+const pathEnding = (tail) => `${PATH_TOKEN}(?<=(?:^|[\\s"/])${tail}"?)`;
 const HB_SCRIPT = pathEnding('queue-lock\\.sh');
 const HB_RUN_NODE = pathEnding('run-node\\.sh');
 const HB_LAUNCHER = pathEnding('run-hook-with-bash\\.js');
 const HB_PLAIN = new RegExp(`^(?:bash )?${HB_SCRIPT} self-heartbeat\\s*$`);
 const HB_ROUTED = new RegExp(
-  `^if \\[ -f ${HB_RUN_NODE} \\]; then command -p sh ${HB_RUN_NODE} ${HB_LAUNCHER} ${HB_SCRIPT} self-heartbeat; `
-  + `else node ${HB_LAUNCHER} ${HB_SCRIPT} self-heartbeat; fi\\s*$`,
+  `^if \\[ -f (${HB_RUN_NODE}) \\]; then command -p sh \\1 (${HB_LAUNCHER}) (${HB_SCRIPT}) self-heartbeat; `
+  + 'else node \\2 \\3 self-heartbeat; fi\\s*$',
 );
 const isEmittedHeartbeat = (command) => HB_PLAIN.test(command) || HB_ROUTED.test(command);
 
