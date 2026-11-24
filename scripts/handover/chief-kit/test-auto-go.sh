@@ -99,8 +99,8 @@ case "$*" in
     "repo view "*"--json defaultBranchRef"*) printf 'main\n'; exit 0 ;;
     "pr view "*"--json state,headRefOid,baseRefName"*)
         [ "${STUB_VIEW_FAIL:-0}" = 1 ] && { printf '%s\n' "${STUB_GH_ERR:-}" >&2; exit 1; }
-        printf '{"state":"%s","headRefOid":"%s","baseRefName":"%s"}\n' \
-            "${STUB_PR_STATE:-OPEN}" "${STUB_PR_HEAD:-$READY_STUB_HEAD}" "${STUB_PR_BASE:-main}"; exit 0 ;;
+        jq -n --arg s "${STUB_PR_STATE:-OPEN}" --arg h "${STUB_PR_HEAD:-$READY_STUB_HEAD}" --arg b "${STUB_PR_BASE:-main}" \
+            --arg body "$(printf '%b' "${READY_STUB_BODY-}")" '{state: $s, headRefOid: $h, baseRefName: $b, body: $body}'; exit 0 ;;
     "pr view "*"--json headRefOid,state"*) cat "$STUB_GC/head-$3.json" 2>/dev/null || exit 1; exit 0 ;;  # read-sink-ok: the stub reads its own fixture dir
     "pr view "*"--json title"*)
         [ "${STUB_TITLE_NEEDS_R:-0}" = 1 ] && case "$*" in "pr view 77 -R o/r --json title"*) ;; *) echo "no git remotes found" >&2; exit 1 ;; esac
@@ -583,6 +583,36 @@ check    "A1b ordinary: audit checks 1-6 and 8 pass" "$(q '[.checks[] | select(.
 check    "A1b ordinary: the signed GO record names auto-go and script" "$(grep -l -x 'model: auto-go' "$VDIR"/go-pr-77/*.md 2>/dev/null | xargs grep -l -x 'effort: script' 2>/dev/null | wc -l | tr -d ' ')" "1"
 gofresh; write_fixtures native "" '> **Completes ticket:** yes'; run 77 "$SHA"
 contains "A1b completes-ticket yes adds --jira-transition" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
+
+export READY_STUB_TITLE='fix(x): [HIMMEL-1] a partial change'
+BODY_REST=$'## Ticket coverage\n- ask: done\n\nRemaining: the docs follow\n\nRED then GREEN: the new row failed before the change\n'
+BRIEF_YES='> **Completes ticket:** yes'
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="completes-ticket: no"$'\n'"$BODY_REST" run 77 "$SHA"
+check    "C1 body no over brief yes: exit 0" "$RC" "0"
+lacks    "C1 body no over brief yes: the GO message has no --jira-transition" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition"
+contains "C1 body no over brief yes: the GO message names the GO file" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--go $GOF"
+check    "C6 body no over brief yes: check 3 audit reason" "$(q '.checks[] | select(.n == 3) | .reason')" "contract no from the PR body, brief says yes"
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY=$'completes-ticket: no\n## Ticket coverage\n- ask: done\n\nRED then GREEN: the new row failed before the change\n' run --dry-run 77 "$SHA"
+esc      "C8 body no over brief yes, no Remaining line: ready-go runs under contract no" 3
+contains "C8 body no over brief yes, no Remaining line: the escalation names item 17" "$OUT" "17."
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="completes-ticket: yes"$'\n'"$BODY_REST" run 77 "$SHA"
+contains "C2 body yes, brief yes: the GO message carries --jira-transition" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
+check    "C2 body yes, brief yes: no check 3 reason" "$(q '.checks[] | select(.n == 3) | .reason // "none"')" "none"
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY=$'completes-ticket: yes\ncompletes-ticket: no\n'"$BODY_REST" run 77 "$SHA"
+contains "C3 body yes and no, brief yes: the brief's yes stands" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="$BODY_REST" run 77 "$SHA"
+contains "C4 no body line, brief yes: the brief's yes stands" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
+for variant in 'completes-ticket: maybe' '  completes-ticket: no' $'```\ncompletes-ticket: no\n```' $'~~~\ncompletes-ticket: no\n~~~' $'```\nunclosed\ncompletes-ticket: no' $'```\n~~~\ncompletes-ticket: no\n~~~\n```' $'````\n```\ncompletes-ticket: no\n```\n````'; do
+    gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="$variant"$'\n'"$BODY_REST" run 77 "$SHA"
+    contains "C5 ignored body line [$(printf '%s' "$variant" | tr '\n' '|')], brief yes: the brief's yes stands" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
+done
+gofresh; write_fixtures native ""; READY_STUB_BODY="completes-ticket: yes"$'\n'"$BODY_REST" run --dry-run 77 "$SHA"
+esc      "C7 body yes over brief no" 3
+contains "C7 body yes over brief no: names the body's yes" "$OUT" "the PR body says completes-ticket: yes"
+contains "C7 body yes over brief no: names the brief's no" "$OUT" "the brief says no"
+lacks    "C7 body yes over brief no: ready-go did not run" "$OUT" "[FAIL] 17"
+unset READY_STUB_TITLE
+gofresh
 
 # 8b. --dry-run still answers and still writes nothing
 gofresh; verdict q1 "**GO** for head \`$SHA\`."
