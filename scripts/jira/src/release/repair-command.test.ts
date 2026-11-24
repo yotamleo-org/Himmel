@@ -15,7 +15,6 @@ import { refuseRequest, registerRelease, repairGetter } from '../commands/releas
 import type { RequestRow, RulingRow } from './types.js';
 import type { Getter } from './version-writes.js';
 
-// A worker session exports these; the repair path reads them (the fence in engine-core.ts, the RM and version-writes env), so every row starts without them.
 const HERMETIC_ENV = [...FENCE_MARKERS, 'HIMMEL_RM_DOC', 'HIMMEL_RM_RELEASE', 'HIMMEL_VERSION_WRITES', 'HIMMEL_VERSION_WRITER'] as const;
 
 let root: string;
