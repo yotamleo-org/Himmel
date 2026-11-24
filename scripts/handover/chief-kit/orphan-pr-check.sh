@@ -21,6 +21,7 @@
 # `statusCategory: "Done"` (--mirror, else NEXT_DISPATCH_MIRROR, else the Jira mirror); a missing file is unknown.
 # input= is the POSIX cksum of the `queue:` line and every `pool-disposition:` line, as read; --input-only prints
 # only that line and reads no PR list or mirror. Exit 3 on an unreadable doc or PR list (no flag line is printed).
+# queue-prune.sh --doc <doc> [--apply] is the writer: it drops what this report flags, with a byte copy.
 # --held prints the doc's HELD queue: entries and reads no PR list: one tab-separated line each,
 # `<subject> <trigger|-> <resume doc|-> <names> <segment>` (subject `#<n>`, else `<n>`, else the first key,
 # else -; names = the numbers and upper-cased keys before the hold word, comma-joined). tick.sh reads this.
