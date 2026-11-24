@@ -2212,7 +2212,6 @@ exit 1''')
         self.assertEqual(list(self.anchor_attempts()), ['n1'])
 
     def wrapped_sibling_rows(self, count):
-        """Two sibling manifests holding `count` wrapped docs between them, each doc sharing one key with a 14-key brief."""
         self.active()
         shim = self.bucket / 'shim'
         shim.mkdir()

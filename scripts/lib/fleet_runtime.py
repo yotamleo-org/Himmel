@@ -812,7 +812,7 @@ def ownership_check(attempts, manifest, doc, name, keys):
     """begin's family ownership refusals, shared with the read-only admit a dry run uses."""
     if any(r['doc'] == doc or r['name'] == name or set(r['keys']) & set(keys) for r in attempts.values()):
         raise Refused('family already owns worker or ticket')
-    states = {}  # each doc is read once, with its own 5 s budget: a spent budget never refuses a later wrapped row
+    states = {}
     own_row = False
     for sibling in manifest.parent.glob('*.fleet.json'):
         listed = read(sibling)
