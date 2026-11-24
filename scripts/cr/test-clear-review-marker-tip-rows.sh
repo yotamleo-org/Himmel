@@ -7,11 +7,9 @@ export HIMMEL_POLICY_FOLLOWS_HOME=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$SCRIPT_DIR/../lib"
-# shellcheck source=scripts/lib/timeout-bin.sh
-# shellcheck disable=SC1091
+# shellcheck source=../lib/timeout-bin.sh
 . "$LIB_DIR/timeout-bin.sh"
-# shellcheck source=scripts/lib/fixture-tempdir.sh
-# shellcheck disable=SC1091
+# shellcheck source=../lib/fixture-tempdir.sh
 . "$LIB_DIR/fixture-tempdir.sh"
 
 PASS=0
