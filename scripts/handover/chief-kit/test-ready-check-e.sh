@@ -103,6 +103,8 @@ printf "console.log('codeowner-review-gate: PASS — yotamleo has admin permissi
 export STUB_OR_GATE_FILE="$tmp/or-gate-owner.mjs"
 
 # T1.3/T1.3b: the base ready-check's output on this fixture, captured before item 16 existed
+mkdir -p "$tmp/no-handovers"
+export HANDOVER_DIR="$tmp/no-handovers"
 GOLD_MEMBER="[PASS] 1. head=$SHA matches, mergeStateStatus=CLEAN
 [PASS] 2. statusCheckRollup: 2/2 checks completed SUCCESS/SKIPPED/NEUTRAL
 [PASS] 3. unresolved review threads = 0
@@ -120,6 +122,7 @@ GOLD_MEMBER="[PASS] 1. head=$SHA matches, mergeStateStatus=CLEAN
 [PASS] 18. no blocking or undecided finding at the head the merge gates on (read as the merge reads it, with and without the GO)
 [PASS] 19. suite evidence: 0 impacted, nothing to prove
 [PASS] 20. conflicts resolved: no hand-resolved merge conflict in origin/main..${SHA:0:7}
+[WARN] 21. ticket comments of HIMMEL-100 not checked: no worker handover doc named HIMMEL-100-N*.md under $tmp/no-handovers
 ---
 The three-dot diff read (git diff origin/main...HEAD) stays the chief's own judgement — this script does not read it.
 owner-review: not-required (rule-a: yotamleo has admin permission; check at head: none)
