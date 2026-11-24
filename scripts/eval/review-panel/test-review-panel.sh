@@ -706,6 +706,12 @@ paired --paired "$PS" --repeats 00 --out "$TMP/pair11" --results "$TMP/pair11.js
 eq "paired: --repeats 00 is refused like 0" "$rc:$([ -e "$TMP/pair11.jsonl" ] && echo row || echo none)" "2:none"
 paired --paired "$PS" --head "$PH" --out "$TMP/pair1" --results "$TMP/pair12.jsonl" >/dev/null 2>&1; rc=$?
 eq "paired: a rerun into an out dir that holds an earlier run writes this run's two rows, not the old ones again" "$rc:$(wc -l < "$TMP/pair12.jsonl" | tr -d ' ')" "0:2"
+if [ "$(id -u)" != 0 ]; then
+  cp -r "$TMP/pair1" "$TMP/pair13"; chmod a-w "$TMP/pair13"
+  paired --paired "$PS" --head "$PH" --out "$TMP/pair13" --results "$TMP/pair13.jsonl" >/dev/null 2>&1; rc=$?
+  chmod u+w "$TMP/pair13"
+  eq "paired: a stale row file that cannot be removed fails the run, no row" "$([ "$rc" != 0 ] && echo failed):$([ -e "$TMP/pair13.jsonl" ] && echo row || echo none)" "failed:none"
+fi
 
 SC="$TMP/scorer"; mkdir -p "$SC/scripts/eval/review-panel" "$SC/scripts/eval/lib"
 cp "$SCORE" "$SC/scripts/eval/review-panel/score.py"; cp "$HERE/adjudication.py" "$SC/scripts/eval/review-panel/"; cp "$HERE/replay.py" "$SC/scripts/eval/review-panel/replay.py"; cp "$HERE/../lib/"*.py "$SC/scripts/eval/lib/"; cp "$HERE/../feedback-rules.json" "$SC/scripts/eval/"

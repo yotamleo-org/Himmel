@@ -128,7 +128,7 @@ if [ -n "$paired" ]; then
     git -C "$top" worktree add -q --detach "$prun/trees/head" "$head_sha" || exit 2
     sweep_side() {
         local side="$1" n="$2" tree="$prun/trees/$1" o="$out/$1-$2"
-        rm -f "$o.row.jsonl"
+        rm -f "$o.row.jsonl" || return 2
         REVIEW_PANEL_SCRATCH="$prun/work/$side-$n" PYTHONDONTWRITEBYTECODE=1 \
             bash "$tree/${rel}run.sh" --out "$o" ${fwd[@]+"${fwd[@]}"} || return $?
         python3 "$HERE/score.py" export-row "$o" --repo "$tree" --snapshot "$snap" --side "$side" --results "$o.row.jsonl"
