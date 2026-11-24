@@ -589,6 +589,22 @@ el=$(( $(date +%s) - t0 ))
 kill "$lockholder" 2>/dev/null; wait "$lockholder" 2>/dev/null
 check "12. manifest writes stuck on a held lock still end the pass by 24 s (took ${el}s, rc $SRC)" yes "$([ "$el" -le 24 ] && [ "$SRC" != 124 ] && [ "$SRC" != 137 ] && echo yes)"
 
+mkco x3 "$HB/x3"; mkm a none; mkm c a
+for i in 1 2 3 4 5 6; do
+    xt="$B/T3ASK-tk$i-$today.md"; printf '# x\n\n> **T3 thread:** tk%s\n\n## Results (newest at the bottom)\n' "$i" > "$xt"
+    fmx add "$B/a.fleet.json" --lane t3 --lockless "$xt"; fmx t3 set "$B/a.fleet.json" "$xt" --thread "tk$i" --kind ask --notice sent
+done
+printf '%s\n' "$B/a.fleet.json" > "$B/t3-relay.owner"
+mklist "$(th tk1 "$RELAY" completed false)" "$(th tk2 "$RELAY" completed false)" "$(th tk3 "$RELAY" completed false)" "$(th tk4 "$RELAY" completed false)" "$(th tk5 "$RELAY" completed false)" "$(th tk6 "$RELAY" completed false)"
+( flock -x 8; sleep 45 ) 8>>"$B/c.fleet.json.lock" & lockholder=$!
+sleep 0.3
+timeout -k 2 30 bash "$BIND" scan --manifest "$B/c.fleet.json" >"$T/out" 2>"$T/err"; SRC=$?   # gnu-ok: Linux-only chief kit, GNU timeout
+kill "$lockholder" 2>/dev/null; wait "$lockholder" 2>/dev/null
+check '12. a takeover cut short by the pass deadline does not take the owner file' "$B/a.fleet.json" "$(owner_now)"
+check '12. and prints no OWNER-TAKEN' 0 "$(grep -c '^OWNER-TAKEN' "$T/out")"
+scan "$B/c.fleet.json"
+check '12. the next pass with the lock free finishes the takeover: rows copied' "OWNER-TAKEN a rows=copied 6" "$(grep OWNER "$T/out") $(jq '.workers | length' "$B/c.fleet.json")"
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-relay-bind.sh"
     exit 0

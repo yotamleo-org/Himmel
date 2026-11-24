@@ -24,7 +24,7 @@
 #
 # Exit: 0 nothing new; 1 something was printed; 2 usage or config failure (also an unreadable owner status or a stuck
 # owner lock); 4 `t3 thread list` failed or a field the pass reads is missing (stderr names it); 5 this manifest is not
-# the owner and the owner is live (its own re-sends and upkeep still ran).
+# the owner and the owner is live, or a takeover ran out of pass time and retries next pass (its own re-sends and upkeep still ran).
 # Env seams: T3_SEND_BIN, T3_SEND_PROJECT (as t3-send.sh), T3_RELAY_UNBIND_DAYS. Siblings are found beside this file.
 # Platform: Linux (util-linux flock, GNU timeout), bash 3.2+, jq.
 set -uo pipefail
@@ -192,28 +192,34 @@ take_rows_from() {
     local old="$1" d th kd nt line
     while IFS= read -r d; do
         [ -n "$d" ] || continue
-        room 6 || break
+        room 6 || return 1
         jq -e --arg d "$d" 'any(.workers[]; .doc == $d)' "$manifest" >/dev/null 2>&1 && continue
-        fm add "$manifest" "$d" --lane t3 --lockless || continue
         th="$(jq -r --arg d "$d" '[.workers[] | select(.doc == $d) | .t3_thread // ""][0]' "$old")"
         kd="$(jq -r --arg d "$d" '[.workers[] | select(.doc == $d) | .t3_kind // ""][0]' "$old")"
         nt="$(jq -r --arg d "$d" '[.workers[] | select(.doc == $d) | .t3_notice // ""][0]' "$old")"
+        if [ -n "$th" ] && [ "$th" != pending ] \
+            && jq -e --arg d "$d" --arg t "$th" '((.t3_tombstones // []) | any(.thread == $t)) or any(.workers[]; .t3_thread == $t and .doc != $d)' "$manifest" >/dev/null 2>&1; then
+            continue
+        fi
+        fm add "$manifest" "$d" --lane t3 --lockless || return 1
         set -- "$manifest" "$d"
         [ -z "$th" ] || set -- "$@" --thread "$th"
         [ -z "$kd" ] || set -- "$@" --kind "$kd"
         [ -z "$nt" ] || set -- "$@" --notice "$nt"
-        [ "$#" -le 2 ] || fm t3 set "$@" || true
+        [ "$#" -le 2 ] || fm t3 set "$@" || return 1
     done <<EOF1
 $(jq -r '.workers[] | select(.lane == "t3") | .doc' "$old")
 EOF1
     while IFS= read -r line; do
         [ -n "$line" ] || continue
-        room 6 || break
+        room 6 || return 1
         th="${line%%$'\t'*}"; nt="${line#*$'\t'}"
-        [[ $th =~ $ID_RE ]] && [[ $nt =~ ^[a-z0-9:_-]{1,40}$ ]] && fm t3 unbind "$manifest" "$th" --reason "$nt" || true
+        { [[ $th =~ $ID_RE ]] && [[ $nt =~ ^[a-z0-9:_-]{1,40}$ ]]; } || continue
+        fm t3 unbind "$manifest" "$th" --reason "$nt" || return 1
     done <<EOF2
 $(jq -r '(.t3_tombstones // [])[] | "\(.thread)\t\(.reason // "unbound")"' "$old")
 EOF2
+    return 0
 }
 
 IS_OWNER=0
@@ -240,10 +246,14 @@ else
         fi
         if [ "$takeover" = 1 ]; then
             rows=none
-            if [ -f "$owner" ] && descends_from "$ostem"; then take_rows_from "$owner"; rows=copied; fi
-            printf '%s\n' "$manifest" | atomic_write "$owner_file" || die 2 "cannot write the owner file"
-            IS_OWNER=1
-            emit "OWNER-TAKEN $ostem rows=$rows"
+            if [ -f "$owner" ] && descends_from "$ostem"; then
+                if take_rows_from "$owner"; then rows=copied; else rows="cut"; fi
+            fi
+            if [ "$rows" != cut ]; then
+                printf '%s\n' "$manifest" | atomic_write "$owner_file" || die 2 "cannot write the owner file"
+                IS_OWNER=1
+                emit "OWNER-TAKEN $ostem rows=$rows"
+            fi
         fi
     fi
 fi
