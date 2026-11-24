@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# A clip the harvester flags injection-suspect gets a codex and a
-# Hermes skills_guard second opinion. Both reviewers are STUBS here: the suite
-# never calls a real model or the real scanner.
-#   HARVEST_TOOL=<path>   run the suite against another copy of the harvester
-#                         (the RED run points it at the pre-change file)
 # shellcheck disable=SC2016  # fixture text is literal, backticks and all
 set -u -o pipefail
 export HARVEST_SCRAPE_DENY=all
@@ -31,7 +26,6 @@ esac
 STUB
 cat > "$tmp/guard-stub" <<'STUB'
 #!/usr/bin/env bash
-# argv: -I -c <runner> <hermes root> <clip file>
 clip="$(cat "$5")"
 case "$clip" in
   *STUB-MALICIOUS*|*STUB-GUARDCAUTION*) echo '{"verdict": "caution", "ids": ["prompt_injection_ignore"]}' ;;
