@@ -94,11 +94,11 @@ if [ "$dec_env" = "deny" ]; then
 else
     bad "backstop allowed .env read in non-himmel repo (dec=$dec_env)"
 fi
-dec_mcp="$(printf '%s' "$PAYLOAD_MCP" | HIMMEL_ANTIGRAVITY_PROJECT_DIR="$REPO" sh -c "$CMD" 2>/dev/null | jq -r '.decision // empty' 2>/dev/null || true)"
-if [ "$dec_mcp" = "deny" ]; then
-    ok "backstop denies preview_open in hookless non-himmel repo"
+out_mcp="$(printf '%s' "$PAYLOAD_MCP" | HIMMEL_ANTIGRAVITY_PROJECT_DIR="$REPO" sh -c "$CMD" 2>/dev/null)"; rc_mcp=$?
+if [ "$rc_mcp" -eq 0 ] && [ -z "$out_mcp" ]; then
+    ok "backstop gives preview_open the Claude-lane verdict (allow) in hookless non-himmel repo"
 else
-    bad "backstop allowed preview_open in non-himmel repo (dec=$dec_mcp)"
+    bad "backstop did not give preview_open the Claude-lane verdict in non-himmel repo (rc=$rc_mcp out=$out_mcp)"
 fi
 
 echo "== 5. Symlinked target refused fail-closed =="
