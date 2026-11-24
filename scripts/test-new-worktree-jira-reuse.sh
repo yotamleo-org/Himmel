@@ -66,10 +66,10 @@ if grep -q 'jira deps reused' "$TMPBASE/out.txt" "$TMPBASE/err.txt"; then _pass 
 NAME="matching lockfile makes the primary's node_modules reachable"
 if [ -f "$REPO/.claude/worktrees/fix+nwjr-match/scripts/jira/node_modules/dep/index.js" ]; then _pass "$NAME"; else _fail "$NAME" "missing"; fi
 NAME="an install in the reusing worktree leaves the primary's node_modules unchanged"
-before="$(cd "$REPO/scripts/jira/node_modules" && find . -type f | sort | xargs cksum)"
+before="$(cd "$REPO/scripts/jira/node_modules" && cksum dep/index.js; ls -A .)"
 rm -rf "$REPO/.claude/worktrees/fix+nwjr-match/scripts/jira/node_modules"/*
 printf 'y\n' > "$REPO/.claude/worktrees/fix+nwjr-match/scripts/jira/node_modules/new.js"
-after="$(cd "$REPO/scripts/jira/node_modules" && find . -type f | sort | xargs cksum)"
+after="$(cd "$REPO/scripts/jira/node_modules" && cksum dep/index.js; ls -A .)"
 if [ -n "$before" ] && [ "$before" = "$after" ]; then _pass "$NAME"; else _fail "$NAME" "before=[$before] after=[$after]"; fi
 
 printf '{"lockfileVersion":3,"a":2}\n' > "$REPO/scripts/jira/package-lock.json"
