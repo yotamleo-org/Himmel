@@ -29,8 +29,11 @@ at a handover; the ledger is carried by the tick, the HANDOFF and the queue fold
   `to file` stays on the live `queue:` line; only plain segments go to the chief-history file.
 - **The Shift list and your asks must agree.** `bash <kit>/waiting-ask-drift.sh --doc <this doc>` prints
   one line per open operator row with no delivered `OWED <key>` ask (the key is the row id or its ticket
-  key), and one per delivered ask whose key names no open operator row; it prints nothing and exits 0
-  when they agree, 1 on drift. Run it before you tell the operator nothing is waiting on them.
+  key; a ticket key a closed row also carried is used up, so a new row with it needs an ask keyed by its
+  own id), and one per delivered ask whose key names no open operator row (an ask keyed to a closed row
+  or a used-up key is skipped); it prints nothing and exits 0 when they agree, 1 on drift, 2 on an
+  unreadable input or a `--bucket` that is not a directory. Run it before you tell the operator nothing
+  is waiting on them.
 
 Wrapped proof workers record a `kind: proof`, `action: validate-proof`, `actor: chief`
 obligation before worker-event cleanup or direct/sweep close. A writer failure refuses

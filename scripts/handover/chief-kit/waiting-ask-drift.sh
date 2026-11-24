@@ -37,6 +37,7 @@ done
 [ -n "$DOC" ] || usage
 [ -f "$DOC" ] && [ -r "$DOC" ] || { echo "waiting-ask-drift: chief doc '$DOC' is not a readable file" >&2; exit 2; }
 [ -n "$BUCKET" ] || BUCKET="$(cd "$(dirname "$DOC")" && pwd)"
+[ -d "$BUCKET" ] || { echo "waiting-ask-drift: bucket directory '$BUCKET' does not exist" >&2; exit 2; }
 LEDGER="$BUCKET/owed.jsonl"
 command -v python3 >/dev/null 2>&1 || { echo "waiting-ask-drift: python3 is required" >&2; exit 2; }
 

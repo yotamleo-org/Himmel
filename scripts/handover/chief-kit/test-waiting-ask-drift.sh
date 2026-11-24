@@ -113,6 +113,18 @@ printf -- '- 10:00 OWED k1 \377\376 bad\n' >> "$DOC"
 run
 check "D7b rc 2" "$RC" "2"
 
+echo "D7c: --bucket names the ledger's directory; a missing one exits 2, never a clean 0"
+fresh d7c
+id="$(add operator step "sign")"
+mkdir -p "$TMP/d7c-doc"; cp "$DOC" "$TMP/d7c-doc/chief.md"
+OUT="$(bash "$SCRIPT" --doc "$TMP/d7c-doc/chief.md" --bucket "$B" 2>/dev/null)"; RC=$?
+check "D7c valid --bucket reads that ledger" "$OUT" "waiting-no-ask	$id	-	sign"
+check "D7c valid --bucket rc 1" "$RC" "1"
+bash "$SCRIPT" --doc "$DOC" --bucket "$TMP/no-such-bucket" >/dev/null 2>&1
+check "D7c missing --bucket rc 2" "$?" "2"
+bash "$SCRIPT" --doc "$DOC" --bucket "$B/owed.jsonl" >/dev/null 2>&1
+check "D7c --bucket that is a file rc 2" "$?" "2"
+
 echo "D8: it never writes either input"
 fresh d8
 id="$(add operator step "sign")"; ask "orphan-9" "x"; delivered "orphan-9"
