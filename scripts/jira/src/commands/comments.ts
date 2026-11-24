@@ -60,13 +60,21 @@ export function formatComments(comments: JiraCommentEntry[]): string {
     .join('\n\n');
 }
 
+/** One JSON array of id, created, author and body text: what a script needs to name a comment (the text output carries no id). */
+export function commentsJson(comments: JiraCommentEntry[]): string {
+  return JSON.stringify(
+    comments.map((c) => ({ id: c.id, created: c.created, author: c.author?.displayName ?? 'unknown', body: adfToPlainText(c.body) })),
+  );
+}
+
 export function registerComments(program: Command): void {
   program
     .command('comments <key>')
     .description('List comments on a Jira issue, oldest first (author, time, body as plain text)')
     .option('--last <n>', 'Only show the N most recent comments (still oldest-first)')
-    .action(async (key: string, options: { last?: string }) => {
-      const comments = await fetchAllComments(key, request);
-      console.log(formatComments(selectComments(comments, options.last)));
+    .option('--json', 'Print one JSON array of {id, created, author, body} instead of the text lines')
+    .action(async (key: string, options: { last?: string; json?: boolean }) => {
+      const comments = selectComments(await fetchAllComments(key, request), options.last);
+      console.log(options.json ? commentsJson(comments) : formatComments(comments));
     });
 }

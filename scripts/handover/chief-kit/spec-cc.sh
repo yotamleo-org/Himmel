@@ -31,7 +31,7 @@ if [ "$page" != "-" ]; then
         exit 77
     fi
     caption="Copy, no action needed: the chief signed $keys ($oid) under your standing approval. Review when you like; to take one over, mark it as yours."
-    if out="$(bun "$REPO/scripts/telegram/chief-route.ts" send-file "$chat" "$page" "$caption" </dev/null 2>&1)"; then
+    if out="$(bun "$REPO/scripts/telegram/chief-route.ts" send-file --sign "$chat" "$page" "$caption" </dev/null 2>&1)"; then
         exit 0
     fi
     why="$(printf '%s' "$out" | tail -n 1 | cut -c1-200)"
