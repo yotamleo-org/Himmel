@@ -780,7 +780,9 @@ def ownership_check(attempts, manifest, doc, name, keys):
                     continue
                 if time.monotonic() >= legacy_deadline or worker_state(row['doc'], max(.01, legacy_deadline - time.monotonic()),
                                                                        ownership=True) not in ('wrapped', 'abandoned'):
-                    raise Refused('unknown legacy family ownership: %s row %s' % (sibling, row.get('doc')))
+                    raise Refused('unknown legacy family ownership: %s row %s; if that worker is dead, retire the row with: bash %s remove %s %s'
+                                  % (sibling, row.get('doc'), shlex.quote(str(LIB.parent / 'handover/chief-kit/fleet-manifest.sh')),
+                                     shlex.quote(str(sibling)), shlex.quote(str(row.get('doc')))))
     return own_row
 
 

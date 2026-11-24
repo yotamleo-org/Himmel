@@ -4,6 +4,7 @@ import collections
 import json
 import os
 from pathlib import Path
+import shlex
 import socket
 import subprocess
 import time
@@ -810,6 +811,24 @@ exit 1''')
                                        'workers': [{'doc': str(self.doc.resolve()), 'label': 'N1', 'lane': 'native'}]}))
         p = self.rt('begin', aid='sib', ok=False)
         self.assertIn('unknown legacy family ownership: %s row %s' % (sibling, self.doc.resolve()), p.stderr)
+
+    def test_a_sibling_manifest_refusal_offers_the_remove_command(self):
+        self.active()
+        sibling = self.bucket / 'earlier-chief.fleet.json'
+        sibling.write_text(json.dumps({'schema': 1, 'control': json.loads(self.m.read_text())['control'],
+                                       'workers': [{'doc': str(self.doc.resolve()), 'label': 'N1', 'lane': 'native'}]}))
+        p = self.rt('begin', aid='sib2', ok=False)
+        remove = 'bash %s remove %s %s' % (shlex.quote(str(ROOT / 'scripts/handover/chief-kit/fleet-manifest.sh')),
+                                           shlex.quote(str(sibling)), shlex.quote(str(self.doc.resolve())))
+        self.assertIn(remove, p.stderr)
+
+    def test_the_remove_command_quotes_a_manifest_path_with_a_space(self):
+        self.active()
+        sibling = self.bucket / 'earlier chief.fleet.json'
+        sibling.write_text(json.dumps({'schema': 1, 'control': json.loads(self.m.read_text())['control'],
+                                       'workers': [{'doc': str(self.doc.resolve()), 'label': 'N1', 'lane': 'native'}]}))
+        p = self.rt('begin', aid='sib3', ok=False)
+        self.assertIn(' remove %s ' % shlex.quote(str(sibling)), p.stderr)
 
     def live_worker(self):
         self.active()
