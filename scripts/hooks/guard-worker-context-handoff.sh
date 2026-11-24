@@ -65,14 +65,11 @@
 #   3. The worker's own doc is the `.md` path named in the transcript's first user
 #      turn — the launcher's `load <brief> and continue`. Its last marker
 #      WRAPPED -> allow; BLOCKED -> allow a Read, Grep or Glob only.
-#   4. The mode's unlock holds -> allow. A RESUME doc is a candidate when it sits
-#      beside the doc, is not the doc itself, carries the doc's worker id (letter +
-#      digits) with any one-letter suffix, and was modified after this session's
-#      first user turn — so an older link of the same chain never counts. In handoff
-#      mode the unlock holds only when every candidate passes the primary checkout's
-#      brief-lint.sh (exit 0 pass, 1 fixable, other stuck; one 6 s / 3 s budget per
-#      call), and an `append-results.sh` call is denied while a linted candidate is
-#      fixable. A CHECKPOINT counts from the doc's newest CHECKPOINT bullet only.
+#   4. The mode's unlock holds -> allow. A RESUME doc counts when it sits beside
+#      the doc, is not the doc itself, carries the doc's worker id (letter + digits)
+#      with any one-letter suffix, and was modified after this session's
+#      first user turn — so an older link of the same chain never counts. A
+#      CHECKPOINT counts from the doc's newest CHECKPOINT bullet only.
 #   5. Otherwise deny, naming the mode, the fill and exactly what unlocks it.
 # PreCompact: a manual /compact passes; an auto one past the threshold passes
 # only on steps 3-4, with EITHER unlock (a CHECKPOINT or a RESUME doc).
