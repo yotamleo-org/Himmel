@@ -34,7 +34,7 @@ if [ -z "$cli" ]; then
     kit="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
     common=""
     if . "$kit/../../lib/git-clean.sh" 2>/dev/null; then
-        common="$(git_clean -C "$kit" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""  # swallow-ok: no git leaves no CLI, refused below
+        if ! common="$(git_clean -C "$kit" rev-parse --path-format=absolute --git-common-dir)"; then common=""; fi
     fi
     [ -n "$common" ] && cli="$(dirname "$common")/scripts/jira/dist/index.js"
 fi
@@ -49,7 +49,7 @@ jira() {
 pattern="(^|[[:space:]])$(printf '%s' "$LINE" | sed 's/[][\.*^$+?(){}|/]/\\&/g')([[:space:]]|\$)"
 present() {
     local seen
-    seen="$(jira comments "$KEY" 2>/dev/null)" || return 2  # swallow-ok: an unreadable ticket is rc 2, refused as exit 5 by the caller
+    if ! seen="$(jira comments "$KEY")"; then return 2; fi
     grep -Eq -- "$pattern" <<< "$seen"
 }
 
