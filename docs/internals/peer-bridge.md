@@ -557,7 +557,7 @@ A peer draft is approved or rejected only by a `tap` spool record the Telegram
 poller wrote after a real button press by the operator. The poller signs the
 record: an HMAC-SHA256 over a fixed domain tag (`himmel-peer-tap-v1`), the draft
 id, the verdict, the operator id (`by`) and `ts`, in the record's `sig` field (64
-hex). The bridge's `applyTap` recomputes it, compares in constant time, and only
+hex), and over the peer name so a signed tap cannot be copied into another peer's spool. The bridge's `applyTap` recomputes it, compares in constant time, and only
 then checks `by` against the operator chat id. A tap with no `sig` is refused
 `tap-unsigned`; a malformed, wrong-length or mismatched one `tap-bad-sig`. The
 refusal is written to the spool result and logged as

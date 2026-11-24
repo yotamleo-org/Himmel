@@ -96,7 +96,7 @@ async function draftIt(e: Env, rec: { kind: string; replyTo?: number; text: stri
 }
 const tapIt = (e: Env, draft: string, verb: "ok" | "no" = "ok", by = OP) => {
   const rec = { verb, draft, by, ts: e.c.t };
-  return submitSpool(e.peerDir, { type: "tap", ...rec, sig: signTap(e.configDir, rec) });
+  return submitSpool(e.peerDir, { type: "tap", ...rec, sig: signTap(e.configDir, { ...rec, peer: "example" }) });
 };
 const results = (e: Env) => readChain(notifyFile(e.stateDir)).filter(r => (r as any).type === "result") as any[];
 function filesUnder(dir: string): string[] {
@@ -1317,17 +1317,18 @@ test("a tap written by the Telegram side's makePeerTap approves the draft", asyn
   expect(e.sent).toHaveLength(1);
 });
 
-test("a signature over a different draft, verdict, operator or time is refused", async () => {
+test("a signature over a different draft, verdict, operator, time or peer is refused", async () => {
   const e = await setup();
   const id = await draftIt(e, { kind: "info", text: "mismatch" });
   const other = await draftIt(e, { kind: "info", text: "another" });
   const good = tapRec(e, id);
-  const sigOf = (r: Record<string, any>) => signTap(e.configDir, r as any);
+  const sigOf = (r: Record<string, any>) => signTap(e.configDir, { peer: "example", ...r } as any);
   const names = [
     forge(e, { ...good, sig: sigOf(tapRec(e, other)) }),
     forge(e, { ...good, sig: sigOf({ ...good, verb: "no" }) }),
     forge(e, { ...good, sig: sigOf({ ...good, ts: good.ts + 1 }) }),
     forge(e, { ...good, sig: sigOf({ ...good, by: "777" }) }),
+    forge(e, { ...good, sig: sigOf({ ...good, peer: "other" }) }),
   ];
   await e.poller.drainSpool();
   for (const n of names) expect(readResult(e, n)).toEqual({ ok: false, rule: "tap-bad-sig" });
@@ -1338,7 +1339,7 @@ test("a signature over a different draft, verdict, operator or time is refused",
 test("a wrong-length, non-hex or non-string signature is refused", async () => {
   const e = await setup();
   const id = await draftIt(e, { kind: "info", text: "malformed" });
-  const real = signTap(e.configDir, tapRec(e, id));
+  const real = signTap(e.configDir, { peer: "example", ...tapRec(e, id) });
   const names = [real.slice(0, 62), real + "00", "z".repeat(64), ""].map(sig => forge(e, { ...tapRec(e, id), sig }));
   await e.poller.drainSpool();
   for (const n of names) expect(readResult(e, n)).toEqual({ ok: false, rule: "tap-bad-sig" });
@@ -1392,7 +1393,7 @@ test("the tap key is created once with mode 0600 and a later read returns the sa
   const e = await setup();
   const keyPath = join(e.configDir, "tap.key");
   expect(existsSync(keyPath)).toBe(false);
-  const a = signTap(e.configDir, tapRec(e, "0a1b2c3d"));
+  const a = signTap(e.configDir, { peer: "example", ...tapRec(e, "0a1b2c3d") });
   expect(statSync(keyPath).mode & 0o777).toBe(0o600);
-  expect(signTap(e.configDir, tapRec(e, "0a1b2c3d"))).toBe(a);
+  expect(signTap(e.configDir, { peer: "example", ...tapRec(e, "0a1b2c3d") })).toBe(a);
 });

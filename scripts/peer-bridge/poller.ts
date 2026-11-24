@@ -701,7 +701,7 @@ export class Poller {
     const no = (rule: string) => writeResult(dir, name, { ok: false, rule });
     const refuse = (rule: string) => { this.log(`tap-refused peer=${peer} draft=${rec.draft} rule=${rule}`); no(rule); };
     if (rec.sig === undefined) return refuse("tap-unsigned");
-    if (!tapSigOk(this.deps.configDir, rec, rec.sig)) return refuse("tap-bad-sig");
+    if (!tapSigOk(this.deps.configDir, { ...rec, peer }, rec.sig)) return refuse("tap-bad-sig");
     if (rec.by !== String(this.cfg.operatorChatId)) return no("not-operator");
     const out = this.outbox(peer);
     const d = out.find(r => r.kind === "draft" && r.id === rec.draft);

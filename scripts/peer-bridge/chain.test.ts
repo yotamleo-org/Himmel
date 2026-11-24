@@ -273,13 +273,13 @@ test("a bad record after the seed fails with its number", async () => {
 
 test("the tap key is created 0600 once, signs deterministically, and a signature checks only for its own fields", () => {
   const c = tmp("peer-tapkey-");
-  const t = { verb: "ok", draft: "0a1b2c3d", by: "42", ts: 1 };
+  const t = { peer: "example", verb: "ok", draft: "0a1b2c3d", by: "42", ts: 1 };
   const sig = signTap(c, t);
   expect(mode(join(c, "tap.key"))).toBe(0o600);
   expect(signTap(c, t)).toBe(sig);
   expect(tapKey(c).equals(tapKey(c))).toBe(true);
   expect(tapSigOk(c, t, sig)).toBe(true);
-  for (const other of [{ ...t, verb: "no" }, { ...t, draft: "ffffffff" }, { ...t, by: "43" }, { ...t, ts: 2 }]) expect(tapSigOk(c, other, sig)).toBe(false);
+  for (const other of [{ ...t, verb: "no" }, { ...t, draft: "ffffffff" }, { ...t, by: "43" }, { ...t, ts: 2 }, { ...t, peer: "other" }]) expect(tapSigOk(c, other, sig)).toBe(false);
   expect(tapSigOk(c, t, sig.slice(1))).toBe(false);
   expect(tapSigOk(c, t, "z".repeat(64))).toBe(false);
   chmodSync(join(c, "tap.key"), 0o644);

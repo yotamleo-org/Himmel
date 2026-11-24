@@ -137,8 +137,8 @@ export function tapKey(confDir: string): Buffer {
   return readTapKey(path);
 }
 
-type TapFields = { verb: string; draft: string; by: string; ts: number };
-const tapMac = (key: Buffer, t: TapFields): string => createHmac("sha256", key).update(TAP_DOMAIN + [t.draft, t.verb, t.by, t.ts].join("\n")).digest("hex");
+type TapFields = { peer: string; verb: string; draft: string; by: string; ts: number };
+const tapMac = (key: Buffer, t: TapFields): string => createHmac("sha256", key).update(TAP_DOMAIN + [t.peer, t.draft, t.verb, t.by, t.ts].join("\n")).digest("hex");
 
 export function signTap(confDir: string, t: TapFields): string {
   return tapMac(tapKey(confDir), t);

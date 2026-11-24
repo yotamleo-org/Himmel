@@ -200,7 +200,7 @@ export function makePeerTap(d: { stateDir?: string; configDir?: string; root: st
     if (!spoolReady(S, m[2])) { await say("Unknown peer."); return; }
     try {
       const rec = { verb: m[1] as "ok" | "no", draft: m[3], by: String(t.from), ts: clock() };
-      submitSpool(spoolDirOf(S, m[2]), { type: "tap", ...rec, sig: signTap(d.configDir ?? configDir(), rec) });
+      submitSpool(spoolDirOf(S, m[2]), { type: "tap", ...rec, sig: signTap(d.configDir ?? configDir(), { ...rec, peer: m[2] }) });
     } catch { await say("Could not record the tap."); return; }
     await say("Received");
   };

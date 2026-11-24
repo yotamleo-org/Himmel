@@ -44,7 +44,7 @@ const draft = async (e: Env, text: string, source: "send.ts" | "telegram" = "sen
 };
 const tap = async (e: Env, id: string, verb: "ok" | "no" = "ok") => {
   const rec = { verb, draft: id, by: OP, ts: e.c.t };
-  const name = submitSpool(e.peerDir, { type: "tap", ...rec, sig: signTap(e.configDir, rec) });
+  const name = submitSpool(e.peerDir, { type: "tap", ...rec, sig: signTap(e.configDir, { ...rec, peer: "example" }) });
   await e.poller.drainSpool();
   return result(e, name);
 };
@@ -82,8 +82,8 @@ test("a tap that is not from the operator, or names no draft, sends nothing", as
   const e = await setup();
   const a = await draft(e, "hello");
   const rec1 = { verb: "ok" as const, draft: a.draft, by: "777", ts: e.c.t }, rec2 = { verb: "ok" as const, draft: "deadbeef", by: OP, ts: e.c.t };
-  const name = submitSpool(e.peerDir, { type: "tap", ...rec1, sig: signTap(e.configDir, rec1) });
-  const unknown = submitSpool(e.peerDir, { type: "tap", ...rec2, sig: signTap(e.configDir, rec2) });
+  const name = submitSpool(e.peerDir, { type: "tap", ...rec1, sig: signTap(e.configDir, { ...rec1, peer: "example" }) });
+  const unknown = submitSpool(e.peerDir, { type: "tap", ...rec2, sig: signTap(e.configDir, { ...rec2, peer: "example" }) });
   await e.poller.drainSpool();
   expect(result(e, name)).toEqual({ ok: false, rule: "not-operator" });
   expect(result(e, unknown)).toEqual({ ok: false, rule: "unknown-draft" });

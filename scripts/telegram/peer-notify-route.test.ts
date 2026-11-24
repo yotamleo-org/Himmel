@@ -520,7 +520,7 @@ test("a counted tap submits tap {verb, draft, by, ts} and answers Received", asy
     { type: "tap", verb: "ok", draft: "0a1b2c3d", by: String(OP_CHAT), ts: 1_731_000_000_000 },
     { type: "tap", verb: "no", draft: "ffffffff", by: String(OP_CHAT), ts: 1_731_000_000_000 },
   ]);
-  for (const r of recs) expect(chainMod.tapSigOk(t.c, r, r.sig)).toBe(true);
+  for (const r of recs) expect(chainMod.tapSigOk(t.c, { ...r, peer: "example" }, r.sig)).toBe(true);
   expect(t.answers).toEqual(["Received", "Received"]);
 });
 
