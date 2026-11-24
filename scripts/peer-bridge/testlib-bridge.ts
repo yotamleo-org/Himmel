@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readChain } from "./chain";
+import { notifyFile, renderNotify } from "./notify";
 import type { AllowEntry, Config } from "./config";
 import { checkEnvelopeOutbound } from "./egress";
 import { buildEnvelope, encodeCanonical, type Kind } from "./envelope";
@@ -125,5 +126,5 @@ export async function makeWorld(opts: WorldOpts = {}): Promise<World> {
 }
 
 export function wakeLines(b: Bridge): string[] {
-  try { return readFileSync(join(b.cfg.bridgeRoot, "sessions", "__chat__", "outbox.jsonl"), "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l).text as string); } catch { return []; }
+  return readChain(notifyFile(b.stateDir)).map(r => renderNotify(r as any, b.cfg.himmelRoot).text);
 }
