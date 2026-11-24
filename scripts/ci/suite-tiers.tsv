@@ -451,6 +451,7 @@ scripts/handover/chief-kit/test-orphan-pr-check.sh	local	behaviour suite for the
 scripts/handover/chief-kit/test-parked-on-prompt.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-pr-stall.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-priority-prune.sh	local	behaviour suite, new
+scripts/handover/chief-kit/test-queue-prune.sh	local	behaviour suite, new
 scripts/handover/chief-kit/test-ready-check-b.sh	pr	trust-path
 scripts/handover/chief-kit/test-ready-check-c.sh	pr	trust-path
 scripts/handover/chief-kit/test-ready-check-d.sh	pr	trust-path
