@@ -328,11 +328,13 @@ while :; do
         [ -f "$req.pending" ] || { rm -f "$held"; continue; }
         [ "$req.pending" -nt "$held" ] || continue
         code=$(field go "$held"); sha=$(field sha "$held"); rsha=$(field rsha "$held"); name=$(field name "$held"); rm -f "$held"
-        if [ "$(sha256_of "$req.pending")" != "$rsha" ]; then
-            mv "$req.pending" "$req.refused"; log "REFUSED after go $name (the request changed since the ask)"
+        snap="$Q/.retry-snapshot"; cp "$req.pending" "$snap" 2>/dev/null
+        if [ "$(sha256_of "$snap")" != "$rsha" ]; then
+            rm -f "$snap"; mv "$req.pending" "$req.refused"; log "REFUSED after go $name (the request changed since the ask)"
             send bypass-result "bypass launch $name: refused after your go, the request changed since you were asked. Nothing ran."; continue
         fi
-        check_request "$req.pending" || { mv "$req.pending" "$req.refused"; log "REFUSED $REASON $req"; continue; }
+        check_request "$snap" || { rm -f "$snap"; mv "$req.pending" "$req.refused"; log "REFUSED $REASON $req"; continue; }
+        rm -f "$snap"
         log "RETRY $base: the request was touched since its go was held"
         after_go "$req" "$code" "$sha" "$rsha" || [ $? -ne 3 ] || break
     done
@@ -340,7 +342,9 @@ while :; do
     for req in "$Q"/*.req; do
         [ -e "$req" ] || continue
         if stale_now; then hold; break; fi
-        check_request "$req" || { refuse "$req" "$REASON"; continue; }
+        snap="$Q/.ask-snapshot"; cp "$req" "$snap" 2>/dev/null; rsha=$(sha256_of "$snap")
+        check_request "$snap" || { rm -f "$snap"; refuse "$req" "$REASON"; continue; }
+        rm -f "$snap"
         if ! preflight; then
             mv "$req" "$req.refused"; log "REFUSED-PREFLIGHT $base $PF_REASON"
             tell_chief "$chief" "REFUSED-PREFLIGHT $base $PF_REASON — the operator was not asked; fix the cause and file a new request"
@@ -349,7 +353,7 @@ while :; do
         code=$(LC_ALL=C tr -dc 'A-Z2-9' </dev/urandom | head -c 6)
         off=$(wc -c 2>/dev/null <"$INBOUND") || off=0; off=${off//[[:space:]]/}
         sha=$(sha256_of "$brief"); [ ${#sha} -eq 64 ] || { refuse "$req" "brief unreadable"; continue; }
-        mv "$req" "$req.pending"; rsha=$(sha256_of "$req.pending")
+        mv "$req" "$req.pending"
         log "ASK $base model=$model chief=$chief flags=$flags effort=${effort:-default} decision=${decision:-none} sha=${sha:0:12}"
         IFS=- read -r k1 k2 worker _ <<<"$base"
         send bypass-ask "go $code → launch · no $code → refuse
