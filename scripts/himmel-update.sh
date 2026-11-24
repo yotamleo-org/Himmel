@@ -1926,7 +1926,7 @@ update_bypass_daemon() {
     [ "$mode" != "check" ] || arg=(--check)
     out=$(bash "$svc" restart-if-changed ${arg[@]+"${arg[@]}"} 2>&1); rc=$?
     line=$(printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | head -n 1)
-    case "$line" in
+    [ "$rc" -ne 0 ] || case "$line" in
         current*) return 0 ;;
         restarted*)
             echo ""; echo "==> bypass launch daemon"; echo "    $line"

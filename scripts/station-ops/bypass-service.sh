@@ -95,10 +95,11 @@ bucket_arg() {
 cmd_on() {
     refuse_claude "turn the bypass daemon on"
     need_manager
-    local bucket repo hd="${HANDOVER_DIR:-}" path q out live
+    local bucket repo hd="${HANDOVER_DIR:-}" path q out live was_active="" changed=1
     bucket=$(bucket_arg "$@") || exit $?
     repo=$REPO; q="$bucket/bypass-queue"
-    if ! m_active; then
+    m_active && was_active=1
+    if [ -z "$was_active" ]; then
         out=$(bash "$repo/$OPS/bypass-launchd.sh" --check --bucket "$bucket" 2>&1)
         live=$(printf '%s\n' "$out" | sed -n 's/^daemon: live pid=\([0-9][0-9]*\).*/\1/p' | head -n 1)
         if [ -n "$live" ]; then
@@ -109,6 +110,7 @@ cmd_on() {
     path=$(installed_path)
     mkdir -p "$STATE" "$(dirname "$path")" || die "cannot create the unit directory"
     render "$bucket" "$repo" "$hd" >"$path.new" || { rm -f "$path.new"; exit 2; }
+    if [ -f "$path" ] && cmp -s "$path" "$path.new"; then changed=""; fi
     mv "$path.new" "$path"
     printf 'bucket=%s\nrepo=%s\n' "$bucket" "$repo" >"$CONFIG.new" && mv "$CONFIG.new" "$CONFIG"
     rm -f "$q/stop"
@@ -121,6 +123,7 @@ cmd_on() {
     fi
     sctl daemon-reload || die "systemctl --user daemon-reload failed"
     sctl enable --now "$UNIT" || die "systemctl --user enable --now $UNIT failed"
+    if [ -n "$was_active" ] && [ -n "$changed" ]; then sctl restart "$UNIT" || die "systemctl --user restart $UNIT failed"; fi
     if ! loginctl enable-linger "$(id -un)" 2>/dev/null; then
         echo "WARNING: lingering is not enabled, so the daemon starts at your next login, not at boot. Run once: loginctl enable-linger $(id -un)"
     fi
@@ -155,6 +158,8 @@ cmd_restart() {
     need_manager
     local bucket repo
     bucket=$(conf_get bucket); repo=$(conf_get repo); [ -n "$bucket" ] || die "the bypass daemon was never turned on here"; [ -n "$repo" ] || repo=$REPO
+    [ ! -e "$bucket/bypass-queue/stop" ] || die "the daemon is off (a stop file is in $bucket/bypass-queue); turn it on with: himmelctl bypass on"
+    m_enabled || die "the unit is not enabled; turn it on with: himmelctl bypass on"
     if darwin; then launchctl kickstart -k "gui/$UID_N/$LABEL" || die "launchctl kickstart failed"
     else sctl reset-failed "$UNIT" >/dev/null 2>&1; sctl restart "$UNIT" || die "systemctl --user restart $UNIT failed"; fi
     if confirm_up "$repo" "$bucket"; then echo "bypass daemon: restarted"; else echo "bypass daemon: restarted but $CONFIRM_WHY" >&2; exit 1; fi

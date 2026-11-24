@@ -517,6 +517,9 @@ assert_not_contains "bypass_daemon current: no row" "bypass_daemon  " "$out_10"
 run_10 "failed: restart did not load the new code" 1 --only bypass_daemon
 assert_contains "bypass_daemon failed: the row says failed" "bypass_daemon  *failed" "$out_10"
 
+run_10 "restarted" 1 --only bypass_daemon
+assert_contains "bypass_daemon: a success word with a non-zero exit is a failure" "bypass_daemon  *failed" "$out_10"
+
 run_10 "restarted" 0
 assert_contains "bypass_daemon full update: the step runs" "restart-if-changed" "$calls_10"
 assert_contains "bypass_daemon full update: the row is in the table" "bypass_daemon  *updated" "$out_10"

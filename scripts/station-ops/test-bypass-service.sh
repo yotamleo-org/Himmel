@@ -149,6 +149,20 @@ out=$(svc_run restart); rc=$?
 assert_eq "restart (the operator's verb) exits 0" 0 "$rc"
 assert_contains "restart clears a failed state first" "systemctl --user reset-failed $UNIT" "$(calls)"
 assert_contains "restart restarts the unit" "systemctl --user restart $UNIT" "$(calls)"
+svc_run off >/dev/null; : > "$D/calls"
+out=$(svc_run restart); rc=$?
+assert_eq "restart on a daemon that is off exits 2" 2 "$rc"
+assert_contains "restart on a daemon that is off names the way back" "himmelctl bypass on" "$out"
+assert_absent "restart on a daemon that is off restarts nothing" "restart" "$(calls)"
+mk reon
+svc_run on --bucket "$B" >/dev/null
+: > "$D/calls"
+svc_run on --bucket "$B" >/dev/null
+assert_absent "a second on with an unchanged unit restarts nothing" "systemctl --user restart" "$(calls)"
+printf '# edited\n' >> "$U/$UNIT"
+: > "$D/calls"
+svc_run on --bucket "$B" >/dev/null
+assert_contains "an on that rewrites a running unit restarts it, so it runs the new unit" "systemctl --user restart $UNIT" "$(calls)"
 mk mac
 out=$(env -u CLAUDECODE BYPASSD_SERVICE_OS=Darwin HOME="$H" PATH="$BIN:$PATH" STUB_DIR="$D" bash "$R/$OPS/bypass-service.sh" on --bucket "$B" 2>&1)
 assert_eq "macOS on writes the LaunchAgent" yes "$([ -f "$H/Library/LaunchAgents/$PLIST" ] && echo yes || echo no)"

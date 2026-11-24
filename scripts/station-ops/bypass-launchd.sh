@@ -231,12 +231,9 @@ launch_env() {
 session_env() {
     local raw="" d w x t c id ld xrd="${XDG_RUNTIME_DIR:-}"
     SESS=(); SESS_WHY=""
-    if [ "$(uname -s)" = Darwin ]; then
-        sess_get() { printenv "$1" 2>/dev/null | head -n 1; }
-    else
-        raw=$(systemctl --user show-environment 2>/dev/null)
-        sess_get() { printf '%s\n' "$raw" | sed -n "s/^$1=//p" | head -n 1; }
-    fi
+    if [ "$(uname -s)" = Darwin ]; then return 0; fi
+    raw=$(systemctl --user show-environment 2>/dev/null)
+    sess_get() { printf '%s\n' "$raw" | sed -n "s/^$1=//p" | head -n 1; }
     d=$(sess_get DISPLAY); w=$(sess_get WAYLAND_DISPLAY); x=$(sess_get XAUTHORITY); t=$(sess_get XDG_SESSION_TYPE); c=$(sess_get XDG_CURRENT_DESKTOP)
     if [ -z "$d" ] && [ -z "$w" ]; then SESS_WHY="no graphical session"; return 1; fi
     if [ -n "$d" ]; then
