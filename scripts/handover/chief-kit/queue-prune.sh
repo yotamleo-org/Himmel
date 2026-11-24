@@ -94,7 +94,7 @@ if os.environ['QP_DROP']:
 
 doc, apply_mode, opc = os.environ['QP_DOC'], os.environ['QP_APPLY'] == '1', os.environ['QP_OPC']
 
-def locate(lines):  # (index of the first Live state queue: line or None, indexes of every Live state pool line)
+def locate(lines):
     qi, pools, s, qdone, live = None, [], False, False, False
     for i, l in enumerate(lines):
         if l.startswith('## '):
@@ -113,7 +113,7 @@ def opc_run(args):
     p = subprocess.run(['bash', opc, '--doc', doc] + args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return p.returncode, p.stdout.decode('utf-8', 'surrogateescape'), p.stderr.decode('utf-8', 'surrogateescape')
 
-def plan(text, dead, pool_keys):  # the new doc text, the dead segments and the dropped pool lines (key, line)
+def plan(text, dead, pool_keys):
     lines = text.split('\n')
     qi, pools = locate(lines)
     m = re.match(r'^(queue:[ \t]*)(.*)$', lines[qi], re.S)
