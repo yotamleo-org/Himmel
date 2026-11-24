@@ -1693,7 +1693,20 @@ test("sign ask: an unsealed spec refuses and queues nothing, and a sealed spec s
   expect(read.lines.at(-1)!.caption).toBe("SPEC CLEAN r1 | PLAN CLEAN r1");
 });
 
-test("read send: a spec whose critic ended in findings, or whose bytes changed after the critic, goes marked DRAFT; --sign and --by-request together are refused", async () => {
+test("read send: a spec edited after its clean critic goes marked DRAFT in the caption and on the page, while the sign ask on it refuses", async () => {
+  const r = root(); const b = bundle(r);
+  writeFileSync(b.spec, "# Design\n\nthe spec, edited after the critic\n");
+  const read = await readSend(r, "1", b.spec);
+  expect(read.err).toBe(""); expect(read.code).toBe(0);
+  expect(read.lines[0].caption).toBe(DRAFT_CAPTION);
+  expect(readFileSync(read.lines[0].document_path as string, "utf8")).toContain(DRAFT_CAPTION);
+  const sign = await signSend(r, "1", b.spec);
+  expect(sign.code).not.toBe(0);
+  expect(sign.err).toContain("changed since the spec critic read it");
+  expect(sign.lines.length).toBe(1);
+});
+
+test("read send: a spec whose critic ended in findings goes marked DRAFT; --sign and --by-request together are refused", async () => {
   const r = root(); const b = bundle(r);
   critic(b.spec, "spec", 2, "SPEC FINDINGS 1", { text: "# Design\n\nthe spec\n", file: "HIMMEL-1-design.md" });
   const open = await readSend(r, "1", b.spec);
