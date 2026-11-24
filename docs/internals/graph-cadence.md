@@ -162,7 +162,7 @@ PR merged on green — never a direct push to `main` (asserted in
 
 ## The post-merge tick
 
-`scripts/luna/post-merge-refresh.sh` is a separate five-minute tick that refreshes the code graph (and, in `both` mode, the himmel keyword index) after merges settle, with no paid call. Nothing arms it on its own; an operator arms it:
+`scripts/luna/post-merge-refresh.sh` is a separate five-minute tick that refreshes the code graph (and, in `both` mode, the himmel keyword index plus an embed of every pending collection) after merges settle. The graph half makes no paid call; the embed uses the machine's configured embed model (on the station a remote one, under the egress gate), and costs the same as the daily 05:00 run because each chunk is embedded once whenever it lands. Nothing arms it on its own; an operator arms it:
 
 ```bash
 bash scripts/luna/graphmap-cadence.sh post-merge graph   # code graph only

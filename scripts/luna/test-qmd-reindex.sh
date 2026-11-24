@@ -373,6 +373,47 @@ else
     fail "--no-cleanup call sequence" "got: $got_calls"
 fi
 
+echo "TEST: --update-collection updates one collection, embeds bare, leaves the stamp and state alone, skips cleanup"
+reset_state
+touch "$STATE/did-work"
+rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
+mkdir -p "$HOME/.cache/qmd"
+printf 'old-stamp\n' > "$HOME/.cache/qmd/refresh-stamp"
+printf 'rc=0\nsummary=old\n' > "$HOME/.cache/qmd/reindex-state"
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --update-collection himmel 2>&1) || rc=$?
+assert_rc "--update-collection rc 0" 0 "$rc"
+got_calls=$(calls | tr '\n' ',')
+if [ "$got_calls" = "update -c himmel,embed,embed," ]; then
+    pass "--update-collection call sequence is update -c himmel -> embed -> embed(verify), no cleanup"
+else
+    fail "--update-collection call sequence" "got: $got_calls"
+fi
+assert_contains "--update-collection keeps an earlier stamp byte for byte" "old-stamp" "$(cat "$HOME/.cache/qmd/refresh-stamp" 2>/dev/null || true)"
+assert_contains "--update-collection keeps an earlier reindex-state" "summary=old" "$(cat "$HOME/.cache/qmd/reindex-state" 2>/dev/null || true)"
+rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
+reset_state
+touch "$STATE/did-work"
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --update-collection himmel 2>&1) || rc=$?
+if [ ! -e "$HOME/.cache/qmd/refresh-stamp" ] && [ ! -e "$HOME/.cache/qmd/reindex-state" ]; then
+    pass "--update-collection writes no stamp and no reindex-state"
+else
+    fail "--update-collection writes no stamp and no reindex-state" "$(ls "$HOME/.cache/qmd" 2>/dev/null)"
+fi
+
+echo "TEST: --update-collection fails the embed like a full run (rc 4) and refuses a bad name"
+reset_state
+touch "$STATE/fail-embed"
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --update-collection himmel 2>&1) || rc=$?
+assert_rc "--update-collection embed failure rc 4" 4 "$rc"
+reset_state
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --update-collection "-x" 2>&1) || rc=$?
+assert_rc "--update-collection with a flag-shaped name rc 1" 1 "$rc"
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --update-collection 2>&1) || rc=$?
+assert_rc "--update-collection with no operand rc 1" 1 "$rc"
+reset_state
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --update-collection himmel --dry-run 2>&1) || rc=$?
+assert_contains "--update-collection dry-run previews the scoped update" "would run: $FAKE_QMD update -c himmel" "$out"
+
 echo "TEST: a successful reindex writes a refresh stamp"
 reset_state
 rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
