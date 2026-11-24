@@ -311,14 +311,14 @@ assert_deny "block-graphify-egress denies cloud graphify on salus" "salus" \
     CLAUDE_GLM_CONFIG_DIR="$TMP/empty-glm"
 
 for denied_t3 in preview_open preview_act schedule_task pull_request_merge pull_request_create \
-                 t3_thread_search t3_thread_list t3_thread_read t3_thread_send t3_thread_transfer \
+                 t3_thread_search t3_thread_list t3_thread_read t3_thread_transfer \
                  create_threads delegate_task request_secret ci_rerun create_issue future_unknown_tool; do
     assert_deny "strict T3 allowlist denies mcp_t3-code_$denied_t3" "allowlist" \
         "$(make_pre "mcp_t3-code_$denied_t3" '{}')"
 done
 assert_deny "strict T3 allowlist denies t3_thread_launch even with allowlisted claudeAgent" "allowlist" \
     "$(make_pre mcp_t3-code_t3_thread_launch '{"title":"Work","modelSelection":{"instanceId":"claudeAgent","model":"claude-sonnet-5-5"}}')"
-for allowed_t3 in t3_environment_read pull_request_read ci_logs read_issue send_to_user html_preview html_render; do
+for allowed_t3 in t3_thread_send t3_environment_read pull_request_read ci_logs read_issue send_to_user html_preview html_render; do
     assert_pass "strict T3 allowlist allows mcp_t3-code_$allowed_t3" \
         "$(make_pre "mcp_t3-code_$allowed_t3" '{}')"
 done

@@ -115,6 +115,7 @@ ARGS_OFF_ALLOW='{"title":"Work","message":"go","modelSelection":{"instanceId":"a
 ARGS_CHIEF_TITLE='{"action":"rename","title":"ops-chief"}'
 ARGS_UNWATCH_OPEN='{"url":"https://github.com/o/r/pull/123"}'
 ARGS_BENIGN='{"toolSummary":"Read env"}'
+ARGS_SEND='{"threadId":"thread-1","message":"hello"}'
 
 echo "== T3 guard conformance: claude =="
 run_claude guard-t3-thread-tools.sh t3_thread_launch "$ARGS_OFF_ALLOW" deny "off-allowlist instance denied"
@@ -133,6 +134,7 @@ run_antigravity t3_thread_launch "$ARGS_OFF_ALLOW" deny "off-allowlist instance 
 run_antigravity t3_thread_update "$ARGS_CHIEF_TITLE" deny "-chief title denied"
 run_antigravity unwatch_pull_request "$ARGS_UNWATCH_OPEN" deny "unwatch OPEN PR denied"
 run_antigravity t3_environment_read "$ARGS_BENIGN" allow "benign T3 read allowed"
+run_antigravity t3_thread_send "$ARGS_SEND" allow "send to an existing thread allowed"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
