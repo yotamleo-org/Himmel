@@ -1850,7 +1850,9 @@ def apply_second_opinion(path: Path, review_fn=None) -> tuple:
         text = path.read_text(encoding="utf-8")
         fm, fm_raw, body, present = parse_frontmatter(text)
         if not present or fm.get("harvest_flag") != "injection-suspect":
-            return None, "not flagged"
+            if present and fm.get("harvest_flag") == "injection-advisory":
+                return None, "already an advisory"
+            return False, "no injection-suspect flag on disk; operator flag kept"
         if review_fn is None and os.environ.get("HIMMEL_BILLED_OK") != "1":
             return False, "skipped (codex review is billed: set HIMMEL_BILLED_OK=1)"
         res = (review_fn or _load_second_opinion().review)(text)
@@ -1866,6 +1868,8 @@ def apply_second_opinion(path: Path, review_fn=None) -> tuple:
         summary = f"codex={res['codex']} guard={res['guard']}"
         if res["passages"]:
             summary += " passages=" + " | ".join(res["passages"])
+        if not res["guard_ids"]:
+            fm_raw = re.sub(r"^harvest_guard_findings:.*\n?", "", fm_raw, flags=re.MULTILINE)
         new_fm = insert_frontmatter_pairs(fm_raw, pairs)
         path.write_text(f"---\n{new_fm}\n---\n{body}", encoding="utf-8", newline="\n")
         _dfm, _draw, disk_body, disk_ok = parse_frontmatter(path.read_text(encoding="utf-8"))

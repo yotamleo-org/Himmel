@@ -158,5 +158,8 @@ def review(text):
         codex, guard, passages, ids = "error", "error", [_one_line(type(e).__name__)], []
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
+    complete = len(text) <= MAX_CLIP_CHARS
+    if not complete:
+        passages = passages + ["clip longer than the review window: not downgraded"]
     return {"codex": codex, "guard": guard, "passages": passages, "guard_ids": ids,
-            "downgrade": codex == "benign" and guard == "safe"}
+            "downgrade": complete and codex == "benign" and guard == "safe"}
