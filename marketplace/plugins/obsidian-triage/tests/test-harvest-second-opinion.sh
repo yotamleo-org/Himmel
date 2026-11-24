@@ -322,7 +322,7 @@ clip = clippings / "c.md"
 flag = mode in ("so", "flag", "thin")
 canonical = "https://example.org/a"
 fm_extra = "harvest_flag: injection-suspect\n" if flag else ("enrichment_status: ok\nneeds_thread: true\n" if mode == "reflag" else "")
-body = "A plain body.\n" if flag or mode == "reflag" else ("word " * 400 + "\n" if mode == "cb" else "short.\n")
+body = "A plain body.\n" if flag or mode == "reflag" else ("\n".join("word " * 40 for _ in range(12)) + "\n" if mode == "cb" else "short.\n")
 src = "" if flag or mode == "reflag" else f"type: article\nsource: {canonical}\n"
 orig = f"---\ntitle: x\n{src}{fm_extra}---\n{body}"
 clip.write_text(orig, encoding="utf-8")
@@ -383,6 +383,8 @@ for site in so flag thin yt fc cb reflag defer; do
   killrun "$site" none
   assert "write site $site: the control run changes the clip, so the harness reaches the write" "changed" "$killclip"
   assert "write site $site: a landed write keeps the clip's file mode" "640" "$killmode"
+  case "$site" in cb) want="harvested via clip-body" ;; fc) want="harvested via firecrawl" ;; *) want="" ;; esac
+  if [ -n "$want" ]; then assert "write site $site: the control run goes through the $want writer" "yes" "$(grep -q "$want" "$tmp/kill.out" && echo yes || echo no)"; fi
   killrun "$site" kill
   assert "write site $site: the writer was killed mid-write" "137" "$killrc"
   assert "write site $site: a writer killed mid-write leaves the old clip byte for byte" "intact" "$killclip"
