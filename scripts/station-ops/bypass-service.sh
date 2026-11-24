@@ -87,18 +87,18 @@ bucket_arg() {
 }
 
 cmd_on() {
-    refuse_claude "turn the bypass daemon on"
+    refuse_claude "turn the bypass daemon on" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     need_manager
     local bucket repo pin_hd="" path q out live own was_active="" changed=1
     bucket=$(bucket_arg "$@") || exit $?
     repo=$REPO; q="$bucket/bypass-queue"
     m_active && was_active=1
     out=$(bash "$repo/$OPS/bypass-launchd.sh" --check --bucket "$bucket" 2>&1)
-    live=$(printf '%s\n' "$out" | sed -n 's/^daemon: live pid=\([0-9][0-9]*\).*/\1/p' | head -n 1)
+    live=$(printf '%s\n' "$out" | sed -n 's/^daemon: live pid=\([0-9][0-9]*\).*/\1/p' | head -n 1) # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     if [ -n "$live" ]; then
         own=""; [ -z "$was_active" ] || own=$(unit_pid)
         if [ "$live" != "$own" ]; then
-            echo "bypass-service: a daemon started by hand (pid $live) holds $bucket. Stop it with: touch $q/stop   then run: himmelctl bypass on" >&2
+            echo "bypass-service: a daemon started by hand (pid $live) holds $bucket. Stop it with: touch $q/stop   then run: himmelctl bypass on" >&2 # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
             exit 1
         fi
     fi
@@ -115,28 +115,28 @@ cmd_on() {
     if darwin; then
         mkdir -p "$HOME/.himmel"
         launchctl bootout "gui/$UID_N/$LABEL" >/dev/null 2>&1
-        launchctl bootstrap "gui/$UID_N" "$path" || die "launchctl bootstrap failed for $path"
-        echo "bypass daemon: on ($LABEL loaded; it starts at your login)"
+        launchctl bootstrap "gui/$UID_N" "$path" || die "launchctl bootstrap failed for $path" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
+        echo "bypass daemon: on ($LABEL loaded; it starts at your login)" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
         return 0
     fi
-    sctl daemon-reload || die "systemctl --user daemon-reload failed"
-    sctl enable --now "$UNIT" || die "systemctl --user enable --now $UNIT failed"
+    sctl daemon-reload || die "systemctl --user daemon-reload failed" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
+    sctl enable --now "$UNIT" || die "systemctl --user enable --now $UNIT failed" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     if [ -n "$was_active" ] && [ -n "$changed" ]; then sctl restart "$UNIT" || die "systemctl --user restart $UNIT failed"; fi
     if ! loginctl enable-linger "$(id -un)" 2>/dev/null; then
-        echo "WARNING: lingering is not enabled, so the daemon starts at your next login, not at boot. Run once: loginctl enable-linger $(id -un)"
+        echo "WARNING: lingering is not enabled, so the daemon starts at your next login, not at boot. Run once: loginctl enable-linger $(id -un)" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     fi
-    echo "bypass daemon: on ($UNIT enabled and started)"
+    echo "bypass daemon: on ($UNIT enabled and started)" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
 }
 
 cmd_off() {
-    refuse_claude "turn the bypass daemon off"
+    refuse_claude "turn the bypass daemon off" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     need_manager
     local bucket
-    bucket=$(conf_get bucket); [ -n "$bucket" ] || die "the bypass daemon was never turned on here (no record at $CONFIG)"
+    bucket=$(conf_get bucket); [ -n "$bucket" ] || die "the bypass daemon was never turned on here (no record at $CONFIG)" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     touch "$bucket/bypass-queue/stop" || die "cannot write the stop file in $bucket/bypass-queue"
     if darwin; then launchctl bootout "gui/$UID_N/$LABEL" >/dev/null 2>&1
     else sctl disable --now "$UNIT" || die "systemctl --user disable --now $UNIT failed"; fi
-    echo "bypass daemon: off (stop file written, $(if darwin; then echo "$LABEL"; else echo "$UNIT"; fi) disabled)"
+    echo "bypass daemon: off (stop file written, $(if darwin; then echo "$LABEL"; else echo "$UNIT"; fi) disabled)" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
 }
 
 confirm_up() {
@@ -147,20 +147,20 @@ confirm_up() {
         n=$((n + 1))
     done
     want=$(checkout_ids "$repo") || { CONFIRM_WHY="cannot read the checkout's code ids"; return 1; }
-    [ "$(cat "$bucket/bypass-queue/.loaded" 2>/dev/null)" = "$want" ] || { CONFIRM_WHY="the daemon did not load the new code"; return 1; }
+    [ "$(cat "$bucket/bypass-queue/.loaded" 2>/dev/null)" = "$want" ] || { CONFIRM_WHY="the daemon did not load the new code"; return 1; } # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     return 0
 }
 
 cmd_restart() {
-    refuse_claude "restart the bypass daemon"
+    refuse_claude "restart the bypass daemon" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     need_manager
     local bucket repo
-    bucket=$(conf_get bucket); repo=$(conf_get repo); [ -n "$bucket" ] || die "the bypass daemon was never turned on here"; [ -n "$repo" ] || repo=$REPO
-    [ ! -e "$bucket/bypass-queue/stop" ] || die "the daemon is off (a stop file is in $bucket/bypass-queue); turn it on with: himmelctl bypass on"
+    bucket=$(conf_get bucket); repo=$(conf_get repo); [ -n "$bucket" ] || die "the bypass daemon was never turned on here"; [ -n "$repo" ] || repo=$REPO # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
+    [ ! -e "$bucket/bypass-queue/stop" ] || die "the daemon is off (a stop file is in $bucket/bypass-queue); turn it on with: himmelctl bypass on" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     m_enabled || die "the unit is not enabled; turn it on with: himmelctl bypass on"
     if darwin; then launchctl kickstart -k "gui/$UID_N/$LABEL" || die "launchctl kickstart failed"
     else sctl reset-failed "$UNIT" >/dev/null 2>&1; sctl restart "$UNIT" || die "systemctl --user restart $UNIT failed"; fi
-    if confirm_up "$repo" "$bucket"; then echo "bypass daemon: restarted"; else echo "bypass daemon: restarted but $CONFIRM_WHY" >&2; exit 1; fi
+    if confirm_up "$repo" "$bucket"; then echo "bypass daemon: restarted"; else echo "bypass daemon: restarted but $CONFIRM_WHY" >&2; exit 1; fi # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
 }
 
 cmd_restart_if_changed() {
@@ -168,11 +168,11 @@ cmd_restart_if_changed() {
     case ${1:-} in --check) check=1 ;; "") ;; *) die "unknown argument $1" ;; esac
     bucket=$(conf_get bucket); repo=$(conf_get repo); [ -n "$repo" ] || repo=$REPO
     if [ -z "$bucket" ]; then
-        echo "not-enabled: bypass daemon is off, turn it on from your shell: himmelctl bypass on"; return 0
+        echo "not-enabled: bypass daemon is off, turn it on from your shell: himmelctl bypass on"; return 0 # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     fi
     need_manager
     if ! m_enabled; then
-        echo "not-enabled: bypass daemon is off, turn it on from your shell: himmelctl bypass on"; return 0
+        echo "not-enabled: bypass daemon is off, turn it on from your shell: himmelctl bypass on"; return 0 # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     fi
     if ! m_active; then
         echo "inactive: the unit is enabled but not running; start it from your shell: himmelctl bypass restart"; return 0

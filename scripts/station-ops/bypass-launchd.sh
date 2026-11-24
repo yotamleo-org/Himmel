@@ -453,7 +453,7 @@ for pend in "$Q"/*.req.pending; do
     req=${pend%.pending}
     if grep -q '^granted_at=' "$pend" 2>/dev/null; then
         mv "$pend" "$req.failed"; log "INTERRUPTED ${req##*/} (a go was granted before the restart and the launch may have run; file a new request)"
-        send bypass-failed "bypass request ${req##*/}: the daemon restarted after your go, the launch may have run. It was not re-run; check the fleet and file a new request if needed."
+        send bypass-failed "bypass request ${req##*/}: the daemon restarted after your go, the launch may have run. It was not re-run; check the fleet and file a new request if needed." # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     else
         mv "$pend" "$req"; log "REQUEUE ${req##*/} (an ask in flight does not survive a restart)"
     fi

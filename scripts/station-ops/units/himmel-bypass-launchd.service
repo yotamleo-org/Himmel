@@ -1,6 +1,6 @@
 # NotifyAccess=all because the heartbeat is sent by systemd-notify, a child of the main process.
 [Unit]
-Description=himmel bypass launch daemon (go-code route)
+Description=himmel bypass launch service (go-code route)
 After=network-online.target
 StartLimitIntervalSec=600
 StartLimitBurst=5

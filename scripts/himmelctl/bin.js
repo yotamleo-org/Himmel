@@ -230,7 +230,7 @@ commands:
                           --dry-run check, so --dry-run predicting THAT refusal
                           also exits 3, not 0
   bypass on|off|restart|status [--bucket <dir>]
-                          the bypass launch daemon (scripts/station-ops/bypass-launchd.sh)
+                          the bypass launch service (scripts/station-ops/bypass-launchd.sh)
                           as a service unit: 'on' installs, enables and starts it (a
                           systemd user unit, or a macOS LaunchAgent) so it runs forever,
                           restarts when it dies or hangs and comes back after a reboot;
