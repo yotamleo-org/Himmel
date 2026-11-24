@@ -80,6 +80,9 @@ DAEMON_REL=scripts/station-ops/bypass-launchd.sh
 g() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_COMMON_DIR git -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@t "$@"; }
 mk_repo() {
     mkdir -p "$1/scripts/station-ops" "$1/scripts/himmelctl/lib"
+    mkdir -p "$1/scripts/lib"
+    cp "$REPO_ROOT/scripts/lib/portable-timeout.sh" "$1/scripts/lib/portable-timeout.sh"
+    cp -R "$REPO_ROOT/scripts/lib/shims" "$1/scripts/lib/shims"
     cp "$REPO_ROOT/$DAEMON_REL" "$1/$DAEMON_REL"
     cp "$REPO_ROOT/$REG_REL" "$1/$REG_REL"
     [ -f "$REPO_ROOT/$TIER_REL" ] && cp "$REPO_ROOT/$TIER_REL" "$1/$TIER_REL"
@@ -1178,7 +1181,7 @@ out=$(run_svc "$FAR"); rc=$?
 assert_eq "11031: a dated --until past 7 days is still refused under the unit's variable" 2 "$rc"
 assert_contains "11031: with the old cap message" "at most 7 days ahead" "$out"
 setup_repo forever-claude
-out=$(env CLAUDECODE=1 BYPASSD_SERVICE=1 BYPASSD_TEST_DAEMON="$DAEMON" PATH="$tmp/bin:$PATH" BYPASSD_TEST_DIR="$D" BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" \
+out=$(env -u INVOCATION_ID CLAUDECODE=1 BYPASSD_SERVICE=1 BYPASSD_TEST_DAEMON="$DAEMON" PATH="$tmp/bin:$PATH" BYPASSD_TEST_DIR="$D" BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" \
     XDG_RUNTIME_DIR="$D/run" timeout 5 bash "$DAEMON" --bucket "$B" --until forever 2>&1); rc=$? # gnu-ok: portable-timeout.sh above supplies a timeout on macOS
 assert_eq "11031: the CLAUDECODE refusal still holds for forever" 2 "$rc"
 assert_contains "11031: and says so" "refusing to start from inside a Claude session" "$out"

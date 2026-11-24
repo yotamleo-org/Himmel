@@ -136,6 +136,7 @@ fi
 LOG="$Q/daemon.log" # t13b-ok: the queue log file name the bucket and chief docs already read; operator-started, bounded by --until
 
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+[ -z "$SERVICE" ] || unset GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_EXEC_PATH
 SELF_REL=scripts/station-ops/bypass-launchd.sh TIER_REL=scripts/station-ops/bypass-flag-tiers.tsv REG_REL=scripts/himmelctl/lib/bypass-flags.json
 gitd() { git --no-replace-objects -c core.fsmonitor=false -C "$REPO" "$@"; }
 for p in "$SELF_REL" "$TIER_REL" "$REG_REL"; do
