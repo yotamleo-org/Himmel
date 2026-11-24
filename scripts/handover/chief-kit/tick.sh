@@ -5297,7 +5297,7 @@ else
         drift_claim="$drift_dir/tick-drift-wake-$(date -u +%F)"
         if mkdir -p "$drift_dir" 2>/dev/null && (set -C; : > "$drift_claim") 2>/dev/null; then  # swallow-ok: an unclaimable day prints no wake, never a repeated one
             printf 'WAKE drift-actionable %s\n' "$drift_wake"
-            find "$drift_dir" -maxdepth 1 -name 'tick-drift-wake-*' -mtime +7 -delete 2>/dev/null  # swallow-ok: an unprunable old claim is harmless
+            find "$drift_dir" -maxdepth 1 -name 'tick-drift-wake-*' -mtime +7 -delete 2>/dev/null  # gnu-ok: console kit is Linux-only # swallow-ok: an unprunable old claim is harmless
         fi
     fi
     if [ -n "$holdout_summary" ]; then
