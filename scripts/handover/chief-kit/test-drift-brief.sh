@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# test-drift-brief.sh — the daily drift wake: tick.sh's drift probe
-# (drift=<n> and one `WAKE drift-actionable <n>` per UTC day) and drift-brief.py, the
-# generator of the drift worker brief. Hermetic: the issue body is a file a stub
-# reads, the clock is DRIFT_NOW, and no gh, Jira or model call is made.
-# PLATFORM GUARD: the chief kit is Linux-only (see test-tick.sh).
 # shellcheck disable=SC2015  # `[ cond ] && pass || fail`: pass() cannot fail, so A && B || C is if-then-else here
 # shellcheck disable=SC2153  # REPO is exported by the sourced tick-test-fixture.sh
 # shellcheck disable=SC2154  # fails is set by the sourced tick-test-fixture.sh
