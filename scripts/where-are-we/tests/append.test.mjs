@@ -42,7 +42,6 @@ test('appendRecords drops invalid records and records drop reasons', () => {
   assert.ok(!recs.some(r => r.key === INVALID_NO_KIND.key && !r.kind));
 });
 
-// Test 3: the lock is the collection's kernel lock; no directory lock exists
 test('acquireLock takes the collection flock; release frees it; no directory lock is made', () => {
   const dir = makeTmpDir('waw-append-');
   const ledger = join(dir, 'ledger.jsonl');
@@ -64,7 +63,6 @@ test('appendRecords releases the lock on success', () => {
   acquireLock(ledger, { timeoutMs: 100 }).release();
 });
 
-// Test 5: mutual exclusion — appendRecords times out while another holder has the lock
 test('appendRecords throws on timeout when the lock is held and appends nothing', () => {
   const dir = makeTmpDir('waw-append-');
   const ledger = join(dir, 'ledger.jsonl');
@@ -76,7 +74,6 @@ test('appendRecords throws on timeout when the lock is held and appends nothing'
   } finally { held.release(); }
 });
 
-// Test 6.1: a missing directory surfaces its own error immediately
 test('acquireLock re-throws a missing parent directory immediately (ENOENT branch)', () => {
   const dir = makeTmpDir('waw-append-');
   const ledger = join(dir, 'no-such-subdir', 'ledger.jsonl');
@@ -85,7 +82,6 @@ test('acquireLock re-throws a missing parent directory immediately (ENOENT branc
   assert.ok(Date.now() - before < 1000, 'must not wait out the timeout');
 });
 
-// Test 6: release-on-error — the lock is released even when the append throws
 test('appendRecords releases the lock when append throws (finally path)', () => {
   const dir = makeTmpDir('waw-append-');
   // Make the ledger path itself a directory so appendFileSync throws EISDIR
