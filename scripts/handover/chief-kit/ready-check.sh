@@ -2288,7 +2288,6 @@ check_outside_pr() {
         o_cr=$(env -u CR_OK_DESC_RE -u CR_SKIP_DESC_RE -u CR_BOT_USER_ID -u CR_STATUS_CONTEXT GH_CMD="$GH" \
             "$_TIMEOUT_BIN" -k 5 20 bash -c '. "$1" 2>/dev/null || exit 3; cr_signal_state "$2" "$3" "$4"' \
             _ "$o_lib/coderabbit-signal.sh" "$owner" "$repo" "$SHA" 2>/dev/null </dev/null) || o_cr="unreadable"  # read-sink-ok: $1 is this checkout's own lib path
-        # CodeRabbit runs on a budget and a rate limit, so only a posted failure or error blocks: a running, missing, skipped, rate-limited or unreadable status is a note.
         case "$o_cr" in
             success) echo "[PASS] 16h. CodeRabbit reviewed $o_h7 (success)" ;;
             failure|error) o16_fail h "CodeRabbit at $o_h7 is $o_cr, want success: fix the finding it posted, or comment \`@coderabbitai review\` on the PR and wait for the status at $o_h7" ;;
