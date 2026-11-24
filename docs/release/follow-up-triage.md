@@ -97,10 +97,18 @@ Anything else may be deferred, with a class.
 
 ## Where a follow-up goes
 
-The follow-up verb (`jira create --residual-of`) puts each follow-up in exactly
-one place when it is filed. It decides from fields it already has: `--fu-class`,
-depth, priority, `--gate`, and the parent or `--blocks` link. The first matching
-row wins. "Next" means the earliest unreleased version after the current one.
+A follow-up of a project a declared release names is placed by the door from its
+priority: `jira create --residual-of` files it with no version and queues its
+INTAKE, and the door rules it (High and above to the current version, the rest to
+the next). Only `--gate` keeps a filing-time version, the current one. The class
+(`--fu-class`) is stamped as a label but does not place it.
+
+For a project no declared release names, and when the declarations cannot be
+read (the verb prints one line and still files), the verb puts each follow-up in
+exactly one place when it is filed. It decides from fields it already has:
+`--fu-class`, depth, priority, `--gate`, and the parent or `--blocks` link. The
+first matching row wins. "Next" means the earliest unreleased version after the
+current one.
 
 | # | Condition | Lands in |
 |---|---|---|
@@ -120,7 +128,7 @@ row wins. "Next" means the earliest unreleased version after the current one.
 - A frozen version admits only through row c, so the frozen set stays fixed.
 - The model release judge is parked: the door (`scripts/jira/src/release/door.ts`) rules every
   INTAKE request by fixed rules, and `--backlog` does not keep a mild follow-up out of the next
-  version. The rows above are the residual verb's own placement and are unchanged by it.
+  version. The rows above apply only to a project no declared release names.
 - The release manager can override any placement later with a REVERSION. The
   verb's class is a default, not a gate.
 - Placement never throws on a frozen version: a frozen or missing next sends the
