@@ -540,9 +540,11 @@ operator bot and so read the reply text:
 
 - the bridge's last good `getUpdates` is over 60 s old;
 - it got a 409 in the last 10 minutes;
-- a `telegram-himmel` plugin process that polls (`TELEGRAM_OWN_POLLER=1`)
-  resolves to the operator bot, or to no single bot. A send-only plugin process
-  never holds.
+- a `telegram-himmel` plugin process that polls (`TELEGRAM_OWN_POLLER=1` in its
+  environment or its state-dir `.env`) resolves to the operator bot, or to no
+  single bot. A send-only plugin process never holds. Where the environment
+  cannot be read (or, on macOS, reads ambiguously), the plugin's `bot.pid`
+  decides, or the process holds.
 
 The queue waits. After 10 minutes held, one line says the notifications are held
 and why. A reply to a peer notification is never routed to a session: in this

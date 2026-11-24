@@ -183,29 +183,39 @@ export function pluginStateDir(env: Record<string, string>, home = process.env.H
   return env.TELEGRAM_STATE_DIR ?? join(env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"), "channels", "telegram");
 }
 
-function envFileBotId(stateDir: string): string | null {
+function envFile(stateDir: string): { ownPoller: boolean; botId: string | null } {
+  let ownPoller = false, botId: string | null = null;
   try {
-    for (const line of fs.readFileSync(join(stateDir, ".env"), "utf8").split("\n")) {
-      const m = BOT_TOKEN_WORD.exec(line.trim());
-      if (m) return m[1];
+    for (const raw of fs.readFileSync(join(stateDir, ".env"), "utf8").split("\n")) {
+      const line = raw.trim();
+      if (line === "TELEGRAM_OWN_POLLER=1") ownPoller = true;
+      const m = BOT_TOKEN_WORD.exec(line);
+      if (m) botId ??= m[1];
     }
   } catch {}
-  return null;
+  return { ownPoller, botId };
 }
 
-export function procFromEnv(pid: number, words: string[] | null, home?: string): ProcInfo {
+const SWITCH_KEYS = ["TELEGRAM_OWN_POLLER", "TELEGRAM_STATE_DIR", "CLAUDE_CONFIG_DIR"];
+
+export function procFromEnv(pid: number, words: string[] | null, home = process.env.HOME || homedir(), exact = true): ProcInfo {
   if (words === null) return { pid, ownPoller: "unknown", botIds: [] };
-  if (!words.includes("TELEGRAM_OWN_POLLER=1")) return { pid, ownPoller: false, botIds: [] };
-  const env: Record<string, string> = {};
+  const values = new Map<string, string[]>();
   const botIds: string[] = [];
   for (const w of words) {
     const m = BOT_TOKEN_WORD.exec(w);
     if (m) botIds.push(m[1]);
     const eq = w.indexOf("=");
-    if (eq > 0) env[w.slice(0, eq)] ??= w.slice(eq + 1);
+    if (eq > 0) values.set(w.slice(0, eq), [...(values.get(w.slice(0, eq)) ?? []), w.slice(eq + 1)]);
   }
-  const fromFile = envFileBotId(pluginStateDir(env, home));
-  if (fromFile) botIds.push(fromFile);
+  if (SWITCH_KEYS.some(k => (values.get(k)?.length ?? 0) > 1)) return { pid, ownPoller: true, botIds: [] };
+  const env = Object.fromEntries([...values].map(([k, v]) => [k, v[0]]));
+  const dirs = exact
+    ? [pluginStateDir(env, home)]
+    : [pluginStateDir({}, home), ...(values.get("TELEGRAM_STATE_DIR") ?? []), ...(values.get("CLAUDE_CONFIG_DIR") ?? []).map(c => pluginStateDir({ CLAUDE_CONFIG_DIR: c }, home))];
+  const files = dirs.map(envFile);
+  if (env.TELEGRAM_OWN_POLLER !== "1" && !files.some(f => f.ownPoller)) return { pid, ownPoller: false, botIds: [] };
+  for (const f of files) if (f.botId) botIds.push(f.botId);
   return { pid, ownPoller: true, botIds };
 }
 
@@ -235,7 +245,7 @@ function run(cmd: string[]): string | null {
   return r.exitCode === 0 ? r.stdout.toString() : null;
 }
 
-export function macProcsFrom(psList: string, cwdOf: (pid: number) => string | null, envOf: (pid: number) => string | null): ProcInfo[] {
+export function macProcsFrom(psList: string, cwdOf: (pid: number) => string | null, envOf: (pid: number) => string | null, home?: string): ProcInfo[] {
   const out: ProcInfo[] = [];
   for (const line of psList.split("\n")) {
     const m = /^\s*([0-9]+)\s+(.*)$/.exec(line);
@@ -244,8 +254,8 @@ export function macProcsFrom(psList: string, cwdOf: (pid: number) => string | nu
     if (pid === process.pid || !m[2].split(/\s+/).some(isServerArg)) continue;
     const cwd = cwdOf(pid);
     if (!cwd || !isPluginRoot(cwd)) continue;
-    const env = envOf(pid);
-    out.push(procFromEnv(pid, env === null ? null : env.split(/\s+/).filter(Boolean)));
+    const words = envOf(pid)?.split(/\s+/).filter(Boolean) ?? [];
+    out.push(procFromEnv(pid, words.some(w => w.startsWith("PATH=")) ? words : null, home, false));
   }
   return out;
 }

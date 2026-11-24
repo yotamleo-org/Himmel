@@ -167,15 +167,45 @@ test("hold rules: macOS ps -E words", () => {
   const root = pluginFixture(join(tmp("peer-notify-mac-"), "plugins/cache/himmel/telegram-himmel/0.0.23"));
   const list = `  41 bun server.ts\n  42 /usr/bin/bun server.ts\n  43 vim notes.txt\n`;
   const env: Record<number, string | null> = {
-    41: `bun server.ts TELEGRAM_OWN_POLLER=1 NOTE=see TELEGRAM_BOT_TOKEN=${OTHER_BOT}:x HOME=/Users/x TELEGRAM_BOT_TOKEN=${OTHER_BOT}:y`,
-    42: `bun server.ts TELEGRAM_OWN_POLLER=1 TELEGRAM_BOT_TOKEN=${OTHER_BOT}:x NOTE=TELEGRAM_BOT_TOKEN=${OP_BOT}:z`,
+    41: `bun server.ts PATH=/usr/bin TELEGRAM_OWN_POLLER=1 NOTE=see TELEGRAM_BOT_TOKEN=${OTHER_BOT}:x HOME=/Users/x TELEGRAM_BOT_TOKEN=${OTHER_BOT}:y`,
+    42: `bun server.ts PATH=/usr/bin TELEGRAM_OWN_POLLER=1 TELEGRAM_BOT_TOKEN=${OTHER_BOT}:x NOTE=TELEGRAM_BOT_TOKEN=${OP_BOT}:z`,
   };
   const procs = macProcsFrom(list, () => root, pid => env[pid] ?? null);
   expect(procs.map(p => p.pid)).toEqual([41, 42]);
   expect(holdingProc([procs[0]], [], OP_BOT)).toBe(false);
-  const embedded = macProcsFrom(`  44 bun server.ts\n`, () => root, () => `bun server.ts TELEGRAM_OWN_POLLER=1 TELEGRAM_BOT_TOKEN=${OTHER_BOT}:x NOTE=x TELEGRAM_BOT_TOKEN=${OP_BOT}:z`);
+  const embedded = macProcsFrom(`  44 bun server.ts\n`, () => root, () => `bun server.ts PATH=/usr/bin TELEGRAM_OWN_POLLER=1 TELEGRAM_BOT_TOKEN=${OTHER_BOT}:x NOTE=x TELEGRAM_BOT_TOKEN=${OP_BOT}:z`);
   expect(holdingProc(embedded, [], OP_BOT)).toBe(true);
   expect(macProcsFrom(`  45 bun server.ts\n`, () => root, () => null)[0].ownPoller).toBe("unknown");
+});
+
+const stateDirWith = (lines: string[]) => { const d = tmp("peer-notify-state-"); fs.writeFileSync(join(d, ".env"), lines.join("\n") + "\n"); return d; };
+
+test("hold rules: own poller switched on only in the state-dir .env holds", () => {
+  const d = stateDirWith(["TELEGRAM_OWN_POLLER=1", `TELEGRAM_BOT_TOKEN=${OP_BOT}:x`]);
+  const p = procFromEnv(7, ["PATH=/usr/bin", `TELEGRAM_STATE_DIR=${d}`], "/nonexistent");
+  expect(p).toMatchObject({ ownPoller: true, botIds: [OP_BOT] });
+  expect(holdingProc([p], [], OP_BOT)).toBe(true);
+  const off = stateDirWith([`TELEGRAM_BOT_TOKEN=${OP_BOT}:x`]);
+  expect(procFromEnv(8, ["PATH=/usr/bin", `TELEGRAM_STATE_DIR=${off}`], "/nonexistent").ownPoller).toBe(false);
+});
+
+test("hold rules: a state-dir word inside another value cannot redirect the .env read on macOS", () => {
+  const root = pluginFixture(join(tmp("peer-notify-mac3-"), "plugins/cache/himmel/telegram-himmel/0.0.23"));
+  const home = tmp("peer-notify-home3-");
+  fs.mkdirSync(join(home, ".claude/channels/telegram"), { recursive: true });
+  fs.writeFileSync(join(home, ".claude/channels/telegram/.env"), `TELEGRAM_BOT_TOKEN=${OP_BOT}:x\n`);
+  const other = stateDirWith([`TELEGRAM_BOT_TOKEN=${OTHER_BOT}:y`]);
+  const procs = macProcsFrom(`  46 bun server.ts\n`, () => root, () => `bun server.ts PATH=/usr/bin TELEGRAM_OWN_POLLER=1 NOTE=a TELEGRAM_STATE_DIR=${other}`, home);
+  expect(holdingProc(procs, [], OP_BOT)).toBe(true);
+  expect(holdingProc([procFromEnv(47, ["PATH=/usr/bin", "TELEGRAM_OWN_POLLER=1", "TELEGRAM_STATE_DIR=/a", "TELEGRAM_STATE_DIR=/b"], home)], [], OP_BOT)).toBe(true);
+});
+
+test("hold rules: a macOS ps -E line with no environment is unknown, decided by bot.pid", () => {
+  const root = pluginFixture(join(tmp("peer-notify-mac4-"), "plugins/cache/himmel/telegram-himmel/0.0.23"));
+  const [p] = macProcsFrom(`  48 bun server.ts\n`, () => root, () => "bun server.ts");
+  expect(p.ownPoller).toBe("unknown");
+  expect(holdingProc([p], [48], OP_BOT)).toBe(true);
+  expect(holdingProc([p], [], OP_BOT)).toBe(false);
 });
 
 function pluginFixture(root: string): string {
