@@ -379,7 +379,7 @@ killrun() {
   case "$strays" in *.md" "*) killmdstray=yes ;; *) killmdstray=no ;; esac
   killmode="$("$PY" -I -c 'import os, sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$kdir/Clippings/c.md")"
 }
-for site in so flag thin yt fc cb reflag; do
+for site in so flag thin yt fc cb reflag defer; do
   killrun "$site" none
   assert "write site $site: the control run changes the clip, so the harness reaches the write" "changed" "$killclip"
   assert "write site $site: a landed write keeps the clip's file mode" "640" "$killmode"
