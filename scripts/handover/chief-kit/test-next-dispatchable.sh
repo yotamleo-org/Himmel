@@ -5180,6 +5180,60 @@ pd4="$(pd_run)"
 lacks "10257: a closed owed proof no longer names the ticket # pool-owed" "$pd4" "# pool-owed $KP-9701 "
 check "10257: with its proof closed and its slice on main the ticket is a # pool-done-candidate" "1" "$(printf '%s\n' "$pd4" | grep -c "^# pool-done-candidate $KP-9701 ")"
 
+M107="$WORK/m107/HIMMEL"; mkdir -p "$M107" "$WORK/s107/workers"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m107/HIMMEL.versions.tsv"
+LONG107="$(printf 'z%.0s' $(seq 1 700))"
+(
+    M="$M107"
+    for n in $(seq 1 26); do mk "$KP-107$(printf '%02d' "$n")" "To Do" Medium '[]' '["v1.0.1"]' '[]' "no scope $n" "Keep the thing going $n."; done
+    mk "$KP-10700" "In Progress" High '[]' '["v1.0.1"]' '[]' "in work, no scope" "$LONG107"
+)
+run107() { NEXT_DISPATCH_MIRROR="$M107" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 60 --workers-dir "$WORK/s107/workers" --workers-from "$WORK/fleet5.json" "$@" 2>/dev/null; }
+B107="$WORK/b107"; mkdir -p "$B107"
+want107="$(run107 --why | grep '^NEEDS-CHIEF-NOTE ' | head -25 | cut -d: -f1 | cut -d' ' -f2)"
+b1="$(run107 --scope-batch "$B107/batch.jsonl")"; b1rc=$?
+check "10774 B1: --scope-batch exits 0" "0" "$b1rc"
+has "10774 B1: prints the written line" "$b1" "# scope-batch 25 written to $B107/batch.jsonl"
+check "10774 B1: 25 rows, the keys in the order the listing prints them" "$want107" "$(jq -r .key "$B107/batch.jsonl" 2>/dev/null)"
+check "10774 B1: ranks run 1 to 25" "$(seq 1 25)" "$(jq -r .rank "$B107/batch.jsonl" 2>/dev/null)"
+check "10774 B1: one batch id on every row, <UTC yyyymmddThhmm>-<first key>" "1" "$(jq -r .batch "$B107/batch.jsonl" 2>/dev/null | sort -u | grep -c -E "^[0-9]{8}T[0-9]{4}-$(printf '%s' "$want107" | head -1)\$")"
+check "10774 B1: each row carries exactly the five fields" "1" "$(jq -c 'keys' "$B107/batch.jsonl" 2>/dev/null | sort -u | grep -c '^\["batch","excerpt","key","rank","title"\]$')"
+check "10774 B1: the in-work ticket is in the batch by its rank" "1" "$(jq -r .key "$B107/batch.jsonl" 2>/dev/null | grep -c -x "$KP-10700")"
+check "10774 B1: its excerpt is the first 600 characters of the description" "600" "$(jq -r --arg k "$KP-10700" 'select(.key == $k) | .excerpt | length' "$B107/batch.jsonl" 2>/dev/null)"
+check "10774 B1: the title is the ticket title" "no scope 1" "$(jq -r --arg k "$KP-10701" 'select(.key == $k) | .title' "$B107/batch.jsonl" 2>/dev/null)"
+rm -f "$B107/batch.jsonl"
+b1n="$(run107 --scope-batch "$B107/n3.jsonl" --batch-size 3)"
+check "10774 B1: --batch-size 3 writes 3 rows" "3" "$(grep -c . "$B107/n3.jsonl" 2>/dev/null)"
+has "10774 B1: and says so" "$b1n" "# scope-batch 3 written to $B107/n3.jsonl"
+BASE_ND="$HERE/.nd-base-$$.sh"
+trap 'rm -rf "$WORK" "$BASE_ND"' EXIT
+if git -C "$HERE" show origin/main:scripts/handover/chief-kit/next-dispatchable.sh > "$BASE_ND" 2>/dev/null && [ -s "$BASE_ND" ]; then
+    ctl_new="$(run107 --why; echo "rc=$?")"
+    ctl_base="$(NEXT_DISPATCH_MIRROR="$M107" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$BASE_ND" --top 60 --workers-dir "$WORK/s107/workers" --workers-from "$WORK/fleet5.json" --why 2>/dev/null; echo "rc=$?")"
+    check "10774 B1.ctl: without the flag the listing is the base listing, the remedy suffix aside" "$(printf '%s\n' "$ctl_base" | sed 's/^\(# source mirror_age_min=\).*/\1/')" "$(printf '%s\n' "$ctl_new" | sed -e 's/, or batch it: --scope-batch FILE (docs\/handover\/chief-sections\/scope-helper.md)//' -e 's/^\(# source mirror_age_min=\).*/\1/')"
+else
+    fail "10774 B1.ctl: could not read the base script from origin/main"
+fi
+rm -f "$BASE_ND"
+find "$M107" "$WORK/s107" "$B107" | LC_ALL=C sort > "$B107.before"
+run107 --scope-batch "$B107/b6.jsonl" > /dev/null
+find "$M107" "$WORK/s107" "$B107" | LC_ALL=C sort > "$B107.after"
+check "10774 B6: the only new path is FILE" "$B107/b6.jsonl" "$(comm -13 "$B107.before" "$B107.after")"
+printf 'keep\n' > "$B107/exists.jsonl"
+run107 --scope-batch "$B107/exists.jsonl" > "$B107/b2.out"; b2rc=$?
+check "10774 B2: an existing FILE exits 2" "2" "$b2rc"
+check "10774 B2: and stays unchanged" "keep" "$(cat "$B107/exists.jsonl")"
+check "10774 B2: and nothing was listed" "0" "$(grep -c . "$B107/b2.out")"
+run107 --why-ticket "$KP-10701" --scope-batch "$B107/b3.jsonl" > /dev/null; b3rc=$?
+check "10774 B3: --why-ticket with --scope-batch exits 2" "2" "$b3rc"
+check "10774 B3: and writes no file" "no" "$([ -e "$B107/b3.jsonl" ] && echo yes || echo no)"
+has "10774 B4: the no-scope row prints the remedy suffix" "$(run107 | grep -m1 '^NEEDS-CHIEF-NOTE ')" "to clear it add a Writes: line to the ticket, or say no code, or batch it: --scope-batch FILE (docs/handover/chief-sections/scope-helper.md)"
+for bs in 0 51 abc 007; do
+    run107 --scope-batch "$B107/b5-$bs.jsonl" --batch-size "$bs" > /dev/null; b5rc=$?
+    check "10774 B5: --batch-size $bs exits 2" "2" "$b5rc"
+done
+run107 --batch-size 5 > /dev/null; check "10774 B5: --batch-size without --scope-batch exits 2" "2" "$?"
+check "10774 B5: and no refused run wrote a file" "0" "$(find "$B107" -name 'b5-*' | grep -c .)"
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
