@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/size-override.sh - the size ledger: the SIZE-ESCALATE rows gen-briefs.py and
 # worker-pr-open.sh write when a count passes a band, the chief-only signed size-override record, and the pending
-# read the waiter turns into `WAKE size`. Every size case is the chief's to decide; no count refuses work, and
-# this script reads no band number: it is given the band name by its caller.
+# read the waiter turns into `WAKE size`.
 #
 # Usage:
 #   size-override.sh note    refuse|bulk|estimate|real <KEY> <label> --files <n> [--trust yes|no|unknown] [--band soft|hard|coderabbit] [--ref <branch>] [--detail <text>] [--root <dir>]
@@ -21,7 +20,7 @@
 #         the real count of an opened PR (real), or an old refusal (refuse). Every kind but refuse starts the detail
 #         `band=<b> ref=<branch>` (the band may be empty), and a call whose kind, key, label, band and ref equal an earlier row's
 #         appends nothing, so a re-run or a push past the same band wakes the chief once; a higher band, or another branch,
-#         is a new row. The lookup and the append run under one mkdir lock (5 s, then unlocked: a wake is never lost).
+#         is a new row.
 # record  appends one signed SIZE-OVERRIDE row for any case the chief keeps whole. Refuses a chief-spawned worker or relay (exit 3).
 # check   exit 0 when a signed override for this KEY, label and file count exists, else exit 1.
 # pending always prints `total=<n>` (the SIZE-ESCALATE rows), then the rows after the first <n>;

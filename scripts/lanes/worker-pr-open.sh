@@ -266,7 +266,7 @@ measure_pr_size() {
 set_pr_size_body_line() {
     local line
     if [ -n "$PR_FILES" ]; then line="pr-size: files=$PR_FILES lines=$PR_LINES"; else line="pr-size: unmeasured (${PR_SIZE_WHY:-unknown})"; fi
-    if printf '%s\n' "$body" | grep '^pr-size:' >/dev/null; then # pipefail-ok: no -q, grep reads the whole body
+    if [[ $'\n'"$body" == *$'\n'pr-size:* ]]; then
         body=$(printf '%s\n' "$body" | awk -v repl="$line" '{ if ($0 ~ /^pr-size:/) { if (!done) print repl; done = 1 } else print }')
     else
         body="${body}
@@ -281,8 +281,9 @@ size_note_real() {
     label="${HIMMEL_HOLD_LABEL:-nolabel}"
     if [ -z "$note_sh" ]; then
         note_sh="$HERE/../handover/chief-kit/size-override.sh"
-        primary=$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || primary="" # swallow-ok: no primary checkout falls back to this script's own copy
-        if [ -n "$primary" ] && [ -r "${primary%/.git}/scripts/handover/chief-kit/size-override.sh" ]; then note_sh="${primary%/.git}/scripts/handover/chief-kit/size-override.sh"; fi
+        if primary=$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && [ -r "${primary%/.git}/scripts/handover/chief-kit/size-override.sh" ]; then
+            note_sh="${primary%/.git}/scripts/handover/chief-kit/size-override.sh"
+        fi
     fi
     if ! bash "$note_sh" note real "$key" "$label" --files "$PR_FILES" --trust unknown --band "$PR_BAND" --ref "$branch" \
             --detail "real PR count: files=$PR_FILES lines=$PR_LINES" >/dev/null; then

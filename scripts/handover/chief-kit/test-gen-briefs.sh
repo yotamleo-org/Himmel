@@ -1359,8 +1359,6 @@ if python3 -I "$RDR" >/dev/null 2>&1 </dev/null; then fail "reader: no key argum
 if python3 -I "$RDR" HIMMEL-1 extra >/dev/null 2>&1 </dev/null; then fail "reader: a second argument is a usage error"; else pass "reader: a second argument is a usage error"; fi
 
 # ---- the PR size projection (own block) ----
-# A Writes list that expands to more than the hard max of scripts/ci/pr-size-bands.tsv (40 files), or past the soft
-# max (20) on a trust path, or that cannot be projected, writes its brief with an estimate warning and one SIZE-ESCALATE row.
 PS="$WORK/ps"; mkdir -p "$PS/scripts/big" "$PS/scripts/mid" "$PS/scripts/few" "$PS/scripts/hooks" "$PS/scripts/forty" "$PS/src"
 for n in $(seq 1 41); do echo "$n" > "$PS/scripts/big/f$n.txt"; echo "$n" > "$PS/scripts/hooks/guard-$n.sh"; echo "$n" > "$PS/src/m$n.py"; done
 for n in $(seq 1 40); do echo "$n" > "$PS/scripts/forty/f$n.txt"; done
@@ -1403,16 +1401,14 @@ OV="$HERE/size-override.sh"; SEL="$WORK/handovers/.locks/size-escalate.tsv"
 PSHOME="$WORK/ps-home"; mkdir -p "$PSHOME/.config/himmel"
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$PSHOME/.config/himmel/go-hmac.key"
 sel_count() { grep -c "^SIZE-ESCALATE" "$SEL" 2>/dev/null || true; }
-sel_last() { tail -n 1 "$SEL" 2>/dev/null; }  # read-sink-ok: test reads its own mktemp ledger path
+sel_last() { tail -n 1 "$SEL" 2>/dev/null; }
 ps_workers trustsoft scripts/ci/ ''
 ps_workers huge "$(for n in $(seq 1 301); do printf 'scripts/newd/n%s.txt ' "$n"; done)" ''
 ps_workers bulkhuge "$(for n in $(seq 1 301); do printf 'scripts/newd/n%s.txt ' "$n"; done)" ',"bulk":"mechanical"'
-SZK=$(printf 'HIMMEL-%s' 9201)  # the key of the ps_workers fixture, built so the line holds no literal ticket key
+SZK=$(printf 'HIMMEL-%s' 9201)
 TAB=$(printf '\t')
 rm -f "$SEL"
 
-# A brief-time count refuses nothing: past a band the brief is written, stderr names the count as an estimate and one
-# SIZE-ESCALATE row (kind estimate, or bulk) wakes the chief, once per key, worker and band.
 pso="$(psrun big)"; rc=$?
 [ "$rc" = 0 ] && pass "size estimate: a Writes dir of 41 tracked files writes the brief (rc 0)" || fail "41 files: rc=$rc: $pso"
 [ -n "$(ps_brief big)" ] && pass "size estimate: the 41-file brief is written" || fail "41-file brief missing"
@@ -1455,7 +1451,6 @@ pso="$(psrun glob nobase-glob)"; rc=$?
 has "size estimate: the glob unreadable-base warning says the Writes cannot be projected" "$pso" "cannot be projected"
 PSBASE="$PSBASE_GOOD"
 
-# bulk: mechanical is never refused either; each use is one bulk row, with the band its count crosses
 pso="$(psrun bulk)"; rc=$?
 [ "$rc" = 0 ] && pass "size estimate: bulk: mechanical, 41 files write the brief (rc 0)" || fail "bulk 41: rc=$rc: $pso"
 has "size estimate: the bulk row says bulk, band hard" "$(sel_last)" "bulk${TAB}HIMMEL-9201${TAB}N921${TAB}41${TAB}no${TAB}band=hard ref= "
@@ -1466,7 +1461,6 @@ pso="$(psrun bulkhuge)"; rc=$?
 check "size estimate: the bulk 301-file brief writes one row" $((n_before + 1)) "$(sel_count)"
 has "size estimate: the bulk 301-file row says band coderabbit" "$(sel_last)" "bulk${TAB}HIMMEL-9201${TAB}N921${TAB}301${TAB}no${TAB}band=coderabbit ref= "
 
-# a 301-file brief that is not bulk is written too: past the CodeRabbit cap the band is coderabbit, the chief decides
 pso="$(psrun huge)"; rc=$?
 [ "$rc" = 0 ] && pass "size estimate: 301 files write the brief (rc 0)" || fail "301 files: rc=$rc: $pso"
 [ -n "$(ps_brief huge)" ] && pass "size estimate: the 301-file brief is written" || fail "301-file brief missing"
@@ -1479,7 +1473,6 @@ pso="$(psrun badbulk)"; rc=$?
 [ "$rc" = 1 ] && pass "bulk other than mechanical is refused (rc 1)" || fail "bulk yes: rc=$rc: $pso"
 [ "$rc" != 1 ] || has "the bulk refusal names the bulk key" "$pso" "bulk"
 
-# an unsigned or worker-written override covers nothing; a chief-signed record for this count writes no row
 printf 'SIZE-OVERRIDE\t1\tHIMMEL-9201\tN921\t41\t0\tno\tconsole:chief-x\tkeep whole\t\n' >> "$SEL"
 n_before="$(sel_count)"
 pso="$(HOME="$PSHOME" psrun big unsigned)"; rc=$?
@@ -1490,15 +1483,12 @@ pso="$(HOME="$PSHOME" HIMMEL_CONSOLE_LEG=1 bash "$OV" record "$SZK" N921 --files
 [ "$rc" = 3 ] && pass "size estimate: a worker cannot sign an override (rc 3)" || fail "worker record: rc=$rc: $pso"
 pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME=chief-t bash "$OV" record "$SZK" N921 --files 41 --reason "one scripted rename, split would break it" --root "$WORK/handovers" 2>&1)"; rc=$?
 [ "$rc" = 0 ] && pass "size estimate: the chief signs an override" || fail "chief record: rc=$rc: $pso"
-rm -f "$SEL.keep"; grep -v "^SIZE-ESCALATE" "$SEL" > "$SEL.keep"; cp "$SEL.keep" "$SEL"  # keep only the override rows, so a new row is visible
+rm -f "$SEL.keep"; grep -v "^SIZE-ESCALATE" "$SEL" > "$SEL.keep"; cp "$SEL.keep" "$SEL"
 pso="$(HOME="$PSHOME" psrun big covered)"; rc=$?
 [ "$rc" = 0 ] && pass "size estimate: a chief-signed override for the 41-file count writes the brief (rc 0)" || fail "signed override: rc=$rc: $pso"
 has "size estimate: the warning names the override" "$pso" "one scripted rename"
 check "size estimate: a count a chief record covers writes no row" 0 "$(sel_count)"
 
-# the projection counts what a Writes list really touches. The one rule: a path names itself, a directory
-# its tracked files, a glob the tracked files it matches at base; a Writes list with no path tracked at base (none named,
-# empty, only new files) cannot be size-checked, so it is reported with the rule, never passed silently.
 for sh in "glob:41 files" "mixed:44 files" "rootglob:41 files" "treeglob:41 files" "ddglob:41 files" "hlglob:41 files" "qglob:41 files" "dotslash:41 files" "slashglob:41 files" "new41:41 files"; do
     pw="${sh%%:*}"; pc="${sh#*:}"
     pso="$(psrun "$pw")"; rc=$?
@@ -1526,12 +1516,10 @@ pso="$(psrun emptyw)"; rc=$?
 lacks "emptyw: the size check does not refuse it" "$pso" "hard max"
 has "emptyw: the report names the rule" "$pso" "warning: worker N921 Writes name no file tracked at base"
 
-# the retired flag: nothing in gen-briefs.py reads or names pr_size_gate, and its value changes nothing
 check "no pr_size_gate in gen-briefs.py" 0 "$(grep -c pr_size_gate "$SUT")"
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=maybe psrun big gv)"; rc=$?
 [ "$rc" = 0 ] && pass "a stale pr_size_gate value changes nothing (rc 0)" || fail "stale flag value: rc=$rc: $pso"
 
-# the adopted-kit fixture runs the same size path
 pso="$(python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/ps-big.json" --base "$PSBASE" --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/ps-bucket-kit" --date 2026-10-08 --repo "$PS" --handover-root "$WORK/handovers-kit" --work-dir "$WORK/psw-kit" --deadline 1791475000 2>&1)"; rc=$?
 [ "$rc" = 0 ] && has "an adopted kit writes the brief and warns of the estimate" "$pso" "over the 40-file hard max" || fail "adopted kit: rc=$rc: $pso"
 unset HIMMEL_CONFIG_DIR

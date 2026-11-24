@@ -4,10 +4,6 @@
 #   1. note writes one SIZE-ESCALATE row per call; pending reports only the rows after --since.
 #   2. record: refused from a worker or relay (3) and without a reason (2); a chief record lets check pass.
 #   3. an unsigned, forged, edited or non-console row, or one for another file count, is no override.
-#   4. every size case is the chief's: a trust-path brief, 301 files and 1600 lines are all signed by record and
-#      accepted by check; no output names an operator route and `operator` is not a verb.
-#   5. note takes the estimate and real kinds, --band, --ref and --trust unknown, and skips a repeated band row.
-#   6. the script reads no size band file.
 #
 # Linux-only kit (PLATFORM GUARD). Run: bash scripts/handover/chief-kit/test-size-override.sh
 set -u

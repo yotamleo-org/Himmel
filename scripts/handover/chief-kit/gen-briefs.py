@@ -914,7 +914,6 @@ def size_trust(files):
 
 
 def size_band(n, bands, trust):
-    # the highest band the projected count crosses; a trust path crosses the soft band at its number, the rest at hard
     if n is None:
         return ''
     if n > bands['coderabbit']:
@@ -928,15 +927,12 @@ def size_note(kind, l, hroot, n, trust, band, detail):
     args = ['note', kind, l['keys'][0], l['label'], '--files', str(n), '--trust', 'unknown' if trust is None else 'yes' if trust else 'no']
     if band:
         args += ['--band', band]
-    # a row that cannot be written is a warning: no count refuses a brief, so a ledger fault must not either
     r = subprocess.run(['bash', SIZE_OVERRIDE] + args + ['--detail', detail, '--root', hroot], capture_output=True, text=True)
     if r.returncode != 0:
         print('gen-briefs: warning: the SIZE-ESCALATE row for worker %s was not written (rc %d): %s; tell the chief' % (l['label'], r.returncode, (r.stderr or r.stdout).strip()), file=sys.stderr)
 
 
 def check_pr_size(l, repo, base, hroot):
-    # A brief-time count is an estimate and refuses nothing: past a band it warns and writes one SIZE-ESCALATE row the chief
-    # is woken for (once per band), unless a chief record covers this count. worker-pr-open.sh measures the real PR.
     proj = projected_files(l.get('writes', ''), repo, base)
     n, tracked, fl = proj if proj else (None, 0, [])
     bands = size_bands()

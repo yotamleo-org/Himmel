@@ -546,7 +546,7 @@ git -C "$REPO" remote set-url origin "$orig_url"
 
 NOTE_LOG="$TMP_ROOT/note.log"
 NOTE_STUB="$TMP_ROOT/size-note-stub.sh"
-# shellcheck disable=SC2016 # the stub's own text, expanded when the stub runs
+# shellcheck disable=SC2016
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$NOTE_LOG"\n' > "$NOTE_STUB"
 chmod +x "$NOTE_STUB"
 export NOTE_LOG SIZE_NOTE_SH="$NOTE_STUB"
@@ -567,7 +567,7 @@ size_grow() {
     git -C "$REPO" commit -qm "size fixture grow"
     git -C "$REPO" push -q
 }
-body_sent() { cat "${ARGV_LOG}.body" 2>/dev/null; }  # read-sink-ok: the stub's own body capture under the test's mktemp dir
+body_sent() { cat "${ARGV_LOG}.body" 2>/dev/null; }
 note_calls() { grep -c . "$NOTE_LOG" 2>/dev/null || true; }
 
 echo "TEST: a branch of 301 changed files opens, with a coderabbit-band real row for the chief"
