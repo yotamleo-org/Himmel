@@ -264,7 +264,7 @@ test("send.ts names why a spool file was refused, and warns only when the live p
       clearInterval(poll);
       writeResult(h.peerDir, f, { ok: false, rule: "malformed", why: "unknown type" });
     }, 50);
-    child.on("close", code => resolve({ code, err }));
+    child.on("close", code => { clearInterval(poll); resolve({ code, err }); });
   });
   const lock = join(h.S, "poller.pid");
   writeFileSync(lock, JSON.stringify({ pid: process.pid, start: startIdentity(process.pid) }));

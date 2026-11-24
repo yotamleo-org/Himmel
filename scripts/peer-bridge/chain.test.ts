@@ -234,6 +234,8 @@ test("the pid lock records the code version, and a live holder on another versio
   await h.kill();
   writeFileSync(lock, JSON.stringify({ pid: h.pid, start }), { mode: 0o600 });
   expect(pollerStale(lock)).toBe(false);
+  writeFileSync(lock, "null", { mode: 0o600 });
+  expect(pollerStale(lock)).toBe(false);
 });
 
 test("spool: an O_EXCL name collision is refused", () => {

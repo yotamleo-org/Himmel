@@ -264,7 +264,7 @@ export const CODE_VERSION = computeCodeVersion();
 
 export function pollerStale(path: string): boolean {
   let holder: { pid?: number; start?: string | null; code?: string } = {};
-  try { holder = JSON.parse(fs.readFileSync(path, "utf8")); } catch { return false; }
+  try { holder = JSON.parse(fs.readFileSync(path, "utf8")) ?? {}; } catch { return false; }
   if (!Number.isSafeInteger(holder.pid) || !alive(holder.pid!) || startIdentity(holder.pid!) !== holder.start) return false;
   return holder.code !== CODE_VERSION;
 }
