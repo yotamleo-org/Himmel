@@ -1217,7 +1217,7 @@ grep -qxF 'WantedBy=default.target' "$unit" || fail "(z12) install: the unit is 
 grep -qxF 'Type=oneshot' "$unit" || fail "(z12) install: the unit is not a oneshot: $(cat "$unit")"
 grep -qxF "ExecStart=/usr/bin/env bash $script" "$unit" || fail "(z12) install: the unit does not run the ensure script: $(cat "$unit")"
 grep -qxF 'Environment=PATH=%h/.bun/bin:/usr/local/bin:/usr/bin:/bin' "$unit" || fail "(z12) install: the unit PATH does not reach bun: $(cat "$unit")"
-grep -qxF -- '--user daemon-reload'"$state/systemctl.log" || fail "(z12) install: no daemon-reload ($(cat "$state/systemctl.log"))"
+grep -qxF -- '--user daemon-reload' "$state/systemctl.log" || fail "(z12) install: no daemon-reload ($(cat "$state/systemctl.log"))"
 grep -qxF -- '--user enable qmd-daemon.service' "$state/systemctl.log" || fail "(z12) install: unit not enabled ($(cat "$state/systemctl.log"))"
 first="$(cat "$unit")"
 run_boot --install-boot-unit
