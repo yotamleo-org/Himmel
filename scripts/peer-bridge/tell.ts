@@ -75,16 +75,18 @@ function records(file: string): Record<string, any>[] | null {
   let text: string;
   try { text = fs.readFileSync(file, "utf8"); } catch { return null; }
   const lines = text.split("\n");
-  lines.pop();
+  const last = lines.pop()!;
   const out: Record<string, any>[] = [];
   for (const l of lines) {
     if (l === "") continue;
     try { const r = JSON.parse(l); if (r && typeof r === "object") out.push(r); } catch { return null; }
   }
+  try { const r = JSON.parse(last); if (r && typeof r === "object") out.push(r); } catch {}
   return out;
 }
 
 const TOKEN_RE = /(?:^|[\s'"`=:(;|&<>])((?:\/|~\/)[^\s'"`;|&<>()]+)/g;
+const QUOTED_RE = /'((?:\/|~\/)[^']*)'|"((?:\/|~\/)[^"]*)"/g;
 function pathsOf(r: Record<string, any>, home: string, add: (p: string) => void): void {
   const abs = (p: string, base?: string) => (p.startsWith("~/") ? join(home, p.slice(2)) : isAbsolute(p) ? p : base && isAbsolute(base) ? resolve(base, p) : null);
   const put = (p: unknown, base?: string) => { if (typeof p === "string" && p !== "") { const a = abs(p, base); if (a) add(a); } };
@@ -98,6 +100,7 @@ function pathsOf(r: Record<string, any>, home: string, add: (p: string) => void)
     if (typeof input.pattern === "string" && (input.pattern.startsWith("/") || input.pattern.startsWith("~/"))) put(input.pattern.split(/[*?[{]/)[0]);
     if ((item.name === "Bash" || item.name === "Monitor") && typeof input.command === "string") {
       for (const m of input.command.matchAll(TOKEN_RE)) put(m[1]);
+      for (const m of input.command.matchAll(QUOTED_RE)) put(m[1] ?? m[2]);
     }
   }
 }

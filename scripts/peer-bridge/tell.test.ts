@@ -97,7 +97,21 @@ test("a transcript that names a salus path in a Read, a cwd, a Bash token, a Glo
     ["Monitor naming a salus path", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Monitor", { command: `tail -f "${vault}/log"` })])],
     ["Glob whose literal prefix is salus", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Glob", { pattern: `${vault}/**/*.md` })])],
     ["a subagent grepped salus", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Grep", { pattern: "x", path: vault })], { file: `${SID}/subagents/agent-a1.jsonl` })],
+    ["a complete final record with no newline", h => { const p = transcript(h, [{ type: "user", cwd: h.launch }]); writeFileSync(p, readFileSync(p, "utf8") + JSON.stringify(use(h.launch, "Read", { file_path: join(vault, "last.md") }))); }],
   ];
+  await phiCases(cases);
+});
+
+test("a quoted salus path holding a space in a Bash or Monitor command refuses phi-root", async () => {
+  const spaced = mkdtempSync(join(tmpdir(), "peer tell vault-"));
+  writeFileSync(join(spaced, ".salus"), "");
+  await phiCases([
+    ["double-quoted", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cat "${spaced}/a b.md"` })])],
+    ["single-quoted", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Monitor", { command: `tail -f '${spaced}/log'` })])],
+  ]);
+});
+
+async function phiCases(cases: [string, (h: Home) => void][]) {
   for (const [why, seed] of cases) {
     const h = newHome();
     seed(h);
@@ -105,7 +119,7 @@ test("a transcript that names a salus path in a Read, a cwd, a Bash token, a Glo
     expect([why, r.code, r.line]).toEqual([why, 3, expect.stringMatching(/^refused: phi-root: /) as unknown as string]);
     expect(spool(h)).toEqual([]);
   }
-});
+}
 
 test("a phi-roots hit, an unreadable phi list, an unreadable or oversized transcript and an unparsable middle line refuse phi-root", async () => {
   const phi = mkdtempSync(join(tmpdir(), "peer-tell-phi-"));
