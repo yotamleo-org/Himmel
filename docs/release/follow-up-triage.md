@@ -118,10 +118,9 @@ row wins. "Next" means the earliest unreleased version after the current one.
 - **Row e.** The `--residual-of` parent forms a dependency chain only while it is open. A
   follow-up filed after its parent's PR merged joins a dependency chain only through `--blocks`.
 - A frozen version admits only through row c, so the frozen set stays fixed.
-- In a project with a declared release, a residual files with no version and the door
-  (`scripts/jira/src/release/door.ts`) places it from its priority, so the rows above are the
-  fallback for a project with none. The model release judge is parked: the door rules by fixed
-  rules, and `--backlog` does not keep a mild follow-up out of the next version.
+- The model release judge is parked: the door (`scripts/jira/src/release/door.ts`) rules every
+  INTAKE request by fixed rules, and `--backlog` does not keep a mild follow-up out of the next
+  version. The rows above are the residual verb's own placement and are unchanged by it.
 - The release manager can override any placement later with a REVERSION. The
   verb's class is a default, not a gate.
 - Placement never throws on a frozen version: a frozen or missing next sends the

@@ -94,12 +94,14 @@ release is declared (`jira release state <R>` prints a status other than
   normal lock/storage recovery path; do not invent a launch timestamp or claim
   an unpersisted state is authoritative.
 
-- **The batch reads only disk.** Anything the door must weigh goes in the
-  request's `--why` or in an operator `O-` record; nothing said in a message
-  reaches it. The door reads the records that name the request's ticket, its
-  parent and its blockers, the rules of the release and the newest operator
-  record on the key; to have it read any other record, put the record's
-  `O-` id or `decision <n>` in `--why`.
+- **The batch reads only disk.** The door reads no `--why` text and nothing said in a
+  message. It reads the declared current version and version order; the request (its key,
+  verb, `--from` and `--to`, and its evidence: a chief placement, a rule, an operator
+  record); the ticket's snapshot (status, priority, labels, the versions it holds, its
+  sector); its required parent's snapshot; the key's earlier rulings and ledger records;
+  and the operator's decision records that name the key. It reads no blocker record and
+  no text of the release rules. To steer a placement, record an operator decision on the
+  key or pass the request flag that carries it (`--chief-reason`, `--required-by`).
 - **A priority raise on a ticket in a later version is yours to place.** The door
   never moves a key out of a version it holds, so a ticket raised to High or Highest
   that sits in a version after the current one stays there. The tick's
@@ -134,10 +136,10 @@ release is declared (`jira release state <R>` prints a status other than
 - **A RULING is a `RULING <id> <req> …` line printed by `rm-run`** for a
   request you wrote. `REFUSED <req>: <why>` is an engine refusal: the request is
   closed, so fix the cause (a missing sector, an uncovered authority) and file it
-  again, which opens a new request id. Only `REFUSED <req>: the judge returned no
-  decision` (the parked judge's refusal) leaves the request claimed for the next
-  `rm-run`. `HELD <req>: <why>` means the door could not rule it and nothing was
-  ruled: a version-repair request
+  again, which opens a new request id. The door rules or refuses; it never
+  holds a request. `REFUSED <req>: the judge returned no decision` and `HELD <req>: <why>`
+  are the parked judge's results (the first leaves the request claimed for the next
+  `rm-run`; `HELD` means nothing was ruled): a version-repair request
   is set aside as held and leaves the queue, and any other request stays claimed. A held one
   shows in the repair's held list until an operator record answers it or the
   key's Fix Version changes again, and then a repair run withdraws it; you can
