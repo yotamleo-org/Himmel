@@ -404,6 +404,38 @@ assert "a stale temp file in a subfolder is gone after a run" "no" "$([ -e "$swe
 if cmp -s "$sweepv/Clippings/done.md" "$tmp/done.orig"; then ok "a real clip beside the stale temp file is byte-identical"; else bad "a real clip beside the stale temp file is byte-identical"; fi
 kept=""
 for keep in .harvest-short.tmp .harvest-ab12cd_9.tmp.md notes.tmp sub/.harvest-ab12cd_9.txt; do [ -e "$sweepv/Clippings/$keep" ] && kept="$kept $keep"; done
+cat > "$tmp/sweeprace.py" <<'PY'
+import importlib.util, os, sys, threading, time
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("h", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+clippings = Path(sys.argv[2]) / "Clippings"
+clippings.mkdir(parents=True, exist_ok=True)
+clip = clippings / "live.md"
+clip.write_text("old\n", encoding="utf-8")
+at_replace = threading.Event()
+real_replace = os.replace
+def slow_replace(a, b):
+    at_replace.set()
+    time.sleep(1.5)
+    real_replace(a, b)
+os.replace = slow_replace
+def sweeper():
+    at_replace.wait(10)
+    m._sweep_stale_tmp(clippings)
+t = threading.Thread(target=sweeper); t.start()
+try:
+    with m._clip_lock(clip):
+        m._atomic_write(clip, "new\n")
+    print("WRITE ok")
+except Exception as e:
+    print("WRITE", type(e).__name__)
+t.join()
+print("CLIP", clip.read_text(encoding="utf-8").strip())
+PY
+sr="$("$PY" -I "$tmp/sweeprace.py" "$TOOL" "$tmp/sweeprace-vault" 2>&1)"
+assert "a sweep that starts while a writer holds the lock waits: the write still lands" "WRITE ok" "$(printf '%s\n' "$sr" | sed -n 1p)"
+assert "a sweep that starts while a writer holds the lock leaves the new clip in place" "CLIP new" "$(printf '%s\n' "$sr" | sed -n 2p)"
 assert "a file that does not match the helper's prefix, length and suffix exactly is left alone" " .harvest-short.tmp .harvest-ab12cd_9.tmp.md notes.tmp sub/.harvest-ab12cd_9.txt" "$kept"
 
 echo "---"
