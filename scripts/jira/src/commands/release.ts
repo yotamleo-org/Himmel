@@ -557,7 +557,6 @@ function judgePreflight(): string {
 }
 
 // Async on purpose: a synchronous child call blocks Node's event loop, so no abort signal or timer could reach it.
-// `killGate` is a test seam: given, it replaces node's spawn timer, and the call is killed (TERM, the timer's own kill) when it settles.
 export function judgeCall(file: string, args: string[], o: { input: string; cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; signal?: AbortSignal; killGate?: Promise<void> }): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = execFile(file, args, { cwd: o.cwd, env: o.env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: o.killGate ? 0 : o.timeoutMs, signal: o.signal },
@@ -703,7 +702,7 @@ function launcherStopped(e: unknown): boolean {
   return Boolean(k.signal) || SIGNALLED_EXIT.has(k.status as number);
 }
 
-// `fallback`, `callTimeoutS`, `spawnTimeoutMs` and `killGate` are the test seams; production passes nothing and gets liveJudge, the
+// `fallback`, `callTimeoutS` and `spawnTimeoutMs` are the test seams; production passes nothing and gets liveJudge, the
 // launcher's 900 s call timeout and node's 930 s kill.
 // Any other API-route failure (a policy refusal, no room, an API error, an unparseable reply) ends in the fallback, once.
 // A stopped run or a timed-out call ends the run instead (decision 815).

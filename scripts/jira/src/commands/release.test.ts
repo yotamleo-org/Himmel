@@ -1323,8 +1323,6 @@ describe('routedJudge', () => {
 
   it('mapped, node kills the launcher at its spawn timeout: it exits 143, the run fails and no fallback runs', async () => {
     const w = world({ judge: ['B'] }, { sleep: 30 });
-    // The kill gate stands in for node's spawn timer: it fires once the fake is running, so the launcher has installed its
-    // TERM trap. A 2 s timer raced the launcher's startup and, on a loaded runner, killed it before that trap (no 143).
     let fire!: () => void;
     const gate = new Promise<void>((resolve) => { fire = resolve; });
     const got = expect(makeRoutedJudge(w.fallback, 60, undefined, gate)(INPUT)).rejects.toMatchObject({ killed: true, status: 143 });
