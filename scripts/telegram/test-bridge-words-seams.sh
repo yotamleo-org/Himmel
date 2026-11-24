@@ -40,19 +40,19 @@ eq "T6b a non-digit update id refuses and prints nothing" "$RC:$OUT" "1:"
 OUT="$(pinned 2>/dev/null)"; RC=$?
 eq "T6b no --update refuses and prints nothing" "$RC:$OUT" "1:"
 
-printf 'await Bun.write(process.env.PRELOAD_MARK ?? "/dev/null", "ran");\n' > "$TMP/preload.ts"
-MARK="$TMP/mark-control"
-( cd "$REPO" && PRELOAD_MARK="$MARK" BUN_OPTIONS="--preload $TMP/preload.ts" HOME="$HOME_S" "$BUN_BIN" "$VERIFIER" --update 900000001 >/dev/null 2>&1 )
+MARK="$TMP/preload-ran"
+printf 'await Bun.write("%s", "ran");\n' "$MARK" > "$TMP/preload.ts"
+( cd "$REPO" && BUN_OPTIONS="--preload $TMP/preload.ts" HOME="$HOME_S" "$BUN_BIN" "$VERIFIER" --update 900000001 >/dev/null 2>&1 )
 if [ -f "$MARK" ]; then ok "T6b control: a BUN_OPTIONS preload reaches an unpinned spawn"; else bad "T6b control: the BUN_OPTIONS preload did not land, so the next row proves nothing"; fi
-MARK="$TMP/mark-pinned"
-OUT="$(PRELOAD_MARK="$MARK" BUN_OPTIONS="--preload $TMP/preload.ts" pinned --update 900000001 2>/dev/null)"
+rm -f "$MARK"
+OUT="$(BUN_OPTIONS="--preload $TMP/preload.ts" pinned --update 900000001 2>/dev/null)"
 eq "T6b a BUN_OPTIONS preload in the outer env does not reach the pinned spawn" "$([ -f "$MARK" ] && echo reached || echo absent):$OUT" "absent:$WANT"
 
 SECRET="gh""p_$(printf 'aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5')"
 printf 'Decision 900000007, operator.\n\nput it in 1.1.3, and the key is %s\n' "$SECRET" > "$TMP/dirty.txt"
 printf 'Decision 900000001, operator.\n\nFile it into 1.1.3 please.\n' > "$TMP/clean.txt"
 bash "$GITLEAKS_CHECK" "$TMP/dirty.txt" >/dev/null 2>&1; RC=$?
-if [ "$RC" -ne 0 ]; then ok "a draft holding a secret exits non-zero (rc=$RC)"; else bad "a draft holding a secret exits 0"; fi
+if [ "$RC" -eq 1 ]; then ok "a draft holding a secret exits 1 (rc=$RC)"; else bad "a draft holding a secret exits $RC, expected 1"; fi
 bash "$GITLEAKS_CHECK" "$TMP/clean.txt" >/dev/null 2>&1; RC=$?
 eq "a clean draft exits 0" "$RC" "0"
 mkdir -p "$TMP/nogl"
