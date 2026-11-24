@@ -2555,10 +2555,10 @@ EOF_ROWS
     fv="$(awk '$0 == "## Live state" { s = 1; next } s && /^## / { exit } s && index($0, "focus-version:") == 1 { sub(/^[^:]*:[[:space:]]*/, ""); print; exit }' "$pdoc" | sed -n 's/^\(v[0-9][0-9.]*\).*/\1/p')"
     fresh=""
     if [ -n "$mirror" ] && [ -d "$mirror" ]; then
-        fresh="$(find "$mirror" -maxdepth 1 -name '*.md' -mmin "-${CHIEF_MUST_MIRROR_MIN:-1440}" -print -quit 2>/dev/null)" || fresh=""  # swallow-ok: an unreadable mirror reads as unavailable, said below; gnu-ok: Linux-only kit
+        fresh="$(find "$mirror" -maxdepth 1 -name .cursor.json -mmin "-${CHIEF_MUST_MIRROR_MIN:-1440}" -print -quit 2>/dev/null)" || fresh=""  # swallow-ok: an unreadable mirror reads as unavailable, said below; gnu-ok: Linux-only kit
     fi
     if [ -z "$fresh" ]; then
-        printf -- '- operator-directed tickets unavailable: the Jira mirror (%s) is missing, empty or older than %s minutes, so no To Do ticket is listed; refresh the mirror, then list the operator-directed To Do tickets of the focus version by hand\n' "${mirror:-no path}" "${CHIEF_MUST_MIRROR_MIN:-1440}"
+        printf -- '- operator-directed tickets unavailable: the Jira mirror (%s) has no sync stamp (.cursor.json) newer than %s minutes, so no To Do ticket is listed; refresh the mirror, then list the operator-directed To Do tickets of the focus version by hand\n' "${mirror:-no path}" "${CHIEF_MUST_MIRROR_MIN:-1440}"
     else
         while IFS= read -r f; do
             key="${f##*/}"; key="${key%.md}"

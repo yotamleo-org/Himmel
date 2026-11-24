@@ -4198,6 +4198,7 @@ check "10877 an over-budget HANDOFF no longer points the worker rows at a comman
 rel10877
 
 mir10877="$tmp/mirror10877"; mkdir -p "$mir10877"
+printf '{"lastSync":"2026-11-24T00:00:00.000Z"}\n' > "$mir10877/.cursor.json"
 mk_mirror10877() {
     printf '%s\n' '---' "key: \"$1\"" 'type: "Task"' 'status: "To Do"' 'statusCategory: "To Do"' 'priority: "High"' "labels: $3" 'fixVersions: ["v1.1.3"]' "created: \"$2T10:00:00.000+0100\"" '---' '' "# $1: the $1 ticket" > "$mir10877/$1.md"
 }
@@ -4250,4 +4251,16 @@ check "10877 the unavailable RESUME rows row names the command to re-run" "$(pri
 check "10877 an unreadable lock owner file puts a row in Must disposition" "$(printf '%s\n' "$mustc10877" | grep -c 'zz-bad10877 has an unreadable owner file')" "1"
 for i in 1 2; do HANDOVER_DIR="$root" bash "$QL" release "$Wc10877/DEMO-$i-N$i-worker.md" "${tokw10877[i]}" >/dev/null 2>&1; done
 HANDOVER_DIR="$root" bash "$QL" release "$Ac10877" "$tokc10877" >/dev/null 2>&1
+
+mirstale10877="$tmp/mirror-stale10877"; mkdir -p "$mirstale10877"
+cp "$mir10877/DEMO-31.md" "$mirstale10877/DEMO-31.md"
+printf '{"lastSync":"2026-11-20T00:00:00.000Z"}\n' > "$mirstale10877/.cursor.json"
+touch -d '3 days ago' "$mirstale10877/.cursor.json"
+tokm10877="$(token_of "$(chief new --bucket m2-10877)")"
+Am210877="$root/tester/m2-10877/DEMO-nextleg-${today}A-chief.md"
+NEXT_DISPATCH_MIRROR="$mirstale10877" chief next --bucket m2-10877dst --doc "$Am210877" >/dev/null 2>&1
+mustm210877="$(awk '$0 == "## Must disposition" { f = 1; next } f && /^## / { exit } f' "$root/tester/m2-10877dst/DEMO-nextleg-${today}B-chief.md" 2>/dev/null)"
+check "10877 a mirror whose sync stamp is old reads as unavailable although a ticket file is fresh" "$(printf '%s\n' "$mustm210877" | grep -c 'operator-directed tickets unavailable')" "1"
+check "10877 a stale mirror lists no operator-directed ticket" "$(printf '%s\n' "$mustm210877" | grep -c 'operator-directed DEMO-31')" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$Am210877" "$tokm10877" >/dev/null 2>&1
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
