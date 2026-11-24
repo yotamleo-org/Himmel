@@ -262,8 +262,9 @@ add_check 1 pass
 # --- 2. live head ------------------------------------------------------------------------------------
 : > "$GH_ERR"
 DEFAULT_BRANCH=$("$GH_BIN" repo view "$NWO" --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>>"$GH_ERR") || DEFAULT_BRANCH=""  # swallow-ok: an empty value escalates at check 2 below
-VIEW=$("$GH_BIN" pr view "$PR" -R "$NWO" --json state,headRefOid,baseRefName 2>>"$GH_ERR") || VIEW=""  # swallow-ok: an empty value escalates at check 2 below
+VIEW=$("$GH_BIN" pr view "$PR" -R "$NWO" --json state,headRefOid,baseRefName,body 2>>"$GH_ERR") || VIEW=""  # swallow-ok: an empty value escalates at check 2 below
 FIELDS=$(jq -r '[.state, .headRefOid, .baseRefName] | @tsv' <<< "$VIEW" 2>/dev/null) || FIELDS=""  # swallow-ok: an empty value escalates at check 2 below
+PR_BODY=$(jq -r '.body // ""' <<< "$VIEW" 2>/dev/null) || PR_BODY=""  # swallow-ok: an unreadable body is no body value, so the brief's contract stands
 IFS=$'\t' read -r PR_STATE PR_HEAD PR_BASE <<< "$FIELDS"
 if [ -z "$DEFAULT_BRANCH" ] || [ -z "${PR_STATE:-}" ] || [ -z "${PR_HEAD:-}" ] || [ -z "${PR_BASE:-}" ]; then
     fail 2 "cannot read the PR or the default branch of $NWO (gh: $(gh_err_tail))"
@@ -281,6 +282,18 @@ JT=""; CONTRACT=no
 BRIEF_YES_RC=0
 grep -qE '^> \*\*Completes ticket:\*\* yes([^A-Za-z0-9_-]|$)' "$WORKER_DOC" || BRIEF_YES_RC=$?
 [ "$BRIEF_YES_RC" -ne 0 ] || { JT=" --jira-transition"; CONTRACT=yes; }
+BODY_VALS=$(printf '%s\n' "$PR_BODY" | tr -d '\r' | awk '
+    /^[ \t]{0,3}(```|~~~)/ { fence = !fence; next }
+    !fence && /^completes-ticket:[ \t]*(yes|no)[ \t]*$/ { v = $0; sub(/^completes-ticket:[ \t]*/, "", v); sub(/[ \t]*$/, "", v); seen[v] = 1 }
+    END { for (v in seen) print v }' | sort -u | tr '\n' ' ')  # swallow-ok: a failed read is no body value, so the brief's contract stands
+BODY_VAL=""
+case "$BODY_VALS" in "yes ") BODY_VAL=yes ;; "no ") BODY_VAL=no ;; esac
+CONTRACT_WHY=""
+if [ "$BODY_VAL" = yes ] && [ "$CONTRACT" = no ]; then
+    fail 3 "the PR body says completes-ticket: yes, the brief says no: chief, set the brief's Completes ticket to yes and re-run auto-go"
+elif [ "$BODY_VAL" = no ] && [ "$CONTRACT" = yes ]; then
+    JT=""; CONTRACT=no; CONTRACT_WHY="contract no from the PR body, brief says yes"
+fi
 RG_RC=0
 RG=$(bash "$HERE/ready-go.sh" --contract "$CONTRACT" "$PR" "$SHA" 2>&1) || RG_RC=$?
 if [ "$RG_RC" -ne 0 ] || ! printf '%s\n' "$RG" | grep -qx 'READY-GO PASS'; then
@@ -288,7 +301,7 @@ if [ "$RG_RC" -ne 0 ] || ! printf '%s\n' "$RG" | grep -qx 'READY-GO PASS'; then
     [ -n "$RG_WHY" ] || RG_WHY=$(printf '%s\n' "$RG" | tail -n 1)
     fail 3 "ready-go.sh exit $RG_RC: $RG_WHY"
 fi
-add_check 3 pass
+add_check 3 pass "$CONTRACT_WHY"
 
 # --- 4. no hold -----------------------------------------------------------------------------------------
 TITLE=$("$GH_BIN" pr view "$PR" -R "$NWO" --json title --jq .title 2>/dev/null) || TITLE=""  # swallow-ok: a title with no key escalates at check 4 on the next lines
