@@ -747,4 +747,31 @@ check "9848 vanished manifest replay succeeds" "$rc" 0
 check "9848 vanished manifest replay retains one obligation" "$(wc -l < "$W/owed.jsonl" 2>/dev/null | tr -d ' ')" 1
 unset PROOF_TEST_BUCKET PROOF_MIRROR_DIR
 
+D16="$W/d16"; mkdir -p "$D16"
+W16="$D16/HIMMEL-16-N6016-closed-2026-10-14.md"
+printf '%s\n' '## Results' '- 10:00 LIVE — x' '- 10:30 WRAPPED — done' > "$W16"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" %s\n' "$W16" > "$W/list16"
+# shellcheck disable=SC2016
+printf '#!/usr/bin/env bash\nsleep 10\necho slow-wrap >> "$LE_CALLS"\n' > "$W/slowwrap"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$W/lockfree"
+printf '#!/usr/bin/env bash\nexit 3\n' > "$W/lockheld"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$W/nosessions"
+printf '#!/usr/bin/env bash\nprintf "4242\\tHIMMEL-16-N6016-closed-2026-10-14\\tm\\t1\\n"\n' > "$W/livesession"
+chmod +x "$W/list16" "$W/slowwrap" "$W/lockfree" "$W/lockheld" "$W/nosessions" "$W/livesession"
+printf '%s\n' '- 10:40 MERGED #77 (N6016). N6016 WRAPPED, window closed.' > "$W/doc"
+t0=$SECONDS
+LE_LIST="$W/list16" LE_WRAP="$W/slowwrap" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6016"
+check "16 closed worker rc" "$rc" 0
+contains "16 closed worker is done, not escalated" "$out" "HANDLED closed-already N6016"
+lacks "16 no ESCALATE" "$out" "ESCALATE"
+check "16 returns within 5 s" "$([ $((SECONDS - t0)) -lt 5 ] && echo fast || echo slow)" fast
+check "16 nothing ran" "$calls" ""
+LE_LIST="$W/list16" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/livesession" run "WRAPPED N6016"
+contains "16 live session: the normal path still runs" "$calls" "close --fleet"
+LE_LIST="$W/list16" LE_LOCK="$W/lockheld" LE_SESSIONS="$W/nosessions" run "WRAPPED N6016"
+contains "16 held lock: the normal path still runs" "$calls" "close --fleet"
+: > "$W/doc"
+LE_LIST="$W/list16" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6016"
+contains "16 not yet closed by the chief: the normal path still runs" "$calls" "close --fleet"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
