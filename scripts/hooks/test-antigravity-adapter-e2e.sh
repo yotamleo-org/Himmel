@@ -317,6 +317,7 @@ for t3_tool in preview_open preview_act preview_navigate preview_snapshot previe
     assert_pass "T3 tool mcp_t3-code_$t3_tool follows the shared chain, as on the Claude lane" \
         "$(make_pre "mcp_t3-code_$t3_tool" '{}')"
 done
+printf '{"providerInstances":{}}\n' > "$T3CODE_HOME/userdata/settings.json"
 assert_pass "t3_thread_launch with an allowlisted instance passes the shared chain" \
     "$(make_pre mcp_t3-code_t3_thread_launch '{"title":"Work","modelSelection":{"instanceId":"claudeAgent","model":"claude-sonnet-5-5"}}')"
 
