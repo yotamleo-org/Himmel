@@ -2520,6 +2520,7 @@ describe('the spec signer: operator spec-signer, operator spec --signer and sign
       const warn = errs.find((l) => l.startsWith('WARN spec copy not sent')) ?? '';
       expect(warn).toContain('spec-cc.sh');
       expect(warn).toContain(lastSpecRow().id);
+      expect(warn.endsWith(" '-'")).toBe(true);
     });
 
     it('runSpecCopy with timeoutMs 200, page -, HIMMEL_TEST_FIXTURE=1 and MERGE_BLOCK_ALERT_CMD set to a sender that sleeps 2 s returns non-zero (I8)', () => {

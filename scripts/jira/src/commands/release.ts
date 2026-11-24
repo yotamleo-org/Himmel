@@ -348,8 +348,12 @@ export function runSpecCopy(a: SpecCopyArgs, timeoutMs = SPEC_CC_TIMEOUT_MS): nu
     console.error(`release: ${seam} is set outside a test fixture (HIMMEL_TEST_FIXTURE is not 1); the spec copy is not sent`);
     return 1;
   }
-  const r = spawnSync('bash', [specCopyScript(), a.oid, a.keys, a.spec, a.sha, a.page], { stdio: ['ignore', 'inherit', 'inherit'], timeout: timeoutMs, killSignal: 'SIGKILL' });
-  return r.status ?? 1;
+  // GNU timeout signals its whole process group, so a send the script started (bun, the sender) dies with it; spawnSync's own timeout reaches only bash.
+  const args = [specCopyScript(), a.oid, a.keys, a.spec, a.sha, a.page];
+  const opts = { stdio: ['ignore', 'inherit', 'inherit'] as ['ignore', 'inherit', 'inherit'], timeout: timeoutMs + 5_000, killSignal: 'SIGKILL' as const };
+  const bounded = spawnSync('timeout', ['-k', '2', String(timeoutMs / 1000), 'bash', ...args], opts);
+  if ((bounded.error as NodeJS.ErrnoException | undefined)?.code !== 'ENOENT') return bounded.status ?? 1;
+  return spawnSync('bash', args, { ...opts, timeout: timeoutMs }).status ?? 1;
 }
 
 export async function backlogAlerts(ctx: Ctx, release: string, lines: string[]): Promise<string[]> {
@@ -1245,8 +1249,8 @@ export function registerRelease(program: Command): void {
         const rc = runSpecCopy(copy);
         if (rc !== 0) {
           const quote = (x: string) => "'" + x.split("'").join("'\\''") + "'";
-          const resend = ['bash', specCopyScript(), copy.oid, copy.keys, copy.spec, copy.sha, copy.page].map(quote).join(' ');
-          console.error(`WARN spec copy not sent (exit ${rc}); the signature stands; resend: ${resend}`);
+          const resend = ['bash', specCopyScript(), copy.oid, copy.keys, copy.spec, copy.sha, '-'].map(quote).join(' ');
+          console.error(`WARN spec copy not sent (exit ${rc}); the signature stands; resend the text line (a page is never resent, its seal is checked only at signing): ${resend}`);
         }
       }
     });
