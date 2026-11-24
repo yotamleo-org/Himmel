@@ -1400,14 +1400,14 @@ function describeQmdListener(url, env) {
   return '';
 }
 
-const QMD_DAEMON_START_GRACE_SECS = 90;
+const QMD_START_GRACE_SECS = 90;
 function qmdStartingFor(env) {
   const file = env.HIMMEL_DOCTOR_QMD_START_MARKER
     || path.join(env.XDG_CACHE_HOME || path.join(env.HOME || os.homedir(), '.cache'), 'qmd', 'starting');
   let at;
   try { at = Number(fs.readFileSync(file, 'utf8').trim()); } catch (e) { return null; }
   const age = Math.floor(Date.now() / 1000) - at;
-  return Number.isInteger(at) && age >= 0 && age < QMD_DAEMON_START_GRACE_SECS ? age : null;
+  return Number.isInteger(at) && age >= 0 && age < QMD_START_GRACE_SECS ? age : null;
 }
 
 function probeQmdDaemon(item, ctx) {
@@ -1432,7 +1432,7 @@ function probeQmdDaemon(item, ctx) {
   if (/[0-9]{3}$/.test(body)) { code = body.slice(-3); body = body.slice(0, -3); }
   if (!body && r.status === 7) {
     const starting = qmdStartingFor(env);
-    if (starting !== null) return { actual: 'starting', detail: `the qmd daemon is starting on ${url} (start marker ${starting}s old, grace ${QMD_DAEMON_START_GRACE_SECS}s) — connection refused until it finishes loading; not a fault yet` };
+    if (starting !== null) return { actual: 'starting', detail: `the qmd daemon is starting on ${url} (start marker ${starting}s old, grace ${QMD_START_GRACE_SECS}s) — connection refused until it finishes loading; not a fault yet` }; // t13b-ok: probe detail text only, starts nothing
     const setUp = probeCmdHasQmd({ probe: { resolver: 'scripts/lib/qmd-bin.sh' } }, ctx).actual === 'present';
     return setUp
       ? { actual: 'degraded', detail: `the qmd daemon is not answering on ${url} (connection refused) although qmd is set up on this station — every qmd content search fails until it is back; check the log ~/.cache/qmd/mcp.log, then start it: bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh` } // t13b-ok: probe detail text naming the existing start script, starts nothing

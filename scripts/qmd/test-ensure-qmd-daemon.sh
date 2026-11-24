@@ -272,7 +272,8 @@ printf '%s' "$out" | grep -q "timed out" || \
   fail "(e) hang: missing 'timed out' message (got: $out)"
 printf '%s' "$out" | grep -q "mcp.log" || \
   fail "(e) hang: missing 'mcp.log' pointer (got: $out)"
-echo "ok (e): hung daemon start bounded (${dur}s) with clear timeout message"
+[ ! -e "$home/.cache/qmd/starting" ] || fail "(e) hang: the killed start left its start marker behind"
+echo "ok (e): hung daemon start bounded (${dur}s) with clear timeout message, start marker removed"
 
 # ---- (f) start "succeeds" but the probe never comes alive --------------------
 # curl stays dead the whole time; the fast mock qmd exits 0 as if it started.
