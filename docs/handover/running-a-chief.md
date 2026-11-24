@@ -580,7 +580,7 @@ A dispatch that sets effort to `high`, `xhigh` or `max` with no
 to the named agent's own `effort:` frontmatter, such as `judge` at `high`, draws
 no warning.
 
-A `general-purpose` or untyped helper defaults to `sonnet` (Sonnet 5.5). Dispatched
+A `general-purpose`, `claude` (the catch-all) or untyped helper defaults to `sonnet` (Sonnet 5.5). Dispatched
 on an Opus model with no escalation line (`TIER: <reason>` or `ESCALATION: <reason>`
 in its prompt), `guard-agent-model.sh` denies it and names `model: sonnet`; the
 reason must pass the same length and placeholder test as `ESCALATION:`. The types

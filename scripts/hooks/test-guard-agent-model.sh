@@ -106,6 +106,8 @@ check "general-purpose + claude-opus-5-5 -> deny" block "$(agent general-purpose
 check "general-purpose + opus[1m] (suffixed alias) -> deny" block "$(agent general-purpose 'opus[1m]' 'x')"
 check "untyped dispatch + opus -> deny (defaults to general-purpose)" block "$(agent '' opus 'x')"
 check "general-purpose + opus + placeholder TIER reason -> deny" block "$(agent general-purpose opus $'x\nTIER: n/a')"
+check "claude catch-all agent + opus, no TIER line -> deny" block "$(agent claude opus 'x')"
+check "claude catch-all agent + opus + TIER reason -> allow" allow "$(agent claude opus "$TIERMARK")"
 check "general-purpose + opus + TIER reason -> allow" allow "$(agent general-purpose opus "$TIERMARK")"
 check "general-purpose + opus + ESCALATION reason -> allow" allow "$(agent general-purpose opus "$MARK")"
 silent "general-purpose + opus + TIER reason -> no output" "$(agent general-purpose opus "$TIERMARK")"
