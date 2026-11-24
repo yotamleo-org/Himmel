@@ -771,8 +771,6 @@ def unlaunched(doc, timeout=10):
 
 
 def ended_blockers(record, deadline):
-    """Why a launched attempt cannot be read as ended; empty only when the owner, the committer and the session are proven dead,
-    one full readable scan finds no launch or session, and the doc's queue lock is free with no live session on it."""
     blockers = []
     if record['phase'] != 'launched':
         blockers.append('phase is %s' % record['phase'])
@@ -791,8 +789,6 @@ def ended_blockers(record, deadline):
 
 
 def settle_ended(attempts, rows, doc, name, keys, effects):
-    """An attempt in phase launched whose session has ended no longer owns its worker or ticket: settled as refused with a receipt,
-    its reservation released and its row dropped. effects=False (the read-only admit) removes it in memory only."""
     settled = []
     for aid, record in list(attempts.items()):
         if not (record['doc'] == doc or record['name'] == name or set(record['keys']) & set(keys)) or record['phase'] != 'launched':
