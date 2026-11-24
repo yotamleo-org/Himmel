@@ -334,7 +334,7 @@ while :; do
         fi
         check_request "$req.pending" || { mv "$req.pending" "$req.refused"; log "REFUSED $REASON $req"; continue; }
         log "RETRY $base: the request was touched since its go was held"
-        after_go "$req" "$code" "$sha" || [ $? -ne 3 ] || break
+        after_go "$req" "$code" "$sha" "$rsha" || [ $? -ne 3 ] || break
     done
     [ -z "$HOLDING" ] || continue
     for req in "$Q"/*.req; do
