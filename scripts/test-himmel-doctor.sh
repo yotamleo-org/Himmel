@@ -27,12 +27,12 @@ if [ -n "$want" ] && [ "$(cat "$t/full/counts" 2>/dev/null)" = "$want" ]; then p
 # from a linked worktree judges the station (primary) checkout, so it publishes
 # the same state; a --root run judges another checkout and publishes nothing.
 tsv_agrees_with_run() {
-    local d="$1" run="$2" nl nd ne wl
-    nl="$(grep -c '^FAIL \|^WARN ' "$d/last.tsv")"
-    nd="$(printf '%s\n' "$run" | sed -n -E 's/^(FAIL|WARN) +([^ :]+):.*/\1 \2/p' | sort -u | wc -l | tr -d ' ')"
+    local d="$1" run="$2" nl nd ne wl rows ids
+    rows="$(grep '^FAIL \|^WARN ' "$d/last.tsv" | sort)"; nl="$(printf '%s\n' "$rows" | grep -c .)"
+    ids="$(printf '%s\n' "$run" | sed -n -E 's/^(FAIL|WARN) +([^ :]+):.*/\1 \2/p' | sort -u)"; nd="$(printf '%s\n' "$ids" | grep -c .)"
     ne="$(printf '%s\n' "$run" | grep -c -E '^(FAIL|WARN) ')"
     wl="$(sed -n -E 's/^fail=([0-9]+) warn=([0-9]+)$/\1 \2/p' "$d/counts" | awk '{print $1+$2}')"
-    [ "$nl" = "$nd" ] && [ "$wl" = "$ne" ] && { AGREE="$nl rows = $nd distinct ids, counts $wl = $ne emits"; return 0; }
+    [ "$rows" = "$ids" ] && [ "$wl" = "$ne" ] && { AGREE="$nl rows = $nd distinct ids, counts $wl = $ne emits"; return 0; }
     AGREE="last.tsv has $nl rows, run has $nd distinct ids; counts say $wl, run emitted $ne"; return 1
 }
 if [ -e "$t/full/last.tsv" ]; then
@@ -46,6 +46,8 @@ printf 'fail=1 warn=1\n' > "$ctl/counts"
 if tsv_agrees_with_run "$ctl" "$ctl_out"; then fail "control: counts from another run still agree"; else pass "control: counts from another run disagree"; fi
 printf 'fail=1 warn=2\n' > "$ctl/counts"; printf 'FAIL C2-b\n' > "$ctl/last.tsv"
 if tsv_agrees_with_run "$ctl" "$ctl_out"; then fail "control: a last.tsv from another run still agrees"; else pass "control: a last.tsv from another run disagrees"; fi
+printf 'FAIL C9-z\nWARN C1-a\n' > "$ctl/last.tsv"
+if tsv_agrees_with_run "$ctl" "$ctl_out"; then fail "control: a same-sized last.tsv with another id still agrees"; else pass "control: a same-sized last.tsv with another id disagrees"; fi
 WTD="$t/wt"
 if git -C "$REPO_ROOT" worktree add -q --detach "$WTD" HEAD 2>/dev/null; then
     # the fixture checks out HEAD; overlay the doctor under test so an
