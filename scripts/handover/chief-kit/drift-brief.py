@@ -74,9 +74,12 @@ def cleared_holds(body, holds_path):
     """Holds whose 72 h buffer has ended and whose row the body still shows as HELD."""
     try:
         with open(holds_path, encoding="utf-8") as f:
-            holds = [h for h in json.load(f).get("holds", []) if isinstance(h, dict)]
+            holds = json.load(f).get("holds", [])
     except (OSError, ValueError, AttributeError, TypeError) as e:
         raise HoldsUnreadable("%s: %s" % (holds_path, e))
+    if not isinstance(holds, list):
+        raise HoldsUnreadable("%s: holds is not a list" % holds_path)
+    holds = [h for h in holds if isinstance(h, dict)]
     held_lines = [l for l in body.splitlines() if "HELD" in l]
     out = []
     for h in holds:
@@ -136,9 +139,9 @@ template_version: 3
 > 3. Tests: impacted suites from `bash scripts/cr/impacted-suites.sh`, each run as `bash scripts/quiet-run.sh suite -- bash <test-*.sh>`, with a verdict per suite; a fresh `check-plugin-drift` or pin-scan run on the branch showing each in-scope row current.
 > 4. Ship: commit `chore(deps): [{key_text}] the actionable 4470 drift rows are current`, standing ship sequence, trailers in the FIRST commit (`Platforms tested: linux`; `Security reviewed: manual - what you checked`). completes-ticket: no. The PR body carries `## Ticket coverage` per row and a `Remaining:` line. Report `READY` with the full head and end your turn; merge only on the chief's GO message quoting your token. Merge forward on conflicts, never rebase.
 
-> **Writes:** marketplace/ scripts/upstreams/ scripts/upstreams.json scripts/machine-setup/ site/package.json site/package-lock.json
+> **Writes:** marketplace/ scripts/upstreams/ scripts/upstreams.json scripts/machine-setup/ site/package.json site/package-lock.json scripts/hooks/check-oxlint-complexity.sh scripts/hooks/check-oxlint-hardening.sh
 
-> **Writes note:** marketplace.json pins and forked plugin dirs, pin-holds.json, installer pins, upstreams.json synced_base, site package files for the astro rows only. Stay off scripts/lib/, scripts/hooks/ and .github/workflows/.
+> **Writes note:** marketplace.json pins and forked plugin dirs, pin-holds.json, installer pins, upstreams.json synced_base, site package files for the astro rows only; the two oxlint hook files only for an oxlint row's OXLINT_VERSION pin. Stay off scripts/lib/, every other file under scripts/hooks/ and .github/workflows/.
 
 > **Do not:** upgrade a station tool on the live station before its VM proof; run any paid model call; force-push; touch a fork whose branch is HELD.
 
@@ -198,8 +201,12 @@ def cmd_brief(args):
         repo_flag=(" -R " + origin_slug()) if origin_slug() else "")
     os.makedirs(args.out, exist_ok=True)
     path = os.path.join(args.out, stem)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
+    try:
+        with open(path, "x", encoding="utf-8") as f:
+            f.write(text)
+    except FileExistsError:
+        print("drift-brief: brief already exists: %s" % path, file=sys.stderr)
+        return 1
     print(path)
     return 0
 
