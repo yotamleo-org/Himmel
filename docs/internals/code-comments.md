@@ -106,6 +106,18 @@ already in the tree is a separate piece of work, checked by hand with
 or CI. A missing or unreadable classifier or rule list makes the gate exit 2 (cannot
 evaluate), at pre-commit and in CI.
 
+### The strict ticket-key lint
+
+`scripts/lint/check-new-ticket-ids.sh` is the rule the history-comment gate cannot be:
+a change that adds a ticket key to any tracked file, or adds a file name that carries
+one, is refused, with no allow list (a test file, a fixture, a changelog and a data file
+are judged like any other text). It judges added lines only and skips binary files.
+Run it by hand with `--staged` (the index against HEAD) or `--range <base> [--tip <ref>]`;
+it exits 0 clean, 1 on findings, 2 when it cannot evaluate. It is not yet a pre-commit
+entry or a CI step: that waits until the test files stop carrying keys, because about three
+in ten merged changes today add a key to a test file. Its suite is
+`scripts/lint/test-check-new-ticket-ids.sh`.
+
 ## Ceilings
 
 A ceiling is a known, deliberate limit of the code: what it does not do or

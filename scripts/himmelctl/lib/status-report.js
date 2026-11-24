@@ -317,7 +317,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
     let detail = probe.detail;
     if (probe.actual === 'present') {
       severity = 'green';
-    } else if (probe.actual === 'degraded') {
+    } else if (probe.actual === 'degraded' || probe.actual === 'starting') {
       severity = 'degraded';
     } else {
       severity = 'red';
