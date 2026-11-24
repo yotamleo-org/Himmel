@@ -392,6 +392,20 @@ for site in so flag thin yt fc cb reflag defer; do
   assert "write site $site: a write that raises leaves no stray file behind" "" "$strays"
 done
 
+sweepv="$tmp/vault-sweep"
+mkdir -p "$sweepv/Clippings/sub"
+printf -- '---\ntitle: done\ntype: article\nsource: https://example.com/done\nharvest_status: partial\nharvest_needs_attention: true\n---\n%s\n' "$filler" > "$sweepv/Clippings/done.md"
+cp "$sweepv/Clippings/done.md" "$tmp/done.orig"
+for stale in "$sweepv/Clippings/.harvest-ab12cd_9.tmp" "$sweepv/Clippings/sub/.harvest-zz00yy11.tmp"; do printf 'half a clip' > "$stale"; done
+for keep in "$sweepv/Clippings/.harvest-short.tmp" "$sweepv/Clippings/.harvest-ab12cd_9.tmp.md" "$sweepv/Clippings/notes.tmp" "$sweepv/Clippings/sub/.harvest-ab12cd_9.txt"; do printf 'not ours' > "$keep"; done
+"$PY" -I "$TOOL" "$sweepv" >/dev/null 2>&1
+assert "a stale temp file in the Clippings root is gone after a run" "no" "$([ -e "$sweepv/Clippings/.harvest-ab12cd_9.tmp" ] && echo yes || echo no)"
+assert "a stale temp file in a subfolder is gone after a run" "no" "$([ -e "$sweepv/Clippings/sub/.harvest-zz00yy11.tmp" ] && echo yes || echo no)"
+if cmp -s "$sweepv/Clippings/done.md" "$tmp/done.orig"; then ok "a real clip beside the stale temp file is byte-identical"; else bad "a real clip beside the stale temp file is byte-identical"; fi
+kept=""
+for keep in .harvest-short.tmp .harvest-ab12cd_9.tmp.md notes.tmp sub/.harvest-ab12cd_9.txt; do [ -e "$sweepv/Clippings/$keep" ] && kept="$kept $keep"; done
+assert "a file that does not match the helper's prefix, length and suffix exactly is left alone" " .harvest-short.tmp .harvest-ab12cd_9.tmp.md notes.tmp sub/.harvest-ab12cd_9.txt" "$kept"
+
 echo "---"
 echo "harvest-second-opinion: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -726,6 +726,19 @@ def _clip_lock(path: Path, expect: str | None = None, wait: float = CLIP_LOCK_WA
         os.close(fd)
 
 
+STALE_TMP = re.compile(r"\.harvest-[a-z0-9_]{8}\.tmp")
+
+
+def _sweep_stale_tmp(clippings: Path) -> None:
+    try:
+        with _clip_lock(clippings / ".sweep"):
+            for p in clippings.rglob(".harvest-*.tmp"):
+                if STALE_TMP.fullmatch(p.name) and p.is_file() and not p.is_symlink():
+                    p.unlink(missing_ok=True)
+    except (TimeoutError, OSError):
+        pass
+
+
 def _atomic_write(path: Path, text: str) -> None:
     mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".harvest-", suffix=".tmp")
@@ -2469,6 +2482,8 @@ def main():
     if not clippings.is_dir():
         print(f"harvest-clip-body-batch: no Clippings/ at {clippings}", file=sys.stderr)
         sys.exit(2)
+    if not args.dry_run:
+        _sweep_stale_tmp(clippings)
 
     # Inbox-internal exclusions (harvest-clips.md "Scan for unharvested
     # clips"): _synthesis/ (/synthesize-clips proposal pages), _done/
