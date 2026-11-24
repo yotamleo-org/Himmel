@@ -31,6 +31,11 @@ printf '%s\n' "$1" >> "$BYPASSD_TEST_DIR/sent"
 STUB
 cat > "$tmp/launcher" <<'STUB'
 #!/usr/bin/env bash
+if [ "${1:-}" = --dry-run ]; then
+    printf '%s\n' "$@" >> "$BYPASSD_TEST_DIR/dry.args"
+    [ ! -s "$BYPASSD_TEST_DIR/dry.msg" ] || cat "$BYPASSD_TEST_DIR/dry.msg" >&2
+    exit "$(cat "$BYPASSD_TEST_DIR/dry.rc" 2>/dev/null || echo 0)"
+fi
 env | grep -E '^([A-Za-z0-9_]*_OK|WORKER_SESSION_EFFORT|WORKER_SESSION_API_LANE|WORKER_SESSION_API_ACCOUNT|SKIP_FORCE_PUSH_GATE|IMPL_GUARD_DISABLE|SECURITY_REVIEW_NO_FETCH)=' | sort > "$BYPASSD_TEST_DIR/launch.env"
 printf '%s\n' "$@" > "$BYPASSD_TEST_DIR/launch.args"
 ps -o sid= -p $$ 2>/dev/null | tr -d ' ' > "$BYPASSD_TEST_DIR/launch.sid"
@@ -867,6 +872,230 @@ assert_eq "RED 10735: line 1 still leads with the code" "yes" "$(grep -qE '^go [
 assert_contains "10735: the flag line names all five flags" "WORKER_SESSION_CONTEXT_HANDOFF_OK, HIMMEL_HOOK_INTEGRITY_BYPASS_OK, SUBAGENT_PARK_GUARD_DISABLE, HIMMEL_BILLED_OK, SKIP_SECURITY_REVIEW" "$ASK"
 assert_contains "10735: the tag line names the decision, the paid run and the API account" "DECISION 12345 · PAID RUN · API account auto" "$ASK"
 stop
+
+CH=HIMMEL-nextleg-2026-11-13A-roadmap-chief
+echo "== 10912: a request whose dry-run refuses is never asked, the chief is told =="
+setup preflight-ask
+mkdir -p "$D/bridge/consoles"; printf '# console\n' > "$D/bridge/consoles/$CH.md"
+echo 10 > "$D/dry.rc"; echo "headed-arm-worker: refused: unknown legacy family ownership (stale row)" > "$D/dry.msg"
+start
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=$CH recommend=go > "$Q/r.req"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT HIMMEL-1-N1-sweep-pr1"
+sleep 0.5
+assert_contains "RED 10912: the log names the refusal and its reason" "REFUSED-PREFLIGHT HIMMEL-1-N1-sweep-pr1 rc=10 headed-arm-worker: refused: unknown legacy family ownership (stale row)" "$(cat "$Q/daemon.log" 2>/dev/null)"
+assert_absent "RED 10912: a refused dry-run sends no ask" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+assert_absent "10912: a refused dry-run sends the operator nothing at all" "bypass" "$(cat "$D/kinds" 2>/dev/null)"
+assert_contains "RED 10912: the chief's inbox gets the refusal line" "REFUSED-PREFLIGHT HIMMEL-1-N1-sweep-pr1 rc=10 headed-arm-worker: refused: unknown legacy family ownership (stale row)" "$(cat "$D/bridge/consoles/$CH.md")"
+assert_eq "10912: the request is closed as refused, not left to be re-read" "r.req.refused" "$(cd "$Q" && ls r.req.* 2>/dev/null)"
+assert_absent "10912: nothing launched" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+stop
+
+echo "== 10912: a request whose dry-run passes is asked as before, with the request's own launch shape =="
+setup preflight-pass
+start
+CODE=$(ask_code r)
+assert_contains "10912: a passing dry-run still asks" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+assert_contains "10912: the dry-run got the brief" "$BRIEF" "$(cat "$D/dry.args" 2>/dev/null)"
+assert_contains "10912: the dry-run got the model" "claude-sonnet-5-5" "$(cat "$D/dry.args" 2>/dev/null)"
+assert_contains "10912: the dry-run got the chief" "$CH" "$(cat "$D/dry.args" 2>/dev/null)"
+assert_contains "10912: the dry-run is the worker-impl profile launch" "--profile"$'\n'"worker-impl" "$(cat "$D/dry.args" 2>/dev/null)"
+stop
+
+echo "== 10912: a grant whose dry-run refuses stays pending, the go is not spent, a touch retries it =="
+setup preflight-grant
+mkdir -p "$D/bridge/consoles"; printf '# console\n' > "$D/bridge/consoles/$CH.md"
+start
+CODE=$(ask_code r)
+echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+sleep 0.5
+assert_contains "RED 10912: the log names the reason" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1 rc=10 fleet cap 18/18" "$(cat "$Q/daemon.log" 2>/dev/null)"
+assert_eq "RED 10912: the request stays pending (not done, not failed, not refused)" "r.req.held r.req.pending" "$(cd "$Q" && printf '%s ' r.req.* | sed 's/ $//')"
+assert_absent "RED 10912: no GRANT line, the go is not spent" "GRANT" "$(cat "$Q/daemon.log")"
+assert_absent "10912: no LAUNCH-FAILED" "LAUNCH-FAILED" "$(cat "$Q/daemon.log")"
+assert_absent "10912: nothing launched" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+assert_contains "RED 10912: the chief's inbox gets the held-grant line" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1 rc=10 fleet cap 18/18" "$(cat "$D/bridge/consoles/$CH.md")"
+sleep 1
+rm -f "$D/dry.rc" "$D/dry.msg"
+touch "$Q/r.req.pending"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_contains "RED 10912: after the chief touches it the same go code launches" "GRANT HIMMEL-1-N1-sweep-pr1 env=HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 decision=none go=$CODE" "$(cat "$Q/daemon.log")"
+assert_eq "10912: the retried request ends done, the hold is gone" "r.req.done" "$(cd "$Q" && ls r.req.* 2>/dev/null)"
+assert_eq "10912: the operator was asked once" "1" "$(grep -c ' → launch · no ' "$D/sent")"
+stop
+
+echo "== 10912: a held go launches only the request the operator was asked about =="
+setup preflight-tamper
+start
+CODE=$(ask_code r)
+echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+sleep 1
+rm -f "$D/dry.rc" "$D/dry.msg"
+printf 'flags=HIMMEL_BILLED_OK\ndecision=1\n' >> "$Q/r.req.pending"
+wait_for "$Q/daemon.log" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the request changed"
+assert_contains "RED 10912: a request edited while its go is held is refused" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the request changed since the ask)" "$(cat "$Q/daemon.log")"
+assert_eq "RED 10912: the edited request ends refused and nothing is left held" "r.req.refused" "$(cd "$Q" && printf '%s ' r.req.* | sed 's/ $//')"
+assert_absent "RED 10912: nothing launched on the edited request" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+stop
+
+echo "== 10912: a held file the daemon never wrote launches nothing =="
+setup preflight-forged
+start
+printf 'probe\n' > "$Q/p.req"
+wait_for "$Q/daemon.log" "REFUSED malformed"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=$CH recommend=go > "$D/f.req.prep"
+printf 'go=ABCDEF\nsha=%s\nrsha=%s\nname=HIMMEL-1-N1-sweep-pr1\n' "$(sha256sum "$BRIEF" | cut -d' ' -f1)" "$(sha256sum "$D/f.req.prep" | cut -d' ' -f1)" > "$D/f.req.held.prep"
+mv "$D/f.req.prep" "$Q/f.req.pending"
+mv "$D/f.req.held.prep" "$Q/f.req.held"
+sleep 1
+[ ! -f "$Q/f.req.pending" ] || touch "$Q/f.req.pending"
+wait_for "$Q/daemon.log" "REFUSED held go not recorded in memory"
+assert_contains "RED 10912: a forged held file is refused" "REFUSED held go not recorded in memory f.req" "$(cat "$Q/daemon.log")"
+assert_absent "RED 10912: a forged held file launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+assert_absent "10912: a forged held file sends no GRANT" "GRANT" "$(cat "$Q/daemon.log")"
+assert_eq "10912: the forged pair ends refused" "f.req.refused" "$(cd "$Q" && printf '%s ' f.req.* | sed 's/ $//')"
+stop
+
+echo "== 10912: a held go past the 6 h window launches nothing =="
+setup preflight-expired
+start BYPASSD_TTL=3
+CODE=$(ask_code r)
+echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+sleep 4
+rm -f "$D/dry.rc" "$D/dry.msg"
+touch "$Q/r.req.pending"
+wait_for "$Q/daemon.log" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the go expired"
+assert_contains "RED 10912: an expired held go is refused" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the go expired)" "$(cat "$Q/daemon.log")"
+assert_absent "RED 10912: an expired held go launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+assert_eq "10912: the expired request ends expired" "r.req.expired" "$(cd "$Q" && printf '%s ' r.req.* | sed 's/ $//')"
+stop
+
+echo "== 10912: a held go does not survive a daemon restart, the request is asked again =="
+setup preflight-restart
+start
+CODE=$(ask_code r)
+echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+stop
+rm -f "$Q/stop" "$D/dry.rc" "$D/dry.msg"
+start
+wait_for "$Q/daemon.log" "REQUEUE r.req"
+wait_for "$D/sent" "brief sha"
+sleep 1
+assert_contains "RED 10912: a restart requeues the held request" "REQUEUE r.req (a held go does not survive a restart)" "$(cat "$Q/daemon.log")"
+assert_eq "RED 10912: the operator is asked again after a restart" "2" "$(grep -c ' → launch · no ' "$D/sent")"
+assert_absent "RED 10912: the old go launches nothing after a restart" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+stop
+
+echo "== 10912: the request is read once into memory, so a planted snapshot path changes nothing =="
+setup preflight-fifo
+printf 'VICTIM\n' > "$D/victim"
+mkfifo "$Q/.ask-snapshot" "$Q/.retry-snapshot"
+start
+CODE=$(ask_code r)
+assert_contains "RED 10912: with both snapshot paths planted as FIFOs the request is still asked" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+if [ -n "$CODE" ]; then
+    reply "$OPERATOR" "$OPERATOR" "go $CODE"
+    wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+fi
+assert_eq "RED 10912: the launch fields are the asked ones with FIFOs planted" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(cat "$D/launch.env" 2>/dev/null)"
+kill "$DPID" 2>/dev/null; timeout 2 cat "$Q/.ask-snapshot" >/dev/null 2>&1; wait "$DPID" 2>/dev/null; DPID="" # gnu-ok: portable-timeout.sh above supplies a timeout on macOS
+setup preflight-symlink
+printf 'VICTIM\n' > "$D/victim"
+ln -s "$D/victim" "$Q/.ask-snapshot"; ln -s "$D/victim" "$Q/.retry-snapshot"
+start
+CODE=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_eq "RED 10912: a symlinked snapshot path is never written through" "VICTIM" "$(cat "$D/victim")"
+assert_eq "RED 10912: the launch fields are the asked ones with symlinks planted" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(cat "$D/launch.env" 2>/dev/null)"
+stop
+
+echo "== 10912: a held request swapped for a FIFO or a symlink is refused, never read =="
+for kind in fifo symlink dangling; do
+    setup "preflight-swap-$kind"
+    printf 'VICTIM\n' > "$D/victim"
+    start
+    CODE=$(ask_code r)
+    echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+    reply "$OPERATOR" "$OPERATOR" "go $CODE"
+    wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+    sleep 1
+    rm -f "$D/dry.rc" "$D/dry.msg" "$Q/r.req.pending"
+    case $kind in
+        fifo) mkfifo "$Q/r.req.pending" ;;
+        symlink) cp "$BRIEF" "$D/swapped"; ln -s "$D/swapped" "$Q/r.req.pending" ;;
+        dangling) ln -s "$D/nowhere" "$Q/r.req.pending" ;;
+    esac
+    wait_for "$Q/daemon.log" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the request changed"
+    assert_contains "RED 10912: a held request swapped for a $kind is refused" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the request changed since the ask)" "$(cat "$Q/daemon.log")"
+    assert_absent "RED 10912: a swapped $kind launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+    kill "$DPID" 2>/dev/null; timeout 2 cat "$Q/r.req.pending" >/dev/null 2>&1; wait "$DPID" 2>/dev/null; DPID="" # gnu-ok: portable-timeout.sh above supplies a timeout on macOS
+done
+
+echo "== 10912: a queued request that is a FIFO is refused and the loop goes on =="
+setup preflight-fifo-req
+start
+mkfifo "$Q/a.req"
+wait_for "$Q/daemon.log" "REFUSED request unreadable"
+CODE=$(ask_code r)
+assert_contains "RED 10912: a FIFO request is refused as unreadable" "REFUSED request unreadable $Q/a.req" "$(cat "$Q/daemon.log")"
+assert_contains "RED 10912: the next request is still asked" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+kill "$DPID" 2>/dev/null; wait "$DPID" 2>/dev/null; DPID=""
+
+echo "== 10912: a request whose file name holds a control character is refused before it can reach the held list =="
+setup preflight-ctl-name
+start
+CTL_NAME=$(printf 'a\037b.req')
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=$CH recommend=go > "$Q/$CTL_NAME"
+wait_for "$Q/daemon.log" "REFUSED request name has a control character"
+assert_contains "RED 10912: a control-character name is refused" "REFUSED request name has a control character" "$(cat "$Q/daemon.log")"
+assert_absent "RED 10912: a control-character name is never asked" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+CODE=$(ask_code r)
+assert_contains "10912: the daemon is alive and asks the next request" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+stop
+
+echo "== 10912: a held go whose ask time is in the future counts as expired =="
+setup preflight-clock
+mkdir -p "$D/clockbin"
+real_date=$(command -v date)
+# shellcheck disable=SC2016 # the wrapper's own source
+printf '#!/bin/sh\nif [ "$1" = +%%s ]; then o=$(cat "%s/clock.offset" 2>/dev/null || echo 0); echo $(( $(%s +%%s) + o )); else exec %s "$@"; fi\n' "$D" "$real_date" "$real_date" > "$D/clockbin/date"
+chmod +x "$D/clockbin/date"
+start PATH="$D/clockbin:$PATH"
+CODE=$(ask_code r)
+echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+echo -3600 > "$D/clock.offset"
+sleep 1
+rm -f "$D/dry.rc" "$D/dry.msg"
+touch "$Q/r.req.pending"
+wait_for "$Q/daemon.log" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the go expired"
+assert_contains "10912: a clock moved back makes the held go expire" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the go expired)" "$(cat "$Q/daemon.log")"
+assert_absent "10912: a go held across a backward clock launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+stop
+
+echo "== 10912: a request the daemon cannot read is refused as unreadable, never parsed from a partial copy =="
+if [ "$(id -u)" -ne 0 ]; then
+    setup unreadable-request
+    start
+    printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=$CH recommend=go > "$D/u.req.prep"
+    chmod 000 "$D/u.req.prep"
+    mv "$D/u.req.prep" "$Q/u.req"
+    wait_for "$Q/daemon.log" "REFUSED request unreadable"
+    assert_contains "RED 10912: an unreadable request is refused as unreadable" "REFUSED request unreadable $Q/u.req" "$(cat "$Q/daemon.log")"
+    assert_absent "10912: an unreadable request sends no ask" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+    stop
+else
+    echo "SKIP - unreadable request row (root reads a mode 000 file)"
+fi
 
 echo
 echo "bypass-launchd: $PASS passed, $FAIL failed"

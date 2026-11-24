@@ -13,7 +13,7 @@ import { fold, inFlight } from './lib/fold.mjs';
 import { UsageError } from './lib/errors.mjs';
 import { validateRecord } from './lib/schema.mjs';
 import { Diagnostics, diagnostic } from './lib/health.mjs';
-import { collectionLock, createBudget } from './lib/runtime.mjs';
+import { collectionLock, createBudget, spawnBounded } from './lib/runtime.mjs';
 
 // Well-formed Jira ticket key, e.g. PROJ-567. Used to filter the
 // active-key set passed into the by-key status query (no JQL injection) and to
@@ -110,13 +110,33 @@ export function readJira(activeKeys = [], options = {}) {
   return { rows, errors: diagnostics.errors, error_count: diagnostics.error_count };
 }
 
-function discoverPRs(budget) {
-  return JSON.parse(budget.run('gh', ['pr', 'list', '--state', 'all', '--limit', '100', '--json', 'number,state,headRefName,title,mergeable,mergeStateStatus,statusCheckRollup'], { encoding: 'utf8' }));
+export function repoSlug(run) {
+  const url = String(run('git', ['-C', _repoRoot, 'remote', 'get-url', 'origin'], { encoding: 'utf8' })).trim();
+  const match = url.match(/[:/]([^/:\s]+\/[^/\s]+?)(?:\.git)?\/?$/);
+  if (!match) throw new Error('cannot resolve the GitHub repository from origin');
+  return match[1];
 }
 
-export function readPRBatch(numbers, run = execFileSync) {
-  const { nameWithOwner } = JSON.parse(run('gh', ['repo', 'view', '--json', 'nameWithOwner'], { encoding: 'utf8', timeout: 60000 }));
-  const [owner, name] = nameWithOwner.split('/');
+const PR_FIELDS = 'number,state,headRefName,title,mergeable,mergeStateStatus,statusCheckRollup';
+const RECENT_PR_LIMIT = 100;
+const OPEN_PR_LIMIT = 1000;
+
+function discoverPRs(budget, repo) {
+  const list = (state, limit) => JSON.parse(budget.run('gh', ['pr', 'list', '-R', repo, '--state', state, '--limit', String(limit), '--json', PR_FIELDS], { encoding: 'utf8' }));
+  const byNumber = new Map(list('all', RECENT_PR_LIMIT).map((pr) => [pr.number, pr]));
+  const diagnostics = new Diagnostics();
+  try {
+    budget.take();
+    const open = list('open', OPEN_PR_LIMIT);
+    for (const pr of open) byNumber.set(pr.number, pr);
+    if (open.length >= OPEN_PR_LIMIT) diagnostics.add(`open PR read reached its limit of ${OPEN_PR_LIMIT}; older open PRs unread`);
+  } catch (err) { diagnostics.add(err); }
+  return { rows: [...byNumber.values()], errors: diagnostics.errors, error_count: diagnostics.error_count };
+}
+
+export function readPRBatch(numbers, run = execFileSync, repo) {
+  const [owner, name] = String(repo ?? '').split('/');
+  if (!owner || !name) throw new Error('readPRBatch needs an explicit owner/name repository');
   const fields = `number state headRefName title mergeable mergeStateStatus
     commits(last:1) { nodes { commit { statusCheckRollup { contexts(first:100) {
       nodes { ... on CheckRun { status conclusion } ... on StatusContext { state } }
@@ -135,12 +155,20 @@ export function readPRBatch(numbers, run = execFileSync) {
   }
   const rows = [];
   const diagnostics = new Diagnostics();
-  for (const error of response.errors ?? []) diagnostics.add(error.message);
+  const errored = new Set();
+  for (const error of response.errors ?? []) {
+    diagnostics.add(error.message);
+    const field = error.path?.[0] === 'repository' ? error.path[1] : undefined;
+    errored.add(typeof field === 'string' ? field : '*');
+  }
   for (const n of numbers) {
     const pr = response.data?.repository?.[`p${n}`];
     if (!pr) { diagnostics.add(`missing PR #${n}`); continue; }
     const contexts = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts;
-    if (contexts?.pageInfo?.hasNextPage) {
+    if (errored.has('*') || errored.has(`p${n}`)) {
+      diagnostics.add(`PR #${n}: partial answer`);
+      delete pr.mergeable;
+    } else if (contexts?.pageInfo?.hasNextPage) {
       diagnostics.add(`PR #${n}: incomplete check rollup`);
       delete pr.mergeable; // preserve the last obligation when checks are unknown
     } else {
@@ -153,11 +181,18 @@ export function readPRBatch(numbers, run = execFileSync) {
 
 export function readPRs(activeNumbers = [], options = {}) {
   const budget = options.budget ?? createBudget(options);
-  const discover = options.discover ?? (() => discoverPRs(budget));
-  const readBatch = options.readBatch ?? ((numbers) => readPRBatch(numbers, (command, args, opts) => { budget.take(); return budget.run(command, args, opts); }));
+  let repo = options.repo;
+  const repoName = () => repo ??= repoSlug((command, args, opts) => budget.run(command, args, opts));
+  const discover = options.discover ?? (() => discoverPRs(budget, repoName()));
+  const readBatch = options.readBatch ?? ((numbers) => readPRBatch(numbers, (command, args, opts) => { budget.take(); return budget.run(command, args, opts); }, repoName()));
   const rows = [];
   const diagnostics = new Diagnostics();
-  try { budget.take(); rows.push(...discover()); } catch (err) { diagnostics.add(err); }
+  try {
+    budget.take();
+    const found = discover();
+    rows.push(...(Array.isArray(found) ? found : found.rows));
+    if (!Array.isArray(found)) diagnostics.merge(found);
+  } catch (err) { diagnostics.add(err); }
   const found = new Set(rows.map((pr) => pr.number));
   const missing = [...new Set(activeNumbers)].filter((n) => Number.isSafeInteger(n) && n > 0 && !found.has(n));
   for (const batch of chunks(missing, PR_BATCH)) {
@@ -173,7 +208,7 @@ export function readPRs(activeNumbers = [], options = {}) {
 
 function readWorktrees(budget = createBudget()) {
   budget.take();
-  return budget.run('git', ['worktree', 'list', '--porcelain'], { encoding: 'utf8' });
+  return budget.run('git', ['-C', _repoRoot, 'worktree', 'list', '--porcelain'], { encoding: 'utf8' });
 }
 
 // ---------------------------------------------------------------------------
@@ -273,7 +308,7 @@ function collectLocked(a, { readers, strict, budget }) {
   const activePRs = active.filter((it) => it.kind === 'pr' && /^#\d+$/.test(it.key)).map((it) => Number(it.key.slice(1)));
   appendRecords(a.ledger, ['jira', 'pr', 'git'].map((source) => ({
     ts: now, source, kind: 'collection', key: `@collect:${source}`, errors: ['refresh started; result pending or interrupted'], error_count: 1,
-  })), { timeoutMs: budget.persistenceTimeout() });
+  })), { held: true });
   const { records, health } = collectPass(now, effectiveReaders, activeKeys, activePRs);
   try { budget.remaining(); } catch (error) { for (const h of Object.values(health)) h.add(error); }
   for (const record of records) {
@@ -284,7 +319,7 @@ function collectLocked(a, { readers, strict, budget }) {
     ts: now, source, key: `@collect:${source}`, kind: 'collection', errors: health.errors, error_count: health.error_count,
     ...(!health.error_count ? { observed_at: now } : {}),
   }));
-  const r = appendRecords(a.ledger, [...records, ...evidence], { timeoutMs: budget.persistenceTimeout() });
+  const r = appendRecords(a.ledger, [...records, ...evidence], { held: true });
   const summary = `appended=${r.appended - evidence.length} dropped=${r.dropped}`;
   if (r.dropped > 0) {
     console.error(`[where-are-we] dropped ${r.dropped} records: ${diagnostic(r.dropReasons[0]?.error)}`);
@@ -323,7 +358,7 @@ export function runCLI(argv, { deadlineMs = 90000 } = {}) {
     catch(error) { console.error(diagnostic(error)); process.exitCode=1; }`;
   // This outer watchdog also bounds local parsing/persistence and a stuck
   // append lock. An interrupted pass retains its pre-read pending evidence.
-  const result = spawnSync('timeout', ['-k', '0.2', `${ms / 1000}s`, process.execPath, '--input-type=module', '-e', code, import.meta.url, JSON.stringify(argv), String(deadlineAt), String(outerDeadlineAt)], {
+  const result = spawnBounded(spawnSync, '0.2', `${ms / 1000}s`, process.execPath, ['--input-type=module', '-e', code, import.meta.url, JSON.stringify(argv), String(deadlineAt), String(outerDeadlineAt)], {
     encoding: 'utf8', timeout: Math.ceil(ms + 1000), maxBuffer: 1024 * 1024,
   });
   if (result.status === 124 || result.status === 137) result.stderr = 'collector deadline exhausted; freshness unknown, refresh may be incomplete\n';

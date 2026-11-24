@@ -188,6 +188,41 @@ does, the command waits for the operator.
   be asked again after the restart. The daemon does one thing at a time, so a
   change that lands while it waits on a go is found when that wait ends: the
   hold and its cards can come up to one ask wait (6 h) after the change.
+- **A go code is asked only for a launch that can start.** Before it sends the
+  ask, the daemon runs the launcher's own `headed-arm-worker.sh --dry-run` with
+  the request's brief, model, chief and fleet manifest, in the launch's
+  environment: the same admission a real launch makes (fleet manifest rows, a
+  paused fleet, the fleet cap, the bank). Nothing is claimed or started. On a
+  refusal it logs `REFUSED-PREFLIGHT <brief> rc=<n> <reason>`, appends the
+  same line to the chief's console inbox
+  (`<bridge root>/consoles/<chief>.md`, when that file exists), sends the
+  operator nothing, and the request ends `<name>.req.refused`; the chief fixes
+  the cause and files a new request. After the go, the daemon runs the dry-run
+  again, because the fleet can fill while the ask waits. A refusal there does
+  not spend the go: the log says `REFUSED-PREFLIGHT after go <brief> ...`, the
+  chief is told, the request stays `<name>.req.pending`, and no `GRANT` line is
+  written. The held go lives only in the daemon's memory, never in a file the
+  requester can write: the daemon keeps the minted code, the brief sha, the
+  request file's hash and the ask time, and leaves an empty marker
+  `<name>.req.held` beside the request. When the chief has fixed the cause it
+  touches `<name>.req.pending`; the daemon then logs `RETRY`, runs the dry-run
+  again and, if it passes, launches on the same go code without a second ask.
+  The marker carries no authority: a `.held` file the daemon did not record in
+  its own memory is refused (`REFUSED held go not recorded in memory <name>`)
+  and its request ends `.refused`. A held go is bound to what was asked: a
+  request edited while its go is held is refused (`REFUSED after go <brief> (the
+  request changed since the ask)`), a go held past the 6 h window is refused
+  (`REFUSED after go <brief> (the go expired)`, the request ends `.expired`),
+  and a go held while the code on disk moved holds the daemon exactly as an
+  unheld go does. A restart drops every held go: the new daemon moves each
+  held request back to `<name>.req` (`REQUEUE <name> (a held go does not
+  survive a restart)`) and asks the operator again. The daemon reads a request
+  once into memory and hashes and parses that same buffer, with no snapshot
+  file; a request that is not a regular file (a FIFO or a symlink) is refused,
+  and a held go whose ask time is in the future (the clock moved back) counts as
+  expired. A passing dry-run changes
+  nothing in the ask and the grant, and the request still needs the operator's
+  go code.
 - **Failures are reported.** A launcher that exits non-zero within the settle
   window logs `LAUNCH-FAILED <brief> rc=<n>`, and the request ends `.failed`.
 - **It is bounded.** `--until <YYYY-MM-DD>` is required and may be at most 7
