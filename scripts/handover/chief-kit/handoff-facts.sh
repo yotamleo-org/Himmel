@@ -102,10 +102,14 @@ case "$field" in
                 ldoc="$(jq -r '.handover // empty' "$lockdir/owner.json" 2>/dev/null)" || ldoc=""  # swallow-ok: an unreadable owner file lists no worker, the manifest rows still print
                 [ -n "$ldoc" ] && [ -f "$ldoc" ] && [ "$(cd "$(dirname "$ldoc")" && pwd -P)" = "$(cd "$(dirname "$doc")" && pwd -P)" ] || continue
                 case "${ldoc##*/}" in *-nextleg-*|*-HANDOFF.md) continue ;; esac
-                case "
+                listed=""
+                while IFS="$(printf '\t')" read -r _ mdoc; do
+                    [ -n "$mdoc" ] || continue
+                    [ "$(cd "$(dirname "$mdoc")" 2>/dev/null && pwd -P)/${mdoc##*/}" != "$(cd "$(dirname "$ldoc")" && pwd -P)/${ldoc##*/}" ] || listed=1  # swallow-ok: a manifest doc whose directory cannot be read compares unequal, so the lock row is still listed
+                done <<EOF_LISTED
 $rows
-" in *"	$ldoc
-"*) continue ;; esac
+EOF_LISTED
+                [ -z "$listed" ] || continue
                 rows="$rows
 LOCKONLY	$ldoc"
             done

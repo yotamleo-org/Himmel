@@ -4248,14 +4248,14 @@ mustc10877="$(awk '$0 == "## Must disposition" { f = 1; next } f && /^## / { exi
 check "10877 a doc named by a path with a dot-dot segment still sweeps the bucket's locks" "$(printf '%s\n' "$livec10877" | grep -c '`N2:NONCE-UNKNOWN:')" "1"
 check "10877 a failed RESUME-row read puts a row naming the failure in Must disposition" "$(printf '%s\n' "$mustc10877" | grep -c 'RESUME rows unavailable.*exited 3')" "1"
 check "10877 the unavailable RESUME rows row names the command to re-run" "$(printf '%s\n' "$mustc10877" | grep -c 'next-dispatchable.sh --resume-only')" "1"
-check "10877 an unreadable lock owner file puts a row in Must disposition" "$(printf '%s\n' "$mustc10877" | grep -c 'zz-bad10877 has an unreadable owner file')" "1"
+check "10877 an unreadable lock owner file puts a row in Must disposition" "$(printf '%s\n' "$mustc10877" | grep -c 'zz-bad10877 has no readable owner file')" "1"
 for i in 1 2; do HANDOVER_DIR="$root" bash "$QL" release "$Wc10877/DEMO-$i-N$i-worker.md" "${tokw10877[i]}" >/dev/null 2>&1; done
 HANDOVER_DIR="$root" bash "$QL" release "$Ac10877" "$tokc10877" >/dev/null 2>&1
 
 mirstale10877="$tmp/mirror-stale10877"; mkdir -p "$mirstale10877"
 cp "$mir10877/DEMO-31.md" "$mirstale10877/DEMO-31.md"
 printf '{"lastSync":"2026-11-20T00:00:00.000Z"}\n' > "$mirstale10877/.cursor.json"
-touch -d '3 days ago' "$mirstale10877/.cursor.json"
+touch -t "$(hours_ago95 72)" "$mirstale10877/.cursor.json"
 tokm10877="$(token_of "$(chief new --bucket m2-10877)")"
 Am210877="$root/tester/m2-10877/DEMO-nextleg-${today}A-chief.md"
 NEXT_DISPATCH_MIRROR="$mirstale10877" chief next --bucket m2-10877dst --doc "$Am210877" >/dev/null 2>&1

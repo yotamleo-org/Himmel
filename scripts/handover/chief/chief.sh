@@ -2495,10 +2495,10 @@ EOF
 
 OPERATOR_DIRECTED_KEYS=""
 must_disposition_section() {
-    local pdoc="$1" pdir="$2" live="$3" dead="$4" smanifest="$5" r sib label prs line n branch title key found rows cap="${CHIEF_MUST_CAP:-60}" total=0
+    local pdoc="$1" pdir="$2" live="$3" dead="$4" smanifest="$5" r sib label prs line n branch title key found rows cap="${CHIEF_MUST_CAP:-30}" total=0 nrd=0 npr=0 nop=0
     local mirror f fm fv st created ver rest_ pstem pdate prio ttl marker fresh resume_rc days="${CHIEF_MUST_RESUME_DAYS:-2}"
     printf '## Must disposition\n\n'
-    printf 'Rule on each row (relaunch, GO, park or close) before your first dispatch; none is optional.\n\n'
+    printf 'Rule on each row (relaunch, GO, park or close) before dispatching.\n\n'
     # shellcheck disable=SC2016  # the backticks are literal markdown code spans
     {
         while IFS= read -r r; do
@@ -2508,8 +2508,11 @@ must_disposition_section() {
             if [ -f "$sib" ] && [ "$sib" -nt "$r" ] && [ -z "$(worker_tail_status "$r")" ] && [ -n "$(worker_tail_status "$sib")" ]; then continue; fi
             label="$(worker_label "$r")"
             marker="$(worker_tail_status "$sib")"
+            nrd=$((nrd + 1))
+            [ "$nrd" -le "$cap" ] || continue
             printf -- '- RESUME doc `%s`: %s, last marker %s\n' "$r" "$label" "${marker:-none}"
         done < <(find "$pdir" -maxdepth 1 -type f -name '*-RESUME.md' -mtime "-$days" 2>/dev/null | sort)
+        [ "$nrd" -le "$cap" ] || printf -- '- +%s more RESUME docs in the bucket: list them with ls\n' "$((nrd - cap))"
         prs="$(bash "$HERE/../chief-kit/handoff-facts.sh" prs "$pdoc" --repo "$repo" 2>/dev/null)" || prs=""  # swallow-ok: an unreadable PR list names no row; the orphan-PR gate already ran
         while IFS= read -r line; do
             [[ "$line" =~ ^#([0-9]+)[[:space:]] ]] || continue
@@ -2525,10 +2528,13 @@ must_disposition_section() {
                 found="$(printf '%s' "$live" | awk -F'\t' -v k="$(printf '%s' "$key" | tr '[:lower:]' '[:upper:]')" '{ d = toupper($2); sub(/.*\//, "", d); if (index(d, k "-") == 1 || index(d, "-" k "-") > 0) { print 1; exit } }')"
             fi
             [ -z "$found" ] || continue
+            npr=$((npr + 1))
+            [ "$npr" -le "$cap" ] || continue
             printf -- '- PR #%s (%s) has no live worker: %s\n' "$n" "$branch" "$title"
         done <<EOF_PRS
 $prs
 EOF_PRS
+        [ "$npr" -le "$cap" ] || printf -- '- +%s more open PRs with no live worker: list them with gh pr list\n' "$((npr - cap))"
         resume_rc=0
         if [ -n "${CHIEF_MUST_RESUME_ROWS:-}" ]; then
             rows="$(bash "$CHIEF_MUST_RESUME_ROWS" 2>/dev/null)" || resume_rc=$?  # swallow-ok: the failure becomes a Must disposition row below
@@ -2570,16 +2576,18 @@ EOF_ROWS
             created="$(sed -n 's/^created: "\([0-9-]*\)T.*$/\1/p' <<< "$fm")"
             prio="$(sed -n 's/^priority: "\(.*\)"$/\1/p' <<< "$fm")"
             ttl="$(sed -n 's/^# [A-Z][A-Z0-9]*-[0-9]*: //p' "$f" | head -n 1)"
-            printf -- '- operator-directed %s (%s, no worker): %s\n' "$key" "${prio:-no priority}" "$ttl"
+            nop=$((nop + 1))
+            if [ "$nop" -le "$cap" ]; then printf -- '- operator-directed %s (%s, no worker): %s\n' "$key" "${prio:-no priority}" "$ttl"; fi
             if { [ -n "$pdate" ] && [ -n "$created" ] && [[ ! "$created" < "$pdate" ]]; } || grep -qwF "$key" "$pdoc"; then
                 OPERATOR_DIRECTED_KEYS="$OPERATOR_DIRECTED_KEYS$key "
             fi
         done < <(grep -l '"operator-directed"' "$mirror"/*.md 2>/dev/null | sort)
+        [ "$nop" -le "$cap" ] || printf -- '- +%s more operator-directed To Do tickets with no worker: list them from the Jira mirror\n' "$((nop - cap))"
     fi
     for f in "$root"/.locks/queue/*.lock; do
-        [ -f "$f/owner.json" ] || continue
-        jq -e '.handover | strings | length > 0' "$f/owner.json" >/dev/null 2>&1 && continue
-        printf -- '- queue lock %s has an unreadable owner file, so the worker it holds is not listed; check it: bash %s status --sweep\n' "$(basename "$f" .lock)" "$repo/scripts/handover/queue-lock.sh"
+        [ ! -f "$f/owner.json" ] || ! jq -e '.handover | strings | length > 0' "$f/owner.json" >/dev/null 2>&1 || continue
+        [ -d "$f" ] || continue
+        printf -- '- queue lock %s has no readable owner file, so the worker it holds is not listed; check it: bash %s status --sweep\n' "$(basename "$f" .lock)" "$repo/scripts/handover/queue-lock.sh"
     done
     if [ -n "$dead" ]; then
         printf -- '- retired from the fleet manifests (no live worker, nothing to relaunch from the row): %s\n' "$(printf '%s\n' "$dead" | awk -F'\t' 'NF { printf "%s%s", sep, $1; sep = ", " }')"
@@ -2594,7 +2602,7 @@ carry_operator_priority() {
     new="${new% }"
     [ -n "$new" ] || return 0
     has="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f && /^priority:/ { print 1; exit }' "$1")"
-    SL_new="$new" SL_has="$has" awk '
+    if SL_new="$new" SL_has="$has" awk '
         $0 == "## Live state" { f = 1; print; next }
         f && /^## / { f = 0 }
         f && !done && /^priority:/ {
@@ -2603,8 +2611,9 @@ carry_operator_priority() {
             done = 1; next
         }
         f && !done && ENVIRON["SL_has"] == "" && /^board:/ { print "priority: " ENVIRON["SL_new"]; done = 1 }
-        { print }' "$1" > "$1.prio"
-    if ! mv "$1.prio" "$1"; then rm -f "$1.prio"; err "warning: could not carry the operator-directed keys into the priority: line of $1"; fi
+        { print }' "$1" > "$1.prio" && mv "$1.prio" "$1"; then :; else
+        rm -f "$1.prio"; err "warning: could not carry the operator-directed keys into the priority: line of $1"
+    fi
 }
 
 # seed_live_fields <doc> <predecessor live state> <predecessor stem> [<predecessor doc>]: replace each
@@ -2999,11 +3008,16 @@ cmd_next() {
     local dead_rows
     dead_rows="$(dead_manifest_rows "$predecessor_manifest")"
     must_disposition_section "$predecessor_doc" "$(dirname "$predecessor_doc")" "$LIVE_WORKER_ROWS" "$dead_rows" "$successor_manifest" > "$doc.must"
-    awk -v mf="$doc.must" '
-        /^## Current direction/ && !d { while ((getline l < mf) > 0) print l; print ""; d = 1 }
-        { print }
-        END { if (!d) { print ""; while ((getline l < mf) > 0) print l } }' "$doc" > "$doc.m"
-    if ! mv "$doc.m" "$doc"; then err "warning: could not write the Must disposition section into $doc"; fi
+    if grep -q '^- ' "$doc.must"; then
+        if awk -v mf="$doc.must" '
+            /^## Current direction/ && !d { while ((getline l < mf) > 0) print l; print ""; d = 1 }
+            { print }
+            END { if (!d) { print ""; while ((getline l < mf) > 0) print l } }' "$doc" > "$doc.m"; then
+            mv "$doc.m" "$doc" || err "warning: could not write the Must disposition section into $doc"
+        else
+            err "warning: could not build the Must disposition section for $doc"
+        fi
+    fi
     rm -f "$doc.must" "$doc.m"
     carry_operator_priority "$doc" "$OPERATOR_DIRECTED_KEYS"
     precompute_action_zero "$doc"
