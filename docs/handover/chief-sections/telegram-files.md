@@ -23,7 +23,7 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   is refused and the chat is told. A group session's outbox never sends a file.
 - A missing path, a directory or a file over 50 MB is refused with a clear error and a
   non-zero exit; nothing is queued.
-- **A spec or plan page is checked before it queues**. A file under
+- **A spec or plan page is checked before it queues (a sign ask; see "Read send and sign ask" below)**. A file under
   `specs/{design,designs,spec,plan,plans}/` or `specs/HIMMEL-<n>/`, or one a plan critic file names, is a
   signature page. It is refused, naming the verdict file and queueing nothing, unless its highest-round
   `<spec>.critic-spec-r<n>.md` AND `<spec>.critic-plan-r<n>.md` each end in `SPEC CLEAN` / `PLAN CLEAN`
@@ -79,7 +79,16 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   returns: after each critic round it runs that command once per file under review, so a spec it wrote a page for
   goes with no hand seal, and a spec it wrote no page for (a build `core-check` answers `NOT-CORE`) goes as its `.md`.
   The hand command stays for any other page and for a return in flight when this landed. Reports, logs and audits under no such path send
-  as before. Plain `send-file` has no read-only form: a signature-class file goes through the check or does not send.
+  as before.
+- **Read send and sign ask.** The check above is the **sign ask**: it applies only to
+  `send-file --sign <chat_id> <path>`, the form the spec-sign copy (`spec-cc.sh`) runs, and a refusal there
+  stands. A send **without `--sign`** is for reading: a page that passes the check goes as above, with its verdicts
+  in the caption; a `.md` or `.html` spec or plan page that does not pass (its name opens with a ticket key, or a critic file,
+  a `spec-source` marker or a plan critic governs it) goes marked **DRAFT, not for signing**, in the caption and at the top of the
+  page; any other file under `specs/` (a report, log, PDF, image, or a `.md`/`.html` with no ticket key and no critic) goes as it is, unmarked.
+  A DRAFT copy never replaces a signing send: ask for a signature only with `--sign`, after the critics pass. `--sign` and
+  `--by-request` cannot be combined. A companion page (above) sent for reading without its page critic goes DRAFT; with both
+  records it goes with its verdicts.
 - **Signing frozen nonblocking findings.** Sending a capped `FINDINGS` page does
   not itself authorize signing. The normal `release operator spec` and
   `release operator spec-review` commands automatically try verified carry only
@@ -106,15 +115,15 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   It skips the critic check and sends the `.md` or `.html` page marked **NOT PASSED. Not for signature.** at the top of the page,
   with the request quoted there, and the caption opens `NOT PASSED - not for signature (sent on request)`. An empty request is
   refused, a file that is not a `.md` or `.html` page is refused, and nothing queues. The words "Not for signature" stay in the
-  sent bytes, so that copy can never pass the signature check: when the critics pass, send the page again without the flag.
+  sent bytes, so that copy can never pass the signature check: when the critics pass, send the page again with `--sign` instead.
   Use it only when the operator asked; a page that merely is not ready yet is not a reason (decisions 725 and 729).
 - **Make a spec's sign page with the shared generator, then run the critic.** Generate first:
   `python3 -I scripts/telegram/spec-page-gen.py <spec.md> <out.html>` prints two lines, the sha256 of the
   md it read and of the page it wrote. The critic reads the md AND the page and quotes both shas; seal
   both, one `critic-seal.sh` run per file (the spec critic file, the md, its sha; then the same file, the
-  page, its sha); then `send-file` the `.html`. The page names its spec in a `spec-source` meta tag (the
-  md's absolute path), so `send-file` applies the spec's critic check to a copy in any folder under any
-  name, and refuses it when the critic's seals do not include the page's own bytes. The generator leaves
+  page, its sha); then `send-file --sign` the `.html`. The page names its spec in a `spec-source` meta tag (the
+  md's absolute path), so `send-file --sign` applies the spec's critic check to a copy in any folder under any
+  name, and refuses it when the critic's seals do not include the page's own bytes; a send without `--sign` goes marked DRAFT instead. The generator leaves
   the front matter status out and refuses, naming the line and writing nothing, an md body line that
   starts with `Status:` or says "not for signature": the draft state lives in the missing critic seal.
   The page draws the spec's `svg` fence under `## Diagrams` as a figure and carries send-file's own CSP meta; a

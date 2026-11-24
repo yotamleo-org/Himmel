@@ -1122,7 +1122,7 @@ async function closureCheck(specs: string, key: string, kind: Kind, r: number, r
 function sortClosure(text: string, findings: Finding[], openIds: Set<string>, changed: string[]): Finding[] {
   const lines = text.split("\n");
   return findings.map(f => {
-    const line = lines.find(l => FINDING_LINE.exec(l)?.[1] === f.id) ?? "";
+    const line = (lines.find(l => FINDING_LINE.exec(l)?.[1] === f.id) ?? "").replaceAll("\\`", "`");
     const quoted = [...line.matchAll(/`([^`]{12,})`/g)].map(m => m[1]);
     const cls = f.reopens && openIds.has(f.reopens) ? "reopens" : f.regression && quoted.some(q => changed.some(l => l.includes(q))) ? "regression" : "out-of-closure";
     return { ...f, class: cls };
@@ -2067,26 +2067,44 @@ function notPassedBlock(abs: string, request: string): string {
   return `<section class="not-passed"><p><strong>NOT PASSED. ${NOT_FOR_SIGNATURE}.</strong> Critic approval was not checked for this delivery. It is sent early because the operator asked: ${esc(asked)}</p></section>\n`;
 }
 
-export async function queueFile(root: string, chat: number, path: string, caption?: string, byRequest?: string): Promise<string> {
+const DRAFT_CAPTION = "DRAFT, not for signing";
+const DRAFT_BLOCK = `<section class="draft"><p><strong>${DRAFT_CAPTION}.</strong> The critics of this page have not passed its current bytes. It is sent to be read.</p></section>\n`;
+
+async function isSpecOrPlanPage(abs: string): Promise<boolean> {
+  if (!/\.(md|markdown|html?)$/i.test(abs)) return false;
+  if (/^[A-Z][A-Z0-9]+-\d+[-.]/.test(basename(abs))) return true;
+  const page = await realpath(abs).catch(() => abs);
+  try { return Boolean(await markedSource(page) || await governingSpec(page)); } catch { return true; }
+}
+
+async function checkReadPage(abs: string): Promise<{ signed: Awaited<ReturnType<typeof checkSignaturePage>>; draft: boolean }> {
+  try { return { signed: await checkSignaturePage(abs), draft: false }; }
+  catch { return { signed: null, draft: await isSpecOrPlanPage(abs) }; }
+}
+
+export async function queueFile(root: string, chat: number, path: string, caption?: string, byRequest?: string, sign = false): Promise<string> {
   const abs = resolve(path);
   const tooBig = (size: number) => new Error(`file is ${(size / 1048576).toFixed(1)} MB, over the Telegram 50 MB upload limit: ${path}`);
   const st = await stat(abs).catch(() => null);
   if (!st) throw new Error(`file not found: ${path}`);
   if (!st.isFile()) throw new Error(`not a regular file: ${path}`);
   if (st.size > MAX_SEND_BYTES) throw tooBig(st.size);
+  if (sign && byRequest !== undefined) throw new Error("--sign and --by-request cannot be combined: a signing send is checked, a by-request send skips the check");
   const early = byRequest === undefined ? null : notPassedBlock(abs, byRequest);
-  const signed = early ? null : await checkSignaturePage(abs);
+  const read = early || sign ? null : await checkReadPage(abs);
+  const signed = early ? null : sign ? await checkSignaturePage(abs) : read!.signed;
+  const mark = early ? { block: early, caption: EARLY_CAPTION } : read?.draft ? { block: DRAFT_BLOCK, caption: DRAFT_CAPTION } : null;
   // The caption opens with the verdicts read from the critic files; the caller's words follow, never replace them.
-  const verdictCaption = early ? EARLY_CAPTION : signed?.verdicts.map(v => `${v.verdict} r${v.round}`).join(" | ");
+  const verdictCaption = mark ? mark.caption : signed?.verdicts.map(v => `${v.verdict} r${v.round}`).join(" | ");
   if (verdictCaption) caption = caption ? `${verdictCaption} - ${caption}` : verdictCaption;
   const isMd = /\.(md|markdown)$/i.test(abs);
   if (signed?.lead && !isMd && !/\.html?$/i.test(abs)) throw new Error(`${basename(abs)} cannot carry its open findings (only .md and .html can); the page is not sent`);
-  const sealedPage = signed && !isMd ? (signed.lead ? withLead(signed.bytes, signed.lead, basename(abs)) : signed.bytes) : early && !isMd ? withLead(await readFile(abs), early, basename(abs)) : null;
+  const sealedPage = signed && !isMd ? (signed.lead ? withLead(signed.bytes, signed.lead, basename(abs)) : signed.bytes) : mark && !isMd ? withLead(await readFile(abs), mark.block, basename(abs)) : null;
   // Every file is COPIED (or rendered) into <bridge root>/outgoing/<id>/: the poller ships only from there.
   const dir = join(root, "outgoing", randomUUID());
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const send = join(dir, isMd ? `${basename(abs).replace(/\.(md|markdown)$/i, "")}.html` : basename(abs));
-  if (isMd) await Bun.write(send, renderMarkdownHtml(signed ? signed.bytes.toString("utf8") : await readFile(abs, "utf8"), basename(abs), signed?.verdicts, signed?.lead ?? early ?? ""));
+  if (isMd) await Bun.write(send, renderMarkdownHtml(signed ? signed.bytes.toString("utf8") : await readFile(abs, "utf8"), basename(abs), signed?.verdicts, signed?.lead ?? mark?.block ?? ""));
   else if (sealedPage) await Bun.write(send, sealedPage);
   else await copyFile(abs, send);
   const size = (await stat(send)).size;
@@ -2398,6 +2416,7 @@ function roundStatusArgs(args: string[]): { key: string | null; specs: string; j
 // static import back would be a cycle.
 if (import.meta.main) {
   const [verb, ...args] = process.argv.slice(2);
+  const sign = verb === "send-file" && args[0] === "--sign" ? (args.shift(), true) : false;
   const byRequest = verb === "send-file" && args[0] === "--by-request" && args.length >= 4 ? args.splice(0, 2)[1] : undefined;
   if (verb === "capped-fold" && args.includes("--keys")) {
     try {
@@ -2432,7 +2451,7 @@ if (import.meta.main) {
   } else if (verb === "announce" && args.length === 1) {
     await announceConsole(args[0]);
   } else if (verb === "send-file" && args.length >= 2 && Number.isSafeInteger(Number(args[0])) && Number(args[0]) !== 0) {
-    try { console.log(`queued ${await queueFile(defaultRoot(), Number(args[0]), args[1], args.slice(2).join(" ") || undefined, byRequest)}`); }
+    try { console.log(`queued ${await queueFile(defaultRoot(), Number(args[0]), args[1], args.slice(2).join(" ") || undefined, byRequest, sign)}`); }
     catch (e) { console.error(`[chief-route] send-file refused: ${e instanceof Error ? e.message : e}`); process.exit(1); }
   } else if (verb === "critic-round-check" && args.length === 2) {
     try { await sealRound(args[0], args[1]); }
@@ -2504,7 +2523,7 @@ if (import.meta.main) {
         catch (e) { console.error(`[chief-route] queued the Telegram reply but could not speak on ${satellite}: ${e instanceof Error ? e.message : e}`); process.exit(1); }
       }
     } else {
-      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | round-seed --all <specs root> | ledger-verify <verdict-file> [--spec <spec>] [--sign] | closure-pack <KEY> <spec|plan> [--specs <root>] | round-override <KEY> --findings <id,...> --why <line> --chief <session> [--specs <root>] | round-critical <KEY> --finding <id[,id...]> --decision <d> --quote <words> [--restores] [--round <kind>:<n>] [--no-round] [--specs <root>] | round-reset <KEY> --decision <d> --quote <words> [--specs <root>] | round-extension <KEY> --findings <id,...> --decision <d> --quote <words> --why <line> --chief <session> [--specs <root>] | fold-list --spec <spec> [--specs <root>] | sign-shape <spec> [--plan <plan>] | round-status <KEY> [--specs <root>] [--json] | round-status --all --specs <root> --json | register <inbox> <bucket> <project> | announce <inbox>");
+      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--sign | --by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | round-seed --all <specs root> | ledger-verify <verdict-file> [--spec <spec>] [--sign] | closure-pack <KEY> <spec|plan> [--specs <root>] | round-override <KEY> --findings <id,...> --why <line> --chief <session> [--specs <root>] | round-critical <KEY> --finding <id[,id...]> --decision <d> --quote <words> [--restores] [--round <kind>:<n>] [--no-round] [--specs <root>] | round-reset <KEY> --decision <d> --quote <words> [--specs <root>] | round-extension <KEY> --findings <id,...> --decision <d> --quote <words> --why <line> --chief <session> [--specs <root>] | fold-list --spec <spec> [--specs <root>] | sign-shape <spec> [--plan <plan>] | round-status <KEY> [--specs <root>] [--json] | round-status --all --specs <root> --json | register <inbox> <bucket> <project> | announce <inbox>");
       process.exit(1);
     }
   }
