@@ -2509,6 +2509,52 @@ check_c97_codex_mcp_literal_key() {
         "write each value to a 0600 file ~/.config/himmel/mcp-secrets/<server>/<VAR> (e.g. .../$first_srv/$first_var), set the server's command to node with args [$REPO_ROOT/scripts/mcp/secret-launch.mjs, <server>, <the real command>, <its args>], keep only non-secret variables in the env table of $cfg_q, restart Codex, then rotate the key — the doctor does not edit codex config"
 }
 
+check_c99_gemini_local() {
+    local rule="$REPO_ROOT/.agents/rules/graphify.md" cfg="$REPO_ROOT/.gemini/settings.json" stale=0 node_bin rc
+    if [ -f "$rule" ] && grep -Eq "(^|[[:space:]\`])graphify[[:space:]]+(query|explain|path|build|update|scan)([[:space:]\`]|$)" "$rule"; then
+        emit WARN C99-gemini-local "stale .agents/rules/graphify.md recommends bare graphify" \
+            "use bash scripts/graphify/worker-graph.sh for repository structure; review the local rule manually"
+        stale=1
+    fi
+    if [ -f "$cfg" ] && ! git -C "$REPO_ROOT" ls-files --error-unmatch -- .gemini/settings.json >/dev/null 2>&1; then
+        if ! node_bin="$(resolve_node 2>/dev/null)"; then
+            emit INFO C99-gemini-local "node unavailable -- untracked .gemini/settings.json paths not checked"
+            return 0
+        fi
+        "$node_bin" - "$cfg" <<'JS'
+const { readFileSync, existsSync } = require('node:fs');
+let config;
+try { config = JSON.parse(readFileSync(process.argv[2], 'utf8')); }
+catch { process.exit(2); }
+let broken = false;
+function inspect(value) {
+    if (!value || typeof value !== 'object') return;
+    for (const [key, item] of Object.entries(value)) {
+        if (key === 'command' && typeof item === 'string') {
+            const match = item.trim().match(/^(?:"([^"]+)"|'([^']+)'|(\S+))/);
+            const executable = match?.slice(1).find(Boolean) || '';
+            if (/(^|[/\\])graphify\.exe$/i.test(executable) ||
+                (/^(\/|[A-Za-z]:[/\\])/.test(executable) && !existsSync(executable))) broken = true;
+        }
+        inspect(item);
+    }
+}
+inspect(config);
+process.exit(broken ? 1 : 0);
+JS
+        rc=$?
+        if [ "$rc" = 1 ]; then
+            emit WARN C99-gemini-local "untracked .gemini/settings.json has obsolete graphify.EXE or missing executable paths" \
+                "review the local hook paths manually; use the guarded Antigravity T3 lane"
+            stale=1
+        elif [ "$rc" != 0 ]; then
+            emit INFO C99-gemini-local "cannot parse untracked .gemini/settings.json -- paths not checked"
+            return 0
+        fi
+    fi
+    [ "$stale" = 1 ] || emit OK C99-gemini-local "no stale local Gemini rules or hook paths"
+}
+
 check_c98_wrapped_window() {
     local min bucket root slug common repo rows rc pid name doc docs=() dated=() aged=() g now mt kind lingering="" unread=""
     min="${HIMMEL_DOCTOR_WRAPPED_MIN:-15}"
@@ -6176,6 +6222,7 @@ run_heavy C95 check_c95_barrier_off C95-barrier-off
 run_check C96 check_c96_jira_test_project
 run_check C97 check_c97_codex_mcp_literal_key
 run_check C98 check_c98_wrapped_window
+run_check C99 check_c99_gemini_local
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
