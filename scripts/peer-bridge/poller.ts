@@ -52,7 +52,6 @@ type ReadJob = { rec: PeerMsgRec; kind: ReaderKind; transition: Transition; held
 const kindLine = (k: string) => (k === "question" ? "ask:question" : k);
 const PERMANENT = [400, 403, 404];
 
-// The thread rule every free-text send obeys: a reply needs one of their open inbound threads.
 export function sendRule(threads: Threads, peers: Config["peers"], peer: string, rec: { replyTo?: number }): { ok: true } | { ok: false; rule: string } {
   if (!peers[peer]) return { ok: false, rule: "unknown-peer" };
   if (rec.replyTo !== undefined && threads.get(peer, rec.replyTo)?.dir !== "in") return { ok: false, rule: "unknown-thread" };
@@ -672,7 +671,6 @@ export class Poller {
     await this.resultNotify(peer, d.id, state, d.replyTo ?? 0, rule ? { rule } : {});
   }
 
-  // A draft is stored, announced to the operator and sent by nobody until a tap approves it.
   private async applyDraft(peer: string, name: string, rec: Extract<SpoolRec, { type: "draft" }>): Promise<void> {
     const dir = this.dir(peer);
     const seen = this.outbox(peer).find(r => r.kind === "draft" && r.spool === name);
@@ -698,7 +696,6 @@ export class Poller {
     writeResult(dir, name, { ok: true, draft: id, deadline });
   }
 
-  // The tap is the only thing that makes a draft leave: it re-checks the operator, the clock, lockdown and egress, then appends one intent carrying the stored text.
   private async applyTap(peer: string, name: string, rec: Extract<SpoolRec, { type: "tap" }>): Promise<void> {
     const dir = this.dir(peer);
     const no = (rule: string) => writeResult(dir, name, { ok: false, rule });
@@ -725,7 +722,6 @@ export class Poller {
     writeResult(dir, name, { ok: true, draft: d.id });
   }
 
-  // Expiry and recovery: a draft past its deadline ends, and a draft or result line the operator never got is written once.
   private async settleDrafts(): Promise<void> {
     for (const peer of Object.keys(this.cfg.peers)) {
       const out = this.outbox(peer);
