@@ -949,7 +949,7 @@ MISS=$(printf 'deadbeef%.0s' 1 2 3 4 5)
 vat() {
     local vf="$VDIR/$1/judge-$1.md" vmac
     mkdir -p "$VDIR/$1"
-    printf '# VERDICT %s - judge\nwritten-at: %s\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n%s\n\npr: 77\n\nreason\n\n## Evidence checked\n\ne\n' "$1" "$3" "$2" > "$vf"
+    printf '# VERDICT %s - judge\nwritten-at: %s\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n%s\n\npr: %s\n\nreason\n\n## Evidence checked\n\ne\n%s\n' "$1" "$3" "$2" "${4:-77}" "${5:-}" > "$vf"
     # read-sink-ok: $vf is a verdict file this test just wrote under its own temp dir
     vmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../../lib/go-gate.sh" "$VSCOPE" "$1" "judge-$1" < "$vf")" || { echo "FAIL: cannot sign $vf" >&2; return 1; }
     printf 'mac: %s\n' "$vmac" >> "$vf"
@@ -986,6 +986,14 @@ gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`."; verdict qg "**GO** for he
 orun "$NDOC2"
 sent     "11022 a later real GO clears the NO-GO, a newer head has no verdict" "$NDOC2" none
 lacks    "11022 cleared: a plain GO carries no trust-reviewed line" "$(cat "$HANDOVER_DIR/.locks/go/77.$NDOC2" 2>/dev/null)" "trust-reviewed="
+gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`."; verdict qg "**GO** for head \`$NDOC\`." 77 judge-qg 0
+orun "$NDOC2"
+esc      "11022 an unsigned GO does not clear a NO-GO" 5
+contains "11022 an unsigned GO does not clear a NO-GO: the refusal names the NO-GO" "$OUT" "verdict qn ruled NO-GO"
+gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`."; vat qg "**GO** for head \`$NDOC\`." 2026-11-24T10:00:00Z 78 "pr: 77"
+orun "$NDOC2"
+esc      "11022 a GO naming another PR that quotes pr: 77 does not clear a NO-GO" 5
+contains "11022 a GO naming another PR does not clear a NO-GO: the refusal names the NO-GO" "$OUT" "verdict qn ruled NO-GO"
 gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**NO-GO** for head \`$NDOC\`."
 noop "$NDOC2" "$JUDGED"
 orun "$NDOC2"
