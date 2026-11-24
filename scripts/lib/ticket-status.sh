@@ -847,7 +847,6 @@ _ts_brief_completes_no() {
     [ "$flag" = no ]
 }
 
-# _ts_by_owner_lock <doc> — In Progress while the doc holds its lock (rc 11, 12 not STALE-DEAD), To Do with none, else miss stage=lock.
 _ts_by_owner_lock() {
     local out rc
     [ -n "$1" ] || { TS_DERIVED="To Do"; return 0; }
@@ -864,8 +863,6 @@ _ts_by_owner_lock() {
     esac
 }
 
-# _ts_derive_d6 <doc> — the wrapped worker with nothing else to hold the ticket: To Do (D6). An In Progress
-# ticket whose brief says Completes ticket: no is D6n: To Do too, unless the owner still holds its lock.
 _ts_derive_d6() {
     if [ "$TS_J_STATUS" = "In Progress" ] && _ts_brief_completes_no "$1"; then
         TS_RULE=D6n; _ts_by_owner_lock "$1"
@@ -949,9 +946,6 @@ ts_derive() {
     fi
 }
 
-# _ts_derive_merged <KEY> [<owner doc>] — rules D5d and D5c of a key with no open PR (an unreadable log or merged
-# list is no-write + miss). D5c is In Progress only while the owner doc holds a live lock, else To Do.
-# rc 1 = neither matched, nothing set.
 _ts_derive_merged() {
     local rc=0
     ts_partial_merge "$1" || rc=$?

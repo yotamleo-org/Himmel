@@ -347,7 +347,6 @@ printf '{"ts":"t","event":"merge","key":"%s","pr":"12","contract":"no","result":
 fn "$K" --event wrapped --doc "$DOC"
 check "D4b: only the latest merge row counts -> D5c" "$(row rule)" D5c
 
-# --- D5c: a contract=no last merge keeps a wrapped ticket In Progress while its lock is live ---------------
 reset "In Progress"; owned WRAPPED 11
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
 fn "$K" --event wrapped --doc "$DOC"
@@ -455,7 +454,6 @@ fn "$K" --event wrapped --doc "$DOC"
 check "D6: WRAPPED, no PR and no merge row -> To Do" "$(moved)" "transition $K To Do"
 check "D6: rule" "$(row rule)" D6
 check "D6: direction" "$(row dir)" back
-# --- D6n: a wrapped worker on a completes-no brief goes To Do once its lock is free ---
 flagdoc() { # <yes|no|-> - DOC carries the brief's Completes ticket line above ## Results ("-" = no such line)
     { printf '# worker\n\n'; [ "$1" = - ] || printf '> **Completes ticket:** %s\n\n' "$1"
       printf '## Results (newest at the bottom)\n- 10:00 WRAPPED — x\n'; } > "$DOC"
