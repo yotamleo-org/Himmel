@@ -925,6 +925,22 @@ assert_eq "10912: the retried request ends done, the hold is gone" "r.req.done" 
 assert_eq "10912: the operator was asked once" "1" "$(grep -c ' → launch · no ' "$D/sent")"
 stop
 
+echo "== 10912: a held go launches only the request the operator was asked about =="
+setup preflight-tamper
+start
+CODE=$(ask_code r)
+echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+sleep 1
+rm -f "$D/dry.rc" "$D/dry.msg"
+printf 'flags=HIMMEL_BILLED_OK\ndecision=1\n' >> "$Q/r.req.pending"
+wait_for "$Q/daemon.log" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the request changed"
+assert_contains "RED 10912: a request edited while its go is held is refused" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the request changed since the ask)" "$(cat "$Q/daemon.log")"
+assert_eq "RED 10912: the edited request ends refused and nothing is left held" "r.req.refused" "$(cd "$Q" && printf '%s ' r.req.* | sed 's/ $//')"
+assert_absent "RED 10912: nothing launched on the edited request" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+stop
+
 echo
 echo "bypass-launchd: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

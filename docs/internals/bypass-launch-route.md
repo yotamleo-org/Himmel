@@ -204,7 +204,10 @@ does, the command waits for the operator.
   in `<name>.req.held`, and no `GRANT` line is written. When the chief has fixed
   the cause it touches `<name>.req.pending`; the daemon then logs `RETRY`,
   runs the dry-run again and, if it passes, launches on the same go code
-  without a second ask. A passing dry-run changes nothing in the ask and the
+  without a second ask. The held go is bound to the request as asked: the
+  daemon stores the request file's hash at the ask, and a request edited while
+  its go is held is refused (`REFUSED after go <brief> (the request changed
+  since the ask)`) and never launched. A passing dry-run changes nothing in the ask and the
   grant, and the request still needs the operator's go code.
 - **Failures are reported.** A launcher that exits non-zero within the settle
   window logs `LAUNCH-FAILED <brief> rc=<n>`, and the request ends `.failed`.

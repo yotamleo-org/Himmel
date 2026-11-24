@@ -280,7 +280,7 @@ rm -f "$Q/.hold"
 log "start pid=$$ until=$until head=${HEAD_SHA:0:12} self=${L_SELF:0:12} registry=${L_REG:0:12} tiers=${L_TIERS:0:12} grantable=$grantable"
 
 after_go() {
-    local req=$1 code=$2 sha=$3 fleet=() lp lrc
+    local req=$1 code=$2 sha=$3 rsha=$4 fleet=() lp lrc
     if ! live || [ -L "$brief" ] || [ "$(sha256_of "$brief")" != "$sha" ]; then
         mv "$req.pending" "$req.refused"; log "REFUSED after go $base (stop, expiry, or brief changed since the ask)"
         send bypass-result "bypass launch $base: refused after your go, the brief changed or the queue stopped. Nothing ran."; return 0
@@ -291,7 +291,7 @@ after_go() {
         hold; return 3
     fi
     if ! preflight; then
-        printf 'go=%s\nsha=%s\n' "$code" "$sha" >"$req.held"
+        printf 'go=%s\nsha=%s\nrsha=%s\n' "$code" "$sha" "$rsha" >"$req.held"
         log "REFUSED-PREFLIGHT after go $base $PF_REASON (go kept, touch $req.pending to retry)"
         tell_chief "$chief" "REFUSED-PREFLIGHT after go $base $PF_REASON — the operator's go is kept, nothing ran; fix the cause, then touch $req.pending to retry"
         return 0
@@ -327,7 +327,11 @@ while :; do
         req=${held%.held}
         [ -f "$req.pending" ] || { rm -f "$held"; continue; }
         [ "$req.pending" -nt "$held" ] || continue
-        code=$(field go "$held"); sha=$(field sha "$held"); rm -f "$held"
+        code=$(field go "$held"); sha=$(field sha "$held"); rsha=$(field rsha "$held"); rm -f "$held"
+        if [ "$(sha256_of "$req.pending")" != "$rsha" ]; then
+            mv "$req.pending" "$req.refused"; log "REFUSED after go ${req##*/} (the request changed since the ask)"
+            send bypass-result "bypass launch ${req##*/}: refused after your go, the request changed since you were asked. Nothing ran."; continue
+        fi
         check_request "$req.pending" || { mv "$req.pending" "$req.refused"; log "REFUSED $REASON $req"; continue; }
         log "RETRY $base: the request was touched since its go was held"
         after_go "$req" "$code" "$sha" || [ $? -ne 3 ] || break
@@ -345,7 +349,7 @@ while :; do
         code=$(LC_ALL=C tr -dc 'A-Z2-9' </dev/urandom | head -c 6)
         off=$(wc -c 2>/dev/null <"$INBOUND") || off=0; off=${off//[[:space:]]/}
         sha=$(sha256_of "$brief"); [ ${#sha} -eq 64 ] || { refuse "$req" "brief unreadable"; continue; }
-        mv "$req" "$req.pending"
+        mv "$req" "$req.pending"; rsha=$(sha256_of "$req.pending")
         log "ASK $base model=$model chief=$chief flags=$flags effort=${effort:-default} decision=${decision:-none} sha=${sha:0:12}"
         IFS=- read -r k1 k2 worker _ <<<"$base"
         send bypass-ask "go $code → launch · no $code → refuse
@@ -365,7 +369,7 @@ Expires 6 h · brief sha ${sha:0:12}"
         if [ "$verdict" != go ]; then
             mv "$req.pending" "$req.$verdict"; log "$verdict $base"; send bypass-result "bypass launch $base: $verdict, nothing ran."; continue
         fi
-        after_go "$req" "$code" "$sha" || [ $? -ne 3 ] || break
+        after_go "$req" "$code" "$sha" "$rsha" || [ $? -ne 3 ] || break
     done
     sleep "$POLL"
 done
