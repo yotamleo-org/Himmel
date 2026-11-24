@@ -6,7 +6,7 @@
 # (HIMMEL_DOCTOR_QMD_CURL / _URL / _INIT_TIMEOUT), read from ctx.env.
 #
 # Covers: ok (present), slow-but-alive (present, detail says slow), wedged
-# (curl rc 28 -> degraded), foreign listener (degraded), refused (absent),
+# (curl rc 28 -> degraded), foreign listener (degraded), refused (degraded/absent),
 # not wanted (qmd items desired=false under profile core), and manifest-lint.
 
 set -euo pipefail
@@ -59,8 +59,15 @@ out=$(probe ok);      echo "$out" | jq -e '.actual == "present"' >/dev/null || f
 out=$(probe slow);    echo "$out" | jq -e '.actual == "present" and (.detail | test("slow"))' >/dev/null || fail "slow-but-alive -> present, detail says slow (got: $out)"
 out=$(probe hang);    echo "$out" | jq -e '.actual == "degraded" and (.detail | test("did not answer"))' >/dev/null || fail "wedged (rc 28) -> degraded (got: $out)"
 out=$(probe foreign); echo "$out" | jq -e '.actual == "degraded" and (.detail | test("NOT qmd"))' >/dev/null || fail "foreign listener -> degraded (got: $out)"
-out=$(probe down);    echo "$out" | jq -e '.actual == "absent"' >/dev/null || fail "refused (rc 7) -> absent (got: $out)"
-echo "ok: qmd-daemon present / slow / wedged / foreign / not-running"
+mkdir -p "$work/qmdbin"; printf '#!/usr/bin/env bash\nexit 0\n' > "$work/qmdbin/qmd"; chmod +x "$work/qmdbin/qmd"
+nq_path=""
+IFS=: read -ra path_dirs <<< "$PATH"
+for d in "${path_dirs[@]}"; do [ -x "$d/qmd" ] || nq_path="${nq_path:+$nq_path:}$d"; done
+out=$(BUN_INSTALL="$work/nobun" PATH="$work/qmdbin:$nq_path" probe down)
+echo "$out" | jq -e '.actual == "degraded" and (.detail | test("not answering")) and (.detail | test("optional") | not)' >/dev/null || fail "refused (rc 7), qmd set up -> degraded, never optional (got: $out)"
+out=$(BUN_INSTALL="$work/nobun" PATH="$nq_path" probe down)
+echo "$out" | jq -e '.actual == "absent" and (.detail | test("qmd is optional"))' >/dev/null || fail "refused (rc 7), no qmd setup -> absent, optional (got: $out)"
+echo "ok: qmd-daemon present / slow / wedged / foreign / refused (set up vs not)"
 
 # a daemon that requires the bearer token must not
 # read as "NOT qmd". With the token file the probe authenticates (present);

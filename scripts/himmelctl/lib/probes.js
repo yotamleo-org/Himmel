@@ -1420,7 +1420,12 @@ function probeQmdDaemon(item, ctx) {
   let body = r.stdout || '';
   let code = '';
   if (/[0-9]{3}$/.test(body)) { code = body.slice(-3); body = body.slice(0, -3); }
-  if (!body && r.status === 7) return { actual: 'absent', detail: `no qmd daemon answering on ${url} (qmd is optional)` };
+  if (!body && r.status === 7) {
+    const setUp = probeCmdHasQmd({ probe: { resolver: 'scripts/lib/qmd-bin.sh' } }, ctx).actual === 'present';
+    return setUp
+      ? { actual: 'degraded', detail: `the qmd daemon is not answering on ${url} (connection refused) although qmd is set up on this station — every qmd content search fails until it is back; check the log ~/.cache/qmd/mcp.log, then start it: bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh` }
+      : { actual: 'absent', detail: `no qmd daemon answering on ${url} (qmd is optional)` };
+  }
   // a 401/403 is checked before the empty-body fault so a body-less rejection is named too
   if (code === '401' || code === '403') {
     return { actual: 'degraded', detail: token
