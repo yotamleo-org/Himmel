@@ -149,6 +149,7 @@ post_create() {
         if [ -d "$JIRA_PRIMARY/node_modules" ] && [ ! -e "$WORKTREE_PATH/scripts/jira/node_modules" ] &&
             [ -f "$JIRA_PRIMARY/package-lock.json" ] &&
             cmp -s "$JIRA_PRIMARY/package-lock.json" "$WORKTREE_PATH/scripts/jira/package-lock.json" &&
+            cmp -s "$JIRA_PRIMARY/package.json" "$WORKTREE_PATH/scripts/jira/package.json" &&
             ln -s "$JIRA_PRIMARY/node_modules" "$WORKTREE_PATH/scripts/jira/node_modules"; then
             JIRA_EXCLUDE=$(git -C "$WORKTREE_PATH" rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null)
             if [ -n "$JIRA_EXCLUDE" ]; then

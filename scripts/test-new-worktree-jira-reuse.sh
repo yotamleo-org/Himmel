@@ -83,6 +83,13 @@ if grep -q '^npm install' "$NPM_CALLS"; then _pass "$NAME"; else _fail "$NAME" "
 NAME="mismatching lockfile logs installed, not reused"
 if grep -q 'jira deps installed' "$TMPBASE/out.txt" "$TMPBASE/err.txt" && ! grep -q 'reused' "$TMPBASE/out.txt" "$TMPBASE/err.txt"; then _pass "$NAME"; else _fail "$NAME" "out=$(cat "$TMPBASE/out.txt")"; fi
 
+printf '{"lockfileVersion":3,"a":1}\n' > "$REPO/scripts/jira/package-lock.json"
+printf '{"name":"jira-fixture","changed":true}\n' > "$REPO/scripts/jira/package.json"
+: > "$NPM_CALLS"
+new_wt fix/nwjr-pkgdiffer
+NAME="matching lockfile but differing package.json still runs npm install"
+if grep -q '^npm install' "$NPM_CALLS"; then _pass "$NAME"; else _fail "$NAME" "calls=$(cat "$NPM_CALLS")"; fi
+
 echo ""
 printf 'Results: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
