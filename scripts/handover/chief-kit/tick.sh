@@ -538,7 +538,7 @@ daily failure review (ci-cadence.sh review: a local read of the newest failure-r
 HIMMEL_FAILURE_REVIEW_DIR). STALE = no review for 26 h. Hidden when there is no
 review file. The waiter wakes once per review day on a filed key or a new class with 5+ failures, and once per
 last-review date on STALE; never on a 1-count class.
-drift=<n|?> counts the actionable rows of the open nightly drift issue (label fork-drift; none open reads 0; operator decision 1051), its body re-read at most once an hour (TICK_DRIFT_TTL_MIN): its Needs-update rows plus the
+drift=<n|?> counts the actionable rows of the open nightly drift issue (label fork-drift; none open reads 0), its body re-read at most once an hour (TICK_DRIFT_TTL_MIN): its Needs-update rows plus the
 held rows whose 72 h buffer has cleared (drift-brief.py count; TICK_DRIFT_GH is the gh seam; DRIFT_NOW the clock seam). ? = the
 read or the count failed and never wakes; absent when the repo has no scripts/upstreams/pin-holds.json. In compact output a
 positive count also prints one `WAKE drift-actionable <n>` line after the TICK line per UTC day (claim file
