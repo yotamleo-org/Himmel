@@ -43,7 +43,7 @@ export type PollerDeps = {
 };
 
 type Pending = IntentRec & { n: number };
-type Item = { peer: string; msgKind: string; isRoot: boolean; isTemplate: boolean; replyTo: number | null; text: string; id?: string; spool?: string; resend?: boolean; allowShape?: string; corpus?: OutCtx["corpus"]; checkUsage: boolean };
+type Item = { peer: string; msgKind: string; isRoot: boolean; isTemplate: boolean; replyTo: number | null; text: string; id?: string; spool?: string; resend?: boolean; allowShape?: string; corpus?: OutCtx["corpus"]; source?: string; checkUsage: boolean };
 
 const TRIPWIRE_COUNT = 3;
 const DAILY_DAYS = 7;
@@ -216,7 +216,7 @@ export class Poller {
           this.pending.delete(`${i.peer}:${i.n}`);
           continue;
         }
-        const res = await this.egress(i.text, this.ctxFor({ peer: i.peer, msgKind: i.msgKind, isRoot: i.isRoot, isTemplate: !!i.tpl, replyTo: i.root, text: i.text, checkUsage: false }));
+        const res = await this.egress(i.text, this.ctxFor({ peer: i.peer, msgKind: i.msgKind, isRoot: i.isRoot, isTemplate: !!i.tpl, replyTo: i.root, text: i.text, corpus: this.corpusOf(i.source ?? "send.ts"), checkUsage: false }));
         if (res.ok) continue;
         await this.chain.append(this.file(i.peer, "outbox.jsonl"), { ...refusalRecord(i.text, res, this.ts()), intent: i.n });
         this.pending.delete(`${i.peer}:${i.n}`);
@@ -719,7 +719,7 @@ export class Poller {
     const res = await this.egress(d.text, this.ctxFor({ peer, msgKind: d.msgKind, isRoot, isTemplate: false, replyTo: d.replyTo, text: d.text, allowShape: d.allowShape, corpus: this.corpusOf(d.source), checkUsage: true }));
     if (!res.ok) return done("REFUSED", res.rule);
     const intent = await this.chain.append(this.file(peer, "outbox.jsonl"), {
-      kind: "intent", peer, chat: this.cfg.peers[peer].chatId, id: d.id, root: d.replyTo, msgKind: d.msgKind, text: d.text, isRoot, draft: d.id, by: rec.by,
+      kind: "intent", peer, chat: this.cfg.peers[peer].chatId, id: d.id, root: d.replyTo, msgKind: d.msgKind, text: d.text, isRoot, draft: d.id, by: rec.by, source: d.source,
     });
     this.pending.set(`${peer}:${intent.n}`, intent as unknown as Pending);
     writeResult(dir, name, { ok: true, draft: d.id });
@@ -758,7 +758,7 @@ export class Poller {
       } else if ("resend" in a) {
         const orig = this.rootIntents.get(`${a.resend.peer}:${a.resend.root}`);
         if (!orig) { this.log(`resend: no original for ${a.resend.peer} ${a.resend.root}`); continue; }
-        await this.enqueue({ peer: orig.peer, msgKind: orig.msgKind, isRoot: true, isTemplate: false, replyTo: null, text: orig.text, id: orig.id, resend: true, checkUsage: false });
+        await this.enqueue({ peer: orig.peer, msgKind: orig.msgKind, isRoot: true, isTemplate: false, replyTo: null, text: orig.text, id: orig.id, resend: true, corpus: this.corpusOf(orig.source ?? "send.ts"), source: orig.source, checkUsage: false });
       } else {
         await this.waker.wake(a.wake);
       }
@@ -790,7 +790,7 @@ export class Poller {
     const peer = this.cfg.peers[item.peer];
     const rec = await this.chain.append(this.file(item.peer, "outbox.jsonl"), {
       kind: "intent", peer: item.peer, chat: peer.chatId, id: item.id ?? mintId(), root: item.replyTo, msgKind: item.msgKind, text: item.text,
-      isRoot: item.isRoot, ...(item.isTemplate ? { tpl: true } : {}), ...(item.resend ? { resend: true } : {}), ...(item.spool ? { spool: item.spool } : {}),
+      isRoot: item.isRoot, ...(item.isTemplate ? { tpl: true } : {}), ...(item.resend ? { resend: true } : {}), ...(item.spool ? { spool: item.spool } : {}), ...(item.source ? { source: item.source } : {}),
     });
     this.pending.set(`${item.peer}:${rec.n}`, rec as unknown as Pending);
     return { ok: true };

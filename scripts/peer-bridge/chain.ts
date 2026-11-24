@@ -166,7 +166,7 @@ export function sweepResults(peerDir: string, maxAgeMs: number, now = Date.now()
   }
 }
 
-export type IntentRec = { kind: "intent"; peer: string; chat: number; id: string; root: number | null; msgKind: string; text: string; isRoot: boolean; tpl?: boolean; resend?: boolean; spool?: string; env?: boolean; draft?: string; by?: string };
+export type IntentRec = { kind: "intent"; peer: string; chat: number; id: string; root: number | null; msgKind: string; text: string; isRoot: boolean; tpl?: boolean; resend?: boolean; spool?: string; env?: boolean; draft?: string; by?: string; source?: string };
 export type SentRec = { kind: "sent"; id: string; intent: number; message_id: number; ts: number };
 
 export class PidLockError extends Error {

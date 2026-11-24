@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readChain, submitSpool } from "./chain";
+import { Chain, readChain, submitSpool } from "./chain";
 import type { Config } from "./config";
 import { DRAFT_TTL_MS, MAX_DRAFTS_PER_DAY, MAX_PENDING_DRAFTS, REVIEW_MAX, badChars, draftState } from "./drafts";
 import { notifyFile, renderNotify } from "./notify";
@@ -154,6 +154,21 @@ test("approval under lockdown sends nothing", async () => {
   expect(await tap(e, a.draft)).toEqual({ ok: false, rule: "lockdown" });
   expect(e.sent).toHaveLength(0);
   expect(states(e, a.draft)).toBe("REFUSED");
+});
+
+test("recovery re-derives the corpus from the intent's source", async () => {
+  const onlyDesk = { default: "deny", rules: [{ corpus: "peer-desk", provider: "peer-telegram", purpose: "peer-message", verdict: "allow", why: "t" }] };
+  const e = await setup();
+  const a = await draft(e, "from send", "send.ts");
+  const b = await draft(e, "from telegram", "telegram");
+  const intent = (id: string, text: string, source: string) => new Chain().append(join(e.peerDir, "outbox.jsonl"), { kind: "intent", peer: "example", chat: CHAT, id, root: null, msgKind: "info", text, isRoot: true, draft: id, by: OP, source });
+  await intent(a.draft, "from send", "send.ts");
+  await intent(b.draft, "from telegram", "telegram");
+  const again = await Poller.create({ ...(e.poller as any).deps, matrix: onlyDesk });
+  await again.recover();
+  expect(e.sent).toHaveLength(1);
+  expect(e.sent[0].text).toContain("id=" + a.draft);
+  expect(states(e, b.draft)).toBe("REFUSED");
 });
 
 test("approval re-derives the corpus from source", async () => {
