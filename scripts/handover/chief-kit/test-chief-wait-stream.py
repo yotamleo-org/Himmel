@@ -189,7 +189,8 @@ class StreamFixture(unittest.TestCase):
         return p, output
 
     def session_members(self, sessions):
-        root, found = str(self.root).encode(), []
+        root, found, own = str(self.root).encode(), [], os.getsid(0)
+        sessions.discard(own)
         for entry in Path('/proc').iterdir():
             if entry.name.isdigit():
                 try:
@@ -199,9 +200,8 @@ class StreamFixture(unittest.TestCase):
                     continue
                 if fields[0] != 'Z' and (named or int(fields[3]) in sessions):
                     found.append(int(entry.name))
-                    if named:
+                    if named and int(fields[3]) != own:
                         sessions.add(int(fields[3]))
-        sessions.discard(os.getsid(0))
         return [pid for pid in found if pid != os.getpid()]
 
     def stop_fixture_sessions(self):
