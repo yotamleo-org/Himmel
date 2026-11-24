@@ -118,16 +118,20 @@ export function repoSlug(run) {
 }
 
 const PR_FIELDS = 'number,state,headRefName,title,mergeable,mergeStateStatus,statusCheckRollup';
+const RECENT_PR_FIELDS = 'number,state,headRefName,title';
 const RECENT_PR_LIMIT = 100;
 const OPEN_PR_LIMIT = 1000;
 
 function discoverPRs(budget, repo) {
-  const list = (state, limit) => JSON.parse(budget.run('gh', ['pr', 'list', '-R', repo, '--state', state, '--limit', String(limit), '--json', PR_FIELDS], { encoding: 'utf8' }));
-  const byNumber = new Map(list('all', RECENT_PR_LIMIT).map((pr) => [pr.number, pr]));
+  const list = (state, limit, fields) => JSON.parse(budget.run('gh', ['pr', 'list', '-R', repo, '--state', state, '--limit', String(limit), '--json', fields], { encoding: 'utf8' }));
+  const byNumber = new Map();
   const diagnostics = new Diagnostics();
   try {
+    for (const pr of list('all', RECENT_PR_LIMIT, RECENT_PR_FIELDS)) byNumber.set(pr.number, pr);
+  } catch (err) { diagnostics.add(err); }
+  try {
     budget.take();
-    const open = list('open', OPEN_PR_LIMIT);
+    const open = list('open', OPEN_PR_LIMIT, PR_FIELDS);
     for (const pr of open) byNumber.set(pr.number, pr);
     if (open.length >= OPEN_PR_LIMIT) diagnostics.add(`open PR read reached its limit of ${OPEN_PR_LIMIT}; older open PRs unread`);
   } catch (err) { diagnostics.add(err); }
