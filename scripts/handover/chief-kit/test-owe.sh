@@ -179,5 +179,54 @@ bash "$OWE" add --bucket "$M" --chief Z --kind proof --text multivalue --metadat
 check "legacy metadata still refuses multiple top-level values" "$?" 2
 check "refused metadata never appends an action" "$(wc -l < "$M/owed.jsonl" 2>/dev/null | tr -d ' ')" 1
 
+mkroute() {
+    mkdir -p "$1/etc/himmel" "$1/usr/local/libexec/himmel/ops"
+    printf '{"enabled": true, "ops": {"enabled": true}, "helper_update": {"enabled": %s, "checkout": "/x", "repo": "a/b"}}\n' "$2" > "$1/etc/himmel/afk-sudo.json"
+    [ "$3" = yes ] && : > "$1/usr/local/libexec/himmel/ops/docker.sh"
+    return 0
+}
+OT="$WORK/op-route"; mkdir -p "$OT"
+OPTXT='Live proof (op-request docker action=start): owed to operator by 2026-12-08'
+OPMETA='{"actor":"operator"}'
+RID=$(printf r2 | sha256sum | cut -d' ' -f1)
+mkroute "$WORK/r-off" false no; mkroute "$WORK/r-on" true yes; mkroute "$WORK/r-hu-on-no-op" true no
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-off" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text "$OPTXT" --metadata "$OPMETA" 2>&1); rc=$?
+check "10970 R1 a dead op route refuses with exit 2" "$rc" 2
+contains "10970 R1 prints the route's failure line" "$out" "helper_update is not enabled in the config"
+contains "10970 R1 prints the one unblocking command" "$out" "sudoedit /etc/himmel/afk-sudo.json"
+check "10970 R1 appends nothing" "$(wc -l < "$OT/owed.jsonl" 2>/dev/null | tr -d ' ')" 0
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-hu-on-no-op" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text "$OPTXT" --metadata "$OPMETA" 2>&1); rc=$?
+check "10970 R1b op not installed with helper_update on refuses" "$rc" 2
+contains "10970 R1b names the missing op" "$out" "docker"
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-on" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text "$OPTXT" --identity "$RID" --metadata "$OPMETA" 2>&1); rc=$?
+check "10970 R2 control: an enabled route with the op installed is accepted" "$rc|$out" "0|o1"
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-off" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text "$OPTXT" --identity "$RID" --metadata "$OPMETA" 2>&1); rc=$?
+check "10970 R2c a replay of an existing row returns its id even when the route is now dead" "$rc|$out" "0|o1"
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-off" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text "$OPTXT" --metadata '{"actor":"chief"}' 2>&1); rc=$?
+check "10970 R3 a row owed to anyone but the operator is not probed" "$rc" 0
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-off" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text 'owed to operator: sudoedit the config' --metadata "$OPMETA" 2>&1); rc=$?
+check "10970 R3b an operator row with no op-request route is not probed" "$rc" 0
+mkdir -p "$WORK/r-bad/etc/himmel"; printf 'not json' > "$WORK/r-bad/etc/himmel/afk-sudo.json"
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-bad" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text "$OPTXT" --metadata "$OPMETA" 2>&1); rc=$?
+check "10970 R4 an unreadable config refuses" "$rc" 2
+contains "10970 R4 prints the unknown line" "$out" "route unknown"
+mkdir -p "$WORK/r-empty/etc/himmel/../../usr/local/libexec/himmel/ops"; : > "$WORK/r-empty/etc/himmel/afk-sudo.json"; : > "$WORK/r-empty/usr/local/libexec/himmel/ops/docker.sh"
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-empty" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text "$OPTXT" --metadata "$OPMETA" 2>&1); rc=$?
+check "10970 R4b an empty config with the op installed refuses as unknown" "$rc" 2
+
+mkroute "$WORK/r-hu" false no; : > "$WORK/r-hu/usr/local/libexec/himmel/ops/helper-update.sh"
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-hu" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text 'proof (op-request helper-update commit=abc): owed' --metadata "$OPMETA" 2>&1); rc=$?
+check "10970 R5 op helper-update with helper_update off refuses even though the op is installed" "$rc" 2
+contains "10970 R5 prints the helper_update line" "$out" "helper_update is not enabled in the config"
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-on" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text 'op-request docker a=1 then op-request ghost b=2' --metadata "$OPMETA" 2>&1); rc=$?
+check "10970 R6 a row naming several ops probes each of them" "$rc" 2
+contains "10970 R6 names the uninstalled second op" "$out" "ghost"
+for spelled in 'op-request --session S --ticket T docker action=start' 'op-request -- docker action=start' 'op-request --session S -- docker'; do
+    OWE_AFKSUDO_ROOT="$WORK/r-off" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text "proof ($spelled): owed" --metadata "$OPMETA" >/dev/null 2>&1
+    check "10970 R7 the documented spelling is probed: $spelled" "$?" 2
+done
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-off" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text 'ask for an op-request for docker later' --metadata "$OPMETA" 2>&1); rc=$?
+check "10970 R8 prose after op-request is not read as an op name" "$rc" 0
+
 [ "$fails" -eq 0 ] || { echo "$fails check(s) failed"; exit 1; }
 echo "test-owe: all checks passed"
