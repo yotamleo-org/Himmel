@@ -64,7 +64,7 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --dry-run) [ "$mode" = post ] || usage; mode=dry; shift ;;
         --verify) [ "$mode" = post ] || usage; mode=verify; shift ;;
-        --chief) [ "$#" -ge 2 ] || usage; chief="$2"; chief_seen=1; shift 2 ;;
+        --chief) [ "$#" -ge 2 ] || usage; case "$2" in -*) usage ;; esac; chief="$2"; chief_seen=1; shift 2 ;;
         -*) usage ;;
         *) [ -z "$bf" ] || usage; bf="$1"; shift ;;
     esac

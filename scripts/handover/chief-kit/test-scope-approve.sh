@@ -178,6 +178,10 @@ lacks 'A13 no mirror refresh' "$(cat "$ST/cli.log" 2>/dev/null)" 'MIRROR'
 sa; check 'A14 no --chief is usage (exit 2)' 2 "$RC"
 sa --chief '' "$B/batch.jsonl"; check 'A14 an empty --chief is usage (exit 2)' 2 "$RC"
 sa --chief c1 "$WORK/no-such-batch"; check 'A14 an unreadable batch file is exit 2' 2 "$RC"
+fresh; tkt SCOPE-726; row SCOPE-726 '["scripts/lib/a.sh"]'
+for flag in --dry-run --verify; do
+    sa --chief "$flag" "$B/batch.jsonl"; check "A14 --chief $flag swallowing the next flag is exit 2" 2 "$RC"; check "A14 --chief $flag posts nothing" 0 "$(posts)"
+done
 OUT="$(env -u SCOPE_APPROVE_TEST SCOPE_APPROVE_JIRA_CLI=/seam/x.js bash "$SUT" 2>&1)"; RC=$?
 check 'A14 usage with the seam unarmed exits 2' 2 "$RC"; has 'A14 the usage line names the real CLI path' "$OUT" 'scripts/jira/dist/index.js'; lacks 'A14 an unarmed seam is ignored' "$OUT" '/seam/x.js'
 
