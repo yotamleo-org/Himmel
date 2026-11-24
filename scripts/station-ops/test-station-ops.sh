@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the station ops (OPS-1: cron-entry, cron-system, system-update; OPS-2: autologin.sh,
+# Tests for the station ops (OPS-1: cron-entry, cron-system, system-update; docker; OPS-2: autologin.sh,
 # reboot-recover.sh with its recover.sh, chief-restart.sh) and the afk-sudo `op-request` verb that runs them.
 # Usage: bash scripts/station-ops/test-station-ops.sh
 # Hermetic: every case builds a sandbox root through the helper's AFK_SUDO_ROOT / AFK_SUDO_NOW seams
@@ -1250,6 +1250,88 @@ hu_root c3b; : > "$R/checkout/scripts/station-ops/a|b c"
 out=$(hu_chk)
 assert_contains "C3: a checkout name is sanitized in the refusal" "a?b?c" "$out"
 assert_absent "C3: and its bar is not in the line" "a|b" "$out"
+
+echo "== docker: start and stop the three units, never enable or disable =="
+new_root dk
+mkdir -p "$R/units"
+cat > "$R/bin/systemctl" <<'FAKESYSTEMCTL'
+#!/bin/sh
+echo "$@" >> "$HIMMEL_OPS_ROOT/systemctl.calls"
+case "$1" in
+    is-active) [ -e "$HIMMEL_OPS_ROOT/probe-fail" ] && { echo "Failed to connect to bus" >&2; exit 1; }
+        if [ -e "$HIMMEL_OPS_ROOT/units/$2" ]; then echo active; else echo inactive; exit 3; fi ;;
+    start) [ -e "$HIMMEL_OPS_ROOT/start-fail" ] && { echo "Failed to start $2: Unit not found." >&2; exit 5; }
+        [ -e "$HIMMEL_OPS_ROOT/start-noop" ] && [ "$2" = docker.service ] && exit 0
+        : > "$HIMMEL_OPS_ROOT/units/$2" ;;
+    stop) [ -e "$HIMMEL_OPS_ROOT/stop-sticky" ] && [ "$2" = docker.service ] && exit 0
+        rm -f "$HIMMEL_OPS_ROOT/units/$2" ;;
+    *) echo "unexpected systemctl $*" >&2; exit 64 ;;
+esac
+FAKESYSTEMCTL
+chmod +x "$R/bin/systemctl"
+dk_calls() { cat "$R/systemctl.calls" 2>/dev/null; }
+dk_active() { find "$R/units" -type f -printf '%f\n' | sort | tr '\n' ' '; }
+out=$(op docker --check --action start)
+assert_contains "--check while stopped is would-change" "result=would-change" "$out"
+assert_contains "--check names the units it would start" "will start: containerd.service docker.socket docker.service" "$out"
+assert_absent "--check makes no start call" "start containerd" "$(dk_calls)"
+assert_eq "--check started nothing" "" "$(dk_active)"
+out=$(op docker --action start)
+assert_contains "start from stopped is changed" "result=changed" "$out"
+assert_contains "the last line names the op and the request id" "op=docker id=testid00 result=changed" "$(printf '%s\n' "$out" | tail -1)"
+assert_eq "start leaves the three units active" "containerd.service docker.service docker.socket " "$(dk_active)"
+assert_eq "start runs containerd, socket, service in that order" "start containerd.service
+start docker.socket
+start docker.service" "$(dk_calls | grep '^start ')"
+n0=$(dk_calls | grep -c '^start ')
+assert_contains "a second start is unchanged" "result=unchanged" "$(op docker --action start)"
+assert_eq "the second start made no start call" "$n0" "$(dk_calls | grep -c '^start ')"
+assert_contains "--check when running is unchanged for start" "result=unchanged" "$(op docker --check --action start)"
+out=$(op docker --check --action stop)
+assert_contains "--check while running is would-change for stop" "result=would-change" "$out"
+assert_absent "--check makes no stop call" "stop " "$(dk_calls)"
+: > "$R/systemctl.calls"
+out=$(op docker --action stop)
+assert_contains "stop is changed" "result=changed" "$out"
+assert_eq "stop leaves no unit active" "" "$(dk_active)"
+assert_eq "stop runs socket, service, containerd in that order" "stop docker.socket
+stop docker.service
+stop containerd.service" "$(dk_calls | grep '^stop ')"
+assert_contains "a second stop is unchanged" "result=unchanged" "$(op docker --action stop)"
+rm -f "$R/units/docker.socket"; : > "$R/units/docker.service"
+assert_contains "a partly started set still changes the missing unit" "will start: containerd.service docker.socket" "$(op docker --check --action start)"
+rm -f "$R/units/"*
+out=$(op docker --action fly)
+assert_contains "RED: an action outside start|stop is bad-param" "result=bad-param name=action" "$out"
+assert_contains "RED: a missing action is bad-param" "result=bad-param name=action" "$(op docker)"
+assert_contains "RED: through the helper an action outside the enum is bad-param" "result=bad-param name=action" "$(oreq 0 S1 docker action=enable)"
+assert_contains "docker is in the sandbox manifest" '"docker"' "$(cat "$R/usr/local/libexec/himmel/ops/manifest.json" 2>/dev/null)"
+assert_contains "a start through the helper is filed pending" "result=pending" "$(oreq 1 S1 docker action=start)"
+touch "$R/start-fail"
+: > "$R/systemctl.calls"
+out=$(op docker --action start)
+assert_contains "RED: a failing systemctl start is result=failed" "result=failed" "$out"
+assert_contains "the failure names the unit and the reason" "systemctl start containerd.service failed: Failed to start containerd.service: Unit not found." "$out"
+assert_eq "RED: the failed start left nothing active" "" "$(dk_active)"
+rm -f "$R/start-fail"
+touch "$R/probe-fail"
+assert_contains "RED: a failing state probe is result=failed, not unchanged" "result=failed detail=cannot read the state of docker.socket" "$(op docker --action stop)"
+rm -f "$R/probe-fail"
+: > "$R/units/containerd.service"; : > "$R/units/docker.socket"; : > "$R/units/docker.service"
+touch "$R/stop-sticky"
+out=$(op docker --action stop)
+assert_contains "RED: a stop that leaves docker.service active is result=failed" "result=failed" "$out"
+assert_contains "RED: the stuck stop names the unit and its state" "docker.service is active after the stop, not inactive" "$out"
+rm -f "$R/stop-sticky" "$R/units/"*
+touch "$R/start-noop"
+out=$(op docker --action start)
+assert_contains "RED: a start that never activates docker.service is result=failed" "result=failed" "$out"
+assert_contains "RED: the no-op start names the unit and its state" "docker.service is inactive after the start, not active" "$out"
+rm -f "$R/start-noop" "$R/units/"*
+op docker --action start >/dev/null; op docker --action stop >/dev/null
+assert_absent "RED: no systemctl call was ever an enable" "enable" "$(dk_calls)"
+assert_absent "RED: no systemctl call was ever a disable" "disable" "$(dk_calls)"
+assert_eq "only is-active, start and stop were ever called" "" "$(dk_calls | awk '$1 != "is-active" && $1 != "start" && $1 != "stop"')"
 
 echo "== the station ops and the size-override signer are CI trust paths =="
 TP_PATS="$tmp/trust-pats.txt"
