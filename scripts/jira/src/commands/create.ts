@@ -670,6 +670,75 @@ export async function checkExistingBlocker(project: string, fixVersions: unknown
   }
 }
 
+const TITLE_STOP = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'are', 'not', 'its', 'has', 'was', 'but', 'can', 'all']);
+const SIMILAR_TITLE = 0.7;
+const MIN_TITLE_WORDS = 3;
+
+/** The significant words of a title: lower-case, a leading "Sector:" prefix dropped, words of 3+ characters, stop words out. */
+export function titleWords(title: string): string[] {
+  const body = title.replace(/^[^:]{1,40}:\s+/, '').toLowerCase();
+  const words = body.match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) ?? [];
+  return [...new Set(words.filter((w) => w.length >= 3 && !TITLE_STOP.has(w)))];
+}
+
+/** Share of the words two titles have in common (0 to 1), or 0 when either has too few words to compare. */
+export function titleSimilarity(a: string, b: string): number {
+  const wa = titleWords(a);
+  const wb = new Set(titleWords(b));
+  if (wa.length < MIN_TITLE_WORDS || wb.size < MIN_TITLE_WORDS) return 0;
+  const shared = wa.filter((w) => wb.has(w)).length;
+  return shared / (wa.length + wb.size - shared);
+}
+
+interface OpenHit { key: string; fields?: { summary?: string } }
+
+/** Open tickets a JQL finds; a failed search warns and finds none, so a Jira outage never blocks the filing. */
+async function openMatches(jql: string): Promise<OpenHit[]> {
+  try {
+    const found = await request<{ issues?: OpenHit[] }>('GET', `/search/jql?jql=${encodeURIComponent(jql)}&fields=summary&maxResults=50`);
+    return found?.issues ?? [];
+  } catch (e) {
+    console.error(`jira: warning: the duplicate search failed (${(e as Error).message}), so the ticket is filed unchecked`);
+    return [];
+  }
+}
+
+const keyNumber = (key: string): number => Number(/-(\d+)$/.exec(key)?.[1] ?? NaN);
+
+/**
+ * Refuses a new ticket that repeats an open one: an open follow-up already linked to the same parent (a residual
+ * with both --class and --area is matched on those by planResidual instead), or an open ticket whose title is close.
+ * --new-reason names why a new ticket is needed and skips the search. A failed search files unchecked.
+ */
+export async function refuseOpenDuplicate(
+  project: string,
+  title: string,
+  o: { followUpOf?: string; residualOf?: string; class?: string; area?: string; newReason?: string },
+): Promise<void> {
+  if (o.newReason !== undefined) {
+    console.error(`jira: --new-reason: ${o.newReason.trim()}`);
+    return;
+  }
+  const refuse = (hit: OpenHit, why: string): never => {
+    throw new CreateRefused(
+      `jira create refused, nothing was filed: ${hit.key} ("${hit.fields?.summary ?? ''}") is open and ${why}; extend ${hit.key} with jira comment, or pass --new-reason <why>`,
+    );
+  };
+  const parent = o.followUpOf ?? (o.residualOf !== undefined && !(o.class && o.area) ? o.residualOf : undefined);
+  if (parent !== undefined) {
+    const jql = `project = ${project} AND statusCategory != Done AND labels = residual AND issue in linkedIssues(${jqlQuote(parent)})`;
+    const sibling = (await openMatches(jql)).find((h) => !(keyNumber(h.key) < keyNumber(parent)));
+    if (sibling) refuse(sibling, `already follows up ${parent}`);
+  }
+  const all = titleWords(title);
+  const words = all.filter((w) => /^[a-z0-9]+$/.test(w)).sort((a, b) => b.length - a.length).slice(0, 3);
+  if (all.length >= MIN_TITLE_WORDS && words.length > 0) {
+    const jql = `project = ${project} AND statusCategory != Done AND summary ~ ${jqlQuote(words.join(' '))}`;
+    const close = (await openMatches(jql)).find((h) => titleSimilarity(title, h.fields?.summary ?? '') >= SIMILAR_TITLE);
+    if (close) refuse(close, 'its title is close to this one');
+  }
+}
+
 
 export async function residualInheritedVersion(
   o: RelationshipOptions & { gate?: string },
@@ -757,6 +826,7 @@ export function registerCreate(program: Command): void {
       '--remainder',
       "With --follow-up-of: this ticket holds the parent's remainder (a deferred DoD row), so the INTAKE says the parent cannot close without it",
     )
+    .option('--new-reason <why>', 'Why a new ticket is needed although an open one repeats it (same --follow-up-of / --residual-of parent, or a close title): without it the filing is refused and names the open ticket to extend with jira comment')
     .option('--fu-class <class>', 'Residual class: escape or hardening (needs --fu-override); a residual of a declared project is placed by the door from its priority, and --gate means the current version; the class routes it only for a project no declared release names (docs/release/follow-up-triage.md). polish is refused: it is noted with no ticket. Applies only with --residual-of')
     .option('--fu-why <code>', 'Why a hardening residual is one (' + FU_WHY_CODES.join('|') + '); required with --fu-class hardening')
     .option('--fu-override <id>', 'The named override a hardening residual needs: a judge verdict id (XX-jNNNN-N) or decision-N; printed into the ticket as an unverified label')
@@ -776,7 +846,7 @@ export function registerCreate(program: Command): void {
           return;
         }
         try {
-          const withPointer: CreateOptions & { pointer?: BridgePointer } = { ...options, pointer: bridgePointer(options) };
+          const withPointer: CreateOptions & { pointer?: BridgePointer } = { ...options, pointer: bridgePointer(options), checkDuplicates: true };
           await runCreate(withPointer);
         } catch (e) {
           if (!(e instanceof CreateRefused || e instanceof CreatePartial)) throw e;

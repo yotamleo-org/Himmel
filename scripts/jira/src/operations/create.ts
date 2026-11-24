@@ -34,6 +34,7 @@ import {
   preflightIntake,
   printCore,
   queueIntakeIfUnversioned,
+  refuseOpenDuplicate,
   residualInheritedVersion,
   resolveTitle,
   sectorForCreate,
@@ -66,6 +67,10 @@ export interface CreateOptions {
   affectsVersion?: string;
   residualOf?: string;
   followUpOf?: string;
+  /** Why a new ticket is needed although an open one repeats it; skips the duplicate search. */
+  newReason?: string;
+  /** The `jira create` command sets this: only it searches for an open duplicate (move does not). */
+  checkDuplicates?: boolean;
   remainder?: boolean;
   fuClass?: string;
   fuWhy?: string;
@@ -137,6 +142,9 @@ function checkFlagCombinations(options: CreateOptions): void {
   if (options.residualOf === undefined) {
     const stray = ([['fuClass', '--fu-class'], ['fuWhy', '--fu-why'], ['fuOverride', '--fu-override']] as const).find(([k]) => options[k] !== undefined);
     if (stray) throw new Error(`--fu-class/--fu-why/--fu-override apply only with --residual-of (got ${stray[1]})`);
+  }
+  if (options.newReason !== undefined && !options.newReason.trim()) {
+    throw new Error('--new-reason needs the reason a new ticket is wanted although an open one repeats it');
   }
   if (options.remainder && options.followUpOf === undefined) {
     throw new Error('--remainder needs --follow-up-of <key>, the parent whose remainder this ticket holds');
@@ -227,6 +235,7 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   await checkExistingBlocker(project, fields['fixVersions'], options);
   const intake = intakeOwed(options.type, fields, testProject) ? await followUpIntake(versionOptions) : options;
   preflightIntake(intake, fields, title, testProject);
+  if (options.checkDuplicates && !testProject) await refuseOpenDuplicate(project, title, options);
   if (run.check) return { disposition: 'checked' };
 
   const writer = createWriterOf(options, { placed: fields['fixVersions'] !== undefined, inherited: inherited ?? closedParent?.fixVersion, residual, bugDefault });

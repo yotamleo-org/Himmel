@@ -207,6 +207,14 @@
 #      no detector, a failed fetch or git read, `unknown`) WARNs, never FAILs. Part of
 #      `--only 7`, on check 7's head (headRefOid).
 #
+# 21. Ticket comments seen: a comment on the PR title's ticket created after the worker's launch
+#      record (`launched=` in <cache>/launch-logs/<doc stem>.log) needs a `TICKET-SEEN <comment id>`
+#      line in the worker's handover doc (<handover root>/*/*/<KEY>-N*.md, read through
+#      `jira comments <KEY> --json`), else FAIL naming the comment and the doc. A worker status
+#      comment, a release-ruling audit copy, a merge notice and a polish-noted comment need none. No
+#      ticket key, no doc, no launch record or an unreadable comment list WARNs, never FAILs.
+#      Part of `--only 7`.
+#
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes no CR ledger rows,
 # no GO files and no PR comments. Its writes are: `git fetch` into the repo it runs in
@@ -2826,6 +2834,114 @@ EOF
     [ -z "$warns" ] || printf '%s\n' "${warns#?}"
 }
 check_conflicts_resolved
+
+# shellcheck disable=SC2016  # python program text
+C21_EVAL='import json, re, sys
+from datetime import datetime
+def when(s):
+    s = re.sub(r"Z$", "+0000", s.strip())
+    s = re.sub(r"([+-][0-9][0-9]):([0-9][0-9])$", r"\1\2", s)
+    for f in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z"):
+        try:
+            return datetime.strptime(s, f)
+        except ValueError:
+            pass
+    raise ValueError(s)
+try:
+    launched = when(sys.argv[1])
+    comments = json.load(sys.stdin)
+    if not isinstance(comments, list):
+        raise ValueError("not a list")
+except ValueError:
+    sys.exit(3)
+seen = set()
+for path in sys.argv[2:]:
+    try:
+        text = open(path, encoding="utf-8", errors="replace").read()
+    except OSError:
+        continue
+    for m in re.finditer(r"TICKET-SEEN[ \t]+([0-9]+(?:[ \t,]+[0-9]+)*)", text):
+        seen.update(re.findall(r"[0-9]+", m.group(1)))
+machine = re.compile(r"^\s*(\[release-ruling |WORKER \S+ \(|PR #[0-9]+ \(|polish-noted:)")
+total = 0
+for c in comments:
+    try:
+        at = when(c["created"])
+    except (KeyError, TypeError, ValueError):
+        sys.exit(3)
+    cid, body = str(c.get("id", "")), str(c.get("body", ""))
+    if at <= launched or machine.match(body):
+        continue
+    total += 1
+    if cid not in seen:
+        print("\t".join([cid, c["created"], str(c.get("author", "")), " ".join(body.split())[:80]]))
+print("checked\t%d" % total)'
+check_ticket_comments() {
+    local title key lib root docs doc stem cache launched first cj rc out cid created who snippet n_bad=0 n_checked=0 args=()
+    if [ "$ONLY7" -eq 1 ]; then
+        title=$("$GH" pr view "$PR" --repo "$nwo" --json title --jq '.title' 2>/dev/null | tr -d '\r') || title=""  # swallow-ok: an unreadable title is reported as no key just below
+    else
+        title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || title=""  # swallow-ok: an unreadable title is reported as no key just below
+    fi
+    key=""
+    lib="$(cd "$SELF_DIR/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir leaves the key unread, reported just below
+    if [ -n "$title" ] && printf '%s' "$title" | grep -Eq '[A-Za-z][A-Za-z0-9]*-[0-9]+' && [ -f "$lib/ticket-status.sh" ]; then
+        key=$(
+            # shellcheck source=/dev/null
+            . "$lib/ticket-status.sh" 2>/dev/null  # swallow-ok: declare -F on the next line decides
+            declare -F ticket_key_from_title >/dev/null || exit 70
+            ticket_key_from_title "$title"
+        ) || key=""  # swallow-ok: no key reads as not checked, just below
+    fi
+    if [ -z "$key" ]; then
+        echo "[WARN] 21. ticket comments not checked: the PR title carries no [KEY], or its reader is unreadable"
+        return 0
+    fi
+    root=$(. "$lib/handover-path.sh" 2>/dev/null && handover_root 2>/dev/null) || root=""  # swallow-ok: no handover root reads as no doc, just below
+    docs=""
+    [ -z "$root" ] || docs=$(find "$root" -maxdepth 4 -type f -name "${key}-N*.md" -not -path '*/specs/*' 2>/dev/null | sort)  # swallow-ok: an unreadable root reads as no doc, just below
+    if [ -z "$docs" ]; then
+        echo "[WARN] 21. ticket comments of $key not checked: no worker handover doc named $key-N*.md under ${root:-<no handover root>}"
+        return 0
+    fi
+    cache="${HIMMELCTL_CACHE_DIR:-${HOME:-}/.claude/himmel}"
+    launched=""
+    while IFS= read -r doc; do
+        [ -n "$doc" ] || continue
+        args+=("$doc")
+        stem="${doc##*/}"; stem="${stem%.md}"
+        first=$(grep -ho 'launched=[0-9T:Z-]*' "$cache/launch-logs/$stem.log" 2>/dev/null | sed 's/^launched=//' | sort | head -n 1)  # swallow-ok: no log reads as no launch record, just below
+        if [ -n "$first" ] && { [ -z "$launched" ] || [[ "$first" < "$launched" ]]; }; then launched="$first"; fi
+    done <<EOF
+$docs
+EOF
+    if [ -z "$launched" ]; then
+        echo "[WARN] 21. ticket comments of $key not checked: no launch record (launched=) under $cache/launch-logs for ${args[0]##*/}"
+        return 0
+    fi
+    cj=$(jira_run comments "$key" --json) || cj=""  # swallow-ok: an unreadable list is reported as a WARN just below
+    rc=0
+    out=$(printf '%s' "$cj" | python3 -I -c "$C21_EVAL" "$launched" "${args[@]}" 2>/dev/null) || rc=$?  # swallow-ok: a non-zero rc WARNs just below
+    if [ "$rc" -ne 0 ]; then
+        echo "[WARN] 21. ticket comments of $key not checked: the comment list is unreadable (jira comments $key --json, exit $rc)"
+        return 0
+    fi
+    while IFS=$'\t' read -r cid created who snippet; do
+        [ -n "$cid" ] || continue
+        if [ "$cid" = checked ]; then n_checked="$created"; continue; fi
+        n_bad=$((n_bad + 1))
+        echo "[FAIL] 21. $key has comment $cid by $who at $created, newer than the worker's launch ($launched), with no 'TICKET-SEEN $cid' line in ${args[0]}: \"$snippet\""
+    done <<EOF
+$out
+EOF
+    if [ "$n_bad" -gt 0 ]; then
+        echo "       read it (jira comments $key), act on it, then: bash scripts/handover/chief-kit/append-results.sh ${args[0]} \"LIVE — TICKET-SEEN <comment id> <what you did about it>\""
+        mark_fail
+    else
+        echo "[PASS] 21. ticket comments of $key: $n_checked newer than the launch ($launched), each has its TICKET-SEEN line"
+    fi
+}
+check_ticket_comments
 
 if [ "$ONLY7" -eq 1 ]; then
     if [ "$RESULT" -eq 0 ]; then echo "COVERAGE-LINT PASS"; exit 0; fi
