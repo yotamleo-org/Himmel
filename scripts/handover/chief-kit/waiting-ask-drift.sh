@@ -22,8 +22,6 @@
 #   ask-no-waiting   <key>  <ask text>
 # Exit codes: 0 the sets agree, 1 drift, 2 usage or an unreadable input.
 # Read-only: neither the ledger nor the doc is written.
-#
-# Platform guard: bash and python3.
 set -u
 
 usage() { echo "usage: waiting-ask-drift.sh --doc <chief doc> [--bucket <dir>]" >&2; exit 2; }
@@ -77,10 +75,10 @@ def keys_of(row):
     return {row["id"]} | ({k} if isinstance(k, str) and k else set())
 
 waiting = [r for i, r in adds.items() if i not in closed and r.get("actor") == "operator"]
-dead = set().union(*[keys_of(r) for i, r in adds.items() if i in closed]) if closed else set()
+spent_keys = set().union(*[keys_of(r) for i, r in adds.items() if i in closed]) if closed else set()
 
-def live_keys(row):
-    return keys_of(row) - dead
+def unspent_keys_of(row):
+    return keys_of(row) - spent_keys
 
 ask_re = re.compile(r"^- (?:\d{1,2}:\d{2} )?OWED ([A-Za-z0-9_.-]+)(?: (.*))?$")
 got_re = re.compile(r"^- (?:\d{1,2}:\d{2} )?DELIVERED ([A-Za-z0-9_.-]+) msg=\d+ chat=-?\d+(?: .*)?$")
@@ -92,13 +90,13 @@ for l in doc_lines:
         seen.add(m.group(1)); asks.append((m.group(1), m.group(2) or ""))
 
 flat = lambda s: re.sub(r"[\t\n]", " ", s)
-waiting_keys = set().union(*[live_keys(r) for r in waiting]) if waiting else set()
+waiting_keys = set().union(*[unspent_keys_of(r) for r in waiting]) if waiting else set()
 out = []
 for r in waiting:
-    if not live_keys(r) & seen:
+    if not unspent_keys_of(r) & seen:
         out.append("\t".join(["waiting-no-ask", r["id"], r.get("key") or "-", flat(str(r.get("text", "")))]))
 for key, text in asks:
-    if key not in waiting_keys and key not in dead:
+    if key not in waiting_keys and key not in spent_keys:
         out.append("\t".join(["ask-no-waiting", key, flat(text)]))
 if out:
     print("\n".join(out))
