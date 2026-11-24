@@ -93,6 +93,16 @@ new_inbox() { mkdir -p "$WORK/$1/consoles"; : > "$WORK/$1/consoles/c.md"; printf
 # arm <inbox> <outfile> <seconds>: one foreground arm that exits on a wake or after <seconds> (rc 124)
 arm() { timeout "$3" bash "$WAIT" "$1" --workers "N1.md" > "$2" 2>/dev/null; rc=$?; }  # gnu-ok: Linux-only kit; pipefail-ok: none set
 
+run_to_wake() {
+    local out="$1" err="$2" pid i=0
+    shift 2
+    bash "$WAIT" "$@" > "$out" 2> "$err" &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ]; do sleep 0.2; i=$((i + 1)); done
+    if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; digest_rc=124
+    else wait "$pid"; digest_rc=$?; fi
+}
+
 # --- (8197) digest and urgent worker changes -------------------------------------------
 # Removing the buffer splits three housekeeping events; putting BLOCKED in that
 # buffer delays a worker who needs a ruling. Keep setup isolated from pool rows.
@@ -101,6 +111,7 @@ housekeeping_cases() (
     export HOUSEKEEPING_DIGEST_SECS=2 WAIT_SWEEP_SEC=1 CHIEF_WAIT_BOARD_STALE_MIN=0
     cat > "$STUB/digest-tick.sh" <<'EOF'
 #!/usr/bin/env bash
+[ ! -f "$STUB/stall" ] || { read -r stall < "$STUB/stall"; sleep "$stall"; }
 n=0; [ ! -f "$STUB/samples" ] || read -r n < "$STUB/samples"
 n=$((n + 1)); printf '%s\n' "$n" > "$STUB/samples"
 if [ -f "$STUB/urgent" ]; then
@@ -163,9 +174,11 @@ EOF
             status-sweep) export WAIT_SWEEP_CMD="$STUB/digest-sweep.sh" ;;
             deadline) digest_kind=tick ;;
         esac
-        if [ "$digest_case" = deadline ]; then mkdir "$I.wait.housekeeping.since"
+        rm -f "$STUB/stall"
+        if [ "$digest_case" = deadline ]; then mkdir "$I.wait.housekeeping.since"; printf '2\n' > "$STUB/stall"
         else mkdir "$I.wait.housekeeping"; fi
-        timeout 4 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/write-$digest_case.out" 2> "$WORK/write-$digest_case.err"; digest_rc=$?
+        run_to_wake "$WORK/write-$digest_case.out" "$WORK/write-$digest_case.err" "$I" --doc "$WORK/digest-chief.md" --workers N1.md
+        rm -f "$STUB/stall"
         check "(8197) $digest_case buffer write failure wakes immediately once" '0:1:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/write-$digest_case.out"):$(grep -c "^WAKE $digest_kind " "$WORK/write-$digest_case.out")"
         case "$digest_case" in tick|deadline)
             check "(8197) $digest_case write failure does not advance the tick baseline" 1 "$(grep -c 'tails=N1:ACK' "$I.wait.state")"
