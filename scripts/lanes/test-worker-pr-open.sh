@@ -567,7 +567,7 @@ size_grow() {
     git -C "$REPO" commit -qm "size fixture grow"
     git -C "$REPO" push -q
 }
-body_sent() { cat "${ARGV_LOG}.body" 2>/dev/null; }
+body_sent() { cat "${ARGV_LOG}.body" 2>/dev/null; }  # read-sink-ok: the stub's capture under the test mktemp dir
 note_calls() { grep -c . "$NOTE_LOG" 2>/dev/null || true; }
 
 echo "TEST: a branch of 301 changed files opens, with a coderabbit-band real row for the chief"

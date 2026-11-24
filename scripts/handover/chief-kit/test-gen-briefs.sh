@@ -1401,7 +1401,7 @@ OV="$HERE/size-override.sh"; SEL="$WORK/handovers/.locks/size-escalate.tsv"
 PSHOME="$WORK/ps-home"; mkdir -p "$PSHOME/.config/himmel"
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$PSHOME/.config/himmel/go-hmac.key"
 sel_count() { grep -c "^SIZE-ESCALATE" "$SEL" 2>/dev/null || true; }
-sel_last() { tail -n 1 "$SEL" 2>/dev/null; }
+sel_last() { tail -n 1 "$SEL" 2>/dev/null; }  # read-sink-ok: the test's own mktemp ledger
 ps_workers trustsoft scripts/ci/ ''
 ps_workers huge "$(for n in $(seq 1 301); do printf 'scripts/newd/n%s.txt ' "$n"; done)" ''
 ps_workers bulkhuge "$(for n in $(seq 1 301); do printf 'scripts/newd/n%s.txt ' "$n"; done)" ',"bulk":"mechanical"'
