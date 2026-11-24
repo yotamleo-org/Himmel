@@ -50,6 +50,9 @@ mkdir -p "$T/blocked" && : > "$T/blocked/.himmel"
 warn="$(HOME="$T/blocked" vm_ssh_opts 2222 2>&1 >/dev/null)"
 case "$warn" in *"cannot create"*) pass "an uncreatable known_hosts directory is reported" ;; *) fail "no warning when the directory cannot be created: '$warn'" ;; esac
 
+warn="$(HIMMEL_VMS_JSON="$T/absent.json" HOME="$T/home" vm_ssh_opts 2222 2>&1 >/dev/null)"
+case "$warn" in *"cannot read the VM registry"*) pass "an unreadable VM registry is reported" ;; *) fail "no warning for an unreadable registry: '$warn'" ;; esac
+
 opts="$(HOME="$T/home" vm_ssh_opts 2230)"
 case "$opts" in *"known_hosts/himmel-gui-1"*) pass "port 2230 maps to himmel-gui-1" ;; *) fail "port 2230: '$opts'" ;; esac
 
