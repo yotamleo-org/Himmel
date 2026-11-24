@@ -105,7 +105,6 @@
 ^scripts/jira/src/release/fence-ancestry\.ts$
 # The bridge envelope: the permission mode, allow and deny lists and Bash sandbox of every bridge spawn.
 ^scripts/telegram/run\.ts$
-# The reader of the poller's log that decides what counts as the operator's own typed line (and its bridge-words caller).
 ^scripts/(telegram/operator-words|jira/src/release/bridge-words)(\.test)?\.ts$
 # The operator's phone line for an out-of-version approval: the writer signs no record unless it exits 0.
 ^scripts/handover/chief-kit/(test-)?version-approval-alert\.sh$

@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# test-bridge-words-seams.sh — the operator-words verifier run the way bridge-words
-# will spawn it (a pinned, allow-listed env, no seam flags), and the gitleaks
-# pre-check bridge-words relies on (rows T6 and T6b of the signed design).
-#   bash scripts/telegram/test-bridge-words-seams.sh
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"

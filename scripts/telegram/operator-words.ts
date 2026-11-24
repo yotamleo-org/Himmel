@@ -1,7 +1,3 @@
-// The operator-words verifier: "the operator typed this line in their DM".
-// `bun operator-words.ts --update <id>` prints one JSON line, or exits 1 with a one-line reason on stderr.
-// It reads the poller's inbound log and the access file at their production paths; the root and the access
-// path are module parameters that the CLI never exposes.
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { bridgeRoot } from "./bus";
@@ -9,7 +5,6 @@ import { defaultAccessPath, loadAccess, operatorChatId } from "./gate";
 
 const UPDATE_ID_FLOOR = 1_000_000;
 
-/** One entry per refusal; `disable` (test only) switches a single check off to show its row goes RED. */
 export type Check = "floor" | "ambiguous" | "dm-policy" | "operator" | "forwarded" | "caption" | "text" | "metadata";
 
 export type VerifiedLine = {
