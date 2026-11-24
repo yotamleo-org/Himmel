@@ -1693,7 +1693,7 @@ mk42 "$d42/bx.md" "$BX42" "BX-N1-0011aabb"; cp "$d42/bx.md" "$d42/bx.orig"
 dry42 "$d42/bx.md" --chief "$BY42"
 check "42a (I1) a brief naming BX launched by BY exits 2 on --dry-run" "$rc42" "2"
 contains "42a ... naming both chiefs" "$out42" "names chief $BX42, the launcher is $BY42"
-not_contains "42a ... and prints no would-exec line" "$out42" "would-exec"
+not_contains "42a ... and prints no would-exec line" "$out42" "would exec:"
 d42a="$d42/stubs-a"; mk_launch_stubs "$d42a" "PROJ-42-real"; mkdir -p "$tmp/repo42"
 rc=0; some_doc="$d42/bx.md" RUN_WORKER_ARGS="--no-profile --chief $BY42" run_worker "$d42a" "$tmp/repo42" "PROJ-42-real" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 check "42a a REAL launch of it is refused (rc 2)" "$rc" "2"
@@ -1736,25 +1736,25 @@ check "42d no --chief and no HIMMEL_CONSOLE_NAME arms (rc 0)" "$rc42" "0"
 contains "42d ... with the skip note" "$out42" "headed-arm-worker: note: chief check skipped (no explicit launching chief)"
 
 rwref42() {
-  local label="$1" doc="$2"; shift 2
+  local label="$1" doc="$2" phrase="$3"; shift 3
   cp "$doc" "$doc.before"
   dry42 "$doc" "$@" --rewrite-chief
   check "42e (I4) $label: rc 2" "$rc42" "2"
-  contains "42e $label: the --rewrite-chief refusal" "$out42" "--rewrite-chief:"
+  contains "42e $label: the refusal names its own cause" "$out42" "--rewrite-chief: $phrase"
   check "42e $label: the doc is unchanged" "$(cmp -s "$doc" "$doc.before" && echo same || echo changed)" "same"
 }
-rwref42 "no explicit launcher" "$d42/bx.md"
+rwref42 "no explicit launcher" "$d42/bx.md" "no explicit launching chief"
 cp "$d42/bx.orig" "$d42/ran.md"; printf -- '- 05:00 LIVE — x\n' >> "$d42/ran.md"
-rwref42 "a doc that has run" "$d42/ran.md" --chief "$BY42"
+rwref42 "a doc that has run" "$d42/ran.md" "$d42/ran.md has already run" --chief "$BY42"
 grep -v 'RETASK:' "$d42/bx.orig" > "$d42/noretask.md"
-rwref42 "no RETASK line" "$d42/noretask.md" --chief "$BY42"
+rwref42 "no RETASK line" "$d42/noretask.md" "$d42/noretask.md has no RETASK line" --chief "$BY42"
 mk42 "$d42/badtail.md" "$BX42" "BX-N1-0011aabbcc"
-rwref42 "a non-8-hex nonce tail" "$d42/badtail.md" --chief "$BY42"
+rwref42 "a non-8-hex nonce tail" "$d42/badtail.md" "the nonce BX-N1-0011aabbcc in $d42/badtail.md does not end in 8 hex" --chief "$BY42"
 cp "$d42/bx.orig" "$d42/real.md"; ln -sf "$d42/real.md" "$d42/link.md"
 cp "$d42/real.md" "$d42/real.before"
 dry42 "$d42/link.md" --chief "$BY42" --rewrite-chief
 check "42e a symlinked doc: rc 2" "$rc42" "2"
-contains "42e a symlinked doc: the --rewrite-chief refusal" "$out42" "--rewrite-chief:"
+contains "42e a symlinked doc: the refusal names its own cause" "$out42" "--rewrite-chief: $d42/link.md is a symlink"
 check "42e a symlinked doc: the target is unchanged" "$(cmp -s "$d42/real.md" "$d42/real.before" && echo same || echo changed)" "same"
 
 cp "$d42/bx.orig" "$d42/succ.md"; printf -- '- 05:00 SUCCESSION accepted: %s replaces %s\n' "$BY42" "$BX42" >> "$d42/succ.md"
@@ -1762,9 +1762,18 @@ dry42 "$d42/succ.md" --chief "$BY42"
 check "42f (I4) a run doc naming BX with an accepted succession to BY arms under BY" "$rc42" "0"
 not_contains "42f ... with no refusal" "$out42" "refusing launch"
 
-dry42 "$d42/bx.md" --judge --chief "$BY42"
-not_contains "42g (I5) a --judge launch prints no chief-mismatch line" "$out42" "names chief"
-not_contains "42g ... and no chief-check note" "$out42" "chief check"
+for flags42g in "--judge" "--relay" "--consult --profile design-motion" "--profile release-manager --rm-release v1.1.3"; do
+  rc=0
+  # shellcheck disable=SC2086  # $flags42g is a deliberate multi-word flag set
+  out="$(WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run $flags42g --chief "$BY42" PROJ-42-worker "$d42/bx.md" /tmp/nosig 99999999999 "$tmp/c42.log" claude-sonnet-5 2>&1)" || rc=$?
+  check "42g (I5) $flags42g launch of a BX brief under BY reaches the arm (rc 0)" "$rc" "0"
+  case "$flags42g" in
+    --relay) not_contains "42g $flags42g: no refusal" "$out" "refusing launch" ;;
+    *) contains "42g $flags42g: the would-exec line is printed" "$out" "would exec:" ;;
+  esac
+  not_contains "42g $flags42g: no chief-mismatch line" "$out" "names chief"
+  not_contains "42g $flags42g: no chief-check note" "$out" "chief check"
+done
 
 mk42 "$d42/wrap.md" "$BX42" "BX-N1-0011aabb" wrapped
 dry42 "$d42/wrap.md" --chief "$BY42"
