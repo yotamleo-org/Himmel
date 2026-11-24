@@ -25,6 +25,12 @@
 #
 #   --src      the repo real cases' base and fix commits live in (default this checkout).
 #
+#        run.sh --paired <snapshot> [--head <rev>] [--repeats N] [--results <file>] --out <dir> [sweep flags]
+#   One run, one pinned commit: sweeps <snapshot> (base) and <head> (default HEAD) concurrently, each in its
+#   own scratch tree, N times each, and appends their rows (fields snapshot and side) to --results (default
+#   results.jsonl) only when every sweep exported. Refused unless <snapshot> is an ancestor of <head> and both
+#   carry the same fixtures and key; takes no --fixtures or --key. README: Paired snapshot sweeps.
+#
 #        run.sh --case-repo <case-id> --out <dest> [--src <repo>] [--fixtures <dir>] [--key <file>]
 #   Builds the case's scratch repo, no panel call: the case's `base` tree from
 #   <repo> (default this checkout) without scripts/eval/review-panel/, one commit,
@@ -39,27 +45,32 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 PANEL="${REVIEW_PANEL_CMD:-$HERE/../../cr/critic-panel.sh}"
 fixtures="$HERE/fixtures"; key="$HERE/key/seeds.json"
 out=""; tiers="paid"; critics=""; only=""; meta="{}"; ledger_args=(); model=""; case_repo=""; src=""; delta_only=0; allow_claude=0
+paired=""; head_rev=""; repeats=1; results="$HERE/results.jsonl"; inputs_given=0; fwd=()
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --out|--fixtures|--key|--tiers|--critics|--only|--meta-json|--ledger|--model|--case-repo|--src)
+        --out|--fixtures|--key|--tiers|--critics|--only|--meta-json|--ledger|--model|--case-repo|--src|--paired|--head|--repeats|--results)
             if [ $# -lt 2 ]; then echo "run.sh: $1 needs a value" >&2; exit 2; fi ;;
     esac
     case "$1" in
         --case-repo) case_repo="${2:-}"; shift 2 ;;
         --src) src="${2:-}"; shift 2 ;;
         --out) out="${2:-}"; shift 2 ;;
-        --fixtures) fixtures="${2:-}"; shift 2 ;;
-        --key) key="${2:-}"; shift 2 ;;
-        --tiers) tiers="${2:-}"; shift 2 ;;
-        --critics) critics="${2:-}"; shift 2 ;;
-        --only) only="${2:-}"; shift 2 ;;
-        --meta-json) meta="${2:-}"; shift 2 ;;
-        --ledger) ledger_args=(--ledger "${2:-}"); shift 2 ;;
-        --no-ledger) ledger_args=(--no-ledger); shift ;;
-        --delta) delta_only=1; shift ;;
-        --allow-claude-api) allow_claude=1; shift ;;
-        --model) model="${2:-}"; shift 2 ;;
+        --fixtures) fixtures="${2:-}"; inputs_given=1; shift 2 ;;
+        --key) key="${2:-}"; inputs_given=1; shift 2 ;;
+        --tiers) tiers="${2:-}"; fwd+=("$1" "$tiers"); shift 2 ;;
+        --critics) critics="${2:-}"; fwd+=("$1" "$critics"); shift 2 ;;
+        --only) only="${2:-}"; fwd+=("$1" "$only"); shift 2 ;;
+        --meta-json) meta="${2:-}"; fwd+=("$1" "$meta"); shift 2 ;;
+        --ledger) ledger_args=(--ledger "${2:-}"); fwd+=("$1" "${2:-}"); shift 2 ;;
+        --no-ledger) ledger_args=(--no-ledger); fwd+=("$1"); shift ;;
+        --delta) delta_only=1; fwd+=("$1"); shift ;;
+        --allow-claude-api) allow_claude=1; fwd+=("$1"); shift ;;
+        --model) model="${2:-}"; fwd+=("$1" "$model"); shift 2 ;;
+        --paired) paired="${2:-}"; shift 2 ;;
+        --head) head_rev="${2:-}"; shift 2 ;;
+        --repeats) repeats="${2:-}"; shift 2 ;;
+        --results) results="${2:-}"; shift 2 ;;
         *) echo "run.sh: unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -87,6 +98,56 @@ fi
 
 # billed-opt-in: HIMMEL_BILLED_OK
 [ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "run.sh: draws codex bank per fixture; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; }
+
+if [ -n "$paired" ]; then
+    [ "$inputs_given" = 0 ] || { echo "run.sh: --paired reads each side's own fixtures and key: drop --fixtures and --key" >&2; exit 2; }
+    case "$repeats" in ''|*[!0-9]*|0) echo "run.sh: --repeats needs a positive integer" >&2; exit 2 ;; esac
+    top="$(git -C "$HERE" rev-parse --show-toplevel)" || exit 2
+    rel="$(git -C "$HERE" rev-parse --show-prefix)" || exit 2
+    snap="$(git -C "$top" rev-parse --verify "$paired^{commit}" 2>/dev/null)" \
+        || { echo "run.sh: --paired $paired is not a commit - no panel call made" >&2; exit 2; }
+    head_sha="$(git -C "$top" rev-parse --verify "${head_rev:-HEAD}^{commit}" 2>/dev/null)" \
+        || { echo "run.sh: --head ${head_rev:-HEAD} is not a commit - no panel call made" >&2; exit 2; }
+    git -C "$top" merge-base --is-ancestor "$snap" "$head_sha" \
+        || { echo "run.sh: snapshot $snap is not an ancestor of head $head_sha - no panel call made" >&2; exit 2; }
+    git -C "$top" diff --quiet "$snap" "$head_sha" -- "${rel}fixtures" "${rel}key" \
+        || { echo "run.sh: the case set (fixtures, key) differs between snapshot and head: a paired sweep measures both sides on one case set - no panel call made" >&2; exit 2; }
+    mkdir -p "$out" || exit 2
+    out="$(cd "$out" && pwd)"
+    pscratch="${REVIEW_PANEL_SCRATCH:-}"
+    if [ -z "$pscratch" ]; then
+        # shellcheck source=../../lib/prim.sh
+        . "$HERE/../../lib/prim.sh" || { echo "run.sh: cannot load scripts/lib/prim.sh" >&2; exit 2; }
+        pscratch="$(tmpdir)" || exit 2
+    fi
+    mkdir -p "$pscratch/trees" || exit 2
+    trap 'git -C "$top" worktree remove --force "$pscratch/trees/base" >/dev/null 2>&1; git -C "$top" worktree remove --force "$pscratch/trees/head" >/dev/null 2>&1; git -C "$top" worktree prune' EXIT
+    git -C "$top" worktree add -q --detach "$pscratch/trees/base" "$snap" || exit 2
+    git -C "$top" worktree add -q --detach "$pscratch/trees/head" "$head_sha" || exit 2
+    sweep_side() {
+        local side="$1" n="$2" tree="$pscratch/trees/$1" o="$out/$1-$2"
+        REVIEW_PANEL_SCRATCH="$pscratch/work/$side-$n" PYTHONDONTWRITEBYTECODE=1 \
+            bash "$tree/${rel}run.sh" --out "$o" ${fwd[@]+"${fwd[@]}"} || return $?
+        python3 "$HERE/score.py" export-row "$o" --repo "$tree" --snapshot "$snap" --side "$side" --results "$o.row.jsonl"
+    }
+    rc=0; n=1
+    while [ "$n" -le "$repeats" ] && [ "$rc" = 0 ]; do
+        sweep_side base "$n" & pid_base=$!
+        sweep_side head "$n" & pid_head=$!
+        wait "$pid_base" || rc=$?
+        wait "$pid_head" || rc=$?
+        n=$((n + 1))
+    done
+    [ "$rc" = 0 ] || { echo "run.sh: a paired sweep failed (exit $rc): no row written" >&2; exit "$rc"; }
+    n=1
+    while [ "$n" -le "$repeats" ]; do
+        cat "$out/base-$n.row.jsonl" "$out/head-$n.row.jsonl" >> "$results" || exit 2
+        n=$((n + 1))
+    done
+    echo "run.sh: paired sweep of snapshot $snap: base $snap and head $head_sha x$repeats -> $results"
+    exit 0
+fi
+
 if [ ! -d "$fixtures" ] || [ ! -f "$key" ]; then
     echo "run.sh: no fixtures dir or key" >&2
     exit 2
