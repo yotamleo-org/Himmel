@@ -2509,7 +2509,7 @@ must_disposition_section() {
             label="$(worker_label "$r")"
             marker="$(worker_tail_status "$sib")"
             printf -- '- RESUME doc `%s`: %s, last marker %s\n' "$r" "$label" "${marker:-none}"
-        done < <(find "$pdir" -maxdepth 1 -type f -name '*-RESUME.md' -mtime "-$days" 2>/dev/null | sort)  # gnu-ok: the chief kit is Linux-only
+        done < <(find "$pdir" -maxdepth 1 -type f -name '*-RESUME.md' -mtime "-$days" 2>/dev/null | sort)
         prs="$(bash "$HERE/../chief-kit/handoff-facts.sh" prs "$pdoc" --repo "$repo" 2>/dev/null)" || prs=""  # swallow-ok: an unreadable PR list names no row; the orphan-PR gate already ran
         while IFS= read -r line; do
             [[ "$line" =~ ^#([0-9]+)[[:space:]] ]] || continue
@@ -2533,7 +2533,7 @@ EOF_PRS
         if [ -n "${CHIEF_MUST_RESUME_ROWS:-}" ]; then
             rows="$(bash "$CHIEF_MUST_RESUME_ROWS" 2>/dev/null)" || resume_rc=$?  # swallow-ok: the failure becomes a Must disposition row below
         else
-            rows="$(timeout -k 2 90 bash "$kit/next-dispatchable.sh" --resume-only ${smanifest:+--workers-from "$smanifest"} 2>/dev/null)" || resume_rc=$?  # swallow-ok: the failure becomes a Must disposition row below; gnu-ok: Linux-only kit
+            rows="$(timeout -k 2 90 bash "$kit/next-dispatchable.sh" --resume-only ${smanifest:+--workers-from "$smanifest"} 2>/dev/null)" || resume_rc=$?  # swallow-ok: the failure becomes a Must disposition row below
         fi
         if [ "$resume_rc" -ne 0 ]; then
             printf -- '- RESUME rows unavailable: next-dispatchable.sh --resume-only exited %s (124 is a timeout), so the In Progress tickets with no worker are not listed; re-run: bash %s --resume-only --workers-from %s\n' "$resume_rc" "$kit/next-dispatchable.sh" "$smanifest"
@@ -2555,7 +2555,7 @@ EOF_ROWS
     fv="$(awk '$0 == "## Live state" { s = 1; next } s && /^## / { exit } s && index($0, "focus-version:") == 1 { sub(/^[^:]*:[[:space:]]*/, ""); print; exit }' "$pdoc" | sed -n 's/^\(v[0-9][0-9.]*\).*/\1/p')"
     fresh=""
     if [ -n "$mirror" ] && [ -d "$mirror" ]; then
-        fresh="$(find "$mirror" -maxdepth 1 -name .cursor.json -mmin "-${CHIEF_MUST_MIRROR_MIN:-1440}" -print -quit 2>/dev/null)" || fresh=""  # swallow-ok: an unreadable mirror reads as unavailable, said below; gnu-ok: Linux-only kit
+        fresh="$(find "$mirror" -maxdepth 1 -name .cursor.json -mmin "-${CHIEF_MUST_MIRROR_MIN:-1440}" -print -quit 2>/dev/null)" || fresh=""  # swallow-ok: an unreadable mirror reads as unavailable, said below
     fi
     if [ -z "$fresh" ]; then
         printf -- '- operator-directed tickets unavailable: the Jira mirror (%s) has no sync stamp (.cursor.json) newer than %s minutes, so no To Do ticket is listed; refresh the mirror, then list the operator-directed To Do tickets of the focus version by hand\n' "${mirror:-no path}" "${CHIEF_MUST_MIRROR_MIN:-1440}"
