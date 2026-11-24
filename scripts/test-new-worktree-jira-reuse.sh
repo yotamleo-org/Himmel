@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# test-new-worktree-jira-reuse.sh: a new worktree reuses the primary checkout's
-# installed Jira deps when scripts/jira/package-lock.json is byte-identical, and
-# still runs npm install when it differs.
-#
-# Self-contained: scratch HOME, scratch origin, stubbed npm, no network and no
-# real install. Bash 3.2-safe.
 
 set -uo pipefail
 
@@ -18,7 +12,6 @@ _fail() { printf 'FAIL  %s\n  -> %s\n' "$1" "$2"; FAIL=$(( FAIL + 1 )); }
 
 TMPBASE="${TMPDIR:-/tmp}/test-nwjr-$$"
 mkdir -p "$TMPBASE"
-# shellcheck disable=SC2064
 trap 'rm -rf "$TMPBASE"' EXIT
 
 export HOME="$TMPBASE/home"
