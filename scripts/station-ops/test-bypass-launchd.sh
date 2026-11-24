@@ -28,6 +28,7 @@ cat > "$tmp/send" <<'STUB'
 printf '%s|%s\n' "$2" "${1%%$'\n'*}" >> "$BYPASSD_TEST_DIR/kinds"
 [ "$2" != bypass-ask ] || printf '%s' "$1" > "$BYPASSD_TEST_DIR/ask"
 printf '%s\n' "$1" >> "$BYPASSD_TEST_DIR/sent"
+env | sort > "$BYPASSD_TEST_DIR/send.fullenv"
 STUB
 cat > "$tmp/launcher" <<'STUB'
 #!/usr/bin/env bash
@@ -38,6 +39,7 @@ if [ "${1:-}" = --dry-run ]; then
 fi
 env | grep -E '^([A-Za-z0-9_]*_OK|WORKER_SESSION_EFFORT|WORKER_SESSION_API_LANE|WORKER_SESSION_API_ACCOUNT|SKIP_FORCE_PUSH_GATE|IMPL_GUARD_DISABLE|SECURITY_REVIEW_NO_FETCH)=' | sort > "$BYPASSD_TEST_DIR/launch.env"
 printf '%s\n' "$@" > "$BYPASSD_TEST_DIR/launch.args"
+env | sort > "$BYPASSD_TEST_DIR/launch.fullenv"
 ps -o sid= -p $$ 2>/dev/null | tr -d ' ' > "$BYPASSD_TEST_DIR/launch.sid"
 echo $$ > "$BYPASSD_TEST_DIR/launch.pid"
 exit "${BYPASSD_TEST_RC:-0}"
@@ -670,7 +672,7 @@ assert_absent "RED B2: a missing flock is not reported as already running" "alre
 env -u CLAUDECODE PATH="$SHIM" SHIM_DATE_ALLOW_D=1 BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" XDG_RUNTIME_DIR="$D/run" \
     bash "$DAEMON" --bucket "$B" --until "$UNTIL" > "$D/second.out" 2>&1
 second_rc=$?
-assert_eq "RED B2: a second daemon on the bucket exits 1" "1" "$second_rc"
+assert_eq "RED B2: a second daemon on the bucket exits 3 (already running has its own code)" "3" "$second_rc"
 assert_contains "RED B2: a second daemon says already running" "bypass-launchd: already running" "$(cat "$D/second.out")"
 stop
 assert_eq "B2: a stopped daemon leaves no lock behind" "none" "$([ -e "$Q/.lock.pid" ] || [ -L "$Q/.lock.pid" ] && echo held || echo none)"
@@ -1097,6 +1099,285 @@ else
     echo "SKIP - unreadable request row (root reads a mode 000 file)"
 fi
 
+echo "== 11031: the daemon as a service unit =="
+mkdir -p "$tmp/bin"
+cat > "$tmp/bin/systemctl" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$BYPASSD_TEST_DIR/systemctl.calls"
+case "$*" in
+    *show-environment*) cat "$BYPASSD_TEST_DIR/session.env" 2>/dev/null; exit 0 ;;
+    *"-p MainPID"*)
+        [ -z "${STUB_MAINPID:-}" ] || { echo "$STUB_MAINPID"; exit 0; }
+        found=0; p=$PPID
+        while [ "${p:-0}" -gt 1 ]; do
+            case "$(ps -p "$p" -o args= 2>/dev/null)" in *"$BYPASSD_TEST_DAEMON"*) found=$p ;; esac
+            p=$(ps -p "$p" -o ppid= 2>/dev/null | tr -d ' ')
+        done
+        echo "$found" ;;
+esac
+exit 0
+STUB
+cat > "$tmp/bin/loginctl" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+    *show-user*) echo c1 ;;
+    *show-session*) cat "$BYPASSD_TEST_DIR/logind.display" 2>/dev/null ;;
+esac
+exit 0
+STUB
+cat > "$tmp/bin/getent" <<'STUB'
+#!/usr/bin/env bash
+if [ "${1:-}" = passwd ] && [ -n "${STUB_HOME:-}" ]; then echo "tester:x:$(id -u):$(id -g)::$STUB_HOME:/bin/bash"; exit 0; fi
+exec /usr/bin/getent "$@"
+STUB
+cat > "$tmp/bin/systemd-notify" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$BYPASSD_TEST_DIR/notify.log"
+STUB
+chmod +x "$tmp/bin/systemctl" "$tmp/bin/loginctl" "$tmp/bin/getent" "$tmp/bin/systemd-notify"
+printf 'import socket, sys\ns = socket.socket(socket.AF_UNIX)\ns.bind(sys.argv[1])\n' > "$tmp/mksock.py"
+mksock() { python3 -I "$tmp/mksock.py" "$1"; }
+clean_session() {
+    mkdir -p "$D/run"; : > "$D/xauth"
+    mksock "$D/run/wayland-9"; mksock "$D/run/bus"
+    printf ':7\n' > "$D/logind.display"
+    printf 'DISPLAY=:7\nWAYLAND_DISPLAY=wayland-9\nXAUTHORITY=%s\nXDG_SESSION_TYPE=x11\nXDG_CURRENT_DESKTOP=KDE\nDBUS_SESSION_BUS_ADDRESS=unix:path=/evil/bus\nBASH_ENV=/tmp/evil\n' "$D/xauth" > "$D/session.env"
+}
+SVC_ENV=(BYPASSD_SERVICE=1 BYPASSD_CHILD_PASS="BYPASSD_TEST_DIR BYPASSD_TEST_RC BYPASSD_TEST_DAEMON")
+SVC_BASH=(bash)
+start_svc() {
+    local u=$1; shift
+    env -u CLAUDECODE -u NOTIFY_SOCKET -u INVOCATION_ID "${SVC_ENV[@]}" BYPASSD_TEST_DIR="$D" BYPASSD_TEST_DAEMON="$DAEMON" STUB_HOME="$D/home" \
+        BYPASSD_SEND="$tmp/send" BYPASSD_LAUNCHER="$tmp/launcher" BYPASSD_POLL=0.1 BYPASSD_SETTLE=0.5 \
+        BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" XDG_RUNTIME_DIR="$D/run" PATH="$tmp/bin:$PATH" \
+        "$@" "${SVC_BASH[@]}" "$DAEMON" --bucket "$B" --until "$u" > "$D/daemon.out" 2>&1 &
+    DPID=$!
+}
+run_svc() {
+    local u=$1; shift
+    env -u CLAUDECODE -u NOTIFY_SOCKET -u INVOCATION_ID "${SVC_ENV[@]}" BYPASSD_TEST_DIR="$D" BYPASSD_TEST_DAEMON="$DAEMON" STUB_HOME="$D/home" \
+        BYPASSD_SEND="$tmp/send" BYPASSD_LAUNCHER="$tmp/launcher" BYPASSD_POLL=0.1 BYPASSD_SETTLE=0.5 \
+        BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" XDG_RUNTIME_DIR="$D/run" PATH="$tmp/bin:$PATH" \
+        "$@" timeout 5 "${SVC_BASH[@]}" "$DAEMON" --bucket "$B" --until "$u" 2>&1 # gnu-ok: portable-timeout.sh above supplies a timeout on macOS
+}
+old_hb() { touch -t "$(date -u -d '-10 min' +%Y%m%d%H%M.%S 2>/dev/null || date -u -v-10M +%Y%m%d%H%M.%S)" "$1"; }
+CHIEF=HIMMEL-nextleg-2026-11-13A-roadmap-chief
+
+echo "-- forever is bound to the unit's own main process (M1) --"
+setup_repo forever-hand
+out=$(run_svc forever STUB_MAINPID=1); rc=$?
+assert_eq "RED 11031 M1: BYPASSD_SERVICE=1 set by hand (the manager's MainPID is another pid) refuses forever" 2 "$rc"
+assert_contains "11031 M1: the refusal names the service unit" "service unit" "$out"
+setup_repo forever-noflag
+out=$(run_svc forever BYPASSD_SERVICE=); rc=$?
+assert_eq "11031 M1: forever without BYPASSD_SERVICE is refused" 2 "$rc"
+assert_contains "11031 M1: and says why" "service unit" "$out"
+setup_repo forever-cap
+FAR="$(date -u -d '+10 days' +%F 2>/dev/null || date -u -v+10d +%F)"
+out=$(run_svc "$FAR"); rc=$?
+assert_eq "11031: a dated --until past 7 days is still refused under the unit's variable" 2 "$rc"
+assert_contains "11031: with the old cap message" "at most 7 days ahead" "$out"
+setup_repo forever-claude
+out=$(env CLAUDECODE=1 BYPASSD_SERVICE=1 BYPASSD_TEST_DAEMON="$DAEMON" PATH="$tmp/bin:$PATH" BYPASSD_TEST_DIR="$D" BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" \
+    XDG_RUNTIME_DIR="$D/run" timeout 5 bash "$DAEMON" --bucket "$B" --until forever 2>&1); rc=$? # gnu-ok: portable-timeout.sh above supplies a timeout on macOS
+assert_eq "11031: the CLAUDECODE refusal still holds for forever" 2 "$rc"
+assert_contains "11031: and says so" "refusing to start from inside a Claude session" "$out"
+
+echo "-- a service daemon: forever, heartbeat, .loaded, launch deadline, session env, child environment --"
+setup_repo forever-run
+clean_session
+start_svc forever NOTIFY_SOCKET="$D/notify.sock" WATCHDOG_USEC=300000000 WATCHDOG_PID=1 HOME=/tmp/evilhome CLAUDE_CONFIG_DIR=/tmp/evilcfg \
+    HEADED_ARM_WORKER_CLAUDE_BIN=/tmp/evilbin HEADED_ARM_WORKER_SYSTEMD_RUN=/tmp/evilrun HEADED_ARM_WORKER_SHIM=/tmp/evilshim HEADED_ARM_REPO=/tmp/evilrepo \
+    HIMMEL_MESSAGE_CLASSES=/tmp/evilclasses HIMMEL_TEST_FIXTURE=1 GIT_CONFIG_COUNT=1 TMPDIR=/tmp/eviltmp
+wait_for "$Q/daemon.log" "start pid="
+assert_contains "RED 11031: the unit's own main process starts with until=forever" "until=forever" "$(start_line)"
+assert_eq "11031: and is still running" yes "$(kill -0 "$DPID" 2>/dev/null && echo yes || echo no)"
+for _ in $(seq 50); do [ -e "$Q/.heartbeat" ] && break; sleep 0.1; done
+assert_eq "RED 11031: it keeps a heartbeat file in the queue" yes "$([ -e "$Q/.heartbeat" ] && echo yes || echo no)"
+s=$(g -C "$R" rev-parse "HEAD:$DAEMON_REL"); t=$(g -C "$R" rev-parse "HEAD:$TIER_REL"); r=$(g -C "$R" rev-parse "HEAD:$REG_REL")
+assert_eq "RED 11031 m2: .loaded holds the full 40-hex ids (self/tiers/registry)" "$s/$t/$r" "$(cat "$Q/.loaded" 2>/dev/null)"
+assert_contains "RED 11031: the daemon sends READY" "--ready" "$(cat "$D/notify.log" 2>/dev/null)"
+code=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $code"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+dl=$(sed -n '/\/sig-/{n;p;}' "$D/launch.args" 2>/dev/null)
+now=$(date +%s)
+if [[ "$dl" =~ ^[0-9]+$ ]] && [ "$dl" -gt "$now" ] && [ "$dl" -le $((now + 21600 + 60)) ]; then pass "RED 11031: under forever the launcher's deadline is now + the go's 6 h, never forever"
+else fail "RED 11031: under forever the launcher's deadline is now + the go's 6 h, never forever" "$dl"; fi
+PWHOME="$D/home"
+ALLOWED='HOME|USER|LOGNAME|PATH|LANG|XDG_RUNTIME_DIR|TMPDIR|HANDOVER_DIR|TELEGRAM_ACCESS_PATH|BRIDGE_ROOT|DBUS_SESSION_BUS_ADDRESS|DISPLAY|WAYLAND_DISPLAY|XAUTHORITY|XDG_SESSION_TYPE|XDG_CURRENT_DESKTOP|WORKER_SESSION_EFFORT|WORKER_SESSION_API_LANE|WORKER_SESSION_API_ACCOUNT|HIMMEL_[A-Z0-9_]*_OK|BYPASSD_TEST_DIR|BYPASSD_TEST_RC|BYPASSD_TEST_DAEMON|_|PWD|SHLVL|OLDPWD'
+for who in launch send; do
+    full=$(cat "$D/$who.fullenv" 2>/dev/null)
+    assert_eq "RED 11031 N1: the $who child gets only allowlisted names" "" "$(printf '%s\n' "$full" | cut -d= -f1 | grep -v -x -E "$ALLOWED")"
+    for n in CLAUDE_CONFIG_DIR HEADED_ARM_WORKER_CLAUDE_BIN HEADED_ARM_WORKER_SYSTEMD_RUN HEADED_ARM_WORKER_SHIM HEADED_ARM_REPO HIMMEL_MESSAGE_CLASSES \
+        HIMMEL_TEST_FIXTURE GIT_CONFIG_COUNT NOTIFY_SOCKET WATCHDOG_USEC WATCHDOG_PID INVOCATION_ID BYPASSD_SERVICE BASH_ENV TMPDIR; do
+        assert_absent "RED 11031 N1: the $who child does not inherit $n" "$n=" "$full"
+    done
+    assert_contains "RED 11031 N1: the $who child's HOME is the passwd home, not the injected one" "HOME=$PWHOME" "$full"
+done
+svcenv=$(cat "$D/launch.fullenv" 2>/dev/null)
+assert_contains "RED 11031 N4: a child's PATH has the user's two directories after the daemon's own" ":$D/home/.local/bin:$D/home/.bun/bin" "$(printf '%s\n' "$svcenv" | grep '^PATH=')"
+assert_contains "RED 11031 M4: the verified display reaches the launcher" "DISPLAY=:7" "$svcenv"
+assert_contains "11031 M4: and the wayland display" "WAYLAND_DISPLAY=wayland-9" "$svcenv"
+assert_contains "11031 M4: and the xauthority file" "XAUTHORITY=$D/xauth" "$svcenv"
+assert_contains "RED 11031 N2: the bus address is the pinned one, not the manager's" "DBUS_SESSION_BUS_ADDRESS=unix:path=$D/run/bus" "$svcenv"
+stop
+
+echo "-- the session environment is data, checked, and a failure refuses before the ask (N2) --"
+session_case() {
+    local name=$1 disp=$2 want=$3; shift 3
+    setup_repo "$name"; clean_session
+    printf '%s\n' "$disp" > "$D/logind.display"
+    printf '%s\n' "$@" > "$D/session.env"
+    start_svc "$UNTIL"
+    printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CHIEF" recommend=go > "$Q/s.req"
+    wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT"
+    assert_contains "RED 11031 N2 ($name): the request is refused in preflight naming the check" "$want" "$(grep REFUSED-PREFLIGHT "$Q/daemon.log" 2>/dev/null)"
+    assert_eq "11031 N2 ($name): the operator was never asked" "" "$(cat "$D/ask" 2>/dev/null)"
+    assert_eq "11031 N2 ($name): nothing in the value was executed" no "$([ -e "$D/pwned" ] && echo yes || echo no)"
+    stop
+}
+setup_repo seed-dir
+session_case n2-inject :7 "session env: DISPLAY" "DISPLAY=:7; touch $D/pwned" "XDG_SESSION_TYPE=x11"
+session_case n2-quoted :7 "session env: DISPLAY" "DISPLAY=\$'\\x3a7'" "XDG_SESSION_TYPE=x11"
+session_case n2-not-logind :7 "session env: DISPLAY" "DISPLAY=:9" "XDG_SESSION_TYPE=x11"
+session_case n2-no-wayland-socket :7 "session env: WAYLAND_DISPLAY" "DISPLAY=:7" "WAYLAND_DISPLAY=wayland-3" "XDG_SESSION_TYPE=x11"
+session_case n2-xauth-relative :7 "session env: XAUTHORITY" "DISPLAY=:7" "XAUTHORITY=relative/path" "XDG_SESSION_TYPE=x11"
+session_case n2-xauth-missing :7 "session env: XAUTHORITY" "DISPLAY=:7" "XAUTHORITY=/nonexistent/xauth" "XDG_SESSION_TYPE=x11"
+session_case n2-type :7 "session env: XDG_SESSION_TYPE" "DISPLAY=:7" "XDG_SESSION_TYPE=x11; touch $D/pwned"
+session_case n2-none "" "no graphical session"
+
+echo "-- READY comes before the first stop-file check; an idle daemon keeps sending WATCHDOG=1 (M7) --"
+setup_repo ready-first
+clean_session
+touch "$Q/stop"
+start_svc forever NOTIFY_SOCKET="$D/notify.sock"
+wait "$DPID" 2>/dev/null; DPID=""
+assert_eq "RED 11031 M7: a daemon that finds a stop file at start has already sent READY" "--ready" "$(sed -n 1p "$D/notify.log" 2>/dev/null | sed 's/^ *//' | cut -d' ' -f1)"
+rm -f "$Q/stop"
+setup_repo idle-notify
+clean_session
+start_svc forever NOTIFY_SOCKET="$D/notify.sock"
+wait_for "$Q/daemon.log" "start pid="
+sleep 2
+n=$(grep -c 'WATCHDOG=1' "$D/notify.log" 2>/dev/null)
+if [ "${n:-0}" -ge 5 ]; then pass "RED 11031 M7: an idle daemon sends WATCHDOG=1 on every pass (saw $n in 2 s)"; else fail "RED 11031 M7: an idle daemon sends WATCHDOG=1 on every pass" "${n:-0}"; fi
+assert_absent "11031 M7: systemd-notify is called to wait (never --no-block)" "--no-block" "$(cat "$D/notify.log" 2>/dev/null)"
+stop
+setup_repo hung-send
+clean_session
+printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$D/slowsend"; chmod +x "$D/slowsend"
+start_svc "$UNTIL" BYPASSD_SEND="$D/slowsend" BYPASSD_CALL_TIMEOUT=1
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CHIEF" recommend=go > "$Q/h.req"
+wait_for "$Q/daemon.log" "send failed"
+assert_contains "RED 11031 M7: a send that hangs is cut off at the call bound and the loop goes on" "send failed" "$(cat "$Q/daemon.log" 2>/dev/null)"
+stop
+
+echo "-- the manager's environment is not trusted: HOME and the trust paths (C2, N1) --"
+REALHOME=$(python3 -I -c 'import pwd, os; print(pwd.getpwuid(os.getuid()).pw_dir)')
+SVC_BASH=(bash -p)
+setup_repo c2-managed
+out=$(run_svc "$UNTIL" INVOCATION_ID=unit-1 HOME="$REALHOME")
+all="$out $(cat "$Q/daemon.log" 2>/dev/null)"
+assert_contains "RED 11031 C2: under the manager the operator-id file is the default under the passwd home" "$REALHOME/.claude/channels/telegram/access.json" "$all"
+assert_absent "RED 11031 C2: the injected operator-id file is not used" "$D/access.json" "$all"
+assert_absent "RED 11031 C2: nor the injected bridge journal" "$D/bridge" "$all"
+setup_repo n1-home
+mkdir -p "$D/other"
+out=$(run_svc "$UNTIL" INVOCATION_ID=unit-1 HOME="$D/other"); rc=$?
+assert_eq "RED 11031 N1: under the manager a HOME that differs from the passwd home refuses to start" 2 "$rc"
+assert_contains "11031 N1: and names the injected home" "$D/other" "$out"
+assert_contains "11031 N1: and the passwd one" "$REALHOME" "$out"
+SVC_BASH=(bash)
+setup_repo c2-hand
+start_svc "$UNTIL"
+wait_for "$Q/daemon.log" "start pid="
+assert_contains "11031 C2 control: without the manager's marker the seam is honoured, as today" "access=$D/access.json" "$(start_line)"
+stop
+
+echo "-- the daemon's own shell and PATH do not follow the manager's environment (N3, N4) --"
+run_chk() {
+    env -u CLAUDECODE -u NOTIFY_SOCKET BYPASSD_SERVICE=1 INVOCATION_ID=unit-1 HOME="$REALHOME" "$@" timeout 8 "${SVC_BASH[@]}" "$DAEMON" --check --bucket "$B" 2>&1 # gnu-ok: portable-timeout.sh above supplies a timeout on macOS
+}
+setup_repo n3-shell
+printf 'touch %s\n' "$D/benv-marker" > "$D/benv"
+SVC_BASH=(bash -p)
+out=$(run_chk SHELLOPTS=xtrace PS4="\$(touch $D/ps4-marker)"); rc=$?
+assert_eq "RED 11031 N3: under bash -p a SHELLOPTS=xtrace with a command-substituting PS4 leaves no marker" no "$([ -e "$D/ps4-marker" ] && echo yes || echo no)"
+assert_eq "11031 N3: and the managed --check still answers" 0 "$rc"
+out=$(run_chk BASH_ENV="$D/benv")
+assert_eq "RED 11031 N3: under bash -p a BASH_ENV file is not sourced" no "$([ -e "$D/benv-marker" ] && echo yes || echo no)"
+SVC_BASH=(bash)
+out=$(run_chk SHELLOPTS=xtrace PS4="\$(touch $D/ps4-control)"); rc=$?
+assert_eq "11031 N3 control: without -p the same environment DOES run the planted command" yes "$([ -e "$D/ps4-control" ] && echo yes || echo no)"
+assert_eq "RED 11031 N3: the managed script started without bash -p exits 2" 2 "$rc"
+assert_contains "11031 N3: and says why" "without bash -p" "$out"
+SVC_BASH=(bash -p)
+setup_repo n4-plant
+mkdir -p "$D/plant"
+for t in git jq; do
+    printf '#!/bin/sh\ntouch "%s/planted-%s"\nexec %s "$@"\n' "$D" "$t" "$(command -v "$t")" > "$D/plant/$t"; chmod +x "$D/plant/$t"
+done
+out=$(run_chk PATH="$D/plant:$PATH"); rc=$?
+assert_eq "RED 11031 N4: under the manager a planted git first on PATH is never run" no "$([ -e "$D/planted-git" ] && echo yes || echo no)"
+assert_eq "RED 11031 N4: nor a planted jq" no "$([ -e "$D/planted-jq" ] && echo yes || echo no)"
+assert_eq "11031 N4: and the managed --check still answers" 0 "$rc"
+env -u CLAUDECODE PATH="$D/plant:$PATH" bash "$DAEMON" --check --bucket "$B" >/dev/null 2>&1
+assert_eq "11031 N4 control: an unmanaged start DOES run the planted git" yes "$([ -e "$D/planted-git" ] && echo yes || echo no)"
+SVC_BASH=(bash)
+assert_contains "RED 11031 N4: the daemon calls bun by the absolute path under the passwd home" '.bun/bin/bun' "$(cat "$REPO_ROOT/$DAEMON_REL")"
+
+echo "-- an ask in flight survives a restart (M3) --"
+setup_repo pending
+clean_session
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CHIEF" recommend=go > "$Q/p.req.pending"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CHIEF" recommend=go "granted_at=2026-11-24T20:00:00Z" "go=ABC234" > "$Q/g.req.pending"
+start_svc "$UNTIL"
+wait_for "$Q/daemon.log" "ASK HIMMEL-1-N1-sweep-pr1"
+assert_contains "RED 11031 M3: a pending ask with no grant is requeued" "REQUEUE p.req" "$(cat "$Q/daemon.log")"
+assert_contains "RED 11031 M3: and asked again" "ASK HIMMEL-1-N1-sweep-pr1" "$(cat "$Q/daemon.log")"
+assert_eq "RED 11031 M3: a pending request that carries a grant is not re-run" "g.req.failed" "$(cd "$Q" && printf '%s\n' g.req* | tr '\n' ' ' | sed 's/ $//')"
+assert_contains "11031 M3: and the log says it was interrupted" "INTERRUPTED g.req" "$(cat "$Q/daemon.log")"
+stop
+
+echo "-- exit 3 means already running and nothing else (M6) --"
+setup_repo exit3
+start_svc "$UNTIL"
+wait_for "$Q/daemon.log" "start pid="
+out=$(run_svc "$UNTIL"); rc=$?
+assert_eq "RED 11031 M6: a second daemon on the bucket exits 3" 3 "$rc"
+assert_contains "11031 M6: and says already running" "bypass-launchd: already running" "$out"
+stop
+
+echo "-- the macOS-style watcher (no NOTIFY_SOCKET) (M8) --"
+setup_repo watcher-fresh
+old_hb "$Q/.heartbeat"
+start_svc "$UNTIL" BYPASSD_WATCHDOG_SECS=2 BYPASSD_WATCHDOG_TICK=1
+wait_for "$Q/daemon.log" "start pid="
+sleep 3
+assert_eq "RED 11031 M8: a stale heartbeat file left by the last run does not get the new daemon killed" yes "$(kill -0 "$DPID" 2>/dev/null && echo yes || echo no)"
+WPID=$(sed -n 's/.*watchdog pid=\([0-9]*\).*/\1/p' "$Q/daemon.log" | head -n 1)
+assert_eq "11031 M8: the daemon logs its watcher's pid" yes "$([[ "$WPID" =~ ^[0-9]+$ ]] && echo yes || echo no)"
+kill -STOP "$DPID"
+for _ in $(seq 80); do kill -0 "$DPID" 2>/dev/null || break; sleep 0.1; done
+assert_eq "RED 11031 M8: a daemon whose heartbeat stopped is killed by its own watcher" no "$(kill -0 "$DPID" 2>/dev/null && echo yes || echo no)"
+wait "$DPID" 2>/dev/null; DPID=""
+sleep 1.5
+assert_eq "RED 11031 M8: the watcher exits when its main is gone" no "$([ -n "$WPID" ] && kill -0 "$WPID" 2>/dev/null && echo yes || echo no)"
+sleep 100 & OTHER=$!
+old_hb "$Q/.heartbeat"
+env -u CLAUDECODE timeout 6 bash "$DAEMON" --watch "$OTHER" "$Q/.heartbeat" 2 1 >/dev/null 2>&1 # gnu-ok: portable-timeout.sh above supplies a timeout on macOS
+assert_eq "RED 11031 M8: the watcher never kills a pid that is not bypass-launchd.sh (a reused pid)" yes "$(kill -0 "$OTHER" 2>/dev/null && echo yes || echo no)"
+kill "$OTHER" 2>/dev/null; wait "$OTHER" 2>/dev/null
+
+echo "-- the STALE hold names the way back under the unit (m3) --"
+setup_repo stale-svc
+start_svc "$UNTIL"
+wait_for "$Q/daemon.log" "start pid="
+printf '# a later change\n' >> "$R/$DAEMON_REL"; g -C "$R" commit -q -am "later change"
+wait_for "$D/sent" "himmelctl bypass restart"
+assert_contains "RED 11031 m3: under the unit the hold text names himmelctl bypass restart" "himmelctl bypass restart" "$(cat "$D/sent" 2>/dev/null)"
+stop
 echo
 echo "bypass-launchd: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

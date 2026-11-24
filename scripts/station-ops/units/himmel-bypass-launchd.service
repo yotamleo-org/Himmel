@@ -1,0 +1,41 @@
+# himmel-bypass-launchd.service: systemd USER unit for the bypass launch daemon (scripts/station-ops/bypass-launchd.sh).
+# Written by `himmelctl bypass on` (scripts/station-ops/bypass-service.sh), which fills in the placeholders; re-run it rather than
+# editing the installed copy. Spec: docs/internals/bypass-launch-route.md, "Run it as a service".
+#
+# The daemon reads trust inputs from its environment (the operator id file, the inbound journal, HOME), and any process of the same user can
+# change the user manager's environment with `systemctl --user set-environment`. So the unit pins what the script reads, unsets the names bash
+# and the loader honour, and starts bash as `-p` (privileged mode ignores BASH_ENV, ENV, SHELLOPTS, BASHOPTS, CDPATH, GLOBIGNORE and imported
+# functions); the script refuses to run under the manager without -p and runs every child from an empty environment plus an allowlist.
+# PATH holds system directories only: a user directory first would let a planted git, jq or loginctl answer the checks.
+# NotifyAccess=all because the heartbeat is sent by systemd-notify, a child of the main process. The unit sets no privilege-lock flag on purpose: launched workers keep sudo.
+# KillMode=process so a restart never kills the workers the daemon launched (each is setsid-detached).
+# RestartPreventExitStatus=3 is "already running"; every other failure, a signal death and a watchdog timeout restart.
+[Unit]
+Description=himmel bypass launch daemon (go-code route)
+After=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=notify
+NotifyAccess=all
+WatchdogSec=300
+Environment=BYPASSD_SERVICE=1
+Environment=HOME=%h
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=LC_ALL=C
+Environment=TZ=UTC
+Environment=XDG_RUNTIME_DIR=%t
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
+Environment=TELEGRAM_ACCESS_PATH=%h/.claude/channels/telegram/access.json
+Environment=BRIDGE_ROOT=%h/.claude/handover/bridge
+@HANDOVER_DIR_LINE@
+UnsetEnvironment=BYPASSD_LAUNCHER BYPASSD_SEND BYPASSD_POLL BYPASSD_SETTLE BYPASSD_TTL BYPASSD_CALL_TIMEOUT BYPASSD_WATCHDOG_SECS BYPASSD_WATCHDOG_TICK BYPASSD_CONFIRM_SECS BYPASSD_CHILD_PASS BASH_ENV ENV SHELLOPTS BASHOPTS PS4 CDPATH GLOBIGNORE POSIXLY_CORRECT TMOUT LOCPATH GCONV_PATH LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT
+ExecStart=/bin/bash -p @HIMMEL_ROOT@/scripts/station-ops/bypass-launchd.sh --bucket @BUCKET@ --until forever
+Restart=on-failure
+RestartSec=10
+RestartPreventExitStatus=3
+KillMode=process
+
+[Install]
+WantedBy=default.target

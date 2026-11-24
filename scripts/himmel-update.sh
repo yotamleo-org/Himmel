@@ -1622,6 +1622,7 @@ STATUS_cron_runner_migration="";      DETAIL_cron_runner_migration=""
 STATUS_t3_providers="";               DETAIL_t3_providers=""
 # The config UI rebuild + service restart is advisory too: its row prints only when the pulled range touched scripts/config-ui.
 STATUS_config_ui="";                  DETAIL_config_ui=""
+STATUS_bypass_daemon="";              DETAIL_bypass_daemon=""
 # probe-mode station tools (rtk, ...) are advisory too.
 # Their count is registry-driven, so rows accumulate here as "name|status|detail"
 # lines (written by sync_probe_tools, read back by print_status_table) instead of
@@ -1914,6 +1915,36 @@ update_config_ui() {
     rm -f "$pending"
     STATUS_config_ui="updated"; DETAIL_config_ui="bundle rebuilt; $unit not active, nothing restarted"
     return 0
+}
+
+update_bypass_daemon() {
+    local mode="$1" svc="$ROOT/scripts/station-ops/bypass-service.sh" out rc line arg=()
+    [ -f "$svc" ] || return 0
+    if [ "$mode" != "check" ] && [ "$(git -C "$ROOT" rev-parse --path-format=absolute --git-dir 2>/dev/null)" != "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ]; then
+        return 0
+    fi
+    [ "$mode" != "check" ] || arg=(--check)
+    out=$(bash "$svc" restart-if-changed ${arg[@]+"${arg[@]}"} 2>&1); rc=$?
+    line=$(printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | head -n 1)
+    case "$line" in
+        current*) return 0 ;;
+        restarted*)
+            echo ""; echo "==> bypass launch daemon"; echo "    $line"
+            STATUS_bypass_daemon="updated"; DETAIL_bypass_daemon="its script changed; the unit was restarted through the service manager"
+            return 0 ;;
+        "would restart"*)
+            STATUS_bypass_daemon="skipped"; DETAIL_bypass_daemon="check mode — would restart the bypass daemon unit (its script changed)"
+            return 0 ;;
+        not-enabled:*|inactive:*)
+            if [ "$mode" != "force" ] && [ ! -f "$HOME/.himmel/state/bypass-service/config" ]; then return 0; fi
+            echo ""; echo "==> bypass launch daemon"; echo "    $line"
+            STATUS_bypass_daemon="skipped"; DETAIL_bypass_daemon="${line#*: }"
+            return 0 ;;
+    esac
+    echo ""; echo "==> bypass launch daemon"; echo "    ${line:-no answer from bypass-service.sh}"
+    STATUS_bypass_daemon="failed"; DETAIL_bypass_daemon="${line#failed: }"
+    [ -n "$line" ] || DETAIL_bypass_daemon="bypass-service.sh restart-if-changed gave no answer (rc $rc)"
+    return 1
 }
 
 # 4. qmd fork update. qmd ships from the himmel FORK, pinned by commit SHA
@@ -2331,6 +2362,9 @@ EOF
     fi
     if [ -n "$STATUS_config_ui" ]; then
         printf '    %-14s %-14s %s\n' "config_ui" "$STATUS_config_ui" "$DETAIL_config_ui"
+    fi
+    if [ -n "$STATUS_bypass_daemon" ]; then
+        printf '    %-14s %-14s %s\n' "bypass_daemon" "$STATUS_bypass_daemon" "$DETAIL_bypass_daemon"
     fi
     if [ -n "$STATUS_t3_providers" ]; then
         printf '    %-14s %-14s %s\n' "t3_providers" "$STATUS_t3_providers" "$DETAIL_t3_providers"
@@ -3741,7 +3775,7 @@ Modes:
   --versions          one row per component — installed vs available, behind
                       marked; read-only. Exit 0 all current, 1 any behind,
                       3 none behind but some could not be determined
-  --only <item>       run ONE step: pull marketplace jira_cli config_ui qmd_fork hermes
+  --only <item>       run ONE step: pull marketplace jira_cli config_ui bypass_daemon qmd_fork hermes
                       luna_template graphify graph cli_proxy marketplaces toolchain tools
                       drift drift-check (installer-drift pass; -check is read-only)
                       plugin-refresh (reinstall a same-version plugin cache that
@@ -3873,7 +3907,7 @@ fi
 if [ "${1:-}" = "--only" ]; then
     only_item="${2:-}"
     if [ -z "$only_item" ]; then
-        echo "update --only: needs an item — one of: pull marketplace jira_cli config_ui qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration t3_providers" >&2
+        echo "update --only: needs an item — one of: pull marketplace jira_cli config_ui bypass_daemon qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration t3_providers" >&2
         exit 2
     fi
     branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
@@ -3894,6 +3928,7 @@ if [ "${1:-}" = "--only" ]; then
         marketplace)   update_marketplace apply || only_rc=1 ;;
         jira_cli)      update_jira_cli apply    || only_rc=1 ;;
         config_ui)     update_config_ui force   || only_rc=1 ;;
+        bypass_daemon) update_bypass_daemon force || only_rc=1 ;;
         qmd_fork)      update_qmd_fork apply    || only_rc=1 ;;
         hermes)        run_hermes_step apply    || only_rc=1 ;;
         luna_template) update_luna_template apply || only_rc=1 ;;
@@ -3920,7 +3955,7 @@ if [ "${1:-}" = "--only" ]; then
         env_migration) run_env_migration apply || only_rc=1 ;;
         t3_providers)  sync_t3_providers || only_rc=1 ;;
         *)
-            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli config_ui qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration t3_providers" >&2
+            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli config_ui bypass_daemon qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration t3_providers" >&2
             exit 2 ;;
     esac
     report_qmd_daemon_restart
@@ -3994,6 +4029,7 @@ if [ "${1:-}" = "--check" ] || [ "${1:-}" = "--dry-run" ]; then
     update_marketplace check || true
     update_jira_cli check || true
     update_config_ui check || true
+    update_bypass_daemon check || true
     update_qmd_fork check || true
     run_hermes_step check || true
     update_codex check || true
@@ -4214,6 +4250,7 @@ sync_graphify
 sync_graph apply || true
 # advisory: a failed UI build leaves the running service alone and shows in the status table, never aborts the update.
 update_config_ui apply || true
+update_bypass_daemon apply || true
 # `|| true`: a failed cli-proxy roll must never abort a himmel update. The
 # function now returns non-zero so `--only cli_proxy` can report it (above);
 # here the advisory contract still applies.

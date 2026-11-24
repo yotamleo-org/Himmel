@@ -7,8 +7,11 @@
 #
 # The operator starts it once from their own shell, never from a Claude session (it refuses CLAUDECODE):
 #   nohup bash <repo>/scripts/station-ops/bypass-launchd.sh --bucket <bucket> --until <date> >/dev/null 2>&1 &
-# (on Linux, put setsid before nohup; on macOS a LaunchAgent starts it.)
-# It stops at --until 00:00Z (at most 7 days ahead) or when <bucket>/bypass-queue/stop exists.
+# (on Linux, put setsid before nohup.) Or `himmelctl bypass on` installs the service unit (systemd user unit, macOS LaunchAgent)
+# that starts it as /bin/bash -p ... --until forever; docs/internals/bypass-launch-route.md, "Run it as a service".
+# It stops at --until 00:00Z (at most 7 days ahead) or when <bucket>/bypass-queue/stop exists. `--until forever` is accepted only
+# under the unit: BYPASSD_SERVICE=1 and the service manager's own main process is this pid (systemctl --user show -p MainPID, or
+# launchctl print). A Claude session can still start the unit with plain systemctl/launchctl calls (a separate follow-up ticket adds the Bash guard).
 #
 # A chief requests a launch by writing <bucket>/bypass-queue/<anything>.req holding these lines:
 #   brief=<absolute brief path directly in the bucket>   model=<allowlisted model id>   chief=<chief session name>
@@ -34,18 +37,65 @@
 # --request, the request check the loop runs. It prints accepted or refused: <reason>, then daemon: none, daemon: live
 # pid=<p> or daemon: live pid=<p>, holding (<cause>). It takes no lock and sends nothing. Exit 0 accepted, 1 refused,
 # 2 a start check failed.
-# Exit 0 stopped or expired; 1 already running; 2 refused to start.
+# Exit 0 stopped or expired; 3 already running (the only code the unit does not restart); 2 refused to start; 1 any other failure.
+# Under the unit (BYPASSD_SERVICE=1 plus the manager's marker: INVOCATION_ID on Linux, XPC_SERVICE_NAME=com.himmel.bypass-launchd on
+# macOS) the manager's environment is not trusted: it must run as bash -p, takes HOME from the passwd entry (refusing a differing
+# $HOME), pins PATH to the system directories, ignores every BYPASSD_* seam and TELEGRAM_ACCESS_PATH / BRIDGE_ROOT, and runs every
+# child (launcher, preflight, fleet-manifest, sender) from an empty environment plus a named allowlist (child_base below).
 set -uo pipefail
+
+die() { echo "bypass-launchd: $*" >&2; exit 2; }
+SERVICE='' MANAGED='' PW_HOME=''
+[ "${BYPASSD_SERVICE:-}" = 1 ] && SERVICE=1
+if [ -n "$SERVICE" ]; then
+    if [ "$(uname -s)" = Darwin ]; then [ "${XPC_SERVICE_NAME:-}" = com.himmel.bypass-launchd ] && MANAGED=1
+    else [ -n "${INVOCATION_ID:-}" ] && MANAGED=1; fi
+fi
+watch_main() {
+    local main=$1 f=$2 secs=$3 tick=$4 args mt now
+    while :; do
+        sleep "$tick"
+        kill -0 "$main" 2>/dev/null || return 0
+        args=$(ps -p "$main" -o args= 2>/dev/null)
+        case $args in *bypass-launchd.sh*) ;; *) return 0 ;; esac
+        mt=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null) || mt=0
+        now=$(date +%s)
+        if [ $((now - mt)) -gt "$secs" ]; then kill -9 "$main" 2>/dev/null; return 0; fi
+    done
+}
+if [ "${1:-}" = --watch ]; then
+    [ -z "${CLAUDECODE:-}" ] || die "refusing to start from inside a Claude session; the operator starts it from their own shell"
+    [ $# -eq 5 ] || die "usage: --watch <pid> <file> <secs> <tick>"
+    watch_main "$2" "$3" "$4" "$5"; exit 0
+fi
+if [ -n "$MANAGED" ]; then
+    case $- in *p*) ;; *) die "refusing to start without bash -p (the unit starts it as /bin/bash -p, so BASH_ENV, SHELLOPTS and BASHOPTS from the manager are ignored)" ;; esac
+    if [ "$(uname -s)" = Darwin ]; then PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin; else PATH=/usr/local/bin:/usr/bin:/bin; fi
+    export PATH LC_ALL=C TZ=UTC
+    unset POSIXLY_CORRECT TMOUT LOCPATH GCONV_PATH BYPASSD_LAUNCHER BYPASSD_SEND BYPASSD_POLL BYPASSD_SETTLE BYPASSD_TTL BYPASSD_CALL_TIMEOUT \
+        BYPASSD_WATCHDOG_SECS BYPASSD_WATCHDOG_TICK BYPASSD_CHILD_PASS TELEGRAM_ACCESS_PATH BRIDGE_ROOT
+    set +o posix
+    if [ "$(uname -s)" = Darwin ]; then unset XDG_RUNTIME_DIR; else XDG_RUNTIME_DIR="/run/user/$(id -u)"; export XDG_RUNTIME_DIR; fi
+fi
+if [ -n "$SERVICE" ]; then
+    if [ "$(uname -s)" = Darwin ]; then PW_HOME=$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | sed -n 's/^NFSHomeDirectory: //p')
+    else PW_HOME=$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6); fi
+    [ -n "$PW_HOME" ] || die "cannot read the passwd home of uid $(id -u)"
+    [ -z "$MANAGED" ] || [ "${HOME:-}" = "$PW_HOME" ] || die "HOME (${HOME:-unset}) differs from the passwd home ($PW_HOME); the unit pins HOME, so the manager's environment was changed"
+fi
+HOMEDIR="${PW_HOME:-$HOME}"
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 KIT="$REPO/scripts/handover/chief-kit"
+[ -z "$SERVICE" ] || . "$REPO/scripts/lib/portable-timeout.sh"
 LAUNCHER="${BYPASSD_LAUNCHER:-$KIT/headed-arm-worker.sh}"
-INBOUND="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/inbound.jsonl"
-ACCESS="${TELEGRAM_ACCESS_PATH:-$HOME/.claude/channels/telegram/access.json}"
+INBOUND="${BRIDGE_ROOT:-$HOMEDIR/.claude/handover/bridge}/inbound.jsonl"
+ACCESS="${TELEGRAM_ACCESS_PATH:-$HOMEDIR/.claude/channels/telegram/access.json}"
 POLL="${BYPASSD_POLL:-5}"
 TTL="${BYPASSD_TTL:-21600}"
-
-die() { echo "bypass-launchd: $*" >&2; exit 2; }
+CALLT="${BYPASSD_CALL_TIMEOUT:-60}"
+WSECS="${BYPASSD_WATCHDOG_SECS:-300}"
+WTICK="${BYPASSD_WATCHDOG_TICK:-30}"
 BUCKET='' until='' CHECK='' REQ_FILE=''
 while [ $# -gt 0 ]; do
     [ "$1" = --check ] && { CHECK=1; shift; continue; }
@@ -58,7 +108,20 @@ done
 [ -n "$BUCKET" ] && [ -d "$BUCKET" ] && [ -d "$BUCKET/bypass-queue" ] || die "usage: bypass-launchd.sh --bucket <dir holding bypass-queue/> --until <YYYY-MM-DD>"
 BUCKET="$(cd "$BUCKET" && pwd -P)"
 Q="$BUCKET/bypass-queue"
-if [ -z "$CHECK" ]; then
+service_bound() {
+    local unit_pid
+    if [ "$(uname -s)" = Darwin ]; then
+        unit_pid=$(launchctl print "gui/$(id -u)/com.himmel.bypass-launchd" 2>/dev/null | sed -n 's/^[[:space:]]*pid = //p' | head -n 1)
+    else
+        unit_pid=$(systemctl --user show -p MainPID --value himmel-bypass-launchd.service 2>/dev/null)
+    fi
+    [ -n "$unit_pid" ] && [ "$unit_pid" = "$$" ]
+}
+if [ -z "$CHECK" ] && [ "$until" = forever ]; then
+    if [ -z "$SERVICE" ] || ! service_bound; then die "--until forever is only for the service unit (BYPASSD_SERVICE=1, and this process is the service manager's own main process)"; fi
+    EXPIRES=9999999999
+    OP="$(jq -r '.allowFrom[0] // empty' "$ACCESS" 2>/dev/null)" && [[ "$OP" =~ ^[1-9][0-9]*$ ]] || die "no operator id (allowFrom[0]) in $ACCESS"
+elif [ -z "$CHECK" ]; then
 [[ "$until" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "--until wants YYYY-MM-DD"
 # BSD date (macOS) has no -d; probe for its -j -f form once, so GNU date keeps the form it always used.
 if date -j -f %Y-%m-%d 2000-01-01 +%s >/dev/null 2>&1; then
@@ -96,7 +159,10 @@ grantable=$(printf '%s\n' "$GRANTABLE" | grep -c .)
 strip=()
 while IFS= read -r n; do strip+=(-u "$n"); done < <({ printf '%s\n' "$REG_NAMES"; printf '%s\n' "$TIER_ROWS" | cut -f1; compgen -e | grep -E '_OK$|_BYPASS'; } | sort -u)
 # macOS has no /run/user (and a read-only /run): its default is the per-user TMPDIR.
-if [ "$(uname -s)" = Darwin ]; then run_dir_default="${TMPDIR:-/tmp}"; run_dir_default="${run_dir_default%/}"; else run_dir_default="/run/user/$(id -u)"; fi
+if [ "$(uname -s)" = Darwin ]; then
+    if [ -n "$MANAGED" ]; then run_dir_default="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null)"; else run_dir_default="${TMPDIR:-/tmp}"; fi
+    run_dir_default="${run_dir_default%/}"
+else run_dir_default="/run/user/$(id -u)"; fi
 W="${XDG_RUNTIME_DIR:-$run_dir_default}/himmel-chief/gen-briefs"
 sha256_of() { { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1" 2>/dev/null; } | cut -d" " -f1; }
 # setsid is util-linux; stock macOS has perl, whose POSIX::setsid does the same before exec.
@@ -105,9 +171,41 @@ elif command -v perl >/dev/null 2>&1; then DETACH=(perl -MPOSIX -e 'POSIX::setsi
 else DETACH=(nohup); fi
 
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >>"$LOG"; }
+heartbeat() {
+    [ -n "$SERVICE" ] || return 0
+    : >"$Q/.heartbeat" 2>/dev/null
+    [ -z "${NOTIFY_SOCKET:-}" ] || systemd-notify WATCHDOG=1 >/dev/null 2>&1 || true
+}
+CHILD_BASE=() SESS=()
+if [ -n "$SERVICE" ]; then
+    CHILD_BASE=(HOME="$HOMEDIR" USER="$(id -un)" LOGNAME="$(id -un)" PATH="$PATH:$HOMEDIR/.local/bin:$HOMEDIR/.bun/bin")
+    [[ "${LANG:-}" =~ ^[A-Za-z]{2,3}(_[A-Za-z]{2})?(\.[A-Za-z0-9-]+)?$ ]] && CHILD_BASE+=(LANG="$LANG")
+    if [ "$(uname -s)" = Darwin ]; then
+        mac_tmp="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null)"; [ -z "$mac_tmp" ] || CHILD_BASE+=(TMPDIR="${mac_tmp%/}")
+    elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then CHILD_BASE+=(XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR"); fi
+    [[ "${HANDOVER_DIR:-}" =~ ^/[A-Za-z0-9._/@+-]+$ ]] && CHILD_BASE+=(HANDOVER_DIR="$HANDOVER_DIR")
+    CHILD_BASE+=(TELEGRAM_ACCESS_PATH="$ACCESS" BRIDGE_ROOT="${INBOUND%/inbound.jsonl}")
+    if [ -z "$MANAGED" ]; then
+        for pass_n in ${BYPASSD_CHILD_PASS:-}; do
+            [[ "$pass_n" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] && CHILD_BASE+=("$pass_n=${!pass_n:-}")
+        done
+    fi
+fi
+BUN="bun"; [ -z "$SERVICE" ] || BUN="$HOMEDIR/.bun/bin/bun"
+child() {
+    local t=$1; shift
+    if [ -n "$SERVICE" ]; then timeout "$t" env -i "${CHILD_BASE[@]}" ${SESS[@]+"${SESS[@]}"} "$@"; else "$@"; fi
+}
 send() {
-    if [ -n "${BYPASSD_SEND:-}" ]; then "$BYPASSD_SEND" "$2" "$1" || log "send failed"; return 0; fi
-    bun "$REPO/scripts/telegram/chief-route.ts" reply --kind "$1" operator "$2" >/dev/null 2>&1 || log "send failed"
+    heartbeat
+    if [ -n "${BYPASSD_SEND:-}" ]; then
+        child "$CALLT" "$BYPASSD_SEND" "$2" "$1" || log "send failed"
+    else
+        [ -z "$SERVICE" ] || [ -x "$BUN" ] || { log "send failed"; return 0; }
+        child "$CALLT" "$BUN" "$REPO/scripts/telegram/chief-route.ts" reply --kind "$1" operator "$2" >/dev/null 2>&1 || log "send failed"
+    fi
+    heartbeat
+    return 0
 }
 sha256_text() { printf '%s' "$1" | { sha256sum 2>/dev/null || shasum -a 256 2>/dev/null; } | cut -d" " -f1; }
 field() { printf '%s\n' "$REQ_TEXT" | sed -n "s/^$1=//p" | head -n 1; }
@@ -118,9 +216,55 @@ req_load() {
 }
 refuse() { mv "$1" "$1.refused"; log "REFUSED $2 $1"; send bypass-result "bypass-launchd refused $(basename "$1"): $2"; }
 live() { [ ! -e "$Q/stop" ] && [ "$(date +%s)" -lt "$EXPIRES" ]; }
+deadline() { if [ "$until" = forever ]; then echo $(( $(date +%s) + TTL )); else echo "$EXPIRES"; fi; }
 launch_env() {
+    local tmo=()
+    if [ -n "$SERVICE" ]; then
+        [ -z "${LE_TIMEOUT:-}" ] || tmo=(timeout "$LE_TIMEOUT")
+        ${tmo[@]+"${tmo[@]}"} env -i "${CHILD_BASE[@]}" ${SESS[@]+"${SESS[@]}"} "${envs[@]}" "$@"
+        return
+    fi
     env "${strip[@]}" -u WORKER_SESSION_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL -u WORKER_SESSION_API_LANE -u WORKER_SESSION_API_ACCOUNT \
         -u HEADED_ARM_LAUNCHER_ENV -u HEADED_ARM_LAUNCHER_ENV_LINES "${envs[@]}" "$@"
+}
+session_env() {
+    local raw="" d w x t c id ld xrd="${XDG_RUNTIME_DIR:-}"
+    SESS=(); SESS_WHY=""
+    if [ "$(uname -s)" = Darwin ]; then
+        sess_get() { printenv "$1" 2>/dev/null | head -n 1; }
+    else
+        raw=$(systemctl --user show-environment 2>/dev/null)
+        sess_get() { printf '%s\n' "$raw" | sed -n "s/^$1=//p" | head -n 1; }
+    fi
+    d=$(sess_get DISPLAY); w=$(sess_get WAYLAND_DISPLAY); x=$(sess_get XAUTHORITY); t=$(sess_get XDG_SESSION_TYPE); c=$(sess_get XDG_CURRENT_DESKTOP)
+    if [ -z "$d" ] && [ -z "$w" ]; then SESS_WHY="no graphical session"; return 1; fi
+    if [ -n "$d" ]; then
+        [[ "$d" =~ ^:[0-9]+(\.[0-9]+)?$ ]] || { SESS_WHY="session env: DISPLAY failed its check"; return 1; }
+        if [ "$(uname -s)" != Darwin ]; then
+            id=$(loginctl show-user "$(id -u)" -p Display --value 2>/dev/null)
+            ld=$(loginctl show-session "$id" -p Display --value 2>/dev/null)
+            [ -n "$ld" ] && [ "$d" = "$ld" ] || { SESS_WHY="session env: DISPLAY failed its check"; return 1; }
+        fi
+        SESS+=(DISPLAY="$d")
+    fi
+    if [ -n "$w" ]; then
+        [[ "$w" =~ ^wayland-[0-9]+$ ]] && [ -S "$xrd/$w" ] || { SESS_WHY="session env: WAYLAND_DISPLAY failed its check"; return 1; }
+        SESS+=(WAYLAND_DISPLAY="$w")
+    fi
+    if [ -n "$x" ]; then
+        [[ "$x" =~ ^/[A-Za-z0-9._/@+-]+$ ]] && [ -f "$x" ] && [ -O "$x" ] || { SESS_WHY="session env: XAUTHORITY failed its check"; return 1; }
+        SESS+=(XAUTHORITY="$x")
+    fi
+    if [ -n "$t" ]; then
+        [[ "$t" =~ ^(x11|wayland|tty|mir)$ ]] || { SESS_WHY="session env: XDG_SESSION_TYPE failed its check"; return 1; }
+        SESS+=(XDG_SESSION_TYPE="$t")
+    fi
+    if [ -n "$c" ]; then
+        [[ "$c" =~ ^[A-Za-z0-9:_-]{1,40}$ ]] || { SESS_WHY="session env: XDG_CURRENT_DESKTOP failed its check"; return 1; }
+        SESS+=(XDG_CURRENT_DESKTOP="$c")
+    fi
+    [ -z "$xrd" ] || [ "$(uname -s)" = Darwin ] || [ ! -S "$xrd/bus" ] || SESS+=(DBUS_SESSION_BUS_ADDRESS="unix:path=$xrd/bus")
+    return 0
 }
 tell_chief() {
     local f="${INBOUND%/*}/consoles/$1.md"
@@ -131,10 +275,14 @@ tell_chief() {
 preflight() {
     local out rc line fl=()
     mkdir -p "$W"
+    heartbeat
+    if [ -n "$SERVICE" ] && ! session_env; then PF_REASON="$SESS_WHY"; return 1; fi
     [ -f "$BUCKET/$chief.fleet.json" ] && fl=(--fleet "$BUCKET/$chief.fleet.json")
-    out=$(launch_env bash "$LAUNCHER" --dry-run --profile worker-impl ${fl[@]+"${fl[@]}"} --chief "$chief" "$base" "$brief" "$W/sig-$base" "$EXPIRES" "$W/$base.log" "$model" 2>&1)
+    out=$(LE_TIMEOUT=$((CALLT * 2)) launch_env bash "$LAUNCHER" --dry-run --profile worker-impl ${fl[@]+"${fl[@]}"} --chief "$chief" "$base" "$brief" "$W/sig-$base" "$(deadline)" "$W/$base.log" "$model" 2>&1)
     rc=$?
+    heartbeat
     [ "$rc" -ne 0 ] || return 0
+    if [ "$rc" -eq 124 ] && [ -n "$SERVICE" ]; then PF_REASON="preflight timed out"; return 1; fi
     line=$(printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | tail -n 1 | LC_ALL=C tr -d '\000-\037' | cut -c1-200)
     PF_REASON="rc=$rc ${line:-refused}"
     return 1
@@ -217,7 +365,11 @@ hold() {
     HOLDING=1
     printf 'cause=%s\nsince=%s\nloaded=%s\ncheckout=%s\n' "$STALE_CAUSE" "$(date -u +%FT%TZ)" "$LOADED" "$CURRENT" >"$Q/.hold"
     log "STALE hold loaded=$LOADED checkout=$CURRENT ($STALE_CAUSE)"
+    if [ -n "$SERVICE" ]; then
+        send bypass-failed "bypass-launchd runs older code than its checkout ($STALE_CAUSE). It reads no request until it restarts: run \`himmelctl bypass restart\` (himmel-update restarts it too)." # t13b-ok: operator-facing text naming the existing bypass daemon, no process is started
+    else
     send bypass-failed "bypass-launchd runs older code than its checkout ($STALE_CAUSE). It reads no request until you restart it: touch $Q/stop, wait for \`stop file\` in daemon.log, remove stop, start it again." # t13b-ok: operator-facing text naming the existing bypass daemon, no process is started
+    fi
 }
 tell_held() {
     local req n
@@ -276,15 +428,36 @@ fi
 
 take_lock; lock_rc=$?
 [ "$lock_rc" -ne 2 ] || exit 2
-[ "$lock_rc" -eq 0 ] || { echo "bypass-launchd: already running"; exit 1; }
+[ "$lock_rc" -eq 0 ] || { echo "bypass-launchd: already running"; exit 3; }
 trap release_lock EXIT
 rm -f "$Q/.hold"
-log "start pid=$$ until=$until head=${HEAD_SHA:0:12} self=${L_SELF:0:12} registry=${L_REG:0:12} tiers=${L_TIERS:0:12} grantable=$grantable"
+if [ -n "$SERVICE" ]; then
+    printf '%s/%s/%s\n' "$L_SELF" "$L_TIERS" "$L_REG" >"$Q/.loaded"
+    [ -z "${NOTIFY_SOCKET:-}" ] || systemd-notify --ready >/dev/null 2>&1 || true
+    heartbeat
+fi
+log "start pid=$$ until=$until head=${HEAD_SHA:0:12} self=${L_SELF:0:12} registry=${L_REG:0:12} tiers=${L_TIERS:0:12} grantable=$grantable${SERVICE:+ access=$ACCESS bridge=${INBOUND%/inbound.jsonl} home=$HOMEDIR}"
+if [ -n "$SERVICE" ] && [ -z "${NOTIFY_SOCKET:-}" ]; then
+    wp=(); case $- in *p*) wp=(-p) ;; esac
+    "$BASH" ${wp[@]+"${wp[@]}"} "$0" --watch "$$" "$Q/.heartbeat" "$WSECS" "$WTICK" >/dev/null 2>&1 &
+    log "watchdog pid=$!"
+fi
 for held in "$Q"/*.req.held; do
     [ -e "$held" ] || continue
     req=${held%.held}; rm -f "$held"
     [ ! -f "$req.pending" ] || mv "$req.pending" "$req"
     log "REQUEUE ${req##*/} (a held go does not survive a restart)"
+done
+
+for pend in "$Q"/*.req.pending; do
+    [ -e "$pend" ] || continue
+    req=${pend%.pending}
+    if grep -q '^granted_at=' "$pend" 2>/dev/null; then
+        mv "$pend" "$req.failed"; log "INTERRUPTED ${req##*/} (a go was granted before the restart and the launch may have run; file a new request)"
+        send bypass-failed "bypass request ${req##*/}: the daemon restarted after your go, the launch may have run. It was not re-run; check the fleet and file a new request if needed."
+    else
+        mv "$pend" "$req"; log "REQUEUE ${req##*/} (an ask in flight does not survive a restart)"
+    fi
 done
 
 US=$'\037' HELD=()
@@ -308,12 +481,14 @@ after_go() {
     printf 'granted_at=%s\ngo=%s\nsha=%s\n' "$(date -u +%FT%TZ)" "$code" "$sha" >>"$req.pending"
     log "GRANT $base env=${envs[*]} decision=${decision:-none} go=$code"
     mkdir -p "$W"
-    [ -f "$BUCKET/$chief.fleet.json" ] && bash "$KIT/fleet-manifest.sh" add "$BUCKET/$chief.fleet.json" "$brief" --lane native --pending >>"$LOG" 2>&1 \
+    heartbeat
+    [ -f "$BUCKET/$chief.fleet.json" ] && child "$CALLT" bash "$KIT/fleet-manifest.sh" add "$BUCKET/$chief.fleet.json" "$brief" --lane native --pending >>"$LOG" 2>&1 \
         && fleet=(--fleet "$BUCKET/$chief.fleet.json")
+    heartbeat
     launch_env "${DETACH[@]}" bash "$LAUNCHER" \
-        --profile worker-impl ${fleet[@]+"${fleet[@]}"} --chief "$chief" "$base" "$brief" "$W/sig-$base" "$EXPIRES" "$W/$base.log" "$model" \
+        --profile worker-impl ${fleet[@]+"${fleet[@]}"} --chief "$chief" "$base" "$brief" "$W/sig-$base" "$(deadline)" "$W/$base.log" "$model" \
         >"$W/$base.launch.out" 2>&1 &
-    lp=$!; sleep "${BYPASSD_SETTLE:-12}"; touch "$W/sig-$base"
+    lp=$!; sleep "${BYPASSD_SETTLE:-12}"; heartbeat; touch "$W/sig-$base"
     if ! kill -0 "$lp" 2>/dev/null; then
         wait "$lp"; lrc=$?
         if [ "$lrc" -ne 0 ]; then
@@ -327,6 +502,7 @@ after_go() {
 }
 
 while :; do
+    heartbeat
     [ -e "$Q/stop" ] && { log "stop file"; exit 0; }
     [ "$(date +%s)" -ge "$EXPIRES" ] && { log "expired $until"; exit 0; }
     [ -n "$HOLDING" ] || ! stale_now || hold
@@ -391,6 +567,7 @@ ${tags:+$tags
 Expires 6 h · brief sha ${sha:0:12}"
         t0=$(date +%s); verdict=expired
         while [ $(( $(date +%s) - t0 )) -lt "$TTL" ] && live; do
+            heartbeat
             hit=$(tail -c +"$((off + 1))" "$INBOUND" 2>/dev/null | jq -r --argjson op "$OP" --arg c "$code" \
                 'select(.from == $op and .chat_id == $op and .forwarded != true) | (.text // "") | ascii_downcase | gsub("^\\s+|\\s+$"; "") | gsub("\\s+"; " ") |
                  select(. == ("go " + ($c|ascii_downcase)) or . == ("no " + ($c|ascii_downcase)))' 2>/dev/null | tail -n 1)

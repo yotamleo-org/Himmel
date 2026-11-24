@@ -477,6 +477,54 @@ assert_contains "config_ui --check owing a retry: row says what apply would do" 
 assert_eq "config_ui --check: runs nothing" "" "$calls_9"
 assert_eq "config_ui --check: keeps the marker" "yes" "$([ -f "$marker_9" ] && echo yes || echo no)"
 
+echo "Test 10: bypass_daemon wiring — --only bypass_daemon, a full update, --check, the status row"
+make_mock_clone
+mkdir -p "$CHECKOUT_DIR/scripts/station-ops"
+cat > "$CHECKOUT_DIR/scripts/station-ops/bypass-service.sh" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >> "$BS10_CALLS"
+cat "$BS10_OUT"
+exit "$(cat "$BS10_RC")"
+STUB
+git -C "$CHECKOUT_DIR" add -A
+git -C "$CHECKOUT_DIR" commit --quiet -m "bypass-service stub"
+git -C "$CHECKOUT_DIR" push --quiet origin HEAD 2>/dev/null
+fake_home_10="$TMP/fake-home-test10"; mkdir -p "$fake_home_10/.himmel/state" "$TMP/bs10"
+claude_ok_10="$TMP/claude-ok-test10"; make_claude_stub "$claude_ok_10" 0
+run_10() {
+    printf '%s\n' "$1" > "$TMP/bs10/out"; printf '%s\n' "$2" > "$TMP/bs10/rc"; shift 2
+    : > "$TMP/bs10/calls"; rc_10=0
+    out_10=$(USERPROFILE='' HOME="$fake_home_10" BS10_CALLS="$TMP/bs10/calls" BS10_OUT="$TMP/bs10/out" BS10_RC="$TMP/bs10/rc" \
+            HIMMEL_UPDATE_CLAUDE_BIN="$claude_ok_10" HERMES_HOME="$TMP/no-hermes" \
+            CLAUDE_USER_SETTINGS="$fake_home_10/.claude/settings.json" CLAUDE_CONFIG_DIR="$fake_home_10/.claude" \
+            bash "$CHECKOUT_DIR/scripts/himmel-update.sh" "$@" 2>&1) || rc_10=$?
+    calls_10=$(cat "$TMP/bs10/calls")
+}
+
+run_10 "restarted" 0 --only bypass_daemon
+assert_eq "bypass_daemon --only: rc 0" "0" "$rc_10"
+assert_contains "bypass_daemon --only: asks the service script to restart if changed" "restart-if-changed" "$calls_10"
+assert_contains "bypass_daemon --only: the status row says updated" "bypass_daemon  *updated" "$out_10"
+assert_not_contains "bypass_daemon --only: is not an unknown item" "unknown item" "$out_10"
+
+run_10 "not-enabled: bypass daemon is off, turn it on from your shell: himmelctl bypass on" 0 --only bypass_daemon
+assert_contains "bypass_daemon off: the row is skipped" "bypass_daemon  *skipped" "$out_10"
+assert_contains "bypass_daemon off: names the one command" "himmelctl bypass on" "$out_10"
+
+run_10 "current" 0 --only bypass_daemon
+assert_not_contains "bypass_daemon current: no row" "bypass_daemon  " "$out_10"
+
+run_10 "failed: restart did not load the new code" 1 --only bypass_daemon
+assert_contains "bypass_daemon failed: the row says failed" "bypass_daemon  *failed" "$out_10"
+
+run_10 "restarted" 0
+assert_contains "bypass_daemon full update: the step runs" "restart-if-changed" "$calls_10"
+assert_contains "bypass_daemon full update: the row is in the table" "bypass_daemon  *updated" "$out_10"
+
+run_10 "would restart" 0 --check
+assert_contains "bypass_daemon --check: asks the script in check mode" "restart-if-changed --check" "$calls_10"
+assert_contains "bypass_daemon --check: the row says what apply would do" "bypass_daemon  *skipped  *check mode" "$out_10"
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo "RESULTS: $pass passed, $fail failed"
