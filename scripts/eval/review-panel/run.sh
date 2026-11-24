@@ -101,7 +101,8 @@ fi
 
 if [ -n "$paired" ]; then
     [ "$inputs_given" = 0 ] || { echo "run.sh: --paired reads each side's own fixtures and key: drop --fixtures and --key" >&2; exit 2; }
-    case "$repeats" in ''|*[!0-9]*|0) echo "run.sh: --repeats needs a positive integer" >&2; exit 2 ;; esac
+    case "$repeats" in ''|*[!0-9]*) repeats=0 ;; *) repeats=$((10#$repeats)) ;; esac
+    [ "$repeats" -ge 1 ] || { echo "run.sh: --repeats needs a positive integer" >&2; exit 2; }
     top="$(git -C "$HERE" rev-parse --show-toplevel)" || exit 2
     rel="$(git -C "$HERE" rev-parse --show-prefix)" || exit 2
     snap="$(git -C "$top" rev-parse --verify "$paired^{commit}" 2>/dev/null)" \
@@ -120,13 +121,15 @@ if [ -n "$paired" ]; then
         . "$HERE/../../lib/prim.sh" || { echo "run.sh: cannot load scripts/lib/prim.sh" >&2; exit 2; }
         pscratch="$(tmpdir)" || exit 2
     fi
-    mkdir -p "$pscratch/trees" || exit 2
-    trap 'git -C "$top" worktree remove --force "$pscratch/trees/base" >/dev/null 2>&1; git -C "$top" worktree remove --force "$pscratch/trees/head" >/dev/null 2>&1; git -C "$top" worktree prune' EXIT
-    git -C "$top" worktree add -q --detach "$pscratch/trees/base" "$snap" || exit 2
-    git -C "$top" worktree add -q --detach "$pscratch/trees/head" "$head_sha" || exit 2
+    prun="$pscratch/paired-$$"
+    mkdir -p "$prun/trees" || exit 2
+    trap 'git -C "$top" worktree remove --force "$prun/trees/base" >/dev/null 2>&1; git -C "$top" worktree remove --force "$prun/trees/head" >/dev/null 2>&1; git -C "$top" worktree prune' EXIT
+    git -C "$top" worktree add -q --detach "$prun/trees/base" "$snap" || exit 2
+    git -C "$top" worktree add -q --detach "$prun/trees/head" "$head_sha" || exit 2
     sweep_side() {
-        local side="$1" n="$2" tree="$pscratch/trees/$1" o="$out/$1-$2"
-        REVIEW_PANEL_SCRATCH="$pscratch/work/$side-$n" PYTHONDONTWRITEBYTECODE=1 \
+        local side="$1" n="$2" tree="$prun/trees/$1" o="$out/$1-$2"
+        rm -f "$o.row.jsonl"
+        REVIEW_PANEL_SCRATCH="$prun/work/$side-$n" PYTHONDONTWRITEBYTECODE=1 \
             bash "$tree/${rel}run.sh" --out "$o" ${fwd[@]+"${fwd[@]}"} || return $?
         python3 "$HERE/score.py" export-row "$o" --repo "$tree" --snapshot "$snap" --side "$side" --results "$o.row.jsonl"
     }

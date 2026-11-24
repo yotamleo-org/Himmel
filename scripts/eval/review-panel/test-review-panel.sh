@@ -702,6 +702,10 @@ has "paired: the failure says no row was written" "$(cat "$TMP/pair9.txt")" "no 
 python3 "$RP/scripts/eval/review-panel/score.py" export-row "$TMP/pair1/base-1" --repo "$RP" --snapshot "$PS" --results "$TMP/pair10.jsonl" >"$TMP/pair10.txt" 2>&1; rc=$?
 eq "export-row: --snapshot without --side is refused, no row" "$rc:$([ -e "$TMP/pair10.jsonl" ] && echo row || echo none)" "2:none"
 has "export-row: the refusal says the two go together" "$(cat "$TMP/pair10.txt")" "go together"
+paired --paired "$PS" --repeats 00 --out "$TMP/pair11" --results "$TMP/pair11.jsonl" >/dev/null 2>&1; rc=$?
+eq "paired: --repeats 00 is refused like 0" "$rc:$([ -e "$TMP/pair11.jsonl" ] && echo row || echo none)" "2:none"
+paired --paired "$PS" --head "$PH" --out "$TMP/pair1" --results "$TMP/pair12.jsonl" >/dev/null 2>&1; rc=$?
+eq "paired: a rerun into an out dir that holds an earlier run writes this run's two rows, not the old ones again" "$rc:$(wc -l < "$TMP/pair12.jsonl" | tr -d ' ')" "0:2"
 
 SC="$TMP/scorer"; mkdir -p "$SC/scripts/eval/review-panel" "$SC/scripts/eval/lib"
 cp "$SCORE" "$SC/scripts/eval/review-panel/score.py"; cp "$HERE/adjudication.py" "$SC/scripts/eval/review-panel/"; cp "$HERE/replay.py" "$SC/scripts/eval/review-panel/replay.py"; cp "$HERE/../lib/"*.py "$SC/scripts/eval/lib/"; cp "$HERE/../feedback-rules.json" "$SC/scripts/eval/"
