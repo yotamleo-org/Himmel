@@ -1013,6 +1013,8 @@ same 'a jump in arrivals prints exactly one WAKE arrivals-jump line' "$(printf '
 contains 'the jump wake names the version and each source group with its count' "$ar_jump" 'WAKE arrivals-jump v9.9.9 12 vs 2.4/day over 5d: parent=6 review=4 operator=2'
 contains 'the jump marks the arrivals= field with !' "$ar_jump" ' arrivals=12/2.4!'
 same 'the same UTC day wakes once: a second tick prints no second wake' "$(ar_tick "$W/ar-jump" "$W/ar-state-jump" | grep -c '^WAKE arrivals-jump ')" '0'
+ar_build "$W/ar-jump2" 6:4:2
+same 'a jump in another release directory the same day still wakes: the claim is per release' "$(ar_tick "$W/ar-jump2" "$W/ar-state-jump" | grep -c '^WAKE arrivals-jump ')" '1'
 ar_build "$W/ar-steady" 3:0:0
 ar_steady="$(ar_tick "$W/ar-steady" "$W/ar-state-steady")"
 not_contains 'steady days print no arrivals wake' "$ar_steady" 'WAKE arrivals-jump'

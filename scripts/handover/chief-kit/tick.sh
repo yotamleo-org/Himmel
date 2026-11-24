@@ -547,7 +547,7 @@ arrivals=<today>/<mean>[!|?] counts the tickets ruled into the active version to
 version's own earlier days, at most TICK_ARRIVALS_DAYS (default 7) back. ! = a jump: today at least 3x the mean and above every earlier day, a bar
 relative to the version, never a ticket count. <n>/? = under 3 earlier days or none with an arrival (no baseline, no wake). Absent without a release
 directory (TICK_ARRIVALS_DIR is the seam, TICK_ARRIVALS_NOW the clock). A jump also prints one `WAKE arrivals-jump <version> <n> vs <mean>/day over <k>d:
-<source>=<n> ...` line after the TICK line per UTC day (claim file tick-arrivals-wake-<date>); the sources (parent, review, audit, operator, other) are read
+<source>=<n> ...` line after the TICK line per UTC day (claim file tick-arrivals-wake-<release>-<date>, one per release directory); the sources (parent, review, audit, operator, other) are read
 from the INTAKE request that placed each ticket. Read-only: no filing is refused or slowed. The waiter's relay row in chief-wait.sh is a separate ticket (see the PR).
 leaks=<n|?> counts the LEAK lines of one bounded `jira release leaks <active version>`
 read (TICK_LEAKS_PROBE gets the version and the mirror directory as its arguments; TICK_LEAKS_TIMEOUT, default 30 s): open tickets
@@ -5425,7 +5425,7 @@ else
     fi
     if [ -n "$arrivals_wake" ]; then
         arr_sdir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
-        arr_claim="$arr_sdir/tick-arrivals-wake-$arr_now"
+        arr_claim="$arr_sdir/tick-arrivals-wake-$(printf '%s' "$arr_dir" | cksum | cut -d' ' -f1)-$arr_now"
         if mkdir -p "$arr_sdir" 2>/dev/null && (set -C; : > "$arr_claim") 2>/dev/null; then  # swallow-ok: an unclaimable day prints no wake, never a repeated one
             printf 'WAKE arrivals-jump %s\n' "$arrivals_wake"
             find "$arr_sdir" -maxdepth 1 -name 'tick-arrivals-wake-*' -mtime +7 -delete 2>/dev/null  # gnu-ok: console kit is Linux-only # swallow-ok: an unprunable old claim is harmless
