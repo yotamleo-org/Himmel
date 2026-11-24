@@ -580,6 +580,52 @@ complete, then linked into place, so a race cannot leave a half key). It is open
 On the Telegram side an unusable key means no record is written and the button
 answers `Could not record the tap.`; on the bridge side every tap is refused.
 
+### The chief's tell (`tell.ts`)
+
+A station Claude session, usually the chief, can queue a one-line message to a
+configured peer itself, with no desk and no console step:
+
+- `bun <himmel root>/scripts/peer-bridge/tell.ts <peer> --kind status|info --text '...'`
+- `bun <himmel root>/scripts/peer-bridge/tell.ts <peer> --status <draft id>`
+
+It writes the ordinary `draft` spool record with `source: "chief"` and the
+session id. The poller drafts it, and the operator bot shows the review as
+`draft <id> via tell.ts, unverified session <first 8 of the id>`. Nothing proves
+which session ran it, so the review never says "chief". It leaves only after the
+signed tap, like every draft. The script refuses, and queues nothing, when:
+
+- there is no session id (`no-session`), or the session is a desk or carries a
+  taint or pending-taint mark;
+- the session's transcript cannot be found once under `~/.claude*/projects/` (or
+  `CLAUDE_CONFIG_DIR`), or its first `cwd` does not name its project dir
+  (`launch-root-unknown`);
+- the transcript, or any `<sid>/subagents/*.jsonl`, names a path under a
+  `.salus`-marked root or a PHI-listed root, either as a record `cwd`, as a tool's
+  path argument or a Glob prefix, or as an absolute path in a Bash or Monitor
+  command; or a transcript cannot be read whole or is over 64 MiB (`phi-root`).
+  It reads only those fields, never a tool's output, and prints nothing from it;
+- the peer is not in peers.json (`unknown-peer`);
+- the poller's `poller.pid` or the operator bot's `notify/bot.code` does not
+  show a live process running this checkout's peer-bridge code (`poller-stale`,
+  `operator-bot-stale`);
+- the kind is not `status` or `info`, or the text is empty or not one line;
+- the egress rules refuse the text under corpus `chief-tell`.
+
+The poller checks a `chief` record again. `spoolFault` refuses one that asks for
+another kind, a `replyTo`, an `allowShape` or a malformed session. `applyDraft`
+counts chief drafts in their own bucket: one pending and five a UTC day, apart
+from the shared three and twenty of the desk and the operator's replies. Draft,
+tap, the send-time check and a resend all take the corpus from the record's
+source (`telegram` to `operator-reply`, `send.ts` to `peer-desk`, `chief` to
+`chief-tell`, anything else to `unknown-source`, which no matrix row allows).
+`--status` prints only a state word: `PENDING`, `PENDING shown` once the bot
+recorded the review message, `PENDING review-not-shown` a minute after the draft
+with no such record, or the final state.
+
+A path the transcript never names, such as one built from a variable, is not
+caught. That is the same evasion as a process writing the spool directly (see
+Accepted residuals).
+
 ### Clearing taint
 
 A session is tainted when `read.ts` prints to it, when a verified fence marker
@@ -682,6 +728,13 @@ These are known and accepted for this slice.
   any spool file, so a local process that can write a spool record can waive one
   low-precision secret-shape refusal for that message. The text still passes
   every other check.
+- **`tell.ts` binds the session that uses it, not a forger.** A session that
+  points it at another transcript (a `CLAUDE_CODE_SESSION_ID` or
+  `CLAUDE_CONFIG_DIR` prefix), rewrites its own transcript, or reaches a
+  patient-data path the transcript never names gets past the scan. Such a
+  session could as well write the spool or read the tap key, which bypasses
+  `tell.ts` and the tap today. A Codex or agy child inherits its Claude parent's
+  session id, so it is checked against the parent's transcript.
 - **A crash between the Telegram send and the `sent` record loses the root's
   message id.** On restart the poller resends the intent with its original id.
   The peer dedups the second copy and answers the first, but our thread is keyed

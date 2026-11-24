@@ -21,7 +21,7 @@ import { currentSigningKey, sign } from "./sign";
 import { PeerTelegram, RetryAfter, TelegramError } from "./telegram";
 import { MAX_AUTO_PER_HOUR, Threads, effectiveRoute, templateLine, type Action, type Route, type ThreadRec, type Transition, type WakeEvent, type WakeLabel } from "./threads";
 import { appendNotify, notifyFile, type DailyNotify, type NotifyRec, type ResultNotify } from "./notify";
-import { DRAFT_TTL_MS, MAX_DRAFTS_PER_DAY, MAX_PENDING_DRAFTS, badChars, draftState, draftsToday, pendingCount, reviewTooLong } from "./drafts";
+import { DRAFT_TTL_MS, MAX_CHIEF_PER_DAY, MAX_DRAFTS_PER_DAY, MAX_PENDING_CHIEF, MAX_PENDING_DRAFTS, badChars, draftState, draftsToday, pendingCount, reviewTooLong } from "./drafts";
 import { lockdownEnabled } from "../telegram/lockdown";
 import { Tripwire, Waker } from "./wake";
 
@@ -654,7 +654,7 @@ export class Poller {
 
   private outbox = (peer: string) => readChain(this.file(peer, "outbox.jsonl")) as Record<string, any>[];
   private allOutboxes = () => Object.keys(this.cfg.peers).map(p => this.outbox(p));
-  private corpusOf = (source: string): OutCtx["corpus"] => (source === "telegram" ? "operator-reply" : "peer-desk");
+  private corpusOf = (source: string): OutCtx["corpus"] => (source === "telegram" ? "operator-reply" : source === "send.ts" ? "peer-desk" : source === "chief" ? "chief-tell" : "unknown-source");
 
   private async resultNotify(peer: string, draft: string, state: ResultNotify["state"], root: number, extra: { message_id?: number; rule?: string } = {}) {
     const file = notifyFile(this.deps.stateDir);
@@ -663,7 +663,7 @@ export class Poller {
   }
 
   private async draftNotify(peer: string, d: Record<string, any>) {
-    await appendNotify(this.chain, notifyFile(this.deps.stateDir), { kind: "notify", type: "draft", peer, root: d.replyTo ?? 0, draft: d.id, source: d.source, deadline: d.deadline, text: d.text, ts: this.now() });
+    await appendNotify(this.chain, notifyFile(this.deps.stateDir), { kind: "notify", type: "draft", peer, root: d.replyTo ?? 0, draft: d.id, source: d.source, ...(d.session ? { session: d.session } : {}), deadline: d.deadline, text: d.text, ts: this.now() });
   }
 
   private async finishDraft(peer: string, d: Record<string, any>, state: "REJECTED" | "EXPIRED" | "REFUSED", rule?: string) {
@@ -686,11 +686,11 @@ export class Poller {
     const res = await this.egress(rec.text, this.ctxFor({ peer, msgKind: rec.kind, isRoot: rec.replyTo === undefined, isTemplate: false, replyTo: rec.replyTo ?? null, text: rec.text, allowShape: rec.allowShape, corpus: this.corpusOf(rec.source), checkUsage: true }));
     if (!res.ok) return refuse(res.rule, res.shape);
     const id = mintId(), deadline = this.now() + DRAFT_TTL_MS;
-    if (reviewTooLong({ peer, root: rec.replyTo ?? 0, draft: id, source: rec.source, deadline, text: rec.text }, this.cfg.himmelRoot)) return refuse("review-length");
-    const all = this.allOutboxes();
-    if (pendingCount(all) >= MAX_PENDING_DRAFTS) return refuse("too-many-pending");
-    if (draftsToday(all, this.now()) >= MAX_DRAFTS_PER_DAY) return refuse("daily-drafts");
-    const d = { kind: "draft", id, source: rec.source, msgKind: rec.kind, replyTo: rec.replyTo ?? null, text: rec.text, ...(rec.allowShape ? { allowShape: rec.allowShape } : {}), spool: name, deadline, ts: this.ts() };
+    if (reviewTooLong({ peer, root: rec.replyTo ?? 0, draft: id, source: rec.source, session: rec.session, deadline, text: rec.text }, this.cfg.himmelRoot)) return refuse("review-length");
+    const all = this.allOutboxes(), chief = rec.source === "chief";
+    if (pendingCount(all, chief) >= (chief ? MAX_PENDING_CHIEF : MAX_PENDING_DRAFTS)) return refuse(chief ? "chief-pending" : "too-many-pending");
+    if (draftsToday(all, this.now(), chief) >= (chief ? MAX_CHIEF_PER_DAY : MAX_DRAFTS_PER_DAY)) return refuse(chief ? "chief-daily" : "daily-drafts");
+    const d = { kind: "draft", id, source: rec.source, ...(rec.session ? { session: rec.session } : {}), msgKind: rec.kind, replyTo: rec.replyTo ?? null, text: rec.text, ...(rec.allowShape ? { allowShape: rec.allowShape } : {}), spool: name, deadline, ts: this.ts() };
     await this.chain.append(this.file(peer, "outbox.jsonl"), d);
     await this.draftNotify(peer, d);
     writeResult(dir, name, { ok: true, draft: id, deadline });
