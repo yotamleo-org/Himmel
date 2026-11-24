@@ -176,6 +176,137 @@ assert "tool-written verdict lines do not self-trigger the screen" "clean" "$(pr
 assert "a payload in a fake findings line is still scanned" "caught" "$(printf '%s\n' "$res" | sed -n 2p)"
 assert "a payload in a fake verdict line is still scanned" "caught" "$(printf '%s\n' "$res" | sed -n 3p)"
 
+cat > "$tmp/editor.py" <<'PY'
+import fcntl, os, sys, time
+d, clip, stamp = sys.argv[1], sys.argv[2], sys.argv[3]
+fd = os.open(d, os.O_RDONLY)
+fcntl.flock(fd, fcntl.LOCK_EX)
+with open(clip, "a", encoding="utf-8") as f:
+    f.write("EDIT-KEPT\n")
+with open(stamp, "w", encoding="utf-8") as f:
+    f.write(repr(time.time()))
+PY
+cat > "$tmp/race.py" <<'PY'
+import importlib.util, os, subprocess, sys, fcntl, time
+tool, root, mode, loc = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+os.environ.pop("HARVEST_SCRAPE_DENY", None)
+spec = importlib.util.spec_from_file_location("h", tool)
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.TODAY = "2026-11-24"
+from pathlib import Path
+editor = os.path.join(root, "editor.py")
+vault = Path(root) / f"race-{mode}-{loc}"
+clippings = vault / "Clippings"
+d = clippings / "sub" if loc == "sub" else clippings
+d.mkdir(parents=True, exist_ok=True)
+stamp = str(vault / "editor.stamp")
+clip = d / "c.md"
+flag = mode in ("edit", "none", "raise", "flag", "thin")
+fm_extra = "harvest_flag: injection-suspect\n" if flag else ("enrichment_status: ok\nneeds_thread: true\n" if mode == "reflag" else "")
+body = "A plain body.\n" if flag or mode == "reflag" else "short.\n"
+canonical = "https://example.org/a"
+src = "" if flag or mode == "reflag" else f"type: article\nsource: {canonical}\n"
+clip.write_text(f"---\ntitle: x\n{src}{fm_extra}---\n{body}", encoding="utf-8")
+procs = []
+def spawn():
+    procs.append(subprocess.Popen([sys.executable, "-I", editor, str(clippings), str(clip), stamp]))
+    time.sleep(0.6)
+seam = {"edit": "insert_frontmatter_pairs", "raise": "insert_frontmatter_pairs", "reflag": "insert_frontmatter_pairs",
+        "thin": "insert_frontmatter_pairs", "flag": "insert_fm_lines", "fc": "insert_markers", "yt": "insert_markers"}.get(mode)
+raised = []
+if seam:
+    real = getattr(m, seam)
+    def racing(*a, **k):
+        spawn()
+        if mode == "raise":
+            raised.append(time.time())
+            raise RuntimeError("boom")
+        return real(*a, **k)
+    setattr(m, seam, racing)
+if mode in ("fcpost", "ytpost"):
+    real_lock = m._clip_lock
+    import contextlib
+    @contextlib.contextmanager
+    def wrapped(*a, **k):
+        with real_lock(*a, **k):
+            procs.append(subprocess.Popen([sys.executable, "-I", editor, str(clippings), str(clip), stamp]))
+            time.sleep(0.3)
+            yield
+        time.sleep(0.6)
+    m._clip_lock = wrapped
+review = lambda text: {"codex": "benign", "guard": "safe", "passages": [], "guard_ids": [], "downgrade": True}
+class Chain:
+    remaining = 3
+    last_backend = None
+    def scrape(self, url):
+        return "word " * 400
+result = ""
+if mode == "reflag":
+    m.run_reflag_silent_partials(vault, False)
+elif mode in ("fc", "fcpost"):
+    result = m.process_clip(clip, dry_run=False, chain=Chain(), url_rules=m.UrlRules())
+elif mode in ("yt", "ytpost"):
+    text = clip.read_text(encoding="utf-8")
+    fm, fm_raw, b, ok = m.parse_frontmatter(text)
+    result = m.write_youtube_harvest(clip, text, fm_raw, b, canonical, {"title": "t", "transcript": [{"ts": "0:01", "tx": "hi"}]}, [])
+elif mode == "flag":
+    text = clip.read_text(encoding="utf-8")
+    fm, fm_raw, b, ok = m.parse_frontmatter(text)
+    result = m.persist_flag_only(clip, text, fm_raw, b, ["x"])
+elif mode == "thin":
+    text = clip.read_text(encoding="utf-8")
+    fm, fm_raw, b, ok = m.parse_frontmatter(text)
+    result = m.persist_thin_partial(clip, text, fm, fm_raw, b, None, [])
+else:
+    result = m.apply_second_opinion(clip, review_fn=review)
+print("RESULT", result)
+for p in procs:
+    p.wait(timeout=10)
+text = clip.read_text(encoding="utf-8")
+print("EDIT", "kept" if "EDIT-KEPT" in text else "lost")
+print("VERDICT", "written" if "harvest_codex_verdict: benign" in text else "absent")
+print("REFLAG", "written" if "enrichment_status: partial" in text else "absent")
+print("HARVESTED", "written" if "harvest_status: ok" in text else "absent")
+if raised and os.path.exists(stamp):
+    print("AFTER-RELEASE", "yes" if float(open(stamp).read()) > raised[0] else "no")
+fd = os.open(clippings, os.O_RDONLY)
+try:
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB); print("LOCK free")
+except BlockingIOError:
+    print("LOCK held")
+PY
+race() { "$PY" -I "$tmp/race.py" "$TOOL" "$tmp" "$1" "${2:-root}" 2>&1; }
+field() { printf '%s\n' "$1" | sed -n "s/^$2 //p"; }
+r="$(race edit)"
+assert "mid-write edit: the concurrent edit is kept" "kept" "$(field "$r" EDIT)"
+assert "mid-write edit: the second-opinion verdicts still land" "written" "$(field "$r" VERDICT)"
+r="$(race edit sub)"
+assert "a clip in a subfolder is held by the Clippings-root lock: the edit is kept" "kept" "$(field "$r" EDIT)"
+r="$(race none)"
+assert "no concurrent edit: the verdict pairs are written as before" "written" "$(field "$r" VERDICT)"
+assert "no concurrent edit: the lock is free afterwards" "free" "$(field "$r" LOCK)"
+r="$(race raise)"
+case "$r" in *"second opinion failed (RuntimeError)"*) ok "the except path is taken" ;; *) bad "the except path is taken" "$r" ;; esac
+assert "the except path releases the lock: the waiting editor ran only after the failure" "yes" "$(field "$r" AFTER-RELEASE)"
+assert "the except path releases the lock: it is free afterwards" "free" "$(field "$r" LOCK)"
+r="$(race reflag)"
+assert "reflag backfill: a mid-write edit is kept" "kept" "$(field "$r" EDIT)"
+assert "reflag backfill: the partial marks still land" "written" "$(field "$r" REFLAG)"
+r="$(race fc)"
+assert "firecrawl write: a mid-write edit is kept" "kept" "$(field "$r" EDIT)"
+r="$(race fcpost)"
+assert "firecrawl write: an edit right after the write is kept, not reverted" "kept" "$(field "$r" EDIT)"
+assert "firecrawl write: the harvest still lands" "written" "$(field "$r" HARVESTED)"
+r="$(race yt)"
+assert "youtube write: a mid-write edit is kept" "kept" "$(field "$r" EDIT)"
+r="$(race ytpost)"
+assert "youtube write: an edit right after the locked write is kept, not reverted" "kept" "$(field "$r" EDIT)"
+assert "youtube write: the harvest still lands" "written" "$(field "$r" HARVESTED)"
+r="$(race flag)"
+assert "flag-only write: a mid-write edit is kept" "kept" "$(field "$r" EDIT)"
+r="$(race thin)"
+assert "thin-partial write: a mid-write edit is kept" "kept" "$(field "$r" EDIT)"
+
 echo "---"
 echo "harvest-second-opinion: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
