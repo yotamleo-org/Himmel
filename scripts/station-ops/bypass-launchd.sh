@@ -29,7 +29,7 @@
 # the granted flags. The ask names each granted flag and the hook its registry text says it skips.
 # The operator id is allowFrom[0] of the bridge access.json (TELEGRAM_ACCESS_PATH); the inbound journal is
 # BRIDGE_ROOT/inbound.jsonl. Test seams: BYPASSD_SEND (a program given the message), BYPASSD_LAUNCHER (run in
-# place of headed-arm-worker.sh with its arguments), BYPASSD_POLL, BYPASSD_SETTLE.
+# place of headed-arm-worker.sh with its arguments), BYPASSD_POLL, BYPASSD_SETTLE, BYPASSD_TTL (seconds a go is valid, default 21600).
 # --check runs the start checks (not the Claude-session refusal, the lock, --until or the operator id) and, with
 # --request, the request check the loop runs. It prints accepted or refused: <reason>, then daemon: none, daemon: live
 # pid=<p> or daemon: live pid=<p>, holding (<cause>). It takes no lock and sends nothing. Exit 0 accepted, 1 refused,
@@ -368,6 +368,7 @@ while :; do
     for req in "$Q"/*.req; do
         [ -e "$req" ] || continue
         if stale_now; then hold; break; fi
+        case ${req##*/} in *[[:cntrl:]]*) mv "$req" "$req.refused"; log "REFUSED request name has a control character"; continue ;; esac
         req_load "$req" || { refuse "$req" "request unreadable"; continue; }
         rsha=$(sha256_text "$REQ_TEXT")
         check_request || { refuse "$req" "$REASON"; continue; }
