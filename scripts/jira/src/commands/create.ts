@@ -21,6 +21,7 @@ import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsV
 import { ctxFor, refuseRequest, refuseTestJiraPost } from './release.js';
 import { decisionWords, operatorFence, releaseForProject, request as releaseRequest, requestWithWords } from '../release/engine.js';
 import type { TicketFacts } from '../release/operator-work.js';
+import { loadOrThrow } from '../release/engine-core.js';
 import { releaseRoot } from '../release/paths.js';
 import { ancestorValue } from '../release/fence-ancestry.js';
 import { isTestProject } from '../live-test-guard.js';
@@ -513,6 +514,7 @@ export function intakeRelease(): string {
 /** Throws unless an INTAKE with this why could be queued now, so the filing is refused before anything is created. */
 export function assertIntakeQueueable(why: string, o: IntakeWords & { toVersion?: string | null } = {}): void {
   const ctx = ctxFor(intakeRelease());
+  loadOrThrow(ctx);
   refuseRequest(ctx, { verb: 'INTAKE', key: 'NEW', from_v: null, to_v: o.toVersion ?? null, why, origin: 'create', ticket: o.ticket, decision: o.decision });
   if (o.decision === undefined && o.words === undefined) return;
   if (o.decision === undefined) throw new Error('jira create: --words needs --decision <n>, the decision whose file holds them');
@@ -539,7 +541,9 @@ interface ParentState {
  * parent asks for none and the why says so. Parent, status and version go in
  * the request's evidence. Explicit wins: a version, --backlog, --proposed-version or --why
  * keeps its meaning. A parent with no current version, or one that cannot be
- * read, leaves the request as it was (the ticket is filed either way).
+ * read, asks for no version (the ticket is filed either way); with --remainder
+ * the evidence still carries follow_up_of and remainder, also under an explicit
+ * why or version, and for an unreadable parent without the parent facts.
  */
 export async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; residualOf?: string; remainder?: boolean; backlog?: boolean; fixVersion?: string }>(o: T): Promise<T> {
   if (o.residualOf !== undefined && o.followUpOf === undefined && o.fixVersion === undefined && o.evidence === undefined) {

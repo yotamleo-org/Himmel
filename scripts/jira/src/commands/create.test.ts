@@ -1260,7 +1260,7 @@ describe('create — unplaced follow-up', () => {
       expect(parentRead()).toBe(false);
     });
 
-    it('9002 ii: an open parent with no current version asks for none and a remainder records both keys', async () => {
+    it('9002 ii: an open parent with no current version asks for none and the request records no parent facts', async () => {
       parentIs({ versions: ['v1.1.2'] });
       await file('--follow-up-of', 'HIMMEL-5');
       expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: expect.stringMatching(/filed to the backlog/), evidence: {} })]);
@@ -1916,7 +1916,6 @@ describe('create — blocker version placement', () => {
     await file('--residual-of', 'HIMMEL-3', '--fu-class', 'escape', '--class', 'routing', relation, 'HIMMEL-1620');
     expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
     expect(console.error).toHaveBeenCalledWith('jira: residual routed to v1.1.3');
-    expect(console.error).not.toHaveBeenCalledWith('jira: residual routed to the backlog');
     expect(mockRequest).toHaveBeenCalledWith('POST', '/issueLink', {
       type: { name: relation === '--blocks' ? 'Blocks' : 'Relates' },
       inwardIssue: { key: 'HIMMEL-6559' }, outwardIssue: { key: 'HIMMEL-1620' },
@@ -2075,13 +2074,11 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
     expect(errs.some((e) => /REQ /.test(e))).toBe(false);
   });
 
-  it('files the key, says the INTAKE is not queued, and exits non-zero when queueing fails after the POST', async () => {
+  it('refuses before the POST when the release cannot be loaded (a missing signing key)', async () => {
     await declare();
     vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'no-keys'));
-    await file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test');
-    expect(posted()).toBe(true);
-    expect(errs.some((e) => /Created HIMMEL-77 but INTAKE not queued/.test(e))).toBe(true);
-    expect(process.exitCode).toBe(1);
+    await expect(file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test')).rejects.toThrow(/UNKNOWN/);
+    expect(posted()).toBe(false);
   });
 
   it('refuses before POSTing when the release state cannot be read', async () => {
@@ -2622,6 +2619,12 @@ describe('create --residual-of is placed by the door', () => {
   it('with no resolvable release root a residual the class route leaves with no version is refused before the POST', async () => {
     vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', '');
     vi.stubEnv('USER_SLUG', '');
+    await expect(file('HIMMEL-51', '--fu-class', 'hardening', '--fu-why', 'no-check', '--fu-override', 'decision-762')).rejects.toThrow();
+    expect(created()).toBeUndefined();
+  });
+
+  it('a corrupt release.json with a residual left with no version is refused before the POST', async () => {
+    writeFileSync(join(baseRoot, 'state', 'R1', 'release.json'), '{not json');
     await expect(file('HIMMEL-51', '--fu-class', 'hardening', '--fu-why', 'no-check', '--fu-override', 'decision-762')).rejects.toThrow();
     expect(created()).toBeUndefined();
   });

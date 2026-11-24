@@ -442,10 +442,10 @@ close without this ticket and that it holds the parent's remainder. A Done or cl
 version at the parent's priority (the caller's `--priority` wins) and linked to it with `relates`, so a chain's
 leftovers stay in the chain's version and no INTAKE is queued. This covers a Bug, Task or Story; an Epic or Sub-task follow-up keeps the old rule. A closed parent that is not in
 the current version, or whose version is frozen: no version, the request is the backlog one and the why says the
-parent is closed. A parent that cannot be read is not treated as closed: the request is left unchanged, with a warning. A parent in a frozen current version: the
+parent is closed. A parent that cannot be read is not treated as closed: the request asks for no version, with a warning (with `--remainder` its evidence still carries `follow_up_of` and `remainder`). A parent in a frozen current version: the
 request still asks for that version and the why says it is frozen; the release manager rules on the frozen intake,
 and the filing never routes around it (operator decisions 383, 489 and 512). An INTAKE-only follow-up writes no fixVersion of its own (the closed-parent case above does). An open
-parent with no current version, or a parent that cannot be read (a warning on stderr), leaves the request as before:
+parent with no current version, or a parent that cannot be read (a warning on stderr), asks for no version (with `--remainder` the evidence still records `follow_up_of` and `remainder`, also under an explicit `--why` or `--proposed-version`):
 no version, filed to the backlog. A caller's own `--fix-version`, `--backlog`, `--proposed-version` or `--why` wins
 and skips the read, and `--blocks`/`--split-from` place the ticket in the target's version, so no request is queued.
 An unversioned create, a residual or follow-up included, is refused before the POST when no release can take the INTAKE (no release declared, several
