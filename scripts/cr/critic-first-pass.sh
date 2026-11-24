@@ -22,6 +22,8 @@
 #      Claude critic (slug claude or a claude-* model) was asked for with no
 #      --provider and the merged critics registry has no row for it (dropped
 #      or absent). A clean no-op, no stdout, no score row; never a review verdict
+#  10  the claude-api launcher refused deterministically (its own rc 10): not
+#      retried, the launcher's stderr line stays last on stderr; like 1 to callers
 #
 # Claude critic: effort = CR_CLAUDE_CRITIC_EFFORT, else the claude row's effort,
 # else medium; CR_CLAUDE_CRITIC_MAX_USD caps one API review (default 1.00).
@@ -881,6 +883,7 @@ while [ "$_attempt" -lt 3 ]; do
     rc=$?
     # a skip is a decision, not a failure: no retry, no raw log, no score row
     [ "$rc" -eq 5 ] && exit 5
+    [ "$provider" = claude-api ] && [ "$rc" -eq 10 ] && exit 10
     # a run that reached the subscription is never retried: a retry would spend it again
     [ -e "$pf.sub-used" ] && exit 1
     _trimmed="$(printf '%s' "$raw" | tr -d '[:space:]')"

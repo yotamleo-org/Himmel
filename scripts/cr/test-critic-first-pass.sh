@@ -981,4 +981,26 @@ check "over the prompt cap: the run says what was cut" "$(grep -c 'context file 
 cap_out="$(printf '%s' "$DIFF" | CRITIC_PROMPT_CAP_BYTES=200 HERMES_PY="$tmp/py.sh" bash "$CFP" --model x/y --slug s --context-file "$ctx" 2>/dev/null)"
 check "over the prompt cap: a cut context certifies no citation" "$(grep -c '\[context\]' <<< "$cap_out")" "0"
 
+cat > "$tmp/l10.sh" <<'L10'
+#!/usr/bin/env bash
+echo run >> "$L10_COUNT"
+echo "claude-api: fleet launch refused: stub reason" >&2
+exit 10
+L10
+cat > "$tmp/l1.sh" <<'L1'
+#!/usr/bin/env bash
+echo run >> "$L10_COUNT"
+exit 1
+L1
+chmod +x "$tmp/l10.sh" "$tmp/l1.sh"
+export L10_COUNT="$tmp/l10.count"
+rm -f "$L10_COUNT"
+rc10=0; printf '%s' "$DIFF" | HIMMEL_API_LANE=on CFP_CLAUDE_API_LAUNCHER="$tmp/l10.sh" bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api >"$tmp/l10.out" 2>"$tmp/l10.err" || rc10=$?
+check "H10993 rc-10 launcher runs once, not three times" "$(grep -c run "$L10_COUNT")" "1"
+check "H10993 rc-10 launcher exits 10, the launcher refusal" "$rc10" "10"
+check "H10993 rc-10 launcher's stderr line is the last line" "$(tail -n 1 "$tmp/l10.err")" "claude-api: fleet launch refused: stub reason"
+rm -f "$L10_COUNT"
+printf '%s' "$DIFF" | HIMMEL_API_LANE=on CFP_CLAUDE_API_LAUNCHER="$tmp/l1.sh" bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api >/dev/null 2>&1 || true
+check "H10993 control: rc 1 with empty output is still retried 3 times" "$(grep -c run "$L10_COUNT")" "3"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
