@@ -2408,7 +2408,7 @@ EOF
         [ -n "$ldoc" ] || continue
         case "$NL$seen$NL" in *"$NL$ldoc$NL"*) continue ;; esac
         seen="$seen$ldoc$NL"
-        [ "$(worker_lock_state "$ldoc")" = held ] || continue
+        [ "$(worker_lock_state "$ldoc")" != free ] || continue
         { [ -n "$label" ] && [ "$label" != - ]; } || label="$(worker_label "$ldoc")"
         sess="$(printf '%s\n' "$sessions" | awk -F'\t' -v d="$ldoc" '$1 == d { print $2; exit }')"
         [ -n "$sess" ] || sess="unknown-lock"
@@ -2482,6 +2482,7 @@ retire_manifest_rows() {
     [ -f "$1" ] || return 0
     while IFS=$'\t' read -r label ldoc; do
         [ -n "$ldoc" ] || continue
+        [ "$(worker_lock_state "$ldoc")" = free ] || continue
         bash "$kit/fleet-manifest.sh" remove "$1" "$ldoc" >/dev/null 2>&1 || err "warning: could not retire the dead row $label ($ldoc) from $1"
     done <<EOF
 $2
