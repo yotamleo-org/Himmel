@@ -15,7 +15,8 @@
 //     provenance: { layers: [{ name, path, status, sha256? }] }
 //             status: "absent" | "read" | "ignored-plugin" | the reason code of the failing layer
 //   Native hook: a PostToolUse group whose matcher is absent, null, "" or "*" and whose command
-//   contains BOTH "queue-lock.sh" and "self-heartbeat" (matched-only groups do not count).
+//   contains BOTH "queue-lock.sh" and "self-heartbeat" (matched-only groups do not count). A hook whose command
+//   names both but is not type "command" or not an emitted command shape is unknown (layer-invalid-field).
 //   disableAllHooks: the highest-defined boolean across the layers decides. true -> ineffective.
 //   Any malformed, unreadable, invalid or unknown-precedence input -> unknown, never optimistic effective.
 //   A static configuration check does NOT prove actual heartbeat delivery; runtime proof comes later.
@@ -73,6 +74,18 @@ function readLayerBytes(path) {
   }
 }
 
+const PATH_TOKEN = '(?:"(?:[^"`$\\\\\\n]|\\$(?:\\{[A-Za-z_]\\w*\\}|[A-Za-z_]\\w*(?!\\w)))*"|[A-Za-z0-9_./~-]+)';
+const pathEnding = (tail) => `${PATH_TOKEN}(?<=${tail}"?)`;
+const HB_SCRIPT = pathEnding('queue-lock\\.sh');
+const HB_RUN_NODE = pathEnding('run-node\\.sh');
+const HB_LAUNCHER = pathEnding('run-hook-with-bash\\.js');
+const HB_PLAIN = new RegExp(`^(?:bash )?${HB_SCRIPT} self-heartbeat\\s*$`);
+const HB_ROUTED = new RegExp(
+  `^if \\[ -f ${HB_RUN_NODE} \\]; then command -p sh ${HB_RUN_NODE} ${HB_LAUNCHER} ${HB_SCRIPT} self-heartbeat; `
+  + `else node ${HB_LAUNCHER} ${HB_SCRIPT} self-heartbeat; fi\\s*$`,
+);
+const isEmittedHeartbeat = (command) => HB_PLAIN.test(command) || HB_ROUTED.test(command);
+
 // Parses one layer and extracts only the consumed fields: disableAllHooks and the PostToolUse groups.
 // Every other property is ignored. Any consumed field of the wrong type is unknown.
 function parseLayer(text) {
@@ -105,6 +118,7 @@ function parseLayer(text) {
           if (hook.command !== undefined && typeof hook.command !== 'string') throw invalid();
           const c = hook.command;
           if (matchesAll && typeof c === 'string' && c.includes('queue-lock.sh') && c.includes('self-heartbeat')) {
+            if (hook.type !== 'command' || !isEmittedHeartbeat(c)) throw invalid();
             native = true;
           }
         }

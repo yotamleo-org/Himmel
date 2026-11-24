@@ -94,7 +94,7 @@ export async function readCredentials(path, opts = {}) {
     }
     const st = fstatSync(ffd);
     if (!st.isFile()) throw new ReadinessError('file-type', 'the credential path is not a regular file');
-    if (st.uid !== uid) throw new ReadinessError('owner', 'the credential file is not owned by the expected user');
+    if (st.uid !== (opts.fileUid ?? uid)) throw new ReadinessError('owner', 'the credential file is not owned by the expected user');
     if ((st.mode & 0o777) !== 0o600) throw new ReadinessError('file-mode', 'the credential file must be mode 0600');
     if (st.nlink !== 1) throw new ReadinessError('file-links', 'the credential file must have exactly one link');
     if (st.size < 1 || st.size > CRED_MAX_BYTES) throw new ReadinessError('file-size', `the credential file must be 1 to ${CRED_MAX_BYTES} bytes`);
@@ -234,15 +234,18 @@ function typedIssue(raw, key, creds) {
   let j;
   try { j = JSON.parse(raw); } catch { return null; }
   const f = j && typeof j === 'object' ? j.fields : null;
-  if (!j || j.key !== key || !f || typeof f !== 'object' || !Array.isArray(f.labels)) return null;
+  if (!j || j.key !== key || !f || typeof f !== 'object') return null;
+  if (!Array.isArray(f.labels) || f.labels.some((l) => typeof l !== 'string')) return null;
+  if (!Array.isArray(f.fixVersions) || f.fixVersions.some((v) => typeof v?.name !== 'string')) return null;
+  if (!('description' in f)) return null;
   const str = (v) => (typeof v === 'string' ? v : '');
   const issue = {
     key,
     summary: str(f.summary),
     status: str(f.status?.name),
     type: str(f.issuetype?.name),
-    labels: f.labels.filter((l) => typeof l === 'string'),
-    fixVersions: Array.isArray(f.fixVersions) ? f.fixVersions.map((v) => str(v?.name)).filter(Boolean) : [],
+    labels: [...f.labels],
+    fixVersions: f.fixVersions.map((v) => v.name).filter(Boolean),
     description_sha256: createHash('sha256').update(JSON.stringify(f.description ?? null)).digest('hex'),
   };
   issue.issue_sha256 = createHash('sha256').update(JSON.stringify([issue.key, issue.summary, issue.status, issue.type, issue.labels, issue.fixVersions, issue.description_sha256])).digest('hex');
@@ -497,12 +500,14 @@ function runGit(repo, args, maxBuffer) {
 function checkBytes(entry, buf) {
   if (buf.length !== entry.size || createHash('sha256').update(buf).digest('hex') !== entry.sha256) return refuse('changed');
   let content;
-  try { content = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch { return refuse('not-text'); }
+  try { content = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buf); } catch { return refuse('not-text'); }
   return { ok: true, content };
 }
 
 async function readBlob(startup, entry) {
   const repo = startup.roots.repo;
+  const pinKind = await runGit(repo, ['cat-file', '-t', startup.source_head], 64);
+  if (!pinKind.ok || pinKind.out.toString('latin1').trim() !== 'commit') return refuse('changed');
   // the object must be the tracked regular file at the pinned commit (not a symlink, submodule or other object)
   const tree = await runGit(repo, ['ls-tree', '-z', startup.source_head, '--', entry.path], 4096);
   if (!tree.ok) return refuse('changed');

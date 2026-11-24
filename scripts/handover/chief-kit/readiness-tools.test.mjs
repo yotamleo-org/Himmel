@@ -74,7 +74,7 @@ class JiraFixture {
   }
 
   #issue() {
-    return { key: 'HIMMEL-1', fields: { summary: this.summary ?? 'a fixture ticket', status: { name: 'Open' }, issuetype: { name: 'Task' }, labels: [...this.labels], description: null, ...this.extraFields } };
+    return { key: 'HIMMEL-1', fields: { summary: this.summary ?? 'a fixture ticket', status: { name: 'Open' }, issuetype: { name: 'Task' }, labels: [...this.labels], fixVersions: [], description: null, ...this.extraFields } };
   }
 
   #handle(req, res) {
@@ -273,7 +273,16 @@ describe('C0 credentials and port', () => {
       const { readCredentials } = await load();
       const s = scratch();
       writeCred(s.cred, goodCreds('http://127.0.0.1:1'));
-      await assert.rejects(readCredentials(s.cred, { uid: process.getuid() + 1 }), (e) => e.code === 'owner');
+      await assert.rejects(readCredentials(s.cred, { uid: process.getuid() + 1 }), (e) => e.code === 'owner' && /directory/.test(e.message), 'with the folder foreign too, it is the folder rule that fires');
+    });
+
+    test('X14-7: a file owned by someone else in a folder that is ours is refused by the FILE owner rule alone', async () => {
+      const { readCredentials } = await load();
+      const s = scratch();
+      writeCred(s.cred, goodCreds('http://127.0.0.1:1'));
+      const me = process.getuid();
+      await assert.rejects(readCredentials(s.cred, { uid: me, fileUid: me + 1 }), (e) => e.code === 'owner' && /credential file/.test(e.message) && !/directory/.test(e.message));
+      assert.equal((await readCredentials(s.cred, { uid: me, fileUid: me })).api_token, TOKEN, 'control: the same file with the matching file owner is accepted');
     });
 
     test('a file replaced between the read and the identity check is refused (race)', async () => {
@@ -378,6 +387,36 @@ describe('C0 credentials and port', () => {
       assert.match(r.issue.issue_sha256, /^[0-9a-f]{64}$/);
       assert.ok(fx.requests.length >= 1 && fx.requests.every((q) => q.authOk), 'every request carried the file credentials, not the ambient decoy');
       assert.deepEqual(leaks(r), []);
+    });
+
+    test('X14-2: a ticket with a non-string label, missing or malformed fix versions or a missing description is unreadable, never ok', async () => {
+      const { port } = await mkPort();
+      const bad = {
+        'a numeric label': { labels: [7] },
+        'a numeric label beside a real one': { labels: ['needs-readiness', 7] },
+        'fix versions missing': { fixVersions: undefined },
+        'fix versions not a list': { fixVersions: 'junk' },
+        'a fix version without a name': { fixVersions: [{}] },
+        'a fix version that is a bare string': { fixVersions: ['v1.1.3'] },
+        'a description missing': { description: undefined },
+      };
+      for (const [name, fields] of Object.entries(bad)) {
+        reset();
+        fx.extraFields = fields;
+        for (const [verb, call] of [['readIssue', () => port.readIssue('HIMMEL-1', soon())], ['readback', () => port.readback('HIMMEL-1', soon())]]) {
+          const r = await call();
+          assert.equal(r.outcome, 'error', `${verb}: ${name}`);
+          assert.equal(r.code, 'unreadable', `${verb}: ${name}`);
+        }
+      }
+      reset();
+      fx.extraFields = { fixVersions: [{ name: 'v1.1.3' }], description: 'text' };
+      const ok = await port.readIssue('HIMMEL-1', soon());
+      assert.equal(ok.outcome, 'ok', 'control: a well-formed ticket with a fix version and a description reads');
+      assert.deepEqual(ok.issue.fixVersions, ['v1.1.3']);
+      reset();
+      const empty = await port.readIssue('HIMMEL-1', soon());
+      assert.equal(empty.outcome, 'ok', 'control: no fix versions (an empty list) and a null description read');
     });
 
     test('addReadinessLabel adds, is idempotent and removes; readback agrees with the service', async () => {
@@ -1579,6 +1618,33 @@ describe('C0 envelope', () => {
       assert.equal(await code({ ...startup, roots: { ...startup.roots, repo: join(w.rs, 'not-a-repo') } }, 'blob.pinned'), 'changed', 'a repo root that is not a repository');
     });
 
+    test('X14-4: a tree id (or an annotated tag) as source_head is refused, only a commit is accepted', async () => {
+      const treeOid = gitIn(w.src, ['rev-parse', 'HEAD^{tree}']);
+      assert.notEqual(treeOid, w.head);
+      assert.equal(await code({ ...startup, source_head: treeOid }, 'blob.pinned'), 'changed', 'a tree id resolves the same path but is not a source commit');
+      gitIn(w.src, ['tag', '-a', '-m', 'pin', 'x14-4-pin']);
+      const tagOid = gitIn(w.src, ['rev-parse', 'x14-4-pin']);
+      assert.equal(await code({ ...startup, source_head: tagOid }, 'blob.pinned'), 'changed', 'a tag object peels to the commit but is not one');
+      assert.equal((await mod.readCatalogResource({ ...startup, source_head: w.head }, 'blob.pinned')).ok, true, 'control: the commit itself reads');
+    });
+
+    test('X14-6: a blob with a byte-order mark returns exactly the bytes it advertises', async () => {
+      const repo = realpathSync(mkdtempSync(join(tmpdir(), 'c0bom-')));
+      roots.push(repo);
+      const bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('bom text\n')]);
+      writeFileSync(join(repo, 'bom.txt'), bom);
+      gitIn(repo, ['init', '-q']);
+      gitIn(repo, ['add', '-A']);
+      gitIn(repo, ['commit', '-q', '-m', 'bom']);
+      const entry = { id: 'blob.bom', kind: 'blob', path: 'bom.txt', oid: gitIn(repo, ['rev-parse', 'HEAD:bom.txt']), mode: '100644', size: bom.length, sha256: sha256(bom), purpose: 'a bom file' };
+      const r = await mod.readCatalogResource({ source_head: gitIn(repo, ['rev-parse', 'HEAD']), roots: { repo, evidence: join(w.rs, 'evidence') }, catalog: [entry] }, 'blob.bom');
+      assert.equal(r.ok, true);
+      assert.equal(r.size, bom.length);
+      assert.equal(Buffer.byteLength(r.content), r.size, 'the returned text is as long as the advertised size');
+      assert.equal(sha256(r.content), r.sha256, 'and hashes to the advertised digest');
+      assert.equal(r.content.charCodeAt(0), 0xfeff, 'the byte-order mark is kept');
+    });
+
     test('an id that is not exactly an admitted string is unadmitted, whatever its type', async () => {
       for (const id of [undefined, null, 7, true, {}, [], ['blob.pinned'], 'blob.pinned\0', 'BLOB.PINNED', 'blob', 'blob.pinned.', '__proto__', 'hasOwnProperty']) {
         assert.equal(await code(startup, id), 'unadmitted', JSON.stringify(id));
@@ -1876,7 +1942,7 @@ describe('C0 envelope', () => {
       assert.deepEqual(readdirSync(w.attempt).sort(), credBefore, 'the pre-check touches no attempt file');
     });
 
-    test('the fixed git child runs with GIT_NO_LAZY_FETCH=1 on both of its calls', async () => {
+    test('the fixed git child runs with GIT_NO_LAZY_FETCH=1 on all of its calls', async () => {
       const mod = await load();
       const w = generatedWorld();
       const startup = mod.loadStartup(w.startupPath);
@@ -1890,7 +1956,7 @@ describe('C0 envelope', () => {
       let r;
       try { r = await mod.readCatalogResource(startup, 'blob.pinned'); } finally { process.env.PATH = oldPath; }
       assert.equal(r.ok, true);
-      assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n'), ['1', '1'], 'ls-tree and cat-file both ran with lazy fetch disabled');
+      assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n'), ['1', '1', '1'], 'the commit check, ls-tree and cat-file all ran with lazy fetch disabled');
     });
   });
 });
