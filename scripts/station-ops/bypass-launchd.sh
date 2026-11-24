@@ -113,7 +113,7 @@ sha256_text() { printf '%s' "$1" | { sha256sum 2>/dev/null || shasum -a 256 2>/d
 field() { printf '%s\n' "$REQ_TEXT" | sed -n "s/^$1=//p" | head -n 1; }
 req_load() {
     [ -f "$1" ] && [ ! -L "$1" ] || return 1
-    REQ_TEXT=$(cat "$1" 2>/dev/null && printf x) || return 1 # read-sink-ok: every caller names a file of the daemon's own queue directory, checked regular and not a link above
+    REQ_TEXT=$(cat "$1" 2>/dev/null && printf x) || return 1 # read-sink-ok: the queue loop names queue files; --check --request names the operator's own file and prints only accepted or a refusal reason
     REQ_TEXT=${REQ_TEXT%x}
 }
 refuse() { mv "$1" "$1.refused"; log "REFUSED $2 $1"; send bypass-result "bypass-launchd refused $(basename "$1"): $2"; }
