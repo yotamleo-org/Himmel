@@ -19,7 +19,10 @@ unset HIMMEL_VM_MODE_CONFIG HIMMEL_VMS_JSON
 
 cat > "$T/bin/ssh" <<'FAKE'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$FAKE_SSH_LOG"
+for a in "$@"; do
+  case "$a" in -*" "*) echo "fake ssh: option with an embedded space reached ssh as one argument: $a" >&2; exit 99 ;; esac
+done
+{ printf '[%s]' "$@"; echo; } >> "$FAKE_SSH_LOG"
 case "${FAKE_SSH_MODE:-}" in
   changed) printf '@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@\nHost key verification failed.\n' >&2; exit 255 ;;
   refused) echo 'himmel@localhost: Permission denied (publickey).' >&2; exit 255 ;;
@@ -80,17 +83,24 @@ HOME="$T/home" vm_ssh_opts 2222 localhost >/dev/null
 mode="$(stat -c %a "$T/home/.himmel/vm/known_hosts/ubuntu_new" 2>/dev/null || stat -f %Lp "$T/home/.himmel/vm/known_hosts/ubuntu_new")"
 [ "$mode" = 600 ] && pass "the per-VM known_hosts file is 0600" || fail "known_hosts file mode is '$mode'"
 
+FAKE_SSH_LOG="$T/ssh.log" PATH="$T/bin:$PATH" ssh "-p 2222 -o BatchMode=yes" h true >/dev/null 2>&1
+[ "$?" = 99 ] && pass "the fake ssh rejects options joined into one argument" || fail "the fake ssh accepted a joined option argument"
+
 echo "== the error classes"
 for pair in "changed|host key changed" "refused|key refused" "noroute|no route or timeout"; do
     mode="${pair%%|*}" want="${pair#*|}"
-    err="$(FAKE_SSH_MODE=$mode PATH="$T/bin:$PATH" ssh -p 2222 h true 2>&1 >/dev/null)"
+    err="$(FAKE_SSH_LOG="$T/ssh.log" FAKE_SSH_MODE=$mode PATH="$T/bin:$PATH" ssh -p 2222 h true 2>&1 >/dev/null)"
     msg="$(HOME="$T/home" vm_ssh_probe_report "$err" himmel@localhost 2222 /id 2>&1)"
     case "$msg" in *"$want"*) pass "$mode names '$want'" ;; *) fail "$mode: no '$want' in: $msg" ;; esac
     for other in "host key changed" "key refused" "no route or timeout"; do
         [ "$other" = "$want" ] && continue
         case "$msg" in *"$other"*) fail "$mode also names '$other'" ;; esac
     done
-    case "$msg" in *"$(printf '%s' "$err" | head -n 1)"*) pass "$mode keeps ssh's own stderr" ;; *) fail "$mode dropped ssh stderr: $msg" ;; esac
+    kept=1
+    while IFS= read -r line; do
+        case "$msg" in *"$line"*) ;; *) kept=0; fail "$mode dropped ssh stderr line: $line" ;; esac
+    done <<< "$err"
+    [ "$kept" = 1 ] && pass "$mode keeps every line of ssh's own stderr"
 done
 msg="$(HOME="$T/home" vm_ssh_probe_report "REMOTE HOST IDENTIFICATION HAS CHANGED" ops@vm.example 2222 /id 2>&1)"
 case "$msg" in *known_hosts/ubuntu_new*) fail "a remote host's report names the local VM's file: $msg" ;; *) pass "a remote host's report does not name the local VM's file" ;; esac
@@ -127,7 +137,7 @@ for suite in scripts/test-install-symmetry-vm.sh scripts/test-luna-upgrade-vm.sh
         [ "$SUITE_RC" = 3 ] && pass "$suite $mode: exit 3" || fail "$suite $mode: rc=$SUITE_RC, want 3: $SUITE_OUT"
         case "$SUITE_OUT" in *"$want"*) pass "$suite $mode: names '$want'" ;; *) fail "$suite $mode: no '$want' in: $SUITE_OUT" ;; esac
     done
-    if grep -qF -- "-o UserKnownHostsFile=$T/home/.himmel/vm/known_hosts/ubuntu_new" "$T/ssh.log"; then
+    if grep -qF -- "[-o][UserKnownHostsFile=$T/home/.himmel/vm/known_hosts/ubuntu_new]" "$T/ssh.log"; then
         pass "$suite: ssh is pinned to the per-VM known_hosts"
     else
         fail "$suite: ssh not pinned; log: $(cat "$T/ssh.log")"
