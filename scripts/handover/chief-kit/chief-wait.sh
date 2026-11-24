@@ -301,6 +301,10 @@
 #                               new-classes-5+=<n>, and STALE (no review for 26 h). Once per
 #                               review day (and once per last-review date for STALE): <inbox>.wait.review holds
 #                               `<date>` and `stale-<date>`. A 1-count class never wakes; review=none or ? wakes nothing.
+#   WAKE drift-actionable <n>   the tick's drift=<n> field counts actionable rows of the nightly drift issue 4470
+#                               (Needs-update rows and held rows whose 72 h buffer has cleared). Once per UTC
+#                               day: <inbox>.wait.drift holds the date of the last wake, so a re-armed waiter
+#                               replays nothing. drift=0 or ? wakes nothing.
 #   WAKE tick-usage rc=2 <line>  the first sample whose tick exited 2 (tick.sh's usage error: the
 #                               arm forwarded a flag it refuses). <line> is tick's first stderr line.
 #                               Never batched into the digest; every re-arm on a broken arm wakes again.
@@ -1881,6 +1885,16 @@ review_wake() {
     [ -n "$reasons" ] || return 1
     printf 'review %s %s\n' "$day" "$reasons"
 }
+drift_file="$inbox.wait.drift"
+drift_wake() {
+    local today
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$((10#$1))" -gt 0 ] || return 1
+    today="$(date -u +%F)"
+    [ "$(cat "$drift_file" 2>/dev/null)" != "$today" ] || return 1  # swallow-ok: no marker yet reads as not woken today
+    printf '%s\n' "$today" > "$drift_file" 2>/dev/null
+    printf 'drift-actionable %s\n' "$1"
+}
 # tracker_stale_wake: <tracker= value> — a tracker that STAYS stale. A class change
 # wakes once (above); after the first STALE the class never moves again, so the
 # marker holds the epoch the streak was first seen and the wake fires once the
@@ -3349,6 +3363,10 @@ while :; do
                         exit_reason='wake-review'; exit 0
                     fi ;;
             esac
+            if drift_out="$(drift_wake "$(field drift "$tick_line")")"; then
+                printf 'WAKE %s\n%s\n' "$drift_out" "$tick_line"
+                exit_reason='wake-drift'; exit 0
+            fi
             stale_val="$(field pool-stale "$tick_line")"
             case "$stale_val" in
                 0) rm -f "$stale_file" ;;
