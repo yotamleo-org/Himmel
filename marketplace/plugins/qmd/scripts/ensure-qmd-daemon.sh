@@ -84,17 +84,6 @@ case "$QMD_RSS_CEILING_MB" in ''|*[!0-9]*) QMD_RSS_CEILING_MB=0 ;; esac
 QMD_RSS_CEILING_MB=$((10#$QMD_RSS_CEILING_MB))
 QMD_RECYCLE_COOLDOWN_MIN=$((10#$QMD_RECYCLE_COOLDOWN_MIN))
 
-# ---- Boot order -------------------------------------------------------------
-# After a boot nothing but a session's SessionStart hook started the daemon, so a
-# probe or search that ran first read a refused connection. --install-boot-unit
-# writes and enables a systemd USER unit that runs THIS script (so the same start
-# marker, opt-out, locks and bounds apply) at default.target, ordered before the
-# chief launcher (himmel-recover.service re-arms the chief and, through it, the
-# workers). --boot-order-check reads the unit's declared order and both units'
-# start times on the monotonic clock; exit 0 when qmd started first, 1 when it
-# did not. Both modes are checked before the opt-out: they start nothing.
-#   QMD_SYSTEMCTL  systemctl binary (default systemctl)
-#   QMD_UNIT_DIR   user unit directory (default ~/.config/systemd/user)
 QMD_SYSTEMCTL="${QMD_SYSTEMCTL:-systemctl}"
 QMD_UNIT_DIR="${QMD_UNIT_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}"
 boot_unit="qmd-daemon.service"
