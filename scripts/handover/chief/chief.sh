@@ -2380,6 +2380,7 @@ latest_go_only() {
 
 worker_lock_state() {
     local rc=0
+    [ "$1" != "${CHIEF_LOCK_STATE_TEST_UNKNOWN:-}" ] || { echo unknown; return 0; }
     HANDOVER_DIR="$root" bash "$repo/scripts/handover/queue-lock.sh" status "$1" >/dev/null 2>&1 || rc=$?
     case "$rc" in 0) echo free ;; 11|12) echo held ;; *) echo unknown ;; esac
 }
@@ -2496,7 +2497,7 @@ EOF
 OPERATOR_DIRECTED_KEYS=""
 must_disposition_section() {
     local pdoc="$1" pdir="$2" live="$3" dead="$4" smanifest="$5" r sib label prs line n branch title key found rows cap="${CHIEF_MUST_CAP:-30}" total=0 nrd=0 npr=0 nop=0
-    local mirror f fm fv st created ver rest_ pstem pdate prio ttl marker fresh resume_rc days="${CHIEF_MUST_RESUME_DAYS:-2}"
+    local mirror f fm fv st created ver rest_ pstem pdate prio ttl marker fresh resume_rc lock_r lock_s days="${CHIEF_MUST_RESUME_DAYS:-2}"
     printf '## Must disposition\n\n'
     printf 'Rule on each row (relaunch, GO, park or close) before dispatching.\n\n'
     # shellcheck disable=SC2016  # the backticks are literal markdown code spans
@@ -2504,7 +2505,13 @@ must_disposition_section() {
         while IFS= read -r r; do
             [ -f "$r" ] || continue
             sib="${r%-RESUME.md}.md"
-            [ "$(worker_lock_state "$r")" != held ] && [ "$(worker_lock_state "$sib")" != held ] || continue
+            lock_r="$(worker_lock_state "$r")"; lock_s="$(worker_lock_state "$sib")"
+            [ "$lock_r" != held ] && [ "$lock_s" != held ] || continue
+            if [ "$lock_r" = unknown ] || [ "$lock_s" = unknown ]; then
+                nrd=$((nrd + 1))
+                [ "$nrd" -gt "$cap" ] || printf -- '- RESUME doc `%s`: lock state unknown, check before relaunch\n' "$r"
+                continue
+            fi
             if [ -f "$sib" ] && [ "$sib" -nt "$r" ] && [ -z "$(worker_tail_status "$r")" ] && [ -n "$(worker_tail_status "$sib")" ]; then continue; fi
             label="$(worker_label "$r")"
             marker="$(worker_tail_status "$sib")"

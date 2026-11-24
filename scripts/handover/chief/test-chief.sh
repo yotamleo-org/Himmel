@@ -3031,8 +3031,8 @@ go82="last GO: \`82:abc\` KEEP-82-GO$(printf ', prior 8:abcdef12%.0s' $(seq 1 15
 awk -v go="$go82" '/^last GO:/ { print go; next } /^queue:/ { print "queue: KEEP-82-MARKER"; next } /^decisions:/ { print "decisions: KEEP-82-DEC"; print "priority: KEEP-82-PRI"; next } { print }' "$doc82A" > "$doc82A.new" && mv "$doc82A.new" "$doc82A"
 HANDOFF_FACTS_PRS="$tmp/facts-prs82.sh" chief next --bucket cap82dst --doc "$doc82A" >/dev/null 2>&1
 doc82B="$root/tester/cap82dst/DEMO-nextleg-${today}B-chief.md"
-check "82 over budget: every worker row stays (30 of 30)" "$(grep -cE '^- N[0-9]+: ' "$handoff82A")" "30"
-check "82 over budget: every open-PR row stays (all 300 the listing printed)" "$(grep -cE '^#[0-9]+ ' "$handoff82A")" "300"
+check "82 over budget: every worker label stays exactly once (the set N1 to N30, no duplicate)" "$(grep -oE '^- N[0-9]+: ' "$handoff82A" | sed 's/^- //; s/: $//' | sort)" "$(printf 'N%s\n' $(seq 1 30) | sort)"
+check "82 over budget: every open-PR number stays exactly once (the set 1 to 300, no duplicate)" "$(grep -oE '^#[0-9]+ ' "$handoff82A" | tr -d '# ' | sort)" "$(seq 1 300 | sort)"
 check "82 over budget: the open-PR list is no pointer" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$handoff82A")" "0"
 check "82 over budget: the shift summary becomes a pointer" "$(grep -c 'over the HANDOFF size budget — read the tail of' "$handoff82A")" "1"
 check "82 the Live state content survives the fallback" "$(grep -c "^queue: KEEP-82-MARKER" "$doc82B")" "1"
@@ -4240,7 +4240,8 @@ awk '/^workers:/ { print "workers: `N1:nonce-1:lock-1:11`"; next } { print }' "$
 printf '#!/usr/bin/env bash\nexit 3\n' > "$tmp/resume-fail10877.sh"
 mkdir -p "$root/.locks/queue/zz-bad10877.lock"
 printf '{not json\n' > "$root/.locks/queue/zz-bad10877.lock/owner.json"
-CHIEF_MUST_RESUME_ROWS="$tmp/resume-fail10877.sh" chief next --bucket c10877dst --doc "$root/tester/c10877/../c10877/DEMO-nextleg-${today}A-chief.md" >/dev/null 2>&1
+printf '%s\n' '# resume brief' > "$Wc10877/DEMO-7-N7-worker-RESUME.md"
+CHIEF_LOCK_STATE_TEST_UNKNOWN="$root/tester/c10877/../c10877/DEMO-7-N7-worker-RESUME.md" CHIEF_MUST_RESUME_ROWS="$tmp/resume-fail10877.sh" chief next --bucket c10877dst --doc "$root/tester/c10877/../c10877/DEMO-nextleg-${today}A-chief.md" >/dev/null 2>&1
 rm -rf "$root/.locks/queue/zz-bad10877.lock"
 Bc10877="$root/tester/c10877dst/DEMO-nextleg-${today}B-chief.md"
 livec10877="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$Bc10877" 2>/dev/null)"
@@ -4249,6 +4250,8 @@ check "10877 a doc named by a path with a dot-dot segment still sweeps the bucke
 check "10877 a failed RESUME-row read puts a row naming the failure in Must disposition" "$(printf '%s\n' "$mustc10877" | grep -c 'RESUME rows unavailable.*exited 3')" "1"
 check "10877 the unavailable RESUME rows row names the command to re-run" "$(printf '%s\n' "$mustc10877" | grep -c 'next-dispatchable.sh --resume-only')" "1"
 check "10877 an unreadable lock owner file puts a row in Must disposition" "$(printf '%s\n' "$mustc10877" | grep -c 'zz-bad10877 has no readable owner file')" "1"
+check "10877 a RESUME doc whose lock state is unknown is listed apart, never as a doc with no worker" "$(printf '%s\n' "$mustc10877" | grep -c 'RESUME doc.*DEMO-7-N7-worker-RESUME.md.*lock state unknown, check before relaunch')" "1"
+check "10877 a RESUME doc with an unknown lock state is not listed as an ordinary RESUME doc" "$(printf '%s\n' "$mustc10877" | grep -c 'RESUME doc.*DEMO-7-N7-worker-RESUME.md.*last marker')" "0"
 for i in 1 2; do HANDOVER_DIR="$root" bash "$QL" release "$Wc10877/DEMO-$i-N$i-worker.md" "${tokw10877[i]}" >/dev/null 2>&1; done
 HANDOVER_DIR="$root" bash "$QL" release "$Ac10877" "$tokc10877" >/dev/null 2>&1
 
