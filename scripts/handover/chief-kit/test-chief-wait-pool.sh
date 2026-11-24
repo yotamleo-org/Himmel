@@ -33,7 +33,7 @@ STUB="$WORK/stub"
 mkdir -p "$STUB"
 cat > "$STUB/tick.sh" <<'EOF'
 #!/usr/bin/env bash
-[ ! -f "$STUB/stall" ] || { read -r stall < "$STUB/stall"; sleep "$stall"; }
+[ ! -f "$STUB/stall" ] || { read -r stall < "$STUB/stall"; sleep "$stall"; : > "$STUB/stalled"; }
 [ ! -f "$STUB/tick.fail" ] || exit 1
 cat "$STUB/tick.line"
 EOF
@@ -113,7 +113,7 @@ housekeeping_cases() (
     export HOUSEKEEPING_DIGEST_SECS=2 WAIT_SWEEP_SEC=1 CHIEF_WAIT_BOARD_STALE_MIN=0
     cat > "$STUB/digest-tick.sh" <<'EOF'
 #!/usr/bin/env bash
-[ ! -f "$STUB/stall" ] || { read -r stall < "$STUB/stall"; sleep "$stall"; }
+[ ! -f "$STUB/stall" ] || { read -r stall < "$STUB/stall"; sleep "$stall"; : > "$STUB/stalled"; }
 n=0; [ ! -f "$STUB/samples" ] || read -r n < "$STUB/samples"
 n=$((n + 1)); printf '%s\n' "$n" > "$STUB/samples"
 if [ -f "$STUB/urgent" ]; then
@@ -176,11 +176,12 @@ EOF
             status-sweep) export WAIT_SWEEP_CMD="$STUB/digest-sweep.sh" ;;
             deadline) digest_kind=tick ;;
         esac
-        rm -f "$STUB/stall"
+        rm -f "$STUB/stall" "$STUB/stalled"
         if [ "$digest_case" = deadline ]; then mkdir "$I.wait.housekeeping.since"; printf '2\n' > "$STUB/stall"
         else mkdir "$I.wait.housekeeping"; fi
         run_to_wake "$WORK/write-$digest_case.out" "$WORK/write-$digest_case.err" "$I" --doc "$WORK/digest-chief.md" --workers N1.md
         rm -f "$STUB/stall"
+        [ "$digest_case" != deadline ] || check "(8197) deadline fallback ran with the tick stall" yes "$([ -e "$STUB/stalled" ] && echo yes)"
         check "(8197) $digest_case buffer write failure wakes immediately once" '0:1:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/write-$digest_case.out"):$(grep -c "^WAKE $digest_kind " "$WORK/write-$digest_case.out")"
         case "$digest_case" in tick|deadline)
             check "(8197) $digest_case write failure does not advance the tick baseline" 1 "$(grep -c 'tails=N1:ACK' "$I.wait.state")"
@@ -671,9 +672,11 @@ check "(T7b) a paused pool watch probe leaves its marker's age" "$t7b_old" "$(st
 cp "$STUB/tick.line.saved" "$STUB/tick.line"
 rm -f "$STUB/pool.paused" "$STUB/tick.line.ok" "$STUB/tick.line.saved"
 I="$(new_inbox t7b-empty)"
+rm -f "$STUB/stalled"
 printf '7\n' > "$STUB/stall"
 CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 run_to_wake "$WORK/t7b-empty.out" /dev/null "$I" --workers N1.md
 rm -f "$STUB/stall"
+check "(T7b) the empty-pool control ran with the tick stall" yes "$([ -e "$STUB/stalled" ] && echo yes)"
 check "(T7b) RED control: a real empty pool still wakes (rc 0)" "0" "$rc"
 check "(T7b) RED control: and says POOL-EMPTY" "1" "$(grep -c '^POOL-EMPTY' "$WORK/t7b-empty.out")"
 mkdir -p "$WORK/t7b-quota"
