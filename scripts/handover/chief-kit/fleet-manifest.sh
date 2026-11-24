@@ -17,6 +17,14 @@
 #   fleet-manifest.sh attempt bind <manifest> <doc> --attempt-id A
 #   fleet-manifest.sh attempt settle <manifest> <doc> --attempt-id A --phase launched|refused|unknown
 #   fleet-manifest.sh runtime settle --manifest M --doc D --name N --attempt-id A --reason "<text>" --confirm-no-session
+#   fleet-manifest.sh t3 set    <manifest> <worker doc> [--thread <threadId|pending>] [--kind ask|task] [--notice pending:0..3|sent|failed]
+#   fleet-manifest.sh t3 unbind <manifest> <threadId> [--reason <word>]
+#
+# `t3 set` and `t3 unbind` (scripts/t3/relay-bind.sh) carry a T3 thread's binding on its fleet row: the row's
+# t3_thread / t3_kind / t3_notice fields, and a top-level t3_tombstones array of {thread, reason, at}. `t3 set` edits a listed
+# row only (rc 1 for a doc not listed); `t3 unbind` removes every row whose t3_thread is the id AND appends the tombstone in one
+# atomic rewrite (a thread with no row still gets its tombstone; one already tombstoned gets no second). Both hold the manifest
+# lock, so a copy of the manifest (chief.sh next) carries every binding.
 #
 # `attempt settle` settles the manifest row only: it sets the row's .attempt phase and, for refused, removes the row and keeps
 # .last_refused_attempt. It does NOT touch the control anchor's attempt record, the family target slot, the reservation
@@ -132,6 +140,9 @@ usage: fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--pend
        fleet-manifest.sh control set <manifest> --mode paused|shadow|active [--target N] --expect-gen G
        fleet-manifest.sh attempt bind <manifest> <doc> --attempt-id A
        fleet-manifest.sh attempt settle <manifest> <doc> --attempt-id A --phase launched|refused|unknown
+       fleet-manifest.sh t3 set    <manifest> <worker doc> [--thread <threadId|pending>] [--kind ask|task] [--notice pending:0..3|sent|failed]
+       fleet-manifest.sh t3 unbind <manifest> <threadId> [--reason <word>]
+--lane is any lowercase word: native, claudex, openrouter, deepseek, t3 (a thread bound by scripts/t3/relay-bind.sh), ...
 add writes a pending row for a doc no session ever ran on (no marker bullet, free lock, no claude on it), with or without --pending
 USAGE
 }
@@ -283,7 +294,67 @@ fleet_metadata() (
     printf '%s\n' "$cur" | atomic_write "$manifest" || { echo 'fleet-manifest: cannot write manifest' >&2; exit 1; }
 )
 
+fleet_t3() (
+    local sub="${2:-}" manifest="${3:-}" doc="" thread="" kind="" notice="" reason="" tid="" cur now result
+    [ "$#" -ge 3 ] || { usage >&2; exit 2; }
+    shift 3
+    case "$sub" in
+        set)
+            [ "$#" -ge 3 ] || { usage >&2; exit 2; }
+            doc="$1"; shift
+            case "$doc" in /*) ;; *) echo "fleet-manifest: worker doc must be an absolute path: $doc" >&2; exit 2 ;; esac
+            case "$doc" in *[[:space:]]*|*'*'*|*'?'*|*'['*) echo "fleet-manifest: worker doc must not contain whitespace or a glob character: $doc" >&2; exit 2 ;; esac
+            while [ "$#" -gt 0 ]; do
+                [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+                case "$1" in
+                    --thread) [ -z "$thread" ] || exit 2
+                        [[ $2 =~ ^[A-Za-z0-9:_-]{1,64}$ ]] || { echo "fleet-manifest: --thread must be pending or [A-Za-z0-9:_-]{1,64}" >&2; exit 2; }
+                        thread="$2" ;;
+                    --kind) [ -z "$kind" ] || exit 2
+                        case "$2" in ask|task) kind="$2" ;; *) echo "fleet-manifest: --kind must be ask or task: $2" >&2; exit 2 ;; esac ;;
+                    --notice) [ -z "$notice" ] || exit 2
+                        [[ $2 =~ ^(pending:[0-3]|sent|failed)$ ]] || { echo "fleet-manifest: --notice must be pending:0..3, sent or failed: $2" >&2; exit 2; }
+                        notice="$2" ;;
+                    *) usage >&2; exit 2 ;;
+                esac
+                shift 2
+            done
+            [ -n "$thread$kind$notice" ] || { usage >&2; exit 2; } ;;
+        unbind)
+            [ "$#" -ge 1 ] || { usage >&2; exit 2; }
+            tid="$1"; shift
+            { [[ $tid =~ ^[A-Za-z0-9:_-]{1,64}$ ]] && [ "$tid" != pending ]; } || { echo "fleet-manifest: unbind needs a threadId ([A-Za-z0-9:_-]{1,64}, not pending): $tid" >&2; exit 2; }
+            while [ "$#" -gt 0 ]; do
+                { [ "$#" -ge 2 ] && [ "$1" = --reason ] && [ -z "$reason" ]; } || { usage >&2; exit 2; }
+                [[ $2 =~ ^[a-z0-9:_-]{1,40}$ ]] || { echo "fleet-manifest: --reason must be [a-z0-9:_-]{1,40}: $2" >&2; exit 2; }
+                reason="$2"; shift 2
+            done
+            [ -n "$reason" ] || reason=unbound ;;
+        *) usage >&2; exit 2 ;;
+    esac
+    { [ ! -L "$manifest" ] && [ ! -L "$manifest.lock" ]; } || exit 1
+    # prim-ok: a 30 s bounded flock on fd 9, as the other manifest writers.
+    { exec 9>>"$manifest.lock" && flock -x -w 30 9; } || { echo "fleet-manifest: cannot lock $manifest.lock" >&2; exit 1; }
+    [ -e "$manifest" ] || { echo "fleet-manifest: missing manifest: $manifest" >&2; exit 1; }
+    jq -e -s "$VALID" "$manifest" >/dev/null 2>&1 || { echo "fleet-manifest: refusing to rewrite an invalid manifest: $manifest" >&2; exit 1; }
+    cur=$(jq 'if has("legs") then .workers = (.workers // .legs) | del(.legs) else . end' "$manifest") || exit 1
+    now=$(date -u +%Y-%m-%dT%H:%M:%SZ) || exit 1
+    if [ "$sub" = set ]; then
+        printf '%s\n' "$cur" | jq -e --arg d "$doc" 'any(.workers[]; .doc == $d)' >/dev/null || { echo "fleet-manifest: not a listed worker doc: $doc" >&2; exit 1; }
+        result=$(printf '%s\n' "$cur" | jq --arg d "$doc" --arg th "$thread" --arg k "$kind" --arg n "$notice" \
+            '.workers |= map(if .doc == $d then . + (if $th != "" then {t3_thread: $th} else {} end)
+                + (if $k != "" then {t3_kind: $k} else {} end) + (if $n != "" then {t3_notice: $n} else {} end) else . end)') || exit 1
+    else
+        result=$(printf '%s\n' "$cur" | jq --arg id "$tid" --arg r "$reason" --arg t "$now" \
+            '(.t3_tombstones // []) as $ts
+             | .workers |= map(select(.t3_thread != $id))
+             | .t3_tombstones = (if any($ts[]; .thread == $id) then $ts else $ts + [{thread: $id, reason: $r, at: $t}] end)') || exit 1
+    fi
+    printf '%s\n' "$result" | atomic_write "$manifest" || { echo "fleet-manifest: cannot write $manifest" >&2; exit 1; }
+)
+
 case "${1:-}" in control|attempt) fleet_metadata "$@"; exit $? ;; esac
+case "${1:-}" in t3) fleet_t3 "$@"; exit $? ;; esac
 
 [ "$#" -ge 2 ] || { usage >&2; exit 2; }
 verb="$1"; manifest="$2"; shift 2

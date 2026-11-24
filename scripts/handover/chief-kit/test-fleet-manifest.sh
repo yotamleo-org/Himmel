@@ -426,6 +426,83 @@ kill "$live" 2>/dev/null; wait "$live" 2>/dev/null
 check '10. a plain add of a doc a claude session is on succeeds' 0 "$rc"
 check '10. the doc a claude session is on is written as a live row' live "$(jq -r --arg d "$onit" '.workers[] | select(.doc == $d) | .registration // "live"' "$m10")"
 
+mkdir -p "$tmp/m11"
+m11="$tmp/m11/chief.fleet.json"
+t1="$tmp/m11/HIMMEL-10798-N1-t3-a-2026-11-24.md"; t2="$tmp/m11/T3ASK-abcd1234-2026-11-24.md"; t3d="$tmp/m11/T3ASK-ffff0000-2026-11-24.md"
+bash "$SCRIPT" add "$m11" --lane t3 --lockless --pending "$t1" "$t2" >/dev/null 2>&1; rc=$?
+check '11. add --lane t3 --lockless is accepted' 0 "$rc"
+check '11. the t3 lane is stored' t3 "$(jq -r --arg d "$t1" '.workers[] | select(.doc == $d) | .lane' "$m11")"
+bash "$SCRIPT" t3 set "$m11" "$t1" --thread pending >/dev/null 2>&1; rc=$?
+check '11. t3 set --thread pending succeeds' 0 "$rc"
+check '11. t3 set stores t3_thread on that row' pending "$(jq -r --arg d "$t1" '.workers[] | select(.doc == $d) | .t3_thread' "$m11")"
+check '11. t3 set leaves the other row alone' null "$(jq -r --arg d "$t2" '.workers[] | select(.doc == $d) | .t3_thread // "null"' "$m11")"
+bash "$SCRIPT" t3 set "$m11" "$t2" --thread 'thr:abc_1-2' --kind ask --notice pending:0 >/dev/null 2>&1; rc=$?
+check '11. t3 set takes thread, kind and notice in one write' 0 "$rc"
+check '11. the three fields land together' 'thr:abc_1-2 ask pending:0' "$(jq -r --arg d "$t2" '.workers[] | select(.doc == $d) | "\(.t3_thread) \(.t3_kind) \(.t3_notice)"' "$m11")"
+bash "$SCRIPT" t3 set "$m11" "$t2" --notice sent >/dev/null 2>&1; rc=$?
+check '11. a later set changes only the field named' 'thr:abc_1-2 ask sent' "$(jq -r --arg d "$t2" '.workers[] | select(.doc == $d) | "\(.t3_thread) \(.t3_kind) \(.t3_notice)"' "$m11")"
+before="$(cat "$m11")"
+bash "$SCRIPT" t3 set "$m11" "$t3d" --thread x1 >/dev/null 2>&1; rc=$?
+check '11. t3 set on an unlisted doc is refused (rc 1)' 1 "$rc"
+check '11. and writes nothing' "$before" "$(cat "$m11")"
+for badargs in "--thread bad/id" "--thread ''" "--kind other" "--notice pending:9" "--notice weird" "--bogus x" ""; do
+    eval "bash \"\$SCRIPT\" t3 set \"\$m11\" \"\$t1\" $badargs" >/dev/null 2>&1; rc=$?
+    check "11. t3 set with [$badargs] is a usage error (rc 2)" 2 "$rc"
+done
+bash "$SCRIPT" t3 set "$m11" "rel.md" --thread x1 >/dev/null 2>&1; rc=$?
+check '11. t3 set with a relative doc is a usage error (rc 2)' 2 "$rc"
+check '11. the refused sets wrote nothing' "$before" "$(cat "$m11")"
+printf 'not json\n' > "$tmp/m11/bad.fleet.json"
+bash "$SCRIPT" t3 set "$tmp/m11/bad.fleet.json" "$t1" --thread x1 >/dev/null 2>&1; rc=$?
+check '11. t3 set refuses an invalid manifest (rc 1)' 1 "$rc"
+check '11. and leaves it untouched' 'not json' "$(cat "$tmp/m11/bad.fleet.json")"
+bash "$SCRIPT" t3 set "$tmp/m11/none.fleet.json" "$t1" --thread x1 >/dev/null 2>&1; rc=$?
+check '11. t3 set on a missing manifest is refused (rc 1)' 1 "$rc"
+bash "$SCRIPT" add "$m11" --lane t3 --lockless "$t2" >/dev/null 2>&1
+check '11. a repeated add keeps the t3_* fields' 'thr:abc_1-2 ask sent' "$(jq -r --arg d "$t2" '.workers[] | select(.doc == $d) | "\(.t3_thread) \(.t3_kind) \(.t3_notice)"' "$m11")"
+mkdir -p "$tmp/shim"
+printf '#!/bin/sh\necho x >> "%s/mv.log"\nexec /bin/mv "$@"\n' "$tmp" > "$tmp/shim/mv"; chmod +x "$tmp/shim/mv"
+: > "$tmp/mv.log"
+PATH="$tmp/shim:$PATH" bash "$SCRIPT" t3 unbind "$m11" 'thr:abc_1-2' >/dev/null 2>&1; rc=$?
+check '11. t3 unbind succeeds' 0 "$rc"
+check '11. t3 unbind removes the row' 1 "$(jq '.workers | length' "$m11")"
+check '11. t3 unbind records the tombstone' 'thr:abc_1-2' "$(jq -r '.t3_tombstones[0].thread' "$m11")"
+check '11. the tombstone carries a reason and a time' 'unbound yes' "$(jq -r '.t3_tombstones[0] | "\(.reason) \(if (.at | test("^[0-9]{4}-")) then "yes" else "no" end)"' "$m11")"
+check '11. row removal and tombstone are one rewrite (one rename)' 1 "$(wc -l < "$tmp/mv.log" | tr -d ' ')"
+bash "$SCRIPT" t3 unbind "$m11" 'thr:abc_1-2' >/dev/null 2>&1; rc=$?
+check '11. a second unbind of the same thread is rc 0' 0 "$rc"
+check '11. and adds no second tombstone' 1 "$(jq '.t3_tombstones | length' "$m11")"
+bash "$SCRIPT" t3 unbind "$m11" thr-refused --reason refused:gitleaks >/dev/null 2>&1; rc=$?
+check '11. unbind of a thread with no row writes a reasoned tombstone' 'thr-refused refused:gitleaks 1' "$(jq -r '.t3_tombstones[1] | "\(.thread) \(.reason)"' "$m11") $(jq '.workers | length' "$m11")"
+for badargs in "bad/id" "x --reason 'A B'" "x --reason ''" "x extra" ""; do
+    eval "bash \"\$SCRIPT\" t3 unbind \"\$m11\" $badargs" >/dev/null 2>&1; rc=$?
+    check "11. t3 unbind with [$badargs] is a usage error (rc 2)" 2 "$rc"
+done
+check '11. the refused unbinds wrote nothing' 2 "$(jq '.t3_tombstones | length' "$m11")"
+cp "$m11" "$tmp/m11/copy.fleet.json"
+check '11. a cp of the manifest keeps the tombstones' "$(jq -c '.t3_tombstones' "$m11")" "$(jq -c '.t3_tombstones' "$tmp/m11/copy.fleet.json")"
+check '11. and a doc that lists still lists' "$t1" "$(bash "$SCRIPT" list "$m11" 2>/dev/null)"
+( flock -x 8; sleep 2 ) 8>>"$m11.lock" & holder=$!
+sleep 0.4
+bash "$SCRIPT" t3 set "$m11" "$t1" --thread held1 >/dev/null 2>&1 & setter=$!
+sleep 0.6
+check '11. t3 set waits while the manifest lock is held' pending "$(jq -r --arg d "$t1" '.workers[] | select(.doc == $d) | .t3_thread' "$m11")"
+wait "$setter"; wait "$holder"
+check '11. and lands once the lock is free' held1 "$(jq -r --arg d "$t1" '.workers[] | select(.doc == $d) | .t3_thread' "$m11")"
+m11b="$tmp/m11/race.fleet.json"
+i=1; pids=""
+while [ "$i" -le 8 ]; do bash "$SCRIPT" add "$m11b" --lane t3 --lockless "$tmp/m11/T3ASK-r$i-d.md" >/dev/null 2>&1; i=$((i + 1)); done
+i=1
+while [ "$i" -le 8 ]; do
+    bash "$SCRIPT" t3 set "$m11b" "$tmp/m11/T3ASK-r$i-d.md" --thread "t$i" >/dev/null 2>&1 &
+    pids="$pids $!"; i=$((i + 1))
+done
+for p in $pids; do wait "$p"; done
+check '11. eight concurrent t3 sets all land' 8 "$(jq '[.workers[] | select(.t3_thread != null)] | length' "$m11b")"
+usage_text="$(bash "$SCRIPT" 2>&1)"
+case "$usage_text" in *'lowercase word: native, claudex, openrouter, deepseek, t3'*) usage_names=yes ;; *) usage_names=no ;; esac
+check '11. the usage text names lane t3' yes "$usage_names"
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-fleet-manifest.sh"
     exit 0
