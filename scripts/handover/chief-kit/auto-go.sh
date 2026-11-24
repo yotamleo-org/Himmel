@@ -283,7 +283,12 @@ BRIEF_YES_RC=0
 grep -qE '^> \*\*Completes ticket:\*\* yes([^A-Za-z0-9_-]|$)' "$WORKER_DOC" || BRIEF_YES_RC=$?
 [ "$BRIEF_YES_RC" -ne 0 ] || { JT=" --jira-transition"; CONTRACT=yes; }
 BODY_VALS=$(printf '%s\n' "$PR_BODY" | tr -d '\r' | awk '
-    /^[ \t]{0,3}(```|~~~)/ { fence = !fence; next }
+    /^[ \t]{0,3}(```|~~~)/ {
+        s = $0; sub(/^[ \t]+/, "", s); c = substr(s, 1, 1); n = 0
+        while (substr(s, n + 1, 1) == c) n++
+        if (!fence) { fence = 1; fc = c; fl = n }
+        else if (c == fc && n >= fl && substr(s, n + 1) ~ /^[ \t]*$/) fence = 0
+        next }
     !fence && /^completes-ticket:[ \t]*(yes|no)[ \t]*$/ { v = $0; sub(/^completes-ticket:[ \t]*/, "", v); sub(/[ \t]*$/, "", v); seen[v] = 1 }
     END { for (v in seen) print v }' | sort -u | tr '\n' ' ')  # swallow-ok: a failed read is no body value, so the brief's contract stands
 BODY_VAL=""

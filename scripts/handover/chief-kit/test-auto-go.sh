@@ -599,7 +599,7 @@ gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY=$'completes-tick
 contains "C3 body yes and no, brief yes: the brief's yes stands" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
 gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="$BODY_REST" run 77 "$SHA"
 contains "C4 no body line, brief yes: the brief's yes stands" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
-for variant in 'completes-ticket: maybe' '  completes-ticket: no' $'```\ncompletes-ticket: no\n```' $'~~~\ncompletes-ticket: no\n~~~' $'```\nunclosed\ncompletes-ticket: no'; do
+for variant in 'completes-ticket: maybe' '  completes-ticket: no' $'```\ncompletes-ticket: no\n```' $'~~~\ncompletes-ticket: no\n~~~' $'```\nunclosed\ncompletes-ticket: no' $'```\n~~~\ncompletes-ticket: no\n~~~\n```' $'````\n```\ncompletes-ticket: no\n```\n````'; do
     gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="$variant"$'\n'"$BODY_REST" run 77 "$SHA"
     contains "C5 ignored body line [$(printf '%s' "$variant" | tr '\n' '|')], brief yes: the brief's yes stands" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
 done
