@@ -1897,7 +1897,7 @@ drift_held() {
         by="$(jq -r --arg re "$re\\.md\$" "$JQ_W"'[W[]? | select((.doc // "") | test($re)) | (.label // "drift")][0] // empty' "$legs_from" 2>/dev/null)"  # swallow-ok: an unreadable manifest holds nothing
     fi
     if [ -z "$by" ]; then
-        heads="$(cd "$GATE_DIR" && timeout -k 2 20 env GH_READ_NO_MAIN_FALLBACK=1 "$gh_cmd" pr list --state open --limit 100 --json number,headRefName -q '.[] | "#\(.number) \(.headRefName)"' </dev/null 2>/dev/null 9>&-)" || heads=""  # gnu-ok: Linux-only kit; swallow-ok: as above
+        heads="$(cd "$GATE_DIR" && timeout -k 2 20 env GH_READ_NO_MAIN_FALLBACK=1 "$gh_cmd" pr list --state open --limit 1000 --json number,headRefName -q '.[] | "#\(.number) \(.headRefName)"' </dev/null 2>/dev/null 9>&-)" || heads=""  # gnu-ok: Linux-only kit; swallow-ok: as above
         by="$(printf '%s\n' "$heads" | grep -E -m1 -e "$re\$" | cut -d' ' -f1)"
     fi
     [ -n "$by" ] || return 1
@@ -1916,7 +1916,7 @@ drift_wake() {
     # prim-ok: the inbox was fenced at start; realpath -m resolves the bucket directory the claim is keyed on
     bucket="$(realpath -m -- "$inbox")"; bucket="${bucket%/consoles/*}"  # gnu-ok: Linux-only kit (PLATFORM GUARD)
     dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
-    claim="$dir/drift-wake-${bucket//[!A-Za-z0-9._-]/_}"
+    claim="$dir/drift-wake-${bucket//[!A-Za-z0-9._-]/_}-$(printf '%s' "$bucket" | cksum | cut -d' ' -f1)"  # the checksum keeps two paths that differ only in punctuation apart
     [ ! -e "$claim.$today" ] || return 1
     if by="$(drift_held "$today")"; then
         printf 'drift-actionable %s held-by %s\n' "$1" "$by" > "$drift_file.held" 2>/dev/null  # swallow-ok: the hold note is a diagnostic

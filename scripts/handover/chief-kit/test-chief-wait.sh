@@ -825,7 +825,7 @@ stop_waiter "$WPID"
 dr_tick 3
 I="$(new_inbox dr5)"
 rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
-dr_bslug() { local b; b="$(realpath -m -- "$1")"; b="${b%/consoles/*}"; printf '%s' "${b//[!A-Za-z0-9._-]/_}"; }
+dr_bslug() { local b; b="$(realpath -m -- "$1")"; b="${b%/consoles/*}"; printf '%s-%s' "${b//[!A-Za-z0-9._-]/_}" "$(printf '%s' "$b" | cksum | cut -d' ' -f1)"; }
 mkdir "$TICK_STATE_DIR/drift-wake-$(dr_bslug "$I").$(date -u +%F)"
 start "$I" "$WORK/dr5.out"
 wait_hb "$I" || fail "(dr5) no baseline heartbeat"
@@ -850,6 +850,15 @@ mkdir -p "$WORK/dr6x/consoles"; : > "$WORK/dr6x/consoles/chief-c.md"
 start "$WORK/dr6x/consoles/chief-c.md" "$WORK/dr6c.out"
 wait_exit "$WPID"
 check "(dr6) another bucket claims its own day" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr6c.out")"
+# two buckets whose paths differ only in punctuation (a/b and a_b) never share a claim
+mkdir -p "$WORK/dr8/a/b/consoles" "$WORK/dr8/a_b/consoles"; : > "$WORK/dr8/a/b/consoles/c.md"; : > "$WORK/dr8/a_b/consoles/c.md"
+rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
+start "$WORK/dr8/a/b/consoles/c.md" "$WORK/dr8a.out"
+wait_exit "$WPID"
+check "(dr8) the first of two look-alike buckets wakes" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr8a.out")"
+start "$WORK/dr8/a_b/consoles/c.md" "$WORK/dr8b.out"
+wait_exit "$WPID"
+check "(dr8) a bucket whose path differs only in punctuation claims its own day" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr8b.out")"
 
 # (dr7) an open drift worker in the manifest, or an open PR whose head names a drift branch for today, holds the wake.
 dr_today="$(date -u +%F)"
