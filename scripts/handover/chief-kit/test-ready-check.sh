@@ -224,6 +224,22 @@ STUB_MSS=UNSTABLE
 STUB_ROLLUP="[$CRB_PEND]"
 out="$(STUB_CR_STATE=pending STUB_CR_DESC='Review in progress' run)" || true
 contains "cr-only rollup: item 2 fails as no checks" "$out" "[FAIL] 2. statusCheckRollup: no checks reported yet"
+reset_stubs
+STUB_MSS=UNSTABLE
+STUB_ROLLUP="[$CRB_OK,{\"context\":\"ci/other\",\"state\":\"PENDING\"},$CRB_PEND]"
+out="$(STUB_CR_STATE=pending STUB_CR_DESC='Review in progress' run)" || true
+contains "name guard: item 1 fails with a pending non-CodeRabbit context" "$out" "[FAIL] 1."
+contains "name guard: item 2 fails" "$out" "[FAIL] 2."
+contains "name guard: names ci/other" "$out" "ci/other=PENDING"
+reset_stubs
+STUB_MSS=UNSTABLE
+STUB_ROLLUP="[$CRB_OK,$CRB_PEND]"
+crb_t0=$SECONDS
+out="$(STUB_CR_SLEEP=1 STUB_CR_STATE=pending STUB_CR_DESC='Review in progress' run)" || true
+crb_dt=$((SECONDS - crb_t0))
+contains "deadline: a stalled confirmation fails item 2 closed" "$out" "[FAIL] 2."
+notcontains "deadline: a stalled confirmation prints no CodeRabbit WARN" "$out" "[WARN] 2. CodeRabbit"
+check "deadline: both stalled status reads are cut at 20 s each, run took ${crb_dt}s, under 50" "$((crb_dt < 50))" "1"
 
 # --- 2f. non-gating contexts: the exact-match list in scripts/lib/non-gating-contexts.txt.
 # Only the listed status context in ERROR: row 2 passes and names it ----------
