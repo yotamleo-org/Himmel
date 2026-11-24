@@ -722,12 +722,12 @@ test("R1.2 an unknown kind, a malformed kind, an unknown cadence worker and an u
   }
 });
 
-test("R1.4 replay 11-07: the operator gets the 4 controls, the spool the 4 monitor lines, the 5 silent lines nothing", async () => {
+test("R1.4 replay 11-07: the operator gets the 4 controls, the spool the 3 monitor lines, the 6 silent lines nothing", async () => {
   const replay = readFileSync(join(FIX, "replay-11-07.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as { time: string; kind?: string; expect: string; text: string });
   expect(replay).toHaveLength(13);
   const real = JSON.parse(readFileSync(TABLE, "utf8"));
   expect(real.kinds.find((k: { kind: string }) => k.kind === "hold-ask-chief").class).toBe("silent");
-  expect(real.kinds.find((k: { kind: string }) => k.kind === "denial-page").class).toBe("monitor");
+  expect(real.kinds.find((k: { kind: string }) => k.kind === "denial-page").class).toBe("silent");
   const r = root();
   for (const l of replay) {
     const x = await route([...(l.kind ? ["--kind", l.kind] : []), "operator", l.text], { r });
@@ -736,8 +736,8 @@ test("R1.4 replay 11-07: the operator gets the 4 controls, the spool the 4 monit
   }
   const queued = operatorOutbox(r).map((m) => m.text);
   expect(queued).toHaveLength(4);
-  expect(spool(r)).toHaveLength(4);
-  expect(spool(r).map((m) => m.kind)).toEqual(["cadence:vault-stall", "cadence:vm-maintain-login-himmel-claudex", "cache-health", "denial-page"]);
+  expect(spool(r)).toHaveLength(3);
+  expect(spool(r).map((m) => m.kind)).toEqual(["cadence:vault-stall", "cadence:vm-maintain-login-himmel-claudex", "cache-health"]);
   for (const t of [...queued, ...spool(r).map((m) => m.text)]) plainWords(t);
   expect(routeLog(r)).toHaveLength(13);
   const before = JSON.parse(JSON.stringify(real));
