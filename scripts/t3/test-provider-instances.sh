@@ -5,6 +5,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 GEN="$HERE/provider-instances.sh"
 T="$(mktemp -d "${TMPDIR:-/tmp}/t3pi.XXXXXX")" || exit 1
 trap 'rm -rf "$T"' EXIT
+mkdir -p "$T/home/.himmel"
+export HOME="$T/home"
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "ok   $1"; }
 bad() { FAIL=$((FAIL+1)); echo "FAIL $1"; }
@@ -104,6 +106,107 @@ expect_eq "no backup made for malformed file" "$nbad" 0
 
 expect_fail "missing settings file refused" bash "$GEN" --apply --settings-file "$T/nope.json"
 expect_fail "missing --settings-file refused" bash "$GEN" --apply
+
+CFG="$HOME/.himmel/config.json"
+set_cfg() { printf '%s' "$1" > "$CFG"; }
+cat > "$T/resolver2.sh" <<'RES'
+#!/usr/bin/env bash
+[ "${2:-}" = --mcp-config ] && exit 0
+echo "/stable/h2/$1.json"
+RES
+chmod +x "$T/resolver2.sh"
+rm -f "$CFG"
+
+R1="$T/relay1.json"
+cat > "$R1" <<'JSON'
+{"providerInstances":{"claudeAgent_alpha":{"driver":"claudeAgent","displayName":"Claude (alpha)","enabled":true,"config":{"launchArgs":"--settings /old/alpha.json"}},"claudeAgent_alpha_relay":{"driver":"claudeAgent","displayName":"Claude (alpha) + chief relay","enabled":true,"config":{"launchArgs":"--settings /old/alpha.json"}}}}
+JSON
+expect_ok "relay copy does not mark base covered: apply" env T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R1"
+expect_eq "relay copy does not mark base covered: base refreshed" "$(launch_args "$R1" claudeAgent_alpha)" "--settings /stable/h2/alpha.json"
+
+R2="$T/relay2.json"
+cat > "$R2" <<'JSON'
+{"providerInstances":{"claudeAgent_alpha":{"driver":"claudeAgent","displayName":"Claude (alpha)","enabled":true,"config":{"launchArgs":"--settings /old/alpha.json"}}}}
+JSON
+set_cfg '{"t3":{"relay_instances":["claudeAgent_alpha"]}}'
+out="$(env T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --settings-file "$R2" 2>&1)"; rc=$?
+expect_eq "relay dry-run exits 0" "$rc" 0
+expect_ok "relay dry-run proposes claudeAgent_alpha_relay" grep -q 'claudeAgent_alpha_relay' <<<"$out"
+expect_ok "relay dry-run prints the _relay allowlist id" grep -q '^claudeAgent_alpha_relay$' <<<"$out"
+
+R3="$T/relay3.json"
+printf '{"providerInstances":{}}' > "$R3"
+expect_ok "relay apply exits 0" env T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R3"
+expect_eq "copy has the base driver" "$(jq -r '.providerInstances.claudeAgent_alpha_relay.driver' "$R3")" claudeAgent
+expect_eq "copy has the base's current launchArgs" "$(launch_args "$R3" claudeAgent_alpha_relay)" "$(launch_args "$R3" claudeAgent_alpha)"
+expect_eq "copy is named '+ chief relay'" "$(jq -r '.providerInstances.claudeAgent_alpha_relay.displayName' "$R3")" "Claude (alpha) + chief relay"
+expect_eq "copy is enabled" "$(jq -r '.providerInstances.claudeAgent_alpha_relay.enabled' "$R3")" true
+cp "$R3" "$T/relay3.after1"
+expect_ok "second relay apply exits 0" env T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R3"
+expect_ok "second relay apply is a no-op" cmp -s "$R3" "$T/relay3.after1"
+
+jq '.providerInstances.claudeAgent_alpha_relay |= (.displayName="hand" | .config.launchArgs="--settings /bad.json")' "$R3" > "$T/relay3.edit" && cp "$T/relay3.edit" "$R3"
+expect_ok "hand-edited copy: apply" env T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R3"
+expect_ok "hand-edited copy regenerated from its base" cmp -s "$R3" "$T/relay3.after1"
+
+expect_ok "base moves: apply" env T3_PI_RESOLVER="$T/resolver.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R3"
+expect_eq "copy follows the base in the same run" "$(launch_args "$R3" claudeAgent_alpha_relay)" "$(launch_args "$R3" claudeAgent_alpha)"
+
+for off in '{"t3":{}}' '{"t3":{"relay_instances":[]}}' '{}' ; do
+    set_cfg "$off"
+    R="$T/off.json"; printf '{"providerInstances":{}}' > "$R"
+    env T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R" >/dev/null 2>&1
+    expect_eq "no _relay id when config is $off" "$(jq -r '[.providerInstances|keys[]|select(endswith("_relay"))]|length' "$R")" 0
+done
+rm -f "$CFG"
+R="$T/off.json"; printf '{"providerInstances":{}}' > "$R"
+env T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R" >/dev/null 2>&1
+expect_eq "no _relay id with no config file" "$(jq -r '[.providerInstances|keys[]|select(endswith("_relay"))]|length' "$R")" 0
+
+printf '{"t3":{"relay_instances":["claudeAgent_alpha"]}}' > "$T/other.json"
+R="$T/seam.json"; printf '{"providerInstances":{}}' > "$R"
+env T3_PI_CONFIG="$T/other.json" T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R" >/dev/null 2>&1
+expect_eq "T3_PI_CONFIG is not read" "$(jq -r '[.providerInstances|keys[]|select(endswith("_relay"))]|length' "$R")" 0
+
+set_cfg '{"t3":{"relay_instances":["nope","claudeAgent_alpha"]}}'
+R="$T/unk.json"; printf '{"providerInstances":{}}' > "$R"
+out="$(env T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R" 2>&1)"; rc=$?
+expect_eq "unknown id: rc 0" "$rc" 0
+expect_ok "unknown id: warns naming it" grep -q "nope" <<<"$out"
+expect_eq "unknown id: no copy" "$(jq -r '.providerInstances|has("nope_relay")' "$R")" false
+expect_eq "unknown id: known id still copied" "$(jq -r '.providerInstances|has("claudeAgent_alpha_relay")' "$R")" true
+
+set_cfg '{"t3":{"relay_instances":["antigravity"]}}'
+R="$T/anti.json"
+cat > "$R" <<'JSON'
+{"providerInstances":{"antigravity":{"driver":"antigravity","displayName":"Antigravity","enabled":false,"config":{"x":1}}}}
+JSON
+env T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R" >/dev/null 2>&1
+expect_eq "antigravity copy keeps its driver" "$(jq -r '.providerInstances.antigravity_relay.driver' "$R")" antigravity
+expect_eq "antigravity copy keeps its config" "$(jq -c '.providerInstances.antigravity_relay.config' "$R")" '{"x":1}'
+expect_eq "antigravity copy is enabled and named" "$(jq -r '.providerInstances.antigravity_relay|"\(.enabled) \(.displayName)"' "$R")" "true Antigravity + chief relay"
+
+set_cfg '{"t3":{"relay_instances":["codex"]}}'
+R="$T/codex.json"; printf '{"providerInstances":{}}' > "$R"
+env T3_PI_BUILTIN_RELAY=1 T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R" >/dev/null 2>&1
+expect_eq "codex gate on: driver-only entry" "$(jq -c '.providerInstances.codex_relay' "$R")" '{"driver":"codex","enabled":true,"displayName":"codex + chief relay"}'
+R="$T/codex2.json"; printf '{"providerInstances":{}}' > "$R"
+out="$(env T3_PI_BUILTIN_RELAY=0 T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R" 2>&1)"; rc=$?
+expect_eq "codex gate off: rc 0" "$rc" 0
+expect_eq "codex gate off: no entry" "$(jq -r '.providerInstances|has("codex_relay")' "$R")" false
+expect_ok "codex gate off: warns naming the switch" grep -q 'T3_PI_BUILTIN_RELAY' <<<"$out"
+
+set_cfg '{"t3":{"relay_instances":["evil"]}}'
+R="$T/evil.json"
+cat > "$R" <<'JSON'
+{"providerInstances":{"evil":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--permission-mode bypassPermissions"}}}}
+JSON
+cp "$R" "$T/evil.orig"
+out="$(env T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R" 2>&1)"; rc=$?
+expect_eq "bypass base with relay: rc 3" "$rc" 3
+expect_ok "bypass refusal names the copy" grep -q 'evil_relay' <<<"$out"
+expect_ok "bypass refusal leaves file untouched" cmp -s "$R" "$T/evil.orig"
+rm -f "$CFG"
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" = 0 ]
