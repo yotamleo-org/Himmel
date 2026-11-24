@@ -70,13 +70,19 @@ export function readChain(file: string): ChainRecord[] {
   return complete.split("\n").filter(Boolean).map(l => JSON.parse(l));
 }
 
-export function verifyChain(file: string): { ok: boolean; n: number } {
+export function verifyChain(file: string, from?: { n: number; h: string }): { ok: boolean; n: number; h: string } {
   let prev = "", n = 0;
-  for (const rec of readChain(file)) {
-    if (rec.n !== n + 1 || rec.h !== chainHash(prev, rec)) return { ok: false, n };
+  const recs = readChain(file);
+  if (from && from.n > 0) {
+    const seed = recs[from.n - 1];
+    if (!seed || seed.n !== from.n || seed.h !== from.h) return { ok: false, n: 0, h: "" };
+    prev = from.h; n = from.n;
+  }
+  for (const rec of recs.slice(n)) {
+    if (rec.n !== n + 1 || rec.h !== chainHash(prev, rec)) return { ok: false, n, h: prev };
     prev = rec.h; n = rec.n;
   }
-  return { ok: true, n };
+  return { ok: true, n, h: prev };
 }
 
 export type SpoolRec =

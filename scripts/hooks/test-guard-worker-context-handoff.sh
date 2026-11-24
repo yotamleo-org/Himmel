@@ -21,7 +21,8 @@ scrub_override_env
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_NAME HANDOVER_DIR CLAUDE_CONFIG_DIR \
     CONTEXT_FILL_TRANSCRIPT CLAUDE_CODE_SESSION_ID CLAUDE_PID \
     HIMMEL_WORKER_SESSION_CONTEXT_MODE HIMMEL_WORKER_SESSION_AUTOCOMPACT CLAUDE_CODE_AUTO_COMPACT_WINDOW \
-    HIMMEL_WORKER_SESSION_CONTEXT_SHARE WORKER_SESSION_CONTEXT_HANDOFF_OK HIMMEL_WORKER
+    HIMMEL_WORKER_SESSION_CONTEXT_SHARE WORKER_SESSION_CONTEXT_HANDOFF_OK HIMMEL_WORKER \
+    GUARD_CONTEXT_HANDOFF_BRIEF_LINT BRIEF_LINT_JIRA_CLI BRIEF_LINT_MIRROR GUARD_TEST_CORE
 unset HIMMEL_LEG_CONTEXT_MODE HIMMEL_LEG_CONTEXT_SHARE HIMMEL_LEG_AUTOCOMPACT # old-term-ok
 [ -f "$HOOK" ] || { echo "hook not found: $HOOK" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
@@ -46,7 +47,9 @@ TR="$CFG/projects/p/sess.jsonl"
 WORKER_SESSION_MODE=handoff
 run_worker() {
     env HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-chief CLAUDE_CONFIG_DIR="$CFG" \
-        HANDOVER_DIR="$T/handovers" ${WORKER_SESSION_MODE:+"HIMMEL_WORKER_SESSION_CONTEXT_MODE=$WORKER_SESSION_MODE"} "$@"
+        HANDOVER_DIR="$T/handovers" ${WORKER_SESSION_MODE:+"HIMMEL_WORKER_SESSION_CONTEXT_MODE=$WORKER_SESSION_MODE"} \
+        ${LINT_SEAM:+"GUARD_CONTEXT_HANDOFF_BRIEF_LINT=$LINT_SEAM"} \
+        BRIEF_LINT_JIRA_CLI="$T/cli/index.js" BRIEF_LINT_MIRROR="$T/mirror-j" "$@"
 }
 
 sha() {
@@ -92,6 +95,42 @@ deny_text() {
     # shellcheck disable=SC2069
     printf '%s' "$json" | run_worker "$@" bash "$HOOK" 2>&1 >/dev/null
 }
+
+mkdir -p "$T/stubs" "$T/cli" "$T/mirror-j"
+LINT_LOG="$T/lint.log"; LINT_MAP="$T/lint.map"; LINT_STUB="$T/stubs/lint-map.sh"
+GC_MARK="2997.$$"
+GC_RE="sleep 2997\\.$$\$"
+{
+    printf '#!/usr/bin/env bash\nLOG=%q MAP=%q GC=%q\n' "$LINT_LOG" "$LINT_MAP" "$GC_MARK"
+    cat <<'STUB'
+printf '%s\t%s\n' "$#" "$*" >> "$LOG"
+row=$(awk -F'\t' -v b="$(basename "${1:-}")" '$1==b{f=$0} $1=="*"{d=$0} END{print (f!=""?f:d)}' "$MAP")
+IFS=$'\t' read -r _ rc slp gc line <<< "$row"
+[ "$line" = "-" ] || printf '%b\n' "${line//<c>/${1:-}}" >&2
+[ "$gc" = 1 ] && { sleep "$GC" & }
+[ "$slp" = "-" ] || sleep "$slp"
+exit "$rc"
+STUB
+} > "$LINT_STUB"
+cat > "$T/cli/index.js" <<'CLI'
+const a = process.argv.slice(2);
+const after = (f) => a.slice(a.indexOf(f) + 1);
+if (a[0] === 'release' && a[1] === 'core-check') {
+  for (const k of after('--key')) {
+    const m = process.env.GUARD_TEST_CORE;
+    console.log(m === 'nospec' ? 'CORE ' + k + ' label core' : m === 'bypass' ? 'BYPASS ' + k + ' design core by label only' : 'NOT-CORE ' + k);
+  }
+} else if (a[0] === 'release' && a[1] === 'spec-check') {
+  for (const k of after('--mirror').slice(1)) console.log('NO-SPEC ' + k);
+  process.exit(1);
+} else if (a[0] === 'release' && a[1] === 'bucket-check') {
+  for (const k of after('--mirror').slice(1)) console.log('IN ' + k + ' current=v1.1.3 via=mirror');
+} else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+CLI
+setmap() { printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "${3:--}" "${4:-0}" "${5:--}" >> "$LINT_MAP"; }
+resetmap() { printf '*\t0\t-\t0\t-\n' > "$LINT_MAP"; : > "$LINT_LOG"; }
+resetmap
+LINT_SEAM="$LINT_STUB"
 
 # The worker's worktree: a repo whose branch tracks a bare upstream, so a
 # CHECKPOINT sha can be checked against HEAD and @{u}. Hooks and signing off,
@@ -685,6 +724,235 @@ jq -cn --arg t "load $DOC and continue" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%S.0
     '{type:"user",timestamp:$ts,message:{role:"user",content:[{type:"text",text:$t}]}}' > "$TR"
 fill 90
 check "content as a text-block array -> worker doc found, block" block "$LS"
+
+echo "== 10776: a RESUME brief is linted before the hand-off unlocks =="
+session "load $DOC and continue"; fill 90; doc "- 10:01 LIVE — working"
+rm -f "$DIR"/*-RESUME.md
+C1="$DIR/PROJ-1-N77b-thing-2026-10-06-RESUME.md"
+C2="$DIR/PROJ-1-N77c-thing-2026-10-06-RESUME.md"
+APPEND="$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC \"BLOCKED — context 90 %, RESUME written: $C1\"")"
+REAL='GUARD_CONTEXT_HANDOFF_BRIEF_LINT='
+stamp_epoch() { date -d "@$1" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$1" +%Y%m%d%H%M.%S; } # gnu-ok: paired with the BSD date -r
+age() { touch -t "$(stamp_epoch $(( $(date +%s) + $2 )))" "$1"; }
+fresh() { rm -f "$DIR"/*-RESUME.md; resetmap; }
+has() { case "$3" in *"$2"*) ok "$1" ;; *) bad "$1 - lacks '$2' - got: $3" ;; esac; }
+hasnt() { case "$3" in *"$2"*) bad "$1 - has '$2'" ;; *) ok "$1" ;; esac; }
+lint_runs() { wc -l < "$LINT_LOG" | tr -d ' '; }
+resume_doc() {
+    local key; key="$(basename "$1" | grep -oE '^[A-Z][A-Z0-9]*-[0-9]+')"
+    {
+        printf -- '---\nresume_cwd: %s\ndescription: "resume of N77"\n---\n\n# %s — resume N77b\n\n' "$REPO" "$key"
+        [ "$2" = yes ] && printf '> **Prior art:** none found (qmd query jira-himmel guard-worker-context-handoff)\n\n'
+        printf '> **Writes:** none named\n\n## Results (newest at the bottom)\n\n'
+    } > "$1"
+}
+timed() {
+    local t0=$SECONDS lbl="$1" mx="$3"
+    check "$lbl" "$2" "$4" "${@:5}"
+    local took=$((SECONDS - t0))
+    if [ "$took" -le "$mx" ]; then ok "$lbl: returned in ${took}s (limit ${mx}s)"; else bad "$lbl: took ${took}s (limit ${mx}s)"; fi
+}
+
+echo "-- D1/D2: the real brief-lint decides the unlock --"
+fresh
+resume_doc "$C1" no
+check "10776 L1: a fresh RESUME with no Prior art line -> block" block "$LS" "$REAL"
+has "10776 L1: the deny names the lint class" "[lint: fixable]" "$(deny_text "$LS" "$REAL")"
+check "10776 L1.pc: the same doc at an auto PreCompact -> block" block "$(pc_call)" "$REAL"
+resume_doc "$C1" yes
+check "10776 L1.ctl: the same doc with its Prior art line -> allow" allow "$LS" "$REAL"
+check "10776 L1.pc.ctl: ... at an auto PreCompact -> allow" allow "$(pc_call)" "$REAL"
+check "10776 L2: lint-clean key-bearing RESUME, stub Jira CLI answering IN and NOT-CORE -> allow" allow "$LS" "$REAL"
+check "10776 L2.ctl: the stub CLI answers CORE with NO-SPEC -> block" block "$LS" "$REAL" GUARD_TEST_CORE=nospec
+has "10776 L2.ctl: the deny says stuck" "[lint: stuck]" "$(deny_text "$LS" "$REAL" GUARD_TEST_CORE=nospec)"
+
+echo "-- candidates and verdicts (stub linter) --"
+fresh
+resume_doc "$C1" yes; resume_doc "$C2" yes; age "$C1" 5; age "$C2" 10
+setmap "$(basename "$C1")" 0
+setmap "$(basename "$C2")" 1 - 0 'brief-lint: <c>: no Prior art'
+check "10776 M1: pass plus fixable -> unlock blocked" block "$LS"
+has "10776 M1: the deny names the fixable path" "$C2" "$(deny_text "$LS")"
+check "10776 M1: BLOCKED is denied (a fixable candidate)" block "$APPEND"
+resetmap
+setmap "$(basename "$C1")" 0
+setmap "$(basename "$C2")" 3 - 0 'brief-lint: <c>: core brief PROJ-1 has no signed spec'
+check "10776 M3: pass plus stuck -> unlock blocked" block "$LS"
+check "10776 M3: BLOCKED passes (stuck is the chief's)" allow "$APPEND"
+resetmap
+setmap "$(basename "$C1")" 3
+setmap "$(basename "$C2")" 1 - 0 'brief-lint: <c>: no Prior art'
+check "10776 M2: fixable newer, stuck older -> BLOCKED denied" block "$APPEND"
+resetmap
+setmap "$(basename "$C2")" 3
+setmap "$(basename "$C1")" 1 - 0 'brief-lint: <c>: no Prior art'
+check "10776 M4: stuck newer, fixable older -> BLOCKED denied (the pass goes on past stuck)" block "$APPEND"
+resetmap
+setmap "$(basename "$C2")" 3 30 1
+setmap "$(basename "$C1")" 1 - 0 'brief-lint: <c>: no Prior art'
+: > "$LINT_LOG"
+timed "10776 M5: stuck newer sleeps past the budget, fixable older unreached -> BLOCKED allowed" allow 10 "$APPEND"
+if [ "$(lint_runs)" = 1 ]; then ok "10776 M5/O1: the second candidate was unlinted (one lint run, one budget)"; else bad "10776 M5/O1: lint runs: $(lint_runs)"; fi
+pkill -f "$GC_RE" 2>/dev/null || true
+
+echo "-- A1: the hook's lint call is one path and no flag --"
+fresh
+resume_doc "$C1" yes
+check "A1 setup: stub pass -> allow" allow "$LS"
+if [ "$(cat "$LINT_LOG")" = "$(printf '1\t%s' "$C1")" ]; then ok "10776 A1: lint.log holds exactly one argument, the candidate path"; else bad "10776 A1: lint.log: $(cat "$LINT_LOG")"; fi
+MIR="$T/mirror"; mkdir -p "$MIR/scripts/hooks"
+ln -s "$HOOKS/../lib" "$MIR/scripts/lib"; ln -s "$HOOKS/../context-fill.sh" "$MIR/scripts/context-fill.sh"
+cp "$HOOK" "$MIR/scripts/hooks/guard-worker-context-handoff.sh"
+: > "$LINT_LOG"
+printf '%s' "$LS" | run_worker bash "$MIR/scripts/hooks/guard-worker-context-handoff.sh" >/dev/null 2>&1
+if [ "$(cat "$LINT_LOG")" = "$(printf '1\t%s' "$C1")" ]; then ok "10776 A1.ctl: the unmodified mirrored hook passes the assertion first"; else bad "10776 A1.ctl: mirrored hook lint.log: $(cat "$LINT_LOG")"; fi
+sed 's/bash "\$lint_path" "\$c"/bash "$lint_path" --core-only "$c"/' "$HOOK" > "$MIR/scripts/hooks/guard-worker-context-handoff.sh"
+: > "$LINT_LOG"
+printf '%s' "$LS" | run_worker bash "$MIR/scripts/hooks/guard-worker-context-handoff.sh" >/dev/null 2>&1
+if [ "$(cat "$LINT_LOG")" = "$(printf '2\t--core-only %s' "$C1")" ]; then ok "10776 A1.ctl: a copy with --core-only fails the assertion (only the flag differs)"; else bad "10776 A1.ctl: flagged copy lint.log: $(cat "$LINT_LOG")"; fi
+
+echo "-- X2, T2.bypass: exit classes --"
+fresh
+resume_doc "$C1" yes
+setmap "$(basename "$C1")" 2 - 0 'brief-lint: usage'
+check "10776 X2: lint exit 2 -> unlock stays closed" block "$LS"
+has "10776 X2: the deny says stuck" "[lint: stuck]" "$(deny_text "$LS")"
+check "10776 X2: BLOCKED passes" allow "$APPEND"
+fresh
+resume_doc "$C1" no
+has "10776 T2.bypass: a bypass-key doc without Prior art names Prior art, not the bypass note" "no '> **Prior art:**' line" "$(deny_text "$LS" "$REAL" GUARD_TEST_CORE=bypass)"
+
+echo "-- D4: the BLOCKED gate and its controls --"
+fresh
+resume_doc "$C1" yes
+setmap "$(basename "$C1")" 1 - 0 'brief-lint: <c>: no Prior art'
+check "10776 B1: a fixable candidate + append-results.sh BLOCKED -> block" block "$APPEND"
+setmap "$(basename "$C1")" 3
+check "10776 B1.ctl1: stuck (exit 3) -> allow" allow "$APPEND"
+setmap "$(basename "$C1")" 0
+check "10776 B1.ctl3: pass -> allow" allow "$APPEND"
+fresh
+check "10776 B1.ctl2: no candidate -> allow" allow "$APPEND"
+resume_doc "$C1" yes
+setmap "$(basename "$C1")" 1 - 0 'brief-lint: <c>: no Prior art'
+: > "$LINT_LOG"
+check "10776 B1.env: HANDOVER_DIR empty, a stub that would exit 1 -> BLOCKED allowed" allow "$APPEND" HANDOVER_DIR=
+check "10776 B1.env.rel: HANDOVER_DIR relative -> BLOCKED allowed" allow "$APPEND" HANDOVER_DIR=handovers
+check "10776 B1.env: ... and an ordinary call blocks" block "$LS" HANDOVER_DIR=
+has "10776 B1.env: ... naming the root" "handover root not loadable" "$(deny_text "$LS" HANDOVER_DIR=)"
+if [ "$(lint_runs)" = 0 ]; then ok "10776 B1.env: lint was not run"; else bad "10776 B1.env: lint runs: $(lint_runs)"; fi
+doc "- 10:01 BLOCKED — context 90 %, RESUME written"
+: > "$LINT_LOG"
+check "10776 B1.tail: last marker BLOCKED + a fixable candidate -> allow" allow "$APPEND"
+if [ "$(lint_runs)" = 0 ]; then ok "10776 B1.tail: no lint run"; else bad "10776 B1.tail: lint runs: $(lint_runs)"; fi
+doc "- 10:01 LIVE — working"
+session "hello, no brief path here"; fill 90
+check "10776 B1.nodoc: the doc cannot be resolved -> allow (as today)" allow "$APPEND"
+session "load $DOC and continue"; fill 90
+: > "$LINT_LOG"
+check_c "10776 B1.cmp: compact mode, a fixable stub present, append-results.sh -> allow" allow "$APPEND"
+check_c "10776 B1.cmp.append: compact CHECKPOINT append -> allow" allow \
+    "$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC \"LIVE — CHECKPOINT $HEAD2 pushed\"")"
+if [ "$(lint_runs)" = 0 ]; then ok "10776 B1.cmp: compact mode runs no lint"; else bad "10776 B1.cmp: lint runs: $(lint_runs)"; fi
+: > "$LINT_LOG"
+check "10776 I7.a: SendMessage with a fixable candidate -> allow" allow "$(tool_call SendMessage)"
+check "10776 I7.a: ToolSearch -> allow" allow "$(tool_call ToolSearch)"
+check "10776 I7.a: TaskStop -> allow" allow "$(tool_call TaskStop)"
+check "10776 I7.a: Write of the RESUME -> allow" allow "$(write_call Write "$C1")"
+check "10776 I7.a: queue-lock.sh release -> allow" allow "$(bash_call "bash scripts/handover/queue-lock.sh release $DOC tok")"
+check "10776 I7.a: git commit -> allow" allow "$(bash_call 'git commit -m wip')"
+if [ "$(lint_runs)" = 0 ]; then ok "10776 I7.a: none of them ran lint"; else bad "10776 I7.a: lint runs: $(lint_runs)"; fi
+
+echo "-- D6: the budget and the watchdog --"
+fresh
+resume_doc "$C1" yes
+setmap "$(basename "$C1")" 0 30 1
+timed "10776 W1: a lint that hangs with a grandchild -> block" block 10 "$LS"
+has "10776 W1: the deny names the deadline" "did not answer" "$(deny_text "$LS")"
+if pgrep -f "$GC_RE" >/dev/null 2>&1; then bad "10776 W1: a stub process outlived the hook"; pkill -f "$GC_RE"; else ok "10776 W1: no stub process remains"; fi
+timed "10776 W1.pc: at an auto PreCompact -> block within 7 s" block 7 "$(pc_call)"
+pkill -f "$GC_RE" 2>/dev/null || true
+resume_doc "$C2" yes; age "$C2" 10
+setmap "$(basename "$C2")" 0 30 1
+timed "10776 W2: two hanging candidates -> block within 10 s" block 10 "$LS"
+pkill -f "$GC_RE" 2>/dev/null || true
+fresh
+resume_doc "$C1" yes
+check "10776 W1.ctl: a stub answering 0 at once -> allow" allow "$LS"
+fresh
+n=0; while [ "$n" -lt 60 ]; do : > "$DIR/PROJ-1-N$((900 + n))b-x-RESUME.md"; n=$((n + 1)); done
+resume_doc "$C1" yes
+setmap "$(basename "$C1")" 0 30 1
+timed "10776 W3: 60 off-pattern RESUME files plus one hanging candidate -> within 10 s" block 10 "$LS"
+pkill -f "$GC_RE" 2>/dev/null || true
+
+echo "-- D7: the primary's linter, never the worktree's copy --"
+fresh
+PRIM="$T/prim"; WT="$T/wt"
+gp() { git -C "$PRIM" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.email=t@t -c user.name=t "$@"; }
+git init -q "$PRIM"; printf 'p\n' > "$PRIM/p"; gp add p; gp commit -qm p
+gp worktree add -q -b wtb "$WT"
+mkdir -p "$WT/scripts/hooks" "$WT/scripts/handover/chief-kit" "$PRIM/scripts/handover/chief-kit"
+cp "$HOOK" "$WT/scripts/hooks/guard-worker-context-handoff.sh"
+cp -R "$HOOKS/../lib" "$WT/scripts/lib"; cp "$HOOKS/../context-fill.sh" "$WT/scripts/context-fill.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$WT/scripts/handover/chief-kit/brief-lint.sh"
+# shellcheck disable=SC2016 # the stub's own $1 is written literally
+printf '#!/usr/bin/env bash\nprintf "brief-lint: %%s: refused by the primary\\n" "$1" >&2\nexit 1\n' > "$PRIM/scripts/handover/chief-kit/brief-lint.sh"
+resume_doc "$C1" yes
+HOOK_SAVE="$HOOK"; SEAM_SAVE="$LINT_SEAM"; HOOK="$WT/scripts/hooks/guard-worker-context-handoff.sh"; LINT_SEAM=''
+check "10776 P1: the worktree's linter says 0, the primary's says 1 -> block" block "$LS"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$PRIM/scripts/handover/chief-kit/brief-lint.sh"
+check "10776 P1.ctl: both pass -> allow" allow "$LS"
+rm -f "$PRIM/scripts/handover/chief-kit/brief-lint.sh"
+check "10776 P1.miss: no linter at the primary -> block" block "$LS"
+has "10776 P1.miss: the deny says so" "brief-lint not found" "$(deny_text "$LS")"
+HOOK="$HOOK_SAVE"; LINT_SEAM="$SEAM_SAVE"
+
+echo "-- D8: the self-check shape --"
+fresh
+SC_NAME="PROJ-1-N77b-thing-2026-10-06-RESUME.md"
+sc() { bash_call "bash $LINT_STUB $*"; }
+check "10776 S1: bash <linter> <dir>/<name>-RESUME.md -> allow" allow "$(sc "$DIR/$SC_NAME")"
+check "10776 S1.ctl: ... plus ; rm x -> block" block "$(sc "$DIR/$SC_NAME; rm x")"
+check "10776 S1.two: two path arguments -> block" block "$(sc "$DIR/$SC_NAME $DIR/$SC_NAME")"
+check "10776 S1.flag: a --core-only flag -> block" block "$(sc "--core-only $DIR/$SC_NAME")"
+check "10776 S1.copy: another linter -> block" block "$(bash_call "bash $T/other/brief-lint.sh $DIR/$SC_NAME")"
+check "10776 S1.quote: the path in quotes -> block" block "$(sc "\"$DIR/$SC_NAME\"")"
+check "10776 S1.dir: a RESUME in another directory -> block" block "$(sc "$T/elsewhere/$SC_NAME")"
+# shellcheck disable=SC2016
+check '10776 S1.meta: a name carrying $ -> block' block "$(sc "$DIR/"'a$b-RESUME.md')"
+check "10776 S1.meta: a name carrying a glob -> block" block "$(sc "$DIR/"'a*-RESUME.md')"
+check "10776 S1.nameless: a name that is not a RESUME -> block" block "$(sc "$DIR/notes.md")"
+SPDIR="$T/sp dir/h/u"; mkdir -p "$SPDIR"; SPDOC="$SPDIR/HIMMEL-9-N77-thing-2026-10-06.md"
+printf -- '---\n---\n# brief\n\n## Results (newest at the bottom)\n\n- 10:01 LIVE — working\n' > "$SPDOC"
+session "load $SPDOC and continue"; fill 90
+check "10776 S1.sp: a doc directory with a space admits no shape -> block" block "$(sc "$SPDIR/$SC_NAME")"
+hasnt "10776 T1.sp: no 1a) in the deny" "1a)" "$(deny_text "$LS")"
+session "load $DOC and continue"; fill 90
+
+echo "-- D3: the deny texts --"
+fresh
+t1="$(deny_text "$LS")"
+has "10776 T1: the handoff deny names the Prior art line" '> **Prior art:**' "$t1"
+has "10776 T1: ... and the worker's own doc as its source" "from $DOC" "$t1"
+has "10776 T1: ... and brief-lint" "brief-lint" "$t1"
+has "10776 T1: ... and the self-check command (1a)" "1a) Check it: bash $LINT_STUB $DIR/HIMMEL-9-N77b-thing-2026-10-06-RESUME.md" "$t1"
+resume_doc "$C1" yes
+setmap "$(basename "$C1")" 1 - 0 'a note first\nbrief-lint: <c>: no '"'"'> **Prior art:**'"'"' line'
+t2="$(deny_text "$LS")"
+has "10776 T2: the fixable deny quotes the last brief-lint line" "brief-lint: $C1: no '> **Prior art:**' line" "$t2"
+has "10776 T2: ... and says to copy the Prior art line" '> **Prior art:**' "$t2"
+hasnt "10776 T2: ... and not the note before it" "a note first" "$t2"
+setmap "$(basename "$C1")" 3 - 0 'brief-lint: <c>: no signed spec'
+t3="$(deny_text "$LS")"
+has "10776 T3: the stuck deny carries the reason" "no signed spec" "$t3"
+has "10776 T3: ... and the chief's name" "T-chief" "$t3"
+fresh
+GOLDEN="$(sed "s|__DOC__|$DOC|g" <<'GOLD'
+worker context checkpoint (mode compact): this session is at 90 % context fill (threshold 75 % = 75 % of the 200000-token autocompact ceiling on a 200000-token window). Ordinary tool calls stay denied until you checkpoint. Do exactly this: 1) git add and git commit your WIP, then git push. A commit is one line (a newline in the command is denied): git commit -m "<subject>" -m "<body>" --trailer "Platforms tested: <os>" --trailer "Security reviewed: <token> - <what>". 2) git rev-parse HEAD. 3) bash scripts/handover/chief-kit/append-results.sh '__DOC__' "LIVE — CHECKPOINT <full sha of HEAD> pushed". 4) Carry on with your work: the session compacts at its ceiling and continues. A new commit after the checkpoint needs a push and a fresh CHECKPOINT bullet. Nothing to commit and nothing unpushed (git status clean, HEAD on its upstream or in origin/main)? Skip 1 and write "LIVE — CHECKPOINT <full sha of HEAD> clean" instead. If you cannot push or commit (a moved upstream, a refused attestation or pre-commit gate), do not work around it: SendMessage your chief T-chief what blocks you, then bash scripts/handover/chief-kit/append-results.sh '__DOC__' "BLOCKED — <why>" and stop. BLOCKED frees only these hand-off calls and reads (Read, Grep, Glob), not your work; WRAPPED (after the merge) frees everything. Still allowed meanwhile: SendMessage, ListAgents, ToolSearch, TaskStop, the mail reads (mcp__himmel-bus__read, ReadNotifications, FetchInboxMessage), append-results.sh, queue-lock.sh release, wrap-subtree-check.sh, context-fill.sh, git add/commit/push/status/rev-parse, a bare cd. The mode is set at launch by the chief (HIMMEL_WORKER_SESSION_CONTEXT_MODE); it cannot be changed in-session. Bypass: WORKER_SESSION_CONTEXT_HANDOFF_OK=1 in the launching shell.
+GOLD
+)"
+if [ "$(WORKER_SESSION_MODE=compact deny_text "$LS")" = "$GOLDEN" ]; then ok "10776 T1.ctl: the compact deny is byte-identical to the base's"; else bad "10776 T1.ctl: the compact deny changed"; fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
