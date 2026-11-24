@@ -359,7 +359,7 @@
       }
     },
     {
-      "kind": "cadence:qmd-daemon",
+      "kind": "cadence:qmd-outage",
       "class": "monitor",
       "sender": "scripts/himmel-doctor.sh",
       "on-alert": {
