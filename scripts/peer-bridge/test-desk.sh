@@ -74,7 +74,8 @@ if [ -n "$mcpf" ] && [ -f "$mcpf" ] && [ "$(jq -c '.mcpServers' "$mcpf" 2>/dev/n
 [ "$(arg_after --tools)" = Bash ] && pass "the desk's only tool is Bash" || fail "the desk's only tool is Bash" "$(arg_after --tools)"
 if [ "$(cat "$REC/no_claude_mds")" = 1 ] && [ "$(cat "$REC/no_auto_memory")" = 1 ]; then pass "the desk launches with user CLAUDE.md and auto-memory loading disabled"; else fail "the desk launches with user CLAUDE.md and auto-memory loading disabled" "mds=$(cat "$REC/no_claude_mds") mem=$(cat "$REC/no_auto_memory")"; fi
 ! grep -qx -- "--bare" "$REC/args" && pass "the desk never uses --bare, which would drop OAuth auth" || fail "the desk never uses --bare, which would drop OAuth auth"
-[ "$(arg_after --permission-mode)" = default ] && pass "the desk sets --permission-mode default" || fail "the desk sets --permission-mode default" "$(arg_after --permission-mode)"
+[ "$(arg_after --permission-mode)" = auto ] && pass "the desk sets --permission-mode auto" || fail "the desk sets --permission-mode auto" "$(arg_after --permission-mode)"
+! grep -qx -- "bypassPermissions" "$REC/args" && pass "the desk never runs bypassPermissions" || fail "the desk never runs bypassPermissions"
 [ "$(arg_after --setting-sources)" = project ] && pass "the desk drops the user settings source" || fail "the desk drops the user settings source" "$(arg_after --setting-sources)"
 setf="$(arg_after --settings)"
 if [ -n "$setf" ] && [ -f "$setf" ] \

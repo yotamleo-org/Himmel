@@ -75,4 +75,4 @@ fi
 
 cd "$desk" || exit 3
 # launch-profile-ok: the desk takes no plugin; its taint gate comes from its own settings file; launch-guard-ok: the operator starts the desk by hand in its own terminal, one per peer
-exec env PEER_DESK="$peer" CLAUDE_CODE_DISABLE_CLAUDE_MDS=1 CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --strict-mcp-config --mcp-config "$mcpf" --setting-sources project --settings "$setf" --tools Bash --permission-mode default --disable-slash-commands --append-system-prompt "$prompt"
+exec env PEER_DESK="$peer" CLAUDE_CODE_DISABLE_CLAUDE_MDS=1 CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --strict-mcp-config --mcp-config "$mcpf" --setting-sources project --settings "$setf" --tools Bash --permission-mode auto --disable-slash-commands --append-system-prompt "$prompt"
