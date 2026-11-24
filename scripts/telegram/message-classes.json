@@ -71,13 +71,9 @@
     },
     {
       "kind": "denial-page",
-      "class": "monitor",
+      "class": "silent",
       "sender": "scripts/handover/chief-kit/chief-wait.sh",
-      "sample": "Session 81843b5d of the himmel chief has 3 classifier denials (PAUSE-RISK). Blocks: that session. Do: open it in Remote Control and answer the prompt",
-      "on-alert": {
-        "do": "info",
-        "why": "chief-wait acts; denial-stuck escalates"
-      }
+      "sample": "Session 81843b5d of the himmel chief has 3 classifier denials (PAUSE-RISK). Blocks: that session. Do: open it in Remote Control and answer the prompt"
     },
     {
       "kind": "title-unresolved",
