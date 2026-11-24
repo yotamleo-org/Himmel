@@ -30,6 +30,29 @@ One `providerInstances.claudeAgent_<profile>` entry per profile:
   carry `--dangerously-skip-permissions` or `bypassPermissions` is refused the same way.
 - A malformed settings file is refused (rc 2) and left untouched.
 
+## Relay copies (`.t3.relay_instances`)
+
+A relay-marked instance is the one-click switch for a thread to reach the chief.
+The operator lists base instance ids in `~/.himmel/config.json`,
+beside `.t3.instance_allowlist`:
+
+```json
+{ "t3": { "relay_instances": ["claudeAgent_worker-impl", "antigravity"] } }
+```
+
+- For each listed id the script adds `<id>_relay`: the base entry as regenerated in the
+  same run (same driver and `config`), `enabled: true`, named `<base displayName> + chief relay`.
+  A hand-edited copy is regenerated from its base; picking the copy in T3 is the click.
+- A `*_relay` key never marks a profile covered, so the base still refreshes.
+- Off by default: an absent field, `[]` or no config file generates nothing. The file is
+  read only from `$HOME/.himmel/config.json`; no env variable moves it.
+- An id that names no instance warns and is skipped (rc 0). The bypass-flag refusal
+  (rc 3) covers the copies. The printed allowlist block lists the `_relay` ids; adding
+  them to `.t3.instance_allowlist` is the operator's.
+- `codex` is a built-in with no entry. A driver-only `codex_relay` is written only with
+  `T3_PI_BUILTIN_RELAY=1`; the default is off, with a warning, until a read-only
+  check shows T3 lists such an entry.
+
 ## Dry run, then apply
 
 ```bash
