@@ -50,7 +50,7 @@ pattern="(^|[[:space:]])$(printf '%s' "$LINE" | sed 's/[][\.*^$+?(){}|/]/\\&/g')
 present() {
     local seen
     seen="$(jira comments "$KEY" 2>/dev/null)" || return 2  # swallow-ok: an unreadable ticket is rc 2, refused as exit 5 by the caller
-    printf '%s\n' "$seen" | grep -Eq -- "$pattern"
+    grep -Eq -- "$pattern" <<< "$seen"
 }
 
 present; rc=$?
