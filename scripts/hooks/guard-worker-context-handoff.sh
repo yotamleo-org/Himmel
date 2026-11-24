@@ -68,8 +68,9 @@
 #   4. The mode's unlock holds -> allow. A RESUME doc counts when it sits beside
 #      the doc, is not the doc itself, carries the doc's worker id (letter + digits)
 #      with any one-letter suffix, and was modified after this session's
-#      first user turn — so an older link of the same chain never counts. A
-#      CHECKPOINT counts from the doc's newest CHECKPOINT bullet only.
+#      first user turn — so an older link of the same chain never counts. In
+#      handoff mode it must also pass brief-lint (docs/internals/worker-context-guard.md,
+#      "The lint"). A CHECKPOINT counts from the doc's newest CHECKPOINT bullet only.
 #   5. Otherwise deny, naming the mode, the fill and exactly what unlocks it.
 # PreCompact: a manual /compact passes; an auto one past the threshold passes
 # only on steps 3-4, with EITHER unlock (a CHECKPOINT or a RESUME doc).
