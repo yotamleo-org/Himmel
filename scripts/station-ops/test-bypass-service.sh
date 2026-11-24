@@ -162,6 +162,9 @@ printf '# edited\n' >> "$U/$UNIT"
 : > "$D/calls"
 svc_run on --bucket "$B" >/dev/null
 assert_contains "an on that rewrites a running unit restarts it, so it runs the new unit" "systemctl --user restart $UNIT" "$(calls)"
+: > "$D/calls"
+HANDOVER_DIR=/srv/new-handovers svc_run on --bucket "$B" >/dev/null
+assert_contains "RED CR: an on with a changed handover root restarts the running unit, so the pin is read again" "systemctl --user restart $UNIT" "$(calls)"
 mk twobucket
 svc_run on --bucket "$B" >/dev/null
 mkdir -p "$D/bucket2/bypass-queue"

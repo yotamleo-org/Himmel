@@ -108,7 +108,9 @@ cmd_on() {
     if [ -f "$path" ] && cmp -s "$path" "$path.new"; then changed=""; fi
     mv "$path.new" "$path"
     [[ "${HANDOVER_DIR:-}" =~ $PATH_RE ]] && pin_hd=$HANDOVER_DIR
-    { printf 'bucket=%s\nrepo=%s\n' "$bucket" "$repo"; [ -z "$pin_hd" ] || printf 'handover_dir=%s\n' "$pin_hd"; } >"$CONFIG.new" && mv "$CONFIG.new" "$CONFIG"
+    { printf 'bucket=%s\nrepo=%s\n' "$bucket" "$repo"; [ -z "$pin_hd" ] || printf 'handover_dir=%s\n' "$pin_hd"; } >"$CONFIG.new"
+    if [ ! -f "$CONFIG" ] || ! cmp -s "$CONFIG" "$CONFIG.new"; then changed=1; fi
+    mv "$CONFIG.new" "$CONFIG"
     rm -f "$q/stop"
     if darwin; then
         mkdir -p "$HOME/.himmel"
