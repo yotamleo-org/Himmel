@@ -22,6 +22,8 @@
 #      Claude critic (slug claude or a claude-* model) was asked for with no
 #      --provider and the merged critics registry has no row for it (dropped
 #      or absent). A clean no-op, no stdout, no score row; never a review verdict
+#  10  the claude-api launcher refused deterministically (its own rc 10): not
+#      retried, the launcher's stderr line stays last on stderr; like 1 to callers
 #
 # Claude critic: effort = CR_CLAUDE_CRITIC_EFFORT, else the claude row's effort,
 # else medium; CR_CLAUDE_CRITIC_MAX_USD caps one API review (default 1.00).
