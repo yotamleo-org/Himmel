@@ -3136,7 +3136,7 @@ cmd_next() {
         fi
     fi
     local dg_facts="$HERE/../chief-kit/handoff-facts.sh" dg_budget="${DIGEST_BUDGET_BYTES:-6000}" dg_tpl="$predecessor_digest.tpl" dg_pass=1
-    local dg_workers dg_prs dg_lastgo dg_judges dg_queue
+    local dg_workers dg_prs dg_lastgo dg_judges dg_queue dg_total
     awk 'f { print } /^<!-- digest-template:/ { f = 1 }' "$handoff_template" > "$dg_tpl" || { rm -f "$dg_tpl"; err "could not split $handoff_template"; exit 1; }
     while :; do
         if [ "$dg_pass" -eq 1 ]; then
@@ -3149,7 +3149,7 @@ cmd_next() {
             dg_workers="over the digest budget — read the HANDOFF $predecessor_handoff_ref"
             dg_prs="$dg_workers"; dg_judges="$dg_workers"
             dg_lastgo="over the digest budget — read \`last GO:\` in the Live state of $successor_doc_ref"
-            dg_queue="$dg_lastgo"
+            dg_queue="over the digest budget — read \`queue:\` in the Live state of $successor_doc_ref"
         fi
         render_template "$dg_tpl" "$predecessor_digest.new" \
             PREDECESSOR_LETTER "$predecessor_letter" \
@@ -3168,6 +3168,8 @@ cmd_next() {
         dg_pass=2
     done
     rm -f "$dg_tpl"
+    dg_total="$(wc -c < "$predecessor_digest.new" | tr -d ' ')"
+    [ "$dg_total" -le "$dg_budget" ] || err "warning: digest over budget after the pointer pass: $dg_total bytes (limit $dg_budget); the fixed fields and paths alone exceed it"
     mv -f "$predecessor_digest.new" "$predecessor_digest" || { err "could not write the digest $predecessor_digest"; exit 1; }
     echo "digest: $predecessor_digest"
     # Resolved BEFORE the cleanup trap is cleared, so a profile

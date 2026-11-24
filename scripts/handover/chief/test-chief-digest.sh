@@ -87,6 +87,7 @@ chief new --bucket dgsrc2 >/dev/null 2>&1
 docA2="$root/tester/dgsrc2/DEMO-nextleg-${today}A-chief.md"
 DIGEST_BUDGET_BYTES=1500 chief next --bucket dgdst3 --doc "$docA2" >/dev/null 2>&1
 check "1 over a tight budget every list falls back to a pointer" "$(grep -c 'over the digest budget' "${docA2%.md}-DIGEST.md" 2>/dev/null | awk '{ print ($1 >= 3) ? "yes" : "no" }')" "yes"
+check "1 over a tight budget the queue line points at the queue, not last GO" "$(grep -c 'Held queue:\*\* over the digest budget — read .queue:. in the Live' "${docA2%.md}-DIGEST.md" 2>/dev/null)" "1"
 
 tpl="$REPO_REAL/docs/handover/chief-handoff-template.md"
 labels="$(awk '/^<!-- digest-template:/ { exit } /^\*\*[^*]+:\*\*/ { s = $0; sub(/^\*\*/, "", s); sub(/:\*\*.*/, "", s); print s }' "$tpl")"
