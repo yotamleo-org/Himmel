@@ -3235,8 +3235,9 @@ name `scripts/lib/session-name.sh` trusts as a chief. Two rules, each a deny
   from any provider to any provider, except a **bypass instance**: an entry under
   `.providerInstances` in T3's settings file whose `env` / `environment` (on the
   instance or its `config`) names a `*_OK` or `*BYPASS*` variable (any case) or a
-  flag in `scripts/himmelctl/lib/bypass-flags.json`, has a malformed environment
-  entry, or whose `launchArgs` carry `--dangerously-skip-permissions` or
+  flag in `scripts/himmelctl/lib/bypass-flags.json`, that is malformed (a
+  non-object entry or `config`, an environment entry without a string name,
+  non-string `launchArgs`), or whose `launchArgs` carry `--dangerously-skip-permissions` or
   `bypassPermissions`. A hook bypass is granted per session, by the operator
   choosing that instance in the T3 UI, never to every thread T3 starts. An id
   with no entry (a T3 built-in such as `claudeAgent` or `codex`) carries no

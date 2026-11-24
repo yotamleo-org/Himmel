@@ -31,7 +31,12 @@ write_t3_settings() {
   "skipArgs":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /x/y.json --dangerously-skip-permissions"}},
   "skipCr":{"driver":"codex","enabled":true,"config":{"env":{"SKIP_CR":"1"}}},
   "lowerBypass":{"driver":"codex","enabled":true,"config":{"environment":[{"name":"guard_bypass_x","value":"1"}]}},
-  "badEnv":{"driver":"claudeAgent","enabled":true,"config":{"environment":[7]}}
+  "badEnv":{"driver":"claudeAgent","enabled":true,"config":{"environment":[7]}},
+  "namelessEnv":{"driver":"claudeAgent","enabled":true,"environment":[{}]},
+  "numberName":{"driver":"claudeAgent","enabled":true,"environment":[{"name":7,"value":"1"}]},
+  "stringEntry":"claudeAgent",
+  "stringConfig":{"driver":"claudeAgent","enabled":true,"config":"x"},
+  "arrayArgs":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":["--dangerously-skip-permissions"]}}
 }}
 EOF
 }
@@ -90,6 +95,16 @@ run "a registry flag without the _OK suffix: refused" 2 '"skipCr": carries a him
 run "a lower-case bypass name: refused" 2 '"lowerBypass": carries a himmel bypass flag (guard_bypass_x)' "$(from_to codex lowerBypass)"
 run "a malformed environment entry: refused" 2 '"badEnv": carries a himmel bypass flag (a malformed environment entry)' \
     "$(from_to codex badEnv)"
+run "an environment entry with no name: refused" 2 '"namelessEnv": carries a himmel bypass flag (a malformed environment entry)' \
+    "$(from_to codex namelessEnv)"
+run "an environment entry with a non-string name: refused" 2 '"numberName": carries a himmel bypass flag (a malformed environment entry)' \
+    "$(from_to codex numberName)"
+run "a non-object instance entry: refused" 2 '"stringEntry": carries a himmel bypass flag (a malformed instance entry)' \
+    "$(from_to codex stringEntry)"
+run "a non-object instance config: refused" 2 '"stringConfig": carries a himmel bypass flag (a malformed instance config)' \
+    "$(from_to codex stringConfig)"
+run "non-string launchArgs: refused" 2 '"arrayArgs": carries a himmel bypass flag (malformed launchArgs)' \
+    "$(from_to codex arrayArgs)"
 run "launch with a built-in instance: allowed" 0 - "$LAUNCH_OK"
 run "launch with no instance key: allowed" 0 - "$LAUNCH_PLAIN"
 run "create_threads with one good and one bad providerInstanceId: refused" 2 '"claudeBypass"' "$CREATE_MIXED"
@@ -129,6 +144,12 @@ printf '{"providerInstances":{' > "$T3_SETTINGS"
 run "malformed T3 settings: refused" 2 'whether it carries a bypass flag is unknown' "$LAUNCH_OK"
 printf '{"providerInstances":["claudeBypass"]}\n' > "$T3_SETTINGS"
 run "a non-object providerInstances: refused" 2 'whether it carries a bypass flag is unknown' "$LAUNCH_OK"
+printf '{"providerInstances":false}\n' > "$T3_SETTINGS"
+run "a false providerInstances: refused" 2 'whether it carries a bypass flag is unknown' "$LAUNCH_OK"
+printf '{"providerInstances":null}\n' > "$T3_SETTINGS"
+run "a null providerInstances: refused" 2 'whether it carries a bypass flag is unknown' "$LAUNCH_OK"
+printf '["providerInstances"]\n' > "$T3_SETTINGS"
+run "a non-object settings document: refused" 2 'whether it carries a bypass flag is unknown' "$LAUNCH_OK"
 printf '{"theme":"dark"}\n' > "$T3_SETTINGS"
 run "T3 settings with no providerInstances: a built-in allowed" 0 - "$LAUNCH_OK"
 write_t3_settings

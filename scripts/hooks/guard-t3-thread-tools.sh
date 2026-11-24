@@ -6,8 +6,8 @@
 # Bypass instance: an entry in T3's settings file
 # (${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json, .providerInstances) whose
 # env / environment (on the instance or its config) names a *_OK or *BYPASS*
-# variable (any case) or a flag in scripts/himmelctl/lib/bypass-flags.json, has a
-# malformed environment entry, or whose launchArgs carry
+# variable (any case) or a flag in scripts/himmelctl/lib/bypass-flags.json, is
+# malformed (entry, config, environment entry name or launchArgs), or whose launchArgs carry
 # --dangerously-skip-permissions or bypassPermissions. Any other instance id is
 # allowed, from any provider to any provider.
 #
@@ -86,26 +86,33 @@ case "$findings" in
         # swallow-ok: a failed read sets settings_err, which refuses every instance id
         bypass=$(jq -c --slurpfile reg "$REGISTRY" '
             ([$reg[0].flags[].name | strings]) as $names
-            | (.providerInstances // {})
+            | if type == "object" then . else error("the settings file is not an object") end
+            | (if has("providerInstances") then .providerInstances else {} end)
             | if type == "object" then . else error("providerInstances is not an object") end
             | with_entries(
-                (if (.value | type) == "object" then .value else {} end) as $o
-                | (if ($o.config | type) == "object" then $o.config else {} end) as $c
-                | .value = ([
+                .value as $o
+                | .value = (if ($o | type) != "object" then ["a malformed instance entry"]
+                  elif ($o.config != null and ($o.config | type) != "object") then ["a malformed instance config"]
+                  else ($o.config // {}) as $c
+                  | [
                     (($o.env, $o.environment, $c.env, $c.environment) | select(. != null)
                         | if type == "object" then keys[]
                           elif type == "array" then .[]
-                            | if type == "object" then ((.name // .key // "") | tostring)
+                            | if type == "object" then
+                                (if (.name | type) == "string" then .name
+                                 elif .name == null and (.key | type) == "string" then .key
+                                 else "a malformed environment entry" end)
                               elif type == "string" then split("=")[0]
                               else "a malformed environment entry" end
                           else "a malformed environment entry" end
                         | select(. == "a malformed environment entry"
                             or (ascii_upcase | test("_OK$|BYPASS"))
                             or (. as $n | any($names[]; . == $n)))),
-                    (($o.launchArgs, $c.launchArgs) | select(. != null) | tostring
-                        | match("dangerously-skip-permissions|bypassPermissions"; "gi").string
-                        | "launchArgs " + .)
-                  ] | unique))
+                    (($o.launchArgs, $c.launchArgs) | select(. != null)
+                        | if type == "string" then
+                            (match("dangerously-skip-permissions|bypassPermissions"; "gi").string | "launchArgs " + .)
+                          else "malformed launchArgs" end)
+                  ] | unique end))
             | with_entries(select(.value | length > 0))' "$T3_SETTINGS" 2>/dev/null) \
             || { bypass='{}' settings_err="T3's settings file $T3_SETTINGS or the bypass flag registry $REGISTRY could not be read"; }
         ;;
