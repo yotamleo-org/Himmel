@@ -109,7 +109,13 @@ send() {
     if [ -n "${BYPASSD_SEND:-}" ]; then "$BYPASSD_SEND" "$2" "$1" || log "send failed"; return 0; fi
     bun "$REPO/scripts/telegram/chief-route.ts" reply --kind "$1" operator "$2" >/dev/null 2>&1 || log "send failed"
 }
-field() { sed -n "s/^$1=//p" "$2" | head -n 1; }
+sha256_text() { printf '%s' "$1" | { sha256sum 2>/dev/null || shasum -a 256 2>/dev/null; } | cut -d" " -f1; }
+field() { printf '%s\n' "$REQ_TEXT" | sed -n "s/^$1=//p" | head -n 1; }
+req_load() {
+    [ -f "$1" ] && [ ! -L "$1" ] || return 1
+    REQ_TEXT=$(cat "$1" 2>/dev/null && printf x) || return 1 # read-sink-ok: every caller names a file of the daemon's own queue directory, checked regular and not a link above
+    REQ_TEXT=${REQ_TEXT%x}
+}
 refuse() { mv "$1" "$1.refused"; log "REFUSED $2 $1"; send bypass-result "bypass-launchd refused $(basename "$1"): $2"; }
 live() { [ ! -e "$Q/stop" ] && [ "$(date +%s)" -lt "$EXPIRES" ]; }
 launch_env() {
@@ -137,9 +143,9 @@ preflight() {
 check_request() {
     local f row in_reg text tier src why="" fl=()
     REASON=""
-    brief=$(field brief "$1"); model=$(field model "$1"); chief=$(field chief "$1")
-    flags=$(field flags "$1"); effort=$(field effort "$1"); decision=$(field decision "$1")
-    api_account=$(field api_account "$1"); blocks=$(field blocks "$1"); recommend=$(field recommend "$1")
+    brief=$(field brief); model=$(field model); chief=$(field chief)
+    flags=$(field flags); effort=$(field effort); decision=$(field decision)
+    api_account=$(field api_account); blocks=$(field blocks); recommend=$(field recommend)
     [ -n "$flags" ] || flags=HIMMEL_HOOK_INTEGRITY_BYPASS_OK
     base=$(basename "$brief" .md)
     [[ "$brief" == "$BUCKET/$base.md" && ! -L "$brief" && -f "$brief" ]] || why+="${why:+, }brief-path"
@@ -256,7 +262,7 @@ if [ -n "$CHECK" ]; then
     rc=0
     if [ -n "$REQ_FILE" ]; then
         [ -f "$REQ_FILE" ] || die "--request $REQ_FILE is not a file"
-        if check_request "$REQ_FILE"; then echo accepted; else echo "refused: $REASON"; rc=1; fi
+        if req_load "$REQ_FILE" && check_request; then echo accepted; else echo "refused: ${REASON:-request unreadable}"; rc=1; fi
     fi
     owner=$(readlink "$LOCK" 2>/dev/null)
     if lock_owner_alive "$owner"; then
@@ -337,20 +343,19 @@ while :; do
             rm -f "$held"; [ ! -f "$req.pending" ] || mv "$req.pending" "$req.refused"
             log "REFUSED held go the daemon did not hold ${req##*/}"; continue
         fi
-        [ -f "$req.pending" ] || { rm -f "$held"; HELD[hi]=''; continue; }
+        [ -e "$req.pending" ] || [ -L "$req.pending" ] || { rm -f "$held"; HELD[hi]=''; continue; }
         [ "$req.pending" -nt "$held" ] || continue
         IFS=$US read -r _ code sha rsha name asked <<<"${HELD[$hi]}"; HELD[hi]=''; rm -f "$held"
-        if [ $(( $(date +%s) - asked )) -ge "$TTL" ]; then
+        age=$(( $(date +%s) - asked ))
+        if [ "$age" -lt 0 ] || [ "$age" -ge "$TTL" ]; then
             mv "$req.pending" "$req.expired"; log "REFUSED after go $name (the go expired)"
             send bypass-result "bypass launch $name: your go expired after 6 h. Nothing ran."; continue
         fi
-        snap="$Q/.retry-snapshot"
-        if ! cat "$req.pending" >"$snap" 2>/dev/null || [ "$(sha256_of "$snap")" != "$rsha" ]; then
-            rm -f "$snap"; mv "$req.pending" "$req.refused"; log "REFUSED after go $name (the request changed since the ask)"
+        if ! req_load "$req.pending" || [ "$(sha256_text "$REQ_TEXT")" != "$rsha" ]; then
+            mv "$req.pending" "$req.refused"; log "REFUSED after go $name (the request changed since the ask)"
             send bypass-result "bypass launch $name: refused after your go, the request changed since you were asked. Nothing ran."; continue
         fi
-        check_request "$snap" || { rm -f "$snap"; mv "$req.pending" "$req.refused"; log "REFUSED $REASON $req"; continue; }
-        rm -f "$snap"
+        check_request || { mv "$req.pending" "$req.refused"; log "REFUSED $REASON $req"; continue; }
         log "RETRY $base: the request was touched since its go was held"
         after_go "$req" "$code" "$sha" "$rsha" "$asked" || [ $? -ne 3 ] || break
     done
@@ -358,11 +363,9 @@ while :; do
     for req in "$Q"/*.req; do
         [ -e "$req" ] || continue
         if stale_now; then hold; break; fi
-        snap="$Q/.ask-snapshot"
-        cat "$req" >"$snap" 2>/dev/null || { rm -f "$snap"; refuse "$req" "request unreadable"; continue; } # read-sink-ok: $req is a name from the glob of the daemon's own queue directory
-        rsha=$(sha256_of "$snap")
-        check_request "$snap" || { rm -f "$snap"; refuse "$req" "$REASON"; continue; }
-        rm -f "$snap"
+        req_load "$req" || { refuse "$req" "request unreadable"; continue; }
+        rsha=$(sha256_text "$REQ_TEXT")
+        check_request || { refuse "$req" "$REASON"; continue; }
         if ! preflight; then
             mv "$req" "$req.refused"; log "REFUSED-PREFLIGHT $base $PF_REASON"
             tell_chief "$chief" "REFUSED-PREFLIGHT $base $PF_REASON — the operator was not asked; fix the cause and file a new request"

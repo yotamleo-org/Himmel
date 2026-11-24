@@ -993,6 +993,59 @@ assert_eq "RED 10912: the operator is asked again after a restart" "2" "$(grep -
 assert_absent "RED 10912: the old go launches nothing after a restart" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
 stop
 
+echo "== 10912: the request is read once into memory, so a planted snapshot path changes nothing =="
+setup preflight-fifo
+printf 'VICTIM\n' > "$D/victim"
+mkfifo "$Q/.ask-snapshot" "$Q/.retry-snapshot"
+start
+CODE=$(ask_code r)
+assert_contains "RED 10912: with both snapshot paths planted as FIFOs the request is still asked" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+if [ -n "$CODE" ]; then
+    reply "$OPERATOR" "$OPERATOR" "go $CODE"
+    wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+fi
+assert_eq "RED 10912: the launch fields are the asked ones with FIFOs planted" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(cat "$D/launch.env" 2>/dev/null)"
+kill "$DPID" 2>/dev/null; timeout 2 cat "$Q/.ask-snapshot" >/dev/null 2>&1; wait "$DPID" 2>/dev/null; DPID="" # gnu-ok: portable-timeout.sh above supplies a timeout on macOS
+setup preflight-symlink
+printf 'VICTIM\n' > "$D/victim"
+ln -s "$D/victim" "$Q/.ask-snapshot"; ln -s "$D/victim" "$Q/.retry-snapshot"
+start
+CODE=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_eq "RED 10912: a symlinked snapshot path is never written through" "VICTIM" "$(cat "$D/victim")"
+assert_eq "RED 10912: the launch fields are the asked ones with symlinks planted" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(cat "$D/launch.env" 2>/dev/null)"
+stop
+
+echo "== 10912: a held request swapped for a FIFO or a symlink is refused, never read =="
+for kind in fifo symlink; do
+    setup "preflight-swap-$kind"
+    printf 'VICTIM\n' > "$D/victim"
+    start
+    CODE=$(ask_code r)
+    echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+    reply "$OPERATOR" "$OPERATOR" "go $CODE"
+    wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+    sleep 1
+    rm -f "$D/dry.rc" "$D/dry.msg" "$Q/r.req.pending"
+    if [ "$kind" = fifo ]; then mkfifo "$Q/r.req.pending"; else cp "$BRIEF" "$D/swapped"; ln -s "$D/swapped" "$Q/r.req.pending"; fi
+    touch -h "$Q/r.req.pending" 2>/dev/null
+    wait_for "$Q/daemon.log" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the request changed"
+    assert_contains "RED 10912: a held request swapped for a $kind is refused" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the request changed since the ask)" "$(cat "$Q/daemon.log")"
+    assert_absent "RED 10912: a swapped $kind launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+    kill "$DPID" 2>/dev/null; timeout 2 cat "$Q/r.req.pending" >/dev/null 2>&1; wait "$DPID" 2>/dev/null; DPID="" # gnu-ok: portable-timeout.sh above supplies a timeout on macOS
+done
+
+echo "== 10912: a queued request that is a FIFO is refused and the loop goes on =="
+setup preflight-fifo-req
+start
+mkfifo "$Q/a.req"
+wait_for "$Q/daemon.log" "REFUSED request unreadable"
+CODE=$(ask_code r)
+assert_contains "RED 10912: a FIFO request is refused as unreadable" "REFUSED request unreadable $Q/a.req" "$(cat "$Q/daemon.log")"
+assert_contains "RED 10912: the next request is still asked" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+kill "$DPID" 2>/dev/null; wait "$DPID" 2>/dev/null; DPID=""
+
 echo "== 10912: a request the daemon cannot read is refused as unreadable, never parsed from a partial copy =="
 if [ "$(id -u)" -ne 0 ]; then
     setup unreadable-request

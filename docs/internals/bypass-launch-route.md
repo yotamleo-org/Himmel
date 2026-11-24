@@ -216,7 +216,11 @@ does, the command waits for the operator.
   and a go held while the code on disk moved holds the daemon exactly as an
   unheld go does. A restart drops every held go: the new daemon moves each
   held request back to `<name>.req` (`REQUEUE <name> (a held go does not
-  survive a restart)`) and asks the operator again. A passing dry-run changes
+  survive a restart)`) and asks the operator again. The daemon reads a request
+  once into memory and hashes and parses that same buffer, with no snapshot
+  file; a request that is not a regular file (a FIFO or a symlink) is refused,
+  and a held go whose ask time is in the future (the clock moved back) counts as
+  expired. A passing dry-run changes
   nothing in the ask and the grant, and the request still needs the operator's
   go code.
 - **Failures are reported.** A launcher that exits non-zero within the settle
