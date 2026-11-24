@@ -29,11 +29,12 @@
 #     usage=<verdict>           held for two consecutive samples; usage= is the
 #   TICK ...                    usage-preflight verdict word the key carries.
 #   WAKE budget-recovered from=<word> usage=PROCEED  a good sample reads PROCEED and
-#   <budget-nudge.sh out>       <inbox>.wait.usage (the last good verdict word) holds a
-#   TICK ...                    refusing word (SKIPPED-BANK, SKIPPED-FLEET, BANK-STALE,
-#                               BANK-UNKNOWN); no debounce, once per flip. The waiter runs
-#                               budget-nudge.sh on the --workers-from manifest (one bus nudge
-#                               per live worker) and folds usage=PROCEED into the saved key,
+#   <budget-nudge.sh out>       <inbox>.wait.usage (the last decisive verdict word: PROCEED,
+#   TICK ...                    SKIPPED-BANK or SKIPPED-FLEET; a BANK-STALE or BANK-UNKNOWN read
+#                               leaves it) holds SKIPPED-BANK or SKIPPED-FLEET; no debounce, once
+#                               per flip. The waiter runs budget-nudge.sh on the --workers-from
+#                               manifest (one bus nudge attempt per live manifest worker) and
+#                               folds usage=PROCEED into the saved key,
 #                               so no WAKE tick changed=usage follows. Seam: CHIEF_WAIT_NUDGE.
 #   WAKE underfilled capacity=UNDERFILLED:<n> the tick's capacity
 #   <tick line>                 field says live < cap with no launch for
@@ -768,11 +769,12 @@ bank_word() {
 usage_file="$inbox.wait.usage"
 record_usage_word_and_detect_recovery() {
     local now="${key##*usage=}" was
+    case "$now" in PROCEED|SKIPPED-BANK|SKIPPED-FLEET) ;; *) return 1 ;; esac
     was="$(sed -n 1p "$usage_file" 2>/dev/null)"  # swallow-ok: no file is no saved word
     [ "$now" != "$was" ] || return 1
     printf '%s\n' "$now" | atomic_write "$usage_file" 2>/dev/null || return 1  # swallow-ok: an unwritable marker wakes nothing, never twice
     [ "$now" = PROCEED ] || return 1
-    case "$was" in SKIPPED-BANK|SKIPPED-FLEET|BANK-STALE|BANK-UNKNOWN) recovered_from="$was" ;; *) return 1 ;; esac
+    case "$was" in SKIPPED-BANK|SKIPPED-FLEET) recovered_from="$was" ;; *) return 1 ;; esac
 }
 
 field() { # <name> <tick line>

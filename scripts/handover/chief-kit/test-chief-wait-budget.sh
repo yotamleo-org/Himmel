@@ -129,7 +129,8 @@ wait_exit "$WPID"
 check "(r4) PROCEED to SKIPPED-BANK wakes no budget-recovered" "0" "$(count '^WAKE budget-recovered' "$WORK/r4.out")"
 check "(r4) the generic usage wake still fires" "WAKE tick changed=usage usage=SKIPPED-BANK" "$(head -n1 "$WORK/r4.out")"
 
-for word in BANK-STALE BANK-UNKNOWN SKIPPED-FLEET; do
+for word in SKIPPED-FLEET BANK-STALE BANK-UNKNOWN; do
+    : > "$STUB/nudge.calls"
     bank "$word"
     I="$(new_inbox "r5-$word")"
     start "$I" "$WORK/r5-$word.out" --workers-from "$MANIFEST"
@@ -137,8 +138,45 @@ for word in BANK-STALE BANK-UNKNOWN SKIPPED-FLEET; do
     bank PROCEED
     wait_exit "$WPID"
     [ "$rc" = running ] && stop_waiter "$WPID"
-    check "(r5) $word to PROCEED wakes budget-recovered" "WAKE budget-recovered from=$word usage=PROCEED" "$(head -n1 "$WORK/r5-$word.out")"
+    if [ "$word" = SKIPPED-FLEET ]; then
+        check "(r5) $word to PROCEED wakes budget-recovered" "WAKE budget-recovered from=$word usage=PROCEED" "$(head -n1 "$WORK/r5-$word.out")"
+    else
+        check "(r5) an undecided $word then PROCEED wakes no budget-recovered" "0" "$(count '^WAKE budget-recovered' "$WORK/r5-$word.out")"
+        check "(r5) an undecided $word then PROCEED nudges nobody" "0" "$(grep -c . "$STUB/nudge.calls")"
+    fi
 done
+
+: > "$STUB/nudge.calls"
+bank PROCEED
+I="$(new_inbox r7)"
+start "$I" "$WORK/r7a.out" --workers-from "$MANIFEST"
+wait_hb "$I" || fail "(r7) no baseline heartbeat"
+bank BANK-UNKNOWN
+wait_exit "$WPID"
+[ "$rc" = running ] && stop_waiter "$WPID"
+check "(r7) BANK-UNKNOWN leaves the saved PROCEED" "PROCEED" "$(cat "$I.wait.usage" 2>/dev/null)"
+bank PROCEED
+start "$I" "$WORK/r7b.out" --workers-from "$MANIFEST"
+wait_exit "$WPID"
+[ "$rc" = running ] && stop_waiter "$WPID"
+check "(r7) PROCEED, BANK-UNKNOWN, PROCEED wakes no budget-recovered" "0" "$(cat "$WORK/r7a.out" "$WORK/r7b.out" | grep -c '^WAKE budget-recovered')"
+check "(r7) PROCEED, BANK-UNKNOWN, PROCEED nudges nobody" "0" "$(grep -c . "$STUB/nudge.calls")"
+
+: > "$STUB/nudge.calls"
+bank SKIPPED-BANK
+I="$(new_inbox r8)"
+start "$I" "$WORK/r8a.out" --workers-from "$MANIFEST"
+wait_hb "$I" || fail "(r8) no baseline heartbeat"
+bank BANK-STALE
+wait_exit "$WPID"
+[ "$rc" = running ] && stop_waiter "$WPID"
+check "(r8) BANK-STALE leaves the saved SKIPPED-BANK" "SKIPPED-BANK" "$(cat "$I.wait.usage" 2>/dev/null)"
+bank PROCEED
+start "$I" "$WORK/r8b.out" --workers-from "$MANIFEST"
+wait_exit "$WPID"
+[ "$rc" = running ] && stop_waiter "$WPID"
+check "(r8) SKIPPED-BANK, BANK-STALE, PROCEED wakes once from SKIPPED-BANK" "WAKE budget-recovered from=SKIPPED-BANK usage=PROCEED" "$(cat "$WORK/r8a.out" "$WORK/r8b.out" | grep '^WAKE budget-recovered')"
+check "(r8) the nudge runs once" "1" "$(grep -c . "$STUB/nudge.calls")"
 
 bank SKIPPED-BANK
 I="$(new_inbox r6)"
