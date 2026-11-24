@@ -69,7 +69,9 @@ test('T3 thread lanes resolve without headless dispatch recipes', () => {
     assert.equal(models[id].tier, null, `${id} remains unranked`);
   }
   assert.notEqual(models['gemini-4-neon'].quota.bank, models['gemini-4-argon'].quota.bank);
-  assert.deepEqual(gemini.thought_level, { low: 'low', medium: 'medium', high: 'high' });
+  assert.deepEqual(gemini.thought_level, { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' });
+  assert.doesNotMatch(gemini.bestFor, /matrix-DENIED for vault corpora/);
+  assert.match(gemini.bestFor, /lane-calibration\.md#gemini-4-on-the-t3-antigravity-lane/);
   assert.deepEqual(REG.lanes.find((l) => l.id === 'codex-t3').models, [{ id: 'gpt-6.1-sol' }]);
 });
 test('buildCtx pathHas does a real PATH lookup (follow-through)', () => {
