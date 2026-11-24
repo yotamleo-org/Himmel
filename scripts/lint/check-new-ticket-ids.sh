@@ -10,8 +10,9 @@
 # There is no allow list: a test file, a fixture, a changelog, a data file and a file name
 # are judged like any other text. Only ADDED lines (and an added or renamed-to file name
 # that carries a key the old name did not) are judged, so the keys already in the tree never
-# trip it. A binary file (index blob `-text`) is skipped; the diff keeps --text so a
-# .gitattributes `-diff` entry cannot hide an added text line.
+# trip it. A file whose blob at the compared tip holds a NUL byte in its first 8000 bytes,
+# and a submodule entry, are skipped; the diff keeps --text so a .gitattributes `-diff`
+# entry cannot hide an added text line.
 #
 # Usage:
 #   check-new-ticket-ids.sh --staged                       # the index against HEAD (pre-commit)
