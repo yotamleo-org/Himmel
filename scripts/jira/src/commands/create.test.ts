@@ -2523,8 +2523,6 @@ describe('create — backlog needs --decision for a High or security Bug', () =>
   });
 });
 
-// Spec Q9 (DoD 11): a residual of a project a declared release names is placed
-// by the door from its priority; only --gate keeps a filing-time version.
 describe('create --residual-of is placed by the door', () => {
   type Req = { key: string; to_v: string | null; evidence: Record<string, unknown> };
   let errs: string[];
