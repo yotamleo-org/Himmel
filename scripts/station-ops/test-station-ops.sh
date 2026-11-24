@@ -480,7 +480,7 @@ chmod +x "$R/ubin/systemctl"
 cp "$tmp/fakecurl/curl" "$R/ubin/curl"
 cat > "$R/ubin/bun" <<'FAKEBUN'
 #!/bin/sh
-[ -e "$RECOVER_FAKE_DIR/bun-hang" ] && exec sleep 30
+[ -e "$RECOVER_FAKE_DIR/bun-hang" ] && exec sleep 120
 [ -e "$RECOVER_FAKE_DIR/bun-fail" ] && exit 1
 echo "$*" >> "$RECOVER_FAKE_DIR/bun.log"
 FAKEBUN
@@ -561,6 +561,11 @@ rm -f "$R/bun-hang"
 assert_eq "RED: a bridge route that hangs is cut off by the timeout and the direct send goes out" "$((tg_before + 1))" "$(find "$TG" -type f | wc -l | tr -d ' ')"
 assert_eq "the hung bridge route recorded nothing" "$bun_before" "$(wc -l < "$R/bun.log" | tr -d ' ')"
 assert_contains "the hung-route run still exits 0" "rc=0" "$out"
+tg_before=$(find "$TG" -type f | wc -l | tr -d ' ')
+: > "$R/bun-hang"
+out=$(HIMMEL_RECOVER_BRIDGE_TIMEOUT=0 rec_in "$R/zero-state")
+rm -f "$R/bun-hang"
+assert_eq "RED: a timeout of 0 does not disable the bound, the hung bridge route is cut off and the direct send goes out" "$((tg_before + 1))" "$(find "$TG" -type f | wc -l | tr -d ' ')"
 mkdir -p "$R/barebin" "$R/fakehome/.bun/bin"
 for t in bash sh python3 sed tr grep date hostname flock id cat mkdir basename sleep timeout; do ln -sf "$(command -v "$t")" "$R/barebin/$t"; done
 cp "$R/ubin/systemctl" "$R/ubin/curl" "$R/barebin/"
