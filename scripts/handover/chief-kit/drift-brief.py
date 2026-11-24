@@ -65,13 +65,17 @@ def hold_in_force(hold):
     return mod.hold_in_force(hold)
 
 
+class HoldsUnreadable(Exception):
+    pass
+
+
 def cleared_holds(body, holds_path):
     """Holds whose 72 h buffer has ended and whose row the body still shows as HELD."""
     try:
         with open(holds_path, encoding="utf-8") as f:
             holds = [h for h in json.load(f).get("holds", []) if isinstance(h, dict)]
-    except (OSError, ValueError, AttributeError, TypeError):
-        return []
+    except (OSError, ValueError, AttributeError, TypeError) as e:
+        raise HoldsUnreadable("%s: %s" % (holds_path, e))
     held_lines = [l for l in body.splitlines() if "HELD" in l]
     out = []
     for h in holds:
@@ -217,7 +221,11 @@ def main():
     b.add_argument("--key", default="")
     b.set_defaults(fn=cmd_brief)
     args = ap.parse_args()
-    return args.fn(args)
+    try:
+        return args.fn(args)
+    except HoldsUnreadable as e:
+        print("drift-brief: cannot read the holds file: %s" % e, file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

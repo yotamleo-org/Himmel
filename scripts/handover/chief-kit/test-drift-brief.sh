@@ -96,12 +96,22 @@ lint_err="$(bash "$LINT" "$brief" 2>&1)" && pass 'the generated brief passes bri
 
 mk_body '' "$HELD_LINE"
 mk_holds 2026-11-25T08:00Z
-if python3 -I "$GEN" brief --body-file "$DRIFT_BODY_FILE" --holds "$W/repo/scripts/upstreams/pin-holds.json" \
-    --out "$W/bucket-none" --worktree "$W/wt" --chief HIMMEL-test-chief --worker D2 --date 2026-11-24 >/dev/null 2>&1; then
-    fail 'the generator wrote a brief for a body with no actionable row'
-else
-    [ ! -e "$W/bucket-none" ] && pass 'no actionable row writes no brief' || fail 'a brief file was written for no actionable row'
-fi
+none_rc=0
+none_err="$(python3 -I "$GEN" brief --body-file "$DRIFT_BODY_FILE" --holds "$W/repo/scripts/upstreams/pin-holds.json" \
+    --out "$W/bucket-none" --worktree "$W/wt" --chief HIMMEL-test-chief --worker D2 --date 2026-11-24 2>&1 >/dev/null)" || none_rc=$?
+[ "$none_rc" -eq 1 ] && pass 'no actionable row exits 1' || fail "no actionable row exited $none_rc"
+contains 'no actionable row says so on stderr' "$none_err" 'no actionable row'
+[ ! -e "$W/bucket-none" ] && pass 'no actionable row writes no brief' || fail 'a brief file was written for no actionable row'
+
+printf '%s\n' '{not json' > "$W/repo/scripts/upstreams/pin-holds.json"
+mk_body "$ROW_TASTE" ''
+export TICK_STATE_DIR="$W/state-badholds"
+out6="$(bash "$SUT")"
+contains 'an unreadable holds file prints drift=?' "$(printf '%s\n' "$out6" | grep '^TICK ')" ' drift=?'
+[ "$(wakes "$out6")" -eq 0 ] && pass 'an unreadable holds file never wakes' || fail "an unreadable holds file woke $(wakes "$out6") times"
+count_rc=0
+python3 -I "$GEN" count --body-file "$DRIFT_BODY_FILE" --holds "$W/repo/scripts/upstreams/pin-holds.json" >/dev/null 2>&1 || count_rc=$?
+[ "$count_rc" -eq 2 ] && pass 'count exits 2 on an unreadable holds file' || fail "count exited $count_rc on an unreadable holds file"
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-drift-brief.sh'
