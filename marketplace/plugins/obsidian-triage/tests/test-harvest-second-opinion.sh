@@ -223,7 +223,7 @@ if seam:
             raise RuntimeError("boom")
         return real(*a, **k)
     setattr(m, seam, racing)
-if mode == "fcpost":
+if mode in ("fcpost", "ytpost"):
     real_lock = m._clip_lock
     import contextlib
     @contextlib.contextmanager
@@ -245,7 +245,7 @@ if mode == "reflag":
     m.run_reflag_silent_partials(vault, False)
 elif mode in ("fc", "fcpost"):
     result = m.process_clip(clip, dry_run=False, chain=Chain(), url_rules=m.UrlRules())
-elif mode == "yt":
+elif mode in ("yt", "ytpost"):
     text = clip.read_text(encoding="utf-8")
     fm, fm_raw, b, ok = m.parse_frontmatter(text)
     result = m.write_youtube_harvest(clip, text, fm_raw, b, canonical, {"title": "t", "transcript": [{"ts": "0:01", "tx": "hi"}]}, [])
@@ -299,6 +299,9 @@ assert "firecrawl write: an edit right after the write is kept, not reverted" "k
 assert "firecrawl write: the harvest still lands" "written" "$(field "$r" HARVESTED)"
 r="$(race yt)"
 assert "youtube write: a mid-write edit is kept" "kept" "$(field "$r" EDIT)"
+r="$(race ytpost)"
+assert "youtube write: an edit right after the locked write is kept, not reverted" "kept" "$(field "$r" EDIT)"
+assert "youtube write: the harvest still lands" "written" "$(field "$r" HARVESTED)"
 r="$(race flag)"
 assert "flag-only write: a mid-write edit is kept" "kept" "$(field "$r" EDIT)"
 r="$(race thin)"

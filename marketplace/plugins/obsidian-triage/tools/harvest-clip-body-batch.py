@@ -2119,6 +2119,8 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
                     return ("x", f"failed (frontmatter-yaml-write, credit spent): {e}; reverted", merged_hits)
         except (TimeoutError, ClipChanged) as e:
             return ("~", f"partial (thin-body): {e}; nothing written (credit spent), re-run to retry", injection_hits)
+        except Exception as e:
+            return ("x", f"failed (write, credit spent): {e}; nothing written", merged_hits)
         fc_suffix = f" [injection-suspect: {', '.join(merged_hits)}]" if merged_hits else ""
         return ("v", f"harvested via {served_by}, {len(md.encode('utf-8'))}b fetched (thin-body escalation), harvest_status=ok{fc_suffix}", merged_hits)
 
