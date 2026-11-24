@@ -33,6 +33,7 @@ STUB="$WORK/stub"
 mkdir -p "$STUB"
 cat > "$STUB/tick.sh" <<'EOF'
 #!/usr/bin/env bash
+echo x >> "$STUB/ticks"
 [ ! -f "$STUB/stall" ] || { read -r stall < "$STUB/stall"; sleep "$stall"; : > "$STUB/stalled"; }
 [ ! -f "$STUB/tick.fail" ] || exit 1
 cat "$STUB/tick.line"
@@ -93,6 +94,16 @@ wakes() { grep -c '^WAKE underfilled' "$1" 2>/dev/null; }
 new_inbox() { mkdir -p "$WORK/$1/consoles"; : > "$WORK/$1/consoles/c.md"; printf '%s' "$WORK/$1/consoles/c.md"; }
 # arm <inbox> <outfile> <seconds>: one foreground arm that exits on a wake or after <seconds> (rc 124)
 arm() { timeout "$3" bash "$WAIT" "$1" --workers "N1.md" > "$2" 2>/dev/null; rc=$?; }  # gnu-ok: Linux-only kit; pipefail-ok: none set
+ticks() { if [ -f "$STUB/ticks" ]; then wc -l < "$STUB/ticks" | tr -d ' '; else echo 0; fi; }
+arm_quiet() {
+    local pid i=0 t0
+    t0="$(ticks)"
+    bash "$WAIT" "$1" --workers "N1.md" > "$2" 2>/dev/null &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "$(( $3 * 10 ))" ] && [ "$(( $(ticks) - t0 ))" -lt 3 ]; do sleep 0.1; i=$((i + 1)); done
+    if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rc=124
+    else wait "$pid"; rc=$?; fi
+}
 
 run_to_wake() {
     local out="$1" err="$2" pid i=0
@@ -348,7 +359,7 @@ check "(rp) a pool that grows from empty wakes (rc 0)" "0" "$rc"
 check "(rp) the re-wake is an underfilled wake" "1" "$(wakes "$WORK/rp3.out")"
 check "(rp) and it lists the new pool rows" "2" "$(grep -c "^LOCAL.$KP-900[12]" "$WORK/rp3.out")"
 
-arm "$I" "$WORK/rp4.out" 4
+arm_quiet "$I" "$WORK/rp4.out" 4
 check "(rp) the same pool on the next arm is one wake per change (rc 124)" "124" "$rc"
 
 printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nLOCAL\tHIMMEL-9003\tMedium\tv1\tthird\tfiles=c.sh\n' > "$STUB/pool.rows"
@@ -363,7 +374,7 @@ check "(rp) a failed probe never wakes (rc 124)" "124" "$rc"
 check "(rp) and the failed probe did run" "yes" "$([ "$(calls)" -gt "$c0" ] && echo yes)"
 rm -f "$STUB/pool.fail"
 : > "$STUB/pool.partial"
-arm "$I" "$WORK/rp6b.out" 4
+arm_quiet "$I" "$WORK/rp6b.out" 4
 check "(rp) a timed-out probe's partial rows never wake (rc 124)" "124" "$rc"
 rm -f "$STUB/pool.partial"
 : > "$STUB/pool.slow"
@@ -372,11 +383,11 @@ arm "$I" "$WORK/rp6c.out" 10
 check "(rp) a stalled probe never wakes (rc 124)" "124" "$rc"
 check "(rp) a stalled probe is cut at CHIEF_WAIT_REPOOL_TIMEOUT, so the next probe still starts" "yes" "$([ "$(( $(calls) - c0 ))" -ge 2 ] && echo yes)"
 rm -f "$STUB/pool.slow"
-arm "$I" "$WORK/rp7.out" 4
+arm_quiet "$I" "$WORK/rp7.out" 4
 check "(rp) a failed probe leaves the saved pool alone: the same pool stays quiet (rc 124)" "124" "$rc"
 
 rm -f "$STUB/pool.rows"
-arm "$I" "$WORK/rp8.out" 4
+arm_quiet "$I" "$WORK/rp8.out" 4
 check "(rp) a pool that empties does not wake (rc 124)" "124" "$rc"
 printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
 arm "$I" "$WORK/rp9.out" 6
@@ -750,7 +761,7 @@ stale_line '1:HIMMEL-7120'
 arm "$I" "$WORK/st1.out" 15
 check "(6604) a stale disposition key wakes the waiter (rc 0)" "0" "$rc"
 check "(6604) the wake names the key" "WAKE pool-stale HIMMEL-7120" "$(head -n1 "$WORK/st1.out")"
-arm "$I" "$WORK/st2.out" 4
+arm_quiet "$I" "$WORK/st2.out" 4
 check "(6604) the same stale key does not wake again on a re-arm" "124" "$rc"
 stale_line '2:HIMMEL-7120,HIMMEL-6866'
 arm "$I" "$WORK/st3.out" 15
@@ -767,14 +778,14 @@ I2="$(new_inbox st-holds)"
 stale_line "$hs_val"
 arm "$I2" "$WORK/sh1.out" 15
 check "(9853) one pool-stale wake per newly stale key: the outside-PR hold wakes" "WAKE pool-stale HIMMEL-9190" "$(head -n1 "$WORK/sh1.out")"
-arm "$I2" "$WORK/sh2.out" 4
+arm_quiet "$I2" "$WORK/sh2.out" 4
 check "(9853) one pool-stale wake per newly stale key: the same stale set does not wake again" "124" "$rc"
 stale_line '?'
-arm "$I" "$WORK/st4.out" 4
+arm_quiet "$I" "$WORK/st4.out" 4
 check "(6604) an unreadable blocker (?) never wakes" "124" "$rc"
 check "(6604) an unreadable blocker keeps the marker" "yes" "$([ -e "$I.wait.stale" ] && echo yes)"
 stale_line '0'
-arm "$I" "$WORK/st5.out" 4
+arm_quiet "$I" "$WORK/st5.out" 4
 check "(6604) pool-stale=0 never wakes" "124" "$rc"
 check "(6604) pool-stale=0 clears the marker" "no" "$([ -e "$I.wait.stale" ] && echo yes || echo no)"
 stale_line '1:HIMMEL-7120'
@@ -787,14 +798,14 @@ stale_line '1:HIMMEL-7120'
 arm "$I" "$WORK/sm1.out" 15
 check "(6604) the first stale key wakes (rc 0)" "0" "$rc"
 sed 's/capacity=UNDERFILLED:7/capacity=ok/' "$STUB/tick.line.orig" > "$STUB/tick.line"  # no pool-stale field at all
-arm "$I" "$WORK/sm2.out" 4
+arm_quiet "$I" "$WORK/sm2.out" 4
 check "(6604) a tick without the field never wakes (rc 124)" "124" "$rc"
 check "(6604) a tick without the field keeps the marker" "yes" "$([ -e "$I.wait.stale" ] && echo yes)"
 stale_line 'skip'
 arm "$I" "$WORK/sm3.out" 4
 check "(6604) pool-stale=skip keeps the marker" "yes" "$([ -e "$I.wait.stale" ] && echo yes)"
 stale_line '1:HIMMEL-7120'
-arm "$I" "$WORK/sm4.out" 4
+arm_quiet "$I" "$WORK/sm4.out" 4
 check "(6604) the key reported before the gap does not re-wake after it (rc 124)" "124" "$rc"
 
 # a partial read (a key plus ?) merges into the marker and never shrinks it
@@ -806,10 +817,10 @@ stale_line '1:HIMMEL-6866,?'
 arm "$I" "$WORK/sp2.out" 15
 check "(6604) a later partial read wakes only for the key it adds" "WAKE pool-stale HIMMEL-6866" "$(head -n1 "$WORK/sp2.out")"
 stale_line '1:HIMMEL-7120,?'
-arm "$I" "$WORK/sp3.out" 4
+arm_quiet "$I" "$WORK/sp3.out" 4
 check "(6604) a partial read never shrinks the marker: the first key stays quiet (rc 124)" "124" "$rc"
 stale_line '2:HIMMEL-7120,HIMMEL-6866'
-arm "$I" "$WORK/sp4.out" 4
+arm_quiet "$I" "$WORK/sp4.out" 4
 check "(6604) the full read afterwards wakes nothing twice (rc 124)" "124" "$rc"
 cp "$STUB/tick.line.orig" "$STUB/tick.line"
 
@@ -819,7 +830,16 @@ rf_doc="$WORK/rf/chief-rf.md"
 printf '# chief\n' > "$rf_doc"
 rf_tsv="$TICK_STATE_DIR/rm-refused-chief-rf.tsv"
 rf_line() { sed "s/capacity=UNDERFILLED:7/capacity=ok${1:+ rm-refused=$1}/" "$STUB/tick.line.orig" > "$STUB/tick.line"; }
-rf_arm() { timeout "$3" bash "$WAIT" "$1" --doc "$rf_doc" --workers N1.md > "$2" 2>/dev/null; rc=$?; }  # gnu-ok: Linux-only kit; pipefail-ok: none set
+rf_arm() {
+    local pid i=0 t0 cut=0
+    [ "$3" -gt 4 ] || cut=3
+    t0="$(ticks)"
+    bash "$WAIT" "$1" --doc "$rf_doc" --workers N1.md > "$2" 2>/dev/null &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "$(( $3 * 10 ))" ] && { [ "$cut" -eq 0 ] || [ "$(( $(ticks) - t0 ))" -lt "$cut" ]; }; do sleep 0.1; i=$((i + 1)); done
+    if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rc=124
+    else wait "$pid"; rc=$?; fi
+}
 rf_wakes() { grep '^WAKE ' "$1" | paste -sd'|' -; }
 printf 'ABC-2\tR-1\tname the operator words for ABC-2\t1\nABC-5\tR-2\tthe ask needs decision 9\t1\nABC-6\tR-4\tother\t0\n' > "$rf_tsv"
 rf_line '3:ABC-2@R-1,ABC-5@R-2'
@@ -924,7 +944,7 @@ arm "$I" "$WORK/series1.out" 8
 check "(8349) a pool with a SERIES row wakes (rc 0)" "0" "$rc"
 check "(8349) the SERIES row is classed once, under its own heading" "1:1" "$(grep -c '^# dispatchable as one series worker' "$WORK/series1.out"):$(grep -c "^SERIES.LOCAL.$KP-9101,$KP-9102" "$WORK/series1.out")"
 check "(8349) dispatchable= counts the series' tickets" "1" "$(head -n1 "$WORK/series1.out" | grep -c 'dispatchable=3')"
-arm "$I" "$WORK/series2.out" 4
+arm_quiet "$I" "$WORK/series2.out" 4
 check "(8349) the same series pool does not wake again (rc 124)" "124" "$rc"
 printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nSERIES\tLOCAL\tHIMMEL-9101,HIMMEL-9103\tHigh\tv1\tfiles=s.sh\n' > "$STUB/pool.rows"
 arm "$I" "$WORK/series3.out" 6
