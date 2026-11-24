@@ -530,10 +530,16 @@ console.log(found.size === 1 ? [...found][0] : "");
         "" \
         "$batch_list" >"$jira_body_file"
 
+    if grep -Eq '^[^[:space:]:]+(:[0-9]+)?:[[:space:]]*(LOW|IMPROVEMENT|DEFERRED)[[:space:]]*:' <<<"$candidates"; then
+        batch_priority=Medium
+    else
+        batch_priority=Low
+    fi
+
     jira_err_file=$(mktemp -t fdi-jira.err.XXXXXX) || exit 1
     create_rc=0
     created=$(jira_run create --type Task --title "$jira_title" --labels "$LABEL,standalone" --sector 'Ship loop' \
-        --project "$JIRA_PROJECT_KEY" --desc-file "$jira_body_file" \
+        --priority "$batch_priority" --project "$JIRA_PROJECT_KEY" --desc-file "$jira_body_file" \
         --residual-of "$RESIDUAL_OF" --fu-class "$FU_CLASS" ${FU_WHY_ARGS[@]+"${FU_WHY_ARGS[@]}"} --class "$CR_CLASS" 2>"$jira_err_file") || create_rc=$?
     create_err=$(cat "$jira_err_file" 2>/dev/null || true)
     rm -f "$jira_err_file" "$jira_body_file"
