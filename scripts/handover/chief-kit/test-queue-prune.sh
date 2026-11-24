@@ -173,6 +173,7 @@ sleep 0.5
 check "10777 P13 --apply waits while another writer holds the doc lock" "alive:1" "$(kill -0 "$qp" 2>/dev/null && echo alive):$(grep -cF "$DEADQ" "$DOC")"
 : > "$WORK/release"; wait "$hp"
 i=0; while kill -0 "$qp" 2>/dev/null && [ "$i" -lt 200 ]; do sleep 0.05; i=$((i+1)); done
+check "10777 P13 the --apply run ends once the lock is released" "gone" "$(kill -0 "$qp" 2>/dev/null && echo alive || echo gone)"
 kill "$qp" 2>/dev/null
 wait "$qp"
 check "10777 P13 --apply writes once the lock is released" "0:1" "$(grep -cF "$DEADQ" "$DOC"):$(grep -cxF "$DEADQ" "$HIST")"
