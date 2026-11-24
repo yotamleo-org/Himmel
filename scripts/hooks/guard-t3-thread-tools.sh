@@ -11,8 +11,8 @@
 # --dangerously-skip-permissions or bypassPermissions. Any other instance id is
 # allowed, from any provider to any provider.
 #
-# Narrowing: .t3.instance_allowlist in $HOME/.himmel/config.json, an array of
-# strings; an absent file or key narrows nothing.
+# Narrowing: .t3.instance_narrow in $HOME/.himmel/config.json, an array of
+# strings; an absent file or key narrows nothing. .t3.instance_allowlist is not read.
 #
 # Security fence, fail-closed: missing jq, a payload that does not parse, an
 # unreadable or malformed T3 settings file or bypass registry, and a malformed or
@@ -75,12 +75,12 @@ case "$findings" in
             narrow_err="$CONFIG is a symlink"
         elif [ -e "$CONFIG" ]; then
             # swallow-ok: a failed read sets narrow_err, which refuses every instance id
-            if ! narrow=$(jq -c '.t3.instance_allowlist' "$CONFIG" 2>/dev/null); then
-                narrow="" narrow_err="$CONFIG is not JSON with an optional .t3.instance_allowlist"
+            if ! narrow=$(jq -c '.t3.instance_narrow' "$CONFIG" 2>/dev/null); then
+                narrow="" narrow_err="$CONFIG is not JSON with an optional .t3.instance_narrow"
             elif [ "$narrow" = null ]; then
                 narrow=""
             elif ! jq -e 'type == "array" and all(.[]; type == "string")' <<<"$narrow" >/dev/null 2>&1; then
-                narrow="" narrow_err=".t3.instance_allowlist in $CONFIG is not an array of strings"
+                narrow="" narrow_err=".t3.instance_narrow in $CONFIG is not an array of strings"
             fi
         fi
         # swallow-ok: a failed read sets settings_err, which refuses every instance id
@@ -138,7 +138,7 @@ while IFS= read -r line; do
             elif [ -n "$narrow_err" ]; then
                 bad_instances="$bad_instances  ${val}: the narrowing list cannot be read ($narrow_err)"$'\n'
             elif [ -n "$narrow" ] && ! jq -en --argjson allow "$narrow" --argjson v "$val" '$allow | index([$v]) != null' >/dev/null 2>&1; then
-                bad_instances="$bad_instances  ${val}: off .t3.instance_allowlist in $CONFIG ($(jq -r 'map(tojson) | join(", ")' <<<"$narrow"))"$'\n'
+                bad_instances="$bad_instances  ${val}: off .t3.instance_narrow in $CONFIG ($(jq -r 'map(tojson) | join(", ")' <<<"$narrow"))"$'\n'
             fi
             ;;
         title$'\t'*) bad_titles="$bad_titles  ${line#title$'\t'}"$'\n' ;;
@@ -150,7 +150,7 @@ if [ -n "$bad_instances" ]; then
 ${bad_instances}A bypass instance (a T3 instance whose environment or launchArgs carry a himmel bypass flag) is never
 picked by an agent: a hook bypass is granted per session, by the operator choosing that instance in the T3 UI,
 never to every thread T3 starts. Every other instance is allowed, from any provider to any provider, unless
-the operator narrows the list with .t3.instance_allowlist in \$HOME/.himmel/config.json, an operator-owned file.
+the operator narrows the list with .t3.instance_narrow in \$HOME/.himmel/config.json, an operator-owned file.
 Omit the instance id to keep the thread's instance, or name an instance without a bypass flag."
 fi
 if [ -n "$bad_titles" ]; then

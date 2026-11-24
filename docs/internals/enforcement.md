@@ -3244,10 +3244,12 @@ name `scripts/lib/session-name.sh` trusts as a chief. Two rules, each a deny
   variables and is allowed. If the settings file or the registry is missing,
   unreadable or malformed, every instance id is denied, since the guard cannot
   tell. A null value counts as absent; any other non-string value denies.
-- **Optional narrowing.** `.t3.instance_allowlist` in `~/.himmel/config.json`, an
+- **Optional narrowing.** `.t3.instance_narrow` in `~/.himmel/config.json`, an
   array of strings, limits the allowed ids further; it never lets a bypass
   instance through. An absent file or key narrows nothing; a malformed file, a
   non-array key or a symlinked file or `~/.himmel` denies every instance id.
+  The older `.t3.instance_allowlist` is not read: it was written as a widening
+  list, and reading it as a narrowing one would keep blocking other providers.
   `block-himmel-config-writes.sh` refuses agent writes to that file.
   `scripts/t3/provider-instances.sh` prints the profile ids an operator who
   narrows would add (`docs/internals/t3-provider-instances.md`).
