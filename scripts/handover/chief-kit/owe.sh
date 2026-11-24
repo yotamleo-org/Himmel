@@ -150,7 +150,7 @@ case "$CMD" in
             cfg="${OWE_AFKSUDO_ROOT:-}/etc/himmel/afk-sudo.json"
             ops="${OWE_AFKSUDO_ROOT:-}/usr/local/libexec/himmel/ops"
             enable="run sudoedit /etc/himmel/afk-sudo.json, set helper_update.repo, helper_update.checkout and helper_update.enabled (docs/internals/afk-sudo.md), then send /op helper-update commit=<sha> to install the op"
-            if ! cfgv=$(jq -c '[(.ops.enabled == true), (.helper_update.enabled == true)]' "$cfg"); then
+            if ! cfgv=$(jq -c '[(.ops.enabled == true), (.helper_update.enabled == true)]' "$cfg") || [ -z "$cfgv" ]; then
                 echo "owe: afk-sudo route unknown: cannot read $cfg; the owed row for op '$op' was not filed" >&2
                 exit 2
             fi

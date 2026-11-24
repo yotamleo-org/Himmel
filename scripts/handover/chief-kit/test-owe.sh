@@ -210,6 +210,9 @@ mkdir -p "$WORK/r-bad/etc/himmel"; printf 'not json' > "$WORK/r-bad/etc/himmel/a
 out=$(OWE_AFKSUDO_ROOT="$WORK/r-bad" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text "$OPTXT" --metadata "$OPMETA" 2>&1); rc=$?
 check "10970 R4 an unreadable config refuses" "$rc" 2
 contains "10970 R4 prints the unknown line" "$out" "route unknown"
+mkdir -p "$WORK/r-empty/etc/himmel/../../usr/local/libexec/himmel/ops"; : > "$WORK/r-empty/etc/himmel/afk-sudo.json"; : > "$WORK/r-empty/usr/local/libexec/himmel/ops/docker.sh"
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-empty" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text "$OPTXT" --metadata "$OPMETA" 2>&1); rc=$?
+check "10970 R4b an empty config with the op installed refuses as unknown" "$rc" 2
 
 [ "$fails" -eq 0 ] || { echo "$fails check(s) failed"; exit 1; }
 echo "test-owe: all checks passed"
