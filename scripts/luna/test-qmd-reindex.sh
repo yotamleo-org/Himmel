@@ -394,6 +394,7 @@ rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
 reset_state
 touch "$STATE/did-work"
 rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" --update-collection himmel 2>&1) || rc=$?
+assert_rc "--update-collection with no earlier stamp rc 0" 0 "$rc"
 if [ ! -e "$HOME/.cache/qmd/refresh-stamp" ] && [ ! -e "$HOME/.cache/qmd/reindex-state" ]; then
     pass "--update-collection writes no stamp and no reindex-state"
 else
