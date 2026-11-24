@@ -35,7 +35,6 @@ arm_manifest() {
 BUCKET="$WORK/bucket"; REPO="$WORK/repo"; mkdir -p "$REPO"
 # No bus identity, so relay-batch never reaches the real himmel-bus store.
 unset HIMMEL_BUS_NAME
-export HIMMEL_FLAG_PR_SIZE_GATE=0
 export HIMMEL_CORE_CHECK_BATCH=off
 
 cat > "$WORK/wt.sh" <<'EOF'
@@ -1327,6 +1326,7 @@ RDR="$HERE/../../lib/pr_remainder.py"
 T=$'\t'
 rdr() { printf '%b' "$2" | python3 -I "$RDR" "$1"; }
 same() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi; }
+check() { same "$1" "$3" "$2"; }
 H=$'## Ticket coverage\n'
 same "reader: a body with neither form is none" "$(rdr $KP-1 'just a summary')" "none"
 same "reader: a Remaining: line stays remaining" "$(rdr $KP-1 'Remaining: slice 2')" "remaining${T}slice 2"
@@ -1359,8 +1359,8 @@ if python3 -I "$RDR" >/dev/null 2>&1 </dev/null; then fail "reader: no key argum
 if python3 -I "$RDR" HIMMEL-1 extra >/dev/null 2>&1 </dev/null; then fail "reader: a second argument is a usage error"; else pass "reader: a second argument is a usage error"; fi
 
 # ---- the PR size projection (own block) ----
-# A Writes list that expands to more than the hard max of scripts/ci/pr-size-bands.tsv (40 files) is refused with
-# pr_size_gate on, unless the worker carries bulk: mechanical; flag off, or past only the soft max (20), is a warning.
+# A Writes list that expands to more than the hard max of scripts/ci/pr-size-bands.tsv (40 files), or past the soft
+# max (20) on a trust path, or that cannot be projected, writes its brief with an estimate warning and one SIZE-ESCALATE row.
 PS="$WORK/ps"; mkdir -p "$PS/scripts/big" "$PS/scripts/mid" "$PS/scripts/few" "$PS/scripts/hooks" "$PS/scripts/forty" "$PS/src"
 for n in $(seq 1 41); do echo "$n" > "$PS/scripts/big/f$n.txt"; echo "$n" > "$PS/scripts/hooks/guard-$n.sh"; echo "$n" > "$PS/src/m$n.py"; done
 for n in $(seq 1 40); do echo "$n" > "$PS/scripts/forty/f$n.txt"; done
@@ -1399,213 +1399,141 @@ ps_workers new41 "$(for n in $(seq 1 41); do printf 'scripts/newd/n%s.txt ' "$n"
 ps_workers absent 'scripts/new/a.sh scripts/new/b.sh' '';ps_workers nonamed 'none named' ''; ps_workers emptyw '' ''
 ps_workers big scripts/big/ ''; ps_workers bulk scripts/big/ ',"bulk":"mechanical"'; ps_workers mid scripts/mid/ ''; ps_workers few scripts/few/ ''; ps_workers badbulk scripts/few/ ',"bulk":"yes"'
 
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun big)"; rc=$?
-[ "$rc" = 1 ] && pass "pr_size_gate on: a Writes dir of 41 tracked files is refused (rc 1)" || fail "41 files with the gate on: rc=$rc: $pso"
-has "the refusal names the 40-file hard max" "$pso" "40-file hard max"
-has "the refusal names the pr-size-bands.tsv hard row" "$pso" "pr-size-bands.tsv row hard"
-has "the refusal says how many files the Writes expand to" "$pso" "41 files"
-[ -z "$(ps_brief big)" ] && pass "a refused brief writes no doc" || fail "a refused brief wrote a doc"
+OV="$HERE/size-override.sh"; SEL="$WORK/handovers/.locks/size-escalate.tsv"
+PSHOME="$WORK/ps-home"; mkdir -p "$PSHOME/.config/himmel"
+printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$PSHOME/.config/himmel/go-hmac.key"
+sel_count() { grep -c "^SIZE-ESCALATE" "$SEL" 2>/dev/null || true; }
+sel_last() { tail -n 1 "$SEL" 2>/dev/null; }  # read-sink-ok: test reads its own mktemp ledger path
+ps_workers trustsoft scripts/ci/ ''
+ps_workers huge "$(for n in $(seq 1 301); do printf 'scripts/newd/n%s.txt ' "$n"; done)" ''
+ps_workers bulkhuge "$(for n in $(seq 1 301); do printf 'scripts/newd/n%s.txt ' "$n"; done)" ',"bulk":"mechanical"'
+SZK=$(printf 'HIMMEL-%s' 9201)  # the key of the ps_workers fixture, built so the line holds no literal ticket key
+TAB=$(printf '\t')
+rm -f "$SEL"
 
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun bulk)"; rc=$?
-[ "$rc" = 0 ] && pass "pr_size_gate on, bulk: mechanical: 41 files pass (rc 0)" || fail "bulk mechanical: rc=$rc: $pso"
-[ -n "$(ps_brief bulk)" ] && pass "the bulk mechanical worker gets its brief" || fail "bulk mechanical: no brief"
+# A brief-time count refuses nothing: past a band the brief is written, stderr names the count as an estimate and one
+# SIZE-ESCALATE row (kind estimate, or bulk) wakes the chief, once per key, worker and band.
+pso="$(psrun big)"; rc=$?
+[ "$rc" = 0 ] && pass "size estimate: a Writes dir of 41 tracked files writes the brief (rc 0)" || fail "41 files: rc=$rc: $pso"
+[ -n "$(ps_brief big)" ] && pass "size estimate: the 41-file brief is written" || fail "41-file brief missing"
+has "size estimate: the warning names the 40-file hard max" "$pso" "over the 40-file hard max"
+has "size estimate: the warning names the pr-size-bands.tsv hard row" "$pso" "pr-size-bands.tsv row hard"
+has "size estimate: the warning says how many files the Writes expand to" "$pso" "41 files"
+has "size estimate: the warning calls the count an estimate" "$pso" "an estimate"
+check "size estimate: the 41-file brief writes one SIZE-ESCALATE row" 1 "$(sel_count)"
+has "size estimate: the row is an estimate for the key, the worker and 41 files, band hard" "$(sel_last)" "estimate${TAB}HIMMEL-9201${TAB}N921${TAB}41${TAB}no${TAB}band=hard ref= "
+pso="$(psrun big again)"; rc=$?
+[ "$rc" = 0 ] && check "size estimate: a second run of the 41-file worker adds no row" 1 "$(sel_count)" || fail "41 files again: rc=$rc: $pso"
+pso="$(psrun mid)"; rc=$?
+[ "$rc" = 0 ] && pass "size estimate: 25 files (soft max only) write the brief (rc 0)" || fail "25 files: rc=$rc: $pso"
+has "size estimate: 25 files: a warning names the 20-file soft max" "$pso" "over the 20-file soft max"
+check "size estimate: 25 files off a trust path write no row" 1 "$(sel_count)"
+pso="$(psrun few)"; rc=$?
+[ "$rc" = 0 ] && pass "size estimate: 3 files write the brief (rc 0)" || fail "3 files: rc=$rc: $pso"
+lacks "size estimate: 3 files: no size warning" "$pso" "warning:"
+check "size estimate: 3 files write no row" 1 "$(sel_count)"
+pso="$(psrun forty)"; rc=$?
+[ "$rc" = 0 ] && pass "size estimate: a Writes dir of exactly 40 files writes the brief (rc 0)" || fail "exactly 40 files: rc=$rc: $pso"
+lacks "size estimate: exactly 40 files: no hard-max message" "$pso" "hard max"
+check "size estimate: exactly 40 files write no row" 1 "$(sel_count)"
 
-pso="$(psrun big off)"; rc=$?
-[ "$rc" = 0 ] && pass "pr_size_gate off: 41 files still write the brief (rc 0)" || fail "flag off: rc=$rc: $pso"
-has "flag off: a warning names the 40-file hard max" "$pso" "warning: worker N921 Writes project to 41 files, over the 40-file hard max"
-[ -n "$(ps_brief big off)" ] && pass "flag off: the brief is written" || fail "flag off: no brief"
-
-pso="$(unset HIMMEL_FLAG_PR_SIZE_GATE HIMMEL_FLAGS_TSV; psrun big dflt)"; rc=$?
-[ "$rc" = 1 ] && pass "pr_size_gate at its registry default (on): 41 files are refused (rc 1)" || fail "registry default: rc=$rc: $pso"
-has "registry default: the refusal names the 40-file hard max" "$pso" "40-file hard max"
-[ -z "$(ps_brief big dflt)" ] && pass "registry default: a refused brief writes no doc" || fail "registry default: a refused brief wrote a doc"
-
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun mid)"; rc=$?
-[ "$rc" = 0 ] && pass "pr_size_gate on: 25 files (soft max only) pass (rc 0)" || fail "25 files: rc=$rc: $pso"
-has "25 files: a warning names the 20-file soft max" "$pso" "over the 20-file soft max"
-
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun few)"; rc=$?
-[ "$rc" = 0 ] && pass "3 files pass (rc 0)" || fail "3 files: rc=$rc: $pso"
-lacks "3 files: no size warning" "$pso" "warning:"
+pso="$(psrun trustsoft)"; rc=$?
+[ "$rc" = 0 ] && pass "size estimate: a trust-path brief of 25 files writes the brief (rc 0)" || fail "trust-path 25 files: rc=$rc: $pso"
+[ -n "$(ps_brief trustsoft)" ] && pass "size estimate: the trust-path brief is written" || fail "trust-path brief missing"
+has "size estimate: the trust-path warning names the 20-file soft max" "$pso" "touch a trust path (ci-trust-paths.txt), over the 20-file soft max"
+check "size estimate: the trust-path brief writes one more row" 2 "$(sel_count)"
+has "size estimate: the trust-path row is an estimate at band soft with trust yes" "$(sel_last)" "estimate${TAB}HIMMEL-9201${TAB}N921${TAB}25${TAB}yes${TAB}band=soft ref= "
 
 PSBASE_GOOD="$PSBASE"; PSBASE="4ccb59dd6de2eba962c75f136096cd7b721ae312"  # a sha this fixture repo does not hold
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun few nobase)"; rc=$?
-[ "$rc" = 1 ] && pass "pr_size_gate on: a base git cannot read refuses instead of counting one file (rc 1)" || fail "unreadable base, gate on: rc=$rc: $pso"
-has "the unreadable-base refusal says the Writes cannot be projected" "$pso" "cannot be projected"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun glob nobase-glob)"; rc=$?
-[ "$rc" = 1 ] && pass "pr_size_gate on: a glob over a base git cannot read refuses instead of counting one file (rc 1)" || fail "unreadable base, glob worker: rc=$rc: $pso"
-has "the glob unreadable-base refusal says the Writes cannot be projected" "$pso" "cannot be projected"
-pso="$(psrun few nobase-off)"; rc=$?
-[ "$rc" = 0 ] && pass "pr_size_gate off: an unreadable base warns and writes the brief (rc 0)" || fail "unreadable base, gate off: rc=$rc: $pso"
-has "gate off: the unreadable base is a warning" "$pso" "warning: worker N921 Writes cannot be projected"
+pso="$(psrun few nobase)"; rc=$?
+[ "$rc" = 0 ] && pass "size estimate: a base git cannot read writes the brief (rc 0)" || fail "unreadable base: rc=$rc: $pso"
+has "size estimate: the unreadable-base warning says the Writes cannot be projected" "$pso" "warning: worker N921 Writes cannot be projected"
+check "size estimate: the unreadable base writes one more row" 3 "$(sel_count)"
+has "size estimate: the unreadable-base row is an estimate with trust unknown" "$(sel_last)" "estimate${TAB}HIMMEL-9201${TAB}N921${TAB}0${TAB}unknown"
+pso="$(psrun glob nobase-glob)"; rc=$?
+[ "$rc" = 0 ] && pass "size estimate: a glob over a base git cannot read writes the brief (rc 0)" || fail "unreadable base, glob worker: rc=$rc: $pso"
+has "size estimate: the glob unreadable-base warning says the Writes cannot be projected" "$pso" "cannot be projected"
 PSBASE="$PSBASE_GOOD"
+
+# bulk: mechanical is never refused either; each use is one bulk row, with the band its count crosses
+pso="$(psrun bulk)"; rc=$?
+[ "$rc" = 0 ] && pass "size estimate: bulk: mechanical, 41 files write the brief (rc 0)" || fail "bulk 41: rc=$rc: $pso"
+has "size estimate: the bulk row says bulk, band hard" "$(sel_last)" "bulk${TAB}HIMMEL-9201${TAB}N921${TAB}41${TAB}no${TAB}band=hard ref= "
+n_before="$(sel_count)"
+pso="$(psrun bulkhuge)"; rc=$?
+[ "$rc" = 0 ] && pass "size estimate: bulk: mechanical, 301 files write the brief (rc 0)" || fail "bulk 301: rc=$rc: $pso"
+[ -n "$(ps_brief bulkhuge)" ] && pass "size estimate: the bulk 301-file brief is written" || fail "bulk 301-file brief missing"
+check "size estimate: the bulk 301-file brief writes one row" $((n_before + 1)) "$(sel_count)"
+has "size estimate: the bulk 301-file row says band coderabbit" "$(sel_last)" "bulk${TAB}HIMMEL-9201${TAB}N921${TAB}301${TAB}no${TAB}band=coderabbit ref= "
+
+# a 301-file brief that is not bulk is written too: past the CodeRabbit cap the band is coderabbit, the chief decides
+pso="$(psrun huge)"; rc=$?
+[ "$rc" = 0 ] && pass "size estimate: 301 files write the brief (rc 0)" || fail "301 files: rc=$rc: $pso"
+[ -n "$(ps_brief huge)" ] && pass "size estimate: the 301-file brief is written" || fail "301-file brief missing"
+has "size estimate: the 301-file row says band coderabbit" "$(sel_last)" "estimate${TAB}HIMMEL-9201${TAB}N921${TAB}301${TAB}no${TAB}band=coderabbit ref= "
+lacks "size estimate: the 301-file warning names no operator route" "$pso" "/op size-approval"
+lacks "size estimate: the 301-file warning names no operator verb" "$pso" "size-override.sh operator"
+lacks "size estimate: the 301-file warning does not say split the ticket" "$pso" "split the ticket"
 
 pso="$(psrun badbulk)"; rc=$?
 [ "$rc" = 1 ] && pass "bulk other than mechanical is refused (rc 1)" || fail "bulk yes: rc=$rc: $pso"
 [ "$rc" != 1 ] || has "the bulk refusal names the bulk key" "$pso" "bulk"
 
-# The projection counts what a Writes list really touches. The one rule: a path names itself, a directory
+# an unsigned or worker-written override covers nothing; a chief-signed record for this count writes no row
+printf 'SIZE-OVERRIDE\t1\tHIMMEL-9201\tN921\t41\t0\tno\tconsole:chief-x\tkeep whole\t\n' >> "$SEL"
+n_before="$(sel_count)"
+pso="$(HOME="$PSHOME" psrun big unsigned)"; rc=$?
+[ "$rc" = 0 ] && pass "size estimate: an unsigned override row is no cover, the brief is still written (rc 0)" || fail "unsigned override: rc=$rc: $pso"
+lacks "size estimate: an unsigned override row covers nothing (the warning names no override)" "$pso" "kept whole by"
+check "size estimate: an unsigned override row leaves the rows as they were (band already shown)" "$n_before" "$(sel_count)"
+pso="$(HOME="$PSHOME" HIMMEL_CONSOLE_LEG=1 bash "$OV" record "$SZK" N921 --files 41 --reason "worker says so" --root "$WORK/handovers" 2>&1)"; rc=$?
+[ "$rc" = 3 ] && pass "size estimate: a worker cannot sign an override (rc 3)" || fail "worker record: rc=$rc: $pso"
+pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME=chief-t bash "$OV" record "$SZK" N921 --files 41 --reason "one scripted rename, split would break it" --root "$WORK/handovers" 2>&1)"; rc=$?
+[ "$rc" = 0 ] && pass "size estimate: the chief signs an override" || fail "chief record: rc=$rc: $pso"
+rm -f "$SEL.keep"; grep -v "^SIZE-ESCALATE" "$SEL" > "$SEL.keep"; cp "$SEL.keep" "$SEL"  # keep only the override rows, so a new row is visible
+pso="$(HOME="$PSHOME" psrun big covered)"; rc=$?
+[ "$rc" = 0 ] && pass "size estimate: a chief-signed override for the 41-file count writes the brief (rc 0)" || fail "signed override: rc=$rc: $pso"
+has "size estimate: the warning names the override" "$pso" "one scripted rename"
+check "size estimate: a count a chief record covers writes no row" 0 "$(sel_count)"
+
+# the projection counts what a Writes list really touches. The one rule: a path names itself, a directory
 # its tracked files, a glob the tracked files it matches at base; a Writes list with no path tracked at base (none named,
 # empty, only new files) cannot be size-checked, so it is reported with the rule, never passed silently.
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun glob)"; rc=$?
-[ "$rc" = 1 ] && pass "pr_size_gate on: a Writes glob over 41 tracked files is refused (rc 1)" || fail "glob of 41 files, gate on: rc=$rc: $pso"
-has "the glob refusal says the Writes expand to 41 files" "$pso" "41 files"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun mixed)"; rc=$?
-[ "$rc" = 1 ] && pass "pr_size_gate on: scripts/few/ plus src/ (44 files) is refused (rc 1)" || fail "mixed roots, gate on: rc=$rc: $pso"
-has "the mixed-root refusal counts both roots" "$pso" "44 files"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun rootglob)"; rc=$?
-[ "$rc" = 1 ] && pass "pr_size_gate on: a root-level glob over 41 tracked files is refused (rc 1)" || fail "root glob of 41 files, gate on: rc=$rc: $pso"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun rootfile)"; rc=$?
-[ "$rc" = 0 ] && pass "pr_size_gate on: a tracked repository-root file passes (rc 0)" || fail "root file: rc=$rc: $pso"
-lacks "a tracked repository-root file counts as tracked (no unverified report)" "$pso" "name no file tracked at base"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun treeglob)"; rc=$?
-[ "$rc" = 1 ] && pass "pr_size_gate on: scripts/tree/* counts the 41 files under its subdirectory (rc 1)" || fail "glob matching a directory, gate on: rc=$rc: $pso"
-has "the directory glob counts every file under the match" "$pso" "41 files"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun segglob)"; rc=$?
-[ "$rc" = 0 ] && pass "pr_size_gate on: scripts/xs/g-*.sh does not reach into a g-dir/ look-alike (rc 0)" || fail "star stays inside one segment: rc=$rc: $pso"
-lacks "a star does not cross a slash" "$pso" "hard max"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun ddglob)"; rc=$?
-[ "$rc" = 1 ] && pass "pr_size_gate on: a **/ glob also matches zero directories (41 files, rc 1)" || fail "**/ glob: rc=$rc: $pso"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun hlglob)"; rc=$?
-[ "$rc" = 1 ] && pass "pr_size_gate on: a trailing ** counts the nested files (rc 1)" || fail "trailing **: rc=$rc: $pso"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun qglob)"; rc=$?
-[ "$rc" = 1 ] && pass "pr_size_gate on: a ? glob matches one character each (41 files, rc 1)" || fail "? glob: rc=$rc: $pso"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun prose)"; rc=$?
-[ "$rc" = 0 ] && pass "pr_size_gate on: the word and/or is not a path (40 files, rc 0)" || fail "and/or: rc=$rc: $pso"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun dotslash)"; rc=$?
-[ "$rc" = 1 ] && pass "pr_size_gate on: a ./ prefix is stripped before the projection (rc 1)" || fail "./ prefix: rc=$rc: $pso"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun slashglob)"; rc=$?
-[ "$rc" = 1 ] && pass "pr_size_gate on: a glob with a trailing slash counts the files under its directories (rc 1)" || fail "trailing-slash glob: rc=$rc: $pso"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun paren)"; rc=$?
-[ "$rc" = 0 ] && pass "pr_size_gate on: a parenthetical note names no files (rc 0)" || fail "parenthetical: rc=$rc: $pso"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun abspath)"; rc=$?
-[ "$rc" = 0 ] && pass "pr_size_gate on: an absolute path is not counted (40 files, rc 0)" || fail "absolute path: rc=$rc: $pso"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun new41)"; rc=$?
-[ "$rc" = 1 ] && pass "pr_size_gate on: 41 new files are refused (a path absent at base counts once) (rc 1)" || fail "41 new files, gate on: rc=$rc: $pso"
-has "the 41-new-files refusal says how many files" "$pso" "41 files"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun forty)"; rc=$?
-[ "$rc" = 0 ] && pass "pr_size_gate on: a Writes dir of exactly 40 files passes (rc 0)" || fail "exactly 40 files: rc=$rc: $pso"
-lacks "exactly 40 files: no hard-max message" "$pso" "hard max"
+for sh in "glob:41 files" "mixed:44 files" "rootglob:41 files" "treeglob:41 files" "ddglob:41 files" "hlglob:41 files" "qglob:41 files" "dotslash:41 files" "slashglob:41 files" "new41:41 files"; do
+    pw="${sh%%:*}"; pc="${sh#*:}"
+    pso="$(psrun "$pw")"; rc=$?
+    case "$pw" in
+        rootglob|dotslash) # brief-lint refuses these Writes spellings (a bare glob, a ./ prefix); the size check refused nothing
+            [ "$rc" = 1 ] && has "size estimate: the $pw brief is refused by brief-lint, not by the size check" "$pso" "brief-lint refuses the brief" || fail "$pw: rc=$rc: $pso" ;;
+        *) [ "$rc" = 0 ] && pass "size estimate: the $pw Writes list is estimated, not refused (rc 0)" || fail "$pw: rc=$rc: $pso" ;;
+    esac
+    has "size estimate: the $pw warning counts $pc" "$pso" "$pc"
+    has "size estimate: the $pw warning names the hard max" "$pso" "hard max"
+done
+for pw in rootfile segglob prose paren abspath; do
+    pso="$(psrun "$pw")"; rc=$?
+    [ "$rc" = 0 ] && pass "size estimate: the $pw Writes list is under the bands (rc 0)" || fail "$pw: rc=$rc: $pso"
+    lacks "size estimate: the $pw list names no hard max" "$pso" "hard max"
+done
+lacks "a tracked repository-root file counts as tracked (no unverified report)" "$(psrun rootfile rootfile2)" "name no file tracked at base"
 for pw in absent nonamed; do
-    pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun $pw)"; rc=$?
-    [ "$rc" = 0 ] && pass "pr_size_gate on: $pw Writes list is reported, not refused (rc 0)" || fail "$pw: rc=$rc: $pso"
+    pso="$(psrun "$pw")"; rc=$?
+    [ "$rc" = 0 ] && pass "size estimate: $pw Writes list is reported, not refused (rc 0)" || fail "$pw: rc=$rc: $pso"
     has "$pw: the report names the rule" "$pso" "warning: worker N921 Writes name no file tracked at base"
 done
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun emptyw)"; rc=$?
-[ "$rc" = 1 ] && has "pr_size_gate on: an empty Writes list is refused by brief-lint, not the size gate" "$pso" "brief-lint refuses the brief" || fail "emptyw: rc=$rc: $pso"
-lacks "emptyw: the size gate does not refuse it" "$pso" "hard max"
+pso="$(psrun emptyw)"; rc=$?
+[ "$rc" = 1 ] && has "size estimate: an empty Writes list is refused by brief-lint, not the size check" "$pso" "brief-lint refuses the brief" || fail "emptyw: rc=$rc: $pso"
+lacks "emptyw: the size check does not refuse it" "$pso" "hard max"
 has "emptyw: the report names the rule" "$pso" "warning: worker N921 Writes name no file tracked at base"
 
+# the retired flag: nothing in gen-briefs.py reads or names pr_size_gate, and its value changes nothing
+check "no pr_size_gate in gen-briefs.py" 0 "$(grep -c pr_size_gate "$SUT")"
 pso="$(HIMMEL_FLAG_PR_SIZE_GATE=maybe psrun big gv)"; rc=$?
-[ "$rc" = 2 ] && pass "an invalid pr_size_gate value exits 2 (configuration error)" || fail "invalid flag value: rc=$rc: $pso"
-lacks "an invalid pr_size_gate value prints no traceback" "$pso" "Traceback"
-has "an invalid pr_size_gate value is named" "$pso" "pr_size_gate"
-pso="$(HIMMEL_FLAGS_TSV="$WORK/no-such-registry.tsv" psrun big gr)"; rc=$?
-[ "$rc" = 2 ] && pass "an unreadable flag registry exits 2 (configuration error)" || fail "unreadable registry: rc=$rc: $pso"
-lacks "an unreadable flag registry prints no traceback" "$pso" "Traceback"
+[ "$rc" = 0 ] && pass "a stale pr_size_gate value changes nothing (rc 0)" || fail "stale flag value: rc=$rc: $pso"
 
-# ---- the monitored size escape ----
-SZK=$(printf 'HIMMEL-%s' 9201)  # the key of the ps_workers fixture, built so the line holds no literal ticket key
-# Every refusal and every bulk: mechanical use writes a SIZE-ESCALATE row to <handover root>/.locks/size-escalate.tsv;
-# only a chief-signed size-override record lets a refused brief through; a trust-path brief over the soft band and a
-# brief past the 300-file cap go to the operator whatever the chief signs.
-OV="$HERE/size-override.sh"; SEL="$WORK/handovers/.locks/size-escalate.tsv"
-PSHOME="$WORK/ps-home"; mkdir -p "$PSHOME/.config/himmel"
-printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$PSHOME/.config/himmel/go-hmac.key"
-sel_count() { grep -c "^SIZE-ESCALATE" "$SEL" 2>/dev/null || true; }
-ps_workers trustsoft scripts/ci/ ''
-ps_workers huge "$(for n in $(seq 1 301); do printf 'scripts/newd/n%s.txt ' "$n"; done)" ''
-rm -f "$SEL"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun big esc1)"; rc=$?
-[ "$rc" = 1 ] && pass "size escape: a 41-file refusal still exits 1" || fail "size escape refusal: rc=$rc: $pso"
-[ "$(sel_count)" = 1 ] && pass "size escape: the refusal writes exactly one SIZE-ESCALATE row" || fail "refusal rows: $(sel_count): $(cat "$SEL" 2>/dev/null)"  # read-sink-ok: test reads its own mktemp ledger path
-has "size escape: the row names the refusal, the key, the worker and the file count" "$(cat "$SEL" 2>/dev/null)" "refuse$(printf '\t')HIMMEL-9201$(printf '\t')N921$(printf '\t')41"  # read-sink-ok: test reads its own mktemp ledger path
-has "size escape: the refusal tells the chief how to sign an override" "$pso" "size-override.sh record"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun bulk esc1)"; rc=$?
-[ "$rc" = 0 ] && [ "$(sel_count)" = 2 ] && pass "size escape: a bulk: mechanical use writes one more row" || fail "bulk rows: rc=$rc count=$(sel_count)"
-has "size escape: the bulk row says bulk" "$(tail -n 1 "$SEL" 2>/dev/null)" "bulk$(printf '\t')HIMMEL-9201"  # read-sink-ok: test reads its own mktemp ledger path
-pso="$(psrun big esc-off)"; rc=$?
-[ "$rc" = 0 ] && [ "$(sel_count)" = 2 ] && pass "size escape: with the gate off nothing is escalated and no row is written" || fail "gate off rows: rc=$rc count=$(sel_count)"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun few esc1)"; rc=$?
-[ "$rc" = 0 ] && [ "$(sel_count)" = 2 ] && pass "size escape: a small brief writes no row" || fail "small brief rows: rc=$rc count=$(sel_count)"
-
-# an unsigned or worker-written override does not let the brief through
-printf 'SIZE-OVERRIDE\t1\tHIMMEL-9201\tN921\t41\t0\tno\tconsole:chief-x\tkeep whole\t\n' >> "$SEL"
-pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun big esc2)"; rc=$?
-[ "$rc" = 1 ] && pass "size escape: an unsigned override row is refused (rc 1)" || fail "unsigned override: rc=$rc: $pso"
-pso="$(HOME="$PSHOME" HIMMEL_CONSOLE_LEG=1 HIMMEL_FLAG_PR_SIZE_GATE=1 bash "$OV" record "$SZK" N921 --files 41 --reason "worker says so" --root "$WORK/handovers" 2>&1)"; rc=$?
-[ "$rc" = 3 ] && pass "size escape: a worker cannot sign an override (rc 3)" || fail "worker record: rc=$rc: $pso"
-pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun big esc3)"; rc=$?
-[ "$rc" = 1 ] && pass "size escape: a refused worker record leaves the brief refused (rc 1)" || fail "after worker record: rc=$rc: $pso"
-# a chief-signed override lets it through
-pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME=chief-t bash "$OV" record "$SZK" N921 --files 41 --reason "one scripted rename, split would break it" --root "$WORK/handovers" 2>&1)"; rc=$?
-[ "$rc" = 0 ] && pass "size escape: the chief signs an override" || fail "chief record: rc=$rc: $pso"
-before="$(sel_count)"
-pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun big esc4)"; rc=$?
-[ "$rc" = 0 ] && pass "size escape: a chief-signed override lets the 41-file brief through (rc 0)" || fail "signed override: rc=$rc: $pso"
-[ -n "$(ps_brief big esc4)" ] && pass "size escape: the overridden brief is written" || fail "overridden brief missing"
-has "size escape: the pass names the override" "$pso" "one scripted rename"
-[ "$(sel_count)" = "$before" ] && pass "size escape: a brief the override lets through is not a new refusal row" || fail "override pass wrote a row"
-
-# the operator's cases: refused even with a chief override, and the message says so
-pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun trustsoft esc5)"; rc=$?
-[ "$rc" = 1 ] && pass "size escape: a trust-path brief over the soft band (25 files) is refused (rc 1)" || fail "trust soft: rc=$rc: $pso"
-has "size escape: the trust-path refusal routes to the operator" "$pso" "operator"
-[ -z "$(ps_brief trustsoft esc5)" ] && pass "size escape: the trust-path brief writes no doc" || fail "trust-path brief was written"
-pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME=chief-t bash "$OV" record "$SZK" N921 --files 25 --trust yes --reason "keep whole" --root "$WORK/handovers" 2>&1)"; rc=$?
-[ "$rc" = 4 ] && pass "size escape: the chief cannot sign for a trust-path brief over the soft band (rc 4)" || fail "trust record: rc=$rc: $pso"
-pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun trustsoft esc6)"; rc=$?
-[ "$rc" = 1 ] && has "size escape: still the operator's after the attempted record" "$pso" "operator" || fail "trust soft after record: rc=$rc: $pso"
-pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun huge esc7)"; rc=$?
-[ "$rc" = 1 ] && pass "size escape: a brief past the 300-file cap is refused (rc 1)" || fail "huge: rc=$rc: $pso"
-has "size escape: the 300-file refusal says split the ticket" "$pso" "split the ticket"
-pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME=chief-t bash "$OV" record "$SZK" N921 --files 301 --reason "huge" --root "$WORK/handovers" 2>&1)"; rc=$?
-[ "$rc" = 4 ] && pass "size escape: the chief cannot sign for a brief past 300 files (rc 4)" || fail "huge record: rc=$rc: $pso"
-pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME=chief-t bash "$OV" record "$SZK" N921 --files 41 --lines 1501 --reason "huge" --root "$WORK/handovers" 2>&1)"; rc=$?
-[ "$rc" = 4 ] && pass "size escape: the chief cannot sign for a brief past 1500 lines (rc 4)" || fail "lines record: rc=$rc: $pso"
-# bulk: mechanical skips only the bands the chief can rule, never a case the operator owns
-ps_workers bulktrust scripts/ci/ ',"bulk":"mechanical"'
-ps_workers bulkhuge "$(for n in $(seq 1 301); do printf 'scripts/newd/n%s.txt ' "$n"; done)" ',"bulk":"mechanical"'
-pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun bulktrust esc10)"; rc=$?
-[ "$rc" = 1 ] && pass "size escape: bulk: mechanical on a trust-path brief over the soft band is refused (rc 1)" || fail "bulk trust soft: rc=$rc: $pso"
-has "size escape: the bulk trust-path refusal routes to the operator" "$pso" "operator"
-[ -z "$(ps_brief bulktrust esc10)" ] && pass "size escape: the bulk trust-path brief writes no doc" || fail "bulk trust-path brief was written"
-pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun bulkhuge esc11)"; rc=$?
-[ "$rc" = 1 ] && pass "size escape: bulk: mechanical past the 300-file cap is refused (rc 1)" || fail "bulk huge: rc=$rc: $pso"
-has "size escape: the bulk past-cap refusal says split the ticket" "$pso" "past the 300-file CodeRabbit cap: this cannot open as one PR; split the ticket"
-lacks "size escape: the bulk past-cap refusal prints no Telegram approve line" "$pso" "/op size-approval"
-lacks "size escape: the bulk past-cap refusal prints no terminal approve line" "$pso" "size-override.sh operator"
-pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun huge esc12)"
-has "size escape: the past-cap refusal says split the ticket" "$pso" "past the 300-file CodeRabbit cap: this cannot open as one PR; split the ticket"
-lacks "size escape: the past-cap refusal prints no Telegram approve line" "$pso" "/op size-approval"
-lacks "size escape: the past-cap refusal prints no terminal approve line" "$pso" "size-override.sh operator"
-SAFIX="$HERE/fixtures/size-approval-op-line.txt"
-SAKEY=$(printf 'HIMMEL-%s' 9228)
-SAD=$(sed -n 's/.* scope=\([0-9a-f]*\) .*/\1/p' "$SAFIX")
-if [ -e "/var/lib/himmel/size-approvals/$SAKEY.N5216.272.$SAD" ]; then
-    fail "the host holds an approval for the R7 fixture (/var/lib/himmel/size-approvals/$SAKEY.N5216.272.$SAD); gen-briefs reads it"
-else
-    pass "the host holds no approval for the R7 fixture"
-fi
-cat > "$WORK/ps-opline.json" <<PSEOF
-[{"label":"N5216","keys":["$SAKEY"],"slug":"size","branch":"fix/himmel-9228-size","title":"a sized fix","desc":"d","why":"w","prior":"HIMMEL-9000 (the earlier fix). Source: \`git log -3 -- scripts/x\`.","writes":"scripts/ci/t1.sh $(for n in $(seq 1 271); do printf 'scripts/newd/n%s.txt ' "$n"; done)","scope":"\`scripts/ci/t1.sh\`","scope_short":"scripts/ci/t1.sh","commit":"fix(x): [$SAKEY] f"}]
-PSEOF
-pso="$(HOME="$PSHOME" HIMMEL_FLAG_PR_SIZE_GATE=1 psrun opline esc13)"; rc=$?
-[ "$rc" = 1 ] && pass "size escape: a 272-file trust-path brief is refused (rc 1)" || fail "opline: rc=$rc: $pso"
-has "size escape: the refusal names the base, the scope digest and the list ends" "$pso" "base ${PSBASE:0:12}, scope $SAD = 272 files, first scripts/ci/t1.sh, last scripts/newd/n99.txt"
-has "size escape: the refusal prints the Telegram line byte for byte as the shared fixture" "$pso" "$(head -n 1 "$SAFIX")"
-has "size escape: the refusal prints the terminal line" "$pso" "size-override.sh operator $SAKEY N5216 --files 272 --scope $SAD --reason keep-whole"
-pso2="$(psrun trustsoft esc9)"; rc2=$?
-[ "$rc2" = 0 ] && pass "size escape: with the gate off a trust-path brief over the soft band only warns (rc 0)" || fail "trust soft gate off: rc=$rc2: $pso2"
-
-# the adopted-kit fixture holds the flags.py copy, so the size gate is reached there; a kit without it exits 2, not a traceback
-[ -f "$KIT/scripts/lib/flags.py" ] && pass "the adopted-kit fixture holds the flags.py copy" || fail "the adopted-kit fixture has no flags.py copy"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/ps-big.json" --base "$PSBASE" --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/ps-bucket-kit" --date 2026-10-08 --repo "$PS" --handover-root "$WORK/handovers-kit" --work-dir "$WORK/psw-kit" --deadline 1791475000 2>&1)"; rc=$?
-[ "$rc" = 1 ] && has "an adopted kit reaches the size gate and refuses" "$pso" "40-file hard max" || fail "adopted kit, gate on: rc=$rc: $pso"
-KIT2="$WORK/kit2"; cp -r "$KIT" "$KIT2"; rm -f "$KIT2/scripts/lib/flags.py"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 python3 "$KIT2/scripts/handover/chief-kit/gen-briefs.py" "$WORK/ps-big.json" --base "$PSBASE" --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/ps-bucket-kit2" --date 2026-10-08 --repo "$PS" --handover-root "$WORK/handovers" --work-dir "$WORK/psw-kit2" --deadline 1791475000 2>&1)"; rc=$?
-[ "$rc" = 2 ] && pass "an adopted kit without flags.py exits 2 (configuration error)" || fail "kit without flags.py: rc=$rc: $pso"
-lacks "an adopted kit without flags.py prints no traceback" "$pso" "Traceback"
+# the adopted-kit fixture runs the same size path
+pso="$(python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/ps-big.json" --base "$PSBASE" --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/ps-bucket-kit" --date 2026-10-08 --repo "$PS" --handover-root "$WORK/handovers-kit" --work-dir "$WORK/psw-kit" --deadline 1791475000 2>&1)"; rc=$?
+[ "$rc" = 0 ] && has "an adopted kit writes the brief and warns of the estimate" "$pso" "over the 40-file hard max" || fail "adopted kit: rc=$rc: $pso"
 unset HIMMEL_CONFIG_DIR
 
 # --- S2a: with stacked_series on, a writer's `series: [<label>, ...]` writes ONE brief (Series line, grant line, the union of
