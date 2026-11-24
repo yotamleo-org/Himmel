@@ -757,7 +757,7 @@ _req_transient() {
 
 required_set() {
     local base rules classic
-    base=$(pr_view --json baseRefName --jq .baseRefName 2>/dev/null) || return 1
+    base=$(GH_READ_QUIET=1 pr_view --json baseRefName --jq .baseRefName 2>&1) || { _req_transient "$base" && return 3; return 1; }
     [ -n "$base" ] || return 1
     # these two captures merge stderr into the data, so the helper's fallback warning stays off them
     if ! rules=$(GH_READ_QUIET=1 gh_read api "repos/$owner/$repo/rules/branches/$base" \

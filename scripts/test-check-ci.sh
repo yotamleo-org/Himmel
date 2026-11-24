@@ -659,7 +659,9 @@ if [ "$cmd" = "pr" ] && [ "${2:-}" = "view" ]; then
             fi
             printf 'https://github.com/octo/demo/pull/42\t%s\t%s\tmain\n' "${GH_STUB_DECISION:-null}" "$head"
             exit 0 ;;
-        *"baseRefName"*) echo "main"; exit 0 ;;
+        *"baseRefName"*)
+            if [ "${GH_STUB_RULES:-}" = baseratelimit ]; then echo "gh: API rate limit exceeded for user ID 1. (HTTP 403)" >&2; exit 1; fi
+            echo "main"; exit 0 ;;
         # GitHub's own merge verdict, in check-ci's parsed shape
         # "<head> <state>". GH_STUB_MERGE_STATE is a comma list consumed one
         # read at a time (the last value repeats); "fail" is an unreadable read.
@@ -2735,6 +2737,12 @@ if [ "$(alert_count)" = 0 ]; then pass "3381-g a rate-limited required-set read 
 _g_reads=$(grep -c 'rules/branches/main' "$STUBDIR/args.log")
 if [ "$_g_reads" -ge 3 ] && [ "$_g_reads" -le 8 ]; then pass "3381-g the read is retried within the --grace bound"; else fail "3381-g the read is retried within the --grace bound" "reads=$_g_reads"; fi
 
+RULES_OVERRIDE=baseratelimit
+run cr-completed --grace 0
+assert_rc 5 "3381-j a rate-limited base-branch lookup still refuses the merge (exit 5)"
+assert_err_has "transient" "3381-j the refusal names the base-branch read failure transient"
+if [ "$(alert_count)" = 0 ]; then pass "3381-j a rate-limited base-branch lookup sends no alert"; else fail "3381-j a rate-limited base-branch lookup sends no alert" "count=$(alert_count)"; fi
+
 RULES_OVERRIDE="ratelimit-n:2:unit-tests"
 run cr-completed --grace 5
 assert_rc 0 "3381-h a rate limit that recovers on the retry reaches the real verdict (exit 0)"
@@ -3485,5 +3493,5 @@ if [ "$RC" -ne 0 ]; then pass "T3.23-d even with --fail-fast kept, a pending con
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 265 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 265"; exit 1; fi
+if [ "$COUNT" -ne 266 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 266"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1
