@@ -71,6 +71,12 @@ tipspec=":"
 awk -F'\t' '{ print $NF }' "$W/status" > "$W/touched" || die "awk failed"
 : > "$W/bin"
 while IFS= read -r p; do
+    if [ "$mode" = "staged" ]; then
+        m="$(git --literal-pathspecs ls-files -s -- "$p" | cut -c1-6)" || die "cannot list $p"
+    else
+        m="$(git --literal-pathspecs ls-tree "$tip" -- "$p" | cut -c1-6)" || die "cannot list $p at the tip"
+    fi
+    [ "$m" = "160000" ] && continue
     git show "$tipspec$p" > "$W/blob" 2>/dev/null || die "cannot read $p at the tip"
     all="$(head -c 8000 "$W/blob" | wc -c)"
     txt="$(head -c 8000 "$W/blob" | tr -d '\000' | wc -c)"
@@ -84,7 +90,7 @@ awk -F'\t' -v keyre="$KEY_RE" '
             m = substr(r, RSTART, RLENGTH)
             sub(/^[^A-Za-z0-9]/, "", m); sub(/[^0-9]$/, "", m)
             set[m] = 1
-            r = substr(r, RSTART + RLENGTH)
+            r = substr(r, RSTART + RLENGTH - 1)
         }
     }
     $1 ~ /^[ACR]/ {

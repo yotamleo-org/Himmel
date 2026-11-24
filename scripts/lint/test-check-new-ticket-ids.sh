@@ -97,6 +97,18 @@ git -C "$R" mv "docs/a-$KEY.md" "docs/b-$KEY.md"; stage; want "renaming and keep
 git -C "$R" commit -q -m "same key"
 git -C "$R" mv "docs/b-$KEY.md" "docs/b-$KEY2.md"; stage; want "renaming to a different key refused" 1
 
+mkrepo
+printf 'plain\n' > "$R/docs/HIM""MEL-1X""LU""NA-2.txt"; git -C "$R" add -A; git -C "$R" commit -q -m "glued"
+git -C "$R" mv "docs/HIM""MEL-1X""LU""NA-2.txt" "docs/HIM""MEL-1-""LU""NA-2.txt"; stage; want "a key glued to a word is not a key, so the renamed name adds one" 1
+
+echo "== 6b. a submodule entry is not read as a blob =="
+mkrepo
+git -C "$R" update-index --add --cacheinfo 160000,4c31e0a8c8f59ebcb301042cd5d0e6419429013a,vendor/sub
+gate --staged; want "a staged gitlink passes" 0
+git -C "$R" commit -q -m "add gitlink"
+git -C "$R" update-index --cacheinfo 160000,163072e865ff74e2290ce306dac0bbd136d7c73a,vendor/sub
+gate --staged; want "a changed gitlink passes" 0
+
 echo "== 7. a line that starts like a diff header is still judged as content =="
 mkrepo
 printf '++ %s\n' "$KEY" >> "$R/docs/a.md"; stage
