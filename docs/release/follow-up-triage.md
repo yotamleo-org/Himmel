@@ -104,7 +104,9 @@ the next). Only `--gate` keeps a filing-time version, the current one. The class
 (`--fu-class`) is stamped as a label but does not place it.
 
 For a project no declared release names, and when the declarations cannot be
-read (the verb prints one line and still files), the verb puts each follow-up in
+read (the verb prints one line; a follow-up that lands with no version is then
+refused before the POST, as for any filing no release can take an INTAKE for),
+the verb puts each follow-up in
 exactly one place when it is filed. It decides from fields it already has:
 `--fu-class`, depth, priority, `--gate`, and the parent or `--blocks` link. The
 first matching row wins. "Next" means the earliest unreleased version after the

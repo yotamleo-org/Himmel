@@ -1260,10 +1260,29 @@ describe('create — unplaced follow-up', () => {
       expect(parentRead()).toBe(false);
     });
 
-    it('9002 ii: an open parent with no current version behaves as today', async () => {
+    it('9002 ii: an open parent with no current version asks for none and a remainder records both keys', async () => {
+      parentIs({ versions: ['v1.1.2'] });
+      await file('--follow-up-of', 'HIMMEL-5');
+      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: expect.stringMatching(/filed to the backlog/), evidence: {} })]);
+    });
+
+    it('9002 ii: the same parent with --remainder records both keys and the parent facts', async () => {
       parentIs({ versions: ['v1.1.2'] });
       await file('--follow-up-of', 'HIMMEL-5', '--remainder');
-      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: expect.stringMatching(/filed to the backlog/), evidence: {} })]);
+      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: expect.stringMatching(/filed to the backlog/), evidence: { follow_up_of: 'HIMMEL-5', parent_status: 'In Progress', parent_version: null, remainder: true } })]);
+    });
+
+    it('U1: a remainder of a parent in a later version, with no why, records both keys', async () => {
+      parentIs({ versions: ['v1.1.4'] });
+      await file('--follow-up-of', 'HIMMEL-5', '--remainder');
+      expect(queued()).toEqual([expect.objectContaining({ evidence: expect.objectContaining({ follow_up_of: 'HIMMEL-5', remainder: true }) })]);
+    });
+
+    it('U1: a remainder whose parent cannot be read records both keys, without parent_version', async () => {
+      parentIs({ fail: new Error('boom') });
+      await file('--follow-up-of', 'HIMMEL-5', '--remainder');
+      expect(posted()).toBe(true);
+      expect(queued()).toEqual([expect.objectContaining({ evidence: { follow_up_of: 'HIMMEL-5', remainder: true } })]);
     });
 
     it('9002 iii: a parent read that fails still files the ticket, with today\'s backlog request and a warning', async () => {
@@ -2529,6 +2548,7 @@ describe('create --residual-of is placed by the door', () => {
   const play = () =>
     mockRequest.mockImplementation(async (method: string, path: string) => {
       if (method === 'GET' && path.startsWith('/issue/HIMMEL-50')) return { fields: { labels: [], fixVersions: [{ name: 'v1.1.3' }], status: { statusCategory: { key: 'indeterminate' } } } };
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-51')) return { fields: { labels: [], fixVersions: [], status: { statusCategory: { key: 'indeterminate' } } } };
       if (method === 'GET' && path.startsWith('/issue/SALUS-50')) return { fields: { labels: [], fixVersions: [{ name: 's1' }], status: { statusCategory: { key: 'indeterminate' } } } };
       if (method === 'GET' && path.endsWith('/versions')) {
         return path.includes('SALUS') ? [{ name: 's1', released: false }, { name: 's2', released: false }] : [{ name: 'v1.1.3', released: false }, { name: 'v1.1.4', released: false }];
@@ -2597,5 +2617,21 @@ describe('create --residual-of is placed by the door', () => {
     await file('HIMMEL-50');
     expect(lands()).toEqual(['v1.1.3']);
     expect(errs.filter((e) => /cannot be read/.test(e))).toHaveLength(1);
+  });
+
+  it('with no resolvable release root a residual the class route leaves with no version is refused before the POST', async () => {
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', '');
+    vi.stubEnv('USER_SLUG', '');
+    await expect(file('HIMMEL-51', '--fu-class', 'hardening', '--fu-why', 'no-check', '--fu-override', 'decision-762')).rejects.toThrow();
+    expect(created()).toBeUndefined();
+  });
+
+  it('U5: with two declared releases a residual that owes an INTAKE fails with the existing exactly-one refusal', async () => {
+    const p = new Command();
+    p.exitOverride();
+    registerRelease(p);
+    await p.parseAsync(['node', 'jira', 'release', 'operator', 'declare', 'R2', '--versions', 'v1.1.3', '--decision', '214', '--verbatim-file', join(baseRoot, 'verbatim.txt')]);
+    await expect(file('HIMMEL-50')).rejects.toThrow(/an INTAKE needs exactly one/);
+    expect(created()).toBeUndefined();
   });
 });

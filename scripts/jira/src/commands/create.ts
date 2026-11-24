@@ -556,7 +556,7 @@ export async function followUpIntake<T extends IntakeOptions & { followUpOf?: st
     versions = await fetchVersions(parent.project.key);
   } catch (e) {
     console.error(`jira: warning: could not read ${parentKey}'s status and version, so the follow-up's INTAKE names none: ${(e as Error).message}`);
-    return o;
+    return o.remainder ? { ...o, evidence: { ...o.evidence, follow_up_of: parentKey, remainder: true } } : o;
   }
   const status = parent.status?.name ?? 'unknown';
   const current = earliestUnreleased(versions);
@@ -568,7 +568,7 @@ export async function followUpIntake<T extends IntakeOptions & { followUpOf?: st
   if (parent.status?.statusCategory?.key === 'done') {
     return { ...o, why: `follow-up of ${parentKey}, which is closed (${status})`, evidence };
   }
-  if (!inCurrent) return o;
+  if (!inCurrent) return o.remainder ? { ...o, evidence } : o;
   const isFrozen = frozenDate(versions.find((v) => v.name === current)?.description) !== undefined;
   const target = current;
   const facts = `follow-up of ${parentKey} (${status}), which is in ${current}${isFrozen ? ' (frozen)' : ''}`;
