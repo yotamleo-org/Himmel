@@ -543,6 +543,12 @@ held rows whose 72 h buffer has cleared (drift-brief.py count; TICK_DRIFT_GH is 
 read or the count failed and never wakes; absent when the repo has no scripts/upstreams/pin-holds.json. In compact output a
 positive count also prints one `WAKE drift-actionable <n>` line after the TICK line per UTC day (claim file
 tick-drift-wake-<date> in TICK_STATE_DIR); `drift-brief.py brief` writes the worker brief for those rows.
+arrivals=<today>/<mean>[!|?] counts the tickets ruled into the active version today (release events.jsonl, kind ruled, from null) against that
+version's own earlier days, at most TICK_ARRIVALS_DAYS (default 7) back. ! = a jump: today at least 3x the mean and above every earlier day, a bar
+relative to the version, never a ticket count. <n>/? = under 3 earlier days or none with an arrival (no baseline, no wake). Absent without a release
+directory (TICK_ARRIVALS_DIR is the seam, TICK_ARRIVALS_NOW the clock). A jump also prints one `WAKE arrivals-jump <version> <n> vs <mean>/day over <k>d:
+<source>=<n> ...` line after the TICK line per UTC day (claim file tick-arrivals-wake-<date>); the sources (parent, review, audit, operator, other) are read
+from the INTAKE request that placed each ticket. Read-only: no filing is refused or slowed. The waiter's relay row in chief-wait.sh is a separate ticket (see the PR).
 leaks=<n|?> counts the LEAK lines of one bounded `jira release leaks <active version>`
 read (TICK_LEAKS_PROBE gets the version and the mirror directory as its arguments; TICK_LEAKS_TIMEOUT, default 30 s): open tickets
 in a frozen version with no frozen-set membership and no admissions-ledger row. Shown only when non-zero
@@ -4234,6 +4240,111 @@ if [ -f "$drift_holds" ] && [ -f "$HERE/drift-brief.py" ]; then
     case "$drift_val" in '?' | 0) ;; *) drift_wake="$drift_val" ;; esac
 fi
 
+arrivals_summary=""
+arrivals_wake=""
+arr_now="${TICK_ARRIVALS_NOW:-$(date -u +%F)}"
+arr_dir="${TICK_ARRIVALS_DIR:-}"
+if [ -z "$arr_dir" ] && [ -n "$leaks_version" ]; then
+    arr_root="${HIMMEL_RELEASE_STATE_DIR:-}"
+    if [ -z "$arr_root" ] && [ -n "${USER_SLUG:-}" ] && [ -n "${lk_anchor:-}" ]; then
+        arr_ho="$(cd "${lk_anchor%/.git}" 2>/dev/null && handover_root 2>/dev/null)" || arr_ho=""  # swallow-ok: an unreadable root reads as no release directory
+        [ -z "$arr_ho" ] || arr_root="$arr_ho/$USER_SLUG/$(basename "${lk_anchor%/.git}")/release"
+    fi
+    [ -z "$arr_root" ] || arr_dir="$arr_root/$leaks_version"
+fi
+if [ -n "$arr_dir" ] && [ -f "$arr_dir/events.jsonl" ] && command -v python3 >/dev/null 2>&1; then
+    arr_out="$(ARR_DIR="$arr_dir" ARR_NOW="$arr_now" ARR_DAYS="${TICK_ARRIVALS_DAYS:-7}" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 20)"} python3 -I -c '
+import datetime, json, os
+d = os.environ["ARR_DIR"].rstrip("/")
+ver = os.path.basename(d)
+try:
+    now = datetime.date.fromisoformat(os.environ["ARR_NOW"])
+    win = max(int(os.environ["ARR_DAYS"]), 1)
+except ValueError:
+    raise SystemExit
+first = {}
+try:
+    for l in open(d + "/events.jsonl", encoding="utf-8"):
+        try:
+            r = json.loads(l, strict=False)
+        except ValueError:
+            continue
+        if not isinstance(r, dict) or r.get("kind") != "ruled" or r.get("from") not in (None, "") or r.get("to") != ver:
+            continue
+        k, ts = r.get("key"), r.get("ts")
+        if not isinstance(k, str) or not isinstance(ts, str):
+            continue
+        try:
+            day = datetime.date.fromisoformat(ts[:10])
+        except ValueError:
+            continue
+        if k not in first or day < first[k][0]:
+            first[k] = (day, r.get("ruling"))
+except OSError:
+    raise SystemExit
+per = {}
+for day, _ in first.values():
+    per[day] = per.get(day, 0) + 1
+today = per.get(now, 0)
+earlier = [x for x in per if x < now]
+mean = None
+prior = []
+if earlier:
+    start = max(min(earlier), now - datetime.timedelta(days=win))
+    prior = [per.get(start + datetime.timedelta(days=i), 0) for i in range((now - start).days)]
+    if len(prior) >= 3 and sum(prior) > 0:
+        mean = sum(prior) / len(prior)
+if mean is None:
+    print("%d/?" % today)
+    raise SystemExit
+ms = ("%.1f" % mean).rstrip("0").rstrip(".")
+jump = today >= 3 * mean and today > max(prior)
+print("%d/%s%s" % (today, ms, "!" if jump else ""))
+if not jump:
+    raise SystemExit
+by = {}
+try:
+    for l in open(d + "/requests.jsonl", encoding="utf-8"):
+        try:
+            r = json.loads(l, strict=False)
+        except ValueError:
+            continue
+        if isinstance(r, dict) and isinstance(r.get("state"), str) and r["state"].startswith("ruled:"):
+            by[r["state"][6:]] = r
+except OSError:
+    pass
+def group(row):
+    if row is None:
+        return "other"
+    ev = row.get("evidence")
+    ev = ev if isinstance(ev, dict) else {}
+    why = str(row.get("why") or "").lower()
+    if "audit" in ev:
+        return "audit"
+    if "follow_up_of" in ev or why.startswith("follow-up of"):
+        return "parent"
+    if "operator" in ev or "operator_record" in ev or ev.get("authority") == "operator":
+        return "operator"
+    if "review" in why:
+        return "review"
+    if "audit" in why:
+        return "audit"
+    if "operator" in why:
+        return "operator"
+    return "other"
+g = {}
+for day, ruling in first.values():
+    if day == now:
+        n = group(by.get(ruling))
+        g[n] = g.get(n, 0) + 1
+print("%s %d vs %s/day over %dd: %s" % (ver, today, ms, len(prior), " ".join("%s=%d" % (a, b) for a, b in sorted(g.items(), key=lambda kv: (-kv[1], kv[0])))))
+' 2>/dev/null)" || arr_out="?"  # swallow-ok: a failed read renders as arrivals=?
+    arrivals_summary="$(printf '%s\n' "$arr_out" | sed -n '1p')"
+    case "$arrivals_summary" in
+        *!) arrivals_wake="$(printf '%s\n' "$arr_out" | sed -n '2p')" ;;
+    esac
+fi
+
 # tmp=<pct>[!] -- how full the tmp filesystem is (read-only df on TICK_TMP_DIR,
 # default /tmp), with a trailing ! at TICK_TMP_WARN percent (default 80) or more.
 # Absent when df cannot be read. Advisory only: chief-wait's action key is a
@@ -5302,6 +5413,7 @@ else
     compact_field focus "$focus_summary"
     compact_field sdrift "$sdrift_summary"
     compact_field stale "$stale_summary"
+    compact_field arrivals "$arrivals_summary"
     printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$mon_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail$drift_tail"
     if [ -n "$drift_wake" ]; then
         drift_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
@@ -5309,6 +5421,14 @@ else
         if mkdir -p "$drift_dir" 2>/dev/null && (set -C; : > "$drift_claim") 2>/dev/null; then  # swallow-ok: an unclaimable day prints no wake, never a repeated one
             printf 'WAKE drift-actionable %s\n' "$drift_wake"
             find "$drift_dir" -maxdepth 1 -name 'tick-drift-wake-*' -mtime +7 -delete 2>/dev/null  # gnu-ok: console kit is Linux-only # swallow-ok: an unprunable old claim is harmless
+        fi
+    fi
+    if [ -n "$arrivals_wake" ]; then
+        arr_sdir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+        arr_claim="$arr_sdir/tick-arrivals-wake-$arr_now"
+        if mkdir -p "$arr_sdir" 2>/dev/null && (set -C; : > "$arr_claim") 2>/dev/null; then  # swallow-ok: an unclaimable day prints no wake, never a repeated one
+            printf 'WAKE arrivals-jump %s\n' "$arrivals_wake"
+            find "$arr_sdir" -maxdepth 1 -name 'tick-arrivals-wake-*' -mtime +7 -delete 2>/dev/null  # gnu-ok: console kit is Linux-only # swallow-ok: an unprunable old claim is harmless
         fi
     fi
     if [ -n "$holdout_summary" ]; then
