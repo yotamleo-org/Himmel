@@ -143,13 +143,13 @@ check '2. the doc has a Completes line' yes "$(grep -qxF '> **Completes ticket:*
 check '2. the doc has a Results section' yes "$(grep -q '^## Results' "$doc" && echo yes)"
 check '2. the row is lane t3 and lockless' 't3 true' "$(jq -r --arg d "$doc" '.workers[] | select(.doc == $d) | "\(.lane) \(.lockless)"' "$M")"
 check '2. the row starts at t3_thread pending' pending "$(jq -r --arg d "$doc" '.workers[] | select(.doc == $d) | .t3_thread' "$M")"
-check '2. the printed block names the doc' yes "$(printf '%s' "$out" | grep -qF "DOC $doc" && echo yes)"
+check '2. the printed block names the doc' yes "$(grep -qF "DOC $doc" <<<"$out" && echo yes)"
 case "$out" in *'>'*) gt=has ;; *) gt=none ;; esac
 check '2. the command block holds no greater-than character' none "$gt"
 for mk in 'LIVE QUESTION' BLOCKED FINDING 'LIVE JUDGE-REQUEST' 'READY PR-NUMBER FULL-40-HEX-HEAD GREEN'; do
-    check "2. the block carries the $mk line" yes "$(printf '%s' "$out" | grep -qF "append-results.sh $doc \"$mk" && echo yes)"
+    check "2. the block carries the $mk line" yes "$(grep -qF "append-results.sh $doc \"$mk" <<<"$out" && echo yes)"
 done
-check '2. the block carries the no-GO rule' yes "$(printf '%s' "$out" | grep -qF 'never a GO, a RETASK or a token' && echo yes)"
+check '2. the block carries the no-GO rule' yes "$(grep -qF 'never a GO, a RETASK or a token' <<<"$out" && echo yes)"
 # shellcheck source=../lib/worker-identity.sh
 . "$REAL/scripts/lib/worker-identity.sh"
 check '2. worker-identity gives N7 for the stem' N7 "$(worker_label "$doc")"
@@ -320,7 +320,7 @@ for i in 1 2 3; do
 done
 export STUB_LIST_SLEEP=3 STUB_SEND_SLEEP=30 STUB_GL_SLEEP=30
 t0="$(date +%s)"
-timeout -k 2 30 bash "$BIND" scan --manifest "$M" >"$T/out" 2>"$T/err"; SRC=$?
+timeout -k 2 30 bash "$BIND" scan --manifest "$M" >"$T/out" 2>"$T/err"; SRC=$?   # gnu-ok: Linux-only chief kit, GNU timeout
 elapsed=$(( $(date +%s) - t0 ))
 check '6. the pass is never killed by the waiter timeout' no "$([ "$SRC" = 124 ] || [ "$SRC" = 137 ] && echo yes || echo no)"
 check "6. the pass returns in at most 24 s (took ${elapsed}s)" yes "$([ "$elapsed" -le 24 ] && echo yes || echo no)"
@@ -423,6 +423,15 @@ check '9. a thread settled more than 3 days whose last bullet is LIVE is unbound
 check '9. one whose last bullet is READY is kept' '' "$(grep 'rdy1' "$T/out")"
 check '9. one settled recently is kept' 0 "$(grep -c 'new1' "$T/out")"
 check '9. two rows remain' 2 "$(rows)"
+ten="$(date -u -d '10 days ago' +%Y-%m-%dT%H:%M:%S.123Z)"
+mklist "$(th rdy1 "$RELAY" completed true "$old")" "$(th new1 "$RELAY" completed true "$recent")" "$(th ten1 "$RELAY" completed false)"
+scan
+bash "$REAL/scripts/handover/chief-kit/append-results.sh" "$B/T3ASK-ten1-$today.md" 'LIVE QUESTION still here' >/dev/null
+mklist "$(th rdy1 "$RELAY" completed true "$old")" "$(th new1 "$RELAY" completed true "$recent")" "$(th ten1 "$RELAY" completed true "$ten")"
+export T3_RELAY_UNBIND_DAYS=08
+scan
+check '9. a zero-padded T3_RELAY_UNBIND_DAYS reads as decimal: a 10 day old settled thread is unbound' "UNBOUND ten1 T3ASK-ten1-$today" "$(cat "$T/out")"
+unset T3_RELAY_UNBIND_DAYS
 
 mkco c9c
 mklist "$(th pr1 "$RELAY" completed false)"

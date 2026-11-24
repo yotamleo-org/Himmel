@@ -69,7 +69,7 @@ run_clean() (
     done
     exec "$@" </dev/null
 )
-fm() { run_clean timeout -k 1 5 bash "$FM" "$@"; }
+fm() { run_clean timeout -k 1 5 bash "$FM" "$@"; }   # gnu-ok: Linux-only chief kit, GNU timeout
 
 relay_ids=""
 if [ -e "$CFG" ]; then
@@ -231,7 +231,7 @@ else
         if [ ! -f "$owner" ] || [ ! -f "$odir/$ostem.md" ]; then
             takeover=1
         else
-            run_clean timeout -k 1 2 bash "$QL" status "$odir/$ostem.md" >/dev/null 2>&1; qrc=$?
+            run_clean timeout -k 1 2 bash "$QL" status "$odir/$ostem.md" >/dev/null 2>&1; qrc=$?   # gnu-ok: Linux-only chief kit, GNU timeout
             case "$qrc" in
                 0) takeover=1 ;;
                 11|12) IS_OWNER=0 ;;
@@ -249,7 +249,7 @@ else
 fi
 
 room 6 || exit 1
-run_clean timeout -k 1 5 "$BIN" thread list --json --project "$PROJECT" > "$SCRATCH/list" 2> "$SCRATCH/list.err"
+run_clean timeout -k 1 5 "$BIN" thread list --json --project "$PROJECT" > "$SCRATCH/list" 2> "$SCRATCH/list.err"   # gnu-ok: Linux-only chief kit, GNU timeout
 lrc=$?
 if [ "$lrc" -ne 0 ] || ! jq -e 'type == "array"' "$SCRATCH/list" >/dev/null 2>&1; then
     echo "relay-bind: t3 thread list failed (rc $lrc)" >&2
@@ -307,7 +307,7 @@ while IFS=$'\t' read -r id d; do
         if [ "$sat" != "-" ]; then
             sat_epoch="$(jq -nr --arg s "$sat" '$s | sub("\\.[0-9]+"; "") | fromdateiso8601' 2>/dev/null)" || sat_epoch=""
             [[ $sat_epoch =~ ^[0-9]+$ ]] || { [ -n "$FIELD_ERR" ] || FIELD_ERR="$id bad field settledAt"; continue; }
-            [ $((now_epoch - sat_epoch)) -gt $((UNBIND_DAYS * 86400)) ] && age_ok=yes
+            [ $((now_epoch - sat_epoch)) -gt $((10#$UNBIND_DAYS * 86400)) ] && age_ok=yes
         fi
         if [ -n "$age_ok" ]; then
             tail_m="$(worker_tail_status "$d" 2>/dev/null)"
@@ -340,7 +340,7 @@ send_notice() {
     fm t3 set "$manifest" "$d" --notice "pending:$((n + 1))" || return 1
     f="$(mktemp "$SCRATCH/notice.XXXXXX")" || return 1
     write_notice "$d" "$f"
-    run_clean timeout -k 1 4 bash "$SEND" "$id" "$f" >/dev/null 2>&1; rc=$?
+    run_clean timeout -k 1 4 bash "$SEND" "$id" "$f" >/dev/null 2>&1; rc=$?   # gnu-ok: Linux-only chief kit, GNU timeout
     rm -f "$f"
     if [ "$rc" -eq 0 ]; then
         fm t3 set "$manifest" "$d" --notice sent || true
@@ -374,7 +374,7 @@ refuse() { fm t3 unbind "$manifest" "$1" --reason "refused:$2" >/dev/null 2>&1; 
 gitleaks_rc() {
     local rc
     room 4 || return 3
-    run_clean timeout -k 1 3 bash "$GL" "$1" >/dev/null 2>&1; rc=$?
+    run_clean timeout -k 1 3 bash "$GL" "$1" >/dev/null 2>&1; rc=$?   # gnu-ok: Linux-only chief kit, GNU timeout
     case "$rc" in 0) return 0 ;; 1) return 1 ;; *) return 3 ;; esac
 }
 listed_elsewhere() {
