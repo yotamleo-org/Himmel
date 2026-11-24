@@ -6,12 +6,15 @@ the decisions `Read`, and a foreground `action-zero.sh --acquire --render-worker
 the relays below follow in the very next turn.
 
    **Boot from the digest.** `chief.sh next` writes `<predecessor>-DIGEST.md` beside the
-   predecessor's HANDOFF (fixed budget `DIGEST_BUDGET_BYTES`, default 6000: head, usage,
-   workers, open PRs, queue, last GO, judge subagents, pointers; a capped list ends in
-   `+N more`) and the preface of your doc names it. Read the digest and your own doc;
-   never read the predecessor's doc or HANDOFF at start. Open one only for the single
-   thing a `+N more` or "on demand" pointer names. The predecessor sends exactly one relay at hand-over
-   (the relay-on-live wake, or `relay-batch.sh` once); it never relays worker by worker.
+   predecessor's HANDOFF (budget `DIGEST_BUDGET_BYTES`, default 8000: head, usage, workers,
+   open PRs, queue, last GO, judge subagents, chain order, and the wrapped-with-open-PR,
+   owed, in-flight and orphan-gate parts; a capped list ends in `+N more`) and the preface
+   of your doc names it. Read the digest and your own doc first, never the predecessor's
+   doc. Then, before your first dispatch, read the HANDOFF's hand-filled sections
+   (`## Rulings and judgement notes`, `## Wrapped this shift`, `## Open operator items`)
+   and any HANDOFF section the digest marks `over the digest budget` or `+N more`.
+   The predecessor sends exactly one relay at hand-over (the relay-on-live wake, or
+   `relay-batch.sh` once); a worker it names as not relayed is the by-hand case below.
 
    **Wake-once succession (step 9).** A worker's quote-back is its own `SUCCESSION
    accepted` Results bullet (no token in it); it sends a `SendMessage` only on a

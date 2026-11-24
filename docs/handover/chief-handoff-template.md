@@ -76,9 +76,9 @@ debt, the queue's tiers and owned files. One Edit replaces this block.>
 <!-- digest-template: everything below renders the -DIGEST.md, never the HANDOFF -->
 # {{PREDECESSOR_LETTER}} → {{LETTER}} successor digest
 
-> Bounded: `chief.sh next` caps this file (`DIGEST_BUDGET_BYTES`, default 6000) and a
-> capped list ends in a `+N more` pointer. Read it instead of the predecessor's doc and
-> HANDOFF; open those only for the one thing a pointer names.
+> Bounded: `chief.sh next` caps this file (`DIGEST_BUDGET_BYTES`, default 8000) and a
+> capped list ends in a `+N more` pointer. Read it instead of the predecessor's doc; the
+> HANDOFF's hand-filled sections are read before your first dispatch (named at the end).
 
 **Head:** {{HEAD_LINE}}
 **Usage at write:** {{BANK_LINE}}
@@ -98,4 +98,23 @@ debt, the queue's tiers and owned files. One Edit replaces this block.>
 {{JUDGE_CALLS}}
 
 **Rulings:** in `{{SUCCESSOR_DOC}}` `## Current direction` (read the files it names).
-**Full state, on demand only:** HANDOFF `{{HANDOFF_REF}}`; predecessor doc `{{PREDECESSOR}}`.
+**Chain order:** {{CHAIN_ORDER}}
+
+**READ BEFORE YOUR FIRST DISPATCH.** Each part is a HANDOFF section you act on; a list here is capped and `{{HANDOFF_REF}}` holds the rest.
+
+Wrapped with open PR (disposition each: relaunch, GO or close):
+
+{{WRAPPED_PRS}}
+
+Owed (open `owed.jsonl` rows):
+
+{{OWED}}
+
+Start, plan and design in flight (open an item only when you act on it):
+
+{{INFLIGHT}}
+
+Orphan gate: {{ORPHAN_NOTE}}
+
+The predecessor fills three sections by hand in `{{HANDOFF_REF}}`: `## Rulings and judgement notes`, `## Wrapped this shift`, `## Open operator items`. Read those three before your first dispatch.
+**Predecessor doc** `{{PREDECESSOR}}`: open only for the one thing a pointer names.
