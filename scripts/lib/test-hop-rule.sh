@@ -12,6 +12,7 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/hop-rule-test.XXXXXX")" || { echo "test-hop-ru
 trap 'rm -rf "$TMP"' EXIT
 fails=0
 check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: expected [$2] got [$3]"; fails=$((fails + 1)); fi; }
+unset WORKER_SESSION_BURN_W_CACHE_READ WORKER_SESSION_BURN_W_CACHE_CREATE_1H
 OPUS=claude-opus-5-5
 SONNET=claude-sonnet-5-5
 

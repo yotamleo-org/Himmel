@@ -191,15 +191,17 @@ import json, sys
 out, model, n = sys.argv[1], sys.argv[2], int(sys.argv[3])
 over = json.loads(sys.argv[4]) if len(sys.argv) > 4 else {}
 pre = sys.argv[5] if len(sys.argv) > 5 else "tu"
-rows = []
+rows, run = [], 0
 for k in range(1, n + 1):
+    run = over.get(str(k), {}).get("reset", run)
     o = over.get(str(k), {})
     name, inp = o.get("name", "Bash"), o.get("input", {"command": "ls"})
     cc = {"ephemeral_5m_input_tokens": 12500 - o.get("w1h", 0), "ephemeral_1h_input_tokens": o.get("w1h", 0)}
     rows.append({"type": "assistant", "timestamp": "2026-11-07T10:%02d:00Z" % (k % 60), "message": {
         "id": "m%d" % k, "model": model, "content": [{"type": "tool_use", "id": "%s_%d" % (pre, k), "name": name, "input": inp}],
-        "usage": {"input_tokens": 0, "cache_read_input_tokens": 12500 * (k - 1), "cache_creation_input_tokens": 12500,
+        "usage": {"input_tokens": 0, "cache_read_input_tokens": run, "cache_creation_input_tokens": 12500,
                   "cache_creation": cc, "output_tokens": 100}}})
+    run += 12500
     rows.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "%s_%d" % (pre, k), "content": "ok"}]}})
 with open(out, "w") as f:
     for r in rows:
@@ -263,6 +265,9 @@ check "rule-proxy-stale control: a smaller base hops at 21" "[21]" "$(rr stale p
 
 scen onecall "$OPUS" 40 '{"20":{"name":"Bash","input":{"command":"git commit -m x && git push origin br"}}}'
 check "rule-proxy-one-call: the commit and the push in one call: no point" 0 "$(rr onecall $ORC | jq '.simulate_rule.workers[0].rule.hops')"
+scen reset "$OPUS" 40 "{\"20\":$PUSH,\"30\":{\"reset\":20000}}"
+scen noreset "$OPUS" 40 "{\"20\":$PUSH}"
+check "rule-replay-reset: a recorded compaction after a simulated hop does not subtract the old offset (same simulated cost as without it)" "1 1" "$(rr reset $ORC | jq -r '.simulate_rule.workers[0] | "\(.rule.hops) \(.rule.input)"' | { read -r h i; echo "$h $([ "$i" = "$(rr noreset $ORC | jq -r '.simulate_rule.workers[0].rule.input')" ] && echo 1 || echo 0)"; })"
 scen below "$OPUS" 40 "{\"10\":$PUSH}"
 check "rule-proxy-below-floor: a push below the floor, the session crosses it after: no point" 0 "$(rr below $ORC | jq '.simulate_rule.workers[0].rule.hops')"
 

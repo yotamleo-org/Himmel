@@ -480,13 +480,16 @@ def replay_rule(turns, calls, points, predictor, base, relaunch, model, hr, bw):
     def price(t, reads):
         return t["in"] * w_in + reads * r + (t["cc"] - t["cc1h"]) * w_cc + t["cc1h"] * w
     recorded = sum(price(t, max(0, t["ctx"] - t["in"] - t["cc"])) for t in turns)
-    off, start, cost, hops, spent = 0, 0, 0.0, [], set()
+    x, prev, start, cost, hops, spent = 0, 0, 0, 0.0, [], set()
     total = len(calls)
     by_turn = {}
     for f in calls:
         by_turn.setdefault(f["turn"], []).append(f["k"])
     for i, t in enumerate(turns):
-        x = max(t["ctx"] - off, t["in"] + t["cc"])
+        delta = t["ctx"] - prev
+        x = t["ctx"] if i == 0 else x + (delta if delta >= 0 else t["in"] + t["cc"])
+        x = max(x, t["in"] + t["cc"])
+        prev = t["ctx"]
         cost += price(t, max(0, x - t["in"] - t["cc"]))
         for k in by_turn.get(i, []):
             if k not in points or points[k] <= spent:
@@ -494,7 +497,7 @@ def replay_rule(turns, calls, points, predictor, base, relaunch, model, hr, bw):
             n = total - k if predictor == "oracle" else k - start
             if hr.should_hop(x, n, model, base, relaunch):
                 cost += relaunch + w * base + hr.H * r * x
-                off, start = t["ctx"] - base, k
+                x, start = base, k
                 spent |= points[k]
                 hops.append(k)
                 break

@@ -74,14 +74,16 @@ def parse_launches(logs_dir, since, until, lane):
         lanes = {kv.get("lane") for kv in seen}
         if len(profiles) != 1 or len(lanes) != 1:
             continue
+        named = {int(kv["autocompact"]) for kv in seen if kv.get("autocompact", "").isdigit()}
         p, ln_ = next(iter(profiles)), next(iter(lanes))
         if not p or p == "none" or "," in p or (lane != "any" and ln_ != lane):
             continue
         out[name] = {"profile": p, "lane": ln_,
                      "sids": {kv["session_id"] for kv in seen if UUID.match(kv.get("session_id", ""))} | headless_sids,
                      "launched": min(kv["launched"] for kv in seen),
-                     "autocompact": max((int(kv["autocompact"]) for kv in seen
-                                         if kv.get("autocompact", "").isdigit()), default=None)}
+                     "ceilings": {kv["session_id"]: int(kv["autocompact"]) for kv in seen
+                                  if UUID.match(kv.get("session_id", "")) and kv.get("autocompact", "").isdigit()},
+                     "autocompact": next(iter(named)) if len(named) == 1 else None}
     return out
 
 

@@ -184,20 +184,20 @@ def cohort(log_dir, projects, ceiling, since, model, profiles):
         if not rec["sids"]:
             counts["no_session_id"] += 1
             continue
-        found = [by_sid[s] for s in sorted(rec["sids"]) if s in by_sid]
+        found = [(s, by_sid[s]) for s in sorted(rec["sids"]) if s in by_sid]
         if not found:
             counts["no_transcript"] += 1
             continue
-        for path in found:
+        for sid, path in found:
             m = first_model(path) or ""
             if model != "all" and model not in m:
                 continue
-            used = rec["autocompact"]
+            used = rec["ceilings"].get(sid, rec["autocompact"])
             if used is None:
                 used = profile_ceiling(profiles, rec["profile"], m)
             if used != ceiling:
                 continue
-            if rec["autocompact"] is None:
+            if sid not in rec["ceilings"] and rec["autocompact"] is None:
                 counts["fallback_ceiling"] += 1
             paths.append(path)
     return paths, counts

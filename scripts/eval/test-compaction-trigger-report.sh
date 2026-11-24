@@ -123,6 +123,12 @@ check "record-keys: the sessions without an autocompact= key used the profile's 
 python3 -I "$SUT" --json --launch-logs "$tmp/logs" --projects "$tmp/projects" --ceiling 200000 --model all > "$tmp/key.json" 2>/dev/null
 check "record-keys: an autocompact= key wins over the profile" fx-n2-batch "$(jq -r '[.workers[].session] | join(",")' "$tmp/key.json")"
 check "record-keys: and is not a fallback" 0 "$(jq '.summary.cohort.fallback_ceiling' "$tmp/key.json")"
+U5=bbbbbbbb-0000-4000-8000-000000000005; U6=bbbbbbbb-0000-4000-8000-000000000006
+sed "s/fx-n1-steady/fx-n6-low/" "$st" > "$tmp/projects/p/$U5.jsonl"; sed "s/fx-n1-steady/fx-n6-high/" "$st" > "$tmp/projects/p/$U6.jsonl"
+mkdir -p "$tmp/logs2"
+printf 'headed-arm-worker: profile=worker-impl lane=native model=opus role=worker session=fx-n6 session_id=%s launched=2026-11-07T10:00:00Z autocompact=200000\nheaded-arm-worker: profile=worker-impl lane=native model=opus role=worker session=fx-n6 session_id=%s launched=2026-11-07T11:00:00Z autocompact=850000\n' "$U5" "$U6" > "$tmp/logs2/fx-n6.log"
+python3 -I "$SUT" --json --launch-logs "$tmp/logs2" --projects "$tmp/projects" --ceiling 850000 > "$tmp/rel.json" 2>/dev/null
+check "record-keys: a relaunch of one name keeps its ceiling per session, not the highest" fx-n6-high "$(jq -r '[.workers[].session] | join(",")' "$tmp/rel.json")"
 python3 -I "$SUT" --launch-logs "$tmp/logs" --projects "$tmp/projects" --ceiling 123 > /dev/null 2>"$tmp/nt.err"; rc=$?
 check "durable-record: no launch at the ceiling exits 1 with no transcripts" "1 1" "$rc $(grep -c 'no transcripts' "$tmp/nt.err")"
 
