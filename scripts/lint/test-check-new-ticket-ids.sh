@@ -3,10 +3,7 @@
 #
 # test-check-new-ticket-ids.sh — tests for scripts/lint/check-new-ticket-ids.sh.
 #
-# Each case builds a throwaway git repo that carries the gate, then stages or commits one
-# change. The tracker key is spelled in two pieces so this file never carries one itself.
-#
-# Exit: 0 all passed, 1 any failed. bash 3.2-safe.
+# Exit: 0 all passed, 1 any failed.
 
 set -uo pipefail
 

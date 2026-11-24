@@ -2,10 +2,6 @@
 # Platform guard (posix-bash): POSIX bash 3.2+.
 #
 # check-new-ticket-ids.sh — refuse a change that ADDS a tracker ticket key to a tracked file.
-# A key is a tracker prefix, a hyphen and digits (the pattern is KEY_RE below). Readers of
-# the repo see internal tracker numbers that mean nothing to them, and agents copy the lines
-# they read, so a key spreads; the operator ruling is that nothing needs one (the commit and
-# PR title carry the ticket, handover state keeps it for search).
 #
 # There is no allow list: a test file, a fixture, a changelog, a data file and a file name
 # are judged like any other text. Only ADDED lines (and an added or renamed-to file name
