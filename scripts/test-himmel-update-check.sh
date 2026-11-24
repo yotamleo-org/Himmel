@@ -1336,6 +1336,9 @@ else
     assert_fail "34e: expected clean skip when antigravity is absent (out=$agy_skip)"
 fi
 
+help_out=$(bash "$SCRIPT" --help 2>&1)
+assert_eq "--help prints no t13b-ok marker" "0" "$(printf '%s\n' "$help_out" | grep -c 't13b-ok')"
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo "RESULTS: $pass passed, $fail failed"
