@@ -55,7 +55,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 QUIET_SECS=600
 MAX_WAIT_SECS=1800
-KEYWORD_DEADLINE_SECS=120
+REFRESH_DEADLINE_SECS=900
 GRAPH_SLOW_SECS=300
 LOAD_DEFER_MAX_SECS=1800
 LOCK_ALERT_SECS=1800
@@ -67,6 +67,7 @@ PMR_ALERT="${PMR_ALERT:-$HERE/cadence-alert.sh}"
 PMR_AST="${PMR_AST:-$HERE/../graphify/ast-update.sh}"
 PMR_LAG="${PMR_LAG:-$HERE/keyword-lag.py}"
 PMR_REINDEX_LOCK="${PMR_REINDEX_LOCK:-$HOME/.claude/qmd-cadence/qmd-reindex.log.lock}"
+PMR_REINDEX="${PMR_REINDEX:-$HERE/qmd-reindex.sh}"
 PMR_LOG="${PMR_LOG:-$HOME/.claude/graphmap-cadence/post-merge-refresh.log}"
 if [ -z "${PMR_PRIMARY:-}" ]; then
     _common=$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || _common=""
@@ -192,16 +193,11 @@ collect_times() {
 }
 
 run_keyword() {
-    local js qmd_argv=()
-    js="$(_qmd_bun_js)"
-    if [ -n "${PMR_QMD:-}" ]; then
-        qmd_argv=("$PMR_QMD")
-    elif [ -f "$js" ] && command -v bun >/dev/null 2>&1; then
-        qmd_argv=(bun "$js")
-    else
-        qmd_argv=(qmd)
-    fi
-    qmd_bounded "$KEYWORD_DEADLINE_SECS" env QMD_SQLITE_BUSY_TIMEOUT=30000 "${LOWPRIO[@]}" "${qmd_argv[@]}" update -c himmel
+    local args=(--update-collection himmel)
+    [ -z "${PMR_QMD:-}" ] || args=(--qmd-bin "$PMR_QMD" "${args[@]}")
+    qmd_bounded "$REFRESH_DEADLINE_SECS" env QMD_SQLITE_BUSY_TIMEOUT=30000 \
+        QMD_REINDEX_EMBED_MAX_SECS=$((REFRESH_DEADLINE_SECS - 60)) \
+        "${LOWPRIO[@]}" bash "$PMR_REINDEX" "${args[@]}"
 }
 
 run_graph() {
@@ -322,6 +318,7 @@ pmr_half_step() {
         log "$half ok from=$w to=$main secs=$((end - start))"
         return 0
     fi
+    if [ "$half" = keyword ] && [ "$rc" = 9 ]; then pmr_skip "$half" embed-busy; return 0; fi
     if { [ "$half" = keyword ] && qmd_output_is_busy "$out"; }; then pmr_skip "$half" db-busy; return 0; fi
     if [ "$half" = graph ] && [ "$rc" = 4 ]; then pmr_skip "$half" promote-lock; return 0; fi
 

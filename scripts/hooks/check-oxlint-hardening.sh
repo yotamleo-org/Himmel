@@ -12,7 +12,7 @@
 # the commit loudly rather than turning an unevaluated gate into a pass.
 set -uo pipefail
 
-OXLINT_VERSION=1.93.0
+OXLINT_VERSION=1.94.0
 
 # ---- changed-files mode ---------------------------------
 # `--files PATH...` lints only those repo-relative paths, narrowed to this
