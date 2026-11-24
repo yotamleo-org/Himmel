@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# Tests for cr/clear-review-marker.sh — which ledger rows at the tip block the
-# clean-merge-forward carry. A row that records bookkeeping (suite evidence, an
-# impacted record, a round-scope record, a security-audit record) is not a
-# review round, so a clean merge of the base into a reviewed head is still
-# carried past it; a review row (avail / finding) at the tip is a panel that ran
-# on the tip and takes the normal path. Each case builds a REAL temp git repo and
-# copies the script tree into it, as test-clear-cr-marker.sh does (the script has
-# no env seams for the ledger / check-ci / gh).
 set -uo pipefail
 
 unset ARMAUTOMERGE CR_MERGE_GATE_OK CR_REQUIRE_CROSS_MODEL

@@ -613,8 +613,8 @@ command -v node >/dev/null 2>&1 || {
 ledger="$git_dir/cr-critic-scores.jsonl"
 # A pre-PR commit after the last allowed review round has no round
 # of its own to buy (a judge NO-GO binds only to an open PR, and gh pr create
-# waits on this marker), so it deadlocked. When the tip has no review row (a
-# bookkeeping row is not one) and is a trivial descendant of the head the last counted round ran on, in
+# waits on this marker), so it deadlocked. When the tip has no review row
+# and is a trivial descendant of the head the last counted round ran on, in
 # --tests-only mode (every changed path is a test path; the comment-only branch
 # of the tip check is NOT used here, because this clears with no critic review of the
 # delta and a comment-prefixed line in a non-test script still executes), every
