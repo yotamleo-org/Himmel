@@ -2456,7 +2456,6 @@ describe('the spec signer: operator spec-signer, operator spec --signer and sign
       return walk(bridge()).filter((f) => f.endsWith('.jsonl')).reduce((n, f) => n + readFileSync(f, 'utf8').split('\n').filter((l) => l.includes('document_path')).length, 0);
     };
     const sentLines = () => (existsSync(sent) ? readFileSync(sent, 'utf8').trim().split('\n') : []);
-    // The critic returns are named for the spec file, so send-file looks for none beside the page and sees a plain page.
     function sealed(p: string): string {
       const page = p.replace(/\.md$/, '.html');
       writeFileSync(page, '<!doctype html><title>spec</title>\n');
@@ -2467,7 +2466,6 @@ describe('the spec signer: operator spec-signer, operator spec --signer and sign
     }
     const sealedSign = (keys: string, p: string) =>
       run('operator', 'spec', 'R1', '--keys', keys, '--spec', p, '--verdict', `${p}.critic-spec-r1.md`, '--verdict', `${p}.critic-plan-r1.md`, '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'));
-    // A page that send-file can send: its spec sits in a specs folder under a ticket key and both critic returns are sealed in a real round ledger.
     function ledgerSealed(): string {
       const candidate = fileURLToPath(new URL('../../../../', import.meta.url));
       const bun = execFileSync('which', ['bun'], { encoding: 'utf8' }).trim();
