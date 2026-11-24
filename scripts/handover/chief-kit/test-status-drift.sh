@@ -1414,7 +1414,7 @@ check "9561 S5 3: parked 7 h it is no AWAITING row" "$(dcount AWAITING)" 0
 contains "9561 S5 3: it is UNOWNED, awaiting the chief since the first D5c row, due $(iso_at 3600)" "$(drows UNOWNED)" "awaiting the chief since=$(iso_at 25200) due=$(iso_at 3600)"
 contains "9561 S5 3: and counts as drift: sdrift=1" "$(dlast)" "sdrift=1:"
 driftenv TICKET_STATUS_AWAIT_TTL_RESUME=12h
-contains "9561 S5 3: TICKET_STATUS_AWAIT_TTL_RESUME=12h makes the 7 h park a wait again" "$(drows UNOWNED)" "source=resume"
+contains "9561 S5 3: TICKET_STATUS_AWAIT_TTL_RESUME=12h moves the due= of the 7 h park, the row stays UNOWNED" "$(drows UNOWNED)" "due=$(iso_at -18000) "
 driftenv TICKET_STATUS_AWAIT_TTL_RESUME=abc
 check "9561 S5 2: a bad TICKET_STATUS_AWAIT_TTL_RESUME is one HEALTH row naming it, never its value" "$(drows HEALTH | grep -c 'env: TICKET_STATUS_AWAIT_TTL_RESUME')/$(drows HEALTH | grep -c abc)" 1/0
 check "9561 S5: the rows wrote nothing" "$(nwrites)" 0

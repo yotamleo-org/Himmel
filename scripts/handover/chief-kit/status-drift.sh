@@ -81,7 +81,8 @@
 # TICKET_STATUS_AWAIT_TTL_CHIEF (default 24h), TICKET_STATUS_AWAIT_TTL_OPERATOR and _OTHER (default 72h),
 # TICKET_STATUS_AWAIT_TTL_RESUME (default 6h) and
 # TICKET_STATUS_AWAIT_MAX (default 14d, at most 14d), each
-# <n>h or <n>d, else the default and one HEALTH row; the rest is read by the lib.
+# <n>h or <n>d, else the default and one HEALTH row; they only set the `due=` a stuck UNOWNED row
+# prints (a due date never makes a started ticket wait); the rest is read by the lib.
 #
 # Platform guard: POSIX bash 3.2+ (shell-only harness).
 set -u
@@ -474,7 +475,7 @@ while IFS= read -r key; do
         fi
         IFS=$'\t' read -r okind owho osince odue osrc owhat <<<"$TS_OWNER_ANS"
         hhint=""
-        if [ "$held" = 1 ]; then hhint="; held, still In Progress: a held ticket belongs in To Do (jira transition $key \"To Do\") or released (ticket-hold.sh $key --release)"; fi
+        if [ "$held" = 1 ]; then hhint="; held, still $jstatus: a held ticket belongs in To Do (jira transition $key \"To Do\") or released (ticket-hold.sh $key --release)"; fi
         if [ "$held" = 1 ] && [ "$TS_OWNER_HOLD_VALID" != yes ]; then hhint="$hhint; held with no owner on record: re-run ticket-hold.sh $key --owner <who> --until <date> --reason <why>"; fi
         case "$okind" in
             worker)
