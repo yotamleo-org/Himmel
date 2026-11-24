@@ -127,8 +127,7 @@ commands: VM only): `worker-sections/shell-and-tests.md`.
 - **Lint `## Ticket coverage` before `READY`:**
   `bash scripts/handover/chief-kit/ready-check.sh --only 7 <pr>` until it prints
   `COVERAGE-LINT PASS` (`- <ask>: done` / `- <ask>: deferred → HIMMEL-<n>`, marker last). It also
-  fails on a ticket comment newer than your launch with no `TICKET-SEEN <comment id>` line in your doc: read
-  it, act, then `append-results.sh` a `LIVE — TICKET-SEEN <id> <what you did>` bullet. [prose]
+  fails on a ticket comment newer than your launch with no `TICKET-SEEN <id>` line in your doc. [prose]
 - **A red CI job on your PR is yours to triage; tell the chief only if it is
   not the PR's fault** (`MAIN-RED <job> <failing case> caused-by: #<pr>`, or
   `caused-by: unknown`, once). Merge-forward
