@@ -754,13 +754,14 @@ total=0
 gated=0
 bad=""
 skipped=""
+cr_warn=""
 if [ -n "$rollup" ] && [ "$rollup" != "null" ]; then
     # Judge each check IDENTITY by its LATEST run, not any matching row — a
     # superseded CANCELLED run must not fail a check whose later run at the
     # same head is green (evidence: PR #1317's pr-title-lint
     # CANCELLED 08:19:58Z then SUCCESS 08:26:47Z). Identity and latest are
     # ROLLUP_LATEST_DEFS above, shared with 16c.
-    grouped=$(printf '%s' "$rollup" | jq -c --argjson ng "$ng_json" "$ROLLUP_LATEST_DEFS"'
+    grouped=$(printf '%s' "$rollup" | jq -c --argjson ng "$ng_json" --arg crctx "CodeRabbit" "$ROLLUP_LATEST_DEFS"'
         rollup_rows
         # A skipped job reports its unevaluated name: expression, so a fresh green
         # run never re-reports a job (fail-fast-lint) an older run of the same
@@ -778,10 +779,12 @@ if [ -n "$rollup" ] && [ "$rollup" != "null" ]; then
               ($green | any(.workflow == $e.workflow and .run > $e.run))) | not))
         | latest_per_check
         | map(.listed = (.is_checkrun | not) and (.name != null and (.name as $n | $ng | index($n)) != null))
+        | map(.crpend = ((.is_checkrun | not) and (.ok | not) and .name == $crctx and (.detail == "PENDING" or .detail == "IN_PROGRESS")))
         | {total: length,
            gated: (map(select(.listed | not)) | length),
-           bad: (map(select((.ok | not) and (.listed | not))) | map("\(.name // "?")=\(.detail)") | join(", ")),
-           skipped: (map(select((.ok | not) and .listed)) | map("\(.name)=\(.detail)") | join(", "))}
+           bad: (map(select((.ok | not) and (.listed | not) and (.crpend | not))) | map("\(.name // "?")=\(.detail)") | join(", ")),
+           skipped: (map(select((.ok | not) and .listed)) | map("\(.name)=\(.detail)") | join(", ")),
+           crpend: (map(select(.crpend)) | map("\(.name)=\(.detail)") | join(", "))}
     ' 2>/dev/null)
     total=$(printf '%s' "$grouped" | jq -r '.total // 0' 2>/dev/null)
     gated=$(printf '%s' "$grouped" | jq -r '.gated // 0' 2>/dev/null) # swallow-ok: an unreadable count reads 0, which fails row 2 as no gating checks
@@ -789,6 +792,27 @@ if [ -n "$rollup" ] && [ "$rollup" != "null" ]; then
     skipped=$(printf '%s' "$grouped" | jq -r '.skipped // empty' 2>/dev/null) # swallow-ok: an unreadable list is empty, so nothing is reported as skipped
     case "$total" in ''|*[!0-9]*) total=0 ;; esac
     case "$gated" in ''|*[!0-9]*) gated=0 ;; esac
+    crpend=$(printf '%s' "$grouped" | jq -r '.crpend // empty' 2>/dev/null) # swallow-ok: an unreadable value is empty, so no exemption
+    if [ -n "$crpend" ]; then
+        cr_confirmed=""
+        cr_lib_dir="$(cd "$SELF_DIR/../../lib" 2>/dev/null && pwd)" # swallow-ok: no lib dir leaves cr_confirmed empty, so no exemption
+        _TIMEOUT_BIN=""
+        # shellcheck source=/dev/null
+        [ ! -f "$cr_lib_dir/timeout-bin.sh" ] || . "$cr_lib_dir/timeout-bin.sh" 2>/dev/null # swallow-ok: an empty _TIMEOUT_BIN leaves cr_confirmed empty
+        if [ -f "$cr_lib_dir/coderabbit-signal.sh" ] && [ -n "$_TIMEOUT_BIN" ]; then
+            # shellcheck disable=SC2016  # the body expands in the child shell
+            cr_confirmed=$(GH_CMD="$GH" "$_TIMEOUT_BIN" -k 5 20 bash -c '
+                . "$1" 2>/dev/null || exit 0  # read-sink-ok: $1 is the own lib path built from this script dir, never user input
+                [ "$(cr_signal_state "$2" "$3" "$4" 2>/dev/null)" = pending ] && echo pending' _ "$cr_lib_dir/coderabbit-signal.sh" "$owner" "$repo" "$SHA") || cr_confirmed="" # swallow-ok: a timeout or an unreadable status means no exemption
+        fi
+        if [ "$cr_confirmed" = pending ]; then
+            gated=$((gated - 1))
+            total=$((total - 1))
+            cr_warn="[WARN] 2. CodeRabbit status is still pending (${crpend}) — best effort, not gating (decision 1066); an unresolved CodeRabbit thread or a failure still blocks"
+        else
+            bad="${bad:+$bad, }$crpend"
+        fi
+    fi
 fi
 
 if [ -z "$pv" ]; then
@@ -796,8 +820,8 @@ if [ -z "$pv" ]; then
     mark_fail
 elif [ "$head_now" = "$SHA" ] && [ "$mss" = "CLEAN" ]; then
     echo "[PASS] 1. head=$head_now matches, mergeStateStatus=CLEAN"
-elif [ "$head_now" = "$SHA" ] && [ "$mss" = "UNSTABLE" ] && [ "$gated" -gt 0 ] && [ -z "$bad" ] && [ -n "$skipped" ]; then
-    echo "[PASS] 1. head=$head_now matches, mergeStateStatus=UNSTABLE with only non-gating checks not green ($skipped)"
+elif [ "$head_now" = "$SHA" ] && [ "$mss" = "UNSTABLE" ] && [ "$gated" -gt 0 ] && [ -z "$bad" ] && { [ -n "$skipped" ] || [ -n "$cr_warn" ]; }; then
+    echo "[PASS] 1. head=$head_now matches, mergeStateStatus=UNSTABLE with only non-gating checks not green (${skipped:+$skipped${cr_warn:+, }}${cr_warn:+${crpend:-CodeRabbit pending}})"
 else
     if [ "$mss" = "BEHIND" ]; then
         echo "[FAIL] 1. head=$head_now (want $SHA), mergeStateStatus=$mss (want CLEAN) — behind main: git fetch origin && git merge origin/main into the branch, push, then re-run with the new head sha (nothing to do when mergeStateStatus is CLEAN and the head matches)"
@@ -829,6 +853,7 @@ else
         mark_fail
     fi
 fi
+[ -z "$cr_warn" ] || echo "$cr_warn"
 
 # ── 3. unresolved review threads (paginated, mirrors scripts/check-ci.sh) ──
 threads_ok=1
