@@ -3775,7 +3775,9 @@ Modes:
   --versions          one row per component — installed vs available, behind
                       marked; read-only. Exit 0 all current, 1 any behind,
                       3 none behind but some could not be determined
-  --only <item>       run ONE step: pull marketplace jira_cli config_ui bypass_daemon qmd_fork hermes # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
+USAGE
+    printf '%s\n' '  --only <item>       run ONE step: pull marketplace jira_cli config_ui bypass_daemon qmd_fork hermes' # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names it in the usage text
+    cat <<'USAGE'
                       luna_template graphify graph cli_proxy marketplaces toolchain tools
                       drift drift-check (installer-drift pass; -check is read-only)
                       plugin-refresh (reinstall a same-version plugin cache that

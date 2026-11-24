@@ -70,6 +70,9 @@ rc=0
 env -u CLAUDE_CONFIG_DIR HIMMELCTL_CACHE_DIR="$PROFILE_DIR" HOME="$REAL_HOME" bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --only marketplace >/dev/null 2>&1 || rc=$?
 assert_eq "malformed channel: --only marketplace (unrelated item) still exits 0" "0" "$rc"
 
+help_out=$(bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --help 2>&1)
+assert_eq "--help prints no t13b-ok marker" "0" "$(printf '%s\n' "$help_out" | grep -c 't13b-ok')"
+
 echo
 # shellcheck disable=SC2154 # pass/fail assigned by the sourced fixtures lib
 echo "RESULTS: $pass passed, $fail failed"
