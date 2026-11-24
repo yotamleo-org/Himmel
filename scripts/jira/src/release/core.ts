@@ -98,7 +98,10 @@ export interface CoreCtx {
   // The verified core-bypass and core-snapshot records of every declared release.
   records?: OperatorRow[];
   signer?: SignerState;
+  specFor?: (k: string) => { ok: true } | { missing: string };
 }
+
+export const SPEC_GATED_KINDS = ['operator', 'bug', 'grandfathered'];
 
 const EMERGENCY_LABELS = ['red-main', 'regression'];
 
@@ -136,8 +139,17 @@ function bypassOf(k: string, snap: IssueSnap, labelOnly: boolean, docsPaths: boo
   return pathIndependentBypass(k, snap, records);
 }
 
-// Per key: CORE <K> <first matched path | label core> | REVIEW <K> <path> <class> |
-// BYPASS <K> <kind> <reason> | UNKNOWN <K> (no mirror file) | NOT-CORE <K>.
+function bypassLine(k: string, bypass: string, o: CoreCtx): string {
+  const kind = bypass.split(' ', 1)[0];
+  if (!SPEC_GATED_KINDS.includes(kind)) return `BYPASS ${k} ${bypass}`;
+  const answer = o.specFor ? o.specFor(k) : { missing: 'no spec reader' };
+  if ('ok' in answer && answer.ok === true) return `BYPASS ${k} ${bypass}`;
+  const missing = 'missing' in answer ? answer.missing.replace(/\s+/g, ' ').trim() : '';
+  return `BYPASS-NEEDS-SPEC ${k} ${kind} ${missing || 'no reviewed spec'} (bypass: ${bypass.slice(kind.length + 1)})`;
+}
+
+// Per key: CORE <K> <first matched path | label core> | REVIEW <K> <path> <class> | BYPASS <K> <kind> <reason> |
+// BYPASS-NEEDS-SPEC <K> <kind> <missing> (bypass: <reason>) | UNKNOWN <K> (no mirror file) | NOT-CORE <K>.
 // A path match makes every key core unless the key has its own bypass; the `core` label
 // makes only its own key core. A rename or bulk-mechanical change that touches a core path
 // is REVIEW: the chief or a judge rules it per slice (operator 10-31).
@@ -154,7 +166,7 @@ export function coreMatch(paths: string[], keys: string[], o: CoreCtx): string[]
     if (!snap) return `UNKNOWN ${k}`;
     if (hit === undefined && !snap.labels?.includes('core')) return `NOT-CORE ${k}`;
     const bypass = bypassOf(k, snap, hit === undefined, docsPaths, o);
-    if (bypass) return `BYPASS ${k} ${bypass}`;
+    if (bypass) return bypassLine(k, bypass, o);
     return hit === undefined ? `CORE ${k} label core` : byPath(k);
   });
 }

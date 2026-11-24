@@ -488,6 +488,17 @@ effort guidance, including the chief's own wake-up budget, is in
     id|default>`, `SIGNER <K> operator <record id> via <V>` (the key's chief
     row covers a marked V, or with `--spec` the spec's header names V at
     `operator`), or `UNKNOWN <K> <why>`. It is read-only and exits 0.
+  - **The tracker.** `tracker.py` asks `signer-check --spec <spec>` once for
+    each unsigned critic-ready spec that carries no operator-critical marker.
+    A key at `operator`, a `via` line included, is listed under Waiting on
+    you, not Chief owes; an `UNKNOWN` key stays where it was, its reason in
+    the row. For the open keys with a `spec` row it asks `spec-check` once: a
+    `SPEC-NEEDS-OPERATOR` line is listed under Waiting on you, naming your
+    signature that does not count; a `SPEC-SIGNER-UNKNOWN` line is listed
+    under Chief owes with its why. A call that exits other than 0 (or 1 for
+    `spec-check`, which exits 1 whenever a key is not `SPEC ok`) or prints no
+    line for a key is named `release signer-check unread` or `release spec-check
+    unread` in the Waiting on you header, and its rows stay where they were.
   - **What a mark does not stop.** A worker already launched on your
     signature, and that worker's merge. `spec-check` is read at dispatch and
     launch only (`gen-briefs.py`, `brief-lint.sh`, `next-dispatchable.sh`; no

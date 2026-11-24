@@ -1391,6 +1391,51 @@ Spec: `scripts/cr/test-ledger-amend-auth.sh`, plus the authenticated-adjudicatio
 `test-clear-cr-marker.sh`, `test-pr-check-rounds.sh` and
 `chief-kit/test-cr-disposition.sh`.
 
+### Core gate bypasses — the signature is waived, never the spec
+
+`jira release core-check` decides, per key, whether a change is core. A core
+key needs a spec the operator signed, unless the key has a bypass. A bypass
+waives the operator's signature. It never waives the spec, the plan or one
+critic round (decisions 804 to 806).
+
+- **Exempt kinds.** Two bypass kinds still print `BYPASS <K> <kind> <reason>`
+  without asking for a spec:
+  - `design`: a key that is core by its label only, on a docs-only leg. This is
+    the leg that writes the spec.
+  - `emergency`: a Bug at Highest or Blocker, or a `red-main` or `regression`
+    label. A red main cannot wait for a critic round.
+- **Gated kinds.** `operator` (a `core-bypass` record), `bug` (any other Bug)
+  and `grandfathered` (a `core-snapshot` record) are gated (decision 857). They
+  are listed in `SPEC_GATED_KINDS` in `scripts/jira/src/release/core.ts`.
+  core-check prints `BYPASS` for one of them only when `specCheck` over the
+  `spec` and `spec-review` records answers that the key has a reviewed spec.
+  Otherwise it prints:
+
+  ```text
+  BYPASS-NEEDS-SPEC <K> <kind> <missing> (bypass: <reason>)
+  ```
+
+  `<missing>` names what is absent, for example `no spec-review record for <K>`
+  or `<path> is missing (<O-id>)`. When core-check has the mirror but no spec
+  reader, it prints `no spec reader` and never `BYPASS`, so the gate fails
+  closed.
+- **What refuses it.** `gen-briefs.py` writes no brief, `brief-lint.sh` (so
+  `headed-arm-worker.sh`) refuses the launch, and `next-dispatchable.sh` lists
+  the key as a `DESIGN` row. `ready-check.sh`, `go.sh` and
+  `merge-on-green.sh` do not read core-check, so a PR already open still merges.
+- **Recording a reviewed spec.** The chief runs
+  `jira release operator spec-review <release> --keys <K> --spec <spec> --plan <plan> --verdict <critic file>`.
+  A CLEAN round is recorded in the critic file and the row only, never in the
+  spec's `## Critic rounds`, because any edit to the spec changes the bytes the
+  CLEAN verdict is bound to. When the spec critic is CLEAN and the plan critic
+  has findings, fold the plan first, then run the spec critic on the final
+  spec bytes.
+
+Spec: `scripts/jira/src/release/core.test.ts`; the callers' rows are in
+`test-gen-briefs.sh`, `test-brief-lint.sh`, `test-next-dispatchable.sh` and
+`test-headed-arm-worker-c.sh`, which feed them
+`scripts/jira/src/release/fixtures/bypass-needs-spec.line`.
+
 ### `block-jira-compound-write.sh` — jira write-shape bounce
 
 Fires on Bash. Jira CLI writes are sanctioned, but approval is

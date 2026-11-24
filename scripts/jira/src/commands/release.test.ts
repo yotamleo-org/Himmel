@@ -2323,14 +2323,14 @@ describe('release core-check reads who signs (I13)', () => {
   };
 
   it('release core-check on a fixture root holding a mark and an operator core-bypass for the same key, both appended as chain rows, prints no BYPASS for it', async () => {
-    expect(await check('K-5', 'K-6')).toEqual([expect.stringMatching(/^BYPASS K-5 operator O-R1-\d+ decision 412$/), expect.stringMatching(/^BYPASS K-6 operator O-R1-\d+ decision 413$/)]);
+    expect(await check('K-5', 'K-6')).toEqual([expect.stringMatching(/^BYPASS-NEEDS-SPEC K-5 operator no spec-review record for K-5 \(bypass: O-R1-\d+ decision 412\)$/), expect.stringMatching(/^BYPASS-NEEDS-SPEC K-6 operator no spec-review record for K-6 \(bypass: O-R1-\d+ decision 413\)$/)]);
     const path = join(root, 'state', 'R1', 'operator.jsonl');
     const key = loadKey(join(root, 'keys', 'R1.key'));
     appendChain<OperatorRow>(path, key, {
       id: `O-R1-${String(readChain<OperatorRow>(path, key).rows.length + 1).padStart(4, '0')}`,
       kind: 'spec-signer', ts: new Date().toISOString(), decision: '1170', keys: ['K-5'], signer: 'operator', verbatim: 'K-5 is mine to sign',
     });
-    expect(await check('K-5', 'K-6')).toEqual([`CORE K-5 ${CORE_PATH}`, expect.stringMatching(/^BYPASS K-6 operator O-R1-\d+ decision 413$/)]);
+    expect(await check('K-5', 'K-6')).toEqual([`CORE K-5 ${CORE_PATH}`, expect.stringMatching(/^BYPASS-NEEDS-SPEC K-6 operator no spec-review record for K-6 \(bypass: O-R1-\d+ decision 413\)$/)]);
   });
 
   it('with the operator core-bypass in a healthy declared release and a chain break in another, release core-check prints no BYPASS for it', async () => {
