@@ -534,7 +534,6 @@ if [ "$HAS_PROMPT" != 1 ]; then
   [ ! -t 0 ] || { NO_FB="there is no prompt to keep"; refuse "the prompt must be an argument or piped on stdin; stdin is a terminal"; }
   PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/claude-api-prompt.XXXXXX")" || { PROMPT_FILE=""; refuse "no scratch file"; }
   chmod 600 "$PROMPT_FILE"
-  # fd 4 writes, fd 5 sizes, fd 3 is the call's stdin: all opened once here, so a file removed later is still read whole
   # shellcheck disable=SC2094 # the write and read handles on one file are the point
   exec 4>"$PROMPT_FILE" 5<"$PROMPT_FILE" 3<"$PROMPT_FILE" || { NO_FB="the prompt could not be kept"; refuse "could not open the stdin prompt scratch file"; }
   # a background job gets /dev/null for stdin, so the read names fd 0; a half-read stdin cannot be replayed whole
