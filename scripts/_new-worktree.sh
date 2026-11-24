@@ -150,13 +150,7 @@ post_create() {
             [ -f "$JIRA_PRIMARY/package-lock.json" ] &&
             cmp -s "$JIRA_PRIMARY/package-lock.json" "$WORKTREE_PATH/scripts/jira/package-lock.json" &&
             cmp -s "$JIRA_PRIMARY/package.json" "$WORKTREE_PATH/scripts/jira/package.json" &&
-            ln -s "$JIRA_PRIMARY/node_modules" "$WORKTREE_PATH/scripts/jira/node_modules"; then
-            JIRA_EXCLUDE=$(git -C "$WORKTREE_PATH" rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null)
-            if [ -n "$JIRA_EXCLUDE" ]; then
-                mkdir -p "$(dirname "$JIRA_EXCLUDE")"
-                grep -qx '/scripts/jira/node_modules' "$JIRA_EXCLUDE" 2>/dev/null ||
-                    printf '/scripts/jira/node_modules\n' >> "$JIRA_EXCLUDE"
-            fi
+            cp -a --reflink=auto "$JIRA_PRIMARY/node_modules" "$WORKTREE_PATH/scripts/jira/node_modules" 2>>"$LOG"; then
             INSTALL_NOTE=" (jira deps reused from primary, no install)"
         elif (cd "$WORKTREE_PATH/scripts/jira" && run npm install --omit=dev --no-audit --no-fund --silent); then
             INSTALL_NOTE=" (jira deps installed)"

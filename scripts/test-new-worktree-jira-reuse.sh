@@ -65,8 +65,12 @@ NAME="matching lockfile logs reused with no install"
 if grep -q 'jira deps reused' "$TMPBASE/out.txt" "$TMPBASE/err.txt"; then _pass "$NAME"; else _fail "$NAME" "out=$(cat "$TMPBASE/out.txt")"; fi
 NAME="matching lockfile makes the primary's node_modules reachable"
 if [ -f "$REPO/.claude/worktrees/fix+nwjr-match/scripts/jira/node_modules/dep/index.js" ]; then _pass "$NAME"; else _fail "$NAME" "missing"; fi
-NAME="the reused node_modules does not show as untracked"
-if [ -z "$(git -C "$REPO/.claude/worktrees/fix+nwjr-match" status --porcelain -- scripts/jira)" ]; then _pass "$NAME"; else _fail "$NAME" "$(git -C "$REPO/.claude/worktrees/fix+nwjr-match" status --porcelain)"; fi
+NAME="an install in the reusing worktree leaves the primary's node_modules unchanged"
+before="$(cd "$REPO/scripts/jira/node_modules" && find . -type f | sort | xargs cksum)"
+rm -rf "$REPO/.claude/worktrees/fix+nwjr-match/scripts/jira/node_modules"/*
+printf 'y\n' > "$REPO/.claude/worktrees/fix+nwjr-match/scripts/jira/node_modules/new.js"
+after="$(cd "$REPO/scripts/jira/node_modules" && find . -type f | sort | xargs cksum)"
+if [ -n "$before" ] && [ "$before" = "$after" ]; then _pass "$NAME"; else _fail "$NAME" "before=[$before] after=[$after]"; fi
 
 printf '{"lockfileVersion":3,"a":2}\n' > "$REPO/scripts/jira/package-lock.json"
 : > "$NPM_CALLS"
