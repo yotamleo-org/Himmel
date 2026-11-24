@@ -35,10 +35,10 @@ export function spawnBounded(spawn, killAfter, limitSeconds, command, args, opti
 
 const PERL_FLOCK = 'open(my $f,"<&=",3) or exit 2; my $end=time()+$ARGV[0];'
   + ' for(;;){ flock($f,LOCK_EX|LOCK_NB) and exit 0; ($!{EWOULDBLOCK}||$!{EAGAIN}) or exit 2; exit 75 if time()>=$end; sleep 0.02 }';
-const PYTHON_FLOCK = 'import fcntl,sys,time,errno\nend=time.time()+float(sys.argv[1])\n'
-  + 'while True:\n try:\n  fcntl.flock(3,fcntl.LOCK_EX|fcntl.LOCK_NB); sys.exit(0)\n'
+const PYTHON_FLOCK = 'import fcntl,sys,time,errno\n'
+  + 'for _ in range(int(float(sys.argv[1])/0.02)+1):\n try:\n  fcntl.flock(3,fcntl.LOCK_EX|fcntl.LOCK_NB); sys.exit(0)\n'
   + ' except OSError as e:\n  if e.errno not in (errno.EAGAIN,errno.EACCES): sys.exit(2)\n'
-  + ' if time.time()>=end: sys.exit(75)\n time.sleep(0.02)\n';
+  + ' time.sleep(0.02)\nsys.exit(75)\n';
 
 function flockInvocation(waitMs) {
   const seconds = String(waitMs / 1000);
