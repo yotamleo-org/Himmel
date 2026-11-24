@@ -483,6 +483,15 @@ effort guidance, including the chief's own wake-up budget, is in
     for 30 seconds at most. It is refused, and nothing is written where it
     must succeed, while `MERGE_BLOCK_ALERT_CMD`, `TELEGRAM_ACCESS_PATH` or
     `BRIDGE_ROOT` is set and `HIMMEL_TEST_FIXTURE` is not `1`.
+  - **The copy to the operator.** After your signature row is written and the
+    lock is released, `operator spec` runs `scripts/handover/chief-kit/spec-cc.sh`
+    for 60 seconds at most, and the operator gets a copy of the spec. It sends
+    the minerva page (`<spec without .md>.html`) only when the row's SPEC critic
+    return seals it with a `CONTENT-SHA256` line and the page on disk still
+    hashes to it; otherwise one text line names the spec path, its hash and why
+    no page went. His own signature sends no copy. A failed or hung copy never
+    blocks or undoes the signature: the command prints `WARN spec copy not sent`
+    with the resend command and exits 0. Run that line to resend.
   - **`signer-check`.** `jira release signer-check <K…> [--spec <file>]
     [--mirror <dir>]` prints, per key, `SIGNER <K> chief|operator <record
     id|default>`, `SIGNER <K> operator <record id> via <V>` (the key's chief
