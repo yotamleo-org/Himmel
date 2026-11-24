@@ -37,7 +37,7 @@ vm_mode_e2e_guard "$(basename -- "$0")" || { vm_guard_rc=$?; [ "$vm_guard_rc" = 
 HOSTSPEC="${1:-$VM_MODE_HOST}"
 PORT="${2:-$VM_MODE_PORT}"
 IDENT="${3:-$VM_MODE_IDENT}"
-SSH_OPTS="-p $PORT -i $IDENT -o BatchMode=yes -o ConnectTimeout=10 $(vm_ssh_opts "$PORT")"
+SSH_OPTS="-p $PORT -i $IDENT -o BatchMode=yes -o ConnectTimeout=10 $(vm_ssh_opts "$PORT" "$HOSTSPEC")"
 REMOTE_DIR="/tmp/himmel-upgrade-vm"
 
 for v in UPGRADE_AST_GREP_VERSION UPGRADE_GRAPHIFY_VERSION UPGRADE_CLIPROXY_VERSION UPGRADE_CLIPROXY_SHA256; do

@@ -9,10 +9,11 @@
 # Source it and call:
 #   vm_ssh_vm_for_port <port>   prints the vms.json VM whose ssh_port is <port> (rc 1: none)
 #   vm_ssh_guest_user <vm>      prints that VM's guest user (rc 1: none)
-#   vm_ssh_opts <port>          prints the host-key ssh options, ready to word-split into
+#   vm_ssh_opts <port> <host>   prints the host-key ssh options, ready to word-split into
 #                               SSH_OPTS: -o UserKnownHostsFile=$HOME/.himmel/vm/known_hosts/<vm>
-#                               -o StrictHostKeyChecking=accept-new (accept-new alone when
-#                               no VM owns the port); creates the file's directory
+#                               -o StrictHostKeyChecking=accept-new; the file is pinned only
+#                               when <host> (after any user@) is localhost or 127.0.0.1 and a
+#                               VM owns the port, else accept-new alone; creates the file, 0600
 #   vm_ssh_probe_report <ssh stderr> <host> <port> <identity>
 #                               prints one message naming the class (host key changed |
 #                               key refused | no route or timeout) and ssh's own text
@@ -46,15 +47,24 @@ vm_ssh_vm_for_port() { _vm_ssh_vms_lookup name ssh_port "$1"; }
 
 vm_ssh_guest_user() { _vm_ssh_vms_lookup user name "$1"; }
 
+_vm_ssh_is_local() {
+    case "${1##*@}" in localhost|127.0.0.1) return 0 ;; esac
+    return 1
+}
+
 vm_ssh_opts() {
-    local vm
-    if vm="$(vm_ssh_vm_for_port "$1")" && [ -n "$vm" ]; then
-        if mkdir -p "${HOME:-}/.himmel/vm/known_hosts" 2>/dev/null; then
-            chmod 700 "${HOME:-}/.himmel/vm/known_hosts" 2>/dev/null
+    local vm kh_dir="${HOME:-}/.himmel/vm/known_hosts"
+    if ! _vm_ssh_is_local "${2:-}"; then
+        printf '%s' "-o StrictHostKeyChecking=accept-new"
+    elif vm="$(vm_ssh_vm_for_port "$1")" && [ -n "$vm" ]; then
+        if mkdir -p "$kh_dir" 2>/dev/null; then
+            chmod 700 "$kh_dir" 2>/dev/null
+            [ -e "$kh_dir/$vm" ] || (umask 077; : > "$kh_dir/$vm") 2>/dev/null
+            chmod 600 "$kh_dir/$vm" 2>/dev/null
         else
-            echo "vm-ssh-opts: cannot create ${HOME:-}/.himmel/vm/known_hosts; the accepted host key will not persist" >&2
+            echo "vm-ssh-opts: cannot create $kh_dir; the accepted host key will not persist" >&2
         fi
-        printf '%s' "-o UserKnownHostsFile=${HOME:-}/.himmel/vm/known_hosts/$vm -o StrictHostKeyChecking=accept-new"
+        printf '%s' "-o UserKnownHostsFile=$kh_dir/$vm -o StrictHostKeyChecking=accept-new"
     else
         if ! command -v python3 >/dev/null 2>&1 \
             || ! python3 -I -c 'import json, sys; json.load(open(sys.argv[1]))' "${HIMMEL_VMS_JSON:-$VM_SSH_OPTS_VMS_JSON_DEFAULT}" 2>/dev/null; then
@@ -66,7 +76,7 @@ vm_ssh_opts() {
 
 vm_ssh_probe_report() {
     local err="$1" host="$2" port="$3" ident="$4" vm kh=""
-    if vm="$(vm_ssh_vm_for_port "$port")" && [ -n "$vm" ]; then kh="${HOME:-}/.himmel/vm/known_hosts/$vm"; fi
+    if _vm_ssh_is_local "$host" && vm="$(vm_ssh_vm_for_port "$port")" && [ -n "$vm" ]; then kh="${HOME:-}/.himmel/vm/known_hosts/$vm"; fi
     case "$err" in
         *"HOST IDENTIFICATION HAS CHANGED"*|*"Host key verification failed"*)
             echo "ERROR: cannot ssh to $host:$port: host key changed -- the guest was rebuilt or restored." >&2

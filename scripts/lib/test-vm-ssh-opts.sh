@@ -38,7 +38,7 @@ else
     echo "FAILURES: $failures"; exit 1
 fi
 
-opts="$(HOME="$T/home" vm_ssh_opts 2222)"
+opts="$(HOME="$T/home" vm_ssh_opts 2222 himmel@localhost)"
 case "$opts" in
     *"-o UserKnownHostsFile=$T/home/.himmel/vm/known_hosts/ubuntu_new"*) pass "port 2222 pins the per-VM known_hosts of ubuntu_new" ;;
     *) fail "port 2222 pin missing: '$opts'" ;;
@@ -47,21 +47,32 @@ case "$opts" in *"StrictHostKeyChecking=accept-new"*) pass "keeps accept-new" ;;
 [ -d "$T/home/.himmel/vm/known_hosts" ] && pass "the per-VM known_hosts directory exists" || fail "known_hosts dir not created"
 
 mkdir -p "$T/blocked" && : > "$T/blocked/.himmel"
-warn="$(HOME="$T/blocked" vm_ssh_opts 2222 2>&1 >/dev/null)"
+warn="$(HOME="$T/blocked" vm_ssh_opts 2222 himmel@localhost 2>&1 >/dev/null)"
 case "$warn" in *"cannot create"*) pass "an uncreatable known_hosts directory is reported" ;; *) fail "no warning when the directory cannot be created: '$warn'" ;; esac
 
-warn="$(HIMMEL_VMS_JSON="$T/absent.json" HOME="$T/home" vm_ssh_opts 2222 2>&1 >/dev/null)"
+warn="$(HIMMEL_VMS_JSON="$T/absent.json" HOME="$T/home" vm_ssh_opts 2222 himmel@localhost 2>&1 >/dev/null)"
 case "$warn" in *"cannot read the VM registry"*) pass "an unreadable VM registry is reported" ;; *) fail "no warning for an unreadable registry: '$warn'" ;; esac
 
 printf '%s\n' '{ not json' > "$T/bad.json"
-warn="$(HIMMEL_VMS_JSON="$T/bad.json" HOME="$T/home" vm_ssh_opts 2222 2>&1 >/dev/null)"
+warn="$(HIMMEL_VMS_JSON="$T/bad.json" HOME="$T/home" vm_ssh_opts 2222 himmel@localhost 2>&1 >/dev/null)"
 case "$warn" in *"cannot read the VM registry"*) pass "a malformed VM registry is reported" ;; *) fail "no warning for a malformed registry: '$warn'" ;; esac
 
-opts="$(HOME="$T/home" vm_ssh_opts 2230)"
+opts="$(HOME="$T/home" vm_ssh_opts 2230 localhost)"
 case "$opts" in *"known_hosts/himmel-gui-1"*) pass "port 2230 maps to himmel-gui-1" ;; *) fail "port 2230: '$opts'" ;; esac
 
-opts="$(HOME="$T/home" vm_ssh_opts 9999)"
+opts="$(HOME="$T/home" vm_ssh_opts 9999 himmel@localhost)"
 case "$opts" in *UserKnownHostsFile*) fail "an unknown port must not pin a file: '$opts'" ;; *) pass "an unknown port pins nothing" ;; esac
+
+for target in ops@vm.example vm.example remote-host.test "" ; do
+    opts="$(HOME="$T/home" vm_ssh_opts 2222 "$target")"
+    case "$opts" in *UserKnownHostsFile*) fail "a non-local target '$target' on a registry port must not pin the local VM's file: '$opts'" ;; *) pass "target '$target' on port 2222 pins nothing" ;; esac
+done
+for target in localhost 127.0.0.1 himmel@127.0.0.1; do
+    opts="$(HOME="$T/home" vm_ssh_opts 2222 "$target")"
+    case "$opts" in *"known_hosts/ubuntu_new"*) pass "target '$target' pins the local VM's file" ;; *) fail "target '$target' not pinned: '$opts'" ;; esac
+done
+mode="$(stat -c %a "$T/home/.himmel/vm/known_hosts/ubuntu_new" 2>/dev/null || stat -f %Lp "$T/home/.himmel/vm/known_hosts/ubuntu_new")"
+[ "$mode" = 600 ] && pass "the per-VM known_hosts file is 0600" || fail "known_hosts file mode is '$mode'"
 
 echo "== the error classes"
 for pair in "changed|host key changed" "refused|key refused" "noroute|no route or timeout"; do
@@ -75,6 +86,8 @@ for pair in "changed|host key changed" "refused|key refused" "noroute|no route o
     done
     case "$msg" in *"$(printf '%s' "$err" | head -n 1)"*) pass "$mode keeps ssh's own stderr" ;; *) fail "$mode dropped ssh stderr: $msg" ;; esac
 done
+msg="$(HOME="$T/home" vm_ssh_probe_report "REMOTE HOST IDENTIFICATION HAS CHANGED" ops@vm.example 2222 /id 2>&1)"
+case "$msg" in *known_hosts/ubuntu_new*) fail "a remote host's report names the local VM's file: $msg" ;; *) pass "a remote host's report does not name the local VM's file" ;; esac
 msg="$(HOME="$T/home" vm_ssh_probe_report "weird failure" himmel@localhost 2222 /id 2>&1)"
 case "$msg" in *"weird failure"*) pass "an unclassified error still prints ssh's text" ;; *) fail "unclassified: $msg" ;; esac
 

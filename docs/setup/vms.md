@@ -516,8 +516,10 @@ keep one known_hosts file per VM at `~/.himmel/vm/known_hosts/<vm name>`
 VM's file after the snapshot readback succeeds, so a restore needs no
 `ssh-keygen -R`. A restore done outside vmsdk (raw `VBoxManage snapshot restore`)
 leaves the stale file, so the next run fails loud with `host key changed` and
-names that one file; delete it. The host's own `~/.ssh/known_hosts` is never read
-or written for it. A suite whose probe cannot connect prints one of three
+names that one file; delete it. For the local VM (`localhost` or `127.0.0.1` on a
+port `scripts/lib/vms.json` assigns) the host's own `~/.ssh/known_hosts` is not
+read or written; a remote target, or a run where python3 or `vms.json` cannot be
+read, falls back to it with `accept-new`. A suite whose probe cannot connect prints one of three
 classes with ssh's own text: `host key changed`, `key refused` (the guest
 rejected the key) or `no route or timeout` (the VM is off or the port is wrong).
 The vm.mode default target is `himmel@localhost` (the guest user from

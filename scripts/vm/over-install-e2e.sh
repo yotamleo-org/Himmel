@@ -38,7 +38,7 @@ vm_mode_e2e_guard "$(basename -- "$0")" || { vm_guard_rc=$?; [ "$vm_guard_rc" = 
 HOSTSPEC="${1:-$VM_MODE_HOST}"
 PORT="${2:-$VM_MODE_PORT}"
 IDENT="${3:-$VM_MODE_IDENT}"
-read -r -a KNOWN_HOSTS_OPTS <<< "$(vm_ssh_opts "$PORT")"
+read -r -a KNOWN_HOSTS_OPTS <<< "$(vm_ssh_opts "$PORT" "$HOSTSPEC")"
 SSH_OPTS=(-p "$PORT" -i "$IDENT" -o BatchMode=yes -o ConnectTimeout=10 "${KNOWN_HOSTS_OPTS[@]}")
 REMOTE_DIR="/tmp/himmel-over-install-vm"
 BASE_REF="${OVERINSTALL_BASE_REF:-v1.1.2}"
