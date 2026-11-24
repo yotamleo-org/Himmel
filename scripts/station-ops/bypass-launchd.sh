@@ -341,7 +341,7 @@ while :; do
         done
         if [ "$hi" -lt 0 ]; then
             rm -f "$held"; [ ! -f "$req.pending" ] || mv "$req.pending" "$req.refused"
-            log "REFUSED held go the daemon did not hold ${req##*/}"; continue
+            log "REFUSED held go not recorded in memory ${req##*/}"; continue
         fi
         [ -e "$req.pending" ] || [ -L "$req.pending" ] || { rm -f "$held"; HELD[hi]=''; continue; }
         if [ -L "$req.pending" ] || [ ! -f "$req.pending" ]; then

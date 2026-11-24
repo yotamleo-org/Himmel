@@ -208,7 +208,7 @@ does, the command waits for the operator.
   touches `<name>.req.pending`; the daemon then logs `RETRY`, runs the dry-run
   again and, if it passes, launches on the same go code without a second ask.
   The marker carries no authority: a `.held` file the daemon did not record in
-  its own memory is refused (`REFUSED held go the daemon did not hold <name>`)
+  its own memory is refused (`REFUSED held go not recorded in memory <name>`)
   and its request ends `.refused`. A held go is bound to what was asked: a
   request edited while its go is held is refused (`REFUSED after go <brief> (the
   request changed since the ask)`), a go held past the 6 h window is refused
