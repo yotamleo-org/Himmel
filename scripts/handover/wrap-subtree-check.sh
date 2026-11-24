@@ -24,7 +24,7 @@
 # With the lock free and the doc's newest marker bullet a WRAPPED, an owed live proof
 # with no window end date and no outside actor is `WITHHELD: an owed proof has no
 # window end date or outside actor: <row>` rc 1. Read are that WRAPPED bullet (each
-# `owed → WHO` needs ` by YYYY-MM-DD`, or WHO operator, Mac or VM) and the open rows of
+# `owed → WHO`, any case, → or ->, needs ` by YYYY-MM-DD`, or WHO operator, Mac or VM) and the open rows of
 # <dir of the doc>/owed.jsonl keyed to the doc's ticket that owe a proof (kind proof
 # with no actor, or kind step with actor proof), each needing a calendar due, else one by-date in its
 # text. An absent ledger is no rows; an unreadable doc or ledger is `WITHHELD: cannot read`
@@ -318,14 +318,17 @@ if [ "$count" -eq 0 ] && [ -n "$qdoc" ]; then
     newest="$(sed -n '/^## Results/,$p' "$qdoc" | grep -E '^- [0-9]{2}:[0-9]{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-USAGE|PARKED-BANK|RESUMED)( |$)' | tail -n 1)"
     case "$newest" in
         "- "[0-9][0-9]:[0-9][0-9]" WRAPPED"*)
-            owed="$(printf '%s\n' "$newest" | grep -oE 'owed → [A-Za-z][A-Za-z0-9-]*( by [0-9]{4}-[0-9]{2}-[0-9]{2})?')"
+            owed="$(printf '%s\n' "$newest" | grep -oiE '(^|[^[:alnum:]_])owed[[:blank:]]*(→|->)[[:blank:]]*[[:alpha:]][[:alnum:]-]*([[:blank:]]+by[[:blank:]]+[0-9]{4}-[0-9]{2}-[0-9]{2})?')"
             while IFS= read -r o; do
                 [ -n "$o" ] || continue
-                case "$o" in
-                    *" by "*) jq -en --arg d "${o##* by }" '(try (($d + "T00:00:00Z") | fromdateiso8601 | todate[0:10]) catch "") == $d' >/dev/null || owed_refusal "$o" ;;
-                    "owed → operator"|"owed → Mac"|"owed → mac"|"owed → VM"|"owed → vm") ;;
-                    *) owed_refusal "$o" ;;
-                esac
+                o="${o#"${o%%[Oo]*}"}"
+                who="$(printf '%s\n' "$o" | sed -E 's/.*(→|->)[[:blank:]]*//; s/[[:blank:]].*//' | tr '[:upper:]' '[:lower:]')"
+                d="$(printf '%s\n' "$o" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}$')"
+                if [ -n "$d" ]; then
+                    jq -en --arg d "$d" '(try (($d + "T00:00:00Z") | fromdateiso8601 | todate[0:10]) catch "") == $d' >/dev/null || owed_refusal "$o"
+                else
+                    case "$who" in operator|mac|vm) ;; *) owed_refusal "$o" ;; esac
+                fi
             done <<EOF
 $owed
 EOF

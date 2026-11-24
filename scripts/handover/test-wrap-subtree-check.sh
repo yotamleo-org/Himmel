@@ -756,6 +756,18 @@ p7_doc '- 11:00 WRAPPED — owed → proof by 2026-12-01'
 out="$(p7_run)"; rc=$?
 eq 'positive control: owed → proof by 2026-12-01 is accepted (rc 0)' 0 "$rc"
 contains 'dated owed proof: CLOSABLE' "$out" 'CLOSABLE: no non-harness process under claude pid 101'
+for spelling in 'owed -> proof' 'Owed → proof' 'owed →proof' 'OWED->proof'; do
+    p7_doc "- 11:00 WRAPPED — merged; $spelling"
+    out="$(p7_run)"; rc=$?
+    eq "an undated owed proof spelled '$spelling' is refused: rc 1" 1 "$rc"
+done
+p7_doc '- 11:00 WRAPPED — Owed -> Proof by 2026-12-01; owed->Operator; OWED → vm'
+out="$(p7_run)"; rc=$?
+eq 'any case and either arrow with a date or an outside actor is accepted: rc 0' 0 "$rc"
+P7_DOC="$P7/HIMMEL-77-N77-absent-2026-11-24.md"
+out="$(p7_run)"; rc=$?
+eq 'an unreadable doc with a free lock: rc 2, fail closed' 2 "$rc"
+contains 'unreadable doc: WITHHELD says so' "$out" "WITHHELD: cannot read $P7_DOC"
 p7_doc '- 11:00 WRAPPED — owed → proof by 2026-02-30'
 out="$(p7_run)"; rc=$?
 eq 'an impossible calendar date is no window: rc 1' 1 "$rc"
