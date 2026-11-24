@@ -1328,6 +1328,11 @@ check "21: the same comment with its TICKET-SEEN line: exit 0" "$rc" "0"
 contains "21: the same comment with its TICKET-SEEN line passes" "$out" "[PASS] 21."
 
 reset_stubs; ts_fixture
+ts_run '[{"id":"10005","created":"2026-11-24T12:30:00.000+0100","author":"","body":"steer without an author"}]'
+contains "21: a comment with no author still prints its text, not a shifted field" "$out" "by unknown at 2026-11-24T12:30:00.000+0100"
+contains "21: a comment with no author keeps its quoted text" "$out" "\"steer without an author\""
+
+reset_stubs; ts_fixture
 printf -- '- 12:00 LIVE — TICKET-SEEN 99999 some other comment\n' >> "$TS_DOC"
 ts_run "$TS_NEW"
 check "21: a TICKET-SEEN line for another id does not acknowledge it: exit 1" "$rc" "1"

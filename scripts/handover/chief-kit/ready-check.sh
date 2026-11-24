@@ -2869,12 +2869,12 @@ for c in comments:
         at = when(c["created"])
     except (KeyError, TypeError, ValueError):
         sys.exit(3)
-    cid, body = str(c.get("id", "")), str(c.get("body", ""))
+    cid, body = str(c.get("id") or "unknown"), str(c.get("body") or "")
     if at <= launched or machine.match(body):
         continue
     total += 1
     if cid not in seen:
-        print("\t".join([cid, c["created"], str(c.get("author", "")), " ".join(body.split())[:80]]))
+        print("\t".join([cid, c["created"], str(c.get("author") or "unknown"), " ".join(body.split())[:80]]))
 print("checked\t%d" % total)'
 check_ticket_comments() {
     local title key lib root docs doc stem cache launched first cj rc out cid created who snippet n_bad=0 n_checked=0 args=()
