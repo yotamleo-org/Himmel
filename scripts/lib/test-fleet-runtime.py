@@ -1273,6 +1273,80 @@ exit 1''')
         p = self.admit_same_doc(self.listing_env(current), False)
         self.assertIn('family already owns worker or ticket', p.stderr)
 
+    def ended_launched_attempt(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'launched'))
+        self.forge(start='0')
+        self.free_env = dict(self.env, TICKET_STATUS_QUEUE_LOCK=self.stub('queue-lock-free', 'echo free'))
+
+    def control_state(self):
+        files = {p.name: p.read_bytes() for p in self.bucket.glob('*.json')}
+        history = self.bucket / '.himmel/launch-refusals.jsonl'
+        files['receipts'] = history.read_bytes() if history.exists() else b''
+        return files
+
+    def attempts_and_receipts(self):
+        history = self.bucket / '.himmel/launch-refusals.jsonl'
+        return self.attempts(), history.read_bytes() if history.exists() else b''
+
+    def test_ended_launched_attempt_is_not_an_owner_for_the_dry_run_and_begin_settles_it(self):
+        self.ended_launched_attempt()
+        slot = self.bucket / 'slots' / self.doc.stem
+        before = self.control_state()
+        self.admit_same_doc(self.free_env, True)
+        self.assertEqual(self.control_state(), before, 'the read-only admit writes nothing')
+        self.env = self.free_env
+        self.rt('begin', aid='second')
+        self.assertEqual(list(self.attempts()), ['second'])
+        self.assertFalse(slot.exists(), 'the settled attempt\'s reservation is released')
+        rows = self.history_rows('one')
+        self.assertEqual(rows[-1]['outcome'], 'refused')
+        self.assertEqual(rows[-1]['cause'], 'settled-ended-session')
+        self.assertEqual(rows[-1]['evidence']['owner'], 'dead')
+        self.assertEqual(set(rows[-1]['settled_by']), {'host', 'pid', 'uid'})
+        self.assertEqual([w['attempt']['attempt_id'] for w in json.loads(self.m.read_text())['workers']], ['second'])
+
+    def test_launched_attempt_with_a_live_session_still_refuses_and_is_untouched(self):
+        self.ended_launched_attempt()
+        self.named_session(attempt_id='one')
+        before = self.attempts_and_receipts()
+        p = self.admit_same_doc(self.free_env, False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.env = self.free_env
+        self.rt('begin', aid='second', ok=False)
+        self.assertEqual(self.attempts_and_receipts(), before)
+
+    def test_launched_attempt_with_a_live_owner_still_refuses(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'launched'))
+        self.env = dict(self.env, TICKET_STATUS_QUEUE_LOCK=self.stub('queue-lock-free', 'echo free'))
+        before = self.attempts_and_receipts()
+        self.rt('begin', aid='second', ok=False)
+        self.assertEqual(self.attempts_and_receipts(), before)
+
+    def test_launched_attempt_whose_queue_lock_is_held_still_refuses(self):
+        self.ended_launched_attempt()
+        before = self.attempts_and_receipts()
+        p = self.admit_same_doc(self.lock_env('HELD'), False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.env = self.lock_env('HELD')
+        self.rt('begin', aid='second', ok=False)
+        self.assertEqual(self.attempts_and_receipts(), before)
+
+    def test_launched_attempt_with_an_unknown_process_state_still_refuses(self):
+        self.ended_launched_attempt()
+        self.forge(host='another-host')
+        before = self.attempts_and_receipts()
+        p = self.admit_same_doc(self.free_env, False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.env = self.free_env
+        self.rt('begin', aid='second', ok=False)
+        self.assertEqual(self.attempts_and_receipts(), before)
+
     # A terminal receipt ends ownership only when nothing newer or stronger contradicts it.
     def test_refused_receipt_does_not_hide_a_live_named_session(self):
         self.active()

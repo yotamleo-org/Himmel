@@ -755,14 +755,61 @@ def reconcile(attempts, rows, history, deadline, effects=True):
             row['attempt'] = attempts[aid].copy()
 
 
-def unlaunched(doc, timeout=10):
-    script = ('. "$1/ticket-status.sh"; m=$(ts_marker_newest "$2"); rc=$?; [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || exit 1; '
-              '[ -z "$m" ] || exit 1; if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then "$TICKET_STATUS_QUEUE_LOCK" status "$2"; '
+def lock_free_without_session(doc, timeout=10, require_no_marker=True):
+    script = ('. "$1/ticket-status.sh"; if [ "$3" = 1 ]; then m=$(ts_marker_newest "$2"); rc=$?; [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || exit 1; '
+              '[ -z "$m" ] || exit 1; fi; if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then "$TICKET_STATUS_QUEUE_LOCK" status "$2"; '
               'else bash "$1/../handover/queue-lock.sh" status "$2"; fi >/dev/null 2>&1 || exit 1; _ts_no_live_session_on "$2"')
     try:
-        return subprocess.run(['bash', '-c', script, 'fleet-runtime', str(LIB), doc], capture_output=True, timeout=timeout).returncode == 0
+        return subprocess.run(['bash', '-c', script, 'fleet-runtime', str(LIB), doc, '1' if require_no_marker else '0'],
+                              capture_output=True, timeout=timeout).returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
+
+
+def unlaunched(doc, timeout=10):
+    return lock_free_without_session(doc, timeout)
+
+
+def ended_blockers(record, deadline):
+    """Why a launched attempt cannot be read as ended; empty only when the owner, the committer and the session are proven dead,
+    one full readable scan finds no launch or session, and the doc's queue lock is free with no live session on it."""
+    blockers = []
+    if record['phase'] != 'launched':
+        blockers.append('phase is %s' % record['phase'])
+    for who in ('owner', 'committer'):
+        state = process_state(record[who]) if record.get(who) else 'dead'
+        if state != 'dead':
+            blockers.append('%s is not proven dead (%s)' % (who, state))
+    if not session_ended(record, deadline):
+        blockers.append('a session may exist')
+    carrying, unreadable, complete = launch_candidates(record, deadline)
+    if carrying or unreadable or not complete:
+        blockers.append('a process may still carry the attempt')
+    if not blockers and not lock_free_without_session(record['doc'], require_no_marker=False):
+        blockers.append('the doc queue lock is not free or a session is live on it')
+    return blockers
+
+
+def settle_ended(attempts, rows, doc, name, keys, effects):
+    """An attempt in phase launched whose session has ended no longer owns its worker or ticket: settled as refused with a receipt,
+    its reservation released and its row dropped. effects=False (the read-only admit) removes it in memory only."""
+    settled = []
+    for aid, record in list(attempts.items()):
+        if not (record['doc'] == doc or record['name'] == name or set(record['keys']) & set(keys)) or record['phase'] != 'launched':
+            continue
+        if ended_blockers(record, time.monotonic() + 5):
+            continue
+        if effects:
+            record['cause'] = 'settled-ended-session'
+            receipt(record, 'refused', reason='the session of this launched attempt has ended (owner, committer and session dead, queue lock free)',
+                    evidence=dict(phase='launched', owner='dead', committer='dead' if record.get('committer') else None, scan='absent',
+                                  carriers='none', session=bool(record.get('session')), lock='free'),
+                    settled_by=dict(host=socket.gethostname(), pid=os.getpid(), uid=os.getuid()))
+            release_reservation(record)
+            rows[:] = [w for w in rows if not (w.get('doc') == record['doc'] and w.get('attempt', {}).get('attempt_id') == aid)]
+        del attempts[aid]
+        settled.append(aid)
+    return settled
 
 
 def ownership_check(attempts, manifest, doc, name, keys):
@@ -806,6 +853,7 @@ def admit_read_only(manifest, doc, name, join=''):
     doc = str(Path(doc).resolve())
     joined = joined_attempt(attempts, doc, join)
     if not joined:
+        settle_ended(attempts, [], doc, name, worker_keys(doc), effects=False)
         ownership_check(attempts, manifest, doc, name, worker_keys(doc))
     return dict(value, joined=joined['attempt_id'] if joined else None)
 
@@ -869,6 +917,12 @@ def run(args):
                 for row in peer.get('workers', peer.get('legs', [])):
                     peer_rows.append(dict(row, ownership='unverified') if peer.get('control') != data.get('control') else row)
         history = receipts(set(attempts) | {args.attempt_id} | {row.get('attempt', {}).get('attempt_id') for row in peer_rows})
+        if args.op == 'ended-attempts':
+            settled = settle_ended(attempts, rows, doc, '', [], effects=True)
+            if settled:
+                publish(anchor, control)
+                publish(manifest, data)
+            return {'managed': True, 'settled': settled}
         if args.op in ('ack', 'reconcile', 'begin', 'check', 'commit'):
             deadline = time.monotonic() + 5
             reconcile(attempts, rows, history, deadline)
@@ -917,6 +971,9 @@ def run(args):
             joined = joined_attempt(attempts, doc, args.join_attempt)
             if joined:
                 return {'joined': joined['attempt_id'], 'phase': joined['phase']}
+            if settle_ended(attempts, rows, doc, args.name, keys, effects=True):
+                publish(anchor, control)
+                publish(manifest, data)
             own_row = ownership_check(attempts, manifest, doc, args.name, keys)
             matches = [w for w in rows if w.get('doc') == doc]
             if own_row and len(matches) == 1 and not matches[0].get('attempt'):
@@ -1018,7 +1075,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle', 'unlaunched'])
+    parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle', 'ended-attempts', 'unlaunched'])
     parser.add_argument('--doc', default='')
     parser.add_argument('--manifest', default='')
     parser.add_argument('--name', default='')

@@ -750,6 +750,10 @@ if [ "$match_count" -eq 0 ] && [ "$CHIEF_MODE" -eq 0 ]; then
     names_shown="$(printf '%s' "$names" | tr -s ',' | sed -E 's/^,//; s/,$//')"
     echo "CLOSED-ALREADY: $(worker_label "$DOC") has no live session under [$names_shown]; nothing to signal"
     [ "$CHECK_MODE" -eq 1 ] && exit 0
+    settled_json=$(python3 -I "$HERE/../../lib/fleet_runtime.py" ended-attempts --doc "$DOC" ${FLEET_MANIFEST:+--manifest "$FLEET_MANIFEST"}) || settled_json=""
+    for settled_id in $(printf '%s' "$settled_json" | jq -r '.settled[]?'); do
+        echo "close-wrapped-worker: settled attempt $settled_id"
+    done
     close_success
 fi
 
