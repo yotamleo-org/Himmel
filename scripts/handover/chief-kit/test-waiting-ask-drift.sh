@@ -55,6 +55,16 @@ run
 check "D2b rc 0" "$RC" "0"
 check "D2b prints nothing" "$OUT" ""
 
+echo "D2c: an ask for a closed row's ticket key does not cover a new open row with that key"
+fresh d2c
+old="$(add operator ruling "first day" TKT-300)"
+ask "TKT-300" "pick the first day"; delivered "TKT-300"
+bash "$OWE" close --bucket "$B" --id "$old" --key abc1234 >/dev/null
+new="$(add operator ruling "second day" TKT-300)"
+run
+check "D2c rc 1" "$RC" "1"
+check "D2c lists the new row" "$OUT" "waiting-no-ask	$new	TKT-300	second day"
+
 echo "D3: a closed row and a chief-owned row are never listed"
 fresh d3
 c="$(add operator step "done already")"
@@ -96,6 +106,12 @@ fresh d7
 printf 'not json\n' > "$B/owed.jsonl"
 run
 check "D7 unreadable ledger" "$RC" "2"
+
+echo "D7b: input that is not UTF-8 exits 2, never a traceback with rc 1"
+fresh d7b
+printf -- '- 10:00 OWED k1 \377\376 bad\n' >> "$DOC"
+run
+check "D7b rc 2" "$RC" "2"
 
 echo "D8: it never writes either input"
 fresh d8

@@ -13,6 +13,8 @@
 #                operator was really asked, and whose key names no closed row. An OWED bullet with no
 #                receipt is the chief's own undelivered step (board.ts undeliveredItems), never an open ask.
 #   match        an ask matches a row when its <key> is the row's id (o1, o2, ...) or the row's ticket key.
+#                A ticket key a closed row also carried is spent: an ask under it belongs to the closed row,
+#                so a new open row with that key needs an ask keyed by its own id.
 # <bucket> is the chief doc's directory (where tick.sh and readOwed read owed.jsonl) unless --bucket says so.
 #
 # Output, one TAB-separated line per disagreement and nothing when the two sets agree:
@@ -46,7 +48,7 @@ import json, re, sys
 doc, ledger = sys.argv[1], sys.argv[2]
 try:
     doc_lines = open(doc, encoding="utf-8").read().split("\n")
-except OSError as e:
+except (OSError, UnicodeDecodeError) as e:
     print(f"waiting-ask-drift: cannot read {doc}: {e}", file=sys.stderr); sys.exit(2)
 
 adds, closed = {}, set()
@@ -54,7 +56,7 @@ try:
     raw = open(ledger, encoding="utf-8").read()
 except FileNotFoundError:
     raw = ""
-except OSError as e:
+except (OSError, UnicodeDecodeError) as e:
     print(f"waiting-ask-drift: cannot read {ledger}: {e}", file=sys.stderr); sys.exit(2)
 for n, line in enumerate(raw.split("\n"), 1):
     if not line.strip():
@@ -77,6 +79,9 @@ def keys_of(row):
 waiting = [r for i, r in adds.items() if i not in closed and r.get("actor") == "operator"]
 dead = set().union(*[keys_of(r) for i, r in adds.items() if i in closed]) if closed else set()
 
+def live_keys(row):
+    return keys_of(row) - dead
+
 ask_re = re.compile(r"^- (?:\d{1,2}:\d{2} )?OWED ([A-Za-z0-9_.-]+)(?: (.*))?$")
 got_re = re.compile(r"^- (?:\d{1,2}:\d{2} )?DELIVERED ([A-Za-z0-9_.-]+) msg=\d+ chat=-?\d+(?: .*)?$")
 receipts = {m.group(1) for m in map(got_re.match, doc_lines) if m}
@@ -87,10 +92,10 @@ for l in doc_lines:
         seen.add(m.group(1)); asks.append((m.group(1), m.group(2) or ""))
 
 flat = lambda s: re.sub(r"[\t\n]", " ", s)
-waiting_keys = set().union(*[keys_of(r) for r in waiting]) if waiting else set()
+waiting_keys = set().union(*[live_keys(r) for r in waiting]) if waiting else set()
 out = []
 for r in waiting:
-    if not keys_of(r) & seen:
+    if not live_keys(r) & seen:
         out.append("\t".join(["waiting-no-ask", r["id"], r.get("key") or "-", flat(str(r.get("text", "")))]))
 for key, text in asks:
     if key not in waiting_keys and key not in dead:
