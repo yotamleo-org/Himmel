@@ -778,6 +778,7 @@ row_runs_at_low_priority() {
     mkcase nicety; seed_both; cm $((BASE+100)) docs/a.md src/a.sh
     local want; want=$(nice -n 15 nice)
     NOW=$((BASE+1000)); tick both
+    [ "$(grep -c "^qmd .* nice=$want\$" "$C/calls.log")" = 3 ] || sed 's/^/    call: /' "$C/calls.log"
     assert_eq "runs_at_low_priority: every qmd call (update, embed, verify embed) ran niced" "3" "$(grep -c "^qmd .* nice=$want\$" "$C/calls.log")"
     assert_eq "runs_at_low_priority: ast ran niced" "1" "$(grep -c "^ast .* nice=$want\$" "$C/calls.log")"
 }
