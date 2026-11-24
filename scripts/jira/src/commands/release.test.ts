@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // While a reply is set, the judge's subscription `claude` call returns it, the usage preflight prints `preflight`, and
@@ -60,7 +60,7 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { backlogAlerts, ctxFor, JUDGE_API_BUDGET_USD, JUDGE_API_PASS_ENV, JUDGE_CACHE, JUDGE_SELECTION_NOTE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, judgeSkill, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge, routedJudgeArgs, sendSignerAlert } from './release.js';
+import { backlogAlerts, ctxFor, JUDGE_API_BUDGET_USD, JUDGE_API_PASS_ENV, JUDGE_CACHE, JUDGE_SELECTION_NOTE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, judgeSkill, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge, routedJudgeArgs, runSpecCopy, sealedPage, sendSignerAlert } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import * as engineMod from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
@@ -2353,8 +2353,8 @@ describe('the spec signer: operator spec-signer, operator spec --signer and sign
     mkdirSync(join(root, 'specs', 'decisions'), { recursive: true });
     writeFileSync(join(root, 'specs', 'decisions', `verbatim-decision-${n}-operator-11-23.txt`), `Decision ${n}, operator, 2026-11-23.\n\n${words}\n`);
   };
-  function specFile(name: string, ticket: string | null): string {
-    const dir = join(root, 'specs', name.replace(/\.md$/, ''));
+  function specFile(name: string, ticket: string | null, base = 'specs'): string {
+    const dir = join(root, base, name.replace(/\.md$/, ''));
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'est.json'), JSON.stringify({ median_seq: 1, sigma: 0.1, dod: { passed: true } }));
     const p = join(dir, name);
@@ -2446,6 +2446,89 @@ describe('the spec signer: operator spec-signer, operator spec --signer and sign
     const t = Date.now();
     expect(sendSignerAlert({ kind: 'record', scope: 'K-1', signer: 'operator', decision: '1202', words: OP_K1, notes: [], chiefSigned: [] }, 200)).not.toBe(0);
     expect(Date.now() - t).toBeLessThan(1800);
+  });
+
+  describe('the copy to the operator after a chief signature (I8, I16)', () => {
+    const bridge = () => join(root, 'bridge');
+    const docLines = (): number => {
+      const walk = (d: string): string[] => (existsSync(d) ? readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)])) : []);
+      return walk(bridge()).filter((f) => f.endsWith('.jsonl')).reduce((n, f) => n + readFileSync(f, 'utf8').split('\n').filter((l) => l.includes('document_path')).length, 0);
+    };
+    const sentLines = () => (existsSync(sent) ? readFileSync(sent, 'utf8').trim().split('\n') : []);
+    // The critic returns move to their own folder, so send-file sees a plain page, not a signature page with a ledger.
+    function sealed(p: string): string {
+      const page = p.replace(/\.md$/, '.html');
+      writeFileSync(page, '<!doctype html><title>spec</title>\n');
+      const sha = createHash('sha256').update(readFileSync(page)).digest('hex');
+      const dir = join(root, 'returns');
+      mkdirSync(dir, { recursive: true });
+      rmSync(`${p}.critic-spec-r1.md`);
+      rmSync(`${p}.critic-plan-r1.md`);
+      writeFileSync(join(dir, `${page.split('/').at(-1)}.critic-spec-r1.md`), `the critic's return\n\nCONTENT-SHA256 ${sha} ${relative(dir, page)}\nSPEC CLEAN\n`);
+      writeFileSync(join(dir, `${page.split('/').at(-1)}.critic-plan-r1.md`), `the critic's return\n\nPLAN CLEAN\n`);
+      return page;
+    }
+    const sealedSign = (keys: string, p: string) => {
+      const base = join(root, 'returns', `${p.replace(/\.md$/, '.html').split('/').at(-1)}.critic`);
+      return run('operator', 'spec', 'R1', '--keys', keys, '--spec', p, '--verdict', `${base}-spec-r1.md`, '--verdict', `${base}-plan-r1.md`, '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'));
+    };
+    const lastSpecRow = () => rowsOf('spec').at(-1) as OperatorRow;
+    beforeEach(() => { vi.stubEnv('BRIDGE_ROOT', bridge()); mkdirSync(bridge(), { recursive: true }); });
+
+    it('sealedPage gives the page when the row\'s SPEC verdict seals it at its current bytes, and null after the page is edited (I16)', async () => {
+      const p = specFile('V-1-sliced.md', 'V-1', 'work');
+      const page = sealed(p);
+      await sealedSign('V-1', p);
+      expect(sealedPage(lastSpecRow())).toBe(page);
+      writeFileSync(page, '<!doctype html><title>edited</title>\n');
+      expect(sealedPage(lastSpecRow())).toBeNull();
+    });
+
+    it('sealedPage gives null for a row whose verdicts seal nothing (I16)', async () => {
+      const p = specFile('V-1-sliced.md', 'V-1', 'work');
+      writeFileSync(p.replace(/\.md$/, '.html'), '<!doctype html>\n');
+      await chiefSign('V-1,K-1', p);
+      expect(sealedPage(lastSpecRow())).toBeNull();
+    });
+
+    it('a chief signature: a sealed page queues one document_path line; an edited page queues none and the sender captures the text line; an operator signature queues neither (I16)', async () => {
+      const p = specFile('V-1-sliced.md', 'V-1', 'work');
+      sealed(p);
+      await sealedSign('V-1', p);
+      expect(docLines()).toBe(1);
+      expect(sentLines()).toEqual([]);
+      const q = specFile('V-2-edited.md', 'V-2', 'work');
+      writeFileSync(sealed(q), '<!doctype html><title>edited</title>\n');
+      await sealedSign('V-2', q);
+      expect(docLines()).toBe(1);
+      expect(sentLines()).toHaveLength(1);
+      expect(sentLines()[0]).toContain(`spec ${q} sha256 `);
+      const o = specFile('K-1-own.md', null, 'work');
+      await run(...signArgs('K-1', o), '--signer', 'operator', '--decision', '1202', '--words', OP_K1);
+      expect(docLines()).toBe(1);
+      expect(sentLines()).toHaveLength(2);
+      expect(sentLines()[1]).toContain('operator signature recorded');
+    });
+
+    it('a chief signature with a failing sender and no page: the row is written, the WARN with the resend line is printed, and the command exits 0', async () => {
+      sender('exit 1');
+      const errs: string[] = [];
+      vi.spyOn(console, 'error').mockImplementation((s: string) => { errs.push(s); });
+      const p = specFile('V-1-sliced.md', 'V-1');
+      await chiefSign('V-1,K-1', p);
+      expect(lastSpecRow()).toMatchObject({ signer: 'chief' });
+      const warn = errs.find((l) => l.startsWith('WARN spec copy not sent')) ?? '';
+      expect(warn).toContain('spec-cc.sh');
+      expect(warn).toContain(lastSpecRow().id);
+      expect(warn.endsWith(" '-'")).toBe(true);
+    });
+
+    it('runSpecCopy with timeoutMs 200, page -, HIMMEL_TEST_FIXTURE=1 and MERGE_BLOCK_ALERT_CMD set to a sender that sleeps 2 s returns non-zero (I8)', () => {
+      sender('sleep 2');
+      const t = Date.now();
+      expect(runSpecCopy({ oid: 'O-R1-0001', keys: 'K-1', spec: '/x/spec.md', sha: 'a'.repeat(64), page: '-' }, 200)).not.toBe(0);
+      expect(Date.now() - t).toBeLessThan(1800);
+    });
   });
 
   it('signer-check prints default chief with no record, the mark\'s id for a marked key, the station id under a station record, UNKNOWN on a broken chain, UNKNOWN for a sub-task missing from an incomplete mirror under a parent mark, and its answer, never UNKNOWN, for a key absent from the mirror under a station-only record or holding its own record; it runs under a test fixture root (I15)', async () => {
