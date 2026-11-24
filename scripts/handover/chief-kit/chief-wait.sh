@@ -1888,9 +1888,6 @@ review_wake() {
     [ -n "$reasons" ] || return 1
     printf 'review %s %s\n' "$day" "$reasons"
 }
-# drift_held <today>: prints what already holds today's drift work (a manifest worker whose doc is a
-# drift brief of the day, else an open PR whose head branch is `...-drift-[<n>-]<today>`) and succeeds.
-# A PR read that fails holds nothing: the day claim still bounds the wake to once.
 drift_held() {
     local by="" heads gh_cmd="${CHIEF_WAIT_GH:-$GH_READ_BIN}" re="-drift-([0-9]+-)?$1"
     if [ -n "$legs_from" ] && [ -r "$legs_from" ]; then
@@ -1904,10 +1901,7 @@ drift_held() {
     printf '%s\n' "$by"
 }
 drift_file="$inbox.wait.drift"
-# drift_wake: <drift= value>. One claim per bucket and UTC day under the tick state dir (a bucket is the
-# directory above the inbox's consoles/), shared by every chief of the bucket, so a new chief's waiter on
-# a new inbox replays nothing. Prints `drift-actionable <n>`; a held day wakes nothing and records
-# `drift-actionable <n> held-by <worker label|PR>` in <inbox>.wait.drift.held.
+drift_claim_key() { printf '%s-%s' "${1//[!A-Za-z0-9._-]/_}" "$(printf '%s' "$1" | cksum | cut -d' ' -f1)"; }
 drift_wake() {
     local today dir claim by bucket
     case "$1" in ''|*[!0-9]*) return 1 ;; esac
@@ -1916,7 +1910,7 @@ drift_wake() {
     # prim-ok: the inbox was fenced at start; realpath -m resolves the bucket directory the claim is keyed on
     bucket="$(realpath -m -- "$inbox")"; bucket="${bucket%/consoles/*}"  # gnu-ok: Linux-only kit (PLATFORM GUARD)
     dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
-    claim="$dir/drift-wake-${bucket//[!A-Za-z0-9._-]/_}-$(printf '%s' "$bucket" | cksum | cut -d' ' -f1)"  # the checksum keeps two paths that differ only in punctuation apart
+    claim="$dir/drift-wake-$(drift_claim_key "$bucket")"
     [ ! -e "$claim.$today" ] || return 1
     if by="$(drift_held "$today")"; then
         printf 'drift-actionable %s held-by %s\n' "$1" "$by" > "$drift_file.held" 2>/dev/null  # swallow-ok: the hold note is a diagnostic

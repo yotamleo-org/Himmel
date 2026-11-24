@@ -794,15 +794,13 @@ dr_tick() {
     sed -i "s/ denials=none/ drift=$1 denials=none/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
 }
 dr_alive() { sleep 3; if kill -0 "$WPID" 2>/dev/null; then echo running; else echo exited; fi; }
-# The drift claim is one file per bucket under the tick state dir: the suite owns that dir
-# (never the real ~/.himmel/state) and the PR read (CHIEF_WAIT_GH answers the open PR heads in $STUB/gh.heads).
 export TICK_STATE_DIR="$WORK/dr-state"; mkdir -p "$TICK_STATE_DIR"
 cat > "$STUB/gh-heads.sh" <<'EOF'
 #!/usr/bin/env bash
 cat "$STUB/gh.heads" 2>/dev/null
 exit 0
 EOF
-chmod +x "$STUB/gh-heads.sh"  # the gh seam is exec'd directly
+chmod +x "$STUB/gh-heads.sh"
 export CHIEF_WAIT_GH="$STUB/gh-heads.sh"
 reset_stub
 dr_tick '?'
@@ -832,8 +830,6 @@ wait_hb "$I" || fail "(dr5) no baseline heartbeat"
 check "(dr5) a day marker that cannot be claimed wakes nothing" "running" "$(dr_alive)"
 stop_waiter "$WPID"
 
-# (dr6) two waiters on different inboxes of one bucket, one UTC day, wake once.
-# RED control (the per-inbox claim): the second chief's waiter wakes again for the same day.
 rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR" "$WORK/dr6/consoles"
 : > "$WORK/dr6/consoles/chief-a.md"; : > "$WORK/dr6/consoles/chief-b.md"
 dr_tick 2
@@ -845,12 +841,10 @@ wait_hb "$WORK/dr6/consoles/chief-b.md" || fail "(dr6) no baseline heartbeat"
 check "(dr6) a second chief inbox in the bucket wakes nothing the same day" "running" "$(dr_alive)"
 stop_waiter "$WPID"
 check "(dr6) one claim file for the bucket and day" "1" "$(find "$TICK_STATE_DIR" -maxdepth 1 -name 'drift-wake-*' | grep -c .)"
-# a different bucket on the same day is its own claim
 mkdir -p "$WORK/dr6x/consoles"; : > "$WORK/dr6x/consoles/chief-c.md"
 start "$WORK/dr6x/consoles/chief-c.md" "$WORK/dr6c.out"
 wait_exit "$WPID"
 check "(dr6) another bucket claims its own day" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr6c.out")"
-# two buckets whose paths differ only in punctuation (a/b and a_b) never share a claim
 mkdir -p "$WORK/dr8/a/b/consoles" "$WORK/dr8/a_b/consoles"; : > "$WORK/dr8/a/b/consoles/c.md"; : > "$WORK/dr8/a_b/consoles/c.md"
 rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
 start "$WORK/dr8/a/b/consoles/c.md" "$WORK/dr8a.out"
@@ -860,26 +854,25 @@ start "$WORK/dr8/a_b/consoles/c.md" "$WORK/dr8b.out"
 wait_exit "$WPID"
 check "(dr8) a bucket whose path differs only in punctuation claims its own day" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr8b.out")"
 
-# (dr7) an open drift worker in the manifest, or an open PR whose head names a drift branch for today, holds the wake.
 dr_today="$(date -u +%F)"
-dr_hold_fleet() { # <case> <worker doc basename>: sets I and WM; the doc exists with a Results heading
+dr_set_I_WM_for_fleet() {
     rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR" "$WORK/$1/consoles"; I="$WORK/$1/consoles/c.md"; : > "$I"
     printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$WORK/$1/$2"
     WM="$WORK/$1/chief.fleet.json"; printf '{"schema":1,"workers":[{"doc":"%s/%s","label":"N10995"}]}\n' "$WORK/$1" "$2" > "$WM"
 }
 reset_stub; dr_tick 2
-dr_hold_fleet dr7 "HIMMEL-10995-N10995-drift-4470-$dr_today.md"
+dr_set_I_WM_for_fleet dr7 "HIMMEL-10995-N10995-drift-4470-$dr_today.md"
 start "$I" "$WORK/dr7.out" --workers-from "$WM"
 wait_hb "$I" || fail "(dr7) no baseline heartbeat"
 check "(dr7) an open drift worker in the manifest holds the wake" "running" "$(dr_alive)"
 check "(dr7) the hold says held-by the worker" "drift-actionable 2 held-by N10995" "$(cat "$I.wait.drift.held" 2>/dev/null)"
 check "(dr7) a held day is not claimed" "0" "$(find "$TICK_STATE_DIR" -maxdepth 1 -name 'drift-wake-*' | grep -c .)"
 stop_waiter "$WPID"
-dr_hold_fleet dr7b "HIMMEL-11034-N11034-drift-wake-once-a-day-$dr_today.md"
+dr_set_I_WM_for_fleet dr7b "HIMMEL-11034-N11034-drift-wake-once-a-day-$dr_today.md"
 start "$I" "$WORK/dr7b.out" --workers-from "$WM"
 wait_exit "$WPID"
 check "(dr7) a worker whose doc only has drift in its slug does not hold the wake" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr7b.out")"
-dr_hold_fleet dr7c "HIMMEL-10995-N10995-drift-4470-2026-01-01.md"
+dr_set_I_WM_for_fleet dr7c "HIMMEL-10995-N10995-drift-4470-2026-01-01.md"
 start "$I" "$WORK/dr7c.out" --workers-from "$WM"
 wait_exit "$WPID"
 check "(dr7) a drift worker of another day does not hold the wake" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr7c.out")"
