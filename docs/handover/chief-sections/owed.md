@@ -56,7 +56,7 @@ Unknown fields or invalid types refuse. None of these fields grants authority.
 
 The recorder recognizes the explicit `> **Proof leg:**` header or an actual
 WRAPPED proof-key tail, including the event's optional worker/ticket prefix.
-Ordinary prose mentioning a proof leg does not create debt. The artifacts are the
+Ordinary prose mentioning a proof worker does not create debt. The artifacts are the
 `evidence=<path>` values of that tail or message, which name them exactly; with none
 declared, every `specs/audits/....md` path the worker document names is read as evidence
 by the rule below, so a file that is not the ticket's is judged as its evidence and a

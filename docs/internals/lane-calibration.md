@@ -846,7 +846,7 @@ without it. A requested A/B arm skips the Opus fields and runs at its own ceilin
 | Tokens at first compaction, min / median / max | 162871 / 168413 / 209372 | 302375 / 353109 / 425910 |
 | Calls before it, median | 42 | 164 |
 | Estimated USD to first compaction, median | 3.15 | 8.74 |
-| Estimated USD per leg, median | 10.92 | 9.06 |
+| Estimated USD per worker, median | 10.92 | 9.06 |
 
 The Sonnet column includes compactions that are not at the ceiling. The price of the
 higher ceiling: one Opus call re-reads its context from cache, about 0.07 USD at 168000

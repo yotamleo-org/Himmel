@@ -4173,7 +4173,7 @@ check_c89_qmd_rerank() {
 
 # --- C90-effort-pin: a settings env block pins CLAUDE_CODE_EFFORT_LEVEL ---
 # A settings env value wins over both the launcher's process env and `claude --effort` (claude 2.1.319:
-# with the pin at high, a worker asked for medium still sent high), so every worker leg on this station
+# with the pin at high, a worker asked for medium still sent high), so every worker on this station
 # runs at the pinned effort whatever its brief asked. WARN names each file and value; OK without a pin.
 # Reads the user settings, the user settings.local.json and the project's two settings files. Read-only.
 check_c90_effort_pin() {
@@ -4185,10 +4185,10 @@ check_c90_effort_pin() {
         [ -n "$v" ] && pins="${pins:+$pins, }$f ($v)"
     done
     if [ -z "$pins" ]; then
-        emit OK C90-effort-pin "no settings env block pins CLAUDE_CODE_EFFORT_LEVEL, so a worker leg runs at the effort its launcher asks for"
+        emit OK C90-effort-pin "no settings env block pins CLAUDE_CODE_EFFORT_LEVEL, so a worker runs at the effort its launcher asks for"
         return 0
     fi
-    emit WARN C90-effort-pin "a settings env block pins CLAUDE_CODE_EFFORT_LEVEL: $pins -- it overrides the launcher's asked effort, so every worker leg runs at the pinned effort" \
+    emit WARN C90-effort-pin "a settings env block pins CLAUDE_CODE_EFFORT_LEVEL: $pins -- it overrides the launcher's asked effort, so every worker runs at the pinned effort" \
         "remove CLAUDE_CODE_EFFORT_LEVEL from the env block of each file named above (set the effort per session with /effort or --effort instead)"
 }
 

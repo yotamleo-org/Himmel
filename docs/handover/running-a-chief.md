@@ -538,7 +538,7 @@ effort guidance, including the chief's own wake-up budget, is in
   in-flight key passes only through the `core-snapshot` record. A `BYPASS` key
   is printed as `bypass=<class>` and logged to `core-gate.jsonl` beside the
   brief. Run a minerva worker for each `CORE` key without `SPEC ok`.
-- **The minerva design leg launches on a key with no spec.** The
+- **The minerva design worker launches on a key with no spec.** The
   brief for that minerva worker carries the line `> **Design leg:** minerva`,
   spelled exactly so, and a `Writes:` line that names only `.md` files in the
   state repo's `specs/` folder. Each file is either relative to the bucket,
