@@ -99,11 +99,38 @@ check "no steady compaction: the answer says the sample is too small" 1 "$(grep 
 python3 -I "$SUT" --json --min-peak 700000 "$st" "$ba" > "$tmp/peak.json"
 check "a worker under --min-peak is left out" 1 "$(jq '.summary.workers' "$tmp/peak.json")"
 
-printf '2026-11-07_10:00:00 context=standard (explicit); model=claude-opus-5-5 (autocompact=800000)\n' > "$tmp/logs/fx-n1-steady.log"
-printf '2026-11-07_11:00:00 context=standard (explicit); model=claude-opus-5-5 (autocompact=200000)\n' > "$tmp/logs/fx-n2-batch.log"
-printf '2026-11-07_12:00:00 context=standard (explicit); model=claude-sonnet-5-5 (autocompact=800000)\n' > "$tmp/logs/fx-n3-idle.log"
-python3 -I "$SUT" --json --launch-logs "$tmp/logs" --projects "$tmp/projects" > "$tmp/join.json" 2>"$tmp/join.err"
-check "launch logs: only the opus launch at the ceiling is read" fx-n1-steady "$(jq -r '[.workers[].session] | join(",")' "$tmp/join.json")"
+U1=bbbbbbbb-0000-4000-8000-000000000001; U2=bbbbbbbb-0000-4000-8000-000000000002
+U3=bbbbbbbb-0000-4000-8000-000000000003; U4=bbbbbbbb-0000-4000-8000-000000000004
+cp "$st" "$tmp/projects/p/$U1.jsonl"; cp "$ba" "$tmp/projects/p/$U2.jsonl"
+sed 's/claude-opus-5-5/claude-sonnet-5-5/' "$id" > "$tmp/projects/p/$U3.jsonl"
+sed "s/fx-n1-steady/fx-n5-headless/" "$st" > "$tmp/projects/p/$U4.jsonl"
+rec() { printf 'headed-arm-worker: profile=worker-impl lane=native model=%s role=worker session=%s%s launched=2026-11-07T10:00:00Z%s\n' "$1" "$2" "${3:+ session_id=$3}" "${4:+ $4}" >> "$tmp/logs/$2.log"; }
+rec opus fx-n1-steady "$U1"
+rec opus fx-n2-batch "$U2" autocompact=200000
+rec sonnet fx-n3-idle "$U3"
+rec opus fx-n4-nosid ""
+printf 'headed-arm: headless=1 pid=1 session-id=%s short-id=x name=fx-n5-headless launched=2026-11-07T10:00:00Z\n' "$U4" > "$tmp/logs/fx-n5-headless.log"
+rec opus fx-n5-headless ""
+python3 -I "$SUT" --json --launch-logs "$tmp/logs" --projects "$tmp/projects" --ceiling 850000 --model opus > "$tmp/join.json" 2>"$tmp/join.err"; rc=$?
+check "durable-record: exit 0" 0 "$rc"
+check "durable-record: the opus launches at the ceiling are read by session_id (a headless line's session-id too)" "fx-n1-steady,fx-n5-headless" "$(jq -r '[.workers[].session] | sort | join(",")' "$tmp/join.json")"
+check "durable-record: a worker line with no session_id is counted as no-session-id and skipped" 1 "$(jq '.summary.cohort.no_session_id' "$tmp/join.json")"
+python3 -I "$SUT" --json --launch-logs "$tmp/logs" --projects "$tmp/projects" --ceiling 850000 --model sonnet > "$tmp/son.json" 2>/dev/null
+check "sonnet-cohort: --model sonnet reads the sonnet launch" fx-n3-idle "$(jq -r '[.workers[].session] | join(",")' "$tmp/son.json")"
+python3 -I "$SUT" --json --launch-logs "$tmp/logs" --projects "$tmp/projects" --ceiling 850000 --model all > "$tmp/all.json" 2>/dev/null
+check "sonnet-cohort: --model all reads all three" "fx-n1-steady,fx-n3-idle,fx-n5-headless" "$(jq -r '[.workers[].session] | sort | join(",")' "$tmp/all.json")"
+check "record-keys: the sessions without an autocompact= key used the profile's ceiling" 3 "$(jq '.summary.cohort.fallback_ceiling' "$tmp/all.json")"
+python3 -I "$SUT" --json --launch-logs "$tmp/logs" --projects "$tmp/projects" --ceiling 200000 --model all > "$tmp/key.json" 2>/dev/null
+check "record-keys: an autocompact= key wins over the profile" fx-n2-batch "$(jq -r '[.workers[].session] | join(",")' "$tmp/key.json")"
+check "record-keys: and is not a fallback" 0 "$(jq '.summary.cohort.fallback_ceiling' "$tmp/key.json")"
+U5=bbbbbbbb-0000-4000-8000-000000000005; U6=bbbbbbbb-0000-4000-8000-000000000006
+sed "s/fx-n1-steady/fx-n6-low/" "$st" > "$tmp/projects/p/$U5.jsonl"; sed "s/fx-n1-steady/fx-n6-high/" "$st" > "$tmp/projects/p/$U6.jsonl"
+mkdir -p "$tmp/logs2"
+printf 'headed-arm-worker: profile=worker-impl lane=native model=opus role=worker session=fx-n6 session_id=%s launched=2026-11-07T10:00:00Z autocompact=200000\nheaded-arm-worker: profile=worker-impl lane=native model=opus role=worker session=fx-n6 session_id=%s launched=2026-11-07T11:00:00Z autocompact=850000\n' "$U5" "$U6" > "$tmp/logs2/fx-n6.log"
+python3 -I "$SUT" --json --launch-logs "$tmp/logs2" --projects "$tmp/projects" --ceiling 850000 > "$tmp/rel.json" 2>/dev/null
+check "record-keys: a relaunch of one name keeps its ceiling per session, not the highest" fx-n6-high "$(jq -r '[.workers[].session] | join(",")' "$tmp/rel.json")"
+python3 -I "$SUT" --launch-logs "$tmp/logs" --projects "$tmp/projects" --ceiling 123 > /dev/null 2>"$tmp/nt.err"; rc=$?
+check "durable-record: no launch at the ceiling exits 1 with no transcripts" "1 1" "$rc $(grep -c 'no transcripts' "$tmp/nt.err")"
 
 python3 -I "$SUT" > /dev/null 2>"$tmp/none.err"; rc=$?
 check "no input exits 1" 1 "$rc"
