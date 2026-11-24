@@ -499,6 +499,23 @@ while [ "$i" -le 8 ]; do
 done
 for p in $pids; do wait "$p"; done
 check '11. eight concurrent t3 sets all land' 8 "$(jq '[.workers[] | select(.t3_thread != null)] | length' "$m11b")"
+m11c="$tmp/m11/guard.fleet.json"
+g1="$tmp/m11/G1-N1-a.md"; g2="$tmp/m11/G2-N2-b.md"
+bash "$SCRIPT" add "$m11c" --lane t3 --lockless "$g1" "$g2" >/dev/null 2>&1
+bash "$SCRIPT" t3 set "$m11c" "$g1" --thread uniq1 >/dev/null 2>&1; rc=$?
+check '11. a first thread binds' 0 "$rc"
+bash "$SCRIPT" t3 set "$m11c" "$g1" --thread uniq1 >/dev/null 2>&1; rc=$?
+check '11. setting the same thread on the same row again is fine (rc 0)' 0 "$rc"
+bash "$SCRIPT" t3 set "$m11c" "$g2" --thread uniq1 >/dev/null 2>&1; rc=$?
+check '11. a thread another row holds is refused under the lock (rc 1)' 1 "$rc"
+check '11. and the second row stays unbound' null "$(jq -r --arg d "$g2" '.workers[] | select(.doc == $d) | .t3_thread // "null"' "$m11c")"
+bash "$SCRIPT" t3 set "$m11c" "$g1" --thread pending >/dev/null 2>&1
+bash "$SCRIPT" t3 set "$m11c" "$g2" --thread pending >/dev/null 2>&1; rc=$?
+check '11. pending is shared by path A rows (rc 0)' 0 "$rc"
+bash "$SCRIPT" t3 unbind "$m11c" tomb9 --reason refused:gitleaks >/dev/null 2>&1
+bash "$SCRIPT" t3 set "$m11c" "$g1" --thread tomb9 >/dev/null 2>&1; rc=$?
+check '11. a tombstoned thread cannot be set again (rc 1)' 1 "$rc"
+check '11. and the row keeps its value' pending "$(jq -r --arg d "$g1" '.workers[] | select(.doc == $d) | .t3_thread' "$m11c")"
 usage_text="$(bash "$SCRIPT" 2>&1)"
 case "$usage_text" in *'lowercase word: native, claudex, openrouter, deepseek, t3'*) usage_names=yes ;; *) usage_names=no ;; esac
 check '11. the usage text names lane t3' yes "$usage_names"

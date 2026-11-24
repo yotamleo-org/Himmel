@@ -24,7 +24,8 @@
 # t3_thread / t3_kind / t3_notice fields, and a top-level t3_tombstones array of {thread, reason, at}. `t3 set` edits a listed
 # row only (rc 1 for a doc not listed); `t3 unbind` removes every row whose t3_thread is the id AND appends the tombstone in one
 # atomic rewrite (a thread with no row still gets its tombstone; one already tombstoned gets no second). Both hold the manifest
-# lock, so a copy of the manifest (chief.sh next) carries every binding.
+# lock, so a copy of the manifest (chief.sh next) carries every binding. `t3 set --thread <id>` refuses (rc 1) an id that is
+# tombstoned or already held by another row.
 #
 # `attempt settle` settles the manifest row only: it sets the row's .attempt phase and, for refused, removes the row and keeps
 # .last_refused_attempt. It does NOT touch the control anchor's attempt record, the family target slot, the reservation
@@ -341,6 +342,11 @@ fleet_t3() (
     now=$(date -u +%Y-%m-%dT%H:%M:%SZ) || exit 1
     if [ "$sub" = set ]; then
         printf '%s\n' "$cur" | jq -e --arg d "$doc" 'any(.workers[]; .doc == $d)' >/dev/null || { echo "fleet-manifest: not a listed worker doc: $doc" >&2; exit 1; }
+        if [ -n "$thread" ] && [ "$thread" != pending ]; then
+            printf '%s\n' "$cur" | jq -e --arg d "$doc" --arg th "$thread" \
+                '((.t3_tombstones // []) | any(.thread == $th)) or any(.workers[]; .t3_thread == $th and .doc != $d)' >/dev/null \
+                && { echo "fleet-manifest: thread $thread is tombstoned or already bound to another row" >&2; exit 1; }
+        fi
         result=$(printf '%s\n' "$cur" | jq --arg d "$doc" --arg th "$thread" --arg k "$kind" --arg n "$notice" \
             '.workers |= map(if .doc == $d then . + (if $th != "" then {t3_thread: $th} else {} end)
                 + (if $k != "" then {t3_kind: $k} else {} end) + (if $n != "" then {t3_notice: $n} else {} end) else . end)') || exit 1

@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check(), as in test-fleet-manifest.sh
-# scripts/t3/test-relay-bind.sh - suite for relay-bind.sh (spec section 4.1).
-# Hermetic: every row runs in a scratch checkout copy, with a scratch HOME, a fake `t3` (T3_SEND_BIN), stub sibling
-# scripts (t3-send.sh, bucket-gitleaks.sh, queue-lock.sh) and a scratch bucket. No row reads the real config or talks to
-# the live T3. Rows:
-#   1 off   2 prepare/attach   3 scan binding   4 crashes   5 notice route   6 pass deadline   7 failures
-#   8 fields   9 upkeep   10 ownership   11 fd hygiene
-# PLATFORM GUARD: the chief kit is Linux-only (util-linux flock, GNU timeout). bash 3.2-safe.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -113,17 +106,19 @@ today="$(date -u +%Y-%m-%d)"
 
 mkco c1
 mklist "$(th t1 claudeAgent_worker-impl_relay idle false)"
+off_verbs() {
+    bash "$BIND" scan --manifest "$M" >"$T/out" 2>&1; echo "scan $?"
+    bash "$BIND" unbind --manifest "$M" t1 >"$T/out" 2>&1; echo "unbind $?"
+    bash "$BIND" attach --manifest "$M" --doc "$B/x.md" --thread t1 >"$T/out" 2>&1; echo "attach $?"
+    bash "$BIND" prepare --manifest "$M" --ticket DEMO-1 --label N1 --slug s --writes a.sh >"$T/out" 2>&1; echo "prepare $?"
+}
 for state in absent empty nokey; do
     case "$state" in
         absent) cfg_off ;;
         empty)  printf '{"t3":{"relay_instances":[]}}\n' > "$CFG" ;;
         nokey)  printf '{"t3":{"instance_allowlist":["a"]}}\n' > "$CFG" ;;
     esac
-    for v in "scan --manifest $M" "unbind --manifest $M t1" "attach --manifest $M --doc $B/x.md --thread t1" "prepare --manifest $M --ticket HIMMEL-1 --label N1 --slug s --writes a.sh"; do
-        # shellcheck disable=SC2086
-        bash "$BIND" $v >"$T/out" 2>&1; rc=$?
-        check "1. off ($state): '${v%% *}' exits 0" 0 "$rc"
-    done
+    check "1. off ($state): every verb exits 0" "scan 0 unbind 0 attach 0 prepare 0" "$(off_verbs | tr '\n' ' ' | sed 's/ $//')"
     check "1. off ($state): no t3 call was made" 0 "$(tlog)"
     check "1. off ($state): no manifest or doc was written" absent "$([ -e "$M" ] && echo present || echo absent)"
 done
@@ -565,6 +560,34 @@ check '11. with the lock held by a stuck process scan gives up with rc 2' 2 "$SR
 check "11. within the 5 s bound (took ${el}s)" yes "$([ "$el" -ge 4 ] && [ "$el" -le 7 ] && echo yes)"
 check '11. with a message, not a hang' yes "$(grep -q 'owner lock' "$T/err" && echo yes)"
 kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+
+mkco x1 "$HB/x1"; mkm a none
+mkdir -p "$T/xshim"
+cat > "$T/xshim/ln" <<'SHIM'
+#!/bin/sh
+[ "$(dirname "$1")" = "$(dirname "$2")" ] || { echo "ln: Invalid cross-device link" >&2; exit 1; }
+exec /bin/ln "$@"
+SHIM
+chmod +x "$T/xshim/ln"
+mklist "$(th xd1 "$RELAY" completed false)"
+PATH="$T/xshim:$PATH" bash "$BIND" scan --manifest "$B/a.fleet.json" >"$T/out" 2>"$T/err"; SRC=$?
+check '12. a bucket on another filesystem than the scratch dir still binds (rc 1, BOUND)' "1 xd1" "$SRC $(sed -n 's/^BOUND \([^ ]*\) .*/\1/p' "$T/out")"
+check '12. and no tombstone was written for it' 0 "$(jq '(.t3_tombstones // []) | length' "$B/a.fleet.json")"
+check '12. and no temp file is left in the bucket' 0 "$(find "$B" -name '.t3ask.*' | wc -l | tr -d ' ')"
+
+mkco x2 "$HB/x2"; mkm a none
+for i in 1 2 3 4 5 6; do
+    xd="$B/T3ASK-gn$i-$today.md"; printf '# x\n\n> **T3 thread:** gn%s\n\n## Results (newest at the bottom)\n' "$i" > "$xd"
+    fmx add "$B/a.fleet.json" --lane t3 --lockless "$xd"; fmx t3 set "$B/a.fleet.json" "$xd" --thread "gn$i" --kind ask --notice sent
+done
+mklist
+( flock -x 8; sleep 45 ) 8>>"$B/a.fleet.json.lock" & lockholder=$!
+sleep 0.3
+t0="$(date +%s)"
+timeout -k 2 30 bash "$BIND" scan --manifest "$B/a.fleet.json" >"$T/out" 2>"$T/err"; SRC=$?   # gnu-ok: Linux-only chief kit, GNU timeout
+el=$(( $(date +%s) - t0 ))
+kill "$lockholder" 2>/dev/null; wait "$lockholder" 2>/dev/null
+check "12. manifest writes stuck on a held lock still end the pass by 24 s (took ${el}s, rc $SRC)" yes "$([ "$el" -le 24 ] && [ "$SRC" != 124 ] && [ "$SRC" != 137 ] && echo yes)"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-relay-bind.sh"

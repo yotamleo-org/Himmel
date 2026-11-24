@@ -20,8 +20,6 @@
 #           per bucket by the live chief's queue lock. Printed lines carry only threadIds, labels, counts and rc numbers:
 #             BOUND <id> <label>  UNBOUND <id> <label>  ASK-THREAD-PR <id> <label> linked=<n>  BIND-REFUSED <id> <why>
 #             BIND-SEND-FAILED <id> rc=<n>  BIND-GAVE-UP <id>  OWNER-TAKEN <old stem> rows=<copied|none>
-#           Every t3, gitleaks and queue-lock child runs through run_clean (no fd above 2, stdin /dev/null) under a
-#           timeout, and a pass starts no child that could end past 24 s, so the waiter's 30 s kill never lands on it.
 # unbind    removes the row and records the tombstone in one write, so the thread is never bound again.
 #
 # Exit: 0 nothing new; 1 something was printed; 2 usage or config failure (also an unreadable owner status or a stuck
@@ -194,6 +192,7 @@ take_rows_from() {
     local old="$1" d th kd nt line
     while IFS= read -r d; do
         [ -n "$d" ] || continue
+        room 6 || break
         jq -e --arg d "$d" 'any(.workers[]; .doc == $d)' "$manifest" >/dev/null 2>&1 && continue
         fm add "$manifest" "$d" --lane t3 --lockless || continue
         th="$(jq -r --arg d "$d" '[.workers[] | select(.doc == $d) | .t3_thread // ""][0]' "$old")"
@@ -209,6 +208,7 @@ $(jq -r '.workers[] | select(.lane == "t3") | .doc' "$old")
 EOF1
     while IFS= read -r line; do
         [ -n "$line" ] || continue
+        room 6 || break
         th="${line%%$'\t'*}"; nt="${line#*$'\t'}"
         [[ $th =~ $ID_RE ]] && [[ $nt =~ ^[a-z0-9:_-]{1,40}$ ]] && fm t3 unbind "$manifest" "$th" --reason "$nt" || true
     done <<EOF2
@@ -294,6 +294,7 @@ pr_new="$SCRATCH/pr-seen.new"
 : > "$pr_new"
 while IFS=$'\t' read -r id d; do
     [ -n "$id" ] || continue
+    room 6 || break
     lbl="$(row_label "$d")"
     line="$(awk -F'\t' -v id="$id" '$1 == "T" && $2 == id { print }' "$SCRATCH/rows" | head -n 1)"
     if [ -z "$line" ]; then
@@ -386,11 +387,19 @@ listed_elsewhere() {
     return 1
 }
 bind_one() {
+    ASK_TMP=""
+    bind_attempt "$@"
+    [ -z "$ASK_TMP" ] || rm -f "$ASK_TMP"
+    return 0
+}
+bind_attempt() {
     local id="$1" inst="$2" short d dtmp ntmp g1 g2 lbl
     short="$(printf '%s' "$id" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9' | cut -c1-8)"
     [ -n "$short" ] || short=thread
     d="$mdir/T3ASK-$short-$today.md"
-    dtmp="$(mktemp "$SCRATCH/ask.doc.XXXXXX")" && ntmp="$(mktemp "$SCRATCH/ask.notice.XXXXXX")" || return 0
+    dtmp="$(mktemp "$mdir/.t3ask.XXXXXX")" || return 0
+    ASK_TMP="$dtmp"
+    ntmp="$(mktemp "$SCRATCH/ask.notice.XXXXXX")" || return 0
     {
         printf '# T3 relay ask thread\n\n'
         printf '> **T3 thread:** %s\n' "$id"
@@ -411,7 +420,9 @@ bind_one() {
     else
         ln "$dtmp" "$d" 2>/dev/null || { refuse "$id" exists; return 0; }
     fi
+    room 6 || return 0
     fm add "$manifest" "$d" --lane t3 --lockless || return 0
+    room 6 || return 0
     fm t3 set "$manifest" "$d" --thread "$id" --kind ask --notice pending:0 || return 0
     lbl="$(jq -r --arg d "$d" '[.workers[] | select(.doc == $d) | .label][0] // ""' "$manifest")"
     emit "BOUND $id $lbl"
