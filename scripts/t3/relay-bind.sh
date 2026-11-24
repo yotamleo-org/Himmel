@@ -24,7 +24,7 @@
 #
 # Exit: 0 nothing new; 1 something was printed; 2 usage or config failure (also an unreadable owner status or a stuck
 # owner lock); 4 `t3 thread list` failed or a field the pass reads is missing (stderr names it); 5 this manifest is not
-# the owner and the owner is live, or a takeover ran out of pass time and retries next pass (its own re-sends and upkeep still ran).
+# the owner and the owner is live (its own re-sends and upkeep still ran), or a takeover ran out of pass time (nothing else ran; it retries next pass).
 # Env seams: T3_SEND_BIN, T3_SEND_PROJECT (as t3-send.sh), T3_RELAY_UNBIND_DAYS. Siblings are found beside this file.
 # Platform: Linux (util-linux flock, GNU timeout), bash 3.2+, jq.
 set -uo pipefail
@@ -193,7 +193,7 @@ take_rows_from() {
     while IFS= read -r d; do
         [ -n "$d" ] || continue
         room 6 || return 1
-        jq -e --arg d "$d" 'any(.workers[]; .doc == $d)' "$manifest" >/dev/null 2>&1 && continue
+        jq -e --arg d "$d" 'any(.workers[]; .doc == $d and has("t3_thread"))' "$manifest" >/dev/null 2>&1 && continue
         th="$(jq -r --arg d "$d" '[.workers[] | select(.doc == $d) | .t3_thread // ""][0]' "$old")"
         kd="$(jq -r --arg d "$d" '[.workers[] | select(.doc == $d) | .t3_kind // ""][0]' "$old")"
         nt="$(jq -r --arg d "$d" '[.workers[] | select(.doc == $d) | .t3_notice // ""][0]' "$old")"
@@ -249,11 +249,10 @@ else
             if [ -f "$owner" ] && descends_from "$ostem"; then
                 if take_rows_from "$owner"; then rows=copied; else rows="cut"; fi
             fi
-            if [ "$rows" != cut ]; then
-                printf '%s\n' "$manifest" | atomic_write "$owner_file" || die 2 "cannot write the owner file"
-                IS_OWNER=1
-                emit "OWNER-TAKEN $ostem rows=$rows"
-            fi
+            [ "$rows" != cut ] || exit 5
+            printf '%s\n' "$manifest" | atomic_write "$owner_file" || die 2 "cannot write the owner file"
+            IS_OWNER=1
+            emit "OWNER-TAKEN $ostem rows=$rows"
         fi
     fi
 fi

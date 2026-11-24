@@ -602,8 +602,19 @@ timeout -k 2 30 bash "$BIND" scan --manifest "$B/c.fleet.json" >"$T/out" 2>"$T/e
 kill "$lockholder" 2>/dev/null; wait "$lockholder" 2>/dev/null
 check '12. a takeover cut short by the pass deadline does not take the owner file' "$B/a.fleet.json" "$(owner_now)"
 check '12. and prints no OWNER-TAKEN' 0 "$(grep -c '^OWNER-TAKEN' "$T/out")"
+check '12. and exits rc 5 at once, so the waiter retries the takeover next pass' 5 "$SRC"
 scan "$B/c.fleet.json"
 check '12. the next pass with the lock free finishes the takeover: rows copied' "OWNER-TAKEN a rows=copied 6" "$(grep OWNER "$T/out") $(jq '.workers | length' "$B/c.fleet.json")"
+
+mkco x4 "$HB/x4"; mkm a none; mkm c a
+xr="$B/T3ASK-tz1-$today.md"; printf '# x\n\n> **T3 thread:** tz1\n\n## Results (newest at the bottom)\n' > "$xr"
+fmx add "$B/a.fleet.json" --lane t3 --lockless "$xr"; fmx t3 set "$B/a.fleet.json" "$xr" --thread tz1 --kind ask --notice sent
+fmx add "$B/c.fleet.json" --lane t3 --lockless "$xr"
+printf '%s\n' "$B/a.fleet.json" > "$B/t3-relay.owner"
+mklist "$(th tz1 "$RELAY" completed false)"
+scan "$B/c.fleet.json"
+check '12. a row the last takeover listed but never filled (add done, set failed) is completed by the retry' "tz1 ask sent" "$(jq -r --arg d "$xr" '.workers[] | select(.doc == $d) | "\(.t3_thread) \(.t3_kind) \(.t3_notice)"' "$B/c.fleet.json")"
+check '12. and the takeover prints rows=copied' "OWNER-TAKEN a rows=copied" "$(grep OWNER "$T/out")"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-relay-bind.sh"
