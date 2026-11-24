@@ -538,6 +538,11 @@ daily failure review (ci-cadence.sh review: a local read of the newest failure-r
 HIMMEL_FAILURE_REVIEW_DIR). STALE = no review for 26 h. Hidden when there is no
 review file. The waiter wakes once per review day on a filed key or a new class with 5+ failures, and once per
 last-review date on STALE; never on a 1-count class.
+drift=<n|?> counts the actionable rows of the open nightly drift issue (label fork-drift; none open reads 0), its body re-read at most once an hour (TICK_DRIFT_TTL_MIN): its Needs-update rows plus the
+held rows whose 72 h buffer has cleared (drift-brief.py count; TICK_DRIFT_GH is the gh seam; DRIFT_NOW the clock seam). ? = the
+read or the count failed and never wakes; absent when the repo has no scripts/upstreams/pin-holds.json. In compact output a
+positive count also prints one `WAKE drift-actionable <n>` line after the TICK line per UTC day (claim file
+tick-drift-wake-<date> in TICK_STATE_DIR); `drift-brief.py brief` writes the worker brief for those rows.
 leaks=<n|?> counts the LEAK lines of one bounded `jira release leaks <active version>`
 read (TICK_LEAKS_PROBE gets the version and the mirror directory as its arguments; TICK_LEAKS_TIMEOUT, default 30 s): open tickets
 in a frozen version with no frozen-set membership and no admissions-ledger row. Shown only when non-zero
@@ -4202,6 +4207,33 @@ if [ -n "$spare_in" ] && [ -n "$spare_pct" ] \
     spare_tail=" spare=$(awk -v p="$spare_pct" 'BEGIN { printf "%d", p }')@$(awk -v h="$spare_in" 'BEGIN { printf "%d", h }')h"
 fi
 
+drift_tail=""
+drift_wake=""
+drift_holds="$REPO/scripts/upstreams/pin-holds.json"
+if [ -f "$drift_holds" ] && [ -f "$HERE/drift-brief.py" ]; then
+    drift_val="?"
+    drift_gh="${TICK_DRIFT_GH:-$GH_READ_BIN}"
+    drift_slug() { git -C "$HERE" remote get-url origin | sed -E 's#^.*[:/]([^/:]+/[^/]+)$#\1#; s#\.git$##'; }
+    drift_repo="$(. "$HERE/../../lib/env-value.sh" && env_value HIMMEL_REPO drift_slug)" || drift_repo=""  # swallow-ok: an unresolved repo renders as drift=?
+    drift_label="${DRIFT_ISSUE_LABEL:-fork-drift}"
+    drift_cache="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/tick-drift-body-$(printf '%s %s' "$drift_repo" "$drift_label" | cksum | cut -d' ' -f1)"
+    case "${TICK_DRIFT_TTL_MIN:-60}" in '' | *[!0-9]*) drift_ttl=60 ;; *) drift_ttl=$((10#${TICK_DRIFT_TTL_MIN:-60})) ;; esac
+    drift_have=""
+    if [ -n "$drift_repo" ] && [ -f "$drift_cache" ] && [ -n "$(find "$drift_cache" -mmin "-$drift_ttl" 2>/dev/null)" ]; then  # gnu-ok: console kit is Linux-only # swallow-ok: an unreadable cache reads as stale
+        drift_body="$(cat "$drift_cache" 2>/dev/null)" && drift_have=1  # swallow-ok: an unreadable cache is read again
+    fi
+    if [ -z "$drift_have" ] && [ -n "$drift_repo" ] && drift_body="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 20)"} "$drift_gh" issue list --label "$drift_label" --state open --limit 1 -R "$drift_repo" --json body --jq '.[0].body // ""' 2>/dev/null)"; then  # swallow-ok: a failed read renders as drift=?
+        drift_have=1
+        { mkdir -p "${drift_cache%/*}" && printf '%s' "$drift_body" > "$drift_cache.$$" && mv -f "$drift_cache.$$" "$drift_cache"; } 2>/dev/null || true  # swallow-ok: an unwritable cache only costs the next tick a read
+    fi
+    if [ -n "$drift_have" ]; then
+        drift_n="$(printf '%s\n' "$drift_body" | python3 -I "$HERE/drift-brief.py" count --holds "$drift_holds" 2>/dev/null)" || drift_n=""  # swallow-ok: a failed count renders as drift=?
+        case "$drift_n" in '' | *[!0-9]*) ;; *) drift_val="$drift_n" ;; esac
+    fi
+    drift_tail=" drift=$drift_val"
+    case "$drift_val" in '?' | 0) ;; *) drift_wake="$drift_val" ;; esac
+fi
+
 # tmp=<pct>[!] -- how full the tmp filesystem is (read-only df on TICK_TMP_DIR,
 # default /tmp), with a trailing ! at TICK_TMP_WARN percent (default 80) or more.
 # Absent when df cannot be read. Advisory only: chief-wait's action key is a
@@ -5161,6 +5193,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$slotage_tail" ] || printf 'slot age: %s\n' "${slotage_tail# slotage=}"
     [ -z "$tmp_tail" ] || printf 'tmp: %s\n' "${tmp_tail# tmp=}"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
+    [ -z "$drift_tail" ] || printf 'drift: %s\n' "${drift_tail# drift=}"
 else
     # Keep reader inputs even at their defaults: chief-wait.sh rejects
     # missing required fields, and capacity/unowned-prs/tracker clear streaks.
@@ -5269,7 +5302,15 @@ else
     compact_field focus "$focus_summary"
     compact_field sdrift "$sdrift_summary"
     compact_field stale "$stale_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$mon_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$mon_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail$drift_tail"
+    if [ -n "$drift_wake" ]; then
+        drift_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+        drift_claim="$drift_dir/tick-drift-wake-$(date -u +%F)"
+        if mkdir -p "$drift_dir" 2>/dev/null && (set -C; : > "$drift_claim") 2>/dev/null; then  # swallow-ok: an unclaimable day prints no wake, never a repeated one
+            printf 'WAKE drift-actionable %s\n' "$drift_wake"
+            find "$drift_dir" -maxdepth 1 -name 'tick-drift-wake-*' -mtime +7 -delete 2>/dev/null  # gnu-ok: console kit is Linux-only # swallow-ok: an unprunable old claim is harmless
+        fi
+    fi
     if [ -n "$holdout_summary" ]; then
         printf 'ACTION holdout=%s: an idle worker holds on an outside event; have it WRAP with what it owes written down, then bash %q watch %q add <pr> --head <sha> --comments <n> --reviews <n> and close-wrapped-worker.sh --fleet %q <doc> (chief-wait wakes you as WAKE pr-watch)\n' \
             "$holdout_summary" "$HERE/fleet-manifest.sh" "${WORKERS_FROM:-<manifest>}" "${WORKERS_FROM:-<manifest>}"

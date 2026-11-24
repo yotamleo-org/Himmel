@@ -789,5 +789,36 @@ check "(10901-5) a request that arrives with a tails move wakes the tick change 
 [ "$rc" = running ] && stop_waiter "$WPID"
 unset CHIEF_WAIT_WORKER_EVENT
 
+dr_tick() {
+    tick_line "N1:FRESH" "ok"
+    sed -i "s/ denials=none/ drift=$1 denials=none/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
+}
+dr_alive() { sleep 3; if kill -0 "$WPID" 2>/dev/null; then echo running; else echo exited; fi; }
+reset_stub
+dr_tick '?'
+I="$(new_inbox dr1)"
+start "$I" "$WORK/dr1.out"
+wait_hb "$I" || fail "(dr1) no baseline heartbeat"
+check "(dr1) drift=? wakes nothing" "running" "$(dr_alive)"
+dr_tick 0
+check "(dr2) drift=0 wakes nothing" "running" "$(dr_alive)"
+dr_tick 2
+wait_exit "$WPID"
+check "(dr3) an actionable count wakes with the count" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr1.out")"
+check "(dr3) the tick line follows" "1" "$(grep -c '^TICK ' "$WORK/dr1.out")"
+start "$I" "$WORK/dr4.out"
+wait_hb "$I" || fail "(dr4) no baseline heartbeat"
+check "(dr4) a same-day repeat wakes nothing" "running" "$(dr_alive)"
+dr_tick 5
+check "(dr4) a larger count the same day still wakes nothing" "running" "$(dr_alive)"
+stop_waiter "$WPID"
+dr_tick 3
+I="$(new_inbox dr5)"
+mkdir "$I.wait.drift.$(date -u +%F)"
+start "$I" "$WORK/dr5.out"
+wait_hb "$I" || fail "(dr5) no baseline heartbeat"
+check "(dr5) a day marker that cannot be claimed wakes nothing" "running" "$(dr_alive)"
+stop_waiter "$WPID"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
