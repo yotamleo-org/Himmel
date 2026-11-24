@@ -291,7 +291,7 @@ after_go() {
         hold; return 3
     fi
     if ! preflight; then
-        printf 'go=%s\nsha=%s\nrsha=%s\n' "$code" "$sha" "$rsha" >"$req.held"
+        printf 'go=%s\nsha=%s\nrsha=%s\nname=%s\n' "$code" "$sha" "$rsha" "$base" >"$req.held"
         log "REFUSED-PREFLIGHT after go $base $PF_REASON (go kept, touch $req.pending to retry)"
         tell_chief "$chief" "REFUSED-PREFLIGHT after go $base $PF_REASON — the operator's go is kept, nothing ran; fix the cause, then touch $req.pending to retry"
         return 0
@@ -327,10 +327,10 @@ while :; do
         req=${held%.held}
         [ -f "$req.pending" ] || { rm -f "$held"; continue; }
         [ "$req.pending" -nt "$held" ] || continue
-        code=$(field go "$held"); sha=$(field sha "$held"); rsha=$(field rsha "$held"); rm -f "$held"
+        code=$(field go "$held"); sha=$(field sha "$held"); rsha=$(field rsha "$held"); name=$(field name "$held"); rm -f "$held"
         if [ "$(sha256_of "$req.pending")" != "$rsha" ]; then
-            mv "$req.pending" "$req.refused"; log "REFUSED after go ${req##*/} (the request changed since the ask)"
-            send bypass-result "bypass launch ${req##*/}: refused after your go, the request changed since you were asked. Nothing ran."; continue
+            mv "$req.pending" "$req.refused"; log "REFUSED after go $name (the request changed since the ask)"
+            send bypass-result "bypass launch $name: refused after your go, the request changed since you were asked. Nothing ran."; continue
         fi
         check_request "$req.pending" || { mv "$req.pending" "$req.refused"; log "REFUSED $REASON $req"; continue; }
         log "RETRY $base: the request was touched since its go was held"
