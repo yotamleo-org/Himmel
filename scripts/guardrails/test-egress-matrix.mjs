@@ -584,6 +584,17 @@ for (const u of purposes.filter(x => x !== "peer-message"))
   assert(evaluate("peer-jobs", "peer-telegram", u).effective === "deny", `peer-jobs x peer-telegram x ${u} must deny`);
 assert(evaluate("peer-jobs", "peer-telegram", "peer-message").rule?.corpus === "peer-jobs", "peer-jobs x peer-telegram x peer-message must come from its own row");
 
+assert(corpora.includes("operator-reply"), "corpus operator-reply must be declared");
+assert(evaluate("operator-reply", "peer-telegram", "peer-message").effective === "allow", "operator-reply x peer-telegram x peer-message must allow");
+for (const u of purposes.filter(x => x !== "peer-message"))
+  assert(evaluate("operator-reply", "peer-telegram", u).effective === "deny", `operator-reply x peer-telegram x ${u} must deny`);
+{
+  const own = m.rules.filter(r => r.corpus === "operator-reply");
+  assert(own.length === 1 && own[0].provider === "peer-telegram" && own[0].purpose === "peer-message" && own[0].verdict === "allow",
+    `operator-reply must have exactly one row of its own, peer-telegram x peer-message allow, got ${JSON.stringify(own.map(r => [r.provider, r.purpose, r.verdict]))}`);
+}
+assert(evaluate("operator-reply", "peer-telegram", "peer-message").rule?.corpus === "operator-reply", "operator-reply x peer-telegram x peer-message must come from its own row");
+
 assert(corpora.includes("adopter-repo"), "corpus adopter-repo must be declared");
 {
   const { effective, rule } = evaluate("adopter-repo", "anthropic", "extraction");

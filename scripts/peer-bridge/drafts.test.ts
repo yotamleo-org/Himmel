@@ -171,6 +171,18 @@ test("recovery re-derives the corpus from the intent's source", async () => {
   expect(states(e, b.draft)).toBe("REFUSED");
 });
 
+test("approval re-checks characters and the thread rule on the stored draft", async () => {
+  const e = await setup();
+  const store = (id: string, text: string, msgKind: string, replyTo: number | null) => new Chain().append(join(e.peerDir, "outbox.jsonl"), { kind: "draft", id, source: "send.ts", msgKind, replyTo, text, spool: id + ".json", deadline: e.c.t + DRAFT_TTL_MS, ts: Math.floor(e.c.t / 1000) });
+  await store("0a0a0a0a", "tab\there", "info", null);
+  await store("0b0b0b0b", "to nowhere", "answer", 4242);
+  expect(await tap(e, "0a0a0a0a")).toEqual({ ok: false, rule: "characters" });
+  expect(await tap(e, "0b0b0b0b")).toEqual({ ok: false, rule: "unknown-thread" });
+  expect(states(e, "0a0a0a0a")).toBe("REFUSED");
+  expect(states(e, "0b0b0b0b")).toBe("REFUSED");
+  expect(e.sent).toHaveLength(0);
+});
+
 test("approval re-derives the corpus from source", async () => {
   const e = await setup();
   const a = await draft(e, "from send", "send.ts");
