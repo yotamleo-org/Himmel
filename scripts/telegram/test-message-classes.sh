@@ -22,7 +22,8 @@ CONTROL = ["merge-blocked", "token-in-output", "hold-ask-operator", "hold-ask-st
 PIN_PENDING = []
 NAMED = {"bypass-ask": ("escalate", "scripts/station-ops/bypass-launchd.sh"),
          "bypass-failed": ("escalate", "scripts/station-ops/bypass-launchd.sh"),
-         "bypass-result": ("monitor", "scripts/station-ops/bypass-launchd.sh"),
+         "bypass-result": ("silent", "scripts/station-ops/bypass-launchd.sh"),
+         "denial-page": ("silent", "scripts/handover/chief-kit/chief-wait.sh"),
          "version-approval": ("escalate", "scripts/handover/chief-kit/version-approval-alert.sh"),
          "claude-only-clear": ("monitor", "scripts/cr/clear-review-marker.sh"),
          "cadence:graph-key-*": ("escalate", "scripts/graphify/semantic-update.sh")}
@@ -326,7 +327,7 @@ mut "$T/op-nopin.json" '[r.pop("pin") for r in t["kinds"] if r["kind"]=="hold-as
 lint_dirty "a table copy with the hold-ask-operator pin removed fails the lint" "hold-ask-operator: control row has no pin" --table "$T/op-nopin.json" --only pins
 
 lint_clean "the bypass, version-approval and graph-key escalations are named with their class and sender" --table "$TABLE" --only named
-for k in bypass-ask bypass-failed bypass-result version-approval 'cadence:graph-key-*'; do
+for k in bypass-ask bypass-failed bypass-result denial-page version-approval 'cadence:graph-key-*'; do
   mut "$T/named-drop.json" "t['kinds']=[r for r in t['kinds'] if r['kind']!='$k']"
   lint_dirty "a table copy with the $k row dropped fails the lint" "$k has no row" --table "$T/named-drop.json" --only named
 done
@@ -334,8 +335,12 @@ for k in bypass-ask bypass-failed version-approval 'cadence:graph-key-*'; do
   mut "$T/named-down.json" "[r.update({'class':'monitor'}) for r in t['kinds'] if r['kind']=='$k']"
   lint_dirty "the operator-owned $k set to monitor fails the lint" "$k must be escalate" --table "$T/named-down.json" --only named
 done
-mut "$T/named-up.json" "[r.update({'class':'escalate'}) for r in t['kinds'] if r['kind']=='bypass-result']"
-lint_dirty "bypass-result set to escalate fails the lint" "bypass-result must be monitor" --table "$T/named-up.json" --only named
+for k in bypass-result denial-page; do
+  for c in monitor escalate; do
+    mut "$T/named-up.json" "[r.update({'class':'$c'}) for r in t['kinds'] if r['kind']=='$k']"
+    lint_dirty "the quiet kind $k set to $c fails the lint (nobody acts on it, so it stays silent)" "$k must be silent" --table "$T/named-up.json" --only named
+  done
+done
 mut "$T/named-sender.json" "[r.update({'sender':'scripts/handover/chief-kit/chief-wait.sh'}) for r in t['kinds'] if r['kind']=='version-approval']"
 lint_dirty "version-approval with another sender fails the lint" "version-approval: sender must be" --table "$T/named-sender.json" --only named
 mut "$T/key-nopin.json" "[r.pop('pin') for r in t['kinds'] if r['kind']=='cadence:graph-key-*']"
