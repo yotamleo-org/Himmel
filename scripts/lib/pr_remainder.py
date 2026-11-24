@@ -107,7 +107,7 @@ def pr_remainder_units(body, own_keys=()):
                 if not m:
                     raise ValueError('not the owed grammar')
                 datetime.date.fromisoformat(m.group(2))
-                owed.append((m.group(2), m.group(1).lower(), text))
+                owed.append((m.group(2), m.group(1).lower(), re.sub(r'[\t\r\n]+', ' ', text)))
             except ValueError:
                 owed_bad.append(text)
             continue
