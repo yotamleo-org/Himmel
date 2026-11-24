@@ -156,17 +156,17 @@ for off in '{"t3":{}}' '{"t3":{"relay_instances":[]}}' '{}' ; do
     set_cfg "$off"
     R="$T/off.json"; printf '{"providerInstances":{}}' > "$R"
     env T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R" >/dev/null 2>&1
-    expect_eq "no _relay id when config is $off" "$(jq -r '[.providerInstances|keys[]|select(endswith("_relay"))]|length' "$R")" 0
+    expect_eq "no _relay id when config is $off" "$(jq -r '.providerInstances|"\(has("claudeAgent_alpha")) \([keys[]|select(endswith("_relay"))]|length)"' "$R")" "true 0"
 done
 rm -f "$CFG"
 R="$T/off.json"; printf '{"providerInstances":{}}' > "$R"
 env T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R" >/dev/null 2>&1
-expect_eq "no _relay id with no config file" "$(jq -r '[.providerInstances|keys[]|select(endswith("_relay"))]|length' "$R")" 0
+expect_eq "no _relay id with no config file" "$(jq -r '.providerInstances|"\(has("claudeAgent_alpha")) \([keys[]|select(endswith("_relay"))]|length)"' "$R")" "true 0"
 
 printf '{"t3":{"relay_instances":["claudeAgent_alpha"]}}' > "$T/other.json"
 R="$T/seam.json"; printf '{"providerInstances":{}}' > "$R"
 env T3_PI_CONFIG="$T/other.json" T3_PI_RESOLVER="$T/resolver2.sh" T3_PI_PROFILES=alpha bash "$GEN" --apply --settings-file "$R" >/dev/null 2>&1
-expect_eq "T3_PI_CONFIG is not read" "$(jq -r '[.providerInstances|keys[]|select(endswith("_relay"))]|length' "$R")" 0
+expect_eq "T3_PI_CONFIG is not read" "$(jq -r '.providerInstances|"\(has("claudeAgent_alpha")) \([keys[]|select(endswith("_relay"))]|length)"' "$R")" "true 0"
 
 set_cfg '{"t3":{"relay_instances":["nope","claudeAgent_alpha"]}}'
 R="$T/unk.json"; printf '{"providerInstances":{}}' > "$R"
