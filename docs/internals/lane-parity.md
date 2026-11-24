@@ -202,6 +202,40 @@ Notes on the cells:
   enforced there too, so the hermes-main column is `tested`-green.
 - Any deny-guard with no lane proving test is `GAP` by construction.
 
+## T3 preview browser: the `previewBrowser` profile option
+
+A session can drive T3's preview browser to check its own change when its
+profile turns the option on. **Default: off** -- no shipped profile sets it.
+
+- **No lane guard denies a preview tool.** The Claude, Codex and Antigravity
+  guard chains (`guard-t3-thread-tools.sh`, `mcp-policy.sh`, the Antigravity
+  adapter) all allow the `mcp__t3-code__preview_*` tools. All 14 are proved
+  allowed on all three lanes by
+  `tested:scripts/t3/test-t3-guard-conformance.sh` (the list is read from the
+  registry, so a tool added there is checked on every lane) and the adapter
+  path by `tested:scripts/hooks/test-antigravity-adapter-e2e.sh`. The option
+  therefore tightens or relaxes nothing in a guard.
+- **What the option does.** In `scripts/lanes/plugin-profiles.json`, a
+  worker-shaped profile with `"previewBrowser": true` resolves with an
+  `mcp__t3-code__<tool>` allow rule for each name in the registry's
+  `previewBrowserTools`, so Claude does not prompt for them. A profile without
+  it (every profile today) gets no such rule. `bare`, `readiness` and the
+  chief and console profiles refuse it; the registry lint fails a non-boolean
+  value, a profile that is not worker-shaped, or a registry with no tool list.
+  Proved by `tested:scripts/lanes/tests/plugin-profiles.test.mjs`.
+- **Tool list.** `preview_act`, `preview_close`, `preview_dialog`,
+  `preview_evaluate`, `preview_list`, `preview_navigate`, `preview_open`,
+  `preview_recording_start`, `preview_recording_stop`, `preview_resize`,
+  `preview_set_appearance`, `preview_snapshot`, `preview_status`,
+  `preview_wait_for`. They were read from the T3 server's own tool listing in
+  its provider event log, not from a registration file, so a T3 release that
+  adds or renames a preview tool needs this list updated.
+- **Example: an e2e check through the preview.** Set `"previewBrowser": true`
+  on the worker profile the e2e session launches under (for example
+  `worker-e2e`), start it from a T3 thread, and have it call `preview_open`
+  on the dev server URL, `preview_wait_for` the page, then `preview_snapshot`
+  and quote the page read in its result.
+
 ## What `parity_guard.py` enforces under hermes (both engines)
 
 The contract side of the index: for each invariant DENY-guard (the six
