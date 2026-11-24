@@ -655,7 +655,6 @@ eq "provenance: a manifest missing its protocol is unreadable, not a crash" "$rc
 STUB_DIRTY=1 REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr2" --no-ledger --critics codex >/dev/null 2>&1
 eq "run: a CBS file edited during the sweep leaves the stamp unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr2/swept.json" 2>&1)" "False"
 
-# --- paired snapshot sweep: base and head from one pinned commit, one run, two rows ------------------------
 RP="$TMP/paired-repo"
 git clone -q "$RR" "$RP"
 rp() { git -C "$RP" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
