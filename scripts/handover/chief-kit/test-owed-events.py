@@ -119,7 +119,7 @@ class DueEvents(unittest.TestCase):
         self.settle_notification(step, [])
         # the owed ledger cannot edit a row: a changed owner is a new row that replaces the old one
         self.owe('close', '--id', step, '--key', 'HIMMEL-10210')
-        owner = self.owed_step('run the accepted action', 'proof')
+        owner = self.owed_step('run the accepted action', 'chief')
         result = self.run_events()
         notes = self.step_due()
         self.assertEqual(len(notes), 2, 'a changed owner produces exactly one new notification')
@@ -129,7 +129,7 @@ class DueEvents(unittest.TestCase):
         self.owe('close', '--id', notes[1]['id'], '--key', 'delivered')
         self.settle_notification(owner, [])
         self.owe('close', '--id', owner, '--key', 'HIMMEL-10210')
-        action = self.owed_step('run the replacement action', 'proof')
+        action = self.owed_step('run the replacement action', 'chief')
         result = self.run_events()
         notes = self.step_due()
         self.assertEqual(len(notes), 3, 'a changed action produces exactly one new notification')
@@ -151,6 +151,41 @@ class DueEvents(unittest.TestCase):
         self.assertEqual(result['pending'], [notes[1]['id']])
         self.assertEqual(result['stale_ids'], [new])  # the acknowledged old row is silent, though it stays open and overdue
         self.settle_notification(new, [notes[1]['id']])
+
+    def proof_wakes(self):
+        return [r for r in self.rows() if r.get('event') == 'proof-wake']
+
+    def test_a_windowed_proof_row_wakes_its_proof_worker_on_its_date_and_not_before(self):
+        due = '2026-11-20'
+        day = 1795132800
+        row = self.owed_step('HIMMEL-10210 PR #9: the 5-day count: owed → proof by ' + due, 'proof', due)
+        self.owe('add', '--chief', 'old-chief', '--kind', 'step', '--key', 'HIMMEL-10210', '--text', 'operator taps by ' + due,
+                 '--metadata', json.dumps({'actor': 'operator', 'action': 'next-step', 'due': due}))
+        brief = self.b / 'proof-wakes' / ('HIMMEL-10210-' + row + '.md')
+        before = self.run_events(now=day - 1)
+        self.assertEqual((before['proof_wakes'], self.proof_wakes(), brief.exists()), ([], [], False), 'the day before: no wake')
+        result = self.run_events(now=day)
+        wakes = self.proof_wakes()
+        self.assertEqual(len(wakes), 1, 'one wake on the window end date, none for the operator row')
+        self.assertEqual((wakes[0]['source_id'], wakes[0]['actor']), (row, 'chief'))
+        self.assertIn(wakes[0]['id'], result['pending'])
+        self.assertEqual(result['proof_wakes'], [str(brief)])
+        self.assertIn(str(brief), wakes[0]['text'])
+        text = brief.read_text()
+        for want in ('HIMMEL-10210', 'the 5-day count', due, 'read-only proof worker', 'owe.sh close', row):
+            self.assertIn(want, text)
+        again = self.run_events(now=day + 3600)
+        self.assertEqual((len(self.proof_wakes()), again['proof_wakes']), (1, [str(brief)]), 'the same row never wakes twice')
+        self.owe('close', '--id', wakes[0]['id'], '--key', 'launched')
+        later = self.run_events(now=day + 7200)
+        self.assertEqual((later['proof_wakes'], len(self.proof_wakes())), ([], 1), 'an acknowledged wake is silent')
+
+    def test_an_undated_or_closed_proof_row_never_wakes(self):
+        self.owe('add', '--chief', 'old-chief', '--kind', 'proof', '--key', 'HIMMEL-10210', '--text', 'an undated proof')
+        closed = self.owed_step('a proof already run', 'proof', '2026-11-16')
+        self.owe('close', '--id', closed, '--key', 'HIMMEL-10210')
+        self.assertEqual(self.run_events()['proof_wakes'], [])
+        self.assertEqual(self.proof_wakes(), [])
 
     def test_stale_ids_split_by_kind_and_their_union_keeps_the_order(self):
         step = self.step('2026-11-16')

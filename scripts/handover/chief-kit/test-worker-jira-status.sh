@@ -347,15 +347,24 @@ printf '{"ts":"t","event":"merge","key":"%s","pr":"12","contract":"no","result":
 fn "$K" --event wrapped --doc "$DOC"
 check "D4b: only the latest merge row counts -> D5c" "$(row rule)" D5c
 
-# --- D5c: a contract=no last merge keeps a wrapped ticket In Progress ---------------
-reset "In Progress"; owned WRAPPED 0
+# --- D5c: a contract=no last merge keeps a wrapped ticket In Progress while its lock is live ---------------
+reset "In Progress"; owned WRAPPED 11
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
 fn "$K" --event wrapped --doc "$DOC"
-check "D5c: a partial merge then WRAPPED is never To Do" "$(ntrans)" 0
+check "D5c: a partial merge then WRAPPED with a live lock is never To Do" "$(ntrans)" 0
 check "D5c: rule" "$(row rule)" D5c
 fn "$K" --event sweep
 check "D5c: nor does the next sweep demote it" "$(ntrans)" 0
+reset "In Progress"; owned WRAPPED 0
+printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
+fn "$K" --event wrapped --doc "$DOC"
+check "10955 D5c: a partial merge then WRAPPED with no live lock -> To Do" "$(moved)/$(row rule)" "transition $K To Do/D5c"
+contains "10955 D5c: the slipped ticket is named" "$(cat "$tmp/out")" "worker-jira-status: SLIPPED $K In Progress with no live lock (D5c) → To Do"
 reset "To Do"; owned WRAPPED 0
+printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"moved"}\n' "$K" >> "$LOG"
+fn "$K" --event sweep
+check "10955 D5c: a partial in To Do with no live lock stays To Do" "$(ntrans)/$(row rule)" 0/D5c
+reset "To Do"; owned WRAPPED 11
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"moved"}\n' "$K" >> "$LOG"
 fn "$K" --event sweep
 check "D5c: a partial left in To Do goes back to In Progress" "$(moved)" "transition $K In Progress"
@@ -365,7 +374,7 @@ printf '{"ts":"t","event":"merge","key":"%s","pr":"12","contract":"yes","result"
 fn "$K" --event wrapped --doc "$DOC"
 check "D5c: a later completes=yes merge row wins -> D6" "$(row rule)" D6
 # The funnel's own row under event merge carries no contract; it must not hide the contract row.
-reset "In Progress"; owned WRAPPED 0
+reset "In Progress"; owned WRAPPED 11
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","result":"moved","rule":"D3","from":"IN CI","to":"In Progress","dir":"back"}\n' "$K" >> "$LOG"
 fn "$K" --event wrapped --doc "$DOC"
@@ -381,7 +390,7 @@ fn "$K" --event merge --pr 11 --head abc
 check "a funnel row for the merge event is not written under event merge" "$(row event)" derive
 
 d5d_merge() { printf '{"ts":"t","event":"merge","key":"%s","pr":"11","repo":"octo/repo","contract":"no","result":"noop"}\n' "$K" >> "$LOG"; }
-reset "In Progress"; owned WRAPPED 0; d5d_merge
+reset "In Progress"; owned WRAPPED 11; d5d_merge
 printf '## Ticket coverage\n- parser half: done\n- cutover: deferred -> HIMMEL-9002\n' > "$FX/pr-body-11"
 fn "$K" --event wrapped --doc "$DOC"
 check "D5d: a wrapped partial handed off to another ticket moves to To Do" "$(moved)" "transition $K To Do"
@@ -396,17 +405,17 @@ mkdoc "$DOC" LIVE; echo 11 > "$FX/lock.rc"
 fn "$K" --event live --doc "$DOC"
 check "D5d: a live worker takes the ticket back to In Progress" "$(moved)/$(row rule)" "transition $K In Progress/D5"
 check "D5d: and the record no longer names the old owner" "$(jq -r '.owner // ""' "$REC")" ""
-reset "In Progress"; owned WRAPPED 0; d5d_merge
+reset "In Progress"; owned WRAPPED 11; d5d_merge
 printf 'Remaining: run the cutover, a chief step\n' > "$FX/pr-body-11"
 fn "$K" --event wrapped --doc "$DOC"
 check "D5d: a Remaining line naming a chief step moves to To Do" "$(moved)/$(row rule)" "transition $K To Do/D5d"
 check "D5d: the owner on record is the chief step" "$(jq -r .owner "$REC")" "chief step"
-reset "In Progress"; owned WRAPPED 0; d5d_merge
+reset "In Progress"; owned WRAPPED 11; d5d_merge
 printf 'Remaining: the second half of the parser\n' > "$FX/pr-body-11"
 fn "$K" --event wrapped --doc "$DOC"
 check "D5d: a partial with no readable owner stays D5c In Progress" "$(ntrans)/$(row rule)" 0/D5c
 d5d_remaining() {
-    reset "In Progress"; owned WRAPPED 0; d5d_merge
+    reset "In Progress"; owned WRAPPED 11; d5d_merge
     printf 'Remaining: %s\n' "$1" > "$FX/pr-body-11"
     fn "$K" --event wrapped --doc "$DOC"
 }
@@ -420,7 +429,7 @@ d5d_remaining "the cutover, owner: HIMMEL-9002"
 check "D5d: an owner: phrase names the owner" "$(row rule)/$(jq -r .owner "$REC")" D5d/HIMMEL-9002
 d5d_remaining "the cutover → HIMMEL-9003"
 check "D5d: an arrow phrase names the owner" "$(row rule)/$(jq -r .owner "$REC")" D5d/HIMMEL-9003
-reset "In Progress"; owned WRAPPED 0; d5d_merge
+reset "In Progress"; owned WRAPPED 11; d5d_merge
 printf 'Remaining: the second half stays on this ticket\n\n## Ticket coverage\n- ask one: deferred -> HIMMEL-9002\n- ask two: done\n' > "$FX/pr-body-11"
 fn "$K" --event wrapped --doc "$DOC"
 check "D5d: a Remaining line plus a coverage deferred arrow to another key stays D5c" "$(ntrans)/$(row rule)" 0/D5c
@@ -446,16 +455,20 @@ fn "$K" --event wrapped --doc "$DOC"
 check "D6: WRAPPED, no PR and no merge row -> To Do" "$(moved)" "transition $K To Do"
 check "D6: rule" "$(row rule)" D6
 check "D6: direction" "$(row dir)" back
-# --- D6n: a wrapped worker on a completes-no brief leaves an In Progress ticket In Progress ---
+# --- D6n: a wrapped worker on a completes-no brief goes To Do once its lock is free ---
 flagdoc() { # <yes|no|-> - DOC carries the brief's Completes ticket line above ## Results ("-" = no such line)
     { printf '# worker\n\n'; [ "$1" = - ] || printf '> **Completes ticket:** %s\n\n' "$1"
       printf '## Results (newest at the bottom)\n- 10:00 WRAPPED — x\n'; } > "$DOC"
 }
 reset "In Progress"; owned WRAPPED 0; flagdoc no
 fn "$K" --event wrapped --doc "$DOC"
-check "D6n: WRAPPED on a completes-no brief, In Progress, no PR, no merge row -> no transition" "$(ntrans)" 0
+check "10955 D6n: WRAPPED on a completes-no brief, In Progress, no PR, no merge row, no live lock -> To Do" "$(moved)" "transition $K To Do"
 check "D6n: rule" "$(row rule)" D6n
-check "D6n: the row is a noop" "$(row result)" noop
+check "10955 D6n: the row is a move" "$(row result)" moved
+contains "10955 D6n: the slipped ticket is named" "$(cat "$tmp/out")" "worker-jira-status: SLIPPED $K In Progress with no live lock (D6n) → To Do"
+reset "In Progress"; owned WRAPPED 11; flagdoc no
+fn "$K" --event wrapped --doc "$DOC"
+check "10955 D6n: the same doc with a live lock leaves In Progress alone" "$(ntrans)/$(row rule)/$(row result)" 0/D6n/noop
 reset "In Progress"; owned WRAPPED 0; flagdoc yes
 fn "$K" --event wrapped --doc "$DOC"
 check "D6n guard: completes yes still moves In Progress to To Do" "$(moved)" "transition $K To Do"
@@ -480,10 +493,10 @@ mkdir -p "$tmp/hard"
 printf '> **Completes ticket:** no\n\n## Results (newest at the bottom)\n- 10:00 WRAPPED — x\n' > "$tmp/hard/-f"
 ( cd "$tmp/hard" && bash "$SUT" "$K" --event wrapped --doc -f >"$tmp/out" 2>&1 )
 check "9323 a --doc path -f is read as the doc: wrapped on a completes-no brief, rule D6n" "$(row rule)" D6n
-check "9323 a --doc path -f: no transition" "$(ntrans)" 0
+check "9323 a --doc path -f: no live lock, so To Do (10955)" "$(moved)" "transition $K To Do"
 # --- D5c: a merged PR with no merge row keeps a wrapped ticket In Progress ---
 merged() { printf '%s\n' "$1" > "$FX/pr-merged.json"; } # the merged-PR list the stub gh returns
-reset "In Review"; owned WRAPPED 0
+reset "In Review"; owned WRAPPED 11
 merged "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"
 fn "$K" --event wrapped --doc "$DOC"
 check "D5c merged-no-row: a merged PR, no merge row, WRAPPED -> rule D5c, not D6" "$(row rule)" D5c
@@ -507,7 +520,7 @@ check "D5c merged-no-row: and makes no merged-PR gh call" "$(grep -c -- '--state
 rm -f "$FX/pr-merged.fail"
 # A first sweep over a ticket no funnel run has logged: its snapshot derive reads D6, which only
 # routes the key to the funnel; the funnel derives live and finds the merged PR, never To Do.
-reset "IN CI"; owned WRAPPED 0
+reset "IN CI"; owned WRAPPED 11
 merged "[{\"number\":81,\"title\":\"fix: [$K] shipped by hand\"}]"
 printf '%s\n' "$K" > "$FX/list.key"
 printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
@@ -520,11 +533,11 @@ check "D5c merged-no-row: a snapshot derive makes no merged-PR gh call (the funn
 reset "In Progress"; owned LIVE 11 0
 fn "$K" --event live --doc "$DOC"
 check "D5c merged-no-row: a non-D5c noop row is unchanged" "$(statusrows | tail -n 1 | jq -c 'del(.ts)')" "{\"event\":\"live\",\"key\":\"$K\",\"result\":\"noop\",\"rule\":\"D5\",\"from\":\"In Progress\"}"
-reset "In Progress"; owned WRAPPED 0
+reset "In Progress"; owned WRAPPED 11
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
 fn "$K" --event wrapped --doc "$DOC"
 check "D5c merged-no-row: a partial-merge D5c noop row is unchanged (no stage, no merged_pr)" "$(statusrows | tail -n 1 | jq -c 'del(.ts)')" "{\"event\":\"wrapped\",\"key\":\"$K\",\"result\":\"noop\",\"rule\":\"D5c\",\"from\":\"In Progress\"}"
-reset "In Progress"; owned WRAPPED 0
+reset "In Progress"; owned WRAPPED 11
 merged "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"
 fn "$K" --event wrapped --doc "$DOC"
 check "D5c merged-no-row: a ticket already In Progress is not moved" "$(ntrans)" 0
@@ -1004,7 +1017,7 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     else
         echo "skip - phase I5 b, d, f: no flock binary"
     fi
-    reset "To Do"; owned WRAPPED 0; labels '[]'; mergerow 11 no
+    reset "To Do"; owned WRAPPED 11; labels '[]'; mergerow 11 no
     printf '%s\n' "$K" > "$FX/list.key"
     printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
     bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1

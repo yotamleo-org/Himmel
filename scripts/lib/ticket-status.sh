@@ -61,7 +61,8 @@
 #       line with `owner: KEY` or an arrow to KEY, or naming a chief step, or an `owed -> chief|operator by
 #       YYYY-MM-DD` step, read from the merge row or the PR body): To Do, the owner in TS_D5D_OWNER
 #       (`chief by 2026-11-22` for an owed step)
-#   D5c no PR, the latest merge row contract=no  In Progress (a partial: work remains)
+#   D5c no PR, the latest merge row contract=no  To Do (a partial: work remains, nobody on it); In Progress only
+#       while the wrapped owner's doc still holds a live queue lock
 #       or, no merge row at all, a merged PR whose first [KEY] is the ticket
 #       (TS_STAGE=merged-no-row, TS_MERGED_PR); an unreadable merged list or merge-row
 #       filter is no-write + miss. D5c and D5d need a wrapped owner or no worker doc at all;
@@ -69,7 +70,8 @@
 #   D6  no PR, the owner WRAPPED or HALTED       To Do (the resume state)
 #       and no other recorded worker holds its lock
 #   D6n as D6, but the ticket is In Progress and the owner's brief says Completes ticket: no
-#       above ## Results: derived equals current, so no move
+#       above ## Results: To Do; In Progress (no move) only while the owner's doc still holds a live
+#       queue lock: no ticket is In Progress without a live worker
 #   D7  no PR, no worker doc, not at IN CI or no D5d/D5c   no-write
 #
 # Env: TICKET_STATUS_STATE_DIR (default ~/.himmel/state), WORKER_SESSION_JIRA_CLI (the Jira
@@ -845,11 +847,24 @@ _ts_brief_completes_no() {
     [ "$flag" = no ]
 }
 
-# _ts_derive_d6 <doc> — the wrapped worker with nothing else to hold the ticket: To Do (D6), except that
-# an In Progress ticket whose brief says Completes ticket: no stays where it is (D6n, a noop).
+# _ts_owner_lock_live <doc> — rc 0 while the doc holds its queue lock (rc 11, or rc 12 not STALE-DEAD); else no live lock.
+_ts_owner_lock_live() {
+    local out rc
+    [ -n "$1" ] || return 1
+    if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
+        out=$("$TICKET_STATUS_QUEUE_LOCK" status "$1" 2>/dev/null); rc=$?
+    else
+        out=$(bash "$_TS_LIB_DIR/../handover/queue-lock.sh" status "$1" 2>/dev/null); rc=$?
+    fi
+    [ "$rc" -eq 11 ] || { [ "$rc" -eq 12 ] && ! grep -q '^status: STALE-DEAD' <<<"$out"; }
+}
+
+# _ts_derive_d6 <doc> — the wrapped worker with nothing else to hold the ticket: To Do (D6). An In Progress
+# ticket whose brief says Completes ticket: no is D6n: To Do too, unless the owner still holds its lock.
 _ts_derive_d6() {
     if [ "$TS_J_STATUS" = "In Progress" ] && _ts_brief_completes_no "$1"; then
-        TS_DERIVED="In Progress"; TS_RULE=D6n
+        TS_RULE=D6n TS_DERIVED="To Do"
+        ! _ts_owner_lock_live "$1" || TS_DERIVED="In Progress"
     else
         TS_DERIVED="To Do"; TS_RULE=D6
     fi
@@ -926,19 +941,23 @@ ts_derive() {
         return 0
     fi
     if [ "$TS_WORKER_STATE" != wrapped ]; then TS_DERIVED="In Progress"; TS_RULE=D5
-    else _ts_derive_merged "$key" || _ts_derive_d6 "$doc"
+    else _ts_derive_merged "$key" "$doc" || _ts_derive_d6 "$doc"
     fi
 }
 
-# _ts_derive_merged <KEY> — rules D5d and D5c of a key with no open PR (an unreadable log or merged list is
-# no-write + miss). rc 1 = neither matched, nothing set.
+# _ts_derive_merged <KEY> [<owner doc>] — rules D5d and D5c of a key with no open PR (an unreadable log or merged
+# list is no-write + miss). D5c is In Progress only while the owner doc holds a live lock, else To Do.
+# rc 1 = neither matched, nothing set.
+_ts_d5c_status() {
+    if _ts_owner_lock_live "$1"; then TS_DERIVED="In Progress"; else TS_DERIVED="To Do"; fi
+}
 _ts_derive_merged() {
     local rc=0
     ts_partial_merge "$1" || rc=$?
     if [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
     elif [ "$rc" -eq 0 ]; then
         if _ts_d5d "$1" "$TS_ML_PR" "$TS_ML_REPO" "$TS_ML_OWED" "$TS_ML_OWED_DUE"; then TS_DERIVED="To Do"; TS_RULE=D5d
-        else TS_DERIVED="In Progress"; TS_RULE=D5c
+        else TS_RULE=D5c; _ts_d5c_status "${2:-}"
         fi
     else
         rc=0; ts_has_merge_row "$1" || rc=$?
@@ -948,7 +967,7 @@ _ts_derive_merged() {
         [ "$rc" -ne 2 ] || { _ts_no_write miss "" gh; return 0; }
         [ "$rc" -eq 0 ] || return 1
         if _ts_d5d "$1" "$TS_MERGED_PR"; then TS_DERIVED="To Do"; TS_RULE=D5d; TS_STAGE=merged-no-row
-        else TS_DERIVED="In Progress"; TS_RULE=D5c; TS_STAGE=merged-no-row
+        else TS_RULE=D5c; TS_STAGE=merged-no-row; _ts_d5c_status "${2:-}"
         fi
     fi
 }

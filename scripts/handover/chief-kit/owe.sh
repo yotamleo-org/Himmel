@@ -115,7 +115,7 @@ case "$CMD" in
         printf '%s' "$METADATA" | jq -e -s --arg kind "$KIND" '
               length == 1 and (.[0] | type == "object" and all(to_entries[];
                 . as $e | if (["evidence_path","source_doc","source_label","next_action","wake","capability","source_id","actual_status"] | index($e.key)) then ($e.value | type == "string")
-                elif $e.key == "event" then (["step-due","step-due-invalid","readiness-d24h","operator-digest"] | index($e.value)) != null
+                elif $e.key == "event" then (["step-due","step-due-invalid","proof-wake","readiness-d24h","operator-digest"] | index($e.value)) != null
                 elif $e.key == "due" then ($e.value | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))
                 elif (["issues","proof_rows"] | index($e.key)) then ($e.value | type == "array" and all(.[]; type == "string"))
                 elif $e.key == "owed_refs" then ($e.value | type == "array" and all(.[]; type == "string" and test("^o[1-9][0-9]*$")))

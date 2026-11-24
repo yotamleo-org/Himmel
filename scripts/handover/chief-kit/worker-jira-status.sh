@@ -22,6 +22,8 @@
 # change re-derives once; a second change defers), transitions, reads the
 # status back, updates the worker record and appends one outcome row to
 # status-events.jsonl (moved | noop | skip | deferred | miss | disabled).
+# A move of an In Progress ticket to To Do by rule D5c or D6n (its wrapped owner holds no
+# live lock) also prints `worker-jira-status: SLIPPED <KEY> In Progress with no live lock (<rule>) → To Do`.
 #
 # Best-effort by design: every failure prints a WARN on stderr and exits 0, so
 # a Jira or GitHub problem never blocks a worker; the whole run is bounded by
@@ -447,5 +449,8 @@ fi
 update_record "$to" "$from -> $to"
 row result=moved rule="$TS_RULE" from="$from" to="$to" dir="$dir" ${mnr_stage:+stage="$mnr_stage"} ${mnr_pr:+merged_pr="$mnr_pr"} ${TS_D5D_OWNER:+owner="$TS_D5D_OWNER"}
 mark_focus_dirty
+case "$from|$to|$TS_RULE" in
+    "In Progress|To Do|D5c"|"In Progress|To Do|D6n") echo "worker-jira-status: SLIPPED $KEY In Progress with no live lock ($TS_RULE) → To Do" ;;
+esac
 echo "worker-jira-status: $KEY $from -> $to ($TS_RULE)"
 finish

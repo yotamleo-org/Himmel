@@ -170,6 +170,14 @@ the chief's `close-wrapped-worker.sh` ends the session
 once the lock frees. A worker never idles: on an outside event, write `LIVE — HOLD-OUTSIDE pr=<n>` and WRAP with a resume brief; send the
 chief `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is open.
 
+**The live proof runs in this session.** After the merge, before `WRAPPED`: run
+`himmel-update` when the ticket's proof needs your change on the station, then run
+the brief's live-proof rows now and quote their output on the ticket. A proof is
+owed past `WRAPPED` only as `owed → proof by YYYY-MM-DD` (a real window: a 5-day
+count, the next nightly; its owed row wakes a proof worker on that date) or
+`owed → operator` / `Mac` / `VM`. The wrap gate refuses any other owed proof in
+your `WRAPPED` bullet or the ledger. [prose]
+
 **HALT / WRAP: TaskStop each live agent you spawned, then prove the
 subtree clean** with
 `bash scripts/handover/wrap-subtree-check.sh --queue-doc <doc>`: paste its

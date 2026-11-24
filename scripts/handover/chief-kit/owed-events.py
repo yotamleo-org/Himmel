@@ -4,6 +4,12 @@
 No dispatch hold or delivery side effect. A consumer acknowledges a notification
 with owe.sh close; the identity survives restart/succession and never reopens.
 
+An open proof row with a window end date (kind proof with no actor, or kind step
+with actor proof; its due, else the one `by YYYY-MM-DD` in its text) wakes on that
+date: one proof-wake notification in pending, and a read-only proof brief built from
+the row at <bucket>/proof-wakes/<KEY>-<id>.md, listed in proof_wakes. No session is
+launched here; the chief launches the brief the notification names.
+
 The `spool` verb writes the owed lines of a partial merge to the station spool, one
 JSON row per line, every access under an exclusive flock. A run given --spool,
 --project, --chief and a --handover-root that holds the bucket first drains that
@@ -32,6 +38,14 @@ HERE = Path(__file__).resolve().parent
 SPOOL_FIELDS = dict(owed=('ts', 'key', 'pr', 'repo', 'who', 'due', 'ask', 'text', 'identity', 'metadata'),
                     unread=('ts', 'key', 'pr', 'repo', 'identity'), claim=('ts', 'identity', 'bucket'))
 UNREAD_TEXT = 'the owed lines of this partial merge could not be read: read the PR body and add a row per owed line'
+PROOF_BRIEF = '''# {key} proof wake ({id}, window end {due})
+
+> **Profile:** read-only proof worker. Run the owed live proof below on the station, quote its output on {key},
+> then close the owed row: `bash scripts/handover/chief-kit/owe.sh close --bucket {bucket} --id {id} --key {key}`.
+> No code change, no Jira transition by hand; a failing proof is a FINDING to the chief.
+
+Owed row {id}: {text}
+'''
 
 
 def utc_stamp():
@@ -307,7 +321,7 @@ def run(bucket, now, readiness, stale_seconds=14400, spool=None, project=None, c
     rows = json.loads(owe('list', '--all', '--json'))
     by_identity = {r.get('identity'): r for r in rows if r.get('identity')}
     out = dict(stale_ids=[], stale_ticket_ids=[], stale_step_ids=[], invalid_ids=[], reminders=[], operator_digest=[], pending=[], summary='',
-               spool_bad=spool_bad)
+               spool_bad=spool_bad, proof_wakes=[])
     opened = [r for r in rows if not r['closed']]
     if opened:
         age = max(0, now - min(r['epoch'] for r in opened)) // 60
@@ -323,8 +337,31 @@ def run(bucket, now, readiness, stale_seconds=14400, spool=None, project=None, c
         return owe('add', '--chief', 'chief', '--kind', 'ruling', '--text', text, '--identity', identity,
                    '--metadata-stdin', metadata=metadata)
 
+    def proof_wake(row):
+        dates = re.findall(r'\bby (\d{4}-\d{2}-\d{2})\b', row['text'])
+        due = row.get('due') or (dates[0] if len(dates) == 1 else '')
+        try:
+            if not row.get('key') or today < datetime.date.fromisoformat(due):
+                return
+        except (ValueError, TypeError):
+            return
+        brief = Path(bucket) / 'proof-wakes' / ('%s-%s.md' % (row['key'], row['id']))
+        if not brief.exists():
+            brief.parent.mkdir(exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=str(brief.parent), prefix='.proof-wake.')
+            with os.fdopen(fd, 'w') as stream:
+                stream.write(PROOF_BRIEF.format(key=row['key'], id=row['id'], due=due, text=row['text'], bucket=bucket))
+            os.replace(tmp, brief)
+        item = notify('proof-wake', row['id'], 'chief', '%s proof-wake: launch a read-only proof worker on %s: %s'
+                      % (row['key'], brief, row['text']), [row['id'], due])
+        if item:
+            out['pending'].append(item)
+            out['proof_wakes'].append(str(brief))
+
     today = datetime.datetime.fromtimestamp(now, datetime.timezone.utc).date()
     for row in opened:
+        if (row['kind'] == 'proof' and 'actor' not in row) or (row['kind'] == 'step' and row.get('actor') == 'proof'):
+            proof_wake(row)
         if row['kind'] == 'ticket' and not row.get('key') and now - row['epoch'] > stale_seconds:
             out['stale_ids'].append(row['id'])
             out['stale_ticket_ids'].append(row['id'])
