@@ -183,7 +183,7 @@ export function pluginStateDir(env: Record<string, string>, home = process.env.H
   return env.TELEGRAM_STATE_DIR ?? join(env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"), "channels", "telegram");
 }
 
-function envFile(stateDir: string): { ownPoller: boolean; botId: string | null } {
+function envFile(stateDir: string): { ownPoller: boolean; botId: string | null; missing: boolean; unreadable: boolean } {
   let ownPoller = false, botId: string | null = null;
   try {
     for (const raw of fs.readFileSync(join(stateDir, ".env"), "utf8").split("\n")) {
@@ -192,8 +192,11 @@ function envFile(stateDir: string): { ownPoller: boolean; botId: string | null }
       const m = BOT_TOKEN_WORD.exec(line);
       if (m) botId ??= m[1];
     }
-  } catch {}
-  return { ownPoller, botId };
+  } catch (e) {
+    const missing = (e as NodeJS.ErrnoException).code === "ENOENT";
+    return { ownPoller, botId, missing, unreadable: !missing };
+  }
+  return { ownPoller, botId, missing: false, unreadable: false };
 }
 
 const SWITCH_KEYS = ["TELEGRAM_OWN_POLLER", "TELEGRAM_STATE_DIR", "CLAUDE_CONFIG_DIR"];
@@ -214,7 +217,10 @@ export function procFromEnv(pid: number, words: string[] | null, home = process.
     ? [pluginStateDir(env, home)]
     : [pluginStateDir({}, home), ...(values.get("TELEGRAM_STATE_DIR") ?? []), ...(values.get("CLAUDE_CONFIG_DIR") ?? []).map(c => pluginStateDir({ CLAUDE_CONFIG_DIR: c }, home))];
   const files = dirs.map(envFile);
-  if (env.TELEGRAM_OWN_POLLER !== "1" && !files.some(f => f.ownPoller)) return { pid, ownPoller: false, botIds: [] };
+  if (env.TELEGRAM_OWN_POLLER !== "1" && !files.some(f => f.ownPoller)) {
+    const blind = files.some(f => f.unreadable || (!exact && f.missing));
+    return { pid, ownPoller: blind ? "unknown" : false, botIds: [] };
+  }
   for (const f of files) if (f.botId) botIds.push(f.botId);
   return { pid, ownPoller: true, botIds };
 }

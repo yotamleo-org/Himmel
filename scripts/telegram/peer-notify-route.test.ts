@@ -200,6 +200,20 @@ test("hold rules: a state-dir word inside another value cannot redirect the .env
   expect(holdingProc([procFromEnv(47, ["PATH=/usr/bin", "TELEGRAM_OWN_POLLER=1", "TELEGRAM_STATE_DIR=/a", "TELEGRAM_STATE_DIR=/b"], home)], [], OP_BOT)).toBe(true);
 });
 
+test("hold rules: a state-dir .env that cannot be read leaves the switch unknown, decided by bot.pid", () => {
+  const unreadable = tmp("peer-notify-state-bad-");
+  fs.mkdirSync(join(unreadable, ".env"));
+  expect(procFromEnv(9, ["PATH=/usr/bin", `TELEGRAM_STATE_DIR=${unreadable}`], "/nonexistent").ownPoller).toBe("unknown");
+  expect(procFromEnv(10, ["PATH=/usr/bin", `TELEGRAM_STATE_DIR=${tmp("peer-notify-state-none-")}`], "/nonexistent").ownPoller).toBe(false);
+  const root = pluginFixture(join(tmp("peer-notify-mac5-"), "plugins/cache/himmel/telegram-himmel/0.0.23"));
+  const spaced = join(tmp("peer-notify-sp-"), "my state");
+  fs.mkdirSync(spaced);
+  fs.writeFileSync(join(spaced, ".env"), `TELEGRAM_OWN_POLLER=1\nTELEGRAM_BOT_TOKEN=${OP_BOT}:x\n`);
+  const [p] = macProcsFrom(`  49 bun server.ts\n`, () => root, () => `bun server.ts PATH=/usr/bin TELEGRAM_STATE_DIR=${spaced}`, "/nonexistent");
+  expect(p.ownPoller).toBe("unknown");
+  expect(holdingProc([p], [49], OP_BOT)).toBe(true);
+});
+
 test("hold rules: a macOS ps -E line with no environment is unknown, decided by bot.pid", () => {
   const root = pluginFixture(join(tmp("peer-notify-mac4-"), "plugins/cache/himmel/telegram-himmel/0.0.23"));
   const [p] = macProcsFrom(`  48 bun server.ts\n`, () => root, () => "bun server.ts");
