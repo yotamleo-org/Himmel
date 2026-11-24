@@ -98,14 +98,15 @@ deny_text() {
 
 mkdir -p "$T/stubs" "$T/cli" "$T/mirror-j"
 LINT_LOG="$T/lint.log"; LINT_MAP="$T/lint.map"; LINT_STUB="$T/stubs/lint-map.sh"
+GC_MARK="2997.$$"
 {
-    printf '#!/usr/bin/env bash\nLOG=%q MAP=%q\n' "$LINT_LOG" "$LINT_MAP"
+    printf '#!/usr/bin/env bash\nLOG=%q MAP=%q GC=%q\n' "$LINT_LOG" "$LINT_MAP" "$GC_MARK"
     cat <<'STUB'
 printf '%s\t%s\n' "$#" "$*" >> "$LOG"
 row=$(awk -F'\t' -v b="$(basename "${1:-}")" '$1==b{f=$0} $1=="*"{d=$0} END{print (f!=""?f:d)}' "$MAP")
 IFS=$'\t' read -r _ rc slp gc line <<< "$row"
 [ "$line" = "-" ] || printf '%b\n' "${line//<c>/${1:-}}" >&2
-[ "$gc" = 1 ] && { sleep 2997 & }
+[ "$gc" = 1 ] && { sleep "$GC" & }
 [ "$slp" = "-" ] || sleep "$slp"
 exit "$rc"
 STUB
@@ -791,7 +792,7 @@ setmap "$(basename "$C1")" 1 - 0 'brief-lint: <c>: no Prior art'
 : > "$LINT_LOG"
 timed "10776 M5: stuck newer sleeps past the budget, fixable older unreached -> BLOCKED allowed" allow 10 "$APPEND"
 if [ "$(lint_runs)" = 1 ]; then ok "10776 M5/O1: the second candidate was unlinted (one lint run, one budget)"; else bad "10776 M5/O1: lint runs: $(lint_runs)"; fi
-pkill -f 'sleep 2997' 2>/dev/null || true
+pkill -f "sleep $GC_MARK" 2>/dev/null || true
 
 echo "-- A1: the hook's lint call is one path and no flag --"
 fresh
@@ -867,13 +868,13 @@ resume_doc "$C1" yes
 setmap "$(basename "$C1")" 0 30 1
 timed "10776 W1: a lint that hangs with a grandchild -> block" block 10 "$LS"
 has "10776 W1: the deny names the deadline" "did not answer" "$(deny_text "$LS")"
-if pgrep -f 'sleep 2997' >/dev/null 2>&1; then bad "10776 W1: a stub process outlived the hook"; pkill -f 'sleep 2997'; else ok "10776 W1: no stub process remains"; fi
+if pgrep -f "sleep $GC_MARK" >/dev/null 2>&1; then bad "10776 W1: a stub process outlived the hook"; pkill -f "sleep $GC_MARK"; else ok "10776 W1: no stub process remains"; fi
 timed "10776 W1.pc: at an auto PreCompact -> block within 7 s" block 7 "$(pc_call)"
-pkill -f 'sleep 2997' 2>/dev/null || true
+pkill -f "sleep $GC_MARK" 2>/dev/null || true
 resume_doc "$C2" yes; age "$C2" 10
 setmap "$(basename "$C2")" 0 30 1
 timed "10776 W2: two hanging candidates -> block within 10 s" block 10 "$LS"
-pkill -f 'sleep 2997' 2>/dev/null || true
+pkill -f "sleep $GC_MARK" 2>/dev/null || true
 fresh
 resume_doc "$C1" yes
 check "10776 W1.ctl: a stub answering 0 at once -> allow" allow "$LS"
@@ -882,7 +883,7 @@ n=0; while [ "$n" -lt 60 ]; do : > "$DIR/PROJ-1-N$((900 + n))b-x-RESUME.md"; n=$
 resume_doc "$C1" yes
 setmap "$(basename "$C1")" 0 30 1
 timed "10776 W3: 60 off-pattern RESUME files plus one hanging candidate -> within 10 s" block 10 "$LS"
-pkill -f 'sleep 2997' 2>/dev/null || true
+pkill -f "sleep $GC_MARK" 2>/dev/null || true
 
 echo "-- D7: the primary's linter, never the worktree's copy --"
 fresh
