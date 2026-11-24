@@ -607,7 +607,9 @@ signed tap, like every draft. The script refuses, and queues nothing, when:
 - the peer is not in peers.json (`unknown-peer`);
 - the poller's `poller.pid` or the operator bot's `notify/bot.code` does not
   show a live process running this checkout's peer-bridge code (`poller-stale`,
-  `operator-bot-stale`);
+  `operator-bot-stale`). The operator bot writes `bot.code` when its peer-notify
+  route starts, only once peers.json loads and its token is the operator bot's;
+  restart the bot after a pull so the review can render;
 - the kind is not `status` or `info`, or the text is empty or not one line;
 - the egress rules refuse the text under corpus `chief-tell`.
 

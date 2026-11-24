@@ -27,6 +27,8 @@ const WITH_ROW = {
   ],
 };
 
+const NO_ROW = { default: "deny", rules: WITH_ROW.rules.filter(r => r.corpus !== "chief-tell") };
+
 type Home = ReturnType<typeof newHome>;
 function newHome() {
   const home = mkdtempSync(join(tmpdir(), "peer-tell-"));
@@ -202,9 +204,10 @@ test("codeState is fresh only for a live pid with its start and our code; stale 
   put("{"); expect(codeState(f)).toBe("absent");
 });
 
-test("the real matrix refuses a chief-tell draft until its row lands, and no matrix row names unknown-source", async () => {
+test("the real matrix allows chief-tell, a matrix without its row refuses it, and no matrix row names unknown-source", async () => {
   const h = newHome();
-  await refused(h, info, 2, "refused: egress-matrix", {}, {});
+  await refused(h, info, 2, "refused: egress-matrix", {}, { matrix: NO_ROW });
+  expect((await tell(h, info, {}, {})).code).toBe(4);
   const peer = readPeersFile(join(h.C, "peers.json")).peers.example;
   for (const corpus of ["unknown-source"] as const) {
     expect(await checkOutbound("hello", { peer, kind: "info", isRoot: true, isTemplate: false, himmelRoot: REPO, corpus, matrix: loadMatrix() })).toEqual({ ok: false, rule: "egress-matrix" });
@@ -275,12 +278,14 @@ test("a chief draft with no tap, an expired draft and a non-operator tap send no
   expect(b.sent).toHaveLength(0);
 });
 
-test("the real matrix refuses a chief draft at the poller, and an unknown source is refused at tap and at recovery", async () => {
+test("a matrix without the chief-tell row refuses a chief draft at the poller, and under the real matrix an unknown source is refused at tap and at recovery", async () => {
+  const closed = newHome();
+  const noRow = await bridge(closed, NO_ROW);
+  const name = submitSpool(closed.peerDir, { type: "draft", source: "chief", kind: "info", text: "hello", session: SID } as any);
+  await noRow.poller.drainSpool();
+  expect(noRow.result(name)).toEqual({ ok: false, rule: "egress-matrix" });
   const h = newHome();
   const real = await bridge(h, loadMatrix());
-  const name = submitSpool(h.peerDir, { type: "draft", source: "chief", kind: "info", text: "hello", session: SID } as any);
-  await real.poller.drainSpool();
-  expect(real.result(name)).toEqual({ ok: false, rule: "egress-matrix" });
   expect((real.poller as any).corpusOf("bogus")).toBe("unknown-source");
   expect((real.poller as any).corpusOf("chief")).toBe("chief-tell");
   const store = (id: string) => new Chain().append(join(h.peerDir, "outbox.jsonl"), { kind: "draft", id, source: "bogus", msgKind: "info", replyTo: null, text: "x", spool: id + ".json", deadline: real.c.t + 60_000, ts: Math.floor(real.c.t / 1000) });
