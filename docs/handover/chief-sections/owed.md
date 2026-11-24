@@ -19,7 +19,8 @@ at a handover; the ledger is carried by the tick, the HANDOFF and the queue fold
   key): the close writes that comment itself through `proof-comment.sh`, reads it back, and only then
   appends the close row; a comment that cannot be written or read back exits 5 and the row stays open.
   A `validate-proof` row and a decision close with `outcome` metadata are the chief's decision path
-  and need none; a `step` row owed to `proof` takes the same flags. A Results bullet
+  and need none; a `step` row owed to `proof` is closed without them by the chief's proof decision
+  and takes the same flags when a proof worker closes it by hand. A Results bullet
   `PROOF <KEY> <row-id> PASS|FAIL <YYYY-MM-DD> <artifact> [note]` (or `LIVE-PROOF`) written with
   `append-results.sh` in a chief doc is posted to `<KEY>` the same way before it is written (a malformed
   one exits 8, a ticket write that fails exits 9, and neither writes the bullet). **A plan or spec gate that

@@ -219,10 +219,11 @@ case "$CMD" in
         [ -n "$ID" ] || usage
         case "$KEY" in ''|*[[:space:]]*|*$'\037'*) echo "owe: close needs --key (a ticket key, sha or decision id), one word" >&2; exit 2 ;; esac
         prow=""
-        if [ -s "$F" ] && ledger_ok; then
+        if [ -s "$F" ]; then
+            ledger_ok || { echo "owe: $F is unreadable" >&2; exit 4; }
             prow="$(jq -rs --arg id "$ID" '([.[] | select(.op == "close") | .ref]) as $c
                 | [.[] | select(.op == "add" and .id == $id and ($c | index($id) | not))] | .[0] // empty
-                | [.kind, (.action // ""), (.key // "")] | join("\u001f")' "$F")" || prow=""
+                | [.kind, (.action // ""), (.key // "")] | join("\u001f")' "$F")" || { echo "owe: $F is unreadable" >&2; exit 4; }
         fi
         if [ -n "$prow" ]; then
             IFS=$'\037' read -r pkind pact pkey <<< "$prow"
