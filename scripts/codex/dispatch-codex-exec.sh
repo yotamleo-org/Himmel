@@ -142,6 +142,9 @@ EXEC_TIMEOUT="${CODEX_EXEC_TIMEOUT:-1800}"
 # shellcheck source=../lib/proc-tree.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/proc-tree.sh"
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/prim.sh"
 
 usage() {
     echo "usage: dispatch-codex-exec.sh --worktree <path> [--shared-branch <branch>] [--stdin-brief] [codex exec args...]" >&2
@@ -299,7 +302,8 @@ fi
 # target lives outside it. Dispatch uses the PHYSICAL path too.
 WT_ABS="$(cd "$WORKTREE" 2>/dev/null && pwd -P)" || { echo "dispatch-codex-exec.sh: cannot resolve worktree: $WORKTREE" >&2; exit 2; }
 if [ -n "$REVIEW_SCRATCH" ]; then
-    [ -z "$(ls -A "$WT_ABS" 2>/dev/null)" ] || { echo "dispatch-codex-exec.sh: --review-scratch needs an EMPTY directory: $WT_ABS" >&2; exit 2; }
+    SCRATCH_ENTRIES="$(ls -A "$WT_ABS" 2>&1)" || { echo "dispatch-codex-exec.sh: cannot list the --review-scratch directory: $WT_ABS" >&2; exit 2; }
+    [ -z "$SCRATCH_ENTRIES" ] || { echo "dispatch-codex-exec.sh: --review-scratch needs an EMPTY directory: $WT_ABS" >&2; exit 2; }
 else
     case "$WT_ABS" in
         */.claude/worktrees/*) ;;
@@ -922,9 +926,9 @@ done
 # empty pipe held open by a tool harness is just as unbounded as a terminal.
 if [ -n "$REVIEW_SCRATCH" ]; then
     REVIEW_AUTH="${CODEX_HOME:-$HOME/.codex}/auth.json"
-    if ! REVIEW_HOME="$(mktemp -d "${TMPDIR:-/tmp}/codex-review-home.XXXXXX" 2>/dev/null)" || [ -z "$REVIEW_HOME" ]; then  # prim-ok: private 0700 dir, removed by the EXIT trap
+    if ! REVIEW_HOME="$(tmpdir 2>/dev/null)" || [ -z "$REVIEW_HOME" ]; then
         REVIEW_HOME=""
-        echo "dispatch-codex-exec.sh: cannot create the isolated CODEX_HOME for --review-scratch (mktemp failed) - refusing" >&2
+        echo "dispatch-codex-exec.sh: cannot create the isolated CODEX_HOME for --review-scratch (tmpdir failed) - refusing" >&2
         exit 2
     fi
     chmod 700 "$REVIEW_HOME"

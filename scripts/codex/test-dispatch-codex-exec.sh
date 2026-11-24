@@ -1549,10 +1549,14 @@ if [ "$REVIEW_HOME_SEEN" != "$REAL_HOME" ] && [ "$REVIEW_HOME_SEEN" != "unset" ]
 else
   fail "20f CODEX_HOME=$REVIEW_HOME_SEEN"
 fi
-if grep -q 'mcp_servers\|plugins' "$TMP/review.config"; then
-  fail "20g the station's MCP servers or browser plugin are loaded: $(cat "$TMP/review.config")"
-else
+set +e
+grep -q 'mcp_servers\|plugins' "$TMP/review.config" 2>/dev/null
+GREP_RC=$?
+set -e
+if [ -r "$TMP/review.config" ] && [ "$GREP_RC" -eq 1 ]; then
   pass "20g the station's MCP servers and browser plugin are not loaded"
+else
+  fail "20g the station's MCP servers or browser plugin are loaded, or the captured config is unreadable (grep rc=$GREP_RC): $(cat "$TMP/review.config" 2>&1)"
 fi
 assert_eq "20h auth.json is linked from the station's home" "$REAL_HOME/auth.json" "$(cat "$TMP/review.auth")"
 if [ -e "$REVIEW_HOME_SEEN" ]; then fail "20i the isolated home was not removed: $REVIEW_HOME_SEEN"; else pass "20i the isolated home is removed after the run"; fi
