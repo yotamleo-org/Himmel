@@ -61,13 +61,6 @@
 # same Bash, file-tool and apply_patch routes as project.conf. Approvals come from
 # the operator's Telegram approve reply and the allowlist is operator-edited, so a
 # worker that writes either file could approve its own review.
-# ALSO GUARDS ~/.himmel/state/api-credit/roles.json (the API account role map) and
-# the roles.json beside HIMMEL_API_CREDIT_CONFIG, on the same Bash, file-tool and
-# apply_patch routes. The map chooses which paid account serves which role, so
-# only the operator maps roles (the config UI, or `node scripts/lib/api-roles.mjs
-# write` at their own prompt). A Bash command naming api-roles.mjs followed by
-# `write` is refused too: a text match with a ceiling (a renamed copy or an
-# indirect spelling is not caught), a speed bump like the rest of this hook.
 #
 # FAIL MODE: fail-closed only for its one subject. A payload it cannot parse is
 # scanned as raw text and denied when it names the file; otherwise allowed
