@@ -95,6 +95,52 @@ got=$(HIMMEL_SECRETS_KEYRING=off ubuntu_vm_user=u ubuntu_vm_pass=p VBOXMANAGE_PA
     "$T7_STUBS" "$LIB_DIR_NATIVE/../machine-setup/ubuntu-vm-setup.py" 2>/dev/null)
 assert_eq "T7 ubuntu-vm-setup.py vboxmanage() runs the resolved VBoxManage" "0 fake VBoxManage --version" "$got"
 
+T8_STUB="$TMP/t8-vboxmanage"
+cat >"$T8_STUB" <<'EOF'
+#!/bin/sh
+echo "$*" >> "$T8_LOG"
+st=$(cat "$T8_STATE")
+case "$1" in
+    showvminfo) echo "VMState=\"$st\"" ;;
+    controlvm)
+        if [ "$st" != running ]; then echo "VBoxManage: error: Invalid machine state: $st (must be Running)"; exit 1; fi
+        echo poweroff > "$T8_STATE" ;;
+    discardstate)
+        if [ "$st" != saved ]; then echo "not saved"; exit 1; fi
+        echo poweroff > "$T8_STATE" ;;
+    snapshot)
+        if [ "$st" != poweroff ]; then echo "VM not powered off: $st"; exit 1; fi
+        echo restored ;;
+esac
+exit 0
+EOF
+chmod +x "$T8_STUB"
+vbox_call() {
+    T8_LOG="$TMP/t8.log" T8_STATE="$TMP/t8.state" VBOXMANAGE_PATH="$T8_STUB" "$PYTHON3" -c \
+        "import sys; sys.path.insert(0, sys.argv[1]); import vbox; $1" "$LIB_DIR_NATIVE" 2>&1
+}
+export T8_LOG="$TMP/t8.log" T8_STATE="$TMP/t8.state"
+
+echo saved > "$T8_STATE"; : > "$T8_LOG"
+t8_rc=0; t8_out=$(vbox_call "vbox.power_off('vm1')") || t8_rc=$?
+assert_eq "T8 power_off of a saved VM succeeds" "0 poweroff" "$t8_rc $(cat "$T8_STATE")"
+case "$t8_out" in *"discarded the saved session"*) t8_msg=yes ;; *) t8_msg=no ;; esac
+assert_eq "T8 power_off says it discarded the saved session" "yes" "$t8_msg"
+case "$(cat "$T8_LOG")" in *"controlvm"*) t8_ctl=yes ;; *) t8_ctl=no ;; esac
+assert_eq "T8 power_off of a saved VM never runs controlvm" "no" "$t8_ctl"
+
+echo saved > "$T8_STATE"; : > "$T8_LOG"
+t9_rc=0; t9_out=$(vbox_call "vbox.restore_snapshot('vm1', 'snap1')") || t9_rc=$?
+case "$(cat "$T8_LOG")" in *"snapshot vm1 restore snap1"*) t9_restore=yes ;; *) t9_restore=no ;; esac
+assert_eq "T9 restore_snapshot from saved succeeds and restores" "0 yes" "$t9_rc $t9_restore"
+case "$t9_out" in *"discarded the saved session"*) t9_msg=yes ;; *) t9_msg=no ;; esac
+assert_eq "T9 restore_snapshot says it discarded the saved session" "yes" "$t9_msg"
+
+echo poweroff > "$T8_STATE"; : > "$T8_LOG"
+vbox_call "vbox.power_off('vm1')" >/dev/null
+case "$(cat "$T8_LOG")" in *discardstate*) t10_disc=yes ;; *) t10_disc=no ;; esac
+assert_eq "T10 power_off of a powered-off VM discards nothing" "no" "$t10_disc"
+
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"
     exit 0
