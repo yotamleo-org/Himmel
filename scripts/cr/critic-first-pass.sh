@@ -881,6 +881,7 @@ while [ "$_attempt" -lt 3 ]; do
     rc=$?
     # a skip is a decision, not a failure: no retry, no raw log, no score row
     [ "$rc" -eq 5 ] && exit 5
+    [ "$provider" = claude-api ] && [ "$rc" -eq 10 ] && exit 10
     # a run that reached the subscription is never retried: a retry would spend it again
     [ -e "$pf.sub-used" ] && exit 1
     _trimmed="$(printf '%s' "$raw" | tr -d '[:space:]')"
