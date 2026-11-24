@@ -847,24 +847,28 @@ _ts_brief_completes_no() {
     [ "$flag" = no ]
 }
 
-# _ts_owner_lock_live <doc> — rc 0 while the doc holds its queue lock (rc 11, or rc 12 not STALE-DEAD); else no live lock.
-_ts_owner_lock_live() {
+# _ts_by_owner_lock <doc> — In Progress while the doc holds its lock (rc 11, 12 not STALE-DEAD), To Do with none, else miss stage=lock.
+_ts_by_owner_lock() {
     local out rc
-    [ -n "$1" ] || return 1
+    [ -n "$1" ] || { TS_DERIVED="To Do"; return 0; }
     if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
         out=$("$TICKET_STATUS_QUEUE_LOCK" status "$1" 2>/dev/null); rc=$?
     else
         out=$(bash "$_TS_LIB_DIR/../handover/queue-lock.sh" status "$1" 2>/dev/null); rc=$?
     fi
-    [ "$rc" -eq 11 ] || { [ "$rc" -eq 12 ] && ! grep -q '^status: STALE-DEAD' <<<"$out"; }
+    case "$rc" in
+        0) TS_DERIVED="To Do" ;;
+        11) TS_DERIVED="In Progress" ;;
+        12) if grep -q '^status: STALE-DEAD' <<<"$out"; then TS_DERIVED="To Do"; else TS_DERIVED="In Progress"; fi ;;
+        *) _ts_no_write miss "" lock ;;
+    esac
 }
 
 # _ts_derive_d6 <doc> — the wrapped worker with nothing else to hold the ticket: To Do (D6). An In Progress
 # ticket whose brief says Completes ticket: no is D6n: To Do too, unless the owner still holds its lock.
 _ts_derive_d6() {
     if [ "$TS_J_STATUS" = "In Progress" ] && _ts_brief_completes_no "$1"; then
-        TS_RULE=D6n TS_DERIVED="To Do"
-        ! _ts_owner_lock_live "$1" || TS_DERIVED="In Progress"
+        TS_RULE=D6n; _ts_by_owner_lock "$1"
     else
         TS_DERIVED="To Do"; TS_RULE=D6
     fi
@@ -948,16 +952,13 @@ ts_derive() {
 # _ts_derive_merged <KEY> [<owner doc>] — rules D5d and D5c of a key with no open PR (an unreadable log or merged
 # list is no-write + miss). D5c is In Progress only while the owner doc holds a live lock, else To Do.
 # rc 1 = neither matched, nothing set.
-_ts_d5c_status() {
-    if _ts_owner_lock_live "$1"; then TS_DERIVED="In Progress"; else TS_DERIVED="To Do"; fi
-}
 _ts_derive_merged() {
     local rc=0
     ts_partial_merge "$1" || rc=$?
     if [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
     elif [ "$rc" -eq 0 ]; then
         if _ts_d5d "$1" "$TS_ML_PR" "$TS_ML_REPO" "$TS_ML_OWED" "$TS_ML_OWED_DUE"; then TS_DERIVED="To Do"; TS_RULE=D5d
-        else TS_RULE=D5c; _ts_d5c_status "${2:-}"
+        else TS_RULE=D5c; _ts_by_owner_lock "${2:-}"
         fi
     else
         rc=0; ts_has_merge_row "$1" || rc=$?
@@ -967,7 +968,7 @@ _ts_derive_merged() {
         [ "$rc" -ne 2 ] || { _ts_no_write miss "" gh; return 0; }
         [ "$rc" -eq 0 ] || return 1
         if _ts_d5d "$1" "$TS_MERGED_PR"; then TS_DERIVED="To Do"; TS_RULE=D5d; TS_STAGE=merged-no-row
-        else TS_RULE=D5c; TS_STAGE=merged-no-row; _ts_d5c_status "${2:-}"
+        else TS_RULE=D5c; TS_STAGE=merged-no-row; _ts_by_owner_lock "${2:-}"
         fi
     fi
 }

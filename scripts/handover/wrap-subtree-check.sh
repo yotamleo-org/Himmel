@@ -26,7 +26,7 @@
 # window end date or outside actor: <row>` rc 1. Read are that WRAPPED bullet (each
 # `owed → WHO` needs ` by YYYY-MM-DD`, or WHO operator, Mac or VM) and the open rows of
 # <dir of the doc>/owed.jsonl keyed to the doc's ticket that owe a proof (kind proof
-# with no actor, or kind step with actor proof), each needing a due or a by-date in its
+# with no actor, or kind step with actor proof), each needing a calendar due, else one by-date in its
 # text. An absent ledger is no rows; an unreadable doc or ledger is `WITHHELD: cannot read`
 # rc 2 (fail-closed).
 # Without a pid the session is the nearest ancestor of this script whose argv0
@@ -322,7 +322,7 @@ if [ "$count" -eq 0 ] && [ -n "$qdoc" ]; then
             while IFS= read -r o; do
                 [ -n "$o" ] || continue
                 case "$o" in
-                    *" by "*) ;;
+                    *" by "*) jq -en --arg d "${o##* by }" '(try (($d + "T00:00:00Z") | fromdateiso8601 | todate[0:10]) catch "") == $d' >/dev/null || owed_refusal "$o" ;;
                     "owed → operator"|"owed → Mac"|"owed → mac"|"owed → VM"|"owed → vm") ;;
                     *) owed_refusal "$o" ;;
                 esac
@@ -333,7 +333,9 @@ EOF
             if [ -n "$okey" ]; then
                 if ! olist="$(bash "$(dirname "${BASH_SOURCE[0]}")/chief-kit/owe.sh" list --bucket "$(dirname "$qdoc")" --json)" \
                     || ! orows="$(printf '%s' "$olist" | jq -r --arg k "$okey" '
-                        def dated: ((.due // "") | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")) or ((.text // "") | test("\\bby [0-9]{4}-[0-9]{2}-[0-9]{2}\\b"));
+                        def calendar: . as $d | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$") and (try (($d + "T00:00:00Z") | fromdateiso8601 | todate[0:10]) catch "") == $d;
+                        def dated: (if (.due // "") != "" then .due
+                            else [(.text // "") | scan("\\bby ([0-9]{4}-[0-9]{2}-[0-9]{2})\\b") | .[0]] | (if length == 1 then .[0] else "" end) end) | calendar;
                         .[] | select(.key == $k and ((.kind == "proof" and (has("actor") | not)) or (.kind == "step" and .actor == "proof")) and (dated | not))
                         | .id + " " + (.text | gsub("[\t\n]"; " "))')"; then
                     printf 'WITHHELD: cannot read the owed ledger for %s — not declaring CLOSABLE\n' "$qdoc"

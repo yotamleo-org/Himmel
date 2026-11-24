@@ -756,6 +756,9 @@ p7_doc '- 11:00 WRAPPED — owed → proof by 2026-12-01'
 out="$(p7_run)"; rc=$?
 eq 'positive control: owed → proof by 2026-12-01 is accepted (rc 0)' 0 "$rc"
 contains 'dated owed proof: CLOSABLE' "$out" 'CLOSABLE: no non-harness process under claude pid 101'
+p7_doc '- 11:00 WRAPPED — owed → proof by 2026-02-30'
+out="$(p7_run)"; rc=$?
+eq 'an impossible calendar date is no window: rc 1' 1 "$rc"
 p7_doc '- 11:00 WRAPPED — owed → operator; owed → Mac; owed → VM'
 out="$(p7_run)"; rc=$?
 eq 'positive control: an outside actor (operator, Mac, VM) is accepted (rc 0)' 0 "$rc"
@@ -782,11 +785,19 @@ p7_owe --kind step --key HIMMEL-77 --text 'HIMMEL-77 PR #9: operator taps' --met
 p7_owe --kind proof --key HIMMEL-78 --text 'another ticket proof, undated'
 out="$(p7_run)"; rc=$?
 eq 'ledger rows with a due, a by-date, the chief validation, an operator step, another key: rc 0' 0 "$rc"
+p7_owe --kind step --key HIMMEL-77 --text 'HIMMEL-77 PR #9: proof by 2026-12-01 or by 2026-12-08' --metadata '{"actor":"proof","action":"next-step"}'
+out="$(p7_run)"; rc=$?
+eq 'a ledger proof row with two by-dates and no due names no date the wake fires on: rc 1' 1 "$rc"
+OWE_NOW_EPOCH=1795485900 bash "$OWE" close --bucket "$P7" --id o6 --key HIMMEL-77 >/dev/null
+p7_owe --kind step --key HIMMEL-77 --text 'HIMMEL-77 PR #9: a bad due' --metadata '{"actor":"proof","action":"next-step","due":"2026-02-30"}'
+out="$(p7_run)"; rc=$?
+eq 'a ledger proof row whose due is no calendar date: rc 1' 1 "$rc"
+OWE_NOW_EPOCH=1795485900 bash "$OWE" close --bucket "$P7" --id o7 --key HIMMEL-77 >/dev/null
 p7_owe --kind proof --key HIMMEL-77 --text 'an undated proof'
 out="$(p7_run)"; rc=$?
 eq 'an undated kind proof row with no actor: rc 1' 1 "$rc"
-contains 'undated kind proof row: WITHHELD names it' "$out" 'o6'
-OWE_NOW_EPOCH=1795485900 bash "$OWE" close --bucket "$P7" --id o6 --key HIMMEL-77 >/dev/null
+contains 'undated kind proof row: WITHHELD names it' "$out" 'o8'
+OWE_NOW_EPOCH=1795485900 bash "$OWE" close --bucket "$P7" --id o8 --key HIMMEL-77 >/dev/null
 out="$(p7_run)"; rc=$?
 eq 'the same row closed: rc 0' 0 "$rc"
 p7_doc '- 11:00 WRAPPED — merged #9'

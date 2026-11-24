@@ -76,6 +76,9 @@ TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" brief no
 check "10955 completes no, no live lock: D6n derives To Do" "$TS_RULE/$TS_DERIVED" 'D6n/To Do'
 TICKET_STATUS_QUEUE_LOCK="$tmp/lock-dead.sh" brief no
 check "10955 completes no, a STALE-DEAD lock is no live lock: D6n To Do" "$TS_RULE/$TS_DERIVED" 'D6n/To Do'
+printf '#!/usr/bin/env bash\nexit 3\n' > "$tmp/lock-err.sh"; chmod +x "$tmp/lock-err.sh"
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-err.sh" brief no
+check "10955 completes no, an unreadable lock answer: no-write + miss stage=lock, never a move" "$TS_RESULT/$TS_DERIVED/$TS_STAGE" 'miss/no-write/lock'
 brief yes
 check "completes yes: To Do" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
 brief -
@@ -355,6 +358,8 @@ TICKET_STATUS_QUEUE_LOCK="$tmp/lock-held.sh" owed_merge chief not-a-date
 check "10955 D5c whose wrapped owner still holds its lock leaves In Progress alone" "$TS_RULE/$TS_DERIVED" 'D5c/In Progress'
 TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" owed_merge chief not-a-date
 check "10955 D5c with no live lock derives To Do" "$TS_RULE/$TS_DERIVED" 'D5c/To Do'
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-err.sh" owed_merge chief not-a-date
+check "10955 D5c with an unreadable lock answer: no-write + miss stage=lock" "$TS_RESULT/$TS_DERIVED/$TS_STAGE" 'miss/no-write/lock'
 rm -f "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
 opaths() { printf '## Ticket coverage\n- a: done\n- %s: owed → %s by 2026-11-22\n' "$1" "${2:-chief}" | ts_owed_chief_paths "$HERE/pr_remainder.py" K-1 | cut -f1; }
 check "10194 a bare file name is a repo path" "$(opaths 'the INTAKE age (tick.sh, held)')" 'tick.sh'
