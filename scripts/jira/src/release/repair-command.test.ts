@@ -7,12 +7,16 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Command } from 'commander';
 import { declare, leaseAcquire, operatorDecision, request, rmRun, state as engineState, type Ctx, type Judge, type JiraPort } from './engine.js';
+import { FENCE_MARKERS } from './fence-ancestry.js';
 import { processIdentity, runSignature } from './repair-state.js';
 import { appendChain, loadKey, readChain } from './ledger.js';
 import { passingPr, repairRun, RequestRefused, type RepairReport, type RepairRunOptions } from './repair-run.js';
 import { refuseRequest, registerRelease, repairGetter } from '../commands/release.js';
 import type { RequestRow, RulingRow } from './types.js';
 import type { Getter } from './version-writes.js';
+
+// A worker session exports these; the repair path reads them (the fence in engine-core.ts, the RM and version-writes env), so every row starts without them.
+const HERMETIC_ENV = [...FENCE_MARKERS, 'HIMMEL_RM_DOC', 'HIMMEL_RM_RELEASE', 'HIMMEL_VERSION_WRITES', 'HIMMEL_VERSION_WRITER'] as const;
 
 let root: string;
 const DOC = '/abs/rm-doc.md';
@@ -88,6 +92,7 @@ const savedLedger = process.env.HIMMEL_ADMISSIONS_LEDGER;
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'repair-command-'));
   process.env.HIMMEL_ADMISSIONS_LEDGER = join(root, 'admissions-ledger.jsonl');
+  for (const n of HERMETIC_ENV) vi.stubEnv(n, undefined);
   writeFileSync(versionsPath(), VERSIONS);
 });
 afterEach(() => {
@@ -1040,6 +1045,20 @@ describe('10231 repair-state.json is the one record the CLI writes', () => {
   const running = (over: Record<string, unknown>) => JSON.stringify({
     release: 'R1', state: 'running', reason: null, reviewed_at: '2026-11-01T00:00:00.000Z', signature: 'a'.repeat(64), held_signature: '', held_keys: [], unfiled: 0,
     launched: 1_700_000_000, pid: 1, lost_count: 0, operator_command: null, last_exit: null, ts: '2026-11-01T00:00:00.000Z', ...over,
+  });
+
+  it('no fence marker or worker variable leaks in from the parent session', () => {
+    expect(HERMETIC_ENV.filter((n) => process.env[n] !== undefined)).toEqual([]);
+  });
+
+  it('a worker session\'s own variables (profile, tabs, api account) do not change what the CLI records', async () => {
+    setup();
+    vi.stubEnv('HIMMEL_WORKER_SESSION_PROFILE', 'worker-impl');
+    vi.stubEnv('HIMMEL_WORKER_SESSION_TABS', '1');
+    vi.stubEnv('HIMMEL_API_ACCOUNT', 'auto');
+    expect([process.env.HIMMEL_WORKER_SESSION_PROFILE, process.env.HIMMEL_WORKER_SESSION_TABS, process.env.HIMMEL_API_ACCOUNT]).toEqual(['worker-impl', '1', 'auto']);
+    await cli('repair-state', 'R1', '--repo', 'o/r', '--json');
+    expect(rec()).toMatchObject({ state: 'off' });
   });
 
   it('a release with no review marker reads off:unreviewed with the exact command, through the new verb', async () => {
