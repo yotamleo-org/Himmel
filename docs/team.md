@@ -57,7 +57,7 @@ You work with one Claude session in your project. When you hand himmel a list of
 
 - **Its job:** “Your job: you rule every placement that touches the release R, report its burn-down and tag readiness, and advise the chief on idle workers.”
 - **Model tier:** opus
-- **What it may do:** “STATUS, BURN-DOWN and READY remain release-manager verbs, run by an on-demand session armed from `docs/handover/rm-brief-template.md` only when you need one of them.”
+- **What it may do:** “The release manager keeps STATUS, BURN-DOWN and READY.”
 - **What it never does:** “You do not implement, open or push a PR, merge, review a PR, or transition a ticket.”
 - **Where it runs:** “No release-manager session waits between batches: each `rm-run` takes the lease as its own run record under `release/<R>/rm-runs/` and releases it, and a held lease refuses a second batch.”
 - **Defined in:** `docs/handover/rm-preface.md`, `scripts/jira/src/commands/release.ts`, `docs/handover/chief-sections/release-manager.md`
