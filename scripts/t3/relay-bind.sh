@@ -364,6 +364,7 @@ send_notice() {
 resends=0
 while IFS=$'\t' read -r id d nt; do
     [ -n "$id" ] || continue
+    room 6 || break
     n="${nt#pending:}"
     if [ "$n" -ge 3 ]; then
         fm t3 set "$manifest" "$d" --notice failed && emit "BIND-GAVE-UP $id"

@@ -616,6 +616,20 @@ scan "$B/c.fleet.json"
 check '12. a row the last takeover listed but never filled (add done, set failed) is completed by the retry' "tz1 ask sent" "$(jq -r --arg d "$xr" '.workers[] | select(.doc == $d) | "\(.t3_thread) \(.t3_kind) \(.t3_notice)"' "$B/c.fleet.json")"
 check '12. and the takeover prints rows=copied' "OWNER-TAKEN a rows=copied" "$(grep OWNER "$T/out")"
 
+mkco x5 "$HB/x5"; mkm a none
+for i in 1 2 3 4 5 6; do
+    xg="$B/T3ASK-gu$i-$today.md"; printf '# x\n\n> **T3 thread:** gu%s\n\n## Results (newest at the bottom)\n' "$i" > "$xg"
+    fmx add "$B/a.fleet.json" --lane t3 --lockless "$xg"; fmx t3 set "$B/a.fleet.json" "$xg" --thread "gu$i" --kind ask --notice pending:3
+done
+mklist "$(th gu1 "$RELAY" completed false)" "$(th gu2 "$RELAY" completed false)" "$(th gu3 "$RELAY" completed false)" "$(th gu4 "$RELAY" completed false)" "$(th gu5 "$RELAY" completed false)" "$(th gu6 "$RELAY" completed false)"
+( flock -x 8; sleep 45 ) 8>>"$B/a.fleet.json.lock" & lockholder=$!
+sleep 0.3
+t0="$(date +%s)"
+timeout -k 2 30 bash "$BIND" scan --manifest "$B/a.fleet.json" >"$T/out" 2>"$T/err"; SRC=$?   # gnu-ok: Linux-only chief kit, GNU timeout
+el=$(( $(date +%s) - t0 ))
+kill "$lockholder" 2>/dev/null; wait "$lockholder" 2>/dev/null
+check "12. give-up writes on rows at pending:3 stop at the pass deadline too (took ${el}s, rc $SRC)" yes "$([ "$el" -le 24 ] && [ "$SRC" != 124 ] && [ "$SRC" != 137 ] && echo yes)"
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-relay-bind.sh"
     exit 0
