@@ -65,6 +65,7 @@ case "$1" in
         echo "$2 edited"
         exit 0 ;;
     transition)
+        [ -e "$FX/transition.fail" ] && { echo "boom" >&2; exit 1; }
         [ -e "$FX/transition.sleep" ] && sleep "$(cat "$FX/transition.sleep")"
         printf '%s\n' "$3" > "$FX/status.$2"
         exit 0 ;;
@@ -558,7 +559,27 @@ hold "$K" --reason r --owner o --on himmel-1; rc=$?
 check "3a: --on a lowercase key is a usage error" "$rc" 2
 hold "$K" --release --on HIMMEL-1; rc=$?
 check "3a: a release takes no --on" "$rc" 2
+
 check "3a: and these call no edit" "$(grep -c '^edit' "$STUB_LOG")" 0
+
+reset "In Progress"
+hold "$K" --reason "waiting on legal" --owner operator --until 2026-12-01; rc=$?
+check "10786 H1: a hold on an In Progress ticket exits 0" "$rc" 0
+check "10786 H1: it moves the ticket to To Do with one transition" "$(grep '^transition' "$STUB_LOG")" "transition $K To Do"
+check "10786 H1: the held label stands" "$(cat "$FX/labels.$K")" held
+check "10786 H1: the hold row records the move" "$(rowq 'select(.event == "hold") | .from + " to " + .to')" "In Progress to To Do"
+contains "10786 H1: the HOLD comment says the ticket moved to To Do" "$(cat "$FX/comment-body.last")" "moved to To Do"
+hold "$K" --release --owner operator
+check "10786 H1: a release makes no second transition" "$(ntrans)" 1
+reset "In Review"
+hold "$K" --reason r --owner operator; rc=$?
+check "10786 H1 control: a hold on an In Review ticket moves nothing" "$(ntrans)" 0
+reset "In Progress"; touch "$FX/transition.fail"
+hold "$K" --reason r --owner operator; rc=$?
+check "10786 H2: a failed move still holds, exit 0" "$rc" 0
+check "10786 H2: the label stands" "$(cat "$FX/labels.$K")" held
+check "10786 H2: the failed move is an audit-gap row at the transition stage" "$(rowq 'select(.event == "audit-gap") | .key + ":" + .stage')" "$K:transition"
+contains "10786 H2: and warns on stderr" "$(cat "$tmp/hout")" "stays In Progress"
 
 reset "To Do"; owned "$K"; printf 'held\n' > "$FX/labels.$K"
 fn "$K" --event live
@@ -922,30 +943,30 @@ lockfx() { printf '%s\n' "$1" > "$FX/lock.rc"; printf '%s\n' "$2" > "$FX/lock.st
 
 d6fx; lrow 3600 wrapped noop D6n; lrow 60 sweep noop D6n
 drift
-check "9561 S1 1: a chief-owned D6n park of 1 h is one AWAITING row" "$(dcount AWAITING)" 1
-contains "9561 S1 1: it waits on the chief" "$(drows AWAITING)" "wait=chief"
-contains "9561 S1 1: its source is the D6n park" "$(drows AWAITING)" "source=d6n"
-contains "9561 S1 1: its since is the first D6n row" "$(drows AWAITING)" "since=$(iso_at 3600) "
-contains "9561 S1 1: its due is 24 h after the first D6n row" "$(drows AWAITING)" "due=$(iso_at -82800) "
-check "9561 S1 1: and the key is not UNOWNED" "$(dcount UNOWNED)" 0
-contains "9561 S1 1: a wait row is no drift: sdrift=0" "$(dlast)" "sdrift=0:"
+check "9561 S1 1: a chief-owned D6n park of 1 h is one UNOWNED row, never AWAITING" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/1
+contains "9561 S1 1: it waits on the chief" "$(drows UNOWNED)" "awaiting the chief since="
+contains "9561 S1 1: its source is the D6n park" "$(drows UNOWNED)" "source=d6n"
+contains "9561 S1 1: its since is the first D6n row" "$(drows UNOWNED)" "since=$(iso_at 3600) "
+contains "9561 S1 1: its due is 24 h after the first D6n row" "$(drows UNOWNED)" "due=$(iso_at -82800) "
+check "9561 S1 1: and the key is stuck, no AWAITING row" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
+contains "9561 S1 1: a stuck ticket is drift: sdrift=1" "$(dlast)" "sdrift=1:"
 check "9561 S1 9: the pass wrote nothing" "$(nwrites)" 0
 check "9561 S1 9: and released no lock" "$(nrelease)" 0
 
 d6fx; lrow 90000 wrapped noop D6n; lrow 60 sweep noop D6n
 drift
 check "9561 S1 2: a D6n park of 25 h is no AWAITING row" "$(dcount AWAITING)" 0
-contains "9561 S1 2: it is UNOWNED, awaiting the chief since the first D6n row" "$(drows UNOWNED)" "awaiting the chief since $(iso_at 90000)"
-contains "9561 S1 2: and says overdue" "$(drows UNOWNED)" "overdue"
+contains "9561 S1 2: it is UNOWNED, awaiting the chief since the first D6n row" "$(drows UNOWNED)" "awaiting the chief since=$(iso_at 90000)"
+contains "9561 S1 2: and says no date makes it wait" "$(drows UNOWNED)" "a date never makes it wait"
 contains "9561 S1 2: and counts as drift: sdrift=1" "$(dlast)" "sdrift=1:"
 
 d6fx; lrow 90000 wrapped noop D6n; lrow 7200 live skip RM; lrow 7200 live disabled -; lrow 7200 sweep deferred - '{"stage":"lock"}'; lrow 7200 sweep noop D5; lrow 60 sweep noop D6n
 drift
 check "9561 S1 3a: an RM skip, a disabled, a deferred and a D5 noop row inside the run do not restart it" "$(dcount AWAITING)" 0
-contains "9561 S1 3a: the park is overdue since the first D6n row" "$(drows UNOWNED)" "awaiting the chief since $(iso_at 90000)"
+contains "9561 S1 3a: the park is stuck since the first D6n row" "$(drows UNOWNED)" "awaiting the chief since=$(iso_at 90000)"
 d6fx; lrow 108000 wrapped noop D6n; lrow 7200 live noop D5; lrow 3600 wrapped noop D6n; lrow 60 sweep noop D6n
 drift
-contains "9561 S1 3b: an event=live row starts a new run: since is the newer run's first row" "$(drows AWAITING)" "since=$(iso_at 3600) "
+contains "9561 S1 3b: an event=live row starts a new run: since is the newer run's first row" "$(drows UNOWNED)" "since=$(iso_at 3600) "
 d6fx; lrow 7200 wrapped noop D6n; lrow 3600 pr-open moved D5
 drift
 check "9561 S1 3c: a moved row of another rule after the last D6n row leaves no park start" "$(dcount AWAITING)" 0
@@ -953,14 +974,14 @@ check "9561 S1 3c: and the plain UNOWNED row stands" "$(drows UNOWNED | grep -c 
 d6fx; lrow 90000 wrapped noop D6n; lrow 7200 hold moved D6n; lrow 60 sweep noop D6n
 drift
 check "9561 S1 3d: a hold row inside the run starts nothing" "$(dcount AWAITING)" 0
-contains "9561 S1 3d: the park is overdue since the first D6n row" "$(drows UNOWNED)" "awaiting the chief since $(iso_at 90000)"
+contains "9561 S1 3d: the park is stuck since the first D6n row" "$(drows UNOWNED)" "awaiting the chief since=$(iso_at 90000)"
 d6fx; lrow 3600 wrapped moved D6n
 drift
-contains "9561 S1 3e (a synthetic guard of the at-or-after rule: no moved D6n row exists live): an anchor that carries the rule is the park start" "$(drows AWAITING)" "since=$(iso_at 3600) "
+contains "9561 S1 3e (a synthetic guard of the at-or-after rule: no moved D6n row exists live): an anchor that carries the rule is the park start" "$(drows UNOWNED)" "since=$(iso_at 3600) "
 d6fx; lrow 90000 wrapped noop D6n; lrow 7200 merge pending - '{"pr":"8601","head":"h1","contract":"no","stage":"pre-merge"}'; lrow 60 sweep noop D6n
 MERGE_ROWS_GH="$tmp/mrgh" drift
 check "9561 S1 3f: a pre-merge row whose PR is open is dropped and is no anchor" "$(dcount AWAITING)" 0
-contains "9561 S1 3f: the park is overdue since the first D6n row" "$(drows UNOWNED)" "awaiting the chief since $(iso_at 90000)"
+contains "9561 S1 3f: the park is stuck since the first D6n row" "$(drows UNOWNED)" "awaiting the chief since=$(iso_at 90000)"
 
 reset "In Progress"; jl "$K" "In Progress"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":2}'; logrow merge "$K" noop 4480 no; printf '0\n' > "$FX/lock.rc"
 drift
@@ -985,13 +1006,13 @@ for v in abc 99999999999999999999h; do
     driftenv TICKET_STATUS_AWAIT_TTL_CHIEF=$v
     check "9561 S1 7: TTL_CHIEF=$v prints one HEALTH row" "$(drows HEALTH | grep -c 'env: TICKET_STATUS_AWAIT_TTL_CHIEF')/$(dcount HEALTH)" 1/1
     check "9561 S1 7: and the row never prints the value" "$(drows HEALTH | grep -c -- "$v")" 0
-    contains "9561 S1 7: TTL_CHIEF=$v keeps the 24 h due" "$(drows AWAITING)" "due=$(iso_at -82800) "
+    contains "9561 S1 7: TTL_CHIEF=$v keeps the 24 h due" "$(drows UNOWNED)" "due=$(iso_at -82800) "
 done
 driftenv TICKET_STATUS_AWAIT_MAX=30d TICKET_STATUS_AWAIT_TTL_CHIEF=400d
 check "9561 S1 7: MAX=30d prints the HEALTH row" "$(drows HEALTH | grep -c 'env: TICKET_STATUS_AWAIT_MAX')" 1
-contains "9561 S1 7: and the due is clamped at 14 d" "$(drows AWAITING)" "due=$(iso_at $((3600 - 1209600))) "
+contains "9561 S1 7: and the due is clamped at 14 d" "$(drows UNOWNED)" "due=$(iso_at $((3600 - 1209600))) "
 driftenv TICKET_STATUS_AWAIT_TTL_CHIEF=2h
-contains "9561 S1 7: TTL_CHIEF=2h makes the 1 h park due in 1 h" "$(drows AWAITING)" "due=$(iso_at -3600) "
+contains "9561 S1 7: TTL_CHIEF=2h makes the 1 h park due in 1 h" "$(drows UNOWNED)" "due=$(iso_at -3600) "
 check "9561 S1 7: and prints no HEALTH row" "$(dcount HEALTH)" 0
 
 reset "In Progress"; jl "$K" "In Progress"; owned "$K" LIVE '{"state":"live"}'; lockfx 12 STALE-DEAD
@@ -1082,25 +1103,25 @@ check "9561 S2 1: the hold row records the owner" "$(rowq 'select(.event == "hol
 check "9561 S2 1: and the until, with no --kind" "$(rowq 'select(.event == "hold") | .until')" "$u1"
 hnow 0
 drift
-check "9561 S2 1: a held, wrapped, no-PR key is one AWAITING row" "$(dcount AWAITING)" 1
-contains "9561 S2 1: it waits on the operator" "$(drows AWAITING)" "wait=operator"
-contains "9561 S2 1: its source is the hold" "$(drows AWAITING)" "source=hold"
-contains "9561 S2 1: its since is the hold row's ts" "$(drows AWAITING)" "since=$(hts) "
-contains "9561 S2 1: its due is the end of the until day" "$(drows AWAITING)" "due=${u1}T23:59:59Z "
-contains "9561 S2 1: its what is the reason" "$(drows AWAITING)" "what=waiting on legal "
-contains "9561 S2 1: it names the owner as the class's first word" "$(drows AWAITING)" "AWAITING $K operator since="
-check "9561 S2 1: and the key is not UNOWNED" "$(dcount UNOWNED)" 0
-contains "9561 S2 1: a wait row is no drift: sdrift=0" "$(dlast)" "sdrift=0:"
+check "9561 S2 1: a held, wrapped, no-PR key is one UNOWNED row, never AWAITING" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/1
+contains "9561 S2 1: it waits on the operator" "$(drows UNOWNED)" "awaiting operator since="
+contains "9561 S2 1: its source is the hold" "$(drows UNOWNED)" "source=hold"
+contains "9561 S2 1: its since is the hold row's ts" "$(drows UNOWNED)" "since=$(hts) "
+contains "9561 S2 1: its due is the end of the until day" "$(drows UNOWNED)" "due=${u1}T23:59:59Z "
+contains "9561 S2 1: its what is the reason" "$(drows UNOWNED)" "what=waiting on legal "
+contains "9561 S2 1: it names the owner as the class's first word" "$(drows UNOWNED)" "UNOWNED $K In Progress with no open PR and no live owner; a date never makes it wait: awaiting operator since="
+check "9561 S2 1: and the key is stuck, no AWAITING row" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
+contains "9561 S2 1: a stuck ticket is drift: sdrift=1" "$(dlast)" "sdrift=1:"
 
 hnow 172800
 drift
 check "9561 S2 2: at the hold day + 2 the key is no AWAITING row" "$(dcount AWAITING)" 0
-contains "9561 S2 2: it is UNOWNED and overdue" "$(drows UNOWNED)" "overdue"
+contains "9561 S2 2: it is UNOWNED and says no date makes it wait" "$(drows UNOWNED)" "a date never makes it wait"
 d6fx
 hold "$K" --reason r --owner operator --until "$(day_e $(($(date -u +%s) + 2592000)))"
 hnow 0
 drift
-contains "9561 S2 2: an until 30 days out is clamped to the hold ts + 14 d" "$(drows AWAITING)" "due=$(iso_e $(($(epoch_of "$(hts)") + 1209600))) "
+contains "9561 S2 2: an until 30 days out is clamped to the hold ts + 14 d" "$(drows UNOWNED)" "due=$(iso_e $(($(epoch_of "$(hts)") + 1209600))) "
 
 d6fx
 hold "$K" --reason r --owner operator --until "$(tomorrow)"
@@ -1146,18 +1167,18 @@ d6fx
 hold "$K" --reason r --owner chief
 hnow 0
 drift
-contains "9561 S2 6: owner chief with no until is due 24 h after the hold" "$(drows AWAITING)" "due=$(iso_e $(($(epoch_of "$(hts)") + 86400))) "
+contains "9561 S2 6: owner chief with no until is due 24 h after the hold" "$(drows UNOWNED)" "due=$(iso_e $(($(epoch_of "$(hts)") + 86400))) "
 d6fx
 hold "$K" --reason r --owner release-manager
 hnow 0
 drift
-contains "9561 S2 6: owner release-manager with no until is due 72 h after the hold" "$(drows AWAITING)" "due=$(iso_e $(($(epoch_of "$(hts)") + 259200))) "
-contains "9561 S2 6: and waits on release-manager" "$(drows AWAITING)" "wait=release-manager"
+contains "9561 S2 6: owner release-manager with no until is due 72 h after the hold" "$(drows UNOWNED)" "due=$(iso_e $(($(epoch_of "$(hts)") + 259200))) "
+contains "9561 S2 6: and waits on release-manager" "$(drows UNOWNED)" "awaiting release-manager since="
 d6fx
 hold "$K" --reason r --owner operator
 hnow 0
 driftenv TICKET_STATUS_AWAIT_TTL_OPERATOR=2h
-contains "9561 S2 6: TTL_OPERATOR=2h makes an operator hold due in 2 h" "$(drows AWAITING)" "due=$(iso_e $(($(epoch_of "$(hts)") + 7200))) "
+contains "9561 S2 6: TTL_OPERATOR=2h makes an operator hold due in 2 h" "$(drows UNOWNED)" "due=$(iso_e $(($(epoch_of "$(hts)") + 7200))) "
 
 OB=HIMMEL-9002
 onmirror() { mkdir -p "$tmp/mirror"; printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\n---\n' "$OB" "$1" > "$tmp/mirror/$OB.md"; }
@@ -1182,26 +1203,26 @@ hold "$K" --reason r --owner operator --until "$(tomorrow)" --on "$OB"
 onmirror "In Progress"
 hnow 0
 drift
-check "10224 2: control: an on ticket still open is a wait row and no HOLD-STALE" "$(dcount HOLD-STALE)/$(dcount AWAITING)" 0/1
-contains "10224 2: and sdrift stays 0" "$(dlast)" "sdrift=0:"
+check "10224 2: control: an on ticket still open is a stuck row and no HOLD-STALE" "$(dcount HOLD-STALE)/$(dcount UNOWNED)" 0/1
+contains "10224 2: and the stuck row is drift: sdrift=1" "$(dlast)" "sdrift=1:"
 d6fx
 hold "$K" --reason r --owner operator --until "$(tomorrow)"
 onmirror Done
 hnow 0
 drift
-check "10224 3: control: a hold with no on is a wait row and no HOLD-STALE" "$(dcount HOLD-STALE)/$(dcount AWAITING)" 0/1
+check "10224 3: control: a hold with no on is a stuck row and no HOLD-STALE" "$(dcount HOLD-STALE)/$(dcount UNOWNED)" 0/1
 d6fx
 hold "$K" --reason r --owner operator --until "$(tomorrow)" --on "$OB"
 rm -f "$tmp/mirror/$OB.md"
 hnow 0
 drift
-check "10224 4: control: an on ticket with no mirror file is a wait row and no HOLD-STALE" "$(dcount HOLD-STALE)/$(dcount AWAITING)" 0/1
+check "10224 4: control: an on ticket with no mirror file is a stuck row and no HOLD-STALE" "$(dcount HOLD-STALE)/$(dcount UNOWNED)" 0/1
 d6fx
 hold "$K" --reason r --owner operator --until "$(tomorrow)" --on "$OB"
 mkdir -p "$tmp/mirror"; printf -- '---\nkey: "%s"\n---\n' "$OB" > "$tmp/mirror/$OB.md"
 hnow 0
 drift
-check "10224 5: control: an unreadable on mirror file is a wait row and no HOLD-STALE" "$(dcount HOLD-STALE)/$(dcount AWAITING)" 0/1
+check "10224 5: control: an unreadable on mirror file is a stuck row and no HOLD-STALE" "$(dcount HOLD-STALE)/$(dcount UNOWNED)" 0/1
 rm -rf "$tmp/mirror"
 
 d6fx
@@ -1209,7 +1230,7 @@ hold "$K" --reason r --owner operator --until "$(tomorrow)"
 for _ in $(seq 600); do printf '{"ts":"2026-10-21T10:00:00Z","event":"derive","key":"HIMMEL-90001","result":"noop","pr":"1"}\n' >> "$LOG"; done
 hnow 0
 drift
-check "9561 S2 7: a hold with 600 rows after it still makes the key AWAITING" "$(dcount AWAITING)" 1
+check "9561 S2 7: a hold with 600 rows after it still makes the key UNOWNED" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/1
 
 reset "In Progress"
 hold "$K" --reason r --owner 'x | wait=y'; rc=$?
@@ -1230,28 +1251,28 @@ hold "$K" --reason $'a|b\nc' --owner operator
 check "9561 S2 9: the hold row's reason has no pipe or newline" "$(rowq 'select(.event == "hold") | .reason')" abc
 hnow 0
 drift
-contains "9561 S2 9: what= is the stripped reason" "$(drows AWAITING)" "what=abc "
-check "9561 S2 9: and the row is a wait row" "$(drows AWAITING | grep -c ' | wait=operator$')" 1
+contains "9561 S2 9: what= is the stripped reason" "$(drows UNOWNED)" "what=abc "
+check "9561 S2 9: and the row is a stuck row with no wait mark" "$(drows UNOWNED | grep -c ' | wait=')" 0
 d6fx; label
 hand 3600 '{"owner":"operator","reason":"x | wait=x\ny"}'
 drift
-check "9561 S2 9: a hand-written reason with a pipe and a newline is one row" "$(dcount AWAITING)" 1
-contains "9561 S2 9: whose what= has neither" "$(drows AWAITING)" "what=x  wait=xy source=hold"
-check "9561 S2 9: and no forged wait mark" "$(drows AWAITING | grep -c '| wait=x')" 0
+check "9561 S2 9: a hand-written reason with a pipe and a newline is one row" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/1
+contains "9561 S2 9: whose what= has neither" "$(drows UNOWNED)" "what=x  wait=xy source=hold"
+check "9561 S2 9: and no forged wait mark" "$(drows UNOWNED | grep -c '| wait=x')" 0
 
 d6fx; label
 hand 3600 '{"owner":"operator","reason":"r","until":"2026-13-40"}'
 drift
-contains "9561 S2 10: an until of 2026-13-40 is dropped: due = since + 72 h" "$(drows AWAITING)" "due=$(iso_at $((3600 - 259200))) "
+contains "9561 S2 10: an until of 2026-13-40 is dropped: due = since + 72 h" "$(drows UNOWNED)" "due=$(iso_at $((3600 - 259200))) "
 d6fx; label
 hand 3600 '{"owner":"operator","reason":"r","until":"2026-02-30"}'
 drift_bsd
-contains "9561 S2 10: an until of 2026-02-30 is dropped under a BSD date too" "$(drows AWAITING)" "due=$(iso_at $((3600 - 259200))) "
+contains "9561 S2 10: an until of 2026-02-30 is dropped under a BSD date too" "$(drows UNOWNED)" "due=$(iso_at $((3600 - 259200))) "
 d6fx; label
 u10=$(day_e $((NOW + 86400)))
 hand 3600 "{\"owner\":\"operator\",\"reason\":\"r\",\"until\":\"$u10\"}"
 drift_bsd
-contains "9561 S2 10 control: a real until is kept under a BSD date" "$(drows AWAITING)" "due=${u10}T23:59:59Z "
+contains "9561 S2 10 control: a real until is kept under a BSD date" "$(drows UNOWNED)" "due=${u10}T23:59:59Z "
 
 d6fx
 u11=$(day_e $((NOW + 86400)))
@@ -1261,19 +1282,19 @@ check "9561 S2 11: a forged hold row on a key with no held label is plain UNOWNE
 check "9561 S2 11: and says nothing of a label" "$(drows UNOWNED | grep -c 'held with no owner')" 0
 label
 drift
-check "9561 S2 11: the same row with the label is AWAITING" "$(dcount AWAITING)/$(dcount UNOWNED)" 1/0
-contains "9561 S2 11: operator" "$(drows AWAITING)" "wait=operator"
+check "9561 S2 11: the same row with the label is AWAITING" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/1
+contains "9561 S2 11: operator" "$(drows UNOWNED)" "awaiting operator since="
 
 d6fx; label
 lrow 7200 wrapped noop D6n; lrow 60 sweep noop D6n
 hand 3600 '{"owner":"operator","reason":"r"}'
 drift
-contains "9561 S2 12: a hold newer than the D6n park start wins" "$(drows AWAITING)" "source=hold"
+contains "9561 S2 12: a hold newer than the D6n park start wins" "$(drows UNOWNED)" "source=hold"
 d6fx; label
 hand 7200 '{"owner":"operator","reason":"r"}'
 lrow 3600 wrapped noop D6n; lrow 60 sweep noop D6n
 drift
-contains "9561 S2 12: a D6n park start newer than the hold wins" "$(drows AWAITING)" "source=d6n"
+contains "9561 S2 12: a D6n park start newer than the hold wins" "$(drows UNOWNED)" "source=d6n"
 
 owedrow() {
     lrow "$1" merge moved - "$(jq -nc --arg o "$2" --arg d "$3" '{pr: "4480", contract: "no", remainder: "owed", owed: $o, owed_due: $d}')"
@@ -1282,36 +1303,36 @@ sdn() { dlast | cut -d: -f1; }
 ud=$(day_e $((NOW + 86400)))
 d6fx; owedrow 3600 operator "$ud"
 drift
-check "9561 S4b 1: an owed merge row on a wrapped, no-PR key is one AWAITING row" "$(dcount AWAITING)/$(dcount UNOWNED)" 1/0
-contains "9561 S4b 1: it waits on the operator" "$(drows AWAITING)" "wait=operator"
-contains "9561 S4b 1: its source is the owed row" "$(drows AWAITING)" "source=owed"
-contains "9561 S4b 1: its since is the merge row's ts" "$(drows AWAITING)" "since=$(iso_at 3600) "
-contains "9561 S4b 1: its due is the end of the owed_due day" "$(drows AWAITING)" "due=${ud}T23:59:59Z "
-contains "9561 S4b 1: the wait row adds no drift: sdrift=2, the funnel's pending move and comment" "$(dlast)" "sdrift=2:"
+check "9561 S4b 1: an owed merge row on a wrapped, no-PR key is one UNOWNED row, never AWAITING" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/1
+contains "9561 S4b 1: it waits on the operator" "$(drows UNOWNED)" "awaiting operator since="
+contains "9561 S4b 1: its source is the owed row" "$(drows UNOWNED)" "source=owed"
+contains "9561 S4b 1: its since is the merge row's ts" "$(drows UNOWNED)" "since=$(iso_at 3600) "
+contains "9561 S4b 1: its due is the end of the owed_due day" "$(drows UNOWNED)" "due=${ud}T23:59:59Z "
+contains "9561 S4b 1: the stuck row is drift: sdrift=3, with the funnel's pending move and comment" "$(dlast)" "sdrift=3:"
 contains "9561 S4b 1: an In Progress owed partial is a derive mismatch to To Do" "$(drows DERIVE-MISMATCH)" "derived=To Do rule=D5d"
 check "9561 S4b 9: rows 1 wrote nothing" "$(nwrites)" 0
 
 d6fx; owedrow 259200 operator "$(day_e $((NOW - 172800)))"
 drift
 check "9561 S4b 2: past the owed_due day the key is no AWAITING row" "$(dcount AWAITING)" 0
-contains "9561 S4b 2: it is UNOWNED, awaiting the operator since the merge row, and overdue" "$(drows UNOWNED)" "awaiting operator since $(iso_at 259200) and overdue"
+contains "9561 S4b 2: it is UNOWNED, awaiting the operator since the merge row" "$(drows UNOWNED)" "awaiting operator since=$(iso_at 259200)"
 contains "9561 S4b 2: and counts as drift: sdrift=3, with the pending move and comment" "$(dlast)" "sdrift=3:"
 
 d6fx; owedrow 3600 operator "$(day_e $((NOW + 2592000)))"
 drift
-contains "9561 S4b 3: an owed_due 30 days out is clamped to the row ts + 14 d" "$(drows AWAITING)" "due=$(iso_at $((3600 - 1209600))) "
+contains "9561 S4b 3: an owed_due 30 days out is clamped to the row ts + 14 d" "$(drows UNOWNED)" "due=$(iso_at $((3600 - 1209600))) "
 
 d6fx; label
 lrow 7200 merge moved - "$(jq -nc --arg d "$ud" '{pr: "4480", contract: "no", remainder: "owed", owed: "chief", owed_due: $d}')"
 hand 3600 '{"owner":"operator","reason":"r"}'
 drift
-contains "9561 S4b 4: a hold row newer than the owed merge row wins" "$(drows AWAITING)" "source=hold"
+contains "9561 S4b 4: a hold row newer than the owed merge row wins" "$(drows UNOWNED)" "source=hold"
 d6fx; label
 hand 7200 '{"owner":"operator","reason":"r"}'
 owedrow 3600 chief "$ud"
 drift
-contains "9561 S4b 4: an owed merge row newer than the hold row wins" "$(drows AWAITING)" "source=owed"
-contains "9561 S4b 4: and its owner is the owed who" "$(drows AWAITING)" "wait=chief"
+contains "9561 S4b 4: an owed merge row newer than the hold row wins" "$(drows UNOWNED)" "source=owed"
+contains "9561 S4b 4: and its owner is the owed who" "$(drows UNOWNED)" "awaiting chief since="
 d6fx
 owedrow 7200 operator "$ud"
 lrow 3600 merge moved - '{"pr":"4481","contract":"no","remainder":"remaining"}'
@@ -1333,7 +1354,7 @@ drift_bsd
 check "9561 S4b 5: owed_due=2026-02-30 prints UNOWNED under a BSD date too" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/1
 d6fx; owedrow 3600 operator "$ud"
 drift_bsd
-contains "9561 S4b 5 control: a real owed_due is AWAITING under a BSD date" "$(drows AWAITING)" "due=${ud}T23:59:59Z "
+contains "9561 S4b 5 control: a real owed_due is AWAITING under a BSD date" "$(drows UNOWNED)" "due=${ud}T23:59:59Z "
 check "9561 S4b 9: rows 5 wrote nothing" "$(nwrites)" 0
 
 d6fx; lrow 3600 merge moved - '{"pr":"4480","contract":"no","remainder":"remaining"}'
@@ -1375,19 +1396,19 @@ check "9561 S5 7: the rows wrote nothing" "$(nwrites)" 0
 
 d6fx; lrow 100000 merge moved - '{"pr":"4480","contract":"no","remainder":"remaining"}'; lrow 3600 wrapped noop D5c; lrow 60 sweep noop D5c
 drift
-check "9561 S5 3: a remaining partial merge parked 1 h is one AWAITING row" "$(dcount AWAITING)/$(dcount UNOWNED)" 1/0
-contains "9561 S5 3: it waits on the chief" "$(drows AWAITING)" "wait=chief"
-contains "9561 S5 3: its source is the resume" "$(drows AWAITING)" "source=resume"
-contains "9561 S5 3: its since is the first D5c row after the merge row" "$(drows AWAITING)" "since=$(iso_at 3600) "
-contains "9561 S5 3: its due is 6 h after it" "$(drows AWAITING)" "due=$(iso_at -18000) "
-contains "9561 S5 3: and the wait is no drift: sdrift=0" "$(dlast)" "sdrift=0:"
+check "9561 S5 3: a remaining partial merge parked 1 h is one UNOWNED row, never AWAITING" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/1
+contains "9561 S5 3: it waits on the chief" "$(drows UNOWNED)" "awaiting the chief since="
+contains "9561 S5 3: its source is the resume" "$(drows UNOWNED)" "source=resume"
+contains "9561 S5 3: its since is the first D5c row after the merge row" "$(drows UNOWNED)" "since=$(iso_at 3600) "
+contains "9561 S5 3: its due is 6 h after it" "$(drows UNOWNED)" "due=$(iso_at -18000) "
+contains "9561 S5 3: and the wait is no drift: sdrift=0" "$(dlast)" "sdrift=1:"
 d6fx; lrow 100000 merge moved - '{"pr":"4480","contract":"no","remainder":"remaining"}'; lrow 25200 wrapped noop D5c; lrow 60 sweep noop D5c
 drift
 check "9561 S5 3: parked 7 h it is no AWAITING row" "$(dcount AWAITING)" 0
-contains "9561 S5 3: it is UNOWNED, awaiting the chief since the first D5c row, and overdue" "$(drows UNOWNED)" "awaiting the chief since $(iso_at 25200) and overdue (due $(iso_at 3600))"
+contains "9561 S5 3: it is UNOWNED, awaiting the chief since the first D5c row, due $(iso_at 3600)" "$(drows UNOWNED)" "awaiting the chief since=$(iso_at 25200) due=$(iso_at 3600)"
 contains "9561 S5 3: and counts as drift: sdrift=1" "$(dlast)" "sdrift=1:"
 driftenv TICKET_STATUS_AWAIT_TTL_RESUME=12h
-contains "9561 S5 3: TICKET_STATUS_AWAIT_TTL_RESUME=12h makes the 7 h park a wait again" "$(drows AWAITING)" "source=resume"
+contains "9561 S5 3: TICKET_STATUS_AWAIT_TTL_RESUME=12h makes the 7 h park a wait again" "$(drows UNOWNED)" "source=resume"
 driftenv TICKET_STATUS_AWAIT_TTL_RESUME=abc
 check "9561 S5 2: a bad TICKET_STATUS_AWAIT_TTL_RESUME is one HEALTH row naming it, never its value" "$(drows HEALTH | grep -c 'env: TICKET_STATUS_AWAIT_TTL_RESUME')/$(drows HEALTH | grep -c abc)" 1/0
 check "9561 S5: the rows wrote nothing" "$(nwrites)" 0
@@ -2198,7 +2219,7 @@ drift
 check "9561 COD 8: control: a held key never gets the row" "$(dcount CLOSE-OR-DISPATCH)" 0
 codfx 73; label; hand 7200 '{"owner":"operator","reason":"r"}'
 drift
-check "9561 COD 8: control: a hold row inside its wait is AWAITING, not the row" "$(dcount AWAITING)/$(dcount CLOSE-OR-DISPATCH)" 1/0
+check "9561 COD 8: control: a hold row inside its wait is UNOWNED, never AWAITING and never the row" "$(dcount UNOWNED)/$(dcount AWAITING)/$(dcount CLOSE-OR-DISPATCH)" 1/0/0
 codfx 73; printf 'standing\n' > "$FX/labels.$K"
 drift
 check "9561 COD 9: control: a standing ticket never gets the row" "$(dcount CLOSE-OR-DISPATCH)/$(dcount UNOWNED)" 0/0
@@ -2207,7 +2228,7 @@ drift
 check "9561 COD 10: control: a Done key never gets the row" "$(dcount CLOSE-OR-DISPATCH)" 0
 d6fx; owedrow $H73 chief "$ud"; cod_doc $(((73 + 10) * 3600))
 drift
-check "9561 COD 11: control: an owed step still inside its due date is AWAITING, never the row" "$(dcount AWAITING)/$(dcount CLOSE-OR-DISPATCH)" 1/0
+check "9561 COD 11: an owed step still inside its due date is the row too: a date never makes it wait" "$(dcount AWAITING)/$(dcount CLOSE-OR-DISPATCH)" 0/1
 d6fx; lrow 262800 merge moved - '{"pr":"4480","contract":"no"}'; cod_doc $((83 * 3600))
 drift
 check "9561 COD 12: a partial merge with no owed step is the row too" "$(dcount CLOSE-OR-DISPATCH)/$(dcount UNOWNED)" 1/0
@@ -2289,9 +2310,9 @@ rca HIMMEL-9687 5203 2026-11-11T12:00:00Z 2026-11-14T12:01:00Z - 1
 rca HIMMEL-9687 5203 2026-11-11T12:00:00Z 2026-11-14T11:59:00Z - 0
 rca HIMMEL-9904 5303 2026-11-13T08:18:00Z 2026-11-16T08:19:00Z - 1
 rca HIMMEL-9904 5303 2026-11-13T08:18:00Z 2026-11-16T08:17:00Z - 0
-rca HIMMEL-9686 5330 2026-11-13T18:08:00Z 2026-11-16T18:09:00Z 2026-11-20 0
+rca HIMMEL-9686 5330 2026-11-13T18:08:00Z 2026-11-16T18:09:00Z 2026-11-20 1
 rca HIMMEL-9686 5330 2026-11-13T18:08:00Z 2026-11-21T00:10:00Z 2026-11-20 1
-rca HIMMEL-9900 5365 2026-11-14T10:00:00Z 2026-11-17T10:01:00Z 2026-11-21 0
+rca HIMMEL-9900 5365 2026-11-14T10:00:00Z 2026-11-17T10:01:00Z 2026-11-21 1
 rca HIMMEL-9900 5365 2026-11-14T10:00:00Z 2026-11-22T00:10:00Z 2026-11-21 1
 
 ttx() {
@@ -2376,6 +2397,30 @@ check "8691 S6 drift control: the open-PR list logs tok=main" "$(ttany '^tok=mai
 drift_fx
 ttx "$tmp/emptyroot" GH_STUB_MAINFAIL=rate bash "$DRIFT" --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1
 check "8691 S6 drift control: with no read token a spent main token is sdrift=unknown" "$(dlast | cut -d: -f1)" "sdrift=unknown"
+
+export TICKET_STATUS_NOW=$NOW
+d6fx; lrow 3600 wrapped noop D6n; lrow 60 sweep noop D6n
+drift
+check "10786 1: an ownerless started ticket inside a 24 h chief park is stuck, one UNOWNED row and no wait row" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
+contains "10786 1: the row says no live owner and that a date does not make it wait" "$(drows UNOWNED)" "no live owner; a date never makes it wait"
+contains "10786 1: and names the wait it was parked on" "$(drows UNOWNED)" "the chief since=$(iso_at 3600)"
+check "10786 1: the stuck ticket counts as drift" "$(sdn)" "sdrift=1"
+d6fx; lrow 3600 wrapped noop D6n; lrow 60 sweep noop D6n; owned "$K" LIVE '{"state":"live"}'
+drift
+check "10786 1 control: the same ticket with a live worker is neither stuck nor waiting" "$(dcount UNOWNED)/$(dcount AWAITING)" 0/0
+d6fx; owedrow 3600 chief "$(day_e $((NOW + 259200)))"
+drift
+check "10786 2: an owed step with a future due date is stuck, never AWAITING" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
+d6fx; owedrow 3600 chief "$(day_e $((NOW + 259200)))"; owned "$K" LIVE '{"state":"live"}'
+drift
+check "10786 2 control: the same ticket with a live worker is neither stuck nor waiting" "$(dcount UNOWNED)/$(dcount AWAITING)" 0/0
+d6fx; lrow 3600 merge moved - '{"pr":"4480","contract":"no","remainder":"remaining"}'; lrow 3000 live noop D5c
+drift
+check "10786 3: a partial merge parked for a RESUME worker inside its 6 h is stuck, never AWAITING" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
+d6fx; label; hand 7200 '{"owner":"operator","reason":"waiting on legal","until":"'"$(day_e $((NOW + 259200)))"'"}'
+drift
+check "10786 4: a held started ticket whose until date is ahead is stuck, never AWAITING" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
+contains "10786 4: the row tells how to move it to To Do" "$(drows UNOWNED)" "held, still In Progress"
 
 echo "---"
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; } || { echo "$fails failed"; exit 1; }
