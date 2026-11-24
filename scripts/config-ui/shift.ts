@@ -316,7 +316,6 @@ export async function readMerged(env: Record<string, string | undefined>, cwd: s
 // ---- what the page reads ----
 type Leg = { leg: string; ticket?: string | null; goal?: string | null; description?: string | null; state?: string; stage?: string; stages?: Record<string, string | null>; pr?: { number?: number | null } | null };
 type Need = { leg: string; verb?: string; action?: string; detail?: string; since?: string | null };
-// needs_you is the chief's own to-do list
 export type Board = { console?: { name?: string }; legs?: Leg[]; needs_you?: Need[] };
 export type Waiting = { kind: string; ticket: string | null; title: string; detail: string; since: string | null; pr: number | null; chief: string };
 export type Running = { ticket: string | null; title: string; stage: "building" | "in review"; since: string | null; pr: number | null };
@@ -336,8 +335,6 @@ export type View = {
 const prOf = (l?: Leg) => (typeof l?.pr?.number === "number" ? l.pr.number : null);
 const titleOf = (l?: Leg) => String(l?.goal || l?.description || "").slice(0, 200);
 
-// The live boards' rows: Waiting = every operator item readOwed finds; the board's needs_you
-// (go, decide, unblock, act) are the chief's own steps and never Waiting. Running = live and PR-open workers that are not waiting (a red CI stays Running: it is the worker's to fix).
 export function rowsOf(boards: Board[], owed: OwedItem[] = []): { waiting: Waiting[]; running: Running[] } {
   const waiting: Waiting[] = [], running: Running[] = [];
   const byKey = new Map<string, Waiting>();
