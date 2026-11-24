@@ -194,15 +194,17 @@ REPO="$(cd "$HERE/../../.." && pwd)"
 . "$REPO/scripts/lib/jira-project.sh"
 top=8; top_set=0; mirror="${NEXT_DISPATCH_MIRROR:-$(jira_mirror_dir)}"
 workers_from="${WORKERS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0; why=0; dispo=0
-why_ticket=""; body_file=""; nd_list_flags=0
+why_ticket=""; body_file=""; nd_list_flags=0; scope_batch=""; batch_size=""
 nd_usage() {
-    echo 'usage: next-dispatchable.sh --why-ticket KEY [--body-file FILE] [--mirror DIR] [--doc CHIEF_DOC] [--workers-dir DIR] [--no-classify]; or listing flags --top --why --dispositions --priority-pool-only --resume-only --owners --workers-from --held' >&2
+    echo 'usage: next-dispatchable.sh --why-ticket KEY [--body-file FILE] [--mirror DIR] [--doc CHIEF_DOC] [--workers-dir DIR] [--no-classify]; or listing flags --top --why --dispositions --priority-pool-only --resume-only --owners --workers-from --held --scope-batch FILE [--batch-size 1..50]' >&2
     exit 2
 }
 workers="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/workers"
 while [ "$#" -gt 0 ]; do
-    case "$1" in --top|--why|--dispositions|--priority-pool-only|--resume-only|--owners|--workers-from|--held) nd_list_flags=1 ;; esac
+    case "$1" in --top|--why|--dispositions|--priority-pool-only|--resume-only|--owners|--workers-from|--held|--scope-batch|--batch-size) nd_list_flags=1 ;; esac
     case "$1" in
+        --scope-batch) [ "$#" -ge 2 ] && [ -n "$2" ] || nd_usage; scope_batch="$2"; shift 2 ;;
+        --batch-size) [ "$#" -ge 2 ] && [ -n "$2" ] || nd_usage; batch_size="$2"; shift 2 ;;
         --why-ticket) [ "$#" -ge 2 ] && [ -n "$2" ] || nd_usage; why_ticket="$2"; shift 2 ;;
         --body-file) [ "$#" -ge 2 ] && [ -n "$2" ] || nd_usage; body_file="$2"; shift 2 ;;
         --workers-dir) workers="${2:-}"; shift 2 || exit 2 ;;
@@ -225,7 +227,15 @@ if [ -n "$why_ticket" ]; then
     [ "$nd_list_flags" = 0 ] || nd_usage
 elif [ -n "$body_file" ]; then nd_usage
 fi
-export ND_WHY_TICKET="$why_ticket" ND_BODY_FILE="$body_file"
+if [ -n "$batch_size" ]; then
+    [ -n "$scope_batch" ] || nd_usage
+    [[ "$batch_size" =~ ^[1-9][0-9]?$ ]] && [ "$batch_size" -le 50 ] || nd_usage
+fi
+if [ -n "$scope_batch" ] && { [ -e "$scope_batch" ] || [ -L "$scope_batch" ]; }; then
+    echo "next-dispatchable: --scope-batch FILE exists, refusing to overwrite it: $scope_batch" >&2
+    exit 2
+fi
+export ND_WHY_TICKET="$why_ticket" ND_BODY_FILE="$body_file" ND_SCOPE_BATCH="$scope_batch" ND_BATCH_SIZE="${batch_size:-25}"
 case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive number" >&2; exit 2 ;; esac
 # --why with no --top asks for the whole list, not the first 8 slots the worker-less RESUME rows fill; the
 # waiter counts dispatchable work against the free slots, and 50 is the fleet cap
@@ -2317,9 +2327,23 @@ for k, prs in needs_note:
 scope_questions.sort(key=lambda k: ranked(issues[k]))
 scope_shown = scope_questions if os.environ.get('ND_WHY') == '1' else scope_questions[:top]
 for k in scope_shown:
-    print('NEEDS-CHIEF-NOTE %s: no readable scope: its description names no file, needs a chief note before it is dispatched; to clear it add a Writes: line to the ticket, or say no code' % k)
+    print('NEEDS-CHIEF-NOTE %s: no readable scope: its description names no file, needs a chief note before it is dispatched; to clear it add a Writes: line to the ticket, or say no code, or batch it: --scope-batch FILE (docs/handover/chief-sections/scope-helper.md)' % k)
 if len(scope_questions) > len(scope_shown):
     print('# no readable scope: %d more ticket(s) not shown, --why names them' % (len(scope_questions) - len(scope_shown)))
+if os.environ.get('ND_SCOPE_BATCH'):
+    batch_keys = scope_questions[:int(os.environ['ND_BATCH_SIZE'])]
+    if not batch_keys:
+        print('# scope-batch 0: no ticket lacks a readable scope, %s not written' % os.environ['ND_SCOPE_BATCH'])
+    else:
+        batch_id = time.strftime('%Y%m%dT%H%M', time.gmtime()) + '-' + batch_keys[0]
+        try:
+            with open(os.environ['ND_SCOPE_BATCH'], 'x', encoding='utf-8') as bf:
+                for n, k in enumerate(batch_keys, 1):
+                    bf.write(json.dumps({'batch': batch_id, 'key': k, 'rank': n, 'title': issues[k]['title'], 'excerpt': issues[k]['description'][:600]}, ensure_ascii=False) + '\n')
+        except OSError as e:
+            print('next-dispatchable: --scope-batch could not write %s (%s)' % (os.environ['ND_SCOPE_BATCH'], e), file=sys.stderr)
+            sys.exit(2)
+        print('# scope-batch %d written to %s' % (len(batch_keys), os.environ['ND_SCOPE_BATCH']))
 for k, keys in handed_off:
     print('HANDED-OFF %s: remainder on %s' % (k, ', '.join(dict.fromkeys(keys))))
 for k, pr, who, due in owed_rows:
