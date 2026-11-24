@@ -27,7 +27,6 @@ def cache_read_weight(model):
 
 
 def cache_create_1h_weight():
-    """The one-hour cache-write price: WORKER_SESSION_BURN_W_CACHE_CREATE_1H, default 2.0 (as burn-weights.sh)."""
     return float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE_1H", "2.0"))
 
 

@@ -136,7 +136,6 @@ def parse(path, batch_tokens, idle_s):
 
 
 def _finder():
-    """The durable-record finder of profile-openings.py, imported by path: no second finder."""
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profile-openings.py")
     spec = importlib.util.spec_from_file_location("profile_openings", path)
     mod = importlib.util.module_from_spec(spec)
@@ -145,7 +144,6 @@ def _finder():
 
 
 def first_model(path):
-    """The model id of a transcript's first main-chain assistant row, else None."""
     try:
         with open(path, errors="replace") as fh:
             for _, line in zip(range(2000), fh):
@@ -171,8 +169,6 @@ def profile_ceiling(profiles, profile, model):
 
 
 def cohort(log_dir, projects, ceiling, since, model, profiles):
-    """(transcript paths, counts) of the launches at `ceiling`: the transcript is found through the launch's
-    session id; its ceiling is the record's autocompact= key, else its profile's for the transcript's model."""
     po = _finder()
     since_iso = datetime.fromtimestamp(since or 0, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     until = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

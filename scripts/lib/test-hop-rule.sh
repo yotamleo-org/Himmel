@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# scripts/lib/test-hop-rule.sh - hermetic suite for hop_rule.py and the one-hour write weight.
-# No transcript, no launch, no network: the rule is a pure function of its arguments.
-#  1. rule-table: a fixed table of inputs and answers, by the command's exit code;
-#  2. rule-weights: r is the owner's cache_read_weight, and an unknown model has no answer;
-#  3. rule-1h-weight: burn-weights.sh and burn_weights.py own the one-hour write weight.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HR="$HERE/hop_rule.py"

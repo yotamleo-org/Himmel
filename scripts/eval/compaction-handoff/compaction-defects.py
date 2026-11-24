@@ -411,7 +411,6 @@ EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 
 
 def _flat_calls(turns):
-    """The tool calls of the main chain in order: {k (from 1), turn, call}."""
     out = []
     for i, t in enumerate(turns):
         for c in t["calls"]:
@@ -429,10 +428,6 @@ def _changes_state(c):
 
 
 def proxy_points(calls, turns, floor):
-    """{call k: {push index}}: a call is a stable point when it is one of the first three calls after a successful
-    `git push` call whose own command holds no `git commit`, made at or above the floor, with no state change
-    since the push and the last append-results marker none of the stop markers. The call's own command counts as
-    well (the guard does not see it; counting it makes the proxy hop less)."""
     marker_after, last = [], None
     for f in calls:
         m = MARKER.search(_cmd(f["call"]))
@@ -472,8 +467,6 @@ def log_points(calls, path):
 
 
 def replay_rule(turns, calls, points, predictor, base, relaunch, model, hr, bw):
-    """Input-side cost-eq of one session, as recorded and with the rule deciding at `points`; the rule is
-    evaluated again at every point on the simulated context and the call count of the simulated session."""
     r, w = bw.cache_read_weight(model), bw.cache_create_1h_weight()
     w_cc, w_in = ab.W_CC, ab.W_IN
 
@@ -505,9 +498,6 @@ def replay_rule(turns, calls, points, predictor, base, relaunch, model, hr, bw):
 
 
 def simulate_rule(a):
-    """--simulate-rule: the hop rule replayed over the sessions the launch records name, priced in cost-eq.
-    Calls are tool-call blocks of the main chain; a hop costs the relaunch, the one-hour write of the base and
-    the old session's h calls at full context."""
     hr = _import("hop_rule", "..", "..", "lib", "hop_rule.py")
     bw = hr.burn_weights
     po = _import("profile_openings", "..", "profile-openings.py")

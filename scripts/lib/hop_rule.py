@@ -12,11 +12,6 @@ burn_weights.is_known rejects has no weight, so the function raises; no default 
   hop_rule.py --context <n> --calls <n> --model <id> [--base <n>] [--relaunch <n>]
 
 Prints the r it used and the answer. Exit 0 hop, 1 no hop, 3 `unknown model` (no answer).
-No runtime path reads this file yet.
-
-B and K are PROVISIONAL: they come from the one hop S1b measured and serve S2's pre-check only. B is the
-fresh session's fixed opening, 29730 tokens, plus 0 re-read tokens. K is the chief's 5 calls at about
-100000 context, read at 0.05: 25000.
 """
 import argparse
 import os
