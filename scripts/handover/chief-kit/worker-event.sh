@@ -59,7 +59,9 @@
 # auto-go.sh's `GO-WRITTEN …` lines (rc 11: the GO file stands, the bus send failed).
 # Usage errors exit 2 before anything runs.
 #
-# Test seams (env): LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_AUTOGO LE_DRYRUN_BOUND.
+# `HANDLED closed-already <label>` (rc 0): a WRAPPED worker the chief already closed (its bullet is in the chief
+# doc), whose doc tail is WRAPPED, queue lock free and session gone; nothing runs.
+# Test seams (env): LE_LOCK LE_SESSIONS LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_AUTOGO LE_DRYRUN_BOUND.
 # Platform guard: Linux bash 3.2+ (wrap-merged.sh needs flock + jq).
 set -uo pipefail
 
@@ -74,6 +76,9 @@ if [ -n "${LE_STATION:-}" ]; then STATION=("$LE_STATION"); else STATION=(bash "$
 if [ -n "${LE_LIVE:-}" ]; then LIVE=("$LE_LIVE"); else LIVE=(bash "$HERE/live-state.sh"); fi
 if [ -n "${LE_LIST:-}" ]; then LIST=("$LE_LIST"); else LIST=(bash "$HERE/fleet-manifest.sh" list); fi
 if [ -n "${LE_AUTOGO:-}" ]; then AUTOGO=("$LE_AUTOGO"); else AUTOGO=(bash "$HERE/auto-go.sh"); fi
+if [ -n "${LE_LOCK:-}" ]; then LOCK=("$LE_LOCK"); else LOCK=(bash "$HERE/../queue-lock.sh"); fi
+# shellcheck disable=SC2016
+if [ -n "${LE_SESSIONS:-}" ]; then SESSIONS=("$LE_SESSIONS"); else SESSIONS=(bash -c '. "$1/../../lanes/lib/claude-sessions.sh" && claude_sessions' _ "$HERE"); fi
 # the auto_go flag (scripts/lib/flags.sh): an unregistered flag reads as off
 auto_go_on() { ( . "$HERE/../../lib/flags.sh" && himmel_flag auto_go ) >/dev/null 2>&1; }
 # exit 0 on, 1 off, 2 the flag could not be read (an unknown name, an unreadable registry or an invalid value)
@@ -210,6 +215,16 @@ EOF
     stem="${worker##*/}"; stem="${stem%.md}"
     label="$stem"
     [[ $stem =~ -(N[0-9]+)- ]] && label="${BASH_REMATCH[1]}"
+fi
+
+if [ "$marker" = WRAPPED ] && [ -r "$worker" ] \
+    && grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null \
+    && "${LOCK[@]}" status "$worker" >/dev/null 2>&1 \
+    && [ "$(awk '/^## Results( |$)/ { r = 1; next } /^## / { r = 0; next } r && match($0, /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/) { m = substr($0, RSTART, RLENGTH); sub(/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?/, "", m); sub(/[^A-Za-z0-9_]$/, "", m); last = m } END { print last }' "$worker")" = WRAPPED ]; then
+    gstem="${worker##*/}"; gstem="${gstem%.md}"
+    if gsess="$("${SESSIONS[@]}")" && ! printf '%s\n' "$gsess" | awk -F'\t' -v s="$gstem" '$2 == s { f = 1 } END { exit !f }'; then
+        echo "HANDLED closed-already $label"; exit 0
+    fi
 fi
 
 # Record before any cleanup implementation (including an injected close). The
