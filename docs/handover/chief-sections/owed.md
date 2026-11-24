@@ -27,6 +27,10 @@ at a handover; the ledger is carried by the tick, the HANDOFF and the queue fold
   every open row: the successor starts with all of them.
 - **The fold never moves it.** An older `queue:` segment that contains `owed`, `HOLD` or
   `to file` stays on the live `queue:` line; only plain segments go to the chief-history file.
+- **The Shift list and your asks must agree.** `bash <kit>/waiting-ask-drift.sh --doc <this doc>` prints
+  one line per open operator row with no delivered `OWED <key>` ask (the key is the row id or its ticket
+  key), and one per delivered ask whose key names no open operator row; it prints nothing and exits 0
+  when they agree, 1 on drift. Run it before you tell the operator nothing is waiting on them.
 
 Wrapped proof workers record a `kind: proof`, `action: validate-proof`, `actor: chief`
 obligation before worker-event cleanup or direct/sweep close. A writer failure refuses
