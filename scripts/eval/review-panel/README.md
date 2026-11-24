@@ -69,6 +69,8 @@ commit:
 bash scripts/eval/review-panel/run.sh --paired <snapshot-sha> --head <pr-head> --repeats 3 --out ~/.himmel/eval/review-panel/<name> --no-ledger --critics codex
 ```
 
+- **Only with `--paired`.** `--head`, `--repeats` and `--results` are refused
+  without it, so a forgotten `--paired` never starts an unpaired paid sweep.
 - **One snapshot.** `<snapshot>` is a commit of main and must be an ancestor
   of `--head` (default `HEAD`). The base side is checked out at the snapshot,
   the head side at `--head`, each into its own scratch tree (removed when the

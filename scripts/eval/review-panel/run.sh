@@ -45,7 +45,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 PANEL="${REVIEW_PANEL_CMD:-$HERE/../../cr/critic-panel.sh}"
 fixtures="$HERE/fixtures"; key="$HERE/key/seeds.json"
 out=""; tiers="paid"; critics=""; only=""; meta="{}"; ledger_args=(); model=""; case_repo=""; src=""; delta_only=0; allow_claude=0
-paired=""; head_rev=""; repeats=1; results="$HERE/results.jsonl"; inputs_given=0; fwd=()
+paired=""; head_rev=""; repeats=1; results="$HERE/results.jsonl"; inputs_given=0; fwd=(); paired_flags=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -68,13 +68,17 @@ while [ $# -gt 0 ]; do
         --allow-claude-api) allow_claude=1; fwd+=("$1"); shift ;;
         --model) model="${2:-}"; fwd+=("$1" "$model"); shift 2 ;;
         --paired) paired="${2:-}"; shift 2 ;;
-        --head) head_rev="${2:-}"; shift 2 ;;
-        --repeats) repeats="${2:-}"; shift 2 ;;
-        --results) results="${2:-}"; shift 2 ;;
+        --head) head_rev="${2:-}"; paired_flags="$paired_flags $1"; shift 2 ;;
+        --repeats) repeats="${2:-}"; paired_flags="$paired_flags $1"; shift 2 ;;
+        --results) results="${2:-}"; paired_flags="$paired_flags $1"; shift 2 ;;
         *) echo "run.sh: unknown argument: $1" >&2; exit 2 ;;
     esac
 done
 [ -n "$out" ] || { echo "run.sh: --out <dir> is required" >&2; exit 2; }
+if [ -z "$paired" ] && [ -n "$paired_flags" ]; then
+    echo "run.sh:$paired_flags need --paired: without it this would be an unpaired paid sweep - no panel call made" >&2
+    exit 2
+fi
 
 if [ -n "$case_repo" ]; then
     src="${src:-$(git -C "$HERE" rev-parse --show-toplevel)}" || exit 2

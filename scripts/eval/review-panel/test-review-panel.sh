@@ -705,6 +705,12 @@ paired --paired "$PS" --repeats 00 --out "$TMP/pair11" --results "$TMP/pair11.js
 eq "paired: --repeats 00 is refused like 0" "$rc:$([ -e "$TMP/pair11.jsonl" ] && echo row || echo none)" "2:none"
 paired --paired "$PS" --head "$PH" --out "$TMP/pair1" --results "$TMP/pair12.jsonl" >/dev/null 2>&1; rc=$?
 eq "paired: a rerun into an out dir that holds an earlier run writes this run's two rows, not the old ones again" "$rc:$(wc -l < "$TMP/pair12.jsonl" | tr -d ' ')" "0:2"
+for pf in "--head=$PH" "--repeats=2" "--results=$TMP/unpaired.jsonl"; do
+  rm -rf "$TMP/unpaired-out" "$TMP/unpaired.jsonl"
+  REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-pr" bash "$PRUN" "${pf%%=*}" "${pf#*=}" --out "$TMP/unpaired-out" --no-ledger --critics codex >"$TMP/unpaired.txt" 2>&1; rc=$?
+  eq "run: ${pf%%=*} without --paired is refused before any sweep, so a forgotten --paired never fires an unpaired paid sweep" \
+    "$rc:$([ -e "$TMP/unpaired-out" ] && echo swept || echo none):$(grep -c -e 'need --paired' "$TMP/unpaired.txt")" "2:none:1"
+done
 if [ "$(id -u)" != 0 ]; then
   cp -r "$TMP/pair1" "$TMP/pair13"; chmod a-w "$TMP/pair13"
   paired --paired "$PS" --head "$PH" --out "$TMP/pair13" --results "$TMP/pair13.jsonl" >/dev/null 2>&1; rc=$?
