@@ -425,7 +425,7 @@ placed at filing, never defaulted silently. `--proposed-version <v>` files it wi
 same call; `--backlog` alone is refused: it needs `--proposed-version backlog`
 and a one-line `--why`, and then files the `backlog` label with no fixVersion.
 The door places the ticket from its priority, so `--backlog` does not keep a mild ticket out of the next version: the
-ticket moves to the next version and keeps its `backlog` label. A ticket stays in the backlog only by an operator record, or when no next version is declared.
+door admits it into the next version and takes the `backlog` label off. A ticket stays in the backlog only by an operator record, or when no next version is declared.
 Besides the door, `create` still places a ticket at filing in three cases, a second placer: `bugDefault` (a gated ticket
 or a Highest Bug takes the active version; a Bug with no placement is refused), blocker inheritance (`--blocks` takes the
 target's version) and split inheritance (`--split-from` takes the source's version).
