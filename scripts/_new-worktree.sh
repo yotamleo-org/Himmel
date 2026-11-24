@@ -145,7 +145,14 @@ post_create() {
 
     INSTALL_NOTE=""
     if [ $NPM_INSTALL -eq 1 ] && [ -f "$WORKTREE_PATH/scripts/jira/package.json" ]; then
-        if (cd "$WORKTREE_PATH/scripts/jira" && run npm install --omit=dev --no-audit --no-fund --silent); then
+        JIRA_PRIMARY="$PRIMARY_WORKTREE/scripts/jira"
+        if [ -d "$JIRA_PRIMARY/node_modules" ] && [ ! -e "$WORKTREE_PATH/scripts/jira/node_modules" ] &&
+            [ -f "$JIRA_PRIMARY/package-lock.json" ] &&
+            cmp -s "$JIRA_PRIMARY/package-lock.json" "$WORKTREE_PATH/scripts/jira/package-lock.json" &&
+            cmp -s "$JIRA_PRIMARY/package.json" "$WORKTREE_PATH/scripts/jira/package.json" &&
+            cp -a --reflink=auto "$JIRA_PRIMARY/node_modules" "$WORKTREE_PATH/scripts/jira/node_modules" 2>>"$LOG"; then
+            INSTALL_NOTE=" (jira deps reused from primary, no install)"
+        elif (cd "$WORKTREE_PATH/scripts/jira" && run npm install --omit=dev --no-audit --no-fund --silent); then
             INSTALL_NOTE=" (jira deps installed)"
         else
             echo "ERR new-worktree: worktree created but npm install failed (log: $LOG)" >&2
