@@ -9,7 +9,7 @@ import { readPeersFile, type Config } from "./config";
 import { badChars, draftState } from "./drafts";
 import { checkOutbound } from "./egress";
 import { PEER_NAME_RE, SESSION_ID_RE } from "./ids";
-import { runProc } from "./proc";
+import { procHooks, runProc } from "./proc";
 import { Threads, type ThreadRec } from "./threads";
 
 export type Result = { code: number; line: string };
@@ -96,8 +96,34 @@ function pathsOf(r: Record<string, any>, home: string, add: (p: string) => void)
     if ((item.name === "Bash" || item.name === "Monitor") && typeof input.command === "string") {
       for (const m of input.command.matchAll(TOKEN_RE)) put(m[1]);
       for (const m of input.command.matchAll(QUOTED_RE)) put(m[1] ?? m[2]);
+      relativeWords(input.command, r.cwd, home, put);
     }
   }
+}
+
+const WORD_RE = /'([^']*)'|"([^"]*)"|([^\s'"`;|&<>()]+)/g;
+function relativeWords(command: string, cwd: unknown, home: string, put: (p: unknown, base?: string) => void): void {
+  let dir = typeof cwd === "string" && isAbsolute(cwd) ? cwd : null, prev = "";
+  for (const m of command.matchAll(WORD_RE)) {
+    const word = m[1] ?? m[2] ?? m[3];
+    if (prev === "cd" && dir !== null && word !== "-") {
+      dir = word.startsWith("~/") ? join(home, word.slice(2)) : word === "~" ? home : resolve(dir, word);
+      put(dir);
+    } else if (dir !== null && word !== "" && !word.startsWith("-") && !word.startsWith("~") && !isAbsolute(word)) put(word, dir);
+    prev = word;
+  }
+}
+
+const MARKERS = [".salus", ".salus-profile"];
+const FIND_DEPTH = "6", FIND_TIMEOUT_MS = 10_000, FIND_BUDGET_MS = 60_000;
+function markerBelow(dirs: string[]): boolean {
+  const until = Date.now() + FIND_BUDGET_MS;
+  for (const d of dirs) {
+    if (Date.now() > until) return true;
+    const r = procHooks.spawnSync("find", [d, "-maxdepth", FIND_DEPTH, "(", "-name", MARKERS[0], "-o", "-name", MARKERS[1], ")", "-print", "-quit"], { encoding: "utf8", timeout: FIND_TIMEOUT_MS });
+    if (r.error || r.status !== 0 || (r.stdout ?? "").trim() !== "") return true;
+  }
+  return false;
 }
 
 function canon(p: string): string {
@@ -116,7 +142,7 @@ function salusMarked(p: string, cache: Map<string, boolean>): boolean {
   let d = p;
   for (;;) {
     let hit = cache.get(d);
-    if (hit === undefined) { hit = fs.existsSync(join(d, ".salus")); cache.set(d, hit); }
+    if (hit === undefined) { hit = MARKERS.some(m => fs.existsSync(join(d, m))); cache.set(d, hit); }
     if (hit) return true;
     const up = dirname(d);
     if (up === d) return false;
@@ -155,6 +181,8 @@ async function scan(home: string, sid: string, env: Record<string, string | unde
   for (const recs of all) for (const r of recs) pathsOf(r, home, p => { seen.add(p); seen.add(canon(p)); });
   const cache = new Map<string, boolean>();
   for (const p of seen) if (salusMarked(p, cache)) return PHI;
+  const dirs = [...seen].filter(p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } });
+  if (markerBelow([...new Set(dirs)])) return PHI;
   return (await phiListed([...seen], himmelRoot, env, home)) ? PHI : null;
 }
 

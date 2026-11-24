@@ -602,7 +602,11 @@ signed tap, like every draft. The script refuses, and queues nothing, when:
 - the transcript, or any `<sid>/subagents/*.jsonl`, names a path under a
   `.salus`-marked root or a PHI-listed root, either as a record `cwd`, as a tool's
   path argument or a Glob prefix, or as an absolute path in a Bash or Monitor
-  command; or a transcript cannot be read whole or is over 64 MiB (`phi-root`).
+  command, or a relative one resolved after the command's last `cd`, else
+  against the record's `cwd`; any named directory with a `.salus` or
+  `.salus-profile` marker up to six levels below it counts too, and a `find`
+  that errs or times out refuses; or a transcript cannot be read whole or is
+  over 64 MiB (`phi-root`).
   It reads only those fields, never a tool's output, and prints nothing from it;
 - the peer is not in peers.json (`unknown-peer`);
 - the poller's `poller.pid` or the operator bot's `notify/bot.code` does not

@@ -111,6 +111,29 @@ test("a quoted salus path holding a space in a Bash or Monitor command refuses p
   ]);
 });
 
+test("a relative path after a cd, and a directory with a salus marker anywhere below it, refuse phi-root", async () => {
+  const docs = mkdtempSync(join(tmpdir(), "peer-tell-docs-"));
+  mkdirSync(join(docs, "salus", "notes"), { recursive: true });
+  writeFileSync(join(docs, "salus", ".salus"), "");
+  const prof = mkdtempSync(join(tmpdir(), "peer-tell-prof-"));
+  mkdirSync(join(prof, "deep", "vault"), { recursive: true });
+  writeFileSync(join(prof, "deep", "vault", ".salus-profile"), "");
+  await phiCases([
+    ["cd then a relative salus path", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cd ${docs} && cat salus/x` })])],
+    ["a relative salus path against the record cwd", h => transcript(h, [{ type: "user", cwd: h.launch }, { type: "user", cwd: docs }, use(docs, "Bash", { command: "cat salus/notes/a.md" })])],
+    ["Grep rooted above salus", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Grep", { pattern: "foo", path: docs })])],
+    ["grep -rn rooted above salus under ~", h => { mkdirSync(join(h.home, "Documents", "salus"), { recursive: true }); writeFileSync(join(h.home, "Documents", "salus", ".salus"), ""); transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: "grep -rn foo ~/Documents" })]); }],
+    ["a salus-profile marker below a named directory", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `ls ${prof}` })])],
+  ]);
+  if (process.getuid!() !== 0) {
+    const locked = mkdtempSync(join(tmpdir(), "peer-tell-locked-"));
+    mkdirSync(join(locked, "closed"));
+    chmodSync(join(locked, "closed"), 0o000);
+    await phiCases([["a named directory find cannot read through", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Glob", { pattern: "*.md", path: locked })])]]);
+    chmodSync(join(locked, "closed"), 0o700);
+  }
+});
+
 async function phiCases(cases: [string, (h: Home) => void][]) {
   for (const [why, seed] of cases) {
     const h = newHome();
