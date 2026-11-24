@@ -658,6 +658,7 @@ case "$tune_batch" in ''|*[!0-9]*|0*) ;; *) export QMD_OPENAI_EMBED_BATCH_SIZE="
 case "$tune_conc" in ''|*[!0-9]*|0*) ;; *) export QMD_OPENAI_EMBED_CONCURRENCY="$tune_conc" ;; esac
 case "$tune_queue" in ''|*[!0-9]*|0*) ;; *) export QMD_QUERY_MAX_QUEUED="$tune_queue" ;; esac
 start_rc=0
+start_marker="$qmd_state_dir/starting"
 # Recheck the opt-out under the held lock, right before the launch: an `off` that
 # landed after the early check has set the flag by now, and an `off` after this
 # point waits on the lock (qmd-daemon-switch.sh) and then stops what was started.
@@ -668,6 +669,7 @@ fi
 # A named index starts its own daemon on the port in QMD_MCP_URL.
 idx_flag=""
 [ "$QMD_INDEX_NAME" = index ] || idx_flag="$QMD_INDEX_NAME"
+date +%s > "$start_marker" 2>/dev/null
 if command -v timeout >/dev/null 2>&1; then
   start_out="$(timeout -k 5 "$QMD_START_TIMEOUT" "$QMD_BIN" ${QMD_BIN_ARG1:+"$QMD_BIN_ARG1"} ${idx_flag:+--index "$idx_flag" --port "$port_num"} mcp --http --daemon 2>&1)" || start_rc=$? # t13b-ok: the idempotent qmd daemon start this script exists for
 else
@@ -677,6 +679,7 @@ if [ "$start_rc" -eq 124 ] || [ "$start_rc" -eq 137 ]; then
   echo "ensure-qmd-daemon: ERROR - 'qmd mcp --http --daemon' timed out after ${QMD_START_TIMEOUT}s (killed)." >&2
   echo "  A hung start would stall every new session, so it was bounded and aborted." >&2
   echo "  Check the daemon log: ~/.cache/qmd/mcp.log" >&2
+  rm -f "$start_marker"
   exit 1
 fi
 
@@ -684,6 +687,7 @@ i=0
 while [ "$i" -lt "$WAIT_TRIES" ]; do
   body="$(probe_body)"
   if { [ -n "$body" ] && is_qmd_shaped "$body"; } || alive_auth_required; then
+    rm -f "$start_marker"
     exit 0
   fi
   i=$((i + 1))

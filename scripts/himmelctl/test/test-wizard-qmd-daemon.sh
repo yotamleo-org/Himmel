@@ -90,6 +90,22 @@ kill "$fake_pid" 2>/dev/null || true
 echo "$out" | jq -e --arg p "pid $fake_pid" '.actual == "degraded" and (.detail | test("NOT qmd")) and (.detail | contains($p)) and (.detail | test("sleep|fake-listener")) and (.detail | contains("sleep 31") | not)' >/dev/null || fail "foreign listener is named by pid and executable only, no arguments (got: $out)"
 echo "ok: a non-qmd listener is named by pid and executable only, never its arguments"
 
+marker_probe() {
+  local m="$work/starting"
+  rm -f "$m"
+  [ "$1" = none ] || printf '%s\n' "$1" > "$m"
+  BUN_INSTALL="$work/nobun" PATH="$work/qmdbin:$nq_path" HIMMEL_DOCTOR_QMD_START_MARKER="$m" probe down
+}
+out=$(marker_probe "$(date +%s)")
+echo "$out" | jq -e '.actual == "starting" and (.detail | test("starting"))' >/dev/null || fail "refused inside the grace after a start marker -> starting (got: $out)"
+out=$(marker_probe "$(( $(date +%s) - 3600 ))")
+echo "$out" | jq -e '.actual == "degraded" and (.detail | test("not answering"))' >/dev/null || fail "refused past the grace -> still degraded not answering (got: $out)"
+out=$(marker_probe none)
+echo "$out" | jq -e '.actual == "degraded" and (.detail | test("not answering"))' >/dev/null || fail "refused with no marker -> still degraded not answering (got: $out)"
+out=$(marker_probe "$(( $(date +%s) + 3600 ))")
+echo "$out" | jq -e '.actual == "degraded"' >/dev/null || fail "a marker dated in the future is not a start signal (got: $out)"
+echo "ok: refused inside the start grace reads starting; past the grace, no marker, or a future marker reads degraded"
+
 # not wanted: desired follows the qmd items' profiles (luna, all). Core wants none of them.
 want=$("$node_bin" -e "
 const m = JSON.parse(require('fs').readFileSync('$(winpath "$manifest_path")', 'utf8'));
