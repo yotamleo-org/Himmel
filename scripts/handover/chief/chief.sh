@@ -2049,6 +2049,14 @@ print("Chain order (focus-chains.json): " + "; ".join(n for n in names if n))' "
 # Report the whole-span `<...>` placeholders still in a HANDOFF's facts header
 # and start section (the Operator line, the root-sweep locks).
 # Args: handoff file.
+cap_lines() {
+    awk -v max="$1" -v w="$2" -v ptr="$3" '
+        NF == 0 { next }
+        n < max { if (length($0) > w) { cut++; print substr($0, 1, w) " …" } else print $0 }
+        { n++ }
+        END { if (n > max) print "… +" (n - max) " more — " ptr; else if (cut) print "… " cut " line(s) cut — " ptr }'
+}
+
 report_handoff_placeholders() {
     local left
     # shellcheck disable=SC2016  # the backticks are literal markdown code spans
@@ -2857,6 +2865,7 @@ cmd_next() {
     # relative --doc that happens to point INSIDE state_dir.
     predecessor_dir="$(_arm_realpath "$predecessor_dir")"
     predecessor_handoff="$predecessor_dir/${predecessor_stem}-HANDOFF.md"
+    local predecessor_digest="$predecessor_dir/${predecessor_stem}-DIGEST.md" predecessor_digest_ref
     # The successor doc must be able to actually RESOLVE this reference: a
     # bare basename only works when the HANDOFF sits in the successor's own
     # state_dir (the common case); a cross-bucket --doc needs the absolute
@@ -2869,6 +2878,7 @@ cmd_next() {
         predecessor_handoff_ref="$predecessor_handoff"
         successor_doc_ref="$doc"
     fi
+    predecessor_digest_ref="${predecessor_handoff_ref%-HANDOFF.md}-DIGEST.md"
     local fill_signal="$chain_dir/sig-$session"
     local log="$chain_dir/launch-$session.log"
 
@@ -2992,7 +3002,7 @@ cmd_next() {
         FLEET_MANIFEST_NOTE "$manifest_note" \
         LETTER "$successor_letter" \
         PREDECESSOR "$predecessor_base" \
-        PREDECESSOR_HANDOFF "$predecessor_handoff_ref" \
+        PREDECESSOR_HANDOFF "$predecessor_digest_ref** and the full HANDOFF **$predecessor_handoff_ref" \
         SESSION_NAME "$session" \
         INBOX "$inbox" \
         HANDOVER_ROOT "$root" \
@@ -3066,8 +3076,10 @@ cmd_next() {
         hf_owed="$(owed_section "$predecessor_dir")"
         hf_owed_bytes=0
         [ -z "$hf_owed" ] || hf_owed_bytes="$(printf '\n%s\n' "$hf_owed" | wc -c | tr -d ' ')"
+        local hf_tpl="$predecessor_handoff.tpl"
+        awk '/^<!-- digest-template:/ { exit } { print }' "$handoff_template" > "$hf_tpl" || { rm -f "$hf_tpl"; err "could not split $handoff_template"; exit 1; }
         while :; do
-            render_template "$handoff_template" "$predecessor_handoff" \
+            render_template "$hf_tpl" "$predecessor_handoff" \
                 CURRENT_DIRECTION "$hf_direction" \
                 HEAD_LINE "$(bash "$facts" head "$predecessor_doc" --repo "$repo")" \
                 BANK_LINE "$(bash "$facts" bank "$predecessor_doc" --repo "$repo")" \
@@ -3090,6 +3102,7 @@ cmd_next() {
             hf_summary="over the HANDOFF size budget — read the tail of $predecessor_doc ## Results"
             hf_lastgo="over the HANDOFF size budget — read \`last GO:\` in the Live state of \`$successor_doc_ref\`"
         done
+        rm -f "$hf_tpl"
         [ -z "$hf_wrapped" ] || printf '%s\n' "$hf_wrapped" >> "$predecessor_handoff"
         [ -z "$hf_inflight" ] || printf '\n%s\n' "$hf_inflight" >> "$predecessor_handoff"
         [ -z "$hf_owed" ] || printf '\n%s\n' "$hf_owed" >> "$predecessor_handoff"
@@ -3121,6 +3134,63 @@ cmd_next() {
             err "could not create HANDOFF at $predecessor_handoff — this is not a collision (the file does not exist); check permissions on $(dirname "$predecessor_handoff")"
             exit 1
         fi
+    fi
+    local dg_facts="$HERE/../chief-kit/handoff-facts.sh" dg_budget="${DIGEST_BUDGET_BYTES:-8000}" dg_tpl="$predecessor_digest.tpl.$$" dg_new="$predecessor_digest.new.$$" dg_pass=1
+    local dg_workers dg_prs dg_lastgo dg_judges dg_queue dg_total dg_wrapped dg_owed dg_inflight dg_chain
+    awk 'f { print } /^<!-- digest-template:/ { f = 1 }' "$handoff_template" > "$dg_tpl" || { rm -f "$dg_tpl"; err "could not split $handoff_template"; exit 1; }
+    while :; do
+        if [ "$dg_pass" -eq 1 ]; then
+            dg_workers="$(bash "$dg_facts" workers "$predecessor_doc" --repo "$repo" --root "$root" | cap_lines 10 160 "the HANDOFF $predecessor_handoff_ref")"
+            dg_prs="$(bash "$dg_facts" prs "$predecessor_doc" --repo "$repo" | cap_lines 8 160 "the HANDOFF $predecessor_handoff_ref")"
+            dg_lastgo="$(bash "$dg_facts" lastgo "$predecessor_doc" --repo "$repo" | cap_lines 2 200 "the Live state of $successor_doc_ref")"
+            dg_judges="$(judge_calls_now | cap_lines 4 160 "the HANDOFF $predecessor_handoff_ref")"
+            dg_queue="$(bash "$dg_facts" queue "$doc" --repo "$repo" | cap_lines 2 200 "the Live state of $successor_doc_ref")"
+            dg_wrapped="$(wrapped_open_prs_section "$predecessor_doc" | sed '/^## /d' | cap_lines 8 200 "the HANDOFF $predecessor_handoff_ref ## Wrapped with open PR")"
+            dg_owed="$(owed_section "$predecessor_dir" | sed '/^## /d' | cap_lines 8 200 "the HANDOFF $predecessor_handoff_ref ## Owed")"
+            dg_inflight="$(inflight_section "$predecessor_dir" | sed '/^## /d' | cap_lines 6 200 "the HANDOFF $predecessor_handoff_ref ## Start, plan and design in flight")"
+            dg_chain="$(chain_order_line "$predecessor_dir" | cap_lines 2 4000 "the HANDOFF $predecessor_handoff_ref")"
+        else
+            dg_wrapped="over the digest budget — READ the HANDOFF $predecessor_handoff_ref ## Wrapped with open PR before your first dispatch"
+            dg_owed="over the digest budget — READ the HANDOFF $predecessor_handoff_ref ## Owed before your first dispatch"
+            dg_inflight="over the digest budget — read the HANDOFF $predecessor_handoff_ref ## Start, plan and design in flight"
+            dg_chain="over the digest budget — read the HANDOFF $predecessor_handoff_ref"
+            dg_workers="over the digest budget — read the HANDOFF $predecessor_handoff_ref"
+            dg_prs="$dg_workers"; dg_judges="$dg_workers"
+            dg_lastgo="over the digest budget — read \`last GO:\` in the Live state of $successor_doc_ref"
+            dg_queue="over the digest budget — read \`queue:\` in the Live state of $successor_doc_ref"
+        fi
+        render_template "$dg_tpl" "$dg_new" \
+            PREDECESSOR_LETTER "$predecessor_letter" \
+            LETTER "$successor_letter" \
+            PREDECESSOR "$predecessor_base" \
+            SUCCESSOR_DOC "$successor_doc_ref" \
+            HANDOFF_REF "$predecessor_handoff_ref" \
+            HEAD_LINE "$(bash "$dg_facts" head "$predecessor_doc" --repo "$repo" | head -n 1 | cut -c1-200)" \
+            BANK_LINE "$(bash "$dg_facts" bank "$predecessor_doc" --repo "$repo" | head -n 1 | cut -c1-200)" \
+            WORKER_SESSION_LIST "$dg_workers" \
+            OPEN_PRS "$dg_prs" \
+            QUEUE_LINE "$dg_queue" \
+            LAST_GO "$dg_lastgo" \
+            JUDGE_CALLS "$dg_judges" \
+            CHAIN_ORDER "${dg_chain:-none}" \
+            WRAPPED_PRS "${dg_wrapped:-none}" \
+            OWED "${dg_owed:-none}" \
+            INFLIGHT "${dg_inflight:-none}" \
+            ORPHAN_NOTE "${orphan_gate_note:-none}"
+        [ "$dg_pass" -eq 1 ] && [ "$(wc -c < "$dg_new" | tr -d ' ')" -gt "$dg_budget" ] || break
+        dg_pass=2
+    done
+    rm -f "$dg_tpl"
+    dg_total="$(wc -c < "$dg_new" | tr -d ' ')"
+    [ "$dg_total" -le "$dg_budget" ] || err "warning: digest over budget after the pointer pass: $dg_total bytes (limit $dg_budget); the fixed fields and paths alone exceed it"
+    [ ! -d "$predecessor_digest" ] || { rm -f "$dg_new"; err "the digest destination $predecessor_digest is a directory"; exit 1; }
+    if ln "$dg_new" "$predecessor_digest" 2>/dev/null; then
+        rm -f "$dg_new"
+        echo "digest: $predecessor_digest"
+    else
+        rm -f "$dg_new"
+        [ -f "$predecessor_digest" ] || { err "could not create the digest at $predecessor_digest — this is not a collision (the file does not exist); check permissions on $predecessor_dir"; exit 1; }
+        echo "digest: $predecessor_digest (exists — left unchanged)"
     fi
     # Resolved BEFORE the cleanup trap is cleared, so a profile
     # refusal (exit 2) removes the claimed successor doc and a retry is not

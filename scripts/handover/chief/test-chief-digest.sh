@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2015
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO_REAL="$(cd "$HERE/../../.." && pwd)"
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/chief-digest.XXXXXX")" || { echo "test-chief-digest: mktemp -d failed" >&2; exit 1; }
+tmp="$(cd "$tmp" && pwd -P)"
+trap 'rm -rf "$tmp"' EXIT
+
+export HOME="$tmp/home"; mkdir -p "$HOME"
+export HIMMELCTL_CACHE_DIR="$tmp/himmelctl-cache"
+export HANDOVER_REGISTRY="$tmp/no-registry-for-this-suite.json"
+export BRIDGE_ROOT="$tmp/bridge"
+export UNGUARDED_LAUNCH_OK=1
+printf '#!/usr/bin/env bash\necho "bank-preflight: worker=unknown five_hour=9.0 seven_day=91.0 extra_usage=n/a"\necho PROCEED\n' > "$tmp/facts-bank.sh"
+{
+    printf '#!/usr/bin/env bash\n'
+    i=1
+    while [ "$i" -le 60 ]; do
+        printf 'echo "#%s [DEMO-%s] a deliberately long stub pull request title that pads this line out to well past a hundred bytes (feat/branch-%s)"\n' "$i" "$i" "$i"
+        i=$((i + 1))
+    done
+} > "$tmp/facts-prs.sh"
+export HANDOFF_FACTS_BANK="$tmp/facts-bank.sh" HANDOFF_FACTS_PRS="$tmp/facts-prs.sh"
+printf '[]\n' > "$tmp/orphan-prs-none.json"
+export ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-none.json"
+
+fails=0
+check() { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
+
+BOUND=8000
+
+fixture_repo="$tmp/repo"
+mkdir -p "$fixture_repo/scripts" "$fixture_repo/docs"
+git init -q "$fixture_repo"
+for _e in "$REPO_REAL"/scripts/* "$REPO_REAL"/docs/*; do
+    case "$_e" in
+        "$REPO_REAL/scripts/handover"|"$REPO_REAL/scripts/lib") cp -R "$_e" "$fixture_repo/scripts/" ;;
+        "$REPO_REAL/docs/handover") cp -R "$_e" "$fixture_repo/docs/" ;;
+        "$REPO_REAL"/scripts/*) ln -s "$_e" "$fixture_repo/scripts/${_e##*/}" ;;
+        *) ln -s "$_e" "$fixture_repo/docs/${_e##*/}" ;;
+    esac
+done
+C="$fixture_repo/scripts/handover/chief/chief.sh"
+root="$tmp/handovers"
+export HIMMEL_RELEASE_STATE_DIR="$tmp/releases"
+mkdir -p "$root" "$HIMMEL_RELEASE_STATE_DIR"
+today="$(date +%F)"
+datepin="$tmp/datepin"; mkdir -p "$datepin"
+printf '#!/bin/sh\nif [ "$*" = "+%%F" ]; then echo %s; else exec %s "$@"; fi\n' "$today" "$(command -v date)" > "$datepin/date"; chmod +x "$datepin/date"
+PATH="$datepin:$PATH"; export PATH
+chief() { ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CHIEF_WORK_DIR="$tmp/work" bash "$C" "$@" ); }
+
+chief new --bucket dgsrc >/dev/null 2>&1
+docA="$root/tester/dgsrc/DEMO-nextleg-${today}A-chief.md"
+printf '%s\n' '# worker' '## Results' '- 10:00 READY 5 aaaa GREEN' '- 10:05 WRAPPED — done' > "$root/tester/dgsrc/DEMO-1-N9-wrapped.md"
+printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — working' > "$root/tester/dgsrc/DEMO-0-N1-live.md"
+printf '{"legs":[{"label":"N9","doc":"%s"},{"label":"N1","doc":"%s"}]}\n' "$root/tester/dgsrc/DEMO-1-N9-wrapped.md" "$root/tester/dgsrc/DEMO-0-N1-live.md" > "${docA%.md}.fleet.json"
+bash "$fixture_repo/scripts/handover/chief-kit/owe.sh" add --bucket "$root/tester/dgsrc" --chief ZZ --kind proof --text 'run the live succession proof' >/dev/null
+mkdir -p "$root/tester/dgsrc/specs/designs"
+printf 'design\n' > "$root/tester/dgsrc/specs/designs/DEMO-951-digest-design.md"
+longname="$(printf 'z%.0s' $(seq 1 400))"
+printf '[{"name":"alpha-chain"},{"name":"%s"}]\n' "$longname" > "$root/tester/dgsrc/focus-chains.json"
+LIVE='workers: `N1:AP-N1-aaaa1111:lock-one:111`' awk '
+    /^workers:/ && !d { print ENVIRON["LIVE"]; d = 1; next }
+    { print }' "$docA" > "$docA.new" && mv "$docA.new" "$docA"
+docB="$root/tester/dgdst/DEMO-nextleg-${today}B-chief.md"
+handoff="${docA%.md}-HANDOFF.md"
+digest="${docA%.md}-DIGEST.md"
+rc=0
+out="$(chief next --bucket dgdst --doc "$docA" 2>&1)" || rc=$?
+check "0 next succeeds on the fixture" "$rc" "0"
+marker_txt="$(cat "$(printf '%s\n' "$out" | sed -n 's/^relay-on-live: //p' | head -n 1)" 2>/dev/null)"
+
+named="$(sed -n 's/^> predecessor.s learnings in \*\*\([^*]*\)\*\*.*$/\1/p' "$docB" | head -n 1)"
+named_path="$root/tester/dgsrc/${named##*/}"
+check "1 the preface names a file that exists" "$([ -f "$named_path" ] && echo yes)" "yes"
+named_bytes="$(wc -c < "$named_path" 2>/dev/null | tr -d ' ')"
+check "1 the fixture HANDOFF is itself over the bound (the old injection)" "$([ "$(wc -c < "$handoff" | tr -d ' ')" -gt "$BOUND" ] && echo yes)" "yes"
+check "1 the preface names the DIGEST, not the HANDOFF" "${named##*-}" "DIGEST.md"
+check "1 the file the successor reads first is under $BOUND bytes" "$([ "${named_bytes:-999999}" -le "$BOUND" ] && echo yes)" "yes"
+check "1 next prints the digest path" "$(printf '%s\n' "$out" | grep -c '^digest: ')" "1"
+check "1 the HANDOFF skeleton is still written" "$([ -s "$handoff" ] && echo yes)" "yes"
+check "1 the open-PR list is capped with a +N more pointer" "$(grep -c '^… +[0-9]* more' "$digest" 2>/dev/null)" "$(grep -c '^… +[0-9]* more — ' "$digest" 2>/dev/null)"
+check "1 a +N more pointer exists in the digest" "$([ "$(grep -c '^… +[0-9]* more — ' "$digest" 2>/dev/null)" -ge 1 ] && echo yes)" "yes"
+chief new --bucket dgsrc2 >/dev/null 2>&1
+docA2="$root/tester/dgsrc2/DEMO-nextleg-${today}A-chief.md"
+DIGEST_BUDGET_BYTES=1500 chief next --bucket dgdst3 --doc "$docA2" >/dev/null 2>&1
+check "1 over a tight budget every list falls back to a pointer" "$(grep -c 'over the digest budget' "${docA2%.md}-DIGEST.md" 2>/dev/null | awk '{ print ($1 >= 3) ? "yes" : "no" }')" "yes"
+check "1 over a tight budget the queue line points at the queue, not last GO" "$(grep -c 'Held queue:\*\* over the digest budget — read .queue:. in the Live' "${docA2%.md}-DIGEST.md" 2>/dev/null)" "1"
+
+tpl="$REPO_REAL/docs/handover/chief-handoff-template.md"
+labels="$(awk '/^<!-- digest-template:/ { exit } /^\*\*[^*]+:\*\*/ { s = $0; sub(/^\*\*/, "", s); sub(/:\*\*.*/, "", s); print s }' "$tpl")"
+missing=""
+while IFS= read -r l; do
+    [ -n "$l" ] || continue
+    case "$l" in Operator) continue ;; esac
+    base="${l%% (*}"
+    base="${base%% at write}"
+    grep -qF -- "**$base" "$digest" 2>/dev/null || missing="$missing [$l]"
+done <<EOF
+$labels
+EOF
+check "2 every mechanical HANDOFF field is in the digest; missing:${missing:- none}" "${missing:- none}" " none"
+check "2 the template lists fields to check" "$([ -n "$labels" ] && echo yes)" "yes"
+check "2 the digest names the successor doc to start from" "$([ "$(grep -cF -- "$(basename "$docB")" "$digest")" -ge 1 ] && echo yes)" "yes"
+check "2 the digest carries the head line" "$(grep -c '^\*\*Head:\*\* .' "$digest")" "1"
+check "2 the digest has no unrendered slot" "$(grep -c '{{[A-Z_]*}}' "$digest")" "0"
+check "2 the successor doc keeps the live worker nonce" "$(grep -c 'AP-N1-aaaa1111' "$docB")" "1"
+check "2 the digest carries no worker nonce" "$(grep -c 'AP-N[0-9]*-' "$digest")" "0"
+chief new --bucket dgsrc6 >/dev/null 2>&1
+docA6="$root/tester/dgsrc6/DEMO-nextleg-${today}A-chief.md"
+printf '[{"name":"%s"}]\n' "$(printf 'y%.0s' $(seq 1 4200))" > "$root/tester/dgsrc6/focus-chains.json"
+chief next --bucket dgdst6 --doc "$docA6" >/dev/null 2>&1
+check "2 a chain line cut at the width cap names a pointer" "$(grep -A1 '^\*\*Chain order:' "${docA6%.md}-DIGEST.md" | grep -c 'line(s) cut — ')" "1"
+chief new --bucket dgsrc7 >/dev/null 2>&1
+docA7="$root/tester/dgsrc7/DEMO-nextleg-${today}A-chief.md"
+mkdir "${docA7%.md}-DIGEST.md"
+rc7=0
+chief next --bucket dgdst7 --doc "$docA7" >/dev/null 2>&1 || rc7=$?
+check "2 a directory at the digest path refuses the hand-over" "$([ "$rc7" -ne 0 ] && echo yes)" "yes"
+check "2 the digest carries a wrapped worker whose PR is still open" "$(grep -c '^- PR #5 (N9), orphan since .*DEMO-1-N9-wrapped.md' "$digest")" "1"
+check "2 the digest carries the open owed row" "$(grep -c 'run the live succession proof' "$digest")" "1"
+check "2 the digest carries the in-flight design pointer" "$(grep -c '^- specs/designs/DEMO-951-digest-design.md — design, DEMO-951' "$digest")" "1"
+check "2 the digest carries the focus-chains order" "$(grep -c 'Chain order (focus-chains.json): alpha-chain' "$digest")" "1"
+check "2 a long chain order is not cut short" "$(grep -cF -- "$longname" "$digest")" "1"
+leftover=0
+for _f in "$root/tester/dgsrc"/*DIGEST.md.*; do [ -e "$_f" ] && leftover=$((leftover + 1)); done
+check "2 no temp file is left beside the digest" "$leftover" "0"
+check "2 the digest has a read-before-first-dispatch trigger" "$(grep -c '^\*\*READ BEFORE YOUR FIRST DISPATCH' "$digest")" "1"
+check "2 the digest names the three hand-filled HANDOFF sections" "$(grep -c 'Rulings and judgement notes.*Wrapped this shift.*Open operator items' "$digest")" "1"
+check "2 the digest has the orphan-gate line" "$(grep -c '^Orphan gate: ' "$digest")" "1"
+check "2 the preface has balanced parentheses" "$(sed -n 's/^> predecessor.s learnings in \(.*\)$/\1/p' "$docB" | head -n 1 | awk '{ o = gsub(/\(/, "("); c = gsub(/\)/, ")"); print (o == c) ? "yes" : "no" }')" "yes"
+chief new --bucket dgsrc4 >/dev/null 2>&1
+docA4="$root/tester/dgsrc4/DEMO-nextleg-${today}A-chief.md"
+printf 'KEEP\n' > "${docA4%.md}-DIGEST.md"
+out4="$(chief next --bucket dgdst4 --doc "$docA4" 2>&1)"
+check "2 an existing digest is left unchanged" "$(cat "${docA4%.md}-DIGEST.md")" "KEEP"
+check "2 next says the digest exists" "$(printf '%s\n' "$out4" | grep -c '^digest: .* (exists — left unchanged)$')" "1"
+
+check "3 next arms exactly one relay-on-live marker" "$(printf '%s\n' "$out" | grep -c '^relay-on-live: ')" "1"
+check "3 the marker names the successor session and doc, two lines" "$(printf '%s\n' "$marker_txt" | wc -l | tr -d ' ')" "2"
+check "3 marker line 1 is the successor session" "$(printf '%s\n' "$marker_txt" | sed -n 1p)" "DEMO-nextleg-${today}B-chief"
+check "3 marker line 2 is the successor doc" "$(printf '%s\n' "$marker_txt" | sed -n 2p)" "$docB"
+ss="$REPO_REAL/docs/handover/chief-sections/successor-start.md"
+check "3 successor-start.md states the single relay once" "$(grep -c 'sends exactly one relay at hand-over' "$ss")" "1"
+check "3 successor-start.md has the successor read the digest" "$(grep -c 'DIGEST' "$ss" | awk '{ print ($1 >= 1) ? "yes" : "no" }')" "yes"
+check "3 the digest says the predecessor relays once" "$(grep -c 'relays once' "$digest")" "1"
+
+[ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
