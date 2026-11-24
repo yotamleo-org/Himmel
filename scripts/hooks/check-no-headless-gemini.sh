@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Pre-commit gate (pre-commit framework, not Claude PreToolUse).
 #
-# Refuses commits that introduce `gemini -p` / `gemini --prompt` / `gemini
-# --bg` (headless gemini-cli) invocations into executable code paths. The
+# Refuses commits that introduce `gemini` or `agy` with `-p`, `--prompt` or
+# `--bg` (headless CLI) invocations into executable code paths. The
 # same billing/quota risk that once motivated a sibling headless-claude gate
 # applies to gemini-cli: headless one-shot runs
 # eat quota silently. Interactive `gemini "$prompt"` invocations (no `-p`, no
@@ -21,14 +21,14 @@
 #   1 — headless call(s) found without opt-in marker
 set -uo pipefail
 
-# Pattern: `gemini` followed by whitespace and `-p` (word-bounded) or
+# Pattern: `gemini` or `agy` followed by whitespace and `-p` (word-bounded) or
 # `--prompt` or `--bg`. `\b` is GNU-only; use `($|[^A-Za-z0-9_-])` for
 # portable right-anchoring so `gemini --prompts` doesn't match.
 #
 # Left side: require `gemini` to be at the start of a word (not part
 # of an identifier like `mygemini`). Match command-position patterns
 # only: `\bgemini\b` followed by space-then-flag.
-PATTERN='(^|[^A-Za-z0-9_-])gemini[[:space:]]+(-p|--prompt|--bg)($|[^A-Za-z0-9_-])'
+PATTERN='(^|[^A-Za-z0-9_-])(gemini|agy)(\.exe|\.cmd)?[[:space:]]+(-p|--prompt|--bg)($|[^A-Za-z0-9_-])'
 
 # argv-array spawns keep the flags in a separate array
 # (`spawnSync('gemini', args)`), so PATTERN cannot see `-p`. Parity with the
@@ -41,7 +41,7 @@ if ! { [ -r "$_join_lib" ] && . "$_join_lib"; } 2>/dev/null; then
     echo "check-no-headless-gemini: cannot load $_join_lib — refusing" >&2
     exit 1
 fi
-SPAWN_PATTERN=$(headless_spawn_pattern 'gemini(\.exe|\.cmd)?')
+SPAWN_PATTERN=$(headless_spawn_pattern '(gemini|agy)(\.exe|\.cmd)?')
 # A call may span lines: the join window runs at most SPAWN_WINDOW code lines.
 SPAWN_WINDOW=8
 
@@ -136,12 +136,13 @@ done
 
 if [ "${#violations[@]}" -gt 0 ]; then
     {
-        echo "check-no-headless-gemini: headless 'gemini -p' / '--prompt' / '--bg' call(s), or spawn(\"gemini\", …) argv spawns, without opt-in marker:"
+        echo "check-no-headless-gemini: headless gemini/agy '-p' / '--prompt' / '--bg' call(s), or gemini/agy argv spawns, without opt-in marker:"
         for v in "${violations[@]}"; do
             echo "    $v"
         done
         echo ""
         echo "Headless gemini-cli invocations eat quota silently. Interactive"
+        echo "For agy, prefer the guarded Antigravity T3 thread lane."
         echo "  gemini \"\$prompt\""
         echo "is the preferred form — prefer that when launching from"
         echo "cron/at/schtasks or any script."
