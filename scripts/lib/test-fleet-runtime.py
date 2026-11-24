@@ -818,7 +818,8 @@ exit 1''')
         sibling.write_text(json.dumps({'schema': 1, 'control': json.loads(self.m.read_text())['control'],
                                        'workers': [{'doc': str(self.doc.resolve()), 'label': 'N1', 'lane': 'native'}]}))
         p = self.rt('begin', aid='sib2', ok=False)
-        remove = 'bash %s remove %s %s' % (ROOT / 'scripts/handover/chief-kit/fleet-manifest.sh', sibling, self.doc.resolve())
+        remove = 'bash %s remove %s %s' % (shlex.quote(str(ROOT / 'scripts/handover/chief-kit/fleet-manifest.sh')),
+                                           shlex.quote(str(sibling)), shlex.quote(str(self.doc.resolve())))
         self.assertIn(remove, p.stderr)
 
     def test_the_remove_command_quotes_a_manifest_path_with_a_space(self):
