@@ -1764,8 +1764,8 @@ not_contains "42f ... with no refusal" "$out42" "refusing launch"
 
 for flags42g in "--judge" "--relay" "--consult --profile design-motion" "--profile release-manager --rm-release v1.1.3"; do
   rc=0
-  # shellcheck disable=SC2086  # $flags42g is a deliberate multi-word flag set
-  out="$(WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run $flags42g --chief "$BY42" PROJ-42-worker "$d42/bx.md" /tmp/nosig 99999999999 "$tmp/c42.log" claude-sonnet-5 2>&1)" || rc=$?
+  read -ra arr42g <<< "$flags42g"
+  out="$(WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run "${arr42g[@]}" --chief "$BY42" PROJ-42-worker "$d42/bx.md" /tmp/nosig 99999999999 "$tmp/c42.log" claude-sonnet-5 2>&1)" || rc=$?
   check "42g (I5) $flags42g launch of a BX brief under BY reaches the arm (rc 0)" "$rc" "0"
   case "$flags42g" in
     --relay) not_contains "42g $flags42g: no refusal" "$out" "refusing launch" ;;
