@@ -943,6 +943,92 @@ check    "8691 control without the unset line: the refusal is ESCALATE auto-go 3
 unset AG_SCRIPT
 reset
 
+orun() { STUB_PR_HEAD=$1 READY_STUB_HEAD=$1 run "${@:2}" 77 "$1"; }
+AROOT=$(git -C "$ANCHOR" rev-list --max-parents=0 HEAD)
+MISS=$(printf 'deadbeef%.0s' 1 2 3 4 5)
+vat() {
+    local vf="$VDIR/$1/judge-$1.md" vmac
+    mkdir -p "$VDIR/$1"
+    printf '# VERDICT %s - judge\nwritten-at: %s\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n%s\n\npr: 77\n\nreason\n\n## Evidence checked\n\ne\n' "$1" "$3" "$2" > "$vf"
+    # read-sink-ok: $vf is a verdict file this test just wrote under its own temp dir
+    vmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../../lib/go-gate.sh" "$VSCOPE" "$1" "judge-$1" < "$vf")" || { echo "FAIL: cannot sign $vf" >&2; return 1; }
+    printf 'mac: %s\n' "$vmac" >> "$vf"
+}
+gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`."
+orun "$NDOC"
+esc      "11022 an earlier NO-GO, a new head, no new verdict" 5
+contains "11022 the refusal names the NO-GO qid" "$OUT" "verdict qn ruled NO-GO"
+contains "11022 the refusal names the head the NO-GO was ruled at" "$OUT" "${JUDGED:0:8}"
+gofresh; verdict qn "**NO-GO** for head \`$NDOC\`."
+orun "$NDOC"
+esc      "11022 a NO-GO at the current head" 5
+contains "11022 a NO-GO at the current head: the refusal names the qid" "$OUT" "qn"
+gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`."; verdict qg "**GO** for head \`$NDOC\`."
+orun "$JUDGED"
+esc      "11022 a force-push back to the NO-GO head" 5
+gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`."; verdict qg "**GO** for head \`$NDOC\`."
+orun "$PSIB"
+esc      "11022 a head that descends the NO-GO head but not the GO head" 5
+contains "11022 a head off the GO line: the refusal names the qid" "$OUT" "verdict qn ruled NO-GO"
+gofresh; verdict qn "no verdict line here"
+orun "$NDOC"
+esc      "11022 an unparsed verdict of the PR refuses an ordinary PR" 5
+gofresh; mkdir -p "$VDIR/ql"
+# shellcheck disable=SC2016  # the backticks are literal text in the verdict file
+printf '# VERDICT ql - judge\n\n## Verdict\n\n**NO-GO** for head `%s`.\n\nreason\n' "$NDOC" > "$VDIR/ql/judge-ql.md"
+orun "$NDOC"
+esc      "11022 a legacy NO-GO at the head with no pr: line" 5
+contains "11022 a legacy NO-GO: the refusal names the qid" "$OUT" "verdict ql refuses"
+gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`." 78
+orun "$NDOC"
+sent     "11022 a NO-GO of another PR: the ordinary GO" "$NDOC" none
+gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`."; verdict qg "**GO** for head \`$NDOC\`."
+orun "$NDOC2"
+sent     "11022 a later real GO clears the NO-GO, a newer head has no verdict" "$NDOC2" none
+lacks    "11022 cleared: a plain GO carries no trust-reviewed line" "$(cat "$HANDOVER_DIR/.locks/go/77.$NDOC2" 2>/dev/null)" "trust-reviewed="
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**NO-GO** for head \`$NDOC\`."
+noop "$NDOC2" "$JUDGED"
+orun "$NDOC2"
+esc      "11022 a no-op GO does not clear a NO-GO between the judged head and its own" 5
+gofresh; verdict qn "**NO-GO** for head \`$MISS\`."
+orun "$NDOC"
+esc      "11022 a NO-GO on a missing commit, no GO" 5
+contains "11022 a NO-GO on a missing commit: the refusal names the qid" "$OUT" "verdict qn ruled NO-GO"
+gofresh; verdict qn "**NO-GO** for head \`$MISS\`."; verdict qg "**GO** for head \`$NDOC\`."
+orun "$NDOC" --dry-run
+would    "11022 a NO-GO on a missing commit and a real GO at the head" "$NDOC"
+check    "11022 a NO-GO on a missing commit and a real GO at the head: audit qid" "$(q .qid)" "qg"
+gofresh; verdict qn "**NO-GO** for head \`$PSIB\`."; verdict qg "**GO** for head \`$NDOC\`."
+orun "$NDOC"
+sent     "11022 a standing NO-GO and a GO at the head" "$NDOC" qg
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**NO-GO** for head \`$NDOC\`."
+orun "$NDOC2"
+esc      "11022 a NO-GO after the judged head refuses" 5
+contains "11022 a NO-GO after the judged head: the refusal names the qid" "$OUT" "verdict qn ruled NO-GO"
+contains "11022 a NO-GO after the judged head: the refusal names its head" "$OUT" "${NDOC:0:8}"
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**NO-GO** for head \`$AROOT\`."
+orun "$NDOC" --dry-run
+would    "11022 a standing NO-GO off the judged line, a GO that carries" "$NDOC"
+check    "11022 the carry: audit qid" "$(q .qid)" "qj"
+check    "11022 the carry: audit delta none" "$(q .delta)" "none"
+gofresh; verdict q1 "**NO-GO** for head \`$PSIB\`."; verdict q2 "**NO-GO** for head \`$PX\`."
+orun "$NDOC"
+esc      "11022 two standing NO-GOs" 5
+contains "11022 two standing NO-GOs: the refusal names the newest" "$OUT" "verdict q2 ruled NO-GO"
+lacks    "11022 two standing NO-GOs: not the older" "$OUT" "verdict q1 ruled NO-GO"
+gofresh; verdict q1 "**NO-GO** for head \`$JUDGED\`."; verdict qg "**GO** for head \`$NDOC\`."; verdict q2 "**NO-GO** for head \`$ASIB\`."
+orun "$NDOC2"
+esc      "11022 one NO-GO cleared and one standing" 5
+contains "11022 one cleared and one standing: the refusal names the standing one" "$OUT" "verdict q2 ruled NO-GO"
+lacks    "11022 one cleared and one standing: not the cleared one" "$OUT" "verdict q1 ruled NO-GO"
+gofresh; vat qa "**NO-GO** for head \`$JUDGED\`." 2026-11-24T10:00:00Z; vat qb "**GO** for head \`$JUDGED\`." 2026-11-24T11:00:00Z
+orun "$NDOC"
+sent     "11022 a same-head re-judge: the later GO carries" "$NDOC" qb
+gofresh; vat qa "**NO-GO** for head \`$JUDGED\`." 2026-11-24T12:00:00Z; vat qb "**GO** for head \`$JUDGED\`." 2026-11-24T11:00:00Z
+orun "$NDOC"
+esc      "11022 a same-head re-judge: a NO-GO written after the GO refuses" 5
+gofresh
+
 if [ "$fails" -eq 0 ]; then echo "test-auto-go.sh: all rows passed"; exit 0; fi
 echo "test-auto-go.sh: $fails row(s) failed: $failrows" >&2
 exit 1
