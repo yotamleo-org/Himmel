@@ -2753,4 +2753,32 @@ out="$(printed_keys "$DOC")"
 if [ -z "$out" ]; then pass "the doctor prints no ticket key"; else fail "the doctor prints ticket keys: $out"; fi
 rm -rf "$pk_t"
 
+c99_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c99.XXXXXX")" || exit 1
+mkdir -p "$c99_t/repo/.agents/rules" "$c99_t/repo/.gemini" "$c99_t/home" "$c99_t/claude"
+ln -s "$REPO_ROOT/scripts" "$c99_t/repo/scripts"
+git -C "$c99_t/repo" init -q
+c99_run() { HOME="$c99_t/home" CLAUDE_DIR="$c99_t/claude" bash "$DOC" --root "$c99_t/repo" --only C99 --no-color 2>&1; }
+out="$(c99_run)"
+if grepq "$out" 'OK   C99-gemini-local'; then pass "C99 clean tree -> OK"; else fail "C99 clean tree -> $out"; fi
+printf '%s\n' "Use \`graphify query lanes\` for structure." > "$c99_t/repo/.agents/rules/graphify.md"
+out="$(c99_run)"
+if grepq "$out" 'WARN C99-gemini-local' && grepq "$out" -F '.agents/rules/graphify.md'; then pass "C99 stale bare graphify rule -> WARN"; else fail "C99 stale rule -> $out"; fi
+if grep -qF 'graphify query lanes' "$c99_t/repo/.agents/rules/graphify.md"; then pass "C99 leaves stale rule unchanged"; else fail "C99 rewrote stale rule"; fi
+printf '%s\n' "Use \`bash scripts/graphify/worker-graph.sh query lanes\`." > "$c99_t/repo/.agents/rules/graphify.md"
+printf '{"hooks":{"BeforeTool":[{"command":"graphify.EXE query lanes"}]}}\n' > "$c99_t/repo/.gemini/settings.json"
+out="$(c99_run)"
+if grepq "$out" 'WARN C99-gemini-local' && grepq "$out" -F '.gemini/settings.json'; then pass "C99 untracked graphify.EXE settings -> WARN"; else fail "C99 stale settings -> $out"; fi
+if grep -qF 'graphify.EXE' "$c99_t/repo/.gemini/settings.json"; then pass "C99 leaves settings unchanged"; else fail "C99 rewrote settings"; fi
+git -C "$c99_t/repo" add .gemini/settings.json
+out="$(c99_run)"
+if grepq "$out" 'OK   C99-gemini-local'; then pass "C99 tracked settings and wrapper rule -> OK"; else fail "C99 tracked settings -> $out"; fi
+git -C "$c99_t/repo" rm --cached -q .gemini/settings.json
+printf '{"hooks":{"BeforeTool":[{"command":"/missing/graphify query lanes"}]}}\n' > "$c99_t/repo/.gemini/settings.json"
+out="$(c99_run)"
+if grepq "$out" 'WARN C99-gemini-local'; then pass "C99 missing absolute executable -> WARN"; else fail "C99 missing path -> $out"; fi
+printf '{"hooks":{"BeforeTool":[{"command":"bash scripts/graphify/worker-graph.sh query lanes"}]}}\n' > "$c99_t/repo/.gemini/settings.json"
+out="$(c99_run)"
+if grepq "$out" 'OK   C99-gemini-local' && ! grepq "$out" 'WARN C99'; then pass "C99 current settings and wrapper rule -> OK"; else fail "C99 current settings -> $out"; fi
+rm -rf "$c99_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

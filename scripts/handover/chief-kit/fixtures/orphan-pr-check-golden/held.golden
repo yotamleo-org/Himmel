@@ -1,0 +1,62 @@
+== 1$
+rc=0$
+== 2$
+HIMMEL-222	pr:4951	/h/N1-beta-RESUME.md	HIMMEL-222	HIMMEL-222, hold wake=pr:4951 resume=/h/N1-beta-RESUME.md$
+rc=0$
+== 3$
+#102	done:HIMMEL-9032	/h/N1-beta-RESUME.md	102	#102 held (adapter merge) wake=done:HIMMEL-9032 resume=/h/N1-beta-RESUME.md$
+rc=0$
+== 4$
+#102	file:/h/specs/decisions/d-1216.txt	/h/N1-beta-RESUME.md	102	#102 HELD wake=file:/h/specs/decisions/d-1216.txt resume=/h/N1-beta-RESUME.md$
+rc=0$
+== 5$
+#102	-	-	102	#102 HELD waits on 4951$
+rc=0$
+== 6$
+#102	pr:4951	-	102	#102 HELD wake=pr:4951$
+rc=0$
+== 7$
+#102	-	-	102	#102 HELD wake=pr:soon resume=relative/doc.md$
+rc=0$
+== 8$
+#103	pr:102	/h/N1-beta-RESUME.md	103	#103 HELD waits on 102 wake=pr:102 resume=/h/N1-beta-RESUME.md$
+rc=0$
+== 9$
+#103	pr:102	/h/N1-beta-RESUME.md	103	#103 HELD-until 102 wake=pr:102 resume=/h/N1-beta-RESUME.md$
+rc=0$
+== 10$
+#4400	pr:4951	/h/N1-beta-RESUME.md	4400	#4400 HELD wake=pr:4951 resume=/h/N1-beta-RESUME.md $
+#102	pr:4951	/h/N1-beta-RESUME.md	102	 #102 HELD wake=pr:4951 resume=/h/N1-beta-RESUME.md $
+#4401	-	-	4401	 #4401 HELD waits$
+rc=0$
+== 11$
+#4400	pr:4951	/h/N1-beta-RESUME.md	4400,102	#4400 #102 HELD wake=pr:4951 resume=/h/N1-beta-RESUME.md$
+rc=0$
+== 12$
+rc=0$
+== 13$
+4660	-	-	4660,8992	 4660 8992 HELD until 9032$
+rc=0$
+== 14$
+102	pr:9032	/h/N1-beta-RESUME.md	102,222	 102 222 HELD until 9032 Task 2 wake=pr:9032 resume=/h/N1-beta-RESUME.md $
+rc=0$
+== 15$
+rc=0$
+== 16$
+rc=0$
+== 17$
+rc=0$
+== 18$
+#1020	pr:9032	/h/N1-beta-RESUME.md	1020,HIMMEL-2222	#1020, HIMMEL-2222 HELD wake=pr:9032 resume=/h/N1-beta-RESUME.md$
+rc=0$
+== 19$
+#4401	-	-	4401	#4401 HELD by F1 (judge owed) $
+#4402	-	-	4402	 #4402 HELD by F2 $
+rc=0$
+== 20$
+#4410	pr:4951	/x.md	4410	MERGED under AZ: #4410, HELD #4412 wake=pr:4951 resume=/x.md$
+rc=0$
+== 21$
+#4401	-	-	4401	 b) #4401 HELD $
+#4401	-	-	4401	 #4401 HELD $
+rc=0$

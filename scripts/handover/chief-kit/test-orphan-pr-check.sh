@@ -266,6 +266,227 @@ ttrun "$WORK/emptyroot"
 check "two-token control: an empty root still gives the verdict" "1:UNMAPPED 109 fix/himmel-999-quota" "$rc:$out"
 check "two-token control: with no read token the list logs tok=main" "1" "$(printf '%s\n' "$ttlog" | grep -c '^tok=main argv=pr list ')"
 
+GOLD="$HERE/fixtures/orphan-pr-check-golden"
+MIRROR="$WORK/mirror"; mkdir -p "$MIRROR"
+mkey() {
+    printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "x"\nstatusCategory: "%s"\npriority: "Medium"\nlabels: []\nfixVersions: []\n---\n\n# HIMMEL-%s: t\n' "$1" "$2" "$1" > "$MIRROR/HIMMEL-$1.md"
+}
+mkey 901 Done; mkey 902 "To Do"; mkey 903 "In Progress"; mkey 910 "To Do"; mkey 911 "To Do"; mkey 912 "To Do"
+PRSALL="$WORK/prs-all.json"
+printf '[{"number":4401,"state":"MERGED"},{"number":4402,"state":"OPEN"},{"number":4410,"state":"MERGED"},{"number":4411,"state":"MERGED"},{"number":4412,"state":"OPEN"},{"number":4420,"state":"CLOSED"}]\n' > "$PRSALL"
+LIVEQ='#4402 HELD by F2'
+LIVEP='pool-disposition: HIMMEL-902 hold PR 4410'
+sdoc() {
+    local q="$1" l; shift
+    {
+        # shellcheck disable=SC2016  # the backticks are literal markdown
+        printf '# chief\n\n## Live state\n\nlegs: `N1:n:t:1`\nqueue: %s\n' "$q"
+        for l in "$@"; do printf '%s\n' "$l"; done
+        printf 'last GO: none\n\n## Results\n- 08:00 LIVE — one\n'
+    } > "$DOC"
+}
+srun() {
+    out="$(ORPHAN_PR_CHECK_PRS_ALL="${SEAM:-$PRSALL}" bash "$OPC" --stale-report --doc "$DOC" --mirror "$MIRROR" "$@" 2>"$WORK/err")"; rc=$?
+}
+body() { printf '%s\n' "$out" | grep -v '^input='; }
+dq() { printf 'DEAD-QUEUE\t%s\n' "$1"; }
+D0='dead-queue=0
+done-pool=0'
+
+sdoc "#4401 HELD by F1 (judge owed) | $LIVEQ" "$LIVEP"
+srun
+check "10777 Q1 a prose-only HELD segment of a merged PR is flagged; the live segment and pool line are not" "0:$(dq '#4401 HELD by F1 (judge owed) ')
+dead-queue=1
+done-pool=0" "$rc:$(body)"
+sdoc "#4402 HELD by F1 (judge owed)" "$LIVEP"
+srun
+check "10777 Q1.neg the same segment with its PR OPEN is not flagged" "0:$D0" "$rc:$(body)"
+
+sdoc "MERGED under AV: #4410 329422b3f, #4411 1234567 | $LIVEQ" "$LIVEP"
+srun
+check "10777 Q2 a MERGED-under record whose #<n> are all merged is flagged; shas are ignored" "0:$(dq 'MERGED under AV: #4410 329422b3f, #4411 1234567 ')
+dead-queue=1
+done-pool=0" "$rc:$(body)"
+sdoc "MERGED under AW: #4412 | MERGED under AX: 1234567 | MERGED under AY: #4410 HIMMEL-903 | MERGED under AZ: #4410, hold #4412"
+srun
+check "10777 Q2.neg an OPEN PR, no #<n>, an open key, and a later open hold each keep their record" "0:$D0" "$rc:$(body)"
+sdoc "MERGED under AV: #4410, PR 4412 still open | MERGED under AV: #4410 (HIMMEL-901-F901a follow-up) | MERGED under AV: #4410 329422b3f"
+srun
+check "10777 Q2.amb a bare number or a glued key in a merged record keeps it; the sha record still goes" "0:$(dq ' MERGED under AV: #4410 329422b3f')
+dead-queue=1
+done-pool=0" "$rc:$(body)"
+
+PL1='pool-disposition: HIMMEL-901 hold HIMMEL-900'
+sdoc "$LIVEQ" "$PL1" "$LIVEP"
+srun
+check "10777 Q3 a pool line whose own subject is Done is flagged; the open-subject line is not" "0:$(printf 'DONE-POOL\tHIMMEL-901\t%s' "$PL1")
+dead-queue=0
+done-pool=1:HIMMEL-901" "$rc:$(body)"
+sdoc "$LIVEQ" "$PL1" "$PL1" "$LIVEP"
+srun
+check "10777 Q3.dup a second identical Done pool line is flagged too" "0:$(printf 'DONE-POOL\tHIMMEL-901\t%s\nDONE-POOL\tHIMMEL-901\t%s' "$PL1" "$PL1")
+dead-queue=0
+done-pool=2:HIMMEL-901,HIMMEL-901" "$rc:$(body)"
+sdoc "$LIVEQ" "$LIVEP"
+srun
+check "10777 Q3.neg an open subject whose hold target merged is released, never flagged" "0:$D0" "$rc:$(body)"
+
+: > "$WORK/prs-empty.json"
+sdoc "#4401 HELD by F1 | $LIVEQ" "$LIVEP"
+SEAM="$WORK/prs-empty.json" srun
+check "10777 Q4 an empty PR list: exit 3, no flag line" "3::1" "$rc:$out:$(grep -c 'orphan-pr-check: unavailable' "$WORK/err")"
+mkdir -p "$WORK/ghall" "$WORK/ghslow"
+cat > "$WORK/ghall/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$OPC_GH_LOG"
+[ "$1 $2" != "pr list" ] || printf '[{"number":4401,"state":"MERGED"}]\n'
+EOF
+printf '#!/usr/bin/env bash\nsleep 30\n' > "$WORK/ghslow/gh"
+chmod +x "$WORK/ghall/gh" "$WORK/ghslow/gh"
+nsrun() {
+    local d="$1"; shift
+    : > "$WORK/gh.log"
+    out="$(env -u ORPHAN_PR_CHECK_PRS -u ORPHAN_PR_CHECK_PRS_ALL PATH="$d:$PATH" OPC_GH_LOG="$WORK/gh.log" HIMMEL_QUOTA_DIR="$WORK/q-ok" "$@" \
+        bash "$OPC" --stale-report --doc "$DOC" --mirror "$MIRROR" --repo "$WORK" 2>"$WORK/err")"; rc=$?
+}
+sdoc "HIMMEL-901 HELD by x | HIMMEL-903 HELD by y"
+nsrun "$WORK/ghall" env
+check "10777 Q4.nogh a head naming no #<n> makes no PR read and still judges keys" "0:0:$(dq 'HIMMEL-901 HELD by x ')
+dead-queue=1
+done-pool=0" "$rc:$(wc -l < "$WORK/gh.log" | tr -d ' '):$(body)"
+check "10777 Q4.doc an unreadable doc: exit 3, no flag line" "3:" "$(bash "$OPC" --stale-report --doc "$WORK/no-such-doc.md" --mirror "$MIRROR" 2>/dev/null; printf '%s:' "$?")"
+sdoc "#4401 HELD by F1 | $LIVEQ"
+printf 'not json\n' > "$WORK/prs-bad.json"
+SEAM="$WORK/prs-bad.json" srun
+check "10777 Q4.json a PR list that is not JSON: exit 3, no flag line" "3:" "$rc:$out"
+t0=$SECONDS
+nsrun "$WORK/ghslow" env ORPHAN_PR_CHECK_TIMEOUT=2
+check "10777 Q4.slow a PR read that outlasts its bound: exit 3 within 10 s, no flag line" "3::fast" "$rc:$out:$([ $((SECONDS - t0)) -lt 10 ] && echo fast || echo slow)"
+
+sdoc "#4401 HIMMEL-901 HELD by x | $LIVEQ" "$LIVEP"
+srun
+check "10777 Q5 a merged PR and a Done key before the hold word flag the segment" "0:$(dq '#4401 HIMMEL-901 HELD by x ')
+dead-queue=1
+done-pool=0" "$rc:$(body)"
+sdoc "#4401 HIMMEL-903 HELD by x | $LIVEQ"
+srun
+check "10777 Q5.neg an In Progress key before the hold word keeps the segment" "0:$D0" "$rc:$(body)"
+sdoc "#4401 HELD until HIMMEL-903 lands | $LIVEQ"
+srun
+check "10777 Q5.after a key written after the hold word is not a subject (A16): the segment is flagged" "0:$(dq '#4401 HELD until HIMMEL-903 lands ')
+dead-queue=1
+done-pool=0" "$rc:$(body)"
+sdoc "#4499 HELD by x | $LIVEQ"
+srun
+check "10777 Q6 a #<n> absent from the PR list is unknown and keeps the segment" "0:$D0" "$rc:$(body)"
+sdoc "#4401 HIMMEL-950 HELD by x | $LIVEQ"
+srun
+check "10777 Q7 a key with no mirror file keeps the segment" "0:$D0" "$rc:$(body)"
+sdoc "MERGED under AV: #4410 | HIMMEL-901 HELD by x" "$PL1"
+srun --mirror "$WORK/no-such-mirror"
+check "10777 Q7.dir no mirror dir: done-pool=?, keys unknown, a merged-only record is still flagged" "0:$(dq 'MERGED under AV: #4410 ')
+dead-queue=1
+done-pool=?" "$rc:$(body)"
+sdoc "$LIVEQ || #4401 HELD by tail"
+srun
+check "10777 Q8 a dead segment after the first || is not judged" "0:$D0" "$rc:$(body)"
+
+mkdir -p "$WORK/state-golden/workers"
+printf '[{"number":102,"headRefName":"feat/himmel-222-beta","author":{"login":"yotamleo"},"isCrossRepository":false},{"number":4400,"headRefName":"fix/himmel-111-alpha","author":{"login":"yotamleo"},"isCrossRepository":false},{"number":4401,"headRefName":"chore/no-key","author":{"login":"yotamleo"},"isCrossRepository":false}]\n' > "$WORK/prs-golden.json"
+golden_render() {
+    local i=0 line o
+    while IFS= read -r line; do
+        i=$((i + 1)); write_doc "$line"
+        if [ "$1" = held ]; then
+            o="$(bash "$OPC" --held --doc "$DOC" 2>&1; printf 'rc=%s\n' "$?")"
+        else
+            o="$(TICKET_STATUS_STATE_DIR="$WORK/state-golden" ORPHAN_PR_CHECK_PRS="$WORK/prs-golden.json" bash "$OPC" --doc "$DOC" 2>&1; printf 'rc=%s\n' "$?")"
+        fi
+        printf '== %s\n%s\n' "$i" "$o" | sed 's/$/$/'
+    done < "$GOLD/queues.txt"
+}
+check "10777 Q9 --held prints exactly its golden file" "$(cat "$GOLD/held.golden")" "$(golden_render held)"
+check "10777 Q9 the default mode prints exactly its golden file" "$(cat "$GOLD/default.golden")" "$(golden_render default)"
+write_doc 'MERGED under AZ: #4410, HELD #4412 wake=pr:4951 resume=/x.md'
+check "10777 Q9.merged --held still prints a MERGED-under record that holds a hold word" "$(cat "$GOLD/held-merged.golden")" "$(bash "$OPC" --held --doc "$DOC" 2>&1)"
+
+R10="$WORK/q10"; mkdir -p "$R10/mirror" "$R10/scratch"
+cp "$MIRROR"/*.md "$R10/mirror/"; cp "$PRSALL" "$R10/prs.json"
+sdoc "#4401 HELD by F1 | $LIVEQ" "$PL1" "$LIVEP"
+cp "$DOC" "$R10/doc.md"
+sum1="$(find "$R10" -type f -exec sha256sum {} + | sort)"
+r10="$(cd "$R10/scratch" && ORPHAN_PR_CHECK_PRS_ALL="$R10/prs.json" bash "$OPC" --stale-report --doc "$R10/doc.md" --mirror "$R10/mirror" >/dev/null 2>&1; echo $?)"
+sum2="$(find "$R10" -type f -exec sha256sum {} + | sort)"
+check "10777 Q10 a run that flags writes no file anywhere in the fixture tree" "0:$sum1" "$r10:$sum2"
+
+sdoc "$LIVEQ" "priority: 901 902 903" "pool-disposition: HIMMEL-901 hold HIMMEL-900" "pool-disposition: HIMMEL-902 hold HIMMEL-900" "pool-disposition: HIMMEL-903 hold HIMMEL-900"
+srun
+check "10777 Q11 --stale-report and priority-prune.sh --count give one verdict for 901, 902 and 903" "done-pool=1:HIMMEL-901:1/3" "$(printf '%s' "$out" | grep '^done-pool='):$(bash "$HERE/priority-prune.sh" --doc "$DOC" --mirror "$MIRROR" --count 2>/dev/null)"
+
+W12="$WORK/q12"; mkdir -p "$W12/state" "$W12/mirror" "$W12/norel"
+cp "$MIRROR"/*.md "$W12/mirror/"
+cat > "$W12/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+    *"api graphql"*)
+        out=""
+        for n in $(printf '%s\n' "$*" | grep -oE 'issueOrPullRequest\(number:[0-9]+\)' | grep -oE '[0-9]+'); do
+            out="${out:+$out,}\"p$n\":{\"__typename\":\"PullRequest\",\"state\":\"MERGED\"}"
+        done
+        printf '{"data":{"repository":{%s}}}\n' "$out" ;;
+    *) printf '5001\tMERGED\n' ;;
+esac
+EOF
+cat > "$W12/tick-chain.sh" <<'EOF'
+#!/usr/bin/env bash
+doc="" prev=""
+for a in "$@"; do case "$prev" in --doc) doc="$a" ;; esac; prev="$a"; done
+[ -z "$doc" ] || bash "$Q12_TICK" --pool-holds --doc "$doc" > /dev/null
+exec bash "$Q12_TICK" "$@"
+EOF
+chmod +x "$W12/gh" "$W12/tick-chain.sh"
+sdoc "$LIVEQ" \
+    'pool-disposition: HIMMEL-910 close PR 5001 merged' \
+    'pool-disposition: HIMMEL-911 slice PR 5001 merged' \
+    'pool-disposition: HIMMEL-912 question waits on PR 5001' \
+    'pool-disposition: HIMMEL-913 ignore PR 5001' \
+    'pool-disposition: himmel-914 close PR 5001'
+srun
+q12_dp="$(printf '%s\n' "$out" | grep -c '^DONE-POOL')"
+q12_tick="$(JIRA_PROJECT_KEY=HIMMEL NEXT_DISPATCH_MIRROR="$W12/mirror" TICK_GH_CMD="$W12/gh" HIMMEL_QUOTA_DIR="$WORK/q-ok" TICK_STATE_DIR="$W12/state" \
+    HIMMEL_RELEASE_STATE_DIR="$W12/norel" Q12_TICK="$HERE/tick.sh" TICK_POOL_MAX_MERGES=100000 TOKEN='' \
+    bash "$W12/tick-chain.sh" --pool-stale --doc "$DOC" 2>/dev/null | grep '^STALE-DISPOSITION' | cut -d' ' -f2 | tr '\n' ',')"
+check "10777 Q12 three well formed released lines: pool_stale reports each, --stale-report none; the two malformed lines are named by neither" "rc0:0:HIMMEL-910,HIMMEL-911,HIMMEL-912," "rc$rc:$q12_dp:$q12_tick"
+
+sdoc "10397/10402 HELD by x | #4401 5599 HELD by x | HIMMEL-901-F901a HELD by x | HIMMEL-901 (see a | b) #4401 HELD | (context | #4401 HELD | more context)"
+srun
+check "10777 Q13 a bare number, a glued key, a split pair and a three-piece split are all kept" "0:$D0" "$rc:$(body)"
+sdoc "#4401 sweeps HELD by F1 (judge owed) | $LIVEQ"
+srun
+check "10777 Q13.ok digit-free prose beside a gone subject is still flagged" "0:$(dq '#4401 sweeps HELD by F1 (judge owed) ')
+dead-queue=1
+done-pool=0" "$rc:$(body)"
+
+sdoc "#4401 HELD by F1"
+nsrun "$WORK/ghall" env ORPHAN_PR_CHECK_PRS="$PRSALL"
+check "10777 Q14 only the open-list seam set: exit 3, no gh call" "3::0" "$rc:$out:$(wc -l < "$WORK/gh.log" | tr -d ' ')"
+nsrun "$WORK/ghall" env
+check "10777 Q14.ctl neither seam set: exactly one pr list --state all call, and the verdict" "0:1:$(dq '#4401 HELD by F1')
+dead-queue=1
+done-pool=0" "$rc:$(grep -c '^pr list --state all' "$WORK/gh.log"):$(body)"
+
+sdoc "$LIVEQ" "$LIVEP"; srun
+in0="$(printf '%s\n' "$out" | sed -n '$p')"
+sdoc "$LIVEQ" 'pool-disposition: HIMMEL-902 hold PR 4411'; srun
+in1="$(printf '%s\n' "$out" | sed -n '$p')"
+sdoc '#4402 HELD by F3' "$LIVEP"; srun
+in2="$(printf '%s\n' "$out" | sed -n '$p')"
+sdoc "$LIVEQ" "$LIVEP"; printf -- '- 09:00 an unrelated line\n' >> "$DOC"; srun
+in3="$(printf '%s\n' "$out" | sed -n '$p')"
+io="$(env -u ORPHAN_PR_CHECK_PRS_ALL bash "$OPC" --stale-report --input-only --doc "$DOC" 2>/dev/null)"
+check "10777 Q15 a changed pool line or queue: line changes input=; an unrelated line does not; --input-only agrees" "yes:yes:yes:yes:yes" \
+    "$([ "${in0#input=}" != "$in0" ] && echo yes):$([ "$in0" != "$in1" ] && echo yes):$([ "$in0" != "$in2" ] && echo yes):$([ "$in0" = "$in3" ] && echo yes):$([ "$io" = "$in0" ] && echo yes)"
+
 # --- chief-wait.sh: an underfilled wake adds `WAKE orphan-pr <n>` while a PR is unmapped
 WAIT="${CHIEF_WAIT:-$HERE/chief-wait.sh}"
 STUB="$WORK/stub"; mkdir -p "$STUB"
