@@ -2385,7 +2385,9 @@ worker_lock_state() {
 }
 
 live_worker_rows() {
-    local pdoc="$1" pdir="$2" manifest="${1%.md}.fleet.json" lockdir ldoc sess label pid seen="" NL=$'\n' sessions="" cand="" rows="" row
+    local pdoc pdir manifest="${1%.md}.fleet.json" lockdir ldoc sess label pid seen="" NL=$'\n' sessions="" cand="" rows="" row cdoc
+    pdoc="$(_arm_realpath "$1")"
+    pdir="$(_arm_realpath "$2")"
     for lockdir in "$root"/.locks/queue/*.lock; do
         [ -f "$lockdir/owner.json" ] || continue
         # swallow-ok: an unreadable owner file lists no session, the worker is still listed with unknown-lock
@@ -2399,7 +2401,9 @@ live_worker_rows() {
     while IFS=$'\t' read -r ldoc sess; do
         [ -n "$ldoc" ] || continue
         case "${ldoc##*/}" in *-nextleg-*|*-HANDOFF.md) continue ;; esac
-        [ "$ldoc" != "$pdoc" ] && [ "$(dirname "$ldoc")" = "$pdir" ] && [ -f "$ldoc" ] || continue
+        [ -f "$ldoc" ] || continue
+        cdoc="$(_arm_realpath "$ldoc")"
+        [ "$cdoc" != "$pdoc" ] && [ "$(dirname "$cdoc")" = "$pdir" ] || continue
         cand="$cand$NL-	$ldoc"
     done <<EOF
 $sessions
@@ -2492,9 +2496,9 @@ EOF
 OPERATOR_DIRECTED_KEYS=""
 must_disposition_section() {
     local pdoc="$1" pdir="$2" live="$3" dead="$4" smanifest="$5" r sib label prs line n branch title key found rows cap="${CHIEF_MUST_CAP:-60}" total=0
-    local mirror f fm fv st created ver rest_ pstem pdate prio ttl marker days="${CHIEF_MUST_RESUME_DAYS:-2}"
+    local mirror f fm fv st created ver rest_ pstem pdate prio ttl marker fresh resume_rc days="${CHIEF_MUST_RESUME_DAYS:-2}"
     printf '## Must disposition\n\n'
-    printf 'Rule on each row (relaunch, GO, park or close) before your first dispatch; none is optional. The tick lists a row until it has a ruling.\n\n'
+    printf 'Rule on each row (relaunch, GO, park or close) before your first dispatch; none is optional.\n\n'
     # shellcheck disable=SC2016  # the backticks are literal markdown code spans
     {
         while IFS= read -r r; do
@@ -2525,10 +2529,14 @@ must_disposition_section() {
         done <<EOF_PRS
 $prs
 EOF_PRS
+        resume_rc=0
         if [ -n "${CHIEF_MUST_RESUME_ROWS:-}" ]; then
-            rows="$(bash "$CHIEF_MUST_RESUME_ROWS" 2>/dev/null)" || rows=""  # swallow-ok: a failed read lists no RESUME row, said below
+            rows="$(bash "$CHIEF_MUST_RESUME_ROWS" 2>/dev/null)" || resume_rc=$?  # swallow-ok: the failure becomes a Must disposition row below
         else
-            rows="$(timeout -k 2 90 bash "$kit/next-dispatchable.sh" --resume-only ${smanifest:+--workers-from "$smanifest"} 2>/dev/null)" || rows=""  # swallow-ok: a failed read lists no RESUME row, said below; gnu-ok: Linux-only kit
+            rows="$(timeout -k 2 90 bash "$kit/next-dispatchable.sh" --resume-only ${smanifest:+--workers-from "$smanifest"} 2>/dev/null)" || resume_rc=$?  # swallow-ok: the failure becomes a Must disposition row below; gnu-ok: Linux-only kit
+        fi
+        if [ "$resume_rc" -ne 0 ]; then
+            printf -- '- RESUME rows unavailable: next-dispatchable.sh --resume-only exited %s (124 is a timeout), so the In Progress tickets with no worker are not listed; re-run: bash %s --resume-only --workers-from %s\n' "$resume_rc" "$kit/next-dispatchable.sh" "$smanifest"
         fi
         while IFS=$'\t' read -r st ver rest_; do
             [ "$st" = RESUME ] || continue
@@ -2545,7 +2553,13 @@ EOF_ROWS
     [ -n "$mirror" ] || mirror="$(JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}" bash -c '. "$1" && jira_mirror_dir' _ "$HERE/../../lib/jira-project.sh" 2>/dev/null)" || mirror=""  # swallow-ok: no mirror lists no operator-directed row
     pstem="${pdoc##*/}"; pdate="$(printf '%s' "$pstem" | sed -n 's/.*-nextleg-\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\).*/\1/p')"
     fv="$(awk '$0 == "## Live state" { s = 1; next } s && /^## / { exit } s && index($0, "focus-version:") == 1 { sub(/^[^:]*:[[:space:]]*/, ""); print; exit }' "$pdoc" | sed -n 's/^\(v[0-9][0-9.]*\).*/\1/p')"
+    fresh=""
     if [ -n "$mirror" ] && [ -d "$mirror" ]; then
+        fresh="$(find "$mirror" -maxdepth 1 -name '*.md' -mmin "-${CHIEF_MUST_MIRROR_MIN:-1440}" -print -quit 2>/dev/null)" || fresh=""  # swallow-ok: an unreadable mirror reads as unavailable, said below; gnu-ok: Linux-only kit
+    fi
+    if [ -z "$fresh" ]; then
+        printf -- '- operator-directed tickets unavailable: the Jira mirror (%s) is missing, empty or older than %s minutes, so no To Do ticket is listed; refresh the mirror, then list the operator-directed To Do tickets of the focus version by hand\n' "${mirror:-no path}" "${CHIEF_MUST_MIRROR_MIN:-1440}"
+    else
         while IFS= read -r f; do
             key="${f##*/}"; key="${key%.md}"
             fm="$(sed -n '2,/^---$/p' "$f")"
@@ -2562,6 +2576,11 @@ EOF_ROWS
             fi
         done < <(grep -l '"operator-directed"' "$mirror"/*.md 2>/dev/null | sort)
     fi
+    for f in "$root"/.locks/queue/*.lock; do
+        [ -f "$f/owner.json" ] || continue
+        jq -e '.handover | strings | length > 0' "$f/owner.json" >/dev/null 2>&1 && continue
+        printf -- '- queue lock %s has an unreadable owner file, so the worker it holds is not listed; check it: bash %s status --sweep\n' "$(basename "$f" .lock)" "$repo/scripts/handover/queue-lock.sh"
+    done
     if [ -n "$dead" ]; then
         printf -- '- retired from the fleet manifests (no live worker, nothing to relaunch from the row): %s\n' "$(printf '%s\n' "$dead" | awk -F'\t' 'NF { printf "%s%s", sep, $1; sep = ", " }')"
     fi

@@ -4225,4 +4225,29 @@ printf '{"schema":1,"workers":[{"label":"N51","doc":"%s"}]}\n' "$root/tester/k10
 chief next --bucket k10877dst --doc "$Ak10877" >/dev/null 2>&1
 check "10877 a worker with a BLOCKED bullet and no lock keeps its manifest row" "$(jq -r '[.workers[].label] | join(",")' "${Ak10877%.md}.fleet.json" 2>/dev/null)" "N51"
 HANDOVER_DIR="$root" bash "$QL" release "$Ak10877" "$tokk10877" >/dev/null 2>&1
+
+check "10877 Must disposition no longer promises a tick listing" "$(grep -c 'The tick lists a row' "$B10877")" "0"
+check "10877 Must disposition says the Jira mirror is unavailable when it holds no file" "$(printf '%s\n' "$must10877" | grep -c 'operator-directed tickets unavailable')" "1"
+tokc10877="$(token_of "$(chief new --bucket c10877)")"
+Ac10877="$root/tester/c10877/DEMO-nextleg-${today}A-chief.md"
+Wc10877="$root/tester/c10877"
+for i in 1 2; do
+    printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' > "$Wc10877/DEMO-$i-N$i-worker.md"
+    tokw10877[i]="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$Wc10877/DEMO-$i-N$i-worker.md" 2>/dev/null)")"
+done
+awk '/^workers:/ { print "workers: `N1:nonce-1:lock-1:11`"; next } { print }' "$Ac10877" > "$Ac10877.new" && mv "$Ac10877.new" "$Ac10877"
+printf '#!/usr/bin/env bash\nexit 3\n' > "$tmp/resume-fail10877.sh"
+mkdir -p "$root/.locks/queue/zz-bad10877.lock"
+printf '{not json\n' > "$root/.locks/queue/zz-bad10877.lock/owner.json"
+CHIEF_MUST_RESUME_ROWS="$tmp/resume-fail10877.sh" chief next --bucket c10877dst --doc "$root/tester/c10877/../c10877/DEMO-nextleg-${today}A-chief.md" >/dev/null 2>&1
+rm -rf "$root/.locks/queue/zz-bad10877.lock"
+Bc10877="$root/tester/c10877dst/DEMO-nextleg-${today}B-chief.md"
+livec10877="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$Bc10877" 2>/dev/null)"
+mustc10877="$(awk '$0 == "## Must disposition" { f = 1; next } f && /^## / { exit } f' "$Bc10877" 2>/dev/null)"
+check "10877 a doc named by a path with a dot-dot segment still sweeps the bucket's locks" "$(printf '%s\n' "$livec10877" | grep -c '`N2:NONCE-UNKNOWN:')" "1"
+check "10877 a failed RESUME-row read puts a row naming the failure in Must disposition" "$(printf '%s\n' "$mustc10877" | grep -c 'RESUME rows unavailable.*exited 3')" "1"
+check "10877 the unavailable RESUME rows row names the command to re-run" "$(printf '%s\n' "$mustc10877" | grep -c 'next-dispatchable.sh --resume-only')" "1"
+check "10877 an unreadable lock owner file puts a row in Must disposition" "$(printf '%s\n' "$mustc10877" | grep -c 'zz-bad10877 has an unreadable owner file')" "1"
+for i in 1 2; do HANDOVER_DIR="$root" bash "$QL" release "$Wc10877/DEMO-$i-N$i-worker.md" "${tokw10877[i]}" >/dev/null 2>&1; done
+HANDOVER_DIR="$root" bash "$QL" release "$Ac10877" "$tokc10877" >/dev/null 2>&1
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

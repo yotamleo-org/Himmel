@@ -100,7 +100,7 @@ case "$field" in
             for lockdir in "$root"/.locks/queue/*.lock; do
                 [ -f "$lockdir/owner.json" ] || continue
                 ldoc="$(jq -r '.handover // empty' "$lockdir/owner.json" 2>/dev/null)" || ldoc=""  # swallow-ok: an unreadable owner file lists no worker, the manifest rows still print
-                [ -n "$ldoc" ] && [ -f "$ldoc" ] && [ "$(dirname "$ldoc")" = "$(dirname "$doc")" ] || continue
+                [ -n "$ldoc" ] && [ -f "$ldoc" ] && [ "$(cd "$(dirname "$ldoc")" && pwd -P)" = "$(cd "$(dirname "$doc")" && pwd -P)" ] || continue
                 case "${ldoc##*/}" in *-nextleg-*|*-HANDOFF.md) continue ;; esac
                 case "
 $rows
