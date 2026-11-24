@@ -11,6 +11,9 @@
 # launchArgs carry a permission-bypass flag (nothing written).
 # Env seams (tests): T3_PI_RESOLVER (resolver script), T3_PI_PROFILES (comma list),
 # T3_PI_EMPTY_OK (comma list of profiles that resolve to no settings; default "operator").
+# Relay copies: .t3.relay_instances in $HOME/.himmel/config.json (absent or [] = none) adds
+# "<id>_relay" beside each listed instance; T3_PI_BUILTIN_RELAY=1 also lets the built-in
+# "codex" (no entry) get a driver-only copy.
 # Platform: POSIX bash 3.2+, jq, node (default resolver).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -69,11 +72,39 @@ NEW="$(jq --argjson gen "$GEN" '
   | (.providerInstances // {}) as $pi
   | reduce ($gen | keys_unsorted[]) as $p (.;
       ("claudeAgent_" + $p) as $id
-      | (($pi | to_entries | map(select(.key != $id) | .value | basenames | index($p + ".json")) | any)) as $covered
+      | (($pi | to_entries | map(select(.key != $id and (.key | endswith("_relay") | not)) | .value | basenames | index($p + ".json")) | any)) as $covered
       | if $covered then .
         else .providerInstances[$id] = (($pi[$id] // {"driver":"claudeAgent","displayName":("Claude (" + $p + ")"),"enabled":true})
               | .config = ((.config // {}) + {launchArgs: $gen[$p]}))
         end)' "$FILE")" || die 2 "merge failed"
+
+RELAY='[]'
+CFG="$HOME/.himmel/config.json"
+if [ -f "$CFG" ]; then
+    RELAY="$(jq -c '(.t3.relay_instances // []) | if type == "array" then map(select(type == "string")) else [] end' "$CFG" 2>/dev/null)" \
+        || { echo "provider-instances: warning: $CFG is not readable; no relay copies" >&2; RELAY='[]'; }
+fi
+RELAY_PLAN="$(printf '%s' "$NEW" | jq -r --argjson ids "$RELAY" --arg bi "${T3_PI_BUILTIN_RELAY:-0}" '
+  (.providerInstances // {}) as $pi
+  | $ids[] | if (test("^[A-Za-z0-9._-]+$") | not) or endswith("_relay") then "unknown\t" + (gsub("[^A-Za-z0-9._-]"; "?"))
+             elif ($pi[.] | type) == "object" then "copy\t" + .
+             elif . == "codex" then (if $bi == "1" then "copy\t" + . else "skip-builtin\t" + . end)
+             else "unknown\t" + . end')" || die 2 "relay plan failed"
+COPIES='[]'
+while IFS=$'\t' read -r kind rid; do
+    case "$kind" in
+        copy) COPIES="$(printf '%s' "$COPIES" | jq -c --arg i "$rid" '. + [$i]')" || die 2 "jq failed" ;;
+        skip-builtin) echo "provider-instances: skip relay copy of built-in '$rid': T3 is not shown to accept a driver-only entry (T3_PI_BUILTIN_RELAY=1 forces it)" >&2 ;;
+        unknown) echo "provider-instances: skip relay id '$rid': no such provider instance" >&2 ;;
+    esac
+done <<EOF
+$RELAY_PLAN
+EOF
+NEW="$(printf '%s' "$NEW" | jq --argjson ids "$COPIES" '
+  reduce $ids[] as $id (.;
+    .providerInstances[$id + "_relay"] =
+      ((.providerInstances[$id] // {"driver": $id}) | .enabled = true | .displayName = ((.displayName // $id) + " + chief relay")))')" \
+    || die 2 "relay merge failed"
 
 BAD="$(printf '%s' "$NEW" | jq -r "$BYPASS_JQ")" || die 2 "bypass-flag check could not run (left untouched)"
 if [ -n "$BAD" ]; then
@@ -98,6 +129,9 @@ echo "# add to .t3.instance_allowlist in ~/.himmel/config.json (operator-only):"
 for p in $(printf '%s' "$GEN" | jq -r 'keys_unsorted[]'); do
     id="claudeAgent_$p"
     printf '%s' "$NEW" | jq -e --arg id "$id" '.providerInstances | has($id)' >/dev/null 2>&1 && echo "$id"
+done
+for rid in $(printf '%s' "$COPIES" | jq -r '.[]'); do
+    echo "${rid}_relay"
 done
 
 if [ "$MODE" = apply ] && ! cmp -s "$WORK/before.json" "$WORK/after.json"; then
