@@ -65,11 +65,14 @@
 #   3. The worker's own doc is the `.md` path named in the transcript's first user
 #      turn — the launcher's `load <brief> and continue`. Its last marker
 #      WRAPPED -> allow; BLOCKED -> allow a Read, Grep or Glob only.
-#   4. The mode's unlock holds -> allow. A RESUME doc counts when it sits beside
-#      the doc, is not the doc itself, carries the doc's worker id (letter + digits)
-#      with any one-letter suffix, and was modified after this session's
-#      first user turn — so an older link of the same chain never counts. A
-#      CHECKPOINT counts from the doc's newest CHECKPOINT bullet only.
+#   4. The mode's unlock holds -> allow. A RESUME doc is a candidate when it sits
+#      beside the doc, is not the doc itself, carries the doc's worker id (letter +
+#      digits) with any one-letter suffix, and was modified after this session's
+#      first user turn — so an older link of the same chain never counts. In handoff
+#      mode the unlock holds only when every candidate passes the primary checkout's
+#      brief-lint.sh (exit 0 pass, 1 fixable, other stuck; one 6 s / 3 s budget per
+#      call), and an `append-results.sh` call is denied while a linted candidate is
+#      fixable. A CHECKPOINT counts from the doc's newest CHECKPOINT bullet only.
 #   5. Otherwise deny, naming the mode, the fill and exactly what unlocks it.
 # PreCompact: a manual /compact passes; an auto one past the threshold passes
 # only on steps 3-4, with EITHER unlock (a CHECKPOINT or a RESUME doc).
@@ -149,6 +152,7 @@ is_bare_command() {
 # the allowed name must sit on a path-segment boundary.
 is_handoff_script_call() {
     local re rest word
+    HANDOFF_SCRIPT=""
     re='^[[:space:]]*bash[[:space:]]+("([^"$\\`]*)"|'"'([^']*)'"'|([^][:space:]"'"'"'$\\`;&|<>()]+))(.*)$'
     [[ $1 =~ $re ]] || return 1
     word="${BASH_REMATCH[2]}${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
@@ -164,6 +168,7 @@ is_handoff_script_call() {
             ;;
         *) return 1 ;;
     esac
+    HANDOFF_SCRIPT=${word##*/}
     return 0
 }
 
@@ -196,6 +201,10 @@ else
     tool=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null) || warn_allow "unparseable hook input"
     [ -n "$tool" ] || warn_allow "no tool_name in hook input"
 fi
+LINT_BUDGET=6
+[ "$event" = "PreCompact" ] && LINT_BUDGET=3
+handoff_append=0
+selfcheck_cmd=""
 transcript=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
 if [ -z "$transcript" ] || [ ! -f "$transcript" ] || [ ! -r "$transcript" ]; then
     warn_allow "no readable transcript_path, context fill unknown"
@@ -257,18 +266,22 @@ case "$tool" in
         # A bare call only, or a second command rides the allow.
         if is_bare_command "$cmd"; then
             if is_handoff_script_call "$cmd"; then
-                exit 0
-            fi
+                if [ "$MODE" = handoff ] && [ "$HANDOFF_SCRIPT" = append-results.sh ]; then
+                    handoff_append=1
+                else
+                    exit 0
+                fi
             # WIP add/commit/push, and the status/rev-parse reads a
             # checkpoint needs, so the hand-off leaves nothing uncommitted.
-            if grep -qE '^[[:space:]]*git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?(add|commit|push|status|rev-parse)([[:space:]]|$)' <<< "$cmd"; then
+            elif grep -qE '^[[:space:]]*git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?(add|commit|push|status|rev-parse)([[:space:]]|$)' <<< "$cmd"; then
                 exit 0
-            fi
             # Back to the worktree: one bare cd, nothing chained after it. The
             # operand is a literal path: bare, "double" or 'single' quoted;
             # a $ or backslash in it (a variable target) is refused.
-            if grep -qE "^[[:space:]]*cd([[:space:]]+([^][:space:];&|<>\$\"'\\\\]+|\"[^\"\$\\\\]*\"|'[^']*'))?[[:space:]]*\$" <<< "$cmd"; then
+            elif grep -qE "^[[:space:]]*cd([[:space:]]+([^][:space:];&|<>\$\"'\\\\]+|\"[^\"\$\\\\]*\"|'[^']*'))?[[:space:]]*\$" <<< "$cmd"; then
                 exit 0
+            elif [ "$MODE" = handoff ]; then
+                case "$cmd" in "bash "*) selfcheck_cmd=$cmd ;; esac
             fi
         fi
         ;;
@@ -301,6 +314,7 @@ if { [ -r "$tail_lib" ] && . "$tail_lib"; } 2>/dev/null; then
         WRAPPED) exit 0 ;;
         BLOCKED)
             case "$tool" in Read|Grep|Glob) exit 0 ;; esac
+            [ "$handoff_append" = 1 ] && exit 0
             blocked=1
             ;;
     esac
@@ -361,8 +375,9 @@ if [ -n "$worker_id" ]; then
 fi
 want="$dir/$next_stem-RESUME.md"
 
-resume_ok() {
-    local cand m tok
+resume_candidates() {
+    local cand m tok TAB
+    TAB=$(printf '\t')
     for cand in "$dir"/*-RESUME.md; do
         [ -f "$cand" ] && [ -r "$cand" ] && [ ! -L "$cand" ] || continue
         [ "$cand" = "$doc" ] && continue
@@ -380,21 +395,123 @@ resume_ok() {
         [ -n "$started" ] || continue
         m=$(mtime "$cand") || continue
         [ "$m" -ge "$started" ] || continue
-        return 0
-    done
+        printf '%s\t%s\n' "$m" "$cand"
+    done | sort -t "$TAB" -k1,1nr | cut -f2-
+}
+
+qb_lib="$HERE/../lib/qmd-bounded.sh"
+csg_lib="$HERE/../lib/chokepoint-seam-guard.sh"
+lint_ready=0
+lint_path=""
+lint_block_reason=""
+LINT_ERRF=""
+V_CLASS=""; V_PATH=""; V_LINE=""
+
+shell_safe() { local re='^/[A-Za-z0-9._+/-]+$'; [[ $1 =~ $re ]]; }
+
+lint_setup() {
+    local primary=""
+    [ "$lint_ready" = 1 ] && return 0
+    lint_ready=1
+    case "${HANDOVER_DIR:-}" in
+        /*) [ -d "$HANDOVER_DIR" ] || lint_block_reason="handover root not loadable (HANDOVER_DIR is not a directory)" ;;
+        *) lint_block_reason="handover root not loadable (HANDOVER_DIR is not an absolute directory)" ;;
+    esac
+    if [ -n "${GUARD_CONTEXT_HANDOFF_BRIEF_LINT:-}" ]; then
+        lint_path=$GUARD_CONTEXT_HANDOFF_BRIEF_LINT
+    else
+        # shellcheck source=../lib/chokepoint-seam-guard.sh
+        if { [ -r "$csg_lib" ] && . "$csg_lib"; } 2>/dev/null; then
+            primary=$(_csg_primary_of "$HERE")
+        fi
+        [ -z "$primary" ] || lint_path="$primary/scripts/handover/chief-kit/brief-lint.sh"
+    fi
+    if [ -z "$lint_block_reason" ] && { [ -z "$lint_path" ] || [ ! -f "$lint_path" ]; }; then
+        lint_block_reason="brief-lint not found at ${lint_path:-the primary checkout (none resolved)}"
+    fi
+    # shellcheck source=../lib/qmd-bounded.sh
+    if [ -z "$lint_block_reason" ] && ! { [ -r "$qb_lib" ] && . "$qb_lib"; } 2>/dev/null; then
+        lint_block_reason="qmd-bounded.sh is unreadable at ${qb_lib}, so the lint cannot be bounded"
+    fi
+    return 0
+}
+
+lint_verdicts() {
+    local mode=$1 cands c cls line rc left
+    V_CLASS=""; V_PATH=""; V_LINE=""
+    cands=$(resume_candidates)
+    V_COUNT=0
+    [ -n "$cands" ] || return 1
+    V_COUNT=1
+    lint_setup
+    LINT_ERRF=$(mktemp "${TMPDIR:-/tmp}/guard-ctx-lint.XXXXXX") || LINT_ERRF=""
+    trap '[ -z "$LINT_ERRF" ] || rm -f "$LINT_ERRF"' EXIT
+    while IFS= read -r c; do
+        [ -n "$c" ] || continue
+        cls=pass; line=""
+        if [ -n "$lint_block_reason" ]; then
+            cls=stuck; line=$lint_block_reason
+        elif [ -z "$LINT_ERRF" ]; then
+            cls=stuck; line="no temp file for brief-lint's output"
+        else
+            left=$(( LINT_BUDGET - SECONDS - 1 ))
+            if [ "$left" -lt 1 ]; then
+                cls=unlinted; line="the ${LINT_BUDGET} s lint budget ran out before this doc"
+            else
+                rc=0
+                QMD_KILL_GRACE_SECS=1 qmd_bounded "$left" bash "$lint_path" "$c" 2>"$LINT_ERRF" >/dev/null || rc=$?
+                line=$(grep -F "brief-lint: $c:" "$LINT_ERRF" | tail -n 1)
+                [ -n "$line" ] || line=$(tail -n 1 "$LINT_ERRF")
+                line=${line:0:600}
+                case "$rc" in
+                    0) cls=pass ;;
+                    1) cls=fixable; [ -n "$line" ] || line="brief-lint exited 1 with no message" ;;
+                    124) cls=stuck; line="brief-lint did not answer in ${left} s" ;;
+                    *) cls=stuck; [ -n "$line" ] || line="brief-lint exited $rc with no message" ;;
+                esac
+            fi
+        fi
+        [ "$cls" = pass ] && continue
+        if [ "$mode" = unlock ] || [ "$cls" = fixable ]; then
+            V_CLASS=$cls; V_PATH=$c; V_LINE=$line
+            return 0
+        fi
+    done <<< "$cands"
     return 1
 }
 
+handoff_unlock_ok() {
+    lint_verdicts unlock && return 1
+    [ "$V_COUNT" -gt 0 ]
+}
+
+selfcheck_ok() {
+    local name re='^[A-Za-z0-9._+-]+-RESUME\.md$'
+    [ -n "$selfcheck_cmd" ] || return 1
+    lint_setup
+    shell_safe "$lint_path" && shell_safe "$dir" || return 1
+    case "$selfcheck_cmd" in "bash $lint_path $dir/"*) ;; *) return 1 ;; esac
+    name=${selfcheck_cmd#"bash $lint_path $dir/"}
+    [[ $name =~ $re ]]
+}
+
+selfcheck_ok && exit 0
 if [ "$event" = "PreCompact" ]; then
     checkpoint_ok && exit 0
-    resume_ok && exit 0
+    if [ "$MODE" = "handoff" ]; then
+        handoff_unlock_ok && exit 0
+    else
+        [ -n "$(resume_candidates)" ] && exit 0
+    fi
 elif [ "$blocked" = 1 ]; then
     # BLOCKED is a hand-off: neither unlock reopens ordinary work after it.
     :
 elif [ "$MODE" = "compact" ]; then
     checkpoint_ok && exit 0
+elif [ "$handoff_append" = 1 ]; then
+    lint_verdicts blocked || exit 0
 else
-    resume_ok && exit 0
+    handoff_unlock_ok && exit 0
 fi
 
 # Display routing follows the worker's own accepted succession chain, not the
@@ -428,11 +545,33 @@ else
     else
         write_to="${want}"
     fi
-    deny_msg="worker context hand-off (mode handoff): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you hand off. Do exactly this: 1) Write your resume brief to ${write_to} (ticket, branch, worktree, committed-vs-dirty, PR/CR state, remaining ordered steps). 2) SendMessage your chief ${current_chief}: context ${fill} %, RESUME at that path. 3) bash scripts/handover/chief-kit/append-results.sh '${doc}' \"BLOCKED — context ${fill} %, RESUME written: <path>\". 4) Stop. Still allowed meanwhile: ${allowed}. ${commit_form} ${mode_note} ${bypass_note}"
+    step1a=""
+    name_re='^[A-Za-z0-9._+-]+-RESUME\.md$'
+    want_name=${want#"$dir"/}
+    lint_setup
+    if [ "$no_successor" != 1 ] && shell_safe "$lint_path" && shell_safe "$dir" && [[ $want_name =~ $name_re ]]; then
+        step1a=" 1a) Check it: bash ${lint_path} ${want} (the one extra call allowed)."
+    fi
+    deny_msg="worker context hand-off (mode handoff): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you hand off. Do exactly this: 1) Write your resume brief to ${write_to} (ticket, branch, worktree, committed-vs-dirty, PR/CR state, remaining ordered steps). Copy the > **Prior art:** line and its > continuation lines from ${doc} verbatim, and keep description: and an absolute resume_cwd: in its front matter: the hand-off and the chief's launch both run brief-lint on it.${step1a} 2) SendMessage your chief ${current_chief}: context ${fill} %, RESUME at that path. 3) bash scripts/handover/chief-kit/append-results.sh '${doc}' \"BLOCKED — context ${fill} %, RESUME written: <path>\". 4) Stop. Still allowed meanwhile: ${allowed}. ${commit_form} ${mode_note} ${bypass_note}"
 fi
 
+lint_deny=""
+case "$V_CLASS" in
+    fixable)
+        lint_deny="worker context hand-off [lint: fixable]: your RESUME doc ${V_PATH} fails brief-lint, so it cannot be launched: ${V_LINE}. Fix it with Edit (allowed), e.g. copy the > **Prior art:** line and its > continuation lines from ${doc}, then append your BLOCKED bullet again."
+        ;;
+    stuck|unlinted)
+        lint_deny="worker context hand-off [lint: ${V_CLASS}]: brief-lint could not pass ${V_PATH} (${V_LINE}). You cannot clear this: put this reason in your BLOCKED bullet for your chief ${current_chief} and stop."
+        ;;
+esac
+[ -z "$lint_deny" ] || deny_msg="${lint_deny} ${deny_msg}"
+
 if [ "$event" = "PreCompact" ]; then
-    deny_msg="refusing auto-compaction: no CHECKPOINT or RESUME yet. ${deny_msg}"
+    if [ -n "$lint_deny" ]; then
+        deny_msg="refusing auto-compaction: ${deny_msg}"
+    else
+        deny_msg="refusing auto-compaction: no CHECKPOINT or RESUME yet. ${deny_msg}"
+    fi
     reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) || reason='"worker context guard: checkpoint before compacting"'
     printf '{"decision":"block","reason":%s}\n' "$reason"
 else
