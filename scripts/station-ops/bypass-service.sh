@@ -35,17 +35,12 @@ installed_path() { if darwin; then echo "$AGENT_DIR/$PLIST"; else echo "$UNIT_DI
 conf_get() { sed -n "s/^$1=//p" "$CONFIG" 2>/dev/null | head -n 1; }
 
 render() {
-    local bucket=$1 repo=$2 hd=${3:-} tpl line out=""
+    local bucket=$1 repo=$2 tpl line out=""
     [[ "$bucket" =~ $PATH_RE ]] || die "the bucket path '$bucket' holds a character the unit cannot carry (use letters, digits and . _ / @ + -)"
     [[ "$repo" =~ $PATH_RE ]] || die "the checkout path '$repo' holds a character the unit cannot carry"
-    [ -z "$hd" ] || [[ "$hd" =~ $PATH_RE ]] || hd=""
     if darwin; then tpl="$repo/$OPS/units/$PLIST"; else tpl="$repo/$OPS/units/$UNIT"; fi
     [ -f "$tpl" ] || die "no template at $tpl"
     while IFS= read -r line || [ -n "$line" ]; do
-        case $line in
-            @HANDOVER_DIR_LINE@) [ -z "$hd" ] || out+="Environment=HANDOVER_DIR=${hd//%/%%}"$'\n'; continue ;;
-            @HANDOVER_DIR_PLIST@) [ -z "$hd" ] || out+="        <key>HANDOVER_DIR</key>"$'\n'"        <string>$hd</string>"$'\n'; continue ;;
-        esac
         line=${line//@HIMMEL_ROOT@/${repo//%/%%}}
         line=${line//@BUCKET@/${bucket//%/%%}}
         line=${line//@HOME@/$HOME}
@@ -91,7 +86,7 @@ bucket_arg() {
 cmd_on() {
     refuse_claude "turn the bypass daemon on"
     need_manager
-    local bucket repo hd="${HANDOVER_DIR:-}" path q out live was_active="" changed=1
+    local bucket repo pin_hd="" path q out live was_active="" changed=1
     bucket=$(bucket_arg "$@") || exit $?
     repo=$REPO; q="$bucket/bypass-queue"
     m_active && was_active=1
@@ -105,10 +100,11 @@ cmd_on() {
     fi
     path=$(installed_path)
     mkdir -p "$STATE" "$(dirname "$path")" || die "cannot create the unit directory"
-    render "$bucket" "$repo" "$hd" >"$path.new" || { rm -f "$path.new"; exit 2; }
+    render "$bucket" "$repo" >"$path.new" || { rm -f "$path.new"; exit 2; }
     if [ -f "$path" ] && cmp -s "$path" "$path.new"; then changed=""; fi
     mv "$path.new" "$path"
-    printf 'bucket=%s\nrepo=%s\n' "$bucket" "$repo" >"$CONFIG.new" && mv "$CONFIG.new" "$CONFIG"
+    [[ "${HANDOVER_DIR:-}" =~ $PATH_RE ]] && pin_hd=$HANDOVER_DIR
+    { printf 'bucket=%s\nrepo=%s\n' "$bucket" "$repo"; [ -z "$pin_hd" ] || printf 'handover_dir=%s\n' "$pin_hd"; } >"$CONFIG.new" && mv "$CONFIG.new" "$CONFIG"
     rm -f "$q/stop"
     if darwin; then
         mkdir -p "$HOME/.himmel"
@@ -164,9 +160,12 @@ cmd_restart() {
 cmd_restart_if_changed() {
     local check="" bucket repo want have
     case ${1:-} in --check) check=1 ;; "") ;; *) die "unknown argument $1" ;; esac
-    need_manager
     bucket=$(conf_get bucket); repo=$(conf_get repo); [ -n "$repo" ] || repo=$REPO
-    if [ -z "$bucket" ] || ! m_enabled; then
+    if [ -z "$bucket" ]; then
+        echo "not-enabled: bypass daemon is off, turn it on from your shell: himmelctl bypass on"; return 0
+    fi
+    need_manager
+    if ! m_enabled; then
         echo "not-enabled: bypass daemon is off, turn it on from your shell: himmelctl bypass on"; return 0
     fi
     if ! m_active; then
@@ -183,7 +182,7 @@ cmd_restart_if_changed() {
 }
 
 cmd_status() {
-    local bucket repo path hd inst want have enabled=no active=no linger=no pid="" since="" unit="not installed" code="STALE" stop=no hb=none now mt rc=0
+    local bucket repo path inst want have enabled=no active=no linger=no pid="" since="" unit="not installed" code="STALE" stop=no hb=none now mt rc=0
     bucket=$(conf_get bucket); repo=$(conf_get repo); [ -n "$repo" ] || repo=$REPO
     path=$(installed_path)
     m_enabled && enabled=yes
@@ -195,10 +194,8 @@ cmd_status() {
         [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" = yes ] && linger=yes
     fi
     if [ -f "$path" ] && [ -n "$bucket" ]; then
-        if darwin; then hd=$(sed -n '/<key>HANDOVER_DIR<\/key>/{n;s/.*<string>\(.*\)<\/string>.*/\1/p;}' "$path")
-        else hd=$(sed -n 's/^Environment=HANDOVER_DIR=//p' "$path" | head -n 1); fi
         inst=$(cat "$path"; printf x); inst=${inst%x}
-        if [ "$(render "$bucket" "$repo" "$hd"; printf x)" = "${inst}x" ]; then unit=current; else unit="STALE (run: himmelctl bypass on)"; fi
+        if [ "$(render "$bucket" "$repo"; printf x)" = "${inst}x" ]; then unit=current; else unit="STALE (run: himmelctl bypass on)"; fi
     fi
     if [ -n "$bucket" ]; then
         [ -e "$bucket/bypass-queue/stop" ] && stop=yes
@@ -217,7 +214,7 @@ cmd_status() {
 cmd_render() {
     local bucket
     bucket=$(bucket_arg "$@") || exit $?
-    render "$bucket" "$REPO" "${HANDOVER_DIR:-}"
+    render "$bucket" "$REPO"
 }
 
 verb=${1:-}; [ $# -eq 0 ] || shift

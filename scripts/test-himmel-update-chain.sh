@@ -483,8 +483,8 @@ mkdir -p "$CHECKOUT_DIR/scripts/station-ops"
 cat > "$CHECKOUT_DIR/scripts/station-ops/bypass-service.sh" <<'STUB'
 #!/bin/sh
 printf '%s\n' "$*" >> "$BS10_CALLS"
-cat "$BS10_OUT"
-exit "$(cat "$BS10_RC")"
+cat "$BS10_OUT" # read-sink-ok: a test stub reads the fixture file its suite names
+exit "$(cat "$BS10_RC")" # read-sink-ok: a test stub reads the fixture file its suite names
 STUB
 git -C "$CHECKOUT_DIR" add -A
 git -C "$CHECKOUT_DIR" commit --quiet -m "bypass-service stub"

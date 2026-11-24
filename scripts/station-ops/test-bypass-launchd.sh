@@ -1189,9 +1189,9 @@ assert_contains "11031: and says so" "refusing to start from inside a Claude ses
 echo "-- a service daemon: forever, heartbeat, .loaded, launch deadline, session env, child environment --"
 setup_repo forever-run
 clean_session
-start_svc forever NOTIFY_SOCKET="$D/notify.sock" WATCHDOG_USEC=300000000 WATCHDOG_PID=1 HOME=/tmp/evilhome CLAUDE_CONFIG_DIR=/tmp/evilcfg \
+start_svc forever PATH="$tmp/bin:$PATH:$R/scripts/lib/shims" NOTIFY_SOCKET="$D/notify.sock" WATCHDOG_USEC=300000000 WATCHDOG_PID=1 HOME=/tmp/evilhome CLAUDE_CONFIG_DIR=/tmp/evilcfg \
     HEADED_ARM_WORKER_CLAUDE_BIN=/tmp/evilbin HEADED_ARM_WORKER_SYSTEMD_RUN=/tmp/evilrun HEADED_ARM_WORKER_SHIM=/tmp/evilshim HEADED_ARM_REPO=/tmp/evilrepo \
-    HIMMEL_MESSAGE_CLASSES=/tmp/evilclasses HIMMEL_TEST_FIXTURE=1 GIT_CONFIG_COUNT=1 TMPDIR=/tmp/eviltmp
+    HIMMEL_MESSAGE_CLASSES=/tmp/evilclasses HIMMEL_TEST_FIXTURE=1 GIT_CONFIG_COUNT=1 TMPDIR=/tmp/eviltmp HANDOVER_DIR=/tmp/evilhandover
 wait_for "$Q/daemon.log" "start pid="
 assert_contains "RED 11031: the unit's own main process starts with until=forever" "until=forever" "$(start_line)"
 assert_eq "11031: and is still running" yes "$(kill -0 "$DPID" 2>/dev/null && echo yes || echo no)"
@@ -1208,22 +1208,37 @@ now=$(date +%s)
 if [[ "$dl" =~ ^[0-9]+$ ]] && [ "$dl" -gt "$now" ] && [ "$dl" -le $((now + 21600 + 60)) ]; then pass "RED 11031: under forever the launcher's deadline is now + the go's 6 h, never forever"
 else fail "RED 11031: under forever the launcher's deadline is now + the go's 6 h, never forever" "$dl"; fi
 PWHOME="$D/home"
-ALLOWED='HOME|USER|LOGNAME|PATH|LANG|XDG_RUNTIME_DIR|TMPDIR|HANDOVER_DIR|TELEGRAM_ACCESS_PATH|BRIDGE_ROOT|DBUS_SESSION_BUS_ADDRESS|DISPLAY|WAYLAND_DISPLAY|XAUTHORITY|XDG_SESSION_TYPE|XDG_CURRENT_DESKTOP|WORKER_SESSION_EFFORT|WORKER_SESSION_API_LANE|WORKER_SESSION_API_ACCOUNT|HIMMEL_[A-Z0-9_]*_OK|BYPASSD_TEST_DIR|BYPASSD_TEST_RC|BYPASSD_TEST_DAEMON|_|PWD|SHLVL|OLDPWD'
+ALLOWED='HOME|USER|LOGNAME|PATH|LANG|XDG_RUNTIME_DIR|TMPDIR|TELEGRAM_ACCESS_PATH|BRIDGE_ROOT|DBUS_SESSION_BUS_ADDRESS|DISPLAY|WAYLAND_DISPLAY|XAUTHORITY|XDG_SESSION_TYPE|XDG_CURRENT_DESKTOP|WORKER_SESSION_EFFORT|WORKER_SESSION_API_LANE|WORKER_SESSION_API_ACCOUNT|HIMMEL_[A-Z0-9_]*_OK|BYPASSD_TEST_DIR|BYPASSD_TEST_RC|BYPASSD_TEST_DAEMON|_|PWD|SHLVL|OLDPWD'
 for who in launch send; do
     full=$(cat "$D/$who.fullenv" 2>/dev/null)
     assert_eq "RED 11031 N1: the $who child gets only allowlisted names" "" "$(printf '%s\n' "$full" | cut -d= -f1 | grep -v -x -E "$ALLOWED")"
     for n in CLAUDE_CONFIG_DIR HEADED_ARM_WORKER_CLAUDE_BIN HEADED_ARM_WORKER_SYSTEMD_RUN HEADED_ARM_WORKER_SHIM HEADED_ARM_REPO HIMMEL_MESSAGE_CLASSES \
-        HIMMEL_TEST_FIXTURE GIT_CONFIG_COUNT NOTIFY_SOCKET WATCHDOG_USEC WATCHDOG_PID INVOCATION_ID BYPASSD_SERVICE BASH_ENV TMPDIR; do
+        HIMMEL_TEST_FIXTURE GIT_CONFIG_COUNT NOTIFY_SOCKET WATCHDOG_USEC WATCHDOG_PID INVOCATION_ID BYPASSD_SERVICE BASH_ENV TMPDIR HANDOVER_DIR; do
         assert_absent "RED 11031 N1: the $who child does not inherit $n" "$n=" "$full"
     done
     assert_contains "RED 11031 N1: the $who child's HOME is the passwd home, not the injected one" "HOME=$PWHOME" "$full"
 done
 svcenv=$(cat "$D/launch.fullenv" 2>/dev/null)
+assert_absent "RED 11031 m2: a child's PATH never starts with the checkout's shim directory" "scripts/lib/shims" "$(printf '%s\n' "$svcenv" | grep '^PATH=')"
 assert_contains "RED 11031 N4: a child's PATH has the user's two directories after the daemon's own" ":$D/home/.local/bin:$D/home/.bun/bin" "$(printf '%s\n' "$svcenv" | grep '^PATH=')"
 assert_contains "RED 11031 M4: the verified display reaches the launcher" "DISPLAY=:7" "$svcenv"
 assert_contains "11031 M4: and the wayland display" "WAYLAND_DISPLAY=wayland-9" "$svcenv"
 assert_contains "11031 M4: and the xauthority file" "XAUTHORITY=$D/xauth" "$svcenv"
 assert_contains "RED 11031 N2: the bus address is the pinned one, not the manager's" "DBUS_SESSION_BUS_ADDRESS=unix:path=$D/run/bus" "$svcenv"
+stop
+
+echo "-- the handover root a child sees is the one on recorded, never the manager's (B1) --"
+setup_repo b1-pinned
+clean_session
+mkdir -p "$D/home/.himmel/state/bypass-service"
+printf 'bucket=%s\nrepo=%s\nhandover_dir=/srv/pinned-handovers\n' "$B" "$R" > "$D/home/.himmel/state/bypass-service/config"
+start_svc "$UNTIL" HANDOVER_DIR=/tmp/evilhandover
+wait_for "$Q/daemon.log" "start pid="
+code=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $code"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_contains "RED 11031 B1: a handover root recorded by on reaches the launcher" "HANDOVER_DIR=/srv/pinned-handovers" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+assert_absent "RED 11031 B1: the manager's HANDOVER_DIR does not, even next to a pin" "evilhandover" "$(cat "$D/launch.fullenv" 2>/dev/null)"
 stop
 
 echo "-- the session environment is data, checked, and a failure refuses before the ask (N2) --"

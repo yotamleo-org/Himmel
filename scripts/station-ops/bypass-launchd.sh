@@ -68,7 +68,7 @@ if [ -n "$MANAGED" ]; then
     if [ "$(uname -s)" = Darwin ]; then PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin; else PATH=/usr/local/bin:/usr/bin:/bin; fi
     export PATH LC_ALL=C TZ=UTC
     unset POSIXLY_CORRECT TMOUT LOCPATH GCONV_PATH BYPASSD_LAUNCHER BYPASSD_SEND BYPASSD_POLL BYPASSD_SETTLE BYPASSD_TTL BYPASSD_CALL_TIMEOUT \
-        BYPASSD_WATCHDOG_SECS BYPASSD_WATCHDOG_TICK BYPASSD_CHILD_PASS TELEGRAM_ACCESS_PATH BRIDGE_ROOT
+        BYPASSD_WATCHDOG_SECS BYPASSD_WATCHDOG_TICK BYPASSD_CHILD_PASS TELEGRAM_ACCESS_PATH BRIDGE_ROOT HANDOVER_DIR
     set +o posix
     if [ "$(uname -s)" = Darwin ]; then unset XDG_RUNTIME_DIR; else XDG_RUNTIME_DIR="/run/user/$(id -u)"; export XDG_RUNTIME_DIR; fi
 fi
@@ -174,12 +174,18 @@ heartbeat() {
 }
 CHILD_BASE=() SESS=()
 if [ -n "$SERVICE" ]; then
-    CHILD_BASE=(HOME="$HOMEDIR" USER="$(id -un)" LOGNAME="$(id -un)" PATH="$PATH:$HOMEDIR/.local/bin:$HOMEDIR/.bun/bin")
+    child_path=""
+    IFS=: read -ra path_parts <<<"$PATH"
+    for path_part in "${path_parts[@]}"; do
+        [ "$path_part" = "$REPO/scripts/lib/shims" ] || child_path+="${child_path:+:}$path_part"
+    done
+    CHILD_BASE=(HOME="$HOMEDIR" USER="$(id -un)" LOGNAME="$(id -un)" PATH="$child_path:$HOMEDIR/.local/bin:$HOMEDIR/.bun/bin")
     [[ "${LANG:-}" =~ ^[A-Za-z]{2,3}(_[A-Za-z]{2})?(\.[A-Za-z0-9-]+)?$ ]] && CHILD_BASE+=(LANG="$LANG")
     if [ "$(uname -s)" = Darwin ]; then
         mac_tmp="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null)"; [ -z "$mac_tmp" ] || CHILD_BASE+=(TMPDIR="${mac_tmp%/}")
     elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then CHILD_BASE+=(XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR"); fi
-    [[ "${HANDOVER_DIR:-}" =~ ^/[A-Za-z0-9._/@+-]+$ ]] && CHILD_BASE+=(HANDOVER_DIR="$HANDOVER_DIR")
+    pinned_handover=$(sed -n 's/^handover_dir=//p' "$HOMEDIR/.himmel/state/bypass-service/config" 2>/dev/null | head -n 1)
+    [[ "$pinned_handover" =~ ^/[A-Za-z0-9._/@+-]+$ ]] && CHILD_BASE+=(HANDOVER_DIR="$pinned_handover")
     CHILD_BASE+=(TELEGRAM_ACCESS_PATH="$ACCESS" BRIDGE_ROOT="${INBOUND%/inbound.jsonl}")
     if [ -z "$MANAGED" ]; then
         for pass_n in ${BYPASSD_CHILD_PASS:-}; do

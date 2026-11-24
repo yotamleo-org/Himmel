@@ -30,7 +30,6 @@
         <string>@HOME@/.claude/channels/telegram/access.json</string>
         <key>BRIDGE_ROOT</key>
         <string>@HOME@/.claude/handover/bridge</string>
-@HANDOVER_DIR_PLIST@
     </dict>
     <key>RunAtLoad</key>
     <true/>

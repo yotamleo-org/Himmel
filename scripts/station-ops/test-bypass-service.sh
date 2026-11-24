@@ -108,7 +108,9 @@ mk onoff
 touch "$Q/stop"
 out=$(svc_run on --bucket "$B"); rc=$?
 assert_eq "on exits 0" 0 "$rc"
-assert_absent "on pins no HANDOVER_DIR when the operator's shell has none" "HANDOVER_DIR" "$(cat "$U/$UNIT" 2>/dev/null)"
+assert_absent "on records no handover dir when the operator's shell has none" "handover_dir=" "$(cat "$H/.himmel/state/bypass-service/config" 2>/dev/null)"
+assert_contains "RED B1: the rendered unit unsets HANDOVER_DIR, so the manager's value never reaches the daemon" "UnsetEnvironment=HANDOVER_DIR " "$(cat "$U/$UNIT" 2>/dev/null)"
+assert_absent "RED B1: the unit pins no HANDOVER_DIR line" "HANDOVER_DIR=" "$(cat "$U/$UNIT" 2>/dev/null)"
 assert_eq "on writes the unit file" yes "$([ -f "$U/$UNIT" ] && echo yes || echo no)"
 assert_contains "on runs daemon-reload" "systemctl --user daemon-reload" "$(calls)"
 assert_contains "on runs enable --now on the unit" "systemctl --user enable --now $UNIT" "$(calls)"
@@ -124,7 +126,7 @@ assert_contains "off disables and stops the unit" "systemctl --user disable --no
 out=$(svc_run on --bucket "$B"); rc=$?
 mk handover-dir
 out=$(HANDOVER_DIR=/srv/handovers svc_run on --bucket "$B")
-assert_contains "on pins the operator's HANDOVER_DIR in the unit" "Environment=HANDOVER_DIR=/srv/handovers" "$(cat "$U/$UNIT" 2>/dev/null)"
+assert_contains "on records the operator's HANDOVER_DIR in the config record" "handover_dir=/srv/handovers" "$(cat "$H/.himmel/state/bypass-service/config" 2>/dev/null)"
 mk lingerfail
 out=$(STUB_LINGER_FAIL=1 svc_run on --bucket "$B"); rc=$?
 assert_eq "on with a refused enable-linger still exits 0" 0 "$rc"
@@ -245,6 +247,9 @@ out=$(svc_cc restart-if-changed); rc=$?
 assert_eq "no config record: exit 0" 0 "$rc"
 assert_contains "no config record: names the one command" "himmelctl bypass on" "$out"
 assert_absent "no config record: nothing run" "systemctl --user restart" "$(calls)"
+out=$(env -u CLAUDECODE BYPASSD_SERVICE_OS=Darwin HOME="$H" PATH=/usr/bin:/bin bash "$R/$OPS/bypass-service.sh" restart-if-changed 2>&1); rc=$?
+assert_eq "RED m1: no config record on a host with no service manager: exit 0" 0 "$rc"
+assert_contains "RED m1: and names the one command, no manager probe" "himmelctl bypass on" "$out"
 
 echo
 echo "bypass-service: $PASS passed, $FAIL failed"
