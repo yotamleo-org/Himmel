@@ -1845,7 +1845,8 @@ def apply_second_opinion(path: Path, review_fn=None) -> tuple:
     check, revert on mismatch). Downgrades the flag to `injection-advisory`
     ONLY when both reviewers call the clip benign; anything else (a
     disagreement, an error, a failed write) keeps the operator flag.
-    Returns (downgraded: bool | None, summary: str); None = the clip carries no injection-suspect flag."""
+    Returns (downgraded: bool | None, summary: str); None = the clip is already
+    an advisory, False = the operator flag is kept (including a flag missing on disk)."""
     try:
         text = path.read_text(encoding="utf-8")
         fm, fm_raw, body, present = parse_frontmatter(text)
