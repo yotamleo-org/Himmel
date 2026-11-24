@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-chief-wait-budget.sh — Exercises chief-wait.sh's WAKE budget-recovered: a usage
-# verdict that flips from a refusing word (SKIPPED-BANK, SKIPPED-FLEET, BANK-STALE,
-# BANK-UNKNOWN) to PROCEED wakes the chief exactly once and runs the fleet nudge once.
+# verdict that flips from SKIPPED-BANK or SKIPPED-FLEET to PROCEED wakes the chief exactly
+# once and runs the fleet nudge once; a BANK-STALE or BANK-UNKNOWN read is neither side.
 # tick.sh, the usage verdict and the nudge are stubbed (CHIEF_WAIT_TICK / CHIEF_WAIT_USAGE /
 # CHIEF_WAIT_NUDGE), so no gh, lock, bank read or bus send happens here. bash 3.2-safe.
 #
