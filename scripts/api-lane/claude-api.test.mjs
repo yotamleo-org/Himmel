@@ -813,6 +813,18 @@ test('a stdin prompt over 8 MiB is refused with no call, no fallback and no scra
   assert.equal(readFileSync(join(g.dir, 'stdin.seen')).length, 8 * 1024 * 1024);
 });
 
+test('a stdin prompt whose scratch file vanishes after the size check still reaches the call', () => {
+  const f = fixture();
+  const shim = join(f.dir, 'shim');
+  mkdirSync(shim);
+  writeFileSync(join(shim, 'wc'), '#!/bin/bash\nreal="$(PATH="$REAL_PATH" command -v wc)"\n"$real" "$@"; rc=$?\n[ "$1" != -c ] || rm -f "$TMPDIR"/claude-api-prompt.*\nexit $rc\n', { mode: 0o700 });
+  const r = f.run(STDIN_ONLY, { ...withStdin(f), PATH: `${shim}:${f.env.PATH}`, REAL_PATH: f.env.PATH }, { input: PROMPT });
+  assert.doesNotMatch(r.stderr, /could not reopen the stdin prompt/);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(seenStdin(f), PROMPT, 'the call did not get the prompt');
+  assert.deepEqual(promptFiles(f), []);
+});
+
 test('a launcher stopped while it buffers a stdin prompt removes the scratch file', async () => {
   const f = fixture();
   const child = spawn('bash', [LAUNCH, ...STDIN_ONLY], { env: { ...f.env, ...withStdin(f) }, stdio: ['pipe', 'ignore', 'ignore'] });

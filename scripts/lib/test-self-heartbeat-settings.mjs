@@ -91,6 +91,87 @@ test('a matched-only group does not count, nor does a command with only one of t
   }
 });
 
+const ROUTED_HB = 'if [ -f "$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh" ]; then command -p sh "$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh" '
+  + '"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js" "$CLAUDE_PROJECT_DIR/scripts/handover/queue-lock.sh" self-heartbeat; '
+  + 'else node "$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js" "$CLAUDE_PROJECT_DIR/scripts/handover/queue-lock.sh" self-heartbeat; fi';
+const withCommand = (hook) => ({ hooks: { PostToolUse: [{ hooks: [hook] }] } });
+
+test('X07-7: both emitted command shapes (plain and routed) are effective, as is the tracked project settings file', () => {
+  const shapes = [
+    HB,
+    'bash scripts/handover/queue-lock.sh self-heartbeat',
+    'bash /repo/scripts/handover/queue-lock.sh self-heartbeat',
+    ROUTED_HB,
+  ];
+  for (const command of shapes) {
+    const r = readSelfHeartbeatEffectiveness({ layers: [layer('project', withCommand({ type: 'command', command }))] });
+    assert.equal(r.state, 'effective', command);
+  }
+  const tracked = readSelfHeartbeatEffectiveness({ layers: [{ name: 'project', path: join(HERE, '..', '..', '.claude', 'settings.json') }] });
+  assert.equal(tracked.state, 'effective', 'the tracked .claude/settings.json heartbeat entry reads effective');
+});
+
+test('X07-7: a hook that only echoes both words, or has a non-command type, reads unknown, not effective', () => {
+  const bad = [
+    { type: 'command', command: "echo 'queue-lock.sh self-heartbeat is disabled' >> /tmp/log" },
+    { type: 'command', command: 'true # queue-lock.sh self-heartbeat' },
+    { type: 'command', command: `${HB} && rm -rf /tmp/x` },
+    { type: 'command', command: `echo ${HB}` },
+    { type: 'command', command: 'bash $(evil)/queue-lock.sh self-heartbeat' },
+    { type: 'prompt', command: 'queue-lock.sh self-heartbeat' },
+    { type: 'prompt', command: HB },
+    { command: HB },
+    { type: 'command', command: ROUTED_HB.replace('; fi', '; echo x; fi') },
+  ];
+  for (const hook of bad) {
+    const r = readSelfHeartbeatEffectiveness({ layers: [layer('project', withCommand(hook))] });
+    assert.equal(r.state, 'unknown', JSON.stringify(hook));
+    assert.equal(r.reason, 'layer-invalid-field', JSON.stringify(hook));
+  }
+});
+
+const replaceNth = (text, needle, replacement, n) => {
+  let at = -1;
+  for (let i = 0; i <= n; i += 1) at = text.indexOf(needle, at + 1);
+  return text.slice(0, at) + replacement + text.slice(at + needle.length);
+};
+
+test('X07-7: a script, runner or launcher whose name only ends like the emitted one reads unknown', () => {
+  const bad = [
+    'bash /tmp/not-queue-lock.sh self-heartbeat',
+    'bash "/tmp/not-queue-lock.sh" self-heartbeat',
+    'bash "/tmp/not queue-lock.sh" self-heartbeat',
+    ROUTED_HB.replaceAll('/scripts/lib/run-node.sh', '/scripts/lib/not run-node.sh'),
+    ROUTED_HB.replaceAll('/scripts/lib/run-node.sh', '/scripts/lib/not-run-node.sh'),
+    ROUTED_HB.replaceAll('/hooks/run-hook-with-bash.js', '/hooks/not-run-hook-with-bash.js'),
+    ROUTED_HB.replaceAll('/handover/queue-lock.sh', '/handover/not-queue-lock.sh'),
+  ];
+  for (const command of bad) {
+    const r = readSelfHeartbeatEffectiveness({ layers: [layer('project', withCommand({ type: 'command', command }))] });
+    assert.equal(r.state, 'unknown', command);
+  }
+});
+
+test('X07-7: a routed command that tests one path and runs another reads unknown', () => {
+  const bad = [
+    replaceNth(ROUTED_HB, '/scripts/lib/run-node.sh', '/elsewhere/run-node.sh', 0),
+    replaceNth(ROUTED_HB, '/scripts/lib/run-node.sh', '/elsewhere/run-node.sh', 1),
+    replaceNth(ROUTED_HB, '/scripts/hooks/run-hook-with-bash.js', '/elsewhere/run-hook-with-bash.js', 1),
+    replaceNth(ROUTED_HB, '/scripts/handover/queue-lock.sh', '/elsewhere/queue-lock.sh', 1),
+  ];
+  for (const command of bad) {
+    const r = readSelfHeartbeatEffectiveness({ layers: [layer('project', withCommand({ type: 'command', command }))] });
+    assert.equal(r.state, 'unknown', command);
+  }
+});
+
+test('X07-7: a command naming only one of the two words stays ineffective, not unknown (the control for the rows above)', () => {
+  for (const command of ['true', 'bash queue-lock.sh acquire', 'bash self-heartbeat.sh']) {
+    const r = readSelfHeartbeatEffectiveness({ layers: [layer('project', withCommand({ type: 'prompt', command }))] });
+    assert.equal(r.state, 'ineffective', command);
+  }
+});
+
 test('disableAllHooks true in the highest defining layer is ineffective, even with a wired hook', () => {
   const d = dir();
   const r = readSelfHeartbeatEffectiveness({ layers: [layer('user', wired(), d), layer('local', { disableAllHooks: true }, d)] });

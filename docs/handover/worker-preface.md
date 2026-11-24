@@ -126,7 +126,8 @@ commands: VM only): `worker-sections/shell-and-tests.md`.
 - Once open: `/pr-check` at the `READY` head → as it enters final CI, `JUDGE-REQUEST <pr> <head>` (`worker-sections/judge-request.md`) → `scripts/check-ci.sh <pr> --max-wait 3000` in `run_in_background`; its exit code decides → `READY` bullet. [prose]
 - **Lint `## Ticket coverage` before `READY`:**
   `bash scripts/handover/chief-kit/ready-check.sh --only 7 <pr>` until it prints
-  `COVERAGE-LINT PASS` (`- <ask>: done` / `- <ask>: deferred → HIMMEL-<n>`, marker last). [prose]
+  `COVERAGE-LINT PASS` (`- <ask>: done` / `- <ask>: deferred → HIMMEL-<n>`, marker last). It also
+  fails on a ticket comment newer than your launch with no `TICKET-SEEN <id>` line in your doc. [prose]
 - **A red CI job on your PR is yours to triage; tell the chief only if it is
   not the PR's fault** (`MAIN-RED <job> <failing case> caused-by: #<pr>`, or
   `caused-by: unknown`, once). Merge-forward

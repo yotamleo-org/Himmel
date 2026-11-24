@@ -553,6 +553,7 @@ describe('create --residual-of', () => {
           ? []
           : [{ name: 'v1.1.3', released: false, description: o.budgetDesc }, { name: 'v1.1.4', released: false }];
       }
+      if (method === 'GET' && /linkedIssues|summary ~/.test(decodeURIComponent(path))) return { issues: [] };
       if (method === 'GET' && path.startsWith('/search/jql')) {
         const jql = decodeURIComponent(path);
         searches.push(jql);
@@ -769,6 +770,7 @@ describe('create --residual-of placement', () => {
           ...(o.noNext ? [] : [{ name: 'v1.1.4', released: false, description: o.nextFrozen ? 'frozen: 2026-10-21' : '' }]),
         ];
       }
+      if (method === 'GET' && /linkedIssues|summary ~/.test(decodeURIComponent(path))) return { issues: [] };
       if (method === 'GET' && path.startsWith('/search/jql')) {
         return { issues: Array.from({ length: o.open ?? 0 }, (_, i) => ({ key: `HIMMEL-${900 + i}`,
           fields: { labels: ['residual', 'fu-hardening'], status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } } })) };
@@ -956,6 +958,7 @@ describe('create --residual-of in a version holding many open residuals', () => 
       if (path.startsWith('/issue/HIMMEL-50')) return parent;
       const found = residents.find((i) => path.startsWith('/issue/' + i.key + '?'));
       if (found) return found;
+      if (/linkedIssues|summary ~/.test(decodeURIComponent(path))) return { issues: [] };
       if (path.startsWith('/search/jql')) return { issues: residents };
       throw new Error('unexpected read ' + path);
     });
@@ -1321,6 +1324,7 @@ describe('create — no count gate', () => {
           ...(o.noNext ? [] : [{ name: 'v1.1.4', released: false }]),
         ];
       }
+      if (method === 'GET' && /linkedIssues|summary ~/.test(decodeURIComponent(path))) return { issues: [] };
       if (method === 'GET' && path.startsWith('/search/jql')) {
         if (o.searchFails) throw new Error('search boom');
         searches.push(decodeURIComponent(path));
@@ -2636,5 +2640,134 @@ describe('create --residual-of is placed by the door', () => {
     await p.parseAsync(['node', 'jira', 'release', 'operator', 'declare', 'R2', '--versions', 'v1.1.3', '--decision', '214', '--verbatim-file', join(baseRoot, 'verbatim.txt')]);
     await expect(file('HIMMEL-50')).rejects.toThrow(/an INTAKE needs exactly one/);
     expect(created()).toBeUndefined();
+  });
+});
+
+describe('create — duplicate gate', () => {
+  type Open = { key: string; summary: string };
+  type Opts = { siblings?: Open[]; titleHits?: Open[]; searchFails?: boolean };
+  const TITLE = 'Ship loop: refuse a duplicate ticket at filing';
+  const NEAR = 'Ship loop: refuse a duplicate ticket when filing';
+  let searches: string[];
+  let errs: string[];
+  const play = (o: Opts = {}) => {
+    searches = [];
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) return [{ name: 'v1.1.3', released: false }];
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-50')) {
+        return { fields: { labels: [], fixVersions: [], project: { key: 'HIMMEL' }, status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } } };
+      }
+      if (method === 'GET' && path.startsWith('/search/jql')) {
+        const jql = decodeURIComponent(path);
+        searches.push(jql);
+        if (o.searchFails) throw new Error('search boom');
+        const rows = jql.includes('linkedIssues') ? o.siblings : jql.includes('summary ~') ? o.titleHits : undefined;
+        return { issues: (rows ?? []).map((r) => ({ key: r.key, fields: { summary: r.summary } })) };
+      }
+      return { key: 'HIMMEL-77' };
+    });
+  };
+  const file = async (...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', TITLE, '--desc', PLAIN, ...HOME, ...args]);
+  };
+  const created = () => mockRequest.mock.calls.some((x) => x[0] === 'POST' && x[1] === '/issue');
+  const stderr = () => errs.join('\n');
+  const FU = ['--follow-up-of', 'HIMMEL-50'];
+  const BACKLOG = ['--labels', 'standalone', '--backlog', '--proposed-version', 'backlog', '--why', 'waits for the next release to take it'];
+  const SIBLING: Open = { key: 'HIMMEL-60', summary: 'Something else that a worker filed earlier' };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    errs = [];
+    vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { errs.push(a.map(String).join(' ')); });
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
+  });
+
+  it('a follow-up of a parent that already has an open follow-up is refused, naming the open one and the way out', async () => {
+    play({ siblings: [SIBLING] });
+    await expect(file(...FU)).rejects.toThrow('exit');
+    expect(stderr()).toMatch(/HIMMEL-60.*extend HIMMEL-60 with jira comment, or pass --new-reason <why>/s);
+    expect(created()).toBe(false);
+    expect(searches.some((j) => /linkedIssues\("?HIMMEL-50"?\)/.test(j) && /statusCategory != Done/.test(j))).toBe(true);
+  });
+
+  it('control: a follow-up of a parent with no open follow-up files', async () => {
+    play();
+    await file(...FU);
+    expect(created()).toBe(true);
+  });
+
+  it('--new-reason files it past the open follow-up and says so on stderr', async () => {
+    play({ siblings: [SIBLING] });
+    await file(...FU, '--new-reason', 'a different defect in the same area');
+    expect(created()).toBe(true);
+    expect(stderr()).toMatch(/--new-reason: a different defect in the same area/);
+  });
+
+  it('an empty --new-reason is refused before any request', async () => {
+    play({ siblings: [SIBLING] });
+    await expect(file(...FU, '--new-reason', '  ')).rejects.toThrow(/--new-reason needs the reason/);
+    expect(mockRequest.mock.calls).toEqual([]);
+  });
+
+  it('a linked ticket older than the parent is its ancestor, not a sibling: it does not refuse', async () => {
+    play({ siblings: [{ key: 'HIMMEL-40', summary: 'The ancestor' }] });
+    await file(...FU);
+    expect(created()).toBe(true);
+  });
+
+  it('a residual with a class but no area falls back to the parent-keyed match', async () => {
+    play({ siblings: [SIBLING] });
+    await expect(file('--residual-of', 'HIMMEL-50', '--fu-class', 'escape', '--class', 'shell-quoting')).rejects.toThrow('exit');
+    expect(stderr()).toMatch(/extend HIMMEL-60 with jira comment/);
+    expect(created()).toBe(false);
+  });
+
+  it('control: a residual with a class and an area keeps its own class-area match and is not read against the parent', async () => {
+    play({ siblings: [SIBLING] });
+    await file('--residual-of', 'HIMMEL-50', '--fu-class', 'escape', '--class', 'shell-quoting', '--area', 'cr scripts');
+    expect(created()).toBe(true);
+    expect(searches.some((j) => j.includes('linkedIssues'))).toBe(false);
+  });
+
+  it('a close open title is refused, with no parent named', async () => {
+    play({ titleHits: [{ key: 'HIMMEL-61', summary: NEAR }] });
+    await expect(file(...BACKLOG)).rejects.toThrow('exit');
+    expect(stderr()).toMatch(/HIMMEL-61.*extend HIMMEL-61 with jira comment, or pass --new-reason <why>/s);
+    expect(created()).toBe(false);
+  });
+
+  it('control: an unrelated open title files', async () => {
+    play({ titleHits: [{ key: 'HIMMEL-61', summary: 'Doctor: the ssh probe times out on a cold start' }] });
+    await file(...BACKLOG);
+    expect(created()).toBe(true);
+  });
+
+  it('an open follow-up on the second page of the search is found', async () => {
+    play();
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
+      const jql = decodeURIComponent(path);
+      if (method === 'GET' && path.startsWith('/search/jql') && jql.includes('linkedIssues')) {
+        const second = path.includes('nextPageToken=');
+        return second
+          ? { issues: [{ key: 'HIMMEL-60', fields: { summary: SIBLING.summary } }] }
+          : { issues: [{ key: 'HIMMEL-30', fields: { summary: 'The ancestor' } }], nextPageToken: 'page-2' };
+      }
+      return base(method, path, body);
+    });
+    await expect(file(...FU)).rejects.toThrow('exit');
+    expect(stderr()).toMatch(/extend HIMMEL-60 with jira comment/);
+  });
+
+  it('a search that fails files the ticket and says the check did not run', async () => {
+    play({ searchFails: true });
+    await file(...FU);
+    expect(created()).toBe(true);
+    expect(stderr()).toMatch(/duplicate search failed.*search boom.*filed unchecked/s);
   });
 });
