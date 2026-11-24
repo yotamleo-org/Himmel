@@ -224,7 +224,7 @@ git commit -m "<subject>" -m "<body>" --trailer "Platforms tested: <os>" --trail
 |---|---|---|
 | `LIVE — CHECKPOINT <full sha of HEAD> pushed` | compact | everything, while that sha is HEAD and HEAD equals its upstream |
 | `LIVE — CHECKPOINT <full sha of HEAD> clean` | compact | everything, while that sha is HEAD, `git status --porcelain` is empty, and nothing is unpushed (HEAD equals its upstream, or HEAD is in `origin/main`) |
-| a `*-RESUME.md` beside the worker doc | handoff | everything (the worker then stops) |
+| a `*-RESUME.md` beside the worker doc that passes `brief-lint.sh` | handoff | everything (the worker then stops) |
 | last marker `WRAPPED` | both | everything |
 | last marker `BLOCKED` | both | **only the hand-off calls and reads** (Read, Grep, Glob) |
 
@@ -237,6 +237,19 @@ Notes on each unlock:
 - **The RESUME doc.** It must carry the worker doc's id (`N1364`, `N1364b` …) with
   any one-letter suffix. It must also have been modified after the session's
   first turn, so an older link of the same chain never counts.
+- **The lint.** Every such candidate runs through the primary checkout's
+  `scripts/handover/chief-kit/brief-lint.sh` (no flag, the call the launcher makes),
+  newest first, inside one budget per hook call: 6 s on a tool call, 3 s on an
+  auto-compaction, in a process group that is killed on the deadline. Exit 0 passes;
+  exit 1 is fixable (the doc can be edited); anything else is stuck (exit 2 or 3, the
+  deadline, a missing linter, or a `HANDOVER_DIR` that is not an absolute directory in
+  the hook's env). The handoff unlock holds only when every candidate passes. A
+  fixable candidate also denies the worker's `append-results.sh` call (its `BLOCKED`
+  bullet) until the doc is fixed; a stuck or unreached one never does, so the worker
+  can always report to its chief. The deny quotes lint's reason and names the
+  `> **Prior art:**` line to copy from the worker's own doc. One extra call is
+  allowed: `bash <the linter> <doc dir>/<name>-RESUME.md`. Compact mode, the
+  `WRAPPED` and `BLOCKED` tail rules and the threshold are unchanged.
 - **BLOCKED.** A `BLOCKED` is a hand-off to the chief, not an unlock. N1383
   wrote `BLOCKED` and then kept editing. A worker that cannot commit or push
   should `SendMessage` its chief, append a `BLOCKED` bullet and stop.

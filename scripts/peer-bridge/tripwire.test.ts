@@ -9,7 +9,7 @@ test("three bad signatures in an hour send one wake line, kill nothing, and a la
   const w = await makeWorld();
   for (let i = 0; i < 3; i++) w.inject("alpha", "halt", {}, { tamper: true });
   await w.step("bravo");
-  expect(wakeLines(w.bravo)).toEqual(["peer alpha: 3 bad signatures in 1 h"]);
+  expect(wakeLines(w.bravo)).toEqual(["peer alpha · 3 bad signatures in 1 h"]);
   expect(w.bravo.logs.filter(l => l.startsWith("env-drop step=5")).length).toBe(3);
   expect(fs.readdirSync(w.bravo.configDir).some(n => n.endsWith(".killed"))).toBe(false);
   w.inject("alpha", "capacity-ask", {});
@@ -27,7 +27,7 @@ test("two bad signatures are no alert, and more than three in the same hour are 
   const six = await makeWorld();
   for (let i = 0; i < 6; i++) six.inject("alpha", "halt", {}, { tamper: true });
   await six.step("bravo");
-  expect(wakeLines(six.bravo)).toEqual(["peer alpha: 3 bad signatures in 1 h"]);
+  expect(wakeLines(six.bravo)).toEqual(["peer alpha · 3 bad signatures in 1 h"]);
 });
 
 test("failures spread over more than an hour do not add up", async () => {
@@ -55,7 +55,7 @@ test("a wake line holds the peer's name and a count, never a byte of the message
   for (let i = 0; i < 3; i++) w.inject("alpha", "halt", {}, { text: `/peer@bravo_bot\n#env:v1 k=${w.alpha.key.id} id=0123abcd\n{"v":1,"x":"CANARY-9f3a"}\nsig=${"A".repeat(86)}` });
   await w.step("bravo");
   expect(wakeLines(w.bravo).join("\n")).not.toContain("CANARY");
-  expect(wakeLines(w.bravo)).toEqual(["peer alpha: 3 bad signatures in 1 h"]);
+  expect(wakeLines(w.bravo)).toEqual(["peer alpha · 3 bad signatures in 1 h"]);
 });
 
 test("the tripwire counts per peer and says so once per window", () => {
@@ -74,7 +74,7 @@ test("the wake budget of the day still applies to the alert", async () => {
     w.clock.t += 2 * H;
   }
   const lines = wakeLines(w.bravo);
-  expect(lines[0]).toBe("peer alpha: 3 bad signatures in 1 h");
+  expect(lines[0]).toBe("peer alpha · 3 bad signatures in 1 h");
   expect(lines.length).toBeLessThanOrEqual(2);
   expect(lines.slice(1).every(l => l.includes("wake budget reached"))).toBe(true);
 });

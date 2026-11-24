@@ -3,11 +3,16 @@ import fs from "node:fs";
 import { join } from "node:path";
 import { atomicWrite } from "../telegram/bus";
 import { SESSION_ID_RE } from "./ids";
+import type { ModelRoute } from "./reader";
+import type { Dir, Route, Transition } from "./threads";
 
 export type DigestRec = {
   kind: "digest"; peer: string; message_id: number; root_id: number; id?: string; tag: string; from_id: string; ts: number;
   summary: string | null; asks: string[]; reason?: string; n?: number; h?: string;
+  route?: Route; model_route?: ModelRoute;
 };
+export type JobRec = { kind: "job"; peer: string; message_id: number; root: number; dir: Dir; transition: Transition; ts: number; n?: number; h?: string };
+export type EffectRec = { kind: "effect"; peer: string; message_id: number; outcome: "escalated" | "fallback-wake" | "suppressed" | "acked" | "dropped"; ts: number; n?: number; h?: string };
 
 export const digestFile = (peerDir: string) => join(peerDir, "digests.jsonl");
 const cursorFile = (peerDir: string, sid: string) => join(peerDir, "cursors", sid);

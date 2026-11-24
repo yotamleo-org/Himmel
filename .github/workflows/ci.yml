@@ -1576,6 +1576,8 @@ jobs:
       - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/readiness-adapter -- bash scripts/handover/chief-kit/readiness-adapter-suite.sh
       - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/scope-approve -- bash scripts/handover/chief-kit/scope-approve-suite.sh
+      - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/core-check-batch -- bash scripts/handover/chief-kit/core-check-batch-cases/suite.sh
 
   # Nothing built or ran the jira dist CLI end to end; the unit suite

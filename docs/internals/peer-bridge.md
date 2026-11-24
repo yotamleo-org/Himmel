@@ -6,8 +6,9 @@ Deadlines run on both sides. Peer text is read only in a tainted peer desk, and
 every outbound message passes one egress gate. A second, typed path carries signed
 envelopes that no model reads (see "The typed path").
 
-It is user-level: no `sudo`, no system change. It writes two state dirs, one user
-unit, and one metadata-only line per wake into the operator bot's outbox.
+It is user-level: no `sudo`, no system change. It writes two state dirs and one
+user unit. What it tells the operator goes onto its own notify chain, which the
+operator bridge sends (see "Triage and the notify chain").
 
 | Where | Path |
 |---|---|
@@ -260,8 +261,8 @@ or a peer message changes neither.
 - VM minutes are charged from RUNNING entry to the terminal timestamp. `jobsPerDay`
   counts every job that reached RESOLVED and every job received today that is
   still waiting to resolve, so a burst cannot run past the day's budget.
-- **Tripwire.** Three bad signatures from one peer in an hour send one wake line
-  naming the peer and the count. It is an alert, never a kill, so a key rotation
+- **Tripwire.** Three bad signatures from one peer in an hour send one alert
+  line naming the peer and the count. It is an alert, never a kill, so a key rotation
   or a junk sender cannot cut the link. The count and the hourly cap on answers
   are kept on disk, so a poller restart does not reset either.
 - **Kill switch.** While `C/<peer>.killed` exists the peer is dropped at step 4 and
@@ -451,9 +452,10 @@ neither is shown. The tainted desk is still the only path for peer free text.
 ## The peer desk
 
 Peer text is never shown to a normal session. A **wake** tells you something
-arrived: one line in the operator chat, with the peer name, the thread number, a
-label, a deadline and the desk command, and never peer text. The operator bridge
-sends it with no model run.
+arrived: a message in the operator chat with the peer name, the thread number, a
+label and a deadline on line 1 and the desk command on line 2, and never peer
+text. An **escalation** carries the reader's digest instead, marked untrusted.
+The operator bridge sends both with no model run.
 
 Start the desk from a terminal:
 
@@ -493,9 +495,61 @@ inbox: it needs a TTY and no `CLAUDECODE`.
 A digest is made by the reader: `claude -p --safe-mode --strict-mcp-config`
 with an empty MCP config, no tools, `--model haiku`, one turn, a 60 s timeout
 that kills the process group, and a 4 kB output cap. It runs only when
-`usage-preflight.sh` returns `PROCEED`, and within 50 runs a day (30 questions,
-10 status, 10 info). When it is skipped or fails, the digest says so and the
-wake still fires.
+`usage-preflight.sh` returns `PROCEED`, and within 50 runs a day in total, of
+which at most 30 questions, 10 status, 10 info and 15 follow-ups. When it is skipped or fails, the digest
+says so and the message escalates with that reason instead of a summary.
+
+### Triage and the notify chain
+
+Every admitted free-text message that opens a thread or belongs to one we know
+is read, and the reader also proposes a route: `escalate`, `ack` or `drop`. Its
+output must be exactly `{"route","summary","asks"}` inside one optional code
+fence; anything else is a failed run. The proposal does not decide.
+`effectiveRoute` in `threads.ts` does, from what the message did to its thread:
+
+| Message | model escalate | model ack | model drop | model failed |
+|---|---|---|---|---|
+| opens a question | escalate | escalate | drop | escalate |
+| opens a status or info | escalate | ack | drop | escalate |
+| answers our open thread | escalate | escalate | escalate | escalate |
+| anything else on a known thread | escalate | drop | drop | escalate |
+
+- **escalate** puts the digest in front of the operator, at most 20 per peer per
+  UTC day. The first one past that sends one "escalation budget reached" line,
+  and later ones fall back to a metadata wake under the wake budget.
+- **ack** closes the thread as `ACKED` and sends the peer the `closing`
+  template.
+- **drop** sends nothing. A thread it opened ends as `DROPPED`.
+
+The poller records a `job` record before it reads, then the digest record with
+its route, then an `effect` record, all in `S/<peer>/digests.jsonl`. On start it
+replays any job whose effect is missing, once. The desk shows each digest's
+route, and once a day the operator gets one triage count per peer.
+
+Wakes, escalations, budget lines and daily counts are chained records in
+`S/notify/notify.jsonl`, written only by the peer poller. The operator bridge's
+flusher (`scripts/telegram/peer-notify-route.ts`) verifies the chain from its
+cursor (`S/notify/cursor`), renders each record with `notify.ts`, and sends it
+to the operator chat with link previews off, recording each sent message in
+`S/notify/sent/`. Line 1 of every message is built from our own values only.
+A failed verification sends one alert and stops the flusher until it restarts.
+A message Telegram refuses outright is skipped with one fallback line.
+
+The flusher sends nothing while a Claude session could also be polling the
+operator bot and so read the reply text:
+
+- the bridge's last good `getUpdates` is over 60 s old;
+- it got a 409 in the last 10 minutes;
+- a `telegram-himmel` plugin process that polls (`TELEGRAM_OWN_POLLER=1` in its
+  environment or its state-dir `.env`) resolves to the operator bot, or to no
+  single bot. A send-only plugin process never holds. Where the environment
+  cannot be read (or, on macOS, reads ambiguously), the plugin's `bot.pid`
+  decides, or the process holds.
+
+The queue waits. After 10 minutes held, one line says the notifications are held
+and why. A reply to a peer notification is never routed to a session: in this
+slice it gets one fixed line saying drafts arrive with the next update, and
+nothing is sent to the peer.
 
 ### Clearing taint
 
@@ -584,12 +638,6 @@ claim.
 
 These are known and accepted for this slice.
 
-- **A wake line can be lost.** The poller appends each wake to the operator
-  outbox, and the operator bridge truncates that file once it has sent
-  everything in it. A line appended in the window between its final read and the
-  truncate is cut with it (the `bus.ts` truncate race). The thread state is
-  already on disk and its deadlines still fire, so the cost is a missed
-  notification, and `read.ts` shows the thread.
 - **The poller runs as the same OS user.** Anything running as you can read the
   token, the key and the inbox, or kill the poller. The path deny and the
   `block-read-secrets` hook are an accidental-leak floor: a determined Bash read,
@@ -652,8 +700,9 @@ sequence number and a hash over the previous record, and `verifyChain` in
 Beside them: `S/unknown-chats.jsonl` lists supergroups our bot was added to that
 are not configured, `S/taint/cleared.log` lists each `untaint.sh` run, and each
 dropped message is one redacted line in the poller's log (journald under
-systemd, `S/poller.log` under launchd). The wake lines live in the operator
-bot's own outbox.
+systemd, `S/poller.log` under launchd). Every operator-bound record is in
+`S/notify/notify.jsonl`, and each one the flusher sent has an entry in
+`S/notify/sent/` for 7 days.
 
 ## Tests
 

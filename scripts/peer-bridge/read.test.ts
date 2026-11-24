@@ -16,7 +16,7 @@ const KEY = Buffer.from("k".repeat(32));
 const SID = "sid-1";
 
 type Home = ReturnType<typeof newHome>;
-function newHome(opts: { bare?: boolean; digests?: number; texts?: string[] } = {}) {
+function newHome(opts: { bare?: boolean; digests?: number; texts?: string[]; routes?: string[] } = {}) {
   const home = mkdtempSync(join(tmpdir(), "peer-read-"));
   const S = join(home, ".himmel/peer-bridge");
   const C = join(home, ".config/himmel/peer-bridge");
@@ -33,7 +33,7 @@ function newHome(opts: { bare?: boolean; digests?: number; texts?: string[] } = 
   const chain = new Chain();
   h.seeded = (async () => {
     for (let i = 0; i < (opts.digests ?? 0); i++) {
-      await chain.append(digestFile(peerDir), { kind: "digest", peer: "example", message_id: 200 + i, root_id: 200 + i, tag: "ask:question", from_id: "555000111", ts: 1_731_000_000 + i, summary: opts.texts?.[i] ?? `summary ${i}`, asks: [`ask ${i}`] });
+      await chain.append(digestFile(peerDir), { kind: "digest", peer: "example", message_id: 200 + i, root_id: 200 + i, tag: "ask:question", from_id: "555000111", ts: 1_731_000_000 + i, summary: opts.texts?.[i] ?? `summary ${i}`, asks: [`ask ${i}`], ...(opts.routes?.[i] ? { route: opts.routes[i] } : {}) });
     }
   })();
   return h;
@@ -286,4 +286,14 @@ test("--allow-shape never reaches the spool from a Claude session", () => {
   send(h, ["example", "--kind", "info", "--text", "Tests pass: 12 fail: 0", "--allow-shape", "pass_bare"]);
   const files = readdirSync(join(h.peerDir, "spool")).filter(n => n.endsWith(".json"));
   expect(files).toHaveLength(0);
+});
+
+test("the desk shows each digest's route", async () => {
+  const h = newHome({ digests: 3, routes: ["escalate", "drop"] }); await h.seeded;
+  stamp(h);
+  const heads = read(h, ["example"]).stdout.split("\n").filter(l => l.startsWith("peer example · T"));
+  expect(heads).toHaveLength(3);
+  expect(heads[0]).toEndWith(" · route escalate");
+  expect(heads[1]).toEndWith(" · route drop");
+  expect(heads[2]).not.toContain("route");
 });
