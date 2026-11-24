@@ -812,7 +812,7 @@ def ownership_check(attempts, manifest, doc, name, keys):
     """begin's family ownership refusals, shared with the read-only admit a dry run uses."""
     if any(r['doc'] == doc or r['name'] == name or set(r['keys']) & set(keys) for r in attempts.values()):
         raise Refused('family already owns worker or ticket')
-    legacy_deadline = time.monotonic() + 5
+    states = {}  # each doc is read once, with its own 5 s budget: a spent budget never refuses a later wrapped row
     own_row = False
     for sibling in manifest.parent.glob('*.fleet.json'):
         listed = read(sibling)
@@ -821,10 +821,12 @@ def ownership_check(attempts, manifest, doc, name, keys):
                 if sibling.resolve() == manifest.resolve() and row.get('doc') == doc and not row.get('attempt') and unlaunched(doc):
                     own_row = True
                     continue
-                if time.monotonic() >= legacy_deadline or worker_state(row['doc'], max(.01, legacy_deadline - time.monotonic()),
-                                                                       ownership=True) not in ('wrapped', 'abandoned'):
-                    raise Refused('unknown legacy family ownership: %s row %s; if that worker is dead, retire the row with: bash %s remove %s %s'
-                                  % (sibling, row.get('doc'), shlex.quote(str(LIB.parent / 'handover/chief-kit/fleet-manifest.sh')),
+                if row['doc'] not in states:
+                    states[row['doc']] = worker_state(row['doc'], 5, ownership=True)
+                if states[row['doc']] not in ('wrapped', 'abandoned'):
+                    raise Refused('unknown legacy family ownership: %s row %s; its worker state is %s, not wrapped; if that worker is dead, '
+                                  'retire the row with: bash %s remove %s %s'
+                                  % (sibling, row.get('doc'), states[row['doc']], shlex.quote(str(LIB.parent / 'handover/chief-kit/fleet-manifest.sh')),
                                      shlex.quote(str(sibling)), shlex.quote(str(row.get('doc')))))
     return own_row
 
