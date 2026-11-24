@@ -10,6 +10,8 @@
 # add also accepts --identity <full sha256> and --metadata <allowlisted JSON>,
 # or --metadata-stdin (one JSON value, at most 1 MiB, mutually exclusive).
 # Replays return the original id, including closed actions; no row is reopened.
+# A new row with actor operator and "op-request <op>" in its text exits 2, appending nothing, when that afk-sudo
+# route cannot run; OWE_AFKSUDO_ROOT replaces / for the read (tests).
 #
 # <bucket>/owed.jsonl is append-only, one JSON object per line:
 #   add   {op:"add", id, ts, epoch, chief, kind, text, key?}
@@ -142,6 +144,28 @@ case "$CMD" in
             existing=$(jq -r -s --arg identity "$IDENTITY" --arg key "$KEY" --arg kind "$KIND" \
                 '[.[] | select(.op == "add" and .identity == $identity)] | if length == 0 then "" elif length == 1 and (.[0].key // "") == $key and .[0].kind == $kind then .[0].id else error("identity conflict") end' "$F") || exit 4
             if [ -n "$existing" ]; then persist; printf '%s\n' "$existing"; exit 0; fi
+        fi
+        if [ "$(printf '%s' "$METADATA" | jq -r '.actor // ""')" = operator ] && [[ $TEXT =~ op-request[[:space:]]+([a-z0-9][a-z0-9-]*) ]]; then
+            op="${BASH_REMATCH[1]}"
+            cfg="${OWE_AFKSUDO_ROOT:-}/etc/himmel/afk-sudo.json"
+            ops="${OWE_AFKSUDO_ROOT:-}/usr/local/libexec/himmel/ops"
+            enable="run sudoedit /etc/himmel/afk-sudo.json, set helper_update.repo, helper_update.checkout and helper_update.enabled (docs/internals/afk-sudo.md), then send /op helper-update commit=<sha> to install the op"
+            if ! cfgv=$(jq -c '[(.ops.enabled == true), (.helper_update.enabled == true)]' "$cfg"); then
+                echo "owe: afk-sudo route unknown: cannot read $cfg; the owed row for op '$op' was not filed" >&2
+                exit 2
+            fi
+            if [ "$cfgv" = '[false,false]' ] || [ "$cfgv" = '[false,true]' ]; then
+                echo "owe: ops is not enabled in the config; the owed row for op '$op' was not filed; to unblock: set ops.enabled to true with sudoedit /etc/himmel/afk-sudo.json" >&2
+                exit 2
+            fi
+            if [ ! -e "$ops/$op.sh" ]; then
+                if [ "$cfgv" = '[true,false]' ]; then
+                    echo "owe: helper_update is not enabled in the config; op '$op' is not installed, so no approval code can reach the operator; the row was not filed; to unblock: $enable" >&2
+                else
+                    echo "owe: op '$op' is not installed under $ops; the row was not filed; to unblock: send /op helper-update commit=<sha> for the main sha that ships it" >&2
+                fi
+                exit 2
+            fi
         fi
         n=1
         [ ! -s "$F" ] || n=$(( $(jq -s '[.[] | select(.op == "add")] | length' "$F") + 1 ))
