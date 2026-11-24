@@ -34,8 +34,8 @@ description: "Rule version intake, reversion, discharge; status, burn-down, READ
 > stands until a newer operator record (`door:operator-standing:<R-id>`).
 
 For the release manager only (`HIMMEL_RELEASE_MANAGER=1`). Requests are ruled
-by the on-demand batch `jira release rm-run <R>`, which reads this skill as its
-judge's instructions; STATUS, BURN-DOWN and READY run in an on-demand session
+by the on-demand batch `jira release rm-run <R>`, which places them by the door's
+rules with no model call (the parked judge's instructions are the rest of this skill); STATUS, BURN-DOWN and READY run in an on-demand session
 armed from `docs/handover/rm-brief-template.md`. Every verb is a thin procedure over
 `jira release`; the engine holds the formulas, the signatures and the checks,
 so the board, the tick and this skill count the same way. Run the CLI by its
@@ -116,7 +116,7 @@ The chief writes the request and sends `REQ <id>`. Then:
 
 A refusal is a fact to act on, not to route around: UNKNOWN state, a pending
 intent, a missing supersedes, an uncovered authority. Report a refusal you
-cannot resolve to the chief as a `FINDING`. The `rm-run` judge reports a request it
+cannot resolve to the chief as a `FINDING`. The parked `rm-run` judge reports a request it
 cannot rule (no sector, missing input) as `{"req","outcome":"HOLD","reason"}`: no
 ruling is written and the request stays claimed for the next batch.
 

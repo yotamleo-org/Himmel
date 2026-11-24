@@ -10,6 +10,14 @@
 #   --batch N     one-based command batch (default 1). Keep the same mirror snapshot for stable offsets;
 #                 drain one batch through the tick's RM before filing the next. No guard override.
 #
+# UNPLACED  intake-backfill.sh --unplaced [--list] [--state STATE.json] [--since YYYY-MM-DD | --since-door]
+#   Read-only count of the open tickets with no version and no backlog label (the door places every new one). Prints `<new>`, then
+#   `pending=<n> legacy=<n> stale-label=<n> serious-later=<n>`; --list adds one `KEY<TAB>bucket` row per counted ticket first.
+#   pending = the key has an open request (STATE's requests.pending_keys); new = created on or after the date, else legacy;
+#   stale-label = a version and the backlog label; serious-later = High or Highest, its earliest declared version later than the
+#   declared current one (STATE's `versions` order and `current`, never the dated versions file). --since-door takes the date from
+#   the git commit that added door.ts (HIMMEL_DOOR_REPO overrides the repository); with no such commit nothing is new.
+#
 # Output: `<KEY>\t<proposed>\t<basis>` rows (proposed is an open version or `backlog`), then `# counts` lines:
 # the total, the count per proposed version, the count per basis and the open tickets that already carry a
 # proposed-<v> label (no longer skipped: a label does not prove an INTAKE was queued). Open means statusCategory To Do or In Progress; a
@@ -24,6 +32,7 @@
 #   low-label          backlog, unscheduled, residual*, stale, needs-standard, fu-*, cr-deferred -> backlog
 #   sector-active      High or Highest, and its sector has an open ticket in the current version -> current
 #   no-signal          none of the above                                             -> backlog
+# git-env-ok: the one git call is a read-only log of the door's adding commit
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,18 +43,31 @@ mirror="${NEXT_DISPATCH_MIRROR:-$(jira_mirror_dir)}"
 commands=0
 release=""
 batch=1
+unplaced=0 list=0 state="" since="" since_door=0
+UNPLACED_USAGE="usage: intake-backfill.sh --unplaced [--list] [--state STATE.json] [--since YYYY-MM-DD | --since-door]"
 while [ $# -gt 0 ]; do
     case "$1" in
         --mirror) [ $# -ge 2 ] || { echo "usage: intake-backfill.sh [--mirror DIR] [--commands --release R] [--batch N]" >&2; exit 2; }; mirror="$2"; shift 2 ;;
         --commands) commands=1; shift ;;
         --release) [ $# -ge 2 ] || exit 2; release="$2"; shift 2 ;;
         --batch) [ $# -ge 2 ] || exit 2; batch="$2"; shift 2 ;;
+        --unplaced) unplaced=1; shift ;;
+        --list) list=1; shift ;;
+        --state) [ $# -ge 2 ] || { echo "$UNPLACED_USAGE" >&2; exit 2; }; state="$2"; shift 2 ;;
+        --since) [ $# -ge 2 ] || { echo "$UNPLACED_USAGE" >&2; exit 2; }; since="$2"; shift 2 ;;
+        --since-door) since_door=1; shift ;;
         *) echo "usage: intake-backfill.sh [--mirror DIR] [--commands --release R] [--batch N]" >&2; exit 2 ;;
     esac
 done
+if [ "$unplaced" = 0 ] && { [ "$list" = 1 ] || [ -n "$state" ] || [ -n "$since" ] || [ "$since_door" = 1 ]; }; then echo "$UNPLACED_USAGE" >&2; exit 2; fi
+if [ -n "$since" ] && { [ "$since_door" = 1 ] || ! [[ "$since" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; }; then echo "$UNPLACED_USAGE" >&2; exit 2; fi
+if [ "$since_door" = 1 ]; then
+    door_repo="${HIMMEL_DOOR_REPO:-$HERE/../../..}"
+    since="$(git -C "$door_repo" log --diff-filter=A --format=%cs -- scripts/jira/src/release/door.ts 2>/dev/null | tail -1)"  # swallow-ok: no adding commit or a failed read leaves the date empty, and nothing is new
+fi
 [ -d "$mirror" ] || { echo "intake-backfill: no mirror directory at $mirror" >&2; exit 1; }
 
-IB_MIRROR="$mirror" IB_COMMANDS="$commands" IB_RELEASE="$release" IB_BATCH="$batch" python3 -I - <<'PY'
+IB_MIRROR="$mirror" IB_COMMANDS="$commands" IB_RELEASE="$release" IB_BATCH="$batch" IB_UNPLACED="$unplaced" IB_LIST="$list" IB_STATE="$state" IB_SINCE="$since" python3 -I - <<'PY'
 import glob, json, os, re, shlex, sys
 
 mirror = os.environ['IB_MIRROR'].rstrip('/')
@@ -96,9 +118,39 @@ for path in glob.glob(mirror + '/*.md'):
     except ValueError:
         sys.exit('intake-backfill: cannot parse the labels or fixVersions of %s' % path)
     tickets.append({'key': key, 'type': unq(field(head, 'type')), 'cat': unq(field(head, 'statusCategory')),
-                    'prio': unq(field(head, 'priority')), 'labels': labels, 'ver': fixv, 'sector': unq(field(head, 'sector'))})
+                    'prio': unq(field(head, 'priority')), 'labels': labels, 'ver': fixv, 'sector': unq(field(head, 'sector')),
+                    'created': unq(field(head, 'created'))[:10]})
 
 is_open = lambda t: t['cat'] in ('To Do', 'In Progress')
+if os.environ['IB_UNPLACED'] == '1':
+    pending, declared, cur = set(), [], None
+    if os.environ['IB_STATE']:
+        try:
+            st = json.load(open(os.environ['IB_STATE']))
+            pending = set(st['requests']['pending_keys'])
+            declared, cur = list(st['versions']), st['current']
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            sys.exit('intake-backfill: cannot read the state %s: %s' % (os.environ['IB_STATE'], e))
+    since = os.environ['IB_SINCE']
+    order = {v: i for i, v in enumerate(declared)}
+    found = []
+    for t in sorted((t for t in tickets if is_open(t) and t['type'] != 'Sub-task'), key=lambda t: int(t['key'].split('-')[1])):
+        ls = t['labels']
+        if t['ver']:
+            if 'backlog' in ls:
+                found.append((t['key'], 'stale-label'))
+            held = [order[v] for v in t['ver'] if v in order]
+            if t['prio'] in ('High', 'Highest') and held and cur in order and min(held) > order[cur]:
+                found.append((t['key'], 'serious-later'))
+        elif 'backlog' not in ls:
+            found.append((t['key'], 'pending' if t['key'] in pending else ('new' if since and t['created'] >= since else 'legacy')))
+    n = lambda b: sum(1 for _, x in found if x == b)
+    if os.environ['IB_LIST'] == '1':
+        for k, b in found:
+            print('%s\t%s' % (k, b))
+    print(n('new'))
+    print('pending=%d legacy=%d stale-label=%d serious-later=%d' % (n('pending'), n('legacy'), n('stale-label'), n('serious-later')))
+    sys.exit(0)
 active = {t['sector'] for t in tickets if current and current in t['ver'] and is_open(t) and t['sector'] and t['sector'] != 'null'}
 LOW = re.compile(r'^(backlog|unscheduled|residual.*|stale|needs-standard|fu-.*|cr-deferred)$')
 

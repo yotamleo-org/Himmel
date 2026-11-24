@@ -3683,8 +3683,31 @@ _c84_release_state() {
     if [ -n "$out" ]; then printf '%s\n' "$out"; else printf 'UNREADABLE\tjira release state printed no readable JSON\n'; fi
 }
 
+_c84_unplaced() {
+    local rel="$1" json="" rc=0 pk node_bin cli sf out
+    if [ -n "${HIMMEL_DOCTOR_RM_STATE_PROBE:-}" ]; then
+        json="$(bash "$HIMMEL_DOCTOR_RM_STATE_PROBE" "$rel" --json 2>/dev/null)" || rc=$?  # swallow-ok: a failed read leaves the count unknown, and nothing is warned
+    else
+        load_dotenv --root "$REPO_ROOT" JIRA_PROJECT_KEY >/dev/null 2>&1 || true
+        pk="${JIRA_PROJECT_KEY:-}"
+        cli="$REPO_ROOT/scripts/jira/dist/index.js"
+        [ -f "$cli" ] || cli="$STATION_ROOT/scripts/jira/dist/index.js"
+        node_bin="$(resolve_node 2>/dev/null)" || return 0
+        { [ -n "$pk" ] && [ -f "$cli" ]; } || return 0
+        json="$(JIRA_PROJECT_KEY="$pk" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 20} "$node_bin" "$cli" release state "$rel" --json 2>/dev/null)" || rc=$?  # swallow-ok: a failed read leaves the count unknown, and nothing is warned
+    fi
+    { [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]; } && [ -n "$json" ] || return 0
+    sf="$(mktemp "${TMPDIR:-/tmp}/doctor-unplaced.XXXXXX" 2>/dev/null)" || return 0  # swallow-ok: no file leaves the count unknown
+    printf '%s' "$json" > "$sf"
+    out="$(JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-}" bash "$SELF_DIR/handover/chief-kit/intake-backfill.sh" --unplaced --state "$sf" --since-door 2>/dev/null)" || out=""  # swallow-ok: an unreadable mirror leaves the count unknown
+    rm -f "$sf"
+    out="${out%%$'\n'*}"
+    case "$out" in '' | *[!0-9]*) return 0 ;; esac
+    printf '%s\n' "$out"
+}
+
 check_c84_release_queue() {
-    local roots="" root hroot f cdir doc rel declared bad="" any=0 none=0 sep="" st note unread=0
+    local roots="" root hroot f cdir doc rel declared bad="" any=0 none=0 sep="" st note unread=0 unp=0 n
     if [ -z "${HIMMEL_RELEASE_STATE_DIR:-}" ]; then
         load_dotenv --root "$REPO_ROOT" USER_SLUG >/dev/null 2>&1 || true
         [ -n "${USER_SLUG:-}" ] || emit INFO C84-release-queue "neither USER_SLUG nor HIMMEL_RELEASE_STATE_DIR is set, so the release root cannot be resolved and the Jira CLI refuses every removal of a Fix Version" \
@@ -3725,7 +3748,7 @@ check_c84_release_queue() {
                    st="$(_c84_release_state "$rel")"
                    case "$st" in
                        '') unread=1 ;;
-                       OK$'\t'*) ;;
+                       OK$'\t'*) n="$(_c84_unplaced "$rel")"; unp=$((unp + ${n:-0})) ;;
                        *) note="${st#*$'\t'}"
                           bad="$bad${sep}release state for $rel reads ${st%%$'\t'*}${note:+ ($note)}, so the tick shows rm-queue=off"; sep="; " ;;
                    esac
@@ -3743,6 +3766,10 @@ check_c84_release_queue() {
         emit OK C84-release-queue "the chief doc names a declared release (its signed state was not read: needs the jira CLI build, JIRA_PROJECT_KEY and jq)"
     else
         emit OK C84-release-queue "the chief doc names a declared release with a verified state, so the tick can wake the release manager"
+    fi
+    if [ "$unp" -gt 0 ]; then
+        emit WARN C84-release-queue "$unp open ticket(s) filed since the door shipped carry no version and no backlog label, so the door has not placed them" \
+            "bash scripts/handover/chief-kit/intake-backfill.sh --unplaced --list --since-door --state <state.json>   # state.json is jira release state <R> --json; names each key, then request its placement with jira release request"
     fi
 }
 

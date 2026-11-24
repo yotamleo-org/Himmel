@@ -700,7 +700,7 @@ export function registerCreate(program: Command): void {
       "Set the fixVersion (validated against the project's versions; an explicit value wins over the Bug default of the earliest unreleased version)",
     )
     .option('--priority <name>', 'Priority name (e.g. Highest); a Highest Bug is placed in the active version')
-    .option('--backlog', 'File to the backlog: label backlog, no inherited fixVersion; needs --proposed-version backlog and --why. Queues an INTAKE request when one release is declared')
+    .option('--backlog', 'File to the backlog: label backlog, no inherited fixVersion; needs --proposed-version backlog and --why. Queues an INTAKE request when one release is declared; the door places it, and --backlog does not keep a mild ticket out of the next version')
     .option(
       '--proposed-version <v>',
       'A Bug, Task or Story without --fix-version is filed with a proposed version (label proposed-<v>) and its INTAKE request queued in the same call; `backlog` needs --backlog and --why',

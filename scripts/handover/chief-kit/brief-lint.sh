@@ -359,7 +359,7 @@ for k in keys:
             continue
         version, current, opened = m.groups()
         refusals.append(
-            '%s is in %s, current is %s, %s open. Why this ticket and not the bucket? If the operator approved it as out of version: '
+            '%s is in %s, current is %s, %s open. A ticket in a later version is there on purpose: the door places it by priority. Why this ticket and not the bucket? If the operator approved it as out of version: '
             '`jira release operator out-of-version`. To place it in the bucket: `jira release request`, and the release manager rules it. '
             'Do not use an approval to run parallel work outside the bucket. At 0 open the version is done: run READY, and the operator '
             'releases it in Jira.' % (k, 'no version' if version == 'none' else version, current, opened))

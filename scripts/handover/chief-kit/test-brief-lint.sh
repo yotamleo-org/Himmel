@@ -559,6 +559,7 @@ bk_lint bash "$LINT" "$tmp/bk_out.md"
     && ok "8r2 the refusal names the key, its version, current and the open count" || bad "8r2 OUTSIDE fields: $err"
 in_order "$err" 'out-of-version' 'release request' 'parallel work' 'At 0 open' 'releases it in Jira' \
     && ok "8r3 the refusal text holds its clauses in order, the 0-open clause beside the Jira release" || bad "8r3 refusal text order: $err"
+grep -Fq 'the door places it' <<< "$err" && ok "8r3a S4: a next-version ticket is refused with 'the door places it'" || bad "8r3a S4: refusal does not say the door places it: $err"
 ! grep -Fq 'VERSION_GATE_OK' <<< "$err" && ok "8r3b the refusal names no off switch (decision 855)" || bad "8r3b refusal names VERSION_GATE_OK: $err"
 rc=0; err="$(VERSION_GATE_OK=1 bash "$LINT" "$tmp/bk_out.md" 2>&1 >/dev/null)" || rc=$?
 { [ "$rc" -eq 3 ] && [ ! -e "$tmp/version-gate.jsonl" ]; } && ok "8r4 VERSION_GATE_OK=1 passes nothing and logs no row (decision 855)" || bad "8r4 VERSION_GATE_OK rc=$rc want 3, row written=$([ -e "$tmp/version-gate.jsonl" ] && echo yes || echo no): $err"

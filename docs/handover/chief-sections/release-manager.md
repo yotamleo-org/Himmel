@@ -10,16 +10,13 @@ release is declared (`jira release state <R>` prints a status other than
   `jira release request <R> --verb INTAKE|REVERSION|DISCHARGE --key <KEY> --from <v|backlog> --to <v|backlog> --why "<one line>"`
   prints `REQ <id>`; a duplicate of an open request returns the open one. Then
   `jira release rm-run <R>` rules every pending request and exits. It takes
-  the lease, finishes any older ruling, claims, makes one bounded model call
-  (no tools, one turn, JSON out; on the subscription, and on the API lane only in
-  the himmel repo with `judge` mapped in `roles.json`; there the launcher's own
-  fallback is off, so a failed lane call alerts as `docs/internals/api-lane.md` says
-  (a policy refusal does not) and `rm-run` itself then rules the batch once on the
-  subscription, while a stopped run or a timed-out call ends the run), rules
-  and applies each request through the engine, releases the lease, and prints
+  the lease, finishes any older ruling, claims, rules each request by the door's
+  fixed rules with no model call (the model judge is parked: only
+  `HIMMEL_RM_JUDGE=model` reaches it, and nothing sets that by default), applies
+  each request through the engine, releases the lease, and prints
   one line per request, then `RM-RUN <R> summary: N refused` when any request
   was refused. An empty queue prints `RM-RUN <R>: nothing pending`
-  and writes nothing.
+  and writes nothing. The release manager keeps STATUS, BURN-DOWN and READY.
 - **A request needs no words from you.** An INTAKE or REVERSION files for every
   filer with no `--decision`, an `operator-directed` or High ticket included, and
   the door rules it: an operator ask lands in the current version
@@ -97,12 +94,26 @@ release is declared (`jira release state <R>` prints a status other than
   normal lock/storage recovery path; do not invent a launch timestamp or claim
   an unpersisted state is authoritative.
 
-- **The batch reads only disk.** Anything the RM must weigh goes in the
-  request's `--why` or in an operator `O-` record; nothing said in a message
-  reaches it. The judge is shown the records that name the request's ticket, its
-  parent and its blockers, the rules of the release, the records recent rulings
-  use and the newest ones; to have it read any other record, put the record's
-  `O-` id or `decision <n>` in `--why`.
+- **The batch reads only disk.** The door reads no `--why` text and nothing said in a
+  message. It reads the declared current version and version order; the request (its key,
+  verb, `--from` and `--to`, and its evidence: a chief placement, a rule, an operator
+  record); the ticket's snapshot (status, priority, labels, the versions it holds, its
+  sector); its required parent's snapshot; the key's earlier rulings and ledger records;
+  and the operator's decision records that name the key. It reads no blocker record and
+  no text of the release rules. To steer a placement, record an operator decision on the
+  key or pass the request flag that carries it (`--chief-reason`, `--required-by`).
+- **A priority raise on a ticket in a later version is yours to place.** The door
+  never moves a key out of a version it holds, so a ticket raised to High or Highest
+  that sits in a version after the current one stays there. The tick's
+  `serious-later=<n>:<oldest KEY>` counts those tickets (absent at zero, no wake, no
+  doctor WARN). Place one with a REVERSION request that carries your reason:
+  `jira release request <R> --verb REVERSION --key <KEY> --from <later v> --to <current v> --why "<line>" --chief-reason "<reason>"`.
+  A priority lowering is not a placement; only an operator record moves a key out.
+- **Unplaced tickets show in the tick.** `unplaced=<new>[,pending=<n>][,legacy=<n>][,stale-label=<n>]`
+  counts the open tickets with no version and no backlog label (`intake-backfill.sh --unplaced --list --since-door --state <state.json>`,
+  with the output of `jira release state <R> --json` as the state file, shows each key and bucket as the tick sees it). `new` is a ticket filed since the door shipped: it needs your look,
+  because the door should have placed it. `pending` has an open request, `legacy` predates the door,
+  `stale-label` holds a version and the backlog label. The field is absent at zero and never wakes you.
 - **A worker's FINDING that asks "file it where?"** is a request. So is a
   follow-up you file yourself: file it to backlog, then request its INTAKE.
 - **A launch on a ticket outside the current version is refused** (`brief-lint.sh`
@@ -125,9 +136,10 @@ release is declared (`jira release state <R>` prints a status other than
 - **A RULING is a `RULING <id> <req> …` line printed by `rm-run`** for a
   request you wrote. `REFUSED <req>: <why>` is an engine refusal: the request is
   closed, so fix the cause (a missing sector, an uncovered authority) and file it
-  again, which opens a new request id. Only `REFUSED <req>: the judge returned no
-  decision` leaves the request claimed for the next `rm-run`. `HELD <req>: <why>`
-  means the judge could not rule it and nothing was ruled: a version-repair request
+  again, which opens a new request id. The door rules or refuses; it never
+  holds a request. `REFUSED <req>: the judge returned no decision` and `HELD <req>: <why>`
+  are the parked judge's results (the first leaves the request claimed for the next
+  `rm-run`; `HELD` means nothing was ruled): a version-repair request
   is set aside as held and leaves the queue, and any other request stays claimed. A held one
   shows in the repair's held list until an operator record answers it or the
   key's Fix Version changes again, and then a repair run withdraws it; you can

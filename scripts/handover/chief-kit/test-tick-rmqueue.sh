@@ -568,5 +568,26 @@ out="$(tick)"
 check 'S1b: a state that is not OK prints none of the three fields' '||' "$(field prio-review "$out")|$(field chief-placed "$out")|$(field ask-apart "$out")"
 check 'S1b: and leaves no rm-lists tsv' 'gone' "$([ -e "$W/state/rm-lists-chief.tsv" ] || echo gone)"
 
+printf '#!/bin/sh\necho "$@" >> "%s/unplaced-asked"\ncat "%s/unplaced.out"\n' "$W" "$W" > "$W/unplaced-probe.sh"
+export TICK_UNPLACED_PROBE="$W/unplaced-probe.sh"
+mkdoc R1
+reset; rm -f "$W/unplaced-asked"; statel '[]' '[]' '[]'
+printf 'K-5\tpending\nK-6\tserious-later\nK-7\tnew\nK-8\tnew\nK-9\tlegacy\nK-10\tstale-label\nK-11\tserious-later\n2\npending=1 legacy=1 stale-label=1 serious-later=2\n' > "$W/unplaced.out"
+out="$(tick)"
+check 'S4: unplaced= counts new, then each non-zero bucket' '2,pending=1,legacy=1,stale-label=1' "$(field unplaced "$out")"
+check 'S4: serious-later= counts the tickets and names the oldest key' '2:K-6' "$(field serious-later "$out")"
+check 'S4: the tick asks for the list with --since-door and the state, and passes no date of its own' 'ok' "$(grep -q -e '--unplaced' "$W/unplaced-asked" && grep -q -e '--list' "$W/unplaced-asked" && grep -q -e '--since-door' "$W/unplaced-asked" && grep -q -e '--state ' "$W/unplaced-asked" && ! grep -q -e '--since ' "$W/unplaced-asked" && echo ok)"
+check 'S4: neither field is a row of the wake table (outside the action key)' '' "$(cut -f1 "$HERE/wake-rules.tsv" | grep -xE 'unplaced|serious-later' || true)"
+printf '0\npending=0 legacy=0 stale-label=0 serious-later=0\n' > "$W/unplaced.out"
+out="$(tick)"
+check 'S4: both fields are absent at zero' '|' "$(field unplaced "$out")|$(field serious-later "$out")"
+printf 'K-6\tserious-later\n0\npending=0 legacy=0 stale-label=0 serious-later=1\n' > "$W/unplaced.out"
+out="$(tick)"
+check 'S4: a serious-later ticket alone prints serious-later= and no unplaced=' '|1:K-6' "$(field unplaced "$out")|$(field serious-later "$out")"
+reset; rm -f "$W/unplaced-asked"; statel '[]' '[]' '[]' DEGRADED
+out="$(tick)"
+check 'S4: a state that is not OK prints neither field and asks nothing' '||no' "$(field unplaced "$out")|$(field serious-later "$out")|$([ -e "$W/unplaced-asked" ] && echo asked || echo no)"
+check 'S4: the tick runs no git read of its own for the date' '0' "$(sed -n '/^unplaced_f=/,/^# held=/p' "$HERE/tick.sh" | grep -c 'git ')"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
