@@ -694,8 +694,7 @@ interface OpenHit { key: string; fields?: { summary?: string } }
 
 async function openMatches(jql: string): Promise<OpenHit[]> {
   try {
-    const found = await request<{ issues?: OpenHit[] }>('GET', `/search/jql?jql=${encodeURIComponent(jql)}&fields=summary&maxResults=50`);
-    return found?.issues ?? [];
+    return (await searchAllIssues(jql, '200', request)) as OpenHit[];
   } catch (e) {
     console.error(`jira: warning: the duplicate search failed (${(e as Error).message}), so the ticket is filed unchecked`);
     return [];

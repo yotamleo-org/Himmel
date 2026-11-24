@@ -2747,6 +2747,23 @@ describe('create — duplicate gate', () => {
     expect(created()).toBe(true);
   });
 
+  it('an open follow-up on the second page of the search is found', async () => {
+    play();
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
+      const jql = decodeURIComponent(path);
+      if (method === 'GET' && path.startsWith('/search/jql') && jql.includes('linkedIssues')) {
+        const second = path.includes('nextPageToken=');
+        return second
+          ? { issues: [{ key: 'HIMMEL-60', fields: { summary: SIBLING.summary } }] }
+          : { issues: [{ key: 'HIMMEL-30', fields: { summary: 'The ancestor' } }], nextPageToken: 'page-2' };
+      }
+      return base(method, path, body);
+    });
+    await expect(file(...FU)).rejects.toThrow('exit');
+    expect(stderr()).toMatch(/extend HIMMEL-60 with jira comment/);
+  });
+
   it('a search that fails files the ticket and says the check did not run', async () => {
     play({ searchFails: true });
     await file(...FU);
