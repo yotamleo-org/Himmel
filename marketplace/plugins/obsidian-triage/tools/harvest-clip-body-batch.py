@@ -161,8 +161,12 @@ _FLAG_TOKENS = "|".join(
     [re.escape(name) for name, _ in INJECTION_PATTERNS] + ["screen-error"]
 )
 _TOOL_FLAG_LINE_RE = re.compile(
-    r"^(harvest_flag:[ \t]*injection-suspect"
-    r"|harvest_flag_detail:[ \t]*(%s)(,(%s))*)[ \t]*$" % (_FLAG_TOKENS, _FLAG_TOKENS)
+    r"^(harvest_flag:[ \t]*injection-(suspect|advisory)"
+    r"|harvest_flag_detail:[ \t]*(%s)(,(%s))*"
+    r"|harvest_codex_verdict:[ \t]*(benign|suspect|malicious|error)"
+    r"|harvest_guard_verdict:[ \t]*(safe|caution|dangerous|error)"
+    r"|harvest_guard_findings:[ \t]*[a-z0-9_]{1,64}(,[a-z0-9_]{1,64})*"
+    r"|harvest_codex_passages:[ \t]*[0-9]{1,2})[ \t]*$" % (_FLAG_TOKENS, _FLAG_TOKENS)
 )
 
 
@@ -1826,6 +1830,53 @@ def persist_flag_only(path: Path, text: str, fm_raw: str, body: str, hits: list)
     return True
 
 
+def _load_second_opinion():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "second_opinion", Path(__file__).with_name("second-opinion.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def apply_second_opinion(path: Path, review_fn=None) -> tuple:
+    """Second opinion for a clip that carries `harvest_flag: injection-suspect`.
+    Writes both verdicts into the frontmatter (frontmatter-only, G-3 body
+    check, revert on mismatch). Downgrades the flag to `injection-advisory`
+    ONLY when both reviewers call the clip benign; anything else (a
+    disagreement, an error, a failed write) keeps the operator flag.
+    Returns (downgraded: bool | None, summary: str); None = the clip carries no injection-suspect flag."""
+    try:
+        text = path.read_text(encoding="utf-8")
+        fm, fm_raw, body, present = parse_frontmatter(text)
+        if not present or fm.get("harvest_flag") != "injection-suspect":
+            return None, "not flagged"
+        if review_fn is None and os.environ.get("HIMMEL_BILLED_OK") != "1":
+            return False, "skipped (codex review is billed: set HIMMEL_BILLED_OK=1)"
+        res = (review_fn or _load_second_opinion().review)(text)
+        pairs = [
+            ("harvest_codex_verdict", f"harvest_codex_verdict: {res['codex']}"),
+            ("harvest_guard_verdict", f"harvest_guard_verdict: {res['guard']}"),
+            ("harvest_codex_passages", f"harvest_codex_passages: {min(len(res['passages']), 99)}"),
+        ]
+        if res["guard_ids"]:
+            pairs.append(("harvest_guard_findings", f"harvest_guard_findings: {','.join(res['guard_ids'])}"))
+        if res["downgrade"]:
+            pairs.append(("harvest_flag", "harvest_flag: injection-advisory"))
+        summary = f"codex={res['codex']} guard={res['guard']}"
+        if res["passages"]:
+            summary += " passages=" + " | ".join(res["passages"])
+        new_fm = insert_frontmatter_pairs(fm_raw, pairs)
+        path.write_text(f"---\n{new_fm}\n---\n{body}", encoding="utf-8", newline="\n")
+        _dfm, _draw, disk_body, disk_ok = parse_frontmatter(path.read_text(encoding="utf-8"))
+        if not disk_ok or disk_body != body:
+            path.write_text(text, encoding="utf-8", newline="\n")
+            return False, "second opinion write altered body; reverted, flag kept"
+        return bool(res["downgrade"]), summary
+    except Exception as e:
+        return False, f"second opinion failed ({type(e).__name__}); flag kept"
+
+
 def _stamp_refused(path: Path, text: str, fm_raw: str, body: str, canonical: str, dry_run: bool) -> str:
     """harvest-clips.md Phase 2: a G-1 deny sets harvest_status: refused_sensitivity
     + harvest_url_canonical in the frontmatter. Frontmatter-only (harvested_at stays
@@ -2291,6 +2342,8 @@ def main():
     ap.add_argument("--scan-only", type=Path, default=None, metavar="FILE",
                     help="Injection-scan one file; one hit class per line. "
                          "Exit 0=clean, 1=hits, 2=error.")
+    ap.add_argument("--no-second-opinion", action="store_true",
+                    help="Skip the codex + skills_guard second opinion on flagged clips.")
     ap.add_argument("--rescan-flags", action="store_true",
                     help="Backfill: scan already-harvested clips, add only "
                          "harvest_flag/_detail on hits.")
@@ -2424,6 +2477,7 @@ def main():
     ok = partial = failed = skipped = 0
     processed_count = 0
     flagged = []
+    advisory = []
     for clip in clips:
         if args.limit > 0 and processed_count >= args.limit:
             break
@@ -2440,7 +2494,18 @@ def main():
         if injection_hits:
             # Structural flag state — flagged clips reach the report even
             # when the harvest write failed (any glyph).
-            flagged.append(relpath)
+            downgraded = False
+            if not args.dry_run and not args.no_second_opinion:
+                downgraded, so_msg = apply_second_opinion(clip)
+                if downgraded is not None:
+                    print(f"SECOND-OPINION {relpath} -- {so_msg} -> "
+                          f"{'downgraded to advisory' if downgraded else 'operator flag kept'}")
+            if downgraded is None:
+                pass
+            elif downgraded:
+                advisory.append(relpath)
+            else:
+                flagged.append(relpath)
         if glyph == "v":
             print(f"OK  {relpath} -- {msg}")
             ok += 1
@@ -2475,6 +2540,11 @@ def main():
         print(
             f"harvest-clip-body-batch: {len(flagged)} flagged "
             f"injection-suspect (operator review): " + ", ".join(flagged)
+        )
+    if advisory:
+        print(
+            f"harvest-clip-body-batch: {len(advisory)} injection-advisory "
+            f"(codex + skills_guard both benign, no operator action): " + ", ".join(advisory)
         )
     if args.dry_run:
         print("  (DRY-RUN — no files modified)")
