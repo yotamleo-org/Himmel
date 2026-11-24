@@ -9,6 +9,7 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/chief-digest.XXXXXX")" || { echo "test-chief-d
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 
+export HOME="$tmp/home"; mkdir -p "$HOME"
 export HIMMELCTL_CACHE_DIR="$tmp/himmelctl-cache"
 export HANDOVER_REGISTRY="$tmp/no-registry-for-this-suite.json"
 export BRIDGE_ROOT="$tmp/bridge"
@@ -113,7 +114,7 @@ chief new --bucket dgsrc6 >/dev/null 2>&1
 docA6="$root/tester/dgsrc6/DEMO-nextleg-${today}A-chief.md"
 printf '[{"name":"%s"}]\n' "$(printf 'y%.0s' $(seq 1 4200))" > "$root/tester/dgsrc6/focus-chains.json"
 chief next --bucket dgdst6 --doc "$docA6" >/dev/null 2>&1
-check "2 a chain line cut at the width cap names a pointer" "$(grep -c 'line(s) cut — ' "${docA6%.md}-DIGEST.md")" "1"
+check "2 a chain line cut at the width cap names a pointer" "$(grep -A1 '^\*\*Chain order:' "${docA6%.md}-DIGEST.md" | grep -c 'line(s) cut — ')" "1"
 chief new --bucket dgsrc7 >/dev/null 2>&1
 docA7="$root/tester/dgsrc7/DEMO-nextleg-${today}A-chief.md"
 mkdir "${docA7%.md}-DIGEST.md"
@@ -125,7 +126,9 @@ check "2 the digest carries the open owed row" "$(grep -c 'run the live successi
 check "2 the digest carries the in-flight design pointer" "$(grep -c '^- specs/designs/DEMO-951-digest-design.md — design, DEMO-951' "$digest")" "1"
 check "2 the digest carries the focus-chains order" "$(grep -c 'Chain order (focus-chains.json): alpha-chain' "$digest")" "1"
 check "2 a long chain order is not cut short" "$(grep -cF -- "$longname" "$digest")" "1"
-check "2 no temp file is left beside the digest" "$(find "$root/tester/dgsrc" -name "*DIGEST.md.*" | wc -l | tr -d " ")" "0"
+leftover=0
+for _f in "$root/tester/dgsrc"/*DIGEST.md.*; do [ -e "$_f" ] && leftover=$((leftover + 1)); done
+check "2 no temp file is left beside the digest" "$leftover" "0"
 check "2 the digest has a read-before-first-dispatch trigger" "$(grep -c '^\*\*READ BEFORE YOUR FIRST DISPATCH' "$digest")" "1"
 check "2 the digest names the three hand-filled HANDOFF sections" "$(grep -c 'Rulings and judgement notes.*Wrapped this shift.*Open operator items' "$digest")" "1"
 check "2 the digest has the orphan-gate line" "$(grep -c '^Orphan gate: ' "$digest")" "1"
