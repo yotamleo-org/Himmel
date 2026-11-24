@@ -136,5 +136,15 @@ run_antigravity unwatch_pull_request "$ARGS_UNWATCH_OPEN" deny "unwatch OPEN PR 
 run_antigravity t3_environment_read "$ARGS_BENIGN" allow "benign T3 read allowed"
 run_antigravity t3_thread_send "$ARGS_SEND" allow "send to an existing thread allowed"
 
+echo "== T3 tool parity: every tool gets the same verdict on claude, codex and antigravity =="
+for tool in t3_thread_send t3_thread_launch t3_thread_transfer t3_thread_search t3_thread_list t3_thread_read \
+            t3_environment_read t3_project_list t3_project_read pull_request_read pull_request_create \
+            pull_request_merge ci_logs ci_rerun read_issue create_issue preview_open schedule_task \
+            send_to_user html_preview html_render; do
+    run_claude guard-t3-thread-tools.sh "$tool" "$ARGS_SEND" allow "$tool benign call allowed"
+    run_codex "$tool" "$ARGS_SEND" allow "$tool benign call allowed"
+    run_antigravity "$tool" "$ARGS_SEND" allow "$tool benign call allowed"
+done
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

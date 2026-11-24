@@ -517,19 +517,6 @@ case "$RAW_TOOL" in
                     guard-t3-thread-tools.sh \
                     peer-taint-gate.sh
             fi
-            case "$MCP_TOOL" in
-                t3_environment_read|t3_project_list|t3_project_read|t3_theme_read|\
-                t3_worktree_status|t3_worktree_list|t3_preview_list|\
-                orchestrator_capabilities|task_status|list_scheduled_tasks|device_list|\
-                pull_request_read|pull_request_list|read_pull_request_guide|list_thread_pull_requests|\
-                ci_logs|list_issues|read_issue|list_thread_issues|\
-                t3_thread_send|\
-                send_to_user|html_preview|html_render)
-                    ;;
-                *)
-                    emit_deny "antigravity-hook-adapter: mcp_t3-code_$MCP_TOOL is not on the Antigravity read-only/self-scoped T3 MCP allowlist"
-                    ;;
-            esac
         else
             run_chain_with_payload gate "$PAYLOAD" \
                 mcp-policy.sh \
