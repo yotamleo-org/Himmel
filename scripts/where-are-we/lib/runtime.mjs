@@ -101,7 +101,7 @@ export function createBudget({ deadlineMs = 75000, deadlineAt, outerDeadlineAt, 
       // The watchdog survives collector death, bounds the whole command tree,
       // and retains its lock descriptor until its bounded child has stopped.
       return spawnBounded(execFileSync, `${graceMs / 1000}s`, `${ms / 1000}s`, command, args, {
-        ...options, timeout: Math.ceil(ms + 1000), maxBuffer: 1024 * 1024,
+        ...options, timeout: Math.ceil(ms + 1000), maxBuffer: 64 * 1024 * 1024,
         stdio: lockFd === undefined ? ['ignore', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe', lockFd],
       });
     },
