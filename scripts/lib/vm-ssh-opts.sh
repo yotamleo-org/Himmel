@@ -49,7 +49,8 @@ vm_ssh_guest_user() { _vm_ssh_vms_lookup user name "$1"; }
 vm_ssh_opts() {
     local vm
     if vm="$(vm_ssh_vm_for_port "$1")" && [ -n "$vm" ]; then
-        mkdir -p "${HOME:-}/.himmel/vm/known_hosts" 2>/dev/null && chmod 700 "${HOME:-}/.himmel/vm/known_hosts" 2>/dev/null
+        mkdir -p "${HOME:-}/.himmel/vm/known_hosts" 2>/dev/null && chmod 700 "${HOME:-}/.himmel/vm/known_hosts" \
+            || echo "vm-ssh-opts: cannot create ${HOME:-}/.himmel/vm/known_hosts; the accepted host key will not persist" >&2
         printf '%s' "-o UserKnownHostsFile=~/.himmel/vm/known_hosts/$vm -o StrictHostKeyChecking=accept-new"
     else
         printf '%s' "-o StrictHostKeyChecking=accept-new"

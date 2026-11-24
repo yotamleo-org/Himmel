@@ -15,7 +15,7 @@ fail() { echo "FAIL: $1"; failures=$((failures + 1)); }
 T="$(mktemp -d "${TMPDIR:-/tmp}/test-vm-ssh-opts.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/home/.himmel" "$T/bin"
-unset HIMMEL_VM_MODE_CONFIG
+unset HIMMEL_VM_MODE_CONFIG HIMMEL_VMS_JSON
 
 cat > "$T/bin/ssh" <<'FAKE'
 #!/usr/bin/env bash
@@ -45,6 +45,10 @@ case "$opts" in
 esac
 case "$opts" in *"StrictHostKeyChecking=accept-new"*) pass "keeps accept-new" ;; *) fail "accept-new missing: '$opts'" ;; esac
 [ -d "$T/home/.himmel/vm/known_hosts" ] && pass "the per-VM known_hosts directory exists" || fail "known_hosts dir not created"
+
+mkdir -p "$T/blocked" && : > "$T/blocked/.himmel"
+warn="$(HOME="$T/blocked" vm_ssh_opts 2222 2>&1 >/dev/null)"
+case "$warn" in *"cannot create"*) pass "an uncreatable known_hosts directory is reported" ;; *) fail "no warning when the directory cannot be created: '$warn'" ;; esac
 
 opts="$(HOME="$T/home" vm_ssh_opts 2230)"
 case "$opts" in *"known_hosts/himmel-gui-1"*) pass "port 2230 maps to himmel-gui-1" ;; *) fail "port 2230: '$opts'" ;; esac
