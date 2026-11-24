@@ -3804,9 +3804,6 @@ check_c72_design_mcp_auth() {
 # symlink is followed to its target) and
 # WARNs when the highest such version sorts below .bun-version. Report only: the
 # fix is a vendor build on the newer Bun, never a hand patch.
-# A line 'C73-bun-compiled <binary path> <embedded version>' in the doctor ack file
-# (the file C41 reads) snoozes that binary at that embedded version to INFO; a
-# rebuilt binary embeds a different version and WARNs again.
 # Seams: HIMMEL_DOCTOR_BUN_SCAN_DIRS (colon-separated dirs), HIMMEL_DOCTOR_BUN_VERSION_FILE, HIMMEL_DOCTOR_ACK_FILE.
 check_c73_bun_compiled() {
     local vfile="${HIMMEL_DOCTOR_BUN_VERSION_FILE:-$REPO_ROOT/.bun-version}" pin dirs d f emb scanned=0 stale=0 snoozed=0
