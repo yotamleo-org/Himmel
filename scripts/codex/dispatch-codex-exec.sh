@@ -82,6 +82,7 @@
 #
 # Usage:
 #   dispatch-codex-exec.sh --worktree <path> [--shared-branch <branch>] [--stdin-brief] [--reasoning-effort <none|low|medium|high|xhigh|max>] [--context-tier <272k|353k|900k>] [codex exec args...]
+#   dispatch-codex-exec.sh --review-scratch <empty-dir> [--stdin-brief] [codex exec args...]   (read-only review: own CODEX_HOME, no MCP servers, no plugins, no hooks)
 #
 # Exit: codex rc, or stdout-relay rc if codex succeeded; watchdog timeout wins.
 # Wrapper codes: 2 usage/refusal | 4 lock held | 124 watchdog timeout | 127 no codex
@@ -141,9 +142,13 @@ EXEC_TIMEOUT="${CODEX_EXEC_TIMEOUT:-1800}"
 # shellcheck source=../lib/proc-tree.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/proc-tree.sh"
+# shellcheck source=../lib/prim.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/prim.sh"
 
 usage() {
     echo "usage: dispatch-codex-exec.sh --worktree <path> [--shared-branch <branch>] [--stdin-brief] [codex exec args...]" >&2
+    echo "   or: dispatch-codex-exec.sh --review-scratch <empty-dir> [--stdin-brief] [codex exec args...]" >&2
     exit 2
 }
 
@@ -174,6 +179,8 @@ TIMEOUT_FLAG=""
 EVENT_LOG=""
 OUTPUT_PID=""
 STDIN_BRIEF=0
+REVIEW_SCRATCH=""
+REVIEW_HOME=""
 
 # Invariant 8: one end row per started run, emitted exactly once. `outcome`
 # is explicit for the timeout path; otherwise derived from the exit code the
@@ -238,6 +245,7 @@ _dispatch_cleanup() {
         bash "$REAP_HELPER" --root-pid "$CODEX_CHILD_PID" --started-at "$STARTED_AT" --kill || true
         [ -n "$JOB_FILE" ] && rm -f "$JOB_FILE" 2>/dev/null
     fi
+    [ -n "$REVIEW_HOME" ] && rm -rf "$REVIEW_HOME" 2>/dev/null
     return 0
 }
 trap _dispatch_cleanup EXIT
@@ -260,7 +268,12 @@ if [ "${#EXEC_TIMEOUT}" -gt 6 ] || [ "$EXEC_TIMEOUT" -gt 86400 ]; then
     exit 2
 fi
 
-if [ "${1:-}" = "--worktree" ]; then
+if [ "${1:-}" = "--review-scratch" ]; then
+    [ -n "${2:-}" ] || usage
+    REVIEW_SCRATCH="$2"
+    WORKTREE="$2"
+    shift 2
+elif [ "${1:-}" = "--worktree" ]; then
     [ -n "${2:-}" ] || usage
     WORKTREE="$2"
     shift 2
@@ -269,6 +282,7 @@ fi
 [ -d "$WORKTREE" ] || { echo "dispatch-codex-exec.sh: worktree not found: $WORKTREE" >&2; exit 2; }
 
 if [ "${1:-}" = "--shared-branch" ]; then
+    [ -z "$REVIEW_SCRATCH" ] || { echo "dispatch-codex-exec.sh: --review-scratch and --shared-branch are exclusive: a review never writes a branch" >&2; exit 2; }
     [ -n "${2:-}" ] || usage
     SHARED_BRANCH="$2"
     shift 2
@@ -287,10 +301,15 @@ fi
 # placed under .claude/worktrees satisfy the string check while the physical
 # target lives outside it. Dispatch uses the PHYSICAL path too.
 WT_ABS="$(cd "$WORKTREE" 2>/dev/null && pwd -P)" || { echo "dispatch-codex-exec.sh: cannot resolve worktree: $WORKTREE" >&2; exit 2; }
-case "$WT_ABS" in
-    */.claude/worktrees/*) ;;
-    *) echo "dispatch-codex-exec.sh: refusing worktree outside .claude/worktrees: $WT_ABS (the lane dispatches only into repo worktrees)" >&2; exit 2 ;;
-esac
+if [ -n "$REVIEW_SCRATCH" ]; then
+    SCRATCH_ENTRIES="$(ls -A "$WT_ABS" 2>&1)" || { echo "dispatch-codex-exec.sh: cannot list the --review-scratch directory: $WT_ABS" >&2; exit 2; }
+    [ -z "$SCRATCH_ENTRIES" ] || { echo "dispatch-codex-exec.sh: --review-scratch needs an EMPTY directory: $WT_ABS" >&2; exit 2; }
+else
+    case "$WT_ABS" in
+        */.claude/worktrees/*) ;;
+        *) echo "dispatch-codex-exec.sh: refusing worktree outside .claude/worktrees: $WT_ABS (the lane dispatches only into repo worktrees)" >&2; exit 2 ;;
+    esac
+fi
 WORKTREE="$WT_ABS"
 
 # Invariant 5: shared-branch mode gate. Trunk is checked FIRST
@@ -323,6 +342,10 @@ if ! codex_filter_passthrough_args "$@"; then
 fi
 have_model="$CAF_HAVE_MODEL"
 have_sandbox="$CAF_HAVE_SANDBOX"
+if [ -n "$REVIEW_SCRATCH" ] && [ "$have_sandbox" -eq 1 ]; then
+    echo "dispatch-codex-exec.sh: --review-scratch fixes the sandbox to read-only - a caller-named sandbox is refused" >&2
+    exit 2
+fi
 reasoning_effort="$CAF_REASONING_EFFORT"
 # Invariant 10: the context tier is ALWAYS pinned (unstated = 272k, the cheapest),
 # so an ambient CODEX_CONTEXT_WINDOW can never buy a pricier tier.
@@ -737,7 +760,10 @@ if (missing.length) {
 }
 ' "$hooks_json" "$cfg" "$primary" "$primary_native"
 }
-if [ -n "${CODEX_HOOK_TRUST_CHECK:-}" ]; then
+if [ -n "$REVIEW_SCRATCH" ]; then
+    TRUST_RC=0
+    TRUST_MISSING=""
+elif [ -n "${CODEX_HOOK_TRUST_CHECK:-}" ]; then
     echo "dispatch-codex-exec.sh: NOTE hook-trust check overridden by CODEX_HOOK_TRUST_CHECK=$CODEX_HOOK_TRUST_CHECK (test-only)" >&2
     bash "$CODEX_HOOK_TRUST_CHECK" "$WORKTREE"
     TRUST_RC=$?
@@ -860,7 +886,9 @@ try {
     fi
     pin_args="--model $EFFECTIVE_MODEL"
 fi
-if [ "$have_sandbox" -eq 0 ]; then
+if [ -n "$REVIEW_SCRATCH" ]; then
+    pin_args="$pin_args --sandbox read-only --skip-git-repo-check"
+elif [ "$have_sandbox" -eq 0 ]; then
     pin_args="$pin_args --sandbox workspace-write"
 fi
 # Invariant 7: translate the validated --reasoning-effort enum
@@ -896,6 +924,18 @@ done
 # Invariant 8: explicit <&0 preserves an opted-in brief
 # across backgrounding. Otherwise use /dev/null even for non-tty stdin: an
 # empty pipe held open by a tool harness is just as unbounded as a terminal.
+if [ -n "$REVIEW_SCRATCH" ]; then
+    REVIEW_AUTH="${CODEX_HOME:-$HOME/.codex}/auth.json"
+    if ! REVIEW_HOME="$(tmpdir 2>/dev/null)" || [ -z "$REVIEW_HOME" ]; then
+        REVIEW_HOME=""
+        echo "dispatch-codex-exec.sh: cannot create the isolated CODEX_HOME for --review-scratch (tmpdir failed) - refusing" >&2
+        exit 2
+    fi
+    chmod 700 "$REVIEW_HOME"
+    : > "$REVIEW_HOME/config.toml"
+    [ ! -e "$REVIEW_AUTH" ] || ln -s "$REVIEW_AUTH" "$REVIEW_HOME/auth.json"
+    export CODEX_HOME="$REVIEW_HOME"
+fi
 STARTED_AT="$(date +%s)"
 # Invariant 8: ledger start row BEFORE the spawn, so a dispatch that dies
 # without ever reaching its end row still shows up as having started.
