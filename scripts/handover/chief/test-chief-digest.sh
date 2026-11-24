@@ -1,16 +1,5 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# scripts/handover/chief/test-chief-digest.sh — a successor chief boots from
-# a bounded digest and the predecessor relays once.
-#
-# `chief.sh next` writes <predecessor>-DIGEST.md beside the HANDOFF and the successor doc's
-# preface names it instead of the HANDOFF. Rows: (1) the file the successor reads first is
-# under a stated byte bound while the HANDOFF of the same fixture is not (RED on a tree that
-# still names the unbounded HANDOFF); (2) the digest carries every field a successor acts
-# on, checked against the HANDOFF template; (3) the relay count at hand-over is exactly one.
-# Temp-bucket fixtures only: no real chief, no launch, no gh.
-#
-# Platform guard: POSIX bash 3.2+; same scope as chief.sh.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
