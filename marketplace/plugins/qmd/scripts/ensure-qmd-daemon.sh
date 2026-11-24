@@ -86,12 +86,12 @@ QMD_RECYCLE_COOLDOWN_MIN=$((10#$QMD_RECYCLE_COOLDOWN_MIN))
 
 QMD_SYSTEMCTL="${QMD_SYSTEMCTL:-systemctl}"
 QMD_UNIT_DIR="${QMD_UNIT_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}"
-boot_unit="qmd-daemon.service"
+boot_unit="qmd-daemon.service"  # t13b-ok: the boot unit's name only, starts nothing
 boot_before="himmel-recover.service"
 
 install_boot_unit() {
   local self unit
-  self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/ensure-qmd-daemon.sh" || return 1
+  self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/ensure-qmd-daemon.sh" || return 1  # t13b-ok: this script's own path, starts nothing
   unit="$QMD_UNIT_DIR/$boot_unit"
   mkdir -p "$QMD_UNIT_DIR" || return 1
   # PATH names the bun root: a user manager's default PATH has no ~/.bun/bin, and
@@ -108,11 +108,11 @@ install_boot_unit() {
     printf 'ExecStart=/usr/bin/env bash "%s"\n' "${self//%/%%}"
     printf '\n[Install]\n'
     printf 'WantedBy=default.target\n'
-  } > "$unit.tmp" || { echo "ensure-qmd-daemon: cannot write $unit" >&2; return 1; }
-  mv "$unit.tmp" "$unit" || { echo "ensure-qmd-daemon: cannot write $unit" >&2; return 1; }
+  } > "$unit.tmp" || { echo "ensure-qmd-daemon: cannot write $unit" >&2; return 1; }  # t13b-ok: message text only, starts nothing
+  mv "$unit.tmp" "$unit" || { echo "ensure-qmd-daemon: cannot write $unit" >&2; return 1; }  # t13b-ok: message text only, starts nothing
   "$QMD_SYSTEMCTL" --user daemon-reload || { echo "ensure-qmd-daemon: systemctl --user daemon-reload failed" >&2; return 1; }  # t13b-ok: reloads unit files, starts nothing
   "$QMD_SYSTEMCTL" --user enable "$boot_unit" || { echo "ensure-qmd-daemon: systemctl --user enable $boot_unit failed" >&2; return 1; }  # t13b-ok: enables the boot unit this mode exists to install
-  echo "ensure-qmd-daemon: installed and enabled $unit (runs $self at login, before $boot_before); re-run after the plugin path changes"
+  echo "ensure-qmd-daemon: installed and enabled $unit (runs $self at login, before $boot_before); re-run after the plugin path changes"  # t13b-ok: message text only, starts nothing
 }
 
 boot_show() { "$QMD_SYSTEMCTL" --user show -p "$1" --value "$2" 2>/dev/null; }
