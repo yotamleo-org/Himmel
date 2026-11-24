@@ -36,9 +36,10 @@ does not replace this.
 
 ## Daily drift duty
 
-Once a day the tick reads the nightly drift issue 4470 and prints `drift=<n>` on the TICK
+Every tick reads the nightly drift issue 4470 and prints `drift=<n>` on the TICK
 line: its Needs-update rows plus the held rows whose 72 hour buffer has cleared (`?` when the
-read failed, never a wake). A positive count prints one `WAKE drift-actionable <n>` per UTC day.
+read failed, never a wake). The first tick of each UTC day that sees a positive count prints one
+`WAKE drift-actionable <n>`, and the waiter relays it once a day.
 On that wake, from the primary checkout, write the worker brief for exactly those rows with
 `python3 -I scripts/handover/chief-kit/drift-brief.py brief --body-file <issue body> --holds scripts/upstreams/pin-holds.json --out <bucket> --worktree <new worktree> --chief <you> --worker <label> --date <today>`
 (the issue body is `gh issue view 4470 --json body --jq .body` run in the primary checkout), run
