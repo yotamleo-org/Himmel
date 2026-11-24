@@ -19,7 +19,7 @@ cp "$CODEX_HOME/config.toml" "$STUB_SEEN_CONFIG"
 echo "$CODEX_HOME" > "$STUB_SEEN_HOME"
 clip="$(cat)"
 case "$clip" in
-  *STUB-IGNORE-TIMEOUT*) trap '' TERM; ( trap '' TERM; sleep 9; : > "$STUB_MARKER" ) & sleep 9; : > "$STUB_MARKER" ;;
+  *STUB-IGNORE-TIMEOUT*) trap '' TERM; sleep 9 & echo $! > "$STUB_CHILD_PID"; ( trap '' TERM; sleep 9; : > "$STUB_MARKER" ) & sleep 9; : > "$STUB_MARKER" ;;
   *STUB-TIMEOUT*) sleep 10 ;;
   *STUB-ERROR*) echo boom >&2; exit 1 ;;
   *STUB-WRITE*) : > "./escaped.txt"; echo '{"verdict": "benign", "passages": []}'; exit 0 ;;
@@ -52,6 +52,7 @@ export HIMMEL_FLOW_RUNS_LEDGER="$tmp/flow-runs.jsonl"
 export STUB_SEEN_CONFIG="$tmp/seen.config"
 export STUB_SEEN_HOME="$tmp/seen.home"
 export STUB_MARKER="$tmp/ignore-timeout.marker"
+export STUB_CHILD_PID="$tmp/ignore-timeout.child"
 export SECOND_OPINION_HERMES_PY="$tmp/guard-stub"
 export SECOND_OPINION_HERMES_ROOT="$tmp"
 export STUB_ARGV_LOG="$tmp/argv.log"
@@ -136,11 +137,17 @@ case "$line" in
 esac
 case "$line" in *danger*|*bypass*|*--yolo*|*workspace-write*) bad "codex argv carries no widening flag" "$line" ;; *) ok "codex argv carries no widening flag" ;; esac
 if grep -q 'mcp_servers' "$station_home/config.toml" && grep -q 'plugins' "$station_home/config.toml"; then ok "precondition: the station config declares an MCP server and a plugin"; else bad "precondition: the station config declares an MCP server and a plugin"; fi
-if [ "$(cat "$STUB_SEEN_HOME")" != "$station_home" ] && ! grep -q 'mcp_servers\|plugins' "$STUB_SEEN_CONFIG"; then ok "codex sees no MCP server and no plugin: an isolated CODEX_HOME, not the station's"; else bad "codex sees no MCP server and no plugin: an isolated CODEX_HOME, not the station's" "  home=$(cat "$STUB_SEEN_HOME") config=$(cat "$STUB_SEEN_CONFIG")"; fi
+grep -q 'mcp_servers\|plugins' "$STUB_SEEN_CONFIG" 2>/dev/null
+seen_rc=$?
+if [ -s "$STUB_SEEN_HOME" ] && [ "$(cat "$STUB_SEEN_HOME")" != "$station_home" ] && [ -r "$STUB_SEEN_CONFIG" ] && [ "$seen_rc" -eq 1 ]; then ok "codex sees no MCP server and no plugin: an isolated CODEX_HOME, not the station's"; else bad "codex sees no MCP server and no plugin: an isolated CODEX_HOME, not the station's" "  home=$(cat "$STUB_SEEN_HOME") config=$(cat "$STUB_SEEN_CONFIG")"; fi
 f="$vault/Clippings/ignoreclip.md"
 assert "a review that ignores the timeout: operator flag kept" "injection-suspect" "$(fmval "$f" harvest_flag)"
 sleep 10
-if [ -e "$STUB_MARKER" ]; then bad "a review that ignores the timeout leaves nothing running: no marker written after it"; else ok "a review that ignores the timeout leaves nothing running: no marker written after it"; fi
+child="$(cat "$STUB_CHILD_PID" 2>/dev/null)"
+if [ -z "$child" ]; then bad "a review that ignores the timeout leaves nothing running: the stub never ran"
+elif kill -0 "$child" 2>/dev/null; then bad "a review that ignores the timeout leaves nothing running: descendant $child survived"; kill -9 "$child" 2>/dev/null
+elif [ -e "$STUB_MARKER" ]; then bad "a review that ignores the timeout leaves nothing running: a marker was written after it"
+else ok "a review that ignores the timeout leaves nothing running: descendant gone, no marker written"; fi
 
 HIMMEL_BILLED_OK=1 "$PY" "$TOOL" "$tmp/vault-red" --no-second-opinion >/dev/null 2>&1
 for c in transcript docs; do

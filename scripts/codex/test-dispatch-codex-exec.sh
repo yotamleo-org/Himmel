@@ -1586,6 +1586,8 @@ IGNORE_STUB="$TMP/codex-ignore-term-stub"
 cat > "$IGNORE_STUB" <<EOF
 #!/usr/bin/env bash
 trap '' TERM
+sleep 6 &
+echo \$! > "$TMP/ignore-term.child"
 ( trap '' TERM; sleep 6; : > "$TMP/ignore-term.marker" ) &
 sleep 6
 : > "$TMP/ignore-term.marker"
@@ -1599,7 +1601,17 @@ RC=$?
 set -e
 assert_rc 124 "20p a review that ignores TERM is killed at the timeout" "rc=$RC out=$OUT"
 sleep 8
-if [ -e "$TMP/ignore-term.marker" ]; then fail "20q the whole tree survived the timeout: a marker was written after it"; else pass "20q no process of the tree outlives the timeout (no marker written)"; fi
+IGNORE_CHILD="$(cat "$TMP/ignore-term.child" 2>/dev/null)"
+if [ -z "$IGNORE_CHILD" ]; then
+  fail "20q the stub never recorded its descendant pid, so nothing was observed"
+elif kill -0 "$IGNORE_CHILD" 2>/dev/null; then
+  fail "20q a descendant of the tree (pid $IGNORE_CHILD) survived the timeout"
+  kill -9 "$IGNORE_CHILD" 2>/dev/null
+elif [ -e "$TMP/ignore-term.marker" ]; then
+  fail "20q the whole tree survived the timeout: a marker was written after it"
+else
+  pass "20q no process of the tree outlives the timeout (descendant gone, no marker written)"
+fi
 
 echo
 if [ "$fails" -ne 0 ]; then

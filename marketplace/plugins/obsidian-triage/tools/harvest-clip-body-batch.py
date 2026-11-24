@@ -1869,6 +1869,8 @@ def apply_second_opinion(path: Path, review_fn=None) -> tuple:
         summary = f"codex={res['codex']} guard={res['guard']}"
         if res["passages"]:
             summary += " passages=" + " | ".join(res["passages"])
+        if path.read_text(encoding="utf-8") != text:
+            return False, "clip changed during the review; nothing written, flag kept"
         if not res["guard_ids"]:
             fm_raw = re.sub(r"^harvest_guard_findings:.*\n?", "", fm_raw, flags=re.MULTILINE)
         new_fm = insert_frontmatter_pairs(fm_raw, pairs)
