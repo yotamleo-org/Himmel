@@ -914,34 +914,23 @@ comment-only commit is written with
 keeps naming the judged head and carries a signed `reviewed-head:` line, and any
 other delta is refused with nothing written.
 
-**An oversized PR is split by default; keeping it whole is a recorded ruling.**
-A PR over the soft size band (`scripts/ci/pr-size-bands.tsv`) that
-stops at `/pr-check` exit 8 is split into smaller PRs, not given another round.
-With `pr_size_gate` on, `gen-briefs.py` also refuses a brief whose Writes project
-past the hard file max, and every such refusal and every `"bulk": "mechanical"` use
-writes a `SIZE-ESCALATE` row to `<handover root>/.locks/size-escalate.tsv` and wakes
-you as `WAKE size rows=<n>` with the new rows. Read each row and rule: **split** the
-ticket (the default), **keep it whole** by signing the reason, or **escalate**. To
-keep it whole, run the `size-override.sh record <KEY> <label> --files <n> --reason "<why a
-split is worse>"` line the refusal prints; gen-briefs then accepts that worker's brief
-for that exact file count, however often you re-run it; a change to the Writes list
-that moves the count needs a new record. Only the chief signs it: a worker or relay is refused (exit 3),
-and an unsigned or hand-written row is not read. **Escalate to the operator, never
-override alone,** a trust-path brief over the soft band, a brief past the 300-file
-CodeRabbit cap, and one past the 1500-line max: `size-override.sh` refuses to record
-these (exit 4). `gen-briefs.py` refuses the first two whatever rows exist, and
-`"bulk": "mechanical"` does not lift them; it skips only the bands you can rule. The
-line limit binds only when a line count is declared (`record --lines`): a brief has no
-line count before the code exists, so `gen-briefs.py` never computes one. For a
-trust-path brief of 21 to 300 files, send the operator the lines the refusal prints:
-the Telegram line (`/op size-approval …`) inside a code span, so a tap copies it, and
-the terminal line (`size-override.sh operator …`) for a plain terminal. The operator
-copies the Telegram line into a new message; a forwarded one is refused with no reply.
-Never run either line yourself: the approval needs the operator's nonce and code, and
-root writes it (`docs/internals/afk-sudo.md`, the `size-approval` op). It binds that
-worker's file count and file-list digest for 7 days. When the refusal says an approval
-covers another list, re-run at the base the approval was given for, or send the new
-lines. Past the 300-file cap there is no approval: split the ticket.
+**An oversized brief or PR is yours to rule; no count refuses work.** `/pr-check` exit 8 is the
+round cap, not a size check: take it to a judge, and split the PR only when you or the judge decide to.
+`gen-briefs.py` writes every brief. One whose Writes project past the hard file band
+(`scripts/ci/pr-size-bands.tsv`), past the soft band on a trust path, that cannot be projected, or that
+carries `"bulk": "mechanical"` also writes an `estimate` or `bulk` `SIZE-ESCALATE` row to
+`<handover root>/.locks/size-escalate.tsv`. `worker-pr-open.sh` measures the real diff on every run,
+puts one `pr-size:` line in the PR body, and past the hard or CodeRabbit band writes a `real` row,
+whatever the brief projected. Each new row wakes you as `WAKE size rows=<n>`, once per kind, key, worker,
+band and branch. Read each row and rule: **split** the ticket or PR (the default), or **keep it whole**
+by signing the reason with `size-override.sh record <KEY> <label> --files <n> --reason "<why a split is
+worse>"`; gen-briefs then accepts that worker's brief for that exact file count, however often you re-run
+it, and writes no row for it; a change to the Writes list that moves the count needs a new record. Only
+the chief signs it: a worker or relay is refused (exit 3), and an unsigned or hand-written row is not
+read. Every case is yours, a trust-path brief, one past 300 files and one past 1500 declared lines
+(`record --lines`) included; nothing goes to the operator. A PR past 300 files opens and CodeRabbit skips
+it, and `gh pr diff` fails on it with HTTP 406, so a judge of one that stays whole reads its files through
+the paginated files API.
 
 ### A denied write: HOLD-ASK and the write barrier
 
