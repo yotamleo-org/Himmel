@@ -143,8 +143,8 @@ run_cli() {
 CORE_LIST="$DIST_ROOT/scripts/ci/core-paths.txt"
 run_cli release core-check --paths scripts/handover/merge-on-green.sh --mirror "$FIX/m15/HIMMEL" --core-paths "$CORE_LIST" --key HIMMEL-30001 HIMMEL-30003 HIMMEL-30005 HIMMEL-30004 HIMMEL-39999
 has "fixture: signed-spec key is core" "$CLI_OUT" "CORE HIMMEL-30001 scripts/handover/merge-on-green.sh"
-has "fixture: core-bypass key is BYPASS" "$CLI_OUT" "BYPASS HIMMEL-30003 operator O-R1-bypass"
-has "fixture: snapshot key is grandfathered" "$CLI_OUT" "BYPASS HIMMEL-30005 grandfathered O-R1-snap core-snapshot"
+has "fixture: a core-bypass key with no spec is BYPASS-NEEDS-SPEC" "$CLI_OUT" "BYPASS-NEEDS-SPEC HIMMEL-30003 operator no spec-review record for HIMMEL-30003 (bypass: O-R1-bypass decision 2)"
+has "fixture: a snapshot key with no spec is BYPASS-NEEDS-SPEC" "$CLI_OUT" "BYPASS-NEEDS-SPEC HIMMEL-30005 grandfathered no spec-review record for HIMMEL-30005 (bypass: O-R1-snap core-snapshot)"
 has "fixture: a key outside the mirror is UNKNOWN" "$CLI_OUT" "UNKNOWN HIMMEL-39999"
 run_cli release core-check --paths scripts/lib/nothing.sh --mirror "$FIX/m15/HIMMEL" --core-paths "$CORE_LIST" --key HIMMEL-30004
 has "fixture: an ordinary file is NOT-CORE" "$CLI_OUT" "NOT-CORE HIMMEL-30004"

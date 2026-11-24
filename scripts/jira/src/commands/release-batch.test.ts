@@ -122,9 +122,9 @@ describe('release core-check-batch prints, per group, what a single core-check p
       `CORE K-2 ${CORE_PATH}`,
       'BYPASS K-3 emergency Bug at Highest',
       'BYPASS K-4 emergency label red-main',
-      'BYPASS K-5 bug issue type Bug',
-      expect.stringMatching(/^BYPASS K-6 operator O-R1-\d+ decision 2$/),
-      expect.stringMatching(/^BYPASS K-7 grandfathered O-R1-\d+ core-snapshot$/),
+      'BYPASS-NEEDS-SPEC K-5 bug no spec-review record for K-5 (bypass: issue type Bug)',
+      expect.stringMatching(/^BYPASS-NEEDS-SPEC K-6 operator no spec-review record for K-6 \(bypass: O-R1-\d+ decision 2\)$/),
+      expect.stringMatching(/^BYPASS-NEEDS-SPEC K-7 grandfathered no spec-review record for K-7 \(bypass: O-R1-\d+ core-snapshot\)$/),
       'UNKNOWN K-9',
     ]);
     expect(groupOf(b, 2)).toEqual(expect.arrayContaining(['NOT-CORE K-1', 'CORE K-2 label core', 'UNKNOWN K-9']));
@@ -187,7 +187,7 @@ describe('release core-check-batch reads who signs (I13)', () => {
     const groups = [{ paths: CORE_PATH, keys: ['K-1'] }, { paths: CORE_PATH, keys: ['K-6'] }];
     const b = await batch(groups);
     expect(groupOf(b, 1)).toEqual([`CORE K-1 ${CORE_PATH}`]);
-    expect(groupOf(b, 2)).toEqual([expect.stringMatching(/^BYPASS K-6 operator O-R1-\d+ decision 2$/)]);
+    expect(groupOf(b, 2)).toEqual([expect.stringMatching(/^BYPASS-NEEDS-SPEC K-6 operator no spec-review record for K-6 \(bypass: O-R1-\d+ decision 2\)$/)]);
     for (const [i, g] of groups.entries()) expect(groupOf(b, i + 1)).toEqual(await single(g.paths, g.keys));
   });
 });
