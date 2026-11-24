@@ -74,11 +74,11 @@ function readLayerBytes(path) {
   }
 }
 
-const PATH_TOKEN = '(?:"(?:[^"`$\\\\\\n]|\\$(?:\\{[A-Za-z_]\\w*\\}|[A-Za-z_]\\w*(?!\\w)))*"|[A-Za-z0-9_./~-]+)';
-const pathEnding = (tail) => `${PATH_TOKEN}(?<=(?:^|[\\s"/])${tail}"?)`;
-const HB_SCRIPT = pathEnding('queue-lock\\.sh');
-const HB_RUN_NODE = pathEnding('run-node\\.sh');
-const HB_LAUNCHER = pathEnding('run-hook-with-bash\\.js');
+const QUOTED_DIR = '(?:[^"`$\\\\\\n]|\\$(?:\\{[A-Za-z_]\\w*\\}|[A-Za-z_]\\w*(?!\\w)))*';
+const pathTo = (name) => `(?:"(?:${QUOTED_DIR}/)?${name}"|(?:[A-Za-z0-9_./~-]*/)?${name})`;
+const HB_SCRIPT = pathTo('queue-lock\\.sh');
+const HB_RUN_NODE = pathTo('run-node\\.sh');
+const HB_LAUNCHER = pathTo('run-hook-with-bash\\.js');
 const HB_PLAIN = new RegExp(`^(?:bash )?${HB_SCRIPT} self-heartbeat\\s*$`);
 const HB_ROUTED = new RegExp(
   `^if \\[ -f (${HB_RUN_NODE}) \\]; then command -p sh \\1 (${HB_LAUNCHER}) (${HB_SCRIPT}) self-heartbeat; `

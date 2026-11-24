@@ -140,6 +140,8 @@ test('X07-7: a script, runner or launcher whose name only ends like the emitted 
   const bad = [
     'bash /tmp/not-queue-lock.sh self-heartbeat',
     'bash "/tmp/not-queue-lock.sh" self-heartbeat',
+    'bash "/tmp/not queue-lock.sh" self-heartbeat',
+    ROUTED_HB.replaceAll('/scripts/lib/run-node.sh', '/scripts/lib/not run-node.sh'),
     ROUTED_HB.replaceAll('/scripts/lib/run-node.sh', '/scripts/lib/not-run-node.sh'),
     ROUTED_HB.replaceAll('/hooks/run-hook-with-bash.js', '/hooks/not-run-hook-with-bash.js'),
     ROUTED_HB.replaceAll('/handover/queue-lock.sh', '/handover/not-queue-lock.sh'),
