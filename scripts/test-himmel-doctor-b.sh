@@ -2132,10 +2132,7 @@ STUB
     for d in "${c40_path_dirs[@]}"; do [ -x "$d/qmd" ] || c40_nq_path="${c40_nq_path:+$c40_nq_path:}$d"; done
 }
 # C40 composes himmelctl status's qmd-daemon item, so a case feeds it
-# a status fixture (DOCTOR_STATUS_JSON) instead of running a 13s real status. The
-# item's verdict mirrors what the status probe reads off the same stub curl
-# (covered in test-wizard-qmd-daemon.sh): refused -> degraded set up / absent not, wedged/foreign/empty
-# reply -> degraded, anything that answers initialize -> present.
+# a status fixture (DOCTOR_STATUS_JSON) instead of running a 13s real status.
 c40_status() { # <desired true|false> <actual> <detail> — writes $c40_t/status.json
     jq -n --argjson d "$1" --arg a "$2" --arg t "$3" '{items:[{id:"qmd-daemon",desired:$d,actual:$a,detail:$t}]}' > "$c40_t/status.json"
 }

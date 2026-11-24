@@ -4,10 +4,6 @@
 # himmelctl status (one owner per fact) instead of doctor C40.
 # The probe runs against a stubbed curl through the doctor's own seams
 # (HIMMEL_DOCTOR_QMD_CURL / _URL / _INIT_TIMEOUT), read from ctx.env.
-#
-# Covers: ok (present), slow-but-alive (present, detail says slow), wedged
-# (curl rc 28 -> degraded), foreign listener (degraded), refused (degraded/absent),
-# not wanted (qmd items desired=false under profile core), and manifest-lint.
 
 set -euo pipefail
 
