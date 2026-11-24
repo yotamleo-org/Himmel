@@ -1493,7 +1493,7 @@ for sh in "glob:41 files" "mixed:44 files" "rootglob:41 files" "treeglob:41 file
     pw="${sh%%:*}"; pc="${sh#*:}"
     pso="$(psrun "$pw")"; rc=$?
     case "$pw" in
-        rootglob|dotslash) # brief-lint refuses these Writes spellings (a bare glob, a ./ prefix); the size check refused nothing
+        rootglob|dotslash)
             [ "$rc" = 1 ] && has "size estimate: the $pw brief is refused by brief-lint, not by the size check" "$pso" "brief-lint refuses the brief" || fail "$pw: rc=$rc: $pso" ;;
         *) [ "$rc" = 0 ] && pass "size estimate: the $pw Writes list is estimated, not refused (rc 0)" || fail "$pw: rc=$rc: $pso" ;;
     esac

@@ -3,9 +3,6 @@
 # band       soft | hard | coderabbit
 # max_lines  a PR with more changed lines (added plus deleted) than this is over the band; - = no line limit
 # max_files  a PR with more changed files than this is over the band; - = no file limit
-# action     warn: no count refuses work; a number here warns and wakes the chief, who decides
-#            worker-pr-open.sh prints SIZE-WARN past any band and writes a `real` SIZE-ESCALATE row past hard or coderabbit;
-#            gen-briefs.py writes an `estimate` row past hard, or past soft on a trust path
 # A PR inside the soft band's limits (150-800 lines, at most 20 files) is the target: nothing happens.
 # The coderabbit row is CodeRabbit's own cap: past 300 files it skips the whole review.
 band	max_lines	max_files	action
