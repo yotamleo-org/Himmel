@@ -71,6 +71,12 @@ for target in localhost 127.0.0.1 himmel@127.0.0.1; do
     opts="$(HOME="$T/home" vm_ssh_opts 2222 "$target")"
     case "$opts" in *"known_hosts/ubuntu_new"*) pass "target '$target' pins the local VM's file" ;; *) fail "target '$target' not pinned: '$opts'" ;; esac
 done
+mkdir -p "$T/home2/.himmel/vm/known_hosts/ubuntu_new"
+warn="$(HOME="$T/home2" vm_ssh_opts 2222 localhost 2>&1 >/dev/null)"
+case "$warn" in *"cannot create"*) pass "an uncreatable known_hosts file is reported" ;; *) fail "no warning when the file cannot be created: '$warn'" ;; esac
+printf '%s\n' 'recorded-key' > "$T/home/.himmel/vm/known_hosts/ubuntu_new"
+HOME="$T/home" vm_ssh_opts 2222 localhost >/dev/null
+[ "$(cat "$T/home/.himmel/vm/known_hosts/ubuntu_new")" = recorded-key ] && pass "an existing pinned key is never truncated" || fail "the recorded key was truncated"
 mode="$(stat -c %a "$T/home/.himmel/vm/known_hosts/ubuntu_new" 2>/dev/null || stat -f %Lp "$T/home/.himmel/vm/known_hosts/ubuntu_new")"
 [ "$mode" = 600 ] && pass "the per-VM known_hosts file is 0600" || fail "known_hosts file mode is '$mode'"
 

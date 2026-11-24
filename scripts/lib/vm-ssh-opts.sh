@@ -59,8 +59,8 @@ vm_ssh_opts() {
     elif vm="$(vm_ssh_vm_for_port "$1")" && [ -n "$vm" ]; then
         if mkdir -p "$kh_dir" 2>/dev/null; then
             chmod 700 "$kh_dir" 2>/dev/null
-            [ -e "$kh_dir/$vm" ] || (umask 077; : > "$kh_dir/$vm") 2>/dev/null
-            chmod 600 "$kh_dir/$vm" 2>/dev/null
+            (umask 077; : >> "$kh_dir/$vm") 2>/dev/null && chmod 600 "$kh_dir/$vm" 2>/dev/null \
+                || echo "vm-ssh-opts: cannot create $kh_dir/$vm as 0600; the accepted host key will not persist" >&2
         else
             echo "vm-ssh-opts: cannot create $kh_dir; the accepted host key will not persist" >&2
         fi
