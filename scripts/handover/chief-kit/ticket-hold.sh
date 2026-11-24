@@ -130,7 +130,8 @@ if [ "$RELEASE" -eq 0 ]; then
     # swallow-ok: an unreadable status is not In Progress, so the ticket is left as it is
     st=$(jq -r '.fields.status.name // ""' <<<"$json" 2>/dev/null)
     if [ "$st" = "In Progress" ]; then
-        if ts_jira transition "$KEY" "To Do" >/dev/null 2>&1; then FROMST=$st; else MOVEFAIL=1; fi
+        # swallow-ok: an unreadable status after the move is no proof it moved
+        if ts_jira transition "$KEY" "To Do" >/dev/null 2>&1 && [ "$(ts_jira get "$KEY" --json 2>/dev/null | jq -r '.fields.status.name // ""' 2>/dev/null)" = "To Do" ]; then FROMST=$st; else MOVEFAIL=1; fi
     fi
 fi
 row result=moved ${FROMST:+from="$FROMST" to="To Do"}

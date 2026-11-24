@@ -67,6 +67,7 @@ case "$1" in
     transition)
         [ -e "$FX/transition.fail" ] && { echo "boom" >&2; exit 1; }
         [ -e "$FX/transition.sleep" ] && sleep "$(cat "$FX/transition.sleep")"
+        [ -e "$FX/transition.noop" ] && exit 0
         printf '%s\n' "$3" > "$FX/status.$2"
         exit 0 ;;
     list)
@@ -580,6 +581,11 @@ check "10786 H2: a failed move still holds, exit 0" "$rc" 0
 check "10786 H2: the label stands" "$(cat "$FX/labels.$K")" held
 check "10786 H2: the failed move is an audit-gap row at the transition stage" "$(rowq 'select(.event == "audit-gap") | .key + ":" + .stage')" "$K:transition"
 contains "10786 H2: and warns on stderr" "$(cat "$tmp/hout")" "stays In Progress"
+reset "In Progress"; touch "$FX/transition.noop"
+hold "$K" --reason r --owner operator; rc=$?
+check "10786 H3: a move that does not read back as To Do still holds, exit 0" "$rc" 0
+check "10786 H3: the hold row records no move" "$(rowq 'select(.event == "hold") | has("to")')" false
+check "10786 H3: and the unconfirmed move is an audit-gap row" "$(rowq 'select(.event == "audit-gap") | .key + ":" + .stage')" "$K:transition"
 
 reset "To Do"; owned "$K"; printf 'held\n' > "$FX/labels.$K"
 fn "$K" --event live
@@ -1282,7 +1288,7 @@ check "9561 S2 11: a forged hold row on a key with no held label is plain UNOWNE
 check "9561 S2 11: and says nothing of a label" "$(drows UNOWNED | grep -c 'held with no owner')" 0
 label
 drift
-check "9561 S2 11: the same row with the label is AWAITING" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/1
+check "9561 S2 11: the same row with the label is UNOWNED" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/1
 contains "9561 S2 11: operator" "$(drows UNOWNED)" "awaiting operator since="
 
 d6fx; label
@@ -1354,7 +1360,7 @@ drift_bsd
 check "9561 S4b 5: owed_due=2026-02-30 prints UNOWNED under a BSD date too" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/1
 d6fx; owedrow 3600 operator "$ud"
 drift_bsd
-contains "9561 S4b 5 control: a real owed_due is AWAITING under a BSD date" "$(drows UNOWNED)" "due=${ud}T23:59:59Z "
+contains "9561 S4b 5 control: a real owed_due is UNOWNED under a BSD date" "$(drows UNOWNED)" "due=${ud}T23:59:59Z "
 check "9561 S4b 9: rows 5 wrote nothing" "$(nwrites)" 0
 
 d6fx; lrow 3600 merge moved - '{"pr":"4480","contract":"no","remainder":"remaining"}'
@@ -1401,7 +1407,7 @@ contains "9561 S5 3: it waits on the chief" "$(drows UNOWNED)" "awaiting the chi
 contains "9561 S5 3: its source is the resume" "$(drows UNOWNED)" "source=resume"
 contains "9561 S5 3: its since is the first D5c row after the merge row" "$(drows UNOWNED)" "since=$(iso_at 3600) "
 contains "9561 S5 3: its due is 6 h after it" "$(drows UNOWNED)" "due=$(iso_at -18000) "
-contains "9561 S5 3: and the wait is no drift: sdrift=0" "$(dlast)" "sdrift=1:"
+contains "9561 S5 3: and the stuck ticket is drift: sdrift=1" "$(dlast)" "sdrift=1:"
 d6fx; lrow 100000 merge moved - '{"pr":"4480","contract":"no","remainder":"remaining"}'; lrow 25200 wrapped noop D5c; lrow 60 sweep noop D5c
 drift
 check "9561 S5 3: parked 7 h it is no AWAITING row" "$(dcount AWAITING)" 0
