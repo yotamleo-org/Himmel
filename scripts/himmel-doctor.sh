@@ -3403,6 +3403,8 @@ check_c40_qmd_vec() {
     # exchange happened); peel it off so an empty body can be told apart by status.
     init="$(printf 'header = "Authorization: Bearer %s"\n' "$qd_tok" | "$curl_bin" ${qd_auth[@]+"${qd_auth[@]}"} -s -m "$init_timeout" -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$init_payload" "$url" 2>/dev/null)"; init_rc=$?
     case "${init: -3}" in [0-9][0-9][0-9]) init_code="${init: -3}"; init="${init%???}" ;; esac
+    # any HTTP exchange means the daemon answered: the outage is over, whatever the reply says.
+    if [ -n "$init" ] || { [ -n "$init_code" ] && [ "$init_code" != 000 ]; }; then _c40_outage_clear; fi
     if [ -z "$init" ] && [ "$init_rc" -eq 28 ]; then
         emit WARN C40-qmd-vec "a process on $url accepted the connection but did not answer initialize within ${init_timeout}s -- the qmd server is wedged, vec search is not being served" "$remedy"
         return

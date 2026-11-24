@@ -2575,11 +2575,14 @@ c40_msg="$(head -n1 "$c40_t/sent")"
 c40_run probeok >/dev/null
 c40_run down >/dev/null
 c40_n2="$(grep -c . "$c40_t/sent")"
+c40_run iserror >/dev/null
+c40_run down >/dev/null
+c40_n3="$(grep -c . "$c40_t/sent")"
 if [ "$c40_n1" = 1 ] && printf '%s' "$c40_msg" | grep -Fq 'qmd-daemon' && printf '%s' "$c40_msg" | grep -Fq 'not answering' \
-    && grep -Fq 'qmd-daemon' "$c40_t/home/.himmel/state/cadence-alerts.log" && [ "$c40_n2" = 2 ]; then
+    && grep -Fq 'qmd-daemon' "$c40_t/home/.himmel/state/cadence-alerts.log" && [ "$c40_n2" = 2 ] && [ "$c40_n3" = 3 ]; then
     pass "C40 refused, qmd set up -> exactly one alert across two runs, a second after the daemon answered in between"
 else
-    fail "C40 outage alert -> after two refused runs: $c40_n1 sent (want 1), after recovery and a new outage: $c40_n2 (want 2); first message [$c40_msg]"
+    fail "C40 outage alert -> after two refused runs: $c40_n1 sent (want 1), after recovery and a new outage: $c40_n2 (want 2), after a daemon that answered but failed its vec query and a third outage: $c40_n3 (want 3); first message [$c40_msg]"
 fi
 rm -rf "$c40_t"
 
