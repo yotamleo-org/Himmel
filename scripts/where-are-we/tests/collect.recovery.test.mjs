@@ -224,7 +224,6 @@ test('partial GraphQL check pages preserve unknown prior obligation rather than 
   const requests = [];
   const run = (_command, args) => {
     requests.push(args);
-    if (args[0] === 'repo') return JSON.stringify({ nameWithOwner: 'example/project' });
     return JSON.stringify({ data: { repository: { p4: {
       number: 4, state: 'OPEN', headRefName: 'fix/x', title: 'old PR', mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN',
       commits: { nodes: [{ commit: { statusCheckRollup: { contexts: {
@@ -234,14 +233,14 @@ test('partial GraphQL check pages preserve unknown prior obligation rather than 
   };
   collector.main(['--ledger', ledger, '--now', NOW], { readers: {
     ...quietReaders,
-    readPRs: (active) => collector.readPRs(active, { discover: () => [], readBatch: (numbers) => collector.readPRBatch(numbers, run) }),
+    readPRs: (active) => collector.readPRs(active, { discover: () => [], readBatch: (numbers) => collector.readPRBatch(numbers, run, 'example/project') }),
   } });
   const state = fold(readRecords(ledger));
   assert.equal(state.items['#4'].status, 'open');
   assert.deepEqual(state.items['#4'].awaiting_operator, ['last known green']);
   assert.match(state.sources.pr.errors.join(' '), /incomplete check rollup/);
-  assert.equal(requests.length, 2, 'one repository lookup and one batched API call');
-  const query = requests[1].find((a) => a.startsWith('query='));
+  assert.equal(requests.length, 1, 'one batched API call, naming its repository');
+  const query = requests[0].find((a) => a.startsWith('query='));
   assert.match(query, /pullRequest\(number:4\)/);
 });
 import { appendRecords } from '../lib/append.mjs';
