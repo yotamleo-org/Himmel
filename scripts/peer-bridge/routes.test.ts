@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { readNewLines } from "../telegram/bus";
-import { makePeerNotifyFlusher, makePeerReplyRoute, PR1_REPLY_LINE } from "../telegram/peer-notify-route";
+import { makePeerNotifyFlusher, makePeerReplyRoute, DRAFTING_LINE } from "../telegram/peer-notify-route";
 import { flushOutboxes, handleInbound, inboundToDelivered, ingestUpdates, type AutoGate } from "../telegram/poller";
 import type { Config } from "./config";
 import { stateDir } from "./ids";
@@ -194,7 +194,7 @@ test("canary sweep, PR1 routes", async () => {
     expect(digests.filter(r => r.kind === "effect").map(r => r.outcome)).toEqual(["escalated", "acked", "dropped", "escalated", "fallback-wake", "fallback-wake"]);
     expect(digests.filter(r => r.kind === "digest").map(r => r.reason ?? r.summary)).toEqual([`digest ${CANARY}`, `digest ${CANARY}`, `digest ${CANARY}`, "exit:1", `digest ${CANARY}`, `digest ${CANARY}`]);
     expect(ran).toEqual([]);
-    expect(opSent.at(-1)!.text).toBe(PR1_REPLY_LINE);
+    expect(opSent.at(-1)!.text).toBe(DRAFTING_LINE);
     expect(peerChat.some(t => t.includes(CANARY))).toBe(false);
     expect(walk(h.S).some(f => fs.readFileSync(f, "utf8").includes(CANARY))).toBe(true);
     expect(leaks(h.home, h.S)).toEqual([]);

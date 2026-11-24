@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { readChain, verifyChain } from "../peer-bridge/chain";
+import { readChain, submitSpool, verifyChain } from "../peer-bridge/chain";
 import { readPeersFile } from "../peer-bridge/config";
-import { peersFile, stateDir } from "../peer-bridge/ids";
+import { PEER_NAME_RE, peersFile, stateDir } from "../peer-bridge/ids";
 import { NOTIFY_LINE1_RE, notifyFile, renderChainAlert, renderFallback, renderHeld, renderNotify, type NotifyRec } from "../peer-bridge/notify";
 import { atomicWrite } from "./bus";
 import { operatorChatId, type Access } from "./gate";
@@ -152,9 +152,16 @@ export function startPeerNotify(d: { token: string; access(): Access | null; sen
   return makePeerNotifyFlusher({ stateDir: stateDir(), himmelRoot, token: d.token, access: d.access, peersCfg: () => cfg, send: d.send, procs: readProcs, botPids: () => readBotPids(), clock: Date.now, log: d.log });
 }
 
-export const PR1_REPLY_LINE = "drafts arrive with the next update; nothing was sent";
+export const DRAFTING_LINE = "drafted; approve or reject it with the buttons on the draft message";
+export const OUTBOUND_REFUSAL_LINE = "a reply about our own outbound thread needs the peer desk's send.ts; nothing was sent";
+export const OTHER_REFUSAL_LINE = "replies to this kind of message are not taken; nothing was sent";
+export const UNRECORDED_REFUSAL_LINE = "that message is not on record; nothing was sent";
+export const NO_DESK_LINE = "the peer bridge is not set up for this peer; nothing was sent";
 export const LOCKED_LINE = "locked, reset at the station";
 type ReplyMsg = { from: number; chat_id: number; text: string; caption?: boolean; reply_to_bot?: boolean; reply_to_message_id?: number; reply_to_text?: string };
+
+const spoolDirOf = (S: string, peer: string) => join(S, peer);
+const spoolReady = (S: string, peer: string) => PEER_NAME_RE.test(peer) && fs.existsSync(join(spoolDirOf(S, peer), "spool"));
 
 export function makePeerReplyRoute(d: { stateDir?: string; root: string; access(): Access | null; reply(chat: number, text: string): Promise<void> }) {
   const S = d.stateDir ?? stateDir();
@@ -162,11 +169,48 @@ export function makePeerReplyRoute(d: { stateDir?: string; root: string; access(
     if (msg.reply_to_bot !== true || msg.caption === true || msg.text.trimStart().startsWith("/")) return false;
     const chat = operatorChatId(d.access());
     if (chat === null || msg.chat_id !== chat || msg.from !== chat) return false;
-    const onRecord = msg.reply_to_message_id !== undefined && readSent(S, msg.reply_to_message_id) !== null;
-    if (!onRecord && !(msg.reply_to_text !== undefined && NOTIFY_LINE1_RE.test(msg.reply_to_text))) return false;
-    await d.reply(chat, lockdownEnabled(d.root) ? LOCKED_LINE : PR1_REPLY_LINE);
+    const entry = msg.reply_to_message_id !== undefined ? readSent(S, msg.reply_to_message_id) : null;
+    if (entry === null && !(msg.reply_to_text !== undefined && NOTIFY_LINE1_RE.test(msg.reply_to_text))) return false;
+    if (lockdownEnabled(d.root)) { await d.reply(chat, LOCKED_LINE); return true; }
+    if (entry === null) { await d.reply(chat, UNRECORDED_REFUSAL_LINE); return true; }
+    if (entry.type !== "escalate" && entry.type !== "wake") { await d.reply(chat, OTHER_REFUSAL_LINE); return true; }
+    if (entry.dir !== "in") { await d.reply(chat, OUTBOUND_REFUSAL_LINE); return true; }
+    const peer = String(entry.peer), root = entry.root;
+    if (!Number.isSafeInteger(root) || (root as number) <= 0 || !spoolReady(S, peer)) { await d.reply(chat, NO_DESK_LINE); return true; }
+    try {
+      submitSpool(spoolDirOf(S, peer), { type: "draft", source: "telegram", kind: "answer", replyTo: root as number, text: msg.text });
+    } catch { await d.reply(chat, NO_DESK_LINE); return true; }
+    await d.reply(chat, DRAFTING_LINE);
     return true;
   };
+}
+
+export type PeerTap = { callback_id: string; from: number; chat_id: number; data: string };
+const PEER_TAP_RE = /^peer:(ok|no):([a-z0-9][a-z0-9-]{0,31}):([0-9a-f]{8})$/;
+
+export function makePeerTap(d: { stateDir?: string; root: string; access(): Access | null; answer(callbackId: string, text: string): Promise<unknown>; clock?(): number }) {
+  const S = d.stateDir ?? stateDir();
+  const clock = d.clock ?? Date.now;
+  const inflight = new Set<Promise<void>>();
+  const handle = async (t: PeerTap, m: RegExpExecArray) => {
+    const say = (text: string) => d.answer(t.callback_id, text).catch(() => {});
+    const chat = operatorChatId(d.access());
+    if (chat === null || t.chat_id !== chat || t.from !== chat) { await say("Not authorized."); return; }
+    if (lockdownEnabled(d.root)) { await say(LOCKED_LINE); return; }
+    if (!spoolReady(S, m[2])) { await say("Unknown peer."); return; }
+    try {
+      submitSpool(spoolDirOf(S, m[2]), { type: "tap", verb: m[1] as "ok" | "no", draft: m[3], by: String(t.from), ts: clock() });
+    } catch { await say("Could not record the tap."); return; }
+    await say("Received");
+  };
+  const tap = (t: PeerTap): boolean => {
+    const m = PEER_TAP_RE.exec(t.data);
+    if (!m) return false;
+    const run: Promise<void> = handle(t, m).catch(e => console.error(`[peer-notify] tap failed: ${e}`)).finally(() => inflight.delete(run));
+    inflight.add(run);
+    return true;
+  };
+  return Object.assign(tap, { idle: async () => { while (inflight.size) await Promise.all([...inflight]); } });
 }
 
 const PLUGIN_NAME = "telegram-himmel";

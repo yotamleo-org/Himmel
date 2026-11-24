@@ -6,7 +6,7 @@ import { join } from "node:path";
 import * as chainMod from "../peer-bridge/chain";
 import { appendNotify, notifyFile, type NotifyRec } from "../peer-bridge/notify";
 import { readNewLines } from "./bus";
-import { holdingProc, LOCKED_LINE, macProcsFrom, makePeerNotifyFlusher, makePeerReplyRoute, pluginStateDir, PR1_REPLY_LINE, procFromEnv, readBotPids, readCursor, readProcs, readSent, sentDir, type ProcInfo } from "./peer-notify-route";
+import { holdingProc, LOCKED_LINE, macProcsFrom, makePeerNotifyFlusher, makePeerReplyRoute, pluginStateDir, DRAFTING_LINE, makePeerTap, NO_DESK_LINE, OTHER_REFUSAL_LINE, OUTBOUND_REFUSAL_LINE, UNRECORDED_REFUSAL_LINE, procFromEnv, readBotPids, readCursor, readProcs, readSent, sentDir, type ProcInfo } from "./peer-notify-route";
 import { handleInbound, inboundToDelivered, ingestUpdates, type AutoGate } from "./poller";
 import { BASH_BIN } from "./run";
 import type { SendOpts, SendResult } from "./telegram-api";
@@ -402,7 +402,12 @@ const textUpdate = (text: string, reply: object) => ({ update_id: 1, message: { 
 function bridge() {
   const r = tmp("peer-reply-root-"), S = tmp("peer-reply-S-");
   fs.mkdirSync(sentDir(S), { recursive: true });
-  fs.writeFileSync(join(sentDir(S), "701"), JSON.stringify({ n: 1, type: "escalate", peer: "example", root: 3, dir: "in", ts: Date.now() }));
+  fs.mkdirSync(join(S, "example", "spool"), { recursive: true, mode: 0o700 });
+  const sentEntries: Record<string, object> = {
+    701: { type: "escalate", root: 3, dir: "in" }, 702: { type: "wake", root: 4, dir: "in" }, 703: { type: "escalate", root: 5, dir: "out" },
+    704: { type: "draft", root: 3, draft: "0a1b2c3d" }, 705: { type: "result", root: 3, draft: "0a1b2c3d" }, 706: { type: "daily" }, 707: { type: "budget" }, 708: { type: "alert" },
+  };
+  Object.entries(sentEntries).forEach(([id, e], i) => fs.writeFileSync(join(sentDir(S), id), JSON.stringify({ n: i + 1, peer: "example", ts: Date.now(), ...e })));
   const peerReplies: string[] = [], ran: string[] = [], consoleAsked: number[] = [];
   const access = { allowFrom: [String(OP_CHAT)] };
   const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, peerReply: makePeerReplyRoute({ stateDir: S, root: r, access: () => access, reply: async (_c, t) => { peerReplies.push(t); } }) };
@@ -417,11 +422,13 @@ function bridge() {
   return { r, S, peerReplies, ran, consoleAsked, deliver };
 }
 
+const spoolFiles = (b: { S: string }) => fs.readdirSync(join(b.S, "example", "spool")).filter(n => n.endsWith(".json")).map(n => JSON.parse(fs.readFileSync(join(b.S, "example", "spool", n), "utf8")));
+
 test("text reply to a notify message never reaches handleInbound's routing", async () => {
   for (const [name, reply] of [["sent map", quoted(701, "a bot line that is not line 1")], ["line 1", quoted(555, NOTIFY_LINE1)]] as const) {
     const b = bridge();
     const { before, after } = await b.deliver(textUpdate(`please answer ${name}`, reply));
-    expect(b.peerReplies).toEqual([PR1_REPLY_LINE]);
+    expect(b.peerReplies).toEqual([name === "line 1" ? UNRECORDED_REFUSAL_LINE : DRAFTING_LINE]);
     expect(b.ran).toEqual([]);
     expect(b.consoleAsked).toEqual([]);
     expect(after).toEqual(before);
@@ -432,6 +439,102 @@ test("text reply to a notify message never reaches handleInbound's routing", asy
   await b.deliver(textUpdate("answer while locked", quoted(701, "x")));
   expect(b.peerReplies).toEqual([LOCKED_LINE]);
   expect(b.ran).toEqual([]);
+});
+
+test("a reply to an inbound escalation or wake becomes one draft spool record", async () => {
+  for (const [id, root] of [[701, 3], [702, 4]] as const) {
+    const b = bridge();
+    await b.deliver(textUpdate("the operator's own words", quoted(id, "x")));
+    expect(spoolFiles(b)).toEqual([{ type: "draft", source: "telegram", kind: "answer", replyTo: root, text: "the operator's own words" }]);
+    expect(b.peerReplies).toEqual([DRAFTING_LINE]);
+  }
+});
+
+test("replies to an outbound escalation, to draft, result, daily, budget and alert messages, a line-1 match off record, and any reply under lockdown each get their refusal line", async () => {
+  const cases: [number, string][] = [[703, OUTBOUND_REFUSAL_LINE], [704, OTHER_REFUSAL_LINE], [705, OTHER_REFUSAL_LINE], [706, OTHER_REFUSAL_LINE], [707, OTHER_REFUSAL_LINE], [708, OTHER_REFUSAL_LINE], [555, UNRECORDED_REFUSAL_LINE]];
+  for (const [id, line] of cases) {
+    const b = bridge();
+    await b.deliver(textUpdate("words", quoted(id, id === 555 ? NOTIFY_LINE1 : "x")));
+    expect([id, b.peerReplies]).toEqual([id, [line]]);
+    expect(spoolFiles(b)).toEqual([]);
+  }
+  for (const id of [701, 704, 555]) {
+    const b = bridge();
+    fs.writeFileSync(join(b.r, "lockdown"), "locked\n");
+    await b.deliver(textUpdate("words", quoted(id, id === 555 ? NOTIFY_LINE1 : "x")));
+    expect(b.peerReplies).toEqual([LOCKED_LINE]);
+    expect(spoolFiles(b)).toEqual([]);
+  }
+  const noDesk = bridge();
+  fs.rmSync(join(noDesk.S, "example", "spool"), { recursive: true });
+  await noDesk.deliver(textUpdate("words", quoted(701, "x")));
+  expect(noDesk.peerReplies).toEqual([NO_DESK_LINE]);
+});
+
+function tapRig() {
+  const r = tmp("peer-tap-root-"), S = tmp("peer-tap-S-");
+  fs.mkdirSync(join(S, "example", "spool"), { recursive: true, mode: 0o700 });
+  const answers: string[] = [];
+  const access = { allowFrom: [String(OP_CHAT)] };
+  const tap = makePeerTap({ stateDir: S, root: r, access: () => access, answer: async (_id, text) => { answers.push(text); }, clock: () => 1_731_000_000_000 });
+  const spool = (peer = "example") => fs.readdirSync(join(S, peer, "spool")).filter(n => n.endsWith(".json")).map(n => JSON.parse(fs.readFileSync(join(S, peer, "spool", n), "utf8")));
+  return { r, S, tap, answers, spool };
+}
+const tapOf = (data: string, over: Record<string, unknown> = {}) => ({ callback_id: "cb1", from: OP_CHAT, chat_id: OP_CHAT, data, ...over });
+
+test("draft notify is sent with exactly two buttons, callback_data ≤ 49 bytes at a 32-character peer name", async () => {
+  const w = world();
+  const peer = "p".repeat(32);
+  await w.add({ kind: "notify", type: "draft", peer, root: 3, draft: "0a1b2c3d", source: "send.ts", deadline: w.c.t + 60_000, text: "hello", ts: 1 });
+  w.fresh();
+  await w.f.flush();
+  const markup = (w.sent.at(-1)!.opts as any).replyMarkup as { inline_keyboard: { text: string; callback_data: string }[][] };
+  expect(markup.inline_keyboard).toHaveLength(1);
+  expect(markup.inline_keyboard[0].map(b => b.text)).toEqual(["Approve", "Reject"]);
+  for (const b of markup.inline_keyboard[0]) expect(Buffer.byteLength(b.callback_data)).toBeLessThanOrEqual(49);
+});
+
+test("tap from another user, a group, an unknown peer or under lockdown submits nothing", async () => {
+  const t = tapRig();
+  const data = "peer:ok:example:0a1b2c3d";
+  expect(t.tap(tapOf(data, { from: 777 }))).toBe(true);
+  expect(t.tap(tapOf(data, { chat_id: -100123 }))).toBe(true);
+  expect(t.tap(tapOf("peer:ok:nobody:0a1b2c3d"))).toBe(true);
+  fs.writeFileSync(join(t.r, "lockdown"), "locked\n");
+  expect(t.tap(tapOf(data))).toBe(true);
+  await t.tap.idle();
+  expect(t.spool()).toEqual([]);
+  expect(t.answers).toEqual(["Not authorized.", "Not authorized.", "Unknown peer.", LOCKED_LINE]);
+  expect(t.tap(tapOf("chief:send"))).toBe(false);
+  expect(t.tap(tapOf("peer:ok:example:ZZZZZZZZ"))).toBe(false);
+});
+
+test("a counted tap submits tap {verb, draft, by, ts} and answers Received", async () => {
+  const t = tapRig();
+  t.tap(tapOf("peer:ok:example:0a1b2c3d"));
+  t.tap(tapOf("peer:no:example:ffffffff"));
+  await t.tap.idle();
+  expect(t.spool().sort((a, b) => a.draft.localeCompare(b.draft))).toEqual([
+    { type: "tap", verb: "ok", draft: "0a1b2c3d", by: String(OP_CHAT), ts: 1_731_000_000_000 },
+    { type: "tap", verb: "no", draft: "ffffffff", by: String(OP_CHAT), ts: 1_731_000_000_000 },
+  ]);
+  expect(t.answers).toEqual(["Received", "Received"]);
+});
+
+test("reply route and tap handler write only spool records", async () => {
+  const b = bridge();
+  const before = snapshot(b.S);
+  await b.deliver(textUpdate("words", quoted(701, "x")));
+  const added = snapshot(b.S).filter(f => !before.includes(f));
+  expect(added.every(f => f.includes("/example/spool/"))).toBe(true);
+  expect(added).toHaveLength(1);
+  const t = tapRig();
+  const b2 = snapshot(t.S);
+  t.tap(tapOf("peer:ok:example:0a1b2c3d"));
+  await t.tap.idle();
+  const added2 = snapshot(t.S).filter(f => !b2.includes(f));
+  expect(added2).toHaveLength(1);
+  expect(added2[0]).toContain("/example/spool/");
 });
 
 test("a /lockdown reply to an escalation reaches lockdown", async () => {
