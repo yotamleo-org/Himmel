@@ -61,6 +61,13 @@
 # same Bash, file-tool and apply_patch routes as project.conf. Approvals come from
 # the operator's Telegram approve reply and the allowlist is operator-edited, so a
 # worker that writes either file could approve its own review.
+# ALSO GUARDS ~/.himmel/state/api-credit/roles.json (the API account role map) and
+# the roles.json beside HIMMEL_API_CREDIT_CONFIG, on the same Bash, file-tool and
+# apply_patch routes. The map chooses which paid account serves which role, so
+# only the operator maps roles (the config UI, or `node scripts/lib/api-roles.mjs
+# write` at their own prompt). A Bash command naming api-roles.mjs followed by
+# `write` is refused too: a text match with a ceiling (a renamed copy or an
+# indirect spelling is not caught), a speed bump like the rest of this hook.
 #
 # FAIL MODE: fail-closed only for its one subject. A payload it cannot parse is
 # scanned as raw text and denied when it names the file; otherwise allowed
@@ -94,6 +101,9 @@ deny() {
             echo "    .himmel/project.conf sets that repo's settings and gate policy, so"
             echo "    changing them is operator-only. himmel.conf, himmel.conf.local and"
             echo "    station profiles also choose credential destinations (JIRA_BASE_URL)."
+            echo "    The API role map (state/api-credit/roles.json) picks which paid account"
+            echo "    serves a role; the operator maps roles in the config UI or with"
+            echo "    node scripts/lib/api-roles.mjs write at their own prompt."
             echo "    Remedy: use himmelctl config set for its supported settings, or ask"
             echo "    the operator to edit the file at their own prompt. Plain reads and"
             echo "    the Read tool stay allowed. There is no env bypass."
@@ -113,6 +123,19 @@ STATION_CONF=$(hook_resolve_m "$STATION_DIR/himmel.conf") || deny "station confi
 STATION_LOCAL=$(hook_resolve_m "$STATION_DIR/himmel.conf.local") || deny "station local path could not be resolved (fail-closed)"
 STATION_PROFILES=$(hook_resolve_m "${STATION_CONF%/*}/profiles") || deny "station profile directory could not be resolved (fail-closed)"
 
+ROLES_RAW="" ROLES_CFG=""
+if [ -n "${HIMMEL_API_CREDIT_CONFIG:-}" ]; then
+    case "$HIMMEL_API_CREDIT_CONFIG" in */*) ROLES_RAW="${HIMMEL_API_CREDIT_CONFIG%/*}/roles.json" ;; *) ROLES_RAW="roles.json" ;; esac
+    ROLES_CFG=$(hook_resolve_m "$ROLES_RAW") || deny "the API role map path could not be resolved (fail-closed)"
+fi
+roles_path() {
+    case "$1" in
+        */.himmel/state/api-credit/roles.json|.himmel/state/api-credit/roles.json) return 0 ;;
+    esac
+    [ -n "$ROLES_CFG" ] && [ "$1" = "$ROLES_CFG" ] && return 0
+    return 1
+}
+
 station_path() {
     case "$1" in
         */.himmel/himmel.conf|.himmel/himmel.conf|*/.himmel/himmel.conf.local|.himmel/himmel.conf.local|*/.himmel/profiles/*.conf|.himmel/profiles/*.conf) return 0 ;;
@@ -126,9 +149,12 @@ names_guarded_file() {
     case "$text" in
         *.himmel*)
             case "$text" in
-                *config.json*|*config.j\**|*config.\**|*conf\**|*project.conf*|*project.c\**|*project.\**|*proj\**|*himmel.conf*|*profiles/*.conf*|*outside-pr-approvals.jsonl*|*outside-contributors.json*|*outside-\**|*outside-pr-approvals.\**|*outside-contributors.\**) return 0 ;;
+                *config.json*|*config.j\**|*config.\**|*conf\**|*project.conf*|*project.c\**|*project.\**|*proj\**|*himmel.conf*|*profiles/*.conf*|*outside-pr-approvals.jsonl*|*outside-contributors.json*|*outside-\**|*outside-pr-approvals.\**|*outside-contributors.\**|*api-credit/roles*) return 0 ;;
             esac ;;
     esac
+    if [ -n "$ROLES_CFG" ]; then
+        case "$text" in *"$ROLES_CFG"*|*"$ROLES_RAW"*) return 0 ;; esac
+    fi
     case "$text" in
         *"$STATION_DIR/himmel.conf"*|*"$STATION_DIR/profiles/"*|*"$STATION_CONF"*|*"$STATION_LOCAL"*|*"$STATION_PROFILES/"*) return 0 ;;
     esac
@@ -181,12 +207,14 @@ check_path() {
     local t="$1" p="$2" r cfg_r
     [ -n "$p" ] || return 0
     station_path "$p" && deny "$t targets station config $p"
+    roles_path "$p" && deny "$t targets the API role map $p: only the operator maps roles (config UI, or node scripts/lib/api-roles.mjs write at their own prompt)"
     case "$p" in
         */.himmel/config.json|.himmel/config.json|*/.himmel/project.conf|.himmel/project.conf) deny "$t targets $p" ;;
         */.himmel/outside-pr-approvals.jsonl|.himmel/outside-pr-approvals.jsonl|*/.himmel/outside-contributors.json|.himmel/outside-contributors.json) deny "$t targets $p: approvals come from the operator's Telegram approve reply and the allowlist is operator-edited; a worker must not write either store" ;;
     esac
     r=$(hook_resolve_m "$p" 2>/dev/null) || deny "$t target $p could not be resolved (fail-closed)"
     station_path "$r" && deny "$t target $p resolves to station config"
+    roles_path "$r" && deny "$t target $p resolves to the API role map ($r)"
     cfg_r=$(hook_resolve_m "$CFG_REAL" 2>/dev/null) || deny "$t: the config path could not be resolved (fail-closed)"
     if [ -n "$r" ] && [ "$r" = "$cfg_r" ]; then
         deny "$t target $p resolves to ~/.himmel/config.json"
@@ -340,6 +368,7 @@ case "$tool" in
                     *) [ -n "$pcwd" ] && p="$pcwd/$p" ;;
                 esac
                 station_path "$p" && deny "apply_patch targets station config $p"
+                roles_path "$p" && deny "apply_patch targets the API role map $p"
                 case "$p" in
                     */.himmel/config.json|.himmel/config.json|*/.himmel/project.conf|.himmel/project.conf) deny "apply_patch targets $p" ;;
                 esac
@@ -355,6 +384,7 @@ EOF
             resolved=$(hook_resolve_m "${cand[@]}" 2>/dev/null) || deny "apply_patch paths could not be resolved (an oversized path?); split the patch"
             while IFS= read -r r; do
                 station_path "$r" && deny "an apply_patch target resolves to station config"
+                roles_path "$r" && deny "an apply_patch target resolves to the API role map ($r)"
                 [ "$r" = "$cfg_res" ] && deny "an apply_patch target resolves to ~/.himmel/config.json"
                 case "$r" in */.himmel/project.conf) deny "an apply_patch target resolves to a project file ($r)" ;; esac
                 case "$r" in */.himmel/outside-pr-approvals.jsonl|*/.himmel/outside-contributors.json) deny "an apply_patch target resolves to an outside-review store ($r)" ;; esac
@@ -424,6 +454,9 @@ elif [[ "$lcv" =~ (^|[^a-z0-9_])_ca_restore([^a-z0-9_]|$) ]]; then
     _verb=restore
 fi
 [ -z "$_verb" ] || deny "a session runs the config $_verb verb. Only the operator restores (from Telegram: /config restore <id> <code>) or accepts a config change at their own prompt; read-only: config-audit.sh list"
+if [[ "$lcv" =~ api-roles\.mjs[^\|\;\&]*[[:space:]]write([^a-z0-9_-]|$) ]]; then
+    deny "a session runs api-roles.mjs write. Only the operator maps API roles (the config UI, or node scripts/lib/api-roles.mjs write at their own prompt); read-only: api-roles.mjs check"
+fi
 names_guarded_file "$cmd" || names_guarded_file "$lc" || exit 0
 # rm/mv/unlink as a command word: every such command denies below, so the row is
 # written from deny(). The first word naming a guarded file is the row's path.
