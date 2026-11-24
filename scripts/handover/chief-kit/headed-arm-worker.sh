@@ -2125,7 +2125,9 @@ print("\n".join(t.chief_names(open(sys.argv[2], encoding="utf-8").read())))' "$_
         { [ "${#_cc_tail}" -eq 8 ] && case "$_cc_tail" in *[!0-9a-f]*) false ;; *) true ;; esac; } \
             || _cc_refuse "--rewrite-chief: the nonce $_cc_nonce in $DOC does not end in 8 hex"
         _cc_new_letter="${_cc_launch_letter:-${_cc_nonce%%-*}}"
-        _cc_new_nonce="$_cc_new_letter-${_cc_rest%-*}-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+        _cc_hex="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+        [ "${#_cc_hex}" -eq 8 ] || _cc_refuse "--rewrite-chief: could not read 4 random bytes for the new nonce"
+        _cc_new_nonce="$_cc_new_letter-${_cc_rest%-*}-$_cc_hex"
         if [ "$DRY_RUN" -eq 1 ]; then
             echo "would rewrite chief $_cc_brief to $_chief_explicit"
         else
@@ -2159,7 +2161,7 @@ shutil.copymode(doc, out)' "$_cc_lib" "$DOC" "$_cc_brief" "$_chief_explicit" "$_
         fi
     fi
     unset -f _cc_refuse
-    unset -v _cc_lib _cc_letter_re _cc_nonce _cc_launch_letter _cc_rc _cc_chain _cc_brief _cc_head _cc_rest _cc_tail _cc_new_letter _cc_new_nonce _cc_tmp _cc_msg
+    unset -v _cc_lib _cc_letter_re _cc_nonce _cc_launch_letter _cc_rc _cc_chain _cc_brief _cc_head _cc_rest _cc_tail _cc_new_letter _cc_hex _cc_new_nonce _cc_tmp _cc_msg
 fi
 unset -v _chief_explicit
 # the bus identity is the launcher's alone. A caller-preset or
