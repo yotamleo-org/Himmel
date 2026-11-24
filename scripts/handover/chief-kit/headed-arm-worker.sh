@@ -2101,9 +2101,10 @@ print("\n".join(t.chief_names(open(sys.argv[2], encoding="utf-8").read())))' "$_
     [ "$_cc_rc" -eq 0 ] || _cc_refuse "$DOC: cannot read the chief chain"
     _cc_brief="$(printf '%s\n' "$_cc_chain" | tail -n 1)"
     if [ -z "$_cc_brief" ]; then
-        if sed '/^## Results/q' "$DOC" | grep -Fq 'your chief is'; then
-            _cc_refuse "$DOC has a chief clause the launcher cannot read"
-        fi
+        _cc_head="$(sed '/^## Results/q' "$DOC")"
+        case "$_cc_head" in
+            *'your chief is'*) _cc_refuse "$DOC has a chief clause the launcher cannot read" ;;
+        esac
         echo "headed-arm-worker: note: chief check skipped (no chief clause)" >&2
     elif [ -z "$_chief_explicit" ]; then
         echo "headed-arm-worker: note: chief check skipped (no explicit launching chief)" >&2
@@ -2158,7 +2159,7 @@ shutil.copymode(doc, out)' "$_cc_lib" "$DOC" "$_cc_brief" "$_chief_explicit" "$_
         fi
     fi
     unset -f _cc_refuse
-    unset -v _cc_lib _cc_letter_re _cc_nonce _cc_launch_letter _cc_rc _cc_chain _cc_brief _cc_rest _cc_tail _cc_new_letter _cc_new_nonce _cc_tmp _cc_msg
+    unset -v _cc_lib _cc_letter_re _cc_nonce _cc_launch_letter _cc_rc _cc_chain _cc_brief _cc_head _cc_rest _cc_tail _cc_new_letter _cc_new_nonce _cc_tmp _cc_msg
 fi
 unset -v _chief_explicit
 # the bus identity is the launcher's alone. A caller-preset or
