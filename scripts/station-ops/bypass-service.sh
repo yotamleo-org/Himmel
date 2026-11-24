@@ -60,6 +60,9 @@ m_enabled() {
     else sctl is-enabled "$UNIT" >/dev/null 2>&1; fi
 }
 m_pid() { launchctl print "gui/$UID_N/$LABEL" 2>/dev/null | sed -n 's/^[[:space:]]*pid = //p' | head -n 1; }
+unit_pid() {
+    if darwin; then m_pid; else sctl show "$UNIT" -p MainPID 2>/dev/null | sed -n 's/^MainPID=//p' | head -n 1; fi
+}
 m_active() {
     if darwin; then [ -n "$(m_pid)" ]; else sctl is-active --quiet "$UNIT" 2>/dev/null; fi
 }
@@ -86,14 +89,15 @@ bucket_arg() {
 cmd_on() {
     refuse_claude "turn the bypass daemon on"
     need_manager
-    local bucket repo pin_hd="" path q out live was_active="" changed=1
+    local bucket repo pin_hd="" path q out live own was_active="" changed=1
     bucket=$(bucket_arg "$@") || exit $?
     repo=$REPO; q="$bucket/bypass-queue"
     m_active && was_active=1
-    if [ -z "$was_active" ]; then
-        out=$(bash "$repo/$OPS/bypass-launchd.sh" --check --bucket "$bucket" 2>&1)
-        live=$(printf '%s\n' "$out" | sed -n 's/^daemon: live pid=\([0-9][0-9]*\).*/\1/p' | head -n 1)
-        if [ -n "$live" ]; then
+    out=$(bash "$repo/$OPS/bypass-launchd.sh" --check --bucket "$bucket" 2>&1)
+    live=$(printf '%s\n' "$out" | sed -n 's/^daemon: live pid=\([0-9][0-9]*\).*/\1/p' | head -n 1)
+    if [ -n "$live" ]; then
+        own=""; [ -z "$was_active" ] || own=$(unit_pid)
+        if [ "$live" != "$own" ]; then
             echo "bypass-service: a daemon started by hand (pid $live) holds $bucket. Stop it with: touch $q/stop   then run: himmelctl bypass on" >&2
             exit 1
         fi

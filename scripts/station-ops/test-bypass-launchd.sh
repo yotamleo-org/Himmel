@@ -1379,7 +1379,7 @@ assert_eq "11031 M8: the daemon logs its watcher's pid" yes "$([[ "$WPID" =~ ^[0
 kill -STOP "$DPID"
 for _ in $(seq 80); do kill -0 "$DPID" 2>/dev/null || break; sleep 0.1; done
 assert_eq "RED 11031 M8: a daemon whose heartbeat stopped is killed by its own watcher" no "$(kill -0 "$DPID" 2>/dev/null && echo yes || echo no)"
-wait "$DPID" 2>/dev/null; DPID=""
+kill -9 "$DPID" 2>/dev/null; wait "$DPID" 2>/dev/null; DPID=""
 sleep 1.5
 assert_eq "RED 11031 M8: the watcher exits when its main is gone" no "$([ -n "$WPID" ] && kill -0 "$WPID" 2>/dev/null && echo yes || echo no)"
 sleep 100 & OTHER=$!

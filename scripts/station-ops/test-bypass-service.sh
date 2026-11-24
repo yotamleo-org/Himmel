@@ -162,6 +162,18 @@ printf '# edited\n' >> "$U/$UNIT"
 : > "$D/calls"
 svc_run on --bucket "$B" >/dev/null
 assert_contains "an on that rewrites a running unit restarts it, so it runs the new unit" "systemctl --user restart $UNIT" "$(calls)"
+mk twobucket
+svc_run on --bucket "$B" >/dev/null
+mkdir -p "$D/bucket2/bypass-queue"
+printf '#!/usr/bin/env bash\nsleep 60\n' > "$D/bypass-launchd.sh"
+bash "$D/bypass-launchd.sh" & HAND2=$!
+ln -s "$HAND2" "$D/bucket2/bypass-queue/.lock.pid"
+: > "$D/calls"
+out=$(svc_run on --bucket "$D/bucket2"); rc=$?
+kill "$HAND2" 2>/dev/null; wait "$HAND2" 2>/dev/null
+assert_eq "RED CR: on for another bucket, held by a hand-started daemon, exits 1 although the unit runs" 1 "$rc"
+assert_absent "RED CR: and does not restart the running unit" "systemctl --user restart" "$(calls)"
+assert_contains "RED CR: and keeps the remembered bucket" "bucket=$B" "$(cat "$H/.himmel/state/bypass-service/config" 2>/dev/null)"
 mk mac
 out=$(env -u CLAUDECODE BYPASSD_SERVICE_OS=Darwin HOME="$H" PATH="$BIN:$PATH" STUB_DIR="$D" bash "$R/$OPS/bypass-service.sh" on --bucket "$B" 2>&1)
 assert_eq "macOS on writes the LaunchAgent" yes "$([ -f "$H/Library/LaunchAgents/$PLIST" ] && echo yes || echo no)"
