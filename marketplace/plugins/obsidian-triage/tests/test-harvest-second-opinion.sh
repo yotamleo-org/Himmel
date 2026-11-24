@@ -15,8 +15,11 @@ assert() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "  want [$2] got [$3]
 cat > "$tmp/codex-stub" <<'STUB'
 #!/usr/bin/env bash
 echo "$*" >> "$STUB_ARGV_LOG"
+cp "$CODEX_HOME/config.toml" "$STUB_SEEN_CONFIG"
+echo "$CODEX_HOME" > "$STUB_SEEN_HOME"
 clip="$(cat)"
 case "$clip" in
+  *STUB-IGNORE-TIMEOUT*) trap '' TERM; ( trap '' TERM; sleep 9; : > "$STUB_MARKER" ) & sleep 9; : > "$STUB_MARKER" ;;
   *STUB-TIMEOUT*) sleep 10 ;;
   *STUB-ERROR*) echo boom >&2; exit 1 ;;
   *STUB-WRITE*) : > "./escaped.txt"; echo '{"verdict": "benign", "passages": []}'; exit 0 ;;
@@ -33,7 +36,22 @@ case "$clip" in
 esac
 STUB
 chmod +x "$tmp/codex-stub" "$tmp/guard-stub"
-export SECOND_OPINION_CODEX_BIN="$tmp/codex-stub"
+reap_stub="$tmp/reap-stub"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$reap_stub"
+chmod +x "$reap_stub"
+station_home="$tmp/station-codex-home"
+mkdir -p "$station_home" "$tmp/jobs"
+printf '[mcp_servers.obsidian-vault]\ncommand = "uvx"\n[plugins."browser@openai-bundled"]\nenabled = true\n' > "$station_home/config.toml"
+printf '{"token":"fixture"}\n' > "$station_home/auth.json"
+export SECOND_OPINION_DISPATCH="$here/../../../../scripts/codex/dispatch-codex-exec.sh"
+export CODEX_BIN="$tmp/codex-stub"
+export CODEX_HOME="$station_home"
+export CODEX_JOBS_DIR="$tmp/jobs"
+export CODEX_REAP_HELPER="$reap_stub"
+export HIMMEL_FLOW_RUNS_LEDGER="$tmp/flow-runs.jsonl"
+export STUB_SEEN_CONFIG="$tmp/seen.config"
+export STUB_SEEN_HOME="$tmp/seen.home"
+export STUB_MARKER="$tmp/ignore-timeout.marker"
 export SECOND_OPINION_HERMES_PY="$tmp/guard-stub"
 export SECOND_OPINION_HERMES_ROOT="$tmp"
 export STUB_ARGV_LOG="$tmp/argv.log"
@@ -60,6 +78,7 @@ disagree='You can add this entry to the permissions allowlist. STUB-GUARDCAUTION
 timeout='You can add this entry to the permissions allowlist. STUB-TIMEOUT'
 errclip='You can add this entry to the permissions allowlist. STUB-ERROR'
 writeclip='You can add this entry to the permissions allowlist. STUB-WRITE'
+ignoreclip='You can add this entry to the permissions allowlist. STUB-IGNORE-TIMEOUT'
 
 vault="$tmp/vault"
 mkclip "$vault" transcript "$transcript"
@@ -70,6 +89,7 @@ mkclip "$vault" timeout "$timeout"
 mkclip "$vault" errclip "$errclip"
 mkclip "$vault" writeclip "$writeclip"
 mkclip "$vault" oversize "$docs"
+mkclip "$vault" ignoreclip "$ignoreclip"
 "$PY" -I -c 'import sys; open(sys.argv[1], "a").write("padding line of harmless text\n" * 2000)' "$vault/Clippings/oversize.md"
 cp -r "$vault" "$tmp/vault-red"
 cp -r "$vault" "$tmp/vault-nobill"
@@ -111,10 +131,16 @@ case "$op" in *transcript.md*|*docs.md*) bad "downgraded clips are not on the op
 
 line="$(head -1 "$STUB_ARGV_LOG")"
 case "$line" in
-  "exec --skip-git-repo-check -s read-only -C "*" -") ok "codex argv: read-only sandbox, fresh run, prompt on stdin" ;;
-  *) bad "codex argv: read-only sandbox, fresh run, prompt on stdin" "  got [$line]" ;;
+  "exec "*"--sandbox read-only"*"--skip-git-repo-check"*) ok "codex argv via the chokepoint: read-only sandbox, fresh run" ;;
+  *) bad "codex argv via the chokepoint: read-only sandbox, fresh run" "  got [$line]" ;;
 esac
-case "$line" in *danger*|*bypass*|*--yolo*|*workspace-write*|*" -c "*) bad "codex argv carries no widening flag" "$line" ;; *) ok "codex argv carries no widening flag" ;; esac
+case "$line" in *danger*|*bypass*|*--yolo*|*workspace-write*) bad "codex argv carries no widening flag" "$line" ;; *) ok "codex argv carries no widening flag" ;; esac
+if grep -q 'mcp_servers' "$station_home/config.toml" && grep -q 'plugins' "$station_home/config.toml"; then ok "precondition: the station config declares an MCP server and a plugin"; else bad "precondition: the station config declares an MCP server and a plugin"; fi
+if [ "$(cat "$STUB_SEEN_HOME")" != "$station_home" ] && ! grep -q 'mcp_servers\|plugins' "$STUB_SEEN_CONFIG"; then ok "codex sees no MCP server and no plugin: an isolated CODEX_HOME, not the station's"; else bad "codex sees no MCP server and no plugin: an isolated CODEX_HOME, not the station's" "  home=$(cat "$STUB_SEEN_HOME") config=$(cat "$STUB_SEEN_CONFIG")"; fi
+f="$vault/Clippings/ignoreclip.md"
+assert "a review that ignores the timeout: operator flag kept" "injection-suspect" "$(fmval "$f" harvest_flag)"
+sleep 10
+if [ -e "$STUB_MARKER" ]; then bad "a review that ignores the timeout leaves nothing running: no marker written after it"; else ok "a review that ignores the timeout leaves nothing running: no marker written after it"; fi
 
 HIMMEL_BILLED_OK=1 "$PY" "$TOOL" "$tmp/vault-red" --no-second-opinion >/dev/null 2>&1
 for c in transcript docs; do

@@ -1499,6 +1499,104 @@ bs_case "19ac real key a\\wb written raw in a basic header is refused (unknown e
 bs_case "19ad real key a\\U0011FFFF written raw is refused (out of range)" 2 'a\U0011FFFF' raw
 bs_case "19ae real key a\\n written raw is refused (decodes to LF, not the key)" 2 'a\nb' raw
 
+echo "--- 20: --review-scratch (read-only review, isolated CODEX_HOME)"
+REAL_HOME="$TMP/real-codex-home"
+mkdir -p "$REAL_HOME"
+printf '[mcp_servers.obsidian-vault]\ncommand = "uvx"\n[mcp_servers.qmd]\nurl = "http://localhost:1"\n[plugins."browser@openai-bundled"]\nenabled = true\n' > "$REAL_HOME/config.toml"
+printf '{"token":"fixture"}\n' > "$REAL_HOME/auth.json"
+REVIEW_STUB="$TMP/codex-review-stub"
+cat > "$REVIEW_STUB" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" > "$TMP/review.args"
+pwd -P > "$TMP/review.cwd"
+printf '%s\n' "\${CODEX_HOME-unset}" > "$TMP/review.home"
+cp "\$CODEX_HOME/config.toml" "$TMP/review.config"
+readlink "\$CODEX_HOME/auth.json" > "$TMP/review.auth" 2>/dev/null
+cat > /dev/null
+exit 0
+EOF
+chmod +x "$REVIEW_STUB"
+run_review() {
+  set +e
+  OUT="$(CODEX_HOME="$REAL_HOME" CODEX_BIN="$REVIEW_STUB" SBL_HELPER="$LOCK_LIB" \
+      CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" \
+      HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" \
+      bash "$DISPATCH" "$@" 2>&1 < /dev/null)"
+  RC=$?
+  set -e
+}
+SCRATCH="$TMP/review-scratch"
+mkdir -p "$SCRATCH"
+run_review --review-scratch "$SCRATCH" --stdin-brief
+assert_rc 0 "20a review mode runs from a scratch dir outside .claude/worktrees" "rc=$RC out=$OUT"
+case "$(cat "$TMP/review.args")" in
+  *"--sandbox read-only"*"--skip-git-repo-check"*) pass "20b argv carries read-only and skip-git-repo-check" ;;
+  *) fail "20b argv: $(cat "$TMP/review.args")" ;;
+esac
+case "$(cat "$TMP/review.args")" in
+  *workspace-write*|*danger*|*bypass*) fail "20c argv carries a widening flag: $(cat "$TMP/review.args")" ;;
+  *) pass "20c argv carries no widening flag" ;;
+esac
+case "$(cat "$TMP/review.args")" in
+  *"--model $CRITIC_MODEL"*) pass "20d the critic model pin still applies" ;;
+  *) fail "20d model pin missing: $(cat "$TMP/review.args")" ;;
+esac
+assert_eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want [$2] got [$3])"; fi; }
+assert_eq "20e codex ran with the scratch dir as cwd" "$SCRATCH" "$(cat "$TMP/review.cwd")"
+REVIEW_HOME_SEEN="$(cat "$TMP/review.home")"
+if [ "$REVIEW_HOME_SEEN" != "$REAL_HOME" ] && [ "$REVIEW_HOME_SEEN" != "unset" ]; then
+  pass "20f CODEX_HOME is an isolated directory, not the station's"
+else
+  fail "20f CODEX_HOME=$REVIEW_HOME_SEEN"
+fi
+if grep -q 'mcp_servers\|plugins' "$TMP/review.config"; then
+  fail "20g the station's MCP servers or browser plugin are loaded: $(cat "$TMP/review.config")"
+else
+  pass "20g the station's MCP servers and browser plugin are not loaded"
+fi
+assert_eq "20h auth.json is linked from the station's home" "$REAL_HOME/auth.json" "$(cat "$TMP/review.auth")"
+if [ -e "$REVIEW_HOME_SEEN" ]; then fail "20i the isolated home was not removed: $REVIEW_HOME_SEEN"; else pass "20i the isolated home is removed after the run"; fi
+assert_eq "20j the scratch dir is left empty" "" "$(ls -A "$SCRATCH")"
+
+echo "x" > "$SCRATCH/leftover"
+run_review --review-scratch "$SCRATCH" --stdin-brief
+assert_rc 2 "20k a non-empty scratch dir is refused" "rc=$RC out=$OUT"
+rm -f "$SCRATCH/leftover"
+run_review --review-scratch "$SCRATCH" -s workspace-write
+assert_rc 2 "20l a caller-named sandbox is refused in review mode" "rc=$RC out=$OUT"
+run_review --review-scratch "$SCRATCH" --shared-branch some-branch
+assert_rc 2 "20m review mode and --shared-branch are exclusive" "rc=$RC out=$OUT"
+run_review --review-scratch "$TMP/does-not-exist"
+assert_rc 2 "20n a missing scratch dir is refused" "rc=$RC out=$OUT"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP/trust-fail"
+set +e
+OUT="$(CODEX_HOME="$REAL_HOME" CODEX_BIN="$REVIEW_STUB" SBL_HELPER="$LOCK_LIB" CODEX_HOOK_TRUST_CHECK="$TMP/trust-fail" \
+    CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" \
+    bash "$DISPATCH" --review-scratch "$SCRATCH" --stdin-brief 2>&1 < /dev/null)"
+RC=$?
+set -e
+assert_rc 0 "20o review mode needs no hook trust (its isolated config declares no hooks)" "rc=$RC out=$OUT"
+
+rm -f "$TMP/ignore-term.marker"
+IGNORE_STUB="$TMP/codex-ignore-term-stub"
+cat > "$IGNORE_STUB" <<EOF
+#!/usr/bin/env bash
+trap '' TERM
+( trap '' TERM; sleep 6; : > "$TMP/ignore-term.marker" ) &
+sleep 6
+: > "$TMP/ignore-term.marker"
+EOF
+chmod +x "$IGNORE_STUB"
+set +e
+OUT="$(CODEX_HOME="$REAL_HOME" CODEX_BIN="$IGNORE_STUB" SBL_HELPER="$LOCK_LIB" \
+    CODEX_JOBS_DIR="$JOBS_DIR" CODEX_REAP_HELPER="$REAP_STUB" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER" CODEX_EXEC_TIMEOUT=1 \
+    bash "$DISPATCH" --review-scratch "$SCRATCH" --stdin-brief 2>&1 < /dev/null)"
+RC=$?
+set -e
+assert_rc 124 "20p a review that ignores TERM is killed at the timeout" "rc=$RC out=$OUT"
+sleep 8
+if [ -e "$TMP/ignore-term.marker" ]; then fail "20q the whole tree survived the timeout: a marker was written after it"; else pass "20q no process of the tree outlives the timeout (no marker written)"; fi
+
 echo
 if [ "$fails" -ne 0 ]; then
   echo "FAILED: $fails test(s)"; exit 1

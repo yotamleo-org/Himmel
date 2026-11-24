@@ -3,8 +3,10 @@
 """Second opinion for a clip the harvester flagged injection-suspect.
 
 Two independent reviewers read the SAME clip text as untrusted data:
-  1. codex, run read-only in a scratch directory (a fixed prompt, the clip
-     only as quoted data, time-bounded), returns benign|suspect|malicious;
+  1. codex, run through the codex-exec chokepoint in review mode (read-only,
+     an isolated CODEX_HOME with no MCP servers, plugins or hooks, an empty
+     scratch directory, a fixed prompt, the clip only as quoted data,
+     time-bounded with a process-tree kill), returns benign|suspect|malicious;
   2. the Hermes skills_guard scanner, returns safe|caution|dangerous.
 No Claude model is called (decision 1084).
 
@@ -14,7 +16,7 @@ dangerous verdict, a timeout, a missing binary, a refusal to run (no
 HIMMEL_BILLED_OK=1) or any error keeps the operator flag.
 
 Seams (tests point them at stubs; the live values are the defaults):
-  SECOND_OPINION_CODEX_BIN    codex binary (default: codex)
+  SECOND_OPINION_DISPATCH     the chokepoint (default: HIMMEL_REPO/scripts/codex/dispatch-codex-exec.sh)
   SECOND_OPINION_HERMES_PY    Hermes venv python (default below)
   SECOND_OPINION_HERMES_ROOT  Hermes checkout (default below)
   SECOND_OPINION_TIMEOUT      seconds per reviewer (default 120)
@@ -23,11 +25,13 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 from pathlib import Path
 
-CODEX_BIN = "SECOND_OPINION_CODEX_BIN"
+DISPATCH = "SECOND_OPINION_DISPATCH"
+KILL_SLACK_SECS = 30
 HERMES_PY = "SECOND_OPINION_HERMES_PY"
 HERMES_ROOT = "SECOND_OPINION_HERMES_ROOT"
 DEFAULT_HERMES_ROOT = os.path.join(os.path.expanduser("~"), ".hermes", "hermes-agent")
@@ -67,11 +71,40 @@ def _timeout():
         return DEFAULT_TIMEOUT
 
 
+def dispatch_path():
+    explicit = os.environ.get(DISPATCH)
+    if explicit:
+        return explicit
+    repo = os.environ.get("HIMMEL_REPO")
+    return os.path.join(repo, "scripts", "codex", "dispatch-codex-exec.sh") if repo else None
+
+
 def codex_argv(scratch):
-    """The exact codex argument list: fresh run, read-only sandbox (no network,
-    no write), working root = the scratch dir, prompt on stdin."""
-    return [os.environ.get(CODEX_BIN, "codex"), "exec", "--skip-git-repo-check",
-            "-s", "read-only", "-C", str(scratch), "-"]
+    """The chokepoint call: review mode fixes the sandbox to read-only, gives
+    codex an isolated CODEX_HOME (no MCP servers, plugins or hooks) and the
+    empty scratch dir as its only workspace; the prompt arrives on stdin."""
+    path = dispatch_path()
+    if not path or not os.path.isfile(path):
+        return None
+    return ["bash", path, "--review-scratch", str(scratch), "--stdin-brief"]
+
+
+def _run(argv, timeout, input_text=None, env=None, cwd=None):
+    """Run argv in its own process group; on timeout kill the whole group, so
+    a child that ignores the timeout cannot keep running. -> (rc, stdout)."""
+    proc = subprocess.Popen(argv, stdin=subprocess.PIPE if input_text is not None else subprocess.DEVNULL,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            env=env, cwd=cwd, start_new_session=True)
+    try:
+        out, _err = proc.communicate(input_text, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.communicate()
+        raise
+    return proc.returncode, out
 
 
 def _one_line(s, limit=160):
@@ -98,22 +131,25 @@ def run_codex(text, scratch):
     """-> (verdict, passages). verdict is a CODEX_VERDICTS token or 'error'."""
     if os.environ.get("HIMMEL_BILLED_OK") != "1":
         return "error", ["not-opted-in: set HIMMEL_BILLED_OK=1 to allow the codex review"]
+    argv = codex_argv(scratch)
+    if argv is None:
+        return "error", ["no codex dispatch chokepoint found: set HIMMEL_REPO"]
     prompt = PROMPT + "BEGIN-CLIP\n" + text[:MAX_CLIP_CHARS] + "\nEND-CLIP\n"
+    env = dict(os.environ, CODEX_EXEC_TIMEOUT=str(_timeout()))
     try:
-        p = subprocess.run(codex_argv(scratch), input=prompt, capture_output=True,
-                           text=True, timeout=_timeout(), cwd=str(scratch))
+        rc, out = _run(argv, _timeout() + KILL_SLACK_SECS, prompt, env, str(scratch))
     except subprocess.TimeoutExpired:
         return "error", ["codex timed out"]
     except Exception as e:
         return "error", [_one_line(f"codex failed to run: {type(e).__name__}")]
     if any(Path(scratch).iterdir()):
         return "error", ["sandbox violation: codex wrote into the scratch dir"]
-    if p.returncode != 0:
-        return "error", [f"codex exited {p.returncode}"]
-    v, passages = _parse_codex(p.stdout)
+    if rc != 0:
+        return "error", [f"codex exited {rc}"]
+    v, passages = _parse_codex(out)
     if v is None:
         return "error", ["codex reply was not a verdict"]
-    return v, passages
+    return v, [p for p in passages if p and p in " ".join(text.split())]
 
 
 def run_guard(clip_file):
@@ -121,15 +157,14 @@ def run_guard(clip_file):
     py = os.environ.get(HERMES_PY, DEFAULT_HERMES_ROOT + "/venv/bin/python")
     root = os.environ.get(HERMES_ROOT, DEFAULT_HERMES_ROOT)
     try:
-        p = subprocess.run([py, "-I", "-c", GUARD_RUNNER, root, str(clip_file)],
-                           capture_output=True, text=True, timeout=_timeout())
+        rc, out = _run([py, "-I", "-c", GUARD_RUNNER, root, str(clip_file)], _timeout())
     except subprocess.TimeoutExpired:
         return "error", []
     except Exception:
         return "error", []
-    if p.returncode != 0:
+    if rc != 0:
         return "error", []
-    for line in reversed(p.stdout.strip().splitlines()):
+    for line in reversed(out.strip().splitlines()):
         try:
             obj = json.loads(line)
         except ValueError:
