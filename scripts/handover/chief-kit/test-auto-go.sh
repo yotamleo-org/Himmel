@@ -102,7 +102,9 @@ case "$*" in
         printf '{"state":"%s","headRefOid":"%s","baseRefName":"%s"}\n' \
             "${STUB_PR_STATE:-OPEN}" "${STUB_PR_HEAD:-$READY_STUB_HEAD}" "${STUB_PR_BASE:-main}"; exit 0 ;;
     "pr view "*"--json headRefOid,state"*) cat "$STUB_GC/head-$3.json" 2>/dev/null || exit 1; exit 0 ;;  # read-sink-ok: the stub reads its own fixture dir
-    "pr view "*"--json title"*) printf '%s\n' "${STUB_TITLE:-fix(x): [HIMMEL-1] t (#1)}"; exit 0 ;;
+    "pr view "*"--json title"*)
+        [ "${STUB_TITLE_NEEDS_R:-0}" = 1 ] && case "$*" in "pr view 77 -R o/r --json title"*) ;; *) echo "no git remotes found" >&2; exit 1 ;; esac
+        printf '%s\n' "${STUB_TITLE:-fix(x): [HIMMEL-1] t (#1)}"; exit 0 ;;
     # a keyed title makes ready-check read the head and author; neither stub answers them otherwise and the two bounce the call forever
     "pr view "*"--json headRefOid --jq"*) printf '%s\n' "$READY_STUB_HEAD"; exit 0 ;;
     "pr view "*"--json author"*) printf 'someone\n'; exit 0 ;;
@@ -462,6 +464,8 @@ reset; STUB_LABELS_HIMMEL_1="ui, needs-docs" run --dry-run 77 "$SHA"
 check "check 4 an unrelated label passes" "$RC" "0"
 reset; STUB_JIRA_FAIL=1 run --dry-run 77 "$SHA";  esc "check 4 unreadable Jira (never a pass)" 4
 reset; STUB_TITLE='fix(x): no key here' run --dry-run 77 "$SHA";  esc "check 4 a title with no ticket key is unreadable" 4
+reset; STUB_TITLE_NEEDS_R=1 run --dry-run 77 "$SHA"
+check "10828 check 4 reads the title with the repo named (a gh that needs -R still passes)" "$RC" "0"
 for hold in 'merge-hold: #77' 'merge-hold: 77' 'merge-hold: HIMMEL-1' 'merge-hold: all' 'merge-hold: #12, #77'; do
     reset; write_fixtures native "$hold"; run --dry-run 77 "$SHA";  esc "check 4 [$hold]" 4
 done
@@ -879,7 +883,7 @@ check    "8691 main REST core spent: no read rides the main token but cr-disposi
 check    "8691 main REST core spent: the repo name read logs tok=read" "$(ttseen '^tok=read argv=repo view --json nameWithOwner')" "yes"
 check    "8691 main REST core spent: the PR state read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 -R o/r --json state,headRefOid,baseRefName')" "yes"
 check    "10828 the default-branch read names the repo and logs tok=read" "$(ttseen '^tok=read argv=repo view o/r --json defaultBranchRef')" "yes"
-check    "8691 main REST core spent: the title read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json title')" "yes"
+check    "8691 main REST core spent: the title read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 -R o/r --json title')" "yes"
 check    "8691 main REST core spent: the file listing read logs tok=read" "$(ttseen '^tok=read argv=api repos/o/r/pulls/77/files')" "yes"
 check    "8691 main REST core spent: the commit list read logs tok=read" "$(ttseen '^tok=read argv=api repos/o/r/pulls/77/commits')" "yes"
 ttrun "$tmp/ttroot" GH_STUB_MAINFAIL=rate
