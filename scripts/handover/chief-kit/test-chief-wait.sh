@@ -812,6 +812,13 @@ check "(dr4) a same-day repeat wakes nothing" "running" "$(dr_alive)"
 dr_tick 5
 check "(dr4) a larger count the same day still wakes nothing" "running" "$(dr_alive)"
 stop_waiter "$WPID"
+dr_tick 3
+I="$(new_inbox dr5)"
+mkdir "$I.wait.drift.$(date -u +%F)"
+start "$I" "$WORK/dr5.out"
+wait_hb "$I" || fail "(dr5) no baseline heartbeat"
+check "(dr5) a day marker that cannot be claimed wakes nothing" "running" "$(dr_alive)"
+stop_waiter "$WPID"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

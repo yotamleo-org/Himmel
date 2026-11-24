@@ -17,10 +17,15 @@ export DRIFT_NOW=2026-11-24T12:00Z
 
 cat > "$W/drift-gh" <<'STUB'
 #!/usr/bin/env bash
-[ "${1:-} ${2:-} ${3:-}" = "issue view 4470" ] || exit 7
-case " $* " in *" -R $DRIFT_EXPECT_REPO "*) ;; *) exit 7 ;; esac
-case " $* " in *" --json body "*) ;; *) exit 7 ;; esac
+[ -z "${DRIFT_GH_LOG:-}" ] || printf '%s\n' "$*" >> "$DRIFT_GH_LOG"
 [ -z "${DRIFT_GH_FAIL:-}" ] || exit 1
+case " $* " in *" -R $DRIFT_EXPECT_REPO "*) ;; *) exit 7 ;; esac
+if [ "${1:-} ${2:-}" = "issue view" ]; then cat "$DRIFT_BODY_FILE"; exit; fi
+[ "${1:-} ${2:-}" = "issue list" ] || exit 7
+case " $* " in *" --label fork-drift "*) ;; *) exit 7 ;; esac
+case " $* " in *" --state open "*) ;; *) exit 7 ;; esac
+case " $* " in *" --json body "*) ;; *) exit 7 ;; esac
+[ -z "${DRIFT_NO_OPEN:-}" ] || exit 0
 cat "$DRIFT_BODY_FILE"
 STUB
 chmod +x "$W/drift-gh"
@@ -53,6 +58,7 @@ wakes() { printf '%s\n' "$1" | grep -c '^WAKE drift-actionable ' || true; }
 mk_holds 2026-11-25T08:00Z
 mk_body "$ROW_TASTE" ''
 export TICK_STATE_DIR="$W/state-once"
+export DRIFT_GH_LOG="$W/gh.log"
 out1="$(bash "$SUT")"
 contains 'one Needs-update row prints drift=1 on the TICK line' "$(printf '%s\n' "$out1" | grep '^TICK ')" ' drift=1'
 contains 'one actionable row wakes the chief' "$out1" 'WAKE drift-actionable 1'
@@ -60,6 +66,8 @@ contains 'one actionable row wakes the chief' "$out1" 'WAKE drift-actionable 1'
 out2="$(bash "$SUT")"
 contains 'a second same-day tick still prints drift=1' "$(printf '%s\n' "$out2" | grep '^TICK ')" ' drift=1'
 [ "$(wakes "$out2")" -eq 0 ] && pass 'a second same-day tick does not wake again' || fail "the second tick printed $(wakes "$out2") wakes"
+[ "$(wc -l < "$DRIFT_GH_LOG")" -eq 1 ] && pass 'a second tick within the hour makes no gh call' || fail "two ticks made $(wc -l < "$DRIFT_GH_LOG") gh calls"
+unset DRIFT_GH_LOG
 
 mk_holds 2026-11-25T08:00Z
 mk_body '' "$HELD_LINE"
@@ -77,6 +85,18 @@ export TICK_STATE_DIR="$W/state-fail"
 out5="$(DRIFT_GH_FAIL=1 bash "$SUT")"
 contains 'a failed gh read prints drift=?' "$(printf '%s\n' "$out5" | grep '^TICK ')" ' drift=?'
 [ "$(wakes "$out5")" -eq 0 ] && pass 'a failed gh read never wakes' || fail "a failed read woke $(wakes "$out5") times"
+
+mk_holds 2026-11-25T08:00Z
+mk_body "$ROW_TASTE" ''
+export TICK_STATE_DIR="$W/state-closed"
+out7="$(DRIFT_NO_OPEN=1 bash "$SUT")"
+contains 'a closed issue with a stale actionable body prints drift=0' "$(printf '%s\n' "$out7" | grep '^TICK ')" ' drift=0'
+[ "$(wakes "$out7")" -eq 0 ] && pass 'a closed issue never wakes' || fail "a closed issue woke $(wakes "$out7") times"
+rm -f "$DRIFT_BODY_FILE"
+export TICK_STATE_DIR="$W/state-noissue"
+out8="$(DRIFT_NO_OPEN=1 bash "$SUT")"
+contains 'no open drift issue prints drift=0' "$(printf '%s\n' "$out8" | grep '^TICK ')" ' drift=0'
+[ "$(wakes "$out8")" -eq 0 ] && pass 'no open drift issue never wakes' || fail "no open issue woke $(wakes "$out8") times"
 
 mk_holds 2026-11-24T08:00Z
 mk_body "$ROW_TASTE" "$HELD_LINE"

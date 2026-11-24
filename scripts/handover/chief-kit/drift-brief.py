@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""drift-brief.py - the actionable rows of the nightly drift issue (GitHub issue 4470),
+"""drift-brief.py - the actionable rows of the open nightly drift issue (label fork-drift),
 and the worker brief that lands them. No model call, no network: it reads the issue body
 (stdin or --body-file) and scripts/upstreams/pin-holds.json.
 
@@ -15,7 +15,8 @@ and the worker brief that lands them. No model call, no network: it reads the is
       shape of a hand-written drift brief, and prints its path. With no actionable row it
       writes nothing and exits 1.
 
-tick.sh runs `count` once a day; the chief runs `brief` when the wake names rows.
+tick.sh runs `count` on a copy of the open issue's body it re-reads at most once an hour
+(no open issue counts 0); the chief runs `brief` when the wake names rows.
 """
 import argparse
 import importlib.util
@@ -104,7 +105,7 @@ def cmd_count(args):
 
 BRIEF = """---
 resume_cwd: {worktree}
-description: "Land the {n} actionable fork-drift rows of GitHub issue 4470 ({date}) so the nightly drift report clears; completes-ticket: no"
+description: "Land the {n} actionable fork-drift rows of the open drift issue ({date}) so the nightly drift report clears; completes-ticket: no"
 template_version: 3
 ---
 
@@ -120,11 +121,11 @@ template_version: 3
 
 > **Completes ticket:** no
 
-> **Why (read `gh issue view 4470{repo_flag}` first, rows move):** the nightly fork-drift report lists these {n} actionable rows (Needs-update rows, and held rows whose 72 h buffer has cleared). Operator decision 1051: a daily check keeps each catch-up small.
+> **Why (read the open drift issue first with `gh issue list --label fork-drift --state open{repo_flag}`, rows move):** the nightly fork-drift report lists these {n} actionable rows (Needs-update rows, and held rows whose 72 h buffer has cleared). Operator decision 1051: a daily check keeps each catch-up small.
 {rows}
 > NOT in scope: any row not listed above, any row still inside its 72 h buffer, any HELD row with no `eligible` time.
 
-> **Sources:** issue 4470's live table; `scripts/upstreams/pin-holds.json` and `scripts/upstreams/pin-scan.py` (72 h release-age holds); `marketplace/.claude-plugin/marketplace.json` (sha pins); `scripts/upstreams.json` (synced_base); `scripts/machine-setup/installer-pins.sh`; `scripts/upstreams/resync-fork.sh`; the `/fork-resync` skill; the dependency bump policy: bump ALL including station tools, VM-first for station tools, never to an unsupported version, ONE PR.
+> **Sources:** the open drift issue's live table; `scripts/upstreams/pin-holds.json` and `scripts/upstreams/pin-scan.py` (72 h release-age holds); `marketplace/.claude-plugin/marketplace.json` (sha pins); `scripts/upstreams.json` (synced_base); `scripts/machine-setup/installer-pins.sh`; `scripts/upstreams/resync-fork.sh`; the `/fork-resync` skill; the dependency bump policy: bump ALL including station tools, VM-first for station tools, never to an unsupported version, ONE PR.
 
 > **Prior art:** the first drift backlog landing, the nightly drift check that holds every kind of pin, and the pin-scan eligible field; source: the Jira search for issue 4470.
 > Before you design, run `bash {primary}/scripts/lib/qmd-bounded.sh query -c jira-himmel "fork drift report pin bump station tool VM first"` and `bash {primary}/scripts/lib/qmd-bounded.sh query -c luna "fork drift report pin bump station tool VM first"`, and `bash scripts/graphify/worker-graph.sh explain "pin-scan.py"`, and cite what each returned, or write none found with the query you ran. Your Results carry a `graph-qmd: <what each returned and whether used>` bullet.

@@ -301,10 +301,10 @@
 #                               new-classes-5+=<n>, and STALE (no review for 26 h). Once per
 #                               review day (and once per last-review date for STALE): <inbox>.wait.review holds
 #                               `<date>` and `stale-<date>`. A 1-count class never wakes; review=none or ? wakes nothing.
-#   WAKE drift-actionable <n>   the tick's drift=<n> field counts actionable rows of the nightly drift issue 4470
+#   WAKE drift-actionable <n>   the tick's drift=<n> field counts actionable rows of the open nightly drift issue
 #                               (Needs-update rows and held rows whose 72 h buffer has cleared). Once per UTC
-#                               day: <inbox>.wait.drift holds the date of the last wake, so a re-armed waiter
-#                               replays nothing. drift=0 or ? wakes nothing.
+#                               day: the atomic create of <inbox>.wait.drift.<date> claims the wake, so a re-armed waiter
+#                               replays nothing and a claim that cannot be made wakes nothing. drift=0 or ? wakes nothing.
 #   WAKE tick-usage rc=2 <line>  the first sample whose tick exited 2 (tick.sh's usage error: the
 #                               arm forwarded a flag it refuses). <line> is tick's first stderr line.
 #                               Never batched into the digest; every re-arm on a broken arm wakes again.
@@ -1891,8 +1891,8 @@ drift_wake() {
     case "$1" in ''|*[!0-9]*) return 1 ;; esac
     [ "$((10#$1))" -gt 0 ] || return 1
     today="$(date -u +%F)"
-    [ "$(cat "$drift_file" 2>/dev/null)" != "$today" ] || return 1  # swallow-ok: no marker yet reads as not woken today
-    printf '%s\n' "$today" > "$drift_file" 2>/dev/null
+    (set -C; : > "$drift_file.$today") 2>/dev/null || return 1  # swallow-ok: a claimed or unclaimable day wakes nothing
+    find "${drift_file%/*}" -maxdepth 1 -name "${drift_file##*/}.*" -mtime +7 -delete 2>/dev/null  # gnu-ok: console kit is Linux-only # swallow-ok: an unprunable old claim is harmless
     printf 'drift-actionable %s\n' "$1"
 }
 # tracker_stale_wake: <tracker= value> — a tracker that STAYS stale. A class change
