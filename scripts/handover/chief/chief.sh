@@ -3002,7 +3002,7 @@ cmd_next() {
         FLEET_MANIFEST_NOTE "$manifest_note" \
         LETTER "$successor_letter" \
         PREDECESSOR "$predecessor_base" \
-        PREDECESSOR_HANDOFF "$predecessor_digest_ref" \
+        PREDECESSOR_HANDOFF "$predecessor_digest_ref** (the full HANDOFF, on demand only: **$predecessor_handoff_ref" \
         SESSION_NAME "$session" \
         INBOX "$inbox" \
         HANDOVER_ROOT "$root" \

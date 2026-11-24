@@ -72,7 +72,7 @@ rc=0
 out="$(chief next --bucket dgdst --doc "$docA" 2>&1)" || rc=$?
 check "0 next succeeds on the fixture" "$rc" "0"
 
-named="$(sed -n 's/^> predecessor.s learnings in \*\*\([^*]*\)\*\* win.*$/\1/p' "$docB" | head -n 1)"
+named="$(sed -n 's/^> predecessor.s learnings in \*\*\([^*]*\)\*\*.*$/\1/p' "$docB" | head -n 1)"
 named_path="$root/tester/dgsrc/${named##*/}"
 check "1 the preface names a file that exists" "$([ -f "$named_path" ] && echo yes)" "yes"
 named_bytes="$(wc -c < "$named_path" 2>/dev/null | tr -d ' ')"
