@@ -861,7 +861,7 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # chief-kit/bucket-gitleaks.sh (which runs chief-kit/vault-status.sh), so all
 # four are guarded.
 # worker-pr-open.sh runs chief-kit/holds.py narrow (the PR claim), so holds.py is guarded too.
-cr_guarded="scripts/cr scripts/lib scripts/api-lane scripts/ledger scripts/guardrails/lib.sh scripts/check-ci.sh scripts/handover/resolve-active-item.sh
+cr_guarded="scripts/cr scripts/lib scripts/api-lane scripts/ledger scripts/peer-bridge scripts/guardrails/lib.sh scripts/check-ci.sh scripts/handover/resolve-active-item.sh
 scripts/eval/cr-ledger/cr_ledger_eval.py scripts/eval/lib/eval_runs.py
 scripts/handover/resolve-active-item-report.sh
 scripts/handover/append-cr-findings.sh scripts/handover/append-cr-bugs.sh scripts/handover/bug.sh
@@ -877,6 +877,7 @@ scripts/lanes/resolve.mjs scripts/lanes/check.mjs scripts/lanes/probe.mjs script
 scripts/observability/quota-sources.ts
 scripts/telegram/alibaba-probe-once.ts scripts/telegram/quota-gauge.ts scripts/telegram/quota-gauge-alibaba.ts
 scripts/telegram/chief-route.ts scripts/telegram/key-brief.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
+scripts/telegram/lockdown.ts scripts/telegram/peer-notify-route.ts
 scripts/telegram/chief-heartbeat-watch.ts
 scripts/telegram/router.ts scripts/telegram/auto-action.ts scripts/telegram/telegram-api.ts scripts/telegram/session-status.ts
 scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/afk-sudo-route.ts scripts/telegram/run.ts
@@ -894,7 +895,7 @@ scripts/handover/chief-kit/bucket-gitleaks.sh scripts/handover/chief-kit/vault-s
 scripts/handover/suite-coverage.sh
 scripts/luna/cadence-alert.sh scripts/luna/vault-stall-alert.sh scripts/luna/qmd-embed-model.sh scripts/luna/qmd-reindex.sh
 scripts/qmd/qmd-jina-gate.mjs scripts/qmd/vocab-expand.py"
-cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/' ':(top)scripts/ledger/' ':(top)scripts/guardrails/lib.sh' ':(top)scripts/check-ci.sh'
+cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/' ':(top)scripts/ledger/' ':(top)scripts/peer-bridge/' ':(top)scripts/guardrails/lib.sh' ':(top)scripts/check-ci.sh'
     ':(top)scripts/handover/resolve-active-item.sh'
     ':(top)scripts/handover/resolve-active-item-report.sh'
     ':(top)scripts/handover/append-cr-findings.sh' ':(top)scripts/handover/append-cr-bugs.sh' ':(top)scripts/handover/bug.sh'
@@ -914,6 +915,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/telegram/chief-route.ts' ':(top)scripts/telegram/key-brief.ts' ':(top)scripts/telegram/bus.ts'
     ':(top)scripts/telegram/chief-heartbeat-watch.ts'
     ':(top)scripts/telegram/poller.ts' ':(top)scripts/telegram/router.ts'
+    ':(top)scripts/telegram/lockdown.ts' ':(top)scripts/telegram/peer-notify-route.ts'
     ':(top)scripts/telegram/auto-action.ts' ':(top)scripts/telegram/telegram-api.ts'
     ':(top)scripts/telegram/session-status.ts'
     ':(top)scripts/telegram/log-timestamp.ts' ':(top)scripts/telegram/gate.ts' ':(top)scripts/telegram/afk-sudo-route.ts'
