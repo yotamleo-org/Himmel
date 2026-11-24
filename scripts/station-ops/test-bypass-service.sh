@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Tests for scripts/station-ops/bypass-service.sh: the unit renders, on/off/status run against a stub service manager,
-# restart-if-changed restarts only an enabled unit whose script bytes changed, and a Claude session cannot turn the unit on or off.
-# Usage: bash scripts/station-ops/test-bypass-service.sh
 set -uo pipefail
 unset HANDOVER_DIR
 

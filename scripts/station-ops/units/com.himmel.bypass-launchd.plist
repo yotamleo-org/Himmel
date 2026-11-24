@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- LaunchAgent for the bypass launch daemon (scripts/station-ops/bypass-launchd.sh). Written by `himmelctl bypass on`
-     (scripts/station-ops/bypass-service.sh), which fills in the placeholders; re-run it rather than editing the installed copy. -->
 <plist version="1.0">
 <dict>
     <key>Label</key>

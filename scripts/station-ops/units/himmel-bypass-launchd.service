@@ -1,6 +1,3 @@
-# himmel-bypass-launchd.service: systemd USER unit for the bypass launch daemon (scripts/station-ops/bypass-launchd.sh).
-# Written by `himmelctl bypass on` (scripts/station-ops/bypass-service.sh), which fills in the placeholders; re-run it rather than
-# editing the installed copy. Spec: docs/internals/bypass-launch-route.md, "Run it as a service".
 # NotifyAccess=all because the heartbeat is sent by systemd-notify, a child of the main process.
 [Unit]
 Description=himmel bypass launch daemon (go-code route)

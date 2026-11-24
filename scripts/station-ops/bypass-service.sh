@@ -12,7 +12,6 @@
 #
 # on, off and restart refuse inside a Claude session (CLAUDECODE). status and restart-if-changed do not.
 # Exit: 0 ok; 1 not ok (on: a hand-started daemon holds the bucket; status: not running or stale; restart-if-changed: failed); 2 refused or bad use.
-# Test seams: systemctl, loginctl, launchctl on PATH; HIMMELCTL_SYSTEMD_USER_UNIT_DIR; HOME; BYPASSD_SERVICE_OS; BYPASSD_CONFIRM_SECS.
 set -uo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"

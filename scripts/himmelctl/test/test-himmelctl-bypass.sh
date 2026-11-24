@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Tests for `himmelctl bypass on|off|restart|status [--bucket <dir>]`: the argument grammar and the hand-over to
-# scripts/station-ops/bypass-service.sh, which a stub records. The service script itself is covered by station-ops/test-bypass-service.sh.
-# Usage: bash scripts/himmelctl/test/test-himmelctl-bypass.sh
 set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
