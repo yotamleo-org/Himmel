@@ -40,7 +40,7 @@ fi
 
 opts="$(HOME="$T/home" vm_ssh_opts 2222)"
 case "$opts" in
-    *"-o UserKnownHostsFile=~/.himmel/vm/known_hosts/ubuntu_new"*) pass "port 2222 pins the per-VM known_hosts of ubuntu_new" ;;
+    *"-o UserKnownHostsFile=$T/home/.himmel/vm/known_hosts/ubuntu_new"*) pass "port 2222 pins the per-VM known_hosts of ubuntu_new" ;;
     *) fail "port 2222 pin missing: '$opts'" ;;
 esac
 case "$opts" in *"StrictHostKeyChecking=accept-new"*) pass "keeps accept-new" ;; *) fail "accept-new missing: '$opts'" ;; esac
@@ -52,6 +52,10 @@ case "$warn" in *"cannot create"*) pass "an uncreatable known_hosts directory is
 
 warn="$(HIMMEL_VMS_JSON="$T/absent.json" HOME="$T/home" vm_ssh_opts 2222 2>&1 >/dev/null)"
 case "$warn" in *"cannot read the VM registry"*) pass "an unreadable VM registry is reported" ;; *) fail "no warning for an unreadable registry: '$warn'" ;; esac
+
+printf '%s\n' '{ not json' > "$T/bad.json"
+warn="$(HIMMEL_VMS_JSON="$T/bad.json" HOME="$T/home" vm_ssh_opts 2222 2>&1 >/dev/null)"
+case "$warn" in *"cannot read the VM registry"*) pass "a malformed VM registry is reported" ;; *) fail "no warning for a malformed registry: '$warn'" ;; esac
 
 opts="$(HOME="$T/home" vm_ssh_opts 2230)"
 case "$opts" in *"known_hosts/himmel-gui-1"*) pass "port 2230 maps to himmel-gui-1" ;; *) fail "port 2230: '$opts'" ;; esac
@@ -104,7 +108,7 @@ for suite in scripts/test-install-symmetry-vm.sh scripts/test-luna-upgrade-vm.sh
         [ "$SUITE_RC" = 3 ] && pass "$suite $mode: exit 3" || fail "$suite $mode: rc=$SUITE_RC, want 3: $SUITE_OUT"
         case "$SUITE_OUT" in *"$want"*) pass "$suite $mode: names '$want'" ;; *) fail "$suite $mode: no '$want' in: $SUITE_OUT" ;; esac
     done
-    if grep -q -- "-o UserKnownHostsFile=~/.himmel/vm/known_hosts/ubuntu_new" "$T/ssh.log"; then
+    if grep -qF -- "-o UserKnownHostsFile=$T/home/.himmel/vm/known_hosts/ubuntu_new" "$T/ssh.log"; then
         pass "$suite: ssh is pinned to the per-VM known_hosts"
     else
         fail "$suite: ssh not pinned; log: $(cat "$T/ssh.log")"

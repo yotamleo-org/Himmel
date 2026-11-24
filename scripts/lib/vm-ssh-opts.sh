@@ -10,7 +10,7 @@
 #   vm_ssh_vm_for_port <port>   prints the vms.json VM whose ssh_port is <port> (rc 1: none)
 #   vm_ssh_guest_user <vm>      prints that VM's guest user (rc 1: none)
 #   vm_ssh_opts <port>          prints the host-key ssh options, ready to word-split into
-#                               SSH_OPTS: -o UserKnownHostsFile=~/.himmel/vm/known_hosts/<vm>
+#                               SSH_OPTS: -o UserKnownHostsFile=$HOME/.himmel/vm/known_hosts/<vm>
 #                               -o StrictHostKeyChecking=accept-new (accept-new alone when
 #                               no VM owns the port); creates the file's directory
 #   vm_ssh_probe_report <ssh stderr> <host> <port> <identity>
@@ -54,10 +54,11 @@ vm_ssh_opts() {
         else
             echo "vm-ssh-opts: cannot create ${HOME:-}/.himmel/vm/known_hosts; the accepted host key will not persist" >&2
         fi
-        printf '%s' "-o UserKnownHostsFile=~/.himmel/vm/known_hosts/$vm -o StrictHostKeyChecking=accept-new"
+        printf '%s' "-o UserKnownHostsFile=${HOME:-}/.himmel/vm/known_hosts/$vm -o StrictHostKeyChecking=accept-new"
     else
-        if ! command -v python3 >/dev/null 2>&1 || [ ! -r "${HIMMEL_VMS_JSON:-$VM_SSH_OPTS_VMS_JSON_DEFAULT}" ]; then
-            echo "vm-ssh-opts: cannot read the VM registry (python3 or vms.json missing); ssh uses the station known_hosts" >&2
+        if ! command -v python3 >/dev/null 2>&1 \
+            || ! python3 -I -c 'import json, sys; json.load(open(sys.argv[1]))' "${HIMMEL_VMS_JSON:-$VM_SSH_OPTS_VMS_JSON_DEFAULT}" 2>/dev/null; then
+            echo "vm-ssh-opts: cannot read the VM registry (python3 missing, or vms.json missing or malformed); ssh uses the station known_hosts" >&2
         fi
         printf '%s' "-o StrictHostKeyChecking=accept-new"
     fi
@@ -65,8 +66,7 @@ vm_ssh_opts() {
 
 vm_ssh_probe_report() {
     local err="$1" host="$2" port="$3" ident="$4" vm kh=""
-    # shellcheck disable=SC2088  # the literal ~ is for the operator's eyes, never expanded
-    if vm="$(vm_ssh_vm_for_port "$port")" && [ -n "$vm" ]; then kh="~/.himmel/vm/known_hosts/$vm"; fi
+    if vm="$(vm_ssh_vm_for_port "$port")" && [ -n "$vm" ]; then kh="${HOME:-}/.himmel/vm/known_hosts/$vm"; fi
     case "$err" in
         *"HOST IDENTIFICATION HAS CHANGED"*|*"Host key verification failed"*)
             echo "ERROR: cannot ssh to $host:$port: host key changed -- the guest was rebuilt or restored." >&2
