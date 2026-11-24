@@ -235,7 +235,7 @@ console.log("FIXTURE_WINS=" + (hit.url === "fixture"));
 
 // each backend flag independently activates the rung (returns a composed webFn).
 console.log("QMD_ENABLES=" + (typeof makeWebFn({ FOLLOW_WEB_QMD: "1" }) === "function"));
-console.log("CLI_ENABLES=" + (typeof makeWebFn({ FOLLOW_WEB_CLI: "agy" }) === "function"));
+console.log("CLI_ENABLES=" + (typeof makeWebFn({ FOLLOW_WEB_CLI: "bash" }) === "function"));
 console.log("HERMES_ENABLES=" + (typeof makeWebFn({ FOLLOW_WEB_HERMES: "1" }) === "function"));
 console.log("FIRECRAWL_ENABLES=" + (typeof makeWebFn({ FIRECRAWL_API_KEY: "key" }) === "function"));
 EOF
@@ -270,6 +270,9 @@ import { makeCliWebFn } from "$lib_url";
 
 // null when FOLLOW_WEB_CLI unset (default OFF).
 console.log("NULL_UNSET=" + (makeCliWebFn({}) === null));
+for (const cmd of ["agy", "/opt/bin/agy", "C:\\\\tools\\\\agy.EXE", "agy.cmd"]) {
+  console.log("AGY_REFUSED=" + (makeCliWebFn({ FOLLOW_WEB_CLI: cmd, FOLLOW_WEB_CLI_ARGS: "-p" }) === null));
+}
 
 // set + good stub -> {found:true,...}. Run the stub via bash (portable on
 // Git-Bash where the shebang path isn't directly exec'able).
@@ -288,6 +291,8 @@ console.log("CAP_SECOND=" + (capped("b").found === false));
 EOF
 out7="$(node "$tmpdir/cli.mjs" 2>&1)"
 grep -q 'NULL_UNSET=true' <<<"$out7" && r=yes || r=no; assert "makeCliWebFn: null when FOLLOW_WEB_CLI unset" yes "$r"
+count="$(grep -c '^AGY_REFUSED=true$' <<<"$out7")"
+assert "makeCliWebFn: headless Antigravity refused for bare and absolute executable paths" 4 "$count"
 grep -q 'GOOD_FOUND=true' <<<"$out7" && r=yes || r=no; assert "makeCliWebFn: JSON-echoing stub -> {found:true,...}" yes "$r"
 grep -q 'GARBAGE=true' <<<"$out7" && r=yes || r=no; assert "makeCliWebFn: garbage stub -> {found:false}" yes "$r"
 grep -q 'CAP_FIRST=true' <<<"$out7" && r=yes || r=no; assert "makeCliWebFn: budget allows the first call" yes "$r"

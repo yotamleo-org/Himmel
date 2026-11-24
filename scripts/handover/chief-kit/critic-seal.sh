@@ -5,7 +5,8 @@
 # Usage: critic-seal.sh <verdict-file> <file-the-critic-read> <sha256-the-critic-quoted>
 #
 # Inserts `CONTENT-SHA256 <sha> <path of the file, relative to the verdict file's folder>` directly
-# above the verdict line (the last non-blank line stays `SPEC|PLAN CLEAN` or `... FINDINGS <n>`).
+# above the verdict line (the last non-blank line stays `SPEC|PLAN CLEAN` or `... FINDINGS <n>`; a page
+# critic return `<page>.critic-page-r<n>.md` ends `PAGE CLEAN` or `PAGE FINDINGS <n>` and adds no ledger row).
 # `chief-route.ts send-file` re-hashes the named file and refuses a spec or plan page whose bytes
 # changed after the critic read them. Refuses, and leaves the verdict file untouched, when:
 #   - the verdict file or the read file is missing, or the verdict file's last line is no verdict;
@@ -40,8 +41,13 @@ actual=$(sha256sum "$read_file" | cut -d' ' -f1)
 [ "$actual" = "$quoted" ] || die "$read_file hashes to $actual, not the $quoted the critic quoted; it changed since the critic read it, re-run the critic"
 
 last=$(awk 'NF { l = $0 } END { print l }' "$verdict")
-[[ "$last" =~ ^[[:space:]]*(SPEC|PLAN)\ (CLEAN|FINDINGS\ [0-9]+)[[:space:]]*$ ]] \
-  || die "$verdict last line is '$last', not SPEC|PLAN CLEAN or SPEC|PLAN FINDINGS <n>"
+if [[ "$(basename "$verdict")" =~ \.critic-page-r[0-9]+\.md$ ]]; then
+  [[ "$last" =~ ^[[:space:]]*PAGE\ (CLEAN|FINDINGS\ [0-9]+)[[:space:]]*$ ]] \
+    || die "$verdict last line is '$last', not PAGE CLEAN or PAGE FINDINGS <n>"
+else
+  [[ "$last" =~ ^[[:space:]]*(SPEC|PLAN)\ (CLEAN|FINDINGS\ [0-9]+)[[:space:]]*$ ]] \
+    || die "$verdict last line is '$last', not SPEC|PLAN CLEAN or SPEC|PLAN FINDINGS <n>"
+fi
 
 verdict_dir=$(cd "$(dirname "$verdict")" && pwd -P) || die "cannot enter the verdict file's folder"
 read_abs="$(cd "$(dirname "$read_file")" && pwd -P)/$(basename "$read_file")" || die "cannot resolve $read_file"

@@ -291,7 +291,7 @@ fi
 add_check 3 pass
 
 # --- 4. no hold -----------------------------------------------------------------------------------------
-TITLE=$("$GH_BIN" pr view "$PR" --json title --jq .title 2>/dev/null) || TITLE=""  # swallow-ok: a title with no key escalates at check 4 on the next lines
+TITLE=$("$GH_BIN" pr view "$PR" -R "$NWO" --json title --jq .title 2>/dev/null) || TITLE=""  # swallow-ok: a title with no key escalates at check 4 on the next lines
 KEYS=$(printf '%s' "$TITLE" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | sort -u)
 [ -n "$KEYS" ] || fail 4 "PR $PR's title carries no ticket key, so its labels cannot be read"
 for key in $KEYS; do

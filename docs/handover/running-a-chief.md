@@ -483,11 +483,31 @@ effort guidance, including the chief's own wake-up budget, is in
     for 30 seconds at most. It is refused, and nothing is written where it
     must succeed, while `MERGE_BLOCK_ALERT_CMD`, `TELEGRAM_ACCESS_PATH` or
     `BRIDGE_ROOT` is set and `HIMMEL_TEST_FIXTURE` is not `1`.
+  - **The copy to the operator.** After your signature row is written and the
+    lock is released, `operator spec` runs `scripts/handover/chief-kit/spec-cc.sh`
+    for 60 seconds at most, and the operator gets a copy of the spec. It sends
+    the minerva page (`<spec without .md>.html`) only when the row's SPEC critic
+    return seals it with a `CONTENT-SHA256` line and the page on disk still
+    hashes to it; otherwise one text line names the spec path, its hash and why
+    no page went. His own signature sends no copy. A failed or hung copy never
+    blocks or undoes the signature: the command prints `WARN spec copy not sent`
+    with the resend command and exits 0. Run that line to resend.
   - **`signer-check`.** `jira release signer-check <K…> [--spec <file>]
     [--mirror <dir>]` prints, per key, `SIGNER <K> chief|operator <record
     id|default>`, `SIGNER <K> operator <record id> via <V>` (the key's chief
     row covers a marked V, or with `--spec` the spec's header names V at
     `operator`), or `UNKNOWN <K> <why>`. It is read-only and exits 0.
+  - **The tracker.** `tracker.py` asks `signer-check --spec <spec>` once for
+    each unsigned critic-ready spec that carries no operator-critical marker.
+    A key at `operator`, a `via` line included, is listed under Waiting on
+    you, not Chief owes; an `UNKNOWN` key stays where it was, its reason in
+    the row. For the open keys with a `spec` row it asks `spec-check` once: a
+    `SPEC-NEEDS-OPERATOR` line is listed under Waiting on you, naming your
+    signature that does not count; a `SPEC-SIGNER-UNKNOWN` line is listed
+    under Chief owes with its why. A call that exits other than 0 (or 1 for
+    `spec-check`, which exits 1 whenever a key is not `SPEC ok`) or prints no
+    line for a key is named `release signer-check unread` or `release spec-check
+    unread` in the Waiting on you header, and its rows stay where they were.
   - **What a mark does not stop.** A worker already launched on your
     signature, and that worker's merge. `spec-check` is read at dispatch and
     launch only (`gen-briefs.py`, `brief-lint.sh`, `next-dispatchable.sh`; no
@@ -1301,6 +1321,16 @@ so no launch starts on extra usage. Plain `set` replaces it with a one-window we
 
 The Done-when for this change needs the operator to walk this once at a real
 switch and record the result (and the cache-probe verdict from step 1) in the PR.
+
+## Docker on the station
+
+Docker is off on the station by default (the operator keeps it out of the boot).
+A chief that needs it for a suite files
+`afk-sudo op-request --session <S> --ticket <T> docker action=start`, which the
+operator approves with a Telegram code, and stops it again with `action=stop`
+when the suite is done. The op only starts and stops it for the current boot and
+never changes whether it starts at boot (`docs/internals/afk-sudo.md`, the
+`docker` op).
 
 ## Controlling the VM CI runner
 

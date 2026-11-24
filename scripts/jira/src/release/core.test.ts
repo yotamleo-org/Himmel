@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { Command } from 'commander';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,7 +66,7 @@ describe('coreMatch', () => {
     await run('core-check', '--paths', path, '--mirror', mirrorOf([{ key: 'K-1' }], null), '--key', 'K-1');
     await run('core-check', '--paths', path, '--mirror', mirrorOf([{ key: 'K-1' }], { lastSync: '2026-11-01T00:00:00.000Z', complete: false }), '--key', 'K-1');
     await run('core-check', '--paths', path, '--mirror', mirrorOf([{ key: 'K-1', type: 'Bug' }], null), '--key', 'K-1');
-    expect(out).toEqual([`CORE K-1 ${path}`, `CORE K-1 ${path}`, 'BYPASS K-1 bug issue type Bug']);
+    expect(out).toEqual([`CORE K-1 ${path}`, `CORE K-1 ${path}`, 'BYPASS-NEEDS-SPEC K-1 bug no spec-review record for K-1 (bypass: issue type Bug)']);
   });
 
   it('core-check names a ship-loop path as CORE', async () => {
@@ -227,13 +228,13 @@ describe('core-check decides each key on its own', () => {
     return root;
   }
 
-  it('a Bug, an emergency and a label-only key with --docs-only each give their BYPASS', async () => {
+  it('a Bug with no spec gives BYPASS-NEEDS-SPEC; an emergency and a label-only key with --docs-only each give their BYPASS', async () => {
     const dir = m();
     await run('core-check', '--paths', MOG, '--mirror', dir, '--key', 'K-1', 'K-2', 'K-3');
     await run('core-check', '--paths', 'docs/a.md', '--docs-only', '--mirror', dir, '--key', 'K-4');
     await run('core-check', '--paths', 'docs/a.md', '--mirror', dir, '--key', 'K-4', 'K-5');
     expect(out).toEqual([
-      'BYPASS K-1 bug issue type Bug',
+      'BYPASS-NEEDS-SPEC K-1 bug no spec-review record for K-1 (bypass: issue type Bug)',
       'BYPASS K-2 emergency Bug at Highest',
       'BYPASS K-3 emergency label red-main',
       'BYPASS K-4 design core by label only, docs-only leg',
@@ -265,12 +266,12 @@ describe('core-check decides each key on its own', () => {
     expect(out).toEqual([`CORE K-5 ${MOG}`, 'UNKNOWN K-9', 'UNKNOWN K-9', 'UNKNOWN K-5']);
   });
 
-  it('a path match with a Bug key and a Story key gives BYPASS for the Bug and CORE for the Story', async () => {
+  it('a path match with a Bug key and a Story key gives BYPASS-NEEDS-SPEC for the Bug with no spec and CORE for the Story', async () => {
     await run('core-check', '--paths', MOG, '--mirror', m(), '--key', 'K-1', 'K-5');
-    expect(out).toEqual(['BYPASS K-1 bug issue type Bug', `CORE K-5 ${MOG}`]);
+    expect(out).toEqual(['BYPASS-NEEDS-SPEC K-1 bug no spec-review record for K-1 (bypass: issue type Bug)', `CORE K-5 ${MOG}`]);
   });
 
-  it('core-bypass and core-snapshot records in a second declared release turn CORE into BYPASS operator and BYPASS grandfathered', async () => {
+  it('core-bypass and core-snapshot records in a second declared release turn CORE into an operator and a grandfathered bypass', async () => {
     const root = releaseEnv();
     const words = join(root, 'verbatim.txt');
     writeFileSync(words, 'let K-5 through\n');
@@ -282,8 +283,8 @@ describe('core-check decides each key on its own', () => {
     out = [];
     await run('core-check', '--paths', MOG, '--mirror', m(), '--key', 'K-5', 'K-6', 'K-4');
     expect(out).toEqual([
-      'BYPASS K-5 operator O-R2-0002 decision 412',
-      'BYPASS K-6 grandfathered O-R2-0003 core-snapshot',
+      'BYPASS-NEEDS-SPEC K-5 operator no spec-review record for K-5 (bypass: O-R2-0002 decision 412)',
+      'BYPASS-NEEDS-SPEC K-6 grandfathered no spec-review record for K-6 (bypass: O-R2-0003 core-snapshot)',
       `CORE K-4 ${MOG}`,
     ]);
   });
@@ -310,7 +311,7 @@ describe('core-check decides each key on its own', () => {
   it('--mirror reads the named directory', async () => {
     await run('core-check', '--paths', MOG, '--mirror', mirrorOf([{ key: 'K-7', type: 'Bug' }]), '--key', 'K-7');
     await run('core-check', '--paths', MOG, '--mirror', mirrorOf([{ key: 'K-7' }]), '--key', 'K-7');
-    expect(out).toEqual(['BYPASS K-7 bug issue type Bug', `CORE K-7 ${MOG}`]);
+    expect(out).toEqual(['BYPASS-NEEDS-SPEC K-7 bug no spec-review record for K-7 (bypass: issue type Bug)', `CORE K-7 ${MOG}`]);
   });
 
   it('expands a directory to its tracked files and refuses a glob, an absolute path or a path outside the repository', async () => {
@@ -322,6 +323,89 @@ describe('core-check decides each key on its own', () => {
     for (const [p, why] of [['scripts/handover/*.sh', /glob/], [`/abs/${MOG}`, /absolute/], ['../elsewhere/a.sh', /outside the repository/]] as const) {
       await expect(run('core-check', '--paths', p, '--mirror', dir, '--key', 'K-5')).rejects.toThrow(why);
     }
+  });
+
+  async function bypassedKeys(root: string): Promise<void> {
+    const words = join(root, 'verbatim.txt');
+    writeFileSync(words, 'let K-5 through\n');
+    const keysFile = join(root, 'in-flight.txt');
+    writeFileSync(keysFile, 'K-6\n');
+    for (const r of ['R1', 'R2']) await run('operator', 'declare', r, '--versions', 'v1', '--decision', '1', '--verbatim-file', words);
+    await run('operator', 'core-bypass', 'R2', '--keys', 'K-5', '--decision', '412', '--verbatim-file', words);
+    await run('operator', 'core-snapshot', 'R2', '--keys-file', keysFile);
+  }
+
+  function reviewedSpec(root: string, key: string): { spec: string; plan: string; critic: string } {
+    const dir = join(root, 'specs', key);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'est.json'), JSON.stringify({ median_seq: 1, sigma: 0.1, dod: { passed: true } }));
+    const spec = join(dir, `${key}-design.md`);
+    writeFileSync(spec, [`# ${key}: a reviewed design`, '', `- Ticket: ${key}`, '', 'Estimate record: est.json', '',
+      '## Alternatives considered', '', '- none better.', '', '## Definition of done', '', '- the fixture records.', '',
+      '## Invariants', '', 'none', ''].join('\n'));
+    const plan = join(dir, `${key}-plan.md`);
+    writeFileSync(plan, 'plan\n\n- Task 1: build it.\n');
+    const critic = `${spec}.critic-spec-r1.md`;
+    const sha = createHash('sha256').update(readFileSync(spec)).digest('hex');
+    writeFileSync(critic, [`Key: ${key}`, `Reviewed: spec ${sha}`, '', 'the critic\'s return', '', 'SPEC CLEAN', ''].join('\n'));
+    return { spec, plan, critic };
+  }
+
+  it('a bypassed core key with no spec gives BYPASS-NEEDS-SPEC for the operator, bug and grandfathered kinds', async () => {
+    await bypassedKeys(releaseEnv());
+    out = [];
+    await run('core-check', '--paths', MOG, '--mirror', m(), '--key', 'K-5', 'K-1', 'K-6');
+    expect(out).toEqual([
+      'BYPASS-NEEDS-SPEC K-5 operator no spec-review record for K-5 (bypass: O-R2-0002 decision 412)',
+      'BYPASS-NEEDS-SPEC K-1 bug no spec-review record for K-1 (bypass: issue type Bug)',
+      'BYPASS-NEEDS-SPEC K-6 grandfathered no spec-review record for K-6 (bypass: O-R2-0003 core-snapshot)',
+    ]);
+  });
+
+  it('an emergency and a design leg never ask for a spec', async () => {
+    const dir = m();
+    await run('core-check', '--paths', MOG, '--mirror', dir, '--key', 'K-2', 'K-3');
+    await run('core-check', '--paths', 'docs/a.md', '--docs-only', '--mirror', dir, '--key', 'K-4');
+    expect(out).toEqual([
+      'BYPASS K-2 emergency Bug at Highest', 'BYPASS K-3 emergency label red-main', 'BYPASS K-4 design core by label only, docs-only leg',
+    ]);
+  });
+
+  it('with a spec and a critic record a bypassed key gives BYPASS; a deleted critic record is named', async () => {
+    const root = releaseEnv();
+    await bypassedKeys(root);
+    const ids: string[] = [];
+    let k5critic = '';
+    for (const key of ['K-5', 'K-1', 'K-6']) {
+      const f = reviewedSpec(root, key);
+      if (key === 'K-5') k5critic = f.critic;
+      out = [];
+      await run('operator', 'spec-review', 'R2', '--keys', key, '--spec', f.spec, '--plan', f.plan, '--verdict', f.critic);
+      ids.push(out[0].split(' ')[0]);
+    }
+    out = [];
+    await run('core-check', '--paths', MOG, '--mirror', m(), '--key', 'K-5', 'K-1', 'K-6');
+    unlinkSync(k5critic);
+    await run('core-check', '--paths', MOG, '--mirror', m(), '--key', 'K-5');
+    expect(out).toEqual([
+      'BYPASS K-5 operator O-R2-0002 decision 412',
+      'BYPASS K-1 bug issue type Bug',
+      'BYPASS K-6 grandfathered O-R2-0003 core-snapshot',
+      `BYPASS-NEEDS-SPEC K-5 operator ${k5critic} is missing (${ids[0]}) (bypass: O-R2-0002 decision 412)`,
+    ]);
+  });
+
+  it('the real BYPASS-NEEDS-SPEC line equals the golden line the callers\' suites feed them', async () => {
+    const golden = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'bypass-needs-spec.line'), 'utf8').trimEnd();
+    const key = golden.split(' ')[1];
+    const root = releaseEnv();
+    const words = join(root, 'verbatim.txt');
+    writeFileSync(words, 'bypass the fixture key\n');
+    await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', words);
+    await run('operator', 'core-bypass', 'R1', '--keys', key, '--decision', '804', '--verbatim-file', words);
+    out = [];
+    await run('core-check', '--paths', MOG, '--mirror', mirrorOf([{ key, type: 'Task' }]), '--key', key);
+    expect(out).toEqual([golden]);
   });
 });
 
@@ -342,7 +426,7 @@ describe('the core bypass reads who signs', () => {
   const signerRec = (id: string, ts: string, signer: 'chief' | 'operator', keys?: string[]): OperatorRow => ({
     id, kind: 'spec-signer', ts, decision: '1170', signer, ...(keys ? { keys } : {}),
   });
-  const ctxOf = (records: OperatorRow[], signer: SignerState) => ({ patterns: [`^${MOG}$`], issues, records, signer });
+  const ctxOf = (records: OperatorRow[], signer: SignerState) => ({ patterns: [`^${MOG}$`], issues, records, signer, specFor: () => ({ ok: true }) as const });
   const stateOf = (records: OperatorRow[], unreadable: string | null = null): SignerState => ({ records, unreadable, issues });
 
   it('with no spec-signer record, every fixture key keeps its core-check line (I9)', () => {
@@ -369,7 +453,11 @@ describe('the core bypass reads who signs', () => {
     expect(readSignerState(process.env, dir)).toEqual({ records: [], unreadable: null, issues: null });
     out = [];
     await run('core-check', '--paths', MOG, '--mirror', dir, '--key', 'K-5', 'K-6', 'K-1');
-    expect(out).toEqual(['BYPASS K-5 operator O-R1-0002 decision 412', 'BYPASS K-6 grandfathered O-R1-0003 core-snapshot', 'BYPASS K-1 bug issue type Bug']);
+    expect(out).toEqual([
+      'BYPASS-NEEDS-SPEC K-5 operator no spec-review record for K-5 (bypass: O-R1-0002 decision 412)',
+      'BYPASS-NEEDS-SPEC K-6 grandfathered no spec-review record for K-6 (bypass: O-R1-0003 core-snapshot)',
+      'BYPASS-NEEDS-SPEC K-1 bug no spec-review record for K-1 (bypass: issue type Bug)',
+    ]);
   });
 
   it('a marked key\'s operator core-bypass gives no BYPASS whatever its decision; under a station operator default a bypass written before it counts and one after does not; with both rows on one key, the earlier one still counts (filter, then newest) (I11, I13)', () => {
@@ -394,6 +482,22 @@ describe('the core bypass reads who signs', () => {
   it('a CoreCtx with records and no signer throws; a paths-only caller is unchanged (I13)', () => {
     expect(() => coreMatch([MOG], ['K-5'], { patterns: [`^${MOG}$`], issues, records: [] })).toThrow(/signer state/);
     expect(coreMatch([MOG], ['K-5'], { patterns: [`^${MOG}$`] })).toEqual([`CORE K-5 ${MOG}`]);
+  });
+
+  it('with the mirror read and no spec reader a gated bypass fails closed; an emergency never asks the reader', () => {
+    const records = [bypass('O-1', T0, 'K-5'), snapshotRow('O-2', 'K-6')];
+    const signer = stateOf([]);
+    expect(coreMatch([MOG], ['K-5', 'K-6', 'K-2'], { ...ctxOf(records, signer), specFor: undefined })).toEqual([
+      'BYPASS-NEEDS-SPEC K-5 operator no spec reader (bypass: O-1 decision 412)',
+      'BYPASS-NEEDS-SPEC K-6 grandfathered no spec reader (bypass: O-2 core-snapshot)',
+      'BYPASS K-2 emergency Bug at Highest',
+    ]);
+    const asked: string[] = [];
+    const specFor = (k: string) => { asked.push(k); return { ok: true } as const; };
+    expect(coreMatch([MOG], ['K-5', 'K-2'], { ...ctxOf(records, signer), specFor })).toEqual([
+      'BYPASS K-5 operator O-1 decision 412', 'BYPASS K-2 emergency Bug at Highest',
+    ]);
+    expect(asked).toEqual(['K-5']);
   });
 
   it('pathIndependentBypass gives the emergency, Bug and snapshot answers (I13)', () => {
