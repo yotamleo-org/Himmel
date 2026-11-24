@@ -19,8 +19,12 @@
 # (`agent-model-escalation: …`, exit 0) so the override is auditable; the reason
 # also stays in the dispatch prompt.
 #
-# TIER WARN (never a deny): any non-judge dispatch (untyped, general-purpose,
-# or a typed helper such as brief-drafter, whose frontmatter a call's `model` overrides) whose
+# SONNET DEFAULT (a deny): a general-purpose or untyped dispatch (the types listed in
+# default_sonnet_agent_types) whose `model` matches warn_model_patterns (today: Opus)
+# is denied and steered to model: sonnet unless the prompt has a usable `TIER:` or
+# `ESCALATION:` line. Named helpers (ticket-auditor, page-reviewer, ...) keep the warn below.
+#
+# TIER WARN (never a deny): any other non-judge dispatch (a typed helper such as brief-drafter, whose frontmatter a call's `model` overrides) whose
 # `model` matches warn_model_patterns in the policy file (today: Opus) and whose
 # prompt has no `TIER: <reason>` line (same reason-quality test as ESCALATION)
 # gets one additionalContext line naming the cheaper tier per helper kind
@@ -114,6 +118,7 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" --arg fe "$agen
     | (if $status == "ok" then $good[0] else ($rs[0] // "") end) as $reason
     | [$ti.prompt | s | split("\n")[] | capture("^[ \\t]*TIER:[ \\t]*(?<r>.*)$")? | .r | clean
        | select(length >= $min and norm != "" and (norm as $n | $ph | any(. == $n) | not))] as $tgood
+    | ([$p.default_sonnet_agent_types | arrays[] | strings | ascii_downcase] | any(. == $t)) as $dflt
     | ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) as $isj
     | ($tool == "Agent" and $isj
        and ([$ti.prompt | s | split("\n")[] | select(test("^[ \\t]*JUDGE-BRIEF:[ \\t]*[0-9a-f]{16}[ \\t]*$"))] | length) == 0) as $jbwarn
@@ -128,7 +133,8 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" --arg fe "$agen
        elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) and ($dj | length) > 0
             and ($m | test("^(claude-)?sonnet(-[0-9][0-9a-z.-]*)?(\\[[^\\]]*\\])?$")) then "delta"
        elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) and ($m | test("^(claude-)?opus(-[0-9][0-9a-z.-]*)?(\\[[^\\]]*\\])?$") | not) then "judge"
-       elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$") | not) and ($tgood | length) == 0 and ($wpats | any(. as $r | $m | test($r))) then "warn"
+       elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$") | not) and ($tgood | length) == 0 and ($wpats | any(. as $r | $m | test($r))) then
+            (if $dflt and $status == "ok" then "allow" elif $dflt then "tierdeny" else "warn" end)
        else "allow" end) as $kind
     | if $kind == "allow" and ($ewarn | not) and ($jbwarn | not) then "allow"
       else [$kind, (if $ewarn then "effort" else "-" end), (if $jbwarn then "jb" else "-" end),
@@ -167,31 +173,35 @@ if [ "$kind" = "delta" ]; then
     exit 0
 fi
 
-case "$kind" in
-    blocked) what="model '$model' (blocked by scripts/guardrails/agent-model-policy.json)" ;;
-    judge) what="a judge model override '$model' off its frontmatter tier (opus)" ;;
-    *) exit 0 ;;
-esac
-
-if [ "$status" = "ok" ]; then
-    printf 'agent-model-escalation: %s allowed by ESCALATION reason: %s\n' "$what" "$reason" >&2
-    jb_context
-    exit 0
-fi
-
-if [ "$status" = "weak" ]; then
-    lead="${what} with an ESCALATION reason that is empty, a placeholder or too short (min_reason_chars / placeholder_reasons in the policy file)"
+if [ "$kind" = "tierdeny" ]; then
+    deny_msg="agent-model-deny: a '${model}' dispatch of a general-purpose or untyped helper with no usable TIER: line. These helpers default to Sonnet 5.5: re-dispatch with model: sonnet (raise effort before tier). For ONE genuinely hard call keep the model and add a prompt line 'TIER: <reason>' (or 'ESCALATION: <reason>') with a real reason (docs/handover/running-a-chief.md, helper table). Never leave the model out: guard-subagent-model.sh denies a dispatch with no model."
 else
-    lead="${what} without an escalation marker"
+    case "$kind" in
+        blocked) what="model '$model' (blocked by scripts/guardrails/agent-model-policy.json)" ;;
+        judge) what="a judge model override '$model' off its frontmatter tier (opus)" ;;
+        *) exit 0 ;;
+    esac
+
+    if [ "$status" = "ok" ]; then
+        printf 'agent-model-escalation: %s allowed by ESCALATION reason: %s\n' "$what" "$reason" >&2
+        jb_context
+        exit 0
+    fi
+
+    if [ "$status" = "weak" ]; then
+        lead="${what} with an ESCALATION reason that is empty, a placeholder or too short (min_reason_chars / placeholder_reasons in the policy file)"
+    else
+        lead="${what} without an escalation marker"
+    fi
+    # The remedy names an explicit model: an omitted one is not a remedy, because
+    # guard-subagent-model.sh denies a dispatch with no model.
+    if [ "$isj" = "judge" ]; then
+        remedy="Re-dispatch with model: opus (the judge's frontmatter tier). Only a finding-class delta re-judge may use model: sonnet, with a prompt line 'DELTA-JUDGE: <head sha>'"
+    else
+        remedy="Re-dispatch with an explicit permitted model (model: opus, model: sonnet or model: haiku)"
+    fi
+    deny_msg="agent-model-deny: ${lead} — Fable is retired as the judge default (Opus 5.5 high measured ~2.7x cheaper per verdict, \$8.23 vs \$21.94, with no missed finding). ${remedy}; or for ONE genuinely hard call add a prompt line 'ESCALATION: <reason>' with a real reason and re-dispatch. Never leave the model out: guard-subagent-model.sh denies a dispatch with no model. A judge call from 'gen-judge-brief.py <spec> --dispatch-json' passes both guards. To unblock a model for good, edit scripts/guardrails/agent-model-policy.json."
 fi
-# The remedy names an explicit model: an omitted one is not a remedy, because
-# guard-subagent-model.sh denies a dispatch with no model.
-if [ "$isj" = "judge" ]; then
-    remedy="Re-dispatch with model: opus (the judge's frontmatter tier). Only a finding-class delta re-judge may use model: sonnet, with a prompt line 'DELTA-JUDGE: <head sha>'"
-else
-    remedy="Re-dispatch with an explicit permitted model (model: opus, model: sonnet or model: haiku)"
-fi
-deny_msg="agent-model-deny: ${lead} — Fable is retired as the judge default (Opus 5.5 high measured ~2.7x cheaper per verdict, \$8.23 vs \$21.94, with no missed finding). ${remedy}; or for ONE genuinely hard call add a prompt line 'ESCALATION: <reason>' with a real reason and re-dispatch. Never leave the model out: guard-subagent-model.sh denies a dispatch with no model. A judge call from 'gen-judge-brief.py <spec> --dispatch-json' passes both guards. To unblock a model for good, edit scripts/guardrails/agent-model-policy.json."
 
 reason_json=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
     || reason_json='"agent-model-deny: model override denied without a usable ESCALATION: marker"'

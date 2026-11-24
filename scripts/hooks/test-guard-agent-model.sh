@@ -80,7 +80,7 @@ else
 fi
 
 echo "== other tiers / no model -> allow, zero output =="
-check "model opus -> allow" allow "$(agent general-purpose opus 'x')"
+check "model opus on a named helper -> allow (warn only)" allow "$(agent ticket-auditor opus 'x')"
 check "model sonnet -> allow" allow "$(agent general-purpose sonnet 'x')"
 check "model haiku -> allow" allow "$(agent general-purpose haiku 'x')"
 check "no model -> allow" allow "$(agent general-purpose '' 'x')"
@@ -101,13 +101,22 @@ warn() {
     fi
 }
 TIERMARK=$'do the audit\nTIER: one verdict-grade call, needs Opus'
-warn "general-purpose + opus, no TIER line -> warn" "$(agent general-purpose opus 'x')"
-warn "general-purpose + claude-opus-5-5 -> warn" "$(agent general-purpose claude-opus-5-5 'x')"
-warn "general-purpose + opus[1m] (suffixed alias) -> warn" "$(agent general-purpose 'opus[1m]' 'x')"
-warn "untyped dispatch + opus -> warn (defaults to general-purpose)" "$(agent '' opus 'x')"
-warn "general-purpose + opus + placeholder TIER reason -> warn" "$(agent general-purpose opus $'x\nTIER: n/a')"
-warn "general-purpose + opus + ESCALATION only (not a TIER line) -> warn" "$(agent general-purpose opus "$MARK")"
+check "general-purpose + opus, no TIER line -> deny (default is sonnet)" block "$(agent general-purpose opus 'x')"
+check "general-purpose + claude-opus-5-5 -> deny" block "$(agent general-purpose claude-opus-5-5 'x')"
+check "general-purpose + opus[1m] (suffixed alias) -> deny" block "$(agent general-purpose 'opus[1m]' 'x')"
+check "untyped dispatch + opus -> deny (defaults to general-purpose)" block "$(agent '' opus 'x')"
+check "general-purpose + opus + placeholder TIER reason -> deny" block "$(agent general-purpose opus $'x\nTIER: n/a')"
+check "claude catch-all agent + opus, no TIER line -> deny" block "$(agent claude opus 'x')"
+check "claude catch-all agent + opus + TIER reason -> allow" allow "$(agent claude opus "$TIERMARK")"
+check "general-purpose + opus + TIER reason -> allow" allow "$(agent general-purpose opus "$TIERMARK")"
+check "general-purpose + opus + ESCALATION reason -> allow" allow "$(agent general-purpose opus "$MARK")"
 silent "general-purpose + opus + TIER reason -> no output" "$(agent general-purpose opus "$TIERMARK")"
+silent "general-purpose + opus + ESCALATION reason -> no output" "$(agent general-purpose opus "$MARK")"
+tdeny="$(agent general-purpose opus 'x' | bash "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)"
+case "$tdeny" in
+    *"model: sonnet"*"TIER: <reason>"*) ok "tier deny names sonnet and the TIER line" ;;
+    *) bad "tier deny does not name sonnet and the TIER line - got: $tdeny" ;;
+esac
 silent "general-purpose + sonnet -> no output" "$(agent general-purpose sonnet 'x')"
 silent "general-purpose + haiku -> no output" "$(agent general-purpose haiku 'x')"
 warn "Explore + opus -> warn (any non-judge agent type)" "$(agent Explore opus 'x')"
@@ -153,8 +162,10 @@ silent "judge + effort high (its own frontmatter effort) -> no output" "$(agent_
 silent "judge-ro + opus + effort high (its own frontmatter effort) -> no output" "$(agent_e judge-ro opus high "$JBX")"
 ewarn "effort high + placeholder EFFORT reason -> warn" "$(agent_e general-purpose sonnet high $'x\nEFFORT: n/a')"
 ewarn "effort high + TIER line only (not an EFFORT line) -> warn" "$(agent_e general-purpose sonnet high "$TIERMARK")"
-ewarn "opus general-purpose + effort high, no lines -> both warnings" "$(agent_e general-purpose opus high 'x')" "TIER: <reason>"
-warn "opus general-purpose + effort high + EFFORT reason -> TIER warn still fires" "$(agent_e general-purpose opus high "$EFFMARK")"
+ewarn "opus brief-drafter + effort high, no lines -> both warnings" "$(agent_e brief-drafter opus high 'x')" "TIER: <reason>"
+warn "opus brief-drafter + effort high + EFFORT reason -> TIER warn still fires" "$(agent_e brief-drafter opus high "$EFFMARK")"
+check "opus general-purpose + effort high, no TIER line -> deny" block "$(agent_e general-purpose opus high 'x')"
+check "opus ticket-auditor + effort high + EFFORT reason, no TIER line -> still warn only" allow "$(agent_e ticket-auditor opus high "$EFFMARK")"
 silent "effort high + EFFORT reason -> no output" "$(agent_e general-purpose sonnet high "$EFFMARK")"
 silent "effort medium -> no output" "$(agent_e general-purpose sonnet medium 'x')"
 silent "effort low -> no output" "$(agent_e general-purpose haiku low 'x')"
@@ -470,6 +481,11 @@ silent "policy without warn_model_patterns -> opus general-purpose is silent" "$
 polset '{"blocked_model_patterns":[],"warn_model_patterns":["^sonnet$"],"min_reason_chars":10,"placeholder_reasons":[]}'
 warn "warn_model_patterns is DATA: listed sonnet -> warn" "$(agent general-purpose sonnet 'x')"
 silent "warn_model_patterns is DATA: unlisted opus -> no output" "$(agent general-purpose opus 'x')"
+polset '{"blocked_model_patterns":[],"warn_model_patterns":["^opus$"],"min_reason_chars":10,"placeholder_reasons":[]}'
+warn "no default_sonnet_agent_types key: opus general-purpose -> warn only" "$(agent general-purpose opus 'x')"
+polset '{"blocked_model_patterns":[],"warn_model_patterns":["^opus$"],"default_sonnet_agent_types":["general-purpose",""],"min_reason_chars":10,"placeholder_reasons":[]}'
+check "default_sonnet_agent_types is DATA: listed general-purpose + opus -> deny" block "$(agent general-purpose opus 'x')"
+check "default_sonnet_agent_types is DATA: unlisted brief-drafter + opus -> allow (warn)" allow "$(agent brief-drafter opus 'x')"
 polset "{\"blocked_model_patterns\":[\"$FABLE_RE\"],\"warn_model_patterns\":[\"(\"],\"min_reason_chars\":10,\"placeholder_reasons\":[]}"
 check "invalid warn regex: a blocked model is still denied (blocked is evaluated first)" block "$(agent general-purpose fable 'x')"
 check "invalid warn regex: opus general-purpose -> allow (fail-open)" allow "$(agent general-purpose opus 'x')"
