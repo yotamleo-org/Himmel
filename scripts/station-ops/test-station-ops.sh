@@ -566,6 +566,17 @@ tg_before=$(find "$TG" -type f | wc -l | tr -d ' ')
 out=$(HIMMEL_RECOVER_BRIDGE_TIMEOUT=0 rec_in "$R/zero-state")
 rm -f "$R/bun-hang"
 assert_eq "RED: a timeout of 0 does not disable the bound, the hung bridge route is cut off and the direct send goes out" "$((tg_before + 1))" "$(find "$TG" -type f | wc -l | tr -d ' ')"
+mkdir -p "$R/tshim"
+cat > "$R/tshim/timeout" <<'FAKETIMEOUT'
+#!/bin/sh
+echo "$3" >> "$RECOVER_FAKE_DIR/timeout.log"
+exec "$RECOVER_REAL_TIMEOUT" "$@"
+FAKETIMEOUT
+chmod +x "$R/tshim/timeout"
+for tv in 99 18446744073709551621; do
+    HIMMEL_RECOVER_BRIDGE_TIMEOUT=$tv RECOVER_REAL_TIMEOUT="$(command -v timeout)" PATH="$R/tshim:$R/ubin:$PATH" RECOVER_FAKE_DIR="$R" HIMMEL_RECOVER_ROOT="$R" HIMMEL_RECOVER_STATE="$R/clamp-state-$tv" HIMMEL_RECOVER_SERVICES="telegram-bridge.service" TELEGRAM_ENV="$R/tg.env" bash "$OPS/recover.sh" >/dev/null 2>&1
+    assert_eq "RED: a bridge timeout of $tv is clamped to 30 seconds" "30" "$(tail -n 1 "$R/timeout.log" 2>/dev/null)"
+done
 mkdir -p "$R/barebin" "$R/fakehome/.bun/bin"
 for t in bash sh python3 sed tr grep date hostname flock id cat mkdir basename sleep timeout; do ln -sf "$(command -v "$t")" "$R/barebin/$t"; done
 cp "$R/ubin/systemctl" "$R/ubin/curl" "$R/barebin/"
