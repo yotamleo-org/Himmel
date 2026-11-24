@@ -178,8 +178,8 @@
 #      16e no open or non-maintainer-resolved thread and check-ci.sh --threads-only
 #      green, 16f an impacted row with rc 0 and skip_n 0, 16g a ran blast row when
 #      scripts/cr/blast-scope.cjs says the diff touches the scope; for an author not
-#      in ~/.himmel/outside-contributors.json, 16h a CodeRabbit success and 16i a
-#      passed security audit (scripts/lib/outside-contributors.sh). CR_* overrides
+#      in ~/.himmel/outside-contributors.json, 16h no CodeRabbit failure or error status (a running,
+#      missing, skipped or rate-limited one is a note) and 16i a passed security audit (scripts/lib/outside-contributors.sh). CR_* overrides
 #      are unset for 16e and 16h. Prints nothing for any other PR. Not part of `--only 7`.
 #
 # 17. Partial-merge remainder, the merge's exit 26 read at GO time: for a PR
@@ -2288,11 +2288,12 @@ check_outside_pr() {
         o_cr=$(env -u CR_OK_DESC_RE -u CR_SKIP_DESC_RE -u CR_BOT_USER_ID -u CR_STATUS_CONTEXT GH_CMD="$GH" \
             "$_TIMEOUT_BIN" -k 5 20 bash -c '. "$1" 2>/dev/null || exit 3; cr_signal_state "$2" "$3" "$4"' \
             _ "$o_lib/coderabbit-signal.sh" "$owner" "$repo" "$SHA" 2>/dev/null </dev/null) || o_cr="unreadable"  # read-sink-ok: $1 is this checkout's own lib path
-        if [ "$o_cr" = success ]; then
-            echo "[PASS] 16h. CodeRabbit reviewed $o_h7 (success)"
-        else
-            o16_fail h "CodeRabbit at $o_h7 is ${o_cr:-unreadable}, want success: stage 1, comment \`@coderabbitai review\` on the PR and wait for the status at $o_h7"
-        fi
+        # CodeRabbit runs on a budget and a rate limit, so only a posted failure or error blocks: a running, missing, skipped, rate-limited or unreadable status is a note.
+        case "$o_cr" in
+            success) echo "[PASS] 16h. CodeRabbit reviewed $o_h7 (success)" ;;
+            failure|error) o16_fail h "CodeRabbit at $o_h7 is $o_cr, want success: fix the finding it posted, or comment \`@coderabbitai review\` on the PR and wait for the status at $o_h7" ;;
+            *) echo "[PASS] 16h. CodeRabbit at $o_h7 is ${o_cr:-unreadable} (best effort, not gating)" ;;
+        esac
         if outside_audit_passed "$PR" "$SHA" "$o16_branch"; then
             echo "[PASS] 16i. the outside security audit passed at $o_h7"
         else

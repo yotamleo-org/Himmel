@@ -277,7 +277,7 @@ a new head starts over:
 | 16e | zero unresolved threads, each resolved by a maintainer, and `check-ci.sh --threads-only` exits 0 within 20 s |
 | 16f | the newest `impacted` row at the head reads exit 0 with no SKIP |
 | 16g | a diff touching the blast scope (`scripts/cr/blast-scope.cjs`) has a `blast` row with status `ran` |
-| 16h | a CodeRabbit commit status of `success` at the head, read within 20 s |
+| 16h | no CodeRabbit commit status of `failure` or `error` at the head, read within 20 s; a running, missing, skipped, rate-limited or unreadable status passes with a note |
 | 16i | a passed (or flagged) `security-audit` row for this PR and head whose report hash and perspective hash still match |
 
 16h and 16i apply only to an author not in `~/.himmel/outside-contributors.json`
@@ -288,7 +288,7 @@ read one. It is outside `--only 7`, and an org-member PR's output is unchanged.
 The operator's GitHub code-owner approval comes last, after item 16 passes.
 
 **Stage 1 writes no record** (16h reads its CodeRabbit half). It is recomputed at the head wherever it is needed: CodeRabbit's
-status is `success` (read in a fresh child with the four `CR_*` pattern overrides unset), no changed
+status is not `failure` or `error` (read in a fresh child with the four `CR_*` pattern overrides unset), no changed
 path is on the lint surface, and `check-ci.sh <n> --max-wait 120 --except-context codeowner-review-gate`
 exits 0 with `CR_APP`, `CR_PROFILE`, `CR_BOT_USER_ID` and `CHECK_CI_DISTINCT_DEADLINE` unset.
 

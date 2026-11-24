@@ -217,8 +217,8 @@ fork, a deleted author, or an author not on the internal-author list),
 lint surface in `scripts/ci/outside-lint-surface.txt` (16d), every thread
 resolved by a maintainer (16e), a clean recorded impacted run (16f), and a blast
 row when the diff touches the blast scope (16g). An author not in
-`~/.himmel/outside-contributors.json` (login and id) also needs a CodeRabbit
-success (16h) and a passed outside security audit (16i); a listed author prints
+`~/.himmel/outside-contributors.json` (login and id) also needs no CodeRabbit
+failure or error status (16h; a running, missing or rate-limited one is a note) and a passed outside security audit (16i); a listed author prints
 `[SKIP] 16h/16i`. No `CR_*` env widens 16e or 16h. The operator's GitHub
 code-owner approval comes **last**, after item 16 passes at that head; until
 then `codeowner-review-gate` is red and item 2 FAILs, as expected.
