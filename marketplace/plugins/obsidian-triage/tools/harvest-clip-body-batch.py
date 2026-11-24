@@ -700,10 +700,6 @@ CLIP_LOCK_WAIT = 30.0
 
 @contextlib.contextmanager
 def _clip_lock(path: Path, wait: float = CLIP_LOCK_WAIT):
-    """Exclusive flock on the clip's directory (the lock triage-mark-processed.py
-    holds), taken around a re-read check plus the write that follows it so an edit
-    from a locking writer cannot land between the two. Bounded wait: raises
-    TimeoutError after `wait` seconds. Closing the fd releases it on every exit."""
     fd = os.open(path.parent, os.O_RDONLY)
     try:
         deadline = time.monotonic() + wait
