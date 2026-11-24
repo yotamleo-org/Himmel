@@ -121,9 +121,9 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   `python3 -I scripts/telegram/spec-page-gen.py <spec.md> <out.html>` prints two lines, the sha256 of the
   md it read and of the page it wrote. The critic reads the md AND the page and quotes both shas; seal
   both, one `critic-seal.sh` run per file (the spec critic file, the md, its sha; then the same file, the
-  page, its sha); then `send-file` the `.html`. The page names its spec in a `spec-source` meta tag (the
-  md's absolute path), so `send-file` applies the spec's critic check to a copy in any folder under any
-  name, and refuses it when the critic's seals do not include the page's own bytes. The generator leaves
+  page, its sha); then `send-file --sign` the `.html`. The page names its spec in a `spec-source` meta tag (the
+  md's absolute path), so `send-file --sign` applies the spec's critic check to a copy in any folder under any
+  name, and refuses it when the critic's seals do not include the page's own bytes; a send without `--sign` goes marked DRAFT instead. The generator leaves
   the front matter status out and refuses, naming the line and writing nothing, an md body line that
   starts with `Status:` or says "not for signature": the draft state lives in the missing critic seal.
   The page draws the spec's `svg` fence under `## Diagrams` as a figure and carries send-file's own CSP meta; a
