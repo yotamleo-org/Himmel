@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
@@ -2455,23 +2456,34 @@ describe('the spec signer: operator spec-signer, operator spec --signer and sign
       return walk(bridge()).filter((f) => f.endsWith('.jsonl')).reduce((n, f) => n + readFileSync(f, 'utf8').split('\n').filter((l) => l.includes('document_path')).length, 0);
     };
     const sentLines = () => (existsSync(sent) ? readFileSync(sent, 'utf8').trim().split('\n') : []);
-    // The critic returns move to their own folder, so send-file sees a plain page, not a signature page with a ledger.
     function sealed(p: string): string {
       const page = p.replace(/\.md$/, '.html');
       writeFileSync(page, '<!doctype html><title>spec</title>\n');
       const sha = createHash('sha256').update(readFileSync(page)).digest('hex');
-      const dir = join(root, 'returns');
-      mkdirSync(dir, { recursive: true });
-      rmSync(`${p}.critic-spec-r1.md`);
-      rmSync(`${p}.critic-plan-r1.md`);
-      writeFileSync(join(dir, `${page.split('/').at(-1)}.critic-spec-r1.md`), `the critic's return\n\nCONTENT-SHA256 ${sha} ${relative(dir, page)}\nSPEC CLEAN\n`);
-      writeFileSync(join(dir, `${page.split('/').at(-1)}.critic-plan-r1.md`), `the critic's return\n\nPLAN CLEAN\n`);
+      writeFileSync(`${p}.critic-spec-r1.md`, `the critic's return\n\nCONTENT-SHA256 ${sha} ${relative(dirname(p), page)}\nSPEC CLEAN\n`);
+      writeFileSync(`${p}.critic-plan-r1.md`, `the critic's return\n\nPLAN CLEAN\n`);
       return page;
     }
-    const sealedSign = (keys: string, p: string) => {
-      const base = join(root, 'returns', `${p.replace(/\.md$/, '.html').split('/').at(-1)}.critic`);
-      return run('operator', 'spec', 'R1', '--keys', keys, '--spec', p, '--verdict', `${base}-spec-r1.md`, '--verdict', `${base}-plan-r1.md`, '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'));
-    };
+    const sealedSign = (keys: string, p: string) =>
+      run('operator', 'spec', 'R1', '--keys', keys, '--spec', p, '--verdict', `${p}.critic-spec-r1.md`, '--verdict', `${p}.critic-plan-r1.md`, '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'));
+    function ledgerSealed(): string {
+      const candidate = fileURLToPath(new URL('../../../../', import.meta.url));
+      const bun = execFileSync('which', ['bun'], { encoding: 'utf8' }).trim();
+      const key = 'HIMMEL-9831';
+      const page = { path: `specs/designs/${key}-sliced.html`, text: '<!doctype html><title>spec</title>\n' };
+      const estimate = { path: 'specs/designs/estimate.json', text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' };
+      const request = {
+        scratchRoot: mkdtempSync(join(root, 'ledger-')), key, specStem: `${key}-sliced`,
+        specText: `---\ntickets: ${key}\n---\n# ${key} fixture\n\nEstimate record: estimate.json\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n`,
+        planText: `---\ntickets: ${key}\n---\n# ${key} plan\n\n- Ticket: ${key}\n\n- Task 1: build the fixture.\n`,
+        returns: [
+          { kind: 'spec', round: 1, text: 'SPEC CLEAN\n', reads: ['spec', estimate, page] },
+          { kind: 'plan', round: 1, text: 'PLAN CLEAN\n', reads: ['spec', 'plan', estimate, page] },
+        ],
+      };
+      const built = JSON.parse(execFileSync(bun, [join(candidate, 'scripts/telegram/testlib-capped-fold.ts')], { input: JSON.stringify(request), encoding: 'utf8', timeout: 15000 })) as { spec: string };
+      return built.spec;
+    }
     const lastSpecRow = () => rowsOf('spec').at(-1) as OperatorRow;
     beforeEach(() => { vi.stubEnv('BRIDGE_ROOT', bridge()); mkdirSync(bridge(), { recursive: true }); });
 
@@ -2492,9 +2504,7 @@ describe('the spec signer: operator spec-signer, operator spec --signer and sign
     });
 
     it('a chief signature: a sealed page queues one document_path line; an edited page queues none and the sender captures the text line; an operator signature queues neither (I16)', async () => {
-      const p = specFile('V-1-sliced.md', 'V-1', 'work');
-      sealed(p);
-      await sealedSign('V-1', p);
+      await sealedSign('HIMMEL-9831', ledgerSealed());
       expect(docLines()).toBe(1);
       expect(sentLines()).toEqual([]);
       const q = specFile('V-2-edited.md', 'V-2', 'work');

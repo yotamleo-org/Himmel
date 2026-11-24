@@ -277,6 +277,137 @@ describe('signed minerva specs', () => {
     expect(readOperatorRecords('spec', specEnv())).toEqual([]);
   });
 
+  describe('latest-round verdicts beside the spec', () => {
+    const put = (path: string, last: string): string => {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, `the critic's return\n\n${last}\n`);
+      return path;
+    };
+    const named = (p: string, kind: 'spec' | 'plan', n: number, dir = dirname(p)) => join(dir, `${basename(p)}.critic-${kind}-r${n}.md`);
+    const pair = (p: string, n: number) => [put(named(p, 'spec', n), 'SPEC CLEAN'), put(named(p, 'plan', n), 'PLAN CLEAN')];
+    const none = () => expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+    const V = 'release operator spec:';
+
+    it('S1-R1 an r1 spec verdict is refused while critic-spec-r2.md sits beside the spec, naming r2', () => {
+      declared();
+      const p = spec();
+      const r1 = pair(p, 1);
+      const r2 = put(named(p, 'spec', 2), 'SPEC FINDINGS 1');
+      expect(() => sign(sctx(), ['K-1'], p, { verdicts: r1 })).toThrow(
+        `${V} ${realpathSync(r1[0])} is round 1, but ${realpathSync(r2)} is round 2; sign with the latest round`);
+      none();
+    });
+
+    it('S1-R2 a verdict file not beside the spec is refused', () => {
+      declared();
+      const p = spec();
+      const dir = join(root, 'elsewhere');
+      const copies = [put(named(p, 'spec', 1, dir), 'SPEC CLEAN'), put(named(p, 'plan', 1, dir), 'PLAN CLEAN')];
+      expect(() => sign(sctx(), ['K-1'], p, { verdicts: copies })).toThrow(
+        `${V} ${realpathSync(copies[0])} is not beside the spec as ${basename(p)}.critic-spec-r1.md`);
+      none();
+    });
+
+    it('S1-R3 a verdict whose name kind differs from its verdict line is refused', () => {
+      declared();
+      const p = spec();
+      const wrong = put(named(p, 'spec', 2), 'PLAN CLEAN');
+      expect(() => sign(sctx(), ['K-1'], p, { verdicts: [verdict(p, 'spec', 'SPEC CLEAN'), wrong] })).toThrow(
+        `${V} ${realpathSync(wrong)} is not beside the spec as ${basename(p)}.critic-plan-r2.md`);
+      none();
+    });
+
+    it('S1-R4 (control) a plan verdict in the plans folder beside the specs root signs', () => {
+      declared();
+      const p = spec();
+      const plan = put(named(p, 'plan', 1, join(root, 'specs', 'plans')), 'PLAN CLEAN');
+      const r = sign(sctx(), ['K-1'], p, { verdicts: [put(named(p, 'spec', 1), 'SPEC CLEAN'), plan] });
+      expect(check(['K-1'])).toEqual([`SPEC ok K-1 ${p} ${r.id}`]);
+    });
+
+    it('S1-R5 a later plan round in the plans folder refuses the r1 plan verdict, naming it', () => {
+      declared();
+      const p = spec();
+      const r1 = pair(p, 1);
+      const later = put(named(p, 'plan', 2, join(root, 'specs', 'plans')), 'PLAN CLEAN');
+      expect(() => sign(sctx(), ['K-1'], p, { verdicts: r1 })).toThrow(
+        `${V} ${realpathSync(r1[1])} is round 1, but ${realpathSync(later)} is round 2; sign with the latest round`);
+      none();
+    });
+
+    it('S1-R5b a tie with a plans-folder file of the same round is refused, naming it', () => {
+      declared();
+      const p = spec();
+      const r1 = pair(p, 1);
+      const tie = put(named(p, 'plan', 1, join(root, 'specs', 'plans')), 'PLAN CLEAN');
+      expect(() => sign(sctx(), ['K-1'], p, { verdicts: r1 })).toThrow(
+        `${V} ${realpathSync(r1[1])} is round 1, but ${realpathSync(tie)} is round 1; sign with the latest round`);
+      none();
+    });
+
+    it('S1-R6 (control) the highest-round spec and plan verdicts beside the spec sign', () => {
+      declared();
+      const p = spec();
+      pair(p, 1);
+      const r = sign(sctx(), ['K-1'], p, { verdicts: pair(p, 2) });
+      expect(check(['K-1'])).toEqual([`SPEC ok K-1 ${p} ${r.id}`]);
+    });
+
+    it('S1-R7 (control) another spec of the same key with a higher round does not block', () => {
+      declared();
+      const p = spec();
+      const r1 = pair(p, 1);
+      put(join(dirname(p), 'K-1-other.md.critic-spec-r5.md'), 'SPEC CLEAN');
+      const r = sign(sctx(), ['K-1'], p, { verdicts: r1 });
+      expect(check(['K-1'])).toEqual([`SPEC ok K-1 ${p} ${r.id}`]);
+    });
+
+    it('S1-R8 a series-named symlink that points elsewhere is refused with the real path', () => {
+      declared();
+      const p = spec();
+      const target = put(named(p, 'spec', 1, join(root, 'elsewhere')), 'SPEC CLEAN');
+      const link = named(p, 'spec', 1);
+      symlinkSync(target, link);
+      expect(() => sign(sctx(), ['K-1'], p, { verdicts: [link, put(named(p, 'plan', 1), 'PLAN CLEAN')] })).toThrow(
+        `${V} ${realpathSync(target)} is not beside the spec as ${basename(p)}.critic-spec-r1.md`);
+      none();
+    });
+
+    it.skipIf(RUNS_AS_ROOT)('S1-R9 a plans folder that cannot be read refuses, naming the folder', () => {
+      declared();
+      const p = spec();
+      const r1 = pair(p, 1);
+      const plans = join(root, 'specs', 'plans');
+      mkdirSync(plans);
+      const dir = realpathSync(plans);
+      chmodSync(plans, 0);
+      try {
+        expect(() => sign(sctx(), ['K-1'], p, { verdicts: r1 })).toThrow(
+          `${V} ${dir}: cannot read the folder (EACCES: permission denied, scandir '${dir}')`);
+      } finally { chmodSync(plans, 0o700); }
+      none();
+    });
+
+    it('S1-R10 (control) a later round written after signing leaves the record SPEC ok', () => {
+      declared();
+      const p = spec();
+      const r = sign(sctx(), ['K-1'], p, { verdicts: pair(p, 1) });
+      put(named(p, 'spec', 2), 'SPEC FINDINGS 1');
+      expect(check(['K-1'])).toEqual([`SPEC ok K-1 ${p} ${r.id}`]);
+    });
+
+    it('S1-R11 (control) spec-review takes a verdict that signing would refuse', () => {
+      declared();
+      const f = rspec();
+      const loose = join(root, 'elsewhere', 'loose-return.md');
+      mkdirSync(dirname(loose), { recursive: true });
+      copyFileSync(critic(f.spec, 'SPEC CLEAN'), loose);
+      put(`${f.spec}.critic-spec-r2.md`, 'SPEC FINDINGS 1');
+      const r = review(sctx(), f, [loose]);
+      expect(readOperatorRecords('spec-review', specEnv()).map(x => x.id)).toEqual([r.id]);
+    });
+  });
+
   function bucketSpec(cited: string): { spec: string; plan: string } {
     const p = spec('K-1-bucket-2026-11-02.md', join(root, 'bucket', 'designs'));
     writeFileSync(p, [
@@ -944,6 +1075,14 @@ console.log(JSON.stringify(f));
       [3, 4].map(round => [api, location, round] as const))))('capped carry return selection later stale: %s %s r%s', (api, location, round) => {
     declared();
     const f = externalCappedFixture(location);
+    if (api === 'spec' && (location === 'spec-return' || location === 'plan-return')) {
+      const kind = location === 'spec-return' ? 'spec' : 'plan';
+      const external = f.verdicts[kind === 'spec' ? 0 : 1];
+      expect(() => cappedSign(api, f)).toThrow(
+        `release operator spec: ${realpathSync(external)} is not beside the spec as ${basename(f.spec)}.critic-${kind}-r3.md`);
+      expect(readOperatorRecords(api, specEnv())).toEqual([]);
+      return;
+    }
     const row = cappedSign(api, f);
     expect(readOperatorRecords(api, specEnv()).map(r => r.id)).toEqual([row.id]);
     expect(cappedCheck(api).lines).toEqual([`SPEC ok HIMMEL-10205 ${f.spec} ${row.id}`]);
