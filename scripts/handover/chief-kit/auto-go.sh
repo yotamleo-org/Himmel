@@ -290,7 +290,7 @@ BODY_VALS=$(printf '%s\n' "$PR_BODY" | tr -d '\r' | awk '
         else if (c == fc && n >= fl && substr(s, n + 1) ~ /^[ \t]*$/) fence = 0
         next }
     !fence && /^completes-ticket:[ \t]*(yes|no)[ \t]*$/ { v = $0; sub(/^completes-ticket:[ \t]*/, "", v); sub(/[ \t]*$/, "", v); seen[v] = 1 }
-    END { for (v in seen) print v }' | sort -u | tr '\n' ' ')  # swallow-ok: a failed read is no body value, so the brief's contract stands
+    END { for (v in seen) print v }' | sort -u | tr '\n' ' ')
 BODY_VAL=""
 case "$BODY_VALS" in "yes ") BODY_VAL=yes ;; "no ") BODY_VAL=no ;; esac
 CONTRACT_WHY=""
