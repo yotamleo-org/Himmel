@@ -108,11 +108,7 @@ check "2 the digest carries the open owed row" "$(grep -c 'run the live successi
 check "2 the digest carries the in-flight design pointer" "$(grep -c '^- specs/designs/DEMO-951-digest-design.md — design, DEMO-951' "$digest")" "1"
 check "2 the digest carries the focus-chains order" "$(grep -c 'Chain order (focus-chains.json): alpha-chain' "$digest")" "1"
 check "2 a long chain order is not cut short" "$(grep -cF -- "$longname" "$digest")" "1"
-chief new --bucket dgsrc5 >/dev/null 2>&1
-docA5="$root/tester/dgsrc5/DEMO-nextleg-${today}A-chief.md"
-: > "${docA5%.md}-DIGEST.md"
-chief next --bucket dgdst5 --doc "$docA5" >/dev/null 2>&1
-check "2 an empty digest left by an interrupted run is refilled" "$(grep -c 'successor digest' "${docA5%.md}-DIGEST.md")" "1"
+check "2 no temp file is left beside the digest" "$(find "$root/tester/dgsrc" -name "*DIGEST.md.*" | wc -l | tr -d " ")" "0"
 check "2 the digest has a read-before-first-dispatch trigger" "$(grep -c '^\*\*READ BEFORE YOUR FIRST DISPATCH' "$digest")" "1"
 check "2 the digest names the three hand-filled HANDOFF sections" "$(grep -c 'Rulings and judgement notes.*Wrapped this shift.*Open operator items' "$digest")" "1"
 check "2 the digest has the orphan-gate line" "$(grep -c '^Orphan gate: ' "$digest")" "1"

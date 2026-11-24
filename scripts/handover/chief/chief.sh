@@ -3135,7 +3135,7 @@ cmd_next() {
             exit 1
         fi
     fi
-    local dg_facts="$HERE/../chief-kit/handoff-facts.sh" dg_budget="${DIGEST_BUDGET_BYTES:-8000}" dg_tpl="$predecessor_digest.tpl" dg_pass=1
+    local dg_facts="$HERE/../chief-kit/handoff-facts.sh" dg_budget="${DIGEST_BUDGET_BYTES:-8000}" dg_tpl="$predecessor_digest.tpl.$$" dg_new="$predecessor_digest.new.$$" dg_pass=1
     local dg_workers dg_prs dg_lastgo dg_judges dg_queue dg_total dg_wrapped dg_owed dg_inflight dg_chain
     awk 'f { print } /^<!-- digest-template:/ { f = 1 }' "$handoff_template" > "$dg_tpl" || { rm -f "$dg_tpl"; err "could not split $handoff_template"; exit 1; }
     while :; do
@@ -3159,7 +3159,7 @@ cmd_next() {
             dg_lastgo="over the digest budget — read \`last GO:\` in the Live state of $successor_doc_ref"
             dg_queue="over the digest budget — read \`queue:\` in the Live state of $successor_doc_ref"
         fi
-        render_template "$dg_tpl" "$predecessor_digest.new" \
+        render_template "$dg_tpl" "$dg_new" \
             PREDECESSOR_LETTER "$predecessor_letter" \
             LETTER "$successor_letter" \
             PREDECESSOR "$predecessor_base" \
@@ -3177,20 +3177,17 @@ cmd_next() {
             OWED "${dg_owed:-none}" \
             INFLIGHT "${dg_inflight:-none}" \
             ORPHAN_NOTE "${orphan_gate_note:-none}"
-        [ "$dg_pass" -eq 1 ] && [ "$(wc -c < "$predecessor_digest.new" | tr -d ' ')" -gt "$dg_budget" ] || break
+        [ "$dg_pass" -eq 1 ] && [ "$(wc -c < "$dg_new" | tr -d ' ')" -gt "$dg_budget" ] || break
         dg_pass=2
     done
     rm -f "$dg_tpl"
-    dg_total="$(wc -c < "$predecessor_digest.new" | tr -d ' ')"
+    dg_total="$(wc -c < "$dg_new" | tr -d ' ')"
     [ "$dg_total" -le "$dg_budget" ] || err "warning: digest over budget after the pointer pass: $dg_total bytes (limit $dg_budget); the fixed fields and paths alone exceed it"
-    set -C
-    if : 2>/dev/null > "$predecessor_digest" || { set +C; [ -f "$predecessor_digest" ] && [ ! -s "$predecessor_digest" ]; }; then
-        set +C
-        mv -f "$predecessor_digest.new" "$predecessor_digest" || { rm -f "$predecessor_digest"; err "could not write the digest $predecessor_digest"; exit 1; }
+    if ln "$dg_new" "$predecessor_digest" 2>/dev/null; then
+        rm -f "$dg_new"
         echo "digest: $predecessor_digest"
     else
-        set +C
-        rm -f "$predecessor_digest.new"
+        rm -f "$dg_new"
         [ -f "$predecessor_digest" ] || { err "could not create the digest at $predecessor_digest — this is not a collision (the file does not exist); check permissions on $predecessor_dir"; exit 1; }
         echo "digest: $predecessor_digest (exists — left unchanged)"
     fi
