@@ -557,9 +557,9 @@ function judgePreflight(): string {
 }
 
 // Async on purpose: a synchronous child call blocks Node's event loop, so no abort signal or timer could reach it.
-export function judgeCall(file: string, args: string[], o: { input: string; cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; signal?: AbortSignal }): Promise<string> {
+export function judgeCall(file: string, args: string[], o: { input: string; cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; signal?: AbortSignal; killGate?: Promise<void> }): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = execFile(file, args, { cwd: o.cwd, env: o.env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: o.timeoutMs, signal: o.signal },
+    const child = execFile(file, args, { cwd: o.cwd, env: o.env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: o.killGate ? 0 : o.timeoutMs, signal: o.signal },
       (err, stdout, stderr) => {
         if (stderr) process.stderr.write(stderr);
         if (!err) return resolve(stdout);
@@ -568,6 +568,7 @@ export function judgeCall(file: string, args: string[], o: { input: string; cwd:
       });
     child.stdin?.on('error', () => undefined);
     child.stdin?.end(o.input);
+    void o.killGate?.then(() => child.kill('SIGTERM'));
   });
 }
 
@@ -705,7 +706,7 @@ function launcherStopped(e: unknown): boolean {
 // launcher's 900 s call timeout and node's 930 s kill.
 // Any other API-route failure (a policy refusal, no room, an API error, an unparseable reply) ends in the fallback, once.
 // A stopped run or a timed-out call ends the run instead (decision 815).
-export function makeRoutedJudge(fallback: Judge = liveJudge, callTimeoutS: number = JUDGE_TIMEOUT_S, spawnTimeoutMs: number = (callTimeoutS + 30) * 1000): Judge {
+export function makeRoutedJudge(fallback: Judge = liveJudge, callTimeoutS: number = JUDGE_TIMEOUT_S, spawnTimeoutMs: number = (callTimeoutS + 30) * 1000, killGate?: Promise<void>): Judge {
   return async (input, opts) => {
     const env = judgeApiEnv(process.env, undefined, callTimeoutS);
     const mapped = spawnSync('node', [join(repoRoot, 'scripts', 'lib', 'api-roles.mjs'), 'accounts', 'judge'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
@@ -718,7 +719,7 @@ export function makeRoutedJudge(fallback: Judge = liveJudge, callTimeoutS: numbe
       let out: string;
       try {
         out = await judgeCall('bash', [join(repoRoot, 'scripts', 'api-lane', 'claude-api.sh'), ...routedJudgeArgs()],
-          { input: judgePrompt(input, skill), cwd, env, timeoutMs: spawnTimeoutMs, signal: opts?.signal });
+          { input: judgePrompt(input, skill), cwd, env, timeoutMs: spawnTimeoutMs, signal: opts?.signal, killGate });
       } catch (e) {
         if (opts?.signal?.aborted || launcherStopped(e)) throw e;
         return fallback(input, opts);
