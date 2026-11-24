@@ -508,20 +508,20 @@ this lands `docs/setup/settings-template.json` at
 `/tmp/<name>/docs/setup/settings-template.json` for `uninstall-plugins.sh` to
 find.
 
-A rebuilt or snapshot-restored guest has a new host key, so the next ssh to
-port 2222 fails with `REMOTE HOST IDENTIFICATION HAS CHANGED`. known_hosts keys
-the entry by the name you connected with, so remove only that entry:
-`ssh-keygen -R "[127.0.0.1]:2222"` for the examples above, `"[localhost]:2222"`
-for the vm.mode default. `vmsdk.py sync_repo` is not affected: it keeps one
-known_hosts file per VM at `~/.himmel/vm/known_hosts/<vm name>` (host-key
-checking stays on, `accept-new`), and `vmsdk.py restore` deletes that VM's file
-after the snapshot readback succeeds. A restore done outside vmsdk (raw
-`VBoxManage snapshot restore`) leaves the stale file, so the next `sync_repo`
-fails loud with `REMOTE HOST IDENTIFICATION HAS CHANGED`; delete that one file.
-The host's own `~/.ssh/known_hosts` is never read or written for it.
-`scripts/test-install-symmetry-vm.sh` needs the user spelled out
-(`himmel@localhost 2222 ~/.ssh/id_ed25519`): its default host is a bare
-`localhost`, so ssh logs in as your local user, which the guest does not have.
+A rebuilt or snapshot-restored guest has a new host key. The VM tooling and the
+host-driven VM suites (`test-install-symmetry-vm.sh`, `test-luna-upgrade-vm.sh`,
+`test-tarball-install-vm.sh`, `vm/upgrade-path-e2e.sh`, `vm/over-install-e2e.sh`)
+keep one known_hosts file per VM at `~/.himmel/vm/known_hosts/<vm name>`
+(host-key checking stays on, `accept-new`), and `vmsdk.py restore` deletes that
+VM's file after the snapshot readback succeeds, so a restore needs no
+`ssh-keygen -R`. A restore done outside vmsdk (raw `VBoxManage snapshot restore`)
+leaves the stale file, so the next run fails loud with `host key changed` and
+names that one file; delete it. The host's own `~/.ssh/known_hosts` is never read
+or written for it. A suite whose probe cannot connect prints one of three
+classes with ssh's own text: `host key changed`, `key refused` (the guest
+rejected the key) or `no route or timeout` (the VM is off or the port is wrong).
+The vm.mode default target is `himmel@localhost` (the guest user from
+`scripts/lib/vms.json`), so a no-argument suite run needs no spelled-out user.
 Wrap a scripted run in `trap '<power off>' EXIT` so the guest always powers
 off.
 
