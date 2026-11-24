@@ -2138,17 +2138,18 @@ c40_status() { # <desired true|false> <actual> <detail> — writes $c40_t/status
 }
 c40_probe_fixture() {
     local p="$c40_nq_path" node_bin
+    local item_id=qmd-daemon # t13b-ok: manifest item id passed to the probe, starts nothing
     node_bin="$(command -v node)" || { fail "C40 probe fixture: node required"; return 1; }
     [ "$2" = yes ] && p="$c40_t/qmdbin:$p"
     env -u XDG_CONFIG_HOME -u QMD_HTTP_AUTH_FILE -u QMD_HTTP_TOKEN_FILE -u BUN_INSTALL \
         PATH="$p" HOME="$c40_t/home" C40_MODE="$1" C40_LOG=/dev/null HIMMEL_DOCTOR_QMD_CURL="$c40_t/curl" HIMMEL_DOCTOR_QMD_URL=http://localhost:1/mcp \
         "$node_bin" -e '
-const fs = require("fs"); const root = process.argv[1];
+const fs = require("fs"); const [root, id] = process.argv.slice(1);
 const { runProbe } = require(root + "/scripts/himmelctl/lib/probes.js");
-const item = JSON.parse(fs.readFileSync(root + "/scripts/install/manifest.json", "utf8")).items.find((i) => i.id === "qmd-daemon");
+const item = JSON.parse(fs.readFileSync(root + "/scripts/install/manifest.json", "utf8")).items.find((i) => i.id === id);
 const v = runProbe(item, { repoRoot: root, targetPath: root, scope: "user", env: process.env });
-console.log(JSON.stringify({ items: [{ id: "qmd-daemon", desired: true, actual: v.actual, detail: v.detail }] }));
-' "$REPO_ROOT" > "$c40_t/status.json"
+console.log(JSON.stringify({ items: [{ id, desired: true, actual: v.actual, detail: v.detail }] }));
+' "$REPO_ROOT" "$item_id" > "$c40_t/status.json"
 }
 c40_run() { # <mode>
     case "$1" in

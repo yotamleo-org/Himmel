@@ -63,7 +63,7 @@ out=$(BUN_INSTALL="$work/nobun" PATH="$work/qmdbin:$nq_path" probe down)
 echo "$out" | jq -e '.actual == "degraded" and (.detail | test("not answering")) and (.detail | test("optional") | not)' >/dev/null || fail "refused (rc 7), qmd set up -> degraded, never optional (got: $out)"
 out=$(BUN_INSTALL="$work/nobun" PATH="$nq_path" probe down)
 echo "$out" | jq -e '.actual == "absent" and (.detail | test("qmd is optional"))' >/dev/null || fail "refused (rc 7), no qmd setup -> absent, optional (got: $out)"
-echo "ok: qmd-daemon present / slow / wedged / foreign / refused (set up vs not)"
+echo "ok: qmd probe present / slow / wedged / foreign / refused (set up vs not)"
 
 # a daemon that requires the bearer token must not
 # read as "NOT qmd". With the token file the probe authenticates (present);
