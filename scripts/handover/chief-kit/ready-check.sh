@@ -2033,6 +2033,7 @@ check_bug_origin() {
     else
         bo_title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || bo_title=""  # swallow-ok: an unreadable title warns just below
     fi
+    PR_TITLE_READ="$bo_title"
     if [ -z "$bo_title" ]; then
         echo "[WARN] 14. bug-origin not checked: title"
         return 0
@@ -2879,7 +2880,7 @@ print("checked\t%d" % total)'
 check_ticket_comments() {
     local title key lib root docs doc stem cache launched first cj rc out cid created who snippet n_bad=0 n_checked=0 args=()
     if [ "$ONLY7" -eq 1 ]; then
-        title=$("$GH" pr view "$PR" --repo "$nwo" --json title --jq '.title' 2>/dev/null | tr -d '\r') || title=""  # swallow-ok: an unreadable title is reported as no key just below
+        title="${PR_TITLE_READ:-}"
     else
         title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || title=""  # swallow-ok: an unreadable title is reported as no key just below
     fi
