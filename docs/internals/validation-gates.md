@@ -288,7 +288,7 @@ read one. It is outside `--only 7`, and an org-member PR's output is unchanged.
 The operator's GitHub code-owner approval comes last, after item 16 passes.
 
 **Stage 1 writes no record** (16h reads its CodeRabbit half). It is recomputed at the head wherever it is needed: CodeRabbit's
-status is not `failure` or `error` (read in a fresh child with the four `CR_*` pattern overrides unset), no changed
+status is `success` (read in a fresh child with the four `CR_*` pattern overrides unset), no changed
 path is on the lint surface, and `check-ci.sh <n> --max-wait 120 --except-context codeowner-review-gate`
 exits 0 with `CR_APP`, `CR_PROFILE`, `CR_BOT_USER_ID` and `CHECK_CI_DISTINCT_DEADLINE` unset.
 
