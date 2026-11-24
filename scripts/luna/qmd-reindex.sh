@@ -159,6 +159,8 @@ USAGE_TRACK=0
 USAGE_BEFORE=unknown
 CHUNKS_TOTAL=0
 NO_CLEANUP=0
+UPDATE_COLLECTION=""
+UPDATE_ARGS=(update)
 # A named qmd index (`qmd --index NAME`), e.g. salus. Empty = the default index.
 INDEX_NAME=""
 IDX_DESC=""
@@ -211,6 +213,12 @@ Flags:
                     of the default one.
   --no-cleanup      Incremental run: skip the final `qmd cleanup` (the 2-hourly
                     cadence; the nightly full run keeps it).
+  --update-collection <NAME>
+                    Merge-scoped run (the post-merge tick): `qmd update -c NAME`, then
+                    the same bare embed and completeness assert, so every pending
+                    collection is embedded. Writes no refresh stamp or reindex-state
+                    (the update covered one collection), leaves an earlier one alone,
+                    and skips cleanup.
   --dry-run         Print what would run; execute nothing.
 
 Exit: 0 ok | 1 usage | 2 qmd unusable | 3 update failed | 4 embed failed
@@ -330,7 +338,7 @@ run_update() {
     step=$(secs_or_default "${QMD_REINDEX_BUSY_RETRY_SECS:-}" 10)
     while :; do
         rc=0
-        out=$(run_qmd update 2>&1) || rc=$?
+        out=$(run_qmd "${UPDATE_ARGS[@]}" 2>&1) || rc=$?
         if [ "$rc" -eq 0 ]; then
             relabel_hash_count <<<"$out"
             return 0
@@ -408,6 +416,21 @@ while [ $# -gt 0 ]; do
                 exit 1
             fi
             shift ;;
+        --update-collection)
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "ERR qmd-reindex: --update-collection requires a collection name operand" >&2
+                usage >&2
+                exit 1
+            fi
+            UPDATE_COLLECTION="$2"; shift 2 ;;
+        --update-collection=*)
+            UPDATE_COLLECTION="${1#--update-collection=}"
+            if [ -z "$UPDATE_COLLECTION" ]; then
+                echo "ERR qmd-reindex: --update-collection requires a collection name operand" >&2
+                usage >&2
+                exit 1
+            fi
+            shift ;;
         --no-cleanup) NO_CLEANUP=1; shift ;;
         --dry-run)   DRY_RUN=1; shift ;;
         -h|--help)   usage; exit 0 ;;
@@ -418,6 +441,16 @@ while [ $# -gt 0 ]; do
             ;;
     esac
 done
+
+case "$UPDATE_COLLECTION" in
+    '') ;;
+    -*|*[!A-Za-z0-9._-]*)
+        echo "ERR qmd-reindex: --update-collection takes a plain collection name ([A-Za-z0-9._-], no leading '-'), got '$UPDATE_COLLECTION'" >&2
+        exit 1 ;;
+    *)
+        UPDATE_ARGS=(update -c "$UPDATE_COLLECTION")
+        NO_CLEANUP=1 ;;
+esac
 
 # A named index lives in its own files (qmd's own layout): NAME.sqlite in the
 # cache dir, NAME.yml in the config dir. The refresh stamp is per index, so a
@@ -511,6 +544,7 @@ stamp() { date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo '?'; }
 # complete reindex should now report failure over a side-channel write.
 write_refresh_stamp() {
     local dir tmp
+    [ -z "$UPDATE_COLLECTION" ] || return 0
     dir=$(dirname "$QMD_REFRESH_STAMP")
     if ! mkdir -p "$dir" 2>/dev/null; then
         echo "WARN qmd-reindex: could not create $dir for the refresh stamp; qmd-staleness.sh will fall back to its proxy." >&2
@@ -536,6 +570,7 @@ write_refresh_stamp() {
 # the run's own result. `summary=` is the one line the cadence alert quotes.
 write_reindex_state() { # <rc> <remaining> <last_error>
     local dir tmp summary
+    [ -z "$UPDATE_COLLECTION" ] || return 0
     dir=$(dirname "$QMD_REINDEX_STATE")
     mkdir -p "$dir" 2>/dev/null || return 0
     if [ "$2" = unknown ]; then summary="remaining hash count unknown"; else summary="$2 unique hashes still need vectors"; fi
@@ -555,7 +590,7 @@ write_reindex_state() { # <rc> <remaining> <last_error>
 }
 
 if [ "$DRY_RUN" -eq 1 ]; then
-    echo "DRY qmd-reindex: would run: $(qmd_bin_desc)$IDX_DESC update"
+    echo "DRY qmd-reindex: would run: $(qmd_bin_desc)$IDX_DESC ${UPDATE_ARGS[*]}"
     echo "DRY qmd-reindex: would run: $(qmd_bin_desc)$IDX_DESC embed"
     echo "DRY qmd-reindex: would re-run: $(qmd_bin_desc)$IDX_DESC embed   (completeness assert; more sessions while each embeds chunks, up to the session bounds)"
     [ "$NO_CLEANUP" -eq 1 ] || echo "DRY qmd-reindex: would run: $(qmd_bin_desc)$IDX_DESC cleanup"
@@ -570,9 +605,10 @@ echo "qmd-reindex: start $(stamp) (qmd: $(qmd_bin_desc)$IDX_DESC)"
 # the embed or completeness steps, so a stamp certifying an EARLIER verified-complete
 # state must not survive to be read as this run's freshness. write_refresh_stamp()
 # re-installs it only once this run itself reaches verified-complete.
-rm -f "$QMD_REFRESH_STAMP" 2>/dev/null || true
-# The backlog record of an earlier run is as stale as its stamp.
-rm -f "$QMD_REINDEX_STATE" 2>/dev/null || true
+if [ -z "$UPDATE_COLLECTION" ]; then
+    rm -f "$QMD_REFRESH_STAMP" 2>/dev/null || true
+    rm -f "$QMD_REINDEX_STATE" 2>/dev/null || true
+fi
 
 # --- 0. embed-model precheck ------------------------------------
 # An embed pass with a configured model other than the index's would fail on a
@@ -699,7 +735,7 @@ EMBED_MAX_SECS=$(secs_or_default "${QMD_REINDEX_EMBED_MAX_SECS:-}" 7200)
 remaining_hashes() {
     local out n
     # A recount that failed or timed out left partial output: report none of it.
-    out=$(run_qmd update 2>&1) || return 0
+    out=$(run_qmd "${UPDATE_ARGS[@]}" 2>&1) || return 0
     # No `{…;q}`: BSD sed (macOS) rejects it; keep the first match in bash.
     n=$(sed -nE 's/^(.*[^0-9])?([0-9]+) unique hashes need vectors.*/\2/p' <<<"$out")
     printf '%s' "${n%%$'\n'*}"

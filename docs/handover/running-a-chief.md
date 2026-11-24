@@ -580,10 +580,17 @@ A dispatch that sets effort to `high`, `xhigh` or `max` with no
 to the named agent's own `effort:` frontmatter, such as `judge` at `high`, draws
 no warning.
 
-Any helper other than a judge (general-purpose or a named agent) dispatched on an Opus model with no `TIER: <reason>`
-line in its prompt draws a warning from `guard-agent-model.sh` (warn only, never
-a deny; the reason must pass the same length and placeholder test as
-`ESCALATION:`). Opus is for the one hard call: put the reason on that line.
+A `general-purpose`, `claude` (the catch-all) or untyped helper defaults to `sonnet` (Sonnet 5.5). Dispatched
+on an Opus model with no escalation line (`TIER: <reason>` or `ESCALATION: <reason>`
+in its prompt), `guard-agent-model.sh` denies it and names `model: sonnet`; the
+reason must pass the same length and placeholder test as `ESCALATION:`. The types
+under this default are the `default_sonnet_agent_types` list in
+`scripts/guardrails/agent-model-policy.json`. `ticket-auditor` and `page-reviewer`
+are not on it: they stay on Opus under the operator's audit and docs rule.
+
+Any other helper (a named agent) dispatched on an Opus model with no `TIER: <reason>`
+line draws a warning from `guard-agent-model.sh` (warn only, never a deny).
+Opus is for the one hard call: put the reason on that line.
 
 **Operator-ruled Opus classes.** The table is not the whole rule.
 Standing operator rulings keep four helper classes on Opus at high effort, and
