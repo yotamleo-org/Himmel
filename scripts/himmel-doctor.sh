@@ -3804,10 +3804,11 @@ check_c72_design_mcp_auth() {
 # symlink is followed to its target) and
 # WARNs when the highest such version sorts below .bun-version. Report only: the
 # fix is a vendor build on the newer Bun, never a hand patch.
-# Seams: HIMMEL_DOCTOR_BUN_SCAN_DIRS (colon-separated dirs), HIMMEL_DOCTOR_BUN_VERSION_FILE.
+# Seams: HIMMEL_DOCTOR_BUN_SCAN_DIRS (colon-separated dirs), HIMMEL_DOCTOR_BUN_VERSION_FILE, HIMMEL_DOCTOR_ACK_FILE.
 check_c73_bun_compiled() {
-    local vfile="${HIMMEL_DOCTOR_BUN_VERSION_FILE:-$REPO_ROOT/.bun-version}" pin dirs d f emb scanned=0 stale=0
+    local vfile="${HIMMEL_DOCTOR_BUN_VERSION_FILE:-$REPO_ROOT/.bun-version}" pin dirs d f emb scanned=0 stale=0 snoozed=0
     local min_kb="${HIMMEL_DOCTOR_BUN_MIN_KB:-10240}" home="${HOME:-}"
+    local ack_file="${HIMMEL_DOCTOR_ACK_FILE:-${HOME:-}/.claude/himmel/doctor-ack.txt}"
     local -a dirlist=()
     pin="$(tr -d '[:space:]' < "$vfile" 2>/dev/null || true)"
     if [ -z "$pin" ]; then emit INFO C73-bun-compiled "no .bun-version at $vfile -- nothing to compare compiled binaries against"; return 0; fi
@@ -3822,13 +3823,18 @@ check_c73_bun_compiled() {
             [ -n "$emb" ] || continue
             scanned=$((scanned+1))
             if [ "$emb" != "$pin" ] && [ "$(printf '%s\n%s\n' "$emb" "$pin" | sort -V | head -1)" = "$emb" ]; then
+                if [ -f "$ack_file" ] && grep -qxF "C73-bun-compiled $f $emb" "$ack_file" 2>/dev/null; then
+                    emit INFO C73-bun-compiled "$f embeds Bun $emb, older than .bun-version $pin -- snoozed by the operator in $ack_file until a build embeds a different Bun"
+                    snoozed=$((snoozed+1))
+                    continue
+                fi
                 stale=$((stale+1))
                 emit WARN C73-bun-compiled "$f embeds Bun $emb, older than .bun-version $pin (Bun advisories fixed in $pin do not reach it)" \
-                    "update it from a vendor build on Bun $pin or later; do not hand-patch the binary. If the newest vendor release is still older, file an upstream issue and keep this warning"
+                    "update it from a vendor build on Bun $pin or later; do not hand-patch the binary. If the newest vendor release is still older, file an upstream issue and either keep this warning or snooze it until a new build by adding the line 'C73-bun-compiled $f $emb' to $ack_file"
             fi
         done < <(find -L "$d" -maxdepth 3 -type f -size "+${min_kb}k" 2>/dev/null)
     done
-    [ "$stale" -gt 0 ] || emit OK C73-bun-compiled "$scanned bun-compiled binaries scanned, none embeds a Bun older than .bun-version $pin"
+    [ "$stale" -gt 0 ] || [ "$snoozed" -gt 0 ] || emit OK C73-bun-compiled "$scanned bun-compiled binaries scanned, none embeds a Bun older than .bun-version $pin"
 }
 
 _doctor_env_file() {

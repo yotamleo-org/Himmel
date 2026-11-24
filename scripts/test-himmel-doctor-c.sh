@@ -1588,7 +1588,7 @@ c73_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c73.XXXXXX")" || { fail "C73 m
 mkdir -p "$c73_t/home" "$c73_t/claude" "$c73_t/bin" "$c73_t/deep/a/b/c"
 printf '1.4.4\n' > "$c73_t/.bun-version"
 c73_stub() { printf 'en\0N\0\0\0\0\0\0\0https://github.com/oven-sh/bun/releases/download/bun-v%s/bun-linux-x64.zip\0\0\0\0.js.tsvm\n' "$2" > "$1"; chmod +x "$1"; }
-c73_run() { env HOME="$c73_t/home" CLAUDE_DIR="$c73_t/claude" HIMMEL_DOCTOR_BUN_VERSION_FILE="$c73_t/.bun-version" HIMMEL_DOCTOR_BUN_MIN_KB=0 HIMMEL_DOCTOR_BUN_SCAN_DIRS="$1" bash "$DOC" --no-color --only C73 2>&1; }
+c73_run() { env HOME="$c73_t/home" CLAUDE_DIR="$c73_t/claude" HIMMEL_DOCTOR_BUN_VERSION_FILE="$c73_t/.bun-version" HIMMEL_DOCTOR_BUN_MIN_KB=0 HIMMEL_DOCTOR_ACK_FILE="$c73_t/ack.txt" HIMMEL_DOCTOR_BUN_SCAN_DIRS="$1" bash "$DOC" --no-color --only C73 2>&1; }
 c73_stub "$c73_t/bin/stale-tool" 1.4.2
 out="$(c73_run "$c73_t/bin")"
 if grepq "$out" -F 'WARN C73-bun-compiled' && grepq "$out" -F "$c73_t/bin/stale-tool" && grepq "$out" -F 'Bun 1.4.2' && grepq "$out" -F '1.4.4'; then pass "C73 bun-v1.4.2 vs pin 1.4.4 -> WARN naming the binary and both versions"; else fail "C73 stale -> $(printf '%s' "$out" | head -3)"; fi
@@ -1613,6 +1613,19 @@ out="$(c73_run "$c73_t/links")"
 if grepq "$out" -F 'WARN C73-bun-compiled' && grepq "$out" -F "$c73_t/links/stale-link"; then pass "C73 an executable symlink is followed to its stale target -> WARN"; else fail "C73 symlink -> $(printf '%s' "$out" | head -3)"; fi
 out="$(c73_run "$c73_t/no-such-dir")"
 if grepq "$out" -F 'OK   C73-bun-compiled'; then pass "C73 absent scan dir -> OK"; else fail "C73 absent -> $(printf '%s' "$out" | head -3)"; fi
+mkdir -p "$c73_t/snz"
+c73_stub "$c73_t/snz/cr" 1.4.2
+out="$(c73_run "$c73_t/snz")"
+if grepq "$out" -F 'WARN C73-bun-compiled' && grepq "$out" -F 'C73-bun-compiled' && grepq "$out" -F "$c73_t/ack.txt"; then pass "C73 no ack line -> WARN, remedy names the ack file"; else fail "C73 no ack -> $(printf '%s' "$out" | head -3)"; fi
+printf 'C73-bun-compiled %s 1.4.2\n' "$c73_t/snz/cr" > "$c73_t/ack.txt"
+out="$(c73_run "$c73_t/snz")"
+if grepq "$out" -F 'INFO C73-bun-compiled' && grepq "$out" -F "$c73_t/snz/cr" && ! grepq "$out" -F 'WARN C73'; then pass "C73 ack line matching path and embedded version -> INFO, no WARN"; else fail "C73 ack match -> $(printf '%s' "$out" | head -3)"; fi
+printf 'C73-bun-compiled %s 1.4.1\n' "$c73_t/snz/cr" > "$c73_t/ack.txt"
+out="$(c73_run "$c73_t/snz")"
+if grepq "$out" -F 'WARN C73-bun-compiled' && ! grepq "$out" -F 'INFO C73-bun-compiled'; then pass "C73 ack line for an older embedded version -> still WARN"; else fail "C73 ack older -> $(printf '%s' "$out" | head -3)"; fi
+printf 'C73-bun-compiled %s/other 1.4.2\n' "$c73_t/snz" > "$c73_t/ack.txt"
+out="$(c73_run "$c73_t/snz")"
+if grepq "$out" -F 'WARN C73-bun-compiled'; then pass "C73 ack line for a different path -> still WARN"; else fail "C73 ack other path -> $(printf '%s' "$out" | head -3)"; fi
 rm -rf "$c73_t"
 
 # --- C74-config-split: himmel.conf, config keys left in .env, the policy file ---
