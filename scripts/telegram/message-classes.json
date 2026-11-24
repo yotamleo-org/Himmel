@@ -549,8 +549,20 @@
     },
     {
       "kind": "bypass-result",
-      "class": "silent",
-      "sender": "scripts/station-ops/bypass-launchd.sh"
+      "class": "monitor",
+      "sender": "scripts/station-ops/bypass-launchd.sh",
+      "on-alert": [
+        {
+          "match": "bypass launch \\S+: launched with ",
+          "do": "info",
+          "why": "a record of a launch the operator approved"
+        },
+        {
+          "do": "escalate",
+          "to": "chief",
+          "reason": "the line reports a decision (a denial, a refusal, a merge, a launch policy) only an agent with context may make"
+        }
+      ]
     },
     {
       "kind": "version-approval",

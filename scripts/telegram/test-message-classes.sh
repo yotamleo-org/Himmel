@@ -22,7 +22,7 @@ CONTROL = ["merge-blocked", "token-in-output", "hold-ask-operator", "hold-ask-st
 PIN_PENDING = []
 NAMED = {"bypass-ask": ("escalate", "scripts/station-ops/bypass-launchd.sh"),
          "bypass-failed": ("escalate", "scripts/station-ops/bypass-launchd.sh"),
-         "bypass-result": ("silent", "scripts/station-ops/bypass-launchd.sh"),
+         "bypass-result": ("monitor", "scripts/station-ops/bypass-launchd.sh"),
          "denial-page": ("silent", "scripts/handover/chief-kit/chief-wait.sh"),
          "version-approval": ("escalate", "scripts/handover/chief-kit/version-approval-alert.sh"),
          "claude-only-clear": ("monitor", "scripts/cr/clear-review-marker.sh"),
@@ -335,11 +335,13 @@ for k in bypass-ask bypass-failed version-approval 'cadence:graph-key-*'; do
   mut "$T/named-down.json" "[r.update({'class':'monitor'}) for r in t['kinds'] if r['kind']=='$k']"
   lint_dirty "the operator-owned $k set to monitor fails the lint" "$k must be escalate" --table "$T/named-down.json" --only named
 done
-for k in bypass-result denial-page; do
-  for c in monitor escalate; do
-    mut "$T/named-up.json" "[r.update({'class':'$c'}) for r in t['kinds'] if r['kind']=='$k']"
-    lint_dirty "the quiet kind $k set to $c fails the lint (nobody acts on it, so it stays silent)" "$k must be silent" --table "$T/named-up.json" --only named
-  done
+for c in monitor escalate; do
+  mut "$T/named-up.json" "[r.update({'class':'$c'}) for r in t['kinds'] if r['kind']=='denial-page']"
+  lint_dirty "the quiet kind denial-page set to $c fails the lint (nobody acts on it, so it stays silent)" "denial-page must be silent" --table "$T/named-up.json" --only named
+done
+for c in silent escalate; do
+  mut "$T/named-up.json" "[r.update({'class':'$c'}) for r in t['kinds'] if r['kind']=='bypass-result']"
+  lint_dirty "bypass-result set to $c fails the lint (it carries real refusals, so it stays monitor)" "bypass-result must be monitor" --table "$T/named-up.json" --only named
 done
 mut "$T/named-sender.json" "[r.update({'sender':'scripts/handover/chief-kit/chief-wait.sh'}) for r in t['kinds'] if r['kind']=='version-approval']"
 lint_dirty "version-approval with another sender fails the lint" "version-approval: sender must be" --table "$T/named-sender.json" --only named
