@@ -137,9 +137,9 @@ case "$t9_out" in *"discarded the saved session"*) t9_msg=yes ;; *) t9_msg=no ;;
 assert_eq "T9 restore_snapshot says it discarded the saved session" "yes" "$t9_msg"
 
 echo poweroff > "$T8_STATE"; : > "$T8_LOG"
-vbox_call "vbox.power_off('vm1')" >/dev/null
+t10_rc=0; vbox_call "vbox.power_off('vm1')" >/dev/null || t10_rc=$?
 case "$(cat "$T8_LOG")" in *discardstate*) t10_disc=yes ;; *) t10_disc=no ;; esac
-assert_eq "T10 power_off of a powered-off VM discards nothing" "no" "$t10_disc"
+assert_eq "T10 power_off of a powered-off VM succeeds and discards nothing" "0 no" "$t10_rc $t10_disc"
 
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"
