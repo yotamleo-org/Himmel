@@ -69,9 +69,15 @@ vm_mode_home_ok() {
     ( LC_ALL=C; case "$HOME" in *[[:cntrl:]]*|*$'\xc2'[$'\x80'-$'\x9f']*) exit 1 ;; esac ) || return 1
 }
 
+# shellcheck source=vm-ssh-opts.sh
+. "$(dirname -- "${BASH_SOURCE[0]}")/vm-ssh-opts.sh"
+
 vm_mode_load() {
-    local cfg="${HIMMEL_VM_MODE_CONFIG:-${HOME:-}/.himmel/config.json}" line
+    local cfg="${HIMMEL_VM_MODE_CONFIG:-${HOME:-}/.himmel/config.json}" line guest_user
     VM_MODE=local VM_MODE_HOST=localhost VM_MODE_PORT=2222
+    if guest_user="$(vm_ssh_guest_user "$(vm_ssh_vm_for_port "$VM_MODE_PORT")")" && [ -n "$guest_user" ]; then
+        VM_MODE_HOST="$guest_user@localhost"
+    fi
     VM_MODE_IDENT="${HOME:-}/.ssh/id_ed25519" VM_MODE_NOTE="" VM_MODE_ERROR=""
     if ! vm_mode_home_ok; then
         VM_MODE=none VM_MODE_IDENT="" VM_MODE_ERROR=1
@@ -147,7 +153,7 @@ vm_mode() { vm_mode_load; printf '%s\n' "$VM_MODE"; }
 vm_proof_route() {
     vm_mode_load
     case "$VM_MODE" in
-        local)  printf 'local-vm %s:%s\n' "$VM_MODE_HOST" "$VM_MODE_PORT" ;;
+        local)  printf 'local-vm %s:%s\n' "${VM_MODE_HOST#*@}" "$VM_MODE_PORT" ;;
         remote) printf 'remote-vm %s:%s\n' "$VM_MODE_HOST" "$VM_MODE_PORT" ;;
         *)
             if [ -n "$VM_MODE_ERROR" ]; then
