@@ -708,10 +708,11 @@ def _clip_lock(path: Path, expect: str | None = None, wait: float = CLIP_LOCK_WA
     fd = os.open(root, os.O_RDONLY)
     try:
         deadline = time.monotonic() + wait
-        while True:
+        locked = False
+        while not locked:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
+                locked = True
             except BlockingIOError:
                 if time.monotonic() >= deadline:
                     raise TimeoutError(f"clip lock busy for {wait:.0f}s: {path.name}")
