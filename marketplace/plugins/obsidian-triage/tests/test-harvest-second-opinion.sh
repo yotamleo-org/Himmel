@@ -307,6 +307,91 @@ assert "flag-only write: a mid-write edit is kept" "kept" "$(field "$r" EDIT)"
 r="$(race thin)"
 assert "thin-partial write: a mid-write edit is kept" "kept" "$(field "$r" EDIT)"
 
+cat > "$tmp/kill.py" <<'PY'
+import importlib.util, io, os, signal, sys
+tool, root, mode, action = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+os.environ.pop("HARVEST_SCRAPE_DENY", None)
+spec = importlib.util.spec_from_file_location("h", tool)
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.TODAY = "2026-11-24"
+from pathlib import Path
+vault = Path(root) / f"kill-{mode}-{action}"
+clippings = vault / "Clippings"
+clippings.mkdir(parents=True, exist_ok=True)
+clip = clippings / "c.md"
+flag = mode in ("so", "flag", "thin")
+canonical = "https://example.org/a"
+fm_extra = "harvest_flag: injection-suspect\n" if flag else ("enrichment_status: ok\nneeds_thread: true\n" if mode == "reflag" else "")
+body = "A plain body.\n" if flag or mode == "reflag" else ("word " * 400 + "\n" if mode == "cb" else "short.\n")
+src = "" if flag or mode == "reflag" else f"type: article\nsource: {canonical}\n"
+orig = f"---\ntitle: x\n{src}{fm_extra}---\n{body}"
+clip.write_text(orig, encoding="utf-8")
+clip.chmod(0o640)
+(vault / "orig").write_text(orig, encoding="utf-8")
+real_open = io.open
+class Dying:
+    def __init__(self, f): self.f = f
+    def write(self, data):
+        self.f.write(data[: len(data) // 2]); self.f.flush()
+        if action == "kill":
+            os.kill(os.getpid(), signal.SIGKILL)
+        raise OSError("disk full")
+    def __getattr__(self, n): return getattr(self.f, n)
+    def __enter__(self): self.f.__enter__(); return self
+    def __exit__(self, *a): return self.f.__exit__(*a)
+def dying_open(file, mode="r", *a, **k):
+    f = real_open(file, mode, *a, **k)
+    return Dying(f) if action in ("kill", "raise") and any(c in mode for c in "wax+") else f
+review = lambda text: {"codex": "benign", "guard": "safe", "passages": [], "guard_ids": [], "downgrade": True}
+class Chain:
+    remaining = 3
+    last_backend = None
+    def scrape(self, url):
+        return "word " * 400
+io.open = dying_open
+text = clip.read_text(encoding="utf-8")
+fm, fm_raw, b, ok = m.parse_frontmatter(text)
+try:
+    if mode == "reflag":
+        m.run_reflag_silent_partials(vault, False)
+    elif mode in ("fc", "cb"):
+        r = m.process_clip(clip, dry_run=False, chain=Chain(), url_rules=m.UrlRules())
+        print("RESULT", r[1][:60])
+    elif mode == "yt":
+        m.write_youtube_harvest(clip, text, fm_raw, b, canonical, {"title": "t", "transcript": [{"ts": "0:01", "tx": "hi"}]}, [])
+    elif mode == "flag":
+        m.persist_flag_only(clip, text, fm_raw, b, ["x"])
+    elif mode == "thin":
+        m.persist_thin_partial(clip, text, fm, fm_raw, b, None, [])
+    elif mode == "defer":
+        m.bump_defer(clip)
+    else:
+        m.apply_second_opinion(clip, review_fn=review)
+except Exception as e:
+    print("RAISED", type(e).__name__)
+PY
+killrun() {
+  "$PY" -I "$tmp/kill.py" "$TOOL" "$tmp" "$1" "$2" >"$tmp/kill.out" 2>&1
+  killrc=$?
+  kdir="$tmp/kill-$1-$2"
+  if cmp -s "$kdir/Clippings/c.md" "$kdir/orig"; then killclip=intact; else killclip=changed; fi
+  strays="$(find "$kdir/Clippings" -mindepth 1 ! -name c.md | sort | tr '\n' ' ')"
+  case "$strays" in *.md" "*) killmdstray=yes ;; *) killmdstray=no ;; esac
+  killmode="$("$PY" -I -c 'import os, sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$kdir/Clippings/c.md")"
+}
+for site in so flag thin yt fc cb reflag; do
+  killrun "$site" none
+  assert "write site $site: the control run changes the clip, so the harness reaches the write" "changed" "$killclip"
+  assert "write site $site: a landed write keeps the clip's file mode" "640" "$killmode"
+  killrun "$site" kill
+  assert "write site $site: the writer was killed mid-write" "137" "$killrc"
+  assert "write site $site: a writer killed mid-write leaves the old clip byte for byte" "intact" "$killclip"
+  assert "write site $site: a killed writer leaves nothing a next run would read as a clip" "no" "$killmdstray"
+  killrun "$site" raise
+  assert "write site $site: a write that raises after a partial write leaves the old clip byte for byte" "intact" "$killclip"
+  assert "write site $site: a write that raises leaves no stray file behind" "" "$strays"
+done
+
 echo "---"
 echo "harvest-second-opinion: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
