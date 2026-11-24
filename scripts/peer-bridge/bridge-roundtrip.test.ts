@@ -123,7 +123,7 @@ test("a malformed spool event is dropped with a result, and an event for no job 
   const none = bravoEvent(w, 99, { type: "approve" });
   await w.bravo.poller.drainSpool();
   const res = (n: string) => JSON.parse(readFileSync(join(w.bravo.peerDir, "spool", "results", n), "utf8"));
-  expect(res(bad)).toEqual({ ok: false, rule: "malformed" });
+  expect(res(bad)).toEqual({ ok: false, rule: "malformed", why: "job-event: bad event" });
   expect(res(none)).toEqual({ ok: false, rule: "unknown-job" });
   expect(w.bravo.logs.some(l => l.includes("malformed spool"))).toBe(true);
 });

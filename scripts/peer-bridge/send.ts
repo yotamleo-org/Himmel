@@ -7,7 +7,7 @@
 // 3 not a desk or not set up, 4 queued but unconfirmed: do not resend.
 import fs from "node:fs";
 import { join } from "node:path";
-import { readChain, submitSpool } from "./chain";
+import { pollerStale, readChain, submitSpool } from "./chain";
 import { readPeersFile } from "./config";
 import { checkOutbound } from "./egress";
 import { PEER_NAME_RE, SESSION_ID_RE, peerDir, peersFile, stateDir } from "./ids";
@@ -67,6 +67,7 @@ async function main() {
   });
   if (!res.ok) out(2, `refused: ${res.rule}${res.shape ? ` (${res.shape})` : ""}`);
 
+  if (pollerStale(join(stateDir(), "poller.pid"))) process.stderr.write("warning: the running poller loaded older peer-bridge code than this checkout and may refuse this send; restart it (himmel-peer-bridge)\n");
   const name = submitSpool(peerDir(peer), { type: "draft", source: "send.ts", kind: kind as Kind, ...(replyTo !== undefined ? { replyTo } : {}), text: text!, ...(allowShape && tty && !inClaude ? { allowShape } : {}) });
   const resultFile = join(peerDir(peer), "spool", "results", name);
   const deadline = Date.now() + (Number(process.env.PEER_SEND_WAIT_MS) || 10_000);
@@ -75,7 +76,7 @@ async function main() {
       const r = JSON.parse(fs.readFileSync(resultFile, "utf8"));
       fs.rmSync(resultFile, { force: true });
       if (r.ok) out(0, `drafted ${r.draft}; approve it on Telegram by ${hhmm(r.deadline)}`);
-      out(2, `refused: ${r.rule}${r.shape ? ` (${r.shape})` : ""}`);
+      out(2, `refused: ${r.rule}${r.shape ? ` (${r.shape})` : ""}${r.why ? `: ${r.why}` : ""}`);
     } catch (e) { if (!(e instanceof SyntaxError) && (e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
     await new Promise(r => setTimeout(r, 100));
   }

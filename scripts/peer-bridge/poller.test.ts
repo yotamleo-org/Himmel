@@ -271,7 +271,7 @@ test("each spool type writes its result file, and an approved draft's tap result
   expect(existsSync(join(e.peerDir, "cursors", "sess-2"))).toBe(false);
   expect(readResult(e, confirmName)).toEqual({ ok: true });
   expect(outbox(e).some(r => r.kind === "confirmed")).toBe(true);
-  expect(readResult(e, "9-junk.json")).toEqual({ ok: false, rule: "malformed" });
+  expect(readResult(e, "9-junk.json")).toEqual({ ok: false, rule: "malformed", why: "not valid json" });
   expect(readdirSync(join(e.peerDir, "spool")).filter(n => n.endsWith(".json"))).toEqual([]);
   expect(outbox(e).some(r => r.kind === "sent")).toBe(true);
   expect(statSync(join(e.peerDir, "spool", "results", sendName)).mode & 0o777).toBe(0o600);
@@ -782,7 +782,7 @@ test("an unknown spool event type is logged and dropped; an event for no such jo
   const mine = jobEvent(e, 1, { type: "approve" });
   e.logs.length = 0;
   await p.drainSpool();
-  expect(readResult(e, bad)).toEqual({ ok: false, rule: "malformed" });
+  expect(readResult(e, bad)).toEqual({ ok: false, rule: "malformed", why: "job-event: bad event" });
   expect(readResult(e, none)).toEqual({ ok: false, rule: "unknown-job" });
   expect(readResult(e, mine)).toEqual({ ok: false, rule: "unknown-job" });
   expect(e.logs.some(l => l.includes("malformed spool"))).toBe(true);

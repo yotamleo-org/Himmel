@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { Chain, PidLockError, acquirePidLock, drainSpool, readChain, startIdentity, signTap, submitSpool, sweepResults, tapKey, tapSigOk, verifyChain, writeResult } from "./chain";
+import { CODE_VERSION, Chain, PidLockError, acquirePidLock, drainSpool, pollerStale, readChain, startIdentity, signTap, submitSpool, sweepResults, tapKey, tapSigOk, verifyChain, writeResult } from "./chain";
 import { writeSpoolEvent } from "./spool-events";
 
 const tmp = (p = "peer-chain-") => mkdtempSync(join(tmpdir(), p));
@@ -196,6 +196,44 @@ test("a send spool record is malformed; draft and tap validate", () => {
   const dir2 = peerDirWithSpool();
   good.forEach(g => submitSpool(dir2, g as any));
   expect(drainSpool(dir2).map(d => ("rec" in d ? d.rec : "malformed"))).toEqual(good as any);
+});
+
+test("a malformed spool file names why, in fixed words and never with its content", () => {
+  const dir = peerDirWithSpool();
+  const cases: [string, string, string][] = [
+    ["01-json.json", "not json SECRET", "not valid json"],
+    ["02-array.json", "[1]", "not a json object"],
+    ["03-type.json", JSON.stringify({ type: "frob" }), "unknown type"],
+    ["04-kind.json", JSON.stringify({ type: "draft", source: "send.ts", kind: "run", text: "SECRET" }), "draft: bad kind"],
+    ["05-text.json", JSON.stringify({ type: "draft", source: "send.ts", kind: "info" }), "draft: bad text"],
+    ["06-tap.json", JSON.stringify({ type: "tap", verb: "ok", draft: "XYZ", by: "42", ts: 1 }), "tap: bad draft"],
+    ["07-event.json", JSON.stringify({ type: "job-event", job: 1, event: { type: "frobnicate" } }), "job-event: bad event"],
+  ];
+  cases.forEach(([n, body]) => writeFileSync(join(dir, "spool", n), body, { mode: 0o600 }));
+  const why = drainSpool(dir).map(d => ("malformed" in d ? d.why : "ok"));
+  expect(why).toEqual(cases.map(c => c[2]));
+  expect(JSON.stringify(why)).not.toContain("SECRET");
+});
+
+test("the pid lock records the code version, and a live holder on another version is a stale poller", async () => {
+  expect(CODE_VERSION).toMatch(/^[0-9a-f]{16}$/);
+  const lock = join(tmp(), "poller.pid");
+  expect(pollerStale(lock)).toBe(false);
+  const release = acquirePidLock(lock);
+  expect(JSON.parse(readFileSync(lock, "utf8")).code).toBe(CODE_VERSION);
+  expect(pollerStale(lock)).toBe(false);
+  release();
+  const h = await holder();
+  const start = startIdentity(h.pid);
+  writeFileSync(lock, JSON.stringify({ pid: h.pid, start }), { mode: 0o600 });
+  expect(pollerStale(lock)).toBe(true);
+  writeFileSync(lock, JSON.stringify({ pid: h.pid, start, code: "0000000000000000" }), { mode: 0o600 });
+  expect(pollerStale(lock)).toBe(true);
+  writeFileSync(lock, JSON.stringify({ pid: h.pid, start, code: CODE_VERSION }), { mode: 0o600 });
+  expect(pollerStale(lock)).toBe(false);
+  await h.kill();
+  writeFileSync(lock, JSON.stringify({ pid: h.pid, start }), { mode: 0o600 });
+  expect(pollerStale(lock)).toBe(false);
 });
 
 test("spool: an O_EXCL name collision is refused", () => {
