@@ -3,10 +3,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { coreMatch, expandPaths, loadCorePatterns, sizeGuard, type ChangeClass } from '../release/core.js';
-import { readMirrorFilesUnverified, readOperatorRecords } from '../release/engine.js';
-import { readSignerState } from '../release/engine-core.js';
+import { readMirrorFilesUnverified, readOperatorRecords, specCheck } from '../release/engine.js';
+import { readSignerState, type ReleaseRecord } from '../release/engine-core.js';
 import type { SignerState } from '../release/signer.js';
-import type { IssueSnap, OperatorRow } from '../release/types.js';
+import type { IssueSnap, OperatorKind, OperatorRow } from '../release/types.js';
 import { defaultRoot } from './mirror.js';
 import { list } from './release.js';
 
@@ -20,6 +20,8 @@ export interface CoreInputs {
   guardLine: string | null;
   issues: Map<string, IssueSnap> | null;
   records: OperatorRow[];
+  specRecords: ReleaseRecord[];
+  mirror: string | null;
   signer: SignerState;
 }
 
@@ -31,15 +33,20 @@ export function loadCoreInputs(o: CoreInputOpts): CoreInputs {
   const mirror = o.mirror ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null);
   const records = [...readOperatorRecords('core-bypass'), ...readOperatorRecords('core-snapshot')]
     .sort((a, b) => a.ts.localeCompare(b.ts));
+  const specRecords = readOperatorRecords(SPEC_KINDS);
   const issues = mirror ? readMirrorFilesUnverified(mirror).issues : null;
-  return { patterns, tracked, guardLine: guard.line, issues, records, signer: readSignerState(process.env, mirror) };
+  return { patterns, tracked, guardLine: guard.line, issues, records, specRecords, mirror, signer: readSignerState(process.env, mirror) };
 }
+
+const SPEC_KINDS: OperatorKind[] = ['spec', 'spec-review'];
 
 export function coreGroupLines(
   inputs: CoreInputs, paths: string, keys: string[], o: { changeClass?: ChangeClass; docsOnly?: boolean } = {},
 ): string[] {
-  const { patterns, tracked, issues, records, signer } = inputs;
-  return coreMatch(expandPaths(list(paths), tracked), keys, { patterns, changeClass: o.changeClass, docsOnly: !!o.docsOnly, issues, records, signer });
+  const { patterns, tracked, issues, records, specRecords, mirror, signer } = inputs;
+  const specFor = (k: string) => specCheck(process.env, [k], mirror, { kinds: SPEC_KINDS, issues, records: specRecords, signer }).answer.get(k)
+    ?? { missing: `no spec answer for ${k}` };
+  return coreMatch(expandPaths(list(paths), tracked), keys, { patterns, changeClass: o.changeClass, docsOnly: !!o.docsOnly, issues, records, signer, specFor });
 }
 
 const BATCH = 'release core-check-batch';

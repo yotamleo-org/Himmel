@@ -54,6 +54,7 @@
       "kind": "recover-failed",
       "class": "escalate",
       "sender": "scripts/station-ops/recover.sh",
+      "pin": "reply --kind \"$kind\" \"$chat\" \"$status\"",
       "sample": "Reboot recovery failed: the bridge did not come back. Blocks: every Telegram message. Do: run systemctl --user restart telegram-bridge.service"
     },
     {

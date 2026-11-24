@@ -2125,18 +2125,36 @@ exit 0
 STUB
     chmod +x "$c40_t/curl"
     : > "$c40_t/log"
+    mkdir -p "$c40_t/qmdbin"; printf '#!/usr/bin/env bash\nexit 0\n' > "$c40_t/qmdbin/qmd"; chmod +x "$c40_t/qmdbin/qmd"
+    c40_nq_path=""
+    local d
+    IFS=: read -ra c40_path_dirs <<< "$PATH"
+    for d in "${c40_path_dirs[@]}"; do [ -x "$d/qmd" ] || c40_nq_path="${c40_nq_path:+$c40_nq_path:}$d"; done
 }
 # C40 composes himmelctl status's qmd-daemon item, so a case feeds it
-# a status fixture (DOCTOR_STATUS_JSON) instead of running a 13s real status. The
-# item's verdict mirrors what the status probe reads off the same stub curl
-# (covered in test-wizard-qmd-daemon.sh): refused -> absent, wedged/foreign/empty
-# reply -> degraded, anything that answers initialize -> present.
+# a status fixture (DOCTOR_STATUS_JSON) instead of running a 13s real status.
 c40_status() { # <desired true|false> <actual> <detail> — writes $c40_t/status.json
     jq -n --argjson d "$1" --arg a "$2" --arg t "$3" '{items:[{id:"qmd-daemon",desired:$d,actual:$a,detail:$t}]}' > "$c40_t/status.json"
 }
+c40_probe_fixture() {
+    local p="$c40_nq_path" node_bin
+    local item_id=qmd-daemon # t13b-ok: manifest item id passed to the probe, starts nothing
+    node_bin="$(command -v node)" || { fail "C40 probe fixture: node required"; return 1; }
+    [ "$2" = yes ] && p="$c40_t/qmdbin:$p"
+    env -u XDG_CONFIG_HOME -u QMD_HTTP_AUTH_FILE -u QMD_HTTP_TOKEN_FILE -u BUN_INSTALL \
+        PATH="$p" HOME="$c40_t/home" C40_MODE="$1" C40_LOG=/dev/null HIMMEL_DOCTOR_QMD_CURL="$c40_t/curl" HIMMEL_DOCTOR_QMD_URL=http://localhost:1/mcp \
+        "$node_bin" -e '
+const fs = require("fs"); const [root, id] = process.argv.slice(1);
+const { runProbe } = require(root + "/scripts/himmelctl/lib/probes.js");
+const item = JSON.parse(fs.readFileSync(root + "/scripts/install/manifest.json", "utf8")).items.find((i) => i.id === id);
+const v = runProbe(item, { repoRoot: root, targetPath: root, scope: "user", env: process.env });
+console.log(JSON.stringify({ items: [{ id, desired: true, actual: v.actual, detail: v.detail }] }));
+' "$REPO_ROOT" "$item_id" > "$c40_t/status.json"
+}
 c40_run() { # <mode>
     case "$1" in
-        down) c40_status true absent "no qmd daemon answering on the url (qmd is optional)" ;;
+        down) c40_probe_fixture down "${C40_QMD_SETUP:-yes}" ;;
+        probeok) c40_probe_fixture probeok yes ;;
         inithang) c40_status true degraded "a process accepted the connection but did not answer initialize within 10s -- wedged" ;;
         reset|empty204) c40_status true degraded "a process returned no usable initialize reply (curl rc=52, HTTP 204)" ;;
         foreign) c40_status true degraded "a process answers but it is NOT qmd (initialize reply has no qmd serverInfo)" ;;
@@ -2505,16 +2523,38 @@ else
 fi
 rm -rf "$c40_t"
 
-echo "== C40: no daemon answering -> INFO skip, no vec probe sent, no WARN =="
+echo "== C40 (HIMMEL-10928): refused connection where qmd is set up -> WARN naming the url, never 'optional' (RED) =="
 c40_setup
 if ! c40_precond down; then fail "C40 down: precondition — stub did not fail init"
 else
     out="$(c40_run down)"
-    if grepq "$out" 'INFO C40-qmd-vec' && ! grepq "$out" 'WARN C40-qmd-vec' && ! grep -q '^vec ' "$c40_t/log"; then
-        pass "C40 no daemon -> INFO skip (qmd is optional), no vec probe"
+    c40_line="$(printf '%s' "$out" | grep -A1 C40-qmd-vec)"
+    if grepq "$out" 'WARN C40-qmd-vec' && grepq "$c40_line" -F 'localhost:1/mcp' && grepq "$c40_line" 'not answering' \
+        && ! grepq "$c40_line" 'optional' && ! grep -q '^vec ' "$c40_t/log"; then
+        pass "C40 refused, qmd set up -> WARN naming the url, no 'optional', no vec probe"
     else
-        fail "C40 no daemon -> $(printf '%s' "$out" | grep -A1 C40) log=$(tr '\n' ' ' < "$c40_t/log")"
+        fail "C40 refused, qmd set up -> $c40_line status=$(cat "$c40_t/status.json")"
     fi
+fi
+rm -rf "$c40_t"
+
+echo "== C40 (HIMMEL-10928): refused connection on a station with no qmd setup -> INFO skip, qmd is optional =="
+c40_setup
+out="$(C40_QMD_SETUP=no c40_run down)"
+if grepq "$out" 'INFO C40-qmd-vec.*qmd is optional' && ! grepq "$out" 'WARN C40-qmd-vec' && ! grep -q '^vec ' "$c40_t/log"; then
+    pass "C40 refused, no qmd setup -> INFO skip (qmd is optional), no vec probe"
+else
+    fail "C40 refused, no qmd setup -> $(printf '%s' "$out" | grep -A1 C40) status=$(cat "$c40_t/status.json")"
+fi
+rm -rf "$c40_t"
+
+echo "== C40 (HIMMEL-10928): qmd set up and answering, verdict from the real probe -> OK, no WARN =="
+c40_setup
+out="$(c40_run probeok)"
+if grepq "$out" 'OK   C40-qmd-vec' && ! grepq "$out" 'WARN C40-qmd-vec' && grep -q '"actual":"present"' "$c40_t/status.json"; then
+    pass "C40 qmd up (real probe present) -> OK, no WARN"
+else
+    fail "C40 qmd up -> $(printf '%s' "$out" | grep -A1 C40) status=$(cat "$c40_t/status.json")"
 fi
 rm -rf "$c40_t"
 

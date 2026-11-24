@@ -435,7 +435,8 @@ rows below use. `claudex` is the exception: a live implementation lane with no
 | `copilot-cli` — GitHub Copilot CLI (free tier) | bulk | small tasks; model tier is mini-class unless the caller overrides the auto pin | unverified/varies | none (dashboard-omitted); 2,000 completions/mo | **not calibrated yet** — worker-spawn-matrix row UNVERIFIED (live smoke pending eval); route only for free chores / second opinions, and only through the `dispatch-copilot.sh` sanctioned script |
 | `hermes-oneshot` — hermes one-shot dispatch | impl | invoke.sh wall-clock timebox (default 1800s) + Nth-identical-deny abort | 900000 — re-confirmed on ox-alpha (2026-08-22: 300K/600K/900K probes all accepted); previously operator-verified inside hermes v0.20.2 (2026.8.16), upstream commit `bab7be3c` (2026-08-17), superseding 350000 (hermes-agent commit 522997543, 2026-08-16) | none (dashboard-omitted) | calibrated — live-proven spawn path; see [the hermes default](#the-hermes-himmel_agent-default-and-the-ox-alpha-record) |
 | `codex-exec` — codex CLI sandbox | impl | well-scoped chunks; job registry is per-workspace | 900000 — raised by operator ruling (2026-08-17) despite the 360K rejection hermes measured on the gpt-5.5 pin it carried then (codex-exec now follows the `codex` critic's model, `gpt-6.1-sol` (`gpt-6-sol` before it; `gpt-6-astra` before that); that probe was not repeated there); least-verified of the four raised lanes | codex | calibrated |
-| `antigravity-cli` — Antigravity CLI (Google AI Plus) | bulk | simple tasks; `--output-format` drift seen on Windows builds | unverified/varies | none (dashboard-omitted); free AI-Plus quota | **not calibrated yet** — roster + quota shape TO VERIFY at eval; parity/guards UNVERIFIED (permission flags only, no hook surface); egress-DENIED for vault corpora, himmel-code only; route only for free-bank chores / second opinions |
+| `antigravity-t3` — Antigravity T3 thread | t3-thread | `thought_level` low/medium/high/xhigh maps 1:1 to himmel effort; xhigh only on Neon and Hydrogen | unverified/varies | `gemini-4-neon` and `gemini-4-argon` have separate quota pools; reset windows unmeasured | `gemini-4-carbon` and `gemini-4-neon` = `tier: opus`, `gemini-4-hydrogen` = `tier: sonnet`; tiers per Decision 1328, benchmark citations in [Gemini 4 on the T3 Antigravity lane](#gemini-4-on-the-t3-antigravity-lane); Argon/3.8-flash unranked until measured; google-antigravity is allowed for inference only on himmel-code, handover-state, luna and salus (Decision 1259); every other purpose is denied |
+| `codex-t3` — Codex T3 thread | t3-thread | `gpt-6.1-sol`, explicit per-thread effort | unverified/varies | codex, weekly subscription | guarded T3 thread; no headless dispatch recipe; model selection is an operator ruling |
 | `ollama-local` — ollama (local models) | bulk | slow, small tasks | unverified/varies | none (dashboard-omitted); free, local wall-clock | calibrated — zero-egress guarantee is structural; the only salus-eligible backend |
 | `openrouter-free` — OpenRouter free models | bulk | simple tasks only; rate-limited | unverified/varies | none (dashboard-omitted) | **not calibrated yet** — parity/guards UNVERIFIED pending eval; probe live availability before routing, route only for simple free-tier chores |
 | `ollama-cloud` — Ollama Cloud (free tier) | bulk | simple tasks; free-tier usage caps | unverified/varies | none (dashboard-omitted) | **not calibrated yet** — parity/guards UNVERIFIED pending eval; egresses to ollama.com, an undeclared egress-matrix provider — vault corpora default-DENY (himmel-code only) until the operator declares a cell; route only for free-bank chores on non-vault corpora |
@@ -462,6 +463,99 @@ keyed reader (`review-round.sh`, `clear-review-marker.sh`, `cr-disposition.sh`,
 `AMEND-REQUEST <pr> <head> <finding-id> deferred_to=<KEY> fu_class=<class> reason=<why out of scope>`
 (a `hardening` request also carries `fu_why=<unseen-failure|no-check|vacuous-check|no-recovery|silent-rot>`),
 and the chief or a native worker runs `ledger-append.sh amend` for it, which signs the row.
+
+### Gemini 4 on the T3 Antigravity lane
+
+The T3 Antigravity lane offers the whole Gemini 4 family. The rules below come
+from each model's "what's new" page, from Google's
+[thinking](https://aistudio.google.com/docs/thinking),
+[choosing a model](https://aistudio.google.com/docs/choosing-a-model) and
+[prompting strategies](https://aistudio.google.com/docs/prompting-strategies)
+pages, and from Antigravity's [model list](https://antigravity.google/docs/models).
+Google also links a
+[Carbon developer guide](https://aistudio.google.com/learn/gemini-4-carbon-developer-guide)
+on prompting and multi-agent patterns. It renders only in a browser, so it is
+not folded in yet.
+
+**Claude tiers (Decision 1328): Carbon = Opus, Neon = Opus, Hydrogen = Sonnet.**
+Argon and 3.8 Flash stay unranked. The mapping says which Claude tier's work a
+Gemini model fits. It does not make Gemini an implementation lane: ruling 34
+keeps implementation on Claude tiers until the operator rules otherwise.
+
+| Model | Claude tier | Benchmark verdict (vs the same-tier Claude 5.5 model) | `thought_level` (default) |
+|---|---|---|---|
+| [`gemini-4-carbon`](https://aistudio.google.com/docs/whats-new-gemini-4-carbon) | Opus | Holds. Level with or ahead of Opus 5.5 on 4 of 6. Behind on FrontierCode and Arena WebDev | low, **medium**, high |
+| [`gemini-4-neon`](https://aistudio.google.com/docs/whats-new-gemini-4-neon) | Opus | Holds overall. Level with or ahead of Opus 5.5 on 4 of 6. Behind on Arena WebDev, where it also trails Sonnet 5.5, and slightly behind on FrontierCode | low, medium, **high**, xhigh |
+| [`gemini-4-hydrogen`](https://aistudio.google.com/docs/whats-new-gemini-4-hydrogen) | Sonnet | Holds overall (AA index 54 vs 55). Ten points behind Sonnet 5.5 on Terminal-Bench, so keep agentic coding on Sonnet-or-better | low, medium, **high**, xhigh |
+| [`gemini-4-argon`](https://aistudio.google.com/docs/whats-new-gemini-4-argon) | unranked | Lands at Sonnet overall (Vals index within 1.5 points), and below Sonnet on coding. If it is ever ranked, rank it Sonnet, not Opus | low, **medium**, high |
+| [`gemini-3.8-flash`](https://aistudio.google.com/docs/whats-new-gemini-3.8) | unranked | Not enough data. The only same-generation figure is Arena Text, nothing against Sonnet 5.5 | low, **medium**, high |
+
+**Benchmarks behind the tiers.** These come from independent runs only:
+- [Artificial Analysis](https://artificialanalysis.ai/models) (AA): Intelligence Index v5.0.1, each model at its top effort.
+- [Vals](https://www.vals.ai/).
+- [Arena](https://arena.ai/leaderboard).
+
+Vendor model-card numbers and price are left out. AA and Vals show no run date,
+so their figures are as retrieved on 2026-11-23. The Arena snapshots are dated
+2026-11-22 (Text) and 2026-11-23 (WebDev). SWE-bench, GPQA Diamond and ARC-AGI
+list none of these models yet. A ⚑ marks a figure that goes against the tier.
+
+| Benchmark | Carbon / Opus 5.5 | Neon / Opus 5.5 | Hydrogen / Sonnet 5.5 | Argon / Sonnet 5.5 / Opus 5.5 |
+|---|---|---|---|---|
+| AA Intelligence Index | 60 / 59 | 61 / 59 | 54 / 55 | 50 / 55 / 59 |
+| Terminal-Bench 4.0 (AA) | 65.2 / 59.6 | 63.6 / 59.6 | 53.5 / 63.6 ⚑ | 57.1 / 63.6 / 59.6 |
+| FrontierCode-AA 2.0 | 40.6 / 46.4 ⚑ | 44.4 / 46.4 ⚑ | 39.0 / 41.7 | |
+| HLE-Diamond (AA) | 69.1 / 67.9 | | 58.8 / 53.3 | |
+| AutomationBench-AA | | 79.3 / 69.5 | 76.1 / 71.8 | |
+| Vals Index | | | | 69.4 / 70.9 / 70.1 |
+| Code Migration v1.1 (Vals) | | | | 70.8 / 86.9 / 81.0 |
+| Arena WebDev | 1769 / 1820 ⚑ | 1765 / 1820 ⚑ | 1701 / 1715 | |
+| Arena Text | 1527 / 1507 | 1512 / 1507 | | 1520 / — / 1507 |
+
+The Orchestrator entries (`gemini-pro-orchestrator*`) are Antigravity pairs of a
+planner (Neon by default, or Carbon or Argon) and an executor (Hydrogen). Their
+effort is fixed and cannot be set. Treat one as a team, never as a single tier.
+With Carbon or Neon planning it is an Opus planner over a Sonnet executor. The
+Argon-planner variant is unranked, like Argon.
+
+**Picking a model.** Pick the Gemini model the way you would pick the Claude
+tier it maps to. Use Carbon for the one hard call. Google's escalation is to
+move to Carbon when Neon at `high` or `xhigh` gets stuck. Google's pairing is
+Carbon or Neon to diagnose or plan, then Hydrogen to make the edits, in one
+session that carries `previous_interaction_id`. In Antigravity:
+- Neon's window is up to 512K, not the API's 1M.
+- Carbon is offered on the Ultra and Enterprise plans only.
+- Models in one group share a 5-hour limit and a weekly limit. Argon has its
+  own quota pool.
+
+**Rules for every Gemini 4 brief:**
+- Start at the default `thought_level` and step down while quality holds. Google
+  says to try every level and keep the lowest one that meets the bar.
+  `minimal` is rejected. `xhigh` (Neon and Hydrogen only) is for hard multi-step
+  work. On simple prompts it overthinks and can use up the output budget.
+- Thinking and the answer share one output budget. Never set a small output cap;
+  to cut cost, lower `thought_level`. Carbon thinks more per turn than Argon.
+  Google says to raise any cap under 32K to at least 32,768. The per-hop limit
+  for Carbon and Argon is 32,768 on the thinking page but 65,536 on their
+  what's-new pages. For long output use background mode with a cap of 131,072
+  or 262,144.
+- Never set `temperature`, `top_p` or `top_k`. Carbon and Argon ignore them.
+  Neon and Hydrogen return 400 on a value out of range.
+- Declare tools natively, or constrain JSON with structured outputs. A system
+  prompt that asks for raw-text JSON tool calls can return
+  `MALFORMED_FUNCTION_CALL`.
+- Brief it precisely and directly, without persuasive wording. Use one kind of
+  delimiter per brief, XML tags or Markdown headings. Put the context first and
+  the question last. Include few-shot examples when the output has a shape.
+  Tell it to say when information is missing rather than guess. Do not ask for
+  step-by-step reasoning, because it already thinks; "think very hard" still
+  helps on hard problems.
+- Give today's date. Neon's knowledge cutoff is March 2026.
+- For agent work, have it plan before acting, keep going until the task is done
+  and cap its retries. Google's agentic system-instruction template covers this.
+- Gemini 4 caches only implicitly, on prompts of 4,096 tokens or more, at a 95%
+  discount. Keep the fixed part of the brief (rules, tools, reference text) at
+  the top and the same every time.
 
 ## The hermes `himmel_agent` default and the ox-alpha record
 
