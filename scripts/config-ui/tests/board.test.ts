@@ -45,10 +45,10 @@ test("view parity: affirmative terminal chief-doc references disappear while ope
 test("10947: the unfilled HANDOFF template line is no operator item; a real ask beside it still is", () => {
   const s = scratch();
   const env = owedFixture(s, "queue: HIMMEL-2 chief step");
-  writeFileSync(join(s.d, "chief-HANDOFF.md"), "## Open operator items\n\n<What only the operator can do: a merge, a credential, a dashboard flip.>\n- approve the held spend\n");
+  writeFileSync(join(s.d, "chief-HANDOFF.md"), "## Open operator items\n\n<What only the operator can do: a merge, a credential, a dashboard flip.>\n- approve the held spend\n- <https://example.invalid/approve>\n");
   const o = readOwed(env);
   if (o.state !== "ok") throw new Error(o.reason);
-  expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["approve the held spend"]);
+  expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["approve the held spend", "<https://example.invalid/approve>"]);
 });
 
 test("view parity: raw categories keep valid peers; malformed category remains reconciliation with a warning", () => {

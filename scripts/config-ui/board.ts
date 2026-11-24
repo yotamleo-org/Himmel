@@ -255,7 +255,7 @@ function handoffItems(bucket: string): OwedItem[] | undefined {
     if (!best || t > best.t) best = { f, t };
   }
   const sec = best ? mdSection(readText(join(bucket, best.f)), "Open operator items") : undefined;
-  return sec?.map((l) => l.trim()).filter((l) => l && !/^[-*\s]*(?:none\.?|<[^>]*>)$/i.test(l))
+  return sec?.map((l) => l.trim()).filter((l) => l && !/^[-*\s]*(?:none\.?|<(?![a-z][a-z0-9+.-]*:)[^>]*>)$/i.test(l))
     .map((l): OwedItem => {
       const answered = handoffAnswered(bucket, join(bucket, best!.f), l);
       return { actor: answered ? "chief" : "operator", source: "handoff", key: null, title: clip(l.replace(/^[-*]\s+/, ""), 140), ctx: best!.f,
