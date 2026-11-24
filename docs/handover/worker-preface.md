@@ -161,22 +161,15 @@ commands: VM only): `worker-sections/shell-and-tests.md`.
 ## Wrapping up
 
 After merge: run `git -C <primary> pull --ff-only`, re-read the ticket, and post the PR
-number and merge sha on it — moving it yourself only if the PR completes
-it (no Epic) and `--jira-transition` (the chief's `jira-transition=` line) did not (`failed`
+number and merge sha on it — moving it only if the PR completes
+it (no Epic) and `--jira-transition` did not (`failed`
 or any `skip=` but the two below). Never close it by hand on `skip=never-touch-type` or
-`skip=cannot-verify-type`: report it to the chief. Then release the
+`skip=cannot-verify-type`: report it to the chief. Run the live proof
+(`worker-sections/live-proof.md`), release the
 lock (paste the line), append `WRAPPED`, print the closable-window banner and stop:
 the chief's `close-wrapped-worker.sh` ends the session
 once the lock frees. A worker never idles: on an outside event, write `LIVE — HOLD-OUTSIDE pr=<n>` and WRAP with a resume brief; send the
 chief `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is open.
-
-**The live proof runs in this session.** After the merge, before `WRAPPED`: run
-`himmel-update` when the ticket's proof needs your change on the station, then run
-the brief's live-proof rows now and quote their output on the ticket. A proof is
-owed past `WRAPPED` only as `owed → proof by YYYY-MM-DD` (a real window: a 5-day
-count, the next nightly; its owed row wakes a proof worker on that date) or
-`owed → operator` / `Mac` / `VM`. The wrap gate refuses any other owed proof in
-your `WRAPPED` bullet or the ledger. [prose]
 
 **HALT / WRAP: TaskStop each live agent you spawned, then prove the
 subtree clean** with
