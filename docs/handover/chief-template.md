@@ -15,23 +15,20 @@
 Run these, in order, and write the result as the first bullet under
 `## Results`.
 
-1. **One batch, one turn** — all of these as parallel tool calls:
-   - **`ListAgents`**: who is alive; a worker absent here is gone, never relay it as live.
-   - **`ToolSearch`** `select:SendMessage` (deferred).
-   - **`Read`** `{{STATE_DIR}}/specs/standing-rules.md`: this station's rules, all in force.
+1. **One batch, one turn** — all as parallel tool calls:
+   - **`ListAgents`**: who is alive; an absent worker is gone, never relay it as live.
+   - **`ToolSearch`** `select:SendMessage`.
+   - **`Read`** `{{STATE_DIR}}/specs/standing-rules.md`: the station's rules, all in force.
    - **`Read`** each `specs/decisions/chief-decisions-<date>.md` `decisions:` names.
    - **`Read`** every direction companion file that the line of `## Current direction`
      beginning `Full original text` names (under `{{STATE_DIR}}`) while an OPERATOR or CHIEF
      line sits outside its `Rulings in force` index — **required, in this same batch**: those
      are one-line readings. An indexed ruling: `Read` its verbatim file before acting on it.
-     (Find that line by its words.)
 
-   Then, only after the batch's results are back, make a second call: **`bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} --acquire --render-workers`**,
-   alone in its turn, in the **foreground** (never `run_in_background`, never twice).
-   Auto mode drops the verdict of a shell call that shares a batch, so it never
-   joins the batch. It does: lock sweep,
+   Then, after the batch returns, one call alone in its turn (auto mode drops a batched call's verdict): **`bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} --acquire --render-workers`**
+   in the **foreground** (never `run_in_background`, never twice): lock sweep,
    head/remote, usage, worker processes, C29, load and lock state for steps 2–6
-   and 8; takes a `free` lock and prints the token (never a held one). If
+   and 8; takes a `free` lock, prints the token (never a held one). If
    `chief.sh next` pre-computed steps 2–6, verify them and pass `--acquire --lock-only`.
 
    Steps 2–6 and 8 below interpret that call's output: never re-run their commands.
