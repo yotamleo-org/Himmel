@@ -630,6 +630,34 @@ el=$(( $(date +%s) - t0 ))
 kill "$lockholder" 2>/dev/null; wait "$lockholder" 2>/dev/null
 check "12. give-up writes on rows at pending:3 stop at the pass deadline too (took ${el}s, rc $SRC)" yes "$([ "$el" -le 24 ] && [ "$SRC" != 124 ] && [ "$SRC" != 137 ] && echo yes)"
 
+yday="$(date -u -d yesterday +%Y-%m-%d)"
+mkco y1 "$HB/y1"; mkm a none; mkm b none
+printf '%s\n' "$B/a.fleet.json" > "$B/t3-relay.owner"
+pa="$B/DEMO-1-N5-t3-pa-$today.md"; sd="$B/T3ASK-sb1-$yday.md"
+for f in "$pa" "$sd"; do printf '# x\n\n## Results (newest at the bottom)\n' > "$f"; fmx add "$B/b.fleet.json" --lane t3 --lockless "$f"; done
+fmx t3 set "$B/b.fleet.json" "$pa" --thread pa1
+fmx t3 set "$B/b.fleet.json" "$sd" --thread sb1 --kind ask --notice sent
+fmx t3 unbind "$B/b.fleet.json" tb1 --reason settled
+hbd="$B/DEMO-1-N7-t3-hb-$today.md"; fmx add "$B/b.fleet.json" --lane t3 --lockless "$hbd"; fmx t3 set "$B/b.fleet.json" "$hbd" --thread hb1
+mklist "$(th pa1 "$RELAY" completed false)" "$(th sb1 "$RELAY" completed false)" "$(th tb1 "$RELAY" completed false)" "$(th ok1 "$RELAY" completed false)"
+scan "$B/a.fleet.json"
+check '13. only a thread no manifest of the bucket holds or tombstoned is bound' "BOUND ok1" "$(sed -n 's/^\(BOUND [^ ]*\) .*/\1/p' "$T/out" | tr '\n' ' ' | sed 's/ $//')"
+check '13. so a path A thread, a thread bound on an earlier UTC day and a tombstoned thread stay with their manifest' 1 "$(jq '.workers | length' "$B/a.fleet.json")"
+fmx add "$B/a.fleet.json" --lane t3 --lockless "$B/DEMO-1-N6-t3-pb-$today.md"
+bash "$BIND" attach --manifest "$B/a.fleet.json" --doc "$B/DEMO-1-N6-t3-pb-$today.md" --thread hb1 >/dev/null 2>&1; rc=$?
+check '13. attach refuses a thread another manifest of the bucket holds (rc 2)' 2 "$rc"
+bash "$BIND" attach --manifest "$B/a.fleet.json" --doc "$B/DEMO-1-N6-t3-pb-$today.md" --thread tb1 >/dev/null 2>&1; rc=$?
+check '13. attach refuses a thread another manifest of the bucket tombstoned (rc 2)' 2 "$rc"
+
+mkco y2 "$HB/y2"; mkm a none; mkm b a; mkm s none
+printf '%s\n' "$B/a.fleet.json" > "$B/t3-relay.owner"
+ax="$B/T3ASK-ax1-$yday.md"; printf '# x\n\n> **T3 thread:** ax1\n\n## Results (newest at the bottom)\n' > "$ax"
+fmx add "$B/a.fleet.json" --lane t3 --lockless "$ax"; fmx t3 set "$B/a.fleet.json" "$ax" --thread ax1 --kind ask --notice sent
+cp "$B/a.fleet.json" "$B/b.fleet.json"
+mklist "$(th ax1 "$RELAY" completed false)" "$(th sib1 "$RELAY" completed false)"
+scan "$B/s.fleet.json"
+check '13. sibling takeover on a later UTC day: S binds only its own new thread' "OWNER-TAKEN a rows=none sib1" "$(grep OWNER "$T/out") $(jq -r '.workers[].t3_thread' "$B/s.fleet.json")"
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-relay-bind.sh"
     exit 0

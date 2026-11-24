@@ -149,8 +149,12 @@ if [ "$verb" = attach ]; then
     [[ $thread =~ $ID_RE ]] && [ "$thread" != pending ] || die 2 "--thread must be a threadId ([A-Za-z0-9:_-]{1,64})"
     [ -n "$doc" ] || usage
     fm list "$manifest" >/dev/null 2>&1 || die 2 "not a readable fleet manifest: $manifest"
-    jq -e --arg id "$thread" --arg d "$doc" 'any(.workers[]; .t3_thread == $id and .doc != $d)' "$manifest" >/dev/null 2>&1 \
-        && die 2 "thread $thread is already bound to another row"
+    for f in "$mdir"/*.fleet.json; do
+        [ -e "$f" ] || continue
+        jq -e --arg id "$thread" --arg d "$doc" --arg own "$([ "$f" = "$manifest" ] && echo yes)" \
+            '(any((.workers // .legs // [])[]; .t3_thread == $id and ($own != "yes" or .doc != $d))) or ((.t3_tombstones // []) | any(.thread == $id))' "$f" >/dev/null 2>&1 \
+            && die 2 "thread $thread is already bound or tombstoned in $f"
+    done
     fm t3 set "$manifest" "$doc" --thread "$thread" || die 2 "fleet-manifest t3 set failed (is the doc listed?)"
     exit 0
 fi
@@ -270,8 +274,11 @@ case "$UNBIND_DAYS" in ''|*[!0-9]*) die 2 "T3_RELAY_UNBIND_DAYS must be a whole 
 now_epoch="$(date -u +%s)"
 
 bound_json="$(jq -c '[.workers[] | select((.t3_thread // "pending") != "pending") | .t3_thread]' "$manifest")"
-tomb_json="$(jq -c '[(.t3_tombstones // [])[] | .thread]' "$manifest")"
-jq -r --argjson relay "$relay_ids" --argjson bound "$bound_json" --argjson tomb "$tomb_json" --argjson idle "$IDLE_STATUSES" --arg idre "$ID_RE" '
+bucket_files=("$manifest")
+for f in "$mdir"/*.fleet.json; do [ -e "$f" ] && [ "$f" != "$manifest" ] && bucket_files+=("$f"); done
+allbound_json="$(jq -s -c '[.[] | (.workers // .legs // [])[] | select((.t3_thread // "pending") != "pending") | .t3_thread]' "${bucket_files[@]}")" || die 2 "cannot read a manifest of this bucket"
+tomb_json="$(jq -s -c '[.[] | (.t3_tombstones // [])[] | .thread]' "${bucket_files[@]}")" || die 2 "cannot read a manifest of this bucket"
+jq -r --argjson relay "$relay_ids" --argjson bound "$bound_json" --argjson allbound "$allbound_json" --argjson tomb "$tomb_json" --argjson idle "$IDLE_STATUSES" --arg idre "$ID_RE" '
   def okid: (.threadId | type == "string") and (.threadId | test($idre));
   def has($a; $x): ($a | index($x)) != null;
   . as $all
@@ -284,7 +291,7 @@ jq -r --argjson relay "$relay_ids" --argjson bound "$bound_json" --argjson tomb 
     ($ts[] | select((.providerInstanceId | type) == "string" and (.providerInstanceId | endswith("_relay"))
           and has($relay; .providerInstanceId[:-6])
           and (.threadId | startswith("import:") | not)
-          and (has($bound; .threadId) | not) and (has($tomb; .threadId) | not))
+          and (has($allbound; .threadId) | not) and (has($tomb; .threadId) | not))
       | if (.settled | type) != "boolean" then "ERR\t\(.threadId)\tsettled"
         elif .settled then empty
         elif (.status | type) != "string" then "ERR\t\(.threadId)\tstatus"
