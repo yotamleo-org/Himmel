@@ -8,6 +8,8 @@ export const BOT_ID_RE = /^[0-9]{1,15}$/;
 export const KINDS = ["question", "status", "info"] as const;
 export type OpenKind = (typeof KINDS)[number];
 
+export const utcDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+
 // A bot's numeric id is the part of its token before the colon.
 export function botIdFromToken(token: string): string {
   const i = token.indexOf(":");

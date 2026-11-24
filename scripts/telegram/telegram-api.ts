@@ -79,11 +79,14 @@ export function toTelegramHtml(text: string): string {
 // body stream, so this one signal covers res.json() too, the same pattern
 // getFile/downloadFile below already use for FILE_FETCH_TIMEOUT_MS.
 const GETUPDATES_ABORT_MARGIN_MS = 10_000;
+export class TelegramApiError extends Error {
+  constructor(message: string, readonly code: number) { super(message); this.name = "TelegramApiError"; }
+}
 export async function getUpdates(token: string, offset: number, timeout = 30, f: F = fetch, abortMarginMs = GETUPDATES_ABORT_MARGIN_MS): Promise<any[]> {
   const res = await f(API(token, "getUpdates") + `?offset=${offset}&timeout=${timeout}`,
     { signal: AbortSignal.timeout(timeout * 1000 + abortMarginMs) });
   const j: any = await res.json();
-  if (!j.ok) throw new Error(`getUpdates not ok: ${j.description ?? res.status}`);
+  if (!j.ok) throw new TelegramApiError(`getUpdates not ok: ${j.description ?? res.status}`, Number.isSafeInteger(j.error_code) ? j.error_code : res.status);
   return j.result ?? [];   // tolerate a malformed ok:true with no result array (never throw downstream)
 }
 // Resolve the bridge's own bot username: the require-mention gate
@@ -133,28 +136,46 @@ export const redactChatId = (chat_id: number): string => {
 // than throwing, so best-effort callers can ignore it while a caller that must
 // know delivery happened (e.g. luna-sync-alert's cooldown state) can gate on it.
 
+export type SendOpts = { replyToMessageId?: number; replyMarkup?: object; noPreview?: boolean; timeoutMs?: number };
+export type SendResult = { ok: true; messageId: number } | { ok: false; code: number | null; kind: "permanent" | "transient" | "not-sent" | "maybe-sent" };
+type Attempt = SendResult & { retryAfter?: number; description?: string };
+const NOT_SENT_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"]);
+
+async function sendOnce(token: string, chat_id: number, text: string, o: SendOpts, f: F, signal?: AbortSignal, html = false): Promise<Attempt> {
+  let res: Response;
+  try {
+    res = await f(API(token, "sendMessage"), { method: "POST", ...(signal ? { signal } : {}),
+      headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id, text, ...(html ? { parse_mode: "HTML" } : {}), ...(Number.isSafeInteger(o.replyToMessageId) && o.replyToMessageId! > 0 ? { reply_parameters: { message_id: o.replyToMessageId, allow_sending_without_reply: true } } : {}), ...(o.replyMarkup ? { reply_markup: o.replyMarkup } : {}), ...(o.noPreview ? { link_preview_options: { is_disabled: true } } : {}) }) });
+  } catch (e: any) {
+    const code = e?.code ?? e?.cause?.code;
+    return { ok: false, code: null, kind: typeof code === "string" && NOT_SENT_CODES.has(code) ? "not-sent" : "maybe-sent" };
+  }
+  const j: any = await res.json().catch(() => ({}));
+  if (res.ok && j?.ok === true) return { ok: true, messageId: Number.isSafeInteger(j.result?.message_id) && j.result.message_id > 0 ? j.result.message_id : 0 };
+  const permanent = res.status >= 400 && res.status < 500 && res.status !== 429;
+  return { ok: false, code: res.status, kind: permanent ? "permanent" : "transient", retryAfter: j?.parameters?.retry_after, description: j?.description };
+}
+
+export async function sendMessageResult(token: string, chat_id: number, text: string, opts: SendOpts, f: F = fetch): Promise<SendResult> {
+  const r = await sendOnce(token, chat_id, text, opts, f, AbortSignal.timeout(opts.timeoutMs ?? 15_000));
+  return r.ok ? { ok: true, messageId: r.messageId } : { ok: false, code: r.code, kind: r.kind };
+}
+
 export async function sendMessage(token: string, chat_id: number, text: string,
     f: F = fetch, sleep: (ms:number)=>Promise<void> = (ms)=>Bun.sleep(ms), receipt?: (messageId: number) => void, replyToMessageId?: number, replyMarkup?: object, format?: boolean): Promise<boolean> {
   let html = format ? toTelegramHtml(text) : null;
   for (let attempt = 0; attempt < 5; attempt++) {
-    let res: Response;
-    try {
-      res = await f(API(token, "sendMessage"), { method: "POST",
-        headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id, text: html ?? text, ...(html !== null ? { parse_mode: "HTML" } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true } } : {}), ...(replyMarkup ? { reply_markup: replyMarkup } : {}) }) });
-    } catch {
+    const r = await sendOnce(token, chat_id, html ?? text, { replyToMessageId, replyMarkup }, f, undefined, html !== null);
+    if (r.ok) { if (r.messageId > 0) receipt?.(r.messageId); return true; }
+    if (r.code === null) {
       // A lost response is indistinguishable from a failed send; retrying can duplicate alerts.
       console.error(`[telegram] sendMessage transport failure chat=${redactChatId(chat_id)}`);
       return false;
     }
-    const j: any = await res.json().catch(() => ({}));
-    if (res.ok && j?.ok === true) {
-      if (Number.isSafeInteger(j.result?.message_id) && j.result.message_id > 0) receipt?.(j.result.message_id);
-      return true;
-    }
-    if (res.status === 429) { if (attempt < 4) await sleep((j?.parameters?.retry_after ?? 1) * 1000); continue; }
-    if (html !== null && res.status === 400 && /can't parse entities/i.test(String(j?.description ?? ""))) { html = null; continue; }
-    if (res.status >= 400 && res.status < 500) {           // permanent client error → log + drop (never loop)
-      console.error(`[telegram] sendMessage ${res.status} chat=${redactChatId(chat_id)}: ${j?.description ?? ""}`);
+    if (r.code === 429) { if (attempt < 4) await sleep((r.retryAfter ?? 1) * 1000); continue; }
+    if (html !== null && r.code === 400 && /can't parse entities/i.test(String(r.description ?? ""))) { html = null; continue; }
+    if (r.kind === "permanent") {
+      console.error(`[telegram] sendMessage ${r.code} chat=${redactChatId(chat_id)}: ${r.description ?? ""}`);
       return false;
     }
     if (attempt < 4) await sleep(1000);                      // transient 5xx (or 2xx ok:false) → bounded retry (skip on last attempt, no retry follows)

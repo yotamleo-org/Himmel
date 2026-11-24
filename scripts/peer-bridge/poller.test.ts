@@ -4,6 +4,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Chain, readChain, submitSpool } from "./chain";
+import { notifyFile, renderNotify } from "./notify";
 import type { Config } from "./config";
 import { ackToken, digestFile } from "./digests";
 import { admit, createGateState, noteAdmitted } from "./gate";
@@ -80,7 +81,7 @@ const rootUpdate = (text: string, over: Record<string, unknown> = {}) => ({ upda
 const askRoot = (id = "a1b2c3d4", body = "how do I x?") => rootUpdate(`/peer@${OUR_NAME}\n#ask:question id=${id}\n${body}`);
 const outbox = (e: Env) => readChain(join(e.peerDir, "outbox.jsonl"));
 const wakeLines = (e: Env) => {
-  try { return readFileSync(join(e.cfg.bridgeRoot, "sessions", "__chat__", "outbox.jsonl"), "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l).text as string); } catch { return []; }
+  return readChain(notifyFile(e.stateDir)).map(r => renderNotify(r as any, e.cfg.himmelRoot).text);
 };
 const readResult = (e: Env, name: string) => JSON.parse(readFileSync(join(e.peerDir, "spool", "results", name), "utf8"));
 function filesUnder(dir: string): string[] {
@@ -99,7 +100,7 @@ test("an admitted root is chained, allocates a thread, is receipted, wakes the o
   expect(e.sent[0].text).toMatch(new RegExp(`^#tpl:receipt #${u.message.message_id} id=[0-9a-f]{8}$`));
   expect(wakeLines(e)[0]).toContain(`T${u.message.message_id} · new question`);
   expect(e.reads).toEqual([{ text: "how do I x?", kind: "question" }]);
-  expect(readChain(digestFile(e.peerDir))[0]).toMatchObject({ kind: "digest", summary: "a digest", asks: ["x?"], root_id: u.message.message_id });
+  expect(readChain(digestFile(e.peerDir)).find(r => r.kind === "digest")).toMatchObject({ kind: "digest", summary: "a digest", asks: ["x?"], root_id: u.message.message_id });
   expect(Number(readFileSync(join(e.stateDir, "offset"), "utf8"))).toBe(u.update_id + 1);
   expect(outbox(e).map(r => r.kind)).toEqual(["intent", "sent"]);
 });
@@ -119,7 +120,7 @@ test("a null digest still fires its wake", async () => {
   const e = await setup({ readerRun: async () => ({ summary: null, asks: [], reason: "preflight:BANK-STALE" }) });
   await e.poller.processBatch([askRoot()]);
   expect(wakeLines(e)).toHaveLength(1);
-  expect(readChain(digestFile(e.peerDir))[0]).toMatchObject({ summary: null, reason: "preflight:BANK-STALE" });
+  expect(readChain(digestFile(e.peerDir)).find(r => r.kind === "digest")).toMatchObject({ summary: null, reason: "preflight:BANK-STALE" });
 });
 
 test("an append failure leaves the offset uncommitted", async () => {
@@ -190,7 +191,7 @@ function receiver() {
       if (!r.ok) return r;
       noteAdmitted(state, r.rec);
       inbox.push(r.rec);
-      for (const a of threads.onInbound(r.rec)) if ("state" in a) state.roots.add(`${a.state.chat}:${a.state.root}`);
+      for (const a of threads.onInbound(r.rec).actions) if ("state" in a) state.roots.add(`${a.state.chat}:${a.state.root}`);
       return r;
     },
     state,
@@ -928,6 +929,251 @@ test("m7: the bad-signature tripwire survives a restart", async () => {
   const again = await Poller.create({ ...e.deps, log: l => e.logs.push(l) });
   await again.recover();
   await again.processBatch([bad()]);
-  expect(wakeLines(e)).toEqual(["peer example: 3 bad signatures in 1 h"]);
+  expect(wakeLines(e)).toEqual(["peer example · 3 bad signatures in 1 h"]);
   TE.dropStation(other);
+});
+
+const hex8 = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, "0");
+const followUp = (root: number, kind = "status", body = "more about it") => rootUpdate(`#${kind} id=${hex8()}\n${body}`, { reply_to_message: { message_id: root, from: { id: Number(PEER_ID), is_bot: true } } });
+const kindRoot = (kind: string, body = "a notice") => rootUpdate(`/peer@${OUR_NAME}\n#${kind} id=${hex8()}\n${body}`);
+const digestKinds = (e: Env) => readChain(digestFile(e.peerDir)).map(r => r.kind);
+const notifies = (e: Env) => readChain(notifyFile(e.stateDir));
+const wide = { maxPerMinute: 1000, maxOpenThreads: 50 };
+function routed(route: string | null, sink?: { text: string; kind: string }[]) {
+  return async (text: string, kind: string, deps: any) => {
+    const capped = deps.ledger.check(kind);
+    if (capped) return { route: null, summary: null, asks: [], reason: capped };
+    await deps.ledger.record(kind);
+    sink?.push({ text, kind });
+    return { route, summary: route ? "s" : null, asks: [], ...(route ? {} : { reason: "invalid-json" }) };
+  };
+}
+
+test("a follow-up status, info or question on a known thread is read with kind other and gets a job record with transition other", async () => {
+  const sink: { text: string; kind: string }[] = [];
+  const e = await setup({ readerRun: routed("escalate", sink) as any, peerOver: wide });
+  const root = askRoot();
+  await e.poller.processBatch([root]);
+  for (const k of ["status", "info", "ask:question"]) await e.poller.processBatch([followUp(root.message.message_id, k)]);
+  expect(sink.map(r => r.kind)).toEqual(["question", "other", "other", "other"]);
+  const jobs = readChain(digestFile(e.peerDir)).filter(r => r.kind === "job");
+  expect(jobs.map(j => j.transition)).toEqual(["opened", "other", "other", "other"]);
+  expect(jobs[1]).toMatchObject({ peer: "example", root: root.message.message_id, dir: "in" });
+});
+
+test("a template and a declined root get no job record and no read", async () => {
+  const sink: { text: string; kind: string }[] = [];
+  const e = await setup({ readerRun: routed("escalate", sink) as any, peerOver: wide });
+  await e.poller.processBatch([rootUpdate(`/peer@${OUR_NAME}\nhello there`)]);
+  await e.poller.processBatch([rootUpdate(`/peer@${OUR_NAME}\n#tpl:receipt #77 id=${hex8()}`)]);
+  expect(sink).toEqual([]);
+  expect(digestKinds(e)).toEqual([]);
+});
+
+test("a follow-up flood stops at OTHER_READS_PER_DAY and a root after it is still read", async () => {
+  const sink: { text: string; kind: string }[] = [];
+  const e = await setup({ readerRun: routed("drop", sink) as any, peerOver: wide });
+  const root = askRoot();
+  await e.poller.processBatch([root]);
+  for (let i = 0; i < 18; i++) await e.poller.processBatch([followUp(root.message.message_id)]);
+  expect(sink.filter(r => r.kind === "other")).toHaveLength(15);
+  const capped = readChain(digestFile(e.peerDir)).filter(r => r.kind === "digest" && r.reason === "kind-cap");
+  expect(capped).toHaveLength(3);
+  await e.poller.processBatch([askRoot(hex8(), "a new question")]);
+  expect(sink.at(-1)).toEqual({ text: "a new question", kind: "question" });
+});
+
+test("a read message's job record is on disk before its thread record", async () => {
+  const e = await setup({ readerRun: routed("escalate") as any });
+  mkdirSync(join(e.peerDir, "threads.jsonl"));
+  await expect(e.poller.processBatch([askRoot()])).rejects.toThrow();
+  expect(digestKinds(e)).toEqual(["job"]);
+});
+
+test("digest record precedes every effect", async () => {
+  const e = await setup({ readerRun: routed("escalate") as any, peerOver: wide });
+  await e.poller.processBatch([askRoot()]);
+  const recs = readChain(digestFile(e.peerDir));
+  expect(recs.map(r => r.kind)).toEqual(["job", "digest", "effect"]);
+  expect(recs[1]).toMatchObject({ route: "escalate", model_route: "escalate" });
+  expect(recs[2]).toMatchObject({ outcome: "escalated", message_id: recs[0].message_id });
+  const f = await setup({ readerRun: routed("escalate") as any, peerOver: wide });
+  writeFileSync(join(f.stateDir, "notify"), "not a dir");
+  await f.poller.processBatch([askRoot()]).catch(() => {});
+  expect(digestKinds(f)).toEqual(["job", "digest"]);
+  const g = await setup({ readerRun: routed("ack") as any, peerOver: wide });
+  await g.poller.processBatch([kindRoot("status")]);
+  expect(digestKinds(g)).toEqual(["job", "digest", "effect"]);
+  expect(readChain(join(g.peerDir, "threads.jsonl")).map(r => r.state)).toEqual(["OPEN", "ACKED"]);
+  expect(g.sent.map(s => s.text.split(" ")[0])).toEqual(["#tpl:receipt", "#tpl:closing"]);
+  expect(notifies(g)).toEqual([]);
+});
+
+test("a tick that lands during a reader run interleaves with no lost effect", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(r => { release = r; });
+  let ticked = false, started!: () => void;
+  const began = new Promise<void>(r => { started = r; });
+  const e = await setup({ readerRun: (async (text: string, kind: string, deps: any) => { started(); await gate; return routed("escalate")(text, kind, deps); }) as any, peerOver: wide });
+  const run = e.poller.processBatch([askRoot()]);
+  await began;
+  await e.poller.tick().then(() => { ticked = true; });
+  release();
+  await run;
+  expect(ticked).toBe(true);
+  expect(digestKinds(e)).toEqual(["job", "digest", "effect"]);
+  expect(notifies(e).filter(r => r.type === "escalate")).toHaveLength(1);
+});
+
+test("a thread that goes terminal during the reader run: ack or drop writes only the digest record", async () => {
+  for (const route of ["ack", "drop"]) {
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    let started!: () => void;
+    const began = new Promise<void>(r => { started = r; });
+    const e = await setup({ readerRun: (async (text: string, kind: string, deps: any) => { started(); await gate; return routed(route)(text, kind, deps); }) as any, peerOver: wide });
+    const root = kindRoot("status");
+    const run = e.poller.processBatch([root]);
+    await began;
+    await e.poller.processBatch([rootUpdate(`#tpl:closing #${root.message.message_id} id=${hex8()}`, { reply_to_message: { message_id: root.message.message_id, from: { id: Number(PEER_ID), is_bot: true } } })]);
+    release();
+    await run;
+    expect(digestKinds(e)).toEqual(["job", "digest"]);
+    expect(readChain(join(e.peerDir, "threads.jsonl")).map(r => r.state)).toEqual(["OPEN", "CLOSED-BY-PEER"]);
+    expect(e.sent.map(s => s.text.split(" ")[0])).toEqual(["#tpl:receipt"]);
+  }
+});
+
+test("a root-and-closing loop and a follow-up flood give at most 20 escalations and one budget line", async () => {
+  const e = await setup({ readerRun: routed("escalate") as any, peerOver: wide });
+  for (let i = 0; i < 15; i++) {
+    const root = askRoot(hex8(), `question ${i}`);
+    await e.poller.processBatch([root]);
+    await e.poller.processBatch([rootUpdate(`#tpl:closing #${root.message.message_id} id=${hex8()}`, { reply_to_message: { message_id: root.message.message_id, from: { id: Number(PEER_ID), is_bot: true } } })]);
+  }
+  const last = askRoot();
+  await e.poller.processBatch([last]);
+  for (let i = 0; i < 12; i++) await e.poller.processBatch([followUp(last.message.message_id)]);
+  expect(notifies(e).filter(r => r.type === "escalate")).toHaveLength(20);
+  expect(notifies(e).filter(r => r.type === "budget" && r.which === "escalate")).toHaveLength(1);
+});
+
+test("escalation across midnight is charged to the processing day", async () => {
+  const late = Date.UTC(2026, 10, 9, 23, 59, 50);
+  const e = await setup({ peerOver: wide, readerRun: (async (text: string, kind: string, deps: any) => { e.c.t = late + 20_000; return routed("escalate")(text, kind, deps); }) as any });
+  e.c.t = late;
+  for (let i = 0; i < 20; i++) await (e.poller as any).waker.escalate({ peer: "example", root: 9000 + i, dir: "in", label: "new question", message_id: 9000 + i, digest: { route: "escalate", summary: "s", asks: [] } });
+  await e.poller.processBatch([askRoot()]);
+  const esc = notifies(e).filter(r => r.type === "escalate");
+  expect(esc).toHaveLength(21);
+  expect(new Date(esc[20].ts).toISOString().slice(0, 10)).toBe("2026-11-10");
+  expect(notifies(e).filter(r => r.type === "budget")).toEqual([]);
+});
+
+const dropLast = (file: string, k: number) => { const l = readFileSync(file, "utf8").split("\n").filter(Boolean); writeFileSync(file, l.slice(0, l.length - k).map(x => x + "\n").join("")); };
+async function restart(e: Env, readerRun?: PollerDeps["readerRun"]) {
+  const p = await Poller.create({ ...e.deps, ...(readerRun ? { readerRun } : {}) });
+  await p.recover();
+  return p;
+}
+
+test("recovery replays each missing effect once", async () => {
+  const boom = (async () => { throw new Error("reader crashed"); }) as any;
+  const a = await setup({ readerRun: boom, peerOver: wide });
+  await a.poller.processBatch([askRoot()]).catch(() => {});
+  expect(digestKinds(a)).toEqual(["job"]);
+  const ran: string[] = [];
+  await restart(a, (async () => { ran.push("x"); return { route: "drop", summary: "s", asks: [] }; }) as any);
+  expect(ran).toEqual([]);
+  expect(readChain(digestFile(a.peerDir)).map(r => [r.kind, r.reason ?? r.outcome ?? null])).toEqual([["job", null], ["digest", "restart"], ["effect", "escalated"]]);
+  expect(notifies(a).filter(r => r.type === "escalate")).toMatchObject([{ summary: null, reason: "restart" }]);
+
+  const b = await setup({ readerRun: routed("escalate") as any, peerOver: wide });
+  writeFileSync(join(b.stateDir, "notify"), "x");
+  await b.poller.processBatch([askRoot()]).catch(() => {});
+  rmSync(join(b.stateDir, "notify"));
+  await restart(b);
+  expect(digestKinds(b)).toEqual(["job", "digest", "effect"]);
+  expect(notifies(b).filter(r => r.type === "escalate")).toHaveLength(1);
+
+  const c = await setup({ readerRun: routed("escalate") as any, peerOver: wide });
+  await c.poller.processBatch([askRoot()]);
+  dropLast(digestFile(c.peerDir), 1);
+  await restart(c);
+  expect(digestKinds(c)).toEqual(["job", "digest", "effect"]);
+  expect(notifies(c).filter(r => r.type === "escalate")).toHaveLength(1);
+
+  const d = await setup({ readerRun: routed("ack") as any, peerOver: wide });
+  await d.poller.processBatch([kindRoot("status")]);
+  dropLast(join(d.peerDir, "outbox.jsonl"), 2);
+  dropLast(digestFile(d.peerDir), 1);
+  await restart(d);
+  expect(outbox(d).filter(r => r.kind === "intent" && r.msgKind === "closing")).toHaveLength(1);
+  expect(digestKinds(d)).toEqual(["job", "digest", "effect"]);
+
+  const f = await setup({ readerRun: routed("escalate") as any, peerOver: wide });
+  await f.poller.processBatch([askRoot()]);
+  const before = readFileSync(digestFile(f.peerDir), "utf8") + readFileSync(notifyFile(f.stateDir), "utf8");
+  await restart(f);
+  expect(readFileSync(digestFile(f.peerDir), "utf8") + readFileSync(notifyFile(f.stateDir), "utf8")).toBe(before);
+
+  const g = await setup({ readerRun: routed("escalate") as any, peerOver: wide });
+  writeFileSync(join(g.stateDir, "notify"), "x");
+  await g.poller.processBatch([askRoot()]).catch(() => {});
+  rmSync(join(g.stateDir, "notify"));
+  chmodSync(digestFile(g.peerDir), 0o400);
+  await restart(g).catch(() => {});
+  chmodSync(digestFile(g.peerDir), 0o600);
+  expect(notifies(g).filter(r => r.type === "escalate")).toHaveLength(1);
+  await restart(g);
+  expect(notifies(g).filter(r => r.type === "escalate")).toHaveLength(1);
+  expect(digestKinds(g)).toEqual(["job", "digest", "effect"]);
+});
+
+test("a pre-upgrade inbox message never replays", async () => {
+  const e = await setup({ readerRun: routed("escalate") as any, peerOver: wide });
+  await new Chain().append(join(e.peerDir, "inbox.jsonl"), { kind: "peer-msg", untrusted: true, peer: "example", from_id: PEER_ID, from_is_bot: true, chat_id: CHAT, message_id: 4000, root_id: 4000, tag: "ask:question", ts: 1, text: "old" });
+  await new Chain().append(digestFile(e.peerDir), { kind: "digest", peer: "example", message_id: 4000, root_id: 4000, tag: "ask:question", from_id: PEER_ID, ts: 1, summary: "old", asks: [] });
+  await restart(e);
+  expect(digestKinds(e)).toEqual(["digest"]);
+  expect(notifies(e)).toEqual([]);
+});
+
+const DAY_MS = 86_400_000;
+async function seedDay(e: Env, dayMs: number, rows: [string, string | null, string | null][]) {
+  const ch = new Chain();
+  let m = Math.floor(dayMs / 1000) % 100000 * 10;
+  for (const [route, reason, outcome] of rows) {
+    const message_id = ++m;
+    await ch.append(digestFile(e.peerDir), { kind: "digest", peer: "example", message_id, root_id: message_id, tag: "status", from_id: PEER_ID, ts: Math.floor(dayMs / 1000) + 60, summary: reason ? null : "s", asks: [], ...(reason ? { reason } : {}), ...(route ? { route, model_route: null } : {}) });
+    if (outcome) await ch.append(digestFile(e.peerDir), { kind: "effect", peer: "example", message_id, outcome, ts: Math.floor(dayMs / 1000) + 61 });
+  }
+}
+const dailies = (e: Env) => notifies(e).filter(r => r.type === "daily");
+
+test("daily: one line per peer per completed day across a three-day stop", async () => {
+  const e = await setup({ peerOver: wide });
+  const d0 = Date.UTC(2026, 10, 9);
+  await seedDay(e, d0, [["escalate", null, "escalated"], ["escalate", null, "escalated"], ["escalate", "daily-cap", "fallback-wake"], ["ack", null, "acked"], ["drop", null, "dropped"], ["drop", null, "dropped"], ["drop", null, "dropped"], ["", null, null]]);
+  await seedDay(e, d0 + DAY_MS, [["drop", null, "dropped"]]);
+  e.c.t = d0 + 3 * DAY_MS + 3_600_000;
+  await e.poller.tick();
+  expect(dailies(e).map(r => renderNotify(r as any, e.cfg.himmelRoot).text)).toEqual([
+    "peer example · 2026-11-09 · triage: 3 escalated (2 as digests, 1 as wakes; 1 skipped: daily-cap) · 1 acked · 3 dropped",
+    "peer example · 2026-11-10 · triage: 0 escalated (0 as digests, 0 as wakes) · 0 acked · 1 dropped",
+  ]);
+  await e.poller.tick();
+  e.c.t += 3_600_000;
+  await e.poller.tick();
+  expect(dailies(e)).toHaveLength(2);
+  expect(notifies(e).filter(r => r.type === "budget")).toEqual([]);
+});
+
+test("daily: a ten-day stop writes exactly the last 7 days", async () => {
+  const e = await setup({ peerOver: wide });
+  const d0 = Date.UTC(2026, 10, 1);
+  for (let i = 0; i < 10; i++) await seedDay(e, d0 + i * DAY_MS, [["drop", null, "dropped"]]);
+  e.c.t = d0 + 10 * DAY_MS + 60_000;
+  await e.poller.tick();
+  expect(dailies(e).map(r => r.day)).toEqual(["2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-10"]);
 });
