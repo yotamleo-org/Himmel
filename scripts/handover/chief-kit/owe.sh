@@ -10,8 +10,6 @@
 # add also accepts --identity <full sha256> and --metadata <allowlisted JSON>,
 # or --metadata-stdin (one JSON value, at most 1 MiB, mutually exclusive).
 # Replays return the original id, including closed actions; no row is reopened.
-# A new row with actor operator and "op-request <op>" in its text exits 2, appending nothing, when that afk-sudo
-# route cannot run; OWE_AFKSUDO_ROOT replaces / for the read (tests).
 #
 # <bucket>/owed.jsonl is append-only, one JSON object per line:
 #   add   {op:"add", id, ts, epoch, chief, kind, text, key?}
