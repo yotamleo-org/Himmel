@@ -1400,8 +1400,8 @@ critic round (decisions 804 to 806).
 
 - **Exempt kinds.** Two bypass kinds still print `BYPASS <K> <kind> <reason>`
   without asking for a spec:
-  - `design`: a key that is core by its label only, on a docs-only leg. This is
-    the leg that writes the spec.
+  - `design`: a key that is core by its label only, on a docs-only worker. This is
+    the worker that writes the spec.
   - `emergency`: a Bug at Highest or Blocker, or a `red-main` or `regression`
     label. A red main cannot wait for a critic round.
 - **Gated kinds.** `operator` (a `core-bypass` record), `bug` (any other Bug)

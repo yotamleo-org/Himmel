@@ -833,7 +833,7 @@ export ANTHROPIC_MODEL="$CODEX_MODEL"
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="$CODEX_HAIKU"
 export ANTHROPIC_DEFAULT_SONNET_MODEL="${CLASSIFIER_MODEL:-$CODEX_MODEL}"
 export ANTHROPIC_DEFAULT_OPUS_MODEL="$CODEX_MODEL"
-# Client-side auto classifier through the gateway: the billing notice holds the first action of an unattended leg,
+# Client-side auto classifier through the gateway: the billing notice holds the first action of an unattended worker,
 # remove this temporary switch when safeguards/safeguard_results pass through.
 # https://code.claude.com/docs/en/llm-gateway-protocol#feature-pass-through
 # The client-side classifier uses claude-sonnet-5 when the proxy serves it.

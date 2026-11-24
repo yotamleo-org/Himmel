@@ -39,7 +39,7 @@ if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); 
 
 # The PR claim writes rows under ~/.himmel/state/holds and judges holders through queue-lock.sh: HOME, the handover root
 # and the lock runtime dirs are pinned to the temp dir, and a worker's own hold variables are dropped, so no row of this
-# run lands in the real register (a row at the end proves it) and a leg running this suite does not feed its key in.
+# run lands in the real register (a row at the end proves it) and a worker running this suite does not feed its key in.
 REAL_HOME="$HOME"
 export HOME="$TMP_ROOT/home" HANDOVER_DIR="$TMP_ROOT/h" XDG_RUNTIME_DIR="$TMP_ROOT/xdg" HIMMELCTL_CACHE_DIR="$TMP_ROOT/cache" HIMMEL_CONFIG_DIR="$TMP_ROOT/cfg"
 mkdir -p "$HOME" "$HANDOVER_DIR/u/r" "$XDG_RUNTIME_DIR" "$HIMMELCTL_CACHE_DIR" "$HIMMEL_CONFIG_DIR" "$TMP_ROOT/bin"

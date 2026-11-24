@@ -4,7 +4,7 @@
 flags the operator approves, only after the operator replies with a one-time
 code on Telegram. With the operator away from the station, this is the only way
 a session can get `HIMMEL_BILLED_OK=1` (a paid eval),
-`HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1` (a leg that edits `scripts/hooks/`) or any
+`HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1` (a worker that edits `scripts/hooks/`) or any
 other grantable guard flag, for example `DESTRUCTIVE_OK=1`.
 
 ## Why a session cannot set the flag itself
