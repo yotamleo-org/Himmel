@@ -281,7 +281,7 @@ export function acquirePidLock(path: string): () => void {
       if (e.code !== "EEXIST") throw e;
     }
     let holder: { pid?: number; start?: string | null } = {};
-    try { holder = JSON.parse(fs.readFileSync(path, "utf8")); } catch {}
+    try { holder = JSON.parse(fs.readFileSync(path, "utf8")) ?? {}; } catch {}
     if (Number.isSafeInteger(holder.pid) && alive(holder.pid!) && startIdentity(holder.pid!) === holder.start) throw new PidLockError(holder.pid!);
     fs.rmSync(path, { force: true });
   }

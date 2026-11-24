@@ -97,6 +97,14 @@ test("a second acquirePidLock throws while the holder is live and succeeds once 
   expect(existsSync(lock)).toBe(false);
 });
 
+test("a lock file holding JSON null is stale, never a crash", () => {
+  const lock = join(tmp(), "poller.pid");
+  writeFileSync(lock, "null", { mode: 0o600 });
+  const release = acquirePidLock(lock);
+  expect(JSON.parse(readFileSync(lock, "utf8")).pid).toBe(process.pid);
+  release();
+});
+
 test("a live pid whose start identity differs is a reused pid, so the lock is stale", async () => {
   const lock = join(tmp(), "poller.pid");
   const h = await holder();
