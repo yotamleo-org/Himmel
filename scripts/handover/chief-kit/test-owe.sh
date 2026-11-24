@@ -214,5 +214,19 @@ mkdir -p "$WORK/r-empty/etc/himmel/../../usr/local/libexec/himmel/ops"; : > "$WO
 out=$(OWE_AFKSUDO_ROOT="$WORK/r-empty" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text "$OPTXT" --metadata "$OPMETA" 2>&1); rc=$?
 check "10970 R4b an empty config with the op installed refuses as unknown" "$rc" 2
 
+mkroute "$WORK/r-hu" false no; : > "$WORK/r-hu/usr/local/libexec/himmel/ops/helper-update.sh"
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-hu" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text 'proof (op-request helper-update commit=abc): owed' --metadata "$OPMETA" 2>&1); rc=$?
+check "10970 R5 op helper-update with helper_update off refuses even though the op is installed" "$rc" 2
+contains "10970 R5 prints the helper_update line" "$out" "helper_update is not enabled in the config"
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-on" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text 'op-request docker a=1 then op-request ghost b=2' --metadata "$OPMETA" 2>&1); rc=$?
+check "10970 R6 a row naming several ops probes each of them" "$rc" 2
+contains "10970 R6 names the uninstalled second op" "$out" "ghost"
+for spelled in 'op-request --session S --ticket T docker action=start' 'op-request -- docker action=start' 'op-request --session S -- docker'; do
+    OWE_AFKSUDO_ROOT="$WORK/r-off" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text "proof ($spelled): owed" --metadata "$OPMETA" >/dev/null 2>&1
+    check "10970 R7 the documented spelling is probed: $spelled" "$?" 2
+done
+out=$(OWE_AFKSUDO_ROOT="$WORK/r-off" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text 'ask for an op-request for docker later' --metadata "$OPMETA" 2>&1); rc=$?
+check "10970 R8 prose after op-request is not read as an op name" "$rc" 0
+
 [ "$fails" -eq 0 ] || { echo "$fails check(s) failed"; exit 1; }
 echo "test-owe: all checks passed"

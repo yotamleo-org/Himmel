@@ -17,7 +17,7 @@
 # A close appends a row; no row is ever rewritten. `add` prints the new id (o1, o2, ...).
 # `list` prints each open row as TAB-separated id, kind, epoch, key, chief, text (a tab or
 # newline in the text becomes a space); --all adds the closed rows, the key being the closing
-# one. OWE_NOW_EPOCH replaces the clock (tests).
+# one. OWE_NOW_EPOCH replaces the clock and OWE_AFKSUDO_ROOT the / of the afk-sudo route probe (tests).
 #
 # Exit codes: 0 done, 1 close of an unknown or already closed id, 2 usage or a refused value,
 # 3 the bucket directory is absent, 4 the ledger is unreadable, cannot be opened for append or cannot be flocked.
@@ -143,27 +143,50 @@ case "$CMD" in
                 '[.[] | select(.op == "add" and .identity == $identity)] | if length == 0 then "" elif length == 1 and (.[0].key // "") == $key and .[0].kind == $kind then .[0].id else error("identity conflict") end' "$F") || exit 4
             if [ -n "$existing" ]; then persist; printf '%s\n' "$existing"; exit 0; fi
         fi
-        if [ "$(printf '%s' "$METADATA" | jq -r '.actor // ""')" = operator ] && [[ $TEXT =~ op-request[[:space:]]+([a-z0-9][a-z0-9-]*) ]]; then
-            op="${BASH_REMATCH[1]}"
+        route_ops=()
+        if [ "$(printf '%s' "$METADATA" | jq -r '.actor // ""')" = operator ]; then
+            read -r -a words <<< "$(printf '%s' "$TEXT" | sed 's/[][()`'"'"'",;:]/ ; /g')"
+            for ((i = 0; i < ${#words[@]}; i++)); do
+                [ "${words[i]}" = op-request ] || continue
+                k=$((i + 1))
+                while [ "$k" -lt "${#words[@]}" ]; do
+                    case "${words[k]}" in
+                        --) k=$((k + 1)); break ;;
+                        --session|--ticket) k=$((k + 2)) ;;
+                        -*) k=$((k + 1)) ;;
+                        *) break ;;
+                    esac
+                done
+                cand="${words[k]:-}"; after="${words[k+1]:-}"
+                if [[ $cand =~ ^[a-z][a-z0-9-]{0,30}$ ]] && { [ -z "$after" ] || [ "$after" = ';' ] || [[ $after == *=* ]]; }; then route_ops+=("$cand"); fi
+            done
+        fi
+        if [ "${#route_ops[@]}" -gt 0 ]; then
             cfg="${OWE_AFKSUDO_ROOT:-}/etc/himmel/afk-sudo.json"
             ops="${OWE_AFKSUDO_ROOT:-}/usr/local/libexec/himmel/ops"
             enable="run sudoedit /etc/himmel/afk-sudo.json, set helper_update.repo, helper_update.checkout and helper_update.enabled (docs/internals/afk-sudo.md), then send /op helper-update commit=<sha> to install the op"
             if ! cfgv=$(jq -c '[(.ops.enabled == true), (.helper_update.enabled == true)]' "$cfg") || [ -z "$cfgv" ]; then
-                echo "owe: afk-sudo route unknown: cannot read $cfg; the owed row for op '$op' was not filed" >&2
+                echo "owe: afk-sudo route unknown: cannot read $cfg; the owed row for op '${route_ops[0]}' was not filed" >&2
                 exit 2
             fi
             if [ "$cfgv" = '[false,false]' ] || [ "$cfgv" = '[false,true]' ]; then
-                echo "owe: ops is not enabled in the config; the owed row for op '$op' was not filed; to unblock: set ops.enabled to true with sudoedit /etc/himmel/afk-sudo.json" >&2
+                echo "owe: ops is not enabled in the config; the owed row for op '${route_ops[0]}' was not filed; to unblock: set ops.enabled to true with sudoedit /etc/himmel/afk-sudo.json" >&2
                 exit 2
             fi
-            if [ ! -e "$ops/$op.sh" ]; then
-                if [ "$cfgv" = '[true,false]' ]; then
-                    echo "owe: helper_update is not enabled in the config; op '$op' is not installed, so no approval code can reach the operator; the row was not filed; to unblock: $enable" >&2
-                else
-                    echo "owe: op '$op' is not installed under $ops; the row was not filed; to unblock: send /op helper-update commit=<sha> for the main sha that ships it" >&2
+            for op in "${route_ops[@]}"; do
+                if [ "$op" = helper-update ] && [ "$cfgv" = '[true,false]' ]; then
+                    echo "owe: helper_update is not enabled in the config; op 'helper-update' cannot run, so no approval code can reach the operator; the row was not filed; to unblock: $enable" >&2
+                    exit 2
                 fi
-                exit 2
-            fi
+                if [ ! -e "$ops/$op.sh" ]; then
+                    if [ "$cfgv" = '[true,false]' ]; then
+                        echo "owe: helper_update is not enabled in the config; op '$op' is not installed, so no approval code can reach the operator; the row was not filed; to unblock: $enable" >&2
+                    else
+                        echo "owe: op '$op' is not installed under $ops; the row was not filed; to unblock: send /op helper-update commit=<sha> for the main sha that ships it" >&2
+                    fi
+                    exit 2
+                fi
+            done
         fi
         n=1
         [ ! -s "$F" ] || n=$(( $(jq -s '[.[] | select(.op == "add")] | length' "$F") + 1 ))
