@@ -69,6 +69,10 @@ TS=2026-10-20T08:00:00.000Z transcript aaaaaaaa-0000-4000-8000-00000000000c work
 transcript aaaaaaaa-0000-4000-8000-00000000000b worker-l 999999 0 0; launch worker-l worker-impl $IN aaaaaaaa-0000-4000-8000-0000000000ff
 # a launch dated after --now: outside the requested window, not counted
 TS=2026-10-26T10:05:00.000Z transcript aaaaaaaa-0000-4000-8000-00000000000d worker-n 777777 0 0; launch worker-n worker-impl 2026-10-26T10:00:00Z
+UA=aaaaaaaa-0000-4000-8000-0000000000a1
+transcript $UA not-the-launch-name 70000 0 0
+launch worker-o worker-headless $IN
+printf 'headed-arm: headless=1 pid=4242 session-id=%s short-id=ab12 name=worker-o settings=x out=y argv=claude\\ --bg launched=%s\n' "$UA" "$IN" >>"$LOGS/worker-o.log"
 
 J="$TMP/out.json"
 python3 -I "$RD" --launch-logs "$LOGS" --projects "$TMP/projects" --now $NOW --json >"$J" 2>"$TMP/err" || bad "the reader exits 0: $(head -c 300 "$TMP/err")"
@@ -82,7 +86,8 @@ check "a launch dated after --now is not counted" '[ "$(jq -r ".[] | select(.pro
 check "a synthetic and a sidechain row are skipped" '[ "$(jq -r ".[] | select(.profile==\"lane-impl\") | .median" "$J")" = 40000 ]'
 
 echo "2. what is left out"
-check "no none, composed or out-of-window profile row" '[ "$(jq -r "[.[].profile] | sort | join(\",\")" "$J")" = "lane-impl,lane-review,worker-impl" ]'
+check "headless-record: a headed-arm headless line's session-id= joins the transcript, whatever its title" '[ "$(jq -r ".[] | select(.profile==\"worker-headless\") | .median" "$J")" = 70000 ]'
+check "no none, composed or out-of-window profile row" '[ "$(jq -r "[.[].profile] | sort | join(\",\")" "$J")" = "lane-impl,lane-review,worker-headless,worker-impl" ]'
 check "the out-of-window, none, composed and disagreeing launches add nothing to worker-impl" '[ "$(jq -r ".[] | select(.profile==\"worker-impl\") | .max" "$J")" = 60000 ]'
 
 echo "3. the budget"
@@ -94,7 +99,7 @@ check "the text table names keep for n under the minimum" 'python3 -I "$RD" --la
 echo "4. --record"
 check "no ledger without --record" '[ ! -e "$HIMMEL_EVAL_RUNS_LEDGER" ]'
 python3 -I "$RD" --launch-logs "$LOGS" --projects "$TMP/projects" --now $NOW --record >/dev/null 2>&1 || bad "--record exits 0"
-check "one row per profile" '[ "$(grep -c . "$HIMMEL_EVAL_RUNS_LEDGER")" = 3 ]'
+check "one row per profile" '[ "$(grep -c . "$HIMMEL_EVAL_RUNS_LEDGER")" = 4 ]'
 check "the ledger validates" 'python3 "$EVR" validate "$HIMMEL_EVAL_RUNS_LEDGER" >/dev/null'
 check "the worker-impl row carries the median and n" 'jq -e "select(.eval==\"profile-opening\" and .config.profile==\"worker-impl\") | .n == 3 and .metrics.median_tokens == 52001 and .metrics.budget_tokens == 53000 and .status == \"ok\"" "$HIMMEL_EVAL_RUNS_LEDGER" >/dev/null'
 

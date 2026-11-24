@@ -33,6 +33,7 @@ import eval_runs  # noqa: E402
 
 SOURCE = "scripts/eval/profile-openings.py"
 LINE = re.compile(r"^headed-arm-(?:worker|leg): (.*)$")
+HEADLESS = re.compile(r"^headed-arm: (headless=1 .*)$")
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 HEAD_LINES = 12
 SCAN_LINES = 2000
@@ -55,13 +56,18 @@ def parse_launches(logs_dir, since, until, lane):
                 lines = fh.read().splitlines()
         except OSError:
             continue
-        seen = []
+        seen, headless_sids = [], set()
         for ln in lines:
-            m = LINE.match(ln)
+            h = HEADLESS.match(ln)
+            m = h or LINE.match(ln)
             if not m:
                 continue
             kv = dict(t.split("=", 1) for t in m.group(1).split() if "=" in t)
             if not since <= kv.get("launched", "") <= until:
+                continue
+            if h:
+                if UUID.match(kv.get("session-id", "")):
+                    headless_sids.add(kv["session-id"])
                 continue
             seen.append(kv)
         profiles = {kv.get("profile") for kv in seen}
@@ -72,8 +78,10 @@ def parse_launches(logs_dir, since, until, lane):
         if not p or p == "none" or "," in p or (lane != "any" and ln_ != lane):
             continue
         out[name] = {"profile": p, "lane": ln_,
-                     "sids": {kv["session_id"] for kv in seen if UUID.match(kv.get("session_id", ""))},
-                     "launched": min(kv["launched"] for kv in seen)}
+                     "sids": {kv["session_id"] for kv in seen if UUID.match(kv.get("session_id", ""))} | headless_sids,
+                     "launched": min(kv["launched"] for kv in seen),
+                     "autocompact": max((int(kv["autocompact"]) for kv in seen
+                                         if kv.get("autocompact", "").isdigit()), default=None)}
     return out
 
 

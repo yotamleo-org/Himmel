@@ -42,7 +42,7 @@
 # the context) re-creates the simulated context; the rest of the context is
 # priced as cache_read.
 #
-import argparse, glob, importlib.util, json, os, re, statistics, sys, time
+import argparse, datetime, glob, importlib.util, json, os, re, statistics, sys, time
 
 _ab_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "autocompact-ab.py")
 _spec = importlib.util.spec_from_file_location("autocompact_ab", _ab_path)
@@ -207,14 +207,15 @@ def load(path):
         u = msg.get("usage")
         if isinstance(u, dict):
             t.update({"in": u.get("input_tokens") or 0, "cr": u.get("cache_read_input_tokens") or 0,
-                      "cc": u.get("cache_creation_input_tokens") or 0, "out": u.get("output_tokens") or 0})
+                      "cc": u.get("cache_creation_input_tokens") or 0, "out": u.get("output_tokens") or 0,
+                      "cc1h": (u.get("cache_creation") or {}).get("ephemeral_1h_input_tokens") or 0})
         for b in content if isinstance(content, list) else []:
             if not isinstance(b, dict):
                 continue
             if b.get("type") == "text":
                 t["wrote"].append(b.get("text") or "")
             elif b.get("type") == "tool_use":
-                c = {"name": b.get("name"), "input": b.get("input") or {}, "error": False, "denied": False}
+                c = {"name": b.get("name"), "id": b.get("id"), "input": b.get("input") or {}, "error": False, "denied": False}
                 t["calls"].append(c)
                 # what the worker says: messages and Results bullets, never file
                 # content (a test fixture carries made-up tokens)
@@ -223,7 +224,7 @@ def load(path):
                     t["wrote"].append(json.dumps(c["input"], ensure_ascii=False))
                 by_tool[b.get("id")] = c
     for t in turns:
-        for k in ("in", "cr", "cc", "out"):
+        for k in ("in", "cr", "cc", "out", "cc1h"):
             t.setdefault(k, 0)
         t["ctx"] = t["in"] + t["cr"] + t["cc"]
         t["cost"] = t["in"] * ab.W_IN + t["cr"] * ab.W_CR + t["cc"] * ab.W_CC + t["out"] * ab.W_OUT
@@ -392,6 +393,195 @@ def simulate(turns, bounds, ceiling, resume_tokens, post_median, priced=None):
     return res
 
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def _import(name, *path):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(HERE, *path))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+PUSH_CMD = re.compile(r"(?:^|[;&|(]\s*)git(?:\s+-C\s+\S+)?\s+push\b", re.M)
+COMMIT_CMD = re.compile(r"\bgit(?:\s+-C\s+\S+)?\s+commit\b")
+MARKER = re.compile(r"append-results\.sh\s+\S+\s+[\"']?(?:-\s*\d\d:\d\d\s+)?([A-Z][A-Z-]+)")
+STOP_MARKERS = {"READY", "BLOCKED", "HALTED", "WRAPPED", "FINDING", "PARKED-BANK", "PARKED-USAGE"}
+EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+
+
+def _flat_calls(turns):
+    """The tool calls of the main chain in order: {k (from 1), turn, call}."""
+    out = []
+    for i, t in enumerate(turns):
+        for c in t["calls"]:
+            out.append({"k": len(out) + 1, "turn": i, "call": c})
+    return out
+
+
+def _cmd(c):
+    return (c["input"].get("command") or "") if c["name"] == "Bash" and isinstance(c["input"], dict) else ""
+
+
+def _changes_state(c):
+    cmd = _cmd(c)
+    return c["name"] in EDIT_TOOLS or bool(cmd and (BASH_WRITE.search(cmd) or COMMIT_CMD.search(cmd)))
+
+
+def proxy_points(calls, turns, floor):
+    """{call k: {push index}}: a call is a stable point when it is one of the first three calls after a successful
+    `git push` call whose own command holds no `git commit`, made at or above the floor, with no state change
+    since the push and the last append-results marker none of the stop markers. The call's own command counts as
+    well (the guard does not see it; counting it makes the proxy hop less)."""
+    marker_after, last = [], None
+    for f in calls:
+        m = MARKER.search(_cmd(f["call"]))
+        last = m.group(1) if m else last
+        marker_after.append(last)
+    pts = {}
+    for p, f in enumerate(calls):
+        c = f["call"]
+        cmd = _cmd(c)
+        if not PUSH_CMD.search(cmd) or COMMIT_CMD.search(cmd) or c.get("result") is None or c["error"] \
+                or turns[f["turn"]]["ctx"] < floor:
+            continue
+        for q in range(p + 1, min(p + 4, len(calls))):
+            if _changes_state(calls[q]["call"]) or marker_after[q] in STOP_MARKERS:
+                break
+            pts.setdefault(calls[q]["k"], set()).add(p)
+    return pts
+
+
+def log_points(calls, path):
+    """{call k: {window}}: the calls a shadow log names, by tool-use id when the line has one, else by call count.
+    Lines read: `tool_use=<id>`, `calls=<n>` and `head=<sha>` (one window per head)."""
+    by_id = {f["call"].get("id"): f["k"] for f in calls if f["call"].get("id")}
+    pts = {}
+    try:
+        lines = open(path, errors="replace").read().splitlines()
+    except OSError:
+        return pts
+    for n, line in enumerate(lines):
+        kv = dict(t.split("=", 1) for t in line.split() if "=" in t)
+        k = by_id.get(kv.get("tool_use")) if kv.get("tool_use") else None
+        if k is None and kv.get("calls", "").isdigit():
+            k = int(kv["calls"])
+        if k is not None and 1 <= k <= len(calls):
+            pts.setdefault(k, set()).add(kv.get("head") or "line%d" % n)
+    return pts
+
+
+def replay_rule(turns, calls, points, predictor, base, relaunch, model, hr, bw):
+    """Input-side cost-eq of one session, as recorded and with the rule deciding at `points`; the rule is
+    evaluated again at every point on the simulated context and the call count of the simulated session."""
+    r, w = bw.cache_read_weight(model), bw.cache_create_1h_weight()
+    w_cc, w_in = ab.W_CC, ab.W_IN
+
+    def price(t, reads):
+        return t["in"] * w_in + reads * r + (t["cc"] - t["cc1h"]) * w_cc + t["cc1h"] * w
+    recorded = sum(price(t, max(0, t["ctx"] - t["in"] - t["cc"])) for t in turns)
+    off, start, cost, hops, spent = 0, 0, 0.0, [], set()
+    total = len(calls)
+    by_turn = {}
+    for f in calls:
+        by_turn.setdefault(f["turn"], []).append(f["k"])
+    for i, t in enumerate(turns):
+        x = max(t["ctx"] - off, t["in"] + t["cc"])
+        cost += price(t, max(0, x - t["in"] - t["cc"]))
+        for k in by_turn.get(i, []):
+            if k not in points or points[k] <= spent:
+                continue
+            n = total - k if predictor == "oracle" else k - start
+            if hr.should_hop(x, n, model, base, relaunch):
+                cost += relaunch + w * base + hr.H * r * x
+                off, start = t["ctx"] - base, k
+                spent |= points[k]
+                hops.append(k)
+                break
+    return recorded, cost, hops
+
+
+def simulate_rule(a):
+    """--simulate-rule: the hop rule replayed over the sessions the launch records name, priced in cost-eq.
+    Calls are tool-call blocks of the main chain; a hop costs the relaunch, the one-hour write of the base and
+    the old session's h calls at full context."""
+    hr = _import("hop_rule", "..", "..", "lib", "hop_rule.py")
+    bw = hr.burn_weights
+    po = _import("profile_openings", "..", "profile-openings.py")
+    td = _import("transcript_deliveries", "..", "..", "lib", "transcript_deliveries.py")
+    spec = dict(kv.split("=", 1) for kv in a.simulate_rule.split(",") if "=" in kv)
+    pred, pts_arg = spec.get("predictor"), spec.get("points", "")
+    if pred not in ("oracle", "same-again") or not (pts_arg == "proxy" or pts_arg.startswith("log:")):
+        sys.stderr.write("compaction-defects: --simulate-rule predictor=<oracle|same-again>,points=<proxy|log:DIR>"
+                         "[,base=<n>][,relaunch=<n>]\n")
+        return 2
+    base, relaunch = int(spec.get("base", hr.B)), int(spec.get("relaunch", hr.K))
+    cut = time.time() - a.since_days * 86400 if a.since_days > 0 else 0
+    since = datetime.datetime.fromtimestamp(cut, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    until = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    launches = po.parse_launches(a.launch_logs, since, until, "native")
+    _, by_sid = po.index_transcripts(a.projects, cut)
+    skipped = {"no_session_id": 0, "no_transcript": 0, "unknown_model": 0}
+    workers, claimed = [], set()
+    for name, rec in sorted(launches.items()):
+        if not rec["sids"]:
+            skipped["no_session_id"] += 1
+            continue
+        found = [(s, by_sid[s]) for s in sorted(rec["sids"]) if s in by_sid and by_sid[s] not in claimed]
+        if not found:
+            skipped["no_transcript"] += 1
+            continue
+        for sid, path in found:
+            claimed.add(path)
+            _, turns, _ = load(path)
+            model = model_of(turns)
+            if not turns or not hr.burn_weights.is_known(model):
+                skipped["unknown_model"] += 1
+                continue
+            calls = _flat_calls(turns)
+            pts = (proxy_points(calls, turns, hr.FLOOR) if pts_arg == "proxy"
+                   else log_points(calls, os.path.join(pts_arg[4:], sid + ".log")))
+            rec_in, rule_in, hops = replay_rule(turns, calls, pts, pred, base, relaunch, model, hr, bw)
+            workers.append({"worker": name, "profile": rec["profile"], "model": model, "calls": len(calls),
+                            "eligible_rows": sum(1 for _, el, _ in td.classify(td.read_rows(path), td.ANY_CHIEF) if el),
+                            "recorded": {"input": round(rec_in), "output": round(sum(t["out"] for t in turns) * ab.W_OUT),
+                                         "writes_5m": sum(t["cc"] - t["cc1h"] for t in turns),
+                                         "writes_1h": sum(t["cc1h"] for t in turns)},
+                            "rule": {"input": round(rule_in), "output": round(sum(t["out"] for t in turns) * ab.W_OUT),
+                                     "hops": len(hops), "hop_calls": hops}})
+    roll = {}
+    for wk in workers:
+        for kind, key in (("by_model", wk["model"]), ("by_profile", wk["profile"])):
+            g = roll.setdefault(kind, {}).setdefault(key, {"sessions": 0, "hops": 0, "recorded_input": 0,
+                                                            "rule_input": 0, "output": 0, "writes_5m": 0, "writes_1h": 0})
+            g["sessions"] += 1
+            g["hops"] += wk["rule"]["hops"]
+            g["recorded_input"] += wk["recorded"]["input"]
+            g["rule_input"] += wk["rule"]["input"]
+            g["output"] += wk["recorded"]["output"]
+            g["writes_5m"] += wk["recorded"]["writes_5m"]
+            g["writes_1h"] += wk["recorded"]["writes_1h"]
+    for kind in roll.values():
+        for g in kind.values():
+            g["input_change_pct"] = round(100.0 * (g["rule_input"] - g["recorded_input"]) / g["recorded_input"], 2) \
+                if g["recorded_input"] else None
+    out = {"simulate_rule": {"predictor": pred, "points": pts_arg if pts_arg == "proxy" else "log", "base": base,
+                             "relaunch": relaunch, "sessions": len(workers), "skipped": skipped, "workers": workers,
+                             "by_model": roll.get("by_model", {}), "by_profile": roll.get("by_profile", {})}}
+    if a.json:
+        print(json.dumps(out, indent=2))
+        return 0
+    s = out["simulate_rule"]
+    print("rule replay: predictor %s, points %s, base %d, relaunch %d; sessions %d, skipped %s" % (
+        pred, s["points"], base, relaunch, s["sessions"], json.dumps(skipped)))
+    for kind in ("by_model", "by_profile"):
+        for key, g in sorted(s[kind].items()):
+            print("%-10s %-24s sessions %4d hops %4d input recorded %12d rule %12d (%s%%) output %12d writes 5m %d 1h %d" % (
+                kind[3:], key, g["sessions"], g["hops"], g["recorded_input"], g["rule_input"], g["input_change_pct"],
+                g["output"], g["writes_5m"], g["writes_1h"]))
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--projects", default=os.path.join(
@@ -400,10 +590,16 @@ def main():
     ap.add_argument("--since-days", type=float, default=14, help="0 = every transcript")
     ap.add_argument("--window", type=int, default=40)
     ap.add_argument("--simulate", type=int, action="append", default=[])
+    ap.add_argument("--simulate-rule", help="predictor=<oracle|same-again>,points=<proxy|log:DIR>[,base=N][,relaunch=N]: replay the hop rule over the sessions --launch-logs names")
+    ap.add_argument("--launch-logs", help="the launch-logs dir for --simulate-rule")
     ap.add_argument("--resume-tokens", type=int, default=6000)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--evidence", action="store_true", help="carry a <=200 char excerpt per defect (private: never commit)")
     a = ap.parse_args()
+    if a.simulate_rule:
+        if not a.launch_logs:
+            ap.error("--simulate-rule needs --launch-logs")
+        return simulate_rule(a)
 
     cut = time.time() - a.since_days * 86400 if a.since_days > 0 else 0
     paths = sorted((p for p in glob.glob(os.path.join(a.projects, "**", "*.jsonl"), recursive=True)

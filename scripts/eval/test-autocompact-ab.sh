@@ -186,5 +186,104 @@ check "compaction-defects: a restart on a cache-miss turn is not charged twice" 
 python3 -I "$CD" --projects "$CFX" --since-days 0 > "$tmp/cd.txt" 2>/dev/null
 check "compaction-defects: text report" 1 "$(grep -c '^workers 1, transcripts 1, compactions 1' "$tmp/cd.txt")"
 
+cat > "$tmp/mkfx.py" <<'PYEOF'
+import json, sys
+out, model, n = sys.argv[1], sys.argv[2], int(sys.argv[3])
+over = json.loads(sys.argv[4]) if len(sys.argv) > 4 else {}
+pre = sys.argv[5] if len(sys.argv) > 5 else "tu"
+rows = []
+for k in range(1, n + 1):
+    o = over.get(str(k), {})
+    name, inp = o.get("name", "Bash"), o.get("input", {"command": "ls"})
+    cc = {"ephemeral_5m_input_tokens": 12500 - o.get("w1h", 0), "ephemeral_1h_input_tokens": o.get("w1h", 0)}
+    rows.append({"type": "assistant", "timestamp": "2026-11-07T10:%02d:00Z" % (k % 60), "message": {
+        "id": "m%d" % k, "model": model, "content": [{"type": "tool_use", "id": "%s_%d" % (pre, k), "name": name, "input": inp}],
+        "usage": {"input_tokens": 0, "cache_read_input_tokens": 12500 * (k - 1), "cache_creation_input_tokens": 12500,
+                  "cache_creation": cc, "output_tokens": 100}}})
+    rows.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "%s_%d" % (pre, k), "content": "ok"}]}})
+with open(out, "w") as f:
+    for r in rows:
+        f.write(json.dumps(r) + "\n")
+PYEOF
+OPUS=claude-opus-5-5
+PUSH='{"name":"Bash","input":{"command":"git push origin br"}}'
+scen() {
+    local d="$tmp/sc/$1"; mkdir -p "$d/logs" "$d/projects/-home-x-worktrees-wt"
+    SCEN_N=$((SCEN_N + 1)); local sid; sid="cccccccc-0000-4000-8000-$(printf '%012d' "$SCEN_N")"
+    python3 -I "$tmp/mkfx.py" "$d/projects/-home-x-worktrees-wt/$sid.jsonl" "$2" "$3" "${4:-{\}}" "tu$sid"
+    printf 'headed-arm-worker: profile=worker-impl lane=native model=opus role=worker session=%s session_id=%s launched=2026-11-07T10:00:00Z\n' "$1" "$sid" > "$d/logs/$1.log"
+    echo "$sid" > "$d/sid"
+}
+rr() { python3 -I "$CD" --projects "$tmp/sc/$1/projects" --launch-logs "$tmp/sc/$1/logs" --since-days 0 --simulate-rule "$2" --json 2>"$tmp/rr.err"; }
+jr() { jq -r "$2" <<<"$1"; }
+SCEN_N=0
+ORC=predictor=oracle,points=proxy,base=20000,relaunch=0
+
+scen replay "$OPUS" 40 "{\"19\":{\"name\":\"Bash\",\"input\":{\"command\":\"git commit -m x\"}},\"20\":$PUSH}"
+o="$(rr replay $ORC)"
+check "rule-replay: hops once" 1 "$(jr "$o" '.simulate_rule.workers[0].rule.hops')"
+check "rule-replay: at call 21" "[21]" "$(jr "$o" '.simulate_rule.workers[0].rule.hop_calls | tostring')"
+check "rule-replay: prints a lower input-side cost than the recorded arm" 1 "$(jr "$o" '.simulate_rule.workers[0] | if .rule.input < .recorded.input then 1 else 0 end')"
+check "rule-replay: output is the same, reported apart (40 calls x 100 x 5)" "1 20000" "$(jr "$o" '.simulate_rule.workers[0] | "\(if .rule.output == .recorded.output then 1 else 0 end) \(.recorded.output)"')"
+o="$(rr replay predictor=oracle,points=proxy,base=400000,relaunch=0)"
+check "rule-replay: with base=400000 it hops zero times" 0 "$(jr "$o" '.simulate_rule.workers[0].rule.hops')"
+check "rule-replay: and prints the recorded cost" 1 "$(jr "$o" '.simulate_rule.workers[0] | if .rule.input == .recorded.input then 1 else 0 end')"
+check "rule-cohort: a session in a worktree project dir is found through the launch log, with no title" 1 "$(jr "$o" '.simulate_rule.sessions')"
+check "rule-replay: by model and by profile" "1 1" "$(jr "$o" '"\(.simulate_rule.by_model["claude-opus-5-5"].sessions) \(.simulate_rule.by_profile["worker-impl"].sessions)"')"
+check "rule-replay: the split of recorded writes by kind (40 x 12500 at 5m, none at 1h)" "500000 0" "$(jr "$o" '.simulate_rule.by_model["claude-opus-5-5"] | "\(.writes_5m) \(.writes_1h)"')"
+check "rule-replay: the eligible delivery rows are counted through transcript_deliveries" 1 "$(jr "$o" '.simulate_rule.workers[0] | if .eligible_rows >= 0 then 1 else 0 end')"
+
+scen recount "$OPUS" 60 "{\"20\":$PUSH,\"30\":$PUSH}"
+o="$(rr recount $ORC)"
+check "rule-replay-recount: the second point is judged on the simulated context: one hop, not two" "1 [21]" "$(jr "$o" '.simulate_rule.workers[0] | "\(.rule.hops) \(.rule.hop_calls | tostring)"')"
+check "rule-replay-recount: the recorded context at call 31 would have hopped" 1 "$(python3 -I -c '
+import sys; sys.path.insert(0, sys.argv[1]); import hop_rule as h
+print(int(h.should_hop(12500 * 31, 29, "claude-opus-5-5", 20000, 0)))' "$HERE/../lib")"
+
+for mk in READY FINDING; do
+    scen "m$mk" "$OPUS" 40 "{\"20\":$PUSH,\"21\":{\"name\":\"Bash\",\"input\":{\"command\":\"bash /x/append-results.sh /x/doc.md \\\"$mk bullet\\\"\"}}}"
+    o="$(rr "m$mk" $ORC)"
+    check "rule-proxy-$(echo $mk | tr '[:upper:]' '[:lower:]'): a $mk bullet after the push: no hop" 0 "$(jr "$o" '.simulate_rule.workers[0].rule.hops')"
+done
+scen mlive "$OPUS" 40 "{\"20\":$PUSH,\"21\":{\"name\":\"Bash\",\"input\":{\"command\":\"bash /x/append-results.sh /x/doc.md \\\"LIVE bullet\\\"\"}}}"
+check "rule-proxy-ready control: a LIVE bullet is not a stop (hops at call 21)" "[21]" "$(rr mlive $ORC | jq -c '.simulate_rule.workers[0].rule.hop_calls')"
+
+scen shell "$OPUS" 40 "{\"20\":$PUSH,\"21\":{\"name\":\"Bash\",\"input\":{\"command\":\"sed -i s/a/b/ f.txt\"}}}" # gnu-ok: fixture text, never run
+check "rule-proxy-shell-edit: a shell call that edits a file after the push: no hop" 0 "$(rr shell $ORC | jq '.simulate_rule.workers[0].rule.hops')"
+scen edit "$OPUS" 40 "{\"20\":$PUSH,\"21\":{\"name\":\"Edit\",\"input\":{\"file_path\":\"/x/f\"}}}"
+check "rule-proxy-shell-edit: an edit tool after the push: no hop" 0 "$(rr edit $ORC | jq '.simulate_rule.workers[0].rule.hops')"
+
+scen stale "$OPUS" 40 "{\"20\":$PUSH}"
+check "rule-proxy-stale: the rule holds first at call 24 (the fourth after the push), not before" "1 0" "$(python3 -I -c '
+import sys; sys.path.insert(0, sys.argv[1]); import hop_rule as h
+f = lambda k: int(h.should_hop(12500 * k, k, "claude-opus-5-5", 50000, 0))
+print(f(24), f(23) + f(22) + f(21))' "$HERE/../lib")"
+check "rule-proxy-stale: so no hop" 0 "$(rr stale predictor=same-again,points=proxy,base=50000,relaunch=0 | jq '.simulate_rule.workers[0].rule.hops')"
+check "rule-proxy-stale control: a smaller base hops at 21" "[21]" "$(rr stale predictor=same-again,points=proxy,base=20000,relaunch=0 | jq -c '.simulate_rule.workers[0].rule.hop_calls')"
+
+scen onecall "$OPUS" 40 '{"20":{"name":"Bash","input":{"command":"git commit -m x && git push origin br"}}}'
+check "rule-proxy-one-call: the commit and the push in one call: no point" 0 "$(rr onecall $ORC | jq '.simulate_rule.workers[0].rule.hops')"
+scen below "$OPUS" 40 "{\"10\":$PUSH}"
+check "rule-proxy-below-floor: a push below the floor, the session crosses it after: no point" 0 "$(rr below $ORC | jq '.simulate_rule.workers[0].rule.hops')"
+
+scen unk claude-nope-9 40 "{\"20\":$PUSH}"
+o="$(rr unk $ORC)"
+check "rule-replay: a session whose model is unknown is counted and skipped" "0 1" "$(jr "$o" '"\(.simulate_rule.sessions) \(.simulate_rule.skipped.unknown_model)"')"
+
+mkdir -p "$tmp/lp/logs" "$tmp/lp/projects/p" "$tmp/lp/shadow"
+i=0
+for s in A B C; do
+    i=$((i + 1)); sid="dddddddd-0000-4000-8000-00000000000$i"
+    python3 -I "$tmp/mkfx.py" "$tmp/lp/projects/p/$sid.jsonl" "$OPUS" 40 '{}' "tu$s"
+    printf 'headed-arm-worker: profile=worker-impl lane=native model=opus role=worker session=lp-%s session_id=%s launched=2026-11-07T10:00:00Z\n' "$s" "$sid" > "$tmp/lp/logs/lp-$s.log"
+    eval "SID_$s=$sid"
+done
+printf '2026-11-07T10:25:00Z %s tool_use=tuA_25 model=claude-opus-5-5 r=0.05 tokens=312500 calls=25 rule=1\n' "$SID_A" > "$tmp/lp/shadow/$SID_A.log"
+printf '2026-11-07T10:28:00Z %s model=claude-opus-5-5 r=0.05 tokens=350000 calls=28 rule=1\n' "$SID_B" > "$tmp/lp/shadow/$SID_B.log"
+o="$(python3 -I "$CD" --projects "$tmp/lp/projects" --launch-logs "$tmp/lp/logs" --since-days 0 --simulate-rule "predictor=oracle,points=log:$tmp/lp/shadow,base=20000,relaunch=0" --json 2>/dev/null)"
+check "rule-log-points: A hops at its logged call 25 only (matched by tool-use id)" "[25]" "$(jr "$o" '.simulate_rule.workers[] | select(.worker=="lp-A") | .rule.hop_calls | tostring')"
+check "rule-log-points: B hops at its logged call 28 only (matched by call count), never at A's 25" "[28]" "$(jr "$o" '.simulate_rule.workers[] | select(.worker=="lp-B") | .rule.hop_calls | tostring')"
+check "rule-log-points: a transcript with no log has no point" 0 "$(jr "$o" '.simulate_rule.workers[] | select(.worker=="lp-C") | .rule.hops')"
+
 if [ "$fails" -eq 0 ]; then echo "PASS - test-autocompact-ab.sh"; exit 0; fi
 echo "FAIL - test-autocompact-ab.sh ($fails failure(s))"; exit 1
