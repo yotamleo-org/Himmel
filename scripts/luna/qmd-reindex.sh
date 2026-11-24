@@ -607,7 +607,6 @@ echo "qmd-reindex: start $(stamp) (qmd: $(qmd_bin_desc)$IDX_DESC)"
 # re-installs it only once this run itself reaches verified-complete.
 if [ -z "$UPDATE_COLLECTION" ]; then
     rm -f "$QMD_REFRESH_STAMP" 2>/dev/null || true
-    # The backlog record of an earlier run is as stale as its stamp.
     rm -f "$QMD_REINDEX_STATE" 2>/dev/null || true
 fi
 
