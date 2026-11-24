@@ -222,10 +222,10 @@ test("send.ts with no result exits 4 and leaves its spool file in place", () => 
   const h = newHome();
   const r = send(h, ["example", "--kind", "info", "--text", "the build is green"]);
   expect(r.status).toBe(4);
-  expect(r.stderr).toMatch(/queued as .+; the poller will send it; do not resend/);
+  expect(r.stderr).toMatch(/queued as .+; the poller will draft it; do not resend/);
   const files = readdirSync(join(h.peerDir, "spool")).filter(n => n.endsWith(".json"));
   expect(files).toHaveLength(1);
-  expect(JSON.parse(readFileSync(join(h.peerDir, "spool", files[0]), "utf8"))).toEqual({ type: "send", kind: "info", text: "the build is green" });
+  expect(JSON.parse(readFileSync(join(h.peerDir, "spool", files[0]), "utf8"))).toEqual({ type: "draft", source: "send.ts", kind: "info", text: "the build is green" });
 });
 
 test("send.ts exits 0 on the poller's ok result, and 2 on its refusal", async () => {
@@ -244,8 +244,9 @@ test("send.ts exits 0 on the poller's ok result, and 2 on its refusal", async ()
     }, 50);
     child.on("close", code => resolve({ code, out }));
   });
-  const ok = await run(["example", "--kind", "status", "--text", "all quiet"], { ok: true, message_id: 77 });
-  expect(ok).toEqual({ code: 0, out: "sent as message 77\n" });
+  const ok = await run(["example", "--kind", "status", "--text", "all quiet"], { ok: true, draft: "0a1b2c3d", deadline: Date.now() + 1_800_000 });
+  expect(ok.code).toBe(0);
+  expect(ok.out).toMatch(/^drafted 0a1b2c3d; approve it on Telegram by [0-2][0-9]:[0-5][0-9]\n$/);
   const no = await run(["example", "--kind", "answer", "--reply-to", "9", "--text", "to nowhere"], { ok: false, rule: "unknown-thread" });
   expect(no.code).toBe(2);
   expect(no.out).toContain("refused: unknown-thread");

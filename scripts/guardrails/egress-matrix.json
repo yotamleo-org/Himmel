@@ -27,6 +27,7 @@
     "jira-mirror": "the local Jira mirror markdown (~/.himmel/state/jira-mirror/<project>): ticket titles, descriptions and comments of the himmel Jira project, indexed by qmd as collection jira-himmel",
     "roadmap-plan": "the roadmap-plan docs (~/.himmel/state/roadmap-plan/docs): himmel planning notes indexed by qmd as collection roadmap-plan",
     "peer-desk": "the peer desk (~/.himmel/peer-bridge/desk/**): a fresh session started for one peer that may read nothing of ours, so the only text it holds is what the operator types into it. A message to a peer bot leaves only from here",
+    "operator-reply": "text the operator types into the Telegram operator bot as a reply to a peer escalation, drafted for the peer and sent only after a counted Approve tap. Operator-typed only: the reply handler reads nothing of ours into it and the review message shows it verbatim before the tap",
     "peer-jobs": "typed peer-bridge envelopes (slice B): signed four-line messages that jobs.ts, the poller and runner.ts build from resolved values. Every field is a closed enum, a bounded integer, a resolved commit SHA, a hex value the receiver compares or a suite path on a public repo; no free text. Each also passes the bridge's own envelope policy (schema re-check, content rules on line 3, line 4 verified as our signature)",
     "skill-index": "the generated skill-index markdown (~/.claude/skill-index): skill names and descriptions indexed by qmd as collection skills"
   },
@@ -544,6 +545,11 @@
       "corpus": "peer-desk", "provider": "peer-telegram", "purpose": "peer-message",
       "verdict": "allow",
       "why": "the peer desk holds only operator-typed text (its session reads nothing of ours), so a reply to the peer carries nothing but what the operator typed. Every other corpus to this provider stays default-deny."
+    },
+    {
+      "corpus": "operator-reply", "provider": "peer-telegram", "purpose": "peer-message",
+      "verdict": "allow",
+      "why": "a reply drafted from the operator's own Telegram text leaves only after the operator approves the exact stored text with a counted tap; the poller re-checks lockdown and the content rules at approval. Every other corpus to this provider stays default-deny, and no other purpose is allowed for this corpus to it."
     },
     {
       "corpus": "peer-jobs", "provider": "peer-telegram", "purpose": "peer-message",

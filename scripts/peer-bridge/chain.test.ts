@@ -138,10 +138,11 @@ test("the linux identity is /proc starttime and stable for a live pid", () => {
 test("spool: each record type round-trips through drainSpool oldest first, 0600", () => {
   const dir = peerDirWithSpool();
   const recs = [
-    { type: "send", kind: "answer", replyTo: 12, text: "hi" },
+    { type: "draft", source: "send.ts", kind: "answer", replyTo: 12, text: "hi" },
     { type: "ack", sid: "abc-1", token: "T0K3N" },
     { type: "confirm", chatId: -100123 },
-    { type: "send", kind: "status", text: "root" },
+    { type: "draft", source: "telegram", kind: "status", text: "root" },
+    { type: "tap", verb: "ok", draft: "0a1b2c3d", by: "42", ts: 1731000000 },
   ] as const;
   const names = recs.map(r => submitSpool(dir, r as any));
   for (const n of names) expect(mode(join(dir, "spool", n))).toBe(0o600);
@@ -174,6 +175,29 @@ test("spool: the typed path's records round-trip through writeSpoolEvent, and an
   expect(drainSpool(dir)).toHaveLength(bad.length);
 });
 
+test("a send spool record is malformed; draft and tap validate", () => {
+  const dir = peerDirWithSpool();
+  const bad: unknown[] = [
+    { type: "send", kind: "info", text: "x" },
+    { type: "draft", source: "other", kind: "info", text: "x" }, { type: "draft", kind: "info", text: "x" },
+    { type: "draft", source: "send.ts", kind: "run", text: "x" }, { type: "draft", source: "send.ts", kind: "info" },
+    { type: "draft", source: "send.ts", kind: "info", text: "x", replyTo: 0 }, { type: "draft", source: "send.ts", kind: "info", text: "x", allowShape: "A B" },
+    { type: "tap", verb: "maybe", draft: "0a1b2c3d", by: "42", ts: 1 }, { type: "tap", verb: "ok", draft: "XYZ", by: "42", ts: 1 },
+    { type: "tap", verb: "ok", draft: "0a1b2c3d", by: "", ts: 1 }, { type: "tap", verb: "no", draft: "0a1b2c3d", by: "42", ts: 1.5 }, { type: "tap", verb: "no", draft: "0a1b2c3d", by: 42, ts: 1 },
+  ];
+  bad.forEach((b, i) => writeFileSync(join(dir, "spool", `${String(i).padStart(2, "0")}-bad.json`), JSON.stringify(b), { mode: 0o600 }));
+  const drained = drainSpool(dir);
+  expect(drained).toHaveLength(bad.length);
+  expect(drained.every(d => "malformed" in d && d.malformed)).toBe(true);
+  const good = [
+    { type: "draft", source: "telegram", kind: "answer", replyTo: 7, text: "ok", allowShape: "gh" },
+    { type: "tap", verb: "no", draft: "ffffffff", by: "999000999", ts: 1731000000 },
+  ];
+  const dir2 = peerDirWithSpool();
+  good.forEach(g => submitSpool(dir2, g as any));
+  expect(drainSpool(dir2).map(d => ("rec" in d ? d.rec : "malformed"))).toEqual(good as any);
+});
+
 test("spool: an O_EXCL name collision is refused", () => {
   const dir = peerDirWithSpool();
   submitSpool(dir, { type: "confirm", chatId: 1 }, () => "fixed.json");
@@ -190,7 +214,7 @@ test("spool: a missing spool dir is an error, and nothing is created", () => {
 test("spool: a half-written or malformed file is skipped or reported, never applied", () => {
   const dir = peerDirWithSpool();
   writeFileSync(join(dir, "spool", ".partial.tmp"), "{", { mode: 0o600 });
-  writeFileSync(join(dir, "spool", "1-bad.json"), JSON.stringify({ type: "send", kind: "run", text: "x" }), { mode: 0o600 });
+  writeFileSync(join(dir, "spool", "1-bad.json"), JSON.stringify({ type: "draft", source: "send.ts", kind: "run", text: "x" }), { mode: 0o600 });
   writeFileSync(join(dir, "spool", "2-junk.json"), "not json", { mode: 0o600 });
   const drained = drainSpool(dir);
   expect(drained.map(d => [d.name, "malformed" in d && d.malformed])).toEqual([["1-bad.json", true], ["2-junk.json", true]]);
@@ -198,7 +222,7 @@ test("spool: a half-written or malformed file is skipped or reported, never appl
 
 test("result files are 0600, atomic, hold no text, and remove the spool file", () => {
   const dir = peerDirWithSpool();
-  const name = submitSpool(dir, { type: "send", kind: "answer", replyTo: 1, text: "secret text" });
+  const name = submitSpool(dir, { type: "draft", source: "send.ts", kind: "answer", replyTo: 1, text: "secret text" });
   writeResult(dir, name, { ok: false, rule: "secret-shape", shape: "gh" });
   const res = join(dir, "spool", "results", name);
   expect(mode(res)).toBe(0o600);
