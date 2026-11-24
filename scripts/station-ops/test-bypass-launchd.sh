@@ -944,12 +944,13 @@ stop
 echo "== 10912: a held file the daemon never wrote launches nothing =="
 setup preflight-forged
 start
+wait_for "$Q/daemon.log" "start pid="
 printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=$CH recommend=go > "$D/f.req.prep"
 printf 'go=ABCDEF\nsha=%s\nrsha=%s\nname=HIMMEL-1-N1-sweep-pr1\n' "$(sha256sum "$BRIEF" | cut -d' ' -f1)" "$(sha256sum "$D/f.req.prep" | cut -d' ' -f1)" > "$D/f.req.held.prep"
 mv "$D/f.req.prep" "$Q/f.req.pending"
 mv "$D/f.req.held.prep" "$Q/f.req.held"
 sleep 1
-touch "$Q/f.req.pending"
+[ ! -f "$Q/f.req.pending" ] || touch "$Q/f.req.pending"
 wait_for "$Q/daemon.log" "REFUSED held go the daemon did not hold"
 assert_contains "RED 10912: a forged held file is refused" "REFUSED held go the daemon did not hold f.req" "$(cat "$Q/daemon.log")"
 assert_absent "RED 10912: a forged held file launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
