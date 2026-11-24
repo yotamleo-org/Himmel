@@ -692,7 +692,6 @@ export function titleSimilarity(a: string, b: string): number {
 
 interface OpenHit { key: string; fields?: { summary?: string } }
 
-/** Open tickets a JQL finds; a failed search warns and finds none, so a Jira outage never blocks the filing. */
 async function openMatches(jql: string): Promise<OpenHit[]> {
   try {
     const found = await request<{ issues?: OpenHit[] }>('GET', `/search/jql?jql=${encodeURIComponent(jql)}&fields=summary&maxResults=50`);
