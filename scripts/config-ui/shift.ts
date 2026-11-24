@@ -341,7 +341,15 @@ const titleOf = (l?: Leg) => String(l?.goal || l?.description || "").slice(0, 20
 // (go, decide, unblock, act) are the chief's own steps and never Waiting. Running = live and PR-open workers that are not waiting (a red CI stays Running: it is the worker's to fix).
 export function rowsOf(boards: Board[], owed: OwedItem[] = []): { waiting: Waiting[]; running: Running[] } {
   const waiting: Waiting[] = [], running: Running[] = [];
-  for (const i of owed) if (i.actor === "operator") waiting.push({ kind: i.source, ticket: i.key, title: i.title, detail: `${i.title}: ${i.ctx}; action: ${i.act}`, since: null, pr: null, chief: "" });
+  const byKey = new Map<string, Waiting>();
+  for (const i of owed) {
+    if (i.actor !== "operator") continue;
+    const detail = `${i.title}: ${i.ctx}; action: ${i.act}`, seen = i.key ? byKey.get(i.key) : undefined;
+    if (seen) { seen.detail += ` | ${detail}`; continue; }
+    const w: Waiting = { kind: i.source, ticket: i.key, title: i.title, detail, since: null, pr: null, chief: "" };
+    waiting.push(w);
+    if (i.key) byKey.set(i.key, w);
+  }
   for (const b of boards) {
     const chief = b.console?.name ?? "";
     const waits = new Set<string>();

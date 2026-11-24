@@ -732,3 +732,47 @@ test("a live chief with no board file shows no leg, a missing-board note, and ru
   expect(v.boardMissing).toEqual([name]);
   expect(existsSync(marker)).toBe(false);
 });
+
+const mirrorTicket = (n: number, status: string) => ["---", `key: "HIMMEL-${n}"`, `type: "Task"`, `status: "${status}"`, `statusCategory: "${status}"`, `priority: "Medium"`, "labels: []", `fixVersions: ["v1.1.3"]`, "parent: null",
+  `created: "2026-10-01T00:00:00.000+0000"`, `updated: "2026-10-02T00:00:00.000+0000"`, "resolution: null", "links:", "  blocks: []", "  blocked_by: []", "  relates: []", "---", "", `# HIMMEL-${n}: ticket ${n}`, "", "## Description", "", "x", "", "## Comments", "", "_(none)_", ""].join("\n");
+async function owedStation() {
+  const { readOwed } = await import("../board");
+  const d = tmp(), mirror = join(d, "mirror"), home = join(d, "home");
+  mkdirSync(mirror); mkdirSync(home); mkdirSync(join(d, "specs", "designs"), { recursive: true });
+  writeFileSync(join(mirror, "HIMMEL-2.md"), mirrorTicket(2, "To Do"));
+  writeFileSync(join(mirror, "HIMMEL-3.md"), mirrorTicket(3, "To Do"));
+  writeFileSync(mirror + ".versions.tsv", "v1.1.3\tfalse\n");
+  const add = (id: string, o: object) => JSON.stringify({ op: "add", id, ...o });
+  writeFileSync(join(d, "owed.jsonl"), [
+    add("o1", { actor: "operator", key: "HIMMEL-2", text: "run the proof", kind: "proof" }),
+    add("o2", { actor: "operator", key: "HIMMEL-3", text: "closed ask", kind: "ask" }), JSON.stringify({ op: "close", ref: "o2" }),
+    add("o3", { actor: "chief", key: "HIMMEL-3", text: "chief validates", kind: "step" }),
+    add("o4", { actor: "operator", key: null, text: "loose ask", kind: "ask" }),
+  ].join("\n") + "\n");
+  writeFileSync(join(d, "x-HANDOFF.md"), "## Open operator items\n\n<What only the operator can do: a merge, a credential, a dashboard flip.>\n");
+  const doc = join(d, "c-chief.md");
+  writeFileSync(doc, "## Live state\nqueue: HIMMEL-2 operator words: approve paid TWO | HIMMEL-3 chief runs the GO\n");
+  const o = readOwed({ PATH: process.env.PATH, HOME: home, HIMMEL_JIRA_MIRROR: mirror, HIMMEL_CHIEF_DOC: doc, HIMMEL_BUCKET_DIR: d } as never);
+  if (o.state !== "ok") throw new Error(o.reason);
+  return o;
+}
+
+test("10947: one operator ask naming one ticket from two sources is one Waiting row, and the row says both", async () => {
+  const o = await owedStation();
+  const w = rowsOf([], o.items).waiting;
+  expect(w.filter((x) => x.ticket === "HIMMEL-2").length).toBe(1);
+  expect(w.find((x) => x.ticket === "HIMMEL-2")!.detail).toContain("run the proof");
+  expect(w.find((x) => x.ticket === "HIMMEL-2")!.detail).toContain("approve paid TWO");
+});
+
+test("10947: Waiting is the board's operator list from the same readOwed call: one row per ticket, one per keyless item, no template line, no chief step, no closed row", async () => {
+  const o = await owedStation();
+  const ops = o.items.filter((i) => i.actor === "operator");
+  const want = new Set(ops.map((i) => i.key ?? `loose:${i.title}`));
+  const v = viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [], boards: [board], owed: o });
+  expect(v.waiting.length).toBe(want.size);
+  expect(v.waiting.map((x) => x.ticket ?? x.title).sort()).toEqual(["HIMMEL-2", "loose ask"]);
+  const html = renderShift(v, {});
+  for (const gone of ["What only the operator can do", "chief runs the GO", "chief validates", "closed ask"]) expect(html).not.toContain(gone);
+  expect(html).toContain(`<h2 id="h-sh-waiting">Waiting on you <b>${want.size}</b></h2>`);
+});
