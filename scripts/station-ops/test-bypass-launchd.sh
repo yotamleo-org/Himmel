@@ -1018,7 +1018,7 @@ assert_eq "RED 10912: the launch fields are the asked ones with symlinks planted
 stop
 
 echo "== 10912: a held request swapped for a FIFO or a symlink is refused, never read =="
-for kind in fifo symlink; do
+for kind in fifo symlink dangling; do
     setup "preflight-swap-$kind"
     printf 'VICTIM\n' > "$D/victim"
     start
@@ -1028,8 +1028,11 @@ for kind in fifo symlink; do
     wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
     sleep 1
     rm -f "$D/dry.rc" "$D/dry.msg" "$Q/r.req.pending"
-    if [ "$kind" = fifo ]; then mkfifo "$Q/r.req.pending"; else cp "$BRIEF" "$D/swapped"; ln -s "$D/swapped" "$Q/r.req.pending"; fi
-    touch -h "$Q/r.req.pending" 2>/dev/null
+    case $kind in
+        fifo) mkfifo "$Q/r.req.pending" ;;
+        symlink) cp "$BRIEF" "$D/swapped"; ln -s "$D/swapped" "$Q/r.req.pending" ;;
+        dangling) ln -s "$D/nowhere" "$Q/r.req.pending" ;;
+    esac
     wait_for "$Q/daemon.log" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the request changed"
     assert_contains "RED 10912: a held request swapped for a $kind is refused" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the request changed since the ask)" "$(cat "$Q/daemon.log")"
     assert_absent "RED 10912: a swapped $kind launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"

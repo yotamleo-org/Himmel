@@ -344,6 +344,11 @@ while :; do
             log "REFUSED held go the daemon did not hold ${req##*/}"; continue
         fi
         [ -e "$req.pending" ] || [ -L "$req.pending" ] || { rm -f "$held"; HELD[hi]=''; continue; }
+        if [ -L "$req.pending" ] || [ ! -f "$req.pending" ]; then
+            IFS=$US read -r _ _ _ _ name _ <<<"${HELD[$hi]}"; HELD[hi]=''; rm -f "$held"
+            mv "$req.pending" "$req.refused"; log "REFUSED after go $name (the request changed since the ask)"
+            send bypass-result "bypass launch $name: refused after your go, the request changed since you were asked. Nothing ran."; continue
+        fi
         [ "$req.pending" -nt "$held" ] || continue
         IFS=$US read -r _ code sha rsha name asked <<<"${HELD[$hi]}"; HELD[hi]=''; rm -f "$held"
         age=$(( $(date +%s) - asked ))
