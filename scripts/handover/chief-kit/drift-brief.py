@@ -121,7 +121,7 @@ template_version: 3
 
 > **Completes ticket:** no
 
-> **Why (read the open drift issue first with `gh issue list --label fork-drift --state open{repo_flag}`, rows move):** the nightly fork-drift report lists these {n} actionable rows (Needs-update rows, and held rows whose 72 h buffer has cleared). Operator decision 1051: a daily check keeps each catch-up small.
+> **Why (read the open drift issue first with `gh issue list --label fork-drift --state open --limit 1 --json body --jq '.[0].body'{repo_flag}`, rows move):** the nightly fork-drift report lists these {n} actionable rows (Needs-update rows, and held rows whose 72 h buffer has cleared). Operator decision 1051: a daily check keeps each catch-up small.
 {rows}
 > NOT in scope: any row not listed above, any row still inside its 72 h buffer, any HELD row with no `eligible` time.
 

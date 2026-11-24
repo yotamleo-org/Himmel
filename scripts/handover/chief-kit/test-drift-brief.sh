@@ -22,7 +22,7 @@ cat > "$W/drift-gh" <<'STUB'
 case " $* " in *" -R $DRIFT_EXPECT_REPO "*) ;; *) exit 7 ;; esac
 if [ "${1:-} ${2:-}" = "issue view" ]; then cat "$DRIFT_BODY_FILE"; exit; fi
 [ "${1:-} ${2:-}" = "issue list" ] || exit 7
-case " $* " in *" --label fork-drift "*) ;; *) exit 7 ;; esac
+case " $* " in *" --label ${DRIFT_ISSUE_LABEL:-fork-drift} "*) ;; *) exit 7 ;; esac
 case " $* " in *" --state open "*) ;; *) exit 7 ;; esac
 case " $* " in *" --json body "*) ;; *) exit 7 ;; esac
 [ -z "${DRIFT_NO_OPEN:-}" ] || exit 0
@@ -92,6 +92,11 @@ export TICK_STATE_DIR="$W/state-closed"
 out7="$(DRIFT_NO_OPEN=1 bash "$SUT")"
 contains 'a closed issue with a stale actionable body prints drift=0' "$(printf '%s\n' "$out7" | grep '^TICK ')" ' drift=0'
 [ "$(wakes "$out7")" -eq 0 ] && pass 'a closed issue never wakes' || fail "a closed issue woke $(wakes "$out7") times"
+mk_body "$ROW_TASTE" ''
+export TICK_STATE_DIR="$W/state-label"
+bash "$SUT" > /dev/null
+out9="$(DRIFT_ISSUE_LABEL=other-drift DRIFT_NO_OPEN=1 bash "$SUT" 2>&1)"
+contains 'a cached body of another label is not reused' "$(printf '%s\n' "$out9" | grep '^TICK ')" ' drift=0'
 rm -f "$DRIFT_BODY_FILE"
 export TICK_STATE_DIR="$W/state-noissue"
 out8="$(DRIFT_NO_OPEN=1 bash "$SUT")"
@@ -107,6 +112,7 @@ brief="$(printf '%s\n' "$brief_out" | tail -n 1)"
 [ -f "$brief" ] && pass 'the generator writes a brief into the bucket and prints its path' || fail "no brief at '$brief'"
 contains 'the brief names a Needs-update row' "$(cat "$brief" 2>/dev/null)" 'taste-skill-core'
 contains 'the brief names a buffer-cleared hold row' "$(cat "$brief" 2>/dev/null)" 'oxlint'
+contains 'the brief reads the issue body, not only its metadata' "$(cat "$brief" 2>/dev/null)" '--json body'
 lint_err="$(bash "$LINT" "$brief" 2>&1)" && pass 'the generated brief passes brief-lint.sh' || fail "brief-lint refused the generated brief: $lint_err"
 
 mk_body '' "$HELD_LINE"

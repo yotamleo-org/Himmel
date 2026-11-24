@@ -4213,19 +4213,18 @@ drift_holds="$REPO/scripts/upstreams/pin-holds.json"
 if [ -f "$drift_holds" ] && [ -f "$HERE/drift-brief.py" ]; then
     drift_val="?"
     drift_gh="${TICK_DRIFT_GH:-$GH_READ_BIN}"
-    drift_cache="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/tick-drift-body"
+    drift_slug() { git -C "$HERE" remote get-url origin | sed -E 's#^.*[:/]([^/:]+/[^/]+)$#\1#; s#\.git$##'; }
+    drift_repo="$(. "$HERE/../../lib/env-value.sh" && env_value HIMMEL_REPO drift_slug)" || drift_repo=""  # swallow-ok: an unresolved repo renders as drift=?
+    drift_label="${DRIFT_ISSUE_LABEL:-fork-drift}"
+    drift_cache="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/tick-drift-body-$(printf '%s %s' "$drift_repo" "$drift_label" | cksum | cut -d' ' -f1)"
     case "${TICK_DRIFT_TTL_MIN:-60}" in '' | *[!0-9]*) drift_ttl=60 ;; *) drift_ttl=$((10#${TICK_DRIFT_TTL_MIN:-60})) ;; esac
     drift_have=""
-    if [ -f "$drift_cache" ] && [ -n "$(find "$drift_cache" -mmin "-$drift_ttl" 2>/dev/null)" ]; then  # gnu-ok: console kit is Linux-only # swallow-ok: an unreadable cache reads as stale
+    if [ -n "$drift_repo" ] && [ -f "$drift_cache" ] && [ -n "$(find "$drift_cache" -mmin "-$drift_ttl" 2>/dev/null)" ]; then  # gnu-ok: console kit is Linux-only # swallow-ok: an unreadable cache reads as stale
         drift_body="$(cat "$drift_cache" 2>/dev/null)" && drift_have=1  # swallow-ok: an unreadable cache is read again
     fi
-    if [ -z "$drift_have" ]; then
-        drift_slug() { git -C "$HERE" remote get-url origin | sed -E 's#^.*[:/]([^/:]+/[^/]+)$#\1#; s#\.git$##'; }
-        drift_repo="$(. "$HERE/../../lib/env-value.sh" && env_value HIMMEL_REPO drift_slug)" || drift_repo=""  # swallow-ok: an unresolved repo renders as drift=?
-        if [ -n "$drift_repo" ] && drift_body="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 20)"} "$drift_gh" issue list --label "${DRIFT_ISSUE_LABEL:-fork-drift}" --state open --limit 1 -R "$drift_repo" --json body --jq '.[0].body // ""' 2>/dev/null)"; then  # swallow-ok: a failed read renders as drift=?
-            drift_have=1
-            { mkdir -p "${drift_cache%/*}" && printf '%s' "$drift_body" > "$drift_cache.$$" && mv -f "$drift_cache.$$" "$drift_cache"; } 2>/dev/null || true  # swallow-ok: an unwritable cache only costs the next tick a read
-        fi
+    if [ -z "$drift_have" ] && [ -n "$drift_repo" ] && drift_body="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 20)"} "$drift_gh" issue list --label "$drift_label" --state open --limit 1 -R "$drift_repo" --json body --jq '.[0].body // ""' 2>/dev/null)"; then  # swallow-ok: a failed read renders as drift=?
+        drift_have=1
+        { mkdir -p "${drift_cache%/*}" && printf '%s' "$drift_body" > "$drift_cache.$$" && mv -f "$drift_cache.$$" "$drift_cache"; } 2>/dev/null || true  # swallow-ok: an unwritable cache only costs the next tick a read
     fi
     if [ -n "$drift_have" ]; then
         drift_n="$(printf '%s\n' "$drift_body" | python3 -I "$HERE/drift-brief.py" count --holds "$drift_holds" 2>/dev/null)" || drift_n=""  # swallow-ok: a failed count renders as drift=?
