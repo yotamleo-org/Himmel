@@ -1,58 +1,33 @@
 // scripts/where-are-we/lib/append.mjs
-import { mkdirSync, rmdirSync, writeFileSync, renameSync, linkSync, unlinkSync, statSync, chmodSync } from 'node:fs';
+import { writeFileSync, renameSync, linkSync, unlinkSync, statSync, chmodSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
 import { REQUIRED, validateRecord } from './schema.mjs';
 import { appendRecord, readRecords } from './ledger.mjs';
 import { fold } from './fold.mjs';
+import { collectionLock } from './runtime.mjs';
 
 /**
- * Acquire an advisory lock by creating a directory at `ledgerPath + '.lock'`.
- * Uses a synchronous spin-sleep (Atomics.wait) so the lock is never leaked
- * across an await boundary.
+ * Take the collection's kernel lock (`<ledger>.collect.lock`, flock): the one lock
+ * the collector holds for a whole pass. The kernel frees it when its holder dies,
+ * so a killed writer blocks nobody and nothing is ever freed by age.
  *
  * @param {string} ledgerPath
- * @param {{ timeoutMs?: number, backoffMs?: number }} opts
+ * @param {{ timeoutMs?: number }} opts
+ * @returns {{ fd: number, release: () => void }}
  */
 export function acquireLock(ledgerPath, opts = {}) {
-  const { timeoutMs = 10000, backoffMs = 20 } = opts;
-  const lockPath = ledgerPath + '.lock';
-  const deadline = Date.now() + timeoutMs;
-  while (true) {
-    try {
-      mkdirSync(lockPath);
-      return; // success
-    } catch (err) {
-      if (err.code !== 'EEXIST') throw err; // non-lock error — surface immediately
-      if (Date.now() >= deadline) {
-        throw new Error('append: lock timeout for ' + ledgerPath);
-      }
-      // Synchronous sleep — must not be async to prevent lock leaks
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, backoffMs);
-    }
-  }
+  const { timeoutMs = 10000 } = opts;
+  return collectionLock(ledgerPath, undefined, { waitMs: timeoutMs, busy: 'append: lock timeout for ' + ledgerPath });
 }
 
 /**
- * Release the advisory lock by removing the lock directory.
- * Silently ignores ENOENT (already released).
- *
- * @param {string} ledgerPath
- */
-export function releaseLock(ledgerPath) {
-  try {
-    rmdirSync(ledgerPath + '.lock');
-  } catch (err) {
-    if (err.code !== 'ENOENT') throw err;
-  }
-}
-
-/**
- * Validate each record, drop invalid ones, then append all valid records
- * under an advisory lock.
+ * Validate each record, drop invalid ones, then append all valid records under
+ * the collection's kernel lock. A caller that already holds it (the collector,
+ * for its whole pass) passes `held: true`.
  *
  * @param {string} ledgerPath
  * @param {object[]} records
- * @param {object} opts  - forwarded to acquireLock (timeoutMs, backoffMs)
+ * @param {object} opts  - timeoutMs for the lock wait; held: the caller holds the lock
  * @returns {{ appended: number, dropped: number, dropReasons: Array<{index: number, error: string}> }}
  */
 export function appendRecords(ledgerPath, records, opts = {}) {
@@ -66,13 +41,13 @@ export function appendRecords(ledgerPath, records, opts = {}) {
       dropReasons.push({ index: i, error: result.error });
     }
   }
-  acquireLock(ledgerPath, opts);
+  const lock = opts.held ? null : acquireLock(ledgerPath, opts);
   try {
     for (const r of valid) {
       appendRecord(ledgerPath, r);
     }
   } finally {
-    releaseLock(ledgerPath);
+    lock?.release();
   }
   return { appended: valid.length, dropped: dropReasons.length, dropReasons };
 }
@@ -119,13 +94,14 @@ export function compactRecords(records) {
  * (leaving the ledger untouched) on a malformed ledger, or if the result would not
  * fold to the same state, key order included. The original stays beside it as
  * `<ledger>.pre-compact` (a hard link, replaced on the next compaction).
+ * Runs under the collection's kernel lock, so it waits out a running collector.
  *
  * @param {string} ledgerPath
  * @param {object} opts  - forwarded to acquireLock
  * @returns {{ kept: number, dropped: number }}
  */
 export function compactLedger(ledgerPath, opts = {}) {
-  acquireLock(ledgerPath, opts);
+  const lock = acquireLock(ledgerPath, opts);
   const tmp = ledgerPath + '.compact.tmp';
   try {
     const records = readRecords(ledgerPath); // throws on a malformed line
@@ -146,6 +122,6 @@ export function compactLedger(ledgerPath, opts = {}) {
     return { kept: kept.length, dropped };
   } finally {
     try { unlinkSync(tmp); } catch { /* already renamed or never written */ }
-    releaseLock(ledgerPath);
+    lock.release();
   }
 }
