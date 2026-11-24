@@ -4,6 +4,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Chain, readChain, submitSpool } from "./chain";
+import { draftState } from "./drafts";
 import { notifyFile, renderNotify } from "./notify";
 import type { Config } from "./config";
 import { ackToken, digestFile } from "./digests";
@@ -54,9 +55,9 @@ function makeTg() {
 }
 
 type Env = Awaited<ReturnType<typeof setup>>;
-async function setup(over: { readerRun?: PollerDeps["readerRun"]; matrix?: PollerDeps["matrix"]; peerOver?: Record<string, unknown> } = {}) {
-  const stateDir = tmp("peer-poller-state-");
-  const configDir = tmp("peer-poller-conf-");
+async function setup(over: { readerRun?: PollerDeps["readerRun"]; matrix?: PollerDeps["matrix"]; peerOver?: Record<string, unknown>; stateDir?: string; configDir?: string } = {}) {
+  const stateDir = over.stateDir ?? tmp("peer-poller-state-");
+  const configDir = over.configDir ?? tmp("peer-poller-conf-");
   writeFileSync(join(configDir, "hmac.key"), "k".repeat(32), { mode: 0o600 });
   const peerDir = join(stateDir, "example");
   mkdirSync(join(peerDir, "spool"), { recursive: true, mode: 0o700 });
@@ -84,6 +85,16 @@ const wakeLines = (e: Env) => {
   return readChain(notifyFile(e.stateDir)).map(r => renderNotify(r as any, e.cfg.himmelRoot).text);
 };
 const readResult = (e: Env, name: string) => JSON.parse(readFileSync(join(e.peerDir, "spool", "results", name), "utf8"));
+const OP = "4242";
+async function draftIt(e: Env, rec: { kind: string; replyTo?: number; text: string; allowShape?: string }, source: "send.ts" | "telegram" = "send.ts"): Promise<string> {
+  const name = submitSpool(e.peerDir, { type: "draft", source, ...rec } as any);
+  await e.poller.drainSpool();
+  const r = readResult(e, name);
+  if (!r.ok) throw new Error(`draft refused: ${r.rule}`);
+  return r.draft;
+}
+const tapIt = (e: Env, draft: string, verb: "ok" | "no" = "ok", by = OP) => submitSpool(e.peerDir, { type: "tap", verb, draft, by, ts: e.c.t });
+const results = (e: Env) => readChain(notifyFile(e.stateDir)).filter(r => (r as any).type === "result") as any[];
 function filesUnder(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap(d => (d.isDirectory() ? filesUnder(join(dir, d.name)) : [join(dir, d.name)]));
 }
@@ -201,11 +212,12 @@ function receiver() {
 test("a crash between the Telegram call and the sent record leaves one thread at the receiver: root and reply", async () => {
   const rx = receiver();
   const e = await setup();
-  submitSpool(e.peerDir, { type: "send", kind: "info", text: "fyi: the build is green" });
+  const d1 = await draftIt(e, { kind: "info", text: "fyi: the build is green" });
   e.script.push(() => { throw new TelegramError("connection reset", 0); });
+  tapIt(e, d1);
   await e.poller.drainSpool();
   for (const s of e.sent) rx.deliver(s.text, s.replyTo);
-  expect(outbox(e).map(r => r.kind)).toEqual(["intent"]);
+  expect(outbox(e).map(r => r.kind)).toEqual(["draft", "intent"]);
   const again = await Poller.create(e.deps);
   const before = e.sent.length;
   await again.recover();
@@ -220,8 +232,9 @@ test("a crash between the Telegram call and the sent record leaves one thread at
   const root = askRoot("0a0a0a0a");
   await f.poller.processBatch([root]);
   const sentBefore = f.sent.length;
-  submitSpool(f.peerDir, { type: "send", kind: "answer", replyTo: root.message.message_id, text: "the answer" });
+  const d2 = await draftIt(f, { kind: "answer", replyTo: root.message.message_id, text: "the answer" });
   f.script.push(() => { throw new TelegramError("connection reset", 0); });
+  tapIt(f, d2);
   await f.poller.drainSpool();
   f.c.t += 120_000;
   await f.poller.flushIntents();
@@ -234,19 +247,20 @@ test("a crash between the Telegram call and the sent record leaves one thread at
   expect(rx2.inbox.filter(r => r.tag === "answer")).toHaveLength(1);
 });
 
-test("each spool type writes its result file, and a send result carries the message id", async () => {
+test("each spool type writes its result file, and an approved draft's tap result names the draft", async () => {
   const e = await setup();
   const root = askRoot("0b0b0b0b");
   await e.poller.processBatch([root]);
-  const sendName = submitSpool(e.peerDir, { type: "send", kind: "answer", replyTo: root.message.message_id, text: "an answer" });
+  const dId = await draftIt(e, { kind: "answer", replyTo: root.message.message_id, text: "an answer" });
+  const sendName = tapIt(e, dId);
   const ackTok = ackToken(e.key, "sess-1", "example", 3);
   const ackName = submitSpool(e.peerDir, { type: "ack", sid: "sess-1", token: ackTok });
   const badAck = submitSpool(e.peerDir, { type: "ack", sid: "sess-2", token: ackTok });
   const confirmName = submitSpool(e.peerDir, { type: "confirm", chatId: CHAT });
   writeFileSync(join(e.peerDir, "spool", "9-junk.json"), "nope", { mode: 0o600 });
   await e.poller.drainSpool();
-  expect(readResult(e, sendName)).toMatchObject({ ok: true });
-  expect(typeof readResult(e, sendName).message_id).toBe("number");
+  expect(readResult(e, sendName)).toEqual({ ok: true, draft: dId });
+  expect(e.sent.filter(s => s.text.startsWith("#answer"))).toHaveLength(1);
   expect(readResult(e, ackName)).toEqual({ ok: true });
   expect(JSON.parse(readFileSync(join(e.peerDir, "cursors", "sess-1"), "utf8"))).toEqual({ n: 3 });
   expect(readResult(e, badAck)).toEqual({ ok: false, rule: "bad-ack" });
@@ -255,14 +269,13 @@ test("each spool type writes its result file, and a send result carries the mess
   expect(outbox(e).some(r => r.kind === "confirmed")).toBe(true);
   expect(readResult(e, "9-junk.json")).toEqual({ ok: false, rule: "malformed" });
   expect(readdirSync(join(e.peerDir, "spool")).filter(n => n.endsWith(".json"))).toEqual([]);
-  const sentRec = outbox(e).find(r => r.kind === "sent" && r.intent === 3);
+  expect(outbox(e).some(r => r.kind === "sent")).toBe(true);
   expect(statSync(join(e.peerDir, "spool", "results", sendName)).mode & 0o777).toBe(0o600);
-  expect(sentRec ?? true).toBeTruthy();
 });
 
 test("an answer to an unknown thread is refused, and a cursor only moves forward", async () => {
   const e = await setup();
-  const name = submitSpool(e.peerDir, { type: "send", kind: "answer", replyTo: 4242, text: "to nowhere" });
+  const name = submitSpool(e.peerDir, { type: "draft", source: "send.ts", kind: "answer", replyTo: 4242, text: "to nowhere" });
   const hi = submitSpool(e.peerDir, { type: "ack", sid: "s1", token: ackToken(e.key, "s1", "example", 9) });
   const lo = submitSpool(e.peerDir, { type: "ack", sid: "s1", token: ackToken(e.key, "s1", "example", 4) });
   await e.poller.drainSpool();
@@ -285,23 +298,33 @@ const names = {
 
 test(names.openCap, async () => {
   const e = await setup({ peerOver: { theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 2, maxPerMinute: 10, copiedAt: "2026-11-07" } } });
-  const files = [1, 2, 3, 4].map(i => submitSpool(e.peerDir, { type: "send", kind: "info", text: `fyi ${i}` }));
-  await e.poller.drainSpool();
+  const files: string[] = [];
+  for (const i of [1, 2, 3, 4]) {
+    const name = submitSpool(e.peerDir, { type: "draft", source: "send.ts", kind: "info", text: `fyi ${i}` });
+    await e.poller.drainSpool();
+    files.push(name);
+    if (readResult(e, name).ok) { tapIt(e, readResult(e, name).draft); await e.poller.drainSpool(); }
+  }
   expect(e.sent).toHaveLength(2);
   expect(files.slice(2).map(n => readResult(e, n))).toEqual([{ ok: false, rule: "their-open-threads" }, { ok: false, rule: "their-open-threads" }]);
 });
 
 test(names.rateCap, async () => {
   const e = await setup({ peerOver: { theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 9, maxPerMinute: 2, copiedAt: "2026-11-07" } } });
-  const files = [1, 2, 3, 4].map(i => submitSpool(e.peerDir, { type: "send", kind: "info", text: `fyi ${i}` }));
-  await e.poller.drainSpool();
+  const files: string[] = [];
+  for (const i of [1, 2, 3, 4]) {
+    const name = submitSpool(e.peerDir, { type: "draft", source: "send.ts", kind: "info", text: `fyi ${i}` });
+    await e.poller.drainSpool();
+    files.push(name);
+    if (readResult(e, name).ok) { tapIt(e, readResult(e, name).draft); await e.poller.drainSpool(); }
+  }
   expect(e.sent).toHaveLength(2);
   expect(files.slice(2).map(n => readResult(e, n))).toEqual([{ ok: false, rule: "their-rate" }, { ok: false, rule: "their-rate" }]);
 });
 
 test(names.spool, async () => {
   const e = await setup();
-  const name = submitSpool(e.peerDir, { type: "send", kind: "info", text: `use ${GH} now` });
+  const name = submitSpool(e.peerDir, { type: "draft", source: "send.ts", kind: "info", text: `use ${GH} now` });
   await e.poller.drainSpool();
   expect(readResult(e, name)).toMatchObject({ ok: false, rule: "secret-shape", shape: "gh" });
   expect(e.sent).toHaveLength(0);
@@ -336,7 +359,7 @@ test(names.recover, async () => {
 test(names.grep, async () => {
   const e = await setup();
   const text = `CANARY-77aa ${GH}`;
-  submitSpool(e.peerDir, { type: "send", kind: "info", text });
+  submitSpool(e.peerDir, { type: "draft", source: "send.ts", kind: "info", text });
   await e.poller.drainSpool();
   for (const f of filesUnder(e.stateDir)) expect(readFileSync(f, "utf8")).not.toContain("CANARY-77aa");
   for (const f of filesUnder(e.stateDir)) expect(readFileSync(f, "utf8")).not.toContain(GH);
@@ -344,7 +367,7 @@ test(names.grep, async () => {
 
 test(names.resend, async () => {
   const e = await setup();
-  submitSpool(e.peerDir, { type: "send", kind: "info", text: "status of the build" });
+  tapIt(e, await draftIt(e, { kind: "info", text: "status of the build" }));
   await e.poller.drainSpool();
   expect(e.sent).toHaveLength(1);
   e.deps.matrix = DENY;
@@ -359,7 +382,7 @@ test(names.resend, async () => {
 
 test("a root resend with the same id goes out once egress allows it", async () => {
   const e = await setup();
-  submitSpool(e.peerDir, { type: "send", kind: "info", text: "status of the build" });
+  tapIt(e, await draftIt(e, { kind: "info", text: "status of the build" }));
   await e.poller.drainSpool();
   e.c.t += 31 * 60_000;
   await e.poller.tick();
@@ -368,7 +391,7 @@ test("a root resend with the same id goes out once egress allows it", async () =
 });
 
 test.skipIf(!!process.env.PEER_RED_COPY)("I4 mutation: with the egress call removed from the poller every send path turns red", () => {
-  const root = makeRedCopy(["scripts/telegram/bus.ts", "scripts/telegram/gate.ts", "scripts/guardrails/egress-matrix-eval.mjs", "scripts/guardrails/egress-matrix.json", "scripts/lib/redact.sh"]);
+  const root = makeRedCopy(["scripts/telegram/bus.ts", "scripts/telegram/gate.ts", "scripts/telegram/lockdown.ts", "scripts/guardrails/egress-matrix-eval.mjs", "scripts/guardrails/egress-matrix.json", "scripts/lib/redact.sh"]);
   const run = () => spawnSync("bun", ["test", "./scripts/peer-bridge/poller.test.ts"], { cwd: root, encoding: "utf8", env: { ...process.env, PEER_RED_COPY: "1" } });
   const clean = run();
   expect(clean.status).toBe(0);
@@ -630,7 +653,7 @@ test("restart order: the Telegram backlog lands before the first deadline tick, 
 });
 
 test.skipIf(!!process.env.PEER_RED_COPY)("RED control: a start that ticks before it drains the backlog sends the cancel", () => {
-  const root = makeRedCopy(["scripts/telegram/bus.ts", "scripts/telegram/gate.ts", "scripts/guardrails/egress-matrix-eval.mjs", "scripts/guardrails/egress-matrix.json", "scripts/lib/redact.sh"]);
+  const root = makeRedCopy(["scripts/telegram/bus.ts", "scripts/telegram/gate.ts", "scripts/telegram/lockdown.ts", "scripts/guardrails/egress-matrix-eval.mjs", "scripts/guardrails/egress-matrix.json", "scripts/lib/redact.sh"]);
   const run = () => spawnSync("bun", ["test", "./scripts/peer-bridge/poller.test.ts"], { cwd: root, encoding: "utf8", env: { ...process.env, PEER_RED_COPY: "1" } });
   expect(run().status).toBe(0);
   const target = join(root, "scripts/peer-bridge/poller.ts");
@@ -1176,4 +1199,88 @@ test("daily: a ten-day stop writes exactly the last 7 days", async () => {
   e.c.t = d0 + 10 * DAY_MS + 60_000;
   await e.poller.tick();
   expect(dailies(e).map(r => r.day)).toEqual(["2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-10"]);
+});
+
+test("two ok taps in one spool drain give one intent", async () => {
+  const e = await setup();
+  const id = await draftIt(e, { kind: "info", text: "once only" });
+  const a = tapIt(e, id), b = tapIt(e, id);
+  await e.poller.drainSpool();
+  expect(outbox(e).filter(r => r.kind === "intent")).toHaveLength(1);
+  expect(e.sent).toHaveLength(1);
+  expect([readResult(e, a), readResult(e, b)].map(r => r.ok).sort()).toEqual([false, true]);
+  expect([readResult(e, a), readResult(e, b)].find(r => !r.ok)).toEqual({ ok: false, rule: "already-sending" });
+});
+
+test("a crash before the Telegram call sends once; after it, the resend has the same message id", async () => {
+  const e = await setup();
+  const id = await draftIt(e, { kind: "info", text: "survives a crash" });
+  await new Chain().append(join(e.peerDir, "outbox.jsonl"), { kind: "intent", peer: "example", chat: CHAT, id, root: null, msgKind: "info", text: "survives a crash", isRoot: true, draft: id, by: OP });
+  expect(e.sent).toHaveLength(0);
+  await (await Poller.create(e.deps)).recover();
+  await (await Poller.create(e.deps)).recover();
+  expect(e.sent).toHaveLength(1);
+  expect(e.sent[0].text).toContain("id=" + id);
+  expect(outbox(e).filter(r => r.kind === "sent")).toHaveLength(1);
+  expect(results(e).filter(r => r.draft === id && r.state === "SENT")).toHaveLength(1);
+
+  const f = await setup();
+  const id2 = await draftIt(f, { kind: "info", text: "survives too" });
+  f.script.push(() => { throw new TelegramError("connection reset", 0); });
+  tapIt(f, id2);
+  await f.poller.drainSpool();
+  f.c.t += 120_000;
+  await f.poller.flushIntents();
+  expect(f.sent).toHaveLength(2);
+  expect(f.sent[1].text).toBe(f.sent[0].text);
+  expect(f.sent[0].text).toContain("id=" + id2);
+});
+
+test("an approved root's automatic resend carries the same draft id", async () => {
+  const e = await setup();
+  const id = await draftIt(e, { kind: "info", text: "status of the build" });
+  tapIt(e, id);
+  await e.poller.drainSpool();
+  e.c.t += 31 * 60_000;
+  await e.poller.tick();
+  expect(e.sent).toHaveLength(2);
+  expect(e.sent.map(s => s.text.includes("id=" + id))).toEqual([true, true]);
+});
+
+test("recovery replays draft and result notifies once", async () => {
+  const e = await setup();
+  const pending = await draftIt(e, { kind: "info", text: "still pending" });
+  const rejected = await draftIt(e, { kind: "info", text: "to reject" });
+  tapIt(e, rejected, "no");
+  const sentId = await draftIt(e, { kind: "info", text: "to send" });
+  tapIt(e, sentId);
+  await e.poller.drainSpool();
+  await new Chain().append(join(e.peerDir, "outbox.jsonl"), { kind: "intent", peer: "example", chat: CHAT, id: "0ddba11d", root: null, msgKind: "info", text: "old", isRoot: true, spool: "old.json" });
+  await new Chain().append(join(e.peerDir, "outbox.jsonl"), { kind: "sent", id: "0ddba11d", intent: outbox(e).length, message_id: 777, ts: 1 });
+  rmSync(notifyFile(e.stateDir), { force: true });
+  for (let i = 0; i < 2; i++) await (await Poller.create(e.deps)).recover();
+  const notes = readChain(notifyFile(e.stateDir)) as any[];
+  expect(notes.filter(r => r.type === "draft").map(r => r.draft)).toEqual([pending]);
+  expect(notes.filter(r => r.type === "result").map(r => [r.draft, r.state]).sort()).toEqual([[rejected, "REJECTED"], [sentId, "SENT"]].sort());
+  expect(notes.some(r => r.draft === "0ddba11d")).toBe(false);
+});
+
+test("send.ts against the real poller exits 0 with drafted <id> and the deadline of the PENDING draft record", async () => {
+  const home = tmp("peer-send-home-");
+  const stateDir = join(home, ".himmel/peer-bridge"), configDir = join(home, ".config/himmel/peer-bridge");
+  mkdirSync(stateDir, { recursive: true }); mkdirSync(configDir, { recursive: true });
+  const e = await setup({ stateDir, configDir });
+  writeFileSync(join(configDir, "peers.json"), JSON.stringify(e.cfg), { mode: 0o600 });
+  const timer = setInterval(() => { e.poller.drainSpool().catch(() => {}); }, 100);
+  const child = spawn("bun", [join(import.meta.dir, "send.ts"), "example", "--kind", "info", "--text", "hello there"], { env: { PATH: process.env.PATH!, HOME: home, PEER_SEND_WAIT_MS: "8000", TZ: "UTC" } });
+  let out = "";
+  child.stdout.on("data", d => (out += d)); child.stderr.on("data", d => (out += d));
+  const code = await new Promise<number | null>(r => child.on("close", r));
+  clearInterval(timer);
+  const d = outbox(e).find(r => r.kind === "draft")!;
+  const hm = new Date(d.deadline).toISOString().slice(11, 16);
+  expect(code).toBe(0);
+  expect(out).toBe("drafted " + d.id + "; approve it on Telegram by " + hm + "\n");
+  expect(draftState(outbox(e), d.id)).toBe("PENDING");
+  expect(e.sent).toHaveLength(0);
 });

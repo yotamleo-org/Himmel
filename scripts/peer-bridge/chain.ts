@@ -86,12 +86,13 @@ export function verifyChain(file: string, from?: { n: number; h: string }): { ok
 }
 
 export type SpoolRec =
-  | { type: "send"; kind: "question" | "status" | "info" | "answer"; replyTo?: number; text: string; allowShape?: string }
+  | { type: "draft"; source: "send.ts" | "telegram"; kind: "question" | "status" | "info" | "answer"; replyTo?: number; text: string; allowShape?: string }
+  | { type: "tap"; verb: "ok" | "no"; draft: string; by: string; ts: number }
   | { type: "ack"; sid: string; token: string }
   | { type: "confirm"; chatId: number }
   | { type: "env-out"; kind: (typeof SPOOL_ENV_KINDS)[number]; body: Record<string, unknown> }
   | { type: "job-event"; job: number; event: { type: (typeof SPOOL_JOB_EVENTS)[number]; [k: string]: unknown } };
-export type SendResult = { ok: true; message_id?: number; job?: number } | { ok: false; rule: string; shape?: string };
+export type SendResult = { ok: true; message_id?: number; job?: number; draft?: string; deadline?: number } | { ok: false; rule: string; shape?: string };
 export type Drained = { name: string; rec: SpoolRec } | { name: string; malformed: true };
 
 export const SPOOL_ENV_KINDS = ["req", "capacity-ask", "cancel", "halt"] as const;
@@ -102,7 +103,8 @@ function validSpool(r: any): r is SpoolRec {
   if (!r || typeof r !== "object") return false;
   if (r.type === "env-out") return (SPOOL_ENV_KINDS as readonly string[]).includes(r.kind) && !!r.body && typeof r.body === "object" && !Array.isArray(r.body);
   if (r.type === "job-event") return Number.isSafeInteger(r.job) && r.job > 0 && !!r.event && typeof r.event === "object" && (SPOOL_JOB_EVENTS as readonly string[]).includes(r.event.type);
-  if (r.type === "send") return SEND_KINDS.includes(r.kind) && typeof r.text === "string" && (r.replyTo === undefined || (Number.isSafeInteger(r.replyTo) && r.replyTo > 0)) && (r.allowShape === undefined || /^[a-z_]{1,20}$/.test(r.allowShape));
+  if (r.type === "draft") return (r.source === "send.ts" || r.source === "telegram") && SEND_KINDS.includes(r.kind) && typeof r.text === "string" && (r.replyTo === undefined || (Number.isSafeInteger(r.replyTo) && r.replyTo > 0)) && (r.allowShape === undefined || /^[a-z_]{1,20}$/.test(r.allowShape));
+  if (r.type === "tap") return (r.verb === "ok" || r.verb === "no") && typeof r.draft === "string" && /^[0-9a-f]{8}$/.test(r.draft) && typeof r.by === "string" && /^[0-9]{1,15}$/.test(r.by) && Number.isSafeInteger(r.ts);
   if (r.type === "ack") return typeof r.sid === "string" && SESSION_ID_RE.test(r.sid) && typeof r.token === "string" && /^[A-Za-z0-9]+$/.test(r.token);
   if (r.type === "confirm") return Number.isSafeInteger(r.chatId);
   return false;
@@ -164,7 +166,7 @@ export function sweepResults(peerDir: string, maxAgeMs: number, now = Date.now()
   }
 }
 
-export type IntentRec = { kind: "intent"; peer: string; chat: number; id: string; root: number | null; msgKind: string; text: string; isRoot: boolean; tpl?: boolean; resend?: boolean; spool?: string; env?: boolean };
+export type IntentRec = { kind: "intent"; peer: string; chat: number; id: string; root: number | null; msgKind: string; text: string; isRoot: boolean; tpl?: boolean; resend?: boolean; spool?: string; env?: boolean; draft?: string; by?: string; source?: string };
 export type SentRec = { kind: "sent"; id: string; intent: number; message_id: number; ts: number };
 
 export class PidLockError extends Error {

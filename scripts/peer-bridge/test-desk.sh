@@ -116,10 +116,20 @@ HOME="$H" PEER_DESK=example CLAUDECODE=1 CLAUDE_CODE_SESSION_ID="$SID" PEER_SEND
 src=$?
 spool=""
 for f in "$S"/example/spool/*.json; do [ -e "$f" ] && { spool="${f##*/}"; break; }; done
-if [ "$src" = 4 ] && [ -n "$spool" ] && [ "$(jq -r '.type + " " + .kind + " " + (.replyTo|tostring) + " " + .text' "$S/example/spool/$spool")" = "send answer 12 thanks, noted" ]; then
-    pass "the reply lands in the spool"
+if [ "$src" = 4 ] && [ -n "$spool" ] && [ "$(jq -r '.type + " " + .source + " " + .kind + " " + (.replyTo|tostring) + " " + .text' "$S/example/spool/$spool")" = "draft send.ts answer 12 thanks, noted" ]; then
+    pass "the desk's send writes a draft spool record with source send.ts and exits 4 with no poller"
 else
-    fail "the reply lands in the spool" "rc=$src spool=$spool"
+    fail "the desk's send writes a draft spool record with source send.ts and exits 4 with no poller" "rc=$src spool=$spool"
+fi
+rm -f "$S/example/spool/$spool"
+HOME="$H" PEER_SEND_WAIT_MS=300 bun "$REPO_ROOT/scripts/peer-bridge/send.ts" example --kind info --text 'from a terminal' > /dev/null 2>&1
+src=$?
+spool=""
+for f in "$S"/example/spool/*.json; do [ -e "$f" ] && { spool="${f##*/}"; break; }; done
+if [ "$src" = 4 ] && [ -n "$spool" ] && [ "$(jq -r '.type + " " + .source + " " + .text' "$S/example/spool/$spool")" = "draft send.ts from a terminal" ]; then
+    pass "a send from a terminal outside Claude also writes a draft spool record"
+else
+    fail "a send from a terminal outside Claude also writes a draft spool record" "rc=$src spool=$spool"
 fi
 out="$(hook_json 'ls /' | HOME="$H" PEER_DESK=example bash "$GATE" 2>/dev/null)"; grc=$?
 [ "$grc" = 2 ] && pass "any other command is denied in the desk" || fail "any other command is denied in the desk" "rc=$grc"

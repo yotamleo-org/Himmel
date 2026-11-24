@@ -128,6 +128,19 @@ test("the real matrix allows a peer-desk message", async () => {
   await passes("hello");
 });
 
+test("operator-reply corpus is allowed to peer-telegram for peer-message and selected by OutCtx.corpus", async () => {
+  const real = loadMatrix();
+  const { evaluate } = await import("../guardrails/egress-matrix-eval.mjs");
+  expect(evaluate(real, "operator-reply", "peer-telegram", "peer-message").verdict).toBe("allow");
+  expect(evaluate(real, "operator-reply", "peer-telegram", "enrichment").verdict).toBe("deny");
+  const onlyReply = { default: "deny", rules: [{ corpus: "operator-reply", provider: "peer-telegram", purpose: "peer-message", verdict: "allow", why: "test" }] };
+  const onlyDesk = { default: "deny", rules: [{ corpus: "peer-desk", provider: "peer-telegram", purpose: "peer-message", verdict: "allow", why: "test" }] };
+  await passes("hello", { matrix: onlyReply, corpus: "operator-reply" });
+  expect(await refused("hello", { matrix: onlyReply })).toMatchObject({ rule: "egress-matrix" });
+  expect(await refused("hello", { matrix: onlyDesk, corpus: "operator-reply" })).toMatchObject({ rule: "egress-matrix" });
+  await passes("hello", { matrix: onlyDesk, corpus: "peer-desk" });
+});
+
 test("templates skip the opens check but not the content rules", async () => {
   const closed = peer({ theirs: { username: "example_bot", opens: [], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" } });
   await passes("#tpl:receipt #12 id=deadbeef", { peer: closed, kind: "receipt", isRoot: false, isTemplate: true });
