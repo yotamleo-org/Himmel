@@ -146,5 +146,14 @@ for tool in t3_thread_send t3_thread_launch t3_thread_transfer t3_thread_search 
     run_antigravity "$tool" "$ARGS_SEND" allow "$tool benign call allowed"
 done
 
+echo "== T3 preview tools (plugin-profiles previewBrowserTools): no lane guard denies one, so the profile option only adds an allow rule =="
+PREVIEW_TOOLS="$(jq -r '.previewBrowserTools[]?' "$REPO/scripts/lanes/plugin-profiles.json")"
+if [ -n "$PREVIEW_TOOLS" ]; then ok "the registry lists the preview tools"; else bad "the registry lists no preview tools"; fi
+for tool in $PREVIEW_TOOLS; do
+    run_claude guard-t3-thread-tools.sh "$tool" "$ARGS_SEND" allow "$tool allowed on claude"
+    run_codex "$tool" "$ARGS_SEND" allow "$tool allowed on codex"
+    run_antigravity "$tool" "$ARGS_SEND" allow "$tool allowed on antigravity"
+done
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
