@@ -941,6 +941,20 @@ assert_eq "RED 10912: the edited request ends refused and nothing is left held" 
 assert_absent "RED 10912: nothing launched on the edited request" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
 stop
 
+echo "== 10912: a request the daemon cannot read is refused as unreadable, never parsed from a partial copy =="
+if [ "$(id -u)" -ne 0 ]; then
+    setup unreadable-request
+    start
+    printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=$CH recommend=go > "$Q/u.req"
+    chmod 000 "$Q/u.req"
+    wait_for "$Q/daemon.log" "REFUSED request unreadable"
+    assert_contains "RED 10912: an unreadable request is refused as unreadable" "REFUSED request unreadable $Q/u.req" "$(cat "$Q/daemon.log")"
+    assert_absent "10912: an unreadable request sends no ask" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+    stop
+else
+    echo "SKIP - unreadable request row (root reads a mode 000 file)"
+fi
+
 echo
 echo "bypass-launchd: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

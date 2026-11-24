@@ -328,8 +328,8 @@ while :; do
         [ -f "$req.pending" ] || { rm -f "$held"; continue; }
         [ "$req.pending" -nt "$held" ] || continue
         code=$(field go "$held"); sha=$(field sha "$held"); rsha=$(field rsha "$held"); name=$(field name "$held"); rm -f "$held"
-        snap="$Q/.retry-snapshot"; cat "$req.pending" >"$snap" 2>/dev/null
-        if [ "$(sha256_of "$snap")" != "$rsha" ]; then
+        snap="$Q/.retry-snapshot"
+        if ! cat "$req.pending" >"$snap" 2>/dev/null || [ "$(sha256_of "$snap")" != "$rsha" ]; then
             rm -f "$snap"; mv "$req.pending" "$req.refused"; log "REFUSED after go $name (the request changed since the ask)"
             send bypass-result "bypass launch $name: refused after your go, the request changed since you were asked. Nothing ran."; continue
         fi
@@ -342,7 +342,9 @@ while :; do
     for req in "$Q"/*.req; do
         [ -e "$req" ] || continue
         if stale_now; then hold; break; fi
-        snap="$Q/.ask-snapshot"; cat "$req" >"$snap" 2>/dev/null; rsha=$(sha256_of "$snap")
+        snap="$Q/.ask-snapshot"
+        cat "$req" >"$snap" 2>/dev/null || { rm -f "$snap"; refuse "$req" "request unreadable"; continue; }
+        rsha=$(sha256_of "$snap")
         check_request "$snap" || { rm -f "$snap"; refuse "$req" "$REASON"; continue; }
         rm -f "$snap"
         if ! preflight; then
