@@ -146,6 +146,7 @@ cat > "$mock_qmd" <<'EOF'
 echo "$*" >> "$QMD_MOCK_STATE/qmd-argv.log"
 if [ "$*" = "mcp --http --daemon" ]; then
   pwd -P >> "$QMD_MOCK_STATE/qmd-cwd.log"
+  cat "$HOME/.cache/qmd/starting" > "$QMD_MOCK_STATE/marker-at-start" 2>/dev/null || echo none > "$QMD_MOCK_STATE/marker-at-start"
   if [ "${QMD_MOCK_HANG:-0}" = "1" ]; then
     exec sleep 60
   fi
@@ -208,6 +209,15 @@ run_ensure sentinel "$bin:$safe"
 grep -qx 'mcp --http --daemon' "$state/qmd-argv.log" || \
   fail "(b) dead->alive: qmd not called with 'mcp --http --daemon' (got: $(cat "$state/qmd-argv.log"))"
 echo "ok (b): dead endpoint starts daemon (qmd mcp --http --daemon) then goes alive"
+
+rm -f "$state/alive" "$state/marker-at-start"
+run_ensure sentinel "$bin:$safe"
+[ "$rc" -eq 0 ] || fail "(b3) start marker: expected rc 0, got $rc ($out)"
+marker_at="$(cat "$state/marker-at-start" 2>/dev/null)"
+case "$marker_at" in ''|none|*[!0-9]*) fail "(b3) start marker: no epoch marker existed when qmd launched (got '$marker_at')" ;; esac
+[ $(( $(date +%s) - marker_at )) -lt 60 ] || fail "(b3) start marker: marker epoch $marker_at is not current"
+[ ! -e "$home/.cache/qmd/starting" ] || fail "(b3) start marker: marker still present after the daemon came alive"
+echo "ok (b3): start marker written before the launch, removed once alive"
 
 # ---- (b2) daemon cwd is $HOME, never the caller's cwd ----------
 # The daemon outlives the session that started it; inheriting a worktree cwd
