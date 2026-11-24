@@ -10,7 +10,7 @@ import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, c
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getUpdates, getMe, sendMessage, sendMessageResult, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId, TelegramApiError } from "./telegram-api";
-import { makePeerReplyRoute, startPeerNotify } from "./peer-notify-route";
+import { makePeerReplyRoute, makePeerTap, startPeerNotify } from "./peer-notify-route";
 import { installTimestampedLogging } from "./log-timestamp";
 import { lockdownEnabled } from "./lockdown";
 import { cwdForChat, isAllowed, isGroupAllowed, isOperatorIdentity, loadAccess, operatorChatId, requireMentionForChat, vaultForChat, type Access } from "./gate";
@@ -2693,6 +2693,7 @@ export async function main(): Promise<void> {
   }, afkPrompts);
   const configRestore = makeConfigRestoreGate({ access: () => access, enrolled: configRestoreEnrolled, run: spawnConfigRestore, reply: (chat: number, text: string) => replyViaOutbox(root, chat, text), log: logRedacted });
   const peerReply = makePeerReplyRoute({ root, access: () => access, reply: (chat, text) => sendMessage(token, chat, text).then(() => undefined) });
+  const peerTap = makePeerTap({ root, access: () => access, answer: (id, text) => answerCallbackQuery(token, id, text) });
   const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo, configRestore, peerReply };
   // Operator -> chief routing. Same authorize as /arm, global
   // allowFrom sender AND an allowed chat, so the gate is unchanged; the ack rides
@@ -2804,7 +2805,7 @@ export async function main(): Promise<void> {
       continue;
     }
     // Button taps are not messages: ingest skips them, and they advance the offset like any update.
-    dispatchAfkCallbacks(updates, afkTapUnlessLocked(root, (t) => afkTap(t) || chiefTap(t)));
+    dispatchAfkCallbacks(updates, afkTapUnlessLocked(root, (t) => afkTap(t) || chiefTap(t) || peerTap(t)));
     // Ordering: see repairThenIngest's own comment for why
     // the repair must run before the ingest append, not after.
     await repairThenIngest(root, updates, allow, fetchImage, fetchVoice, fetchDoc, notifyDocFail, onCursorReset);

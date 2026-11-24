@@ -4350,3 +4350,24 @@ test("T17: start-up writes poller-epoch from bridge-envelope-epoch.txt on a scra
   const main = readFileSync(join(import.meta.dir, "poller.ts"), "utf8").split("export async function main(): Promise<void> {")[1] ?? "";
   expect(main.slice(0, 600)).toContain("await writePollerEpoch(root)");
 });
+
+test("an Approve or Reject tap on a peer draft goes through the callback chain, and lockdown stops it before any handler", async () => {
+  const { makePeerTap } = await import("./peer-notify-route");
+  const { dispatchAfkCallbacks } = await import("./afk-sudo-route");
+  const { afkTapUnlessLocked } = await import("./poller");
+  const r = root(), S = mkdtempSync(join(tmpdir(), "poller-peer-S-"));
+  mkdirSync(join(S, "example", "spool"), { recursive: true, mode: 0o700 });
+  const answers: string[] = [];
+  const peerTap = makePeerTap({ stateDir: S, root: r, access: () => ({ allowFrom: ["4242"] }), answer: async (_id, text) => { answers.push(text); } });
+  const chain = afkTapUnlessLocked(r, (t: any) => false || peerTap(t));
+  const update = (data: string) => ({ callback_query: { id: "cb", data, from: { id: 4242 }, message: { chat: { id: 4242 } } } });
+  dispatchAfkCallbacks([update("peer:ok:example:0a1b2c3d"), update("peer:no:example:ffffffff")], chain);
+  await peerTap.idle();
+  expect(readdirSync(join(S, "example", "spool")).filter(n => n.endsWith(".json"))).toHaveLength(2);
+  expect(answers).toEqual(["Received", "Received"]);
+  writeFileSync(join(r, "lockdown"), "locked\n");
+  dispatchAfkCallbacks([update("peer:ok:example:0a1b2c3d")], chain);
+  await peerTap.idle();
+  expect(readdirSync(join(S, "example", "spool")).filter(n => n.endsWith(".json"))).toHaveLength(2);
+  expect(answers).toHaveLength(2);
+});
