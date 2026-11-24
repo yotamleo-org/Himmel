@@ -1382,7 +1382,6 @@ const seedIfNeeded = async (specs: string) => {
   const { roundSeed } = await import("./chief-route");
   await roundSeed(specs).catch(() => {});
 };
-// sendFile is a signing send (the check must hold) unless the row names --by-request; readSend is the read form with no flag.
 const sendFile = (r: string, ...args: string[]) => readSend(r, ...(args[0] === "--by-request" || args[0] === "--sign" ? args : ["--sign", ...args]));
 const readSend = async (r: string, ...args: string[]) => {
   await seedIfNeeded(join(r, "specs"));
@@ -1644,7 +1643,6 @@ test("send-file refuses a spec under specs/ with no critic file, and one with no
   expect(none.lines.concat(noPlan.lines)).toEqual([]);
 });
 
-// A read send (no --sign) never runs the sign-ask check: a plain file under specs/ goes as it is and an unsealed spec or plan page goes marked DRAFT.
 const DRAFT_CAPTION = "DRAFT, not for signing";
 const signSend = (r: string, ...args: string[]) => sendFile(r, "--sign", ...args);
 
