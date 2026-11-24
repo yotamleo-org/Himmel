@@ -325,6 +325,7 @@ test('R3: damage that does not widen walks as on main', () => {
 
 const SEMANTIC_UPDATE = join(HERE, '..', 'graphify', 'semantic-update.sh');
 const FILTER = '*[!$_upper,]*|';
+const NO_CORPUS = /--corpus-root .* is not a directory/;
 const orderRun = (script, order) => spawnSync('bash', [script, '--name', 'x', '--corpus-root', join(T, 'no-such-corpus'), '--corpus-class', 'c', '--account-order', order],
   { env: { PATH: process.env.PATH, HOME: T }, encoding: 'utf8' });
 
@@ -337,9 +338,9 @@ test('the account-order filter refuses a character outside [A-Z,] and fails once
     const real = orderRun(SEMANTIC_UPDATE, bad);
     assert.equal(real.status, 1, bad);
     assert.match(real.stderr, /--account-order takes one capital letter per entry/, bad);
-    assert.doesNotMatch(orderRun(mutated, bad).stderr, /--account-order takes one capital letter per entry/, `mutated filter still refuses ${bad}`);
+    assert.match(orderRun(mutated, bad).stderr, NO_CORPUS, `mutated filter did not reach the corpus check for ${bad}`);
   }
-  assert.doesNotMatch(orderRun(SEMANTIC_UPDATE, 'C,A').stderr, /takes one capital letter/);
+  assert.match(orderRun(SEMANTIC_UPDATE, 'C,A').stderr, NO_CORPUS);
 });
 
 test('walk takes one well-formed kind: none, two, or a malformed one is a usage error', () => {
