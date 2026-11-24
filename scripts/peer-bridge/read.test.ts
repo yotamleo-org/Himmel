@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Chain } from "./chain";
+import { CODE_VERSION, Chain, startIdentity, writeResult } from "./chain";
 import { ackToken, digestFile, parseAck, readCursor, writeCursor } from "./digests";
 import { sanitize } from "./sanitize";
 
@@ -250,6 +250,32 @@ test("send.ts exits 0 on the poller's ok result, and 2 on its refusal", async ()
   const no = await run(["example", "--kind", "answer", "--reply-to", "9", "--text", "to nowhere"], { ok: false, rule: "unknown-thread" });
   expect(no.code).toBe(2);
   expect(no.out).toContain("refused: unknown-thread");
+});
+
+test("send.ts names why a spool file was refused, and warns only when the live poller runs other code", async () => {
+  const h = newHome();
+  const run = () => new Promise<{ code: number | null; err: string }>(resolve => {
+    const child = spawn("bun", [SEND, "example", "--kind", "info", "--text", "hello"], { cwd: tmpdir(), env: { PATH: process.env.PATH!, HOME: h.home, PEER_DESK: "example", CLAUDECODE: "1", PEER_SEND_WAIT_MS: "5000" } });
+    let err = "";
+    child.stderr.on("data", d => (err += d));
+    const poll = setInterval(() => {
+      const f = readdirSync(join(h.peerDir, "spool")).find(n => n.endsWith(".json"));
+      if (!f) return;
+      clearInterval(poll);
+      writeResult(h.peerDir, f, { ok: false, rule: "malformed", why: "unknown type" });
+    }, 50);
+    child.on("close", code => resolve({ code, err }));
+  });
+  const lock = join(h.S, "poller.pid");
+  writeFileSync(lock, JSON.stringify({ pid: process.pid, start: startIdentity(process.pid) }));
+  const stale = await run();
+  expect(stale.code).toBe(2);
+  expect(stale.err).toContain("refused: malformed: unknown type");
+  expect(stale.err).toContain("older peer-bridge code");
+  writeFileSync(lock, JSON.stringify({ pid: process.pid, start: startIdentity(process.pid), code: CODE_VERSION }));
+  const current = await run();
+  expect(current.err).toContain("refused: malformed: unknown type");
+  expect(current.err).not.toContain("older peer-bridge code");
 });
 
 test("send.ts refuses early on the egress rules and writes nothing to the spool", () => {
