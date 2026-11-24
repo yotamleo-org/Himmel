@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import { join } from "node:path";
 import { atomicWrite } from "../telegram/bus";
-import { Chain, PidLockError, acquirePidLock, drainSpool, readChain, sweepResults, writeResult, type IntentRec, type SpoolRec } from "./chain";
+import { Chain, PidLockError, acquirePidLock, drainSpool, readChain, sweepResults, tapSigOk, writeResult, type IntentRec, type SpoolRec } from "./chain";
 import { ConfigError, DEFAULT_BUDGETS, EXIT_CONFIG, clampToSchema, loadAllowlist, loadConfig, type AllowEntry, type Config } from "./config";
 import { digestFile, parseAck, writeCursor, type DigestRec, type EffectRec, type JobRec } from "./digests";
 import { checkEnvelopeOutbound, checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
@@ -699,6 +699,9 @@ export class Poller {
   private async applyTap(peer: string, name: string, rec: Extract<SpoolRec, { type: "tap" }>): Promise<void> {
     const dir = this.dir(peer);
     const no = (rule: string) => writeResult(dir, name, { ok: false, rule });
+    const refuse = (rule: string) => { this.log(`tap-refused peer=${peer} draft=${rec.draft} rule=${rule}`); no(rule); };
+    if (rec.sig === undefined) return refuse("tap-unsigned");
+    if (!tapSigOk(this.deps.configDir, { ...rec, peer }, rec.sig)) return refuse("tap-bad-sig");
     if (rec.by !== String(this.cfg.operatorChatId)) return no("not-operator");
     const out = this.outbox(peer);
     const d = out.find(r => r.kind === "draft" && r.id === rec.draft);

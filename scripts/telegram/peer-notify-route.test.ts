@@ -474,11 +474,12 @@ test("replies to an outbound escalation, to draft, result, daily, budget and ale
 function tapRig() {
   const r = tmp("peer-tap-root-"), S = tmp("peer-tap-S-");
   fs.mkdirSync(join(S, "example", "spool"), { recursive: true, mode: 0o700 });
+  const c = tmp("peer-tap-conf-");
   const answers: string[] = [];
   const access = { allowFrom: [String(OP_CHAT)] };
-  const tap = makePeerTap({ stateDir: S, root: r, access: () => access, answer: async (_id, text) => { answers.push(text); }, clock: () => 1_731_000_000_000 });
+  const tap = makePeerTap({ stateDir: S, configDir: c, root: r, access: () => access, answer: async (_id, text) => { answers.push(text); }, clock: () => 1_731_000_000_000 });
   const spool = (peer = "example") => fs.readdirSync(join(S, peer, "spool")).filter(n => n.endsWith(".json")).map(n => JSON.parse(fs.readFileSync(join(S, peer, "spool", n), "utf8")));
-  return { r, S, tap, answers, spool };
+  return { r, S, c, tap, answers, spool };
 }
 const tapOf = (data: string, over: Record<string, unknown> = {}) => ({ callback_id: "cb1", from: OP_CHAT, chat_id: OP_CHAT, data, ...over });
 
@@ -514,11 +515,22 @@ test("a counted tap submits tap {verb, draft, by, ts} and answers Received", asy
   t.tap(tapOf("peer:ok:example:0a1b2c3d"));
   t.tap(tapOf("peer:no:example:ffffffff"));
   await t.tap.idle();
-  expect(t.spool().sort((a, b) => a.draft.localeCompare(b.draft))).toEqual([
+  const recs = t.spool().sort((a, b) => a.draft.localeCompare(b.draft));
+  expect(recs.map(({ sig, ...r }) => r)).toEqual([
     { type: "tap", verb: "ok", draft: "0a1b2c3d", by: String(OP_CHAT), ts: 1_731_000_000_000 },
     { type: "tap", verb: "no", draft: "ffffffff", by: String(OP_CHAT), ts: 1_731_000_000_000 },
   ]);
+  for (const r of recs) expect(chainMod.tapSigOk(t.c, { ...r, peer: "example" }, r.sig)).toBe(true);
   expect(t.answers).toEqual(["Received", "Received"]);
+});
+
+test("a tap whose key cannot be read or created writes no record and answers Could not record the tap.", async () => {
+  const t = tapRig();
+  fs.writeFileSync(join(t.c, "tap.key"), "k".repeat(64), { mode: 0o644 });
+  t.tap(tapOf("peer:ok:example:0a1b2c3d"));
+  await t.tap.idle();
+  expect(t.spool()).toEqual([]);
+  expect(t.answers).toEqual(["Could not record the tap."]);
 });
 
 test("reply route and tap handler write only spool records", async () => {

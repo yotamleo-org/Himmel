@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { readChain, submitSpool, verifyChain } from "../peer-bridge/chain";
+import { readChain, signTap, submitSpool, verifyChain } from "../peer-bridge/chain";
 import { readPeersFile } from "../peer-bridge/config";
-import { PEER_NAME_RE, peersFile, stateDir } from "../peer-bridge/ids";
+import { PEER_NAME_RE, configDir, peersFile, stateDir } from "../peer-bridge/ids";
 import { NOTIFY_LINE1_RE, notifyFile, renderChainAlert, renderFallback, renderHeld, renderNotify, type NotifyRec } from "../peer-bridge/notify";
 import { atomicWrite } from "./bus";
 import { operatorChatId, type Access } from "./gate";
@@ -188,7 +188,7 @@ export function makePeerReplyRoute(d: { stateDir?: string; root: string; access(
 export type PeerTap = { callback_id: string; from: number; chat_id: number; data: string };
 const PEER_TAP_RE = /^peer:(ok|no):([a-z0-9][a-z0-9-]{0,31}):([0-9a-f]{8})$/;
 
-export function makePeerTap(d: { stateDir?: string; root: string; access(): Access | null; answer(callbackId: string, text: string): Promise<unknown>; clock?(): number }) {
+export function makePeerTap(d: { stateDir?: string; configDir?: string; root: string; access(): Access | null; answer(callbackId: string, text: string): Promise<unknown>; clock?(): number }) {
   const S = d.stateDir ?? stateDir();
   const clock = d.clock ?? Date.now;
   const inflight = new Set<Promise<void>>();
@@ -199,7 +199,8 @@ export function makePeerTap(d: { stateDir?: string; root: string; access(): Acce
     if (lockdownEnabled(d.root)) { await say(LOCKED_LINE); return; }
     if (!spoolReady(S, m[2])) { await say("Unknown peer."); return; }
     try {
-      submitSpool(spoolDirOf(S, m[2]), { type: "tap", verb: m[1] as "ok" | "no", draft: m[3], by: String(t.from), ts: clock() });
+      const rec = { verb: m[1] as "ok" | "no", draft: m[3], by: String(t.from), ts: clock() };
+      submitSpool(spoolDirOf(S, m[2]), { type: "tap", ...rec, sig: signTap(d.configDir ?? configDir(), { ...rec, peer: m[2] }) });
     } catch { await say("Could not record the tap."); return; }
     await say("Received");
   };

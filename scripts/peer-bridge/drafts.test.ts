@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Chain, readChain, submitSpool } from "./chain";
+import { Chain, readChain, signTap, submitSpool } from "./chain";
 import type { Config } from "./config";
 import { DRAFT_TTL_MS, MAX_DRAFTS_PER_DAY, MAX_PENDING_DRAFTS, REVIEW_MAX, badChars, draftState } from "./drafts";
 import { notifyFile, renderNotify } from "./notify";
@@ -32,7 +32,7 @@ async function setup(over: { lockdown?: boolean } = {}) {
   const deps: PollerDeps = { cfg, tg, ourBotId: "111000111", stateDir, configDir, clock: () => c.t, hostname: "testbox", log: () => {} };
   const poller = await Poller.create(deps);
   await poller.recover();
-  return { poller, cfg, c, sent, stateDir, peerDir };
+  return { poller, cfg, c, sent, stateDir, peerDir, configDir };
 }
 type Env = Awaited<ReturnType<typeof setup>>;
 const result = (e: Env, name: string) => JSON.parse(readFileSync(join(e.peerDir, "spool", "results", name), "utf8"));
@@ -43,7 +43,8 @@ const draft = async (e: Env, text: string, source: "send.ts" | "telegram" = "sen
   return result(e, name);
 };
 const tap = async (e: Env, id: string, verb: "ok" | "no" = "ok") => {
-  const name = submitSpool(e.peerDir, { type: "tap", verb, draft: id, by: OP, ts: e.c.t });
+  const rec = { verb, draft: id, by: OP, ts: e.c.t };
+  const name = submitSpool(e.peerDir, { type: "tap", ...rec, sig: signTap(e.configDir, { ...rec, peer: "example" }) });
   await e.poller.drainSpool();
   return result(e, name);
 };
@@ -80,8 +81,9 @@ test("only an intent with an approved draft id sends; replay and expiry send not
 test("a tap that is not from the operator, or names no draft, sends nothing", async () => {
   const e = await setup();
   const a = await draft(e, "hello");
-  const name = submitSpool(e.peerDir, { type: "tap", verb: "ok", draft: a.draft, by: "777", ts: e.c.t });
-  const unknown = submitSpool(e.peerDir, { type: "tap", verb: "ok", draft: "deadbeef", by: OP, ts: e.c.t });
+  const rec1 = { verb: "ok" as const, draft: a.draft, by: "777", ts: e.c.t }, rec2 = { verb: "ok" as const, draft: "deadbeef", by: OP, ts: e.c.t };
+  const name = submitSpool(e.peerDir, { type: "tap", ...rec1, sig: signTap(e.configDir, { ...rec1, peer: "example" }) });
+  const unknown = submitSpool(e.peerDir, { type: "tap", ...rec2, sig: signTap(e.configDir, { ...rec2, peer: "example" }) });
   await e.poller.drainSpool();
   expect(result(e, name)).toEqual({ ok: false, rule: "not-operator" });
   expect(result(e, unknown)).toEqual({ ok: false, rule: "unknown-draft" });

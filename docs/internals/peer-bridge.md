@@ -551,6 +551,28 @@ and why. A reply to a peer notification is never routed to a session: in this
 slice it gets one fixed line saying drafts arrive with the next update, and
 nothing is sent to the peer.
 
+### The signed tap
+
+A peer draft is approved or rejected only by a `tap` spool record the Telegram
+poller wrote after a real button press by the operator. The poller signs the
+record: an HMAC-SHA256 over a fixed domain tag (`himmel-peer-tap-v1`), the draft
+id, the verdict, the operator id (`by`) and `ts`, in the record's `sig` field (64
+hex), and over the peer name so a signed tap cannot be copied into another peer's spool. The bridge's `applyTap` recomputes it, compares in constant time, and only
+then checks `by` against the operator chat id. A tap with no `sig` is refused
+`tap-unsigned`; a malformed, wrong-length or mismatched one `tap-bad-sig`. The
+refusal is written to the spool result and logged as
+`tap-refused peer=<p> draft=<id> rule=<rule>`, never the signature or the key,
+before any draft state changes: the draft stays PENDING and nothing is sent. The
+tap's age is not bounded separately: the draft's own deadline and its settled
+state (`already-*`) stop a replayed tap.
+
+The key is `C/tap.key` (mode 0600, owned by you, 32 random bytes as hex), a file
+of its own and not the fence key. Whichever side reads first creates it (written
+complete, then linked into place, so a race cannot leave a half key). It is opened
+`O_NOFOLLOW` and refused unless it is a regular file owned by you with mode 0600.
+On the Telegram side an unusable key means no record is written and the button
+answers `Could not record the tap.`; on the bridge side every tap is refused.
+
 ### Clearing taint
 
 A session is tainted when `read.ts` prints to it, when a verified fence marker
@@ -643,6 +665,11 @@ These are known and accepted for this slice.
   `block-read-secrets` hook are an accidental-leak floor: a determined Bash read,
   or a relative path from a directory outside both dirs, gets around them. The
   planned upgrade runs the bridge as its own sandboxed user.
+- **The tap key is readable by the same OS user.** The signed tap stops a spool
+  writer that cannot read `C/tap.key`, such as the desk session (its Bash is
+  limited to the two command shapes and `block-read-secrets` denies any path under
+  the bridge dirs). It does not stop another process running as you that reads the
+  file. The structural fix is the separate bridge user.
 - **Spool `allowShape` is trusted from any local writer.** `send.ts` sets it
   only from a TTY outside a Claude session, but the poller trusts the field in
   any spool file, so a local process that can write a spool record can waive one

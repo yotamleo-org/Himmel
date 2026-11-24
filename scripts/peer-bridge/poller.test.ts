@@ -1,9 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Chain, readChain, submitSpool } from "./chain";
+import { Chain, readChain, signTap, submitSpool } from "./chain";
+import { makePeerTap } from "../telegram/peer-notify-route";
 import { draftState } from "./drafts";
 import { notifyFile, renderNotify } from "./notify";
 import type { Config } from "./config";
@@ -93,7 +94,10 @@ async function draftIt(e: Env, rec: { kind: string; replyTo?: number; text: stri
   if (!r.ok) throw new Error(`draft refused: ${r.rule}`);
   return r.draft;
 }
-const tapIt = (e: Env, draft: string, verb: "ok" | "no" = "ok", by = OP) => submitSpool(e.peerDir, { type: "tap", verb, draft, by, ts: e.c.t });
+const tapIt = (e: Env, draft: string, verb: "ok" | "no" = "ok", by = OP) => {
+  const rec = { verb, draft, by, ts: e.c.t };
+  return submitSpool(e.peerDir, { type: "tap", ...rec, sig: signTap(e.configDir, { ...rec, peer: "example" }) });
+};
 const results = (e: Env) => readChain(notifyFile(e.stateDir)).filter(r => (r as any).type === "result") as any[];
 function filesUnder(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap(d => (d.isDirectory() ? filesUnder(join(dir, d.name)) : [join(dir, d.name)]));
@@ -391,7 +395,7 @@ test("a root resend with the same id goes out once egress allows it", async () =
 });
 
 test.skipIf(!!process.env.PEER_RED_COPY)("I4 mutation: with the egress call removed from the poller every send path turns red", () => {
-  const root = makeRedCopy(["scripts/telegram/bus.ts", "scripts/telegram/gate.ts", "scripts/telegram/lockdown.ts", "scripts/guardrails/egress-matrix-eval.mjs", "scripts/guardrails/egress-matrix.json", "scripts/lib/redact.sh"]);
+  const root = makeRedCopy(["scripts/telegram/peer-notify-route.ts", "scripts/telegram/bus.ts","scripts/telegram/gate.ts", "scripts/telegram/lockdown.ts", "scripts/guardrails/egress-matrix-eval.mjs", "scripts/guardrails/egress-matrix.json", "scripts/lib/redact.sh"]);
   const run = () => spawnSync("bun", ["test", "./scripts/peer-bridge/poller.test.ts"], { cwd: root, encoding: "utf8", env: { ...process.env, PEER_RED_COPY: "1" } });
   const clean = run();
   expect(clean.status).toBe(0);
@@ -653,7 +657,7 @@ test("restart order: the Telegram backlog lands before the first deadline tick, 
 });
 
 test.skipIf(!!process.env.PEER_RED_COPY)("RED control: a start that ticks before it drains the backlog sends the cancel", () => {
-  const root = makeRedCopy(["scripts/telegram/bus.ts", "scripts/telegram/gate.ts", "scripts/telegram/lockdown.ts", "scripts/guardrails/egress-matrix-eval.mjs", "scripts/guardrails/egress-matrix.json", "scripts/lib/redact.sh"]);
+  const root = makeRedCopy(["scripts/telegram/peer-notify-route.ts", "scripts/telegram/bus.ts","scripts/telegram/gate.ts", "scripts/telegram/lockdown.ts", "scripts/guardrails/egress-matrix-eval.mjs", "scripts/guardrails/egress-matrix.json", "scripts/lib/redact.sh"]);
   const run = () => spawnSync("bun", ["test", "./scripts/peer-bridge/poller.test.ts"], { cwd: root, encoding: "utf8", env: { ...process.env, PEER_RED_COPY: "1" } });
   expect(run().status).toBe(0);
   const target = join(root, "scripts/peer-bridge/poller.ts");
@@ -1283,4 +1287,113 @@ test("send.ts against the real poller exits 0 with drafted <id> and the deadline
   expect(out).toBe("drafted " + d.id + "; approve it on Telegram by " + hm + "\n");
   expect(draftState(outbox(e), d.id)).toBe("PENDING");
   expect(e.sent).toHaveLength(0);
+});
+
+const tapRec = (e: Env, draft: string, over: Record<string, unknown> = {}) => {
+  const base = { verb: "ok" as const, draft, by: OP, ts: e.c.t, ...over };
+  return base;
+};
+const forge = (e: Env, rec: Record<string, unknown>) => submitSpool(e.peerDir, { type: "tap", ...rec } as any);
+
+test("a tap naming the operator but carrying no signature leaves the draft pending and unsent", async () => {
+  const e = await setup();
+  const id = await draftIt(e, { kind: "info", text: "forged approval" });
+  const name = forge(e, tapRec(e, id));
+  await e.poller.drainSpool();
+  expect(readResult(e, name)).toEqual({ ok: false, rule: "tap-unsigned" });
+  expect(outbox(e).filter(r => r.kind === "intent")).toHaveLength(0);
+  expect(draftState(outbox(e), id)).toBe("PENDING");
+  expect(e.sent).toHaveLength(0);
+});
+
+test("a tap written by the Telegram side's makePeerTap approves the draft", async () => {
+  const e = await setup();
+  const id = await draftIt(e, { kind: "info", text: "real approval" });
+  const t = makePeerTap({ stateDir: e.stateDir, configDir: e.configDir, root: tmp("peer-poller-root-"), access: () => ({ allowFrom: [OP] }) as any, answer: async () => {}, clock: () => e.c.t });
+  t({ callback_id: "cb", from: Number(OP), chat_id: Number(OP), data: `peer:ok:example:${id}` });
+  await t.idle();
+  await e.poller.drainSpool();
+  expect(outbox(e).filter(r => r.kind === "intent")).toHaveLength(1);
+  expect(e.sent).toHaveLength(1);
+});
+
+test("a signature over a different draft, verdict, operator, time or peer is refused", async () => {
+  const e = await setup();
+  const id = await draftIt(e, { kind: "info", text: "mismatch" });
+  const other = await draftIt(e, { kind: "info", text: "another" });
+  const good = tapRec(e, id);
+  const sigOf = (r: Record<string, any>) => signTap(e.configDir, { peer: "example", ...r } as any);
+  const names = [
+    forge(e, { ...good, sig: sigOf(tapRec(e, other)) }),
+    forge(e, { ...good, sig: sigOf({ ...good, verb: "no" }) }),
+    forge(e, { ...good, sig: sigOf({ ...good, ts: good.ts + 1 }) }),
+    forge(e, { ...good, sig: sigOf({ ...good, by: "777" }) }),
+    forge(e, { ...good, sig: sigOf({ ...good, peer: "other" }) }),
+  ];
+  await e.poller.drainSpool();
+  for (const n of names) expect(readResult(e, n)).toEqual({ ok: false, rule: "tap-bad-sig" });
+  expect(draftState(outbox(e), id)).toBe("PENDING");
+  expect(e.sent).toHaveLength(0);
+});
+
+test("a wrong-length, non-hex or non-string signature is refused", async () => {
+  const e = await setup();
+  const id = await draftIt(e, { kind: "info", text: "malformed" });
+  const real = signTap(e.configDir, { peer: "example", ...tapRec(e, id) });
+  const names = [real.slice(0, 62), real + "00", "z".repeat(64), ""].map(sig => forge(e, { ...tapRec(e, id), sig }));
+  await e.poller.drainSpool();
+  for (const n of names) expect(readResult(e, n)).toEqual({ ok: false, rule: "tap-bad-sig" });
+  expect(outbox(e).filter(r => r.kind === "intent")).toHaveLength(0);
+});
+
+test("a signed reject is accepted and a forged reject is refused", async () => {
+  const e = await setup();
+  const id = await draftIt(e, { kind: "info", text: "reject me" });
+  const forged = forge(e, tapRec(e, id, { verb: "no" }));
+  await e.poller.drainSpool();
+  expect(readResult(e, forged)).toEqual({ ok: false, rule: "tap-unsigned" });
+  expect(draftState(outbox(e), id)).toBe("PENDING");
+  const real = tapIt(e, id, "no");
+  await e.poller.drainSpool();
+  expect(readResult(e, real)).toEqual({ ok: true });
+  expect(draftState(outbox(e), id)).toBe("REJECTED");
+});
+
+test("a valid signature does not replace the operator check", async () => {
+  const e = await setup();
+  const id = await draftIt(e, { kind: "info", text: "not the operator" });
+  const name = tapIt(e, id, "ok", "777");
+  await e.poller.drainSpool();
+  expect(readResult(e, name)).toEqual({ ok: false, rule: "not-operator" });
+  expect(draftState(outbox(e), id)).toBe("PENDING");
+});
+
+test("a bridge-side key that is group-readable or a symlink refuses every tap, and the log line carries the rule and draft id only", async () => {
+  const e = await setup();
+  const id = await draftIt(e, { kind: "info", text: "no key" });
+  const good = tapIt(e, id), again = tapIt(e, id);
+  const lines: string[] = [];
+  const f = await Poller.create({ ...e.deps, log: (l: string) => lines.push(l) });
+  const keyPath = join(e.configDir, "tap.key");
+  const sig = readFileSync(keyPath, "utf8");
+  chmodSync(keyPath, 0o644);
+  await f.drainSpool();
+  expect(readResult(e, good)).toEqual({ ok: false, rule: "tap-bad-sig" });
+  rmSync(keyPath);
+  symlinkSync(join(e.configDir, "hmac.key"), keyPath);
+  await f.drainSpool();
+  expect(readResult(e, again)).toEqual({ ok: false, rule: "tap-bad-sig" });
+  expect(draftState(outbox(e), id)).toBe("PENDING");
+  const joined = lines.join("\n");
+  expect(joined).toContain(`tap-refused peer=example draft=${id} rule=tap-bad-sig`);
+  expect(joined).not.toContain(sig);
+});
+
+test("the tap key is created once with mode 0600 and a later read returns the same key", async () => {
+  const e = await setup();
+  const keyPath = join(e.configDir, "tap.key");
+  expect(existsSync(keyPath)).toBe(false);
+  const a = signTap(e.configDir, { peer: "example", ...tapRec(e, "0a1b2c3d") });
+  expect(statSync(keyPath).mode & 0o777).toBe(0o600);
+  expect(signTap(e.configDir, { peer: "example", ...tapRec(e, "0a1b2c3d") })).toBe(a);
 });

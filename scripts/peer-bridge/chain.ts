@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { constants } from "node:fs";
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import { chainHash, openChainFile, type ChainRecord } from "../telegram/bus";
 import { SESSION_ID_RE } from "./ids";
@@ -87,7 +87,7 @@ export function verifyChain(file: string, from?: { n: number; h: string }): { ok
 
 export type SpoolRec =
   | { type: "draft"; source: "send.ts" | "telegram"; kind: "question" | "status" | "info" | "answer"; replyTo?: number; text: string; allowShape?: string }
-  | { type: "tap"; verb: "ok" | "no"; draft: string; by: string; ts: number }
+  | { type: "tap"; verb: "ok" | "no"; draft: string; by: string; ts: number; sig?: string }
   | { type: "ack"; sid: string; token: string }
   | { type: "confirm"; chatId: number }
   | { type: "env-out"; kind: (typeof SPOOL_ENV_KINDS)[number]; body: Record<string, unknown> }
@@ -104,10 +104,51 @@ function validSpool(r: any): r is SpoolRec {
   if (r.type === "env-out") return (SPOOL_ENV_KINDS as readonly string[]).includes(r.kind) && !!r.body && typeof r.body === "object" && !Array.isArray(r.body);
   if (r.type === "job-event") return Number.isSafeInteger(r.job) && r.job > 0 && !!r.event && typeof r.event === "object" && (SPOOL_JOB_EVENTS as readonly string[]).includes(r.event.type);
   if (r.type === "draft") return (r.source === "send.ts" || r.source === "telegram") && SEND_KINDS.includes(r.kind) && typeof r.text === "string" && (r.replyTo === undefined || (Number.isSafeInteger(r.replyTo) && r.replyTo > 0)) && (r.allowShape === undefined || /^[a-z_]{1,20}$/.test(r.allowShape));
-  if (r.type === "tap") return (r.verb === "ok" || r.verb === "no") && typeof r.draft === "string" && /^[0-9a-f]{8}$/.test(r.draft) && typeof r.by === "string" && /^[0-9]{1,15}$/.test(r.by) && Number.isSafeInteger(r.ts);
+  if (r.type === "tap") return (r.verb === "ok" || r.verb === "no") && typeof r.draft === "string" && /^[0-9a-f]{8}$/.test(r.draft) && typeof r.by === "string" && /^[0-9]{1,15}$/.test(r.by) && Number.isSafeInteger(r.ts) && (r.sig === undefined || (typeof r.sig === "string" && r.sig.length <= 128));
   if (r.type === "ack") return typeof r.sid === "string" && SESSION_ID_RE.test(r.sid) && typeof r.token === "string" && /^[A-Za-z0-9]+$/.test(r.token);
   if (r.type === "confirm") return Number.isSafeInteger(r.chatId);
   return false;
+}
+
+export const TAP_KEY = "tap.key";
+const TAP_DOMAIN = "himmel-peer-tap-v1\n";
+
+function readTapKey(path: string): Buffer {
+  const fd = fs.openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile() || st.uid !== process.getuid!() || (st.mode & 0o777) !== 0o600) throw new Error("the tap key must be a regular file owned by you, mode 0600");
+    const key = fs.readFileSync(fd);
+    if (key.length < 32) throw new Error("the tap key is too short");
+    return key;
+  } finally { fs.closeSync(fd); }
+}
+
+export function tapKey(confDir: string): Buffer {
+  const path = join(confDir, TAP_KEY);
+  try { return readTapKey(path); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
+  fs.mkdirSync(confDir, { recursive: true, mode: 0o700 });
+  const tmp = join(confDir, `.${TAP_KEY}.${randomBytes(4).toString("hex")}.tmp`);
+  const fd = fs.openSync(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  try {
+    try { fs.writeFileSync(fd, randomBytes(32).toString("hex")); } finally { fs.closeSync(fd); }
+    try { fs.linkSync(tmp, path); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e; }
+  } finally { fs.rmSync(tmp, { force: true }); }
+  return readTapKey(path);
+}
+
+type TapFields = { peer: string; verb: string; draft: string; by: string; ts: number };
+const tapMac = (key: Buffer, t: TapFields): string => createHmac("sha256", key).update(TAP_DOMAIN + [t.peer, t.draft, t.verb, t.by, t.ts].join("\n")).digest("hex");
+
+export function signTap(confDir: string, t: TapFields): string {
+  return tapMac(tapKey(confDir), t);
+}
+
+export function tapSigOk(confDir: string, t: TapFields, sig: string): boolean {
+  try {
+    if (!/^[0-9a-f]{64}$/.test(sig)) return false;
+    return timingSafeEqual(Buffer.from(tapMac(tapKey(confDir), t), "hex"), Buffer.from(sig, "hex"));
+  } catch { return false; }
 }
 
 let spoolSeq = 0;

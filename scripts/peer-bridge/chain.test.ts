@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { Chain, PidLockError, acquirePidLock, drainSpool, readChain, startIdentity, submitSpool, sweepResults, verifyChain, writeResult } from "./chain";
+import { Chain, PidLockError, acquirePidLock, drainSpool, readChain, startIdentity, signTap, submitSpool, sweepResults, tapKey, tapSigOk, verifyChain, writeResult } from "./chain";
 import { writeSpoolEvent } from "./spool-events";
 
 const tmp = (p = "peer-chain-") => mkdtempSync(join(tmpdir(), p));
@@ -183,7 +183,7 @@ test("a send spool record is malformed; draft and tap validate", () => {
     { type: "draft", source: "send.ts", kind: "run", text: "x" }, { type: "draft", source: "send.ts", kind: "info" },
     { type: "draft", source: "send.ts", kind: "info", text: "x", replyTo: 0 }, { type: "draft", source: "send.ts", kind: "info", text: "x", allowShape: "A B" },
     { type: "tap", verb: "maybe", draft: "0a1b2c3d", by: "42", ts: 1 }, { type: "tap", verb: "ok", draft: "XYZ", by: "42", ts: 1 },
-    { type: "tap", verb: "ok", draft: "0a1b2c3d", by: "", ts: 1 }, { type: "tap", verb: "no", draft: "0a1b2c3d", by: "42", ts: 1.5 }, { type: "tap", verb: "no", draft: "0a1b2c3d", by: 42, ts: 1 },
+    { type: "tap", verb: "ok", draft: "0a1b2c3d", by: "", ts: 1 }, { type: "tap", verb: "no", draft: "0a1b2c3d", by: "42", ts: 1.5 }, { type: "tap", verb: "no", draft: "0a1b2c3d", by: 42, ts: 1 }, { type: "tap", verb: "ok", draft: "0a1b2c3d", by: "42", ts: 1, sig: 7 }, { type: "tap", verb: "ok", draft: "0a1b2c3d", by: "42", ts: 1, sig: "a".repeat(129) },
   ];
   bad.forEach((b, i) => writeFileSync(join(dir, "spool", `${String(i).padStart(2, "0")}-bad.json`), JSON.stringify(b), { mode: 0o600 }));
   const drained = drainSpool(dir);
@@ -269,4 +269,20 @@ test("a bad record after the seed fails with its number", async () => {
   writeFileSync(file, lines.join("\n"));
   expect(verifyChain(file, { n: recs[1].n, h: recs[1].h })).toEqual({ ok: false, n: 3, h: recs[2].h });
   expect(verifyChain(file, { n: recs[1].n, h: "0".repeat(64) }).ok).toBe(false);
+});
+
+test("the tap key is created 0600 once, signs deterministically, and a signature checks only for its own fields", () => {
+  const c = tmp("peer-tapkey-");
+  const t = { peer: "example", verb: "ok", draft: "0a1b2c3d", by: "42", ts: 1 };
+  const sig = signTap(c, t);
+  expect(mode(join(c, "tap.key"))).toBe(0o600);
+  expect(signTap(c, t)).toBe(sig);
+  expect(tapKey(c).equals(tapKey(c))).toBe(true);
+  expect(tapSigOk(c, t, sig)).toBe(true);
+  for (const other of [{ ...t, verb: "no" }, { ...t, draft: "ffffffff" }, { ...t, by: "43" }, { ...t, ts: 2 }, { ...t, peer: "other" }]) expect(tapSigOk(c, other, sig)).toBe(false);
+  expect(tapSigOk(c, t, sig.slice(1))).toBe(false);
+  expect(tapSigOk(c, t, "z".repeat(64))).toBe(false);
+  chmodSync(join(c, "tap.key"), 0o644);
+  expect(tapSigOk(c, t, sig)).toBe(false);
+  expect(() => signTap(c, t)).toThrow();
 });
