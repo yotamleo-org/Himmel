@@ -214,6 +214,11 @@ test("hold rules: a state-dir .env that cannot be read leaves the switch unknown
   expect(holdingProc([p], [49], OP_BOT)).toBe(true);
 });
 
+test("hold rules: a repeated poll switch whose first value is not 1 holds", () => {
+  const p = procFromEnv(11, ["PATH=/usr/bin", "TELEGRAM_OWN_POLLER=0", "TELEGRAM_OWN_POLLER=1"], "/nonexistent");
+  expect(holdingProc([p], [], OP_BOT)).toBe(true);
+});
+
 test("hold rules: a macOS ps -E line with no environment is unknown, decided by bot.pid", () => {
   const root = pluginFixture(join(tmp("peer-notify-mac4-"), "plugins/cache/himmel/telegram-himmel/0.0.23"));
   const [p] = macProcsFrom(`  48 bun server.ts\n`, () => root, () => "bun server.ts");
