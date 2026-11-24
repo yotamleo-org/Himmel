@@ -10,6 +10,7 @@ import { authHeader, baseUrl, projectKey, request } from '../client.js';
 import { refuseTestJiraPost } from '../live-test-guard.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
+import { pinnedSha } from '../release/pinned.js';
 import { newestFixVersionEntry, type Getter } from '../release/version-writes.js';
 import { repairRun, RequestRefused } from '../release/repair-run.js';
 import { doorJudge, earlierThan } from '../release/door.js';
@@ -313,6 +314,42 @@ export function sendSignerAlert(a: SignerAlert, timeoutMs = SIGNER_ALERT_TIMEOUT
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+export const SPEC_CC_TIMEOUT_MS = 60_000;
+
+export interface SpecCopyArgs { oid: string; keys: string; spec: string; sha: string; page: string }
+
+const specCopyScript = () => join(repoRoot, 'scripts', 'handover', 'chief-kit', 'spec-cc.sh');
+
+// The minerva page of a signed row, only when the row's SPEC verdict seals it (CONTENT-SHA256 <sha> <page>) and
+// the page on disk still hashes to that sha; null otherwise, and the copy goes as a text line.
+export function sealedPage(row: { spec_path?: string | null; verdicts?: Array<{ path: string; sha256: string }> }): string | null {
+  if (!row.spec_path) return null;
+  const page = row.spec_path.replace(/\.md$/, '.html');
+  for (const v of row.verdicts ?? []) {
+    const verdict = pinnedSha(v.path);
+    if (!('bytes' in verdict) || verdict.sha256 !== v.sha256) continue;
+    const text = verdict.bytes.toString('utf8');
+    const last = text.split('\n').map((l) => l.trim()).filter(Boolean).at(-1) ?? '';
+    if (!/^SPEC (CLEAN|FINDINGS \d+)$/.test(last)) continue;
+    for (const m of text.matchAll(/^CONTENT-SHA256 ([0-9a-f]{64}) (\S.*)$/gm)) {
+      if (resolve(dirname(v.path), m[2]) !== page) continue;
+      const got = pinnedSha(page);
+      if ('bytes' in got && got.sha256 === m[1]) return page;
+    }
+  }
+  return null;
+}
+
+export function runSpecCopy(a: SpecCopyArgs, timeoutMs = SPEC_CC_TIMEOUT_MS): number {
+  const seam = ['MERGE_BLOCK_ALERT_CMD', 'TELEGRAM_ACCESS_PATH', 'BRIDGE_ROOT'].find((v) => process.env[v]);
+  if (seam && process.env.HIMMEL_TEST_FIXTURE !== '1') {
+    console.error(`release: ${seam} is set outside a test fixture (HIMMEL_TEST_FIXTURE is not 1); the spec copy is not sent`);
+    return 1;
+  }
+  const r = spawnSync('bash', [specCopyScript(), a.oid, a.keys, a.spec, a.sha, a.page], { stdio: ['ignore', 'inherit', 'inherit'], timeout: timeoutMs, killSignal: 'SIGKILL' });
+  return r.status ?? 1;
 }
 
 export async function backlogAlerts(ctx: Ctx, release: string, lines: string[]): Promise<string[]> {
@@ -1203,6 +1240,15 @@ export function registerRelease(program: Command): void {
           : { signer: 'chief' as const, verbatim: readBodyFile(o.verbatimFile as string, '--verbatim-file').trim() }),
       });
       console.log(`${r.id} spec ${r.spec_path} signed for ${(r.keys ?? []).join(', ')}${r.signer === 'operator' ? ` (the operator signs ${(r.operator_keys ?? []).join(', ') || 'none'})` : ''}`);
+      if (r.signer === 'chief') {
+        const copy = { oid: r.id, keys: (r.keys ?? []).join(', '), spec: r.spec_path ?? '', sha: r.spec_sha256 ?? '', page: sealedPage(r) ?? '-' };
+        const rc = runSpecCopy(copy);
+        if (rc !== 0) {
+          const quote = (x: string) => "'" + x.split("'").join("'\\''") + "'";
+          const resend = ['bash', specCopyScript(), copy.oid, copy.keys, copy.spec, copy.sha, copy.page].map(quote).join(' ');
+          console.error(`WARN spec copy not sent (exit ${rc}); the signature stands; resend: ${resend}`);
+        }
+      }
     });
   operator.command('spec-signer <release>')
     .description('Record who signs specs: with --keys a mark (operator) or a lift (chief) per key, without it the station default')
