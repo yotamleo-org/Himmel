@@ -184,8 +184,8 @@ does, the command waits for the operator.
   each waiting request (`bypass request <name> waits: the daemon needs a
   restart`), once per request. A go given while the code moved is not used:
   the log says `STALE after go <brief>: go not used, re-queued`, a
-  `bypass-result` card says so, and the request goes back to `<name>.req`, to
-  be asked again after the restart. The daemon does one thing at a time, so a
+  outcome stays in the station log and no card is sent, and the request goes
+  back to `<name>.req`, to be asked again after the restart. The daemon does one thing at a time, so a
   change that lands while it waits on a go is found when that wait ends: the
   hold and its cards can come up to one ask wait (6 h) after the change.
 - **A go code is asked only for a launch that can start.** Before it sends the
