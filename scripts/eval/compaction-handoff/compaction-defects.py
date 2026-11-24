@@ -487,7 +487,7 @@ def replay_rule(turns, calls, points, predictor, base, relaunch, model, hr, bw):
         by_turn.setdefault(f["turn"], []).append(f["k"])
     for i, t in enumerate(turns):
         delta = t["ctx"] - prev
-        x = t["ctx"] if i == 0 else x + (delta if delta >= 0 else t["in"] + t["cc"])
+        x = t["ctx"] if i == 0 or not hops else x + (delta if delta >= 0 else t["in"] + t["cc"])
         x = max(x, t["in"] + t["cc"])
         prev = t["ctx"]
         cost += price(t, max(0, x - t["in"] - t["cc"]))

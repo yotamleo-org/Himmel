@@ -268,6 +268,7 @@ check "rule-proxy-one-call: the commit and the push in one call: no point" 0 "$(
 scen reset "$OPUS" 40 "{\"20\":$PUSH,\"30\":{\"reset\":20000}}"
 scen noreset "$OPUS" 40 "{\"20\":$PUSH}"
 check "rule-replay-reset: a recorded compaction after a simulated hop does not subtract the old offset (same simulated cost as without it)" "1 1" "$(rr reset $ORC | jq -r '.simulate_rule.workers[0] | "\(.rule.hops) \(.rule.input)"' | { read -r h i; echo "$h $([ "$i" = "$(rr noreset $ORC | jq -r '.simulate_rule.workers[0].rule.input')" ] && echo 1 || echo 0)"; })"
+check "rule-replay-reset: with no simulated hop a recorded reset is kept: the rule's cost is the recorded cost" 1 "$(rr reset predictor=oracle,points=proxy,base=400000,relaunch=0 | jq '.simulate_rule.workers[0] | if .rule.input == .recorded.input then 1 else 0 end')"
 scen below "$OPUS" 40 "{\"10\":$PUSH}"
 check "rule-proxy-below-floor: a push below the floor, the session crosses it after: no point" 0 "$(rr below $ORC | jq '.simulate_rule.workers[0].rule.hops')"
 
