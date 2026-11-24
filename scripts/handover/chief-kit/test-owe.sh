@@ -142,6 +142,12 @@ out=$(bash "$OWE" add --bucket "$S/bucket" --chief successor --kind proof --text
 check "9848 retry after sync failure returns existing id" "$out" o1
 check "9848 retry after sync failure appends nothing" "$(wc -l < "$S/bucket/owed.jsonl" | tr -d ' ')" 1
 
+PW="$WORK/proof-wake"; mkdir -p "$PW"
+out=$(bash "$OWE" add --bucket "$PW" --chief chief --kind ruling --text 'HIMMEL-77 proof-wake' --metadata '{"actor":"chief","action":"notify","event":"proof-wake"}' 2>&1); rc=$?
+check "10955 a proof-wake notification is an accepted event" "$rc|$out" "0|o1"
+bash "$OWE" add --bucket "$PW" --chief chief --kind ruling --text 'bad event' --metadata '{"actor":"chief","action":"notify","event":"proof-launch"}' >/dev/null 2>&1
+check "10955 an unknown event is still refused" "$?" 2
+
 L="$WORK/bad-ledger"; mkdir -p "$L"
 ln -s "$L/absent" "$L/owed.jsonl"
 bash "$OWE" list --bucket "$L" --json >/dev/null 2>&1
