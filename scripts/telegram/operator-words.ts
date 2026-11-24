@@ -10,7 +10,7 @@ import { defaultAccessPath, loadAccess, operatorChatId } from "./gate";
 const UPDATE_ID_FLOOR = 1_000_000;
 
 /** One entry per refusal; `disable` (test only) switches a single check off to show its row goes RED. */
-export type Check = "floor" | "ambiguous" | "dm-policy" | "operator" | "forwarded" | "caption" | "text";
+export type Check = "floor" | "ambiguous" | "dm-policy" | "operator" | "forwarded" | "caption" | "text" | "metadata";
 
 export type VerifiedLine = {
   update_id: number; from: number; chat_id: number; ts: number; message_id: number; text: string; reply_to_text?: string;
@@ -22,11 +22,19 @@ type LogRecord = Record<string, unknown>;
 
 export class Refusal extends Error {}
 
+const IDENTITY_FIELDS = ["text", "ts", "from", "chat_id", "forwarded", "caption", "message_id"] as const;
+const identity = (r: LogRecord): string => JSON.stringify(IDENTITY_FIELDS.map((k) => r[k]));
+
 async function recordsFor(root: string, updateId: number): Promise<LogRecord[]> {
   const found: LogRecord[] = [];
   for (const name of ["inbound.jsonl", "inbound.jsonl.1"]) {
     let body: string;
-    try { body = await readFile(join(root, name), "utf8"); } catch { continue; }
+    try {
+      body = await readFile(join(root, name), "utf8");
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw new Refusal(`update ${updateId}: the poller's log cannot be read`);
+    }
     for (const line of body.split("\n")) {
       if (!line.includes('"update_id"')) continue;
       let rec: unknown;
@@ -47,7 +55,7 @@ export async function verify(updateId: number, o: VerifyOptions = {}): Promise<V
   const found = await recordsFor(o.root ?? bridgeRoot(), updateId);
   const first = found[0];
   if (first === undefined) return refuse(`update ${id} is not in the poller's log`);
-  if (!off.has("ambiguous") && found.some((r) => r.text !== first.text || r.ts !== first.ts)) refuse(`update ${id} is ambiguous`);
+  if (!off.has("ambiguous") && found.some((r) => identity(r) !== identity(first))) refuse(`update ${id} is ambiguous`);
 
   const access = await loadAccess(o.accessPath ?? defaultAccessPath());
   const operator = operatorChatId(access);
@@ -57,6 +65,7 @@ export async function verify(updateId: number, o: VerifyOptions = {}): Promise<V
   if (!off.has("forwarded") && first.forwarded !== false) refuse(`update ${id} is forwarded`);
   if (!off.has("caption") && first.caption !== false) refuse(`update ${id} is a caption or a voice transcript`);
   if (!off.has("text") && (typeof first.text !== "string" || first.text.trim() === "")) refuse(`update ${id} has no text`);
+  if (!off.has("metadata") && !(Number.isFinite(first.ts) && Number.isSafeInteger(first.message_id))) refuse(`update ${id} has no timestamp or message id`);
 
   return {
     update_id: updateId, from: first.from as number, chat_id: first.chat_id as number, ts: first.ts as number,

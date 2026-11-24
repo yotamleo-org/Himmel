@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { verify, type Check } from "./operator-words";
@@ -90,6 +90,33 @@ test("T6b: two lines with one update_id and different text or ts refuse as ambig
   expect((await verify(900000100, { root: d, accessPath: ACCESS, disable: ["ambiguous"] })).text).toBe("one");
   writeFileSync(join(d, "inbound.jsonl"), `${JSON.stringify(a)}\n${JSON.stringify({ ...a, ts: 6 })}\n`);
   expect(await refusal(900000100, { root: d, accessPath: ACCESS })).toBe("update 900000100 is ambiguous");
+});
+
+test("T6b: two lines with one update_id that differ in sender, chat, flags or message id refuse as ambiguous", async () => {
+  const d = scratch();
+  const a = { update_id: 900000100, from: 111, chat_id: 111, text: "one", ts: 5, message_id: 1, forwarded: false, caption: false };
+  for (const change of [{ from: 222 }, { chat_id: -100500 }, { forwarded: true }, { caption: true }, { message_id: 2 }]) {
+    writeFileSync(join(d, "inbound.jsonl"), `${JSON.stringify(a)}\n${JSON.stringify({ ...a, ...change })}\n`);
+    expect(await refusal(900000100, { root: d, accessPath: ACCESS })).toBe("update 900000100 is ambiguous");
+  }
+});
+
+test("T6b: a log file that exists but cannot be read refuses, even when the other file holds the line", async () => {
+  const d = scratch();
+  const line = JSON.stringify({ update_id: 900000100, from: 111, chat_id: 111, text: "hello", ts: 5, message_id: 1, forwarded: false, caption: false });
+  writeFileSync(join(d, "inbound.jsonl"), `${line}\n`);
+  mkdirSync(join(d, "inbound.jsonl.1"));
+  expect(await refusal(900000100, { root: d, accessPath: ACCESS })).toBe("update 900000100: the poller's log cannot be read");
+});
+
+test("T6b: a ts or message_id that is missing or not a number refuses; disabled, the line passes", async () => {
+  const d = scratch();
+  const base = { update_id: 900000100, from: 111, chat_id: 111, text: "hello", forwarded: false, caption: false };
+  for (const bad of [{ message_id: 1 }, { ts: 5 }, { ts: "5", message_id: 1 }, { ts: 5, message_id: "1" }]) {
+    writeFileSync(join(d, "inbound.jsonl"), `${JSON.stringify({ ...base, ...bad })}\n`);
+    expect(await refusal(900000100, { root: d, accessPath: ACCESS })).toBe("update 900000100 has no timestamp or message id");
+  }
+  expect((await verify(900000100, { root: d, accessPath: ACCESS, disable: ["metadata"] })).text).toBe("hello");
 });
 
 test("T6b: an access file with two allowFrom ids refuses 900000001; disabled, it passes", async () => {
