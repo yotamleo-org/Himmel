@@ -118,6 +118,15 @@ test("a relative path after a cd, and a directory with a salus marker anywhere b
   const prof = mkdtempSync(join(tmpdir(), "peer-tell-prof-"));
   mkdirSync(join(prof, "deep", "vault"), { recursive: true });
   writeFileSync(join(prof, "deep", "vault", ".salus-profile"), "");
+  const far = mkdtempSync(join(tmpdir(), "peer-tell-far-"));
+  const deep = join("a", "b", "c", "d", "e", "f", "g", "salus");
+  mkdirSync(join(far, deep), { recursive: true });
+  writeFileSync(join(far, deep, ".salus"), "");
+  await phiCases([
+    ["cd then a relative path to salus deeper than the find reaches", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cd ${far} && cat ${deep}/x` })])],
+    ["cd with options then a relative path to salus", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cd -P -- ${far} && cat ${deep}/x` })])],
+    ["a relative path to salus against the record cwd", h => transcript(h, [{ type: "user", cwd: h.launch }, { type: "user", cwd: far }, use(far, "Bash", { command: `cat ${deep}/notes.md` })])],
+  ]);
   await phiCases([
     ["cd then a relative salus path", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cd ${docs} && cat salus/x` })])],
     ["a relative salus path against the record cwd", h => transcript(h, [{ type: "user", cwd: h.launch }, { type: "user", cwd: docs }, use(docs, "Bash", { command: "cat salus/notes/a.md" })])],

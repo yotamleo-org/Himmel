@@ -106,6 +106,7 @@ function relativeWords(command: string, cwd: unknown, home: string, put: (p: unk
   let dir = typeof cwd === "string" && isAbsolute(cwd) ? cwd : null, prev = "";
   for (const m of command.matchAll(WORD_RE)) {
     const word = m[1] ?? m[2] ?? m[3];
+    if (prev === "cd" && word.startsWith("-") && word !== "-") continue;
     if (prev === "cd" && dir !== null && word !== "-") {
       dir = word.startsWith("~/") ? join(home, word.slice(2)) : word === "~" ? home : resolve(dir, word);
       put(dir);
