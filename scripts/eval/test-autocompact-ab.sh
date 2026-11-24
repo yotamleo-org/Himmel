@@ -9,6 +9,7 @@ SUT="$HERE/autocompact-ab.py"
 FX="$HERE/fixtures/autocompact-ab"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/autocompact-ab.XXXXXX")" || exit 1; trap 'rm -rf "$tmp"' EXIT
 fails=0
+unset WORKER_SESSION_BURN_W_CACHE_READ WORKER_SESSION_BURN_W_CACHE_CREATE WORKER_SESSION_BURN_W_CACHE_CREATE_1H WORKER_SESSION_BURN_W_INPUT WORKER_SESSION_BURN_W_OUTPUT
 check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: expected [$2] got [$3]"; fails=$((fails + 1)); fi; }
 
 ctl="$FX/docs/HIMMEL-9001-N901-ctl-2026-10-11.md"
@@ -191,18 +192,19 @@ import json, sys
 out, model, n = sys.argv[1], sys.argv[2], int(sys.argv[3])
 over = json.loads(sys.argv[4]) if len(sys.argv) > 4 else {}
 pre = sys.argv[5] if len(sys.argv) > 5 else "tu"
+step = int(sys.argv[6]) if len(sys.argv) > 6 else 12500
 rows, run = [], 0
 for k in range(1, n + 1):
     run = over.get(str(k), {}).get("reset", run)
     o = over.get(str(k), {})
     name, inp = o.get("name", "Bash"), o.get("input", {"command": "ls"})
-    cc = {"ephemeral_5m_input_tokens": 12500 - o.get("w1h", 0), "ephemeral_1h_input_tokens": o.get("w1h", 0)}
+    cc = {"ephemeral_5m_input_tokens": step - o.get("w1h", 0), "ephemeral_1h_input_tokens": o.get("w1h", 0)}
     rows.append({"type": "assistant", "timestamp": "2026-11-07T10:%02d:00Z" % (k % 60), "message": {
         "id": "m%d" % k, "model": model, "content": [{"type": "tool_use", "id": "%s_%d" % (pre, k), "name": name, "input": inp}],
-        "usage": {"input_tokens": 0, "cache_read_input_tokens": run, "cache_creation_input_tokens": 12500,
+        "usage": {"input_tokens": 0, "cache_read_input_tokens": run, "cache_creation_input_tokens": step,
                   "cache_creation": cc, "output_tokens": 100}}})
-    run += 12500
-    rows.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "%s_%d" % (pre, k), "content": "ok"}]}})
+    run += step
+    rows.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "%s_%d" % (pre, k), "content": "ok", "is_error": o.get("err", False)}]}})
 with open(out, "w") as f:
     for r in rows:
         f.write(json.dumps(r) + "\n")
@@ -212,7 +214,7 @@ PUSH='{"name":"Bash","input":{"command":"git push origin br"}}'
 scen() {
     local d="$tmp/sc/$1"; mkdir -p "$d/logs" "$d/projects/-home-x-worktrees-wt"
     SCEN_N=$((SCEN_N + 1)); local sid; sid="cccccccc-0000-4000-8000-$(printf '%012d' "$SCEN_N")"
-    python3 -I "$tmp/mkfx.py" "$d/projects/-home-x-worktrees-wt/$sid.jsonl" "$2" "$3" "${4:-{\}}" "tu$sid"
+    python3 -I "$tmp/mkfx.py" "$d/projects/-home-x-worktrees-wt/$sid.jsonl" "$2" "$3" "${4:-{\}}" "tu$sid" "${5:-12500}"
     printf 'headed-arm-worker: profile=worker-impl lane=native model=opus role=worker session=%s session_id=%s launched=2026-11-07T10:00:00Z\n' "$1" "$sid" > "$d/logs/$1.log"
     echo "$sid" > "$d/sid"
 }
@@ -269,8 +271,14 @@ scen reset "$OPUS" 40 "{\"20\":$PUSH,\"30\":{\"reset\":20000}}"
 scen noreset "$OPUS" 40 "{\"20\":$PUSH}"
 check "rule-replay-reset: a recorded compaction after a simulated hop does not subtract the old offset (same simulated cost as without it)" "1 1" "$(rr reset $ORC | jq -r '.simulate_rule.workers[0] | "\(.rule.hops) \(.rule.input)"' | { read -r h i; echo "$h $([ "$i" = "$(rr noreset $ORC | jq -r '.simulate_rule.workers[0].rule.input')" ] && echo 1 || echo 0)"; })"
 check "rule-replay-reset: with no simulated hop a recorded reset is kept: the rule's cost is the recorded cost" 1 "$(rr reset predictor=oracle,points=proxy,base=400000,relaunch=0 | jq '.simulate_rule.workers[0] | if .rule.input == .recorded.input then 1 else 0 end')"
-scen below "$OPUS" 40 "{\"10\":$PUSH}"
+scen below "$OPUS" 40 "{\"15\":$PUSH}"
 check "rule-proxy-below-floor: a push below the floor, the session crosses it after: no point" 0 "$(rr below $ORC | jq '.simulate_rule.workers[0].rule.hops')"
+scen abovefloor "$OPUS" 40 "{\"16\":$PUSH}"
+check "rule-proxy-below-floor control: the same push at the floor hops at call 17" "[17]" "$(rr abovefloor $ORC | jq -c '.simulate_rule.workers[0].rule.hop_calls')"
+scen failpush "$OPUS" 40 "{\"20\":{\"name\":\"Bash\",\"input\":{\"command\":\"git push origin br\"},\"err\":true}}"
+check "rule-proxy-failed-push: a push whose result is an error is no point" 0 "$(rr failpush $ORC | jq '.simulate_rule.workers[0].rule.hops')"
+scen spent "$OPUS" 40 "{\"20\":$PUSH}" 250000
+check "rule-replay-spent: one push buys one hop: the rule would hold again at call 22 but that window is spent" "1 [21]" "$(rr spent $ORC | jq -r '.simulate_rule.workers[0] | "\(.rule.hops) \(.rule.hop_calls | tostring | gsub(" "; ""))"')"
 
 scen unk claude-nope-9 40 "{\"20\":$PUSH}"
 o="$(rr unk $ORC)"
