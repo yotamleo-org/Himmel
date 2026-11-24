@@ -108,8 +108,8 @@ release is declared (`jira release state <R>` prints a status other than
   `jira release request <R> --verb REVERSION --key <KEY> --from <later v> --to <current v> --why "<line>" --chief-reason "<reason>"`.
   A priority lowering is not a placement; only an operator record moves a key out.
 - **Unplaced tickets show in the tick.** `unplaced=<new>[,pending=<n>][,legacy=<n>][,stale-label=<n>]`
-  counts the open tickets with no version and no backlog label (`intake-backfill.sh --unplaced --list`
-  shows each key and bucket). `new` is a ticket filed since the door shipped: it needs your look,
+  counts the open tickets with no version and no backlog label (`intake-backfill.sh --unplaced --list --since-door --state <state.json>`,
+  with the output of `jira release state <R> --json` as the state file, shows each key and bucket as the tick sees it). `new` is a ticket filed since the door shipped: it needs your look,
   because the door should have placed it. `pending` has an open request, `legacy` predates the door,
   `stale-label` holds a version and the backlog label. The field is absent at zero and never wakes you.
 - **A worker's FINDING that asks "file it where?"** is a request. So is a

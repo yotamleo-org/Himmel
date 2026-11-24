@@ -576,7 +576,7 @@ printf 'K-5\tpending\nK-6\tserious-later\nK-7\tnew\nK-8\tnew\nK-9\tlegacy\nK-10\
 out="$(tick)"
 check 'S4: unplaced= counts new, then each non-zero bucket' '2,pending=1,legacy=1,stale-label=1' "$(field unplaced "$out")"
 check 'S4: serious-later= counts the tickets and names the oldest key' '2:K-6' "$(field serious-later "$out")"
-check 'S4: the tick asks for the list with --since-door and the state, and passes no date of its own' 'ok' "$(grep -q -e '--unplaced' -e '--since-door' "$W/unplaced-asked" && grep -q -e '--list' "$W/unplaced-asked" && ! grep -q -e '--since ' "$W/unplaced-asked" && echo ok)"
+check 'S4: the tick asks for the list with --since-door and the state, and passes no date of its own' 'ok' "$(grep -q -e '--unplaced' "$W/unplaced-asked" && grep -q -e '--list' "$W/unplaced-asked" && grep -q -e '--since-door' "$W/unplaced-asked" && grep -q -e '--state ' "$W/unplaced-asked" && ! grep -q -e '--since ' "$W/unplaced-asked" && echo ok)"
 check 'S4: neither field is a row of the wake table (outside the action key)' '' "$(cut -f1 "$HERE/wake-rules.tsv" | grep -xE 'unplaced|serious-later' || true)"
 printf '0\npending=0 legacy=0 stale-label=0 serious-later=0\n' > "$W/unplaced.out"
 out="$(tick)"
