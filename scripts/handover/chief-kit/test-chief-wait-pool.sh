@@ -33,6 +33,7 @@ STUB="$WORK/stub"
 mkdir -p "$STUB"
 cat > "$STUB/tick.sh" <<'EOF'
 #!/usr/bin/env bash
+[ ! -f "$STUB/stall" ] || { read -r stall < "$STUB/stall"; sleep "$stall"; : > "$STUB/stalled"; }
 [ ! -f "$STUB/tick.fail" ] || exit 1
 cat "$STUB/tick.line"
 EOF
@@ -99,8 +100,9 @@ run_to_wake() {
     bash "$WAIT" "$@" > "$out" 2> "$err" &
     pid=$!
     while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ]; do sleep 0.2; i=$((i + 1)); done
-    if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; digest_rc=124
-    else wait "$pid"; digest_rc=$?; fi
+    if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rc=124
+    else wait "$pid"; rc=$?; fi
+    digest_rc=$rc
 }
 
 # --- (8197) digest and urgent worker changes -------------------------------------------
@@ -111,7 +113,7 @@ housekeeping_cases() (
     export HOUSEKEEPING_DIGEST_SECS=2 WAIT_SWEEP_SEC=1 CHIEF_WAIT_BOARD_STALE_MIN=0
     cat > "$STUB/digest-tick.sh" <<'EOF'
 #!/usr/bin/env bash
-[ ! -f "$STUB/stall" ] || { read -r stall < "$STUB/stall"; sleep "$stall"; }
+[ ! -f "$STUB/stall" ] || { read -r stall < "$STUB/stall"; sleep "$stall"; : > "$STUB/stalled"; }
 n=0; [ ! -f "$STUB/samples" ] || read -r n < "$STUB/samples"
 n=$((n + 1)); printf '%s\n' "$n" > "$STUB/samples"
 if [ -f "$STUB/urgent" ]; then
@@ -174,11 +176,12 @@ EOF
             status-sweep) export WAIT_SWEEP_CMD="$STUB/digest-sweep.sh" ;;
             deadline) digest_kind=tick ;;
         esac
-        rm -f "$STUB/stall"
+        rm -f "$STUB/stall" "$STUB/stalled"
         if [ "$digest_case" = deadline ]; then mkdir "$I.wait.housekeeping.since"; printf '2\n' > "$STUB/stall"
         else mkdir "$I.wait.housekeeping"; fi
         run_to_wake "$WORK/write-$digest_case.out" "$WORK/write-$digest_case.err" "$I" --doc "$WORK/digest-chief.md" --workers N1.md
         rm -f "$STUB/stall"
+        [ "$digest_case" != deadline ] || check "(8197) deadline fallback ran with the tick stall" yes "$([ -e "$STUB/stalled" ] && echo yes)"
         check "(8197) $digest_case buffer write failure wakes immediately once" '0:1:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/write-$digest_case.out"):$(grep -c "^WAKE $digest_kind " "$WORK/write-$digest_case.out")"
         case "$digest_case" in tick|deadline)
             check "(8197) $digest_case write failure does not advance the tick baseline" 1 "$(grep -c 'tails=N1:ACK' "$I.wait.state")"
@@ -632,7 +635,7 @@ for t7b_line in '# quota-pause QUOTA-PAUSE github graphql token=main remaining=0
     check "(T7b) a $t7b_kind pool writes pool=paused to the pool-paused file" "pool=paused" "$(cat "$I.wait.poolpaused" 2>/dev/null)"
     check "(T7b) a $t7b_kind pool leaves the heartbeat line in the readers' format" "1" "$(grep -cE '^hb=[0-9]+ pid=[0-9]+ key=[^ ]+ tick=(ok|fail|-) state=(waiting|sampling|exited)( exit=[^ ]+)?$' "$I.wait")"
     rm -f "$STUB/pool.paused"
-    CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 CHIEF_WAIT_PAUSED_REPROBE_SEC=0 arm "$I" "$WORK/t7b-$t7b_kind-2.out" 6
+    CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 CHIEF_WAIT_PAUSED_REPROBE_SEC=0 run_to_wake "$WORK/t7b-$t7b_kind-2.out" /dev/null "$I" --workers N1.md
     check "(T7b) after a $t7b_kind pool the next good reading wakes (rc 0)" "0" "$rc"
     check "(T7b) after a $t7b_kind pool it is one underfill wake" "1" "$(wakes "$WORK/t7b-$t7b_kind-2.out")"
     check "(T7b) after a $t7b_kind pool the good reading removes the pool-paused file" "no" "$([ -e "$I.wait.poolpaused" ] && echo yes || echo no)"
@@ -669,7 +672,11 @@ check "(T7b) a paused pool watch probe leaves its marker's age" "$t7b_old" "$(st
 cp "$STUB/tick.line.saved" "$STUB/tick.line"
 rm -f "$STUB/pool.paused" "$STUB/tick.line.ok" "$STUB/tick.line.saved"
 I="$(new_inbox t7b-empty)"
-CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 arm "$I" "$WORK/t7b-empty.out" 6
+rm -f "$STUB/stalled"
+printf '7\n' > "$STUB/stall"
+CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 run_to_wake "$WORK/t7b-empty.out" /dev/null "$I" --workers N1.md
+rm -f "$STUB/stall"
+check "(T7b) the empty-pool control ran with the tick stall" yes "$([ -e "$STUB/stalled" ] && echo yes)"
 check "(T7b) RED control: a real empty pool still wakes (rc 0)" "0" "$rc"
 check "(T7b) RED control: and says POOL-EMPTY" "1" "$(grep -c '^POOL-EMPTY' "$WORK/t7b-empty.out")"
 mkdir -p "$WORK/t7b-quota"
