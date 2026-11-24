@@ -2078,12 +2078,15 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
             with _clip_lock(path):
                 if path.read_text(encoding="utf-8") != text:
                     return ("~", "partial (thin-body): the clip changed while it was fetched; nothing written (credit spent), re-run to retry", injection_hits)
-                path.write_text(new_text, encoding="utf-8", newline="\n")
+                try:
+                    path.write_text(new_text, encoding="utf-8", newline="\n")
+                except Exception as e:
+                    _revert(path, text)
+                    return ("x", f"failed (write, credit spent): {e}; reverted", merged_hits)
         except TimeoutError as e:
             return ("~", f"partial (thin-body): {e}; nothing written (credit spent), re-run to retry", injection_hits)
         except Exception as e:
-            _revert(path, text)
-            return ("x", f"failed (write, credit spent): {e}; reverted", merged_hits)
+            return ("x", f"failed (write, credit spent): {e}; nothing written", merged_hits)
         try:
             disk_text = path.read_text(encoding="utf-8")
         except Exception as e:
