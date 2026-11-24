@@ -8,6 +8,8 @@ import { redactDeep } from "../../himmelctl/lib/redact.js";
 import { applySection } from "../../handover/chief-kit/board-section.mjs";
 import { renderShift } from "../public/shift.js";
 import { startServer } from "../server";
+import { renderBoard } from "../public/roadmap.js";
+import { readRoadmap } from "../roadmap";
 
 const OFF = 60; // +01:00, the zone fixed when a shift opens
 const T = (s: string) => Date.parse(s);
@@ -177,8 +179,8 @@ const snap = (o: typeof open | null) => ({ state: { open: o, closedAt: null } as
 const NOW = T("2026-10-27T12:00+01:00");
 
 test("rowsOf: Waiting is only what the data marks as the operator's, Running is live and PR-open work that is not waiting, oldest first", () => {
-  const r = rowsOf([{ ...board, decisions: ["pick the v1.1.3 cut?", "approve the spend"] }]);
-  expect(r.waiting.map((w) => [w.kind, w.ticket, w.pr, w.detail])).toEqual([["decision", null, null, "pick the v1.1.3 cut?"], ["decision", null, null, "approve the spend"]]);
+  const r = rowsOf([board]);
+  expect(r.waiting).toEqual([]);
   expect(r.running.map((x) => [x.ticket, x.stage])).toEqual([["HIMMEL-4", "in review"], ["HIMMEL-3", "building"]]);
 });
 
@@ -218,7 +220,7 @@ test("viewOf: a closed shift by id carries its record, its merges are half-open 
   expect(v.pager).toEqual({ prev: "2026-10-26T20:00+01:00", next: "2026-10-27T20:00+01:00" });
 });
 
-const pageView = (over: Partial<View> = {}): View => ({ ...viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [{ number: 20, title: "feat: a", mergedAt: "2026-10-27T09:00:00Z" }], boards: [{ ...board, decisions: ["pick the v1.1.3 cut?"] }] }), ...over });
+const pageView = (over: Partial<View> = {}): View => ({ ...viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [{ number: 20, title: "feat: a", mergedAt: "2026-10-27T09:00:00Z" }], boards: [board], owed: { state: "ok", unread: [], items: [{ actor: "operator", source: "owed ledger", key: null, title: "pick the v1.1.3 cut?", ctx: "o1 (ask) in owed.jsonl", act: "do what the row names" }] } }), ...over });
 
 test("the Shift page draws Waiting, Running and Shipped over a mid-shift fixture, Waiting rows only link out", () => {
   const html = renderShift(pageView(), {});
@@ -620,39 +622,23 @@ test("liveBoards: the injected reader decides: a board gives rows, null gives bo
   expect([bad.boards, bad.missing, bad.error]).toEqual([[], [], [{ chief: name, error: "board.mjs: gh is down" }]]);
 });
 
-test("liveBoards: the chief doc's Live-state decisions: line is the operator's Waiting; a decisions file pointer and none are not", async () => {
-  const root = tmp(), name = "HIMMEL-nextleg-2026-10-27A-roadmap-chief";
-  const docWith = (line: string) => { chiefDocIn(root, name); writeFileSync(join(root, "yotamleo", "himmel", `${name}.md`), `# c\n\n## Live state\n\nepics: HIMMEL-1=2\n${line}\n\n## Results\n- 09:00 LIVE\n`); };
-  const waiting = async () => rowsOf((await liveBoards(root, chiefLocks(name), chiefSpan(name), async () => ({ legs: [liveLeg] }))).boards).waiting.map((w) => w.detail);
-  docWith("decisions: first (x; y)?; second?");
-  expect(await waiting()).toEqual(["first (x; y)?", "second?"]);
-  docWith("decisions: none");
-  expect(await waiting()).toEqual([]);
-  docWith("decisions: carried verbatim in specs/decisions/console-decisions-2026-10-25.md (read it before ruling)");
-  expect(await waiting()).toEqual([]);
-  docWith("decisions: specs/decisions/console-decisions-2026-10-25.md; approve new spend?");
-  expect(await waiting()).toEqual(["approve new spend?"]);
-});
-
-test("liveBoards: a chief doc that cannot be read is a boardError, never an empty decisions list", async () => {
+test("10947: a chief doc's Live-state decisions: line records rulings already made, so it never lands in Waiting on you", async () => {
   const root = tmp(), name = "HIMMEL-nextleg-2026-10-27A-roadmap-chief";
   chiefDocIn(root, name);
-  const lv = await liveBoards(root, chiefLocks(name), chiefSpan(name), async () => {
-    rmSync(join(root, "yotamleo", "himmel", `${name}.md`)); // gone between the board read and the doc read
-    return { legs: [liveLeg] };
-  });
-  expect(lv.error).toEqual([{ chief: name, error: "chief doc unreadable: its open decisions are not shown" }]);
+  writeFileSync(join(root, "yotamleo", "himmel", `${name}.md`), "# c\n\n## Live state\n\nepics: HIMMEL-1=2\ndecisions: O-77 ruled 2026-11-24 (verbatim-decision-x.txt); HIMMEL-9 cut approved\n\n## Results\n- 09:00 LIVE\n");
+  const lv = await liveBoards(root, chiefLocks(name), chiefSpan(name), async () => ({ legs: [liveLeg] }));
+  expect(rowsOf(lv.boards).waiting).toEqual([]);
   expect(rowsOf(lv.boards).running.length).toBe(1);
+  expect(renderShift(viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [], boards: lv.boards }), {})).not.toContain("O-77 ruled");
 });
 
-test("liveBoards: a chief whose lock heartbeat is past the queue-lock TTL is dead: its board and decisions are not shown, and it is not reported missing", async () => {
+test("liveBoards: a chief whose lock heartbeat is past the queue-lock TTL is dead: its board is not shown, and it is not reported missing", async () => {
   const root = tmp(), name = "HIMMEL-nextleg-2026-10-27A-roadmap-chief";
   chiefDocIn(root, name);
-  writeFileSync(join(root, "yotamleo", "himmel", `${name}.md`), "# c\n\n## Live state\n\ndecisions: a dead chief's question?\n");
   const dead = await liveBoards(root, chiefLocks(name, Date.now() - 2 * 24 * 3_600_000), chiefSpan(name), async () => ({ legs: [liveLeg] }));
   expect([dead.boards, dead.missing, dead.error]).toEqual([[], [], []]);
   const alive = await liveBoards(root, chiefLocks(name), chiefSpan(name), async () => ({ legs: [liveLeg] }));
-  expect(rowsOf(alive.boards).waiting.map((w) => w.detail)).toEqual(["a dead chief's question?"]);
+  expect(rowsOf(alive.boards).running.length).toBe(1);
 });
 
 test("the Shift page says a board is missing or failed instead of Nothing is running", () => {
@@ -731,4 +717,55 @@ test("a live chief with no board file shows no leg, a missing-board note, and ru
   expect(v.running).toEqual([]);
   expect(v.boardMissing).toEqual([name]);
   expect(existsSync(marker)).toBe(false);
+});
+
+const mirrorTicket = (n: number, status: string) => ["---", `key: "HIMMEL-${n}"`, `type: "Task"`, `status: "${status}"`, `statusCategory: "${status}"`, `priority: "Medium"`, "labels: []", `fixVersions: ["v1.1.3"]`, "parent: null",
+  `created: "2026-10-01T00:00:00.000+0000"`, `updated: "2026-10-02T00:00:00.000+0000"`, "resolution: null", "links:", "  blocks: []", "  blocked_by: []", "  relates: []", "---", "", `# HIMMEL-${n}: ticket ${n}`, "", "## Description", "", "x", "", "## Comments", "", "_(none)_", ""].join("\n");
+async function owedStation() {
+  const { readOwed } = await import("../board");
+  const d = tmp(), mirror = join(d, "mirror"), home = join(d, "home");
+  mkdirSync(mirror); mkdirSync(home); mkdirSync(join(d, "specs", "designs"), { recursive: true });
+  writeFileSync(join(mirror, "HIMMEL-2.md"), mirrorTicket(2, "To Do"));
+  writeFileSync(join(mirror, "HIMMEL-3.md"), mirrorTicket(3, "To Do"));
+  writeFileSync(mirror + ".versions.tsv", "v1.1.3\tfalse\n");
+  const add = (id: string, o: object) => JSON.stringify({ op: "add", id, ...o });
+  writeFileSync(join(d, "owed.jsonl"), [
+    add("o1", { actor: "operator", key: "HIMMEL-2", text: "run the proof", kind: "proof" }),
+    add("o2", { actor: "operator", key: "HIMMEL-3", text: "closed ask", kind: "ask" }), JSON.stringify({ op: "close", ref: "o2" }),
+    add("o3", { actor: "chief", key: "HIMMEL-3", text: "chief validates", kind: "step" }),
+    add("o4", { actor: "operator", key: null, text: "loose ask", kind: "ask" }),
+  ].join("\n") + "\n");
+  writeFileSync(join(d, "x-HANDOFF.md"), "## Open operator items\n\n<What only the operator can do: a merge, a credential, a dashboard flip.>\n");
+  const doc = join(d, "c-chief.md");
+  writeFileSync(doc, "## Live state\nqueue: HIMMEL-2 operator words: approve paid TWO | HIMMEL-3 chief runs the GO\n");
+  const o = readOwed({ PATH: process.env.PATH, HOME: home, HIMMEL_JIRA_MIRROR: mirror, HIMMEL_CHIEF_DOC: doc, HIMMEL_BUCKET_DIR: d } as never);
+  if (o.state !== "ok") throw new Error(o.reason);
+  return Object.assign(o, { mirror });
+}
+
+test("10947: one operator ask naming one ticket from two sources is one Waiting row, and the row says both", async () => {
+  const o = await owedStation();
+  const w = rowsOf([], o.items).waiting;
+  expect(w.filter((x) => x.ticket === "HIMMEL-2").length).toBe(1);
+  expect(w.find((x) => x.ticket === "HIMMEL-2")!.detail).toContain("run the proof");
+  expect(w.find((x) => x.ticket === "HIMMEL-2")!.detail).toContain("approve paid TWO");
+});
+
+test("10947: Waiting is the board's operator list from the same readOwed call: one row per ticket, one per keyless item, no template line, no chief step, no closed row", async () => {
+  const o = await owedStation();
+  const root = tmp(), name = "HIMMEL-nextleg-2026-10-27A-roadmap-chief";
+  chiefDocIn(root, name);
+  writeFileSync(join(root, "yotamleo", "himmel", `${name}.md`), "# c\n\n## Live state\n\ndecisions: O-77 ruled 2026-11-24 (verbatim-decision-x.txt); HIMMEL-9 cut approved\n");
+  const lv = await liveBoards(root, chiefLocks(name), chiefSpan(name), async () => ({ legs: [liveLeg] }));
+  const v = viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [], boards: lv.boards, owed: o });
+  const html = renderShift(v, {});
+  const boardWaiting = renderBoard(readRoadmap({ mirrorDir: o.mirror, workers: { state: "absent" } }), {}, { owed: o }).match(/<section id="rm-waiting"[\s\S]*?<\/section>/)?.[0] ?? "";
+  expect(v.waiting.length).toBe(boardWaiting.match(/<li>/g)?.length);
+  expect(v.waiting.map((x) => x.ticket ?? x.title).sort()).toEqual(["HIMMEL-2", "loose ask"]);
+  for (const w of v.waiting) expect(boardWaiting).toContain(w.ticket ?? w.title);
+  for (const gone of ["What only the operator can do", "chief runs the GO", "chief validates", "closed ask", "O-77 ruled"]) {
+    expect(html).not.toContain(gone);
+    expect(boardWaiting).not.toContain(gone);
+  }
+  expect(html).toContain(`<h2 id="h-sh-waiting">Waiting on you <b>${v.waiting.length}</b></h2>`);
 });
