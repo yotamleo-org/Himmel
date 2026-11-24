@@ -727,10 +727,6 @@ def _clip_lock(path: Path, expect: str | None = None, wait: float = CLIP_LOCK_WA
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    """Write `text` to the clip so a reader or a crash sees the old file or
-    the whole new one: a temp file in the clip's own directory, fsynced, then
-    os.replace. The temp name never ends in .md. Any error removes the temp
-    file and leaves the clip untouched."""
     mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".harvest-", suffix=".tmp")
     try:
