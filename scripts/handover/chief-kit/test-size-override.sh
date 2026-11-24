@@ -140,6 +140,14 @@ check "a real row on the same key, label, band and --ref appends nothing" $((n0 
 run note refuse HIMMEL-9500 N950 --files 41 --detail "old kind" >/dev/null
 run note refuse HIMMEL-9500 N950 --files 41 --detail "old kind" >/dev/null
 check "note refuse with no --band is never skipped" $((n0 + 6)) "$(count SIZE-ESCALATE)"
+run note estimate HIMMEL-9501 N951 --files 0 --trust unknown --detail "cannot be projected" >/dev/null
+run note estimate HIMMEL-9501 N951 --files 0 --trust unknown --detail "cannot be projected" >/dev/null
+run note bulk HIMMEL-9501 N951 --files 12 --detail "bulk: mechanical" >/dev/null
+run note bulk HIMMEL-9501 N951 --files 12 --detail "bulk: mechanical" >/dev/null
+check "an estimate or bulk row with no band is written once per key and label" $((n0 + 8)) "$(count SIZE-ESCALATE)"
+for _ in 1 2 3 4 5 6 7 8; do run note estimate HIMMEL-9502 N952 --files 41 --band hard >/dev/null & done
+wait
+check "eight concurrent notes of one case append one row" $((n0 + 9)) "$(count SIZE-ESCALATE)"
 out=$(run note estimate HIMMEL-9500 N950 --files 41 --band huge); rc=$?
 check "note --band with an unknown band exits 2" 2 "$rc"
 out=$(run note real HIMMEL-9500 N950 --files 41 --band hard --ref 'a b'); rc=$?

@@ -411,7 +411,6 @@ if [ -z "$existing_pr" ]; then
         exit 1
     fi
     holds_set_body_line
-    size_note_real
     # Capture stdout (the PR URL) and stderr (diagnostics, plus the
     # CodeRabbit-trigger confirmation) into SEPARATE streams —
     # merging them with `2>&1` let a stderr line race the URL for "first
@@ -430,6 +429,7 @@ if [ -z "$existing_pr" ]; then
     # could still carry more than one line, so keep this defensive.
     url=$(printf '%s\n' "$out" | head -n 1)
     number=${url##*/}
+    size_note_real
 else
     number="$existing_pr"
     if [ -n "$title_key" ] && [ "$(forge_detect)" = github ]; then
@@ -446,12 +446,12 @@ else
     holds_set_body_line
     measure_pr_size || echo "WARN worker-pr-open: $PR_SIZE_ERR; the body says unmeasured" >&2
     set_pr_size_body_line
-    size_note_real
     if ! out=$(forge_pr_set_body "$number" "$title" "$body" 2>&1); then
         echo "ERR worker-pr-open: PR body update failed:" >&2
         printf '%s\n' "$out" >&2
         exit 1
     fi
+    size_note_real
     forge=$(forge_detect)
     nwo=$(forge_repo_nwo)
     case "$forge" in

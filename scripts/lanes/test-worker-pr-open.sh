@@ -102,6 +102,7 @@ case "$* " in
         fi
         ;;
     *"pr create"*)
+        [ -z "${STUB_CREATE_FAIL:-}" ] || { echo "stub: create refused" >&2; exit 1; }
         if [ -n "${STUB_CREATE_STDERR:-}" ]; then
             echo "$STUB_CREATE_STDERR" >&2
         fi
@@ -638,6 +639,13 @@ size_branch feat/himmel-3031-lines800 1 800
 err_s4=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s4=$?
 assert_eq "800 lines: opens (rc=0)" "0" "$rc_s4"
 not_contains "800 lines: no SIZE- line" "$err_s4" "SIZE-"
+
+echo "TEST: a PR create that fails leaves no real row"
+git -C "$REPO" checkout -q feat/himmel-3031-files45
+: > "$ARGV_LOG"; : > "$NOTE_LOG"
+STUB_CREATE_FAIL=1 run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null 2>&1; rc_s13=$?
+assert_eq "failed create: the open fails (rc=1)" "1" "$rc_s13"
+assert_eq "failed create: no real row was written" "0" "$(note_calls)"
 
 echo "TEST: a real-row write that fails warns and never fails the open"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP_ROOT/size-note-fail.sh"; chmod +x "$TMP_ROOT/size-note-fail.sh"
