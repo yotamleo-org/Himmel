@@ -176,6 +176,65 @@ assert "tool-written verdict lines do not self-trigger the screen" "clean" "$(pr
 assert "a payload in a fake findings line is still scanned" "caught" "$(printf '%s\n' "$res" | sed -n 2p)"
 assert "a payload in a fake verdict line is still scanned" "caught" "$(printf '%s\n' "$res" | sed -n 3p)"
 
+cat > "$tmp/editor.py" <<'PY'
+import fcntl, os, sys
+d, clip = sys.argv[1], sys.argv[2]
+fd = os.open(d, os.O_RDONLY)
+fcntl.flock(fd, fcntl.LOCK_EX)
+with open(clip, "a", encoding="utf-8") as f:
+    f.write("EDIT-KEPT\n")
+PY
+cat > "$tmp/race.py" <<'PY'
+import importlib.util, os, subprocess, sys, fcntl, time
+tool, root, mode = sys.argv[1], sys.argv[2], sys.argv[3]
+spec = importlib.util.spec_from_file_location("h", tool)
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+from pathlib import Path
+editor = os.path.join(root, "editor.py")
+fm_extra = "harvest_flag: injection-suspect\n" if mode != "reflag" else "enrichment_status: ok\nneeds_thread: true\n"
+clip = Path(root) / "race" / "Clippings" / f"{mode}.md"
+clip.parent.mkdir(parents=True, exist_ok=True)
+clip.write_text(f"---\ntitle: x\n{fm_extra}---\nA plain body.\n", encoding="utf-8")
+procs = []
+real = m.insert_frontmatter_pairs
+def racing(*a, **k):
+    if mode != "none":
+        procs.append(subprocess.Popen([sys.executable, "-I", editor, str(clip.parent), str(clip)]))
+        time.sleep(0.6)
+    if mode == "raise":
+        raise RuntimeError("boom")
+    return real(*a, **k)
+m.insert_frontmatter_pairs = racing
+review = lambda text: {"codex": "benign", "guard": "safe", "passages": [], "guard_ids": [], "downgrade": True}
+if mode == "reflag":
+    m.run_reflag_silent_partials(Path(root) / "race", False)
+else:
+    print("RESULT", m.apply_second_opinion(clip, review_fn=review))
+for p in procs:
+    p.wait(timeout=10)
+text = clip.read_text(encoding="utf-8")
+print("EDIT", "kept" if "EDIT-KEPT" in text else "lost")
+print("VERDICT", "written" if "harvest_codex_verdict: benign" in text else "absent")
+print("REFLAG", "written" if "enrichment_status: partial" in text else "absent")
+fd = os.open(clip.parent, os.O_RDONLY)
+try:
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB); print("LOCK free")
+except BlockingIOError:
+    print("LOCK held")
+PY
+race() { "$PY" -I "$tmp/race.py" "$TOOL" "$tmp" "$1" 2>&1; }
+r="$(race edit)"
+assert "mid-write edit: the concurrent edit is kept" "kept" "$(printf '%s\n' "$r" | sed -n 's/^EDIT //p')"
+assert "mid-write edit: the second-opinion verdicts still land" "written" "$(printf '%s\n' "$r" | sed -n 's/^VERDICT //p')"
+r="$(race none)"
+assert "no concurrent edit: the verdict pairs are written as before" "written" "$(printf '%s\n' "$r" | sed -n 's/^VERDICT //p')"
+r="$(race raise)"
+case "$r" in *"second opinion failed (RuntimeError)"*) ok "the except path is taken" ;; *) bad "the except path is taken" "$r" ;; esac
+assert "the except path releases the clip lock" "free" "$(printf '%s\n' "$r" | sed -n 's/^LOCK //p')"
+r="$(race reflag)"
+assert "reflag backfill: a mid-write edit is kept" "kept" "$(printf '%s\n' "$r" | sed -n 's/^EDIT //p')"
+assert "reflag backfill: the partial marks still land" "written" "$(printf '%s\n' "$r" | sed -n 's/^REFLAG //p')"
+
 echo "---"
 echo "harvest-second-opinion: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

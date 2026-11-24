@@ -53,11 +53,14 @@ Cross-platform paths via pathlib. Windows / Git Bash / macOS / Linux all work.
 Batch tooling. Triage stage stays LLM-driven via /triage-clips.
 """
 import argparse
+import contextlib
+import fcntl
 import itertools
 import os
 import re
 import socket
 import sys
+import time
 from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode, unquote, quote
@@ -690,6 +693,31 @@ def url_gate(canonical: str, rules) -> str | None:
     if hit is None or _rule_match(rules.allow, canonical) is not None:
         return None
     return f"URL matched .harvest-deny pattern {hit}"
+
+
+CLIP_LOCK_WAIT = 30.0
+
+
+@contextlib.contextmanager
+def _clip_lock(path: Path, wait: float = CLIP_LOCK_WAIT):
+    """Exclusive flock on the clip's directory (the lock triage-mark-processed.py
+    holds), taken around a re-read check plus the write that follows it so an edit
+    from a locking writer cannot land between the two. Bounded wait: raises
+    TimeoutError after `wait` seconds. Closing the fd releases it on every exit."""
+    fd = os.open(path.parent, os.O_RDONLY)
+    try:
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"clip lock busy for {wait:.0f}s: {path.name}")
+                time.sleep(0.05)
+        yield
+    finally:
+        os.close(fd)
 
 
 def _revert(path: Path, original: str) -> None:
@@ -1869,16 +1897,17 @@ def apply_second_opinion(path: Path, review_fn=None) -> tuple:
         summary = f"codex={res['codex']} guard={res['guard']}"
         if res["passages"]:
             summary += " passages=" + " | ".join(res["passages"])
-        if path.read_text(encoding="utf-8") != text:
-            return False, "clip changed during the review; nothing written, flag kept"
-        if not res["guard_ids"]:
-            fm_raw = re.sub(r"^harvest_guard_findings:.*\n?", "", fm_raw, flags=re.MULTILINE)
-        new_fm = insert_frontmatter_pairs(fm_raw, pairs)
-        path.write_text(f"---\n{new_fm}\n---\n{body}", encoding="utf-8", newline="\n")
-        _dfm, _draw, disk_body, disk_ok = parse_frontmatter(path.read_text(encoding="utf-8"))
-        if not disk_ok or disk_body != body:
-            path.write_text(text, encoding="utf-8", newline="\n")
-            return False, "second opinion write altered body; reverted, flag kept"
+        with _clip_lock(path):
+            if path.read_text(encoding="utf-8") != text:
+                return False, "clip changed during the review; nothing written, flag kept"
+            if not res["guard_ids"]:
+                fm_raw = re.sub(r"^harvest_guard_findings:.*\n?", "", fm_raw, flags=re.MULTILINE)
+            new_fm = insert_frontmatter_pairs(fm_raw, pairs)
+            path.write_text(f"---\n{new_fm}\n---\n{body}", encoding="utf-8", newline="\n")
+            _dfm, _draw, disk_body, disk_ok = parse_frontmatter(path.read_text(encoding="utf-8"))
+            if not disk_ok or disk_body != body:
+                path.write_text(text, encoding="utf-8", newline="\n")
+                return False, "second opinion write altered body; reverted, flag kept"
         return bool(res["downgrade"]), summary
     except Exception as e:
         return False, f"second opinion failed ({type(e).__name__}); flag kept"
@@ -2046,7 +2075,12 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
         # here would otherwise propagate uncaught through main()'s loop and
         # abort the whole batch after the credit was already burned.
         try:
-            path.write_text(new_text, encoding="utf-8", newline="\n")
+            with _clip_lock(path):
+                if path.read_text(encoding="utf-8") != text:
+                    return ("~", "partial (thin-body): the clip changed while it was fetched; nothing written (credit spent), re-run to retry", injection_hits)
+                path.write_text(new_text, encoding="utf-8", newline="\n")
+        except TimeoutError as e:
+            return ("~", f"partial (thin-body): {e}; nothing written (credit spent), re-run to retry", injection_hits)
         except Exception as e:
             _revert(path, text)
             return ("x", f"failed (write, credit spent): {e}; reverted", merged_hits)
@@ -2288,17 +2322,30 @@ def run_reflag_silent_partials(vault: Path, dry_run: bool, limit: int = 0) -> in
         if dry_run:
             print(f"PART {relpath} -- silent partial ({reason}) [dry-run]")
             continue
-        if clip.read_bytes() != raw:
+        try:
+            with _clip_lock(clip):
+                changed = clip.read_bytes() != raw
+                if not changed:
+                    clip.write_text(f"---\n{insert_frontmatter_pairs(fm_raw, pairs)}\n---\n{body}", encoding="utf-8", newline="\n")
+                    _dfm, _draw, disk_body, disk_ok = parse_frontmatter(clip.read_text(encoding="utf-8"))
+                    if not disk_ok or disk_body != body:
+                        clip.write_text(text, encoding="utf-8", newline="\n")
+                        changed = None
+        except TimeoutError as e:
+            print(f"SKIP {relpath} -- {e}; left untouched", file=sys.stderr)
+            skipped += 1
+            notes -= 1
+            for r in reasons:
+                counts[r] -= 1
+            continue
+        if changed:
             print(f"SKIP {relpath} -- changed since it was read; left untouched", file=sys.stderr)
             skipped += 1
             notes -= 1
             for r in reasons:
                 counts[r] -= 1
             continue
-        clip.write_text(f"---\n{insert_frontmatter_pairs(fm_raw, pairs)}\n---\n{body}", encoding="utf-8", newline="\n")
-        _dfm, _draw, disk_body, disk_ok = parse_frontmatter(clip.read_text(encoding="utf-8"))
-        if not disk_ok or disk_body != body:
-            clip.write_text(text, encoding="utf-8", newline="\n")
+        if changed is None:
             print(f"FAIL {relpath} -- failed (G-3): reflag write altered body; reverted", file=sys.stderr)
             failed += 1
             continue
