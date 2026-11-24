@@ -12,6 +12,8 @@
 # in between exits 4 and nothing is written. It then appends the dropped text, byte for byte, to
 # <doc dir>/specs/history/chief-live-state-<doc stem>.md under `# Live state pruned by queue-prune.sh from <stem> at
 # <UTC minute>`, and replaces the doc by a temp file and rename, keeping its mode.
+# The re-read, the compare, the history append and the replace run under the doc lock every handover-doc writer
+# shares (worker-doc-lock.sh), so a Results bullet or a workers: render that waits on it lands after the replace.
 # Seam (tests): QUEUE_PRUNE_PRE_APPLY_HOOK, a shell command run between the report and the re-read, with the doc
 # path in QUEUE_PRUNE_DOC.
 #
@@ -50,7 +52,7 @@ fi
 
 export QP_DOC="$doc" QP_APPLY="$apply" QP_DROP="$dropf" QP_OPC="$HERE/orphan-pr-check.sh"
 IFS= read -r -d '' py <<'PY'
-import os, re, subprocess, sys, time
+import fcntl, hashlib, os, re, stat, subprocess, sys, time
 
 def rd(path):
     with open(path, 'rb') as f:
@@ -59,10 +61,25 @@ def rd(path):
 def out(text, stream=None):
     (stream or sys.stdout).buffer.write(text.encode('utf-8', 'surrogateescape'))
 
+def head_pieces(head):
+    depth, pieces = 0, []
+    for s in head.split('|'):
+        bad = depth != 0
+        for ch in s:
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                if depth == 0:
+                    bad = True
+                else:
+                    depth -= 1
+        pieces.append((s, bad or depth != 0))
+    return pieces
+
 def drop_segments(value, dead):
     t = value.find('||')
     head, tail = (value[:t], value[t:]) if t >= 0 else (value, '')
-    kept = [s for s in head.split('|') if s not in dead]
+    kept = [s for s, bad in head_pieces(head) if bad or s not in dead]
     res = '|'.join(kept).strip(' \t')
     if tail:
         res = (res + ' ' if res else '') + tail
@@ -120,7 +137,7 @@ def plan(text, dead, pool_keys):
     prefix, value = m.group(1), m.group(2)
     t = value.find('||')
     head = value[:t] if t >= 0 else value
-    gone_segs = [s for s in head.split('|') if s in dead]
+    gone_segs = [s for s, bad in head_pieces(head) if not bad and s in dead]
     lines[qi] = prefix + drop_segments(value, dead)
     gone_pools, drop_idx = [], set()
     for i in pools:
@@ -176,6 +193,23 @@ hook = os.environ.get('QUEUE_PRUNE_PRE_APPLY_HOOK')
 if hook:
     subprocess.run(['bash', '-c', hook], env=dict(os.environ, QUEUE_PRUNE_DOC=doc), stdin=subprocess.DEVNULL)
 
+def lock_doc(path):
+    lock_dir = os.path.join(os.environ.get('TMPDIR') or '/tmp', 'himmel-inbox-doc-%d' % os.getuid())
+    os.makedirs(lock_dir, mode=0o700, exist_ok=True)
+    st = os.lstat(lock_dir)
+    if stat.S_ISLNK(st.st_mode) or st.st_uid != os.getuid():
+        raise OSError('cannot secure the doc lock directory %s' % lock_dir)
+    os.chmod(lock_dir, 0o700)
+    key = hashlib.sha256(os.path.realpath(path).encode('utf-8', 'surrogateescape')).hexdigest()
+    fd = os.open(os.path.join(lock_dir, key + '.lock'), os.O_WRONLY | os.O_CREAT, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    return fd
+
+try:
+    lock_fd = lock_doc(doc)
+except OSError as e:
+    print('queue-prune: cannot take the doc lock: %s; nothing changed' % e, file=sys.stderr)
+    sys.exit(1)
 before = rd(doc)
 rc, now, _ = opc_run(['--stale-report', '--input-only'])
 if rc != 0:

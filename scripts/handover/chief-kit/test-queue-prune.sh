@@ -157,6 +157,23 @@ bash "$OPC" --stale-report --doc "$DOC" > "$WORK/report12.txt" 2>/dev/null
 got="$(printf '%s\n' "$Q12" | bash "$QP" --drop-segments "$WORK/report12.txt" 2>/dev/null)"
 check "10777 P12 the four flagged segments go and the two live ones stay in order" "4:#4402 HELD by F2 | #4403 HELD by x" "$(grep -c '^DEAD-QUEUE' "$WORK/report12.txt"):$got"
 
+printf '%s\n' ' b) #4401 HELD by F1' > "$WORK/drop-amb.txt"
+check "10777 P9.amb a listed text that sits in a split parenthesis is kept by --drop-segments" "x (a | b) #4401 HELD by F1" \
+    "$(printf '%s\n' 'x (a | b) #4401 HELD by F1' | bash "$QP" --drop-segments "$WORK/drop-amb.txt" 2>/dev/null)"
+
+mkdoc "$DEADQ| $LIVEQ || tail text" "$DEADP" "$LIVEP"
+rm -f "$WORK/held" "$WORK/release"
+( . "$HERE/worker-doc-lock.sh"; doc_lock "$DOC" test && { : > "$WORK/held"; while [ ! -e "$WORK/release" ]; do sleep 0.05; done; } ) &
+hp=$!
+i=0; while [ ! -e "$WORK/held" ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i+1)); done
+check "10777 P13 the test holds the shared doc lock before --apply starts" "yes" "$([ -e "$WORK/held" ] && echo yes || echo no)"
+bash "$QP" --doc "$DOC" --apply >/dev/null 2>&1 &
+qp=$!
+sleep 0.5
+check "10777 P13 --apply waits while another writer holds the doc lock" "alive:1" "$(kill -0 "$qp" 2>/dev/null && echo alive):$(grep -cF "$DEADQ" "$DOC")"
+: > "$WORK/release"; wait "$hp"; wait "$qp"
+check "10777 P13 --apply writes once the lock is released" "0:1" "$(grep -cF "$DEADQ" "$DOC"):$(grep -cxF "$DEADQ" "$HIST")"
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-queue-prune.sh"
     exit 0
