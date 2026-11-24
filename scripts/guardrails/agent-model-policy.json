@@ -9,12 +9,17 @@
   "semantics": {
     "blocked_model_patterns": "case-insensitive (input is lowercased) regexes, tested against the Agent call's `model`. A match is denied unless the prompt has an acceptable ESCALATION line. Remove an entry to unblock that model; an empty list blocks nothing.",
     "warn_model_patterns": "case-insensitive regexes tested against the `model` of any Agent dispatch whose subagent_type is not a judge (untyped, general-purpose or a named helper agent). A match WARNS (additionalContext, exit 0, never a deny) unless the prompt has a `TIER: <reason>` line that passes the same min_reason_chars / placeholder_reasons test as ESCALATION (chief Opus helpers cost $41-eq/day). A policy without the key warns on nothing.",
+    "default_sonnet_agent_types": "subagent_type values (lowercased; the empty string is an untyped dispatch) whose helpers default to Sonnet 5.5. A dispatch of such a type whose `model` matches warn_model_patterns is DENIED, not warned, unless the prompt has a usable `TIER: <reason>` or `ESCALATION: <reason>` line. Named agents not listed here (ticket-auditor, page-reviewer, brief-drafter, edit-runner) keep the warn. A policy without the key denies nothing on this rule.",
     "min_reason_chars": "an ESCALATION reason shorter than this (after trimming) is treated as no reason.",
     "placeholder_reasons": "reasons rejected outright. The reason is lowercased, every run of non-alphanumerics becomes one space, then compared, so `N/A.` matches `n a`.",
     "not_covered": "a judge dispatch (old ids console-judge*) whose model is not opus stays denied by the hook itself (its frontmatter tier, not a model name); the same ESCALATION rule applies."
   },
   "blocked_model_patterns": [
     "^(claude-)?fable([^a-z0-9]|$)"
+  ],
+  "default_sonnet_agent_types": [
+    "",
+    "general-purpose"
   ],
   "warn_model_patterns": [
     "^(claude-)?opus(-[0-9][0-9a-z.-]*)?(\\[[^\\]]*\\])?$"
