@@ -324,7 +324,7 @@ R="${HIMMEL_REPO:-}"; [ -f "$R/scripts/lib/initiative-workers.sh" ] || R="$(git 
 ```
 
 It printing nothing means no checkout on this machine: skip the page and the
-seals, and say so with the return. send-file refuses that page, so nothing slips
+seals, and say so with the return. `send-file --sign` refuses that page, so nothing slips
 through. Otherwise `<himmel>` below is the path it printed. Ask whether the
 build is core with this one literal command, the build's paths comma-separated:
 
@@ -469,7 +469,7 @@ read change only to answer an open blocking finding, and only the files round 3
 sealed: round 4 checks exactly that diff. When round 3 of either kind left no
 blocking finding, they are not edited at all: use the signing route above, and the
 minors go to the build. Stages 3 and 4 still run on a frozen spec, because
-send-file refuses a page with no plan critic file, or one neither `PLAN CLEAN` nor
+`send-file --sign` refuses a page with no plan critic file, or one neither `PLAN CLEAN` nor
 at its own round 3 in the ledger. The plan alone may still be fixed while its
 critic is under the cap. send-file lists the findings in a `FINDINGS` return and
 every open operator-critical finding. Whatever else wants an edit it cannot have,
