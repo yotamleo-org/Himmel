@@ -944,7 +944,8 @@ stop
 echo "== 10912: a held file the daemon never wrote launches nothing =="
 setup preflight-forged
 start
-wait_for "$Q/daemon.log" "start pid="
+printf 'probe\n' > "$Q/p.req"
+wait_for "$Q/daemon.log" "REFUSED malformed"
 printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=$CH recommend=go > "$D/f.req.prep"
 printf 'go=ABCDEF\nsha=%s\nrsha=%s\nname=HIMMEL-1-N1-sweep-pr1\n' "$(sha256sum "$BRIEF" | cut -d' ' -f1)" "$(sha256sum "$D/f.req.prep" | cut -d' ' -f1)" > "$D/f.req.held.prep"
 mv "$D/f.req.prep" "$Q/f.req.pending"
