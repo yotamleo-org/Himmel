@@ -566,7 +566,7 @@ not_contains "34g2 the effort line does not claim WORKER_SESSION_EFFORT won" "$o
 contains "34h the launch states the effective effort and its source" "$out34e" "headed-arm-worker: effort=high source=WORKER_SESSION_EFFORT"
 contains "34h an explicit value is reported as its own source" "$out34f" "headed-arm-worker: effort=xhigh source=CLAUDE_CODE_EFFORT_LEVEL"
 contains "34h a registry value is reported as the lane default" "$out34a" "headed-arm-worker: effort=medium source=lanes.json"
-check "34h the effort line is the first line of the launch output" "$(printf '%s\n' "$out34e" | head -1)" "headed-arm-worker: effort=high source=WORKER_SESSION_EFFORT"
+check "34h the effort line is the first line of the launch output" "$(printf '%s\n' "$out34e" | grep -v 'chief check skipped' | head -1)" "headed-arm-worker: effort=high source=WORKER_SESSION_EFFORT"
 
 # 34i. A full native launch with WORKER_SESSION_EFFORT=high puts high into the armed process env.
 d34i="$tmp/c34i"; mk_launch_stubs "$d34i" "PROJ-9999-worker-34i"; mkdir -p "$tmp/repo34i"
@@ -1674,6 +1674,121 @@ check "41f relay: a benign answer starting with 'ready to go' is refused (conser
 check "41e consult-preface.md exists" "$([ -f "$HERE/../../../docs/handover/consult-preface.md" ] && echo yes || echo no)" "yes"
 check "41e worker-preface documents the CONSULT request" "$(grep -c 'CONSULT' "$HERE/../../../docs/handover/worker-preface.md" | tr -d '[:space:]' | awk '{print ($1>0)}')" "1"
 
+
+BX42="HIMMEL-x-2026-11-24BX-chief"; BY42="HIMMEL-x-2026-11-24BY-chief"
+mk42() {
+  local clause
+  if [ "${4:-}" = wrapped ]; then clause="your chief is
+> **\`$2\`**"; else clause="your chief is **\`$2\`**"; fi
+  # shellcheck disable=SC2016  # the backticks are literal brief text
+  printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n\n> Your RETASK token is `%s`; %s (the only session you accept). %s wrote it.\n\n> **RETASK:** your nonce is `%s`. x\n\n## Results (newest at the bottom)\n' "$repo4783/.claude/worktrees/feat+worker-39" "$3" "$clause" "$2" "$3" > "$1"
+}
+dry42() {
+  local doc="$1"; shift
+  rc42=0
+  out42="$(bash "$SCRIPT" --dry-run --no-profile "$@" PROJ-42-worker "$doc" /tmp/nosig 99999999999 "$tmp/c42.log" claude-sonnet-5 2>&1)" || rc42=$?
+}
+d42="$tmp/c42"; mkdir -p "$d42"
+mk42 "$d42/bx.md" "$BX42" "BX-N1-0011aabb"; cp "$d42/bx.md" "$d42/bx.orig"
+dry42 "$d42/bx.md" --chief "$BY42"
+check "42a (I1) a brief naming BX launched by BY exits 2 on --dry-run" "$rc42" "2"
+contains "42a ... naming both chiefs" "$out42" "names chief $BX42, the launcher is $BY42"
+not_contains "42a ... and prints no would-exec line" "$out42" "would exec:"
+d42a="$d42/stubs-a"; mk_launch_stubs "$d42a" "PROJ-42-real"; mkdir -p "$tmp/repo42"
+rc=0; some_doc="$d42/bx.md" RUN_WORKER_ARGS="--no-profile --chief $BY42" run_worker "$d42a" "$tmp/repo42" "PROJ-42-real" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+check "42a a REAL launch of it is refused (rc 2)" "$rc" "2"
+contains "42a ... with a LAUNCH-REFUSED log line" "$(cat "$d42a/log" 2>/dev/null)" "LAUNCH-REFUSED PROJ-42-real"
+contains "42a ... that carries the mismatch" "$(cat "$d42a/log" 2>/dev/null)" "names chief $BX42, the launcher is $BY42"
+
+d42b="$d42/stubs-b"; mk_launch_stubs "$d42b" "PROJ-42-rw"
+cp "$d42/bx.orig" "$d42/rw.md"; chmod 640 "$d42/rw.md"
+rc=0; rw42out="$(some_doc="$d42/rw.md" RUN_WORKER_ARGS="--no-profile --chief $BY42 --rewrite-chief" run_worker "$d42b" "$tmp/repo42" "PROJ-42-rw" "claude-sonnet-5" 2>/dev/null)" || rc=$?
+wait_record "$d42b" || true
+check "42b (I2) --rewrite-chief launches (rc 0)" "$rc" "0"
+contains "42b ... the doc now names BY" "$(cat "$d42/rw.md")" "your chief is **\`$BY42\`**"
+check "42b ... the first clause no longer names BX" "$(grep -c "your chief is \*\*\`$BX42\`" "$d42/rw.md")" "0"
+# shellcheck disable=SC2016  # the backticks are literal brief text
+rw_nonce42="$(sed -n 's/^> \*\*RETASK:\*\* your nonce is `\([^`]*\)`.*/\1/p' "$d42/rw.md" | head -1)"
+check "42b ... the nonce is BY-N1- plus 8 hex" "$(printf '%s' "$rw_nonce42" | grep -Ec '^BY-N1-[0-9a-f]{8}$')" "1"
+check "42b ... and is not the old tail" "$([ "$rw_nonce42" = "BY-N1-0011aabb" ] && echo same || echo new)" "new"
+check "42b ... the token paragraph carries the same new nonce" "$(grep -c "RETASK token is \`$rw_nonce42\`" "$d42/rw.md")" "1"
+check "42b ... the mode is unchanged (640)" "$(find "$d42/rw.md" -prune -perm 640 | wc -l | tr -d ' ')" "1"
+contains "42b ... stdout has the rewrote line" "$rw42out" "rewrote chief $BX42 to $BY42; new RETASK nonce $rw_nonce42"
+contains "42b ... and says to record it" "$rw42out" "record it"
+
+mk42 "$d42/by.md" "$BY42" "BY-N1-0011aabb"; cp "$d42/by.md" "$d42/by.orig"
+dry42 "$d42/by.md" --chief "$BY42"
+check "42c (I3) a BY brief under BY arms (rc 0)" "$rc42" "0"
+check "42c ... the doc is byte-unchanged" "$(cmp -s "$d42/by.md" "$d42/by.orig" && echo same || echo changed)" "same"
+not_contains "42c ... no 'chief check' line" "$out42" "chief check"
+not_contains "42c ... no 'rewrote' line" "$out42" "rewrote"
+not_contains "42c ... no 'refusing launch' line" "$out42" "refusing launch"
+dry42 "$d42/by.md" --chief "$BY42" --rewrite-chief
+check "42c ... --rewrite-chief on a matching brief changes nothing" "$(cmp -s "$d42/by.md" "$d42/by.orig" && echo same || echo changed)" "same"
+not_contains "42c ... and prints no rewrote line" "$out42" "rewrote"
+
+printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n\n## Results (newest at the bottom)\n' "$repo4783/.claude/worktrees/feat+worker-39" > "$d42/nochief.md"
+dry42 "$d42/nochief.md" --chief "$BY42"
+check "42d a brief with no chief clause arms (rc 0)" "$rc42" "0"
+contains "42d ... with the skip note" "$out42" "headed-arm-worker: note: chief check skipped (no chief clause)"
+dry42 "$d42/bx.md"
+check "42d no --chief and no HIMMEL_CONSOLE_NAME arms (rc 0)" "$rc42" "0"
+contains "42d ... with the skip note" "$out42" "headed-arm-worker: note: chief check skipped (no explicit launching chief)"
+
+rwref42() {
+  local label="$1" doc="$2" phrase="$3"; shift 3
+  cp "$doc" "$doc.before"
+  dry42 "$doc" "$@" --rewrite-chief
+  check "42e (I4) $label: rc 2" "$rc42" "2"
+  contains "42e $label: the refusal names its own cause" "$out42" "--rewrite-chief: $phrase"
+  check "42e $label: the doc is unchanged" "$(cmp -s "$doc" "$doc.before" && echo same || echo changed)" "same"
+}
+rwref42 "no explicit launcher" "$d42/bx.md" "no explicit launching chief"
+cp "$d42/bx.orig" "$d42/ran.md"; printf -- '- 05:00 LIVE — x\n' >> "$d42/ran.md"
+rwref42 "a doc that has run" "$d42/ran.md" "$d42/ran.md has already run" --chief "$BY42"
+grep -v 'RETASK:' "$d42/bx.orig" > "$d42/noretask.md"
+rwref42 "no RETASK line" "$d42/noretask.md" "$d42/noretask.md has no RETASK line" --chief "$BY42"
+mk42 "$d42/badtail.md" "$BX42" "BX-N1-0011aabbcc"
+rwref42 "a non-8-hex nonce tail" "$d42/badtail.md" "the nonce BX-N1-0011aabbcc in $d42/badtail.md does not end in 8 hex" --chief "$BY42"
+cp "$d42/bx.orig" "$d42/real.md"; ln -sf "$d42/real.md" "$d42/link.md"
+cp "$d42/real.md" "$d42/real.before"
+dry42 "$d42/link.md" --chief "$BY42" --rewrite-chief
+check "42e a symlinked doc: rc 2" "$rc42" "2"
+contains "42e a symlinked doc: the refusal names its own cause" "$out42" "--rewrite-chief: $d42/link.md is a symlink"
+check "42e a symlinked doc: the target is unchanged" "$(cmp -s "$d42/real.md" "$d42/real.before" && echo same || echo changed)" "same"
+
+cp "$d42/bx.orig" "$d42/succ.md"; printf -- '- 05:00 SUCCESSION accepted: %s replaces %s\n' "$BY42" "$BX42" >> "$d42/succ.md"
+dry42 "$d42/succ.md" --chief "$BY42"
+check "42f (I4) a run doc naming BX with an accepted succession to BY arms under BY" "$rc42" "0"
+not_contains "42f ... with no refusal" "$out42" "refusing launch"
+
+for flags42g in "--judge" "--relay" "--consult --profile design-motion" "--profile release-manager --rm-release v1.1.3"; do
+  rc=0
+  read -ra arr42g <<< "$flags42g"
+  out="$(WORKER_SESSION_REPO="$tmp/repo41c" bash "$SCRIPT" --dry-run "${arr42g[@]}" --chief "$BY42" PROJ-42-worker "$d42/bx.md" /tmp/nosig 99999999999 "$tmp/c42.log" claude-sonnet-5 2>&1)" || rc=$?
+  check "42g (I5) $flags42g launch of a BX brief under BY reaches the arm (rc 0)" "$rc" "0"
+  case "$flags42g" in
+    --relay) not_contains "42g $flags42g: no refusal" "$out" "refusing launch" ;;
+    *) contains "42g $flags42g: the would-exec line is printed" "$out" "would exec:" ;;
+  esac
+  not_contains "42g $flags42g: no chief-mismatch line" "$out" "names chief"
+  not_contains "42g $flags42g: no chief-check note" "$out" "chief check"
+done
+
+mk42 "$d42/wrap.md" "$BX42" "BX-N1-0011aabb" wrapped
+dry42 "$d42/wrap.md" --chief "$BY42"
+check "42h (I6) a wrapped chief clause is refused (rc 2)" "$rc42" "2"
+contains "42h ... as unreadable" "$out42" "has a chief clause the launcher cannot read"
+
+cp "$d42/bx.orig" "$d42/dryrw.md"
+dry42 "$d42/dryrw.md" --chief "$BY42" --rewrite-chief
+check "42i --dry-run --rewrite-chief exits 0" "$rc42" "0"
+contains "42i ... prints would rewrite" "$out42" "would rewrite chief $BX42 to $BY42"
+check "42i ... and leaves the doc unchanged" "$(cmp -s "$d42/dryrw.md" "$d42/bx.orig" && echo same || echo changed)" "same"
+mk42 "$d42/letter.md" "$BY42" "BZ-N1-0011aabb"
+dry42 "$d42/letter.md" --chief "$BY42"
+check "42i a matching name with another nonce letter arms (rc 0)" "$rc42" "0"
+contains "42i ... with the letter note" "$out42" "nonce letter BZ differs from the launcher's BY"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
