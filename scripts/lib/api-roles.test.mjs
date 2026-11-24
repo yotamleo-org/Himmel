@@ -323,6 +323,25 @@ test('R3: damage that does not widen walks as on main', () => {
   assert.equal(walk(h).stdout, 'A\n');
 });
 
+const SEMANTIC_UPDATE = join(HERE, '..', 'graphify', 'semantic-update.sh');
+const FILTER = '*[!$_upper,]*|';
+const orderRun = (script, order) => spawnSync('bash', [script, '--name', 'x', '--corpus-root', join(T, 'no-such-corpus'), '--corpus-class', 'c', '--account-order', order],
+  { env: { PATH: process.env.PATH, HOME: T }, encoding: 'utf8' });
+
+test('the account-order filter refuses a character outside [A-Z,] and fails once the filter is mutated away', () => {
+  const source = readFileSync(SEMANTIC_UPDATE, 'utf8');
+  assert.ok(source.includes(FILTER), 'the filter text moved: update this row');
+  const mutated = join(T, 'semantic-update-mutated.sh');
+  writeFileSync(mutated, source.replace(FILTER, ''));
+  for (const bad of ['a', 'A,b', 'A;B', 'A B', 'A1']) {
+    const real = orderRun(SEMANTIC_UPDATE, bad);
+    assert.equal(real.status, 1, bad);
+    assert.match(real.stderr, /--account-order takes one capital letter per entry/, bad);
+    assert.doesNotMatch(orderRun(mutated, bad).stderr, /--account-order takes one capital letter per entry/, `mutated filter still refuses ${bad}`);
+  }
+  assert.doesNotMatch(orderRun(SEMANTIC_UPDATE, 'C,A').stderr, /takes one capital letter/);
+});
+
 test('walk takes one well-formed kind: none, two, or a malformed one is a usage error', () => {
   const f = fixture();
   for (const args of [['walk'], ['walk', 'a', 'b'], ['walk', 'a/b']]) assert.equal(f.cli(args).status, 2);

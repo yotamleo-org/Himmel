@@ -2,7 +2,9 @@
 
 `scripts/api-lane/claude-api.sh` runs one print-mode `claude` call billed to an
 API account (`HIMMEL_API_ACCOUNT=A|B|C|D|auto`; auto only from the himmel repo; any kind, by the role map or the default order) instead of the subscription. It is
-OFF unless the launching shell sets `HIMMEL_API_LANE=on`. This page covers what
+OFF unless the launching shell sets `HIMMEL_API_LANE=on`; the one exception is the routed release judge, which sets it on itself
+(`judgeApiEnv` in `scripts/jira/src/commands/release.ts`) whenever `judge` is mapped in `roles.json`, so mapping `judge` is what turns
+the lane on for it, and only the operator may write that file. This page covers what
 happens when a call on it fails. The launcher's header lists the
 full argument and environment contract.
 
