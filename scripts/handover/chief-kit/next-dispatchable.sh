@@ -2337,7 +2337,7 @@ if os.environ.get('ND_SCOPE_BATCH'):
     else:
         batch_id = time.strftime('%Y%m%dT%H%M', time.gmtime()) + '-' + batch_keys[0]
         try:
-            with open(os.environ['ND_SCOPE_BATCH'], 'x', encoding='utf-8') as bf:  # x: a FILE that appeared since the shell's check is refused, never overwritten
+            with open(os.environ['ND_SCOPE_BATCH'], 'x', encoding='utf-8') as bf:
                 for n, k in enumerate(batch_keys, 1):
                     bf.write(json.dumps({'batch': batch_id, 'key': k, 'rank': n, 'title': issues[k]['title'], 'excerpt': issues[k]['description'][:600]}, ensure_ascii=False) + '\n')
         except OSError as e:
