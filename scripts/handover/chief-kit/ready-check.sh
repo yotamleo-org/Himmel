@@ -370,6 +370,7 @@ while :; do
 done
 
 ONLY7=0
+PR_TITLE_READ=""
 OUTSIDE_MODE=0
 OWNER_MODE=0
 OR_PRS=""
