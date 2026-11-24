@@ -3300,6 +3300,30 @@ check_c39_gtimeout_darwin() {
 # HIMMEL_DOCTOR_QMD_CURL (default curl), HIMMEL_DOCTOR_QMD_VEC_TIMEOUT (seconds,
 # a positive integer -- 0 / non-numeric / empty falls back to 30 with an INFO,
 # since curl -m 0 is "no timeout").
+# A refused connection where qmd is set up is an outage nobody else hears about: raise it
+# through the one cadence alert sender (chief-readable alert log + one Telegram). The sender
+# dedupes per worker+reason until `clear`, so a repeat run stays quiet and the outage ends when
+# C40 sees qmd answer. Alerting never changes the doctor's own verdict.
+_c40_outage_alert() { # <url>
+    bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" fail qmd-daemon "the qmd daemon is not answering" "$HOME/.cache/qmd/mcp.log" \
+        "connection refused on $1 although qmd is set up on this station; every qmd content search fails" \
+        "check the log, then start it: bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh" </dev/null >/dev/null 2>&1 || true  # t13b-ok: alert text naming the existing start script, starts nothing
+}
+_c40_outage_clear() {
+    bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" clear qmd-daemon </dev/null >/dev/null 2>&1 || true
+}
+# qmd is set up on this station: C89's presence test (the HIMMEL_DOCTOR_QMD_BIN seam, else qmd-bin.sh's has_qmd).
+_c40_qmd_set_up() {
+    if [ -n "${HIMMEL_DOCTOR_QMD_BIN:-}" ]; then
+        command -v "$HIMMEL_DOCTOR_QMD_BIN" >/dev/null 2>&1
+    elif [ -f "$REPO_ROOT/scripts/lib/qmd-bin.sh" ]; then
+        # shellcheck disable=SC1090,SC1091
+        ( . "$REPO_ROOT/scripts/lib/qmd-bin.sh" >/dev/null 2>&1; has_qmd )
+    else
+        command -v qmd >/dev/null 2>&1
+    fi
+}
+
 check_c40_qmd_vec() {
     local url="${HIMMEL_DOCTOR_QMD_URL:-http://localhost:8181/mcp}"
     local curl_bin="${HIMMEL_DOCTOR_QMD_CURL:-curl}"
@@ -3359,6 +3383,7 @@ check_c40_qmd_vec() {
             # fix; a token problem is not cured by restarting the server.
             case "$qd_detail" in
             *"bearer token"*) remedy="set QMD_HTTP_AUTH_FILE to the qmd server's token file (default ~/.config/qmd/http-token, mode 600); see marketplace/plugins/qmd/README.md" ;;
+            *"is not answering on"*) _c40_outage_alert "$url" ;;
             esac
             emit WARN C40-qmd-vec "qmd daemon degraded (himmelctl status qmd-daemon): ${qd_detail:-no detail} -- vec search is not being served" "$remedy"
             return
@@ -3386,7 +3411,15 @@ check_c40_qmd_vec() {
     # body from a live listener (HTTP 204, a connection closed without a reply)
     # is a fault, not an absent optional service.
     if [ -z "$init" ] && [ "$init_rc" -eq 7 ]; then
-        emit INFO C40-qmd-vec "no qmd server answering on $url -- vector-health check skipped (qmd is optional)"
+        if [ "${qd_actual:-}" = starting ]; then
+            emit INFO C40-qmd-vec "the qmd daemon is starting on $url (himmelctl status qmd-daemon: ${qd_detail:-starting}) -- vector-health check skipped, not a fault yet"
+        elif _c40_qmd_set_up; then
+            emit WARN C40-qmd-vec "the qmd daemon is not answering on $url (connection refused) although qmd is set up on this station -- every qmd content search fails until it is back" \
+                "check ~/.cache/qmd/mcp.log, then start it: bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh"  # t13b-ok: doctor remedy text naming the existing script, starts nothing
+            _c40_outage_alert "$url"
+        else
+            emit INFO C40-qmd-vec "no qmd server answering on $url -- vector-health check skipped (qmd is optional)"
+        fi
         return
     fi
     # a 401/403 is a qmd daemon that wants its token, not a foreign
@@ -3501,6 +3534,7 @@ check_c40_qmd_vec() {
         ;;
     esac
     emit OK C40-qmd-vec "qmd vector search served a probe query in ${elapsed}s ($url)"
+    _c40_outage_clear
     local pending
     pending="$(printf '%s' "$instr" | sed -n 's/.*Note: \([0-9][0-9]*\) documents need embedding.*/\1/p' | head -1)"
     if [ -n "$pending" ]; then
