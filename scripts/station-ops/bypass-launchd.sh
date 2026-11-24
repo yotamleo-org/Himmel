@@ -43,7 +43,7 @@ LAUNCHER="${BYPASSD_LAUNCHER:-$KIT/headed-arm-worker.sh}"
 INBOUND="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/inbound.jsonl"
 ACCESS="${TELEGRAM_ACCESS_PATH:-$HOME/.claude/channels/telegram/access.json}"
 POLL="${BYPASSD_POLL:-5}"
-TTL=21600
+TTL="${BYPASSD_TTL:-21600}"
 
 die() { echo "bypass-launchd: $*" >&2; exit 2; }
 BUCKET='' until='' CHECK='' REQ_FILE=''
@@ -274,9 +274,16 @@ take_lock; lock_rc=$?
 trap release_lock EXIT
 rm -f "$Q/.hold"
 log "start pid=$$ until=$until head=${HEAD_SHA:0:12} self=${L_SELF:0:12} registry=${L_REG:0:12} tiers=${L_TIERS:0:12} grantable=$grantable"
+for held in "$Q"/*.req.held; do
+    [ -e "$held" ] || continue
+    req=${held%.held}; rm -f "$held"
+    [ ! -f "$req.pending" ] || mv "$req.pending" "$req"
+    log "REQUEUE ${req##*/} (a held go does not survive a restart)"
+done
 
+US=$'\037' HELD=()
 after_go() {
-    local req=$1 code=$2 sha=$3 rsha=$4 fleet=() lp lrc
+    local req=$1 code=$2 sha=$3 rsha=$4 asked=$5 fleet=() lp lrc
     if ! live || [ -L "$brief" ] || [ "$(sha256_of "$brief")" != "$sha" ]; then
         mv "$req.pending" "$req.refused"; log "REFUSED after go $base (stop, expiry, or brief changed since the ask)"
         send bypass-result "bypass launch $base: refused after your go, the brief changed or the queue stopped. Nothing ran."; return 0
@@ -287,7 +294,7 @@ after_go() {
         hold; return 3
     fi
     if ! preflight; then
-        printf 'go=%s\nsha=%s\nrsha=%s\nname=%s\n' "$code" "$sha" "$rsha" "$base" >"$req.held"
+        HELD+=("$req$US$code$US$sha$US$rsha$US$base$US$asked"); : >"$req.held"
         log "REFUSED-PREFLIGHT after go $base $PF_REASON (go kept, touch $req.pending to retry)"
         tell_chief "$chief" "REFUSED-PREFLIGHT after go $base $PF_REASON — the operator's go is kept, nothing ran; fix the cause, then touch $req.pending to retry"
         return 0
@@ -321,9 +328,22 @@ while :; do
     for held in "$Q"/*.req.held; do
         [ -e "$held" ] || continue
         req=${held%.held}
-        [ -f "$req.pending" ] || { rm -f "$held"; continue; }
+        hi=-1 hn=${#HELD[@]} hj=0
+        while [ "$hj" -lt "$hn" ]; do
+            [ "${HELD[$hj]%%"$US"*}" != "$req" ] || { hi=$hj; break; }
+            hj=$((hj + 1))
+        done
+        if [ "$hi" -lt 0 ]; then
+            rm -f "$held"; [ ! -f "$req.pending" ] || mv "$req.pending" "$req.refused"
+            log "REFUSED held go the daemon did not hold ${req##*/}"; continue
+        fi
+        [ -f "$req.pending" ] || { rm -f "$held"; HELD[hi]=''; continue; }
         [ "$req.pending" -nt "$held" ] || continue
-        code=$(field go "$held"); sha=$(field sha "$held"); rsha=$(field rsha "$held"); name=$(field name "$held"); rm -f "$held"
+        IFS=$US read -r _ code sha rsha name asked <<<"${HELD[$hi]}"; HELD[hi]=''; rm -f "$held"
+        if [ $(( $(date +%s) - asked )) -ge "$TTL" ]; then
+            mv "$req.pending" "$req.expired"; log "REFUSED after go $name (the go expired)"
+            send bypass-result "bypass launch $name: your go expired after 6 h. Nothing ran."; continue
+        fi
         snap="$Q/.retry-snapshot"
         if ! cat "$req.pending" >"$snap" 2>/dev/null || [ "$(sha256_of "$snap")" != "$rsha" ]; then
             rm -f "$snap"; mv "$req.pending" "$req.refused"; log "REFUSED after go $name (the request changed since the ask)"
@@ -332,14 +352,14 @@ while :; do
         check_request "$snap" || { rm -f "$snap"; mv "$req.pending" "$req.refused"; log "REFUSED $REASON $req"; continue; }
         rm -f "$snap"
         log "RETRY $base: the request was touched since its go was held"
-        after_go "$req" "$code" "$sha" "$rsha" || [ $? -ne 3 ] || break
+        after_go "$req" "$code" "$sha" "$rsha" "$asked" || [ $? -ne 3 ] || break
     done
     [ -z "$HOLDING" ] || continue
     for req in "$Q"/*.req; do
         [ -e "$req" ] || continue
         if stale_now; then hold; break; fi
         snap="$Q/.ask-snapshot"
-        cat "$req" >"$snap" 2>/dev/null || { rm -f "$snap"; refuse "$req" "request unreadable"; continue; }
+        cat "$req" >"$snap" 2>/dev/null || { rm -f "$snap"; refuse "$req" "request unreadable"; continue; } # read-sink-ok: $req is a name from the glob of the daemon's own queue directory
         rsha=$(sha256_of "$snap")
         check_request "$snap" || { rm -f "$snap"; refuse "$req" "$REASON"; continue; }
         rm -f "$snap"
@@ -371,7 +391,7 @@ Expires 6 h · brief sha ${sha:0:12}"
         if [ "$verdict" != go ]; then
             mv "$req.pending" "$req.$verdict"; log "$verdict $base"; send bypass-result "bypass launch $base: $verdict, nothing ran."; continue
         fi
-        after_go "$req" "$code" "$sha" "$rsha" || [ $? -ne 3 ] || break
+        after_go "$req" "$code" "$sha" "$rsha" "$t0" || [ $? -ne 3 ] || break
     done
     sleep "$POLL"
 done

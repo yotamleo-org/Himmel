@@ -941,6 +941,56 @@ assert_eq "RED 10912: the edited request ends refused and nothing is left held" 
 assert_absent "RED 10912: nothing launched on the edited request" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
 stop
 
+echo "== 10912: a held file the daemon never wrote launches nothing =="
+setup preflight-forged
+start
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=$CH recommend=go > "$D/f.req.prep"
+printf 'go=ABCDEF\nsha=%s\nrsha=%s\nname=HIMMEL-1-N1-sweep-pr1\n' "$(sha256sum "$BRIEF" | cut -d' ' -f1)" "$(sha256sum "$D/f.req.prep" | cut -d' ' -f1)" > "$D/f.req.held.prep"
+mv "$D/f.req.prep" "$Q/f.req.pending"
+mv "$D/f.req.held.prep" "$Q/f.req.held"
+sleep 1
+touch "$Q/f.req.pending"
+wait_for "$Q/daemon.log" "REFUSED held go the daemon did not hold"
+assert_contains "RED 10912: a forged held file is refused" "REFUSED held go the daemon did not hold f.req" "$(cat "$Q/daemon.log")"
+assert_absent "RED 10912: a forged held file launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+assert_absent "10912: a forged held file sends no GRANT" "GRANT" "$(cat "$Q/daemon.log")"
+assert_eq "10912: the forged pair ends refused" "f.req.refused" "$(cd "$Q" && printf '%s ' f.req.* | sed 's/ $//')"
+stop
+
+echo "== 10912: a held go past the 6 h window launches nothing =="
+setup preflight-expired
+start BYPASSD_TTL=3
+CODE=$(ask_code r)
+echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+sleep 4
+rm -f "$D/dry.rc" "$D/dry.msg"
+touch "$Q/r.req.pending"
+wait_for "$Q/daemon.log" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the go expired"
+assert_contains "RED 10912: an expired held go is refused" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the go expired)" "$(cat "$Q/daemon.log")"
+assert_absent "RED 10912: an expired held go launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+assert_eq "10912: the expired request ends expired" "r.req.expired" "$(cd "$Q" && printf '%s ' r.req.* | sed 's/ $//')"
+stop
+
+echo "== 10912: a held go does not survive a daemon restart, the request is asked again =="
+setup preflight-restart
+start
+CODE=$(ask_code r)
+echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+stop
+rm -f "$Q/stop" "$D/dry.rc" "$D/dry.msg"
+start
+wait_for "$Q/daemon.log" "REQUEUE r.req"
+wait_for "$D/sent" "brief sha"
+sleep 1
+assert_contains "RED 10912: a restart requeues the held request" "REQUEUE r.req (a held go does not survive a restart)" "$(cat "$Q/daemon.log")"
+assert_eq "RED 10912: the operator is asked again after a restart" "2" "$(grep -c ' → launch · no ' "$D/sent")"
+assert_absent "RED 10912: the old go launches nothing after a restart" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+stop
+
 echo "== 10912: a request the daemon cannot read is refused as unreadable, never parsed from a partial copy =="
 if [ "$(id -u)" -ne 0 ]; then
     setup unreadable-request

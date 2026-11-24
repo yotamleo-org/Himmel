@@ -200,15 +200,25 @@ does, the command waits for the operator.
   the cause and files a new request. After the go, the daemon runs the dry-run
   again, because the fleet can fill while the ask waits. A refusal there does
   not spend the go: the log says `REFUSED-PREFLIGHT after go <brief> ...`, the
-  chief is told, the request stays `<name>.req.pending` with the go code kept
-  in `<name>.req.held`, and no `GRANT` line is written. When the chief has fixed
-  the cause it touches `<name>.req.pending`; the daemon then logs `RETRY`,
-  runs the dry-run again and, if it passes, launches on the same go code
-  without a second ask. The held go is bound to the request as asked: the
-  daemon stores the request file's hash at the ask, and a request edited while
-  its go is held is refused (`REFUSED after go <brief> (the request changed
-  since the ask)`) and never launched. A passing dry-run changes nothing in the ask and the
-  grant, and the request still needs the operator's go code.
+  chief is told, the request stays `<name>.req.pending`, and no `GRANT` line is
+  written. The held go lives only in the daemon's memory, never in a file the
+  requester can write: the daemon keeps the minted code, the brief sha, the
+  request file's hash and the ask time, and leaves an empty marker
+  `<name>.req.held` beside the request. When the chief has fixed the cause it
+  touches `<name>.req.pending`; the daemon then logs `RETRY`, runs the dry-run
+  again and, if it passes, launches on the same go code without a second ask.
+  The marker carries no authority: a `.held` file the daemon did not record in
+  its own memory is refused (`REFUSED held go the daemon did not hold <name>`)
+  and its request ends `.refused`. A held go is bound to what was asked: a
+  request edited while its go is held is refused (`REFUSED after go <brief> (the
+  request changed since the ask)`), a go held past the 6 h window is refused
+  (`REFUSED after go <brief> (the go expired)`, the request ends `.expired`),
+  and a go held while the code on disk moved holds the daemon exactly as an
+  unheld go does. A restart drops every held go: the new daemon moves each
+  held request back to `<name>.req` (`REQUEUE <name> (a held go does not
+  survive a restart)`) and asks the operator again. A passing dry-run changes
+  nothing in the ask and the grant, and the request still needs the operator's
+  go code.
 - **Failures are reported.** A launcher that exits non-zero within the settle
   window logs `LAUNCH-FAILED <brief> rc=<n>`, and the request ends `.failed`.
 - **It is bounded.** `--until <YYYY-MM-DD>` is required and may be at most 7
