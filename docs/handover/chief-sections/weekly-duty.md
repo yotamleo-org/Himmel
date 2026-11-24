@@ -33,3 +33,14 @@ does not replace this.
   detector filed or commented on a ticket, so it stays stale after a clean run
   that found no recurring class; that is not a failure. A stale `cadence` after a
   clean run is a bug in the run, not a reason to repeat it.
+
+## Daily drift duty
+
+Once a day the tick reads the nightly drift issue 4470 and prints `drift=<n>` on the TICK
+line: its Needs-update rows plus the held rows whose 72 hour buffer has cleared (`?` when the
+read failed, never a wake). A positive count prints one `WAKE drift-actionable <n>` per UTC day.
+On that wake, from the primary checkout, write the worker brief for exactly those rows with
+`python3 -I scripts/handover/chief-kit/drift-brief.py brief --body-file <issue body> --holds scripts/upstreams/pin-holds.json --out <bucket> --worktree <new worktree> --chief <you> --worker <label> --date <today>`
+(the issue body is `gh issue view 4470 --json body --jq .body` run in the primary checkout), run
+`bash scripts/handover/chief-kit/brief-lint.sh` on it, and dispatch it as one small worker.
+No row, no wake, no brief.
