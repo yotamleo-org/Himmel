@@ -2052,9 +2052,9 @@ print("Chain order (focus-chains.json): " + "; ".join(n for n in names if n))' "
 cap_lines() {
     awk -v max="$1" -v w="$2" -v ptr="$3" '
         NF == 0 { next }
-        n < max { print (length($0) > w ? substr($0, 1, w) " …" : $0) }
+        n < max { if (length($0) > w) { cut++; print substr($0, 1, w) " …" } else print $0 }
         { n++ }
-        END { if (n > max) print "… +" (n - max) " more — " ptr }'
+        END { if (n > max) print "… +" (n - max) " more — " ptr; else if (cut) print "… " cut " line(s) cut — " ptr }'
 }
 
 report_handoff_placeholders() {
@@ -3183,6 +3183,7 @@ cmd_next() {
     rm -f "$dg_tpl"
     dg_total="$(wc -c < "$dg_new" | tr -d ' ')"
     [ "$dg_total" -le "$dg_budget" ] || err "warning: digest over budget after the pointer pass: $dg_total bytes (limit $dg_budget); the fixed fields and paths alone exceed it"
+    [ ! -d "$predecessor_digest" ] || { rm -f "$dg_new"; err "the digest destination $predecessor_digest is a directory"; exit 1; }
     if ln "$dg_new" "$predecessor_digest" 2>/dev/null; then
         rm -f "$dg_new"
         echo "digest: $predecessor_digest"

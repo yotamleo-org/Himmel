@@ -55,18 +55,23 @@ chief() { ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PRO
 chief new --bucket dgsrc >/dev/null 2>&1
 docA="$root/tester/dgsrc/DEMO-nextleg-${today}A-chief.md"
 printf '%s\n' '# worker' '## Results' '- 10:00 READY 5 aaaa GREEN' '- 10:05 WRAPPED — done' > "$root/tester/dgsrc/DEMO-1-N9-wrapped.md"
-printf '{"legs":[{"label":"N9","doc":"%s"}]}\n' "$root/tester/dgsrc/DEMO-1-N9-wrapped.md" > "${docA%.md}.fleet.json"
+printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — working' > "$root/tester/dgsrc/DEMO-0-N1-live.md"
+printf '{"legs":[{"label":"N9","doc":"%s"},{"label":"N1","doc":"%s"}]}\n' "$root/tester/dgsrc/DEMO-1-N9-wrapped.md" "$root/tester/dgsrc/DEMO-0-N1-live.md" > "${docA%.md}.fleet.json"
 bash "$fixture_repo/scripts/handover/chief-kit/owe.sh" add --bucket "$root/tester/dgsrc" --chief ZZ --kind proof --text 'run the live succession proof' >/dev/null
 mkdir -p "$root/tester/dgsrc/specs/designs"
 printf 'design\n' > "$root/tester/dgsrc/specs/designs/DEMO-951-digest-design.md"
 longname="$(printf 'z%.0s' $(seq 1 400))"
 printf '[{"name":"alpha-chain"},{"name":"%s"}]\n' "$longname" > "$root/tester/dgsrc/focus-chains.json"
+LIVE='workers: `N1:AP-N1-aaaa1111:lock-one:111`' awk '
+    /^workers:/ && !d { print ENVIRON["LIVE"]; d = 1; next }
+    { print }' "$docA" > "$docA.new" && mv "$docA.new" "$docA"
 docB="$root/tester/dgdst/DEMO-nextleg-${today}B-chief.md"
 handoff="${docA%.md}-HANDOFF.md"
 digest="${docA%.md}-DIGEST.md"
 rc=0
 out="$(chief next --bucket dgdst --doc "$docA" 2>&1)" || rc=$?
 check "0 next succeeds on the fixture" "$rc" "0"
+marker_txt="$(cat "$(printf '%s\n' "$out" | sed -n 's/^relay-on-live: //p' | head -n 1)" 2>/dev/null)"
 
 named="$(sed -n 's/^> predecessor.s learnings in \*\*\([^*]*\)\*\*.*$/\1/p' "$docB" | head -n 1)"
 named_path="$root/tester/dgsrc/${named##*/}"
@@ -102,7 +107,19 @@ check "2 the template lists fields to check" "$([ -n "$labels" ] && echo yes)" "
 check "2 the digest names the successor doc to start from" "$([ "$(grep -cF -- "$(basename "$docB")" "$digest")" -ge 1 ] && echo yes)" "yes"
 check "2 the digest carries the head line" "$(grep -c '^\*\*Head:\*\* .' "$digest")" "1"
 check "2 the digest has no unrendered slot" "$(grep -c '{{[A-Z_]*}}' "$digest")" "0"
+check "2 the successor doc keeps the live worker nonce" "$(grep -c 'AP-N1-aaaa1111' "$docB")" "1"
 check "2 the digest carries no worker nonce" "$(grep -c 'AP-N[0-9]*-' "$digest")" "0"
+chief new --bucket dgsrc6 >/dev/null 2>&1
+docA6="$root/tester/dgsrc6/DEMO-nextleg-${today}A-chief.md"
+printf '[{"name":"%s"}]\n' "$(printf 'y%.0s' $(seq 1 4200))" > "$root/tester/dgsrc6/focus-chains.json"
+chief next --bucket dgdst6 --doc "$docA6" >/dev/null 2>&1
+check "2 a chain line cut at the width cap names a pointer" "$(grep -c 'line(s) cut — ' "${docA6%.md}-DIGEST.md")" "1"
+chief new --bucket dgsrc7 >/dev/null 2>&1
+docA7="$root/tester/dgsrc7/DEMO-nextleg-${today}A-chief.md"
+mkdir "${docA7%.md}-DIGEST.md"
+rc7=0
+chief next --bucket dgdst7 --doc "$docA7" >/dev/null 2>&1 || rc7=$?
+check "2 a directory at the digest path refuses the hand-over" "$([ "$rc7" -ne 0 ] && echo yes)" "yes"
 check "2 the digest carries a wrapped worker whose PR is still open" "$(grep -c '^- PR #5 (N9), orphan since .*DEMO-1-N9-wrapped.md' "$digest")" "1"
 check "2 the digest carries the open owed row" "$(grep -c 'run the live succession proof' "$digest")" "1"
 check "2 the digest carries the in-flight design pointer" "$(grep -c '^- specs/designs/DEMO-951-digest-design.md — design, DEMO-951' "$digest")" "1"
@@ -121,8 +138,9 @@ check "2 an existing digest is left unchanged" "$(cat "${docA4%.md}-DIGEST.md")"
 check "2 next says the digest exists" "$(printf '%s\n' "$out4" | grep -c '^digest: .* (exists — left unchanged)$')" "1"
 
 check "3 next arms exactly one relay-on-live marker" "$(printf '%s\n' "$out" | grep -c '^relay-on-live: ')" "1"
-marker="$(printf '%s\n' "$out" | sed -n 's/^relay-on-live: //p' | head -n 1)"
-check "3 the marker names the successor session and doc, two lines" "$(wc -l < "$marker" 2>/dev/null | tr -d ' ')" "2"
+check "3 the marker names the successor session and doc, two lines" "$(printf '%s\n' "$marker_txt" | wc -l | tr -d ' ')" "2"
+check "3 marker line 1 is the successor session" "$(printf '%s\n' "$marker_txt" | sed -n 1p)" "DEMO-nextleg-${today}B-chief"
+check "3 marker line 2 is the successor doc" "$(printf '%s\n' "$marker_txt" | sed -n 2p)" "$docB"
 ss="$REPO_REAL/docs/handover/chief-sections/successor-start.md"
 check "3 successor-start.md states the single relay once" "$(grep -c 'sends exactly one relay at hand-over' "$ss")" "1"
 check "3 successor-start.md has the successor read the digest" "$(grep -c 'DIGEST' "$ss" | awk '{ print ($1 >= 1) ? "yes" : "no" }')" "yes"
