@@ -18,8 +18,9 @@
 # path in QUEUE_PRUNE_DOC.
 #
 # --drop-segments FILE: each head segment (the `queue:` value before its first `||`, split on `|`) that byte-equals
-# a listed segment is removed; the kept ones are rejoined with `|`, leading and trailing blanks trimmed, the tail
-# appended after one blank (alone when the head is empty), and the value reads `none` only when both are empty.
+# a listed segment is removed, except a piece that sits in an unbalanced parenthesis (the report never flags one);
+# the kept ones are rejoined with `|`, leading and trailing blanks trimmed, the tail appended after one blank
+# (alone when the head is empty), and the value reads `none` only when both are empty.
 # FILE is one segment per line, or a whole --stale-report output, of which only the `DEAD-QUEUE<TAB>` lines name a
 # segment.
 #
