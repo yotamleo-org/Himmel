@@ -3148,7 +3148,7 @@ cmd_next() {
             dg_wrapped="$(wrapped_open_prs_section "$predecessor_doc" | sed '/^## /d' | cap_lines 8 200 "the HANDOFF $predecessor_handoff_ref ## Wrapped with open PR")"
             dg_owed="$(owed_section "$predecessor_dir" | sed '/^## /d' | cap_lines 8 200 "the HANDOFF $predecessor_handoff_ref ## Owed")"
             dg_inflight="$(inflight_section "$predecessor_dir" | sed '/^## /d' | cap_lines 6 200 "the HANDOFF $predecessor_handoff_ref ## Start, plan and design in flight")"
-            dg_chain="$(chain_order_line "$predecessor_dir" | cap_lines 2 300 "the HANDOFF $predecessor_handoff_ref")"
+            dg_chain="$(chain_order_line "$predecessor_dir" | cap_lines 2 4000 "the HANDOFF $predecessor_handoff_ref")"
         else
             dg_wrapped="over the digest budget — READ the HANDOFF $predecessor_handoff_ref ## Wrapped with open PR before your first dispatch"
             dg_owed="over the digest budget — READ the HANDOFF $predecessor_handoff_ref ## Owed before your first dispatch"
@@ -3184,9 +3184,9 @@ cmd_next() {
     dg_total="$(wc -c < "$predecessor_digest.new" | tr -d ' ')"
     [ "$dg_total" -le "$dg_budget" ] || err "warning: digest over budget after the pointer pass: $dg_total bytes (limit $dg_budget); the fixed fields and paths alone exceed it"
     set -C
-    if : 2>/dev/null > "$predecessor_digest"; then
+    if : 2>/dev/null > "$predecessor_digest" || { set +C; [ -f "$predecessor_digest" ] && [ ! -s "$predecessor_digest" ]; }; then
         set +C
-        mv -f "$predecessor_digest.new" "$predecessor_digest" || { err "could not write the digest $predecessor_digest"; exit 1; }
+        mv -f "$predecessor_digest.new" "$predecessor_digest" || { rm -f "$predecessor_digest"; err "could not write the digest $predecessor_digest"; exit 1; }
         echo "digest: $predecessor_digest"
     else
         set +C
