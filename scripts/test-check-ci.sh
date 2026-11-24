@@ -661,6 +661,7 @@ if [ "$cmd" = "pr" ] && [ "${2:-}" = "view" ]; then
             exit 0 ;;
         *"baseRefName"*)
             if [ "${GH_STUB_RULES:-}" = baseratelimit ]; then echo "gh: API rate limit exceeded for user ID 1. (HTTP 403)" >&2; exit 1; fi
+            echo "hint: if you need to wait for this pull request, use gh event listen --timeout 30m" >&2
             echo "main"; exit 0 ;;
         # GitHub's own merge verdict, in check-ci's parsed shape
         # "<head> <state>". GH_STUB_MERGE_STATE is a comma list consumed one
