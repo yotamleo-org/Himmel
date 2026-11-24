@@ -22,7 +22,8 @@
 # segment.
 #
 # stderr, on success, is one line: `queue-prune: dead-queue=<n> done-pool=<n>[:<KEY>,...][ history=<path>]`.
-# Exit: 0 done or nothing to do; 1 no doc or no Live state `queue:` line; 2 usage; 3 --stale-report unavailable;
+# Exit: 0 done or nothing to do; 1 no doc, no Live state `queue:` line, or the doc could not be replaced; 2 usage;
+# 3 --stale-report unavailable;
 # 4 the doc changed under it; 5 the history write failed.
 # PLATFORM GUARD: the chief kit is Linux-only.
 set -u
@@ -175,6 +176,7 @@ hook = os.environ.get('QUEUE_PRUNE_PRE_APPLY_HOOK')
 if hook:
     subprocess.run(['bash', '-c', hook], env=dict(os.environ, QUEUE_PRUNE_DOC=doc), stdin=subprocess.DEVNULL)
 
+before = rd(doc)
 rc, now, _ = opc_run(['--stale-report', '--input-only'])
 if rc != 0:
     print('queue-prune: could not re-read the doc (exit %d); nothing changed' % rc, file=sys.stderr)
@@ -183,6 +185,9 @@ if now.strip() != judged.strip() or not judged:
     print('queue-prune: the doc changed under the report; nothing written. Re-run.', file=sys.stderr)
     sys.exit(4)
 text = rd(doc)
+if text != before:
+    print('queue-prune: the doc changed while it was being checked; nothing written. Re-run.', file=sys.stderr)
+    sys.exit(4)
 new_text, new_q, gone_segs, gone_pools = plan(text, dead, pool_keys)
 
 stem = os.path.basename(doc)
