@@ -467,6 +467,14 @@ contains 'ACTION ZERO step 1: Read of the decisions file in the same batch' "$st
 contains 'ACTION ZERO step 1: one batch' "$step1flat" 'one batch'
 contains 'ACTION ZERO step 1: action-zero.sh runs in the foreground' "$step1flat" 'foreground'
 absent 'ACTION ZERO step 1: action-zero.sh is never run_in_background' "$step1flat" 'run_in_background: true'
+batch_bullets="$(printf '%s\n' "$step1" | grep -E '^   - ' || true)"
+absent 'ACTION ZERO step 1: no batch bullet carries action-zero.sh' "$batch_bullets" 'action-zero[.]sh'
+contains 'ACTION ZERO step 1: batch bullets still hold ListAgents' "$batch_bullets" 'ListAgents'
+contains 'ACTION ZERO step 1: action-zero.sh runs after the batch' "$step1flat" 'after the batch'
+contains 'ACTION ZERO step 1: action-zero.sh runs alone in its turn' "$step1flat" 'alone in its turn'
+az_text="$(printf '%s\n' "$step1" | awk '/^   - / { f = 0 } /^[^ ]/ && NR > 1 { f = 0 } /action-zero[.]sh/ { f = 1 } f')"
+contains 'ACTION ZERO step 1: the action-zero.sh call stays foreground' "$(flat "$az_text")" 'foreground'
+contains 'ACTION ZERO step 1: the action-zero.sh call keeps --acquire --render-workers' "$(flat "$az_text")" '--acquire --render-workers'
 
 # --- 10. the operator types /chief, on Telegram and in Claude Code ------------
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
