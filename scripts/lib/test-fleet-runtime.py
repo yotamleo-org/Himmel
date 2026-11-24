@@ -2211,6 +2211,47 @@ exit 1''')
                                       session=False, ok=True)
         self.assertEqual(list(self.anchor_attempts()), ['n1'])
 
+    def wrapped_sibling_rows(self, count):
+        self.active()
+        shim = self.bucket / 'shim'
+        shim.mkdir()
+        slow = shim / 'python3'
+        slow.write_text('#!/bin/bash\ncase " $* " in *" disposition "*) sleep 0.4 ;; esac\nexec %s "$@"\n' % shlex.quote(sys.executable))
+        slow.chmod(0o755)
+        self.env = dict(self.env, TICKET_STATUS_QUEUE_LOCK=self.stub('queue-lock-free', 'exit 0'),
+                        PATH=str(shim) + os.pathsep + self.env['PATH'])
+        new = self.bucket / 'HIMMEL-300-N1-multi.md'
+        new.write_text('# ' + ' '.join('HIMMEL-%d' % (400 + n) for n in range(14)) + ' multi-key worker\n')
+        self.call('add', self.m, new, '--lane', 'native', '--pending')
+        rows = []
+        for n in range(count):
+            old = self.bucket / ('HIMMEL-%d-N%d-old.md' % (400 + n % 14, 100 + n))
+            old.write_text('# worker\n## Results\n\n- 09:00 LIVE\n- 10:00 WRAPPED — merged\n')
+            rows.append(dict(doc=str(old), label='N%d' % n, lane='native', added='2026-11-01T00:00:00Z'))
+        half = count // 2
+        for name, part in (('older-a', rows[:half]), ('older-b', rows[half:])):
+            (self.bucket / (name + '.fleet.json')).write_text(json.dumps({'schema': 1, 'workers': part}))
+        return new
+
+    def test_begin_is_admitted_beside_twenty_wrapped_rows_in_two_siblings_sharing_keys_with_a_14_key_brief(self):
+        new = self.wrapped_sibling_rows(20)
+        started = time.monotonic()
+        self.rt('begin', aid='multi', doc=new)
+        self.assertEqual(list(self.anchor_attempts()), ['multi'], 'took %.1f s' % (time.monotonic() - started))
+
+    def test_a_dead_unwrapped_row_still_refuses_among_wrapped_rows_and_the_refusal_names_its_file_and_why(self):
+        new = self.wrapped_sibling_rows(20)
+        dead = self.bucket / 'HIMMEL-405-N999-dead.md'
+        dead.write_text('# worker\n')
+        listed = json.loads((self.bucket / 'older-b.fleet.json').read_text())
+        listed['workers'].append(dict(doc=str(dead), label='N999', lane='native', added='2026-11-01T00:00:00Z'))
+        (self.bucket / 'older-b.fleet.json').write_text(json.dumps(listed))
+        p = self.rt('begin', aid='multi', doc=new, ok=False)
+        self.assertIn('unknown legacy family ownership: %s row %s' % (self.bucket / 'older-b.fleet.json', dead.resolve()), p.stderr)
+        self.assertIn('not wrapped', p.stderr)
+        self.assertNotIn('budget', p.stderr)
+        self.assertEqual(self.anchor_attempts(), {})
+
     def test_begin_is_refused_beside_an_unwrapped_row_whose_lock_is_held(self):
         self.refused_beside_old_sibling('workers', session=False, lock='held')
 

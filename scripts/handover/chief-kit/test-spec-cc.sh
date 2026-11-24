@@ -73,6 +73,13 @@ check "(e) no operator chat id exits 1" "1" "$rc"
 contains "(e) and names the chat id" "no operator chat id" "$out"
 check "(e) nothing was queued or sent" "$before:1" "$(sent):$(queued_lines)"
 
+mkdir -p "$WORK/specs/designs"
+UNSEALED="$WORK/specs/designs/HIMMEL-9-unsealed.html"
+printf '<!doctype html><html><head><title>spec</title></head><body>\n<p>spec</p>\n</body></html>\n' > "$UNSEALED"
+before_sent="$(sent)"; before_queued="$(queued_lines)"
+bash "$SUT" O-v1-0007 K-1 "$SPEC" "$SHA" "$UNSEALED" >/dev/null 2>&1; rc=$?
+check "(g) an unsealed spec page is a signing send: it is refused, not sent marked DRAFT, and the text line goes" "0:$((before_sent + 1)):$before_queued" "$rc:$(sent):$(queued_lines)"
+
 bash "$SUT" O-v1-0006 K-1 "$SPEC" >/dev/null 2>&1; rc=$?
 check "(f) too few arguments exit 2" "2" "$rc"
 

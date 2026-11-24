@@ -1729,6 +1729,8 @@ process_member() {
                 # carries actual elapsed time, not just the configured budget.
                 _pm_exhausted_detail="fallback-chain exhausted"
                 [ -n "$_fb_last_duration" ] && _pm_exhausted_detail="$_pm_exhausted_detail (last attempt ${_fb_last_duration}s)"
+                _pm_exhausted_snip="$(_pm_redact_detail "$(_pm_err_line "$_pm_err_file")")"
+                [ -n "$_pm_exhausted_snip" ] && _pm_exhausted_detail="$_pm_exhausted_detail: $_pm_exhausted_snip"
                 if [ "$_pm_is_timeout" -eq 1 ]; then
                     echo "panel-availability: $_pm_slug unavailable (timeout ${_pm_timeout}s) reason=$_pm_reason detail=$_pm_exhausted_detail" >&2
                 else

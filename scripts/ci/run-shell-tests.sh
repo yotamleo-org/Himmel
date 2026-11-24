@@ -389,6 +389,10 @@ _suite_timeout_for() {
       printf '2700' ;;
     scripts/handover/chief-kit/test-chief-wait.sh|scripts/handover/chief-kit/test-chief-wait-[b-e].sh|*/scripts/handover/chief-kit/test-chief-wait.sh|*/scripts/handover/chief-kit/test-chief-wait-[b-e].sh)
       printf '1200' ;;
+    scripts/handover/chief-kit/test-chief-wait-pool.sh|*/scripts/handover/chief-kit/test-chief-wait-pool.sh)
+      printf '1250' ;;
+    scripts/handover/chief-kit/test-auto-go.sh|*/scripts/handover/chief-kit/test-auto-go.sh)
+      printf '1200' ;;
     scripts/eval/review-panel/test-review-panel.sh|*/scripts/eval/review-panel/test-review-panel.sh)
       # 60 real case repos: 291s local, killed at 2 x 600s on Linux CI (PR 4477
       # shard 12). 1800s is above 6x local (the loaded-budget rule).

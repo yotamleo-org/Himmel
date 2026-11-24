@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pinnedSha, pinnedRead, boundedDirectoryNames, selectDecisionNames, reviewedSpecHashes, returnSha, canonicalDirectoryNames, returnDirectories, checkLatestReturns, declaredTickets, keyOf, CRITIC_FILE, criticRounds, findingIds, parseResidualLines, type Kind, memberLedgerState, optionalReturnAgreement, parseManifest, validateCappedFoldProofShape, validateCappedProofShape, type AnyCappedProof, type CappedFoldProof, type CappedLedgerProof, type FilePin, type MemberAbsencePin } from './pinned.js';
@@ -117,6 +117,48 @@ function readVerdicts(paths: string[], verb: string, need: { required: VerdictKi
     residuals: files.reduce((n, x) => n + x.residuals, 0),
     files,
   };
+}
+
+const SERIES = /^\.critic-(spec|plan)-r(\d+)\.md$/;
+
+function checkVerdictSeries(spec: string, files: VerdictFile[]): void {
+  const verb = 'release operator spec';
+  const realSpec = realpathSync(spec);
+  const base = basename(realSpec);
+  const specDir = dirname(realSpec);
+  const seriesOf = (name: string) => {
+    const m = name.startsWith(`${base}.`) ? SERIES.exec(name.slice(base.length)) : null;
+    return m ? { kind: m[1] as 'spec' | 'plan', round: Number(m[2]) } : null;
+  };
+  const parts = realSpec.split('/');
+  const planDirs = new Set<string>();
+  parts.forEach((d, i) => { if (d === 'specs') for (const s of ['plan', 'plans']) planDirs.add([...parts.slice(0, i + 1), s].join('/')); });
+  const places = (kind: 'spec' | 'plan') => (kind === 'spec' ? [specDir] : [specDir, ...[...planDirs].filter((d) => d !== specDir)]);
+  const checked = files.map((file) => {
+    const real = realpathSync(file.path);
+    const kind = file.kind.toLowerCase() as 'spec' | 'plan';
+    const own = seriesOf(basename(real));
+    if (own?.kind !== kind || !places(kind).includes(dirname(real))) {
+      throw new Error(`${verb}: ${real} is not beside the spec as ${base}.critic-${kind}-r${own ? own.round : '<n>'}.md`);
+    }
+    return { real, kind, round: own.round };
+  });
+  for (const { real, kind, round } of checked) {
+    for (const dir of places(kind)) {
+      let names: string[];
+      try { names = readdirSync(dir).sort(); } catch (e) {
+        const code = (e as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT' || code === 'ENOTDIR') continue;
+        throw new Error(`${verb}: ${dir}: cannot read the folder (${(e as Error).message})`);
+      }
+      for (const name of names) {
+        const s = seriesOf(name);
+        if (s && s.kind === kind && s.round >= round && join(dir, name) !== real) {
+          throw new Error(`${verb}: ${real} is round ${round}, but ${join(dir, name)} is round ${s.round}; sign with the latest round`);
+        }
+      }
+    }
+  }
 }
 
 type GivenReturn = { path: string; text: string };
@@ -368,6 +410,7 @@ export function signSpec(ctx: Ctx, o: {
   if (!existsSync(plan)) throw new Error(`release operator spec: plan not found: ${plan}`);
   const { verdicts, residuals, files } = readVerdicts(o.verdicts, 'release operator spec', { required: ['SPEC', 'PLAN'], allowed: [] },
     'release operator spec: give exactly two --verdict files, the spec critic\'s and the plan critic\'s');
+  checkVerdictSeries(spec, files);
   const bytes = readFileSync(spec);
   const specSha = createHash('sha256').update(bytes).digest('hex');
   const planSha = o.plan ? fileSha(plan) : null;

@@ -534,20 +534,23 @@ if [ "$HAS_PROMPT" != 1 ]; then
   [ ! -t 0 ] || { NO_FB="there is no prompt to keep"; refuse "the prompt must be an argument or piped on stdin; stdin is a terminal"; }
   PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/claude-api-prompt.XXXXXX")" || { PROMPT_FILE=""; refuse "no scratch file"; }
   chmod 600 "$PROMPT_FILE"
+  # shellcheck disable=SC2094 # the write and read handles on one file are the point
+  exec 4>"$PROMPT_FILE" 5<"$PROMPT_FILE" 3<"$PROMPT_FILE" || { NO_FB="the prompt could not be kept"; refuse "could not open the stdin prompt scratch file"; }
   # a background job gets /dev/null for stdin, so the read names fd 0; a half-read stdin cannot be replayed whole
   # at most 8 MiB plus one byte: a longer stream is refused below, so a runaway producer cannot fill TMPDIR
-  head -c 8388609 <&0 >"$PROMPT_FILE" &
+  head -c 8388609 <&0 >&4 3<&- 4<&- 5<&- &
   READ_PID=$!
   ( trap 'kill $(jobs -p) 2>/dev/null; exit 0' TERM
-    sleep "$CALL_TIMEOUT_S" & wait $!; kill "$READ_PID" 2>/dev/null ) 3<&- &
+    sleep "$CALL_TIMEOUT_S" & wait $!; kill "$READ_PID" 2>/dev/null ) 3<&- 4<&- 5<&- &
   READ_WD=$!
   trap 'kill "$READ_PID" "$READ_WD" 2>/dev/null; exit 143' TERM INT HUP
   wait "$READ_PID" || { kill "$READ_WD" 2>/dev/null; NO_FB="the prompt could not be kept"
     refuse "could not buffer the stdin prompt (read failed or stdin stayed open for ${CALL_TIMEOUT_S}s)"; }
   kill "$READ_WD" 2>/dev/null
   trap - TERM INT HUP
-  [ "$(wc -c <"$PROMPT_FILE")" -le 8388608 ] || { NO_FB="the prompt could not be kept"; refuse "the stdin prompt is over 8 MiB"; }
-  exec 3<"$PROMPT_FILE" || { NO_FB="the prompt could not be kept"; refuse "could not reopen the stdin prompt"; }
+  exec 4>&-
+  [ "$(wc -c <&5)" -le 8388608 ] || { NO_FB="the prompt could not be kept"; refuse "the stdin prompt is over 8 MiB"; }
+  exec 5<&-
 else
   # a closed stdin becomes /dev/null: the call then starts as it would have with an empty stdin (the idiom of scripts/lib/qmd-bounded.sh)
   { exec 3<&0; } 2>/dev/null || exec 3</dev/null

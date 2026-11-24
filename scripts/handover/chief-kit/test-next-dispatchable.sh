@@ -4770,8 +4770,8 @@ test_full_units_rejection_matrix() {
     fu_fixture; printf '## Ticket coverage\n- a\tb: owed -> chief by 2026-11-30\n' > "$P_BODIES/7001"
     p_list
     has "POS1 $id fresh: a TAB unit is accepted by owner and date" "$P_OUT" "OWED $FU_KEY: merged PR #7001 owes chief by 2026-11-30"
-    [ "$(python3 -I -c 'import json,sys; a=json.load(open(sys.argv[1]))[sys.argv[2]]["ans"]; print("\t" in a["owed_lines"][0]["text"], "\t" in a["text"])' "$P/cache.json" "7001:$FU_KEY")" = "True False" ] \
-        && pass "POS1 $id the cached row keeps the raw TAB, the answer text is normalized" || fail "POS1 $id cache: $(cat "$P/cache.json")"
+    [ "$(python3 -I -c 'import json,sys; a=json.load(open(sys.argv[1]))[sys.argv[2]]["ans"]; print("\t" in a["owed_lines"][0]["text"], "\t" in a["text"])' "$P/cache.json" "7001:$FU_KEY")" = "False False" ] \
+        && pass "POS1 $id the cached row and the answer text are both TAB-free" || fail "POS1 $id cache: $(cat "$P/cache.json")"
     : > "$P_GH_LOG"; p_list
     has "POS1 $id cache: the TAB entry is a hit" "$P_OUT" "OWED $FU_KEY: merged PR #7001 owes chief by 2026-11-30"
     [ "$(fu_views 7001)" = 0 ] && pass "POS1 $id cache: no body read" || fail "POS1 $id cache views=$(fu_views 7001)"

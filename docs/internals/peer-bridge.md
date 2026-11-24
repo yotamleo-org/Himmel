@@ -469,7 +469,7 @@ the dir holds `.claude`, `CLAUDE.md`, `CLAUDE.local.md` or `.mcp.json`.
 
 The desk starts with no MCP server, plugin, skill or user hook. `desk.sh` passes
 `--strict-mcp-config` with an empty `--mcp-config`, `--setting-sources project`
-(so the user settings never load), `--tools Bash`, `--permission-mode default`
+(so the user settings never load), `--tools Bash`, `--permission-mode auto`
 and `--disable-slash-commands`. It writes `S/desk/<peer>.mcp.json` and
 `S/desk/<peer>.settings.json` (mode 0600, beside the desk dir, never in it) at
 each launch; the settings file wires only the taint gate and the read-secrets
@@ -486,8 +486,15 @@ line with no control byte:
   or `--kind answer --reply-to N --text '...'` replies.
 
 Every other tool is denied. The read shape is auto-approved so the gate's 5 s
-stamp cannot go stale while a prompt waits. The send shape is not, so you approve
-every peer-bound message. `read.ts` refuses unless `PEER_DESK` names the peer,
+stamp cannot go stale while a prompt waits. The desk runs `--permission-mode auto`
+(never `bypassPermissions`), so the auto-mode classifier judges each send and no
+per-send prompt stalls it; the gate, the egress check and your Telegram tap on the
+draft still decide what leaves. A spool file the poller refuses comes back as
+`refused: malformed: <why>`, where `<why>` is a fixed phrase naming the first bad
+field (never a value). The poller records the code version it loaded in
+`poller.pid`; when that differs from the checkout, `send.ts` warns that the poller
+is stale and must be restarted (a poller older than the stamp has none, so it
+warns too). `read.ts` refuses unless `PEER_DESK` names the peer,
 the gate stamped this session within 5 s, and it has first written the session's
 taint file. `read.ts <peer> --raw` is the human-terminal path to the unreduced
 inbox: it needs a TTY and no `CLAUDECODE`.

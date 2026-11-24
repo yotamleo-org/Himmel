@@ -84,7 +84,7 @@ sealspec() { seal1 "$SPEC.critic-spec-r$1.md" "$SPEC" "$QS_MD"; seal1 "$SPEC.cri
 sealplan() { seal1 "$SPEC.critic-plan-r$1.md" "$PLAN" "$QP_PLAN"; seal1 "$SPEC.critic-plan-r$1.md" "$SPEC" "$QP_SPEC"; }
 send() {
   seedfix
-  SOUT="$(BRIDGE_ROOT="$BR" bun "$ROUTE" send-file 1 "$1" 2>&1)"; SRC=$?
+  SOUT="$(BRIDGE_ROOT="$BR" bun "$ROUTE" send-file --sign 1 "$1" 2>&1)"; SRC=$?
   QUEUED=""; [ "$SRC" -eq 0 ] && QUEUED="${SOUT##*queued }"
 }
 accepted() { send "$2"; [ "$SRC" -eq 0 ] && pass "$1" || fail "$1" "$SOUT"; }

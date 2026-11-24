@@ -112,7 +112,7 @@ scripts/guardrails/test-graphify-fence.sh	53
 scripts/guardrails/test-hook-probe.sh	10
 scripts/guardrails/test-lesson-write-fence.sh	191
 scripts/handover/chief-kit/test-append-results.sh	52
-scripts/handover/chief-kit/test-auto-go.sh	219
+scripts/handover/chief-kit/test-auto-go.sh	546
 scripts/handover/chief-kit/test-board.sh	90
 scripts/handover/chief-kit/test-brief-lint.sh	52
 scripts/handover/chief-kit/test-chief-kit-e2e.sh	45

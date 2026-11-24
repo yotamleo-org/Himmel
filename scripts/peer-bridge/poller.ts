@@ -612,7 +612,7 @@ export class Poller {
       for (const peer of Object.keys(this.cfg.peers)) {
         if (!fs.existsSync(join(this.dir(peer), "spool"))) continue;
         for (const d of drainSpool(this.dir(peer))) {
-          if ("malformed" in d) { this.log(`malformed spool file ${peer}/${d.name}`); writeResult(this.dir(peer), d.name, { ok: false, rule: "malformed" }); continue; }
+          if ("malformed" in d) { this.log(`malformed spool file ${peer}/${d.name}: ${d.why}`); writeResult(this.dir(peer), d.name, { ok: false, rule: "malformed", why: d.why }); continue; }
           await this.applySpool(peer, d.name, d.rec);
         }
       }

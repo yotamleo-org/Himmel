@@ -1382,7 +1382,8 @@ const seedIfNeeded = async (specs: string) => {
   const { roundSeed } = await import("./chief-route");
   await roundSeed(specs).catch(() => {});
 };
-const sendFile = async (r: string, ...args: string[]) => {
+const sendFile = (r: string, ...args: string[]) => readSend(r, ...(args[0] === "--by-request" || args[0] === "--sign" ? args : ["--sign", ...args]));
+const readSend = async (r: string, ...args: string[]) => {
   await seedIfNeeded(join(r, "specs"));
   const p = Bun.spawn(["bun", join(import.meta.dir, "chief-route.ts"), "send-file", ...args], { env: { ...process.env, BRIDGE_ROOT: r }, stdout: "pipe", stderr: "pipe" });
   const err = await new Response(p.stderr).text();
@@ -1640,6 +1641,79 @@ test("send-file refuses a spec under specs/ with no critic file, and one with no
   expect(noPlan.code).not.toBe(0);
   expect(noPlan.err).toContain("critic-plan");
   expect(none.lines.concat(noPlan.lines)).toEqual([]);
+});
+
+const DRAFT_CAPTION = "DRAFT, not for signing";
+const signSend = (r: string, ...args: string[]) => sendFile(r, "--sign", ...args);
+
+test("read send: a plain report under specs/ sends as it is, with no mark and no verdict", async () => {
+  const r = root(); const dir = join(r, "specs", "designs"); mkdirSync(dir, { recursive: true });
+  for (const [name, text] of [["weekly-report.txt", "the report\n"], ["status-report.md", "# Status\n\nplain\n"]]) {
+    const f = join(dir, name); writeFileSync(f, text);
+    const res = await readSend(r, "1", f, "the report you asked for");
+    expect(res.err).toBe("");
+    expect(res.code).toBe(0);
+    expect(res.lines.at(-1)!.caption).toBe("the report you asked for");
+    expect(readFileSync(res.lines.at(-1)!.document_path as string, "utf8")).not.toContain("DRAFT");
+  }
+});
+
+test("read send: an unsealed spec goes marked DRAFT in the caption and on the page, for .md and .html", async () => {
+  const r = root(); const dir = join(r, "specs", "designs"); mkdirSync(dir, { recursive: true });
+  const md = join(dir, "HIMMEL-2-notes.md"); writeFileSync(md, "# Notes\n\nunsealed\n");
+  const html = join(dir, "HIMMEL-2-notes.exec-brief.html"); writeFileSync(html, BRIEF);
+  const a = await readSend(r, "1", md, "to read");
+  expect(a.err).toBe(""); expect(a.code).toBe(0);
+  expect(a.lines[0].caption).toBe(`${DRAFT_CAPTION} - to read`);
+  expect(readFileSync(a.lines[0].document_path as string, "utf8")).toContain(DRAFT_CAPTION);
+  const b = await readSend(r, "1", html);
+  expect(b.err).toBe(""); expect(b.code).toBe(0);
+  expect(b.lines[1].caption).toBe(DRAFT_CAPTION);
+  const sent = readFileSync(b.lines[1].document_path as string, "utf8");
+  expect(sent).toContain(DRAFT_CAPTION);
+  expect(sent).toContain("the executive brief");
+});
+
+test("sign ask: an unsealed spec refuses and queues nothing, and a sealed spec sends with its verdicts", async () => {
+  const r = root(); const dir = join(r, "specs", "designs"); mkdirSync(dir, { recursive: true });
+  const md = join(dir, "HIMMEL-2-notes.md"); writeFileSync(md, "# Notes\n\nunsealed\n");
+  const no = await signSend(r, "1", md);
+  expect(no.code).not.toBe(0);
+  expect(no.err).toContain("has no spec critic file");
+  expect(no.lines).toEqual([]);
+  expect(existsSync(join(r, "outgoing"))).toBe(false);
+  const r2 = root(); const b = bundle(r2);
+  const yes = await signSend(r2, "1", b.spec, "to sign");
+  expect(yes.err).toBe(""); expect(yes.code).toBe(0);
+  expect(yes.lines[0].caption).toBe("SPEC CLEAN r1 | PLAN CLEAN r1 - to sign");
+  expect(readFileSync(yes.lines[0].document_path as string, "utf8")).not.toContain(DRAFT_CAPTION);
+  const read = await readSend(r2, "1", b.spec);
+  expect(read.lines.at(-1)!.caption).toBe("SPEC CLEAN r1 | PLAN CLEAN r1");
+});
+
+test("read send: a spec edited after its clean critic goes marked DRAFT in the caption and on the page, while the sign ask on it refuses", async () => {
+  const r = root(); const b = bundle(r);
+  writeFileSync(b.spec, "# Design\n\nthe spec, edited after the critic\n");
+  const read = await readSend(r, "1", b.spec);
+  expect(read.err).toBe(""); expect(read.code).toBe(0);
+  expect(read.lines[0].caption).toBe(DRAFT_CAPTION);
+  expect(readFileSync(read.lines[0].document_path as string, "utf8")).toContain(DRAFT_CAPTION);
+  const sign = await signSend(r, "1", b.spec);
+  expect(sign.code).not.toBe(0);
+  expect(sign.err).toContain("changed since the spec critic read it");
+  expect(sign.lines.length).toBe(1);
+});
+
+test("read send: a spec whose critic ended in findings goes marked DRAFT; --sign and --by-request together are refused", async () => {
+  const r = root(); const b = bundle(r);
+  critic(b.spec, "spec", 2, "SPEC FINDINGS 1", { text: "# Design\n\nthe spec\n", file: "HIMMEL-1-design.md" });
+  const open = await readSend(r, "1", b.spec);
+  expect(open.err).toBe(""); expect(open.code).toBe(0);
+  expect(open.lines[0].caption).toBe(DRAFT_CAPTION);
+  const both = await sendFile(r, "--sign", "--by-request", "he asked", "1", b.spec);
+  expect(both.code).not.toBe(0);
+  expect(both.err).toContain("--sign and --by-request");
+  expect(both.lines.length).toBe(1);
 });
 
 test("send-file refuses a spec or plan edited after a clean critic read", async () => {
@@ -3400,6 +3474,14 @@ test("a closure return whose regression heading holds its quote inside the paren
   const ok = await overrideOf(t.specs, "P1");
   expect(ok.err).toBe(""); expect(ok.code).toBe(0);
   expect(rowsOf(t.specs, "override")).toMatchObject([{ round_opened: 5, findings: [{ id: "P1", severity: "major", critic: "spec" }] }]);
+});
+
+test("a closure return whose regression heading escapes its quote backticks still classes as regression; a minor finding next to it keeps its class", async () => {
+  const t = await closureTree();
+  const lines = [`- **P1** (major; regression) the fix asks \\\`${QUOTED}\\\` and did not resolve the path`, "- **n1** (minor) a note"];
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", ...lines)).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "P1", severity: "major", regression: true, class: "regression" }, { id: "n1", class: "out-of-closure" }]);
+  expect((await overrideOf(t.specs, "P1")).code).toBe(0);
 });
 
 test("a quote with a semicolon inside the parenthesis, and a reopens heading with a quote, still read as their tags", async () => {

@@ -35,7 +35,7 @@ vm_mode_e2e_guard "$(basename -- "$0")" || { vm_guard_rc=$?; [ "$vm_guard_rc" = 
 HOSTSPEC="${1:-$VM_MODE_HOST}"
 PORT="${2:-$VM_MODE_PORT}"
 IDENT="${3:-$VM_MODE_IDENT}"
-SSH_OPTS="-p $PORT -i $IDENT -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new"
+SSH_OPTS="-p $PORT -i $IDENT -o BatchMode=yes -o ConnectTimeout=10 $(vm_ssh_opts "$PORT" "$HOSTSPEC")"
 REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # Unique per run: two drivers against one guest must not delete each other's artifacts.
 REMOTE_DIR="/tmp/himmel-tarball-vm-$$-$RANDOM"
@@ -47,9 +47,8 @@ ssh_vm() { ssh $SSH_OPTS "$HOSTSPEC" "$@"; }
 echo "==> tarball-install VM acceptance: $HOSTSPEC:$PORT (HEAD of $REPO)"
 
 # 0. connectivity (fail soft with rc 3 -- an unreachable VM is not a code defect).
-if ! ssh_vm 'echo connected' >/dev/null 2>&1; then
-  echo "ERROR: cannot ssh to $HOSTSPEC:$PORT with key $IDENT." >&2
-  echo "  The VM is not reachable by this session -- re-run once it is provisioned." >&2
+if ! PROBE_ERR="$(ssh_vm 'echo connected' 2>&1 >/dev/null)"; then
+  vm_ssh_probe_report "$PROBE_ERR" "$HOSTSPEC" "$PORT" "$IDENT"
   exit 3
 fi
 

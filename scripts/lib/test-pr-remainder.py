@@ -179,7 +179,7 @@ class Remainders(unittest.TestCase):
                 self.assertEqual(got, {'schema': 1, 'answer': {f: a[f] for f in self.FULL}})
                 self.assertEqual(tuple(got['answer']), self.FULL)
         tab = json.loads(self.cli('--full-units', tab_body))['answer']
-        self.assertEqual(tab['owed_lines'][0]['text'], 'a\tb: owed -> chief by 2026-11-20')
+        self.assertEqual(tab['owed_lines'][0]['text'], 'a b: owed -> chief by 2026-11-20')
         self.assertEqual(tab['text'], 'a b: owed -> chief by 2026-11-20')
         self.assertEqual(self.cli(None, self.A), 'owed\tchief\t2026-11-20\t' + self.SIGN + '\n')
         self.assertEqual(self.cli('--units', self.A), 'owed\tchief\t2026-11-20\t' + self.SIGN + '\tnowrite=0\tchief-owed=' + self.SIGN + '\n')
@@ -225,6 +225,23 @@ class Remainders(unittest.TestCase):
         old_code = pr_remainder_units('Remaining: S1 in a VM guest session, no code\n')
         self.assertEqual(names([old_code, handed]), [])
         self.assertEqual(names([pr_remainder_units('## Ticket coverage\n- sign the GO file: owed -> chief by 2026-11-20\n')]), ['go-file'])
+
+    def test_owed_line_tab_keeps_the_four_field_record(self):
+        for who in ('proof', 'chief', 'operator'):
+            with self.subTest(who=who):
+                body = '## Ticket coverage\n- Run\t\tproof against\tthe station: owed -> ' + who + ' by 2026-11-20\n'
+                clean = 'Run proof against the station: owed -> ' + who + ' by 2026-11-20'
+                a = pr_remainder_units(body)
+                self.assertEqual(a['owed_lines'], [{'who': who, 'due': '2026-11-20', 'text': clean, 'ask': 'Run proof against the station'}])
+                self.assertEqual(self.cli('--owed-lines', body), '%s\t2026-11-20\tRun proof against the station\t%s\n' % (who, clean))
+                self.assertEqual(self.cli('--owed-lines', body).count('\t'), 3)
+
+    def test_clean_owed_line_is_unchanged_by_the_normaliser(self):
+        a = pr_remainder_units(self.A)
+        self.assertEqual(a['owed_lines'], self.A_ROWS)
+        self.assertEqual(self.cli('--owed-lines', self.A), 'chief\t2026-11-20\tsign the spec\t' + self.SIGN + '\nproof\t2026-11-18\trun proof with a guest credential\t' + self.PROOF + '\n')
+        self.assertEqual(pr_remainder_units('## Ticket coverage\n- the rest: deferred -> HIMMEL-9\n')['kind'], 'handed-off')
+        self.assertEqual(pr_remainder_units('Remaining: S1 fix code (scripts/x.py)\n')['kind'], 'remaining')
 
     def test_missing_units_is_unknown(self):
         ps = self.staging()

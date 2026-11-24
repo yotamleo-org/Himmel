@@ -1285,6 +1285,101 @@ seed_descendant "$REVHEAD"
 rc=0; out="$(run)" || rc=$?
 check "descendant: an amend-made deferral at the reviewed head counts: exit 0" "$rc" "0"
 
+TS_ROOT="$tmp/ts-handovers"; TS_CACHE="$tmp/ts-cache"
+TS_STEM="HIMMEL-100-N100-thing-2026-11-24"
+TS_DOC="$TS_ROOT/u/himmel/$TS_STEM.md"; TS_LOG="$TS_CACHE/launch-logs/$TS_STEM.log"
+mkdir -p "$TS_ROOT/u/himmel" "$TS_CACHE/launch-logs"
+ts_fixture() {
+    printf '# brief\n\n## Results (newest at the bottom)\n- 10:00 LIVE — started\n' > "$TS_DOC"
+    printf 'headed-arm-worker: profile=worker-impl lane=native model=m role=worker session=%s launched=2026-11-24T10:00:00Z\n' "$TS_STEM" > "$TS_LOG"
+}
+cat > "$tmp/bin/jira-comments-stub" <<'STUB'
+#!/usr/bin/env bash
+if [ "$1" = "comments" ] && [ "${3:-}" = "--json" ]; then
+    [ -z "${STUB_COMMENTS_FAIL:-}" ] || { echo "jira: comments HIMMEL-100 failed: HTTP 500" >&2; exit 1; }
+    printf '%s' "${STUB_COMMENTS:-[]}"
+    exit 0
+fi
+exec "$STUB_JIRA_BASE" "$@"
+STUB
+chmod +x "$tmp/bin/jira-comments-stub"
+ts_run() {
+    rc=0
+    out="$(
+        export HANDOVER_DIR="$TS_ROOT" HIMMELCTL_CACHE_DIR="$TS_CACHE" STUB_JIRA_BASE="$tmp/bin/jira-stub" STUB_COMMENTS="$1" STUB_COMMENTS_FAIL="${TS_FAIL:-}"
+        RUN_JIRA_CMD="$tmp/bin/jira-comments-stub" run
+    )" || rc=$?
+}
+TS_NEW='[{"id":"10001","created":"2026-11-24T12:30:00.000+0100","author":"Yotam","body":"steer: widen the Writes"}]'
+TS_OLD='[{"id":"10002","created":"2026-11-24T10:30:00.000+0100","author":"Yotam","body":"older steer"}]'
+TS_MACHINE='[{"id":"10003","created":"2026-11-24T12:30:00.000+0100","author":"Yotam","body":"WORKER N100 (live)\nPRs: none"},{"id":"10004","created":"2026-11-24T12:31:00.000+0100","author":"Yotam","body":"[release-ruling R-1] RULING audit copy"}]'
+
+reset_stubs; ts_fixture
+ts_run "$TS_NEW"
+check "21: a comment newer than the launch with no TICKET-SEEN line: exit 1" "$rc" "1"
+contains "21: it names the comment id" "$out" "[FAIL] 21."
+contains "21: it quotes the comment" "$out" "steer: widen the Writes"
+contains "21: it names the doc to put the line in" "$out" "$TS_DOC"
+
+reset_stubs; ts_fixture
+printf -- '- 12:00 LIVE — TICKET-SEEN 10001 widened Writes\n' >> "$TS_DOC"
+ts_run "$TS_NEW"
+check "21: the same comment with its TICKET-SEEN line: exit 0" "$rc" "0"
+contains "21: the same comment with its TICKET-SEEN line passes" "$out" "[PASS] 21."
+
+reset_stubs; ts_fixture
+ts_run '[{"id":"10005","created":"2026-11-24T12:30:00.000+0100","author":"","body":"steer without an author"}]'
+contains "21: a comment with no author still prints its text, not a shifted field" "$out" "by unknown at 2026-11-24T12:30:00.000+0100"
+contains "21: a comment with no author keeps its quoted text" "$out" "\"steer without an author\""
+
+reset_stubs; ts_fixture
+printf -- '- 12:00 LIVE — TICKET-SEEN 99999 some other comment\n' >> "$TS_DOC"
+ts_run "$TS_NEW"
+check "21: a TICKET-SEEN line for another id does not acknowledge it: exit 1" "$rc" "1"
+
+reset_stubs; ts_fixture
+ts_run "$TS_OLD"
+check "21: a comment older than the launch needs no line: exit 0" "$rc" "0"
+contains "21: a comment older than the launch passes" "$out" "[PASS] 21."
+
+reset_stubs; ts_fixture
+ts_run "$TS_MACHINE"
+check "21: a worker status comment and a release-ruling audit copy need no line: exit 0" "$rc" "0"
+
+reset_stubs; ts_fixture; rm -f "$TS_LOG"
+ts_run "$TS_NEW"
+check "21: no launch record says so and does not fail on that alone: exit 0" "$rc" "0"
+contains "21: no launch record is a WARN naming it" "$out" "[WARN] 21."
+contains "21: no launch record is named" "$out" "no launch record"
+
+reset_stubs; ts_fixture; rm -f "$TS_DOC"
+ts_run "$TS_NEW"
+check "21: no worker doc says so and does not fail on that alone: exit 0" "$rc" "0"
+contains "21: no worker doc is a WARN naming it" "$out" "no worker handover doc"
+
+reset_stubs; ts_fixture
+STUB_PR_TITLE="chore: a title with no key"
+ts_run "$TS_NEW"
+contains "21: no ticket key in the title says so" "$out" "[WARN] 21. ticket comments not checked"
+notcontains "21: no ticket key in the title never fails check 21" "$out" "[FAIL] 21."
+
+reset_stubs; ts_fixture
+TS_FAIL=1 ts_run "$TS_NEW"
+check "21: an unreadable comment list does not fail the run on its own: exit 0" "$rc" "0"
+contains "21: an unreadable comment list is a WARN" "$out" "[WARN] 21."
+
+reset_stubs; ts_fixture
+RUN_MODE=only7 ts_run "$TS_NEW"
+check "21: --only 7 runs it too, so a worker sees it before READY: exit 1" "$rc" "1"
+contains "21: --only 7 prints the FAIL" "$out" "[FAIL] 21."
+contains "21: --only 7 ends COVERAGE-LINT FAIL" "$out" "COVERAGE-LINT FAIL"
+reset_stubs; ts_fixture
+printf -- '- 12:00 LIVE — TICKET-SEEN 10001 widened Writes\n' >> "$TS_DOC"
+RUN_MODE=only7 ts_run "$TS_NEW"
+check "21: --only 7 with the TICKET-SEEN line: exit 0" "$rc" "0"
+contains "21: --only 7 with the TICKET-SEEN line ends COVERAGE-LINT PASS" "$out" "COVERAGE-LINT PASS"
+unset RUN_MODE
+
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
