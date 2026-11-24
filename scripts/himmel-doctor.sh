@@ -3769,7 +3769,7 @@ check_c84_release_queue() {
     fi
     if [ "$unp" -gt 0 ]; then
         emit WARN C84-release-queue "$unp open ticket(s) filed since the door shipped carry no version and no backlog label, so the door has not placed them" \
-            "bash scripts/handover/chief-kit/intake-backfill.sh --unplaced --list --since-door   # names each key; request its placement with jira release request"
+            "bash scripts/handover/chief-kit/intake-backfill.sh --unplaced --list --since-door --state <state.json>   # state.json is jira release state <R> --json; names each key, then request its placement with jira release request"
     fi
 }
 
