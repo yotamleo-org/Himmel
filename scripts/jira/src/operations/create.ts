@@ -217,7 +217,7 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   if (residual) {
     if (residual.fixVersion) fields['fixVersions'] = [{ name: residual.fixVersion }];
     if (residual.affectsVersion) fields['versions'] = [{ name: residual.affectsVersion }];
-    console.error(`jira: residual routed to ${inherited ?? residual.fixVersion ?? 'the backlog'}`);
+    console.error(`jira: residual routed to ${inherited ?? residual.fixVersion ?? 'no version, its INTAKE is placed by the door'}`);
   }
   const closedParent = inherited === undefined && residual === undefined ? await closedParentPlacement(options) : undefined;
   if (closedParent?.priority !== undefined && options.priority === undefined) fields['priority'] = { name: closedParent.priority };

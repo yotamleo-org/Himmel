@@ -60,6 +60,12 @@ describe('the door: INTAKE, first match wins', () => {
     }
   });
 
+  it('a residual INTAKE as create queues it (to_v null, the parent in the evidence): Medium to next (rule M), High to current (rule H)', () => {
+    const q = { from: 'console', to_v: null, evidence: { residual_of: 'K-1' } };
+    expect(placed(one({ priority: 'Medium' }, q))).toEqual({ outcome: 'ADMIT', op: 'add', from: null, to: N, ground: 'door:mild' });
+    expect(placed(one({ priority: 'High' }, q))).toEqual({ outcome: 'ADMIT', op: 'add', from: null, to: C, ground: 'door:serious:High' });
+  });
+
   it('a version-repair mark forged from the CLI falls to rule M (I9)', () => {
     expect(placed(one({}, { from: 'console', evidence: { rule: 'version-repair' } }))).toEqual({ outcome: 'ADMIT', op: 'add', from: null, to: N, ground: 'door:mild' });
   });

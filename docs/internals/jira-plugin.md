@@ -431,8 +431,9 @@ or a Highest Bug takes the active version; a Bug with no placement is refused), 
 target's version) and split inheritance (`--split-from` takes the source's version).
 `--proposed-version` cannot be combined with `--fix-version` or `--gate`, applies to a Bug, Task or
 Story only, and a named version must exist and be unreleased. The same rule covers a Task or Story, so no ticket
-is filed without at least a proposed version; a residual (`--residual-of`, `--follow-up-of`) routes itself to a version
-or the backlog, and one that lands with no version is held to the same rule as any other.
+is filed without at least a proposed version; a residual (`--residual-of`, `--follow-up-of`) of a declared project is placed by the door from its priority
+(it files with no version and queues its INTAKE; only `--gate` files it into the current version), and a project no
+declared release names keeps the class route in `docs/release/follow-up-triage.md`.
 `--follow-up-of <KEY>` reads the parent's status and fixVersion. An open parent in the current
 (earliest unreleased) version: the follow-up's INTAKE asks for that version, its why states only facts (parent,
 status, version) and its evidence carries them; it does not claim a remainder. `--remainder`, which needs
@@ -441,17 +442,17 @@ close without this ticket and that it holds the parent's remainder. A Done or cl
 version at the parent's priority (the caller's `--priority` wins) and linked to it with `relates`, so a chain's
 leftovers stay in the chain's version and no INTAKE is queued. This covers a Bug, Task or Story; an Epic or Sub-task follow-up keeps the old rule. A closed parent that is not in
 the current version, or whose version is frozen: no version, the request is the backlog one and the why says the
-parent is closed. A parent that cannot be read is not treated as closed: the request is left unchanged, with a warning. A parent in a frozen current version: the
+parent is closed. A parent that cannot be read is not treated as closed: the request asks for no version, with a warning (with `--remainder` its evidence still carries `follow_up_of` and `remainder`). A parent in a frozen current version: the
 request still asks for that version and the why says it is frozen; the release manager rules on the frozen intake,
 and the filing never routes around it (operator decisions 383, 489 and 512). An INTAKE-only follow-up writes no fixVersion of its own (the closed-parent case above does). An open
-parent with no current version, or a parent that cannot be read (a warning on stderr), leaves the request as before:
+parent with no current version, or a parent that cannot be read (a warning on stderr), asks for no version (with `--remainder` the evidence still records `follow_up_of` and `remainder`, also under an explicit `--why` or `--proposed-version`):
 no version, filed to the backlog. A caller's own `--fix-version`, `--backlog`, `--proposed-version` or `--why` wins
 and skips the read, and `--blocks`/`--split-from` place the ticket in the target's version, so no request is queued.
 An unversioned create, a residual or follow-up included, is refused before the POST when no release can take the INTAKE (no release declared, several
 declared, the state unreadable, or a placeholder why); an INTAKE that fails after the POST leaves the key on stdout,
 says `PARTIAL: Created <KEY> but INTAKE not queued` and exits 1. The release root comes from the CLI's own
 checkout, never the caller's cwd. `edit`'s depth-2 drop only warns, and says so when no release is declared.
-No count of what a version holds refuses, labels, redirects or displaces a filing: a residual goes to the version its class, gate and chain name,
+No count of what a version holds refuses, labels, redirects or displaces a filing: a residual of a declared project is placed by the door from its priority (a `--gate` keeps the current version),
 and no resident is moved out to make room for it.
 `next-dispatchable.sh` counts the open versionless operator-directed, High+ Bug, `scope-<version>`, `proposed-<earliest version>`
 and worker-held tickets and prints `# pool=<n>/<top>,INTAKE:<m>` (never a bare LOW) with a
@@ -482,7 +483,7 @@ spoofable by any same-uid caller (a known ceiling; the upgrade path is the relea
 **Intake gate for a frozen version.** A version whose description
 has a line `frozen: <date>` takes no new ticket without a reason. `create` checks
 the version the ticket will land in, whether from `--fix-version`, a Highest or
-`--gate` Bug's default, or a `--residual-of` escape or hardening route, and
+`--gate` Bug's default, or a `--residual-of` class route of a project no declared release names, and
 refuses unless `--gate critical|regression|must:<decision-ref>|receipt` is given
 (`must:` needs a non-empty ref). The refusal comes before the ticket is filed, and
 a gated filing also needs a ledger that can take an append. After the create it

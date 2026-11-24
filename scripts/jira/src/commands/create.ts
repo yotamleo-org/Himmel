@@ -19,8 +19,9 @@ import { appendAdmission, type AdmissionInput } from './admissions-ledger.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, chiefOverrideOf, frozenDate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 import { ctxFor, refuseRequest, refuseTestJiraPost } from './release.js';
-import { decisionWords, operatorFence, request as releaseRequest, requestWithWords } from '../release/engine.js';
+import { decisionWords, operatorFence, releaseForProject, request as releaseRequest, requestWithWords } from '../release/engine.js';
 import type { TicketFacts } from '../release/operator-work.js';
+import { loadOrThrow } from '../release/engine-core.js';
 import { releaseRoot } from '../release/paths.js';
 import { ancestorValue } from '../release/fence-ancestry.js';
 import { isTestProject } from '../live-test-guard.js';
@@ -195,12 +196,16 @@ interface ParentIssue {
 }
 
 /**
- * Places a residual (plan 9.1 as corrected by 10.5); the first matching row wins:
- * a. depth >= 2, b. polish: backlog. c. --gate: current. d. escape: current if
- * unfrozen, else next. e. hardening with a chain: its version V if unfrozen,
- * else next. f. hardening, no chain, High or above: next. g. anything else: backlog.
- * Next is the earliest unreleased version after current. It never throws on a
+ * Places a residual. A residual of a project a declared release names is placed
+ * by the door from its priority: it files with no version and queues its INTAKE,
+ * and keeps a filing-time version only under --gate (the current version). For
+ * a project no declaration names, the first matching row wins: a. depth >= 2,
+ * b. polish: backlog. c. --gate: current. d. escape: current if unfrozen, else
+ * next. e. hardening with a chain: its version V if unfrozen, else next.
+ * f. hardening, no chain, High or above: next. g. anything else: backlog. Next
+ * is the earliest unreleased version after current. It never throws on a
  * frozen version; a frozen or missing next sends the residual to the backlog.
+ * When the declarations cannot be read it prints one line and uses those rows.
  */
 export async function planResidual(project: string, o: ResidualOptions): Promise<ResidualPlan> {
   if (!o.fuClass) throw new Error('--residual-of requires --fu-class <polish|escape|hardening>');
@@ -257,11 +262,18 @@ export async function planResidual(project: string, o: ResidualOptions): Promise
   const next = current ? earliestUnreleased(versions.filter((v) => v.name !== current)) : undefined;
   const nextOpen = next !== undefined && !frozen.includes(next) ? next : undefined;
   const unfrozenOrNext = (v: string): string | undefined => (frozen.includes(v) ? nextOpen : v);
+  const declared = releaseForProject(process.env, project);
+  if (declared === 'unreadable') {
+    console.error(`jira: warning: the release declarations naming ${project} cannot be read, so the residual is routed by class, not placed by the door`);
+  }
+  const doorPlaces = declared !== 'unreadable' && declared.length > 0;
 
   let fixVersion: string | undefined;
   if (current && depth < 2 && o.fuClass !== 'polish') {
     if (o.gate !== undefined) {
       fixVersion = current;
+    } else if (doorPlaces) {
+      fixVersion = undefined;
     } else if (o.fuClass === 'escape') {
       fixVersion = unfrozenOrNext(current);
     } else {
@@ -502,6 +514,7 @@ export function intakeRelease(): string {
 /** Throws unless an INTAKE with this why could be queued now, so the filing is refused before anything is created. */
 export function assertIntakeQueueable(why: string, o: IntakeWords & { toVersion?: string | null } = {}): void {
   const ctx = ctxFor(intakeRelease());
+  loadOrThrow(ctx);
   refuseRequest(ctx, { verb: 'INTAKE', key: 'NEW', from_v: null, to_v: o.toVersion ?? null, why, origin: 'create', ticket: o.ticket, decision: o.decision });
   if (o.decision === undefined && o.words === undefined) return;
   if (o.decision === undefined) throw new Error('jira create: --words needs --decision <n>, the decision whose file holds them');
@@ -528,10 +541,17 @@ interface ParentState {
  * parent asks for none and the why says so. Parent, status and version go in
  * the request's evidence. Explicit wins: a version, --backlog, --proposed-version or --why
  * keeps its meaning. A parent with no current version, or one that cannot be
- * read, leaves the request as it was (the ticket is filed either way).
+ * read, asks for no version (the ticket is filed either way); with --remainder
+ * the evidence still carries follow_up_of and remainder, also under an explicit
+ * why or version, and for an unreadable parent without the parent facts.
  */
-export async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; remainder?: boolean; backlog?: boolean; fixVersion?: string }>(o: T): Promise<T> {
-  if (hasOwnPlacement(o)) return o;
+export async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; residualOf?: string; remainder?: boolean; backlog?: boolean; fixVersion?: string }>(o: T): Promise<T> {
+  if (o.residualOf !== undefined && o.followUpOf === undefined && o.fixVersion === undefined && o.evidence === undefined) {
+    return { ...o, evidence: { residual_of: o.residualOf } };
+  }
+  if (hasOwnPlacement(o)) {
+    return o.followUpOf !== undefined && o.remainder ? { ...o, evidence: { ...o.evidence, follow_up_of: o.followUpOf, remainder: true } } : o;
+  }
   const parentKey = o.followUpOf!;
   let parent: ParentState['fields'];
   let versions: Awaited<ReturnType<typeof fetchVersions>>;
@@ -540,7 +560,7 @@ export async function followUpIntake<T extends IntakeOptions & { followUpOf?: st
     versions = await fetchVersions(parent.project.key);
   } catch (e) {
     console.error(`jira: warning: could not read ${parentKey}'s status and version, so the follow-up's INTAKE names none: ${(e as Error).message}`);
-    return o;
+    return o.remainder ? { ...o, evidence: { ...o.evidence, follow_up_of: parentKey, remainder: true } } : o;
   }
   const status = parent.status?.name ?? 'unknown';
   const current = earliestUnreleased(versions);
@@ -552,7 +572,7 @@ export async function followUpIntake<T extends IntakeOptions & { followUpOf?: st
   if (parent.status?.statusCategory?.key === 'done') {
     return { ...o, why: `follow-up of ${parentKey}, which is closed (${status})`, evidence };
   }
-  if (!inCurrent) return o;
+  if (!inCurrent) return o.remainder ? { ...o, evidence } : o;
   const isFrozen = frozenDate(versions.find((v) => v.name === current)?.description) !== undefined;
   const target = current;
   const facts = `follow-up of ${parentKey} (${status}), which is in ${current}${isFrozen ? ' (frozen)' : ''}`;
@@ -737,7 +757,7 @@ export function registerCreate(program: Command): void {
       '--remainder',
       "With --follow-up-of: this ticket holds the parent's remainder (a deferred DoD row), so the INTAKE says the parent cannot close without it",
     )
-    .option('--fu-class <class>', 'Residual class: escape (current, else next when frozen), hardening (its chain version, else next at High or above, else backlog; needs --fu-override). polish is refused: it is noted with no ticket. Applies only with --residual-of')
+    .option('--fu-class <class>', 'Residual class: escape or hardening (needs --fu-override); a residual of a declared project is placed by the door from its priority, and --gate means the current version; the class routes it only for a project no declared release names (docs/release/follow-up-triage.md). polish is refused: it is noted with no ticket. Applies only with --residual-of')
     .option('--fu-why <code>', 'Why a hardening residual is one (' + FU_WHY_CODES.join('|') + '); required with --fu-class hardening')
     .option('--fu-override <id>', 'The named override a hardening residual needs: a judge verdict id (XX-jNNNN-N) or decision-N; printed into the ticket as an unverified label')
     .option('--class <id>', 'Residual class id, stamped as the class-<id> label')

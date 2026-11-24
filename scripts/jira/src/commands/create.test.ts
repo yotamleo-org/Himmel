@@ -8,9 +8,10 @@ import { join } from 'node:path';
 // Mock the network + breadcrumb layers so the command action resolves without
 // a real Jira or a real breadcrumb file write (same pattern as
 // breadcrumb-wiring.test.ts).
+const proj = vi.hoisted(() => ({ key: 'HIMMEL' }));
 vi.mock('../client.js', () => ({
   request: vi.fn(async () => ({ key: 'HIMMEL-1' })),
-  projectKey: () => 'HIMMEL',
+  projectKey: () => proj.key,
 }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 // The chat stamp is read from a fake process tree, never this test runner's own ancestry. This mock
@@ -38,6 +39,7 @@ const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
 // every test starts under one declared release; the INTAKE describe re-stubs.
 let baseRoot: string;
 beforeEach(async () => {
+  proj.key = 'HIMMEL';
   baseRoot = mkdtempSync(join(tmpdir(), 'create-base-'));
   vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(baseRoot, 'state'));
   vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(baseRoot, 'keys'));
@@ -574,6 +576,7 @@ describe('create --residual-of', () => {
   const RES = ['--residual-of', 'HIMMEL-50', '--class', 'shell-quoting'];
 
   beforeEach(() => {
+    proj.key = 'SALUS';
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -790,6 +793,7 @@ describe('create --residual-of placement', () => {
   const HARD = ['--fu-class', 'hardening', ...WHY];
 
   beforeEach(() => {
+    proj.key = 'SALUS';
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -936,6 +940,7 @@ describe('create --residual-of in a version holding many open residuals', () => 
       ...HOME, '--residual-of', 'HIMMEL-50', ...args]);
   };
   beforeEach(() => {
+    proj.key = 'SALUS';
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -1149,6 +1154,22 @@ describe('create — unplaced follow-up', () => {
       expect(queued()[0]!.evidence).toEqual({ follow_up_of: 'HIMMEL-5', parent_status: 'In Progress', parent_version: 'v1.1.3', remainder: true });
     });
 
+    it.each([
+      ['a parent in v1.1.3', {}, []],
+      ['a parent in v1.1.4', { versions: ['v1.1.4'] }, []],
+      ['--proposed-version', { versions: ['v1.1.4'] }, ['--proposed-version', 'v1.1.4']],
+    ] as const)('R3-F12: a remainder split with --why and %s records follow_up_of and remainder in the INTAKE evidence', async (_n, parent, extra) => {
+      parentIs(parent);
+      await file('--follow-up-of', 'HIMMEL-5', '--remainder', '--why', 'the rest of the parent', ...extra);
+      expect(queued()).toHaveLength(1);
+      expect(queued()[0]!.evidence).toMatchObject({ follow_up_of: 'HIMMEL-5', remainder: true });
+    });
+
+    it('C3: a High Bug filed with --backlog and no words is still refused', async () => {
+      await expect(file('--type', 'Bug', '--priority', 'High', '--follow-up-of', 'HIMMEL-5', '--remainder', '--backlog', '--proposed-version', 'backlog', '--why', 'waits')).rejects.toThrow(/operator decision/);
+      expect(posted()).toBe(false);
+    });
+
     it('9002 remainder: --remainder without --follow-up-of is refused before anything is filed', async () => {
       await expect(file('--remainder')).rejects.toThrow(/--remainder needs --follow-up-of/);
       expect(posted()).toBe(false);
@@ -1220,7 +1241,7 @@ describe('create — unplaced follow-up', () => {
     it('9002 i control: an explicit backlog proposal with a why stays backlog, and the parent is not read', async () => {
       parentIs({});
       await file('--follow-up-of', 'HIMMEL-5', '--remainder', '--backlog', '--proposed-version', 'backlog', '--why', 'low importance remainder, waits in the backlog');
-      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: 'low importance remainder, waits in the backlog', evidence: {} })]);
+      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: 'low importance remainder, waits in the backlog', evidence: { follow_up_of: 'HIMMEL-5', remainder: true } })]);
       expect(parentRead()).toBe(false);
     });
 
@@ -1239,10 +1260,29 @@ describe('create — unplaced follow-up', () => {
       expect(parentRead()).toBe(false);
     });
 
-    it('9002 ii: an open parent with no current version behaves as today', async () => {
+    it('9002 ii: an open parent with no current version asks for none and the request records no parent facts', async () => {
+      parentIs({ versions: ['v1.1.2'] });
+      await file('--follow-up-of', 'HIMMEL-5');
+      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: expect.stringMatching(/filed to the backlog/), evidence: {} })]);
+    });
+
+    it('9002 ii: the same parent with --remainder records both keys and the parent facts', async () => {
       parentIs({ versions: ['v1.1.2'] });
       await file('--follow-up-of', 'HIMMEL-5', '--remainder');
-      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: expect.stringMatching(/filed to the backlog/), evidence: {} })]);
+      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: expect.stringMatching(/filed to the backlog/), evidence: { follow_up_of: 'HIMMEL-5', parent_status: 'In Progress', parent_version: null, remainder: true } })]);
+    });
+
+    it('U1: a remainder of a parent in a later version, with no why, records both keys', async () => {
+      parentIs({ versions: ['v1.1.4'] });
+      await file('--follow-up-of', 'HIMMEL-5', '--remainder');
+      expect(queued()).toEqual([expect.objectContaining({ evidence: expect.objectContaining({ follow_up_of: 'HIMMEL-5', remainder: true }) })]);
+    });
+
+    it('U1: a remainder whose parent cannot be read records both keys, without parent_version', async () => {
+      parentIs({ fail: new Error('boom') });
+      await file('--follow-up-of', 'HIMMEL-5', '--remainder');
+      expect(posted()).toBe(true);
+      expect(queued()).toEqual([expect.objectContaining({ evidence: { follow_up_of: 'HIMMEL-5', remainder: true } })]);
     });
 
     it('9002 iii: a parent read that fails still files the ticket, with today\'s backlog request and a warning', async () => {
@@ -1876,7 +1916,6 @@ describe('create — blocker version placement', () => {
     await file('--residual-of', 'HIMMEL-3', '--fu-class', 'escape', '--class', 'routing', relation, 'HIMMEL-1620');
     expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
     expect(console.error).toHaveBeenCalledWith('jira: residual routed to v1.1.3');
-    expect(console.error).not.toHaveBeenCalledWith('jira: residual routed to the backlog');
     expect(mockRequest).toHaveBeenCalledWith('POST', '/issueLink', {
       type: { name: relation === '--blocks' ? 'Blocks' : 'Relates' },
       inwardIssue: { key: 'HIMMEL-6559' }, outwardIssue: { key: 'HIMMEL-1620' },
@@ -2035,13 +2074,11 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
     expect(errs.some((e) => /REQ /.test(e))).toBe(false);
   });
 
-  it('files the key, says the INTAKE is not queued, and exits non-zero when queueing fails after the POST', async () => {
+  it('refuses before the POST when the release cannot be loaded (a missing signing key)', async () => {
     await declare();
     vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'no-keys'));
-    await file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test');
-    expect(posted()).toBe(true);
-    expect(errs.some((e) => /Created HIMMEL-77 but INTAKE not queued/.test(e))).toBe(true);
-    expect(process.exitCode).toBe(1);
+    await expect(file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test')).rejects.toThrow(/UNKNOWN/);
+    expect(posted()).toBe(false);
   });
 
   it('refuses before POSTing when the release state cannot be read', async () => {
@@ -2499,5 +2536,105 @@ describe('create — backlog needs --decision for a High or security Bug', () =>
     expect(() => checkPlacementFlags({ type: 'Bug', priority: 'Medium', ...BACKLOG })).not.toThrow();
     expect(() => checkPlacementFlags({ type: 'Bug', priority: 'High', decision: '454', ...BACKLOG })).not.toThrow();
     expect(() => checkPlacementFlags({ type: 'Task', priority: 'High', ...BACKLOG })).not.toThrow();
+  });
+});
+
+describe('create --residual-of is placed by the door', () => {
+  type Req = { key: string; to_v: string | null; evidence: Record<string, unknown> };
+  let errs: string[];
+  const play = () =>
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-50')) return { fields: { labels: [], fixVersions: [{ name: 'v1.1.3' }], status: { statusCategory: { key: 'indeterminate' } } } };
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-51')) return { fields: { labels: [], fixVersions: [], status: { statusCategory: { key: 'indeterminate' } } } };
+      if (method === 'GET' && path.startsWith('/issue/SALUS-50')) return { fields: { labels: [], fixVersions: [{ name: 's1' }], status: { statusCategory: { key: 'indeterminate' } } } };
+      if (method === 'GET' && path.endsWith('/versions')) {
+        return path.includes('SALUS') ? [{ name: 's1', released: false }, { name: 's2', released: false }] : [{ name: 'v1.1.3', released: false }, { name: 'v1.1.4', released: false }];
+      }
+      if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      return { key: proj.key + '-77' };
+    });
+  const file = async (parent: string, ...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 'a residual with a real title', '--desc', PLAIN, ...HOME,
+      '--residual-of', parent, '--fu-class', 'escape', ...args]);
+  };
+  const created = () => {
+    const c = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    return c ? (c[2] as { fields: Record<string, unknown> }).fields : undefined;
+  };
+  const lands = () => (created()!['fixVersions'] as { name: string }[] | undefined)?.map((v) => v.name);
+  const queued = (): Req[] => {
+    try {
+      return readFileSync(join(baseRoot, 'state', 'R1', 'requests.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Req);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw e;
+    }
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    errs = [];
+    vi.spyOn(console, 'error').mockImplementation((s: unknown) => { errs.push(String(s)); });
+    play();
+  });
+
+  it.each([[[]], [['--priority', 'High']]])('a residual of a parent in v1.1.3 (%j) files with no version and queues one INTAKE naming the parent', async (args) => {
+    await file('HIMMEL-50', ...args);
+    expect(lands()).toBeUndefined();
+    expect(queued()).toEqual([expect.objectContaining({ key: 'HIMMEL-77', to_v: null, evidence: { residual_of: 'HIMMEL-50' } })]);
+  });
+
+  it('--gate critical files into the current version at filing', async () => {
+    await file('HIMMEL-50', '--gate', 'critical');
+    expect(lands()).toEqual(['v1.1.3']);
+    expect(queued()).toEqual([]);
+  });
+
+  it('a SALUS residual of a SALUS parent keeps its class routing and queues nothing', async () => {
+    proj.key = 'SALUS';
+    await file('SALUS-50');
+    expect(lands()).toEqual(['s1']);
+    expect(queued()).toEqual([]);
+  });
+
+  it('with no resolvable release root the residual keeps its class routing, says so once on stderr and files', async () => {
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', '');
+    vi.stubEnv('USER_SLUG', '');
+    await file('HIMMEL-50');
+    expect(lands()).toEqual(['v1.1.3']);
+    expect(errs.filter((e) => /cannot be read/.test(e))).toHaveLength(1);
+  });
+
+  it('with an unparsed declaration the residual keeps its class routing, says so once on stderr and files', async () => {
+    writeFileSync(join(baseRoot, 'state', 'R1', 'release.json'), '{not json');
+    await file('HIMMEL-50');
+    expect(lands()).toEqual(['v1.1.3']);
+    expect(errs.filter((e) => /cannot be read/.test(e))).toHaveLength(1);
+  });
+
+  it('with no resolvable release root a residual the class route leaves with no version is refused before the POST', async () => {
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', '');
+    vi.stubEnv('USER_SLUG', '');
+    await expect(file('HIMMEL-51', '--fu-class', 'hardening', '--fu-why', 'no-check', '--fu-override', 'decision-762')).rejects.toThrow();
+    expect(created()).toBeUndefined();
+  });
+
+  it('a corrupt release.json with a residual left with no version is refused before the POST', async () => {
+    writeFileSync(join(baseRoot, 'state', 'R1', 'release.json'), '{not json');
+    await expect(file('HIMMEL-51', '--fu-class', 'hardening', '--fu-why', 'no-check', '--fu-override', 'decision-762')).rejects.toThrow();
+    expect(created()).toBeUndefined();
+  });
+
+  it('U5: with two declared releases a residual that owes an INTAKE fails with the existing exactly-one refusal', async () => {
+    const p = new Command();
+    p.exitOverride();
+    registerRelease(p);
+    await p.parseAsync(['node', 'jira', 'release', 'operator', 'declare', 'R2', '--versions', 'v1.1.3', '--decision', '214', '--verbatim-file', join(baseRoot, 'verbatim.txt')]);
+    await expect(file('HIMMEL-50')).rejects.toThrow(/an INTAKE needs exactly one/);
+    expect(created()).toBeUndefined();
   });
 });
