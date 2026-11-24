@@ -111,6 +111,33 @@ test('an open read that reaches its limit marks the source incomplete and the ma
   assert.match(fold(readRecords(ledger)).sources.pr.errors.join(' '), /reached its limit/);
 });
 
+test('an all-state read that fails still returns the open PRs, records the failure, and the marker does not advance', () => {
+  const dir = makeTmpDir('waw-all-504-'), bin = join(dir, 'bin'), ledger = join(dir, 'ledger.jsonl'), marker = join(dir, '.refreshed-at');
+  mkdirSync(bin); writeFileSync(ledger, '');
+  writeFileSync(join(dir, 'open.json'), JSON.stringify([{ number: 7, state: 'OPEN', headRefName: 'b7', title: 't7' }]));
+  script(join(bin, 'gh'), `case "$*" in *'--state open'*) cat '${join(dir, 'open.json')}';; *) echo 'HTTP 504' >&2; exit 1;; esac`);
+  const result = withPath(`${bin}:/usr/bin:/bin`, () => readPRs([], { repo: REPO }));
+  assert.equal(result.rows.find((r) => r.number === 7)?.state, 'OPEN');
+  assert.ok(result.error_count > 0, 'the failed all-state read is a source error');
+  const readers = { readJira: () => [], readWorktrees: () => '', readPRs: (active) => readPRs(active, { repo: REPO }) };
+  assert.throws(() => withPath(`${bin}:/usr/bin:/bin`, () => main(['--ledger', ledger, '--marker', marker], { readers, strict: true })), /collection incomplete/);
+  assert.equal(existsSync(marker), false);
+  assert.equal(fold(readRecords(ledger)).items['#7']?.status, 'open');
+});
+
+test('sixty open PRs of 37 KB each are read completely', () => {
+  const dir = makeTmpDir('waw-big-open-'), bin = join(dir, 'bin');
+  mkdirSync(bin);
+  const rollup = Array.from({ length: 150 }, (_, i) => ({ name: `check-${i}`, status: 'COMPLETED', conclusion: 'SUCCESS', detailsUrl: `https://example.invalid/${'x'.repeat(100)}/${i}` }));
+  const open = Array.from({ length: 60 }, (_, i) => ({ number: 100 + i, state: 'OPEN', headRefName: `b${i}`, title: `t${i}`, mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', statusCheckRollup: rollup }));
+  assert.ok(JSON.stringify(open[0]).length > 30000, 'each fixture PR is about 37 KB');
+  writeFileSync(join(dir, 'open.json'), JSON.stringify(open)); writeFileSync(join(dir, 'merged.json'), '[]');
+  script(join(bin, 'gh'), `case "$*" in *'--state open'*) cat '${join(dir, 'open.json')}';; *) cat '${join(dir, 'merged.json')}';; esac`);
+  const result = withPath(`${bin}:/usr/bin:/bin`, () => readPRs([], { repo: REPO }));
+  assert.equal(result.error_count, 0, result.errors.join('; '));
+  assert.equal(result.rows.filter((r) => r.state === 'OPEN').length, 60);
+});
+
 test('a writer killed inside the append leaves no lock and the next append succeeds at once', async () => {
   const dir = makeTmpDir('waw-killed-writer-'), ledger = join(dir, 'ledger.jsonl'), code = join(dir, 'kill.mjs');
   writeFileSync(code, `import { acquireLock } from ${JSON.stringify(join(root, 'scripts/where-are-we/lib/append.mjs'))};
