@@ -5209,7 +5209,8 @@ trap 'rm -rf "$WORK" "$BASE_ND"' EXIT
 if git -C "$HERE" show origin/main:scripts/handover/chief-kit/next-dispatchable.sh > "$BASE_ND" 2>/dev/null && [ -s "$BASE_ND" ]; then
     ctl_new="$(run107 --why; echo "rc=$?")"
     ctl_base="$(NEXT_DISPATCH_MIRROR="$M107" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$BASE_ND" --top 60 --workers-dir "$WORK/s107/workers" --workers-from "$WORK/fleet5.json" --why 2>/dev/null; echo "rc=$?")"
-    check "10774 B1.ctl: without the flag the listing is the base listing, the remedy suffix aside" "$(printf '%s\n' "$ctl_base" | sed 's/^\(# source mirror_age_min=\).*/\1/')" "$(printf '%s\n' "$ctl_new" | sed -e 's/, or batch it: --scope-batch FILE (docs\/handover\/chief-sections\/scope-helper.md)//' -e 's/^\(# source mirror_age_min=\).*/\1/')"
+    norm107() { sed -e 's/, or batch it: --scope-batch FILE (docs\/handover\/chief-sections\/scope-helper.md)//' -e 's/^\(# source mirror_age_min=\).*/\1/'; }
+    check "10774 B1.ctl: without the flag the listing is the base listing, the remedy suffix aside" "$(printf '%s\n' "$ctl_base" | norm107)" "$(printf '%s\n' "$ctl_new" | norm107)"
 else
     fail "10774 B1.ctl: could not read the base script from origin/main"
 fi
