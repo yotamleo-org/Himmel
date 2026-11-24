@@ -5,6 +5,14 @@ ACTION ZERO step 1 is one batched turn (`ListAgents`, `ToolSearch` for `SendMess
 the decisions `Read`, and a foreground `action-zero.sh --acquire --render-workers`);
 the relays below follow in the very next turn.
 
+   **Boot from the digest.** `chief.sh next` writes `<predecessor>-DIGEST.md` beside the
+   predecessor's HANDOFF (fixed budget `DIGEST_BUDGET_BYTES`, default 6000: head, usage,
+   workers, open PRs, queue, last GO, judge subagents, pointers; a capped list ends in
+   `+N more`) and the preface of your doc names it. Read the digest and your own doc;
+   never read the predecessor's doc or HANDOFF at start. Open one only for the single
+   thing a `+N more` or "on demand" pointer names. The predecessor sends exactly one relay at hand-over
+   (the relay-on-live wake, or `relay-batch.sh` once); it never relays worker by worker.
+
    **Wake-once succession (step 9).** A worker's quote-back is its own `SUCCESSION
    accepted` Results bullet (no token in it); it sends a `SendMessage` only on a
    timeout or a decline. Add `--succession <your session> [--silent-min T]` (T

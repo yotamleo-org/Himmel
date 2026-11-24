@@ -72,3 +72,30 @@ debt, the queue's tiers and owned files. One Edit replaces this block.>
 ## Open operator items
 
 <What only the operator can do: a merge, a credential, a dashboard flip.>
+
+<!-- digest-template: everything below renders the -DIGEST.md, never the HANDOFF -->
+# {{PREDECESSOR_LETTER}} → {{LETTER}} successor digest
+
+> Bounded: `chief.sh next` caps this file (`DIGEST_BUDGET_BYTES`, default 6000) and a
+> capped list ends in a `+N more` pointer. Read it instead of the predecessor's doc and
+> HANDOFF; open those only for the one thing a pointer names.
+
+**Head:** {{HEAD_LINE}}
+**Usage at write:** {{BANK_LINE}}
+**Start:** run ACTION ZERO from `{{SUCCESSOR_DOC}}`; the predecessor `{{PREDECESSOR}}` relays once (relay-on-live), you send `{{LETTER}} LIVE` on its `RELAYED <n> of <m>`.
+**Workers** (a worker is yours only once it has quoted back):
+
+{{WORKER_SESSION_LIST}}
+
+**Open PRs:**
+
+{{OPEN_PRS}}
+
+**Held queue:** {{QUEUE_LINE}}
+**Last GO:** {{LAST_GO}}
+**Open judge subagents:**
+
+{{JUDGE_CALLS}}
+
+**Rulings:** in `{{SUCCESSOR_DOC}}` `## Current direction` (read the files it names).
+**Full state, on demand only:** HANDOFF `{{HANDOFF_REF}}`; predecessor doc `{{PREDECESSOR}}`.
