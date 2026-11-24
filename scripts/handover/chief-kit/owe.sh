@@ -17,7 +17,7 @@
 # A close appends a row; no row is ever rewritten. `add` prints the new id (o1, o2, ...).
 # `list` prints each open row as TAB-separated id, kind, epoch, key, chief, text (a tab or
 # newline in the text becomes a space); --all adds the closed rows, the key being the closing
-# one. OWE_NOW_EPOCH replaces the clock and OWE_AFKSUDO_ROOT the / of the afk-sudo route probe (tests).
+# one. OWE_NOW_EPOCH replaces the clock (tests).
 #
 # Exit codes: 0 done, 1 close of an unknown or already closed id, 2 usage or a refused value,
 # 3 the bucket directory is absent, 4 the ledger is unreadable, cannot be opened for append or cannot be flocked.
