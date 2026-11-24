@@ -2378,6 +2378,251 @@ latest_go_only() {
     printf '%s\n' "${v%%"; \`"*}"
 }
 
+worker_lock_state() {
+    local rc=0
+    [ "$1" != "${CHIEF_LOCK_STATE_TEST_UNKNOWN:-}" ] || { echo unknown; return 0; }
+    HANDOVER_DIR="$root" bash "$repo/scripts/handover/queue-lock.sh" status "$1" >/dev/null 2>&1 || rc=$?
+    case "$rc" in 0) echo free ;; 11|12) echo held ;; *) echo unknown ;; esac
+}
+
+live_worker_rows() {
+    local pdoc pdir manifest="${1%.md}.fleet.json" lockdir ldoc sess label pid seen="" NL=$'\n' sessions="" cand="" rows="" row cdoc
+    pdoc="$(_arm_realpath "$1")"
+    pdir="$(_arm_realpath "$2")"
+    for lockdir in "$root"/.locks/queue/*.lock; do
+        [ -f "$lockdir/owner.json" ] || continue
+        # swallow-ok: an unreadable owner file lists no session, the worker is still listed with unknown-lock
+        row="$(jq -r '[.handover // "", .session // ""] | @tsv' "$lockdir/owner.json" 2>/dev/null)" || row=""
+        sessions="$sessions$row$NL"
+    done
+    if [ -f "$manifest" ]; then
+        # swallow-ok: an unreadable manifest lists no manifest row; the lock sweep still names the held workers
+        cand="$(jq -r "$JQ_W"'W[]? | objects | select(.lockless != true) | [.label // "-", .doc // ""] | @tsv' "$manifest" 2>/dev/null)" || cand=""
+    fi
+    while IFS=$'\t' read -r ldoc sess; do
+        [ -n "$ldoc" ] || continue
+        case "${ldoc##*/}" in *-nextleg-*|*-HANDOFF.md) continue ;; esac
+        [ -f "$ldoc" ] || continue
+        cdoc="$(_arm_realpath "$ldoc")"
+        [ "$cdoc" != "$pdoc" ] && [ "$(dirname "$cdoc")" = "$pdir" ] || continue
+        cand="$cand$NL-	$ldoc"
+    done <<EOF
+$sessions
+EOF
+    while IFS=$'\t' read -r label ldoc; do
+        [ -n "$ldoc" ] || continue
+        case "$NL$seen$NL" in *"$NL$ldoc$NL"*) continue ;; esac
+        seen="$seen$ldoc$NL"
+        [ "$(worker_lock_state "$ldoc")" != free ] || continue
+        { [ -n "$label" ] && [ "$label" != - ]; } || label="$(worker_label "$ldoc")"
+        sess="$(printf '%s\n' "$sessions" | awk -F'\t' -v d="$ldoc" '$1 == d { print $2; exit }')"
+        [ -n "$sess" ] || sess="unknown-lock"
+        sess="$(printf '%s' "$sess" | tr -c 'A-Za-z0-9_.-' '_')"
+        pid=0
+        if [[ "$sess" =~ pid([0-9]+)$ ]]; then pid="${BASH_REMATCH[1]}"; fi
+        rows="$rows$label	$ldoc	$sess	$pid$NL"
+    done <<EOF
+$cand
+EOF
+    printf '%s' "$rows"
+}
+
+carry_live_workers() {
+    local block="$1" rows="$2" whole="$3" label ldoc sess pid span add="" first rest
+    while IFS=$'\t' read -r label ldoc sess pid; do
+        [ -n "$label" ] || continue
+        case " ${CHIEF_SEED_TEST_DROP:-} " in *" $label "*) continue ;; esac
+        # shellcheck disable=SC2016  # the backticks are literal span delimiters
+        case "$block" in *'`'"$label:"*) continue ;; esac
+        # shellcheck disable=SC2016  # the backticks are literal span delimiters
+        span="$(printf '%s\n' "$whole" | grep -oE '`[A-Za-z0-9_.-]+:[^`[:space:]]*`' | grep -F -m 1 -- "\`$label:")" || span=""
+        [ -n "$span" ] || span="\`$label:NONCE-UNKNOWN:$sess:$pid\`"
+        add="$add$span "
+    done <<EOF
+$rows
+EOF
+    [ -n "$add" ] || { printf '%s\n' "$block"; return 0; }
+    add="${add% }"
+    first="$(printf '%s\n' "$block" | sed -n 1p)"
+    rest="$(printf '%s\n' "$block" | sed 1d)"
+    case "$first" in ""|none|"none "*|"<"*) first="$add" ;; *) first="$first $add" ;; esac
+    printf '%s\n' "$first"
+    [ -z "$rest" ] || printf '%s\n' "$rest"
+}
+
+check_workers_carried() {
+    local live label named="" ldoc sess pid
+    live="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$1")"
+    live="$(seeded_live_field "$live" workers)"
+    while IFS=$'\t' read -r label ldoc sess pid; do
+        [ -n "$label" ] || continue
+        # shellcheck disable=SC2016  # the backticks are literal span delimiters
+        case "$live" in *'`'"$label:"*) ;; *) named="$named  $label ${ldoc##*/}"$'\n' ;; esac
+    done <<EOF
+$2
+EOF
+    [ -n "$named" ] || return 0
+    err "refusing to hand over: the successor's workers: line in $1 drops these live workers (each holds a queue lock):"
+    printf '%s' "$named" >&2
+    return 1
+}
+
+dead_manifest_rows() {
+    local label ldoc rows
+    [ -f "$1" ] || return 0
+    # swallow-ok: an unreadable manifest retires nothing
+    rows="$(jq -r "$JQ_W"'W[]? | objects | select(.lockless != true and .registration != "pending" and (.attempt == null)) | [.label // "-", .doc // ""] | @tsv' "$1" 2>/dev/null)" || return 0
+    while IFS=$'\t' read -r label ldoc; do
+        [ -n "$ldoc" ] || continue
+        [ "$(worker_lock_state "$ldoc")" = free ] || continue
+        [ "$(worker_tail_status "$ldoc")" = WRAPPED ] || [ -z "$(worker_actionable_bullet "$ldoc")" ] || continue
+        printf '%s\t%s\n' "$label" "$ldoc"
+    done <<EOF
+$rows
+EOF
+}
+
+retire_manifest_rows() {
+    local label ldoc
+    [ -f "$1" ] || return 0
+    while IFS=$'\t' read -r label ldoc; do
+        [ -n "$ldoc" ] || continue
+        [ "$(worker_lock_state "$ldoc")" = free ] || continue
+        bash "$kit/fleet-manifest.sh" remove "$1" "$ldoc" >/dev/null 2>&1 || err "warning: could not retire the dead row $label ($ldoc) from $1"
+    done <<EOF
+$2
+EOF
+}
+
+OPERATOR_DIRECTED_KEYS=""
+must_disposition_section() {
+    local pdoc="$1" pdir="$2" live="$3" dead="$4" smanifest="$5" r sib label prs line n branch title key found rows cap="${CHIEF_MUST_CAP:-30}" total=0 nrd=0 npr=0 nop=0
+    local mirror f fm fv st created ver rest_ pstem pdate prio ttl marker fresh resume_rc lock_r lock_s days="${CHIEF_MUST_RESUME_DAYS:-2}"
+    printf '## Must disposition\n\n'
+    printf 'Rule on each row (relaunch, GO, park or close) before dispatching.\n\n'
+    # shellcheck disable=SC2016  # the backticks are literal markdown code spans
+    {
+        while IFS= read -r r; do
+            [ -f "$r" ] || continue
+            sib="${r%-RESUME.md}.md"
+            lock_r="$(worker_lock_state "$r")"; lock_s="$(worker_lock_state "$sib")"
+            [ "$lock_r" != held ] && [ "$lock_s" != held ] || continue
+            if [ "$lock_r" = unknown ] || [ "$lock_s" = unknown ]; then
+                nrd=$((nrd + 1))
+                [ "$nrd" -gt "$cap" ] || printf -- '- RESUME doc `%s`: lock state unknown, check before relaunch\n' "$r"
+                continue
+            fi
+            if [ -f "$sib" ] && [ "$sib" -nt "$r" ] && [ -z "$(worker_tail_status "$r")" ] && [ -n "$(worker_tail_status "$sib")" ]; then continue; fi
+            label="$(worker_label "$r")"
+            marker="$(worker_tail_status "$sib")"
+            nrd=$((nrd + 1))
+            [ "$nrd" -le "$cap" ] || continue
+            printf -- '- RESUME doc `%s`: %s, last marker %s\n' "$r" "$label" "${marker:-none}"
+        done < <(find "$pdir" -maxdepth 1 -type f -name '*-RESUME.md' -mtime "-$days" 2>/dev/null | sort)
+        [ "$nrd" -le "$cap" ] || printf -- '- +%s more RESUME docs in the bucket: list them with ls\n' "$((nrd - cap))"
+        prs="$(bash "$HERE/../chief-kit/handoff-facts.sh" prs "$pdoc" --repo "$repo" 2>/dev/null)" || prs=""  # swallow-ok: an unreadable PR list names no row; the orphan-PR gate already ran
+        while IFS= read -r line; do
+            [[ "$line" =~ ^#([0-9]+)[[:space:]] ]] || continue
+            n="${BASH_REMATCH[1]}"
+            branch="$(printf '%s\n' "$line" | sed -n 's/.*(\([^()]*\))$/\1/p')"
+            case "$branch" in dependabot/*) continue ;; esac
+            title="${line#\#"$n" }"; title="${title% \("$branch"\)}"
+            key=""
+            if [[ "$line" =~ \[([A-Za-z][A-Za-z0-9]*-[0-9]+)\] ]]; then key="${BASH_REMATCH[1]}"
+            elif [[ "$branch" =~ ([A-Za-z][A-Za-z0-9]*-[0-9]+) ]]; then key="${BASH_REMATCH[1]}"; fi
+            found=""
+            if [ -n "$key" ]; then
+                found="$(printf '%s' "$live" | awk -F'\t' -v k="$(printf '%s' "$key" | tr '[:lower:]' '[:upper:]')" '{ d = toupper($2); sub(/.*\//, "", d); if (index(d, k "-") == 1 || index(d, "-" k "-") > 0) { print 1; exit } }')"
+            fi
+            [ -z "$found" ] || continue
+            npr=$((npr + 1))
+            [ "$npr" -le "$cap" ] || continue
+            printf -- '- PR #%s (%s) has no live worker: %s\n' "$n" "$branch" "$title"
+        done <<EOF_PRS
+$prs
+EOF_PRS
+        [ "$npr" -le "$cap" ] || printf -- '- +%s more open PRs with no live worker: list them with gh pr list\n' "$((npr - cap))"
+        resume_rc=0
+        if [ -n "${CHIEF_MUST_RESUME_ROWS:-}" ]; then
+            rows="$(bash "$CHIEF_MUST_RESUME_ROWS" 2>/dev/null)" || resume_rc=$?  # swallow-ok: the failure becomes a Must disposition row below
+        else
+            rows="$(timeout -k 2 90 bash "$kit/next-dispatchable.sh" --resume-only ${smanifest:+--workers-from "$smanifest"} 2>/dev/null)" || resume_rc=$?  # swallow-ok: the failure becomes a Must disposition row below
+        fi
+        if [ "$resume_rc" -ne 0 ]; then
+            printf -- '- RESUME rows unavailable: next-dispatchable.sh --resume-only exited %s (124 is a timeout), so the In Progress tickets with no worker are not listed; re-run: bash %s --resume-only --workers-from %s\n' "$resume_rc" "$kit/next-dispatchable.sh" "$smanifest"
+        fi
+        while IFS=$'\t' read -r st ver rest_; do
+            [ "$st" = RESUME ] || continue
+            total=$((total + 1))
+            [ "$total" -le "$cap" ] || continue
+            printf -- '- RESUME row %s %s\n' "$ver" "$rest_"
+        done <<EOF_ROWS
+$rows
+EOF_ROWS
+        [ "$total" -le "$cap" ] || printf -- '- +%s more RESUME rows: list them with next-dispatchable.sh --resume-only\n' "$((total - cap))"
+    }
+    OPERATOR_DIRECTED_KEYS=""
+    mirror="${NEXT_DISPATCH_MIRROR:-}"
+    [ -n "$mirror" ] || mirror="$(JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}" bash -c '. "$1" && jira_mirror_dir' _ "$HERE/../../lib/jira-project.sh" 2>/dev/null)" || mirror=""  # swallow-ok: no mirror lists no operator-directed row
+    pstem="${pdoc##*/}"; pdate="$(printf '%s' "$pstem" | sed -n 's/.*-nextleg-\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\).*/\1/p')"
+    fv="$(awk '$0 == "## Live state" { s = 1; next } s && /^## / { exit } s && index($0, "focus-version:") == 1 { sub(/^[^:]*:[[:space:]]*/, ""); print; exit }' "$pdoc" | sed -n 's/^\(v[0-9][0-9.]*\).*/\1/p')"
+    fresh=""
+    if [ -n "$mirror" ] && [ -d "$mirror" ]; then
+        fresh="$(find "$mirror" -maxdepth 1 -name .cursor.json -mmin "-${CHIEF_MUST_MIRROR_MIN:-1440}" -print -quit 2>/dev/null)" || fresh=""  # swallow-ok: an unreadable mirror reads as unavailable, said below
+    fi
+    if [ -z "$fresh" ]; then
+        printf -- '- operator-directed tickets unavailable: the Jira mirror (%s) has no sync stamp (.cursor.json) newer than %s minutes, so no To Do ticket is listed; refresh the mirror, then list the operator-directed To Do tickets of the focus version by hand\n' "${mirror:-no path}" "${CHIEF_MUST_MIRROR_MIN:-1440}"
+    else
+        while IFS= read -r f; do
+            key="${f##*/}"; key="${key%.md}"
+            fm="$(sed -n '2,/^---$/p' "$f")"
+            grep -q '^statusCategory: "To Do"$' <<< "$fm" || continue
+            grep -q '^labels: .*"operator-directed"' <<< "$fm" || continue
+            [ -z "$fv" ] || grep -q "^fixVersions: .*\"$fv\"" <<< "$fm" || continue
+            printf '%s' "$live" | awk -F'\t' -v k="$key" '{ d = $2; sub(/.*\//, "", d); if (index(d, k "-") == 1 || index(d, "-" k "-") > 0) f = 1 } END { exit !f }' && continue
+            created="$(sed -n 's/^created: "\([0-9-]*\)T.*$/\1/p' <<< "$fm")"
+            prio="$(sed -n 's/^priority: "\(.*\)"$/\1/p' <<< "$fm")"
+            ttl="$(sed -n 's/^# [A-Z][A-Z0-9]*-[0-9]*: //p' "$f" | head -n 1)"
+            nop=$((nop + 1))
+            if [ "$nop" -le "$cap" ]; then printf -- '- operator-directed %s (%s, no worker): %s\n' "$key" "${prio:-no priority}" "$ttl"; fi
+            if { [ -n "$pdate" ] && [ -n "$created" ] && [[ ! "$created" < "$pdate" ]]; } || grep -qwF "$key" "$pdoc"; then
+                OPERATOR_DIRECTED_KEYS="$OPERATOR_DIRECTED_KEYS$key "
+            fi
+        done < <(grep -l '"operator-directed"' "$mirror"/*.md 2>/dev/null | sort)
+        [ "$nop" -le "$cap" ] || printf -- '- +%s more operator-directed To Do tickets with no worker: list them from the Jira mirror\n' "$((nop - cap))"
+    fi
+    for f in "$root"/.locks/queue/*.lock; do
+        [ ! -f "$f/owner.json" ] || ! jq -e '.handover | strings | length > 0' "$f/owner.json" >/dev/null 2>&1 || continue
+        [ -d "$f" ] || continue
+        printf -- '- queue lock %s has no readable owner file, so the worker it holds is not listed; check it: bash %s status --sweep\n' "$(basename "$f" .lock)" "$repo/scripts/handover/queue-lock.sh"
+    done
+    if [ -n "$dead" ]; then
+        printf -- '- retired from the fleet manifests (no live worker, nothing to relaunch from the row): %s\n' "$(printf '%s\n' "$dead" | awk -F'\t' 'NF { printf "%s%s", sep, $1; sep = ", " }')"
+    fi
+}
+
+carry_operator_priority() {
+    local k new="" has
+    for k in $2; do
+        grep -qwF "$k" <<< "$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f && /^priority:/' "$1")" || new="$new$k "
+    done
+    new="${new% }"
+    [ -n "$new" ] || return 0
+    has="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f && /^priority:/ { print 1; exit }' "$1")"
+    if SL_new="$new" SL_has="$has" awk '
+        $0 == "## Live state" { f = 1; print; next }
+        f && /^## / { f = 0 }
+        f && !done && /^priority:/ {
+            v = $0; sub(/^priority:[[:space:]]*/, "", v)
+            if (v == "" || v == "none" || v ~ /^</) print "priority: " ENVIRON["SL_new"]; else print "priority: " ENVIRON["SL_new"] " | " v
+            done = 1; next
+        }
+        f && !done && ENVIRON["SL_has"] == "" && /^board:/ { print "priority: " ENVIRON["SL_new"]; done = 1 }
+        { print }' "$1" > "$1.prio" && mv "$1.prio" "$1"; then :; else
+        rm -f "$1.prio"; err "warning: could not carry the operator-directed keys into the priority: line of $1"
+    fi
+}
+
 # seed_live_fields <doc> <predecessor live state> <predecessor stem> [<predecessor doc>]: replace each
 # `<field>: <...>` placeholder line in the doc's `## Live state` with the
 # predecessor's value, verbatim; a field the predecessor lacks keeps its
@@ -2408,6 +2653,11 @@ seed_live_fields() {
             err "warning: could not write the Live state history to $hfile; seeded the workers: and last GO: lines whole"
             new_legs="$workers"; new_go="$go"
         fi
+    fi
+    LIVE_WORKER_ROWS=""
+    if [ -n "${4:-}" ]; then
+        LIVE_WORKER_ROWS="$(live_worker_rows "$4" "$(dirname "$4")")"
+        new_legs="$(carry_live_workers "$new_legs" "$LIVE_WORKER_ROWS" "$workers")"
     fi
     # queue: only the newest segment (queue_newest_segment names the markers of an earlier chief's);
     # the older ones are kept byte for byte in the dated history file and the line points at it.
@@ -2761,6 +3011,22 @@ cmd_next() {
         MODEL "$model" \
         PROJECT "$project_doc_value"
     seed_live_fields "$doc" "$predecessor_live_state" "$predecessor_stem" "$predecessor_doc"
+    if ! check_workers_carried "$doc" "$LIVE_WORKER_ROWS"; then rm -f "$successor_manifest"; exit 1; fi
+    local dead_rows
+    dead_rows="$(dead_manifest_rows "$predecessor_manifest")"
+    must_disposition_section "$predecessor_doc" "$(dirname "$predecessor_doc")" "$LIVE_WORKER_ROWS" "$dead_rows" "$successor_manifest" > "$doc.must"
+    if grep -q '^- ' "$doc.must"; then
+        if awk -v mf="$doc.must" '
+            /^## Current direction/ && !d { while ((getline l < mf) > 0) print l; print ""; d = 1 }
+            { print }
+            END { if (!d) { print ""; while ((getline l < mf) > 0) print l } }' "$doc" > "$doc.m"; then
+            mv "$doc.m" "$doc" || err "warning: could not write the Must disposition section into $doc"
+        else
+            err "warning: could not build the Must disposition section for $doc"
+        fi
+    fi
+    rm -f "$doc.must" "$doc.m"
+    carry_operator_priority "$doc" "$OPERATOR_DIRECTED_KEYS"
     precompute_action_zero "$doc"
 
     echo "doc: $doc"
@@ -2781,8 +3047,8 @@ cmd_next() {
         # outgoing chief writes only its judgement notes (one Edit), not
         # ~18 turns of hand derivation. Each fact fails open to "unavailable".
         local facts="$HERE/../chief-kit/handoff-facts.sh"
-        local hf_legs hf_prs hf_summary hf_slug hf_total hf_note hf_budget="${HANDOFF_BUDGET_BYTES:-6000}"
-        hf_legs="$(bash "$facts" workers "$predecessor_doc" --repo "$repo")"
+        local hf_legs hf_prs hf_summary hf_total hf_note hf_budget="${HANDOFF_BUDGET_BYTES:-6000}"
+        hf_legs="$(bash "$facts" workers "$predecessor_doc" --repo "$repo" --root "$root")"
         hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
         hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
         local hf_pass=1 hf_wrapped hf_wrapped_bytes hf_inflight hf_inflight_bytes hf_owed hf_owed_bytes hf_chain hf_direction hf_lastgo
@@ -2819,13 +3085,8 @@ cmd_next() {
                 BUCKET "$bucket" \
                 KIT "$kit" \
                 LIVE_STATE "Live state: seeded into \`$successor_doc_ref\`${LS_HISTORY_REF:+; the closed workers, prior GOs and shift notes left out of that seed are kept verbatim in \`$LS_HISTORY_REF\`}"
-            # Over budget: the bulky fact sections (all re-derivable) become
-            # pointers; the rulings stay inline.
             [ "$hf_pass" -eq 1 ] && [ $(( $(wc -c < "$predecessor_handoff") + hf_wrapped_bytes + hf_inflight_bytes + hf_owed_bytes )) -gt "$hf_budget" ] || break
             hf_pass=2
-            hf_legs="over the HANDOFF size budget — run: bash $facts workers $predecessor_doc --repo $repo"
-            hf_slug="$(git_clean -C "$repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|[a-z+]+://[^/]+/)##; s#\.git$##')" || hf_slug=""  # swallow-ok: an unreadable remote falls back to the <owner/repo> placeholder in the pointer
-            hf_prs="over the HANDOFF size budget — run: gh pr list -R ${hf_slug:-<owner/repo>} --state open"
             hf_summary="over the HANDOFF size budget — read the tail of $predecessor_doc ## Results"
             hf_lastgo="over the HANDOFF size budget — read \`last GO:\` in the Live state of \`$successor_doc_ref\`"
         done
@@ -2866,6 +3127,8 @@ cmd_next() {
     # blocked by "successor doc already exists".
     launch_line=$(launch_cmd "$session" "$doc") || exit $?
     trap - EXIT
+    retire_manifest_rows "$predecessor_manifest" "$dead_rows"
+    retire_manifest_rows "$successor_manifest" "$dead_rows"
     console_metadata "$inbox"
     echo "launch: $launch_line"
     # Handover mode for the OUTGOING chief's waiter, set only now
