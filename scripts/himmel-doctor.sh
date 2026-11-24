@@ -3300,10 +3300,6 @@ check_c39_gtimeout_darwin() {
 # HIMMEL_DOCTOR_QMD_CURL (default curl), HIMMEL_DOCTOR_QMD_VEC_TIMEOUT (seconds,
 # a positive integer -- 0 / non-numeric / empty falls back to 30 with an INFO,
 # since curl -m 0 is "no timeout").
-# A refused connection where qmd is set up is an outage nobody else hears about: raise it
-# through the one cadence alert sender (chief-readable alert log + one Telegram). The sender
-# dedupes per worker+reason until `clear`, so a repeat run stays quiet and the outage ends when
-# C40 sees qmd answer. Alerting never changes the doctor's own verdict.
 _c40_outage_alert() { # <url>
     bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" fail qmd-daemon "the qmd daemon is not answering" "$HOME/.cache/qmd/mcp.log" \
         "connection refused on $1 although qmd is set up on this station; every qmd content search fails" \
@@ -3312,7 +3308,9 @@ _c40_outage_alert() { # <url>
 _c40_outage_clear() {
     bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" clear qmd-daemon </dev/null >/dev/null 2>&1 || true
 }
-# qmd is set up on this station: C89's presence test (the HIMMEL_DOCTOR_QMD_BIN seam, else qmd-bin.sh's has_qmd).
+_c40_daemon_answered() {
+    [ -n "$1" ] || { [ -n "$2" ] && [ "$2" != 000 ]; }
+}
 _c40_qmd_set_up() {
     if [ -n "${HIMMEL_DOCTOR_QMD_BIN:-}" ]; then
         command -v "$HIMMEL_DOCTOR_QMD_BIN" >/dev/null 2>&1
@@ -3403,8 +3401,7 @@ check_c40_qmd_vec() {
     # exchange happened); peel it off so an empty body can be told apart by status.
     init="$(printf 'header = "Authorization: Bearer %s"\n' "$qd_tok" | "$curl_bin" ${qd_auth[@]+"${qd_auth[@]}"} -s -m "$init_timeout" -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$init_payload" "$url" 2>/dev/null)"; init_rc=$?
     case "${init: -3}" in [0-9][0-9][0-9]) init_code="${init: -3}"; init="${init%???}" ;; esac
-    # any HTTP exchange means the daemon answered: the outage is over, whatever the reply says.
-    if [ -n "$init" ] || { [ -n "$init_code" ] && [ "$init_code" != 000 ]; }; then _c40_outage_clear; fi
+    if _c40_daemon_answered "$init" "$init_code"; then _c40_outage_clear; fi
     if [ -z "$init" ] && [ "$init_rc" -eq 28 ]; then
         emit WARN C40-qmd-vec "a process on $url accepted the connection but did not answer initialize within ${init_timeout}s -- the qmd server is wedged, vec search is not being served" "$remedy"
         return
@@ -3536,7 +3533,6 @@ check_c40_qmd_vec() {
         ;;
     esac
     emit OK C40-qmd-vec "qmd vector search served a probe query in ${elapsed}s ($url)"
-    _c40_outage_clear
     local pending
     pending="$(printf '%s' "$instr" | sed -n 's/.*Note: \([0-9][0-9]*\) documents need embedding.*/\1/p' | head -1)"
     if [ -n "$pending" ]; then
