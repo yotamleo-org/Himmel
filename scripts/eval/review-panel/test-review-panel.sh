@@ -689,6 +689,19 @@ eq "paired: a head whose fixtures differ from the snapshot's is refused, no swee
 has "paired: the refusal names the case set" "$(cat "$TMP/pair4.txt")" "case set"
 paired --paired "$PS" --head "$PH" --fixtures "$FIX" --out "$TMP/pair5" --results "$TMP/pair5.jsonl" >/dev/null 2>&1; rc=$?
 eq "paired: --fixtures is refused, each side reads its own tree's case set" "$rc" "2"
+paired --paired "$PS" --repeats 0 --out "$TMP/pair6" --results "$TMP/pair6.jsonl" >/dev/null 2>&1; rc=$?
+eq "paired: --repeats 0 is refused" "$rc:$([ -e "$TMP/pair6.jsonl" ] && echo row || echo none)" "2:none"
+paired --paired no-such-rev --out "$TMP/pair7" --results "$TMP/pair7.jsonl" >"$TMP/pair7.txt" 2>&1; rc=$?
+eq "paired: a snapshot that is no commit is refused, no row" "$rc:$([ -e "$TMP/pair7.jsonl" ] && echo row || echo none)" "2:none"
+has "paired: the refusal names the snapshot" "$(cat "$TMP/pair7.txt")" "is not a commit"
+paired --paired "$PS" --out "$TMP/pair8" --results "$TMP/pair8.jsonl" >/dev/null 2>&1; rc=$?
+eq "paired: --head defaults to the checkout's HEAD" "$rc:$(rowsof "$TMP/pair8.jsonl" "$PS" | cut -d' ' -f1,3 | tr '\n' ';')" "0:base ${PS:0:7};head ${PH:0:7};"
+paired --paired "$PS" --head "$PH" --only case-99 --out "$TMP/pair9" --results "$TMP/pair9.jsonl" >"$TMP/pair9.txt" 2>&1; rc=$?
+eq "paired: a failing sweep fails the run and writes no row" "$rc:$([ -e "$TMP/pair9.jsonl" ] && echo row || echo none)" "2:none"
+has "paired: the failure says no row was written" "$(cat "$TMP/pair9.txt")" "no row written"
+python3 "$RP/scripts/eval/review-panel/score.py" export-row "$TMP/pair1/base-1" --repo "$RP" --snapshot "$PS" --results "$TMP/pair10.jsonl" >"$TMP/pair10.txt" 2>&1; rc=$?
+eq "export-row: --snapshot without --side is refused, no row" "$rc:$([ -e "$TMP/pair10.jsonl" ] && echo row || echo none)" "2:none"
+has "export-row: the refusal says the two go together" "$(cat "$TMP/pair10.txt")" "go together"
 
 SC="$TMP/scorer"; mkdir -p "$SC/scripts/eval/review-panel" "$SC/scripts/eval/lib"
 cp "$SCORE" "$SC/scripts/eval/review-panel/score.py"; cp "$HERE/adjudication.py" "$SC/scripts/eval/review-panel/"; cp "$HERE/replay.py" "$SC/scripts/eval/review-panel/replay.py"; cp "$HERE/../lib/"*.py "$SC/scripts/eval/lib/"; cp "$HERE/../feedback-rules.json" "$SC/scripts/eval/"
