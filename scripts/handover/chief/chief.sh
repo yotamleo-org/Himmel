@@ -3035,7 +3035,7 @@ cmd_next() {
         esac
     fi
     if [ -f "$ledger" ] && [ "$dir_rc" -le 1 ]; then
-        if dir_in_force="$(printf '%s\n' "$predecessor_direction" | bash "$kit/rulings-in-force.sh" render --bucket "$state_dir")" && [ -n "$dir_in_force" ]; then
+        if dir_in_force="$(printf '%s\n' "$predecessor_direction" | bash "$kit/rulings-in-force.sh" render --bucket "$state_dir" --recent 7)" && [ -n "$dir_in_force" ]; then
             predecessor_direction="$dir_in_force"
         else
             err "warning: could not render the rulings in force from $ledger; carried the Current direction as it was"

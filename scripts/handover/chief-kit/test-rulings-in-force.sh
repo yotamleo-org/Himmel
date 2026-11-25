@@ -391,6 +391,38 @@ same "fold: check reports an id folded under the wrong topic" "$(chk "$(printf '
 same "retire and fold: no verbatim file is changed or removed" "$(sums)" "$sum0"
 same "retire and fold: the ledger is not rewritten" "$(wc -l < "$RD/rulings-in-force.jsonl" | tr -d ' ')" "15"
 
+V="$W/window"; VD="$V/specs/decisions"; mkdir -p "$VD"
+for n in 991 992 993 994 995 996 997; do printf 'OPERATOR words of ruling %s.\n' "$n" > "$VD/verbatim-decision-$n-x.txt"; done
+vr() { bash "$SUT" record --bucket "$V" --id "$1" --status in-force --date "$2" --line "$3" --path "specs/decisions/verbatim-decision-$1-x.txt" "${@:4}" >/dev/null 2>&1; }
+vr 991 2026-11-24 'recent ruling on open HIMMEL-9300'
+vr 992 2026-11-18 'ruling on the first day of the window'
+vr 993 2026-11-10 'older ruling with no topic'
+vr 994 2026-11-05 'older ruling one on a topic' --topic wintopic
+vr 995 2026-11-05 'older ruling two on a topic' --topic wintopic
+vr 996 2026-11-24 'recent ruling whose only key HIMMEL-9001 is closed'
+vr 997 2026-11-17 'ruling one day before the window'
+printf 'HIMMEL-9001\n' > "$VD/closed-keys.txt"
+wrender() { printf '%s\n' "$1" | RULINGS_IN_FORCE_TODAY=2026-11-25 bash "$SUT" render --bucket "$V" "${@:2}"; }
+wchk() { printf '%s\n' "$1" | RULINGS_IN_FORCE_TODAY=2026-11-25 bash "$SUT" check --bucket "$V"; }
+wptr='Full original text of every ruling below, byte for byte, is in 0 files under the bucket ().'
+wout="$(wrender "$wptr" --recent 7)"; rc=$?
+same "window: render --recent 7 exits 0" "$rc" "0"
+same "window: a ruling of the last 7 days stays" "$(printf '%s\n' "$wout" | grep -c '^991 ')" "1"
+same "window: a ruling on the first day of the window stays" "$(printf '%s\n' "$wout" | grep -c '^992 ')" "1"
+same "window: an older unfolded ruling is cut" "$(printf '%s\n' "$wout" | grep -cE '^(993|997) ')" "0"
+same "window: older rulings folded under a topic stay as one standing-rule line" "$(printf '%s\n' "$wout" | grep -cxF 'wintopic: older ruling two on a topic (rulings 995, 994)')" "1"
+same "window: a ruling whose only key is Done leaves the block" "$(printf '%s\n' "$wout" | grep -c '^996 ')" "0"
+same "window: the head counts the cut rulings and the window" "$(printf '%s\n' "$wout" | grep -c '^Rulings in force (6; left out: 1 done, 0 superseded, 2 older than 7 days; year 2026 unless a head shows one):$')" "1"
+same "window: the pointer says where the cut rulings are" "$(printf '%s\n' "$wout" | grep '^Full original text' | grep -c 'older than 7 days that no Standing rules line folds')" "1"
+same "window: without --recent every ruling in force is listed" "$(wrender "$wptr" | grep -cE '^(991|992|993|997) ')" "4"
+same "window: a second render of its own output changes nothing" "$(wrender "$wout" --recent 7)" "$wout"
+same "window: check passes on the render" "$(wchk "$wout" | tail -n 1 | cut -d ' ' -f 1-4)" "check: ok in-force=6 named=4"
+same "window: check reports a recent ruling missing" "$(wchk "$(printf '%s\n' "$wout" | sed '/^991 /d')" | grep -c '^MISSING 991$')" "1"
+same "window: check does not report a cut older ruling missing" "$(wchk "$wout" | grep -cE '^MISSING 99[37]$')" "0"
+same "window: check reports a wrong older count" "$(wchk "$(printf '%s\n' "$wout" | sed 's/, 2 older than 7 days/, 3 older than 7 days/')" | grep -c '^COUNT older 3 2$')" "1"
+same "window: --recent 0 is refused with exit 2" "$(wrender "$wptr" --recent 0 >/dev/null 2>&1; echo $?)" "2"
+same "window: the ledger is not rewritten" "$(wc -l < "$VD/rulings-in-force.jsonl" | tr -d ' ')" "7"
+
 printf 'not json\n' >> "$L"
 out="$(render "$blk")"; rc=$?
 same "render: an unreadable ledger row exits 3" "$rc" "3"

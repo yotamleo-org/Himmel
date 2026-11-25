@@ -3577,13 +3577,22 @@ for _b in rif9846 noledger9846; do
     mkdir -p "$root/tester/$_b/specs/decisions"
     for _n in 901 902 904; do printf 'OPERATOR words of %s.\n' "$_n" > "$root/tester/$_b/specs/decisions/verbatim-decision-$_n-x.txt"; done
 done
-bash "$rif" record --bucket "$root/tester/rif9846" --id 901 --status in-force --date 2026-11-11 --line 'alpha in force' --path specs/decisions/verbatim-decision-901-x.txt >/dev/null
+old9846="$(python3 -I -c 'import datetime; print(datetime.date.today() - datetime.timedelta(days=10))')"
+for _n in 906 907 908; do printf 'OPERATOR words of %s.\n' "$_n" > "$root/tester/rif9846/specs/decisions/verbatim-decision-$_n-x.txt"; done
+printf 'HIMMEL-9001\n' > "$root/tester/rif9846/specs/decisions/closed-keys.txt"
+bash "$rif" record --bucket "$root/tester/rif9846" --id 906 --status in-force --date "$old9846" --line 'foxtrot older than 7 days, no topic' --path specs/decisions/verbatim-decision-906-x.txt >/dev/null
+bash "$rif" record --bucket "$root/tester/rif9846" --id 907 --status in-force --date "$today" --line 'golf on closed HIMMEL-9001 only' --path specs/decisions/verbatim-decision-907-x.txt >/dev/null
+bash "$rif" record --bucket "$root/tester/rif9846" --id 908 --status in-force --date "$today" --line 'hotel on open HIMMEL-9002' --path specs/decisions/verbatim-decision-908-x.txt >/dev/null
+bash "$rif" record --bucket "$root/tester/rif9846" --id 901 --status in-force --date "$today" --line 'alpha in force' --path specs/decisions/verbatim-decision-901-x.txt >/dev/null
 bash "$rif" record --bucket "$root/tester/rif9846" --id 902 --status 'superseded-by 903' --date 2026-11-11 --line 'bravo superseded' --path specs/decisions/verbatim-decision-902-x.txt >/dev/null
 bash "$rif" record --bucket "$root/tester/rif9846" --id 904 --status "done" --date 2026-11-10 --line 'charlie done' --path specs/decisions/verbatim-decision-904-x.txt >/dev/null
 run91 rif9846
 d9846="$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/rif9846/DEMO-nextleg-${today}C-chief.md")"
 check "9846 next with a ledger exits 0" "$rc91" "0"
-check "9846 the in-force ruling is indexed from the ledger" "$(printf '%s\n' "$d9846" | grep -cxF '901 2026-11-11 alpha in force (verbatim 901-x)')" "1"
+check "9846 the in-force ruling is indexed from the ledger" "$(printf '%s\n' "$d9846" | grep -cxF "901 $today alpha in force (verbatim 901-x)")" "1"
+check "10780 a ruling of the last 7 days stays" "$(printf '%s\n' "$d9846" | grep -c '^908 ')" "1"
+check "10780 a ruling whose only key is Done leaves the block" "$(printf '%s\n' "$d9846" | grep -c '^907 ')" "0"
+check "10780 an older unfolded ruling is cut, and the head counts it" "$(printf '%s\n' "$d9846" | grep -c '^906 ')/$(printf '%s\n' "$d9846" | grep -c '^Rulings in force (3; left out: 2 done, 1 superseded, 1 older than 7 days;')" "0/1"
 check "9846 the superseded and done rulings leave the block" "$(printf '%s\n' "$d9846" | grep -cE 'decision 90[24]|^90[24] ')" "0"
 check "9846 a ruling with no ledger row is carried" "$(printf '%s\n' "$d9846" | grep -c '^OPERATOR 11-10 YZ, decision 905: delta')" "1"
 c9846=0; for _r in $(printf '%s\n' "$d9846" | grep -m 1 '^Full original text' | grep -o 'specs/decisions/chief-direction-[A-Za-z0-9._-]*\.md'); do c9846=$((c9846 + $(grep -cxF -e 'OPERATOR 11-11 ZA (BINDING, decision 902): bravo, the full text of 902.' -e 'OPERATOR 11-10 YZ (BINDING, decision 904): charlie, the full text of 904.' "$root/tester/rif9846/$_r"))); done
@@ -3603,10 +3612,10 @@ OPERATOR 11-12 ZQ (BINDING): a raw ruling typed inside the index paragraph.
 777 2026-11-01 a row whose id the ledger lacks (verbatim 777-x)"
 mkdir -p "$root/tester/f2x9846/specs/decisions"
 printf 'OPERATOR words of 901.\n' > "$root/tester/f2x9846/specs/decisions/verbatim-decision-901-x.txt"
-bash "$rif" record --bucket "$root/tester/f2x9846" --id 901 --status in-force --date 2026-11-11 --line 'alpha in force' --path specs/decisions/verbatim-decision-901-x.txt >/dev/null
+bash "$rif" record --bucket "$root/tester/f2x9846" --id 901 --status in-force --date "$today" --line 'alpha in force' --path specs/decisions/verbatim-decision-901-x.txt >/dev/null
 run91 f2x9846
 check "9846 F2 current behaviour: a raw OPERATOR line inside the index paragraph absorbs the rows below it, and the ledger still indexes 901" \
-    "$(body9846 f2x9846 | grep -c '^OPERATOR 11-12 ZQ.* / 777 2026-11-01 a row whose id the ledger lacks')/$(body9846 f2x9846 | grep -c '^777 ')/$(body9846 f2x9846 | grep -cxF '901 2026-11-11 alpha in force (verbatim 901-x)')" "1/0/1"
+    "$(body9846 f2x9846 | grep -c '^OPERATOR 11-12 ZQ.* / 777 2026-11-01 a row whose id the ledger lacks')/$(body9846 f2x9846 | grep -c '^777 ')/$(body9846 f2x9846 | grep -cxF "901 $today alpha in force (verbatim 901-x)")" "1/0/1"
 if [ "$HOST_MODES_STICK" -eq 1 ]; then
     mk91 rc2x9846 "(46) other ruling" "-" "$dir9846"
     mkdir -p "$root/tester/rc2x9846/specs/decisions"

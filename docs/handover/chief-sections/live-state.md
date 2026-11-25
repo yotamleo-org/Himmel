@@ -172,7 +172,8 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > `--date`, a one-line `--line` and `--path` to its verbatim file). `next` renders the
 > in-force rows as one index at the top of the successor's `## Current direction`,
 > grouped under a `<MM-DD> <shift>:` head per verbatim shift, and drops the superseded
-> and done ones; a ruling with no row stays as it was. Every row's reading is the start
+> and done ones, and lists only the standing rules (rulings sharing a `--topic <word>`) and
+> the rulings of the last 7 days; a ruling with no row stays as it was. Every row's reading is the start
 > of its ledger line, cut at one shared cap so the block fits its 12,000-byte budget;
 > `rulings-in-force.sh find --bucket <bucket> <id or word>` prints the whole line, and
 > `rulings-in-force.sh check --bucket <bucket> [--before <old block>]` proves the index
