@@ -55,14 +55,17 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   | Round of a kind | Sealed when |
   |---|---|
   | 1 to 3 | always, as a full round |
-  | 4 | round 3 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record without `--restores` opens it; it is a closure check, built with `closure-pack <KEY> <spec\|plan> --specs <bucket>/specs` |
-  | 5 and on | the chief's one `round-override`, or a `round-critical` record without `--restores`, opens that writer round |
+  | 4 | round 3 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record without `--restores` (a finding ruling or a `--closure` round) opens it; it is a closure check, built with `closure-pack <KEY> <spec\|plan> --specs <bucket>/specs` |
+  | 5 and on | the chief's one `round-override`, or a `round-critical` record without `--restores` (a finding ruling or a `--closure` round), opens that writer round |
 
   The three records run only from the chief's console (`HIMMEL_CONSOLE=1`), each with `--specs <bucket>/specs` like
   `closure-pack` and `round-status`, and each is checked again on every read: `round-override <KEY> --findings <id,...> --why "<line>" --chief <session>`, once per ticket, ever, naming
   open blocking ids; `round-critical <KEY> --finding <id> --decision <d> --quote "<operator words>" [--no-round]`, the
   operator's ruling on an operator-critical finding, which closes it and, without `--no-round`, also opens one
-  further writer round; and `round-reset <KEY> --decision <d> --quote "<operator words>"`, the operator's order to
+  further writer round; `round-critical <KEY> --decision <d> --quote "<operator words>" --closure`, with no `--finding`,
+  the operator's yes to one more round when no finding is operator-critical, which opens exactly the next writer round
+  as a closure check (refused when that round needs no record, and once per decision: a decision any record already
+  used is refused); and `round-reset <KEY> --decision <d> --quote "<operator words>"`, the operator's order to
   start over, once per ticket. The decision file `specs/decisions/verbatim-decision-<d>-*.txt` must name the ticket
   and hold the quote. A `round-critical ... --restores` record, for a reverses-ruling finding whose fix restores a
   ruling on record, needs neither the key in the decision file nor a fresh file: the finding must say it reverses
