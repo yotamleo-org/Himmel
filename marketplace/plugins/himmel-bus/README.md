@@ -56,8 +56,8 @@ has a pending message, prints it in the delivery hook's format and commits the
 cursor (at-least-once, like the hook). Exit 0 = printed, **3 = timed out**, any
 other nonzero = error (unbound identity, halted log, bad `--timeout`). It polls
 `pending` every 500 ms. Workers on a bus-enabled profile (`worker-bus` among them) get the MCP server through
-the registry `mcpCatalog` entry; its `npm run start` installs the locked deps on
-first use (`npm ci`) and then execs `server/index.mjs`.
+the registry `mcpCatalog` entry; its `npm run start` installs or reinstalls the locked deps
+when the installed runtime deps differ from the lockfile (`ensure-deps.mjs`), then execs `server/index.mjs`.
 
 ## Identity and registration CLI
 
