@@ -1852,6 +1852,13 @@ has "N40 import-env stores the other secret" "stored UNREAD_SECRET" "$n40out"
 has "N40 import-env names the key it stopped" "skipped READ_SECRET (it has several entries, one over several lines; keep one)" "$n40out"
 no_item "N40 import-env on the key with the duplicate" READ_SECRET
 no_canary "N40 import-env prints no value" "$n40out"
+kreset
+n40real=$(canary real)
+fxput "$TMP/n40s.env" 'UNREAD_SECRET=%s\nUNREAD_SECRET="%s\nREAD_SECRET=%s\n%s"\nREAD_SECRET=%s\n' "$(canary s1)" "$(canary s2)" "$(canary shadow)" "$(canary s3)" "$n40real"
+n40sout=$(bash "$FX/scripts/lib/himmel-secrets" import-env "$TMP/n40s.env" 2>&1); n40src=$?
+if [ "$n40src" = 0 ]; then pass "N40 an assignment-looking line inside the stopped entry: import-env exits 0"; else fail "N40 import-env exited $n40src: $n40sout"; fi
+if grep -q "key=READ_SECRET .*$n40real" "$KSTUB_STORE" 2>/dev/null; then pass "N40 the real entry of the other key is the one stored"; else fail "N40 the stored READ_SECRET is not the real entry"; fi
+if ! grep -q 'CANARY-shadow' "$KSTUB_STORE" 2>/dev/null; then pass "N40 the line inside the stopped entry reached no store"; else fail "N40 a line inside the stopped entry was stored"; fi
 
 mkdir -p "$TMP/mvstub"
 cat > "$TMP/mvstub/mv" <<'STUB' || fail "fixture write of the mv stub failed"
