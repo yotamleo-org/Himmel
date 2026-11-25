@@ -1504,8 +1504,9 @@ def gc_cursor_write(repo, pos, origin):
     return None
 
 
-def gc_judge_row(judge, key_state, d, n):
-    """Judge one row and take it out when its holder is dead or its key is Done: 1 when it was removed, else 0."""
+def gc_judge_row(judge, key_state, d, n, absolute=False):
+    """Judge one row and take it out when its holder is dead or its key is Done: 1 when it was removed, else 0.
+    An absolute pr row is another repository's to judge: this repository's gh answers for its own pull requests, so the row stays 'unknown'."""
     full = os.path.join(d, n)
     st, f = read_row(full)
     if st != 'ok':
@@ -1521,7 +1522,7 @@ def gc_judge_row(judge, key_state, d, n):
             log_event('gc', unescape(n), f[0], 'key Done')
             return 1
         return 0
-    state = judge.row_state(f, mt)
+    state = 'unknown' if absolute and f[3] == 'pr' else judge.row_state(f, mt)
     if state == 'waiting':
         judge.waiting += 1
     rank = {'alive': 0, 'waiting': 1, 'unknown': 1, 'dead': 2}
@@ -1560,7 +1561,7 @@ def gc_sweep(repo, deadline, listing, keep_aged=False):
             break
         persist_cursor(item, origin)  # the place is kept before the row is judged: a death in it costs that row's turn, never the rows behind it
         judge.cut = False
-        removed += gc_judge_row(judge, key_state, dirs[item[0]], item[1])
+        removed += gc_judge_row(judge, key_state, dirs[item[0]], item[1], item[0] == 1)
         if judge.cut:
             cut += 1
             if prev is not None:
@@ -1581,11 +1582,20 @@ def gc_sweep(repo, deadline, listing, keep_aged=False):
                 continue
             gkey = m.group(0).rsplit('.', 1)[1]
             # a grant whose row is gone goes on every pass; a dead key's grant only when this pass judged every row, so key_state is the whole register's
-            if not os.path.exists(os.path.join(d, n[:m.start()])) or (full and key_state.get(gkey) == 'dead'):
-                try:
-                    os.unlink(os.path.join(d, n))
-                except OSError:
-                    pass  # swallow-ok: already removed
+            orphan = lambda: not os.path.exists(os.path.join(d, n[:m.start()])) or (full and key_state.get(gkey) == 'dead')
+            if not orphan():
+                continue
+            lock = dir_lock(d)
+            if lock is None:
+                continue
+            try:
+                if orphan():
+                    try:
+                        os.unlink(os.path.join(d, n))
+                    except OSError:
+                        pass  # swallow-ok: already removed
+            finally:
+                dir_unlock(lock)
     print('gc visited=%d removed=%d cut=%d rows=%d cycle=%s' % (visited, removed, cut, len(items), 'complete' if complete else 'partial')
           + (' waiting=%d' % judge.waiting if keep_aged else ''))
     return 0

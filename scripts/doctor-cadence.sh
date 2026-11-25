@@ -124,19 +124,19 @@ $(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
 # the first one to answer busy goes first on the next run, so the pass is retried and never read as progress. Passes per
 # register stop at a complete cycle (or a busy answer, or a failure) and are capped; the whole step has one time
 # budget (DOCTORCAD_HOLDS_GC_BUDGET) that never stops the first pass of a run, so it ends within the budget plus one
-# pass (30 s). Whether a repo is gone is holds.py's answer (repo-gone), the same one the doctor's C95 uses; only a
-# proven removal skips a register. The run lock held by cmd_run keeps two scheduled runs from overlapping; holds.py's
-# own per-repo lock covers a manual gc. The step is best-effort: holds-gc.log holds this run's pass lines and ends
-# with one summary line (or one skipped line), which `status` shows; a failure never fails the run. The passes run
-# gc --keep-aged-resume: a row whose only sign of death is an unwrapped RESUME doc past 24 hours is never pruned by the
-# schedule, because nothing frees ownership by age on its own. Each such row is counted: a pass line ends waiting=<n>, and
-# the summary line ends waiting=<total> when any waited; a chief or the operator releases them by running gc by hand.
+# pass (30 s). It starts before, and bounds, the repo-gone probes; an unprobed register is read. Whether a repo is gone is
+# holds.py's answer (repo-gone), the same one the doctor's C95 uses; only a proven removal skips a register. The run lock
+# held by cmd_run keeps two scheduled runs from overlapping; holds.py's own per-repo lock covers a manual gc. The step is
+# best-effort: holds-gc.log holds this run's pass lines and ends with one summary line (or one skipped line), which `status`
+# shows; a failure never fails the run. The passes run gc --keep-aged-resume: a row whose only sign of death is an unwrapped
+# RESUME doc past 24 hours is never pruned by the schedule, because nothing frees ownership by age on its own. Each is
+# counted in the pass line and the summary as waiting=; a chief or the operator releases them by running gc by hand.
 holds_gc_note() { printf '%s %s\n' "$(date +%FT%T)" "$*" >> "$STATE_DIR/holds-gc.log"; }
 
 holds_maintenance() { # <primary root>
     local root="$1" py="$1/scripts/handover/chief-kit/holds.py" holds="${HOME:-}/.himmel/state/holds"
     local nextf="$STATE_DIR/holds-gc.next" passes="${DOCTORCAD_HOLDS_GC_PASSES:-12}" budget="${DOCTORCAD_HOLDS_GC_BUDGET:-120}"
-    local reg repo i k n end out rc tmo want w waited="" start=0 total=0 served=0 starved=0 partial=0 failed=0 waiting=0 progress stop_at=""
+    local reg repo i k n end out rc tmo want w left waited="" start=0 total=0 served=0 starved=0 partial=0 failed=0 waiting=0 progress stop_at=""
     local -a repos=() count=() state=()
     [[ "$passes" =~ ^[0-9]+$ ]] || passes=12
     [[ "$budget" =~ ^[0-9]+$ ]] || budget=120
@@ -145,10 +145,12 @@ holds_maintenance() { # <primary root>
     [ -d "$holds" ] || { holds_gc_note "skipped: no holds register on this station"; return 0; }
     command -v python3 >/dev/null 2>&1 || { holds_gc_note "skipped: python3 not on PATH"; return 0; }
     tmo="$(command -v timeout || command -v gtimeout || true)"
+    end=$((SECONDS + 10#$budget))
     for reg in "$holds"/%2F*; do
         [ -d "$reg" ] || continue
         repo="$(printf '%s' "${reg##*/}" | sed -e 's/%2F/\//g' -e 's/%25/%/g')"
-        if ${tmo:+"$tmo" -k 1 10} python3 -I "$py" repo-gone --repo "$repo" </dev/null >/dev/null 2>&1; then
+        left=$((end - SECONDS))
+        if [ "$left" -ge 1 ] && ${tmo:+"$tmo" -k 1 "$((left < 10 ? left : 10))"} python3 -I "$py" repo-gone --repo "$repo" </dev/null >/dev/null 2>&1; then
             holds_gc_note "skip $repo: the repo is gone"
             continue
         fi
@@ -159,7 +161,6 @@ holds_maintenance() { # <primary root>
     for ((i = 0; i < n; i++)); do
         if [ "${repos[i]}" = "$want" ] || { [ -z "$want" ] && [ "${repos[i]}" = "$root" ]; }; then start=$i; break; fi
     done
-    end=$((SECONDS + 10#$budget))
     progress=1
     while [ "$progress" -eq 1 ] && [ "$n" -gt 0 ]; do
         progress=0
