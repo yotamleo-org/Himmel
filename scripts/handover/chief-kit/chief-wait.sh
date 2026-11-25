@@ -2785,7 +2785,7 @@ t3_relay_step() {
     secs="${CHIEF_WAIT_T3_RELAY_SEC:-120}"; case "$secs" in ''|*[!0-9]*) secs=120 ;; esac
     tmo="${CHIEF_WAIT_T3_RELAY_TIMEOUT:-30}"; case "$tmo" in ''|0|*[!0-9]*) tmo=30 ;; esac
     now="$(date +%s)"
-    last="$(cat "$t3_stamp_file" 2>/dev/null)"; case "$last" in ''|*[!0-9]*) last=0 ;; esac  # swallow-ok: no stamp reads as never run
+    last=""; [ ! -r "$t3_stamp_file" ] || IFS= read -r last < "$t3_stamp_file"; case "$last" in ''|*[!0-9]*) last=0 ;; esac
     [ $(( now - last )) -ge "$secs" ] || return 1
     printf '%s\n' "$now" > "$t3_stamp_file" 2>/dev/null
     heartbeat sampling
@@ -2793,7 +2793,7 @@ t3_relay_step() {
     case "$rc" in
         0|1|5) rm -f "$t3_rc4_file" ;;
         4)
-            n="$(cat "$t3_rc4_file" 2>/dev/null)"; case "$n" in ''|*[!0-9]*) n=0 ;; esac  # swallow-ok: no file reads as no streak
+            n=""; [ ! -r "$t3_rc4_file" ] || IFS= read -r n < "$t3_rc4_file"; case "$n" in ''|*[!0-9]*) n=0 ;; esac
             n=$(( 10#$n + 1 )); printf '%s\n' "$n" > "$t3_rc4_file" 2>/dev/null
             if [ "$n" -eq 3 ]; then printf 'WAKE t3-relay list-failed list\n'; woke=1; fi ;;
         *) rm -f "$t3_rc4_file"; return 1 ;;
