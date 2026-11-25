@@ -1921,6 +1921,9 @@ rk --head RKH1 --id cr-od-rk1 --line 5; check "rekey without --reason is refused
 rk --head RKH1 --id cr-od-rk1 --line 'abc' --reason x; check "rekey with a non-numeric line token is refused" "$?" "2"
 rk --head RKH1 --id cr-od-rk1 --line 5 --set severity=sug --reason x; check "rekey takes no --set" "$?" "2"
 check "malformed rekeys wrote nothing" "$(wc -l < "$RK" | tr -d ' ')" "$n0"
+CR_LEDGER="$RK" bash "$LA" amend --branch b --head RKH1 --id cr-od-rk1 --set line=77 --reason "plain amend" 2>"$tmp/amend-plain.err"
+check "a plain amend stores a numeric line" "$(tail -n1 "$RK" | jq -r '.set.line|type')" "number"
+check "a plain amend does not say rekeyed" "$(grep -c rekeyed "$tmp/amend-plain.err")" "0"
 check "the usage text names the rekey verb" "$(bash "$LA" bogus 2>&1 | grep -c 'rekey')" "1"
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

@@ -1231,7 +1231,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       const i=p.indexOf("=");
       let v=p.slice(i+1);
       const k=p.slice(0,i);
-      if(k==="line"&&!e.REKEY) v=Number(v)||v;
+      if(k==="line"&&e.REKEY!=="1") v=Number(v)||v;
       if(k==="pre_existing"||k==="rekey") v=(v==="true");
       if(k==="reason") v=cleanFree(v);
       set[k]=v;
@@ -1304,7 +1304,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // sets a verdict is an adjudication; a bookkeeping amend carries no round.
     if(e.DISPOSITION_ROUND&&set.verdict) rec.disposition_round=Number(e.DISPOSITION_ROUND);
     fs.appendFileSync(led, JSON.stringify(signAmend(rec))+"\n");
-    process.stderr.write("ledger-append.sh: "+(e.REKEY?"rekeyed ":"amended ")+e.ID+" at "+e.HEAD_.slice(0,8)+" -> "
+    process.stderr.write("ledger-append.sh: "+(e.REKEY==="1"?"rekeyed ":"amended ")+e.ID+" at "+e.HEAD_.slice(0,8)+" -> "
       +JSON.stringify(set)+"\n");
     process.exit(0);
   }
