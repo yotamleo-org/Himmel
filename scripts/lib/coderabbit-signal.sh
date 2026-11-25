@@ -106,6 +106,7 @@
 _crs_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _crs_gh() {
     if [ -n "${GH_CMD:-}" ]; then "$GH_CMD" "$@"; return $?; fi
+    if declare -F gh >/dev/null 2>&1; then gh "$@"; return $?; fi
     if ! declare -F gh_read >/dev/null 2>&1; then
         # shellcheck source=scripts/lib/gh-read.sh
         # shellcheck disable=SC1091  # sourced at runtime
