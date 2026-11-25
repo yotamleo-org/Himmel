@@ -38,7 +38,11 @@ function boot(now?: () => number) {
     method: "POST", body: JSON.stringify({ action: "cadence.arm", target: "graphmap" }),
     headers: { "X-Himmel-Token": TOKEN, Origin: `http://127.0.0.1:${s.port}`, "Content-Type": "application/json" },
   });
-  return { k, h, get, preview };
+  const run = (previewId: string) => fetch(`http://127.0.0.1:${s.port}/api/run`, {
+    method: "POST", body: JSON.stringify({ previewId, action: "cadence.arm", target: "graphmap", consent: "graphmap" }),
+    headers: { "X-Himmel-Token": TOKEN, Origin: `http://127.0.0.1:${s.port}`, "Content-Type": "application/json" },
+  });
+  return { k, h, get, preview, run };
 }
 
 test("a keyring that hangs does not stall another request: the second answers while the read is pending", async () => {
@@ -78,6 +82,18 @@ test("a value stored while the list is reused is masked from the next response a
   const pt = await (await b.preview()).text();
   expect(pt).toContain("plan: graphmap-cadence");
   expect(pt).not.toContain(SECRET);
+});
+
+test("a value stored while a slow read is in flight is masked from the next response", async () => {
+  const b = boot();
+  b.h.hang();
+  const { previewId } = await (await b.preview()).json() as { previewId: string };
+  writeFileSync(join(dir, "root", ".env"), `FIRECRAWL_API_KEY=${SECRET}\n`);
+  const ran = await b.run(previewId);
+  expect(ran.status).toBe(200);
+  const rt = await ran.text();
+  expect(rt).toContain("graphmap-cadence");
+  expect(rt).not.toContain(SECRET);
 });
 
 test("resolveSecretsAsync serves the same names as resolveSecrets and leaves the event loop running", async () => {

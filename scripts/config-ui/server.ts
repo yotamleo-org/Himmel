@@ -349,7 +349,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   // with the list as it stands (a read that outran the wait is slow: those behind it do not wait). A stored secret invalidates it.
   const seen = new Set<string>();
   let literalsAt = -Infinity, literalsMemo: string[] = [], literalsEpoch = 0;
-  let literalsRun: { done: Promise<void>; slow: boolean } | null = null;
+  let literalsRun: { done: Promise<void>; slow: boolean; epoch: number } | null = null;
   // These two match the secret-name pattern but hold a mode ("off") and a directory, not a credential. Any other name stays.
   const NOT_SECRET_ENV = new Set(["HIMMEL_SECRETS_KEYRING", "HIMMEL_SECRETS_RUNTIME_DIR"]);
   const envForLiterals = () => Object.fromEntries(Object.entries(env).filter(([k]) => !NOT_SECRET_ENV.has(k)));
@@ -368,9 +368,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     absorb(envValues("", parseDotEnv, await resolveSecretsAsync(root, SECRET_NAMES, env)));
     if (epoch === literalsEpoch) literalsAt = now();
   };
-  const startLiteralsRead = (): { done: Promise<void>; slow: boolean } => {
-    if (literalsRun) return literalsRun;
-    const run = { slow: false, done: readLiterals().catch(() => {}).finally(() => { if (literalsRun === run) literalsRun = null; }) };
+  const startLiteralsRead = (): { done: Promise<void>; slow: boolean; epoch: number } => {
+    if (literalsRun && literalsRun.epoch === literalsEpoch) return literalsRun;
+    const run = { slow: false, epoch: literalsEpoch, done: readLiterals().catch(() => {}).finally(() => { if (literalsRun === run) literalsRun = null; }) };
     return literalsRun = run;
   };
   const invalidateLiterals = (): void => { literalsEpoch++; literalsAt = -Infinity; };
