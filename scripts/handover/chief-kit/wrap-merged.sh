@@ -183,7 +183,10 @@ tracker_refresh() {
     [ "$rc" -eq 0 ] || { echo "tracker=failed:mirror-rc$rc"; return 0; }
     JIRA_PROJECT_KEY="$pk" timeout -k 5 "$tmo" "${jira[@]}" versions > "$mir.versions.tsv.tmp.$$" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
     if [ "$rc" -ne 0 ]; then rm -f "$mir.versions.tsv.tmp.$$"; echo "tracker=failed:versions-rc$rc"; return 0; fi
-    mv -f "$mir.versions.tsv.tmp.$$" "$mir.versions.tsv" || { echo "tracker=failed:versions-write"; return 0; }
+    if [ -f "$mir.versions.tsv" ] && [ $(( $(wc -l < "$mir.versions.tsv.tmp.$$") * 2 )) -lt "$(wc -l < "$mir.versions.tsv")" ]; then
+        rm -f "$mir.versions.tsv.tmp.$$"; echo "tracker=failed:versions-shrunk"; return 0
+    fi
+    mv -f "$mir.versions.tsv.tmp.$$" "$mir.versions.tsv" ||{ echo "tracker=failed:versions-write"; return 0; }
     MIRROR_FRESH="$mir"
     # one writer per page: a focus-version chief's page is focus-refresh's
     ! focus_owned || { echo "tracker=skip:focus"; return 0; }
