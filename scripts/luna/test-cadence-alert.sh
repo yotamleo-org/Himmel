@@ -161,6 +161,11 @@ EOF
         wait "$clearer"
         assert_has "R4 a recovery waits for a delivery in flight and then removes its record" "record=no" "record=$([ -e "$RC/last" ] && echo yes || echo no)"
     fi
+    mkdir -p "$RC/bare/scripts/luna"
+    cp "$SINK" "$RC/bare/scripts/luna/"
+    printf 'kept\n' >"$RC/last"
+    VAULT_STALL_ALERT_STATE="$RC/last" CADENCE_ALERT_DEDUPE_DIR="$RC/sent" bash "$RC/bare/scripts/luna/cadence-alert.sh" clear vault-stall >/dev/null 2>&1
+    assert_has "R5 a copy with no lib/prim.sh never removes the record without the lock" "record=yes" "record=$([ -s "$RC/last" ] && echo yes || echo no)"
 else
     echo "SKIP R1-R3: the recovery rows need jq"
 fi

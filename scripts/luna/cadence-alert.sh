@@ -120,7 +120,7 @@ case "${1:-}" in
             sink_state="${VAULT_STALL_ALERT_STATE:-$state/vault-stall-alert-last}"
             if [ -d "$(dirname "$sink_state")" ]; then
                 # shellcheck source=../lib/prim.sh
-                if . "$_here/../lib/prim.sh" 2>/dev/null; then with_lock "$sink_state.lock" rm -f -- "$sink_state"; else rm -f -- "$sink_state"; fi
+                if . "$_here/../lib/prim.sh" 2>/dev/null; then with_lock "$sink_state.lock" rm -f -- "$sink_state"; else echo "cadence-alert: lib/prim.sh not loadable, vault-stall record left in place" >&2; fi
             fi
         fi
         ;;
