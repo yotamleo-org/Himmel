@@ -57,6 +57,7 @@ export function swap(dir, stage, pid, fsImpl = fs) {
 }
 
 function sweep(dir) {
+  const live = path.join(dir, 'node_modules');
   for (const name of fs.readdirSync(dir)) {
     const m = /^\.ensure-deps\.(?:stage|old)\.(\d+)$/.exec(name);
     if (!m) continue;
@@ -65,7 +66,12 @@ function sweep(dir) {
     if (!dead) {
       try { process.kill(pid, 0); } catch (error) { dead = error.code === 'ESRCH'; }
     }
-    if (dead) quietRm(fs, path.join(dir, name));
+    if (!dead) continue;
+    const target = path.join(dir, name);
+    if (name.startsWith('.ensure-deps.old.') && !fs.existsSync(live)) {
+      try { fs.renameSync(target, live); continue; } catch {}
+    }
+    quietRm(fs, target);
   }
 }
 

@@ -249,6 +249,17 @@ test('sweep-dead-leftovers', OPTS, async t => {
   assert.deepEqual(leftovers(dir), [`.ensure-deps.stage.${process.pid}`]);
 });
 
+test('sweep-restores-orphaned-old-tree', OPTS, async t => {
+  const dir = makeFixture(t, { versions: { server: null, core: null, client: null, zod: null } });
+  const dead = spawnSync(process.execPath, ['-e', '0']).pid;
+  writeTree(join(dir, `.ensure-deps.old.${dead}`), STALE);
+  const r = await runStart(dir, { NPM_FAIL: '1' });
+  assert.ok(r.log, 'the npm stub never ran');
+  assert.equal(installed(dir, 'server'), '2.3.1');
+  assert.deepEqual(leftovers(dir), []);
+  assert.equal(r.stdout, 'SERVER-UP\n');
+});
+
 function swapFixture(t, live) {
   const dir = tmpRoot(t, 'bus-swap-');
   fs.writeFileSync(join(dir, 'package-lock.json'), JSON.stringify(LOCK));
