@@ -2794,4 +2794,90 @@ out="$(c99_run)"
 if grepq "$out" 'OK   C99-gemini-local' && ! grepq "$out" 'WARN C99'; then pass "C99 current settings and wrapper rule -> OK"; else fail "C99 current settings -> $out"; fi
 rm -rf "$c99_t"
 
+c100_t="$(mktemp -d "${TMPDIR:-/tmp}/c100.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }
+cat > "$c100_t/ack" <<'STUB'
+#!/usr/bin/env bash
+[ -z "${C100_SLEEP:-}" ] || sleep "$C100_SLEEP"
+[ -z "${C100_ARGS_OUT:-}" ] || printf '%s\n' "$*" > "$C100_ARGS_OUT"
+cat "$C100_JSON"
+exit "${C100_RC:-0}"
+STUB
+chmod 755 "$c100_t/ack"
+c100_fleet() {
+    local b="$c100_t/root/$1" attempts="${2:-}"
+    [ -n "$attempts" ] || attempts='{}'
+    mkdir -p "$b"
+    printf '{}\n' > "$b/chief.fleet.json"
+    printf '{"family":"f","attempts":%s}\n' "$attempts" > "$b/fleet-control.json"
+}
+c100_run() { HANDOVER_DIR="$c100_t/root" HIMMEL_DOCTOR_FLEET_ACK="$c100_t/ack" HIMMEL_DOCTOR_FLEET_TIMEOUT="${C100_TIMEOUT:-10}" \
+    C100_JSON="$c100_t/answer.json" bash "$DOC" --root "$REPO_ROOT" --no-color --only C100 2>&1; }
+c100_attempts='{"a1":{"attempt_id":"a1","manifest":"'"$c100_t"'/root/u/r/chief.fleet.json"}}'
+c100_clean='{"managed":true,"in_flight":[],"unknown":[],"legacy_unknown":[],"launched":[],"quiescent":false}'
+
+echo "== C100: no fleet-control.json under the handover root -> INFO, never OK =="
+mkdir -p "$c100_t/root"
+printf '%s' "$c100_clean" > "$c100_t/answer.json"
+out="$(c100_run)"
+if grepq "$out" 'INFO C100-fleet' && ! grepq "$out" -E '(OK  |WARN) C100'; then pass "C100 no fleet -> INFO"; else fail "C100 no fleet -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C100: a clean fleet -> OK =="
+c100_fleet u/r "$c100_attempts"
+out="$(c100_run)"
+if grepq "$out" 'OK   C100-fleet' && ! grepq "$out" -E '(WARN|INFO) C100'; then pass "C100 clean fleet -> OK"; else fail "C100 clean fleet -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C100: each unknown attempt -> one WARN naming its id, worker, doc and the settle hint; the run is read-only ack =="
+printf '%s' '{"managed":true,"unknown":[{"attempt_id":"a1","name":"W1","doc":"/h/W1.md","settle_hint":{"settleable":true,"text":"settleable now: type settle --attempt-id a1"}},{"attempt_id":"a2","name":"W2","doc":"/h/W2.md","settle_hint":{"settleable":false,"text":"not settleable now: a session may exist"}}],"legacy_unknown":[],"launched":[]}' > "$c100_t/answer.json"
+out="$(C100_ARGS_OUT="$c100_t/args" c100_run)"
+if [ "$(grep -c 'WARN C100-fleet' <<< "$out")" = 2 ] && grepq "$out" -F 'a1 (W1, /h/W1.md) is unknown: settleable now: type settle --attempt-id a1' \
+    && grepq "$out" -F 'a2 (W2, /h/W2.md) is unknown: not settleable now: a session may exist'; then pass "C100 one WARN per unknown attempt with its hint"; else fail "C100 unknown -> $(printf '%s' "$out" | head -5)"; fi
+if grep -qF -- 'ack --read-only --manifest' "$c100_t/args"; then pass "C100 asks ack --read-only, never the plain writing ack"; else fail "C100 ack args -> $(cat "$c100_t/args" 2>/dev/null)"; fi
+
+echo "== C100: a legacy-unknown row and a launched attempt whose doc cannot be read -> WARN each =="
+printf '%s' '{"managed":true,"unknown":[],"legacy_unknown":[{"doc":"/h/L1.md","label":"L1","phase":"legacy-unknown"}],"launched":[{"attempt_id":"a3","name":"W3","doc":"/no/such/doc.md"}]}' > "$c100_t/answer.json"
+out="$(c100_run)"
+if grepq "$out" -F '/h/L1.md' && grepq "$out" 'WARN C100-fleet' && grepq "$out" -F 'a3' && grepq "$out" -F '/no/such/doc.md' && ! grepq "$out" 'OK   C100'; then pass "C100 legacy row and unreadable launched doc -> WARN"; else fail "C100 legacy/unreadable -> $(printf '%s' "$out" | head -5)"; fi
+printf '%s' '{"managed":true,"unknown":[],"legacy_unknown":[],"launched":[{"attempt_id":"a4","name":"W4","doc":"/h/nul\u0000doc.md"}]}' > "$c100_t/answer.json"
+out="$(c100_run)"
+if grepq "$out" 'WARN C100-fleet' && grepq "$out" -F 'a4' && ! grepq "$out" 'OK   C100'; then pass "C100 NUL byte in a launched doc path -> WARN"; else fail "C100 NUL doc -> $(printf '%s' "$out" | head -4)"; fi
+c100_doc="$c100_t/real-doc.md"; printf '# real\n' > "$c100_doc"
+printf '{"managed":true,"unknown":[],"legacy_unknown":[],"launched":[{"attempt_id":"a5","name":"W5","doc":"%s"}]}' "$c100_doc" > "$c100_t/answer.json"
+out="$(c100_run)"
+if grepq "$out" 'OK   C100-fleet' && ! grepq "$out" -E 'WARN C100'; then pass "C100 control: a launched attempt with a readable doc -> OK"; else fail "C100 readable launched doc -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C100: an ack that fails, times out, is not JSON or says unmanaged is a WARN, never OK =="
+printf '%s' "$c100_clean" > "$c100_t/answer.json"
+out="$(C100_RC=1 c100_run)"
+if grepq "$out" 'WARN C100-fleet' && grepq "$out" -F 'cannot read fleet attempts for' && ! grepq "$out" 'OK   C100'; then pass "C100 ack exit 1 -> WARN"; else fail "C100 exit 1 -> $(printf '%s' "$out" | head -3)"; fi
+start=$(date +%s)
+out="$(C100_SLEEP=30 C100_TIMEOUT=1 c100_run)"
+if grepq "$out" 'WARN C100-fleet' && grepq "$out" -F 'cannot read fleet attempts for' && [ $(( $(date +%s) - start )) -lt 15 ] && ! grepq "$out" 'OK   C100'; then pass "C100 ack past the deadline -> WARN within the bound"; else fail "C100 timeout -> $(printf '%s' "$out" | head -3)"; fi
+printf '%s' '{"managed":false}' > "$c100_t/answer.json"
+out="$(c100_run)"
+if grepq "$out" 'WARN C100-fleet' && ! grepq "$out" 'OK   C100'; then pass "C100 managed false -> WARN"; else fail "C100 managed false -> $(printf '%s' "$out" | head -3)"; fi
+printf '%s' 'Traceback (most recent call last)' > "$c100_t/answer.json"
+out="$(c100_run)"
+if grepq "$out" 'WARN C100-fleet' && ! grepq "$out" 'OK   C100'; then pass "C100 non-JSON -> WARN"; else fail "C100 non-JSON -> $(printf '%s' "$out" | head -3)"; fi
+printf '%s' '{"managed":true,"unknown":"none","legacy_unknown":[],"launched":[]}' > "$c100_t/answer.json"
+out="$(c100_run)"
+if grepq "$out" 'WARN C100-fleet' && ! grepq "$out" 'OK   C100'; then pass "C100 unknown that is not a list -> WARN"; else fail "C100 unknown not a list -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C100: an anchor with attempts and no manifest to ask -> WARN; a fleet two levels deeper is not walked =="
+rm -rf "$c100_t/root"
+c100_fleet u/r '{"a1":{"attempt_id":"a1","manifest":"/no/such/manifest.fleet.json"}}'
+rm -f "$c100_t/root/u/r/chief.fleet.json"
+printf '%s' "$c100_clean" > "$c100_t/answer.json"
+out="$(c100_run)"
+if grepq "$out" 'WARN C100-fleet' && grepq "$out" -F 'manifest' && ! grepq "$out" 'OK   C100'; then pass "C100 no resolvable manifest -> WARN"; else fail "C100 no manifest -> $(printf '%s' "$out" | head -3)"; fi
+rm -rf "$c100_t/root"
+c100_fleet u/r/deeper "$c100_attempts"
+out="$(c100_run)"
+if grepq "$out" 'INFO C100-fleet' && ! grepq "$out" -E '(OK  |WARN) C100'; then pass "C100 only <root>/<user>/<repo> anchors are walked"; else fail "C100 depth -> $(printf '%s' "$out" | head -3)"; fi
+rm -rf "$c100_t/root"
+c100_fleet u/r "$c100_attempts"
+echo "== C100: the real read-only ack on a fleet it cannot read is a WARN, never OK =="
+out="$(HANDOVER_DIR="$c100_t/root" HIMMEL_DOCTOR_FLEET_TIMEOUT=20 bash "$DOC" --root "$REPO_ROOT" --no-color --only C100 2>&1)"
+if grepq "$out" 'WARN C100-fleet' && grepq "$out" -F 'cannot read fleet attempts for' && ! grepq "$out" 'OK   C100'; then pass "C100 real runtime on a damaged fleet -> WARN"; else fail "C100 real runtime -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c100_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
