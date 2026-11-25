@@ -396,6 +396,91 @@ rows src/a.sh 7 src/n.sh 1 > "$R/$BL"
 stage
 if [ "$RC" -eq 1 ] && has "src/n.sh raised to 1, the base allows 0"; then pass "a new file with a comment and a row is refused"; else fail "new file after a sweep -> rc=$RC: $OUT"; fi
 
+echo "== 19. classifier and gate edge cases =="
+mkrepo
+printf "cat <<%sEND-TEXT%s\nbody\nEND-TEXT\n%s after the heredoc\necho after\n" "$SQ" "$SQ" "$HASH" >> "$R/src/a.sh"
+stage; refused_at "a quoted heredoc delimiter with a hyphen closes, and a comment after it is judged" "src/a.sh:9: $HASH after the heredoc"
+mkrepo
+printf 'cat <<END-TEXT\nbody\nEND-TEXT\n%s after the heredoc\necho after\n' "$HASH" >> "$R/src/a.sh"
+stage; refused_at "an unquoted heredoc delimiter with a hyphen closes" "src/a.sh:9: $HASH after the heredoc"
+mkrepo
+printf 'cat <<-%sEOF%s\n\t%s tab body\n\tEOF\necho after\n' "$SQ" "$SQ" "$HASH" >> "$R/src/a.sh"
+stage; want "a <<- heredoc with a tab-indented terminator is skipped" 0
+mkrepo
+printf '/** API contract. */ export function f() {} // declares f\n' > "$R/src/n.mjs"
+stage; refused_at "a comment after a one-line doc block" "src/n.mjs:1: // declares f"
+mkrepo
+printf 'DOC = """\nbody %s inside """ %s real note\nprint(DOC)\n' "$HASH" "$HASH" > "$R/src/n.py"
+stage; refused_at "a comment after the closing triple quote" "src/n.py:2: $HASH real note"
+mkrepo
+printf 'export const id = setInterval(tick, 50); // example-ok: cleared by stop()\n' > "$R/src/n.ts"
+stage; refused_at "an -ok tag no lint reads keeps nothing" "src/n.ts:1: // example-ok:"
+mkrepo
+printf 'echo n  %s swallow-ok: a marker a lint reads\n' "$HASH" > "$R/src/n.sh"
+stage; want "a tag a lint reads is kept" 0
+mkrepo
+printf 'function f(x) { return /[a/*]/.test(x); }\nconst y = 1;\n' > "$R/src/r.mjs"
+stage; want "a /* inside a regex class after return opens no block" 0
+mkrepo
+printf 'function f(x) { return /[a/*]/.test(x); } // note\n' > "$R/src/r.mjs"
+stage; refused_at "a comment after a regex literal after return" "src/r.mjs:1: // note"
+mkrepo
+printf 'label = %sit\\%ss %s1%s\n' "$SQ" "$SQ" "$HASH" "$SQ" > "$R/src/n.py"
+stage; want "an escaped apostrophe in a Python string" 0
+mkrepo
+printf 'const label = %sit\\%ss // 1%s;\n' "$SQ" "$SQ" "$SQ" > "$R/src/n.mjs"
+stage; want "an escaped apostrophe in a JS string" 0
+mkrepo
+printf 'echo %sa\\%s  %s note\n' "$SQ" "$SQ" "$HASH" > "$R/src/s.sh"
+stage; refused_at "a backslash in a shell single-quoted string escapes nothing" "src/s.sh:1: $HASH note"
+mkrepo
+printf 'echo n\n%s a note\n' "$HASH" > "$R/a=b.sh"
+git -C "$R" add -A
+gate --write-baseline
+if [ "$RC" -eq 0 ] && grep -qxF "$(rows a=b.sh 1)" "$R/$BL"; then pass "a root file named like an awk assignment gets its baseline row"; else fail "a=b.sh in write mode -> rc=$RC: $OUT; $(cat "$R/$BL")"; fi
+mkrepo
+git -C "$R" config diff.noprefix true
+printf '%s print it again\necho again\n' "$HASH" >> "$R/src/a.sh"
+stage; refused_at "diff.noprefix does not hide the path:line text" "src/a.sh:6: $HASH print it again"
+merge_setup() {
+    mkrepo
+    git -C "$R" checkout -q -b topic
+    printf '%s!/usr/bin/env bash\n%s a.sh: prints ok\nset -u\n%s first old note, reworded\necho ok  %s second old note\n' "$HASH" "$HASH" "$HASH" "$HASH" > "$R/src/a.sh"
+    git -C "$R" commit -q -am "topic rewords a note"
+    git -C "$R" checkout -q main
+    printf '%s!/usr/bin/env bash\n%s a.sh: prints ok\nset -u\necho ok  %s second old note\n' "$HASH" "$HASH" "$HASH" > "$R/src/a.sh"
+    rows src/a.sh 1 > "$R/$BL"
+    git -C "$R" commit -q -am "main sweeps a note"
+    git -C "$R" checkout -q topic
+    git -C "$R" merge -q --no-commit main > /dev/null 2>&1
+    git -C "$R" checkout -q --ours -- src/a.sh
+    git -C "$R" show "HEAD:$BL" > "$R/$BL"
+}
+merge_setup
+stage; want "a merge that keeps a comment only HEAD has" 0
+merge_setup
+printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"
+rows src/a.sh 3 > "$R/$BL"
+stage; want "a merge that adds a comment neither parent has" 1
+mkrepo
+git -C "$R" checkout -q -b topic
+git -C "$R" mv src/a.sh src/b.sh
+printf '%s!/usr/bin/env bash\n%s a.sh: prints ok\nset -u\n%s first old note, reworded\necho ok  %s second old note\n' "$HASH" "$HASH" "$HASH" "$HASH" > "$R/src/b.sh"
+rows src/b.sh 2 > "$R/$BL"
+git -C "$R" add -A
+git -C "$R" commit -q -m "topic renames the file and rewords a note"
+git -C "$R" checkout -q main
+printf '%s!/usr/bin/env bash\n%s a.sh: prints ok\nset -u\necho ok  %s second old note\n' "$HASH" "$HASH" "$HASH" > "$R/src/a.sh"
+rows src/a.sh 1 > "$R/$BL"
+git -C "$R" commit -q -am "main sweeps a note"
+git -C "$R" checkout -q topic
+git -C "$R" merge -q --no-commit main > /dev/null 2>&1
+git -C "$R" show HEAD:src/b.sh > "$R/src/b.sh"
+git -C "$R" show "HEAD:$BL" > "$R/$BL"
+git -C "$R" rm -q --cached -f src/a.sh > /dev/null 2>&1
+rm -f "$R/src/a.sh"
+stage; want "a merge that keeps a comment of a file only HEAD renamed" 0
+
 echo
 echo "test-check-new-comments: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

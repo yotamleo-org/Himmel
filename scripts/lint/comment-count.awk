@@ -26,7 +26,7 @@ function ltrim(s) { sub(/^[ \t]+/, "", s); return s }
 function regex_end(s, i, n,   before, j, c, cls) {
     before = substr(s, 1, i - 1)
     sub(/[ \t]+$/, "", before)
-    if (before != "" && before !~ /[(,=:\[!&|?{};+*%<>~^-]$/) return 0
+    if (before != "" && before !~ /[(,=:\[!&|?{};+*%<>~^-]$/ && before !~ /(^|[^A-Za-z0-9_$.])(return|typeof|void|delete|throw|case|in|of|yield|await|do|else|new)$/) return 0
     for (j = i + 1; j <= n; j++) {
         c = substr(s, j, 1)
         if (c == "\\") { j++; continue }
@@ -42,7 +42,7 @@ function comment_start(s, kind,   i, c, q, n, prev, js, j) {
     n = length(s)
     for (i = 1; i <= n; i++) {
         c = substr(s, i, 1)
-        if (c == "\\" && q != sq) { i++; continue }
+        if (c == "\\" && (q != sq || kind != "sh")) { i++; continue }
         if (q != "") { if (c == q) q = ""; continue }
         if (c == sq || c == "\"" || (c == "`" && js)) { q = c; continue }
         prev = substr(s, i - 1, 1)
@@ -63,11 +63,11 @@ function kept(c,   l) {
     if (l ~ /https?:\/\//) return 1
     if (l ~ /copyright|spdx-license-identifier|licensed under|license:/) return 1
     if (l ~ /shellcheck (disable|source|shell|enable)=|eslint-(disable|enable)|prettier-ignore|biome-ignore|@ts-(ignore|expect-error|nocheck)|noqa|type: ignore|pylint: (disable|enable)|pragma: no cover/) return 1
-    if (l ~ /(^|[^a-z0-9-])[a-z][a-z0-9-]*-ok:/) return 1
+    if (l ~ /(^|[^a-z0-9-])(swallow|prim|gnu|fail-open|read-sink|git-env|tail-pipe|old-term|env-literal|install-scripts|launch-guard|launch-profile|headless-gemini|t13b|vacuous-path|mktemp-unchecked|cr-best-effort|gh-main|pipefail|jq-alt|non-ascii|octal|kill-after|hf)-ok:/) return 1
     return 0
 }
 
-function heredoc_tag(t,   i, c, q, n, r, depth) {
+function heredoc_tag(t,   i, c, q, n, r, e, depth) {
     n = length(t)
     for (i = 1; i <= n; i++) {
         c = substr(t, i, 1)
@@ -81,11 +81,15 @@ function heredoc_tag(t,   i, c, q, n, r, depth) {
         if (c != "<" || substr(t, i + 1, 1) != "<") continue
         if (substr(t, i + 2, 1) == "<") { i += 2; continue }
         r = substr(t, i)
-        if (match(r, /^<<-?[ \t]*["\\']?[A-Za-z_][A-Za-z0-9_]*/)) {
-            r = substr(r, 1, RLENGTH)
-            sub(/^<<-?[ \t]*["\\']?/, "", r)
-            return r
+        match(r, /^<<-?[ \t]*/)
+        r = substr(r, RLENGTH + 1)
+        e = substr(r, 1, 1)
+        if (e == sq || e == "\"") {
+            e = index(substr(r, 2), e)
+            return e > 1 ? substr(r, 2, e - 1) : ""
         }
+        sub(/^\\/, "", r)
+        if (match(r, /^[A-Za-z_][A-Za-z0-9_-]*/)) return substr(r, 1, RLENGTH)
         i++
     }
     return ""
@@ -111,13 +115,7 @@ function triple_open(s,   i, c, n, d, e) {
     return ""
 }
 
-function triple_toggles(s, d,   n, rest) {
-    n = 0; rest = s
-    while (index(rest, d)) { n++; rest = substr(rest, index(rest, d) + 3) }
-    return n % 2
-}
-
-function counted(p, t,   s, i, js, c, code, e) {
+function counted(p, t,   s, i, j, js, c, code, e, rest) {
     s = ltrim(t)
     js = is_js(p)
     if (FNR == 1 && s ~ /^#!/) return ""
@@ -136,9 +134,16 @@ function counted(p, t,   s, i, js, c, code, e) {
             if (substr(c, 1, 2) == "/*") {
                 blkdoc = (substr(c, 1, 3) == "/**")
                 e = index(substr(c, 3), "*/")
+                rest = e ? substr(c, e + 4) : ""
                 if (!e) blk = 1
-                else if (ltrim(substr(c, e + 4)) != "") header = 0
-                if (blkdoc) { if (i > 1 && ltrim(substr(t, 1, i - 1)) != "") header = 0; return "" }
+                else if (ltrim(rest) != "") header = 0
+                if (blkdoc) {
+                    if (i > 1 && ltrim(substr(t, 1, i - 1)) != "") header = 0
+                    j = comment_start(rest, "js")
+                    if (!j) return ""
+                    c = substr(rest, j)
+                    i = 0
+                }
             }
             if (ltrim(substr(t, 1, i - 1)) != "") header = 0
         }
@@ -149,8 +154,11 @@ function counted(p, t,   s, i, js, c, code, e) {
         }
         if (p ~ /\.py$/) {
             if (pydoc != "") {
-                if (triple_toggles(t, pydoc)) pydoc = ""
-                return ""
+                e = index(t, pydoc)
+                if (!e) return ""
+                t = substr(t, e + 3)
+                s = ltrim(t)
+                pydoc = ""
             }
             i = comment_start(t, "py")
             code = i ? substr(t, 1, i - 1) : t
