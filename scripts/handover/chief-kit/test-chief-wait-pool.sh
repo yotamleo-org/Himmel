@@ -33,7 +33,7 @@ STUB="$WORK/stub"
 mkdir -p "$STUB"
 cat > "$STUB/tick.sh" <<'EOF'
 #!/usr/bin/env bash
-echo x >> "$STUB/ticks"
+trap 'echo x >> "$STUB/ticks"' EXIT
 [ ! -f "$STUB/stall" ] || { read -r stall < "$STUB/stall"; sleep "$stall"; : > "$STUB/stalled"; }
 [ ! -f "$STUB/tick.fail" ] || exit 1
 cat "$STUB/tick.line"
@@ -115,6 +115,16 @@ run_to_wake() {
     else wait "$pid"; rc=$?; fi
     digest_rc=$rc
 }
+
+printf '1' > "$STUB/stall"
+tick_t0="$(ticks)"
+bash "$STUB/tick.sh" > /dev/null &
+tick_pid=$!
+sleep 0.3
+tick_mid=$(( $(ticks) - tick_t0 ))
+wait "$tick_pid"
+check "(10977) a tick still running is not counted, a finished one is" "0:1" "$tick_mid:$(( $(ticks) - tick_t0 ))"
+rm -f "$STUB/stall" "$STUB/stalled"
 
 # --- (8197) digest and urgent worker changes -------------------------------------------
 # Removing the buffer splits three housekeeping events; putting BLOCKED in that
@@ -947,7 +957,7 @@ check "(8349) dispatchable= counts the series' tickets" "1" "$(head -n1 "$WORK/s
 arm_quiet "$I" "$WORK/series2.out" 4
 check "(8349) the same series pool does not wake again (rc 124)" "124" "$rc"
 printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nSERIES\tLOCAL\tHIMMEL-9101,HIMMEL-9103\tHigh\tv1\tfiles=s.sh\n' > "$STUB/pool.rows"
-arm "$I" "$WORK/series3.out" 6
+arm "$I" "$WORK/series3.out" 15
 check "(8349) a series whose tickets changed wakes (rc 0)" "0" "$rc"
 
 # a SERIES row only in the second pass is counted and listed once; one the pool already holds is not listed twice
