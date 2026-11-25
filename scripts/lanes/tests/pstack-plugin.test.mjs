@@ -197,6 +197,6 @@ if (['statechart.ts', 'worker.ts', 'java.ts'].includes(basename(process.argv[1] 
   }
 });
 
-test('plugin.json keeps the release-managed version 0.1.8', () => {
-  assert.equal(JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8')).version, '0.1.8');
+test('plugin.json keeps the release-managed version 0.1.9', () => {
+  assert.equal(JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8')).version, '0.1.9');
 });

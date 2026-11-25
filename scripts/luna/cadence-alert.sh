@@ -28,6 +28,9 @@
 # reindex-state file (the remaining hash count and the last provider error) as the
 # cause; CADENCE_ALERT_QMD_STATE names that file (default: beside the qmd index).
 #
+# `clear vault-stall` also drops vault-stall-alert.sh's last-sent record
+# (VAULT_STALL_ALERT_STATE), so the same finding after a recovery is alerted again.
+#
 # Seams: CADENCE_ALERT_FILE (default ~/.himmel/state/cadence-alerts.log),
 # CADENCE_ALERT_DEDUPE_DIR (default ~/.himmel/state/cadence-alert-sent),
 # CADENCE_ALERT_SEND_CMD (default vault-stall-alert.sh; called with one
@@ -113,6 +116,13 @@ case "${1:-}" in
     clear)
         worker="${2:-}"
         [ -n "$worker" ] && rm -f "$dedupe_dir/$(_slug "$worker")".*
+        if [ "$worker" = vault-stall ]; then
+            sink_state="${VAULT_STALL_ALERT_STATE:-$state/vault-stall-alert-last}"
+            if [ -d "$(dirname "$sink_state")" ]; then
+                # shellcheck source=../lib/prim.sh
+                if . "$_here/../lib/prim.sh" 2>/dev/null; then with_lock "$sink_state.lock" rm -f -- "$sink_state"; else echo "cadence-alert: lib/prim.sh not loadable, vault-stall record left in place" >&2; fi
+            fi
+        fi
         ;;
     *)
         echo "usage: cadence-alert.sh fail <worker> <reason> <log> [<cause> [<do>]] | clear <worker>" >&2

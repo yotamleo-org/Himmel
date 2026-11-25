@@ -15,7 +15,8 @@
 # usage or environment (a tool the runner calls that does not resolve on its PATH, named), 3 already armed (no --force), 4 crontab read or write, or runner write, failed, 5 more
 # than one live tagged row (crontab untouched), 77 test-run guard refusal. disarm: 0 ok or nothing armed, 4 crontab
 # read or write failed, 77 guard. status: 0, 1 when the crontab cannot be read. note-path: 0, 1 when no note folder resolves.
-# check: 0 valid note, 1 any problem (printed). finish: 0 message sent, 1 any failure (alerted); no other code.
+# check: 0 valid note, 1 any problem (printed). finish: 0 message sent, or none sent because no candidate is [new]
+# (the note is still kept), 1 any failure (alerted); no other code.
 #
 # Seams (tests): CLIP_RELEVANCE_CRONTAB, _RUNNER_DIR, _NOTE_DIR, _SEND_CMD, _TODAY, _PREFLIGHT, _CLAUDE, _ROOT, _RUNNER_TOOLS,
 # plus cadence-alert.sh's CADENCE_ALERT_*. Platform: cron (Linux/macOS).
@@ -124,6 +125,11 @@ cmd_finish() {
         first="$(printf '%s\n' "$chk" | head -n 1)"
         alert_fail "note-invalid" "$first" "read the note at $note, then rerun the runner by hand"
         return 1
+    fi
+    if [ "$(awk '/^### [0-9]+\. /{ if ($0 ~ /\[new\]$/) n++ } END { print n + 0 }' "$note")" -eq 0 ]; then
+        bash "$ALERT" clear "$WORKER"
+        echo "clip-relevance-cadence: note $note, nothing new, no message sent"
+        return 0
     fi
     msg="$(send_text "$note")"
     if HIMMEL_ALERT_KIND="cadence:$WORKER" "${CLIP_RELEVANCE_SEND_CMD:-$SCRIPT_DIR/vault-stall-alert.sh}" "$msg"; then
