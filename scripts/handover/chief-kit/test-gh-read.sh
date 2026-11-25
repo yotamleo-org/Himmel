@@ -779,5 +779,11 @@ hrun "$W/emptyroot" run view 5
 check "H5 no read token configured: main is called even under the floor (nothing was refused, so nothing falls back)" "tok=main argv=run view 5" "$(glog)"
 rm -f "$W/quota/quota.tsv"
 
+mkdir -p "$W/g0root"
+printf 'touch "%s/g0marker"\n' "$W" > "$W/g0evil.sh"
+rm -f "$W/g0marker"
+_GHR_LOAD_DOTENV="$W/g0evil.sh" run_gh_read "$W/g0root" pr view 12
+check "G0 the environment never chooses the file gh-read.sh sources (_GHR_LOAD_DOTENV is ignored)" "" "$(ls "$W/g0marker" 2>/dev/null)"
+
 printf '%s fail\n' "$fails"
 [ "$fails" -eq 0 ]

@@ -66,6 +66,7 @@ cat > "$STUBBIN/gh" <<'STUB'
 mode="${STUB_MODE:-healthy}"
 tok=main
 [ -n "${STUB_READ_TOKEN:-}" ] && [ "${GH_TOKEN:-}" = "$STUB_READ_TOKEN" ] && tok=read
+[ "$tok" = read ] && [ -n "${STUB_DELAY:-}" ] && sleep "$STUB_DELAY"
 [ -z "${STUB_LOG:-}" ] || printf '%s %s %s\n' "$(date +%s)" "$tok" "$*" >> "$STUB_LOG"
 bucket=core
 case "${1:-}" in
@@ -75,7 +76,8 @@ case "${1:-}" in
 esac
 probe=0
 case "$*" in *rateLimit* | "api rate_limit"* | "api -i user"* | "api user"*) probe=1 ;; esac
-fx() { grep -v '^# ' "$STUB_FIXDIR/$1"; }
+[ "$tok" = main ] && [ "$probe" = 0 ] && [ -n "${STUB_LOG:-}" ] && printf '%s\n' "$*" >> "$STUB_LOG.mainread"
+fx(){ grep -v '^# ' "$STUB_FIXDIR/$1"; }
 now=$(date +%s)
 refused=0
 case "$mode" in
@@ -287,6 +289,7 @@ run_mode() {
     [ "$class" = rate ] && bound="${RATE_BOUND:-$bound}"
     [ "$class" = rate ] && scaled=0
     [ "$class" = stall ] && [ "$FULL" = 1 ] && scaled=0 && bound=$(full_bound "$caller" "$mode")
+    [ "$class" = stall ] && [ "$FULL" != 1 ] && [ "${UNSCALED_MODE:-}" = "$mode" ] && scaled=0
     ROW_DIR="$cdir/rows/$mode"; mkdir -p "$ROW_DIR"
     rm -f "$cdir/quota/quota.tsv"
     local envs=()
@@ -371,10 +374,22 @@ drive_go() {
         EXTRA_ENV="HANDOVER_DIR=$cdir/root"$'\n'"HIMMEL_REPO=$GATE_REPO"
         local rbound=14
         if [ "$m" = main-hung ] && [ "$FULL" != 1 ]; then
-            EXTRA_ENV="$EXTRA_ENV"$'\n'"GO_DEADLINE=${GO_MAIN_HUNG_DEADLINE:-40}"
-            rbound=$(( ${GO_MAIN_HUNG_DEADLINE:-40} + 4 ))
+            EXTRA_ENV="$EXTRA_ENV"$'\n'"STUB_DELAY=0.5"$'\n'"GHQ_PROBE_TIMEOUT=1"$'\n'"USER_SLUG=quota-test"
+            rbound=90
+            rm -rf "$cdir/quota/quota.tsv" "$cdir/quota/blocked"
+            UNSCALED_MODE=main-hung
         fi
         run_mode go.sh "$m" "$rbound" 11 bash "$script" 77 "$SHA"
+        UNSCALED_MODE=""
+        if [ "$m" = main-hung ] && [ "$FULL" != 1 ]; then
+            if ! grep -q ' read ' "$ROW_DIR/stub.log" 2> /dev/null; then
+                emit "FAIL go.sh main-hung main-reads the stub logged nothing"
+            elif [ ! -s "$ROW_DIR/stub.log.mainread" ]; then
+                emit "PASS go.sh main-hung main-reads"
+            else
+                emit "FAIL go.sh main-hung main-reads a call went to the hung main token: $(head -n 1 "$ROW_DIR/stub.log.mainread")"
+            fi
+        fi
         if [ "$(affect_go "$m")" = no ]; then
             emit "PASS go.sh $m no-go-written n/a"
         elif [ -e "$cdir/root/.locks/go/77.$SHA" ]; then

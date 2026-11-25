@@ -1,11 +1,11 @@
 # suite-tiers.tsv: one machine-read tier per suite, path<TAB>tier<TAB>reason.
 #
-# tier    pr | local | flow | quarantine
+# tier    pr | local | flow | quarantine | daily
 # reason  pr: catch:<PR> | trust-path | static-gate | guard | flow-miss:HIMMEL-<n>; any other tier: free text
 # A trust-owned suite (its path, or a sibling of a file, under ci-trust-paths.txt) is never local.
-# scripts/ci/run-shell-tests.sh reads local rows in pr mode and quarantine rows in every mode. scripts/ci/test-suite-tiers.sh lints it; each of these fails the build:
+# scripts/ci/run-shell-tests.sh reads local rows in pr mode, quarantine rows in every mode, and daily rows in every mode: a daily suite (a timing suite) is skipped in all of them but SUITE_TIER_MODE=daily, the timing-daily job. scripts/ci/test-suite-tiers.sh lints it; each of these fails the build:
 # a row with no suite (stale), a duplicate row, a malformed row (not three fields),
-# an unknown tier, an unjustified pr reason, a trust-path suite that is local, an empty trust list.
+# an unknown tier, an unjustified pr reason, a trust-path suite that is local or daily, an empty trust list.
 # A suite with no row is allowed and reads as tier pr; scripts/ci/ledger-drift.sh --no-row lists them.
 # This file is under scripts/ci/ (a trust path): every tier change needs a trust-reviewed GO.
 scripts/security/test-security-audit-cadence.sh	local	behaviour suite, new
@@ -402,13 +402,13 @@ scripts/handover/chief-kit/test-close-wrapped-worker.sh	pr	trust-path
 scripts/handover/chief-kit/test-compacted-check.sh	pr	trust-path
 scripts/handover/chief-kit/test-chief-budget.sh	pr	static-gate
 scripts/handover/chief-kit/test-chief-kit-e2e.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/handover/chief-kit/test-chief-wait-b.sh	local	part of test-chief-wait.sh, same behaviour suite; about 215 s local, under the parts' shared 1200 s cap row in run-shell-tests.sh
-scripts/handover/chief-kit/test-chief-wait-c.sh	local	part of test-chief-wait.sh, same behaviour suite; about 235 s local, under the parts' shared 1200 s cap row in run-shell-tests.sh
-scripts/handover/chief-kit/test-chief-wait-d.sh	local	part of test-chief-wait.sh, same behaviour suite; about 210 s local, under the parts' shared 1200 s cap row in run-shell-tests.sh
-scripts/handover/chief-kit/test-chief-wait-e.sh	local	part of test-chief-wait.sh, same behaviour suite; about 225 s local, under the parts' shared 1200 s cap row in run-shell-tests.sh
-scripts/handover/chief-kit/test-chief-wait-pool.sh	local	behaviour suite, the underfilled re-wake on a pool change in chief-wait.sh
+scripts/handover/chief-kit/test-chief-wait-b.sh	daily	timing suite, runs in the timing-daily job: main cap overrun 2026-11-25; was tier local
+scripts/handover/chief-kit/test-chief-wait-c.sh	daily	timing suite, runs in the timing-daily job: part of the chief-wait family that overran its cap on main; was tier local
+scripts/handover/chief-kit/test-chief-wait-d.sh	daily	timing suite, runs in the timing-daily job: part of the chief-wait family that overran its cap on main; was tier local
+scripts/handover/chief-kit/test-chief-wait-e.sh	daily	timing suite, runs in the timing-daily job: part of the chief-wait family that overran its cap on main; was tier local
+scripts/handover/chief-kit/test-chief-wait-pool.sh	daily	timing suite, runs in the timing-daily job: main cap overruns 2026-11-11 to 2026-11-25 (3 reds, run 45534239589 rc 124 rows); was tier local
 scripts/handover/chief-kit/test-chief-wait-r0.sh	local	behaviour suite, the script relay (R0) of chief-wait.sh; stays local: it runs 162 s of real-time waits, the same cost class as the other chief-wait suites, so it is not moved into the PR gate
-scripts/handover/chief-kit/test-chief-wait.sh	local	behaviour suite, the chief waiter's wake rows, first of five parts (-b to -e); about 300 s local, under the parts' shared 1200 s cap row in run-shell-tests.sh
+scripts/handover/chief-kit/test-chief-wait.sh	daily	timing suite, runs in the timing-daily job: main cap overruns 2026-11-11 to 2026-11-25 (3 reds); was tier local
 scripts/handover/chief-kit/test-cr-disposition.sh	pr	trust-path
 scripts/handover/chief-kit/test-cut-tag.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-delta-class.sh	pr	trust-path
@@ -472,7 +472,7 @@ scripts/handover/chief-kit/test-succession-tracker.sh	pr	trust-path
 scripts/handover/chief-kit/test-tick-b.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tick-busedge.sh	local	new since the audit, behaviour suite
 scripts/handover/chief-kit/test-tick-deadwin.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/handover/chief-kit/test-tick-fields.sh	local	second half of test-tick.sh, same tier as the half it came from
+scripts/handover/chief-kit/test-tick-fields.sh	daily	timing suite, runs in the timing-daily job: main cap overruns 2026-11-11 to 2026-11-25 (5 reds); was tier local
 scripts/handover/chief-kit/test-tick-holds.sh	local	new, behaviour suite for tick.sh holds=
 scripts/handover/chief-kit/test-tick-nolive.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tick-pool-stale.sh	local	new, behaviour suite for tick.sh pool-stale= and residual-unversioned=
@@ -1286,3 +1286,4 @@ scripts/handover/chief-kit/test-chief-doc-one-read.sh	local	behaviour suite, new
 scripts/measurements/test-gh-graphql-callers.sh	local	behaviour suite, new
 scripts/telegram/test-spec-page-gen.sh	pr	guard
 scripts/vm/test-vm-maintain.sh	local	behaviour suite, new
+scripts/remote-setup/test-remote-setup.sh	daily	timing suite, runs in the timing-daily job: main cap overrun 2026-11-25 (1 red); had no row

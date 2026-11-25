@@ -121,7 +121,7 @@ codes_checks() {
     on && /^#[[:space:]]+[0-9]+\.[[:space:]]/ { s = $2; sub(/\./, "", s); print s }' "$1"
 }
 codes_wake() {
-  grep -oE "printf 'WAKE [a-z-]+( (complete|partial))?" "$1" | sed "s/^printf 'WAKE //"
+  grep -oE "printf 'WAKE [a-z0-9-]+( (complete|partial))?" "$1" | sed "s/^printf 'WAKE //"
 }
 codes_release() {
   grep -oE '"CR-FIRST [A-Z][A-Z-]*[A-Z]' "$1" | sed 's/^"CR-FIRST //'

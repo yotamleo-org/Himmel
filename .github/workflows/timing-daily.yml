@@ -1,0 +1,66 @@
+name: timing-daily
+
+# The timing tests, once a day (operator decisions 1345 and 1348).
+# A timing test is a suite time cap, a row that fails only on a timeout (got rc 124),
+# or a row asserting work finished within N seconds. PR and main CI skip the suites
+# tagged `daily` in scripts/ci/suite-tiers.tsv and report a cap hit that printed no
+# FAIL row as a CAP-ALERT (green); this job runs the daily suites and reads the last
+# day's CAP-ALERT lines from main's ci.yml runs, then names the cap rows it would
+# change (scripts/ci/timing-daily.sh). A red run here is the alert: workflow-red.yml
+# opens one ci-red issue for it. Scheduled and dispatch only, never a merge gate.
+on:
+  schedule:
+    - cron: '41 11 * * *'   # daily, UTC, after ledger-drift's 10:53
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+
+concurrency:
+  group: timing-daily-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  timing:
+    runs-on: ubuntu-24.04
+    # The daily suites are the ones that overran 600-1250 s caps in CI; each keeps its own cap.
+    timeout-minutes: 240
+    # The same prebuilt CI image the shell-unit shards run in (docs/internals/ci-image.md),
+    # so a daily suite sees the tools it saw in CI.
+    container:
+      image: ${{ vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:7b665f956e8dd18bb3b3944e04aa20d5ae3576d5e648d482e2ae91356035d404' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+      options: --init --user 1001 --privileged
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    defaults:
+      run:
+        shell: bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The image bakes at; a container has no systemd, so start the daemon here.
+      - name: Start atd (CI image)
+        timeout-minutes: 1
+        run: |
+          sudo atd
+          pgrep -x atd > /dev/null || { echo "::error::atd is not running in the CI image" >&2; exit 1; }
+      - name: Run the daily suites and read the last day's CAP-ALERTs
+        timeout-minutes: 230
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          FAIL_LOG_DIR: timing-daily-logs
+        run: bash scripts/ci/timing-daily.sh --ci-hours 26
+      - name: Upload the daily run's failed-suite and cap-alert logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: timing-daily-logs
+          path: timing-daily-logs
+          if-no-files-found: ignore
+          retention-days: 14

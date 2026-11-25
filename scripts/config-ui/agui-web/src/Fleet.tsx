@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { pageHref } from "../../public/nav.js";
 import { FLEET_URL } from "./stream";
 import { FleetFilterBar } from "./FleetMenu";
-import { chainKey, chiefCounts, cloudPhase, consoleHash, fleetSections, NO_FILTERS, rowHref, runHash, shortName, type Filters, type ProcessOrphan, type Row } from "./fleet-model";
+import { chainKey, chiefCounts, cloudPhase, consoleHash, fleetSections, NO_FILTERS, rowHref, runHash, shortName, type Filters, type ProcessOrphan, type Row, type T3Thread } from "./fleet-model";
 import { BoardContext, cardOf, DrawerView, Legend, SectionsStrip, StageDots, StateChip, Swatch, Trends, useBoard, useBoardCtx, useDrawerKeys, useRollup, type BoardCtx, type Panel } from "./Board";
 import { joinBoard, needsShown, openAt, parseView, viewHash, type Drawer, type Stage } from "./board-model";
 export { rowHref, orphanReason, visibleRows, consoleGroups, type Row } from "./fleet-model";
@@ -34,7 +34,7 @@ function forest(rows: Row[]): Node[] {
 }
 
 const k = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n));
-type Fleet = { census: "ok" | "degraded" | "unavailable"; generatedAt: number; sessions: Row[]; processOrphans?: ProcessOrphan[] | null };
+type Fleet = { census: "ok" | "degraded" | "unavailable"; generatedAt: number; sessions: Row[]; processOrphans?: ProcessOrphan[] | null; t3Threads?: T3Thread[] | null };
 
 const POLL_MS = 5000;
 const CLS: Record<Row["state"], string> = { running: "running", idle: "idle", waiting: "waiting", "waiting for GO": "waiting", wrapped: "finished", unknown: "idle" };
@@ -213,6 +213,9 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
         {fleet && s.waits.length > 0 && <Section id="waits" title="Long-lived waits" count={s.waits.length} initial={false} className="fleet-waits">
           <Waits waits={s.waits} />
         </Section>}
+        {fleet && (fleet.t3Threads === null || (fleet.t3Threads?.length ?? 0) > 0) && <Section id="t3-threads" title="T3 threads" count={fleet.t3Threads?.filter((t) => t.state !== "settled").length ?? 0} initial={true} className="fleet-t3">
+          <T3Threads threads={fleet.t3Threads ?? null} />
+        </Section>}
         {fleet && !unavailable && <Section id="running" title="Running" count={s.running.reduce((n, g) => n + g.rows.length, 0)} initial={true}>
           {s.running.length === 0 && <p className="quiet">{`No running sessions${filtering(filters) ? " match the filters" : ""}.${counts.finished > 0 ? ` ${counts.finished} finished below.` : ""}`}</p>}
           {s.running.map((g) => <ConsoleGroup key={g.console?.name ?? "-"} group={g} all={all} hops={s.hops} token={token} now={now}
@@ -349,6 +352,20 @@ function Waits({ waits }: { waits: ProcessOrphan[] }) {
   return <table className="fleet-procs" aria-label="Long-lived waits">
     <thead><tr><th>pid</th><th>owner</th><th>age</th></tr></thead>
     <tbody>{waits.map((p) => <tr key={p.pid}><td>{p.pid}</td><td>{shortName(p.owner)}</td><td>{mins(p.ageMin)}</td></tr>)}</tbody>
+  </table>;
+}
+
+const T3_ORDER: Record<T3Thread["state"], number> = { running: 0, blocked: 1, waiting: 2, settled: 3 };
+function T3Threads({ threads }: { threads: T3Thread[] | null }) {
+  if (threads === null) return <p className="quiet" role="status">The T3 thread list could not be read.</p>;
+  const rows = [...threads].sort((a, b) => T3_ORDER[a.state] - T3_ORDER[b.state] || a.idleMin - b.idleMin);
+  return <table className="fleet-procs" aria-label="T3 threads">
+    <thead><tr><th>thread</th><th>state</th><th>provider</th><th>age</th><th>pids</th></tr></thead>
+    <tbody>{rows.map((t) => <tr key={t.threadId}>
+      <td title={t.threadId}>{t.title || t.threadId}</td>
+      <td><span className={`state ${t.state === "running" ? "running" : t.state === "settled" ? "idle" : "waiting"}`}>{t.state}</span>{t.waitingOn && ` on a ${t.waitingOn}`}</td>
+      <td>{t.provider ?? ""}</td><td>{mins(t.ageMin)}</td><td>{t.pids.join(", ")}</td>
+    </tr>)}</tbody>
   </table>;
 }
 
