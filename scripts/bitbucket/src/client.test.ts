@@ -516,6 +516,24 @@ describe('bitbucket client', () => {
     await expect(listPrStatuses(Number('x'))).rejects.toThrowError(/numeric id/);
   });
 
+  it('listPrStatuses throws when a page carries no values list instead of reading it as empty', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes(200, { type: 'error' })));
+    await expect(listPrStatuses(5)).rejects.toThrowError(BitbucketHttpError);
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          jsonRes(200, {
+            values: [{ key: 'pipe', state: 'SUCCESSFUL' }],
+            next: 'https://api.bitbucket.org/2.0/repositories/myws/myrepo/pullrequests/5/statuses?page=2',
+          }),
+        )
+        .mockResolvedValueOnce(jsonRes(200, {})),
+    );
+    await expect(listPrStatuses(5)).rejects.toThrowError(BitbucketHttpError);
+  });
+
   it('replyPrComment POSTs content.raw + parent.id and returns the mapped comment', async () => {
     let body: unknown;
     const fetchMock = vi.fn(async (arg: unknown) => {
