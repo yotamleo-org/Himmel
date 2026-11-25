@@ -182,7 +182,7 @@ full_scan_terms() {
     done
     printf '%s' "$got"
 }
-# shellcheck disable=SC2016  # backticks are literal markdown
+# shellcheck disable=SC2016
 flag_line=$(grep -E '^- `--skill-scan`' "$SKILL")
 DISPATCH="$PLUGIN_DIR/references/harvest-clips/phase-4-dispatch.md"
 REFS_37="$PLUGIN_DIR/references/luna-ingest/phase-3-7-skill-scan.md"
@@ -210,7 +210,7 @@ assert "exit-codes rc=4 says delete the existing synthesis and rerun" "yes" "$de
 
 # Stale-repo skip must come before the positive verdict rules.
 stale_line=$(grep -n 'more than 24 months old' "$REFS/phase-3-classification.md" | head -1 | cut -d: -f1)
-# shellcheck disable=SC2016  # backticks are literal markdown, not expansion
+# shellcheck disable=SC2016
 integ_line=$(grep -n '^   - `integrate`' "$REFS/phase-3-classification.md" | head -1 | cut -d: -f1)
 [ -n "$stale_line" ] && [ -n "$integ_line" ] && [ "$stale_line" -lt "$integ_line" ] && order=yes || order=no
 assert "phase-3 stale-repo skip precedes the integrate rule" "yes" "$order"
