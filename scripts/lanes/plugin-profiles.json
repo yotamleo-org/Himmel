@@ -185,7 +185,7 @@
     "qmd@himmel",
     "lean-skills@himmel"
   ],
-  "_comment_himmel_bus": "himmel-bus ships no plugin .mcp.json (a plugin-root token cannot be copied into a standalone --mcp-config, refuseIfPluginRootRef), so its stdio server is defined in mcpCatalog. The `${HIMMEL_REPO}` placeholder is resolved by collectMcpServerDefs to the primary checkout's absolute path (a launch with no resolvable checkout refuses), so the server starts from any cwd; mcpAllow names the tools allowed, in both the standalone and plugin-prefixed name forms, for a profile that lists the server. `npm --prefix` runs the plugin's own `start` script, which installs the locked deps once and then execs the server, the self-installing start-script pattern telegram-himmel and luna-correlate use.",
+  "_comment_himmel_bus": "himmel-bus ships no plugin .mcp.json (a plugin-root token cannot be copied into a standalone --mcp-config, refuseIfPluginRootRef), so its stdio server is defined in mcpCatalog. The `${HIMMEL_REPO}` placeholder is resolved by collectMcpServerDefs to the primary checkout's absolute path (a launch with no resolvable checkout refuses), so the server starts from any cwd; mcpAllow names the tools allowed, in both the standalone and plugin-prefixed name forms, for a profile that lists the server. `npm --prefix` runs the plugin's own `start` script, which installs or reinstalls the locked deps when the installed runtime deps differ from the lockfile and then execs the server, the self-installing start-script pattern telegram-himmel and luna-correlate use.",
   "mcpCatalog": {
     "himmel-bus": {
       "command": "npm",
