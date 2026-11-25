@@ -133,7 +133,13 @@ tag `himmel-pin/<version>-himmel.1`, with a plain `git push` from the scratch
 clone, and keep the old tip reachable as tag `himmel-presync/<branch>-<sha12>`.
 Never push over the fork's default branch or the himmel branch and never
 force-push: moving those is the operator's word. The command, from the scratch
-clone (remote `fork`):
+clone (remote `fork`). First prove the three refs are free, since a plain push
+would fast-forward an existing branch and accept an identical tag; the read must
+exit 2, and any other exit stops the push:
+
+```bash
+git -C <clone> ls-remote --exit-code fork refs/heads/himmel-main-upstream-<target> refs/tags/himmel-pin/<version>-himmel.1 refs/tags/himmel-presync/<branch>-<sha12>
+```
 
 ```bash
 git -C <clone> push --atomic fork HEAD:refs/heads/himmel-main-upstream-<target> HEAD:refs/tags/himmel-pin/<version>-himmel.1 <old-tip>:refs/tags/himmel-presync/<branch>-<sha12>
