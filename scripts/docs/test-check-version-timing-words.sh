@@ -52,8 +52,12 @@ run_lint() {
   OUT=$(cd "$R" && bash "$SCRIPT" "$@" 2>&1) || RC=$?
 }
 
+has() {
+  case "$OUT" in *"$1"*) return 0 ;; esac
+  return 1
+}
 expect_fail() {
-  if [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -qF -- "$2"; then ok; else bad "$1: want rc 1 naming '$2', got rc $RC: $OUT"; fi
+  if [ "$RC" -eq 1 ] && has "$2"; then ok; else bad "$1: want rc 1 naming '$2', got rc $RC: $OUT"; fi
 }
 expect_pass() {
   if [ "$RC" -eq 0 ]; then ok; else bad "$1: want rc 0, got rc $RC: $OUT"; fi
@@ -84,7 +88,7 @@ setup_repo
 printf 'recount at the %s close\nwhen %s ships\n' "$V" "$V" >"$R/docs/a.md"
 run_lint docs/a.md
 expect_fail "version then close" "docs/a.md:1:"
-if printf '%s' "$OUT" | grep -qF "docs/a.md:2:"; then ok; else bad "version then ships not reported: $OUT"; fi
+if has "docs/a.md:2:"; then ok; else bad "version then ships not reported: $OUT"; fi
 
 setup_repo
 printf 'the afterword of %s and a standby %s\n' "$V" "$V" >"$R/docs/a.md"
@@ -119,8 +123,7 @@ mkdir -p "$R/src"
 printf 'held %s %s\n' "until" "$V" >"$R/src/ignored.md"
 git -C "$R" add -A
 run_lint
-if [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -qF "docs/a.md:1:" && printf '%s' "$OUT" | grep -qF "scripts/x.sh:1:" \
-  && ! printf '%s' "$OUT" | grep -qF "src/ignored.md"; then ok; else bad "census: rc $RC: $OUT"; fi
+if [ "$RC" -eq 1 ] && has "docs/a.md:1:" && has "scripts/x.sh:1:" && ! has "src/ignored.md"; then ok; else bad "census: rc $RC: $OUT"; fi
 
 setup_repo
 printf 'old: held %s %s\n' "until" "$V" >"$R/docs/old.md"
@@ -129,7 +132,7 @@ git -C "$R" commit -q -m old
 printf 'fine line\nnew: held %s %s\n' "until" "$V" >>"$R/docs/old.md"
 run_lint --added HEAD
 expect_fail "--added new line" "docs/old.md:3:"
-if printf '%s' "$OUT" | grep -qF "docs/old.md:1:"; then bad "--added reported the old line: $OUT"; else ok; fi
+if has "docs/old.md:1:"; then bad "--added reported the old line: $OUT"; else ok; fi
 
 setup_repo
 printf 'held %s %s\n' "until" "$V" >"$R/docs/old.md"
