@@ -3230,14 +3230,29 @@ name `scripts/lib/session-name.sh` trusts as a chief. Two rules, each a deny
 (exit 2):
 
 - **Instances.** Every value under a key named `instanceId` or
-  `providerInstanceId` (case and `_` ignored) anywhere in `tool_input` must be on
-  the allowlist: `.t3.instance_allowlist` in `~/.himmel/config.json`, an array of
-  strings that replaces the default `["claudeAgent", "codex"]` (T3's two default
-  instances). An absent, unreadable, malformed or symlinked file or key means the
-  default. A null value counts as absent; any other non-string value denies.
+  `providerInstanceId` (case and `_` ignored) anywhere in `tool_input` is judged,
+  the calling thread's inside `delegatedFrom` included. Any instance is allowed,
+  from any provider to any provider, except a **bypass instance**: an entry under
+  `.providerInstances` in T3's settings file whose `env` / `environment` (on the
+  instance or its `config`) names a `*_OK` or `*BYPASS*` variable (any case) or a
+  flag in `scripts/himmelctl/lib/bypass-flags.json`, that is malformed (a
+  non-object entry or `config`, an environment entry without a string name,
+  non-string `launchArgs`), or whose `launchArgs` carry `--dangerously-skip-permissions` or
+  `bypassPermissions`. A hook bypass is granted per session, by the operator
+  choosing that instance in the T3 UI, never to every thread T3 starts. An id
+  with no entry (a T3 built-in such as `claudeAgent` or `codex`) carries no
+  variables and is allowed. If the settings file or the registry is missing,
+  unreadable or malformed, every instance id is denied, since the guard cannot
+  tell. A null value counts as absent; any other non-string value denies.
+- **Optional narrowing.** `.t3.instance_narrow` in `~/.himmel/config.json`, an
+  array of strings, limits the allowed ids further; it never lets a bypass
+  instance through. An absent file or key narrows nothing; a malformed file, a
+  non-array key or a symlinked file or `~/.himmel` denies every instance id.
+  The older `.t3.instance_allowlist` is not read: it was written as a widening
+  list, and reading it as a narrowing one would keep blocking other providers.
   `block-himmel-config-writes.sh` refuses agent writes to that file.
-  `scripts/t3/provider-instances.sh` prints the ids to add for every launch
-  profile (`docs/internals/t3-provider-instances.md`).
+  `scripts/t3/provider-instances.sh` prints the profile ids an operator who
+  narrows would add (`docs/internals/t3-provider-instances.md`).
 - **Titles.** A string under a key named `title` anywhere in `tool_input` whose
   trimmed value ends in `-chief` or `-console` (any case) denies. A title inside
   a `delegatedFrom` object names the calling thread and is not judged.
@@ -3258,8 +3273,8 @@ onto the directory itself, is refused too. Only the registry under the Claude
 home counts; a repo's own `.claude/sessions` is not touched. T3 worktrees
 under `~/.t3/worktrees/` stay ordinary worktrees.
 
-A security fence: fails CLOSED on a missing `jq` or a payload that does not
-parse. Override: `T3_THREAD_TOOLS_OK=1` (launching shell, session-sticky, tier
+A security fence: fails CLOSED on a missing `jq`, a payload that does not
+parse, and the unreadable files above. Override: `T3_THREAD_TOOLS_OK=1` (launching shell, session-sticky, tier
 `floor`); the allow is printed to stderr. Wired in `EXPECTED_SCRIPT_ORDER`
 (`wire-hook-bash.mjs`) and the `.claude/settings.json` PreToolUse stanza for
 matcher `mcp__t3-code__.*`. Spec: `scripts/hooks/test-guard-t3-thread-tools.sh`.
