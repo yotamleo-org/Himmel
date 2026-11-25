@@ -60,6 +60,7 @@ beforeEach(async () => {
   vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
   // create posts to Jira; a loopback Jira is a stub, so the post door stays open.
   vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+  vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
   writeFileSync(join(baseRoot, 'verbatim.txt'), 'R1 = v1.1.3\n');
   const p = new Command();
   p.exitOverride();
@@ -2315,13 +2316,15 @@ describe.skipIf(process.platform !== 'linux')('create — post door (a test on t
   });
 
   it('refuses against a real Jira host and sends nothing', async () => {
-    vi.stubEnv('JIRA_BASE_URL', 'http://jira.invalid');
+    vi.stubEnv('JIRA_BASE_URL', 'https://jira.invalid');
+    vi.stubEnv('JIRA_ALLOW_HOST', 'jira.invalid');
     expect(await failure()).toMatch(/create: refused, nothing was posted/);
     expect(mockRequest).not.toHaveBeenCalled();
   });
 
   it('files against a loopback Jira', async () => {
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
     expect(await failure()).not.toMatch(/nothing was posted/);
     expect(mockRequest).toHaveBeenCalled();
   });

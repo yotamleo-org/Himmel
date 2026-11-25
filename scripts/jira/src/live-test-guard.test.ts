@@ -350,6 +350,7 @@ describe('R31: a test on the station never writes the real Jira through either e
     await request('POST', '/search/approximate-count', { jql: 'project = HIMMEL' });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
     await request('POST', '/issue/HIMMEL-1/comment', { body: {} });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(door.calls).toBe(1);

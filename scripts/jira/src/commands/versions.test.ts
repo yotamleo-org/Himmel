@@ -43,7 +43,7 @@ function stubJira(routes: Record<string, unknown>): Call[] {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init: { method: string; body?: string }) => {
-      const path = url.replace('https://x.example/rest/api/3', '');
+      const path = url.replace('https://x.atlassian.net/rest/api/3', '');
       calls.push({
         method: init.method,
         url: path,
@@ -69,7 +69,7 @@ const VERSIONS = [
 ];
 
 beforeEach(() => {
-  process.env.JIRA_BASE_URL = 'https://x.example';
+  process.env.JIRA_BASE_URL = 'https://x.atlassian.net';
   process.env.JIRA_PROJECT_KEY = 'HIMMEL';
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -230,7 +230,7 @@ describe('setFixVersion names its writer', () => {
   function wire(): void {
     let put = false;
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: { method?: string } = {}) => {
-      const path = url.replace('https://x.example/rest/api/3', '');
+      const path = url.replace('https://x.atlassian.net/rest/api/3', '');
       const reply = (body: unknown) => ({ ok: true, status: 200, text: async () => JSON.stringify(body) });
       if ((init.method ?? 'GET') === 'PUT') { put = true; return { ok: true, status: 204, text: async () => '' }; }
       if (path.startsWith('/issue/HIMMEL-374/changelog')) {
@@ -389,8 +389,8 @@ describe('start date + version-edit', () => {
 
 describe('version-move', () => {
   const MOVABLE = [
-    { id: '10001', name: 'v1.0.1', self: 'https://x.example/rest/api/3/version/10001' },
-    { id: '10002', name: 'v1.0.1b', self: 'https://x.example/rest/api/3/version/10002' },
+    { id: '10001', name: 'v1.0.1', self: 'https://x.atlassian.net/rest/api/3/version/10001' },
+    { id: '10002', name: 'v1.0.1b', self: 'https://x.atlassian.net/rest/api/3/version/10002' },
   ];
 
   it('POSTs the other version self URL as `after` on the resolved id', async () => {
@@ -400,7 +400,7 @@ describe('version-move', () => {
     expect(calls[1]).toEqual({
       method: 'POST',
       url: '/version/10002/move',
-      body: { after: 'https://x.example/rest/api/3/version/10001' },
+      body: { after: 'https://x.atlassian.net/rest/api/3/version/10001' },
     });
     expect(out).toBe(`Moved version v1.0.1b after ${anchor}`);
   });

@@ -35,6 +35,7 @@ beforeEach(async () => {
   vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
   vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
   vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+  vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
   writeFileSync(join(root, 'verbatim.txt'), 'R1 = v1.1.3\n');
   const p = new Command();
   p.exitOverride();

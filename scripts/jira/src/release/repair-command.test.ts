@@ -310,7 +310,7 @@ describe('test-version-repair dry run', () => {
     setup();
     mirror([{ key: 'K-1', fixVersions: ['v1.1.4'] }]);
     writeJournal([{ key: 'K-1', mechanism: 'create-residual', from: [], to: ['v1.1.4'], entry: '100' }]);
-    vi.stubEnv('JIRA_BASE_URL', 'https://jira.example.test');
+    vi.stubEnv('JIRA_BASE_URL', 'https://repair.atlassian.net');
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status })));
     const r = await run({ get: repairGetter() });
     expect(r.status).toBe('error');
@@ -322,7 +322,7 @@ describe('test-version-repair dry run', () => {
     setup();
     mirror([{ key: 'K-1', fixVersions: ['v1.1.4'] }]);
     writeJournal([{ key: 'K-1', mechanism: 'create-residual', from: [], to: ['v1.1.4'], entry: '100' }]);
-    vi.stubEnv('JIRA_BASE_URL', 'https://jira.example.test');
+    vi.stubEnv('JIRA_BASE_URL', 'https://repair.atlassian.net');
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)));
     vi.useFakeTimers();
     const pending = run({ get: repairGetter() });
@@ -470,7 +470,7 @@ describe('test-version-repair apply', () => {
   it('apply path makes no Fix Version write', async () => {
     const issues = [...filing(), done('K-3', ['v1.1.3'])];
     mirror(issues);
-    vi.stubEnv('JIRA_BASE_URL', 'https://jira.example.test');
+    vi.stubEnv('JIRA_BASE_URL', 'https://repair.atlassian.net');
     const inner = liveGetter(issues, { 'K-2': '200' });
     const methods: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: { method?: string }) => {
@@ -478,7 +478,7 @@ describe('test-version-repair apply', () => {
       methods.push(method);
       if (method !== 'GET') return new Response('{}', { status: 500 });
       try {
-        return new Response(JSON.stringify(await inner(String(url).replace('https://jira.example.test/rest/api/3', ''))), { status: 200 });
+        return new Response(JSON.stringify(await inner(String(url).replace('https://repair.atlassian.net/rest/api/3', ''))), { status: 200 });
       } catch {
         return new Response('{}', { status: 404 });
       }
