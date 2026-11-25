@@ -165,6 +165,14 @@ run_lint --added
 if [ "$RC" -eq 2 ]; then ok; else bad "--added with no base: want rc 2, got $RC: $OUT"; fi
 
 setup_repo
+trunk=$(git -C "$R" rev-parse --abbrev-ref HEAD)
+git -C "$R" checkout -q --orphan unrelated
+git -C "$R" commit -q --allow-empty -m unrelated
+git -C "$R" checkout -q "$trunk"
+run_lint --added unrelated
+if [ "$RC" -eq 2 ]; then ok; else bad "--added with a base sharing no history: want rc 2, got $RC: $OUT"; fi
+
+setup_repo
 run_lint --added no-such-ref
 if [ "$RC" -eq 2 ]; then ok; else bad "--added with an unknown base: want rc 2, got $RC: $OUT"; fi
 

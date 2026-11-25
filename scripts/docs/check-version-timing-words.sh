@@ -29,7 +29,8 @@
 #                                                  census: lists today's hits)
 #
 # Platform guard (posix-bash): POSIX bash 3.2+ plus git/grep/awk.
-# Exit: 0 = no hit, 1 = at least one hit (each printed as path:line: text).
+# Exit: 0 = no hit, 1 = at least one hit (each printed as path:line: text),
+#       2 = usage error or the base could not be diffed (never a silent pass).
 set -uo pipefail
 
 ROOT=$(git rev-parse --show-toplevel)
@@ -57,7 +58,7 @@ records_of_files() {
 }
 
 records_of_diff() {
-  git -C "$ROOT" diff -U0 --no-color "$(git -C "$ROOT" merge-base "$1" HEAD)" -- | awk '
+  git -C "$ROOT" diff -U0 --no-color "$1" -- | awk '
     /^\+\+\+ b\// { path = substr($0, 7); next }
     /^\+\+\+ / { path = ""; next }
     /^@@ / { s = $0; sub(/^@@ -[0-9,]+ \+/, "", s); sub(/[ ,].*/, "", s); n = s + 0; next }
@@ -71,7 +72,8 @@ records_of_diff() {
 if [ "${1:-}" = "--added" ]; then
   [ "$#" -eq 2 ] || { echo "usage: $0 --added <base>" >&2; exit 2; }
   git -C "$ROOT" rev-parse --verify --quiet "$2^{commit}" >/dev/null || { echo "check-version-timing-words: no such base: $2" >&2; exit 2; }
-  records=$(records_of_diff "$2")
+  fork_point=$(git -C "$ROOT" merge-base "$2" HEAD) || { echo "check-version-timing-words: no common history with base: $2" >&2; exit 2; }
+  records=$(records_of_diff "$fork_point") || { echo "check-version-timing-words: git diff against $2 failed" >&2; exit 2; }
 elif [ "$#" -gt 0 ]; then
   records=$(printf '%s\n' "$@" | records_of_files)
 else
