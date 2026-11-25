@@ -20,11 +20,21 @@
 # Off unless the station opted in: no marker directory (helper not installed) means no sudo
 # call at all, and the helper refuses every request while grant.enabled is false.
 #
+# A refusal (no chief to route the ask, or any helper result but pending) sends one line that
+# says no ask was sent, why in plain words, the classifier category and the command head: the
+# program's basename, plus the next word's for a runner such as bash or npx, never an argument
+# or an assignment. The line goes through the bridge outbox (merge-block-alert.sh's sender) as
+# kind afk-grant-refused, and into the chief's bridge inbox (consoles/<chief>.md, only if it
+# exists). The chief is the current one: HIMMEL_CONSOLE_NAME names the launching chief, and
+# each consoles/<chief>.md.handover marker chief.sh writes at a succession is followed while
+# the successor's inbox exists. The card and the expiry line name that chief too.
+#
 # This is an OBSERVABILITY-STYLE TAP, same contract as log-classifier-denial.sh on the same
 # event: it never blocks, delays or asks on a tool call,
 # prints nothing, and exits 0 on every path. The helper caps requests (one pending at a time, max_per_hour).
 #
-# Test seam: AFK_GRANT_DIR names the marker directory.
+# Test seams: AFK_GRANT_DIR names the marker directory; MERGE_BLOCK_ALERT_CMD replaces the
+# outbox sender (merge-block-alert.sh).
 #
 # bash 3.2-compatible.
 set -uo pipefail
@@ -34,6 +44,7 @@ HELPER=/usr/local/libexec/himmel/afk-sudo
 MARKS="${AFK_GRANT_DIR:-/var/lib/himmel/afk-grants}"
 HERE="$(cd "$(dirname "$0")" && pwd)" || exit 0
 REQ="$HERE/../lib/afk-sudo-request"
+MBA="$HERE/../lib/merge-block-alert.sh"
 CONSOLES="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles"
 CONFIG="${AFK_SUDO_CONFIG:-/etc/himmel/afk-sudo.json}"
 
@@ -67,10 +78,43 @@ grants_on() {
     case "$mode" in *" enabled=true "*) ;; *) return 1 ;; esac
     case "$mode" in *" grant_enabled=true "*) return 0 ;; *) return 1 ;; esac
 }
+name_ok() { [ -n "$1" ] && [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && [[ $1 != *..* ]]; }
+current_chief() {
+    local c=$1 next seen=" $1 "
+    while :; do
+        next=$(sed -n 1p "$CONSOLES/$c.md.handover" 2>/dev/null | tr -d '[:space:]')  # swallow-ok: no marker means no successor
+        name_ok "$next" && [ -f "$CONSOLES/$next.md" ] || break
+        case "$seen" in *" $next "*) break ;; esac
+        seen="$seen$next "; c=$next
+    done
+    printf '%s' "$c"
+}
+command_head() {
+    local w h='' n=0
+    set -f
+    # shellcheck disable=SC2086 # split on blanks only, never globbed
+    for w in $1; do
+        case "$w" in *=*) continue ;; esac
+        [ -z "$h" ] || case "$w" in -*) continue ;; esac
+        w=$(printf '%s' "${w##*/}" | tr -cd 'A-Za-z0-9._@+-' | cut -c1-40)
+        [ -n "$w" ] || break
+        h=${h:+$h }$w; n=$((n + 1))
+        [ "$n" -lt 2 ] || break
+        case "$w" in bash | sh | zsh | dash | env | sudo | python | python3 | node | bun | npx | perl | ruby) ;; *) break ;; esac
+    done
+    set +f
+    printf '%s' "${h:-unknown}"
+}
 notify() {
-    local op
+    local op inbox=''
     op=$(jq -r '.operator_id // empty' "$CONFIG" 2>/dev/null | grep -E '^-?[0-9]{1,20}$' | head -1)  # swallow-ok: no readable operator id means no send
-    [ -n "$op" ] && detach_run bash "$REQ" --notify "$1" --operator "$op"
+    [ -n "${2:-}" ] && inbox="$CONSOLES/$2.md"
+    [ -n "$op" ] || [ -n "$inbox" ] || return 0
+    # shellcheck disable=SC2016 # the script is literal; its values arrive as positional arguments
+    detach_run bash -c '. "$1" || exit 0
+        [ -z "$2" ] || _mba_send "$2" "$3" afk-grant-refused
+        [ -z "$4" ] || _mba_append_if_exists "$4" "- $(date +%H:%M) [afk-grant-refused] $3"' \
+        afk-grant-refused "$MBA" "$op" "$1" "$inbox"
 }
 
 sname=''
@@ -80,14 +124,15 @@ if { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
     sname=$(current_session_name 2>/dev/null) || sname=''  # swallow-ok: an unresolvable name is not a chief
 fi
 who=${sname:-$session}
+head=$(command_head "$(jq -r '.tool_input.command' <<<"$input" 2>/dev/null)")  # swallow-ok: an unreadable command names its head unknown
 chief=${HIMMEL_CONSOLE_NAME:-}
-if [ -z "$chief" ]; then
-    if [ -n "$sname" ] && [ -f "$CONSOLES/$sname.md" ]; then
-        chief=$sname
-    else
-        grants_on && notify "AFK grant from session $who refused: no chief to route the ask; the denied Bash call [$category] was not filed"
-        exit 0
-    fi
+if [ -n "$chief" ]; then
+    name_ok "$chief" && chief=$(current_chief "$chief")
+elif [ -n "$sname" ] && [ -f "$CONSOLES/$sname.md" ]; then
+    chief=$sname
+else
+    grants_on && notify "AFK grant from session $who refused, no ask was sent: the session has no chief to route the ask to, so the denied call \`$head\` [$category] was not filed"
+    exit 0
 fi
 export HIMMEL_CONSOLE_NAME="$chief"
 
@@ -111,6 +156,17 @@ case "$result" in
         detach_run bash "$REQ" --watch "$id" --expires "$expires" --operator "$op" --session "$who"
         ;;
     grant-disabled | disabled) ;;
-    *) notify "AFK grant from session $who (chief $chief) refused: ${result:-no reply from the helper}, nothing ran" ;;
+    *)
+        rule=$(printf '%s\n' "$reply" | sed -n 's/^result=never-remote.* rule=\([a-z0-9-]*\).*/\1/p' | head -1)
+        told="its chief is told"
+        [ -f "$CONSOLES/$chief.md" ] || told="its chief has no bridge inbox, so it is not told"
+        case "$result" in
+            never-remote) why="the station's never-remote rule ${rule:-unknown} covers it, so it can never be approved from the phone: the worker must take another route; $told" ;;
+            notice-failed) why="the approval helper could not send the ask to the phone (notice-failed)" ;;
+            '') why="the approval helper did not answer" ;;
+            *) why="the approval helper refused it ($result)" ;;
+        esac
+        notify "AFK grant refused, no ask was sent and nothing ran: session $who (chief $chief) had \`$head\` refused by the classifier as [$category]; $why" "$chief"
+        ;;
 esac
 exit 0
