@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  claim, declare, freeze, leaseAcquire, operatorDecision, request, rule, state,
+  apply, claim, declare, freeze, leaseAcquire, operatorDecision, request, rule, state,
   JudgeReplyError, LIVE_LOOKUP_MS, readMirror, readMirrorFilesUnverified, rmRun, rmRunSummary, standing,
   type Ctx, type Decision, type DoorJiraPort, type JiraPort, type Judge, type JudgeInput, type RuledDecision,
 } from './engine.js';
@@ -183,6 +183,20 @@ describe('rm-run: the on-demand release manager', () => {
     const s = state(ctx());
     expect(s.lease).toMatchObject({ epoch: 1, released: true });
     expect(s.requests).toEqual({ open: [], claimed: [], oldest_open: null, pending_keys: [] });
+  });
+
+  it('one ruling is one row per phase and a replay adds none', async () => {
+    declared();
+    ask('K-2');
+    await rmRun(ctx(), admitAll);
+    const rows = () => readChain<RulingRow>(join(ctx().dir, 'rulings.jsonl'), loadKey(ctx().keyPath)).verified;
+    expect([...new Set(rows().map((r) => r.id))]).toEqual(['R-R1-0001']);
+    expect(rows().map((r) => r.phase)).toEqual(['intent', 'applied', 'receipted']);
+    const before = rows().length;
+    expect(await rmRun(ctx(), admitAll)).toEqual(['RM-RUN R1: nothing pending']);
+    leaseAcquire(ctx(rmEnv), { expectEpoch: 1, doc: DOC, session: 'rm-1' });
+    expect((await apply(ctx(rmEnv), 'R-R1-0001')).phase).toBe('receipted');
+    expect(rows().length).toBe(before);
   });
 
   it('rm-run hands the judge only the operator rows its batch can use', async () => {
