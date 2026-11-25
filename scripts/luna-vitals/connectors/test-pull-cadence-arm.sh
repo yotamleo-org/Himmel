@@ -192,5 +192,43 @@ echo "== test: the existing bare (no-args) pull path is untouched =="
 out=$(PULL_CMD='exit 75' bash "$CADENCE" 2>&1); rc=$?
 if [ "$rc" -eq 75 ]; then pass "bare invocation: still reaches the pull path (rc=75 via PULL_CMD)"; else fail "bare invocation: expected rc=75 got rc=$rc; output: $out"; fi
 
+echo "== test: the real pull path finds bun under cron's minimal PATH (HIMMEL-11187) =="
+make_stub_sender() {
+  cat > "$1/send.sh" <<'STUB'
+#!/bin/sh
+echo "$HIMMEL_ALERT_KIND $1" >> "$(dirname "$0")/sent"
+exit 0
+STUB
+  chmod +x "$1/send.sh"
+}
+cron_home=$(mktemp -d "${TMPDIR:-/tmp}/pull-cadence-test-home.XXXXXX") || exit 1
+mkdir -p "$cron_home/.bun/bin" "$cron_home/art"
+printf '#!/bin/sh\necho "bun-called $*" > "%s/bun-args"\nexit 0\n' "$cron_home" > "$cron_home/.bun/bin/bun"
+chmod +x "$cron_home/.bun/bin/bun"
+make_stub_sender "$cron_home"
+run_cron_pull() {
+  env -i PATH=/usr/bin:/bin HOME="$1" \
+    LUNA_VITALS_ARTIFACT_DIR="$1/art" HIMMEL_FLOW_RUNS_LEDGER="$1/flow-runs.jsonl" \
+    CADENCE_ALERT_FILE="$1/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$1/alert-sent" \
+    CADENCE_ALERT_SEND_CMD="$1/send.sh" CADENCE_ALERT_SEND_FAILED_MARK="$1/send-failed" \
+    FROM=2026-06-28 TO=2026-06-29 bash "$CADENCE"
+}
+out=$(run_cron_pull "$cron_home" 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "minimal PATH: pull exits 0"; else fail "minimal PATH: expected rc=0 got rc=$rc; output: $out"; fi
+if grep -qF "bun-called" "$cron_home/bun-args" 2>/dev/null; then pass "minimal PATH: ~/.bun/bin/bun was called"; else fail "minimal PATH: bun was not called"; fi
+if [ -e "$cron_home/alerts.log" ]; then fail "minimal PATH: a clean run wrote an alert"; else pass "minimal PATH: a clean run wrote no alert"; fi
+
+echo "== test: exit 127 (bun missing) writes ONE alert line naming bun =="
+empty_home=$(mktemp -d "${TMPDIR:-/tmp}/pull-cadence-test-nobun.XXXXXX") || exit 1
+mkdir -p "$empty_home/art"
+make_stub_sender "$empty_home"
+out=$(run_cron_pull "$empty_home" 2>&1); rc=$?
+if [ "$rc" -eq 127 ]; then pass "no bun: pull exits 127"; else fail "no bun: expected rc=127 got rc=$rc; output: $out"; fi
+n=$(grep -c . "$empty_home/alerts.log" 2>/dev/null || true)
+if [ "${n:-0}" = "1" ]; then pass "no bun: exactly one alert line"; else fail "no bun: expected one alert line, got ${n:-0}"; fi
+assert_has "$(cat "$empty_home/alerts.log" 2>/dev/null)" "luna-vitals-pull rc-127" "no bun: alert line names the job and rc-127"
+assert_has "$(cat "$empty_home/sent" 2>/dev/null)" "bun: command not found" "no bun: the message names the missing command"
+rm -rf "$cron_home" "$empty_home"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "SUMMARY: all tests passed"; else echo "SUMMARY: $fails failed"; exit 1; fi
