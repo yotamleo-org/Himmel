@@ -116,7 +116,7 @@ run_to_wake() {
     digest_rc=$rc
 }
 
-printf '1' > "$STUB/stall"
+printf '4' > "$STUB/stall"
 tick_t0="$(ticks)"
 bash "$STUB/tick.sh" > /dev/null &
 tick_pid=$!
