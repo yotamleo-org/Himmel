@@ -230,6 +230,7 @@ node/npm/bun) with installed against available. It is read-only.
 | `--no-network` | `ensure` | Run only items whose manifest entry declares a no-network path (local file wiring); refuse the rest |
 | `--write-tracked` | `ensure` | Allow writing a settings file that git tracks; without it `ensure` refuses before any item runs, naming the items and the file |
 | `--allow-agent-session` | `ui` | Override the refusal to start the config UI inside a Claude session |
+| `--read-only` | `ui` | Serve GET and HEAD only (every other request gets 403) and build nothing. The one `ui` start allowed inside a Claude session with no override, when given without `--port`, `--agui` or `--service`: it serves the checkout whose `bin.js` runs it (from a worktree, `node scripts/himmelctl/bin.js ui --read-only` at its root; the PATH `himmelctl` serves the checkout it is installed from) on a free `127.0.0.1` port. Not valid with `--service` |
 | `--port N` | `ui` | Serve on that port (0-65535) |
 | `--agui [<session-id>\|latest]` | `ui` | Print the AG-UI run page URL for that session (`latest`: the newest transcript); with no id, the fleet page |
 | `--service install\|uninstall\|status\|url` | `ui` | Run the UI as an always-on systemd user unit (`himmel-ui.service`) on a fixed port with a stable token; `url` prints the bookmarkable URL |
