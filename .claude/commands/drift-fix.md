@@ -273,7 +273,8 @@ Per collected fork, one of four outcomes (`--dry-run`: add `--dry-run`, push not
    the conflicting upstream change, and stop on that fork.
 4. **Operator hold**: nothing to do; the report line is `HELD` with the reason.
 
-**Publishing a rebased fork** (outcomes 2 and 3): push a NEW branch
+**Publishing a rebased fork** (outcomes 2 and 3), only after the fork's tests and the
+consumer suite pass on the rebased tip (outcome 2 runs them too): push a NEW branch
 `himmel-main-upstream-<target>` and a NEW tag `himmel-pin/<version>-himmel.1` at
 the rebased tip, and keep the old tip reachable as tag
 `himmel-presync/<branch>-<sha12>`. Never force-push or move the fork's default
@@ -289,7 +290,7 @@ Per-fork result, one of three, never anything else:
 
 ## 3. Branch first
 
-If step 2 collected no `mode: base` entries and step 2C moved no fork pin, stop
+If step 2 collected no `mode: base` entries and step 2C left no fork pin to move, stop
 here and report — including whatever steps 2A and 2C did. **Do not create a
 branch or a PR to prove the cadence fired**, and note that a probe upgrade is NOT
 a reason to open one: it changed a binary on this machine, not a file in the

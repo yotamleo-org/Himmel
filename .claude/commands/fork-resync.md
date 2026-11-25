@@ -127,7 +127,8 @@ above does not apply.
 
 ## 4. Publish the rebased fork
 
-Push the rebased tip to a NEW branch `himmel-main-upstream-<target>` and a NEW
+Run step 5's checks against the rebased tip in the scratch clone first, and push
+only once they pass. Then push the rebased tip to a NEW branch `himmel-main-upstream-<target>` and a NEW
 tag `himmel-pin/<version>-himmel.1`, with a plain `git push` from the scratch
 clone, and keep the old tip reachable as tag `himmel-presync/<branch>-<sha12>`.
 Never push over the fork's default branch and never force-push: moving that
@@ -142,8 +143,9 @@ The modes differ in who runs this step:
   the delta is additive, and the rebased SHA `resync-fork.sh` computed in its
   scratch clone. Nothing is pushed by that run; the fork is brought current by
   the drift fix, which runs this step.
-- **The drift fix (`/drift-fix` step 2C) and an operator run:** push the new
-  branch and tag as above and continue to step 5.
+- **The drift fix (`/drift-fix` step 2C) and an operator run:** run step 5's
+  checks on the scratch-clone tip, push the new branch and tag as above only if
+  they pass, then move the pin in step 6.
 
 `--push` still refuses a conflicted or non-additive rebase on its own — that
 guard is structural and independent of this one. Record the new fork SHA it
