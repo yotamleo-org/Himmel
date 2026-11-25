@@ -95,6 +95,27 @@ r1=$?
 send_with sender.sh "$(stall a/one.md 62)"
 assert_eq "V13 a send the test guard refused is not recorded either" "77 1" "$r1 $(sent_count)"
 rm -f "$TMP/sent.log" "$VAULT_STALL_ALERT_STATE"
+send_with sender.sh "$(stall a/one.md 31)"
+touch -d '8 days ago' "$VAULT_STALL_ALERT_STATE"
+send_with sender.sh "$(stall a/one.md 62)"
+assert_eq "V15 a finding recorded more than 7 days ago is sent again" "2" "$(sent_count)"
+send_with sender.sh "$(stall a/one.md 93)"
+assert_eq "V15b and recorded again, so the next pass is held back" "2" "$(sent_count)"
+if command -v flock >/dev/null 2>&1; then
+    rm -f "$TMP/sent.log" "$VAULT_STALL_ALERT_STATE"
+    send_with sender.sh "$(stall a/one.md 31)"
+    recorded="$(cat "$VAULT_STALL_ALERT_STATE")"
+    rm -f "$TMP/sent.log" "$VAULT_STALL_ALERT_STATE"
+    exec 8>"$VAULT_STALL_ALERT_STATE.lock"
+    flock 8
+    send_with sender.sh "$(stall a/one.md 62)" 8>&- &
+    racer=$!
+    printf '%s\n' "$recorded" >"$VAULT_STALL_ALERT_STATE"
+    exec 8>&-
+    wait "$racer"
+    assert_eq "V16 a call that waited on another's lock sees that call's record and does not send" "0" "$(sent_count)"
+fi
+rm -f "$TMP/sent.log" "$VAULT_STALL_ALERT_STATE"
 HIMMEL_ALERT_KIND=cadence:qmd-reindex send_with sender.sh "same line"
 HIMMEL_ALERT_KIND=cadence:qmd-reindex send_with sender.sh "same line"
 assert_eq "V14 another sender's repeated line is left to that sender: both are sent" "2" "$(sent_count)"
