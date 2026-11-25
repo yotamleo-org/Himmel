@@ -407,6 +407,21 @@ the envelope. A malformed key, or a config that does not parse, logs a
 `telegram.bridgeLegacyChats` line on each spawn and also leaves every chat in the
 envelope. The poller reads the key on each spawn, so a change needs no restart.
 
+### The operator-words verifier
+
+`bun scripts/telegram/operator-words.ts --update <update_id>` decides whether the
+poller's log holds the operator's own typed line for that update. It reads
+`inbound.jsonl` then `inbound.jsonl.1` under the bridge root and the access file
+at their default paths; the CLI takes no root or access flag. It prints one JSON
+line (`update_id`, `from`, `chat_id`, `ts`, `message_id`, `text`, and `reply_to_text`
+when the log has it, the `text` unchanged) and exits 0, or prints one reason line
+on stderr and exits 1. It refuses an id below 1 000 000, an id not in the log, an
+id logged twice with different text or `ts`, DMs not limited to exactly one
+`allowFrom` id, a line whose `from` or `chat_id` is not that id, a forwarded line,
+a caption or voice transcript, and an empty text. Run it with an allow-listed env
+(`PATH`, `HOME`, `LANG`, `TZ`) so `BRIDGE_ROOT`, `TELEGRAM_ACCESS_PATH` and `BUN_*`
+cannot reach it; `test-bridge-words-seams.sh` shows that spawn.
+
 ---
 
 ## Groups & channels
