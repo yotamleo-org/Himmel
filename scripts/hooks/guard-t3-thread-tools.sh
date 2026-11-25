@@ -74,10 +74,10 @@ case "$findings" in
         if [ -L "${HOME:-/nonexistent}/.himmel" ] || [ -L "$CONFIG" ]; then
             narrow_err="$CONFIG is a symlink"
         elif [ -e "$CONFIG" ]; then
-            if ! narrow=$(jq -c 'if .t3 == null or (.t3 | has("instance_narrow") | not) then "absent" else .t3.instance_narrow end' "$CONFIG" 2>&1); then
+            if ! narrow=$(jq -cs 'if length != 1 then error("not one JSON document") else .[0] end | if .t3 == null or (.t3 | has("instance_narrow") | not) then empty else .t3.instance_narrow end' "$CONFIG" 2>&1); then
                 narrow_err="$CONFIG is not JSON with an optional .t3.instance_narrow: $narrow" narrow=""
-            elif [ "$narrow" = '"absent"' ]; then
-                narrow=""
+            elif [ -z "$narrow" ]; then
+                :
             elif ! jq -e 'type == "array" and all(.[]; type == "string")' <<<"$narrow" >/dev/null 2>&1; then
                 narrow="" narrow_err=".t3.instance_narrow in $CONFIG is not an array of strings"
             fi
