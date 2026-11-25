@@ -1,35 +1,12 @@
 #!/usr/bin/env bash
 # Platform guard (posix-bash): POSIX bash 3.2+ plus git/awk/grep.
 #
-# check-old-terms.sh — refuse a NEW retired name in tracked text.
-# The registry scripts/lib/rename-aliases.tsv is the only list. Rows scanned, by kind and direction:
-#   identifier, marker with direction old-to-new   fail tier
-#   prose with direction fail                      fail tier
-#   prose with direction warn                      warn tier: printed, never fails
-# Switching a prose row from warn to fail in the registry is the whole switch.
-# Not scanned: keep rows (do-not-rename and other-sense names are masked out of a line
-# before it is read, so a retired word inside one is no hit), the registry itself, the
-# baseline, binary files, and the env, env-prefix, path and directory rows (those stay
-# with scripts/ci/check-rename-diff.sh). A line carrying `old-term-ok` is skipped.
-#
-# The retired-name hits already in the tree are counted per file in
-# scripts/docs/old-terms-baseline.tsv (key<TAB>count, the key being the git blob hash
-# of the path, so the baseline carries no file name for a name scan to count). Only the
-# files a change touches are judged, so a change that touches no file holding a retired
-# name can never fail:
-#   a touched file may not hold more fail-tier hits (a line naming two retired names counts two) than the base's version of it
-#   (for a renamed file, the version it was renamed from)
-#   a baseline row may not rise above the base's row for that path (or for the path it was
-#   renamed from), and a new row above zero is refused; a row that only records the
-#   count the base's file already had passes (a registry that grew made the row stale)
-# A base without a baseline has no rows to compare: the first baseline is taken as it is.
-#
 # Usage:
 #   check-old-terms.sh --staged                       # the index against HEAD (pre-commit)
 #   check-old-terms.sh --range <base> [--tip <ref>]   # the fork point of <base> against <tip>, tip defaults to HEAD (CI)
 #   check-old-terms.sh --write-baseline               # rewrite the baseline from the working tree
-# Exit: 0 clean (warn-tier hits are printed) · 1 findings · 2 cannot evaluate (fail-closed):
-# the registry or the tip's baseline is missing or unreadable, or git/awk failed
+# Exit: 0 clean (warn-tier hits are printed) · 1 findings · 2 cannot evaluate (fail-closed)
+# The rules are in docs/internals/rename-procedure.md.
 
 set -uo pipefail
 export LC_ALL=C

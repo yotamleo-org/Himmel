@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
-# Suite for scripts/docs/check-old-terms.sh.
-#
-# Each case builds a throwaway git repo with a small fixture registry and a
-# baseline, commits it, makes one change and runs the lint over that change
-# from inside the repo (the lint resolves its root with git rev-parse).
-#
 # Platform guard (posix-bash): pure POSIX bash 3.2+ plus git/mktemp.
 #
 # Usage: bash scripts/docs/test-check-old-terms.sh
 # Exit:  0 = every case passed, 1 = at least one failed (all are reported).
+
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
