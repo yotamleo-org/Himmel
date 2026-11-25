@@ -33,19 +33,21 @@ W3="$BUCKET/DEMO-3-N3-succ-2026-11-25.md"
 W4="$BUCKET/DEMO-4-N4-noresume-2026-11-25.md"
 W5="$BUCKET/DEMO-5-N5-hasresume-2026-11-25.md"
 W6="$BUCKET/DEMO-6-N6-nonudge-2026-11-25.md"
-for f in "$W1" "$W2" "$W3" "$W4" "$W5" "$W6"; do printf '# worker\n\n## Results\n\n- 10:00 LIVE - x\n' > "$f"; done
-for f in "$W1" "$W3" "$W4" "$W5" "$W6"; do old "$f" 161; done
-for n in 1 3 5; do
+W7="$BUCKET/DEMO-7-N7-stuck-2026-11-25.md"
+W8="$BUCKET/DEMO-8-N8-busy-2026-11-25.md"
+for f in "$W1" "$W2" "$W3" "$W4" "$W5" "$W6" "$W7" "$W8"; do printf '# worker\n\n## Results\n\n- 10:00 LIVE - x\n' > "$f"; done
+for f in "$W1" "$W3" "$W4" "$W5" "$W6" "$W7" "$W8"; do old "$f" 161; done
+for n in 1 3 5 7; do
     d="$(ls "$BUCKET"/DEMO-$n-N*-2026-11-25.md)"
     printf '# resume\n\n## Results\n\n- 10:00 LIVE - x\n' > "${d%.md}-RESUME.md"
 done
 MANIFEST="$BUCKET/DEMO-chief-2026-11-25.fleet.json"
-printf '{"schema":1,"workers":[{"doc":"%s","label":"N1","lane":"native"},{"doc":"%s","label":"N2","lane":"native"},{"doc":"%s","label":"N3","lane":"native"},{"doc":"%s","label":"N4","lane":"native"},{"doc":"%s","label":"N5","lane":"native"},{"doc":"%s","label":"N6","lane":"native"}]}\n' \
-    "$W1" "$W2" "$W3" "$W4" "$W5" "$W6" > "$MANIFEST"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1","lane":"native"},{"doc":"%s","label":"N2","lane":"native"},{"doc":"%s","label":"N3","lane":"native"},{"doc":"%s","label":"N4","lane":"native"},{"doc":"%s","label":"N5","lane":"native"},{"doc":"%s","label":"N6","lane":"native"},{"doc":"%s","label":"N7","lane":"native"},{"doc":"%s","label":"N8","lane":"native"}]}\n' \
+    "$W1" "$W2" "$W3" "$W4" "$W5" "$W6" "$W7" "$W8" > "$MANIFEST"
 
 printf '#!/usr/bin/env bash\ncat "%s/census.txt"\n' "$WORK" > "$WORK/census.sh"
 : > "$WORK/census.txt"
-for n in DEMO-1-N1-silent-2026-11-25:101 DEMO-2-N2-fresh-2026-11-25:102 DEMO-3-N3-succ-2026-11-25:103 DEMO-5-N5-hasresume-2026-11-25:105 DEMO-5-N5-hasresume-2026-11-25-RESUME:205; do
+for n in DEMO-1-N1-silent-2026-11-25:101 DEMO-2-N2-fresh-2026-11-25:102 DEMO-3-N3-succ-2026-11-25:103 DEMO-5-N5-hasresume-2026-11-25:105 DEMO-5-N5-hasresume-2026-11-25-RESUME:205 DEMO-7-N7-stuck-2026-11-25:107 DEMO-8-N8-busy-2026-11-25:108; do
     printf '%s\t%s\topus\t200000\n' "${n##*:}" "${n%:*}" >> "$WORK/census.txt"
 done
 cat > "$WORK/bus.sh" <<'EOF'
@@ -71,8 +73,12 @@ cat > "$WORK/kill.sh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$WORK/kill.log"
 EOF
+cat > "$WORK/alive.sh" <<'EOF'
+#!/usr/bin/env bash
+[ -n "${ALIVE:-}" ]
+EOF
 chmod +x "$WORK"/*.sh
-export WORK
+export WORK SILENT_ACT_ALIVE="$WORK/alive.sh" SILENT_ACT_KILL_TRIES=1
 export SILENT_ACT_BUS="$WORK/bus.sh" SILENT_ACT_CENSUS="$WORK/census.sh" SILENT_ACT_LAUNCHER="$WORK/launcher.sh"
 export SILENT_ACT_CONFIRM="$WORK/confirm.sh" SILENT_ACT_KILL="$WORK/kill.sh"
 export HIMMEL_BUS_NAME="DEMO-chief-2026-11-25"
@@ -139,6 +145,20 @@ out="$(CHIEF_WAIT_WORKER_SILENT_MIN=100 run N5 161)"
 check "10a. bound 100: 161 minutes is past one, not past two" "SILENT-ACT N5 nudged" "$out"
 
 bash "$ACT" --doc "$CHIEF_DOC" >/dev/null 2>&1; check "11a. missing arguments exit 2" "2" "$?"
+
+launches_before="$(count "$WORK/launch.log")"
+out="$(ALIVE=1 run N7 161)"
+check "12a. a stale window that does not end is never launched over, and owes" "SILENT-ACT N7 nudged relaunch=failed owed=o5" "$out"
+check "12b. no launch ran" "$launches_before" "$(count "$WORK/launch.log")"
+
+if command -v flock >/dev/null 2>&1; then
+    nudges_before="$(count "$WORK/bus.log")"
+    exec 7>>"$BUCKET/silent-act.N8.lock"; flock -n 7
+    out="$(run N8 161)"
+    exec 7>&-
+    check "13a. a second helper on a worker already being acted on is busy" "SILENT-ACT N8 busy" "$out"
+    check "13b. and sent no nudge" "$nudges_before" "$(count "$WORK/bus.log")"
+fi
 
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

@@ -68,6 +68,7 @@ bus="${SILENT_ACT_BUS:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
 launcher="${SILENT_ACT_LAUNCHER:-$HERE/headed-arm-worker.sh}"
 confirm="${SILENT_ACT_CONFIRM:-$HERE/launch-confirm.sh}"
 killer="${SILENT_ACT_KILL:-kill}"
+alive="${SILENT_ACT_ALIVE:-kill -0}"
 state="$bucket/silent-act.state"
 
 wdoc="$(jq -r --arg l "$label" '[(.workers // .legs)[]? | select(.label == $l)][0].doc // empty' "$manifest" 2>/dev/null)" || wdoc=""  # swallow-ok: an unreadable manifest names no doc, which owes a row at the relaunch
@@ -85,6 +86,14 @@ done_stage() { grep -qxF -- "$label $1 $mtime" "$state" 2>/dev/null; }  # swallo
 mark_stage() { printf '%s %s %s\n' "$label" "$1" "$mtime" >> "$state" 2>/dev/null || true; }  # swallow-ok: an unwritable state only repeats an action
 
 oneline() { printf '%s' "$1" | tr '\r\n\t<>' '    ' | tr -s ' ' | cut -c1-160; }
+
+nothing_due() { done_stage nudge && { [ "$silent" -lt "$bound2" ] || done_stage relaunch; }; }
+if nothing_due; then echo "SILENT-ACT $label done"; exit 0; fi
+if command -v flock >/dev/null 2>&1; then
+    exec 8>>"$bucket/silent-act.$label.lock" || { echo "SILENT-ACT $label busy"; exit 0; }
+    flock -n 8 || { echo "SILENT-ACT $label busy"; exit 0; }  # prim-ok: a per-worker lock on its own file, held by this process alone; a second helper for the same worker waits for the next call
+    if nothing_due; then echo "SILENT-ACT $label done"; exit 0; fi
+fi
 
 census=""
 if [ -n "${SILENT_ACT_CENSUS:-}" ]; then
@@ -154,6 +163,7 @@ fi
 
 if [ "$relaunch_due" -eq 1 ] && ! done_stage relaunch; then
     if [ "$resume_live" -eq 1 ]; then
+        mark_stage relaunch
         say="${say:+$say }live-window"; log="${log:+$log }live-window ($stem-RESUME runs)"
     else
         mark_stage relaunch
@@ -164,19 +174,28 @@ if [ "$relaunch_due" -eq 1 ] && ! done_stage relaunch; then
         elif [ ! -f "$rdoc" ]; then
             relaunch_err="no RESUME doc at $rdoc"
         else
-            if [ "$stale_hits" -eq 1 ] && [ -n "$stale_pid" ]; then "$killer" "$stale_pid" >/dev/null 2>&1 || true; fi  # swallow-ok: a window that will not end is caught by the launcher's own refusal below
-            since="$(date +%s)"
-            llog="$bucket/silent-act-$label.launch.log"
-            sig="$bucket/silent-act-$label.signal"
-            if command -v setsid >/dev/null 2>&1; then
-                setsid nohup bash "$launcher" --fleet "$manifest" "$session" "$rdoc" "$sig" $((since + 300)) "$llog" >>"$llog.launcher.out" 2>&1 </dev/null 9>&- &
-            else
-                nohup bash "$launcher" --fleet "$manifest" "$session" "$rdoc" "$sig" $((since + 300)) "$llog" >>"$llog.launcher.out" 2>&1 </dev/null 9>&- &
+            if [ "$stale_hits" -eq 1 ] && [ -n "$stale_pid" ]; then
+                "$killer" "$stale_pid" >/dev/null 2>&1 || true  # swallow-ok: whether the window ended is read from the pid itself below
+                tries="${SILENT_ACT_KILL_TRIES:-20}"
+                # shellcheck disable=SC2086  # alive is `kill -0` or a test seam command
+                while [ "$tries" -gt 0 ] && $alive "$stale_pid" >/dev/null 2>&1; do sleep 0.5; tries=$((tries - 1)); done
+                # shellcheck disable=SC2086
+                if $alive "$stale_pid" >/dev/null 2>&1; then relaunch_err="the stale window (pid $stale_pid) did not end"; fi
             fi
-            if conf_out="$(bash "$confirm" --since "$since" --chief "$chief" "$session" "$llog" 2>&1)"; then
-                say="${say:+$say }relaunched"; log="${log:+$log }relaunched $session"
-            else
-                relaunch_err="launch not confirmed: ${conf_out%%$'\n'*}"
+            if [ -z "$relaunch_err" ]; then
+                since="$(date +%s)"
+                llog="$bucket/silent-act-$label.launch.log"
+                sig="$bucket/silent-act-$label.signal"
+                if command -v setsid >/dev/null 2>&1; then
+                    setsid nohup bash "$launcher" --fleet "$manifest" "$session" "$rdoc" "$sig" $((since + 300)) "$llog" >>"$llog.launcher.out" 2>&1 </dev/null 8>&- 9>&- &
+                else
+                    nohup bash "$launcher" --fleet "$manifest" "$session" "$rdoc" "$sig" $((since + 300)) "$llog" >>"$llog.launcher.out" 2>&1 </dev/null 8>&- 9>&- &
+                fi
+                if conf_out="$(bash "$confirm" --since "$since" --chief "$chief" "$session" "$llog" 2>&1)"; then
+                    say="${say:+$say }relaunched"; log="${log:+$log }relaunched $session"
+                else
+                    relaunch_err="launch not confirmed: ${conf_out%%$'\n'*}"
+                fi
             fi
         fi
         if [ -n "$relaunch_err" ]; then
