@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# test-chief-wait-t3-relay.sh — the waiter's T3 relay call and its ask-row narrowing (design r4
-# sections 3.5 and 4.1). chief-wait.sh calls `relay-bind.sh scan --manifest <workers-from>` once per
-# CHIEF_WAIT_T3_RELAY_SEC through the seam CHIEF_WAIT_T3_RELAY (stubbed here), puts BOUND and UNBOUND in the
-# housekeeping buffer, wakes `WAKE t3-relay <kind> <id|list|stem>` for the rest, and takes no READY or `BLOCKED resolve`
-# action on a row whose t3_kind is ask (it prints `WAKE t3-relay ask-ready|ask-resolve <label>` instead). tick.sh and
-# the bank verdict are stubbed, so no gh, lock or bank read happens. The path A end-to-end rows run the real binder
-# against a fake `t3` and a scratch HOME. bash 3.2-safe.
-#
 # Run: bash scripts/handover/chief-kit/test-chief-wait-t3-relay.sh
 set -u
 [ "$(uname -s)" = Linux ] || { echo "SKIP: chief-wait.sh is Linux-only"; exit 0; }
