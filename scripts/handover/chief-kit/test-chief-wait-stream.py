@@ -2067,6 +2067,50 @@ class StackedWorker(StreamFixture):
         self.assertNotIn('wrap-merged-failed', out.read_text())
 
 
+    ASK = 'T3ASK-019e2c1a-2026-11-25'
+
+    def t3_fleet(self, **extra):
+        self.worker('N1', '- 09:00 LIVE — started')
+        self.fleet.write_text(json.dumps(dict(workers=[
+            dict(label='N1', doc=str(self.root / 'N1.md')),
+            dict(label=self.ASK, doc=str(self.root / f'{self.ASK}.md'), lane='t3', lockless=True,
+                 t3_thread='019e2c1a-1111', t3_notice='sent', **extra)])))
+
+    def wake_text(self):
+        return ''.join(f.read_text() for f in sorted(self.root.glob('consoles/*.wait.wake-*')))
+
+    def test_a_ready_on_an_ask_row_wakes_ask_ready_and_calls_no_worker_event(self):
+        self.worker(self.ASK, self.ready(self.ASK, 5))
+        self.t3_fleet(t3_kind='ask')
+        p, _ = self.start()
+        self.until(lambda: f'WAKE t3-relay ask-ready {self.ASK}' in self.wake_text(), seconds=10)
+        time.sleep(1.5)
+        self.stop(p)
+        self.assertEqual(self.wake_text().count(f'WAKE t3-relay ask-ready {self.ASK}'), 1, self.wake_text())
+        self.assertEqual(self.events(), [], 'worker-event (and so auto-go) was called for an ask row')
+        self.assertEqual(self.audit(), [])
+
+    def test_a_blocked_resolve_on_an_ask_row_wakes_ask_resolve_and_no_resolve_wake(self):
+        self.worker(self.ASK, '- 09:20 BLOCKED resolve 5999 PRRT_kwDOabc123')
+        self.t3_fleet(t3_kind='ask')
+        p, _ = self.start()
+        self.until(lambda: f'WAKE t3-relay ask-resolve {self.ASK}' in self.wake_text(), seconds=10)
+        time.sleep(1.5)
+        self.stop(p)
+        text = self.wake_text()
+        self.assertEqual(text.count(f'WAKE t3-relay ask-resolve {self.ASK}'), 1, text)
+        self.assertNotIn('WAKE resolve', text)
+        self.assertEqual(self.events(), [])
+
+    def test_a_ready_on_a_plain_t3_row_still_reaches_worker_event(self):
+        self.worker(self.ASK, self.ready(self.ASK, 5))
+        self.t3_fleet()
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'READY #5 {self.H[5]} {self.ASK}'), seconds=10)
+        self.stop(p)
+        self.assertNotIn('WAKE t3-relay ask-ready', self.wake_text())
+
+
 class IdlePoll(StreamFixture):
     """The service loop's idle backoff: after a run of empty passes it sleeps longer, and only that."""
 
