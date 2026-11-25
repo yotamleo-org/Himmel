@@ -80,6 +80,53 @@ test("himmelctl ui --allow-agent-session starts under a Claude session env", asy
   }
 });
 
+const agentCtl = (...args: string[]) => Bun.spawn(["node", BIN, "ui", ...args], { env: { ...cleanEnv(), CLAUDECODE: "1" }, stdout: "pipe", stderr: "pipe" });
+
+test("himmelctl ui --read-only starts under a Claude session env with no override, and a non-GET gets 403", async () => {
+  const p = agentCtl("--read-only");
+  try {
+    const reader = p.stdout.getReader();
+    const dec = new TextDecoder();
+    let out = "";
+    while (!out.includes("\n")) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      out += dec.decode(value);
+    }
+    const m = /^(http:\/\/127\.0\.0\.1:\d+)\/(?:agui\/)?#t=([0-9a-f]{64})$/.exec(out.trim());
+    expect(m).not.toBeNull();
+    const [, base, token] = m!;
+    expect((await fetch(`${base}/api/mode`, { headers: { "X-Himmel-Token": token } })).status).toBe(200);
+    const w = await fetch(`${base}/api/fleet-cap`, { method: "POST", headers: { "X-Himmel-Token": token, "Content-Type": "application/json", Origin: base }, body: JSON.stringify({ cap: 9 }) });
+    expect(w.status).toBe(403);
+  } finally {
+    p.kill("SIGTERM");
+    await p.exited;
+  }
+});
+
+test("himmelctl ui with no --read-only still refuses under a Claude session env", async () => {
+  const p = agentCtl();
+  const [err, out] = await Promise.all([new Response(p.stderr).text(), new Response(p.stdout).text()]);
+  expect(await p.exited).toBe(2);
+  expect(err).toMatch(/operator-only/);
+  expect(out).toBe("");
+});
+
+for (const [name, args, msg] of [
+  ["--service with --read-only", ["--read-only", "--service", "status"], /--read-only does not apply to --service/],
+  ["--agui with --read-only", ["--read-only", "--agui"], /operator-only/],
+  ["--port with --read-only", ["--read-only", "--port", "4000"], /operator-only/],
+] as [string, string[], RegExp][]) {
+  test(`himmelctl ui ${name} still refuses under a Claude session env`, async () => {
+    const p = agentCtl(...args);
+    const [err, out] = await Promise.all([new Response(p.stderr).text(), new Response(p.stdout).text()]);
+    expect(await p.exited).toBe(2);
+    expect(err).toMatch(msg);
+    expect(out).toBe("");
+  });
+}
+
 test("--help aligns the gaps description with the other verbs", async () => {
   const p = Bun.spawn(["node", BIN, "--help"], { stdout: "pipe", stderr: "ignore" });
   const lines = (await new Response(p.stdout).text()).split("\n");
