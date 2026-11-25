@@ -4921,6 +4921,11 @@ printf '%s\n' "\$*" >> "$NC/claude-calls.log"
 if [ -n "\${NC_CLAUDE_ANSWER_FILE:-}" ]; then cat "\$NC_CLAUDE_ANSWER_FILE"; else printf '{"is_error":false,"result":"ok"}\n'; fi
 STUB
 chmod +x "$NC/bin/claude"
+cat > "$NC/fake-claude" <<'STUB'
+#!/usr/bin/env bash
+exec -a claude bash -c '"$@"; exit $?' _ "$@"
+STUB
+chmod +x "$NC/fake-claude"
 cat > "$NC/claudex-funded" <<'STUB'
 #!/usr/bin/env bash
 echo "claudex funded 5h10/wk10"
@@ -4952,13 +4957,14 @@ nc_home() {
   alert_reset; rm -rf "$NC/scratch"; mkdir -p "$NC/scratch"; : > "$NC/ledger.jsonl"
 }
 NC_ENV=()
+NC_ANC=
 nc_run() {
   : > "$NC/graphify-calls.log"; : > "$NC/claude-calls.log"
   out=$( ${NC_BOUND:+"$NC_REAL_TIMEOUT" -k 5 "$NC_BOUND"} env ${NC_ENV[@]+"${NC_ENV[@]}"} HOME="$NC_HOME" PATH="${NC_PATH_PREFIX:+$NC_PATH_PREFIX:}$NC/bin:$PATH" \
     CLAUDE_ACCOUNT_CONFIG="$nc_acct_cfg" CADENCE_USAGE_CACHE="${NC_CACHE:-$NC/no-cache.json}" CADENCE_USAGE_SKIP_REFRESH=1 \
     CADENCE_USAGE_MAX_PCT=85 CADENCE_USAGE_MAX_AGE=600 CADENCE_USAGE_LEDGER="$NC/ledger.jsonl" \
     GRAPHIFY_CALL_LOG="$NC/graphify-calls.log" GRAPHIFY_MAP_BIN="${NC_GRAPHIFY:-$BIN/graphify}" \
-    bash "$SCRIPT" --name "${NC_NAME:-nc}" --corpus-root "${NC_ROOT:-$NC_CORPUS}" --backend "${NC_BACKEND:-claude-cli}" \
+    ${NC_ANC:+"$NC_ANC"} bash "$SCRIPT" --name "${NC_NAME:-nc}" --corpus-root "${NC_ROOT:-$NC_CORPUS}" --backend "${NC_BACKEND:-claude-cli}" \
     --maps-dir "$NC/maps" --title "No choice" --slug nc-map --scratch "$NC/scratch" 2>&1 ); rc=$?
 }
 nc_calls() { grep -cE -- '--update|cluster-only' "$NC/graphify-calls.log" 2>/dev/null || true; }
@@ -5033,7 +5039,7 @@ else
       pass "F5 $f5 the planted value is in no output, log line or alert"
     fi
   done
-  nc_home f5-oauth '{}'; nc_cache 10; NC_ENV=("CLAUDE_CODE_OAUTH_TOKEN=nc-oauth-token"); nc_run; NC_ENV=()
+  nc_home f5-oauth '{}'; nc_cache 10; NC_ENV=("CLAUDE_CODE_OAUTH_TOKEN=nc-oauth-token"); NC_ANC="$NC/fake-claude" nc_run; NC_ENV=()
   if [ "$rc" -eq 0 ] && [ "$(nc_calls)" -ge 1 ]; then pass "F5 the subscription's own CLAUDE_CODE_OAUTH_TOKEN passes"; else fail "F5 CLAUDE_CODE_OAUTH_TOKEN alone should run (rc=$rc): $out"; fi
 
   nc_home f6 "$NC_NONE"; nc_cache 10; nc_run
