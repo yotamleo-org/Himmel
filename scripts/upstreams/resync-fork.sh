@@ -118,8 +118,7 @@
 #   4  rebase CONFLICTED, or the delta is NOT strictly additive, OR a
 #      pin-literal failure (PIN_FILE_MISSING / PIN_NOT_FOUND / PIN_AMBIGUOUS —
 #      a stale fork.pin_file/pin_template/pin_ref_template, not a rebase
-#      problem) — nothing was pushed; a conflict is resolved by the FORK-REBASE
-#      step this script prints (the drift fix runs it)
+#      problem) — nothing was pushed
 set -uo pipefail
 
 SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
