@@ -305,8 +305,8 @@ check "(pathA) the brief's command block holds no greater-than character" "0" "$
 HOME="$WORK/home" bash "$ROOT/scripts/t3/relay-bind.sh" attach --manifest "$PAM" --doc "$PA_DOC" --thread 019e2c1a-a001
 check "(pathA) attach sets the threadId" "019e2c1a-a001" "$(jq -r '.workers[0].t3_thread' "$PAM")"
 PA_HEAD=abababababababababababababababababababab
-bash "$HERE/append-results.sh" "$PA_DOC" "LIVE — the thread started" > /dev/null
-bash "$HERE/append-results.sh" "$PA_DOC" "READY 5999 $PA_HEAD GREEN" > /dev/null
+HOME="$WORK/home" bash "$HERE/append-results.sh" "$PA_DOC" "LIVE — the thread started" > /dev/null
+HOME="$WORK/home" bash "$HERE/append-results.sh" "$PA_DOC" "READY 5999 $PA_HEAD GREEN" > /dev/null
 check "(pathA) the doc's newest bullet is the READY" "1" "$(tail -n 1 "$PA_DOC" | grep -c "READY 5999 $PA_HEAD GREEN")"
 relay_reset; : > "$STUB/relay.out"; echo 0 > "$STUB/relay.rc"
 export CHIEF_WAIT_WORKER_EVENT="$STUB/we-handled.sh"
@@ -322,14 +322,14 @@ start "$PAI" "$WORK/pa-ready.out" --doc "$PAD" --workers-from "$PAM"
 wait_exit "$WPID"
 check "(pathA) a READY written by the thread wakes worker-ready with its PR and head" "0|WAKE worker-ready N40 pr=5999 head=$PA_HEAD" "$rc|$(grep '^WAKE ' "$WORK/pa-ready.out" | head -n 1)"
 stop_waiter "$WPID"
-bash "$HERE/append-results.sh" "$PA_DOC" "BLOCKED — CI is red" > /dev/null
+HOME="$WORK/home" bash "$HERE/append-results.sh" "$PA_DOC" "BLOCKED — CI is red" > /dev/null
 tick_line "N40:BLOCKED" "N40:BLOCKED#1"
 PAI="$(new_inbox pa2)"
 start "$PAI" "$WORK/pa-blocked.out" --doc "$PAD" --workers-from "$PAM"
 wait_exit "$WPID"
 check "(pathA) a BLOCKED wakes worker-blocked" "0|WAKE worker-blocked N40" "$rc|$(grep '^WAKE ' "$WORK/pa-blocked.out" | head -n 1)"
 stop_waiter "$WPID"
-bash "$HERE/append-results.sh" "$PA_DOC" "FINDING — a question about scope" > /dev/null
+HOME="$WORK/home" bash "$HERE/append-results.sh" "$PA_DOC" "FINDING — a question about scope" > /dev/null
 tick_line "N40:FINDING" "N40:FINDING#1"
 PAI="$(new_inbox pa3)"
 start "$PAI" "$WORK/pa-finding.out" --doc "$PAD" --workers-from "$PAM"
