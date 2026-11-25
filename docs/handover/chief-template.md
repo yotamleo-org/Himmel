@@ -157,9 +157,12 @@ Decision 850: only `ciguard=OVER:concurrent-jobs` holds a dispatch (`monitors.md
    `bash {{REPO}}/scripts/lib/qmd-bounded.sh query -c luna "prior art"`.
 2. **Collision check:** queued workers' files must be disjoint (**single-writer**).
 3. **Name an explicit model**; raise *effort* before tier.
-4. Launch: `setsid nohup bash "{{KIT}}/headed-arm-worker.sh" --profile worker-impl
+4. Launch: `setsid nohup bash "{{KIT}}/headed-arm-worker.sh" --profile worker-impl --fleet "<this file's stem>.fleet.json"
    <session-name> "<brief>" <signal-file> <deadline-epoch> <log> <model>
-   >/dev/null 2>&1 &` — headed;
+   >>"<log>.launcher.out" 2>&1 &`. Then touch `<signal-file>` and run
+   `bash "{{KIT}}/launch-confirm.sh" <session-name> <log>`. Never report the
+   worker as running until it prints `LAUNCH-CONFIRMED`. A refusal lands as a
+   `LAUNCH-REFUSED` line in `<log>` and in this inbox. Headed;
    `--profile` is required (else exit 2; `--no-profile` when the brief
    pastes the preface). The launcher exports
    `HIMMEL_CONSOLE_NAME` (or `--chief <name>`) to route alerts here.
