@@ -8,8 +8,6 @@
 // The model is never handed a port, a method, a URL, a header, an executable, a path or a credential.
 //
 // Boundary rules this file keeps:
-//   * The credentials come ONLY from the private file. The port's destination and Authorization are
-//     the file's; ambient JIRA_* in the host environment are ignored and overwritten.
 //   * The child runs `node <primary_cli> <fixed verb> <validated key> ...`: finite argv, no shell, no
 //     model-chosen method/URL/header/option. The primary CLI keeps its own ticket-standard and
 //     requestAt checks; there is no parallel HTTP stack here.
