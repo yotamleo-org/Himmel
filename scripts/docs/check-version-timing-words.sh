@@ -57,7 +57,7 @@ records_of_files() {
 }
 
 records_of_diff() {
-  git -C "$ROOT" diff -U0 --no-color "$1" -- | awk '
+  git -C "$ROOT" diff -U0 --no-color "$(git -C "$ROOT" merge-base "$1" HEAD)" -- | awk '
     /^\+\+\+ b\// { path = substr($0, 7); next }
     /^\+\+\+ / { path = ""; next }
     /^@@ / { s = $0; sub(/^@@ -[0-9,]+ \+/, "", s); sub(/[ ,].*/, "", s); n = s + 0; next }

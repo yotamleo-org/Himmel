@@ -146,6 +146,18 @@ run_lint --added HEAD
 expect_pass "--added in release notes"
 
 setup_repo
+trunk=$(git -C "$R" rev-parse --abbrev-ref HEAD)
+git -C "$R" branch -q side
+printf 'main moved: held %s %s\n' "until" "$V" >"$R/docs/moved.md"
+git -C "$R" add -A
+git -C "$R" commit -q -m moved
+git -C "$R" checkout -q side
+printf 'plain branch edit\n' >>"$R/docs/seed.md"
+git -C "$R" commit -q -am edit
+run_lint --added "$trunk"
+expect_pass "--added ignores what the base gained since the branch forked"
+
+setup_repo
 run_lint --added
 if [ "$RC" -eq 2 ]; then ok; else bad "--added with no base: want rc 2, got $RC: $OUT"; fi
 

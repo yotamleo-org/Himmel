@@ -893,6 +893,10 @@ jobs:
         name: v1 adopter docs pass the qualified-"profile" + live-reference invariants
         if: ${{ !cancelled() }}
         run: bash scripts/docs/check-doc-terms.sh llms.txt docs/setup/install.md docs/setup/migrating.md
+      - id: doc-invariants__version-timing
+        name: a PR adds no version name used as a timing word
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        run: bash scripts/docs/check-version-timing-words.sh --added "${{ github.event.pull_request.base.sha }}"
       # Mirrors the pre-commit marketplace-source-hermetic hook
       # so a PR editing the template is gated even when pre-commit was
       # skipped. Reads the tracked template directly (no git-diff/staged
