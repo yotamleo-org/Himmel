@@ -260,7 +260,7 @@ test('the question carries the ceilings rows under a Claude chain, withheld unde
   assert.doesNotMatch(seen, new RegExp(secret));
 });
 
-test('with HIMMEL_API_FALLBACK=on, a refused launch alerts once, then the judge runs once on the subscription with no key and its verdict is recorded', () => {
+test('with HIMMEL_API_FALLBACK=on, a refused launch sends no alert (not the eval), then the judge runs once on the subscription with no key and its verdict is recorded', () => {
   const f = fixture();
   const r = f.run(f.args, { HIMMEL_API_ACCOUNT: 'E', HIMMEL_API_FALLBACK: 'on' });
   assert.equal(r.status, 0, r.stderr);
@@ -271,19 +271,21 @@ test('with HIMMEL_API_FALLBACK=on, a refused launch alerts once, then the judge 
   assert.match(seen, /^key_present=0$/m);
   assert.match(seen, /--permission-mode dontAsk/);
   assert.match(seen, /--model claude-opus-5-5/);
-  const alerts = readFileSync(f.p.alertLog, 'utf8').trim().split('\n');
-  assert.equal(alerts.length, 1);
-  assert.match(alerts[0], /^type=api-lane refused msg=kind judge, .*HIMMEL_API_ACCOUNT must be.*fallback: running on the subscription/);
-  assert.ok(!alerts[0].includes(DUMMY));
+  assert.ok(!existsSync(f.p.alertLog), 'a judge refusal raised an alert');
 });
 
-test('a refused launch with HIMMEL_API_FALLBACK unset alerts once and never runs on the subscription', () => {
+test('a refused launch with HIMMEL_API_FALLBACK unset sends no alert (the judge kind is not the eval) and never runs on the subscription', () => {
   const f = fixture();
   f.run(f.args, { HIMMEL_API_ACCOUNT: 'E' });
   assert.ok(!existsSync(f.p.log), 'the subscription ran');
-  const alerts = readFileSync(f.p.alertLog, 'utf8').trim().split('\n');
-  assert.equal(alerts.length, 1);
-  assert.match(alerts[0], /^type=api-lane refused msg=kind judge, .*fallback: off \(HIMMEL_API_FALLBACK unset: default off\)/);
+  assert.ok(!existsSync(f.p.alertLog), 'a judge refusal raised an alert');
+});
+
+test('a lane off by design sends no refused alert for the judge kind', () => {
+  const f = fixture();
+  f.run(f.args, { HIMMEL_API_LANE: '' });
+  assert.ok(!existsSync(f.p.log), 'the subscription ran');
+  assert.ok(!existsSync(f.p.alertLog), 'a lane-off refusal raised an alert');
 });
 
 test('a timed-out call is TIMEOUT and its reservation is settled in the ledger', () => {
