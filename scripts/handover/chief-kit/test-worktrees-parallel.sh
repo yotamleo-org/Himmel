@@ -70,6 +70,11 @@ if [ -n "${WTSTUB_BARRIER:-}" ]; then
         sleep 0.1
         tries=$(( tries - 1 ))
     done
+    hold="${WTSTUB_HOLD_TRIES:-0}"
+    while [ "$hold" -gt 0 ]; do
+        sleep 0.1
+        hold=$(( hold - 1 ))
+    done
 fi
 case "$branch" in
     *fail-stub*) echo "E $branch" >> "$WTSTUB_EVENTS"; echo "ERR new-worktree: injected failure" >&2; exit 1 ;;
@@ -136,9 +141,9 @@ else
 fi
 
 NAME="the fan-out cap is respected (--fan-out 2: at most 2 at once, and 2 reached)"
-export WTSTUB_BARRIER=2
+export WTSTUB_BARRIER=2 WTSTUB_HOLD_TRIES=10
 rc=0; run_par2 --no-prune --fan-out 2 fix/cap-a fix/cap-b fix/cap-c fix/cap-d || rc=$?
-unset WTSTUB_BARRIER
+unset WTSTUB_BARRIER WTSTUB_HOLD_TRIES
 max=$(max_live)
 if [ "$rc" -eq 0 ] && [ "$max" -eq 2 ] && [ "$(grep -c '^OK ' "$TMPBASE/out")" -eq 4 ]; then
     _pass "$NAME"
@@ -159,9 +164,9 @@ else
 fi
 
 NAME="the default fan-out is 4"
-export WTSTUB_BARRIER=4
+export WTSTUB_BARRIER=4 WTSTUB_HOLD_TRIES=10
 rc=0; run_par2 --no-prune fix/def-a fix/def-b fix/def-c fix/def-d fix/def-e fix/def-f || rc=$?
-unset WTSTUB_BARRIER
+unset WTSTUB_BARRIER WTSTUB_HOLD_TRIES
 max=$(max_live)
 if [ "$rc" -eq 0 ] && [ "$max" -eq 4 ] && [ "$(grep -c '^OK ' "$TMPBASE/out")" -eq 6 ]; then
     _pass "$NAME"
