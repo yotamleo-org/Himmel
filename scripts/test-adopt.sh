@@ -1327,7 +1327,7 @@ out=$(PATH="$pcbin:$work/bin:$native_free_path" HOME="$pchome" bash "$adopt" \
   || fail "adopt failed: $out"
 [ -f "$cittarget/scripts/check-ci.sh" ] \
   || fail "check-ci.sh was not copied into the project"
-for cit_lib in non-gating-contexts.sh non-gating-contexts.txt; do
+for cit_lib in non-gating-contexts.sh non-gating-contexts.txt gh-quota.sh open-review-threads.sh; do
   [ -f "$cittarget/scripts/lib/$cit_lib" ] \
     || fail "check-ci.sh sources lib/$cit_lib but it was not copied into the project"
 done

@@ -461,6 +461,28 @@ wt14_toplevel="$(cd "$wt14" && git rev-parse --show-toplevel)"
 check "$(get_kv "$out14" himmel_dir)" "$wt14_toplevel" "T14 himmel_dir is still the branch/worktree (himmel lane, just no delegation needed)"
 check "$(grep -c '"kind":"delegation"' "$ledger13" 2>/dev/null)" "1" "T14 still exactly one delegation row total (T13's, none added)"
 
+anchor14b="$tmp/fake-himmel-mf"
+build_fake_himmel "$anchor14b"
+ledger14b="$anchor14b/.git/cr-critic-scores.jsonl"
+wt14b="$tmp/fake-himmel-mf-wt"
+(cd "$anchor14b" && git worktree add -q -b t14b-mf "$wt14b" main) || { echo "FAIL: T14b could not add worktree"; fail=1; }
+(cd "$wt14b" && printf 'own work\n' > README.md && git add -A && git commit -q -m "own unrelated change") || { echo "FAIL: T14b branch commit"; fail=1; }
+(cd "$anchor14b" && printf '# main touch\n' >> scripts/cr/critic-panel.sh && git add -A && git commit -q -m "main touches scripts/cr") || { echo "FAIL: T14b main commit"; fail=1; }
+(cd "$wt14b" && git merge -q --no-ff --no-edit main) || { echo "FAIL: T14b merge-forward"; fail=1; }
+check "$(cd "$wt14b" && git diff --name-only HEAD^1 HEAD)" "scripts/cr/critic-panel.sh" "T14b the merge brought main's scripts/cr/ change in"
+git -C "$anchor14b" update-ref refs/remotes/origin/main main
+out14b="$(cd "$wt14b" && HIMMEL_REPO="$anchor14b" bash "$anchor14b/scripts/cr/pr-check-context.sh" 2>"$tmp/t14b.err")"
+rc14b=$?
+check "$rc14b" "0" "T14b rc"
+check "$(get_kv "$out14b" anchor_lane)" "himmel" "T14b anchor_lane=himmel"
+check "$(get_kv "$out14b" delegated)" "no" "T14b delegated=no (the scripts/cr/ change came from main)"
+check "$(grep -c 'cr_diff_state=unknown' "$tmp/t14b.err")" "0" "T14b decided by the diff, not by an unknown state"
+check "$(cat "$ledger14b" 2>/dev/null | grep -c '"kind":"delegation"')" "0" "T14b zero delegation rows"
+git -C "$anchor14b" update-ref refs/remotes/origin/main "$(git -C "$anchor14b" rev-parse main^)"
+out14c="$(cd "$wt14b" && HIMMEL_REPO="$anchor14b" bash "$anchor14b/scripts/cr/pr-check-context.sh" 2>/dev/null)"
+check "$(get_kv "$out14c" delegated)" "yes" "T14b control: with the base ref behind the merged main, main's scripts/cr/ change is in the diff -> delegated=yes"
+check "$(cat "$ledger14b" 2>/dev/null | grep -c '"kind":"delegation"')" "1" "T14b control: exactly one delegation row"
+
 # T15. adopter lane NEVER delegates, even with a diff that itself touches a
 # path named scripts/cr/ -- the lane check short-circuits before the diff is
 # ever inspected. A totally unrelated repo, anchored at fake-himmel13.

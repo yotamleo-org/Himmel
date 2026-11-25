@@ -44,10 +44,11 @@ want="$(python3 "$HERE/plan_docs.py" --plan-dir "$plan" --emit-fp ${watches[@]+"
 have="$(cat "$out/.fp" 2>/dev/null || true)"
 # manifest = hash of the generated doc names, recorded beside .fp after a rebuild (one deleted doc changes it)
 docs_manifest() { (cd "$out/docs" 2>/dev/null && find . -mindepth 1 | LC_ALL=C sort | sha256sum) || true; }
+docs_rendered() { (cd "$out/docs" 2>/dev/null && find . -type f | LC_ALL=C sort | xargs sha256sum | sha256sum) || true; }
 
 # fresh = the inputs (the generator included, via plan_docs.py's fingerprint) match AND graph.json and exactly the recorded docs still exist
 fresh=0
-if [ "$want" = "$have" ] && [ -d "$out/docs" ] && [ -f "$out/graph.json" ] \
+if [ "$want" = "$have" ] && [ -d "$out/docs" ] && [ -f "$out/graph.json" ] && [ -f "$out/.rendered" ] \
     && [ "$(docs_manifest)" = "$(cat "$out/.docs" 2>/dev/null || true)" ]; then fresh=1; fi
 if [ "$mode" = check ]; then
     if [ "$fresh" = 1 ]; then echo "plan-index: fresh"; exit 0; fi
@@ -83,9 +84,17 @@ else
         echo "plan-index: collection $COLLECTION points at ${cpath:-an unknown path}, not $out/docs" >&2; exit 1
     fi
 fi
+rendered="$(docs_rendered)"
+if [ "$force" = 0 ] && [ -n "$registered" ] && [ "$rendered" = "$(cat "$out/.rendered" 2>/dev/null || true)" ]; then
+    docs_manifest > "$out/.docs"
+    printf '%s\n' "$want" > "$out/.fp"
+    echo "plan-index: rebuilt (docs unchanged, qmd not run)"; exit 0
+fi
 # update rescans the files (embed alone only embeds what the index already knows)
-"$qmd" update || { echo "plan-index: qmd update failed" >&2; exit 1; }
+rm -f "$out/.rendered"
+"$qmd" update -c "$COLLECTION" || { echo "plan-index: qmd update failed" >&2; exit 1; }
 "$qmd" embed -c "$COLLECTION" || { echo "plan-index: qmd embed failed" >&2; exit 1; }
+printf '%s\n' "$rendered" > "$out/.rendered"
 docs_manifest > "$out/.docs"
 printf '%s\n' "$want" > "$out/.fp"
 echo "plan-index: rebuilt"

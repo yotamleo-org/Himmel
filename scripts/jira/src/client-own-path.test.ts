@@ -33,6 +33,8 @@ describe('CLI .env resolution from an unrelated cwd', () => {
     // not installed here, so this fixture never reaches a keyring (the rows below use their own).
     mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
     cpSync(join(libDir, 'resolve-secrets.mjs'), join(root, 'scripts', 'lib', 'resolve-secrets.mjs'));
+    mkdirSync(join(installed, 'src'), { recursive: true });
+    cpSync(join(jiraDir, 'src', 'jira-destination.mjs'), join(installed, 'src', 'jira-destination.mjs'));
     writeFileSync(
       join(root, '.env'),
       'JIRA_BASE_URL=https://fixture.invalid\nJIRA_EMAIL=dummy@example.invalid\n' +
@@ -146,6 +148,8 @@ describe('CLI credentials from the keyring', () => {
     mkdirSync(join(root, policyRel), { recursive: true });
     cpSync(join(jiraDir, '..', '..', policyRel, 'ticket-policy.mjs'), join(root, policyRel, 'ticket-policy.mjs'));
     symlinkSync(join(jiraDir, 'node_modules'), join(installed, 'node_modules'));
+    mkdirSync(join(installed, 'src'), { recursive: true });
+    cpSync(join(jiraDir, 'src', 'jira-destination.mjs'), join(installed, 'src', 'jira-destination.mjs'));
     mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
     for (const f of ['resolve-secrets.mjs', 'himmel-secrets', 'load-dotenv.sh']) {
       cpSync(join(libDir, f), join(root, 'scripts', 'lib', f));
