@@ -129,8 +129,10 @@ while IFS= read -r line; do
                 bad_instances="$bad_instances  ${val}: whether it carries a bypass flag is unknown ($settings_err)"$'\n'
                 continue
             fi
-            flags=$(jq -rn --argjson m "$bypass" --argjson v "$val" '$m[$v] // [] | join(", ")' 2>&1) \
-                || flags="its bypass check could not run: $flags"
+            if ! flags=$(jq -rn --argjson m "$bypass" --argjson v "$val" '$m[$v] // [] | join(", ")' 2>&1); then
+                bad_instances="$bad_instances  ${val}: whether it carries a bypass flag is unknown (the bypass lookup failed: ${flags%%$'\n'*})"$'\n'
+                continue
+            fi
             if [ -n "$flags" ]; then
                 bad_instances="$bad_instances  ${val}: carries a himmel bypass flag (${flags})"$'\n'
             elif [ -n "$narrow_err" ]; then
