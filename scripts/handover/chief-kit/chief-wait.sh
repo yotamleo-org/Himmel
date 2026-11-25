@@ -303,8 +303,11 @@
 #                               `<date>` and `stale-<date>`. A 1-count class never wakes; review=none or ? wakes nothing.
 #   WAKE drift-actionable <n>   the tick's drift=<n> field counts actionable rows of the open nightly drift issue
 #                               (Needs-update rows and held rows whose 72 h buffer has cleared). Once per UTC
-#                               day: the atomic create of <inbox>.wait.drift.<date> claims the wake, so a re-armed waiter
-#                               replays nothing and a claim that cannot be made wakes nothing. drift=0 or ? wakes nothing.
+#                               day per bucket: the atomic create of $TICK_STATE_DIR/drift-wake-<bucket>.<date> claims the
+#                               wake, so a re-armed waiter and a new chief's waiter on a new inbox replay nothing, and a
+#                               claim that cannot be made wakes nothing. A manifest worker whose doc is a drift brief of
+#                               the day, or an open PR whose head is `...-drift-<date>`, holds the wake (no claim; the note
+#                               `drift-actionable <n> held-by <label|PR>` goes to <inbox>.wait.drift.held). drift=0 or ? wakes nothing.
 #   WAKE tick-usage rc=2 <line>  the first sample whose tick exited 2 (tick.sh's usage error: the
 #                               arm forwarded a flag it refuses). <line> is tick's first stderr line.
 #                               Never batched into the digest; every re-arm on a broken arm wakes again.
@@ -1885,14 +1888,37 @@ review_wake() {
     [ -n "$reasons" ] || return 1
     printf 'review %s %s\n' "$day" "$reasons"
 }
+drift_held() {
+    local by="" heads gh_cmd="${CHIEF_WAIT_GH:-$GH_READ_BIN}" re="-drift-([0-9]+-)?$1"
+    if [ -n "$legs_from" ] && [ -r "$legs_from" ]; then
+        by="$(jq -r --arg re "$re\\.md\$" "$JQ_W"'[W[]? | select((.doc // "") | test($re)) | (.label // "drift")][0] // empty' "$legs_from" 2>/dev/null)"  # swallow-ok: an unreadable manifest holds nothing
+    fi
+    if [ -z "$by" ]; then
+        heads="$(cd "$GATE_DIR" && timeout -k 2 20 env GH_READ_NO_MAIN_FALLBACK=1 "$gh_cmd" pr list --state open --limit 1000 --json number,headRefName -q '.[] | "#\(.number) \(.headRefName)"' </dev/null 2>/dev/null 9>&-)" || heads=""  # gnu-ok: Linux-only kit; swallow-ok: as above
+        by="$(printf '%s\n' "$heads" | grep -E -m1 -e "$re\$" | cut -d' ' -f1)"
+    fi
+    [ -n "$by" ] || return 1
+    printf '%s\n' "$by"
+}
 drift_file="$inbox.wait.drift"
+drift_claim_key() { printf '%s-%s' "${1//[!A-Za-z0-9._-]/_}" "$(printf '%s' "$1" | cksum | cut -d' ' -f1)"; }
 drift_wake() {
-    local today
+    local today dir claim by bucket
     case "$1" in ''|*[!0-9]*) return 1 ;; esac
     [ "$((10#$1))" -gt 0 ] || return 1
     today="$(date -u +%F)"
-    (set -C; : > "$drift_file.$today") 2>/dev/null || return 1  # swallow-ok: a claimed or unclaimable day wakes nothing
-    find "${drift_file%/*}" -maxdepth 1 -name "${drift_file##*/}.*" -mtime +7 -delete 2>/dev/null  # gnu-ok: console kit is Linux-only # swallow-ok: an unprunable old claim is harmless
+    # prim-ok: the inbox was fenced at start; realpath -m resolves the bucket directory the claim is keyed on
+    bucket="$(realpath -m -- "$inbox")"; bucket="${bucket%/consoles/*}"  # gnu-ok: Linux-only kit (PLATFORM GUARD)
+    dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+    claim="$dir/drift-wake-$(drift_claim_key "$bucket")"
+    [ ! -e "$claim.$today" ] || return 1
+    if by="$(drift_held "$today")"; then
+        printf 'drift-actionable %s held-by %s\n' "$1" "$by" > "$drift_file.held" 2>/dev/null  # swallow-ok: the hold note is a diagnostic
+        return 1
+    fi
+    mkdir -p "$dir" 2>/dev/null  # swallow-ok: an unmakable state dir fails the claim below
+    (set -C; : > "$claim.$today") 2>/dev/null || return 1  # swallow-ok: a claimed or unclaimable day wakes nothing
+    find "$dir" -maxdepth 1 -name "${claim##*/}.*" -mtime +7 -delete 2>/dev/null  # gnu-ok: console kit is Linux-only # swallow-ok: an unprunable old claim is harmless
     printf 'drift-actionable %s\n' "$1"
 }
 # tracker_stale_wake: <tracker= value> — a tracker that STAYS stale. A class change
