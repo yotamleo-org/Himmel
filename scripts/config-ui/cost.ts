@@ -6,6 +6,8 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { Database } from "bun:sqlite";
+import { loadPrices, priceFor } from "../lanes/model-price.mjs";
 
 type Env = Record<string, string | undefined>;
 export type PhaseCostRow = {
@@ -18,7 +20,7 @@ export type CostPart = { id: string; name: string; note: string; usd: number | n
 export type CostPhase = { id: string; name: string; usd: number | null; share: number | null; mark: Mark; made: string; parts: CostPart[] };
 export type CostModel = {
   state: "ok" | "nodata" | "nostore"; day: string | null; days: string[]; usd: number | null; mark: Mark; calls: number;
-  models: { model: string; usd: number | null }[]; phases: CostPhase[]; basis: string; coverageNote: string;
+  models: { model: string; usd: number | null }[]; phases: CostPhase[]; basis: string; coverageNote: string; t3?: T3Section;
 };
 
 export const BASIS = "Claude transcript usage at list prices; not invoices. Native Codex and other provider stores are not included.";
@@ -143,7 +145,106 @@ export function buildCostModel(all: PhaseCostRow[], day?: string): CostModel {
 
 const storeFile = (env: Env) => join(env.HIMMEL_USAGE_STORE || join(env.HOME ?? "", ".himmel", "state", "usage"), "records.jsonl");
 
-export const readCost = (env: Env, day?: string): CostModel =>
-  existsSync(storeFile(env))
+export const T3_BASIS = "T3 Code's own stored turn usage, read-only, at list prices from scripts/lanes/lib/model-prices.tsv; not invoices. " +
+  "A turn with no model, or a model with no price row, has tokens and no dollars; a provider that reports no usage has neither. " +
+  "Usage T3 Code keeps for subagents apart is not added. Days are UTC.";
+const T3_LABEL: Record<string, string> = { claudeAgent: "Claude", codex: "Codex", antigravity: "Antigravity", cursor: "Cursor", grok: "Grok", acpRegistry: "ACP registry" };
+const T3_THREAD_CAP = 30;
+
+export type T3Turn = { day: string; thread: string; title: string; driver: string; model: string | null; avail: boolean; in: number; out: number; cache_read: number; cache_write: number; ttl1h: boolean };
+export type T3Line = { id: string; name: string; note: string; turns: number; in: number; out: number; cache_read: number; cache_write: number; usd: number | null; share: number | null; mark: Mark };
+export type T3Section = {
+  state: "ok" | "nodata" | "nostore"; day: string | null; days: string[]; usd: number | null; mark: Mark; turns: number;
+  providers: T3Line[]; threads: T3Line[]; moreThreads: number; basis: string;
+};
+const T3_EMPTY = { usd: null, mark: "nocount" as Mark, turns: 0, providers: [], threads: [], moreThreads: 0, basis: T3_BASIS };
+
+const t3File = (env: Env) => {
+  const home = env.T3CODE_HOME || (env.HOME ? join(env.HOME, ".t3") : "");
+  return home ? join(home, "userdata", "statev2.sqlite") : "";
+};
+const count = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0);
+
+export function readT3Turns(env: Env): T3Turn[] | null {
+  const file = t3File(env);
+  if (!file || !existsSync(file)) return null;
+  let db: Database | undefined;
+  try {
+    db = new Database(file, { readonly: true });
+    db.exec("PRAGMA busy_timeout = 3000");
+    const rows = db.query(
+      `SELECT t.thread_id AS thread, th.title AS title, json_extract(t.payload_json, '$.nativeTurnRef.driver') AS driver, t.completed_at AS at,
+        coalesce(json_extract(t.payload_json, '$.model'),
+          CASE WHEN json_array_length(t.payload_json, '$.turnTokenUsage.models') = 1 THEN json_extract(t.payload_json, '$.turnTokenUsage.models[0]') END,
+          s.model) AS model,
+        json_extract(t.payload_json, '$.turnTokenUsage') AS usage, json_extract(t.payload_json, '$.tokenUsage.promptCacheTtlMs') AS ttl
+       FROM orchestration_v2_projection_provider_turns t
+       LEFT JOIN orchestration_v2_projection_threads th ON th.thread_id = t.thread_id
+       LEFT JOIN orchestration_v2_projection_provider_threads pt ON pt.provider_thread_id = t.provider_thread_id
+       LEFT JOIN orchestration_v2_projection_provider_sessions s ON s.provider_session_id = pt.provider_session_id
+       WHERE t.completed_at IS NOT NULL`,
+    ).all() as { thread: string; title: string | null; driver: string | null; at: string; model: string | null; usage: string | null; ttl: number | null }[];
+    const turns: T3Turn[] = [];
+    for (const r of rows) {
+      const day = String(r.at).slice(0, 10);
+      if (!DAY_RE.test(day) || typeof r.driver !== "string" || !r.driver) continue;
+      let u: Record<string, unknown> | null = null;
+      try { u = r.usage ? JSON.parse(r.usage) : null; } catch { u = null; }
+      const avail = !!u && u.usageStatus === "complete";
+      const input = avail ? count(u!.inputTokens) : 0, cached = avail ? count(u!.cachedInputTokens) : 0, written = avail ? count(u!.cacheCreationTokens) : 0;
+      turns.push({
+        day, thread: r.thread, title: r.title ?? "", driver: r.driver, model: r.model || null, avail,
+        in: Math.max(0, input - cached - written), out: avail ? count(u!.outputTokens) : 0, cache_read: cached, cache_write: written, ttl1h: (r.ttl ?? 0) >= 3_600_000,
+      });
+    }
+    return turns;
+  } catch { return null; } finally { db?.close(); }
+}
+
+type Priced = T3Turn & { usd: number | null; unpriced: boolean };
+const T3_RANK: Record<Mark, number> = { counted: 0, derived: 0, unpriced: 1, nocount: 2 };
+
+function t3Line(id: string, name: string, ts: Priced[], total: number | null, extra: string[]): T3Line {
+  const usd = ts.some((t) => t.usd != null) ? round(ts.reduce((a, t) => a + (t.usd ?? 0), 0), 4) : null;
+  const none = ts.filter((t) => !t.avail).length;
+  const mark: Mark = none === ts.length ? "nocount" : ts.some((t) => t.unpriced) ? "unpriced" : "counted";
+  const models = [...new Set(ts.map((t) => t.model).filter(Boolean).map((m) => plain(m!)).filter(Boolean))].sort();
+  const note = [...extra, models.join(", "), none ? `${none} of ${ts.length} turns carry no usage` : ""].filter(Boolean).join(" · ");
+  const sumOf = (k: "in" | "out" | "cache_read" | "cache_write") => ts.reduce((a, t) => a + t[k], 0);
+  return { id, name, note, turns: ts.length, in: sumOf("in"), out: sumOf("out"), cache_read: sumOf("cache_read"), cache_write: sumOf("cache_write"), usd, share: pct(usd, total), mark };
+}
+const byBiggest = (a: T3Line, b: T3Line) => (b.usd ?? -1) - (a.usd ?? -1) || T3_RANK[a.mark] - T3_RANK[b.mark] || a.name.localeCompare(b.name);
+
+export function buildT3Section(turns: T3Turn[] | null, day?: string): T3Section {
+  if (!turns) return { state: "nostore", day: day ?? null, days: [], ...T3_EMPTY };
+  const days = [...new Set(turns.map((t) => t.day))].sort().reverse();
+  const picked = day ?? days[0];
+  if (!picked || !days.includes(picked)) return { state: "nodata", day: picked ?? null, days, ...T3_EMPTY };
+  let prices: ReturnType<typeof loadPrices> = [];
+  try { prices = loadPrices(); } catch { prices = []; }
+  const mine: Priced[] = turns.filter((t) => t.day === picked).map((t) => {
+    const row = t.avail ? priceFor(t.model ?? "", prices) : null;
+    const usd = row ? (t.in * row.input + t.out * row.output + t.cache_read * row.cacheRead + t.cache_write * (t.ttl1h ? row.cacheWrite1h : row.cacheWrite5m)) / 1e6 : null;
+    return { ...t, usd, unpriced: t.avail && !row };
+  });
+  const total = mine.some((t) => t.usd != null) ? round(mine.reduce((a, t) => a + (t.usd ?? 0), 0), 4) : null;
+  const group = (key: (t: Priced) => string) => {
+    const m = new Map<string, Priced[]>();
+    for (const t of mine) m.set(key(t), [...(m.get(key(t)) ?? []), t]);
+    return m;
+  };
+  const providers = [...group((t) => t.driver)].map(([id, ts]) => t3Line(id, T3_LABEL[id] ?? plain(id), ts, total, [])).sort(byBiggest);
+  const threads = [...group((t) => t.thread)].map(([id, ts]) =>
+    t3Line(id, plain(ts[0].title) || "untitled thread", ts, total, [...new Set(ts.map((t) => T3_LABEL[t.driver] ?? plain(t.driver)))].sort())).sort(byBiggest);
+  return {
+    state: "ok", day: picked, days, usd: total, mark: mine.some((t) => t.unpriced) ? "unpriced" : mine.every((t) => !t.avail) ? "nocount" : "counted",
+    turns: mine.length, providers, threads: threads.slice(0, T3_THREAD_CAP), moreThreads: Math.max(0, threads.length - T3_THREAD_CAP), basis: T3_BASIS,
+  };
+}
+
+export function readCost(env: Env, day?: string): CostModel {
+  const base: CostModel = existsSync(storeFile(env))
     ? buildCostModel(readPhaseCostRows(env), day)
     : { state: "nostore", day: day ?? null, days: [], ...EMPTY };
+  return { ...base, t3: buildT3Section(readT3Turns(env), base.day ?? day) };
+}

@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Database } from "bun:sqlite";
 import { buildCostModel, readCost, readPhaseCostRows, type PhaseCostRow } from "../cost";
 import { mountCost, renderCost } from "../public/cost.js";
 
@@ -230,4 +231,105 @@ test("cost: before the first read lands the page says loading, and after a faile
   expect(renderCost(null, { open: [] })).toContain("loading");
   expect(renderCost(null, { open: [] })).not.toContain("no data yet");
   expect(renderCost(null, { open: [], err: true })).toBe("");
+});
+
+const T3_DAY = "2026-11-24";
+type T3Turn = { thread: string; driver: string; model?: string; session?: string; at: string; usage?: Record<string, unknown>; live?: Record<string, unknown> };
+function makeT3Home(turns: T3Turn[], titles: Record<string, string>): { home: string; env: Record<string, string | undefined> } {
+  const dir = mkdtempSync(join(tmpdir(), "cost-t3-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, "t3", "userdata"), { recursive: true });
+  const db = new Database(join(dir, "t3", "userdata", "statev2.sqlite"));
+  db.exec(`CREATE TABLE orchestration_v2_projection_provider_turns (provider_turn_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, provider_thread_id TEXT NOT NULL,
+      node_id TEXT NOT NULL, run_attempt_id TEXT, ordinal INTEGER NOT NULL, status TEXT NOT NULL, started_at TEXT, completed_at TEXT, payload_json TEXT NOT NULL);
+    CREATE TABLE orchestration_v2_projection_threads (thread_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT NOT NULL, default_provider TEXT NOT NULL,
+      runtime_mode TEXT NOT NULL, interaction_mode TEXT NOT NULL, active_provider_thread_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      archived_at TEXT, deleted_at TEXT, payload_json TEXT NOT NULL);
+    CREATE TABLE orchestration_v2_projection_provider_threads (provider_thread_id TEXT PRIMARY KEY, thread_id TEXT, owner_node_id TEXT, provider TEXT NOT NULL,
+      provider_session_id TEXT, status TEXT NOT NULL, first_run_ordinal INTEGER, last_run_ordinal INTEGER, updated_at TEXT NOT NULL, payload_json TEXT NOT NULL);
+    CREATE TABLE orchestration_v2_projection_provider_sessions (provider_session_id TEXT PRIMARY KEY, thread_id TEXT, provider TEXT NOT NULL, status TEXT NOT NULL,
+      model TEXT, updated_at TEXT NOT NULL, payload_json TEXT NOT NULL);`);
+  for (const [id, title] of Object.entries(titles))
+    db.run("INSERT INTO orchestration_v2_projection_threads VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [id, "p", title, "x", "r", "i", null, "t", "t", null, null, "{}"]);
+  turns.forEach((t, i) => {
+    const pt = `pt-${i}`, sess = `ps-${i}`;
+    db.run("INSERT INTO orchestration_v2_projection_provider_sessions VALUES (?,?,?,?,?,?,?)", [sess, t.thread, t.driver, "ok", t.session ?? null, "t", "{}"]);
+    db.run("INSERT INTO orchestration_v2_projection_provider_threads VALUES (?,?,?,?,?,?,?,?,?,?)", [pt, t.thread, null, t.driver, sess, "ok", 1, 1, "t", "{}"]);
+    const payload = { id: `turn-${i}`, nativeTurnRef: { driver: t.driver }, ...(t.model ? { model: t.model } : {}), ...(t.usage ? { turnTokenUsage: t.usage } : {}), ...(t.live ? { tokenUsage: t.live } : {}) };
+    db.run("INSERT INTO orchestration_v2_projection_provider_turns VALUES (?,?,?,?,?,?,?,?,?,?)", [`turn-${i}`, t.thread, pt, "n", null, i, "completed", t.at, t.at, JSON.stringify(payload)]);
+  });
+  db.close();
+  return { home: join(dir, "t3"), env: { HIMMEL_USAGE_STORE: join(dir, "absent"), T3CODE_HOME: join(dir, "t3"), HOME: join(dir, "nohome"), PATH: process.env.PATH } };
+}
+const use = (inputTokens: number, cachedInputTokens: number, cacheCreationTokens: number, outputTokens: number) =>
+  ({ usageScope: "main_agent", usageStatus: "complete", inputTokens, cachedInputTokens, cacheCreationTokens, outputTokens, reasoningTokens: 0, hasSubagents: false });
+const UNAVAILABLE = { usageScope: "main_agent", usageStatus: "unavailable", hasSubagents: false };
+const T3_TURNS: T3Turn[] = [
+  { thread: "th-claude", driver: "claudeAgent", model: "claude-opus-5-5", at: `${T3_DAY}T10:00:00.000Z`, usage: use(1_000_000, 800_000, 100_000, 10_000), live: { promptCacheTtlMs: 3_600_000 } },
+  { thread: "th-claude", driver: "claudeAgent", model: "claude-opus-5-5", at: `${T3_DAY}T11:00:00.000Z`, usage: use(200_000, 100_000, 50_000, 5_000) },
+  { thread: "th-codex", driver: "codex", session: "gpt-6.1-sol", at: `${T3_DAY}T12:00:00.000Z`, usage: use(500_000, 400_000, 0, 20_000) },
+  { thread: "th-agy", driver: "antigravity", at: `${T3_DAY}T13:00:00.000Z`, usage: use(1_000_000, 900_000, 0, 10_000) },
+  { thread: "th-cursor", driver: "cursor", at: `${T3_DAY}T14:00:00.000Z`, usage: use(200_000, 100_000, 0, 2_000) },
+  { thread: "th-grok", driver: "grok", at: `${T3_DAY}T15:00:00.000Z`, usage: UNAVAILABLE },
+  { thread: "th-acp", driver: "acpRegistry", at: `${T3_DAY}T16:00:00.000Z`, usage: UNAVAILABLE },
+  { thread: "th-claude", driver: "claudeAgent", model: "claude-opus-5-5", at: "2026-11-23T10:00:00.000Z", usage: use(100_000, 0, 0, 1_000) },
+];
+const T3_TITLES = { "th-claude": "Build HIMMEL-123 the thing", "th-codex": "Codex thread", "th-agy": "Antigravity thread", "th-cursor": "Cursor thread", "th-grok": "Grok thread", "th-acp": "ACP thread" };
+
+test("cost: T3 Code rows list usage, tokens and cost per provider for the day, from T3's own store, and name every provider T3 reports", () => {
+  const { env } = makeT3Home(T3_TURNS, T3_TITLES);
+  const m = readCost(env);
+  const t3 = m.t3!;
+  expect(t3).toMatchObject({ state: "ok", day: T3_DAY, days: [T3_DAY, "2026-11-23"] });
+  expect(t3.providers.map((p) => [p.id, p.turns, p.usd, p.mark])).toEqual([
+    ["claudeAgent", 2, 2.13, "counted"], ["codex", 1, 0.44, "counted"],
+    ["antigravity", 1, null, "unpriced"], ["cursor", 1, null, "unpriced"], ["acpRegistry", 1, null, "nocount"], ["grok", 1, null, "nocount"],
+  ]);
+  expect(t3.providers[0]).toMatchObject({ in: 150_000, out: 15_000, cache_read: 900_000, cache_write: 150_000 });
+  expect(t3.providers[1]).toMatchObject({ in: 100_000, out: 20_000, cache_read: 400_000, cache_write: 0 });
+  expect(t3.usd).toBe(2.57);
+  expect(t3.mark).toBe("unpriced");
+  expect(t3.providers.find((p) => p.id === "grok")!.note).toContain("1 of 1 turns carry no usage");
+});
+
+test("cost: T3 Code rows list the day's threads biggest first, with the thread's title and no ticket key", () => {
+  const { env } = makeT3Home(T3_TURNS, T3_TITLES);
+  const t3 = readCost(env).t3!;
+  expect(t3.threads.map((t) => [t.name, t.usd, t.turns])).toEqual([
+    ["Build the thing", 2.13, 2], ["Codex thread", 0.44, 1], ["Antigravity thread", null, 1], ["Cursor thread", null, 1], ["ACP thread", null, 1], ["Grok thread", null, 1],
+  ]);
+  expect(JSON.stringify(t3)).not.toMatch(/[A-Z][A-Z0-9]*-\d+/);
+});
+
+test("cost: a day asked for picks that day's T3 rows, and a day T3 has no turns for is no data, not another day", () => {
+  const { env } = makeT3Home(T3_TURNS, T3_TITLES);
+  expect(readCost(env, "2026-11-23").t3).toMatchObject({ state: "ok", day: "2026-11-23", usd: 0.42 });
+  expect(readCost(env, "2026-10-01").t3).toMatchObject({ state: "nodata", day: "2026-10-01", usd: null, providers: [], threads: [] });
+});
+
+test("cost: no T3 Code store is no T3 rows, and the phase table still reads as before", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cost-not3-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const m = readCost({ HIMMEL_USAGE_STORE: join(dir, "absent"), T3CODE_HOME: join(dir, "no-t3"), HOME: join(dir, "h"), PATH: process.env.PATH });
+  expect(m).toMatchObject({ state: "nostore", t3: { state: "nostore", providers: [], threads: [], usd: null } });
+  expect(renderCost(m, { open: [] })).not.toContain("T3 Code");
+});
+
+test("cost: a T3 store that cannot be read is no T3 rows, never a thrown page", () => {
+  const { home, env } = makeT3Home(T3_TURNS, T3_TITLES);
+  writeFileSync(join(home, "userdata", "statev2.sqlite"), "not a database");
+  expect(readCost(env).t3).toMatchObject({ state: "nostore", providers: [] });
+});
+
+test("cost: the page renders the T3 Code card per provider and per thread, as text, beside the phase table", () => {
+  const { env } = makeT3Home(T3_TURNS, { ...T3_TITLES, "th-codex": "<script>alert(1)</script>" });
+  const html = renderCost(readCost(env), { open: [] });
+  expect(html).toContain("T3 Code");
+  expect(html).toContain("By provider");
+  expect(html).toContain("By thread");
+  for (const name of ["Claude", "Codex", "Antigravity", "Cursor", "Grok", "ACP registry"]) expect(html).toContain(name);
+  expect(html).toContain("Build the thing");
+  expect(html).toContain("$2.1");
+  expect(html).not.toContain("<script>");
+  expect(html).not.toMatch(/[A-Z][A-Z0-9]*-\d+/);
 });
