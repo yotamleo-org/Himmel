@@ -5,33 +5,10 @@
 # Usage: silent-worker-act.sh --doc <chief doc> --fleet <manifest> --bucket <dir> --chief <name>
 #                             [--signal <capped-waker|succession-partial>] <label> <silent-minutes>
 #
-# Bound one is CHIEF_WAIT_WORKER_SILENT_MIN minutes (default 45, the waiter's own value); bound two
-# is twice that. <silent-minutes> is what the waiter measured. The worker's doc is read from the
-# fleet manifest; a doc written within bound one is a fresh Results bullet, and the worker is left
-# alone whatever silence it was told.
-#   past bound one   ONE bus nudge to the worker's live session, token-free, per doc write.
-#   past bound two   the relaunch path from the RESUME doc: the stale window is ended (one pid) and
-#                    chief-kit/headed-arm-worker.sh --fleet <manifest> launches
-#                    <worker doc stem>-RESUME.md under the session name <stem>-RESUME, confirmed by
-#                    launch-confirm.sh. Skipped, as `live-window`, while a window named
-#                    <stem>-RESUME already runs. The relaunch does not release the dead worker's queue
-#                    lock: the relaunched worker acquires it under its own session.
-#   a failed step    (no live window to nudge below bound two, a bus refusal, no RESUME doc, a launch
-#                    that fails or is not confirmed) writes an owed row with owe.sh add --kind step,
-#                    so the chief-duty sweep lists it.
-# The signal changes nothing: a succession-partial worker is acted on exactly as a capped-waker one.
-# Each acting call appends one `SILENT-ACT <label> ...` bullet to --doc. Each stage acts once per
-# (worker, stage, doc write time) in <bucket>/silent-act.state: a new doc write opens a new window.
-#
 # Output, one line, rc 0:
 #   SILENT-ACT <label> none|fresh|done
 #   SILENT-ACT <label> [nudged|nudge=no-window|nudge=failed] [relaunched|relaunch=failed|live-window] [owed=<id>[,<id>]]
 # Exit 2: usage.
-#
-# Seams (tests): SILENT_ACT_BUS (the bus CLI), SILENT_ACT_CENSUS (a script printing claude_sessions-format
-# census lines), SILENT_ACT_LAUNCHER (headed-arm-worker.sh), SILENT_ACT_CONFIRM (launch-confirm.sh),
-# SILENT_ACT_KILL (the command that ends the stale window, default kill), SILENT_ACT_BUS_TIMEOUT
-# (seconds, default 15).
 # PLATFORM GUARD: Linux-only kit (GNU stat, setsid), bash 3.2-safe; needs jq.
 set -uo pipefail
 
