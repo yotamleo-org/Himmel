@@ -129,8 +129,9 @@ doc_state() {
 
 go_root="${CHIEF_DUTY_SWEEP_GO_ROOT:-}"
 if [ -z "$go_root" ]; then
-    go_root=$( . "$REPO/scripts/lib/handover-path.sh" 2>/dev/null && . "$REPO/scripts/lib/go-gate.sh" 2>/dev/null && go_resolve_root "$REPO" 2>/dev/null ) || go_root=""  # swallow-ok: no GO root reads as no GO file anywhere, so go-owed lists and merge-owed does not
+    go_root=$( . "$REPO/scripts/lib/handover-path.sh" 2>/dev/null && . "$REPO/scripts/lib/go-gate.sh" 2>/dev/null && go_resolve_root "$REPO" 2>/dev/null ) || go_root=""  # swallow-ok: an unresolved GO root is reported as unread below, and go-owed and merge-owed are left out
 fi
+[ -n "$go_root" ] || unread "go-root"
 
 verdict_heads() {
     local f q h
@@ -148,7 +149,7 @@ judge_prs=""
 legitems=""
 while IFS=$'\t' read -r label ldoc lane; do
     [ -n "$label" ] || continue
-    [ -f "$ldoc" ] || continue
+    [ -f "$ldoc" ] || { add "DUTY? worker $label unread"; continue; }
     st=$(doc_state "$ldoc")
     ask=$(printf '%s\n' "$st" | sed -n 's/^ask //p')
     rd=$(printf '%s\n' "$st" | sed -n 's/^ready //p')
@@ -238,6 +239,7 @@ while IFS=$'\t' read -r label ldoc lane; do
                 continue ;;
         esac
     fi
+    [ -n "$go_root" ] || continue
     if [ "$lane" = native ]; then
         nx="bash $kit/auto-go.sh --dry-run --doc $doc --fleet $from --worker $label $pr $head"
     else
@@ -264,10 +266,10 @@ if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
         case "$pr" in ''|*[!0-9]*) continue ;; esac
         printf '%s' "$head" | grep -qE '^[0-9a-f]{40}$' || continue  # swallow-ok: a head that is not a sha is not one this sweep acts on
         row=$(jq -r --arg h "$head" '
-            [ .[] | select(.name == "CI" and .event == "pull_request" and .status == "completed" and .head_sha == $h) ] | sort_by(.created_at) as $r
+            [ .[] | select(.name == "CI" and .event == "pull_request" and .head_sha == $h) ] | sort_by(.created_at) as $r
             | if ($r | length) < 2 then empty
               else ($r[-1]) as $n
-                | if ($n.conclusion == "cancelled" or $n.conclusion == "failure") and ([ $r[:-1][] | select(.conclusion == "success") ] | length) > 0
+                | if $n.status == "completed" and ($n.conclusion == "cancelled" or $n.conclusion == "failure") and ([ $r[:-1][] | select(.status == "completed" and .conclusion == "success") ] | length) > 0
                   then [$n.id, $n.conclusion, ($n.run_attempt // 1)] | @tsv else empty end
               end' "$runs_file" 2>/dev/null) || continue  # swallow-ok: an unparsable cache was reported as unread above
         [ -n "$row" ] || continue
@@ -299,8 +301,10 @@ if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
             if [ "${newest:-0}" -gt 0 ] && [ $(( now - newest )) -lt 3600 ]; then hold="drain $(( (now - newest) / 60 ))m ago"; fi
         fi
         [ -n "$hold" ] || [ -n "$slug" ] || hold="no repo slug"
+        if [ -z "$hold" ] && [ "$rerun_count" -ge 2 ]; then hold="two reruns this sweep"; fi
         if [ -z "$hold" ]; then
             ( flock -w 5 9 || exit 3  # prim-ok: Linux-only kit, flock serialises the reserve row
+              ! grep -qs "^reserve [0-9]* $pr $head $rid\$" "$reruns" || exit 6
               hour=$(awk -v n="$now" '$1 == "reserve" && $2 > n - 3600 { c++ } END { print c + 0 }' "$reruns" 2>/dev/null)  # swallow-ok: no reruns file counts zero reruns
               [ "${hour:-0}" -lt 10 ] || exit 4
               printf 'reserve %s %s %s %s\n' "$now" "$pr" "$head" "$rid" >> "$reruns" || exit 5
@@ -309,10 +313,12 @@ if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
             case "$lrc" in
                 0) ;;
                 4) hold="hourly cap" ;;
+                6)
+                    add "$(printf 'DUTY ci-masked %s :: CI run %s cancelled at this head after a green run; rerun sent by another sweep :: next: gh run view %s once the rerun finishes' "$id" "$rid" "$rid")"
+                    continue ;;
                 *) hold="rerun lock busy" ;;
             esac
         fi
-        if [ -z "$hold" ] && [ "$rerun_count" -ge 2 ]; then hold="two reruns this sweep"; fi
         if [ -n "$hold" ]; then
             add "$(printf 'DUTY ci-masked %s :: CI run %s cancelled at this head after a green run; held: %s :: next: gh run rerun %s --failed -R %s' "$id" "$rid" "$hold" "$rid" "$slug")"
             continue
@@ -321,7 +327,11 @@ if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
         timeout -k 1 10 "$gh_bin" run rerun "$rid" --failed -R "$slug" >/dev/null 2>&1; rrc=$?  # gnu-ok: Linux-only kit
         printf 'result %s %s\n' "$rid" "$rrc" >> "$reruns" 2>/dev/null || true  # swallow-ok: the reserve row already stops a repeat
         ran="$ran$(printf 'DUTY-RAN ci-masked %s rerun %s rc=%s' "$id" "$rid" "$rrc")"$'\n'
-        add "$(printf 'DUTY ci-masked %s :: CI run %s cancelled at this head after a green run; rerun sent :: next: gh run view %s once the rerun finishes' "$id" "$rid" "$rid")"
+        if [ "$rrc" = 0 ]; then
+            add "$(printf 'DUTY ci-masked %s :: CI run %s cancelled at this head after a green run; rerun sent :: next: gh run view %s once the rerun finishes' "$id" "$rid" "$rid")"
+        else
+            add "$(printf 'DUTY ci-masked %s :: CI run %s cancelled at this head after a green run; the rerun failed rc=%s :: next: gh run rerun %s -R %s' "$id" "$rid" "$rrc" "$rid" "$slug")"
+        fi
     done <<< "$prs_tsv"
 fi
 
@@ -350,15 +360,14 @@ if [ -n "$dispo" ]; then
     if [ ! -d "$mirror" ]; then
         unread "mirror"
     else
-        printf '%s\n' "$dispo" | sed -nE 's/^# disposition ([A-Z]+-[0-9]+) (listed (LOCAL|CLOUD|DESIGN|SERIES).*)$/\1 \2/p' | while read -r key rest; do
+        dispatch_lines=$(printf '%s\n' "$dispo" | sed -nE 's/^# disposition ([A-Z]+-[0-9]+) (listed (LOCAL|CLOUD|DESIGN|SERIES).*)$/\1 \2/p' | while read -r key rest; do
             mf="$mirror/$key.md"
             [ -f "$mf" ] || continue
             grep -qE '^status: "To Do"' "$mf" 2>/dev/null || continue  # swallow-ok: a non-match is not owed
             grep -E '^labels:' "$mf" 2>/dev/null | grep -q '"operator-directed"' || continue  # swallow-ok: a non-match is not owed
             printf 'DUTY dispatch-owed %s :: operator-directed To Do ticket, the dispatcher says %s :: next: bash %s/next-dispatchable.sh --doc %s --workers-from %s --why, then dispatch it\n' "$key" "$rest" "$kit" "$doc" "$from"
-        done > "$state/chief-duty-sweep-dispatch.tmp"
-        items="$items$(cat "$state/chief-duty-sweep-dispatch.tmp")"$'\n'
-        rm -f "$state/chief-duty-sweep-dispatch.tmp"
+        done)
+        items="$items$dispatch_lines"$'\n'
     fi
 fi
 

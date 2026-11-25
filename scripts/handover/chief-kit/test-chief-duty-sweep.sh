@@ -70,13 +70,15 @@ world() {
 set_tail() { printf '# HIMMEL-9100 — worker N1\n\n## Results (newest at the bottom)\n%s\n' "$1" > "$DOC1"; }
 set_lane() { printf '{"schema":1,"legs":[{"doc":"%s","label":"N1","lane":"%s"}]}\n' "$DOC1" "$1" > "$WORK/w/fleet.json"; }
 
-# shellcheck disable=SC2120  # no row passes an extra arg today
-sweep() {
-    OUT=$(CHIEF_DUTY_SWEEP_NOW="$NOW" CHIEF_DUTY_SWEEP_PRS="$WORK/w/prs.json" CHIEF_DUTY_SWEEP_RUNS="$WORK/w/runs.json" \
+sweep_env() {
+    CHIEF_DUTY_SWEEP_NOW="$NOW" CHIEF_DUTY_SWEEP_PRS="$WORK/w/prs.json" CHIEF_DUTY_SWEEP_RUNS="$WORK/w/runs.json" \
         CHIEF_DUTY_SWEEP_GO_ROOT="$WORK/w/go" CHIEF_DUTY_SWEEP_MIRROR="$WORK/w/mirror" \
         CHIEF_DUTY_SWEEP_DISPOSITIONS="$WORK/w/dispositions.txt" CHIEF_DUTY_SWEEP_GH="$STUB/seam-gh" \
         CHIEF_DUTY_SWEEP_DELTA="$STUB/delta" TICK_STATE_DIR="$WORK/w/state" CANCEL_RUNS_PACE_STATE="$WORK/w/pace" \
-        bash "$SWEEP" --doc "$CHIEF" --workers-from "$WORK/w/fleet.json" --bucket "$B" "$@" 2>"$WORK/w/err")
+        bash "$SWEEP" --doc "$CHIEF" --workers-from "$WORK/w/fleet.json" --bucket "$B"
+}
+sweep() {
+    OUT=$(sweep_env 2>"$WORK/w/err")
     RC=$?
 }
 
@@ -167,6 +169,44 @@ printf '%s\n' "$((NOW - 600))" > "$WORK/w/pace"
 sweep
 has "ci-masked: a drain 10 min ago holds the rerun" "held: drain" "$OUT"
 check "ci-masked: held means no gh call" "" "$(cat "$STUB/gh-calls")"
+world; masked_runs success cancelled 1
+sweep_env >"$WORK/w/p1" 2>&1 &
+sweep_env >"$WORK/w/p2" 2>&1 &
+wait
+check "ci-masked: two parallel sweeps make one rerun call" "1" "$(grep -c . "$STUB/gh-calls")"
+H3=3333333333333333333333333333333333333333
+world
+printf '[{"number":101,"headRefName":"a","headRefOid":"%s","isDraft":false,"isCrossRepository":false,"baseRefName":"main"},{"number":102,"headRefName":"b","headRefOid":"%s","isDraft":false,"isCrossRepository":false,"baseRefName":"main"},{"number":103,"headRefName":"c","headRefOid":"%s","isDraft":false,"isCrossRepository":false,"baseRefName":"main"}]\n' "$H1" "$H2" "$H3" > "$WORK/w/prs.json"
+: > "$WORK/w/runs.json"
+{
+    printf '['
+    sep=""
+    for pair in "1 $H1" "2 $H2" "3 $H3"; do
+        n=${pair%% *}; h=${pair#* }
+        printf '%s{"id":%s1,"name":"CI","event":"pull_request","status":"completed","conclusion":"success","created_at":"2026-11-25T09:00:00Z","head_sha":"%s","run_attempt":1},{"id":%s2,"name":"CI","event":"pull_request","status":"completed","conclusion":"cancelled","created_at":"2026-11-25T09:30:00Z","head_sha":"%s","run_attempt":1}' "$sep" "$n" "$h" "$n" "$h"
+        sep=","
+    done
+    printf ']\n'
+} > "$WORK/w/runs.json"
+sweep
+check "ci-masked: two reruns per sweep" "2" "$(grep -c . "$STUB/gh-calls")"
+has "ci-masked: the third is held, not reserved" "held: two reruns this sweep" "$OUT"
+sweep
+check "ci-masked: the held one is rerun by the next sweep" "3" "$(grep -c . "$STUB/gh-calls")"
+world; masked_runs success cancelled 1
+printf '1\n' > "$STUB/gh.rc"
+sweep
+has "ci-masked: a failed rerun is reported" "DUTY-RAN ci-masked 101@$H7_1 rerun 12 rc=1" "$OUT"
+has "ci-masked: a failed rerun is not called sent" "the rerun failed rc=1" "$OUT"
+hasnt "ci-masked: a failed rerun never says sent" "rerun sent" "$OUT"
+world
+printf '[{"id":11,"name":"CI","event":"pull_request","status":"completed","conclusion":"success","created_at":"2026-11-25T09:00:00Z","head_sha":"%s","run_attempt":1},{"id":12,"name":"CI","event":"pull_request","status":"completed","conclusion":"cancelled","created_at":"2026-11-25T09:30:00Z","head_sha":"%s","run_attempt":1},{"id":13,"name":"CI","event":"pull_request","status":"in_progress","conclusion":null,"created_at":"2026-11-25T10:00:00Z","head_sha":"%s","run_attempt":1}]\n' "$H1" "$H1" "$H1" > "$WORK/w/runs.json"
+sweep
+check "ci-masked: a newer run still in progress means nothing is masked" "" "$OUT"
+check "ci-masked: and no rerun" "" "$(cat "$STUB/gh-calls")"
+world; rm -f "$DOC1"
+sweep
+has "an unreadable worker doc is named" "DUTY? worker N1 unread" "$OUT"
 
 verdict() {
     mkdir -p "$B/verdicts/$1"
