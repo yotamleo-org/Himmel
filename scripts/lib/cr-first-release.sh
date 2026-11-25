@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 # cr-first-release.sh — release `ci:go` once the reviewers have passed.
 #
-# With the repository variable CI_GO_GATE=on, a pull request's heavy CI waits
-# for the `ci:go` label; this releases it at the moment the reviewer gate
-# passes at the PR head, from the events that change the answer (a verdict
+# Retired for pull requests: ci.yml starts every job of a PR at once and no
+# longer reads CI_GO_GATE or the `ci:go` label, so there is nothing to release. Keep the
+# repository variable CI_GO_GATE off or unset. With it left on this stays harmless: a
+# pull_request run has a heavy job at the head within moments of the push, which is the
+# quiet "head already released" path below, so no caller holds on a missing labeled run.
+# The release below is dead code awaiting its deletion ticket.
+#
+# It used to release the heavy CI that waited for the `ci:go` label at the moment the
+# reviewer gate passed at the PR head, from the events that change the answer (a verdict
 # written, a thread resolved, a CodeRabbit read, a cheap run going red or
 # settling, the chief tick) — no timer, no background process.
 #

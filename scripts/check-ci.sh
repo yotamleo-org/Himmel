@@ -839,9 +839,11 @@ _job_log_hint() {
         || echo "check-ci: the CI failure ledger write failed (advisory; the verdict stands)" >&2
 }
 
-# _cr_first_event — one CI-release event. With the CI_GO_GATE repository
-# variable on, the heavy jobs wait for the `ci:go` label that scripts/lib/cr-first-release.sh
-# adds once the reviewer gate passes at the head; this runs that lib's CLI at the head and
+# _cr_first_event — one CI-release event. Retired: ci.yml starts every job
+# at once and ignores CI_GO_GATE, so with the variable off or unset this is silent and with it
+# left on the lib is quiet as soon as a heavy job runs at the head (a moment after the push).
+# It used to run scripts/lib/cr-first-release.sh, which added the `ci:go` label the heavy
+# jobs waited for once the reviewer gate passed at the head; this runs that lib's CLI at the head and
 # prints its CR-FIRST lines on stderr. Switch off or unset, a fork, a head already released,
 # a missing lib or a failed read: silent, rc 0. rc 1 = the head is HELD (CR-FIRST HOLD
 # printed); rc 2 = it was released just now. Best effort: it never fails check-ci.
@@ -921,11 +923,10 @@ required_gate() {
         missing=$(_join_by_status missing "$st")
         pending=$(_join_by_status pending "$st")
         if [ -z "$missing" ] && [ -z "$pending" ]; then return 0; fi
-        # CI_GO_GATE on and the head not released yet: the heavy jobs cannot
-        # report until the reviewer gate passes, so keep waiting on the hold (bounded by
-        # --max-wait) rather than burn --grace or hand the watch a head with no heavy run.
-        # The release lib is read at most every CR_FIRST_EVERY seconds; with the switch off
-        # or unset it is silent and everything below applies unchanged.
+        # Retired release: every heavy job now starts with the push, so no
+        # head waits for a release. With the CI_GO_GATE switch off or unset this block is
+        # silent; left on, the lib goes quiet once a heavy job runs at the head, which ends
+        # any hold within one poll. The release lib is read at most every CR_FIRST_EVERY seconds.
         if [ "$wait_ok" -eq 1 ]; then
             if [ $((SECONDS - cf_at)) -ge "${CR_FIRST_EVERY:-60}" ]; then
                 cf_at=$SECONDS; cf_held=0; cf_rc=0
