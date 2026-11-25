@@ -756,7 +756,14 @@ const JIRA_VERIFY_SCRIPT = `
 let raw = '';
 process.stdin.on('data', (d) => { raw += d; });
 process.stdin.on('end', async () => {
-  const { url, email, token } = JSON.parse(raw);
+  const { base, url, email, token, allow } = JSON.parse(raw);
+  try {
+    const { pathToFileURL } = require('url');
+    (await import(pathToFileURL(process.argv[1]).href)).checkJiraDestination(base, 'JIRA_BASE_URL', allow);
+  } catch (_e) {
+    process.stdout.write('refused');
+    return;
+  }
   try {
     const r = await fetch(url, {
       headers: { Authorization: 'Basic ' + Buffer.from(email + ':' + token).toString('base64'), Accept: 'application/json' },
@@ -790,18 +797,31 @@ function resolveJiraChain(ctx) {
   }
 }
 
+function jiraAllowHost(ctx) {
+  const fromEnv = String((ctx.env && ctx.env.JIRA_ALLOW_HOST) || '').trim();
+  if (fromEnv) return fromEnv;
+  const conf = {};
+  overlayHimmelConf(conf, ctx, ['JIRA_ALLOW_HOST']);
+  return String(conf.JIRA_ALLOW_HOST || '').trim();
+}
+
+const JIRA_DESTINATION_MODULE = path.resolve(__dirname, '..', '..', 'jira', 'src', 'jira-destination.mjs');
+
 function jiraWhoAmI(baseUrl, email, token, ctx) {
-  const url = `${String(baseUrl).replace(/\/+$/, '')}/rest/api/3/myself`;
-  const r = spawnProbeSync(process.execPath, ['-e', JIRA_VERIFY_SCRIPT], {
-    encoding: 'utf8', env: ctx.env || process.env, input: JSON.stringify({ url, email, token }),
+  const base = String(baseUrl);
+  const url = `${base.replace(/\/+$/, '')}/rest/api/3/myself`;
+  const r = spawnProbeSync(process.execPath, ['-e', JIRA_VERIFY_SCRIPT, JIRA_DESTINATION_MODULE], {
+    encoding: 'utf8', env: ctx.env || process.env,
+    input: JSON.stringify({ base, url, email, token, allow: jiraAllowHost(ctx) }),
     timeout: JIRA_VERIFY_TIMEOUT_MS + 2000, stdio: ['pipe', 'pipe', 'ignore'],
   });
   const out = String((r && r.stdout) || '').trim();
+  if (out === 'refused') return -2;
   if (out === 'nobody') return -1;
   return /^\d{3}$/.test(out) ? Number(out) : 0;
 }
 
-function overlayHimmelConf(data, ctx) {
+function overlayHimmelConf(data, ctx, keys = HIMMEL_CONF_KEYS) {
   const home = (ctx.env && ctx.env.HOME) || os.homedir();
   for (const name of ['himmel.conf.local', 'himmel.conf']) {
     let conf;
@@ -810,7 +830,7 @@ function overlayHimmelConf(data, ctx) {
     } catch (_e) {
       continue;
     }
-    for (const k of HIMMEL_CONF_KEYS) {
+    for (const k of keys) {
       if (nonEmpty(conf[k]) && !nonEmpty(data[k])) data[k] = conf[k];
     }
   }
@@ -945,6 +965,9 @@ function verifyJiraToken(getVal, layerFor, ctx) {
   if (status === 200) return { actual: 'present', detail: `JIRA_API_TOKEN from ${source} verified: Jira answered 200` };
   if (status === 401 || status === 403) {
     return { actual: 'absent', detail: `Jira rejected JIRA_API_TOKEN from ${source} (HTTP ${status}): replace it, in the keyring if that is where it lives` };
+  }
+  if (status === -2) {
+    return { actual: 'degraded', unverified: true, detail: `could not verify JIRA_API_TOKEN from ${source}: JIRA_BASE_URL is refused (it must be https://<tenant>.atlassian.net, or a host you name in JIRA_ALLOW_HOST in the shell environment or ~/.himmel/himmel.conf); no request was sent` };
   }
   const why = status === 0 ? 'no answer within 10s or a network error' : (status === -1 ? 'Jira answered 200 without an account' : `unexpected HTTP ${status}`);
   return { actual: 'degraded', unverified: true, detail: `could not verify JIRA_API_TOKEN from ${source}: ${why}` };

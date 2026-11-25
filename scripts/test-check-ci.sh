@@ -142,6 +142,21 @@ if [ "${GH_STUB_READFAIL:-}" = auth ] && [ "$_tok" = read ]; then
     exit 1
 fi
 if [ "${1:-}" = api ] && [ "${2:-}" = rate_limit ]; then echo "${GH_STUB_RL_REMAINING:-5000}"; exit 0; fi
+if [ "${1:-}" = api ] && [ "${2:-}" = -i ] && [ "${3:-}" = user ]; then
+    case "${GH_STUB_CORE:-}" in
+        out) if [ ! -s "$(dirname "$0")/sleepcount" ]; then
+                printf 'X-Ratelimit-Remaining: 0\nX-Ratelimit-Reset: %s\n' "$(($(date +%s) + 6))"; exit 1
+            fi ;;
+        main-far) if [ "$_tok" = main ]; then
+                printf 'X-Ratelimit-Remaining: 0\nX-Ratelimit-Reset: %s\n' "$(($(date +%s) + 3000))"; exit 1
+            fi ;;
+        main-out) if [ "$_tok" = main ] && [ ! -s "$(dirname "$0")/sleepcount" ]; then
+                printf 'X-Ratelimit-Remaining: 0\nX-Ratelimit-Reset: %s\n' "$(($(date +%s) + 6))"; exit 1
+            fi ;;
+        out-far) printf 'X-Ratelimit-Remaining: 0\nX-Ratelimit-Reset: %s\n' "$(($(date +%s) + 3000))"; exit 1 ;;
+    esac
+    printf 'X-Ratelimit-Remaining: 4000\nX-Ratelimit-Reset: %s\n' "$(($(date +%s) + 3600))"; exit 0
+fi
 # the value of the --jq flag among the args ("" if none).
 _jq_arg() { while [ $# -gt 0 ]; do if [ "$1" = "--jq" ]; then printf '%s' "${2:-}"; return; fi; shift; done; }
 # the check rows now: GH_STUB_CHECKS, or GH_STUB_CHECKS_AFTER once the except-ctx watch has run for a second
@@ -160,7 +175,7 @@ cmd="${1:-}"
 # reports it exhausted with the reset 6 s away.
 if [ -n "${GH_STUB_QUOTA:-}" ]; then
     if [ "$cmd" = "api" ] && [ "${2:-}" = "-i" ]; then
-        _qn=$(grep -c '^api -i' "$GH_STUB_ARGS" 2>/dev/null)
+        _qn=$(grep -c '^api -i graphql' "$GH_STUB_ARGS" 2>/dev/null)
         _qr=0; _qs=$(($(date +%s) + 3000))
         case "$GH_STUB_QUOTA" in
             low-far) _qr=150 ;;
@@ -244,6 +259,9 @@ if [ "$cmd" = "api" ]; then
                 fail) echo "HTTP 500: rules boom" >&2; exit 1 ;;
                 denied) echo "gh: Resource not accessible by integration (HTTP 403)" >&2; exit 1 ;;
                 ratelimit) echo "gh: API rate limit exceeded for user ID 1. (HTTP 403)" >&2; exit 1 ;;
+                ratelimit-core)
+                    if [ ! -s "$(dirname "$0")/sleepcount" ]; then echo "gh: API rate limit exceeded for user ID 1. (HTTP 403)" >&2; exit 1; fi
+                    echo unit-tests ;;
                 ratelimit-n:*)
                     _rl=${GH_STUB_RULES#ratelimit-n:}
                     _rn=$(wc -l < "$(dirname "$0")/rules-reads" | tr -d ' ')
@@ -932,6 +950,11 @@ cat > "$STUBDIR/counting-sleep" <<'EOF'
 echo x >> "$(dirname "$0")/sleepcount"
 exec sleep "$1"
 EOF
+cat > "$STUBDIR/arg-sleep" <<'EOF'
+#!/usr/bin/env bash
+echo "$1" >> "$(dirname "$0")/sleepargs"
+EOF
+chmod +x "$STUBDIR/arg-sleep" || { echo "FATAL: chmod on arg-sleep stub failed"; exit 1; }
 chmod +x "$STUBDIR/counting-sleep" || { echo "FATAL: chmod on counting-sleep stub failed"; exit 1; }
 
 # the merge-block alert sender (MERGE_BLOCK_ALERT_CMD). Records
@@ -997,7 +1020,7 @@ ACCESS_OVERRIDE="$STUBDIR/access.json"
 # GitHub's mergeStateStatus sequence + the head it reports. Default
 # CLEAN at the watched head, so every pre-3473 case keeps its verdict.
 MERGE_STATE_OVERRIDE=CLEAN; MERGE_HEAD_OVERRIDE=sha1
-BUDGET_PREFLIGHT_OVERRIDE=0; RL_PROBE_OVERRIDE=""; RL_ONCE_OVERRIDE=""; QUOTA_OVERRIDE=""
+BUDGET_PREFLIGHT_OVERRIDE=0; RL_PROBE_OVERRIDE=""; RL_ONCE_OVERRIDE=""; QUOTA_OVERRIDE=""; CORE_OVERRIDE=""
 
 # --- no real sleeping, and no unbounded case -------------------
 #
@@ -1049,6 +1072,7 @@ run() {
     if ! ef=$(mktemp "$STUBDIR/err.XXXXXX"); then rm -f "$of"; echo "FATAL: mktemp for stderr capture failed" >&2; exit 1; fi
     : > "$STUBDIR/args.log"
     : > "$STUBDIR/sleepcount"
+    : > "$STUBDIR/sleepargs"
     : > "$STUBDIR/count"
     : > "$STUBDIR/watch"
     : > "$STUBDIR/api"
@@ -1119,6 +1143,7 @@ run() {
         GH_STUB_RL_PROBE="$RL_PROBE_OVERRIDE" \
         GH_STUB_RL_ONCE="$RL_ONCE_OVERRIDE" \
         GH_STUB_QUOTA="$QUOTA_OVERRIDE" \
+        GH_STUB_CORE="$CORE_OVERRIDE" \
         HIMMEL_QUOTA_DIR="$STUBDIR/quota" \
         "$CASE_RUNNER" $CASE_RUNNER_ARGS bash "$SCRIPT" "$@" >"$of" 2>"$ef"
     RC=$?
@@ -1134,7 +1159,7 @@ run() {
     RULES_OVERRIDE=none; CLASSIC_OVERRIDE=none; PRODUCERS_OVERRIDE=none; STATUSCTX_OVERRIDE=none; CHECKS_OVERRIDE="pass:unit-tests"; CHECKS_AFTER_OVERRIDE=""
     KEEP_ALERT_STATE=0; ALERT_FAIL_OVERRIDE=""; ACCESS_OVERRIDE="$STUBDIR/access.json"
     MERGE_STATE_OVERRIDE=CLEAN; MERGE_HEAD_OVERRIDE=sha1
-    BUDGET_PREFLIGHT_OVERRIDE=0; RL_PROBE_OVERRIDE=""; RL_ONCE_OVERRIDE=""; QUOTA_OVERRIDE=""
+    BUDGET_PREFLIGHT_OVERRIDE=0; RL_PROBE_OVERRIDE=""; RL_ONCE_OVERRIDE=""; QUOTA_OVERRIDE=""; CORE_OVERRIDE=""
 }
 
 run_in_repo() {
@@ -2872,6 +2897,40 @@ run cr-completed --grace 1
 assert_rc 5 "3381-k a never-appearing required check is refused once --grace elapses"
 if [ "$(wc -l < "$STUBDIR/sleepcount" | tr -d ' ')" -le 3 ]; then pass "3381-k the wait stayed within the grace bound"; else fail "3381-k the wait stayed within the grace bound" "sleeps=$(wc -l < "$STUBDIR/sleepcount")"; fi
 
+core_case() {
+    RULES_OVERRIDE="ratelimit-core"; CHECKS_OVERRIDE="pass:unit-tests"; CORE_OVERRIDE="$1"; QUOTA_OVERRIDE=healthy
+    BUDGET_PREFLIGHT_OVERRIDE=1; SLEEP_CMD_OVERRIDE="$STUBDIR/counting-sleep"
+}
+core_case out
+run cr-completed --grace 30
+assert_rc 0 "11102-a core out, GraphQL healthy: the run waits for the reset and ends green"
+assert_err_has "REST core budget exhausted" "11102-a the wait names the REST core bucket"
+assert_err_lacks "11102-a no required-set read was refused and retried" "stderr: $ERR" -iF -- "failed transiently"
+if [ "$(wc -l < "$STUBDIR/sleepcount" | tr -d ' ')" = 2 ] || [ "$(wc -l < "$STUBDIR/sleepcount" | tr -d ' ')" = 1 ]; then pass "11102-a one wait to the reset (plus at most its jitter)"; else fail "11102-a one wait to the reset (plus at most its jitter)" "sleeps=$(wc -l < "$STUBDIR/sleepcount")"; fi
+
+core_case out-far
+run cr-completed --grace 30 --max-wait 60
+assert_rc 2 "11102-b a core reset beyond --max-wait is exit 2"
+assert_err_has "REST core budget exhausted" "11102-b the refusal names the REST core bucket"
+_core_reads=$(grep -c 'rules/branches/main' "$STUBDIR/args.log")
+if [ "$_core_reads" = 0 ]; then pass "11102-b nothing is read while core is out"; else fail "11102-b nothing is read while core is out" "reads=$_core_reads"; fi
+
+core_poll_case() {
+    RULES_OVERRIDE="req:codeowner-review-gate"; CHECKS_OVERRIDE="pass:unit-tests"
+    SLEEP_CMD_OVERRIDE="$STUBDIR/arg-sleep"; POLL_OVERRIDE=1
+    mkdir -p "$STUBDIR/quota"
+    printf 'main\tcore\t%s\t5000\t%s\t%s\tok\n' "$1" "$(($(date +%s) + 600))" "$(date +%s)" > "$STUBDIR/quota/quota.tsv"
+}
+core_poll_case 4000
+run cr-completed --grace 5
+assert_rc 5 "11102-c healthy core rows: the missing required check is refused after --grace"
+_args=$(sort -u "$STUBDIR/sleepargs" | paste -sd, -); if [ "$_args" = 1 ]; then pass "11102-c healthy core rows keep the poll at 1s"; else fail "11102-c healthy core rows keep the poll at 1s" "sleep args=[$_args]"; fi
+core_poll_case 100
+run cr-completed --grace 5
+assert_rc 5 "11102-d low core rows: the missing required check is still refused after --grace"
+_args=$(sort -u "$STUBDIR/sleepargs" | paste -sd, -); if [ "$_args" = 6 ]; then pass "11102-d core rows under the floor stretch the poll to 6s"; else fail "11102-d core rows under the floor stretch the poll to 6s" "sleep args=[$_args]"; fi
+rm -f "$STUBDIR/quota/quota.tsv"
+
 # 3381-l — a required check that FAILS during the watch (red_exit) alerts once too.
 RULES_OVERRIDE="req:unit-tests"; CHECKS_OVERRIDE="flipfail:unit-tests"
 run red
@@ -3247,6 +3306,35 @@ _s9_on() { : > "$STUBDIR/toklog"; export GH_STUB_TOKLOG="$STUBDIR/toklog" GH_REA
 _s9_off() { unset GH_STUB_RL_REMAINING GH_STUB_TOKLOG GH_STUB_READFAIL GH_STUB_MAIN_SPENT GH_STUB_CLASSIC_ADMIN_ONLY; export GH_READ_ENV_ROOT="$_NO_READ_TOKEN_ROOT"; }
 tok_count() { grep -c -- "$1" "$STUBDIR/toklog" | tr -d ' '; }
 tok_before() { local a b; a=$(grep -n -- "$1" "$STUBDIR/toklog" | head -1 | cut -d: -f1); b=$(grep -n -- "$2" "$STUBDIR/toklog" | head -1 | cut -d: -f1); if [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]; then echo yes; else echo no; fi; }
+core_parked_case() {
+    _s9_on; export GH_STUB_CLASSIC_ADMIN_ONLY=1
+    mkdir -p "$STUBDIR/quota"
+    printf 'main\tcore\t100\t5000\t%s\t%s\tok\n' "$(($(date +%s) + 600))" "$(date +%s)" > "$STUBDIR/quota/quota.tsv"
+    RULES_OVERRIDE="req:unit-tests"; CLASSIC_OVERRIDE="ctx:unit-tests"; CHECKS_OVERRIDE="pass:unit-tests"
+}
+_s9_on
+rm -rf "$STUBDIR/quota"
+BUDGET_PREFLIGHT_OVERRIDE=1; QUOTA_OVERRIDE="after1-past"; CORE_OVERRIDE=main-far
+run cr-completed
+_s9_off
+check_eq "11102-g a GraphQL recovery never waits on main's REST core: all three recoveries still run (4 budget probes)" "4" "$(grep -c '^api -i graphql' "$STUBDIR/args.log" | tr -d ' ')"
+core_parked_case
+run cr-completed --grace 2
+_s9_off
+assert_rc 5 "11102-e main parked, the classic read ends on main: exit 5"
+assert_err_has "required-set unreadable (transient)" "11102-e the refusal is the transient one, not a permanent unreadable set"
+assert_err_lacks "11102-e never the permanent required-set refusal" "stderr: $ERR" -iF -- "could not list the checks GitHub requires"
+if [ "$(alert_count)" = 0 ]; then pass "11102-e a paused read sends no operator alert"; else fail "11102-e a paused read sends no operator alert" "count=$(alert_count)"; fi
+core_parked_case
+CORE_OVERRIDE=main-out; QUOTA_OVERRIDE=healthy; BUDGET_PREFLIGHT_OVERRIDE=1; SLEEP_CMD_OVERRIDE="$STUBDIR/counting-sleep"
+run cr-completed --grace 30
+_s9_off
+assert_rc 0 "11102-f main parked and the read token healthy: check-ci waits for main's reset and ends green"
+_core_probes=$(grep -c '^api -i user' "$STUBDIR/args.log")
+if [ "$_core_probes" -ge 2 ]; then pass "11102-f the pause sent check-ci to probe main's core bucket again"; else fail "11102-f the pause sent check-ci to probe main's core bucket again" "probes=$_core_probes"; fi
+assert_err_lacks "11102-f never the permanent required-set refusal" "stderr: $ERR" -iF -- "could not list the checks GitHub requires"
+rm -f "$STUBDIR/quota/quota.tsv"
+
 _s9_on; export GH_STUB_READFAIL=auth
 run red-probe --grace 30
 _s9_off
@@ -3371,7 +3459,7 @@ for t4mode in past absent; do
     BUDGET_PREFLIGHT_OVERRIDE=1; QUOTA_OVERRIDE="after1-$t4mode"
     run cr-completed
     assert_rc 2 "T4-d reset-$t4mode: the run ends in exit 2 after its recoveries"
-    check_eq "T4-d reset-$t4mode: at most 3 recoveries (4 budget probes in the stub log)" "4" "$(grep -c '^api -i' "$STUBDIR/args.log" | tr -d ' ')"
+    check_eq "T4-d reset-$t4mode: at most 3 recoveries (4 budget probes in the stub log)" "4" "$(grep -c '^api -i graphql' "$STUBDIR/args.log" | tr -d ' ')"
     assert_err_has "QUOTA-PAUSE github graphql" "T4-d reset-$t4mode: names the limit"
     case "$(blocked_names)" in 42.*\ ) pass "T4-d reset-$t4mode: a later refusal marks <pr>.<head>" ;; *) fail "T4-d reset-$t4mode: marker name" "got [$(blocked_names)]" ;; esac
 done
@@ -3494,5 +3582,5 @@ if [ "$RC" -ne 0 ]; then pass "T3.23-d even with --fail-fast kept, a pending con
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 266 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 266"; exit 1; fi
+if [ "$COUNT" -ne 273 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 273"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1

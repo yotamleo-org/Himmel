@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { resolveSecrets } from '../../lib/resolve-secrets.mjs';
+import { checkJiraDestination as checkDestination } from '../src/jira-destination.mjs';
 import { envFilePath, readEnvFile, stationJiraBaseUrl, underTest } from './env-file.js';
 import { isJiraRead, jiraIsLoopback, liveTestGuard, liveTestUploadGuard, testJiraPostRefused } from './live-test-guard.js';
 import { addOnly, mechanismOf, preRead, recordVersionWrite, requestedSet, setOf, versionWriteScope, type Getter, type WriteRequest } from './release/version-writes.js';
@@ -88,35 +89,9 @@ function ensureEnvLoaded(): void {
 }
 if (!underTest()) ensureEnvLoaded();
 
-const TENANT_HOST = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.atlassian\.net$/;
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
-
 export function checkJiraDestination(raw: string, what: string): string {
   ensureEnvLoaded();
-  const refuse = (why: string): never => {
-    throw new Error(
-      `${what} is refused: ${why}. The Jira destination must be https://<tenant>.atlassian.net. ` +
-        'A self-hosted or other Jira host is allowed only when the operator names it in JIRA_ALLOW_HOST ' +
-        '(shell environment or ~/.himmel/himmel.conf, never a project file), for example ' +
-        'JIRA_ALLOW_HOST=jira.corp.example. No request was sent and no credential left this process.',
-    );
-  };
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return refuse('it is not a valid URL');
-  }
-  const secure = url.protocol === 'https:';
-  if (!secure && url.protocol !== 'http:') return refuse('it is not an https URL');
-  if (!url.hostname) return refuse('it has no hostname');
-  if (url.username || url.password) return refuse('it carries a user name or password');
-  const allowed = (process.env.JIRA_ALLOW_HOST ?? '').trim().toLowerCase();
-  const named = allowed !== '' && url.host === allowed;
-  if (named && (secure || (LOOPBACK_HOSTS.has(url.hostname) && url.port !== ''))) return raw;
-  if (!secure) return refuse(named ? 'plain http is allowed only for a loopback host named with its port in JIRA_ALLOW_HOST' : 'it is not an https URL');
-  if (TENANT_HOST.test(url.hostname) && !url.port) return raw;
-  return refuse(allowed ? 'its host is neither a tenant of atlassian.net nor the one JIRA_ALLOW_HOST names' : 'its host is not a tenant of atlassian.net');
+  return checkDestination(raw, what, process.env.JIRA_ALLOW_HOST);
 }
 
 export const baseUrl = (): string => {

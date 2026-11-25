@@ -317,6 +317,12 @@ else
     if [ "$got" = "1::unreadable 0:4321:ok" ]; then pass "7j ghb_read main and read each name their own token"; else fail "7j explicit tokens" "got [$got]"; fi
     got=$( export GH_READ_ENV_ROOT="$ROOT/emptyroot" PATH="$BIN:$PATH" GHB_STUB_DIR="$CASE_DIR"; ghb_read read; echo "$?:$GHB_STATE" )
     if [ "$got" = "1:none" ]; then pass "7k ghb_read read with no read token: state none, no number"; else fail "7k no read token" "got [$got]"; fi
+    mkdir -p "$ROOT/ghr-root2"
+    printf 'himmel_github_token_vm2=%s\nhimmel_github_token_vm=%s\n' ghp_GHBREADTOKEN ghp_GHBREADTOKEN2 > "$ROOT/ghr-root2/.env"
+    got=$( export GH_READ_ENV_ROOT="$ROOT/ghr-root2" PATH="$BIN:$PATH" GHB_STUB_DIR="$CASE_DIR"; unset himmel_github_token_vm; GHB_STUB_REMAINING=4321 ghb_read read2; echo "$?:$GHB_REMAINING:$GHB_STATE" )
+    if [ "$got" = "0:4321:ok" ]; then pass "7k2 ghb_read read2 probes the second read token"; else fail "7k2 second read token" "got [$got]"; fi
+    got=$( export GH_READ_ENV_ROOT="$ROOT/ghr-root" PATH="$BIN:$PATH" GHB_STUB_DIR="$CASE_DIR"; ghb_read read2; echo "$?:$GHB_STATE" )
+    if [ "$got" = "1:none" ]; then pass "7k3 ghb_read read2 with one read token: state none"; else fail "7k3 no second read token" "got [$got]"; fi
 
     new_case
     t0=$SECONDS

@@ -4,7 +4,9 @@
 #
 # Three classes of caller:
 #   scan   ghq_scan_gate before spending; paused = nothing spent, no fallback to main
-#   gate   never pauses on a number; reads quota.tsv only to word a refusal it got
+#   gate   never pauses before its first call; reads quota.tsv only to word a refusal it got,
+#          and, once a read token was refused, to keep a REST-core read off a main token whose
+#          core row is under the floor (gh-read.sh exits 75 with the QUOTA-PAUSE line)
 #   write  never pauses
 #
 #   ghq_is_rate_limited <stderr text>   rc 0 = a rate limit. Give it STDERR only:
@@ -35,11 +37,19 @@
 #                                       unless the read row is ok, since a refused read
 #                                       token (a 401) is retried on main
 #   ghq_row_ok <token> <bucket>         rc 0 when quota.tsv holds an ok row for it
+#   ghq_wait_core <max_wait_s> [sleep] [main]
+#                                       probe the core bucket of read, read2 and main (only
+#                                       main when named), write their rows, and sleep to the
+#                                       earliest reset when all are under GHQ_SCAN_FLOOR
+#   ghq_core_low                        rc 0 when every live core row is under GHQ_SCAN_FLOOR
+#
+# Tokens in quota.tsv: main, read (himmel_github_token_vm2), read2 (himmel_github_token_vm).
 #
 # Numbers, one job each:
-#   GH_BUDGET_FLOOR      200   a gate's wait (gh-graphql-budget.sh), and quota return
+#   GH_BUDGET_FLOOR      200   a gate's GraphQL wait (gh-graphql-budget.sh), and quota return
 #   CHECK_CI_API_FLOOR   300   check-ci's rotation between the APIs
-#   GHQ_SCAN_FLOOR       500   scans pause under it (10 % of a bucket)
+#   GHQ_SCAN_FLOOR       500   scans pause under it (10 % of a bucket); gh-read.sh parks a token
+#                              under it and ghq_wait_core waits under it: one floor for both
 #   1500                       the measure's refusal (gh-graphql-callers.sh run)
 #
 # Env: HIMMEL_QUOTA_DIR (default ~/.himmel/state/quota), GHQ_SCAN_FLOOR (500),
@@ -139,8 +149,9 @@ ghq_refresh() {
     probe_t="${GHQ_PROBE_TIMEOUT:-10}"
     case "$probe_t" in ''|*[!0-9]*) probe_t=10 ;; esac
     start=$SECONDS
-    for tok in main read; do
+    for tok in main read read2; do
         if [ "$tok" = read ] && [ -z "$(_ghb_read_token)" ]; then break; fi
+        if [ "$tok" = read2 ] && [ -z "$(_ghb_read_token2)" ]; then break; fi
         for bucket in graphql core; do
             left=$((budget - (SECONDS - start)))
             [ "$left" -lt "$probe_t" ] || left="$probe_t"
@@ -227,6 +238,83 @@ ghq_scan_gate() {
         return 75
     fi
     return 0
+}
+
+_ghq_put_row_locked() {
+    local f="$1" t="$2" b="$3" row="$4"
+    {
+        [ ! -f "$f" ] || awk -F'\t' -v t="$t" -v b="$b" '!($1 == t && $2 == b)' "$f"
+        printf '%s\n' "$row"
+    } 2>/dev/null | atomic_write "$f" 2>/dev/null
+}
+
+_ghq_put_row() {
+    local dir row
+    dir=$(_ghq_dir)
+    mkdir -p "$dir" 2>/dev/null || return 0
+    row=$(_ghq_row "$1" "$2")
+    with_lock "$dir/.lock" _ghq_put_row_locked "$dir/quota.tsv" "$1" "$2" "$row" >/dev/null 2>&1
+    return 0
+}
+
+# shellcheck disable=SC2034  # GHQ_CORE_* are the caller-facing results of ghq_wait_core
+GHQ_CORE_WAITED=0
+GHQ_CORE_EXHAUSTED=0
+# shellcheck disable=SC2034  # as above
+ghq_wait_core() {
+    local max_wait="${1:-0}" sleep_cmd="${2:-sleep}" only="${3:-}" floor="${GHQ_SCAN_FLOOR:-500}" jmax="${GH_BUDGET_JITTER_MAX:-15}"
+    local who tok answered=0 unknown=0 best="" now wait_s jitter human
+    GHQ_CORE_WAITED=0; GHQ_CORE_EXHAUSTED=0
+    [ "${GH_BUDGET_PREFLIGHT:-1}" != 0 ] || return 0
+    case "$max_wait" in ''|*[!0-9]*) max_wait=0 ;; esac
+    case "$floor" in ''|*[!0-9]*) floor=500 ;; esac
+    case "$jmax" in ''|*[!0-9]*) jmax=15 ;; esac
+    for who in read read2 main; do
+        [ -z "$only" ] || [ "$who" = "$only" ] || continue
+        case "$who" in
+            read) tok=$(_ghb_read_token) ;;
+            read2) tok=$(_ghb_read_token2) ;;
+            *) tok=main ;;
+        esac
+        [ -n "$tok" ] || continue
+        _ghb_probe "$who" api -i user || { unknown=1; continue; }
+        _ghq_put_row "$who" core
+        [ "$GHB_REMAINING" -lt "$floor" ] || return 0
+        answered=1
+        if [ -n "$GHB_RESET" ] && ghb_reset_sane "$GHB_RESET" && { [ -z "$best" ] || [ "$GHB_RESET" -lt "$best" ]; }; then best="$GHB_RESET"; fi
+    done
+    [ "$answered" -eq 1 ] && [ "$unknown" -eq 0 ] || return 0
+    now=$(date +%s)
+    if [ -n "$best" ]; then wait_s=$((best - now + 2)); else wait_s=60; fi
+    [ "$wait_s" -ge 2 ] || wait_s=2
+    human=$(date -d "@$((now + wait_s))" +%H:%M:%S 2>/dev/null || date -r "$((now + wait_s))" +%H:%M:%S 2>/dev/null || echo "in ${wait_s}s")
+    if [ "$max_wait" -gt 0 ] && [ "$wait_s" -gt "$max_wait" ]; then
+        echo "gh-budget: GitHub REST core budget exhausted on every token (floor=$floor), resets at $human (in ${wait_s}s) — longer than the ${max_wait}s bound; not waiting" >&2
+        GHQ_CORE_EXHAUSTED=1
+        return 1
+    fi
+    jitter=0
+    [ "$jmax" -le 0 ] || jitter=$((RANDOM % (jmax + 1)))
+    if [ "$max_wait" -gt 0 ] && [ $((wait_s + jitter)) -gt "$max_wait" ]; then jitter=$((max_wait - wait_s)); fi
+    echo "gh-budget: GitHub REST core budget exhausted on every token (floor=$floor); sleeping ${wait_s}s + ${jitter}s jitter until the reset at $human" >&2
+    "$sleep_cmd" "$wait_s"
+    [ "$jitter" -le 0 ] || "$sleep_cmd" "$jitter"
+    GHQ_CORE_WAITED=1
+    return 0
+}
+
+ghq_core_low() {
+    local floor="${GHQ_SCAN_FLOOR:-500}" now t seen=0
+    case "$floor" in ''|*[!0-9]*) floor=500 ;; esac
+    now=$(date +%s)
+    for t in main read read2; do
+        ghq_read "$t" core || continue
+        case "$GHQ_STATE" in ok|refused) ;; *) continue ;; esac
+        if [ -n "$GHQ_RESET" ] && [ "$GHQ_RESET" -le "$now" ]; then continue; fi
+        if [ "$GHQ_STATE" = ok ] && { [ -z "$GHQ_REMAINING" ] || [ "$GHQ_REMAINING" -ge "$floor" ]; }; then return 1; fi
+        seen=1
+    done
+    [ "$seen" -eq 1 ]
 }
 
 _ghq_union() {
