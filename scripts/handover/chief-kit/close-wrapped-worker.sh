@@ -144,6 +144,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
 # shellcheck source=../../lib/legacy-names.sh
 . "$HERE/../../lib/legacy-names.sh"
+# shellcheck source=../../lib/git-clean.sh
+. "$HERE/../../lib/git-clean.sh"
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 KILL="${KILL_BIN:-kill}"
 WRAP_SUBTREE_CHECK="${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}"
@@ -252,12 +254,11 @@ EOF
         echo "close-wrapped-worker: refusing --finished - PR #$pr is '${state:-unreadable}', not MERGED" >&2
         exit 10
     fi
-    # git-env-ok: both git calls below run under env -u of the GIT_* names a hook could hand this script
     while IFS= read -r wt; do
         wt="${wt%[.,;:]}"
         [ -n "$wt" ] && [ -d "$wt" ] || continue
-        if ! wt_head=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$wt" rev-parse HEAD 2>&1) \
-            || ! wt_dirty=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$wt" status --porcelain 2>&1); then
+        if ! wt_head=$(git_clean -C "$wt" rev-parse HEAD 2>&1) \
+            || ! wt_dirty=$(git_clean -C "$wt" status --porcelain 2>&1); then
             echo "close-wrapped-worker: refusing --finished - git cannot read the worktree $wt" >&2
             exit 10
         fi
