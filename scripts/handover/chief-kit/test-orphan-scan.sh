@@ -122,6 +122,15 @@ out=$(run --fleet "$FLEET" 2>&1)
 not_contains "a -r<N> relaunch is listed" "$out" "orphan session $LISTED-r2"
 not_contains "a -RESUME session is listed" "$out" "orphan session $LISTED-RESUME"
 contains "an unknown session is an orphan" "$out" "# orphan session HIMMEL-chief-x "
+rm -rf "$W/proc/305"
+pgrep_x_stub 304 306
+mkdoc "- 10:00 READY 11 $SHA GREEN"
+printf '{"state":"MERGED","mergeCommit":{"oid":"%s"}}\n' "$SHA" > "$OS_VIEW"
+out=$(run --fleet "$FLEET" 2>&1)
+contains "a worker live only as -r<N> is finished under that name" "$out" "# orphan finished $LISTED-r2 pr=11 merged=$SHA"
+mkdoc "- 09:30 LIVE - building"
+pgrep_x_stub 304 305 306
+mkcmdline 305 claude -n "$LISTED-RESUME" work
 out=$(run --fleet "$FLEET" --self HIMMEL-chief-x 2>&1)
 not_contains "--self is never an orphan" "$out" "orphan session"
 

@@ -78,7 +78,7 @@ while IFS=$'\t' read -r pid name _model _ac; do
     case "$selves" in *",${name},"*) continue ;; esac
     base=$(printf '%s' "$name" | sed -E 's/-r[0-9]+$//')
     case "$listed_names" in
-        *",${name},"*|*",${base},"*) live_names="$live_names$name," ;;
+        *",${name},"*|*",${base},"*) live_names="$live_names$base:$name," ;;
         *) echo "# orphan session $name not in the fleet list" ;;
     esac
 done <<EOF
@@ -91,7 +91,9 @@ while IFS= read -r doc; do
     live=""
     for n in $(printf '%s' "${ident#*$'\t'}" | tr ',' ' '); do
         for cand in "$n" "$n-RESUME"; do
-            case "$live_names" in *",${cand},"*) live="$cand"; break 2 ;; esac
+            case "$live_names" in
+                *",${cand}:"*) rest="${live_names#*",${cand}:"}"; live="${rest%%,*}"; break 2 ;;
+            esac
         done
     done
     [ -n "$live" ] || continue
