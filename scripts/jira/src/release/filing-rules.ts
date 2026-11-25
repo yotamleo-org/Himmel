@@ -28,7 +28,7 @@ export interface Placement {
   rule: Rule;
   /** A declared version, or null for the backlog. */
   target: string | null;
-  /** Set when the ticket asks for a frozen current that only the chief or the operator's words may grant. */
+  /** Set when the rules only propose current and never place the ticket there: a label or gate in a frozen current or on a residual (rule L), or a follow-up of a current parent (rule P). Only the chief or the operator's words place it. */
   propose?: string;
   /** The rule's argument: a version, a priority, a parent key, a label or `gate-<g>`, or the ask's `by`. */
   arg: string;
