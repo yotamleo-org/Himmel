@@ -505,5 +505,5 @@ ttwm "$W/emptyroot"
 check "27 control, no read token: rc 0" "$rc" 0
 check "27 control: the merge-state read logs tok=main" "$(ttn '^tok=main argv=pr view 777 --json state,mergeCommit$')" 1
 check "27 control: no call logs tok=read" "$(ttn '^tok=read ')" 0
-check "28: no case wrote the default mirror's versions file""$SENT_BEFORE" "$(cksum < "$SENT" 2>/dev/null)"
+check "28: no case wrote the default mirror's versions file" "$SENT_BEFORE" "$(cksum < "$SENT" 2>/dev/null)"
 [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails FAILED"; exit 1; }
