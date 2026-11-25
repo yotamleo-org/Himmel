@@ -30,7 +30,8 @@
 #
 # Platform guard (posix-bash): POSIX bash 3.2+ plus git/grep/awk.
 # Exit: 0 = no hit, 1 = at least one hit (each printed as path:line: text),
-#       2 = usage error or the base could not be diffed (never a silent pass).
+#       2 = usage error, a named file that does not exist, or a base that could
+#       not be diffed (never a silent pass).
 set -uo pipefail
 
 ROOT=$(git rev-parse --show-toplevel)
@@ -75,6 +76,9 @@ if [ "${1:-}" = "--added" ]; then
   fork_point=$(git -C "$ROOT" merge-base "$2" HEAD) || { echo "check-version-timing-words: no common history with base: $2" >&2; exit 2; }
   records=$(records_of_diff "$fork_point") || { echo "check-version-timing-words: git diff against $2 failed" >&2; exit 2; }
 elif [ "$#" -gt 0 ]; then
+  for named in "$@"; do
+    [ -f "$ROOT/$named" ] || { echo "check-version-timing-words: no such file under the repo root: $named" >&2; exit 2; }
+  done
   records=$(printf '%s\n' "$@" | records_of_files)
 else
   records=$(git -C "$ROOT" ls-files -- docs scripts ':(glob)*.md' llms.txt | records_of_files)

@@ -36,15 +36,19 @@ bad() { echo "FAIL: $*" >&2; fail=$((fail + 1)); }
 
 V=v1.1.3
 
+must() {
+  "$@" || { echo "FAIL: setup step failed: $*" >&2; exit 1; }
+}
+
 setup_repo() {
-  R=$(tracked_fixture_dir) || return 1
-  git -C "$R" init -q
-  git -C "$R" config user.email t@t
-  git -C "$R" config user.name t
-  mkdir -p "$R/docs" "$R/scripts" "$R/docs/release"
+  R=$(tracked_fixture_dir) || exit 1
+  must git -C "$R" init -q
+  must git -C "$R" config user.email t@t
+  must git -C "$R" config user.name t
+  must mkdir -p "$R/docs" "$R/scripts" "$R/docs/release"
   echo "seed" >"$R/docs/seed.md"
-  git -C "$R" add -A
-  git -C "$R" commit -q -m init
+  must git -C "$R" add -A
+  must git -C "$R" commit -q -m init
 }
 
 run_lint() {
@@ -121,14 +125,14 @@ printf 'held %s %s\n' "until" "$V" >"$R/docs/a.md"
 printf '# held %s %s\n' "after" "$V" >"$R/scripts/x.sh"
 mkdir -p "$R/src"
 printf 'held %s %s\n' "until" "$V" >"$R/src/ignored.md"
-git -C "$R" add -A
+must git -C "$R" add -A
 run_lint
 if [ "$RC" -eq 1 ] && has "docs/a.md:1:" && has "scripts/x.sh:1:" && ! has "src/ignored.md"; then ok; else bad "census: rc $RC: $OUT"; fi
 
 setup_repo
 printf 'old: held %s %s\n' "until" "$V" >"$R/docs/old.md"
-git -C "$R" add -A
-git -C "$R" commit -q -m old
+must git -C "$R" add -A
+must git -C "$R" commit -q -m old
 printf 'fine line\nnew: held %s %s\n' "until" "$V" >>"$R/docs/old.md"
 run_lint --added HEAD
 expect_fail "--added new line" "docs/old.md:3:"
@@ -136,27 +140,27 @@ if has "docs/old.md:1:"; then bad "--added reported the old line: $OUT"; else ok
 
 setup_repo
 printf 'held %s %s\n' "until" "$V" >"$R/docs/old.md"
-git -C "$R" add -A
-git -C "$R" commit -q -m old
+must git -C "$R" add -A
+must git -C "$R" commit -q -m old
 printf 'a plain edit\n' >>"$R/docs/old.md"
 run_lint --added HEAD
 expect_pass "--added with only an old hit"
 
 setup_repo
 printf 'held %s %s\n' "until" "$V" >"$R/CHANGELOG.md"
-git -C "$R" add -A
+must git -C "$R" add -A
 run_lint --added HEAD
 expect_pass "--added in release notes"
 
 setup_repo
 trunk=$(git -C "$R" rev-parse --abbrev-ref HEAD)
-git -C "$R" branch -q side
+must git -C "$R" branch -q side
 printf 'main moved: held %s %s\n' "until" "$V" >"$R/docs/moved.md"
-git -C "$R" add -A
-git -C "$R" commit -q -m moved
-git -C "$R" checkout -q side
+must git -C "$R" add -A
+must git -C "$R" commit -q -m moved
+must git -C "$R" checkout -q side
 printf 'plain branch edit\n' >>"$R/docs/seed.md"
-git -C "$R" commit -q -am edit
+must git -C "$R" commit -q -am edit
 run_lint --added "$trunk"
 expect_pass "--added ignores what the base gained since the branch forked"
 
@@ -166,15 +170,19 @@ if [ "$RC" -eq 2 ]; then ok; else bad "--added with no base: want rc 2, got $RC:
 
 setup_repo
 trunk=$(git -C "$R" rev-parse --abbrev-ref HEAD)
-git -C "$R" checkout -q --orphan unrelated
-git -C "$R" commit -q --allow-empty -m unrelated
-git -C "$R" checkout -q "$trunk"
+must git -C "$R" checkout -q --orphan unrelated
+must git -C "$R" commit -q --allow-empty -m unrelated
+must git -C "$R" checkout -q "$trunk"
 run_lint --added unrelated
 if [ "$RC" -eq 2 ]; then ok; else bad "--added with a base sharing no history: want rc 2, got $RC: $OUT"; fi
 
 setup_repo
 run_lint --added no-such-ref
 if [ "$RC" -eq 2 ]; then ok; else bad "--added with an unknown base: want rc 2, got $RC: $OUT"; fi
+
+setup_repo
+run_lint docs/typo-no-such-file.md
+if [ "$RC" -eq 2 ]; then ok; else bad "a named file that does not exist: want rc 2, got $RC: $OUT"; fi
 
 echo "check-version-timing-words suite: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
