@@ -2894,6 +2894,14 @@ describe('create — topic search over open tickets', () => {
     expect(created()).toBe(false);
   });
 
+  it('a short title with a What section that holds the topic is still checked', async () => {
+    held = [HELD_11001];
+    play();
+    await expect(fileTopic('Placement rules', NEW_WHAT)).rejects.toThrow('exit');
+    expect(stderr()).toMatch(/HIMMEL-11001/);
+    expect(created()).toBe(false);
+  });
+
   it('control: an open ticket on another topic does not refuse', async () => {
     held = [UNRELATED];
     play();

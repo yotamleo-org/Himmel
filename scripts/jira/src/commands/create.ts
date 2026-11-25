@@ -810,7 +810,7 @@ async function openTopicMatches(
   const words = [...new Set([...mine].filter(([t, w]) => !t.includes(':') && /^[a-z0-9]+$/.test(w)).map(([, w]) => w))]
     .sort((a, b) => b.length - a.length)
     .slice(0, TOPIC_JQL_TERMS);
-  if (words.length === 0) return [];
+  if (mine.size < TOPIC_MIN_SHARED || words.length === 0) return [];
   const jql = `project = ${project} AND statusCategory != Done AND (${words.map((w) => `text ~ ${jqlQuote(w)}`).join(' OR ')})`;
   const sectorId = sectorField();
   const linked = new Set([o.followUpOf, o.residualOf, o.parent]);
@@ -860,7 +860,7 @@ export async function refuseOpenDuplicate(
     const close = (await openMatches(jql)).find((h) => titleSimilarity(title, h.fields?.summary ?? '') >= SIMILAR_TITLE);
     if (close) refuse(close, 'its title is close to this one');
   }
-  const held = all.length >= MIN_TITLE_WORDS ? await openTopicMatches(project, title, o) : [];
+  const held = await openTopicMatches(project, title, o);
   if (held.length > 0) {
     const list = held.map((h) => `${h.key} ("${h.fields?.summary ?? ''}", ${h.fields?.status?.name ?? 'unknown status'})`).join('; ');
     throw new CreateRefused(
