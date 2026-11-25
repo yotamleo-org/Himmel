@@ -72,7 +72,7 @@ cmd_sudo() { rs_later "part 3 (sudo bot)"; }
 # In order: every check that needs no write, the token (hidden prompt, getMe, role check), the token
 # store (checkpoint 1), pairing (a pasted token, or a saved token with no allowlist yet), the access.json
 # write (one id, the account that pressed Start, only when the file is absent), the bridge, and the final
-# read. A re-run that finds an allowlist never pairs.
+# read. An Enter-only re-run that finds an allowlist never pairs.
 cmd_bot() {
     rs_preflight curl jq node bun
     local access="$HOME/.claude/channels/telegram/access.json"
@@ -148,6 +148,7 @@ cmd_bot() {
         rs_pair
         lbl=$(printf '%s' "$RS_PAIR_LABEL" | LC_ALL=C tr -d '\000-\037\177')
         rs_step "paired with ${lbl:0:40} (Telegram id $RS_PAIR_ID)"
+        [ -z "$access_id" ] && [ -e "$access" ] && access_id=$(rs_access_id "$access" || printf BAD)
         if [ -z "$access_id" ]; then
             rs_json_edit "$access" '{}' '.allowFrom = [$id]' --arg id "$RS_PAIR_ID" \
                 || rs_fix "the allowlist could not be written to $(rs_tilde "$access"): check that the folder is writable, then run the same command again"
