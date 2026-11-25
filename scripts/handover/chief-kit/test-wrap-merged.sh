@@ -438,11 +438,16 @@ if command -v python3 >/dev/null 2>&1; then
     contains "23d: a snapshot that cannot take the versions lock gives up, tracker=failed:versions-lock" "$out" "tracker=failed:versions-lock"
     check "23d: and the file it waited on is left untouched" "v9.9.9	true	2026-01-01" "$(cat "$SHR.versions.tsv")"
     chmod 000 "$SHR.versions.tsv"
-    tracker_fixture 'https://claude.ai/artifact/x'
-    TICK_TRACKER_MIRROR_DIR="$SHR" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
-    chmod 644 "$SHR.versions.tsv"
-    contains "23d: a versions file that cannot be read is never replaced blind, tracker=failed:versions-read" "$out" "tracker=failed:versions-read"
-    check "23d: and it keeps its content" "v9.9.9	true	2026-01-01" "$(cat "$SHR.versions.tsv")"
+    if [ -r "$SHR.versions.tsv" ]; then
+        chmod 644 "$SHR.versions.tsv"
+        echo "skip - 23d: unreadable-file rows: this user reads through chmod 000"
+    else
+        tracker_fixture 'https://claude.ai/artifact/x'
+        TICK_TRACKER_MIRROR_DIR="$SHR" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+        chmod 644 "$SHR.versions.tsv"
+        contains "23d: a versions file that cannot be read is never replaced blind, tracker=failed:versions-read" "$out" "tracker=failed:versions-read"
+        check "23d: and it keeps its content" "v9.9.9	true	2026-01-01" "$(cat "$SHR.versions.tsv")"
+    fi
 else
     echo "skip - 15-18 tracker rows: no python3"
 fi
