@@ -14,9 +14,6 @@
 #       well-formed UUID (8-4-4-4-12 hex, lower- or uppercase) is kept; a malformed
 #       id is dropped, never returned. rc 1 when the doc is unreadable or has no
 #       front matter, else 0 (no ids is an empty output, rc 0).
-#
-# The caller supplies the config dir: this file reads no credential file and no
-# per-process variable block.
 
 proc_start_time() { sed -E 's/^.*\) //' "$1" | awk '{print $20}'; }
 
