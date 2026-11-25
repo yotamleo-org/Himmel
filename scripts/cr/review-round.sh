@@ -79,6 +79,14 @@
 # subjects. A .deferred-to that cannot be removed or written exits 5, like
 # every other state-file error; a write failure names the filed key for
 # --defer-to.
+# start runs bounded: an outer holds CR_REVIEW_START_TIMEOUT_SECS (1 to 280, default
+# 240) over a body in its own process group, with its output in temp files. A body that
+# answered, or exited by itself, is never refused. At the bound the outer stops the
+# body's group, releases the counter lock only when its record names the body, and
+# exits 5 with one line naming the last step reached and the processes it was waiting
+# on. It does not give the round back: the files stay as a hand kill leaves them, and
+# the next start settles them. When ps cannot confirm the caller, start does not split
+# and runs unbounded, with one stderr line saying so.
 # Bash 3.2-safe.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
@@ -112,6 +120,178 @@ usage() {
     echo "       review-round.sh start|check --pr <n> --head <40-hex sha>   (an outside PR reviewed from its diff, its branch not checked out; check reads only)" >&2
     echo "       review-round.sh abort --pr <n> --head <40-hex sha>   (give back that PR's round when its panel reviewed nothing)" >&2
     exit 2
+}
+
+rr_phase_file=""
+rr_caller="$PPID"
+rr_body=""
+rr_wd=""
+rr_dir=""
+rr_bound=240
+rr_usr1=0
+rr_lock_clause=""
+rr_phase() { [ -z "$rr_phase_file" ] || printf '%s\n' "$1" > "$rr_phase_file" 2>/dev/null; return 0; }
+
+rr_tree() {
+    local f="$1" n=0
+    {
+        { ps -ww -A -o pgid=,pid=,ppid=,stat=,args= 2>/dev/null || ps -A -o pgid=,pid=,ppid=,stat=,args= 2>/dev/null; } \
+            | awk -v g="$rr_body" '
+                { pg[NR] = $1; pd[NR] = $2; pp[NR] = $3; st[NR] = $4; ln[NR] = $0; n = NR; if ($1 == g) ing[$2] = 1 }
+                END {
+                    for (i = 1; i <= n; i++) if (st[i] !~ /^Z/ && (pg[i] == g || (pp[i] in ing))) {
+                        s = ln[i]
+                        sub(/^[ \t]*[0-9]+[ \t]+[0-9]+[ \t]+[0-9]+[ \t]+[^ \t]+[ \t]*/, "", s)
+                        print pd[i] " " substr(s, 1, 100)
+                    }
+                }' > "$f.part"
+    } </dev/null >/dev/null 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- &
+    rr_rt=$!
+    while [ "$n" -lt 20 ] && kill -0 "$rr_rt" 2>/dev/null; do n=$((n + 1)); sleep 0.1; done
+    if kill -0 "$rr_rt" 2>/dev/null || ! cat "$f.part" > "$f" 2>/dev/null; then
+        printf 'tree not read\n' > "$f"
+    fi
+    return 0
+}
+
+rr_stop_group() {
+    local n=0
+    kill -TERM -- "-$rr_body" 2>/dev/null || return 0
+    while [ "$n" -lt 2 ]; do
+        sleep 1
+        kill -0 -- "-$rr_body" 2>/dev/null || return 0
+        n=$((n + 1))
+    done
+    kill -KILL -- "-$rr_body" 2>/dev/null
+    return 0
+}
+
+rr_stop_watchdog() {
+    kill -KILL -- "-$rr_wd" 2>/dev/null
+    wait "$rr_wd" 2>/dev/null
+    return 0
+}
+
+rr_release_lock() {
+    local lib="$HIMMEL_ROOT/scripts/lib/shared-branch-lock.sh" rec rc
+    rr_lock_clause="the counter lock was not checked"
+    [ -f "$lib" ] && [ -f "$HIMMEL_ROOT/scripts/lib/qmd-bounded.sh" ] || return 0
+    # shellcheck source=scripts/lib/qmd-bounded.sh
+    # shellcheck disable=SC1091
+    . "$HIMMEL_ROOT/scripts/lib/qmd-bounded.sh" 2>/dev/null || return 0
+    # swallow-ok: rc 2 or 124 from the capped status call leaves the clause at "not checked"
+    rec="$(SHARED_BRANCH_LOCK_NS=himmel-cr-review-round QMD_KILL_GRACE_SECS=1 qmd_bounded 10 bash "$lib" status "." "$branch" 2>/dev/null)"
+    rc=$?
+    case "$rc" in
+        0) rr_lock_clause="it holds no counter lock" ;;
+        11)
+            case "$rec" in
+                "{\"pid\":$rr_body,"*|"{\"pid\":$rr_body}"*)
+                    SHARED_BRANCH_LOCK_NS=himmel-cr-review-round QMD_KILL_GRACE_SECS=1 \
+                        qmd_bounded 10 bash "$lib" release-if-owner "." "$branch" "$rec" >/dev/null 2>&1
+                    case $? in
+                        0) rr_lock_clause="the counter lock it held was released" ;;
+                        3) rr_lock_clause="it holds no counter lock" ;;
+                    esac ;;
+                '{"pid":'*) rr_lock_clause="it holds no counter lock" ;;
+                *) rr_lock_clause="the counter lock has no owner record; if no start or grant is running on $branch, clear it with SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash scripts/lib/shared-branch-lock.sh release . $branch" ;;
+            esac ;;
+    esac
+    return 0
+}
+
+rr_refuse() {
+    local last="unknown" tree round
+    [ -e "$rr_dir/flag" ] || rr_tree "$rr_dir/tree"
+    rr_stop_group
+    rr_stop_watchdog
+    rr_release_lock
+    cat "$rr_dir/err" >&2 2>/dev/null
+    [ ! -s "$rr_dir/phase" ] || read -r last < "$rr_dir/phase" || last="unknown"
+    # swallow-ok: an unreadable tree file reads as "nothing recorded" in the refusal line
+    tree="$(awk 'NR > 1 { printf "; " } { printf "%s", $0 }' "$rr_dir/tree" 2>/dev/null)"
+    [ -n "$tree" ] || tree="nothing recorded"
+    case "$last" in
+        snapshot-write|delta-write|persist)
+            round="its round may stay counted; a restart at ${head_sha:-unknown} continues it, and a start at another head may wait up to two hours" ;;
+        *) round="its round files are left as a killed start leaves them, and the next start settles them" ;;
+    esac
+    printf 'review-round: start on %s at %s %s (last step: %s) - %s; %s; it was waiting on: %s\n' \
+        "$branch" "${head_sha:-unknown}" "$1" "$last" "$rr_lock_clause" "$round" "$tree" >&2
+    exit 5
+}
+rr_on_signal() {
+    trap : TERM INT HUP
+    rr_refuse "was stopped by signal inside its ${rr_bound}s bound"
+}
+
+rr_start_outer() {
+    local why="" pp
+    # swallow-ok: a failed ps read leaves start unsplit, and the stderr line says why
+    pp="$(ps -o ppid= -p "$$" 2>/dev/null)" || pp=""
+    pp="${pp//[[:space:]]/}"
+    if [ "$pp" != "$PPID" ]; then why="ps cannot confirm the caller"
+    elif ! command -v sleep >/dev/null 2>&1; then why="no sleep on PATH"
+    # prim-ok: fixture copies of this script have no scripts/lib/prim.sh
+    elif ! rr_dir="$(mktemp -d "${TMPDIR:-/tmp}/review-round-start.XXXXXX" 2>/dev/null)"; then why="no temp dir"  # swallow-ok: a failed mktemp leaves start unsplit, and the stderr line says why
+    fi
+    if [ -n "$why" ]; then
+        rr_dir=""
+        echo "review-round: start runs unbounded ($why)" >&2
+        return 0
+    fi
+    trap 'rm -rf "$rr_dir"' EXIT
+    rr_bound="${CR_REVIEW_START_TIMEOUT_SECS:-240}"
+    case "$rr_bound" in ''|*[!0-9]*) rr_bound=240 ;; esac
+    { [ "$rr_bound" -ge 1 ] && [ "$rr_bound" -le 280 ]; } 2>/dev/null || rr_bound=240
+    trap 'rr_usr1=1' USR1
+    set -m
+    _RR_START_INNER=1 _RR_START_CALLER="$PPID" _RR_START_PHASE="$rr_dir/phase" "$BASH" "$0" start ${rr_args[@]+"${rr_args[@]}"} \
+        </dev/null >"$rr_dir/out" 2>"$rr_dir/err" 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- &
+    rr_body=$!
+    (
+        sleep "$rr_bound"
+        rr_tree "$rr_dir/tree"
+        : > "$rr_dir/flag"
+        rr_stop_group
+        kill -USR1 "$$" 2>/dev/null
+    ) </dev/null >/dev/null 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- &
+    rr_wd=$!
+    set +m
+    trap rr_on_signal TERM INT HUP
+    local w=0 st rc=0
+    while :; do
+        wait "$rr_body" 2>/dev/null
+        w=$?
+        if kill -0 "$rr_body" 2>/dev/null; then
+            if [ "$rr_usr1" -eq 1 ]; then
+                # swallow-ok: no stat means the body is gone, which the next wait settles
+                st="$(ps -o stat= -p "$rr_body" 2>/dev/null)"
+                st="${st//[[:space:]]/}"
+                case "$st" in ''|Z*) continue ;; *) rc=137; break ;; esac
+            fi
+            continue
+        fi
+        rc="$w"
+        break
+    done
+    trap : TERM INT HUP
+    if [ -s "$rr_dir/out" ]; then
+        rr_stop_watchdog
+        cat "$rr_dir/err" >&2
+        cat "$rr_dir/out"
+        [ "$rc" -le 128 ] || rc=0
+        exit "$rc"
+    fi
+    if [ "$rc" -ne 0 ] && [ "$rc" -le 128 ]; then
+        rr_stop_watchdog
+        cat "$rr_dir/err" >&2
+        exit "$rc"
+    fi
+    if [ -e "$rr_dir/flag" ]; then rr_refuse "did not finish within ${rr_bound}s"
+    elif [ "$rc" -gt 128 ]; then rr_refuse "was killed by signal $((rc - 128))"
+    else rr_refuse "exited 0 but its answer was lost"
+    fi
 }
 
 # test_path_p <path>: the test-path rule of the scope record.
@@ -279,6 +459,7 @@ EOF
 # inc_t, inc_merge, inc_mt_out, inc_mt_rc, inc_empty and inc_size (empty when
 # unknown); fails when there is no increment. .delta and .free record R, not L.
 increment_of() {
+    rr_phase increment
     inc_l="" inc_b="" inc_t="" inc_merge=0 inc_mt_out="" inc_mt_rc=0 inc_empty=0 inc_size=""
     git merge-base --is-ancestor "$1" "$2" 2>/dev/null || return 1
     if [ -n "$base_sha" ]; then
@@ -456,6 +637,7 @@ clean_merge_forward() {
 verb="${1:-}"
 [ -n "$verb" ] || usage
 shift
+rr_args=("$@")
 # read-only, writes no state, so it needs no --branch: the answer
 # is a pure function of the two commits in cwd's repository.
 if [ "$verb" = "trivial-descendant" ]; then
@@ -521,6 +703,23 @@ case "$verb" in
     *) usage ;;
 esac
 
+if [ "$verb" = "start" ] && [ "${_RR_START_INNER:-}" = 1 ]; then
+    rr_c="${_RR_START_CALLER:-}"
+    rr_phase_file="${_RR_START_PHASE:-}"
+    unset _RR_START_INNER _RR_START_CALLER _RR_START_PHASE
+    # swallow-ok: a failed ps read cannot confirm the caller, and the body then exits 5
+    rr_pp="$(ps -o ppid= -p "$PPID" 2>/dev/null)" || rr_pp=""
+    rr_pp="${rr_pp//[[:space:]]/}"
+    if [ -n "$rr_c" ] && [ "$rr_pp" = "$rr_c" ]; then
+        rr_caller="$rr_c"
+    else
+        echo "review-round: cannot confirm the caller of start" >&2
+        exit 5
+    fi
+elif [ "$verb" = "start" ]; then
+    rr_start_outer
+fi
+
 if ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
     echo "review-round: invalid branch name '$branch'" >&2
     exit 2
@@ -546,6 +745,7 @@ fi
 # no consumer re-resolves the caller string. Offline, no gh, an unreadable
 # answer or any other status refuses EVERY --base-sha round (exit 8, fail closed).
 if [ -n "$base_sha" ]; then
+    rr_phase verify-base
     # shellcheck source=scripts/lib/timeout-bin.sh
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
@@ -686,6 +886,7 @@ state_sha() {
 # start-written records name a candidate, never a ledger row the session could
 # append itself, and a missing .head stays fail-closed.
 reviewed_head() {
+    rr_phase reviewed-head
     _rh_head="$(state_sha "$head_state")" || return 1
     if [ "$(ledger_query avail "$_rh_head")" = "ok" ]; then
         printf '%s\n' "$_rh_head"
@@ -823,7 +1024,7 @@ EOF
 
 snap_starter() {
     if [ -z "$snap_pid" ]; then echo unknown
-    elif [ "$snap_pid" = "$PPID" ]; then echo caller
+    elif [ "$snap_pid" = "$rr_caller" ]; then echo caller
     elif kill -0 "$snap_pid" 2>/dev/null; then echo alive
     else echo ended
     fi
@@ -1498,7 +1699,7 @@ delta_check() {
             case "$run_pid" in
                 ''|*[!0-9]*) run_pid="" ;;
             esac
-            if [ -n "$run_pid" ] && [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; then
+            if [ -n "$run_pid" ] && [ "$run_pid" != "$rr_caller" ] && kill -0 "$run_pid" 2>/dev/null; then
                 echo "review-round: the delta round on $branch is already running (start by pid $run_pid) - wait for it" >&2
                 return 8
             fi
@@ -1894,7 +2095,7 @@ if [ -n "$pr" ]; then
         [ "$verb" != "start" ] || SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
             bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
     }
-    if [ "$verb" = "start" ]; then counter_lock || exit 5; fi
+    if [ "$verb" = "start" ]; then rr_phase lock; counter_lock || exit 5; fi
     read_round || { pr_unlock; exit 5; }
     # A start at the head the counted round already ran on is bookkeeping: it reuses that
     # round, and that round does not count against the cap when it is authorized.
@@ -1906,13 +2107,14 @@ if [ -n "$pr" ]; then
         pr_reuse=1
         pr_used=$((round - 1))
     fi
+    rr_phase authorize
     if ! pr_auth="$(outside_pr_authorize "$pr" "$head_sha" "$pr_used")"; then
         pr_unlock
         echo "review-round: PR #$pr at $head_sha is not authorized for a no-checkout review (author not on the allowlist, no recorded approval for exactly this head, the full-round cap used, or the forge could not be read) - nothing was recorded" >&2
         exit 5
     fi
     if [ "$pr_reuse" -eq 1 ]; then
-        [ "$verb" != "start" ] || { [ -f "$delta_run" ] && printf '%s\n' "$PPID" >> "$delta_run" 2>/dev/null; } || rm -f "$delta_run" 2>/dev/null
+        [ "$verb" != "start" ] || { [ -f "$delta_run" ] && printf '%s\n' "$rr_caller" >> "$delta_run" 2>/dev/null; } || rm -f "$delta_run" 2>/dev/null
         pr_unlock
         if [ "$verb" = "check" ]; then printf '%s %s\n' "$round" "$pr_auth"; else printf '%s\n' "$round"; fi
         exit 0
@@ -1922,6 +2124,7 @@ if [ -n "$pr" ]; then
         printf '%s %s\n' "$pr_next" "$pr_auth"
         exit 0
     fi
+    rr_phase persist
     pr_tmp_state="$state.tmp.$$"
     pr_tmp_head="$head_state.tmp.$$"
     # swallow-ok: an unreadable lock status reads as "not the owner", which refuses the write below
@@ -1935,7 +2138,7 @@ if [ -n "$pr" ]; then
         echo "review-round: cannot persist round $pr_next for PR #$pr under the counter lock" >&2
         exit 5
     fi
-    printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
+    printf '%s\n' "$rr_caller" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
     if ! SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
         bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1; then
         echo "review-round: persisted round $pr_next for PR #$pr but could not release its counter lock" >&2
@@ -1946,6 +2149,7 @@ if [ -n "$pr" ]; then
 fi
 
 if [ "$verb" = "start" ]; then
+    rr_phase lock
     counter_lock || exit 5
     start_unlock() {
         SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
@@ -1962,6 +2166,7 @@ if [ "$verb" = "start" ]; then
     fi
     snap_wrote=0
     snap_rc=1
+    rr_phase snapshot
     [ -z "$start_head" ] || { snap_rc=0; snap_load || snap_rc=$?; }
     if [ "$snap_rc" -eq 5 ]; then
         start_unlock
@@ -1990,12 +2195,12 @@ if [ "$verb" = "start" ]; then
             restore_snapshot || snap_rc=5
         elif [ "$snap_head" = "$start_head" ] && [ "$snap_complete" = 1 ] \
             && { [ "$snap_who" = caller ] || [ "$snap_who" = ended ]; }; then
-            if ! snap_write continue "$PPID"; then
+            if ! snap_write continue "$rr_caller"; then
                 start_unlock
                 echo "review-round: cannot record the restart in the round snapshot $snap_state" >&2
                 exit 5
             fi
-            printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
+            printf '%s\n' "$rr_caller" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
             start_unlock
             printf '%s\n' "$snap_answer"
             exit 0
@@ -2049,6 +2254,7 @@ if [ "$verb" = "start" ]; then
             start_class="$inc_class"
         fi
     else
+        rr_phase delta-check
         delta_check
         delta_rc=$?
         if [ "$delta_rc" -ne 0 ]; then
@@ -2065,7 +2271,8 @@ if [ "$verb" = "start" ]; then
     fi
     snap_start() {
         [ -n "$start_head" ] || return 0
-        if ! snap_write before "$start_head" "$PPID" "$(date +%s)" "${snap_list[@]}"; then
+        rr_phase snapshot-write
+        if ! snap_write before "$start_head" "$rr_caller" "$(date +%s)" "${snap_list[@]}"; then
             echo "review-round: cannot write the round snapshot $snap_state - no round is started" >&2
             return 5
         fi
@@ -2079,6 +2286,7 @@ if [ "$verb" = "start" ]; then
     if [ "$postcap" -eq 1 ]; then
         delta_rc=0
         if [ "$start_class" = work ] && [ "${delta_reuse:-0}" -eq 0 ]; then
+            rr_phase delta-write
             # The delta round is recorded first and the judge
             # record consumed after it; a failed consume restores the prior
             # .delta, so a record is never spent on a round that never started.
@@ -2137,6 +2345,7 @@ if [ "$verb" = "start" ]; then
             exit "$delta_rc"
         fi
     fi
+    rr_phase persist
     counted=1
     case "$start_class" in tests|comments|merge-resolution|fix) counted=0 ;; esac
     # A reused pending delta round keeps the counter it already took.
@@ -2205,7 +2414,7 @@ if [ "$verb" = "start" ]; then
     # Written under the counter lock, so the pid checks in delta_check and
     # abort and this claim cannot interleave between two starts.
     # Best effort - a failed write only loses the guard.
-    printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
+    printf '%s\n' "$rr_caller" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
     if [ "$postcap" -eq 1 ]; then
         start_answer="$round delta $inc_l"
     elif [ "$start_class" != full ] && [ "$inc_empty" -eq 0 ]; then
