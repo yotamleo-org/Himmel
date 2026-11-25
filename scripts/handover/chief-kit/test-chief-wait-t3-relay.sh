@@ -109,10 +109,12 @@ printf '%s\n' "$*" >> "$STUB/relay.calls"
 if [ -e "/proc/$$/fd/9" ]; then echo open > "$STUB/relay.fd9"; else echo closed > "$STUB/relay.fd9"; fi
 readlink "/proc/$$/fd/0" > "$STUB/relay.stdin" 2>/dev/null
 [ -s "$STUB/relay.out" ] && cat "$STUB/relay.out"
-exit "$(cat "$STUB/relay.rc" 2>/dev/null || echo 0)"
+rc="$(cat "$STUB/relay.rc" 2>/dev/null || echo 0)"
+printf '%s\n' "$rc" >> "$STUB/relay.done"
+exit "$rc"
 EOF
 export CHIEF_WAIT_T3_RELAY="$STUB/relay.sh" CHIEF_WAIT_T3_RELAY_SEC=1
-relay_reset() { rm -f "$STUB/relay.calls" "$STUB/relay.fd9" "$STUB/relay.stdin" "$STUB/relay.out" "$STUB/relay.rc"; }
+relay_reset() { rm -f "$STUB/relay.calls" "$STUB/relay.done" "$STUB/relay.fd9" "$STUB/relay.stdin" "$STUB/relay.out" "$STUB/relay.rc"; }
 
 relay_reset
 fleet_plain hk
@@ -171,10 +173,9 @@ relay_reset
 fleet_plain rc4b
 : > "$STUB/relay.out"; echo 4 > "$STUB/relay.rc"
 start "$I" "$WORK/rc4b.out" --doc "$FD" --workers-from "$FM"
-n=0; while [ "$n" -lt 100 ] && [ "$(calls)" != 2 ]; do sleep 0.1; n=$((n + 1)); done
+n=0; while [ "$n" -lt 100 ] && [ "$(wc -l < "$STUB/relay.done" 2>/dev/null || echo 0)" -lt 2 ]; do sleep 0.1; n=$((n + 1)); done
 echo 0 > "$STUB/relay.rc"
-n=0; while [ "$n" -lt 100 ] && [ "$(calls)" -lt 3 ]; do sleep 0.1; n=$((n + 1)); done
-sleep 0.5
+n=0; while [ "$n" -lt 100 ] && [ "$(wc -l < "$STUB/relay.done" 2>/dev/null || echo 0)" -lt 3 ]; do sleep 0.1; n=$((n + 1)); done
 echo 4 > "$STUB/relay.rc"
 wait_exit "$WPID"
 check "(rc4b) an rc 0 run between rc 4 runs ends the streak: the wake needs three rc 4 runs after it" "0|WAKE t3-relay list-failed list|6" "$rc|$(grep '^WAKE ' "$WORK/rc4b.out" | head -n 1)|$(calls)"
