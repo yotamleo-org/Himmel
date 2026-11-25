@@ -121,9 +121,13 @@ def past_boot_of_matched_host(boot):
         return False
 
 
+def damaged(owner):
+    return not isinstance(owner, dict) or set(owner) != set(OWNER_FIELDS) or any(type(owner[key]) is not kind for key, kind in OWNER_FIELDS.items())
+
+
 def process_state(owner):
     """Absence is proof only for an exact local host/boot/start identity, or a past boot of this machine; an owner that is not exactly those fields is unknown."""
-    if not isinstance(owner, dict) or set(owner) != set(OWNER_FIELDS) or any(type(owner[key]) is not kind for key, kind in OWNER_FIELDS.items()):
+    if damaged(owner):
         return 'unknown'
     try:
         local = identity(os.getpid())
@@ -174,7 +178,7 @@ def has_reservation(record, pid):
 
 def release_reservation(record):
     slots = slots_root()
-    allowed = [record['owner'], record.get('committer'), (record.get('reservation') or {}).get('owner')]
+    allowed = [record.get('owner'), record.get('committer'), (record.get('reservation') or {}).get('owner')]
     if slots.exists():
         for slot in slots.iterdir():
             path = slot / 'managed.json'
@@ -293,7 +297,7 @@ def receipt(record, outcome, **extra):
     path.parent.mkdir(parents=True, exist_ok=True)
     row = dict(v=2, kind='launch-attempt', source='fleet-runtime', ts=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                attempt_id=record['attempt_id'], name=record['name'], doc=record['doc'],
-               family=record['family'], owner=record['owner'], session=record.get('session'), outcome=outcome,
+               family=record['family'], owner=record.get('owner'), session=record.get('session'), outcome=outcome,
                cause=record.get('cause', 'runtime'), phase='runtime',
                committer=record.get('committer'), reservation=record.get('reservation'), manifest=record.get('manifest'), **extra)
     line = (json.dumps(row) + '\n').encode()
@@ -528,7 +532,7 @@ def marker(doc, skip=None):
     try:
         lines = Path(doc).read_text().splitlines()
         return next((line for line in reversed(lines) if re.match(r'^- \d{1,2}:\d{2} [A-Z]', line) and not (skip and re.match(skip, line))), '')
-    except OSError:
+    except (OSError, ValueError):  # a path holding a NUL byte names no file, as a missing one names none
         return ''
 
 
@@ -556,11 +560,14 @@ def worker_keys(doc):
 
 
 def session_scan(record, deadline):
-    local = identity(os.getpid())
-    if record['owner']['host'] != local['host']:
+    owner = record.get('owner')
+    if not isinstance(owner, dict) or not isinstance(owner.get('host'), str) or not isinstance(owner.get('boot'), str):
         return None, False
-    if record['owner']['boot'] != local['boot']:
-        return (None, True) if past_boot_of_matched_host(record['owner']['boot']) else (None, False)
+    local = identity(os.getpid())
+    if owner['host'] != local['host']:
+        return None, False
+    if owner['boot'] != local['boot']:
+        return (None, True) if past_boot_of_matched_host(owner['boot']) else (None, False)
     absent = True
     for path in Path('/proc').iterdir():
         if time.monotonic() >= deadline:
@@ -640,15 +647,41 @@ def launch_candidates(record, deadline):
     return carrying, unreadable, True
 
 
-def settle_blockers(record, outcomes, deadline):
+def damaged_identities(record):
+    return [who for who in ('owner', 'committer') if (who == 'owner' or who in record) and damaged(record.get(who))]
+
+
+def local_pid_alive(held):
+    if not isinstance(held, dict) or type(held.get('pid')) is not int or held['pid'] <= 0:
+        return False
+    local = identity(os.getpid())
+    if held.get('host') != local['host'] or held.get('boot') != local['boot']:
+        return False
+    try:
+        return Path('/proc', str(held['pid']), 'stat').read_text().rsplit(')', 1)[1].split()[0] not in ('Z', 'X')
+    except FileNotFoundError:
+        return False
+    except (OSError, IndexError):
+        return True
+
+
+def settle_blockers(record, outcomes, deadline, owner_record_damaged=False):
     """Why a stuck attempt cannot be settled as refused with no session now; empty when every precondition holds.
     Evidence only: the committed or unknown phase, the process identity of the owner and the committer, one full readable
     session scan, and the attempt's history. It reads no age and no elapsed time; the deadline only bounds the scan."""
     blockers = []
     if record['phase'] not in ('committed', 'unknown'):
         blockers.append('phase is %s (settle takes a committed or unknown attempt)' % record['phase'])
+    broken = damaged_identities(record)
     for who in ('owner', 'committer'):
-        state = process_state(record[who]) if record.get(who) else 'dead'
+        held = record.get(who)
+        if who in broken:
+            if not owner_record_damaged:
+                blockers.append('%s is not proven dead (unknown) (the record is damaged: add --owner-record-damaged)' % who)
+            elif local_pid_alive(held):
+                blockers.append('%s pid %s is alive; the record is damaged so pid reuse cannot be ruled out' % (who, held['pid']))
+            continue
+        state = process_state(held) if held else 'dead'
         if state != 'dead':
             blockers.append('%s is not proven dead (%s)' % (who, state))
     seen = sorted(outcomes & {'launched', 'refused', 'complete'})
@@ -671,10 +704,13 @@ def settle_blockers(record, outcomes, deadline):
 def settle_hint(record, outcomes, deadline):
     """Text for the chief that reads ack. Nothing runs it."""
     blockers = settle_blockers(record, outcomes, deadline)
+    flag = ''
+    if blockers and damaged_identities(record) and not settle_blockers(record, outcomes, deadline, True):
+        blockers, flag = [], ' --owner-record-damaged'
     if blockers:
         return {'settleable': False, 'text': 'not settleable now: ' + '; '.join(blockers)}
-    command = 'fleet-manifest.sh runtime settle --manifest %s --doc %s --name %s --attempt-id %s --reason %s --confirm-no-session' % (
-        shlex.quote(record['manifest']), shlex.quote(record['doc']), shlex.quote(record['name']), shlex.quote(record['attempt_id']), shlex.quote('<why>'))
+    command = 'fleet-manifest.sh runtime settle --manifest %s --doc %s --name %s --attempt-id %s --reason %s --confirm-no-session%s' % (
+        shlex.quote(record['manifest']), shlex.quote(record['doc']), shlex.quote(record['name']), shlex.quote(record['attempt_id']), shlex.quote('<why>'), flag)
     return {'settleable': True, 'text': 'settleable now. Only after you have checked that no launch of this worker is still starting, and with <why> replaced by the reason in your own words, type: ' + command}
 
 
@@ -692,23 +728,27 @@ def settle_attempt(args, attempts, rows, doc, history):
     record = attempts.get(args.attempt_id)
     if not record:
         row = history.get(args.attempt_id, {})
-        if row.get('outcome') == 'refused' and row.get('cause') == 'settled-no-session' and row.get('doc') == doc:
-            return {'replayed': True, 'phase': 'refused', 'cause': 'settled-no-session'}
+        if row.get('outcome') == 'refused' and row.get('cause') in ('settled-no-session', 'settled-damaged-owner') and row.get('doc') == doc:
+            return {'replayed': True, 'phase': 'refused', 'cause': row['cause']}
         raise Refused('settle refused: unknown attempt')
     if record['doc'] != doc or record['name'] != args.name:
         raise Refused('settle refused: attempt locator conflict')
-    blockers = settle_blockers(record, attempt_outcomes({args.attempt_id})[args.attempt_id], time.monotonic() + 5)
+    broken = damaged_identities(record)
+    if args.owner_record_damaged and not broken:
+        raise Refused('settle refused: --owner-record-damaged given but no identity record is damaged')
+    blockers = settle_blockers(record, attempt_outcomes({args.attempt_id})[args.attempt_id], time.monotonic() + 5, args.owner_record_damaged)
     if blockers:
         raise Refused('settle refused: ' + '; '.join(blockers))
-    evidence = dict(phase=record['phase'], owner='dead', committer='dead' if record.get('committer') else None, scan='absent',
+    evidence = dict(phase=record['phase'], owner='damaged' if 'owner' in broken else 'dead',
+                    committer='damaged' if 'committer' in broken else 'dead' if record.get('committer') else None, scan='absent',
                     carriers='none', session=bool(record.get('session')))
-    record['cause'] = 'settled-no-session'
+    record['cause'] = 'settled-damaged-owner' if args.owner_record_damaged else 'settled-no-session'
     receipt(record, 'refused', reason=reason[:1000], evidence=evidence,
             settled_by=dict(host=socket.gethostname(), pid=os.getpid(), uid=os.getuid()))
     release_reservation(record)
     del attempts[args.attempt_id]
     rows[:] = [w for w in rows if not (w.get('doc') == doc and w.get('attempt', {}).get('attempt_id') == args.attempt_id)]
-    return {'phase': 'refused', 'cause': 'settled-no-session'}
+    return {'phase': 'refused', 'cause': record['cause']}
 
 
 def reconcile(attempts, rows, history, deadline, effects=True):
@@ -724,10 +764,10 @@ def reconcile(attempts, rows, history, deadline, effects=True):
                 terminal = row['outcome']
         elif same_receipt(record, row) and row.get('outcome') == 'launched':
             record['phase'] = 'launched'
-        if not terminal and record['phase'] == 'pending' and not record.get('handoff_started') and process_state(record['owner']) == 'dead':
+        if not terminal and record['phase'] == 'pending' and not record.get('handoff_started') and process_state(record.get('owner')) == 'dead':
             record['cause'] = 'launcher-lost-precommit'
             terminal = 'refused'
-        elif not terminal and not live(record['owner']) and record['phase'] != 'launched':
+        elif not terminal and not live(record.get('owner')) and record['phase'] != 'launched':
             record['phase'] = 'unknown'
         if not terminal and record.get('phase') == 'unknown':
             session = session_evidence(record, min(deadline, time.monotonic() + 1))
@@ -836,7 +876,7 @@ def joined_attempt(attempts, doc, attempt_id):
     if not record or record['doc'] != doc or record['phase'] not in ('committed', 'launched'):
         return None
     chain = ancestors()
-    if any(isinstance(holder, dict) and holder.get('pid') in chain and live(holder) for holder in (record['owner'], record.get('session'))):
+    if any(isinstance(holder, dict) and holder.get('pid') in chain and live(holder) for holder in (record.get('owner'), record.get('session'))):
         return record
     return None
 
@@ -856,7 +896,52 @@ def admit_read_only(manifest, doc, name, join=''):
     return dict(value, joined=joined['attempt_id'] if joined else None)
 
 
+def peer_rows_of(manifest, data):
+    rows = []
+    for source in {manifest, *manifest.parent.glob('*.fleet.json')}:
+        peer = read(source)
+        for row in peer.get('workers', peer.get('legs', [])):
+            rows.append(dict(row, ownership='unverified') if peer.get('control') != data.get('control') else row)
+    return rows
+
+
+def ack_listing(value, attempts, peer_rows, history, deadline):
+    inflight = [r for r in attempts.values() if r['phase'] in ('pending', 'committed')]
+    unknown = [r for r in attempts.values() if r['phase'] == 'unknown']
+    legacy = {}
+    current_docs = {record['doc'] for record in attempts.values()}
+    for row in peer_rows:
+        if row['doc'] in current_docs or (row.get('ownership') != 'unverified' and row.get('registration') == 'pending' and not row.get('attempt')):
+            continue
+        if row.get('ownership') != 'unverified' and row.get('registration') == 'pending' and history.get(row.get('attempt', {}).get('attempt_id'), {}).get('outcome') in ('refused', 'complete'):
+            continue
+        if time.monotonic() >= deadline or worker_state(row['doc'], max(.01, deadline - time.monotonic())) != 'wrapped':
+            legacy[row['doc']] = dict(doc=row['doc'], label=row.get('label'),
+                                      attempt_id=row.get('attempt', {}).get('attempt_id'), phase='legacy-unknown')
+    hint_deadline, outcomes = time.monotonic() + 3, attempt_outcomes({r['attempt_id'] for r in unknown})
+    return dict(value, in_flight=inflight,
+                unknown=[dict(r, settle_hint=settle_hint(r, outcomes[r['attempt_id']], hint_deadline)) for r in unknown],
+                legacy_unknown=list(legacy.values()), quiescent=value['mode'] != 'active' and not attempts and not legacy,
+                launched=[r for r in attempts.values() if r['phase'] == 'launched'])
+
+
+def ack_read_only(manifest):
+    value = snapshot(manifest)
+    attempts = read(manifest.parent / 'fleet-control.json').get('attempts', {})
+    data = read(manifest)
+    rows = data.get('workers', [])
+    peer_rows = peer_rows_of(manifest, data)
+    history = receipts(set(attempts) | {row.get('attempt', {}).get('attempt_id') for row in peer_rows})
+    deadline = time.monotonic() + 5
+    reconcile(attempts, rows, history, deadline, effects=False)
+    return ack_listing(value, attempts, peer_rows, history, deadline)
+
+
 def run(args):
+    if args.read_only and args.op != 'ack':
+        raise Refused('--read-only is only for ack')
+    if args.owner_record_damaged and args.op != 'settle':
+        raise Refused('--owner-record-damaged is only for settle')
     if args.op == 'disposition':
         return disposition(args.doc)
     if args.op == 'reservation':
@@ -898,6 +983,8 @@ def run(args):
             raise Refused('settle refused: the doc is not a managed worker')
         return {'managed': False, 'administrative': bool(args.doc and (Path(args.doc).resolve().parent / 'fleet-control.json').exists())}
     anchor = manifest.parent / 'fleet-control.json'
+    if args.op == 'ack' and args.read_only:
+        return dict(ack_read_only(manifest), managed=True)
     if args.op in ('resolve', 'admit'):
         value = admit_read_only(manifest, args.doc, args.name, args.join_attempt) if args.op == 'admit' else snapshot(manifest)
         return dict(value, managed=True, manifest=str(manifest), slots=str(slots_root()))
@@ -908,12 +995,7 @@ def run(args):
         data = read(manifest)
         rows = data.setdefault('workers', [])
         doc = str(Path(args.doc).resolve()) if args.doc else ''
-        peer_rows = []
-        if args.op in ('ack', 'reconcile'):
-            for source in {manifest, *manifest.parent.glob('*.fleet.json')}:
-                peer = read(source)
-                for row in peer.get('workers', peer.get('legs', [])):
-                    peer_rows.append(dict(row, ownership='unverified') if peer.get('control') != data.get('control') else row)
+        peer_rows = peer_rows_of(manifest, data) if args.op in ('ack', 'reconcile') else []
         history = receipts(set(attempts) | {args.attempt_id} | {row.get('attempt', {}).get('attempt_id') for row in peer_rows})
         if args.op == 'ended-attempts':
             settled = settle_ended(attempts, rows, doc, '', [], effects=True)
@@ -931,23 +1013,7 @@ def run(args):
                 raise Refused('fleet-paused')
             return dict(value, managed=True, manifest=str(manifest), slots=str(slots_root()))
         if args.op in ('ack', 'reconcile'):
-            inflight = [r for r in attempts.values() if r['phase'] in ('pending', 'committed')]
-            unknown = [r for r in attempts.values() if r['phase'] == 'unknown']
-            legacy = {}
-            current_docs = {record['doc'] for record in attempts.values()}
-            for row in peer_rows:
-                if row['doc'] in current_docs or (row.get('ownership') != 'unverified' and row.get('registration') == 'pending' and not row.get('attempt')):
-                    continue
-                if row.get('ownership') != 'unverified' and row.get('registration') == 'pending' and history.get(row.get('attempt', {}).get('attempt_id'), {}).get('outcome') in ('refused', 'complete'):
-                    continue
-                if time.monotonic() >= deadline or worker_state(row['doc'], max(.01, deadline - time.monotonic())) != 'wrapped':
-                    legacy[row['doc']] = dict(doc=row['doc'], label=row.get('label'),
-                                              attempt_id=row.get('attempt', {}).get('attempt_id'), phase='legacy-unknown')
-            hint_deadline, outcomes = time.monotonic() + 3, attempt_outcomes({r['attempt_id'] for r in unknown})
-            return dict(value, in_flight=inflight,
-                        unknown=[dict(r, settle_hint=settle_hint(r, outcomes[r['attempt_id']], hint_deadline)) for r in unknown],
-                        legacy_unknown=list(legacy.values()), quiescent=value['mode'] != 'active' and not attempts and not legacy,
-                        launched=[r for r in attempts.values() if r['phase'] == 'launched'])
+            return ack_listing(value, attempts, peer_rows, history, deadline)
         if not re.fullmatch(r'[A-Za-z0-9-]{1,80}', args.attempt_id):
             raise Refused('invalid attempt id')
         if args.op == 'settle':
@@ -1072,7 +1138,7 @@ def run(args):
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle', 'ended-attempts', 'unlaunched'])
     parser.add_argument('--doc', default='')
     parser.add_argument('--manifest', default='')
@@ -1085,10 +1151,16 @@ def main():
     parser.add_argument('--lane', choices=['native', 'claudex', 'openrouter', 'deepseek', 'api'], default='native')
     parser.add_argument('--reason', default='')
     parser.add_argument('--confirm-no-session', action='store_true')
+    parser.add_argument('--owner-record-damaged', action='store_true')
+    parser.add_argument('--read-only', action='store_true')
     parser.set_defaults(spawn_failed=False)
     argv = sys.argv[1:]
     command = argv[argv.index('--') + 1:] if '--' in argv else []
-    args = parser.parse_args(argv[:argv.index('--')] if '--' in argv else argv)
+    options = argv[:argv.index('--')] if '--' in argv else argv
+    if sum(option == '--attempt-id' or option.startswith('--attempt-id=') for option in options) > 1:
+        print('fleet-runtime: fleet-paused: settle refused: one --attempt-id only; an attempt is ended by name, never by list or glob', file=sys.stderr)
+        return 10
+    args = parser.parse_args(options)
     try:
         if args.op == 'run':
             if not command:
