@@ -709,10 +709,33 @@ lookonly_carry() {
         rm -f "$housekeeping_file" "$housekeeping_file.since"
     fi
 }
+# Bash holds a trapped signal until the foreground command it is running exits, and a `$(...)` counts as
+# one: a stop signal that lands during the poll sleep, a slow tick or the bank read ends the waiter only
+# when that step does. The steps that wait on a child (the poll sleep, the tick, the bank read) therefore
+# run it in the background and `wait` on it, which a trapped signal interrupts at once, and the stop
+# traps TERM that child without waiting for it (a `timeout`-wrapped child then ends itself within its
+# own kill grace).
+child_pid=""
+stoppable() {
+    local out="$1" err="$2" rc
+    shift 2
+    "$@" > "$out" 2> "$err" 9>&- &
+    child_pid=$!
+    wait "$child_pid"; rc=$?
+    child_pid=""
+    return "$rc"
+}
+nap() {
+    sleep "$1" 9>&- &
+    child_pid=$!
+    wait "$child_pid"
+    child_pid=""
+}
+child_stop() { [ -z "$child_pid" ] || kill "$child_pid" 2>/dev/null; return 0; }  # swallow-ok: a child that already ended needs no kill
 trap '[ -z "${marker_carry_on:-}" ] || marker_carry; lookonly_carry; digest_flush; heartbeat exited "$exit_reason"' EXIT
-trap "exit_reason='signal-TERM'; exit 143" TERM
-trap "exit_reason='signal-INT'; exit 130" INT
-trap "exit_reason='signal-HUP'; exit 129" HUP
+trap "exit_reason='signal-TERM'; child_stop; exit 143" TERM
+trap "exit_reason='signal-INT'; child_stop; exit 130" INT
+trap "exit_reason='signal-HUP'; child_stop; exit 129" HUP
 # The supervisor only samples for a safe point, so a stream child honours a stop request at each one itself.
 stream_stop_point() {
     [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] || return 0
@@ -769,20 +792,21 @@ else
     args_hash="$(printf '%s\n' "$*" | sha256sum | cut -c1-16)"  # gnu-ok: Linux-only kit (PLATFORM GUARD)
 fi
 
-# bank_word: prints the bank-preflight verdict token; non-zero when the read
+# bank_word: sets bank_val to the bank-preflight verdict token; non-zero when the read
 # failed, timed out, or its last line is not one of the verdict tokens.
 bank_word() {
     local out
+    bank_val=""
     if [ -n "${CHIEF_WAIT_USAGE:-}" ]; then
-        out="$(bash "$CHIEF_WAIT_USAGE" 2>/dev/null)" || return 1
+        stoppable "$hb_file.bankout" /dev/null bash "$CHIEF_WAIT_USAGE" || return 1
     else
         # gnu-ok: Linux-only kit (timeout). Same side-effect-free spelling tick.sh uses for its fleet census.
-        out="$(CADENCE_USAGE_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null timeout -k 5 "$tick_timeout" \
-            bash "$REPO/scripts/lib/usage-preflight.sh" 2>/dev/null)" || return 1
+        stoppable "$hb_file.bankout" /dev/null env CADENCE_USAGE_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null \
+            timeout -k 5 "$tick_timeout" bash "$REPO/scripts/lib/usage-preflight.sh" || return 1
     fi
-    out="$(printf '%s\n' "$out" | tail -n 1)"
+    out="$(tail -n 1 "$hb_file.bankout")"
     case "$out" in
-        PROCEED|SKIPPED-BANK|SKIPPED-FLEET|BANK-STALE|BANK-UNKNOWN) printf '%s\n' "$out" ;;
+        PROCEED|SKIPPED-BANK|SKIPPED-FLEET|BANK-STALE|BANK-UNKNOWN) bank_val="$out" ;;
         *) return 1 ;;
     esac
 }
@@ -843,7 +867,8 @@ sample() {
     local f v raw bank rc owed_n t0 t1 extract
     key=""; cap_val=""; fail_step=""
     tick_stamp; t0="$ts"
-    raw="$(timeout -k 5 "$tick_timeout" bash "$tick_cmd" "$@" 2>"$hb_file.tickerr")"; rc=$?  # gnu-ok: Linux-only kit
+    stoppable "$hb_file.tickout" "$hb_file.tickerr" timeout -k 5 "$tick_timeout" bash "$tick_cmd" "$@"; rc=$?  # gnu-ok: Linux-only kit
+    raw="$(<"$hb_file.tickout")"
     tick_stamp; t1="$ts"
     tick_log_add "$rc" "$t0" "$t1"
     # A tick that exits non-zero failed, whatever it printed first.
@@ -856,7 +881,8 @@ sample() {
     owed_notifications="$(printf '%s\n' "$raw" | sed -n 's/^ACTION owed-notify=//p' | head -n 1)"
     if [ -z "$tick_line" ]; then fail_step=no-tick-line; tick_state=fail; return; fi
     # A failed or garbled bank read is a failed sample, not a verdict.
-    bank="$(bank_word)" || { fail_step=usage-read; tick_state=fail; return; }
+    bank_word || { fail_step=usage-read; tick_state=fail; return; }
+    bank="$bank_val"
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
     # shellcheck disable=SC2013  # table field names are single words, never paths or free text
@@ -3273,7 +3299,7 @@ while :; do
             idle_passes=0
             heartbeat waiting
             stream_stop_point
-            sleep "$poll" 9>&-
+            nap "$poll"
             continue
         fi
     fi
@@ -3591,8 +3617,8 @@ while :; do
     r0_offered=""
     idle_passes=$(( idle_passes + 1 ))
     if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] && [ "$idle_passes" -gt "$idle_runs" ]; then
-        sleep "$idle_poll" 9>&-
+        nap "$idle_poll"
     else
-        sleep "$poll" 9>&-
+        nap "$poll"
     fi
 done
