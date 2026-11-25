@@ -38,12 +38,15 @@
 #
 # recent window (render --recent <days>, which `chief.sh next` passes as 7): the index lists the
 # standing rules (every topic fold) and the rulings in force dated within <days> days of today
-# (RULINGS_IN_FORCE_TODAY=YYYY-MM-DD pins today, a test seam); each other ruling in force is left
-# out of the block, still in the ledger and as its verbatim file, and the head counts them:
-# `(<N>; left out: <D> done, <S> superseded, <O> older than <days> days; year ...)`, N counting
-# every ruling in force. check reads that head: a ruling dated outside the window and not named is
-# no MISSING, and COUNT older is printed when <O> is not the number of rulings in force not named.
-# To keep an old ruling in the block, fold it: `record --id <N> --status in-force --topic <word>`
+# (today is the UTC date; RULINGS_IN_FORCE_TODAY=YYYY-MM-DD pins it, a test seam). Each other
+# ruling in force is not read in the block but named, newest id first, on one `Older in force:`
+# line as `<id> <first word of its ledger line>, ...`, so `find <id>` reaches it; the ledger and
+# the verbatim file stay. The head counts them: `(<N>; left out: <D> done, <S> superseded, <O> older
+# than <days> days; year ...)`, N counting every ruling in force. check takes no window from that
+# head: an in-force ruling that is not a row, in a fold or on the Older line is MISSING, COUNT
+# older is printed when <O> is not the number of Older entries, and check --recent <days> also
+# prints RECENT <id> for an Older entry dated inside the window.
+# To read an old ruling in the block, fold it: `record --id <N> --status in-force --topic <word>`
 # on its newest row, one word shared by the two or more rulings that say one thing.
 #
 # render: prints the block with the rulings in force as one index paragraph right after its
@@ -145,7 +148,7 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$bucket" ] && [ -d "$bucket" ] || { echo "rulings-in-force: --bucket <dir> must name an existing directory" >&2; exit 2; }
 case "$verb" in record|render|check) ;; find) [ -n "$word" ] || usage ;; *) usage ;; esac
-[ -z "$recent" ] || { [ "$verb" = render ] && case "$recent" in *[!0-9]*|0*) false ;; *) true ;; esac; } || { echo "rulings-in-force: --recent <days> needs render and a whole number of days, 1 or more" >&2; exit 2; }
+[ -z "$recent" ] || { { [ "$verb" = render ] || [ "$verb" = check ]; } && case "$recent" in *[!0-9]*|0*) false ;; *) true ;; esac; } || { echo "rulings-in-force: --recent <days> needs render or check and a whole number of days, 1 or more" >&2; exit 2; }
 [ -z "$before" ] || { [ "$verb" = check ] && [ -r "$before" ]; } || { echo "rulings-in-force: --before <file> needs check and a readable file" >&2; exit 2; }
 
 exec python3 -I -c '
@@ -246,7 +249,7 @@ def retire():
             r["status"] = "done"
 
 def cutoff(days):
-    now = os.environ.get("RULINGS_IN_FORCE_TODAY") or time.strftime("%Y-%m-%d")
+    now = os.environ.get("RULINGS_IN_FORCE_TODAY") or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
     if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", now):
         die("RULINGS_IN_FORCE_TODAY must be YYYY-MM-DD", 2)
     return (datetime.date.fromisoformat(now) - datetime.timedelta(days=days)).isoformat()
@@ -273,6 +276,8 @@ G_GROUP = re.compile(r"^([0-9]{2}-[0-9]{2}|[0-9]{4}-[0-9]{2}-[0-9]{2}) ([A-Z]{2}
 G_ROW = re.compile(r"^([0-9]+) (\S.*)$")
 OTHERS = "Other verbatim paths:"
 STANDING = "Standing rules:"
+OLDER = "Older in force: "
+G_OLDER = re.compile(r"^([0-9]+) (\S+)$")
 G_FOLD = re.compile(r"^(" + TOPIC + r"): (.+) \(rulings ([0-9]+(?:, [0-9]+)+)\)$")
 G_OTHER = re.compile(r"^([0-9]+) ([0-9]{4}-[0-9]{2}-[0-9]{2}) (.+) \(verbatim ([^ ()]+)\)$")
 SHIFT = re.compile(r"specs/decisions/verbatim-decision-([0-9]+)-operator-([0-9]{2}-[0-9]{2})-([A-Z]{2})(-copied)?\.txt")
@@ -281,6 +286,9 @@ HEAD = re.compile(r"^(?:OPERATOR|CHIEF)(?:[^:(]|(?<=\d):(?=\d))*(?:, decisions? 
 LISTP = re.compile(r"\bdecisions?\s+(\d+(?:\s*(?:,|and|to|-|–)\s*\d+)*)", re.I)
 RAW = re.compile(r"^((?:OPERATOR|CHIEF)[^(]*?) \(([^()]*(?:\{[^{}]*\}[^()]*)*)\)[.:]?\s*(.*)$")
 AFTER = re.compile(r"^, (decisions? [0-9][0-9, andto–-]*?) \(")
+
+def first_word(t):
+    return re.sub(r"[^A-Za-z0-9._/-]", "", (t.split() or [""])[0])[:12] or "-"
 
 def numbers(head):
     out = []
@@ -350,7 +358,7 @@ def plan(src):
         l = src[i]
         if i == note_at:
             i += 1; continue
-        if i in inpara and (l.startswith(PARA) or G_GROUP.match(l) or l in (OTHERS, STANDING)):
+        if i in inpara and (l.startswith((PARA, OLDER)) or G_GROUP.match(l) or l in (OTHERS, STANDING)):
             drop.add(i); i += 1; continue
         f = G_FOLD.match(l) if i in inpara and label.get(i) == "Standing rules" else None
         if f:
@@ -417,14 +425,21 @@ def problems(blk, before_src, nofile):
     L, off = blk, 0
     if L and L[0] == "## Current direction":
         L, off = L[1:], 1
-    out, named, window, older_shown = [], {}, None, 0
-    def row(n, shown_date, derived, reading, folded=None):
+    out, named, older_head, older_ids = [], {}, None, []
+    def row(n, shown_date, derived, reading, folded=None, older=None):
         named[n] = named.get(n, 0) + 1
         if named[n] > 1:
             return
         if n not in live:
             out.append("EXTRA %d" % n); return
         r = rows[n]
+        if older is not None:
+            older_ids.append(n)
+            if older != first_word(r["line"]):
+                out.append("READING %d" % n)
+            if recent and r["date"] >= cutoff(int(recent)):
+                out.append("RECENT %d" % n)
+            return
         if folded is not None and topic_of(r) != folded:
             out.append("TOPIC %d %s" % (n, folded))
         if folded is None and shown_date != r["date"]:
@@ -439,8 +454,8 @@ def problems(blk, before_src, nofile):
             if int(shown) != want:
                 out.append("COUNT %s %s %d" % (name, shown, want))
         hyear, mode, i = hm.group(6), None, start + 1
-        if hm.group(5) and window is None:
-            window, older_shown = int(hm.group(5)), int(hm.group(4))
+        if hm.group(4) and older_head is None:
+            older_head = int(hm.group(4))
         while i < len(L) and L[i].strip():
             l = L[i]
             g, r, o = G_GROUP.match(l), G_ROW.match(l), G_OTHER.match(l)
@@ -450,6 +465,13 @@ def problems(blk, before_src, nofile):
                 mode = "other"
             elif l == STANDING:
                 mode = "fold"
+            elif l.startswith(OLDER):
+                for ent in l[len(OLDER):].split(", "):
+                    om = G_OLDER.match(ent)
+                    if om:
+                        row(int(om.group(1)), None, None, None, older=om.group(2))
+                    else:
+                        out.append("GRAMMAR %d" % (i + 1 + off))
             elif mode == "fold" and G_FOLD.match(l):
                 fm = G_FOLD.match(l)
                 ids = [int(x) for x in fm.group(3).split(", ")]
@@ -464,15 +486,9 @@ def problems(blk, before_src, nofile):
             else:
                 out.append("GRAMMAR %d" % (i + 1 + off))
             i += 1
-    unnamed = [n for n in live if n not in named]
-    if window is not None and older_shown != len(unnamed):
-        out.append("COUNT older %d %d" % (older_shown, len(unnamed)))
-    topics = {}
-    for n in live:
-        if topic_of(rows[n]):
-            topics.setdefault(topic_of(rows[n]), []).append(n)
-    standing = {n for ids in topics.values() if len(ids) > 1 for n in ids}
-    out += ["MISSING %d" % n for n in sorted(live, reverse=True) if n not in named and not (window is not None and n not in standing and rows[n]["date"] < cutoff(window))]
+    if older_head is not None and older_head != len(older_ids):
+        out.append("COUNT older %d %d" % (older_head, len(older_ids)))
+    out += ["MISSING %d" % n for n in sorted(live, reverse=True) if n not in named]
     out += ["TWICE %d" % n for n in sorted(named, reverse=True) if named[n] > 1]
     if nofile:
         out += ["NOFILE %d %s" % (n, rows[n]["path"]) for n in sorted(live, reverse=True) if not os.path.isfile(os.path.join(bucket, rows[n]["path"]))]
@@ -523,7 +539,8 @@ folds = {t: sorted(ids, reverse=True) for t, ids in by_topic.items() if len(ids)
 folded = {n for ids in folds.values() for n in ids}
 fold_order = sorted(folds, key=lambda t: folds[t][0], reverse=True)
 shown = [n for n in live if n in folded or not recent or rows[n]["date"] >= cutoff(int(recent))]
-older = len(live) - len(shown)
+cut_ids = [n for n in sorted(live, reverse=True) if n not in shown]
+older = len(cut_ids)
 groups, others = {}, []
 for n in shown:
     if n in folded:
@@ -542,6 +559,8 @@ def short(n):
 def index(cap):
     old = ", %d older than %s days" % (older, recent) if recent else ""
     out = ["Rulings in force (%d; left out: %d done, %d superseded%s; year %s unless a head shows one):" % (counts() + (old, year))]
+    if cut_ids:
+        out.append(OLDER + ", ".join("%d %s" % (n, first_word(rows[n]["line"])) for n in cut_ids))
     if folds:
         out.append(STANDING)
         out += ["%s: %s (rulings %s)" % (t, cut(rows[folds[t][0]]["line"], WIDTH), ", ".join(str(n) for n in folds[t])) for t in fold_order]
@@ -565,7 +584,7 @@ while cap < top and size(index(cap + 1)) <= budget - RESERVE:
 
 left = any(l.startswith(("OPERATOR ", "CHIEF ")) for l in lead + rest)
 note = ("Full original text of every ruling, byte for byte, is in %d file%s under the bucket (%s). Rulings in force come first, one line each from the ledger %s under a <MM-DD> <shift> head: before you act on one, read its verbatim file, specs/decisions/verbatim-decision-<id>-operator-<MM-DD>-<shift>.txt (-copied.txt under a head marked copied; under Other verbatim paths, verbatim-decision-<short id>.txt). Each reading is the start of its ledger line, possibly all of it; the whole line: rulings-in-force.sh find --bucket <bucket> <id or word>, or jq -c \x27select(.id == <id>)\x27 %s | tail -n 1." % (len(paths), "" if len(paths) == 1 else "s", " ".join(paths), LEDGER, LEDGER)
-    + (" The head counts the rulings in force older than %s days that no Standing rules line folds: they are not listed, and stay in the ledger and as verbatim files; find --bucket <bucket> <id or word> prints one." % recent if recent and older else "")
+    + (" The Older in force line names each ruling in force older than %s days that no Standing rules line folds, by id and the first word of its line: it is in force but not read here. Before you act on a topic, run rulings-in-force.sh find --bucket <bucket> <id or word> on it, then read its verbatim file." % recent if recent and older else "")
     + (" Under Standing rules, one line folds the rulings on one topic: the reading is the newest ruling\x27s, then the ids it folds, newest first; find each id before you act on it." if folds else "")
     + (" The OPERATOR and CHIEF lines outside that index are rulings the ledger does not hold yet, as one-line readings: READ ALL OF those files in your first turn, in the same batch as this document. Each such line, with the lines directly under it, is BINDING unless it says otherwise; any other line is context, not a ruling." if left else " Every ruling the block held is in that index; any other line is context, not a ruling."))
 out = lead + [note, ""] + index(cap) + [""] + rest

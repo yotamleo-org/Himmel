@@ -403,7 +403,7 @@ vr 996 2026-11-24 'recent ruling whose only key HIMMEL-9001 is closed'
 vr 997 2026-11-17 'ruling one day before the window'
 printf 'HIMMEL-9001\n' > "$VD/closed-keys.txt"
 wrender() { printf '%s\n' "$1" | RULINGS_IN_FORCE_TODAY=2026-11-25 bash "$SUT" render --bucket "$V" "${@:2}"; }
-wchk() { printf '%s\n' "$1" | RULINGS_IN_FORCE_TODAY=2026-11-25 bash "$SUT" check --bucket "$V"; }
+wchk() { printf '%s\n' "$1" | RULINGS_IN_FORCE_TODAY=2026-11-25 bash "$SUT" check --bucket "$V" "${@:2}"; }
 wptr='Full original text of every ruling below, byte for byte, is in 0 files under the bucket ().'
 wout="$(wrender "$wptr" --recent 7)"; rc=$?
 same "window: render --recent 7 exits 0" "$rc" "0"
@@ -416,9 +416,24 @@ same "window: the head counts the cut rulings and the window" "$(printf '%s\n' "
 same "window: the pointer says where the cut rulings are" "$(printf '%s\n' "$wout" | grep '^Full original text' | grep -c 'older than 7 days that no Standing rules line folds')" "1"
 same "window: without --recent every ruling in force is listed" "$(wrender "$wptr" | grep -cE '^(991|992|993|997) ')" "4"
 same "window: a second render of its own output changes nothing" "$(wrender "$wout" --recent 7)" "$wout"
-same "window: check passes on the render" "$(wchk "$wout" | tail -n 1 | cut -d ' ' -f 1-4)" "check: ok in-force=6 named=4"
+same "window: check passes on the render" "$(wchk "$wout" | tail -n 1 | cut -d ' ' -f 1-4)" "check: ok in-force=6 named=6"
 same "window: check reports a recent ruling missing" "$(wchk "$(printf '%s\n' "$wout" | sed '/^991 /d')" | grep -c '^MISSING 991$')" "1"
-same "window: check does not report a cut older ruling missing" "$(wchk "$wout" | grep -cE '^MISSING 99[37]$')" "0"
+same "window: one Older in force line names every cut ruling by id and first word" "$(printf '%s\n' "$wout" | grep -cxF 'Older in force: 997 ruling, 993 older')" "1"
+same "window: check reports an in-force ruling that is not in the window, a fold or the Older line" "$(wchk "$(printf '%s\n' "$wout" | sed '/^Older in force: /d')" | grep -cE '^MISSING 99[37]$')" "2"
+same "window: check reports one ruling dropped from the Older line" "$(wchk "$(printf '%s\n' "$wout" | sed 's/^Older in force: 997 ruling, 993 older$/Older in force: 997 ruling/')" | grep -c '^MISSING 993$')" "1"
+same "window: check does not trust the window size its own head line states" "$(wchk "$(printf '%s\n' "$wout" | sed -e '/^Older in force: /d' -e 's/, 2 older than 7 days/, 2 older than 1 days/')" | grep -cE '^MISSING 99[37]$')" "2"
+same "window: check --recent reports a ruling of the window sitting on the Older line" "$(wchk "$(printf '%s\n' "$wout" | sed -e '/^991 /d' -e 's/^Older in force: 997 ruling, 993 older$/Older in force: 997 ruling, 993 older, 991 recent/')" --recent 7 | grep -c '^RECENT 991$')" "1"
+same "window: check reports an Older line reading that is not the ruling's first word" "$(wchk "$(printf '%s\n' "$wout" | sed 's/997 ruling/997 wrong/')" | grep -c '^READING 997$')" "1"
+U="$W/utc"; UD="$U/specs/decisions"; mkdir -p "$UD"
+printf 'OPERATOR words of ruling 981.\n' > "$UD/verbatim-decision-981-x.txt"
+printf 'OPERATOR words of ruling 982.\n' > "$UD/verbatim-decision-982-x.txt"
+utc7="$(python3 -I -c 'import datetime; print(datetime.datetime.now(datetime.timezone.utc).date() - datetime.timedelta(days=7))')"
+utc8="$(python3 -I -c 'import datetime; print(datetime.datetime.now(datetime.timezone.utc).date() - datetime.timedelta(days=8))')"
+bash "$SUT" record --bucket "$U" --id 981 --status in-force --date "$utc7" --line 'edge ruling seven days back' --path specs/decisions/verbatim-decision-981-x.txt >/dev/null 2>&1
+bash "$SUT" record --bucket "$U" --id 982 --status in-force --date "$utc8" --line 'edge ruling eight days back' --path specs/decisions/verbatim-decision-982-x.txt >/dev/null 2>&1
+for z in Pacific/Kiritimati Pacific/Pago_Pago; do
+    same "window: the cutoff is a UTC date, whatever the zone ($z): the ruling 7 days back is listed, 8 days back is cut" "$(printf '%s\n' "$wptr" | TZ="$z" bash "$SUT" render --bucket "$U" --recent 7 | grep -E '^98[12] ' | cut -d ' ' -f 1 | tr '\n' ' ')" "981 "
+done
 same "window: check reports a wrong older count" "$(wchk "$(printf '%s\n' "$wout" | sed 's/, 2 older than 7 days/, 3 older than 7 days/')" | grep -c '^COUNT older 3 2$')" "1"
 same "window: check reports a deleted old standing-rule line missing" "$(wchk "$(printf '%s\n' "$wout" | sed '/^wintopic: /d')" | grep -cE '^MISSING 99[45]$')" "2"
 same "window: --recent 0 is refused with exit 2" "$(wrender "$wptr" --recent 0 >/dev/null 2>&1; echo $?)" "2"
