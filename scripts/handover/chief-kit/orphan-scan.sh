@@ -14,9 +14,8 @@
 #                                           `READY <n>` / `PR <n>` bullet) and whose tail is not WRAPPED;
 #                                           close-wrapped-worker.sh --finished closes it
 # A session counts as listed when its name, or its name without a trailing -r<N>, is one of
-# worker_identity's names for a listed doc (each also with -RESUME). A worker relaunched under a
-# shortened name the bus chose is found only by the close script's session-id proof, so it reads
-# here as an unlisted session. --self names the chief's own session (repeatable, comma lists ok).
+# worker_identity's names for a listed doc (each also with -RESUME).
+# --self names the chief's own session (repeatable, comma lists ok).
 # Fork PRs and Dependabot's are left out: the Dependabot sweep owns those.
 # Reads only: this script writes nothing and signals nothing.
 #

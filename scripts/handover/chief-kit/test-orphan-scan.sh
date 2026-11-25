@@ -1,17 +1,5 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/test-orphan-scan.sh - suite for orphan-scan.sh.
-# Hermetic: a fake /proc root (CLAUDE_SESSIONS_PROC) with real NUL-separated cmdline files drives
-# claude_sessions, a PATH-stub `pgrep -x claude`, and a gh stub (ORPHAN_SCAN_GH) answering
-# `pr list` and `pr view` from files.
-#
-# Cases:
-#   1. one listed worker + one unlisted session + one unlisted open PR -> exactly two orphan lines
-#   2. a listed worker whose doc names a merged PR and has no WRAPPED line -> `# orphan finished`
-#   3. the same worker once its doc is WRAPPED, or its PR is still open -> no finished line
-#   4. a PR held by a fleet watch row is not an orphan; a Dependabot or fork PR is left out
-#   5. a worker relaunched as -r<N> or under -RESUME still reads as listed; --self is never an orphan
-#   6. an unreadable PR list -> rc 3 and the session lines still print
-#
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh).
 set -uo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
