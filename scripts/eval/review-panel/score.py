@@ -1406,6 +1406,8 @@ def main(argv=None):
     pe = sub.add_parser("export-row")
     pe.add_argument("outputs")
     pe.add_argument("--results", default=os.path.join(HERE, "results.jsonl"))
+    pe.add_argument("--snapshot", help="the pinned main commit of a paired sweep, recorded on the row")
+    pe.add_argument("--side", choices=("base", "head"), help="which side of the paired sweep this row is")
     pv = sub.add_parser("verify-row")
     pv.add_argument("row")
     pv.add_argument("outputs")
@@ -1541,7 +1543,12 @@ def tree_main(a):
             print("score.py stamp: the working tree differs from HEAD on a gate input, or the sweep reads other "
                   "fixtures, panel or tiers, or a subset: export-row will refuse this sweep", file=sys.stderr)
     elif a.cmd == "export-row":
+        if bool(a.snapshot) != bool(a.side):
+            raise ValueError("--snapshot and --side go together: a paired row names both")
         row = gate_row(repo, "HEAD", a.outputs)
+        if a.snapshot:
+            row["snapshot"] = _git(repo, "rev-parse", "--verify", a.snapshot + "^{commit}").decode().strip()
+            row["side"] = a.side
         if row["status"] == "inconclusive":
             raise ValueError("%s is inconclusive (a leak, or no case scored): no row" % a.outputs)
         silent = [r.split(":", 1)[1] for r in row["ineligibility_reasons"] if r.startswith("critic-silent:")]
