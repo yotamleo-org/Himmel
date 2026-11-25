@@ -206,7 +206,9 @@ rc_16h_case=$(awk '/^        case "\$o_cr" in$/{f=1} f{print} f && /^        esa
 eq "$(printf '%s\n' "$rc_16h_case" | wc -l | tr -d ' ')" 5 "T3.2 paired: the 16h case block was cut out of ready-check.sh"
 # shellcheck disable=SC2034,SC2329  # o_cr, o_h7 and o16_fail are read by the evaluated 16h block
 rc_16h() { # rc_16h <state>: prints hold when 16h FAILs the state, pass otherwise
-    ( o_cr="$1" o_h7=abc1234; o16_fail() { echo hold; }; eval "$rc_16h_case" ) | grep -q '^hold$' && echo hold || echo pass
+    local seen
+    seen=$( ( o_cr="$1" o_h7=abc1234; o16_fail() { echo hold; }; eval "$rc_16h_case" ) )
+    case "$seen" in *hold*) echo hold ;; *) echo pass ;; esac
 }
 pair() { # pair <label> <state 16h reads> <statuses> [VAR=value ...]
     local label="$1" st="$2" statuses="$3"; shift 3
