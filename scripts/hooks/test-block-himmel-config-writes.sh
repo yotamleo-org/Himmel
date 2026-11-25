@@ -62,7 +62,7 @@ file_case "7888 control: .himmel/L/../../notes.txt -> allow" allow Write "$HOME/
 file_case "7888 control: .himmel/L/../notes.txt -> allow" allow Write "$HOME/.himmel/L/../notes.txt"
 file_case "7888 control: a lexical path that ends outside the config dir -> allow" allow Write "$HOME/.himmel/x/../../other/config.json"
 file_case "7888 control: .himmel/notes.txt -> allow" allow Write "$HOME/.himmel/notes.txt"
-case "${OSTYPE:-}" in darwin*) ;; *) file_case "7888 control (case-sensitive host): ~/.HIMMEL/config.json is a different file -> allow" allow Write "$HOME/.HIMMEL/config.json" ;; esac
+case "${OSTYPE:-}" in darwin*) ;; *) [ -e /System/Library/CoreServices/SystemVersion.plist ] || file_case "7888 control (case-sensitive host): ~/.HIMMEL/config.json is a different file -> allow" allow Write "$HOME/.HIMMEL/config.json" ;; esac
 export HIMMEL_GUARD_FORCE_DARWIN=1
 file_case "7888 Darwin: ~/.HIMMEL/config.json -> block" block Write "$HOME/.HIMMEL/config.json"
 file_case "7888 Darwin: ~/.himmel/Config.JSON -> block" block Write "$HOME/.himmel/Config.JSON"
