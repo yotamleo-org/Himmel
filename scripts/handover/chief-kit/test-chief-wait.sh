@@ -97,12 +97,12 @@ wait_hb() {
     done
     return 1
 }
-# wait_exit <pid>: wait at most ~8 s for the waiter to exit; sets rc to its
+# wait_exit <pid> [tenths of a second, default 80]: wait for the waiter to exit; sets rc to its
 # exit code or "running". Not a $(...) helper: `wait` must run in the shell
 # that started the waiter.
 wait_exit() {
     n=0
-    while [ "$n" -lt 80 ]; do
+    while [ "$n" -lt "${2:-80}" ]; do
         if ! kill -0 "$1" 2>/dev/null; then wait "$1"; rc=$?; return; fi
         sleep 0.1; n=$((n + 1))
     done
@@ -797,7 +797,9 @@ dr_alive() { sleep 3; if kill -0 "$WPID" 2>/dev/null; then echo running; else ec
 export TICK_STATE_DIR="$WORK/dr-state"; mkdir -p "$TICK_STATE_DIR"
 cat > "$STUB/gh-heads.sh" <<'EOF'
 #!/usr/bin/env bash
+[ ! -f "$STUB/gh.hang" ] || exec sleep 60
 cat "$STUB/gh.heads" 2>/dev/null
+[ ! -f "$STUB/gh.fail" ] || exit 1
 exit 0
 EOF
 chmod +x "$STUB/gh-heads.sh"
@@ -887,7 +889,21 @@ printf '#5902 fix/himmel-11034-drift-wake-once-a-day\n' > "$STUB/gh.heads"
 start "$I" "$WORK/dr7e.out"
 wait_exit "$WPID"
 check "(dr7) an open PR whose branch only has drift in its slug does not hold the wake" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr7e.out")"
-rm -f "$STUB/gh.heads"
+rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
+I="$(new_inbox dr9)"
+printf '#5903 chore/himmel-10995-drift-%s\n' "$dr_today" > "$STUB/gh.heads"; : > "$STUB/gh.fail"
+start "$I" "$WORK/dr9.out"
+wait_exit "$WPID"
+check "(dr9) an open-PR read that fails after printing a drift head still wakes" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr9.out")"
+rm -f "$STUB/gh.fail"
+rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
+I="$(new_inbox dr10)"
+: > "$STUB/gh.hang"
+start "$I" "$WORK/dr10.out"
+wait_exit "$WPID" 400
+check "(dr10) an open-PR read that hangs past its 20 s bound still wakes" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr10.out")"
+[ "$rc" = running ] && stop_waiter "$WPID"
+rm -f "$STUB/gh.hang" "$STUB/gh.heads"
 unset TICK_STATE_DIR CHIEF_WAIT_GH
 
 printf '\n%d failure(s)\n' "$fails"
