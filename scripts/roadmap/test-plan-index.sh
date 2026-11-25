@@ -67,7 +67,7 @@ contains "qmd embed ran" "$(cat "$calls")" "embed -c roadmap-plan"
 
 : > "$calls"
 r="$(run --refresh 2>&1)"
-contains "no change: reports unchanged" "$r" "unchanged"
+[ "$r" = "plan-index: unchanged" ] && pass "no change: reports unchanged" || fail "no change: expected 'plan-index: unchanged', got '$r'"
 [ ! -s "$calls" ] && pass "no change: qmd not called (no rebuild)" || fail "no change rebuilt: $(cat "$calls")"
 
 echo two >> "$mir/HIMMEL-111.md"
@@ -75,7 +75,7 @@ r="$(run --refresh 2>&1)"
 contains "watch-only change: rebuilds" "$r" "rebuilt"
 ! grep -qE '^(update|embed)' "$calls" && pass "watch-only change renders the same docs: no qmd update or embed" || fail "watch-only change called qmd: $(cat "$calls")"
 r="$(run --refresh 2>&1)"
-contains "watch-only change: key advanced, next refresh unchanged" "$r" "unchanged"
+[ "$r" = "plan-index: unchanged" ] && pass "watch-only change: key advanced, next refresh unchanged" || fail "watch-only change: expected 'plan-index: unchanged', got '$r'"
 
 sed -i.bak 's/why-one/why-changed/' "$plan/stage3/placement.tsv"; rm -f "$plan/stage3/placement.tsv.bak"
 r="$(run --refresh 2>&1)"
