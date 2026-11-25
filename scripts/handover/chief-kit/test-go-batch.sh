@@ -184,10 +184,11 @@ if cmp -s "$SCRIPT" "$MUT/go-batch.sh"; then
     FAIL=$((FAIL + 1)); echo "FAIL 1 mutant: go-batch.sh has no line marked '# contract-check'"
 else
     reset
-    MUT_OUT=$(bash "$MUT/go-batch.sh" --doc "$tmp/chief.md" --fleet "$tmp/fleet.json" 2>&1) || true
+    MUT_RC=0
+    MUT_OUT=$(bash "$MUT/go-batch.sh" --doc "$tmp/chief.md" --fleet "$tmp/fleet.json" 2>&1) || MUT_RC=$?
     MUT_GOS=$(find "$HANDOVER_DIR/.locks/go" -type f | wc -l | tr -d ' ')
-    [ "$MUT_GOS" != 2 ] && { PASS=$((PASS + 1)); echo "ok   1 mutant ignoring the contract line writes $MUT_GOS GOs, not 2"; } \
-        || { FAIL=$((FAIL + 1)); echo "FAIL 1 mutant ignoring the contract line still wrote exactly two GOs"; echo "$MUT_OUT"; }
+    [ "$MUT_RC" = 0 ] && [ "$MUT_GOS" = 3 ] && { PASS=$((PASS + 1)); echo "ok   1 mutant ignoring the contract line runs and writes the third GO (105)"; } \
+        || { FAIL=$((FAIL + 1)); echo "FAIL 1 mutant: want exit 0 and three GOs, got exit $MUT_RC and $MUT_GOS"; echo "$MUT_OUT"; }
 fi
 
 reset
