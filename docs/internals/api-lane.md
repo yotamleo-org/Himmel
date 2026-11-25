@@ -2,7 +2,9 @@
 
 `scripts/api-lane/claude-api.sh` runs one print-mode `claude` call billed to an
 API account (`HIMMEL_API_ACCOUNT=A|B|C|D|auto`; auto only from the himmel repo; any kind, by the role map or the default order) instead of the subscription. It is
-OFF unless the launching shell sets `HIMMEL_API_LANE=on`. This page covers what
+OFF unless the launching shell sets `HIMMEL_API_LANE=on`; the one exception is the routed release judge, which sets it on itself
+(`judgeApiEnv` in `scripts/jira/src/commands/release.ts`) whenever `judge` is mapped in `roles.json`, so mapping `judge` is what turns
+the lane on for it, and only the operator may write that file. This page covers what
 happens when a call on it fails. The launcher's header lists the
 full argument and environment contract.
 
@@ -344,7 +346,7 @@ secret, only role names and account letters:
 
 Limit: auto routes only from the himmel repo even for a mapped role, upgrade path: plan P1 widens it per repo once the launcher reads the egress matrix (`scripts/guardrails/egress-matrix.json`).
 
-Limit: nothing stops an agent with Write or Bash from creating `roles.json` and widening auto to the judge; hand edits are supported and validated on read, upgrade path: plan P4's write guard on `~/.himmel/state/api-credit/` plus a sha256 attestation sidecar and a doctor WARN.
+Limit: `block-himmel-config-writes.sh` refuses an agent's Write, Edit, `apply_patch` and Bash write routes to `roles.json` (and a Bash `api-roles.mjs write`), but it is a speed bump, not a fence: Bash is a text match, so a renamed copy or an indirect spelling is not caught. Hand edits at the operator's own prompt are supported and validated on read; upgrade path: a sha256 attestation sidecar plus a doctor WARN.
 
 ### Caching recommendation for the graph pass
 
