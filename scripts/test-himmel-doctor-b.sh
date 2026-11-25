@@ -2091,7 +2091,7 @@ case "$d" in
     *'"method":"initialize"'*)
         echo "init m=$m" >> "$C40_LOG"
         case "$mode" in
-            down) finish 000 7 ;;
+            down|downfb|downstart) finish 000 7 ;;
             inithang) finish 000 28 ;;
             slowinit) [ "${m:-0}" -lt 8 ] && finish 000 28 ;;
             reset) finish 000 52 ;;
@@ -2125,6 +2125,12 @@ exit 0
 STUB
     chmod +x "$c40_t/curl"
     : > "$c40_t/log"
+    # the alert sender stub: one line per delivered alert, never the real Telegram path
+    cat > "$c40_t/send" <<'SEND'
+#!/usr/bin/env bash
+printf '%s %s\n' "${HIMMEL_ALERT_KIND:-}" "$1" >> "$C40_SENT"
+SEND
+    chmod +x "$c40_t/send"; : > "$c40_t/sent"
     mkdir -p "$c40_t/qmdbin"; printf '#!/usr/bin/env bash\nexit 0\n' > "$c40_t/qmdbin/qmd"; chmod +x "$c40_t/qmdbin/qmd"
     c40_nq_path=""
     local d
@@ -2155,14 +2161,19 @@ c40_run() { # <mode>
     case "$1" in
         down) c40_probe_fixture down "${C40_QMD_SETUP:-yes}" ;;
         probeok) c40_probe_fixture probeok yes ;;
+        downfb) rm -f "$c40_t/status.json" ;;
+        downstart) c40_status true starting "the qmd daemon is starting (start marker 5s old)" ;;
         inithang) c40_status true degraded "a process accepted the connection but did not answer initialize within 10s -- wedged" ;;
-        reset|empty204) c40_status true degraded "a process returned no usable initialize reply (curl rc=52, HTTP 204)" ;;
+        reset) c40_status true degraded "a process returned no usable initialize reply (curl rc=52, HTTP 000)" ;;
+        empty204) c40_status true degraded "a process returned no usable initialize reply (curl rc=0, HTTP 204)" ;;
+        spawnerr) c40_status true degraded "a process returned no usable initialize reply (curl rc=null, HTTP unknown)" ;;
         foreign) c40_status true degraded "a process answers but it is NOT qmd (initialize reply has no qmd serverInfo)" ;;
         *) c40_status true present "initialize answered in 0.3s" ;;
     esac
     # CI runners export XDG_CONFIG_HOME, which would point the token path past the fixture HOME.
     env -u XDG_CONFIG_HOME -u QMD_HTTP_AUTH_FILE -u QMD_HTTP_TOKEN_FILE \
         PATH="$FAKEBIN:$PATH" C40_MODE="$1" C40_PENDING="${C40_PENDING:-12}" C40_LOG="$c40_t/log" HIMMEL_DOCTOR_QMD_CURL="$c40_t/curl" DOCTOR_STATUS_JSON="$c40_t/status.json" \
+        C40_SENT="$c40_t/sent" CADENCE_ALERT_SEND_CMD="$c40_t/send" HIMMEL_DOCTOR_QMD_BIN="${C40_QMD_BIN:-$c40_t/qmdbin/qmd}" \
         CLAUDE_DIR="$c40_t/claude" HOME="$c40_t/home" bash "$DOC" --no-color 2>&1
 }
 c40_precond() { # <mode> — the stub must answer the init payload the way the mode says
@@ -2555,6 +2566,72 @@ if grepq "$out" 'OK   C40-qmd-vec' && ! grepq "$out" 'WARN C40-qmd-vec' && grep 
     pass "C40 qmd up (real probe present) -> OK, no WARN"
 else
     fail "C40 qmd up -> $(printf '%s' "$out" | grep -A1 C40) status=$(cat "$c40_t/status.json")"
+fi
+rm -rf "$c40_t"
+
+echo "== C40 (HIMMEL-10933): a refused connection where qmd is set up sends ONE alert per outage, re-armed once qmd answers (RED) =="
+c40_setup
+c40_run down >/dev/null; c40_run down >/dev/null
+c40_n1="$(grep -c . "$c40_t/sent")"
+c40_msg="$(head -n1 "$c40_t/sent")"
+c40_run probeok >/dev/null
+c40_run down >/dev/null
+c40_n2="$(grep -c . "$c40_t/sent")"
+c40_run iserror >/dev/null
+c40_run down >/dev/null
+c40_n3="$(grep -c . "$c40_t/sent")"
+c40_run empty204 >/dev/null
+c40_run down >/dev/null
+c40_n4="$(grep -c . "$c40_t/sent")"
+c40_run inithang >/dev/null
+c40_run down >/dev/null
+c40_n5="$(grep -c . "$c40_t/sent")"
+c40_run reset >/dev/null
+c40_run spawnerr >/dev/null
+c40_run down >/dev/null
+c40_n6="$(grep -c . "$c40_t/sent")"
+if [ "$c40_n1" = 1 ] && printf '%s' "$c40_msg" | grep -Fq 'cadence:qmd-outage qmd-outage: ' && printf '%s' "$c40_msg" | grep -Fq 'not answering' \
+    && grep -Fq 'qmd-outage' "$c40_t/home/.himmel/state/cadence-alerts.log" && [ "$c40_n2" = 2 ] && [ "$c40_n3" = 3 ] && [ "$c40_n4" = 4 ] && [ "$c40_n5" = 4 ] && [ "$c40_n6" = 4 ]; then
+    pass "C40 refused, qmd set up -> exactly one alert across two runs, a second after the daemon answered in between"
+else
+    fail "C40 outage alert -> after two refused runs: $c40_n1 sent (want 1), after recovery and a new outage: $c40_n2 (want 2), after a daemon that answered but failed its vec query and a third outage: $c40_n3 (want 3), after a status-reported empty 204 reply and a fourth outage: $c40_n4 (want 4), a status-reported timeout (not an answer) between the fourth and a fifth refused run: $c40_n5 (want 4, no second alert for one outage), after the real probes.js no-exchange details (rc=52 HTTP 000, rc=null HTTP unknown) and another refused run: $c40_n6 (want 4); first message [$c40_msg]"
+fi
+rm -rf "$c40_t"
+
+echo "== C40 (HIMMEL-10933): a refused connection with no qmd setup, or a starting daemon, sends no alert =="
+c40_setup
+out_a="$(C40_QMD_SETUP=no c40_run down)"
+out_b="$(c40_run downstart)"
+if [ ! -s "$c40_t/sent" ] && grepq "$out_a" 'INFO C40-qmd-vec' && ! grepq "$out_a" 'WARN C40-qmd-vec' \
+    && grepq "$out_b" 'INFO C40-qmd-vec.*is starting' && ! grepq "$out_b" 'WARN C40-qmd-vec'; then
+    pass "C40 no qmd setup / daemon starting -> no alert"
+else
+    fail "C40 no-alert cases -> sent: $(cat "$c40_t/sent")"
+fi
+rm -rf "$c40_t"
+
+echo "== C40 (HIMMEL-10933): status unreadable and the connection refused where qmd is set up -> WARN naming the url, never 'optional', one alert (RED) =="
+c40_setup
+if ! c40_precond down; then fail "C40 downfb: precondition — stub did not fail init"
+else
+    out="$(c40_run downfb)"; c40_run downfb >/dev/null
+    c40_line="$(printf '%s' "$out" | grep -A1 C40-qmd-vec)"
+    if grepq "$out" 'WARN C40-qmd-vec' && grepq "$c40_line" -F 'localhost:8181/mcp' && grepq "$c40_line" 'not answering' \
+        && ! grepq "$c40_line" 'optional' && [ "$(grep -c . "$c40_t/sent")" = 1 ]; then
+        pass "C40 fallback refused, qmd set up -> WARN, no 'optional', one alert across two runs"
+    else
+        fail "C40 fallback refused, qmd set up -> $c40_line sent=$(grep -c . "$c40_t/sent")"
+    fi
+fi
+rm -rf "$c40_t"
+
+echo "== C40 (HIMMEL-10933): status unreadable and the connection refused with no qmd setup -> INFO skip, no alert =="
+c40_setup
+out="$(C40_QMD_BIN="$c40_t/no-such-qmd" c40_run downfb)"
+if grepq "$out" 'INFO C40-qmd-vec.*qmd is optional' && ! grepq "$out" 'WARN C40-qmd-vec' && [ ! -s "$c40_t/sent" ]; then
+    pass "C40 fallback refused, no qmd setup -> INFO skip (qmd is optional), no alert"
+else
+    fail "C40 fallback refused, no qmd setup -> $(printf '%s' "$out" | grep -A1 C40) sent=$(cat "$c40_t/sent")"
 fi
 rm -rf "$c40_t"
 
