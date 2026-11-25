@@ -69,8 +69,8 @@ reviews look the same); no `gh`, no sign-in or no remote is `not checked`. Both 
 
 The Project scope tile has Setup choices: the handover root and the luna vault path, each prefilled from
 `~/.himmel/himmel.conf` (or marked `not set` with the default that applies) and changed through a dry run you
-confirm. The vault path must be a folder that exists. The forge is shown as detected, read-only: set `FORGE` or
-`git config himmel.forge` in the terminal. The plugin set and the Auto-ship steps are shown on the same tile,
+confirm. The vault path must be a folder that exists. The Git host (GitHub or Bitbucket) is shown as detected,
+read-only: set `FORGE` or `git config himmel.forge` in the terminal. The plugin set and the Auto-ship steps are shown on the same tile,
 not repeated; Review by a second model is on the Review tile.
 
 The Check this install strip (shown while no tile is open) runs the doctor (`scripts/himmel-doctor.sh --json`, its read-only
@@ -79,7 +79,7 @@ the install's prerequisites, hook and consent wiring, configuration files, track
 one row per setup warning or failure, its remedy, and an Open in Health link to that check's row. The findings outside
 the list are counted on the strip too ("Not setup, so only on the Health page: 1 fail, 2 warn"), so a clean setup never
 sits beside a failure you cannot see. The Health page lists every check, so a worktree or search-index warning shows
-there and not in the rows here. The forge check (C4) and the registry check (C5) only ever report information, which
+there and not in the rows here. The Git host check (C4) and the registry check (C5) only ever report information, which
 the strip does not show, so they are not on the list. It takes a minute or two and stops at 200 seconds. The run publishes nothing
 (no statusline counts), and any secret value in a row is redacted before the page sees it. The result lives in the
 page only, so press run again any time to re-check. It is `POST /api/setup/verify`, handled by `verifyDoctor` in `scripts/config-ui/setup.ts`.
@@ -97,7 +97,7 @@ session switches are set when you start Claude.
 
 Every write below is a `POST` behind the per-launch token or a login session, a same-origin check and a JSON-only body.
 The one exception is the Shift page's `GET /api/shift` poll, which records shift state and appends a closed shift to
-`shifts.jsonl` (`tickShifts` in `scripts/config-ui/shift.ts`; under `--read-only` it writes nothing).
+`shifts.jsonl` (`tick` in `scripts/config-ui/shift.ts`; under `--read-only` it writes nothing).
 This is the full set of `POST` routes, each mapped to the code that handles it:
 
 | Action | Route | Handled in |
@@ -114,7 +114,7 @@ This is the full set of `POST` routes, each mapped to the code that handles it:
 | Reports and shifts settings (Configure) | `/api/report-settings` | `writeReports` in `scripts/config-ui/report-settings.ts` |
 | Graph choices (Configure, Project scope, Code graph) | `/api/graph-choices` | `writeGraph` in `scripts/config-ui/graph-config.ts` |
 | Role map for the API accounts (Configure, Secrets, Multi accounts) | `/api/api-roles` | `saveRoles` in `scripts/config-ui/api-roles-settings.ts` |
-| Board lane move, card Sector | `/api/roadmap/write` | `roadmapWriteRoute` in `scripts/config-ui/server.ts` (a local card: `localWriteRoute`, `scripts/config-ui/local-tracker.ts`) |
+| Board lane move, card Sector | `/api/roadmap/write` | `roadmapWriteRoute` in `scripts/config-ui/server.ts` (a local card: `localWriteRoute` in the same file, store logic in `scripts/config-ui/local-tracker.ts`) |
 
 ```bash
 node scripts/himmelctl/bin.js ui              # prints ONE URL carrying the token

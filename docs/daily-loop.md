@@ -31,19 +31,24 @@ The install ([setup/install.md](setup/install.md)) is committed on your
 default branch, and you opened `claude` at the repo root; the edit guard fires
 only inside a session, while the `commit-msg` and `pre-push` git hooks run for
 every commit and push. The loop is the git you already use with a few guards
-around it, and you run scripts rather than slash commands.
+around it. You describe the change and approve the result; Claude runs the
+commands below, and the guards check the steps they cover. Every command is a plain
+script or git call, so you can run any of them yourself too.
 
 1. **Cut a worktree.** An edit on the default branch is refused by the
-   `block-edit-on-main` hook: that is the guard telling you where to work, not
-   a fault (the contributor walkthrough's step 1 shows the message). Run
-   `bash scripts/worktree.sh new feat/<slug>`, then `cd .claude/worktrees/feat+<slug>`.
+   `block-edit-on-main` hook: that is the guard telling Claude where to work,
+   not a fault (the contributor walkthrough's step 1 shows the message).
+   Claude runs `bash scripts/worktree.sh new feat/<slug>`, which prints the
+   worktree path; the script does not move a running session, so restart
+   `claude` inside that path.
 2. **Edit and commit** in the worktree. The `commit-msg` hook wants a
    conventional subject, `type: message`, and a ticket reference: `#<number>`
    unless `JIRA_PROJECT_KEY` is set. `TICKET_ID_REQUIRED=0` or `TICKET_ID_PATTERN`
    changes that ([how](setup/install.md#adapting-himmel-to-a-repo-that-is-not-himmel)).
 3. **Push** with `git push -u origin <branch>`. The `pre-push` hook refuses a
    push to the default branch and a force-push.
-4. **Open the PR** with `gh pr create`, or in your forge's UI.
+4. **Open the PR** with `gh pr create`, or in your Git host's web UI (GitHub
+   or Bitbucket).
 5. **Wait for CI** with `bash scripts/check-ci.sh <pr>`. Exit 0 means every
    check is green and no review thread is unresolved.
 6. **Merge** with `gh pr merge --squash`. The installed merge gate refuses
@@ -67,7 +72,10 @@ This walks one complete loop, a toy change from worktree creation
 to handover, and explains every hook and gate you will hit along the way.
 By the end you will have run the real workflow on a real branch.
 
-This is the solo loop.
+This is the solo loop. Day to day you mostly type the goal and the slash
+commands (`/worktree`, `/pr-check`, `/clean`, `/handover`); Claude runs the
+git and `gh` commands shown here. They are spelled out so you can recognise
+each gate when it fires, and run a step by hand when you want to.
 
 ---
 
@@ -222,7 +230,7 @@ the subject line. They are required only in certain circumstances:
 
 | Change type | Trailer required |
 |---|---|
-| Touches a file matched by the [sensitive-file list](../scripts/hooks/check-platforms-tested.sh), including `scripts/**` or `**/bin/*` | `Platforms tested: <os>` |
+| Touches a file matched by the [sensitive-file list](../scripts/lib/attest-trailers.sh) (`attest_files`), including `scripts/**` or `**/bin/*` | `Platforms tested: <os>` |
 | Touches any non-docs code (non-`*.md`/`*.txt`/`docs/`/`handovers/`) | `Security reviewed: <token>` |
 | Docs-only (`*.md`, `*.txt`, `docs/**`, `handovers/**`) | _neither required_ |
 
@@ -327,7 +335,7 @@ continuing.
 
 Reviews are counted in rounds: `/pr-check` prints `round N of 3` and, after
 round 3, allows one delta round scoped to what changed since; a further full
-round exits 8 and goes to the operator or chief (`scripts/cr/review-round.sh`).
+round exits 8 and goes to you, or to the chief in a fleet run (`scripts/cr/review-round.sh`).
 
 While the marker exists, `gh pr create` is blocked by the
 `check-cr-marker-on-pr-create` PreToolUse hook:
@@ -356,10 +364,9 @@ resolved, and squash as the only merge method, plus these status checks:
 `guardrail-matrices`, `lanes-and-trust-suites`, `leak-classes`, `lint`,
 `node-suites` (bitbucket, ci-orchestrator, himmel-run, jira), `secret-scan`,
 `security-scan`, `shell-unit`, `pr-title-lint`, `unchecked-mktemp-range`,
-`claude-startup` and `git-env-scrub`. The ruleset sets
-`require_extra_approval_for_unattributed_changes`, so a change GitHub cannot
-attribute to a user may still need an extra approval; a normal PR needs none,
-so wait for CI instead: `scripts/check-ci.sh <pr>` blocks until the checks settle.
+`claude-startup` and `git-env-scrub`. A PR needs no approving review there, so
+wait for CI with `scripts/check-ci.sh <pr>`, which blocks until the checks
+settle.
 
 ---
 
@@ -367,8 +374,10 @@ so wait for CI instead: `scripts/check-ci.sh <pr>` blocks until the checks settl
 
 Two kinds of reviewer look at a change:
 
-- **Critics** run inside `/pr-check` (step 6), before the PR exists:
-  `codex` and `claude`, the rows of `scripts/cr/critics.json`. Their findings
+- **Critics** run inside `/pr-check` (step 6), before the PR exists: `codex`,
+  the critic row of `scripts/cr/critics.json`, and one Claude critic as the
+  fallback when codex is out of quota or no other critic could answer (the
+  file's `claude_floor`). Their findings
   and your dispositions go to the CR ledger, stamped with the exact head.
   When no critic lane is configured, `/pr-check` reviews the diff itself:
   the claude-only floor. There is never "no review".
@@ -410,21 +419,20 @@ one to its mode at the PR's head. Full table: `docs/configuration.md`
   unless the config says `"review": "no_code_review"`, which makes CI alone
   decide.
 
-**As shipped:** `codex` hard and required, `claude` advisory (precision 0.482,
-below the 0.60 floor; absent while the claude API lane is off), `coderabbit`
-best-effort.
+**As shipped:** `codex` hard and required, `coderabbit` best-effort. Claude
+has no row of its own: it steps in as the `claude_floor` critic when codex is
+out of quota or no other critic could answer.
 
 **Change a mode for one machine** in the overlay `scripts/cr/critics.local.json`
 (gitignored), one row per reviewer you change:
 
 ```json
 { "panel": [
-  { "slug": "coderabbit", "drop": true },
-  { "slug": "claude", "drop": true }
+  { "slug": "coderabbit", "drop": true }
 ] }
 ```
 
-Both rows drop a reviewer, which gives a codex-only gate. To make CodeRabbit
+That row drops CodeRabbit, which gives a codex-only gate. To make CodeRabbit
 hard instead, give its row `"mode": "hard"`. A `required` row cannot be dropped, and a row or
 a mode that cannot be read is a config error, not a silent fallback.
 
@@ -484,8 +492,9 @@ reviewer, a bad `mode`) fails gate 1 closed.
 The branch is squash-merged into main. The worktree is now stale.
 
 Chief workers do not call `gh pr merge`; they merge through
-`merge-on-green.sh` on a GO file, which also refuses while the newest main CI
-run is red. The chief verifies each PR with `ready-check.sh` before it
+`merge-on-green.sh` on a GO file. If main's latest CI run is red, that script
+still merges a PR whose own checks are green and notes the red main in its
+output; it refuses when it cannot read main's latest completed run. The chief verifies each PR with `ready-check.sh` before it
 writes that GO.
 
 ---

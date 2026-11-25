@@ -1,10 +1,12 @@
-# Jarvis: the command layer of the agentic OS
+# Jarvis: running a fleet of Claude sessions
 
-himmel is a control plane for coding agents: its fleet of agent sessions, on
-Claude Code today, runs as one software factory. **Jarvis** is its command
-layer: the chief plans the work, hands each ticket to a worker in its own
-worktree, has the result judged, and merges it. You watch and steer Jarvis
-from **the surface**: the himmel UI and the other views of the fleet.
+himmel is a control plane for coding agents, on Claude Code today. **Jarvis**
+is the optional part that runs several sessions as one team: a coordinating
+session, the chief, plans the work, hands each ticket to a worker session in
+its own worktree, has the result judged, and merges it. You give the chief
+the queue and make the calls it escalates; the sessions run the commands. You
+watch and steer from **the surface**: the himmel UI and the other views of the
+fleet.
 
 This page lists what you can use today, how to start each part, and where its
 deep doc lives.
@@ -17,9 +19,9 @@ deep doc lives.
 | [Quota-gauge](#quota-gauge--cross-lane-quota-observability) | how much quota each lane has left | **on** (passive) | no setup; lanes fill its ledger as they run |
 | [Statusline](#statusline) | session context in the terminal | opt-in | `bash scripts/lib/wire-statusline.sh <settings-json-path> <himmel-path>` |
 
-> **Default posture: every optional lane is OFF until you configure it.** The
-> root `CLAUDE.md` delegation rules skip a lane that is absent. Enable only the
-> parts you want.
+> **Default posture: every optional lane is OFF until you configure it.** A
+> lane you have not configured is simply not used. Enable only the parts you
+> want.
 
 ---
 
@@ -58,7 +60,7 @@ steer the fleet by messaging the chief.
   [internals/lane-calibration.md](internals/lane-calibration.md).
 - **The fleet cap** bounds how many workers run at once (default 4).
   Set it by hand in `~/.himmel/config.json` `.policy.HIMMEL_FLEET_CAP`; the
-  Settings page shows it read-only.
+  himmel UI's Configure page (Project scope tile) shows it read-only.
 - **The judge.** Before a merge, the chief has the diff judged at the
   cheapest tier that can rule on it (`scripts/handover/chief-kit/judge-ladder.sh`).
   A worker merges only on the chief's signed `GO`, through
@@ -75,12 +77,14 @@ steer the fleet by messaging the chief.
   handover doc at a set time.
 - **Usage caps.** When a session nears its usage cap,
   `scripts/hooks/auto-arm-on-cap.sh` arms it again for the reset.
-- **Shifts.** `/afk-shift` runs the fleet with nobody at
-  the keyboard and stop only on the block-only criteria:
+- **Shifts.** `/afk-shift` works through a ticket list while you are away and
+  stops when it hits a blocker only you can resolve:
   [handover/afk-mode.md](handover/afk-mode.md).
 - **Initiative.** With `HIMMEL_INITIATIVE` set, a session runs the ship steps
-  (review, PR, ticket, merge, handover) at a completion point without being
-  asked. The steps and their rails: `scripts/hooks/initiative-runbook.md`.
+  you listed at a completion point without being asked. Setting it to `all`
+  means review, PR, ticket and handover; for unattended runs,
+  `HIMMEL_INITIATIVE_AFK=all` adds execute and merge (a merge still needs the
+  unattended-merge opt-in, `ARMAUTOMERGE=1`). The steps and their rails: `scripts/hooks/initiative-runbook.md`.
 - **Lessons.** Review findings become proposed lessons. A lesson is only
   proposed, and it is adopted only after its audit passes:
   [internals/lesson-audit.md](internals/lesson-audit.md).
@@ -88,7 +92,8 @@ steer the fleet by messaging the chief.
 ## Quota-gauge — cross-lane quota observability
 
 **What it is.** A passive observability layer that answers "how much quota is
-left, per lane (Claude / Codex / Alibaba)?" It is an append-only JSONL
+left per lane?", where a lane is one agent backend such as Claude or Codex
+(the full set is in `scripts/telegram/quota-gauge.ts`). It is an append-only JSONL
 ledger. It fails open, so a write failure never breaks a session. It **never**
 routes, arms, spawns or blocks.
 

@@ -84,8 +84,8 @@ bringing them to your project is planned.
 
 Reference docs for himmel features that touch the Luna Obsidian vault.
 
-Per the docs-placement rule in `CLAUDE.md` (operator reference docs go
-in the owning repo's `docs/`; vault content stays in luna): operator-facing
+Per the docs-placement rule in `CLAUDE.md` (reference docs go in the
+owning repo's `docs/`; vault content stays in luna): user-facing
 reference docs (guides, runbooks, architecture) for luna-touching
 features in this repo live here. Personal-state work artifacts
 (handovers, decision logs, journal entries) live in `<state-repo>`.

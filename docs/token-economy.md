@@ -47,8 +47,10 @@ worker launch is, so compare that count with the cap yourself.
 
 ## For maintainers
 
-The full policy: which optimizer owns which token boundary, its invariants,
-decision records and measured deltas.
+Everything below is himmel's internal policy for its own development: which
+optimizer owns which token boundary, its invariants, decision records and
+measured deltas. You do not need it to use himmel. Here the **operator** is
+the person who runs the himmel checkout and reads its `/morning-report`.
 
 > Operative reference (load-on-trigger instead of a CLAUDE.md rule, by
 > layer selection). Single source of truth for **who owns which token
