@@ -2067,7 +2067,7 @@ class StackedWorker(StreamFixture):
         self.assertNotIn('wrap-merged-failed', out.read_text())
 
 
-    ASK ='T3ASK-019e2c1a-2026-11-25'
+    ASK = 'T3ASK-019e2c1a-2026-11-25'
 
     def t3_fleet(self, **extra):
         self.worker('N1', '- 09:00 LIVE — started')
