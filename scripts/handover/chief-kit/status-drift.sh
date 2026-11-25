@@ -79,7 +79,8 @@
 # TICKET_STATUS_DRIFT_BUDGET seconds (default 90).
 #
 #
-# Env: STATUS_DRIFT_T3_LIST (the thread list reader, default scripts/t3/thread-list.sh; a test seam),
+# Env: STATUS_DRIFT_T3_LIST (the thread list reader, default scripts/t3/thread-list.sh) and STATUS_DRIFT_T3_TIMEOUT
+# (its deadline in seconds, default 20); both are test seams,
 # TICKET_STATUS_STATE_DIR, JIRA_PROJECT_KEY (default HIMMEL); TICKET_STATUS_NOW (epoch, the clock),
 # TICKET_STATUS_AWAIT_TTL_CHIEF (default 24h), TICKET_STATUS_AWAIT_TTL_OPERATOR and _OTHER (default 72h),
 # TICKET_STATUS_AWAIT_TTL_RESUME (default 6h) and
@@ -304,7 +305,7 @@ t3_load() {
     T3_LOADED=1
     local out
     # swallow-ok: an unreadable list leaves T3_LIST empty, so no thread is proven live and the ticket stays stuck
-    out=$(bounded 20 bash "${STATUS_DRIFT_T3_LIST:-$HERE/../../t3/thread-list.sh}" 2>/dev/null) || return 0
+    out=$(bounded "${STATUS_DRIFT_T3_TIMEOUT:-20}" bash "${STATUS_DRIFT_T3_LIST:-$HERE/../../t3/thread-list.sh}" 2>/dev/null) || return 0
     jq -e '.threads | type == "array"' >/dev/null 2>&1 <<<"$out" && T3_LIST=$out
     return 0
 }

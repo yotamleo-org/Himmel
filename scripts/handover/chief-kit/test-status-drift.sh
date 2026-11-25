@@ -2440,7 +2440,7 @@ t3thread() { printf '{"threadId":"%s","title":"t","state":"%s"}' "$1" "$2" >> "$
 d6fx; hold "$K" --reason "a T3 thread works it" --owner chief --thread "$TID"; thrc=$?
 check "11050 1: ticket-hold takes --thread" "$thrc" 0
 check "11050 1: the hold row records the thread" "$(rowq 'select(.event == "hold") | .thread')" "$TID"
-check "11050 1: and the HOLD comment names it" "$(grep -c "^comment $K .*--comment-file" "$STUB_LOG")" 1
+contains "11050 1: and the HOLD comment body names it" "$(cat "$FX/comment-body.last")" "thread: $TID"
 hold "$K" --release --owner chief; hold "$K" --reason r --owner chief --thread 'bad id'; thrc=$?
 check "11050 1: a thread id with a space is a usage error" "$thrc" 2
 hold "$K" --release --thread "$TID"; thrc=$?
@@ -2484,6 +2484,24 @@ d6fx; hold "$K" --reason "a T3 thread works it" --owner chief --thread "$TID"; t
 hnow 0
 drift
 check "11050 8: control: a live worker still owns the ticket whatever the thread says" "$(dcount UNOWNED)" 0
+OTHER=HIMMEL-9002
+d6fx; hold "$K" --reason "waiting on legal" --owner chief; hold "$OTHER" --reason "a T3 thread works it" --owner chief --thread "$TID"; t3thread "$TID" waiting
+hnow 0
+drift
+check "11050 9: another key's later hold naming a live thread does not own this key's hold" "$(dcount UNOWNED)" 1
+cat >"$tmp/thread-list-hang.sh" <<'EOS'
+#!/usr/bin/env bash
+exec sleep 30
+EOS
+chmod +x "$tmp/thread-list-hang.sh"
+d6fx; hold "$K" --reason "a T3 thread works it" --owner chief --thread "$TID"
+hnow 0
+t10start=$(date +%s)
+driftenv STATUS_DRIFT_T3_LIST="$tmp/thread-list-hang.sh" STATUS_DRIFT_T3_TIMEOUT=1
+t10secs=$(($(date +%s) - t10start))
+check "11050 10: a thread list that hangs past its deadline is unreadable, so the ticket stays stuck" "$(dcount UNOWNED)" 1
+contains "11050 10: and the row says the thread list is unreadable" "$(drows UNOWNED)" "thread list unreadable"
+check "11050 10: and the pass was cut off near the deadline, not after the hang" "$([ "$t10secs" -lt 20 ] && echo fast || echo "slow:$t10secs")" fast
 unset STATUS_DRIFT_T3_LIST
 
 echo "---"
