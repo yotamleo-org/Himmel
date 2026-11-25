@@ -427,6 +427,22 @@ if command -v python3 >/dev/null 2>&1; then
     TICK_TRACKER_MIRROR_DIR="$SHR" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     lacks "23d: control, an equal-size snapshot is not refused" "$out" "versions-shrunk"
     check "23d: control, and it replaces the file" "v1.0.1	false	2026-12-01" "$(cat "$SHR.versions.tsv")"
+    printf 'v9.9.9\ttrue\t2026-01-01\n' > "$SHR.versions.tsv"
+    mkfifo "$W/held.fifo" "$W/rel.fifo"
+    bash -c 'exec 9>"$1"; flock 9; echo held > "$2"; read -r _ < "$3"' _ "$SHR.versions.lock" "$W/held.fifo" "$W/rel.fifo" &
+    holder=$!
+    read -r _ < "$W/held.fifo"
+    tracker_fixture 'https://claude.ai/artifact/x'
+    TICK_TRACKER_MIRROR_DIR="$SHR" WM_TRACKER_TIMEOUT=1 run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+    echo go > "$W/rel.fifo"; wait "$holder"
+    contains "23d: a snapshot that cannot take the versions lock gives up, tracker=failed:versions-lock" "$out" "tracker=failed:versions-lock"
+    check "23d: and the file it waited on is left untouched" "v9.9.9	true	2026-01-01" "$(cat "$SHR.versions.tsv")"
+    chmod 000 "$SHR.versions.tsv"
+    tracker_fixture 'https://claude.ai/artifact/x'
+    TICK_TRACKER_MIRROR_DIR="$SHR" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+    chmod 644 "$SHR.versions.tsv"
+    contains "23d: a versions file that cannot be read is never replaced blind, tracker=failed:versions-read" "$out" "tracker=failed:versions-read"
+    check "23d: and it keeps its content" "v9.9.9	true	2026-01-01" "$(cat "$SHR.versions.tsv")"
 else
     echo "skip - 15-18 tracker rows: no python3"
 fi
