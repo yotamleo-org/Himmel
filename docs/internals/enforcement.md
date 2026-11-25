@@ -4287,8 +4287,24 @@ session, but a worker launched from a chief can inherit it) and the resolved ses
 name ends in `-chief` or `-console` (an unresolvable name is allowed), and denies a command that runs a script
 named in `scripts/handover/chief-kit/long-running.txt` unless
 `tool_input.run_in_background` is true. The deny message gives the re-issue shape.
-A textual match (interpreter + name, or a path in command position), so a grep that
-names a script is allowed. A workflow nudge: fails open on missing `jq` or an
+A command that names no listed script exits at once. Otherwise the command is read
+through the shared command model (`scripts/lib/bash-ast.sh`): a position runs a listed
+script when its program is listed, when a shell or `node`/`bun`/`python` is given it as
+its script word, or when a runner (`timeout`, `nice`, `setsid`, ...) takes it as an
+argument, so a quoted path and a run behind `env`, `exec`, `bash -c` or `eval` count,
+and a grep or cat that names a script is allowed. A quote-aware regex also reads the
+command through every runner the model lists, for a position the model cannot see into
+that names a listed script and whenever the model cannot answer (no `shfmt`, a parse
+failure, a timeout): a workflow nudge falls back to the regex there, unlike the callers
+the `bash-ast.sh` header describes, which fail closed on rc 2 and rc 5.
+
+A **detached** run (`&`, `coproc`, `nohup`, `setsid`, `systemd-run`) is denied even with
+`run_in_background: true`: the harness wakes the chief only when the command itself
+exits, so a detached run's output and wake reach no reader, and a detached
+`chief-wait.sh` holds the one-waiter lock. Its message starts
+`You are a CHIEF session running a long chief-kit script (<name>) DETACHED — DENIED.`;
+the foreground message keeps `in the foreground — DENIED`. Both begin with the prefix
+`worker-digest.ts` classifies. A workflow nudge: fails open on missing `jq` or an
 unparseable payload.
 
 **Bypass:** `CHIEF_FG_OK=1` in the LAUNCHING shell, session-sticky.

@@ -33,9 +33,9 @@ run_hook() {
         *)      payload=$(jq -nc --arg c "$cmd" '{tool_name:"Bash",tool_input:{command:$c}}') ;;
     esac
     if [ "$chief" = yes ]; then
-        out=$(printf '%s' "$payload" | env HIMMEL_CONSOLE_DOC=/x/N-chief.md CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-chief" CHIEF_FG_LIST="$LIST" "$@" bash "$HOOK" 2>&1)
+        out=$(printf '%s' "$payload" | env HIMMEL_CONSOLE_DOC=/x/N-chief.md CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-chief" CHIEF_FG_LIST="$LIST" "$@" bash "${HOOK_RUN:-$HOOK}" 2>&1)
     else
-        out=$(printf '%s' "$payload" | env -u HIMMEL_CONSOLE_DOC CHIEF_FG_LIST="$LIST" "$@" bash "$HOOK" 2>&1)
+        out=$(printf '%s' "$payload" | env -u HIMMEL_CONSOLE_DOC CHIEF_FG_LIST="$LIST" "$@" bash "${HOOK_RUN:-$HOOK}" 2>&1)
     fi
     rc=$?
     printf '%s|%s' "$rc" "$out"
@@ -62,11 +62,11 @@ K="bash scripts/handover/chief-kit"
 
 # --- the headline DoD rows
 expect "chief, foreground wrap-merged.sh: denied" 2 \
-    "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent)" "run_in_background"
+    "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent)" "in the foreground — DENIED"
 expect "chief, foreground wrap-merged.sh: deny names the script" 2 \
     "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent)" "wrap-merged.sh"
 expect "chief, explicit run_in_background=false: denied" 2 \
-    "$(run_hook yes "$K/wrap-merged.sh --pr 12" false)" "run_in_background"
+    "$(run_hook yes "$K/wrap-merged.sh --pr 12" false)" "in the foreground — DENIED"
 expect "chief, wrap-merged.sh with run_in_background=true: allowed" 0 \
     "$(run_hook yes "$K/wrap-merged.sh --pr 12" true)"
 expect "worker (no HIMMEL_CONSOLE_DOC), foreground wrap-merged.sh: allowed" 0 \
@@ -81,7 +81,7 @@ expect "unresolvable session name: fails open" 0 "$rc|$out"
 # a session named *-chief is a chief exactly as a *-console one is
 payload_wrap=$(jq -nc --arg c "$K/wrap-merged.sh --pr 12" '{tool_name:"Bash",tool_input:{command:$c}}')
 out=$(printf '%s' "$payload_wrap" | env HIMMEL_CONSOLE_DOC=/x/N-roadmap-chief.md CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-chief" CHIEF_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?
-expect "chief-named session, foreground wrap-merged.sh: denied like a chief" 2 "$rc|$out" "run_in_background"
+expect "chief-named session, foreground wrap-merged.sh: denied like a chief" 2 "$rc|$out" "in the foreground — DENIED"
 
 # --- the short scripts stay foreground
 for s in append-results.sh go.sh write-verdict.sh fleet-manifest.sh; do
@@ -118,7 +118,7 @@ expect "chief, timeout 90s: allowed" 0 \
 expect "chief, timeout 1.5m: allowed" 0 \
     "$(run_hook yes "timeout 1.5m $K/verdict-go.sh a b" absent)"
 expect "chief, timeout 600: denied" 2 \
-    "$(run_hook yes "timeout 600 $K/ready-check.sh 12 abc" absent)" "run_in_background"
+    "$(run_hook yes "timeout 600 $K/ready-check.sh 12 abc" absent)" "in the foreground — DENIED"
 expect "chief, timeout 91: denied" 2 \
     "$(run_hook yes "timeout 91 $K/ready-check.sh 12 abc" absent)"
 expect "chief, timeout 0 (no limit): denied" 2 \
@@ -186,13 +186,192 @@ expect "chief, CHIEF_FG_LIST names an alternate list: its script is denied" 2 \
 expect "chief, CHIEF_FG_OK=1 in the launching shell: allowed" 0 \
     "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent CHIEF_FG_OK=1)" ""
 expect "chief, a per-call CHIEF_FG_OK=1 prefix does not lift the guard" 2 \
-    "$(run_hook yes "CHIEF_FG_OK=1 $K/wrap-merged.sh --pr 12" absent)" "run_in_background"
+    "$(run_hook yes "CHIEF_FG_OK=1 $K/wrap-merged.sh --pr 12" absent)" "in the foreground — DENIED"
 expect "chief, an empty VAR= prefix does not hide the script" 2 \
-    "$(run_hook yes "FOO= $K/wrap-merged.sh --pr 12" absent)" "run_in_background"
+    "$(run_hook yes "FOO= $K/wrap-merged.sh --pr 12" absent)" "in the foreground — DENIED"
 expect "chief, CHIEF_FG_OK=0 in the launching shell: denied" 2 \
-    "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent CHIEF_FG_OK=0)" "run_in_background"
+    "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent CHIEF_FG_OK=0)" "in the foreground — DENIED"
 expect "chief, deny names CHIEF_FG_OK as the bypass" 2 \
     "$(run_hook yes "$K/wrap-merged.sh --pr 12" absent)" "CHIEF_FG_OK=1"
+
+HAVE_SHFMT=0
+command -v shfmt >/dev/null 2>&1 && HAVE_SHFMT=1
+LIB_AST="$SCRIPT_DIR/../lib/bash-ast.sh"
+CWP=/repo/scripts/handover/chief-kit/chief-wait.sh
+CW="bash $CWP"
+IN=/b/consoles/N.md
+RC=/repo/scripts/handover/chief-kit/ready-check.sh
+RS=/repo/scripts/handover/chief-kit/run-suite.sh
+BM=/repo/scripts/handover/chief-kit/board.mjs
+DET='DETACHED — DENIED'
+FG='in the foreground — DENIED'
+DETLINE='You are a CHIEF session running a long chief-kit script (chief-wait.sh) DETACHED — DENIED.'
+FGLINE='You are a CHIEF session running a long chief-kit script (ready-check.sh) in the foreground — DENIED.'
+BLK=main
+BENV=""
+ROWSET='*'
+REPEAT="1 2 3 4 5 6 7 8 9 10 11 15 16 19 20 21 22 23 24 26 27 28 37 38 42 43 44 45 46 47 48 49"
+
+rowx() {
+    local n="$1" want="$2" needle="$3" bg="$4" cmd="$5" kind="${6:-}"
+    if [ "$kind" = model ] && [ "$HAVE_SHFMT" = 0 ]; then
+        if [ "${HIMMEL_REQUIRE_SHFMT:-}" = 1 ]; then bad "$BLK row $n needs shfmt (HIMMEL_REQUIRE_SHFMT=1)"; else echo "SKIP $BLK row $n needs shfmt"; fi
+        return
+    fi
+    # shellcheck disable=SC2086
+    expect "$BLK row $n: ${cmd%%$'\n'*}" "$want" "$(run_hook yes "$cmd" "$bg" $BENV)" "$needle"
+}
+
+row() {
+    if [ "$ROWSET" != '*' ]; then
+        case " $ROWSET " in *" $1 "*) ;; *) return ;; esac
+    fi
+    rowx "$@"
+}
+
+all_rows() {
+    row 1 2 "$DET" absent "ls /x | grep 5821; bash \"$CWP\" \"$IN\" --doc \"/d.md\" &"
+    row 2 2 "$DETLINE" true "$CW $IN &"
+    row 3 2 "$DET" true "bash \"$CWP\" \"$IN\" &"
+    row 4 2 "$DET" true "nohup $CW $IN"
+    row 5 2 "$DET" true "setsid $CW $IN"
+    row 6 2 "$DET" absent "setsid $CW $IN"
+    row 7 2 "$DET" true "$CW $IN & disown"
+    row 8 2 "$DET" true "bash $RC 12 abc &"
+    row 9 2 "$DET" absent "$CW $IN &"
+    row 10 2 "$DET" true "( $CW $IN & )"
+    row 11 2 "$DET" true $'true\n'"$CW $IN &"
+    row 12 2 "$DET" true "bash -c \"$CW $IN &\"" model
+    row 13 2 "$DET" true "eval \"$CW $IN &\"" model
+    row 14 2 "$DET" true "bash -x $CWP $IN &" model
+    row 15 2 "$FGLINE" absent "bash \"$RC\" 12 abc"
+    row 16 2 "$FG" absent "bash '$CWP' '$IN'"
+    row 17 2 "$FG" absent "env $CW $IN" model
+    row 18 2 "$FG" absent "exec $CW $IN" model
+    row 19 0 "" true "$CW $IN --doc /d.md"
+    row 20 0 "" true "bash \"$CWP\" \"$IN\" --doc \"/d.md\""
+    row 21 0 "" true "$CW $IN 2>&1"
+    PIPEAMP='|'; PIPEAMP="$PIPEAMP&"
+    row 22 0 "" true "$CW $IN $PIPEAMP cat"
+    row 23 0 "" true "$CW $IN &>/dev/null"
+    row 24 0 "" true "cd /x && $CW $IN"
+    row 25 0 "" true "$CW $IN --why \"R&D\"" model
+    row 26 0 "" absent "grep -n \"bash\" \"$CWP\""
+    row 27 0 "" absent "git grep -n \"chief-wait.sh\" -- scripts"
+    row 28 0 "" absent "cat \"$CWP\""
+    row 29 0 "" true "bash scripts/other.sh &"
+    row 30 0 "" true "ls -la &"
+    row 33 2 "$DET" true "bash $RS a & bash $RS b & wait"
+    row 34 2 "$FG" absent "timeout 30 grep -n x $RC"
+    row 35 2 "$DET" true "bash -o pipefail $CWP $IN &" model
+    row 36 0 "" absent $'cat <<\'X\'\n'"$CW $IN &"$'\nX' model
+    row 37 2 "$DET" true "node $BM &"
+    row 38 2 "$DET" absent "timeout 90 $RC 12 abc &"
+    row 39 2 "$DET" true "zsh $CWP $IN &" model
+    row 40 2 "$DET" true "coproc $CW $IN" model
+    row 41 2 "$DET" true "systemd-run --user $CW $IN" model
+    row 42 2 "$FG" absent "timeout 600 bash -c \"bash $RC 12 abc\""
+    row 43 2 "$DET" true "timeout 7200 bash -c \"$CW $IN &\""
+    row 44 2 "$DET" true "setsid bash -c \"$CW $IN\""
+    row 45 0 "" absent "bash -c \"cat $CWP\""
+    row 46 2 "$DET" true "bash $RC 12 abc; $CW $IN &"
+    row 47 2 "$DET" true "systemd-run --user bash -c \"$CW $IN\""
+    row 48 2 "$DET" true "nice bash -c \"$CW $IN\" &"
+    row 49 2 "$FG" absent "nice cat $RC"
+    row 50 2 "$DET" true "bash -- $CWP $IN &" model
+    row 51 2 "$DET" true "bash --norc $CWP $IN &" model
+    row 52 2 "$FG" absent "env $CW $IN; \$X $CWP" model
+    row 53 2 "$DET" true "$CW $IN; timeout 5 bash -c \"$CW $IN &\""
+    row 54 2 "$DET" true "coproc timeout 5 $CW $IN" model
+}
+
+all_rows
+expect "main row 31: a worker session name is not a chief" 0 "$(run_hook no "$CW $IN &" true)"
+expect "main row 32: CHIEF_FG_OK=1 allows a detached run" 0 "$(run_hook yes "$CW $IN &" true CHIEF_FG_OK=1)"
+rowx 55 2 "$DET" true "nohup bash -c \"$CW $IN\""
+
+RUNNERS=$(sed -n '/def _runners:/,/\];/p' "$LIB_AST" | grep -o '"[a-z-]*"' | tr -d '"')
+SHELLS=$(sed -n '/def _shells:/p' "$LIB_AST" | grep -o '"[a-z-]*"' | tr -d '"')
+if [ -n "$RUNNERS" ]; then ok "the model's runner list is read from the lib"; else bad "no runner list read from $LIB_AST"; fi
+if [ -n "$SHELLS" ]; then ok "the model's shell list is read from the lib"; else bad "no shell list read from $LIB_AST"; fi
+
+runner_rows() {
+    local r needle
+    for r in $RUNNERS; do
+        needle="$FG"
+        case "$r" in setsid|systemd-run) needle="$DET" ;; esac
+        rowx 56 2 "$needle" absent "$r bash -c \"bash $RC 12 abc\"" "$1"
+    done
+}
+runner_rows model
+for sh in $SHELLS; do
+    rowx 57 2 "$DET" true "$sh $CWP $IN &" model
+done
+
+mkdir -p "$TMP/nosh"
+oifs=$IFS; IFS=:
+for d in $PATH; do
+    for t in "$d"/*; do
+        case "${t##*/}" in shfmt) ;; *) [ -e "$TMP/nosh/${t##*/}" ] || ln -s "$t" "$TMP/nosh/${t##*/}" 2>/dev/null ;; esac
+    done
+done
+IFS=$oifs
+if PATH="$TMP/nosh" command -v shfmt >/dev/null 2>&1; then bad "the no-shfmt farm still finds shfmt"; else ok "the no-shfmt farm has no shfmt"; fi
+
+BLK=no-shfmt; BENV="PATH=$TMP/nosh"; ROWSET="$REPEAT"
+all_rows
+rowx 25 2 "$DET" true "$CW $IN --why \"R&D\""
+rowx 12 0 "" true "bash -c \"$CW $IN &\""
+rowx 55 2 "$DET" true "nohup bash -c \"$CW $IN\""
+runner_rows ""
+
+REAL_JQ=$(command -v jq)
+mkdir -p "$TMP/jqfail"
+# shellcheck disable=SC2016
+printf '#!/bin/sh\np=\nfor a in "$@"; do\n  [ "$p" = --argjson ] && [ "$a" = L ] && exit 1\n  p=$a\ndone\nexec %s "$@"\n' "$REAL_JQ" > "$TMP/jqfail/jq"
+chmod +x "$TMP/jqfail/jq"
+
+mkdir -p "$TMP/slow" "$TMP/state"
+# shellcheck disable=SC2016
+printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\ncase "$5" in jq) exit 124 ;; esac\nexit 0\n' > "$TMP/slow/timeout"
+chmod +x "$TMP/slow/timeout"
+
+mkdir -p "$TMP/tree/hooks" "$TMP/tree/lib"
+cp "$HOOK" "$TMP/tree/hooks/guard-chief-foreground.sh"
+ln -sf "$SCRIPT_DIR/../lib/session-name.sh" "$TMP/tree/lib/session-name.sh"
+
+shfmt_block() {
+    if [ "$HAVE_SHFMT" = 1 ]; then return 0; fi
+    if [ "${HIMMEL_REQUIRE_SHFMT:-}" = 1 ]; then bad "block $1 needs shfmt (HIMMEL_REQUIRE_SHFMT=1)"; else echo "SKIP block $1 needs shfmt"; fi
+    return 1
+}
+
+if shfmt_block verdict-jq-fails; then
+    BLK=verdict-jq-fails; BENV="PATH=$TMP/jqfail:$PATH"; ROWSET="$REPEAT"
+    all_rows
+    rowx 25 2 "$DET" true "$CW $IN --why \"R&D\""
+fi
+
+if shfmt_block slow-model; then
+    BLK=slow-model; BENV="XDG_STATE_HOME=$TMP/state PATH=$TMP/slow:$PATH"; ROWSET="$REPEAT"
+    all_rows
+    rowx 25 2 "$DET" true "$CW $IN --why \"R&D\""
+fi
+
+BLK=missing-lib; BENV=""; ROWSET="$REPEAT"; HOOK_RUN="$TMP/tree/hooks/guard-chief-foreground.sh"
+all_rows
+rowx 25 2 "$DET" true "$CW $IN --why \"R&D\""
+HOOK_RUN=""
+
+if shfmt_block parse-failure; then
+    # shellcheck source=../lib/bash-ast.sh
+    pf=$(. "$LIB_AST"; bash_ast_positions 'CW IN &|' >/dev/null 2>&1; echo $?)
+    if [ "$pf" = 3 ]; then ok "the model returns rc 3 on a parse failure"; else bad "the model returned rc $pf, not 3, on 'CW IN &|'"; fi
+    BLK=parse-failure; BENV=""
+    rowx 58 2 "$DET" true "$CW $IN &|"
+    rowx 59 0 "" absent "cat $CWP &|"
+fi
+BLK=main; BENV=""; ROWSET='*'
 
 # --- data file shape: every non-comment line is a kit script that exists
 bad_rows=0
