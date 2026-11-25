@@ -4765,6 +4765,7 @@ _suite_account() {
     flaked_suites="${flaked_suites}  ${suite} (first run rc=${first_rc}, passed on retry)
 "
     printf '[FLAKE] %s (first run rc=%s, passed on retry, %ss)\n' "$suite" "$first_rc" "$dur"
+    grep -E '^[[:space:]]*(not ok|FAIL|\[FAIL\])' "$first_log" 2>/dev/null | head -n 10 | sed 's/^[[:space:]]*/    first attempt: /'
     _flake_record "$relpath" "$first_rc" "$first_log"
     _flake_announce "$relpath" "$first_rc"
     if [ -n "${FAIL_LOG_DIR:-}" ]; then

@@ -217,11 +217,17 @@ fork, a deleted author, or an author not on the internal-author list),
 lint surface in `scripts/ci/outside-lint-surface.txt` (16d), every thread
 resolved by a maintainer (16e), a clean recorded impacted run (16f), and a blast
 row when the diff touches the blast scope (16g). An author not in
-`~/.himmel/outside-contributors.json` (login and id) also needs a CodeRabbit
-success (16h) and a passed outside security audit (16i); a listed author prints
+`~/.himmel/outside-contributors.json` (login and id) also needs no CodeRabbit
+failure or error status (16h; a running, missing or rate-limited one is a note) and a passed outside security audit (16i); a listed author prints
 `[SKIP] 16h/16i`. No `CR_*` env widens 16e or 16h. The operator's GitHub
 code-owner approval comes **last**, after item 16 passes at that head; until
 then `codeowner-review-gate` is red and item 2 FAILs, as expected.
+
+**An unlisted outside author's PR walks a staged path** at its exact head `H` (a new head restarts it; a listed
+author starts at 3): 1. CodeRabbit `success` and CI green but the code-owner gate; 2. from the primary,
+`outside-security-audit.sh --pr <n> --head <H>` (a `fail` is final at `H`); 3. `outside-approve-request` with the
+CodeRabbit status, CI run ids, verdict, hard hits, counts, dropped bullets and report path; 4. `/pr-check --pr <n>`
+to item 16; 5. the code-owner approval last. Detail: `docs/internals/validation-gates.md`.
 
 ## Docs PRs and the merged-docs list
 

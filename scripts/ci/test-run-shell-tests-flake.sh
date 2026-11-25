@@ -712,4 +712,28 @@ for f in scripts/ci/run-shell-tests.sh scripts/observability/suite-flake-summary
   esac
 done
 
+echo "== F20: the FLAKE report names the first attempt's failing assertion =="
+sb=$(mktemp -d "${TMPDIR:-/tmp}/rst-flake20.XXXXXX") || { fail "F20: mktemp failed"; sb=""; }
+if [ -n "$sb" ]; then
+mkdir -p "$sb/scripts"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$sb/scripts/test-pass.sh"
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'cnt="$(dirname "$0")/early.count"\n'
+  printf 'n=$(cat "$cnt" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$cnt"\n'
+  printf '[ "$n" -gt 1 ] && exit 0\n'
+  printf 'echo "FAIL: (e1) the early assertion"\n'
+  printf 'i=0; while [ "$i" -lt 60 ]; do i=$((i + 1)); echo "PASS: row $i"; done\n'
+  printf 'exit 1\n'
+} > "$sb/scripts/test-early.sh"
+chmod +x "$sb/scripts/test-pass.sh" "$sb/scripts/test-early.sh"
+run_flake "$sb"
+if [ "$rc" -eq 0 ] && grepq "$(printf '%s\n' "$out" | grep -A1 -F '[FLAKE] ')" -F 'first attempt: FAIL: (e1) the early assertion'; then
+  pass "F20: a FAIL line beyond the retry block's last 40 lines is named under [FLAKE]"
+else
+  fail "F20: rc=$rc out: $out"
+fi
+rm -rf "$sb"
+fi
+
 rst_tally

@@ -192,7 +192,7 @@
       "id": "s.cost",
       "source": {
         "file": "scripts/lanes/worker-pr-open.sh",
-        "line": 145,
+        "line": 146,
         "text": "if ! raw=$(\"$HERE/worker-burn.sh\" --profile \"$profile\""
       },
       "lane": "console",
@@ -293,7 +293,7 @@
       "id": "p.design",
       "source": {
         "file": "scripts/lanes/plugin-profiles.json",
-        "line": 274,
+        "line": 291,
         "text": "\"design\": {"
       },
       "lane": "leg",

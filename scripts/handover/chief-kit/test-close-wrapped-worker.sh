@@ -2831,6 +2831,85 @@ check "9848 live proof closes after persistence" "$rc" 0
 contains "9848 TERM stub observed pending action" "$(cat "$CALLS")" 'kill -TERM 990'
 unset PROOF_EXPECT_LEDGER PROOF_MIRROR_DIR
 
+FIN="$W/fin"; FIN_WT="$FIN/.claude/worktrees/demo"
+mkdir -p "$FIN_WT"
+git -C "$FIN_WT" init -q
+git -C "$FIN_WT" -c user.email=t@example.invalid -c user.name=t commit -q --allow-empty -m one
+FIN_HEAD=$(git -C "$FIN_WT" rev-parse HEAD)
+FIN_MERGE=89abcdef89abcdef89abcdef89abcdef89abcdef
+cat > "$W/bin/gh-fin" <<'STUB'
+#!/usr/bin/env bash
+echo "gh $*" >> "$CALLS_LOG"
+case "$*" in "pr view "*) cat "$CWL_FIN_VIEW"; exit 0 ;; esac
+exit 1
+STUB
+chmod +x "$W/bin/gh-fin"
+export CLOSE_WRAPPED_WORKER_GH="$W/bin/gh-fin" CWL_FIN_VIEW="$W/fin-view.json"
+fin_view() { printf '{"state":"%s","headRefOid":"%s","mergeCommit":{"oid":"%s"}}\n' "$1" "$2" "$FIN_MERGE" > "$CWL_FIN_VIEW"; }
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 410 claude -n "$SESSION_NAME" work
+pgrep_x_stub 410
+mkdoc "- 10:00 READY 55 $FIN_HEAD GREEN" "worktree: \`$FIN_WT\`"
+acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$DOC" "cwl-test-holder" 2>&1)"
+token="$(printf '%s' "$acq_out" | sed -n "s/.*release-token: \`\([^\`]*\)\`.*/\\1/p")"
+
+fin_view MERGED "$FIN_HEAD"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "finished: without the flag a held lock still refuses" "$rc" "3"
+reset_calls
+rc=0; out=$(run --finished --check "$DOC" 2>&1) || rc=$?
+check "finished --check: merged and clean -> rc 0" "$rc" "0"
+contains "finished --check: says SAFE-TO-CLOSE" "$out" "SAFE-TO-CLOSE"
+not_contains "finished --check: nothing signalled" "$(cat "$CALLS")" "kill"
+reset_calls
+rc=0; out=$(run --finished "$DOC" 2>&1) || rc=$?
+check "finished: merged, clean at the merged head, lock held, no WRAPPED -> rc 0" "$rc" "0"
+exact_count "finished: kill called once with the matched pid" "$(cat "$CALLS")" "kill -TERM 410" "1"
+
+touch "$FIN_WT/stray.txt"
+reset_calls
+rc=0; out=$(run --finished "$DOC" 2>&1) || rc=$?
+check "finished: a dirty worktree is refused -> rc 10" "$rc" "10"
+contains "finished: the refusal says dirty" "$out" "not clean"
+not_contains "finished: dirty -> kill never called" "$(cat "$CALLS")" "kill"
+rm -f "$FIN_WT/stray.txt"
+
+fin_view MERGED 0000000000000000000000000000000000000001
+reset_calls
+rc=0; out=$(run --finished "$DOC" 2>&1) || rc=$?
+check "finished: a worktree not at the PR head is refused -> rc 10" "$rc" "10"
+not_contains "finished: moved head -> kill never called" "$(cat "$CALLS")" "kill"
+
+fin_view OPEN "$FIN_HEAD"
+reset_calls
+rc=0; out=$(run --finished "$DOC" 2>&1) || rc=$?
+check "finished: an open PR is refused -> rc 10" "$rc" "10"
+not_contains "finished: open PR -> kill never called" "$(cat "$CALLS")" "kill"
+
+fin_view MERGED "$FIN_HEAD"
+mkdoc "- 10:00 LIVE - building" "worktree: \`$FIN_WT\`"
+reset_calls
+rc=0; out=$(run --finished "$DOC" 2>&1) || rc=$?
+check "finished: a doc naming no PR is refused -> rc 10" "$rc" "10"
+mkdoc "- 10:00 READY 55 $FIN_HEAD GREEN" "worktree: \`$W/fin/gone/.claude/worktrees/nowhere\`"
+reset_calls
+rc=0; out=$(run --finished "$DOC" 2>&1) || rc=$?
+check "finished: no existing worktree to prove clean is refused -> rc 10" "$rc" "10"
+rc=0; run --finished --chief "$DOC" >/dev/null 2>&1 || rc=$?
+check "finished: --finished with --chief is a usage error" "$rc" "2"
+mkdoc "- 10:00 READY 55 $FIN_HEAD GREEN" "worktree: \`$FIN_WT\`"
+rm -rf "$W/proc"; mkdir -p "$W/proc"; pgrep_x_stub
+fin_manifest="$W/fin.fleet.json"
+bash "$HERE/fleet-manifest.sh" add "$fin_manifest" --lane native "$DOC" >/dev/null
+reset_calls
+rc=0; out=$(run --finished --fleet "$fin_manifest" "$DOC" 2>&1) || rc=$?
+check "finished: no live session while the lock is held -> rc 3" "$rc" "3"
+not_contains "finished: no live session while the lock is held is not CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
+check "finished: that refusal keeps the manifest row" "$(jq --arg d "$DOC" 'any(.workers[]; .doc == $d)' "$fin_manifest")" "true"
+[ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$DOC" "$token" >/dev/null 2>&1
+unset CLOSE_WRAPPED_WORKER_GH CWL_FIN_VIEW
+
 if [ "$fails" -eq 0 ]; then
     echo "ALL OK"
     exit 0

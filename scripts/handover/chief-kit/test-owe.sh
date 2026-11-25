@@ -69,9 +69,56 @@ contains "list --all keeps the closed row with its key" "$all" "$(printf 'o1\tti
 bash "$OWE" close --bucket "$B" --id o1 --key HIMMEL-10099 >/dev/null 2>&1; rc=$?
 check "closing a closed row exits 1" "$rc" "1"
 
-bash "$OWE" close --bucket "$B" --id o2 --key 0123abc >/dev/null; rc=$?
-check "a proof closes on a sha" "$rc" "0"
+K3=HIMMEL-3
+JIRA_STUB="$WORK/jira-stub"
+cat > "$JIRA_STUB" <<'STUB'
+#!/bin/sh
+echo "$*" >> "$STUB_DIR/calls.log"
+case "$1" in
+    comment) [ -z "${STUB_FAIL:-}" ] || exit 1; [ -n "${STUB_DROP:-}" ] || printf '%s\n' "$3" >> "$STUB_DIR/comments.$2" ;;
+    comments) cat "$STUB_DIR/comments.$2" 2>/dev/null; exit 0 ;;
+esac
+STUB
+chmod +x "$JIRA_STUB"
+export OWE_JIRA_CLI="$JIRA_STUB" STUB_DIR="$WORK"
+before="$(cat "$F")"
+out="$(bash "$OWE" close --bucket "$B" --id o2 --key 0123abc 2>&1)"; rc=$?
+check "10911 a proof row closed with no PROOF flags exits 2" "$rc" "2"
+contains "10911 the refusal names the PROOF form" "$out" "PROOF <row-id> PASS|FAIL"
+check "10911 the refused proof close appends nothing" "$(cat "$F")" "$before"
+bash "$OWE" close --bucket "$B" --id o2 --key 0123abc --proof-result PASS --proof-artifact doc:706 >/dev/null 2>&1; rc=$?
+check "10911 a proof row with no ticket key and no --ticket exits 2" "$rc" "2"
+bash "$OWE" close --bucket "$B" --id o2 --key 0123abc --proof-result MAYBE --proof-artifact doc:706 --ticket HIMMEL-3 >/dev/null 2>&1; rc=$?
+check "10911 a result that is not PASS or FAIL exits 2" "$rc" "2"
+bash "$OWE" close --bucket "$B" --id o2 --key 0123abc --proof-result PASS --proof-artifact 'two words' --ticket HIMMEL-3 >/dev/null 2>&1; rc=$?
+check "10911 an artifact of two words exits 2" "$rc" "2"
+check "10911 nothing was posted by a refusal" "$(cat "$WORK/calls.log" 2>/dev/null)" ""
+STUB_FAIL=1 bash "$OWE" close --bucket "$B" --id o2 --key 0123abc --proof-result PASS --proof-artifact doc:706 --ticket HIMMEL-3 >/dev/null 2>&1; rc=$?
+check "10911 a comment the CLI refuses exits 5" "$rc" "5"
+check "10911 the row stays open after a refused comment" "$(bash "$OWE" list --bucket "$B" | cut -f1)" "o2"
+STUB_DROP=1 bash "$OWE" close --bucket "$B" --id o2 --key 0123abc --proof-result PASS --proof-artifact doc:706 --ticket HIMMEL-3 >/dev/null 2>&1; rc=$?
+check "10911 a comment the read-back cannot find exits 5" "$rc" "5"
+check "10911 the row stays open after a failed read-back" "$(bash "$OWE" list --bucket "$B" | cut -f1)" "o2"
+rm -f "$WORK/calls.log"
+bash "$OWE" close --bucket "$B" --id o2 --key 0123abc --proof-result PASS --proof-artifact doc:706 --ticket HIMMEL-3 >/dev/null; rc=$?
+check "10911 a proof closes with its PROOF comment" "$rc" "0"
+check "10911 the close wrote the PROOF line on the ticket" "$(cat "$WORK/comments.$K3")" "PROOF o2 PASS 2027-01-15 doc:706"
+check "10911 the close row carries the key" "$(tail -n 1 "$F" | jq -r '.op + " " + .ref + " " + .key')" "close o2 0123abc"
 check "nothing is open" "$(bash "$OWE" list --bucket "$B")" ""
+P="$WORK/p-bucket"; mkdir -p "$P"
+bash "$OWE" add --bucket "$P" --chief Z --kind proof --key HIMMEL-3 --text 'live proof' >/dev/null
+bash "$OWE" add --bucket "$P" --chief Z --kind step --key HIMMEL-3 --text 'proof by 2027-02-01' --metadata '{"actor":"proof"}' >/dev/null
+bash "$OWE" close --bucket "$P" --id o1 --key 0123abc --proof-result FAIL --proof-artifact specs/audits/x.md >/dev/null 2>&1; rc=$?
+check "10911 the ticket comes from the row key and FAIL closes too" "$rc" "0"
+check "10911 the FAIL line is on the row's ticket" "$(tail -n 1 "$WORK/comments.$K3")" "PROOF o1 FAIL 2027-01-15 specs/audits/x.md"
+bash "$OWE" close --bucket "$P" --id o2 --key HIMMEL-3 >/dev/null 2>&1; rc=$?
+check "10911 a proof step closed by the chief's discharge needs no PROOF flags" "$rc" "0"
+bash "$OWE" add --bucket "$P" --chief Z --kind proof --key HIMMEL-3 --text 'again' >/dev/null
+printf 'PROOF o3 PASS 2027-01-15 doc:1\n' >> "$WORK/comments.HIMMEL-3"; rm -f "$WORK/calls.log"
+bash "$OWE" close --bucket "$P" --id o3 --key 0123abc --proof-result PASS --proof-artifact doc:1 >/dev/null 2>&1; rc=$?
+check "10911 a close whose PROOF line is already on the ticket exits 0" "$rc" "0"
+check "10911 and it posts nothing a second time" "$(grep -c '^comment ' "$WORK/calls.log")" "0"
+unset OWE_JIRA_CLI STUB_DIR
 
 bash "$OWE" add --bucket "$B" --chief $'Z\tX' --kind ticket --text x >/dev/null 2>&1; rc=$?
 check "a tab in --chief exits 2" "$rc" "2"

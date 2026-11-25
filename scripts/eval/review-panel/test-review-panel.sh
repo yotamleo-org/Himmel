@@ -655,6 +655,69 @@ eq "provenance: a manifest missing its protocol is unreadable, not a crash" "$rc
 STUB_DIRTY=1 REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr2" --no-ledger --critics codex >/dev/null 2>&1
 eq "run: a CBS file edited during the sweep leaves the stamp unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr2/swept.json" 2>&1)" "False"
 
+RP="$TMP/paired-repo"
+git clone -q "$RR" "$RP"
+rp() { git -C "$RP" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
+PS="$(rp rev-parse HEAD)"
+printf '# head critic edit\n' >> "$RP/scripts/cr/critic-x.sh"; printf 'x\n' > "$RP/NOTES.txt"
+rp add -A && rp commit -q -m head
+PH="$(rp rev-parse HEAD)"
+rp checkout -q -b fixture-edit "$PS" && printf '\n' >> "$RP/scripts/eval/review-panel/fixtures/case-01.patch"
+rp add -A && rp commit -q -m fixture-edit
+PF="$(rp rev-parse HEAD)"
+rp checkout -q "$PH"
+PRUN="$RP/scripts/eval/review-panel/run.sh"
+paired() { REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-pr" bash "$PRUN" "$@" --no-ledger --critics codex; }
+rowsof() { python3 -c 'import json,sys
+for l in open(sys.argv[1]): r = json.loads(l); print(r["side"], r["snapshot"] == sys.argv[2], r["tree"][:7], r["cbs_hash"][:7], r["decision_eligible"])' "$1" "$2"; }
+paired --paired "$PS" --head "$PH" --out "$TMP/pair1" --results "$TMP/pair1.jsonl" >"$TMP/pair1.txt" 2>&1; rc=$?
+eq "paired: a sweep of base and head from one snapshot exits 0" "$rc" "0"
+eq "paired: it writes two rows that both name the snapshot, one per side, each at its own tree" \
+  "$(rowsof "$TMP/pair1.jsonl" "$PS" | cut -d' ' -f1-3 | tr '\n' ';')" "base True ${PS:0:7};head True ${PH:0:7};"
+eq "paired: the two sides carry different cbs hashes when the head changed a critic file" \
+  "$(rowsof "$TMP/pair1.jsonl" "$PS" | cut -d' ' -f4 | sort -u | wc -l | tr -d ' ')" "2"
+eq "paired: both rows are decision-eligible" "$(rowsof "$TMP/pair1.jsonl" "$PS" | cut -d' ' -f5 | sort -u | tr '\n' ' ')" "True "
+eq "paired: the scratch trees are removed from the repo" "$(git -C "$RP" worktree list | wc -l | tr -d ' ')" "1"
+paired --paired "$PS" --head "$PH" --repeats 2 --out "$TMP/pair2" --results "$TMP/pair2.jsonl" >/dev/null 2>&1; rc=$?
+eq "paired: --repeats 2 writes two rows per side" "$rc:$(rowsof "$TMP/pair2.jsonl" "$PS" | cut -d' ' -f1 | sort | uniq -c | tr -s ' ' | tr '\n' ';')" "0: 2 base; 2 head;"
+paired --paired "$PH" --head "$PS" --out "$TMP/pair3" --results "$TMP/pair3.jsonl" >"$TMP/pair3.txt" 2>&1; rc=$?
+eq "paired: a snapshot that is not an ancestor of the head is refused, no sweep, no row" "$rc:$([ -e "$TMP/pair3.jsonl" ] && echo row || echo none)" "2:none"
+has "paired: the refusal names the ancestry" "$(cat "$TMP/pair3.txt")" "not an ancestor"
+paired --paired "$PS" --head "$PF" --out "$TMP/pair4" --results "$TMP/pair4.jsonl" >"$TMP/pair4.txt" 2>&1; rc=$?
+eq "paired: a head whose fixtures differ from the snapshot's is refused, no sweep, no row" "$rc:$([ -e "$TMP/pair4.jsonl" ] && echo row || echo none)" "2:none"
+has "paired: the refusal names the case set" "$(cat "$TMP/pair4.txt")" "case set"
+paired --paired "$PS" --head "$PH" --fixtures "$FIX" --out "$TMP/pair5" --results "$TMP/pair5.jsonl" >/dev/null 2>&1; rc=$?
+eq "paired: --fixtures is refused, each side reads its own tree's case set" "$rc" "2"
+paired --paired "$PS" --repeats 0 --out "$TMP/pair6" --results "$TMP/pair6.jsonl" >/dev/null 2>&1; rc=$?
+eq "paired: --repeats 0 is refused" "$rc:$([ -e "$TMP/pair6.jsonl" ] && echo row || echo none)" "2:none"
+paired --paired no-such-rev --out "$TMP/pair7" --results "$TMP/pair7.jsonl" >"$TMP/pair7.txt" 2>&1; rc=$?
+eq "paired: a snapshot that is no commit is refused, no row" "$rc:$([ -e "$TMP/pair7.jsonl" ] && echo row || echo none)" "2:none"
+has "paired: the refusal names the snapshot" "$(cat "$TMP/pair7.txt")" "is not a commit"
+paired --paired "$PS" --out "$TMP/pair8" --results "$TMP/pair8.jsonl" >/dev/null 2>&1; rc=$?
+eq "paired: --head defaults to the checkout's HEAD" "$rc:$(rowsof "$TMP/pair8.jsonl" "$PS" | cut -d' ' -f1,3 | tr '\n' ';')" "0:base ${PS:0:7};head ${PH:0:7};"
+paired --paired "$PS" --head "$PH" --only case-99 --out "$TMP/pair9" --results "$TMP/pair9.jsonl" >"$TMP/pair9.txt" 2>&1; rc=$?
+eq "paired: a failing sweep fails the run and writes no row" "$rc:$([ -e "$TMP/pair9.jsonl" ] && echo row || echo none)" "2:none"
+has "paired: the failure says no row was written" "$(cat "$TMP/pair9.txt")" "no row written"
+python3 "$RP/scripts/eval/review-panel/score.py" export-row "$TMP/pair1/base-1" --repo "$RP" --snapshot "$PS" --results "$TMP/pair10.jsonl" >"$TMP/pair10.txt" 2>&1; rc=$?
+eq "export-row: --snapshot without --side is refused, no row" "$rc:$([ -e "$TMP/pair10.jsonl" ] && echo row || echo none)" "2:none"
+has "export-row: the refusal says the two go together" "$(cat "$TMP/pair10.txt")" "go together"
+paired --paired "$PS" --repeats 00 --out "$TMP/pair11" --results "$TMP/pair11.jsonl" >/dev/null 2>&1; rc=$?
+eq "paired: --repeats 00 is refused like 0" "$rc:$([ -e "$TMP/pair11.jsonl" ] && echo row || echo none)" "2:none"
+paired --paired "$PS" --head "$PH" --out "$TMP/pair1" --results "$TMP/pair12.jsonl" >/dev/null 2>&1; rc=$?
+eq "paired: a rerun into an out dir that holds an earlier run writes this run's two rows, not the old ones again" "$rc:$(wc -l < "$TMP/pair12.jsonl" | tr -d ' ')" "0:2"
+for pf in "--head=$PH" "--repeats=2" "--results=$TMP/unpaired.jsonl"; do
+  rm -rf "$TMP/unpaired-out" "$TMP/unpaired.jsonl"
+  REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-pr" bash "$PRUN" "${pf%%=*}" "${pf#*=}" --out "$TMP/unpaired-out" --no-ledger --critics codex >"$TMP/unpaired.txt" 2>&1; rc=$?
+  eq "run: ${pf%%=*} without --paired is refused before any sweep, so a forgotten --paired never fires an unpaired paid sweep" \
+    "$rc:$([ -e "$TMP/unpaired-out" ] && echo swept || echo none):$(grep -c -e 'need --paired' "$TMP/unpaired.txt")" "2:none:1"
+done
+if [ "$(id -u)" != 0 ]; then
+  cp -r "$TMP/pair1" "$TMP/pair13"; chmod a-w "$TMP/pair13"
+  paired --paired "$PS" --head "$PH" --out "$TMP/pair13" --results "$TMP/pair13.jsonl" >/dev/null 2>&1; rc=$?
+  chmod u+w "$TMP/pair13"
+  eq "paired: a stale row file that cannot be removed fails the run, no row" "$([ "$rc" != 0 ] && echo failed):$([ -e "$TMP/pair13.jsonl" ] && echo row || echo none)" "failed:none"
+fi
+
 SC="$TMP/scorer"; mkdir -p "$SC/scripts/eval/review-panel" "$SC/scripts/eval/lib"
 cp "$SCORE" "$SC/scripts/eval/review-panel/score.py"; cp "$HERE/adjudication.py" "$SC/scripts/eval/review-panel/"; cp "$HERE/replay.py" "$SC/scripts/eval/review-panel/replay.py"; cp "$HERE/../lib/"*.py "$SC/scripts/eval/lib/"; cp "$HERE/../feedback-rules.json" "$SC/scripts/eval/"
 printf '__pycache__/\n' > "$SC/.gitignore"

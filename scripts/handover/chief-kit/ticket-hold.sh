@@ -8,12 +8,14 @@
 #                      [--kind chain-order|gate|file-collision|operator|date] [--on <KEY>]
 #        ticket-hold.sh <KEY> --release [--owner <who>]
 #   --owner is chief, operator or a lowercase name (a-z, 0-9, -; at most 32); --until must be a real date.
-#   The hold row records owner, reason and any until: status-drift.sh reads it as a wait on the
-#   owner until that date (nothing releases the hold on it; the Chains tab reads a date
-#   hold as date-gated until then); --kind date needs it.
+#   The hold row records owner, reason and any until (nothing releases the hold on it; the Chains tab reads a
+#   date hold as date-gated until then); status-drift.sh flags a started ticket that is still held as stuck
+#   whatever the date; --kind date needs it.
 #   --kind and --on (the ticket it waits on) go into the HOLD comment and the event row;
 #   with --kind, so does --until.
 #
+# A hold on an In Progress ticket also moves it to To Do (a held ticket is not In Progress); a failed move
+# warns and appends an `audit-gap` row (stage transition), and the hold stands.
 # Hold = `jira edit --add-labels held`, the label read back, then one HOLD
 # comment naming the reason, owner and date. Release = `--remove-labels held`,
 # the label read back absent, then a HOLD comment saying so. A label that does
@@ -123,7 +125,20 @@ if [ "$(jq -r "$jqf" <<<"$json" 2>/dev/null)" != true ]; then
     exit 1
 fi
 
-row result=moved
+FROMST="" MOVEFAIL=0
+if [ "$RELEASE" -eq 0 ]; then
+    # swallow-ok: an unreadable status is not In Progress, so the ticket is left as it is
+    st=$(jq -r '.fields.status.name // ""' <<<"$json" 2>/dev/null)
+    if [ "$st" = "In Progress" ]; then
+        # swallow-ok: an unreadable status after the move is no proof it moved
+        if ts_jira transition "$KEY" "To Do" >/dev/null 2>&1 && [ "$(ts_jira get "$KEY" --json 2>/dev/null | jq -r '.fields.status.name // ""' 2>/dev/null)" = "To Do" ]; then FROMST=$st; else MOVEFAIL=1; fi
+    fi
+fi
+row result=moved ${FROMST:+from="$FROMST" to="To Do"}
+if [ "$MOVEFAIL" -eq 1 ]; then
+    status_event event=audit-gap key="$KEY" result=miss stage=transition action="$EVENT"
+    echo "ticket-hold: $KEY: the move to To Do failed; the ticket stays In Progress (the label stands)" >&2
+fi
 if [ "$RELEASE" -eq 1 ]; then
     chain_log change=release key="$KEY" ${OWNER:+who="$OWNER"}
 elif [ -n "$KIND$ON" ]; then
@@ -140,6 +155,7 @@ else
     printf 'HOLD: %s\n\nowner: %s\nuntil: %s (advisory)\n' "$REASON" "$OWNER" "${UNTIL:-none}" > "$body"
     [ -z "$KIND" ] || printf 'kind: %s\n' "$KIND" >> "$body"
     [ -z "$ON" ] || printf 'on: %s\n' "$ON" >> "$body"
+    [ -z "$FROMST" ] || printf 'status: moved to To Do (a held ticket is not In Progress); release the hold to restart it\n' >> "$body"
 fi
 if ! ts_jira comment "$KEY" --comment-file "$body" >/dev/null 2>&1; then
     status_event event=audit-gap key="$KEY" result=miss stage=comment action="$EVENT"

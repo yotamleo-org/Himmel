@@ -67,6 +67,12 @@ sdrift=1:abcd1234
 out="$(doctor)"
 has 'known rows only is INFO and names the checker ticket' "$out" "INFO C80-status-drift: 0 real rows, file $HM (1 known-bug $ckey)"
 
+plant 600 'UNOWNED HIMMEL-7600 In Progress with no open PR and no live owner; a date never makes it wait: awaiting the chief since=2026-11-08T11:00:00Z due=2099-01-01T00:00:00Z what=x source=d6n | writer=w | fix=f
+sdrift=1:abcd1234
+'
+out="$(doctor)"
+has '10786 a stuck ticket with a future due date is one real row, WARN' "$out" "WARN C80-status-drift: 1 real row"
+
 # no rows at all
 plant 600 'sdrift=0:00000000
 '

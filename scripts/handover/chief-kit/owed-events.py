@@ -41,7 +41,8 @@ UNREAD_TEXT = 'the owed lines of this partial merge could not be read: read the 
 PROOF_BRIEF = '''# {key} proof wake ({id}, window end {due})
 
 > **Profile:** read-only proof worker. Run the owed live proof below on the station, quote its output on {key},
-> then close the owed row: `bash scripts/handover/chief-kit/owe.sh close --bucket {bucket} --id {id} --key {key}`.
+> then close the owed row, which writes the ticket's gate line `PROOF {id} PASS|FAIL <YYYY-MM-DD> <artifact>` itself:
+> `bash scripts/handover/chief-kit/owe.sh close --bucket {bucket} --id {id} --key {key} --proof-result PASS|FAIL --proof-artifact <path|doc:line> --ticket {key}`.
 > No code change, no Jira transition by hand; a failing proof is a FINDING to the chief.
 
 Owed row {id}: {text}

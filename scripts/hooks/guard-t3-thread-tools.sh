@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
 # guard-t3-thread-tools.sh — PreToolUse hook (matcher mcp__t3-code__.*): refuses
-# a T3 Code tool call that names a provider instance off the allowlist or sets
-# a -chief or -console thread title.
+# a T3 Code tool call that names a bypass provider instance, or one off the
+# optional narrowing list, or that sets a -chief or -console thread title.
 #
-# Allowlist: .t3.instance_allowlist in $HOME/.himmel/config.json, an array of
-# strings. Default ["claudeAgent", "codex"] when the file or key is absent,
-# unreadable, malformed or a symlink.
+# Bypass instance: an entry in T3's settings file
+# (${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json, .providerInstances) whose
+# env / environment (on the instance or its config) names a *_OK or *BYPASS*
+# variable (any case) or a flag in scripts/himmelctl/lib/bypass-flags.json, is
+# malformed (entry, config, environment entry name or launchArgs), or whose launchArgs carry
+# --dangerously-skip-permissions or bypassPermissions. Any other instance id is
+# allowed, from any provider to any provider.
 #
-# Security fence, fail-closed: missing jq or a payload that does not parse is
-# refused.
+# Narrowing: .t3.instance_narrow in $HOME/.himmel/config.json, an array of
+# strings; an absent file or key narrows nothing. .t3.instance_allowlist is not read.
+#
+# Security fence, fail-closed: missing jq, a payload that does not parse, an
+# unreadable or malformed T3 settings file or bypass registry, and a malformed or
+# symlinked narrowing config are refused.
 #
 # Bypass: T3_THREAD_TOOLS_OK=1 in the launching shell; the allow is printed to
 # stderr.
@@ -16,8 +24,9 @@
 # Hook I/O: JSON on stdin; exit 0 allow, exit 2 refuse (stderr shown).
 set -uo pipefail
 
-DEFAULT_ALLOW='["claudeAgent","codex"]'
 CONFIG="${HOME:-/nonexistent}/.himmel/config.json"
+T3_SETTINGS="${T3CODE_HOME:-${HOME:-/nonexistent}/.t3}/userdata/settings.json"
+REGISTRY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../himmelctl/lib/bypass-flags.json"
 
 refuse() {
     if [ "${T3_THREAD_TOOLS_OK:-0}" = "1" ]; then
@@ -59,13 +68,56 @@ findings=$(jq -r '
     || refuse "$tool" "Its tool_input could not be walked, so it cannot be checked."
 [ -n "$findings" ] || exit 0
 
-allow="$DEFAULT_ALLOW" allow_src="the built-in default, since $CONFIG has no usable .t3.instance_allowlist"
-if [ ! -L "${HOME:-/nonexistent}/.himmel" ] && [ ! -L "$CONFIG" ] && [ -f "$CONFIG" ] && [ -r "$CONFIG" ]; then
-    # swallow-ok: an unreadable or malformed allowlist keeps the built-in default
-    if cfg=$(jq -ce '.t3.instance_allowlist | select(type == "array" and all(.[]; type == "string"))' "$CONFIG" 2>/dev/null); then
-        allow="$cfg" allow_src=".t3.instance_allowlist in $CONFIG"
-    fi
-fi
+narrow="" narrow_err="" bypass='{}' settings_err=""
+case "$findings" in
+    instance$'\t'* | *$'\n'instance$'\t'*)
+        if [ -L "${HOME:-/nonexistent}/.himmel" ] || [ -L "$CONFIG" ]; then
+            narrow_err="$CONFIG is a symlink"
+        elif [ -e "$CONFIG" ]; then
+            if ! narrow=$(jq -cs 'if length != 1 then error("not one JSON document") else .[0] end | if .t3 == null or (.t3 | has("instance_narrow") | not) then empty else .t3.instance_narrow end' "$CONFIG" 2>&1); then
+                narrow_err="$CONFIG is not JSON with an optional .t3.instance_narrow: $narrow" narrow=""
+            elif [ -z "$narrow" ]; then
+                :
+            elif ! jq -e 'type == "array" and all(.[]; type == "string")' <<<"$narrow" >/dev/null 2>&1; then
+                narrow="" narrow_err=".t3.instance_narrow in $CONFIG is not an array of strings"
+            fi
+        fi
+        # swallow-ok: jq's error text can quote T3's settings values, which agents may not read; a failure refuses every instance id
+        bypass=$(jq -c --slurpfile reg "$REGISTRY" '
+            ([$reg[0].flags | if type == "array" then .[] else error("the bypass flag registry flags is not an array") end
+              | if (.name | type) == "string" then .name
+                else error("a bypass flag registry entry has no string name") end]) as $names
+            | if type == "object" then . else error("the settings file is not an object") end
+            | (if has("providerInstances") then .providerInstances else {} end)
+            | if type == "object" then . else error("providerInstances is not an object") end
+            | with_entries(
+                .value as $o
+                | .value = (if ($o | type) != "object" then ["a malformed instance entry"]
+                  elif ($o.config != null and ($o.config | type) != "object") then ["a malformed instance config"]
+                  else ($o.config // {}) as $c
+                  | [
+                    (($o.env, $o.environment, $c.env, $c.environment) | select(. != null)
+                        | if type == "object" then keys[]
+                          elif type == "array" then .[]
+                            | if type == "object" then
+                                (if (.name | type) == "string" then .name
+                                 elif .name == null and (.key | type) == "string" then .key
+                                 else "a malformed environment entry" end)
+                              elif type == "string" then split("=")[0]
+                              else "a malformed environment entry" end
+                          else "a malformed environment entry" end
+                        | select(. == "a malformed environment entry"
+                            or (ascii_upcase | test("_OK$|BYPASS"))
+                            or (. as $n | any($names[]; . == $n)))),
+                    (($o.launchArgs, $c.launchArgs) | select(. != null)
+                        | if type == "string" then
+                            (match("dangerously-skip-permissions|bypassPermissions"; "gi").string | "launchArgs " + .)
+                          else "malformed launchArgs" end)
+                  ] | unique end))
+            | with_entries(select(.value | length > 0))' "$T3_SETTINGS" 2>/dev/null) \
+            || { bypass='{}' settings_err="T3's settings file $T3_SETTINGS or the bypass flag registry $REGISTRY could not be read"; }
+        ;;
+esac
 
 bad_instances="" bad_titles=""
 while IFS= read -r line; do
@@ -73,21 +125,35 @@ while IFS= read -r line; do
         instance$'\t'*)
             val=${line#instance$'\t'}
             case "$val" in
-                'non-string '*) bad_instances="$bad_instances  ${val}"$'\n' ;;
-                *) jq -en --argjson allow "$allow" --argjson v "$val" '$allow | index([$v]) != null' >/dev/null 2>&1 \
-                    || bad_instances="$bad_instances  ${val}"$'\n' ;;
+                'non-string '*) bad_instances="$bad_instances  ${val}: not a string instance id"$'\n'; continue ;;
             esac
+            if [ -n "$settings_err" ]; then
+                bad_instances="$bad_instances  ${val}: whether it carries a bypass flag is unknown ($settings_err)"$'\n'
+                continue
+            fi
+            if ! flags=$(jq -rn --argjson m "$bypass" --argjson v "$val" '$m[$v] // [] | join(", ")' 2>&1); then
+                bad_instances="$bad_instances  ${val}: whether it carries a bypass flag is unknown (the bypass lookup failed: ${flags%%$'\n'*})"$'\n'
+                continue
+            fi
+            if [ -n "$flags" ]; then
+                bad_instances="$bad_instances  ${val}: carries a himmel bypass flag (${flags})"$'\n'
+            elif [ -n "$narrow_err" ]; then
+                bad_instances="$bad_instances  ${val}: the narrowing list cannot be read ($narrow_err)"$'\n'
+            elif [ -n "$narrow" ] && ! jq -en --argjson allow "$narrow" --argjson v "$val" '$allow | index([$v]) != null' >/dev/null 2>&1; then
+                bad_instances="$bad_instances  ${val}: off .t3.instance_narrow in $CONFIG ($(jq -r 'map(tojson) | join(", ")' <<<"$narrow"))"$'\n'
+            fi
             ;;
         title$'\t'*) bad_titles="$bad_titles  ${line#title$'\t'}"$'\n' ;;
     esac
 done <<<"$findings"
 
 if [ -n "$bad_instances" ]; then
-    refuse "$tool on a provider instance off the allowlist" "Refused instance id(s):
-${bad_instances}Allowed instances: $(jq -r 'map(tojson) | join(", ")' <<<"$allow") (from ${allow_src}).
-The allowlist is .t3.instance_allowlist in \$HOME/.himmel/config.json, an operator-owned file.
-Only the operator starts or moves a thread onto another instance, by choosing it in the T3 UI.
-Omit the instance id to keep the default, or name one of the allowed instances."
+    refuse "$tool on a provider instance an agent may not pick" "Refused instance id(s):
+${bad_instances}A bypass instance (a T3 instance whose environment or launchArgs carry a himmel bypass flag) is never
+picked by an agent: a hook bypass is granted per session, by the operator choosing that instance in the T3 UI,
+never to every thread T3 starts. Every other instance is allowed, from any provider to any provider, unless
+the operator narrows the list with .t3.instance_narrow in \$HOME/.himmel/config.json, an operator-owned file.
+Omit the instance id to keep the thread's instance, or name an instance without a bypass flag."
 fi
 if [ -n "$bad_titles" ]; then
     refuse "$tool with a chief-shaped thread title" "Refused title(s):

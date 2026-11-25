@@ -130,6 +130,11 @@ Also collect every `BEHIND` **`mkt:<name>`** row — an installed marketplace th
 has moved upstream. Repaired in step 2B. This runbook used to ignore these, and
 they went unrepaired for as long as the registry has had them (issue #518).
 
+Also collect every `BEHIND` row of the `== fork branches ==` section (its
+`action=` reads `fork-rebase` or a `gh repo sync` line) and every `BEHIND`
+registry entry that declares a `fork` block (qmd, graphify). Those are our forks,
+brought current in step 2C of this same run.
+
 **Ignore** the rest, and say which you ignored and why:
 - `mode: checkout` entries (hermes-agent) — a checkout to pull, not a version
   bump; step 1A's hermes step is what moves it.
@@ -237,13 +242,81 @@ unreadable/malformed `known_marketplaces.json`, which is **never** clean
 ("could not look" is not "looked and found nothing"). `--check` lists the rows
 and calls the CLI zero times.
 
+## 2C. Bring every fork current — the fork-rebase step
+
+Operator decision 1145: **every drift fix brings every fork we own current.** A
+fork whose sync conflicts is not parked on a ticket and not left `BEHIND` with a
+note: the conflict is work, and resolving it is a **fork-rebase step** of this
+run. The only fork this step leaves behind is one that carries an **operator
+hold** (a `HELD` row, or a fork-branch `hold-reason`), and the report names the
+hold's reason. A fork that is neither current nor held when the run ends is a
+failed run, reported as such — never a "deferred" row and never a new ticket. The
+one exception is the move the operator's ruling reserves for the operator: a
+fork's default branch is never moved by an unattended run (outcome 1 below).
+
+Per collected fork, one of four outcomes. **Every `resync-fork.sh` call in this
+step is an audit: `<name>` mode as written, `--sync` always with `--dry-run`.** The unflagged `--sync` publishes by `gh repo sync` of the default
+branch and a forced push over the himmel branch (the default branch for most
+registered forks), so only an operator runs it, by hand.
+
+1. **No carried commits** (`use-upstream`): `bash scripts/upstreams/resync-fork.sh
+   --sync <owner/repo> --dry-run` says so and moves nothing. Point the pins and
+   installs at upstream. A fork that is only behind with no carried commits (the
+   report's `gh repo sync` action) needs its default branch fast-forwarded, which is
+   the operator's word, not a hold the operator recorded: report it as `OWED to the
+   operator: gh repo sync <owner/repo> --branch <branch>`, and the run summary names
+   it. It is not shown as `HELD` and not counted as current.
+2. **Carried commits, clean rebase**: `bash scripts/upstreams/resync-fork.sh <name>`
+   (a registry `fork` block) or `bash scripts/upstreams/resync-fork.sh --sync
+   <owner/repo> --dry-run` (a registered adapter fork). rc 0 means the rebase is
+   clean in the scratch clone: test it, publish it and move the pin (below).
+3. **Carried commits, conflict** (rc 4 `CONFLICTED`, or a non-additive delta on
+   an entry whose `fork.note` does not declare it by design): do the **fork-rebase
+   step** the script printed. In its scratch clone, replay the carried commits
+   onto the target release and resolve every conflict in the same run: keep both
+   sides' intent, regenerate lockfiles with the package manager, never take a
+   whole file from one side, keep every carried commit (one commit each, none
+   dropped or squashed), and check the result with `git range-diff`. Run the fork's
+   own tests and the consumer suite from `/fork-resync` step 5 (qmd:
+   `bash scripts/lib/test-qmd-bin.sh`). A carried commit that cannot keep its
+   behaviour on the new base fails the run on that fork: name the commit and
+   the conflicting upstream change, and stop on that fork.
+4. **Operator hold**: nothing to do; the report line is `HELD` with the reason.
+
+**Publishing a rebased fork** (outcomes 2 and 3), only after the fork's tests and the
+consumer suite pass on the rebased tip (outcome 2 runs them too): from the scratch
+clone (`<name>` mode: its `work_dir`; `--sync`: `~/.himmel/fork-resync/sync-<owner>--<repo>`), with a plain
+push, no force flag and no `gh repo sync`. First prove the three refs are free (a
+plain push would fast-forward an existing branch and accept an identical tag); the
+read must exit 2, and any other exit stops the push:
+
+```bash
+git -C <clone> ls-remote --exit-code fork refs/heads/himmel-main-upstream-<target> refs/tags/himmel-pin/<version>-himmel.1 refs/tags/himmel-presync/<branch>-<sha12>
+```
+
+```bash
+git -C <clone> push --atomic fork HEAD:refs/heads/himmel-main-upstream-<target> HEAD:refs/tags/himmel-pin/<version>-himmel.1 <old-tip>:refs/tags/himmel-presync/<branch>-<sha12>
+```
+
+That creates a NEW branch and a NEW tag at the rebased tip and keeps the old tip
+reachable. If the check or the push fails, report that fork's failure with the git output and stop on it; never retry the push and never reach for a force flag. Never push over the fork's default branch or the himmel branch. Then move the pin and `synced_base` together, in the worktree of step 3,
+as `/fork-resync` step 6 describes (the SHA or tag in the entry's `fork.pin_file`,
+and `synced_base`); the fork's default branch moves on the operator's word.
+
+Per-fork result, one of these, never anything else:
+
+- `CURRENT` — the fork already contained the release.
+- `REBASED in this fix` — brought current by this run (name the new tip and tag).
+- `HELD` — an operator hold, with the hold's reason.
+- `OWED to the operator` — only the default-branch fast-forward of outcome 1, with its command. It is not a failed run.
+
 ## 3. Branch first
 
-If step 2 collected no `mode: base` entries, stop here and report — including
-whatever step 2A did. **Do not create a branch or a PR to prove the cadence
-fired**, and note that a probe upgrade is NOT a reason to open one: it changed a
-binary on this machine, not a file in the repo. A no-op night is a successful
-run.
+If step 2 collected no `mode: base` entries and step 2C left no fork pin to move, stop
+here and report — including whatever steps 2A and 2C did. **Do not create a
+branch or a PR to prove the cadence fired**, and note that a probe upgrade is NOT
+a reason to open one: it changed a binary on this machine, not a file in the
+repo. A no-op night is a successful run.
 
 Otherwise cut the worktree BEFORE touching a pin, so the edits are never made in
 the primary checkout (`git status` there must stay clean — the on-main-write
@@ -277,7 +350,7 @@ Handle the exit code — do not paper over any of them:
 | 0 | bumped (prints `BUMP <name> <old> -> <new>`) | continue |
 | 1 | already at that version | skip it; note the guard/registry disagreement |
 | 2 | usage / registry / **downgrade refused** | **abort the whole run** and report — a refused downgrade means the guard reported a version older than the pin, which is an upstream or registry problem, not something to work around |
-| 3 | SKIP — no `version_pin`, not auto-bumpable | report it, continue with the others; qmd is the standing example (its pin is a fork SHA, so bumping `synced_base` alone would mark the fork as rebased when it isn't) |
+| 3 | SKIP — no `version_pin`, not auto-bumpable | continue with the others; a fork entry (qmd, graphify) lands here because its pin is a fork SHA, so bumping `synced_base` alone would mark the fork as rebased when it isn't. Its pin moves in step 2C with the rebased tip, never by this script |
 | 4 | bump failed, both files restored | **abort** and report — the registry's `version_pin.template` no longer matches the file |
 | 5 | release-age gate — `--published` missing, or the target is younger than 72 h | skip it, note the date it ages in; a later night retries it |
 
@@ -394,6 +467,7 @@ drift-fix <date>
   markets:  <name> ...                 (or: none — and name any that FAILED)
   awaiting: <tool> <old> -> <new> — operator-triggered: bash scripts/upstreams/apply-tool-upgrade.sh <tool>
   bumped:   <name> <old> -> <new>      (or: none)
+  forks:    <fork>: CURRENT | REBASED in this fix (<new tip>, <tag>) | HELD (<the hold's reason>) | OWED to the operator (<command>)   (one line per fork; OWED is not a failed run)
   skipped:  <name> (<why>) ...
   ticket:   HIMMEL-<N>                 (or: none — nothing bumped)
   landed:   <merged PR url>            (or: <where it stopped, e.g. awaiting approval>)

@@ -859,7 +859,8 @@ ow_out="$(OWED_STALE_SECS=60 ow_tick)"
 contains '(10006) OWED_STALE_SECS moves the stale line for a still-open ticket row' "$ow_out" 'ACTION owed-stale=1:o1: '
 ow_out="$(OWED_STALE_SECS=0090 ow_tick)"
 contains '(10006) a zero-padded OWED_STALE_SECS reads as decimal, not octal' "$ow_out" 'ACTION owed-stale=1:o1: a ticket you owe has no key after 0h'
-for ow_id in o1 o2 o3; do bash "$HERE/owe.sh" close --bucket "$W/ow-dir" --id "$ow_id" --key 0123abc > /dev/null; done
+bash "$HERE/owe.sh" close --bucket "$W/ow-dir" --id o1 --key 0123abc > /dev/null
+for ow_id in o2 o3; do OWE_JIRA_CLI="$HERE/fixtures/jira-comments-stub.sh" OWE_STUB_DIR="$W" bash "$HERE/owe.sh" close --bucket "$W/ow-dir" --id "$ow_id" --key 0123abc --proof-result PASS --proof-artifact doc:1 --ticket HIMMEL-1 > /dev/null; done
 not_contains '(10006) every row closed hides owed=' "$(ow_tick)" ' owed='
 ow_yesterday="$(date -u -d yesterday +%F)"
 ow_tomorrow="$(date -u -d tomorrow +%F)"

@@ -17,6 +17,7 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import time
 
 
@@ -80,8 +81,19 @@ def power_on(vm, gui=False):
 
 
 def power_off(vm, graceful=True, wait=60):
-    """Power the VM off. Tries ACPI shutdown first, falls back to a hard poweroff."""
-    if state(vm) == "poweroff":
+    """Power the VM off. Tries ACPI shutdown first, falls back to a hard poweroff.
+
+    A VM in the saved state is not running, so controlvm refuses it; the saved
+    session is discarded instead, which leaves the VM powered off.
+    """
+    st = state(vm)
+    if st == "poweroff":
+        return
+    if st == "saved":
+        rc, out = _run("discardstate", vm)
+        if rc != 0 and state(vm) != "poweroff":
+            raise VBoxError(f"discardstate {vm} failed: {out.strip()[-200:]}")
+        print(f"vbox: {vm} was saved; discarded the saved session", file=sys.stderr)
         return
     if graceful:
         _run("controlvm", vm, "acpipowerbutton")
