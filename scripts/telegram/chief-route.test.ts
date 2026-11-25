@@ -8344,6 +8344,14 @@ test("HIMMEL-10935 a reply quoting an answered ask whose first line an open ask 
   expect(await answer(r, f, "yes")).toContain("answers=2");
 });
 
+test("HIMMEL-10935 an ask recorded for one chief is not answered by a yes sent to another chief", async () => {
+  const r = root(); const first = armInbox(r); const SECOND = "HIMMEL-nextleg-2026-09-22W-chief"; const second = armInbox(r, SECOND);
+  expect((await route(["--chief", SECOND, "--kind", "chief-reply", "1", ASK_ONE], { r })).code).toBe(0);
+  expect(await answer(r, first, "yes")).not.toContain("answers=");
+  await handleInbound(r, say(`/chief ${SECOND} yes`), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate([]));
+  expect(readFileSync(second, "utf8").split("\n").filter(Boolean).at(-1)).toContain("answers=1");
+});
+
 test("HIMMEL-10935 a reply to a bot message that is no ask binds nothing while one ask is open", async () => {
   const r = root(); const f = armInbox(r);
   await sendAsk(r, ASK_ONE);
