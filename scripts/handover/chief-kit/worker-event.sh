@@ -287,7 +287,8 @@ if [ "$marker" = READY ]; then
     stale_re="^ESCALATE auto-go 2 PR $rpr is (MERGED|CLOSED), not OPEN\$"
     if [ "$arc" -eq 10 ] && [[ $afirst =~ $stale_re ]]; then
         stale_state="${BASH_REMATCH[1]}"
-        live_state="$(cd "$HERE/../../.." && "${GH[@]}" pr view "$rpr" --json state --jq .state 2>/dev/null)" || live_state=""  # swallow-ok: an unreadable state is not the stale state, so the refusal escalates below
+        live_state=""
+        if gh_state="$(cd "$HERE/../../.." && "${GH[@]}" pr view "$rpr" --json state --jq .state)"; then live_state="$gh_state"; fi
         if [ "$live_state" = "$stale_state" ]; then
             echo "HANDLED stale-ready $label$(bullet "STALE-READY PR $rpr ${rhead:0:8} $stale_state, $label closed, not escalated")"
             exit 0
