@@ -610,7 +610,7 @@ for mode_arg in "$@"; do
 done
 # page/ack record helpers. A missing lib fails open: no records, the
 # page still sends.
-if [ -r "$HERE/denial-ack-lib.sh" ]; then . "$HERE/denial-ack-lib.sh"; else denial_page_write() { return 1; }; fi
+if [ -r "$HERE/denial-ack-lib.sh" ]; then . "$HERE/denial-ack-lib.sh"; else denial_page_write() { return 1; }; denial_key() { return 1; }; denial_unacked() { return 1; }; fi
 hb_file="$inbox.wait"
 key_file="$inbox.wait.state"
 interval="${CHIEF_WAIT_INTERVAL:-180}"
@@ -1152,10 +1152,22 @@ page_send() {  # <text> <deadline epoch> [route kind]: the timeout is what is le
 # record is written FIRST, so the re-dispatch refusal holds even when the send
 # fails; both steps fail open. The page text is the worker label, count and class
 # only: this file never reads the denial log, only tick.sh's denials= field.
+denial_still_parked() {
+    local pg pts label ldoc
+    pg="$(denial_ack_dir)/$1.page"
+    pts="$(denial_field "$pg" ts)"
+    label="$(denial_field "$pg" leg | tr -cd 'A-Za-z0-9._#+-')"
+    [ -n "$label" ] || label="$1"
+    ldoc="$(worker_doc_of "$label")"
+    if [ -z "$ldoc" ]; then [ $(( $(stuck_now) - pts )) -le "$stuck_bound_secs" ]; return; fi
+    ! doc_written_since "$ldoc" "$pts"
+}
 page_denials() {
-    local worker cls n end rc_name kind
+    local worker cls n end rc_name kind held key
     end=$(( $(date +%s) + page_timeout ))  # one budget for the whole batch, not one per worker
     denial_pages "$1" "$2" | while read -r worker cls n; do
+        key="$(denial_key "$worker")"
+        held="$(denial_unacked "$key" 2>/dev/null)" && [ "$(denial_rank "${held%% *}")" -ge "$(denial_rank "$cls")" ] && denial_still_parked "$key" && continue
         kind=denial-page
         denial_page_write "$worker" "$n" "$cls" || kind=""
         # A native worker launched with Remote Control is answered from the
@@ -1237,11 +1249,10 @@ page_denials_stuck() {
         pts="$(denial_field "$pg" ts)"
         [ -z "$cutover" ] || [ "$pts" -gt "$cutover" ] || continue
         [ $(( now - pts )) -ge "$stuck_secs" ] || continue
+        denial_still_parked "$key" || continue
         label="$(denial_field "$pg" leg | tr -cd 'A-Za-z0-9._#+-')"
         [ -n "$label" ] || label="$key"
         ldoc="$(worker_doc_of "$label")"
-        if [ -z "$ldoc" ] && [ $(( now - pts )) -gt "$stuck_bound_secs" ]; then continue; fi
-        if [ -n "$ldoc" ] && doc_written_since "$ldoc" "$pts"; then continue; fi
         ticket="$(ticket_of_doc "$ldoc")"
         rc_name="$(rc_session_for "$label")"
         act="run ack-denial.sh $label"

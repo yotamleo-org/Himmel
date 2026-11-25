@@ -276,7 +276,7 @@ runs forever (`--until forever`, accepted only for the service manager's own mai
 
 | command | what it does |
 |---|---|
-| `himmelctl bypass on [--bucket <dir>]` | writes the unit, enables and starts it (Linux also enables lingering); the bucket (the directory holding `bypass-queue/`) is remembered |
+| `himmelctl bypass on [--bucket <dir>]` | writes the unit, enables and starts it (Linux also enables lingering); the bucket (the directory holding `bypass-queue/`) is remembered; it also records `worker_tabs=1` when your shell has `HIMMEL_WORKER_SESSION_TABS=1` |
 | `himmelctl bypass off` | writes the stop file, disables and stops the unit, so a reboot does not bring it back; when the bucket cannot be written (moved, or its volume gone) it prints that, still disables the unit and exits 0 |
 | `himmelctl bypass restart` | clears a failed state and restarts it now; it needs an enabled service with no stop file, so after `off` it exits 2 and names `himmelctl bypass on` |
 | `himmelctl bypass status` | read only: enabled, active, pid, linger, `unit: current\|STALE`, `code: current\|STALE`, heartbeat age |
@@ -319,7 +319,7 @@ without it), pins `HOME`, `PATH` (system directories only), the operator id file
 test seams. The script takes `HOME` from the passwd entry and refuses a different one, ignores its own test seams, and
 runs every child (launcher, preflight, fleet manifest, sender) from an empty environment plus an allowlist: `HOME`,
 `USER`, `LOGNAME`, `PATH` (system directories, then your `~/.local/bin` and `~/.bun/bin`), a shaped `LANG`,
-the runtime dir, `HANDOVER_DIR` when pinned, the two bridge paths, a pinned bus address, the granted flags and the
+the runtime dir, `HANDOVER_DIR` when pinned, `HIMMEL_WORKER_SESSION_TABS` when pinned (`worker_tabs=1`), the two bridge paths, a pinned bus address, the granted flags and the
 worker effort and API names. The session names a headed terminal needs (`DISPLAY`, `WAYLAND_DISPLAY`, `XAUTHORITY`,
 `XDG_SESSION_TYPE`, `XDG_CURRENT_DESKTOP`) are read by name as data and checked (`DISPLAY` must equal logind's;
 the Wayland socket must exist; `XAUTHORITY` must be a file you own); a failed check, or no graphical session at all,

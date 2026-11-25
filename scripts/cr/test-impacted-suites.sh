@@ -888,9 +888,12 @@ err="$( cd "$FX" && printf '' | bash "$IS" --check "$range" 2>&1 >/dev/null )"
 if grepq "$err" -F 'scripts/test-cmo-exec.sh' && ! grepq "$err" -F 'scripts/test-cmo-hash.sh' && grepq "$err" -Fx 'impacted-suites: dropped-comment-only=9'; then pass "30b --check owes no verdict for a comment-only suite and owes one for a control"; else fail "30b --check verdict set: $err"; fi
 out="$(run_is "$range")"
 err="$( cd "$FX" && bash "$IS" "$range" 2>&1 >/dev/null )"
-all_listed=1
-for s in $cmo_cmt; do grepq "$out" -Fx "scripts/$s" || all_listed=0; done
-if [ "$all_listed" -eq 1 ] && [ -z "$err" ]; then pass "30b the plain listing still names every comment-only suite and prints nothing to stderr"; else fail "30b plain listing narrowed: err=$err out=$out"; fi
+none_listed=1
+for s in $cmo_cmt; do ! grepq "$out" -Fx "scripts/$s" || none_listed=0; done
+if [ "$none_listed" -eq 1 ] && [ -z "$err" ]; then pass "30b the plain listing names no comment-only suite and prints nothing to stderr"; else fail "30b plain listing still lists a comment-only suite: err=$err out=$out"; fi
+all_control=1
+for s in test-cmo-exec.sh test-cmo-source.sh test-cmo-string.sh test-cmo-heredoc.sh test-cmo-trail.sh lib/cmo-exec.test.mjs lib/cmo-tpl.test.mjs lib/cmo-names.test.mjs; do grepq "$out" -Fx "scripts/$s" || all_control=0; done
+if [ "$all_control" -eq 1 ]; then pass "30b the plain listing still names a suite that really reads the file (CONTROL)"; else fail "30b plain listing dropped a real reader: $out"; fi
 out="$(run_is "$range" --shell)"
 if grepq "$out" -Fx 'scripts/test-cmo-hash.sh' && grepq "$out" -Fx 'scripts/test-cmo-after-hd.sh' && ! grepq "$out" -F '.test.'; then pass "30b --shell (what CI selects from) still lists a comment-only suite --check drops"; else fail "30b --shell narrowed: $out"; fi
 REC_LEDGER="$(git -C "$FX" rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl"

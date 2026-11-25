@@ -115,7 +115,7 @@ cmd_on() {
     mkdir -p "$STATE" "$(dirname "$path")" || die "cannot create the unit directory"
     render "$bucket" "$repo" >"$path.new" || { rm -f "$path.new"; exit 2; }
     if [ -f "$path" ] && cmp -s "$path" "$path.new"; then changed=""; fi
-    { printf 'bucket=%s\nrepo=%s\n' "$bucket" "$repo"; [ -z "$pin_hd" ] || printf 'handover_dir=%s\n' "$pin_hd"; } >"$CONFIG.new" || { rm -f "$path.new"; die "cannot save the configuration in $STATE"; }
+    { printf 'bucket=%s\nrepo=%s\n' "$bucket" "$repo"; [ -z "$pin_hd" ] || printf 'handover_dir=%s\n' "$pin_hd"; [ "${HIMMEL_WORKER_SESSION_TABS:-}" != 1 ] || printf 'worker_tabs=1\n'; } >"$CONFIG.new" || { rm -f "$path.new"; die "cannot save the configuration in $STATE"; }
     if [ ! -f "$CONFIG" ] || ! cmp -s "$CONFIG" "$CONFIG.new"; then changed=1; fi
     [ ! -e "$PENDING" ] || changed=1
     if [ -n "$changed" ] && [ -n "$was_active" ]; then : >"$PENDING" || { rm -f "$path.new" "$CONFIG.new"; die "cannot record the pending restart in $STATE"; }; fi

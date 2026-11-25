@@ -24,8 +24,11 @@ assert_rc() {  # assert_rc <expected> <ok-name> <fail-detail>
     if [ "$RC" -eq "$1" ]; then pass "$2"; else fail "$3 (rc=$RC, want $1)"; fi
 }
 
-TMP="$(mktemp -d)"
-trap 'chmod -R u+w "$TMP" 2>/dev/null || true; rm -rf "$TMP"' EXIT
+if [ -z "${HSD_ANCESTOR:-}" ]; then
+    HSD_ANCESTOR=1; TMP="$(mktemp -d)"
+    export HSD_ANCESTOR TMP CADENCE_USAGE_CACHE="$TMP/bank.json"
+    exec -a claude bash -c '"$@"; rc=$?; chmod -R u+w "$TMP" 2>/dev/null; rm -rf "$TMP"; exit $rc' _ bash "$0" "$@"
+fi
 
 # --- fixture repo -----------------------------------------------------------
 FIX="$TMP/fixture-repo"
