@@ -328,7 +328,7 @@ describe('C0 credentials and port', () => {
       }
     });
 
-    test('the child environment is the credentials plus a finite allowlist; ambient JIRA_* (except the JIRA_ALLOW_HOST opt-in) and secrets never pass', async () => {
+    test('the child environment is the credentials plus a finite allowlist; ambient JIRA_* (except the timeout and JIRA_ALLOW_HOST settings) and secrets never pass', async () => {
       const { buildChildEnv } = await load();
       const env = buildChildEnv(goodCreds('http://127.0.0.1:5'), {
         PATH: '/usr/bin', HOME: '/h', NODE_ENV: 'test', HIMMEL_CONFIG_DIR: '/decoy', JIRA_BASE_URL: 'http://evil', JIRA_API_TOKEN: 'decoy', JIRA_ALLOW_HOST: '127.0.0.1:5', ANTHROPIC_API_KEY: 'x', GITHUB_TOKEN: 'y', CLAUDE_CODE_OAUTH_TOKEN: 'z', AWS_SECRET_ACCESS_KEY: 'w',
