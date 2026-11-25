@@ -3383,6 +3383,10 @@ check "90 the block tells the successor to verify, not re-run" "$(printf '%s\n' 
 check "90 the block carries every probe but C29" "$(printf '%s\n' "$block90" | grep -cE '^== (LOCKS|HEAD|BANK|PROCS|LOAD|LOCK)( |$)')" "6"
 check "90 the block omits C29 (the successor runs it)" "$(printf '%s\n' "$block90" | grep -c '^== C29')" "0"
 check "90 the block names the successor's C29 call" "$(printf '%s\n' "$block90" | grep -c 'himmel-doctor.sh\" --only C29')" "1"
+check "90 the block no longer batches the two startup calls" "$(printf '%s\n' "$block90" | grep -c 'same batch as step 8\|one call each')" "0"
+check "90 the block runs each startup call as its own call after the parallel reads" \
+    "$(printf '%s\n' "$block90" | grep -c 'after the parallel reads.*its own call alone in its turn')" "1"
+check "90 the block keeps both calls out of the step 1 and step 8 batch" "$(printf '%s\n' "$block90" | grep -c 'never inside the step 1 or step 8 batch')" "1"
 check "90 the block carries the bank result" "$(printf '%s\n' "$block90" | grep -c '^bank ok 9%$')" "1"
 check "90 the block reads the successor's lock as free" "$(printf '%s\n' "$block90" | sed -n '/^== LOCK (this document)/,$p' | grep -cx 'free')" "1"
 check "90 the block omits the DOC digest" "$(printf '%s\n' "$block90" | grep -c '^== DOC')" "0"
