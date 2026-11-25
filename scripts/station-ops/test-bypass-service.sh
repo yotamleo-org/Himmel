@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
-unset HANDOVER_DIR
+unset HANDOVER_DIR HIMMEL_WORKER_SESSION_TABS
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 OPS=scripts/station-ops
@@ -141,6 +141,13 @@ mk handover-dir
 mkdir -p "$D/handovers" "$D/state/handovers"
 out=$(HANDOVER_DIR="$D/handovers" svc_run on --bucket "$B")
 assert_contains "on records the operator's HANDOVER_DIR in the config record" "handover_dir=$D/handovers" "$(cat "$H/.himmel/state/bypass-service/config" 2>/dev/null)"
+assert_absent "11164: on records no worker_tabs line when the operator's shell has no switch" "worker_tabs=" "$(cat "$H/.himmel/state/bypass-service/config" 2>/dev/null)"
+mk worker-tabs
+out=$(HIMMEL_WORKER_SESSION_TABS=1 svc_run on --bucket "$B")
+assert_contains "RED 11164: on records worker_tabs=1 when the operator's shell has HIMMEL_WORKER_SESSION_TABS=1" "worker_tabs=1" "$(cat "$H/.himmel/state/bypass-service/config" 2>/dev/null)"
+mk worker-tabs-other
+out=$(HIMMEL_WORKER_SESSION_TABS=0 svc_run on --bucket "$B")
+assert_absent "11164: a switch value other than 1 records no worker_tabs line" "worker_tabs=" "$(cat "$H/.himmel/state/bypass-service/config" 2>/dev/null)"
 mk handover-rel
 mkdir -p "$D/state/handovers"
 out=$(cd "$R" && HANDOVER_DIR=../state/handovers svc_run on --bucket "$B"); rc=$?

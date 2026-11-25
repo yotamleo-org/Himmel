@@ -1266,6 +1266,40 @@ assert_contains "RED 11031 B1: a handover root recorded by on reaches the launch
 assert_absent "RED 11031 B1: the manager's HANDOVER_DIR does not, even next to a pin" "evilhandover" "$(cat "$D/launch.fullenv" 2>/dev/null)"
 stop
 
+echo "-- the worker-tabs switch reaches a child only when on recorded worker_tabs=1 (HIMMEL-11164) --"
+setup_repo tabs-pinned
+clean_session
+mkdir -p "$D/home/.himmel/state/bypass-service"
+printf 'bucket=%s\nrepo=%s\nworker_tabs=1\n' "$B" "$R" > "$D/home/.himmel/state/bypass-service/config"
+start_svc "$UNTIL"
+wait_for "$Q/daemon.log" "start pid="
+code=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $code"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_contains "RED 11164: a recorded worker_tabs=1 puts HIMMEL_WORKER_SESSION_TABS=1 in the launched child" "HIMMEL_WORKER_SESSION_TABS=1" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+assert_absent "11164: and the pin's own name never joins the child" "worker_tabs=" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+stop
+setup_repo tabs-unpinned
+clean_session
+start_svc "$UNTIL" HIMMEL_WORKER_SESSION_TABS=1
+wait_for "$Q/daemon.log" "start pid="
+code=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $code"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_absent "11164: with no record, the manager's HIMMEL_WORKER_SESSION_TABS never reaches the child" "HIMMEL_WORKER_SESSION_TABS" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+stop
+setup_repo tabs-badvalue
+clean_session
+mkdir -p "$D/home/.himmel/state/bypass-service"
+printf 'bucket=%s\nrepo=%s\nworker_tabs=yes\n' "$B" "$R" > "$D/home/.himmel/state/bypass-service/config"
+start_svc "$UNTIL"
+wait_for "$Q/daemon.log" "start pid="
+code=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $code"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_absent "11164: a worker_tabs value other than 1 adds nothing to the child" "HIMMEL_WORKER_SESSION_TABS" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+stop
+
 echo "-- the session environment is data, checked, and a failure refuses before the ask (N2) --"
 session_case() {
     local name=$1 disp=$2 want=$3; shift 3
