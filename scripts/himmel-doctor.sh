@@ -3300,6 +3300,28 @@ check_c39_gtimeout_darwin() {
 # HIMMEL_DOCTOR_QMD_CURL (default curl), HIMMEL_DOCTOR_QMD_VEC_TIMEOUT (seconds,
 # a positive integer -- 0 / non-numeric / empty falls back to 30 with an INFO,
 # since curl -m 0 is "no timeout").
+_c40_outage_alert() { # <url>
+    bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" fail qmd-outage "the qmd server is not answering" "$HOME/.cache/qmd/mcp.log" \
+        "connection refused on $1 although qmd is set up on this station; every qmd content search fails" \
+        "check the log, then start it: bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh" </dev/null >/dev/null 2>&1 || true  # t13b-ok: alert text naming the existing start script, starts nothing
+}
+_c40_outage_clear() {
+    bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" clear qmd-outage </dev/null >/dev/null 2>&1 || true
+}
+_c40_server_answered() {
+    [ -n "$1" ] || { [ -n "$2" ] && [ "$2" != 000 ]; }
+}
+_c40_qmd_set_up() {
+    if [ -n "${HIMMEL_DOCTOR_QMD_BIN:-}" ]; then
+        command -v "$HIMMEL_DOCTOR_QMD_BIN" >/dev/null 2>&1
+    elif [ -f "$REPO_ROOT/scripts/lib/qmd-bin.sh" ]; then
+        # shellcheck disable=SC1090,SC1091
+        ( . "$REPO_ROOT/scripts/lib/qmd-bin.sh" >/dev/null 2>&1; has_qmd )
+    else
+        command -v qmd >/dev/null 2>&1
+    fi
+}
+
 check_c40_qmd_vec() {
     local url="${HIMMEL_DOCTOR_QMD_URL:-http://localhost:8181/mcp}"
     local curl_bin="${HIMMEL_DOCTOR_QMD_CURL:-curl}"
@@ -3361,6 +3383,10 @@ check_c40_qmd_vec() {
             *"bearer token"*) remedy="set QMD_HTTP_AUTH_FILE to the qmd server's token file (default ~/.config/qmd/http-token, mode 600); see marketplace/plugins/qmd/README.md" ;;
             esac
             emit WARN C40-qmd-vec "qmd daemon degraded (himmelctl status qmd-daemon): ${qd_detail:-no detail} -- vec search is not being served" "$remedy"
+            case "$qd_detail" in
+            *"is not answering on"*) _c40_outage_alert "$url" ;;
+            *"HTTP "[1-9][0-9][0-9]* | *"NOT qmd"*) _c40_outage_clear ;;
+            esac
             return
             ;;
         esac
@@ -3378,6 +3404,7 @@ check_c40_qmd_vec() {
     # exchange happened); peel it off so an empty body can be told apart by status.
     init="$(printf 'header = "Authorization: Bearer %s"\n' "$qd_tok" | "$curl_bin" ${qd_auth[@]+"${qd_auth[@]}"} -s -m "$init_timeout" -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$init_payload" "$url" 2>/dev/null)"; init_rc=$?
     case "${init: -3}" in [0-9][0-9][0-9]) init_code="${init: -3}"; init="${init%???}" ;; esac
+    if _c40_server_answered "$init" "$init_code"; then _c40_outage_clear; fi
     if [ -z "$init" ] && [ "$init_rc" -eq 28 ]; then
         emit WARN C40-qmd-vec "a process on $url accepted the connection but did not answer initialize within ${init_timeout}s -- the qmd server is wedged, vec search is not being served" "$remedy"
         return
@@ -3386,7 +3413,15 @@ check_c40_qmd_vec() {
     # body from a live listener (HTTP 204, a connection closed without a reply)
     # is a fault, not an absent optional service.
     if [ -z "$init" ] && [ "$init_rc" -eq 7 ]; then
-        emit INFO C40-qmd-vec "no qmd server answering on $url -- vector-health check skipped (qmd is optional)"
+        if [ "${qd_actual:-}" = starting ]; then
+            emit INFO C40-qmd-vec "the qmd server is starting on $url (himmelctl status: ${qd_detail:-starting}) -- vector-health check skipped, not a fault yet"
+        elif _c40_qmd_set_up; then
+            emit WARN C40-qmd-vec "the qmd server is not answering on $url (connection refused) although qmd is set up on this station -- every qmd content search fails until it is back" \
+                "check ~/.cache/qmd/mcp.log, then start it: bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh"  # t13b-ok: doctor remedy text naming the existing script, starts nothing
+            _c40_outage_alert "$url"
+        else
+            emit INFO C40-qmd-vec "no qmd server answering on $url -- vector-health check skipped (qmd is optional)"
+        fi
         return
     fi
     # a 401/403 is a qmd daemon that wants its token, not a foreign
