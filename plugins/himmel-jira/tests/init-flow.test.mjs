@@ -225,49 +225,49 @@ describe('appendEnvKeys rejection routing', () => {
 describe('loadEnvIntoProcess quote stripping', () => {
   it("strips single quotes: VALUE='foo' → process.env.VALUE === 'foo'", () => {
     const env = join(dir, 'q.env');
-    writeFileSync(env, "JIRA_HIMMEL101_SINGLE='foo'\n");
-    delete process.env.JIRA_HIMMEL101_SINGLE;
+    writeFileSync(env, "JIRA_SEVERITY_FIELD='foo'\n");
+    delete process.env.JIRA_SEVERITY_FIELD;
     try {
       loadEnvIntoProcess(env);
-      expect(process.env.JIRA_HIMMEL101_SINGLE).toBe('foo');
+      expect(process.env.JIRA_SEVERITY_FIELD).toBe('foo');
     } finally {
-      delete process.env.JIRA_HIMMEL101_SINGLE;
+      delete process.env.JIRA_SEVERITY_FIELD;
     }
   });
 
   it('strips double quotes: VALUE="bar" → process.env.VALUE === "bar"', () => {
     const env = join(dir, 'q.env');
-    writeFileSync(env, 'JIRA_HIMMEL101_DOUBLE="bar"\n');
-    delete process.env.JIRA_HIMMEL101_DOUBLE;
+    writeFileSync(env, 'JIRA_BOARD_ID="bar"\n');
+    delete process.env.JIRA_BOARD_ID;
     try {
       loadEnvIntoProcess(env);
-      expect(process.env.JIRA_HIMMEL101_DOUBLE).toBe('bar');
+      expect(process.env.JIRA_BOARD_ID).toBe('bar');
     } finally {
-      delete process.env.JIRA_HIMMEL101_DOUBLE;
+      delete process.env.JIRA_BOARD_ID;
     }
   });
 
   it('leaves unquoted value untouched', () => {
     const env = join(dir, 'q.env');
-    writeFileSync(env, 'JIRA_HIMMEL101_PLAIN=baz\n');
-    delete process.env.JIRA_HIMMEL101_PLAIN;
+    writeFileSync(env, 'CONFLUENCE_EMAIL=baz\n');
+    delete process.env.CONFLUENCE_EMAIL;
     try {
       loadEnvIntoProcess(env);
-      expect(process.env.JIRA_HIMMEL101_PLAIN).toBe('baz');
+      expect(process.env.CONFLUENCE_EMAIL).toBe('baz');
     } finally {
-      delete process.env.JIRA_HIMMEL101_PLAIN;
+      delete process.env.CONFLUENCE_EMAIL;
     }
   });
 
   it('does NOT overwrite an env var that is already set', () => {
     const env = join(dir, 'q.env');
-    writeFileSync(env, 'JIRA_HIMMEL101_PREEXIST="from-file"\n');
-    process.env.JIRA_HIMMEL101_PREEXIST = 'from-process';
+    writeFileSync(env, 'CONFLUENCE_API_TOKEN="from-file"\n');
+    process.env.CONFLUENCE_API_TOKEN = 'from-process';
     try {
       loadEnvIntoProcess(env);
-      expect(process.env.JIRA_HIMMEL101_PREEXIST).toBe('from-process');
+      expect(process.env.CONFLUENCE_API_TOKEN).toBe('from-process');
     } finally {
-      delete process.env.JIRA_HIMMEL101_PREEXIST;
+      delete process.env.CONFLUENCE_API_TOKEN;
     }
   });
 
@@ -279,13 +279,13 @@ describe('loadEnvIntoProcess quote stripping', () => {
     // The current implementation uses `^"(.*)"$` — both ends must match.
     // A value like `"oops` (open-only) is loaded verbatim.
     const env = join(dir, 'q.env');
-    writeFileSync(env, 'JIRA_HIMMEL101_MISMATCH="oops\n');
-    delete process.env.JIRA_HIMMEL101_MISMATCH;
+    writeFileSync(env, 'JIRA_PROJECT_KEY="oops\n');
+    delete process.env.JIRA_PROJECT_KEY;
     try {
       loadEnvIntoProcess(env);
-      expect(process.env.JIRA_HIMMEL101_MISMATCH).toBe('"oops');
+      expect(process.env.JIRA_PROJECT_KEY).toBe('"oops');
     } finally {
-      delete process.env.JIRA_HIMMEL101_MISMATCH;
+      delete process.env.JIRA_PROJECT_KEY;
     }
   });
 });
@@ -308,6 +308,22 @@ describe('a JIRA_ALLOW_HOST line in the project .env is never honoured', () => {
     writeFileSync(env, 'JIRA_BASE_URL=https://evil.example\nJIRA_ALLOW_HOST=evil.example\n');
     loadEnvIntoProcess(env);
     expect(process.env.JIRA_ALLOW_HOST).toBe('');
+    await expect(jiraFetch('GET', '/myself')).rejects.toThrow(/JIRA_BASE_URL is refused/);
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  it('an .env HIMMEL_CONFIG_DIR that points at a folder whose himmel.conf allows the host is dropped: refused, nothing sent', async () => {
+    const evil = join(dir, 'evil-conf');
+    mkdirSync(evil, { recursive: true });
+    writeFileSync(join(evil, 'himmel.conf'), 'JIRA_ALLOW_HOST=evil.example\n');
+    const cleanHome = join(dir, 'clean-home');
+    mkdirSync(cleanHome);
+    vi.stubEnv('HOME', cleanHome);
+    vi.stubEnv('HIMMEL_CONFIG_DIR', undefined);
+    const env = join(dir, '.env');
+    writeFileSync(env, `JIRA_BASE_URL=https://evil.example\nHIMMEL_CONFIG_DIR=${evil}\n`);
+    loadEnvIntoProcess(env);
+    expect(process.env.HIMMEL_CONFIG_DIR).toBeUndefined();
     await expect(jiraFetch('GET', '/myself')).rejects.toThrow(/JIRA_BASE_URL is refused/);
     expect(sent).not.toHaveBeenCalled();
   });

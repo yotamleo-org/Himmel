@@ -3,6 +3,11 @@ import { dirname } from 'node:path';
 import { jiraFetch, envFilePath, SECRET_KEYS, CONF_KEYS, loadEnvFile, loadConfIntoProcess, fillFromKeyring, resolveFromKeyring, storeInKeyring } from './jira-fetch.mjs';
 import { writeMetadata } from './metadata.mjs';
 
+const ENV_FILE_KEYS = new Set([
+  'JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'JIRA_PROJECT_KEY', 'JIRA_PROJECTS',
+  'JIRA_SEVERITY_FIELD', 'JIRA_BOARD_ID', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN',
+]);
+
 export function loadEnvIntoProcess(envPath) {
   loadConfIntoProcess();
   // Keyring before .env: a keyring value beats a .env line; an exported value beats both.
@@ -13,7 +18,7 @@ export function loadEnvIntoProcess(envPath) {
     if (!t || t.startsWith('#') || !t.includes('=')) continue;
     const [k, ...rest] = t.split('=');
     const key = k.trim();
-    if (key === 'JIRA_ALLOW_HOST') continue;
+    if (!ENV_FILE_KEYS.has(key)) continue;
     const value = rest.join('=').trim();
     // Strip optional surrounding quotes
     const unquoted = value.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
