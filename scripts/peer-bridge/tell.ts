@@ -23,6 +23,7 @@ const R = (code: number, line: string): Result => ({ code, line });
 const NOT_SET_UP = R(3, "peer bridge is not set up");
 const LAUNCH_UNKNOWN = R(3, "refused: launch-root-unknown: this session's transcript cannot be found or proven");
 const PHI = R(3, "refused: phi-root: this session's transcript names a salus or PHI path, or could not be read whole");
+const PHI_MARKED = R(3, "refused: phi-root: this session touched a path under a salus or PHI root (phi-read-mark.sh)");
 
 export const slugOf = (p: string): string => p.replace(/[^A-Za-z0-9]/g, "-");
 const hhmm = (ms: number) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
@@ -47,6 +48,11 @@ function restricted(S: string, sid: string, env: Record<string, string | undefin
   const dir = join(S, "taint");
   if (!fs.existsSync(dir)) return false;
   try { return fs.readdirSync(dir).some(n => n === sid || n.startsWith(`${sid}.pending.`)); } catch { return true; }
+}
+
+function phiMarked(home: string, sid: string): boolean {
+  try { fs.statSync(join(home, ".himmel", "phi-taint", sid)); return true; }
+  catch (e) { return (e as NodeJS.ErrnoException).code !== "ENOENT"; }
 }
 
 type Found = { slug: string; dir: string; file: string };
@@ -219,6 +225,7 @@ export async function run(argv: string[], env: Record<string, string | undefined
   const home = env.HOME || homedir();
   const S = join(home, ".himmel", "peer-bridge"), C = join(home, ".config", "himmel", "peer-bridge");
   if (restricted(S, sid, env)) return R(3, "refused: tell.ts never runs in a peer desk or a session that read peer text");
+  if (phiMarked(home, sid)) return PHI_MARKED;
   const a = parseArgs(argv);
   if (!a) return R(2, "refused: unknown or malformed argument");
   let cfg: Config;

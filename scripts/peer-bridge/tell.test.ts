@@ -87,6 +87,17 @@ test("tell.ts refuses without a session id, in a desk, and in a tainted or pendi
   await refused(h, info, 3, /^refused: tell.ts never runs in a peer desk/);
 });
 
+test("a session carrying the phi-read mark refuses phi-root and writes nothing; the same session unmarked queues", async () => {
+  const h = newHome();
+  const mark = join(h.home, ".himmel/phi-taint", SID);
+  mkdirSync(join(mark, ".."), { recursive: true });
+  writeFileSync(mark, "");
+  await refused(h, info, 3, /^refused: phi-root: /);
+  await refused(h, ["--status", "0a1b2c3d"], 3, /^refused: phi-root: /);
+  rmSync(mark);
+  expect((await tell(h, info)).code).toBe(4);
+});
+
 test("a transcript that names a salus path in a Read, a cwd, a Bash token, a Glob prefix or a subagent's Grep refuses phi-root", async () => {
   const vault = salusVault();
   const cases: [string, (h: Home) => void][] = [
