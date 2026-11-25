@@ -230,7 +230,10 @@ export function buildT3Section(turns: T3Turn[] | null, day?: string): T3Section 
   const total = mine.some((t) => t.usd != null) ? round(mine.reduce((a, t) => a + (t.usd ?? 0), 0), 4) : null;
   const group = (key: (t: Priced) => string) => {
     const m = new Map<string, Priced[]>();
-    for (const t of mine) m.set(key(t), [...(m.get(key(t)) ?? []), t]);
+    for (const t of mine) {
+      const list = m.get(key(t));
+      if (list) list.push(t); else m.set(key(t), [t]);
+    }
     return m;
   };
   const providers = [...group((t) => t.driver)].map(([id, ts]) => t3Line(id, T3_LABEL[id] ?? plain(id), ts, total, [])).sort(byBiggest);

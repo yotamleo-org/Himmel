@@ -333,3 +333,12 @@ test("cost: the page renders the T3 Code card per provider and per thread, as te
   expect(html).not.toContain("<script>");
   expect(html).not.toMatch(/[A-Z][A-Z0-9]*-\d+/);
 });
+
+test("cost: a provider that reports no usage shows no token numbers, not measured zeros", () => {
+  const { env } = makeT3Home(T3_TURNS, T3_TITLES);
+  const html = renderCost(readCost(env), { open: [] });
+  const grok = html.match(/<tr><td>Grok<\/td>.*?<\/tr>/)![0];
+  expect(grok).toContain("not countable yet");
+  expect(grok).not.toContain('<td class="n">0</td>');
+  expect(grok.match(/<td class="n">—<\/td>/g)!.length).toBeGreaterThanOrEqual(6);
+});

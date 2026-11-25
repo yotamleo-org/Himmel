@@ -30,9 +30,11 @@ function phaseBody(p, top, open) {
 const basisNote = (m) => `<p class="sub basis">${esc(m.basis)} ${esc(m.coverageNote)}.</p>`;
 
 const tok = (n) => Number(n || 0).toLocaleString("en-US");
-const t3Row = (l) =>
-  `<tr><td>${esc(l.name)}</td><td class="n">${usd(l.usd)}</td><td class="n">${pct(l.share)}</td><td class="n">${tok(l.turns)}</td><td class="n">${tok(l.in)}</td>` +
-  `<td class="n">${tok(l.out)}</td><td class="n">${tok(l.cache_read)}</td><td class="n">${tok(l.cache_write)}</td><td>${mark(l.mark)}</td><td class="mute">${esc(l.note)}</td></tr>`;
+const t3Row = (l) => {
+  const t = (n) => (l.mark === "nocount" ? "—" : tok(n));
+  return `<tr><td>${esc(l.name)}</td><td class="n">${usd(l.usd)}</td><td class="n">${pct(l.share)}</td><td class="n">${tok(l.turns)}</td><td class="n">${t(l.in)}</td>` +
+    `<td class="n">${t(l.out)}</td><td class="n">${t(l.cache_read)}</td><td class="n">${t(l.cache_write)}</td><td>${mark(l.mark)}</td><td class="mute">${esc(l.note)}</td></tr>`;
+};
 const t3Table = (label, first, lines) =>
   `<h3>${esc(label)}</h3><div class="tw"><table class="tbl" aria-label="T3 Code usage ${esc(label.toLowerCase())}"><thead><tr><th>${esc(first)}</th><th class="n">$</th>` +
   `<th class="n">share</th><th class="n">turns</th><th class="n">input</th><th class="n">output</th><th class="n">cache read</th><th class="n">cache write</th><th>how</th>` +
