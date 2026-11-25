@@ -197,7 +197,52 @@ export async function forwardAfterHandover(root: string, path: string[], now = D
 // One message = one line, so a `tail -F` Monitor emits one event per message.
 export const foldLine = (text: string): string => text.trim().replace(/\r?\n/g, " ⏎ ");
 
-const hhmm = (d = new Date()) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+const hhmm = (d = new Date()) => `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}Z`;
+const hhmmLocal = (d = new Date()) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+const ASK_TEXT = /^\s*(?:\d+[.)]\s*)?Needs you:/m;
+const asksFile = (root: string) => join(root, "consoles", "asks.ndjson");
+type AskRow = { ask: number; chat: number; console?: string; at: string; quote: string };
+const askQuote = (text: string): string => text.split("\n", 1)[0].trim().slice(0, 200);
+const askKey = (s: string): string => s.replace(/[^\p{L}\p{N}]+/gu, "").toLowerCase();
+const sameQuote = (a: string, b: string): boolean => { const x = askKey(a), y = askKey(b); return x.length > 0 && y.length > 0 && (x.startsWith(y) || y.startsWith(x)); };
+
+async function readAskRows(root: string): Promise<{ asks: AskRow[]; answered: Set<number> }> {
+  const asks: AskRow[] = []; const answered = new Set<number>();
+  const raw = await readFile(asksFile(root), "utf8").catch((e: NodeJS.ErrnoException) => { if (e.code === "ENOENT") return ""; throw e; });
+  for (const line of raw.split("\n")) {
+    try {
+      const row = JSON.parse(line);
+      if (Number.isSafeInteger(row?.ask) && Number.isSafeInteger(row.chat) && typeof row.quote === "string") asks.push(row);
+      else if (Number.isSafeInteger(row?.answered)) answered.add(row.answered);
+    } catch {}
+  }
+  return { asks, answered };
+}
+
+export async function recordAsk(root: string, chat: number, text: string, consoleName?: string): Promise<number | undefined> {
+  if (!ASK_TEXT.test(text)) return undefined;
+  try {
+    const { asks } = await readAskRows(root);
+    const id = asks.reduce((m, a) => Math.max(m, a.ask), 0) + 1;
+    await mkdir(join(root, "consoles"), { recursive: true });
+    await appendFile(asksFile(root), JSON.stringify({ ask: id, chat, ...(consoleName ? { console: consoleName } : {}), at: new Date().toISOString(), quote: askQuote(text) }) + "\n");
+    return id;
+  } catch (e) { console.error(`[chief-route] ask not recorded: ${e instanceof Error ? e.message : e}`); return undefined; }
+}
+
+async function bindAsk(root: string, msg: { chat_id: number; reply_to_text?: string }, consoles: string[]): Promise<string> {
+  try {
+    const { asks, answered } = await readAskRows(root);
+    const open = asks.filter(a => a.chat === msg.chat_id && !answered.has(a.ask) && (a.console === undefined || consoles.includes(a.console)));
+    const hit = (msg.reply_to_text ? open.find(a => sameQuote(a.quote, msg.reply_to_text!)) : undefined) ?? (open.length === 1 ? open[0] : undefined);
+    if (hit) {
+      await appendFile(asksFile(root), JSON.stringify({ answered: hit.ask, at: new Date().toISOString() }) + "\n");
+      return ` answers=${hit.ask}`;
+    }
+    return open.length > 1 ? ` ambiguous-answer=${open.map(a => a.ask).join(",")}` : "";
+  } catch (e) { console.error(`[chief-route] ask binding skipped: ${e instanceof Error ? e.message : e}`); return ""; }
+}
 
 export function staleConsoleCommand(ts?: number): boolean {
   const configured = Number(process.env.TELEGRAM_VERB_MAX_AGE_S ?? 300);
@@ -288,7 +333,7 @@ export async function routeApprove(msg: ApproveMsg, route: ApproveRoute, gate: C
 
 export async function routeToConsole(
   root: string,
-  msg: { from: number; chat_id: number },
+  msg: { from: number; chat_id: number; reply_to_message_id?: number; reply_to_text?: string },
   route: ConsoleRoute,
   reply: ConsoleReplyFn,
 ): Promise<void> {
@@ -370,7 +415,9 @@ export async function routeToConsole(
   // Append only to an inbox a chief already armed; never create one, so a typo
   // cannot open a mailbox nobody reads. The append itself is the existence
   // check, no separate existsSync() step left to race.
-  const delivered = await appendIfExists(file, `- ${hhmm()} [telegram from=${msg.from} chat=${msg.chat_id}] ${foldLine(text)}`);
+  const replyTag = (msg.reply_to_message_id == null ? "" : ` reply_to=${msg.reply_to_message_id}`) + (msg.reply_to_text ? ` quote=${JSON.stringify(foldLine(msg.reply_to_text).replace(/\]/g, ")"))}` : "");
+  const answerTag = await bindAsk(root, msg, path);
+  const delivered = await appendIfExists(file, `- ${hhmm()} [telegram from=${msg.from} chat=${msg.chat_id}${replyTag}${answerTag}] ${foldLine(text)}`);
   if (!delivered) { await say(`⚠️ no chief "${name}" is listening (it has not armed its inbox) — nothing was sent.`); return; }
   const busy = (await armedConsoles(root)).some(c => c.name === name && c.busy);
   await say(`→ chief ${name}${name !== addressed ? ` (${addressed} handed over)` : ""}${busy ? ` — queued, ${BUSY_NOTE}` : ""}`, name);
@@ -2245,6 +2292,7 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
       for (const part of parts) await replyViaOutbox(root, chatId, part, o.consoleName, undefined, undefined, undefined, undefined, true);
     }
     queued = parts.length;
+    if (kind === "chief-reply" && !o.receiptOnly) await recordAsk(root, chatId, parts[0] ?? sent, o.consoleName);
   }
   if (unresolved.length) await reportUnresolved(root, chatId, unresolved, o.consoleName, replyViaOutbox);
   if (o.receiptOnly) return { cls, parts: queued, requests };
@@ -2398,7 +2446,7 @@ export async function awaitOwedReceipts(root: string, chat: number, requestHash:
 
 export async function writeOwedReceipt(doc: string, key: string, messageId: number, chat: number): Promise<void> {
   const cur = await readFile(doc, "utf8");
-  await appendFile(doc, `${cur === "" || cur.endsWith("\n") ? "" : "\n"}- ${hhmm()} DELIVERED ${key} msg=${messageId} chat=${chat}\n`);
+  await appendFile(doc, `${cur === "" || cur.endsWith("\n") ? "" : "\n"}- ${hhmmLocal()} DELIVERED ${key} msg=${messageId} chat=${chat}\n`);
 }
 
 const VERB_FLAGS: Record<string, { valued: string[]; bare: string[] }> = {
