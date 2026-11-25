@@ -74,16 +74,15 @@ case "$findings" in
         if [ -L "${HOME:-/nonexistent}/.himmel" ] || [ -L "$CONFIG" ]; then
             narrow_err="$CONFIG is a symlink"
         elif [ -e "$CONFIG" ]; then
-            # swallow-ok: a failed read sets narrow_err, which refuses every instance id
-            if ! narrow=$(jq -c '.t3.instance_narrow' "$CONFIG" 2>/dev/null); then
-                narrow="" narrow_err="$CONFIG is not JSON with an optional .t3.instance_narrow"
+            if ! narrow=$(jq -c '.t3.instance_narrow' "$CONFIG" 2>&1); then
+                narrow_err="$CONFIG is not JSON with an optional .t3.instance_narrow: $narrow" narrow=""
             elif [ "$narrow" = null ]; then
                 narrow=""
             elif ! jq -e 'type == "array" and all(.[]; type == "string")' <<<"$narrow" >/dev/null 2>&1; then
                 narrow="" narrow_err=".t3.instance_narrow in $CONFIG is not an array of strings"
             fi
         fi
-        # swallow-ok: a failed read sets settings_err, which refuses every instance id
+        # swallow-ok: jq's error text can quote T3's settings values, which agents may not read; a failure refuses every instance id
         bypass=$(jq -c --slurpfile reg "$REGISTRY" '
             ([$reg[0].flags[].name | strings]) as $names
             | if type == "object" then . else error("the settings file is not an object") end
@@ -130,9 +129,8 @@ while IFS= read -r line; do
                 bad_instances="$bad_instances  ${val}: whether it carries a bypass flag is unknown ($settings_err)"$'\n'
                 continue
             fi
-            # swallow-ok: a failed lookup sets a non-empty flags value, which refuses the instance
-            flags=$(jq -rn --argjson m "$bypass" --argjson v "$val" '$m[$v] // [] | join(", ")' 2>/dev/null) \
-                || flags="its bypass check could not run"
+            flags=$(jq -rn --argjson m "$bypass" --argjson v "$val" '$m[$v] // [] | join(", ")' 2>&1) \
+                || flags="its bypass check could not run: $flags"
             if [ -n "$flags" ]; then
                 bad_instances="$bad_instances  ${val}: carries a himmel bypass flag (${flags})"$'\n'
             elif [ -n "$narrow_err" ]; then
