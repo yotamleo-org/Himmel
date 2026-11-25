@@ -24,8 +24,8 @@ hs_dir="$W/runner-sem"
 mkdir -p "$hs_dir/slot-1"
 printf 'pid=%s\nidentity=%s\nlabel=run-shell-tests\nstarted=%s\ndetail=worker=Himmel range=all suites=176\n' \
     "$$" "$(proc_tree_process_identity "$$")" "$(($(date +%s) - 3600))" > "$hs_dir/slot-1/owner"
-contains 'the canary held slot is one the tick reports' \
-    "$(HIMMEL_SUITE_SEMAPHORE_DIR="$hs_dir" HIMMEL_SUITE_SLOT_CAP=1200 bash "$SUT" 2>/dev/null)" ' slotage=Himmel:all:176suites:60m'
+export HIMMEL_SUITE_SEMAPHORE_DIR="$hs_dir" HIMMEL_SUITE_SLOT_CAP=1200
+contains 'the canary held slot is one the tick reports' "$(bash "$SUT" 2>/dev/null)" ' slotage=Himmel:all:176suites:60m'
 export HIMMEL_SUITE_SEMAPHORE_DIR="$W/suite-sem"
 # --- fails=<n>/<workers>[@<top-class>*<k>][!<recur>] -----------------
 # This shift = worker-failures rows with ts >= the chief lock's `started`. The stub
