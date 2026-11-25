@@ -200,7 +200,7 @@ export const foldLine = (text: string): string => text.trim().replace(/\r?\n/g, 
 const hhmm = (d = new Date()) => `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}Z`;
 const hhmmLocal = (d = new Date()) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
-const ASK_TEXT = /^\s*(?:\d+[.)]\s*)?Needs you:/m;
+const ASK_TEXT = /^\s*(?:\(\d+\/\d+\)\s*)?(?:\d+[.)]\s*)?Needs you:/m;
 const asksFile = (root: string) => join(root, "consoles", "asks.ndjson");
 type AskRow = { ask: string; id: number; chat: number; console?: string; at: string; quote: string };
 const askQuote = (text: string): string => text.split("\n", 1)[0].trim().slice(0, 200);
@@ -2292,7 +2292,7 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
       for (const part of parts) await replyViaOutbox(root, chatId, part, o.consoleName, undefined, undefined, undefined, undefined, true);
     }
     queued = parts.length;
-    if (kind === "chief-reply" && !o.receiptOnly) await recordAsk(root, chatId, parts[0] ?? sent, o.consoleName);
+    if (kind === "chief-reply" && !o.receiptOnly) for (const part of parts) await recordAsk(root, chatId, part, o.consoleName);
   }
   if (unresolved.length) await reportUnresolved(root, chatId, unresolved, o.consoleName, replyViaOutbox);
   if (o.receiptOnly) return { cls, parts: queued, requests };

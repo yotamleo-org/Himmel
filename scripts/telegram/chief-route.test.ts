@@ -8324,6 +8324,15 @@ test("HIMMEL-10935 two open asks that open with the same line stay ambiguous whe
   expect(line).toContain("ambiguous-answer=1,2");
 });
 
+test("HIMMEL-10935 an ask that lands in a later part of a split reply is recorded as one ask", async () => {
+  const r = root(); const f = armInbox(r);
+  await sendAsk(r, `${filler(2900)}\n\n${filler(2900)}\n\nNeeds you: sign the notes. Blocks: the cut.`);
+  const rows = lines(join(r, "consoles", "asks.ndjson")).map(l => JSON.parse(l));
+  expect(rows).toHaveLength(1);
+  expect(rows[0].quote).toMatch(/^\(2\/2\) /);
+  expect(await answer(r, f, "yes")).toContain("answers=1");
+});
+
 test("HIMMEL-10935 a text with no Needs you: line records no ask", async () => {
   const r = root(); const f = armInbox(r);
   await sendAsk(r, "Merge refused. Blocks: the merge. Do: ask a reviewer");
