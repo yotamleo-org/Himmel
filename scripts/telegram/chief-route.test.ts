@@ -3570,6 +3570,20 @@ test("round-critical --closure is refused below the cap, next to --finding, and 
   expect(rowsOf(t.specs, "critical").length).toBe(1);
 });
 
+test("a decision a --closure round spent is never reused as a finding ruling: the verb refuses it and a hand-appended row reads invalid", async () => {
+  const t = await roundTree(["- **C1** (major; operator-critical: spend-grant) the spec grants a spend"], []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **C2** (major; reopens C1) still grants it")).err).toBe("");
+  const d = decide(t.specs, 1352, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await verb(true, "round-critical", CAP_KEY, "--decision", "1352", "--quote", SPEND, "--closure", "--specs", t.specs)).code).toBe(0);
+  const reuse = await critical(true, t.specs, "C1", 1352, SPEND, "--no-round");
+  expect(reuse.err).toContain(`round-critical: decision 1352 was already used for ${CAP_KEY}`); expect(reuse.code).not.toBe(0);
+  expect(rowsOf(t.specs, "critical").length).toBe(1);
+  const r3 = rowsOf(t.specs, "round").find((x) => x.critic === "spec" && x.round === 3);
+  appendFileSync(join(roundsDir(t.specs), `${CAP_KEY}.jsonl`), `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "critical", epoch: 0, opens: 0, id: "C1", class: "spend-grant", decision: "1352", quote: SPEND, decision_path: d, decision_sha: sha(readFileSync(d, "utf8")), return_sha: r3.return_sha })}\n`);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).toContain("invalid: critical 1352");
+  expect((await status(t.specs)).critical_open).toMatchObject([{ id: "C1", class: "spend-grant" }]);
+});
+
 const threeCriticals = async () => {
   const t = await roundTree(["- **F5** (major; operator-critical: spend-grant) grants a spend", "- **C6** (major; operator-critical: public-policy) sets a policy", "- **H3** (major; operator-critical: reverses-ruling) reverses a ruling"], []);
   expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **X1** (major) still open")).err).toBe("");
