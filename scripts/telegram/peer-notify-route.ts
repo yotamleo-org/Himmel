@@ -1,7 +1,8 @@
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { readChain, signTap, submitSpool, verifyChain } from "../peer-bridge/chain";
+import { CODE_VERSION, readChain, signTap, startIdentity, submitSpool, verifyChain } from "../peer-bridge/chain";
 import { readPeersFile } from "../peer-bridge/config";
 import { PEER_NAME_RE, configDir, peersFile, stateDir } from "../peer-bridge/ids";
 import { NOTIFY_LINE1_RE, notifyFile, renderChainAlert, renderFallback, renderHeld, renderNotify, type NotifyRec } from "../peer-bridge/notify";
@@ -140,6 +141,18 @@ export function makePeerNotifyFlusher(deps: FlusherDeps) {
   return { flush, notePoll, holdReason };
 }
 
+export const botCodeFile = (S: string) => join(notifyDir(S), "bot.code");
+
+export function writeBotCode(S: string, token: string, operatorBotId: string): boolean {
+  if (token.split(":")[0] !== operatorBotId) return false;
+  fs.mkdirSync(notifyDir(S), { recursive: true, mode: 0o700 });
+  const path = botCodeFile(S), tmp = `${path}.${randomBytes(4).toString("hex")}.tmp`;
+  const fd = fs.openSync(tmp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
+  try { fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, start: startIdentity(process.pid), code: CODE_VERSION })); } finally { fs.closeSync(fd); }
+  try { fs.renameSync(tmp, path); } catch (e) { fs.rmSync(tmp, { force: true }); throw e; }
+  return true;
+}
+
 export function startPeerNotify(d: { token: string; access(): Access | null; send: Send; log(line: string): void }): ReturnType<typeof makePeerNotifyFlusher> | null {
   const file = peersFile();
   if (!fs.existsSync(file)) return null;
@@ -148,6 +161,7 @@ export function startPeerNotify(d: { token: string; access(): Access | null; sen
     const c = readPeersFile(file);
     cfg = { operatorChatId: c.operatorChatId, operatorBotId: c.operatorBotId };
     himmelRoot = c.himmelRoot;
+    try { writeBotCode(stateDir(), d.token, c.operatorBotId); } catch (e) { d.log(`peer-notify: cannot write the code stamp: ${(e as Error).message}`); }
   } catch (e) { d.log(`peer-notify: ${(e as Error).message}`); }
   return makePeerNotifyFlusher({ stateDir: stateDir(), himmelRoot, token: d.token, access: d.access, peersCfg: () => cfg, send: d.send, procs: readProcs, botPids: () => readBotPids(), clock: Date.now, log: d.log });
 }

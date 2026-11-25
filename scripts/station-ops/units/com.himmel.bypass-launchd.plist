@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.himmel.bypass-launchd</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-p</string>
+        <string>@HIMMEL_ROOT@/scripts/station-ops/bypass-launchd.sh</string>
+        <string>--bucket</string>
+        <string>@BUCKET@</string>
+        <string>--until</string>
+        <string>forever</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>BYPASSD_SERVICE</key>
+        <string>1</string>
+        <key>HOME</key>
+        <string>@HOME@</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+        <key>LC_ALL</key>
+        <string>C</string>
+        <key>TZ</key>
+        <string>UTC</string>
+        <key>TELEGRAM_ACCESS_PATH</key>
+        <string>@HOME@/.claude/channels/telegram/access.json</string>
+        <key>BRIDGE_ROOT</key>
+        <string>@HOME@/.claude/handover/bridge</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>StandardErrorPath</key>
+    <string>@HOME@/.himmel/bypass-launchd.err</string>
+</dict>
+</plist>

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { dirname, join } from "node:path";
 import type { Chain } from "./chain";
-import { PEER_NAME_RE } from "./ids";
+import { PEER_NAME_RE, SESSION_ID_RE } from "./ids";
 import { sanitize } from "./sanitize";
 import { WAKE_LABELS, type Dir, type WakeLabel } from "./threads";
 
@@ -11,7 +11,7 @@ export const NOTIFY_LINE1_RE = /^peer [a-z0-9][a-z0-9-]{0,31} · /;
 type Base = { kind: "notify"; peer: string; ts: number };
 export type WakeNotify = Base & { type: "wake"; root: number; dir: Dir; label: WakeLabel; replyBy?: number; message_id?: number };
 export type EscalateNotify = Base & { type: "escalate"; root: number; dir: Dir; message_id: number; label: WakeLabel; replyBy?: number; summary: string | null; asks: string[]; reason?: string };
-export type DraftNotify = Base & { type: "draft"; root: number; draft: string; source: "telegram" | "send.ts"; deadline: number; text: string };
+export type DraftNotify = Base & { type: "draft"; root: number; draft: string; source: "telegram" | "send.ts" | "chief"; session?: string; deadline: number; text: string };
 export type ResultNotify = Base & { type: "result"; root: number; draft: string; state: "SENT" | "FAILED" | "REJECTED" | "EXPIRED" | "REFUSED"; message_id?: number; rule?: string };
 export type DailyNotify = Base & { type: "daily"; day: string; escalated: number; digests: number; wakes: number; skipped: Record<string, number>; acked: number; dropped: number };
 export type BudgetNotify = Base & { type: "budget"; which: "wake" | "escalate"; cap: number };
@@ -46,6 +46,7 @@ function field(text: string, max: number): string {
   return sanitize(text, max).replace(/\r?\n/g, " ").replace(/(^|\s)\//g, "$1∕");
 }
 
+const origin = (rec: DraftNotify) => (rec.source === "chief" ? `via tell.ts, unverified session ${rec.session ? rec.session.slice(0, 8) : "none"}` : `from ${rec.source}`);
 const desk = (himmelRoot: string, peer: string) => `bash ${himmelRoot}/scripts/peer-bridge/desk.sh ${peer}`;
 const by = (ms: number | undefined) => (ms ? ` · reply by ${stamp(ms)}` : "");
 
@@ -68,9 +69,10 @@ export function renderNotify(rec: NotifyRec, himmelRoot: string): { text: string
     }
     case "draft":
       need(DRAFT_RE.test(rec.draft), "draft");
-      need(rec.source === "telegram" || rec.source === "send.ts", "source");
+      need(rec.source === "telegram" || rec.source === "send.ts" || rec.source === "chief", "source");
       need(Number.isSafeInteger(rec.deadline), "deadline");
-      return { text: `${head(rec)} · draft ${rec.draft} from ${rec.source} · approve by ${stamp(rec.deadline)}\nText to send, exactly:\n${rec.text}`, keyboard: { peer: rec.peer, draft: rec.draft } };
+      need(rec.session === undefined || (rec.source === "chief" && SESSION_ID_RE.test(rec.session)), "session");
+      return { text: `${head(rec)} · draft ${rec.draft} ${origin(rec)} · approve by ${stamp(rec.deadline)}\nText to send, exactly:\n${rec.text}`, keyboard: { peer: rec.peer, draft: rec.draft } };
     case "result": {
       need(DRAFT_RE.test(rec.draft), "draft");
       const words: Record<string, string> = { SENT: `sent as message ${rec.message_id}`, FAILED: "failed", REJECTED: "rejected", EXPIRED: "expired", REFUSED: `refused (${rec.rule})` };

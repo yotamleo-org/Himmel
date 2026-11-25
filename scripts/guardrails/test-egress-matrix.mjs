@@ -595,6 +595,23 @@ for (const u of purposes.filter(x => x !== "peer-message"))
 }
 assert(evaluate("operator-reply", "peer-telegram", "peer-message").rule?.corpus === "operator-reply", "operator-reply x peer-telegram x peer-message must come from its own row");
 
+assert(corpora.includes("chief-tell"), "corpus chief-tell must be declared");
+assert(evaluate("chief-tell", "peer-telegram", "peer-message").effective === "allow", "chief-tell x peer-telegram x peer-message must allow");
+assert(evaluate("chief-tell", "peer-telegram", "peer-message").rule?.corpus === "chief-tell", "chief-tell x peer-telegram x peer-message must come from its own row");
+assert(evaluate("chief-tell", "ollama-cloud", "extraction").effective === "deny", "chief-tell x ollama-cloud x extraction must deny");
+for (const u of purposes.filter(x => x !== "peer-message"))
+  assert(evaluate("chief-tell", "peer-telegram", u).effective === "deny", `chief-tell x peer-telegram x ${u} must deny`);
+for (const p of providers) for (const u of purposes) {
+  if (p === "peer-telegram" && u === "peer-message") continue;
+  assert(evaluate("chief-tell", p, u).effective === "deny", `chief-tell x ${p} x ${u} must deny`);
+}
+{
+  const own = m.rules.filter(r => r.corpus === "chief-tell");
+  assert(own.length === 2, `chief-tell must have exactly two rows of its own, got ${own.length}`);
+}
+assert(!corpora.includes("unknown-source") && !m.rules.some(r => r.corpus === "unknown-source"), "unknown-source must name no corpus and no row");
+assert(evaluate("unknown-source", "peer-telegram", "peer-message").effective === "deny", "unknown-source x peer-telegram x peer-message must deny");
+
 assert(corpora.includes("adopter-repo"), "corpus adopter-repo must be declared");
 {
   const { effective, rule } = evaluate("adopter-repo", "anthropic", "extraction");

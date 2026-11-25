@@ -21,9 +21,11 @@ in [`configuration.md`](configuration.md); the vocabulary is defined once in
 
 ## 1. Goals and non-goals
 
-himmel runs Claude Code as a managed agent. A solo operator or a small team
+himmel is a control plane for Claude Code. A solo developer or a small team
 works with Claude every day; himmel makes the safe way of working the only easy
-way, and lets work continue when the operator is away.
+way, and lets work continue while you are away. This page calls that human
+the **operator**: you describe the goal and make the calls, and the Claude
+sessions run the commands.
 
 **Goals**
 
@@ -44,8 +46,8 @@ way, and lets work continue when the operator is away.
 
 **Non-goals**
 
-- It is not a general agent SDK or a memory backend: it is an agentic OS over
-  Claude Code's own harness, not a library for building agents. Handover state is
+- It is not a general agent SDK or a memory backend: it is a control plane
+  over Claude Code's own harness, not a library for building agents. Handover state is
   readable markdown you can edit and diff; the search index over it is a derived
   view, rebuilt on demand.
 - It is not for workflows that commit straight to `main` by design. Most of the
@@ -113,7 +115,8 @@ names who does what and why each hand-off exists.
 4. **Commit and push.** The commit-message gate enforces conventional commits
    and the ticket ID. The first commit of the PR carries attestation trailers
    (what platform was tested, what security review was done), written after that
-   work happened. The push gates check them, and a push also writes a **review-owed
+   work happened. The push gates check them (they accept the trailer on any
+   non-merge commit of the branch; putting it on the first means no amend), and a push also writes a **review-owed
    marker** that records a review is owed.
 5. **Review.** `/pr-check` runs a multi-agent automated review. Findings go back to
    the build step; each one needs a terminal finding status. A clean result clears the
@@ -127,8 +130,10 @@ names who does what and why each hand-off exists.
    verdict from a clean session.
 8. **GO and merge.** The chief writes a GO file (merge approval):
    signed, on disk, bound to
-   one PR head. The merge script checks that file, CI and review state itself and
-   refuses without them. A push after the GO needs a new one.
+   one PR head. The merge script checks CI and review state itself on every
+   merge, and refuses a worker without that file. Unattended merging also needs your opt-in
+   (`ARMAUTOMERGE=1`) and a repo that is private, or the one configured public
+   repo with required checks. A push after the GO needs a new one.
 9. **Wrap.** The worker records the merge, releases its queue lock, reports it is
    finished and stops. The chief closes the window after verifying the lock is
    free and no process is left running. The ticket's status has followed the

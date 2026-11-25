@@ -21,8 +21,9 @@ export type OutCtx = {
   hostname?: string;
   matrix?: { default: string; rules: unknown[] };
   usage?: { openOutbound: number; sentLastMinute: number };
-  corpus?: "peer-desk" | "operator-reply";
+  corpus?: Corpus;
 };
+export type Corpus = "peer-desk" | "operator-reply" | "chief-tell" | "unknown-source";
 export type Refusal = { ok: false; rule: string; shape?: string };
 export type Outcome = { ok: true } | Refusal;
 
@@ -31,7 +32,7 @@ const refuse = (rule: string, shape?: string): Refusal => (shape ? { ok: false, 
 const OPENING = ["question", "status", "info"];
 let defaultMatrix: any;
 
-function matrixAllows(ctx: Pick<OutCtx, "matrix">, corpus: "peer-desk" | "operator-reply" | "peer-jobs" = "peer-desk"): boolean {
+function matrixAllows(ctx: Pick<OutCtx, "matrix">, corpus: Corpus | "peer-jobs" = "peer-desk"): boolean {
   try {
     const m = ctx.matrix ?? (defaultMatrix ??= loadMatrix());
     const { verdict } = evaluate(m, corpus, "peer-telegram", "peer-message");
