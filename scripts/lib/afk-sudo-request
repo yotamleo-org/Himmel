@@ -105,8 +105,6 @@ if [ -n "$notify" ]; then
 fi
 if [ -n "$watch" ]; then
     [[ $watch =~ ^[a-z2-7]{8}$ && $operator =~ ^-?[0-9]{1,20}$ && $expires =~ ^[0-9]{1,12}$ ]] && [ -n "$session" ] && [ $# -eq 0 ] || usage
-    # shellcheck source=scripts/lib/merge-block-alert.sh
-    . "$(dirname "${BASH_SOURCE[0]}")/merge-block-alert.sh" 2>/dev/null || exit 5
     chief=$(label "${HIMMEL_CONSOLE_NAME:-}")
     deadline=$((expires + ${AFK_SUDO_WATCH_MARGIN_S:-130}))
     while [ "$(date +%s)" -lt "$deadline" ]; do
@@ -114,6 +112,8 @@ if [ -n "$watch" ]; then
         case "${st:-query-failed}" in
             pending | query-failed) sleep "${AFK_SUDO_POLL_S:-3}" ;;
             expired)
+                # shellcheck source=scripts/lib/merge-block-alert.sh
+                . "$(dirname "${BASH_SOURCE[0]}")/merge-block-alert.sh" 2>/dev/null || exit 5
                 _mba_send "$operator" "grant $watch from session $(label "$session") (chief ${chief:-none}) expired, nothing ran" afk-grant-expired || exit 5
                 exit 0 ;;
             *) exit 0 ;;

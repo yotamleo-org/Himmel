@@ -20,15 +20,6 @@
 # Off unless the station opted in: no marker directory (helper not installed) means no sudo
 # call at all, and the helper refuses every request while grant.enabled is false.
 #
-# A refusal (no chief to route the ask, or any helper result but pending) sends one line that
-# says no ask was sent, why in plain words, the classifier category and the command head: the
-# program's basename, plus the next word's for a runner such as bash or npx when that word is
-# no flag and carries no quote or shell character, never an assignment. The line goes through
-# the bridge outbox (merge-block-alert.sh's sender) as kind afk-grant-refused, and into the
-# chief's bridge inbox (consoles/<chief>.md, only if it exists). The chief is the current one: HIMMEL_CONSOLE_NAME names the launching chief, and
-# each consoles/<chief>.md.handover marker chief.sh writes at a succession is followed while
-# the successor's inbox exists. The card and the expiry line name that chief too.
-#
 # This is an OBSERVABILITY-STYLE TAP, same contract as log-classifier-denial.sh on the same
 # event: it never blocks, delays or asks on a tool call,
 # prints nothing, and exits 0 on every path. The helper caps requests (one pending at a time, max_per_hour).
@@ -90,10 +81,9 @@ current_chief() {
     printf '%s' "$c"
 }
 command_head() {
-    local w h='' n=0
-    set -f
-    # shellcheck disable=SC2086 # split on blanks only, never globbed
-    for w in $1; do
+    local w h='' n=0 words=()
+    read -r -a words <<<"$1"
+    for w in ${words[@]+"${words[@]}"}; do
         case "$w" in *=*) continue ;; esac
         case "$w" in *[\"\'\`\$\(\)\;\&\|\<\>]*) break ;; esac
         [ -z "$h" ] || case "$w" in -*) break ;; esac
@@ -103,7 +93,6 @@ command_head() {
         [ "$n" -lt 2 ] || break
         case "$w" in bash | sh | zsh | dash | env | sudo | python | python3 | node | bun | npx | perl | ruby) ;; *) break ;; esac
     done
-    set +f
     printf '%s' "${h:-unknown}"
 }
 notify() {
@@ -111,7 +100,7 @@ notify() {
     op=$(jq -r '.operator_id // empty' "$CONFIG" 2>/dev/null | grep -E '^-?[0-9]{1,20}$' | head -1)  # swallow-ok: no readable operator id means no send
     [ -n "${2:-}" ] && inbox="$CONSOLES/$2.md"
     [ -n "$op" ] || [ -n "$inbox" ] || return 0
-    # shellcheck disable=SC2016 # the script is literal; its values arrive as positional arguments
+    # shellcheck disable=SC2016
     detach_run bash -c '. "$1" || exit 0
         [ -z "$2" ] || _mba_send "$2" "$3" afk-grant-refused
         [ -z "$4" ] || _mba_append_if_exists "$4" "- $(date +%H:%M) [afk-grant-refused] $3"' \
