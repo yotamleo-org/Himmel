@@ -39,7 +39,7 @@ need decisions to survive session boundaries.
 ## How a change clears himmel
 
 <p align="center">
-  <img src="docs/assets/flows.svg" alt="Animated himmel delivery graph: Chief dispatches a scoped ticket to an isolated worker worktree guarded by PreToolUse hooks; local git gates, your existing GitHub CI, and independent /pr-check review verify the change; blocking findings or red CI loop back to the worktree; on GitHub the merge gate checks green CI, ruled findings, and exact HEAD match, and in fleet runs the chief signs GO before merge and cleanup" width="960">
+  <img src="docs/assets/flows.svg" alt="Animated himmel delivery graph: Chief dispatches a scoped ticket to an isolated worker worktree guarded by PreToolUse hooks; local git gates, your existing GitHub CI, and independent /pr-check review verify the change; blocking findings or red CI loop back to the worktree; on GitHub or Bitbucket the merge gate requires every reported CI check or status to pass (a head with none is allowed), ruled findings, and exact HEAD match, and in fleet runs the chief signs GO before merge and cleanup" width="960">
 </p>
 
 <!-- The diagram is rendered by scripts/docs/render-flows.py: edit the script, not the image. -->

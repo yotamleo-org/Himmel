@@ -226,7 +226,7 @@ def render():
         'isolated worker worktree guarded by PreToolUse hooks (.env, rm -rf, main edits blocked); '
         'three checks verify the change (local git gates, your existing GitHub CI, and '
         'independent /pr-check review); blocking findings or red CI loop back to the worktree '
-        'for repair and re-check; on GitHub or Bitbucket, the merge gate checks green CI, ruled findings, '
+        'for repair and re-check; on GitHub or Bitbucket, the merge gate requires every reported CI check or status to pass (a head with none is allowed), ruled findings, '
         'and exact HEAD match, and in fleet runs the chief signs GO (with judge review on '
         'guardrail or CI edits and human escalation on product/conflict decisions) before '
         'squash-merge, worktree cleanup, and a plain-markdown handover.</desc>\n'

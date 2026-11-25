@@ -1599,6 +1599,11 @@ t bb-merge-env-wrapper-denied 2 Bash "env bitbucket pr merge 7"
 t bb-merge-command-wrapper-denied 2 Bash "command forge_pr_merge 7"
 t bb-merge-shell-c-denied 2 Bash 'bash -c \"bitbucket pr merge 7\"'
 t bb-merge-nohup-denied 2 Bash "nohup bitbucket pr merge 7"
+t bb-merge-after-newline-denied 2 Bash 'echo ready\nbitbucket pr merge 7'
+t bb-merge-forge-fn-after-newline-denied 2 Bash 'echo ready\nforge_pr_merge 7'
+t bb-merge-leading-redirect-denied 2 Bash ">merge.log bitbucket pr merge 7"
+t bb-merge-spaced-redirect-denied 2 Bash "> merge.log bitbucket pr merge 7"
+t bb-merge-fd-redirect-denied 2 Bash "2>&1 bitbucket pr merge 7"
 t bb-text-mention-grep-not-denied 0 Bash "git grep -n forge_pr_merge scripts"
 t bb-text-mention-commit-not-denied 0 Bash "git commit -m bitbucket pr merge notes"
 t bb-pr-view-not-denied 0 Bash "node /x/scripts/bitbucket/dist/index.js pr get 7"
