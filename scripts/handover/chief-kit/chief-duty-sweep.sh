@@ -3,8 +3,7 @@
 #
 #   chief-duty-sweep.sh --doc <chief doc> --workers-from <fleet manifest> [--bucket <dir>]
 #
-# A busy chief misses duties the waiter woke it for once and never again. This reads the
-# fleet manifest, the worker docs' Results tails, the open PRs, the CI runs cache, the
+# This reads the fleet manifest, the worker docs' Results tails, the open PRs, the CI runs cache, the
 # verdicts, the Jira mirror (through the dispatcher's dispositions) and owed.jsonl, and prints
 #   DUTY <kind> <id> :: <why> :: next: <command>
 # for each of seven kinds:
@@ -295,8 +294,8 @@ if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
         fi
         hold=""
         [ "${CHIEF_DUTY_AUTORUN:-1}" != 0 ] || hold="autorun off"
-        if [ -z "$hold" ] && [ -r "${CANCEL_RUNS_PACE_STATE:-$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/cancel-runs-pace}" ]; then  # swallow-ok: no git dir means no pace file, so nothing is held back for a drain
-            pace="${CANCEL_RUNS_PACE_STATE:-$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/cancel-runs-pace}"  # swallow-ok: same pace path as above
+        pace="${CANCEL_RUNS_PACE_STATE:-$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/cancel-runs-pace}"  # swallow-ok: no git dir means no pace file, so nothing is held back for a drain
+        if [ -z "$hold" ] && [ -r "$pace" ]; then
             newest=$(awk '/^[0-9]+$/ && $1 > m { m = $1 } END { print m + 0 }' "$pace" 2>/dev/null)  # swallow-ok: an unreadable pace file holds nothing back
             if [ "${newest:-0}" -gt 0 ] && [ $(( now - newest )) -lt 3600 ]; then hold="drain $(( (now - newest) / 60 ))m ago"; fi
         fi

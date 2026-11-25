@@ -3,10 +3,7 @@
 # action and nothing for a clean fleet: a fixture row per class, a control per class,
 # and the two auto-run acts (the masked-CI rerun, the finding-delta judge spec).
 #
-# Sandboxed: a temp bucket, fleet manifest, worker docs, PR list, CI runs cache, GO root,
-# Jira mirror, pool dispositions, and stub `gh` / delta-class binaries. A `gh` stub that
-# exits 99 sits first on PATH, so any GitHub call outside the CHIEF_DUTY_SWEEP_GH seam
-# fails the row. Linux-only kit (touch -d).
+# Linux-only kit (touch -d).
 #
 # CHIEF_DUTY_SWEEP overrides the script under test.
 # Run: bash scripts/handover/chief-kit/test-chief-duty-sweep.sh
