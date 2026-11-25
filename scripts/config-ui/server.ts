@@ -66,8 +66,6 @@ const LITERALS_TTL_MS = 5_000;
 const LITERALS_WAIT_MS = 1_500;
 // every credential the manifest names: the wizard's and the station scripts' (the redactor keeps the secret-named ones)
 const SECRET_NAMES = [...secretsManifest.secrets, ...secretsManifest.stationSecrets].map((s: { name: string }) => s.name);
-// with backgroundFeed the report starts at boot (not in service mode) and is refreshed every FEED_REFRESH_MS, but only
-// while the Config page is in use (a /api/feed request within the last FEED_REFRESH_MS), so a closed UI idles out.
 const FEED_REFRESH_MS = 10 * 60 * 1000;
 // The progress line probe-progress.cjs writes; anything else on the report's stderr is ignored.
 const PROBE_LINE = "himmel-probe ";

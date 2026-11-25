@@ -296,13 +296,15 @@ async function answerDuringSlowChild(store: boolean, path = "/api/feed"): Promis
   const { previewId } = await (await b.preview()).json() as { previewId: string };
   const ran = b.run(previewId);
   await until(() => existsSync(`${b.gate}.started`));
-  if (store) b.k.put("FIRECRAWL_API_KEY", SECRET);
-  const page = await b.get(path);
-  expect(page.status).toBe(200);
-  const text = await page.text();
-  writeFileSync(`${b.gate}.open`, "");
-  expect((await ran).status).toBe(200);
-  return text;
+  try {
+    if (store) b.k.put("FIRECRAWL_API_KEY", SECRET);
+    const page = await b.get(path);
+    expect(page.status).toBe(200);
+    return await page.text();
+  } finally {
+    writeFileSync(`${b.gate}.open`, "");
+    expect((await ran).status).toBe(200);
+  }
 }
 storing("a page answer that ends while a slow child has stored a value masks it", async () => {
   const t = await answerDuringSlowChild(true);
