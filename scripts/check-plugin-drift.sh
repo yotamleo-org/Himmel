@@ -1150,9 +1150,7 @@ for (repo, branch), reason in sorted(targets.items()):
             raise ValueError('invalid comparison counts')
         detail = f'fork-behind upstream={parent}@{base} behind={behind} ahead={ahead}'
         if behind:
-            # gh repo sync cannot map differently named source/target branches. A
-            # fork that needs a rebase is brought current by the drift fix itself
-            # (the drift-fix runbook's fork-rebase step), conflicts included.
+            # gh repo sync cannot map differently named source/target branches.
             action = 'fork-rebase' if ahead or branch != base else f'gh repo sync {shlex.quote(repo)} --branch {shlex.quote(branch)}'
             print(f'  {name}: BEHIND   ({detail} action={action})')
             status |= 1
