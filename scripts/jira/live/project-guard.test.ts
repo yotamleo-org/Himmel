@@ -119,6 +119,7 @@ describe('a live child', () => {
     const env = {
       ...liveChildEnv(process.env, 'HTEST', conf),
       JIRA_BASE_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+      JIRA_ALLOW_HOST: `127.0.0.1:${(server.address() as AddressInfo).port}`,
       JIRA_EMAIL: 'live@example.invalid',
       JIRA_API_TOKEN: 'token',
     };

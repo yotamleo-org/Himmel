@@ -5,12 +5,18 @@ import type { AddressInfo } from 'node:net';
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Command } from 'commander';
 import { uploadAttachment, uploadMultipart, downloadTo, normalizeEnv, baseUrl, loadEnvFile, request, requestAt, agileRequest, confluenceV2, requestDeadlineMs, fixVersionLockDir, FIX_VERSION_LOCK_WAIT_MS } from './client.js';
 import { registerMove } from './commands/move.js';
 import { readVersionWrites } from './release/version-writes.js';
 import { sameJiraBase, stationJiraBaseUrl } from './env-file.js';
+
+const TENANT = 'https://fixture.atlassian.net';
+const routeTenantTo = (origin: string): void => {
+  const real = globalThis.fetch;
+  vi.stubGlobal('fetch', ((input: RequestInfo | URL, init?: RequestInit) => real(String(input).replace(TENANT, origin), init)) as typeof fetch);
+};
 
 // Records every git call the path lookups make, passing each through.
 const door = vi.hoisted(() => ({ status: 0 as number | null, calls: 0 }));
@@ -188,16 +194,16 @@ describe('requestAt base composition', () => {
   });
 
   it('prefixes the apiBase + path onto baseUrl for each named helper', async () => {
-    process.env.JIRA_BASE_URL = 'https://x.example';
+    process.env.JIRA_BASE_URL = 'https://x.atlassian.net';
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => '{}' }));
     vi.stubGlobal('fetch', fetchMock);
     const { agileRequest, confluenceV2, confluenceV1 } = await import('./client.js');
     await agileRequest('GET', '/board');
     await confluenceV2('GET', '/pages/1');
     await confluenceV1('GET', '/search');
-    expect(fetchMock.mock.calls[0][0]).toBe('https://x.example/rest/agile/1.0/board');
-    expect(fetchMock.mock.calls[1][0]).toBe('https://x.example/wiki/api/v2/pages/1');
-    expect(fetchMock.mock.calls[2][0]).toBe('https://x.example/wiki/rest/api/search');
+    expect(fetchMock.mock.calls[0][0]).toBe('https://x.atlassian.net/rest/agile/1.0/board');
+    expect(fetchMock.mock.calls[1][0]).toBe('https://x.atlassian.net/wiki/api/v2/pages/1');
+    expect(fetchMock.mock.calls[2][0]).toBe('https://x.atlassian.net/wiki/rest/api/search');
   });
 });
 
@@ -239,7 +245,7 @@ describe('resolveAccountId', () => {
   });
 
   it('looks up an email and returns the first accountId', async () => {
-    process.env.JIRA_BASE_URL = 'https://x.example';
+    process.env.JIRA_BASE_URL = 'https://x.atlassian.net';
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => '[{"accountId":"abc"}]' }));
     vi.stubGlobal('fetch', fetchMock);
     const { resolveAccountId } = await import('./client.js');
@@ -260,7 +266,7 @@ describe('loadEnvFile', () => {
     vi.stubEnv('HIMMEL_CONFIG_DIR', '');
     vi.stubEnv('HIMMEL_PROFILE', '');
     mkdirSync(join(dir, '.himmel'));
-    writeFileSync(file, 'JIRA_BASE_URL=https://from-dotenv.example\n');
+    writeFileSync(file, 'JIRA_BASE_URL=https://from-dotenv.atlassian.net\n');
   });
 
   afterEach(() => {
@@ -274,9 +280,9 @@ describe('loadEnvFile', () => {
     vi.stubEnv('JIRA_EMAIL', '');
     vi.stubEnv('JIRA_PROJECT_KEY', '');
     writeFileSync(join(dir, '.himmel', 'himmel.conf'),
-      'JIRA_BASE_URL=https://from-config.example\nJIRA_EMAIL=dummy@example.invalid\nJIRA_PROJECT_KEY=DUMMY\n');
+      'JIRA_BASE_URL=https://from-config.atlassian.net\nJIRA_EMAIL=dummy@example.invalid\nJIRA_PROJECT_KEY=DUMMY\n');
     loadEnvFile(file);
-    expect(process.env.JIRA_BASE_URL).toBe('https://from-config.example');
+    expect(process.env.JIRA_BASE_URL).toBe('https://from-config.atlassian.net');
     expect(process.env.JIRA_EMAIL).toBe('dummy@example.invalid');
     expect(process.env.JIRA_PROJECT_KEY).toBe('DUMMY');
   });
@@ -293,9 +299,9 @@ describe('loadEnvFile', () => {
     vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
     vi.stubEnv('HIMMEL_SECRETS_KEYRING', '');
     vi.stubEnv('KSTUB_STORE', join(dir, 'keyring.tsv')); // names the stub keyring: the resolver keeps it on under NODE_ENV=test
-    writeFileSync(file, 'JIRA_BASE_URL=https://from-dotenv.example\n');
+    writeFileSync(file, 'JIRA_BASE_URL=https://from-dotenv.atlassian.net\n');
     loadEnvFile(file);
-    expect(baseUrl()).toBe('https://from-dotenv.example');
+    expect(baseUrl()).toBe('https://from-dotenv.atlassian.net');
     expect(process.env.JIRA_API_TOKEN).toBe('stub-token');
     expect(process.env.JIRA_EMAIL).toBe('stub@example.invalid');
   });
@@ -319,9 +325,9 @@ describe('loadEnvFile', () => {
     writeFileSync(join(dir, '.himmel', 'himmel.conf.local'), 'JIRA_BASE_URL=\nJIRA_API_TOKEN=planted\n');
     writeFileSync(join(dir, '.himmel', 'himmel.conf'),
       'JIRA_BASE_URL=\nJIRA_API_TOKEN=planted\nCONFLUENCE_API_TOKEN=planted\nJIRA_BOARD_ID=123\n');
-    writeFileSync(file, 'JIRA_BASE_URL=https://from-dotenv.example\nJIRA_API_TOKEN=dummy-token\n');
+    writeFileSync(file, 'JIRA_BASE_URL=https://from-dotenv.atlassian.net\nJIRA_API_TOKEN=dummy-token\n');
     loadEnvFile(file);
-    expect(process.env.JIRA_BASE_URL).toBe('https://from-dotenv.example');
+    expect(process.env.JIRA_BASE_URL).toBe('https://from-dotenv.atlassian.net');
     expect(process.env.JIRA_API_TOKEN).toBe('dummy-token');
     expect(process.env.CONFLUENCE_API_TOKEN).toBe('');
     expect(process.env.JIRA_BOARD_ID).toBe('');
@@ -352,9 +358,9 @@ describe('loadEnvFile', () => {
   it('resolves the Jira site URL from himmel.conf alone', () => {
     vi.stubEnv('JIRA_BASE_URL', '');
     rmSync(file);
-    writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://from-config.example\n');
+    writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://from-config.atlassian.net\n');
     loadEnvFile(file);
-    expect(baseUrl()).toBe('https://from-config.example');
+    expect(baseUrl()).toBe('https://from-config.atlassian.net');
   });
 
   it('honours HIMMEL_CONFIG_DIR instead of the default HOME config directory', () => {
@@ -362,10 +368,10 @@ describe('loadEnvFile', () => {
     const conf = join(dir, 'custom-conf');
     mkdirSync(conf);
     vi.stubEnv('HIMMEL_CONFIG_DIR', conf);
-    writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://wrong-default.example\n');
-    writeFileSync(join(conf, 'himmel.conf'), 'JIRA_BASE_URL=https://custom.example\n');
+    writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://wrong-default.atlassian.net\n');
+    writeFileSync(join(conf, 'himmel.conf'), 'JIRA_BASE_URL=https://custom.atlassian.net\n');
     loadEnvFile(file);
-    expect(baseUrl()).toBe('https://custom.example');
+    expect(baseUrl()).toBe('https://custom.atlassian.net');
   });
 
   it('ignores a planted cwd project URL while still reading its project key', () => {
@@ -379,7 +385,7 @@ describe('loadEnvFile', () => {
     try {
       process.chdir(project);
       loadEnvFile(file);
-      expect(baseUrl()).toBe('https://from-dotenv.example');
+      expect(baseUrl()).toBe('https://from-dotenv.atlassian.net');
       expect(process.env.JIRA_PROJECT_KEY).toBe('PROJECT');
     } finally {
       process.chdir(cwd);
@@ -388,13 +394,13 @@ describe('loadEnvFile', () => {
 
   it('prefers the local Jira site URL to default config and preserves the process value', () => {
     vi.stubEnv('JIRA_BASE_URL', '');
-    writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://default.example\n');
-    writeFileSync(join(dir, '.himmel', 'himmel.conf.local'), 'JIRA_BASE_URL=https://local.example\n');
+    writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://default.atlassian.net\n');
+    writeFileSync(join(dir, '.himmel', 'himmel.conf.local'), 'JIRA_BASE_URL=https://local.atlassian.net\n');
     loadEnvFile(file);
-    expect(baseUrl()).toBe('https://local.example');
-    process.env.JIRA_BASE_URL = 'https://process.example';
+    expect(baseUrl()).toBe('https://local.atlassian.net');
+    process.env.JIRA_BASE_URL = 'https://process.atlassian.net';
     loadEnvFile(file);
-    expect(baseUrl()).toBe('https://process.example');
+    expect(baseUrl()).toBe('https://process.atlassian.net');
   });
 
   it.each(['environment', 'local config'])('resolves a profile Jira site URL selected by %s before DEFAULT', (selection) => {
@@ -402,18 +408,18 @@ describe('loadEnvFile', () => {
     vi.stubEnv('HIMMEL_PROFILE', selection === 'environment' ? 'work' : '');
     const vault = join(dir, 'vault', '.himmel');
     mkdirSync(join(vault, 'profiles'), { recursive: true });
-    writeFileSync(join(vault, 'himmel.conf'), 'JIRA_BASE_URL=https://default.example\n');
+    writeFileSync(join(vault, 'himmel.conf'), 'JIRA_BASE_URL=https://default.atlassian.net\n');
     symlinkSync('../vault/.himmel/himmel.conf', join(dir, '.himmel', 'himmel.conf'));
-    writeFileSync(join(vault, 'profiles', 'work.conf'), 'JIRA_BASE_URL=https://profile.example\n');
+    writeFileSync(join(vault, 'profiles', 'work.conf'), 'JIRA_BASE_URL=https://profile.atlassian.net\n');
     writeFileSync(join(dir, '.himmel', 'himmel.conf.local'),
       selection === 'local config' ? 'HIMMEL_PROFILE=work\n' : '');
     loadEnvFile(file);
-    expect(baseUrl()).toBe('https://profile.example');
+    expect(baseUrl()).toBe('https://profile.atlassian.net');
     process.env.JIRA_BASE_URL = '';
     writeFileSync(join(dir, '.himmel', 'himmel.conf.local'),
-      'HIMMEL_PROFILE=work\nJIRA_BASE_URL=https://local.example\n');
+      'HIMMEL_PROFILE=work\nJIRA_BASE_URL=https://local.atlassian.net\n');
     loadEnvFile(file);
-    expect(baseUrl()).toBe('https://local.example');
+    expect(baseUrl()).toBe('https://local.atlassian.net');
   });
 
   it('ignores a profile name that traverses out of the profiles directory', () => {
@@ -421,23 +427,23 @@ describe('loadEnvFile', () => {
     vi.stubEnv('HIMMEL_PROFILE', '../outside');
     const vault = join(dir, 'vault', '.himmel');
     mkdirSync(join(vault, 'profiles'), { recursive: true });
-    writeFileSync(join(vault, 'himmel.conf'), 'JIRA_BASE_URL=https://default.example\n');
-    writeFileSync(join(vault, 'outside.conf'), 'JIRA_BASE_URL=https://outside.example\n');
+    writeFileSync(join(vault, 'himmel.conf'), 'JIRA_BASE_URL=https://default.atlassian.net\n');
+    writeFileSync(join(vault, 'outside.conf'), 'JIRA_BASE_URL=https://outside.atlassian.net\n');
     symlinkSync('../vault/.himmel/himmel.conf', join(dir, '.himmel', 'himmel.conf'));
     loadEnvFile(file);
-    expect(baseUrl()).toBe('https://default.example');
+    expect(baseUrl()).toBe('https://default.atlassian.net');
   });
 
   it('fills a key that is exported but EMPTY (an empty value is not a usable one)', () => {
     process.env.JIRA_BASE_URL = '';
     loadEnvFile(file);
-    expect(process.env.JIRA_BASE_URL).toBe('https://from-dotenv.example');
+    expect(process.env.JIRA_BASE_URL).toBe('https://from-dotenv.atlassian.net');
   });
 
   it('keeps a live non-empty value over the file', () => {
-    process.env.JIRA_BASE_URL = 'https://live.example';
+    process.env.JIRA_BASE_URL = 'https://live.atlassian.net';
     loadEnvFile(file);
-    expect(process.env.JIRA_BASE_URL).toBe('https://live.example');
+    expect(process.env.JIRA_BASE_URL).toBe('https://live.atlassian.net');
   });
 
   it('loadEnvFile resolves JIRA_BASE_URL exactly as before for env, local, profile, conf and .env layers', () => {
@@ -445,23 +451,23 @@ describe('loadEnvFile', () => {
     mkdirSync(join(vault, 'profiles'), { recursive: true });
     symlinkSync('../vault/.himmel/himmel.conf', join(dir, '.himmel', 'himmel.conf'));
     const layers = {
-      local: () => writeFileSync(join(dir, '.himmel', 'himmel.conf.local'), 'HIMMEL_PROFILE=work\nJIRA_BASE_URL=https://local.example\n'),
-      profile: () => writeFileSync(join(vault, 'profiles', 'work.conf'), 'JIRA_BASE_URL=https://profile.example\n'),
-      conf: () => writeFileSync(join(vault, 'himmel.conf'), 'JIRA_BASE_URL=https://conf.example\n'),
+      local: () => writeFileSync(join(dir, '.himmel', 'himmel.conf.local'), 'HIMMEL_PROFILE=work\nJIRA_BASE_URL=https://local.atlassian.net\n'),
+      profile: () => writeFileSync(join(vault, 'profiles', 'work.conf'), 'JIRA_BASE_URL=https://profile.atlassian.net\n'),
+      conf: () => writeFileSync(join(vault, 'himmel.conf'), 'JIRA_BASE_URL=https://conf.atlassian.net\n'),
     };
     const resolved = (): string => { process.env.JIRA_BASE_URL = ''; loadEnvFile(file); return process.env.JIRA_BASE_URL ?? ''; };
     writeFileSync(join(dir, '.himmel', 'himmel.conf.local'), 'HIMMEL_PROFILE=work\n');
     writeFileSync(join(vault, 'himmel.conf'), '');
-    expect(resolved()).toBe('https://from-dotenv.example');
+    expect(resolved()).toBe('https://from-dotenv.atlassian.net');
     layers.conf();
-    expect(resolved()).toBe('https://conf.example');
+    expect(resolved()).toBe('https://conf.atlassian.net');
     layers.profile();
-    expect(resolved()).toBe('https://profile.example');
+    expect(resolved()).toBe('https://profile.atlassian.net');
     layers.local();
-    expect(resolved()).toBe('https://local.example');
-    process.env.JIRA_BASE_URL = 'https://env.example';
+    expect(resolved()).toBe('https://local.atlassian.net');
+    process.env.JIRA_BASE_URL = 'https://env.atlassian.net';
     loadEnvFile(file);
-    expect(process.env.JIRA_BASE_URL).toBe('https://env.example');
+    expect(process.env.JIRA_BASE_URL).toBe('https://env.atlassian.net');
   });
 });
 
@@ -474,9 +480,9 @@ describe('stationJiraBaseUrl', () => {
     conf = join(dir, '.himmel');
     envPath = join(dir, 'install.env');
     mkdirSync(join(dir, 'vault', '.himmel', 'profiles'), { recursive: true });
-    writeFileSync(join(dir, 'vault', '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://conf.example\n');
-    writeFileSync(join(dir, 'vault', '.himmel', 'profiles', 'work.conf'), 'JIRA_BASE_URL=https://work.example\n');
-    writeFileSync(join(dir, 'vault', '.himmel', 'profiles', 'home.conf'), 'JIRA_BASE_URL=https://home.example\n');
+    writeFileSync(join(dir, 'vault', '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://conf.atlassian.net\n');
+    writeFileSync(join(dir, 'vault', '.himmel', 'profiles', 'work.conf'), 'JIRA_BASE_URL=https://work.atlassian.net\n');
+    writeFileSync(join(dir, 'vault', '.himmel', 'profiles', 'home.conf'), 'JIRA_BASE_URL=https://home.atlassian.net\n');
     mkdirSync(conf);
     symlinkSync('../vault/.himmel/himmel.conf', join(conf, 'himmel.conf'));
   });
@@ -486,30 +492,30 @@ describe('stationJiraBaseUrl', () => {
   });
 
   it('I14 stationJiraBaseUrl with profileFromEnv false ignores process JIRA_BASE_URL and HIMMEL_PROFILE', () => {
-    vi.stubEnv('JIRA_BASE_URL', 'https://process.example');
+    vi.stubEnv('JIRA_BASE_URL', 'https://process.atlassian.net');
     vi.stubEnv('HIMMEL_PROFILE', 'work');
-    expect(stationJiraBaseUrl(conf, { profileFromEnv: false, envPath })).toBe('https://conf.example');
+    expect(stationJiraBaseUrl(conf, { profileFromEnv: false, envPath })).toBe('https://conf.atlassian.net');
   });
 
   it('with profileFromEnv true takes the env HIMMEL_PROFILE first', () => {
     vi.stubEnv('HIMMEL_PROFILE', 'work');
     writeFileSync(join(conf, 'himmel.conf.local'), 'HIMMEL_PROFILE=home\n');
-    expect(stationJiraBaseUrl(conf, { profileFromEnv: true, envPath })).toBe('https://work.example');
-    expect(stationJiraBaseUrl(conf, { profileFromEnv: false, envPath })).toBe('https://home.example');
+    expect(stationJiraBaseUrl(conf, { profileFromEnv: true, envPath })).toBe('https://work.atlassian.net');
+    expect(stationJiraBaseUrl(conf, { profileFromEnv: false, envPath })).toBe('https://home.atlassian.net');
   });
 
   it('a profile named in himmel.conf.local supplies the URL', () => {
     vi.stubEnv('HIMMEL_PROFILE', '');
     writeFileSync(join(conf, 'himmel.conf.local'), 'HIMMEL_PROFILE=work\n');
-    expect(stationJiraBaseUrl(conf, { profileFromEnv: false, envPath })).toBe('https://work.example');
+    expect(stationJiraBaseUrl(conf, { profileFromEnv: false, envPath })).toBe('https://work.atlassian.net');
   });
 
   it('no layer gives null; the install .env is the last layer', () => {
     const bare = join(dir, 'bare');
     mkdirSync(bare);
     expect(stationJiraBaseUrl(bare, { profileFromEnv: false, envPath })).toBeNull();
-    writeFileSync(envPath, 'JIRA_BASE_URL=https://dotenv.example\n');
-    expect(stationJiraBaseUrl(bare, { profileFromEnv: false, envPath })).toBe('https://dotenv.example');
+    writeFileSync(envPath, 'JIRA_BASE_URL=https://dotenv.atlassian.net\n');
+    expect(stationJiraBaseUrl(bare, { profileFromEnv: false, envPath })).toBe('https://dotenv.atlassian.net');
   });
 
   it('sameJiraBase normalises scheme, host, default port and a trailing slash', () => {
@@ -1105,8 +1111,9 @@ describe('the live-test guard at requestAt and uploadMultipart', () => {
     expect(j.calls).toEqual([]);
   });
 
-  it.each(['http://127.0.0.1:9', 'http://jira.invalid'])('I15 a write to %s passes the guard', async (base) => {
+  it.each(['https://127.0.0.1:9', 'https://jira.invalid'])('I15 a write to %s passes the guard', async (base) => {
     vi.stubEnv('JIRA_BASE_URL', base);
+    vi.stubEnv('JIRA_ALLOW_HOST', new URL(base).host);
     const j = liveJira();
     await request('POST', '/issue', { fields: { project: { key: 'HIMMEL' } } });
     expect(j.calls.map((c) => c.method)).toEqual(['POST']);
@@ -1114,7 +1121,8 @@ describe('the live-test guard at requestAt and uploadMultipart', () => {
 
   it('I5 / I15 with no JIRA_TEST_PROJECT a loopback write still passes', async () => {
     conf();
-    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    vi.stubEnv('JIRA_BASE_URL', 'https://127.0.0.1:9');
+    vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
     const j = liveJira();
     await request('POST', '/issue/HIMMEL-1/comment', { body: {} });
     expect(j.calls.map((c) => c.method)).toEqual(['POST']);
@@ -1237,6 +1245,7 @@ describe('a 200 that carries x-seraph-loginreason: AUTHENTICATED_FAILED', () => 
   const entry = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'index.js');
   let server: Server;
   let base: string;
+  let preload: string;
   let reason: string | undefined;
   let dir: string;
   let body: string;
@@ -1254,7 +1263,11 @@ describe('a 200 that carries x-seraph-loginreason: AUTHENTICATED_FAILED', () => 
       res.end(body);
     });
     await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
-    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    base = TENANT;
+    const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    routeTenantTo(origin);
+    preload = join(dir, 'route.mjs');
+    writeFileSync(preload, `const real = globalThis.fetch;\nglobalThis.fetch = (u, i) => real(String(u).replace(${JSON.stringify(TENANT)}, ${JSON.stringify(origin)}), i);\n`);
   });
 
   afterEach(async () => {
@@ -1265,7 +1278,7 @@ describe('a 200 that carries x-seraph-loginreason: AUTHENTICATED_FAILED', () => 
 
   const cli = (...argv: string[]) =>
     new Promise<{ code: number; stdout: string; stderr: string }>((ok) => {
-      execFile(process.execPath, [entry, ...argv], {
+      execFile(process.execPath, ['--import', pathToFileURL(preload).href, entry, ...argv], {
         encoding: 'utf8',
         env: { PATH: process.env.PATH, HOME: dir, JIRA_BASE_URL: base, JIRA_EMAIL: 'u@example.com', JIRA_API_TOKEN: 'bogus', JIRA_PROJECT_KEY: 'HTEST' },
       }, (err, stdout, stderr) => ok({ code: err ? ((err as { code?: number }).code ?? 1) : 0, stdout, stderr }));
@@ -1387,7 +1400,8 @@ describe('every Jira request has a deadline and a read is retried on a busy Jira
       res.end(step.body ?? '{}');
     });
     await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
-    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    base = TENANT;
+    routeTenantTo(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
     vi.stubEnv('JIRA_BASE_URL', base);
     vi.stubEnv('JIRA_EMAIL', 'u@example.com');
     vi.stubEnv('JIRA_API_TOKEN', 'secret');
@@ -1600,9 +1614,9 @@ describe('every Jira request has a deadline and a read is retried on a busy Jira
       await new Promise<void>((ok) => probe.listen(0, '127.0.0.1', ok));
       const dead = `http://127.0.0.1:${(probe.address() as AddressInfo).port}`;
       await new Promise<void>((ok) => probe.close(() => ok()));
-      vi.stubEnv('JIRA_BASE_URL', dead);
-      const real = globalThis.fetch;
-      const spy = vi.fn(real);
+      vi.unstubAllGlobals();
+      routeTenantTo(dead);
+      const spy = vi.fn(globalThis.fetch);
       vi.stubGlobal('fetch', spy);
       await expect(request('POST', '/issue/HTEST-1/comment', { body: 'x' })).rejects.toThrow();
       expect(spy).toHaveBeenCalledTimes(1);
@@ -1627,5 +1641,177 @@ describe('every Jira request has a deadline and a read is retried on a busy Jira
       expect(await request('GET', '/issue/HTEST-1')).toEqual({});
       expect(hits).toHaveLength(1);
     });
+  });
+});
+
+describe('the Jira destination policy', () => {
+  const TOKEN = 'dummy-policy-token';
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'jira-policy-'));
+    vi.stubEnv('HOME', dir);
+    vi.stubEnv('HIMMEL_CONFIG_DIR', '');
+    vi.stubEnv('HIMMEL_PROFILE', '');
+    vi.stubEnv('JIRA_ALLOW_HOST', '');
+    vi.stubEnv('JIRA_EMAIL', 'who@example.invalid');
+    vi.stubEnv('JIRA_API_TOKEN', TOKEN);
+    mkdirSync(join(dir, '.himmel'));
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const REFUSED = [
+    ['plain http', 'http://example.atlassian.net'],
+    ['http loopback', 'http://127.0.0.1:8080'],
+    ['http localhost', 'http://localhost'],
+    ['another scheme', 'ftp://example.atlassian.net'],
+    ['not a URL', 'example.atlassian.net'],
+    ['no hostname', 'https://'],
+    ['a tenant name as a path', 'https://evil.example/example.atlassian.net'],
+    ['a deceptive suffix', 'https://example.atlassian.net.evil.example'],
+    ['a look-alike domain', 'https://evilatlassian.net'],
+    ['the bare domain', 'https://atlassian.net'],
+    ['a nested subdomain', 'https://a.b.atlassian.net'],
+    ['a tenant as userinfo', 'https://example.atlassian.net@evil.example'],
+    ['userinfo before a tenant', 'https://evil.example@example.atlassian.net'],
+    ['a credential in the URL', 'https://user:pw@example.atlassian.net'],
+    ['a non-default port', 'https://example.atlassian.net:8443'],
+    ['a trailing-dot host', 'https://example.atlassian.net.'],
+    ['an unrelated host', 'https://jira.corp.example'],
+  ] as const;
+
+  it.each(REFUSED)('refuses %s', (_name, url) => {
+    vi.stubEnv('JIRA_BASE_URL', url);
+    expect(() => baseUrl()).toThrow(/JIRA_BASE_URL/);
+  });
+
+  it.each(REFUSED)('%s: a request sends no fetch and no Authorization header', async (_name, url) => {
+    vi.stubEnv('JIRA_BASE_URL', url);
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => '{}' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(request('GET', '/myself')).rejects.toThrow(/JIRA_BASE_URL/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a missing URL keeps its own error', () => {
+    vi.stubEnv('JIRA_BASE_URL', '');
+    expect(() => baseUrl()).toThrow(/JIRA_BASE_URL is not set/);
+  });
+
+  it.each(['https://example.atlassian.net', 'https://example.atlassian.net/', 'https://Example.Atlassian.NET', 'https://my-team-2.atlassian.net'])(
+    'control: the tenant %s is accepted and a request carries the credential',
+    async (url) => {
+      vi.stubEnv('JIRA_BASE_URL', url);
+      expect(baseUrl()).toBe(url);
+      const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => '{}' }));
+      vi.stubGlobal('fetch', fetchMock);
+      await request('GET', '/myself');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const init = fetchMock.mock.calls[0][1] as unknown as RequestInit;
+      expect((init.headers as Record<string, string>).Authorization).toBe(`Basic ${Buffer.from(`who@example.invalid:${TOKEN}`).toString('base64')}`);
+    },
+  );
+
+  it('control: a host named in JIRA_ALLOW_HOST is accepted over https', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://jira.corp.example');
+    vi.stubEnv('JIRA_ALLOW_HOST', 'jira.corp.example');
+    expect(baseUrl()).toBe('https://jira.corp.example');
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => '{}' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await request('GET', '/myself');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['http://127.0.0.1:9', 'http://localhost:8080', 'http://[::1]:8081'])(
+    'control: plain http to the loopback host %s is accepted only when named with its port',
+    async (url) => {
+      vi.stubEnv('JIRA_BASE_URL', url);
+      expect(() => baseUrl()).toThrow(/JIRA_BASE_URL/);
+      vi.stubEnv('JIRA_ALLOW_HOST', new URL(url).host);
+      expect(baseUrl()).toBe(url);
+      const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => '{}' }));
+      vi.stubGlobal('fetch', fetchMock);
+      await request('GET', '/myself');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('naming a host does not switch the atlassian.net tenants off', () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://example.atlassian.net');
+    vi.stubEnv('JIRA_ALLOW_HOST', 'jira.corp.example');
+    expect(baseUrl()).toBe('https://example.atlassian.net');
+  });
+
+  it('the opt-in names a host with its port, and matches without regard to case', () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://Jira.Corp.Example:8443');
+    vi.stubEnv('JIRA_ALLOW_HOST', 'jira.corp.example:8443');
+    expect(baseUrl()).toBe('https://Jira.Corp.Example:8443');
+  });
+
+  it.each([
+    ['another host', 'https://other.example', 'jira.corp.example'],
+    ['a suffix of the named host', 'https://jira.corp.example.evil.example', 'jira.corp.example'],
+    ['the named host over http', 'http://jira.corp.example', 'jira.corp.example'],
+    ['the named host with userinfo', 'https://evil.example@jira.corp.example', 'jira.corp.example'],
+    ['the named host on another port', 'https://jira.corp.example:8443', 'jira.corp.example'],
+    ['a non-loopback IP over http even when named', 'http://203.0.113.5:8080', '203.0.113.5:8080'],
+    ['a non-loopback name over http with a port even when named', 'http://jira.corp.example:8080', 'jira.corp.example:8080'],
+    ['loopback over http named without a port', 'http://127.0.0.1', '127.0.0.1'],
+    ['loopback over http on another port', 'http://127.0.0.1:9', '127.0.0.1:10'],
+    ['a look-alike of loopback over http', 'http://127.0.0.1.evil.example:9', '127.0.0.1.evil.example:9'],
+  ])('the opt-in does not widen to %s', (_name, url, allow) => {
+    vi.stubEnv('JIRA_BASE_URL', url);
+    vi.stubEnv('JIRA_ALLOW_HOST', allow);
+    expect(() => baseUrl()).toThrow(/JIRA_BASE_URL/);
+  });
+
+  it('a refused URL names the way to opt in, without echoing a credential', () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://user:pw-secret@example.atlassian.net');
+    let message = '';
+    try { baseUrl(); } catch (e) { message = (e as Error).message; }
+    expect(message).toMatch(/JIRA_ALLOW_HOST/);
+    expect(message).not.toContain('pw-secret');
+  });
+
+  it('station himmel.conf may carry the opt-in', () => {
+    vi.stubEnv('JIRA_BASE_URL', '');
+    writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://jira.corp.example\nJIRA_ALLOW_HOST=jira.corp.example\n');
+    loadEnvFile(join(dir, 'missing.env'));
+    expect(baseUrl()).toBe('https://jira.corp.example');
+  });
+
+  it('project and install .env files cannot enable the opt-in', async () => {
+    vi.stubEnv('JIRA_BASE_URL', '');
+    const real = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+    vi.mocked(execFileSync).mockImplementation(real.execFileSync as never);
+    const project = join(dir, 'project');
+    mkdirSync(project);
+    real.execFileSync('git', ['init', '--quiet', project]);
+    writeFileSync(join(project, '.env'), 'JIRA_PROJECT_KEY=PROJECT\nJIRA_ALLOW_HOST=evil.example\n');
+    const install = join(dir, 'install.env');
+    writeFileSync(install, 'JIRA_BASE_URL=https://evil.example\nJIRA_ALLOW_HOST=evil.example\n');
+    const cwd = process.cwd();
+    process.chdir(project);
+    try { loadEnvFile(install); } finally { process.chdir(cwd); }
+    expect(process.env.JIRA_ALLOW_HOST ?? '').toBe('');
+    expect(() => baseUrl()).toThrow(/JIRA_BASE_URL/);
+  });
+
+  it('uploadMultipart and downloadTo refuse an off-tenant URL before any request', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://example.atlassian.net');
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => '{}', arrayBuffer: async () => new ArrayBuffer(0) }));
+    vi.stubGlobal('fetch', fetchMock);
+    const file = join(dir, 'a.txt');
+    writeFileSync(file, 'x');
+    for (const url of ['https://example.atlassian.net.evil.example/a', 'http://example.atlassian.net/a', 'https://evil.example/a']) {
+      await expect(uploadMultipart(url, file)).rejects.toThrow(/destination/);
+      await expect(downloadTo(url, join(dir, 'out.bin'))).rejects.toThrow(/destination/);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

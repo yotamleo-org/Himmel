@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { transcribe, realExec, type ExecFn, type ExecResult } from "./transcribe";
@@ -167,4 +167,14 @@ test("transcribe: with no WHISPER_CLI and none on PATH, falls back to WHISPER_DI
 
 test("transcribe: an explicit WHISPER_CLI still wins over PATH", async () => {
   expect(await whisperBinFor({ WHISPER_CLI: "/custom/whisper-cli" })).toBe("/custom/whisper-cli");
+});
+
+test("the WHISPER_MODEL wizard text matches the reader: process environment only, no .env read", () => {
+  const source = readFileSync(join(import.meta.dir, "transcribe.ts"), "utf8");
+  expect(source).toContain("process.env.WHISPER_MODEL");
+  expect(source).not.toMatch(/dotenv|["`]\.env["`]|readFile/);
+  const keys = JSON.parse(readFileSync(join(import.meta.dir, "..", "himmelctl", "lib", "config-keys.json"), "utf8")).keys;
+  const effect: string = keys.find((k: { name: string }) => k.name === "WHISPER_MODEL").effect;
+  expect(effect).toMatch(/process environment/);
+  expect(effect).not.toMatch(/Set it in \.env/);
 });

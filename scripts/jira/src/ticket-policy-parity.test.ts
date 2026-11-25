@@ -149,6 +149,7 @@ beforeEach(async () => {
   vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
   vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
   vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+  vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
   writeFileSync(join(root, 'verbatim.txt'), 'R1 = v1.1.3\n');
   const r = await cli(['release', 'operator', 'declare', 'R1', '--versions', 'v1.1.3', '--decision', '214', '--verbatim-file', join(root, 'verbatim.txt')]);
   if (r.code !== 0) throw new Error(`declare failed: ${r.stderr}`);
