@@ -145,7 +145,7 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$bucket" ] && [ -d "$bucket" ] || { echo "rulings-in-force: --bucket <dir> must name an existing directory" >&2; exit 2; }
 case "$verb" in record|render|check) ;; find) [ -n "$word" ] || usage ;; *) usage ;; esac
-[ -z "$recent" ] || { [ "$verb" = render ] && [ "$recent" -ge 1 ] 2>/dev/null; } || { echo "rulings-in-force: --recent <days> needs render and a whole number of days, 1 or more" >&2; exit 2; }
+[ -z "$recent" ] || { [ "$verb" = render ] && case "$recent" in *[!0-9]*|0*) false ;; *) true ;; esac; } || { echo "rulings-in-force: --recent <days> needs render and a whole number of days, 1 or more" >&2; exit 2; }
 [ -z "$before" ] || { [ "$verb" = check ] && [ -r "$before" ]; } || { echo "rulings-in-force: --before <file> needs check and a readable file" >&2; exit 2; }
 
 exec python3 -I -c '
@@ -467,7 +467,12 @@ def problems(blk, before_src, nofile):
     unnamed = [n for n in live if n not in named]
     if window is not None and older_shown != len(unnamed):
         out.append("COUNT older %d %d" % (older_shown, len(unnamed)))
-    out += ["MISSING %d" % n for n in sorted(live, reverse=True) if n not in named and not (window is not None and rows[n]["date"] < cutoff(window))]
+    topics = {}
+    for n in live:
+        if topic_of(rows[n]):
+            topics.setdefault(topic_of(rows[n]), []).append(n)
+    standing = {n for ids in topics.values() if len(ids) > 1 for n in ids}
+    out += ["MISSING %d" % n for n in sorted(live, reverse=True) if n not in named and not (window is not None and n not in standing and rows[n]["date"] < cutoff(window))]
     out += ["TWICE %d" % n for n in sorted(named, reverse=True) if named[n] > 1]
     if nofile:
         out += ["NOFILE %d %s" % (n, rows[n]["path"]) for n in sorted(live, reverse=True) if not os.path.isfile(os.path.join(bucket, rows[n]["path"]))]

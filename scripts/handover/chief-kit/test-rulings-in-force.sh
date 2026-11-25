@@ -420,7 +420,9 @@ same "window: check passes on the render" "$(wchk "$wout" | tail -n 1 | cut -d '
 same "window: check reports a recent ruling missing" "$(wchk "$(printf '%s\n' "$wout" | sed '/^991 /d')" | grep -c '^MISSING 991$')" "1"
 same "window: check does not report a cut older ruling missing" "$(wchk "$wout" | grep -cE '^MISSING 99[37]$')" "0"
 same "window: check reports a wrong older count" "$(wchk "$(printf '%s\n' "$wout" | sed 's/, 2 older than 7 days/, 3 older than 7 days/')" | grep -c '^COUNT older 3 2$')" "1"
+same "window: check reports a deleted old standing-rule line missing" "$(wchk "$(printf '%s\n' "$wout" | sed '/^wintopic: /d')" | grep -cE '^MISSING 99[45]$')" "2"
 same "window: --recent 0 is refused with exit 2" "$(wrender "$wptr" --recent 0 >/dev/null 2>&1; echo $?)" "2"
+same "window: --recent +7 is refused with exit 2" "$(wrender "$wptr" --recent +7 >/dev/null 2>&1; echo $?)" "2"
 same "window: the ledger is not rewritten" "$(wc -l < "$VD/rulings-in-force.jsonl" | tr -d ' ')" "7"
 
 printf 'not json\n' >> "$L"
