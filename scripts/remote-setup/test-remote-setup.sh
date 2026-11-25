@@ -659,12 +659,6 @@ set_onboard() { # set_onboard <from-id> [label]
 onboard_calls() { [ -f "$T/onboard.calls" ] && wc -l < "$T/onboard.calls" | tr -d ' ' || echo 0; }
 curl_methods() { sed -n 's#^url = ".*/bot[^/]*/\(.*\)"$#\1#p' "$T/curl.stdin" 2> /dev/null | sort | uniq -c | tr -s ' ' | tr '\n' ';'; }
 
-# The line the FIX asks a chief to run, executed verbatim in the fixture HOME.
-run_paste_line() {
-    local line=${LAST#*run the same command again: }
-    env HOME="$HOME_FIX" bash -c "$line"
-}
-
 # The secret half of a canary may appear only in the store, the stdin file the suite wrote, and
 # the stdin config the curl shim recorded (in real use that config goes down a pipe).
 assert_secret_only_in_store() { # assert_secret_only_in_store <token>
@@ -874,16 +868,17 @@ case_harness_ignores_a_telegram_env_from_the_launching_shell() {
     check "and nothing reached the file the launching shell named" test ! -s "$decoy"
 }
 
-case_bot_run1_prints_paste_line_and_exits_3() {
+case_bot_run1_writes_the_allowlist_from_the_start_press() {
     local tok
     tok=$(mk_token 111)
     set_onboard 777
+    all_green
     feed "$tok"
     run_sut "$T/in" bot
-    check "exit 3" eq "$RC" 3
-    check "the FIX asks the chief to create the allowlist" starts "$LAST" "FIX: have your chief create the allowlist with this line, then run the same command again: printf "
-    check "the line holds the round-trip id" has "$LAST" '{"allowFrom":["777"]}'
-    check "access.json stays absent" test ! -e "$(ACCESS_FILE)"
+    check "exit 0" eq "$RC" 0
+    check "the DONE line" starts "$LAST" "DONE: bot"
+    check "access.json holds exactly the account that pressed Start" eq "$(jq -c . "$(ACCESS_FILE)")" '{"allowFrom":["777"]}'
+    check "no hand-run printf line is printed" lacks "$(cat "$T/out")" "printf"
     check "the deep link was shown" file_has "$T/out" "https://t.me/cand_bot?start=onboard-abcd1234"
     check "one pairing" eq "$(onboard_calls)" 1
     check "the token is stored" file_has "$(STORE_FILE)" "$tok"
@@ -891,22 +886,29 @@ case_bot_run1_prints_paste_line_and_exits_3() {
     check "no onboarding temp file is left in a TMPDIR that has a space in it" eq "$(find "$T/tmp dir" -type f | wc -l | tr -d ' ')" 0
 }
 
-case_bot_run2_after_paste_reaches_done() {
+case_bot_interrupted_run_resumes_from_the_saved_token_on_enter() {
     local tok
     tok=$(mk_token 111)
-    set_onboard 777
+    printf '[onboard] send this exact text to the bot (DM or an allowed group) to onboard: onboard-abcd1234\n' > "$T/onboard.out"
     feed "$tok"
     run_sut "$T/in" bot
-    check "run 1 is a FIX" eq "$RC" 3
-    run_paste_line
-    check "the printed line created access.json" file_has "$(ACCESS_FILE)" '"777"'
+    check "run 1 stopped before the Start press: a FIX" eq "$RC" 3
+    check "the token is saved" file_has "$(STORE_FILE)" "$tok"
+    check "access.json stays absent" test ! -e "$(ACCESS_FILE)"
+    set_onboard 777
     all_green
     feed ""
     run_sut "$T/in" bot
-    check "run 2 is DONE" eq "$RC" 0
+    check "run 2 on Enter alone is DONE" eq "$RC" 0
     check "the DONE line" eq "$LAST" "DONE: bot — @cand_bot (id 111) reachable, bridge running, survives reboot"
-    check "run 2 did not pair again" eq "$(onboard_calls)" 1
+    check "run 2 paired once more, with no second paste" eq "$(onboard_calls)" 2
+    check "the deep link was shown again" file_has "$T/out" "https://t.me/cand_bot?start=onboard-abcd1234"
+    check "access.json holds exactly the account that pressed Start" eq "$(jq -c . "$(ACCESS_FILE)")" '{"allowFrom":["777"]}'
     check "run 2 enabled the bridge" file_has "$T/himmelctl.calls" "bridge enable"
+    feed ""
+    run_sut "$T/in" bot
+    check "run 3 is DONE" eq "$RC" 0
+    check "run 3 did not pair" eq "$(onboard_calls)" 2
 }
 
 case_bot_existing_access_json_other_id_fixes_unchanged() {
@@ -940,18 +942,11 @@ case_bot_existing_access_json_bad_shape_fixes_before_the_prompt() {
     assert_stores_unchanged
 }
 
-case_bot_rerun_without_token_never_pairs() {
+case_bot_rerun_with_an_allowlist_never_pairs() {
     local tok
     tok=$(mk_token 111)
     seed_store "$tok"
     set_onboard 777
-    feed ""
-    run_sut "$T/in" bot
-    check "no token and no access.json: a FIX" eq "$RC" 3
-    check "it says to paste the token" has "$LAST" "paste"
-    check "zero onboard calls" eq "$(onboard_calls)" 0
-    check "no getUpdates in any recorded config" lacks "$(curl_methods)" "getUpdates"
-    # with access.json in place the same Enter-only run finishes without pairing
     seed_access 777
     all_green
     feed ""
@@ -979,7 +974,6 @@ case_bot_canary_token_absent_everywhere() {
     feed "$tok"
     run_sut "$T/in" bot
     check "run 1 is a FIX" eq "$RC" 3
-    run_paste_line
     all_green
     feed ""
     run_sut "$T/in" bot
@@ -2418,9 +2412,9 @@ bot_different_id_without_replace_refuses bot_same_bot_new_token_is_stored bot_sa
 bot_post_write_check_that_cannot_run_is_a_fix bot_post_write_distinct_tokens_failure_restores_previous
 bot_post_write_restore_failure_is_not_reported_as_restored
 bot_enter_reuses_a_quoted_stored_token harness_ignores_a_telegram_env_from_the_launching_shell
-bot_run1_prints_paste_line_and_exits_3
-bot_run2_after_paste_reaches_done bot_existing_access_json_other_id_fixes_unchanged
-bot_existing_access_json_bad_shape_fixes_before_the_prompt bot_rerun_without_token_never_pairs
+bot_run1_writes_the_allowlist_from_the_start_press
+bot_interrupted_run_resumes_from_the_saved_token_on_enter bot_existing_access_json_other_id_fixes_unchanged
+bot_existing_access_json_bad_shape_fixes_before_the_prompt bot_rerun_with_an_allowlist_never_pairs
 bot_canary_token_absent_everywhere bot_done_rerun_changes_no_config_artifact bot_inputs_are_only_the_g2_set
 bot_sigint_during_onboard_restarts_unit bot_mac_bootout_before_onboard
 bot_pairing_stops_a_bridge_that_runs_without_a_unit token_with_trailing_space_is_trimmed

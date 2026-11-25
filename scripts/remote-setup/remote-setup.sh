@@ -70,9 +70,9 @@ cmd_away() { rs_later "part 2 (away launches)"; }
 cmd_sudo() { rs_later "part 3 (sudo bot)"; }
 # ── part 1: the main bot ────────────────────────────────────────────────
 # In order: every check that needs no write, the token (hidden prompt, getMe, role check), the token
-# store (checkpoint 1), pairing (only in a run where the token was pasted), the access.json line
-# (printed, never written: only your chief writes the allowlist), the bridge, and the final read.
-# A re-run with no token pasted never pairs.
+# store (checkpoint 1), pairing (a pasted token, or a saved token with no allowlist yet), the access.json
+# write (one id, the account that pressed Start, only when the file is absent), the bridge, and the final
+# read. A re-run that finds an allowlist never pairs.
 cmd_bot() {
     rs_preflight curl jq node bun
     local access="$HOME/.claude/channels/telegram/access.json"
@@ -142,17 +142,20 @@ cmd_bot() {
         fi
         prev_tok=""
         stored_tok=""
+    fi
 
+    if [ "$pasted" = 1 ] || [ -z "$access_id" ]; then
         rs_pair
         lbl=$(printf '%s' "$RS_PAIR_LABEL" | LC_ALL=C tr -d '\000-\037\177')
         rs_step "paired with ${lbl:0:40} (Telegram id $RS_PAIR_ID)"
         if [ -z "$access_id" ]; then
-            rs_fix "have your chief create the allowlist with this line, then run the same command again: printf '{\"allowFrom\":[\"$RS_PAIR_ID\"]}\\n' > ~/.claude/channels/telegram/access.json"
+            rs_json_edit "$access" '{}' '.allowFrom = [$id]' --arg id "$RS_PAIR_ID" \
+                || rs_fix "the allowlist could not be written to $(rs_tilde "$access"): check that the folder is writable, then run the same command again"
+            rs_step "the allowlist lists only your Telegram id ($RS_PAIR_ID)"
         elif [ "$access_id" != "$RS_PAIR_ID" ]; then
             rs_fix "access.json already lists a different Telegram account than the one that pressed Start, and it was left unchanged: press Start from the account it lists, or have your chief fix access.json, then run the same command again"
         fi
     else
-        [ -n "$access_id" ] || rs_fix "this bot is not paired yet: run the same command again, paste the token, and press Start in Telegram when the link appears"
         rs_step "pairing" skip
     fi
 
