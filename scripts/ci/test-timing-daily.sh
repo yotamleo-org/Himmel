@@ -91,7 +91,6 @@ if date -d '1 hour ago' +%s > /dev/null 2>&1; then # gnu-ok: the daily job runs 
   printf '%s\n' '[{"conclusion":"success","createdAt":"2026-11-25T03:14:49Z","databaseId":45538624255},{"conclusion":"cancelled","createdAt":"2026-11-25T03:14:45Z","databaseId":45538617469},{"conclusion":"cancelled","createdAt":"2026-11-25T03:14:10Z","databaseId":45538548265},{"conclusion":"success","createdAt":"2026-11-25T03:11:25Z","databaseId":45538223936},{"conclusion":"success","createdAt":"2026-11-25T02:42:04Z","databaseId":45534820819},{"conclusion":"cancelled","createdAt":"2026-11-25T02:41:19Z","databaseId":45534736367}]' > "$sb/runs.json"
   cat > "$sb/bin/gh" <<'GHEOF'
 #!/usr/bin/env bash
-# stub gh: run list applies the caller's --jq to the real-shaped fixture; run view fails for cancelled runs
 case "$1 $2" in
   "run list")
     q=""; prev=""
