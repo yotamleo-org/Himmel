@@ -1949,6 +1949,27 @@ put_row scripts/kd2.sh PROJ-9832 lab "" pr 7100 "$RK"
 HOLDS_GH="$GCSLOW" run python3 -I "$W/keeprow.py" "$SUT" "$RK"
 same "10373 gc: a grant to a key judged dead stays while a row of that key is still there" "$(gone_or_row "$(rowf scripts/kd2.sh "$RK").grant.PROJ-9831")" row
 
+cat > "$W/lockabs.py" <<'PY'
+import fcntl, importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("holds", sys.argv[1]); h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+h.LOCK_WAIT = 0.3
+fd = os.open(sys.argv[3], os.O_RDONLY); fcntl.flock(fd, fcntl.LOCK_EX)
+sys.exit(h.main(["gc", "--repo", sys.argv[2]]))
+PY
+RL="$W/repo-both-dirs"; mkdir -p "$RL"; git -C "$RL" init -q -b main
+put_row scripts/kl1.sh PROJ-9841 lab "" brief "" "$RL"
+put_row scripts/kl2.sh PROJ-9842 lab "" pr 7100 "$RL"
+: > "$(rowf scripts/kl2.sh "$RL").grant.PROJ-9841"
+mkdir -p "$REG/_abs"
+HOLDS_GH="$GCSLOW" run python3 -I "$W/lockabs.py" "$SUT" "$RL" "$REG/_abs"
+same "10373 gc: a dead key's grant stays while the other register directory is locked by a writer" "$(gone_or_row "$(rowf scripts/kl2.sh "$RL").grant.PROJ-9841")" row
+RL2="$W/repo-both-dirs-free"; mkdir -p "$RL2"; git -C "$RL2" init -q -b main
+put_row scripts/kl1.sh PROJ-9841 lab "" brief "" "$RL2"
+put_row scripts/kl2.sh PROJ-9842 lab "" pr 7100 "$RL2"
+: > "$(rowf scripts/kl2.sh "$RL2").grant.PROJ-9841"
+HOLDS_GH="$GCSLOW" run gcbox 10 "$RL2"
+same "10373 gc: ... and goes when no writer holds either directory" "$(gone_or_row "$(rowf scripts/kl2.sh "$RL2").grant.PROJ-9841")" none
+
 # ---- the real register was never touched
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $W, a path unique to this run: none may appear in the real register.

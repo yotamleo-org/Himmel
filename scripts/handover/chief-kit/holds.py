@@ -1600,17 +1600,21 @@ def gc_sweep(repo, deadline, listing, keep_aged=False):
                 full and key_state.get(gkey) == 'dead' and not (verified and may_hold_row(listing, gkey)))
             if not orphan(False):
                 continue
-            lock = dir_lock(d)
-            if lock is None:
-                continue
+            held = []
+            for _di2, dd, _names2 in listing:
+                lock = dir_lock(dd)
+                if lock is None:
+                    break
+                held.append(lock)
             try:
-                if orphan(True):
+                if len(held) == len(listing) and orphan(True):
                     try:
                         os.unlink(os.path.join(d, n))
                     except OSError:
                         pass  # swallow-ok: already removed
             finally:
-                dir_unlock(lock)
+                for lock in held:
+                    dir_unlock(lock)
     print('gc visited=%d removed=%d cut=%d rows=%d cycle=%s' % (visited, removed, cut, len(items), 'complete' if complete else 'partial')
           + (' waiting=%d' % judge.waiting if keep_aged else ''))
     return 0
