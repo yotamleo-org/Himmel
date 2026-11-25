@@ -503,7 +503,7 @@ run_10() {
 
 run_10 "restarted" 0 --only bypass_daemon
 assert_eq "bypass_daemon --only: rc 0" "0" "$rc_10"
-assert_contains "bypass_daemon --only: asks the service script to restart if changed" "restart-if-changed" "$calls_10"
+assert_eq "bypass_daemon --only: the service script is called with exactly restart-if-changed" "restart-if-changed" "$calls_10"
 assert_contains "bypass_daemon --only: the status row says updated" "bypass_daemon  *updated" "$out_10"
 assert_not_contains "bypass_daemon --only: is not an unknown item" "unknown item" "$out_10"
 
@@ -515,17 +515,19 @@ run_10 "current" 0 --only bypass_daemon
 assert_not_contains "bypass_daemon current: no row" "bypass_daemon  " "$out_10"
 
 run_10 "failed: restart did not load the new code" 1 --only bypass_daemon
+assert_eq "bypass_daemon failed: --only exits 1" "1" "$rc_10"
 assert_contains "bypass_daemon failed: the row says failed" "bypass_daemon  *failed" "$out_10"
 
 run_10 "restarted" 1 --only bypass_daemon
+assert_eq "bypass_daemon: a success word with a non-zero exit exits 1" "1" "$rc_10"
 assert_contains "bypass_daemon: a success word with a non-zero exit is a failure" "bypass_daemon  *failed" "$out_10"
 
 run_10 "restarted" 0
-assert_contains "bypass_daemon full update: the step runs" "restart-if-changed" "$calls_10"
+assert_eq "bypass_daemon full update: the service script is called with exactly restart-if-changed" "restart-if-changed" "$calls_10"
 assert_contains "bypass_daemon full update: the row is in the table" "bypass_daemon  *updated" "$out_10"
 
 run_10 "would restart" 0 --check
-assert_contains "bypass_daemon --check: asks the script in check mode" "restart-if-changed --check" "$calls_10"
+assert_eq "bypass_daemon --check: the service script is called with exactly restart-if-changed --check" "restart-if-changed --check" "$calls_10"
 assert_contains "bypass_daemon --check: the row says what apply would do" "bypass_daemon  *skipped  *check mode" "$out_10"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────

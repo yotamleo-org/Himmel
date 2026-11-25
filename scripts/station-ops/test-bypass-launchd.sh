@@ -321,6 +321,19 @@ assert_contains "RED 10558: the failed launch goes out as bypass-failed" "bypass
 assert_eq "RED 10558: a failed launch sends exactly the ask then bypass-failed" "bypass-ask bypass-failed" "$(kind_seq)"
 stop
 
+echo "== a go whose grant marker cannot be written launches nothing =="
+setup grantfail
+start
+CODE=$(ask_code r)
+chmod 444 "$Q/r.req.pending"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "GRANT-NOT-RECORDED"
+assert_eq "RED 11031 CR: nothing is launched when the grant marker is not written" no "$([ -e "$D/launch.args" ] && echo yes || echo no)"
+wait_for "$D/sent" "go was not recorded"
+assert_contains "RED 11031 CR: the operator is told the go was not recorded and nothing ran" "go was not recorded" "$(cat "$D/sent" 2>/dev/null)"
+assert_eq "RED 11031 CR: the request is marked failed" yes "$([ -e "$Q/r.req.failed" ] && echo yes || echo no)"
+stop
+
 echo "== verdict lines go out as bypass-result =="
 setup kinds-go
 start
@@ -1256,13 +1269,13 @@ session_case() {
     stop
 }
 setup_repo seed-dir
-session_case n2-inject :7 "session env: DISPLAY" "DISPLAY=:7; touch $D/pwned" "XDG_SESSION_TYPE=x11"
+session_case n2-inject :7 "session env: DISPLAY" "DISPLAY=:7; touch $tmp/n2-inject/pwned" "XDG_SESSION_TYPE=x11"
 session_case n2-quoted :7 "session env: DISPLAY" "DISPLAY=\$'\\x3a7'" "XDG_SESSION_TYPE=x11"
 session_case n2-not-logind :7 "session env: DISPLAY" "DISPLAY=:9" "XDG_SESSION_TYPE=x11"
 session_case n2-no-wayland-socket :7 "session env: WAYLAND_DISPLAY" "DISPLAY=:7" "WAYLAND_DISPLAY=wayland-3" "XDG_SESSION_TYPE=x11"
 session_case n2-xauth-relative :7 "session env: XAUTHORITY" "DISPLAY=:7" "XAUTHORITY=relative/path" "XDG_SESSION_TYPE=x11"
 session_case n2-xauth-missing :7 "session env: XAUTHORITY" "DISPLAY=:7" "XAUTHORITY=/nonexistent/xauth" "XDG_SESSION_TYPE=x11"
-session_case n2-type :7 "session env: XDG_SESSION_TYPE" "DISPLAY=:7" "XDG_SESSION_TYPE=x11; touch $D/pwned"
+session_case n2-type :7 "session env: XDG_SESSION_TYPE" "DISPLAY=:7" "XDG_SESSION_TYPE=x11; touch $tmp/n2-type/pwned"
 session_case n2-none "" "no graphical session"
 
 echo "-- READY comes before the first stop-file check; an idle daemon keeps sending WATCHDOG=1 (M7) --"
@@ -1289,6 +1302,14 @@ start_svc "$UNTIL" BYPASSD_SEND="$D/slowsend" BYPASSD_CALL_TIMEOUT=1
 printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CHIEF" recommend=go > "$Q/h.req"
 wait_for "$Q/daemon.log" "send failed"
 assert_contains "RED 11031 M7: a send that hangs is cut off at the call bound and the loop goes on" "send failed" "$(cat "$Q/daemon.log" 2>/dev/null)"
+stop
+setup_repo term-proof-send
+clean_session
+printf '#!/usr/bin/env bash\ntrap "" TERM\nsleep 30\n' > "$D/termsend"; chmod +x "$D/termsend"
+start_svc "$UNTIL" BYPASSD_SEND="$D/termsend" BYPASSD_CALL_TIMEOUT=1
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CHIEF" recommend=go > "$Q/t.req"
+wait_for "$Q/daemon.log" "send failed"
+assert_contains "RED 11031 CR: a send that ignores SIGTERM is killed after the grace interval and the loop goes on" "send failed" "$(cat "$Q/daemon.log" 2>/dev/null)"
 stop
 
 echo "-- the manager's environment is not trusted: HOME and the trust paths (C2, N1) --"
@@ -1343,7 +1364,7 @@ assert_eq "11031 N4: and the managed --check still answers" 0 "$rc"
 env -u CLAUDECODE PATH="$D/plant:$PATH" bash "$DAEMON" --check --bucket "$B" >/dev/null 2>&1
 assert_eq "11031 N4 control: an unmanaged start DOES run the planted git" yes "$([ -e "$D/planted-git" ] && echo yes || echo no)"
 SVC_BASH=(bash)
-assert_contains "RED 11031 N4: the daemon calls bun by the absolute path under the passwd home" '.bun/bin/bun' "$(cat "$REPO_ROOT/$DAEMON_REL")"
+assert_contains "RED 11031 N4: the daemon calls bun by the absolute path under the passwd home" "BUN=\"\$HOMEDIR/.bun/bin/bun\"" "$(cat "$REPO_ROOT/$DAEMON_REL")"
 
 echo "-- an ask in flight survives a restart (M3) --"
 setup_repo pending

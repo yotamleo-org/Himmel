@@ -277,7 +277,7 @@ runs forever (`--until forever`, accepted only for the service manager's own mai
 |---|---|
 | `himmelctl bypass on [--bucket <dir>]` | writes the unit, enables and starts it, enables lingering; the bucket (the directory holding `bypass-queue/`) is remembered |
 | `himmelctl bypass off` | writes the stop file, disables and stops the unit, so a reboot does not bring it back |
-| `himmelctl bypass restart` | clears a failed state and restarts it now |
+| `himmelctl bypass restart` | clears a failed state and restarts it now; it needs an enabled service with no stop file, so after `off` it exits 2 and names `himmelctl bypass on` |
 | `himmelctl bypass status` | read only: enabled, active, pid, linger, `unit: current\|STALE`, `code: current\|STALE`, heartbeat age |
 
 `on`, `off` and `restart` refuse inside a Claude session. `on` exits 1 without enabling when a hand-started daemon
@@ -287,7 +287,12 @@ starts at your next login instead of at boot. A template change shows as `unit: 
 
 **Hang and crash recovery.** The unit is `Type=notify` with `WatchdogSec=300`: the daemon sends `WATCHDOG=1` on every
 loop pass and around every call that can block, each of which is time-bounded (60 s send, 60 s fleet manifest, 120 s
-preflight). A hung daemon is killed and restarted; so is a crash. Only exit 3 ("already running") is not restarted.
+preflight). A hung daemon is killed and restarted; so is a crash. On Linux the unit has `Restart=on-failure`, so a
+clean exit (the stop file, or an expiry) and exit 3 ("already running") are not restarted, and after 5 failed starts
+within 600 s systemd stops retrying; `himmelctl bypass restart` clears that failed state while the service is still
+enabled. On macOS `KeepAlive` with `SuccessfulExit` false restarts after any unsuccessful exit, exit 3 included, every
+10 s (`ThrottleInterval`), because launchd cannot exclude one exit status: a hand-started duplicate owner makes the
+agent relaunch and exit 3 in a loop until the duplicate stops.
 `NotifyAccess=all` is needed because `systemd-notify` is a child of the main process. launchd has no watchdog, so on
 macOS the daemon starts a small watcher (`bypass-launchd.sh --watch`) that kills it when `bypass-queue/.heartbeat`
 goes stale. On macOS the agent loads at your login, so a reboot only brings it back once the station logs in; the plist
@@ -295,8 +300,9 @@ and the watcher were tested on Linux and `launchctl` has not been run on a Mac.
 
 **An update restarts it.** himmel-update runs `bypass-service.sh restart-if-changed`: when the unit is enabled and
 running and the daemon's recorded code ids (`bypass-queue/.loaded`) differ from the checkout, it `try-restart`s it
-through the service manager and checks it came back on the new code. It only issues `is-enabled`, `is-active`,
-`show` and `try-restart`; it never writes a unit, never enables or starts one, never clears a failed state, so it is
+through the service manager and checks it came back on the new code. On Linux it only issues `is-enabled`,
+`is-active`, `show` and `try-restart`; on macOS it checks the job with `launchctl print` and restarts it with
+`launchctl kickstart -k`. It never writes a unit, never enables or starts one, never clears a failed state, so it is
 safe from a Claude-run update, and the manager starts the process with the unit's own environment, so the
 `CLAUDECODE` refusal in the script is untouched. An off or stopped unit is left alone and the update names the
 command to run (`himmelctl bypass on` or `himmelctl bypass restart`). A request that was waiting for your go when the

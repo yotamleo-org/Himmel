@@ -196,7 +196,7 @@ fi
 BUN="bun"; [ -z "$SERVICE" ] || BUN="$HOMEDIR/.bun/bin/bun"
 child() {
     local t=$1; shift
-    if [ -n "$SERVICE" ]; then timeout "$t" env -i "${CHILD_BASE[@]}" ${SESS[@]+"${SESS[@]}"} "$@"; else "$@"; fi
+    if [ -n "$SERVICE" ]; then timeout -k 2 "$t" env -i "${CHILD_BASE[@]}" ${SESS[@]+"${SESS[@]}"} "$@"; else "$@"; fi
 }
 send() {
     heartbeat
@@ -222,7 +222,7 @@ deadline() { if [ "$until" = forever ]; then echo $(( $(date +%s) + TTL )); else
 launch_env() {
     local tmo=()
     if [ -n "$SERVICE" ]; then
-        [ -z "${LE_TIMEOUT:-}" ] || tmo=(timeout "$LE_TIMEOUT")
+        [ -z "${LE_TIMEOUT:-}" ] || tmo=(timeout -k 2 "$LE_TIMEOUT")
         ${tmo[@]+"${tmo[@]}"} env -i "${CHILD_BASE[@]}" ${SESS[@]+"${SESS[@]}"} "${envs[@]}" "$@"
         return
     fi
@@ -477,7 +477,11 @@ after_go() {
         tell_chief "$chief" "REFUSED-PREFLIGHT after go $base $PF_REASON — the operator's go is kept, nothing ran; fix the cause, then touch $req.pending to retry"
         return 0
     fi
-    printf 'granted_at=%s\ngo=%s\nsha=%s\n' "$(date -u +%FT%TZ)" "$code" "$sha" >>"$req.pending"
+    printf 'granted_at=%s\ngo=%s\nsha=%s\n' "$(date -u +%FT%TZ)" "$code" "$sha" >>"$req.pending" || {
+        mv "$req.pending" "$req.failed"; log "GRANT-NOT-RECORDED $base"
+        send bypass-failed "bypass launch $base: your go was not recorded (the request file cannot be written), so nothing ran. File a new request."
+        return 0
+    }
     log "GRANT $base env=${envs[*]} decision=${decision:-none} go=$code"
     mkdir -p "$W"
     heartbeat

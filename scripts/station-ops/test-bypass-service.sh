@@ -31,6 +31,9 @@ mk() {
 printf 'systemctl %s\n' "$*" >> "$STUB_DIR/calls"
 [ "${1:-}" = --user ] && shift
 verb=${1:-}; shift
+case $verb in enable|disable|restart|try-restart|reset-failed|is-enabled|is-active|show)
+    case " $* " in *" himmel-bypass-launchd.service "*) ;; *) echo "stub: wrong unit: $*" >&2; exit 5 ;; esac ;;
+esac
 case $verb in
     is-enabled) [ -e "$STUB_DIR/enabled" ] && { echo enabled; exit 0; }; echo disabled; exit 1 ;;
     is-active) [ -e "$STUB_DIR/active" ] && { echo active; exit 0; }; echo inactive; exit 3 ;;
@@ -54,6 +57,10 @@ STUB
     cat > "$BIN/launchctl" <<'STUB'
 #!/usr/bin/env bash
 printf 'launchctl %s\n' "$*" >> "$STUB_DIR/calls"
+case ${1:-} in
+    bootout|print|kickstart) case " $* " in *" gui/$(id -u)/com.himmel.bypass-launchd "*) ;; *) echo "stub: wrong target: $*" >&2; exit 5 ;; esac ;;
+    bootstrap) case " $* " in *" gui/$(id -u) "*) ;; *) echo "stub: wrong domain: $*" >&2; exit 5 ;; esac ;;
+esac
 exit 0
 STUB
     chmod +x "$BIN/systemctl" "$BIN/loginctl" "$BIN/launchctl"
@@ -82,7 +89,8 @@ echo "== the templates exist and render without a placeholder left =="
 mk render
 assert_eq "the systemd unit template is in the checkout" yes "$([ -f "$R/$OPS/units/$UNIT" ] && echo yes || echo no)"
 assert_eq "the LaunchAgent template is in the checkout" yes "$([ -f "$R/$OPS/units/$PLIST" ] && echo yes || echo no)"
-out=$(svc_run render --bucket "$B")
+out=$(svc_run render --bucket "$B"); rc=$?
+assert_eq "render of the systemd unit exits 0" 0 "$rc"
 for want in "Restart=on-failure" "WatchdogSec=" "Type=notify" "NotifyAccess=all" "KillMode=process" "Environment=BYPASSD_SERVICE=1" \
     "--until forever" "--bucket $B" "$R/$OPS/bypass-launchd.sh" "WantedBy=default.target" "RestartPreventExitStatus=3" \
     "UnsetEnvironment=" "BYPASSD_SEND" "BYPASSD_LAUNCHER" "BYPASSD_CHILD_PASS" "BASH_ENV" "Environment=HOME=%h" "Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus" "Environment=TELEGRAM_ACCESS_PATH=%h/.claude/channels/telegram/access.json" \
@@ -95,11 +103,14 @@ assert_absent "the rendered unit has no @ placeholder left" "@" "$out"
 assert_absent "the rendered unit drops NoNewPrivileges on purpose (workers keep sudo)" "NoNewPrivileges" "$out"
 assert_absent "the rendered unit's PATH has no user directory" ".local/bin" "$(printf '%s\n' "$out" | grep '^Environment=PATH=')"
 assert_absent "the rendered unit's PATH has no bun directory" ".bun/bin" "$(printf '%s\n' "$out" | grep '^Environment=PATH=')"
-out=$(env -u CLAUDECODE BYPASSD_SERVICE_OS=Darwin HOME="$H" PATH="$BIN:$PATH" STUB_DIR="$D" bash "$R/$OPS/bypass-service.sh" render --bucket "$B" 2>&1)
+out=$(env -u CLAUDECODE BYPASSD_SERVICE_OS=Darwin HOME="$H" PATH="$BIN:$PATH" STUB_DIR="$D" bash "$R/$OPS/bypass-service.sh" render --bucket "$B" 2>&1); rc=$?
+assert_eq "render of the LaunchAgent exits 0" 0 "$rc"
 for want in "com.himmel.bypass-launchd" "RunAtLoad" "KeepAlive" "SuccessfulExit" "BYPASSD_SERVICE" "forever" "$B" "ThrottleInterval" \
     "TELEGRAM_ACCESS_PATH" "BRIDGE_ROOT" "<key>HOME</key>" "<string>-p</string>" "<key>LC_ALL</key>" "<key>TZ</key>"; do
     assert_contains "the rendered plist has: $want" "$want" "$out"
 done
+out_x=$(env -u CLAUDECODE BYPASSD_SERVICE_OS=Darwin HOME="$H/a&b<c" PATH="$BIN:$PATH" STUB_DIR="$D" bash "$R/$OPS/bypass-service.sh" render --bucket "$B" 2>&1)
+assert_eq "RED 11031 CR: a HOME with XML characters renders a plist that parses back to the same HOME" "$H/a&b<c" "$(printf '%s' "$out_x" | python3 -I -c 'import plistlib, sys; print(plistlib.loads(sys.stdin.buffer.read())["EnvironmentVariables"]["HOME"], end="")' 2>&1)"
 assert_absent "the rendered plist has no @ placeholder left" "@" "$out"
 assert_absent "the rendered plist's PATH has no user directory" ".local/bin" "$(printf '%s\n' "$out" | grep -A1 '<key>PATH</key>')"
 
@@ -153,10 +164,17 @@ out=$(svc_run restart); rc=$?
 assert_eq "restart on a daemon that is off exits 2" 2 "$rc"
 assert_contains "restart on a daemon that is off names the way back" "himmelctl bypass on" "$out"
 assert_absent "restart on a daemon that is off restarts nothing" "restart" "$(calls)"
+mk cfgfail
+mkdir -p "$H/.himmel/state/bypass-service/config.new"
+out=$(svc_run on --bucket "$B"); rc=$?
+assert_eq "RED 11031 CR: an on that cannot save its configuration exits 2" 2 "$rc"
+assert_absent "RED 11031 CR: and never enables or starts the unit" "enable" "$(calls)"
+assert_eq "RED 11031 CR: and leaves no unit file behind" no "$([ -e "$U/$UNIT" ] && echo yes || echo no)"
 mk reon
 svc_run on --bucket "$B" >/dev/null
 : > "$D/calls"
-svc_run on --bucket "$B" >/dev/null
+svc_run on --bucket "$B" >/dev/null; rc=$?
+assert_eq "a second on with an unchanged unit exits 0" 0 "$rc"
 assert_absent "a second on with an unchanged unit restarts nothing" "systemctl --user restart" "$(calls)"
 printf '# edited\n' >> "$U/$UNIT"
 : > "$D/calls"

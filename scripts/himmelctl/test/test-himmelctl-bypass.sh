@@ -16,7 +16,7 @@ trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/fake/scripts/station-ops"
 cat > "$tmp/fake/scripts/station-ops/bypass-service.sh" <<'STUB'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$STUB_CALLS"
+printf '[%s]' "$@" >> "$STUB_CALLS"; echo >> "$STUB_CALLS"
 exit "${STUB_RC:-0}"
 STUB
 chmod +x "$tmp/fake/scripts/station-ops/bypass-service.sh"
@@ -26,16 +26,18 @@ run() {
 }
 
 run bypass on --bucket /srv/b
-assert_eq "bypass on --bucket passes both to the service script" "on --bucket /srv/b" "$(cat "$tmp/calls")"
+assert_eq "bypass on --bucket passes both to the service script" "[on][--bucket][/srv/b]" "$(cat "$tmp/calls")"
 assert_eq "bypass on exits 0" 0 "$rc"
 run bypass on
-assert_eq "bypass on without --bucket passes only the verb" "on" "$(cat "$tmp/calls")"
+assert_eq "bypass on without --bucket passes only the verb" "[on]" "$(cat "$tmp/calls")"
 for v in off restart status; do
     run bypass "$v"
-    assert_eq "bypass $v passes the verb" "$v" "$(cat "$tmp/calls")"
+    assert_eq "bypass $v passes the verb" "[$v]" "$(cat "$tmp/calls")"
 done
 run --bucket /srv/b bypass on
-assert_eq "the flag may come before the subcommand" "on --bucket /srv/b" "$(cat "$tmp/calls")"
+assert_eq "the flag may come before the subcommand" "[on][--bucket][/srv/b]" "$(cat "$tmp/calls")"
+run bypass on --bucket "/srv/a b"
+assert_eq "a bucket path with a space reaches the service script as one argument" "[on][--bucket][/srv/a b]" "$(cat "$tmp/calls")"
 STUB_RC=1 run bypass status
 assert_eq "the service script's exit code is the CLI's" 1 "$rc"
 

@@ -35,7 +35,9 @@ installed_path() { if darwin; then echo "$AGENT_DIR/$PLIST"; else echo "$UNIT_DI
 conf_get() { sed -n "s/^$1=//p" "$CONFIG" 2>/dev/null | head -n 1; }
 
 render() {
-    local bucket=$1 repo=$2 tpl line out=""
+    local bucket=$1 repo=$2 tpl line out="" home_x home_s
+    home_x=$(printf '%s' "$HOME" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+    home_s=$(printf "%s" "$home_x" | sed 's/[\&|]/\\&/g')
     [[ "$bucket" =~ $PATH_RE ]] || die "the bucket path '$bucket' holds a character the unit cannot carry (use letters, digits and . _ / @ + -)"
     [[ "$repo" =~ $PATH_RE ]] || die "the checkout path '$repo' holds a character the unit cannot carry"
     if darwin; then tpl="$repo/$OPS/units/$PLIST"; else tpl="$repo/$OPS/units/$UNIT"; fi
@@ -43,7 +45,7 @@ render() {
     while IFS= read -r line || [ -n "$line" ]; do
         line=${line//@HIMMEL_ROOT@/${repo//%/%%}}
         line=${line//@BUCKET@/${bucket//%/%%}}
-        line=${line//@HOME@/$HOME}
+        line=$(printf "%s" "$line" | sed "s|@HOME@|$home_s|g")
         out+="$line"$'\n'
     done <"$tpl"
     case $out in *@[A-Z]*@*) die "the template left a placeholder unfilled" ;; esac
@@ -106,11 +108,11 @@ cmd_on() {
     mkdir -p "$STATE" "$(dirname "$path")" || die "cannot create the unit directory"
     render "$bucket" "$repo" >"$path.new" || { rm -f "$path.new"; exit 2; }
     if [ -f "$path" ] && cmp -s "$path" "$path.new"; then changed=""; fi
-    mv "$path.new" "$path"
     [[ "${HANDOVER_DIR:-}" =~ $PATH_RE ]] && pin_hd=$HANDOVER_DIR
-    { printf 'bucket=%s\nrepo=%s\n' "$bucket" "$repo"; [ -z "$pin_hd" ] || printf 'handover_dir=%s\n' "$pin_hd"; } >"$CONFIG.new"
+    { printf 'bucket=%s\nrepo=%s\n' "$bucket" "$repo"; [ -z "$pin_hd" ] || printf 'handover_dir=%s\n' "$pin_hd"; } >"$CONFIG.new" || { rm -f "$path.new"; die "cannot save the configuration in $STATE"; }
     if [ ! -f "$CONFIG" ] || ! cmp -s "$CONFIG" "$CONFIG.new"; then changed=1; fi
-    mv "$CONFIG.new" "$CONFIG"
+    mv "$path.new" "$path" || die "cannot install the unit"
+    mv "$CONFIG.new" "$CONFIG" || die "cannot save the configuration in $STATE"
     rm -f "$q/stop"
     if darwin; then
         mkdir -p "$HOME/.himmel"
