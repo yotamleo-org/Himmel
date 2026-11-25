@@ -11,7 +11,7 @@
 # the predecessor's session names is not exempted.
 # It never kills a pid it cannot independently prove belongs to that worker.
 #
-# Usage: close-wrapped-worker.sh [--check] [--chief | --fleet <manifest>] <worker-doc>
+# Usage: close-wrapped-worker.sh [--check] [--finished] [--chief | --fleet <manifest>] <worker-doc>
 #        close-wrapped-worker.sh [--check] --sweep --fleet <manifest>
 # --sweep runs this script on every doc in the fleet manifest and closes each one
 # that is finished (lock free, tail WRAPPED or a BLOCKED hand-off naming its successor);
@@ -28,6 +28,12 @@
 # --chief closes a wrapped PREDECESSOR chief's window: the
 # same lock/WRAPPED/one-session checks and subtree check, then TERM - no close
 # record and no sweep. Run it right after your own LIVE.
+# --finished closes a worker that is still live but whose work is done (orphan-scan.sh prints it as
+# `# orphan finished`): no WRAPPED and a held queue lock are fine, and in their place the doc's newest
+# `READY <n>` / `PR <n>` bullet must name a MERGED PR and every worktree the doc names that still exists
+# must be clean (`git status --porcelain` empty) with HEAD at the PR's head. At least one such worktree
+# must exist to prove it. Every session, subtree, subagent and scratchpad-clone check below runs unchanged,
+# and the proof-handoff record is skipped (that worker never wrapped). Not with --chief or --sweep.
 # --fleet removes the doc after a successful close.
 # A manifest update failure returns 1 after the session has already closed.
 #
@@ -126,6 +132,8 @@
 #      bounded git fetch --prune of each remote; CLOSE_WRAPPED_WORKER_FETCH_TIMEOUT,
 #      default 30s; a value that is not a positive integer is refused too)
 #   9  refused - proof handoff could not be persisted; no TERM or retirement
+#  10  refused (--finished) - the doc names no PR, the PR is not MERGED or cannot be read, no named
+#      worktree exists, or a named worktree is dirty or not at the PR's head
 #
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh;
 # konsole workers are Linux/KDE-only, same guard as
@@ -142,21 +150,25 @@ WRAP_SUBTREE_CHECK="${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}"
 LIVE_SUBAGENTS="${LIVE_SUBAGENTS_BIN:-$HERE/live-subagents.sh}"
 CLOSE_SWEEP="${CLOSE_SWEEP_BIN:-$HERE/close-sweep.sh}"
 CLOSE_SWEEP_STATE="${CLOSE_SWEEP_STATE_DIR:-$HOME/.himmel/state/close-sweep}"
+FINISHED_GH="${CLOSE_WRAPPED_WORKER_GH:-gh}"
 
 usage() {
-    echo "usage: close-wrapped-worker.sh [--check] [--chief | --fleet <manifest>] <doc> | [--check] --sweep --fleet <manifest>" >&2
+    echo "usage: close-wrapped-worker.sh [--check] [--finished] [--chief | --fleet <manifest>] <doc> | [--check] --sweep --fleet <manifest>" >&2
 }
 
 FLEET_MANIFEST=""
 CHIEF_MODE=0
 CHECK_MODE=0
 SWEEP_MODE=0
-if [ "${1:-}" = --check ]; then
-    CHECK_MODE=1; shift
-fi
+FINISHED_MODE=0
+while [ "${1:-}" = --check ] || [ "${1:-}" = --finished ]; do
+    if [ "$1" = --check ]; then CHECK_MODE=1; else FINISHED_MODE=1; fi
+    shift
+done
 if [ "${1:-}" = --sweep ]; then
     SWEEP_MODE=1; shift
 fi
+if [ "$FINISHED_MODE" -eq 1 ] && { [ "$SWEEP_MODE" -eq 1 ] || [ "${1:-}" = --chief ]; }; then usage; exit 2; fi
 if [ "${1:-}" = --fleet ]; then
     if [ "$#" -lt 2 ] || [ -z "${2:-}" ]; then usage; exit 2; fi
     FLEET_MANIFEST="$2"; shift 2
@@ -212,7 +224,59 @@ if [ ! -f "$DOC" ] || [ ! -r "$DOC" ]; then
     exit 2
 fi
 
-if ! bash "$HERE/../queue-lock.sh" status "$DOC" >/dev/null 2>&1; then
+finished_gate() {
+    local pr wts wt view state fhead first="" wt_head wt_dirty
+    pr=$(grep -E '^- .*(READY|PR) #?[0-9]+' "$DOC" | tail -n 1 | grep -oE '(READY|PR) #?[0-9]+' | tail -n 1 | grep -oE '[0-9]+') || pr=""
+    if [ -z "$pr" ]; then
+        echo "close-wrapped-worker: refusing --finished - $DOC names no PR (a READY <n> or PR <n> bullet)" >&2
+        exit 10
+    fi
+    wts=$(grep -oE "/[^\` ]*/\.claude/worktrees/[^\` )]+" "$DOC" | sort -u) || wts=""
+    while IFS= read -r wt; do
+        wt="${wt%[.,;:]}"
+        if [ -n "$wt" ] && [ -d "$wt" ] && [ -z "$first" ]; then first="$wt"; fi
+    done <<EOF
+$wts
+EOF
+    if [ -z "$first" ]; then
+        echo "close-wrapped-worker: refusing --finished - no worktree named in $DOC exists, so none can be proven clean" >&2
+        exit 10
+    fi
+    if ! view=$(cd "$first" && GH_READ_QUIET=1 "$FINISHED_GH" pr view "$pr" --json state,headRefOid,mergeCommit 2>&1); then
+        echo "close-wrapped-worker: refusing --finished - cannot read PR #$pr: $view" >&2
+        exit 10
+    fi
+    state=$(printf '%s' "$view" | jq -r '.state // empty')
+    fhead=$(printf '%s' "$view" | jq -r '.headRefOid // empty')
+    if [ "$state" != MERGED ] || [ -z "$fhead" ]; then
+        echo "close-wrapped-worker: refusing --finished - PR #$pr is '${state:-unreadable}', not MERGED" >&2
+        exit 10
+    fi
+    # git-env-ok: both git calls below run under env -u of the GIT_* names a hook could hand this script
+    while IFS= read -r wt; do
+        wt="${wt%[.,;:]}"
+        [ -n "$wt" ] && [ -d "$wt" ] || continue
+        if ! wt_head=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$wt" rev-parse HEAD 2>&1) \
+            || ! wt_dirty=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$wt" status --porcelain 2>&1); then
+            echo "close-wrapped-worker: refusing --finished - git cannot read the worktree $wt" >&2
+            exit 10
+        fi
+        if [ -n "$wt_dirty" ]; then
+            echo "close-wrapped-worker: refusing --finished - the worktree $wt is not clean (git status --porcelain lists changes)" >&2
+            exit 10
+        fi
+        if [ "$wt_head" != "$fhead" ]; then
+            echo "close-wrapped-worker: refusing --finished - the worktree $wt is at $wt_head, not PR #$pr's merged head $fhead" >&2
+            exit 10
+        fi
+    done <<EOF
+$wts
+EOF
+    echo "close-wrapped-worker: --finished - PR #$pr is MERGED and every named worktree is clean at $fhead"
+}
+if [ "$FINISHED_MODE" -eq 1 ]; then
+    finished_gate
+elif ! bash "$HERE/../queue-lock.sh" status "$DOC" >/dev/null 2>&1; then
     echo "close-wrapped-worker: refusing - the queue lock on $DOC is not free" >&2
     exit 3
 fi
@@ -283,6 +347,7 @@ else
         SIB_DOC="$sib_found"
     fi
 fi
+if [ "$FINISHED_MODE" -eq 1 ]; then SIB_DOC=""; NAMED_SUCCESSOR=""; fi
 if [ -n "$SIB_DOC" ] && [ "$SIB_DOC" != "$NAMED_SUCCESSOR" ] && ! bash "$HERE/../queue-lock.sh" status "$SIB_DOC" >/dev/null 2>&1; then
     echo "close-wrapped-worker: refusing - the queue lock on its sibling doc $SIB_DOC is not free" >&2
     exit 3
@@ -388,6 +453,7 @@ if ! last_marker=$(doc_tail_status "$DOC"); then
     echo "close-wrapped-worker: refusing - cannot read the ## Results section of $DOC" >&2
     exit 4
 fi
+[ "$FINISHED_MODE" -eq 0 ] || last_marker=WRAPPED
 tail_doc="$DOC"   # the doc last_marker is read from
 PREDECESSOR=0
 ORPHAN_RESUME=0
@@ -451,7 +517,7 @@ fi
 # Proof evidence debt survives both TERM and CLOSED-ALREADY manifest retirement.
 # --check reads the contract without writing, and predecessor chiefs are outside
 # the proof-worker contract. One shared recorder owns normal-event and sweep data.
-if [ "$CHIEF_MODE" -eq 0 ]; then
+if [ "$CHIEF_MODE" -eq 0 ] && [ "$FINISHED_MODE" -eq 0 ]; then
     proof_args=(--bucket "$(dirname "${FLEET_MANIFEST:-$DOC}")" --doc "$tail_doc" --label "$(worker_label "$tail_doc")")
     [ "$CHECK_MODE" -eq 0 ] || proof_args+=(--dry-run)
     if ! python3 "$HERE/proof-validate.py" "${proof_args[@]}"; then
