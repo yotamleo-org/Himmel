@@ -141,4 +141,25 @@ else
   fail "CA10: rc=$rc (want rc 1, no CAP-ALERT) out: $out"
 fi
 
+mkdir -p "$sb/sibling"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$sb/sibling/guard.sh"
+printf '#!/usr/bin/env bash\necho "FAIL: a row (want '"'"'0'"'"' got '"'"'124'"'"')"\nexit 1\n' > "$sb/sibling/test-guard-extra.sh"
+chmod +x "$sb/sibling/test-guard-extra.sh"
+printf '# fixture trust list\n/sibling/guard\\.sh$\n' > "$sb/trust-sibling.txt"
+run sibling SUITE_TRUST_PATHS="$sb/trust-sibling.txt"
+if [ "$rc" -eq 1 ] && ! grepq "$out" -E '^CAP-ALERT'; then
+  pass "CA11: a got-124 row in a sibling of a trust-path file stays a FAIL, rc 1"
+else
+  fail "CA11: rc=$rc (want rc 1, no CAP-ALERT) out: $out"
+fi
+
+mk badtrust "echo \"FAIL: (8349) a row (want '0' got '124')\"; exit 1"
+printf '# fixture trust list\n[unclosed\n' > "$sb/trust-bad.txt"
+run badtrust SUITE_TRUST_PATHS="$sb/trust-bad.txt"
+if [ "$rc" -eq 1 ] && ! grepq "$out" -E '^CAP-ALERT'; then
+  pass "CA12: a trust list grep cannot read keeps the trust protection, rc 1"
+else
+  fail "CA12: rc=$rc (want rc 1, no CAP-ALERT) out: $out"
+fi
+
 rst_tally

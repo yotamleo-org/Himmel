@@ -3696,10 +3696,36 @@ _suite_no_retry() {
   [ -n "$_hdr" ]
 }
 
+_trust_match() {
+  local _rc=0
+  grep -qE -f "$_trust_pats" <<< "$1" || _rc=$?
+  [ "$_rc" -ne 1 ]
+}
+
 _suite_trust_path() {
-  local _list="${SUITE_TRUST_PATHS:-$REPO_ROOT/scripts/ci/ci-trust-paths.txt}"
+  local _list="${SUITE_TRUST_PATHS:-$REPO_ROOT/scripts/ci/ci-trust-paths.txt}" _dir _stem _f _base _found=1
   [ -r "$_list" ] || return 0
-  grep -qE -f <(grep -vE '^[[:space:]]*(#|$)' "$_list") <<< "${1#"$tier_repo_root"/}"
+  _trust_pats=$(mktemp "${TMPDIR:-/tmp}/himmel-trust.XXXXXX") || return 0
+  grep -vE '^[[:space:]]*(#|$)' "$_list" > "$_trust_pats" || true
+  if _trust_match "${1#"$tier_repo_root"/}"; then
+    _found=0
+  else
+    _dir=${1%/*}
+    _stem=${1##*/}
+    _stem=${_stem#test-}
+    _stem=${_stem%.sh}
+    while [ "$_found" -ne 0 ] && [ -n "$_stem" ]; do
+      for _f in "$_dir/$_stem".*; do
+        [ -e "$_f" ] || continue
+        _base=${_f##*/}
+        [ "${_base%.*}" = "$_stem" ] || continue
+        if _trust_match "${_f#"$tier_repo_root"/}"; then _found=0; break; fi
+      done
+      case "$_stem" in *-*) _stem=${_stem%-*} ;; *) break ;; esac
+    done
+  fi
+  rm -f "$_trust_pats"
+  return "$_found"
 }
 
 _suite_quarantined() {
