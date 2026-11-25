@@ -29,18 +29,8 @@ chmod +x "$GH_CMD"
 export GH_CMD
 
 STUB="$TMPBASE/stub"
-mkdir -p "$STUB" "$TMPBASE/live"
-cat > "$STUB/npm" <<STUBNPM
-#!/bin/sh
-mkdir -p "$TMPBASE/live"
-: > "$TMPBASE/live/\$\$"
-n=\$(ls "$TMPBASE/live" | wc -l | tr -d ' ')
-echo "\$n" >> "$TMPBASE/concurrency"
-sleep "\${NPM_STUB_SLEEP:-1}"
-rm -f "$TMPBASE/live/\$\$"
-case "\$PWD" in *fail-npm*) exit 1 ;; esac
-exit 0
-STUBNPM
+mkdir -p "$STUB"
+printf '#!/bin/sh\nexit 0\n' > "$STUB/npm"
 chmod +x "$STUB/npm"
 export PATH="$STUB:$PATH"
 
@@ -65,7 +55,36 @@ git -C "$REPO" remote set-head origin main
 FIX_PAR="$REPO/scripts/handover/chief-kit/worktrees-parallel.sh"
 run_par() { ( cd "$REPO" && bash "$FIX_PAR" "$@" ) >"$TMPBASE/out" 2>"$TMPBASE/err"; }
 wt() { printf '%s/.claude/worktrees/%s' "$REPO" "$(printf '%s' "$1" | tr '/' '+')"; }
-now() { date +%s; }
+
+REPO2="$TMPBASE/repo2"
+git clone -q -b main "$ORIGIN" "$REPO2" 2>/dev/null
+git -C "$REPO2" remote set-head origin main
+cat > "$REPO2/scripts/worktree.sh" <<'STUBWT'
+#!/usr/bin/env bash
+branch="$2"
+echo "S $branch" >> "$WTSTUB_EVENTS"
+: > "$WTSTUB_STARTED/${branch//\//+}"
+if [ -n "${WTSTUB_BARRIER:-}" ]; then
+    tries="${WTSTUB_BARRIER_TRIES:-600}"
+    while [ "$(ls "$WTSTUB_STARTED" | wc -l | tr -d ' ')" -lt "$WTSTUB_BARRIER" ] && [ "$tries" -gt 0 ]; do
+        sleep 0.1
+        tries=$(( tries - 1 ))
+    done
+fi
+case "$branch" in
+    *fail-stub*) echo "E $branch" >> "$WTSTUB_EVENTS"; echo "ERR new-worktree: injected failure" >&2; exit 1 ;;
+esac
+mkdir -p "$(dirname "$0")/../.claude/worktrees/${branch//\//+}"
+echo "E $branch" >> "$WTSTUB_EVENTS"
+exit 0
+STUBWT
+FIX_PAR2="$REPO2/scripts/handover/chief-kit/worktrees-parallel.sh"
+run_par2() {
+    rm -rf "$TMPBASE/started"; mkdir -p "$TMPBASE/started"
+    : > "$TMPBASE/events"
+    ( cd "$REPO2" && WTSTUB_EVENTS="$TMPBASE/events" WTSTUB_STARTED="$TMPBASE/started" \
+        bash "$FIX_PAR2" "$@" ) >"$TMPBASE/out" 2>"$TMPBASE/err"
+}
 
 NAME="a list with design/x among three valid items creates none and names design/x"
 rc=0; run_par --no-prune fix/bt-a design/x fix/bt-b fix/bt-c || rc=$?
@@ -93,40 +112,38 @@ else
     _fail "$NAME" "out=[$(cat "$TMPBASE/out")]"
 fi
 
-NAME="4 worktrees in one call take less wall time than 4 serial calls"
-export NPM_STUB_SLEEP=2
-s=$(now)
-for b in fix/ser-a fix/ser-b fix/ser-c fix/ser-d; do
-    ( cd "$REPO" && bash scripts/worktree.sh new "$b" --no-prune ) >/dev/null 2>&1
-done
-serial=$(( $(now) - s ))
-s=$(now)
-rc=0; run_par --no-prune fix/par-a fix/par-b fix/par-c fix/par-d || rc=$?
-par=$(( $(now) - s ))
-if [ "$rc" -eq 0 ] && [ "$serial" -ge 8 ] && [ "$par" -lt "$serial" ] && [ "$par" -lt 8 ]; then
-    _pass "$NAME (serial ${serial}s, parallel ${par}s)"
+max_live() { awk '/^S/ { l++; if (l > m) m = l } /^E/ { l-- } END { print m + 0 }' "$TMPBASE/events"; }
+starts_before_first_end() { awk '/^E/ { exit } /^S/ { n++ } END { print n + 0 }' "$TMPBASE/events"; }
+
+NAME="4 worktrees in one call overlap: all four start before any one ends"
+export WTSTUB_BARRIER=4
+rc=0; run_par2 --no-prune fix/par-a fix/par-b fix/par-c fix/par-d || rc=$?
+unset WTSTUB_BARRIER
+sb=$(starts_before_first_end)
+if [ "$rc" -eq 0 ] && [ "$sb" -eq 4 ] && [ "$(max_live)" -eq 4 ] && [ "$(grep -c '^OK ' "$TMPBASE/out")" -eq 4 ]; then
+    _pass "$NAME"
 else
-    _fail "$NAME" "rc=$rc serial=${serial}s parallel=${par}s out=[$(cat "$TMPBASE/out")] err=[$(cat "$TMPBASE/err")]"
+    _fail "$NAME" "rc=$rc starts-before-first-end=$sb events=[$(tr '\n' ' ' < "$TMPBASE/events")] out=[$(cat "$TMPBASE/out")] err=[$(cat "$TMPBASE/err")]"
 fi
 
 NAME="a failing item is reported while the other three are created"
-export NPM_STUB_SLEEP=1
-rc=0; run_par --no-prune fix/ok-a fix/fail-npm fix/ok-b fix/ok-c || rc=$?
-if [ "$rc" -ne 0 ] && [ -d "$(wt fix/ok-a)" ] && [ -d "$(wt fix/ok-b)" ] && [ -d "$(wt fix/ok-c)" ] \
-    && grep -q '^FAIL fix/fail-npm ' "$TMPBASE/out" && [ "$(grep -c '^OK ' "$TMPBASE/out")" -eq 3 ]; then
+rc=0; run_par2 --no-prune fix/ok-a fix/fail-stub fix/ok-b fix/ok-c || rc=$?
+if [ "$rc" -ne 0 ] && [ -d "$REPO2/.claude/worktrees/fix+ok-a" ] && [ -d "$REPO2/.claude/worktrees/fix+ok-b" ] && [ -d "$REPO2/.claude/worktrees/fix+ok-c" ] \
+    && grep -Fxq 'FAIL fix/fail-stub new-worktree: injected failure' "$TMPBASE/out" && [ "$(grep -c '^OK ' "$TMPBASE/out")" -eq 3 ]; then
     _pass "$NAME"
 else
     _fail "$NAME" "rc=$rc out=[$(cat "$TMPBASE/out")] err=[$(cat "$TMPBASE/err")]"
 fi
 
 NAME="the fan-out cap is respected (--fan-out 2: at most 2 at once, and 2 reached)"
-rm -f "$TMPBASE/concurrency"
-rc=0; run_par --no-prune --fan-out 2 fix/cap-a fix/cap-b fix/cap-c fix/cap-d || rc=$?
-max=$(sort -n "$TMPBASE/concurrency" 2>/dev/null | tail -1 || true)
-if [ "$rc" -eq 0 ] && [ "${max:-0}" -eq 2 ] && [ "$(grep -c '^OK ' "$TMPBASE/out")" -eq 4 ]; then
+export WTSTUB_BARRIER=2
+rc=0; run_par2 --no-prune --fan-out 2 fix/cap-a fix/cap-b fix/cap-c fix/cap-d || rc=$?
+unset WTSTUB_BARRIER
+max=$(max_live)
+if [ "$rc" -eq 0 ] && [ "$max" -eq 2 ] && [ "$(grep -c '^OK ' "$TMPBASE/out")" -eq 4 ]; then
     _pass "$NAME"
 else
-    _fail "$NAME" "rc=$rc max=${max:-none} out=[$(cat "$TMPBASE/out")] err=[$(cat "$TMPBASE/err")]"
+    _fail "$NAME" "rc=$rc max=$max events=[$(tr '\n' ' ' < "$TMPBASE/events")] out=[$(cat "$TMPBASE/out")] err=[$(cat "$TMPBASE/err")]"
 fi
 
 NAME="--fan-out 0 and 00 are refused (xargs -P 0 is unbounded), nothing created"
@@ -142,13 +159,14 @@ else
 fi
 
 NAME="the default fan-out is 4"
-rm -f "$TMPBASE/concurrency"
-rc=0; run_par --no-prune fix/def-a fix/def-b fix/def-c fix/def-d fix/def-e fix/def-f || rc=$?
-max=$(sort -n "$TMPBASE/concurrency" 2>/dev/null | tail -1 || true)
-if [ "$rc" -eq 0 ] && [ "${max:-0}" -eq 4 ]; then
+export WTSTUB_BARRIER=4
+rc=0; run_par2 --no-prune fix/def-a fix/def-b fix/def-c fix/def-d fix/def-e fix/def-f || rc=$?
+unset WTSTUB_BARRIER
+max=$(max_live)
+if [ "$rc" -eq 0 ] && [ "$max" -eq 4 ] && [ "$(grep -c '^OK ' "$TMPBASE/out")" -eq 6 ]; then
     _pass "$NAME"
 else
-    _fail "$NAME" "rc=$rc max=${max:-none} out=[$(cat "$TMPBASE/out")]"
+    _fail "$NAME" "rc=$rc max=$max events=[$(tr '\n' ' ' < "$TMPBASE/events")] out=[$(cat "$TMPBASE/out")] err=[$(cat "$TMPBASE/err")]"
 fi
 
 echo ""
