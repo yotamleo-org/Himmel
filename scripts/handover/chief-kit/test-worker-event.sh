@@ -50,7 +50,7 @@ echo "live $*" >> "$LE_LIVE_CALLS"
 exit "${LE_LIVE_RC:-0}"
 EOF2
 chmod +x "$W/wrap" "$W/list" "$W/live"
-export LE_STATION_LOG="$W/station.log" LE_WRAP="$W/wrap" LE_LIST="$W/list" LE_STATION="$W/station" LE_CALLS="$W/calls" LE_LIVE="$W/live" LE_LIVE_CALLS="$W/live-calls"
+export LE_STATION_LOG="$W/station.log" LE_WRAP="$W/wrap" LE_LIST="$W/list" LE_STATION="$W/station" LE_CALLS="$W/calls" LE_LIVE="$W/live" LE_LIVE_CALLS="$W/live-calls" LE_STATION_STATE="$W/no-state"
 : > "$W/doc"
 run() { : > "$LE_CALLS"; : > "$LE_LIVE_CALLS"; printf '%s\n' "$1" > "$W/msg"; out="$(bash "$SCRIPT" --doc "$W/doc" --fleet "$W/fleet.json" "$W/msg" 2>/dev/null)"; rc=$?; calls="$(cat "$LE_CALLS")"; }
 
@@ -812,5 +812,66 @@ LE_AUTOGO_RC=3 LE_AUTOGO_OUT="auto-go: refusing - chief relay" LE_GH_STATE=MERGE
 contains "17d an auto-go failure with no such text still escalates auto-go-error" "$out" "ESCALATE auto-go-error rc=3"
 unset LE_GH HIMMEL_FLAG_AUTO_GO HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR LE_AUTOGO
 : > "$W/doc"
+
+export LE_STATION_STATE="$W/station.state"
+printf '%s\n' "BEHIND:plugins,hermes" > "$LE_STATION_STATE"
+run "WRAPPED N2078"
+await "$LE_CALLS" "station --heal --bucket $W --chief doc"; check "18 a wake while BEHIND starts the heal" "$?" 0
+check "18 the wake itself is still handled" "$rc" 0
+printf '%s\n' "BEHIND:codex" > "$LE_STATION_STATE"
+run "FINDING N2088 (token x): q"
+await "$LE_CALLS" "station --heal"; check "18 an escalated wake heals too" "$?" 0
+check "18 and keeps its escalation rc" "$rc" 10
+printf '%s\n' "ok" > "$LE_STATION_STATE"
+run "WRAPPED N2078"; sleep 0.4
+lacks "18 an ok station is not healed" "$(cat "$LE_CALLS")" "--heal"
+printf '%s\n' "BEHIND:pending" > "$LE_STATION_STATE"
+run "WRAPPED N2078"; sleep 0.4
+lacks "18 a sync in flight is not healed" "$(cat "$LE_CALLS")" "--heal"
+rm -f "$LE_STATION_STATE"
+run "WRAPPED N2078"; sleep 0.4
+lacks "18 no state file is not healed" "$(cat "$LE_CALLS")" "--heal"
+printf '%s\n' "BEHIND:plugins" > "$LE_STATION_STATE"
+run "MERGED #77 N2088"
+await "$LE_CALLS" "station --pr 77"; check "18 a MERGED wake starts its own sync" "$?" 0
+sleep 0.4
+lacks "18 and no second, heal run beside it" "$(cat "$LE_CALLS")" "--heal"
+
+mkdir -p "$W/hhome/vault"
+export LE_HOME="$W/hhome" LE_VERS="$W/vers" LE_UCALLS="$W/ucalls" LE_UPDATE="$W/update-w" LE_SS="$HERE/station-sync.sh"
+cat > "$W/vers" <<'EOF2'
+==> himmel ecosystem versions
+    component      state    installed   available   note
+    himmel         current  v1          v1
+    plugins        behind   1/2         2 declared  version drift: a
+    jira_cli       behind   built       source
+    2 behind, 0 undetermined.
+EOF2
+cat > "$W/update-w" <<'EOF2'
+#!/usr/bin/env bash
+echo "update $*" >> "$LE_UCALLS"
+case "$1" in
+    --only) c="$2"; [ "$c" != marketplace ] || c=plugins
+        sed "s/^\\(    $c  *\\)behind/\\1current/" "$LE_VERS" > "$LE_VERS.n" && mv "$LE_VERS.n" "$LE_VERS"; exit 0 ;;
+    --versions) cat "$LE_VERS"; ! grep -qw behind "$LE_VERS"; exit ;;
+esac
+exit 0
+EOF2
+cat > "$W/station-real" <<'EOF2'
+#!/usr/bin/env bash
+echo "station $*" >> "$LE_CALLS"
+export HOME="$LE_HOME" SS_UPDATE="$LE_UPDATE" SS_STATE="$LE_STATION_STATE" SS_PRIMARY="$LE_HOME" SS_QMD_CLONE="$LE_HOME/none" SS_VAULT="$LE_HOME/vault"
+exec bash "$LE_SS" "$@"
+EOF2
+chmod +x "$W/update-w" "$W/station-real"
+: > "$LE_UCALLS"; printf '%s\n' "BEHIND:plugins,jira_cli" > "$LE_STATION_STATE"
+LE_STATION="$W/station-real" run "WRAPPED N2078"
+LE_STATION="$W/station-real" run "WRAPPED N2078"
+LE_STATION="$W/station-real" run "WRAPPED N2078"
+await "$LE_STATION_STATE" "ok"; check "18f the three wakes leave the station ok" "$?" 0
+sleep 0.5
+check "18f the marketplace step ran once" "$(grep -c 'update --only marketplace' "$LE_UCALLS")" 1
+check "18f the jira_cli step ran once" "$(grep -c 'update --only jira_cli' "$LE_UCALLS")" 1
+check "18f --versions then shows none behind" "$(grep -cE '^ +(plugins|jira_cli) +behind' "$LE_VERS")" 0
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

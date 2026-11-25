@@ -403,4 +403,105 @@ contains "36 control, no read token: the marketplace step runs" "$calls" "update
 check "36 control: the PR read logs tok=main" "$(logn '^tok=main argv=pr view 7 --json files ')" 1
 check "36 control: no call logs tok=read" "$(logn '^tok=read ')" 0
 
+HV="$W/heal-versions"
+cat > "$W/ver-heal-behind" <<'EOF2'
+==> himmel ecosystem versions
+    component      state    installed   available   note
+    himmel         current  v1          v1
+    plugins        behind   1/2         2 declared  version drift: a
+    jira_cli       behind   built       source
+    hermes         behind   abc1234     def5678
+    codex          behind   0.162.1     0.163.0     run /himmel-update to upgrade
+    4 behind, 0 undetermined.
+EOF2
+cat > "$W/update-heal" <<'EOF2'
+#!/usr/bin/env bash
+echo "update $*" >> "$SS_CALLS"
+case "$1" in
+    --only)
+        [ "$2" != "${SS_T_FAIL:-}" ] || { printf '%s\n' "error: build exploded" >&2; exit 1; }
+        c="$2"; [ "$2" != marketplace ] || c=plugins
+        sed "s/^\\(    $c  *\\)behind/\\1current/" "$SS_T_VERSIONS" > "$SS_T_VERSIONS.n" && mv "$SS_T_VERSIONS.n" "$SS_T_VERSIONS"
+        exit 0 ;;
+    --versions) cat "$SS_T_VERSIONS"; ! grep -qw behind "$SS_T_VERSIONS"; exit ;;
+esac
+exit 0
+EOF2
+chmod +x "$W/update-heal"
+mkdir -p "$W/bucket"
+HEAL_STAMP="$W/station-heal.ts"; HNOW=1700000000
+heal() {
+    : > "$SS_CALLS"; printf '%s\n' "$1" > "$SS_STATE"
+    [ -z "${2:-}" ] || cp "$2" "$HV"
+    export SS_T_VERSIONS="$HV"
+    out="$(SS_UPDATE="$W/update-heal" SS_HEAL_NOW="${3:-$HNOW}" bash "$SCRIPT" --heal --bucket "$W/bucket" --chief test-chief 2>&1)"; rc=$?
+    calls="$(cat "$SS_CALLS" 2>/dev/null)"
+}
+owed_rows() { bash "$HERE/owe.sh" list --bucket "$W/bucket" | grep -c .; }
+
+bash "$SCRIPT" --heal >/dev/null 2>&1; check "37 --heal without a bucket and chief rc" "$?" 2
+bash "$SCRIPT" --heal --pr 5 --bucket "$W/bucket" --chief c >/dev/null 2>&1; check "37 --heal with --pr rc" "$?" 2
+
+: > "$SS_UCALLS"; rm -f "$HEAL_STAMP"
+heal "BEHIND:plugins,hermes,jira_cli" "$W/ver-heal-behind"
+check "38 heal rc" "$rc" 0
+contains "38 plugins runs the marketplace step" "$calls" "update --only marketplace"
+contains "38 jira_cli runs its step" "$calls" "update --only jira_cli"
+lacks "38 hermes is never healed" "$calls" "--only hermes"
+lacks "38 no step for a component the state does not name" "$calls" "--only luna_template"
+contains "38 the re-check runs" "$calls" "update --versions"
+contains "38 the heal reports hermes and codex as still behind" "$out" "STATION=BEHIND:hermes,codex"
+check "38 the state is rewritten as a sync does" "$(cat "$SS_STATE")" "BEHIND:hermes,codex"
+check "38 the heal runs no usage build" "$(grep -c '^usage-compute' "$SS_UCALLS")" 0
+lacks "38 and prints no usage_compute line" "$out" "usage_compute"
+check "38 stamp written" "$([ -s "$HEAL_STAMP" ] && echo yes)" "yes"
+check "38 --versions then shows neither healed component behind" "$(grep -cE '^ +(plugins|jira_cli) +behind' "$HV")" 0
+
+rm -f "$HEAL_STAMP"
+heal "ok" "$W/ver-current"
+contains "39 an ok station is not healed" "$out" "SKIP heal not-behind"
+lacks "39 and runs no step" "$calls" "--only"
+check "39 and runs no re-check" "$(printf '%s\n' "$calls" | grep -c -- '--versions')" 0
+check "39 the state stays ok" "$(cat "$SS_STATE")" "ok"
+heal "BEHIND:codex" "$W/ver-heal-behind"
+contains "39 a component with no step stays reported" "$out" "SKIP heal nothing-healable"
+lacks "39 and runs no step" "$calls" "--only"
+heal "BEHIND:hermes" "$W/ver-heal-behind"
+contains "39 a behind hermes stays reported" "$out" "SKIP heal nothing-healable"
+lacks "39 and no hermes update runs" "$calls" "--only"
+heal "BEHIND:pending" "$W/ver-heal-behind"
+contains "39 a sync in flight is not healed" "$out" "SKIP heal nothing-healable"
+check "39 neither case stamped" "$([ -e "$HEAL_STAMP" ] && echo yes || echo no)" "no"
+
+rm -f "$HEAL_STAMP"
+heal "BEHIND:jira_cli" "$W/ver-heal-behind"
+contains "40 the first heal runs" "$calls" "update --only jira_cli"
+heal "BEHIND:jira_cli" "$W/ver-heal-behind" "$((HNOW + 60))"
+contains "40 a heal inside the window backs off" "$out" "SKIP heal backoff"
+lacks "40 and runs nothing" "$calls" "update"
+check "40 and leaves the state alone" "$(cat "$SS_STATE")" "BEHIND:jira_cli"
+heal "BEHIND:jira_cli" "$W/ver-heal-behind" "$((HNOW + 1801))"
+contains "40 a heal after the window runs again" "$calls" "update --only jira_cli"
+
+rm -f "$HEAL_STAMP" "$W/bucket/owed.jsonl"
+SS_T_FAIL=jira_cli heal "BEHIND:jira_cli" "$W/ver-heal-behind"
+contains "41 a failing step reports its rc" "$out" "STEP jira_cli rc=1"
+contains "41 and the station stays behind, naming the failed step" "$out" "jira_cli-failed"
+check "41 exactly one owed row" "$(owed_rows)" 1
+contains "41 the row names the component" "$(bash "$HERE/owe.sh" list --bucket "$W/bucket")" "jira_cli"
+contains "41 the row is a step row" "$(bash "$HERE/owe.sh" list --bucket "$W/bucket")" "step"
+SS_T_FAIL=jira_cli heal "BEHIND:jira_cli" "$W/ver-heal-behind" "$((HNOW + 60))"
+contains "41 the second heal inside the window backs off" "$out" "SKIP heal backoff"
+lacks "41 and retries nothing" "$calls" "--only"
+check "41 and adds no owed row" "$(owed_rows)" 1
+SS_T_FAIL=jira_cli heal "BEHIND:jira_cli" "$W/ver-heal-behind" "$((HNOW + 1801))"
+contains "41 a heal after the window retries" "$calls" "update --only jira_cli"
+check "41 the same failure that day replays the one row" "$(owed_rows)" 1
+
+rm -rf "$HEAL_STAMP"; mkdir "$HEAL_STAMP"
+heal "BEHIND:jira_cli" "$W/ver-heal-behind"
+contains "42 a stamp that cannot be written skips the heal" "$out" "SKIP heal no-stamp"
+lacks "42 and runs no step" "$calls" "--only"
+rmdir "$HEAL_STAMP"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
