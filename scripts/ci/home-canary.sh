@@ -17,7 +17,8 @@
 #   --impacted <base>..<head>). HOME_CANARY_TIMEOUT bounds the runner (seconds,
 #   default 1500). HOME_CANARY_RUNNER_FAIL_OK=1 downgrades only a suite-failure
 #   exit (rc 1) to a note, for a job that lacks the tools the real shard job
-#   installs; a timeout (124, or 137 after timeout -k) and the runner's refused
+#   installs; a timeout (124, or 137 after timeout -k) before the runner's Summary
+#   printed FAIL: 0 (after it, a CAP-ALERT line and exit 0) and the runner's refused
 #   or aborted codes (2-6, 96) still fail.
 #   The sandbox is removed on every exit path.
 #   PYTHONUSERBASE is pinned to the real home's Python user base before the swap,
