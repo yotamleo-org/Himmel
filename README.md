@@ -28,7 +28,7 @@ go so the safe path is the default path:
 |---|---|---|
 | **1** | **Runtime hooks** | Block specified risky actions before they execute: worktree isolation (never edit `main`), secret-file read blocks (`.env`, keys), and destructive-command guards (`rm -rf`, `git reset --hard`). |
 | **2** | **Git gates + your CI** | Pre-commit, commit-message, and push gates run locally; on GitHub, himmel plugs into your existing CI and blocks Claude Code merges while checks are red or pending. |
-| **3** | **Independent review & fleet GO** | A fresh review pass — Codex/GPT for cross-model coverage, or Claude alone once you [turn the required reviewer off](docs/configuration.md#reviewer-modes) — audits the diff; every finding is ruled against code, and in fleet runs the chief signs `GO` for that exact commit. |
+| **3** | **Independent review & fleet GO** | A fresh review pass — Codex/GPT for cross-model coverage, or Claude alone when [Codex is not installed](docs/configuration.md#reviewer-modes) — audits the diff; every finding is ruled against code, and in fleet runs the chief signs `GO` for that exact commit. |
 | **4** | **Human judgment** | Reserved for what's left: you own specs, product calls, branch conflicts, and releases — never policing forgotten instructions. |
 
 himmel is most useful when you run parallel sessions, leave work unattended, or
@@ -108,9 +108,10 @@ parallel workers:
   local UI (`himmelctl ui`), and reversible uninstall. Complete on its own.
 - **Independent review:** Opt in to OpenAI GPT via Codex (`--with-codex`) for
   true cross-model coverage plus a tracked critic scorecard (`/cr-scores`,
-  `/cr-tune`). Without Codex, `/himmel-ops:pr-check` reviews with Claude alone;
-  once a review is recorded in your clone, the GitHub merge gate holds merges
-  until you [turn the required reviewer off](docs/configuration.md#reviewer-modes).
+  `/cr-tune`). Without Codex, `/himmel-ops:pr-check` reviews with Claude alone,
+  and the install writes `scripts/cr/critics.local.json` so the GitHub merge gate
+  asks for that Claude review instead of a Codex one; see
+  [reviewer modes](docs/configuration.md#reviewer-modes).
 - **Autonomous shifts & spend protection (opt-in):** Usage-window preflight
   (`usage-preflight.sh`) before heavy runs, plain-markdown handovers across
   session boundaries, `/afk-shift` queues, and one `/morning-report`.
