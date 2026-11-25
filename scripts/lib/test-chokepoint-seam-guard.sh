@@ -134,7 +134,7 @@ assert_eq "R_unguarded_worker headed-arm-worker.sh enforces the opt-out seam" "y
     "$(case " $(_csg_registry_seams "$REGISTRY" scripts/handover/chief-kit/headed-arm-worker.sh) " in (*" UNGUARDED_LAUNCH_OK "*) echo yes ;; (*) echo no ;; esac)"
 assert_eq "R_unguarded_arm arm-resume.sh enforces the opt-out seam" "yes" \
     "$(case " $(_csg_registry_seams "$REGISTRY" scripts/handover/arm-resume.sh) " in (*" UNGUARDED_LAUNCH_OK "*) echo yes ;; (*) echo no ;; esac)"
-USAGE_PREFLIGHT_SEAMS="CADENCE_USAGE_MAX_PCT CADENCE_USAGE_STATUS_CMD CADENCE_USAGE_CACHE FLEET_ADMIT_TEST_HOOK HIMMEL_API_MAX_CONCURRENT FLEET_ADMIT_STALE_SECS"
+USAGE_PREFLIGHT_SEAMS="CADENCE_USAGE_MAX_PCT CADENCE_USAGE_STATUS_CMD CADENCE_USAGE_CACHE FLEET_ADMIT_TEST_HOOK HIMMEL_API_MAX_CONCURRENT FLEET_ADMIT_STALE_SECS CLAUDE_USAGE_CACHE CADENCE_USAGE_PRODUCER"
 up_have=" $(_csg_registry_seams "$REGISTRY" scripts/lib/usage-preflight.sh) "
 up_missing=""
 for n in $USAGE_PREFLIGHT_SEAMS; do
@@ -381,7 +381,7 @@ for n in $USAGE_PREFLIGHT_SEAMS; do
     up_rcs="$up_rcs$(gate "$Q1" "$UP" "HIMMEL_REPO=$GA" HIMMEL_CONSOLE_LEG=1 "$n=csgt-probe") "
 done
 assert_eq "G20 a usage override passed to usage-preflight on the anchor -> 96, every name" \
-    "96 96 96 96 96 96 " "$up_rcs"
+    "96 96 96 96 96 96 96 96 " "$up_rcs"
 assert_eq "G20b negative control: no override set -> ALLOW" "0" "$(gate "$Q1" "$UP" "HIMMEL_REPO=$GA" HIMMEL_CONSOLE_LEG=1)"
 assert_eq "G20c negative control: an earlier registered seam is still refused -> 96" "96" "$(gate "$Q1" "$UP" "HIMMEL_REPO=$GA" HIMMEL_CONSOLE_LEG=1 HIMMEL_FLEET_CAP=csgt-probe)"
 Q14="$TMP/gproc14"; mkclaude "$Q14" "$GA" PATH=/bin "HOME=$GH" "HIMMEL_REPO=$GA" HIMMEL_CONSOLE_LEG=1 CADENCE_USAGE_MAX_PCT=50
