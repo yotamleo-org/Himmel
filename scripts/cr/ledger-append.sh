@@ -48,18 +48,6 @@
 # `amend` appends a SUPERSEDE record rather than rewriting a line, so the
 # ledger stays append-only and the correction is itself auditable.
 #
-# `rekey`: amend refuses to move a finding's file or line (the outside-diff
-# disposition reader binds a row to its ORIGINAL head, file and line as exact
-# strings), so a disposition row written with a wrong line token - `1331` where
-# the recipe carries `1331-1331` - could never be corrected at the same head,
-# and the dedup on (head,finding_id) refuses a second row.
-# `rekey --head <sha> --id <finding> --line <token> [--file <path>] --reason
-# <why>` appends a SUPERSEDE record (an amend row whose set carries rekey=true
-# plus the corrected line/file) at the finding's ORIGINAL head; the reader
-# cr_ledger_outside_dispositioned prefers the latest one. A head or finding
-# with no row is refused and nothing is written. amend's own refusal to re-key
-# a head, file or line is unchanged.
-#
 # `delegation`: the /pr-check trusted-anchor entry point
 # (scripts/cr/pr-check-context.sh) logs one row here every time it hands
 # execution off to the reviewed branch's own copy of itself (branch
