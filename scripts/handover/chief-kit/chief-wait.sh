@@ -610,7 +610,7 @@ for mode_arg in "$@"; do
 done
 # page/ack record helpers. A missing lib fails open: no records, the
 # page still sends.
-if [ -r "$HERE/denial-ack-lib.sh" ]; then . "$HERE/denial-ack-lib.sh"; else denial_page_write() { return 1; }; fi
+if [ -r "$HERE/denial-ack-lib.sh" ]; then . "$HERE/denial-ack-lib.sh"; else denial_page_write() { return 1; }; denial_key() { return 1; }; denial_unacked() { return 1; }; fi
 hb_file="$inbox.wait"
 key_file="$inbox.wait.state"
 interval="${CHIEF_WAIT_INTERVAL:-180}"
@@ -1153,9 +1153,10 @@ page_send() {  # <text> <deadline epoch> [route kind]: the timeout is what is le
 # fails; both steps fail open. The page text is the worker label, count and class
 # only: this file never reads the denial log, only tick.sh's denials= field.
 page_denials() {
-    local worker cls n end rc_name kind
+    local worker cls n end rc_name kind held
     end=$(( $(date +%s) + page_timeout ))  # one budget for the whole batch, not one per worker
     denial_pages "$1" "$2" | while read -r worker cls n; do
+        held="$(denial_unacked "$(denial_key "$worker")" 2>/dev/null)" && [ "$(denial_rank "${held%% *}")" -ge "$(denial_rank "$cls")" ] && continue
         kind=denial-page
         denial_page_write "$worker" "$n" "$cls" || kind=""
         # A native worker launched with Remote Control is answered from the

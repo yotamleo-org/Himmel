@@ -681,5 +681,30 @@ check "(p6) an unwritable record dir still wakes with rc 0" "0" "$rc"
 chmod 700 "$WORK/ro"
 unset CHIEF_WAIT_PROC
 
+export CHIEF_WAIT_PAGE_TIMEOUT=30
+denials_rise p7 none 'N1:1:SHIP-STEP'
+check "(p7) control: the first SHIP-STEP pages once" "1" "$(pages_n)"
+p7_ts="$(sed -n 's/^ts=//p' "$HIMMEL_DENIAL_ACK_DIR/N1.page" 2>/dev/null)"
+sed -i 's/denials=N1:1:SHIP-STEP/denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox p7b)"
+start "$I" "$WORK/p7b.out" --workers "N1.md"
+wait_hb "$I" || fail "(p7b) no baseline heartbeat"
+sleep 1.2
+sed -i 's/denials=none/denials=N1:1:SHIP-STEP/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(p7) the same worker back in the same unacked state still wakes" "0" "$rc"
+check "(p7) but does not page a second time" "1" "$(pages_n)"
+check "(p7) and keeps the first page record, so the 30-minute clock is not reset" "$p7_ts" "$(sed -n 's/^ts=//p' "$HIMMEL_DENIAL_ACK_DIR/N1.page" 2>/dev/null)"
+printf 'leg=N1\ncount=1\nclass=SHIP-STEP\nts=%s\n' "$(( p7_ts + 100 ))" > "$HIMMEL_DENIAL_ACK_DIR/N1.ack"
+sed -i 's/denials=N1:1:SHIP-STEP/denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox p7c)"
+start "$I" "$WORK/p7c.out" --workers "N1.md"
+wait_hb "$I" || fail "(p7c) no baseline heartbeat"
+sleep 1.2
+sed -i 's/denials=none/denials=N1:1:SHIP-STEP/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(p7) after the operator acked, the same state pages again" "2" "$(pages_n)"
+export CHIEF_WAIT_PAGE_TIMEOUT=2
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
