@@ -364,6 +364,29 @@ wait "$T3C_HELPER"; rc_c_helper=$?
   && pass "T3c the capped run waited out the live holder and kept its finished chunk (exit 4)" \
   || fail "T3c the capped run should keep its chunk and exit 4 (got $rc_c): $out_c"
 
+echo "T3i: a failed graphify --update keeps its finished chunk in the live cache (exit 2)"
+IBIN="$WS/t3ibin"; mkdir -p "$IBIN"
+cat > "$IBIN/graphify" <<'STUB'
+#!/usr/bin/env bash
+if [ "$1" = "--version" ]; then echo "graphify 0.0.0"; exit 0; fi
+if [ "$1" = "cluster-only" ]; then exit 0; fi
+mkdir -p "$1/graphify-out/cache"
+printf '{}' > "$1/graphify-out/cache/t3i-chunk.json"
+echo "[graphify extract] chunk 1/2 done" >&2
+echo "[graphify extract] chunk 2/2 failed" >&2
+exit 1
+STUB
+chmod +x "$IBIN/graphify"
+T3I="$WS/t3i"; mkdir -p "$T3I/notes" "$WS/t3i-maps"
+printf '# i\ncontent i\n' > "$T3I/notes/i.md"
+out_i=$( GRAPHIFY_MAP_BIN="$IBIN/graphify" PATH="$IBIN:$PATH" \
+  bash "$SCRIPT" --name t3i --corpus-root "$T3I" --backend claude \
+  --maps-dir "$WS/t3i-maps" --title "Lock t3i" --slug t3i-map --corpus-tag t3i 2>&1 ); rc_i=$?
+{ [ "$rc_i" -eq 2 ] && [ -e "$T3I/graphify-out/cache/t3i-chunk.json" ] \
+  && [ ! -e "$T3I/graphify-out/graph.json" ] && grep -q "finished chunks kept" <<<"$out_i"; } \
+  && pass "T3i the failed run exited 2, kept its finished chunk, and promoted no graph" \
+  || fail "T3i the failed run should exit 2 and keep its chunk without a graph (got $rc_i): $out_i"
+
 # --- T3e: the T3c helper is bounded. Against a stub that never writes the
 # capped file, the helper must give up on its own (non-zero) once its tries are
 # spent -- never run forever and hang the suite. ---

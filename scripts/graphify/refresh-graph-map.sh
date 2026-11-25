@@ -2876,6 +2876,7 @@ if isinstance(d,dict) and d.get("is_error"):
       else
         echo "refresh-graph-map: graphify --update failed (rc $_rc), graphify printed nothing" >&2
       fi
+      _keep_finished_chunks
     fi
     exit 2
   fi
