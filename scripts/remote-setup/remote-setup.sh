@@ -146,8 +146,8 @@ cmd_bot() {
         rs_step "paired with ${lbl:0:40} (Telegram id $RS_PAIR_ID)"
         [ -z "$access_id" ] && [ -e "$access" ] && access_id=$(rs_access_id "$access" || printf BAD)
         if [ -z "$access_id" ]; then
-            rs_json_edit "$access" '{}' '.allowFrom = [$id]' --arg id "$RS_PAIR_ID" \
-                || rs_fix "the allowlist could not be written to $(rs_tilde "$access"): check that the folder is writable, then run the same command again"
+            (umask 077 && mkdir -p "$(dirname "$access")" && set -C && printf '{"allowFrom":["%s"]}\n' "$RS_PAIR_ID" > "$access") 2> /dev/null \
+                || rs_fix "the allowlist could not be written to $(rs_tilde "$access"): check that the folder is writable (an allowlist that appeared meanwhile is left unchanged), then run the same command again"
             rs_step "the allowlist lists only your Telegram id ($RS_PAIR_ID)"
         elif [ "$access_id" != "$RS_PAIR_ID" ]; then
             rs_fix "access.json already lists a different Telegram account than the one that pressed Start, and it was left unchanged: press Start from the account it lists, or have your chief fix access.json, then run the same command again"
