@@ -252,9 +252,6 @@ hold** (a `HELD` row, or a fork-branch `hold-reason`), and the report names the
 hold's reason. A fork that is neither current nor held when the run ends is a
 failed run, reported as such — never a "deferred" row and never a new ticket.
 
-This step overrides `/fork-resync`'s "leave the entry BEHIND and file a ticket"
-for a conflicted rebase: when the two disagree, the drift fix does the rebase.
-
 Per collected fork, one of four outcomes (`--dry-run`: add `--dry-run`, push nothing):
 
 1. **No carried commits** (`use-upstream`) or a plain fast-forward (`gh repo sync`
