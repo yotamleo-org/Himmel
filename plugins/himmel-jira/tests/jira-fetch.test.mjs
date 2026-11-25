@@ -247,3 +247,110 @@ describe('credentials held only in the keyring', () => {
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });
+
+describe('jiraFetch destination check', () => {
+  let origFetch;
+  let tmp;
+  let sent;
+
+  beforeEach(() => {
+    origFetch = globalThis.fetch;
+    tmp = mkdtempSync(join(tmpdir(), 'himmel-jira-dest-'));
+    sent = vi.fn(async () => ({ ok: true, text: async () => '{}' }));
+    globalThis.fetch = sent;
+    vi.stubEnv('JIRA_EMAIL', 'fixture@example.invalid');
+    vi.stubEnv('JIRA_API_TOKEN', 'fixture-token-not-real');
+    vi.stubEnv('JIRA_ALLOW_HOST', undefined);
+    vi.stubEnv('HIMMEL_CONFIG_DIR', join(tmp, 'conf'));
+  });
+
+  afterEach(() => {
+    globalThis.fetch = origFetch;
+    vi.unstubAllEnvs();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it.each([
+    ['plain http to a tenant', 'http://example.atlassian.net'],
+    ['a look-alike host', 'https://example.atlassian.net.evil.example'],
+    ['another host', 'https://jira.corp.example'],
+    ['user info', 'https://user:pw@example.atlassian.net'],
+    ['a tenant on a port', 'https://example.atlassian.net:8443'],
+    ['a malformed URL', 'example.atlassian.net'],
+    ['a non-http scheme', 'ftp://example.atlassian.net'],
+  ])('refuses %s: no request, no Authorization header', async (_name, url) => {
+    vi.stubEnv('JIRA_BASE_URL', url);
+    await expect(jiraFetch('GET', '/myself')).rejects.toThrow(/JIRA_BASE_URL is refused/);
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  it('refusal text names JIRA_ALLOW_HOST and says nothing was sent', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://jira.corp.example');
+    await expect(jiraFetch('GET', '/myself')).rejects.toThrow(/JIRA_ALLOW_HOST[\s\S]*No request was sent/);
+  });
+
+  it('control: a real tenant is served by default', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://example.atlassian.net');
+    await jiraFetch('GET', '/myself');
+    expect(sent).toHaveBeenCalledTimes(1);
+    expect(sent.mock.calls[0][0]).toBe('https://example.atlassian.net/rest/api/3/myself');
+  });
+
+  it('control: a host named in JIRA_ALLOW_HOST is served over https', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'https://jira.corp.example');
+    vi.stubEnv('JIRA_ALLOW_HOST', 'jira.corp.example');
+    await jiraFetch('GET', '/myself');
+    expect(sent).toHaveBeenCalledTimes(1);
+  });
+
+  it('JIRA_ALLOW_HOST read from ~/.himmel/himmel.conf names the host', async () => {
+    mkdirSync(join(tmp, 'conf'));
+    writeFileSync(join(tmp, 'conf', 'himmel.conf'), 'JIRA_ALLOW_HOST=jira.corp.example\n');
+    vi.stubEnv('JIRA_BASE_URL', 'https://jira.corp.example');
+    await jiraFetch('GET', '/myself');
+    expect(sent).toHaveBeenCalledTimes(1);
+  });
+
+  it('control: plain http is served only for a loopback host named with its port', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:8099');
+    vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:8099');
+    await jiraFetch('GET', '/myself');
+    expect(sent).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses plain http to a loopback host named without a port, and to a named non-loopback host', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1');
+    vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1');
+    await expect(jiraFetch('GET', '/myself')).rejects.toThrow(/JIRA_BASE_URL is refused/);
+    vi.stubEnv('JIRA_BASE_URL', 'http://jira.corp.example');
+    vi.stubEnv('JIRA_ALLOW_HOST', 'jira.corp.example');
+    await expect(jiraFetch('GET', '/myself')).rejects.toThrow(/plain http is allowed only for a loopback host/);
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  it('keeps the missing-URL guidance', async () => {
+    vi.stubEnv('JIRA_BASE_URL', undefined);
+    await expect(jiraFetch('GET', '/myself')).rejects.toThrow(/JIRA_BASE_URL not set — run \/jira-init/);
+  });
+
+  it('a plugin installed alone, with no himmel checkout to hold the shared check, sends nothing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'himmel-jira-alone-dest-'));
+    try {
+      const lib = join(root, 'plugins', 'himmel-jira', 'lib');
+      mkdirSync(lib, { recursive: true });
+      copyFileSync(new URL('../lib/jira-fetch.mjs', import.meta.url), join(lib, 'jira-fetch.mjs'));
+      const run = spawnSync(process.execPath, ['--input-type=module', '-e',
+        `import { jiraFetch } from ${JSON.stringify(pathToFileURL(join(lib, 'jira-fetch.mjs')).href)};
+         let calls = 0;
+         globalThis.fetch = async () => { calls += 1; return { ok: true, text: async () => '{}' }; };
+         try { await jiraFetch('GET', '/myself'); process.stdout.write('sent ' + calls); }
+         catch (e) { process.stdout.write('refused ' + calls + ' ' + e.message); }`,
+      ], {
+        cwd: root, encoding: 'utf8', timeout: 30000,
+        env: { PATH: process.env.PATH, HOME: root, NODE_ENV: 'test', JIRA_BASE_URL: 'https://example.atlassian.net', JIRA_EMAIL: 'fixture@example.invalid', JIRA_API_TOKEN: 'fixture-token-not-real' },
+      });
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.stdout).toMatch(/^refused 0 JIRA_BASE_URL is refused/);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});

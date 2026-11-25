@@ -50,7 +50,7 @@ mkrepo() {
 }
 
 probe() {
-    env -u JIRA_API_TOKEN -u JIRA_EMAIL -u JIRA_BASE_URL -u CREDENTIALS_DIRECTORY "$NODE" -e "
+    env -u JIRA_API_TOKEN -u JIRA_EMAIL -u JIRA_BASE_URL -u CREDENTIALS_DIRECTORY JIRA_ALLOW_HOST="${PROBE_ALLOW-127.0.0.1:$PORT}" "$NODE" -e "
 const { runProbe } = require('$REPO/scripts/himmelctl/lib/probes.js');
 const manifest = JSON.parse(require('fs').readFileSync('$REPO/scripts/install/manifest.json', 'utf8'));
 const item = manifest.items.find((i) => i.id === 'jira-env-keys');
@@ -137,7 +137,7 @@ manifest_one="$TMP/manifest-one.json"
 jq '{schemaVersion, harness, items: [.items[] | select(.id == "jira-env-keys")]}' "$REPO/scripts/install/manifest.json" >"$manifest_one"
 target="$TMP/target"; mkdir -p "$target"; git -C "$target" init -q -b main
 status_item() {
-    ( cd "$target" && env -u JIRA_API_TOKEN -u JIRA_EMAIL -u JIRA_BASE_URL -u CREDENTIALS_DIRECTORY "$@" HIMMELCTL_CACHE_DIR="$TMP/cache" HIMMEL_LUNA_CONFIG_PATH="$TMP/luna.json" HIMMELCTL_REPO_ROOT="$R_NOTOKEN" "$NODE" -e "
+    ( cd "$target" && env -u JIRA_API_TOKEN -u JIRA_EMAIL -u JIRA_BASE_URL -u CREDENTIALS_DIRECTORY JIRA_ALLOW_HOST="127.0.0.1:$PORT" "$@" HIMMELCTL_CACHE_DIR="$TMP/cache" HIMMEL_LUNA_CONFIG_PATH="$TMP/luna.json" HIMMELCTL_REPO_ROOT="$R_NOTOKEN" "$NODE" -e "
 const { statusReport } = require('$REPO/scripts/himmelctl/lib/status-report.js');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_one', 'utf8'));
 const answers = { role: 'adopter', tier: 'standard', scope: 'project', vault: { mode: 'none', path: '' }, handover: { mode: 'inline', path: '' }, pluginSet: 'lean', lanes: [], alwaysOn: false };
@@ -155,6 +155,52 @@ out=$(status_item TRACKER=none)
 [ ! -s "$TMP/hits" ] || fail "an install that opted out of Jira must make no call"
 echo "$out" | jq -e '.items[0].severity != "red" and .items[0].severity != "degraded"' >/dev/null || fail "an install that opted out of Jira must not read red or degraded (got: $out)"
 ok "an install that opted out of Jira makes no call"
+
+refused_row() {
+    local why="$1" out="$2"
+    echo "$out" | jq -e '.actual == "degraded" and .unverified == true and (.detail | contains("refused"))' >/dev/null || fail "$why must read could-not-verify naming the refusal (got: $out)"
+    [ ! -s "$TMP/hits" ] || fail "$why must send no request (the stub server saw: $(cat "$TMP/hits"))"
+    ok "$why is refused before any request"
+}
+
+seed; echo 200 >"$TMP/mode"; : >"$TMP/hits"
+out=$(PROBE_ALLOW='' probe "$R_NOTOKEN")
+refused_row "plain http to loopback with no JIRA_ALLOW_HOST" "$out"
+
+seed; echo 200 >"$TMP/mode"; : >"$TMP/hits"
+out=$(PROBE_ALLOW=127.0.0.1 probe "$R_NOTOKEN")
+refused_row "plain http to a loopback host named without its port" "$out"
+
+seed; echo 200 >"$TMP/mode"; : >"$TMP/hits"
+out=$(PROBE_ALLOW=other.example probe "$R_NOTOKEN")
+refused_row "a host that JIRA_ALLOW_HOST does not name" "$out"
+
+userinfo="$TMP/userinfo"; mkdir -p "$userinfo"
+printf 'JIRA_BASE_URL=http://user:pw@127.0.0.1:%s\nJIRA_EMAIL=me@example.com\nJIRA_PROJECT_KEY=HIMMEL\n' "$PORT" >"$userinfo/.env"
+seed; echo 200 >"$TMP/mode"; : >"$TMP/hits"
+out=$(probe "$userinfo")
+refused_row "a URL carrying a user name and password" "$out"
+
+dotenv_allow="$TMP/dotenv-allow"; mkdir -p "$dotenv_allow"
+printf 'JIRA_BASE_URL=http://127.0.0.1:%s\nJIRA_EMAIL=me@example.com\nJIRA_PROJECT_KEY=HIMMEL\nJIRA_ALLOW_HOST=127.0.0.1:%s\n' "$PORT" "$PORT" >"$dotenv_allow/.env"
+seed; echo 200 >"$TMP/mode"; : >"$TMP/hits"
+out=$(PROBE_ALLOW='' probe "$dotenv_allow")
+refused_row "a JIRA_ALLOW_HOST written in a project .env" "$out"
+
+seed; echo 200 >"$TMP/mode"; : >"$TMP/hits"
+mkdir -p "$HOME/.himmel"; printf 'JIRA_ALLOW_HOST=127.0.0.1:%s\n' "$PORT" >"$HOME/.himmel/himmel.conf"
+out=$(PROBE_ALLOW='' probe "$R_NOTOKEN")
+rm -f "$HOME/.himmel/himmel.conf"
+echo "$out" | jq -e '.actual == "present" and (.detail | contains("verified"))' >/dev/null || fail "a JIRA_ALLOW_HOST in ~/.himmel/himmel.conf must name the host (got: $out)"
+[ -s "$TMP/hits" ] || fail "a host named in himmel.conf must be called"
+ok "JIRA_ALLOW_HOST in ~/.himmel/himmel.conf names the host"
+
+out=$("$NODE" --input-type=module -e "
+import { checkJiraDestination } from '$REPO/scripts/jira/src/jira-destination.mjs';
+console.log(checkJiraDestination('https://example.atlassian.net', 'JIRA_BASE_URL'));
+")
+[ "$out" = "https://example.atlassian.net" ] || fail "a real tenant must pass the shared check by default (got: $out)"
+ok "a real tenant passes the shared check with no opt-in"
 
 if grep -q "$TOKEN" "$TMP/out.log"; then fail "a token value appeared in probe output"; else ok "no token value in any output"; fi
 
