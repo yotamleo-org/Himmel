@@ -24,8 +24,7 @@
 # event: it never blocks, delays or asks on a tool call,
 # prints nothing, and exits 0 on every path. The helper caps requests (one pending at a time, max_per_hour).
 #
-# Test seams: AFK_GRANT_DIR names the marker directory; MERGE_BLOCK_ALERT_CMD replaces the
-# outbox sender (merge-block-alert.sh).
+# Test seam: AFK_GRANT_DIR names the marker directory.
 #
 # bash 3.2-compatible.
 set -uo pipefail
