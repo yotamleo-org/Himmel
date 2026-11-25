@@ -113,7 +113,8 @@ if command -v flock >/dev/null 2>&1; then
     printf '%s\n' "$recorded" >"$VAULT_STALL_ALERT_STATE"
     exec 8>&-
     wait "$racer"
-    assert_eq "V16 a call that waited on another's lock sees that call's record and does not send" "0" "$(sent_count)"
+    racer_rc=$?
+    assert_eq "V16 a call that waited on another's lock sees that call's record, exits 0 and does not send" "0 0" "$racer_rc $(sent_count)"
 fi
 rm -f "$TMP/sent.log" "$VAULT_STALL_ALERT_STATE"
 HIMMEL_ALERT_KIND=cadence:qmd-reindex send_with sender.sh "same line"
