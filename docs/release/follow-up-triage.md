@@ -288,7 +288,7 @@ version close (decision 23), the release manager looks at:
 - **Reclasses.** How often the release manager moves a follow-up from one class
   to another. Many moves mean the definitions are unclear to the people filing.
 - **The mix per version.** How many follow-ups each class adds.
-- **The polish recount.** When every promise of the version is done and the release manager is about to close it, the release manager re-runs the
+- **The polish recount.** When every v1.1.3 promise is done and the release manager is about to close v1.1.3, the release manager re-runs the
   audit of findings noted as polish with no ticket (the spec named under "What the
   verb files", decision D7). It counts the noted rows since the audit's cutoff and
   the mirror's `polish-noted:` batch comments, draws a sample of 30, and re-checks
