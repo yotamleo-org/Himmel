@@ -181,7 +181,19 @@ while IFS=$'\t' read -r label ldoc lane; do
     if [ -n "$vh" ] && ! printf '%s\n' "$vh" | awk -v h="$head" '$2 == h { f = 1 } END { exit !f }'; then
         newest=$(printf '%s\n' "$vh" | while read -r q h f; do printf '%s %s %s %s\n' "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$q" "$h" "$f"; done | sort -rn | head -n 1)  # gnu-ok: Linux-only kit; swallow-ok: an unreadable record sorts last
         jq_q=$(printf '%s' "$newest" | cut -d' ' -f2); jh=$(printf '%s' "$newest" | cut -d' ' -f3); jf=$(printf '%s' "$newest" | cut -d' ' -f4-)
-        if [ -z "${CHIEF_DUTY_SWEEP_DELTA:-}" ] && ! { git -C "$REPO" cat-file -e "$jh^{commit}" && git -C "$REPO" cat-file -e "$head^{commit}"; } 2>/dev/null; then
+        dj=$(sed -nE 's/^delta-judged: ([0-9a-f]{40})\r?$/\1/p' "$jf" 2>/dev/null | head -n 1)  # swallow-ok: a record with no delta-judged line is a real record
+        noop_open=0
+        if [ -n "$dj" ]; then
+            real=$(printf '%s\n' "$vh" | awk -v d="$dj" '$2 == d { print; exit }')
+            if [ -n "$real" ]; then
+                jq_q=$(printf '%s' "$real" | cut -d' ' -f1); jh="$dj"; jf=$(printf '%s' "$real" | cut -d' ' -f3-)
+            else
+                noop_open=1
+            fi
+        fi
+        if [ "$noop_open" = 1 ]; then
+            cls=trust
+        elif [ -z "${CHIEF_DUTY_SWEEP_DELTA:-}" ] && ! { git -C "$REPO" cat-file -e "$jh^{commit}" && git -C "$REPO" cat-file -e "$head^{commit}"; } 2>/dev/null; then
             cls="?"
         else
             cls=$(cd "$REPO" && timeout -k 1 5 "$delta_bin" --verdict-file "$jf" "$jh" "$head" 2>/dev/null | head -n 1) || cls=""  # gnu-ok: Linux-only kit; swallow-ok: a failed call fails closed to trust below
