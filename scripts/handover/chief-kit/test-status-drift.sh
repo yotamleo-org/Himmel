@@ -2428,5 +2428,63 @@ drift
 check "10786 4: a held started ticket whose until date is ahead is stuck, never AWAITING" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
 contains "10786 4: the row tells how to move it to To Do" "$(drows UNOWNED)" "held, still In Progress"
 
+TID=thread-abc123
+cat >"$tmp/thread-list-stub.sh" <<'EOS'
+#!/usr/bin/env bash
+[ "$(cat "$FX/t3.mode" 2>/dev/null)" != fail ] || { echo "thread-list: thread list failed" >&2; exit 2; }
+printf '{"threads":[%s],"owned":[]}\n' "$(cat "$FX/t3.threads" 2>/dev/null)"
+EOS
+chmod +x "$tmp/thread-list-stub.sh"
+export STATUS_DRIFT_T3_LIST="$tmp/thread-list-stub.sh"
+t3thread() { printf '{"threadId":"%s","title":"t","state":"%s"}' "$1" "$2" >> "$FX/t3.threads"; }
+d6fx; hold "$K" --reason "a T3 thread works it" --owner chief --thread "$TID"; thrc=$?
+check "11050 1: ticket-hold takes --thread" "$thrc" 0
+check "11050 1: the hold row records the thread" "$(rowq 'select(.event == "hold") | .thread')" "$TID"
+check "11050 1: and the HOLD comment names it" "$(grep -c "^comment $K .*--comment-file" "$STUB_LOG")" 1
+hold "$K" --release --owner chief; hold "$K" --reason r --owner chief --thread 'bad id'; thrc=$?
+check "11050 1: a thread id with a space is a usage error" "$thrc" 2
+hold "$K" --release --thread "$TID"; thrc=$?
+check "11050 1: --release with --thread is a usage error" "$thrc" 2
+
+d6fx; hold "$K" --reason "a T3 thread works it" --owner chief --thread "$TID"; t3thread "$TID" waiting
+hnow 0
+drift
+check "11050 2: a held started ticket whose thread is live is no UNOWNED row and no AWAITING row" "$(dcount UNOWNED)/$(dcount AWAITING)" 0/0
+check "11050 2: and it is no drift" "$(sdn)" "sdrift=0"
+d6fx; hold "$K" --reason "a T3 thread works it" --owner chief --thread "$TID"; t3thread "$TID" running
+hnow 0
+drift
+check "11050 2b: a running thread is a live owner too" "$(dcount UNOWNED)" 0
+d6fx; hold "$K" --reason "a T3 thread works it" --owner chief --thread "$TID"; t3thread "$TID" settled
+hnow 0
+drift
+check "11050 3: the same ticket once the thread settles is one UNOWNED row" "$(dcount UNOWNED)" 1
+contains "11050 3: the row names the thread and that it settled" "$(drows UNOWNED)" "thread $TID is settled"
+check "11050 3: and it is drift" "$(sdn)" "sdrift=1"
+d6fx; hold "$K" --reason "a T3 thread works it" --owner chief --thread "$TID"; t3thread other-thread running
+hnow 0
+drift
+check "11050 4: a hold naming a thread the registry lacks is stuck, never waiting" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
+contains "11050 4: the row says the thread does not exist" "$(drows UNOWNED)" "thread $TID does not exist"
+d6fx; hold "$K" --reason "a T3 thread works it" --owner chief --thread "$TID"; t3thread "$TID" waiting; printf 'fail\n' > "$FX/t3.mode"
+hnow 0
+drift
+check "11050 5: an unreadable thread list proves no owner, so the ticket stays stuck" "$(dcount UNOWNED)" 1
+contains "11050 5: and the row says the list could not be read" "$(drows UNOWNED)" "thread list unreadable"
+d6fx; hold "$K" --reason "waiting on legal" --owner chief; t3thread "$TID" waiting
+hnow 0
+drift
+check "11050 6: control: a hold naming no thread stays stuck whatever thread is live" "$(dcount UNOWNED)" 1
+d6fx; hold "$K" --reason "a T3 thread works it" --owner chief --thread "$TID"; t3thread "$TID" waiting
+hold "$K" --release --owner chief; hold "$K" --reason "waiting on legal" --owner chief
+hnow 0
+drift
+check "11050 7: the newest hold decides: a later hold with no thread does not inherit the old one" "$(dcount UNOWNED)" 1
+d6fx; hold "$K" --reason "a T3 thread works it" --owner chief --thread "$TID"; t3thread "$TID" waiting; owned "$K" LIVE '{"state":"live"}'
+hnow 0
+drift
+check "11050 8: control: a live worker still owns the ticket whatever the thread says" "$(dcount UNOWNED)" 0
+unset STATUS_DRIFT_T3_LIST
+
 echo "---"
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; } || { echo "$fails failed"; exit 1; }
