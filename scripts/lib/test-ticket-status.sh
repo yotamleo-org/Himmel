@@ -168,6 +168,8 @@ check "11128 an unrecorded bucket sibling holding its lock keeps the ticket In P
 check "11128 the unrecorded sibling is the owner doc" "$TS_OWNER_DOC" "$tmp/bk/HIMMEL-9001-N2-b.md"
 TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" ts_derive HIMMEL-9001
 check "11128 control: the same sibling with a free lock leaves the wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-err.sh" ts_derive HIMMEL-9001
+check "11128 an unrecorded bucket sibling whose lock read fails keeps the ticket In Progress" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'unknown/D5/In Progress'
 rm -f "$tmp/bk/HIMMEL-9001-N2-b.md"
 TICKET_STATUS_QUEUE_LOCK="$tmp/lock-held.sh" ts_derive HIMMEL-9001
 check "11128 control: a single doc in the bucket still leaves the wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'

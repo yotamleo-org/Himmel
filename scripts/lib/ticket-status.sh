@@ -915,13 +915,13 @@ ts_derive() {
             _ts_other_worker_keeps_ownership || continue
             owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
         done <<<"$recorded"
-        # A sibling doc the record never listed still owns the key while it holds its queue lock.
+        # A sibling doc the record never listed still owns the key while it holds its queue lock or its lock cannot be read.
         if [ -z "$owner" ]; then
             while IFS= read -r other; do
                 [ -n "$other" ] && [ "$other" != "$doc" ] || continue
                 grep -qxF -- "$other" <<<"$recorded" && continue
                 _ts_worker_state "$other"
-                [ "$TS_WORKER_STATE" != wrapped ] && [ "$TS_LOCK_HELD" = yes ] || continue
+                [ "$TS_WORKER_STATE" != wrapped ] && [ "$TS_LOCK_HELD" != no ] || continue
                 owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
             done <<<"$(_ts_bucket_docs "$key" "$doc")"
         fi
