@@ -109,7 +109,7 @@ _crs_gh() {
     if declare -F gh >/dev/null 2>&1; then gh "$@"; return $?; fi
     if ! declare -F gh_read >/dev/null 2>&1; then
         # shellcheck source=scripts/lib/gh-read.sh
-        # shellcheck disable=SC1091  # sourced at runtime
+        # shellcheck disable=SC1091
         . "$_crs_dir/gh-read.sh" 2>/dev/null || { gh "$@"; return $?; }
     fi
     gh_read "$@"
