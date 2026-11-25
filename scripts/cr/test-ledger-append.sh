@@ -1902,4 +1902,25 @@ check "T1.45 rows stamp auditor codex, status ok and the hard list" "$(jq -c '[.
   '["pass",[],"codex","ok",7]|["flagged",[],"codex","ok",7]|["fail",["H1","H3"],"codex","ok",7]|["fail",["H5"],"codex","ok",7]|["fail",[],"codex","ok",7]|'
 check "T1.45 the row keeps its shas and report" "$(head -n1 "$SA" | jq -r '[.perspective_sha256==$p, .report_sha256==$r, .report==$f, .base_sha==$b, .critic_exit] | map(tostring) | join(",")' --arg p "$P64" --arg r "$R64" --arg f "$RPT" --arg b "$B40")" "true,true,true,true,0"
 
+RK="$tmp/rekey.jsonl"; : > "$RK"
+CR_LEDGER="$RK" bash "$LA" finding --branch b --head RKH1 --model coderabbit-outside --id cr-od-rk1 --severity sug --file f.sh --line 1331 --verdict agreed
+rk() { CR_LEDGER="$RK" bash "$LA" rekey --branch b "$@" 2>"$tmp/rekey.err"; }
+rk --head RKH1 --id cr-od-rk1 --line 1331-1331 --reason "wrong line token"
+check "rekey appends one row" "$(wc -l < "$RK" | tr -d ' ')" "2"
+check "rekey row is an amend at the ORIGINAL head carrying rekey+line" "$(L="$RK" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse);const a=rs[1];console.log([a.kind,a.target_head,a.finding_id,a.set.rekey,a.set.line,a.reason].join(","))')" "amend,RKH1,cr-od-rk1,true,1331-1331,wrong line token"
+check "rekey leaves the finding row byte-identical" "$(head -n1 "$RK" | grep -c '"line":1331,')" "1"
+rk --head RKH1 --id cr-od-rk1 --line 1331-1340 --file g.sh --reason "second fix"
+check "a second rekey appends (latest wins in the reader)" "$(wc -l < "$RK" | tr -d ' ')" "3"
+check "rekey --file lands in the set" "$(L="$RK" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse);console.log(rs[2].set.file)')" "g.sh"
+n0="$(wc -l < "$RK" | tr -d ' ')"
+rk --head RKH2 --id cr-od-rk1 --line 5 --reason x; check "rekey naming another head exits 3" "$?" "3"
+rk --head RKH1 --id cr-od-nope --line 5 --reason x; check "rekey naming an absent finding exits 3" "$?" "3"
+check "refused rekeys wrote nothing" "$(wc -l < "$RK" | tr -d ' ')" "$n0"
+rk --head RKH1 --id cr-od-rk1 --reason x; check "rekey without --line is refused" "$?" "2"
+rk --head RKH1 --id cr-od-rk1 --line 5; check "rekey without --reason is refused" "$?" "2"
+rk --head RKH1 --id cr-od-rk1 --line 'abc' --reason x; check "rekey with a non-numeric line token is refused" "$?" "2"
+rk --head RKH1 --id cr-od-rk1 --line 5 --set severity=sug --reason x; check "rekey takes no --set" "$?" "2"
+check "malformed rekeys wrote nothing" "$(wc -l < "$RK" | tr -d ' ')" "$n0"
+check "the usage text names the rekey verb" "$(bash "$LA" bogus 2>&1 | grep -c 'rekey')" "1"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

@@ -170,5 +170,44 @@ fresh; write_row deferred HIMMEL-9001 "pre-existing, tracked separately"
 add_line "$(jq -c '.verdict="unaddressed"' "$LEDGER")"
 chk d19-later-undisposed-row-not-outvoted        1 "$H" "$ID" "$FILE" "$LINE"
 
+rekey() {
+    local h="$1" i="$2" l="$3"; shift 3
+    CR_LEDGER="$LEDGER" bash "$APPEND" rekey --branch feat/x --head "$h" --id "$i" --line "$l" \
+        --reason "wrong line token" "$@" >/dev/null 2>"$TMP/rekey.err"
+}
+fresh; write_row deferred HIMMEL-9001 "pre-existing, tracked separately"
+chk d20-wrong-line-token-not-dispositioned       1 "$H" "$ID" "$FILE" 459-459
+rekey "$H" "$ID" 459-459 || { echo "FATAL: rekey refused: $(cat "$TMP/rekey.err")"; exit 1; }
+chk d20b-rekeyed-line-token-dispositioned        0 "$H" "$ID" "$FILE" 459-459
+chk d20c-old-line-token-no-longer-matches        1 "$H" "$ID" "$FILE" 459
+chk d20d-rekey-keeps-original-head-bound         1 "$H2" "$ID" "$FILE" 459-459
+rekey "$H" "$ID" 460-461 || { echo "FATAL: second rekey refused: $(cat "$TMP/rekey.err")"; exit 1; }
+chk d21-latest-rekey-wins                        0 "$H" "$ID" "$FILE" 460-461
+chk d21b-superseded-rekey-no-longer-matches      1 "$H" "$ID" "$FILE" 459-459
+rekey "$H" "$ID" 460-461 --file other/file.yaml || { echo "FATAL: rekey --file refused: $(cat "$TMP/rekey.err")"; exit 1; }
+chk d22-rekey-file-token-applies                 0 "$H" "$ID" other/file.yaml 460-461
+fresh; write_row deferred HIMMEL-9001 "pre-existing, tracked separately"
+before=$(cat "$LEDGER"); rekey "$H" "$ID" 459-459
+chk_n=$(head -n 1 "$LEDGER" | cmp -s - <(printf '%s\n' "$before") && echo same || echo changed)
+if [ "$chk_n" = same ] && [ "$(wc -l < "$LEDGER" | tr -d ' ')" = 2 ]; then pass=$((pass+1)); echo "ok   d23-rekey-is-append-only"
+else fail=$((fail+1)); echo "FAIL d23-rekey-is-append-only ($chk_n)"; fi
+fresh; write_row deferred HIMMEL-9001 "pre-existing, tracked separately"
+before=$(wc -l < "$LEDGER" | tr -d ' ')
+rc=0; rekey "$H2" "$ID" 459-459 || rc=$?
+if [ "$rc" != 0 ] && [ "$(wc -l < "$LEDGER" | tr -d ' ')" = "$before" ]; then pass=$((pass+1)); echo "ok   d24-rekey-other-head-refused-writes-nothing"
+else fail=$((fail+1)); echo "FAIL d24-rekey-other-head-refused-writes-nothing (rc=$rc)"; fi
+rc=0; rekey "$H" cr-od-000000000000 459-459 || rc=$?
+if [ "$rc" != 0 ] && [ "$(wc -l < "$LEDGER" | tr -d ' ')" = "$before" ]; then pass=$((pass+1)); echo "ok   d25-rekey-absent-finding-refused-writes-nothing"
+else fail=$((fail+1)); echo "FAIL d25-rekey-absent-finding-refused-writes-nothing (rc=$rc)"; fi
+fresh; write_row deferred HIMMEL-9001 "pre-existing, tracked separately"
+add_line "$(jq -nc --arg h "$H2" --arg id "$ID" '{kind:"amend",branch:"feat/x",target_head:$h,finding_id:$id,artifact:"diff",perspective:"off",set:{rekey:true,line:"459-459"},reason:"x"}')"
+add_line "$(jq -nc --arg h "$H" '{kind:"amend",branch:"feat/x",target_head:$h,finding_id:"cr-od-000000000000",artifact:"diff",perspective:"off",set:{rekey:true,line:"459-459"},reason:"x"}')"
+chk d26-rekey-rows-for-other-head-or-finding-ignored 1 "$H" "$ID" "$FILE" 459-459
+fresh; write_row deferred HIMMEL-9001 "pre-existing, tracked separately"
+CR_LEDGER="$LEDGER" bash "$APPEND" amend --branch feat/x --head "$H" --id "$ID" --set line=459-459 \
+    --reason "amend line attempt" >/dev/null 2>"$TMP/amend.err" \
+    || { echo "FATAL: amend --set line= refused: $(cat "$TMP/amend.err")"; exit 1; }
+chk d27-plain-amend-line-still-ignored           1 "$H" "$ID" "$FILE" 459-459
+
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
