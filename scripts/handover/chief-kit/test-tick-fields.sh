@@ -26,7 +26,6 @@ printf 'pid=%s\nidentity=%s\nlabel=run-shell-tests\nstarted=%s\ndetail=worker=Hi
     "$$" "$(proc_tree_process_identity "$$")" "$(($(date +%s) - 3600))" > "$hs_dir/slot-1/owner"
 contains 'the canary held slot is one the tick reports' \
     "$(HIMMEL_SUITE_SEMAPHORE_DIR="$hs_dir" HIMMEL_SUITE_SLOT_CAP=1200 bash "$SUT" 2>/dev/null)" ' slotage=Himmel:all:176suites:60m'
-export HIMMEL_SUITE_SEMAPHORE_DIR="$hs_dir" HIMMEL_SUITE_SLOT_CAP=1200
 export HIMMEL_SUITE_SEMAPHORE_DIR="$W/suite-sem"
 # --- fails=<n>/<workers>[@<top-class>*<k>][!<recur>] -----------------
 # This shift = worker-failures rows with ts >= the chief lock's `started`. The stub

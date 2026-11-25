@@ -38,8 +38,6 @@
 #   F18 a runner that cannot read the id lib writes no ledger row, names the
 #       lib and prints no unbound-variable line
 #   F19 neither caller defines the id functions itself
-#   F20 the [FLAKE] report names the first attempt's FAIL line, even one
-#       beyond the retry block's last 40 lines
 #
 # Usage: bash scripts/ci/test-run-shell-tests-flake.sh
 set -uo pipefail
