@@ -84,7 +84,7 @@ case "${1:-} ${2:-}" in
     "pr view") printf '{"author":{"login":"Stranger","id":"U_stranger"},"headRefName":"%s","headRefOid":"%s","baseRefName":"main","state":"%s"}\n' \
         "${STUB_BRANCH:-feat/outside-thing}" "$STUB_OID" "${STUB_STATE:-OPEN}" ;;
     "repo view") printf '{"owner":{"login":"acme"},"name":"widget","defaultBranchRef":{"name":"main"}}\n' ;;
-    "api repos/acme/widget/commits/"*/statuses*) printf '%s\n' "$STUB_CR_STATUSES" ;;
+    "api repos/acme/widget/commits/"*/statuses*) [ -z "${STUB_CR_FAIL:-}" ] || exit 1; printf '%s\n' "$STUB_CR_STATUSES" ;;
     *) echo "unexpected gh $*" >&2; exit 1 ;;
 esac
 STUB
@@ -151,36 +151,79 @@ eq "$(cd "$P" && HOME="$tmp/home" bash -c '. "$1"; outside_audit_passed 7 "$2" f
 [ -f "$AUDIT" ] || { printf 'FAIL - outside-security-audit.sh is absent; %s row(s) failed\n' "$fails"; exit 1; }
 
 reset; newpr 'echo two >> f.txt'
-audit STUB_CR_STATUSES='[]'
-expect_none "T3.2 no CodeRabbit status" 6
-has "$err" "CodeRabbit" "T3.2 the refusal names CodeRabbit"
-eq "$(called)" no "T3.2 no critic call"
-# T1.59's four fixtures, each with its own one-variable mutation check (drop that -u; the row must turn).
-# The mutant sits beside the audit in the anchor, so it loads the same libraries and stubs.
+cr_state() {
+    local label="$1" want="$2" statuses="$3"; shift 3
+    reset; audit STUB_CR_STATUSES="$statuses" "$@"
+    expect_row "T3.2 $label" pass ""
+    has "$err" "CodeRabbit at ${H:0:7} is $want (best effort, not gating)" "T3.2 $label: the note names the state"
+    eq "$(called)" yes "T3.2 $label: the critic ran"
+}
+cr_state "no CodeRabbit status (absent)" absent '[]'
+cr_state "a running review (pending)" pending "[$(cr_row 136622811 CodeRabbit pending 'Review in progress')]"
+cr_state "a rate-limited review (skipped)" skipped "[$(cr_row 136622811 CodeRabbit success 'Review rate limited')]"
+cr_state "a skipped review (auto reviews disabled)" skipped "[$(cr_row 136622811 CodeRabbit success 'Review skipped: automatic reviews are disabled')]"
+PAGED="[$(for _ in $(seq 1 100); do printf '%s,' "$(cr_row 4242 Other success ok)"; done | sed 's/,$//')]"
+cr_state "a full first page with no CodeRabbit status (paged)" paged "$PAGED"
+cr_state "an unreadable CodeRabbit status" unreadable '[]' STUB_CR_FAIL=1
+for st in failure error; do
+    reset; audit STUB_CR_STATUSES="[$(cr_row 136622811 CodeRabbit "$st" 'Review failed')]"
+    expect_none "T3.2 a CodeRabbit $st" 6
+    has "$err" "CodeRabbit at ${H:0:7} is $st" "T3.2 a CodeRabbit $st: the refusal names the state"
+    eq "$(called)" no "T3.2 a CodeRabbit $st: no critic call"
+done
+reset; audit; expect_row "T3.2 control: a completed review (success)" pass ""
+has "$err" "is success (reviewed)" "T3.2 control: success is named as a review"
 MUT="$A/scripts/cr/outside-security-audit-mut.sh"
 mutate() {
     local label="$1" prog="$2" keep="$AUDIT"; shift 2
     sed "$prog" "$AUDIT" > "$MUT"
     if cmp -s "$AUDIT" "$MUT"; then fail "T3.2 $label: the mutation changed nothing"; rm -f "$MUT"; return; fi
     reset; AUDIT="$MUT"; audit "$@"; AUDIT="$keep"; rm -f "$MUT"
-    eq "$rc/$(audits)" "0/1" "T3.2 $label: the mutant passes stage 1 and writes a row, so the row is not hollow"
+    has "$err" "is success (reviewed)" "T3.2 $label: the mutant reads the status as success, so the row is not hollow"
 }
 cr_case() {
-    local label="$1" leak="$2" statuses="$3" var="$4"
+    local label="$1" leak="$2" statuses="$3" var="$4" want="$5"
     reset; audit "$leak" STUB_CR_STATUSES="$statuses"
-    expect_none "T3.2 $label" 6
+    expect_row "T3.2 $label" pass ""
+    has "$err" "CodeRabbit at ${H:0:7} is $want (best effort, not gating)" "T3.2 $label: the note keeps the state $want"
     mutate "$label: mutation (drop -u $var)" "s/ -u $var / /" "$leak" STUB_CR_STATUSES="$statuses"
 }
 cp "$AUDIT" "$tmp/pristine.sh"
-cr_case "an exported CR_OK_DESC_RE does not widen a Review in progress" CR_OK_DESC_RE=. "[$(cr_row 136622811 CodeRabbit success 'Review in progress')]" CR_OK_DESC_RE
-cr_case "an exported CR_BOT_USER_ID does not pick a decoy status" CR_BOT_USER_ID=4242 "[$(cr_row 136622811 CodeRabbit pending 'Review in progress'),$(cr_row 4242 CodeRabbit success 'Review completed')]" CR_BOT_USER_ID
-cr_case "an exported CR_STATUS_CONTEXT does not pick a decoy context" CR_STATUS_CONTEXT=Decoy "[$(cr_row 136622811 CodeRabbit pending 'Review in progress'),$(cr_row 136622811 Decoy success 'Review completed')]" CR_STATUS_CONTEXT
-reset; audit CR_OK_DESC_RE=. CR_SKIP_DESC_RE=nomatch STUB_CR_STATUSES="[$(cr_row 136622811 CodeRabbit success 'Review skipped: automatic reviews are disabled')]"
-expect_none "T3.2 exported CR_OK_DESC_RE and CR_SKIP_DESC_RE do not pass a skip" 6
+cr_case "an exported CR_OK_DESC_RE does not widen a Review in progress" CR_OK_DESC_RE=. "[$(cr_row 136622811 CodeRabbit success 'Review in progress')]" CR_OK_DESC_RE skipped
+cr_case "an exported CR_BOT_USER_ID does not pick a decoy status" CR_BOT_USER_ID=4242 "[$(cr_row 136622811 CodeRabbit pending 'Review in progress'),$(cr_row 4242 CodeRabbit success 'Review completed')]" CR_BOT_USER_ID pending
+cr_case "an exported CR_STATUS_CONTEXT does not pick a decoy context" CR_STATUS_CONTEXT=Decoy "[$(cr_row 136622811 CodeRabbit pending 'Review in progress'),$(cr_row 136622811 Decoy success 'Review completed')]" CR_STATUS_CONTEXT pending
+SKIP_ROW="[$(cr_row 136622811 CodeRabbit success 'Review skipped: automatic reviews are disabled')]"
+reset; audit CR_OK_DESC_RE=. CR_SKIP_DESC_RE=nomatch STUB_CR_STATUSES="$SKIP_ROW"
+expect_row "T3.2 exported CR_OK_DESC_RE and CR_SKIP_DESC_RE do not pass a skip as a review" pass ""
+has "$err" "CodeRabbit at ${H:0:7} is skipped (best effort, not gating)" "T3.2 exported CR_OK_DESC_RE and CR_SKIP_DESC_RE: the note keeps the state skipped"
 mutate "skip pair: mutation (drop both -u; a lone -u CR_SKIP_DESC_RE is not independently falsifiable)" \
     "s/ -u CR_OK_DESC_RE / /; s/ -u CR_SKIP_DESC_RE / /" \
-    CR_OK_DESC_RE=. CR_SKIP_DESC_RE=nomatch STUB_CR_STATUSES="[$(cr_row 136622811 CodeRabbit success 'Review skipped: automatic reviews are disabled')]"
+    CR_OK_DESC_RE=. CR_SKIP_DESC_RE=nomatch STUB_CR_STATUSES="$SKIP_ROW"
 eq "$(sha "$AUDIT")" "$(sha "$tmp/pristine.sh")" "T3.2 the mutation copies left the audit untouched"
+
+RC_SRC="$HERE/../handover/chief-kit/ready-check.sh"
+rc_16h_case=$(awk '/^        case "\$o_cr" in$/{f=1} f{print} f && /^        esac$/{exit}' "$RC_SRC")
+eq "$(printf '%s\n' "$rc_16h_case" | wc -l | tr -d ' ')" 5 "T3.2 paired: the 16h case block was cut out of ready-check.sh"
+# shellcheck disable=SC2034,SC2329  # o_cr, o_h7 and o16_fail are read by the evaluated 16h block
+rc_16h() { # rc_16h <state>: prints hold when 16h FAILs the state, pass otherwise
+    ( o_cr="$1" o_h7=abc1234; o16_fail() { echo hold; }; eval "$rc_16h_case" ) | grep -q '^hold$' && echo hold || echo pass
+}
+pair() { # pair <label> <state 16h reads> <statuses> [VAR=value ...]
+    local label="$1" st="$2" statuses="$3"; shift 3
+    reset; audit STUB_CR_STATUSES="$statuses" "$@"
+    local mine=pass; [ "$rc" -eq 6 ] && mine=hold
+    eq "$mine" "$(rc_16h "$st")" "T3.2 paired: $label: stage 1 and 16h agree"
+}
+pair "success" success "$CR_OK"
+pair "pending" pending "[$(cr_row 136622811 CodeRabbit pending 'Review in progress')]"
+pair "failure" failure "[$(cr_row 136622811 CodeRabbit failure 'Review failed')]"
+pair "error" error "[$(cr_row 136622811 CodeRabbit error 'Review failed')]"
+pair "absent" absent '[]'
+pair "skipped" skipped "$SKIP_ROW"
+pair "rate limited (skipped)" skipped "[$(cr_row 136622811 CodeRabbit success 'Review rate limited')]"
+pair "paged" paged "$PAGED"
+pair "unreadable" unreadable '[]' STUB_CR_FAIL=1
+eq "$(rc_16h failure)/$(rc_16h error)" "hold/hold" "T3.2 paired control: 16h holds a failure and an error"
 
 reset; audit STUB_CHECKCI_RC=1; expect_none "T3.3 check-ci exit 1" 6; eq "$(called)" no "T3.3 no critic call"
 reset; audit STUB_CHECKCI_RC=2; expect_none "T3.3 check-ci exit 2 (DEADLINE-PENDING)" 6
