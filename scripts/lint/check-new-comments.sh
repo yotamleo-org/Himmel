@@ -285,7 +285,7 @@ echo "check-new-comments: a new code comment outside the keep list is refused." 
 echo "  Delete it and let a name, a type or a test say it. A constraint forced by an external" >&2
 echo "  dependency, platform or protocol stays when the comment carries its link." >&2
 if [ "$moved" -eq 1 ]; then
-    echo "  A renamed file's baseline row moves with it: run bash scripts/lint/check-new-comments.sh --write-baseline." >&2
+    echo "  A renamed file's baseline row moves with it, in the PR that renames the file (never in a sweep PR): run bash scripts/lint/check-new-comments.sh --write-baseline." >&2
 fi
 echo "  The baseline only goes down. Policy: docs/internals/code-comments.md." >&2
 exit 1
