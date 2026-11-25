@@ -87,6 +87,8 @@ STUB_THREADS='{"threads":[{"id":1,"path":"a","line":1,"isResolved":false,"author
     run_case unresolved-thread 5 not-merged "unresolved"
 STUB_THREADS='{"threads":[{"id":1,"path":"a","line":1,"isResolved":true,"author":"r","body":"fix"}],"truncated":false,"pages":1}' \
     run_case resolved-thread 0 merged
+STUB_THREADS='{"threads":[{"id":1,"path":"a","line":1,"isResolved":"false","author":"r","body":"fix"}],"truncated":false,"pages":1}' \
+    run_case string-false-thread 5 not-merged "unresolved"
 STUB_THREADS='{"threads":[],"truncated":true,"pages":20}' run_case truncated-threads 5 not-merged "cannot certify"
 STUB_COMMENTS_FAIL=1 run_case threads-unreadable 5 not-merged "failing closed"
 CR_MERGE_GATE_OK=1 STUB_THREADS='{"threads":[{"id":1,"path":"a","line":1,"isResolved":false,"author":"r","body":"x"}],"truncated":false,"pages":1}' \

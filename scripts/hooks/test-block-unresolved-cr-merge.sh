@@ -1597,7 +1597,7 @@ t bb-merge-env-prefix-denied 2 Bash "FOO=1 node /x/scripts/bitbucket/dist/index.
 t bb-merge-after-separator-denied 2 Bash "echo hi; forge_pr_merge 7"
 t bb-merge-env-wrapper-denied 2 Bash "env bitbucket pr merge 7"
 t bb-merge-command-wrapper-denied 2 Bash "command forge_pr_merge 7"
-t bb-merge-shell-c-denied 2 Bash "bash -c bitbucket pr merge 7"
+t bb-merge-shell-c-denied 2 Bash 'bash -c \"bitbucket pr merge 7\"'
 t bb-merge-nohup-denied 2 Bash "nohup bitbucket pr merge 7"
 t bb-text-mention-grep-not-denied 0 Bash "git grep -n forge_pr_merge scripts"
 t bb-text-mention-commit-not-denied 0 Bash "git commit -m bitbucket pr merge notes"

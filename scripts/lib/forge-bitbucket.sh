@@ -237,7 +237,7 @@ bb_forge_cr_gate() {
     local id="$1" out open
     out=$(_bb pr comments "$id") || out=""
     open=$(printf '%s' "$out" |
-        node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let j=null;try{j=JSON.parse(s)}catch{};if(!j||!Array.isArray(j.threads)||j.truncated!==false){process.stdout.write("unreadable");return};process.stdout.write(String(j.threads.filter(t=>!t.isResolved).length))})')
+        node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let j=null;try{j=JSON.parse(s)}catch{};if(!j||!Array.isArray(j.threads)||j.truncated!==false){process.stdout.write("unreadable");return};process.stdout.write(String(j.threads.filter(t=>t.isResolved!==true).length))})')
     case "$open" in
         0) return 0 ;;
         ''|*[!0-9]*)

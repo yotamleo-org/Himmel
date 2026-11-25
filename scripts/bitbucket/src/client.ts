@@ -713,7 +713,7 @@ export async function listPrStatuses(prId: number): Promise<PrStatusesResult> {
     }
     for (const v of page.values) out.push(statusFromValue(v));
     if (!page.next) break;
-    if (pages >= PAGE_CAP) {
+    if (pages + 1 >= PAGE_CAP) {
       truncated = true;
       process.stderr.write(
         `bitbucket: pr statuses truncated at ${PAGE_CAP} pages — results may be incomplete\n`,
