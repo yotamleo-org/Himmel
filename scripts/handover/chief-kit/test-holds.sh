@@ -1922,8 +1922,7 @@ RRDOC="$(mkdoc PROJ-9801-race.md)"
 put_row scripts/race.sh PROJ-9801 alpha "$RRDOC" brief "" "$RR"
 : > "$(rowf scripts/race.sh "$RR").grant.PROJ-9802"
 run python3 -I "$W/grantrace.py" "$SUT" "$RR" "$(rowf scripts/race.sh "$RR")" "$RRDOC"
-contains "10373 X09-10: a gc pass during the contender's restore leaves the live row's grant" "$OUT" "grant=True"
-contains "10373 X09-10: ... and the freshened row is restored" "$OUT" "row=True"
+same "10373 X09-10: a gc pass during the contender's restore leaves the live row's grant, the freshened row is restored and the claim is refused" "$RC/$OUT" "0/rc=1 row=True grant=True"
 
 RX="$W/repo-abs-pr"; mkdir -p "$RX"; git -C "$RX" init -q -b main
 printf '#!/usr/bin/env bash\necho MERGED\n' > "$W/bin/gh-merged10373"; chmod +x "$W/bin/gh-merged10373"
@@ -1933,8 +1932,8 @@ printf 'PROJ-9811\tlab\t\tpr\t42\n' > "$ABSPR"; touch_ago 7200 "$ABSPR"
 ABSBR="$REG/_abs/$(esc /abs/bucket/no-holder.md)"
 printf 'PROJ-9812\tlab\t\tbrief\t\n' > "$ABSBR"; touch_ago 7200 "$ABSBR"
 HOLDS_GH="$W/bin/gh-merged10373" run gcbox 10 "$RX"
-same "10373 X16-2: a repository's gc leaves an absolute pr row whose PR state it reads from its own repository" "$(gone_or_row "$ABSPR")" row
-same "10373 X16-2: ... and still removes an absolute row that is not a pull-request row and has no holder" "$(gone_or_row "$ABSBR")" none
+same "10373 X16-2: a repository's gc leaves an absolute pr row whose PR state it reads from its own repository" "$RC/$(gone_or_row "$ABSPR")" "0/row"
+same "10373 X16-2: ... and still removes an absolute row that is not a pull-request row and has no holder" "$RC/$(gone_or_row "$ABSBR")" "0/none"
 
 cat > "$W/keeprow.py" <<'PY'
 import importlib.util, sys
@@ -1947,7 +1946,7 @@ put_row scripts/kd1.sh PROJ-9831 lab "" brief "" "$RK"
 put_row scripts/kd2.sh PROJ-9832 lab "" pr 7100 "$RK"
 : > "$(rowf scripts/kd2.sh "$RK").grant.PROJ-9831"
 HOLDS_GH="$GCSLOW" run python3 -I "$W/keeprow.py" "$SUT" "$RK"
-same "10373 gc: a grant to a key judged dead stays while a row of that key is still there" "$(gone_or_row "$(rowf scripts/kd2.sh "$RK").grant.PROJ-9831")" row
+same "10373 gc: a grant to a key judged dead stays while a row of that key is still there" "$RC/$(gone_or_row "$(rowf scripts/kd2.sh "$RK").grant.PROJ-9831")" "0/row"
 
 cat > "$W/lockabs.py" <<'PY'
 import fcntl, importlib.util, os, sys
@@ -1962,13 +1961,13 @@ put_row scripts/kl2.sh PROJ-9842 lab "" pr 7100 "$RL"
 : > "$(rowf scripts/kl2.sh "$RL").grant.PROJ-9841"
 mkdir -p "$REG/_abs"
 HOLDS_GH="$GCSLOW" run python3 -I "$W/lockabs.py" "$SUT" "$RL" "$REG/_abs"
-same "10373 gc: a dead key's grant stays while the other register directory is locked by a writer" "$(gone_or_row "$(rowf scripts/kl2.sh "$RL").grant.PROJ-9841")" row
+same "10373 gc: a dead key's grant stays while the other register directory is locked by a writer, and the pass completes" "$RC/$(gone_or_row "$(rowf scripts/kl2.sh "$RL").grant.PROJ-9841")" "0/row"
 RL2="$W/repo-both-dirs-free"; mkdir -p "$RL2"; git -C "$RL2" init -q -b main
 put_row scripts/kl1.sh PROJ-9841 lab "" brief "" "$RL2"
 put_row scripts/kl2.sh PROJ-9842 lab "" pr 7100 "$RL2"
 : > "$(rowf scripts/kl2.sh "$RL2").grant.PROJ-9841"
 HOLDS_GH="$GCSLOW" run gcbox 10 "$RL2"
-same "10373 gc: ... and goes when no writer holds either directory" "$(gone_or_row "$(rowf scripts/kl2.sh "$RL2").grant.PROJ-9841")" none
+same "10373 gc: ... and goes when no writer holds either directory" "$RC/$(gone_or_row "$(rowf scripts/kl2.sh "$RL2").grant.PROJ-9841")" "0/none"
 
 # ---- the real register was never touched
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
