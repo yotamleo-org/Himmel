@@ -70,6 +70,12 @@ if [ "$rc" -eq 1 ] && grepq "$out" -F 'cannot read' && grepq "$out" -F 'alert so
 else
   fail "TD4b: rc=$rc out: $out"
 fi
+td clean --no-run --alerts "$sb"
+if [ "$rc" -eq 1 ] && grepq "$out" -F 'alert sources: not all read'; then
+  pass "TD4b: a directory passed as --alerts exits 1 instead of reading as no alerts"
+else
+  fail "TD4b: a directory passed as --alerts: rc=$rc out: $out"
+fi
 
 if date -d '1 hour ago' +%s > /dev/null 2>&1; then # gnu-ok: the daily job runs on Linux; the rows skip where date has no -d
   mkdir -p "$sb/bin"

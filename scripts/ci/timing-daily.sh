@@ -52,7 +52,7 @@ alert_lines() { grep -E 'CAP-ALERT [^ ]+ \(ran' || true; } # swallow-ok: a sourc
 
 add_alerts "$(printf '%s\n' "$out" | alert_lines)"
 for f in ${alert_files[@]+"${alert_files[@]}"}; do
-  if [ -r "$f" ]; then
+  if [ -f "$f" ] && [ -r "$f" ]; then
     add_alerts "$(alert_lines < "$f")"
   else
     echo "timing-daily: cannot read $f" >&2
@@ -61,7 +61,7 @@ for f in ${alert_files[@]+"${alert_files[@]}"}; do
 done
 if [ -n "$ci_hours" ]; then
   since="$(date -u -d "$ci_hours hours ago" +%Y-%m-%dT%H:%M:%SZ)"
-  if ci_ids="$(gh run list --workflow ci.yml --branch main --status completed --created ">=$since" --limit 50 --json databaseId --jq '.[].databaseId')"; then
+  if ci_ids="$(gh run list --workflow ci.yml --branch main --status completed --created ">=$since" --limit 500 --json databaseId --jq '.[].databaseId')"; then
     for id in $ci_ids; do
       if run_log="$(gh run view "$id" --log)"; then
         add_alerts "$(printf '%s\n' "$run_log" | alert_lines)"
