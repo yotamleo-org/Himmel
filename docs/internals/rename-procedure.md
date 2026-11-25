@@ -43,6 +43,7 @@ that enforce it are `scripts/ci/check-rename-diff.sh` and
 | Gate | Reads | Refuses |
 |---|---|---|
 | `scripts/ci/check-rename-diff.sh` | the lines a PR **adds**, against every registry row | a retired name (see the mapping below) |
+| `scripts/docs/check-old-terms.sh` | the files a change touches, each file's retired-name count against its base version, and a per-file baseline | a touched file with more retired-name lines than before, or a baseline row that rises |
 | `scripts/ci/check-doc-literals.sh` | `docs/**/*.md`, `marketplace/**/SKILL.md`, `.claude/commands/*.md` | a `--flag`, or a `--role` value, on a documented invocation of `bus`, `tick.sh`, `board.mjs`, `chief.sh`, `headed-arm-worker.sh`, `gen-briefs` or `append-results.sh` that the CLI does not accept |
 
 **Registry direction as mode.** `check-rename-diff.sh` scans, per `kind`:
@@ -60,6 +61,20 @@ prose rows are not scanned. A name that starts with a `keep` prefix
 must show the old spelling: a reader of the old name, a test that asserts the
 refusal, a page that inventories old names. The registry file itself is never
 scanned.
+
+**The net-count gate.** `check-old-terms.sh --range <base>` (CI) and `--staged`
+(pre-commit) count, per touched file, the lines that hold a retired name
+(identifier and marker rows with direction `old-to-new`, prose rows with direction
+`fail`) and refuse a file that holds more than its base version, so editing a line
+that already carried an old name passes while adding one fails. A prose row with
+direction `warn` is printed and never fails: switching it to `fail` in the registry
+is the whole change. The per-file counts live in `scripts/docs/old-terms-baseline.tsv`
+(`key<TAB>count`, the key the git blob hash of the path); a row may not rise above the
+base's row, and each sweep PR lowers its rows with
+`bash scripts/docs/check-old-terms.sh --write-baseline` (about a minute). It reads
+identifier, marker and prose rows only; env, env-prefix, path and directory rows stay
+with `check-rename-diff.sh`. The `old-term-ok` marker and the `keep` rows exempt here
+too.
 
 **Report mode.** While the cosmetic rename batches have not all merged (the
 `--report` work list below still shows hits), both CI steps run with `--warn`:
@@ -89,8 +104,7 @@ row from the parser's option table.
 
 - The diff gate flags a line that still carries an old name it already had
   when the PR edits that line. Add the marker, or finish the rename on that
-  line. (The fix would net the added hits against the removed lines of the
-  same file.)
+  line. (`check-old-terms.sh` nets the count per file instead.)
 - The diff gate reads one line at a time: a multi-word prose row split by a
   line break is not seen. The doc-literal check joins backslash-continued
   lines and reports them at the first line.
