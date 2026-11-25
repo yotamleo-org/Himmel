@@ -50,7 +50,7 @@ sleep 600 &
 LIVE_PID=$!
 cat > "$WORK/census.sh" <<'EOF'
 #!/usr/bin/env bash
-cat "$WORK/census.txt"
+cat "$WORK/census.txt"  # read-sink-ok: the suite's own census fixture under its mktemp dir
 exit "${CENSUS_RC:-0}"
 EOF
 printf '#!/usr/bin/env bash\nexit 1\n' > "$WORK/census-fail.sh"
