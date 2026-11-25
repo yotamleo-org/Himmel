@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { doorDecide, doorJudge, earlierThan, type DoorResult } from './door.js';
+import { doorDecide, doorJudge, doorPlacement, earlierThan, type DoorResult } from './door.js';
+import { placeByRules, ticketFromCreate } from './filing-rules.js';
 import { requiredParentOf, type JudgeInput, type RuledDecision } from './engine.js';
 import type { IssueSnap, OperatorRow, RequestRow, RulingRow } from './types.js';
 
@@ -40,10 +41,10 @@ const placed = (d: DoorResult) => {
 };
 
 describe('the door: INTAKE, first match wins', () => {
-  it('mild priorities go to the next version, and to the backlog when there is none (rule M; I9)', () => {
+  it('mild priorities go to the backlog, with or without a next version (rule M, Q1; I9)', () => {
     for (const priority of ['Medium', 'Low', 'Lowest', '']) {
-      expect(placed(one({ priority }))).toEqual({ outcome: 'ADMIT', op: 'add', from: null, to: N, ground: 'door:mild' });
-      expect(placed(one({ priority }, {}, { versions: [C] }))).toEqual({ outcome: 'BACKLOG', op: 'none', from: null, to: null, ground: 'door:mild-no-next' });
+      expect(placed(one({ priority }))).toEqual({ outcome: 'BACKLOG', op: 'none', from: null, to: null, ground: 'door:mild' });
+      expect(placed(one({ priority }, {}, { versions: [C] }))).toEqual({ outcome: 'BACKLOG', op: 'none', from: null, to: null, ground: 'door:mild' });
     }
   });
 
@@ -60,14 +61,14 @@ describe('the door: INTAKE, first match wins', () => {
     }
   });
 
-  it('a residual INTAKE as create queues it (to_v null, the parent in the evidence): Medium to next (rule M), High to current (rule H)', () => {
+  it('a residual INTAKE as create queues it (to_v null, the parent in the evidence): Medium to the backlog (rule M), High to current (rule H)', () => {
     const q = { from: 'console', to_v: null, evidence: { residual_of: 'K-1' } };
-    expect(placed(one({ priority: 'Medium' }, q))).toEqual({ outcome: 'ADMIT', op: 'add', from: null, to: N, ground: 'door:mild' });
+    expect(placed(one({ priority: 'Medium' }, q))).toEqual({ outcome: 'BACKLOG', op: 'none', from: null, to: null, ground: 'door:mild' });
     expect(placed(one({ priority: 'High' }, q))).toEqual({ outcome: 'ADMIT', op: 'add', from: null, to: C, ground: 'door:serious:High' });
   });
 
   it('a version-repair mark forged from the CLI falls to rule M (I9)', () => {
-    expect(placed(one({}, { from: 'console', evidence: { rule: 'version-repair' } }))).toEqual({ outcome: 'ADMIT', op: 'add', from: null, to: N, ground: 'door:mild' });
+    expect(placed(one({}, { from: 'console', evidence: { rule: 'version-repair' } }))).toEqual({ outcome: 'BACKLOG', op: 'none', from: null, to: null, ground: 'door:mild' });
   });
 
   it('a closed ticket with a merged PR goes where it was asked (rule F)', () => {
@@ -138,7 +139,7 @@ describe('the narrow rule S (decision 1170)', () => {
     const required_parent = requiredParentOf([follow]);
     expect(required_parent).toEqual({});
     const parent = snap('K-1', { fixVersions: [C] });
-    expect(placed(decide(input({ issues: [snap('K-2'), parent], required_parent }), follow))).toEqual({ outcome: 'ADMIT', op: 'add', from: null, to: N, ground: 'door:mild' });
+    expect(placed(decide(input({ issues: [snap('K-2'), parent], required_parent }), follow))).toEqual({ outcome: 'BACKLOG', op: 'none', from: null, to: null, ground: 'door:mild' });
     expect(placed(decide(input({ issues: [snap('K-2', { priority: 'High' }), parent], required_parent }), follow)))
       .toEqual({ outcome: 'ADMIT', op: 'add', from: null, to: C, ground: 'door:serious:High' });
   });
@@ -159,7 +160,7 @@ describe('the narrow rule S (decision 1170)', () => {
 
 describe('the clamp, one case per row', () => {
   it('no W and a version target: add', () => {
-    expect(placed(one({}))).toMatchObject({ outcome: 'ADMIT', op: 'add', to: N });
+    expect(placed(one({ priority: 'High' }))).toMatchObject({ outcome: 'ADMIT', op: 'add', to: C });
   });
   it('no W and a backlog target: BACKLOG op none', () => {
     expect(placed(one({}, {}, { versions: [C] }))).toMatchObject({ outcome: 'BACKLOG', op: 'none' });
@@ -297,5 +298,85 @@ describe('doorJudge', () => {
     const got = await doorJudge(inp);
     expect(got).toEqual(requests.map((q) => doorDecide(inp, q)));
     expect(got.map((d) => d.ground)).toEqual(['door:mild', 'door:serious:High', 'door:only-operator-moves-out']);
+  });
+});
+
+describe('the door and create place by one function (R15)', () => {
+  interface Row { name: string; priority?: string; labels?: string[]; type?: string; proposedVersion?: string; gate?: 'critical' | 'regression';
+    parent?: { key: string; versions: string[]; remainder: boolean }; frozen?: boolean }
+  const rows: Row[] = [
+    { name: 'a Medium ticket: M, the backlog (Q1)' },
+    { name: 'a High ticket: H', priority: 'High' },
+    { name: 'an operator ask naming none: A, current', labels: ['operator-directed'] },
+    { name: 'an operator ask naming v1.1.4: A', labels: ['operator-directed'], proposedVersion: N },
+    { name: 'an operator ask naming an undeclared version', labels: ['operator-directed'], proposedVersion: 'v9.9.9' },
+    { name: 'a remainder of a parent in v1.1.4: S', parent: { key: 'K-1', versions: [N], remainder: true } },
+    { name: 'a remainder of a parent in no version falls to M', parent: { key: 'K-1', versions: [], remainder: true } },
+    { name: 'a non-remainder follow-up of a current parent: P in both', parent: { key: 'K-1', versions: [C], remainder: false } },
+    { name: 'a non-remainder follow-up of a v1.1.4 parent falls to M', parent: { key: 'K-1', versions: [N], remainder: false } },
+    { name: 'a High follow-up of a current parent: H before P', priority: 'High', parent: { key: 'K-1', versions: [C], remainder: false } },
+    { name: 'a labelled Low in a frozen current: L with propose', priority: 'Low', labels: ['regression'], frozen: true },
+    { name: 'a labelled Low in an unfrozen current: L, current', priority: 'Low', labels: ['regression'] },
+    { name: 'a Low follow-up of a current parent labelled regression, current unfrozen: L (MB)', priority: 'Low', labels: ['residual', 'regression'], parent: { key: 'K-1', versions: [C], remainder: false } },
+    { name: 'the same in a frozen current: L with propose', priority: 'Low', labels: ['residual', 'regression'], frozen: true, parent: { key: 'K-1', versions: [C], remainder: false } },
+    { name: 'a residual with a label, unfrozen: only proposes (MA)', priority: 'Low', labels: ['residual', 'residual-depth-1', 'regression'] },
+    { name: 'a gated Low: L, gate-critical', priority: 'Low', gate: 'critical' },
+    { name: 'a gated residual: only proposes (MA)', priority: 'Low', gate: 'critical', labels: ['residual-depth-2'] },
+    { name: 'a user-facing Bug: L', type: 'Bug', labels: ['user-facing'] },
+  ];
+  for (const row of rows) {
+    it(row.name, () => {
+      const labels = row.labels ?? [];
+      const evidence: Record<string, unknown> = {};
+      if (row.parent) Object.assign(evidence, { follow_up_of: row.parent.key, ...(row.parent.remainder ? { remainder: true } : {}) });
+      if (row.gate) evidence.rule = `rules:label:gate-${row.gate}`;
+      const q = req('K-2', { to_v: row.proposedVersion ?? null, evidence });
+      const issues = [snap('K-2', { priority: row.priority ?? 'Medium', labels, type: row.type ?? 'Task' }),
+        ...(row.parent ? [snap(row.parent.key, { fixVersions: row.parent.versions })] : [])];
+      const inp = input({ issues, required_parent: requiredParentOf([q]), frozen: row.frozen ?? false });
+      const viaDoor = doorPlacement(inp, q);
+      const viaCreate = placeByRules(ticketFromCreate({
+        priority: row.priority ?? 'Medium', labels, type: row.type ?? 'Task', gate: row.gate, proposedVersion: row.proposedVersion, parent: row.parent,
+      }), { current: C, versions: VERSIONS, frozen: row.frozen ?? false });
+      const core = (p: typeof viaDoor) => p && { rule: p.rule, target: p.target, propose: p.propose, arg: p.arg };
+      expect(core(viaDoor)).toEqual(core(viaCreate));
+      expect(viaDoor).not.toBeNull();
+    });
+  }
+});
+
+describe('rule L in the door (R36, R41)', () => {
+  const low = { priority: 'Low' };
+  const label = (extra: string[] = []) => ({ ...low, labels: ['regression', ...extra] });
+  const gate = (extra: string[] = []) => ({ s: { ...low, labels: extra }, q: { evidence: { rule: 'rules:label:gate-critical' } } });
+  const L = (g: string) => ({ outcome: 'ADMIT', op: 'add', from: null, to: C, ground: g });
+  const MILD = { outcome: 'BACKLOG', op: 'none', from: null, to: null, ground: 'door:mild' };
+
+  it('a label: an unfrozen current admits, a frozen or unstated one proposes and is ruled M, a residual proposes, a follow-up admits', () => {
+    expect(placed(one(label(), {}, { frozen: false }))).toEqual(L('door:label:regression'));
+    expect(placed(one(label(), {}, { frozen: true }))).toEqual(MILD);
+    expect(placed(one(label(), {}))).toEqual(MILD);
+    expect(placed(one(label(['residual', 'residual-depth-1']), {}, { frozen: false }))).toEqual(MILD);
+    expect(placed(one(label(['residual']), {}, { frozen: false }))).toEqual(L('door:label:regression'));
+  });
+
+  it('a gate in the INTAKE evidence: the same five cases', () => {
+    const g = gate();
+    expect(placed(one(g.s, g.q, { frozen: false }))).toEqual(L('door:label:gate-critical'));
+    expect(placed(one(g.s, g.q, { frozen: true }))).toEqual(MILD);
+    expect(placed(one(g.s, g.q))).toEqual(MILD);
+    expect(placed(one(gate(['residual', 'residual-depth-1']).s, g.q, { frozen: false }))).toEqual(MILD);
+    expect(placed(one(gate(['residual']).s, g.q, { frozen: false }))).toEqual(L('door:label:gate-critical'));
+  });
+
+  it('a residual-label mark in the evidence keeps a gated residual out of current even with no snapshot for the key (I3, R33)', () => {
+    const q = req('K-2', { evidence: { rule: 'rules:residual-label:gate-critical' } });
+    expect(placed(decide(input({ issues: [], frozen: false }), q))).toEqual(MILD);
+    expect(placed(decide(input({ issues: [snap('K-2', low)], frozen: false }), q))).toEqual(MILD);
+  });
+
+  it('a REVERSION toward current never runs L: the ruling is the one main gives (R41)', () => {
+    const q = { verb: 'REVERSION' as const, from_v: N, to_v: C };
+    expect(placed(one({ ...label(), fixVersions: [N] }, q, { frozen: false }))).toEqual({ outcome: 'KEEP', op: 'keep', from: N, to: N, ground: `door:target:${N}` });
   });
 });

@@ -198,8 +198,7 @@ function placementOf(c: VersionCtx, key: string, live: Live[]): Placement {
   return live[0]?.effect ?? 'out';
 }
 
-// The admission kinds the reducer counts (decision 434): a typed override and the RM's own record. Gate rows are asked, not read.
-const COUNTED = new Set(['override', 'rm-admit']);
+const COUNTED = new Set(['override', 'rm-admit', 'filed']);
 
 // The latest row for the (key, version) decides, as leaks.ts does: apply() writes rm-admit on to_v and then
 // rm-remove on from_v, so a key-wide latest row would cancel every RM move's admission.
