@@ -1460,9 +1460,10 @@ if grep -Fxq -- "$closure_suite" "$suites"; then
         if [ "$cg_hit" -eq 0 ] && [ -s "$work/cg-pats" ]; then
             # One search for every changed file; any path a guarded file can name
             # counts, not just scripts/handover|lanes|lib.
-            # shellcheck disable=SC2046  # one pathspec per line, split on purpose
+            cg_specs=$(tr '\n' ' ' < "$work/guarded-specs") || io_fail "converting the guarded pathspecs"
+            # shellcheck disable=SC2086  # one pathspec per line, split on purpose
             # The suite's seeds skip test-*, so a test naming the file is no edge.
-            grep_narrowed "$work/cg-pats" "$work/cg-lits" "$work/cg.out" "searching the guarded files for the changed files" $(tr '\n' ' ' < "$work/guarded-specs") ':(exclude,glob)**/test-*' ':(exclude,glob)**/*.test.*'
+            grep_narrowed "$work/cg-pats" "$work/cg-lits" "$work/cg.out" "searching the guarded files for the changed files" $cg_specs ':(exclude,glob)**/test-*' ':(exclude,glob)**/*.test.*'
             [ ! -s "$work/cg.out" ] || cg_hit=1
         fi
         if [ "$cg_hit" -eq 1 ]; then printf '%s\n' "$closure_suite" >> "$found" || io_fail "recording the closure suite"; fi
