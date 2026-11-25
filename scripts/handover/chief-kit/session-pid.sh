@@ -32,7 +32,7 @@ pid_proven_by_id() {
 
 doc_session_ids() {
     local d="$1" first
-    IFS= read -r first < "$d" || return 1
+    IFS= read -r first < "$d" || return 1 # read-sink-ok: a worker doc path from the caller; only its front matter is parsed for ids, never run or sent anywhere
     [ "$first" = "---" ] || return 1
     awk 'NR == 1 { next } /^---$/ { exit } { print }' "$d" | sed -n 's/^session_ids: *//p' | tr ',' '\n' | tr -d ' ' | grep -E '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$'
     return 0
