@@ -340,17 +340,24 @@ approval, and the worker's retry passes the classifier for that one call.
    The hook then sends one line or card per result, every send detached so nothing
    delays the hook. The card goes to the operator's bridge chat, the chat the chief's
    messages and Approve prompts are in (chat id = the helper's `operator_id`); the other
-   lines go through the bridge outbox, whose class table routes each kind (a refusal to
-   the monitoring chat, an expiry to the operator's chat). The chief `<C>` is the current
+   lines go through the bridge outbox, whose class table routes each kind (a refusal, an
+   approval or a denial to the monitoring chat, an expiry to the operator's chat). The chief `<C>` is the current
    one: `HIMMEL_CONSOLE_NAME` names the launching chief, and each
    `consoles/<chief>.md.handover` marker chief.sh writes at a succession is followed while
    the successor's inbox exists. A name that is not a plain session name (a `/`, `..` or
    any character outside `[A-Za-z0-9._-]`) is no chief and is never followed.
    - `result=pending`: the card (`afk-sudo-request --card`: id, session, chief, Approve /
-     Deny), and one detached waiter (`--watch`) that polls `afk-sudo status <id>` and
-     posts `grant <id> from session <S> (chief <C>) expired, nothing ran` through the
-     bridge outbox as kind `afk-grant-expired` if the request expires. The waiter gives
-     up at the expiry plus 130 s.
+     Deny); one line appended to the chief's bridge inbox, which wakes its waiter:
+     "[afk-grant-request] AFK grant <id> asked on the phone: session <S> had <head>
+     refused by the classifier as [<category>]; approve or deny it there before
+     <HH:MM>, or it expires and nothing runs"; and one detached waiter (`--watch`) that
+     polls `afk-sudo status <id>` until the request ends and posts one outcome line,
+     `grant <id> for <head> [<category>] from session <S> (chief <C>) <outcome>`, both
+     through the bridge outbox and into the current chief's bridge inbox:
+     `approved: that session's next identical call runs once` (kind
+     `afk-grant-approved`), `denied, nothing ran` or `approved but refused by the
+     helper (<result>), nothing ran` (kind `afk-grant-denied`), `expired, nothing ran`
+     (kind `afk-grant-expired`). The waiter gives up at the expiry plus 130 s.
    - any other result (busy, rate-limited, `notice-failed`, `no-notice-bot`, a floor
      refusal): one line through the bridge outbox as kind `afk-grant-refused`, also
      appended to the chief's bridge inbox: "AFK grant refused, no ask was sent and
