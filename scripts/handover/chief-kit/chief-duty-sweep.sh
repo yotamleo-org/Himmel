@@ -57,6 +57,8 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$doc" ] && [ -n "$from" ] || usage
 [ -n "$bucket" ] || bucket="$(dirname "$doc")"
+if [ -d "$bucket" ]; then bucket="$(cd "$bucket" && pwd)"; fi
+q() { printf '%q' "$1"; }
 
 now="${CHIEF_DUTY_SWEEP_NOW:-$(date +%s)}"
 state="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
@@ -74,7 +76,7 @@ unread() { add "DUTY? $1 unread"; }
 short() { printf '%s' "${1:0:7}"; }
 
 legs=$(jq -r '(.legs // [])[]? | [(.label // ""), (.doc // ""), (.lane // "unknown")] | @tsv' "$from" 2>/dev/null) || legs=""  # swallow-ok: an unreadable manifest reads as no legs, named below
-if ! jq -e '.legs | type == "array"' "$from" >/dev/null 2>&1; then
+if ! jq -e '.legs | type == "array" and all(.[]; type == "object")' "$from" >/dev/null 2>&1; then
     unread "fleet"
     legs=""
 fi
@@ -94,6 +96,7 @@ read_prs() {
             ( . "$REPO/scripts/lib/prim.sh" && printf '%s\n' "$raw" | atomic_write "$cache" ) 2>/dev/null  # swallow-ok: a failed cache write only costs one more read
         fi
     fi
+    printf '%s' "$raw" | jq -e 'type == "array"' >/dev/null 2>&1 || return 1
     prs_tsv=$(printf '%s' "$raw" | jq -r '.[] | [.number, .headRefName, .headRefOid, .isDraft, .isCrossRepository, .baseRefName] | @tsv' 2>/dev/null) || return 1  # swallow-ok: a parse failure is an unread input
     return 0
 }
@@ -103,7 +106,10 @@ pr_field() {
 }
 
 doc_state() {
-    sed -nE '/^- /p' "$1" 2>/dev/null | awk '
+    local body
+    body=$(sed -n '/^## Results/,$p' "$1" 2>/dev/null)  # swallow-ok: an unreadable doc is named by the caller before this runs
+    [ -n "$body" ] || body=$(sed -n 'p' "$1" 2>/dev/null)  # swallow-ok: a doc with no Results heading is scanned whole
+    printf '%s\n' "$body" | sed -nE '/^- /p' | awk '
         function marker(s,   m) {
             if (match(s, /^- ([0-9]{1,2}:[0-9]{2}[ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|PARKED-[A-Z]+|RESUMED|MERGED)([^A-Za-z0-9_]|$)/)) {
                 m = substr(s, RSTART, RLENGTH); sub(/^- ([0-9]{1,2}:[0-9]{2}[ \t]+)?(\*\*)?/, "", m); sub(/[^A-Za-z0-9-].*$/, "", m); return m
@@ -149,12 +155,12 @@ judge_prs=""
 legitems=""
 while IFS=$'\t' read -r label ldoc lane; do
     [ -n "$label" ] || continue
-    [ -f "$ldoc" ] || { add "DUTY? worker $label unread"; continue; }
+    { [ -f "$ldoc" ] && [ -r "$ldoc" ]; } || { add "DUTY? worker $label unread"; continue; }
     st=$(doc_state "$ldoc")
     ask=$(printf '%s\n' "$st" | sed -n 's/^ask //p')
     rd=$(printf '%s\n' "$st" | sed -n 's/^ready //p')
     if [ -n "$ask" ]; then
-        legitems="$legitems$(printf 'DUTY answer-owed %s :: %s is the newest open ask in %s :: next: read %s, then reply by SendMessage, the bus, or t3-send.sh for a t3 lane' "$label" "$ask" "$(basename "$ldoc")" "$ldoc")"$'\n'
+        legitems="$legitems$(printf 'DUTY answer-owed %s :: %s is the newest open ask in %s :: next: read %s, then reply by SendMessage, the bus, or t3-send.sh for a t3 lane' "$label" "$ask" "$(basename "$ldoc")" "$(q "$ldoc")")"$'\n'
     fi
     [ -n "$rd" ] && [ "$prs_ok" = 1 ] || continue
     pr="${rd%% *}"; head="${rd#* }"
@@ -167,9 +173,10 @@ while IFS=$'\t' read -r label ldoc lane; do
         age=$(( now - gm )); [ "$age" -ge 0 ] || age=0
         [ "$age" -ge 600 ] || continue
         flag=""; grep -qiE '^>? ?\*{0,2}completes[ -]ticket:?\*{0,2} *yes' "$ldoc" 2>/dev/null && flag=" --jira-transition"  # swallow-ok: no match is no flag
-        legitems="$legitems$(printf 'DUTY merge-owed %s :: GO file %sm old, PR open at this head, lane %s so the chief merges :: next: bash %s/scripts/handover/merge-on-green.sh %s%s --worker-doc %s --go %s' "$id" "$((age / 60))" "$lane" "$anchor" "$pr" "$flag" "$ldoc" "$gofile")"$'\n'
+        legitems="$legitems$(printf 'DUTY merge-owed %s :: GO file %sm old, PR open at this head, lane %s so the chief merges :: next: bash %s/scripts/handover/merge-on-green.sh %s%s --worker-doc %s --go %s' "$id" "$((age / 60))" "$lane" "$(q "$anchor")" "$pr" "$flag" "$(q "$ldoc")" "$(q "$gofile")")"$'\n'
         continue
     fi
+    [ -n "$go_root" ] || continue
     vh=$(verdict_heads "$pr")
     if [ -n "$vh" ] && ! printf '%s\n' "$vh" | awk -v h="$head" '$2 == h { f = 1 } END { exit !f }'; then
         newest=$(printf '%s\n' "$vh" | while read -r q h f; do printf '%s %s %s %s\n' "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$q" "$h" "$f"; done | sort -rn | head -n 1)  # gnu-ok: Linux-only kit; swallow-ok: an unreadable record sorts last
@@ -177,14 +184,14 @@ while IFS=$'\t' read -r label ldoc lane; do
         if [ -z "${CHIEF_DUTY_SWEEP_DELTA:-}" ] && ! { git -C "$REPO" cat-file -e "$jh^{commit}" && git -C "$REPO" cat-file -e "$head^{commit}"; } 2>/dev/null; then
             cls="?"
         else
-            cls=$(cd "$REPO" && timeout -k 1 5 "$delta_bin" --qid "$jq_q" "$jh" "$head" 2>/dev/null | head -n 1) || cls=""  # gnu-ok: Linux-only kit; swallow-ok: a failed call fails closed to trust below
+            cls=$(cd "$REPO" && timeout -k 1 5 "$delta_bin" --verdict-file "$jf" "$jh" "$head" 2>/dev/null | head -n 1) || cls=""  # gnu-ok: Linux-only kit; swallow-ok: a failed call fails closed to trust below
             case "$cls" in none|finding|trust) ;; *) cls=trust ;; esac
         fi
         case "$cls" in
             none) ;;
             "?")
                 judge_prs="$judge_prs $pr"
-                legitems="$legitems$(printf 'DUTY judge-owed %s :: judge-pending: a head is not in this checkout, so the delta class is unknown :: next: git -C %s fetch origin, then bash %s/delta-class.sh --qid %s %s %s' "$id" "$anchor" "$kit" "$jq_q" "$jh" "$head")"$'\n'
+                legitems="$legitems$(printf 'DUTY judge-owed %s :: judge-pending: a head is not in this checkout, so the delta class is unknown :: next: git -C %s fetch origin, then bash %s/delta-class.sh --qid %s %s %s' "$id" "$(q "$anchor")" "$(q "$kit")" "$jq_q" "$jh" "$head")"$'\n'
                 continue ;;
             *)
                 judge_prs="$judge_prs $pr"
@@ -232,18 +239,18 @@ while IFS=$'\t' read -r label ldoc lane; do
                     ) 9> "$state/chief-duty-qids.lock" 2>/dev/null || true  # swallow-ok: a failed spec write lists the item without a spec, below
                 fi
                 if [ -s "$spec" ]; then
-                    legitems="$legitems$(printf 'DUTY judge-owed %s :: the push after prior verdict %s at %s is a %s delta :: next: touch %s.dispatched, then python3 -I %s/gen-judge-brief.py %s --chief <your session> --dispatch-json and one Agent call with its output' "$id" "$jq_q" "$(short "$jh")" "$cls" "$spec" "$kit" "$spec")"$'\n'
+                    legitems="$legitems$(printf 'DUTY judge-owed %s :: the push after prior verdict %s at %s is a %s delta :: next: touch %s.dispatched, then python3 -I %s/gen-judge-brief.py %s --chief <your session> --dispatch-json and one Agent call with its output' "$id" "$jq_q" "$(short "$jh")" "$cls" "$(q "$spec")" "$(q "$kit")" "$(q "$spec")")"$'\n'
                 else
                     legitems="$legitems$(printf 'DUTY judge-owed %s :: the push after prior verdict %s at %s is a %s delta (no spec: the branch names no ticket) :: next: write a judge spec by hand for PR %s' "$id" "$jq_q" "$(short "$jh")" "$cls" "$pr")"$'\n'
                 fi
                 continue ;;
         esac
     fi
-    [ -n "$go_root" ] || continue
+    qkit=$(q "$kit")
     if [ "$lane" = native ]; then
-        nx="bash $kit/auto-go.sh --dry-run --doc $doc --fleet $from --worker $label $pr $head"
+        nx="bash $qkit/auto-go.sh --dry-run --doc $(q "$doc") --fleet $(q "$from") --worker $label $pr $head"
     else
-        nx="bash $kit/ready-check.sh $pr $head, then the judge or trust review, then bash $kit/go.sh $pr $head (merges.md)"
+        nx="bash $qkit/ready-check.sh $pr $head, then the judge or trust review, then bash $qkit/go.sh $pr $head (merges.md)"
     fi
     legitems="$legitems$(printf 'DUTY go-owed %s :: READY holds at the PR head with no GO file (lane %s) :: next: %s' "$id" "$lane" "$nx")"$'\n'
 done <<< "$legs"
@@ -286,7 +293,9 @@ if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
         fi
         rc_line=$(awk -v r="$rid" '$1 == "result" && $2 == r { print $3 }' "$reruns" 2>/dev/null | tail -n 1)  # swallow-ok: no reruns file is no rerun
         if grep -qs "^reserve [0-9]* $pr $head $rid\$" "$reruns"; then
-            if [ -n "$rc_line" ] && [ "$rc_line" != 0 ]; then
+            if [ -z "$rc_line" ]; then
+                add "$(printf 'DUTY ci-masked %s :: CI run %s cancelled at this head after a green run; a rerun is reserved with no result yet, outcome unknown :: next: gh run view %s, then gh run rerun %s -R %s if no rerun started' "$id" "$rid" "$rid" "$rid" "$slug")"
+            elif [ "$rc_line" != 0 ]; then
                 add "$(printf 'DUTY ci-masked %s :: CI run %s cancelled at this head after a green run; the rerun failed rc=%s :: next: gh run rerun %s -R %s' "$id" "$rid" "$rc_line" "$rid" "$slug")"
             else
                 add "$(printf 'DUTY ci-masked %s :: CI run %s cancelled at this head after a green run; rerun sent :: next: gh run view %s once the rerun finishes' "$id" "$rid" "$rid")"
@@ -314,7 +323,7 @@ if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
                 0) ;;
                 4) hold="hourly cap" ;;
                 6)
-                    add "$(printf 'DUTY ci-masked %s :: CI run %s cancelled at this head after a green run; rerun sent by another sweep :: next: gh run view %s once the rerun finishes' "$id" "$rid" "$rid")"
+                    add "$(printf 'DUTY ci-masked %s :: CI run %s cancelled at this head after a green run; a rerun is reserved by another sweep, outcome unknown :: next: gh run view %s once the rerun finishes' "$id" "$rid" "$rid")"
                     continue ;;
                 *) hold="rerun lock busy" ;;
             esac
@@ -338,13 +347,14 @@ fi
 dispo=""
 dispo_path="${CHIEF_DUTY_SWEEP_DISPOSITIONS:-}"
 if [ -z "$dispo_path" ]; then
-    cache="$state/chief-duty-sweep-dispositions.txt"
+    cache_key=$(printf '%s\n%s\n' "$doc" "$from" | cksum | cut -d' ' -f1)
+    cache="$state/chief-duty-sweep-dispositions-$cache_key.txt"
     if [ ! -s "$cache" ] || [ $(( $(date +%s) - $(stat -c %Y "$cache" 2>/dev/null || echo 0) )) -gt 1800 ]; then  # gnu-ok: Linux-only kit; swallow-ok: an unreadable cache reads as old, so it is refreshed
-        if mkdir "$state/chief-duty-sweep-pool.lock" 2>/dev/null; then  # prim-ok: Linux-only kit; one background refresh at a time, a dead one is dropped after 10 min below
-            ( timeout -k 5 300 bash "$HERE/next-dispatchable.sh" --dispositions --doc "$doc" --workers-from "$from" > "$cache.tmp" 2>/dev/null && mv "$cache.tmp" "$cache"; rmdir "$state/chief-duty-sweep-pool.lock" 2>/dev/null ) </dev/null >/dev/null 2>&1 &  # gnu-ok: Linux-only kit; swallow-ok: a failed refresh leaves the last copy
+        if mkdir "$state/chief-duty-sweep-pool-$cache_key.lock" 2>/dev/null; then  # prim-ok: Linux-only kit; one background refresh at a time, a dead one is dropped after 10 min below
+            ( timeout -k 5 300 bash "$HERE/next-dispatchable.sh" --dispositions --doc "$doc" --workers-from "$from" > "$cache.tmp" 2>/dev/null && mv "$cache.tmp" "$cache"; rmdir "$state/chief-duty-sweep-pool-$cache_key.lock" 2>/dev/null ) </dev/null >/dev/null 2>&1 &  # gnu-ok: Linux-only kit; swallow-ok: a failed refresh leaves the last copy
             disown 2>/dev/null || true  # swallow-ok: no job control in a non-interactive shell
         else
-            [ -z "$(find "$state/chief-duty-sweep-pool.lock" -maxdepth 0 -mmin +10 2>/dev/null)" ] || rmdir "$state/chief-duty-sweep-pool.lock" 2>/dev/null  # gnu-ok: Linux-only kit; swallow-ok: losing the race to another sweep is fine
+            [ -z "$(find "$state/chief-duty-sweep-pool-$cache_key.lock" -maxdepth 0 -mmin +10 2>/dev/null)" ] || rmdir "$state/chief-duty-sweep-pool-$cache_key.lock" 2>/dev/null  # gnu-ok: Linux-only kit; swallow-ok: losing the race to another sweep is fine
         fi
     fi
     dispo_path="$cache"
@@ -368,7 +378,7 @@ if [ -n "$dispo" ]; then
             [ -f "$mf" ] || continue
             grep -qE '^status: "To Do"' "$mf" 2>/dev/null || continue  # swallow-ok: a non-match is not owed
             grep -E '^labels:' "$mf" 2>/dev/null | grep -q '"operator-directed"' || continue  # swallow-ok: a non-match is not owed
-            printf 'DUTY dispatch-owed %s :: operator-directed To Do ticket, the dispatcher says %s :: next: bash %s/next-dispatchable.sh --doc %s --workers-from %s --why, then dispatch it\n' "$key" "$rest" "$kit" "$doc" "$from"
+            printf 'DUTY dispatch-owed %s :: operator-directed To Do ticket, the dispatcher says %s :: next: bash %s/next-dispatchable.sh --doc %s --workers-from %s --why, then dispatch it\n' "$key" "$rest" "$(q "$kit")" "$(q "$doc")" "$(q "$from")"
         done)
         items="$items$dispatch_lines"$'\n'
     fi
@@ -382,7 +392,7 @@ if [ -s "$bucket/owed.jsonl" ]; then
             [ -n "$oid" ] || continue
             case "$oepoch" in ''|*[!0-9]*) continue ;; esac
             [ $(( now - oepoch )) -ge "$stale_secs" ] || continue
-            add "$(printf 'DUTY owed-stale %s :: %s row open %sh: %s :: next: bash %s/owe.sh close --bucket %s --id %s --key <the ticket, sha or decision that settles it>' "$oid" "$okind" "$(( (now - oepoch) / 3600 ))" "$otext" "$kit" "$bucket" "$oid")"
+            add "$(printf 'DUTY owed-stale %s :: %s row open %sh: %s :: next: bash %s/owe.sh close --bucket %s --id %s --key <the ticket, sha or decision that settles it>' "$oid" "$okind" "$(( (now - oepoch) / 3600 ))" "$otext" "$(q "$kit")" "$(q "$bucket")" "$oid")"
         done <<< "$rows"
     else
         unread "owed"

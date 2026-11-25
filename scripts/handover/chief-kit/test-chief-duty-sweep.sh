@@ -38,6 +38,7 @@ STUB="$WORK/stub"; mkdir -p "$STUB/bin"
 export STUB
 # shellcheck disable=SC2016  # the stub body expands when the stub runs
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$STUB/path-gh-calls"\nexit 99\n' > "$STUB/bin/gh"
+: > "$STUB/path-gh-calls"
 cat > "$STUB/seam-gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB/gh-calls"
@@ -53,7 +54,7 @@ export PATH="$STUB/bin:$PATH"
 
 world() {
     rm -rf "$WORK/w"; mkdir -p "$WORK/w/bucket/verdicts" "$WORK/w/go/.locks/go" "$WORK/w/state" "$WORK/w/mirror"
-    : > "$STUB/gh-calls"; : > "$STUB/path-gh-calls"; : > "$STUB/delta-calls"; rm -f "$STUB/gh.rc" "$STUB/delta.out"
+    : > "$STUB/gh-calls"; : > "$STUB/delta-calls"; rm -f "$STUB/gh.rc" "$STUB/delta.out"
     B="$WORK/w/bucket"
     CHIEF="$B/2026-11-25XX-chief.md"
     printf '# chief\n' > "$CHIEF"
@@ -132,7 +133,8 @@ world; masked_runs success cancelled 1
 sweep
 has "ci-masked: listed" "DUTY ci-masked 101@$H7_1 :: " "$OUT"
 has "ci-masked: rerun reported" "DUTY-RAN ci-masked 101@$H7_1 rerun 12 rc=0" "$OUT"
-check "ci-masked: one rerun, --failed" "run rerun 12 --failed" "$(sed -n 1p "$STUB/gh-calls" | sed 's/ -R [^ ]*//')"
+want_slug=$(git -C "$HERE" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')
+check "ci-masked: one rerun, --failed, against this repo" "run rerun 12 --failed -R $want_slug" "$(sed -n 1p "$STUB/gh-calls")"
 sweep
 check "ci-masked: a second sweep reruns nothing" "1" "$(grep -c . "$STUB/gh-calls")"
 has "ci-masked: stays listed as sent" "rerun sent" "$OUT"
@@ -203,7 +205,34 @@ check "ci-masked: a newer run still in progress means nothing is masked" "" "$OU
 check "ci-masked: and no rerun" "" "$(cat "$STUB/gh-calls")"
 world; rm -f "$DOC1"
 sweep
-has "an unreadable worker doc is named" "DUTY? worker N1 unread" "$OUT"
+has "a missing worker doc is named" "DUTY? worker N1 unread" "$OUT"
+world; chmod 000 "$DOC1"
+sweep
+chmod 644 "$DOC1"
+if [ "$(id -u)" = 0 ]; then pass "an unreadable worker doc is named (skipped as root)"; else has "an unreadable worker doc is named" "DUTY? worker N1 unread" "$OUT"; fi
+world; printf '{"schema":1,"legs":[42]}\n' > "$WORK/w/fleet.json"
+sweep
+has "a leg that is not an object is named" "DUTY? fleet unread" "$OUT"
+world; printf '{"schema":1,"legs":[]}\n' > "$WORK/w/fleet.json"
+sweep
+check "an empty legs array is a clean fleet" "" "$OUT"
+world; : > "$WORK/w/prs.json"
+sweep
+has "a zero-byte PR list is named" "DUTY? prs unread" "$OUT"
+world
+printf '# HIMMEL-9100 — worker N1\n\n## Notes\n- BLOCKED — an example quoted from the brief\n\n## Results (newest at the bottom)\n- 10:00 LIVE — working\n' > "$DOC1"
+sweep
+hasnt "a marker above the Results section is not read" "answer-owed" "$OUT"
+world; mkdir -p "$B/a b"; DOC1="$B/a b/doc.md"; set_tail "- 10:05 READY 101 $H1 GREEN"; set_lane t3
+touch -d "@$((NOW - 660))" "$WORK/w/go/.locks/go/101.$H1"
+sweep
+has "a path with a space is quoted in the printed merge command" "--worker-doc $B/a\\ b/doc.md " "$OUT"
+world; masked_runs success cancelled 1
+printf 'reserve %s 101 %s 12\n' "$NOW" "$H1" > "$WORK/w/state/chief-duty-sweep-reruns"
+sweep
+has "ci-masked: a reservation with no result row is an unknown outcome" "outcome unknown" "$OUT"
+hasnt "ci-masked: and is not called sent" "rerun sent" "$OUT"
+check "ci-masked: and makes no gh call" "" "$(cat "$STUB/gh-calls")"
 
 verdict() {
     mkdir -p "$B/verdicts/$1"
@@ -221,9 +250,13 @@ if [ -s "$SPEC" ]; then pass "judge-owed: spec written"; else fail "judge-owed: 
 has "judge-owed: the next names gen-judge-brief" "gen-judge-brief.py" "$OUT"
 python3 -I "$JUDGE" "$SPEC" --chief test-chief --dispatch-json >"$WORK/w/spec.out" 2>"$WORK/w/spec.err"
 check "judge-owed: gen-judge-brief accepts the spec" 0 "$?"
-sum1=$(sha256sum "$SPEC" 2>/dev/null | cut -d' ' -f1)
+touch -d '2 hours ago' "$SPEC"
+sum1=$(sha256sum "$SPEC" | cut -d' ' -f1)
+mt1=$(stat -c %Y "$SPEC")  # gnu-ok: Linux-only kit
 sweep
-check "judge-owed: spec never rewritten" "$sum1" "$(sha256sum "$SPEC" 2>/dev/null | cut -d' ' -f1)"
+check "judge-owed: spec content never rewritten" "$sum1" "$(sha256sum "$SPEC" | cut -d' ' -f1)"
+check "judge-owed: spec file never replaced" "$mt1" "$(stat -c %Y "$SPEC")"  # gnu-ok: Linux-only kit
+has "judge-owed: the classifier reads the selected verdict file" "--verdict-file $B/verdicts/j101a/judge.md $H2 $H1" "$(cat "$STUB/delta-calls")"
 printf 'none\n' > "$STUB/delta.out"; rm -rf "$WORK/w/state/chief-duty-judge"
 sweep
 hasnt "judge-owed: delta none needs no judge" "judge-owed" "$OUT"
@@ -269,8 +302,10 @@ sweep
 has "dispatch-owed: a copy under 1800 s is judged" "DUTY dispatch-owed HIMMEL-9201 :: " "$OUT"
 
 world
-OWE_NOW_EPOCH=$((NOW - 20000)) bash "$OWE" add --bucket "$B" --chief c --kind proof --text "quote the live wake" --key HIMMEL-9100 >/dev/null
-OWE_NOW_EPOCH=$((NOW - 600)) bash "$OWE" add --bucket "$B" --chief c --kind ticket --text "file the follow-up" --key HIMMEL-9100 >/dev/null
+id_old=$(OWE_NOW_EPOCH=$((NOW - 20000)) bash "$OWE" add --bucket "$B" --chief c --kind proof --text "quote the live wake" --key HIMMEL-9100)
+id_new=$(OWE_NOW_EPOCH=$((NOW - 600)) bash "$OWE" add --bucket "$B" --chief c --kind ticket --text "file the follow-up" --key HIMMEL-9100)
+check "owed-stale: setup made the old row" "o1" "$id_old"
+check "owed-stale: setup made the fresh row" "o2" "$id_new"
 sweep
 has "owed-stale: an old row" "DUTY owed-stale o1 :: " "$OUT"
 hasnt "owed-stale: a fresh row is not stale" "owed-stale o2" "$OUT"
