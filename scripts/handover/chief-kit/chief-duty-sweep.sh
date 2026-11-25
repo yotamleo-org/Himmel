@@ -64,6 +64,8 @@ now="${CHIEF_DUTY_SWEEP_NOW:-$(date +%s)}"
 state="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
 mkdir -p "$state" 2>/dev/null || true
 gh_bin="${CHIEF_DUTY_SWEEP_GH:-gh}"
+GH_READ_BIN="$REPO/scripts/lib/gh-read.sh"; [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+pr_read_bin="${CHIEF_DUTY_SWEEP_GH:-$GH_READ_BIN}"
 delta_bin="${CHIEF_DUTY_SWEEP_DELTA:-$HERE/delta-class.sh}"
 owe_bin="${CHIEF_DUTY_SWEEP_OWE:-$HERE/owe.sh}"
 kit="$HERE"
@@ -92,7 +94,7 @@ read_prs() {
             [ "$age" -lt 300 ] && raw=$(cat "$cache" 2>/dev/null)  # swallow-ok: a failed cache read falls through to a live read
         fi
         if [ -z "$raw" ]; then
-            raw=$(cd "$REPO" && timeout -k 2 30 "$gh_bin" pr list --limit 200 --json number,headRefName,headRefOid,isDraft,isCrossRepository,baseRefName 2>/dev/null) || return 1  # swallow-ok: a failed read is an unread input
+            raw=$(cd "$REPO" && timeout -k 2 30 "$pr_read_bin" pr list --limit 200 --json number,headRefName,headRefOid,isDraft,isCrossRepository,baseRefName 2>/dev/null) || return 1  # swallow-ok: a failed read is an unread input
             ( . "$REPO/scripts/lib/prim.sh" && printf '%s\n' "$raw" | atomic_write "$cache" ) 2>/dev/null
         fi
     fi
