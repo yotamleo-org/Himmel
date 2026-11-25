@@ -71,7 +71,7 @@ const KEY_ID = /^([A-Z][A-Z0-9]*)-(\d+)$/;
 const keyNum = (k: string | undefined) => { const m = KEY_ID.exec((k ?? "").trim()); return m ? { p: m[1], n: Number(m[2]) } : null; };
 const planKey = (m: M) => (m.p ? `${m.p}-${m.k}` : `HIMMEL-${m.k}`); // the plan tables and the worker docs name a ticket by its full key
 
-// tracker.py ver_key: v1.0.n[a-z] by n, v1.1.N after v1.0.2, later milestone minors numerically, anything else last.
+// tracker.py ver_key: v1.0.n[a-z] by n, v1.1.N after v1.0.2, later milestone minors numerically, anything else last. // version-timing-ok
 function verKey(v: string): [number, number, string] {
   let m = /^v1\.0\.(\d+)([a-z]?)$/.exec(v);
   if (m) return [0, Number(m[1]), m[2]];

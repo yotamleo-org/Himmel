@@ -74,16 +74,24 @@ absolute path (add `--dry-run` first to see the rows):
 `bash <primary>/scripts/handover/chief-kit/go-batch.sh --doc <this chief doc> --fleet <fleet manifest>`
 (`--jobs <n>`, default 4, bounds the parallel `go.sh` runs). It reads the contract from
 the brief's last `Completes ticket:` line and holds a PR whose PR body says the
-other value, never guessing (a brief with no such line reads no); holds a PR with a
+other value, never guessing (a brief with no such line and a PR body with none is
+contract no, `contract-why=no-contract-on-record`, and the worker's message says why); holds a
+brief that says yes while the PR body leaves a remainder (a `Remaining:` or `owed ->` line, read by
+`pr_remainder.py` for the title's `[KEY]`), and holds a PR whose remainder is unreadable; holds a PR with a
 judge NO-GO on record unless a judge GO rules at its head; takes the judge qid from the newest verdict at the PR's
 head (delta no-op records included) and retries a plain GO that `go.sh` refuses
 for a trust path (exit 8) once with it; fast-forwards the primary checkout once
 before any `go.sh` runs (a checkout that cannot is exit 1, no GO written); and sends
-each worker its GO line with the token from your `workers:` span. It never writes a
+each worker its GO line with its token: the one in your `workers:` span when it is usable
+(dash-joined parts such as `CJ-N1-b07851f7`, never `NONCE-UNKNOWN`), else the first backticked value of
+the last `> **RETASK:**` line of its brief above `## Results`. `auto-go.sh` follows the same two rules: it
+escalates at check 9 when neither source is usable, and its GO carries `--jira-transition` only for a
+contract-yes merge (a PR body that owes proof or lists `Remaining:` is contract no, and the GO message
+says `contract no: <why>`). It never writes a
 GO file itself: `go.sh` does, and re-runs `ready-check.sh` and every gate. Each PR
 prints one row: `GO-SENT`, `HOLD <pr> <head> <reason>` (stale head, no judge
 verdict, contract disagreement, a `merge-hold:` line, a lane you merge by hand),
-or `NO-TOKEN <pr> <label>` (no GO written, nothing sent). A `GO-WRITTEN` row with
+or `NO-TOKEN <pr> <label>` (no usable token: no GO written, nothing sent). A `GO-WRITTEN` row with
 `bus-failed` (exit 11) is a GO that stands: send its `SENDMESSAGE` line yourself.
 It does not read Jira labels or the chain plan: a PR on a planned dependency chain
 still needs `chain-plan.sh --go-check` first.

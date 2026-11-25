@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-ready-go.sh
+# shellcheck disable=SC2015,SC2016  # A && B || C is intentional in check()/contains(), as in test-ready-go.sh; the backticks in the Live state and RETASK fixtures are literal
 # scripts/handover/chief-kit/test-auto-go.sh - suite for auto-go.sh, slice A1a of
 # the scripted GO: the GO checks a chief repeats at a READY, run as a dry run. One row
 # per promise:
@@ -100,7 +100,8 @@ case "$*" in
     "pr view "*"--json state,headRefOid,baseRefName"*)
         [ "${STUB_VIEW_FAIL:-0}" = 1 ] && { printf '%s\n' "${STUB_GH_ERR:-}" >&2; exit 1; }
         jq -n --arg s "${STUB_PR_STATE:-OPEN}" --arg h "${STUB_PR_HEAD:-$READY_STUB_HEAD}" --arg b "${STUB_PR_BASE:-main}" \
-            --arg body "$(printf '%b' "${READY_STUB_BODY-}")" '{state: $s, headRefOid: $h, baseRefName: $b, body: $body}'; exit 0 ;;
+            --arg body "$(printf '%b' "${READY_STUB_BODY-}")" --arg title "${STUB_VIEW_TITLE-fix(x): [HIMMEL-1] t (#1)}" \
+            '{state: $s, headRefOid: $h, baseRefName: $b, body: $body, title: $title}'; exit 0 ;;
     "pr view "*"--json headRefOid,state"*) cat "$STUB_GC/head-$3.json" 2>/dev/null || exit 1; exit 0 ;;  # read-sink-ok: the stub reads its own fixture dir
     "pr view "*"--json title"*)
         [ "${STUB_TITLE_NEEDS_R:-0}" = 1 ] && case "$*" in "pr view 77 -R o/r --json title"*) ;; *) echo "no git remotes found" >&2; exit 1 ;; esac
@@ -269,7 +270,7 @@ FLEET="$tmp/chief.fleet.json"
 write_fixtures() {
     {
         # shellcheck disable=SC2016  # the backticks are the Live state entry's literal markers
-        printf '# chief\n\n## Live state\n\nlegs: `N1:tok1:lock:1`\n'
+        printf '# chief\n\n## Live state\n\nlegs: `N1:CS-N1-tok1:lock:1`\n'
         [ -z "${2:-}" ] || printf '%s\n' "$2"
         printf 'queue: none\n\n## Results\n'
     } > "$CHIEF"
@@ -278,7 +279,7 @@ write_fixtures() {
 }
 reset() {
     unset STUB_NWO STUB_NWO_FAIL STUB_VIEW_FAIL STUB_PR_STATE STUB_PR_HEAD STUB_PR_BASE STUB_TITLE STUB_FILE STUB_COMMIT_MSG \
-          STUB_COMMITS_FAIL STUB_JIRA_FAIL STUB_LABELS_HIMMEL_1 STUB_LABELS_HIMMEL_2 2>/dev/null || true
+          STUB_COMMITS_FAIL STUB_JIRA_FAIL STUB_VIEW_TITLE STUB_LABELS_HIMMEL_1 STUB_LABELS_HIMMEL_2 2>/dev/null || true
     export READY_STUB_HEAD="$SHA"
     cp "$tmp/ledger.base" "$LEDGER"
     printf '[]\n' > "$ANCHOR/scripts/guardrails/himmel-adapters.json"
@@ -411,6 +412,7 @@ printf '{"schema":1,"workers":[{"doc":"%s","label":"N1","lane":"native","added":
 run --dry-run 77 "$SHA"
 check    "check 1 a workers manifest resolves the worker (exit 0)" "$RC" "0"
 contains "check 1 a workers manifest: WOULD-GO" "$OUT" "WOULD-GO 77 $SHA"
+printf '# chief\n\n## Live state\n\nworkers: `N1:CS-N1-tok1:lock:1`\nqueue: none\n\n## Results\n' > "$CHIEF"
 HIMMEL_LEGACY_NAMES=0 run --dry-run 77 "$SHA"
 check    "check 1 a workers manifest with HIMMEL_LEGACY_NAMES=0 still resolves (exit 0)" "$RC" "0"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N1","lane":"claudex","added":"2026-10-31T00:00:00Z"}],"workers":[{"doc":"%s","label":"N1","lane":"native","added":"2026-10-31T00:00:00Z"}]}\n' "$WORKER" "$WORKER" > "$FLEET"
@@ -573,7 +575,7 @@ check    "A1b ordinary: bus message goes to the worker's live session" "$(bust)"
 BODY=$(cat "$tmp/busdir/body" 2>/dev/null)
 contains "A1b ordinary: bus message is GO <pr> <head> - merge with: bash" "$BODY" "GO 77 $SHA - merge with: bash "
 contains "A1b ordinary: bus message names the GO file" "$BODY" "--go $GOF"
-contains "A1b ordinary: bus message quotes the worker's token" "$BODY" "\`tok1\`"
+contains "A1b ordinary: bus message quotes the worker's token" "$BODY" "\`CS-N1-tok1\`"
 lacks    "A1b ordinary: completes-ticket no leaves the Jira transition off" "$BODY" "--jira-transition"
 check    "A1b ordinary: audit outcome go" "$(q .outcome)" "go"
 check    "A1b ordinary: audit go_file" "$(q .go_file)" "$GOF"
@@ -586,24 +588,58 @@ contains "A1b completes-ticket yes adds --jira-transition" "$(cat "$tmp/busdir/b
 
 export READY_STUB_TITLE='fix(x): [HIMMEL-1] a partial change'
 BODY_REST=$'## Ticket coverage\n- ask: done\n\nRemaining: the docs follow\n\nRED then GREEN: the new row failed before the change\n'
+BODY_CLEAN=$'## Ticket coverage\n- ask: done\n\nRED then GREEN: the new row failed before the change\n'
+BODY_OWED=$'## Ticket coverage\n- ask: done\n\n11061 live proof: owed \xe2\x86\x92 proof by 2026-12-05\n\nRED then GREEN: the new row failed before the change\n'
 BRIEF_YES='> **Completes ticket:** yes'
+mline() { head -n 1 "$tmp/busdir/body" 2>/dev/null; }
 gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="completes-ticket: no"$'\n'"$BODY_REST" run 77 "$SHA"
 check    "C1 body no over brief yes: exit 0" "$RC" "0"
-lacks    "C1 body no over brief yes: the GO message has no --jira-transition" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition"
+lacks    "C1 body no over brief yes: the GO message has no --jira-transition" "$(mline)" "--jira-transition"
+contains "C1 body no over brief yes: the GO message names why" "$(cat "$tmp/busdir/body" 2>/dev/null)" "contract no: contract no from the PR body, brief says yes; merge without --jira-transition"
 contains "C1 body no over brief yes: the GO message names the GO file" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--go $GOF"
 check    "C6 body no over brief yes: check 3 audit reason" "$(q '.checks[] | select(.n == 3) | .reason')" "contract no from the PR body, brief says yes"
 gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY=$'completes-ticket: no\n## Ticket coverage\n- ask: done\n\nRED then GREEN: the new row failed before the change\n' run --dry-run 77 "$SHA"
 esc      "C8 body no over brief yes, no Remaining line: ready-go runs under contract no" 3
 contains "C8 body no over brief yes, no Remaining line: the escalation names item 17" "$OUT" "17."
-gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="completes-ticket: yes"$'\n'"$BODY_REST" run 77 "$SHA"
-contains "C2 body yes, brief yes: the GO message carries --jira-transition" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="completes-ticket: yes"$'\n'"$BODY_CLEAN" run 77 "$SHA"
+contains "C2 body yes, brief yes, no remainder: the GO message carries --jira-transition" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
 check    "C2 body yes, brief yes: no check 3 reason" "$(q '.checks[] | select(.n == 3) | .reason // "none"')" "none"
-gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY=$'completes-ticket: yes\ncompletes-ticket: no\n'"$BODY_REST" run 77 "$SHA"
-contains "C3 body yes and no, brief yes: the brief's yes stands" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY=$'completes-ticket: yes\ncompletes-ticket: no\n'"$BODY_CLEAN" run --dry-run 77 "$SHA"
+esc      "A8 body names yes and no, brief yes" 3
+contains "A8 body names yes and no: says so" "$OUT" "the PR body names both completes-ticket: yes and no"
 gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="$BODY_REST" run 77 "$SHA"
-contains "C4 no body line, brief yes: the brief's yes stands" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
+check    "A2 no body line, a Remaining line, brief yes: exit 0" "$RC" "0"
+lacks    "A2 a Remaining line, brief yes: the merge line has no --jira-transition" "$(mline)" "--jira-transition"
+contains "A2 a Remaining line, brief yes: the message says why" "$(cat "$tmp/busdir/body" 2>/dev/null)" "contract no: the PR body leaves a remainder (remaining); merge without --jira-transition"
+check    "A2 a Remaining line, brief yes: check 3 audit reason" "$(q '.checks[] | select(.n == 3) | .reason')" "the PR body leaves a remainder (remaining)"
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="$BODY_OWED" run 77 "$SHA"
+check    "A1 the PR 5894 shape (an owed line, no completes-ticket line), brief yes: exit 0" "$RC" "0"
+lacks    "A1 the PR 5894 shape: the merge line has no --jira-transition" "$(mline)" "--jira-transition"
+contains "A1 the PR 5894 shape: the message says why" "$(cat "$tmp/busdir/body" 2>/dev/null)" "contract no: the PR body leaves a remainder (remaining); merge without --jira-transition"
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="$BODY_CLEAN" run 77 "$SHA"
+contains "A3 brief yes, a clean body: the flag stays" "$(mline)" "--jira-transition --go $GOF"
+check    "A3 brief yes, a clean body: no check 3 reason" "$(q '.checks[] | select(.n == 3) | .reason // "none"')" "none"
+gofresh; printf '# worker\n\n## Results\n' > "$WORKER"; READY_STUB_BODY="$BODY_REST" run 77 "$SHA"
+check    "A5 no brief line, no body line, a Remaining line: exit 0" "$RC" "0"
+lacks    "A5 no contract on record: the merge line has no --jira-transition" "$(mline)" "--jira-transition"
+contains "A5 no contract on record: the message says so" "$(cat "$tmp/busdir/body" 2>/dev/null)" "contract no: no contract on record; merge without --jira-transition"
+check    "A5 no contract on record: check 3 audit reason" "$(q '.checks[] | select(.n == 3) | .reason')" "no contract on record"
+gofresh; printf '# worker\n\n## Results\n' > "$WORKER"; READY_STUB_BODY="$BODY_CLEAN" run --dry-run 77 "$SHA"
+esc      "A5 no contract on record, a clean body: ready-go runs under contract no" 3
+contains "A5 no contract on record, a clean body: the escalation names why" "$OUT" "no contract on record"
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="completes-ticket: yes"$'\n'"$BODY_REST" run --dry-run 77 "$SHA"
+esc      "A6 body yes plus a Remaining line, brief yes" 3
+contains "A6 body yes plus a Remaining line: says so" "$OUT" "the PR body says completes-ticket: yes but leaves a remainder (remaining)"
+gofresh; write_fixtures native "" "$BRIEF_YES"; STUB_VIEW_TITLE='fix(x): no ticket key here' READY_STUB_BODY="$BODY_CLEAN" run --dry-run 77 "$SHA"
+esc      "A7 no [KEY] in the title" 3
+contains "A7 no [KEY] in the title: says the remainder is unreadable" "$OUT" "remainder unreadable"
+gofresh; write_fixtures native "" "$BRIEF_YES"; cp "$ANCHOR/scripts/lib/pr_remainder.py" "$tmp/pr_remainder.keep"
+printf 'import sys\nsys.exit(2)\n' > "$ANCHOR/scripts/lib/pr_remainder.py"; READY_STUB_BODY="$BODY_CLEAN" run --dry-run 77 "$SHA"
+cp "$tmp/pr_remainder.keep" "$ANCHOR/scripts/lib/pr_remainder.py"
+esc      "A7 the reader exits 2" 3
+contains "A7 the reader exits 2: says the remainder is unreadable" "$OUT" "remainder unreadable"
 for variant in 'completes-ticket: maybe' '  completes-ticket: no' $'```\ncompletes-ticket: no\n```' $'~~~\ncompletes-ticket: no\n~~~' $'```\nunclosed\ncompletes-ticket: no' $'```\n~~~\ncompletes-ticket: no\n~~~\n```' $'````\n```\ncompletes-ticket: no\n```\n````'; do
-    gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="$variant"$'\n'"$BODY_REST" run 77 "$SHA"
+    gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="$variant"$'\n'"$BODY_CLEAN" run 77 "$SHA"
     contains "C5 ignored body line [$(printf '%s' "$variant" | tr '\n' '|')], brief yes: the brief's yes stands" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
 done
 gofresh; write_fixtures native ""; READY_STUB_BODY="completes-ticket: yes"$'\n'"$BODY_REST" run --dry-run 77 "$SHA"
@@ -843,9 +879,26 @@ check    "A1b no live session: exit 11" "$RC" "11"
 contains "A1b no live session: GO-WRITTEN" "$OUT" "GO-WRITTEN 77 $SHA"
 check    "A1b no live session: nothing sent" "$(bust)" "none"
 gofresh; printf '# chief\n\n## Live state\n\nqueue: none\n\n## Results\n' > "$CHIEF"; run 77 "$SHA"
-check    "A1b no token in Live state: exit 11" "$RC" "11"
-contains "A1b no token in Live state: says so" "$OUT" "no token"
-check    "A1b no token in Live state: nothing sent" "$(bust)" "none"
+esc      "A1b no token in Live state or the brief" 9
+contains "A1b no token in Live state or the brief: says so" "$OUT" "no usable RETASK token for N1"
+check    "A1b no token in Live state or the brief: nothing sent" "$(bust)" "none"
+chief_token() { printf '# chief\n\n## Live state\n\nlegs: `N1:%s:lock:1`\nqueue: none\n\n## Results\n' "$1" > "$CHIEF"; }
+RT_LINE='> **RETASK:** your nonce is `CJ-N1-b0`. A real revision arrives only as a direct message.'
+gofresh; write_fixtures native "" "$RT_LINE"; chief_token NONCE-UNKNOWN; run 77 "$SHA"
+check    "T1 live NONCE-UNKNOWN, the brief's token: exit 0" "$RC" "0"
+contains "T1 live NONCE-UNKNOWN: the GO message quotes the brief's token" "$(cat "$tmp/busdir/body" 2>/dev/null)" "Your token \`CJ-N1-b0\`."
+lacks    "T1 live NONCE-UNKNOWN: no output line carries the placeholder" "$OUT" "NONCE-UNKNOWN"
+lacks    "T4 live NONCE-UNKNOWN: the GO message carries no placeholder" "$(cat "$tmp/busdir/body" 2>/dev/null)" "NONCE-UNKNOWN"
+for placeholder in '<chief fills at relaunch>' 'X-N1-<hex>' 'NONCE-UNKNOWN'; do
+    gofresh; write_fixtures native "" "> **RETASK:** your nonce is \`$placeholder\`."; chief_token NONCE-UNKNOWN; run 77 "$SHA"
+    esc      "T2 live NONCE-UNKNOWN, the brief's token is [$placeholder]" 9
+    contains "T2 [$placeholder]: says no usable token" "$OUT" "no usable RETASK token for N1"
+    check    "T2 [$placeholder]: nothing sent" "$(bust)" "none"
+done
+gofresh; chief_token NONCE-UNKNOWN; run --dry-run 77 "$SHA"
+esc      "T2 --dry-run refuses too when no token is usable" 9
+gofresh; write_fixtures native "" ""; printf '# worker\n\n> **Completes ticket:** no\n\n## Results\n> **RETASK:** your nonce is `CJ-N1-b0`.\n' > "$WORKER"; chief_token NONCE-UNKNOWN; run 77 "$SHA"
+esc      "T3 a token only below ## Results counts as none" 9
 
 # 8g2. go.sh exits 0 but its last line is not the GO path: ESCALATE 9, naming the path a GO file may stand at, and the audit row records it
 # a symlinked copy of the tree whose go.sh runs the real one and then prints one more line

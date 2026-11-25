@@ -46,7 +46,7 @@ check "waived: summary line" "$(printf '%s\n' "$out" | grep -cF "$summary0")" "1
 
 p=pony; marker="${p}tail:"
 printf '%s\n' 'diff --git a/docs/lanes.md b/docs/lanes.md' '--- a/docs/lanes.md' '+++ b/docs/lanes.md' '@@ -4,0 +5,1 @@' \
-    "+The glm lane was removed in v1.1. $marker kept until v1.3, drop then" >"$tmp/marker.diff"
+    "+The glm lane was removed in v1.1. $marker kept until its callers move, drop then" >"$tmp/marker.diff"
 out="$(bash "$SCAN" --diff-file "$tmp/marker.diff")"; rc=$?
 check "marker line: exit 0 (advisory)" "$rc" "0"
 check "marker line: flagged, no longer waived" "$(count_all "$out")" "1"
