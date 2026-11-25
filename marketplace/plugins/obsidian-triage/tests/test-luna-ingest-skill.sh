@@ -174,6 +174,26 @@ else
 fi
 assert "description advertises bitbucket.org" "yes" "$desc_bb"
 
+echo "Test 9: a vendor-candidate ingest calls the skill-scan wrapper with a full-scan provider"
+full_scan_terms() {
+    local term got=""
+    for term in "vendor candidate" "SKILLSPECTOR_PROVIDER=nv_build" "NVIDIA_INFERENCE_KEY" "SKILLSPECTOR_PROVIDER=anthropic" "ANTHROPIC_API_KEY" "rc 4" ".ack"; do
+        grep -qF -- "$term" <<<"$1" && got="$got y" || got="$got n:$term"
+    done
+    printf '%s' "$got"
+}
+# shellcheck disable=SC2016  # backticks are literal markdown
+flag_line=$(grep -E '^- `--skill-scan`' "$SKILL")
+DISPATCH="$PLUGIN_DIR/references/harvest-clips/phase-4-dispatch.md"
+REFS_37="$PLUGIN_DIR/references/luna-ingest/phase-3-7-skill-scan.md"
+dispatch_line=$(grep -F -- '--skill-scan' "$DISPATCH")
+assert "--skill-scan flag text names the full scan, its providers and keys, and the rc 4 stop" " y y y y y y y" "$(full_scan_terms "$flag_line")"
+assert "harvest-clips dispatch names the full scan, its providers and keys, and the rc 4 stop" " y y y y y y y" "$(full_scan_terms "$dispatch_line")"
+grep -qF "Advisory only, never gates" <<<"$flag_line" && stale=yes || stale=no
+assert "--skill-scan flag text no longer calls every scan advisory" "no" "$stale"
+grep -qF 'a vendor candidate exports nv_build or anthropic here instead' "$REFS_37" && call=yes || call=no
+assert "phase 3.7 wrapper call takes a full-scan provider for a vendor candidate" "yes" "$call"
+
 echo "Test: reference-file wording"
 REFS="$PLUGIN_DIR/references/luna-ingest"
 QMD_GATE="$PLUGIN_DIR/../himmel-ops/skills/memory-compound/references/qmd-gate.md"
