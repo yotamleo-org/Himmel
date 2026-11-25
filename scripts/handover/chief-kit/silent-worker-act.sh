@@ -7,7 +7,7 @@
 #
 # Output, one line, rc 0:
 #   SILENT-ACT <label> none|fresh|done
-#   SILENT-ACT <label> [nudged|nudge=no-window|nudge=failed] [relaunched|relaunch=failed|live-window|live-silent] [owed=<id>[,<id>]]
+#   SILENT-ACT <label> [nudged|nudge=no-window|nudge=failed] [relaunched|relaunch=failed|live-window|live-silent|census=unknown] [owed=<id>[,<id>]]
 # Exit 2: usage.
 # PLATFORM GUARD: Linux-only kit (GNU stat, setsid), bash 3.2-safe; needs jq.
 set -uo pipefail
@@ -78,13 +78,13 @@ if command -v flock >/dev/null 2>&1; then
     if nothing_due; then echo "SILENT-ACT $label done"; exit 0; fi
 fi
 
-census=""
+census=""; census_ok=1
 if [ -n "${SILENT_ACT_CENSUS:-}" ]; then
-    census="$(bash "$SILENT_ACT_CENSUS" 2>/dev/null)" || census=""  # swallow-ok: an empty census reads as no live window, which owes a row below
+    census="$(bash "$SILENT_ACT_CENSUS" 2>/dev/null)" || census_ok=0  # swallow-ok: a failed census keeps its readable rows and is flagged unknown, which owes a row and never relaunches
 else
     # shellcheck source=../../lanes/lib/claude-sessions.sh
-    . "$HERE/../../lanes/lib/claude-sessions.sh" 2>/dev/null || true  # swallow-ok: an unloadable census reads as no live window
-    if declare -F claude_sessions >/dev/null 2>&1; then census="$(claude_sessions 2>/dev/null)" || census=""; fi  # swallow-ok: as above
+    . "${SILENT_ACT_CENSUS_LIB:-$HERE/../../lanes/lib/claude-sessions.sh}" 2>/dev/null || census_ok=0  # swallow-ok: an unloadable census is flagged unknown, which owes a row and never relaunches
+    if declare -F claude_sessions >/dev/null 2>&1; then census="$(claude_sessions 2>/dev/null)" || census_ok=0; else census_ok=0; fi  # swallow-ok: a failed or partial census keeps its readable rows and is flagged unknown
 fi
 
 stem=""; stale_session=""; stale_pid=""; stale_hits=0; resume_live=0
@@ -154,6 +154,9 @@ if [ "$relaunch_due" -eq 1 ] && [ "$nudged_now" -eq 0 ] && ! done_stage relaunch
     elif [ "$stale_hits" -ge 1 ]; then
         say="${say:+$say }live-silent"; log="${log:+$log }live-silent (pid $stale_pid, never ended)"
         owe_row relaunch "the worker still has a live window (pid $stale_pid), silent past bound two after the nudge; it is not ended and not relaunched, its blocked step needs the chief"
+    elif [ "$census_ok" -eq 0 ]; then
+        say="${say:+$say }census=unknown"; log="${log:+$log }census=unknown (not relaunched)"
+        owe_row relaunch "the process census failed or was incomplete, so a live window cannot be ruled out; the worker is not relaunched, its blocked step needs the chief"
     else
         if [ -z "$wdoc" ]; then
             relaunch_err="the fleet manifest names no doc for $label"

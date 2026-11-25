@@ -29,26 +29,31 @@ old() { touch -d "@$((NOW - $2 * 60))" "$1"; }
 BUCKET="$WORK/bucket"; mkdir -p "$BUCKET"
 CHIEF_DOC="$BUCKET/DEMO-chief-2026-11-25.md"
 printf '# chief\n\n## Results\n\n- 10:00 LIVE - x\n' > "$CHIEF_DOC"
-for n in 1 2 3 4 5 6 7 8 9 10; do
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do
     f="$BUCKET/DEMO-$n-N$n-w-2026-11-25.md"
     printf '# worker\n\n## Results\n\n- 10:00 LIVE - x\n' > "$f"
     [ "$n" -eq 2 ] || old "$f" 161
 done
 W() { echo "$BUCKET/DEMO-$1-N$1-w-2026-11-25.md"; }
-for n in 1 3 5 7; do printf '# resume\n\n## Results\n\n- 10:00 LIVE - x\n' > "$(W $n | sed 's/\.md$/-RESUME.md/')"; done
+for n in 1 3 5 7 11 12 13 14; do printf '# resume\n\n## Results\n\n- 10:00 LIVE - x\n' > "$(W $n | sed 's/\.md$/-RESUME.md/')"; done
 MANIFEST="$BUCKET/DEMO-chief-2026-11-25.fleet.json"
 rows=""
-for n in 1 2 3 4 5 6 7 8 9 10; do rows="$rows${rows:+,}{\"doc\":\"$(W $n)\",\"label\":\"N$n\",\"lane\":\"native\"}"; done
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do rows="$rows${rows:+,}{\"doc\":\"$(W $n)\",\"label\":\"N$n\",\"lane\":\"native\"}"; done
 printf '{"schema":1,"workers":[%s]}\n' "$rows" > "$MANIFEST"
 
 mkdir -p "$WORK/cache/launch-logs"
-for n in 1 3 4 5; do
+for n in 1 3 4 5 11 12 13 14; do
     printf '2026-11-25T10:00:00Z session_id=sid%s model=claude-sonnet-5-5 profile=worker-impl lane=native role=worker\n' "$n" > "$WORK/cache/launch-logs/DEMO-$n-N$n-w-2026-11-25.log"
 done
 
 sleep 600 &
 LIVE_PID=$!
-printf '#!/usr/bin/env bash\ncat "%s/census.txt"\n' "$WORK" > "$WORK/census.sh"
+cat > "$WORK/census.sh" <<'EOF'
+#!/usr/bin/env bash
+cat "$WORK/census.txt"
+exit "${CENSUS_RC:-0}"
+EOF
+printf '#!/usr/bin/env bash\nexit 1\n' > "$WORK/census-fail.sh"
 {
     printf '%s\t%s\topus\t200000\n' "$LIVE_PID" "DEMO-9-N9-w-2026-11-25"
     printf '%s\t%s\topus\t200000\n' 205 "DEMO-5-N5-w-2026-11-25-RESUME"
@@ -146,6 +151,21 @@ check "10b. a bus refusal owes a row" "SILENT-ACT N10 nudge=failed owed=o5" "$ou
 touch "$(W 3)"; old "$(W 3)" 170
 out="$(CONFIRM_FAIL=1 run N3 170)"
 check "11a. an unconfirmed launch owes" "SILENT-ACT N3 nudge=no-window relaunch=failed owed=o6" "$out"
+
+census_launches="$(count "$WORK/launch.log")"
+out="$(CENSUS_RC=3 run N11 161)"
+check "14a. a partial census (rc 3) that does not show the worker never relaunches: it owes" "SILENT-ACT N11 nudge=no-window census=unknown owed=o7" "$out"
+check "14b. and launched nothing" "$census_launches" "$(count "$WORK/launch.log")"
+printf '%s\t%s\topus\t200000\n' 301 "DEMO-12-N12-w-2026-11-25" >> "$WORK/census.txt"
+out="$(SILENT_ACT_NUDGE_GRACE_SECS=300 CENSUS_RC=3 run N12 161)"
+check "14c. a partial census keeps its readable rows: the worker it shows is a live window, nudged first" "SILENT-ACT N12 nudged" "$out"
+out="$(CENSUS_RC=3 run N12 161)"
+check "14d. and after the grace it owes as a live window, never launched" "SILENT-ACT N12 live-silent owed=o8" "$out"
+out="$(SILENT_ACT_CENSUS="$WORK/census-fail.sh" run N13 161)"
+check "14e. a census that fails with no rows never relaunches: it owes" "SILENT-ACT N13 nudge=no-window census=unknown owed=o9" "$out"
+out="$(SILENT_ACT_CENSUS='' SILENT_ACT_CENSUS_LIB="$WORK/no-such-lib.sh" run N14 161)"
+check "14f. a census library that cannot be loaded never relaunches: it owes" "SILENT-ACT N14 nudge=no-window census=unknown owed=o10" "$out"
+check "14g. none of the four launched" "$census_launches" "$(count "$WORK/launch.log")"
 
 bash "$ACT" --doc "$CHIEF_DOC" >/dev/null 2>&1; check "12a. missing arguments exit 2" "2" "$?"
 
