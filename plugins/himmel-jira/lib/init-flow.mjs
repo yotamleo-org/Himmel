@@ -13,6 +13,7 @@ export function loadEnvIntoProcess(envPath) {
     if (!t || t.startsWith('#') || !t.includes('=')) continue;
     const [k, ...rest] = t.split('=');
     const key = k.trim();
+    if (key === 'JIRA_ALLOW_HOST') continue;
     const value = rest.join('=').trim();
     // Strip optional surrounding quotes
     const unquoted = value.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
