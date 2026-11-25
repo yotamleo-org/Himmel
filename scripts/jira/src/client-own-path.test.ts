@@ -50,7 +50,7 @@ describe('CLI .env resolution from an unrelated cwd', () => {
     expect(existsSync(join(jiraDir, 'dist', 'index.js'))).toBe(true);
     const run = spawnSync(process.execPath, [join(root, 'scripts', 'jira', 'dist', 'index.js'), 'get', 'DUMMY-1'], {
       cwd,
-      env: { PATH: process.env.PATH, HOME: home },
+      env: { PATH: process.env.PATH, HOME: home, JIRA_ALLOW_HOST: 'fixture.invalid' },
       encoding: 'utf8',
       timeout: 30000,
     });
@@ -99,7 +99,7 @@ describe('CLI .env resolution from an unrelated cwd', () => {
       join(root, 'scripts', 'jira', 'dist', 'index.js'), 'list',
     ], {
       cwd: runCwd,
-      env: { PATH: process.env.PATH, HOME: projectHome, ...(exported ? { JIRA_PROJECT_KEY: exported } : {}) },
+      env: { PATH: process.env.PATH, HOME: projectHome, JIRA_ALLOW_HOST: 'fixture.invalid', ...(exported ? { JIRA_PROJECT_KEY: exported } : {}) },
       encoding: 'utf8',
       timeout: 30000,
     });
@@ -169,7 +169,7 @@ describe('CLI credentials from the keyring', () => {
     const run = spawnSync(process.execPath, [
       '--import', pathToFileURL(preload).href,
       join(root, 'scripts', 'jira', 'dist', 'index.js'), 'list',
-    ], { cwd: project, env: { ...stub.env, HOME: home }, encoding: 'utf8', timeout: 30000 });
+    ], { cwd: project, env: { ...stub.env, HOME: home, JIRA_ALLOW_HOST: 'fixture.invalid' }, encoding: 'utf8', timeout: 30000 });
     expect(run.error).toBeUndefined();
     expect(run.status).toBe(0);
     return JSON.parse(run.stdout).auth;

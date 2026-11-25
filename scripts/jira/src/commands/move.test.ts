@@ -248,6 +248,7 @@ describe('jira move into a version, for operator work', () => {
     vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
     vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(process, 'exit').mockImplementation(((code: number) => { throw new Error(`exit ${code}`); }) as never);

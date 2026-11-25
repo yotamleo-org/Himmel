@@ -14,7 +14,7 @@ const DOTENV_KEYS = new Set([
   'JIRA_SEVERITY_FIELD', 'JIRA_BOARD_ID', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN',
 ]);
 
-const CONFIG_KEYS = new Set(['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_PROJECT_KEY']);
+const CONFIG_KEYS = new Set(['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_PROJECT_KEY', 'JIRA_ALLOW_HOST']);
 
 // The credentials a station secrets move takes out of .env. The one resolver is asked before
 // .env is read (environment, credentials directory, keyring, then .env), so a
@@ -57,6 +57,7 @@ export function loadEnvFile(envPath: string): void {
 export function normalizeEnv(): void {
   for (const key of [
     'JIRA_BASE_URL',
+    'JIRA_ALLOW_HOST',
     'JIRA_EMAIL',
     'JIRA_API_TOKEN',
     'JIRA_PROJECT_KEY',
@@ -87,6 +88,37 @@ function ensureEnvLoaded(): void {
 }
 if (!underTest()) ensureEnvLoaded();
 
+const TENANT_HOST = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.atlassian\.net$/;
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+export function checkJiraDestination(raw: string, what: string): string {
+  ensureEnvLoaded();
+  const refuse = (why: string): never => {
+    throw new Error(
+      `${what} is refused: ${why}. The Jira destination must be https://<tenant>.atlassian.net. ` +
+        'A self-hosted or other Jira host is allowed only when the operator names it in JIRA_ALLOW_HOST ' +
+        '(shell environment or ~/.himmel/himmel.conf, never a project file), for example ' +
+        'JIRA_ALLOW_HOST=jira.corp.example. No request was sent and no credential left this process.',
+    );
+  };
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return refuse('it is not a valid URL');
+  }
+  const secure = url.protocol === 'https:';
+  if (!secure && url.protocol !== 'http:') return refuse('it is not an https URL');
+  if (!url.hostname) return refuse('it has no hostname');
+  if (url.username || url.password) return refuse('it carries a user name or password');
+  const allowed = (process.env.JIRA_ALLOW_HOST ?? '').trim().toLowerCase();
+  const named = allowed !== '' && url.host === allowed;
+  if (named && (secure || (LOOPBACK_HOSTS.has(url.hostname) && url.port !== ''))) return raw;
+  if (!secure) return refuse(named ? 'plain http is allowed only for a loopback host named with its port in JIRA_ALLOW_HOST' : 'it is not an https URL');
+  if (TENANT_HOST.test(url.hostname) && !url.port) return raw;
+  return refuse(allowed ? 'its host is neither a tenant of atlassian.net nor the one JIRA_ALLOW_HOST names' : 'its host is not a tenant of atlassian.net');
+}
+
 export const baseUrl = (): string => {
   ensureEnvLoaded();
   // No hardcoded default. A stranger who sets a token but
@@ -99,7 +131,7 @@ export const baseUrl = (): string => {
         'and re-run. See .env.example + docs/setup/new-machine.md.',
     );
   }
-  return url;
+  return checkJiraDestination(url, 'JIRA_BASE_URL');
 };
 
 export const projectKey = (): string => {
@@ -397,6 +429,7 @@ export async function uploadMultipart(
   if (!existsSync(filePath)) {
     throw new Error(`attachment not found: ${filePath}`);
   }
+  checkJiraDestination(url, 'the upload URL');
   await liveTestUploadGuard(url, baseUrl, hookGetter(auth));
   refuseTestWrite(`POST ${url}`, url);
   const data = readFileSync(filePath);
@@ -426,6 +459,7 @@ export function uploadAttachment(issueKey: string, filePath: string): Promise<un
 }
 
 export async function downloadTo(fullUrl: string, outPath: string, auth: string = authHeader()): Promise<number> {
+  checkJiraDestination(fullUrl, 'the download URL');
   const { res, body } = await fetchWithDeadline(`GET ${fullUrl}`, fullUrl, { headers: { Authorization: auth } }, true, true);
   const buf = body as Buffer;
   assertAuthenticated(res);

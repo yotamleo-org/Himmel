@@ -57,6 +57,7 @@ const himmel = () => declare(releaseCtx('v1.1.3'), { project: 'HIMMEL', versions
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'leave-'));
   vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+  vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
   vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'release'));
   vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));
   vi.stubEnv('HIMMEL_VERSION_WRITES', '');

@@ -20,7 +20,7 @@ describe('assign', () => {
     });
   });
   it('resolves an email to an accountId', async () => {
-    process.env.JIRA_BASE_URL = 'https://x.example';
+    process.env.JIRA_BASE_URL = 'https://x.atlassian.net';
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true, status: 200, text: async () => '[{"accountId":"abc"}]',
     })));

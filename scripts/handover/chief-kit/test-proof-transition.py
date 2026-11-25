@@ -89,7 +89,7 @@ class LoopbackFlow(unittest.TestCase):
 
     def cli(self, stamp=False, status='Done', proof=True):
         env = {**os.environ, 'HOME': str(self.b), 'HIMMEL_CONFIG_DIR': str(self.b),
-               'JIRA_BASE_URL': 'http://127.0.0.1:' + str(self.server.server_port), 'JIRA_EMAIL': 'fixture@example.invalid',
+               'JIRA_BASE_URL': 'http://127.0.0.1:' + str(self.server.server_port), 'JIRA_ALLOW_HOST': '127.0.0.1:' + str(self.server.server_port), 'JIRA_EMAIL': 'fixture@example.invalid',
                'JIRA_API_TOKEN': 'fixture-only', 'JIRA_PROJECT_KEY': 'HIMMEL', 'HIMMEL_ADMISSIONS_LEDGER': str(self.b / 'admissions.jsonl')}
         return subprocess.run(['node', str(HERE.parents[1] / 'jira/dist/index.js'), 'transition', 'HIMMEL-9848', status,
             *([] if stamp else ['--no-version']),
@@ -251,7 +251,7 @@ class RemainderPath(LoopbackFlow):
 
     def cli_with(self, env_extra, status='Done'):
         env = {**os.environ, 'HOME': str(self.b), 'HIMMEL_CONFIG_DIR': str(self.b),
-               'JIRA_BASE_URL': 'http://127.0.0.1:' + str(self.server.server_port), 'JIRA_EMAIL': 'fixture@example.invalid',
+               'JIRA_BASE_URL': 'http://127.0.0.1:' + str(self.server.server_port), 'JIRA_ALLOW_HOST': '127.0.0.1:' + str(self.server.server_port), 'JIRA_EMAIL': 'fixture@example.invalid',
                'JIRA_API_TOKEN': 'fixture-only', 'JIRA_PROJECT_KEY': 'HIMMEL', 'HIMMEL_ADMISSIONS_LEDGER': str(self.b / 'admissions.jsonl'),
                **{k: v for k, v in env_extra.items() if k != 'HOME'}}
         self.command = ['node', str(HERE.parents[1] / 'jira/dist/index.js'), 'transition', 'HIMMEL-9848', status, '--no-version',
