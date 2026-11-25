@@ -449,6 +449,18 @@ assert_has "$runbook" "fork-rebase step" "runbook has a fork-rebase step"
 assert_has "$runbook" "REBASED in this fix" "runbook reports a fork as CURRENT, REBASED in this fix or HELD"
 assert_has "$runbook" "operator hold" "runbook leaves a fork behind only for an operator hold"
 assert_lacks "$runbook" "qmd is the standing example" "runbook no longer parks qmd as a standing skip"
+assert_lacks "$runbook" "--push" "drift-fix never runs resync-fork.sh --push"
+assert_lacks "$runbook" "force-with-lease" "drift-fix never force-pushes a fork"
+assert_has "$runbook" "git -C <clone> push --atomic fork HEAD:refs/heads/himmel-main-upstream-" "drift-fix publishes a new branch and tag with a plain push"
+if grep -q -F 'resync-fork.sh --sync <owner/repo>`' "$SCRIPT_DIR/../../.claude/commands/drift-fix.md"; then
+  fail "drift-fix calls an unflagged resync-fork.sh --sync (it force-pushes the himmel branch)"
+else
+  pass "drift-fix calls --sync only as an audit (--dry-run)"
+fi
+resyncbook=$(cat "$SCRIPT_DIR/../../.claude/commands/fork-resync.md")
+assert_lacks "$resyncbook" 'resync-fork.sh <name> --push`' "fork-resync no longer allows resync-fork.sh --push to publish"
+assert_has "$resyncbook" "git -C <clone> push --atomic fork HEAD:refs/heads/himmel-main-upstream-" "fork-resync publishes a new branch and tag with a plain push"
+assert_has "$(cat "$CADENCE")" "run --sync only with --dry-run" "the resync prompt allows --sync only as --dry-run"
 
 echo ""
 if [ "$fails" -eq 0 ]; then

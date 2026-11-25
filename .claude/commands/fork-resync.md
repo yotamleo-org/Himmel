@@ -31,9 +31,10 @@ is why this is a runbook and not a shell script.
 carried commits → `gh repo sync` of the fork's default branch plus a rebase of
 our commits onto upstream, pushed straight to the himmel branch. A conflict
 stops and names the paths. No sync PR, no judge, no CodeRabbit on upstream
-code; `block-fork-sync-pr.sh` refuses a `gh pr create` that tries. Run `--sync`
-by hand or from the drift fix's step 2C; the audit-only `HIMMEL-ForkResync`
-cadence must not invoke it. The steps
+code; `block-fork-sync-pr.sh` refuses a `gh pr create` that tries. The unflagged
+`--sync` moves the default branch and force-pushes the himmel branch, so only an
+operator runs it, by hand. The drift fix's step 2C and the audit-only
+`HIMMEL-ForkResync` cadence use `--sync --dry-run` only. The steps
 below audit the pin of an `upstreams.json` `fork` block; the PR in step 7 is the
 himmel pin move, never a PR into the fork.
 
@@ -42,8 +43,7 @@ himmel pin move, never a PR into the fork.
 1. **Never bump `synced_base` without a completed rebase.** If you cannot finish
    the re-sync, leave the entry BEHIND. A truthful BEHIND is the product here.
 2. **Never push to the fork remote until the rebased result is clean, tested and
-   additive-or-declared.** `resync-fork.sh --push` enforces this for its own
-   branch, so do not work around it.
+   additive-or-declared.**
 
 `--dry-run` = report the rebase result, change nothing, push nothing.
 
@@ -131,10 +131,15 @@ Run step 5's checks against the rebased tip in the scratch clone first, and push
 only once they pass. Then push the rebased tip to a NEW branch `himmel-main-upstream-<target>` and a NEW
 tag `himmel-pin/<version>-himmel.1`, with a plain `git push` from the scratch
 clone, and keep the old tip reachable as tag `himmel-presync/<branch>-<sha12>`.
-Never push over the fork's default branch and never force-push: moving that
-branch is the operator's word. A clean additive result may also use
-`bash scripts/upstreams/resync-fork.sh <name> --push` (its own
-`himmel-resync/<name>` branch).
+Never push over the fork's default branch or the himmel branch and never
+force-push: moving those is the operator's word. The command, from the scratch
+clone (remote `fork`):
+
+```bash
+git -C <clone> push --atomic fork HEAD:refs/heads/himmel-main-upstream-<target> HEAD:refs/tags/himmel-pin/<version>-himmel.1 <old-tip>:refs/tags/himmel-presync/<branch>-<sha12>
+```
+
+`resync-fork.sh --push` is not used: it force-pushes its own branch.
 
 The modes differ in who runs this step:
 
@@ -147,9 +152,7 @@ The modes differ in who runs this step:
   checks on the scratch-clone tip, push the new branch and tag as above only if
   they pass, then move the pin in step 6.
 
-`--push` still refuses a conflicted or non-additive rebase on its own — that
-guard is structural and independent of this one. Record the new fork SHA it
-prints; it is the pin.
+Record the new fork SHA (`git -C <clone> rev-parse HEAD`); it is the pin.
 
 ## 5. Prove the fork still works
 
