@@ -62,7 +62,7 @@ world() {
     set_lane t3
     printf '[{"number":101,"headRefName":"feat/himmel-9100-thing","headRefOid":"%s","isDraft":false,"isCrossRepository":false,"baseRefName":"main"}]\n' "$H1" > "$WORK/w/prs.json"
     printf '[{"id":11,"name":"CI","event":"pull_request","status":"completed","conclusion":"success","created_at":"2026-11-25T09:00:00Z","head_sha":"%s","run_attempt":1}]\n' "$H1" > "$WORK/w/runs.json"
-    : > "$WORK/w/dispositions.txt"
+    printf '# source mirror_age_min=1\n' > "$WORK/w/dispositions.txt"
 }
 set_tail() { printf '# HIMMEL-9100 — worker N1\n\n## Results (newest at the bottom)\n%s\n' "$1" > "$DOC1"; }
 set_lane() { printf '{"schema":1,"legs":[{"doc":"%s","label":"N1","lane":"%s"}]}\n' "$DOC1" "$1" > "$WORK/w/fleet.json"; }
@@ -250,6 +250,23 @@ has "dispatch-owed: operator-directed To Do, listed" "DUTY dispatch-owed HIMMEL-
 hasnt "dispatch-owed: an owned ticket is not owed" "HIMMEL-9202" "$OUT"
 hasnt "dispatch-owed: no operator-directed label" "HIMMEL-9203" "$OUT"
 hasnt "dispatch-owed: not To Do" "HIMMEL-9204" "$OUT"
+hasnt "dispatch-owed: a healthy read prints no pool-unread line" "pool unread" "$OUT"
+printf '# open PRs unknown (the PR list failed)\n# disposition HIMMEL-9201 listed LOCAL tier 2\n' > "$WORK/w/dispositions.txt"
+sweep
+has "dispatch-owed: open PRs unknown reads as pool unread" "DUTY? pool unread" "$OUT"
+hasnt "dispatch-owed: open PRs unknown lists no ticket" "dispatch-owed" "$OUT"
+printf '# core-check failed: the classifier could not run\n# disposition HIMMEL-9201 listed LOCAL tier 2\n' > "$WORK/w/dispositions.txt"
+sweep
+has "dispatch-owed: core-check failed reads as pool unread" "DUTY? pool unread" "$OUT"
+hasnt "dispatch-owed: core-check failed lists no ticket" "dispatch-owed" "$OUT"
+printf '# disposition HIMMEL-9201 listed LOCAL tier 2\n' > "$WORK/w/dispositions.txt"
+touch -d '31 minutes ago' "$WORK/w/dispositions.txt"
+sweep
+has "dispatch-owed: a copy older than 1800 s reads as pool unread" "DUTY? pool unread" "$OUT"
+hasnt "dispatch-owed: a stale copy lists no ticket" "dispatch-owed" "$OUT"
+touch -d '29 minutes ago' "$WORK/w/dispositions.txt"
+sweep
+has "dispatch-owed: a copy under 1800 s is judged" "DUTY dispatch-owed HIMMEL-9201 :: " "$OUT"
 
 world
 OWE_NOW_EPOCH=$((NOW - 20000)) bash "$OWE" add --bucket "$B" --chief c --kind proof --text "quote the live wake" --key HIMMEL-9100 >/dev/null

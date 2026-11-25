@@ -335,10 +335,8 @@ if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
 fi
 
 dispo=""
-dispo_file="${CHIEF_DUTY_SWEEP_DISPOSITIONS:-}"
-if [ -n "$dispo_file" ]; then
-    dispo=$(cat "$dispo_file" 2>/dev/null) || dispo=""  # swallow-ok: an unreadable seam file reads as no dispositions
-else
+dispo_path="${CHIEF_DUTY_SWEEP_DISPOSITIONS:-}"
+if [ -z "$dispo_path" ]; then
     cache="$state/chief-duty-sweep-dispositions.txt"
     if [ ! -s "$cache" ] || [ $(( $(date +%s) - $(stat -c %Y "$cache" 2>/dev/null || echo 0) )) -gt 1800 ]; then  # gnu-ok: Linux-only kit; swallow-ok: an unreadable cache reads as old, so it is refreshed
         if mkdir "$state/chief-duty-sweep-pool.lock" 2>/dev/null; then  # prim-ok: Linux-only kit; one background refresh at a time, a dead one is dropped after 10 min below
@@ -348,9 +346,14 @@ else
             [ -z "$(find "$state/chief-duty-sweep-pool.lock" -maxdepth 0 -mmin +10 2>/dev/null)" ] || rmdir "$state/chief-duty-sweep-pool.lock" 2>/dev/null  # gnu-ok: Linux-only kit; swallow-ok: losing the race to another sweep is fine
         fi
     fi
-    dispo=$(cat "$cache" 2>/dev/null) || dispo=""  # swallow-ok: no cache yet reads as unread below
-    [ -n "$dispo" ] || unread "pool"
+    dispo_path="$cache"
 fi
+dispo=$(cat "$dispo_path" 2>/dev/null) || dispo=""  # read-sink-ok: the dispositions copy this script wrote, or the test seam set by the invoking process; swallow-ok: an unreadable copy reads as unread below
+if [ -n "$dispo" ]; then
+    dispo_age=$(( $(date +%s) - $(stat -c %Y "$dispo_path" 2>/dev/null || echo 0) ))  # gnu-ok: Linux-only kit; swallow-ok: an unreadable copy reads as old, which is unread below
+    if [ "$dispo_age" -gt 1800 ] || printf '%s\n' "$dispo" | grep -qE 'open PRs unknown|core-check failed'; then dispo=""; fi
+fi
+[ -n "$dispo" ] || unread "pool"
 if [ -n "$dispo" ]; then
     mirror="${CHIEF_DUTY_SWEEP_MIRROR:-}"
     if [ -z "$mirror" ]; then
