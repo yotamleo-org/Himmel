@@ -337,11 +337,15 @@ approval, and the worker's retry passes the classifier for that one call.
    and exits 0 on every path. It files only a reason with a bracketed classifier category
    (`[Unauthorized Persistence]`): a no-verdict denial, "Classifier unavailable" or a
    credential, secret, token or exfiltration category files nothing.
-   The hook then tells the operator's bridge chat, the chat the chief's messages and
-   Approve prompts are in (chat id = the helper's `operator_id`), every send detached so
-   nothing delays the hook. The chief `<C>` is the current one: `HIMMEL_CONSOLE_NAME`
-   names the launching chief, and each `consoles/<chief>.md.handover` marker chief.sh
-   writes at a succession is followed while the successor's inbox exists.
+   The hook then sends one line or card per result, every send detached so nothing
+   delays the hook. The card goes to the operator's bridge chat, the chat the chief's
+   messages and Approve prompts are in (chat id = the helper's `operator_id`); the other
+   lines go through the bridge outbox, whose class table routes each kind (a refusal to
+   the monitoring chat, an expiry to the operator's chat). The chief `<C>` is the current
+   one: `HIMMEL_CONSOLE_NAME` names the launching chief, and each
+   `consoles/<chief>.md.handover` marker chief.sh writes at a succession is followed while
+   the successor's inbox exists. A name that is not a plain session name (a `/`, `..` or
+   any character outside `[A-Za-z0-9._-]`) is no chief and is never followed.
    - `result=pending`: the card (`afk-sudo-request --card`: id, session, chief, Approve /
      Deny), and one detached waiter (`--watch`) that polls `afk-sudo status <id>` and
      posts `grant <id> from session <S> (chief <C>) expired, nothing ran` through the

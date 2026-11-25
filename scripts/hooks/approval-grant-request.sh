@@ -98,7 +98,7 @@ command_head() {
 notify() {
     local op inbox=''
     op=$(jq -r '.operator_id // empty' "$CONFIG" 2>/dev/null | grep -E '^-?[0-9]{1,20}$' | head -1)  # swallow-ok: no readable operator id means no send
-    [ -n "${2:-}" ] && inbox="$CONSOLES/$2.md"
+    name_ok "${2:-}" && inbox="$CONSOLES/$2.md"
     [ -n "$op" ] || [ -n "$inbox" ] || return 0
     # shellcheck disable=SC2016
     detach_run bash -c '. "$1" || exit 0
@@ -116,8 +116,9 @@ fi
 who=${sname:-$session}
 head=$(command_head "$(jq -r '.tool_input.command' <<<"$input")")
 chief=${HIMMEL_CONSOLE_NAME:-}
+name_ok "$chief" || chief=''
 if [ -n "$chief" ]; then
-    name_ok "$chief" && chief=$(current_chief "$chief")
+    chief=$(current_chief "$chief")
 elif [ -n "$sname" ] && [ -f "$CONSOLES/$sname.md" ]; then
     chief=$(current_chief "$sname")
 else

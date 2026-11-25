@@ -108,7 +108,7 @@ if [ -n "$watch" ]; then
     current_chief() {
         local c=${HIMMEL_CONSOLE_NAME:-} next seen=" ${HIMMEL_CONSOLE_NAME:-} "
         local consoles="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles"
-        while [ -n "$c" ] && [ -f "$consoles/$c.md.handover" ] && [ -r "$consoles/$c.md.handover" ]; do
+        while [[ $c =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $c != *..* ]] && [ -f "$consoles/$c.md.handover" ] && [ -r "$consoles/$c.md.handover" ]; do
             next=$(sed -n 1p "$consoles/$c.md.handover" | tr -d '[:space:]')
             [[ $next =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $next != *..* ]] && [ -f "$consoles/$next.md" ] || break
             case "$seen" in *" $next "*) break ;; esac
