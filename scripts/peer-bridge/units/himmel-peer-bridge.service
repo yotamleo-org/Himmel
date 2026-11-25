@@ -3,8 +3,6 @@
 #   systemctl --user daemon-reload && systemctl --user enable --now himmel-peer-bridge.service
 [Unit]
 Description=himmel peer bridge poller
-# No network-online.target here: the user manager has no such target, so the lines did nothing.
-# The poller retries its start lookup itself and exits non-zero if it never succeeds (Restart=on-failure).
 
 [Service]
 Type=simple

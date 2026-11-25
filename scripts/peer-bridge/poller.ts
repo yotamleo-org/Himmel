@@ -191,8 +191,6 @@ export class Poller {
     try { await this.lookupUsername(); } catch (e) { this.log(`username lookup failed: ${(e as Error).message}`); }
   }
 
-  // The first lookup after a boot can run before the network is up. Retry it with a bounded
-  // backoff (60 s of waiting in all); a lookup that never succeeds throws, so the process exits non-zero.
   private async startLookup() {
     const wait = this.deps.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)));
     for (let n = 1, delay = START_LOOKUP_FIRST_WAIT_MS; ; n++) {
