@@ -297,7 +297,7 @@ export function qmdRefresh(root: string, run: (args: string[]) => string = (a) =
       const path = /^\s*Path:\s*(.+)$/m.exec(run(['collection', 'show', COLLECTION]))?.[1]?.trim();
       if (!path || resolve(path) !== resolve(root)) throw new Error(`collection ${COLLECTION} points at ${path ?? 'an unknown path'}, not ${root}`);
     }
-    run(['update']);
+    run(['update', '-c', COLLECTION]);
     run(['embed', '-c', COLLECTION]);
     return `qmd: collection ${COLLECTION} updated and embedded`;
   } catch (err) {

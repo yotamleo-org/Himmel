@@ -522,6 +522,7 @@ STUB
             ${1:+"tracker-plan: $1"} '' \
             '## Results (newest at the bottom)' '- 12:00 DISPATCH N361' > "$W/handover/chief.md"
     }
+    bump4051() { sed -i.bak "s/why-[a-z0-9]*/why-$1/" "$p4051_plan/stage3/placement.tsv"; rm -f "$p4051_plan/stage3/placement.tsv.bak"; }
     t4051() {
         PATH="$W/bin-3361:$PATH" QMD_CALLS="$p4051_calls" ROADMAP_QMD_BIN="$p4051/qmd" TICK_PLAN_INDEX_OUT="$p4051_out" \
             TICK_TRACKER_MIRROR_DIR="$p4051_mir" bash "$SUT" --workers "$W/handover/$b3361.md" "$@"
@@ -556,7 +557,7 @@ STUB
     not_contains 'the due refresh made the index healthy again' "$(t4051)" ' plan-index='
 
     # a failing qmd: FAIL:<why>, and the backoff stops a relaunch every tick
-    echo three >> "$p4051_mir/HIMMEL-111.md"
+    echo three >> "$p4051_mir/HIMMEL-111.md"; bump4051 three
     rm -f "$p4051_out/.last-run"
     TICK_PLAN_INDEX_MIN_SECS=0 QMD_FAIL=1 t4051 >/dev/null
     wait4051
@@ -566,7 +567,7 @@ STUB
     [ "$(wc -l < "$p4051_calls")" -eq "$n4051" ] && pass 'a recent failure is not relaunched' || fail 'failure relaunched inside the backoff'
 
     # a slow qmd never holds the tick: it returns while the refresh is still running
-    echo four >> "$p4051_mir/HIMMEL-111.md"
+    echo four >> "$p4051_mir/HIMMEL-111.md"; bump4051 four
     rm -f "$p4051_out/.last-fail" "$p4051_out/.last-run"
     s4051=$SECONDS
     o4051="$(TICK_PLAN_INDEX_MIN_SECS=0 QMD_SLEEP=4 t4051)"
