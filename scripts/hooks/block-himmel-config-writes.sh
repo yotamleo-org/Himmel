@@ -128,6 +128,7 @@ if [ -n "${HIMMEL_API_CREDIT_CONFIG:-}" ]; then
 fi
 DARWIN=0
 case "${OSTYPE:-}" in darwin*) DARWIN=1 ;; esac
+if [ -e /System/Library/CoreServices/SystemVersion.plist ]; then DARWIN=1; fi
 if [ "${HIMMEL_GUARD_FORCE_DARWIN:-}" = 1 ]; then DARWIN=1; fi
 fold_to() {
     FOLDED="$1"
@@ -222,10 +223,12 @@ station_env_resolved() {
     hook_resolve_m "$f" 2>/dev/null
 }
 deny_station_env() {
-    local tool="$1" given="$2" resolved="$3" env_r
-    case "$resolved" in */.env) ;; *) return 0 ;; esac
+    local tool="$1" given="$2" resolved="$3" env_r f_resolved
+    fold_to "$resolved"; f_resolved="$FOLDED"
+    case "$f_resolved" in */.env) ;; *) return 0 ;; esac
     env_r=$(station_env_resolved) || deny "$tool targets $given, a .env file, and the station .env could not be resolved to compare it with (fail-closed)"
-    [ "$resolved" = "$env_r" ] || return 0
+    fold_to "$env_r"
+    [ "$f_resolved" = "$FOLDED" ] || return 0
     # shellcheck disable=SC2016 # the remedy shows $id literally
     REMEDY='    The station .env is changed through the config audit, so a deliberate edit
     leaves a row and the watcher can tell it from damage. Audited route:
@@ -428,12 +431,14 @@ EOF
             # A failed batch (e.g. one path over the OS argument limit) must
             # DENY: an empty result would read as "nothing resolves to it".
             resolved=$(hook_resolve_m "${cand[@]}" 2>/dev/null) || deny "apply_patch paths could not be resolved (an oversized path?); split the patch"
+            fold_to "$cfg_res"; f_cfg_res="$FOLDED"
             while IFS= read -r r; do
                 station_path "$r" && deny "an apply_patch target resolves to station config"
                 roles_path "$r" && deny "an apply_patch target resolves to the API role map ($r)"
-                [ "$r" = "$cfg_res" ] && deny "an apply_patch target resolves to ~/.himmel/config.json"
-                case "$r" in */.himmel/project.conf) deny "an apply_patch target resolves to a project file ($r)" ;; esac
-                case "$r" in */.himmel/outside-pr-approvals.jsonl|*/.himmel/outside-contributors.json) deny "an apply_patch target resolves to an outside-review store ($r)" ;; esac
+                fold_to "$r"; f_r="$FOLDED"
+                [ "$f_r" = "$f_cfg_res" ] && deny "an apply_patch target resolves to ~/.himmel/config.json"
+                case "$f_r" in */.himmel/project.conf) deny "an apply_patch target resolves to a project file ($r)" ;; esac
+                case "$f_r" in */.himmel/outside-pr-approvals.jsonl|*/.himmel/outside-contributors.json) deny "an apply_patch target resolves to an outside-review store ($r)" ;; esac
                 deny_station_env apply_patch "$r" "$r"
             done <<EOF
 $resolved

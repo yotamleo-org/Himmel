@@ -16,7 +16,7 @@ command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 
 T="$(mktemp -d "${TMPDIR:-/tmp}/himmel-config-hook.XXXXXX")" || exit 1
 trap 'rm -rf "$T"' EXIT
-export HOME="$T/home"
+export HOME="$T/HoMe"
 mkdir -p "$HOME/.himmel"
 printf '{}\n' > "$HOME/.himmel/config.json"
 ln -s "$HOME/.himmel/config.json" "$T/alias.json"
@@ -643,6 +643,42 @@ export HIMMEL_CONFIG_AUDIT_ENV_FILE="$T/loop/l1/x"
 bsd_file_case "a .env write when the station .env cannot be resolved -> block (fail-closed)" block "$T/other/.env"
 bsd_file_case "a non-.env write when the station .env cannot be resolved -> allow" allow "$T/other/notes.txt"
 unset HIMMEL_CONFIG_AUDIT_ENV_FILE
+
+echo "== HIMMEL-7888 round 2: Darwin folds on the resolved forms, and the lexical form resolved =="
+mkdir -p "$T/StAtIoN-Env" "$T/CoNf" "$T/CrEdIt"
+: > "$T/StAtIoN-Env/.env"
+ln -s "$HOME/.HIMMEL/config.json" "$T/AlCfg.json"
+ln -s "$HOME/.HIMMEL/state/api-credit/roles.json" "$T/AlRoles.json"
+ln -s "$HOME/.HIMMEL/outside-contributors.json" "$T/AlStore.json"
+ln -s "$HOME/.HIMMEL/project.conf" "$T/AlProj.conf"
+ln -s "$HOME/.HIMMEL/notes.txt" "$T/AlNotes.txt"
+ln -s "$T/elsewhere/himmel.conf" "$T/CoNf/himmel.conf"
+export HIMMEL_GUARD_FORCE_DARWIN=1
+export HIMMEL_CONFIG_AUDIT_ENV_FILE="$T/StAtIoN-Env/.env"
+file_case "7888 Darwin: Write to the station .ENV -> block" block Write "$T/StAtIoN-Env/.ENV"
+patch_case "7888 Darwin: apply_patch on the station .ENV -> block" block "*** Begin Patch${NL}*** Update File: $T/StAtIoN-Env/.ENV${NL}@@${NL}-a${NL}+b${NL}*** End Patch"
+file_case "7888 Darwin control: another project's .ENV -> allow" allow Write "$T/other/.ENV"
+unset HIMMEL_CONFIG_AUDIT_ENV_FILE
+file_case "7888 Darwin: alias to ~/.HIMMEL/config.json -> block" block Write "$T/AlCfg.json"
+file_case "7888 Darwin: alias to the role map in another case -> block" block Write "$T/AlRoles.json"
+file_case "7888 Darwin: alias to outside-contributors.json in another case -> block" block Write "$T/AlStore.json"
+file_case "7888 Darwin control: alias to ~/.HIMMEL/notes.txt -> allow" allow Write "$T/AlNotes.txt"
+patch_case "7888 Darwin: apply_patch header through an alias to the config -> block" block "*** Begin Patch${NL}*** Update File: $T/AlCfg.json${NL}@@${NL}*** End Patch"
+patch_case "7888 Darwin: apply_patch header through an alias to project.conf -> block" block "*** Begin Patch${NL}*** Update File: $T/AlProj.conf${NL}@@${NL}*** End Patch"
+patch_case "7888 Darwin: apply_patch header through an alias to outside-contributors.json -> block" block "*** Begin Patch${NL}*** Update File: $T/AlStore.json${NL}@@${NL}*** End Patch"
+patch_case "7888 Darwin control: apply_patch header through an alias to notes.txt -> allow" allow "*** Begin Patch${NL}*** Update File: $T/AlNotes.txt${NL}@@${NL}*** End Patch"
+export HIMMEL_CONFIG_DIR="$T/CoNf"
+file_case "7888 Darwin: HIMMEL_CONFIG_DIR written to in another case -> block" block Write "$T/CONF/himmel.conf"
+file_case "7888 Darwin control: HIMMEL_CONFIG_DIR, another file -> allow" allow Write "$T/CONF/notes.txt"
+unset HIMMEL_CONFIG_DIR
+export HIMMEL_API_CREDIT_CONFIG="$T/CrEdIt/config.json"
+file_case "7888 Darwin: HIMMEL_API_CREDIT_CONFIG role map written to in another case -> block" block Write "$T/CREDIT/roles.json"
+file_case "7888 Darwin control: HIMMEL_API_CREDIT_CONFIG, another file -> allow" allow Write "$T/CREDIT/config.json"
+unset HIMMEL_API_CREDIT_CONFIG
+unset HIMMEL_GUARD_FORCE_DARWIN
+ln -s "$HOME/.himmel" "$T/S"
+file_case "7888 lexical form resolved: S/L/../config.json (S is ~/.himmel, L is elsewhere) -> block" block Write "$T/S/L/../config.json"
+file_case "7888 control: S/L/../notes.txt -> allow" allow Write "$T/S/L/../notes.txt"
 
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"

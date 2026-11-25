@@ -182,6 +182,7 @@ norm() {
 
 DARWIN=0
 case "${OSTYPE:-}" in darwin*) DARWIN=1 ;; esac
+if [ -e /System/Library/CoreServices/SystemVersion.plist ]; then DARWIN=1; fi
 if [ "${HIMMEL_GUARD_FORCE_DARWIN:-}" = 1 ]; then DARWIN=1; fi
 fold_to() {
     FOLDED="$1"

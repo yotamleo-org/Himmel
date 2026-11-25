@@ -93,6 +93,11 @@ deny "7888 Darwin: Himmel/bus/peers" "$(file_json Write "$SCR/state/Himmel/bus/p
 deny "7888 Darwin: both gaps (Himmel/L/../BUS)" "$(file_json Write "$SCR/state/Himmel/L/../BUS/peers/x.json")" HIMMEL_GUARD_FORCE_DARWIN=1
 allow "7888 Darwin control: Himmel/notes.txt" "$(file_json Write "$SCR/state/Himmel/notes.txt")" HIMMEL_GUARD_FORCE_DARWIN=1
 allow "7888 Darwin control: himmel/bus.json (the sibling, not the root)" "$(file_json Write "$SCR/state/himmel/BUS.json")" HIMMEL_GUARD_FORCE_DARWIN=1
+{ ln -s "$SCR/state/Himmel/BUS" "$SCR/AlBus" && ln -s "$SCR/elsewhere" "$SCR/state/himmel/bus/L2"; } || { echo "FAIL: cannot build the 7888 round-2 fixtures" >&2; exit 1; }
+deny "7888 Darwin: a symlink alias to Himmel/BUS with no bus in its name" "$(file_json Write "$SCR/AlBus/peers/x.json")" HIMMEL_GUARD_FORCE_DARWIN=1
+case "${OSTYPE:-}" in darwin*) ;; *) allow "7888 control (case-sensitive host): the same alias without the seam" "$(file_json Write "$SCR/AlBus/peers/x.json")" ;; esac
+deny "7888 lexical form resolved: alias/L2/../peers (L2 inside the store points elsewhere)" "$(file_json Write "$SCR/alias/L2/../peers/x.json")"
+allow "7888 control: alias/L2/../../notes.txt" "$(file_json Write "$SCR/alias/L2/../../notes.txt")"
 # BSD/macOS readlink has no -m. The shim refuses it and runs the real
 # readlink otherwise; the alias must still resolve (the guard never skips it).
 mkdir -p "$SCR/bsd-bin" && printf '#!/bin/sh\ncase "$1" in -m) echo "readlink: illegal option -- m" >&2; exit 1 ;; esac\nexec %s "$@"\n' "$(command -v readlink)" > "$SCR/bsd-bin/readlink" && chmod +x "$SCR/bsd-bin/readlink" || exit 1
