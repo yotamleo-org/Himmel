@@ -95,7 +95,6 @@ contains "19 T21: check 9 has no plugin files" "$out" "[PASS] 9. no plugin files
 contains "19 T6: the manifests of the head's run are downloaded" "$(gh_log)" "run download 555"
 notcontains "19 T6: never lists runs" "$(gh_log)" "run list"
 
-# T7 / T8: a suite CI skipped needs no local run: it counts as tier-skipped and the PASS line names it
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_ASKIPB"
 s17_at "$S17_H1"
 check "19 T7 CI skipped a suite: exit 0" "$rc" "0"
