@@ -239,11 +239,11 @@ Shell-unit CI runs on every pull request and is a required check (it starts with
 `ready-check.sh` item 19 reads its shard manifests as suite proof (see
 item 19 below).
 
-**A time-cap overrun alerts; an assertion failure fails.** A suite that hits its
-time cap on both the first run and the retry (or whose retry row times out with
-rc 124) and prints no FAIL row of its own is a `CAP-ALERT`: `run-shell-tests.sh`
-prints the line, counts the suite `ran 0` in the shard manifest and does not fail
-the run. CI uploads the lines as the `cap-alerts` artifact and a job-summary
+**A time-cap overrun alerts; an assertion failure fails.** A suite whose first
+run and retry each end on its time cap or on a timed-out row (rc 124), with no
+FAIL row of its own in either run, is a `CAP-ALERT`: `run-shell-tests.sh` prints
+the line, counts the suite `ran 0` in the shard manifest and does not fail the
+run. CI uploads the lines as a `cap-alerts-*` artifact and writes a job-summary
 line for each shard that raised one. A suite that prints a FAIL row of its own still exits 1, cap hit
 or not.
 
@@ -424,7 +424,7 @@ PR or narrow the change, then ask the chief for a judge NO-GO or a grant. Detail
 
 `ledger-append.sh rekey --head <sha> --id <finding-id> --line <token> [--file <path>] --reason <text>`
 fixes a finding row recorded with the wrong line (or file) token. It appends one
-signed correction row (an `amend` whose `set` carries `rekey: true`, the new line
+correction row (an `amend` whose `set` carries `rekey: true`, the new line
 token and, with `--file`, the new file) and leaves the finding row untouched. The
 token is a line or a range such as `1331` or `1331-1340`. The disposition reader
 (`scripts/lib/review-ledger-evidence.sh`) matches the original token or the token
