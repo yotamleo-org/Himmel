@@ -102,6 +102,7 @@ case "$* " in
         fi
         ;;
     *"pr create"*)
+        [ -z "${STUB_CREATE_FAIL:-}" ] || { echo "stub: create refused" >&2; exit 1; }
         if [ -n "${STUB_CREATE_STDERR:-}" ]; then
             echo "$STUB_CREATE_STDERR" >&2
         fi
@@ -543,7 +544,12 @@ assert_eq "fork PR of our own delta: opens (rc=0)" "0" "$rc_fo"
 contains "fork PR of our own delta: pr create ran" "$(cat "$ARGV_LOG")" "pr create"
 git -C "$REPO" remote set-url origin "$orig_url"
 
-# ── PR size bands: warn past the soft max, refuse past CodeRabbit's 300-file cap ──
+NOTE_LOG="$TMP_ROOT/note.log"
+NOTE_STUB="$TMP_ROOT/size-note-stub.sh"
+# shellcheck disable=SC2016
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$NOTE_LOG"\n' > "$NOTE_STUB"
+chmod +x "$NOTE_STUB"
+export NOTE_LOG SIZE_NOTE_SH="$NOTE_STUB"
 size_branch() {  # <name> <file-count> <lines-per-file>: a pushed branch cut from origin/main
     git -C "$REPO" checkout -q -b "$1" origin/main
     local d="$REPO/sz-$1" i
@@ -553,33 +559,79 @@ size_branch() {  # <name> <file-count> <lines-per-file>: a pushed branch cut fro
     git -C "$REPO" commit -qm "size fixture $1"
     git -C "$REPO" push -q -u origin "$1"
 }
+size_grow() {
+    local d="$REPO/sz-grow" i
+    mkdir -p "$d"
+    for ((i = 1; i <= $1; i++)); do seq "$2" > "$d/f$i"; done
+    git -C "$REPO" add sz-grow
+    git -C "$REPO" commit -qm "size fixture grow"
+    git -C "$REPO" push -q
+}
+body_sent() { cat "${ARGV_LOG}.body" 2>/dev/null; }  # read-sink-ok: the stub's capture under the test mktemp dir
+note_calls() { grep -c . "$NOTE_LOG" 2>/dev/null || true; }
 
-echo "TEST: a branch of 301 changed files is refused with SIZE-REFUSE and no pr create"
+echo "TEST: a branch of 301 changed files opens, with a coderabbit-band real row for the chief"
 reset_ledger
 size_branch feat/himmel-3031-files301 301 1
-: > "$ARGV_LOG"
+: > "$ARGV_LOG"; : > "$NOTE_LOG"
 err_s1=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s1=$?
-assert_eq "301 files: refused (rc=1)" "1" "$rc_s1"
-contains "301 files: names the count and the cap" "$err_s1" "SIZE-REFUSE files=301 cap=300"
-not_contains "301 files: no pr create call" "$(cat "$ARGV_LOG")" "pr create"
+assert_eq "301 files: opens (rc=0)" "0" "$rc_s1"
+not_contains "301 files: no SIZE-REFUSE" "$err_s1" "SIZE-REFUSE"
+contains "301 files: SIZE-WARN names the count" "$err_s1" "SIZE-WARN lines=301 files=301"
+contains "301 files: pr create ran" "$(cat "$ARGV_LOG")" "pr create"
+contains "301 files: the body carries the real count" "$(body_sent)" "pr-size: files=301 lines=301"
+assert_eq "301 files: one real row" "1" "$(note_calls)"
+contains "301 files: the row is a real note, band coderabbit, for this branch, trust unknown" "$(cat "$NOTE_LOG")" "note real HIMMEL-3031 nolabel --files 301 --trust unknown --band coderabbit --ref feat/himmel-3031-files301 --detail"
 
-echo "TEST: exactly 300 files opens (the cap is over 300)"
+echo "TEST: 300 files opens with a hard-band real row"
 size_branch feat/himmel-3031-files300 300 1
-: > "$ARGV_LOG"
+: > "$ARGV_LOG"; : > "$NOTE_LOG"
 err_s2=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s2=$?
 assert_eq "300 files: opens (rc=0)" "0" "$rc_s2"
 not_contains "300 files: no SIZE-REFUSE" "$err_s2" "SIZE-REFUSE"
 contains "300 files: warns on the file count" "$err_s2" "SIZE-WARN lines=300 files=300"
 contains "300 files: pr create ran" "$(cat "$ARGV_LOG")" "pr create"
+contains "300 files: the body carries the real count" "$(body_sent)" "pr-size: files=300 lines=300"
+assert_eq "300 files: one real row" "1" "$(note_calls)"
+contains "300 files: the row names band hard" "$(cat "$NOTE_LOG")" "--files 300 --trust unknown --band hard --ref feat/himmel-3031-files300"
+
+echo "TEST: a PR of 45 real files whose brief projected fewer opens with a hard-band real row"
+size_branch feat/himmel-3031-files45 45 1
+: > "$ARGV_LOG"; : > "$NOTE_LOG"
+err_s7=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s7=$?
+assert_eq "45 files: opens (rc=0)" "0" "$rc_s7"
+contains "45 files: SIZE-WARN" "$err_s7" "SIZE-WARN lines=45 files=45"
+contains "45 files: the body carries the real count" "$(body_sent)" "pr-size: files=45 lines=45"
+assert_eq "45 files: one real row" "1" "$(note_calls)"
+contains "45 files: the row names band hard" "$(cat "$NOTE_LOG")" "--files 45 --trust unknown --band hard --ref feat/himmel-3031-files45"
+
+echo "TEST: a PR between the soft and hard bands warns and writes no row"
+size_branch feat/himmel-3031-files25 25 1
+: > "$ARGV_LOG"; : > "$NOTE_LOG"
+err_s8=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s8=$?
+assert_eq "25 files: opens (rc=0)" "0" "$rc_s8"
+contains "25 files: SIZE-WARN" "$err_s8" "SIZE-WARN lines=25 files=25"
+contains "25 files: the body carries the real count" "$(body_sent)" "pr-size: files=25 lines=25"
+assert_eq "25 files: no real row" "0" "$(note_calls)"
+
+echo "TEST: a PR within the bands opens with its count and nothing else (the control)"
+size_branch feat/himmel-3031-files10 10 1
+: > "$ARGV_LOG"; : > "$NOTE_LOG"
+err_s9=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s9=$?
+assert_eq "10 files: opens (rc=0)" "0" "$rc_s9"
+not_contains "10 files: no SIZE- line" "$err_s9" "SIZE-"
+contains "10 files: the body carries the real count" "$(body_sent)" "pr-size: files=10 lines=10"
+assert_eq "10 files: no real row" "0" "$(note_calls)"
 
 echo "TEST: a 900-line branch warns and still opens"
 size_branch feat/himmel-3031-lines900 1 900
-: > "$ARGV_LOG"
+: > "$ARGV_LOG"; : > "$NOTE_LOG"
 out_s3=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>"$TMP_ROOT/size.err"); rc_s3=$?
 assert_eq "900 lines: opens (rc=0)" "0" "$rc_s3"
 contains "900 lines: SIZE-WARN names lines and files" "$(cat "$TMP_ROOT/size.err")" "SIZE-WARN lines=900 files=1"
 contains "900 lines: stdout stays the one PR line" "$out_s3" "PR 9 "
 contains "900 lines: pr create ran" "$(cat "$ARGV_LOG")" "pr create"
+assert_eq "900 lines: no real row (the hard band is 1500 lines)" "0" "$(note_calls)"
 
 echo "TEST: a branch inside the target band prints no size line"
 size_branch feat/himmel-3031-lines800 1 800
@@ -588,20 +640,63 @@ err_s4=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s4=$?
 assert_eq "800 lines: opens (rc=0)" "0" "$rc_s4"
 not_contains "800 lines: no SIZE- line" "$err_s4" "SIZE-"
 
-echo "TEST: a diff that cannot be measured is refused, never read as zero files"
+echo "TEST: a PR create that fails leaves no real row"
+git -C "$REPO" checkout -q feat/himmel-3031-files45
+: > "$ARGV_LOG"; : > "$NOTE_LOG"
+STUB_CREATE_FAIL=1 run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null 2>&1; rc_s13=$?
+assert_eq "failed create: the open fails (rc=1)" "1" "$rc_s13"
+assert_eq "failed create: no real row was written" "0" "$(note_calls)"
+
+echo "TEST: a real-row write that fails warns and never fails the open"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP_ROOT/size-note-fail.sh"; chmod +x "$TMP_ROOT/size-note-fail.sh"
+git -C "$REPO" checkout -q feat/himmel-3031-files45
+: > "$ARGV_LOG"
+err_s10=$(SIZE_NOTE_SH="$TMP_ROOT/size-note-fail.sh" run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s10=$?
+assert_eq "failed row write: opens (rc=0)" "0" "$rc_s10"
+contains "failed row write: one warning" "$err_s10" "WARN worker-pr-open: could not write the SIZE-ESCALATE row"
+contains "failed row write: pr create ran" "$(cat "$ARGV_LOG")" "pr create"
+
+echo "TEST: the update path measures too: a PR that grew is re-measured and its pr-size line is replaced in place"
+size_branch feat/himmel-3031-grow 10 1
+: > "$ARGV_LOG"; : > "$NOTE_LOG"
+run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null 2>&1
+contains "grow: the open writes files=10" "$(body_sent)" "pr-size: files=10 lines=10"
+size_grow 35 1
+git -C "$REPO" checkout -q feat/himmel-3031-grow
+: > "$ARGV_LOG"; : > "$NOTE_LOG"
+err_s11=$(STUB_OPEN_PR=9 run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s11=$?
+assert_eq "grown to 45 files: the update succeeds (rc=0)" "0" "$rc_s11"
+contains "grown to 45 files: SIZE-WARN on the update" "$err_s11" "SIZE-WARN lines=45 files=45"
+contains "grown to 45 files: the update path edits the body" "$(cat "$ARGV_LOG")" "pr edit"
+contains "grown to 45 files: the body's pr-size line now says files=45" "$(body_sent)" "pr-size: files=45 lines=45"
+not_contains "grown to 45 files: no stale files=10 line" "$(body_sent)" "files=10"
+assert_eq "grown to 45 files: exactly one pr-size line" "1" "$(body_sent | grep -c '^pr-size:')"
+assert_eq "grown to 45 files: one real row, band hard" "1" "$(note_calls)"
+contains "grown to 45 files: the row names band hard for this branch" "$(cat "$NOTE_LOG")" "--files 45 --trust unknown --band hard --ref feat/himmel-3031-grow"
+
+echo "TEST: the update path with the base not fetched writes pr-size: unmeasured and refuses nothing"
+: > "$ARGV_LOG"; : > "$NOTE_LOG"
+err_s12=$(STUB_OPEN_PR=9 run_sut "$TITLE_FILE" "$BODY_FILE" --base no-such-base 2>&1 >/dev/null); rc_s12=$?
+assert_eq "update, base not fetched: succeeds (rc=0)" "0" "$rc_s12"
+contains "update, base not fetched: the body says unmeasured" "$(body_sent)" "pr-size: unmeasured (origin/no-such-base is not fetched)"
+assert_eq "update, base not fetched: no real row" "0" "$(note_calls)"
+not_contains "update, base not fetched: no refusal" "$err_s12" "ERR worker-pr-open: could not measure"
+
+echo "TEST: a diff that cannot be measured is refused on the open, never read as zero files"
 git -C "$REPO" checkout -q --orphan feat/himmel-3031-nomergebase
 git -C "$REPO" rm -rfq --cached . >/dev/null
 echo orphan > "$REPO/orphan-file"
 git -C "$REPO" add orphan-file
 git -C "$REPO" commit -qm "no merge base with origin/main"
 git -C "$REPO" push -q -u origin feat/himmel-3031-nomergebase
-: > "$ARGV_LOG"
+: > "$ARGV_LOG"; : > "$NOTE_LOG"
 err_s5=$(run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_s5=$?
 assert_eq "no merge base: refused (rc=1)" "1" "$rc_s5"
 contains "no merge base: says the size could not be measured" "$err_s5" "could not measure"
 not_contains "no merge base: no pr create call" "$(cat "$ARGV_LOG")" "pr create"
+assert_eq "no merge base: no real row" "0" "$(note_calls)"
 
-echo "TEST: a base ref that is not fetched is refused, never read as within the bands"
+echo "TEST: a base ref that is not fetched is refused on the open, never read as within the bands"
 : > "$ARGV_LOG"
 err_s6=$(run_sut "$TITLE_FILE" "$BODY_FILE" --base no-such-base 2>&1 >/dev/null); rc_s6=$?
 assert_eq "unfetched base: refused (rc=1)" "1" "$rc_s6"
@@ -786,20 +881,19 @@ assert_eq "no Writes, granted: the open exits 0" "0" "$rc_h6x"
 assert_eq "no Writes: the line is unavailable" "outside-writes: unavailable (no Writes line)" "$(ow_line)"
 assert_eq "no Writes: the PR's unheld file gets a pr row" "$(trow "$H_KEY" N1 "$D1" pr 9)" "$(hrow scripts/b.sh)"
 
-echo "TEST: PR claim — a size refusal leaves the rows unchanged"
+echo "TEST: PR claim — a PR past CodeRabbit's 300 files is not refused for size"
 hreset
 D1=$(hdoc HIMMEL-8801-w.md "scripts/a.sh scripts/c.sh")
 put_hrow scripts/a.sh "$H_KEY" N1 "$D1" brief ""
 put_hrow scripts/c.sh "$H_KEY" N1 "$D1" brief ""
-before_h7="$(hrow scripts/a.sh)|$(hrow scripts/c.sh)"
 many=()
 for ((i = 1; i <= 301; i++)); do many+=("scripts/many/f$i"); done
 many+=(scripts/a.sh)
 hbranch feat/himmel-3031-h7 "${many[@]}"
 err_h7=$(run_h 2>&1 >/dev/null); rc_h7=$?
-assert_eq "size: refused (rc=1)" "1" "$rc_h7"
-contains "size: SIZE-REFUSE" "$err_h7" "SIZE-REFUSE"
-assert_eq "size: both rows are unchanged" "$before_h7" "$(hrow scripts/a.sh)|$(hrow scripts/c.sh)"
+assert_eq "size: opens (rc=0)" "0" "$rc_h7"
+not_contains "size: no SIZE-REFUSE" "$err_h7" "SIZE-REFUSE"
+contains "size: the PR body carries the real count" "$(cat "${ARGV_LOG}.body")" "pr-size: files=302"
 
 echo "TEST: PR claim — a merge-forward with a third party's file in main's delta claims nothing"
 hreset
