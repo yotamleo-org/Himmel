@@ -110,6 +110,11 @@ printf '%s\n' "$n" >> "$GB_FIX/concurrency.log"
 sleep 0.3
 rm -f "$GB_FIX/running/$$"
 [ "$pr" = 102 ] && [ -z "$q" ] && { echo "go: refusing the plain GO for PR #102 - TRUST-PATH: yes" >&2; exit 8; }
+case "$pr" in
+    113) echo "go: refusing - ready-check.sh did not PASS" >&2; exit 4 ;;
+    117) echo "go: refusing the trust-reviewed GO - no GO verdict" >&2; exit 5 ;;
+    116) echo "go: refusing - a NO-GO sits after the head" >&2; exit 10 ;;
+esac
 [ -n "$c" ] || { echo "go: no contract" >&2; exit 4; }
 f="$HANDOVER_DIR/.locks/go/$pr.$head"; : > "$f"
 printf '%s\n' "$f"
@@ -242,6 +247,48 @@ OUT=$(bash "$SCRIPT" --doc "$tmp/chief.md" --fleet "$tmp/fleet.json" 2>&1); RC=$
 check "9 a PR list that reached the 200 limit exits 1" "$RC" "1"
 contains "9 it says the list was cut" "$OUT" "reached the 200 limit"
 check "9 and nothing ran" "$(wc -l < "$FIX/go.log" | tr -d ' ')" "0"
+
+mkdir -p "$VERD/J112"
+printf '# VERDICT J112 - judge\n\nwriter-session: x\nwritten-at: 2026-11-25T10:00:00Z\n\n## Verdict\n\n**NO-GO** for head `%s`.\n\npr: 112\n\nevidence\nmac: 00\n' "$(printf '%040d' 112)" > "$VERD/J112/judge.md"
+worker N11 wk-9111-N11-draft-2026-11-25 yes "" 111 "$(printf '%040d' 111)"
+worker N12 wk-9112-N12-nogo-2026-11-25 yes "" 112 "$(printf '%040d' 112)"
+worker N13 wk-9113-N13-exit4-2026-11-25 yes "" 113 "$(printf '%040d' 113)"
+worker N14 wk-9114-N14-mergehold-2026-11-25 yes "" 114 "$(printf '%040d' 114)"
+worker N15 wk-9115-N15-nocontract-2026-11-25 "" "" 115 "$(printf '%040d' 115)"
+worker N16 wk-9116-N16-exit10-2026-11-25 yes "" 116 "$(printf '%040d' 116)"
+worker N17 wk-9117-N17-exit5-2026-11-25 yes "" 117 "$(printf '%040d' 117)"
+worker N18 wk-9118-N18-ordinary-2026-11-25 yes "" 118 "$(printf '%040d' 118)"
+{
+    printf '{"workers":['; sep=""
+    for n in 11 12 13 14 15 16 17 18; do
+        printf '%s{"label":"N%s","doc":"%s","lane":"native"}' "$sep" "$n" "$(ls "$tmp/docs/wk-91$n-N$n-"*.md)"; sep=","
+    done
+    printf ']}\n'
+} > "$tmp/fleet-holds.json"
+{
+    printf '# chief\n\n## Live state\n\nworkers:'
+    for l in N11 N12 N13 N14 N15 N16 N17 N18; do printf ' `%s:CN-%s-tok:lock-%s:1`' "$l" "$l" "$l"; done
+    printf '\nqueue: none\nmerge-hold: 114\nlast GO: none\n\n## Results\n'
+} > "$tmp/chief-holds.md"
+jq -n '[range(111;119) as $n | {number:$n, headRefOid:("0" * 37 + ($n|tostring)), baseRefName:"main", isDraft:($n == 111), body:(if $n == 115 then "completes-ticket: yes" else "" end), files:[{path:"scripts/h.sh"}]}]' > "$FIX/prs.json"
+reset
+OUT=$(bash "$SCRIPT" --doc "$tmp/chief-holds.md" --fleet "$tmp/fleet-holds.json" 2>&1); RC=$?
+check "10 holds: exit 0" "$RC" "0"
+check "10 holds: only the ordinary PR gets a GO" "$(find "$HANDOVER_DIR/.locks/go" -type f | sed 's#.*/##' | cut -d. -f1 | tr '\n' ' ')" "118 "
+contains "10 a draft is held" "$OUT" "HOLD 111 00000000 a draft"
+contains "10 a standing judge NO-GO is held and named" "$OUT" "HOLD 112 00000000 no judge verdict at head (a judge NO-GO is on record: J112@00000000)"
+contains "10 go.sh exit 4 is a hold" "$OUT" "HOLD 113 00000000 go.sh exit 4: go: refusing - ready-check.sh did not PASS"
+contains "10 a merge-hold line is held" "$OUT" "HOLD 114 00000000 the chief doc's Live state says merge-hold: 114"
+contains "10 a brief with no contract line reads no and a PR body saying yes is held" "$OUT" "HOLD 115 00000000 contract: the brief says no, the PR body says yes"
+contains "10 go.sh exit 10 is a hold" "$OUT" "HOLD 116 00000000 go.sh exit 10:"
+contains "10 go.sh exit 5 is a hold" "$OUT" "HOLD 117 00000000 go.sh exit 5:"
+contains "10 summary" "$OUT" "go-batch: 1 GO, 7 held"
+sed '/a judge NO-GO is on record/d' "$SCRIPT" > "$MUT/go-batch-nogo.sh"
+reset
+MUT_RC=0
+MUT_OUT=$(bash "$MUT/go-batch-nogo.sh" --doc "$tmp/chief-holds.md" --fleet "$tmp/fleet-holds.json" 2>&1) || MUT_RC=$?
+[ "$MUT_RC" = 0 ] && [ -f "$HANDOVER_DIR/.locks/go/112.$(printf '%040d' 112)" ] && { PASS=$((PASS + 1)); echo "ok   10 mutant without the NO-GO hold writes the GO for 112"; } \
+    || { FAIL=$((FAIL + 1)); echo "FAIL 10 mutant without the NO-GO hold: want exit 0 and a GO for 112, got exit $MUT_RC"; echo "$MUT_OUT"; }
 
 echo "passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

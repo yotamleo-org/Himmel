@@ -74,7 +74,8 @@ absolute path (add `--dry-run` first to see the rows):
 `bash <primary>/scripts/handover/chief-kit/go-batch.sh --doc <this chief doc> --fleet <fleet manifest>`
 (`--jobs <n>`, default 4, bounds the parallel `go.sh` runs). It reads the contract from
 the brief's last `Completes ticket:` line and holds a PR whose PR body says the
-other value, never guessing; takes the judge qid from the newest verdict at the PR's
+other value, never guessing (a brief with no such line reads no); holds a PR with a
+judge NO-GO on record unless a judge GO rules at its head; takes the judge qid from the newest verdict at the PR's
 head (delta no-op records included) and retries a plain GO that `go.sh` refuses
 for a trust path (exit 8) once with it; fast-forwards the primary checkout once
 before any `go.sh` runs (a checkout that cannot is exit 1, no GO written); and sends

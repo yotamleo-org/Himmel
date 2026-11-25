@@ -19,11 +19,12 @@
 #   2. that READY head is the PR's head now (a push since is a stale head)
 #   3. no merge-hold: line in the chief doc names the PR, one of its title keys or all, and the
 #      brief does not say `Merge: chief`
-#   4. the contract: the brief's last `> **Completes ticket:** yes|no` line (none reads yes, as the
-#      worker's own Ship step does) must equal the PR body's `completes-ticket:` line when the body
+#   4. the contract: the brief's last `> **Completes ticket:** yes|no` line (none reads no, as
+#      auto-go.sh does) must equal the PR body's `completes-ticket:` line when the body
 #      has one; a disagreement is a hold, never a guess. go.sh gets it as --contract
-#   5. a judge verdict where one is required (the brief asks for a judge, or every changed file is
-#      under docs/ or a *.md file): the newest verdict under <root>/<user>/<bucket>/verdicts/ that
+#   5. a judge verdict where one is required (the brief asks for a judge, every changed file is
+#      under docs/ or a *.md file, or any judge NO-GO is on record for the PR, which go.sh reads
+#      only under --trust-reviewed): the newest verdict under <root>/<user>/<bucket>/verdicts/ that
 #      rules GO for this PR at this head, a delta no-op record included. Its qid goes to go.sh as
 #      --trust-reviewed. A PR that needs none runs go.sh plain; go.sh's exit 8 (the diff hits a CI
 #      trust path) retries once with the newest verdict's qid, and no verdict holds the PR
@@ -151,6 +152,20 @@ newest_qid() {
     done
     [ -z "$best" ] || printf '%s\n' "$best"
 }
+nogo_recorded() {
+    local qs q f line h
+    qs=$(go_pr_qids "$VERD" "$1" "$2") || { printf 'the verdict directory is unreadable\n'; return 0; }
+    for q in $qs; do
+        for f in "$VERD/$q"/*.md; do
+            [ -f "$f" ] || continue
+            grep -qxE "pr: $1"$'\r'"?" "$f" 2>/dev/null || continue
+            line=$(go_verdict_line "$f") || { printf '%s@unreadable\n' "$q"; return 0; }
+            case "$line" in
+                '**NO-GO** for head `'*) h="${line#*\`}"; printf '%s@%s\n' "$q" "${h:0:8}"; return 0 ;;
+            esac
+        done
+    done
+}
 
 HELD=0; WRITTEN=0; UNDELIVERED=0
 : > "$WORK/golist"
@@ -180,8 +195,8 @@ while IFS=$'\t' read -r PR HEADSHA _base DRAFT <&3; do
     done
     if [ -n "$BLOCK" ]; then hold "the chief doc's Live state says $BLOCK"; continue; fi
     if grep -qE '^> \*\*Merge:\*\* chief([^A-Za-z0-9_-]|$)' "$WDOC" 2>/dev/null; then hold "the brief says Merge: chief"; continue; fi
-    CONTRACT=$(grep -oE '^> \*\*Completes ticket:\*\* (yes|no)([^A-Za-z0-9_-]|$)' "$WDOC" | tail -n 1 | sed -E 's/^> \*\*Completes ticket:\*\* (yes|no).*/\1/') || CONTRACT=""  # swallow-ok: a brief with no such line reads yes below
-    [ -n "$CONTRACT" ] || CONTRACT=yes
+    CONTRACT=$(grep -oE '^> \*\*Completes ticket:\*\* (yes|no)([^A-Za-z0-9_-]|$)' "$WDOC" | tail -n 1 | sed -E 's/^> \*\*Completes ticket:\*\* (yes|no).*/\1/') || CONTRACT=""  # swallow-ok: a brief with no such line reads no below
+    [ -n "$CONTRACT" ] || CONTRACT=no
     BODY_VALS=$(jq -r --argjson n "$PR" '.[] | select(.number == $n) | .body // ""' "$WORK/prs.json" | tr -d '\r' | awk '
         /^[ \t]{0,3}(```|~~~)/ { fence = !fence; next }
         !fence && /^completes-ticket:[ \t]*(yes|no)[ \t]*$/ { v = $0; sub(/^completes-ticket:[ \t]*/, "", v); sub(/[ \t]*$/, "", v); seen[v] = 1 }
@@ -195,6 +210,8 @@ while IFS=$'\t' read -r PR HEADSHA _base DRAFT <&3; do
     elif ! jq -r --argjson n "$PR" '.[] | select(.number == $n) | .files[]?.path' "$WORK/prs.json" | awk 'NF' | grep -qvE '^(docs/|.*\.md$)'; then
         WHY="a docs PR"
     fi
+    NOGO=$(nogo_recorded "$PR" "$HEADSHA")
+    [ -z "$NOGO" ] || [ -n "$WHY" ] || WHY="a judge NO-GO is on record: $NOGO"
     QID=""
     if [ -n "$WHY" ]; then
         QID=$(newest_qid "$PR" "$HEADSHA")
