@@ -24,8 +24,8 @@
 #                                                  lines (the SENDMESSAGE the chief sends) passed on, rc 11
 #                          ESCALATE auto-go <n> <reason> (exit 10) -> `AUTO-GO-REFUSED #<pr> <n>`,
 #                                                  the line passed on as is, rc 10
-#                          ESCALATE auto-go 2 PR <pr> is MERGED|CLOSED, not OPEN, with a gh read that agrees
-#                                               -> `STALE-READY PR <pr> <head8> <state>, <label> closed, not escalated`,
+#                          ESCALATE auto-go 2 PR <pr> is MERGED, not OPEN, with a gh read of MERGED at the READY head
+#                                               -> `STALE-READY PR <pr> <head8> MERGED, <label> closed, not escalated`,
 #                                                  prints `HANDLED stale-ready <label>`, rc 0
 #                        A bullet that cannot be written appends ` doc-bullet=failed <why>` (its own
 #                        line after a GO-WRITTEN). Any other auto-go answer is
@@ -284,12 +284,12 @@ if [ "$marker" = READY ]; then
         [ -z "$bres" ] || printf '%s\n' "${bres# }"
         exit 11
     fi
-    stale_re="^ESCALATE auto-go 2 PR $rpr is (MERGED|CLOSED), not OPEN\$"
+    stale_re="^ESCALATE auto-go 2 PR $rpr is MERGED, not OPEN\$"
     if [ "$arc" -eq 10 ] && [[ $afirst =~ $stale_re ]]; then
-        stale_state="${BASH_REMATCH[1]}"
+        stale_state="MERGED"
         live_state=""
-        if gh_state="$(cd "$HERE/../../.." && "${GH[@]}" pr view "$rpr" --json state --jq .state)"; then live_state="$gh_state"; fi
-        if [ "$live_state" = "$stale_state" ]; then
+        if gh_state="$(cd "$HERE/../../.." && "${GH[@]}" pr view "$rpr" --json state,headRefOid --jq '.state + " " + .headRefOid')"; then live_state="$gh_state"; fi
+        if [ "$live_state" = "$stale_state $rhead" ]; then
             echo "HANDLED stale-ready $label$(bullet "STALE-READY PR $rpr ${rhead:0:8} $stale_state, $label closed, not escalated")"
             exit 0
         fi
