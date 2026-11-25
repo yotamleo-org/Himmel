@@ -2764,7 +2764,7 @@ s17_body() {
             else
                 tier=$(s17_tier "$anchor/scripts/ci/suite-tiers.tsv" "$s")
                 case "$tier" in
-                    daily|local|flow|quarantine) n_tskip=$((n_tskip + 1)); tskip_names="$tskip_names, $s ($tier)"; continue ;;
+                    daily|local|quarantine) n_tskip=$((n_tskip + 1)); tskip_names="$tskip_names, $s ($tier)"; continue ;;
                 esac
                 why="no ran-0 row in run $run_id"
             fi
@@ -2775,7 +2775,7 @@ s17_body() {
     if [ "$bad" -gt 0 ]; then
         s17_fail "$bad suite(s) proven nowhere: ${reasons#, }"
         [ -z "$js_names" ] || echo "       note: from JS manifests: ${js_names#, }"
-        echo "       note: a suite CI does not run (tier daily, local, flow or quarantine, or a CI skip) needs no local run; a suite with no ran-0 row and tier pr means CI has not proved it yet: wait for CI, never run it on the station"
+        echo "       note: a suite CI does not run (tier daily, local or quarantine, or a CI skip) needs no local run; a suite with no ran-0 row and tier pr or flow means CI has not proved it yet: wait for CI, never run it on the station"
         if [ "$have_row" -eq 0 ]; then
             echo "       no impacted row at ${SHA:0:7} on ${branch:-?}: the chief runs pr-check step 3.6 (impacted-suites.sh --check --record) for this head from a worktree of the branch, so the row lands in the shared ledger"
         fi

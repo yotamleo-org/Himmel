@@ -103,7 +103,7 @@ s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; s17_tier "$S17_B" daily
 s17_at "$S17_H1"
 check "19 T7b daily-tier suite with no CI row: exit 0" "$rc" "0"
 contains "19 T7b: the daily-tier suite is named with its tier" "$(line17 "$out")" "[PASS] 19. suite evidence: 2 impacted, 1 from CI run 555, 0 local, 1 tier-skipped: $S17_B (daily)"
-for s17_t in local flow quarantine; do
+for s17_t in local quarantine; do
     s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; s17_tier "$S17_B" "$s17_t"
     s17_at "$S17_H1"
     contains "19 T7b $s17_t-tier suite with no CI row: tier-skipped" "$(line17 "$out")" "1 tier-skipped: $S17_B ($s17_t)"
@@ -112,7 +112,11 @@ s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; s17_tier "$S17_B" pr
 s17_at "$S17_H1"
 check "19 T7c pr-tier suite with no CI row: exit 1" "$rc" "1"
 contains "19 T7c: names the suite" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (no ran-0 row in run 555)"
-contains "19 T7c: the hint says a suite CI does not run needs no local run" "$out" "a suite CI does not run (tier daily, local, flow or quarantine, or a CI skip) needs no local run"
+contains "19 T7c: the hint says a suite CI does not run needs no local run" "$out" "a suite CI does not run (tier daily, local or quarantine, or a CI skip) needs no local run"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; s17_tier "$S17_B" flow
+s17_at "$S17_H1"
+check "19 T7c2 flow-tier suite with no CI row: exit 1" "$rc" "1"
+contains "19 T7c2: names the suite" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (no ran-0 row in run 555)"
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; s17_tier "$S17_B" bogus
 s17_at "$S17_H1"
 check "19 T7d an unknown tier fails closed: exit 1" "$rc" "1"
