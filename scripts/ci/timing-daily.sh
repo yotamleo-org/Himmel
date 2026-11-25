@@ -61,7 +61,8 @@ for f in ${alert_files[@]+"${alert_files[@]}"}; do
 done
 if [ -n "$ci_hours" ]; then
   since="$(date -u -d "$ci_hours hours ago" +%Y-%m-%dT%H:%M:%SZ)"
-  if ci_ids="$(gh run list --workflow ci.yml --branch main --status completed --created ">=$since" --limit 500 --json databaseId --jq '.[].databaseId')"; then
+  not_cancelled_or_skipped_ids='.[] | select(.conclusion != "cancelled" and .conclusion != "skipped") | .databaseId'
+  if ci_ids="$(gh run list --workflow ci.yml --branch main --status completed --created ">=$since" --limit 500 --json databaseId,conclusion --jq "$not_cancelled_or_skipped_ids")"; then
     for id in $ci_ids; do
       if run_log="$(gh run view "$id" --log)"; then
         add_alerts "$(printf '%s\n' "$run_log" | alert_lines)"

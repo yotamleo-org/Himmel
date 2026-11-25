@@ -170,4 +170,19 @@ else
   fail "CA13: rc=$rc (want rc 1, no CAP-ALERT) out: $out"
 fi
 
+ci_yml="$RST_FIXTURE_DIR/../../.github/workflows/ci.yml"
+ci_step() { awk -v n="$1" '$0 == "      - name: " n { f = 1; print; next } f && /^      - name:/ { exit } f' "$ci_yml"; }
+cap_upload=$(ci_step 'Upload cap alerts')
+cap_summary=$(ci_step 'Summarize cap alerts')
+if grepq "$cap_upload" -E '^        if: always\(\)$' \
+    && grepq "$cap_upload" -E '^        uses: actions/upload-artifact@[0-9a-f]{40} ' \
+    && grepq "$cap_upload" -E '^          path: failed-suite-logs/cap-alerts\.txt$' \
+    && grepq "$cap_upload" -E '^          name: cap-alerts-.*shard\$\{\{ matrix\.shard \}\}' \
+    && grepq "$cap_summary" -E '^        if: always\(\)$' \
+    && grepq "$cap_summary" -E "^ +echo \"CAP-ALERT: .* >> \"\\\$GITHUB_STEP_SUMMARY\"$"; then
+  pass "CA14: ci.yml uploads each shard's cap-alerts.txt as an artifact and prints a CAP-ALERT summary line"
+else
+  fail "CA14: ci.yml has no cap-alerts.txt upload step or no CAP-ALERT job-summary line"
+fi
+
 rst_tally
