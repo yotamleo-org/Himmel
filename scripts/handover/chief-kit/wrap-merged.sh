@@ -184,7 +184,7 @@ tracker_refresh() {
     JIRA_PROJECT_KEY="$pk" timeout -k 5 "$tmo" "${jira[@]}" versions > "$mir.versions.tsv.tmp.$$" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
     if [ "$rc" -ne 0 ]; then rm -f "$mir.versions.tsv.tmp.$$"; echo "tracker=failed:versions-rc$rc"; return 0; fi
     (
-        flock -w "$tmo" 9 || exit 3  # prim-ok: the wait is bounded by WM_TRACKER_TIMEOUT; with_lock waits without limit  # gnu-ok: Linux-only kit
+        flock -w "$tmo" 9 || exit 3  # prim-ok: the wait is bounded by WM_TRACKER_TIMEOUT; with_lock waits without limit
         if [ -f "$mir.versions.tsv" ]; then
             old="$(wc -l < "$mir.versions.tsv")" && new="$(wc -l < "$mir.versions.tsv.tmp.$$")" || exit 4
             [ $((new * 2)) -ge "$old" ] || exit 5
