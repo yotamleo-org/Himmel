@@ -3381,9 +3381,13 @@ check_c40_qmd_vec() {
             # fix; a token problem is not cured by restarting the server.
             case "$qd_detail" in
             *"bearer token"*) remedy="set QMD_HTTP_AUTH_FILE to the qmd server's token file (default ~/.config/qmd/http-token, mode 600); see marketplace/plugins/qmd/README.md" ;;
-            *"is not answering on"*) _c40_outage_alert "$url" ;;
             esac
             emit WARN C40-qmd-vec "qmd daemon degraded (himmelctl status qmd-daemon): ${qd_detail:-no detail} -- vec search is not being served" "$remedy"
+            case "$qd_detail" in
+            *"is not answering on"*) _c40_outage_alert "$url" ;;
+            *"curl not found"*) ;;
+            *) _c40_outage_clear ;;
+            esac
             return
             ;;
         esac

@@ -2128,7 +2128,7 @@ STUB
     # the alert sender stub: one line per delivered alert, never the real Telegram path
     cat > "$c40_t/send" <<'SEND'
 #!/usr/bin/env bash
-printf '%s\n' "$1" >> "$C40_SENT"
+printf '%s %s\n' "${HIMMEL_ALERT_KIND:-}" "$1" >> "$C40_SENT"
 SEND
     chmod +x "$c40_t/send"; : > "$c40_t/sent"
     mkdir -p "$c40_t/qmdbin"; printf '#!/usr/bin/env bash\nexit 0\n' > "$c40_t/qmdbin/qmd"; chmod +x "$c40_t/qmdbin/qmd"
@@ -2578,19 +2578,23 @@ c40_n2="$(grep -c . "$c40_t/sent")"
 c40_run iserror >/dev/null
 c40_run down >/dev/null
 c40_n3="$(grep -c . "$c40_t/sent")"
-if [ "$c40_n1" = 1 ] && printf '%s' "$c40_msg" | grep -Fq 'qmd-outage' && printf '%s' "$c40_msg" | grep -Fq 'not answering' \
-    && grep -Fq 'qmd-outage' "$c40_t/home/.himmel/state/cadence-alerts.log" && [ "$c40_n2" = 2 ] && [ "$c40_n3" = 3 ]; then
+c40_run empty204 >/dev/null
+c40_run down >/dev/null
+c40_n4="$(grep -c . "$c40_t/sent")"
+if [ "$c40_n1" = 1 ] && printf '%s' "$c40_msg" | grep -Fq 'cadence:qmd-outage qmd-outage: ' && printf '%s' "$c40_msg" | grep -Fq 'not answering' \
+    && grep -Fq 'qmd-outage' "$c40_t/home/.himmel/state/cadence-alerts.log" && [ "$c40_n2" = 2 ] && [ "$c40_n3" = 3 ] && [ "$c40_n4" = 4 ]; then
     pass "C40 refused, qmd set up -> exactly one alert across two runs, a second after the daemon answered in between"
 else
-    fail "C40 outage alert -> after two refused runs: $c40_n1 sent (want 1), after recovery and a new outage: $c40_n2 (want 2), after a daemon that answered but failed its vec query and a third outage: $c40_n3 (want 3); first message [$c40_msg]"
+    fail "C40 outage alert -> after two refused runs: $c40_n1 sent (want 1), after recovery and a new outage: $c40_n2 (want 2), after a daemon that answered but failed its vec query and a third outage: $c40_n3 (want 3), after a status-reported empty 204 reply and a fourth outage: $c40_n4 (want 4); first message [$c40_msg]"
 fi
 rm -rf "$c40_t"
 
 echo "== C40 (HIMMEL-10933): a refused connection with no qmd setup, or a starting daemon, sends no alert =="
 c40_setup
-C40_QMD_SETUP=no c40_run down >/dev/null
-c40_run downstart >/dev/null
-if [ ! -s "$c40_t/sent" ]; then
+out_a="$(C40_QMD_SETUP=no c40_run down)"
+out_b="$(c40_run downstart)"
+if [ ! -s "$c40_t/sent" ] && grepq "$out_a" 'INFO C40-qmd-vec' && ! grepq "$out_a" 'WARN C40-qmd-vec' \
+    && grepq "$out_b" 'INFO C40-qmd-vec.*is starting' && ! grepq "$out_b" 'WARN C40-qmd-vec'; then
     pass "C40 no qmd setup / daemon starting -> no alert"
 else
     fail "C40 no-alert cases -> sent: $(cat "$c40_t/sent")"
