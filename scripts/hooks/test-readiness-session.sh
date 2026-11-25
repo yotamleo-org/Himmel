@@ -246,6 +246,10 @@ check "d. finish refuses when the lock changed hands and the successor keeps it"
 check "d. ... and the attempt directory is kept (nothing was released)" "$([ -e "$A_DIR" ] && echo present || echo gone)" "present"
 mk_attempt; adapter finish "$A_DIR"
 check "d. finish before adoption refuses and leaves the lease and transport" "$H_RC:$(ql_owner "$A_DOC"):$([ -e "$A_DIR/lease-token" ] && echo kept)" "1:$A_TOK:kept"
+good_attempt; chmod 555 "$XDG/himmel-readiness"; adapter finish "$A_DIR"; chmod 700 "$XDG/himmel-readiness"
+check "d. finish whose attempt directory survives (a read-only attempts root) exits non-zero after releasing the lease" "$H_RC:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "1:free:present"
+check "d. ... and says why" "$H_ERR" "readiness-session: attempt-dir-kept"
+rm -rf "$A_DIR"
 good_attempt; hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_gone "$A_DIR"
 check "d. cleanup of an adopted session releases its lease and removes its directory" "$H_RC:$H_OUT:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0::free:gone"
 mk_attempt; hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_gone "$A_DIR"
@@ -292,6 +296,9 @@ mk_attempt; before="$(scope_files)"; mkdir -p "$tmp/dirtr/$A_SID.jsonl"; H_TR="$
 check "f. a transcript that is a directory: reason" "$H_ERR" "readiness-session: no-transcript"; not_adopted "a transcript that is a directory" "$before"
 mk_attempt; before="$(scope_files)"; : > "$tmp/real-$A_SID.jsonl"; ln -s "$tmp/real-$A_SID.jsonl" "$tmp/link-$A_SID.jsonl"; H_TR="$tmp/link-$A_SID.jsonl" hook startup "$A_SID"
 check "f. a symlinked transcript: reason" "$H_ERR" "readiness-session: no-transcript"; not_adopted "a symlinked transcript" "$before"
+mk_attempt; before="$(scope_files)"; mkdir -p "$tmp/lnk-$n" "$tmp/tgt-$n"; : > "$tmp/tgt-$n/real.jsonl"; ln -s "$tmp/tgt-$n/real.jsonl" "$tmp/lnk-$n/$A_SID.jsonl"
+H_TR="$tmp/lnk-$n/$A_SID.jsonl" hook startup "$A_SID"
+check "f. a symlink with the session's exact transcript name, pointing at a regular file: reason" "$H_ERR" "readiness-session: no-transcript"; not_adopted "an exact-name symlinked transcript" "$before"
 mk_attempt; before="$(scope_files)"; : > "$tmp/other.jsonl"; H_TR="$tmp/other.jsonl" hook startup "$A_SID"
 check "f. a transcript that is not named for this session: reason" "$H_ERR" "readiness-session: no-transcript"; not_adopted "a transcript named for another session" "$before"
 mk_attempt; before="$(scope_files)"; other_id="$(uuid)"; : > "$tmp/$other_id.jsonl"; H_TR="$tmp/$other_id.jsonl" hook startup "$A_SID"
@@ -307,6 +314,36 @@ f_good; printf 'host=%s\ntranscript=%s\n' "some-other-host" "$FAKEHOME/.claude/p
 f_good; : > "$tmp/elsewhere.jsonl"; printf 'host=%s\ntranscript=%s\n' "$(lv_hostname)" "$tmp/elsewhere.jsonl" > "$(lockdir_of "$A_DOC")/liveness"; f_verify_refuses "a marker naming a transcript of another session"
 f_good; printf 'host=%s\ntranscript=%s\n' "$(lv_hostname)" "relative/$A_SID.jsonl" > "$(lockdir_of "$A_DOC")/liveness"; f_verify_refuses "a marker naming a relative transcript"
 f_good; adapter verify "$A_DIR"; check "f. a good adoption still verifies after all of the above" "$H_RC" "0"
+f_tr() { printf '%s' "$FAKEHOME/.claude/projects/p/$A_SID.jsonl"; }
+set_hb() { local o; o="$(lockdir_of "$A_DOC")/owner.json"; jq -c ".heartbeat = $1" "$o" > "$tmp/o.json" && cat "$tmp/o.json" > "$o"; }
+f_good; set_hb '"not-a-date"'; touch -t 202001010000 "$(f_tr)"; f_verify_refuses "an unparsable heartbeat and an old transcript"
+f_good; set_hb '"not-a-date"'; adapter verify "$A_DIR"; check "f. an unparsable heartbeat and a young transcript verifies" "$H_RC" "0"
+f_good; set_hb '"2020-01-01T00:00:00Z"'; touch -t 202001010000 "$(f_tr)"; f_verify_refuses "a parsable old heartbeat and an old transcript"
+f_good; rm -f "$(f_tr)"; H_TR="$(f_tr)" hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_gone "$A_DIR"
+check "f. cleanup of an adopted session whose transcript is gone releases its own lease and removes its directory" "$H_RC:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0:free:gone"
+f_good; rm -f "$(f_tr)"; qenv bash "$QL" release "$A_DOC" "$A_TOK" >/dev/null 2>&1; qenv bash "$QL" acquire "$A_DOC" succ-token-f1 >/dev/null 2>&1
+H_TR="$(f_tr)" hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_there "$A_DIR/cleanup-failed"
+check "f. ... a successor's lease is never released, and the directory stays with one line saying why" "$(ql_owner "$A_DOC"):$(wc -l < "$A_DIR/cleanup-failed" 2>/dev/null | tr -d ' ')" "succ-token-f1:1"
+f_good; rm -f "$(f_tr)"; drop_registration "$A_DOC" sidecar
+grep -rlxF -- "$A_TOK" "$XDG/himmel-queue-lock" | while IFS= read -r tf; do rm -f -- "$tf"; done
+H_TR="$(f_tr)" hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_there "$A_DIR/cleanup-failed"
+check "f. ... with no token left to release, the lease and the directory stay with one line saying why" "$(ql_owner "$A_DOC"):$(wc -l < "$A_DIR/cleanup-failed" 2>/dev/null | tr -d ' ')" "$A_TOK:1"
+qenv bash "$QL" release "$A_DOC" "$A_TOK" >/dev/null 2>&1
+f_good; printf '%s\n' "$A_TOK" > "$A_DIR/lease-token"; chmod 600 "$A_DIR/lease-token"; hook startup "$A_SID"
+check "f. a repeat startup completes an adoption whose transport was left behind" "$H_RC:$H_ERR:$(confirmed):$([ -e "$A_DIR/lease-token" ] && echo present || echo gone)" "0::yes:gone"
+adapter verify "$A_DIR"; check "f. ... and verify then succeeds" "$H_RC" "0"
+mkdir -p "$tmp/shim"
+cat > "$tmp/shim/jq" <<SH
+#!/bin/sh
+if [ "\${1:-}" = -cn ]; then printf '{"schema":"readiness-att'; exit 1; fi
+exec "$(command -v jq)" "\$@"
+SH
+chmod +x "$tmp/shim/jq"
+mk_attempt; hook startup "$A_SID" PATH="$tmp/shim:$PATH"
+check "f. a failed confirmation write leaves no partial confirmation behind" "$H_ERR:$(find "$A_DIR" -name '*confirmation*' | wc -l | tr -d ' ')" "readiness-session: confirmation-not-published:0"
+hook startup "$A_SID"
+check "f. ... and a healthy repeat startup adopts" "$H_RC:$H_ERR:$(confirmed):$([ -e "$A_DIR/lease-token" ] && echo present || echo gone)" "0::yes:gone"
+adapter verify "$A_DIR"; check "f. ... and verify then succeeds" "$H_RC" "0"
 
 # --- g. the queue library is a STATIC source bound to the startup config by equality, and the registered hook commands
 #        adopt and release through the REAL recorder and runner (cycle 5 review F1)
