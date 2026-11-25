@@ -298,10 +298,22 @@ name_holders() {
     printf 'pids: %s' "$out"
 }
 
+write_lock_holder() {
+    local ino
+    [ -r /proc/locks ] || return 0
+    ino=$(stat -c %i "$QMD_INDEX_PATH-shm" 2>/dev/null) || return 0  # gnu-ok: past the /proc/locks guard, so Linux
+    [ -n "$ino" ] || return 0
+    awk -v ino="$ino" '$4 == "WRITE" && $7 == 120 && $6 ~ (":" ino "$") { print $5; exit }' /proc/locks 2>/dev/null || true
+}
+
 # Best-effort: who has the index (or its WAL side files) open right now, for
 # the busy log lines.
 index_holders() {
-    local h=""
+    local h="" w=""
+    w=$(write_lock_holder)
+    if [ -n "$w" ]; then
+        printf 'write-lock holder: pid %s (%s); open by: ' "$w" "$(ps -o args= -p "$w" 2>/dev/null | cut -c1-100 || true)"
+    fi
     if command -v fuser >/dev/null 2>&1; then
         h=$(fuser "$QMD_INDEX_PATH" "$QMD_INDEX_PATH-wal" "$QMD_INDEX_PATH-shm" 2>/dev/null | tr -s ' \n' ' ' || true)
         h="${h# }"; h="${h% }"
