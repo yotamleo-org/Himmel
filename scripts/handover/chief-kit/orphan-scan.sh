@@ -102,9 +102,10 @@ while IFS= read -r doc; do
     if ! view=$(cd "$repo" && GH_READ_QUIET=1 "$GH" pr view "$pr" --json state,mergeCommit); then
         unavailable "gh pr view $pr"; continue
     fi
-    [ "$(printf '%s' "$view" | jq -r '.state // empty')" = MERGED ] || continue
-    sha=$(printf '%s' "$view" | jq -r '.mergeCommit.oid // empty')
-    [ -n "$sha" ] || continue
+    if ! state=$(printf '%s' "$view" | jq -r '.state // empty') || ! sha=$(printf '%s' "$view" | jq -r '.mergeCommit.oid // empty'); then
+        unavailable "gh pr view $pr returned unreadable JSON"; continue
+    fi
+    [ "$state" = MERGED ] && [ -n "$sha" ] || continue
     echo "# orphan finished $live pr=$pr merged=$sha"
 done <<EOF
 $docs
@@ -114,6 +115,8 @@ if ! prs=$(cd "$repo" && GH_READ_QUIET=1 "$GH" pr list --state open --limit 200 
     || ! rows=$(printf '%s' "$prs" | jq -r '.[] | select((.isCrossRepository | not) and ((.author.login // "") | test("dependabot") | not) and ((.headRefName // "") | startswith("dependabot/") | not)) | [.number, .headRefName] | @tsv'); then
     unavailable "gh pr list"
     rows=""
+elif [ "$(printf '%s' "$prs" | jq 'length')" -ge 200 ]; then
+    unavailable "gh pr list reached its 200 PR limit"
 fi
 while IFS=$'\t' read -r num head; do
     [ -n "$num" ] || continue

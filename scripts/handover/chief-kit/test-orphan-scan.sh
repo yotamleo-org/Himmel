@@ -127,6 +127,16 @@ check "list failure: rc 3" "$rc" "3"
 contains "list failure: session lines still print" "$out" "# orphan session HIMMEL-chief-x "
 contains "list failure: says why" "$out" "unavailable"
 
+mkdoc "- 10:00 READY 11 $SHA GREEN"
+printf 'not json' > "$OS_VIEW"
+rc=0; out=$(run --fleet "$FLEET" 2>&1) || rc=$?
+check "an unreadable PR view: rc 3" "$rc" "3"
+contains "an unreadable PR view says why" "$out" "unreadable JSON"
+jq -n '[range(200) | {number: ., headRefName: "feat/himmel-1-x", isCrossRepository: false, author: {login: "a"}}]' > "$OS_PRS"
+rc=0; out=$(run --fleet "$FLEET" 2>&1) || rc=$?
+check "a PR list at the 200 limit: rc 3" "$rc" "3"
+contains "a PR list at the 200 limit says so" "$out" "200 PR limit"
+
 rc=0; run >/dev/null 2>&1 || rc=$?
 check "usage: no --fleet -> rc 2" "$rc" "2"
 rc=0; run --fleet "$W/none.json" >/dev/null 2>&1 || rc=$?
