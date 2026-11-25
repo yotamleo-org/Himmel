@@ -82,23 +82,25 @@ function records(file: string): Record<string, any>[] | null {
 
 const TOKEN_RE = /(?:^|[\s'"`=:(;|&<>])((?:\/|~\/)[^\s'"`;|&<>()]+)/g;
 const QUOTED_RE = /'((?:\/|~\/)[^']*)'|"((?:\/|~\/)[^"]*)"/g;
-function pathsOf(r: Record<string, any>, home: string, add: (p: string) => void): void {
+function pathsOf(r: Record<string, any>, home: string, add: (p: string) => void): boolean {
   const abs = (p: string, base?: string) => (p.startsWith("~/") ? join(home, p.slice(2)) : isAbsolute(p) ? p : base && isAbsolute(base) ? resolve(base, p) : null);
   const put = (p: unknown, base?: string) => { if (typeof p === "string" && p !== "") { const a = abs(p, base); if (a) add(a); } };
   put(r.cwd);
   const content = r.message?.content;
-  if (!Array.isArray(content)) return;
+  if (!Array.isArray(content)) return true;
   for (const item of content) {
     if (!item || item.type !== "tool_use" || !item.input || typeof item.input !== "object") continue;
     const input = item.input;
     for (const k of ["file_path", "path", "notebook_path"]) put(input[k], r.cwd);
-    if (typeof input.pattern === "string" && (input.pattern.startsWith("/") || input.pattern.startsWith("~/"))) put(input.pattern.split(/[*?[{]/)[0]);
+    if (typeof input.pattern === "string" && (item.name === "Glob" || input.pattern.startsWith("/") || input.pattern.startsWith("~/"))) put(input.pattern.split(/[*?[{]/)[0], typeof input.path === "string" && input.path !== "" ? abs(input.path, r.cwd) ?? undefined : r.cwd);
     if ((item.name === "Bash" || item.name === "Monitor") && typeof input.command === "string") {
+      if (/\\[ \t]/.test(input.command)) return false;
       for (const m of input.command.matchAll(TOKEN_RE)) put(m[1]);
       for (const m of input.command.matchAll(QUOTED_RE)) put(m[1] ?? m[2]);
       relativeWords(input.command, r.cwd, home, put);
     }
   }
+  return true;
 }
 
 const WORD_RE = /'([^']*)'|"([^"]*)"|([^\s'"`;|&<>()]+)/g;
@@ -179,7 +181,7 @@ async function scan(home: string, sid: string, env: Record<string, string | unde
   const launch = all[0].find(r => typeof r.cwd === "string")?.cwd;
   if (typeof launch !== "string" || slugOf(launch) !== t.slug) return LAUNCH_UNKNOWN;
   const seen = new Set<string>();
-  for (const recs of all) for (const r of recs) pathsOf(r, home, p => { seen.add(p); seen.add(canon(p)); });
+  for (const recs of all) for (const r of recs) if (!pathsOf(r, home, p => { seen.add(p); seen.add(canon(p)); })) return PHI;
   const cache = new Map<string, boolean>();
   for (const p of seen) if (salusMarked(p, cache)) return PHI;
   const dirs = [...seen].filter(p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } });

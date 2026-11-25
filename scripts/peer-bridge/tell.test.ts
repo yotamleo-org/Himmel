@@ -102,12 +102,13 @@ test("a transcript that names a salus path in a Read, a cwd, a Bash token, a Glo
   await phiCases(cases);
 });
 
-test("a quoted salus path holding a space in a Bash or Monitor command refuses phi-root", async () => {
+test("a quoted or backslash-escaped salus path holding a space in a Bash or Monitor command refuses phi-root", async () => {
   const spaced = mkdtempSync(join(tmpdir(), "peer tell vault-"));
   writeFileSync(join(spaced, ".salus"), "");
   await phiCases([
     ["double-quoted", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cat "${spaced}/a b.md"` })])],
     ["single-quoted", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Monitor", { command: `tail -f '${spaced}/log'` })])],
+    ["backslash-escaped", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cat ${spaced.replaceAll(" ", "\\ ")}/a.md` })])],
   ]);
 });
 
@@ -126,6 +127,8 @@ test("a relative path after a cd, and a directory with a salus marker anywhere b
     ["cd then a relative path to salus deeper than the find reaches", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cd ${far} && cat ${deep}/x` })])],
     ["cd with options then a relative path to salus", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cd -P -- ${far} && cat ${deep}/x` })])],
     ["a relative path to salus against the record cwd", h => transcript(h, [{ type: "user", cwd: h.launch }, { type: "user", cwd: far }, use(far, "Bash", { command: `cat ${deep}/notes.md` })])],
+    ["a relative Glob pattern to salus against the record cwd", h => transcript(h, [{ type: "user", cwd: h.launch }, { type: "user", cwd: far }, use(far, "Glob", { pattern: `${deep}/**/*.md` })])],
+    ["a relative Glob pattern to salus under its path", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Glob", { pattern: `${join("b", "c", "d", "e", "f", "g", "salus")}/*.md`, path: join(far, "a") })])],
   ]);
   await phiCases([
     ["cd then a relative salus path", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cd ${docs} && cat salus/x` })])],
