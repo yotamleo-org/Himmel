@@ -97,12 +97,13 @@ wait_hb() {
     done
     return 1
 }
-# wait_exit <pid> [tenths of a second, default 80]: wait for the waiter to exit; sets rc to its
+# wait_exit <pid>: wait at most ~8 s for the waiter to exit; sets rc to its
 # exit code or "running". Not a $(...) helper: `wait` must run in the shell
 # that started the waiter.
 wait_exit() {
+    local max_tenths="${2:-80}"
     n=0
-    while [ "$n" -lt "${2:-80}" ]; do
+    while [ "$n" -lt "$max_tenths" ]; do
         if ! kill -0 "$1" 2>/dev/null; then wait "$1"; rc=$?; return; fi
         sleep 0.1; n=$((n + 1))
     done
