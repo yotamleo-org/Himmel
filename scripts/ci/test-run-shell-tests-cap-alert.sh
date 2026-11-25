@@ -162,4 +162,12 @@ else
   fail "CA12: rc=$rc (want rc 1, no CAP-ALERT) out: $out"
 fi
 
+mk dirtrust "echo \"FAIL: (8349) a row (want '0' got '124')\"; exit 1"
+run dirtrust SUITE_TRUST_PATHS="$sb"
+if [ "$rc" -eq 1 ] && ! grepq "$out" -E '^CAP-ALERT'; then
+  pass "CA13: a trust list that is a directory keeps the trust protection, rc 1"
+else
+  fail "CA13: rc=$rc (want rc 1, no CAP-ALERT) out: $out"
+fi
+
 rst_tally

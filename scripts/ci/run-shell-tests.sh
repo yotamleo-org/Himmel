@@ -3706,7 +3706,12 @@ _suite_trust_path() {
   local _list="${SUITE_TRUST_PATHS:-$REPO_ROOT/scripts/ci/ci-trust-paths.txt}" _dir _stem _f _base _found=1
   [ -r "$_list" ] || return 0
   _trust_pats=$(mktemp "${TMPDIR:-/tmp}/himmel-trust.XXXXXX") || return 0
-  grep -vE '^[[:space:]]*(#|$)' "$_list" > "$_trust_pats" || true
+  grep -vE '^[[:space:]]*(#|$)' "$_list" > "$_trust_pats" || _found=$?
+  if [ "$_found" -gt 1 ]; then
+    rm -f "$_trust_pats"
+    return 0
+  fi
+  _found=1
   if _trust_match "${1#"$tier_repo_root"/}"; then
     _found=0
   else
