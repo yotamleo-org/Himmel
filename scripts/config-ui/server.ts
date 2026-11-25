@@ -663,24 +663,24 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       await freshLiterals();
       text = maskFeed(text);
     }
+    if (epoch !== literalsEpoch) return json({ error: "internal error" }, 500);
     const headers = new Headers(res.headers);
     headers.delete("content-length");
     return new Response(text, { status: res.status, statusText: res.statusText, headers });
   };
-  const guardStream = (open: (redact: (v: unknown) => unknown) => ReadableStream<Uint8Array>): ReadableStream<Uint8Array> => {
-    let maskedAt: number | null = null, dirty = false;
-    const reader = open((v) => { maskedAt ??= literalsEpoch; dirty ||= literalsDirty; return redactOut(v); }).getReader();
+  const guardStream = (inner: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> => {
+    const openedAt = literalsDirty ? -1 : literalsEpoch;
+    const reader = inner.getReader();
     const dec = new TextDecoder(), enc = new TextEncoder();
     return new ReadableStream<Uint8Array>({
       async pull(c) {
         const next = await reader.read();
         if (next.done) return c.close();
         let chunk = next.value;
-        if (dirty || (maskedAt !== null && maskedAt !== literalsEpoch)) {
+        if (openedAt !== literalsEpoch) {
           await freshLiterals();
           chunk = enc.encode(maskFeed(dec.decode(chunk)));
         }
-        maskedAt = null; dirty = false;
         c.enqueue(chunk);
       },
       cancel: (why) => reader.cancel(why),
@@ -935,9 +935,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         if ("status" in found) return new Response(found.status === 400 ? "bad run id" : found.status === 404 ? "no such run" : "run id is ambiguous", { status: found.status });
         // Secrets in the transcript pass the same redactor as every other output, with the list as it is now (the stream is long-lived).
         active++; // an open stream keeps the idle timer from shutting the server down
-        const body = guardStream((redact) => journalStream(found.path, {
+        const body = guardStream(journalStream(found.path, {
           threadId: run, pollMs: opts.aguiPollMs ?? AGUI_POLL_MS, idleMs: opts.aguiIdleMs ?? AGUI_IDLE_MS, maxMs: opts.aguiMaxMs ?? AGUI_MAX_MS,
-          redact,
+          redact: (v) => redactOut(v),
           busRoot: busRootOf(env, env.HOME || homedir()),
           onClose: () => { active--; if (deferred && active === 0) { deferred = false; bump(); } },
         }));
