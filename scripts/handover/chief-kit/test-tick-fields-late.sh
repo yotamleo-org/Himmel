@@ -366,7 +366,7 @@ wt_dir="$W/wt-stale"; mkdir -p "$wt_dir/consoles" "$wt_dir/stub"
 : > "$wt_dir/consoles/c.md"; wt_inbox="$wt_dir/consoles/c.md"
 # the stub logs one line per COMPLETED tick, so a quiet arm can prove it saw whole samples
 # shellcheck disable=SC2016  # $? must reach the generated stub literally, not expand here
-printf '#!/usr/bin/env bash\nenv NEXT_DISPATCH_MIRROR=%q NEXT_DISPATCH_GH_CMD=%q NEXT_DISPATCH_GIT_DIR=%q NEXT_DISPATCH_MAIN_REF=main TOKEN= bash %q --doc %q\nrc=$?\necho x >> %q\nexit $rc\n' "$OW" "$W/ow-gh" "$W/ow-main" "$SUT" "$pc_doc" "$wt_dir/ticks" > "$wt_dir/stub/tick.sh"
+printf '#!/usr/bin/env bash\nenv REPO=%q NEXT_DISPATCH_MIRROR=%q NEXT_DISPATCH_GH_CMD=%q NEXT_DISPATCH_GIT_DIR=%q NEXT_DISPATCH_MAIN_REF=main TOKEN= bash %q --doc %q\nrc=$?\necho x >> %q\nexit $rc\n' "$W/repo" "$OW" "$W/ow-gh" "$W/ow-main" "$SUT" "$pc_doc" "$wt_dir/ticks" > "$wt_dir/stub/tick.sh"
 printf '#!/usr/bin/env bash\nprintf "PROCEED\\n"\n' > "$wt_dir/stub/bank.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$wt_dir/stub/off.sh"
 printf '#!/usr/bin/env bash\nexit 2\n' > "$wt_dir/stub/budget-off.sh"
