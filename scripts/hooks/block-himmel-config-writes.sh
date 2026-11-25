@@ -31,7 +31,12 @@
 #     deny message points at the quote-free reads and the Read tool.
 #   Edit|Write|MultiEdit|NotebookEdit - file_path / notebook_path whose literal
 #     name is `.himmel/config.json`, or which resolves (`readlink -m`: `..`
-#     segments, symlinked components) to $HOME/.himmel/config.json.
+#     segments, symlinked components) to $HOME/.himmel/config.json. The path is
+#     checked twice, as given and with `..` folded away textually (the file
+#     tools normalise lexically, so `.himmel/L/../config.json` writes the
+#     config even when L is a symlink elsewhere), and on Darwin every
+#     comparison is case-insensitive (APFS); HIMMEL_GUARD_FORCE_DARWIN=1 is
+#     the test seam for that and can only tighten the guard.
 #   apply_patch (Codex's only edit tool) - WHOLE-PATCH rule: any patch
 #     whose text anywhere contains `.himmel` and a config name (`config.json`,
 #     `config.j*`, `config.*`, `conf*`) denies, whatever the headers,
@@ -121,18 +126,55 @@ if [ -n "${HIMMEL_API_CREDIT_CONFIG:-}" ]; then
     case "$HIMMEL_API_CREDIT_CONFIG" in */*) ROLES_RAW="${HIMMEL_API_CREDIT_CONFIG%/*}/roles.json" ;; *) ROLES_RAW="roles.json" ;; esac
     ROLES_CFG=$(hook_resolve_m "$ROLES_RAW") || deny "the API role map path could not be resolved (fail-closed)"
 fi
+DARWIN=0
+if [ "${HIMMEL_GUARD_FORCE_DARWIN:-}" = 1 ] || [ "$(uname -s)" = Darwin ]; then DARWIN=1; fi
+fold_to() {
+    FOLDED="$1"
+    if [ "$DARWIN" = 1 ]; then FOLDED=$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]'); fi
+    return 0
+}
+fold_to "$STATION_DIR"; F_STATION_DIR="$FOLDED"
+fold_to "$STATION_CONF"; F_STATION_CONF="$FOLDED"
+fold_to "$STATION_LOCAL"; F_STATION_LOCAL="$FOLDED"
+fold_to "$STATION_PROFILES"; F_STATION_PROFILES="$FOLDED"
+fold_to "$ROLES_CFG"; F_ROLES_CFG="$FOLDED"
+
+lexnorm() {
+    local rest="$1" comp abs=0 out=""
+    case "$rest" in /*) abs=1 ;; esac
+    while [ -n "$rest" ]; do
+        comp="${rest%%/*}"
+        case "$rest" in */*) rest="${rest#*/}" ;; *) rest="" ;; esac
+        case "$comp" in
+            ""|.) ;;
+            ..)
+                case "$out" in
+                    "") [ "$abs" = 1 ] || out=".." ;;
+                    ..|*/..) out="$out/.." ;;
+                    */*) out="${out%/*}" ;;
+                    *) out="" ;;
+                esac ;;
+            *) out="${out:+$out/}$comp" ;;
+        esac
+    done
+    if [ "$abs" = 1 ]; then LEXNORM="/$out"; else LEXNORM="${out:-.}"; fi
+    return 0
+}
+
 roles_path() {
-    case "$1" in
+    fold_to "$1"
+    case "$FOLDED" in
         */.himmel/state/api-credit/roles.json|.himmel/state/api-credit/roles.json) return 0 ;;
     esac
-    [ -n "$ROLES_CFG" ] && [ "$1" = "$ROLES_CFG" ] && return 0
+    [ -n "$ROLES_CFG" ] && [ "$FOLDED" = "$F_ROLES_CFG" ] && return 0
     return 1
 }
 
 station_path() {
-    case "$1" in
+    fold_to "$1"
+    case "$FOLDED" in
         */.himmel/himmel.conf|.himmel/himmel.conf|*/.himmel/himmel.conf.local|.himmel/himmel.conf.local|*/.himmel/profiles/*.conf|.himmel/profiles/*.conf) return 0 ;;
-        "$STATION_DIR/himmel.conf"|"$STATION_DIR/himmel.conf.local"|"$STATION_DIR"/profiles/*.conf|"$STATION_CONF"|"$STATION_LOCAL"|"$STATION_PROFILES"/*.conf) return 0 ;;
+        "$F_STATION_DIR/himmel.conf"|"$F_STATION_DIR/himmel.conf.local"|"$F_STATION_DIR"/profiles/*.conf|"$F_STATION_CONF"|"$F_STATION_LOCAL"|"$F_STATION_PROFILES"/*.conf) return 0 ;;
     esac
     return 1
 }
@@ -194,14 +236,13 @@ deny_station_env() {
     deny "$tool targets the station .env ($given): write it between config-audit.sh pre and config-audit.sh post"
 }
 
-# check_path TOOL PATH: deny when PATH is, or resolves to, the config or a
-# project file.
-check_path() {
-    local t="$1" p="$2" r cfg_r
+check_one() {
+    local t="$1" p="$2" r cfg_r fp fr
     [ -n "$p" ] || return 0
     station_path "$p" && deny "$t targets station config $p"
     roles_path "$p" && deny "$t targets the API role map $p: only the operator maps roles (config UI, or node scripts/lib/api-roles.mjs write at their own prompt)"
-    case "$p" in
+    fold_to "$p"; fp="$FOLDED"
+    case "$fp" in
         */.himmel/config.json|.himmel/config.json|*/.himmel/project.conf|.himmel/project.conf) deny "$t targets $p" ;;
         */.himmel/outside-pr-approvals.jsonl|.himmel/outside-pr-approvals.jsonl|*/.himmel/outside-contributors.json|.himmel/outside-contributors.json) deny "$t targets $p: approvals come from the operator's Telegram approve reply and the allowlist is operator-edited; a worker must not write either store" ;;
     esac
@@ -209,12 +250,23 @@ check_path() {
     station_path "$r" && deny "$t target $p resolves to station config"
     roles_path "$r" && deny "$t target $p resolves to the API role map ($r)"
     cfg_r=$(hook_resolve_m "$CFG_REAL" 2>/dev/null) || deny "$t: the config path could not be resolved (fail-closed)"
-    if [ -n "$r" ] && [ "$r" = "$cfg_r" ]; then
+    fold_to "$r"; fr="$FOLDED"
+    fold_to "$cfg_r"
+    if [ -n "$fr" ] && [ "$fr" = "$FOLDED" ]; then
         deny "$t target $p resolves to ~/.himmel/config.json"
     fi
-    case "$r" in */.himmel/project.conf) deny "$t target $p resolves to a project file ($r)" ;; esac
-    case "$r" in */.himmel/outside-pr-approvals.jsonl|*/.himmel/outside-contributors.json) deny "$t target $p resolves to an outside-review store ($r)" ;; esac
+    case "$fr" in */.himmel/project.conf) deny "$t target $p resolves to a project file ($r)" ;; esac
+    case "$fr" in */.himmel/outside-pr-approvals.jsonl|*/.himmel/outside-contributors.json) deny "$t target $p resolves to an outside-review store ($r)" ;; esac
     deny_station_env "$t" "$p" "$r"
+    return 0
+}
+
+check_path() {
+    local t="$1" p="$2"
+    [ -n "$p" ] || return 0
+    check_one "$t" "$p"
+    lexnorm "$p"
+    [ "$LEXNORM" = "$p" ] || check_one "$t" "$LEXNORM"
     return 0
 }
 

@@ -49,6 +49,28 @@ file_case ".. segment resolving to the config -> block" block Write "$HOME/.himm
 file_case "another file in ~/.himmel -> allow" allow Write "$HOME/.himmel/notes.txt"
 file_case "a config.json elsewhere -> allow" allow Write "$T/other/config.json"
 
+echo "== HIMMEL-7888: lexical .. form and Darwin case-folding =="
+mkdir -p "$T/elsewhere"
+ln -s "$T/elsewhere" "$HOME/.himmel/L"
+file_case "7888 .himmel/L/../config.json (L symlinked elsewhere) -> block" block Write "$HOME/.himmel/L/../config.json"
+file_case "7888 the same through Edit -> block" block Edit "$HOME/.himmel/L/../config.json"
+file_case "7888 relative .himmel/L/../config.json -> block" block Write ".himmel/L/../config.json"
+file_case "7888 .himmel/L/../project.conf -> block" block Write "$HOME/.himmel/L/../project.conf"
+file_case "7888 .himmel/L/../outside-contributors.json -> block" block Write "$HOME/.himmel/L/../outside-contributors.json"
+file_case "7888 control: .himmel/L/../notes.txt -> allow" allow Write "$HOME/.himmel/L/../notes.txt"
+file_case "7888 control: a lexical path that ends outside the config dir -> allow" allow Write "$HOME/.himmel/x/../../other/config.json"
+file_case "7888 control: .himmel/notes.txt -> allow" allow Write "$HOME/.himmel/notes.txt"
+file_case "7888 control (Linux): ~/.HIMMEL/config.json is a different file -> allow" allow Write "$HOME/.HIMMEL/config.json"
+export HIMMEL_GUARD_FORCE_DARWIN=1
+file_case "7888 Darwin: ~/.HIMMEL/config.json -> block" block Write "$HOME/.HIMMEL/config.json"
+file_case "7888 Darwin: ~/.himmel/Config.JSON -> block" block Write "$HOME/.himmel/Config.JSON"
+file_case "7888 Darwin: .HIMMEL/PROJECT.CONF -> block" block Write ".HIMMEL/PROJECT.CONF"
+file_case "7888 Darwin: ~/.HIMMEL/himmel.conf (station config) -> block" block Write "$HOME/.HIMMEL/himmel.conf"
+file_case "7888 Darwin: ~/.HIMMEL/L/../config.json (both gaps) -> block" block Write "$HOME/.HIMMEL/L/../config.json"
+file_case "7888 Darwin control: ~/.HIMMEL/notes.txt -> allow" allow Write "$HOME/.HIMMEL/notes.txt"
+file_case "7888 Darwin control: a config.json elsewhere -> allow" allow Write "$T/other/Config.json"
+unset HIMMEL_GUARD_FORCE_DARWIN
+
 echo "== apply_patch (Codex's only edit tool, j2409d) =="
 patch_case() { run "$1" "$2" "$(jq -nc --arg c "$3" '{tool_name:"apply_patch",tool_input:{command:$c}}')"; }
 NL=$'\n'

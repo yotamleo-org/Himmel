@@ -82,6 +82,17 @@ mkdir -p "$SCR/state/himmel/bus/peers" && ln -s "$SCR/state/himmel/bus" "$SCR/al
 deny "Write through a symlink alias with no 'bus' in the path" "$(file_json Write "$SCR/alias/peers/x.json")"
 deny "Edit through a symlink alias with no 'bus' in the path" "$(file_json Edit "$SCR/alias/peers/x.json")"
 allow "Write to a real non-bus path beside the alias" "$(file_json Write "$SCR/other.txt")"
+{ mkdir -p "$SCR/elsewhere" && ln -s "$SCR/elsewhere" "$SCR/state/himmel/L"; } || { echo "FAIL: cannot build the 7888 fixtures" >&2; exit 1; }
+deny "7888 Write himmel/L/../bus/peers (L symlinked elsewhere)" "$(file_json Write "$SCR/state/himmel/L/../bus/peers/x.json")"
+deny "7888 Edit himmel/L/../bus/peers (L symlinked elsewhere)" "$(file_json Edit "$SCR/state/himmel/L/../bus/peers/x.json")"
+allow "7888 control: himmel/L/../notes.txt" "$(file_json Write "$SCR/state/himmel/L/../notes.txt")"
+allow "7888 control: a lexical path ending outside the store" "$(file_json Write "$SCR/state/himmel/x/../../notes.txt")"
+allow "7888 Linux control: himmel/BUS is a different directory" "$(file_json Write "$SCR/state/himmel/BUS/peers/x.json")"
+deny "7888 Darwin: himmel/BUS/peers" "$(file_json Write "$SCR/state/himmel/BUS/peers/x.json")" HIMMEL_GUARD_FORCE_DARWIN=1
+deny "7888 Darwin: Himmel/bus/peers" "$(file_json Write "$SCR/state/Himmel/bus/peers/x.json")" HIMMEL_GUARD_FORCE_DARWIN=1
+deny "7888 Darwin: both gaps (Himmel/L/../BUS)" "$(file_json Write "$SCR/state/Himmel/L/../BUS/peers/x.json")" HIMMEL_GUARD_FORCE_DARWIN=1
+allow "7888 Darwin control: Himmel/notes.txt" "$(file_json Write "$SCR/state/Himmel/notes.txt")" HIMMEL_GUARD_FORCE_DARWIN=1
+allow "7888 Darwin control: himmel/bus.json (the sibling, not the root)" "$(file_json Write "$SCR/state/himmel/BUS.json")" HIMMEL_GUARD_FORCE_DARWIN=1
 # BSD/macOS readlink has no -m. The shim refuses it and runs the real
 # readlink otherwise; the alias must still resolve (the guard never skips it).
 mkdir -p "$SCR/bsd-bin" && printf '#!/bin/sh\ncase "$1" in -m) echo "readlink: illegal option -- m" >&2; exit 1 ;; esac\nexec %s "$@"\n' "$(command -v readlink)" > "$SCR/bsd-bin/readlink" && chmod +x "$SCR/bsd-bin/readlink" || exit 1
