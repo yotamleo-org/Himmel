@@ -708,6 +708,14 @@ class OperatorService(stream_tests.StreamFixture):
         self.assertIn('"ref":"notify"', ledger.read_text())
         self.assertEqual(outbox.read_text() if outbox.exists() else '', original, 'a successor must not enqueue a second send')
 
+    def test_receipt_reader_accepts_the_bare_and_the_utc_z_stamp(self):
+        spec = importlib.util.spec_from_file_location('owed_receipt', os.getenv('T4_SERVICE_SOURCE', str(HERE / 'owed-service.py')))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        for stamp in ('09:03 ', '09:03Z ', ''):
+            self.doc.write_text('# chief\n- ' + stamp + 'DELIVERED k msg=7 chat=1\n')
+            self.assertEqual(mod.receipt(self.doc, 'k'), '7', 'stamp %r' % stamp)
+
     def test_operator_send_names_its_kind(self):
         ledger = self.root / 'owed.jsonl'
         ledger.write_text(json.dumps(dict(op='add', id='kind', ts='2026-11-17T00:00:00Z', epoch=1,

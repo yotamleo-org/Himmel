@@ -685,6 +685,9 @@ test("the Blocked on you list shows an owed item with no DELIVERED receipt and a
   expect(un[0].ctx).toContain("no DISPOSITION bullet");
   expect(un[0].act).toContain("DISPOSITION N5805 closed");
 
+  write("- 09:00 OWED sig-9608 sign the spec on Telegram\n- 09:03Z DELIVERED sig-9608 msg=43 chat=-100\n");
+  expect(rows("owed undelivered")).toEqual([]);
+
   write("- 09:00 OWED sig-9608 sign the spec on Telegram\n- 09:03 DELIVERED sig-9608 msg=43 chat=-100\n- 10:00 DISPOSITION N5806 closed\n- 10:01 DISPOSITION N5805 parked\n");
   expect(rows("owed undelivered")).toEqual([]);
   expect(rows("unclosed worker").map((i) => i.title)).toEqual(["N5805 is finished and its window is still open"]);
