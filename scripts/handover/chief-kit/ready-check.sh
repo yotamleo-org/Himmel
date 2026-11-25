@@ -289,7 +289,9 @@ if [ -z "${_READY_CHECK_ARMED:-}" ]; then
     rcd_ref=$(mktemp "${TMPDIR:-/tmp}/ready-check-refused.XXXXXX" 2>/dev/null) || rcd_ref=""  # swallow-ok: no scratch file runs this process unwrapped, as before
     if [ -n "$rcd_ref" ]; then
         rcd_buf=""; rcd_err=""; rcd_pid=""
-        trap 'rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"' EXIT
+        rcd_tmp=$(mktemp -d "${TMPDIR:-/tmp}/ready-check-run.XXXXXX" 2>/dev/null) || rcd_tmp=""  # swallow-ok: no run dir leaves the child on the caller's TMPDIR, as before  # prim-ok: ready-check sources no prim.sh
+        rcd_tmpdir="${rcd_tmp:-${TMPDIR:-/tmp}}"
+        trap 'rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"; [ -z "$rcd_tmp" ] || rm -rf "$rcd_tmp"' EXIT
         trap '_rcd_term' TERM INT HUP
         rcd_pr=""; rcd_sha=""
         if [ "$#" -ge 2 ]; then
@@ -306,7 +308,7 @@ if [ -z "${_READY_CHECK_ARMED:-}" ]; then
             rcd_err=$(mktemp "${TMPDIR:-/tmp}/ready-check-err.XXXXXX" 2>/dev/null) || rcd_err=""  # swallow-ok: no buffer runs the child unbuffered below
         fi
         if [ -n "$_TIMEOUT_BIN" ] && [ -n "$rcd_buf" ] && [ -n "$rcd_err" ]; then
-            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" \
+            _READY_CHECK_ARMED=1 TMPDIR="$rcd_tmpdir" _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" \
                 _rcd_child "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$SELF_DIR/${0##*/}" "$@" >"$rcd_buf" 2>"$rcd_err" || rcd_rc=$?
             if [ "$rcd_rc" -ne 0 ] && _rcd_report "$rcd_ref" "$rcd_pr" "$rcd_sha"; then
                 rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"
@@ -323,7 +325,7 @@ if [ -z "${_READY_CHECK_ARMED:-}" ]; then
         fi
         rm -f "$rcd_buf" "$rcd_err"
         if [ -n "$_TIMEOUT_BIN" ]; then
-            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" \
+            _READY_CHECK_ARMED=1 TMPDIR="$rcd_tmpdir" _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" \
                 _rcd_child "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$SELF_DIR/${0##*/}" "$@" || rcd_rc=$?
         else
             _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" _rcd_child bash "$SELF_DIR/${0##*/}" "$@" || rcd_rc=$?
