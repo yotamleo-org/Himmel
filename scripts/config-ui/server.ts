@@ -707,9 +707,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     return json({ state: "error", reason: run.error }, 502);
   }
   // background loading (backgroundFeed): refresh on each tick while the chief is in use.
-  let feedSeen = -Infinity;
+  let lastSeen = -Infinity;
   const refreshMs = opts.feedRefreshMs ?? FEED_REFRESH_MS;
-  const refresher = opts.backgroundFeed ? setInterval(() => { if (now() - feedSeen < refreshMs) feedStart(true); }, refreshMs) : undefined;
+  const refresher = opts.backgroundFeed ? setInterval(() => { if (now() - lastSeen < refreshMs) feedStart(true); }, refreshMs) : undefined;
   // The Fleet board route and the Shift page serve the chief's board file (board.mjs writes it on every render) and nothing else: a chief with none is reported missing, never built here.
   const shiftBoards = (handover: string) =>
     async (locks: Lock[], spans: Span[]): Promise<Live> => ({ ...(await liveBoards(handover, locks, spans, fileReader)), from: "file" });
@@ -757,7 +757,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         return c ? feedBody(c.body) : json({ state: "not-checked", project: other }, 404);
       }
       if (req.method === "GET" && path === "/api/feed") {
-        feedSeen = now();
+        lastSeen = now();
         if (new URL(req.url).searchParams.get("refresh") === "1") { feedRun = null; feedLast = null; feedEpoch++; } // the refresh button waits for a probe it started: never the cached report, never a run already in flight
         return feedRoute();
       }
