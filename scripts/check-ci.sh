@@ -552,7 +552,7 @@ _rl_recover() {
     ghb_wait_for_budget "$bound" "$CHECK_CI_SLEEP_CMD" || return 1
     local waited="$GHB_WAITED"
     bound=$(_rl_bound) || return 1
-    ghq_wait_core "$bound" "$CHECK_CI_SLEEP_CMD" || return 1
+    ghq_wait_core "$bound" "$CHECK_CI_SLEEP_CMD" main || return 1
     [ "$waited" -eq 1 ] || [ "$GHQ_CORE_WAITED" -eq 1 ] || return 1
     RL_RECOVERIES=$((RL_RECOVERIES + 1))
     _refused_clear
@@ -774,7 +774,13 @@ _alert() { merge_watch_alert "${owner:-?}/${repo:-?}" "${num:-?}" "${head0:-}" "
 #
 _req_transient() {
     ghb_is_rate_limited "${1:-}" && return 0
-    printf '%s' "${1:-}" | grep -i -E 'HTTP 5[0-9][0-9]|timed? ?out|connection (reset|refused)|no such host|could not resolve|unexpected EOF|TLS handshake|network is unreachable' >/dev/null 2>&1
+    printf '%s' "${1:-}" | grep -i -E 'QUOTA-PAUSE github|HTTP 5[0-9][0-9]|timed? ?out|connection (reset|refused)|no such host|could not resolve|unexpected EOF|TLS handshake|network is unreachable' >/dev/null 2>&1
+}
+
+_read_paused() {
+    ghb_is_rate_limited "${1:-}" && return 0
+    case "${1:-}" in *"QUOTA-PAUSE github"*) return 0 ;; esac
+    return 1
 }
 
 required_set() {
@@ -816,8 +822,17 @@ _required_rows() {
 # started_at is carried for diagnostics only — ordering uses `id` alone (see
 # `_required_status`).
 _producer_rows() {
-    gh_read api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
-        --jq '.check_runs[] | if .id == null then error("check-run with no id") else "\(if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" elif .conclusion == "cancelled" then "cancel" else "fail" end)\t\(.name)\t\(.app.id // "")\t\(.started_at // "")\t\(.id)" end' 2>/dev/null
+    local errf out rc
+    errf=$(mktemp "${TMPDIR:-/tmp}/check-ci-prod.XXXXXX") || return 1
+    out=$(gh_read api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
+        --jq '.check_runs[] | if .id == null then error("check-run with no id") else "\(if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" elif .conclusion == "cancelled" then "cancel" else "fail" end)\t\(.name)\t\(.app.id // "")\t\(.started_at // "")\t\(.id)" end' 2>"$errf") && rc=0 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        if _read_paused "$(cat "$errf")"; then rc=3; else rc=1; fi  # read-sink-ok: our own mktemp buffer
+        rm -f "$errf"
+        return "$rc"
+    fi
+    rm -f "$errf"
+    [ -z "$out" ] || printf '%s\n' "$out"
 }
 
 # _status_only <required status rows> — of the MISSING producer-pinned
@@ -886,7 +901,7 @@ _cr_first_event() {
 # the settle round.
 required_gate() {
     local wait_ok="$1" reqs rows prows="" st missing pending status_only failed req_start tries=0 max_tries
-    local cf_at=-100000 cf_held=0 cf_rc=0
+    local cf_at=-100000 cf_held=0 cf_rc=0 pr_rc
     # Backstop beside the SECONDS bound: a no-op sleep seam (CHECK_CI_SLEEP_CMD=:)
     # or a POLL of 0 must not turn the bounded wait into a spin.
     max_tries=$(( GRACE / (POLL > 0 ? POLL : 1) + 1 ))
@@ -925,11 +940,24 @@ required_gate() {
         fi
         # An unreadable producer read fails CLOSED like the set itself —
         # falling back to the name-only rows would certify the wrong producer.
-        if _has_producer_ids "$reqs" && ! prows=$(_producer_rows); then
-            echo "check-ci: BLOCKED — required-check producers unreadable: could not read which app reported each check on this PR's head, so a required check pinned to an app cannot be verified. Refusing rather than matching by name alone; re-run once gh/API access recovers (exit 5)" >&2
-            _alert "required-check producers unreadable — a required check pinned to an app could not be verified; nothing was assumed"
-            _threads_at_exit 5
-            exit 5
+        if _has_producer_ids "$reqs"; then
+            pr_rc=0
+            prows=$(_producer_rows) || pr_rc=$?
+            if [ "$pr_rc" -eq 3 ] && _rl_recover; then
+                pr_rc=0
+                prows=$(_producer_rows) || pr_rc=$?
+            fi
+            if [ "$pr_rc" -eq 3 ]; then
+                echo "check-ci: BLOCKED — required-check producers unreadable (transient): the read of which app reported each check kept failing with a rate limit, a quota pause, 5xx or network error. Refusing rather than matching by name alone; no operator alert, re-run once GitHub answers (exit 5)" >&2
+                _threads_at_exit 5
+                exit 5
+            fi
+            if [ "$pr_rc" -ne 0 ]; then
+                echo "check-ci: BLOCKED — required-check producers unreadable: could not read which app reported each check on this PR's head, so a required check pinned to an app cannot be verified. Refusing rather than matching by name alone; re-run once gh/API access recovers (exit 5)" >&2
+                _alert "required-check producers unreadable — a required check pinned to an app could not be verified; nothing was assumed"
+                _threads_at_exit 5
+                exit 5
+            fi
         fi
         st=$(_required_status "$reqs" "$rows" "$prows")
         failed=$(_join_by_status fail "$st")

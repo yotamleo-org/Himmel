@@ -40,6 +40,7 @@ case "$mode" in
     low) rem=100 ;;
     out) rem=0 ;;
     out-soon) rem=0; reset=$((now + 5)) ;;
+    band) rem=300; reset=$((now + 5)) ;;
     reset-past) rem=0; reset=$((now - 3600)) ;;
     reset-absent) rem=0; reset="" ;;
     reset-absurd) rem=0; reset=4102444800 ;;
@@ -144,6 +145,14 @@ fresh wait-unknown
 : > "$SLEEP_LOG"
 STUB_READ=unreadable STUB_READ2=out-soon STUB_MAIN=out-soon GH_READ_ENV_ROOT="$W/root2" ghq_wait_core 60 "$W/nosleep" 2>/dev/null
 check "W3d a probe that failed leaves the others undecided: rc 0, no sleep" "0 0 0" "$? $GHQ_CORE_WAITED $(grep -c . "$SLEEP_LOG")"
+fresh wait-main
+: > "$SLEEP_LOG"
+STUB_MAIN=out-soon STUB_READ=ok GH_READ_ENV_ROOT="$W/root2" ghq_wait_core 60 "$W/nosleep" main 2>/dev/null
+check "W3e main named: a healthy read token does not end the wait" "0 1 1" "$? $GHQ_CORE_WAITED $(grep -c . "$SLEEP_LOG")"
+fresh wait-band
+: > "$SLEEP_LOG"
+STUB_MAIN=band STUB_READ=band STUB_READ2=band GH_READ_ENV_ROOT="$W/root2" ghq_wait_core 60 "$W/nosleep" 2>/dev/null
+check "W3f 300 left is under the scan floor of 500, the park floor: the wait sleeps" "0 1 1" "$? $GHQ_CORE_WAITED $(grep -c . "$SLEEP_LOG")"
 fresh wait-far
 : > "$SLEEP_LOG"
 STUB_MAIN=out STUB_READ=out STUB_READ2=out GH_READ_ENV_ROOT="$W/root2" ghq_wait_core 60 "$W/nosleep" 2>"$W/werr"

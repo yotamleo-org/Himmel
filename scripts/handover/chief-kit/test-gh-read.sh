@@ -70,7 +70,10 @@ if [ "${GH_TOKEN:-}" = "ghp_READTOKEN0123456789" ] && [ -n "${GH_STUB_READFAIL:-
     exit 1
 fi
 if [ "${GH_TOKEN:-}" = "ghp_READTOKEN2_0123456789" ] && [ -n "${GH_STUB_READ2FAIL:-}" ]; then
-    echo "gh: HTTP 403: API rate limit exceeded for user" >&2
+    case "$GH_STUB_READ2FAIL" in
+        notfound) echo "gh: HTTP 404: Not Found" >&2 ;;
+        *) echo "gh: HTTP 403: API rate limit exceeded for user" >&2 ;;
+    esac
     exit 1
 fi
 case "$*" in
@@ -756,6 +759,13 @@ GH_READ_NO_MAIN_FALLBACK=1 hrun "$W/root" run view 5
 check "H3c no-fallback with the only read token parked: no call, not even on main" "" "$(glog)"
 check "H3d no-fallback with the only read token parked: exit 75" "75" "$HRC"
 has "H3e no-fallback pause names the parked read token" "token=read" "$(cat "$W/err")"
+qrows main:4000:600
+GH_STUB_READFAIL=1 GH_STUB_READ2FAIL=notfound GH_READ_NO_MAIN_FALLBACK=1 hrun "$W/root2" run view 5
+check "H3f no-fallback: a rate-limited first token and a 404 on the second never reach main" "tok=$READTOK argv=run view 5|tok=$READTOK2 argv=run view 5" "$(glog)"
+check "H3g no-fallback: that refusal keeps its non-zero exit" "1" "$HRC"
+qrows read:100:600 main:4000:600
+GH_STUB_READ2FAIL=notfound GH_READ_NO_MAIN_FALLBACK=1 hrun "$W/root2" run view 5
+check "H3h no-fallback: a parked first token and a 404 on the second never reach main" "tok=$READTOK2 argv=run view 5" "$(glog)"
 qrows read:100:600 read2:100:600 main:4000:600
 hrun "$W/root2" run view 5
 check "H3b both read tokens parked with main healthy: the read goes to main" "tok=main argv=run view 5" "$(glog)"
@@ -766,7 +776,7 @@ check "H4a every token under the floor: exit 75" "75" "$HRC"
 has "H4b every token under the floor: the line names the reset" "reset=" "$(cat "$W/err")"
 qrows main:100:600
 hrun "$W/emptyroot" run view 5
-check "H5 no read token configured: main is called even under the floor (a gate never pauses on a number)" "tok=main argv=run view 5" "$(glog)"
+check "H5 no read token configured: main is called even under the floor (nothing was refused, so nothing falls back)" "tok=main argv=run view 5" "$(glog)"
 rm -f "$W/quota/quota.tsv"
 
 printf '%s fail\n' "$fails"

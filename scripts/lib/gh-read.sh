@@ -253,12 +253,12 @@ gh_read() {
     # a refused call can already have printed pages or an error body: hold stdout so
     # a refused attempt is discarded instead of doubled by the retry
     outf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { rm -f "$errf"; _ghr_used main "$@"; _ghr_run "$@"; return $?; }
-    local parked name stok label="" last="" why="" skipped=""
+    local parked name stok rlseen="" last="" why="" skipped=""
     parked=$(_ghr_park_scan "$@")
     for name in read read2; do
         if [ "$name" = read ]; then stok="$_GHR_TOK"; else stok="$_GHR_TOK2"; fi
         [ -n "$stok" ] || continue
-        case "$parked" in *$'\n'"$name"$'\t'*) why=rl; [ -n "$skipped" ] || skipped="$name"; continue ;; esac
+        case "$parked" in *$'\n'"$name"$'\t'*) why=rl; [ -n "$skipped" ] || skipped="$name"; [ "${GH_READ_NO_MAIN_FALLBACK:-}" != 1 ] || rlseen=1; continue ;; esac
         _ghr_used "$name" "$@"
         GH_TOKEN="$stok" _ghr_run "$@" >"$outf" 2>"$errf"
         rc=$?
@@ -266,8 +266,7 @@ gh_read() {
         if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] && [ "$rc" -ne 137 ] \
             && { _ghr_rl "$errf" || grep -qiE 'bad credentials|requires authentication|not accessible by (personal access )?token|HTTP (401|403|404)|Could not resolve to a (Repository|PullRequest)' "$errf"; }; then
             why=$(_ghr_reason "$errf")
-            if [ "${GH_READ_NO_MAIN_FALLBACK:-}" = 1 ] && [ "$why" = rl ]; then label="$name"; continue; fi
-            label=""
+            if [ "${GH_READ_NO_MAIN_FALLBACK:-}" = 1 ] && [ "$why" = rl ]; then rlseen=1; fi
             continue
         fi
         cat "$outf"; rm -f "$outf"  # read-sink-ok: our own mktemp buffer
@@ -276,15 +275,15 @@ gh_read() {
         rm -f "$errf"
         return "$rc"
     done
-    if [ -n "$label" ]; then
+    if [ -n "$rlseen" ] && [ -n "$last" ]; then
         cat "$outf"; rm -f "$outf"  # read-sink-ok: our own mktemp buffer
         cat "$errf" >&2  # read-sink-ok: our own mktemp buffer
-        _ghr_note "$label" "$rc" "$errf" "$@"
+        _ghr_note "$last" "$rc" "$errf" "$@"
         rm -f "$errf"
         return "$rc"
     fi
     rm -f "$outf"
-    if [ -z "$last" ] && [ -n "$skipped" ] && [ "${GH_READ_NO_MAIN_FALLBACK:-}" = 1 ]; then
+    if [ -n "$rlseen" ] && [ -z "$last" ]; then
         printf '%s\n' "$(printf '%s' "$parked" | awk -F'\t' -v n="$skipped" '$1 == n { print $2; exit }')" >&2
         [ -z "${GH_READ_REFUSED_FILE:-}" ] || printf '%s core rate-limit\n' "$skipped" >> "$GH_READ_REFUSED_FILE" 2>/dev/null
         rm -f "$errf"

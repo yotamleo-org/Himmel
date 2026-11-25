@@ -147,6 +147,9 @@ if [ "${1:-}" = api ] && [ "${2:-}" = -i ] && [ "${3:-}" = user ]; then
         out) if [ ! -s "$(dirname "$0")/sleepcount" ]; then
                 printf 'X-Ratelimit-Remaining: 0\nX-Ratelimit-Reset: %s\n' "$(($(date +%s) + 6))"; exit 1
             fi ;;
+        main-out) if [ "$_tok" = main ] && [ ! -s "$(dirname "$0")/sleepcount" ]; then
+                printf 'X-Ratelimit-Remaining: 0\nX-Ratelimit-Reset: %s\n' "$(($(date +%s) + 6))"; exit 1
+            fi ;;
         out-far) printf 'X-Ratelimit-Remaining: 0\nX-Ratelimit-Reset: %s\n' "$(($(date +%s) + 3000))"; exit 1 ;;
     esac
     printf 'X-Ratelimit-Remaining: 4000\nX-Ratelimit-Reset: %s\n' "$(($(date +%s) + 3600))"; exit 0
@@ -2916,11 +2919,11 @@ core_poll_case() {
     printf 'main\tcore\t%s\t5000\t%s\t%s\tok\n' "$1" "$(($(date +%s) + 600))" "$(date +%s)" > "$STUBDIR/quota/quota.tsv"
 }
 core_poll_case 4000
-run cr-completed --grace 1
+run cr-completed --grace 5
 assert_rc 5 "11102-c healthy core rows: the missing required check is refused after --grace"
 _args=$(sort -u "$STUBDIR/sleepargs" | paste -sd, -); if [ "$_args" = 1 ]; then pass "11102-c healthy core rows keep the poll at 1s"; else fail "11102-c healthy core rows keep the poll at 1s" "sleep args=[$_args]"; fi
 core_poll_case 100
-run cr-completed --grace 1
+run cr-completed --grace 5
 assert_rc 5 "11102-d low core rows: the missing required check is still refused after --grace"
 _args=$(sort -u "$STUBDIR/sleepargs" | paste -sd, -); if [ "$_args" = 6 ]; then pass "11102-d core rows under the floor stretch the poll to 6s"; else fail "11102-d core rows under the floor stretch the poll to 6s" "sleep args=[$_args]"; fi
 rm -f "$STUBDIR/quota/quota.tsv"
@@ -3300,6 +3303,29 @@ _s9_on() { : > "$STUBDIR/toklog"; export GH_STUB_TOKLOG="$STUBDIR/toklog" GH_REA
 _s9_off() { unset GH_STUB_RL_REMAINING GH_STUB_TOKLOG GH_STUB_READFAIL GH_STUB_MAIN_SPENT GH_STUB_CLASSIC_ADMIN_ONLY; export GH_READ_ENV_ROOT="$_NO_READ_TOKEN_ROOT"; }
 tok_count() { grep -c -- "$1" "$STUBDIR/toklog" | tr -d ' '; }
 tok_before() { local a b; a=$(grep -n -- "$1" "$STUBDIR/toklog" | head -1 | cut -d: -f1); b=$(grep -n -- "$2" "$STUBDIR/toklog" | head -1 | cut -d: -f1); if [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]; then echo yes; else echo no; fi; }
+core_parked_case() {
+    _s9_on; export GH_STUB_CLASSIC_ADMIN_ONLY=1
+    mkdir -p "$STUBDIR/quota"
+    printf 'main\tcore\t100\t5000\t%s\t%s\tok\n' "$(($(date +%s) + 600))" "$(date +%s)" > "$STUBDIR/quota/quota.tsv"
+    RULES_OVERRIDE="req:unit-tests"; CLASSIC_OVERRIDE="ctx:unit-tests"; CHECKS_OVERRIDE="pass:unit-tests"
+}
+core_parked_case
+run cr-completed --grace 2
+_s9_off
+assert_rc 5 "11102-e main parked, the classic read ends on main: exit 5"
+assert_err_has "required-set unreadable (transient)" "11102-e the refusal is the transient one, not a permanent unreadable set"
+assert_err_lacks "11102-e never the permanent required-set refusal" "stderr: $ERR" -iF -- "could not list the checks GitHub requires"
+if [ "$(alert_count)" = 0 ]; then pass "11102-e a paused read sends no operator alert"; else fail "11102-e a paused read sends no operator alert" "count=$(alert_count)"; fi
+core_parked_case
+CORE_OVERRIDE=main-out; QUOTA_OVERRIDE=healthy; BUDGET_PREFLIGHT_OVERRIDE=1; SLEEP_CMD_OVERRIDE="$STUBDIR/counting-sleep"
+run cr-completed --grace 30
+_s9_off
+assert_rc 0 "11102-f main parked and the read token healthy: check-ci waits for main's reset and ends green"
+_core_probes=$(grep -c '^api -i user' "$STUBDIR/args.log")
+if [ "$_core_probes" -ge 2 ]; then pass "11102-f the pause sent check-ci to probe main's core bucket again"; else fail "11102-f the pause sent check-ci to probe main's core bucket again" "probes=$_core_probes"; fi
+assert_err_lacks "11102-f never the permanent required-set refusal" "stderr: $ERR" -iF -- "could not list the checks GitHub requires"
+rm -f "$STUBDIR/quota/quota.tsv"
+
 _s9_on; export GH_STUB_READFAIL=auth
 run red-probe --grace 30
 _s9_off
@@ -3547,5 +3573,5 @@ if [ "$RC" -ne 0 ]; then pass "T3.23-d even with --fail-fast kept, a pending con
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 270 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 270"; exit 1; fi
+if [ "$COUNT" -ne 272 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 272"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1
