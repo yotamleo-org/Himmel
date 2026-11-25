@@ -56,8 +56,6 @@ def alive(pid, start, host=HOST, boot=BOOT):
 
 
 def clock(real=time.time):
-    """The supervisor's own clock; only under HIMMEL_TEST_FIXTURE=1 does it follow the time in the file named by
-    CHIEF_WAIT_STREAM_TEST_CLOCK, so a real environment always runs on the real clocks."""
     path = os.getenv('CHIEF_WAIT_STREAM_TEST_CLOCK') if os.getenv('HIMMEL_TEST_FIXTURE') == '1' else None
     return float(Path(path).read_text()) if path else real()
 
@@ -79,7 +77,6 @@ LIMITS = {
 
 
 def bound(name):
-    """The setting in seconds: its default when unset, otherwise a finite number above 0 and at most its maximum."""
     default, longest = LIMITS[name]
     raw = os.getenv(name)
     if raw is None:
@@ -94,15 +91,12 @@ def bound(name):
 
 
 def watchdog_life():
-    """The longest a watchdog lives, from the maxima: its supervisor's HARD, then the longer of the adoption and reap
-    windows, then one kill grace. Past it the watchdog has outlasted every wait it was started for."""
     return (LIMITS['CHIEF_WAIT_STREAM_HARD_SEC'][1]
             + max(LIMITS['CHIEF_WAIT_STREAM_ADOPT_SEC'][1], LIMITS['CHIEF_WAIT_STREAM_REAP_MAX_SEC'][1])
             + LIMITS['CHIEF_WAIT_STREAM_KILL_GRACE_SEC'][1])
 
 
 def check_limits():
-    """Raises BadSetting unless every duration setting is acceptable and SOFT is below HARD."""
     for name in LIMITS:
         bound(name)
     soft, hard = 'CHIEF_WAIT_STREAM_SOFT_SEC', 'CHIEF_WAIT_STREAM_HARD_SEC'
@@ -112,11 +106,18 @@ def check_limits():
 
 
 @contextlib.contextmanager
-def ownership(inbox):
-    """Held while the sidecar's owner is checked and signalled for, and while a supervisor publishes itself as owner."""
-    with open(inbox + '.wait.stream.own', 'a') as lock:
+def flocked(path):
+    with open(path, 'a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         yield
+
+
+def ownership(inbox):
+    return flocked(inbox + '.wait.stream.own')
+
+
+def acks(inbox):
+    return flocked(inbox + '.wait.ack.lock')
 
 
 def load(path):
@@ -437,18 +438,19 @@ class Supervisor:
         keep = max(1, int(os.getenv('CHIEF_WAIT_STREAM_KEEP', '200')))
         retained = wakes[-keep:]
         if len(wakes) > keep:
-            asked = {p.name[len(Path(self.base).name + 'ack-'):-len('.json')]
-                     for p in self.path('stream').parent.glob(Path(self.base).name + 'ack-*.json')}
-            kept = [r for r in wakes[:-keep] if r[1] in asked] + retained
-            seqs = {r[1] for r in kept}
-            arms = {r[3] for r in retained}
-            newest = next((r[1] for r in reversed(rows) if r[0] == 'A'), '')
-            rows = [r for r in rows if (r in kept or r[0] in ('D', 'K') and r[1] in seqs or
-                                        r[0] == 'A' and (r[1] in arms or r[1] == newest))]
-            atomic(self.log, ''.join('\t'.join(r) + '\n' for r in rows))
-            for r in wakes:
-                if r not in kept:
-                    Path(r[5]).unlink(missing_ok=True)
+            with acks(self.inbox):
+                asked = {p.name[len(Path(self.base).name + 'ack-'):-len('.json')]
+                         for p in self.path('stream').parent.glob(Path(self.base).name + 'ack-*.json')}
+                kept = [r for r in wakes[:-keep] if r[1] in asked] + retained
+                seqs = {r[1] for r in kept}
+                arms = {r[3] for r in retained}
+                newest = next((r[1] for r in reversed(rows) if r[0] == 'A'), '')
+                rows = [r for r in rows if (r in kept or r[0] in ('D', 'K') and r[1] in seqs or
+                                            r[0] == 'A' and (r[1] in arms or r[1] == newest))]
+                atomic(self.log, ''.join('\t'.join(r) + '\n' for r in rows))
+                for r in wakes:
+                    if r not in kept:
+                        Path(r[5]).unlink(missing_ok=True)
         oldest = int(retained[0][1]) if retained else 0
         if oldest and since < oldest - 1:
             self.emit(f'GAP since={since} oldest={oldest}')
@@ -691,10 +693,11 @@ def main():
         seq, receipt_id = pairs.get('--ack', ''), pairs.get('--receipt', '')
         if not seq.isdecimal() or not re.fullmatch(r'[A-Za-z0-9._:-]{1,200}', receipt_id):
             return Supervisor.refuse('ack-receipt', 2)
-        rows = [line.split('\t') for line in read(inbox + '.wait.wakes').splitlines()]
-        if not any(r[0] == 'W' and r[1] == seq for r in rows):
-            return Supervisor.refuse('unknown-wake', 2)
-        atomic(inbox + '.wait.ack-' + seq + '.json', json.dumps(dict(seq=seq, receipt=receipt_id)))
+        with acks(inbox):
+            rows = [line.split('\t') for line in read(inbox + '.wait.wakes').splitlines()]
+            if not any(r[0] == 'W' and r[1] == seq for r in rows):
+                return Supervisor.refuse('unknown-wake', 2)
+            atomic(inbox + '.wait.ack-' + seq + '.json', json.dumps(dict(seq=seq, receipt=receipt_id)))
         print('ACK-RECORDED seq=' + seq)
         return 0
     if len(sys.argv) < 2:

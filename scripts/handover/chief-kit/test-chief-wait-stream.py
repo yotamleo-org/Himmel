@@ -602,7 +602,6 @@ echo 'HANDLED close-wrapped'
             unrelated.wait()
 
     def waiters(self):
-        """Pids of the waiter script run for this inbox, however far its start has come."""
         found = []
         for entry in Path('/proc').iterdir():
             if entry.name.isdigit():
@@ -760,8 +759,6 @@ echo 'HANDLED close-wrapped'
         self.stop(p)
 
     def test_busy_consumer_fifteen_simulated_minutes_without_ack(self):
-        # Advance the wall clock of both the child (its `date`) and the supervisor (its test clock) while the consumer
-        # remains busy and sends no receipt/ack. This does not simulate native Monitor delivery.
         clock = self.root / 'clock'
         clock.write_text('1794800000')
 
@@ -1076,7 +1073,6 @@ echo 'HANDLED close-wrapped'
 
 
 class AckRows(StreamFixture):
-    """Acknowledgements against wake blocks that are damaged or that a rotation reaches, through a real arm."""
 
     def wake(self, seq, kind, text=None):
         if text is not None:
@@ -1095,7 +1091,6 @@ class AckRows(StreamFixture):
         self.assertEqual(done.returncode, 0, done.stderr)
 
     def served(self, out):
-        """Waits until the arm has either recorded the acknowledgement of wake 1 or held it."""
         self.until(lambda: 'kind=ack-stuck' in out.read_text() or ['K', '1'] in [row[:2] for row in self.rows()])
 
     def check_the_ack_is_held(self, *rows):
@@ -1156,9 +1151,32 @@ class AckRows(StreamFixture):
         self.assertNotIn(['K', '1'], kept)
         self.assertFalse(self.path('wake-1').exists())
 
+    def test_an_ack_and_a_rotation_take_turns_so_the_ack_is_never_lost(self):
+        self.env['CHIEF_WAIT_STREAM_KEEP'] = '2'
+        self.log(*[self.wake(n, 'telegram', f'WAKE telegram message {n}\n') for n in (1, 2, 3)])
+        before = self.path('wakes').read_text()
+        with self.path('ack.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            acking = subprocess.Popen([sys.executable, '-I', str(HERE / 'chief-wait-stream.py'), '--ack', str(self.inbox),
+                                       '--ack', '1', '--receipt', 'rcpt-1'], stdout=subprocess.PIPE,
+                                      stderr=subprocess.STDOUT, text=True, env=self.env)
+            p, out = self.start(('--since', '0'))
+            time.sleep(1.5)
+            self.assertIsNone(acking.poll(), 'an ack was written while a rotation could run')
+            self.assertEqual(self.path('wakes').read_text(), before, 'a rotation ran while an ack could be written')
+        said = acking.communicate(timeout=10)[0]
+        if acking.returncode == 0:
+            self.served(out)
+            self.assertIn(['K', '1'], [row[:2] for row in self.rows()], 'an accepted ack lost its wake')
+        else:
+            self.assertEqual(acking.returncode, 2, said)
+            self.assertIn('STREAM-REFUSED unknown-wake', said)
+            self.assertFalse(self.path('ack-1.json').exists())
+        self.stop(p)
+        self.assertNotIn('ack-stuck', out.read_text())
+
 
 class RefusedArm(StreamFixture):
-    """A second arm that cannot take the lock refuses and leaves the live supervisor's files as they are."""
 
     def setUp(self):
         super().setUp()
@@ -1201,7 +1219,6 @@ class RefusedArm(StreamFixture):
 
 
 class WatchdogOwner(StreamFixture):
-    """The watchdog of a dead supervisor requests a reap, or signals, only while the sidecar still names the owner it checked."""
 
     def race(self, when):
         script = self.root / 'watchdog-race.py'
@@ -1292,8 +1309,6 @@ print(json.dumps(dict(rc=rc, took=took, child_running=child.poll() is None,
 
 
 class StreamBounds(StreamFixture):
-    """Every duration the supervisor and its watchdog read from the environment has a maximum; a value outside it
-    refuses the start with one line that names the setting, the value and the range."""
 
     def tearDown(self):
         for entry in Path('/proc').iterdir():
@@ -1315,8 +1330,6 @@ class StreamBounds(StreamFixture):
         return inbox
 
     def arm(self, inbox, drop=(), **setting):
-        """Starts the supervisor with the settings (and without those in `drop`) and returns (rc, output, started); a
-        supervisor that started is stopped."""
         out = self.root / (inbox.name + '.out')
         env = dict(self.env, **setting)
         for name in drop:
@@ -1388,7 +1401,6 @@ class StreamBounds(StreamFixture):
         self.assertTrue(started, text)
 
     def watchdog(self, drop=(), **setting):
-        """Starts a watchdog for a live supervisor (this process) and returns (rc, stderr, still running after 2 s)."""
         inbox = self.fresh(0)
         fields = Path('/proc/self/stat').read_text().rsplit(')', 1)[1].split()
         err = self.root / 'watchdog.err'
@@ -1435,7 +1447,6 @@ class StreamBounds(StreamFixture):
         self.assertEqual(p.wait(timeout=6), 0)
 
     def ends_by_itself(self, env, seconds=8):
-        """Starts a supervisor; returns (rc, output) once it has ended, rc None if it was still running after `seconds`."""
         p, out = self.start(env=env)
         try:
             return p.wait(timeout=seconds), out.read_text()
@@ -1467,7 +1478,6 @@ class StreamBounds(StreamFixture):
             waiter.wait()
 
     def run_script(self, script, *args, seconds=10, **setting):
-        """Runs a probe script; returns (rc, output), rc None when it was still running after `seconds`."""
         path = self.root / 'bounds-probe.py'
         path.write_text(script)
         out = self.root / 'bounds-probe.out'
@@ -1522,10 +1532,6 @@ class StreamBounds(StreamFixture):
         self.assertFalse(Path(str(inbox) + '.wait.stream.hung').exists())
 
 
-# Worker-event stand-in that models auto-go's exact-head audit rule (the real rule is pinned in
-# test-auto-go.sh): the first READY of a (pr, head) records one GO-SENT row, a replay of the same
-# pair records none, and a cleanup event never records a GO. TEST_ROOT/refuse-cleanup makes cleanup refuse with the
-# retryable `-failed rc=4`; TEST_ROOT/slow-N<k> makes that worker's event slow.
 GO_AUDIT_EVENT = r'''line=$(cat)
 echo "$(date +%s.%N) $line" >> "$TEST_ROOT/events"
 label=${line%% *}
@@ -1912,8 +1918,6 @@ class StackedWorker(StreamFixture):
         time.sleep(1.0)
         q.terminate()
         q.wait(timeout=6)
-        # The successor starts every worker over: the relay offers the newest READY of each once, nothing older, nothing twice;
-        # the stand-in's audit dedupes by itself, so test-auto-go.sh pins the real auto-go's one send.
         self.assertEqual(len(self.seen(f'N1 READY #1 {self.H[1]}')), 2)
         self.assertEqual(len(self.seen(f'N2 READY #2 {self.H[2]}')), 1)
         self.assertEqual(len(self.seen(f'N2 READY #3 {self.H[3]}')), 1)
