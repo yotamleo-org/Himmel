@@ -20,7 +20,6 @@ export interface TicketIn {
 export interface ReleaseIn {
   current: string;
   versions: string[];
-  /** True when current is frozen. */
   frozen: boolean;
 }
 

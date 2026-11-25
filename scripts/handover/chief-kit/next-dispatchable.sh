@@ -810,9 +810,6 @@ def read_residual_must(path):
 residual_must = read_residual_must(os.environ['ND_DOC']) if os.environ.get('ND_DOC') else set()
 
 def read_admitted(path, ver):
-    # the admissions ledger: a key whose latest row for the version is an override, an rm-admit or a
-    # filed row (a placement by the rules at filing) was admitted into it; a deferral, an unknown kind
-    # or a kind-less intake row was not
     last = {}
     try:
         for line in open(path, encoding='utf-8', errors='replace'):
