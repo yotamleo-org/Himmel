@@ -15,10 +15,6 @@
 # register+embed both succeed, so a failed run is retried next time; a missing or failing qmd exits non-zero. ROADMAP_QMD_BIN
 # overrides the qmd binary (test seam).
 #
-# qmd runs scoped: `update -c roadmap-plan` and `embed -c roadmap-plan`, never the bare update that re-indexes
-# every collection. The watch paths feed only the key, not the docs, so a refresh whose rendered docs equal the
-# last indexed ones (<out>/.rendered, written after a successful embed) skips qmd and only advances the key.
-#
 # Exit: 0 ok/unchanged (--check: fresh), 1 failure or (--check) stale, 2 usage.
 set -euo pipefail
 
