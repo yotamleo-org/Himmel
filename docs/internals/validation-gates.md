@@ -347,8 +347,8 @@ file from step 3 on describes the route. A live run on a real outside PR is stil
 step 3.6 records it `SUITE <p> = CI` (`scripts/cr/pr-check-ref/33-step3-impacted.md`),
 and `ready-check.sh` item 19 needs proof for every impacted suite of
 `origin/main..<head>` at the exact head. A worker runs on the station only the
-suite its PR changed, with its failing-first proof, and a suite CI cannot run, each with a
-named reason; `impacted-suites.sh --plan <base>..<head>` prints that split (`LOCAL <p> (<reason>)`
+suite its PR changed, with its failing-first proof; a suite CI does not run needs no local run (the
+tier-skipped row below). `impacted-suites.sh --plan <base>..<head>` prints that split (`LOCAL <p> (<reason>)`
 or `CI <p>`; the failing-first proof is an instruction the plan prints, no gate checks it) (operator decision 775).
 A JS/TS suite follows the same rule: it is `CI` when the PR did not change it, `--runner` maps it, it is not
 on the CI-skips list and, for a vitest suite, the diff's node_suites gate is on. A typical PR plans 5 or fewer
@@ -358,6 +358,7 @@ on the CI-skips list and, for a vitest suite, the diff's node_suites gate is on.
 |---|---|
 | local | the head's `impacted` ledger row lists the suite in `local_pass` |
 | ruled SKIP | that row lists it in `ruled_skip` (`SUITE <p> = SKIP ruled <chief-session> <reason>`); the PASS line counts and names it apart from the local count. Only a hand GO reads that line: `auto-go.sh` does not stop on a ruled SKIP |
+| tier-skipped | a suite CI does not run needs no local run: the CI manifest lists it as `skip`, or it has no `ran 0` row and its tier in `scripts/ci/suite-tiers.tsv` (the anchor's copy, never the PR's) is `daily`, `local`, `flow` or `quarantine`. The PASS line names each one with its tier (`<p> (daily)`) or `(CI skip)`. A `pr`-tier suite (a suite with no table row reads as `pr`, as does an unknown tier) with no `ran 0` row still FAILs, and so does a suite CI ran red, whatever its tier |
 | CI | an exact `ran 0 <path>` line in a manifest of the run behind the latest `SUCCESS` `shell-unit (ubuntu-latest)` check-run of workflow `CI`, whose `head_sha` is the head: a shell shard manifest (artifacts `shell-unit-manifest-ubuntu-latest-shard*`, files `manifest-shard*.txt`), or, for a suite no shard line proves, a JS suite manifest (artifacts `js-suite-manifest-*`, files `manifest-js-*.txt`) whose producing job concluded `success` in that run. A nonzero `ran` line in any JS manifest is red even if another job wrote `ran 0` |
 
 A suite the PR changed (it is on the PR's file list) needs the local proof or a
