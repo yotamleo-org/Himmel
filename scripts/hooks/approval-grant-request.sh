@@ -72,7 +72,7 @@ name_ok() { [ -n "$1" ] && [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && [[ $1 != 
 current_chief() {
     local c=$1 next seen=" $1 "
     while :; do
-        [ -f "$CONSOLES/$c.md.handover" ] || break
+        [ -f "$CONSOLES/$c.md.handover" ] && [ -r "$CONSOLES/$c.md.handover" ] || break
         next=$(sed -n 1p "$CONSOLES/$c.md.handover" | tr -d '[:space:]')
         name_ok "$next" && [ -f "$CONSOLES/$next.md" ] || break
         case "$seen" in *" $next "*) break ;; esac
@@ -82,7 +82,7 @@ current_chief() {
 }
 command_head() {
     local w h='' n=0 words=()
-    read -r -a words <<<"$1"
+    read -r -a words <<<"${1#"${1%%[![:space:]]*}"}"
     for w in ${words[@]+"${words[@]}"}; do
         case "$w" in *=*) continue ;; esac
         case "$w" in *[\"\'\`\$\(\)\;\&\|\<\>]*) break ;; esac

@@ -178,6 +178,8 @@ lacks "RED HIMMEL-10845: a runner's inline code never reaches the line" "SECRET_
 has "RED HIMMEL-10845: a runner with a flag names the runner only" "had \`python3\`" "$BOX"
 run Bash "bash 'SECRET_VALUE x'"
 lacks "RED HIMMEL-10845: a quoted word after a runner never reaches the line" "SECRET_VALUE" "$BOX"
+run Bash $'\n  npx cowsay'
+has "RED HIMMEL-10845: a command that starts with a blank line still names its program" "had \`npx cowsay\`" "$BOX"
 run Bash "TOKEN=SECRET_VALUE env OTHER=SECRET_VALUE curl https://h/x"
 lacks "RED HIMMEL-10845: an assignment never reaches the line" "SECRET_VALUE" "$BOX"
 has "RED HIMMEL-10845: assignments are skipped to the program" "had \`env curl\`" "$BOX"
