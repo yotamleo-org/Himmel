@@ -1935,7 +1935,7 @@ class StackedWorker(StreamFixture):
         self.maxDiff = None
         for attempt in (1, 2):
             result = unittest.TextTestRunner(stream=io.StringIO(), verbosity=0).run(
-                unittest.TestSuite([Loaded('test_successor_chief_replays_each_worker_once_and_never_sends_a_second_go')]))
+                unittest.TestSuite([Loaded('test_successor_chief_replays_each_worker_once_through_the_relay')]))
             self.assertEqual((result.testsRun, [e for _, e in result.errors], [f for _, f in result.failures]), (1, [], []), f'run {attempt}')
 
     def relay_rows(self):
