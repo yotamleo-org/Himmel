@@ -39,7 +39,7 @@
 
 _cmg_degrade() { echo "cr-merge-gate: degraded ($*) - failing open" >&2; }
 
-_crg_gh() { _crs_gh "$@"; }
+_crg_gh() { GH_CMD='' _crs_gh "$@"; }
 
 # _cmg_prior_outside_block — operator ruling + the
 # PR's real head carries no CodeRabbit review of its own, but prior head(s)
