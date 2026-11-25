@@ -2763,8 +2763,9 @@ unavailable (action-zero.sh exited $arc): run it yourself"
 
 Steps 2–6 ran when \`next\` wrote this doc: verify these results, do not re-run them.
 Re-run action-zero.sh only if they are over 15 minutes old or a section reads
-unavailable. C29 is left out (it must see your own session): run it in the
-same batch as step 8, which is one call each:
+unavailable. C29 is left out (it must see your own session). Run these two calls
+after the parallel reads, each as its own call alone in its turn (auto mode drops a batched call's verdict),
+never inside the step 1 or step 8 batch:
 \`bash \"$repo/scripts/himmel-doctor.sh\" --only C29\`
 \`timeout 90 bash \"$kit/action-zero.sh\" --doc \"$doc\" --root \"$root\" --acquire --lock-only\`
 
