@@ -116,9 +116,8 @@ parallel workers:
   live AG-UI Fleet console (`himmelctl ui`).
 - **Second brain & mobile (optional):** Cross-project Obsidian vault (the
   `luna` [install profile](docs/setup/profiles/README.md)) with end-session
-  capture, local `qmd` keyword+vector search (always returning the real source
-  file, never an extracted fact), `graphify` code/note maps, and Telegram
-  alerts.
+  capture, local `qmd` keyword+vector search, `graphify` code/note maps, and
+  Telegram alerts.
 
 The interactive [adoption trail](https://yotamleo-org.github.io/Himmel/adoption-trail.html)
 lists what each capability installs, what it costs, and how to turn it off.
@@ -138,7 +137,7 @@ dollar claims:
 | **Cached session input** | **99.1%** | In a sample of 176 sessions (4.95B tokens), 99.1% of input tokens were prompt-cache reads rather than uncached input or cache writes; `cache-health-cadence.sh` watches for drift hourly ([`evals`](docs/evals/README.md)). |
 | **Hard-escape defect catch** | **38.3%** | `claude` + `codex` matched 18 of 47 planted and historical review-escape defects on a strict key-match proxy (95% CI 25.8–52.6%, as of 2026-11-04; CodeRabbit not in that sweep, [`evals`](docs/evals/README.md)). |
 
-Full methodology, failure taxonomy, and pending retrieval evals live in
+Full methodology and failure taxonomy live in
 [`docs/evals/README.md`](docs/evals/README.md) and
 [`docs/token-economy.md`](docs/token-economy.md).
 
