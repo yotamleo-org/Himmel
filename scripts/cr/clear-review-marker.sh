@@ -622,6 +622,8 @@ ledger="$git_dir/cr-critic-scores.jsonl"
 # on is judged on its own rows, and any other unreviewed delta keeps the
 # no-responders refusal.
 review_head="$tip"
+carry_merge_forward=0
+carry_row_written=0
 # Set only by the judge-go branch below: a `fixed` crit|imp at the reviewed head
 # is the delta the signed GO at the tip rules on, so gate 4 does not block on it.
 jg_fixed_ok=0
@@ -633,13 +635,14 @@ if [ -f "$_rr_head_file" ] && [ ! -L "$_rr_head_file" ]; then
     esac
     if { [ "${#_rr_head}" -eq 40 ] || [ "${#_rr_head}" -eq 64 ]; } && [ "$_rr_head" != "$tip" ] \
         && git cat-file -e "$_rr_head^{commit}" 2>/dev/null \
-        && ! grep -qE "\"(target_)?head\"[[:space:]]*:[[:space:]]*\"${tip:0:7}" <(grep -vE '"kind":"(evidence|impacted|round-scope|security-audit)"' "$ledger" 2>/dev/null) 2>/dev/null; then
+        && ! grep -qE "\"(target_)?head\"[[:space:]]*:[[:space:]]*\"${tip:0:7}" <(grep -vE '"kind":"(evidence|impacted|round-scope|security-audit)"|"kind":"avail".*"detail":"trivial-descendant of reviewed head [0-9a-f]+ \(carried by clear-cr-marker\)"' "$ledger" 2>/dev/null) 2>/dev/null; then
         if bash "$SCRIPT_DIR/review-round.sh" trivial-descendant --tests-only "$_rr_head" "$tip" >/dev/null 2>&1; then
             review_head="$_rr_head"
             echo "clear-cr-marker: ${tip:0:8} has no review round of its own and only changes test paths since the reviewed head ${review_head:0:8} - gating on the reviewed head." >&2
             audit "TRIVIAL-DESCENDANT branch=$branch sha=$tip reviewed_head=$review_head"
         elif [ -n "${marker_base:-}" ] && bash "$SCRIPT_DIR/review-round.sh" clean-merge-forward "$marker_base" "$_rr_head" "$tip" >/dev/null 2>&1; then
             review_head="$_rr_head"
+            carry_merge_forward=1
             echo "clear-cr-marker: ${tip:0:8} has no review round of its own and only merges ${marker_base:0:8} cleanly into the reviewed head ${review_head:0:8} - gating on the reviewed head." >&2
             audit "TRIVIAL-DESCENDANT branch=$branch sha=$tip reviewed_head=$review_head via=clean-merge-forward"
         fi
@@ -902,6 +905,7 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
             perspective: o.perspective || "off",
             verdict: typeof o.verdict === "string" ? o.verdict.trim() : o.verdict });
       }
+      if (o.kind === "avail" && /^trivial-descendant of reviewed head [0-9a-f]+ \(carried by clear-cr-marker\)$/.test(String(o.detail || ""))) continue;
       if (o.kind === "avail") {
           // critic-panel.sh records avail unavailable
           // reason=certify-refused before exiting 6 (it refused to certify
@@ -1973,6 +1977,14 @@ if [ -n "$pr_num" ]; then
         audit "REFUSED reason=no-check-ci branch=$branch pr=#$pr_num"
         exit 16
     fi
+    if [ "$carry_merge_forward" -eq 1 ] && [ "$DRY_RUN" -ne 1 ]; then
+        if bash "$SCRIPT_DIR/ledger-append.sh" avail --branch "$branch" --head "$tip" --model claude --status ok \
+            --detail "trivial-descendant of reviewed head $review_head (carried by clear-cr-marker)" >/dev/null 2>&1; then
+            carry_row_written=1
+        else
+            echo "clear-cr-marker: WARNING: could not record the carry row for ${tip:0:8} before check-ci; its CR-FIRST check may hold." >&2
+        fi
+    fi
     ci_rc=0
     ci_capture=$(mktemp 2>/dev/null || true)
     if [ -n "$ci_capture" ]; then
@@ -2270,12 +2282,7 @@ if ! rm -f "$marker_claim"; then
 fi
 # Deleted for real — disarm the restore.
 marker_claim=""
-# A tip cleared through the trivial-descendant shortcut has no ledger row of its
-# own, and ready-check item 4 wants a status=ok row at the READY head. Record one
-# through the normal writer, after the delete so a refused run leaves no row that
-# a rerun would read as the tip's own review. Model "claude" is neither
-# cross-model nor floor evidence; the detail names the head it inherits from.
-if [ "$review_head" != "$tip" ]; then
+if [ "$review_head" != "$tip" ] && [ "$carry_row_written" -ne 1 ]; then
     bash "$SCRIPT_DIR/ledger-append.sh" avail --branch "$branch" --head "$tip" --model claude --status ok \
         --detail "trivial-descendant of reviewed head $review_head (carried by clear-cr-marker)" >/dev/null 2>&1 \
         || echo "clear-cr-marker: WARNING: could not record the status=ok ledger row for ${tip:0:8}; ready-check item 4 will read it as missing." >&2

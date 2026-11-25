@@ -3,6 +3,10 @@
 Control Claude Code from your phone over Telegram: DM the bot, an always-on
 bridge spawns a bounded Claude run per message and relays the reply back.
 
+On this page the **operator** is you, the Telegram user listed in
+`access.json`'s `allowFrom`, and the **station** is the machine the bridge
+runs on (the bridge's own replies use that word).
+
 ## What it is
 
 An always-on **bun** process (`scripts/telegram/supervisor.ts` +
@@ -35,7 +39,7 @@ cd scripts/telegram && bun supervisor.ts
 
 The supervisor keeps `bun poller.ts` alive (restart-on-exit with backoff).
 
-**Stop (cross-platform):**
+**Stop:**
 
 ```bash
 cd scripts/telegram && bun supervisor.ts --kill

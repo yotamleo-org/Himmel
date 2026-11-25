@@ -16,7 +16,7 @@ scripts/security/test-security-audit-cadence.sh	6
 #   three runs (scripts/ci/ledger-drift.sh): slowest/floor 1.176 before (the ledger
 #   of d29ec6e1b), 1.003 after (suite time only, excluding setup/waits).
 #   A row for a suite those runs did not print (skip-listed or off-Linux) keeps its
-#   earlier value; scripts/test-adopt.sh (512) is the quarantined half of the
+#   earlier value; scripts/test-adopt.sh (512) is the half of the
 #   969s split of green main run 40030573258.
 #   Every suite that ran >= 10 s in green main run 41928036090 (head
 #   11b19d623ec945b58496257457804e390f5cecaa, 2026-11-04, the first full run after the
@@ -458,7 +458,7 @@ scripts/handover/chief-kit/test-chief-wait-b.sh	213
 scripts/handover/chief-kit/test-chief-wait-c.sh	232
 scripts/handover/chief-kit/test-chief-wait-d.sh	210
 scripts/handover/chief-kit/test-chief-wait-e.sh	226
-scripts/handover/chief-kit/test-chief-wait-pool.sh	240
+scripts/handover/chief-kit/test-chief-wait-pool.sh	450
 scripts/handover/chief-kit/test-chief-wait-r0.sh	202
 scripts/handover/chief-kit/test-chief-wait.sh	296
 scripts/handover/chief-kit/test-cut-tag.sh	2

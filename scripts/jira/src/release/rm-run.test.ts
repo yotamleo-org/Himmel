@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  claim, declare, leaseAcquire, operatorDecision, request, rule, state,
+  claim, declare, freeze, leaseAcquire, operatorDecision, request, rule, state,
   JudgeReplyError, LIVE_LOOKUP_MS, readMirror, readMirrorFilesUnverified, rmRun, rmRunSummary, standing,
   type Ctx, type Decision, type DoorJiraPort, type JiraPort, type Judge, type JudgeInput, type RuledDecision,
 } from './engine.js';
@@ -779,7 +779,7 @@ describe('the door rules every request; no model is asked', () => {
   });
   afterEach(() => { judgeChild.on = false; });
 
-  it('judgeFor places a Medium INTAKE in the next version and an operator ask in current, with zero model spawns', async () => {
+  it('judgeFor places a Medium INTAKE in the backlog and an operator ask in current, with zero model spawns', async () => {
     declare(ctx(), { project: 'HIMMEL', versions: ['v1.1.3', 'v1.1.4'], decision: '106', verbatim: 'R = v1.1.3 + v1.1.4', mode: 'observe' });
     mirror([
       { key: 'K-2', fixVersions: [], priority: 'Medium', sector: 'Planning & tracking' },
@@ -789,7 +789,7 @@ describe('the door rules every request; no model is asked', () => {
     request(ctx(), { verb: 'INTAKE', key: 'K-3', from_v: null, to_v: 'v1.1.3', why: 'the operator asked', evidence: {}, from: 'console' });
     const { judgeFor } = await import('../commands/release.js');
     const lines = await rmRun(ctx(), judgeFor(ctx()));
-    expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-\d+ Q-R1-0001 INTAKE K-2 add backlog→v1\.1\.4 ADMIT next sector=Planning & tracking — door:mild: /));
+    expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-\d+ Q-R1-0001 INTAKE K-2 none backlog→backlog BACKLOG .* door:mild: /));
     expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-\d+ Q-R1-0002 INTAKE K-3 add backlog→v1\.1\.3 ADMIT current sector=Planning & tracking — door:operator-ask: /));
     expect(judgeChild.spawns.filter((s) => s === 'claude' || s === 'claude-api.sh')).toEqual([]);
   });
@@ -814,12 +814,12 @@ describe('rmRun with the door', () => {
       .map((l) => JSON.parse(l) as { file: string; row: Record<string, unknown> });
     declared2();
     mirror([
-      { key: 'K-2', fixVersions: [], priority: 'Medium', sector: 'Planning & tracking' },
+      { key: 'K-2', fixVersions: [], priority: 'Medium', sector: 'Planning & tracking', labels: ['operator-directed'] },
       { key: 'K-3', fixVersions: [], priority: 'High', sector: 'Planning & tracking' },
       { key: 'K-4', fixVersions: ['v2'], status: 'In Progress', category: 'In Progress', sector: 'Planning & tracking' },
     ]);
     jira.fv.set('K-4', ['v2']);
-    ask('K-2');
+    ask('K-2', { to_v: 'v2' });
     ask('K-3');
     ask('K-4', { verb: 'REVERSION', from_v: 'v2', to_v: 'v1', why: 'started' });
     vi.stubEnv('HIMMEL_CONSOLE', '1');
@@ -855,6 +855,28 @@ describe('rmRun with the door', () => {
     const receipt = jira.comments.get('K-2')![0].body.split('\n')[0];
     const py = spawnSync('python3', ['-c', `import re,sys\nrl=[sys.argv[1]]\nrm=${parse}\nprint(rm[1], rm[2], rm[3])`, receipt], { encoding: 'utf8' });
     expect(py.stdout.trim(), py.stderr).toBe('K-2 v2 ADMIT');
+  });
+
+  it('the door gets whether current is frozen from the verified freeze rows, and the parent of a follow-up is read live (R42)', async () => {
+    declared2();
+    mirror([
+      { key: 'K-1', fixVersions: ['v1'] },
+      { key: 'K-2', fixVersions: [], priority: 'Low', labels: ['regression'], sector: 'Planning & tracking' },
+      { key: 'K-3', fixVersions: [], priority: 'Low', labels: ['regression'], sector: 'Planning & tracking' },
+      { key: 'K-4', fixVersions: [], priority: 'Low', sector: 'Planning & tracking' },
+    ]);
+    const inputs: JudgeInput[] = [];
+    const spy: Judge = async (input) => { inputs.push(input); return door(input); };
+    ask('K-2');
+    expect(await rmRun(ctx(), spy)).toContainEqual(expect.stringMatching(/INTAKE K-2 add backlog→v1 ADMIT current .* door:label:regression: /));
+    expect(inputs.at(-1)?.frozen).toBe(false);
+    freeze(ctx(), { version: 'v1', keys: [], decision: '106', verbatim: 'v1 frozen' });
+    ask('K-3');
+    expect(await rmRun(ctx(), spy)).toContainEqual(expect.stringMatching(/INTAKE K-3 none backlog→backlog BACKLOG .* door:mild: /));
+    expect(inputs.at(-1)?.frozen).toBe(true);
+    ask('K-4', { evidence: { follow_up_of: 'K-1' } });
+    await rmRun(ctx(), spy);
+    expect(inputs.at(-1)?.issues.map((i) => i.key)).toContain('K-1');
   });
 
   it('a door REFUSE closes the request as refused, with no ruling and no HELD line, and files the request its rule O row queues (T1)', async () => {
@@ -895,7 +917,7 @@ describe('rmRun with the door', () => {
     const added: Array<[string, string[]]> = [];
     (jira as unknown as DoorJiraPort).addLabels = async (key, labels) => { added.push([key, labels]); };
     const lines = await rmRun(ctx(), door);
-    expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-\d+ Q-R1-0001 INTAKE K-2 none backlog→backlog BACKLOG .* door:mild-no-next: /));
+    expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-\d+ Q-R1-0001 INTAKE K-2 none backlog→backlog BACKLOG .* door:mild: /));
     expect(added).toEqual([['K-2', ['backlog']]]);
     expect(jira.labelPuts).toContainEqual({ key: 'K-3', labels: ['backlog'] });
     delete (jira as unknown as DoorJiraPort).addLabels;

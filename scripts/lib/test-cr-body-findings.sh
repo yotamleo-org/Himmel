@@ -107,6 +107,10 @@ done
 { cat "$SEV_BODY"; printf '%s\n' '<details>' '<summary><picture><img src="x" alt=""></picture> Blocker comments: 1</summary>' "\`5-5\`: **<picture><img src=\"x\" alt=\"\"></picture> Blocker**" '' '<!-- cr-comment:v1:feedbeef0001 -->' '</details>'; } > "$TMP/sev-unknown-section.body.txt"
 mk_json_from_file "$RESP_DIR/sev-unknown-section.json" "$UID_OK"   "$HEAD"  "$TMP/sev-unknown-section.body.txt"
 mk_json_from_file "$RESP_DIR/sev-prior.json"          "$UID_OK"    "oldsha1" "$SEV_BODY"
+SEV_SEP_BODY="$FIXDIR/test-pr-5890-minor-comments-separators.body.txt"
+mk_json_from_file "$RESP_DIR/sev-sep.json"            "$UID_OK"    "$HEAD"  "$SEV_SEP_BODY"
+sed 's/Minor comments: 20/Minor comments: 21/' "$SEV_SEP_BODY" > "$TMP/sev-sep-header-high.body.txt"
+mk_json_from_file "$RESP_DIR/sev-sep-header-high.json" "$UID_OK"   "$HEAD"  "$TMP/sev-sep-header-high.body.txt"
 mk_json_from_str  "$RESP_DIR/colon-malformed.json"    "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: one</summary> <!-- cr-comment:v1:abc123 -->"
 mk_json_from_str  "$RESP_DIR/colon-suffix-1.json"     "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: 1.5</summary> <!-- cr-comment:v1:abc123 -->"
 mk_json_from_str  "$RESP_DIR/colon-suffix-2.json"     "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: 1foo</summary> <!-- cr-comment:v1:abc123 -->"
@@ -186,6 +190,8 @@ t nitpick-pr466-parses-at-head                nitpick-466         0 "outside=0 n
 t nitpick-colon-form-counts-1                 nitpick-colon       0 "outside=0 nitpick=1 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
 t outside-colon-form-counts-2                 outside-colon       0 "outside=2 nitpick=0 additional=0 prior_outside=0 markers=2 head_reviews=1 substantive=1"
 t severity-minor-section-counts-1             sev-minor           0 "outside=1 nitpick=0 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
+t severity-minor-separators-between-findings-counts-20 sev-sep     0 "outside=20 nitpick=0 additional=0 prior_outside=0 markers=20 head_reviews=1 substantive=1"
+t severity-minor-separators-header-n-above-entries-blocks sev-sep-header-high 2
 t severity-major-section-counts-1             sev-Major           0 "outside=1 nitpick=0 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
 t severity-critical-section-counts-1          sev-Critical        0 "outside=1 nitpick=0 additional=0 prior_outside=0 markers=1 head_reviews=1 substantive=1"
 t severity-unknown-section-beside-known-blocks sev-unknown-section 2
@@ -429,6 +435,31 @@ OD_FOLLOWUP_ROW="cr-od-4bf4bd0d34fe${TAB}sug${TAB}scripts/guardrails/test-guardr
 OD_SEV_ROW="cr-od-5ce5dda0e5d7${TAB}sug${TAB}scripts/ci/check-flags.sh${TAB}101-101${TAB}Do not drop Git-quoted filenames in the scan list."
 to od-severity-minor-section-row            sev-minor                  0 "$OD_SEV_ROW"
 to od-severity-header-n-above-entries       sev-header-high            2 ""
+OD_SEP_ROWS=$(sed "s/~/$TAB/g" <<'SEP_ROWS_EOF'
+cr-od-0965c327c1ec~sug~scripts/station-ops/test-bypass-launchd.sh~1331-1331~Assert which Bun executable the sender runs.
+cr-od-2f69dec5ab09~sug~scripts/station-ops/test-bypass-launchd.sh~1244-1244~Build the injected marker path from the fixture that the case uses.
+cr-od-dc4641735b93~sug~scripts/station-ops/test-bypass-launchd.sh~1283-1283~Keep the managed-home test off the operator's real access file.
+cr-od-27ddf6873200~sug~docs/internals/bypass-launch-route.md~280-280~Document when `restart` refuses.
+cr-od-ec8b4d10b13f~sug~docs/internals/bypass-launch-route.md~297-300~Distinguish the update commands on Linux and macOS.
+cr-od-0b955ed14a76~sug~docs/internals/bypass-launch-route.md~290-290~Describe the restart limits operators will encounter.
+cr-od-f75b9bfa3c02~sug~scripts/station-ops/test-bypass-service.sh~157-157~Require the second `on` to succeed before checking that it did not restart.
+cr-od-c35d94565f09~sug~scripts/station-ops/test-bypass-service.sh~85-85~Check the render command's exit status as well as its output.
+cr-od-ec4180f7ddec~sug~scripts/station-ops/test-bypass-service.sh~34-43~Make the manager stubs reject the wrong target.
+cr-od-0a7bf7a8544e~sug~scripts/station-ops/bypass-service.sh~51-51~XML-escape `HOME` when rendering the LaunchAgent.
+cr-od-890f3d48368a~sug~scripts/station-ops/bypass-service.sh~111-111~Stop activation when the bucket configuration is not saved.
+cr-od-211544b1f1f4~sug~scripts/station-ops/bypass-service.sh~135-135~Make macOS `off` persist across login.
+cr-od-7052b79716b4~sug~scripts/station-ops/bypass-service.sh~179-179~Do not start a macOS job that has exited during the restart check.
+cr-od-f77a265ee9d6~sug~scripts/station-ops/bypass-launchd.sh~449-452~Check recovery renames before reporting success.
+cr-od-578a94329afa~sug~scripts/station-ops/bypass-launchd.sh~193-193~Add a kill-after interval to the bounded service calls.
+cr-od-a655cd276586~sug~scripts/station-ops/bypass-launchd.sh~474-474~Stop the launch when the grant marker is not written.
+cr-od-5dcf4f39e1d1~sug~scripts/himmelctl/test/test-himmelctl-bypass.sh~19-19~Preserve argument boundaries in the service stub.
+cr-od-e6688d2e0818~sug~scripts/test-himmel-update-chain.sh~517-521~Assert the exit code for both failure cases.
+cr-od-ce5bbb1cf90a~sug~scripts/test-himmel-update-chain.sh~485-487~Validate the complete service invocation.
+cr-od-eb0186f3cd10~sug~scripts/station-ops/units/com.himmel.bypass-launchd.plist~39-40~Relaunch loop on duplicate owner: launchd cannot exclude exit 3 by status.
+SEP_ROWS_EOF
+)
+to od-severity-minor-separators-list-20     sev-sep                    0 "$OD_SEP_ROWS"
+to od-severity-minor-separators-header-n-above-entries sev-sep-header-high 2 ""
 to od-severity-unknown-section-drifts       sev-unknown-section        2 ""
 to od-followup-comments-layout              od-followup                0 "$OD_FOLLOWUP_ROW"
 to od-followup-header-without-finding       od-followup-header-only    2 ""

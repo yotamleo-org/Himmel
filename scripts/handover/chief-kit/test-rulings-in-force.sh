@@ -339,6 +339,109 @@ same "template: the first batch reads an indexed ruling's verbatim file before a
 # shellcheck disable=SC2016
 same "template: compaction recovery reads the companions only while a line sits outside the index" "$(grep -c 'line sits outside the `Rulings in force` index, each direction companion file' <<< "$cz")" "1"
 
+R="$W/retire"; RD="$R/specs/decisions"; mkdir -p "$RD"
+for n in 971 972 973 974 975 976 977 980 981 982 984 985 986 987 988; do printf 'OPERATOR words of ruling %s.\n' "$n" > "$RD/verbatim-decision-$n-operator-11-12-ZK.txt"; done
+rr() { bash "$SUT" record --bucket "$R" --id "$1" --status "${2:-in-force}" --date 2026-11-12 --line "$3" --path "specs/decisions/verbatim-decision-$1-operator-11-12-ZK.txt" "${@:4}" >/dev/null 2>&1; }
+rr 971 in-force 'only key HIMMEL-9001 is closed'
+rr 972 in-force 'key HIMMEL-9002 is still open'
+rr 973 in-force 'keys HIMMEL-9001 and HIMMEL-9002, one still open'
+rr 974 in-force 'a ruling that names no ticket'
+rr 975 in-force 'the golf rule, later replaced'
+rr 976 in-force 'the golf rule again, replaced by a later ruling'
+rr 977 in-force 'the hotel rule replaces decision 975 and decision 976'
+rr 980 in-force 'first of three on HIMMEL-9100' --topic ninek
+rr 981 in-force 'second of three on HIMMEL-9100' --topic ninek
+rr 982 in-force 'third of three on HIMMEL-9100' --topic ninek
+rr 984 in-force 'fnord one, no ticket key' --topic fnord
+rr 985 in-force 'fnord two, no ticket key' --topic fnord
+rr 986 in-force 'a lone ruling on HIMMEL-9200'
+rr 987 in-force 'a second ruling on HIMMEL-9200, another scope'
+rr 988 in-force 'the india rule never replaces decision 974'
+printf '# closed tickets\nHIMMEL-9001\n' > "$RD/closed-keys.txt"
+kk=HIMMEL
+rptr='Full original text of every ruling below, byte for byte, is in 1 file under the bucket (specs/decisions/chief-direction-2026-11-11-p1.md). READ ALL OF THEM in your first turn.'
+rblk="$rptr
+
+Chain order: one context line."
+sums() { (cd "$RD" && cat verbatim-decision-*.txt | cksum); }
+sum0="$(sums)"
+rout="$(render "$rblk" "$R")"; rc=$?
+same "retire: render exits 0" "$rc" "0"
+same "retire: a ruling whose only key is closed leaves the index" "$(printf '%s\n' "$rout" | grep -c '^971 ')" "0"
+same "retire: a ruling on a key still open stays" "$(printf '%s\n' "$rout" | grep -c '^972 ')" "1"
+same "retire: a ruling naming a closed and an open key stays" "$(printf '%s\n' "$rout" | grep -c '^973 ')" "1"
+same "retire: a ruling with no ticket key stays" "$(printf '%s\n' "$rout" | grep -c '^974 ')" "1"
+same "retire: a ruling a later ruling supersedes leaves the index" "$(printf '%s\n' "$rout" | grep -cE '^(975|976) ')" "0"
+same "retire: the superseding ruling stays" "$(printf '%s\n' "$rout" | grep -c '^977 ')" "1"
+same "retire: the head counts the retired rulings as left out (1 done, 2 superseded)" "$(printf '%s\n' "$rout" | grep -c '^Rulings in force (12; left out: 1 done, 2 superseded;')" "1"
+same "retire: find shows the retired ruling as done" "$(bash "$SUT" find --bucket "$R" 971 | cut -d ' ' -f 1-3)" "971 2026-11-12 done"
+same "retire: a bucket with no closed-keys file retires nothing by key" "$(mkdir -p "$W/noclosed" && cp -R "$R/specs" "$W/noclosed/" && rm "$W/noclosed/specs/decisions/closed-keys.txt" && render "$rblk" "$W/noclosed" | grep -c '^971 ')" "1"
+same "retire: a negated supersede phrase retires nothing" "$(printf '%s\n' "$rout" | grep -c '^974 ')/$(printf '%s\n' "$rout" | grep -c '^988 ')" "1/1"
+same "fold: three rulings on one explicit topic are one standing-rule line with all source ids, newest first" \
+    "$(printf '%s\n' "$rout" | grep -cxF "ninek: third of three on ${kk}-9100 (rulings 982, 981, 980)")" "1"
+same "fold: the folded ids have no row of their own" "$(printf '%s\n' "$rout" | grep -cE '^(980|981|982) ')" "0"
+same "fold: an explicit topic folds rulings that name no key" "$(printf '%s\n' "$rout" | grep -cxF 'fnord: fnord two, no ticket key (rulings 985, 984)')" "1"
+same "fold: two rulings of different scope on one ticket key stay apart, each with its own reading" "$(printf '%s\n' "$rout" | grep -cE '^(986 a lone ruling on|987 a second ruling on) ')" "2"
+same "fold: the standing rules come under their own head, before the dated heads" \
+    "$(printf '%s\n' "$rout" | para | sed -n '2p')" "Standing rules:"
+same "fold: a second render of its own output changes nothing" "$(render "$rout" "$R")" "$rout"
+same "fold: check passes on the render with every live ruling named" "$(chk "$rout" "$R" | tail -n 1 | cut -d ' ' -f 1-4)" "check: ok in-force=12 named=12"
+same "fold: check reports a folded id missing from its line" "$(chk "$(printf '%s\n' "$rout" | sed 's/ (rulings 982, 981, 980)/ (rulings 982, 981)/')" "$R" | grep -c '^MISSING 980$')" "1"
+same "fold: check reports an id folded under the wrong topic" "$(chk "$(printf '%s\n' "$rout" | sed 's/ (rulings 985, 984)/ (rulings 985, 984, 986)/')" "$R" | grep -c '^TOPIC 986 ')" "1"
+same "retire and fold: no verbatim file is changed or removed" "$(sums)" "$sum0"
+same "retire and fold: the ledger is not rewritten" "$(wc -l < "$RD/rulings-in-force.jsonl" | tr -d ' ')" "15"
+
+V="$W/window"; VD="$V/specs/decisions"; mkdir -p "$VD"
+for n in 991 992 993 994 995 996 997; do printf 'OPERATOR words of ruling %s.\n' "$n" > "$VD/verbatim-decision-$n-x.txt"; done
+vr() { bash "$SUT" record --bucket "$V" --id "$1" --status in-force --date "$2" --line "$3" --path "specs/decisions/verbatim-decision-$1-x.txt" "${@:4}" >/dev/null 2>&1; }
+vr 991 2026-11-24 'recent ruling on open HIMMEL-9300'
+vr 992 2026-11-18 'ruling on the first day of the window'
+vr 993 2026-11-10 'older ruling with no topic'
+vr 994 2026-11-05 'older ruling one on a topic' --topic wintopic
+vr 995 2026-11-05 'older ruling two on a topic' --topic wintopic
+vr 996 2026-11-24 'recent ruling whose only key HIMMEL-9001 is closed'
+vr 997 2026-11-17 'ruling one day before the window'
+printf 'HIMMEL-9001\n' > "$VD/closed-keys.txt"
+wrender() { printf '%s\n' "$1" | RULINGS_IN_FORCE_TODAY=2026-11-25 bash "$SUT" render --bucket "$V" "${@:2}"; }
+wchk() { printf '%s\n' "$1" | RULINGS_IN_FORCE_TODAY=2026-11-25 bash "$SUT" check --bucket "$V" "${@:2}"; }
+wptr='Full original text of every ruling below, byte for byte, is in 0 files under the bucket ().'
+wout="$(wrender "$wptr" --recent 7)"; rc=$?
+same "window: render --recent 7 exits 0" "$rc" "0"
+same "window: a ruling of the last 7 days stays" "$(printf '%s\n' "$wout" | grep -c '^991 ')" "1"
+same "window: a ruling on the first day of the window stays" "$(printf '%s\n' "$wout" | grep -c '^992 ')" "1"
+same "window: an older unfolded ruling is cut" "$(printf '%s\n' "$wout" | grep -cE '^(993|997) ')" "0"
+same "window: older rulings folded under a topic stay as one standing-rule line" "$(printf '%s\n' "$wout" | grep -cxF 'wintopic: older ruling two on a topic (rulings 995, 994)')" "1"
+same "window: a ruling whose only key is Done leaves the block" "$(printf '%s\n' "$wout" | grep -c '^996 ')" "0"
+same "window: the head counts the cut rulings and the window" "$(printf '%s\n' "$wout" | grep -c '^Rulings in force (6; left out: 1 done, 0 superseded, 2 older than 7 days; year 2026 unless a head shows one):$')" "1"
+same "window: the pointer says where the cut rulings are" "$(printf '%s\n' "$wout" | grep '^Full original text' | grep -c 'older than 7 days that no Standing rules line folds')" "1"
+same "window: without --recent every ruling in force is listed" "$(wrender "$wptr" | grep -cE '^(991|992|993|997) ')" "4"
+same "window: a second render of its own output changes nothing" "$(wrender "$wout" --recent 7)" "$wout"
+same "window: check passes on the render" "$(wchk "$wout" | tail -n 1 | cut -d ' ' -f 1-4)" "check: ok in-force=6 named=6"
+same "window: check reports a recent ruling missing" "$(wchk "$(printf '%s\n' "$wout" | sed '/^991 /d')" | grep -c '^MISSING 991$')" "1"
+same "window: one Older in force line names every cut ruling by id and first word" "$(printf '%s\n' "$wout" | grep -cxF 'Older in force: 997 ruling, 993 older')" "1"
+same "window: check reports an in-force ruling that is not in the window, a fold or the Older line" "$(wchk "$(printf '%s\n' "$wout" | sed '/^Older in force: /d')" | grep -cE '^MISSING 99[37]$')" "2"
+same "window: check reports one ruling dropped from the Older line" "$(wchk "$(printf '%s\n' "$wout" | sed 's/^Older in force: 997 ruling, 993 older$/Older in force: 997 ruling/')" | grep -c '^MISSING 993$')" "1"
+same "window: check does not trust the window size its own head line states" "$(wchk "$(printf '%s\n' "$wout" | sed -e '/^Older in force: /d' -e 's/, 2 older than 7 days/, 2 older than 1 days/')" | grep -cE '^MISSING 99[37]$')" "2"
+same "window: check --recent reports a ruling of the window sitting on the Older line" "$(wchk "$(printf '%s\n' "$wout" | sed -e '/^991 /d' -e 's/^Older in force: 997 ruling, 993 older$/Older in force: 997 ruling, 993 older, 991 recent/')" --recent 7 | grep -c '^RECENT 991$')" "1"
+same "window: check reports an Older line reading that is not the ruling's first word" "$(wchk "$(printf '%s\n' "$wout" | sed 's/997 ruling/997 wrong/')" | grep -c '^READING 997$')" "1"
+same "window: check reports a folded ruling moved onto the Older line" "$(wchk "$(printf '%s\n' "$wout" | sed -e '/^wintopic: /d' -e 's/^Older in force: 997 ruling, 993 older$/Older in force: 997 ruling, 995 older, 994 older, 993 older/' -e 's/, 2 older than 7 days/, 4 older than 7 days/')" | grep -cE '^FOLDED 99[45]$')" "2"
+unset RULINGS_IN_FORCE_TODAY
+U="$W/utc"; UD="$U/specs/decisions"; mkdir -p "$UD"
+printf 'OPERATOR words of ruling 981.\n' > "$UD/verbatim-decision-981-x.txt"
+printf 'OPERATOR words of ruling 982.\n' > "$UD/verbatim-decision-982-x.txt"
+utc7="$(python3 -I -c 'import datetime; print(datetime.datetime.now(datetime.timezone.utc).date() - datetime.timedelta(days=7))')"
+utc8="$(python3 -I -c 'import datetime; print(datetime.datetime.now(datetime.timezone.utc).date() - datetime.timedelta(days=8))')"
+bash "$SUT" record --bucket "$U" --id 981 --status in-force --date "$utc7" --line 'edge ruling seven days back' --path specs/decisions/verbatim-decision-981-x.txt >/dev/null 2>&1
+bash "$SUT" record --bucket "$U" --id 982 --status in-force --date "$utc8" --line 'edge ruling eight days back' --path specs/decisions/verbatim-decision-982-x.txt >/dev/null 2>&1
+for z in Pacific/Kiritimati Pacific/Pago_Pago; do
+    same "window: the cutoff is a UTC date, whatever the zone ($z): the ruling 7 days back is listed, 8 days back is cut" "$(printf '%s\n' "$wptr" | TZ="$z" bash "$SUT" render --bucket "$U" --recent 7 | grep -E '^98[12] ' | cut -d ' ' -f 1 | tr '\n' ' ')" "981 "
+done
+same "window: check reports a wrong older count" "$(wchk "$(printf '%s\n' "$wout" | sed 's/, 2 older than 7 days/, 3 older than 7 days/')" | grep -c '^COUNT older 3 2$')" "1"
+same "window: check reports a deleted old standing-rule line missing" "$(wchk "$(printf '%s\n' "$wout" | sed '/^wintopic: /d')" | grep -cE '^MISSING 99[45]$')" "2"
+same "window: --recent 0 is refused with exit 2" "$(wrender "$wptr" --recent 0 >/dev/null 2>&1; echo $?)" "2"
+same "window: --recent +7 is refused with exit 2" "$(wrender "$wptr" --recent +7 >/dev/null 2>&1; echo $?)" "2"
+same "window: the ledger is not rewritten" "$(wc -l < "$VD/rulings-in-force.jsonl" | tr -d ' ')" "7"
+
 printf 'not json\n' >> "$L"
 out="$(render "$blk")"; rc=$?
 same "render: an unreadable ledger row exits 3" "$rc" "3"

@@ -134,6 +134,7 @@ function fakeProc(marker: Record<string, string> = {}): { procRoot: string; host
   mkdirSync(join(procRoot, '300', 'ns'));
   symlinkSync('pid:[4026531836]', join(procRoot, '300', 'ns', 'pid'));
   symlinkSync('user:[4026531837]', join(procRoot, '300', 'ns', 'user'));
+  writeFileSync(join(procRoot, '300', 'cmdline'), 'node\0vitest\0');
   symlinkSync('300', join(procRoot, 'self'));
   const hostNsPath = join(procRoot, 'host-ns-ref');
   writeFileSync(hostNsPath, 'pid:[4026531836] user:[4026531837]\n');

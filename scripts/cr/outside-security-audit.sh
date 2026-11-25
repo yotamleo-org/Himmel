@@ -9,7 +9,8 @@
 #
 # Exit: 0 a row was written, whatever its verdict; prints `outside-audit: <verdict> <report>`.
 #       2 a usage error, a non-anchor copy, or the PR is not OPEN, not outside, or not at <head> (the fetch included).
-#       6 stage 1 is incomplete at <head> (CodeRabbit, CI, or a lint-surface path).
+#       6 stage 1 is incomplete at <head> (a CodeRabbit failure or error, CI, or a lint-surface path;
+#         a running, rate-limited, skipped, absent, paged or unreadable CodeRabbit is a note, as in ready-check 16h).
 #       7 no verdict: the size cap, an empty diff, a critic exit other than 0 or 4, no registry row,
 #         no new score row, a trust_path_check refusal, or a record that could not be written.
 #       8 the head is already audited (a fail row, or an ok row under the current perspective).
@@ -97,7 +98,11 @@ audit_locked() {
     crs=$(env -u CR_OK_DESC_RE -u CR_SKIP_DESC_RE -u CR_BOT_USER_ID -u CR_STATUS_CONTEXT GH_CMD="$gh_cmd" \
         "$_TIMEOUT_BIN" -k 5 20 bash -c '. "$1" 2>/dev/null || exit 3; cr_signal_state "$2" "$3" "$4"' \
         _ "$lib/coderabbit-signal.sh" "$owner" "$name" "$H" 2>/dev/null </dev/null) || crs=unreadable
-    [ "$crs" = success ] || die 6 "stage 1 is incomplete: CodeRabbit at ${H:0:7} is ${crs:-unreadable}, want success (comment \`@coderabbitai review\` on the PR and wait for its status)"
+    case "$crs" in
+        success) echo "outside-security-audit: note: CodeRabbit at ${H:0:7} is success (reviewed)" >&2 ;;
+        failure|error) die 6 "stage 1 is incomplete: CodeRabbit at ${H:0:7} is $crs, want success: fix the finding it posted, or comment \`@coderabbitai review\` on the PR and wait for the status at ${H:0:7}" ;;
+        *) echo "outside-security-audit: note: CodeRabbit at ${H:0:7} is ${crs:-unreadable} (best effort, not gating)" >&2 ;;
+    esac
     ci_rc=0
     env -u CR_APP -u CR_PROFILE -u CR_BOT_USER_ID -u CHECK_CI_DISTINCT_DEADLINE "$_TIMEOUT_BIN" -k 5 300 \
         bash "$anchor/scripts/check-ci.sh" "$PR" --max-wait 120 --except-context codeowner-review-gate >&2 </dev/null || ci_rc=$?

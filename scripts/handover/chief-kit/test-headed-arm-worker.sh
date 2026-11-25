@@ -3076,6 +3076,10 @@ lr_form="$(sed -n '/^setsid nohup bash scripts\/handover\/chief-kit\/headed-arm-
 contains "29e the documented launch form passes --fleet" "$lr_form" "--fleet"
 not_contains "29e the documented launch form no longer sends stderr to /dev/null" "$lr_form" ">/dev/null 2>&1"
 contains "29e the documented launch form logs stderr" "$lr_form" "2>&1 &"
+lr_tpl="$(sed -n '/^4\. Launch:/,/^5\. /p' "$HERE/../../../docs/handover/chief-template.md")"
+contains "29e the chief template's launch line passes --fleet" "$lr_tpl" "--fleet"
+contains "29e the chief template's launch line runs launch-confirm.sh" "$lr_tpl" "launch-confirm.sh"
+not_contains "29e the chief template's launch line no longer sends stderr to /dev/null" "$lr_tpl" ">/dev/null 2>&1"
 d29f="$tmp/c29f"; mk_launch_stubs "$d29f" "PROJ-29-N6-ok"; mkdir -p "$tmp/repo29f"
 lr_since=$(date +%s); lr_rc=0; run_worker "$d29f" "$tmp/repo29f" "PROJ-29-N6-ok" "claude-sonnet-5" >/dev/null 2>&1 || lr_rc=$?
 check "29f a launch that starts its session exits 0" "$lr_rc" "0"

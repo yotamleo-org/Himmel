@@ -192,7 +192,7 @@ flowchart TD
     CON -->|"SendMessage / ListAgents"| P2["worker<br/>one ticket · one worktree · one PR"]
     CON -.->|"a parallel wave: started together,<br/>collision-checked, capped by HIMMEL_FLEET_CAP"| P2
 
-    P1 --> GD["scripts/hooks/guard-implementor-dispatch.sh<br/>refuses an implementation-shaped native Agent dispatch<br/>(haiku and read-only helpers are exempt) when Claude usage<br/>is ≥80% of the 5-hour window (IMPL_GUARD_HARD)<br/>or ≥85% of the weekly window (IMPL_GUARD_WEEKLY_HARD);<br/>with no live reset time it only warns"]
+    P1 --> GD["scripts/hooks/guard-implementor-dispatch.sh<br/>refuses an implementation-shaped native Agent dispatch<br/>(haiku and read-only helpers are exempt) and names the lane<br/>when an external implementation lane is ready and funded;<br/>otherwise refuses when Claude usage<br/>is ≥80% of the 5-hour window (IMPL_GUARD_HARD)<br/>or ≥85% of the weekly window (IMPL_GUARD_WEEKLY_HARD);<br/>with no live reset time it only warns"]
     GD --> NAT["native subagents — the default fleet<br/>haiku · sonnet · opus · fable<br/>every dispatch names its model"]
 
     P1 -.->|"registry"| EXT["scripts/lanes/lanes.json — the lanes:<br/>the 4 native tiers plus external ones<br/>(claudex · codex · hermes · openrouter · ollama · …).<br/>claudex is the only live external implementation lane;<br/>the others are dormant opt-ins, review critics<br/>or bulk lanes with no dispatch path.<br/>No defaultImplLane, on purpose —<br/>an unqualified impl dispatch refuses to the native path.<br/>Query the live set with /lanes"]
@@ -314,7 +314,7 @@ flowchart TD
 ```
 
 **The record that never gets written is the important one.** `SessionEnd` is a
-graceful-exit hook: a crash, an OOM, or a window the operator eventually closes
+graceful-exit hook: a crash, an OOM, or a window you eventually close
 emits `session_start` and no `session_end`, ever. So the *reader* decides
 liveness, from transcript mtime; the writer does not assert it. The same
 reasoning splits an expired unpaired row into `abandoned` (its pid is confirmed

@@ -207,4 +207,38 @@ check "--acquire writes the token into the doc" "1" "$(grep -cx "   $ttok" "$TDO
 check "--acquire leaves no none-yet placeholder" "0" "$(grep -c 'none yet — acquire your own' "$TDOC")"
 check "--acquire says the token was recorded" "1" "$(printf '%s\n' "$tout" | grep -c '^token recorded in the doc$')"
 
+CPRED="$ROOT/DEMO-nextleg-2026-11-25A-chief.md"; CSUCC="$ROOT/DEMO-nextleg-2026-11-25B-chief.md"
+printf '# chief\n\n## Live state\nworkers: none\n' > "$CSUCC"
+for n in 31 32 33; do : > "$ROOT/DEMO-$n-N$n-worker.md"; done
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N31","lane":"native","added":"2026-11-25T04:20:00Z"},{"doc":"%s","label":"N32","lane":"claudex","lockless":true,"added":"2026-11-25T04:27:00Z"},{"doc":"%s","label":"N33","lane":"native","added":"2026-11-25T04:21:00Z"}]}\n' \
+    "$ROOT/DEMO-31-N31-worker.md" "$ROOT/DEMO-32-N32-worker.md" "$ROOT/DEMO-33-N33-worker.md" > "${CPRED%.md}.fleet.json"
+printf '{"schema":1,"carried_from":"%s","carried_at":"2026-11-25T04:26:00Z","workers":[{"doc":"%s","label":"N31","lane":"native","added":"2026-11-25T04:20:00Z"}]}\n' \
+    "${CPRED%.md}.fleet.json" "$ROOT/DEMO-31-N31-worker.md" > "${CSUCC%.md}.fleet.json"
+# shellcheck disable=SC2016 # literal backticks
+htok="$(env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" acquire "$CSUCC" 2>/dev/null | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+hout="$(bash "$AZ" --doc "$CSUCC" --root "$ROOT" --acquire --lock-only 2>&1)"
+check "a held lock prints no CARRY section" "0" "$(printf '%s\n' "$hout" | grep -c '^== CARRY')"
+check "a held lock carries no row" "0" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
+env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" release "$CSUCC" "$htok" >/dev/null 2>&1
+cout="$(bash "$AZ" --doc "$CSUCC" --root "$ROOT" --acquire --lock-only 2>&1)"
+check "a row the predecessor's manifest gained after the copy joins the successor's" "1" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
+check "the carried row keeps its lane and lockless flag" "claudex true" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '.workers[] | select(.doc == $d) | "\(.lane) \(.lockless)"' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
+check "each carried row is printed" "1" "$(printf '%s\n' "$cout" | grep -c "^carried N32 $ROOT/DEMO-32-N32-worker.md")"
+check "a row older than the copy is not carried again" "0" "$(jq -r --arg d "$ROOT/DEMO-33-N33-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
+# shellcheck disable=SC2016 # literal backticks
+ctok="$(printf '%s\n' "$cout" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" release "$CSUCC" "$ctok" >/dev/null 2>&1
+bash "$HERE/fleet-manifest.sh" remove "${CSUCC%.md}.fleet.json" "$ROOT/DEMO-32-N32-worker.md" >/dev/null 2>&1
+cout2="$(bash "$AZ" --doc "$CSUCC" --root "$ROOT" --acquire --lock-only 2>&1)"
+check "a second acquire runs no CARRY" "0" "$(printf '%s\n' "$cout2" | grep -c '^== CARRY')"
+FPRED="$ROOT/DEMO-nextleg-2026-11-25C-chief.md"; FSUCC="$ROOT/DEMO-nextleg-2026-11-25D-chief.md"
+printf '# chief\n\n## Live state\nworkers: none\n' > "$FSUCC"
+: > "$ROOT/DEMO-34-N34-worker.md"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N34","lane":"native","arm":"999k","added":"2026-11-25T04:27:00Z"}]}\n' "$ROOT/DEMO-34-N34-worker.md" > "${FPRED%.md}.fleet.json"
+printf '{"schema":1,"carried_from":"%s","carried_at":"2026-11-25T04:26:00Z","workers":[]}\n' "${FPRED%.md}.fleet.json" > "${FSUCC%.md}.fleet.json"
+fout="$(bash "$AZ" --doc "$FSUCC" --root "$ROOT" --acquire --lock-only 2>&1)"
+check "a row whose add fails is printed as not carried" "1" "$(printf '%s\n' "$fout" | grep -c '^NOT carried N34 ')"
+check "a failed add leaves no carried record, so the next acquire retries" "no" "$([ -e "${FSUCC%.md}.fleet.json.carried" ] && echo yes || echo no)"
+check "a carried row removed later is not carried back" "0" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

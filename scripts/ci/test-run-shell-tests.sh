@@ -2492,28 +2492,28 @@ fi
 
 # --------------------------------------------------------------------------
 # Case 25 — SKIP_LIST vs SKIP_LIST_NON_LINUX. The real table entries are
-#   driven with sentinel-writing stubs at scripts/test-adopt.sh (SKIP_LIST,
-#   quarantined) and scripts/vm/test-vm-clone-lib.sh (SKIP_LIST_NON_LINUX);
+#   driven with sentinel-writing stubs at scripts/test-plugin-test.sh (SKIP_LIST,
+#   integration) and scripts/vm/test-vm-clone-lib.sh (SKIP_LIST_NON_LINUX);
 #   `uname` is stubbed on PATH so every host exercises the Linux / Darwin /
 #   MINGW branches deterministically.
-#     a. every uname -> test-adopt.sh [SKIP]ped with the quarantine reason, never run
+#     a. every uname -> test-plugin-test.sh [SKIP]ped with its SKIP_LIST reason, never run
 #     b. uname -s = Linux  -> test-vm-clone-lib.sh RUNS and passes, rc 0
 #     c. uname -s = Darwin / MINGW64_NT-10.0 -> test-vm-clone-lib.sh [SKIP]ped
 #        with its off-Linux reason, never run; nothing ran, so rc 1
 # --------------------------------------------------------------------------
-echo "== Case 25 (HIMMEL-7300): test-adopt.sh quarantined everywhere, off-Linux skips still Linux-only =="
+echo "== Case 25 (HIMMEL-7300): a SKIP_LIST entry skipped everywhere, off-Linux skips still Linux-only =="
 sb25=$(mktemp -d "${TMPDIR:-/tmp}/rst-case25.XXXXXX") || { fail "25: mktemp failed"; sb25=""; }
 fakebin25=$(mktemp -d "${TMPDIR:-/tmp}/rst-case25-fakebin.XXXXXX") || { fail "25: fakebin mktemp failed"; fakebin25=""; }
 [ -n "$sb25" ] && [ -z "$fakebin25" ] && { rm -rf "$sb25"; sb25=""; }
 [ -z "$sb25" ] && [ -n "$fakebin25" ] && { rm -rf "$fakebin25"; fakebin25=""; }
 if [ -n "$sb25" ] && [ -n "$fakebin25" ]; then
 mkdir -p "$sb25/scripts"
-cat > "$sb25/scripts/test-adopt.sh" <<'SHEOF'
+cat > "$sb25/scripts/test-plugin-test.sh" <<'SHEOF'
 #!/usr/bin/env bash
 touch "$(dirname "$0")/adopt-ran.sentinel"
 exit 0
 SHEOF
-chmod +x "$sb25/scripts/test-adopt.sh"
+chmod +x "$sb25/scripts/test-plugin-test.sh"
 sentinel25="$sb25/scripts/adopt-ran.sentinel"
 mkdir -p "$sb25/scripts/vm"
 cat > "$sb25/scripts/vm/test-vm-clone-lib.sh" <<'SHEOF'
@@ -2532,10 +2532,10 @@ SHEOF
   chmod +x "$fakebin25/uname"
   rm -f "$sentinel25" "$vmsentinel25"
   out25=$(HIMMEL_RUNTIME_PREFLIGHT=0 PATH="$fakebin25:$PATH" bash "$RUNNER" "$sb25/scripts" 2>&1); rc25=$?
-  if [ ! -f "$sentinel25" ] && grepq "$out25" -E '\[SKIP\] .*test-adopt\.sh .*quarantined, 1203'; then
-    pass "25a: uname=$os25 -> scripts/test-adopt.sh SKIPped with its quarantine reason, not run"
+  if [ ! -f "$sentinel25" ] && grepq "$out25" -E '\[SKIP\] .*test-plugin-test\.sh .*self-bootstraps a plugin'; then
+    pass "25a: uname=$os25 -> scripts/test-plugin-test.sh SKIPped with its SKIP_LIST reason, not run"
   else
-    fail "25a: uname=$os25 -> expected loud quarantine skip; rc=$rc25 sentinel=$([ -f "$sentinel25" ] && echo yes || echo no); out: $out25"
+    fail "25a: uname=$os25 -> expected loud SKIP_LIST skip; rc=$rc25 sentinel=$([ -f "$sentinel25" ] && echo yes || echo no); out: $out25"
   fi
   if [ "$os25" = "Linux" ]; then
     if [ "$rc25" -eq 0 ] && [ -f "$vmsentinel25" ] && grepq "$out25" -E '\[PASS\] .*test-vm-clone-lib\.sh' && ! grepq "$out25" -E '\[SKIP\] .*test-vm-clone-lib\.sh'; then

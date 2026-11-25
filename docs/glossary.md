@@ -4,6 +4,13 @@ The one place himmel's fleet vocabulary is defined. Everything else — template
 files, guard messages, internals docs — links here instead of restating a
 definition, because a term defined in two places drifts.
 
+Adding himmel to your own project? A handful of terms cover it: **guard**,
+**gate**, **worktree isolation**, **review-owed marker** (listed as CR
+marker), **trust path** and **off switch** (listed as bypass flag), all in the
+[harness wiring lexicon](#harness-wiring-lexicon),
+plus **chief** and **worker** if you run a fleet. Most of the rest is the
+vocabulary of himmel's own development and release process.
+
 It holds two vocabularies: the fleet lexicon (sessions and their roles, below)
 and the [harness wiring lexicon](#harness-wiring-lexicon) (the hooks, gates and
 scripts that enforce the rules), with an [overlap map](#overlap-map) of which
@@ -89,8 +96,8 @@ The first names settled were chief, worker, dependency chain and parallel wave; 
 rename plan. Slices V3, V1, V2 and V5 merged before the migration became a breaking change, with
 aliases: their old names worked through a forwarder at the old path, a
 command alias or a read-both env name. V4a-1 did the same for the worker env names and hooks.
-Those leftovers have since been removed. Every other row is a plan until its slice merges: until then
-only the old name exists. **This migration is a known breaking change**: an old
+Those leftovers have since been removed. A row whose slice has not merged is still a plan; until
+it merges, only the old name exists. **This migration is a known breaking change**: an old
 name stops working when its rename PR merges, so there is no read-both env
 alias, no wrapper at the old path, no redirect stub and no alias-pin test. Every old name, its new name and
 each place the code uses it are listed in [Renamed identifiers](migration/renamed-identifiers.md), with
@@ -338,7 +345,7 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 | **Floor** | The deterministic minimum that still holds when every other layer is absent: the destructive-command floor (`block-destructive-commands.sh`, shared by Claude and Codex) and the single-writer force-push floor (`check-single-writer-push-floor.sh`). | baseline |
 | **Gate integrity** | A gate's own collaborators are fixed paths, never environment seams, so a contaminated environment cannot forge the evidence it reads. `clear-review-marker.sh` and `merge-on-green.sh` carry a `GATE INTEGRITY` note: the CR ledger path, `check-ci.sh` and `gh` are not overridable there. | — |
 | **Reviewer mode** | A reviewer's row in `scripts/cr/critics.json` says `hard`, `best-effort` or `advisory`. A hard reviewer that cannot review the head holds the merge; a best-effort one is relaxed (a NOTE) when it cannot review. A finding a hard or best-effort reviewer did post must be resolved either way. An advisory row's open findings print a NOTE until its `precision` reaches `advisory_precision_floor`; then the row is hard. Walkthrough: [daily-loop step 7a](daily-loop.md#7a-review-on-the-pull-request-coderabbit-and-the-review-gate). | soft gate |
-| **CI release** | Opt-in per repo (the `CI_GO_GATE` repository variable set to `on`; off by default). The station adds the `ci:go` label once the review gate passes at a head, and that label event starts the heavy CI jobs. It never lets anything merge on its own. | CR-first trigger |
+| **CI release** | Retired. It was an opt-in (the `CI_GO_GATE` repository variable set to `on`) under which the station added the `ci:go` label once the review gate passed at a head, and that label event started the heavy CI jobs. A pull request's CI now starts every job at once and ignores both. | CR-first trigger |
 | **Advisory** | A hook or check that prints and never blocks (exit 0): `scripts/cr/doc-freshness-advisory.sh`, `graphify-freshness-advisory.sh`, `jira-nudge-on-end.sh`, the `api` backend tier. | soft gate |
 | **Nudge** | A hook that steers a habit rather than protecting a secret or a checkout (`require-quiet-run.sh`, `guard-worker-wakeup.sh`, `jira-nudge-on-end`, `inject-worktree-nudge`). Advisory-only versus may-deny is a separate axis, so both kinds count: some only print, some deny. A denying nudge fails open on its own errors (missing `jq`, unparsed input). Its opposite is a security fence, which fails closed. | — |
 | **Watchdog** | A hook that watches a resource and acts on its own, deliberately fail-open: `auto-arm-on-cap.sh` and `auto-arm-on-subagent-cap.sh` arm a resume as a usage cap nears and block once to force a handover (off with `AUTO_ARM_DISABLE=1`). | monitor |
@@ -350,7 +357,7 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 | **Allow rule** | A literal entry the native permission matcher compares against the command *text*. A `VAR=` prefix, a quote, `$(…)` or a compound drops the call to the classifier; `auto-approve-safe-bash.sh` approves the shapes the matcher refuses. | whitelist |
 | **Hook integrity** | Every guard script pinned to its committed blob hash at session start (`record-hook-integrity.sh`); a pinned guard edited mid-session locks tool use. | — |
 | **Shadow ledger** | `scripts/trust/shadow-ledger.mjs`: a passive, hash-chained record of every approval-shaped decision. It records and never denies. | audit log |
-| **Trust path** | A file that decides whether other changes are safe: your merge gate, your hooks, your CI checks and the list itself. A change to one can switch a safety check off, so the agent that wrote it may not approve it; it merges only after an independent reviewer has signed off on that exact commit (a trust-reviewed GO, `go.sh --trust-reviewed`). The list lives in `scripts/ci/ci-trust-paths.txt` on the default branch, never read from the PR. Add any file that guards your project (deploy scripts, release config); an adopted project's list must also keep himmel's core lines (`scripts/ci/ci-trust-paths-core.txt`). These checks run in himmel's merge script and in Claude sessions; a merge made another way (the forge web UI, a raw `gh pr merge`) bypasses them, and the optional forge branch rules enforce the list there. | protected file |
+| **Trust path** | A file that decides whether other changes are safe: your merge gate, your hooks, your CI checks and the list itself. A change to one can switch a safety check off, so the agent that wrote it may not approve it; it merges only after an independent reviewer has signed off on that exact commit (a trust-reviewed GO, `go.sh --trust-reviewed`). The list lives in `scripts/ci/ci-trust-paths.txt` on the default branch, never read from the PR. Add any file that guards your project (deploy scripts, release config); an adopted project's list must also keep himmel's core lines (`scripts/ci/ci-trust-paths-core.txt`). These checks run in himmel's merge script and in Claude sessions; a merge made another way (the GitHub or Bitbucket web UI, a raw `gh pr merge`) bypasses them, and the optional branch rules on your Git host enforce the list there. | protected file |
 
 ### Places and identity
 
@@ -448,7 +455,7 @@ A cell names the script; `—` means the layer does not enforce it. Columns:
 | Lesson and enforcement files not agent-written | — | `block-lesson-enforcement-writes` | `block-lesson-enforcement-writes` | — | — | — |
 | No commit onto a merged PR's branch | — | `block-merged-pr-commit` | `block-merged-pr-commit` | pc `check-merged-branch` (warns) | — | — |
 | Chokepoints called bare | `block-chokepoint-env-prefix`, `guard-pr-check-literal` | `block-rogue-codex-exec` | `guard-pr-check-literal` | — | — | — |
-| Agent dispatch names a model and the right lane | `guard-agent-model` (blocks a Fable model and a `judge` tier override; allows a missing model) | `guard-subagent-model` (denies a missing model unless a fork; `SUBAGENT_MODEL_OK=1`), `guard-implementor-dispatch`, `guard-chief-dispatch` | — | — | — | — |
+| Agent dispatch names a model and the right lane | `guard-agent-model` (blocks a Fable model, a `judge` tier override and Opus on a general-purpose or untyped dispatch without a `TIER:` or `ESCALATION:` line; allows a missing model) | `guard-subagent-model` (denies a missing model unless a fork; `SUBAGENT_MODEL_OK=1`), `guard-implementor-dispatch`, `guard-chief-dispatch` | — | — | — | — |
 | Egress stays inside policy | `mcp-policy`, `block-backend-tier` | `block-graphify-egress`, `block-agent-native-egress` | `mcp-policy`, `block-backend-tier`, `block-terminal-write-fence` | — | — | — |
 | Worker discipline | `block-worker-askuserquestion`, `guard-worker-wakeup`, `guard-worker-context-handoff` (+ PreCompact), `block-subagent-park` | — | `guard-worker-context-handoff` | — | — | — |
 | Judge and relay writes confined | `guard-relay-writes` | `guard-judge-writes` | — | — | — | `go.sh` refuses under `HIMMEL_CONSOLE_LEG` / `HIMMEL_CONSOLE_RELAY` |

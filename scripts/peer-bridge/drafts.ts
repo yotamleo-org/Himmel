@@ -6,6 +6,8 @@ import { C0_C1_TEST, INVISIBLE_TEST } from "./sanitize";
 export const DRAFT_TTL_MS = 30 * 60_000;
 export const MAX_PENDING_DRAFTS = 3;
 export const MAX_DRAFTS_PER_DAY = 20;
+export const MAX_PENDING_CHIEF = 1;
+export const MAX_CHIEF_PER_DAY = 5;
 export const REVIEW_MAX = 4096;
 
 export type DraftState = "PENDING" | "SENDING" | "SENT" | "FAILED" | "REJECTED" | "EXPIRED" | "REFUSED";
@@ -28,10 +30,11 @@ export function draftState(outbox: Rec[], id: string): DraftState | null {
 
 export const badChars = (text: string): boolean => C0_C1_TEST.test(text) || INVISIBLE_TEST.test(text);
 
-export function reviewTooLong(d: { peer: string; root: number; draft: string; source: DraftSpool["source"]; deadline: number; text: string }, himmelRoot: string): boolean {
+export function reviewTooLong(d: { peer: string; root: number; draft: string; source: DraftSpool["source"]; session?: string; deadline: number; text: string }, himmelRoot: string): boolean {
   const { text } = renderNotify({ kind: "notify", type: "draft", ts: 0, ...d }, himmelRoot);
   return text.length > REVIEW_MAX;
 }
 
-export const pendingCount = (outboxes: Rec[][]): number => outboxes.reduce((n, o) => n + o.filter(r => r.kind === "draft" && draftState(o, r.id) === "PENDING").length, 0);
-export const draftsToday = (outboxes: Rec[][], nowMs: number): number => outboxes.reduce((n, o) => n + o.filter(r => r.kind === "draft" && utcDay(r.ts * 1000) === utcDay(nowMs)).length, 0);
+const inBucket = (r: Rec, chief: boolean) => r.kind === "draft" && (r.source === "chief") === chief;
+export const pendingCount = (outboxes: Rec[][], chief = false): number => outboxes.reduce((n, o) => n + o.filter(r => inBucket(r, chief) && draftState(o, r.id) === "PENDING").length, 0);
+export const draftsToday = (outboxes: Rec[][], nowMs: number, chief = false): number => outboxes.reduce((n, o) => n + o.filter(r => inBucket(r, chief) && utcDay(r.ts * 1000) === utcDay(nowMs)).length, 0);

@@ -277,6 +277,12 @@ describe('admission rows clear unauthorized', () => {
     expect(s.inputs.admissions).toBe('FRESH');
   });
 
+  it('a filed row clears unauthorized in a frozen and an unfrozen version (R14)', () => {
+    const s = reduce(input({ issueList: [issue('K-2', ['v1']), issue('K-3', ['v2'])], admissions: [adm('K-2', 'v1', 'filed', { ground: 'rules:serious:High' }), adm('K-3', 'v2', 'filed')] }));
+    expect(s.leaks.unauthorized).toEqual([]);
+    expect(recordOf(s, 'K-2', 'v1')?.bookkeeping).toBe('admission:filed');
+  });
+
   it('gate row alone never clears a verdict', () => {
     const s = reduce(input({ issueList: members, admissions: [adm('K-2', 'v1', undefined, { gate: 'critical' })] }));
     expect(s.leaks.unauthorized).toEqual(['K-2@v1', 'K-3@v1', 'K-4@v1']);

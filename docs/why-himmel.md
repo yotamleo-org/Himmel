@@ -13,15 +13,16 @@ starts to pay for its complexity once you run more than one session at a
 time, want work to continue while you sleep, or need context to survive a
 session boundary.
 
-himmel is a control plane for coding agents: the agent's own harness keeps
-running each session, and himmel governs those sessions rather than replacing
-it. Each failure mode below is fixed at the lowest layer that can
-fix it. A guarded session fixes the forgotten rule, and handover fixes the
-context that dies with the session. At the top, Jarvis, the command layer
-([jarvis-subsystems.md](jarvis-subsystems.md)), runs a fleet of guarded
-sessions as one software factory. Runs on Claude Code today; under Codex the
-guardrails fire through the hook adapter and AGENTS.md; other harnesses are
-audited, not ported.
+himmel is a control plane for coding agents: Claude Code keeps running each
+session, and himmel governs those sessions rather than replacing it. Each
+failure mode below is fixed at the lowest layer that can fix it. A guarded
+session fixes the forgotten rule, and handover fixes the context that dies
+with the session. At the top, an optional coordinating session, the chief,
+hands a queue of tickets to guarded worker sessions, and a change merges after
+review and the chief's signed approval
+([jarvis-subsystems.md](jarvis-subsystems.md)). Runs on Claude
+Code today; under Codex the guardrails fire through the hook adapter and
+AGENTS.md; other harnesses are audited, not ported.
 
 ---
 
@@ -148,13 +149,14 @@ whether its process is confirmed dead: `abandoned` (real hygiene information,
 but nothing is hung and nobody can act, so it must not page) versus `stalled`
 (everything else).
 
-The flap above produced 53 Telegram pages in one night on the operator's
+The flap above produced 53 Telegram pages in one night on the maintainer's
 machine. The fix came from measuring: over 24 hours of live scrapes, the
 exporter's render took ~6.6 s on average and ~9.9 s at peak, against a 10 s
 default timeout, so the scrape timeout went to 30 s. Those numbers describe
 that one machine at the time of the fix (in the tree since 2026-09-08 at the
-latest), not a current benchmark. The reasoning is written into
-`scripts/observability/prometheus.yml` next to the value it justifies.
+latest), not a current benchmark. `scripts/observability/prometheus.yml` keeps
+the reason next to the value: the 30 s timeout is about three times the peak
+render time.
 
 ---
 
@@ -164,9 +166,11 @@ latest), not a current benchmark. The reasoning is written into
   runs end to end (branch, build, self-review, PR). When the run nears a
   usage cap, the usage-cap auto-relaunch schedules an OS-level relaunch so the
   run resumes instead of dying.
-- **Review before merge.** Push writes a review-owed marker; the PR
-  gate refuses while it exists; a clean multi-agent review clears it. The
-  merge gate also requires CI green *and* zero unresolved threads.
+- **Review before merge.** In a himmel checkout, a push writes a review-owed
+  marker; the PR gate refuses while it exists; a clean multi-agent review
+  clears it. On GitHub, the merge gate refuses a merge Claude starts until CI
+  is green *and* no reviewer finding is left open; a merge you make yourself
+  in the web UI is not intercepted.
 - **Small context by construction.** A local CLI instead of an always-loaded
   MCP server, an output-summarizing proxy for noisy commands, and a hard byte
   budget on the always-on instruction file, because every call pays for an

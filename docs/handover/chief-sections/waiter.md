@@ -588,12 +588,14 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     `fleet-manifest.sh watch <manifest> remove <pr> [--repo owner/name]` when the event is over (the
     `--repo` the wake line names as `repo=`; a row watched without one is removed without one).
 
-    **An oversized brief wakes you once.** `WAKE size rows=<total>` followed by
-    `SIZE-ESCALATE<TAB>epoch<TAB>refuse|bulk<TAB>KEY<TAB>label<TAB>files<TAB>trust<TAB>detail` lines
-    means `gen-briefs.py` (with `pr_size_gate` on) refused a brief over the size bands or took a
-    `bulk: mechanical` one; each new row shows once (`<inbox>.wait.size` holds the total shown, and a
-    waiter's first sample on a new inbox is a silent baseline). Rule per the size paragraph of
-    `running-a-chief.md#rulings`: split, sign `size-override.sh record`, or escalate to the operator.
+    **An oversized brief or PR wakes you once.** `WAKE size rows=<total>` followed by
+    `SIZE-ESCALATE<TAB>epoch<TAB>estimate|bulk|real|refuse<TAB>KEY<TAB>label<TAB>files<TAB>trust<TAB>detail` lines
+    means `gen-briefs.py` wrote a brief whose Writes project past a size band (`estimate`) or took a
+    `bulk: mechanical` one (`bulk`), or `worker-pr-open.sh` measured a real PR past the hard or CodeRabbit
+    band (`real`; `refuse` is an old row). The detail starts `band=<band> ref=<branch>`, and a row for the same
+    kind, key, label, band and branch is written once. Each new row shows once (`<inbox>.wait.size` holds the
+    total shown, and a waiter's first sample on a new inbox is a silent baseline). Nothing is refused: every
+    size case is yours. Split the ticket or the PR, or keep it whole and sign `size-override.sh record`.
 
     **A file ask you can grant wakes you once.**
     `WAKE hold-ask <key> wants <path> (held by <holder>). Grant: <command>`, then the tick line,

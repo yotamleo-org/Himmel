@@ -67,7 +67,8 @@ Three words name three different choices, and the installer asks for them
 separately: the **preset** is the shipped install-profile file that supplies
 answers (`--scope` loads one, `--from-profile <file>` loads another); the
 **installation scope** is where the harness is wired (`project` or `user`); the
-**plugin profile** is which marketplace plugins are on (`lean` or `full`). Detail
+**plugin profile** is which marketplace plugins are on (an install starts
+`lean`; `/profile full` turns the rest on later). Detail
 and the exact values are in
 [What `profile` means](#what-profile-means-three-unrelated-things).
 
@@ -124,9 +125,9 @@ A project-scope install also copies and wires the unresolved-review merge gate
 and its libraries. The install commit adds `scripts/ci/ci-trust-paths.txt`,
 seeded only when absent; your existing trust list is never overwritten. Until
 that list is on your default branch, the gate refuses every merge from a
-session that loads the new settings, including the adoption PR. The operator
-must merge that first adoption PR outside Claude, using the forge web UI or
-their own terminal; no agent session merges it.
+session that loads the new settings, including the adoption PR. You merge
+that first adoption PR yourself, outside Claude, in your Git host's web UI
+(GitHub or Bitbucket) or your own terminal; no agent session merges it.
 
 A **trust path** is a file that decides whether other changes are safe: your
 merge gate, your hooks, your CI checks and the list itself. A change to one can
@@ -142,7 +143,7 @@ your list lacks is refused (`list core-missing <pattern>`); copy the missing lin
 back from the core file. A list deleted from the default branch refuses every
 merge, including the one that brings it back: restore your last full list from
 git history, so your own lines come back too, add any core line it lacks, and
-land that commit outside Claude, in the forge web UI or with a raw `gh pr merge`.
+land that commit outside Claude, in your Git host's web UI or with a raw `gh pr merge`.
 
 Inside a Claude session, a PR touching a listed path needs a trust-reviewed GO.
 Only a himmel chief signs one for your repo, and only once your repo has exactly
@@ -155,14 +156,14 @@ ships empty and is read through the GitHub API from the default branch of the
 himmel repo that the signing chief's himmel download names as its `origin`
 remote (your own download only when you are that chief), so a row counts only
 once it is merged there; an edit in a local copy does not count. In solo mode, or
-until then, such a PR does not merge from a session: the operator merges it in
-the forge web UI or with a raw `gh pr merge`, which bypass `merge-on-green.sh`.
+until then, such a PR does not merge from a session: you merge it in your Git
+host's web UI or with a raw `gh pr merge`, which bypass `merge-on-green.sh`.
 
 These checks run only inside Claude sessions (the hooks) and in himmel's merge
 script (`merge-on-green.sh`) wherever it is run.
-A merge made another way, in the forge web UI or with a raw
+A merge made another way, in your Git host's web UI or with a raw
 `gh pr merge`, bypasses them and is not checked. To enforce the list on the
-forge too, turn on the optional branch rules (CODEOWNERS and a required review
+Git host too, turn on the optional branch rules (CODEOWNERS and a required review
 for the listed paths).
 
 ## Verify
@@ -171,15 +172,18 @@ Open a Claude Code session at the repo root (`claude`); hooks only fire inside
 a session. The install must already be committed on the default branch (see
 [Persist](#persist-commit-it-before-you-branch)). Then:
 
-1. Try to edit a tracked file in your project's own checkout (on any branch).
-   `block-edit-on-main` should refuse and point you at a worktree. That refusal *is* the success signal.
-2. Create the worktree: `bash scripts/worktree.sh feat/try-himmel`. It prints
+1. Ask Claude to edit a tracked file in your project's own checkout (on any
+   branch). `block-edit-on-main` should refuse the edit and point Claude at a
+   worktree. That refusal *is* the success signal.
+2. Ask Claude to create the worktree (it runs
+   `bash scripts/worktree.sh feat/try-himmel`), or run that yourself. It prints
    the worktree path (a `feat+try-himmel` folder under your repo's worktrees
    directory) and does not move a running session; quit and run `claude` again inside that path. Check that
    `.claude/settings.json`, `scripts/hooks/block-edit-on-main.sh` and
    `scripts/worktree.sh` exist there. If they do not, the install was not
    committed first. Edits on the worktree branch then proceed normally.
-3. Try `cat .env` (if you have one). `block-read-secrets` should refuse.
+3. Ask Claude to show your `.env` (if you have one). `block-read-secrets`
+   should refuse the read before the file reaches the model.
 4. Run `node ~/himmel/scripts/himmelctl/bin.js status` for a severity-grouped diff of
    what is installed versus what the manifest wants.
 
@@ -232,19 +236,20 @@ named once, and every later mention in this guide is qualified.
 |---|---|---|---|
 | **Install profile** | `starter`, `luna`, `operator`, `custom` — resolving to the manifest categories `core`, `luna`, `all` | [`scripts/install/manifest.json`](../../scripts/install/manifest.json) membership | *Which items* the installer wants present |
 | **Saved install-profile file** | any `*.install-profile.json` | [`docs/setup/profiles/`](profiles/README.md), or the wizard's own cache | *Your recorded answers* — scope, install profile, plugin set, release channel — replayable with `--from-profile <file>` |
-| **Plugin profile** | `lean`, `full` | [`scripts/lanes/plugin-profiles.json`](../../scripts/lanes/plugin-profiles.json), toggled with `/profile` | *Which marketplace plugins* are enabled in your Claude Code sessions |
+| **Plugin profile** | `lean`, `full` | the always-on and on-demand tiers in [`docs/setup/settings-template.json`](settings-template.json), toggled with `/profile` | *Which marketplace plugins* are enabled in your Claude Code sessions |
 
 They are independent. A `starter` install profile with the `lean` plugin
 profile, recorded in a saved install-profile file, is the ordinary adopter
 setup, and is exactly what `--scope project` gives you.
 
-The plugin profile toggles with `/profile`; its registry is
-`scripts/lanes/plugin-profiles.json`. The always-on `base` carries
-`lean-skills@himmel` (vendored workflow skills); `i-have-adhd@himmel` is
-on-demand (`/profile enable`) and in no plugin profile but `telegram`.
-`design` adds the HTML/UI design kit and
-`domain-modeling@himmel` per dispatch, `user` enables the opt-in `pstack@himmel`,
-and `humanizer@himmel` is in no plugin profile.
+The plugin profile toggles with `/profile`, which runs
+`scripts/machine-setup/plugin-profile.sh`: `/profile lean` turns every
+on-demand plugin off, `/profile full` turns them all on, and
+`/profile enable <plugin>` or `/profile disable <plugin>` toggles one. Which
+plugins are always on and which are on-demand is the `enabledPlugins` block of
+[`docs/setup/settings-template.json`](settings-template.json). A separate
+file, `scripts/lanes/plugin-profiles.json`, picks the plugins each dispatched
+worker or lane session launches with; ignore it for a solo install.
 
 ### What you are opting into
 
@@ -265,8 +270,8 @@ deal, and every guard has an off switch (see
 | **Release channel** | unset (no recorded channel) | `git pull --ff-only` on your branch | Nothing | You track the tip, including work in progress — this is the *fallback*, not what a fresh install records |
 | | `stable` | The highest `vX.Y.Z` tag | Nothing | You update only when a release is cut |
 | | `pre` | The highest tag including `-pre.N` | Nothing | Prereleases, so earlier fixes and earlier breakage |
-| **Plugin profile** | `lean` | The everyday plugin set | Nothing | Fewer skills loaded, less context spent per session |
-| | `full` | Every marketplace plugin | Nothing | More context per session for surfaces you may never invoke |
+| **Plugin profile** | `lean` (what the install records) | The everyday plugin set | Nothing | Fewer skills loaded, less context spent per session |
+| | `full` (later, with `/profile full`) | Every marketplace plugin | Nothing | More context per session for surfaces you may never invoke |
 
 Item membership is **data, not prose**. Read
 [`scripts/install/manifest.json`](../../scripts/install/manifest.json) rather
@@ -274,8 +279,8 @@ than trusting the counts above if they ever disagree. Channels are defined once,
 in [updating.md](updating.md#release-channels); this table cites
 them rather than restating the resolution rules. Two senses of "default" that
 are easy to conflate: the unset row is what the resolver falls back to when
-*nothing* is recorded, while `install` on a new station records `stable`, so a
-fresh install tracks releases, and only a station whose channel was never
+*nothing* is recorded, while `install` on a new machine records `stable`, so a
+fresh install tracks releases, and only a machine whose channel was never
 written tracks the tip.
 
 ### Minimal config
@@ -368,7 +373,7 @@ wired, or the hook id from `.pre-commit-config.yaml`.
   [plugin README](../../marketplace/plugins/himmel-guard/README.md#on-by-default-and-how-to-opt-out)
   covers keeping it off across a reconcile.
 
-**6. Operator-personal subsystems: skip all of these.** None of them is part of
+**6. Optional subsystems: skip these on a first install.** None of them is part of
 the portable core, and skipping them changes nothing about the hooks or the
 worktree workflow.
 
@@ -390,9 +395,9 @@ A guard hook wired from two settings layers (user settings, project settings, an
 | Inside a himmel checkout | The project layer (`.claude/settings.json`) | A user layer wired through `scripts/setup-hooks.sh --guardrail-mode global` carries the wrapped form, which goes quiet where a project layer covers the script. `himmelctl install` reads that form as the trio being present and wires nothing more at the user level. The `himmel-guard` plugin command exits 0 when the project settings name `block-destructive-commands.sh`. |
 | An adopted repo with no project entry | The user layer | The install wires the hooks there, and they run in every repo. |
 
-A station with the raw user-level wire, not the wrapped form, still guards every repo, and inside a himmel checkout each trio hook runs twice per call. The doctor reports that as a WARN: drop the raw user entry with `scripts/lib/unwire-pretooluse-hooks.sh`. himmel no longer offers a machine-wide guardrail install of its own, so `himmelctl ensure` never asks about one.
+A machine with the raw user-level wire, not the wrapped form, still guards every repo, and inside a himmel checkout each trio hook runs twice per call. The doctor reports that as a WARN: drop the raw user entry with `scripts/lib/unwire-pretooluse-hooks.sh`. `himmelctl ensure` never asks about a machine-wide guardrail install; `scripts/setup-hooks.sh --guardrail-mode global` remains a manual option.
 
-`inject-initiative` (SessionStart) is wired by `scripts/setup.sh` and `adopt --scope user`, not by `himmelctl install`, so it is not skipped for you: on a station that wired it at the user layer, remove that entry with `scripts/lib/unwire-pretooluse-hooks.sh`.
+`inject-initiative` (SessionStart) is wired by `scripts/setup.sh` and `adopt --scope user`, not by `himmelctl install`, so it is not skipped for you: on a machine that wired it at the user layer, remove that entry with `scripts/lib/unwire-pretooluse-hooks.sh`.
 
 `bash scripts/himmel-doctor.sh --only C81` WARNs and names any script wired from more than one layer. A user entry run through `guardrail-skip-in-himmel.js` and a plugin entry that reads the project settings do not count.
 

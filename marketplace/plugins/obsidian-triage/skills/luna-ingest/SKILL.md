@@ -47,7 +47,7 @@ Parse:
 - `--components-dir <rel>` — vault-relative Components library root.
   Default `30-Resources/Components`. Only meaningful with `--deep`.
 - `--max-components <N>` — per-repo component cap (tail-skip beyond). Default 60.
-- `--skill-scan` — run SkillSpector Stage 1 (static, `--no-llm`; its one network call checks lockfile dependencies against api.osv.dev for CVEs) over each skill directory in the source repo (Phase 3.7) and store the JSON reports beside the note. Advisory only, never gates. Off by default.
+- `--skill-scan` — run SkillSpector over each skill directory in the source repo (Phase 3.7) and store the JSON reports beside the note. Off by default, except for a vendor candidate (the ingest request says the skill is to be vendored), which runs Phase 3.7 as if `--skill-scan` were passed. A read-through takes `SKILLSPECTOR_PROVIDER=ollama`: Stage 1 only (static, `--no-llm`; its one network call checks lockfile dependencies against api.osv.dev for CVEs), advisory. A vendor candidate takes the full scan, Stage 2 (the AI review) included, as a required step of vendoring: `SKILLSPECTOR_PROVIDER=nv_build` with `NVIDIA_INFERENCE_KEY`, or `SKILLSPECTOR_PROVIDER=anthropic` with `ANTHROPIC_API_KEY`, exported in the launching shell (never read from `.env`); a missing key is `not scanned (rc 2)`, never an `ollama` substitute. A HIGH or CRITICAL finding that survives Stage 2 stops the vendoring (wrapper rc 4) until a person has read the flagged line and recorded its fingerprint in `<report>.ack`. The scan never changes `trust_tier` or the ingest rc.
 - `--research` — after classification, web-research the SOURCE repo
   (maturity/adoption, notable alternatives, known limitations, community
   sentiment, recency) using Claude's own WebSearch/WebFetch tools and inject a
@@ -98,9 +98,9 @@ ERR luna-ingest: only github.com and bitbucket.org URLs supported. Twitter + art
 
 **Read on demand:** Only when `--research` was passed; skip otherwise. Read `<plugin>/references/luna-ingest/phase-3-6-research.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
-## Phase 3.7 — Advisory skill scan (`--skill-scan` only)
+## Phase 3.7 — Skill scan (`--skill-scan` or a vendor candidate)
 
-**Read on demand:** Only when `--skill-scan` was passed; skip otherwise. Read `<plugin>/references/luna-ingest/phase-3-7-skill-scan.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
+**Read on demand:** Only when `--skill-scan` was passed or the ingest is a vendor candidate (full scan); skip otherwise. Read `<plugin>/references/luna-ingest/phase-3-7-skill-scan.md` (`<plugin>` is the plugin root, two directories above this skill's directory) in full and follow it exactly as if it were inlined here; do not work from memory of it.
 
 ## Phase 4 — Synthesis
 
@@ -156,7 +156,7 @@ trust_tier: <tier>          # anthropic-official | known-author | community-acti
 trust_tier_reason: <text>   # 1-line justification (e.g. "owner=anthropics → anthropic-official"; "owner=kepano in allowlist → known-author"; "stargazers_count=12, pushed_at=2025-04-01 → community-thin"). Field name is `owner=` (the lowercased value extracted in trust-tier rule logic), matching the trust-tier rule wording — NOT `owner_org=`.
 safety_flag: <term-or-blank> # blank if Phase 1.5 found no red-flag terms; matched term otherwise. NON-BLANK forces trust_tier=unknown-risk via rule 0 short-circuit in trust-tier classification.
 repo_scan: <clean|flagged|unavailable>   # Phase 1.6 advisory scan result; never gates trust_tier.
-skill_scan: <clean|flagged|unavailable>  # set ONLY when --skill-scan ran (Phase 3.7); omit otherwise. Advisory; never gates trust_tier.
+skill_scan: <clean|flagged|unavailable>  # set ONLY when Phase 3.7 ran (--skill-scan or a vendor candidate); omit otherwise. Never gates trust_tier. For a vendor candidate (full scan) a missing provider key is `unavailable` and a Stage-2-confirmed HIGH (rc 4) is `flagged`: either way the vendoring stops; rc 4 until each fingerprint is in <report>.ack.
 research_enriched: <true-or-omit>  # set true ONLY when --research ran (Phase 3.6) AND produced real findings. Omit the field entirely when --research was not passed OR enrichment degraded (dry-run short-circuit / web-failure placeholder) — a degraded note must not advertise itself as enriched to downstream readers (/synthesize-clips, revalidation tooling).
 ---
 
@@ -193,7 +193,7 @@ research_enriched: <true-or-omit>  # set true ONLY when --research ran (Phase 3.
 
 ## Skill scan (advisory)
 
-<Only present when --skill-scan was passed (Phase 3.7): one line per scanned skill, as the phase reference specifies. If --skill-scan was NOT passed, omit this section entirely.>
+<Only present when Phase 3.7 ran (--skill-scan or a vendor candidate): one line per scanned skill, as the phase reference specifies, a `blocked (rc 4)` line included. If Phase 3.7 did not run, omit this section entirely.>
 
 ## Research enrichment
 

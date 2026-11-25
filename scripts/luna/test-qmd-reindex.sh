@@ -572,6 +572,34 @@ assert_rc "named-holder case still rc 3" 3 "$rc"
 assert_contains "busy line names the holder pid" "$holder_pid (" "$out"
 assert_contains "busy line names the holder command" "qmd-holder-probe" "$out"
 
+echo "TEST: the busy log names the process holding the WAL write lock, apart from mere openers"
+if [ -r /proc/locks ] && command -v python3 >/dev/null 2>&1; then
+    reset_state
+    mkdir -p "$HOME/.cache/qmd"
+    : > "$HOME/.cache/qmd/index.sqlite"
+    : > "$HOME/.cache/qmd/index.sqlite-shm"
+    reader_cmd="$TMP_ROOT/qmd-opener-probe"
+    # shellcheck disable=SC2016
+    printf '#!/usr/bin/env bash\nexec 9< "$1"\nsleep 30\n' > "$reader_cmd"
+    chmod +x "$reader_cmd"
+    "$reader_cmd" "$HOME/.cache/qmd/index.sqlite" &
+    reader_pid=$!
+    python3 -I -c 'import fcntl, sys, time; f = open(sys.argv[1], "r+b"); fcntl.lockf(f, fcntl.LOCK_EX, 1, 120, 0); print("locked", flush=True); time.sleep(30)' "$HOME/.cache/qmd/index.sqlite-shm" > "$TMP_ROOT/locker.out" &
+    locker_pid=$!
+    for _ in 1 2 3 4 5 6 7 8 9 10; do grep -q locked "$TMP_ROOT/locker.out" 2>/dev/null && break; sleep 0.5; done
+    echo -1 > "$STATE/busy-update"
+    rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=1 QMD_REINDEX_BUSY_RETRY_SECS=1 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    pkill -P "$reader_pid" 2>/dev/null || true
+    kill "$reader_pid" "$locker_pid" 2>/dev/null || true
+    wait "$reader_pid" "$locker_pid" 2>/dev/null || true
+    rm -f "$HOME/.cache/qmd/index.sqlite" "$HOME/.cache/qmd/index.sqlite-shm"
+    assert_rc "write-lock-holder case still rc 3" 3 "$rc"
+    assert_contains "busy line names the write-lock holder pid" "write-lock holder: pid $locker_pid (" "$out"
+    assert_not_contains "a mere opener is not named the write-lock holder" "write-lock holder: pid $reader_pid" "$out"
+else
+    pass "write-lock holder case skipped: no /proc/locks or python3"
+fi
+
 echo "TEST: a non-BUSY 'qmd update' failure is not retried"
 reset_state
 touch "$STATE/fail-update"

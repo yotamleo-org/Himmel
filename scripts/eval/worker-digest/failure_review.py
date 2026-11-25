@@ -419,7 +419,8 @@ def main(argv=None):
         write_outputs(a, day, section, data)
         if line:
             try:
-                ok = subprocess.run([a.notify_cmd, line], capture_output=True, timeout=60).returncode == 0
+                ok = subprocess.run([a.notify_cmd, line], capture_output=True, timeout=60,
+                                    env=dict(os.environ, HIMMEL_ALERT_KIND="failure-review")).returncode == 0
             except (OSError, subprocess.SubprocessError):
                 ok = False
             print("failure-review: telegram %s" % ("sent" if ok else "NOT delivered"),

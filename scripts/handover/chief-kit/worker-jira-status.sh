@@ -24,6 +24,8 @@
 # status-events.jsonl (moved | noop | skip | deferred | miss | disabled).
 # A move of an In Progress ticket to To Do by rule D5c or D6n (its wrapped owner holds no
 # live lock) also prints `worker-jira-status: SLIPPED <KEY> In Progress with no live lock (<rule>) → To Do`.
+# A wrapped worker's key stays put while another worker doc in the bucket that names it holds its queue
+# lock, recorded or not; the noop row carries sibling=<doc> and the run prints `HELD <KEY> <status>: <doc> holds a live lock`.
 #
 # Best-effort by design: every failure prints a WARN on stderr and exits 0, so
 # a Jira or GitHub problem never blocks a worker; the whole run is bounded by
@@ -421,7 +423,8 @@ while :; do
     if [ "$TS_RULE" = D5d ]; then mnr_stage=$TS_STAGE mnr_pr=$TS_MERGED_PR; fi
     if [ "$TS_DERIVED" = "$TS_J_STATUS" ]; then
         update_record "$TS_J_STATUS"
-        row result=noop rule="$TS_RULE" from="$TS_J_STATUS" ${mnr_stage:+stage="$mnr_stage"} ${mnr_pr:+merged_pr="$mnr_pr"} ${TS_D5D_OWNER:+owner="$TS_D5D_OWNER"}
+        row result=noop rule="$TS_RULE" from="$TS_J_STATUS" ${mnr_stage:+stage="$mnr_stage"} ${mnr_pr:+merged_pr="$mnr_pr"} ${TS_D5D_OWNER:+owner="$TS_D5D_OWNER"} ${TS_OWNER_DOC:+sibling="${TS_OWNER_DOC##*/}"}
+        [ -z "$TS_OWNER_DOC" ] || echo "worker-jira-status: HELD $KEY $TS_J_STATUS: ${TS_OWNER_DOC##*/} holds a live lock"
         finish
     fi
     seen_j="$TS_J_STATUS" seen_heads="$TS_HEADS"

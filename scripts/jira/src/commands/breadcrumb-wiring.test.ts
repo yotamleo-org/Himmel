@@ -63,6 +63,7 @@ describe('jira breadcrumb wiring', () => {
       return {};
     });
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
     const p = freshProgram(registerMove);
     await p.parseAsync(['node', 'jira', 'move', 'HIMMEL-2', '--to-project', 'LUNA']);
     vi.unstubAllEnvs();

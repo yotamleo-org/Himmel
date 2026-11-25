@@ -12,3 +12,4 @@ CI (os:macos cadence)
 os-verify
 Pages
 Release
+timing-daily

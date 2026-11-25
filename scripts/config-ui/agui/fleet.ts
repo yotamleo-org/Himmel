@@ -73,13 +73,17 @@ export type FleetRow = {
 export type BusCounts = { unacked: number; undelivered: number; unbound: boolean };
 export type BusEdge = { from: string; to: string; n: number; unacked: number; lastAt: number; kinds: Record<string, number> };
 // kind: orphan = no live session owns it; wait = a live session's own long-running call; stuck = its pgrep -f wait matches itself.
-export type ProcessOrphan = { pid: number; owner: string; ageMin: number; kind: "orphan" | "wait" | "stuck" };
+export type ProcessOrphan = { pid: number; owner: string; ageMin: number; kind: "orphan" | "wait" | "stuck" | "t3"; thread?: string | null };
+export type T3Thread = {
+  threadId: string; title: string; state: "running" | "waiting" | "blocked" | "settled"; waitingOn: "thread" | "reply" | null;
+  provider: string | null; model: string | null; ageMin: number; idleMin: number; pullRequests: number; backgroundTasks: number; pids: number[];
+};
 export type Usage = {
   calls: number; input: number; output: number; cacheRead: number; cacheCreate: number; costEq: number | null;
   resident: number | null; ceiling: number; ceilingFrom: "autocompact" | "window"; fill: number | null;
 };
 // processOrphans: tick's stale shell-tool wrappers; null when the inventory could not be read.
-export type Fleet = { census: "ok" | "degraded" | "unavailable"; generatedAt: number; sessions: FleetRow[]; edges: BusEdge[]; processOrphans: ProcessOrphan[] | null; banks: { codex: CodexBank | null } };
+export type Fleet = { census: "ok" | "degraded" | "unavailable"; generatedAt: number; sessions: FleetRow[]; edges: BusEdge[]; processOrphans: ProcessOrphan[] | null; t3Threads: T3Thread[] | null; banks: { codex: CodexBank | null } };
 type CensusRow = { pid: string; name: string; model: string; doc: string; status: string; autocompact?: string; startedAt?: number | null };
 type Census = { census: Fleet["census"]; sessions: CensusRow[]; cloudRoutes?: string[]; manifests?: string[]; consoleDocs?: string[] };
 
@@ -190,14 +194,70 @@ function orphanListOf(opts: { script: string; env: Record<string, string | undef
     execFile("bash", [script, "--list"], { env: opts.env as NodeJS.ProcessEnv, timeout: 10_000, maxBuffer: 256 * 1024 }, (err, stdout) => ok(err ? null : stdout));
   });
 }
-async function processOrphansOf(opts: { script: string; env: Record<string, string | undefined> }, live: Set<string> = new Set(), listing: Promise<string | null> = orphanListOf(opts)): Promise<ProcessOrphan[] | null> {
+const T3_TTL_MS = 15_000;
+const T3_WAIT_MS = 2_000;
+const T3_SETTLED_KEEP_MS = 24 * 60 * 60 * 1000;
+type T3Read = { threads: any[]; owned: { pid: number; thread: string | null }[] };
+const t3Cache = new Map<string, { at: number; read: T3Read | null }>();
+const t3Runs = new Map<string, Promise<void>>();
+function t3Run(script: string, env: Record<string, string | undefined>): Promise<T3Read | null> {
+  return new Promise((ok) => {
+    execFile("bash", [script], { env: env as NodeJS.ProcessEnv, timeout: 20_000, maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+      try {
+        const r = err ? null : JSON.parse(stdout);
+        ok(r && Array.isArray(r.threads) && Array.isArray(r.owned) ? r : null);
+      } catch { ok(null); }
+    });
+  });
+}
+async function t3Of(opts: { script: string; env: Record<string, string | undefined> }): Promise<T3Read | null> {
+  const script = opts.env.CONFIG_UI_T3_THREADS || join(dirname(opts.script), "../t3/thread-list.sh");
+  const ttl = Number(opts.env.HIMMEL_FLEET_T3_TTL_MS) || T3_TTL_MS;
+  let hit = t3Cache.get(script);
+  if (!hit || Date.now() - hit.at >= ttl) {
+    let run = t3Runs.get(script);
+    if (!run) {
+      run = t3Run(script, opts.env).then((read) => { t3Cache.set(script, { at: Date.now(), read }); }).finally(() => { t3Runs.delete(script); });
+      t3Runs.set(script, run);
+    }
+    let t: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([run, new Promise((ok) => { t = setTimeout(ok, Number(opts.env.HIMMEL_FLEET_T3_WAIT_MS) || T3_WAIT_MS); })]);
+    clearTimeout(t);
+    hit = t3Cache.get(script);
+  }
+  return hit?.read ?? null;
+}
+const T3_STATES = new Set(["running", "waiting", "blocked", "settled"]);
+function t3ThreadsOf(read: T3Read | null, now: number, redact: (s: string) => string): T3Thread[] | null {
+  if (!read) return null;
+  const minutes = (iso: unknown) => { const at = typeof iso === "string" ? Date.parse(iso) : NaN; return Number.isFinite(at) ? Math.max(0, Math.floor((now - at) / 60_000)) : 0; };
+  const int = (x: unknown) => (Number.isSafeInteger(x) && (x as number) >= 0 ? (x as number) : 0);
+  return read.threads.flatMap((t): T3Thread[] => {
+    if (!t || typeof t.threadId !== "string" || !T3_STATES.has(t.state)) return [];
+    const idleMin = minutes(t.updatedAt);
+    if (t.state === "settled" && idleMin * 60_000 > T3_SETTLED_KEEP_MS) return [];
+    return [{
+      threadId: t.threadId, title: redact(String(t.title ?? "")).slice(0, 120), state: t.state,
+      waitingOn: t.state === "waiting" && (t.waitingOn === "thread" || t.waitingOn === "reply") ? t.waitingOn : null,
+      provider: typeof t.provider === "string" ? t.provider : null, model: typeof t.model === "string" ? t.model : null,
+      ageMin: minutes(t.createdAt), idleMin, pullRequests: int(t.pullRequests), backgroundTasks: int(t.backgroundTasks),
+      pids: Array.isArray(t.pids) ? t.pids.filter((p: unknown): p is number => Number.isSafeInteger(p)) : [],
+    }];
+  });
+}
+
+async function processOrphansOf(opts: { script: string; env: Record<string, string | undefined> }, live: Set<string> = new Set(), listing: Promise<string | null> = orphanListOf(opts), owned: Map<number, string | null> = new Map()): Promise<ProcessOrphan[] | null> {
   const listed = await listing;
   if (listed === null) return null;
   return Promise.all(listed.split("\n").flatMap((l) => {
     const m = /^pid=(\d+) owner=(\S+) age=(\d+)m$/.exec(l.trim());
     const owner = m && plain(m[2]);
     return m && owner ? [{ pid: Number(m[1]), owner, ageMin: Number(m[3]) }] : [];
-  }).map(async (p): Promise<ProcessOrphan> => ({ ...p, kind: (await selfMatches(p.pid, opts.env)) ? "stuck" : live.has(p.owner) ? "wait" : "orphan" })));
+  }).map(async (p): Promise<ProcessOrphan> => {
+    if (await selfMatches(p.pid, opts.env)) return { ...p, kind: "stuck" };
+    if (owned.has(p.pid)) return { ...p, kind: "t3", thread: owned.get(p.pid) ?? null };
+    return { ...p, kind: live.has(p.owner) ? "wait" : "orphan" };
+  }));
 }
 
 // the GitHub repo a PR number belongs to — CONFIG_UI_GITHUB_REPO (owner/name), else this checkout's
@@ -453,7 +513,9 @@ async function fold(journal: string): Promise<Folded> {
 }
 
 export async function readFleet(opts: { script: string; env: Record<string, string | undefined>; home: string; now: number; redact: (s: string) => string }): Promise<Fleet> {
+  const t3P = startEarly(t3Of(opts));
   const census = await runScript(opts.script, opts.env);
+  const t3Read = async () => ({ read: await t3P, owned: new Map<number, string | null>((await t3P)?.owned.map((o) => [o.pid, o.thread]) ?? []) });
   // the codex probe's cache, read once per request; unreadable, stale or reset is null.
   const ttl = Number(opts.env.CODEX_USAGE_CACHE_TTL_SECONDS);
   let codex: CodexBank | null = null;
@@ -461,7 +523,10 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     codex = readCodexBank(await readFile(opts.env.CODEX_USAGE_CACHE || join(opts.home, ".himmel", "cache", "codex-bank.json"), "utf8"), opts.now, ttl > 0 ? ttl : undefined);
   } catch { /* no probe cache: unmeasured */ }
   const banks = { codex };
-  if (census.census === "unavailable") return { census: "unavailable", generatedAt: opts.now, sessions: [], edges: [], processOrphans: await processOrphansOf(opts), banks };
+  if (census.census === "unavailable") {
+    const t3 = await t3Read();
+    return { census: "unavailable", generatedAt: opts.now, sessions: [], edges: [], processOrphans: await processOrphansOf(opts, new Set(), undefined, t3.owned), t3Threads: t3ThreadsOf(t3.read, opts.now, opts.redact), banks };
+  }
   const lockOf = (file: string, doc: string): Promise<FleetRow["lock"]> => {
     if (!RECORDED_LOCK.some((re) => re.test(doc))) return Promise.resolve("unknown");
     return new Promise((ok) => {
@@ -605,5 +670,6 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
   for (const r of sessions) { r.prUrl = prUrlOf(slug, r.pr); r.bus = bus.of(r.name); }
   // orphan-loops.sh names an owner with every character outside [A-Za-z0-9_.-] turned into `_`
   const liveOwners = new Set(sessions.filter((r) => r.live && r.role !== "cloud").map((r) => r.name.replace(/[^A-Za-z0-9_.-]/g, "_")));
-  return { census: census.census, generatedAt: opts.now, sessions, edges: bus.edges, processOrphans: await processOrphansOf(opts, liveOwners, orphanListP), banks };
+  const t3 = await t3Read();
+  return { census: census.census, generatedAt: opts.now, sessions, edges: bus.edges, processOrphans: await processOrphansOf(opts, liveOwners, orphanListP, t3.owned), t3Threads: t3ThreadsOf(t3.read, opts.now, opts.redact), banks };
 }

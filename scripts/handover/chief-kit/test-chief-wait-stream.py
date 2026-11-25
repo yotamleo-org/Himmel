@@ -1,8 +1,10 @@
 """Exercise the real supervisor/child/control routes using offline dependencies."""
+import fcntl
 import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import socket
@@ -25,7 +27,7 @@ stop = Path(sys.argv[1] + '.wait.stop')
 fired = Path(sys.argv[1] + '.wait.schedule-fired')
 armed = []
 acknowledge = mod.Supervisor.acknowledge
-safe_point = mod.safe_point
+child_alive = mod.child_alive
 publish = mod.Supervisor.publish
 
 
@@ -33,16 +35,16 @@ def after_one_wake(self):
     acknowledge(self)
     if not armed and self.wakes >= 1 and self.proc is not None and self.proc.poll() is None:
         armed.append(self)
-        self.started -= float(os.environ['CHIEF_WAIT_STREAM_HARD_SEC']) + 1
+        self.began -= float(os.environ['CHIEF_WAIT_STREAM_HARD_SEC']) + 1
 
 
 def touched_after_the_sample(data, inbox):
+    live = child_alive(data, inbox)
     if armed and not fired.exists():
         stop.touch()
         armed[0].proc.wait(timeout=30)
         fired.write_text(str(data['child']))
-        return ''
-    return safe_point(data, inbox)
+    return live
 
 
 def honoured_during_adoption(self):
@@ -59,12 +61,116 @@ def honoured_during_adoption(self):
 
 if os.environ['SCHEDULE'] == 'touched-after-the-sample':
     mod.Supervisor.acknowledge = after_one_wake
-    mod.safe_point = touched_after_the_sample
+    mod.child_alive = touched_after_the_sample
 else:
     mod.Supervisor.publish = honoured_during_adoption
 sys.exit(mod.main())
 '''
 
+LAUNCH_WINDOW = r'''
+import importlib.util, os, sys, time
+spec = importlib.util.spec_from_file_location('cws', sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+point = sys.argv[2]
+sup = m.Supervisor(sys.argv[3], sys.argv[4:])
+real_identity, real_atomic, real_publish = m.identity, m.atomic, m.Supervisor.publish
+stalled = []
+
+
+def identity(pid):
+    if sup.proc is not None and pid == sup.proc.pid:
+        if point == 'identity':
+            os._exit(137)
+        if point == 'stall' and not stalled:
+            stalled.append(1)
+            time.sleep(2.5)
+    return real_identity(pid)
+
+
+def atomic(path, data):
+    if point == 'publish' and str(path).endswith('.wait.stream') and sup.proc is not None and f'child={sup.proc.pid} ' in data:
+        os._exit(137)
+    return real_atomic(path, data)
+
+
+def publish(self):
+    real_publish(self)
+    if point == 'after-publish' and self.proc is not None and self.data.get('child') == self.proc.pid:
+        os._exit(137)
+
+
+real_record = m.Supervisor.record
+
+
+def record(self, part, adopted=False, emit=True):
+    if point == 'record':
+        os._exit(137)
+    return real_record(self, part, adopted, emit)
+
+
+m.identity, m.atomic, m.Supervisor.publish, m.Supervisor.record = identity, atomic, publish, record
+sys.exit(sup.run())
+'''
+
+WATCHDOG_RACE = r'''
+import importlib.util, json, os, subprocess, sys, threading, time
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('cws', sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+inbox, when = sys.argv[2], int(sys.argv[3])
+side = inbox + '.wait.stream'
+os.environ['CHIEF_WAIT_STREAM_ADOPT_SEC'] = '0.001'
+child = subprocess.Popen(['bash', '-c', 'sleep 300; :', 'chief-wait-x', inbox], start_new_session=True)
+start = m.identity(child.pid)
+Path(inbox + '.wait').write_text(f'hb={int(time.time())} pid={child.pid} key=- tick=ok state=waiting\n')
+dead = subprocess.Popen(['true'])
+dead.wait()
+part = inbox + '.wait.part-1-1'
+Path(side).write_text(f'sup={dead.pid} sup_start=1 host={m.HOST} boot={m.BOOT} child={child.pid} child_start={start} '
+                      f'part={part} safe={time.monotonic() - 5} handoff={time.monotonic() - 10} seq=0\n')
+end = time.monotonic() + 5
+while not m.safe_point(m.load(side), inbox) and time.monotonic() < end:
+    time.sleep(.05)
+adopter = m.Supervisor(inbox, ['--doc', 'x', '--workers-from', 'y'])
+adopter.data = dict(child=child.pid, child_start=start, part=part, safe=time.monotonic(), handoff='-')
+real_load, real_kill, real_atomic = m.load, os.kill, m.atomic
+reads, publishers, kills, requests = [], [], [], []
+
+
+def load(path):
+    out = real_load(path)
+    if path == side:
+        reads.append(1)
+        if len(reads) == when:
+            thread = threading.Thread(target=adopter.publish)
+            thread.start()
+            thread.join(.5)
+            publishers.append(thread)
+    return out
+
+
+def kill(pid, sig):
+    kills.append(dict(pid=pid, owner=real_load(side).get('sup')))
+    real_kill(pid, sig)
+
+
+def atomic(path, data):
+    if path == inbox + '.wait.reap':
+        requests.append(dict(data=data.strip(), owner=real_load(side).get('sup')))
+    return real_atomic(path, data)
+
+
+m.load, os.kill, m.atomic = load, kill, atomic
+rc = m.watchdog(inbox, str(dead.pid), '1')
+for thread in publishers:
+    thread.join(10)
+print(json.dumps(dict(rc=rc, kills=kills, requests=requests, reap_left=Path(inbox + '.wait.reap').exists(),
+                      dead=dead.pid, me=os.getpid(), owner=real_load(side).get('sup'),
+                      child_running=child.poll() is None, publishers_done=not any(t.is_alive() for t in publishers))))
+os.killpg(child.pid, 9)
+'''
 
 class StreamFixture(unittest.TestCase):
     def setUp(self):
@@ -353,7 +459,7 @@ echo 'HANDLED close-wrapped'
         self.assertIn('reason=repeat', out.read_text())
         self.assertIn('full detail retained', self.path('wake-2').read_text())
         self.assertNotIn('full detail retained', out.read_text())
-        env['CHIEF_WAIT_STREAM_REPEAT_SEC'] = '0'
+        env['CHIEF_WAIT_STREAM_REPEAT_SEC'] = '0.001'
         again, flood = self.start(('--since', '0'), env=env)
         self.assertEqual(again.wait(timeout=5), 0)
         self.assertLessEqual(len(flood.read_text().splitlines()), 7)
@@ -472,14 +578,11 @@ echo 'HANDLED close-wrapped'
             gate.touch()
 
     def test_killed_after_output_replays_and_lock_is_not_inherited(self):
-        env = dict(self.env, CHIEF_WAIT_STREAM_PAUSE_LOG='1')
-        p, _ = self.start(env=env)
+        p, _ = self.launch_window('record')
         self.armed()
         self.inbox.write_text('record before print\n')
-        self.until(lambda: bool(list(self.root.glob('consoles/*.wait.part-*'))) and
-                   any('WAKE telegram' in part.read_text() for part in self.root.glob('consoles/*.wait.part-*')))
-        p.kill()
-        p.wait(timeout=3)
+        self.assertEqual(p.wait(timeout=10), 137)
+        self.assertTrue(any('WAKE telegram' in part.read_text() for part in self.root.glob('consoles/*.wait.part-*')))
         time.sleep(.5)
         again, out = self.start(('--since', '0'))
         self.until(lambda: 'REPLAY seqs=1-1 n=1' in out.read_text())
@@ -487,7 +590,7 @@ echo 'HANDLED close-wrapped'
         self.stop(again)
 
     def test_pid_reuse_is_never_adopted_or_signalled(self):
-        unrelated = subprocess.Popen(['sleep', '30'])
+        unrelated = subprocess.Popen(['bash', '-c', 'sleep 30; :', 'chief-wait-reused', str(self.inbox)], start_new_session=True)
         try:
             self.path('stream').write_text(f'child={unrelated.pid} child_start=wrong host={socket.gethostname()} boot={Path("/proc/sys/kernel/random/boot_id").read_text().strip()} seq=0\n')
             p, _ = self.start()
@@ -495,8 +598,73 @@ echo 'HANDLED close-wrapped'
             self.stop(p)
             self.assertIsNone(unrelated.poll())
         finally:
-            unrelated.terminate()
+            os.killpg(unrelated.pid, signal.SIGKILL)
             unrelated.wait()
+
+    def waiters(self):
+        found = []
+        for entry in Path('/proc').iterdir():
+            if entry.name.isdigit():
+                try:
+                    argv = (entry / 'cmdline').read_bytes().split(b'\0')
+                except OSError:
+                    continue
+                if os.fsencode(str(self.inbox)) in argv and any(b'chief-wait.sh' in a for a in argv):
+                    found.append(int(entry.name))
+        return found
+
+    def kill_waiters(self):
+        for pid in self.waiters():
+            try:
+                os.killpg(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+
+    def launch_window(self, point):
+        wrapper = self.root / 'launch-window.py'
+        wrapper.write_text(LAUNCH_WINDOW)
+        output = self.root / ('launch-' + point)
+        with output.open('w') as out:
+            p = subprocess.Popen([sys.executable, '-I', str(wrapper), str(HERE / 'chief-wait-stream.py'), point, str(self.inbox),
+                                  '--doc', str(self.doc), '--workers-from', str(self.fleet)],
+                                 env=self.env, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+        self.procs.append((p, output))
+        self.addCleanup(self.kill_waiters)
+        return p, output
+
+    def check_a_supervisor_killed_in_the_launch_window_leaves_no_orphan_waiter(self, point):
+        p, _ = self.launch_window(point)
+        self.assertEqual(p.wait(timeout=10), 137)
+        end = time.monotonic() + 5
+        while self.waiters() and time.monotonic() < end:
+            time.sleep(.05)
+        self.assertEqual(self.waiters(), [], 'a waiter outlived the supervisor that was killed while launching it')
+        again, out = self.start()
+        self.until(lambda: self.state().get('sup') == str(again.pid))
+        self.inbox.write_text('after the killed launch\n')
+        self.until(lambda: 'WAKE#1 telegram' in out.read_text())
+        self.assertNotIn('STREAM-REFUSED', out.read_text())
+        self.assertIn('W\t1\t', self.path('wakes').read_text())
+        self.stop(again)
+
+    def test_killed_before_the_child_pid_is_known_leaves_no_orphan_waiter(self):
+        self.check_a_supervisor_killed_in_the_launch_window_leaves_no_orphan_waiter('identity')
+
+    def test_killed_while_publishing_the_child_pid_leaves_no_orphan_waiter(self):
+        self.check_a_supervisor_killed_in_the_launch_window_leaves_no_orphan_waiter('publish')
+
+    def test_killed_right_after_publishing_the_child_pid_leaves_no_orphan_waiter(self):
+        self.check_a_supervisor_killed_in_the_launch_window_leaves_no_orphan_waiter('after-publish')
+
+    def test_a_slow_live_supervisor_keeps_its_waiter_waiting_for_the_publish(self):
+        p, out = self.launch_window('stall')
+        self.armed()
+        self.until(lambda: self.state().get('child', '0') != '0', seconds=10)
+        child = self.state()['child']
+        self.assertTrue(Path(f'/proc/{child}').exists(), 'the waiter gave up before its pid was published')
+        self.inbox.write_text('after the slow publish\n')
+        self.until(lambda: 'WAKE#1 telegram' in out.read_text())
+        self.stop(p)
 
     def test_busy_bound_kills_owned_child_and_reports_hang(self):
         self.script('tick', 'sleep 3\n')
@@ -573,39 +741,50 @@ echo 'HANDLED close-wrapped'
                    kind='ruling', text='operator action overdue', actor='operator', action='notify', event='operator-digest')
         ledger = self.root / 'owed.jsonl'
         ledger.write_text(json.dumps(row) + '\n')
-        self.env['CHIEF_WAIT_OWED_SEND'] = self.script('send', 'echo queued\n')
-        self.env['CHIEF_WAIT_OPERATOR_RETRY_SEC'] = '1'
+        self.env['CHIEF_WAIT_OWED_SEND'] = self.script('send', 'echo "$*" >> "$TEST_ROOT/sends"\necho queued\n')
+        self.env['CHIEF_WAIT_OPERATOR_RETRY_SEC'] = '600'
         p, out = self.start()
         self.until(lambda: 'owed-actions' in out.read_text())
         self.assertIn('operator-delivery-pending', self.path('wake-1').read_text())
         self.assertEqual(len(ledger.read_text().splitlines()), 1)
+        sends = self.root / 'sends'
+        self.assertEqual(len(sends.read_text().splitlines()), 1, 'the first attempt is one send')
         # Simulate the existing sender's real receipt arriving after its caller
         # lost the response; the service must reconcile rather than resend.
         with self.doc.open('a') as f:
             f.write('- DELIVERED t2-o1 msg=42 chat=123\n')
         self.until(lambda: '"op":"close"' in ledger.read_text())
         self.assertIn('telegram-msg-42', ledger.read_text())
+        self.assertEqual(len(sends.read_text().splitlines()), 1, 'the receipt was answered with another send')
         self.stop(p)
 
     def test_busy_consumer_fifteen_simulated_minutes_without_ack(self):
-        # Advance the child's wall clock while the consumer remains busy and
-        # sends no receipt/ack. This does not simulate native Monitor delivery.
         clock = self.root / 'clock'
         clock.write_text('1794800000')
+
+        def set_clock(epoch):
+            tmp = self.root / 'clock.tmp'
+            tmp.write_text(str(epoch))
+            os.replace(tmp, clock)
         bindir = self.root / 'bin'
         bindir.mkdir()
         self.script('date', 'if [ "${1:-}" = +%s ]; then cat "$TEST_ROOT/clock"; else /bin/date "$@"; fi\n')
         (bindir / 'date').symlink_to(self.root / 'date')
-        self.env.update(PATH=str(bindir) + ':' + self.env['PATH'], CHIEF_WAIT_STREAM_MAX_PER_MIN='100')
+        self.env.update(PATH=str(bindir) + ':' + self.env['PATH'], CHIEF_WAIT_STREAM_MAX_PER_MIN='100',
+                        CHIEF_WAIT_STREAM_TEST_CLOCK=str(clock), CHIEF_WAIT_STREAM_SOFT_SEC='1440',
+                        CHIEF_WAIT_STREAM_HARD_SEC='1680')
         p, out = self.start()
         self.armed()
         for minute in range(15):
-            clock.write_text(str(1794800000 + minute * 60))
+            set_clock(1794800000 + minute * 60)
             with self.inbox.open('a') as f:
                 f.write(f'busy consumer event {minute}\n')
             self.until(lambda: f'WAKE#{minute + 1} telegram' in out.read_text())
             self.assertIsNone(p.poll())
-        self.stop(p)
+        self.assertNotIn('REARM', out.read_text())
+        set_clock(1794800000 + 1440 + 60)
+        self.until(lambda: 'REARM' in out.read_text())
+        p.wait(timeout=6)
         self.assertNotIn('K\t', self.path('wakes').read_text())
 
     def test_rotation_gap_reset_and_monotonic_sequence(self):
@@ -629,6 +808,27 @@ echo 'HANDLED close-wrapped'
             f.write('after reset\n')
         self.until(lambda: 'WAKE#4 telegram' in reset_out.read_text())
         self.stop(reset)
+
+    def test_the_current_and_the_previous_replay_index_survive_with_their_blocks(self):
+        p, out = self.start()
+        self.armed()
+        self.inbox.write_text('one\n')
+        self.until(lambda: 'WAKE#1 telegram' in out.read_text())
+        self.stop(p)
+        advertised = []
+        for _ in range(3):
+            again, replay = self.start(('--since', '0'))
+            self.until(lambda: 'REPLAY seqs=1-1' in replay.read_text())
+            advertised.append(re.search(r'index=(\S+)', replay.read_text())[1])
+            self.stop(again)
+        self.assertEqual([Path(index).exists() for index in advertised], [False, True, True])
+        wakes = [line.split('\t') for line in self.path('wakes').read_text().splitlines() if line.startswith('W\t')]
+        for index in advertised[1:]:
+            rows = [line.split('\t') for line in Path(index).read_text().splitlines()]
+            self.assertTrue(rows, index)
+            for row in rows:
+                self.assertIn(row, wakes)
+                self.assertTrue(Path(row[5]).exists(), row)
 
     def test_child_error_ends_arm_without_relaunch(self):
         stub = self.script('chief-wait-error', "echo call >> \"$TEST_ROOT/calls\"\necho 'WAKE fixture before-error'\nexit 1\n")
@@ -677,7 +877,7 @@ echo 'HANDLED close-wrapped'
     def test_persistent_underfill_reminds_with_unchanged_pool(self):
         self.script('tick', 'echo "TICK workers=0 livestate=0 prs=none tails=none acts=none workerset=0 board=ok tracker=ok denials=0 capacity=UNDERFILLED:1"\n')
         self.env.update(CHIEF_WAIT_INTERVAL='1', CHIEF_WAIT_UNDERFILL_REPOOL_SEC='1',
-                        CHIEF_WAIT_STREAM_REPEAT_SEC='0',
+                        CHIEF_WAIT_STREAM_REPEAT_SEC='0.001',
                         CHIEF_WAIT_DISPATCH=self.script('pool', 'echo POOL-EMPTY\n'))
         p, out = self.start()
         self.until(lambda: out.read_text().count('underfilled') >= 2)
@@ -698,7 +898,7 @@ echo 'HANDLED close-wrapped'
     def test_watchdog_bounds_unadopted_busy_child_and_replays_hang_once(self):
         self.script('tick', 'sleep 4\n')
         env = dict(self.env, CHIEF_WAIT_STREAM_SOFT_SEC='.2', CHIEF_WAIT_STREAM_HARD_SEC='.6',
-                   CHIEF_WAIT_STREAM_ADOPT_SEC='0', CHIEF_WAIT_STREAM_REAP_MAX_SEC='1')
+                   CHIEF_WAIT_STREAM_ADOPT_SEC='0.001', CHIEF_WAIT_STREAM_REAP_MAX_SEC='1')
         p, out = self.start(env=env)
         self.assertEqual(p.wait(timeout=4), 0)
         self.assertIn('child=busy', out.read_text())
@@ -872,10 +1072,466 @@ echo 'HANDLED close-wrapped'
         self.assertEqual(len(self.wake_rows()), 1)
 
 
-# Worker-event stand-in that keeps auto-go's exact-head audit rule: the first READY of a
-# (pr, head) records one GO-SENT row, a replay of the same pair records none, and a
-# cleanup event never records a GO. TEST_ROOT/refuse-cleanup makes cleanup refuse with the
-# retryable `-failed rc=4`; TEST_ROOT/slow-N<k> makes that worker's event slow.
+class AckRows(StreamFixture):
+
+    def wake(self, seq, kind, text=None):
+        if text is not None:
+            self.path(f'wake-{seq}').write_text(text)
+        return f'W\t{seq}\t{int(time.time())}\t77\t{kind}\t{self.path(f"wake-{seq}")}'
+
+    def log(self, *rows):
+        self.path('wakes').write_text(''.join(row + '\n' for row in rows))
+
+    def rows(self):
+        return [line.split('\t') for line in self.path('wakes').read_text().splitlines()]
+
+    def ack(self, seq, receipt='rcpt-1'):
+        done = subprocess.run([sys.executable, '-I', str(HERE / 'chief-wait-stream.py'), '--ack', str(self.inbox),
+                               '--ack', str(seq), '--receipt', receipt], capture_output=True, text=True, env=self.env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+
+    def served(self, out):
+        self.until(lambda: 'kind=ack-stuck' in out.read_text() or ['K', '1'] in [row[:2] for row in self.rows()])
+
+    def check_the_ack_is_held(self, *rows):
+        self.log(*rows)
+        self.ack(1)
+        p, out = self.start()
+        self.served(out)
+        self.stop(p)
+        self.assertEqual([row[:2] for row in self.rows() if row[0] == 'K'], [], 'acknowledged with no readable block')
+        self.assertIn('kind=ack-stuck', out.read_text())
+        self.assertTrue(self.path('ack-1.json').exists(), 'the request is kept for the retry')
+
+    def test_an_ack_for_a_missing_owed_block_is_held(self):
+        self.check_the_ack_is_held(self.wake(1, 'owed-actions'))
+
+    def test_an_ack_for_an_owed_block_cut_before_its_bucket_is_held(self):
+        self.check_the_ack_is_held(self.wake(1, 'owed-actions', 'WAKE owed-actions chief-notify=a1,a2\n'))
+
+    def test_an_ack_for_a_block_of_another_kind_is_held(self):
+        self.check_the_ack_is_held(self.wake(1, 'owed-actions', 'WAKE telegram a message\n'))
+
+    def test_an_ack_for_a_missing_message_block_is_held(self):
+        self.check_the_ack_is_held(self.wake(1, 'telegram'))
+
+    def test_a_damaged_owed_list_is_held_for_retry(self):
+        self.check_the_ack_is_held(self.wake(1, 'owed-actions', 'WAKE owed-actions chief-notify=a1\nowed-bucket=/nonexistent-bucket\n'))
+        self.assertIn('owed list failed', self.path('ack-1.json.error').read_text())
+
+    def test_an_ack_for_a_readable_block_of_its_kind_is_recorded(self):
+        self.log(self.wake(1, 'telegram', 'WAKE telegram a message\n'))
+        self.ack(1)
+        p, out = self.start()
+        self.served(out)
+        self.stop(p)
+        self.assertEqual([row[:2] for row in self.rows() if row[0] == 'K'], [['K', '1']])
+        self.assertNotIn('ack-stuck', out.read_text())
+        self.assertFalse(self.path('ack-1.json').exists())
+
+    def test_rotation_keeps_what_a_pending_ack_needs(self):
+        self.env['CHIEF_WAIT_STREAM_KEEP'] = '2'
+        now = int(time.time())
+        self.log(*[self.wake(n, 'telegram', f'WAKE telegram message {n}\n') for n in (1, 2, 3)],
+                 f'D\t2\t{now}\trcpt-2', f'K\t2\t{now}\trcpt-2')
+        self.ack(1)
+        p, out = self.start(('--since', '0'))
+        self.served(out)
+        self.stop(p)
+        kept = [row[:2] for row in self.rows()]
+        self.assertNotIn('ack-stuck', out.read_text())
+        self.assertIn(['K', '1'], kept, 'the accepted ack names a wake the rotation dropped')
+        self.assertIn(['D', '2'], kept, 'a retained wake lost its delivery row')
+        self.assertIn(['K', '2'], kept, 'a retained wake lost its acknowledgement row')
+        again, _ = self.start(('--since', '0'))
+        self.until(lambda: sum(row[0] == 'A' for row in self.rows()) >= 2)
+        self.stop(again)
+        kept = [row[:2] for row in self.rows()]
+        self.assertNotIn(['W', '1'], kept)
+        self.assertNotIn(['K', '1'], kept)
+        self.assertFalse(self.path('wake-1').exists())
+
+    def test_an_ack_and_a_rotation_take_turns_so_the_ack_is_never_lost(self):
+        self.env['CHIEF_WAIT_STREAM_KEEP'] = '2'
+        self.log(*[self.wake(n, 'telegram', f'WAKE telegram message {n}\n') for n in (1, 2, 3)])
+        before = self.path('wakes').read_text()
+        with self.path('ack.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            acking = subprocess.Popen([sys.executable, '-I', str(HERE / 'chief-wait-stream.py'), '--ack', str(self.inbox),
+                                       '--ack', '1', '--receipt', 'rcpt-1'], stdout=subprocess.PIPE,
+                                      stderr=subprocess.STDOUT, text=True, env=self.env)
+            p, out = self.start(('--since', '0'))
+            time.sleep(1.5)
+            self.assertIsNone(acking.poll(), 'an ack was written while a rotation could run')
+            self.assertEqual(self.path('wakes').read_text(), before, 'a rotation ran while an ack could be written')
+        said = acking.communicate(timeout=10)[0]
+        if acking.returncode == 0:
+            self.served(out)
+            self.assertIn(['K', '1'], [row[:2] for row in self.rows()], 'an accepted ack lost its wake')
+        else:
+            self.assertEqual(acking.returncode, 2, said)
+            self.assertIn('STREAM-REFUSED unknown-wake', said)
+            self.assertFalse(self.path('ack-1.json').exists())
+        self.stop(p)
+        self.assertNotIn('ack-stuck', out.read_text())
+
+
+class RefusedArm(StreamFixture):
+
+    def setUp(self):
+        super().setUp()
+        self.lock = open(str(self.path('stream.lock')), 'a')
+        self.addCleanup(self.lock.close)
+        fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.path('wake-1').write_text('WAKE telegram ORIGINAL-WAKE-1\n')
+        now = int(time.time())
+        self.path('wakes').write_text(f'W\t1\t{now}\t77\ttelegram\t{self.path("wake-1")}\nP\t1\t{now}\t77\n')
+        self.path('stream').write_text(f'sup={os.getpid()} sup_start=1 host=h boot=b seq=1\n')
+
+    def snapshot(self):
+        return {p.name: (p.read_bytes(), p.stat().st_mode) for p in sorted((self.root / 'consoles').iterdir()) if p.is_file()}
+
+    def second_arm(self, hidden=None):
+        before = self.snapshot()
+        mode = hidden.stat().st_mode if hidden else None
+        if hidden:
+            hidden.chmod(0)
+        try:
+            done = subprocess.run([sys.executable, '-I', str(HERE / 'chief-wait-stream.py'), str(self.inbox), '--doc', str(self.doc),
+                                   '--workers-from', str(self.fleet)], env=self.env, capture_output=True, text=True, timeout=30)
+        finally:
+            if hidden:
+                hidden.chmod(mode)
+        self.assertEqual(self.snapshot(), before, 'the refused arm changed the live supervisor files')
+        self.assertEqual(done.returncode, 3, done.stdout + done.stderr)
+        return done.stdout
+
+    def test_a_second_arm_is_refused_and_writes_nothing(self):
+        self.assertEqual(self.second_arm(), f'STREAM-REFUSED live-supervisor pid={os.getpid()}\n')
+
+    @unittest.skipIf(os.geteuid() == 0, 'root reads a mode 000 file')
+    def test_a_second_arm_is_refused_when_the_sidecar_is_unreadable(self):
+        self.assertEqual(self.second_arm(self.path('stream')), 'STREAM-REFUSED live-supervisor pid=?\n')
+
+    @unittest.skipIf(os.geteuid() == 0, 'root reads a mode 000 file')
+    def test_a_second_arm_is_refused_when_the_lock_file_is_unreadable(self):
+        self.assertEqual(self.second_arm(self.path('stream.lock')), 'STREAM-REFUSED before-lock PermissionError\n')
+
+
+class WatchdogOwner(StreamFixture):
+
+    def race(self, when):
+        script = self.root / 'watchdog-race.py'
+        script.write_text(WATCHDOG_RACE)
+        done = subprocess.run([sys.executable, '-I', str(script), str(HERE / 'chief-wait-stream.py'), str(self.inbox), str(when)],
+                              env=self.env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return json.loads(done.stdout.splitlines()[-1])
+
+    def test_an_owner_that_publishes_before_the_final_check_is_never_signalled_for(self):
+        seen = self.race(1)
+        self.assertEqual((seen['kills'], seen['requests']), ([], []))
+        self.assertTrue(seen['child_running'])
+        self.assertEqual(seen['owner'], str(seen['me']))
+
+    def test_an_owner_that_publishes_right_after_the_final_check_does_not_get_its_child_signalled(self):
+        seen = self.race(2)
+        self.assertEqual([request['owner'] for request in seen['requests']], [str(seen['dead'])],
+                         'the watchdog requested a reap after the next owner had published itself')
+        self.assertEqual(seen['kills'], [])
+        self.assertFalse(seen['reap_left'], 'the reap request outlived the next owner')
+        self.assertTrue(seen['publishers_done'])
+        self.assertEqual(seen['owner'], str(seen['me']))
+
+
+BOUNDS = {'CHIEF_WAIT_STREAM_SOFT_SEC': 1740, 'CHIEF_WAIT_STREAM_HARD_SEC': 1800,
+          'CHIEF_WAIT_STREAM_BUSY_MAX_SEC': 7200, 'CHIEF_WAIT_STREAM_REAP_MAX_SEC': 1800,
+          'CHIEF_WAIT_STREAM_ADOPT_SEC': 1800, 'CHIEF_WAIT_STREAM_KILL_GRACE_SEC': 60,
+          'CHIEF_WAIT_STREAM_REPEAT_SEC': 1800}
+WATCHDOG_BOUNDS = ('CHIEF_WAIT_STREAM_ADOPT_SEC', 'CHIEF_WAIT_STREAM_BUSY_MAX_SEC', 'CHIEF_WAIT_STREAM_REAP_MAX_SEC',
+                   'CHIEF_WAIT_STREAM_KILL_GRACE_SEC')
+
+SUPERVISOR_PROBE = r'''
+import importlib.util, sys, threading, time
+spec = importlib.util.spec_from_file_location('cws', sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+mode = sys.argv[2]
+if mode == 'unchecked':
+    m.check_limits = lambda: None
+if mode == 'step':
+    real = time.time
+
+    def step():
+        time.sleep(1.0)
+        time.time = lambda: real() - 3600
+        m.clock.__defaults__ = (time.time,)
+    threading.Thread(target=step, daemon=True).start()
+sys.exit(m.Supervisor(sys.argv[3], sys.argv[4:]).run())
+'''
+
+WATCHDOG_AGE = r'''
+import importlib.util, json, os, subprocess, sys, threading, time
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('cws', sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+inbox, mode = sys.argv[2], sys.argv[3]
+side = inbox + '.wait.stream'
+child = subprocess.Popen(['bash', '-c', 'sleep 600; :', 'chief-wait-x', inbox], start_new_session=True)
+holder = subprocess.Popen(['bash', '-c', 'sleep 600; :', 'holder', inbox], start_new_session=True)
+time.sleep(.3)
+sup, start = (holder.pid, m.identity(holder.pid)) if mode in ('hung', 'alive') else (999999, 'x')
+Path(side).write_text(f'sup={sup} sup_start={start} host={m.HOST} boot={m.BOOT} child={child.pid} '
+                      f'child_start={m.identity(child.pid)} part={inbox}.wait.part-1-1 safe={time.time()} handoff=- seq=0\n')
+limits = getattr(m, 'LIMITS', None)
+if mode == 'hung' and limits is not None:
+    for name in ('CHIEF_WAIT_STREAM_HARD_SEC', 'CHIEF_WAIT_STREAM_ADOPT_SEC', 'CHIEF_WAIT_STREAM_REAP_MAX_SEC'):
+        limits[name] = (1, 1)
+    limits['CHIEF_WAIT_STREAM_KILL_GRACE_SEC'] = (0.2, 0.2)
+if mode == 'step':
+    real = time.time
+
+    def step():
+        time.sleep(.5)
+        time.time = lambda: real() - 3600
+    threading.Thread(target=step, daemon=True).start()
+began = time.monotonic()
+rc = m.watchdog(inbox, str(sup), str(start))
+took = round(time.monotonic() - began, 1)
+try:
+    child.wait(timeout=5)
+except subprocess.TimeoutExpired:
+    pass
+print(json.dumps(dict(rc=rc, took=took, child_running=child.poll() is None,
+                      hung=Path(inbox + '.wait.stream.hung').exists())))
+'''
+
+
+class StreamBounds(StreamFixture):
+
+    def tearDown(self):
+        for entry in Path('/proc').iterdir():
+            if entry.name.isdigit() and int(entry.name) != os.getpid():
+                try:
+                    if os.fsencode(str(self.root)) in (entry / 'cmdline').read_bytes():
+                        os.kill(int(entry.name), signal.SIGKILL)
+                except OSError:
+                    pass
+        super().tearDown()
+
+    def refusal(self, name, value):
+        return f'STREAM-REFUSED bad-setting {name}={value!r} (allowed: a number above 0 and at most {BOUNDS[name]})\n'
+
+    def fresh(self, n):
+        inbox = self.root / f'consoles/bound{n}.md'
+        inbox.touch()
+        Path(str(inbox) + '.announced').touch()
+        return inbox
+
+    def arm(self, inbox, drop=(), **setting):
+        out = self.root / (inbox.name + '.out')
+        env = dict(self.env, **setting)
+        for name in drop:
+            env.pop(name, None)
+        with out.open('w') as f:
+            p = subprocess.Popen([sys.executable, '-I', str(HERE / 'chief-wait-stream.py'), str(inbox), '--doc', str(self.doc),
+                                  '--workers-from', str(self.fleet)], env=env, stdout=f,
+                                 stderr=subprocess.STDOUT, start_new_session=True)
+        self.procs.append((p, out))
+        stream = Path(str(inbox) + '.wait.stream')
+        end = time.monotonic() + 8
+        while p.poll() is None and not stream.exists() and time.monotonic() < end:
+            time.sleep(.05)
+        started = p.poll() is None
+        if started:
+            Path(str(inbox) + '.wait.stop').touch()
+            try:
+                p.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                os.killpg(p.pid, signal.SIGKILL)
+                p.wait()
+        return p.returncode, out.read_text(), started
+
+    def check_refused(self, n, name, value):
+        inbox = self.fresh(n)
+        code, text, started = self.arm(inbox, **{name: value})
+        self.assertFalse(started, f'{name}={value!r} started the supervisor')
+        self.assertEqual(code, 2)
+        self.assertEqual(set(text.splitlines(keepends=True)), {self.refusal(name, value)})
+        self.assertEqual([p.name for p in inbox.parent.glob(inbox.name + '.wait.*')], [], 'a refused start left state')
+
+    def test_a_value_over_its_maximum_refuses(self):
+        for n, (name, longest) in enumerate(BOUNDS.items()):
+            for value in (str(longest + 1), '1e9', 'inf'):
+                with self.subTest(setting=name, value=value):
+                    self.check_refused(n, name, value)
+
+    def test_zero_a_negative_an_empty_and_a_non_number_refuse(self):
+        for n, name in enumerate(BOUNDS):
+            for value in ('0', '-1', '-inf', 'abc', 'nan', '', '1,5'):
+                with self.subTest(setting=name, value=value):
+                    self.check_refused(n, name, value)
+
+    def test_the_maximum_itself_starts(self):
+        for n, (name, longest) in enumerate(BOUNDS.items()):
+            with self.subTest(setting=name):
+                extra = {'CHIEF_WAIT_STREAM_HARD_SEC': '1800'} if name == 'CHIEF_WAIT_STREAM_SOFT_SEC' else {}
+                code, text, started = self.arm(self.fresh(n), **{name: str(longest)}, **extra)
+                self.assertTrue(started, text)
+                self.assertNotIn('STREAM-REFUSED', text)
+
+    def test_unset_settings_start_on_their_defaults(self):
+        code, text, started = self.arm(self.fresh(0), drop=BOUNDS)
+        self.assertTrue(started, text)
+        self.assertNotIn('STREAM-REFUSED', text)
+
+    def test_soft_at_or_above_hard_refuses(self):
+        soft, hard = 'CHIEF_WAIT_STREAM_SOFT_SEC', 'CHIEF_WAIT_STREAM_HARD_SEC'
+        for n, (low, high) in enumerate((('100', '4'), ('4', '4'), ('1700', '1699.5'))):
+            with self.subTest(soft=low, hard=high):
+                inbox = self.fresh(n)
+                code, text, started = self.arm(inbox, **{soft: low, hard: high})
+                self.assertFalse(started, f'SOFT={low} HARD={high} started the supervisor')
+                self.assertEqual(code, 2)
+                self.assertEqual(set(text.splitlines(keepends=True)),
+                                 {f'STREAM-REFUSED bad-setting {soft}={low!r} (must be below {hard}={high!r})\n'})
+                self.assertEqual([p.name for p in inbox.parent.glob(inbox.name + '.wait.*')], [], 'a refused start left state')
+        code, text, started = self.arm(self.fresh(9), **{soft: '4', hard: '4.5'})
+        self.assertTrue(started, text)
+
+    def watchdog(self, drop=(), **setting):
+        inbox = self.fresh(0)
+        fields = Path('/proc/self/stat').read_text().rsplit(')', 1)[1].split()
+        err = self.root / 'watchdog.err'
+        env = dict(self.env, **setting)
+        for name in drop:
+            env.pop(name, None)
+        with err.open('w') as f:
+            p = subprocess.Popen([sys.executable, '-I', str(HERE / 'chief-wait-stream.py'), '--watchdog', str(inbox),
+                                  str(os.getpid()), fields[19]], env=env, stdout=subprocess.DEVNULL,
+                                 stderr=f, start_new_session=True)
+        try:
+            p.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            os.killpg(p.pid, signal.SIGKILL)
+            p.wait()
+            return None, err.read_text(), True
+        return p.returncode, err.read_text(), False
+
+    def test_the_watchdog_refuses_a_bound_that_is_too_long_zero_empty_or_not_finite(self):
+        for name in WATCHDOG_BOUNDS:
+            for value in (str(BOUNDS[name] + 1), '0', '-1', 'abc', '', 'nan', 'inf'):
+                with self.subTest(setting=name, value=value):
+                    code, text, running = self.watchdog(**{name: value})
+                    self.assertFalse(running, f'a watchdog started with {name}={value!r}')
+                    self.assertEqual(code, 2)
+                    self.assertEqual(text, self.refusal(name, value))
+
+    def test_the_watchdog_starts_at_the_maximum_and_on_the_defaults(self):
+        for name in WATCHDOG_BOUNDS:
+            with self.subTest(setting=name):
+                code, text, running = self.watchdog(**{name: str(BOUNDS[name])})
+                self.assertTrue(running, text)
+        code, text, running = self.watchdog(drop=WATCHDOG_BOUNDS)
+        self.assertTrue(running, text)
+
+    def test_a_frozen_test_clock_does_not_skip_a_bound_outside_a_fixture(self):
+        clock = self.root / 'frozen-clock'
+        clock.write_text('1794800000')
+        env = dict(self.env, CHIEF_WAIT_STREAM_TEST_CLOCK=str(clock), CHIEF_WAIT_STREAM_SOFT_SEC='.3',
+                   CHIEF_WAIT_STREAM_HARD_SEC='1')
+        env.pop('HIMMEL_TEST_FIXTURE')
+        p, out = self.start(env=env)
+        self.until(lambda: 'REARM' in out.read_text() or 'STOPPED' in out.read_text(), seconds=8)
+        self.assertEqual(p.wait(timeout=6), 0)
+
+    def ends_by_itself(self, env, seconds=8):
+        p, out = self.start(env=env)
+        try:
+            return p.wait(timeout=seconds), out.read_text()
+        except subprocess.TimeoutExpired:
+            return None, out.read_text()
+
+    def test_a_pause_setting_does_not_hold_the_supervisor(self):
+        child = self.script('chief-wait-exit', 'exit 0\n')
+        env = dict(self.env, CHIEF_WAIT_STREAM_CHILD=child, CHIEF_WAIT_STREAM_SOFT_SEC='1', CHIEF_WAIT_STREAM_HARD_SEC='2',
+                   CHIEF_WAIT_STREAM_PAUSE_LOG='1')
+        code, text = self.ends_by_itself(env)
+        self.assertEqual(code, 0, 'PAUSE_LOG held the supervisor: ' + text)
+        self.assertIn('REARM', text)
+
+    def test_a_pause_setting_does_not_hold_the_supervisor_that_adopts_a_child(self):
+        waiter = subprocess.Popen(['bash', '-c', 'sleep 60; :', 'chief-wait-adopted', str(self.inbox)], start_new_session=True)
+        try:
+            fields = Path(f'/proc/{waiter.pid}/stat').read_text().rsplit(')', 1)[1].split()
+            boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+            self.path('stream').write_text(f'child={waiter.pid} child_start={fields[19]} host={socket.gethostname()} boot={boot} '
+                                           f'part={self.path("part-9-1")} safe={time.monotonic()} handoff=- seq=0\n')
+            env = dict(self.env, CHIEF_WAIT_STREAM_SOFT_SEC='1', CHIEF_WAIT_STREAM_HARD_SEC='2',
+                       CHIEF_WAIT_STREAM_PAUSE_ADOPT='1')
+            code, text = self.ends_by_itself(env)
+            self.assertEqual(code, 0, 'PAUSE_ADOPT held the supervisor: ' + text)
+            self.assertIn('child=busy', text)
+        finally:
+            os.killpg(waiter.pid, signal.SIGKILL)
+            waiter.wait()
+
+    def run_script(self, script, *args, seconds=10, **setting):
+        path = self.root / 'bounds-probe.py'
+        path.write_text(script)
+        out = self.root / 'bounds-probe.out'
+        env = {k: v for k, v in self.env.items() if not k.startswith('CHIEF_WAIT_STREAM_')}
+        env.update(CHIEF_WAIT_STREAM_STDOUT_OK='1', CHIEF_WAIT_STREAM_KILL_GRACE_SEC='0.2', **setting)
+        with out.open('w') as f:
+            p = subprocess.Popen([sys.executable, '-I', str(path), str(HERE / 'chief-wait-stream.py'), *args], env=env,
+                                 stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
+        try:
+            return p.wait(timeout=seconds), out.read_text()
+        except subprocess.TimeoutExpired:
+            os.killpg(p.pid, signal.SIGKILL)
+            p.wait()
+            return None, out.read_text()
+
+    def supervisor_args(self, n):
+        return (str(self.fresh(n)), '--doc', str(self.doc), '--workers-from', str(self.fleet))
+
+    def test_the_hard_bound_is_checked_on_every_pass_of_the_loop(self):
+        child = self.script('chief-wait-exit', 'exit 0\n')
+        code, text = self.run_script(SUPERVISOR_PROBE, 'unchecked', *self.supervisor_args(0), seconds=12,
+                                     CHIEF_WAIT_STREAM_CHILD=child, CHIEF_WAIT_STREAM_SOFT_SEC='100',
+                                     CHIEF_WAIT_STREAM_HARD_SEC='4')
+        self.assertEqual(code, 0, 'the supervisor ran past HARD: ' + text)
+        self.assertIn('REARM', text)
+
+    def test_a_backward_wall_clock_step_does_not_lengthen_the_supervisor(self):
+        child = self.script('chief-wait-busy', 'sleep 600\n')
+        code, text = self.run_script(SUPERVISOR_PROBE, 'step', *self.supervisor_args(0), seconds=12,
+                                     CHIEF_WAIT_STREAM_CHILD=child, CHIEF_WAIT_STREAM_SOFT_SEC='2',
+                                     CHIEF_WAIT_STREAM_HARD_SEC='3')
+        self.assertEqual(code, 0, 'the supervisor outlived HARD after the wall clock stepped back: ' + text)
+        self.assertIn('child=busy', text)
+
+    def test_a_backward_wall_clock_step_does_not_lengthen_the_watchdog(self):
+        code, text = self.run_script(WATCHDOG_AGE, str(self.fresh(0)), 'step', seconds=12, CHIEF_WAIT_STREAM_REAP_MAX_SEC='2')
+        self.assertIsNotNone(code, 'the watchdog outlived its reap bound after the wall clock stepped back')
+        seen = json.loads(text.splitlines()[-1])
+        self.assertEqual((seen['rc'], seen['child_running'], seen['hung']), (0, False, True))
+
+    def test_the_watchdog_ends_its_child_and_itself_when_its_supervisor_never_ends(self):
+        code, text = self.run_script(WATCHDOG_AGE, str(self.fresh(0)), 'hung', seconds=12)
+        self.assertIsNotNone(code, 'the watchdog is still waiting on a supervisor that never ends')
+        seen = json.loads(text.splitlines()[-1])
+        self.assertEqual((seen['rc'], seen['child_running'], seen['hung']), (0, False, True))
+        self.assertLess(seen['took'], 8)
+
+    def test_the_watchdog_keeps_waiting_while_its_supervisor_lives_inside_the_age_bound(self):
+        inbox = self.fresh(0)
+        code, text = self.run_script(WATCHDOG_AGE, str(inbox), 'alive', seconds=4)
+        self.assertIsNone(code, 'the watchdog left a live supervisor early: ' + text)
+        self.assertFalse(Path(str(inbox) + '.wait.stream.hung').exists())
+
+
 GO_AUDIT_EVENT = r'''line=$(cat)
 echo "$(date +%s.%N) $line" >> "$TEST_ROOT/events"
 label=${line%% *}
@@ -909,7 +1565,7 @@ class StackedWorker(StreamFixture):
     def setUp(self):
         super().setUp()
         self.env.update(HIMMEL_FLAG_AUTO_GO='1', CHIEF_WAIT_SERVICE_RETRY_SEC='1',
-                        CHIEF_WAIT_STREAM_MAX_PER_MIN='100', CHIEF_WAIT_STREAM_REPEAT_SEC='0')
+                        CHIEF_WAIT_STREAM_MAX_PER_MIN='100', CHIEF_WAIT_STREAM_REPEAT_SEC='0.001')
         self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', GO_AUDIT_EVENT)
 
     def worker(self, label, *lines):
@@ -1238,7 +1894,7 @@ class StackedWorker(StreamFixture):
         self.assertEqual(len(self.seen('N1 WRAPPED')), 1, 'a bounded-out cleanup is reported, not rerun')
         self.assertEqual(self.audit(), [f'GO-SENT 2 {self.H[2]}'])
 
-    def test_successor_chief_replays_each_worker_once_and_never_sends_a_second_go(self):
+    def test_successor_chief_replays_each_worker_once_through_the_relay(self):
         self.worker('N1', self.ready('N1', 1))
         self.worker('N2', self.ready('N2', 2))
         self.fleet_of('N1', 'N2')
@@ -1262,8 +1918,6 @@ class StackedWorker(StreamFixture):
         time.sleep(1.0)
         q.terminate()
         q.wait(timeout=6)
-        # the successor starts every worker over: one replay of the newest READY, nothing older,
-        # nothing twice, and the exact-head audit still shows one GO per head.
         self.assertEqual(len(self.seen(f'N1 READY #1 {self.H[1]}')), 2)
         self.assertEqual(len(self.seen(f'N2 READY #2 {self.H[2]}')), 1)
         self.assertEqual(len(self.seen(f'N2 READY #3 {self.H[3]}')), 1)
@@ -1285,7 +1939,7 @@ class StackedWorker(StreamFixture):
         self.maxDiff = None
         for attempt in (1, 2):
             result = unittest.TextTestRunner(stream=io.StringIO(), verbosity=0).run(
-                unittest.TestSuite([Loaded('test_successor_chief_replays_each_worker_once_and_never_sends_a_second_go')]))
+                unittest.TestSuite([Loaded('test_successor_chief_replays_each_worker_once_through_the_relay')]))
             self.assertEqual((result.testsRun, [e for _, e in result.errors], [f for _, f in result.failures]), (1, [], []), f'run {attempt}')
 
     def relay_rows(self):
@@ -1413,6 +2067,50 @@ class StackedWorker(StreamFixture):
         self.assertNotIn('wrap-merged-failed', out.read_text())
 
 
+    ASK = 'T3ASK-019e2c1a-2026-11-25'
+
+    def t3_fleet(self, **extra):
+        self.worker('N1', '- 09:00 LIVE — started')
+        self.fleet.write_text(json.dumps(dict(workers=[
+            dict(label='N1', doc=str(self.root / 'N1.md')),
+            dict(label=self.ASK, doc=str(self.root / f'{self.ASK}.md'), lane='t3', lockless=True,
+                 t3_thread='019e2c1a-1111', t3_notice='sent', **extra)])))
+
+    def wake_text(self):
+        return ''.join(f.read_text() for f in sorted(self.root.glob('consoles/*.wait.wake-*')))
+
+    def test_a_ready_on_an_ask_row_wakes_ask_ready_and_calls_no_worker_event(self):
+        self.worker(self.ASK, self.ready(self.ASK, 5))
+        self.t3_fleet(t3_kind='ask')
+        p, _ = self.start()
+        self.until(lambda: f'WAKE t3-relay ask-ready {self.ASK}' in self.wake_text(), seconds=10)
+        time.sleep(1.5)
+        self.stop(p)
+        self.assertEqual(self.wake_text().count(f'WAKE t3-relay ask-ready {self.ASK}'), 1, self.wake_text())
+        self.assertEqual(self.events(), [], 'worker-event (and so auto-go) was called for an ask row')
+        self.assertEqual(self.audit(), [])
+
+    def test_a_blocked_resolve_on_an_ask_row_wakes_ask_resolve_and_no_resolve_wake(self):
+        self.worker(self.ASK, '- 09:20 BLOCKED resolve 5999 PRRT_kwDOabc123')
+        self.t3_fleet(t3_kind='ask')
+        p, _ = self.start()
+        self.until(lambda: f'WAKE t3-relay ask-resolve {self.ASK}' in self.wake_text(), seconds=10)
+        time.sleep(1.5)
+        self.stop(p)
+        text = self.wake_text()
+        self.assertEqual(text.count(f'WAKE t3-relay ask-resolve {self.ASK}'), 1, text)
+        self.assertNotIn('WAKE resolve', text)
+        self.assertEqual(self.events(), [])
+
+    def test_a_ready_on_a_plain_t3_row_still_reaches_worker_event(self):
+        self.worker(self.ASK, self.ready(self.ASK, 5))
+        self.t3_fleet()
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'READY #5 {self.H[5]} {self.ASK}'), seconds=10)
+        self.stop(p)
+        self.assertNotIn('WAKE t3-relay ask-ready', self.wake_text())
+
+
 class IdlePoll(StreamFixture):
     """The service loop's idle backoff: after a run of empty passes it sleeps longer, and only that."""
 
@@ -1434,14 +2132,14 @@ class IdlePoll(StreamFixture):
     def sleeps(self, after=0.0):
         path = self.root / 'sleeps'
         rows = [line.split() for line in path.read_text().splitlines()] if path.exists() else []
-        return [arg for ts, arg in rows if float(ts) > after and arg in ('0.05', '0.5', '0.01', '1', '1.2.3')]
+        return [arg for ts, arg in rows if float(ts) > after]
 
     def slow(self, count):
         return lambda: self.sleeps().count('0.5') >= count
 
-    def post_ready(self):
+    def post_ready(self, pr=1):
         with self.doc1.open('a') as f:
-            f.write('- 10:00 READY #1 ' + '1' * 40 + '\n')
+            f.write(f'- 10:00 READY #{pr} ' + str(pr) * 40 + '\n')
 
     def test_the_poll_grows_only_after_a_run_of_empty_passes(self):
         p, _ = self.start()
@@ -1467,12 +2165,17 @@ class IdlePoll(StreamFixture):
     def test_an_event_during_a_slow_interval_is_served_on_the_next_pass(self):
         p, _ = self.start()
         self.until(self.slow(2))
-        wrote = time.time()
-        self.post_ready()
+        self.post_ready(1)
         self.until(lambda: (self.root / 'events').exists())
+        at = float((self.root / 'events').read_text().split()[0])
+        self.until(lambda: self.sleeps(at).count('0.5') >= 1, seconds=10)
+        began = float(next(line.split()[0] for line in (self.root / 'sleeps').read_text().splitlines()
+                           if float(line.split()[0]) > at and line.split()[1] == '0.5'))
+        self.post_ready(2)
+        self.until(lambda: len((self.root / 'events').read_text().splitlines()) >= 2)
         self.stop(p)
-        served = float((self.root / 'events').read_text().split()[0]) - wrote
-        self.assertLess(served, 0.5 + 0.7, 'one idle interval at most, plus the pass')
+        served = float((self.root / 'events').read_text().splitlines()[1].split()[0]) - began
+        self.assertLess(served, 0.5 + 0.4, 'one idle interval, plus the pass')
 
     def test_the_idle_poll_is_never_shorter_than_the_poll(self):
         self.env['CHIEF_WAIT_IDLE_POLL_SEC'] = '0.01'

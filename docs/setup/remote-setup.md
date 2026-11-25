@@ -59,7 +59,7 @@ it and answers there. It stays private: it never joins a group. Your bot gets it
    token is the long line below it: digits, a colon, then letters and digits. Leave this chat
    open, you copy the token in the next step.
 
-### In your Terminal: run 1
+### In your Terminal
 
 ```bash
 bash scripts/remote-setup/remote-setup.sh bot
@@ -71,7 +71,9 @@ on purpose. Then:
 1. The helper checks the token with Telegram and saves it.
 2. It shows a link. **Open that link on your phone and press Start.** This is how it learns
    which Telegram account is you.
-3. It ends with a `FIX:` line that carries one `printf` line, like this:
+3. It saves your allowlist (`access.json`) with that one Telegram id, and no other. Only the
+   account that pressed Start can talk to your station.
+4. It turns the bridge on, makes it start again after a reboot, and checks that it is healthy.
 
 ```text
 remote-setup bot: set up your main bot, the one your chief talks to you through
@@ -81,22 +83,15 @@ remote-setup bot: set up your main bot, the one your chief talks to you through
   Open this link on your phone and press Start in Telegram:
     https://t.me/my_himmel_bot?start=onboard-1a2b3c4d
   4. paired with Your Name (Telegram id 987654321) ... ok
-FIX: have your chief create the allowlist with this line, then run the same command again: printf '{"allowFrom":["987654321"]}\n' > ~/.claude/channels/telegram/access.json
 ```
 
-The helper never writes the allowlist file (`access.json`) itself: it decides who may talk to
-your station, so only your chief creates it. **Copy that `printf` line, paste it to your chief
-in Claude, and ask them to run it.**
+**Stopped before you pressed Start?** (You closed the Terminal, the wait ran out, or the run was
+interrupted.) Run the same command again and press Enter at the token prompt. The helper keeps
+the token it already saved, shows a new link, and carries on from there: you do not paste the
+token again. Once the allowlist exists, a re-run does not pair again.
 
-### In your Terminal: run 2
-
-```bash
-bash scripts/remote-setup/remote-setup.sh bot
-```
-
-This time press Enter at the token prompt: it keeps the token it already saved and does not pair
-again. The helper turns the bridge on, makes it start again after a reboot, and checks that it is
-healthy.
+If `access.json` already exists, the helper never changes it. When it lists a different Telegram
+account than the one that pressed Start, the helper stops and says so.
 
 On a Mac: the same command installs a LaunchAgent in `~/Library/LaunchAgents`, so the bridge
 comes back after a restart.
@@ -124,10 +119,10 @@ Every `FIX:` line names one thing to do. The common ones:
 | `this bot is already your ... bot` | Each role needs its own bot. Send `/newbot` to @BotFather for the main bot, then run the command again. |
 | `a different main bot is already set up` | If you do want to switch bots, run the command with `--replace` (below). |
 | `must hold exactly one Telegram id` | The file `~/.claude/channels/telegram/access.json` is not in the expected shape. Fix it or move it away, then run the command again. |
-| `have your chief create the allowlist with this line` | Give the `printf` line to your chief to run, then run the command again (run 2). |
+| `the allowlist could not be written` | Check that the `~/.claude/channels/telegram` folder is writable, then run the command again and press Enter at the token prompt. |
 | `access.json already lists a different Telegram account` | Press Start from the account that file lists, or have your chief fix the file, then run the command again. |
 | `the bridge is still running, so pairing cannot start` | Stop it (below), then run the command again. |
-| `no Start press arrived in time` | Run the command again and press Start right after the link appears. |
+| `no Start press arrived in time` | Run the command again, press Enter at the token prompt (the token is saved), and press Start right after the link appears. |
 | `the bridge is not healthy yet` | Wait a minute, then run the command again. |
 
 To switch to a different main bot on purpose:

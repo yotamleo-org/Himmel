@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -310,7 +310,7 @@ describe('test-version-repair dry run', () => {
     setup();
     mirror([{ key: 'K-1', fixVersions: ['v1.1.4'] }]);
     writeJournal([{ key: 'K-1', mechanism: 'create-residual', from: [], to: ['v1.1.4'], entry: '100' }]);
-    vi.stubEnv('JIRA_BASE_URL', 'https://jira.example.test');
+    vi.stubEnv('JIRA_BASE_URL', 'https://repair.atlassian.net');
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status })));
     const r = await run({ get: repairGetter() });
     expect(r.status).toBe('error');
@@ -322,7 +322,7 @@ describe('test-version-repair dry run', () => {
     setup();
     mirror([{ key: 'K-1', fixVersions: ['v1.1.4'] }]);
     writeJournal([{ key: 'K-1', mechanism: 'create-residual', from: [], to: ['v1.1.4'], entry: '100' }]);
-    vi.stubEnv('JIRA_BASE_URL', 'https://jira.example.test');
+    vi.stubEnv('JIRA_BASE_URL', 'https://repair.atlassian.net');
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)));
     vi.useFakeTimers();
     const pending = run({ get: repairGetter() });
@@ -470,7 +470,7 @@ describe('test-version-repair apply', () => {
   it('apply path makes no Fix Version write', async () => {
     const issues = [...filing(), done('K-3', ['v1.1.3'])];
     mirror(issues);
-    vi.stubEnv('JIRA_BASE_URL', 'https://jira.example.test');
+    vi.stubEnv('JIRA_BASE_URL', 'https://repair.atlassian.net');
     const inner = liveGetter(issues, { 'K-2': '200' });
     const methods: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: { method?: string }) => {
@@ -478,7 +478,7 @@ describe('test-version-repair apply', () => {
       methods.push(method);
       if (method !== 'GET') return new Response('{}', { status: 500 });
       try {
-        return new Response(JSON.stringify(await inner(String(url).replace('https://jira.example.test/rest/api/3', ''))), { status: 200 });
+        return new Response(JSON.stringify(await inner(String(url).replace('https://repair.atlassian.net/rest/api/3', ''))), { status: 200 });
       } catch {
         return new Response('{}', { status: 404 });
       }
@@ -1160,15 +1160,27 @@ describe('T8 C: one serialized repair-state writer and the retry clock', () => {
   const envOf = (): Record<string, string> => ({
     ...(process.env as Record<string, string>), HIMMEL_RELEASE_STATE_DIR: join(root, 'release'), HIMMEL_RELEASE_KEY_DIR: join(root, 'keys'), JIRA_PROJECT_KEY: 'TESTKEY',
   });
-  // A spawned CLI runs the real ancestry walk, which refuses outside the host's own namespaces and so takes no state lock. This preload hides
-  // /proc from that walk, the no-/proc path the vitest setup sends the in-process walk down, so the child runs unfenced under its env check.
-  const envOnlyFence = (): string => {
-    const p = join(root, 'env-only-fence.mjs');
+  const fenceDriver = (): string => {
+    const proc = join(root, 'fence-proc');
+    const uid = process.getuid?.() ?? 0;
+    for (const [pid, ppid, u] of [[300, 200, uid], [200, 1, uid], [1, 0, 0]] as const) {
+      mkdirSync(join(proc, String(pid), 'ns'), { recursive: true });
+      writeFileSync(join(proc, String(pid), 'status'), `Name:\tx\nPPid:\t${ppid}\nUid:\t${u}\t${u}\t${u}\t${u}\nNSpid:\t${pid}\n`);
+      if (pid !== 1) writeFileSync(join(proc, String(pid), 'environ'), 'PATH=/usr/bin\0');
+    }
+    writeFileSync(join(proc, '300', 'cmdline'), 'node\0driver.mjs\0');
+    symlinkSync('pid:[4026531836]', join(proc, '300', 'ns', 'pid'));
+    symlinkSync('user:[4026531837]', join(proc, '300', 'ns', 'user'));
+    symlinkSync('300', join(proc, 'self'));
+    writeFileSync(join(proc, 'host-ns'), 'pid:[4026531836] user:[4026531837]\n');
+    const p = join(root, 'fence-driver.mjs');
     writeFileSync(p, [
-      "import fs from 'node:fs';", "import { syncBuiltinESMExports } from 'node:module';", 'const realExists = fs.existsSync;',
-      "fs.existsSync = (p) => (p === '/proc' ? false : realExists(p));", 'syncBuiltinESMExports();', '',
+      `import { setWalkDefaultsForTests } from ${JSON.stringify(pathToFileURL(join(dirname(CLI), 'release', 'fence-ancestry.js')).href)};`,
+      `setWalkDefaultsForTests({ procRoot: ${JSON.stringify(proc)}, hostNsPath: ${JSON.stringify(join(proc, 'host-ns'))}, platform: 'linux', execArgv: [], env: {} });`,
+      `process.argv = [process.argv[0], ${JSON.stringify(CLI)}, ...process.argv.slice(2)];`,
+      `await import(${JSON.stringify(pathToFileURL(CLI).href)});`, '',
     ].join('\n'));
-    return pathToFileURL(p).href;
+    return p;
   };
   const cli = async (...args: string[]): Promise<{ lines: string[]; code: number }> => {
     vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'release'));
@@ -1317,7 +1329,7 @@ describe('T8 C: one serialized repair-state writer and the retry clock', () => {
     const lockDir = join(releaseDir(), 'repair-state.lock.d');
     mkdirSync(lockDir);
     const fd = openSync(join(lockDir, '.lock'), 'wx');
-    const child = spawn(process.execPath, ['--import', envOnlyFence(), CLI, 'release', 'repair-state', 'R1', '--repo', 'o/r', '--json'], { env: envOf(), stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [fenceDriver(), 'release', 'repair-state', 'R1', '--repo', 'o/r', '--json'], { env: envOf(), stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     child.stdout.on('data', (d: Buffer) => { out += d.toString(); });
     const closed = new Promise<void>((res) => { child.on('close', () => res()); });
@@ -1336,9 +1348,9 @@ describe('T8 C: one serialized repair-state writer and the retry clock', () => {
   it('9: concurrent attempts and a concurrent read lose no update: N attempts count N', async () => {
     setup();
     put({});
-    const fence = envOnlyFence();
+    const fence = fenceDriver();
     const run1 = (...extra: string[]) => new Promise<number>((res) => {
-      const c = spawn(process.execPath, ['--import', fence, CLI, 'release', 'repair-state', 'R1', '--repo', 'o/r', '--json', ...extra], { env: envOf(), stdio: 'ignore' });
+      const c = spawn(process.execPath, [fence, 'release', 'repair-state', 'R1', '--repo', 'o/r', '--json', ...extra], { env: envOf(), stdio: 'ignore' });
       c.on('close', (code) => res(code ?? -1));
     });
     const codes = await Promise.all([run1('--attempt'), run1(), run1('--attempt'), run1('--attempt'), run1(), run1('--attempt'), run1('--attempt')]);
@@ -1347,13 +1359,23 @@ describe('T8 C: one serialized repair-state writer and the retry clock', () => {
     expect(readdirSync(releaseDir()).filter((n) => n.includes('.tmp-'))).toEqual([]);
   }, 30_000);
 
-  it('9: with the /proc-hiding preload present, a spawned CLI whose own environment carries a fence marker still refuses --attempt and writes nothing (the own-environment check; the ancestry walk is not exercised)', () => {
+  it('9: through the fixture-tree driver, a spawned CLI whose own environment carries a fence marker still refuses --attempt and writes nothing (the own-environment check; the ancestry walk is not exercised)', () => {
     setup();
     put({});
-    const run = spawnSync(process.execPath, ['--import', envOnlyFence(), CLI, 'release', 'repair-state', 'R1', '--repo', 'o/r', '--json', '--attempt'],
+    const run = spawnSync(process.execPath, [fenceDriver(), 'release', 'repair-state', 'R1', '--repo', 'o/r', '--json', '--attempt'],
       { env: { ...envOf(), HIMMEL_RELEASE_MANAGER: '1' }, encoding: 'utf8', timeout: 20_000 });
     expect(run.status).toBe(2);
     expect(JSON.parse(run.stdout)).toMatchObject({ attempts: 0 });
     expect(rec()).toMatchObject({ attempts: 0 });
+    expect(run.stderr).toMatch(/attempt refused \(fenced: release operator: .* refused inside a chief-spawned worker\)/);
   }, 30_000);
+
+  it('10415: a fenced --attempt prints the fence\'s reason in the plain output as well', async () => {
+    setup();
+    put({});
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '1');
+    const out = await cli('repair-state', 'R1', '--repo', 'o/r', '--attempt');
+    expect(out.code).toBe(2);
+    expect(out.lines[0]).toMatch(/attempt refused \(fenced: release operator: .* refused inside a chief-spawned worker\), 0 so far/);
+  });
 });

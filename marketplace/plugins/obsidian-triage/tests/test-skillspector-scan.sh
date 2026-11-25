@@ -34,6 +34,7 @@ cat > "$stub" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" > "$STUB_ARGV"
 printf '%s\n' "${SKILLSPECTOR_PROVIDER-unset}" > "$STUB_PROVIDER"
+if [ -n "${STUB_STDERR-}" ]; then printf '%s\n' "$STUB_STDERR" >&2; fi
 if [ -n "${STUB_NET-}" ]; then
     if [ -r /proc/net/dev ]; then awk -F: 'NR>2 {gsub(/ /,"",$1); print $1}' /proc/net/dev | sort | tr '\n' ' ' > "$STUB_NET"; else printf 'no-proc' > "$STUB_NET"; fi
 fi
@@ -59,7 +60,7 @@ chmod +x "$shimbin/unshare"
 run() { # run <report> [env assignments...] -- runs the wrapper hermetically
     local report="$1"; shift
     rm -f "$tmpdir/argv" "$tmpdir/provider" "$tmpdir/unshare"
-    env -u SKILLSPECTOR_PROVIDER STUB_ARGV="$tmpdir/argv" STUB_PROVIDER="$tmpdir/provider" \
+    env -u SKILLSPECTOR_PROVIDER -u NVIDIA_INFERENCE_KEY -u ANTHROPIC_API_KEY STUB_ARGV="$tmpdir/argv" STUB_PROVIDER="$tmpdir/provider" \
         STUB_UNSHARE="$tmpdir/unshare" PATH="$shimbin:$PATH" \
         SKILLSPECTOR_BIN="$stub" "$@" bash "$SUT" "$skill" "$report" 2>"$tmpdir/err"
 }
@@ -74,12 +75,14 @@ assert "unset provider never invokes skillspector" not-run "$r"
 assert "unset provider writes no report" none "$r"
 
 run "$tmpdir/r2.json" SKILLSPECTOR_PROVIDER=nv_build; rc=$?
-assert "nv_build provider is refused (rc 2)" 2 "$rc"
+assert "nv_build without NVIDIA_INFERENCE_KEY is refused (rc 2)" 2 "$rc"
 [ -e "$tmpdir/argv" ] && r=ran || r=not-run
-assert "nv_build never invokes skillspector" not-run "$r"
+assert "nv_build without a key never invokes skillspector" not-run "$r"
 
 run "$tmpdir/r3.json" SKILLSPECTOR_PROVIDER=anthropic; rc=$?
-assert "an egressing provider (anthropic) is refused (rc 2)" 2 "$rc"
+assert "anthropic without ANTHROPIC_API_KEY is refused (rc 2)" 2 "$rc"
+run "$tmpdir/r3b.json" SKILLSPECTOR_PROVIDER=openai OPENAI_API_KEY=x; rc=$?
+assert "a provider outside ollama, nv_build and anthropic is refused (rc 2)" 2 "$rc"
 
 # -- Test 2: a no-egress provider runs Stage 1 only and stores the report
 echo "Test 2: ollama runs Stage 1 and stores the report"
@@ -255,6 +258,88 @@ for bad in "$(offline_body "$osv_ex,$other_ex" 2 "$degraded")" \
     run "$tmpdir/nb$n.json" SKILLSPECTOR_PROVIDER=ollama SKILLSPECTOR_OFFLINE=1 STUB_REPLAY="$tmpdir/osv-bad$n.json"; rc=$?
     assert "incomplete beyond the denied OSV lookup (case $n) is unavailable (rc 3)" 3 "$rc"
 done
+
+echo "Test 12: full scan through nv_build or the Claude API provider"
+meta_ok='"execution_successful":true,"metadata":{"llm_requested":true,"llm_available":true,"meta_analysis_applied":true}'
+cp "$FX/reports/clean-stage2.json" "$tmpdir/s2-clean.json"
+printf '%s\n' '{"risk_assessment":{"score":70},"issues":[{"severity":"HIGH","pattern":"External Script Fetching","match_fingerprint":"fp-aaa","location":{"file":"SKILL.md","start_line":11}},{"severity":"LOW","pattern":"x","match_fingerprint":"fp-low","location":{"file":"a.md","start_line":1}}],'"$meta_ok"'}' > "$tmpdir/s2-high.json"
+printf '%s\n' '{"risk_assessment":{"score":40},"issues":[{"severity":"HIGH","match_fingerprint":"fp-bbb","location":{"file":"SKILL.md","start_line":2}}],"execution_successful":true,"metadata":{"llm_requested":true,"llm_available":false,"meta_analysis_applied":false,"llm_error":"LLM analysis was requested but unavailable during preflight"}}' > "$tmpdir/s2-none.json"
+jget() { node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); console.log(String(eval("r."+process.argv[2])).trim())' "$1" "$2" 2>/dev/null; }
+
+run "$tmpdir/f1.json" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k-nv STUB_REPLAY="$tmpdir/s2-clean.json" STUB_STDERR="warn: nothing odd k-nv"; rc=$?
+assert "nv_build with its key runs the scan (rc 0)" 0 "$rc"
+assert "the full scan drops --no-llm" "scan $skill --format json" "$(cat "$tmpdir/argv" 2>/dev/null)"
+assert "skillspector saw the nv_build provider" nv_build "$(cat "$tmpdir/provider" 2>/dev/null)"
+assert "a clean Stage 2 report is stored" 0 "$(jget "$tmpdir/f1.json" risk_assessment.score)"
+assert "scanner stderr is kept in the stored report, key redacted" "warn: nothing odd [redacted]" "$(jget "$tmpdir/f1.json" wrapper_stderr)"
+
+run "$tmpdir/f1x.json" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k-secret STUB_REPLAY="$tmpdir/s2-clean.json" STUB_RC=2 STUB_STDERR="401 bad key k-secret"; rc=$?
+assert "a scanner crash in the full scan is unavailable (rc 3)" 3 "$rc"
+grep -q 'k-secret' "$tmpdir/err" && r=leaked || r=redacted
+assert "the failure path never prints the key" redacted "$r"
+grep -q '401 bad key \[redacted\]' "$tmpdir/err" && r=kept || r=lost
+assert "the failure path keeps the scanner's error, key redacted" kept "$r"
+
+run "$tmpdir/f2.json" SKILLSPECTOR_PROVIDER=anthropic ANTHROPIC_API_KEY=k-an STUB_REPLAY="$tmpdir/s2-clean.json"; rc=$?
+assert "anthropic with its key runs the scan (rc 0)" 0 "$rc"
+assert "skillspector saw the anthropic provider" anthropic "$(cat "$tmpdir/provider" 2>/dev/null)"
+
+run "$tmpdir/f3.json" SKILLSPECTOR_PROVIDER=nv_build; rc=$?
+assert "nv_build without a key is refused (rc 2)" 2 "$rc"
+grep -q 'NVIDIA_INFERENCE_KEY' "$tmpdir/err" && r=named || r=unnamed
+assert "the refusal names NVIDIA_INFERENCE_KEY" named "$r"
+[ -e "$tmpdir/argv" ] && r=ran || r=not-run
+assert "a missing key never invokes skillspector" not-run "$r"
+run "$tmpdir/f4.json" SKILLSPECTOR_PROVIDER=anthropic ANTHROPIC_API_KEY=; rc=$?
+assert "anthropic with an empty key is refused (rc 2)" 2 "$rc"
+grep -q 'ANTHROPIC_API_KEY' "$tmpdir/err" && r=named || r=unnamed
+assert "the refusal names ANTHROPIC_API_KEY" named "$r"
+{ [ -e "$tmpdir/f3.json" ] || [ -e "$tmpdir/f4.json" ]; } && r=written || r=none
+assert "a missing key writes no report, never a clean result" none "$r"
+
+run "$tmpdir/f5.json" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k SKILLSPECTOR_OFFLINE=1; rc=$?
+assert "Stage 2 with SKILLSPECTOR_OFFLINE=1 is refused (rc 2)" 2 "$rc"
+
+run "$tmpdir/h1.json" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k STUB_REPLAY="$tmpdir/s2-high.json" STUB_RC=1; rc=$?
+assert "a Stage-2-confirmed HIGH stops the vendoring path (rc 4)" 4 "$rc"
+[ -e "$tmpdir/h1.json" ] && r=stored || r=none
+assert "the blocked report is stored for the person to read" stored "$r"
+grep -q 'SKILL.md:11' "$tmpdir/err" && r=named || r=unnamed
+assert "the stop names the flagged line" named "$r"
+grep -q 'fp-aaa' "$tmpdir/err" && r=named || r=unnamed
+assert "the stop names the fingerprint to record" named "$r"
+
+printf 'fp-low\n' > "$tmpdir/h1.json.ack"
+run "$tmpdir/h1.json" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k STUB_REPLAY="$tmpdir/s2-high.json" STUB_RC=1; rc=$?
+assert "an ack that omits the HIGH finding still stops (rc 4)" 4 "$rc"
+printf 'fp-aaa\n' > "$tmpdir/h1.json.ack"
+run "$tmpdir/h1.json" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k STUB_REPLAY="$tmpdir/s2-high.json" STUB_RC=1; rc=$?
+assert "an ack recording the HIGH fingerprint lets it through (rc 0)" 0 "$rc"
+
+run "$tmpdir/u1.json" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k STUB_REPLAY="$tmpdir/s2-none.json" STUB_RC=1; rc=$?
+assert "a run where Stage 2 did not apply is unavailable (rc 3), never clean" 3 "$rc"
+grep -q 'unavailable during preflight' "$tmpdir/err" && r=named || r=unnamed
+assert "the unavailable reason carries the scanner's own error" named "$r"
+[ -e "$tmpdir/u1.json" ] && r=written || r=none
+assert "a Stage 2 that did not apply writes no report" none "$r"
+
+FXC="$FX/reports/clean-stage2.json"
+run "$tmpdir/c1.json" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k STUB_REPLAY="$FXC"; rc=$?
+assert "a real clean full-scan report (no findings, so no meta-analysis) lets the vendoring through (rc 0)" 0 "$rc"
+n=0
+for mut in 'm.llm_available=false' 'm.llm_calls_succeeded=2' 'm.llm_calls_attempted=0;m.llm_calls_succeeded=0' 'm.llm_error="boom"' 'm.llm_requested=false'; do
+    n=$((n+1))
+    node -e 'const fs=require("fs"); const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const m=r.metadata; eval(process.argv[2]); fs.writeFileSync(process.argv[3], JSON.stringify(r))' "$FXC" "$mut" "$tmpdir/cm$n.json"
+    [ -s "$tmpdir/cm$n.json" ] && s=ok || s=missing
+    assert "the mutated replay ($mut) was written" ok "$s"
+    run "$tmpdir/cm$n.json.out" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k STUB_REPLAY="$tmpdir/cm$n.json"; rc=$?
+    assert "a clean report where Stage 2 did not run ($mut) is unavailable (rc 3)" 3 "$rc"
+done
+
+grep -qF 'required step of vendoring' "$DOC" && grep -qF 'NVIDIA_INFERENCE_KEY' "$DOC" && grep -qF 'ANTHROPIC_API_KEY' "$DOC" && s=ok || s=missing
+assert "Phase 3.7 names the full scan as a required vendoring step with provider and key" ok "$s"
+grep -qF 'blocked (rc 4)' "$DOC" && grep -qF '<report>.ack' "$DOC" && s=ok || s=missing
+assert "Phase 3.7 says a Stage-2 HIGH stops until the line is acknowledged" ok "$s"
 
 echo "skillspector-scan tests: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

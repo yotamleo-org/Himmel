@@ -380,6 +380,7 @@ describe('MCP server wiring', () => {
       });
       await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
       vi.stubEnv('JIRA_BASE_URL', `http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+      vi.stubEnv('JIRA_ALLOW_HOST', `127.0.0.1:${(server.address() as AddressInfo).port}`);
       vi.stubEnv('JIRA_EMAIL', 'u@example.com');
       vi.stubEnv('JIRA_API_TOKEN', 'bogus');
       vi.stubEnv('JIRA_PROJECT_KEY', 'HTEST');

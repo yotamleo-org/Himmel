@@ -60,7 +60,7 @@ _ghr_load() {
     _GHR_LOADED=1
     _GHR_TOK=$(
         # shellcheck source=scripts/lib/load-dotenv.sh
-        . "${_GHR_LOAD_DOTENV:-$_GHR_HERE/load-dotenv.sh}" 2>/dev/null || exit 0
+        . "$_GHR_HERE/load-dotenv.sh" 2>/dev/null || exit 0
         root="${GH_READ_ENV_ROOT:-$(_load_dotenv_primary_for "$_GHR_HERE/../.." 2>/dev/null)}"
         if [ -n "${GH_READ_ENV_ROOT:-}" ]; then
             unset himmel_github_token_vm2 CREDENTIALS_DIRECTORY

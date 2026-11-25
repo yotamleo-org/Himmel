@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { appendChain, readChain, type Chain } from './ledger.js';
 import { effectOn, recordOf, terminalOf, type ReleaseState } from './reducer.js';
 import { judgeOperatorRows } from './judge-input.js';
+import { currentFrozen } from './filing-rules.js';
 import type { Authority, IssueSnap, Op, OperatorRow, RequestRow, RulingRow, Verb } from './types.js';
 import { BLOCKER_PULL_DECISION, DELIVERED_DECISION, isRepair } from './operator-acts.js';
 import { fileRequest, isPullRequest, leaseAcquire, leaseRelease, ownerGone, requiredParentOf, rmFence, type RunLease } from './request-queue.js';
@@ -113,6 +114,8 @@ export interface JudgeInput {
   issues: IssueSnap[];
   ruled_at?: Record<string, string>;
   required_parent?: Record<string, string>;
+  /** True when current is frozen (a verified freeze row holds it); a caller that leaves it out is read as frozen. */
+  frozen?: boolean;
 }
 
 export type Judge = (input: JudgeInput, opts?: { signal?: AbortSignal }) => Promise<Decision[]>;
@@ -362,7 +365,11 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
       const history = now.requests.verified;
       const required_parent = requiredParentOf(history);
       const keys = new Set(asked.map((r) => r.key));
-      const parents = [...keys].flatMap((k) => required_parent[k] ? [required_parent[k]] : []);
+      const followUpOf = (q: RequestRow): string[] => {
+        const p = (q.evidence && typeof q.evidence === 'object' ? (q.evidence as { follow_up_of?: unknown }).follow_up_of : undefined);
+        return typeof p === 'string' && p ? [p] : [];
+      };
+      const parents = [...keys].flatMap((k) => required_parent[k] ? [required_parent[k]] : []).concat(asked.flatMap(followUpOf));
       const ruled_at: Record<string, string> = {};
       const newest = new Map<string, RulingRow>();
       for (const r of now.rulings.verified) {
@@ -382,7 +389,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
           records: reduceLoaded(now, mirror).records.filter((r) => keys.has(r.key)),
           operator: judgeOperatorRows(ctx.release, now.operator.verified, asked, issues, receipted),
           rulings: [...new Set([...settled.filter((r) => keys.has(r.key)), ...receipted.slice(-40)])],
-          issues, ruled_at, required_parent,
+          issues, ruled_at, required_parent, frozen: currentFrozen(now),
         }, { signal: stop.signal }), stop, o.judgeTimeoutMs);
       } catch (e) {
         if (e instanceof JudgeReplyError) {

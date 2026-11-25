@@ -69,8 +69,8 @@ reviews look the same); no `gh`, no sign-in or no remote is `not checked`. Both 
 
 The Project scope tile has Setup choices: the handover root and the luna vault path, each prefilled from
 `~/.himmel/himmel.conf` (or marked `not set` with the default that applies) and changed through a dry run you
-confirm. The vault path must be a folder that exists. The forge is shown as detected, read-only: set `FORGE` or
-`git config himmel.forge` in the terminal. The plugin set and the Auto-ship steps are shown on the same tile,
+confirm. The vault path must be a folder that exists. The Git host (GitHub or Bitbucket) is shown as detected,
+read-only: set `FORGE` or `git config himmel.forge` in the terminal. The plugin set and the Auto-ship steps are shown on the same tile,
 not repeated; Review by a second model is on the Review tile.
 
 The Check this install strip (shown while no tile is open) runs the doctor (`scripts/himmel-doctor.sh --json`, its read-only
@@ -79,7 +79,7 @@ the install's prerequisites, hook and consent wiring, configuration files, track
 one row per setup warning or failure, its remedy, and an Open in Health link to that check's row. The findings outside
 the list are counted on the strip too ("Not setup, so only on the Health page: 1 fail, 2 warn"), so a clean setup never
 sits beside a failure you cannot see. The Health page lists every check, so a worktree or search-index warning shows
-there and not in the rows here. The forge check (C4) and the registry check (C5) only ever report information, which
+there and not in the rows here. The Git host check (C4) and the registry check (C5) only ever report information, which
 the strip does not show, so they are not on the list. It takes a minute or two and stops at 200 seconds. The run publishes nothing
 (no statusline counts), and any secret value in a row is redacted before the page sees it. The result lives in the
 page only, so press run again any time to re-check. It is `POST /api/setup/verify`, handled by `verifyDoctor` in `scripts/config-ui/setup.ts`.
@@ -97,7 +97,7 @@ session switches are set when you start Claude.
 
 Every write below is a `POST` behind the per-launch token or a login session, a same-origin check and a JSON-only body.
 The one exception is the Shift page's `GET /api/shift` poll, which records shift state and appends a closed shift to
-`shifts.jsonl` (`tickShifts` in `scripts/config-ui/shift.ts`; under `--read-only` it writes nothing).
+`shifts.jsonl` (`tick` in `scripts/config-ui/shift.ts`; under `--read-only` it writes nothing).
 This is the full set of `POST` routes, each mapped to the code that handles it:
 
 | Action | Route | Handled in |
@@ -114,7 +114,7 @@ This is the full set of `POST` routes, each mapped to the code that handles it:
 | Reports and shifts settings (Configure) | `/api/report-settings` | `writeReports` in `scripts/config-ui/report-settings.ts` |
 | Graph choices (Configure, Project scope, Code graph) | `/api/graph-choices` | `writeGraph` in `scripts/config-ui/graph-config.ts` |
 | Role map for the API accounts (Configure, Secrets, Multi accounts) | `/api/api-roles` | `saveRoles` in `scripts/config-ui/api-roles-settings.ts` |
-| Board lane move, card Sector | `/api/roadmap/write` | `roadmapWriteRoute` in `scripts/config-ui/server.ts` (a local card: `localWriteRoute`, `scripts/config-ui/local-tracker.ts`) |
+| Board lane move, card Sector | `/api/roadmap/write` | `roadmapWriteRoute` in `scripts/config-ui/server.ts` (a local card: `localWriteRoute` in the same file, store logic in `scripts/config-ui/local-tracker.ts`) |
 
 ```bash
 node scripts/himmelctl/bin.js ui              # prints ONE URL carrying the token
@@ -135,8 +135,14 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   and otherwise says how to start the UI; it never opens a browser. An ad-hoc `himmelctl ui` picks a free
   port, so its link changes each launch. Every link carries `#t=<token>`; without it the page is refused.
 - **Run it yourself, from a terminal outside Claude.** It refuses to start
-  inside a Claude session; an agent cannot open it for you. The server runs in
-  the foreground and exits on Ctrl-C or after 30 minutes idle.
+  inside a Claude session, except the read-only start below; an agent cannot open the writable UI
+  for you. The server runs in the foreground and exits on Ctrl-C or after 30 minutes idle.
+- **One start an agent may make: `node scripts/himmelctl/bin.js ui --read-only`, run from the worktree root.** Inside a Claude session a plain
+  `--read-only` start works with no override, so a worker can check a page it changed against its own
+  worktree (the always-on service serves main's build, and the `himmelctl` on your PATH serves the checkout
+  it is installed from; only the worktree's own `bin.js` serves the worktree). It serves GET and HEAD only,
+  every other request gets 403, it builds nothing, and it binds `127.0.0.1` on a free port. A start with
+  `--port`, `--agui` or `--service`, or without `--read-only`, is still refused there.
 - **The token** rides the URL fragment (`#t=<hex>`), so it is never sent in a
   request line. Open the printed URL as is; a new launch means a new token.
 - **Always on.** `himmelctl ui --service install` installs `himmel-ui.service`, a systemd
@@ -192,7 +198,15 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   then each phase of the work and the parts it is made of. A phase row opens to its parts, each with its
   dollars, its share of the phase and a bar; every figure says whether it is counted (read from a ledger or
   the session's own usage), derived (a counted total split by the last tool a call read) or has no price
-  yet, and a part no record splits says "not countable yet" and shows no number. The page only reads:
+  yet, and a part no record splits says "not countable yet" and shows no number. Under it a **T3 Code**
+  card lists the same day's usage, tokens and dollars per provider and per thread, read from T3 Code's
+  own state database (`$T3CODE_HOME` or `~/.t3`, `userdata/statev2.sqlite`, opened read-only): the
+  token counts T3 Code stores for each turn, priced from `scripts/lanes/lib/model-prices.tsv`, so there is
+  no second collector and no second price list. A turn with no model or no price row shows its tokens
+  and no dollars, a provider that reports no usage shows neither, usage T3 Code keeps for subagents apart
+  is not added, and days are UTC. T3's Claude sessions write the transcripts the phase table already
+  counts, so the Claude line shows tokens only, marked "in the phase table", and its dollars are not
+  added a second time. With no T3 Code store the card is absent. The page only reads:
   `GET /api/cost`; with no usage records it says "no data yet"), and **Fleet** at `/agui/`.
 - **Fleet and run view (AG-UI).** `/agui/` lists every live Claude session
   with its ticket, PR and state; clicking one opens its run page: assistant

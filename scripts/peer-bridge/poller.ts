@@ -21,7 +21,7 @@ import { currentSigningKey, sign } from "./sign";
 import { PeerTelegram, RetryAfter, TelegramError } from "./telegram";
 import { MAX_AUTO_PER_HOUR, Threads, effectiveRoute, templateLine, type Action, type Route, type ThreadRec, type Transition, type WakeEvent, type WakeLabel } from "./threads";
 import { appendNotify, notifyFile, type DailyNotify, type NotifyRec, type ResultNotify } from "./notify";
-import { DRAFT_TTL_MS, MAX_DRAFTS_PER_DAY, MAX_PENDING_DRAFTS, badChars, draftState, draftsToday, pendingCount, reviewTooLong } from "./drafts";
+import { DRAFT_TTL_MS, MAX_CHIEF_PER_DAY, MAX_DRAFTS_PER_DAY, MAX_PENDING_CHIEF, MAX_PENDING_DRAFTS, badChars, draftState, draftsToday, pendingCount, reviewTooLong } from "./drafts";
 import { lockdownEnabled } from "../telegram/lockdown";
 import { Tripwire, Waker } from "./wake";
 
@@ -40,7 +40,16 @@ export type PollerDeps = {
   readerRun?: typeof runReader;
   readerTimeoutMs?: number;
   log?: (line: string) => void;
+  sleep?: (ms: number) => Promise<void>;
 };
+
+export class StartLookupError extends Error {
+  constructor(message: string) { super(message); this.name = "StartLookupError"; }
+}
+
+const START_LOOKUP_TRIES = 6;
+const START_LOOKUP_FIRST_WAIT_MS = 2_000;
+const START_LOOKUP_MAX_WAIT_MS = 30_000;
 
 type Pending = IntentRec & { n: number };
 type Item = { peer: string; msgKind: string; isRoot: boolean; isTemplate: boolean; replyTo: number | null; text: string; id?: string; spool?: string; resend?: boolean; allowShape?: string; corpus?: OutCtx["corpus"]; source?: string; checkUsage: boolean };
@@ -170,20 +179,36 @@ export class Poller {
     return run;
   }
 
-  private async ensureUsername() {
+  private async lookupUsername() {
     if (this.gate.ourUsername) return;
     const peer = Object.values(this.cfg.peers).find(p => p.chatId !== null);
     if (!peer) return;
-    try {
-      const m = await this.deps.tg.getChatMember(peer.chatId!, Number(this.deps.ourBotId));
-      if (typeof m?.user?.username === "string") this.gate.ourUsername = m.user.username;
-    } catch (e) { this.log(`username lookup failed: ${(e as Error).message}`); }
+    const m = await this.deps.tg.getChatMember(peer.chatId!, Number(this.deps.ourBotId));
+    if (typeof m?.user?.username === "string") this.gate.ourUsername = m.user.username;
+  }
+
+  private async ensureUsername() {
+    try { await this.lookupUsername(); } catch (e) { this.log(`username lookup failed: ${(e as Error).message}`); }
+  }
+
+  private async startLookup() {
+    const wait = this.deps.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)));
+    for (let n = 1, delay = START_LOOKUP_FIRST_WAIT_MS; ; n++) {
+      try { await this.lookupUsername(); return; } catch (e) {
+        if (e instanceof TelegramError && e.code === 401) throw e;
+        this.log(`username lookup failed (try ${n} of ${START_LOOKUP_TRIES}): ${(e as Error).message}`);
+        if (n >= START_LOOKUP_TRIES) throw new StartLookupError(`start lookup failed after ${n} tries: ${(e as Error).message}`);
+        await wait(e instanceof RetryAfter ? Math.min(e.seconds * 1000, START_LOOKUP_MAX_WAIT_MS) : delay);
+        delay = Math.min(delay * 2, START_LOOKUP_MAX_WAIT_MS);
+      }
+    }
   }
 
   jobsSnapshot(): Map<number, JobRecord> { return new Map(this.jobs); }
   nextJobNo(): number { return Math.max(0, ...this.jobs.keys()) + 1; }
 
   async start(): Promise<void> {
+    await this.startLookup();
     await this.recover();
     await this.drainBacklog();
     await this.tick();
@@ -654,7 +679,7 @@ export class Poller {
 
   private outbox = (peer: string) => readChain(this.file(peer, "outbox.jsonl")) as Record<string, any>[];
   private allOutboxes = () => Object.keys(this.cfg.peers).map(p => this.outbox(p));
-  private corpusOf = (source: string): OutCtx["corpus"] => (source === "telegram" ? "operator-reply" : "peer-desk");
+  private corpusOf = (source: string): OutCtx["corpus"] => (source === "telegram" ? "operator-reply" : source === "send.ts" ? "peer-desk" : source === "chief" ? "chief-tell" : "unknown-source");
 
   private async resultNotify(peer: string, draft: string, state: ResultNotify["state"], root: number, extra: { message_id?: number; rule?: string } = {}) {
     const file = notifyFile(this.deps.stateDir);
@@ -663,7 +688,7 @@ export class Poller {
   }
 
   private async draftNotify(peer: string, d: Record<string, any>) {
-    await appendNotify(this.chain, notifyFile(this.deps.stateDir), { kind: "notify", type: "draft", peer, root: d.replyTo ?? 0, draft: d.id, source: d.source, deadline: d.deadline, text: d.text, ts: this.now() });
+    await appendNotify(this.chain, notifyFile(this.deps.stateDir), { kind: "notify", type: "draft", peer, root: d.replyTo ?? 0, draft: d.id, source: d.source, ...(d.session ? { session: d.session } : {}), deadline: d.deadline, text: d.text, ts: this.now() });
   }
 
   private async finishDraft(peer: string, d: Record<string, any>, state: "REJECTED" | "EXPIRED" | "REFUSED", rule?: string) {
@@ -686,11 +711,11 @@ export class Poller {
     const res = await this.egress(rec.text, this.ctxFor({ peer, msgKind: rec.kind, isRoot: rec.replyTo === undefined, isTemplate: false, replyTo: rec.replyTo ?? null, text: rec.text, allowShape: rec.allowShape, corpus: this.corpusOf(rec.source), checkUsage: true }));
     if (!res.ok) return refuse(res.rule, res.shape);
     const id = mintId(), deadline = this.now() + DRAFT_TTL_MS;
-    if (reviewTooLong({ peer, root: rec.replyTo ?? 0, draft: id, source: rec.source, deadline, text: rec.text }, this.cfg.himmelRoot)) return refuse("review-length");
-    const all = this.allOutboxes();
-    if (pendingCount(all) >= MAX_PENDING_DRAFTS) return refuse("too-many-pending");
-    if (draftsToday(all, this.now()) >= MAX_DRAFTS_PER_DAY) return refuse("daily-drafts");
-    const d = { kind: "draft", id, source: rec.source, msgKind: rec.kind, replyTo: rec.replyTo ?? null, text: rec.text, ...(rec.allowShape ? { allowShape: rec.allowShape } : {}), spool: name, deadline, ts: this.ts() };
+    if (reviewTooLong({ peer, root: rec.replyTo ?? 0, draft: id, source: rec.source, session: rec.session, deadline, text: rec.text }, this.cfg.himmelRoot)) return refuse("review-length");
+    const all = this.allOutboxes(), chief = rec.source === "chief";
+    if (pendingCount(all, chief) >= (chief ? MAX_PENDING_CHIEF : MAX_PENDING_DRAFTS)) return refuse(chief ? "chief-pending" : "too-many-pending");
+    if (draftsToday(all, this.now(), chief) >= (chief ? MAX_CHIEF_PER_DAY : MAX_DRAFTS_PER_DAY)) return refuse(chief ? "chief-daily" : "daily-drafts");
+    const d = { kind: "draft", id, source: rec.source, ...(rec.session ? { session: rec.session } : {}), msgKind: rec.kind, replyTo: rec.replyTo ?? null, text: rec.text, ...(rec.allowShape ? { allowShape: rec.allowShape } : {}), spool: name, deadline, ts: this.ts() };
     await this.chain.append(this.file(peer, "outbox.jsonl"), d);
     await this.draftNotify(peer, d);
     writeResult(dir, name, { ok: true, draft: id, deadline });
@@ -868,6 +893,7 @@ export async function main(): Promise<void> {
   });
   try { await poller.start(); } catch (e) {
     if (e instanceof TelegramError && e.code === 401) { console.error("peer-bridge: the bot token was refused"); release(); process.exit(EXIT_CONFIG); }
+    if (e instanceof StartLookupError) { console.error(`peer-bridge: ${e.message}`); release(); process.exit(1); }
     throw e;
   }
   const guard = (fn: () => Promise<void>) => () => fn().catch(e => { console.error(`peer-bridge: ${(e as Error).message}`); process.exit(1); });

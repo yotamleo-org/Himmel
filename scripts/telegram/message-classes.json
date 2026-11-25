@@ -101,6 +101,24 @@
       }
     },
     {
+      "kind": "afk-grant-refused",
+      "class": "monitor",
+      "sender": "scripts/hooks/approval-grant-request.sh",
+      "pin": "_mba_send \"$2\" \"$3\" afk-grant-refused",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a refusal no phone approval can lift; the worker's chief, which gets the same line in its bridge inbox, picks the other route"
+      }
+    },
+    {
+      "kind": "afk-grant-expired",
+      "class": "escalate",
+      "sender": "scripts/lib/afk-sudo-request",
+      "pin": "nothing ran\" afk-grant-expired",
+      "sample": "An AFK grant ask expired unanswered: a worker's blocked command did not run. Blocks: that worker. Do: answer its next ask in time, or tell its chief to take another route"
+    },
+    {
       "kind": "silent-go-merge",
       "class": "monitor",
       "sender": "scripts/handover/chief-kit/silent-go-merge.sh",
@@ -352,6 +370,16 @@
       "kind": "cadence:librarian",
       "class": "monitor",
       "sender": "scripts/handover/librarian-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
+    },
+    {
+      "kind": "cadence:qmd-outage",
+      "class": "monitor",
+      "sender": "scripts/himmel-doctor.sh",
       "on-alert": {
         "do": "escalate",
         "to": "chief",

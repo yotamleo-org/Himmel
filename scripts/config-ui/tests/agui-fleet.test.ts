@@ -610,3 +610,49 @@ test("a claudex worker renders lane, backend model, codex-bank cost row and eval
   expect(b.banks.codex).toMatchObject({ weeklyPct: 46 });
   expect(b.sessions.find((r: any) => r.pid === FLEET.console.pid)).toMatchObject({ lane: "native", laneFrom: "default", cost: { priced_by: "claude-weights" } });
 });
+
+const T3_AT = Date.now();
+const t3Reader = (reply: unknown, rc = 0) => {
+  const d = mkdtempSync(join(tmpdir(), "agui-t3-"));
+  cleanups.push(() => rmSync(d, { recursive: true, force: true }));
+  writeFileSync(join(d, "reply.json"), JSON.stringify(reply));
+  writeFileSync(join(d, "thread-list.sh"), `#!/bin/sh\ncat '${join(d, "reply.json")}'\nexit ${rc}\n`);
+  return join(d, "thread-list.sh");
+};
+const T3_ROW = (id: string, over: Record<string, unknown>) => ({ threadId: id, title: id, state: "running", waitingOn: null, provider: "claudeAgent", model: "m", createdAt: new Date(T3_AT - 90 * 60_000).toISOString(), updatedAt: new Date(T3_AT - 5 * 60_000).toISOString(), pullRequests: 0, backgroundTasks: 0, pids: [], ...over });
+
+test("the Fleet lists T3 threads with title, state, age and owned pids; a long-settled thread is left out", async () => {
+  const reader = t3Reader({
+    threads: [T3_ROW("t-run", { title: "Build the thing", pids: [200, 201], backgroundTasks: 1, pullRequests: 1 }),
+      T3_ROW("t-wait", { state: "waiting", waitingOn: "reply" }),
+      T3_ROW("t-new", { state: "settled", updatedAt: new Date(T3_AT - 3600_000).toISOString() }),
+      T3_ROW("t-old", { state: "settled", updatedAt: new Date(T3_AT - 48 * 3600_000).toISOString() })],
+    owned: [{ pid: 200, thread: "t-run" }, { pid: 201, thread: "t-run" }],
+  });
+  const { port } = boot({ CONFIG_UI_T3_THREADS: reader });
+  const b = await (await fleet(port)).json();
+  expect(b.t3Threads.map((t: any) => t.threadId)).toEqual(["t-run", "t-wait", "t-new"]);
+  expect(b.t3Threads[0]).toMatchObject({ title: "Build the thing", state: "running", waitingOn: null, provider: "claudeAgent", pids: [200, 201], backgroundTasks: 1, pullRequests: 1 });
+  expect(b.t3Threads[0].ageMin).toBeGreaterThanOrEqual(90);
+  expect(b.t3Threads[0].ageMin).toBeLessThan(92);
+  expect(b.t3Threads[1]).toMatchObject({ state: "waiting", waitingOn: "reply" });
+});
+
+test("a wrapper owned by a T3 provider is that thread's (kind t3), not an orphan", async () => {
+  const reader = t3Reader({ threads: [T3_ROW("t-run", { pids: [4247] })], owned: [{ pid: 4247, thread: "t-run" }, { pid: 4248, thread: null }] });
+  const { port, dir } = boot({ CONFIG_UI_T3_THREADS: reader });
+  writeFileSync(join(dir, "orphan-loops.sh"), `#!/bin/sh\n[ "$1" = --list ] || exit 2\nprintf 'pid=4242 owner=orphan age=95m\\npid=4247 owner=orphan age=50m\\npid=4248 owner=orphan age=50m\\n'\n`);
+  const b = await (await fleet(port)).json();
+  expect(b.processOrphans).toEqual([
+    { pid: 4242, owner: "orphan", ageMin: 95, kind: "orphan" },
+    { pid: 4247, owner: "orphan", ageMin: 50, kind: "t3", thread: "t-run" },
+    { pid: 4248, owner: "orphan", ageMin: 50, kind: "t3", thread: null },
+  ]);
+});
+
+test("an unreadable T3 thread list is null, never an empty list, and the rest of the Fleet still answers", async () => {
+  const { port } = boot({ CONFIG_UI_T3_THREADS: t3Reader({}, 2) });
+  const b = await (await fleet(port)).json();
+  expect(b.t3Threads).toBeNull();
+  expect(b.census).toBe("ok");
+});

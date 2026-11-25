@@ -14,13 +14,26 @@ vi.mock('../client.js', () => ({
   projectKey: () => proj.key,
 }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
-// The chat stamp is read from a fake process tree, never this test runner's own ancestry. This mock
-// replaces vitest.setup.ts's, so it keeps that one's walk over an absent /proc.
 const ancestry = vi.hoisted(() => ({ procRoot: undefined as string | undefined }));
 vi.mock('../release/fence-ancestry.js', async (orig) => {
   const m = await orig<typeof import('../release/fence-ancestry.js')>();
-  const noProc = join(mkdtempSync(join(tmpdir(), 'jira-test-proc-')), 'absent');
-  const walk: typeof m.walk = (o = {}) => m.walk(o.procRoot === undefined && o.hostNsPath === undefined ? { ...o, procRoot: noProc } : o);
+  const procRoot = mkdtempSync(join(tmpdir(), 'jira-test-proc-'));
+  const uid = process.getuid?.() ?? 0;
+  for (const [pid, ppid, u] of [[300, 200, uid], [200, 1, uid], [1, 0, 0]] as const) {
+    mkdirSync(join(procRoot, String(pid), 'ns'), { recursive: true });
+    writeFileSync(join(procRoot, String(pid), 'status'), `Name:\tx\nPPid:\t${ppid}\nUid:\t${u}\t${u}\t${u}\t${u}\nNSpid:\t${pid}\n`);
+    if (pid !== 1) writeFileSync(join(procRoot, String(pid), 'environ'), 'PATH=/usr/bin\0');
+  }
+  writeFileSync(join(procRoot, '300', 'cmdline'), 'node\0vitest\0');
+  symlinkSync('pid:[4026531836]', join(procRoot, '300', 'ns', 'pid'));
+  symlinkSync('user:[4026531837]', join(procRoot, '300', 'ns', 'user'));
+  symlinkSync('300', join(procRoot, 'self'));
+  const hostNsPath = join(procRoot, 'host-ns');
+  writeFileSync(hostNsPath, 'pid:[4026531836] user:[4026531837]\n');
+  const walk: typeof m.walk = (o = {}) => {
+    const base: typeof o = o.procRoot === undefined && o.hostNsPath === undefined ? { ...o, procRoot, hostNsPath, platform: 'linux' } : o;
+    return m.walk({ ...base, execArgv: base.execArgv ?? [], env: base.env ?? {} });
+  };
   return { ...m, walk, ancestorValue: (name: string) => (ancestry.procRoot === undefined ? null : m.ancestorValue(name, { procRoot: ancestry.procRoot })) };
 });
 
@@ -47,6 +60,7 @@ beforeEach(async () => {
   vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
   // create posts to Jira; a loopback Jira is a stub, so the post door stays open.
   vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+  vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
   writeFileSync(join(baseRoot, 'verbatim.txt'), 'R1 = v1.1.3\n');
   const p = new Command();
   p.exitOverride();
@@ -2302,13 +2316,15 @@ describe.skipIf(process.platform !== 'linux')('create — post door (a test on t
   });
 
   it('refuses against a real Jira host and sends nothing', async () => {
-    vi.stubEnv('JIRA_BASE_URL', 'http://jira.invalid');
+    vi.stubEnv('JIRA_BASE_URL', 'https://jira.invalid');
+    vi.stubEnv('JIRA_ALLOW_HOST', 'jira.invalid');
     expect(await failure()).toMatch(/create: refused, nothing was posted/);
     expect(mockRequest).not.toHaveBeenCalled();
   });
 
   it('files against a loopback Jira', async () => {
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
     expect(await failure()).not.toMatch(/nothing was posted/);
     expect(mockRequest).toHaveBeenCalled();
   });

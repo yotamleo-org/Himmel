@@ -168,16 +168,25 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$work/jira.port" ] && break; sleep 0.5; 
 JPORT="$(head -n 1 "$work/jira.port")"
 [ -n "$JPORT" ] || { echo "FAIL smoke-bridge-sandbox: the fake Jira did not start"; exit 1; }
 
-# A fresh scratch release per spawn: declared with the engine on scratch state, behind a fence
-# that reads no /proc (this harness may run below a marked worker; the spawns never do).
 cat > "$work/declare.ts" <<'EOF'
 const [ck, stateDir, keyDir] = process.argv.slice(2);
 const { declare } = await import(`${ck}/scripts/jira/src/release/engine.ts`);
-const { mkdirSync } = await import("node:fs");
+const { mkdirSync, writeFileSync, symlinkSync } = await import("node:fs");
 const { join } = await import("node:path");
 mkdirSync(join(stateDir, "R9"), { recursive: true }); mkdirSync(keyDir, { recursive: true });
+const proc = join(stateDir, ".fence-proc");
+const uid = process.getuid?.() ?? 0;
+for (const [pid, ppid, u] of [[300, 200, uid], [200, 1, uid], [1, 0, 0]]) {
+  mkdirSync(join(proc, String(pid), "ns"), { recursive: true });
+  writeFileSync(join(proc, String(pid), "status"), `Name:\tx\nPPid:\t${ppid}\nUid:\t${u}\t${u}\t${u}\t${u}\nNSpid:\t${pid}\n`);
+  if (pid !== 1) writeFileSync(join(proc, String(pid), "environ"), "PATH=/usr/bin\0");
+}
+writeFileSync(join(proc, "300", "cmdline"), "bun\0declare.ts\0");
+symlinkSync("pid:[4026531836]", join(proc, "300", "ns", "pid")); symlinkSync("user:[4026531837]", join(proc, "300", "ns", "user"));
+symlinkSync("300", join(proc, "self"));
+writeFileSync(join(proc, "host-ns"), "pid:[4026531836] user:[4026531837]\n");
 const jira = new Proxy({}, { get: () => async () => { throw new Error("p1: no Jira"); } });
-declare({ release: "R9", dir: join(stateDir, "R9"), keyPath: join(keyDir, "R9.key"), env: {}, now: () => new Date(), jira, mirrorRoot: null, procRoot: join(stateDir, ".no-proc") },
+declare({ release: "R9", dir: join(stateDir, "R9"), keyPath: join(keyDir, "R9.key"), env: {}, now: () => new Date(), jira, mirrorRoot: null, procRoot: proc, hostNsPath: join(proc, "host-ns") },
   { project: "HIMMEL", versions: ["v9"], decision: "1", verbatim: "R9 = v9", mode: "observe" });
 EOF
 new_release() { # <name>: prints the state dir of a fresh declared R9 under the scratch handover root

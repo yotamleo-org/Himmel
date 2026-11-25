@@ -1,5 +1,6 @@
 import type { Judge, JudgeInput, RefuseDecision, RuledDecision, QueuedRequest } from './engine.js';
-import { operatorAsk, isSerious } from './operator-work.js';
+import { operatorAsk } from './operator-work.js';
+import { isResidual, placeByRules, type Placement, type Rule, type TicketIn } from './filing-rules.js';
 import { effectOn, terminalOf } from './reducer.js';
 import type { IssueSnap, Op, OperatorRow, RequestRow, RulingRow, Verb } from './types.js';
 
@@ -7,7 +8,6 @@ import type { IssueSnap, Op, OperatorRow, RequestRow, RulingRow, Verb } from './
 export type DoorResult = RuledDecision | RefuseDecision;
 
 type Decl = { current: string; versions: string[] };
-type Rule = 'Ch' | 'F' | 'A' | 'S' | 'W' | 'H' | 'M';
 interface Placed { rule: Rule; target: string | null; ground: string; reason: string }
 
 const idx = (decl: Decl, v: string | null): number => {
@@ -98,39 +98,65 @@ function ruleO(b: Base, rec: OperatorRow): DoorResult {
 }
 
 const PR_FIELDS = ['pr', 'pr_number', 'merged_pr'];
+const GATE_RULE = /label:gate-(critical|regression)$/;
 
-function place(b: Base, only?: Set<Rule>): Placed | null {
+function parentOf(b: Base): TicketIn['parent'] {
+  const { input, q } = b;
+  const required = input.required_parent?.[q.key];
+  const followed = ev(q).follow_up_of;
+  const key = required ?? (typeof followed === 'string' && followed ? followed : null);
+  return key ? { key, versions: heldOf(input, snapOf(input, key)), remainder: required === key } : null;
+}
+
+function ticketOf(b: Base): TicketIn {
   const { input, q, snap } = b;
   const e = ev(q);
   const C = input.current;
   const declared = (v: string | null): v is string => v !== null && input.versions.includes(v);
-  const try_ = (r: Rule) => !only || only.has(r);
   const chief = e.chief_placement as { reason?: unknown } | undefined;
-  if (try_('Ch') && chief && typeof chief === 'object') {
-    return { rule: 'Ch', target: q.to_v, ground: 'door:chief', reason: String(chief.reason ?? 'the chief placed it') };
+  const marked = typeof e.rule === 'string' && e.rule.includes('residual-label:');
+  const held = snap?.labels ?? [];
+  const labels = marked && !isResidual(held) ? [...held, 'residual-depth-0'] : held;
+  const gate = typeof e.rule === 'string' ? GATE_RULE.exec(e.rule)?.[1] : undefined;
+  return {
+    priority: snap?.priority ?? '', labels, type: snap?.type ?? '', statusCategory: snap?.statusCategory ?? null,
+    ask: operatorAsk({ labels, priority: snap?.priority ?? '', open: true, evidence: q.evidence })
+      ? { named: q.to_v, by: labels.includes('operator-directed') ? 'label' : 'pointer' } : null,
+    parent: parentOf(b),
+    chief: chief && typeof chief === 'object' ? { target: q.to_v, reason: String(chief.reason ?? 'the chief placed it') } : null,
+    finished: terminalOf(snap) !== null && PR_FIELDS.some((k) => e[k] !== undefined && e[k] !== null)
+      ? { target: declared(q.to_v) ? q.to_v : C, status: snap?.status ?? 'closed' } : null,
+    gate: gate === 'critical' || gate === 'regression' ? gate : null,
+  };
+}
+
+/** What `placeByRules` says for this INTAKE, before the door turns it into a ground. A missing `frozen` reads as frozen. */
+export function doorPlacement(input: JudgeInput, q: RequestRow, only?: ReadonlySet<Rule>): Placement | null {
+  const snap = snapOf(input, q.key);
+  return placeByRules(ticketOf({ input, q, snap, held: heldOf(input, snap) }), { current: input.current, versions: input.versions, frozen: input.frozen ?? true }, only);
+}
+
+function place(b: Base, only?: ReadonlySet<Rule>): Placed | null {
+  const { input, q } = b;
+  const p = doorPlacement(input, q, only);
+  if (!p) return null;
+  const C = input.current;
+  const prio = b.snap?.priority || 'no';
+  if (p.propose) {
+    return { rule: 'M', target: null, ground: 'door:mild', reason: `${prio} priority goes to the backlog; it proposes ${p.propose}, which only the chief or the operator's words place` };
   }
-  if (try_('F') && terminalOf(snap) !== null && PR_FIELDS.some((k) => e[k] !== undefined && e[k] !== null)) {
-    return { rule: 'F', target: declared(q.to_v) ? q.to_v : C, ground: 'door:done', reason: `${q.key} is ${snap?.status ?? 'closed'} with a merged PR` };
+  switch (p.rule) {
+    case 'Ch': return { rule: 'Ch', target: p.target, ground: 'door:chief', reason: p.reason };
+    case 'F': return { rule: 'F', target: p.target, ground: 'door:done', reason: `${q.key} is ${p.reason}` };
+    case 'A':
+      if (p.ask === 'default') return { rule: 'A', target: p.target, ground: 'door:operator-ask', reason: p.reason };
+      return { rule: 'A', target: p.target, ground: p.ask === 'undeclared' ? `door:operator-undeclared:${p.arg}` : `door:operator-ask:${p.arg}`, reason: p.reason };
+    case 'S': return { rule: 'S', target: p.target, ground: `door:rest-of:${p.arg}`, reason: p.reason };
+    case 'W': return { rule: 'W', target: p.target, ground: 'door:started', reason: `${q.key} is In Progress` };
+    case 'H': return { rule: 'H', target: p.target, ground: `door:serious:${p.arg}`, reason: p.reason };
+    case 'L': return { rule: 'L', target: p.target, ground: `door:label:${p.arg}`, reason: `${p.arg} places ${q.key} in ${C}` };
+    default: return { rule: 'M', target: null, ground: 'door:mild', reason: p.reason };
   }
-  if (try_('A') && operatorAsk({ labels: snap?.labels ?? [], priority: snap?.priority ?? '', open: true, evidence: q.evidence })) {
-    const named = q.to_v !== null && q.to_v !== C ? q.to_v : null;
-    if (named === null) return { rule: 'A', target: C, ground: 'door:operator-ask', reason: `an operator ask that names no version goes to ${C}` };
-    if (!declared(named)) return { rule: 'A', target: null, ground: `door:operator-undeclared:${named}`, reason: `the operator named ${named}, which the release does not declare` };
-    return { rule: 'A', target: named, ground: `door:operator-ask:${named}`, reason: `the operator named ${named}` };
-  }
-  const parent = input.required_parent?.[q.key];
-  const pv = parent ? parentVersion(input, parent) : null;
-  if (try_('S') && parent && pv) return { rule: 'S', target: pv, ground: `door:rest-of:${parent}`, reason: `the rest of ${parent}, which is in ${pv}` };
-  if (try_('W') && snap?.statusCategory === 'In Progress') return { rule: 'W', target: C, ground: 'door:started', reason: `${q.key} is In Progress` };
-  if (try_('H') && isSerious(snap?.priority ?? '')) return { rule: 'H', target: C, ground: `door:serious:${snap?.priority}`, reason: `${snap?.priority} priority goes to ${C}` };
-  if (try_('M')) {
-    const N = input.versions[input.versions.indexOf(C) + 1] ?? null;
-    const prio = snap?.priority || 'no';
-    return N
-      ? { rule: 'M', target: N, ground: 'door:mild', reason: `${prio} priority goes to the next version ${N}` }
-      : { rule: 'M', target: null, ground: 'door:mild-no-next', reason: `${prio} priority and no next version: the backlog` };
-  }
-  return null;
 }
 
 const TOWARD = new Set<Rule>(['Ch', 'F', 'A', 'S', 'W']);

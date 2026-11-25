@@ -9,7 +9,7 @@ const keys = [
 vi.mock('node:fs', async (importOriginal) => {
   const real = await importOriginal<typeof import('node:fs')>();
   const fixture = [
-    'JIRA_BASE_URL=https://fixture.invalid', 'JIRA_EMAIL=fixture@example.invalid',
+    'JIRA_BASE_URL=https://fixture.atlassian.net', 'JIRA_EMAIL=fixture@example.invalid',
     'JIRA_API_TOKEN=dummy', 'JIRA_PROJECT_KEY=FIXTURE', 'JIRA_SEVERITY_FIELD=customfield_1',
     'JIRA_BOARD_ID=42', 'CONFLUENCE_EMAIL=wiki@example.invalid', 'CONFLUENCE_API_TOKEN=dummy-wiki',
     'TEST_ANTHROPIC_API_KEY=dummy-test', 'UNRELATED_API_KEY=dummy-unrelated', 'HANDOVER_DIR=/dummy',
@@ -38,7 +38,7 @@ describe('dotenv allowlist', () => {
   it('consumer-keys-still-load: Jira and Confluence', async () => {
     const client = await import('./client.js');
     client.loadEnvFile('/fixture/.env');
-    expect(client.baseUrl()).toBe('https://fixture.invalid');
+    expect(client.baseUrl()).toBe('https://fixture.atlassian.net');
     expect(client.projectKey()).toBe('FIXTURE');
     expect(client.severityField()).toBe('customfield_1');
     expect(client.boardId()).toBe('42');

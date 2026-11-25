@@ -15,8 +15,18 @@
 #      unknown-lane or unlisted worker escalates) and this repo is not a registered adapter or
 #      adopted repo (scripts/guardrails/himmel-{adapters,adopted}.json; both files must be readable)
 #   2. live head: the PR is OPEN, headRefOid == <head>, and its base is the default branch
-#   3. ready-go.sh <pr> <head> prints READY-GO PASS (ready-check: head, CI, threads, CR-ledger ok row,
-#      trailers, ticket ids, coverage)
+#   3. the completion contract, then ready-go.sh <pr> <head> prints READY-GO PASS (ready-check: head,
+#      CI, threads, CR-ledger ok row, trailers, ticket ids, coverage). The contract is the brief's
+#      `Completes ticket:` line, the PR body's `completes-ticket:` line and the PR body's remainder
+#      (scripts/lib/pr_remainder.py for the title's [KEY]: a `Remaining:` or `owed ->` line is a
+#      remainder), judged in this order, the first match wins:
+#        - a body naming both yes and no, a body yes with a brief that says no or has no line, an
+#          unreadable remainder (no [KEY], no reader answer, an unreadable body) and a body yes
+#          that leaves a remainder all escalate here;
+#        - a body no over a brief yes, and a brief yes whose body leaves a remainder, are contract
+#          no: the GO carries no --jira-transition and its message says `contract no: <why>`;
+#        - no brief line and no body line is contract no, why `no contract on record`.
+#      A contract-no PR with no remainder then fails ready-go's item 17 and escalates here
 #   4. no hold: no key in the PR title carries held, operator-gated, operator-decision, operator or
 #      operator-present (read live from Jira); the chief doc's `## Live state` has no `merge-hold:`
 #      line naming the PR, a title key or `all`; the worker's brief has no `> **Merge:** chief`
@@ -47,6 +57,10 @@
 #      both passing; an unreadable graph or a refused go-check escalates
 #   8. not a fix-for-red and not a release cut: no commit carries a `Fixes-main-red:` line and the PR
 #      does not change the root VERSION file
+#   9. (before any write, a --dry-run included) the worker's token: the chief doc's Live state token
+#      when usable, else the first backticked value of the last `> **RETASK:**` line of its brief
+#      above `## Results`. A usable token has dash-joined parts (CJ-N1-b07851f7) and is not
+#      NONCE-UNKNOWN; with none, `ESCALATE auto-go 9`, so no GO message ever quotes a placeholder
 # A read that fails (gh, Jira, a file) is a refusal at its check, never a pass.
 #
 # The GO act (no --dry-run, every check passed), in this order:
@@ -57,8 +71,9 @@
 #      script, so a scripted GO is told apart from a chief's. Any refusal is `ESCALATE auto-go 9`
 #   c. the bus GO to the worker's live session, exactly as verdict-go.sh words it
 #      (`GO <pr> <head> - merge with: bash <merge-on-green.sh> [--jira-transition] --go <GO file>`,
-#      the flag only for a brief that says `Completes ticket: yes`), then `Your token `<nonce>``
-#      read from the chief doc's `## Live state`. The bus proves the sender is the chief
+#      the flag only for a contract-yes merge), a `contract no: <why>; merge without --jira-transition`
+#      line when the contract was downgraded, then `Your token `<nonce>`` (the token of check 9).
+#      The bus proves the sender is the chief
 #
 # Output, one line on stdout (the bus-failed form is two):
 #   WOULD-GO <pr> <head>                              exit 0  (--dry-run, every check passed)
@@ -267,9 +282,11 @@ add_check 1 pass
 # --- 2. live head ------------------------------------------------------------------------------------
 : > "$GH_ERR"
 DEFAULT_BRANCH=$("$GH_BIN" repo view "$NWO" --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>>"$GH_ERR") || DEFAULT_BRANCH=""  # swallow-ok: an empty value escalates at check 2 below
-VIEW=$("$GH_BIN" pr view "$PR" -R "$NWO" --json state,headRefOid,baseRefName,body 2>>"$GH_ERR") || VIEW=""  # swallow-ok: an empty value escalates at check 2 below
+VIEW=$("$GH_BIN" pr view "$PR" -R "$NWO" --json state,headRefOid,baseRefName,body,title 2>>"$GH_ERR") || VIEW=""  # swallow-ok: an empty value escalates at check 2 below
 FIELDS=$(jq -r '[.state, .headRefOid, .baseRefName] | @tsv' <<< "$VIEW" 2>/dev/null) || FIELDS=""  # swallow-ok: an empty value escalates at check 2 below
-PR_BODY=$(jq -r '.body // ""' <<< "$VIEW" 2>/dev/null) || PR_BODY=""  # swallow-ok: an unreadable body is no body value, so the brief's contract stands
+BODY_RC=0
+PR_BODY=$(jq -r '.body // ""' <<< "$VIEW" 2>/dev/null) || BODY_RC=1  # swallow-ok: BODY_RC fails check 3 as an unreadable remainder
+PR_VIEW_TITLE=$(jq -r '.title // ""' <<< "$VIEW" 2>/dev/null) || PR_VIEW_TITLE=""  # swallow-ok: an empty title has no [KEY], so check 3 reads the remainder as unreadable
 IFS=$'\t' read -r PR_STATE PR_HEAD PR_BASE <<< "$FIELDS"
 if [ -z "$DEFAULT_BRANCH" ] || [ -z "${PR_STATE:-}" ] || [ -z "${PR_HEAD:-}" ] || [ -z "${PR_BASE:-}" ]; then
     fail 2 "cannot read the PR or the default branch of $NWO (gh: $(gh_err_tail))"
@@ -280,10 +297,12 @@ fi
 add_check 2 pass
 
 # --- 3. ready-go.sh: the output the chief reads by hand ------------------------------------------------
-JT=""; CONTRACT=no
-BRIEF_YES_RC=0
+JT=""; CONTRACT=no; BRIEF=none
+BRIEF_YES_RC=0; BRIEF_NO_RC=0
 grep -qE '^> \*\*Completes ticket:\*\* yes([^A-Za-z0-9_-]|$)' "$WORKER_DOC" || BRIEF_YES_RC=$?
-[ "$BRIEF_YES_RC" -ne 0 ] || { JT=" --jira-transition"; CONTRACT=yes; }
+grep -qE '^> \*\*Completes ticket:\*\* no([^A-Za-z0-9_-]|$)' "$WORKER_DOC" || BRIEF_NO_RC=$?
+[ "$BRIEF_YES_RC" -ne 0 ] || { JT=" --jira-transition"; CONTRACT=yes; BRIEF=yes; }
+[ "$BRIEF" = yes ] || [ "$BRIEF_NO_RC" -ne 0 ] || BRIEF=no
 BODY_VALS=$(printf '%s\n' "$PR_BODY" | tr -d '\r' | awk '
     /^[ \t]{0,3}(```|~~~)/ {
         s = $0; sub(/^[ \t]+/, "", s); c = substr(s, 1, 1); n = 0
@@ -294,19 +313,54 @@ BODY_VALS=$(printf '%s\n' "$PR_BODY" | tr -d '\r' | awk '
     !fence && /^completes-ticket:[ \t]*(yes|no)[ \t]*$/ { v = $0; sub(/^completes-ticket:[ \t]*/, "", v); sub(/[ \t]*$/, "", v); seen[v] = 1 }
     END { for (v in seen) print v }' | sort -u | tr '\n' ' ')
 BODY_VAL=""
-case "$BODY_VALS" in "yes ") BODY_VAL=yes ;; "no ") BODY_VAL=no ;; esac
+case "$BODY_VALS" in "yes ") BODY_VAL=yes ;; "no ") BODY_VAL=no ;; "") ;; *) BODY_VAL=both ;; esac
+REM_KIND=""; REM_BAD=""
+if [ "$BODY_RC" -ne 0 ]; then
+    REM_BAD="the PR body cannot be read"
+else
+    REM_KEY=$( . "$HERE/../../lib/ticket-status.sh" >/dev/null 2>&1 || exit 3; ticket_key_from_title "$PR_VIEW_TITLE" ) || REM_KEY=""  # swallow-ok: no key is an unreadable remainder, failed below
+    if [ -z "$REM_KEY" ]; then
+        REM_BAD="no [KEY] in the PR title"
+    elif [ ! -f "$ANCHOR/scripts/lib/pr_remainder.py" ]; then
+        REM_BAD="the anchor has no scripts/lib/pr_remainder.py"
+    else
+        REM_RC=0
+        REM_ANS=$(printf '%s' "${PR_BODY//$'\r'/}" | python3 -I "$ANCHOR/scripts/lib/pr_remainder.py" "$REM_KEY" 2>/dev/null) || REM_RC=$?  # swallow-ok: a non-zero REM_RC is REM_BAD below
+        REM_KIND="${REM_ANS%%$'\t'*}"
+        case "$REM_KIND" in
+            none|remaining|handed-off|owed) [ "$REM_RC" -eq 0 ] || REM_BAD="pr_remainder.py exit $REM_RC" ;;
+            *) REM_BAD="pr_remainder.py gave no answer" ;;
+        esac
+    fi
+fi
+REM_YES=0
+case "$REM_KIND" in remaining|owed) REM_YES=1 ;; esac
 CONTRACT_WHY=""
-if [ "$BODY_VAL" = yes ] && [ "$CONTRACT" = no ]; then
-    fail 3 "the PR body says completes-ticket: yes, the brief says no: chief, set the brief's Completes ticket to yes and re-run auto-go"
+if [ "$BODY_VAL" = both ]; then
+    fail 3 "the PR body names both completes-ticket: yes and no"
+elif [ "$BODY_VAL" = yes ] && [ "$BRIEF" != yes ]; then
+    case "$BRIEF" in
+        no) BRIEF_SAYS="the brief says no" ;;
+        *) BRIEF_SAYS="the brief has no Completes ticket line" ;;
+    esac
+    fail 3 "the PR body says completes-ticket: yes, $BRIEF_SAYS: chief, set the brief's Completes ticket to yes and re-run auto-go"
+elif [ -n "$REM_BAD" ]; then
+    fail 3 "remainder unreadable: $REM_BAD"
+elif [ "$BODY_VAL" = yes ] && [ "$REM_YES" -eq 1 ]; then
+    fail 3 "the PR body says completes-ticket: yes but leaves a remainder ($REM_KIND)"
 elif [ "$BODY_VAL" = no ] && [ "$CONTRACT" = yes ]; then
     JT=""; CONTRACT=no; CONTRACT_WHY="contract no from the PR body, brief says yes"
+elif [ "$CONTRACT" = yes ] && [ "$REM_YES" -eq 1 ]; then
+    JT=""; CONTRACT=no; CONTRACT_WHY="the PR body leaves a remainder ($REM_KIND)"
+elif [ "$BRIEF" = none ] && [ -z "$BODY_VAL" ]; then
+    CONTRACT_WHY="no contract on record"
 fi
 RG_RC=0
 RG=$(bash "$HERE/ready-go.sh" --contract "$CONTRACT" "$PR" "$SHA" 2>&1) || RG_RC=$?
 if [ "$RG_RC" -ne 0 ] || ! printf '%s\n' "$RG" | grep -qx 'READY-GO PASS'; then
     RG_WHY=$(printf '%s\n' "$RG" | grep -m1 -E '^\[FAIL\]|^TRUST: refused') || RG_WHY=""
     [ -n "$RG_WHY" ] || RG_WHY=$(printf '%s\n' "$RG" | tail -n 1)
-    fail 3 "ready-go.sh exit $RG_RC: $RG_WHY"
+    fail 3 "ready-go.sh exit $RG_RC: $RG_WHY${CONTRACT_WHY:+ (contract no: $CONTRACT_WHY)}"
 fi
 add_check 3 pass "$CONTRACT_WHY"
 
@@ -569,6 +623,25 @@ if printf '%s\n' "$MSGS" | tr -d '\r' | grep -q '^Fixes-main-red:'; then
 fi
 add_check 8 pass
 
+# shellcheck disable=SC2016  # the backticks are the Live state entry's literal markers
+live_token() { # <key>: the RETASK token of $WORKER from the chief doc's ## Live state <key>: block, only when listed once
+    awk -v k="$1" '
+        $0 == "## Live state" { s = 1; next }
+        s && /^## / { exit }
+        s && index($0, k ":") == 1 { b = 1; print; next }
+        b && (/^[[:space:]]*$/ || /^[0-9]+\. / || /^[A-Za-z][A-Za-z ]*:/ || /^[-*+>#]/) { b = 0 }
+        b { print }
+    ' "$DOC" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`' | tr -d '`' \
+        | awk -F: -v l="$WORKER" '$1 == l { print $2; n++ } END { exit n != 1 }'
+}
+token_usable() { [[ "$1" =~ ^[A-Za-z0-9]+(-[A-Za-z0-9._]+)+$ ]] && [ "$1" != NONCE-UNKNOWN ]; }
+# shellcheck disable=SC2016  # the backticks are the RETASK line's literal markers
+brief_token() { awk '/^## Results/ { exit } /^> \*\*RETASK:\*\*/ { l = $0 } END { print l }' "$WORKER_DOC" | grep -oE '`[^`]*`' | head -n 1 | tr -d '`'; }
+TOKEN=$(live_token workers) || TOKEN=""  # swallow-ok: no live token falls to the legacy block and the brief below
+if ! token_usable "$TOKEN" && legacy_names_on; then TOKEN=$(live_token legs) || TOKEN=""; fi  # swallow-ok: as above
+if ! token_usable "$TOKEN"; then TOKEN=$(brief_token) || TOKEN=""; fi  # swallow-ok: no brief token fails check 9 below
+token_usable "$TOKEN" || fail 9 "no usable RETASK token for $WORKER in the chief doc's Live state or its brief"
+
 if [ "$DRY" -eq 1 ]; then
     write_audit would-go || { echo "auto-go: cannot write the audit row to $AUDIT - no answer given" >&2; exit 1; }
     printf 'WOULD-GO %s %s\n' "$PR" "$SHA"
@@ -625,28 +698,14 @@ esac
 A_GOFILE="$GO_FILE"
 
 # c. the bus GO to the worker's session, exactly as verdict-go.sh words it, with the worker's token
-# shellcheck disable=SC2016  # the backticks are the Live state entry's literal markers
-live_token() { # <key>: the RETASK token of $WORKER from the chief doc's ## Live state <key>: block, only when listed once
-    awk -v k="$1" '
-        $0 == "## Live state" { s = 1; next }
-        s && /^## / { exit }
-        s && index($0, k ":") == 1 { b = 1; print; next }
-        b && (/^[[:space:]]*$/ || /^[0-9]+\. / || /^[A-Za-z][A-Za-z ]*:/ || /^[-*+>#]/) { b = 0 }
-        b { print }
-    ' "$DOC" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`' | tr -d '`' \
-        | awk -F: -v l="$WORKER" '$1 == l { print $2; n++ } END { exit n != 1 }'
-}
-TOKEN=$(live_token workers) || TOKEN=""  # swallow-ok: no token is reported as a failed bus send below, the GO file stands
-if [ -z "$TOKEN" ] && legacy_names_on; then TOKEN=$(live_token legs) || TOKEN=""; fi  # swallow-ok: as above
 MSG=$(printf 'GO %s %s - merge with: bash %q%s --go %q' "$PR" "$SHA" "$ANCHOR/scripts/handover/merge-on-green.sh" "$JT" "$GO_FILE")
-[ -z "$TOKEN" ] || MSG="$MSG"$'\n'"Your token \`$TOKEN\`."
+[ -z "$CONTRACT_WHY" ] || MSG="$MSG"$'\n'"contract no: $CONTRACT_WHY; merge without --jira-transition"
+MSG="$MSG"$'\n'"Your token \`$TOKEN\`."
 # shellcheck source=scripts/lib/worker-identity.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/worker-identity.sh" 2>/dev/null || true  # swallow-ok: an unloadable lib leaves no session candidates, reported as a failed bus send below
 SESSION=""; BUS_ERR=""; BUS_REF=""
-if [ -z "$TOKEN" ]; then
-    BUS_ERR="no token for $WORKER in the chief doc's ## Live state"
-elif ! declare -F worker_identity >/dev/null 2>&1; then
+if ! declare -F worker_identity >/dev/null 2>&1; then
     BUS_ERR="cannot load scripts/lib/worker-identity.sh"
 else
     IDENT=$(worker_identity "$WORKER_DOC"); CANDS=",${IDENT#*$'\t'},"

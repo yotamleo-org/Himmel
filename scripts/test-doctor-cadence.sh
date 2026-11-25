@@ -518,6 +518,9 @@ cat > "$HOLDS_PY" <<'PY'
 import os, sys, time
 repo = sys.argv[sys.argv.index('--repo') + 1]
 if sys.argv[1] == 'repo-gone':
+    if os.environ.get('GC_STUB_PROBE_LOG'):
+        open(os.environ['GC_STUB_PROBE_LOG'], 'a').write('probe %s\n' % repo)
+    time.sleep(float(os.environ.get('GC_STUB_PROBE_SLEEP', '0')))
     sys.exit(1 if os.path.lexists(repo) else 0)
 log = os.environ['GC_STUB_LOG']
 open(log, 'a').write('gc %s\n' % repo)
@@ -539,6 +542,15 @@ GC_LOG="$W/gc.log"; export GC_STUB_LOG="$GC_LOG"
 gc_reset() { rm -rf "$HREG" "$STATE"; : > "$GC_LOG"; mkdir -p "$HREG"; }
 gc_reg() { local r; for r in "$@"; do mkdir -p "$r" "$HREG/$(esc_w "$r")"; done; }
 gc_calls() { grep -c '^gc ' "$GC_LOG" || true; }
+age_files() {
+    local s="$1"; shift
+    python3 -I -c 'import os, sys, time
+t = time.time() - int(sys.argv[1])
+for f in sys.argv[2:]:
+    os.utime(f, (t, t))
+    if os.path.getmtime(f) > t + 60:
+        sys.exit("back-dating did not take: " + f)' "$s" "$@" || fail "back-dating $* by $s s took"
+}
 doctor_out "" ""
 
 gc_reset; gc_reg "$W/hr-live" "$W/hr-live2" "$P"; mkdir -p "$HREG/$(esc_w "$W/hr-gone")"
@@ -619,6 +631,12 @@ gc_reset; gc_reg "$P"
 GC_STUB_MODE=partial DOCTORCAD_HOLDS_GC_PASSES=2 DOCTORCAD_HOLDS_GC_BUDGET=08 run_cad_ok "a run whose budget is 08"
 check "a budget of 08 does not abort the pass: the register gets its passes" 2 "$(gc_calls)"
 case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=1 served=1 starved=0 partial=1 failed=0 passes=2") pass "a budget of 08 still ends in the run summary" ;; *) fail "a budget of 08 still ends in the run summary ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
+gc_reset; gc_reg "$W/hr-live" "$W/hr-live2" "$W/hr-live3" "$P"
+PROBE_LOG="$W/probe.log"; : > "$PROBE_LOG"
+GC_STUB_PROBE_LOG="$PROBE_LOG" GC_STUB_PROBE_SLEEP=1.2 DOCTORCAD_HOLDS_GC_BUDGET=1 run_cad_ok "a run whose repo-gone probes outlast the budget"
+check "no repo-gone probe starts once the budget is spent (the first probe used it)" 1 "$(grep -c '^probe ' "$PROBE_LOG" || true)"
+check "the first pass still runs when the probes used the budget" 1 "$(gc_calls)"
+check "a register the budget left unprobed is not called gone" 0 "$(grep -c 'the repo is gone' "$STATE/holds-gc.log" || true)"
 gc_reset; gc_reg "$P"
 GC_STUB_MODE=fail run_cad_ok "a run whose gc fails"
 check "a failing gc never fails the run: the doctor still ran" "gc $P
@@ -676,7 +694,7 @@ PY
     gc_reset; HPROG="$W/hr-prog"; gc_reg "$HPROG"; git -C "$HPROG" init -q
     for i in 1 2 3 4 5 6; do printf 'PROJ-970%s\tlab\t\tpr\t700%s\n' "$i" "$i" > "$HREG/$(esc_w "$HPROG")/scripts%2Fa$i.sh"; done
     for i in 1 2; do printf 'PROJ-979%s\tlab\t\tpr\t800%s\n' "$i" "$i" > "$HREG/$(esc_w "$HPROG")/scripts%2Fz$i.sh"; done
-    find "$HREG/$(esc_w "$HPROG")" -type f -exec touch -d '2 hours ago' {} +
+    age_files 7200 "$HREG/$(esc_w "$HPROG")"/*
     runs=0
     while [ "$runs" -lt 8 ] && [ -e "$HREG/$(esc_w "$HPROG")/scripts%2Fz2.sh" ]; do
         HOLDS_GH="$W/gh-prog" DOCTORCAD_HOLDS_GC_PASSES=1 run_cad; runs=$((runs + 1))
@@ -708,10 +726,10 @@ PY
     printf '# resume\n- 10:00 WRAPPED — done\n' > "$HAGEH/u/r/PROJ-9812-N1-RESUME.md"
     printf '# resume\n- 10:00 PARKED-BANK stopped for takeover\n' > "$HAGEH/u/r/PROJ-9813-N1-RESUME.md"
     printf '# resume\n- 10:00 PARKED-BANK stopped for takeover\n' > "$HAGEH/u/r/PROJ-9814-N1-RESUME.md"
-    touch -d '30 hours ago' "$HAGEH/u/r/PROJ-9811-N1-RESUME.md" "$HAGEH/u/r/PROJ-9812-N1-RESUME.md" "$HAGEH/u/r/PROJ-9814-N1-RESUME.md"
+    age_files 108000 "$HAGEH/u/r/PROJ-9811-N1-RESUME.md" "$HAGEH/u/r/PROJ-9812-N1-RESUME.md" "$HAGEH/u/r/PROJ-9814-N1-RESUME.md"
     for i in 1 2 3; do printf 'PROJ-981%s\tlab\t%s\tbrief\t\n' "$i" "$HAGEH/u/r/PROJ-981$i-N1-RESUME.md" > "$HREG/$(esc_w "$HAGE")/scripts%2Fag$i.sh"; done
     printf 'PROJ-9814\tlab\t%s\tbrief\t\n' "$HAGEH/u/r/PROJ-9814-N1-RESUME.md" > "$HREG/$(esc_w "$HAGE2")/scripts%2Fag4.sh"
-    find "$HREG" -type f -exec touch -d '2 hours ago' {} +
+    age_files 7200 "$HREG"/*/*
     agr() { [ -e "$HREG/$(esc_w "$1")/scripts%2F$2.sh" ] && echo row || echo none; }
     HANDOVER_DIR="$HAGEH" HOLDS_QUEUE_LOCK="$W/ql-none" run_cad_ok "a run over registers with parked workers"
     check "a scheduled pass keeps a row whose only sign of death is an unwrapped RESUME doc past 24 hours" row "$(agr "$HAGE" ag1)"

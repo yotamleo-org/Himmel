@@ -468,6 +468,12 @@ rc=$?
 if [ "$rc" -eq 4 ]; then pass "genuine conflict is rc=4"; else fail "conflict case — expected rc=4 got $rc: $out"; fi
 assert_contains "$out" "CONFLICTED" "reports the rebase as conflicted"
 assert_contains "$out" "NEWFILE.md" "names the conflicting path"
+assert_contains "$out" "FORK-REBASE step" "a conflicted rebase hands the drift fix a fork-rebase step"
+assert_contains "$out" "git -C" "the fork-rebase step names the command that replays the carried commits"
+case "$out" in
+  *"human must"*|*"defer"*|*"ticket"*) fail "a conflicted rebase still reads as a deferral: $out" ;;
+  *) pass "a conflicted rebase never reads as a deferral or a ticket" ;;
+esac
 rm -rf "$root"
 
 echo "[test-resync-fork] --dry-run writes nothing and pushes nothing"
@@ -613,6 +619,11 @@ out=$(run_sync "$root" yotamleo-org/fake 2>&1); rc=$?
 if [ "$rc" -eq 4 ]; then pass "--sync conflict stops (rc=4)"; else fail "--sync conflict: rc=$rc; $out"; fi
 assert_contains "$out" "CONFLICTED" "--sync conflict is reported"
 assert_contains "$out" "a.txt" "--sync conflict names the path"
+assert_contains "$out" "FORK-REBASE step" "--sync conflict hands the drift fix a fork-rebase step"
+case "$out" in
+  *"by hand"*|*"defer"*|*"ticket"*) fail "--sync conflict still reads as a deferral: $out" ;;
+  *) pass "--sync conflict never reads as a deferral or a ticket" ;;
+esac
 if [ "$(git -C "$root/git/yotamleo-org/fake.git" rev-parse himmel-main)" = "$old_tip" ]; then
   pass "--sync conflict pushes nothing"
 else

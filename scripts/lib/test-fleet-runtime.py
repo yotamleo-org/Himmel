@@ -1615,12 +1615,15 @@ exit 1''')
                 self.assertEqual(first[name], runtime.worker_state(str(doc)), name)
 
     # The explicit settle verb: a committed or unknown attempt whose launcher is gone and which never showed a session.
-    def settle(self, aid='one', doc=None, ok=True, name=None, reason='the launcher is gone and nothing started', confirm=True):
+    def settle(self, aid='one', doc=None, ok=True, name=None, reason='the launcher is gone and nothing started', confirm=True,
+               damaged=False, extra=()):
         target = doc or self.doc
         argv = ['runtime', 'settle', '--doc', target, '--manifest', self.m, '--name', name or Path(target).stem,
-                '--attempt-id', aid, '--reason', reason]
+                '--attempt-id', aid, '--reason', reason, *extra]
         if confirm:
             argv.append('--confirm-no-session')
+        if damaged:
+            argv.append('--owner-record-damaged')
         return self.call(*argv, ok=ok)
 
     def refused_settle(self, text, **kwargs):
@@ -1862,6 +1865,7 @@ exit 1''')
         self.assertTrue(guards, 'the one call site is the settle verb\'s own branch (not ack, reconcile or any other op)')
         pattern = re.compile(r'''(?:\bruntime|fleet_runtime\.py)["']?\s+["']?settle\b''')
         allowed = {ENTRYPOINTS / 'scripts/lib/fleet_runtime.py', ENTRYPOINTS / 'scripts/lib/test-fleet-runtime.py'}
+        printers = {ENTRYPOINTS / 'scripts/himmel-doctor.sh', ENTRYPOINTS / 'scripts/test-himmel-doctor-c.sh'}
         callers, hints = [], []
         # Sources only: the files git lists (tracked, or untracked and not ignored). A compiled or cached file that a run writes into the tree is ignored, so it is never read.
         listed = subprocess.run(['git', '-C', str(ENTRYPOINTS), 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', 'scripts', 'marketplace', 'plugins'],
@@ -1874,7 +1878,7 @@ exit 1''')
                 text = path.read_text(errors='ignore')
             except OSError:
                 continue
-            if 'settle_hint' in text:
+            if 'settle_hint' in text and path not in printers:
                 hints.append(str(path))
             for number, line in enumerate(text.splitlines(), 1):
                 if pattern.search(line) and not (path.name == 'fleet-manifest.sh' and line.lstrip().startswith('#')):
@@ -2504,6 +2508,262 @@ exit 1''')
         self.assertFalse(slot.exists())
         self.rt('ack', aid='two')
         self.assertEqual(row_attempts(), [])
+
+    def dead_pid(self):
+        child = subprocess.Popen(['true'])
+        child.wait()
+        return child.pid
+
+    def partial(self, pid, **fields):
+        record = {'host': socket.gethostname(), 'boot': Path('/proc/sys/kernel/random/boot_id').read_text().strip(), 'pid': pid}
+        record.update(fields)
+        return record
+
+    def damage(self, aid='one', **records):
+        anchor = self.bucket / 'fleet-control.json'
+        data = json.loads(anchor.read_text())
+        data['attempts'][aid].update(records)
+        anchor.write_text(json.dumps(data))
+
+    def two_damaged(self):
+        self.active()
+        two = self.extra_doc(2)
+        self.stuck()
+        self.stuck('two', two)
+        dead = self.dead_pid()
+        for aid in ('one', 'two'):
+            self.damage(aid, owner=self.partial(dead), committer=self.partial(dead))
+        return two
+
+    def settled_rows(self, aid='one'):
+        return [row for row in self.history_rows(aid) if row['outcome'] == 'refused']
+
+    def test_cap_of_two_held_by_two_damaged_owner_records_is_freed_by_settle_with_the_flag(self):
+        two = self.two_damaged()
+        three = self.extra_doc(3)
+        self.rt('begin', aid='three', doc=three)
+        self.rt('commit', aid='three', doc=three, ok=False)
+        hint = json.loads(self.rt('ack').stdout)['unknown']
+        self.assertEqual(sorted(r['attempt_id'] for r in hint), ['one', 'two'])
+        text = hint[0]['settle_hint']['text']
+        self.assertIn('--owner-record-damaged', text)
+        result = json.loads(self.settle(damaged=True).stdout)
+        self.assertEqual((result['phase'], result['cause']), ('refused', 'settled-damaged-owner'))
+        self.assertNotIn('one', self.anchor_attempts())
+        self.assertEqual(self.anchor_attempts()['two']['phase'], 'unknown')
+        self.rt('begin', aid='four', doc=self.extra_doc(4))
+        self.rt('commit', aid='four', doc=self.bucket / 'TEST-4-N4-worker.md')
+        rows = self.settled_rows()
+        self.assertEqual(len(rows), 1, 'one ledger row')
+        self.assertEqual((rows[0]['cause'], rows[0]['evidence']['owner'], rows[0]['evidence']['committer']), ('settled-damaged-owner', 'damaged', 'damaged'))
+        self.assertEqual(self.settled_rows('two'), [])
+
+    def test_a_damaged_attempt_is_refused_without_the_flag_and_the_refusal_names_it(self):
+        self.two_damaged()
+        p = self.refused_settle('--owner-record-damaged')
+        self.assertIn('not proven dead', p.stderr)
+        self.assertEqual(self.settled_rows(), [])
+        self.assertIn('one', self.anchor_attempts())
+
+    def test_the_flag_never_waives_a_well_formed_remote_owner(self):
+        self.active()
+        self.stuck()
+        self.forge(host='another-host')
+        self.refused_settle('no identity record is damaged', damaged=True)
+        self.assertEqual(self.settled_rows(), [])
+        self.assertIn('one', self.anchor_attempts())
+
+    def test_a_damaged_owner_whose_pid_is_alive_is_refused_even_with_the_flag(self):
+        self.active()
+        self.stuck()
+        self.damage(owner=self.partial(os.getpid()), committer=self.partial(self.dead_pid()))
+        self.refused_settle('is alive', damaged=True)
+        self.assertEqual(self.settled_rows(), [])
+
+    def test_a_damaged_owner_beside_a_live_well_formed_committer_is_refused_naming_the_committer(self):
+        self.active()
+        self.stuck()
+        self.damage(owner=self.partial(self.dead_pid()))
+        self.refused_settle('committer is not proven dead', damaged=True)
+        self.assertIn('one', self.anchor_attempts())
+
+    def test_an_owner_that_is_none_or_has_no_host_is_listed_without_a_traceback_and_not_provably_sessionless(self):
+        self.active()
+        self.stuck()
+        for owner in (None, {'boot': 'x', 'pid': self.dead_pid(), 'start': '0'}):
+            self.damage(owner=owner, committer=self.partial(self.dead_pid()))
+            p = self.rt('ack')
+            self.assertNotIn('Traceback', p.stderr)
+            self.assertEqual([r['attempt_id'] for r in json.loads(p.stdout)['unknown']], ['one'])
+            self.refused_settle('a session may exist', damaged=True)
+            self.assertIn('one', self.anchor_attempts())
+
+    def test_the_flag_still_refuses_on_a_session_a_launched_attempt_and_a_settled_id(self):
+        self.active()
+        self.stuck()
+        self.damage(owner=self.partial(self.dead_pid()), committer=self.partial(self.dead_pid()))
+        session = self.named_session(attempt_id='one')
+        self.refused_settle('session', damaged=True)
+        self.stop(session)
+        two = self.extra_doc(2)
+        self.stuck('two', two)
+        self.rt('outcome', aid='two', doc=two, extra=('--phase', 'launched'))
+        self.damage('two', owner=self.partial(self.dead_pid()))
+        self.refused_settle('phase', aid='two', doc=two, damaged=True)
+        three = self.extra_doc(3)
+        self.rt('begin', aid='three', doc=three)
+        self.rt('outcome', aid='three', doc=three, extra=('--phase', 'refused'))
+        self.refused_settle('unknown attempt', aid='three', doc=three, damaged=True)
+        self.assertEqual(json.loads(self.settle(damaged=True).stdout)['cause'], 'settled-damaged-owner')
+        replay = json.loads(self.settle(damaged=True).stdout)
+        self.assertTrue(replay['replayed'])
+        self.assertEqual(len(self.settled_rows()), 1)
+
+    def test_a_list_a_repeated_id_an_age_selection_and_no_reason_are_each_refused_with_no_row(self):
+        self.active()
+        self.stuck()
+        self.damage(owner=self.partial(self.dead_pid()), committer=self.partial(self.dead_pid()))
+        self.settle('one,two', ok=False, damaged=True)
+        self.settle('nope', ok=False, damaged=True, extra=('--attempt-id', 'one'))
+        self.settle('nope', ok=False, damaged=True, extra=('--attempt', 'one'))
+        self.settle('nope', ok=False, damaged=True, extra=('--attempt-i=one',))
+        self.settle(ok=False, damaged=True, extra=('--older-than', '1h'))
+        self.refused_settle('--reason', reason='', damaged=True)
+        self.refused_settle('own words', reason='<why>', damaged=True)
+        self.assertEqual(self.settled_rows(), [])
+        self.assertIn('one', self.anchor_attempts())
+
+    def tree_digest(self):
+        import hashlib
+        digest = hashlib.sha256()
+        for path in sorted(p for p in self.bucket.rglob('*') if p.is_file() and not p.name.endswith('.lock')
+                           and p.name not in ('entrypoints.jsonl', 'preexisting-pids')):
+            digest.update(str(path.relative_to(self.bucket)).encode() + path.read_bytes())
+        return digest.hexdigest()
+
+    def test_a_launched_attempt_whose_doc_path_holds_a_nul_byte_is_listed_by_ack_with_no_traceback(self):
+        self.active()
+        self.stuck()
+        self.rt('outcome', extra=('--phase', 'launched'))
+        self.damage(doc=str(self.doc) + '\x00', owner=self.partial(self.dead_pid()))
+        for extra in ((), ('--read-only',)):
+            p = self.rt('ack', extra=extra)
+            self.assertNotIn('Traceback', p.stderr)
+            self.assertEqual([r['attempt_id'] for r in json.loads(p.stdout)['launched']], ['one'])
+
+    def end(self, aid='one', reason='damaged-doc', ok=True, extra=()):
+        return self.call('attempt', 'end', self.m, '--attempt-id', aid, '--reason', reason, *extra, ok=ok)
+
+    def refused_end(self, text, **kwargs):
+        p = self.end(ok=False, **kwargs)
+        self.assertIn('end refused', p.stderr)
+        self.assertIn(text, p.stderr)
+        return p
+
+    def ended_rows(self, aid='one'):
+        return [row for row in self.history_rows(aid) if row.get('cause') == 'ended-by-id']
+
+    def launched(self, aid='one', doc=None, dead=True):
+        self.stuck(aid, doc)
+        self.rt('outcome', aid=aid, doc=doc, extra=('--phase', 'launched'))
+        if dead:
+            self.forge(aid, start='0')
+
+    def test_a_launched_attempt_whose_doc_path_holds_a_nul_byte_is_released_by_its_attempt_id(self):
+        self.active()
+        self.launched()
+        self.damage(doc=str(self.doc) + '\x00')
+        self.assertEqual(json.loads(self.end().stdout), {'phase': 'refused', 'cause': 'ended-by-id'})
+        self.assertNotIn('one', self.anchor_attempts())
+        rows = self.ended_rows()
+        self.assertEqual((len(rows), rows[0]['outcome'], rows[0]['reason']), (1, 'refused', 'damaged-doc'))
+        self.assertEqual(json.loads(self.rt('ack').stdout)['launched'], [])
+        manifest = json.loads(self.m.read_text())
+        self.assertEqual([w for w in manifest['workers'] if w.get('attempt', {}).get('attempt_id') == 'one'], [])
+
+    def test_ending_one_attempt_by_id_touches_no_other_attempt(self):
+        self.active()
+        self.launched()
+        two = self.extra_doc(2)
+        self.launched('two', two)
+        before = self.anchor_attempts()['two']
+        self.end()
+        self.assertEqual(self.anchor_attempts()['two'], before)
+        self.assertEqual(self.ended_rows('two'), [])
+
+    def test_ending_refuses_an_id_that_is_not_found(self):
+        self.active()
+        self.stuck()
+        self.rt('outcome', extra=('--phase', 'launched'))
+        self.refused_end('unknown attempt', aid='nope')
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'launched')
+        self.assertEqual(self.ended_rows(), [])
+
+    def test_ending_refuses_an_attempt_that_is_not_launched(self):
+        self.active()
+        self.stuck()
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'committed')
+        self.refused_end('committed')
+        self.assertIn('one', self.anchor_attempts())
+        self.assertEqual(self.ended_rows(), [])
+
+    def test_an_attempt_whose_owner_is_alive_is_refused(self):
+        self.active()
+        self.launched(dead=False)
+        self.refused_end('owner is not proven dead')
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'launched')
+        self.assertEqual(self.ended_rows(), [])
+
+    def test_an_attempt_with_a_live_session_is_refused(self):
+        self.active()
+        self.launched()
+        session = self.named_session(attempt_id='one')
+        self.refused_end('session')
+        self.stop(session)
+        self.assertIn('one', self.anchor_attempts())
+        self.assertEqual(self.ended_rows(), [])
+
+    def test_an_attempt_recorded_under_another_manifest_is_refused(self):
+        self.active()
+        self.launched()
+        other = self.bucket / 'other.fleet.json'
+        shutil.copy(self.m, other)
+        p = self.call('attempt', 'end', other, '--attempt-id', 'one', '--reason', 'damaged-doc', ok=False)
+        self.assertIn('end refused', p.stderr)
+        self.assertIn('another manifest', p.stderr)
+        self.assertIn('one', self.anchor_attempts())
+        self.assertEqual(self.ended_rows(), [])
+
+    def test_a_second_end_of_the_same_id_is_refused_and_writes_no_second_row(self):
+        self.active()
+        self.launched()
+        self.end()
+        self.refused_end('already ended')
+        self.assertEqual(len(self.ended_rows()), 1)
+
+    def test_ending_needs_one_id_and_a_one_word_reason(self):
+        self.active()
+        self.stuck()
+        self.rt('outcome', extra=('--phase', 'launched'))
+        self.refused_end('--reason', reason='')
+        self.refused_end('--reason', reason='two words')
+        self.end('one,two', ok=False)
+        self.end(ok=False, extra=('--attempt-id', 'one'))
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'launched')
+        self.assertEqual(self.ended_rows(), [])
+
+    def test_ack_read_only_writes_nothing_where_plain_ack_rewrites_the_control_record(self):
+        self.active()
+        self.stuck()
+        self.forge(start='0')
+        before = self.tree_digest()
+        listed = json.loads(self.rt('ack', extra=('--read-only',)).stdout)
+        self.assertEqual([r['attempt_id'] for r in listed['unknown']], ['one'])
+        self.assertEqual(self.tree_digest(), before, 'ack --read-only changed state')
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'committed')
+        self.rt('ack')
+        self.assertNotEqual(self.tree_digest(), before, 'control: plain ack demotes the attempt, so it must change state')
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'unknown')
 
 
 if __name__ == '__main__':

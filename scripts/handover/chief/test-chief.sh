@@ -2603,7 +2603,7 @@ check "77 no predecessor manifest: step 10 names the successor's own manifest pa
     "$(manifest_lines77 "$man77C" "$doc77C")" "1/1/2"
 printf '{"schema":1,"workers":["/x/worker.md"]}\n' > "$man77A"
 chief next --bucket fleet77dst --doc "$doc77A" >/dev/null 2>&1
-check "77 manifest is copied to the successor's stem" "$(cat "$man77B" 2>/dev/null)" '{"schema":1,"workers":["/x/worker.md"]}'
+check "77 manifest is copied to the successor's stem" "$(jq -c 'del(.carried_from, .carried_at)' "$man77B" 2>/dev/null)" '{"schema":1,"workers":["/x/worker.md"]}'
 check "77 the predecessor's manifest is left in place (copy, not rename)" "$([ -f "$man77A" ] && echo yes)" "yes"
 check "77 successor step 10 names the carried manifest path (arm command and Your manifest line)" "$(manifest_lines77 "$man77B" "$doc77B")" "1/1/2"
 check "77 no unrendered {{FLEET_MANIFEST}} left in the successor doc" "$(grep -Fc '{{FLEET_MANIFEST' "$doc77B" 2>/dev/null)" "0"
@@ -3383,6 +3383,10 @@ check "90 the block tells the successor to verify, not re-run" "$(printf '%s\n' 
 check "90 the block carries every probe but C29" "$(printf '%s\n' "$block90" | grep -cE '^== (LOCKS|HEAD|BANK|PROCS|LOAD|LOCK)( |$)')" "6"
 check "90 the block omits C29 (the successor runs it)" "$(printf '%s\n' "$block90" | grep -c '^== C29')" "0"
 check "90 the block names the successor's C29 call" "$(printf '%s\n' "$block90" | grep -c 'himmel-doctor.sh\" --only C29')" "1"
+check "90 the block no longer batches the two startup calls" "$(printf '%s\n' "$block90" | grep -c 'same batch as step 8\|one call each')" "0"
+check "90 the block runs each startup call as its own call after the parallel reads" \
+    "$(printf '%s\n' "$block90" | grep -c 'after the parallel reads.*its own call alone in its turn')" "1"
+check "90 the block keeps both calls out of the step 1 and step 8 batch" "$(printf '%s\n' "$block90" | grep -c 'never inside the step 1 or step 8 batch')" "1"
 check "90 the block carries the bank result" "$(printf '%s\n' "$block90" | grep -c '^bank ok 9%$')" "1"
 check "90 the block reads the successor's lock as free" "$(printf '%s\n' "$block90" | sed -n '/^== LOCK (this document)/,$p' | grep -cx 'free')" "1"
 check "90 the block omits the DOC digest" "$(printf '%s\n' "$block90" | grep -c '^== DOC')" "0"
@@ -3573,13 +3577,23 @@ for _b in rif9846 noledger9846; do
     mkdir -p "$root/tester/$_b/specs/decisions"
     for _n in 901 902 904; do printf 'OPERATOR words of %s.\n' "$_n" > "$root/tester/$_b/specs/decisions/verbatim-decision-$_n-x.txt"; done
 done
-bash "$rif" record --bucket "$root/tester/rif9846" --id 901 --status in-force --date 2026-11-11 --line 'alpha in force' --path specs/decisions/verbatim-decision-901-x.txt >/dev/null
+old9846="$(python3 -I -c 'import datetime; print(datetime.date.today() - datetime.timedelta(days=10))')"
+for _n in 906 907 908; do printf 'OPERATOR words of %s.\n' "$_n" > "$root/tester/rif9846/specs/decisions/verbatim-decision-$_n-x.txt"; done
+printf 'HIMMEL-9001\n' > "$root/tester/rif9846/specs/decisions/closed-keys.txt"
+bash "$rif" record --bucket "$root/tester/rif9846" --id 906 --status in-force --date "$old9846" --line 'foxtrot older than 7 days, no topic' --path specs/decisions/verbatim-decision-906-x.txt >/dev/null
+bash "$rif" record --bucket "$root/tester/rif9846" --id 907 --status in-force --date "$today" --line 'golf on closed HIMMEL-9001 only' --path specs/decisions/verbatim-decision-907-x.txt >/dev/null
+bash "$rif" record --bucket "$root/tester/rif9846" --id 908 --status in-force --date "$today" --line 'hotel on open HIMMEL-9002' --path specs/decisions/verbatim-decision-908-x.txt >/dev/null
+bash "$rif" record --bucket "$root/tester/rif9846" --id 901 --status in-force --date "$today" --line 'alpha in force' --path specs/decisions/verbatim-decision-901-x.txt >/dev/null
 bash "$rif" record --bucket "$root/tester/rif9846" --id 902 --status 'superseded-by 903' --date 2026-11-11 --line 'bravo superseded' --path specs/decisions/verbatim-decision-902-x.txt >/dev/null
 bash "$rif" record --bucket "$root/tester/rif9846" --id 904 --status "done" --date 2026-11-10 --line 'charlie done' --path specs/decisions/verbatim-decision-904-x.txt >/dev/null
 run91 rif9846
 d9846="$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/rif9846/DEMO-nextleg-${today}C-chief.md")"
 check "9846 next with a ledger exits 0" "$rc91" "0"
-check "9846 the in-force ruling is indexed from the ledger" "$(printf '%s\n' "$d9846" | grep -cxF '901 2026-11-11 alpha in force (verbatim 901-x)')" "1"
+check "9846 the in-force ruling is indexed from the ledger" "$(printf '%s\n' "$d9846" | grep -cxF "901 $today alpha in force (verbatim 901-x)")" "1"
+check "10780 a ruling of the last 7 days stays" "$(printf '%s\n' "$d9846" | grep -c '^908 ')" "1"
+check "10780 a ruling whose only key is Done leaves the block" "$(printf '%s\n' "$d9846" | grep -c '^907 ')" "0"
+check "10780 the cut ruling is named on the Older in force line with its first word" "$(printf '%s\n' "$d9846" | grep -cxF 'Older in force: 906 foxtrot')" "1"
+check "10780 an older unfolded ruling is cut, and the head counts it" "$(printf '%s\n' "$d9846" | grep -c '^906 ')/$(printf '%s\n' "$d9846" | grep -c '^Rulings in force (3; left out: 2 done, 1 superseded, 1 older than 7 days;')" "0/1"
 check "9846 the superseded and done rulings leave the block" "$(printf '%s\n' "$d9846" | grep -cE 'decision 90[24]|^90[24] ')" "0"
 check "9846 a ruling with no ledger row is carried" "$(printf '%s\n' "$d9846" | grep -c '^OPERATOR 11-10 YZ, decision 905: delta')" "1"
 c9846=0; for _r in $(printf '%s\n' "$d9846" | grep -m 1 '^Full original text' | grep -o 'specs/decisions/chief-direction-[A-Za-z0-9._-]*\.md'); do c9846=$((c9846 + $(grep -cxF -e 'OPERATOR 11-11 ZA (BINDING, decision 902): bravo, the full text of 902.' -e 'OPERATOR 11-10 YZ (BINDING, decision 904): charlie, the full text of 904.' "$root/tester/rif9846/$_r"))); done
@@ -3599,10 +3613,10 @@ OPERATOR 11-12 ZQ (BINDING): a raw ruling typed inside the index paragraph.
 777 2026-11-01 a row whose id the ledger lacks (verbatim 777-x)"
 mkdir -p "$root/tester/f2x9846/specs/decisions"
 printf 'OPERATOR words of 901.\n' > "$root/tester/f2x9846/specs/decisions/verbatim-decision-901-x.txt"
-bash "$rif" record --bucket "$root/tester/f2x9846" --id 901 --status in-force --date 2026-11-11 --line 'alpha in force' --path specs/decisions/verbatim-decision-901-x.txt >/dev/null
+bash "$rif" record --bucket "$root/tester/f2x9846" --id 901 --status in-force --date "$today" --line 'alpha in force' --path specs/decisions/verbatim-decision-901-x.txt >/dev/null
 run91 f2x9846
 check "9846 F2 current behaviour: a raw OPERATOR line inside the index paragraph absorbs the rows below it, and the ledger still indexes 901" \
-    "$(body9846 f2x9846 | grep -c '^OPERATOR 11-12 ZQ.* / 777 2026-11-01 a row whose id the ledger lacks')/$(body9846 f2x9846 | grep -c '^777 ')/$(body9846 f2x9846 | grep -cxF '901 2026-11-11 alpha in force (verbatim 901-x)')" "1/0/1"
+    "$(body9846 f2x9846 | grep -c '^OPERATOR 11-12 ZQ.* / 777 2026-11-01 a row whose id the ledger lacks')/$(body9846 f2x9846 | grep -c '^777 ')/$(body9846 f2x9846 | grep -cxF "901 $today alpha in force (verbatim 901-x)")" "1/0/1"
 if [ "$HOST_MODES_STICK" -eq 1 ]; then
     mk91 rc2x9846 "(46) other ruling" "-" "$dir9846"
     mkdir -p "$root/tester/rc2x9846/specs/decisions"
@@ -3770,10 +3784,15 @@ seed94() {
 }
 man94="{\"workers\":[{\"label\":\"N1\",\"doc\":\"$root/x/N1.md\"},{\"label\":\"N2\",\"doc\":\"$root/x/N2.md\"}]}"
 
-# 94c: a manifest jq cannot read leaves the block whole and spills nothing.
-seed94 trim94c "$legs94" '{not json'
-doc94cB="$root/tester/trim94cdst/DEMO-nextleg-${today}B-chief.md"
-check "94c a malformed manifest seeds the complete workers block" "$(grep -Fxc "$legs94" "$doc94cB" 2>/dev/null)" "1"
+# 94c: a manifest jq cannot read refuses next and spills nothing.
+tok94c="$(token_of "$(chief new --bucket trim94c)")"
+A94c="$root/tester/trim94c/DEMO-nextleg-${today}A-chief.md"
+printf '%s\n' '{not json' > "${A94c%.md}.fleet.json"
+rc94c=0
+chief next --bucket trim94cdst --doc "$A94c" >/dev/null 2>&1 || rc94c=$?
+HANDOVER_DIR="$root" bash "$QL" release "$A94c" "$tok94c" >/dev/null 2>&1
+check "94c a malformed manifest refuses next with exit 10" "$rc94c" "10"
+check "94c a malformed manifest writes no successor doc" "$([ -e "$root/tester/trim94cdst/DEMO-nextleg-${today}B-chief.md" ] && echo yes || echo no)" "no"
 check "94c a malformed manifest writes no history file" "$([ -e "$root/tester/trim94cdst/specs/history" ] && echo yes || echo no)" "no"
 
 # 94f: a manifest row with no label cannot be matched to its span, so the block stays whole.
@@ -4117,7 +4136,7 @@ rc10906=0
 chief next --bucket ren10906 --name v113-chief --doc "$pred10906" >"$tmp/ren10906.out" 2>&1 || rc10906=$?
 check "10906 next --name <new>-chief with an old-name --doc exits 0" "$rc10906" "0"
 check "10906 the successor doc takes the new name" "$([ -f "$succ10906" ] && echo yes || echo no)" "yes"
-check "10906 the manifest is carried from the predecessor's real path" "$(cat "${succ10906%.md}.fleet.json" 2>/dev/null)" '{"schema":1,"workers":["/x/worker10906.md"]}'
+check "10906 the manifest is carried from the predecessor's real path" "$(jq -c 'del(.carried_from, .carried_at)' "${succ10906%.md}.fleet.json" 2>/dev/null)" '{"schema":1,"workers":["/x/worker10906.md"]}'
 check "10906 the HANDOFF is written beside the predecessor's real stem" "$([ -f "$root/tester/ren10906/DEMO-nextleg-${today}A-recovery-chief-HANDOFF.md" ] && echo yes || echo no)" "yes"
 check "10906 the successor doc names the predecessor's real doc" "$(grep -cF 'DEMO-nextleg-'"${today}"'A-recovery-chief.md' "$succ10906" 2>/dev/null | awk '{print ($1>0)?"yes":"no"}')" "yes"
 HANDOVER_DIR="$root" bash "$QL" release "$pred10906" "$tok10906" >/dev/null 2>&1
@@ -4266,4 +4285,46 @@ mustm210877="$(awk '$0 == "## Must disposition" { f = 1; next } f && /^## / { ex
 check "10877 a mirror whose sync stamp is old reads as unavailable although a ticket file is fresh" "$(printf '%s\n' "$mustm210877" | grep -c 'operator-directed tickets unavailable')" "1"
 check "10877 a stale mirror lists no operator-directed ticket" "$(printf '%s\n' "$mustm210877" | grep -c 'operator-directed DEMO-31')" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$Am210877" "$tokm10877" >/dev/null 2>&1
+
+tokl10877="$(token_of "$(chief new --bucket l10877)")"
+Al10877="$root/tester/l10877/DEMO-nextleg-${today}A-chief.md"
+wl10877="$root/tester/l10877/DEMO-21-N21-worker.md"
+printf '%s\n' '# worker' '## Results' > "$wl10877"
+printf '{"schema":1,"workers":[]}\n' > "${Al10877%.md}.fleet.json"
+# shellcheck disable=SC2016
+bash -c 'sleep 3; bash "$3" add "$2" "$4" --lane native >/dev/null 2>&1; :' headed-arm-worker.sh --fleet "${Al10877%.md}.fleet.json" "$REPO_REAL/scripts/handover/chief-kit/fleet-manifest.sh" "$wl10877" &
+pidl10877=$!
+rcl10877=0
+CHIEF_NEXT_LAUNCH_WAIT=30 chief next --bucket l10877dst --doc "$Al10877" >"$tmp/l10877.out" 2>"$tmp/l10877.err" || rcl10877=$?
+wait "$pidl10877" 2>/dev/null
+Bl10877="$root/tester/l10877dst/DEMO-nextleg-${today}B-chief.md"
+check "10877 next waits for a launch writing to the predecessor's manifest, then exits 0" "$rcl10877" "0"
+check "10877 a row a launch adds while next runs is in the successor's manifest" "$(jq -r --arg d "$wl10877" '[.workers[] | select(.doc == $d)] | length' "${Bl10877%.md}.fleet.json" 2>/dev/null)" "1"
+check "10877 the successor's manifest names the predecessor's it was copied from" "$(jq -r '.carried_from // ""' "${Bl10877%.md}.fleet.json" 2>/dev/null)" "${Al10877%.md}.fleet.json"
+HANDOVER_DIR="$root" bash "$QL" release "$Al10877" "$tokl10877" >/dev/null 2>&1
+
+tokr10877="$(token_of "$(chief new --bucket r10877)")"
+Ar10877="$root/tester/r10877/DEMO-nextleg-${today}A-chief.md"
+printf '{"schema":1,"workers":[]}\n' > "${Ar10877%.md}.fleet.json"
+bash -c 'sleep 60; :' headed-arm-worker.sh --fleet "${Ar10877%.md}.fleet.json" &
+pidr10877=$!
+rcr10877=0
+CHIEF_NEXT_LAUNCH_WAIT=1 chief next --bucket r10877dst --doc "$Ar10877" >/dev/null 2>"$tmp/r10877.err" || rcr10877=$?
+kill "$pidr10877" 2>/dev/null; wait "$pidr10877" 2>/dev/null
+check "10877 a launch still in flight past the wait refuses next with exit 10" "$rcr10877" "10"
+check "10877 the refusal names the launcher's pid" "$(grep -c "launcher pid $pidr10877" "$tmp/r10877.err")" "1"
+check "10877 a refused next leaves no successor doc" "$([ -e "$root/tester/r10877dst/DEMO-nextleg-${today}B-chief.md" ] && echo yes || echo no)" "no"
+printf '{"schema":1,"workers":[{"label":"N22","doc":"%s/tester/r10877/DEMO-22-N22-worker.md","attempt":{"attempt_id":"a22","phase":"pending"}}]}\n' "$root" > "${Ar10877%.md}.fleet.json"
+rcp10877=0
+CHIEF_NEXT_LAUNCH_WAIT=1 chief next --bucket r10877dst --doc "$Ar10877" >/dev/null 2>"$tmp/p10877.err" || rcp10877=$?
+check "10877 a manifest row with a pending launch attempt refuses next with exit 10" "$rcp10877" "10"
+check "10877 the refusal names the pending row" "$(grep -c 'attempt pending: N22' "$tmp/p10877.err")" "1"
+check "10877 the refusal points a dead launcher at the fleet-manifest.sh header" "$(grep -c "a dead launcher's attempt is settled by hand, see the fleet-manifest.sh header" "$tmp/p10877.err")" "1"
+printf 'not json\n' > "${Ar10877%.md}.fleet.json"
+rcu10877=0
+CHIEF_NEXT_LAUNCH_WAIT=30 chief next --bucket r10877dst --doc "$Ar10877" >/dev/null 2>"$tmp/u10877.err" || rcu10877=$?
+check "10877 an unreadable predecessor manifest refuses next with exit 10" "$rcu10877" "10"
+check "10877 the refusal names the unreadable manifest" "$(grep -c "cannot read the fleet manifest ${Ar10877%.md}.fleet.json" "$tmp/u10877.err")" "1"
+check "10877 an unreadable manifest refuses without waiting" "$(grep -c 'waiting up to' "$tmp/u10877.err")" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$Ar10877" "$tokr10877" >/dev/null 2>&1
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

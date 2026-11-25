@@ -1151,7 +1151,7 @@ for (repo, branch), reason in sorted(targets.items()):
         detail = f'fork-behind upstream={parent}@{base} behind={behind} ahead={ahead}'
         if behind:
             # gh repo sync cannot map differently named source/target branches.
-            action = '/fork-resync' if ahead or branch != base else f'gh repo sync {shlex.quote(repo)} --branch {shlex.quote(branch)}'
+            action = 'fork-rebase' if ahead or branch != base else f'gh repo sync {shlex.quote(repo)} --branch {shlex.quote(branch)}'
             print(f'  {name}: BEHIND   ({detail} action={action})')
             status |= 1
         else:

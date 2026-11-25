@@ -941,7 +941,9 @@ export function registerRelease(program: Command): void {
       const repo = o.repo ?? originSlug();
       const out = o.attempt ? attemptLaunch(ctxFor(release), { repo }) : { ok: true as const, record: repairStateOf(ctxFor(release), { repo }) };
       const got = out.record;
-      const tail = o.attempt ? `; attempt ${out.ok ? 'recorded' : `refused (${out.why})`}, ${got.attempts} so far` : '';
+      const refusal = out.ok ? '' : out.why === 'fenced' ? `fenced: ${out.detail}` : out.why;
+      const tail = o.attempt ? `; attempt ${out.ok ? 'recorded' : `refused (${refusal})`}, ${got.attempts} so far` : '';
+      if (o.json && !out.ok && out.why === 'fenced') console.error(`repair-state ${release}${tail}`);
       if (o.json) console.log(JSON.stringify(got));
       else console.log(`repair-state ${release}: ${got.state}${got.reason ? ` (${got.reason})` : ''}; held ${got.held_keys.length}, unfiled ${got.unfiled}${got.operator_command ? `; run: ${got.operator_command}` : ''}${tail}`);
       if (!out.ok) process.exitCode = out.why === 'busy' ? 3 : 2;
