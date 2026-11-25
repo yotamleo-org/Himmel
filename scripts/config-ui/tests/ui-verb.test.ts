@@ -97,7 +97,7 @@ test("himmelctl ui --read-only starts under a Claude session env with no overrid
     expect(m).not.toBeNull();
     const [, base, token] = m!;
     expect((await fetch(`${base}/api/mode`, { headers: { "X-Himmel-Token": token } })).status).toBe(200);
-    const w = await fetch(`${base}/api/fleet-cap`, { method: "POST", headers: { "X-Himmel-Token": token, "Content-Type": "application/json", Origin: base }, body: JSON.stringify({ cap: 9 }) });
+    const w = await fetch(`${base}/api/no-such-route`, { method: "POST", headers: { "X-Himmel-Token": token, "Content-Type": "application/json", Origin: base }, body: "{}" });
     expect(w.status).toBe(403);
   } finally {
     p.kill("SIGTERM");

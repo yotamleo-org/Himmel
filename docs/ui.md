@@ -135,8 +135,8 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   and otherwise says how to start the UI; it never opens a browser. An ad-hoc `himmelctl ui` picks a free
   port, so its link changes each launch. Every link carries `#t=<token>`; without it the page is refused.
 - **Run it yourself, from a terminal outside Claude.** It refuses to start
-  inside a Claude session; an agent cannot open it for you. The server runs in
-  the foreground and exits on Ctrl-C or after 30 minutes idle.
+  inside a Claude session, except the read-only start below; an agent cannot open the writable UI
+  for you. The server runs in the foreground and exits on Ctrl-C or after 30 minutes idle.
 - **One start an agent may make: `himmelctl ui --read-only`.** Inside a Claude session a plain
   `--read-only` start works with no override, so a worker can check a page it changed against its own
   worktree (the always-on service serves main's build, not the worktree's). It serves GET and HEAD only,
