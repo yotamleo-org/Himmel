@@ -255,8 +255,34 @@ Clip relevance, week to 2026-11-20: 0 new of 1 candidates.
 Note: specs/audits/clip-relevance/2026-11-20.md
 EOF2
 bash "$RUNNER" >"$TMP/fire-unchecked.out" 2>&1
-check "a note holding an unchecked candidate raises no alert and its message is sent" \
-    '[ ! -s "$TMP/alerts.log" ] && [ "$(grep -c "^cadence:clip-relevance|" "$TMP/send.log")" = 1 ] && grep -q "(unchecked)" "$TMP/send.log"'
+check "a week with nothing new (only an unchecked candidate) raises no alert and sends no line" \
+    '[ ! -s "$TMP/alerts.log" ] && [ ! -s "$TMP/send.log" ] && [ -s "$TMP/notes/2026-11-20.md" ]'
+check "that run's log says the message was skipped, and no line anywhere says 0 new" \
+    'grep -q "nothing new, no message sent" "$TMP/runner/clip-relevance-cadence.log" && ! grep -q "0 new" "$TMP/send.log" 2>/dev/null'
+reset_run
+cat >"$TMP/note.fixture" <<'EOF2'
+# Clip relevance, week ending 2026-11-20
+
+## Candidates
+
+### 1. Guard the weekly search shape [new]
+- Change: refuse a compound Jira search at the gate.
+- Search: git grep -n compound returned nothing.
+- Decision: a gap.
+
+### 2. Cap default effort below max [already-done]
+- Change: run mechanical chunks at low first.
+- Search: git grep -n -i "effort ladder" -- docs found docs/tooling-catalog.md.
+- Decision: the repo already does it.
+
+## Telegram message
+Clip relevance, week to 2026-11-20: 1 new of 2 candidates.
+1. Guard the weekly search shape
+Note: specs/audits/clip-relevance/2026-11-20.md
+EOF2
+bash "$RUNNER" >"$TMP/fire-onenew.out" 2>&1
+check "a week with one new candidate still sends its line (the control for the skip above)" \
+    '[ "$(grep -c "^cadence:clip-relevance|" "$TMP/send.log")" = 1 ] && grep -q "1 new of 2 candidates" "$TMP/send.log"'
 rm -f "$TMP/send.log" "$TMP/alerts.log"; rm -rf "$TMP/alert-sent"; rm -f "$TMP/note.fixture" "$TMP/notes/2026-11-20.md"
 bash "$RUNNER" >"$TMP/fire-nonote.out" 2>&1
 check "no note at all raises the alert" 'grep -q " clip-relevance note-invalid " "$TMP/alerts.log"'
