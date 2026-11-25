@@ -10,6 +10,9 @@
 # Usage: timing-daily.sh [--no-run] [--alerts FILE]... [--ci-hours N]
 # Env: TIMING_DAILY_RUNNER (default scripts/ci/run-shell-tests.sh), TIMING_DAILY_SCAN (default scripts/),
 #      GH_TOKEN for --ci-hours, GITHUB_STEP_SUMMARY (the report is appended when set).
+# --ci-hours skips cancelled and skipped main runs: a newer push superseded them, their logs are often
+# missing (gh run view fails), and a cap alert in one repeats on the run that replaced it, so a
+# CAP-ALERT in a cancelled run's partial log is not counted.
 # Exit: 0 nothing to act on; 1 a daily suite failed, a cap alert was seen, or an alert source
 #       (--alerts file, main CI run list or log) could not be read; 2 usage error.
 #
@@ -61,7 +64,7 @@ for f in ${alert_files[@]+"${alert_files[@]}"}; do
 done
 if [ -n "$ci_hours" ]; then
   since="$(date -u -d "$ci_hours hours ago" +%Y-%m-%dT%H:%M:%SZ)"
-  if ci_ids="$(gh run list --workflow ci.yml --branch main --status completed --created ">=$since" --limit 500 --json databaseId --jq '.[].databaseId')"; then
+  if ci_ids="$(gh run list --workflow ci.yml --branch main --status completed --created ">=$since" --limit 500 --json databaseId,conclusion --jq '.[] | select(.conclusion != "cancelled" and .conclusion != "skipped") | .databaseId')"; then
     for id in $ci_ids; do
       if run_log="$(gh run view "$id" --log)"; then
         add_alerts "$(printf '%s\n' "$run_log" | alert_lines)"
