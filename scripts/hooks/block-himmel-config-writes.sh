@@ -35,8 +35,7 @@
 #     checked twice, as given and with `..` folded away textually (the file
 #     tools normalise lexically, so `.himmel/L/../config.json` writes the
 #     config even when L is a symlink elsewhere), and on Darwin every
-#     comparison is case-insensitive (APFS); HIMMEL_GUARD_FORCE_DARWIN=1 is
-#     the test seam for that and can only tighten the guard.
+#     comparison is case-insensitive (APFS).
 #   apply_patch (Codex's only edit tool) - WHOLE-PATCH rule: any patch
 #     whose text anywhere contains `.himmel` and a config name (`config.json`,
 #     `config.j*`, `config.*`, `conf*`) denies, whatever the headers,

@@ -53,8 +53,7 @@
 #     symlinked components). The path is checked as given and with `..` folded
 #     away textually (the file tools normalise lexically, so
 #     `himmel/L/../bus/x` writes the store when L is a symlink elsewhere), and
-#     on Darwin the comparison is case-insensitive (APFS); the test seam
-#     HIMMEL_GUARD_FORCE_DARWIN=1 can only tighten the guard.
+#     on Darwin the comparison is case-insensitive (APFS).
 # ALLOWS: `bus status|peers|wait|send|adopt` (the CLI stamps `f` from its own
 #   process ancestry, so no role check is needed here) and everything else —
 #   silently, with no output.
