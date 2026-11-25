@@ -5,7 +5,7 @@ Animated delivery graph grounded in docs/guide/how-a-change-ships/graph.json:
 Chief dispatches a ticket to an isolated worker worktree guarded by PreToolUse
 hooks; local git gates, your existing GitHub CI, and independent /pr-check
 review check the change; blocking findings or red CI loop back to the worktree;
-the merge gate checks GitHub CI, review rulings, and exact HEAD match before
+the merge gate checks GitHub or Bitbucket CI, review rulings, and exact HEAD match before
 fleet approval (chief signs GO in fleet runs; working alone you decide) unlocks
 merge and cleanup.
 
@@ -226,7 +226,7 @@ def render():
         'isolated worker worktree guarded by PreToolUse hooks (.env, rm -rf, main edits blocked); '
         'three checks verify the change (local git gates, your existing GitHub CI, and '
         'independent /pr-check review); blocking findings or red CI loop back to the worktree '
-        'for repair and re-check; on GitHub, the merge gate checks green CI, ruled findings, '
+        'for repair and re-check; on GitHub or Bitbucket, the merge gate checks green CI, ruled findings, '
         'and exact HEAD match, and in fleet runs the chief signs GO (with judge review on '
         'guardrail or CI edits and human escalation on product/conflict decisions) before '
         'squash-merge, worktree cleanup, and a plain-markdown handover.</desc>\n'
