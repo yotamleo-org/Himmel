@@ -263,7 +263,6 @@ gh_read() {
         GH_TOKEN="$stok" _ghr_run "$@" >"$outf" 2>"$errf"
         rc=$?
         last="$name"
-        # a timeout (124, 137 after -k) is not retried: a hung GitHub would cost twice
         if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] && [ "$rc" -ne 137 ] \
             && { _ghr_rl "$errf" || grep -qiE 'bad credentials|requires authentication|not accessible by (personal access )?token|HTTP (401|403|404)|Could not resolve to a (Repository|PullRequest)' "$errf"; }; then
             why=$(_ghr_reason "$errf")

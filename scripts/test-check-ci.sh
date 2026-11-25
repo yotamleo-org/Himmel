@@ -142,9 +142,6 @@ if [ "${GH_STUB_READFAIL:-}" = auth ] && [ "$_tok" = read ]; then
     exit 1
 fi
 if [ "${1:-}" = api ] && [ "${2:-}" = rate_limit ]; then echo "${GH_STUB_RL_REMAINING:-5000}"; exit 0; fi
-# the REST core probe (`gh api -i user`, lib/gh-quota.sh): healthy unless GH_STUB_CORE says the core
-# bucket is out. "out" is back once a sleep went through the seam (counting-sleep wrote sleepcount),
-# "out-far" never comes back inside the run.
 if [ "${1:-}" = api ] && [ "${2:-}" = -i ] && [ "${3:-}" = user ]; then
     case "${GH_STUB_CORE:-}" in
         out) if [ ! -s "$(dirname "$0")/sleepcount" ]; then
@@ -256,7 +253,6 @@ if [ "$cmd" = "api" ]; then
                 fail) echo "HTTP 500: rules boom" >&2; exit 1 ;;
                 denied) echo "gh: Resource not accessible by integration (HTTP 403)" >&2; exit 1 ;;
                 ratelimit) echo "gh: API rate limit exceeded for user ID 1. (HTTP 403)" >&2; exit 1 ;;
-                # the core bucket is the cause: every read is refused until a sleep went through the seam
                 ratelimit-core)
                     if [ ! -s "$(dirname "$0")/sleepcount" ]; then echo "gh: API rate limit exceeded for user ID 1. (HTTP 403)" >&2; exit 1; fi
                     echo unit-tests ;;
