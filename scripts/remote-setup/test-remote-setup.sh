@@ -945,6 +945,20 @@ case_bot_allowlist_made_while_pairing_waits_is_not_overwritten() {
     check "the allowlist made meanwhile is unchanged" eq "$before" '{"allowFrom":["111"]}'
 }
 
+case_bot_allowlist_that_cannot_be_written_is_a_fix_and_writes_nothing() {
+    mv "$T/bin/bun" "$T/bin/bun.real"
+    printf "#!/usr/bin/env bash\nmkdir -p \"\$HOME/.claude/channels/telegram\"\nln -s \"\$RST/nowhere\" \"\$HOME/.claude/channels/telegram/access.json\"\nexec \"\$RST/bin/bun.real\" \"\$@\"\n" > "$T/bin/bun"
+    chmod +x "$T/bin/bun"
+    set_onboard 777
+    feed "$(mk_token 222)"
+    set_getme 222 cand_bot
+    run_sut "$T/in" bot
+    check "exit 3" eq "$RC" 3
+    check "says the allowlist could not be written" starts "$LAST" "FIX: the allowlist could not be written"
+    check "nothing was written through the dangling link" test ! -e "$T/nowhere"
+    check "no DONE line" eq "$(grep -c '^DONE:' "$T/out")" 0
+}
+
 case_bot_existing_access_json_bad_shape_fixes_before_the_prompt() {
     mkdir -p "$(CHANNEL_DIR)"
     printf '{"allowFrom":["1","2"]}\n' > "$(ACCESS_FILE)"
@@ -2429,7 +2443,7 @@ bot_post_write_restore_failure_is_not_reported_as_restored
 bot_enter_reuses_a_quoted_stored_token harness_ignores_a_telegram_env_from_the_launching_shell
 bot_run1_writes_the_allowlist_from_the_start_press
 bot_interrupted_run_resumes_from_the_saved_token_on_enter bot_existing_access_json_other_id_fixes_unchanged
-bot_allowlist_made_while_pairing_waits_is_not_overwritten
+bot_allowlist_made_while_pairing_waits_is_not_overwritten bot_allowlist_that_cannot_be_written_is_a_fix_and_writes_nothing
 bot_existing_access_json_bad_shape_fixes_before_the_prompt bot_rerun_with_an_allowlist_never_pairs
 bot_canary_token_absent_everywhere bot_done_rerun_changes_no_config_artifact bot_inputs_are_only_the_g2_set
 bot_sigint_during_onboard_restarts_unit bot_mac_bootout_before_onboard
