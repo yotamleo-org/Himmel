@@ -244,8 +244,10 @@ run and retry each end on its time cap or on a timed-out row (rc 124), with no
 FAIL row of its own in either run, is a `CAP-ALERT`: `run-shell-tests.sh` prints
 the line, counts the suite `ran 0` in the shard manifest and does not fail the
 run. CI uploads the lines as a `cap-alerts-*` artifact and writes a job-summary
-line for each shard that raised one. A suite that prints a FAIL row of its own still exits 1, cap hit
-or not.
+line for each shard that raised one. A suite that prints a FAIL row of its own
+still exits 1, cap hit or not. For a suite on a trust path
+(`scripts/ci/ci-trust-paths.txt`), a timed-out row (`got 124`) counts as a FAIL
+row of its own, so the run exits 1.
 
 ## 8. Data-egress-safe gate lane
 
