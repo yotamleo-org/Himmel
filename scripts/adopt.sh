@@ -655,7 +655,7 @@ commit_install() {
     return 0
   fi
   local -a paths=()
-  for f in "${PORTABLE_FILES[@]}" .claude/settings.json .gitignore .worktreeinclude scripts/ci/ci-trust-paths.txt; do
+  for f in "${PORTABLE_FILES[@]}" .claude/settings.json .gitignore .worktreeinclude scripts/ci/ci-trust-paths.txt scripts/cr/critics.local.json; do
     [[ -e "$TARGET/$f" ]] && paths+=("$f")
   done
   if [[ -z "$(git -C "$TARGET" status --porcelain -- "${paths[@]}")" ]]; then
