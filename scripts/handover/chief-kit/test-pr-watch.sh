@@ -44,14 +44,35 @@ gh_state() {
     printf '%s\n' "${5:-open}" > "$S/state"; printf '%s\n' "${6:-false}" > "$S/merged"; rm -f "$S/gh.fail"
 }
 gh_state "$H1" 2 1 1
-wenv() {
-    mkdir -p "$(dirname "$1")"; : > "$1"
+wexec() {
+    local inbox="$1" m="$2"; shift 2
+    mkdir -p "$(dirname "$inbox")"; : > "$inbox"
     CHIEF_WAIT_TICK="$S/tick.sh" CHIEF_WAIT_USAGE="$S/bank.sh" CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 \
     CHIEF_WAIT_DISPATCH="$S/no-dispatch.sh" CHIEF_WAIT_FAIL_WAKE=1000 CHIEF_WAIT_BUDGET="$S/budget.sh" \
     WAIT_SWEEP_CMD="$S/off.sh" WAIT_FOCUS_CMD="$S/off.sh" CHIEF_WAIT_PAGE_CMD="$S/off.sh" \
     CHIEF_WAIT_GH="$S/gh" CHIEF_WAIT_PR_WATCH_SEC=0 HIMMEL_DENIAL_ACK_DIR="$W/acks" \
-        timeout -k 2 "$3" bash "$WAIT" "$1" --workers-from "$2" > "$4" 2>"$4.err"
+        "$@" bash "$WAIT" "$inbox" --workers-from "$m"
 }
+wenv() { wexec "$1" "$2" timeout -k 2 "$3" > "$4" 2>"$4.err"; }
+pr_reads() { grep -cE '/pulls/[0-9]+$' "$S/gh.log" 2>/dev/null; }
+wenv_quiet() {
+    local pid i=0 n0
+    n0="$(pr_reads)"
+    wexec "$1" "$2" exec > "$3" 2>"$3.err" &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ] && [ $(( $(pr_reads) - n0 )) -lt 2 ]; do sleep 0.1; i=$((i + 1)); done
+    quiet_polls=$(( $(pr_reads) - n0 ))
+    if ! kill -0 "$pid" 2>/dev/null; then wait "$pid"; rc=$?; return; fi
+    kill "$pid" 2>/dev/null
+    i=0; while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ]; do sleep 0.1; i=$((i + 1)); done
+    if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rc=137; return; fi
+    wait "$pid" 2>/dev/null; rc=124
+}
+mkdir -p "$S/slow"
+printf '%s\n' '#!/usr/bin/env bash' \
+    'case "$(cat "${2:-/dev/null}" 2>/dev/null)" in *" exit=signal-"*) sleep "$(cat "$S/slow.hold")" ;; esac' \
+    'PATH="${PATH#"$S/slow:"}"; exec mv "$@"' > "$S/slow/mv"
+chmod +x "$S/slow/mv"; printf '3\n' > "$S/slow.hold"
 wd="$S/HIMMEL-1-N1-a.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$wd"
 M="$S/chief.fleet.json"
 bash "$FM" add "$M" --lane native "$wd" >/dev/null 2>&1
@@ -59,8 +80,8 @@ bash "$FM" watch "$M" add 77 --head "$H1" --comments 3 --reviews 1 >/dev/null 2>
 check 'A0. the watch verb adds a row (RED at base: usage error)' 0 "$rc"
 
 : > "$S/gh.log"
-wenv "$S/in1/consoles/c.md" "$M" 4 "$S/o1"; rc=$?
-check 'A1. no change in head, comments or reviews: the waiter stays silent to its timeout' 124 "$rc"
+wenv_quiet "$S/in1/consoles/c.md" "$M" "$S/o1"
+check 'A1. no change in head, comments or reviews: the waiter stays silent until the row ends' 124 "$rc"
 check 'A1. and prints no pr-watch wake' 0 "$(grep -c 'WAKE pr-watch' "$S/o1")"
 check 'A1. the poll did run: the stub saw the pull request' yes "$(grep -qE 'pulls/77$' "$S/gh.log" && echo yes)"
 check 'A1. the poll did run: the stub saw its reviews' yes "$(grep -q 'pulls/77/reviews' "$S/gh.log" && echo yes)"
@@ -70,9 +91,16 @@ wenv "$S/in2/consoles/c.md" "$M" 8 "$S/o2"; rc=$?
 check 'A2. a new head wakes (rc 0)' 0 "$rc"
 check 'A2. one WAKE pr-watch line naming the PR and the head move' 1 "$(grep -c '^WAKE pr-watch 77 .*head 1111111' "$S/o2")"
 check 'A2. the row now holds the new head' "$H2" "$(jq -r '.watch[0].head' "$M" 2>/dev/null)"
-wenv "$S/in2/consoles/c.md" "$M" 4 "$S/o3"; rc=$?
+wenv_quiet "$S/in2/consoles/c.md" "$M" "$S/o3"
 check 'A3. the same change never wakes twice (a re-armed waiter stays silent)' 124 "$rc"
 check 'A3. and prints no second wake' 0 "$(grep -c 'WAKE pr-watch' "$S/o3")"
+check 'A3. the re-armed waiter polled the PR twice before the row ended' yes "$([ "$quiet_polls" -ge 2 ] && echo yes)"
+t0=$SECONDS
+PATH="$S/slow:$PATH" wenv_quiet "$S/in2/consoles/c.md" "$M" "$S/o3s"
+check 'A3s. with the exit held 3 s (a loaded runner), the row still ends at rc 124' 124 "$rc"
+check 'A3s. and prints no second wake' 0 "$(grep -c 'WAKE pr-watch' "$S/o3s")"
+check 'A3s. control: the seam held the exit (the row took 3 s or more)' yes "$([ $((SECONDS - t0)) -ge 3 ] && echo yes)"
+check 'A3s. control: the held exit heartbeat still landed' yes "$(grep -q 'exit=signal-TERM' "$S/in2/consoles/c.md.wait" && echo yes)"
 
 gh_state "$H2" 3 1 1
 wenv "$S/in3/consoles/c.md" "$M" 8 "$S/o4"; rc=$?
@@ -83,7 +111,7 @@ check 'A4. a new review wakes' 1 "$(grep -c '^WAKE pr-watch 77 .*reviews 1→2' 
 
 gh_state "$H1" 9 9 9; : > "$S/gh.fail"
 before="$(jq -c '.watch' "$M")"
-wenv "$S/in4/consoles/c.md" "$M" 4 "$S/o6"; rc=$?
+wenv_quiet "$S/in4/consoles/c.md" "$M" "$S/o6"
 check 'A5. a REST failure never wakes' 124 "$rc"
 check 'A5. and leaves the row untouched, to be retried next interval' "$before" "$(jq -c '.watch' "$M")"
 
@@ -95,7 +123,7 @@ check "A6. a successor's waiter on the inherited manifest wakes on the watched P
 gh_state "$H2" 3 1 2 closed true
 wenv "$S/in6/consoles/c.md" "$M" 8 "$S/o8"; rc=$?
 check 'A8. a merge with the head and counts unchanged wakes, naming the state move' 1 "$(grep -c '^WAKE pr-watch 77 state open→merged' "$S/o8")"
-wenv "$S/in6/consoles/c.md" "$M" 4 "$S/o9"; rc=$?
+wenv_quiet "$S/in6/consoles/c.md" "$M" "$S/o9"
 check 'A8. and wakes once: the row holds merged' "124 merged" "$rc $(jq -r '.watch[0].state' "$M" 2>/dev/null)"
 gh_state "$H2" 3 1 2 closed false
 M4="$S/closed.fleet.json"; bash "$FM" add "$M4" --lane native "$wd" >/dev/null 2>&1
