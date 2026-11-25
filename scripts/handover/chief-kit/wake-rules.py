@@ -91,21 +91,22 @@ def run(inbox, doc, release_root, tick, now=None):
     gap = rmrun_gap()
     errors = []
     for row in rules():
+        error_file = Path(inbox + '.wait.rule-error-' + row[0])
         try:
-            if wake_for(row, fields, inbox, doc, release_root, gap, now):
-                return True
+            woke = wake_for(row, fields, inbox, doc, release_root, gap, now)
         except Exception as error:
-            errors.append('rule=' + row[0] + ' error=' + type(error).__name__)
-    file = Path(inbox + '.wait.rule-error')
-    if not errors:
-        file.unlink(missing_ok=True)
-        return False
-    signature = ' '.join(errors)
-    if file.exists() and file.read_text().strip() == signature:
-        return False
-    file.write_text(signature + '\n')
-    print('WAKE waiter-error wake-rules ' + signature)
-    return True
+            errors.append((error_file, 'rule=' + row[0] + ' error=' + type(error).__name__))
+            continue
+        error_file.unlink(missing_ok=True)
+        if woke:
+            return True
+    for error_file, signature in errors:
+        if error_file.exists() and error_file.read_text().strip() == signature:
+            continue
+        error_file.write_text(signature + '\n')
+        print('WAKE waiter-error wake-rules ' + signature)
+        return True
+    return False
 
 
 if __name__ == '__main__':

@@ -71,8 +71,7 @@ check 'crash: the monitor rule after a crashed repair rule still wakes' "0 $MON"
 check 'crash: a crashed rule is a distinct waiter-error wake naming the rule and the error' '0 WAKE waiter-error wake-rules rule=repair error=ValueError' "$(wr k1 "$TICK_RM" CHIEF_WAIT_REPAIR_REWAKE_MIN=abc)"
 check 'crash: the same crash does not wake again' '1 ' "$(wr k1 "$TICK_RM" CHIEF_WAIT_REPAIR_REWAKE_MIN=abc)"
 check 'crash: once the setting is repaired the repair wake is back' '0 WAKE repair off:unread remedy=run X' "$(wr k1 "$TICK_RM")"
-check 'crash: a clean pass is quiet and clears the error' '1 ' "$(wr k1 "$TICK_RM")"
-check 'crash: a crash after the repair returns wakes again' '0 WAKE waiter-error wake-rules rule=repair error=ValueError' "$(wr k1 "$TICK_RM" CHIEF_WAIT_REPAIR_REWAKE_MIN=abc)"
+check 'crash: a crash returning right after the repair wake wakes again' '0 WAKE waiter-error wake-rules rule=repair error=ValueError' "$(wr k1 "$TICK_RM" CHIEF_WAIT_REPAIR_REWAKE_MIN=abc)"
 
 check 'X11-23: the table names rm-blocked as a whole-retain-unknown change key row' \
     "rm-blocked	whole-retain-unknown	change	0	key	absent" "$(awk -F'\t' '$1 == "rm-blocked"' "$TABLE")"
