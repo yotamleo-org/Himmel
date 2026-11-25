@@ -4,7 +4,7 @@
 # A direction of keep marks a name owned elsewhere that is never renamed.
 # Columns (tab-separated): old, new, kind, direction, slice, remove-at.
 # new/slice/remove-at read pending-N2892 until the polished plan fixes the new names.
-# remove-at X is the removal release after v1.1.3, which deletes the read-both path.
+# remove-at X is the removal release that deletes the read-both path, cut once the rename batches have all merged.
 # kind: identifier (a name on the lint's list), prose (a word the operator renamed), env (one variable), env-prefix
 # (a prefix ending in _), marker (a status token), do-not-rename (a name kept as is), other-sense (a name that
 # already uses a new word in another sense, e.g. a lane worker; retrieval never aliases it), directory and path (a moved

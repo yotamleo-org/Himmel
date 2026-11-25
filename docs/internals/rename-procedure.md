@@ -61,9 +61,10 @@ must show the old spelling: a reader of the old name, a test that asserts the
 refusal, a page that inventories old names. The registry file itself is never
 scanned.
 
-**Report mode.** Until the v1.1.3 rename batches have merged, both CI steps
-run with `--warn`: they print their findings and exit 0, so no PR fails.
-After that the flag is dropped and the steps fail the PR. For a tree-wide
+**Report mode.** While the cosmetic rename batches have not all merged (the
+`--report` work list below still shows hits), both CI steps run with `--warn`:
+they print their findings and exit 0, so no PR fails. Once that list is empty
+the flag is dropped and the steps fail the PR. For a tree-wide
 view, `bash scripts/ci/check-rename-diff.sh --report <dir>` writes
 `<dir>/by-file.tsv` (hits per file, most first) and `<dir>/hits.txt` (every
 hit with its old and new name). It takes about a minute and exits 0; it is

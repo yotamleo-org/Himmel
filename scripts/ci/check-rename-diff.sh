@@ -22,7 +22,7 @@
 #
 # Default mode scans <base>...HEAD (base: origin/main, else main) and exits
 # 0 clean, 1 on a hit. --warn prints the hits and exits 0 (report mode: the CI
-# step uses it until the v1.1.3 rename batches have merged, then drops it).
+# step uses it while the --report work list still has hits, then drops it).
 # --report <dir> scans every tracked line at the working tree, writes
 # <dir>/hits.txt (path:line: old -> new: text) and <dir>/by-file.tsv (count,
 # path, most hits first), prints the totals and exits 0. Exit 2: usage or git

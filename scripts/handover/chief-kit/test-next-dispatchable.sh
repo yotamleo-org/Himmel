@@ -141,7 +141,7 @@ lacks "a BLOCKED classification is dropped" "$out" "HIMMEL-10	"
 first="$(printf '%s\n' "$out" | grep -v '^#' | head -n 1 | cut -f2)"
 [ "$first" = "$KP"-9 ] && pass "ranked: earliest version, then priority first" || fail "ranked first is '$first' (want $KP-9)"
 order="$(printf '%s\n' "$out" | grep -v '^#' | cut -f2 | paste -sd, -)"
-[ "$order" = "HIMMEL-9,HIMMEL-3,HIMMEL-4,HIMMEL-2,HIMMEL-1" ] && pass "ranked: v1.0.1 before v1.0.2" || fail "order is '$order'"
+[ "$order" = "HIMMEL-9,HIMMEL-3,HIMMEL-4,HIMMEL-2,HIMMEL-1" ] && pass "ranked: the lower version first" || fail "order is '$order'"
 
 top1="$(run --top 1 --workers-from "$WORK/fleet.json" | grep -vc '^#')"
 [ "$top1" = 1 ] && pass "--top caps the list" || fail "--top 1 printed $top1 lines"
@@ -905,7 +905,7 @@ has "replay: a ticket really held by a live worker stays held: listed, its share
 n113="$(printf '%s\n' "$rp" | grep -c "	v1.1.3	")"
 [ "$n113" -ge 5 ] && pass "replay: at least 5 v1.1.3 rows ($n113)" || fail "replay: at least 5 v1.1.3 rows (got $n113)"
 
-# --- the real version list: archived unreleased versions (v1.0.3b ...) sort before v1.1.3 but are not the first version ---
+# --- the real version list: archived unreleased versions (v1.0.3b ...) sort ahead of v1.1.3 but are not the first version ---
 M24="$WORK/jira-mirror24/HIMMEL"; mkdir -p "$M24"
 M_SAVE="$M"; M="$M24"
 mk HIMMEL-740 "To Do" Medium '["operator-directed"]' '["v1.1.3"]' '[]' "directed in the first live version" "Edit scripts/lib/t6a.sh only."
