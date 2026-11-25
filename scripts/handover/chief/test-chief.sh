@@ -4305,7 +4305,7 @@ rcp10877=0
 CHIEF_NEXT_LAUNCH_WAIT=1 chief next --bucket r10877dst --doc "$Ar10877" >/dev/null 2>"$tmp/p10877.err" || rcp10877=$?
 check "10877 a manifest row with a pending launch attempt refuses next with exit 10" "$rcp10877" "10"
 check "10877 the refusal names the pending row" "$(grep -c 'attempt pending: N22' "$tmp/p10877.err")" "1"
-check "10877 the refusal points a dead launcher at runtime settle" "$(grep -c 'fleet-manifest.sh runtime settle' "$tmp/p10877.err")" "1"
+check "10877 the refusal points a dead launcher at the fleet-manifest.sh header" "$(grep -c "a dead launcher's attempt is settled by hand, see the fleet-manifest.sh header" "$tmp/p10877.err")" "1"
 printf 'not json\n' > "${Ar10877%.md}.fleet.json"
 rcu10877=0
 CHIEF_NEXT_LAUNCH_WAIT=30 chief next --bucket r10877dst --doc "$Ar10877" >/dev/null 2>"$tmp/u10877.err" || rcu10877=$?

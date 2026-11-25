@@ -2503,7 +2503,7 @@ wait_launches_settled() {
         busy="$(launches_in_flight "$1")" || { err "$unreadable"; return 1; }
     done
     [ -n "$busy" ] || return 0
-    err "refusing to hand over: these launches still write to $1 after ${limit}s; let them finish (or, for a dead launcher, settle its attempt with fleet-manifest.sh runtime settle), then run next again:"
+    err "refusing to hand over: these launches still write to $1 after ${limit}s; let them finish (a dead launcher's attempt is settled by hand, see the fleet-manifest.sh header), then run next again:"
     printf '  %s\n' "$busy" >&2
     return 1
 }
