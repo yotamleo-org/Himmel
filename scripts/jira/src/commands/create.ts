@@ -719,7 +719,6 @@ const TOPIC_PAGES = 5;
 
 const stem = (w: string): string => (w.length > 4 ? w.replace(/(?:ies|es|s)$/, '') : w);
 
-/** The text under the "What" heading of a plain-text body, up to the next section heading; the whole text when it has none. */
 export function whatSectionOf(text: string): string {
   const lines = text.split('\n');
   const head = (l: string, names: string): boolean => new RegExp(`^\\s{0,3}(?:#{1,6}\\s*)?(?:${names})\\s*:?\\s*$`, 'i').test(l);
@@ -729,9 +728,10 @@ export function whatSectionOf(text: string): string {
   return lines.slice(start + 1, end < 0 ? undefined : end).join('\n');
 }
 
-/** A ticket's topic: its distinctive words (stemmed, 4+ characters, no stop words), its non-generic labels and its sector. Maps each term to the word it came from. */
-export function topicTerms(title: string, what: string, labels: readonly string[] = [], sector?: string): Map<string, string> {
-  const terms = new Map<string, string>();
+type TopicTerms = Map<string, string>;
+
+export function topicTerms(title: string, what: string, labels: readonly string[] = [], sector?: string): TopicTerms {
+  const terms: TopicTerms = new Map();
   const text = `${title.replace(/^[^:]{1,40}:\s+/, '')} ${what}`.toLowerCase();
   for (const w of text.match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) ?? []) {
     if (w.length >= 4 && !TOPIC_STOP.has(w)) terms.set(stem(w), w);
@@ -741,8 +741,7 @@ export function topicTerms(title: string, what: string, labels: readonly string[
   return terms;
 }
 
-/** What two topics have in common: the shared terms and their share of the smaller topic (0 to 1). */
-export function topicOverlap(a: Map<string, string>, b: Map<string, string>): { shared: number; share: number } {
+export function topicOverlap(a: TopicTerms, b: TopicTerms): { shared: number; share: number } {
   const shared = [...a.keys()].filter((t) => b.has(t)).length;
   const smaller = Math.min(a.size, b.size);
   return { shared, share: smaller === 0 ? 0 : shared / smaller };
@@ -793,7 +792,6 @@ async function topicCandidates(jql: string): Promise<TopicHit[]> {
   }
 }
 
-/** The open tickets of the project whose topic overlaps this new ticket's, closest first (at most TOPIC_SHOWN). */
 async function openTopicMatches(
   project: string,
   title: string,
