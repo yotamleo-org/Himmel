@@ -1186,4 +1186,87 @@ kill -0 "$old_pid" 2>/dev/null || fail "(z11) opted out: the server was signalle
 reap_new
 echo "ok (z11): an opted-out --recycle-if-stale exits 10 and recycles nothing"
 
+units="$work/units"
+cat > "$bin/systemctl" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$QMD_MOCK_STATE/systemctl.log"
+if [ "${1:-}" = --user ] && [ "${2:-}" = show ]; then
+  f="$QMD_MOCK_STATE/show-${4:-}-${6:-}"
+  [ -f "$f" ] && cat "$f"  # read-sink-ok: the stub reads only its own fixture directory
+  exit 0
+fi
+exit 0
+EOF
+chmod +x "$bin/systemctl"
+run_boot() {
+  set +e
+  out="$(QMD_SYSTEMCTL="$bin/systemctl" QMD_UNIT_DIR="$units" QMD_MOCK_STATE="$state" \
+    HOME="$home" PATH="$bin:$safe" bash "$script" "$@" 2>&1)"
+  rc=$?
+  set -e
+}
+set_show() { printf '%s\n' "$3" > "$state/show-$1-$2"; }
+
+rm -f "$state/systemctl.log"
+run_boot --install-boot-unit
+[ "$rc" -eq 0 ] || fail "(z12) install: expected rc 0, got $rc ($out)"
+unit="$units/qmd-daemon.service"
+[ -f "$unit" ] || fail "(z12) install: $unit was not written ($out)"
+grep -qxF 'Before=himmel-recover.service' "$unit" || fail "(z12) install: the unit does not order before the chief launcher: $(cat "$unit")"
+grep -qxF 'WantedBy=default.target' "$unit" || fail "(z12) install: the unit is not wanted at boot: $(cat "$unit")"
+grep -qxF 'Type=oneshot' "$unit" || fail "(z12) install: the unit is not a oneshot: $(cat "$unit")"
+grep -qxF "ExecStart=/usr/bin/env bash \"$script\"" "$unit" || fail "(z12) install: the unit does not run the ensure script: $(cat "$unit")"
+grep -qxF 'Environment=PATH=%h/.bun/bin:/usr/local/bin:/usr/bin:/bin' "$unit" || fail "(z12) install: the unit PATH does not reach bun: $(cat "$unit")"
+grep -qxF -- '--user daemon-reload' "$state/systemctl.log" || fail "(z12) install: no daemon-reload ($(cat "$state/systemctl.log"))"
+grep -qxF -- '--user enable qmd-daemon.service' "$state/systemctl.log" || fail "(z12) install: unit not enabled ($(cat "$state/systemctl.log"))"
+first="$(cat "$unit")"
+run_boot --install-boot-unit
+[ "$rc" -eq 0 ] && [ "$(cat "$unit")" = "$first" ] || fail "(z12) install: a second run changed the unit or failed (rc $rc)"
+echo "ok (z12): --install-boot-unit writes an enabled oneshot unit ordered before the chief launcher"
+
+U=qmd-daemon.service; C=himmel-recover.service
+set_show Before "$U" "$C"
+set_show ActiveEnterTimestampMonotonic "$U" 5000000
+set_show ExecMainStartTimestampMonotonic "$C" 9000000
+run_boot --boot-order-check
+[ "$rc" -eq 0 ] || fail "(z13a) qmd first: expected rc 0, got $rc ($out)"
+case "$out" in *"$U started before $C"*) ;; *) fail "(z13a) qmd first: no ordering line ($out)" ;; esac
+
+set_show ActiveEnterTimestampMonotonic "$U" 9000000
+set_show ExecMainStartTimestampMonotonic "$C" 5000000
+run_boot --boot-order-check
+[ "$rc" -eq 1 ] || fail "(z13b) qmd after the chief: expected rc 1, got $rc ($out)"
+case "$out" in *"$U started AFTER $C"*) ;; *) fail "(z13b) qmd after the chief: no AFTER line ($out)" ;; esac
+
+set_show ActiveEnterTimestampMonotonic "$U" 0
+run_boot --boot-order-check
+[ "$rc" -eq 1 ] || fail "(z13c) qmd never started: expected rc 1, got $rc ($out)"
+case "$out" in *"$U did not start this boot"*) ;; *) fail "(z13c) qmd never started: no did-not-start line ($out)" ;; esac
+
+set_show ActiveEnterTimestampMonotonic "$U" 5000000
+set_show ExecMainStartTimestampMonotonic "$C" 0
+run_boot --boot-order-check
+[ "$rc" -eq 0 ] || fail "(z13d) chief launcher idle: expected rc 0, got $rc ($out)"
+case "$out" in *"$C did not start this boot"*) ;; *) fail "(z13d) chief launcher idle: no idle line ($out)" ;; esac
+
+set_show Before "$U" ""
+set_show ExecMainStartTimestampMonotonic "$C" 9000000
+run_boot --boot-order-check
+[ "$rc" -eq 1 ] || fail "(z13e) order not declared: expected rc 1, got $rc ($out)"
+case "$out" in *"does not order before $C"*) ;; *) fail "(z13e) order not declared: no refusal line ($out)" ;; esac
+set_show Before "$U" "$C"
+set_show ActiveEnterTimestampMonotonic "$U" 5000000
+rm -f "$state/show-ExecMainStartTimestampMonotonic-$C"
+run_boot --boot-order-check
+[ "$rc" -eq 1 ] || fail "(z13f) unreadable chief start time: expected rc 1, got $rc ($out)"
+case "$out" in *"cannot read the start time of $C"*) ;; *) fail "(z13f) unreadable chief start time: no refusal line ($out)" ;; esac
+
+set_show ActiveEnterTimestampMonotonic "$U" 9000000
+set_show ActiveEnterTimestampMonotonic "$C" 0
+set_show ExecMainStartTimestampMonotonic "$C" 5000000
+run_boot --boot-order-check
+[ "$rc" -eq 1 ] || fail "(z13g) a oneshot chief launcher has ActiveEnter 0 but ran first: expected rc 1, got $rc ($out)"
+case "$out" in *"$U started AFTER $C"*) ;; *) fail "(z13g) a oneshot chief launcher has ActiveEnter 0 but ran first: no AFTER line ($out)" ;; esac
+echo "ok (z13): --boot-order-check proves qmd started before the chief launcher, and fails on the other orders"
+
 echo "PASS: all ensure-qmd-daemon cases"
