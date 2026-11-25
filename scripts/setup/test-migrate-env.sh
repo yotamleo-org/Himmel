@@ -1799,6 +1799,87 @@ apply_tty y "$SYSPATH"
 quote_stays "R32 a blank line then a real one" "$TMP/st/.env" "  JIRA_API_TOKEN  secret  stays (it has several entries; keep one)"
 no_item "R32 a blank line then a real one" JIRA_API_TOKEN
 
+fixture_env
+fxput "$TMP/st/.env" "TOK=%s\n%s\nfragQ9x7Tail==\nfragR3k1Tail=\n" "$(canary a)" "$(canary b)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+out=$(bash "$SCRIPT" --dry-run --unowned --env "$TMP/st/.env" 2>&1)
+lacks "N38 the dry run does not print a fragment ending in == as a key" "fragQ9x7Tail" "$out"
+lacks "N38 the dry run does not print a fragment ending in = as a key" "fragR3k1Tail" "$out"
+has "N38 the real key keeps its plan row" "  TOK  unowned  → keyring (you named it)" "$out"
+APPLY_ARGS="-y --unowned" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N38 the apply exits 0"; else fail "N38 the apply exited $rc: $out"; fi
+lacks "N38 the apply does not print a fragment as a key" "fragQ9x7Tail" "$out"
+lacks "N38 the apply does not print a fragment ending in = as a key" "fragR3k1Tail" "$out"
+no_item "N38 a fragment" fragQ9x7Tail
+no_item "N38 a fragment ending in =" fragR3k1Tail
+has "N38 the fragment line stays in .env" "fragQ9x7Tail==" "$(cat "$TMP/st/.env")"
+no_canary "N38 no value printed" "$out"
+fixture_env
+fxput "$TMP/st/.env" "TOK=%s\n%s\nQUI=\nFOO=\n" "$(canary a)" "$(canary b)"
+out=$(bash "$SCRIPT" --dry-run --unowned --env "$TMP/st/.env" 2>&1)
+lacks "N38 the tail of a value wrapped over three lines, all upper case, is not printed as a key" "QUI" "$out"
+has "N38 a blank line after a line that holds an equals sign is still a key" "  FOO  unowned  stays (blank in .env: no value)" "$out"
+no_canary "N38 the wrapped value prints no value" "$out"
+fixture_env
+fxput "$TMP/st/.env" "TOK=%s\n%s\nQ_I=\n" "$(canary a)" "$(canary b)"
+out=$(bash "$SCRIPT" --dry-run --unowned --env "$TMP/st/.env" 2>&1)
+has "N38 a blank tail whose name has an underscore, after a bare line, stays a printed key (C-1252)" "  Q_I  unowned  stays (blank in .env: no value)" "$out"
+no_canary "N38 the underscore tail prints no value" "$out"
+fixture_env
+fxput "$TMP/st/.env" "TOK=%s\n%s\nTOK=\n" "$(canary a)" "$(canary b)"
+out=$(bash "$SCRIPT" --dry-run --unowned --env "$TMP/st/.env" 2>&1)
+has "N38 a blank second entry of a key after a bare line is still a duplicate" "  TOK  unowned  stays (it has several entries; keep one)" "$out"
+fixture_env
+fxput "$TMP/st/.env" 'UNREAD_SECRET=%s\nUNREAD_SECRET="%s\n%s"\n' "$(canary a)" "$(canary b)" "$(canary c)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "$SYSPATH"
+quote_stays "N39 a later several-line duplicate, keyring" "$TMP/st/.env" "  UNREAD_SECRET  secret  stays (it has several entries; keep one)"
+no_item "N39 a later several-line duplicate, keyring" UNREAD_SECRET
+fixture_env
+mkdir -p "$HOME/.config/secrets"
+fxput "$store" 'UNREAD_SECRET=%s\nUNREAD_SECRET="%s\n%s"\n' "$(canary la)" "$(canary lb)" "$(canary lc)"
+chmod 600 "$store"
+cp -p "$store" "$TMP/n39.store"
+grep -v '^UNREAD_SECRET=' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
+has "N39 the legacy file's duplicate has a plan row that says it stays" "  UNREAD_SECRET  secret  stays (it has several entries in ~/.config/secrets/himmel.env; keep one)" "$out"
+no_canary "N39 no value printed" "$out"
+fixture_env
+mkdir -p "$HOME/.config/secrets"
+fxput "$store" 'JIRA_API_TOKEN=%s\nUNREAD_SECRET=%s\nJIRA_API_TOKEN="%s\n%s"\n' "$(canary j1)" "$(canary u1)" "$(canary j2)" "$(canary j3)"
+chmod 600 "$store"
+cp -p "$store" "$TMP/n40.store"
+grep -v '^UNREAD_SECRET=\|^JIRA_API_TOKEN=' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N40 a duplicate in the legacy file: the run exits 0"; else fail "N40 the run exited $rc: $out"; fi
+if grep -q 'CANARY-u1' "$KSTUB_STORE" 2>/dev/null; then pass "N40 the other secret reached the keyring"; else fail "N40 the other secret did not move: $out"; fi
+no_item "N40 the key with the several-line duplicate" JIRA_API_TOKEN
+lacks "N40 the moved secret left the legacy file" "UNREAD_SECRET" "$(cat "$store" 2>/dev/null)"
+grep -v '^UNREAD_SECRET=' "$TMP/n40.store" > "$TMP/n40.expected"
+if cmp -s "$TMP/n40.expected" "$store"; then pass "N40 the legacy file lost the moved secret and nothing else"; else fail "N40 the legacy file differs from the original minus the moved secret"; fi
+no_canary "N40 no value printed" "$out"
+kreset
+fxput "$TMP/n40.env" 'READ_SECRET=%s\nUNREAD_SECRET=%s\nREAD_SECRET="%s\n%s"\n' "$(canary d1)" "$(canary d2)" "$(canary d3)" "$(canary d4)"
+n40out=$(bash "$FX/scripts/lib/himmel-secrets" import-env "$TMP/n40.env" 2>&1); n40rc=$?
+if [ "$n40rc" = 0 ]; then pass "N40 import-env on a file with that duplicate exits 0"; else fail "N40 import-env exited $n40rc: $n40out"; fi
+has "N40 import-env stores the other secret" "stored UNREAD_SECRET" "$n40out"
+has "N40 import-env names the key it stopped" "skipped READ_SECRET (it has several entries, one over several lines; keep one)" "$n40out"
+no_item "N40 import-env on the key with the duplicate" READ_SECRET
+no_canary "N40 import-env prints no value" "$n40out"
+kreset
+n40real=$(canary real)
+fxput "$TMP/n40s.env" 'UNREAD_SECRET=%s\nUNREAD_SECRET="%s\nREAD_SECRET=%s\n%s"\nREAD_SECRET=%s\n' "$(canary s1)" "$(canary s2)" "$(canary shadow)" "$(canary s3)" "$n40real"
+n40sout=$(bash "$FX/scripts/lib/himmel-secrets" import-env "$TMP/n40s.env" 2>&1); n40src=$?
+if [ "$n40src" = 0 ]; then pass "N40 an assignment-looking line inside the stopped entry: import-env exits 0"; else fail "N40 import-env exited $n40src: $n40sout"; fi
+if grep -q "key=READ_SECRET .*$n40real" "$KSTUB_STORE" 2>/dev/null; then pass "N40 the real entry of the other key is the one stored"; else fail "N40 the stored READ_SECRET is not the real entry"; fi
+if ! grep -q 'CANARY-shadow' "$KSTUB_STORE" 2>/dev/null; then pass "N40 the line inside the stopped entry reached no store"; else fail "N40 a line inside the stopped entry was stored"; fi
+kreset
+fxput "$TMP/n40e.env" 'JIRA_API_TOKEN=%s\nJIRA_API_TOKEN="%s\n%s\\"q\nREAD_SECRET=%s\nend"\nREAD_SECRET=%s\n' "$(canary e1)" "$(canary e2)" "$(canary e3)" "$(canary inside)" "$n40real"
+n40eout=$(bash "$FX/scripts/lib/himmel-secrets" import-env "$TMP/n40e.env" 2>&1); n40erc=$?
+if [ "$n40erc" = 0 ]; then pass "N40 an escaped quote inside the stopped entry: import-env exits 0"; else fail "N40 import-env exited $n40erc: $n40eout"; fi
+if grep -q "key=READ_SECRET .*$n40real" "$KSTUB_STORE" 2>/dev/null && ! grep -q 'CANARY-inside' "$KSTUB_STORE" 2>/dev/null; then pass "N40 an escaped quote does not end the stopped entry"; else fail "N40 a line after an escaped quote was planned as a key"; fi
+
 mkdir -p "$TMP/mvstub"
 cat > "$TMP/mvstub/mv" <<'STUB' || fail "fixture write of the mv stub failed"
 #!/usr/bin/env bash
