@@ -26,13 +26,15 @@
 # and every key it names is in <dir>/specs/decisions/closed-keys.txt (one key a line, `#`
 # starts a comment; no file, no key retires), and as superseded-by <M> when a later ruling's
 # line says `supersedes|replaces|overrides|reverses decision <id>` (a list may follow, `decisions
-# 5, 6 and 7`). Its verbatim file and ledger row stay.
+# 5, 6 and 7`) with no `never`, `not`, `no longer`, `cannot` or `n't` just before the verb. Its
+# verbatim file and ledger row stay.
 #
-# topic fold: rulings in force that share a topic (the row's topic, else the first HIMMEL-<n>
-# key its line names) and number two or more are one line under a `Standing rules:` head,
-# before the dated heads:
+# topic fold: rulings in force that carry the same topic (set with `record --topic`; a ticket
+# key never makes a topic, since rulings of different scope share a key) and number two or more
+# are one line under a `Standing rules:` head, before the dated heads:
 #   <topic>: <reading of the newest ruling> (rulings <id>, <id>, ...)     ids newest first
-# A ruling with no topic, or alone on its topic, keeps its dated row. A standing-rule reading is cut at 100 bytes, not at the shared cap.
+# A ruling with no topic, or alone on its topic, keeps its dated row. A standing-rule reading is
+# cut at 100 bytes, not at the shared cap, so fold only rulings that say one thing.
 #
 # render: prints the block with the rulings in force as one index paragraph right after its
 # `Full original text` pointer line:
@@ -217,6 +219,8 @@ def retire():
     replaced = {}
     for m_id in sorted(rows):
         for m in re.finditer(r"\b(?:supersedes|replaces|overrides|reverses)\s+decisions?\s+([0-9]+(?:\s*(?:,|and)\s*(?:decisions?\s+)?[0-9]+)*)", rows[m_id]["line"], re.I):
+            if re.search(r"(?:never|not|no longer|cannot|n\x27t)\s+(?:\w+\s+)?$", rows[m_id]["line"][:m.start()], re.I):
+                continue
             for k in re.findall(r"[0-9]+", m.group(1)):
                 if int(k) < m_id and int(k) in rows:
                     replaced[int(k)] = m_id
@@ -230,8 +234,7 @@ def retire():
             r["status"] = "done"
 
 def topic_of(r):
-    m = re.search(r"HIMMEL-[0-9]+", r["line"])
-    return r.get("topic") or (m.group(0) if m else None)
+    return r.get("topic")
 
 if rows is not None:
     retire()

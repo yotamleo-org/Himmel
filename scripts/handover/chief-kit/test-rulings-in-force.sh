@@ -340,7 +340,7 @@ same "template: the first batch reads an indexed ruling's verbatim file before a
 same "template: compaction recovery reads the companions only while a line sits outside the index" "$(grep -c 'line sits outside the `Rulings in force` index, each direction companion file' <<< "$cz")" "1"
 
 R="$W/retire"; RD="$R/specs/decisions"; mkdir -p "$RD"
-for n in 971 972 973 974 975 976 977 980 981 982 984 985 986; do printf 'OPERATOR words of ruling %s.\n' "$n" > "$RD/verbatim-decision-$n-operator-11-12-ZK.txt"; done
+for n in 971 972 973 974 975 976 977 980 981 982 984 985 986 987 988; do printf 'OPERATOR words of ruling %s.\n' "$n" > "$RD/verbatim-decision-$n-operator-11-12-ZK.txt"; done
 rr() { bash "$SUT" record --bucket "$R" --id "$1" --status "${2:-in-force}" --date 2026-11-12 --line "$3" --path "specs/decisions/verbatim-decision-$1-operator-11-12-ZK.txt" "${@:4}" >/dev/null 2>&1; }
 rr 971 in-force 'only key HIMMEL-9001 is closed'
 rr 972 in-force 'key HIMMEL-9002 is still open'
@@ -349,12 +349,14 @@ rr 974 in-force 'a ruling that names no ticket'
 rr 975 in-force 'the golf rule, later replaced'
 rr 976 in-force 'the golf rule again, replaced by a later ruling'
 rr 977 in-force 'the hotel rule replaces decision 975 and decision 976'
-rr 980 in-force 'first of three on HIMMEL-9100'
-rr 981 in-force 'second of three on HIMMEL-9100'
-rr 982 in-force 'third of three on HIMMEL-9100'
+rr 980 in-force 'first of three on HIMMEL-9100' --topic ninek
+rr 981 in-force 'second of three on HIMMEL-9100' --topic ninek
+rr 982 in-force 'third of three on HIMMEL-9100' --topic ninek
 rr 984 in-force 'fnord one, no ticket key' --topic fnord
 rr 985 in-force 'fnord two, no ticket key' --topic fnord
 rr 986 in-force 'a lone ruling on HIMMEL-9200'
+rr 987 in-force 'a second ruling on HIMMEL-9200, another scope'
+rr 988 in-force 'the india rule never replaces decision 974'
 printf '# closed tickets\nHIMMEL-9001\n' > "$RD/closed-keys.txt"
 kk=HIMMEL
 rptr='Full original text of every ruling below, byte for byte, is in 1 file under the bucket (specs/decisions/chief-direction-2026-11-11-p1.md). READ ALL OF THEM in your first turn.'
@@ -371,22 +373,23 @@ same "retire: a ruling naming a closed and an open key stays" "$(printf '%s\n' "
 same "retire: a ruling with no ticket key stays" "$(printf '%s\n' "$rout" | grep -c '^974 ')" "1"
 same "retire: a ruling a later ruling supersedes leaves the index" "$(printf '%s\n' "$rout" | grep -cE '^(975|976) ')" "0"
 same "retire: the superseding ruling stays" "$(printf '%s\n' "$rout" | grep -c '^977 ')" "1"
-same "retire: the head counts the retired rulings as left out (1 done, 2 superseded)" "$(printf '%s\n' "$rout" | grep -c '^Rulings in force (10; left out: 1 done, 2 superseded;')" "1"
+same "retire: the head counts the retired rulings as left out (1 done, 2 superseded)" "$(printf '%s\n' "$rout" | grep -c '^Rulings in force (12; left out: 1 done, 2 superseded;')" "1"
 same "retire: find shows the retired ruling as done" "$(bash "$SUT" find --bucket "$R" 971 | cut -d ' ' -f 1-3)" "971 2026-11-12 done"
-same "retire: a bucket with no closed-keys file retires nothing by key" "$(mkdir -p "$W/noclosed" && cp -R "$R/specs" "$W/noclosed/" && rm "$W/noclosed/specs/decisions/closed-keys.txt" && render "$rblk" "$W/noclosed" | grep -c 'rulings 973, 971)')" "1"
-same "fold: three rulings on one key are one standing-rule line with all source ids, newest first" \
-    "$(printf '%s\n' "$rout" | grep -cxF "${kk}-9100: third of three on ${kk}-9100 (rulings 982, 981, 980)")" "1"
+same "retire: a bucket with no closed-keys file retires nothing by key" "$(mkdir -p "$W/noclosed" && cp -R "$R/specs" "$W/noclosed/" && rm "$W/noclosed/specs/decisions/closed-keys.txt" && render "$rblk" "$W/noclosed" | grep -c '^971 ')" "1"
+same "retire: a negated supersede phrase retires nothing" "$(printf '%s\n' "$rout" | grep -c '^974 ')/$(printf '%s\n' "$rout" | grep -c '^988 ')" "1/1"
+same "fold: three rulings on one explicit topic are one standing-rule line with all source ids, newest first" \
+    "$(printf '%s\n' "$rout" | grep -cxF "ninek: third of three on ${kk}-9100 (rulings 982, 981, 980)")" "1"
 same "fold: the folded ids have no row of their own" "$(printf '%s\n' "$rout" | grep -cE '^(980|981|982) ')" "0"
 same "fold: an explicit topic folds rulings that name no key" "$(printf '%s\n' "$rout" | grep -cxF 'fnord: fnord two, no ticket key (rulings 985, 984)')" "1"
-same "fold: a lone ruling on its key keeps its dated row" "$(printf '%s\n' "$rout" | grep -c '^986 ')" "1"
+same "fold: two rulings of different scope on one ticket key stay apart, each with its own reading" "$(printf '%s\n' "$rout" | grep -cE '^(986 a lone ruling on|987 a second ruling on) ')" "2"
 same "fold: the standing rules come under their own head, before the dated heads" \
     "$(printf '%s\n' "$rout" | para | sed -n '2p')" "Standing rules:"
 same "fold: a second render of its own output changes nothing" "$(render "$rout" "$R")" "$rout"
-same "fold: check passes on the render with every live ruling named" "$(chk "$rout" "$R" | tail -n 1 | cut -d ' ' -f 1-4)" "check: ok in-force=10 named=10"
+same "fold: check passes on the render with every live ruling named" "$(chk "$rout" "$R" | tail -n 1 | cut -d ' ' -f 1-4)" "check: ok in-force=12 named=12"
 same "fold: check reports a folded id missing from its line" "$(chk "$(printf '%s\n' "$rout" | sed 's/ (rulings 982, 981, 980)/ (rulings 982, 981)/')" "$R" | grep -c '^MISSING 980$')" "1"
 same "fold: check reports an id folded under the wrong topic" "$(chk "$(printf '%s\n' "$rout" | sed 's/ (rulings 985, 984)/ (rulings 985, 984, 986)/')" "$R" | grep -c '^TOPIC 986 ')" "1"
 same "retire and fold: no verbatim file is changed or removed" "$(sums)" "$sum0"
-same "retire and fold: the ledger is not rewritten" "$(wc -l < "$RD/rulings-in-force.jsonl" | tr -d ' ')" "13"
+same "retire and fold: the ledger is not rewritten" "$(wc -l < "$RD/rulings-in-force.jsonl" | tr -d ' ')" "15"
 
 printf 'not json\n' >> "$L"
 out="$(render "$blk")"; rc=$?
