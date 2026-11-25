@@ -336,7 +336,7 @@ else
             ( timeout -k 5 300 bash "$HERE/next-dispatchable.sh" --dispositions --doc "$doc" --workers-from "$from" > "$cache.tmp" 2>/dev/null && mv "$cache.tmp" "$cache"; rmdir "$state/chief-duty-sweep-pool.lock" 2>/dev/null ) </dev/null >/dev/null 2>&1 &  # gnu-ok: Linux-only kit; swallow-ok: a failed refresh leaves the last copy
             disown 2>/dev/null || true  # swallow-ok: no job control in a non-interactive shell
         else
-            [ -z "$(find "$state/chief-duty-sweep-pool.lock" -maxdepth 0 -mmin +10 2>/dev/null)" ] || rmdir "$state/chief-duty-sweep-pool.lock" 2>/dev/null  # swallow-ok: losing the race to another sweep is fine
+            [ -z "$(find "$state/chief-duty-sweep-pool.lock" -maxdepth 0 -mmin +10 2>/dev/null)" ] || rmdir "$state/chief-duty-sweep-pool.lock" 2>/dev/null  # gnu-ok: Linux-only kit; swallow-ok: losing the race to another sweep is fine
         fi
     fi
     dispo=$(cat "$cache" 2>/dev/null) || dispo=""  # swallow-ok: no cache yet reads as unread below
