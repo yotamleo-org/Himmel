@@ -66,8 +66,8 @@ const LITERALS_TTL_MS = 5_000;
 const LITERALS_WAIT_MS = 1_500;
 // every credential the manifest names: the wizard's and the station scripts' (the redactor keeps the secret-named ones)
 const SECRET_NAMES = [...secretsManifest.secrets, ...secretsManifest.stationSecrets].map((s: { name: string }) => s.name);
-// with backgroundFeed the report starts at boot and is refreshed every FEED_REFRESH_MS, but only
-// while the chief is in use (an authenticated request within the last FEED_REFRESH_MS), so a closed UI idles out.
+// with backgroundFeed the report starts at boot (not in service mode) and is refreshed every FEED_REFRESH_MS, but only
+// while the Config page is in use (a /api/feed request within the last FEED_REFRESH_MS), so a closed UI idles out.
 const FEED_REFRESH_MS = 10 * 60 * 1000;
 // The progress line probe-progress.cjs writes; anything else on the report's stderr is ignored.
 const PROBE_LINE = "himmel-probe ";
@@ -347,6 +347,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   // The list only grows: a locked keyring, a timeout or a partial read adds nothing and drops nothing; a value no read saw cannot be masked.
   const seen = new Set<string>();
   let literalsAt = -Infinity, literalsMemo: string[] = [], literalsEpoch = 0, literalsDirty = false;
+  let storing = 0;
   let literalsRun: { done: Promise<void>; slow: boolean; epoch: number } | null = null;
   // These two match the secret-name pattern but hold a mode ("off") and a directory, not a credential. Any other name stays.
   const NOT_SECRET_ENV = new Set(["HIMMEL_SECRETS_KEYRING", "HIMMEL_SECRETS_RUNTIME_DIR"]);
@@ -383,6 +384,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (late) { run.slow = true; return; }
     }
   };
+  const readLiteralsNow = async (): Promise<void> => { literalsRun = null; literalsAt = -Infinity; await freshLiterals(); };
   const secretLiterals = (): string[] => {
     if (now() - literalsAt >= LITERALS_TTL_MS) void startLiteralsRead();
     return literalsMemo;
@@ -434,13 +436,14 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     const lock = acquireLock(lockPath);
     if ("busy" in lock) return json({ error: lock.busy }, 409);
     previews.delete(id); // single-use from here on
-    let before, r, after, failed = false;
+    let before, r, after, failed = false, counted = false;
     try {
       before = await reprobe(p.rowIds);
       onStart(); // the station is about to change; a request rejected earlier leaves the feed alone
+      storing++; counted = true;
       r = await runChild(p.argv, childOpts(p, lock));
       after = await reprobe(p.rowIds);
-    } catch { failed = true; } finally { lock.release(); }
+    } catch { failed = true; } finally { if (counted) storing--; lock.release(); }
     // The action has already run (or was started): a failed append must not hide that behind a 500.
     let audit = "ok";
     try { appendAudit(auditPath, { time: new Date(now()).toISOString(), action: p.action, target: p.target, value: p.value, argv: p.argv, rc: r?.rc ?? null, before: healthOf(before?.probe ?? null), after: healthOf(after?.probe ?? null), ...(failed ? { outcome: "error" as const } : {}) }); }
@@ -655,18 +658,18 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     try { return JSON.stringify(redactDeep(JSON.parse(body), { literals })); } catch { return String(redactDeep(body, { literals })); }
   };
   const feedBody = (body: string) => new Response(maskFeed(body), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
-  const maskLiterals = (body: string): string => {
+  const maskLiterals = (body: string, stream = false): string => {
     const o = { literals: secretLiterals(), idKey: true };
     const deep = (v: unknown): unknown => typeof v === "string" ? redact(v, o) : Array.isArray(v) ? v.map(deep) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deep(x)])) : v;
     const one = (s: string): string => { try { return JSON.stringify(deep(JSON.parse(s))); } catch { return redact(s, o); } };
-    return /^(data: |: )/.test(body) ? body.split("\n").map((l) => l.startsWith("data: ") ? `data: ${one(l.slice(6))}` : l).join("\n") : one(body);
+    return stream && /^(data: |: )/.test(body) ? body.split("\n").map((l) => l.startsWith("data: ") ? `data: ${one(l.slice(6))}` : l).join("\n") : one(body);
   };
   const maskAgain = async (res: Response, epoch: number): Promise<Response> => {
-    if (epoch === literalsEpoch || res.body === null || !/^(application\/json|text\/plain)/.test(res.headers.get("content-type") ?? "")) return res;
+    if ((epoch === literalsEpoch && storing === 0) || res.body === null || !/^(application\/json|text\/plain)/.test(res.headers.get("content-type") ?? "")) return res;
     let text = await res.text();
-    for (let round = 0; round < 3 && epoch !== literalsEpoch; round++) {
+    for (let round = 0; round < 3 && (round === 0 || epoch !== literalsEpoch); round++) {
       epoch = literalsEpoch;
-      await freshLiterals();
+      await (storing > 0 ? readLiteralsNow() : freshLiterals());
       text = maskLiterals(text);
     }
     if (epoch !== literalsEpoch) return json({ error: "internal error" }, 500);
@@ -683,9 +686,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const next = await reader.read();
         if (next.done) return c.close();
         let chunk = next.value;
-        if (openedAt !== literalsEpoch) {
-          await freshLiterals();
-          chunk = enc.encode(maskLiterals(dec.decode(chunk)));
+        if (openedAt !== literalsEpoch || storing > 0) {
+          await (storing > 0 ? readLiteralsNow() : freshLiterals());
+          chunk = enc.encode(maskLiterals(dec.decode(chunk), true));
         }
         c.enqueue(chunk);
       },
@@ -706,9 +709,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     return json({ state: "error", reason: run.error }, 502);
   }
   // background loading (backgroundFeed): refresh on each tick while the chief is in use.
-  let lastSeen = -Infinity;
+  let feedSeen = -Infinity;
   const refreshMs = opts.feedRefreshMs ?? FEED_REFRESH_MS;
-  const refresher = opts.backgroundFeed ? setInterval(() => { if (now() - lastSeen < refreshMs) feedStart(true); }, refreshMs) : undefined;
+  const refresher = opts.backgroundFeed ? setInterval(() => { if (now() - feedSeen < refreshMs) feedStart(true); }, refreshMs) : undefined;
   // The Fleet board route and the Shift page serve the chief's board file (board.mjs writes it on every render) and nothing else: a chief with none is reported missing, never built here.
   const shiftBoards = (handover: string) =>
     async (locks: Lock[], spans: Span[]): Promise<Live> => ({ ...(await liveBoards(handover, locks, spans, fileReader)), from: "file" });
@@ -737,7 +740,6 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       const from = req.headers.get("origin");
       if (from !== null && from !== origin) return new Response("bad origin", { status: 403 });
       bump();
-      lastSeen = now();
       return new Response(JSON.stringify({ token }), { headers: { "content-type": "application/json", "cache-control": "no-store", "referrer-policy": "no-referrer" } });
     }
     if (path.startsWith("/api/")) {
@@ -745,7 +747,6 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       const session = auth.session(req.headers.get("cookie")) !== null;
       if (!session && !sameToken(req.headers.get("x-himmel-token"), token)) return new Response("unauthorized", { status: 401 });
       bump(); // only an authenticated request keeps the server alive
-      lastSeen = now(); // and only one keeps the background refresh going
       await freshLiterals();
       if (req.method === "GET" && path === "/api/mode") return new Response(JSON.stringify({ readOnly: !!opts.readOnly }), { headers: { "content-type": "application/json", "cache-control": "no-store", "x-himmel-session": session ? "1" : "0" } }); // the page's banner and disabled write controls; the header says whether this caller holds a login session
       if (req.method === "GET" && path === "/api/projects") { // never runs a doctor: each project's own cached feed, or "not checked"
@@ -758,6 +759,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         return c ? feedBody(c.body) : json({ state: "not-checked", project: other }, 404);
       }
       if (req.method === "GET" && path === "/api/feed") {
+        feedSeen = now();
         if (new URL(req.url).searchParams.get("refresh") === "1") { feedRun = null; feedLast = null; feedEpoch++; } // the refresh button waits for a probe it started: never the cached report, never a run already in flight
         return feedRoute();
       }
@@ -1020,7 +1022,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     },
   });
   bump();
-  if (opts.backgroundFeed) feedStart(true); // prewarm, so the report is there when the console opens
+  if (opts.backgroundFeed && !opts.noIdle) feedStart(true); // prewarm, so the report is there when the console opens
   return { server, port: server.port, token, stop: () => { clearTimeout(idle); clearInterval(refresher); server.stop(true); } };
 }
 
