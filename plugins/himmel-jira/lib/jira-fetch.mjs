@@ -54,10 +54,6 @@ export function loadConfIntoProcess(only = CONF_KEYS) {
   }
 }
 
-// The shared resolver (keyring) and Jira destination check live in the himmel checkout's scripts/, which
-// a plugin installed alone does not have. Look in the plugin's own checkout, the primary checkout, then
-// HIMMEL_REPO. With no resolver the keyring calls are no-ops; with no destination check jiraFetch sends
-// nothing.
 async function loadFromCheckout(rel) {
   const here = dirname(fileURLToPath(import.meta.url));
   const roots = [join(here, '..', '..', '..')];

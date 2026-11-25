@@ -1,6 +1,3 @@
-// The one rule for where an authenticated Jira request may go. The Jira CLI client, the himmel-jira
-// plugin's jiraFetch and the wizard's Jira probe all call it before a request is built, so the Basic
-// authorization header never reaches a destination this refuses. Plain JavaScript so all three import it.
 const TENANT_HOST = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.atlassian\.net$/;
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 
