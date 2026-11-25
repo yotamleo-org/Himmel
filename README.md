@@ -165,11 +165,14 @@ node ~/himmel/scripts/himmelctl/bin.js install --scope project
 git switch -c chore/install-himmel && git add -A && git commit -m "chore: install himmel #1"
 git switch main && git merge --ff-only chore/install-himmel
 
-# 3. Start a change in its own worktree and open the local UI
+# 3. Start a change in its own worktree and run Claude Code there
 bash scripts/worktree.sh feat/try-himmel
+(cd .claude/worktrees/feat+try-himmel && claude)
+
+# 4. Open the local UI (from a terminal outside Claude Code)
 node ~/himmel/scripts/himmelctl/bin.js ui
 
-# 4. Remove everything cleanly whenever you want
+# 5. Remove everything cleanly whenever you want
 node ~/himmel/scripts/himmelctl/bin.js uninstall --dry-run
 node ~/himmel/scripts/himmelctl/bin.js uninstall --yes
 ```
