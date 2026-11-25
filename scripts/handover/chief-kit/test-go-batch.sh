@@ -2,17 +2,7 @@
 # shellcheck disable=SC2015,SC2016  # A && B || C is intentional in check(), as in test-go.sh; the backticks are literal text
 # scripts/handover/chief-kit/test-go-batch.sh - suite for go-batch.sh, the chief's one-step GO for
 # every green judged PR. gh, go.sh, the bus and the process census are stubs; verdict files and the
-# chief doc are fixtures. Rows:
-#   1. five PRs (ordinary GO, trust GO, no verdict, stale head, contract disagreement) write
-#      exactly the two GOs and hold the other three with named reasons; a go-batch that ignores the
-#      contract line writes a third GO and fails the row
-#   2. each go.sh call carries the brief's contract and the worker message the worker's own token
-#   3. a worker with no token in the chief doc prints NO-TOKEN, no GO is written, nothing is sent
-#   4. a primary checkout behind origin is fast-forwarded before any go.sh runs
-#   5. a primary checkout that cannot fast-forward writes no GO (exit 1)
-#   6. --jobs bounds the number of go.sh calls running at once
-#   7. --dry-run prints WOULD-GO rows and writes nothing
-#   8. a worker (HIMMEL_CONSOLE_LEG) is refused (exit 3)
+# chief doc are fixtures.
 #
 # Platform guard: POSIX bash 3.2+, jq, git.
 set -uo pipefail
@@ -110,7 +100,6 @@ exit 91
 STUB
 cat > "$tmp/go" <<'STUB'
 #!/usr/bin/env bash
-# args: [--model m --effort e] --contract c [--trust-reviewed q] <pr> <head>
 args="$*"; q=""; c=""
 while [ $# -gt 2 ]; do case "$1" in --contract) c="$2"; shift 2 ;; --trust-reviewed) q="$2"; shift 2 ;; *) shift 2 ;; esac; done
 pr="$1"; head="$2"
