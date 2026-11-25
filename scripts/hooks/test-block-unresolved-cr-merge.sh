@@ -1592,6 +1592,7 @@ fi
 CR_MERGE_GATE_OK=1 t bb-merge-cr-bypass-only-denied 2 Bash "bitbucket pr merge 7"
 CI_MERGE_GATE_OK=1 t bb-merge-ci-bypass-only-denied 2 Bash "bitbucket pr merge 7"
 CR_MERGE_GATE_OK=1 CI_MERGE_GATE_OK=1 t bb-merge-bypass-pair-allows 0 Bash "bitbucket pr merge 7"
+CR_MERGE_GATE_OK=1 CI_MERGE_GATE_OK=1 t bb-merge-bypass-pair-still-gates-gh 2 Bash "bitbucket pr merge 7 && gh pr merge 42 --squash"
 t bb-pr-view-not-denied 0 Bash "node /x/scripts/bitbucket/dist/index.js pr get 7"
 t bb-pr-merge-sh-not-denied 0 Bash "bash scripts/handover/pr-merge.sh"
 

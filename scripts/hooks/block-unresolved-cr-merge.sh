@@ -147,11 +147,9 @@ for _n in "$cmd_norm" "$cmd_sq"; do
             if (w == "api") api = 1; else if (w == "alias") al = 1; else g = 0 } }
         END { exit !f }' && fires=1
 done
-if printf '%s' "$cmd_norm" | grep -Eq 'bitbucket[^[:space:];&|]*[[:space:]]+(-[^[:space:]]+[[:space:]]+)*pr[[:space:]]+merge|forge_pr_merge'; then
-    if [ "${CR_MERGE_GATE_OK:-0}" != "1" ] || [ "${CI_MERGE_GATE_OK:-0}" != "1" ]; then
-        _deny "a direct Bitbucket merge skips the reviewer and CI gates. Run scripts/handover/pr-merge.sh instead (it merges at the vetted head). Bypass: CR_MERGE_GATE_OK=1 and CI_MERGE_GATE_OK=1 in the launching shell."
-    fi
-    exit 0
+bb_merge_hit=$(printf '%s' "$cmd_norm" | grep -Eo 'bitbucket[^[:space:];&|]*[[:space:]]+(-[^[:space:]]+[[:space:]]+)*pr[[:space:]]+merge|forge_pr_merge')
+if [ -n "$bb_merge_hit" ] && { [ "${CR_MERGE_GATE_OK:-0}" != "1" ] || [ "${CI_MERGE_GATE_OK:-0}" != "1" ]; }; then
+    _deny "a direct Bitbucket merge skips the reviewer and CI gates. Run scripts/handover/pr-merge.sh instead (it merges at the vetted head). Bypass: CR_MERGE_GATE_OK=1 and CI_MERGE_GATE_OK=1 in the launching shell."
 fi
 [ "$fires" = "1" ] || exit 0
 # A head pin is one word to bash whether or not it is quoted: unquote a hex-only
