@@ -1479,6 +1479,8 @@ pso="$(HOME="$PSHOME" psrun big unsigned)"; rc=$?
 [ "$rc" = 0 ] && pass "size estimate: an unsigned override row is no cover, the brief is still written (rc 0)" || fail "unsigned override: rc=$rc: $pso"
 lacks "size estimate: an unsigned override row covers nothing (the warning names no override)" "$pso" "kept whole by"
 check "size estimate: an unsigned override row leaves the rows as they were (band already shown)" "$n_before" "$(sel_count)"
+pso="$(HOME="$WORK/no-key-home" psrun big nokey)"; rc=$?
+[ "$rc" = 0 ] && has "size estimate: a check that cannot read the GO key warns and the brief is still written" "$pso" "size-override.sh check could not run" || fail "no GO key: rc=$rc: $pso"
 pso="$(HOME="$PSHOME" HIMMEL_CONSOLE_LEG=1 bash "$OV" record "$SZK" N921 --files 41 --reason "worker says so" --root "$WORK/handovers" 2>&1)"; rc=$?
 [ "$rc" = 3 ] && pass "size estimate: a worker cannot sign an override (rc 3)" || fail "worker record: rc=$rc: $pso"
 pso="$(HOME="$PSHOME" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME=chief-t bash "$OV" record "$SZK" N921 --files 41 --reason "one scripted rename, split would break it" --root "$WORK/handovers" 2>&1)"; rc=$?

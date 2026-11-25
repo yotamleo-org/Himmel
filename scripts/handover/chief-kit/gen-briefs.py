@@ -904,7 +904,7 @@ def size_override(args, hroot):
     # size-override.sh owns the SIZE-ESCALATE ledger and the chief-signed override; its rc passes through.
     r = subprocess.run(['bash', SIZE_OVERRIDE] + args + ['--root', hroot], capture_output=True, text=True)
     if r.returncode not in (0, 1):
-        die('size-override.sh %s failed (rc %d): %s' % (args[0], r.returncode, (r.stderr or r.stdout).strip()), 2)
+        print('gen-briefs: warning: size-override.sh %s could not run (rc %d): %s; no chief record is read' % (args[0], r.returncode, (r.stderr or r.stdout).strip()), file=sys.stderr)
     return r
 
 
