@@ -299,7 +299,7 @@ git -C <clone> push --atomic fork HEAD:refs/heads/himmel-main-upstream-<target> 
 ```
 
 That creates a NEW branch and a NEW tag at the rebased tip and keeps the old tip
-reachable. Never push over the fork's default branch or the himmel branch. Then move the pin and `synced_base` together, in the worktree of step 3,
+reachable. If the check or the push fails, report that fork's failure with the git output and stop on it; never retry the push and never reach for a force flag. Never push over the fork's default branch or the himmel branch. Then move the pin and `synced_base` together, in the worktree of step 3,
 as `/fork-resync` step 6 describes (the SHA or tag in the entry's `fork.pin_file`,
 and `synced_base`); the fork's default branch moves on the operator's word.
 
@@ -308,7 +308,7 @@ Per-fork result, one of these, never anything else:
 - `CURRENT` — the fork already contained the release.
 - `REBASED in this fix` — brought current by this run (name the new tip and tag).
 - `HELD` — an operator hold, with the hold's reason.
-- `OWED to the operator` — only the default-branch fast-forward of outcome 1, with its command.
+- `OWED to the operator` — only the default-branch fast-forward of outcome 1, with its command. It is not a failed run.
 
 ## 3. Branch first
 
@@ -467,7 +467,7 @@ drift-fix <date>
   markets:  <name> ...                 (or: none — and name any that FAILED)
   awaiting: <tool> <old> -> <new> — operator-triggered: bash scripts/upstreams/apply-tool-upgrade.sh <tool>
   bumped:   <name> <old> -> <new>      (or: none)
-  forks:    <fork>: CURRENT | REBASED in this fix (<new tip>, <tag>) | HELD (<the hold's reason>)   (one line per fork)
+  forks:    <fork>: CURRENT | REBASED in this fix (<new tip>, <tag>) | HELD (<the hold's reason>) | OWED to the operator (<command>)   (one line per fork; OWED is not a failed run)
   skipped:  <name> (<why>) ...
   ticket:   HIMMEL-<N>                 (or: none — nothing bumped)
   landed:   <merged PR url>            (or: <where it stopped, e.g. awaiting approval>)

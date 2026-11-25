@@ -145,7 +145,9 @@ git -C <clone> ls-remote --exit-code fork refs/heads/himmel-main-upstream-<targe
 git -C <clone> push --atomic fork HEAD:refs/heads/himmel-main-upstream-<target> HEAD:refs/tags/himmel-pin/<version>-himmel.1 <old-tip>:refs/tags/himmel-presync/<branch>-<sha12>
 ```
 
-`resync-fork.sh --push` is not used: it force-pushes its own branch.
+`resync-fork.sh --push` is not used: it force-pushes its own branch. If the check or
+the push fails, report the failure with the git output; never retry the push and
+never reach for a force flag.
 
 The modes differ in who runs this step:
 

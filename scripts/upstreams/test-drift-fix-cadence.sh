@@ -210,6 +210,7 @@ assert_has "$out" "--push" "unattended resync prompt explicitly forbids the push
 assert_has "$out" "fork-rebase" "drift prompt makes a conflicting fork sync a fork-rebase step in the same run"
 assert_has "$out" "deferral" "drift prompt names deferral as the thing a conflicting fork must never become"
 assert_has "$out" "REBASED" "drift prompt reports each fork as CURRENT, REBASED in this fix or HELD"
+assert_has "$out" "OWED" "drift prompt lists the OWED state for a default-branch fast-forward"
 assert_has "$out" "< /dev/null" "runner gives the session stdin EOF"
 assert_lacks "$out" "--print" "runner never uses --print (subscription billing)"
 assert_lacks "$out" " -p " "runner never uses -p (subscription billing)"
@@ -452,13 +453,18 @@ assert_lacks "$runbook" "qmd is the standing example" "runbook no longer parks q
 assert_lacks "$runbook" "--push" "drift-fix never runs resync-fork.sh --push"
 assert_lacks "$runbook" "force-with-lease" "drift-fix never force-pushes a fork"
 assert_has "$runbook" "git -C <clone> push --atomic fork HEAD:refs/heads/himmel-main-upstream-" "drift-fix publishes a new branch and tag with a plain push"
-assert_has "$runbook" "--sync <owner/repo> --dry-run" "drift-fix names the audit-only --sync form"
-assert_lacks "$runbook" '--sync <owner/repo>`' "drift-fix never names an unflagged --sync (it force-pushes the himmel branch)"
+flatbook=$(printf '%s' "$runbook" | tr -s '[:space:]' ' ')
+assert_has "$flatbook" "--sync <owner/repo> --dry-run" "drift-fix names the audit-only --sync form, wrapped or not"
+assert_lacks "$flatbook" '--sync <owner/repo>`' "drift-fix never names an unflagged --sync, wrapped or not (it force-pushes the himmel branch)"
+assert_has "$runbook" "OWED to the operator (<command>)" "drift-fix report template lists the OWED state"
+assert_has "$runbook" "not a failed run" "drift-fix says an OWED fork is not a failed run"
+assert_has "$flatbook" "never retry the push" "drift-fix reports a failed plain push and never retries it"
 assert_has "$runbook" "ls-remote --exit-code fork refs/heads/himmel-main-upstream-" "drift-fix proves the new refs are free before it pushes"
 resyncbook=$(cat "$SCRIPT_DIR/../../.claude/commands/fork-resync.md")
 assert_lacks "$resyncbook" 'resync-fork.sh <name> --push`' "fork-resync no longer allows resync-fork.sh --push to publish"
 assert_has "$resyncbook" "git -C <clone> push --atomic fork HEAD:refs/heads/himmel-main-upstream-" "fork-resync publishes a new branch and tag with a plain push"
 assert_has "$resyncbook" "ls-remote --exit-code fork refs/heads/himmel-main-upstream-" "fork-resync proves the new refs are free before it pushes"
+assert_has "$(printf '%s' "$resyncbook" | tr -s '[:space:]' ' ')" "never retry the push" "fork-resync reports a failed plain push and never retries it"
 assert_has "$(cat "$CADENCE")" "run --sync only with --dry-run" "the resync prompt allows --sync only as --dry-run"
 
 echo ""
