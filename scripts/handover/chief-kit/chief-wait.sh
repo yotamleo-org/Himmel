@@ -713,7 +713,8 @@ lookonly_carry() {
 # one: a stop signal that lands during the poll sleep, a slow tick or the bank read ends the waiter only
 # when that step does. The steps that wait on a child (the poll sleep, the tick, the bank read) therefore
 # run it in the background and `wait` on it, which a trapped signal interrupts at once, and the stop
-# traps kill that child so it never outlives the waiter.
+# traps TERM that child without waiting for it (a `timeout`-wrapped child then ends itself within its
+# own kill grace).
 child_pid=""
 # stoppable <stdout file> <stderr file> <command...>: the command's status is the return status.
 stoppable() {

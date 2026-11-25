@@ -889,6 +889,7 @@ sig_case() { # <name> <signal> <poll seconds> <tick sleep or ""> <expected rc> <
         t0=$(wc -c < "$STUB/ticks"); printf '%s\n' "$4" > "$STUB/tick.sleep"
         n=0
         while [ "$n" -lt 100 ] && [ "$(wc -c < "$STUB/ticks")" -lt $((t0 + 2)) ]; do sleep 0.05; n=$((n + 1)); done
+        [ "$(wc -c < "$STUB/ticks")" -ge $((t0 + 2)) ] || fail "(sig $1) the slow ticks never started"
     else
         wait_hb_state "$I" waiting || fail "(sig $1) the waiter never reached state=waiting"
     fi
