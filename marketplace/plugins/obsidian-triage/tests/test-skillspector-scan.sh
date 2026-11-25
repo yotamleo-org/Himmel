@@ -273,6 +273,13 @@ assert "skillspector saw the nv_build provider" nv_build "$(cat "$tmpdir/provide
 assert "a clean Stage 2 report is stored" 3 "$(jget "$tmpdir/f1.json" risk_assessment.score)"
 assert "scanner stderr is kept in the stored report, key redacted" "warn: nothing odd [redacted]" "$(jget "$tmpdir/f1.json" wrapper_stderr)"
 
+run "$tmpdir/f1x.json" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k-secret STUB_REPLAY="$tmpdir/s2-clean.json" STUB_RC=2 STUB_STDERR="401 bad key k-secret"; rc=$?
+assert "a scanner crash in the full scan is unavailable (rc 3)" 3 "$rc"
+grep -q 'k-secret' "$tmpdir/err" && r=leaked || r=redacted
+assert "the failure path never prints the key" redacted "$r"
+grep -q '401 bad key \[redacted\]' "$tmpdir/err" && r=kept || r=lost
+assert "the failure path keeps the scanner's error, key redacted" kept "$r"
+
 run "$tmpdir/f2.json" SKILLSPECTOR_PROVIDER=anthropic ANTHROPIC_API_KEY=k-an STUB_REPLAY="$tmpdir/s2-clean.json"; rc=$?
 assert "anthropic with its key runs the scan (rc 0)" 0 "$rc"
 assert "skillspector saw the anthropic provider" anthropic "$(cat "$tmpdir/provider" 2>/dev/null)"

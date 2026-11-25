@@ -101,6 +101,14 @@ llmflag=(--no-llm)
 [ "$full" = "1" ] && llmflag=()
 "${netdeny[@]+"${netdeny[@]}"}" "$bin" scan "$skill_dir" "${llmflag[@]+"${llmflag[@]}"}" --format json > "$out" 2> "$errf"
 scan_rc=$?
+if [ "$full" = "1" ]; then
+    node -e '
+const fs = require("fs");
+let err = fs.readFileSync(process.argv[1], "utf8");
+for (const k of [process.env.NVIDIA_INFERENCE_KEY, process.env.ANTHROPIC_API_KEY]) if (k) err = err.split(k).join("[redacted]");
+fs.writeFileSync(process.argv[1], err);
+' "$errf" || exit 3
+fi
 if [ "$scan_rc" -ne 0 ] && [ "$scan_rc" -ne 1 ]; then
     echo "skillspector-scan: unavailable: skillspector failed (rc $scan_rc)" >&2
     [ "$full" = "1" ] && head -c 2000 "$errf" >&2
@@ -157,9 +165,7 @@ if [ "$full" = "1" ]; then
     node -e '
 const fs = require("fs");
 const r = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-let err = fs.readFileSync(process.argv[2], "utf8");
-for (const k of [process.env.NVIDIA_INFERENCE_KEY, process.env.ANTHROPIC_API_KEY]) if (k) err = err.split(k).join("[redacted]");
-r.wrapper_stderr = err;
+r.wrapper_stderr = fs.readFileSync(process.argv[2], "utf8");
 fs.writeFileSync(process.argv[3], JSON.stringify(r, null, 2) + "\n");
 ' "$out" "$errf" "$out.full" || exit 3
     mv "$out.full" "$out" || exit 3
