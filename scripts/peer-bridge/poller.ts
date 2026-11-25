@@ -200,7 +200,7 @@ export class Poller {
         if (e instanceof TelegramError && e.code === 401) throw e;
         this.log(`username lookup failed (try ${n} of ${START_LOOKUP_TRIES}): ${(e as Error).message}`);
         if (n >= START_LOOKUP_TRIES) throw new StartLookupError(`start lookup failed after ${n} tries: ${(e as Error).message}`);
-        await wait(e instanceof RetryAfter ? e.seconds * 1000 : delay);
+        await wait(e instanceof RetryAfter ? Math.min(e.seconds * 1000, START_LOOKUP_MAX_WAIT_MS) : delay);
         delay = Math.min(delay * 2, START_LOOKUP_MAX_WAIT_MS);
       }
     }

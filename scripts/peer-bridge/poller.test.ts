@@ -1431,3 +1431,12 @@ test("a refused bot token at the start lookup is not retried", async () => {
   await expect(p.start()).rejects.toBeInstanceOf(TelegramError);
   expect(calls).toBe(1);
 });
+
+test("a retry-after answer at the start lookup waits no longer than the backoff cap", async () => {
+  const e = await setup();
+  const waits: number[] = [];
+  const tg: TgLike = { ...e.tg, getChatMember: async () => { throw new RetryAfter(3600); } };
+  const p = await Poller.create({ ...e.deps, tg, sleep: async ms => { waits.push(ms); } });
+  await expect(p.start()).rejects.toThrow(/start lookup failed/);
+  expect(Math.max(...waits)).toBeLessThanOrEqual(30_000);
+});
