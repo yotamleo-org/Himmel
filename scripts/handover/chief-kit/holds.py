@@ -1534,6 +1534,22 @@ def gc_judge_row(judge, key_state, d, n, absolute=False):
     return 0
 
 
+def key_has_row(listing, key):
+    """True when a row of the key is in the register now, or the register cannot be read: a key judged dead earlier in the pass may hold a row again."""
+    for _di, d, _names in listing:
+        try:
+            current = os.listdir(d)
+        except OSError:
+            return True
+        for n in current:
+            if n.startswith(TMP_PREFIX) or GRANT_RE.search(n):
+                continue
+            st, f = read_row(os.path.join(d, n))
+            if st == 'err' or (st == 'ok' and f[0] == key):
+                return True
+    return False
+
+
 def gc_sweep(repo, deadline, listing, keep_aged=False):
     cursor_warning = False
 
@@ -1582,14 +1598,15 @@ def gc_sweep(repo, deadline, listing, keep_aged=False):
                 continue
             gkey = m.group(0).rsplit('.', 1)[1]
             # a grant whose row is gone goes on every pass; a dead key's grant only when this pass judged every row, so key_state is the whole register's
-            orphan = lambda: not os.path.exists(os.path.join(d, n[:m.start()])) or (full and key_state.get(gkey) == 'dead')
-            if not orphan():
+            orphan = lambda verified: not os.path.exists(os.path.join(d, n[:m.start()])) or (
+                full and key_state.get(gkey) == 'dead' and not (verified and key_has_row(listing, gkey)))
+            if not orphan(False):
                 continue
             lock = dir_lock(d)
             if lock is None:
                 continue
             try:
-                if orphan():
+                if orphan(True):
                     try:
                         os.unlink(os.path.join(d, n))
                     except OSError:

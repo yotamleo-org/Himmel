@@ -1936,6 +1936,19 @@ HOLDS_GH="$W/bin/gh-merged10373" run gcbox 10 "$RX"
 same "10373 X16-2: a repository's gc leaves an absolute pr row whose PR state it reads from its own repository" "$(gone_or_row "$ABSPR")" row
 same "10373 X16-2: ... and still removes an absolute row that is not a pull-request row and has no holder" "$(gone_or_row "$ABSBR")" none
 
+cat > "$W/keeprow.py" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("holds", sys.argv[1]); h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+h.remove_dead = lambda d, n, fields, mtime: False
+sys.exit(h.main(["gc", "--repo", sys.argv[2]]))
+PY
+RK="$W/repo-dead-key-row"; mkdir -p "$RK"; git -C "$RK" init -q -b main
+put_row scripts/kd1.sh PROJ-9831 lab "" brief "" "$RK"
+put_row scripts/kd2.sh PROJ-9832 lab "" pr 7100 "$RK"
+: > "$(rowf scripts/kd2.sh "$RK").grant.PROJ-9831"
+HOLDS_GH="$GCSLOW" run python3 -I "$W/keeprow.py" "$SUT" "$RK"
+same "10373 gc: a grant to a key judged dead stays while a row of that key is still there" "$(gone_or_row "$(rowf scripts/kd2.sh "$RK").grant.PROJ-9831")" row
+
 # ---- the real register was never touched
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $W, a path unique to this run: none may appear in the real register.
