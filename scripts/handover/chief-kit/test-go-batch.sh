@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2015,SC2016,SC2031  # A && B || C is intentional in check(), as in test-go.sh; the backticks are literal text; HANDOVER_DIR is exported once and only read after
+# shellcheck disable=SC2015,SC2016,SC2031
 # scripts/handover/chief-kit/test-go-batch.sh - suite for go-batch.sh, the chief's one-step GO for
 # every green judged PR. gh, go.sh, the bus and the process census are stubs; verdict files and the
 # chief doc are fixtures.

@@ -146,7 +146,7 @@ newest_qid() {
             line=$(go_verdict_line "$f") || continue  # swallow-ok: an unreadable verdict is not a GO, go.sh reads it again
             [ "$line" = "$want" ] || [ "$line" = "$want." ] || continue
             grep -qxE "pr: $1"$'\r'"?" "$f" 2>/dev/null || continue
-            t=$(sed -n 's/^written-at: //p' "$f" 2>/dev/null | head -n 1) || t=""  # swallow-ok: no stamp sorts oldest
+            t=$(sed -n 's/^written-at: //p' "$f" | head -n 1)
             if [ -z "$best" ] || [[ $t > $bt ]]; then best="$q"; bt="$t"; fi
         done
     done
@@ -185,7 +185,7 @@ while IFS=$'\t' read -r PR HEADSHA _base DRAFT <&3; do
     if [ -z "$RHEAD" ]; then hold "worker $LABEL has no READY GREEN bullet for it"; continue; fi
     if [ "$RHEAD" != "$HEADSHA" ]; then hold "stale head: the worker's READY names ${RHEAD:0:8}, the PR head is now $H8"; continue; fi
     TITLE=$(jq -r --argjson n "$PR" '.[] | select(.number == $n) | .title // ""' "$WORK/prs.json")
-    KEYS=$(printf '%s' "$TITLE" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | sort -u) || KEYS=""  # swallow-ok: no key in the title leaves only the PR number and all to match
+    KEYS=$(printf '%s' "$TITLE" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | sort -u)
     BLOCK=""
     for tok in $(printf '%s\n' "$HOLDS" | tr -d '`' | tr ',;' '  '); do
         tok="${tok#\#}"
@@ -195,7 +195,7 @@ while IFS=$'\t' read -r PR HEADSHA _base DRAFT <&3; do
     done
     if [ -n "$BLOCK" ]; then hold "the chief doc's Live state says $BLOCK"; continue; fi
     if grep -qE '^> \*\*Merge:\*\* chief([^A-Za-z0-9_-]|$)' "$WDOC" 2>/dev/null; then hold "the brief says Merge: chief"; continue; fi
-    CONTRACT=$(grep -oE '^> \*\*Completes ticket:\*\* (yes|no)([^A-Za-z0-9_-]|$)' "$WDOC" | tail -n 1 | sed -E 's/^> \*\*Completes ticket:\*\* (yes|no).*/\1/') || CONTRACT=""  # swallow-ok: a brief with no such line reads no below
+    CONTRACT=$(grep -oE '^> \*\*Completes ticket:\*\* (yes|no)([^A-Za-z0-9_-]|$)' "$WDOC" | tail -n 1 | sed -E 's/^> \*\*Completes ticket:\*\* (yes|no).*/\1/')
     [ -n "$CONTRACT" ] || CONTRACT=no
     BODY_VALS=$(jq -r --argjson n "$PR" '.[] | select(.number == $n) | .body // ""' "$WORK/prs.json" | tr -d '\r' | awk '
         /^[ \t]{0,3}(```|~~~)/ { fence = !fence; next }
