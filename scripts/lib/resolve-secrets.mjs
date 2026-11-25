@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 const RESOLVER = join(dirname(fileURLToPath(import.meta.url)), 'himmel-secrets');
 const TIMEOUT_MS = 10000;
+const timeoutMs = (env) => Number(env?.HIMMEL_SECRETS_TIMEOUT_MS) || TIMEOUT_MS;
 
 // `env` is the caller's own environment choice (a test's env map, the UI server's env). It is laid over
 // the process's environment, so a pin the process carries (HIMMEL_SECRETS_KEYRING=off) survives a map
@@ -50,7 +51,7 @@ function runAsync(args, env) {
   if (!existsSync(RESOLVER)) return Promise.resolve({ status: 2, stdout: '' });
   return new Promise((resolve) => {
     try {
-      execFile('bash', [RESOLVER, ...args], { encoding: 'utf8', timeout: TIMEOUT_MS, env: childEnv(env), stdio: ['ignore', 'pipe', 'ignore'] }, (e, stdout) => {
+      execFile('bash', [RESOLVER, ...args], { encoding: 'utf8', timeout: timeoutMs(env), env: childEnv(env), stdio: ['ignore', 'pipe', 'ignore'] }, (e, stdout) => {
         resolve({ status: e ? (typeof e.code === 'number' ? e.code : 2) : 0, stdout: String(stdout ?? '') });
       });
     } catch { resolve({ status: 2, stdout: '' }); }

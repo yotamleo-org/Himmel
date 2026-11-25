@@ -346,7 +346,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   // keyring), the checkout's .env values as the last fallback, and the server env's secret values. Never logged, never on argv.
   // The list only grows: a locked keyring, a timeout or a partial read adds nothing and drops nothing; a value no read saw cannot be masked.
   const seen = new Set<string>();
-  let literalsAt = -Infinity, literalsMemo: string[] = [], literalsEpoch = 0;
+  let literalsAt = -Infinity, literalsMemo: string[] = [], literalsEpoch = 0, literalsDirty = false;
   let literalsRun: { done: Promise<void>; slow: boolean; epoch: number } | null = null;
   // These two match the secret-name pattern but hold a mode ("off") and a directory, not a credential. Any other name stays.
   const NOT_SECRET_ENV = new Set(["HIMMEL_SECRETS_KEYRING", "HIMMEL_SECRETS_RUNTIME_DIR"]);
@@ -364,17 +364,18 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
     absorb(envValues(raw, parseDotEnv, envForLiterals()));
     absorb(envValues("", parseDotEnv, await resolveSecretsAsync(root, SECRET_NAMES, env)));
-    if (epoch === literalsEpoch) literalsAt = now();
+    if (epoch === literalsEpoch) { literalsAt = now(); literalsDirty = false; }
   };
   const startLiteralsRead = (): { done: Promise<void>; slow: boolean; epoch: number } => {
     if (literalsRun && literalsRun.epoch === literalsEpoch) return literalsRun;
     const run = { slow: false, epoch: literalsEpoch, done: readLiterals().catch(() => {}).finally(() => { if (literalsRun === run) literalsRun = null; }) };
     return literalsRun = run;
   };
-  const invalidateLiterals = (): void => { literalsEpoch++; literalsAt = -Infinity; };
+  const invalidateLiterals = (): void => { literalsEpoch++; literalsAt = -Infinity; literalsDirty = true; };
   const freshLiterals = async (): Promise<void> => {
     for (let round = 0; round < 2 && now() - literalsAt >= LITERALS_TTL_MS; round++) {
       const run = startLiteralsRead();
+      if (literalsDirty) { await run.done; continue; }
       if (run.slow) return;
       let timer: ReturnType<typeof setTimeout> | undefined;
       const late = await Promise.race([run.done.then(() => false), new Promise<boolean>((r) => { timer = setTimeout(() => r(true), LITERALS_WAIT_MS); })]);
