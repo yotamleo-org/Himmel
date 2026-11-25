@@ -16,7 +16,8 @@
 // (or with `unset`, a pair that came in from Jira) AND the checker ticket's mirror status is not Done
 // (E23). It is TRANSIENT when it is an unpaired WORKER-COMMENT row (the comment lags a marker and
 // the next sweep heals it). It is WAITING when it is an AWAITING row ending in ` | wait=<who>` (a
-// chief-owned park inside its clock): `waiting` holds it and `real` never does. It is EXEMPT when
+// release-manager ruling wait; a started ticket with no live owner is never waiting, whatever date it
+// carries, so its UNOWNED row is REAL): `waiting` holds it and `real` never does. It is EXEMPT when
 // its class is HELD-STALE (a worker's lock that is stale and not proven dead): `exempt` holds it
 // and `real` never does. An UNOWNED row
 // carrying the mark, an AWAITING row without it or with a malformed who is REAL. Every other row is

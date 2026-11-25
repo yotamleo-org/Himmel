@@ -84,6 +84,75 @@ case "$QMD_RSS_CEILING_MB" in ''|*[!0-9]*) QMD_RSS_CEILING_MB=0 ;; esac
 QMD_RSS_CEILING_MB=$((10#$QMD_RSS_CEILING_MB))
 QMD_RECYCLE_COOLDOWN_MIN=$((10#$QMD_RECYCLE_COOLDOWN_MIN))
 
+QMD_SYSTEMCTL="${QMD_SYSTEMCTL:-systemctl}"
+QMD_UNIT_DIR="${QMD_UNIT_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}"
+boot_unit="qmd-daemon.service"  # t13b-ok: the boot unit's name only, starts nothing
+boot_before="himmel-recover.service"
+
+install_boot_unit() {
+  local self unit
+  self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/ensure-qmd-daemon.sh" || return 1  # t13b-ok: this script's own path, starts nothing
+  unit="$QMD_UNIT_DIR/$boot_unit"
+  mkdir -p "$QMD_UNIT_DIR" || return 1
+  # PATH names the bun root: a user manager's default PATH has no ~/.bun/bin, and
+  # without bun the start would fall to the node-shebang shim (see resolve_qmd).
+  {
+    printf '[Unit]\n'
+    printf 'Description=Himmel qmd search server (starts before the chief and workers)\n'
+    printf 'Before=%s\n' "$boot_before"
+    printf '\n[Service]\n'
+    printf 'Type=oneshot\n'
+    printf 'RemainAfterExit=yes\n'
+    printf 'TimeoutStartSec=120\n'
+    printf 'Environment=PATH=%%h/.bun/bin:/usr/local/bin:/usr/bin:/bin\n'
+    printf 'ExecStart=/usr/bin/env bash "%s"\n' "${self//%/%%}"
+    printf '\n[Install]\n'
+    printf 'WantedBy=default.target\n'
+  } > "$unit.tmp" || { echo "ensure-qmd-daemon: cannot write $unit" >&2; return 1; }  # t13b-ok: message text only, starts nothing
+  mv "$unit.tmp" "$unit" || { echo "ensure-qmd-daemon: cannot write $unit" >&2; return 1; }  # t13b-ok: message text only, starts nothing
+  "$QMD_SYSTEMCTL" --user daemon-reload || { echo "ensure-qmd-daemon: systemctl --user daemon-reload failed" >&2; return 1; }  # t13b-ok: reloads unit files, starts nothing
+  "$QMD_SYSTEMCTL" --user enable "$boot_unit" || { echo "ensure-qmd-daemon: systemctl --user enable $boot_unit failed" >&2; return 1; }  # t13b-ok: enables the boot unit this mode exists to install
+  echo "ensure-qmd-daemon: installed and enabled $unit (runs $self at login, before $boot_before); re-run after the plugin path changes"  # t13b-ok: message text only, starts nothing
+}
+
+boot_show() { "$QMD_SYSTEMCTL" --user show -p "$1" --value "$2" 2>/dev/null; }
+boot_mono() {
+  local t
+  t="$(boot_show "$2" "$1")" || return 1
+  case "$t" in ''|*[!0-9]*) return 1 ;; esac
+  echo "$((10#$t))"
+}
+
+boot_order_check() {
+  local before q c
+  before="$(boot_show Before "$boot_unit")"
+  case " $before " in
+    *" $boot_before "*) ;;
+    *) echo "boot-order: $boot_unit does not order before $boot_before (Before=${before:-none}); run --install-boot-unit"; return 1 ;;
+  esac
+  q="$(boot_mono "$boot_unit" ActiveEnterTimestampMonotonic)" || { echo "boot-order: cannot read the start time of $boot_unit"; return 1; }
+  c="$(boot_mono "$boot_before" ExecMainStartTimestampMonotonic)" || { echo "boot-order: cannot read the start time of $boot_before"; return 1; }
+  if [ "$q" -eq 0 ]; then
+    echo "boot-order: $boot_unit did not start this boot"
+    return 1
+  fi
+  if [ "$c" -eq 0 ]; then
+    echo "boot-order: $boot_before did not start this boot (nothing to order against); $boot_unit started at ${q}us since boot"
+    return 0
+  fi
+  if [ "$q" -le "$c" ]; then
+    echo "boot-order: $boot_unit started before $boot_before (${q}us < ${c}us since boot)"
+    return 0
+  fi
+  echo "boot-order: $boot_unit started AFTER $boot_before (${q}us > ${c}us since boot)"
+  return 1
+}
+
+case "${1:-}" in
+  --install-boot-unit) install_boot_unit; exit $? ;;
+  --boot-order-check) boot_order_check; exit $? ;;
+esac
+
 # ---- Operator opt-out ------------------------------------------
 # The flag file (cross-session, no relaunched shells) or QMD_DAEMON_DISABLED=1
 # (one shell) keeps the shared daemon OFF on purpose, e.g. while gaming (its

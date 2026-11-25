@@ -140,6 +140,18 @@ itself release the predecessor's lock. Model the relay-before-release rule
 from `running-a-chief.md` separately from the tracker tally. Delivery is enough
 before release; quote-back is not required before the predecessor exits.
 
+## Ticket ownership model
+
+The rule "a ticket is In Progress only while a live owner holds it" has its own model in the state bucket,
+`<bucket>/specs/models/ticket-ownership/`: `TicketOwnership.tla` with a `new.cfg` that holds
+(`InProgressImpliesOwner`, `NoStuckUnflagged`, `HeldLeavesInProgress`) and one `red-*.cfg` per rule that sets
+`RULE = "old"` (the date-based wait) and must fail that rule. `chart/` holds the one-ticket statechart (`chart.mmd`).
+It is not a PR evidence report, so `model-check-report.sh` (which needs a PR touching one of the two targets) is not
+used: run TLC directly with the jar `setup-statechart.sh --check` names
+(`java -cp <tla2tools.jar> tlc2.TLC -config new.cfg TicketOwnership.tla`), and draw the chart with the vendored
+`statechart` script under the same 60 s / 512 MiB limits. The model's code anchor is `status-drift.sh`: change the
+classification there and re-run all four configs.
+
 No third target is selected here. Next candidates, in order: the
 ci-orchestrator lease (expiry/renewal ownership), then RETASK nonce/single-writer
 handoff (authorization identity across succession). Each needs its own model
