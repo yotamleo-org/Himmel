@@ -236,5 +236,12 @@ OUT=$(HIMMEL_CONSOLE_LEG=1 bash "$SCRIPT" --doc "$tmp/chief.md" --fleet "$tmp/fl
 check "8 a chief-spawned worker is refused" "$RC" "3"
 check "8 and nothing ran" "$(wc -l < "$FIX/go.log" | tr -d ' ')" "0"
 
+reset
+jq -n '[range(0;200) | {number:(1000+.), headRefOid:"1111111111111111111111111111111111111111", baseRefName:"main", isDraft:true, body:"", files:[]}]' > "$FIX/prs.json"
+OUT=$(bash "$SCRIPT" --doc "$tmp/chief.md" --fleet "$tmp/fleet.json" 2>&1); RC=$?
+check "9 a PR list that reached the 200 limit exits 1" "$RC" "1"
+contains "9 it says the list was cut" "$OUT" "reached the 200 limit"
+check "9 and nothing ran" "$(wc -l < "$FIX/go.log" | tr -d ' ')" "0"
+
 echo "passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

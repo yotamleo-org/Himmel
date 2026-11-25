@@ -41,7 +41,7 @@
 #   HOLD <pr> <head8> <reason>
 #   NO-TOKEN <pr> <label>
 #   go-batch: <n> GO, <m> held
-# Exit: 0 done; 1 setup failed (a library, the gh read, the chief doc, the fast-forward); 2 usage;
+# Exit: 0 done; 1 setup failed (a library, the gh read or its 200-PR limit, the chief doc, the fast-forward); 2 usage;
 # 3 run from a chief-spawned worker or a relay, only the chief writes a GO; 11 a GO is written but a
 # worker message was not delivered: send each SENDMESSAGE row by hand.
 #
@@ -114,6 +114,7 @@ GH_OK=0
 ( cd "$ANCHOR" && "$GH_BIN" pr list --state open --limit 200 --json number,title,headRefOid,baseRefName,isDraft,body,files ) > "$WORK/prs.json" 2>"$WORK/gh.err" || GH_OK=1
 [ "$GH_OK" -ne 0 ] || jq -e 'type == "array"' "$WORK/prs.json" >/dev/null 2>&1 || GH_OK=1
 [ "$GH_OK" -eq 0 ] || { echo "go-batch: cannot read the open PR list (gh: $(head -n 1 "$WORK/gh.err" | cut -c1-200)) - nothing was judged" >&2; exit 1; }
+[ "$(jq length "$WORK/prs.json")" -lt 200 ] || { echo "go-batch: the open PR list reached the 200 limit, so PRs beyond it were not read - nothing was judged" >&2; exit 1; }
 : > "$WORK/map"
 jq -r '(.workers // .legs // [])[]? | [.label, .doc, (.lane // "unknown")] | @tsv' "$FLEET" > "$WORK/fleet.tsv" 2>/dev/null \
     || { echo "go-batch: cannot read the fleet manifest $FLEET" >&2; exit 1; }
