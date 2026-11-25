@@ -457,6 +457,7 @@ s17_man_cs() {
 S17_MAN_CS_OK="$tmp/s17-man-cs-ok"; s17_man "$S17_MAN_CS_OK" "ran 0 $S17_A" "skip $S17_B"; s17_man_cs "$S17_MAN_CS_OK" "ran 0 $S17_B"
 S17_MAN_CS_ONLYA="$tmp/s17-man-cs-onlya"; s17_man "$S17_MAN_CS_ONLYA" "skip $S17_A" "skip $S17_B"; s17_man_cs "$S17_MAN_CS_ONLYA" "ran 0 $S17_A"
 S17_MAN_CS_77="$tmp/s17-man-cs-77"; s17_man "$S17_MAN_CS_77" "ran 0 $S17_A" "skip $S17_B"; s17_man_cs "$S17_MAN_CS_77" "ran 77 $S17_B"
+S17_MAN_CS_BOTH="$tmp/s17-man-cs-both"; s17_man "$S17_MAN_CS_BOTH" "ran 0 $S17_A" "ran 0 $S17_B"; s17_man_cs "$S17_MAN_CS_BOTH" "ran 77 $S17_B"
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_CS_OK"
 s17_at "$S17_H1"
 check "19 T26 the shard skipped B, the published file ran it: exit 0" "$rc" "0"
@@ -469,6 +470,10 @@ s17_clear; STUB_MANIFEST_DIR="$S17_MAN_CS_77"
 s17_at "$S17_H1"
 check "19 T26c the published file says ran 77 for B: exit 1" "$rc" "1"
 contains "19 T26c: B is the suite proven nowhere (CI ran it and it failed)" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (CI ran it and it failed)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_CS_BOTH"
+s17_at "$S17_H1"
+check "19 T26d a ran 0 row and a ran 77 row for B in two shards: exit 1" "$rc" "1"
+contains "19 T26d: the green shard does not mask the red one" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (CI ran it and it failed)"
 s17_clear
 
 s17_js_man() {

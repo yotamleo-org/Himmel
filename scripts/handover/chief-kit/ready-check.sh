@@ -2747,10 +2747,10 @@ s17_body() {
         while IFS= read -r s; do
             if [ -z "$run_id" ]; then
                 why="$s17_why"
-            elif grep -Fxq -- "$s" "$d/ran0"; then
-                n_ci=$((n_ci + 1)); continue
             elif grep -Fxq -- "$s" "$d/shred"; then
                 why="CI ran it and it failed"
+            elif grep -Fxq -- "$s" "$d/ran0"; then
+                n_ci=$((n_ci + 1)); continue
             elif grep -Fxq -- "$s" "$d/skip"; then
                 n_tskip=$((n_tskip + 1)); tskip_names="$tskip_names, $s (CI skip)"; continue
             elif grep -Fxq -- "$s" "$d/jsred"; then
