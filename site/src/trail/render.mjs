@@ -158,7 +158,11 @@ const PAGES = [
     body: 'hero.html',
     title: 'Start here',
     description: 'What himmel is, what it installs on your machine and where, and how to undo it.',
-    parts: { MANIFEST_N: String(manifest.length), CORE_N: String(coreN) },
+    parts: {
+      MANIFEST_N: String(manifest.length),
+      CORE_N: String(coreN),
+      FLOWS_SVG: read('docs/assets/flows.svg').trimEnd(),
+    },
     // A link to a part of the trail that now lives on another page goes there.
     script: [
       '<script>',

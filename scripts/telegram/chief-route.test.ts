@@ -3527,6 +3527,63 @@ test("R6, R6c, R6d: round-critical needs the console, a decision naming the tick
   expect(reused.err).toContain(`round-critical: decision 901 was already used for ${CAP_KEY}`); expect(reused.code).not.toBe(0);
 }, S1B);
 
+test("round-critical --closure: an operator decision alone opens exactly one more writer round past the cap, closure-pack builds it, and the decision is spent", async () => {
+  const t = await roundTree(MAJOR, []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **M2** (major; reopens M1) still open")).err).toBe("");
+  expect((await overrideOf(t.specs, "M2")).code).toBe(0);
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toBe("");
+  writeFileSync(t.a, front(CAP_KEY, "# A\n\na lint fix after the seal\n"));
+  const closure = (d: number) => verb(true, "round-critical", CAP_KEY, "--decision", String(d), "--quote", SPEND, "--closure", "--specs", t.specs);
+  const before = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs);
+  expect(before.err).toContain(T5(6)); expect(before.code).not.toBe(0);
+  decide(t.specs, 1349, `${CAP_KEY} operator: ${SPEND}\n`);
+  const bare = await verb(false, "round-critical", CAP_KEY, "--decision", "1349", "--quote", SPEND, "--closure", "--specs", t.specs);
+  expect(bare.code).not.toBe(0); expect(rowsOf(t.specs, "critical")).toEqual([]);
+  const ok = await closure(1349);
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "critical")).toMatchObject([{ key: CAP_KEY, closure: true, opens: 6, decision: "1349", quote: SPEND }]);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).not.toContain("invalid");
+  const pack = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs);
+  expect(pack.err).toBe(""); expect(pack.code).toBe(0); expect(pack.out).toContain(markerFor(t.specs, CAP_KEY, "spec", 6));
+  expect((await closeOn(t, "spec", 6, [t.a], "SPEC CLEAN")).err).toBe("");
+  const again = await closure(1349);
+  expect(again.err).toContain(`round-critical: decision 1349 was already used for ${CAP_KEY}`); expect(again.code).not.toBe(0);
+  const seven = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs);
+  expect(seven.err).toContain(T5(7)); expect(seven.code).not.toBe(0);
+  const d = decide(t.specs, 1350, `${CAP_KEY} operator: ${SPEND}\n`);
+  appendFileSync(join(roundsDir(t.specs), `${CAP_KEY}.jsonl`), `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "critical", closure: true, epoch: 0, opens: 7, decision: "1349", quote: SPEND, decision_path: d, decision_sha: sha(readFileSync(d, "utf8")) })}\n`);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).toContain("invalid: critical 1349");
+  expect((await closeOn(t, "spec", 7, [t.a], "SPEC CLEAN")).err).toContain(T5(7));
+});
+
+test("round-critical --closure is refused below the cap, next to --finding, and on a decision a finding ruling already spent", async () => {
+  const t = await roundTree(["- **C1** (major; operator-critical: spend-grant) the spec grants a spend"], []);
+  decide(t.specs, 1351, `${CAP_KEY} operator: ${SPEND}\n`);
+  const low = await verb(true, "round-critical", CAP_KEY, "--decision", "1351", "--quote", SPEND, "--closure", "--specs", t.specs);
+  expect(low.err).toContain(`round-critical: ${CAP_KEY} writer round 4 needs no record; --closure is for a refused round only`); expect(low.code).not.toBe(0);
+  const both = await critical(true, t.specs, "C1", 1351, SPEND, "--closure");
+  expect(both.err).toContain("round-critical: --closure opens a round on the decision alone; drop --finding"); expect(both.code).not.toBe(0);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **C2** (major; reopens C1) still grants it")).err).toBe("");
+  expect((await critical(true, t.specs, "C1", 1351, SPEND, "--no-round")).code).toBe(0);
+  const spent = await verb(true, "round-critical", CAP_KEY, "--decision", "1351", "--quote", SPEND, "--closure", "--specs", t.specs);
+  expect(spent.err).toContain(`round-critical: decision 1351 was already used for ${CAP_KEY}`); expect(spent.code).not.toBe(0);
+  expect(rowsOf(t.specs, "critical").length).toBe(1);
+});
+
+test("a decision a --closure round spent is never reused as a finding ruling: the verb refuses it and a hand-appended row reads invalid", async () => {
+  const t = await roundTree(["- **C1** (major; operator-critical: spend-grant) the spec grants a spend"], []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **C2** (major; reopens C1) still grants it")).err).toBe("");
+  const d = decide(t.specs, 1352, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await verb(true, "round-critical", CAP_KEY, "--decision", "1352", "--quote", SPEND, "--closure", "--specs", t.specs)).code).toBe(0);
+  const reuse = await critical(true, t.specs, "C1", 1352, SPEND, "--no-round");
+  expect(reuse.err).toContain(`round-critical: decision 1352 was already used for ${CAP_KEY}`); expect(reuse.code).not.toBe(0);
+  expect(rowsOf(t.specs, "critical").length).toBe(1);
+  const r3 = rowsOf(t.specs, "round").find((x) => x.critic === "spec" && x.round === 3);
+  appendFileSync(join(roundsDir(t.specs), `${CAP_KEY}.jsonl`), `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "critical", epoch: 0, opens: 0, id: "C1", class: "spend-grant", decision: "1352", quote: SPEND, decision_path: d, decision_sha: sha(readFileSync(d, "utf8")), return_sha: r3.return_sha })}\n`);
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).toContain("invalid: critical 1352");
+  expect((await status(t.specs)).critical_open).toMatchObject([{ id: "C1", class: "spend-grant" }]);
+});
+
 const threeCriticals = async () => {
   const t = await roundTree(["- **F5** (major; operator-critical: spend-grant) grants a spend", "- **C6** (major; operator-critical: public-policy) sets a policy", "- **H3** (major; operator-critical: reverses-ruling) reverses a ruling"], []);
   expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **X1** (major) still open")).err).toBe("");

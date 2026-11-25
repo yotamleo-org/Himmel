@@ -122,6 +122,16 @@ test("waits: a long-lived wait is its own list, never counted as an orphan; a st
   expect(filterCount(rows, orphaned, procs)).toBe(filterCount(rows, orphaned, []) + 2);
 });
 
+test("a wrapper a T3 thread owns is neither an orphan nor a wait: it is in no section's process list and never counted", () => {
+  const procs = [{ pid: 7, owner: "orphan", ageMin: 45, kind: "t3" as const, thread: "t-run" }, { pid: 9, owner: "orphan", ageMin: 31, kind: "orphan" as const }];
+  const s = fleetSections(rows, null, NO_FILTERS, procs);
+  expect(s.processOrphans.map((p) => p.pid)).toEqual([9]);
+  expect(s.waits).toEqual([]);
+  expect(s.counts.orphaned).toBe(s.orphans.length + 1);
+  const orphaned = { lanes: [], states: ["orphaned"], text: "" };
+  expect(filterCount(rows, orphaned, procs)).toBe(filterCount(rows, orphaned, []) + 1);
+});
+
 test("a console filter scopes every section, and its process orphans, to that console", () => {
   const procs = [{ pid: 7, owner: "idle-new", ageMin: 45 }, { pid: 8, owner: "orphan", ageMin: 90 }, { pid: 9, owner: "elsewhere", ageMin: 31 }];
   const s = fleetSections(rows, BT, NO_FILTERS, procs);

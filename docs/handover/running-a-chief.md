@@ -1517,6 +1517,63 @@ its subagent children too.
   woken).
   `keepalive.sh` runs it with `--wake` every 15 polls (about 5 minutes).
 
+### A worker in a T3 thread reaches the chief: no relay thread
+
+A worker in a T3 thread reaches the chief through the channel every non-native worker
+already uses: marker bullets written with `append-results.sh` into a handover doc listed
+in the chief's fleet manifest. The waiter wakes the chief on READY, BLOCKED, FINDING and
+request bullets (`WAKE worker-ready`, `worker-blocked`, `worker-finding`,
+`worker-request`). **No relay thread or relay session is needed**: the hand-briefed
+"T3 relay (light)" threads are not part of this path.
+
+- **Turning it on is one field, off by default.** The operator lists base instance ids
+  in `~/.himmel/config.json`, beside `.t3.instance_allowlist`:
+  `{"t3": {"relay_instances": ["claudeAgent_worker-impl", "antigravity"]}}`. Run
+  `himmel-update` (it runs `provider-instances.sh --apply`) and T3 offers a
+  "<name> + chief relay" copy of each listed instance
+  ([`t3-provider-instances.md`](../internals/t3-provider-instances.md)). Starting a thread
+  on that copy is the one click. With the field absent or `[]` nothing is generated, the
+  binder exits before any T3 call, and nothing is bound. Turning the field off stops new
+  binds only: a bound thread stays until `relay-bind.sh unbind` or it ages out.
+- **Path A, a thread you launch for a ticket: prepare, launch, attach.**
+  1. `bash scripts/t3/relay-bind.sh prepare --manifest <chief>.fleet.json --ticket <KEY-n>
+     --label N<k> --slug <slug> --writes <file>...` writes the thread's doc beside the
+     manifest (`<KEY>-N<k>-t3-<slug>-<date>.md`), adds its `t3` lane row, and prints the
+     command block for the brief.
+  2. Launch the thread on its `_relay` instance through the guarded `mcp__t3-code__`
+     launch tool (the chief session must have it), with the brief and that command
+     block as its first message. Never use Bash `t3 thread start`.
+  3. `bash scripts/t3/relay-bind.sh attach --manifest <m> --doc <doc> --thread <threadId>`
+     records the threadId the launch returned.
+  The row then wakes like any worker's: `WAKE worker-ready <label> pr=<n> head=<head>`,
+  `worker-blocked`, `worker-finding`, `worker-request`.
+- **Path B, a thread the operator opens on a "+ chief relay" instance.** The waiter runs
+  `relay-bind.sh scan` once per `CHIEF_WAIT_T3_RELAY_SEC` (default 120) and binds an idle
+  thread: it writes a `T3ASK-<id>-<date>.md` doc, adds an `ask` row and sends the thread
+  the doc path. A bound thread is for asks; ticket work goes through path A. `BOUND` and
+  `UNBOUND` join the housekeeping digest as kind `t3-relay`. These wake once as
+  `WAKE t3-relay <kind> <threadId|list|stem>`: `ask-thread-pr` (an ask thread now has a
+  linked PR), `bind-gave-up`, `bind-refused`, `owner-taken`, and `list-failed` (three
+  `t3 thread list` failures in a row).
+- **An ask row takes no READY or resolve action.** A `READY` or `BLOCKED resolve` bullet
+  on an `ask` row prints `WAKE t3-relay ask-ready <label>` or `ask-resolve <label>` and
+  nothing runs: no ready-check, no worker-event, no auto-go, with auto_go on or off. A
+  question (`LIVE QUESTION`), BLOCKED or FINDING still wakes you as usual.
+- **Reply with `t3-send.sh`.** Answer a thread with
+  `bash scripts/t3/t3-send.sh <threadId> <msg-file>`, by threadId. It is information
+  only: never a GO, a RETASK or a token. A halt or a narrowing needs no token and may go
+  this way. You merge a T3 worker's PR yourself, so no GO has to reach the thread (a
+  `t3` READY is escalated by auto-go, never merged).
+- **Ownership follows the live chief.** One chief binds path B at a time. The owner is
+  the chief whose queue lock is held; when it is released or gone, the next chief to run
+  a scan takes over by itself and prints `OWNER-TAKEN`. A manifest that descends from the
+  old owner inherits its bindings; a sibling chief takes binding rights only, with no
+  rows. A chief that is not the owner gets no bind (the waiter stays silent). Path A
+  needs no ownership.
+- **Act only on the stem ticket's PR.** A path A thread may open a PR only for the ticket
+  key in its doc stem. Merge or review only a PR whose title carries that key; any other
+  PR a T3 thread opens is not yours to act on.
+
 ## See also
 
 - [`chief-template.md`](chief-template.md): the chief's operating contract

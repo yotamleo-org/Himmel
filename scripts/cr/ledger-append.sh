@@ -75,8 +75,8 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 _kf_default="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/known-findings.json"
 kind="${1:-}"; shift || true
 case "$kind" in
-  finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|comments|disposition|dependabot-go|round-scope|impacted|security-audit) ;;
-  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|comments|disposition|dependabot-go|round-scope|impacted|security-audit" >&2; exit 2;;
+  finding|avail|usage|amend|rekey|attempt|delegation|score|ci-red-unlock|preflight|blast|comments|disposition|dependabot-go|round-scope|impacted|security-audit) ;;
+  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|rekey|attempt|delegation|score|ci-red-unlock|preflight|blast|comments|disposition|dependabot-go|round-scope|impacted|security-audit" >&2; exit 2;;
 esac
 
 branch="" caller_branch="" head="" model="" responding_model="" id="" severity="" file="" line="" verdict="" status="" artifact="diff" perspective="off"
@@ -85,7 +85,7 @@ round="" disposition_round="" hit_pairs=""
 crit_n="" imp_n="" sug_n="" dropped_n="" raw_path=""
 target_head="" disposition="" source="" attest="" pr="" mac=""
 scope="" base_sha="" from_sha="" impacted_n="" unverdicted_n="" skip_n="" rc_n="" hard="-" critic_exit="" persp_sha="" report="" report_sha=""
-local_pass_file="" ruled_skip_file="" count_n=""
+local_pass_file="" ruled_skip_file="" count_n="" rekey_mode=0
 while [ $# -gt 0 ]; do case "$1" in
   --branch) branch="$2"; shift 2;; --head) head="$2"; shift 2;;
   --model) model="$2"; shift 2;; --responding-model) responding_model="$2"; shift 2;;
@@ -123,6 +123,23 @@ while [ $# -gt 0 ]; do case "$1" in
   --count) count_n="$2"; shift 2;;
   *) echo "ledger-append.sh: unknown $1" >&2; exit 2;;
 esac; done
+
+if [ "$kind" = "rekey" ]; then
+  rekey_usage="usage: ledger-append.sh rekey --head <sha> --id <finding-id> --line <token> [--file <path>] --reason <text> [--branch <b>]"
+  [ -n "$head" ] || { echo "ledger-append.sh: rekey requires --head (the head the finding row is recorded at). $rekey_usage" >&2; exit 2; }
+  [ -n "$id" ]   || { echo "ledger-append.sh: rekey requires --id. $rekey_usage" >&2; exit 2; }
+  [ -n "$reason" ] || { echo "ledger-append.sh: rekey requires --reason (why the original token was wrong). $rekey_usage" >&2; exit 2; }
+  [ -z "$set_pairs" ] || { echo "ledger-append.sh: rekey takes no --set. $rekey_usage" >&2; exit 2; }
+  case "$line" in ""|*[!0-9-]*|-*|*-|*-*-*) _line_ok=0;; *) _line_ok=1;; esac
+  [ "$_line_ok" = 1 ] || { echo "ledger-append.sh: rekey --line must be a line or range token like 1331 or 1331-1340 (got '$line'). $rekey_usage" >&2; exit 2; }
+  case "$file" in
+    *[[:cntrl:]]*) echo "ledger-append.sh: rekey --file holds a control character - NOTHING was written" >&2; exit 2;;
+  esac
+  set_pairs="rekey=true"$'\n'"line=$line"$'\n'
+  [ -z "$file" ] || set_pairs="${set_pairs}file=$file"$'\n'
+  rekey_mode=1
+  kind=amend
+fi
 
 # --batch-file: one node process + one ledger read/dedup-scan for
 # N finding rows instead of N. The single-row-per-invocation shape above is
@@ -342,6 +359,7 @@ if [ "$kind" = "amend" ]; then
       # path clear-cr-marker itself recommends is a dead end for any finding
       # originally recorded without a reason, which is most of them.
       severity=*|head=*|verdict=*|deferred_to=*|fu_class=*|fu_why=*|class=*|reason=*|file=*|line=*|pre_existing=*) ;;
+      rekey=true) [ "$rekey_mode" = 1 ] || { echo "ledger-append.sh: amend cannot set 'rekey' (use the rekey verb)" >&2; exit 2; } ;;
       *=*) echo "ledger-append.sh: amend cannot set '${_pair%%=*}' (allowed: severity, head, verdict, deferred_to, fu_class, fu_why, class, reason, file, line, pre_existing)" >&2; exit 2;;
       *)   echo "ledger-append.sh: --set expects <key>=<value> (got '$_pair')" >&2; exit 2;;
     esac
@@ -731,7 +749,7 @@ FILE="$file" LINE="$line" VERDICT="$verdict" STATUS="$status" BATCH_FILE="$batch
 PROMPT_CHARS="$prompt_chars" RESPONSE_CHARS="$response_chars" TS="$ts" LEDGER="$ledger" ARTIFACT="$artifact" PERSPECTIVE="$perspective" \
 ATTEMPT_NUM="$attempt_num" DURATION_SECS="$duration_secs" ROUND="$round" DISPOSITION_ROUND="$disposition_round" \
 CRIT_N="$crit_n" IMP_N="$imp_n" SUG_N="$sug_n" DROPPED_N="$dropped_n" RAW_PATH="$raw_path" \
-REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" FU_WHY="$fu_why" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" TARGET_HEAD="$target_head" DISPOSITION="$disposition" SOURCE="$source" ATTEST="$attest" PR="$pr" MAC="$mac" SCOPE="$scope" BASE_SHA="$base_sha" FROM_SHA="$from_sha" IMPACTED_N="$impacted_n" UNVERDICTED_N="$unverdicted_n" SKIP_N="$skip_n" RC_N="$rc_n" LOCAL_PASS_FILE="$local_pass_file" RULED_SKIP_FILE="$ruled_skip_file" HARD="$hard" CRITIC_EXIT="$critic_exit" PERSP_SHA="$persp_sha" REPORT="$report" REPORT_SHA="$report_sha" COUNT_N="$count_n" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" AMEND_AUTH="${_kf_default%/*}/ledger-amend-auth.js" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
+REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" FU_WHY="$fu_why" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" TARGET_HEAD="$target_head" DISPOSITION="$disposition" SOURCE="$source" ATTEST="$attest" PR="$pr" MAC="$mac" SCOPE="$scope" BASE_SHA="$base_sha" FROM_SHA="$from_sha" IMPACTED_N="$impacted_n" UNVERDICTED_N="$unverdicted_n" SKIP_N="$skip_n" RC_N="$rc_n" LOCAL_PASS_FILE="$local_pass_file" RULED_SKIP_FILE="$ruled_skip_file" HARD="$hard" CRITIC_EXIT="$critic_exit" PERSP_SHA="$persp_sha" REPORT="$report" REPORT_SHA="$report_sha" COUNT_N="$count_n" REKEY="$rekey_mode" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" AMEND_AUTH="${_kf_default%/*}/ledger-amend-auth.js" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
   const fs=require("fs"), cp=require("child_process"), crypto=require("crypto"), e=process.env;
   // The disproved-verdict bar's text test (see DISPROVAL_JS above).
   const {measured,scan}=new Function(e.DISPROVAL_JS+"; return {measured,scan};")();
@@ -1201,8 +1219,8 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       const i=p.indexOf("=");
       let v=p.slice(i+1);
       const k=p.slice(0,i);
-      if(k==="line") v=Number(v)||v;
-      if(k==="pre_existing") v=(v==="true");
+      if(k==="line"&&e.REKEY!=="1") v=Number(v)||v;
+      if(k==="pre_existing"||k==="rekey") v=(v==="true");
       if(k==="reason") v=cleanFree(v);
       set[k]=v;
     }
@@ -1274,7 +1292,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // sets a verdict is an adjudication; a bookkeeping amend carries no round.
     if(e.DISPOSITION_ROUND&&set.verdict) rec.disposition_round=Number(e.DISPOSITION_ROUND);
     fs.appendFileSync(led, JSON.stringify(signAmend(rec))+"\n");
-    process.stderr.write("ledger-append.sh: amended "+e.ID+" at "+e.HEAD_.slice(0,8)+" -> "
+    process.stderr.write("ledger-append.sh: "+(e.REKEY==="1"?"rekeyed ":"amended ")+e.ID+" at "+e.HEAD_.slice(0,8)+" -> "
       +JSON.stringify(set)+"\n");
     process.exit(0);
   }

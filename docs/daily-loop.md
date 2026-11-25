@@ -435,41 +435,21 @@ limited or out of credit holds the head; the levers are to restore the lane, or,
 if you choose, to set that reviewer to `best-effort` in the overlay for
 the duration.
 
-### CI release: heavy CI after review
+### CI starts every job at once
 
-> Opt-in per repository (the `CI_GO_GATE` repository variable set to `on`),
-> and himmel-only: it needs a CI workflow that listens to the `ci:go` label. A
-> repo that does not opt in keeps running CI on every push.
+A push (or a reopened pull request) starts every CI job in one run: the cheap
+checks (`plan`, `ci-quick`, `lint` and `plugin-version-bump`) and the heavy jobs
+(the shell-unit shards and the bun, node and lanes-and-trust suites) together,
+so a head goes green or red as fast as its slowest job. The first failing job
+cancels the rest of the run, and the run reads failed. The cost is that heavy
+runner minutes are spent before review: a head a reviewer then sends back has
+already paid for them.
 
-A push runs only the cheap checks (`plan`, `ci-quick`, `lint` and
-`plugin-version-bump`). The heavy jobs
-(the shell-unit shards and the bun, node and lanes-and-trust suites) start
-when the review gate passes at that head, so a head a reviewer is about to
-send back does not burn an hour of runners.
-
-1. You push. The cheap checks run.
-2. Each time the review loop concludes something about the head (the critic
-   panel finishes, you disposition a finding, CodeRabbit's verdict is read, a
-   thread is resolved), the station checks the review gate at that head.
-   There is no timer: the check runs on those events only.
-3. When every hard reviewer passes and every best-effort reviewer passes or is
-   relaxed, and no cheap check is red, the station adds the `ci:go`
-   label. That label event starts the heavy jobs at that head.
-4. A new push starts over at step 1 and cancels the heavy run of the old
-   head.
-
-What does not change: the merge still needs every required check green at
-the final head and a passing review gate (step 8). `ci:go` only starts CI
-early or late; it never lets anything merge. Adding `ci:go` by hand starts
-heavy CI at once, which is the lever when a hold is understood. Until the
-heavy jobs report, `check-ci.sh` prints `CR-FIRST HOLD <reason>` for the head
-instead of failing on missing checks. A thread resolved in the GitHub web UI
-is picked up by the next `/pr-check` or `check-ci.sh` run, or by the
-chief's next tick when one is running.
-
-Opting in is one repository variable, read by both the workflow and the
-station, so the two cannot disagree; turning it off brings back CI on every
-push without editing the workflow.
+The review gate still blocks the merge (step 8); it no longer delays the start
+of CI. The `ci:go` label and the `CI_GO_GATE` repository variable (the earlier
+opt-in that held the heavy jobs until the review gate passed) are retired:
+the workflow ignores both, a label event starts no run, and `CI_GO_GATE` should
+stay off or unset.
 
 ---
 

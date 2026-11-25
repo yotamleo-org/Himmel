@@ -8,6 +8,7 @@ Send the chief `JUDGE-REQUEST <pr> <head>` once per head:
 
 - native lane: `SendMessage` to the chief.
 - `HIMMEL_BUS_NAME` set (claudex, openrouter): the himmel-bus `send` tool.
+- a T3 thread (a `t3` row in the chief's fleet manifest): send no message; write the marker bullet only, with the `append-results.sh` command your brief or bind notice gave you.
 - otherwise: send nothing; the chief dispatches the judge at READY.
 
 A worker off the native lane also writes every request or question as a marker bullet carrying its word (`- HH:MM LIVE JUDGE-REQUEST <pr> <head>`, `LIVE PUSH-REQUEST …`, `LIVE QUESTION …`). The chief's waiter reads only your newest marker bullet, so it wakes once for the request only while that bullet is still your newest. Write no other marker bullet until the chief answers. A request in any other spelling wakes nothing.

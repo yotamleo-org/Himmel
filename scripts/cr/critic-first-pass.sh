@@ -145,7 +145,7 @@ family_for_model() {
     case "$lc" in
         *gpt-oss*|*gptoss*)                                  echo open ;;
         *claude*|*anthropic*)                                echo claude ;;
-        *gpt-5*|*gpt5*|*gpt-4*|*gpt4*|*o1*|*o3*|*codex*)     echo gpt ;;
+        *gpt-6*|*gpt-5*|*gpt5*|*gpt-4*|*gpt4*|*o1*|*o3*|*codex*) echo gpt ;;
         *qwen*|*kimi*|*moonshot*|*glm*|*deepseek*|*mistral*|*llama*) echo open ;;
         *)                                                   echo open ;;  # unknown → open family (rigid scaffolding) = safest default
     esac

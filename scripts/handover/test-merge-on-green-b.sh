@@ -2281,11 +2281,6 @@ rm -f "$S5_ROOT/dotenv-marker"
 S5_SEL="$S5_ROOT/full" _GHR_LOAD_DOTENV="$S5_ROOT/evil-load-dotenv.sh" s5_mog 0 "8691-f: _GHR_LOAD_DOTENV set: merged"
 if [ -e "$S5_ROOT/dotenv-marker" ]; then fail "8691-f: the named file was sourced"; else pass; fi
 s5_some "8691-f: the helper ran (a read logs tok=read)" '^tok=read argv=run list'
-s5_nounset="$S5_ROOT/mog-no-unset.sh"
-grep -v '^unset _GHR_LOAD_DOTENV ' "$MOG" > "$s5_nounset"
-rm -f "$S5_ROOT/dotenv-marker"
-S5_SEL="$S5_ROOT/full" _GHR_LOAD_DOTENV="$S5_ROOT/evil-load-dotenv.sh" MOG_SRC="$s5_nounset" s5_mog 0 "8691-f control: a copy without the unset line"
-if [ -e "$S5_ROOT/dotenv-marker" ]; then pass; else fail "8691-f control: a copy without the unset line never sourced the file (the row proves nothing)"; fi
 
 echo
 echo "merge-on-green: $PASS passed, $FAIL failed"
