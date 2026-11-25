@@ -395,7 +395,7 @@ if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; the
   cat >"$TMP/door-driver.ts" <<'EOF'
 const [ck, procRoot, hostNsPath, ...args] = process.argv.slice(2);
 const F = await import(`${ck}/scripts/jira/src/release/fence-ancestry.ts`);
-F.setWalkDefaults({ procRoot, hostNsPath, execArgv: [], env: {} });
+F.setWalkDefaultsForTests({ procRoot, hostNsPath, execArgv: [], env: {} });
 process.argv = [process.argv[0], `${ck}/scripts/jira/src/index.ts`, ...args];
 await import(`${ck}/scripts/jira/src/index.ts`);
 EOF

@@ -41,11 +41,7 @@ export interface WalkOpts {
 type WalkDefaults = Pick<WalkOpts, 'procRoot' | 'hostNsPath' | 'platform' | 'execArgv' | 'env'>;
 const walkDefaults: WalkDefaults = {};
 
-/**
- * Test-only: a driver that runs the CLI in-process names the process tree the walk reads, so a suite reaches the env-only branch
- * with /proc visible and no preload flag. Code that can call this already runs inside the process, which no check here can bar.
- */
-export function setWalkDefaults(d: WalkDefaults): void {
+export function setWalkDefaultsForTests(d: WalkDefaults): void {
   Object.assign(walkDefaults, d);
 }
 
@@ -138,7 +134,6 @@ const firstPreload = (tokens: readonly string[]): string | null => {
   return null;
 };
 
-/** argv[1..] up to the script: a token that is no flag and follows no flag awaiting its value is the script; what follows it is the script's own. */
 function preloadBeforeScript(argv: readonly string[]): string | null {
   let awaiting = false;
   for (const token of argv.slice(1)) {

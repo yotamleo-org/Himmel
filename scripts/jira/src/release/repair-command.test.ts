@@ -1160,9 +1160,6 @@ describe('T8 C: one serialized repair-state writer and the retry clock', () => {
   const envOf = (): Record<string, string> => ({
     ...(process.env as Record<string, string>), HIMMEL_RELEASE_STATE_DIR: join(root, 'release'), HIMMEL_RELEASE_KEY_DIR: join(root, 'keys'), JIRA_PROJECT_KEY: 'TESTKEY',
   });
-  // A spawned CLI runs the real ancestry walk, which refuses outside the host's own namespaces and so takes no state lock. This driver gives
-  // that walk a clean fixture process tree (self 300, then 200, then pid 1, with matching host-ns) and runs the built CLI in-process, so the
-  // child reaches its own env check with /proc visible and no preload flag on its command line.
   const fenceDriver = (): string => {
     const proc = join(root, 'fence-proc');
     const uid = process.getuid?.() ?? 0;
@@ -1178,8 +1175,8 @@ describe('T8 C: one serialized repair-state writer and the retry clock', () => {
     writeFileSync(join(proc, 'host-ns'), 'pid:[4026531836] user:[4026531837]\n');
     const p = join(root, 'fence-driver.mjs');
     writeFileSync(p, [
-      `import { setWalkDefaults } from ${JSON.stringify(pathToFileURL(join(dirname(CLI), 'release', 'fence-ancestry.js')).href)};`,
-      `setWalkDefaults({ procRoot: ${JSON.stringify(proc)}, hostNsPath: ${JSON.stringify(join(proc, 'host-ns'))}, platform: 'linux', execArgv: [], env: {} });`,
+      `import { setWalkDefaultsForTests } from ${JSON.stringify(pathToFileURL(join(dirname(CLI), 'release', 'fence-ancestry.js')).href)};`,
+      `setWalkDefaultsForTests({ procRoot: ${JSON.stringify(proc)}, hostNsPath: ${JSON.stringify(join(proc, 'host-ns'))}, platform: 'linux', execArgv: [], env: {} });`,
       `process.argv = [process.argv[0], ${JSON.stringify(CLI)}, ...process.argv.slice(2)];`,
       `await import(${JSON.stringify(pathToFileURL(CLI).href)});`, '',
     ].join('\n'));

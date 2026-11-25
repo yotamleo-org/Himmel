@@ -14,8 +14,7 @@ vi.mock('../client.js', () => ({
   projectKey: () => proj.key,
 }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
-// The chat stamp is read from a fake process tree, never this test runner's own ancestry. This mock
-// replaces vitest.setup.ts's, so it keeps that one's walk over a clean fixture process tree (the fence refuses an absent /proc).
+// The chat stamp is read from a fake process tree, never this test runner's own ancestry.
 const ancestry = vi.hoisted(() => ({ procRoot: undefined as string | undefined }));
 vi.mock('../release/fence-ancestry.js', async (orig) => {
   const m = await orig<typeof import('../release/fence-ancestry.js')>();

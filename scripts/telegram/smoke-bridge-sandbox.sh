@@ -168,15 +168,13 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$work/jira.port" ] && break; sleep 0.5; 
 JPORT="$(head -n 1 "$work/jira.port")"
 [ -n "$JPORT" ] || { echo "FAIL smoke-bridge-sandbox: the fake Jira did not start"; exit 1; }
 
-# A fresh scratch release per spawn: declared with the engine on scratch state, behind a fence
-# that reads a clean fixture process tree (this harness may run below a marked worker; the spawns never do).
+# A fresh scratch release per spawn, declared with the engine on scratch state.
 cat > "$work/declare.ts" <<'EOF'
 const [ck, stateDir, keyDir] = process.argv.slice(2);
 const { declare } = await import(`${ck}/scripts/jira/src/release/engine.ts`);
 const { mkdirSync, writeFileSync, symlinkSync } = await import("node:fs");
 const { join } = await import("node:path");
 mkdirSync(join(stateDir, "R9"), { recursive: true }); mkdirSync(keyDir, { recursive: true });
-// A clean same-uid process tree (self 300, then 200, then pid 1) with matching host-ns: the walk reads it, never an absent /proc.
 const proc = join(stateDir, ".fence-proc");
 const uid = process.getuid?.() ?? 0;
 for (const [pid, ppid, u] of [[300, 200, uid], [200, 1, uid], [1, 0, 0]]) {
