@@ -142,4 +142,16 @@ check "usage: no --fleet -> rc 2" "$rc" "2"
 rc=0; run --fleet "$W/none.json" >/dev/null 2>&1 || rc=$?
 check "usage: unreadable manifest -> rc 2" "$rc" "2"
 
+RDOC="$W/docs/HIMMEL-1-N1b-alpha-2026-01-01-RESUME.md"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1b"}]}\n' "$RDOC" > "$FLEET"
+{ echo "## Results (newest at the bottom)"; echo; echo "- 09:00 LIVE - starting"; echo "- 10:00 READY 11 $SHA GREEN"; } > "$RDOC"
+printf '[]\n' > "$OS_PRS"
+printf '{"state":"MERGED","mergeCommit":{"oid":"%s"}}\n' "$SHA" > "$OS_VIEW"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 307 claude -n "HIMMEL-1-N1-alpha-2026-01-01-RESUME" work
+pgrep_x_stub 307
+out=$(run --fleet "$FLEET" 2>&1)
+not_contains "a resumed worker under its original label is listed" "$out" "orphan session"
+contains "a resumed worker under its original label is finished under that name" "$out" "# orphan finished HIMMEL-1-N1-alpha-2026-01-01-RESUME pr=11 merged=$SHA"
+
 if [ "$fails" -eq 0 ]; then echo "ALL OK"; exit 0; else echo "FAILURES: $fails"; exit 1; fi

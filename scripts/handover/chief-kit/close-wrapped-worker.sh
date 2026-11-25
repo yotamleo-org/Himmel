@@ -101,7 +101,7 @@
 #   1  a plumbing failure (census, library load, doc listing, fleet manifest), or the
 #      TERM signal itself failed; never the housekeeping, which the sweep reports
 #   2  usage (missing/unreadable doc)
-#   3  refused - the queue lock is not free: on the doc, or on a sibling other
+#   3  refused - the queue lock is not free (with --finished: held while no live session matched): on the doc, or on a sibling other
 #      than its explicitly named hand-off successor. A legacy resumed-window
 #      fallback still requires the successor's lock to be free.
 #   4  refused - the last marker-bullet is not WRAPPED: the doc's own (a -RESUME doc with no
@@ -813,6 +813,10 @@ fi
 # runs under any of the worker's names: the window already exited. That is a close, not a
 # refusal. A predecessor chief keeps the refusal (chief-wait.sh reads its rc 5).
 if [ "$match_count" -eq 0 ] && [ "$CHIEF_MODE" -eq 0 ]; then
+    if [ "$FINISHED_MODE" -eq 1 ] && ! bash "$HERE/../queue-lock.sh" status "$DOC" >/dev/null 2>&1; then
+        echo "close-wrapped-worker: refusing --finished - no live session matched the worker's names but the queue lock on $DOC is held, so the worker may run under a name this doc does not derive" >&2
+        exit 3
+    fi
     names_shown="$(printf '%s' "$names" | tr -s ',' | sed -E 's/^,//; s/,$//')"
     echo "CLOSED-ALREADY: $(worker_label "$DOC") has no live session under [$names_shown]; nothing to signal"
     [ "$CHECK_MODE" -eq 1 ] && exit 0

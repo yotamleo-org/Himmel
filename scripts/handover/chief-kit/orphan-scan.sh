@@ -56,11 +56,24 @@ watched=$(jq -r '(.watch // [])[]?.pr // empty' "$fleet") || usage
 incomplete=0
 unavailable() { echo "# orphan-scan: unavailable ($1)" >&2; incomplete=1; }
 
+doc_names() {
+    local d="$1" ident label base n o
+    ident=$(worker_identity "$d")
+    label="${ident%%$'\t'*}"
+    base=$(worker_base "$d")
+    for n in $(printf '%s' "${ident#*$'\t'}" | tr ',' ' '); do
+        printf '%s\n%s\n' "$n" "$n-RESUME"
+        if [[ $d == *-RESUME.md && $base != "$label" ]]; then
+            o=$(printf '%s' "$n" | sed -E "s/-(leg)?${label}(-|\$)/-\\1${base}\\2/")
+            printf '%s\n%s\n' "$o" "$o-RESUME"
+        fi
+    done
+}
+
 listed_names=","; listed_tickets=","
 while IFS= read -r doc; do
     [ -n "$doc" ] || continue
-    ident=$(worker_identity "$doc")
-    for n in $(printf '%s' "${ident#*$'\t'}" | tr ',' ' '); do listed_names="$listed_names$n,$n-RESUME,"; done
+    for n in $(doc_names "$doc"); do listed_names="$listed_names$n,"; done
     key=$(printf '%s' "${doc##*/}" | grep -oE '^[A-Za-z]+-[0-9]+' | tr '[:lower:]' '[:upper:]') || key=""
     [ -z "$key" ] || listed_tickets="$listed_tickets$key,"
 done <<EOF
@@ -86,14 +99,11 @@ EOF
 
 while IFS= read -r doc; do
     [ -n "$doc" ] && [ -r "$doc" ] || continue
-    ident=$(worker_identity "$doc")
     live=""
-    for n in $(printf '%s' "${ident#*$'\t'}" | tr ',' ' '); do
-        for cand in "$n" "$n-RESUME"; do
-            case "$live_names" in
-                *",${cand}:"*) rest="${live_names#*",${cand}:"}"; live="${rest%%,*}"; break 2 ;;
-            esac
-        done
+    for cand in $(doc_names "$doc"); do
+        case "$live_names" in
+            *",${cand}:"*) rest="${live_names#*",${cand}:"}"; live="${rest%%,*}"; break ;;
+        esac
     done
     [ -n "$live" ] || continue
     [ "$(worker_tail_status "$doc")" != WRAPPED ] || continue

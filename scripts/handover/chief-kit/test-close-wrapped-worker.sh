@@ -2898,6 +2898,15 @@ rc=0; out=$(run --finished "$DOC" 2>&1) || rc=$?
 check "finished: no existing worktree to prove clean is refused -> rc 10" "$rc" "10"
 rc=0; run --finished --chief "$DOC" >/dev/null 2>&1 || rc=$?
 check "finished: --finished with --chief is a usage error" "$rc" "2"
+mkdoc "- 10:00 READY 55 $FIN_HEAD GREEN" "worktree: \`$FIN_WT\`"
+rm -rf "$W/proc"; mkdir -p "$W/proc"; pgrep_x_stub
+fin_manifest="$W/fin.fleet.json"
+bash "$HERE/fleet-manifest.sh" add "$fin_manifest" --lane native "$DOC" >/dev/null
+reset_calls
+rc=0; out=$(run --finished --fleet "$fin_manifest" "$DOC" 2>&1) || rc=$?
+check "finished: no live session while the lock is held -> rc 3" "$rc" "3"
+not_contains "finished: no live session while the lock is held is not CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
+check "finished: that refusal keeps the manifest row" "$(jq --arg d "$DOC" 'any(.workers[]; .doc == $d)' "$fin_manifest")" "true"
 [ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$DOC" "$token" >/dev/null 2>&1
 unset CLOSE_WRAPPED_WORKER_GH CWL_FIN_VIEW
 
