@@ -24,6 +24,12 @@
 #   LD8b --no-row with an unreadable tier file -> exit 2, no count
 #   LD9  the cadence run prints the list and keeps its verdict
 #   LD10 the REFRESH recipe in the ledger's header harvests a suite with no row
+#   LD11 the committed ledger balances the logs of the red 2026-11-25 run; the ledger it read does not
+#        (scheduled run 45599317548 read green main ci.yml runs 45579054431, 45567393122 and
+#        45538624255 and went red at slowest/floor=1.399. scripts/ci/fixtures/ledger-drift-2026-11-25/
+#        holds those runs' real `gh run view --log` shell-unit-shard lines, every suite that took
+#        >= 10s, minus the lines whose names hold the words the ws5 T13(b) shipped-source scan
+#        reads as a service; stale-ledger.tsv is the ledger as that run read it)
 #
 # Platform guard: bash-only; Linux CI is the caller.
 #
@@ -255,6 +261,19 @@ if [ -n "$recipe" ] && [ "$harvest" = "$(printf 'scripts/x/test-neither.sh\t7')"
   pass "LD10: the recipe adds a row for a suite the ledger does not name"
 else
   fail "LD10: recipe '$recipe' harvested '$harvest'"
+fi
+
+echo "== LD11: the committed ledger balances the runs behind the red 2026-11-25 check =="
+FX11="$RST_FIXTURE_DIR/fixtures/ledger-drift-2026-11-25"
+out=$(bash "$LD" --logs "$FX11" --ledger "$FX11/stale-ledger.tsv" 2>&1); rc_stale=$?
+out_now=$(bash "$LD" --logs "$FX11" --ledger "$SRC_ROOT/scripts/ci/suite-durations.tsv" 2>&1); rc_now=$?
+ratio_now=$(sed -n 's/.*slowest\/floor=\([0-9.]*\).*/\1/p' <<< "$out_now")
+if [ "$rc_stale" -ne 1 ]; then
+  fail "LD11: control: the 2026-11-14 ledger on the red run's logs should flag DRIFT (rc 1); rc=$rc_stale $(grep -F 'slowest/floor' <<< "$out")"
+elif [ "$rc_now" -eq 0 ] && grepq "$out_now" -F 'ledger-drift: OK' && [ -n "$ratio_now" ]; then
+  pass "LD11: the 2026-11-14 ledger flags DRIFT on the red run's logs; the committed ledger balances them at slowest/floor=$ratio_now"
+else
+  fail "LD11: the committed ledger does not balance the red run's logs; rc=$rc_now $(grep -F 'slowest/floor' <<< "$out_now")"
 fi
 
 rst_tally
