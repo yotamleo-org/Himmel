@@ -274,6 +274,29 @@ acct a-clean -u HIMMEL_TEST_FIXTURE -u LIVE_WITNESS_ACCOUNT_HOME GITHUB_ACTIONS=
 nd="$(printf '%s\n' "$OUT" | grep -c 'account-home watch off (runner environment self-hosted)')"
 { [ "$RC" -eq 0 ] && [ "$nd" -eq 1 ]; } && ok "C-W2d: a self-hosted runner is off with one NOTE" || bad "C-W2d: (rc=$RC, notes=$nd): $OUT"
 
+mkfx cap-alert 'echo "CAP-ALERT scripts/x/test-slow.sh (ran 4s, cap 2s, rc=124) — watchdog cap hit again on the retry, no FAIL row of its own; not failing the run"; exit 0'
+SUMMARY_FILE="$SCRATCH/step-summary.md"
+: > "$SUMMARY_FILE"
+OUT="$(GITHUB_STEP_SUMMARY="$SUMMARY_FILE" TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/cap-alert.sh" 2>&1)"; RC=$?
+{ [ "$RC" -eq 0 ] && grep -q '^### CAP-ALERT' "$SUMMARY_FILE" && grep -q 'test-slow.sh' "$SUMMARY_FILE"; } \
+  && ok "CA-1: a runner CAP-ALERT line passes the canary and lands in the job summary" || bad "CA-1: (rc=$RC) summary=$(cat "$SUMMARY_FILE"): $OUT"
+
+mkfx cap-late 'printf "== Summary ==\n PASS: 3\n SKIP: 0\n FAIL: 0\n"; exit 124'
+: > "$SUMMARY_FILE"
+OUT="$(GITHUB_STEP_SUMMARY="$SUMMARY_FILE" TMPDIR="$SCRATCH/tmp" bash "$CANARY" --runner "$SCRATCH/fx/cap-late.sh" 2>&1)"; RC=$?
+{ [ "$RC" -eq 0 ] && grep -q '^CAP-ALERT home-canary' <<< "$OUT" && grep -q 'HOME_CANARY_TIMEOUT' "$SUMMARY_FILE"; } \
+  && ok "CA-2: a runner stopped by the outer cap after FAIL: 0 is a CAP-ALERT, rc 0" || bad "CA-2: (rc=$RC): $OUT"
+
+mkfx cap-early 'echo "PASS: some suite"; exit 124'
+run_canary cap-early
+{ [ "$RC" -ne 0 ] && grep -q 'runner timed out' <<< "$OUT"; } \
+  && ok "CA-3: a runner stopped before its Summary (unrun suites) still fails" || bad "CA-3: (rc=$RC): $OUT"
+
+mkfx cap-fail 'printf "FAIL: a row\n== Summary ==\n PASS: 1\n SKIP: 0\n FAIL: 1\n"; exit 124'
+run_canary cap-fail
+{ [ "$RC" -ne 0 ] && grep -q 'runner timed out' <<< "$OUT"; } \
+  && ok "CA-4: a runner stopped by the outer cap with FAIL: 1 still fails" || bad "CA-4: (rc=$RC): $OUT"
+
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2
 exit 1

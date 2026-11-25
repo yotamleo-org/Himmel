@@ -14,7 +14,7 @@ name: Workflow Red
 on:
   workflow_run:
     # Lockstep with scripts/ci/workflow-red-list.txt (test-workflow-red-workflow.sh).
-    workflows: ["CI (os:macos cadence)", os-verify, Pages, Release]
+    workflows: ["CI (os:macos cadence)", os-verify, Pages, Release, timing-daily]
     types: [completed]
   workflow_dispatch:
 
