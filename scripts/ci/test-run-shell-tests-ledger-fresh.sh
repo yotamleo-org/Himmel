@@ -117,7 +117,7 @@ scripts/handover/chief-kit/test-board.sh	90
 scripts/handover/chief-kit/test-brief-lint.sh	52
 scripts/handover/chief-kit/test-chief-kit-e2e.sh	45
 scripts/handover/chief-kit/test-chief-wait-b.sh	392
-scripts/handover/chief-kit/test-chief-wait-pool.sh	168
+scripts/handover/chief-kit/test-chief-wait-pool.sh	379
 scripts/handover/chief-kit/test-chief-wait-r0.sh	201
 scripts/handover/chief-kit/test-chief-wait.sh	353
 scripts/handover/chief-kit/test-close-wrapped-worker.sh	51

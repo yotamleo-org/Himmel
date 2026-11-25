@@ -458,7 +458,7 @@ scripts/handover/chief-kit/test-chief-wait-b.sh	213
 scripts/handover/chief-kit/test-chief-wait-c.sh	232
 scripts/handover/chief-kit/test-chief-wait-d.sh	210
 scripts/handover/chief-kit/test-chief-wait-e.sh	226
-scripts/handover/chief-kit/test-chief-wait-pool.sh	379
+scripts/handover/chief-kit/test-chief-wait-pool.sh	450
 scripts/handover/chief-kit/test-chief-wait-r0.sh	202
 scripts/handover/chief-kit/test-chief-wait.sh	296
 scripts/handover/chief-kit/test-cut-tag.sh	2
