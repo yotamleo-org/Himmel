@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
 """render-flows.py — render docs/assets/flows.svg, the README's flow graph.
 
-Four himmel flows, one row each. A pulse walks each row step by step and
-loops, so the reader sees the order things happen in. The animation is plain
-CSS inside the SVG (no script), which GitHub renders in an <img>. With the
-animation stripped the graph still reads: every box and label is static.
+Animated delivery graph grounded in docs/guide/how-a-change-ships/graph.json:
+Chief dispatches a ticket to an isolated worker worktree guarded by PreToolUse
+hooks; local git gates, your existing GitHub CI, and independent /pr-check
+review check the change; blocking findings or red CI loop back to the worktree;
+the merge gate checks GitHub CI, review rulings, and exact HEAD match before
+fleet approval (chief signs GO in fleet runs; working alone you decide) unlocks
+merge and cleanup.
 
-Edit the FLOWS table below, never the SVG; then re-render:
+The animation is plain CSS inside the SVG (no script), which GitHub renders in
+an <img> and site/src/trail/render.mjs inlines safely via scoped .himmel-flow
+classes. With prefers-reduced-motion or animation stripped, every box, edge and
+label still reads cleanly.
+
+Edit this script, never the SVG; then re-render:
 
     python3 scripts/docs/render-flows.py            # writes docs/assets/flows.svg
     python3 scripts/docs/render-flows.py --out F    # writes F instead
@@ -17,132 +25,325 @@ what this script renders. Stdlib only, deterministic output.
 
 import argparse
 import os
-from xml.sax.saxutils import escape
 
-# (title, [(label, caption), ...]). Six steps per flow keeps the boxes legible.
-FLOWS = [
-    ("1  Ship a change", [
-        ("Jira ticket", "every commit cites it"),
-        ("/worktree", "own branch, never main"),
-        ("commit + push", "hooks gate each step"),
-        ("/pr-check", "panel of review agents"),
-        ("CI green", "the impacted suites"),
-        ("merge", "then /clean prunes"),
-    ]),
-    ("2  Run a fleet: one supervisor session, many worker sessions", [
-        ("supervisor session", "plans the work"),
-        ("dispatch worker", "own worktree + token"),
-        ("worker ships a PR", "reports LIVE, READY"),
-        ("ready-check", "+ judge subagent"),
-        ("GO file", "merge approval"),
-        ("merge + wrap", "merge-on-green"),
-    ]),
-    ("3  Carry work across sessions", [
-        ("session works", "decisions pile up"),
-        ("/handover", "writes a markdown doc"),
-        ("state repo", "your handover repo"),
-        ("cap or restart", "relaunch is armed"),
-        ("/handover-resume", "reads the doc back"),
-        ("picks up", "where it stopped"),
-    ]),
-    ("4  Find what you already know", [
-        ("question", "in any session"),
-        ("MEMORY.md", "index routes to notes"),
-        ("qmd search", "keyword + vector"),
-        ("graphify", "graph of the code"),
-        ("source file", "the real file, read"),
-        ("write back", "new lesson to memory"),
-    ]),
-]
+W = 960
+H = 476
+CYCLE = 12
 
-W = 960            # canvas width
-PAD = 24           # outer padding
-ROW_H = 128        # one flow's height
-TITLE_H = 30       # title band inside a row
-BOX_H = 44
-GAP = 30           # space between boxes (holds the arrow)
-CYCLE = 9          # seconds for one pass of the pulse
-STEP = 1.2         # seconds between consecutive steps lighting up
+CSS = f"""
+.himmel-flow {{
+  --hf-bg: #ffffff;
+  --hf-panel: #f6f8fa;
+  --hf-node: #ffffff;
+  --hf-node-hi: #eff6ff;
+  --hf-ink: #1f2328;
+  --hf-muted: #59636e;
+  --hf-line: #d0d7de;
+  --hf-wire: #b6c2cf;
+  --hf-accent: #0969da;
+  --hf-ok: #1a7f37;
+  --hf-ok-bg: #dafbe1;
+  --hf-warn: #9a6700;
+  --hf-warn-bg: #fff8c5;
+  --hf-err: #cf222e;
+  --hf-err-bg: #ffebe9;
+  --hf-gold: #9a6700;
+  --hf-gold-bg: #fff8c5;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}}
+@media (prefers-color-scheme: dark) {{
+  .himmel-flow {{
+    --hf-bg: #0b1017;
+    --hf-panel: #111822;
+    --hf-node: #151d28;
+    --hf-node-hi: #16263b;
+    --hf-ink: #eef2f7;
+    --hf-muted: #8b98a9;
+    --hf-line: #283445;
+    --hf-wire: #344358;
+    --hf-accent: #58a6ff;
+    --hf-ok: #56d364;
+    --hf-ok-bg: #122b1d;
+    --hf-warn: #e3b341;
+    --hf-warn-bg: #2b210e;
+    --hf-err: #f85149;
+    --hf-err-bg: #311518;
+    --hf-gold: #e2c27f;
+    --hf-gold-bg: #272011;
+  }}
+}}
+.himmel-flow .hf-mono {{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}}
+.himmel-flow .hf-frame {{ fill: var(--hf-bg); stroke: var(--hf-line); stroke-width: 1; }}
+.himmel-flow .hf-bar {{ fill: var(--hf-panel); stroke: var(--hf-line); stroke-width: 1; }}
+.himmel-flow .hf-dot {{ fill: var(--hf-line); opacity: 0.45; }}
 
-CSS = """
-.card{fill:#ffffff;stroke:#d0d7de}
-.title{fill:#1f2328;font:600 15px system-ui,-apple-system,'Segoe UI',sans-serif}
-.box{fill:#f6f8fa;stroke:#d0d7de;stroke-width:1.5}
-.label{fill:#1f2328;font:600 13px system-ui,-apple-system,'Segoe UI',sans-serif}
-.cap{fill:#59636e;font:12px system-ui,-apple-system,'Segoe UI',sans-serif}
-.arrow{stroke:#8c959f;stroke-width:2;fill:none}
-.head{fill:#8c959f}
-.box.p{animation:box %(c)ss linear infinite}
-.label.p{animation:label %(c)ss linear infinite}
-.arrow.p{animation:arrow %(c)ss linear infinite}
-.head.p{animation:head %(c)ss linear infinite}
-@keyframes box{0%%,14%%{fill:#0969da;stroke:#0969da}22%%,100%%{fill:#f6f8fa;stroke:#d0d7de}}
-@keyframes label{0%%,14%%{fill:#ffffff}22%%,100%%{fill:#1f2328}}
-@keyframes arrow{0%%,14%%{stroke:#0969da}22%%,100%%{stroke:#8c959f}}
-@keyframes head{0%%,14%%{fill:#0969da}22%%,100%%{fill:#8c959f}}
-@media (prefers-color-scheme:dark){
-.card{fill:#0d1117;stroke:#3d444d}
-.title,.label{fill:#f0f6fc}
-.box{fill:#151b23;stroke:#3d444d}
-.cap{fill:#9198a1}
-.arrow{stroke:#656c76}
-.head{fill:#656c76}
-@keyframes box{0%%,14%%{fill:#1f6feb;stroke:#4493f8}22%%,100%%{fill:#151b23;stroke:#3d444d}}
-@keyframes label{0%%,14%%{fill:#ffffff}22%%,100%%{fill:#f0f6fc}}
-@keyframes arrow{0%%,14%%{stroke:#4493f8}22%%,100%%{stroke:#656c76}}
-@keyframes head{0%%,14%%{fill:#4493f8}22%%,100%%{fill:#656c76}}
-}
-@media (prefers-reduced-motion:reduce){.p{animation:none!important}}
-""" % {"c": CYCLE}
+.himmel-flow .hf-hdr {{ fill: var(--hf-ink); font-size: 14px; font-weight: 650; letter-spacing: -0.01em; }}
+.himmel-flow .hf-sub {{ fill: var(--hf-muted); font-size: 11px; }}
 
+.himmel-flow .hf-wire {{ fill: none; stroke: var(--hf-wire); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }}
+.himmel-flow .hf-dash {{ fill: none; stroke: var(--hf-wire); stroke-width: 1.75; stroke-dasharray: 5 5; stroke-linecap: round; }}
+.himmel-flow .hf-refuse {{ fill: none; stroke: var(--hf-err); stroke-width: 2; stroke-dasharray: 6 5; opacity: 0.35; }}
 
-def fmt(x):
-    """Stable number formatting so the output is byte-identical across runs."""
-    return ("%.2f" % x).rstrip("0").rstrip(".")
+.himmel-flow .hf-sig {{
+  fill: none; stroke: var(--hf-accent); stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 28 600; stroke-dashoffset: 28; opacity: 0;
+}}
+.himmel-flow .hf-sig-ok {{ stroke: var(--hf-ok); }}
+.himmel-flow .hf-sig-err {{ stroke: var(--hf-err); }}
+.himmel-flow .hf-sig-gold {{ stroke: var(--hf-gold); }}
+
+.himmel-flow .hf-nd rect, .himmel-flow .hf-nd polygon {{ fill: var(--hf-node); stroke: var(--hf-line); stroke-width: 1.5; }}
+.himmel-flow .hf-t {{ fill: var(--hf-ink); font-size: 12.5px; font-weight: 650; }}
+.himmel-flow .hf-c {{ fill: var(--hf-muted); font-size: 10.5px; }}
+.himmel-flow .hf-k {{ font-size: 9.5px; font-weight: 600; }}
+
+.himmel-flow .hf-guard rect {{ stroke: var(--hf-err); stroke-dasharray: 4 3; fill: var(--hf-err-bg); }}
+.himmel-flow .hf-gate polygon {{ fill: var(--hf-gold-bg); stroke: var(--hf-gold); stroke-width: 1.75; }}
+.himmel-flow .hf-go rect {{ stroke: var(--hf-ok); fill: var(--hf-ok-bg); }}
+
+.himmel-flow .hf-p-dispatch {{ animation: hf-sig-run {CYCLE}s linear infinite; }}
+.himmel-flow .hf-p-checks {{ animation: hf-sig-checks {CYCLE}s linear infinite; }}
+.himmel-flow .hf-p-refuse {{ animation: hf-sig-refuse {CYCLE}s linear infinite; }}
+.himmel-flow .hf-p-clear {{ animation: hf-sig-clear {CYCLE}s linear infinite; }}
+.himmel-flow .hf-p-ship {{ animation: hf-sig-ship {CYCLE}s linear infinite; }}
+
+@keyframes hf-sig-run {{
+  0% {{ stroke-dashoffset: 30; opacity: 0; }}
+  2% {{ opacity: 1; }}
+  16% {{ stroke-dashoffset: -170; opacity: 1; }}
+  20%, 100% {{ stroke-dashoffset: -170; opacity: 0; }}
+}}
+@keyframes hf-sig-checks {{
+  0%, 20% {{ stroke-dashoffset: 30; opacity: 0; }}
+  23% {{ opacity: 1; }}
+  40% {{ stroke-dashoffset: -230; opacity: 1; }}
+  44%, 56% {{ stroke-dashoffset: 30; opacity: 0; }}
+  59% {{ opacity: 1; }}
+  71% {{ stroke-dashoffset: -230; opacity: 1; }}
+  74%, 100% {{ stroke-dashoffset: -230; opacity: 0; }}
+}}
+@keyframes hf-sig-refuse {{
+  0%, 40% {{ stroke-dashoffset: 40; opacity: 0; }}
+  43% {{ opacity: 1; }}
+  56% {{ stroke-dashoffset: -360; opacity: 1; }}
+  60%, 100% {{ stroke-dashoffset: -360; opacity: 0; }}
+}}
+@keyframes hf-sig-clear {{
+  0%, 66% {{ stroke-dashoffset: 30; opacity: 0; }}
+  69% {{ opacity: 1; }}
+  80% {{ stroke-dashoffset: -170; opacity: 1; }}
+  84%, 100% {{ stroke-dashoffset: -170; opacity: 0; }}
+}}
+@keyframes hf-sig-ship {{
+  0%, 78% {{ stroke-dashoffset: 30; opacity: 0; }}
+  81% {{ opacity: 1; }}
+  94% {{ stroke-dashoffset: -210; opacity: 1; }}
+  98%, 100% {{ stroke-dashoffset: -210; opacity: 0; }}
+}}
+
+.himmel-flow .hf-hi-chief rect {{ animation: hf-hi-blue {CYCLE}s linear infinite; }}
+.himmel-flow .hf-hi-wt rect {{ animation: hf-hi-wt {CYCLE}s linear infinite; }}
+.himmel-flow .hf-hi-guard rect {{ animation: hf-hi-err {CYCLE}s linear infinite; }}
+.himmel-flow .hf-hi-chk rect {{ animation: hf-hi-chk {CYCLE}s linear infinite; }}
+.himmel-flow .hf-hi-rev rect {{ animation: hf-hi-rev {CYCLE}s linear infinite; }}
+.himmel-flow .hf-hi-gate polygon {{ animation: hf-hi-gate {CYCLE}s linear infinite; }}
+.himmel-flow .hf-hi-go rect {{ animation: hf-hi-go {CYCLE}s linear infinite; }}
+.himmel-flow .hf-hi-ship rect {{ animation: hf-hi-ship {CYCLE}s linear infinite; }}
+
+@keyframes hf-hi-blue {{
+  0%, 12% {{ stroke: var(--hf-accent); fill: var(--hf-node-hi); stroke-width: 2.2; }}
+  18%, 100% {{ stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }}
+}}
+@keyframes hf-hi-wt {{
+  10%, 24% {{ stroke: var(--hf-accent); fill: var(--hf-node-hi); stroke-width: 2.2; }}
+  28%, 50% {{ stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }}
+  53%, 62% {{ stroke: var(--hf-warn); fill: var(--hf-warn-bg); stroke-width: 2.2; }}
+  66%, 100% {{ stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }}
+}}
+@keyframes hf-hi-err {{
+  0%, 14% {{ opacity: 0.72; stroke-width: 1.5; }}
+  17%, 25% {{ opacity: 1; stroke-width: 2.4; }}
+  30%, 100% {{ opacity: 0.72; stroke-width: 1.5; }}
+}}
+@keyframes hf-hi-chk {{
+  26%, 39% {{ stroke: var(--hf-accent); fill: var(--hf-node-hi); stroke-width: 2; }}
+  43%, 61% {{ stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }}
+  64%, 74% {{ stroke: var(--hf-ok); fill: var(--hf-ok-bg); stroke-width: 2.2; }}
+  79%, 100% {{ stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }}
+}}
+@keyframes hf-hi-rev {{
+  26%, 38% {{ stroke: var(--hf-accent); fill: var(--hf-node-hi); stroke-width: 2; }}
+  40%, 48% {{ stroke: var(--hf-err); fill: var(--hf-err-bg); stroke-width: 2.4; }}
+  52%, 61% {{ stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }}
+  64%, 74% {{ stroke: var(--hf-ok); fill: var(--hf-ok-bg); stroke-width: 2.2; }}
+  79%, 100% {{ stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }}
+}}
+@keyframes hf-hi-gate {{
+  0%, 69% {{ stroke: var(--hf-gold); fill: var(--hf-gold-bg); stroke-width: 1.75; }}
+  72%, 82% {{ stroke: var(--hf-ok); fill: var(--hf-ok-bg); stroke-width: 2.6; }}
+  86%, 100% {{ stroke: var(--hf-gold); fill: var(--hf-gold-bg); stroke-width: 1.75; }}
+}}
+@keyframes hf-hi-go {{
+  0%, 76% {{ opacity: 0.78; stroke-width: 1.5; }}
+  79%, 89% {{ opacity: 1; stroke-width: 2.6; }}
+  93%, 100% {{ opacity: 0.78; stroke-width: 1.5; }}
+}}
+@keyframes hf-hi-ship {{
+  0%, 84% {{ stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }}
+  87%, 97% {{ stroke: var(--hf-ok); fill: var(--hf-ok-bg); stroke-width: 2.4; }}
+  100% {{ stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }}
+}}
+
+.himmel-flow .hf-st {{ opacity: 0.3; }}
+.himmel-flow .hf-st1 {{ animation: hf-st-1 {CYCLE}s linear infinite; }}
+.himmel-flow .hf-st2 {{ animation: hf-st-2 {CYCLE}s linear infinite; }}
+.himmel-flow .hf-st3 {{ animation: hf-st-3 {CYCLE}s linear infinite; }}
+.himmel-flow .hf-st4 {{ animation: hf-st-4 {CYCLE}s linear infinite; }}
+.himmel-flow .hf-st5 {{ animation: hf-st-5 {CYCLE}s linear infinite; }}
+@keyframes hf-st-1 {{ 0%, 15% {{ opacity: 1; }} 19%, 100% {{ opacity: 0.3; }} }}
+@keyframes hf-st-2 {{ 0%, 15% {{ opacity: 0.3; }} 16%, 39% {{ opacity: 1; }} 42%, 100% {{ opacity: 0.3; }} }}
+@keyframes hf-st-3 {{ 0%, 39% {{ opacity: 0.3; }} 40%, 60% {{ opacity: 1; }} 63%, 100% {{ opacity: 0.3; }} }}
+@keyframes hf-st-4 {{ 0%, 62% {{ opacity: 0.3; }} 64%, 83% {{ opacity: 1; }} 86%, 100% {{ opacity: 0.3; }} }}
+@keyframes hf-st-5 {{ 0%, 83% {{ opacity: 0.3; }} 85%, 99% {{ opacity: 1; }} 100% {{ opacity: 0.3; }} }}
+
+@media (prefers-reduced-motion: reduce) {{
+  .himmel-flow *, .himmel-flow *::before, .himmel-flow *::after {{ animation: none !important; }}
+  .himmel-flow .hf-sig {{ display: none; }}
+  .himmel-flow .hf-st {{ opacity: 1; }}
+  .himmel-flow .hf-refuse {{ opacity: 0.85; }}
+}}
+"""
 
 
 def render():
-    height = PAD * 2 + ROW_H * len(FLOWS)
-    out = [
-        '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" '
-        'viewBox="0 0 %d %d" role="img" aria-labelledby="t d">' % (W, height, W, height),
-        "<title id=\"t\">himmel: four flows</title>",
-        "<desc id=\"d\">%s</desc>" % escape("; ".join(
-            "%s: %s" % (t.split("  ", 1)[1], " then ".join(s[0] for s in steps))
-            for t, steps in FLOWS)),
-        "<style>%s</style>" % CSS.strip(),
-        '<rect class="card" x="0.5" y="0.5" width="%d" height="%d" rx="12"/>' % (W - 1, height - 1),
-    ]
-    for r, (title, steps) in enumerate(FLOWS):
-        top = PAD + r * ROW_H
-        out.append('<text class="title" x="%d" y="%d">%s</text>'
-                   % (PAD, top + 18, escape(title)))
-        n = len(steps)
-        box_w = (W - 2 * PAD - GAP * (n - 1)) / n
-        y = top + TITLE_H
-        for i, (label, cap) in enumerate(steps):
-            x = PAD + i * (box_w + GAP)
-            # Stagger rows a little so the four pulses do not march in lockstep.
-            delay = "animation-delay:%ss" % fmt(i * STEP + r * 0.3)
-            out.append('<rect class="box p" style="%s" x="%s" y="%d" width="%s" '
-                       'height="%d" rx="8"/>' % (delay, fmt(x), y, fmt(box_w), BOX_H))
-            out.append('<text class="label p" style="%s" x="%s" y="%d" '
-                       'text-anchor="middle">%s</text>'
-                       % (delay, fmt(x + box_w / 2), y + BOX_H / 2 + 5, escape(label)))
-            out.append('<text class="cap" x="%s" y="%d" text-anchor="middle">%s</text>'
-                       % (fmt(x + box_w / 2), y + BOX_H + 20, escape(cap)))
-            if i < n - 1:
-                ax1 = x + box_w + 4
-                ax2 = x + box_w + GAP - 6
-                ay = y + BOX_H / 2
-                adelay = "animation-delay:%ss" % fmt(i * STEP + r * 0.3 + STEP / 2)
-                out.append('<line class="arrow p" style="%s" x1="%s" y1="%s" x2="%s" y2="%s"/>'
-                           % (adelay, fmt(ax1), fmt(ay), fmt(ax2 - 4), fmt(ay)))
-                out.append('<path class="head p" style="%s" d="M%s %sL%s %sL%s %sZ"/>'
-                           % (adelay, fmt(ax2), fmt(ay), fmt(ax2 - 7), fmt(ay - 5),
-                              fmt(ax2 - 7), fmt(ay + 5)))
-    out.append("</svg>")
-    return "\n".join(out) + "\n"
+    return (
+        f'<svg class="himmel-flow" xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" '
+        f'viewBox="0 0 {W} {H}" role="img" aria-labelledby="hf-t hf-d">\n'
+        '<title id="hf-t">himmel: how a change clears the control plane</title>\n'
+        '<desc id="hf-d">Delivery graph for himmel: a chief dispatches a scoped ticket to an '
+        'isolated worker worktree guarded by PreToolUse hooks (.env, rm -rf, main edits blocked); '
+        'three checks verify the change (local git gates, your existing GitHub CI, and '
+        'independent /pr-check review); blocking findings or red CI loop back to the worktree '
+        'for repair and re-check; on GitHub, the merge gate checks green CI, ruled findings, '
+        'and exact HEAD match, and in fleet runs the chief signs GO (with judge review on '
+        'guardrail or CI edits and human escalation on product/conflict decisions) before '
+        'squash-merge, worktree cleanup, and a plain-markdown handover.</desc>\n'
+        '<defs>\n'
+        '  <pattern id="hf-dots" width="24" height="24" patternUnits="userSpaceOnUse">\n'
+        '    <circle class="hf-dot" cx="2" cy="2" r="1"/>\n'
+        '  </pattern>\n'
+        '  <marker id="hf-arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">\n'
+        '    <path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="var(--hf-wire)"/>\n'
+        '  </marker>\n'
+        '  <marker id="hf-arr-err" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">\n'
+        '    <path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="var(--hf-err)"/>\n'
+        '  </marker>\n'
+        '</defs>\n'
+        f'<style>{CSS.strip()}</style>\n'
+        f'<rect class="hf-frame" x="0.5" y="0.5" width="{W - 1}" height="{H - 1}" rx="12"/>\n'
+        f'<rect x="1" y="44" width="{W - 2}" height="{H - 98}" fill="url(#hf-dots)"/>\n'
+        f'<path class="hf-bar" d="M 12 0.5 H {W - 12} Q {W - 0.5} 0.5 {W - 0.5} 12 V 44 H 0.5 V 12 Q 0.5 0.5 12 0.5 Z"/>\n'
+        '<text class="hf-hdr" x="20" y="27">How a change clears himmel</text>\n'
+        f'<text class="hf-sub hf-mono" x="{W - 20}" y="26" text-anchor="end">○ Allow   ·   = Ask human   ·   △ Refuse</text>\n'
+        '<path class="hf-wire" d="M 146 186 H 180" marker-end="url(#hf-arr)"/>\n'
+        '<path class="hf-dash" d="M 262 132 V 152"/>\n'
+        '<path class="hf-wire" d="M 344 186 H 366 V 104 H 394" marker-end="url(#hf-arr)"/>\n'
+        '<path class="hf-wire" d="M 344 186 H 394" marker-end="url(#hf-arr)"/>\n'
+        '<path class="hf-wire" d="M 344 186 H 366 V 268 H 394" marker-end="url(#hf-arr)"/>\n'
+        '<path class="hf-wire" d="M 568 104 H 592 V 186 H 614" marker-end="url(#hf-arr)"/>\n'
+        '<path class="hf-wire" d="M 568 186 H 614" marker-end="url(#hf-arr)"/>\n'
+        '<path class="hf-wire" d="M 568 268 H 592 V 186 H 614" marker-end="url(#hf-arr)"/>\n'
+        '<path class="hf-refuse" d="M 483 302 V 352 Q 483 364 471 364 H 274 Q 262 364 262 352 V 224" marker-end="url(#hf-arr-err)"/>\n'
+        '<path class="hf-wire" d="M 686 186 H 716" marker-end="url(#hf-arr)"/>\n'
+        '<path class="hf-wire" d="M 840 186 H 864" marker-end="url(#hf-arr)"/>\n'
+        '<path class="hf-sig hf-p-dispatch" d="M 146 186 H 180"/>\n'
+        '<path class="hf-sig hf-p-checks" d="M 344 186 H 366 V 104 H 394"/>\n'
+        '<path class="hf-sig hf-p-checks" d="M 344 186 H 394"/>\n'
+        '<path class="hf-sig hf-p-checks" d="M 344 186 H 366 V 268 H 394"/>\n'
+        '<path class="hf-sig hf-sig-err hf-p-refuse" d="M 483 302 V 352 Q 483 364 471 364 H 274 Q 262 364 262 352 V 224"/>\n'
+        '<path class="hf-sig hf-sig-ok hf-p-clear" d="M 568 104 H 592 V 186 H 614"/>\n'
+        '<path class="hf-sig hf-sig-ok hf-p-clear" d="M 568 186 H 614"/>\n'
+        '<path class="hf-sig hf-sig-ok hf-p-clear" d="M 568 268 H 592 V 186 H 614"/>\n'
+        '<path class="hf-sig hf-sig-gold hf-p-ship" d="M 686 186 H 716"/>\n'
+        '<path class="hf-sig hf-sig-ok hf-p-ship" d="M 840 186 H 864"/>\n'
+        '<g class="hf-nd hf-hi-chief">\n'
+        '  <rect x="18" y="152" width="128" height="68" rx="9"/>\n'
+        '  <text class="hf-k hf-mono" x="30" y="170" fill="var(--hf-accent)">01 · DISPATCH</text>\n'
+        '  <text class="hf-t" x="30" y="189">Chief / Ticket</text>\n'
+        '  <text class="hf-c" x="30" y="206">scoped brief &amp; rules</text>\n'
+        '</g>\n'
+        '<g class="hf-nd hf-hi-wt">\n'
+        '  <rect x="184" y="152" width="160" height="68" rx="9"/>\n'
+        '  <text class="hf-k hf-mono" x="196" y="170" fill="var(--hf-accent)">02 · BUILD</text>\n'
+        '  <text class="hf-t" x="196" y="189">Worker worktree</text>\n'
+        '  <text class="hf-c" x="196" y="206">isolated branch, off main</text>\n'
+        '</g>\n'
+        '<g class="hf-nd hf-guard hf-hi-guard">\n'
+        '  <rect x="184" y="72" width="160" height="60" rx="8"/>\n'
+        '  <text class="hf-k hf-mono" x="196" y="90" fill="var(--hf-err)">△ RUNTIME GUARD</text>\n'
+        '  <text class="hf-t" x="196" y="107" style="font-size:11.5px;">PreToolUse hooks</text>\n'
+        '  <text class="hf-c" x="196" y="122">.env · rm -rf · main</text>\n'
+        '</g>\n'
+        '<text class="hf-sub hf-mono" x="483" y="62" text-anchor="middle">THREE VERIFICATION GATES</text>\n'
+        '<g class="hf-nd hf-hi-chk">\n'
+        '  <rect x="398" y="72" width="170" height="64" rx="9"/>\n'
+        '  <text class="hf-k hf-mono" x="410" y="90" fill="var(--hf-muted)">LOCAL GATES</text>\n'
+        '  <text class="hf-t" x="410" y="108">Git &amp; commit hooks</text>\n'
+        '  <text class="hf-c" x="410" y="123">ticket ID · off main</text>\n'
+        '</g>\n'
+        '<g class="hf-nd hf-hi-chk">\n'
+        '  <rect x="398" y="154" width="170" height="64" rx="9"/>\n'
+        '  <text class="hf-k hf-mono" x="410" y="172" fill="var(--hf-muted)">BRING YOUR OWN CI</text>\n'
+        '  <text class="hf-t" x="410" y="190">Your test &amp; CI suite</text>\n'
+        '  <text class="hf-c" x="410" y="205">GitHub checks gated</text>\n'
+        '</g>\n'
+        '<g class="hf-nd hf-hi-rev">\n'
+        '  <rect x="398" y="236" width="170" height="66" rx="9"/>\n'
+        '  <text class="hf-k hf-mono" x="410" y="254" fill="var(--hf-muted)">INDEPENDENT REVIEW</text>\n'
+        '  <text class="hf-t" x="410" y="272">/pr-check panel</text>\n'
+        '  <text class="hf-c" x="410" y="287">Codex/GPT or Claude</text>\n'
+        '</g>\n'
+        '<rect x="294" y="352" width="166" height="22" rx="11" fill="var(--hf-err-bg)" stroke="var(--hf-err)" stroke-width="1"/>\n'
+        '<text class="hf-mono" x="377" y="366" text-anchor="middle" font-size="9.6" font-weight="600" fill="var(--hf-err)">△ finding or red CI → fix</text>\n'
+        '<g class="hf-nd hf-gate hf-hi-gate">\n'
+        '  <polygon points="650,148 686,186 650,224 614,186"/>\n'
+        '  <text class="hf-mono" x="650" y="192" text-anchor="middle" font-size="18" font-weight="700" fill="var(--hf-gold)">⊘</text>\n'
+        '</g>\n'
+        '<text class="hf-t" x="650" y="242" text-anchor="middle" style="font-size:11.5px;">Merge gate</text>\n'
+        '<text class="hf-c" x="650" y="256" text-anchor="middle">GitHub CI · 0 unruled</text>\n'
+        '<text class="hf-c" x="650" y="269" text-anchor="middle">exact HEAD match</text>\n'
+        '<g class="hf-nd hf-go hf-hi-go">\n'
+        '  <rect x="720" y="152" width="120" height="68" rx="9"/>\n'
+        '  <text class="hf-k hf-mono" x="732" y="170" fill="var(--hf-ok)">○ FLEET RUNS</text>\n'
+        '  <text class="hf-t" x="732" y="189">Fleet approval</text>\n'
+        '  <text class="hf-c" x="732" y="206">chief signs GO</text>\n'
+        '</g>\n'
+        '<g class="hf-nd hf-hi-ship">\n'
+        '  <rect x="868" y="152" width="76" height="68" rx="9"/>\n'
+        '  <text class="hf-k hf-mono" x="906" y="170" text-anchor="middle" fill="var(--hf-ok)">SHIP</text>\n'
+        '  <text class="hf-t" x="906" y="189" text-anchor="middle">Merge</text>\n'
+        '  <text class="hf-c" x="906" y="206" text-anchor="middle">+ clean</text>\n'
+        '</g>\n'
+        '<path class="hf-dash" d="M 780 220 V 284"/>\n'
+        '<rect x="684" y="284" width="192" height="44" rx="8" fill="var(--hf-warn-bg)" stroke="var(--hf-warn)" stroke-width="1.2"/>\n'
+        '<text class="hf-k hf-mono" x="780" y="301" text-anchor="middle" fill="var(--hf-warn)">= ESCALATE</text>\n'
+        '<text class="hf-c" x="780" y="317" text-anchor="middle">judge: guardrail edits · you: decisions</text>\n'
+        f'<path class="hf-bar" d="M 0.5 422 H {W - 0.5} V {H - 12} Q {W - 0.5} {H - 0.5} {W - 12} {H - 0.5} H 12 Q 0.5 {H - 0.5} 0.5 {H - 12} Z"/>\n'
+        '<text class="hf-sub hf-mono" x="20" y="453" font-weight="600">PROTOCOL:</text>\n'
+        '<text class="hf-mono hf-st hf-st1" x="100" y="453" font-size="11" fill="var(--hf-accent)" font-weight="600">LIVE</text>\n'
+        '<text class="hf-sub hf-mono" x="136" y="453">→</text>\n'
+        '<text class="hf-mono hf-st hf-st2" x="154" y="453" font-size="11" fill="var(--hf-accent)" font-weight="600">CHECKS</text>\n'
+        '<text class="hf-sub hf-mono" x="207" y="453">→</text>\n'
+        '<text class="hf-mono hf-st hf-st3" x="225" y="453" font-size="11" fill="var(--hf-err)" font-weight="600">△ REFUSE &amp; FIX</text>\n'
+        '<text class="hf-sub hf-mono" x="331" y="453">→</text>\n'
+        '<text class="hf-mono hf-st hf-st4" x="349" y="453" font-size="11" fill="var(--hf-gold)" font-weight="600">READY GREEN</text>\n'
+        '<text class="hf-sub hf-mono" x="437" y="453">→</text>\n'
+        '<text class="hf-mono hf-st hf-st5" x="455" y="453" font-size="11" fill="var(--hf-ok)" font-weight="600">○ GO · WRAPPED</text>\n'
+        f'<text class="hf-sub hf-mono" x="{W - 20}" y="453" text-anchor="end">Plain markdown handovers · local qmd + graphify</text>\n'
+        '</svg>\n'
+    )
 
 
 def main():

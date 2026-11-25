@@ -82,7 +82,23 @@ ul, ol { margin: 0; padding-left: 1.2em; }
 .proofs .ptitle { font-weight: 600; }
 .proofs .pdesc { font-size: var(--fs-sm); color: var(--muted); }
 .proofs .ptag { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--muted); }
-.shipstat { font-size: var(--fs-sm); }
+.flow-figure { margin: var(--s5) 0; max-width: 100%; }
+.flow-figure svg { display: block; width: 100%; height: auto; max-width: 100%; }
+:root:not([data-theme="light"]) .himmel-flow {
+  --hf-bg: #0b1017; --hf-panel: #111822; --hf-node: #151d28; --hf-node-hi: #16263b;
+  --hf-ink: #eef2f7; --hf-muted: #8b98a9; --hf-line: #283445; --hf-wire: #344358;
+  --hf-accent: #58a6ff; --hf-ok: #56d364; --hf-ok-bg: #122b1d;
+  --hf-warn: #e3b341; --hf-warn-bg: #2b210e; --hf-err: #f85149; --hf-err-bg: #311518;
+  --hf-gold: #e2c27f; --hf-gold-bg: #272011;
+}
+:root[data-theme="light"] .himmel-flow {
+  --hf-bg: #ffffff; --hf-panel: #f6f8fa; --hf-node: #ffffff; --hf-node-hi: #eff6ff;
+  --hf-ink: #1f2328; --hf-muted: #59636e; --hf-line: #d0d7de; --hf-wire: #b6c2cf;
+  --hf-accent: #0969da; --hf-ok: #1a7f37; --hf-ok-bg: #dafbe1;
+  --hf-warn: #9a6700; --hf-warn-bg: #fff8c5; --hf-err: #cf222e; --hf-err-bg: #ffebe9;
+  --hf-gold: #9a6700; --hf-gold-bg: #fff8c5;
+}
+.shipstat { font-size: var(--fs-sm); margin-top: var(--s4); }
 .ctas { display: flex; flex-wrap: wrap; gap: var(--s3) var(--s5); align-items: center; }
 .btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 44px; padding: 0 var(--s5); background: var(--accent); color: var(--accent-ink); border-radius: var(--radius); font-weight: 600; text-decoration: none; border: 1px solid var(--accent); }
 .btn-primary:hover { filter: brightness(1.08); }
@@ -340,13 +356,314 @@ p.ok b { color: var(--ship); font-weight: 600; }
 
 <section class="sec-block" id="gets" aria-labelledby="gets-h">
   <div class="wrap">
-    <h2 class="sec" id="gets-h">What you get</h2>
+    <h2 class="sec" id="gets-h">Agents you can trust</h2>
+    <p class="sec-lede">Trust is engineered into the environment, not prompted: runtime tool-call guards, local git gates wired into your existing GitHub CI, independent review, and fleet merge sign-off.</p>
+    <figure class="flow-figure">
+      <svg class="himmel-flow" xmlns="http://www.w3.org/2000/svg" width="960" height="476" viewBox="0 0 960 476" role="img" aria-labelledby="hf-t hf-d">
+<title id="hf-t">himmel: how a change clears the control plane</title>
+<desc id="hf-d">Delivery graph for himmel: a chief dispatches a scoped ticket to an isolated worker worktree guarded by PreToolUse hooks (.env, rm -rf, main edits blocked); three checks verify the change (local git gates, your existing GitHub CI, and independent /pr-check review); blocking findings or red CI loop back to the worktree for repair and re-check; on GitHub, the merge gate checks green CI, ruled findings, and exact HEAD match, and in fleet runs the chief signs GO (with judge review on guardrail or CI edits and human escalation on product/conflict decisions) before squash-merge, worktree cleanup, and a plain-markdown handover.</desc>
+<defs>
+  <pattern id="hf-dots" width="24" height="24" patternUnits="userSpaceOnUse">
+    <circle class="hf-dot" cx="2" cy="2" r="1"/>
+  </pattern>
+  <marker id="hf-arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="var(--hf-wire)"/>
+  </marker>
+  <marker id="hf-arr-err" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="var(--hf-err)"/>
+  </marker>
+</defs>
+<style>.himmel-flow {
+  --hf-bg: #ffffff;
+  --hf-panel: #f6f8fa;
+  --hf-node: #ffffff;
+  --hf-node-hi: #eff6ff;
+  --hf-ink: #1f2328;
+  --hf-muted: #59636e;
+  --hf-line: #d0d7de;
+  --hf-wire: #b6c2cf;
+  --hf-accent: #0969da;
+  --hf-ok: #1a7f37;
+  --hf-ok-bg: #dafbe1;
+  --hf-warn: #9a6700;
+  --hf-warn-bg: #fff8c5;
+  --hf-err: #cf222e;
+  --hf-err-bg: #ffebe9;
+  --hf-gold: #9a6700;
+  --hf-gold-bg: #fff8c5;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  .himmel-flow {
+    --hf-bg: #0b1017;
+    --hf-panel: #111822;
+    --hf-node: #151d28;
+    --hf-node-hi: #16263b;
+    --hf-ink: #eef2f7;
+    --hf-muted: #8b98a9;
+    --hf-line: #283445;
+    --hf-wire: #344358;
+    --hf-accent: #58a6ff;
+    --hf-ok: #56d364;
+    --hf-ok-bg: #122b1d;
+    --hf-warn: #e3b341;
+    --hf-warn-bg: #2b210e;
+    --hf-err: #f85149;
+    --hf-err-bg: #311518;
+    --hf-gold: #e2c27f;
+    --hf-gold-bg: #272011;
+  }
+}
+.himmel-flow .hf-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.himmel-flow .hf-frame { fill: var(--hf-bg); stroke: var(--hf-line); stroke-width: 1; }
+.himmel-flow .hf-bar { fill: var(--hf-panel); stroke: var(--hf-line); stroke-width: 1; }
+.himmel-flow .hf-dot { fill: var(--hf-line); opacity: 0.45; }
+
+.himmel-flow .hf-hdr { fill: var(--hf-ink); font-size: 14px; font-weight: 650; letter-spacing: -0.01em; }
+.himmel-flow .hf-sub { fill: var(--hf-muted); font-size: 11px; }
+
+.himmel-flow .hf-wire { fill: none; stroke: var(--hf-wire); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.himmel-flow .hf-dash { fill: none; stroke: var(--hf-wire); stroke-width: 1.75; stroke-dasharray: 5 5; stroke-linecap: round; }
+.himmel-flow .hf-refuse { fill: none; stroke: var(--hf-err); stroke-width: 2; stroke-dasharray: 6 5; opacity: 0.35; }
+
+.himmel-flow .hf-sig {
+  fill: none; stroke: var(--hf-accent); stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 28 600; stroke-dashoffset: 28; opacity: 0;
+}
+.himmel-flow .hf-sig-ok { stroke: var(--hf-ok); }
+.himmel-flow .hf-sig-err { stroke: var(--hf-err); }
+.himmel-flow .hf-sig-gold { stroke: var(--hf-gold); }
+
+.himmel-flow .hf-nd rect, .himmel-flow .hf-nd polygon { fill: var(--hf-node); stroke: var(--hf-line); stroke-width: 1.5; }
+.himmel-flow .hf-t { fill: var(--hf-ink); font-size: 12.5px; font-weight: 650; }
+.himmel-flow .hf-c { fill: var(--hf-muted); font-size: 10.5px; }
+.himmel-flow .hf-k { font-size: 9.5px; font-weight: 600; }
+
+.himmel-flow .hf-guard rect { stroke: var(--hf-err); stroke-dasharray: 4 3; fill: var(--hf-err-bg); }
+.himmel-flow .hf-gate polygon { fill: var(--hf-gold-bg); stroke: var(--hf-gold); stroke-width: 1.75; }
+.himmel-flow .hf-go rect { stroke: var(--hf-ok); fill: var(--hf-ok-bg); }
+
+.himmel-flow .hf-p-dispatch { animation: hf-sig-run 12s linear infinite; }
+.himmel-flow .hf-p-checks { animation: hf-sig-checks 12s linear infinite; }
+.himmel-flow .hf-p-refuse { animation: hf-sig-refuse 12s linear infinite; }
+.himmel-flow .hf-p-clear { animation: hf-sig-clear 12s linear infinite; }
+.himmel-flow .hf-p-ship { animation: hf-sig-ship 12s linear infinite; }
+
+@keyframes hf-sig-run {
+  0% { stroke-dashoffset: 30; opacity: 0; }
+  2% { opacity: 1; }
+  16% { stroke-dashoffset: -170; opacity: 1; }
+  20%, 100% { stroke-dashoffset: -170; opacity: 0; }
+}
+@keyframes hf-sig-checks {
+  0%, 20% { stroke-dashoffset: 30; opacity: 0; }
+  23% { opacity: 1; }
+  40% { stroke-dashoffset: -230; opacity: 1; }
+  44%, 56% { stroke-dashoffset: 30; opacity: 0; }
+  59% { opacity: 1; }
+  71% { stroke-dashoffset: -230; opacity: 1; }
+  74%, 100% { stroke-dashoffset: -230; opacity: 0; }
+}
+@keyframes hf-sig-refuse {
+  0%, 40% { stroke-dashoffset: 40; opacity: 0; }
+  43% { opacity: 1; }
+  56% { stroke-dashoffset: -360; opacity: 1; }
+  60%, 100% { stroke-dashoffset: -360; opacity: 0; }
+}
+@keyframes hf-sig-clear {
+  0%, 66% { stroke-dashoffset: 30; opacity: 0; }
+  69% { opacity: 1; }
+  80% { stroke-dashoffset: -170; opacity: 1; }
+  84%, 100% { stroke-dashoffset: -170; opacity: 0; }
+}
+@keyframes hf-sig-ship {
+  0%, 78% { stroke-dashoffset: 30; opacity: 0; }
+  81% { opacity: 1; }
+  94% { stroke-dashoffset: -210; opacity: 1; }
+  98%, 100% { stroke-dashoffset: -210; opacity: 0; }
+}
+
+.himmel-flow .hf-hi-chief rect { animation: hf-hi-blue 12s linear infinite; }
+.himmel-flow .hf-hi-wt rect { animation: hf-hi-wt 12s linear infinite; }
+.himmel-flow .hf-hi-guard rect { animation: hf-hi-err 12s linear infinite; }
+.himmel-flow .hf-hi-chk rect { animation: hf-hi-chk 12s linear infinite; }
+.himmel-flow .hf-hi-rev rect { animation: hf-hi-rev 12s linear infinite; }
+.himmel-flow .hf-hi-gate polygon { animation: hf-hi-gate 12s linear infinite; }
+.himmel-flow .hf-hi-go rect { animation: hf-hi-go 12s linear infinite; }
+.himmel-flow .hf-hi-ship rect { animation: hf-hi-ship 12s linear infinite; }
+
+@keyframes hf-hi-blue {
+  0%, 12% { stroke: var(--hf-accent); fill: var(--hf-node-hi); stroke-width: 2.2; }
+  18%, 100% { stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }
+}
+@keyframes hf-hi-wt {
+  10%, 24% { stroke: var(--hf-accent); fill: var(--hf-node-hi); stroke-width: 2.2; }
+  28%, 50% { stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }
+  53%, 62% { stroke: var(--hf-warn); fill: var(--hf-warn-bg); stroke-width: 2.2; }
+  66%, 100% { stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }
+}
+@keyframes hf-hi-err {
+  0%, 14% { opacity: 0.72; stroke-width: 1.5; }
+  17%, 25% { opacity: 1; stroke-width: 2.4; }
+  30%, 100% { opacity: 0.72; stroke-width: 1.5; }
+}
+@keyframes hf-hi-chk {
+  26%, 39% { stroke: var(--hf-accent); fill: var(--hf-node-hi); stroke-width: 2; }
+  43%, 61% { stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }
+  64%, 74% { stroke: var(--hf-ok); fill: var(--hf-ok-bg); stroke-width: 2.2; }
+  79%, 100% { stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }
+}
+@keyframes hf-hi-rev {
+  26%, 38% { stroke: var(--hf-accent); fill: var(--hf-node-hi); stroke-width: 2; }
+  40%, 48% { stroke: var(--hf-err); fill: var(--hf-err-bg); stroke-width: 2.4; }
+  52%, 61% { stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }
+  64%, 74% { stroke: var(--hf-ok); fill: var(--hf-ok-bg); stroke-width: 2.2; }
+  79%, 100% { stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }
+}
+@keyframes hf-hi-gate {
+  0%, 69% { stroke: var(--hf-gold); fill: var(--hf-gold-bg); stroke-width: 1.75; }
+  72%, 82% { stroke: var(--hf-ok); fill: var(--hf-ok-bg); stroke-width: 2.6; }
+  86%, 100% { stroke: var(--hf-gold); fill: var(--hf-gold-bg); stroke-width: 1.75; }
+}
+@keyframes hf-hi-go {
+  0%, 76% { opacity: 0.78; stroke-width: 1.5; }
+  79%, 89% { opacity: 1; stroke-width: 2.6; }
+  93%, 100% { opacity: 0.78; stroke-width: 1.5; }
+}
+@keyframes hf-hi-ship {
+  0%, 84% { stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }
+  87%, 97% { stroke: var(--hf-ok); fill: var(--hf-ok-bg); stroke-width: 2.4; }
+  100% { stroke: var(--hf-line); fill: var(--hf-node); stroke-width: 1.5; }
+}
+
+.himmel-flow .hf-st { opacity: 0.3; }
+.himmel-flow .hf-st1 { animation: hf-st-1 12s linear infinite; }
+.himmel-flow .hf-st2 { animation: hf-st-2 12s linear infinite; }
+.himmel-flow .hf-st3 { animation: hf-st-3 12s linear infinite; }
+.himmel-flow .hf-st4 { animation: hf-st-4 12s linear infinite; }
+.himmel-flow .hf-st5 { animation: hf-st-5 12s linear infinite; }
+@keyframes hf-st-1 { 0%, 15% { opacity: 1; } 19%, 100% { opacity: 0.3; } }
+@keyframes hf-st-2 { 0%, 15% { opacity: 0.3; } 16%, 39% { opacity: 1; } 42%, 100% { opacity: 0.3; } }
+@keyframes hf-st-3 { 0%, 39% { opacity: 0.3; } 40%, 60% { opacity: 1; } 63%, 100% { opacity: 0.3; } }
+@keyframes hf-st-4 { 0%, 62% { opacity: 0.3; } 64%, 83% { opacity: 1; } 86%, 100% { opacity: 0.3; } }
+@keyframes hf-st-5 { 0%, 83% { opacity: 0.3; } 85%, 99% { opacity: 1; } 100% { opacity: 0.3; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .himmel-flow *, .himmel-flow *::before, .himmel-flow *::after { animation: none !important; }
+  .himmel-flow .hf-sig { display: none; }
+  .himmel-flow .hf-st { opacity: 1; }
+  .himmel-flow .hf-refuse { opacity: 0.85; }
+}</style>
+<rect class="hf-frame" x="0.5" y="0.5" width="959" height="475" rx="12"/>
+<rect x="1" y="44" width="958" height="378" fill="url(#hf-dots)"/>
+<path class="hf-bar" d="M 12 0.5 H 948 Q 959.5 0.5 959.5 12 V 44 H 0.5 V 12 Q 0.5 0.5 12 0.5 Z"/>
+<text class="hf-hdr" x="20" y="27">How a change clears himmel</text>
+<text class="hf-sub hf-mono" x="940" y="26" text-anchor="end">○ Allow   ·   = Ask human   ·   △ Refuse</text>
+<path class="hf-wire" d="M 146 186 H 180" marker-end="url(#hf-arr)"/>
+<path class="hf-dash" d="M 262 132 V 152"/>
+<path class="hf-wire" d="M 344 186 H 366 V 104 H 394" marker-end="url(#hf-arr)"/>
+<path class="hf-wire" d="M 344 186 H 394" marker-end="url(#hf-arr)"/>
+<path class="hf-wire" d="M 344 186 H 366 V 268 H 394" marker-end="url(#hf-arr)"/>
+<path class="hf-wire" d="M 568 104 H 592 V 186 H 614" marker-end="url(#hf-arr)"/>
+<path class="hf-wire" d="M 568 186 H 614" marker-end="url(#hf-arr)"/>
+<path class="hf-wire" d="M 568 268 H 592 V 186 H 614" marker-end="url(#hf-arr)"/>
+<path class="hf-refuse" d="M 483 302 V 352 Q 483 364 471 364 H 274 Q 262 364 262 352 V 224" marker-end="url(#hf-arr-err)"/>
+<path class="hf-wire" d="M 686 186 H 716" marker-end="url(#hf-arr)"/>
+<path class="hf-wire" d="M 840 186 H 864" marker-end="url(#hf-arr)"/>
+<path class="hf-sig hf-p-dispatch" d="M 146 186 H 180"/>
+<path class="hf-sig hf-p-checks" d="M 344 186 H 366 V 104 H 394"/>
+<path class="hf-sig hf-p-checks" d="M 344 186 H 394"/>
+<path class="hf-sig hf-p-checks" d="M 344 186 H 366 V 268 H 394"/>
+<path class="hf-sig hf-sig-err hf-p-refuse" d="M 483 302 V 352 Q 483 364 471 364 H 274 Q 262 364 262 352 V 224"/>
+<path class="hf-sig hf-sig-ok hf-p-clear" d="M 568 104 H 592 V 186 H 614"/>
+<path class="hf-sig hf-sig-ok hf-p-clear" d="M 568 186 H 614"/>
+<path class="hf-sig hf-sig-ok hf-p-clear" d="M 568 268 H 592 V 186 H 614"/>
+<path class="hf-sig hf-sig-gold hf-p-ship" d="M 686 186 H 716"/>
+<path class="hf-sig hf-sig-ok hf-p-ship" d="M 840 186 H 864"/>
+<g class="hf-nd hf-hi-chief">
+  <rect x="18" y="152" width="128" height="68" rx="9"/>
+  <text class="hf-k hf-mono" x="30" y="170" fill="var(--hf-accent)">01 · DISPATCH</text>
+  <text class="hf-t" x="30" y="189">Chief / Ticket</text>
+  <text class="hf-c" x="30" y="206">scoped brief &amp; rules</text>
+</g>
+<g class="hf-nd hf-hi-wt">
+  <rect x="184" y="152" width="160" height="68" rx="9"/>
+  <text class="hf-k hf-mono" x="196" y="170" fill="var(--hf-accent)">02 · BUILD</text>
+  <text class="hf-t" x="196" y="189">Worker worktree</text>
+  <text class="hf-c" x="196" y="206">isolated branch, off main</text>
+</g>
+<g class="hf-nd hf-guard hf-hi-guard">
+  <rect x="184" y="72" width="160" height="60" rx="8"/>
+  <text class="hf-k hf-mono" x="196" y="90" fill="var(--hf-err)">△ RUNTIME GUARD</text>
+  <text class="hf-t" x="196" y="107" style="font-size:11.5px;">PreToolUse hooks</text>
+  <text class="hf-c" x="196" y="122">.env · rm -rf · main</text>
+</g>
+<text class="hf-sub hf-mono" x="483" y="62" text-anchor="middle">THREE VERIFICATION GATES</text>
+<g class="hf-nd hf-hi-chk">
+  <rect x="398" y="72" width="170" height="64" rx="9"/>
+  <text class="hf-k hf-mono" x="410" y="90" fill="var(--hf-muted)">LOCAL GATES</text>
+  <text class="hf-t" x="410" y="108">Git &amp; commit hooks</text>
+  <text class="hf-c" x="410" y="123">ticket ID · off main</text>
+</g>
+<g class="hf-nd hf-hi-chk">
+  <rect x="398" y="154" width="170" height="64" rx="9"/>
+  <text class="hf-k hf-mono" x="410" y="172" fill="var(--hf-muted)">BRING YOUR OWN CI</text>
+  <text class="hf-t" x="410" y="190">Your test &amp; CI suite</text>
+  <text class="hf-c" x="410" y="205">GitHub checks gated</text>
+</g>
+<g class="hf-nd hf-hi-rev">
+  <rect x="398" y="236" width="170" height="66" rx="9"/>
+  <text class="hf-k hf-mono" x="410" y="254" fill="var(--hf-muted)">INDEPENDENT REVIEW</text>
+  <text class="hf-t" x="410" y="272">/pr-check panel</text>
+  <text class="hf-c" x="410" y="287">Codex/GPT or Claude</text>
+</g>
+<rect x="294" y="352" width="166" height="22" rx="11" fill="var(--hf-err-bg)" stroke="var(--hf-err)" stroke-width="1"/>
+<text class="hf-mono" x="377" y="366" text-anchor="middle" font-size="9.6" font-weight="600" fill="var(--hf-err)">△ finding or red CI → fix</text>
+<g class="hf-nd hf-gate hf-hi-gate">
+  <polygon points="650,148 686,186 650,224 614,186"/>
+  <text class="hf-mono" x="650" y="192" text-anchor="middle" font-size="18" font-weight="700" fill="var(--hf-gold)">⊘</text>
+</g>
+<text class="hf-t" x="650" y="242" text-anchor="middle" style="font-size:11.5px;">Merge gate</text>
+<text class="hf-c" x="650" y="256" text-anchor="middle">GitHub CI · 0 unruled</text>
+<text class="hf-c" x="650" y="269" text-anchor="middle">exact HEAD match</text>
+<g class="hf-nd hf-go hf-hi-go">
+  <rect x="720" y="152" width="120" height="68" rx="9"/>
+  <text class="hf-k hf-mono" x="732" y="170" fill="var(--hf-ok)">○ FLEET RUNS</text>
+  <text class="hf-t" x="732" y="189">Fleet approval</text>
+  <text class="hf-c" x="732" y="206">chief signs GO</text>
+</g>
+<g class="hf-nd hf-hi-ship">
+  <rect x="868" y="152" width="76" height="68" rx="9"/>
+  <text class="hf-k hf-mono" x="906" y="170" text-anchor="middle" fill="var(--hf-ok)">SHIP</text>
+  <text class="hf-t" x="906" y="189" text-anchor="middle">Merge</text>
+  <text class="hf-c" x="906" y="206" text-anchor="middle">+ clean</text>
+</g>
+<path class="hf-dash" d="M 780 220 V 284"/>
+<rect x="684" y="284" width="192" height="44" rx="8" fill="var(--hf-warn-bg)" stroke="var(--hf-warn)" stroke-width="1.2"/>
+<text class="hf-k hf-mono" x="780" y="301" text-anchor="middle" fill="var(--hf-warn)">= ESCALATE</text>
+<text class="hf-c" x="780" y="317" text-anchor="middle">judge: guardrail edits · you: decisions</text>
+<path class="hf-bar" d="M 0.5 422 H 959.5 V 464 Q 959.5 475.5 948 475.5 H 12 Q 0.5 475.5 0.5 464 Z"/>
+<text class="hf-sub hf-mono" x="20" y="453" font-weight="600">PROTOCOL:</text>
+<text class="hf-mono hf-st hf-st1" x="100" y="453" font-size="11" fill="var(--hf-accent)" font-weight="600">LIVE</text>
+<text class="hf-sub hf-mono" x="136" y="453">→</text>
+<text class="hf-mono hf-st hf-st2" x="154" y="453" font-size="11" fill="var(--hf-accent)" font-weight="600">CHECKS</text>
+<text class="hf-sub hf-mono" x="207" y="453">→</text>
+<text class="hf-mono hf-st hf-st3" x="225" y="453" font-size="11" fill="var(--hf-err)" font-weight="600">△ REFUSE &amp; FIX</text>
+<text class="hf-sub hf-mono" x="331" y="453">→</text>
+<text class="hf-mono hf-st hf-st4" x="349" y="453" font-size="11" fill="var(--hf-gold)" font-weight="600">READY GREEN</text>
+<text class="hf-sub hf-mono" x="437" y="453">→</text>
+<text class="hf-mono hf-st hf-st5" x="455" y="453" font-size="11" fill="var(--hf-ok)" font-weight="600">○ GO · WRAPPED</text>
+<text class="hf-sub hf-mono" x="940" y="453" text-anchor="end">Plain markdown handovers · local qmd + graphify</text>
+</svg>
+    </figure>
     <ul class="proofs" aria-label="What it does">
-      <li><span class="ptitle">One road for every change</span><span class="pdesc">Each change gets its own worktree, then passes the tests, a review and one merge gate. No step can be skipped. When a check fails, the change goes back with the reason, so main only gets work that passed.</span><span class="ptag"><a href="guide/dev-graph.html">How a change ships</a></span></li>
+      <li><span class="ptitle">One road for every change</span><span class="pdesc">Each change gets its own worktree. For merges run through Claude Code on GitHub, the merge gate checks CI and review evidence before allowing the merge, sending failed checks back to the worktree with the reason.</span><span class="ptag"><a href="guide/dev-graph.html">How a change ships</a></span></li>
       <li><span class="ptitle">Guardrails that hold</span><span class="pdesc">Edits and commits on main, pushes to main, reads of secret files, <code>rm -rf</code>, hard resets and force pushes are refused before they run.</span><span class="ptag"><a href="adoption-trail-levels.html#lvl-1">Level 1</a> · in your project</span></li>
       <li><span class="ptitle">Cost you can see</span><span class="pdesc">Heavy work checks your remaining Claude usage first, and the fleet records the cost of what it merges.</span><span class="ptag"><a href="adoption-trail-levels.html#lvl-5">Level 5</a></span></li>
     </ul>
-    <p class="shipstat"><b>himmel is built this way.</b> Over 2,000 pull requests merged on its own main in 30 days (October 2026). <a href="guide/dev-graph.html">See the graph they went through</a></p>
+    <p class="shipstat"><b>himmel is built this way.</b> 4,630 PRs reviewed on himmel with 19,982 review findings logged (as of 2026-11-11). <a href="guide/dev-graph.html">See the graph they went through</a></p>
     <p>New words such as worktree, gate and hook are explained on <a href="adoption-trail-questions.html#glossary">Questions and words</a>.</p>
   </div>
 </section>
