@@ -9,7 +9,7 @@
 //
 // Boundary rules this file keeps:
 //   * The credentials come ONLY from the private file. The port's destination and Authorization are
-//     the file's; an ambient JIRA_BASE_URL, email or token in the host environment is overwritten.
+//     the file's; ambient JIRA_* in the host environment are ignored and overwritten.
 //   * The child runs `node <primary_cli> <fixed verb> <validated key> ...`: finite argv, no shell, no
 //     model-chosen method/URL/header/option. The primary CLI keeps its own ticket-standard and
 //     requestAt checks; there is no parallel HTTP stack here.
@@ -203,8 +203,6 @@ export const jiraArgv = Object.freeze({
 
 const ENV_ALLOW = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'TZ', 'JIRA_REQUEST_TIMEOUT_MS', 'JIRA_ALLOW_HOST'];
 
-// The child's whole environment: a finite allowlist from the host, then the private credentials. Ambient
-// JIRA_* passes only as the JIRA_REQUEST_TIMEOUT_MS and JIRA_ALLOW_HOST settings; every other secret never passes.
 export function buildChildEnv(creds, base = process.env) {
   const env = {};
   for (const k of ENV_ALLOW) if (typeof base[k] === 'string') env[k] = base[k];
