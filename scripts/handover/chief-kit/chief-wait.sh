@@ -350,9 +350,13 @@
 #                               and a worker that wrote and went quiet again wakes again. Each line also
 #                               appends a `WORKER-SILENT` bullet to --doc and sends the operator ONE page
 #                               (the worker, the signal and the action; same sender and budget as
-#                               DENIAL-PAGE). The chief relaunches the worker from a RESUME doc or runs its
-#                               blocked step itself and says which it did (chief-template.md). The tick line
-#                               follows a capped-waker wake.
+#                               DENIAL-PAGE), then runs silent-worker-act.sh once for that same (worker, signal,
+#                               doc write time): a nudge past bound one, the relaunch from the RESUME doc past
+#                               twice it, an owed row for a failed step, in a succession as in any other wait.
+#                               Its `SILENT-ACT <worker> ...` result line follows the WAKE line
+#                               (CHIEF_WAIT_SILENT_ACT replaces the helper). What the helper left undone, the
+#                               chief does and says which it did (chief-template.md). The tick line follows a
+#                               capped-waker wake.
 #
 # Per-field key, entry and reminder policy: wake-rules.tsv, printed by --rules.
 # Specialized readers below retain exact-head, set/rise and receipt semantics.
@@ -3122,7 +3126,7 @@ worker_doc_of() { # <label>: the worker's doc from the fleet manifest (--workers
     jq -r --arg l "$1" "$JQ_W"'[W[]? | select(.label == $l)][0].doc // empty' "$mf" 2>/dev/null || true  # swallow-ok: an unreadable manifest names no doc, the worker is then keyed without a write time
 }
 silent_emit() { # <label> <signal> <detail>: prints the WAKE line and succeeds when this (worker, signal, doc write time) is new
-    local label signal="$2" detail="$3" ldoc m key act
+    local label signal="$2" detail="$3" ldoc m key act act_line
     label="$(printf '%s' "$1" | tr -cd 'A-Za-z0-9._#+-')"  # the label goes into an operator message and a marker line
     [ -n "$label" ] || return 1
     ldoc="$(worker_doc_of "$label")"
@@ -3135,7 +3139,12 @@ silent_emit() { # <label> <signal> <detail>: prints the WAKE line and succeeds w
     heartbeat sampling
     [ -z "$console_doc" ] || bash "$HERE/append-results.sh" "$console_doc" "WORKER-SILENT $label signal=$signal$detail: $act; the chief was woken" >/dev/null 2>&1 9>&- || true  # swallow-ok: a doc that cannot take the bullet still wakes and pages
     page_send "WORKER-SILENT $label signal=$signal$detail - $act" $(( $(date +%s) + page_timeout )) worker-silent
+    act_line=""
+    if [ -n "$console_doc" ] && [ "$m" != - ]; then
+        act_line="$(bash "${CHIEF_WAIT_SILENT_ACT:-$HERE/silent-worker-act.sh}" --doc "$console_doc" --fleet "${legs_from:-${console_doc%.md}.fleet.json}" --bucket "$(dirname "$console_doc")" --chief "$(basename "$console_doc" .md)" --signal "$signal" "$label" $(( ( $(date +%s) - m ) / 60 )) 2>/dev/null 9>&-)" || act_line=""  # swallow-ok: a helper that fails owes its own row, and the wake still prints
+    fi
     printf 'WAKE worker-silent %s signal=%s%s\n' "$label" "$signal" "$detail"
+    [ -z "$act_line" ] || printf '%s\n' "$act_line"
 }
 succ_row_live() {
     local mf="${legs_from:-${console_doc%.md}.fleet.json}" docs d
