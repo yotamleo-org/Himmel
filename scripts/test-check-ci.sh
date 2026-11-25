@@ -147,6 +147,9 @@ if [ "${1:-}" = api ] && [ "${2:-}" = -i ] && [ "${3:-}" = user ]; then
         out) if [ ! -s "$(dirname "$0")/sleepcount" ]; then
                 printf 'X-Ratelimit-Remaining: 0\nX-Ratelimit-Reset: %s\n' "$(($(date +%s) + 6))"; exit 1
             fi ;;
+        main-far) if [ "$_tok" = main ]; then
+                printf 'X-Ratelimit-Remaining: 0\nX-Ratelimit-Reset: %s\n' "$(($(date +%s) + 3000))"; exit 1
+            fi ;;
         main-out) if [ "$_tok" = main ] && [ ! -s "$(dirname "$0")/sleepcount" ]; then
                 printf 'X-Ratelimit-Remaining: 0\nX-Ratelimit-Reset: %s\n' "$(($(date +%s) + 6))"; exit 1
             fi ;;
@@ -3309,6 +3312,12 @@ core_parked_case() {
     printf 'main\tcore\t100\t5000\t%s\t%s\tok\n' "$(($(date +%s) + 600))" "$(date +%s)" > "$STUBDIR/quota/quota.tsv"
     RULES_OVERRIDE="req:unit-tests"; CLASSIC_OVERRIDE="ctx:unit-tests"; CHECKS_OVERRIDE="pass:unit-tests"
 }
+_s9_on
+rm -rf "$STUBDIR/quota"
+BUDGET_PREFLIGHT_OVERRIDE=1; QUOTA_OVERRIDE="after1-past"; CORE_OVERRIDE=main-far
+run cr-completed
+_s9_off
+check_eq "11102-g a GraphQL recovery never waits on main's REST core: all three recoveries still run (4 budget probes)" "4" "$(grep -c '^api -i graphql' "$STUBDIR/args.log" | tr -d ' ')"
 core_parked_case
 run cr-completed --grace 2
 _s9_off
@@ -3573,5 +3582,5 @@ if [ "$RC" -ne 0 ]; then pass "T3.23-d even with --fail-fast kept, a pending con
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 272 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 272"; exit 1; fi
+if [ "$COUNT" -ne 273 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 273"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1

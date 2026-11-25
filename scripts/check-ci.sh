@@ -546,13 +546,16 @@ RL_RECOVERIES=0
 # preflight saw a healthy budget so waiting would not help): the caller keeps
 # its original fail-closed exit.
 _rl_recover() {
-    local bound
+    local bound waited
+    GHQ_CORE_WAITED=0; GHQ_CORE_EXHAUSTED=0
     [ "$RL_RECOVERIES" -ge 3 ] && return 1
     bound=$(_rl_bound) || return 1
     ghb_wait_for_budget "$bound" "$CHECK_CI_SLEEP_CMD" || return 1
-    local waited="$GHB_WAITED"
-    bound=$(_rl_bound) || return 1
-    ghq_wait_core "$bound" "$CHECK_CI_SLEEP_CMD" main || return 1
+    waited="$GHB_WAITED"
+    if [ "${1:-}" = core ]; then
+        bound=$(_rl_bound) || return 1
+        ghq_wait_core "$bound" "$CHECK_CI_SLEEP_CMD" main || return 1
+    fi
     [ "$waited" -eq 1 ] || [ "$GHQ_CORE_WAITED" -eq 1 ] || return 1
     RL_RECOVERIES=$((RL_RECOVERIES + 1))
     _refused_clear
@@ -916,7 +919,7 @@ required_gate() {
         rt_tries=$((rt_tries + 1))
         rt_nap=$((GRACE - (SECONDS - rt_start)))
         rt_poll=$(_poll_secs); [ "$rt_nap" -le "$rt_poll" ] || rt_nap=$rt_poll
-        _rl_recover || { [ "$GHQ_CORE_EXHAUSTED" -eq 1 ] && break; "$CHECK_CI_SLEEP_CMD" "$rt_nap"; }
+        _rl_recover core || { [ "$GHQ_CORE_EXHAUSTED" -eq 1 ] && break; "$CHECK_CI_SLEEP_CMD" "$rt_nap"; }
         rs_rc=0
         reqs=$(required_set) || rs_rc=$?
     done
@@ -943,12 +946,12 @@ required_gate() {
         if _has_producer_ids "$reqs"; then
             pr_rc=0
             prows=$(_producer_rows) || pr_rc=$?
-            if [ "$pr_rc" -eq 3 ] && _rl_recover; then
+            if [ "$pr_rc" -eq 3 ] && _rl_recover core; then
                 pr_rc=0
                 prows=$(_producer_rows) || pr_rc=$?
             fi
             if [ "$pr_rc" -eq 3 ]; then
-                echo "check-ci: BLOCKED — required-check producers unreadable (transient): the read of which app reported each check kept failing with a rate limit, a quota pause, 5xx or network error. Refusing rather than matching by name alone; no operator alert, re-run once GitHub answers (exit 5)" >&2
+                echo "check-ci: BLOCKED — required-check producers unreadable (transient): the read of which app reported each check kept failing with a rate limit or a quota pause. Refusing rather than matching by name alone; no operator alert, re-run once GitHub answers (exit 5)" >&2
                 _threads_at_exit 5
                 exit 5
             fi
