@@ -107,7 +107,7 @@ done
 { cat "$SEV_BODY"; printf '%s\n' '<details>' '<summary><picture><img src="x" alt=""></picture> Blocker comments: 1</summary>' "\`5-5\`: **<picture><img src=\"x\" alt=\"\"></picture> Blocker**" '' '<!-- cr-comment:v1:feedbeef0001 -->' '</details>'; } > "$TMP/sev-unknown-section.body.txt"
 mk_json_from_file "$RESP_DIR/sev-unknown-section.json" "$UID_OK"   "$HEAD"  "$TMP/sev-unknown-section.body.txt"
 mk_json_from_file "$RESP_DIR/sev-prior.json"          "$UID_OK"    "oldsha1" "$SEV_BODY"
-SEV_SEP_BODY="$FIXDIR/pr-5890-minor-comments-separators.body.txt"
+SEV_SEP_BODY="$FIXDIR/test-pr-5890-minor-comments-separators.body.txt"
 mk_json_from_file "$RESP_DIR/sev-sep.json"            "$UID_OK"    "$HEAD"  "$SEV_SEP_BODY"
 sed 's/Minor comments: 20/Minor comments: 21/' "$SEV_SEP_BODY" > "$TMP/sev-sep-header-high.body.txt"
 mk_json_from_file "$RESP_DIR/sev-sep-header-high.json" "$UID_OK"   "$HEAD"  "$TMP/sev-sep-header-high.body.txt"
