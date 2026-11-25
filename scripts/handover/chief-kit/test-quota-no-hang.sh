@@ -372,22 +372,14 @@ drive_go() {
         rm -rf "$cdir/root/.locks"
         EXTRA_ENV="HANDOVER_DIR=$cdir/root"$'\n'"HIMMEL_REPO=$GATE_REPO"
         local rbound=14
-        local gocmd=(bash "$script" 77 "$SHA")
         if [ "$m" = main-hung ] && [ "$FULL" != 1 ]; then
-            EXTRA_ENV="$EXTRA_ENV"$'\n'"STUB_DELAY=0.5"$'\n'"GHQ_PROBE_TIMEOUT=1"
+            EXTRA_ENV="$EXTRA_ENV"$'\n'"STUB_DELAY=0.5"$'\n'"GHQ_PROBE_TIMEOUT=1"$'\n'"USER_SLUG=quota-test"
             rbound=90
             rm -rf "$cdir/quota/quota.tsv" "$cdir/quota/blocked"
             UNSCALED_MODE=main-hung
-            EXTRA_ENV="$EXTRA_ENV"$'\n'"PS4=+ \${EPOCHREALTIME} \${BASH_SOURCE[0]##*/}:\${LINENO}: "
-            gocmd=(bash -x "$script" 77 "$SHA")
         fi
-        run_mode go.sh "$m" "$rbound" 11 "${gocmd[@]}"
+        run_mode go.sh "$m" "$rbound" 11 bash "$script" 77 "$SHA"
         UNSCALED_MODE=""
-        if [ "$m" = main-hung ] && [ "$FULL" != 1 ] && [ "$ROW_RC" != 0 ]; then
-            { echo "--- DIAG main-hung out, head 150 ---"; head -n 150 "$ROW_DIR/out"
-              echo "--- DIAG main-hung out, tail 250 ---"; tail -n 250 "$ROW_DIR/out"
-              echo "--- DIAG main-hung stub.log ---"; cat "$ROW_DIR/stub.log"; } >&2
-        fi
         if [ "$m" = main-hung ] && [ "$FULL" != 1 ]; then
             if ! grep -q ' read ' "$ROW_DIR/stub.log" 2> /dev/null; then
                 emit "FAIL go.sh main-hung main-reads the stub logged nothing"
