@@ -9,7 +9,7 @@
 #                to. This is what scripts/config-ui/board.ts ledgerItems puts under Waiting on you;
 #                a chief-owned row, a row with no actor and a closed row are never waiting.
 #   open ask     a bullet `- [HH:MM ]OWED <key> <text>` in the chief doc (chief-wait.sh owed_wake reads the
-#                same shape) that has a receipt bullet `- [HH:MM[Z] ]DELIVERED <key> msg=<id> chat=<id>`, so the
+#                same shape) that has a receipt bullet `- [HH:MM ]DELIVERED <key> msg=<id> chat=<id>`, so the
 #                operator was really asked, and whose key names no closed row. An OWED bullet with no
 #                receipt is the chief's own undelivered step (board.ts undeliveredItems), never an open ask.
 #   match        an ask matches a row when its <key> is the row's id (o1, o2, ...) or the row's ticket key.
