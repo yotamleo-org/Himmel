@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { recordLiveConfigDir } from './live/project-guard.js';
@@ -31,10 +31,26 @@ process.env.HANDOVER_DIR = mkdtempSync(join(tmpdir(), 'jira-test-handover-'));
 process.env.HIMMEL_SECRETS_KEYRING = "off";
 
 if (!process.versions.bun) {
-  const noProc = join(mkdtempSync(join(tmpdir(), 'jira-test-proc-')), 'absent');
+  const procRoot = mkdtempSync(join(tmpdir(), 'jira-test-proc-'));
+  const uid = process.getuid?.() ?? 0;
+  const status = (ppid: number, nspid: number, u: number) => `Name:\tx\nPPid:\t${ppid}\nUid:\t${u}\t${u}\t${u}\t${u}\nNSpid:\t${nspid}\n`;
+  for (const [pid, ppid, u] of [[300, 200, uid], [200, 1, uid], [1, 0, 0]] as const) {
+    mkdirSync(join(procRoot, String(pid), 'ns'), { recursive: true });
+    writeFileSync(join(procRoot, String(pid), 'status'), status(ppid, pid, u));
+    if (pid !== 1) writeFileSync(join(procRoot, String(pid), 'environ'), 'PATH=/usr/bin\0');
+  }
+  writeFileSync(join(procRoot, '300', 'cmdline'), 'node\0vitest\0');
+  symlinkSync('pid:[4026531836]', join(procRoot, '300', 'ns', 'pid'));
+  symlinkSync('user:[4026531837]', join(procRoot, '300', 'ns', 'user'));
+  symlinkSync('300', join(procRoot, 'self'));
+  const hostNsPath = join(procRoot, 'host-ns');
+  writeFileSync(hostNsPath, 'pid:[4026531836] user:[4026531837]\n');
   vi.doMock('./src/release/fence-ancestry.js', async (orig) => {
     const m = await orig<typeof import('./src/release/fence-ancestry.js')>();
-    const walk: typeof m.walk = (o = {}) => m.walk(o.procRoot === undefined && o.hostNsPath === undefined ? { ...o, procRoot: noProc } : o);
+    const walk: typeof m.walk = (o = {}) => {
+      const base: typeof o = o.procRoot === undefined && o.hostNsPath === undefined ? { ...o, procRoot, hostNsPath, platform: 'linux' } : o;
+      return m.walk({ ...base, execArgv: base.execArgv ?? [], env: base.env ?? {} });
+    };
     return { ...m, walk };
   });
 }

@@ -217,12 +217,14 @@ function publish(ctx: Ctx, rec: RepairState): void {
   writeAtomic(stateFile(ctx), `${JSON.stringify({ ...rec, ts: ctx.now().toISOString() }, null, 2)}\n`);
 }
 
-function canWrite(ctx: Ctx): boolean {
+type Write = { ok: true } | { ok: false; why: string };
+
+function canWrite(ctx: Ctx): Write {
   try {
     operatorFence(ctx);
-    return true;
-  } catch {
-    return false;
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, why: (e as Error).message };
   }
 }
 
@@ -237,7 +239,7 @@ const current = (ctx: Ctx, repo: string | null): { stored: RepairState | null; g
  * re-reading the record under it; a process under a worker fence takes no lock and writes nothing.
  */
 export function repairStateOf(ctx: Ctx, o: { repo: string | null }): RepairState {
-  if (!canWrite(ctx)) return current(ctx, o.repo).got;
+  if (!canWrite(ctx).ok) return current(ctx, o.repo).got;
   return withStateLock(ctx, () => {
     const { stored, got } = current(ctx, o.repo);
     if (stored === null || !same(stored, got)) publish(ctx, got);
@@ -263,14 +265,15 @@ export function runSignature(ctx: Ctx, journalFile: string | null): string {
 
 const epoch = (ctx: Ctx): number => Math.floor(ctx.now().getTime() / 1000);
 
-export type AttemptOut = { ok: true; record: RepairState } | { ok: false; why: 'busy' | 'fenced'; record: RepairState };
+export type AttemptOut = { ok: true; record: RepairState } | { ok: false; why: 'busy'; record: RepairState } | { ok: false; why: 'fenced'; detail: string; record: RepairState };
 
 /**
  * Records a launch attempt BEFORE the detached start: the time and a bounded count, so a start that never reaches the CLI (no node, a dead
  * launcher) still leaves a retry clock the tick reads; beginRun clears the count. A run whose owner is affirmatively alive refuses it.
  */
 export function attemptLaunch(ctx: Ctx, o: { repo: string | null }): AttemptOut {
-  if (!canWrite(ctx)) return { ok: false, why: 'fenced', record: current(ctx, o.repo).got };
+  const fence = canWrite(ctx);
+  if (!fence.ok) return { ok: false, why: 'fenced', detail: fence.why, record: current(ctx, o.repo).got };
   return withStateLock(ctx, () => {
     const { got } = current(ctx, o.repo);
     if (got.state === 'running') return { ok: false, why: 'busy', record: got } as const;
