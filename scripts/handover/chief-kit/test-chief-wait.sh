@@ -97,11 +97,8 @@ wait_hb() {
     done
     return 1
 }
-# wait_exit <pid>: wait at most ~8 s for the waiter to exit; sets rc to its
-# exit code or "running". Not a $(...) helper: `wait` must run in the shell
-# that started the waiter.
-wait_exit() {
-    local max_tenths="${2:-80}"
+wait_exit_for() {
+    local max_tenths="$2"
     n=0
     while [ "$n" -lt "$max_tenths" ]; do
         if ! kill -0 "$1" 2>/dev/null; then wait "$1"; rc=$?; return; fi
@@ -109,6 +106,10 @@ wait_exit() {
     done
     rc=running
 }
+# wait_exit <pid>: wait at most ~8 s for the waiter to exit; sets rc to its
+# exit code or "running". Not a $(...) helper: `wait` must run in the shell
+# that started the waiter.
+wait_exit() { wait_exit_for "$1" 80; }
 new_inbox() { mkdir -p "$WORK/$1/consoles"; : > "$WORK/$1/consoles/c.md"; printf '%s' "$WORK/$1/consoles/c.md"; }
 start() { # <inbox> <outfile> [tick args...]
     local inbox="$1" out="$2"; shift 2
@@ -901,7 +902,7 @@ rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
 I="$(new_inbox dr10)"
 : > "$STUB/gh.hang"
 start "$I" "$WORK/dr10.out"
-wait_exit "$WPID" 400
+wait_exit_for "$WPID" 400
 check "(dr10) an open-PR read that hangs past its 20 s bound still wakes" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr10.out")"
 [ "$rc" = running ] && stop_waiter "$WPID"
 rm -f "$STUB/gh.hang" "$STUB/gh.heads"
