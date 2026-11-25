@@ -15,12 +15,27 @@ vi.mock('../client.js', () => ({
 }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 // The chat stamp is read from a fake process tree, never this test runner's own ancestry. This mock
-// replaces vitest.setup.ts's, so it keeps that one's walk over an absent /proc.
+// replaces vitest.setup.ts's, so it keeps that one's walk over a clean fixture process tree (the fence refuses an absent /proc).
 const ancestry = vi.hoisted(() => ({ procRoot: undefined as string | undefined }));
 vi.mock('../release/fence-ancestry.js', async (orig) => {
   const m = await orig<typeof import('../release/fence-ancestry.js')>();
-  const noProc = join(mkdtempSync(join(tmpdir(), 'jira-test-proc-')), 'absent');
-  const walk: typeof m.walk = (o = {}) => m.walk(o.procRoot === undefined && o.hostNsPath === undefined ? { ...o, procRoot: noProc } : o);
+  const procRoot = mkdtempSync(join(tmpdir(), 'jira-test-proc-'));
+  const uid = process.getuid?.() ?? 0;
+  for (const [pid, ppid, u] of [[300, 200, uid], [200, 1, uid], [1, 0, 0]] as const) {
+    mkdirSync(join(procRoot, String(pid), 'ns'), { recursive: true });
+    writeFileSync(join(procRoot, String(pid), 'status'), `Name:\tx\nPPid:\t${ppid}\nUid:\t${u}\t${u}\t${u}\t${u}\nNSpid:\t${pid}\n`);
+    if (pid !== 1) writeFileSync(join(procRoot, String(pid), 'environ'), 'PATH=/usr/bin\0');
+  }
+  writeFileSync(join(procRoot, '300', 'cmdline'), 'node\0vitest\0');
+  symlinkSync('pid:[4026531836]', join(procRoot, '300', 'ns', 'pid'));
+  symlinkSync('user:[4026531837]', join(procRoot, '300', 'ns', 'user'));
+  symlinkSync('300', join(procRoot, 'self'));
+  const hostNsPath = join(procRoot, 'host-ns');
+  writeFileSync(hostNsPath, 'pid:[4026531836] user:[4026531837]\n');
+  const walk: typeof m.walk = (o = {}) => {
+    const base: typeof o = o.procRoot === undefined && o.hostNsPath === undefined ? { ...o, procRoot, hostNsPath, platform: 'linux' } : o;
+    return m.walk({ ...base, execArgv: base.execArgv ?? [], env: base.env ?? {} });
+  };
   return { ...m, walk, ancestorValue: (name: string) => (ancestry.procRoot === undefined ? null : m.ancestorValue(name, { procRoot: ancestry.procRoot })) };
 });
 

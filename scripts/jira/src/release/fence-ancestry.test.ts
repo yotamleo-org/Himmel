@@ -10,7 +10,7 @@ vi.unmock('./fence-ancestry.js');
 const HOST = 'pid:[4026531836] user:[4026531837]';
 const SANDBOX = 'pid:[4026532999] user:[4026532998]';
 
-interface P { pid: number; ppid?: number; uid?: number; env?: Record<string, string> | null; status?: string | null; nspid?: string; name?: string }
+interface P { pid: number; ppid?: number; uid?: number; env?: Record<string, string> | null; status?: string | null; nspid?: string; name?: string; cmdline?: string[] | null }
 
 function fakeProc(procs: P[], o: { ns?: string; ref?: string | null } = {}) {
   const procRoot = mkdtempSync(join(tmpdir(), 'fence-proc-'));
@@ -22,6 +22,7 @@ function fakeProc(procs: P[], o: { ns?: string; ref?: string | null } = {}) {
       : `Name:\t${p.name ?? 'proc'}\nPid:\t${p.pid}\nPPid:\t${p.ppid ?? 0}\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\nNSpid:\t${p.nspid ?? p.pid}\n`;
     if (status !== null) writeFileSync(join(d, 'status'), status);
     if (p.env !== null) writeFileSync(join(d, 'environ'), Object.entries(p.env ?? { PATH: '/usr/bin' }).map(([k, v]) => `${k}=${v}\0`).join(''));
+    if (p.cmdline !== null) writeFileSync(join(d, 'cmdline'), (p.cmdline ?? ['node', 'dist/index.js']).map((a) => `${a}\0`).join(''));
   }
   const [pidNs, userNs] = (o.ns ?? HOST).split(' ');
   mkdirSync(join(procRoot, String(procs[0].pid), 'ns'));
@@ -30,7 +31,7 @@ function fakeProc(procs: P[], o: { ns?: string; ref?: string | null } = {}) {
   symlinkSync(String(procs[0].pid), join(procRoot, 'self'));
   const hostNsPath = join(procRoot, 'host-ns-ref');
   if (o.ref !== null) writeFileSync(hostNsPath, `${o.ref ?? HOST}\n`);
-  return { procRoot, hostNsPath };
+  return { procRoot, hostNsPath, platform: 'linux' as NodeJS.Platform, execArgv: [] as string[], env: {} as Record<string, string> };
 }
 
 const chain = (over: Partial<Record<300 | 200 | 100 | 1, Partial<P>>> = {}): P[] => [
@@ -64,8 +65,58 @@ describe('walk: the one allow', () => {
     expect(walk(fakeProc(chain({ 300: { env: { HIMMEL_CONSOLE_LEG: '1' } } }))).marker).toBe('HIMMEL_CONSOLE_LEG');
   });
 
-  it('no /proc at all (macOS) leaves the env check alone', () => {
-    expect(walk({ procRoot: join(tmpdir(), 'no-such-proc-9849') })).toMatchObject({ stop: 'allow', marker: null });
+  it('W2: no /proc at all on macOS leaves the env check alone', () => {
+    expect(walk({ procRoot: join(tmpdir(), 'no-such-proc-9849'), platform: 'darwin', execArgv: [], env: {} })).toMatchObject({ stop: 'allow', marker: null });
+  });
+});
+
+describe('walk: HIMMEL-10415, the fence fails closed', () => {
+  const clean = () => fakeProc(chain());
+
+  it('W1: no /proc on linux refuses and names the missing root', () => {
+    const procRoot = join(tmpdir(), 'no-such-proc-10415');
+    const r = walk({ procRoot, platform: 'linux', execArgv: [], env: {} });
+    expect(r.stop).toBe('refuse');
+    expect(r.why).toContain(`no ${procRoot} on linux`);
+  });
+
+  it('W3: a preload flag in execArgv refuses, in every spelling', () => {
+    for (const execArgv of [['--import', 'x'], ['--import=x'], ['--require', 'x'], ['-r', 'x'], ['--loader=x'], ['--experimental-loader', 'x'], ['--preload', 'x']]) {
+      const r = walk({ ...clean(), execArgv });
+      expect(r.stop, execArgv.join(' ')).toBe('refuse');
+      expect(r.why).toMatch(/a preload \(.+\) is present on the fence path/);
+    }
+  });
+
+  it('W4: a preload flag in env.NODE_OPTIONS refuses', () => {
+    const r = walk({ ...clean(), env: { NODE_OPTIONS: '--max-old-space-size=4096 --require x' } });
+    expect(r.stop).toBe('refuse');
+    expect(r.why).toMatch(/a preload \(--require\) is present/);
+  });
+
+  it('W5: a preload flag only in the start-up environ of this process refuses', () => {
+    const r = walk(fakeProc(chain({ 300: { env: { NODE_OPTIONS: '--import=x' } } })));
+    expect(r.stop).toBe('refuse');
+    expect(r.why).toMatch(/a preload \(--import\) is present/);
+  });
+
+  it('W6: a preload flag only before the script in the start-up cmdline refuses; one after the script is the script\'s own argument', () => {
+    const r = walk(fakeProc(chain({ 300: { cmdline: ['bun', '--preload', 'x', 'src/index.ts', 'release'] } })));
+    expect(r.stop).toBe('refuse');
+    expect(r.why).toMatch(/a preload \(--preload\) is present/);
+    expect(walk(fakeProc(chain({ 300: { cmdline: ['node', 'dist/index.js', 'release', '-r', 'x'] } })))).toEqual({ marker: null, stop: 'allow' });
+  });
+
+  it('W7: a NODE_OPTIONS with no preload allows', () => {
+    expect(walk({ ...clean(), env: { NODE_OPTIONS: '--max-old-space-size=4096' } })).toEqual({ marker: null, stop: 'allow' });
+  });
+
+  it('W8: an unreadable start-up environ or cmdline of this process refuses on linux', () => {
+    for (const over of [{ env: null }, { cmdline: null }]) {
+      const r = walk({ ...fakeProc(chain({ 300: over })), platform: 'linux' });
+      expect(r.stop).toBe('refuse');
+      expect(r.why).toMatch(/own start-up env or argv cannot be read/);
+    }
   });
 });
 

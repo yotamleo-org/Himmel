@@ -31,8 +31,22 @@ export interface WalkOpts {
   procRoot?: string;
   hostNsPath?: string;
   pid?: number;
+  platform?: NodeJS.Platform;
+  execArgv?: readonly string[];
+  env?: Readonly<Record<string, string | undefined>>;
   // Test-only: run once with a check removed to prove its row fails on that check.
   disable?: FenceCheck[];
+}
+
+type WalkDefaults = Pick<WalkOpts, 'procRoot' | 'hostNsPath' | 'platform' | 'execArgv' | 'env'>;
+const walkDefaults: WalkDefaults = {};
+
+/**
+ * Test-only: a driver that runs the CLI in-process names the process tree the walk reads, so a suite reaches the env-only branch
+ * with /proc visible and no preload flag. Code that can call this already runs inside the process, which no check here can bar.
+ */
+export function setWalkDefaults(d: WalkDefaults): void {
+  Object.assign(walkDefaults, d);
 }
 
 export interface WalkResult {
@@ -112,15 +126,65 @@ function selfPid(procRoot: string): number {
   }
 }
 
+const PRELOAD_FLAGS = ['--import', '--require', '-r', '--loader', '--experimental-loader', '--preload'];
+
+const preloadFlag = (token: string): string | null => PRELOAD_FLAGS.find((f) => token === f || token.startsWith(`${f}=`)) ?? null;
+
+const firstPreload = (tokens: readonly string[]): string | null => {
+  for (const token of tokens) {
+    const hit = preloadFlag(token);
+    if (hit) return hit;
+  }
+  return null;
+};
+
+/** argv[1..] up to the script: a token that is no flag and follows no flag awaiting its value is the script; what follows it is the script's own. */
+function preloadBeforeScript(argv: readonly string[]): string | null {
+  let awaiting = false;
+  for (const token of argv.slice(1)) {
+    const hit = preloadFlag(token);
+    if (hit) return hit;
+    if (token.startsWith('-')) {
+      awaiting = !token.includes('=');
+      continue;
+    }
+    if (awaiting) {
+      awaiting = false;
+      continue;
+    }
+    return null;
+  }
+  return null;
+}
+
+const nodeOptionsOf = (environ: string | null): string => environ?.split('\0').find((kv) => kv.startsWith('NODE_OPTIONS='))?.slice('NODE_OPTIONS='.length) ?? '';
+
+const words = (s: string | undefined): string[] => (s ?? '').split(/\s+/).filter(Boolean);
+
 export function walk(opts: WalkOpts = {}): WalkResult {
-  const procRoot = opts.procRoot ?? '/proc';
-  if (!existsSync(procRoot)) return { marker: null, stop: 'allow', why: `no ${procRoot}: the env check alone applies (named residual)` };
+  const procRoot = opts.procRoot ?? walkDefaults.procRoot ?? '/proc';
+  const hostNsPath = opts.hostNsPath ?? walkDefaults.hostNsPath;
+  const platform = opts.platform ?? walkDefaults.platform ?? process.platform;
+  const refuse = (why: string): WalkResult => ({ marker: null, stop: 'refuse', why });
+  if (platform !== 'darwin') {
+    const environ = read(join(procRoot, 'self', 'environ'));
+    const cmdline = read(join(procRoot, 'self', 'cmdline'));
+    const hit = firstPreload(opts.execArgv ?? walkDefaults.execArgv ?? process.execArgv)
+      ?? firstPreload(words((opts.env ?? walkDefaults.env ?? process.env).NODE_OPTIONS))
+      ?? firstPreload(words(nodeOptionsOf(environ)))
+      ?? (cmdline === null ? null : preloadBeforeScript(cmdline.split('\0')));
+    if (hit) return refuse(`a preload (${hit}) is present on the fence path`);
+    if (!existsSync(procRoot)) return refuse(`no ${procRoot} on ${platform}: the ancestry cannot be read, so the fence refuses`);
+    if (environ === null || cmdline === null) return refuse('this process\'s own start-up env or argv cannot be read');
+  } else if (!existsSync(procRoot)) {
+    return { marker: null, stop: 'allow', why: `no ${procRoot}: the env check alone applies (named residual)` };
+  }
   const t = climb(procRoot, opts.pid ?? selfPid(procRoot));
   const res = (why: string): WalkResult => ({ marker: t.marker, stop: 'refuse', why, ...(t.farthest === undefined ? {} : { farthest: t.farthest }) });
   if (t.marker) return res(`${t.marker}=1 in the start-up env of ancestor ${t.farthest}${t.refuse ? `; ${t.refuse}` : ''}`);
   if (t.refuse) return res(t.refuse);
   if (opts.disable?.includes('ns')) return { marker: null, stop: 'allow' };
-  const ref = read(opts.hostNsPath ?? hostNsFile())?.trim() ?? null;
+  const ref = read(hostNsPath ?? hostNsFile())?.trim() ?? null;
   if (ref === null) return res(`host-ns is missing or unreadable; ${HOST_NS_REMEDY}`);
   if (!NS_LINE.test(ref)) return res(`host-ns is malformed; ${HOST_NS_REMEDY}`);
   let own: string;
