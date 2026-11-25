@@ -103,7 +103,16 @@
 # Sourceable from hooks and scripts: uses only `return`, never `exit`; does not
 # toggle set -e. bash 3.2-safe.
 
-_crs_gh() { "${GH_CMD:-gh}" "$@"; }
+_crs_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_crs_gh() {
+    if [ -n "${GH_CMD:-}" ]; then "$GH_CMD" "$@"; return $?; fi
+    if ! declare -F gh_read >/dev/null 2>&1; then
+        # shellcheck source=scripts/lib/gh-read.sh
+        # shellcheck disable=SC1091  # sourced at runtime
+        . "$_crs_dir/gh-read.sh" 2>/dev/null || { gh "$@"; return $?; }
+    fi
+    gh_read "$@"
+}
 
 # The identity, in ONE place. ci-green-gate needs the same pair to EXCLUDE
 # CodeRabbit's status from the CI aggregate it owns, so both gates agree on

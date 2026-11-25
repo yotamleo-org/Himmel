@@ -39,6 +39,8 @@
 
 _cmg_degrade() { echo "cr-merge-gate: degraded ($*) - failing open" >&2; }
 
+_crg_gh() { _crs_gh "$@"; }
+
 # _cmg_prior_outside_block — operator ruling + the
 # PR's real head carries no CodeRabbit review of its own, but prior head(s)
 # carry posted outside-diff findings. EVERY such head governs
@@ -360,7 +362,7 @@ _crg_coderabbit() {
     fi
 
     # shellcheck disable=SC2016  # GraphQL variables ($owner/$name/$number) are literal here
-    if ! threads=$(gh api graphql \
+    if ! threads=$(_crg_gh api graphql \
         -f owner="$owner" -f name="$name" -F number="$num" \
         -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved path line comments(first:1){nodes{author{login}}}}}}}}' \
         </dev/null 2>/dev/null); then
@@ -408,7 +410,7 @@ _crg_judge_source() {
     local owner="$1" name="$2" num="$3" states="$4" rows pr_branch br src
     rows=$(printf '%s\n' "$states" | awk -F'\t' '$1 == "@judge-go" { print $2 "\t" $3 }')
     [ -n "$rows" ] || return 0
-    pr_branch=$(gh pr view "$num" --repo "$owner/$name" --json headRefName 2>/dev/null </dev/null) || return 0
+    pr_branch=$(_crg_gh pr view "$num" --repo "$owner/$name" --json headRefName 2>/dev/null </dev/null) || return 0
     pr_branch=$(printf '%s' "$pr_branch" | jq -r '.headRefName // empty' 2>/dev/null) || return 0
     [ -n "$pr_branch" ] || return 0
     while IFS=$'\t' read -r br src; do
@@ -426,7 +428,7 @@ _crg_dependabot_source() {
     local owner="$1" name="$2" num="$3" states="$4" rows pr pr_branch pr_author br src row_pr
     rows=$(printf '%s\n' "$states" | awk -F'\t' '$1 == "@dependabot-go" { print $2 "\t" $3 "\t" $4 }')
     [ -n "$rows" ] || return 0
-    pr=$(gh pr view "$num" --repo "$owner/$name" --json headRefName,author 2>/dev/null </dev/null) || return 0
+    pr=$(_crg_gh pr view "$num" --repo "$owner/$name" --json headRefName,author 2>/dev/null </dev/null) || return 0
     pr_author=$(printf '%s' "$pr" | jq -r '.author.login // empty' 2>/dev/null) || return 0
     [ "$pr_author" = app/dependabot ] || return 0
     pr_branch=$(printf '%s' "$pr" | jq -r '.headRefName // empty' 2>/dev/null) || return 0
@@ -707,9 +709,9 @@ cr_merge_gate() {
 
     local meta url num head owner name
     if [ -n "$repo" ]; then
-        meta=$(gh pr view "$sel" --repo "$repo" --json number,headRefOid,url 2>/dev/null) || { _cmg_degrade "gh pr view failed (selector '$sel' unresolvable)"; return 3; }
+        meta=$(_crg_gh pr view "$sel" --repo "$repo" --json number,headRefOid,url 2>/dev/null) || { _cmg_degrade "gh pr view failed (selector '$sel' unresolvable)"; return 3; }
     else
-        meta=$(gh pr view "$sel" --json number,headRefOid,url 2>/dev/null) || { _cmg_degrade "gh pr view failed (selector '$sel' unresolvable)"; return 3; }
+        meta=$(_crg_gh pr view "$sel" --json number,headRefOid,url 2>/dev/null) || { _cmg_degrade "gh pr view failed (selector '$sel' unresolvable)"; return 3; }
     fi
     num=$(printf '%s' "$meta" | jq -r '.number // empty' 2>/dev/null || true)
     head=$(printf '%s' "$meta" | jq -r '.headRefOid // empty' 2>/dev/null || true)
