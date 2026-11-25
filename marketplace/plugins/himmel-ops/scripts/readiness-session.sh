@@ -14,16 +14,20 @@
 #                        that scope and that transcript is recorded as the lease's liveness marker (no ambient session
 #                        id or config directory is consulted); the same-scope token file, .doc sidecar, CURRENT holder
 #                        and liveness marker are verified; only
-#                        then the private AttemptConfirmation is published and the transport removed. Any failure
+#                        then the private AttemptConfirmation is published (a temp file renamed over the name, so a repeat
+#                        startup completes an interrupted adoption) and the transport removed. Any failure
 #                        publishes nothing, so every act and finish refuses. Always exits 0 and prints nothing on
 #                        stdout (a hook must never block or inject text); a refusal is one reason code on stderr.
 #   verify <attempt-dir> exit 0 only if the confirmation is fresh and consistent with the startup config AND the
-#                        adopted registration still names the current holder. The adapter runs it before EVERY act,
+#                        adopted registration still names the current holder, whose heartbeat is fresh or, when the heartbeat
+#                        cannot be read as a time, whose own transcript is young. The adapter runs it before EVERY act,
 #                        finish included. Prints nothing; exit 1 = not adopted.
 #   finish <attempt-dir> verify, then release exactly the token this session adopted (a successor's lock refuses it),
-#                        then remove the attempt directory (the credential file included). Exit 0 only if released.
+#                        then remove the attempt directory (the credential file included). Exit 0 only if released and
+#                        the directory is gone.
 #   cleanup              SessionEnd hook (hook JSON on stdin). Releases this session's own lease (the adopted token,
-#                        or the still-unadopted transport token) and removes its attempt directory; silent, exit 0. The host
+#                        also when the attempt no longer verifies, or the still-unadopted transport token) and removes its
+#                        attempt directory; silent, exit 0. The host
 #                        gives a SessionEnd hook a short shared budget and cancels what has not returned, so the verb returns
 #                        at once and a detached copy of itself does the release (see the cleanup block below). A cleanup that
 #                        is cut off, fails or is refused leaves the lease held and the attempt directory in place; the
@@ -152,7 +156,12 @@ _rs_registration_ok() {
         { [ -f "$sc" ] && [ -r "$sc" ]; } || exit 1
         { IFS= read -r sc_doc; IFS= read -r sc_lock; } < "$sc"
         [ "$sc_doc" = "$doc" ] && [ "$sc_lock" = "$lock" ] || exit 1
-        _ql_lock_is_fresh "$lock" || exit 1
+        hb="$(_ql_json_field "$lock/owner.json" heartbeat)"
+        if [ -n "$hb" ] && [ -n "$(_ql_epoch_of_iso "$hb")" ]; then
+            _ql_lock_is_fresh "$lock" || exit 1
+        else
+            _ql_holder_live "$lock" "${QUEUE_LOCK_TTL_SECONDS:-21600}" || exit 1
+        fi
         # liveness: this host and this session's OWN existing transcript, so an idle-but-alive session outlives an old heartbeat
         lv="$lock/liveness"
         { [ -f "$lv" ] && [ -r "$lv" ] && [ ! -L "$lv" ]; } || exit 1
@@ -208,7 +217,7 @@ _rs_verify() { # <attempt-dir>
 }
 
 cmd_startup() {
-    local sid dir tok
+    local sid dir tok pub
     _rs_hook_read || exit 0
     sid="$RS_HOOK_SID"
     [[ "$sid" =~ $UUID_RE ]] || exit 0
@@ -237,8 +246,11 @@ cmd_startup() {
         exit 0
     fi
     _rs_registration_ok || { _rs_refuse "adopted-registration-unverified"; exit 0; }
-    if ! ( set -C; jq -cn --arg att "$RS_ATTEMPT_ID" --arg doc "$RS_DOC" --arg ver "$RS_VERSION" --arg sid "$sid" \
-        '{schema:"readiness-attempt-v1",attempt_id:$att,doc:$doc,version:$ver,session_scope:$sid,startup_session_id:$sid,adopted:true}' > "$dir/confirmation.json" ) 2>/dev/null; then
+    pub="$(mktemp "$dir/.confirmation.XXXXXX")" || { _rs_refuse "confirmation-not-published"; exit 0; }
+    if ! jq -cn --arg att "$RS_ATTEMPT_ID" --arg doc "$RS_DOC" --arg ver "$RS_VERSION" --arg sid "$sid" \
+        '{schema:"readiness-attempt-v1",attempt_id:$att,doc:$doc,version:$ver,session_scope:$sid,startup_session_id:$sid,adopted:true}' > "$pub" 2>/dev/null \
+        || ! mv -f -- "$pub" "$dir/confirmation.json" 2>/dev/null; then
+        rm -f -- "$pub"
         _rs_refuse "confirmation-not-published"
         exit 0
     fi
@@ -257,7 +269,8 @@ cmd_finish() {
     [ "$#" -eq 1 ] || exit 2
     _rs_verify "$1" || { _rs_refuse "not adopted ($RS_WHY)"; exit 1; }
     _rs_release "" || { _rs_refuse "release refused (the lock is not this session's)"; exit 1; }
-    _rs_remove_attempt "$1"
+    _rs_remove_attempt "$1" 2>/dev/null
+    [ ! -e "$1" ] || { _rs_refuse "attempt-dir-kept"; exit 1; }
     exit 0
 }
 
@@ -269,14 +282,8 @@ cmd_cleanup() {
     dir="$(_rs_root)/$sid"
     [ -e "$dir" ] || exit 0
     _rs_load "$dir" "$sid" || { _rs_refuse "$RS_WHY"; exit 0; }
-    if _rs_verify "$dir"; then
-        _rs_release "" || { _rs_refuse "release refused (the lock is not this session's)"; exit 0; }
-    else
-        tok="$(_rs_transport_token "$dir")" || tok=""
-        if [ -n "$tok" ]; then
-            _rs_release "$tok" || { _rs_refuse "release refused (the lock is not this session's)"; exit 0; }
-        fi
-    fi
+    _rs_verify "$dir" || tok="$(_rs_transport_token "$dir")" || tok=""
+    _rs_release "$tok" || { _rs_refuse "release refused (the lock is not this session's)"; exit 0; }
     _rs_remove_attempt "$dir"
     exit 0
 }
