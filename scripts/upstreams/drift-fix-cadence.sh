@@ -143,7 +143,7 @@ WORKER_SESSION_RESYNC="HIMMEL-ForkResync"
 
 # Payload invocations; the real runbooks live in
 # .claude/commands/{drift-fix,fork-resync}.md.
-PROMPT_DRIFT="Run /drift-fix to completion. This is the scheduled nightly upstream-drift repair cadence - fully autonomous, no user prompts; follow the runbook exactly, STOP at the open PR, and report what landed."
+PROMPT_DRIFT="Run /drift-fix to completion. This is the scheduled nightly upstream-drift repair cadence - fully autonomous, no user prompts; follow the runbook exactly, STOP at the open PR, and report what landed. Bring every fork we own current in this same run: a conflicting fork sync is a fork-rebase step to do now (runbook step 2C), never a deferral and never a new ticket; only a fork with an operator hold stays behind. Report each fork as CURRENT, REBASED in this fix, or HELD with the hold reason."
 PROMPT_RESYNC="Run /fork-resync to completion. This is the scheduled nightly carried-fork re-sync cadence - fully autonomous, no user prompts; audit every BEHIND scripts/upstreams.json entry with a fork block (each entry's own note says whether a non-additive result is a regression to report or an expected known gap), then STOP at the end of step 3; NEVER run resync-fork.sh --push and do not open a branch or PR; report every result."
 
 # worker_prompt / worker_log / worker_runner <task-name> — the per-worker lookups, kept as
@@ -707,7 +707,9 @@ drift-fix-cadence ARMED
   Each night:
     - $WORKER_SESSION_DRIFT runs /drift-fix: upgrade the installed vendor CLIs whose
       registry entry is marked upgrade.unattended:true, bump every repo
-      pin apply-drift-bump.sh can bump, then open an ordinary PR against
+      pin apply-drift-bump.sh can bump, bring every BEHIND fork current
+      (a conflicting fork sync is a fork-rebase step of the same run; only an
+      operator-held fork stays behind), then open an ordinary PR against
       origin and STOP.
     - $WORKER_SESSION_RESYNC runs /fork-resync: rebase every BEHIND registry fork
       against upstream and audit it — a no-op most nights. The unattended

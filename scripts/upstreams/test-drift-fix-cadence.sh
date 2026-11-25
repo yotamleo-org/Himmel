@@ -207,6 +207,9 @@ assert_has "$out" "scripts/upstreams.json" "resync prompt selects registered for
 assert_has "$out" "block" "resync prompt scopes to entries with a fork block (not a hardcoded plugin name)"
 assert_has "$out" "regression" "resync prompt defers a non-additive result's regression-or-known-gap call to each entry's own note"
 assert_has "$out" "--push" "unattended resync prompt explicitly forbids the push path"
+assert_has "$out" "fork-rebase" "drift prompt makes a conflicting fork sync a fork-rebase step in the same run"
+assert_has "$out" "deferral" "drift prompt names deferral as the thing a conflicting fork must never become"
+assert_has "$out" "REBASED" "drift prompt reports each fork as CURRENT, REBASED in this fix or HELD"
 assert_has "$out" "< /dev/null" "runner gives the session stdin EOF"
 assert_lacks "$out" "--print" "runner never uses --print (subscription billing)"
 assert_lacks "$out" " -p " "runner never uses -p (subscription billing)"
@@ -439,6 +442,13 @@ case " $CADENCE_RUNNER_BASENAMES " in
   *" fork-resync "*) pass "fork-resync is in CADENCE_RUNNER_BASENAMES" ;;
   *) fail "fork-resync missing from CADENCE_RUNNER_BASENAMES — himmel-doctor/himmel-update will not see a stale runner" ;;
 esac
+
+echo "[test-drift-fix-cadence] the drift-fix runbook brings every fork current"
+runbook=$(cat "$SCRIPT_DIR/../../.claude/commands/drift-fix.md")
+assert_has "$runbook" "fork-rebase step" "runbook has a fork-rebase step"
+assert_has "$runbook" "REBASED in this fix" "runbook reports a fork as CURRENT, REBASED in this fix or HELD"
+assert_has "$runbook" "operator hold" "runbook leaves a fork behind only for an operator hold"
+assert_lacks "$runbook" "qmd is the standing example" "runbook no longer parks qmd as a standing skip"
 
 echo ""
 if [ "$fails" -eq 0 ]; then
