@@ -191,8 +191,8 @@ forge_pr_create()      { _forge_dispatch forge_pr_create "$@"; }
 forge_pr_set_body()    { _forge_dispatch forge_pr_set_body "$@"; }
 forge_pr_mergeable()   { _forge_dispatch forge_pr_mergeable "$@"; }
 # args: NUMBER [VETTED_HEAD_SHA]. The optional vetted SHA binds the merge to the
-# commit the gates certified (TOCTOU) — honored by github
-# (--match-head-commit), accepted-and-ignored by bitbucket (no equivalent).
+# commit the gates certified (TOCTOU) — github passes --match-head-commit;
+# bitbucket re-reads the head just before merging and refuses on drift.
 forge_pr_merge()       { _forge_dispatch forge_pr_merge "$@"; }
 forge_pr_has_merged()  { _forge_dispatch forge_pr_has_merged "$@"; }
 # issue create (CR deferred-issue filing). args: REPO TITLE BODY LABEL.
@@ -212,7 +212,7 @@ forge_change_view()    { _forge_dispatch forge_change_view "$@"; }
 #   forge_pr_create and refuse here with rc 4.
 forge_change_open()    { _forge_dispatch forge_change_open "$@"; }
 # forge_checks <ref> [gh pr checks args...]: one "<bucket>\t<name>" row per
-#   check (github); bitbucket, local-git and none rc 4 (local checks are WP5a).
+#   check (github) or per build status (bitbucket); local-git and none rc 4.
 forge_checks()         { _forge_dispatch forge_checks "$@"; }
 # forge_repo_id: github/bitbucket owner/repo; local-git local:<abs git-common-dir>.
 forge_repo_id()        { _forge_dispatch forge_repo_id "$@"; }

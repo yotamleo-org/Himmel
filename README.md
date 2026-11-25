@@ -39,7 +39,7 @@ need decisions to survive session boundaries.
 ## How a change clears himmel
 
 <p align="center">
-  <img src="docs/assets/flows.svg" alt="Animated himmel delivery graph: Chief dispatches a scoped ticket to an isolated worker worktree guarded by PreToolUse hooks; local git gates, your existing GitHub CI, and independent /pr-check review verify the change; blocking findings or red CI loop back to the worktree; on GitHub the merge gate checks green CI, ruled findings, and exact HEAD match, and in fleet runs the chief signs GO before merge and cleanup" width="960">
+  <img src="docs/assets/flows.svg" alt="Animated himmel delivery graph: Chief dispatches a scoped ticket to an isolated worker worktree guarded by PreToolUse hooks; local git gates, your existing GitHub CI, and independent /pr-check review verify the change; blocking findings or red CI loop back to the worktree; on GitHub or Bitbucket the merge gate requires every reported CI check or status to pass (a head with none is allowed), ruled findings, and exact HEAD match, and in fleet runs the chief signs GO before merge and cleanup" width="960">
 </p>
 
 <!-- The diagram is rendered by scripts/docs/render-flows.py: edit the script, not the image. -->
@@ -204,7 +204,7 @@ worktree scripts.
 | Handovers & usage-cap auto-relaunch* | Setup & resume | Full write, ship & relaunch | Stored & indexed in vault |
 | Second brain (`qmd` search, `graphify` map, auto-capture) | Optional | Code graph & search | Cross-project Obsidian vault |
 
-*\*Usage-cap auto-relaunch requires an OS scheduler backend ([`docs/setup/new-machine.md`](docs/setup/new-machine.md#4c-scheduler-backend-auto-arm-resume)). The CI and reviewer merge gate runs on GitHub for merges invoked from Claude Code sessions; manual merges via `gh` or the web UI are not intercepted, and Bitbucket Cloud gets the worktree, PR, and merge loop without those gates.*
+*\*Usage-cap auto-relaunch requires an OS scheduler backend ([`docs/setup/new-machine.md`](docs/setup/new-machine.md#4c-scheduler-backend-auto-arm-resume)). The CI and reviewer merge gate runs on GitHub and on Bitbucket Cloud for merges invoked from Claude Code sessions (on Bitbucket it reads the PR's build statuses, its review threads and the hard reviewer's rows for the head, and blocks when it cannot read them); manual merges via `gh` or a web UI are not intercepted.*
 
 ### Support matrix
 
@@ -215,7 +215,7 @@ himmel runs on Linux and macOS. Windows (Git Bash or WSL) is not supported.
 | **Linux** | Supported — required check on every PR ([CI runs on `main`](https://github.com/yotamleo-org/Himmel/actions/workflows/ci.yml?query=branch%3Amain)); release tarball & project install/uninstall tested end to end. |
 | **macOS** | **Beta** — checked twice weekly ([scheduled macOS runs](https://github.com/yotamleo-org/Himmel/actions/workflows/macos-cadence.yml?query=event%3Aschedule)); scripts stay bash 3.2-safe. |
 | **Coding agents** | Built for Claude Code; guardrails also run under Codex CLI via hooks + `AGENTS.md` ([`docs/internals/harness-compat.md`](docs/internals/harness-compat.md)). |
-| **Git hosts** | GitHub (full gates) and Bitbucket Cloud (worktree, PR & merge loop), detected automatically from `origin`. |
+| **Git hosts** | GitHub and Bitbucket Cloud (worktree, PR & merge loop, with the CI and reviewer merge gate; Bitbucket reads the build statuses Pipelines posts, not the runs themselves), detected automatically from `origin`. |
 | **Install channels** | `git clone` + `himmelctl install` (Linux/macOS), checksummed Linux [release tarballs](https://github.com/yotamleo-org/Himmel/releases), Claude Code plugin marketplace (`marketplace/plugins/`), and Arch PKGBUILD recipe in [`packaging/aur/`](packaging/aur/) (not yet on AUR). |
 
 ---

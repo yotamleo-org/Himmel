@@ -118,14 +118,19 @@ bb_forge_pr_has_merged() {
 # rc 0 = merged; rc 4 = failure. The CLI exits 2 on a merge conflict (the
 # verified §5.1 signal, atomic — nothing merged); surface that distinctly from a
 # generic failure so a caller can tell "rebase needed" from "auth/network died".
-#
-# VETTED_HEAD_SHA is accepted for seam parity and IGNORED: the
-# Bitbucket Cloud merge endpoint has no --match-head-commit equivalent, so the
-# TOCTOU window cannot be closed here. It stays theoretical on this backend —
-# the CR/CI gates that produce a vetted SHA are GitHub-only (pr-merge.sh runs
-# them under `[ "$forge" = "github" ]`), so no bitbucket caller has one to pass.
 bb_forge_pr_merge() {
-    local number="$1"
+    local number="$1" vetted="${2:-}" view cur
+    if [ -n "$vetted" ]; then
+        view=$(_bb pr get "$number") || {
+            echo "ERR forge(bitbucket): cannot re-read the head of PR #$number — refusing to merge it unbound (nothing merged)." >&2
+            return 4
+        }
+        cur=$(printf '%s' "$view" | _bb_str_field head_commit)
+        if [ -z "$cur" ] || [ "$cur" != "$vetted" ]; then
+            echo "ERR forge(bitbucket): the head of PR #$number moved ($vetted vetted, ${cur:-unreadable} now) — the gates read a different commit. Re-run them (nothing merged)." >&2
+            return 4
+        fi
+    fi
     if _bb pr merge "$number" --squash --delete-branch; then
         echo "forge(bitbucket): merged PR #$number"
         return 0
@@ -169,16 +174,11 @@ bb_forge_change_id() {
     bb_forge_pr_find_open "$@"
 }
 
-# echo one compact JSON object {id, head, base, title, state, merged} for PR ID,
-# projected from `pr get` (the CLI's PrIngestInfo: id, title, state,
-# source_branch, destination_branch, ...). That shape carries no head commit,
-# so head is "". Capture-then-parse, as above. A response that is not a JSON
-# object carrying an id refuses with rc 1.
 bb_forge_change_view() {
     local out
     out=$(_bb pr get "$1") || return 1
     printf '%s' "$out" |
-        node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let j=null;try{j=JSON.parse(s)}catch{};if(!j||typeof j!=="object"||Array.isArray(j)||j.id==null){process.stderr.write("forge(bitbucket): pr get returned no PR record\n");process.exit(1)};const st=String(j.state??"");process.stdout.write(JSON.stringify({id:String(j.id??""),head:"",base:String(j.destination_branch??""),title:String(j.title??""),state:st,merged:st==="MERGED"})+"\n")})'
+        node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let j=null;try{j=JSON.parse(s)}catch{};if(!j||typeof j!=="object"||Array.isArray(j)||j.id==null){process.stderr.write("forge(bitbucket): pr get returned no PR record\n");process.exit(1)};const st=String(j.state??"");process.stdout.write(JSON.stringify({id:String(j.id??""),head:String(j.head_commit??""),base:String(j.destination_branch??""),title:String(j.title??""),state:st,merged:st==="MERGED"})+"\n")})'
 }
 
 # echo workspace/repo — the repo's id on this forge (= bb_forge_repo_nwo).
@@ -186,8 +186,100 @@ bb_forge_repo_id() {
     bb_forge_repo_nwo
 }
 
-# himmel reads no Bitbucket pipeline statuses yet: refuse with rc 4.
 bb_forge_checks() {
-    echo "forge(bitbucket): checks is not supported on bitbucket" >&2
-    return 4
+    local out
+    out=$(_bb pr statuses "$1") || return 1
+    printf '%s' "$out" |
+        node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let j=null;try{j=JSON.parse(s)}catch{};if(!j||!Array.isArray(j.statuses)||j.truncated!==false){process.stderr.write("forge(bitbucket): pr statuses unreadable or truncated\n");process.exit(1)};const b={SUCCESSFUL:"pass",FAILED:"fail",STOPPED:"cancel",INPROGRESS:"pending"};for(const x of j.statuses)process.stdout.write((b[x.state]||"unknown")+"\t"+String(x.name||x.key||"?").replace(/[\t\n]/g," ")+"\n")})'
+}
+
+bb_forge_ci_gate() {
+    [ "${CI_MERGE_GATE_OK:-0}" = "1" ] && return 0
+    local id="$1" rows rc=0 bucket name n=0 red="" pend="" other=""
+    rows=$(bb_forge_checks "$id" 2>/dev/null) || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "BLOCK: PR #$id build statuses are unreadable or span more than one page — cannot certify CI green; failing closed. Bypass: CI_MERGE_GATE_OK=1."
+        return 2
+    fi
+    while IFS=$'\t' read -r bucket name; do
+        [ -n "$bucket" ] || continue
+        n=$((n + 1))
+        case "$bucket" in
+            pass) ;;
+            fail|cancel) red="${red:+$red, }$name" ;;
+            pending) pend="${pend:+$pend, }$name" ;;
+            *) other="${other:+$other, }$name" ;;
+        esac
+    done <<EOF
+$rows
+EOF
+    if [ -n "$red" ]; then
+        echo "BLOCK: PR #$id has failing build status(es) [$red] — CI not green. Bypass: CI_MERGE_GATE_OK=1."
+        return 2
+    fi
+    if [ -n "$pend" ]; then
+        echo "BLOCK: PR #$id has build status(es) still running [$pend] — wait for green. Bypass: CI_MERGE_GATE_OK=1."
+        return 2
+    fi
+    if [ -n "$other" ]; then
+        echo "BLOCK: PR #$id has build status(es) in an unrecognised state [$other] — cannot certify CI green; failing closed. Bypass: CI_MERGE_GATE_OK=1."
+        return 2
+    fi
+    if [ "$n" -eq 0 ]; then
+        echo "ci-green-gate: no build statuses on PR #$id's head (checkless repo?) - allowing" >&2
+    fi
+    return 0
+}
+
+bb_forge_cr_gate() {
+    [ "${CR_MERGE_GATE_OK:-0}" = "1" ] && return 0
+    [ "${CR_PROFILE:-}" = "none" ] && return 0
+    local id="$1" out open
+    out=$(_bb pr comments "$id") || out=""
+    open=$(printf '%s' "$out" |
+        node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let j=null;try{j=JSON.parse(s)}catch{};if(!j||!Array.isArray(j.threads)||j.truncated!==false){process.stdout.write("unreadable");return};process.stdout.write(String(j.threads.filter(t=>t.isResolved!==true).length))})')
+    case "$open" in
+        0) ;;
+        ''|*[!0-9]*)
+            echo "BLOCK: PR #$id review threads are unreadable or span more than one page — cannot certify them resolved; failing closed. Bypass: CR_MERGE_GATE_OK=1."
+            return 2 ;;
+        *)
+            echo "BLOCK: PR #$id has $open unresolved review thread(s) — resolve them before merging. Bypass: CR_MERGE_GATE_OK=1."
+            return 2 ;;
+    esac
+    _bb_reviewer_gate "$id" "${2:-}"
+}
+
+_BB_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+_bb_reviewer_gate() {
+    local id="$1" abbrev="${2:-}" view full nwo out rc=0
+    if [ -z "$abbrev" ]; then
+        view=$(_bb pr get "$id") || view=""
+        abbrev=$(printf '%s' "$view" | _bb_str_field head_commit)
+    fi
+    full=""
+    [ -z "$abbrev" ] || full=$(git rev-parse --verify --quiet "$abbrev^{commit}") || full=""
+    if [ -z "$full" ]; then
+        echo "BLOCK: PR #${id}'s head (${abbrev:-unreadable}) cannot be resolved locally, and the hard reviewer's ledger rows are keyed on the full commit — cannot certify the reviewer passed; fetch the head and re-run. Bypass: CR_MERGE_GATE_OK=1."
+        return 2
+    fi
+    nwo=$(bb_forge_repo_nwo) || nwo=""
+    if [ -z "$nwo" ]; then
+        echo "BLOCK: PR #$id's repository cannot be read, so the hard reviewer cannot be checked; failing closed. Bypass: CR_MERGE_GATE_OK=1."
+        return 2
+    fi
+    if ! { [ -r "$_BB_LIB_DIR/review-merge-gate.sh" ] && . "$_BB_LIB_DIR/review-merge-gate.sh"; } 2>/dev/null; then
+        echo "BLOCK: the reviewer predicate (scripts/lib/review-merge-gate.sh) cannot be loaded; failing closed. Bypass: CR_MERGE_GATE_OK=1."
+        return 2
+    fi
+    out=$(cr_reviewer_gate "$id" "$full" "$nwo") || rc=$?
+    case "$rc" in
+        0) return 0 ;;
+        1) printf '%s\n' "$out" | sed 's/^HOLD: /BLOCK: /'; return 2 ;;
+        2) printf '%s\n' "$out"; return 2 ;;
+        *)
+            echo "BLOCK: the hard reviewer check at $full could not complete (rc=$rc); failing closed. Bypass: CR_MERGE_GATE_OK=1."
+            return 2 ;;
+    esac
 }

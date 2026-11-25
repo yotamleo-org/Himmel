@@ -23,12 +23,14 @@
 #   2  required tool missing
 #   3  not on a handover/* branch (refuses)
 #   4  gh pr merge failed (on GitHub this sends one operator DM
-#      naming gh's last error line, via scripts/lib/merge-block-alert.sh)
-#   5  blocked by the CR merge gate (unresolved CodeRabbit remarks)
-#   6  blocked by the CI-green merge gate (head SHA not green);
-#      also one operator DM (deduped per repo/PR/head)
-#   7  cannot read the PR head SHA, so the merge cannot be bound to the vetted
-#      commit — refuses rather than merge unbound
+#      naming gh's last error line, via scripts/lib/merge-block-alert.sh); on
+#      Bitbucket also a head that moved between the gates and the merge
+#   5  blocked by the CR merge gate (unresolved review remarks; on Bitbucket
+#      an unreadable thread list blocks too)
+#   6  blocked by the CI-green merge gate (head not green; on Bitbucket the
+#      build statuses on the head); also one operator DM (deduped per repo/PR/head)
+#   7  cannot read the PR head, so the merge cannot be bound to the vetted
+#      commit — refuses rather than merge unbound (both forges)
 #
 # Environment overrides:
 #   FORGE / GH_CMD / BITBUCKET_CMD   Forge-seam overrides. The PR
@@ -193,7 +195,6 @@ fi
 # CR merge gate on the same predicate as the PreToolUse hook, so
 # machines without the plugin hook still get the gate on this path. Placed
 # before the mergeability check so a CR-blocked merge fails fast (exit 5).
-# GitHub-only: cr_merge_gate resolves via gh; the bitbucket forge skips it.
 vetted_head=""
 if [ "$forge" = "github" ]; then
     # capture the head we are about to vet, and bind the
@@ -237,6 +238,27 @@ if [ "$forge" = "github" ]; then
             _pm_alert "CI gate blocks the merge: $_ci_reason"
             exit 6
         fi
+    fi
+elif [ "$forge" = "bitbucket" ]; then
+    vetted_head=$(forge_change_view "$pr_num" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{process.stdout.write(String(JSON.parse(s).head||""))})') || vetted_head=""
+    if [ -z "$vetted_head" ]; then
+        echo "ERR pr-merge: cannot read the head of PR #$pr_num — refusing to merge unbound." >&2
+        exit 7
+    fi
+    _gate_reason=""
+    _gate_rc=0
+    _gate_reason=$(bb_forge_cr_gate "$pr_num" "$vetted_head") || _gate_rc=$?
+    if [ "$_gate_rc" = "2" ]; then
+        echo "pr-merge: CR gate: $_gate_reason" >&2
+        exit 5
+    fi
+    _ci_reason=""
+    _ci_rc=0
+    _ci_reason=$(bb_forge_ci_gate "$pr_num") || _ci_rc=$?
+    if [ "$_ci_rc" = "2" ]; then
+        echo "pr-merge: CI gate: $_ci_reason" >&2
+        _pm_alert "CI gate blocks the merge: $_ci_reason"
+        exit 6
     fi
 fi
 
