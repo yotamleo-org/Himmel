@@ -65,7 +65,10 @@ mark_stage() { printf '%s %s %s\n' "$label" "$1" "$mtime" >> "$state" 2>/dev/nul
 
 oneline() { printf '%s' "$1" | tr '\r\n\t<>' '    ' | tr -s ' ' | cut -c1-160; }
 
-nudge_epoch() { local e; e="$(awk -v k="$label nudge-at $mtime" '$1 " " $2 " " $3 == k { e = $4 } END { print e + 0 }' "$state" 2>/dev/null)" || e=0; echo "${e:-0}"; }  # swallow-ok: no state file yet reads as no nudge time
+nudge_epoch() {
+    [ -f "$state" ] || { echo 0; return; }
+    awk -v k="$label nudge-at $mtime" '$1 " " $2 " " $3 == k { e = $4 } END { print e + 0 }' "$state" || date +%s
+}
 grace_left() { [ $(( $(date +%s) - $(nudge_epoch) )) -lt "$grace" ]; }
 nothing_due() { done_stage nudge && { [ "$silent" -lt "$bound2" ] || done_stage relaunch || grace_left; }; }
 if nothing_due; then echo "SILENT-ACT $label done"; exit 0; fi
@@ -129,7 +132,7 @@ if ! done_stage nudge; then
             if bus_out="$($wait_for "$bus" send "$stale_session" "$body" 2>&1)"; then
                 ref="$(printf '%s\n' "$bus_out" | sed -nE 's/^sent (#[0-9]+) to .*/\1/p' | head -n 1)"
                 say="${say:+$say }nudged"; log="${log:+$log }nudged bus=${ref:-ok}"; nudged_now=1
-                printf '%s nudge-at %s %s\n' "$label" "$mtime" "$(date +%s)" >> "$state" 2>/dev/null || true  # swallow-ok: an unwritable state only repeats the nudge
+                printf '%s nudge-at %s %s\n' "$label" "$mtime" "$(date +%s)" >> "$state" 2>/dev/null || owe_row nudge "the nudge time could not be recorded in $state, so the grace before a relaunch cannot be kept"
             else
                 nudge_err="bus send: ${bus_out%%$'\n'*}"
             fi
