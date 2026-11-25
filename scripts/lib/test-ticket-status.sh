@@ -159,6 +159,18 @@ check "X07-3 a sibling whose lock read fails is the owner doc" "$TS_OWNER_DOC" "
 sib '' '- 10:00 WRAPPED — sibling ended' "$tmp/lock-err.sh"
 check "X07-3 control: a sibling that wrapped itself leaves the primary's wrap whatever its lock read says" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
 check "X07-3 control: a sibling that wrapped itself is no owner doc whatever its lock read says" "$TS_OWNER_DOC" ''
+mkdir -p "$tmp/bk"
+printf -- '- 10:00 WRAPPED — primary ended\n' > "$tmp/bk/HIMMEL-9001-N1-a.md"
+printf -- '- 10:00 LIVE — running\n' > "$tmp/bk/HIMMEL-9001-N2-b.md"
+jq -nc --arg a "$tmp/bk/HIMMEL-9001-N1-a.md" '{doc:$a,docs:[$a],prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-held.sh" ts_derive HIMMEL-9001
+check "11128 an unrecorded bucket sibling holding its lock keeps the ticket In Progress" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'live/D5/In Progress'
+check "11128 the unrecorded sibling is the owner doc" "$TS_OWNER_DOC" "$tmp/bk/HIMMEL-9001-N2-b.md"
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" ts_derive HIMMEL-9001
+check "11128 control: the same sibling with a free lock leaves the wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
+rm -f "$tmp/bk/HIMMEL-9001-N2-b.md"
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-held.sh" ts_derive HIMMEL-9001
+check "11128 control: a single doc in the bucket still leaves the wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
 printf x > "$tmp/probe-un.md"
 chmod 000 "$tmp/probe-un.md"
 if [ -r "$tmp/probe-un.md" ]; then un_ok=no; else un_ok=yes; fi

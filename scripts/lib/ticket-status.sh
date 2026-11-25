@@ -876,8 +876,16 @@ _ts_other_worker_keeps_ownership() {
     [ "$TS_LOCK_HELD" != no ] || [ "$TS_OPEN_EVIDENCE" = yes ]
 }
 
+# _ts_bucket_docs <KEY> <doc> — every worker doc in <doc>'s bucket directory that names KEY
+# (<KEY>-N*.md), one per line.
+_ts_bucket_docs() {
+    local f
+    for f in "${2%/*}/$1"-N*.md; do [ -f "$f" ] && printf '%s\n' "$f"; done
+    return 0
+}
+
 ts_derive() {
-    local key="$1" num head base rd class latch threads s rule best=9 r doc rc other owner=""
+    local key="$1" num head base rd class latch threads s rule best=9 r doc rc other owner="" recorded=""
     TS_DERIVED=""; TS_RULE=""; TS_RESULT=""; TS_STAGE=""; TS_PR_STATE=""; TS_HEADS=""; TS_WORKER_STATE=none; TS_MERGED_PR=""; TS_D5D_OWNER=""
     TS_LOCK_HELD=""; TS_LOCK_DEAD=""; TS_LOCK_SEEN=false; TS_GONE=0; TS_OWNER_DOC=""
     ts_read_jira "$key" || { _ts_no_write miss "" get; return 0; }
@@ -900,12 +908,23 @@ ts_derive() {
         fi
     fi
     if [ "$TS_WORKER_STATE" = wrapped ]; then
+        recorded=$(jq -r '(.docs // [])[]' <<<"$TS_REC")
         while IFS= read -r other; do
             [ -n "$other" ] && [ "$other" != "$doc" ] || continue
             _ts_worker_state "$other"
             _ts_other_worker_keeps_ownership || continue
             owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
-        done <<<"$(jq -r '(.docs // [])[]' <<<"$TS_REC")"
+        done <<<"$recorded"
+        # A sibling doc the record never listed still owns the key while it holds its queue lock.
+        if [ -z "$owner" ]; then
+            while IFS= read -r other; do
+                [ -n "$other" ] && [ "$other" != "$doc" ] || continue
+                grep -qxF -- "$other" <<<"$recorded" && continue
+                _ts_worker_state "$other"
+                [ "$TS_WORKER_STATE" != wrapped ] && [ "$TS_LOCK_HELD" = yes ] || continue
+                owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
+            done <<<"$(_ts_bucket_docs "$key" "$doc")"
+        fi
         TS_WORKER_STATE=${owner:-wrapped}
     fi
     if [ -z "${TS_SNAPSHOT_DIR:-}" ] && ! ts_scan_gate ticket-status graphql core; then _ts_no_write miss "" gh; return 0; fi
