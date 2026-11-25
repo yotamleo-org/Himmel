@@ -62,6 +62,7 @@ exit 124
 SHEOF
 cat > "$sb16/scripts/test-slowpoke.sh" <<'SHEOF'
 #!/usr/bin/env bash
+echo "FAIL: a row of its own, printed before the cap"
 sleep 30
 SHEOF
 chmod +x "$sb16/scripts/test-quick.sh" "$sb16/scripts/test-genuine124.sh" "$sb16/scripts/test-slowpoke.sh"
@@ -158,8 +159,13 @@ sb20=$(mktemp -d "${TMPDIR:-/tmp}/rst-case20.XXXXXX") || { fail "20: mktemp fail
 if [ -n "$sb20" ]; then
 cat > "$sb20/test-cleanslow.sh" <<'SHEOF'
 #!/usr/bin/env bash
-echo "ok - assertion one"
-echo "ok - assertion two"
+echo run >> "$(dirname "$0")/cleanslow.runs"
+if [ "$(wc -l < "$(dirname "$0")/cleanslow.runs")" -lt 2 ]; then
+  echo "not ok - first attempt"
+else
+  echo "ok - assertion one"
+  echo "ok - assertion two"
+fi
 sleep 30
 SHEOF
 cat > "$sb20/test-dirtyslow.sh" <<'SHEOF'
@@ -242,10 +248,11 @@ fi
 # 4. Still a real failure: exit code non-zero, all four counted under
 # FAIL/TIMED OUT — a cap overrun is not green just because it carries the new
 # label.
-if [ "$rc20" -eq 1 ] && grepq "$out20" -F ' FAIL: 4' && grepq "$out20" -F ' TIMED OUT: 4 (counted in FAIL)'; then
-  pass "20: exit code stays non-zero and all four suites still count under FAIL/TIMED OUT"
+if [ "$rc20" -eq 1 ] && grepq "$out20" -F ' FAIL: 3' && grepq "$out20" -F ' TIMED OUT: 3 (counted in FAIL)' \
+    && grepq "$out20" -E '^CAP-ALERT [^ ]*test-okayword\.sh' && grepq "$out20" -F ' CAP-ALERT: 1'; then
+  pass "20: exit code stays non-zero, three suites count under FAIL/TIMED OUT and the row-less one is a CAP-ALERT"
 else
-  fail "20: expected rc=1, FAIL: 4, TIMED OUT: 4; rc=$rc20 out: $out20"
+  fail "20: expected rc=1, FAIL: 3, TIMED OUT: 3, a CAP-ALERT for test-okayword.sh; rc=$rc20 out: $out20"
 fi
 
 rm -rf "$sb20"

@@ -19,6 +19,11 @@
 #   exit (rc 1) to a note, for a job that lacks the tools the real shard job
 #   installs; a timeout (124, or 137 after timeout -k) and the runner's refused
 #   or aborted codes (2-6, 96) still fail.
+#   A time cap is an alert, not a red: the runner's CAP-ALERT lines (a suite that hit its
+#   cap on both attempts with no FAIL row of its own) are added to $GITHUB_STEP_SUMMARY,
+#   and a runner stopped by HOME_CANARY_TIMEOUT AFTER its Summary printed FAIL: 0 is a
+#   CAP-ALERT too (every suite ran and passed; only the clock ended it). A runner stopped
+#   before its Summary has unrun suites and still fails.
 #   The sandbox is removed on every exit path.
 #   PYTHONUSERBASE is pinned to the real home's Python user base before the swap,
 #   so a `pip install --user` tool (pre-commit on a fork-PR runner, which has no CI
@@ -139,7 +144,13 @@ if [ "$(atime_of "$FAKE_HOME/.env")" != "$env_atime_before" ]; then
   fail=1
   echo "home-canary: FAIL honeytoken .env was read (access time moved) -- a suite opened \$HOME/.env" >&2
 fi
-if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+cap_alerts="$(grep -E '^CAP-ALERT ' "$LOG" || true)" # swallow-ok: no alert line is the common case
+if { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; } && grep -qx '== Summary ==' "$LOG" && grep -qx ' FAIL: 0' "$LOG"; then
+  timeout_alert="CAP-ALERT home-canary: the runner was stopped by HOME_CANARY_TIMEOUT=${TIMEOUT_S}s (rc=$rc) after its Summary printed FAIL: 0; every suite ran, no FAIL row; not failing the run"
+  echo "$timeout_alert"
+  cap_alerts="${cap_alerts:+$cap_alerts
+}$timeout_alert"
+elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
   fail=1
   echo "home-canary: FAIL runner timed out after ${TIMEOUT_S}s (rc=$rc)" >&2
 elif [ "$rc" -ne 0 ]; then
@@ -149,6 +160,10 @@ elif [ "$rc" -ne 0 ]; then
     fail=1
     echo "home-canary: FAIL runner exited rc=$rc" >&2
   fi
+fi
+if [ -n "$cap_alerts" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  # shellcheck disable=SC2016 # the summary's backticks are literal markdown
+  printf '### CAP-ALERT\n\n```\n%s\n```\n' "$cap_alerts" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true # swallow-ok: an unwritable summary must not turn an alert into a red
 fi
 
 if [ "$fail" -eq 0 ]; then

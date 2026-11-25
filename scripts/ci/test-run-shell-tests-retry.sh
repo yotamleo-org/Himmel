@@ -391,6 +391,7 @@ SHEOF
 cat > "$sb29/scripts/test-capstuck.sh" <<'SHEOF'
 #!/usr/bin/env bash
 echo run >> "$CAP29_DIR/stuck.runs"
+echo "FAIL: a row of its own (want 'a' got 'b')"
 sleep 30
 SHEOF
 # test-capskip.sh overruns the cap on its first attempt and exits 0 through a SKIP line on the second.
@@ -523,6 +524,7 @@ mkdir -p "$sb32/scripts"
 cat > "$sb32/scripts/test-stuck32.sh" <<'SHEOF'
 #!/usr/bin/env bash
 echo run >> "$CAP32_DIR/stuck.runs"
+echo "FAIL: a row of its own (want 'a' got 'b')"
 sleep 30
 SHEOF
 chmod +x "$sb32/scripts/test-stuck32.sh"
@@ -672,6 +674,7 @@ SHEOF
 cat > "$sb35/scripts/test-plaincap35.sh" <<'SHEOF'
 #!/usr/bin/env bash
 echo run >> "$CAP35_DIR/plaincap.runs"
+echo "FAIL: a row of its own (want 'a' got 'b')"
 sleep 30
 SHEOF
 cat > "$sb35/scripts/test-quarfail35.sh" <<'SHEOF'
