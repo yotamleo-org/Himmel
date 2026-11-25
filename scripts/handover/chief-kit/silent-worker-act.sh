@@ -83,7 +83,7 @@ if [ -n "${SILENT_ACT_CENSUS:-}" ]; then
     census="$(bash "$SILENT_ACT_CENSUS" 2>/dev/null)" || census_ok=0  # swallow-ok: a failed census keeps its readable rows and is flagged unknown, which owes a row and never relaunches
 else
     # shellcheck source=../../lanes/lib/claude-sessions.sh
-    . "${SILENT_ACT_CENSUS_LIB:-$HERE/../../lanes/lib/claude-sessions.sh}" 2>/dev/null || census_ok=0  # swallow-ok: an unloadable census is flagged unknown, which owes a row and never relaunches
+    . "${SILENT_ACT_CENSUS_LIB:-$HERE/../../lanes/lib/claude-sessions.sh}" 2>/dev/null || census_ok=0  # swallow-ok: an unloadable census is flagged unknown, which owes a row and never relaunches  # read-sink-ok: the test seam beside SILENT_ACT_CENSUS, set only by the suite
     if declare -F claude_sessions >/dev/null 2>&1; then census="$(claude_sessions 2>/dev/null)" || census_ok=0; else census_ok=0; fi  # swallow-ok: a failed or partial census keeps its readable rows and is flagged unknown
 fi
 
