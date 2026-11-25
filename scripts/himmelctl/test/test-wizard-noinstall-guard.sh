@@ -136,6 +136,7 @@ register-state.sh
 graph-choices-cadence.sh
 cadence-alert.sh
 api-credit-state.mjs
+bypass-service.sh
 NAMES
 
 # extract_script_targets: every 'name.sh' / "name.sh" /

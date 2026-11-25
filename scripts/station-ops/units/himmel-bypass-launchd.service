@@ -1,0 +1,29 @@
+# NotifyAccess=all because the heartbeat is sent by systemd-notify, a child of the main process.
+[Unit]
+Description=himmel bypass launch service (go-code route)
+After=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=notify
+NotifyAccess=all
+WatchdogSec=300
+Environment=BYPASSD_SERVICE=1
+Environment=HOME=%h
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=LC_ALL=C
+Environment=TZ=UTC
+Environment=XDG_RUNTIME_DIR=%t
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
+Environment=TELEGRAM_ACCESS_PATH=%h/.claude/channels/telegram/access.json
+Environment=BRIDGE_ROOT=%h/.claude/handover/bridge
+UnsetEnvironment=HANDOVER_DIR BYPASSD_LAUNCHER BYPASSD_SEND BYPASSD_POLL BYPASSD_SETTLE BYPASSD_TTL BYPASSD_CALL_TIMEOUT BYPASSD_WATCHDOG_SECS BYPASSD_WATCHDOG_TICK BYPASSD_CONFIRM_SECS BYPASSD_CHILD_PASS BASH_ENV ENV SHELLOPTS BASHOPTS PS4 CDPATH GLOBIGNORE POSIXLY_CORRECT TMOUT LOCPATH GCONV_PATH LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT
+ExecStart=/bin/bash -p @HIMMEL_ROOT@/scripts/station-ops/bypass-launchd.sh --bucket @BUCKET@ --until forever
+Restart=on-failure
+RestartSec=10
+RestartPreventExitStatus=3
+KillMode=process
+
+[Install]
+WantedBy=default.target

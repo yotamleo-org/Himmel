@@ -183,9 +183,10 @@ does, the command waits for the operator.
   `bypass-failed` card naming the cause and the restart steps, and one more for
   each waiting request (`bypass request <name> waits: the daemon needs a
   restart`), once per request. A go given while the code moved is not used:
-  the log says `STALE after go <brief>: go not used, re-queued`, a
-  `bypass-result` card says so, and the request goes back to `<name>.req`, to
-  be asked again after the restart. The daemon does one thing at a time, so a
+  the log says `STALE after go <brief>: go not used, re-queued`, the daemon
+  sends one `bypass-result` card saying the go was not used and nothing ran
+  (separate from the hold's own cards above), and the request goes
+  back to `<name>.req`, to be asked again after the restart. The daemon does one thing at a time, so a
   change that lands while it waits on a go is found when that wait ends: the
   hold and its cards can come up to one ask wait (6 h) after the change.
 - **A go code is asked only for a launch that can start.** Before it sends the
@@ -226,7 +227,8 @@ does, the command waits for the operator.
 - **Failures are reported.** A launcher that exits non-zero within the settle
   window logs `LAUNCH-FAILED <brief> rc=<n>`, and the request ends `.failed`.
 - **It is bounded.** `--until <YYYY-MM-DD>` is required and may be at most 7
-  days ahead. `<bucket>/bypass-queue/stop` stops the daemon. It refuses to
+  days ahead; only the service unit may use `--until forever` (see "Run it as a
+  service"). `<bucket>/bypass-queue/stop` stops the daemon. It refuses to
   start inside a Claude session (`CLAUDECODE` set) and holds one instance per
   queue (a pid lock in `bypass-queue/.lock.pid`, so it needs no `flock`).
 
@@ -265,6 +267,76 @@ the loop runs. It prints `accepted` or `refused: <reason>`, then `daemon: none`,
 operator id, sends nothing and exits before the loop, so it may run inside a
 Claude session: it cannot start, stop or steer the daemon.
 
+## Run it as a service
+
+`himmelctl bypass on` installs the daemon as a service unit and starts it: a systemd user unit
+(`himmel-bypass-launchd.service`) on Linux, a LaunchAgent (`com.himmel.bypass-launchd`) on macOS. Under the unit it
+runs forever (`--until forever`, accepted only for the service manager's own main process, so a hand start keeps the
+7-day cap), is restarted when it dies or hangs, and is back after a reboot.
+
+| command | what it does |
+|---|---|
+| `himmelctl bypass on [--bucket <dir>]` | writes the unit, enables and starts it (Linux also enables lingering); the bucket (the directory holding `bypass-queue/`) is remembered |
+| `himmelctl bypass off` | writes the stop file, disables and stops the unit, so a reboot does not bring it back; when the bucket cannot be written (moved, or its volume gone) it prints that, still disables the unit and exits 0 |
+| `himmelctl bypass restart` | clears a failed state and restarts it now; it needs an enabled service with no stop file, so after `off` it exits 2 and names `himmelctl bypass on` |
+| `himmelctl bypass status` | read only: enabled, active, pid, linger, `unit: current\|STALE`, `code: current\|STALE`, heartbeat age |
+
+`on`, `off` and `restart` refuse inside a Claude session. `on` exits 1 without enabling when a hand-started daemon
+holds the bucket (stop it with the stop file, then run `on` again), and exits 2 changing nothing when the daemon's own
+start check fails. On Linux, if lingering cannot be enabled (polkit may refuse
+it) `on` still succeeds and prints the one command to run, `loginctl enable-linger <user>`; until then the daemon
+starts at your next login instead of at boot. On macOS there is no lingering: the agent loads at your login (see below).
+A restart that did not reach the running service (a failed `daemon-reload`) is recorded in
+`~/.himmel/state/bypass-service/restart-pending`, so the next `on` restarts it even when the files already match. A template change shows as `unit: STALE` in `status`; run `on` again.
+
+**Hang and crash recovery.** The unit is `Type=notify` with `WatchdogSec=300`: the daemon sends `WATCHDOG=1` on every
+loop pass and around every call that can block, each of which is time-bounded (60 s send, 60 s fleet manifest, 120 s
+preflight). A hung daemon is killed and restarted; so is a crash. On Linux the unit has `Restart=on-failure`, so a
+clean exit (the stop file, or an expiry) and exit 3 ("already running") are not restarted, and after 5 failed starts
+within 600 s systemd stops retrying; `himmelctl bypass restart` clears that failed state while the service is still
+enabled. On macOS `KeepAlive` with `SuccessfulExit` false restarts after any unsuccessful exit, exit 3 included, every
+10 s (`ThrottleInterval`), because launchd cannot exclude one exit status: a hand-started duplicate owner makes the
+agent relaunch and exit 3 in a loop until the duplicate stops.
+`NotifyAccess=all` is needed because `systemd-notify` is a child of the main process. launchd has no watchdog, so on
+macOS the daemon starts a small watcher (`bypass-launchd.sh --watch`) that kills it when `bypass-queue/.heartbeat`
+goes stale. On macOS the agent loads at your login, so a reboot only brings it back once the station logs in; the plist
+and the watcher were tested on Linux and `launchctl` has not been run on a Mac.
+
+**An update restarts it.** himmel-update runs `bypass-service.sh restart-if-changed`: when the unit is enabled and
+running and the daemon's recorded code ids (`bypass-queue/.loaded`) differ from the checkout, it `try-restart`s it
+through the service manager and checks it came back on the new code. On Linux it only issues `is-enabled`,
+`is-active`, `show` and `try-restart`; on macOS it checks the job with `launchctl print` and restarts it with
+`launchctl kickstart -k`. It never writes a unit, never enables or starts one, never clears a failed state, so it is
+safe from a Claude-run update, and the manager starts the process with the unit's own environment, so the
+`CLAUDECODE` refusal in the script is untouched. An off or stopped unit is left alone and the update names the
+command to run (`himmelctl bypass on` or `himmelctl bypass restart`). A request that was waiting for your go when the
+daemon restarts is asked again with a new code; one that already carried your go is moved to `.failed` and not re-run.
+
+**The manager's environment is not trusted.** Any process of your user can change the user manager's environment
+(`systemctl --user set-environment`, `launchctl setenv`) and a restart makes it live. So the unit starts bash as
+`-p` (which ignores `BASH_ENV`, `SHELLOPTS`, `BASHOPTS` and the like; the script refuses to run under the manager
+without it), pins `HOME`, `PATH` (system directories only), the operator id file and the bridge root, and unsets the
+test seams. The script takes `HOME` from the passwd entry and refuses a different one, ignores its own test seams, and
+runs every child (launcher, preflight, fleet manifest, sender) from an empty environment plus an allowlist: `HOME`,
+`USER`, `LOGNAME`, `PATH` (system directories, then your `~/.local/bin` and `~/.bun/bin`), a shaped `LANG`,
+the runtime dir, `HANDOVER_DIR` when pinned, the two bridge paths, a pinned bus address, the granted flags and the
+worker effort and API names. The session names a headed terminal needs (`DISPLAY`, `WAYLAND_DISPLAY`, `XAUTHORITY`,
+`XDG_SESSION_TYPE`, `XDG_CURRENT_DESKTOP`) are read by name as data and checked (`DISPLAY` must equal logind's;
+the Wayland socket must exist; `XAUTHORITY` must be a file you own); a failed check, or no graphical session at all,
+refuses the request before you are asked (`REFUSED-PREFLIGHT session env: <name> failed its check`).
+
+**What this does not stop.** A Claude session can still start, kill, restart or `set-environment` the unit with plain
+`systemctl`/`launchctl` calls, and the manager then starts the daemon without `CLAUDECODE`. That is no worse than
+before (any process of your user could already start the script with `CLAUDECODE` unset); a Bash guard is a separate
+follow-up ticket. Other ceilings: a process of your user can run a fake Wayland compositor with a socket in the
+runtime dir; a worker the launcher starts without a `systemd-run` scope stays in the unit's cgroup, which
+`NotifyAccess=all` admits (liveness only); `.heartbeat` and `.loaded` sit in the bucket, which any process of your user
+can write (a forged heartbeat keeps a hung daemon alive, a forged `.loaded` only holds back an update restart, and
+the daemon's own stale-code hold reads git, not the file); a name a worker needs later (`SSH_AUTH_SOCK`, proxy
+settings) is not on the allowlist, so a launched worker runs without it.
+
+Exit codes: 0 stopped or expired, 1 any other failure, 2 refused to start, 3 already running.
+
 ## Limits
 
 A process running as the operator's user can append a forged `go <code>` line
@@ -291,4 +363,5 @@ fix is a launch from a root-held snapshot of the approved brief. Closing both
 needs a root-owned station op that afk-sudo approves.
 
 Tests: `scripts/station-ops/test-bypass-launchd.sh` runs the daemon with a
-stub sender and a stub launcher on a temp bucket.
+stub sender and a stub launcher on a temp bucket; `scripts/station-ops/test-bypass-service.sh` runs
+the service script against a stub service manager.
