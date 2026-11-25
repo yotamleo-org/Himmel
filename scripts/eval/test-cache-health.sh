@@ -216,6 +216,7 @@ SH
 cat > "$W/tg.sh" <<'SH'
 #!/bin/sh
 printf '%s\n' "$1" >> "$STUB_DIR/tg"
+printf '%s\n' "${HIMMEL_ALERT_KIND-unset}" > "$STUB_DIR/tg.kind"
 SH
 chmod +x "$W/tg.sh"
 export BRIDGE_ROOT="$BR" CACHE_HEALTH_SWEEP_CMD="$W/sweep.sh" CACHE_HEALTH_TELEGRAM_CMD="$W/tg.sh"
@@ -224,6 +225,7 @@ export CADENCE_ALERT_FILE="$W/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$W/alert-sen
 bash "$P/scripts/eval/cache-health-cadence.sh" run --repo "$P" >"$W/cad.out" 2>&1
 check "cadence run exits 0" 0 $?
 has "Telegram got the alert" "cache-health ALERT" "$W/tg"
+check "the Telegram alert is sent under its own kind, cache-health" "cache-health" "$(cat "$W/tg.kind" 2>/dev/null)"
 has "newest live chief inbox got the alert line" "[cache-health] cache-health ALERT" "$BR/consoles/live-chief.md"
 [ ! -e "$BR/consoles/old-chief.md" ] && pass "inbox is never created for another chief" || fail "created a stray inbox"
 check "inbox got one line" 1 "$(( $(wc -l < "$BR/consoles/live-chief.md") ))"
