@@ -205,6 +205,100 @@ run_clear "$tmp" 14 "6 a merge-forward plus its own code change still needs its 
 if [ "$(carry_rows_at "$tmp" "$B")" = 0 ]; then pass; else fail "6: a refused non-carry clear must leave no carry row"; fi
 rm -rf "$tmp"
 
+delegation_row() { printf '{"kind":"delegation","ts":"2026-12-01T10:30:00Z","branch":"feat/x","head":"%s","reason":"diff touches scripts/cr/ - branch self-review required","detail":"anchor=/a delegate=/b"}' "$1"; }
+
+merge_case
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(delegation_row "$B")"
+stub_gh_pr "$tmp" "$B"; stub_check_ci_needs_carry "$tmp" "$B" "$sha"
+run_clear "$tmp" 0 "7 an open PR's clean merge-forward tip with only a delegation row clears in one run -> exit 0"
+if carried; then pass; else fail "7: a delegation row at the tip must still audit via=clean-merge-forward (got: $LAST_CLEAR_OUT)"; fi
+if [ "$(carry_rows_at "$tmp" "$B")" = 1 ]; then pass; else fail "7: exactly one carry row at the tip expected"; fi
+if [ ! -e "$tmp/.git/cr-pending/feat/x" ]; then pass; else fail "7: the marker must be cleared"; fi
+rm -rf "$tmp"
+
+for _kind in delegation preflight blast comments; do
+    merge_case
+    write_ledger "$tmp" "$(avail_ok "$sha")" "$(tip_row "$_kind" "$B")"
+    run_clear "$tmp" 0 "7a a $_kind row at the tip still clears through the clean merge -> exit 0"
+    if carried; then pass; else fail "7a: a $_kind row at the tip must still audit via=clean-merge-forward (got: $LAST_CLEAR_OUT)"; fi
+    rm -rf "$tmp"
+done
+
+merge_case
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(delegation_row "$B")" "$(printf '{"kind":"blast","ts":"2026-12-01T10:31:00Z","branch":"feat/x","head":"%s","status":"ran","duration_secs":120}' "$B")" "$(tip_row impacted "$B")"
+stub_gh_pr "$tmp" "$B"; stub_check_ci_needs_carry "$tmp" "$B" "$sha"
+run_clear "$tmp" 0 "7e the PR 5885 54796482 shape (delegation, blast, impacted at an open PR's clean merge-forward tip) clears in one run -> exit 0"
+if carried; then pass; else fail "7e: must audit via=clean-merge-forward (got: $LAST_CLEAR_OUT)"; fi
+if [ "$(carry_rows_at "$tmp" "$B")" = 1 ]; then pass; else fail "7e: exactly one carry row at the tip expected"; fi
+rm -rf "$tmp"
+
+merge_case
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(delegation_row "$B")" "$(avail_ok "$B")"
+run_clear "$tmp" 0 "7b a delegation row plus an avail review row at the tip clears on the tip's own evidence -> exit 0"
+if carried; then fail "7b: a tip with its own review row must not take the clean-merge-forward carry (got: $LAST_CLEAR_OUT)"; else pass; fi
+rm -rf "$tmp"
+
+merge_case
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(delegation_row "$B")" "$(printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-1","severity":"sug","file":"c.txt","line":1,"verdict":"agreed"}' "$B")"
+run_clear "$tmp" 14 "7c a delegation row plus a finding row at the tip with no avail row refuses -> exit 14"
+if carried; then fail "7c: a finding row at the tip must not take the clean-merge-forward carry"; else pass; fi
+rm -rf "$tmp"
+
+for _kind in score amend ci-red-unlock disposition dependabot-go zz-unknown; do
+    merge_case
+    if [ "$_kind" = amend ]; then
+        _row=$(printf '{"kind":"amend","ts":"2026-12-01T10:32:00Z","branch":"feat/x","target_head":"%s","finding_id":"codex-1","set":{"verdict":"fixed"}}' "$B")
+    else
+        _row=$(tip_row "$_kind" "$B")
+    fi
+    write_ledger "$tmp" "$(avail_ok "$sha")" "$(delegation_row "$B")" "$_row"
+    run_clear "$tmp" 14 "7f a delegation row plus a $_kind row at the tip with no avail row refuses -> exit 14"
+    if carried; then fail "7f: a $_kind row at the tip must not take the clean-merge-forward carry"; else pass; fi
+    rm -rf "$tmp"
+done
+
+tests_only_case() {
+    make_repo || exit 1
+    git -C "$tmp" commit -qm "scaffold" >/dev/null 2>&1
+    git -C "$tmp" branch -f main feat/x
+    sha=$(git -C "$tmp" rev-parse --verify refs/heads/feat/x)
+    printf ':\n' > "$tmp/scripts/cr/test-extra.sh"
+    git -C "$tmp" add scripts/cr/test-extra.sh && git -C "$tmp" commit -qm "tests only" -- scripts/cr/test-extra.sh
+    git -C "$tmp" push -q origin feat/x >/dev/null 2>&1
+    B=$(git -C "$tmp" rev-parse --verify refs/heads/feat/x)
+    write_marker "$tmp" "$B"
+    mkdir -p "$tmp/.git/cr-review-rounds/feat"
+    printf '%s\n' "$sha" > "$tmp/.git/cr-review-rounds/feat/x.head"
+    stub_gh "$tmp"; stub_check_ci "$tmp"
+}
+tests_carried() { case "$LAST_CLEAR_OUT" in *"TRIVIAL-DESCENDANT branch="*) return 0 ;; esac; return 1; }
+
+tests_only_case
+write_ledger "$tmp" "$(avail_ok "$sha")"
+run_clear "$tmp" 0 "7g a tests-only tip with no row of its own takes the tests-only carry -> exit 0"
+if tests_carried; then pass; else fail "7g: the tests-only carry must audit TRIVIAL-DESCENDANT (got: $LAST_CLEAR_OUT)"; fi
+rm -rf "$tmp"
+
+for _kind in delegation preflight blast comments; do
+    tests_only_case
+    write_ledger "$tmp" "$(avail_ok "$sha")" "$(tip_row "$_kind" "$B")"
+    run_clear "$tmp" 14 "7h a tests-only tip with a $_kind row still needs its own review -> exit 14"
+    if tests_carried; then fail "7h: a $_kind row must keep the tests-only carry off (got: $LAST_CLEAR_OUT)"; else pass; fi
+    rm -rf "$tmp"
+done
+
+merge_case
+echo 'echo extra' >> "$tmp/g.sh"
+git -C "$tmp" commit -qam "extra work after the merge"
+git -C "$tmp" push -q origin feat/x >/dev/null 2>&1
+B=$(git -C "$tmp" rev-parse --verify refs/heads/feat/x)
+write_marker "$tmp" "$B"
+write_ledger "$tmp" "$(avail_ok "$sha")" "$(delegation_row "$B")"
+stub_gh_pr "$tmp" "$B"; stub_check_ci_needs_carry "$tmp" "$B" "$sha"
+run_clear "$tmp" 14 "7d a delegation row on a merge-forward with its own code change still needs its own review -> exit 14"
+if [ "$(carry_rows_at "$tmp" "$B")" = 0 ]; then pass; else fail "7d: a refused non-carry clear must leave no carry row"; fi
+rm -rf "$tmp"
+
 echo
 echo "clear-review-marker tip rows: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
