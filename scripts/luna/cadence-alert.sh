@@ -53,6 +53,8 @@ send_failed_mark="${CADENCE_ALERT_SEND_FAILED_MARK:-$state/cadence-alert-send-fa
 # every cadence alert from a runner that did not pin the arm-time PATH failed to send.
 # shellcheck source=../lib/resolve-bun.sh
 [ -n "${HOME:-}" ] && . "$_here/../lib/resolve-bun.sh" 2>/dev/null && prefer_bun_on_path
+# shellcheck source=../lib/prim.sh
+. "$_here/../lib/prim.sh" || exit 0
 
 # A worker or reason becomes part of a sentinel filename: keep it to safe bytes.
 # No `.` survives, so `<worker>.<reason>` splits unambiguously and `clear a`
@@ -116,7 +118,10 @@ case "${1:-}" in
     clear)
         worker="${2:-}"
         [ -n "$worker" ] && rm -f "$dedupe_dir/$(_slug "$worker")".*
-        [ "$worker" = vault-stall ] && rm -f "${VAULT_STALL_ALERT_STATE:-$state/vault-stall-alert-last}"
+        if [ "$worker" = vault-stall ]; then
+            sink_state="${VAULT_STALL_ALERT_STATE:-$state/vault-stall-alert-last}"
+            if [ -d "$(dirname "$sink_state")" ]; then with_lock "$sink_state.lock" rm -f -- "$sink_state"; fi
+        fi
         ;;
     *)
         echo "usage: cadence-alert.sh fail <worker> <reason> <log> [<cause> [<do>]] | clear <worker>" >&2

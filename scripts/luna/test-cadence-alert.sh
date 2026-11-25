@@ -151,6 +151,16 @@ EOF
     assert_has "R3 another worker's recovery leaves the vault-stall record" "record=yes" "record=$([ -s "$RC/last" ] && echo yes || echo no)"
     recover_run clear vault-stall
     assert_has "R3b the vault-stall recovery removes it" "record=no" "record=$([ -e "$RC/last" ] && echo yes || echo no)"
+    if command -v flock >/dev/null 2>&1; then
+        exec 8>"$RC/last.lock"
+        flock 8
+        recover_run clear vault-stall 8>&- &
+        clearer=$!
+        printf 'in-flight\n' >"$RC/last"
+        exec 8>&-
+        wait "$clearer"
+        assert_has "R4 a recovery waits for a delivery in flight and then removes its record" "record=no" "record=$([ -e "$RC/last" ] && echo yes || echo no)"
+    fi
 else
     echo "SKIP R1-R3: the recovery rows need jq"
 fi
