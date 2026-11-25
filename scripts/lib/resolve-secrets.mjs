@@ -73,7 +73,6 @@ const getArgs = (root, names) => ['get', '--root', root, '--no-dotenv', ...names
 /** @returns {Record<string, string>} the names the resolver serves; a name nobody holds is absent. */
 export function resolveSecrets(root, names, env) {
   if (names.length === 0) return {};
-  // exit 1 = nothing served; the stdout of a partial hit is still usable.
   return parseServed(run(getArgs(root, names), undefined, env).stdout, names);
 }
 

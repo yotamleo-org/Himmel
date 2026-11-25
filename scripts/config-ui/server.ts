@@ -345,8 +345,6 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   // The redaction literals: the secrets resolver's values for the manifest's names (environment, credentials directory,
   // keyring), the checkout's .env values as the last fallback, and the server env's secret values. Never logged, never on argv.
   // The list only grows: a locked keyring, a timeout or a partial read adds nothing and drops nothing; a value no read saw cannot be masked.
-  // The keyring read is async and reused for 5 s: a request waits for a stale list's refresh at most LITERALS_WAIT_MS, then answers
-  // with the list as it stands (a read that outran the wait is slow: those behind it do not wait). A stored secret invalidates it.
   const seen = new Set<string>();
   let literalsAt = -Infinity, literalsMemo: string[] = [], literalsEpoch = 0;
   let literalsRun: { done: Promise<void>; slow: boolean; epoch: number } | null = null;
@@ -448,7 +446,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     catch { audit = "failed"; }
     if (failed || !r || !before || !after) return json({ error: "internal error", audit }, 500);
     const reprobeState = before.state !== "ok" ? before.state : after.state;
-    invalidateLiterals(); // the action may have stored a secret: its output is masked with a fresh read
+    invalidateLiterals();
     await freshLiterals();
     return json(redactOut({ rc: r.rc, timedOut: r.timedOut, command: shellLine(p.argv), output: r.stdout + r.stderr, before: before.probe, after: after.probe, reprobe: reprobeState, audit }));
   }
@@ -581,7 +579,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
           before: null, after: null, ...(r.audit.ok ? {} : { outcome: "error" as const }) });
       } catch { /* the answer below still carries the outcome */ }
     }
-    if (r.status === 200) { feedRun = null; feedLast = null; feedEpoch++; invalidateLiterals(); } // a stored secret is masked from the next response
+    if (r.status === 200) { feedRun = null; feedLast = null; feedEpoch++; invalidateLiterals(); }
     return json(r.body, r.status);
   }
 

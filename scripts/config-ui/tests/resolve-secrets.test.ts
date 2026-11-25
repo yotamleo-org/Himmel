@@ -1,5 +1,3 @@
-// A wedged Secret Service must not freeze the config UI. Every row runs on the stub keyring (./keyring-stub.ts);
-// a row that hangs the keyring does it by a marker file the stub's secret-tool checks. Never against the real keyring.
 import { test, expect, afterEach } from "bun:test";
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
