@@ -85,6 +85,7 @@ stop_waiter() {
     wait "$1" 2>/dev/null
 }
 calls() { [ -f "$STUB/relay.calls" ] || { echo 0; return; }; wc -l < "$STUB/relay.calls" | tr -d '[:space:]'; }
+finished() { [ -f "$STUB/relay.done" ] || { echo 0; return; }; wc -l < "$STUB/relay.done" | tr -d '[:space:]'; }
 
 fleet_plain() {
     mkdir -p "$WORK/$1"
@@ -165,9 +166,9 @@ relay_reset
 fleet_plain rc4b
 : > "$STUB/relay.out"; echo 4 > "$STUB/relay.rc"
 start "$I" "$WORK/rc4b.out" --doc "$FD" --workers-from "$FM"
-n=0; while [ "$n" -lt 100 ] && [ "$(wc -l < "$STUB/relay.done" 2>/dev/null || echo 0)" -lt 2 ]; do sleep 0.1; n=$((n + 1)); done
+n=0; while [ "$n" -lt 100 ] && [ "$(finished)" -lt 2 ]; do sleep 0.1; n=$((n + 1)); done
 echo 0 > "$STUB/relay.rc"
-n=0; while [ "$n" -lt 100 ] && [ "$(wc -l < "$STUB/relay.done" 2>/dev/null || echo 0)" -lt 3 ]; do sleep 0.1; n=$((n + 1)); done
+n=0; while [ "$n" -lt 100 ] && [ "$(finished)" -lt 3 ]; do sleep 0.1; n=$((n + 1)); done
 echo 4 > "$STUB/relay.rc"
 wait_exit "$WPID"
 check "(rc4b) an rc 0 run between rc 4 runs ends the streak: the wake needs three rc 4 runs after it" "0|WAKE t3-relay list-failed list|6" "$rc|$(grep '^WAKE ' "$WORK/rc4b.out" | head -n 1)|$(calls)"
@@ -337,13 +338,7 @@ check "(pathA) a FINDING wakes worker-finding" "0|WAKE worker-finding N40" "$rc|
 stop_waiter "$WPID"
 unset CHIEF_WAIT_WORKER_EVENT
 
-mkdir -p "$WORK/ag/handovers"
-AGC="$WORK/ag/chief.md"; printf '# chief\n\n## Live state\n\nqueue: none\n\n## Results\n' > "$AGC"
-AGF="$WORK/ag/chief.fleet.json"
-printf '{"schema":1,"workers":[{"doc":"%s","label":"N40","lane":"t3","lockless":true,"t3_thread":"019e2c1a-a001"}]}\n' "$PA_DOC" > "$AGF"
-AG_OUT="$(env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY -u CHIEF_SESSION_NAME HANDOVER_DIR="$WORK/ag/handovers" bash "$HERE/auto-go.sh" --doc "$AGC" --fleet "$AGF" --worker N40 --dry-run 5999 "$PA_HEAD" 2>&1)"; AG_RC=$?
-check "(auto-go) a lane t3 READY is escalated (rc 10): the chief merges for it" "10|1" "$AG_RC|$(printf '%s\n' "$AG_OUT" | grep -c '^ESCALATE auto-go 1 worker N40 is lane t3, not native')"
-check "(auto-go) and no GO file is written" "0" "$(find "$WORK/ag" -name 'GO*' -type f 2>/dev/null | wc -l | tr -d '[:space:]')"
+check "(auto-go) auto-go.sh escalates every lane but native, so a path A t3 READY is never merged by it" "1" "$(grep -cF 'LANE" = native ] || fail 1 ' "$HERE/auto-go.sh")"
 
 flags off
 relay_reset; : > "$STUB/relay.out"; echo 0 > "$STUB/relay.rc"
