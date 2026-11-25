@@ -49,7 +49,8 @@ function lowers(set) {
   if ("severity" in set && !["crit", "critical"].includes(String(set.severity).trim().toLowerCase())) return true;
   if ("verdict" in set && ["disproved", "fixed", "deferred"].includes(String(set.verdict).trim().toLowerCase())) return true;
   // pre_existing=true is what `review-round.sh defer` reads to defer an Important.
-  return Boolean(set.deferred_to) || "head" in set || set.pre_existing === true;
+  return Boolean(set.deferred_to) || "head" in set || set.pre_existing === true
+    || set.rekey === true || "file" in set || "line" in set;
 }
 
 function verified(o, key) {

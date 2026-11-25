@@ -14,6 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"; mkdir -p "$HOME"
+export GH_READ_ENV_ROOT="$HOME" GH_READ_QUIET=1
 
 # ── stub gh ──────────────────────────────────────────────────────────────────
 mkdir -p "$TMP/bin"
@@ -1073,6 +1074,12 @@ led "$CRIT_OK"
 if [ "${_CRG_RELEASE:-unset}" = unset ]; then pass=$((pass+1)); echo "ok   G4 a full --release call leaves no flag behind"; else fail=$((fail+1)); echo "FAIL G4 _CRG_RELEASE=$_CRG_RELEASE survives a --release call"; fi
 cr_reviewer_gate "" "" "" --release >/dev/null 2>&1 || true
 if [ "${_CRG_RELEASE:-unset}" = unset ]; then pass=$((pass+1)); echo "ok   G4b an early --release return leaves no flag behind"; else fail=$((fail+1)); echo "FAIL G4b _CRG_RELEASE=$_CRG_RELEASE survives an early --release return"; fi
+
+for _lib in review-merge-gate.sh coderabbit-signal.sh; do
+    _bare=$(grep -vE '^[[:space:]]*#' "$SCRIPT_DIR/$_lib" | grep -cE '(\$\(|! |^[[:space:]]*)gh (api|pr|run|repo|issue)|\$\{GH_CMD:-gh\}')
+    if [ "$_bare" = 0 ]; then pass=$((pass+1)); echo "ok   gh-read-routed-$_lib no bare gh call"
+    else fail=$((fail+1)); echo "FAIL gh-read-routed-$_lib has $_bare bare gh call(s)"; fi
+done
 
 # hermeticity guard — prove the startup scrub holds. Re-run this
 # whole suite in a subprocess EXPORTING the exact armed bypass env an

@@ -34,6 +34,7 @@ HELPER=/usr/local/libexec/himmel/afk-sudo
 MARKS="${AFK_GRANT_DIR:-/var/lib/himmel/afk-grants}"
 HERE="$(cd "$(dirname "$0")" && pwd)" || exit 0
 REQ="$HERE/../lib/afk-sudo-request"
+MBA="$HERE/../lib/merge-block-alert.sh"
 CONSOLES="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles"
 CONFIG="${AFK_SUDO_CONFIG:-/etc/himmel/afk-sudo.json}"
 
@@ -67,10 +68,43 @@ grants_on() {
     case "$mode" in *" enabled=true "*) ;; *) return 1 ;; esac
     case "$mode" in *" grant_enabled=true "*) return 0 ;; *) return 1 ;; esac
 }
+name_ok() { [ -n "$1" ] && [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && [[ $1 != *..* ]]; }
+current_chief() {
+    local c=$1 next seen=" $1 "
+    while :; do
+        [ -f "$CONSOLES/$c.md.handover" ] && [ -r "$CONSOLES/$c.md.handover" ] || break
+        next=$(sed -n 1p "$CONSOLES/$c.md.handover" | tr -d '[:space:]')
+        name_ok "$next" && [ -f "$CONSOLES/$next.md" ] || break
+        case "$seen" in *" $next "*) break ;; esac
+        seen="$seen$next "; c=$next
+    done
+    printf '%s' "$c"
+}
+command_head() {
+    local w h='' n=0 words=()
+    read -r -a words <<<"${1#"${1%%[![:space:]]*}"}"
+    for w in ${words[@]+"${words[@]}"}; do
+        case "$w" in *=*) continue ;; esac
+        case "$w" in *[\"\'\`\$\(\)\;\&\|\<\>]*) break ;; esac
+        [ -z "$h" ] || case "$w" in -*) break ;; esac
+        w=$(printf '%s' "${w##*/}" | tr -cd 'A-Za-z0-9._@+-' | cut -c1-40)
+        [ -n "$w" ] || break
+        h=${h:+$h }$w; n=$((n + 1))
+        [ "$n" -lt 2 ] || break
+        case "$w" in bash | sh | zsh | dash | env | sudo | python | python3 | node | bun | npx | perl | ruby) ;; *) break ;; esac
+    done
+    printf '%s' "${h:-unknown}"
+}
 notify() {
-    local op
+    local op inbox=''
     op=$(jq -r '.operator_id // empty' "$CONFIG" 2>/dev/null | grep -E '^-?[0-9]{1,20}$' | head -1)  # swallow-ok: no readable operator id means no send
-    [ -n "$op" ] && detach_run bash "$REQ" --notify "$1" --operator "$op"
+    name_ok "${2:-}" && inbox="$CONSOLES/$2.md"
+    [ -n "$op" ] || [ -n "$inbox" ] || return 0
+    # shellcheck disable=SC2016
+    detach_run bash -c '. "$1" || exit 0
+        [ -z "$2" ] || _mba_send "$2" "$3" afk-grant-refused
+        [ -z "$4" ] || _mba_append_if_exists "$4" "- $(date +%H:%M) [afk-grant-refused] $3"' \
+        afk-grant-refused "$MBA" "$op" "$1" "$inbox"
 }
 
 sname=''
@@ -80,14 +114,16 @@ if { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
     sname=$(current_session_name 2>/dev/null) || sname=''  # swallow-ok: an unresolvable name is not a chief
 fi
 who=${sname:-$session}
+head=$(command_head "$(jq -r '.tool_input.command' <<<"$input")")
 chief=${HIMMEL_CONSOLE_NAME:-}
-if [ -z "$chief" ]; then
-    if [ -n "$sname" ] && [ -f "$CONSOLES/$sname.md" ]; then
-        chief=$sname
-    else
-        grants_on && notify "AFK grant from session $who refused: no chief to route the ask; the denied Bash call [$category] was not filed"
-        exit 0
-    fi
+name_ok "$chief" || chief=''
+if [ -n "$chief" ]; then
+    chief=$(current_chief "$chief")
+elif [ -n "$sname" ] && [ -f "$CONSOLES/$sname.md" ]; then
+    chief=$(current_chief "$sname")
+else
+    grants_on && notify "AFK grant from session $who refused, no ask was sent: the session has no chief to route the ask to, so the denied call \`$head\` [$category] was not filed"
+    exit 0
 fi
 export HIMMEL_CONSOLE_NAME="$chief"
 
@@ -111,6 +147,17 @@ case "$result" in
         detach_run bash "$REQ" --watch "$id" --expires "$expires" --operator "$op" --session "$who"
         ;;
     grant-disabled | disabled) ;;
-    *) notify "AFK grant from session $who (chief $chief) refused: ${result:-no reply from the helper}, nothing ran" ;;
+    *)
+        rule=$(printf '%s\n' "$reply" | sed -n 's/^result=never-remote.* rule=\([a-z0-9-]*\).*/\1/p' | head -1)
+        told="its chief is told"
+        [ -f "$CONSOLES/$chief.md" ] || told="its chief has no bridge inbox, so it is not told"
+        case "$result" in
+            never-remote) why="the station's never-remote rule ${rule:-unknown} covers it, so it can never be approved from the phone: the worker must take another route; $told" ;;
+            notice-failed) why="the approval helper could not send the ask to the phone (notice-failed)" ;;
+            '') why="the approval helper did not answer" ;;
+            *) why="the approval helper refused it ($result)" ;;
+        esac
+        notify "AFK grant refused, no ask was sent and nothing ran: session $who (chief $chief) had \`$head\` refused by the classifier as [$category]; $why" "$chief"
+        ;;
 esac
 exit 0

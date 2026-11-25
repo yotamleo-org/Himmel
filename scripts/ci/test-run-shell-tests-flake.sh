@@ -206,7 +206,7 @@ echo "== F7: a suite killed at its cap is retried once =="
 sb=$(mktemp -d "${TMPDIR:-/tmp}/rst-flake7.XXXXXX") || { fail "F7: mktemp failed"; sb=""; }
 if [ -n "$sb" ]; then
 mkdir -p "$sb/scripts"
-printf '#!/usr/bin/env bash\ncnt="$(dirname "$0")/slow.count"\nn=$(cat "$cnt" 2>/dev/null || echo 0); echo $((n + 1)) > "$cnt"\nsleep 30\n' > "$sb/scripts/test-slow.sh"
+printf '#!/usr/bin/env bash\ncnt="$(dirname "$0")/slow.count"\nn=$(cat "$cnt" 2>/dev/null || echo 0); echo $((n + 1)) > "$cnt"\necho "FAIL: a row of its own"\nsleep 30\n' > "$sb/scripts/test-slow.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$sb/scripts/test-pass.sh"
 chmod +x "$sb/scripts/test-slow.sh" "$sb/scripts/test-pass.sh"
 run_flake "$sb" SUITE_TIMEOUT=2

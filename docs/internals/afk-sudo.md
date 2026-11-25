@@ -337,21 +337,34 @@ approval, and the worker's retry passes the classifier for that one call.
    and exits 0 on every path. It files only a reason with a bracketed classifier category
    (`[Unauthorized Persistence]`): a no-verdict denial, "Classifier unavailable" or a
    credential, secret, token or exfiltration category files nothing.
-   The hook then tells the operator's bridge chat, the chat the chief's messages and
-   Approve prompts are in (chat id = the helper's `operator_id`), through
-   `scripts/lib/afk-sudo-request`, every send detached so nothing delays the hook:
-   - `result=pending`: the card (`--card`: id, session, chief, Approve / Deny), and one
-     detached waiter (`--watch`) that polls `afk-sudo status <id>` and posts
-     `grant <id> from session <S> (chief <C>) expired, nothing ran` if the request
-     expires. The waiter gives up at the expiry plus 130 s.
+   The hook then sends one line or card per result, every send detached so nothing
+   delays the hook. The card goes to the operator's bridge chat, the chat the chief's
+   messages and Approve prompts are in (chat id = the helper's `operator_id`); the other
+   lines go through the bridge outbox, whose class table routes each kind (a refusal to
+   the monitoring chat, an expiry to the operator's chat). The chief `<C>` is the current
+   one: `HIMMEL_CONSOLE_NAME` names the launching chief, and each
+   `consoles/<chief>.md.handover` marker chief.sh writes at a succession is followed while
+   the successor's inbox exists. A name that is not a plain session name (a `/`, `..` or
+   any character outside `[A-Za-z0-9._-]`) is no chief and is never followed.
+   - `result=pending`: the card (`afk-sudo-request --card`: id, session, chief, Approve /
+     Deny), and one detached waiter (`--watch`) that polls `afk-sudo status <id>` and
+     posts `grant <id> from session <S> (chief <C>) expired, nothing ran` through the
+     bridge outbox as kind `afk-grant-expired` if the request expires. The waiter gives
+     up at the expiry plus 130 s.
    - any other result (busy, rate-limited, `notice-failed`, `no-notice-bot`, a floor
-     refusal): one line, `AFK grant from session <S> (chief <C>) refused: <result>,
-     nothing ran`.
+     refusal): one line through the bridge outbox as kind `afk-grant-refused`, also
+     appended to the chief's bridge inbox: "AFK grant refused, no ask was sent and
+     nothing ran: session <S> (chief <C>) had <head> refused by the classifier as
+     [<category>]; <why>", the head in backticks. `<head>` is the program's basename
+     (plus the next word's for a runner such as bash or npx, unless that word is a flag
+     or carries a quote), never an argument. A never-remote result says its rule and
+     that the call can never be approved from the phone, so the worker must take another
+     route.
    - no chief: with `HIMMEL_CONSOLE_NAME` unset, a session whose own console inbox
      `~/.claude/handover/bridge/consoles/<its -n name>.md` exists is a chief and routes
-     its own ask. Any other session files nothing; it gets one line naming it and the
-     denied tool only when `afk-sudo mode` reports `enabled=true` and
-     `grant_enabled=true`.
+     its own ask. Any other session files nothing; it gets one `afk-grant-refused` line
+     saying no ask was sent, naming it, the command head and the category, only when
+     `afk-sudo mode` reports `enabled=true` and `grant_enabled=true`.
    - grants off (`grant-disabled`, `disabled`, or a `mode` that does not report both
      flags true): it sends nothing in any branch; `afk-denied-to-request.sh` owns that
      refusal.

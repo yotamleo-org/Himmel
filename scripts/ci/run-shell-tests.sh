@@ -948,9 +948,9 @@ SUITE_TIER="${SUITE_TIER:-$SUITE_TIER_DEFAULT}"
 tier_repo_root=$(pwd -P)
 SUITE_TIER_MODE="${SUITE_TIER_MODE:-all}"
 case "$SUITE_TIER_MODE" in
-  fast|extended|all|pr) ;;
+  fast|extended|all|pr|daily) ;;
   *)
-    printf 'ERROR: SUITE_TIER_MODE="%s" is invalid — must be fast, extended, pr, or all.\n' \
+    printf 'ERROR: SUITE_TIER_MODE="%s" is invalid — must be fast, extended, pr, daily, or all.\n' \
       "$SUITE_TIER_MODE" >&2
     exit 2
     ;;
@@ -959,15 +959,17 @@ esac
 # instead of the table above: a suite runs when it is impacted, when its tier is
 # pr or flow, or when it has no row; a local suite runs only when impacted. A
 # quarantine suite that fails is reported and never fails the run, in every
-# mode (the other modes read only its quarantine rows).
+# mode (the other modes read only its quarantine and daily rows).
 # SUITE_TIERS_TSV overrides the path, the seam tier-replay.sh drives.
 tiers_local_nl=""
 tiers_quarantine_nl=""
+tiers_daily_nl=""
 if [ "$SUITE_TIER_MODE" = "pr" ]; then
   SUITE_TIERS_TSV="${SUITE_TIERS_TSV:-$REPO_ROOT/scripts/ci/suite-tiers.tsv}"
   if [ ! -r "$SUITE_TIERS_TSV" ] \
      || ! tiers_local_nl=$(awk -F'\t' '!/^#/ && $2 == "local" {print $1}' "$SUITE_TIERS_TSV") \
-     || ! tiers_quarantine_nl=$(awk -F'\t' '!/^#/ && $2 == "quarantine" {print $1}' "$SUITE_TIERS_TSV"); then
+     || ! tiers_quarantine_nl=$(awk -F'\t' '!/^#/ && $2 == "quarantine" {print $1}' "$SUITE_TIERS_TSV") \
+     || ! tiers_daily_nl=$(awk -F'\t' '!/^#/ && $2 == "daily" {print $1}' "$SUITE_TIERS_TSV"); then
     printf 'ERROR: SUITE_TIER_MODE=pr could not read %s.\n' "$SUITE_TIERS_TSV" >&2
     exit 2
   fi
@@ -977,16 +979,23 @@ ${tiers_local_nl}
   tiers_quarantine_nl="
 ${tiers_quarantine_nl}
 "
+  tiers_daily_nl="
+${tiers_daily_nl}
+"
 elif [ -r "${SUITE_TIERS_TSV:-$REPO_ROOT/scripts/ci/suite-tiers.tsv}" ]; then
   # Every other mode forgives a quarantine failure too (a main push or a
   # dispatch run is `all`); an unreadable file there quarantines nothing.
   SUITE_TIERS_TSV="${SUITE_TIERS_TSV:-$REPO_ROOT/scripts/ci/suite-tiers.tsv}"
-  if ! tiers_quarantine_nl=$(awk -F'\t' '!/^#/ && $2 == "quarantine" {print $1}' "$SUITE_TIERS_TSV"); then
+  if ! tiers_quarantine_nl=$(awk -F'\t' '!/^#/ && $2 == "quarantine" {print $1}' "$SUITE_TIERS_TSV") \
+     || ! tiers_daily_nl=$(awk -F'\t' '!/^#/ && $2 == "daily" {print $1}' "$SUITE_TIERS_TSV"); then
     printf 'ERROR: could not read %s.\n' "$SUITE_TIERS_TSV" >&2
     exit 2
   fi
   tiers_quarantine_nl="
 ${tiers_quarantine_nl}
+"
+  tiers_daily_nl="
+${tiers_daily_nl}
 "
 fi
 
@@ -3609,6 +3618,16 @@ _log_has_new_skip_line() {
     END { exit !found }
   ' "$1" "$2" 2>/dev/null
 }
+_log_fail_rows() {
+  awk -v trust="${2:-0}" '
+    /^\[LIVE-STATE\] / && !/^\[LIVE-STATE\] WARN / { other++; next }
+    /^[ \t]*FAIL:[ \t]*0[ \t\r]*$/ { next }
+    /^[ \t]*(not ok|FAIL|\[FAIL\])/ {
+      if (trust != 1 && $0 ~ /got .124.\)?[ \t\r]*$/ && $0 !~ /want .124./) timing++; else other++
+    }
+    END { printf "%d %d\n", timing, other }
+  ' "$1" 2>/dev/null || printf '0 1\n'
+}
 # Counts run-eligible suites (post every skip filter) for the --shard split
 # below; advances for every one of them regardless of which shard claims it
 run_index=0
@@ -3675,6 +3694,43 @@ _suite_no_retry() {
   local _hdr
   _hdr=$(head -n 20 "$1" 2>/dev/null | grep -E '^#[[:space:]]*no-retry([[:space:]:]|$)')
   [ -n "$_hdr" ]
+}
+
+_trust_match() {
+  local _rc=0
+  grep -qE -f "$_trust_pats" <<< "$1" || _rc=$?
+  [ "$_rc" -ne 1 ]
+}
+
+_suite_trust_path() {
+  local _list="${SUITE_TRUST_PATHS:-$REPO_ROOT/scripts/ci/ci-trust-paths.txt}" _dir _stem _f _base _found=1
+  [ -r "$_list" ] || return 0
+  _trust_pats=$(mktemp "${TMPDIR:-/tmp}/himmel-trust.XXXXXX") || return 0
+  grep -vE '^[[:space:]]*(#|$)' "$_list" > "$_trust_pats" || _found=$?
+  if [ "$_found" -gt 1 ]; then
+    rm -f "$_trust_pats"
+    return 0
+  fi
+  _found=1
+  if _trust_match "${1#"$tier_repo_root"/}"; then
+    _found=0
+  else
+    _dir=${1%/*}
+    _stem=${1##*/}
+    _stem=${_stem#test-}
+    _stem=${_stem%.sh}
+    while [ "$_found" -ne 0 ] && [ -n "$_stem" ]; do
+      for _f in "$_dir/$_stem".*; do
+        [ -e "$_f" ] || continue
+        _base=${_f##*/}
+        [ "${_base%.*}" = "$_stem" ] || continue
+        if _trust_match "${_f#"$tier_repo_root"/}"; then _found=0; break; fi
+      done
+      case "$_stem" in *-*) _stem=${_stem%-*} ;; *) break ;; esac
+    done
+  fi
+  rm -f "$_trust_pats"
+  return "$_found"
 }
 
 _suite_quarantined() {
@@ -3754,6 +3810,7 @@ _flake_announce() {
 }
 timed_out=0
 cap_exceeded_clean=0
+cap_alert=0
 unrun_suites=""
 budget_expired=0
 # $SECONDS is a bash builtin — no fork. `date +%s` twice per suite plus once
@@ -3948,6 +4005,22 @@ ${_key#"$impacted_repo_root"/}
   # extended mode (this check only ever runs a suite forward to that check,
   # never around it). Inert when SUITE_TIER_MODE=all (the default), matching
   # a full run exactly regardless of table contents.
+  case "$tiers_daily_nl" in
+    *"
+${_key#"$tier_repo_root"/}
+"*)
+      if [ "$SUITE_TIER_MODE" != "daily" ]; then
+        _filter_reason="tier: daily (timing suite; runs in the timing-daily job, not in SUITE_TIER_MODE=${SUITE_TIER_MODE})"
+        return 0
+      fi
+      ;;
+    *)
+      if [ "$SUITE_TIER_MODE" = "daily" ]; then
+        _filter_reason="tier: not daily (SUITE_TIER_MODE=daily runs only daily-tier suites)"
+        return 0
+      fi
+      ;;
+  esac
   if [ "$SUITE_TIER_MODE" = "pr" ]; then
     if [ "$tiers_pr_full" -eq 0 ] && { [ "$impacted_active" -eq 0 ] || [ "$_not_impacted" -eq 1 ]; }; then
       case "$tiers_local_nl" in
@@ -4734,6 +4807,7 @@ WITNESSMSGS
 # _suite_account — count, report and clean up the suite _suite_attempts ran.
 _suite_account() {
   dur=$(( suite_end - start ))
+  _final_capped=$capped
   # A retry that exits 0 through the suite's own SKIP path ran none of the
   # assertions that failed the first time, so it is no evidence of a flake: the
   # suite stays FAIL with the first attempt's status. A SKIP the first attempt
@@ -4747,12 +4821,26 @@ _suite_account() {
     fi
   fi
   ran=$((ran + 1))
-  manifest_add "ran $rc ${mf_rel:-}"
   suite_ledger_append "${suite_key#"$tier_repo_root"/}" "$rc" "$dur"
   _quar=0
   if [ "$rc" -ne 0 ] && _suite_quarantined "$suite_key"; then
     _quar=1
   fi
+  _cap_alert=0
+  if [ "$rc" -ne 0 ] && [ "$_quar" -eq 0 ] && [ "$_attempt" -eq 2 ]; then
+    _trust=0
+    ! _suite_trust_path "$suite_key" || _trust=1
+    read -r _t2 _o2 <<< "$(_log_fail_rows "$log" "$_trust")"
+    read -r _t1 _o1 <<< "$(_log_fail_rows "$first_log" "$_trust")"
+    if [ "$_o2" -eq 0 ] && [ "$_o1" -eq 0 ] \
+       && { [ "$_final_capped" -eq 1 ] || [ "$_t2" -gt 0 ]; } \
+       && { [ "${first_capped:-0}" -eq 1 ] || [ "$_t1" -gt 0 ]; }; then
+      _cap_alert=1
+    fi
+  fi
+  _mf_rc=$rc
+  [ "$_cap_alert" -eq 0 ] || _mf_rc=0
+  manifest_add "ran $_mf_rc ${mf_rel:-}"
 
   if [ "$_quar" -eq 1 ]; then
     quarantined=$((quarantined + 1))
@@ -4760,6 +4848,25 @@ _suite_account() {
     echo '----- last 40 lines -----'
     tail -n 40 "$log" | sed 's/^/    /'
     echo '--------------------------'
+  elif [ "$_cap_alert" -eq 1 ]; then
+    cap_alert=$((cap_alert + 1))
+    if [ "$_final_capped" -eq 1 ]; then
+      timed_out=$((timed_out - 1))
+      _alert_kind="watchdog cap hit again on the retry"
+    else
+      _alert_kind="timed-out row (got rc 124) on the retry"
+    fi
+    _alert_line=$(printf 'CAP-ALERT %s (ran %ss, cap %ss, rc=%s) — %s, no FAIL row of its own; not failing the run' \
+      "$suite" "$dur" "$suite_timeout" "$rc" "$_alert_kind")
+    printf '%s\n' "$_alert_line"
+    echo '----- last 40 lines -----'
+    tail -n 40 "$log" | sed 's/^/    /'
+    echo '--------------------------'
+    if [ -n "${FAIL_LOG_DIR:-}" ]; then
+      mkdir -p "$FAIL_LOG_DIR"
+      printf '%s\n' "$_alert_line" >> "$FAIL_LOG_DIR/cap-alerts.txt"
+      cp "$log" "$FAIL_LOG_DIR/$(printf '%s' "$relpath" | sed 's/_/_u/g; s#/#_s#g').cap-alert.log" 2>/dev/null
+    fi
   elif [ "$rc" -eq 0 ] && [ "$_attempt" -eq 2 ]; then
     flake=$((flake + 1))
     flaked_suites="${flaked_suites}  ${suite} (first run rc=${first_rc}, passed on retry)
@@ -4865,7 +4972,7 @@ _suite_account() {
   fi
   rm -f "$log"
   [ -z "$first_log" ] || rm -f "$first_log" "$first_log.rc"
-  [ "$rc" -eq 0 ] || [ "$_quar" -eq 1 ] || [ "$stop_on_fail" != 1 ] || stopped=1
+  [ "$rc" -eq 0 ] || [ "$_quar" -eq 1 ] || [ "$_cap_alert" -eq 1 ] || [ "$stop_on_fail" != 1 ] || stopped=1
 }
 
 # _lane_worker_stop — inside a lane: end the suite's and the watchdog's
@@ -5204,6 +5311,9 @@ if [ "$flake" -gt 0 ]; then
 fi
 if [ "$quarantined" -gt 0 ]; then
   printf ' QUARANTINE: %s (failed, tier quarantine; not counted in FAIL)\n' "$quarantined"
+fi
+if [ "$cap_alert" -gt 0 ]; then
+  printf ' CAP-ALERT: %s (time cap hit on both attempts, no FAIL row of its own; not counted in FAIL)\n' "$cap_alert"
 fi
 if [ "$timed_out" -gt 0 ]; then
   printf ' TIMED OUT: %s (counted in FAIL)\n' "$timed_out"

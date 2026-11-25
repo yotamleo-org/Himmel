@@ -319,8 +319,9 @@ cr_ledger_outside_dispositioned() {
           if (a.kind !== "amend" || !a.set || typeof a.set !== "object") continue;
           const k = [a.target_head, a.finding_id, a.artifact || "diff", a.perspective || "off"].join(SEP);
           const set = Object.assign({}, a.set);
-          // A disposition is bound to its ORIGINAL head/file/line: never re-keyed.
-          delete set.head; delete set.file; delete set.line;
+          const isRekeyRow = set.rekey === true;
+          delete set.head;
+          if (!isRekeyRow) { delete set.file; delete set.line; }
           amends.set(k, Object.assign({}, amends.get(k) || {}, set));
       }
       if (malformed > 0) { process.stdout.write("no"); process.exit(0); }
@@ -332,9 +333,11 @@ cr_ledger_outside_dispositioned() {
           let o = JSON.parse(l);
           if (o.kind !== "finding" || o.finding_id !== e.OD_ID) continue;
           const k = [o.head, o.finding_id, o.artifact || "diff", o.perspective || "off"].join(SEP);
+          const tokenMatches = (r) => String(r.file) === e.OD_FILE && String(r.line) === e.OD_LINE;
+          const originalMatches = tokenMatches(o);
           if (amends.has(k)) o = Object.assign({}, o, amends.get(k));
           if (!atHead(o.head)) continue;
-          if (String(o.file) !== e.OD_FILE || String(o.line) !== e.OD_LINE) continue;
+          if (!originalMatches && !tokenMatches(o)) continue;
           const why = typeof o.reason === "string" ? o.reason.trim() : "";
           const ticket = typeof o.deferred_to === "string" ? o.deferred_to.trim() : "";
           if ((o.verdict === "deferred" && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(ticket) && why) ||

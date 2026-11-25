@@ -68,6 +68,26 @@ reviewed merge, the worker sends `BLOCKED`; do not run the denied merge for it
 (that launders the denial) and do not loosen any rule. The fallback is the
 claudex path above, tracked as a follow-up.
 
+**Many green PRs at once: `go-batch.sh`.** For every open PR whose native worker's
+newest bullet is `READY <pr> <head> GREEN`, run from the primary checkout by
+absolute path (add `--dry-run` first to see the rows):
+`bash <primary>/scripts/handover/chief-kit/go-batch.sh --doc <this chief doc> --fleet <fleet manifest>`
+(`--jobs <n>`, default 4, bounds the parallel `go.sh` runs). It reads the contract from
+the brief's last `Completes ticket:` line and holds a PR whose PR body says the
+other value, never guessing (a brief with no such line reads no); holds a PR with a
+judge NO-GO on record unless a judge GO rules at its head; takes the judge qid from the newest verdict at the PR's
+head (delta no-op records included) and retries a plain GO that `go.sh` refuses
+for a trust path (exit 8) once with it; fast-forwards the primary checkout once
+before any `go.sh` runs (a checkout that cannot is exit 1, no GO written); and sends
+each worker its GO line with the token from your `workers:` span. It never writes a
+GO file itself: `go.sh` does, and re-runs `ready-check.sh` and every gate. Each PR
+prints one row: `GO-SENT`, `HOLD <pr> <head> <reason>` (stale head, no judge
+verdict, contract disagreement, a `merge-hold:` line, a lane you merge by hand),
+or `NO-TOKEN <pr> <label>` (no GO written, nothing sent). A `GO-WRITTEN` row with
+`bus-failed` (exit 11) is a GO that stands: send its `SENDMESSAGE` line yourself.
+It does not read Jira labels or the chain plan: a PR on a planned dependency chain
+still needs `chain-plan.sh --go-check` first.
+
 **A red main and the merge gate.** A red main no longer stops a PR whose own CI
 passed: `merge-on-green.sh` prints one `MAIN-RED advisory:` line,
 audits `main-red-advisory ... via=advisory run=<red run id>` with the class and
