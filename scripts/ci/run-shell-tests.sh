@@ -3619,11 +3619,11 @@ _log_has_new_skip_line() {
   ' "$1" "$2" 2>/dev/null
 }
 _log_fail_rows() {
-  awk '
+  awk -v trust="${2:-0}" '
     /^\[LIVE-STATE\] / && !/^\[LIVE-STATE\] WARN / { other++; next }
     /^[ \t]*FAIL:[ \t]*0[ \t\r]*$/ { next }
     /^[ \t]*(not ok|FAIL|\[FAIL\])/ {
-      if ($0 ~ /got .124.\)?[ \t\r]*$/ && $0 !~ /want .124./) timing++; else other++
+      if (trust != 1 && $0 ~ /got .124.\)?[ \t\r]*$/ && $0 !~ /want .124./) timing++; else other++
     }
     END { printf "%d %d\n", timing, other }
   ' "$1" 2>/dev/null || printf '0 1\n'
@@ -3694,6 +3694,12 @@ _suite_no_retry() {
   local _hdr
   _hdr=$(head -n 20 "$1" 2>/dev/null | grep -E '^#[[:space:]]*no-retry([[:space:]:]|$)')
   [ -n "$_hdr" ]
+}
+
+_suite_trust_path() {
+  local _list="${SUITE_TRUST_PATHS:-$REPO_ROOT/scripts/ci/ci-trust-paths.txt}"
+  [ -r "$_list" ] || return 0
+  grep -qE -f <(grep -vE '^[[:space:]]*(#|$)' "$_list") <<< "${1#"$tier_repo_root"/}"
 }
 
 _suite_quarantined() {
@@ -4784,7 +4790,6 @@ _suite_account() {
     fi
   fi
   ran=$((ran + 1))
-  manifest_add "ran $rc ${mf_rel:-}"
   suite_ledger_append "${suite_key#"$tier_repo_root"/}" "$rc" "$dur"
   _quar=0
   if [ "$rc" -ne 0 ] && _suite_quarantined "$suite_key"; then
@@ -4792,14 +4797,19 @@ _suite_account() {
   fi
   _cap_alert=0
   if [ "$rc" -ne 0 ] && [ "$_quar" -eq 0 ] && [ "$_attempt" -eq 2 ]; then
-    read -r _t2 _o2 <<< "$(_log_fail_rows "$log")"
-    read -r _t1 _o1 <<< "$(_log_fail_rows "$first_log")"
+    _trust=0
+    ! _suite_trust_path "$suite_key" || _trust=1
+    read -r _t2 _o2 <<< "$(_log_fail_rows "$log" "$_trust")"
+    read -r _t1 _o1 <<< "$(_log_fail_rows "$first_log" "$_trust")"
     if [ "$_o2" -eq 0 ] && [ "$_o1" -eq 0 ] \
        && { [ "$_final_capped" -eq 1 ] || [ "$_t2" -gt 0 ]; } \
        && { [ "${first_capped:-0}" -eq 1 ] || [ "$_t1" -gt 0 ]; }; then
       _cap_alert=1
     fi
   fi
+  _mf_rc=$rc
+  [ "$_cap_alert" -eq 0 ] || _mf_rc=0
+  manifest_add "ran $_mf_rc ${mf_rel:-}"
 
   if [ "$_quar" -eq 1 ]; then
     quarantined=$((quarantined + 1))

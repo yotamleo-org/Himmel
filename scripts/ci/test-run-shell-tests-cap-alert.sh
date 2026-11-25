@@ -118,4 +118,27 @@ else
   fail "CA8-daily: rc=$rc daily-ran=$([ -e "$sb/tier-daily.runs" ] && echo yes || echo no) plain-ran=$([ -e "$sb/tier-plain.runs" ] && echo yes || echo no) out: $out"
 fi
 
+mk mfalert 'sleep 30'
+mkdir -p "$sb/mf/m"
+run mfalert SUITE_MANIFEST="$sb/mf/runner.txt"
+mf_suite=$(sed -n 's/^ran [0-9]* //p' "$sb/mf/runner.txt")
+printf 'mode full\nreason no-base: x\nbase -\nhead 1111111111111111111111111111111111111111\nselector -\n' > "$sb/mf/sel.txt"
+{ cat "$sb/mf/sel.txt"; printf 'shard 1/1\n'; grep -E '^(ran|skip) ' "$sb/mf/runner.txt"; } > "$sb/mf/m/manifest-shard1.txt"
+printf '[RUN ] %s\n' "$mf_suite" > "$sb/mf/disc.txt"
+mf_out=$(SUITE_TIER_MODE='' SUITE_TIERS_TSV='' bash "$RST_FIXTURE_DIR/shard-manifest-verify.sh" --dir "$sb/mf/m" --shards 1 --selection "$sb/mf/sel.txt" --discovered "$sb/mf/disc.txt" 2>&1); mf_rc=$?
+if [ "$rc" -eq 0 ] && grepq "$(cat "$sb/mf/runner.txt")" -E '^ran 0 [^ ]*test-mfalert\.sh$' && [ "$mf_rc" -eq 0 ] && grepq "$mf_out" -E '^OK'; then
+  pass "CA9: a CAP-ALERT suite is a passing suite to the shard manifest verifier"
+else
+  fail "CA9: runner rc=$rc, verifier rc=$mf_rc, manifest: $(cat "$sb/mf/runner.txt") verifier: $mf_out"
+fi
+
+mk trustrow "echo \"FAIL: (8349) a series whose tickets changed wakes (rc 0) (want '0' got '124')\"; exit 1"
+printf '# fixture trust list\ntest-trustrow\\.sh$\n' > "$sb/trust.txt"
+run trustrow SUITE_TRUST_PATHS="$sb/trust.txt"
+if [ "$rc" -eq 1 ] && ! grepq "$out" -E '^CAP-ALERT'; then
+  pass "CA10: a got-124 row in a trust-path suite stays a FAIL, rc 1"
+else
+  fail "CA10: rc=$rc (want rc 1, no CAP-ALERT) out: $out"
+fi
+
 rst_tally
