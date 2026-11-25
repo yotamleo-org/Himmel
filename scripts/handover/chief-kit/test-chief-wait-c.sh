@@ -728,6 +728,14 @@ sleep 1.2
 sed -i 's/denials=none/denials=N1:1:SHIP-STEP/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(p7e) control: a doc not written since the record keeps the park held, no new page" "3" "$(pages_n)"
+sed -i 's/denials=N1:1:SHIP-STEP/denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox p7f)"
+HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW=$(( p7e_ts + 86401 )) start "$I" "$WORK/p7f.out" --workers "N1.md"
+wait_hb "$I" || fail "(p7f) no baseline heartbeat"
+sleep 1.2
+sed -i 's/denials=none/denials=N1:1:SHIP-STEP/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(p7f) no doc found and the record older than 24 h: a second park pages again" "4:yes" "$(pages_n):$([ "$(sed -n 's/^ts=//p' "$HIMMEL_DENIAL_ACK_DIR/N1.page" 2>/dev/null)" != "$p7e_ts" ] && echo yes)"
 export CHIEF_WAIT_PAGE_TIMEOUT=2
 
 printf '\n%d failure(s)\n' "$fails"

@@ -1249,11 +1249,10 @@ page_denials_stuck() {
         pts="$(denial_field "$pg" ts)"
         [ -z "$cutover" ] || [ "$pts" -gt "$cutover" ] || continue
         [ $(( now - pts )) -ge "$stuck_secs" ] || continue
+        denial_still_parked "$key" || continue
         label="$(denial_field "$pg" leg | tr -cd 'A-Za-z0-9._#+-')"
         [ -n "$label" ] || label="$key"
         ldoc="$(worker_doc_of "$label")"
-        if [ -z "$ldoc" ] && [ $(( now - pts )) -gt "$stuck_bound_secs" ]; then continue; fi
-        if [ -n "$ldoc" ] && doc_written_since "$ldoc" "$pts"; then continue; fi
         ticket="$(ticket_of_doc "$ldoc")"
         rc_name="$(rc_session_for "$label")"
         act="run ack-denial.sh $label"
