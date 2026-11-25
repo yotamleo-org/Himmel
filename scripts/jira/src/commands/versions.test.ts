@@ -395,13 +395,14 @@ describe('version-move', () => {
 
   it('POSTs the other version self URL as `after` on the resolved id', async () => {
     const calls = stubJira({ 'GET /project/HIMMEL/versions': MOVABLE, 'POST /version/10002/move': {} });
-    const out = await moveVersion('HIMMEL', 'v1.0.1b', { after: 'v1.0.1' });
+    const anchor = 'v1.0.1';
+    const out = await moveVersion('HIMMEL', 'v1.0.1b', { after: anchor });
     expect(calls[1]).toEqual({
       method: 'POST',
       url: '/version/10002/move',
       body: { after: 'https://x.example/rest/api/3/version/10001' },
     });
-    expect(out).toBe('Moved version v1.0.1b after v1.0.1');
+    expect(out).toBe(`Moved version v1.0.1b after ${anchor}`);
   });
 
   it('POSTs `position` for --position First|Last', async () => {

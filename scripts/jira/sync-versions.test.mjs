@@ -221,7 +221,7 @@ describe('v1.0.0 scope (--v1-keys)', () => {
     expect(planSync({ ...base, v1 }).unknownKeys).toEqual([{ key: 'HIMMEL-5', prs: [] }]);
   });
 
-  it('is idempotent once v1.0.0 exists and carries the keys', () => {
+  it('is idempotent once the version exists and carries the keys', () => {
     const p = planSync({
       ...base,
       v1,

@@ -370,7 +370,7 @@ contains 'trail versions sit in train order' "$thtml" '"v1.0.1","v1.0.1a","v1.0.
 contains 'the whole-train ledger counts trail tickets' "$tstdout" 'Plan rows placed in the whole v1.0.x train (not Jira progress): 1 of 8 done'
 contains 'the JS train test accepts a trail suffix' "$thtml" '\d+[a-z]?$/.test(V[i])'
 
-# --- the v1.1.x line (ex v1.0.2b..h) is train, sorted right after v1.0.2 and before v1.0.3.
+# --- the v1.1.x line (ex v1.0.2b..h) is train, sorted between v1.0.2 and v1.0.3.
 cp "$plan/stage3/versions.tsv" "$W/versions.tsv.keep"
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
     v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.1a 0 0 0 0 0 0 0 v1.0.1b 0.01 0 0 0 0 0.01 1 v1.0.2 0 0 0 0 0 0 0 v1.0.3 0 0 0 0 0 0 0 v1.1.0 0 0 0 0 0 0 0 v2/v3 0 0 0 0 0 0 0 > "$plan/stage3/versions.tsv"
@@ -382,14 +382,14 @@ contains 'v1.1.x sits between v1.0.2 and v1.0.3' "$thtml" '"v1.0.2","v1.1.0","v1
 contains 'the whole-train ledger counts v1.1.x' "$tstdout" 'Plan rows placed in the whole v1.0.x train (not Jira progress): 1 of 8 done'
 cp "$W/versions.tsv.keep" "$plan/stage3/versions.tsv"; rm -f "$mdir/HIMMEL-14.md"
 
-# --- the milestone minors v1.2.0..v1.7.0 are train too, in numeric order after the v1.1.x line.
+# --- the milestone minors v1.2.0..v1.7.0 are train too, in numeric order, past the v1.1.x line.
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
     v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.1a 0 0 0 0 0 0 0 v1.0.1b 0.01 0 0 0 0 0.01 1 v1.0.2b 0 0 0 0 0 0 0 v1.1.0 0 0 0 0 0 0 0 v1.7.0 0 0 0 0 0 0 0 v1.2.0 0 0 0 0 0 0 0 v1.2.0a 0 0 0 0 0 0 0 v1.2.1000000 0 0 0 0 0 0 0 v1.2.999999 0 0 0 0 0 0 0 v1.10.0 0 0 0 0 0 0 0 v2/v3 0 0 0 0 0 0 0 > "$plan/stage3/versions.tsv"
 mk 15 'To Do' '["v1.2.0"]' 'milestone minor ticket'
 tstdout="$(render)"
 thtml="$(cat "$out" 2>/dev/null)"
 contains 'a v1.2.0 ticket renders' "$thtml" '"milestone minor ticket"'
-contains 'minors sort numerically after the v1.1.x line' "$thtml" '"v1.1.0","v1.2.0","v1.2.0a","v1.2.999999","v1.2.1000000","v1.7.0","v1.10.0"'
+contains 'minors sort numerically, past the v1.1.x line' "$thtml" '"v1.1.0","v1.2.0","v1.2.0a","v1.2.999999","v1.2.1000000","v1.7.0","v1.10.0"'
 contains 'the whole-train ledger counts a minor' "$tstdout" 'Plan rows placed in the whole v1.0.x train (not Jira progress): 1 of 9 done'
 contains 'the JS train test accepts every v1.N.x' "$thtml" '/^v1\.\d+\.\d+[a-z]?$/'
 cp "$W/versions.tsv.keep" "$plan/stage3/versions.tsv"; rm -f "$mdir/HIMMEL-15.md"
