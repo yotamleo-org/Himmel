@@ -3452,8 +3452,14 @@ that path (a block there exits `pr-merge.sh` with code 5, distinct from a
 real `gh pr merge` failure's code 4).
 
 **On Bitbucket Cloud** `pr-merge.sh` runs `bb_forge_cr_gate` (`scripts/lib/forge-bitbucket.sh`)
-instead: every inline review thread must be resolved, read with the CLI's `pr comments`.
-It fails **closed**: an unreadable or truncated thread list blocks (exit 5), where the
+instead. Every inline review thread must be resolved (read with the CLI's `pr comments`),
+and the reviewer set must pass at the head: it calls `cr_reviewer_gate`, the same
+predicate GitHub's gate and the release check use, so every hard reviewer needs an
+`avail ok` row and no open finding at the head in the local CR ledger. The head is
+resolved to its full commit locally; one that cannot be resolved blocks. CodeRabbit's
+own status and outside-diff body findings are GitHub-App reads and are not part of the
+Bitbucket gate. It fails **closed**: an unreadable or truncated thread list, an
+unreadable ledger or a failed config read blocks (exit 5), where the
 GitHub gate fails open. Bypass: `CR_MERGE_GATE_OK=1` or `CR_PROFILE=none`. A direct
 `bitbucket pr merge` (or `forge_pr_merge`) typed in a session is denied by
 `block-unresolved-cr-merge.sh`, which names `pr-merge.sh`; it needs both
@@ -4011,7 +4017,7 @@ first; `bb_forge_pr_merge` re-reads it just before the merge and refuses (exit 4
 moved or cannot be read. Bitbucket's merge API has no server-side head pin, so a push
 landing between that re-read and the merge request is the one window left open. The
 pinned value is the abbreviated hash `pr get` returns, not a 40-hex SHA. Reading
-Reading Pipelines runs themselves and a live Bitbucket end-to-end proof are not built yet.
+Pipelines runs themselves and a live Bitbucket end-to-end proof are not built yet.
 
 **Fail-OPEN posture:** deny ONLY on positive red/pending evidence. `gh`/`jq`
 missing, API/parse error, and a genuinely **checkless PR** (zero check-runs AND

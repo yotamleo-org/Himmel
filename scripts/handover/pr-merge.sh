@@ -247,7 +247,7 @@ elif [ "$forge" = "bitbucket" ]; then
     fi
     _gate_reason=""
     _gate_rc=0
-    _gate_reason=$(bb_forge_cr_gate "$pr_num") || _gate_rc=$?
+    _gate_reason=$(bb_forge_cr_gate "$pr_num" "$vetted_head") || _gate_rc=$?
     if [ "$_gate_rc" = "2" ]; then
         echo "pr-merge: CR gate: $_gate_reason" >&2
         exit 5

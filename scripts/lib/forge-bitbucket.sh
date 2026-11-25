@@ -239,12 +239,45 @@ bb_forge_cr_gate() {
     open=$(printf '%s' "$out" |
         node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let j=null;try{j=JSON.parse(s)}catch{};if(!j||!Array.isArray(j.threads)||j.truncated!==false){process.stdout.write("unreadable");return};process.stdout.write(String(j.threads.filter(t=>t.isResolved!==true).length))})')
     case "$open" in
-        0) return 0 ;;
+        0) ;;
         ''|*[!0-9]*)
             echo "BLOCK: PR #$id review threads are unreadable or span more than one page — cannot certify them resolved; failing closed. Bypass: CR_MERGE_GATE_OK=1."
             return 2 ;;
         *)
             echo "BLOCK: PR #$id has $open unresolved review thread(s) — resolve them before merging. Bypass: CR_MERGE_GATE_OK=1."
+            return 2 ;;
+    esac
+    _bb_reviewer_gate "$id" "${2:-}"
+}
+
+_bb_reviewer_gate() {
+    local id="$1" abbrev="${2:-}" view full nwo out rc=0
+    if [ -z "$abbrev" ]; then
+        view=$(_bb pr get "$id") || view=""
+        abbrev=$(printf '%s' "$view" | _bb_str_field head_commit)
+    fi
+    full=""
+    [ -z "$abbrev" ] || full=$(git rev-parse --verify --quiet "$abbrev^{commit}") || full=""
+    if [ -z "$full" ]; then
+        echo "BLOCK: PR #${id}'s head (${abbrev:-unreadable}) cannot be resolved locally, and the hard reviewer's ledger rows are keyed on the full commit — cannot certify the reviewer passed; fetch the head and re-run. Bypass: CR_MERGE_GATE_OK=1."
+        return 2
+    fi
+    nwo=$(bb_forge_repo_nwo) || nwo=""
+    if [ -z "$nwo" ]; then
+        echo "BLOCK: PR #$id's repository cannot be read, so the hard reviewer cannot be checked; failing closed. Bypass: CR_MERGE_GATE_OK=1."
+        return 2
+    fi
+    if ! { [ -r "$_FORGE_LIB_DIR/review-merge-gate.sh" ] && . "$_FORGE_LIB_DIR/review-merge-gate.sh"; } 2>/dev/null; then
+        echo "BLOCK: the reviewer predicate (scripts/lib/review-merge-gate.sh) cannot be loaded; failing closed. Bypass: CR_MERGE_GATE_OK=1."
+        return 2
+    fi
+    out=$(cr_reviewer_gate "$id" "$full" "$nwo") || rc=$?
+    case "$rc" in
+        0) return 0 ;;
+        1) printf '%s\n' "$out" | sed 's/^HOLD: /BLOCK: /'; return 2 ;;
+        2) printf '%s\n' "$out"; return 2 ;;
+        *)
+            echo "BLOCK: the hard reviewer check at $full could not complete (rc=$rc); failing closed. Bypass: CR_MERGE_GATE_OK=1."
             return 2 ;;
     esac
 }

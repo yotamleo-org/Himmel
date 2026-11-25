@@ -25,7 +25,7 @@ case "$1 $2" in
     "pr get")
         [ "${STUB_GET_FAIL:-0}" = "1" ] && { echo "bb: 500" >&2; exit 1; }
         n=$(cat "$BB_LOG.get" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$BB_LOG.get"
-        head="${STUB_HEAD:-aaaa1111}"
+        head="${STUB_HEAD:-${BB_HEAD:-aaaa1111}}"
         [ "$n" -ge 2 ] && [ -n "${STUB_HEAD_AFTER:-}" ] && head="$STUB_HEAD_AFTER"
         [ "${STUB_HEAD_EMPTY:-0}" = "1" ] && head=""
         printf '{"id":7,"title":"feat: x","state":"OPEN","source_branch":"handover/x","destination_branch":"main","head_commit":"%s"}\n' "$head" ;;
@@ -37,6 +37,7 @@ case "$1 $2" in
         [ "${STUB_COMMENTS_FAIL:-0}" = "1" ] && { echo "bb: 500" >&2; exit 1; }
         if [ -n "${STUB_THREADS:-}" ]; then echo "$STUB_THREADS"
         else echo '{"threads":[],"truncated":false,"pages":1}'; fi ;;
+    "repo view") echo '{"workspace":"ws","repo_slug":"repo","full_name":"ws/repo","default_branch":"main"}' ;;
     "pr merge") echo '{"id":7,"state":"MERGED"}' ;;
     *) echo "bb-stub: unrecorded call: $*" >&2; exit 1 ;;
 esac
@@ -47,6 +48,11 @@ REPO="$BASE/repo"
 git init -q -b handover/x "$REPO"
 git -C "$REPO" remote add origin https://bitbucket.org/ws/repo.git
 git -C "$REPO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+
+FULL_HEAD=$(git -C "$REPO" rev-parse HEAD)
+export BB_HEAD="${FULL_HEAD:0:12}"
+LEDGER="$REPO/.git/cr-critic-scores.jsonl"
+printf '{"kind":"avail","head":"%s","model":"codex","status":"ok"}\n' "$FULL_HEAD" > "$LEDGER"
 
 merged() { grep -q '^pr merge 7' "$BB_LOG" 2>/dev/null; }
 
@@ -95,6 +101,15 @@ CR_MERGE_GATE_OK=1 STUB_THREADS='{"threads":[{"id":1,"path":"a","line":1,"isReso
     run_case cr-bypass 0 merged
 CR_PROFILE=none STUB_THREADS='{"threads":[{"id":1,"path":"a","line":1,"isResolved":false,"author":"r","body":"x"}],"truncated":false,"pages":1}' \
     run_case cr-profile-none 0 merged
+
+echo "TEST: hard reviewer at the head"
+mv "$LEDGER" "$LEDGER.held"
+run_case reviewer-not-run 5 not-merged "reviewer"
+printf '{"kind":"avail","head":"%s","model":"codex","status":"ok"}\n{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-1","severity":"imp","verdict":"agreed"}\n' "$FULL_HEAD" "$FULL_HEAD" > "$LEDGER"
+run_case reviewer-open-finding 5 not-merged "reviewer"
+rm -f "$LEDGER"; mv "$LEDGER.held" "$LEDGER"
+STUB_HEAD=deadbeef0000 run_case head-not-local 5 not-merged "locally"
+CR_MERGE_GATE_OK=1 STUB_HEAD=deadbeef0000 run_case reviewer-bypass-skips-ledger 0 merged
 
 echo "TEST: head pin"
 STUB_HEAD_AFTER=bbbb2222 run_case head-drift 4 not-merged "moved"

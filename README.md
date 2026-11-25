@@ -203,7 +203,7 @@ worktree scripts.
 | Handovers & usage-cap auto-relaunch* | Setup & resume | Full write, ship & relaunch | Stored & indexed in vault |
 | Second brain (`qmd` search, `graphify` map, auto-capture) | Optional | Code graph & search | Cross-project Obsidian vault |
 
-*\*Usage-cap auto-relaunch requires an OS scheduler backend ([`docs/setup/new-machine.md`](docs/setup/new-machine.md#4c-scheduler-backend-auto-arm-resume)). The CI and reviewer merge gate runs on GitHub and on Bitbucket Cloud for merges invoked from Claude Code sessions (on Bitbucket it reads the PR's build statuses and review threads and blocks when it cannot read them); manual merges via `gh` or a web UI are not intercepted.*
+*\*Usage-cap auto-relaunch requires an OS scheduler backend ([`docs/setup/new-machine.md`](docs/setup/new-machine.md#4c-scheduler-backend-auto-arm-resume)). The CI and reviewer merge gate runs on GitHub and on Bitbucket Cloud for merges invoked from Claude Code sessions (on Bitbucket it reads the PR's build statuses, its review threads and the hard reviewer's rows for the head, and blocks when it cannot read them); manual merges via `gh` or a web UI are not intercepted.*
 
 ### Support matrix
 
