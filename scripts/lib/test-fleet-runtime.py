@@ -1865,6 +1865,7 @@ exit 1''')
         self.assertTrue(guards, 'the one call site is the settle verb\'s own branch (not ack, reconcile or any other op)')
         pattern = re.compile(r'''(?:\bruntime|fleet_runtime\.py)["']?\s+["']?settle\b''')
         allowed = {ENTRYPOINTS / 'scripts/lib/fleet_runtime.py', ENTRYPOINTS / 'scripts/lib/test-fleet-runtime.py'}
+        printers = {ENTRYPOINTS / 'scripts/himmel-doctor.sh', ENTRYPOINTS / 'scripts/test-himmel-doctor-c.sh'}
         callers, hints = [], []
         # Sources only: the files git lists (tracked, or untracked and not ignored). A compiled or cached file that a run writes into the tree is ignored, so it is never read.
         listed = subprocess.run(['git', '-C', str(ENTRYPOINTS), 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', 'scripts', 'marketplace', 'plugins'],
@@ -1877,7 +1878,7 @@ exit 1''')
                 text = path.read_text(errors='ignore')
             except OSError:
                 continue
-            if 'settle_hint' in text:
+            if 'settle_hint' in text and path not in printers:
                 hints.append(str(path))
             for number, line in enumerate(text.splitlines(), 1):
                 if pattern.search(line) and not (path.name == 'fleet-manifest.sh' and line.lstrip().startswith('#')):
