@@ -1,12 +1,13 @@
 // send.ts <peer> --kind K [--reply-to N] --text '...' [--allow-shape NAME]
 // The only free-text path. It runs the egress gate to refuse early, writes one
-// spool file and waits for the poller's result; the poller checks again and is
-// the authority. There is no file input.
-// Exit: 0 sent, 2 refused (names the rule), 3 not a desk or not set up,
-// 4 queued but unconfirmed: do not resend.
+// draft spool file and waits for the poller's result; the poller checks again
+// and is the authority. Nothing leaves until the operator approves the draft
+// with a tap on Telegram. There is no file input.
+// Exit: 0 drafted (approve it on Telegram), 2 refused (names the rule),
+// 3 not a desk or not set up, 4 queued but unconfirmed: do not resend.
 import fs from "node:fs";
 import { join } from "node:path";
-import { readChain, submitSpool } from "./chain";
+import { pollerStale, readChain, submitSpool } from "./chain";
 import { readPeersFile } from "./config";
 import { checkOutbound } from "./egress";
 import { PEER_NAME_RE, SESSION_ID_RE, peerDir, peersFile, stateDir } from "./ids";
@@ -19,6 +20,8 @@ function out(code: number, line: string): never {
   (code === 0 ? process.stdout : process.stderr).write(line + "\n");
   process.exit(code);
 }
+
+const hhmm = (ms: number) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 
 function parseArgs(argv: string[]) {
   const peer = argv[0];
@@ -64,19 +67,20 @@ async function main() {
   });
   if (!res.ok) out(2, `refused: ${res.rule}${res.shape ? ` (${res.shape})` : ""}`);
 
-  const name = submitSpool(peerDir(peer), { type: "send", kind: kind as Kind, ...(replyTo !== undefined ? { replyTo } : {}), text: text!, ...(allowShape && tty && !inClaude ? { allowShape } : {}) });
+  if (pollerStale(join(stateDir(), "poller.pid"))) process.stderr.write("warning: the running poller loaded older peer-bridge code than this checkout and may refuse this send; restart it (himmel-peer-bridge)\n");
+  const name = submitSpool(peerDir(peer), { type: "draft", source: "send.ts", kind: kind as Kind, ...(replyTo !== undefined ? { replyTo } : {}), text: text!, ...(allowShape && tty && !inClaude ? { allowShape } : {}) });
   const resultFile = join(peerDir(peer), "spool", "results", name);
   const deadline = Date.now() + (Number(process.env.PEER_SEND_WAIT_MS) || 10_000);
   while (Date.now() < deadline) {
     try {
       const r = JSON.parse(fs.readFileSync(resultFile, "utf8"));
       fs.rmSync(resultFile, { force: true });
-      if (r.ok) out(0, `sent${r.message_id ? ` as message ${r.message_id}` : ""}`);
-      out(2, `refused: ${r.rule}${r.shape ? ` (${r.shape})` : ""}`);
+      if (r.ok) out(0, `drafted ${r.draft}; approve it on Telegram by ${hhmm(r.deadline)}`);
+      out(2, `refused: ${r.rule}${r.shape ? ` (${r.shape})` : ""}${r.why ? `: ${r.why}` : ""}`);
     } catch (e) { if (!(e instanceof SyntaxError) && (e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
     await new Promise(r => setTimeout(r, 100));
   }
-  out(4, `queued as ${name}; the poller will send it; do not resend`);
+  out(4, `queued as ${name}; the poller will draft it; do not resend`);
 }
 
 main();

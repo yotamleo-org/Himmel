@@ -639,9 +639,9 @@ class OperatorService(stream_tests.StreamFixture):
         env = dict(BRIDGE_ROOT=str(bridge), TELEGRAM_ACCESS_PATH=str(access),
                    CHIEF_WAIT_OPERATOR_RETRY_SEC='1800', CHIEF_WAIT_OPERATOR_GRACE_SEC='30')
         env.update(HIMMEL_TEST_FIXTURE='0', CHIEF_WAIT_OWED_SEND='')
-        def service():
+        def service(doc=None, chief='chief'):
             with patch.dict(os.environ, env), contextlib.redirect_stdout(io.StringIO()):
-                return mod.run(str(self.inbox), self.doc, 'chief')
+                return mod.run(str(self.inbox), doc or self.doc, chief)
         def flush():
             tg = HERE / '../../telegram/poller.ts'
             script = self.root / 'flush.ts'
@@ -677,6 +677,30 @@ class OperatorService(stream_tests.StreamFixture):
         service()
         self.assertIn('"ref":"notify"', ledger.read_text(), 'receipt must close before send retry is due')
         self.assertEqual(outbox.read_text(), original)
+
+    def test_successor_chief_closes_the_row_from_the_predecessor_receipt_and_sends_nothing(self):
+        service, flush, ledger, outbox, retry = self.operator_fixture()
+        service()
+        flush()
+        original = outbox.read_text() if outbox.exists() else ''
+        successor = self.doc.parent / 'chief-b.md'
+        successor.write_text('# successor\n')
+        (self.root / 'bridge/consoles/chief-b.md').touch()
+        self.assertFalse(service(successor, 'chief-b'))
+        self.assertIn('DELIVERED t2-notify msg=9876', successor.read_text())
+        self.assertIn('"ref":"notify"', ledger.read_text())
+        self.assertEqual(outbox.read_text() if outbox.exists() else '', original, 'a successor must not enqueue a second send')
+
+    def test_operator_send_names_its_kind(self):
+        ledger = self.root / 'owed.jsonl'
+        ledger.write_text(json.dumps(dict(op='add', id='kind', ts='2026-11-17T00:00:00Z', epoch=1,
+                          chief='chief', kind='ruling', text='pending', actor='operator', action='notify')) + '\n')
+        self.env['CHIEF_WAIT_OWED_SEND'] = self.script('send', r'''echo "$*" > "$TEST_ROOT/send-args"
+echo queued
+''')
+        subprocess.run(['python3', '-I', str(HERE / 'owed-service.py'), '--inbox', str(self.inbox),
+                        '--doc', str(self.doc), '--chief', 'chief'], env=self.env, capture_output=True, timeout=3)
+        self.assertIn('--kind chief-reply', (self.root / 'send-args').read_text())
 
     def test_bad_operator_retry_is_visible_and_does_not_block_later_owed_row(self):
         service, _, ledger, _, retry = self.operator_fixture()

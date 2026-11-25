@@ -21,6 +21,14 @@
 # (status rc 11/12) is `WITHHELD: queue lock still held for <doc>` rc 1, any
 # other answer or a status error is `WITHHELD: cannot read the queue lock` rc 2
 # (fail-closed). Without the flag nothing about the queue lock is read.
+# With the lock free and the doc's newest marker bullet a WRAPPED, an owed live proof
+# with no window end date and no outside actor is `WITHHELD: an owed proof has no
+# window end date or outside actor: <row>` rc 1. Read are that WRAPPED bullet (each
+# `owed → WHO`, any case, → or ->, needs ` by YYYY-MM-DD`, or WHO operator, Mac or VM) and the open rows of
+# <dir of the doc>/owed.jsonl keyed to the doc's ticket that owe a proof (kind proof
+# with no actor, or kind step with actor proof), each needing a calendar due, else one by-date in its
+# text. An absent ledger is no rows; an unreadable doc or ledger is `WITHHELD: cannot read`
+# rc 2 (fail-closed).
 # Without a pid the session is the nearest ancestor of this script whose argv0
 # is `claude`. The subtree is every descendant of that session EXCEPT this
 # script's own chain (its tool-call wrapper, itself, and its own children) and
@@ -302,6 +310,43 @@ if [ "$count" -eq 0 ] && [ -n "$qdoc" ]; then
         printf 'WITHHELD: cannot read the queue lock for %s (status rc=%s) — not declaring CLOSABLE\n' "$qdoc" "$qrc"
         exit 2
     fi
+    owed_refusal() {
+        printf 'WITHHELD: an owed proof has no window end date or outside actor: %s — run the proof in this session, or name its window (owed → proof by YYYY-MM-DD) or its outside actor (operator, Mac, VM); not declaring CLOSABLE\n' "$1"
+        exit 1
+    }
+    [ -r "$qdoc" ] || { printf 'WITHHELD: cannot read %s — not declaring CLOSABLE\n' "$qdoc"; exit 2; }
+    newest="$(sed -n '/^## Results/,$p' "$qdoc" | grep -E '^- [0-9]{2}:[0-9]{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-USAGE|PARKED-BANK|RESUMED)( |$)' | tail -n 1)"
+    case "$newest" in
+        "- "[0-9][0-9]:[0-9][0-9]" WRAPPED"*)
+            owed="$(printf '%s\n' "$newest" | grep -oiE '(^|[^[:alnum:]_])owed[[:blank:]]*(→|->)[[:blank:]]*[[:alpha:]][[:alnum:]-]*([[:blank:]]+by[[:blank:]]+[0-9]{4}-[0-9]{2}-[0-9]{2})?')"
+            while IFS= read -r o; do
+                [ -n "$o" ] || continue
+                o="${o#"${o%%[Oo]*}"}"
+                who="$(printf '%s\n' "$o" | sed -E 's/.*(→|->)[[:blank:]]*//; s/[[:blank:]].*//' | tr '[:upper:]' '[:lower:]')"
+                d="$(printf '%s\n' "$o" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}$')"
+                if [ -n "$d" ]; then
+                    jq -en --arg d "$d" '(try (($d + "T00:00:00Z") | fromdateiso8601 | todate[0:10]) catch "") == $d' >/dev/null || owed_refusal "$o"
+                else
+                    case "$who" in operator|mac|vm) ;; *) owed_refusal "$o" ;; esac
+                fi
+            done <<EOF
+$owed
+EOF
+            okey="$(basename "$qdoc" | grep -oE '^[A-Za-z][A-Za-z0-9]*-[0-9]+')"
+            if [ -n "$okey" ]; then
+                if ! olist="$(bash "$(dirname "${BASH_SOURCE[0]}")/chief-kit/owe.sh" list --bucket "$(dirname "$qdoc")" --json)" \
+                    || ! orows="$(printf '%s' "$olist" | jq -r --arg k "$okey" '
+                        def calendar: . as $d | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$") and (try (($d + "T00:00:00Z") | fromdateiso8601 | todate[0:10]) catch "") == $d;
+                        def dated: (if (.due // "") != "" then .due
+                            else [(.text // "") | scan("\\bby ([0-9]{4}-[0-9]{2}-[0-9]{2})\\b") | .[0]] | (if length == 1 then .[0] else "" end) end) | calendar;
+                        .[] | select(.key == $k and ((.kind == "proof" and (has("actor") | not)) or (.kind == "step" and .actor == "proof")) and (dated | not))
+                        | .id + " " + (.text | gsub("[\t\n]"; " "))')"; then
+                    printf 'WITHHELD: cannot read the owed ledger for %s — not declaring CLOSABLE\n' "$qdoc"
+                    exit 2
+                fi
+                [ -z "$orows" ] || owed_refusal "$(printf '%s\n' "$orows" | head -n 1)"
+            fi ;;
+    esac
 fi
 if [ "$count" -eq 0 ]; then
     if [ "$ignored" -eq 0 ]; then

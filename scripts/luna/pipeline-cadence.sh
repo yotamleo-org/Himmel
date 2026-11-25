@@ -11,7 +11,7 @@
 # recurring jobs with the OS scheduler, following the
 # scripts/handover/arm-resume.sh precedent:
 #
-#   HIMMEL-Pipeline-FetchHealth daily  (default 01:30, no LLM)
+#   HIMMEL-Pipeline-FetchHealth daily  (default 03:30, after the harvest, no LLM)
 #       python fetch-health.py
 #   HIMMEL-Pipeline-Harvest     daily   (default 02:00, model: claude-sonnet-5-5)
 #       claude --model claude-sonnet-5-5 "/harvest-clips ... then /triage-clips ... then /ig-media-enrich ..." < /dev/null
@@ -183,7 +183,7 @@ CADENCE_PERMISSION_MODE="acceptEdits"
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/macos-fda-warning.sh"
 
 # Operator-decision defaults.
-FETCH_HEALTH_TIME="01:30"
+FETCH_HEALTH_TIME="03:30"
 HARVEST_TIME="02:00"
 IG_LIMIT="10"
 SYNTH_TIME="03:00"
@@ -258,7 +258,7 @@ Subcommands:
   disarm   Remove all tasks (idempotent; rc=0 if nothing was armed).
 
 Flags (arm only, except --dry-run):
-  --fetch-health-time <HH:MM> Daily no-LLM fetch-health time (default 01:30)
+  --fetch-health-time <HH:MM> Daily no-LLM fetch-health time (default 03:30)
   --harvest-time <HH:MM> Daily harvest+triage+ig-media-enrich time,
                          24h local (default 02:00)
   --ig-limit <N>         Daily /ig-media-enrich --limit N (default 10;
@@ -796,6 +796,14 @@ SH
 SH
 }
 
+# shellcheck disable=SC2016
+emit_day_note_refresh() {
+    local q_timeline="$1" q_vault="$2" indent="$3"
+    [ -n "$q_timeline" ] || return 0
+    printf '%s_tl_rc=0; node %s --vault %s --date "$(date +%%Y-%%m-%%d)" || _tl_rc=$?\n' "$indent" "$q_timeline" "$q_vault"
+    printf '%sif [ "$_tl_rc" != 0 ]; then echo "[daily-timeline failed rc=$_tl_rc - continuing]"; fi\n' "$indent"
+}
+
 # Emit the runner .sh body for one cadence task: rotate the run log
 # (one prior run kept as .log.prev), stamp the fire time, cd into the
 # vault (a failing cd lands in the log instead of silently running
@@ -858,6 +866,7 @@ emit_runner() {
         printf '        _sid=$(%s --append-start %s "" "" claude %s %s "$log" "$$" 2>/dev/null) || _sid=\n' "$q_flow_lib" "$q_flow" "$q_model" "$q_task"
         printf '        test "$_sid" != "" && %s --append-end %s "$_sid" "" 0 skipped 0 no-new-input >/dev/null 2>&1 || true\n' "$q_flow_lib" "$q_flow"
         if [ "$flow" = pipeline-synthesize ]; then printf '        _nightly_writers\n'; fi
+        emit_day_note_refresh "$q_timeline" "$q_vault" '        '
         printf '        exit 0\n'
         printf '    fi\n'
     fi
@@ -876,6 +885,7 @@ emit_runner() {
         printf '        _sid=$(%s --append-start %s "" "" claude %s %s "$log" "$$" 2>/dev/null) || _sid=\n' "$q_flow_lib" "$q_flow" "$q_model" "$q_task"
         printf '        test "$_sid" != "" && %s --append-end %s "$_sid" "" 0 skipped 0 bank-at-threshold >/dev/null 2>&1 || true\n' "$q_flow_lib" "$q_flow"
         if [ "$flow" = pipeline-synthesize ]; then printf '        _nightly_writers\n'; fi
+        emit_day_note_refresh "$q_timeline" "$q_vault" '        '
         printf '        exit 0\n'
         printf '    fi\n'
     fi
@@ -933,10 +943,7 @@ emit_runner() {
     # sections after the worker. Must-not-abort: it runs after _rc / _flow_outcome
     # are final and writes only its own _tl_rc, so a failing timeline logs and
     # the runner's exit code and the WORKER-FAILED logic above are untouched.
-    if [ -n "$q_timeline" ]; then
-        printf '    _tl_rc=0; node %s --vault %s --date "$(date +%%Y-%%m-%%d)" || _tl_rc=$?\n' "$q_timeline" "$q_vault"
-        printf '    if [ "$_tl_rc" != 0 ]; then echo "[daily-timeline failed rc=$_tl_rc - continuing]"; fi\n'
-    fi
+    emit_day_note_refresh "$q_timeline" "$q_vault" '    '
     printf '} >> "$log" 2>&1\n'
 # A parked worker (zero rc, no marker) exits 3 so cron/the operator
 # sees a failure; it covers any

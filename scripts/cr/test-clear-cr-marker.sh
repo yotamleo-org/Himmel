@@ -167,7 +167,7 @@ export MERGE_BLOCK_ALERT_CMD=true
 # stub_alert_sink <tmp> <rc> — a sender that appends "chat|text" to <tmp>/alert.log and exits <rc>.
 stub_alert_sink() {
     # shellcheck disable=SC2016  # the sink script's $1/$2 expand when it runs, not here
-    printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "$1" "$2" >> %q\nexit %s\n' "$1/alert.log" "$2" > "$1/bin/alert-sink"
+    printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "$1" "$2" >> %q\nprintf "%%s\\n" "${3:-}" >> %q\nexit %s\n' "$1/alert.log" "$1/alert.kind" "$2" > "$1/bin/alert-sink"
     chmod +x "$1/bin/alert-sink"
     export MERGE_BLOCK_ALERT_CMD="$1/bin/alert-sink"
 }
@@ -3846,6 +3846,9 @@ if grepq "$alert_line" -F '12345|' && grepq "$alert_line" -F 'feat/x' && grepq "
         && grepq "$alert_line" -F 'coderabbit(reason=rate-limit)' && grepq "$alert_line" -F 'codex(reason=quota-5h)'; then pass; else
     fail "5p-alert alert must go to the operator and name branch, head and exhausted lanes: $alert_line"
 fi
+if [ "$(cat "$tmp/alert.kind" 2>/dev/null)" = claude-only-clear ]; then pass; else
+    fail "5p-alert alert must pass its kind claude-only-clear to the sender: $(cat "$tmp/alert.kind" 2>/dev/null)"
+fi
 # A second clear at the same head sends no second alert.
 write_marker "$tmp" "$sha"
 run_clear "$tmp" 0 "5p-alert second floor clear at the same head -> exit 0"
@@ -4256,6 +4259,28 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "10c certify-refused row at ANOTHER head does not hold this SHA -> exit 0"
 rm -rf "$tmp"
 
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" "$(avail_reason "${sha:0:8}" codex unavailable record-failed)"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "10e ok then record-failed for the same model at the same SHA -> exit 14"
+if marker_exists "$tmp"; then pass; else fail "10e: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" "$(avail_reason "${sha:0:8}" glm unavailable record-failed)"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "10f record-failed for ANOTHER model does not void this model's ok -> exit 0"
+rm -rf "$tmp"
+
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_reason deadbeef codex unavailable record-failed)" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "10g record-failed at ANOTHER head does not void the ok -> exit 0"
+rm -rf "$tmp"
+
 # 10d. the certify-refused extraction fails CLOSED. A node
 # failure in that one step used to leave the flag empty, and `${…:-0}` read it
 # as "no refusal". Shim node: the extraction (and only it) dies; the rest of the
@@ -4645,6 +4670,47 @@ run_clear "$tmp" 14 "14d a branch-authored change beside a merge-forward is not 
 _14d_rc=0; grep -qF "\"head\":\"$B\"" "$tmp/.git/cr-critic-scores.jsonl" || _14d_rc=$?
 if [ "$_14d_rc" -eq 1 ]; then pass; else fail "14d: a refused tip must get no ledger row (grep rc=$_14d_rc)"; fi
 rm -rf "$tmp"
+
+mfc_case() {
+    make_repo || exit 1
+    git -C "$tmp" commit -qm "scaffold" >/dev/null 2>&1
+    printf 'l1\nl2\nl3\nl4\nl5\n' > "$tmp/c.txt"
+    git -C "$tmp" add c.txt && git -C "$tmp" commit -qm "scaffold c" -- c.txt
+    git -C "$tmp" branch -f main feat/x
+    sed 's/^l2$/L2/' "$tmp/c.txt" > "$tmp/c.new" && mv "$tmp/c.new" "$tmp/c.txt"
+    git -C "$tmp" commit -qam "A: reviewed head"
+    sha=$(git -C "$tmp" rev-parse --verify refs/heads/feat/x)
+    git -C "$tmp" checkout -q main
+    case "$1" in
+        next) sed 's/^l4$/L4/' "$tmp/c.txt" > "$tmp/c.new" && mv "$tmp/c.new" "$tmp/c.txt" && git -C "$tmp" commit -qam "main: next to the PR hunk" ;;
+        own) sed 's/^l2$/L2/' "$tmp/c.txt" > "$tmp/c.new" && mv "$tmp/c.new" "$tmp/c.txt" && git -C "$tmp" commit -qam "main: the PR's own change" ;;
+        rename) git -C "$tmp" mv c.txt d.txt && git -C "$tmp" commit -qm "main: rename" ;;
+        pick) printf 'fix\n' > "$tmp/fix.txt" && git -C "$tmp" add fix.txt && git -C "$tmp" commit -qm "main: fix" ;;
+        keep) git -C "$tmp" rm -q c.txt && git -C "$tmp" commit -qm "main: delete c" ;;
+    esac
+    mfc_main=$(git -C "$tmp" rev-parse main)
+    git -C "$tmp" checkout -q feat/x
+    [ "$1" != pick ] || git -C "$tmp" cherry-pick "$mfc_main" >/dev/null 2>&1 || fail "mfc_case: cherry-pick"
+    if [ "$1" = keep ]; then
+        git -C "$tmp" merge -q --no-ff --no-edit main >/dev/null 2>&1
+        { git -C "$tmp" add c.txt && git -C "$tmp" commit -q --no-edit >/dev/null 2>&1; } || fail "mfc_case: keep ours"
+    else
+        git -C "$tmp" merge -q --no-ff --no-edit main >/dev/null 2>&1 || fail "mfc_case $1: merge"
+    fi
+    git -C "$tmp" push -q origin feat/x >/dev/null 2>&1
+    B=$(git -C "$tmp" rev-parse --verify refs/heads/feat/x)
+    write_marker "$tmp" "$B" full "" "" "$_cm_ts"
+    mkdir -p "$tmp/.git/cr-review-rounds/feat"
+    printf '%s\n' "$sha" > "$tmp/.git/cr-review-rounds/feat/x.head"
+    stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+    write_ledger "$tmp" "$(avail_ok "$sha")"
+}
+for mfc_kind in next own rename pick keep; do
+    mfc_case "$mfc_kind"
+    run_clear "$tmp" 0 "10578 merge-carried-cases ($mfc_kind): the marker carries the merge of main at the reviewed head -> exit 0"
+    case "$LAST_CLEAR_OUT" in *"only merges"*"cleanly into the reviewed head"*) pass ;; *) fail "10578 merge-carried-cases ($mfc_kind): the carry names the clean merge (got: $LAST_CLEAR_OUT)" ;; esac
+    rm -rf "$tmp"
+done
 CM_ANCHOR_SELF=
 
 echo

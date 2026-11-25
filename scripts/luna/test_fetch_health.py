@@ -117,6 +117,11 @@ class FetchHealthTests(unittest.TestCase):
             self.assertNotIn("TEST_ANTHROPIC_API_KEY", loaded)
             self.assertNotIn("UNRELATED_API_KEY", loaded)
 
+    def test_probe_and_harvest_share_one_article_retry_max_age(self):
+        tool = fetch_health._harvest_tool()
+        self.assertIsNotNone(tool)
+        self.assertEqual(fetch_health.ARTICLE_RETRY_MAX_AGE_DAYS, tool.ARTICLE_RETRY_MAX_AGE_DAYS)
+
     def test_http_classifier_covers_exact_status_taxonomy(self):
         valid = lambda body: body == b"ok"
         self.assertEqual(fetch_health.classify_http(fetch_health.HttpResult(200, b"ok"), auth_required=True, valid_body=valid).status, "ok")
@@ -465,6 +470,32 @@ class FetchHealthTests(unittest.TestCase):
                     fetch_health._harvest_tool.cache_clear()
             self.assertEqual(alarm.status, "transport-fail")
             self.assertIn("2 thin article clip(s)", alarm.reason)
+
+    def test_harvest_article_fetch_reads_ok_once_the_retry_tried_the_clip(self):
+        class OfflineChain:
+            remaining, last_backend, charge_failures = 3, None, True
+
+            def scrape(self, url):
+                raise RuntimeError("offline")
+
+        today = datetime(2026, 11, 20, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {"HOME": tmp, "OBSIDIAN_VAULT_PATH": str(root)}
+            path = root / "Clippings" / "_evidence" / "summarised.md"
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                "---\ntype: article\nsource: https://example.com/post\nharvested_at: 2026-08-17\n"
+                "harvest_skill: clip-body\nharvest_status: partial\nharvest_flag: thin-body\n---\n"
+                "## Summary\nA blog post about sessions; the clipper captured only the title and the link.\n",
+                encoding="utf-8")
+            self.assertIn("never", fetch_health.probe_harvest_article_fetch(env, today).reason)
+            tool = fetch_health._harvest_tool()
+            with patch.object(tool, "TODAY", "2026-11-20"):
+                _, msg, _ = tool.process_clip(path, dry_run=False, chain=OfflineChain(), url_rules=tool.UrlRules())
+            self.assertIn("fetch failed", msg)
+            tried =fetch_health.probe_harvest_article_fetch(env, today)
+            self.assertEqual(tried.status, "ok", tried.reason)
 
     def test_redirect_handler_strips_auth_off_scope(self):
         handler = fetch_health.AuthScopedRedirectHandler({"www.reddit.com"})

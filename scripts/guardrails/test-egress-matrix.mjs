@@ -99,6 +99,10 @@ for (const p of providers) {
       assert(effective === "allow" && rule && rule.corpus === "salus" && rule.provider === "openai-codex" &&
         rule.purpose === "inference" && rule.hard === undefined,
         `salus x ${p} x ${u} must be allow via its OWN openai-codex row (HIMMEL-5002 ruling), got ${effective}`);
+    } else if (p === "google-antigravity" && u === "inference") {
+      assert(effective === "allow" && rule && rule.corpus === "salus" && rule.provider === "google-antigravity" &&
+        rule.purpose === "inference" && rule.hard === undefined,
+        `salus x ${p} x ${u} must be allow via its OWN google-antigravity row (Decision 1259), got ${effective}`);
     } else if (p === "openrouter") {
       assert(effective === "deny", `salus x ${p} x ${u} must stay deny by default (configurable ≠ open), got ${effective}`);
       // embedding, rerank and query-expansion are HARD (pinned in blocks 6e and 6f); every other purpose stays configurable.
@@ -580,6 +584,17 @@ for (const u of purposes.filter(x => x !== "peer-message"))
   assert(evaluate("peer-jobs", "peer-telegram", u).effective === "deny", `peer-jobs x peer-telegram x ${u} must deny`);
 assert(evaluate("peer-jobs", "peer-telegram", "peer-message").rule?.corpus === "peer-jobs", "peer-jobs x peer-telegram x peer-message must come from its own row");
 
+assert(corpora.includes("operator-reply"), "corpus operator-reply must be declared");
+assert(evaluate("operator-reply", "peer-telegram", "peer-message").effective === "allow", "operator-reply x peer-telegram x peer-message must allow");
+for (const u of purposes.filter(x => x !== "peer-message"))
+  assert(evaluate("operator-reply", "peer-telegram", u).effective === "deny", `operator-reply x peer-telegram x ${u} must deny`);
+{
+  const own = m.rules.filter(r => r.corpus === "operator-reply");
+  assert(own.length === 1 && own[0].provider === "peer-telegram" && own[0].purpose === "peer-message" && own[0].verdict === "allow",
+    `operator-reply must have exactly one row of its own, peer-telegram x peer-message allow, got ${JSON.stringify(own.map(r => [r.provider, r.purpose, r.verdict]))}`);
+}
+assert(evaluate("operator-reply", "peer-telegram", "peer-message").rule?.corpus === "operator-reply", "operator-reply x peer-telegram x peer-message must come from its own row");
+
 assert(corpora.includes("adopter-repo"), "corpus adopter-repo must be declared");
 {
   const { effective, rule } = evaluate("adopter-repo", "anthropic", "extraction");
@@ -588,6 +603,35 @@ assert(corpora.includes("adopter-repo"), "corpus adopter-repo must be declared")
   for (const p of providers) for (const u of purposes) {
     if (p === "anthropic" && u === "extraction") continue;
     assert(evaluate("adopter-repo", p, u).effective === "deny", `adopter-repo x ${p} x ${u} must deny`);
+  }
+}
+
+assert(providers.includes("google-antigravity"), "google-antigravity provider must be declared");
+{
+  const agyAllowed = ["himmel-code", "handover-state", "luna-personal", "luna-clippings", "salus"];
+  for (const c of agyAllowed) {
+    const { effective, rule } = evaluate(c, "google-antigravity", "inference");
+    assert(effective === "allow" && rule && rule.corpus === c && rule.provider === "google-antigravity" &&
+      rule.purpose === "inference" && rule.hard === undefined,
+      `${c} x google-antigravity x inference must be allow via its OWN row, got ${effective}`);
+    for (const u of purposes.filter(x => x !== "inference")) {
+      const res = evaluate(c, "google-antigravity", u);
+      assert(res.effective === "deny", `${c} x google-antigravity x ${u} must deny (inference-only)`);
+      if (c === "salus") {
+        assert(res.rule && res.rule.hard === true, `salus x google-antigravity x ${u} must be HARD deny`);
+      }
+    }
+  }
+  for (const u of purposes) {
+    const res = evaluate("voice-audio", "google-antigravity", u);
+    assert(res.effective === "deny" && res.rule && res.rule.hard === true,
+      `voice-audio x google-antigravity x ${u} must be HARD deny`);
+  }
+  for (const c of corpora.filter(x => !agyAllowed.includes(x))) {
+    for (const u of purposes) {
+      assert(evaluate(c, "google-antigravity", u).effective === "deny",
+        `${c} x google-antigravity x ${u} must deny`);
+    }
   }
 }
 

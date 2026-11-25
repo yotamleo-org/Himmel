@@ -108,6 +108,7 @@ VSCOPE="u/$VBUCKET"
 
 SHA=$(ready_pass_repo "$READY_REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 export READY_STUB_HEAD="$SHA"
+check "ready-check's owner-review line over the ready-pass fixture" "$(ready_pass_owner_review)" "$READY_PASS_OWNER_LINE"
 ready_pass_ledger "$READY_REPO" "$SHA"
 ROOT="$tmp/root"; mkdir -p "$ROOT"
 GO="$ROOT/.locks/go/77.$SHA"

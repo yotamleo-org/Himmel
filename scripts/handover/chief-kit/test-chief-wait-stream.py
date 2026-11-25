@@ -1,5 +1,6 @@
 """Exercise the real supervisor/child/control routes using offline dependencies."""
 import fcntl
+import io
 import json
 import os
 from pathlib import Path
@@ -293,6 +294,41 @@ class StreamFixture(unittest.TestCase):
         self.procs.append((p, output))
         return p, output
 
+    def session_members(self, sessions):
+        root, found, own = str(self.root).encode(), [], os.getsid(0)
+        sessions.discard(own)
+        for entry in Path('/proc').iterdir():
+            if entry.name.isdigit():
+                try:
+                    fields = (entry / 'stat').read_text().rsplit(')', 1)[1].split()
+                    named = root in (entry / 'cmdline').read_bytes()
+                except (OSError, IndexError):
+                    continue
+                if fields[0] != 'Z' and (named or int(fields[3]) in sessions):
+                    found.append(int(entry.name))
+                    if named and int(fields[3]) != own:
+                        sessions.add(int(fields[3]))
+        return [pid for pid in found if pid != os.getpid()]
+
+    def stop_fixture_sessions(self):
+        sessions = {proc.pid for proc, _ in self.procs if proc}
+        for stream in self.root.glob('consoles/*.wait.stream'):
+            data = dict(v.split('=', 1) for v in stream.read_text().split() if '=' in v)
+            sessions.update(int(data.get(key, '0')) for key in ('child', 'dog'))
+        sessions.discard(0)
+        end = time.monotonic() + 10
+        while time.monotonic() < end:
+            pids = self.session_members(sessions)
+            if not pids:
+                return
+            for pid in pids:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            time.sleep(.02)
+        self.fail(f'processes {self.session_members(sessions)} outlived the test')
+
     def tearDown(self):
         for proc, _ in self.procs:
             if proc and proc.poll() is None:
@@ -313,6 +349,7 @@ class StreamFixture(unittest.TestCase):
                             os.kill(pid, signal.SIGKILL)
                     except (ProcessLookupError, FileNotFoundError):
                         pass
+        self.stop_fixture_sessions()
         self.tmp.cleanup()
 
 class Stream(StreamFixture):
@@ -1883,6 +1920,23 @@ class StackedWorker(StreamFixture):
         self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 2 {self.H[2]}',
                                         f'GO-SENT 3 {self.H[3]}'])
         self.assertEqual(output.read_text().count('succession complete'), 1)
+
+    def test_the_successor_replay_leaves_no_writer_behind_for_tearDown_on_two_runs(self):
+        writer = ('if [ ! -e "$TEST_ROOT/writer-started" ]; then touch "$TEST_ROOT/writer-started"\n'
+                  '  ( n=0; while [ "$n" -lt 3000 ]; do echo x >> "$TEST_ROOT/consoles/late-$n"; n=$((n + 1)); sleep .002; done ) '
+                  '>/dev/null 2>&1 &\nfi\n')
+
+        class Loaded(StackedWorker):
+            def setUp(self):
+                super().setUp()
+                body = Path(self.env['CHIEF_WAIT_WORKER_EVENT']).read_text().split('\n', 1)
+                self.script('event', body[1].replace('line=$(cat)', 'line=$(cat)\n' + writer, 1))
+
+        self.maxDiff = None
+        for attempt in (1, 2):
+            result = unittest.TextTestRunner(stream=io.StringIO(), verbosity=0).run(
+                unittest.TestSuite([Loaded('test_successor_chief_replays_each_worker_once_and_never_sends_a_second_go')]))
+            self.assertEqual((result.testsRun, [e for _, e in result.errors], [f for _, f in result.failures]), (1, [], []), f'run {attempt}')
 
     def relay_rows(self):
         path = self.path('relaylog')

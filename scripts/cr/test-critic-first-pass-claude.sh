@@ -68,7 +68,7 @@ pwd > "$REC/cwd"
 cat > "$REC/stdin"
 printf '%s\n' "HIMMEL_API_TOOLS_SET=${HIMMEL_API_TOOLS+yes}" "HIMMEL_API_TOOLS=${HIMMEL_API_TOOLS:-}" "HIMMEL_API_KIND=${HIMMEL_API_KIND:-}" \
     "HIMMEL_API_BRANCH=${HIMMEL_API_BRANCH:-}" "HIMMEL_API_HEAD=${HIMMEL_API_HEAD:-}" "HIMMEL_API_PR=${HIMMEL_API_PR:-}" \
-    "HIMMEL_API_FALLBACK=${HIMMEL_API_FALLBACK:-}" > "$REC/env"
+    "HIMMEL_API_FALLBACK=${HIMMEL_API_FALLBACK:-}" "HIMMEL_API_AUTO_REPO_DIR=${HIMMEL_API_AUTO_REPO_DIR:-}" > "$REC/env"
 if [ -n "${FAKE_SUBFALLBACK:-}" ]; then
     echo "claude-api: fallback: running on the subscription (preflight PROCEED)" >&2
     cat "$ENVELOPE"; exit 0
@@ -186,7 +186,7 @@ case "$(cat "$REC/cwd" 2>/dev/null)" in "$REPO"|"$REPO"/*) bad "4 cwd must not b
 has "4 the prompt reaches claude on stdin" "<diff>" "$REC/stdin"
 
 # --- 5. subscription provider: bank exhausted skips, never launches --------
-fresh_rec 5; bank 99
+fresh_rec 5; bank 100
 run_cfp claude-subscription
 check "5 SKIPPED-BANK exits 5" 5 "$RC"
 check "5 claude is not launched" "no" "$([ -e "$REC/argv" ] && echo yes || echo no)"
@@ -285,7 +285,8 @@ unset FAKE_REFUSE FAKE_REFUSE_RC
 fresh_rec 10k
 ALERT_DIR_10K="$W/alerts.10k"; mkdir -p "$ALERT_DIR_10K"
 printf '#!/bin/sh\ntouch "%s"\n' "$W/alert-ran.10k" > "$W/alert-stub.10k"; chmod +x "$W/alert-stub.10k"
-RC=0; printf '%s\n' "$DIFF" | env -u ANTHROPIC_API_KEY CFP_CLAUDE_API_LAUNCHER="$REPO/scripts/api-lane/claude-api.sh" \
+printf '%s\n' '#!/usr/bin/env bash' "HIMMEL_API_AUTO_REPO_DIR=/nonexistent/other-repo/.git exec bash \"$REPO/scripts/api-lane/claude-api.sh\" \"\$@\"" > "$W/other-repo-launch.10k"; chmod +x "$W/other-repo-launch.10k"
+RC=0; printf '%s\n' "$DIFF" | env -u ANTHROPIC_API_KEY CFP_CLAUDE_API_LAUNCHER="$W/other-repo-launch.10k" \
     HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto HIMMEL_API_ALERT_CMD="$W/alert-stub.10k" HIMMEL_API_ALERT_DIR="$ALERT_DIR_10K" \
     bash "$CFP" --model claude-opus-5-5 --slug claude --provider claude-api >"$W/out" 2>"$W/err" || RC=$?
 check "10k the real launcher's policy refusal is broke: exits 1" 1 "$RC"
@@ -420,6 +421,7 @@ fresh_rec 13b; rm -f "$ALERTS"
 run_cfp claude-api
 check "13b lane on: the stubbed API path runs and reviews" 0 "$RC"
 has "13b lane on: the critic turns the launcher's subscription fallback off" "HIMMEL_API_FALLBACK=off" "$REC/env"
+has "13c lane on: the launcher call names its own repo for the same-repo check from the temp directory" "HIMMEL_API_AUTO_REPO_DIR=$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)" "$REC/env"
 check "13b lane on: no alert" 0 "$(alerts)"
 fresh_rec 13c; reset_alerts; export FAKE_SUBFALLBACK=1
 run_cfp claude-api

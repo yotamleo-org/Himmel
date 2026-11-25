@@ -89,11 +89,17 @@ The bridge bot sends only the id and the Approve / Deny buttons: `afk-sudo-reque
 messages sit in a different Telegram chat from the bridge chat where the chief's messages
 and the Approve prompts are, even though both use `operator_id` as the chat id. An ask
 whose only message comes from the notice bot cannot be approved from the chief's chat. `afk-sudo-request --card ID --operator OP --session S` sends that bridge card
-for a request root has already filed: `AFK grant <id>: read the notice-bot message, then
-approve · session <S> · chief <HIMMEL_CONSOLE_NAME or none>` with the buttons. It exits 0
-once the card is sent, 5 when there is no bridge token or the send fails, and 2 for an id
-that is not 8 base32 characters. The sudo kind's card carries the same session and chief
-words. An Approve tap asks for the nonce and the
+for a request root has already filed, with the buttons. The grant card is up to four lines:
+`AFK grant <id>: approve <id> <nonce> <code> → run once · deny <id> <nonce> → refuse`, then
+`The agent says: <description>` (the Bash call's own description, one line, cut at a word
+boundary at 80 characters), then `Command (unverified): $ <first command line>` (cut at a
+word boundary at 100), then `session <S> · chief <HIMMEL_CONSOLE_NAME or none> · nonce:
+notice-bot chat`. `--desc` and `--cmd` carry the two agent-supplied lines; without them
+the card has line 1 and the session line only. The bridge bot is same-uid, so both lines
+are the agent's words, marked so; root's notice holds the verified command and the nonce.
+It exits 0 once the card is sent, 5 when there is no bridge token or the send fails, and 2
+for an id that is not 8 base32 characters. The sudo kind's card keeps `read the
+notice-bot message, then approve` with the same session and chief words. An Approve tap asks for the nonce and the
 code; a typed or replied `NONCE CODE` pair is held like a bare code, never forwarded to a
 session (a session can call the helper's `approve` itself).
 
@@ -321,7 +327,13 @@ approval, and the worker's retry passes the classifier for that one call.
 
 1. The classifier refuses a Bash call. `scripts/hooks/approval-grant-request.sh`
    (`PermissionDenied`, matcher `Bash`) pipes the command's exact bytes to
-   `sudo -n afk-sudo grant-request --session S --cwd D --why <reason>`. It prints nothing
+   `sudo -n afk-sudo grant-request --session S --cwd D --why <reason> --desc <description>`,
+   where the description is the Bash call's own `description` field, first line only, at
+   most 200 characters, with every control (Cc), format and bidi (Cf) character and U+2028
+   and U+2029 dropped, so no line separator can draw a forged line on the card (empty when
+   the call has none, or when `perl` is missing). An empty reply from the helper, as an
+   older helper that does not know `--desc` gives, makes the hook ask once more without
+   `--desc`, so a grant never fails closed on version skew. It prints nothing
    and exits 0 on every path. It files only a reason with a bracketed classifier category
    (`[Unauthorized Persistence]`): a no-verdict denial, "Classifier unavailable" or a
    credential, secret, token or exfiltration category files nothing.
@@ -345,9 +357,18 @@ approval, and the worker's retry passes the classifier for that one call.
      refusal.
 2. Root refuses a secret read or another never-remote shape before any notice is sent.
    Otherwise it binds every file the command names (sha256 and dev/inode, as in the run
-   kind), freezes the record and sends the operator the full command, the cwd, the bound
-   files and the classifier's reason, labelled as a claim. The notice is built from root's
-   record, never from the classifier-denial log.
+   kind), freezes the record and sends the operator a notice built from root's record,
+   never from the classifier-denial log. Its head is five lines (six when the command has
+   more than one line), at most 400 characters:
+   `approve <id> <nonce> <code> → run once · deny <id> <nonce> → refuse`; `The agent says:
+   <description>` (the agent's claim, cut at a word boundary at 75); `The classifier says:
+   <classifier category> — <reason>` (cut at 56); `Command (unverified): $ <first
+   line>` (cut at a word boundary at 85, then `…(+n lines)` on its own line); `Chief: no view`
+   (the permission hook files the ask, so no chief has a view). A cut ask adds
+   `TRUNCATED, full request attached` under the head, never above it. Below the head: the
+   session, ticket and expiry, the cwd, the full command (up to ten lines, each cut at a
+   word boundary at 300) and each bound file's path and sha256. A file's text is never on
+   the notice; the attached request holds it.
 3. The operator replies `NONCE CODE`. Root writes the grant
    `/var/lib/himmel/afk-sudo/grants/<id>.json` (root, 0600), with an expiry of now plus
    `grant.ttl_s`, and an empty marker `/var/lib/himmel/afk-grants/<sha256>.<id>` (root,
@@ -477,6 +498,7 @@ OPS-2 adds three more, each `<op>.sh` plus `<op>.json`:
 | `chief-restart` (`chief-restart.sh`; `chief`, `doc`, `repo`) | operator user | Stops the operator's running session named `chief` (SIGTERM, SIGKILL after 15 s) and re-arms it from `doc`; its stale queue lock passes to the re-armed session. A chief cannot restart itself. |
 | `size-approval` (`size-approval.sh`; `key`, `label`, `files` of 1 to 3 digits, `scope` of 32 hex, `reason` one word of `A-Za-z0-9,.:_-`, all required) | root | The operator keeps one oversized brief whole: writes `/var/lib/himmel/size-approvals/<key>.<label>.<files>.<scope>` (root, 0644, in a root 0755 directory), one line `SIZE-APPROVAL <expires> <key> <label> <files> <scope> <id> <reason>`. `<expires>` is the run plus 7 days, and every run renews it (`changed`). `scripts/handover/chief-kit/size-override.sh check` accepts it for a trust-path brief of 21 to 300 files when the key, label, file count and file-list digest match, it is unexpired, and the file, its directory and that directory's parent are root-owned and not group/other-writable. `scope` is the digest gen-briefs prints with the paste-ready line. |
 | `helper-update` (`helper-update.sh`; `commit` of 40 hex) | root | Re-installs the helper, broker, floor and ops by running the commit's own `install.sh` from a root stage, after the approval. The commit must be on GitHub's main (by main's sha) with a successful `ci.yml` run at that sha, not older than the installed commit (`/var/lib/himmel/afk-sudo/helper-commit`), and the checkout named in `helper_update.checkout` must hold the same files. At the request it fetches metadata only and runs nothing from GitHub; the notice names the PR, its merger and approvers, a compare link from the installed commit and a `WARN` for `install.sh`, `ci.yml` or `never_remote.py`. A changed `never_remote.py` or sudoers file needs a terminal. It snapshots libexec, the sudoers files and the config, restores them on any failure or after an interrupted run, and is off until `helper_update.enabled`. It checks only honest changes: a merged helper that skips the floor installs like any other. |
+| `docker` (`docker.sh`; `action=start\|stop`) | root | Starts or stops `containerd.service`, `docker.socket` and `docker.service` for the current boot (start in that order; stop the socket first, then the service and containerd, so a client cannot re-activate the service while it stops). It runs only `systemctl is-active`, `start` and `stop`: it never enables or disables a unit, so a Docker that is off at boot stays off at boot. With every unit already in the target state it reports `unchanged`; `--check` names the units it would change. A failing `systemctl`, a state it cannot read, or a unit not in the target state when the run ends is `failed`. |
 
 `size-override.sh operator <KEY> <label> --files <n> --scope <hex> --reason <word>` files the `size-approval` op from a
 terminal (`--session terminal-<pid>`) and, on a terminal, runs `himmelctl approve <id>` for the nonce and code; without

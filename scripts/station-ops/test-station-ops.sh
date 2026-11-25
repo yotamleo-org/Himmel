@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the station ops (OPS-1: cron-entry, cron-system, system-update; OPS-2: autologin.sh,
+# Tests for the station ops (OPS-1: cron-entry, cron-system, system-update; docker; OPS-2: autologin.sh,
 # reboot-recover.sh with its recover.sh, chief-restart.sh) and the afk-sudo `op-request` verb that runs them.
 # Usage: bash scripts/station-ops/test-station-ops.sh
 # Hermetic: every case builds a sandbox root through the helper's AFK_SUDO_ROOT / AFK_SUDO_NOW seams
@@ -478,6 +478,13 @@ esac
 FAKESYSTEMCTL
 chmod +x "$R/ubin/systemctl"
 cp "$tmp/fakecurl/curl" "$R/ubin/curl"
+cat > "$R/ubin/bun" <<'FAKEBUN'
+#!/bin/sh
+[ -e "$RECOVER_FAKE_DIR/bun-hang" ] && exec sleep 120
+[ -e "$RECOVER_FAKE_DIR/bun-fail" ] && exit 1
+echo "$*" >> "$RECOVER_FAKE_DIR/bun.log"
+FAKEBUN
+chmod +x "$R/ubin/bun"
 printf 'TELEGRAM_BOT_TOKEN=%s\n' "$NTOK" > "$R/tg.env"
 rec() { PATH="$R/ubin:$PATH" RECOVER_FAKE_DIR="$R" HIMMEL_RECOVER_ROOT="$R" HIMMEL_RECOVER_STATE="$R/state" HIMMEL_RECOVER_SERVICES="telegram-bridge.service" \
     TELEGRAM_ENV="$R/tg.env" bash "$OPS/recover.sh" 2>&1; echo "rc=$?"; }
@@ -492,7 +499,9 @@ assert_contains "arm-resume got the handover doc" "--handover $rdoc --force --ti
 assert_contains "the status reports the services" "telegram-bridge.service=up" "$out"
 assert_contains "the status reports the bridge" "bridge up" "$out"
 assert_contains "recover exits 0 when all is well" "rc=0" "$out"
-assert_eq "one Telegram status was sent" "1" "$(find "$TG" -type f | wc -l | tr -d ' ')"
+assert_eq "RED: with the bridge up the status goes through the bridge route once" "1" "$(wc -l < "$R/bun.log" 2>/dev/null | tr -d ' ')"
+assert_contains "RED: a clean recovery sends the recover-ok kind" "chief-route.ts reply --kind recover-ok $OPERATOR reboot recovery on" "$(cat "$R/bun.log" 2>/dev/null)"
+assert_eq "with the bridge up no direct send goes out" "0" "$(find "$TG" -type f | wc -l | tr -d ' ')"
 out=$(rec)
 assert_contains "RED: the same arming is not recovered twice" "already recovered" "$out"
 assert_eq "no second re-arm" "1" "$(wc -l < "$R/arm.log" | tr -d ' ')"
@@ -503,6 +512,7 @@ out=$(rec)
 assert_contains "a new arming recovers again" "re-armed from other.md" "$out"
 assert_contains "a service that stays down is reported DOWN" "telegram-bridge.service=DOWN" "$out"
 assert_contains "a down service makes recover exit 1" "rc=1" "$out"
+assert_contains "RED: a failed recovery sends the recover-failed kind" "chief-route.ts reply --kind recover-failed $OPERATOR reboot recovery on" "$(tail -n 1 "$R/bun.log" 2>/dev/null)"
 rm -f "$R/down.telegram-bridge.service"
 python3 -I -c 'import json, sys
 p = sys.argv[1]
@@ -528,6 +538,55 @@ out=$(HIMMEL_RECOVER_STATE="$R/stamp-state" PATH="$R/ubin:$PATH" RECOVER_FAKE_DI
 assert_contains "RED: a stamp write that fails after the recovery steps names the stamp path" "cannot record completion in $R/stamp-state/recover-done" "$out"
 assert_contains "the failed stamp write makes recover exit 1" "rc=1" "$out"
 assert_contains "RED: a failed stamp write still sends the status report" "recover: reboot recovery on" "$out"
+rec_in() { HIMMEL_RECOVER_STATE="$1" PATH="$R/ubin:$PATH" RECOVER_FAKE_DIR="$R" HIMMEL_RECOVER_ROOT="$R" HIMMEL_RECOVER_SERVICES="telegram-bridge.service" TELEGRAM_ENV="$R/tg.env" bash "$OPS/recover.sh" 2>&1; echo "rc=$?"; }
+tg_before=$(find "$TG" -type f | wc -l | tr -d ' ')
+bun_before=$(wc -l < "$R/bun.log" | tr -d ' ')
+printf '#!/bin/sh\nexit 1\n' > "$R/repo/scripts/telegram/restart-bridge.sh"
+out=$(rec_in "$R/down-state")
+assert_contains "the bridge-down run reports the bridge DOWN" "bridge DOWN" "$out"
+assert_eq "RED: with the bridge down the status still goes out by the direct send" "$((tg_before + 1))" "$(find "$TG" -type f | wc -l | tr -d ' ')"
+assert_eq "with the bridge down the bridge route is not tried" "$bun_before" "$(wc -l < "$R/bun.log" | tr -d ' ')"
+printf '#!/bin/sh\nexit 0\n' > "$R/repo/scripts/telegram/restart-bridge.sh"
+tg_before=$(find "$TG" -type f | wc -l | tr -d ' ')
+: > "$R/bun-fail"
+out=$(rec_in "$R/bunfail-state")
+rm -f "$R/bun-fail"
+assert_eq "RED: a bridge route that fails falls back to the direct send" "$((tg_before + 1))" "$(find "$TG" -type f | wc -l | tr -d ' ')"
+assert_contains "the fallback run still exits 0" "rc=0" "$out"
+tg_before=$(find "$TG" -type f | wc -l | tr -d ' ')
+bun_before=$(wc -l < "$R/bun.log" | tr -d ' ')
+: > "$R/bun-hang"
+out=$(HIMMEL_RECOVER_BRIDGE_TIMEOUT=1 rec_in "$R/hang-state")
+rm -f "$R/bun-hang"
+assert_eq "RED: a bridge route that hangs is cut off by the timeout and the direct send goes out" "$((tg_before + 1))" "$(find "$TG" -type f | wc -l | tr -d ' ')"
+assert_eq "the hung bridge route recorded nothing" "$bun_before" "$(wc -l < "$R/bun.log" | tr -d ' ')"
+assert_contains "the hung-route run still exits 0" "rc=0" "$out"
+tg_before=$(find "$TG" -type f | wc -l | tr -d ' ')
+: > "$R/bun-hang"
+out=$(HIMMEL_RECOVER_BRIDGE_TIMEOUT=0 rec_in "$R/zero-state")
+rm -f "$R/bun-hang"
+assert_eq "RED: a timeout of 0 does not disable the bound, the hung bridge route is cut off and the direct send goes out" "$((tg_before + 1))" "$(find "$TG" -type f | wc -l | tr -d ' ')"
+mkdir -p "$R/tshim"
+cat > "$R/tshim/timeout" <<'FAKETIMEOUT'
+#!/bin/sh
+echo "$3" >> "$RECOVER_FAKE_DIR/timeout.log"
+exec "$RECOVER_REAL_TIMEOUT" "$@"
+FAKETIMEOUT
+chmod +x "$R/tshim/timeout"
+for tv in 99 18446744073709551621; do
+    rm -f "$R/timeout.log"
+    HIMMEL_RECOVER_BRIDGE_TIMEOUT=$tv RECOVER_REAL_TIMEOUT="$(command -v timeout)" PATH="$R/tshim:$R/ubin:$PATH" RECOVER_FAKE_DIR="$R" HIMMEL_RECOVER_ROOT="$R" HIMMEL_RECOVER_STATE="$R/clamp-state-$tv" HIMMEL_RECOVER_SERVICES="telegram-bridge.service" TELEGRAM_ENV="$R/tg.env" bash "$OPS/recover.sh" >/dev/null 2>&1
+    assert_eq "a run with a bridge timeout of $tv exits 0" "0" "$?"
+    assert_eq "RED: a bridge timeout of $tv is clamped to 30 seconds" "30" "$(tail -n 1 "$R/timeout.log" 2>/dev/null)"
+done
+mkdir -p "$R/barebin" "$R/fakehome/.bun/bin"
+for t in bash sh python3 sed tr grep date hostname flock id cat mkdir basename sleep timeout; do ln -sf "$(command -v "$t")" "$R/barebin/$t"; done
+cp "$R/ubin/systemctl" "$R/ubin/curl" "$R/barebin/"
+cp "$R/ubin/bun" "$R/fakehome/.bun/bin/bun"
+bun_before=$(wc -l < "$R/bun.log" | tr -d ' ')
+out=$(HOME="$R/fakehome" HIMMEL_RECOVER_STATE="$R/bare-state" PATH="$R/barebin" RECOVER_FAKE_DIR="$R" HIMMEL_RECOVER_ROOT="$R" HIMMEL_RECOVER_SERVICES="telegram-bridge.service" TELEGRAM_ENV="$R/tg.env" "$R/barebin/bash" "$OPS/recover.sh" 2>&1; echo "rc=$?")
+assert_eq "RED: a bare unit PATH with bun only under HOME/.bun/bin still sends through the bridge route" "$((bun_before + 1))" "$(wc -l < "$R/bun.log" | tr -d ' ')"
+assert_contains "RED: the bare-PATH run names its kind" "reply --kind recover-ok" "$(tail -n 1 "$R/bun.log")"
 
 echo "== size-approval (R5): --check writes nothing, a run writes the approval, a re-run renews it =="
 new_root sa
@@ -1250,6 +1309,88 @@ hu_root c3b; : > "$R/checkout/scripts/station-ops/a|b c"
 out=$(hu_chk)
 assert_contains "C3: a checkout name is sanitized in the refusal" "a?b?c" "$out"
 assert_absent "C3: and its bar is not in the line" "a|b" "$out"
+
+echo "== docker: start and stop the three units, never enable or disable =="
+new_root dk
+mkdir -p "$R/units"
+cat > "$R/bin/systemctl" <<'FAKESYSTEMCTL'
+#!/bin/sh
+echo "$@" >> "$HIMMEL_OPS_ROOT/systemctl.calls"
+case "$1" in
+    is-active) [ -e "$HIMMEL_OPS_ROOT/probe-fail" ] && { echo "Failed to connect to bus" >&2; exit 1; }
+        if [ -e "$HIMMEL_OPS_ROOT/units/$2" ]; then echo active; else echo inactive; exit 3; fi ;;
+    start) [ -e "$HIMMEL_OPS_ROOT/start-fail" ] && { echo "Failed to start $2: Unit not found." >&2; exit 5; }
+        [ -e "$HIMMEL_OPS_ROOT/start-noop" ] && [ "$2" = docker.service ] && exit 0
+        : > "$HIMMEL_OPS_ROOT/units/$2" ;;
+    stop) [ -e "$HIMMEL_OPS_ROOT/stop-sticky" ] && [ "$2" = docker.service ] && exit 0
+        rm -f "$HIMMEL_OPS_ROOT/units/$2" ;;
+    *) echo "unexpected systemctl $*" >&2; exit 64 ;;
+esac
+FAKESYSTEMCTL
+chmod +x "$R/bin/systemctl"
+dk_calls() { cat "$R/systemctl.calls" 2>/dev/null; }
+dk_active() { find "$R/units" -type f -printf '%f\n' | sort | tr '\n' ' '; }
+out=$(op docker --check --action start)
+assert_contains "--check while stopped is would-change" "result=would-change" "$out"
+assert_contains "--check names the units it would start" "will start: containerd.service docker.socket docker.service" "$out"
+assert_absent "--check makes no start call" "start containerd" "$(dk_calls)"
+assert_eq "--check started nothing" "" "$(dk_active)"
+out=$(op docker --action start)
+assert_contains "start from stopped is changed" "result=changed" "$out"
+assert_contains "the last line names the op and the request id" "op=docker id=testid00 result=changed" "$(printf '%s\n' "$out" | tail -1)"
+assert_eq "start leaves the three units active" "containerd.service docker.service docker.socket " "$(dk_active)"
+assert_eq "start runs containerd, socket, service in that order" "start containerd.service
+start docker.socket
+start docker.service" "$(dk_calls | grep '^start ')"
+n0=$(dk_calls | grep -c '^start ')
+assert_contains "a second start is unchanged" "result=unchanged" "$(op docker --action start)"
+assert_eq "the second start made no start call" "$n0" "$(dk_calls | grep -c '^start ')"
+assert_contains "--check when running is unchanged for start" "result=unchanged" "$(op docker --check --action start)"
+out=$(op docker --check --action stop)
+assert_contains "--check while running is would-change for stop" "result=would-change" "$out"
+assert_absent "--check makes no stop call" "stop " "$(dk_calls)"
+: > "$R/systemctl.calls"
+out=$(op docker --action stop)
+assert_contains "stop is changed" "result=changed" "$out"
+assert_eq "stop leaves no unit active" "" "$(dk_active)"
+assert_eq "stop runs socket, service, containerd in that order" "stop docker.socket
+stop docker.service
+stop containerd.service" "$(dk_calls | grep '^stop ')"
+assert_contains "a second stop is unchanged" "result=unchanged" "$(op docker --action stop)"
+rm -f "$R/units/docker.socket"; : > "$R/units/docker.service"
+assert_contains "a partly started set still changes the missing unit" "will start: containerd.service docker.socket" "$(op docker --check --action start)"
+rm -f "$R/units/"*
+out=$(op docker --action fly)
+assert_contains "RED: an action outside start|stop is bad-param" "result=bad-param name=action" "$out"
+assert_contains "RED: a missing action is bad-param" "result=bad-param name=action" "$(op docker)"
+assert_contains "RED: through the helper an action outside the enum is bad-param" "result=bad-param name=action" "$(oreq 0 S1 docker action=enable)"
+assert_contains "docker is in the sandbox manifest" '"docker"' "$(cat "$R/usr/local/libexec/himmel/ops/manifest.json" 2>/dev/null)"
+assert_contains "a start through the helper is filed pending" "result=pending" "$(oreq 1 S1 docker action=start)"
+touch "$R/start-fail"
+: > "$R/systemctl.calls"
+out=$(op docker --action start)
+assert_contains "RED: a failing systemctl start is result=failed" "result=failed" "$out"
+assert_contains "the failure names the unit and the reason" "systemctl start containerd.service failed: Failed to start containerd.service: Unit not found." "$out"
+assert_eq "RED: the failed start left nothing active" "" "$(dk_active)"
+rm -f "$R/start-fail"
+touch "$R/probe-fail"
+assert_contains "RED: a failing state probe is result=failed, not unchanged" "result=failed detail=cannot read the state of docker.socket" "$(op docker --action stop)"
+rm -f "$R/probe-fail"
+: > "$R/units/containerd.service"; : > "$R/units/docker.socket"; : > "$R/units/docker.service"
+touch "$R/stop-sticky"
+out=$(op docker --action stop)
+assert_contains "RED: a stop that leaves docker.service active is result=failed" "result=failed" "$out"
+assert_contains "RED: the stuck stop names the unit and its state" "docker.service is active after the stop, not inactive" "$out"
+rm -f "$R/stop-sticky" "$R/units/"*
+touch "$R/start-noop"
+out=$(op docker --action start)
+assert_contains "RED: a start that never activates docker.service is result=failed" "result=failed" "$out"
+assert_contains "RED: the no-op start names the unit and its state" "docker.service is inactive after the start, not active" "$out"
+rm -f "$R/start-noop" "$R/units/"*
+op docker --action start >/dev/null; op docker --action stop >/dev/null
+assert_absent "RED: no systemctl call was ever an enable" "enable" "$(dk_calls)"
+assert_absent "RED: no systemctl call was ever a disable" "disable" "$(dk_calls)"
+assert_eq "only is-active, start and stop were ever called" "" "$(dk_calls | awk '$1 != "is-active" && $1 != "start" && $1 != "stop"')"
 
 echo "== the station ops and the size-override signer are CI trust paths =="
 TP_PATS="$tmp/trust-pats.txt"

@@ -56,8 +56,8 @@ assert "default QMD_FORK_REF is a full 40-hex SHA" \
 default_repo="$(env -u QMD_FORK_REPO bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd_fork_repo')"
 assert "default QMD_FORK_REPO is the carried fork yotamleo-org/qmd (decision 517)" \
   test "$default_repo" = "https://github.com/yotamleo-org/qmd.git"
-assert "default QMD_FORK_REF is the fork main merge of fork PR #55" \
-  test "$default_ref" = "35de6ec3cc86cb5141d9d58c76c702130517ccfa"
+assert "default QMD_FORK_REF is the fork rebased onto upstream v2.9.0 (tag himmel-pin/2.9.0-himmel.1)" \
+  test "$default_ref" = "823571752bbeafa7cf17bec52617a5de31f13471"
 # The pinned fork commit must carry the fixed MCP server (2.3.0+ clears the HTTP
 # transport advisories). The fixture is the real bun.lock lines of the fork at the
 # pinned commit, copied from the fork, headed by the commit it came from.
@@ -1459,7 +1459,8 @@ shape_run "$(shape_cfg not-utf8 'collections:\n  c:\n    path: /x\0377\n    patt
 assert "a config that is not UTF-8 is refused" refused
 
 echo "[test-qmd-bin] reader_expands_braces: {a,b} expands into one glob per alternative"
-shape_run "$(shape_cfg brace 'collections:\n  c:\n    path: /x\n    pattern: "{docs,notes}/**/*.md"\n')" c docs/a.md notes/x/y.md other/a.md
+brace_yml='collections:\n  c:\n    path: /x\n    pattern: "{docs,notes}/**/*.md"\n'
+shape_run "$(shape_cfg brace "$brace_yml")" c docs/a.md notes/x/y.md other/a.md
 assert "a brace pattern exits 0" test "$shape_rc" -eq 0
 assert "a brace pattern keeps docs/a.md and notes/x/y.md and drops other/a.md" \
   test "$shape_out" = "$(printf 'docs/a.md\nnotes/x/y.md')"

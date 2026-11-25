@@ -97,10 +97,20 @@ Anything else may be deferred, with a class.
 
 ## Where a follow-up goes
 
-The follow-up verb (`jira create --residual-of`) puts each follow-up in exactly
-one place when it is filed. It decides from fields it already has: `--fu-class`,
-depth, priority, `--gate`, and the parent or `--blocks` link. The first matching
-row wins. "Next" means the earliest unreleased version after the current one.
+A follow-up of a project a declared release names is placed by the door from its
+priority: `jira create --residual-of` files it with no version and queues its
+INTAKE, and the door rules it (High and above to the current version, the rest to
+the next). Only `--gate` keeps a filing-time version, the current one. The class
+(`--fu-class`) is stamped as a label but does not place it.
+
+For a project no declared release names, and when the declarations cannot be
+read (the verb prints one line; a follow-up that lands with no version is then
+refused before the POST, as for any filing no release can take an INTAKE for),
+the verb puts each follow-up in
+exactly one place when it is filed. It decides from fields it already has:
+`--fu-class`, depth, priority, `--gate`, and the parent or `--blocks` link. The
+first matching row wins. "Next" means the earliest unreleased version after the
+current one.
 
 | # | Condition | Lands in |
 |---|---|---|
@@ -118,15 +128,14 @@ row wins. "Next" means the earliest unreleased version after the current one.
 - **Row e.** The `--residual-of` parent forms a dependency chain only while it is open. A
   follow-up filed after its parent's PR merged joins a dependency chain only through `--blocks`.
 - A frozen version admits only through row c, so the frozen set stays fixed.
+- The model release judge is parked: the door (`scripts/jira/src/release/door.ts`) rules every
+  INTAKE request by fixed rules, and `--backlog` does not keep a mild follow-up out of the next
+  version. The rows above apply only to a project no declared release names.
 - The release manager can override any placement later with a REVERSION. The
   verb's class is a default, not a gate.
 - Placement never throws on a frozen version: a frozen or missing next sends the
-  follow-up to the backlog. Over the follow-up budget (15 open follow-ups per
-  version, or the version description's `residual-budget:<n>` line), a newcomer
-  that outranks the version's lowest-ranked To Do follow-up takes its slot and
-  that follow-up steps down, unless that follow-up is admitted or ruled, or the
-  rulings cannot be read; otherwise the newcomer steps down, labelled
-  `residual-displaced`. See the glossary's Cap gate entry.
+  follow-up to the backlog. No count of the follow-ups a version holds moves a
+  newcomer out of it or displaces a resident; see the glossary's Cap gate entry.
 
 ## What the verb files
 
@@ -278,8 +287,7 @@ version close (decision 23), the release manager looks at:
   like the first point.
 - **Reclasses.** How often the release manager moves a follow-up from one class
   to another. Many moves mean the definitions are unclear to the people filing.
-- **The mix per version.** How many follow-ups each class adds, and how many
-  were displaced from a version for lack of room.
+- **The mix per version.** How many follow-ups each class adds.
 - **The polish recount.** At the v1.1.3 close the release manager re-runs the
   audit of findings noted as polish with no ticket (the spec named under "What the
   verb files", decision D7). It counts the noted rows since the audit's cutoff and

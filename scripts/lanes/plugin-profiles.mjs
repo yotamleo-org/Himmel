@@ -85,7 +85,7 @@ export const READINESS_PROFILE = 'readiness';
 export const READINESS_GRANTS = ['mcp__readiness__inspect', 'mcp__readiness__act'];
 export const READINESS_DENY = ['Bash', 'Read', 'Write', 'Edit', 'NotebookEdit', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'Agent', 'Artifact'];
 // Everything that could widen the role is refused by name, not trimmed afterwards.
-const READINESS_FORBIDDEN_KEYS = ['gateAllow', 'chiefAllow', 'vmLaunch', 'denyTools', 'disableWorkflows', 'nativeDrop', 'disallowedTools', 'artifact'];
+const READINESS_FORBIDDEN_KEYS = ['gateAllow', 'chiefAllow', 'vmLaunch', 'denyTools', 'disableWorkflows', 'nativeDrop', 'disallowedTools', 'artifact', 'previewBrowser'];
 function validateReadinessSpec(errors, name, spec) {
   if (spec.readiness !== undefined && typeof spec.readiness !== 'boolean') errors.push(`profile "${name}" readiness must be a boolean`);
   if (spec.readiness === true && name !== READINESS_PROFILE) errors.push(`profile "${name}" readiness is restricted to the profile named ${READINESS_PROFILE}`);
@@ -345,12 +345,19 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
     if (spec.disallowedTools !== undefined) errors.push('profile "bare" must not declare disallowedTools — bare has no base capability to restrict');
     if (spec.denyTools !== undefined) errors.push('profile "bare" must not declare denyTools — bare has no base capability to restrict');
     if (spec.disableWorkflows !== undefined) errors.push('profile "bare" must not declare disableWorkflows — bare has no base capability to restrict');
+    if (spec.previewBrowser !== undefined) errors.push('profile "bare" must not declare previewBrowser — bare is floor-only by construction');
   }
   validateReadinessSpec(errors, name, spec);
   validateToolTrim(errors, name, spec);
   if (spec.artifact !== undefined && typeof spec.artifact !== 'boolean') errors.push(`profile "${name}" artifact must be a boolean`);
   if (spec.gateAllow !== undefined && typeof spec.gateAllow !== 'boolean') {
     errors.push(`profile "${name}" gateAllow must be a boolean`);
+  }
+  if (spec.previewBrowser !== undefined && typeof spec.previewBrowser !== 'boolean') {
+    errors.push(`profile "${name}" previewBrowser must be a boolean`);
+  }
+  if (spec.previewBrowser === true && !WORKER_SESSION_PROFILES.has(name)) {
+    errors.push(`profile "${name}" previewBrowser is restricted to worker-shaped profiles`);
   }
   if (spec.vmLaunch !== undefined && (typeof spec.vmLaunch !== 'boolean' || (spec.vmLaunch && (name !== 'worker-vm' || spec.gateAllow !== true)))) {
     errors.push(`profile "${name}" vmLaunch must be a boolean, true only on worker-vm with gateAllow`);
@@ -521,6 +528,18 @@ function validateProfiles(errors, registry, profiles, catalogSet, floorSet) {
     if (spec?.vmLaunch === true && registry.vmLaunchAllow === undefined) {
       errors.push(`profile "${name}" vmLaunch requires the registry vmLaunchAllow list`);
     }
+    if (spec?.previewBrowser === true && registry.previewBrowserTools === undefined) {
+      errors.push(`profile "${name}" previewBrowser requires the registry previewBrowserTools list`);
+    }
+  }
+}
+
+const PREVIEW_TOOL_RE = /^preview_[a-z_]+$/;
+const previewBrowserRules = (registry, spec) => (spec?.previewBrowser === true ? (registry.previewBrowserTools ?? []).map((tool) => `mcp__t3-code__${tool}`) : []);
+function validatePreviewBrowserTools(errors, tools) {
+  if (tools === undefined) return;
+  if (!Array.isArray(tools) || tools.length === 0 || !tools.every((t) => typeof t === 'string' && PREVIEW_TOOL_RE.test(t)) || new Set(tools).size !== tools.length) {
+    errors.push('previewBrowserTools must be a non-empty array of distinct T3 preview tool names (preview_<name>)');
   }
 }
 
@@ -532,6 +551,7 @@ export function validateRegistry(registry) {
   validateGateAllow(errors, registry?.gateAllow);
   validateVmLaunchAllow(errors, registry?.vmLaunchAllow);
   validateChiefAllow(errors, registry?.chiefAllow);
+  validatePreviewBrowserTools(errors, registry?.previewBrowserTools);
   validateRuleCapabilities(errors, registry);
   const floor = registry?.floor;
   const catalog = registry?.catalog;
@@ -665,6 +685,7 @@ export function resolveProfile(registry, name, opts = {}) {
   for (const server of (Array.isArray(spec?.mcpServers) ? spec.mcpServers : [])) {
     for (const tool of (registry.mcpAllow?.[server] ?? [])) mcpAllow.push(`mcp__${server}__${tool}`, `mcp__plugin_${server}_${server}__${tool}`);
   }
+  mcpAllow.push(...previewBrowserRules(registry, spec));
   if (spec?.gateAllow === true) {
     const allow = [...registry.gateAllow];
     if (spec.vmLaunch === true) allow.push(...registry.vmLaunchAllow);

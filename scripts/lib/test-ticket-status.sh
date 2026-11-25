@@ -66,8 +66,19 @@ brief() { # <flag-line|-> - the owner doc: the Completes ticket line (when given
     jq -nc --arg doc "$tmp/owner.md" '{doc:$doc,docs:[$doc],prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
     ts_derive HIMMEL-9001
 }
-brief no
-check "completes no: an In Progress ticket stays In Progress" "$TS_RULE/$TS_DERIVED" 'D6n/In Progress'
+printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/lock-free.sh"
+printf '#!/usr/bin/env bash\necho "status: HELD"; exit 11\n' > "$tmp/lock-held.sh"
+printf '#!/usr/bin/env bash\necho "status: STALE-DEAD"; exit 12\n' > "$tmp/lock-dead.sh"
+chmod +x "$tmp/lock-free.sh" "$tmp/lock-held.sh" "$tmp/lock-dead.sh"
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-held.sh" brief no
+check "10955 completes no, the wrapped owner still holds its lock: D6n leaves In Progress alone" "$TS_RULE/$TS_DERIVED" 'D6n/In Progress'
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" brief no
+check "10955 completes no, no live lock: D6n derives To Do" "$TS_RULE/$TS_DERIVED" 'D6n/To Do'
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-dead.sh" brief no
+check "10955 completes no, a STALE-DEAD lock is no live lock: D6n To Do" "$TS_RULE/$TS_DERIVED" 'D6n/To Do'
+printf '#!/usr/bin/env bash\nexit 3\n' > "$tmp/lock-err.sh"; chmod +x "$tmp/lock-err.sh"
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-err.sh" brief no
+check "10955 completes no, an unreadable lock answer: no-write + miss stage=lock, never a move" "$TS_RESULT/$TS_DERIVED/$TS_STAGE" 'miss/no-write/lock'
 brief yes
 check "completes yes: To Do" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
 brief -
@@ -87,7 +98,7 @@ rbrief() { # <flag-line> <resume_brief: path|-> - the brief file (flag line abov
     TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" ts_derive HIMMEL-9001
 }
 rbrief no "$tmp/rb.md"
-check "9323 unreadable owner doc: the resume_brief says completes no, so D6n and In Progress" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6n/In Progress'
+check "9323 unreadable owner doc: the resume_brief says completes no, so D6n, and no live lock, so To Do" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6n/To Do'
 rbrief no -
 check "9323 unreadable owner doc, no resume_brief: D6 (control)" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
 rbrief yes "$tmp/rb.md"
@@ -98,7 +109,6 @@ check "9323 unreadable owner doc, the resume_brief names an unreadable file: D6 
 mkdir -p "$tmp/sdbin"
 cat > "$tmp/sdbin/python3" <<'EOF'
 #!/usr/bin/env bash
-# the disposition read of the doc in SD_DOC answers the JSON word in SD_WORD; every other call is the real python3
 if [ -n "${SD_DOC:-}" ] && [ "${2##*/}" = fleet_runtime.py ] && [ "${3-}" = disposition ] && [ "${4-}" = "--doc=$SD_DOC" ]; then
     printf '%s\n' "$SD_WORD"
     exit 0
@@ -153,12 +163,27 @@ printf x > "$tmp/probe-un.md"
 chmod 000 "$tmp/probe-un.md"
 if [ -r "$tmp/probe-un.md" ]; then un_ok=no; else un_ok=yes; fi
 chmod 644 "$tmp/probe-un.md"
+session_up() {
+    WORKER_SESSION_DOC="$1" python3 -I -c 'import ctypes,time; ctypes.CDLL(None).prctl(15,b"claude",0,0,0); time.sleep(60)' &
+    SESSION_PID=$!
+    for _ in 1 2 3 4 5 6 7 8 9 10; do [ "$(cat "/proc/$SESSION_PID/comm" 2>/dev/null)" != claude ] || break; sleep 0.1; done
+}
+session_down() { kill "$SESSION_PID" 2>/dev/null; wait "$SESSION_PID" 2>/dev/null; SESSION_PID=""; }
+if [ -d /proc/self ]; then proc_ok=yes; else proc_ok=no; fi
 for word in legacy refused complete; do
-    for marker in LIVE READY BLOCKED PARKED-USAGE; do
-        want='unknown/D5/In Progress/sb.md'
-        [ "$marker" != PARKED-USAGE ] || want='parked/D5/In Progress/sb.md'
+    sib "\"$word\"" '- 10:00 PARKED-USAGE — sibling parked'
+    check "X07-3 a sibling with a $word attempt, a free lock and a PARKED-USAGE marker keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'parked/D5/In Progress/sb.md'
+    for marker in LIVE READY BLOCKED; do
+        if [ "$proc_ok" = no ]; then
+            echo "SKIP - 10682 a sibling with a $word attempt, a free lock, a $marker marker and no session: no /proc to scan"
+            continue
+        fi
         sib "\"$word\"" "- 10:00 $marker — sibling working"
-        check "X07-3 a sibling with a $word attempt, a free lock and a $marker marker keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" "$want"
+        check "10682 a sibling with a $word attempt, a free lock, a $marker marker and no live session does not own the ticket" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'wrapped/D6/To Do/'
+        session_up "$tmp/sb.md"
+        sib "\"$word\"" "- 10:00 $marker — sibling working"
+        session_down
+        check "10682 control: a sibling with a $word attempt, a free lock, a $marker marker and a live session keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'unknown/D5/In Progress/sb.md'
     done
     sib "\"$word\"" '' '' dir
     check "X07-3 a sibling with a $word attempt, a free lock and a doc that is a directory keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'unknown/D5/In Progress/sbdir.md'
@@ -213,6 +238,37 @@ check "9323 a marker word later in the line is no marker" "$(tm '- 10:00 LIVE �
 printf -- '- 10:00 LIVE — x\n- 10:10 HALTED: out of budget\n' > "$tmp/tm.md"
 check "9323 HALTED with trailing text reads as a wrapped owner (lock held)" "$(ts_worker_state "$tmp/tm.md")" wrapped
 
+check "10673 a SUCCESSION after WRAPPED leaves WRAPPED the newest marker" "$(tm '- 10:00 LIVE — x' '- 22:30 WRAPPED — merged' '- 09:00 SUCCESSION accepted: AQ replaces AP')" WRAPPED
+check "10673 a bus-adopt and a SUCCESSION after WRAPPED leave WRAPPED the newest marker" \
+    "$(tm '- 10:00 LIVE — x' '- 22:30 WRAPPED — merged' '- 09:00 bus-adopt: adopted: d console AP → AQ [via anchor]' '- 09:00 SUCCESSION accepted: AQ replaces AP')" WRAPPED
+check "10673 a SUCCESSION after HALTED leaves HALTED the newest marker" "$(tm '- 10:00 LIVE — x' '- 22:30 HALTED — out of budget' '- 09:00 SUCCESSION accepted: AQ replaces AP')" HALTED
+check "10673 control: a SUCCESSION after LIVE is the newest marker" "$(tm '- 10:00 LIVE — x' '- 09:00 SUCCESSION accepted: AQ replaces AP')" SUCCESSION
+check "10673 control: a LIVE after a SUCCESSION after WRAPPED is the newest marker" "$(tm '- 22:30 WRAPPED — merged' '- 09:00 SUCCESSION accepted: AQ replaces AP' '- 09:10 LIVE — resumed')" LIVE
+printf -- '- 10:00 LIVE — x\n- 22:30 WRAPPED — merged\n- 09:00 bus-adopt: adopted: d console AP → AQ [via anchor]\n- 09:00 SUCCESSION accepted: AQ replaces AP\n' > "$tmp/tm.md"
+check "10673 a WRAPPED doc with a later SUCCESSION and a free lock reads wrapped" "$(TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" ts_worker_state "$tmp/tm.md")" wrapped
+sib '' "$(printf -- '- 10:00 LIVE — x\n- 22:30 WRAPPED — merged\n- 09:00 SUCCESSION accepted: AQ replaces AP')"
+check "10673 a sibling that wrapped before a SUCCESSION leaves the primary's wrap" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'wrapped/D6/To Do/'
+
+n5870="$(printf -- '# HIMMEL-9001 — abandoned worker\n\n## Results (newest at the bottom)\n- 09:10 LIVE — started\n- 11:40 FINDING — a question\n- 11:55 RESOLVED — ruling received\n- 12:30 LIVE — still working')"
+if [ "$proc_ok" = yes ]; then
+    sib '' "$n5870"
+    check "10682 an abandoned sibling (newest LIVE, never wrapped, free lock, no session) does not own the ticket" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'wrapped/D6/To Do/'
+    printf 'HIMMEL-9001\tTask\tIn Progress\n' > "$TS_SNAPSHOT_DIR/jira.tsv"
+    printf '> **Completes ticket:** no\n\n## Results (newest at the bottom)\n- 10:00 WRAPPED — primary ended\n' > "$tmp/sa-no.md"
+    printf -- '%s\n' "$n5870" > "$tmp/sb.md"
+    jq -nc --arg a "$tmp/sa-no.md" --arg b "$tmp/sb.md" '{doc:$a,docs:[$a,$b],prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
+    TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" ts_derive HIMMEL-9001
+    check "10682 an abandoned sibling beside a completes-no primary keeps D6n, not D5" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6n/To Do'
+    session_up "$tmp/sb.md"
+    sib '' "$n5870"
+    session_down
+    check "10682 control: the same sibling with a live session keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'unknown/D5/In Progress/sb.md'
+else
+    echo "SKIP - 10682 an abandoned sibling does not own the ticket: no /proc to scan"
+fi
+sib '' "$n5870" "$tmp/lock.sh"
+check "10682 control: the same sibling with its lock held keeps the ticket owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED/${TS_OWNER_DOC##*/}" 'live/D5/In Progress/sb.md'
+
 hd="$tmp/hard"
 mkdir -p "$hd/-state/workers"
 for f in -f -- plain; do
@@ -235,6 +291,51 @@ for jstatus in "To Do" "In Progress"; do
     ts_derive HIMMEL-9001
     check "never had a worker, closed PRs only, Jira $jstatus: D7 no-write, not D5" "$TS_RULE/$TS_DERIVED" 'D7/no-write'
 done
+
+nodoc() {
+    printf 'HIMMEL-9001\tTask\t%s\n' "$1" > "$TS_SNAPSHOT_DIR/jira.tsv"
+    printf '%s' "$2" > "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
+    jq -nc '{prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
+    ts_derive HIMMEL-9001
+}
+nd_partial='{"ts":"2026-11-19T21:18:00Z","event":"merge","key":"HIMMEL-9001","pr":"21","repo":"octo/repo","contract":"no","result":"noop"}'
+nodoc "IN CI" "$nd_partial"$'\n'
+check "10538 no worker doc, a contract=no merge row, Jira IN CI: D5c, not D7, and no lock, so To Do (10955)" "$TS_RULE/$TS_DERIVED" 'D5c/To Do'
+nodoc "IN CI" '{"ts":"2026-11-19T21:18:00Z","event":"merge","key":"HIMMEL-9001","pr":"21","repo":"octo/repo","contract":"no","result":"noop","remainder":"owed","owed":"chief","owed_due":"2026-11-22"}'$'\n'
+check "10538 no worker doc, a contract=no merge row whose remainder names its owner, Jira IN CI: D5d To Do" "$TS_RULE/$TS_DERIVED/$TS_D5D_OWNER" 'D5d/To Do/chief by 2026-11-22'
+for jstatus in "To Do" "In Progress" "In Review"; do
+    nodoc "$jstatus" "$nd_partial"$'\n'
+    check "10538 no worker doc, a contract=no merge row, Jira $jstatus: skip D7, a hand-set status is never moved" "$TS_RESULT/$TS_RULE/$TS_DERIVED" 'skip/D7/no-write'
+done
+nodoc "In Progress" '{"ts":"2026-11-19T21:18:00Z","event":"merge","key":"HIMMEL-9001","pr":"21","repo":"octo/repo","contract":"no","result":"noop","remainder":"owed","owed":"chief","owed_due":"2026-11-22"}'$'\n'
+check "10538 no worker doc, a contract=no merge row whose remainder names its owner, Jira In Progress: skip D7, not D5d To Do" "$TS_RESULT/$TS_RULE/$TS_DERIVED" 'skip/D7/no-write'
+nodoc "IN CI" '{"ts":"t","event":"sweep","key":"HIMMEL-9001","result":"moved","rule":"D5c","stage":"merged-no-row","merged_pr":"31"}'$'\n'
+check "10538 no worker doc, no merge row, a logged merged-no-row PR, Jira IN CI: D5c with stage merged-no-row" "$TS_RULE/$TS_DERIVED/$TS_STAGE/$TS_MERGED_PR" 'D5c/To Do/merged-no-row/31'
+nodoc "IN CI" '{"ts":"t","event":"sweep","key":"HIMMEL-9001","result":"moved","rule":"D5d","stage":"merged-no-row","merged_pr":"31","owner":"HIMMEL-9002"}'$'\n'
+check "10538 no worker doc, no merge row, a logged merged-no-row PR whose owner is logged, Jira IN CI: D5d with stage merged-no-row" "$TS_RULE/$TS_DERIVED/$TS_STAGE/$TS_D5D_OWNER" 'D5d/To Do/merged-no-row/HIMMEL-9002'
+for jstatus in "To Do" "In Progress" "IN CI"; do
+    nodoc "$jstatus" ''
+    check "10538 control: no PR, no worker doc, no merge row, Jira $jstatus: skip D7" "$TS_RESULT/$TS_RULE/$TS_DERIVED" 'skip/D7/no-write'
+done
+# shellcheck disable=SC2329  # the stubs below stand in for the lib's readers that ts_derive calls
+live_nodoc() { (
+    unset TS_SNAPSHOT_DIR
+    : > "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
+    jq -nc '{prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
+    ts_read_jira() { TS_J_STATUS="IN CI"; TS_J_TYPE=Task; }
+    ts_scan_gate() { return 0; }
+    ts_read_prs() { TS_PRS=""; }
+    _ts_gh() { [ "$1 $2" = "pr list" ] && [ -n "${LIVE_GH+x}" ] || return 1; printf '%s\n' "$LIVE_GH"; }
+    ts_derive HIMMEL-9001
+    printf '%s/%s/%s/%s/%s' "$TS_RESULT" "$TS_RULE" "$TS_DERIVED" "$TS_STAGE" "$TS_MERGED_PR"
+) }
+check "10538 no worker doc, no merge row, a merged PR found by the title search, Jira IN CI: D5c with stage merged-no-row" \
+    "$(LIVE_GH='[{"number":31,"title":"fix(x): [HIMMEL-9001] y"}]' live_nodoc)" '/D5c/To Do/merged-no-row/31'
+check "10538 no worker doc, the merged-PR list unreadable: a miss, not D7" "$(live_nodoc)" 'miss//no-write/gh/'
+check "10538 control: no worker doc, no merged PR in the title search: skip D7" "$(LIVE_GH='[]' live_nodoc)" 'skip/D7/no-write//'
+check "10538 control: no worker doc, a merged PR whose first key is another ticket: skip D7" \
+    "$(LIVE_GH='[{"number":32,"title":"fix(x): [HIMMEL-9002] [HIMMEL-9001] y"}]' live_nodoc)" 'skip/D7/no-write//'
+rm -f "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
 printf 'HIMMEL-9001\tTask\tIn Progress\n' > "$TS_SNAPSHOT_DIR/jira.tsv"
 
 owed_merge() {
@@ -249,10 +350,16 @@ owed_merge operator 2026-11-29
 check "10194 an owed-to-operator partial: D5d with the operator named" "$TS_RULE/$TS_D5D_OWNER" 'D5d/operator by 2026-11-29'
 owed_merge proof 2026-11-29
 check "10220 an executable proof partial is To Do with the actual proof owner" "$TS_RULE/$TS_DERIVED/$TS_D5D_OWNER" 'D5d/To Do/proof by 2026-11-29'
-owed_merge chief not-a-date
-check "10194 an owed row with no valid due date stays D5c" "$TS_RULE/$TS_DERIVED" 'D5c/In Progress'
-owed_merge 'chief;x' 2026-11-22
-check "10194 an owed row whose owner is not chief or operator stays D5c" "$TS_RULE/$TS_DERIVED" 'D5c/In Progress'
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" owed_merge chief not-a-date
+check "10194 an owed row with no valid due date stays D5c (no live lock: To Do, 10955)" "$TS_RULE/$TS_DERIVED" 'D5c/To Do'
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" owed_merge 'chief;x' 2026-11-22
+check "10194 an owed row whose owner is not chief or operator stays D5c (no live lock: To Do, 10955)" "$TS_RULE/$TS_DERIVED" 'D5c/To Do'
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-held.sh" owed_merge chief not-a-date
+check "10955 D5c whose wrapped owner still holds its lock leaves In Progress alone" "$TS_RULE/$TS_DERIVED" 'D5c/In Progress'
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" owed_merge chief not-a-date
+check "10955 D5c with no live lock derives To Do" "$TS_RULE/$TS_DERIVED" 'D5c/To Do'
+TICKET_STATUS_QUEUE_LOCK="$tmp/lock-err.sh" owed_merge chief not-a-date
+check "10955 D5c with an unreadable lock answer: no-write + miss stage=lock" "$TS_RESULT/$TS_DERIVED/$TS_STAGE" 'miss/no-write/lock'
 rm -f "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
 opaths() { printf '## Ticket coverage\n- a: done\n- %s: owed → %s by 2026-11-22\n' "$1" "${2:-chief}" | ts_owed_chief_paths "$HERE/pr_remainder.py" K-1 | cut -f1; }
 check "10194 a bare file name is a repo path" "$(opaths 'the INTAKE age (tick.sh, held)')" 'tick.sh'
@@ -889,6 +996,38 @@ else
     ts_marker_newest "$tmp/u8-locked/gone.md" >/dev/null; check "X07-6 ts_marker_newest: a doc whose directory cannot be searched is rc 1" "$?" 1
 fi
 chmod 755 "$tmp/u8-locked"
+
+reqcount() { grep -c . "$tmp/req-calls" 2>/dev/null || echo 0; }
+ts_required_set() { echo "$1" >> "$tmp/req-calls"; [ -z "${REQ_FAIL:-}" ] || return 1; printf '%s\t\n' "${REQ_SET:-ci-quick}"; }
+export TICKET_STATUS_STATE_DIR="$tmp/state-req"
+export GH_REPO=own/alpha GH_HOST=github.com
+fresh_snapshot() { rm -rf "$tmp/snap-req"; mkdir -p "$tmp/snap-req"; TS_SNAPSHOT_DIR="$tmp/snap-req"; }
+: > "$tmp/req-calls"
+fresh_snapshot; TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
+fresh_snapshot; out=$(TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main)
+check "required set: a second snapshot inside the TTL reads the kept answer, not GitHub" "$(reqcount)" 1
+check "required set: the kept answer is the one returned" "$out" "$(printf 'ci-quick\t')"
+fresh_snapshot; TICKET_STATUS_REQSET_TTL=0 _ts_snap_required_set main >/dev/null
+check "required set: TTL 0 reads GitHub again" "$(reqcount)" 2
+: > "$tmp/req-calls"; rm -rf "$tmp/state-req"
+fresh_snapshot; REQ_FAIL=1 TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
+fresh_snapshot; TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
+check "required set: an unreadable answer is never kept" "$(reqcount)" 2
+printf '1\nstale\n' > "$tmp/state-req/required-set/github.com@own@alpha@main"
+fresh_snapshot; out=$(TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main)
+check "required set: an entry older than the TTL is read again" "$out" "$(printf 'ci-quick\t')"
+rm -rf "$tmp/state-req"
+fresh_snapshot; GH_REPO=own/alpha REQ_SET=alpha-check TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
+fresh_snapshot; out=$(GH_REPO=own/beta REQ_SET=beta-check TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main)
+check "required set: a second repository with the same base inside the TTL reads its own set" "$out" "$(printf 'beta-check\t')"
+fresh_snapshot; out=$(GH_REPO=own/alpha REQ_SET=other TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main)
+check "required set: the first repository still reads its own kept set" "$out" "$(printf 'alpha-check\t')"
+fresh_snapshot; GH_REPO=github.com/own/gamma REQ_SET=com-check TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
+fresh_snapshot; out=$(GH_REPO=ghe.example.com/own/gamma REQ_SET=ghe-check TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main)
+check "required set: the same owner and repository on another host reads its own set" "$out" "$(printf 'ghe-check\t')"
+fresh_snapshot; GH_REPO=ssh://git@host-a:2222/own/delta REQ_SET=a-check TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main >/dev/null
+fresh_snapshot; out=$(GH_REPO=ssh://git@host-b:2222/own/delta REQ_SET=b-check TICKET_STATUS_REQSET_TTL=300 _ts_snap_required_set main)
+check "required set: two hosts behind the same ssh port read their own sets" "$out" "$(printf 'b-check\t')"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"

@@ -124,7 +124,7 @@ Stages wired (a selection; `.pre-commit-config.yaml` holds the full set):
 - **Oxlint ratchets (pre-commit):** oxlint-complexity-ratchet (no NEW
   function above the audited max),
   oxlint-hardening-zero-violations (bug-class hardening — zero violations;
-  pinned oxlint 1.93.0, with root/cwd diagnostics; findings and tool/JSON
+  pinned oxlint 1.94.0, with root/cwd diagnostics; findings and tool/JSON
   failures block, while only a missing `bunx` fails open),
   test-honesty-ratchet (`scripts/lint/check-test-honesty.sh` — refuses a
   NEW inline fixed sleep, raised test timeout or unsignaled poll in a JS/TS
@@ -1391,6 +1391,51 @@ Spec: `scripts/cr/test-ledger-amend-auth.sh`, plus the authenticated-adjudicatio
 `test-clear-cr-marker.sh`, `test-pr-check-rounds.sh` and
 `chief-kit/test-cr-disposition.sh`.
 
+### Core gate bypasses — the signature is waived, never the spec
+
+`jira release core-check` decides, per key, whether a change is core. A core
+key needs a spec the operator signed, unless the key has a bypass. A bypass
+waives the operator's signature. It never waives the spec, the plan or one
+critic round (decisions 804 to 806).
+
+- **Exempt kinds.** Two bypass kinds still print `BYPASS <K> <kind> <reason>`
+  without asking for a spec:
+  - `design`: a key that is core by its label only, on a docs-only worker. This is
+    the worker that writes the spec.
+  - `emergency`: a Bug at Highest or Blocker, or a `red-main` or `regression`
+    label. A red main cannot wait for a critic round.
+- **Gated kinds.** `operator` (a `core-bypass` record), `bug` (any other Bug)
+  and `grandfathered` (a `core-snapshot` record) are gated (decision 857). They
+  are listed in `SPEC_GATED_KINDS` in `scripts/jira/src/release/core.ts`.
+  core-check prints `BYPASS` for one of them only when `specCheck` over the
+  `spec` and `spec-review` records answers that the key has a reviewed spec.
+  Otherwise it prints:
+
+  ```text
+  BYPASS-NEEDS-SPEC <K> <kind> <missing> (bypass: <reason>)
+  ```
+
+  `<missing>` names what is absent, for example `no spec-review record for <K>`
+  or `<path> is missing (<O-id>)`. When core-check has the mirror but no spec
+  reader, it prints `no spec reader` and never `BYPASS`, so the gate fails
+  closed.
+- **What refuses it.** `gen-briefs.py` writes no brief, `brief-lint.sh` (so
+  `headed-arm-worker.sh`) refuses the launch, and `next-dispatchable.sh` lists
+  the key as a `DESIGN` row. `ready-check.sh`, `go.sh` and
+  `merge-on-green.sh` do not read core-check, so a PR already open still merges.
+- **Recording a reviewed spec.** The chief runs
+  `jira release operator spec-review <release> --keys <K> --spec <spec> --plan <plan> --verdict <critic file>`.
+  A CLEAN round is recorded in the critic file and the row only, never in the
+  spec's `## Critic rounds`, because any edit to the spec changes the bytes the
+  CLEAN verdict is bound to. When the spec critic is CLEAN and the plan critic
+  has findings, fold the plan first, then run the spec critic on the final
+  spec bytes.
+
+Spec: `scripts/jira/src/release/core.test.ts`; the callers' rows are in
+`test-gen-briefs.sh`, `test-brief-lint.sh`, `test-next-dispatchable.sh` and
+`test-headed-arm-worker-c.sh`, which feed them
+`scripts/jira/src/release/fixtures/bypass-needs-spec.line`.
+
 ### `block-jira-compound-write.sh` — jira write-shape bounce
 
 Fires on Bash. Jira CLI writes are sanctioned, but approval is
@@ -2464,7 +2509,7 @@ the command.
 ### `operatorFence` — the operator writer's process-tree fence
 
 Every `jira release operator …` writer, and `jira create --decision`, calls
-`operatorFence` (`scripts/jira/src/release/engine.ts`) first. It refuses when
+`operatorFence` (`scripts/jira/src/release/engine-core.ts`) first. It refuses when
 `HIMMEL_CONSOLE_LEG`, `HIMMEL_RELEASE_MANAGER` or `HIMMEL_BRIDGE_SESSION` is `1`
 in its own environment, or in the start-up environment (`/proc/<pid>/environ`)
 of any ancestor (`scripts/jira/src/release/fence-ancestry.ts`). The Telegram
@@ -3202,7 +3247,11 @@ The two files these rules protect have their own fence in
 allowed). T3's settings file, `${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json`,
 holds the instances and their variables: a file-tool or Bash write to it is
 refused from any cwd, and so is a write verb whose destination is T3's home or
-`userdata` directory itself. Claude Code's session registry,
+`userdata` directory itself. The one agent-run writer of that file is
+`bash scripts/himmel-update.sh --only t3_providers` (also the last advisory step
+of a full update): the hook sees only that line, which names no T3 path, so it
+needs no allow; the generator it starts (`scripts/t3/provider-instances.sh`) run
+directly on the file stays refused. Claude Code's session registry,
 `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions/`, holds the T3 thread title
 `session-name.sh` trusts as a chief name: a file-tool or Bash write into it, or
 onto the directory itself, is refused too. Only the registry under the Claude
@@ -3265,19 +3314,48 @@ command through unchecked, since there is no tracked-vs-untracked distinction
 to enforce; any OTHER `git rev-parse` failure (git absent, a transient error)
 still fails closed.
 
-### `block-busy-loop.sh` — plugin sleepless busy-loop deny
+### `block-busy-loop.sh` — plugin sleepless busy-loop and station load deny
 
 Fires on Bash, from the himmel-ops plugin lane
 (`marketplace/plugins/himmel-ops/hooks/block-busy-loop.sh`, wired as
 `${CLAUDE_PLUGIN_ROOT}/hooks/block-busy-loop.sh`), so it fires in an adopter
 repo too, not only a himmel checkout. A himmel session keeps it through the
-user-scope plugin. Denies a `while`/`until ...; do :; done` (or `do true`)
-loop with no `sleep`, which spins a core at 100 % CPU (split out of
-`require-quiet-run.sh`). The deny names a `sleep N` body and
-the portable pid wait `while kill -0 <pid>; do sleep 1; done`, and no repo script. Each deny appends one
-JSONL row (`ts`, `session_id`, `decision`, `loop`, `body`) to `BUSY_LOOP_LOG`
-(default `~/.claude/busy-loop-guard/denials.jsonl`). The match is textual, so
-a heredoc or quoted string holding a whole busy loop is refused as well. Fails
+user-scope plugin. It refuses a call that loads the machine's CPU or memory
+the way a session recreates a slow CI host (operator decision, 2026-11-23),
+in five shapes:
+
+- `loop`: a `while`/`until ...; do :; done` (or `do true`) loop with no
+  `sleep`, which spins a core at 100 % CPU (split out of
+  `require-quiet-run.sh`), also inside a quoted `bash -c` or python string;
+- `lang-loop`: a python loop on a constant true condition (`True` or `1`)
+  whose body is only `pass` or `...`, a node `while (true) {}` or
+  `for (;;) {}`;
+- `load-tool`: `taskset`, `numactl`, `stress` or `stress-ng` at command
+  position (after `do`, `then`, `else`, `elif`, `if`, `while`, `until` or
+  `!`, behind `sudo`, `env`, `nice`, `timeout N` and the like too, and
+  inside the string of a `bash -c`), as a quoted element of an argv list, or
+  as a quoted name followed by a flag; a tool name inside a commit message or
+  a grep pattern is not a command and passes;
+- `null-sink`: `yes` redirected to `/dev/null`, `dd` from `/dev/zero` or
+  `/dev/random` into `/dev/null`;
+- `script-file`: a `.sh`/`.bash`/`.py`/`.js`/`.mjs`/`.cjs` token in run
+  position (the command word, or the first operand of `sh`, `bash`, `python`,
+  `node`, `bun`, `deno`, `source` or `.`; a `git add`, `rm` or `cat` operand is
+  not read) naming a text file of at most 1 MiB that git does not track and whose text holds one of
+  the shapes above (at most 16 files read; a symlink only when its target is
+  inside the cwd). A tracked suite is never read, so a suite that carries a
+  loop as payload text keeps running.
+
+The deny names the three routes that reproduce a load-dependent failure (a
+deadline or timing seam in the test, a CI run, a test VM); a `loop` deny also
+names a `sleep N` body and the portable pid wait
+`while kill -0 <pid>; do sleep 1; done`. It names no repo script. Each deny
+appends one JSONL row (`ts`, `session_id`, `decision`, `shape`, `detail`,
+`loop`, `body`) to `BUSY_LOOP_LOG` (default
+`~/.claude/busy-loop-guard/denials.jsonl`). The match is textual: a binary, a
+file named through a variable, a tracked file or a loop with a non-empty body
+passes, and that remainder is a ceilings-ledger row whose structural fix is a
+CPU cap on the worker's scope. Fails
 OPEN on a missing `jq`, an unparseable payload or a non-Bash tool. Bypass:
 `BUSY_LOOP_BYPASS=1` (launching shell, session-sticky). Spec:
 `marketplace/plugins/himmel-ops/hooks/test-block-busy-loop.sh`.
@@ -4599,9 +4677,10 @@ if this PreToolUse hook is bypassed or disabled.
 It fires on every MCP call (matcher `mcp__.*`): in `.claude/settings.json` as
 its own entry after `block-backend-tier.sh`; in `.codex/hooks.json`, whose
 PreToolUse matchers must stay disjoint, as one `mcp__.*` chain
-`mcp-policy.sh+block-backend-tier.sh` (so in Codex, backend-tier's fail-closed
-jq branches also cover non-Atlassian MCP calls, pinned in
-`test-mcp-policy.sh` §8). As shipped it **always allows**. It classifies each
+`mcp-policy.sh+block-backend-tier.sh+guard-t3-thread-tools.sh+block-t3code-unwatch-open-pr.sh`
+(`mcp-policy.sh` first so denies still leave an audit line; backend-tier's
+fail-closed jq branches also cover non-Atlassian MCP calls, pinned in
+`test-mcp-policy.sh` §8 and `test-codex-hook-parity.sh`). As shipped it **always allows**. It classifies each
 call against the registry `scripts/guardrails/mcp-policy.json` and records what
 it *would* do:
 
@@ -6087,7 +6166,8 @@ https://support.claude.com/en/articles/17154008,
 https://code.claude.com/docs/en/headless.md.
 
 **Rule for scripts in this repo:** scheduled or unattended sites route
-through `scripts/lib/usage-preflight.sh` before spending. Headless calls parse
+through `scripts/lib/usage-preflight.sh` before spending; it refuses when either
+window is at or over `CADENCE_USAGE_MAX_PCT` (default 100). Headless calls parse
 the result with `--output-format json` rather than sniffing prose and declare
 an explicit `--permission-mode` (never `bypassPermissions`). These are
 review-enforced conventions, not structural guarantees.
@@ -6667,6 +6747,10 @@ To merge forward a refused PR: have a lane that may fetch (a native worker or th
 shared object store's `origin/main`, then re-run the check with `--no-fetch`; or hand the PR to a native
 worker, which runs the default path. The default invocation still fetches. `--chain-s2` mode always
 fetches and does not accept `--no-fetch`.
+
+A rollup job (`shell-unit (ubuntu-latest)` and the fail-fast twins, listed once as `ROLLUPS` at the top of the script)
+needs no case row: it has no suite case of its own, so it passes when it is red on the base too, green on latest main,
+and every red job it summarises is itself proven inherited. It still refuses when no summarised job is red on the PR.
 
 Rows: `scripts/handover/test-merge-forward-check.sh` (a `PATH` git stub logs every git call, proving no
 fetch runs under `--no-fetch` and that the default path still runs one).

@@ -26,6 +26,10 @@ def cache_read_weight(model):
     return DEFAULT
 
 
+def cache_create_1h_weight():
+    return float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE_1H", "2.0"))
+
+
 def result_model(result):
     """The model a print-mode JSON result ran on: the first modelUsage key, else None."""
     usage = result.get("modelUsage") if isinstance(result, dict) else None

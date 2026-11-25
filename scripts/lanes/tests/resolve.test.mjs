@@ -46,10 +46,33 @@ test('hermes-critics lane keys off the resolved install', () => {
 // never populates, so they could NEVER resolve; they key off PATH now.
 test('free-bank CLI lanes (copilot/agy/ollama) resolve via PATH', () => {
   const onPath = resolveLanes(REG, ctx({ paths: ['copilot', 'agy', 'ollama'] })).map((l) => l.id);
-  for (const id of ['copilot-cli', 'antigravity-cli', 'ollama-local', 'ollama-cloud']) {
+  for (const id of ['copilot-cli', 'antigravity-t3', 'ollama-local', 'ollama-cloud']) {
     assert.ok(onPath.includes(id), `${id} should resolve with its CLI on PATH`);
     assert.ok(!resolveLanes(REG, ctx()).some((l) => l.id === id), `${id} should not resolve on a bare machine`);
   }
+});
+test('T3 thread lanes resolve without headless dispatch recipes', () => {
+  const lanes = resolveLanes(REG, ctx({ paths: ['agy', 'codex'] }));
+  for (const id of ['antigravity-t3', 'codex-t3']) {
+    const lane = lanes.find((l) => l.id === id);
+    assert.ok(lane, `${id} resolves`);
+    assert.equal(lane.class, 't3-thread');
+    assert.equal(lane.dispatch, undefined);
+  }
+  assert.ok(!REG.lanes.some((l) => l.id === 'antigravity-cli'));
+  const gemini = REG.lanes.find((l) => l.id === 'antigravity-t3');
+  const models = Object.fromEntries(gemini.models.map((m) => [m.id, m]));
+  assert.equal(models['gemini-4-neon'].tier, 'opus');
+  assert.equal(models['gemini-4-carbon'].tier, 'opus');
+  assert.equal(models['gemini-4-hydrogen'].tier, 'sonnet');
+  for (const id of ['gemini-4-argon', 'gemini-3.8-flash']) {
+    assert.equal(models[id].tier, null, `${id} remains unranked`);
+  }
+  assert.notEqual(models['gemini-4-neon'].quota.bank, models['gemini-4-argon'].quota.bank);
+  assert.deepEqual(gemini.thought_level, { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' });
+  assert.doesNotMatch(gemini.bestFor, /matrix-DENIED for vault corpora/);
+  assert.match(gemini.bestFor, /lane-calibration\.md#gemini-4-on-the-t3-antigravity-lane/);
+  assert.deepEqual(REG.lanes.find((l) => l.id === 'codex-t3').models, [{ id: 'gpt-6.1-sol' }]);
 });
 test('buildCtx pathHas does a real PATH lookup (follow-through)', () => {
   const bin = makeTmpDir('lanes-bin-');

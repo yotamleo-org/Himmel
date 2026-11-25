@@ -1,6 +1,7 @@
 import type { Admission } from '../commands/admissions-ledger.js';
 import { admits } from './admits.js';
 import { canonical, type Chain } from './ledger.js';
+import { linesOf, type VersionLines } from './lines.js';
 import type { Baseline, Declaration, EventRow, IssueSnap, OpKind, OperatorRow, RulingRow } from './types.js';
 
 // The one reducer (design §5.3): every caller reads effective state from here,
@@ -43,11 +44,13 @@ export interface ReleaseState {
   integrity: string[];
   burndown: Record<string, Burndown>;
   trend: Record<string, Record<string, number>>;
+  version_lines: Record<string, VersionLines>;
 }
 
 export interface ReduceInput {
   decl: Declaration;
   baselines: Baseline[];
+  base_history?: Baseline[];
   rulings: Chain<RulingRow>;
   operator: Chain<OperatorRow>;
   events: Chain<EventRow>;
@@ -89,7 +92,7 @@ const core = (r: RulingRow) => canonical({ key: r.key, verb: r.verb, outcome: r.
 export const unknownState = (release: string, why: string): ReleaseState => ({
   status: 'UNKNOWN', release, mode: null, versions: [],
   inputs: { mirror: 'UNKNOWN', ledger: 'UNKNOWN', operator: 'UNKNOWN', events: 'UNKNOWN', admissions: 'UNKNOWN' },
-  records: [], leaks: { unauthorized: [], ruled_in_non_member: [] }, integrity: [why], burndown: {}, trend: {},
+  records: [], leaks: { unauthorized: [], ruled_in_non_member: [] }, integrity: [why], burndown: {}, trend: {}, version_lines: {},
 });
 
 interface Partition {
@@ -152,7 +155,7 @@ function partition(inp: ReduceInput, integrity: string[]): Partition {
   };
 }
 
-const changesMembership = (e: EventRow): boolean => e.kind !== 'ack';
+const changesMembership = (e: EventRow): boolean => e.kind !== 'ack' && e.kind !== 'reviewed';
 
 // The mirror is UNKNOWN without a sync, STALE when an event postdates it (those keys read unknown).
 function mirrorOf(inp: ReduceInput): { mirror: InputState; staleKeys: Set<string> } {
@@ -298,11 +301,15 @@ export function reduce(raw: ReduceInput): ReleaseState {
     }
     burndown[v] = bd;
   }
+  const version_lines = linesOf({
+    decl, bases: inp.base_history ?? inp.baselines, effective: [...p.effective.values()], events: inp.events,
+    rulingsBad: inp.rulings.bad, operatorBad: inp.operator.bad, issues: inp.issues, mirrorSync: inp.mirrorSync, records,
+  });
   const fresh = (bad: string[]): InputState => (bad.length ? 'UNKNOWN' : 'FRESH');
   return {
     status: 'OK', release: decl.release, mode: decl.mode, versions: decl.versions,
     inputs: { mirror, ledger: fresh(inp.rulings.bad), operator: fresh(inp.operator.bad), events: fresh(inp.events.bad), admissions: inp.admissions === null ? 'UNKNOWN' : 'FRESH' },
-    records, leaks, integrity, burndown, trend: trendOf(decl, inp.events.verified),
+    records, leaks, integrity, burndown, trend: trendOf(decl, inp.events.verified), version_lines,
   };
 }
 

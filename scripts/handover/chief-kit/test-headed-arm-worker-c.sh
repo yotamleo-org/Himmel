@@ -73,6 +73,44 @@ check "42d a non-worktree scratch resume_cwd is unaffected (rc 0)" "$rc42" "0"
 printf -- '---\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' > "$tmp/c42-doc.md"
 rc42=0; out42="$(bash "$SCRIPT" --dry-run --no-profile PROJ-42-worker "$tmp/c42-doc.md" /tmp/nosig 99999999999 "$tmp/c42.log" claude-sonnet-5 2>&1)" || rc42=$?
 check "42e a doc with no resume_cwd is unaffected (rc 0)" "$rc42" "0"
+
+h_origin="$tmp/h-origin.git"; git init -q --bare "$h_origin"
+repoH="$tmp/repoH"; git clone -q "$h_origin" "$repoH" 2>/dev/null
+git -C "$repoH" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+mkdir -p "$repoH/scripts"; cp -R "$HERE/../../." "$repoH/scripts/"
+git -C "$repoH" branch -q -M main
+git -C "$repoH" push -q origin main
+git -C "$repoH" branch -q feat/h-only-origin; git -C "$repoH" push -q origin feat/h-only-origin; git -C "$repoH" branch -q -D feat/h-only-origin
+repoA="$tmp/repoA"; mkdir -p "$repoA/.claude/worktrees"; git -C "$repoA" init -q
+repoU="$tmp/repoU"; mkdir -p "$repoU/scripts" "$repoU/.claude/worktrees"; git -C "$repoU" init -q
+h_marker="$tmp/h-marker"
+printf '#!/usr/bin/env bash\n: > "%s"\necho origin\n' "$h_marker" > "$repoU/scripts/worktree.sh"
+h_marker_up="$tmp/h-marker-uploadpack"
+printf '#!/bin/sh\n: > "%s"\nexec git-upload-pack "$@"\n' "$h_marker_up" > "$tmp/h-uploadpack.sh"; chmod +x "$tmp/h-uploadpack.sh"
+git -C "$repoU" remote add origin "$h_origin"
+git -C "$repoU" config remote.origin.uploadpack "$tmp/h-uploadpack.sh"
+git -C "$repoU" ls-remote origin >/dev/null 2>&1
+check "H1.unreg control: a direct ls-remote runs the origin transport" "$([ -e "$h_marker_up" ] && echo ran || echo not-run)" "ran"
+rm -f "$h_marker_up"
+reg_h="$tmp/reg-h.json"; printf '{"repos":{"repoH":{"path":"%s"},"repoA":{"path":"%s"}}}\n' "$repoH" "$repoA" > "$reg_h"
+HANDOVER_REGISTRY="$reg_h" dry42 "$repoH/.claude/worktrees/feat+h-only-origin"
+check "H1 a branch only on origin: refused (rc 2)" "$rc42" "2"
+contains "H1 the hint names worktree.sh resume" "$out42" "bash scripts/worktree.sh resume feat/h-only-origin"
+HANDOVER_REGISTRY="$reg_h" dry42 "$repoH/.claude/worktrees/feat+h-nowhere"
+contains "H1.none a branch nowhere: the hint still names new" "$out42" "bash scripts/worktree.sh new feat/h-nowhere --no-prune"
+HANDOVER_REGISTRY="$reg_h" dry42 "$repoU/.claude/worktrees/feat+h-unreg"
+check "H1.unreg an unregistered repo: refused (rc 2)" "$rc42" "2"
+contains "H1.unreg the hint is the old one" "$out42" "bash scripts/worktree.sh new feat/h-unreg --no-prune"
+check "H1.unreg the repo's own scripts/worktree.sh was never run" "$([ -e "$h_marker" ] && echo ran || echo not-run)" "not-run"
+check "H1.unreg the unverified repo's origin transport never ran" "$([ -e "$h_marker_up" ] && echo ran || echo not-run)" "not-run"
+git -C "$repoH" remote set-url origin "$tmp/h-no-such-origin.git"
+HANDOVER_REGISTRY="$reg_h" dry42 "$repoH/.claude/worktrees/feat+h-only-origin"
+contains "H1.unk origin unreachable: the hint names resume" "$out42" "bash scripts/worktree.sh resume feat/h-only-origin"
+contains "H1.unk and says origin could not be reached" "$out42" "origin could not be reached"
+git -C "$repoA" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$repoA" branch -q feat/h-adopt
+HANDOVER_REGISTRY="$reg_h" dry42 "$repoA/.claude/worktrees/feat+h-adopt"
+contains "H1.adopt an adopter repo: the hint names _new-worktree.sh --resume" "$out42" "_new-worktree.sh feat/h-adopt --resume --no-install"
 printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$repo42/.claude/worktrees/feat+missing-42" > "$tmp/c42-doc.md"
 d42="$tmp/c42"; mk_launch_stubs "$d42" "PROJ-42-real"
 rc=0
@@ -1125,6 +1163,63 @@ check "9625-robust a failing tr writes no row" "$(lr_lines "$bad9625/.himmel/lau
 bad9625b="$tmp/bad9625b"; mkdir -p "$bad9625b"; rm -f "$shim9625/tr"
 robust9625 "a failing date" HOME="$bad9625b" PATH="$shim9625:$PATH"
 check "9625-robust a failing date (an empty ts) writes no row" "$(lr_lines "$bad9625b/.himmel/launch-refusals.jsonl")" ""
+
+mkdir -p "$tmp/repo52"
+s52() {
+  local d="$1" nm="$2" sig="$3" pf="$4"; shift 4
+  IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' \
+  HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$pf" \
+  KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" \
+  WORKER_SESSION_REPO="$tmp/repo52" HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" \
+    bash "$SCRIPT" --profile worker-impl "$@" "$nm" "$some_doc" "$sig" "$(( $(date +%s) + 3600 ))" "$d/log" claude-sonnet-5
+}
+log52() { cat "$1/log" 2>/dev/null || true; }
+
+n52a="PROJ-10718-N1-signal"; d52a="$tmp/c52a"; mk_launch_stubs "$d52a" "$n52a"; mkdir -p "$d52a/sigdir"
+rc=0; s52 "$d52a" "$n52a" "$d52a/sigdir/sig" "$PROCEED_PREFLIGHT" >/dev/null 2>&1 || rc=$?
+wait_record "$d52a" || true
+check "52a a launch nobody signals exits 0 (the launcher wrote the signal itself)" "$rc" "0"
+contains "52a ... and the waiter saw the signal" "$(log52 "$d52a")" "signal seen"
+not_contains "52a ... and did not wait for its deadline" "$(log52 "$d52a")" "deadline reached"
+check "52a ... the konsole record exists and the signal file exists" "$([ -s "$d52a/record" ] && echo record || echo none)|$([ -e "$d52a/sigdir/sig" ] && echo sig || echo none)" "record|sig"
+pkill -f -- "$d52a/log" 2>/dev/null || true
+
+n52b="PROJ-10718-N2-nowrite"; d52b="$tmp/c52b"; mk_launch_stubs "$d52b" "$n52b"
+b="$(lr_n)"; rc=0; s52 "$d52b" "$n52b" "$d52b/missing-dir/sig" "$RESV51" >/dev/null 2>&1 || rc=$?
+check "52b a signal that cannot be written refuses the launch (exit 2)" "$rc" "2"
+check "52b ... on a LAUNCH-REFUSED line that says so" "$(log52 "$d52b" | grep -c 'LAUNCH-REFUSED.*cannot write the start signal')" "1"
+check "52b ... no konsole was started" "$([ -s "$d52b/record" ] && echo konsole || echo none)" "none"
+check "52b ... the fleet reservation is released" "$(slot51 "$n52b")" "free"
+check "52b ... one definite refusal receipt: cause start-signal, phase handoff, outcome refused, rc 2" "$(( $(lr_n) - b ))|$(lr_last '[.cause,.phase,.outcome,.rc]|join(" ")')" "1|start-signal handoff refused 2"
+pkill -f -- "$d52b/log" 2>/dev/null || true
+mkdir -p "$d52b/missing-dir"
+rc=0; s52 "$d52b" "$n52b" "$d52b/missing-dir/sig" "$RESV51" >/dev/null 2>&1 || rc=$?
+wait_record "$d52b" || true
+check "52b the relaunch of the same name is admitted and launches" "$rc|$([ -s "$d52b/record" ] && echo konsole || echo none)" "0|konsole"
+not_contains "52b ... and is not refused as a duplicate reservation" "$(log52 "$d52b")" "already exists"
+pkill -f -- "$d52b/log" 2>/dev/null || true
+
+n52c="PROJ-10718-N3-dry"; d52c="$tmp/c52c"; mk_launch_stubs "$d52c" "$n52c"; mkdir -p "$d52c/sigdir"
+rc=0; s52 "$d52c" "$n52c" "$d52c/sigdir/sig" "$PROCEED_PREFLIGHT" --dry-run >/dev/null 2>&1 || rc=$?
+check "52c --dry-run exits 0 and writes no signal file" "$rc|$([ -e "$d52c/sigdir/sig" ] && echo sig || echo none)" "0|none"
+pkill -f -- "$d52c/log" 2>/dev/null || true
+
+n52d="PROJ-10718-N4-capped"; d52d="$tmp/c52d"; mk_launch_stubs "$d52d" "$n52d"; mkdir -p "$d52d/sigdir"
+rc=0; s52 "$d52d" "$n52d" "$d52d/sigdir/sig" "$SKIPPED_FLEET_PREFLIGHT" >/dev/null 2>&1 || rc=$?
+check "52d a launch refused at admission (fleet cap) exits 10 and writes no signal file" "$rc|$([ -e "$d52d/sigdir/sig" ] && echo sig || echo none)" "10|none"
+pkill -f -- "$d52d/log" 2>/dev/null || true
+
+n52e="PROJ-10718-N5-present"; d52e="$tmp/c52e"; mk_launch_stubs "$d52e" "$n52e"; mkdir -p "$d52e/sigdir"
+: > "$d52e/sigdir/sig"; chmod 444 "$d52e/sigdir/sig"
+if [ "$(id -u)" -ne 0 ]; then
+  rc=0; s52 "$d52e" "$n52e" "$d52e/sigdir/sig" "$PROCEED_PREFLIGHT" >/dev/null 2>&1 || rc=$?
+  wait_record "$d52e" || true
+  check "52e a signal file that already exists but is read-only is left alone and the launch goes on" "$rc" "0"
+  contains "52e ... and the waiter saw the signal" "$(log52 "$d52e")" "signal seen"
+  pkill -f -- "$d52e/log" 2>/dev/null || true
+else
+  echo "SKIP - 52e under root (an append to a mode-0444 file succeeds, so the row cannot fail)"
+fi
 
 mkdir -p "$tmp/needs-jira"
 cat > "$tmp/needs-jira/index.js" <<'NNEOF'

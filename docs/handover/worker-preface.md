@@ -110,8 +110,8 @@ exists, pasted, then green. **Impacted suites = every suite that references a
 file you touched**: `bash scripts/cr/impacted-suites.sh`, each run as one literal
 `bash scripts/quiet-run.sh suite -- bash <test-*.sh>` (nothing appended), named
 with counts; local or `= CI`: `scripts/cr/pr-check-ref/33-step3-impacted.md`.
-Restore-to-HEAD, sandbox and corpus-replay rules (destructive
-commands are VM-only): `worker-sections/shell-and-tests.md`.
+Restore-to-HEAD, sandbox and corpus-replay rules (destructive or load
+commands: VM only): `worker-sections/shell-and-tests.md`.
 
 ## Shipping
 
@@ -126,7 +126,8 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
 - Once open: `/pr-check` at the `READY` head → as it enters final CI, `JUDGE-REQUEST <pr> <head>` (`worker-sections/judge-request.md`) → `scripts/check-ci.sh <pr> --max-wait 3000` in `run_in_background`; its exit code decides → `READY` bullet. [prose]
 - **Lint `## Ticket coverage` before `READY`:**
   `bash scripts/handover/chief-kit/ready-check.sh --only 7 <pr>` until it prints
-  `COVERAGE-LINT PASS` (`- <ask>: done` / `- <ask>: deferred → HIMMEL-<n>`, marker last). [prose]
+  `COVERAGE-LINT PASS` (`- <ask>: done` / `- <ask>: deferred → HIMMEL-<n>`, marker last). It also
+  fails on a ticket comment newer than your launch with no `TICKET-SEEN <id>` line in your doc. [prose]
 - **A red CI job on your PR is yours to triage; tell the chief only if it is
   not the PR's fault** (`MAIN-RED <job> <failing case> caused-by: #<pr>`, or
   `caused-by: unknown`, once). Merge-forward
@@ -161,10 +162,11 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
 ## Wrapping up
 
 After merge: run `git -C <primary> pull --ff-only`, re-read the ticket, and post the PR
-number and merge sha on it — moving it yourself only if the PR completes
-it (no Epic) and `--jira-transition` (the chief's `jira-transition=` line) did not (`failed`
+number and merge sha on it — moving it only if the PR completes
+it (no Epic) and `--jira-transition` did not (`failed`
 or any `skip=` but the two below). Never close it by hand on `skip=never-touch-type` or
-`skip=cannot-verify-type`: report it to the chief. Then release the
+`skip=cannot-verify-type`: report it to the chief. Run the live proof
+(`worker-sections/live-proof.md`), release the
 lock (paste the line), append `WRAPPED`, print the closable-window banner and stop:
 the chief's `close-wrapped-worker.sh` ends the session
 once the lock frees. A worker never idles: on an outside event, write `LIVE — HOLD-OUTSIDE pr=<n>` and WRAP with a resume brief; send the

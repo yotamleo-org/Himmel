@@ -38,6 +38,9 @@ export function main(argv, deps = { statMtime: defaultStatMtime, readRecords, no
   const a = parseArgs(argv);
   const nowMs = a.now ?? deps.now;
   const markerMtime = deps.statMtime(a.marker);
+  if (markerMtime != null && deps.statMtime(a.ledger) == null) {
+    return { text: '_where-are-we · ledger missing but a refresh marker exists; freshness unknown_\n\nRefresh cannot certify an absent ledger; the next refresh rebuilds it.', stale: true };
+  }
   let records;
   try {
     records = deps.readRecords(a.ledger);

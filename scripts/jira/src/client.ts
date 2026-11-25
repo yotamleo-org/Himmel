@@ -1,11 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { resolveSecrets } from '../../lib/resolve-secrets.mjs';
 import { envFilePath, readEnvFile, stationJiraBaseUrl, underTest } from './env-file.js';
 import { isJiraRead, jiraIsLoopback, liveTestGuard, liveTestUploadGuard, testJiraPostRefused } from './live-test-guard.js';
-import { preRead, recordVersionWrite, versionWriteScope, type Getter, type WriteRequest } from './release/version-writes.js';
+import { addOnly, mechanismOf, preRead, recordVersionWrite, requestedSet, setOf, versionWriteScope, type Getter, type WriteRequest } from './release/version-writes.js';
+import { withLockAsync } from './release/ledger.js';
+import type { Leave } from './release/leave.js';
 
 const DOTENV_KEYS = new Set([
   'JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'JIRA_PROJECT_KEY',
@@ -196,17 +198,22 @@ async function fetchWithDeadline(
   init: RequestInit,
   isRead: boolean,
   bytes = false,
+  caller?: AbortSignal,
 ): Promise<{ res: Response; body: string | Buffer }> {
   const ms = requestDeadlineMs();
+  const stopped = () => new Error(`Jira request aborted by its caller: ${what}`);
   let waited = 0;
   for (let attempt = 0; ; attempt++) {
+    if (caller?.aborted) throw stopped();
     let res: Response;
     let body: string | Buffer;
-    const signal = AbortSignal.timeout(ms);
+    const deadline = AbortSignal.timeout(ms);
+    const signal = caller ? AbortSignal.any([deadline, caller]) : deadline;
     try {
       res = await fetch(url, { ...init, signal });
       body = bytes ? Buffer.from(await res.arrayBuffer()) : await res.text();
     } catch (err) {
+      if (caller?.aborted) throw stopped();
       if (!signal.aborted) throw err;
       throw new Error(
         `Jira request timed out after ${ms} ms: ${what}` +
@@ -217,7 +224,12 @@ async function fetchWithDeadline(
     const wait = retryAfterMs(res) ?? RETRY_BACKOFF_MS * 2 ** attempt;
     if (wait > RETRY_AFTER_CAP_MS || waited + wait > RETRY_TOTAL_CAP_MS) return { res, body };
     waited += wait;
-    await new Promise((ok) => setTimeout(ok, wait));
+    await new Promise<void>((ok) => {
+      const timer = setTimeout(done, wait);
+      function done() { clearTimeout(timer); caller?.removeEventListener('abort', done); ok(); }
+      caller?.addEventListener('abort', done, { once: true });
+    });
+    if (caller?.aborted) throw stopped();
   }
 }
 
@@ -248,12 +260,12 @@ function hookGetter(auth: string): Getter {
 // Journals a Fix Version write for the repair. Best-effort: any failure leaves the Jira
 // write intact and the change unbound, which is the safe direction. Reads here never re-enter requestAt.
 async function beginVersionWrite(
-  apiBase: string, method: string, path: string, body: unknown, auth: string, writer: string | undefined,
+  apiBase: string, method: string, path: string, body: unknown, auth: string, writer: string | undefined, before?: string[],
 ): Promise<((response: unknown) => Promise<void>) | null> {
   try {
     if (!versionWriteScope(apiBase, method, path, body)) return null;
     const req: WriteRequest = { apiBase, method, path, body, writer, get: hookGetter(auth) };
-    const pre = await preRead(req);
+    const pre = await preRead(req, process.env, before);
     if (!pre) return null;
     return async (response) => {
       try {
@@ -274,6 +286,53 @@ function refuseTestWrite(what: string, url: string): void {
   if (testWriteRefused) throw new Error(`${what}: refused, nothing was posted`);
 }
 
+export const FIX_VERSION_LOCK_WAIT_MS = 10_000;
+
+const ownAdds = new Map<string, Set<string>>();
+
+export const fixVersionLockDir = (key: string): string => join(homedir(), '.himmel', 'locks', 'fixversion', key);
+
+async function underKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const dir = fixVersionLockDir(key);
+  mkdirSync(dir, { recursive: true });
+  const deadline = Date.now() + FIX_VERSION_LOCK_WAIT_MS;
+  for (;;) {
+    let entered = false;
+    try {
+      return await withLockAsync(dir, () => { entered = true; return fn(); }, 0);
+    } catch (e) {
+      if (entered || !/ is held; retry$/.test((e as Error).message)) throw e;
+    }
+    if (Date.now() >= deadline) throw new Error(`${key}: another Fix Version write is running; retry`);
+    await new Promise((ok) => setTimeout(ok, 50));
+  }
+}
+
+async function leaveGuard(key: string, body: unknown, auth: string, writer: string | undefined, leave: Leave | undefined): Promise<string[] | undefined> {
+  const { declsFor, leaveGate } = await import('./release/leave.js');
+  const decls = declsFor(key);
+  if (decls !== 'unreadable' && decls.length === 0) return undefined;
+  let before: string[];
+  try {
+    before = await setOf(hookGetter(auth), key);
+  } catch (e) {
+    if (addOnly(body)) return undefined;
+    throw new Error(`${key}: the Fix Version write is refused, nothing was written: the versions ${key} holds cannot be read (${(e as Error).message})`);
+  }
+  const verdict = leaveGate({ key, before, after: requestedSet(before, body), mechanism: mechanismOf(writer), leave, ownAdds: ownAdds.get(key) ?? new Set() }, decls);
+  if (!verdict.ok) throw new Error(verdict.reason);
+  return before;
+}
+
+function noteOwnAdds(key: string, before: string[] | undefined, body: unknown): void {
+  if (!before) return;
+  const after = requestedSet(before, body) ?? [];
+  const mine = ownAdds.get(key) ?? new Set<string>();
+  for (const v of before) if (!after.includes(v)) mine.delete(v);
+  for (const v of after) if (!before.includes(v)) mine.add(v);
+  ownAdds.set(key, mine);
+}
+
 export async function requestAt<T>(
   apiBase: string,
   method: string,
@@ -281,12 +340,28 @@ export async function requestAt<T>(
   body?: unknown,
   auth: string = authHeader(),
   writer?: string,
+  opts: { signal?: AbortSignal; leave?: Leave } = {},
 ): Promise<T> {
   const base = baseUrl();
   const url = `${base}${apiBase}${path}`;
   await liveTestGuard(apiBase, method, path, body, base, hookGetter(auth));
   if (!isJiraRead(apiBase, method, path)) refuseTestWrite(`${method} ${apiBase}${path}`, url);
-  const record = await beginVersionWrite(apiBase, method, path, body, auth, writer);
+  const key = versionWriteScope(apiBase, method, path, body)?.key;
+  if (!key) return send<T>(apiBase, method, path, body, auth, writer, opts.signal);
+  return underKeyLock(key, async () => {
+    const before = await leaveGuard(key, body, auth, writer, opts.leave);
+    const out = await send<T>(apiBase, method, path, body, auth, writer, opts.signal, before);
+    noteOwnAdds(key, before, body);
+    return out;
+  });
+}
+
+async function send<T>(
+  apiBase: string, method: string, path: string, body: unknown, auth: string, writer: string | undefined,
+  signal: AbortSignal | undefined, before?: string[],
+): Promise<T> {
+  const url = `${baseUrl()}${apiBase}${path}`;
+  const record = await beginVersionWrite(apiBase, method, path, body, auth, writer, before);
   const { res, body: text } = await fetchWithDeadline(`${method} ${apiBase}${path}`, url, {
     method,
     headers: {
@@ -295,7 +370,7 @@ export async function requestAt<T>(
       Accept: 'application/json',
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  }, isJiraRead(apiBase, method, path)) as { res: Response; body: string };
+  }, isJiraRead(apiBase, method, path), false, signal) as { res: Response; body: string };
   assertAuthenticated(res);
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${text}`);
   const parsed = (text.trim() ? JSON.parse(text) : {}) as T;
@@ -304,8 +379,8 @@ export async function requestAt<T>(
 }
 
 // `writer` names the code path that chose a Fix Version, for the journal; a hand path passes nothing.
-export const request = <T>(method: string, path: string, body?: unknown, writer?: string) =>
-  requestAt<T>('/rest/api/3', method, path, body, undefined, writer);
+export const request = <T>(method: string, path: string, body?: unknown, writer?: string, opts?: { signal?: AbortSignal; leave?: Leave }) =>
+  requestAt<T>('/rest/api/3', method, path, body, undefined, writer, opts);
 export const agileRequest = <T>(method: string, path: string, body?: unknown) =>
   requestAt<T>('/rest/agile/1.0', method, path, body);
 export const confluenceV2 = <T>(method: string, path: string, body?: unknown) =>

@@ -15,6 +15,11 @@
 #   --only 7 runs check 7 — a worker's own pre-READY lint of its PR body, the
 #   same code the chief runs — plus the warn-only check 14 and check 20 on
 #   check 7's head. Prints COVERAGE-LINT PASS|FAIL.
+#        ready-check.sh --owner-review [--deadline <s>] <pr-number>...
+#   --owner-review prints, per PR, owner-review: required (owed|satisfied|changes-requested|blocked: why),
+#   not-required (rule-a|no-rule: why) or unknown (snapshot|required-set|gate|gate-mismatch: why): whether a
+#   GitHub code-owner approval is owed. Exit 2 when any line is unknown (--deadline <s>, default 120, bounds the run).
+#   The full run prints the same line (bounded at 20 s) after the three-dot-diff line; it never moves the verdict.
 #   --contract yes|no names the merge contract for check 17: yes when the merge
 #   completes the ticket (merge-on-green.sh --jira-transition), no for a partial
 #   merge. A keyed title with no --contract FAILs by default. --observe opts
@@ -78,9 +83,7 @@
 #      set). FAIL on a missing/empty section, an unmarked line, a
 #      deferred key that does not exist or is already Done/Closed/Resolved/
 #      Won't Do, or is neither residual-labelled, older than the PR's own
-#      ticket, nor linked (either direction, any type) from it. The deferral
-#      keys must also equal the CR ledger's deferred_to rows for the PR head
-#      (or for the reviewed head a same-branch trivial-descendant row names).
+#      ticket, nor linked (either direction, any type) from it.
 #      A Jira error reads UNKNOWN and fails — never a PASS.
 #   9. A PR that changes a plugin bumps that plugin's version (same
 #      rule as check-plugin-drift.sh --bump-required): the manifest version must
@@ -175,8 +178,8 @@
 #      16e no open or non-maintainer-resolved thread and check-ci.sh --threads-only
 #      green, 16f an impacted row with rc 0 and skip_n 0, 16g a ran blast row when
 #      scripts/cr/blast-scope.cjs says the diff touches the scope; for an author not
-#      in ~/.himmel/outside-contributors.json, 16h a CodeRabbit success and 16i a
-#      passed security audit (scripts/lib/outside-contributors.sh). CR_* overrides
+#      in ~/.himmel/outside-contributors.json, 16h no CodeRabbit failure or error status (a running,
+#      missing, skipped or rate-limited one is a note) and 16i a passed security audit (scripts/lib/outside-contributors.sh). CR_* overrides
 #      are unset for 16e and 16h. Prints nothing for any other PR. Not part of `--only 7`.
 #
 # 17. Partial-merge remainder, the merge's exit 26 read at GO time: for a PR
@@ -203,6 +206,14 @@
 #      resolution WARNs and names the other PR. A detection that cannot run (no head,
 #      no detector, a failed fetch or git read, `unknown`) WARNs, never FAILs. Part of
 #      `--only 7`, on check 7's head (headRefOid).
+#
+# 21. Ticket comments seen: a comment on the PR title's ticket created after the worker's launch
+#      record (`launched=` in <cache>/launch-logs/<doc stem>.log) needs a `TICKET-SEEN <comment id>`
+#      line in the worker's handover doc (<handover root>/*/*/<KEY>-N*.md, read through
+#      `jira comments <KEY> --json`), else FAIL naming the comment and the doc. A worker status
+#      comment, a release-ruling audit copy, a merge notice and a polish-noted comment need none. No
+#      ticket key, no doc, no launch record or an unreadable comment list WARNs, never FAILs.
+#      Part of `--only 7`.
 #
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes no CR ledger rows,
@@ -337,6 +348,7 @@ usage() {
     echo "usage: ready-check.sh [--contract yes|no] [--observe] [--require-contract] <pr-number> <full-40-hex-head-sha>" >&2
     echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint plus the conflicts-resolved check 20, for a worker before READY)" >&2
     echo "       ready-check.sh --outside <pr-number>  (prints outside-pr: yes|no, the item 16 predicate)" >&2
+    echo "       ready-check.sh --owner-review [--deadline <s>] <pr-number>...  (prints owner-review: required|not-required|unknown (...), one line per PR; exit 2 when any is unknown)" >&2
     echo "it gates HIMMEL_REPO, else the primary checkout of this script's own tree (check 12 reads the primary checkout as its anchor, pulled to origin's tip), from any directory: bash '$rc_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>" >&2
 }
 
@@ -358,7 +370,11 @@ while :; do
 done
 
 ONLY7=0
+PR_TITLE_READ=""
 OUTSIDE_MODE=0
+OWNER_MODE=0
+OR_PRS=""
+OR_DEADLINE=120
 if [ "${1:-}" = "--only" ]; then
     if [ "$#" -ne 3 ] || [ "$2" != "7" ]; then
         usage
@@ -375,6 +391,23 @@ elif [ "${1:-}" = "--outside" ]; then
     fi
     OUTSIDE_MODE=1
     PR="$2"; SHA=""
+elif [ "${1:-}" = "--owner-review" ]; then
+    shift
+    if [ "${1:-}" = "--deadline" ]; then
+        case "${2:-}" in
+            ''|0*|*[!0123456789]*) usage; echo "ready-check: --deadline takes whole seconds, at least 1 (got '${2:-}')" >&2; exit 2 ;;
+        esac
+        OR_DEADLINE="$2"; shift 2
+    fi
+    [ "$#" -ge 1 ] || { usage; echo "ready-check: --owner-review takes at least one <pr-number>" >&2; exit 2; }
+    for a in "$@"; do
+        case "$a" in
+            ''|0*|*[!0123456789]*) usage; echo "ready-check: pr-number must be digits without a leading zero (got '$a')" >&2; exit 2 ;;
+        esac
+        OR_PRS="$OR_PRS $a"
+    done
+    OWNER_MODE=1
+    PR="$1"; SHA=""
 elif [ "$#" -ne 2 ]; then
     usage
     exit 2
@@ -392,7 +425,7 @@ case "$SHA" in
     *[!0123456789abcdef]*) SHA_OK=0 ;;
     *) SHA_OK=1 ;;
 esac
-if [ "$ONLY7" -eq 0 ] && [ "$OUTSIDE_MODE" -eq 0 ] && { [ "$SHA_OK" -ne 1 ] || [ "${#SHA}" -ne 40 ]; }; then
+if [ "$ONLY7" -eq 0 ] && [ "$OUTSIDE_MODE" -eq 0 ] && [ "$OWNER_MODE" -eq 0 ] && { [ "$SHA_OK" -ne 1 ] || [ "${#SHA}" -ne 40 ]; }; then
     usage
     echo "ready-check: head sha must be the full 40-char lowercase hex sha (got '$SHA')" >&2
     exit 2
@@ -477,7 +510,7 @@ refresh_snapshot_or_keep_last() {
     fi
     [ -z "$err_file" ] || rm -f "$err_file"
 }
-if [ "$ONLY7" -eq 0 ]; then
+if [ "$ONLY7" -eq 0 ] && [ "$OWNER_MODE" -eq 0 ]; then
     refresh_snapshot_or_keep_last
 fi
 
@@ -541,6 +574,166 @@ ROLLUP_LATEST_DEFS='
         | map(max_by(.sort_key));
 '
 
+OR_GATE_CHECK=codeowner-review-gate
+or_hex40() { [ "${#1}" -eq 40 ] && case "$1" in *[!0-9a-f]*) return 1 ;; esac; }
+or_core() {
+    local pr="$1" snap="$2" rb="$3" row rd base_ref base_sha head_sha snap_head rset rs_err rs_why d script out first reason author_part conc to node_bin gate_in
+    row=$(printf '%s' "$snap" | jq -c --argjson n "$pr" 'if type == "array" then (map(select(.number == $n)) | first // empty) else empty end' 2>/dev/null) || row=""  # swallow-ok: a failed read becomes unknown below, never not-required
+    [ -n "$row" ] || { echo "unknown (snapshot: unreadable)"; return 0; }
+    IFS=$'\t' read -r base_ref base_sha head_sha <<EOF
+$rb
+EOF
+    if [ -z "$base_ref" ] || ! or_hex40 "${base_sha:-}" || ! or_hex40 "${head_sha:-}"; then
+        echo "unknown (snapshot: unreadable)"; return 0
+    fi
+    snap_head=$(printf '%s' "$row" | jq -r '.headRefOid // ""' 2>/dev/null) || snap_head=""  # swallow-ok: a failed read becomes unknown below, never not-required
+    if [ "$snap_head" != "$head_sha" ]; then
+        echo "unknown (snapshot: head or base moved during the read)"; return 0
+    fi
+    rd=$(printf '%s' "$row" | jq -r '.reviewDecision // ""' 2>/dev/null) || rd=""  # swallow-ok: a failed read becomes unknown below, never not-required
+    case "$rd" in
+        REVIEW_REQUIRED) echo "required (owed: GitHub reviewDecision REVIEW_REQUIRED)"; return 0 ;;
+        CHANGES_REQUESTED) echo "required (changes-requested: GitHub reviewDecision CHANGES_REQUESTED)"; return 0 ;;
+    esac
+    conc=$(printf '%s' "$row" | jq -r "$ROLLUP_LATEST_DEFS"'
+        (.statusCheckRollup // []) | rollup_rows | latest_per_check
+        | map(select(.name == "'"$OR_GATE_CHECK"'")) | first | if . == null then "none" else (.detail | sub("^[^/]*/"; "")) end' 2>/dev/null) || conc="none"
+    rs_err=$(mktemp "${TMPDIR:-/tmp}/ready-check-owner-rs.XXXXXX" 2>/dev/null) || { echo "unknown (required-set: no scratch file)"; return 0; }  # swallow-ok: a failed read becomes unknown below, never not-required
+    if ! rset=$( ( . "$SELF_DIR/../../lib/ticket-status.sh" >/dev/null 2>&1 || exit 3; ts_required_set "$base_ref" ) 2>"$rs_err" ); then
+        rs_why=$(head -n 1 "$rs_err" | tr -cd '[:print:]' | cut -c1-120)
+        rm -f "$rs_err"
+        echo "unknown (required-set: ${rs_why:-the required checks of $base_ref are unreadable})"; return 0
+    fi
+    rm -f "$rs_err"
+    if ! printf '%s\n' "$rset" | awk -F'\t' -v g="$OR_GATE_CHECK" '$1 == g { f = 1 } END { exit !f }'; then
+        echo "not-required (no-rule: $base_ref does not require $OR_GATE_CHECK)"; return 0
+    fi
+    _TIMEOUT_BIN=""
+    # shellcheck source=../../lib/timeout-bin.sh
+    . "$SELF_DIR/../../lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: no timeout binary is reported as unknown below
+    to="$_TIMEOUT_BIN"
+    node_bin=$(command -v node 2>/dev/null) || node_bin=""  # swallow-ok: a failed read becomes unknown below, never not-required
+    [ -n "$to" ] && [ -n "$node_bin" ] || { echo "unknown (gate: no timeout or node binary to run the gate script)"; return 0; }
+    d=$(mktemp -d "${TMPDIR:-/tmp}/ready-check-owner.XXXXXX" 2>/dev/null) || { echo "unknown (gate: no scratch dir)"; return 0; }  # swallow-ok: a failed read becomes unknown below, never not-required  # prim-ok: ready-check sources no prim.sh
+    script="$d/codeowner-review-gate.mjs"
+    if [ -n "${READY_CHECK_GATE_SCRIPT:-}" ]; then
+        cp "$READY_CHECK_GATE_SCRIPT" "$script" 2>/dev/null || : > "$script"
+    else
+        "$GH" api -H "Accept: application/vnd.github.raw" "repos/$nwo/contents/scripts/ci/codeowner-review-gate.mjs?ref=$base_sha" > "$script" 2>/dev/null || : > "$script"
+    fi
+    if [ ! -s "$script" ]; then
+        rm -rf "$d"; echo "unknown (gate: script unreadable at ${base_sha:0:7})"; return 0
+    fi
+    mkdir "$d/bin"
+    printf '#!/usr/bin/env bash\nPATH=%q exec bash %q "$@"\n' "$PATH" "$GH_READ_LIB" > "$d/bin/gh"
+    chmod +x "$d/bin/gh"
+    out=$(cd "$d" && PATH="$d/bin:$PATH" GH_REPO="$nwo" "$to" -k 5 30 "$node_bin" "$script" --repo "$nwo" --pr-number "$pr" --base-sha "$base_sha" 2>/dev/null)  # swallow-ok: a failed read becomes unknown below, never not-required
+    gate_in=$?
+    rm -rf "$d"
+    if [ "$gate_in" -eq 124 ] || [ "$gate_in" -eq 137 ]; then
+        echo "unknown (gate: timeout after 30 s)"; return 0
+    fi
+    first=$(printf '%s\n' "$out" | head -n 1 | tr -cd '[:print:]—' | cut -c1-200)
+    case "$first" in
+        "codeowner-review-gate: PASS — "*" — not an outside PR")
+            reason="${first#codeowner-review-gate: PASS — }"; reason="${reason% — not an outside PR}"
+            case "$conc" in
+                FAILURE|ERROR|TIMED_OUT) echo "unknown (gate-mismatch: the gate script passes $pr as not an outside PR but its check at the head is $conc)"; return 0 ;;
+            esac
+            author_part="$reason"
+            if [ "$rd" = APPROVED ]; then echo "required (satisfied: GitHub reviewDecision APPROVED)"; return 0; fi
+            echo "not-required (rule-a: $author_part; check at head: $conc)" ;;
+        "codeowner-review-gate: PASS — every required code owner"*)
+            echo "required (satisfied: ${first#codeowner-review-gate: PASS — })" ;;
+        "codeowner-review-gate: FAIL — "*)
+            case "$conc" in
+                SUCCESS|SKIPPED) echo "unknown (gate-mismatch: the gate script fails $pr but its check at the head is $conc)"; return 0 ;;
+            esac
+            reason="${first#codeowner-review-gate: FAIL — }"
+            case "$reason" in
+                *"code-owner approval at the current head is required from:"*) echo "required (owed: $reason)" ;;
+                *) echo "required (blocked: $reason)" ;;
+            esac ;;
+        *) echo "unknown (gate: ${first:-no output from the gate script})" ;;
+    esac
+}
+owner_review_of() {
+    local res rb rb2
+    unset GH_READ_REFUSED_FILE
+    rb=$("$GH" api "repos/$nwo/pulls/$1" --jq '[.base.ref,.base.sha,.head.sha]|@tsv' 2>/dev/null) || rb=""  # swallow-ok: a failed read becomes unknown below, never not-required
+    res=$(or_core "$1" "$2" "$rb") || res="unknown (gate: derivation failed)"
+    case "$res" in
+        unknown\ \(snapshot*) ;;
+        *)
+            rb2=$("$GH" api "repos/$nwo/pulls/$1" --jq '[.base.ref,.base.sha,.head.sha]|@tsv' 2>/dev/null) || rb2=""  # swallow-ok: a failed read becomes unknown below, never not-required
+            [ "$rb" = "$rb2" ] || res="unknown (snapshot: head or base moved during the read)" ;;
+    esac
+    printf '%s\n' "$res"
+}
+
+or_bounded() {
+    local secs="$1" pr="$2" snap="$3" f pid end kids p res
+    f=$(mktemp "${TMPDIR:-/tmp}/ready-check-owner-out.XXXXXX" 2>/dev/null) || { echo "unknown (gate: no scratch file)"; return 0; }  # swallow-ok: a failed read becomes unknown below, never not-required
+    ( owner_review_of "$pr" "$snap" > "$f" 2>/dev/null ) &
+    pid=$!
+    end=$(( $(date +%s) + secs ))
+    while kill -0 "$pid" 2>/dev/null; do
+        if [ "$(date +%s)" -ge "$end" ]; then
+            kids=$(_rcd_descendants "$pid")
+            kill -TERM "$pid" 2>/dev/null
+            for p in $kids; do kill -TERM "$p" 2>/dev/null; done
+            { wait "$pid"; } 2>/dev/null
+            rm -f "$f"
+            echo "unknown (gate: deadline)"; return 0
+        fi
+        sleep 0.2
+    done
+    { wait "$pid"; } 2>/dev/null
+    res=$(head -n 1 "$f")
+    rm -f "$f"
+    printf '%s\n' "${res:-unknown (gate: no result)}"
+}
+
+or_snapshots() {
+    local dir="$1" chunk n p out
+    shift
+    while [ "$#" -gt 0 ]; do
+        chunk=""; n=0
+        while [ "$#" -gt 0 ] && [ "$n" -lt 10 ]; do chunk="$chunk $1"; shift; n=$((n + 1)); done
+        # shellcheck disable=SC2086  # chunk is a list of validated PR numbers
+        if out=$(env -u GH_READ_REFUSED_FILE GH_CMD="$GH" GH_PR_SNAPSHOT_LOCK_WAIT=5 bash "$SNAPSHOT_SCRIPT" "$nwo" 0 $chunk 2>/dev/null); then  # swallow-ok: a failed read becomes unknown below, never not-required
+            for p in $chunk; do printf '%s' "$out" > "$dir/$p.json"; done
+        else
+            for p in $chunk; do
+                if out=$(env -u GH_READ_REFUSED_FILE GH_CMD="$GH" GH_PR_SNAPSHOT_LOCK_WAIT=5 bash "$SNAPSHOT_SCRIPT" "$nwo" 0 "$p" 2>/dev/null); then  # swallow-ok: a failed read becomes unknown below, never not-required
+                    printf '%s' "$out" > "$dir/$p.json"
+                fi
+            done
+        fi
+    done
+}
+
+owner_review_mode() {
+    local dir p line any=0 multi=0 end left
+    # shellcheck disable=SC2086  # OR_PRS is a list of validated PR numbers
+    set -- $OR_PRS
+    [ "$#" -le 1 ] || multi=1
+    dir=$(mktemp -d "${TMPDIR:-/tmp}/ready-check-owner-snap.XXXXXX" 2>/dev/null) || { echo "ready-check: no scratch dir; nothing was judged" >&2; exit 2; }  # swallow-ok: a failed read becomes unknown below, never not-required  # prim-ok: ready-check sources no prim.sh
+    end=$(( $(date +%s) + OR_DEADLINE ))
+    or_snapshots "$dir" "$@"
+    for p in "$@"; do
+        left=$(( end - $(date +%s) ))
+        if [ "$left" -le 0 ]; then line="unknown (gate: deadline)"
+        else line=$(or_bounded "$left" "$p" "$(cat "$dir/$p.json" 2>/dev/null)"); fi  # swallow-ok: a failed read becomes unknown below, never not-required
+        case "$line" in unknown*) any=1 ;; esac
+        if [ "$multi" -eq 1 ]; then printf '#%s owner-review: %s\n' "$p" "$line"; else printf 'owner-review: %s\n' "$line"; fi
+    done
+    rm -rf "$dir"
+    [ "$any" -eq 0 ] || exit 2
+    exit 0
+}
+if [ "$OWNER_MODE" -eq 1 ]; then owner_review_mode; fi
+
 if [ "$ONLY7" -eq 0 ]; then
 
 # ── 1. head + mergeStateStatus ──────────────────────────────────────────────
@@ -570,13 +763,14 @@ total=0
 gated=0
 bad=""
 skipped=""
+cr_warn=""
 if [ -n "$rollup" ] && [ "$rollup" != "null" ]; then
     # Judge each check IDENTITY by its LATEST run, not any matching row — a
     # superseded CANCELLED run must not fail a check whose later run at the
     # same head is green (evidence: PR #1317's pr-title-lint
     # CANCELLED 08:19:58Z then SUCCESS 08:26:47Z). Identity and latest are
     # ROLLUP_LATEST_DEFS above, shared with 16c.
-    grouped=$(printf '%s' "$rollup" | jq -c --argjson ng "$ng_json" "$ROLLUP_LATEST_DEFS"'
+    grouped=$(printf '%s' "$rollup" | jq -c --argjson ng "$ng_json" --arg crctx "CodeRabbit" "$ROLLUP_LATEST_DEFS"'
         rollup_rows
         # A skipped job reports its unevaluated name: expression, so a fresh green
         # run never re-reports a job (fail-fast-lint) an older run of the same
@@ -594,10 +788,12 @@ if [ -n "$rollup" ] && [ "$rollup" != "null" ]; then
               ($green | any(.workflow == $e.workflow and .run > $e.run))) | not))
         | latest_per_check
         | map(.listed = (.is_checkrun | not) and (.name != null and (.name as $n | $ng | index($n)) != null))
+        | map(.crpend = ((.is_checkrun | not) and (.ok | not) and .name == $crctx and (.detail == "PENDING" or .detail == "IN_PROGRESS")))
         | {total: length,
            gated: (map(select(.listed | not)) | length),
-           bad: (map(select((.ok | not) and (.listed | not))) | map("\(.name // "?")=\(.detail)") | join(", ")),
-           skipped: (map(select((.ok | not) and .listed)) | map("\(.name)=\(.detail)") | join(", "))}
+           bad: (map(select((.ok | not) and (.listed | not) and (.crpend | not))) | map("\(.name // "?")=\(.detail)") | join(", ")),
+           skipped: (map(select((.ok | not) and .listed)) | map("\(.name)=\(.detail)") | join(", ")),
+           crpend: (map(select(.crpend)) | map("\(.name)=\(.detail)") | join(", "))}
     ' 2>/dev/null)
     total=$(printf '%s' "$grouped" | jq -r '.total // 0' 2>/dev/null)
     gated=$(printf '%s' "$grouped" | jq -r '.gated // 0' 2>/dev/null) # swallow-ok: an unreadable count reads 0, which fails row 2 as no gating checks
@@ -605,6 +801,27 @@ if [ -n "$rollup" ] && [ "$rollup" != "null" ]; then
     skipped=$(printf '%s' "$grouped" | jq -r '.skipped // empty' 2>/dev/null) # swallow-ok: an unreadable list is empty, so nothing is reported as skipped
     case "$total" in ''|*[!0-9]*) total=0 ;; esac
     case "$gated" in ''|*[!0-9]*) gated=0 ;; esac
+    crpend=$(printf '%s' "$grouped" | jq -r '.crpend // empty' 2>/dev/null) # swallow-ok: an unreadable value is empty, so no exemption
+    if [ -n "$crpend" ]; then
+        cr_confirmed=""
+        cr_lib_dir="$(cd "$SELF_DIR/../../lib" 2>/dev/null && pwd)" # swallow-ok: no lib dir leaves cr_confirmed empty, so no exemption
+        _TIMEOUT_BIN=""
+        # shellcheck source=/dev/null
+        [ ! -f "$cr_lib_dir/timeout-bin.sh" ] || . "$cr_lib_dir/timeout-bin.sh" 2>/dev/null # swallow-ok: an empty _TIMEOUT_BIN leaves cr_confirmed empty
+        if [ -f "$cr_lib_dir/coderabbit-signal.sh" ] && [ -n "$_TIMEOUT_BIN" ]; then
+            # shellcheck disable=SC2016  # the body expands in the child shell
+            cr_confirmed=$(GH_CMD="$GH" "$_TIMEOUT_BIN" -k 5 20 bash -c '
+                . "$1" 2>/dev/null || exit 0  # read-sink-ok: $1 is the own lib path built from this script dir, never user input
+                [ "$(cr_signal_state "$2" "$3" "$4" 2>/dev/null)" = pending ] && echo pending' _ "$cr_lib_dir/coderabbit-signal.sh" "$owner" "$repo" "$SHA") || cr_confirmed="" # swallow-ok: a timeout or an unreadable status means no exemption
+        fi
+        if [ "$cr_confirmed" = pending ]; then
+            gated=$((gated - 1))
+            total=$((total - 1))
+            cr_warn="[WARN] 2. CodeRabbit status is still pending (${crpend}) — best effort, not gating (decision 1066); an unresolved CodeRabbit thread or a failure still blocks"
+        else
+            bad="${bad:+$bad, }$crpend"
+        fi
+    fi
 fi
 
 if [ -z "$pv" ]; then
@@ -612,8 +829,8 @@ if [ -z "$pv" ]; then
     mark_fail
 elif [ "$head_now" = "$SHA" ] && [ "$mss" = "CLEAN" ]; then
     echo "[PASS] 1. head=$head_now matches, mergeStateStatus=CLEAN"
-elif [ "$head_now" = "$SHA" ] && [ "$mss" = "UNSTABLE" ] && [ "$gated" -gt 0 ] && [ -z "$bad" ] && [ -n "$skipped" ]; then
-    echo "[PASS] 1. head=$head_now matches, mergeStateStatus=UNSTABLE with only non-gating checks not green ($skipped)"
+elif [ "$head_now" = "$SHA" ] && [ "$mss" = "UNSTABLE" ] && [ "$gated" -gt 0 ] && [ -z "$bad" ] && { [ -n "$skipped" ] || [ -n "$cr_warn" ]; }; then
+    echo "[PASS] 1. head=$head_now matches, mergeStateStatus=UNSTABLE with only non-gating checks not green (${skipped:+$skipped${cr_warn:+, }}${cr_warn:+${crpend:-CodeRabbit pending}})"
 else
     if [ "$mss" = "BEHIND" ]; then
         echo "[FAIL] 1. head=$head_now (want $SHA), mergeStateStatus=$mss (want CLEAN) — behind main: git fetch origin && git merge origin/main into the branch, push, then re-run with the new head sha (nothing to do when mergeStateStatus is CLEAN and the head matches)"
@@ -645,6 +862,7 @@ else
         mark_fail
     fi
 fi
+[ -z "$cr_warn" ] || echo "$cr_warn"
 
 # ── 3. unresolved review threads (paginated, mirrors scripts/check-ci.sh) ──
 threads_ok=1
@@ -777,7 +995,11 @@ else
     missing=$(printf '%s' "$commits_json" | jq -r --arg merges "$merge_oids" '
         ($merges | split("\n") | map(select(length > 0))) as $m
         | .[] | select((.oid // "") as $o | ($m | index($o)) == null)
-        | .messageHeadline
+        | .messageHeadline as $h
+        | (.messageBody // "") as $b
+        | if ($h | endswith("…")) and ($b | startswith("…"))
+          then ($h | .[0:-1]) + ($b | split("\n")[0] | ltrimstr("…"))
+          else $h end
     ' 2>/dev/null | grep -vE "$TICKET_PATTERN" || true)
     if [ -z "$missing" ]; then
         echo "[PASS] 6. every commit subject carries a ticket ID"
@@ -813,10 +1035,7 @@ fi  # ONLY7 == 0: checks 1-6
 # cited ticket, each marked `done` or `deferred → <KEY>` (`->` also accepted).
 # Whether a line's "done" is TRUE stays the chief's diff read; this check
 # makes an unaccounted ask structurally visible and a deferral real: every
-# deferred key must exist and still be open, and the deferral keys must equal
-# the CR ledger's deferred_to rows for the PR head, or for the reviewed head a
-# same-branch trivial-descendant row names. A Jira error reads UNKNOWN and
-# fails — never a PASS. JIRA_CMD overrides the CLI (tests), like GH_CMD.
+# deferred key must exist and still be open.
 jira_run() {
     if [ -n "${JIRA_CMD:-}" ]; then
         "$JIRA_CMD" "$@" 2>&1
@@ -945,7 +1164,7 @@ cov_section=$(printf '%s\n' "$cov_body" | awk '
     /^##[ \t]+[Tt]icket [Cc]overage[ \t]*$/ { f = 1; next }
     f && /^#/ { exit }
     f')
-cov_lines=$(printf '%s\n' "$cov_section" | grep -E '^[[:space:]]*([-*]|[0-9]+[.)])[[:space:]]' || true)
+cov_lines=$(printf '%s\n' "$cov_section" | grep -E '^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]' || true)
 # A dependency-only Dependabot PR (author app/dependabot, every changed file a
 # manifest or lockfile by name) has no asks to cover; its coverage is generated.
 dep_pr_generated() {
@@ -968,7 +1187,7 @@ elif [ -z "$cov_lines" ]; then
     cov_shape_help
     mark_fail
 else
-    cov_bad=""; cov_shape=0; cov_body_keys=""
+    cov_bad=""; cov_shape=0; cov_body_keys=""; cov_wdues=""; cov_adm=""
     # A deferral must land on a residual-verb ticket or one that predates this PR's own.
     cov_own=""
     # an owed line is decided by the anchor's reader alone (the one grammar owner, as item 17 reads it): item 7 checks only its window
@@ -1002,6 +1221,7 @@ else
         cov_def=$(printf '%s\n' "$cov_line" | grep -ioE 'deferred[[:space:]]*(→|->)[^[:alnum:]]*[A-Za-z][A-Za-z0-9]*-[0-9]+[^[:alnum:]]*$' || true)
         if [ -n "$cov_def" ]; then
             cov_key=$(printf '%s\n' "$cov_def" | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+' | tr '[:lower:]' '[:upper:]')
+            cov_adm_k=failed; cov_rc=""
             if cov_out=$(jira_get "$cov_key"); then
                 cov_status=$(printf '%s\n' "$cov_out" | jq -r '.fields.status.name // empty' 2>/dev/null || true) # swallow-ok: unparseable output leaves the status empty, which reads UNKNOWN below
                 cov_canon=$(printf '%s\n' "$cov_out" | jq -r '(.key // empty) | ascii_upcase' 2>/dev/null || true) # swallow-ok: unparseable output leaves the key empty, which reads UNKNOWN below
@@ -1022,6 +1242,10 @@ else
                     else
                         cov_bad="$cov_bad; $cov_key was made by a raw jira create (no 'residual' label, not older than ${cov_own:-the PR ticket}, not linked from it) - file it with: jira create --residual-of <parent> --fu-class escape|hardening --class <id>, or link a plain ticket: jira link ${cov_own:-<PR ticket>} $cov_key"
                     fi
+                elif [ "$cov_rc" = 0 ]; then
+                    cov_adm_k=linked
+                else
+                    cov_adm_k=residual-or-older
                 fi
                 cov_body_keys="$cov_body_keys $cov_key"
             elif printf '%s\n' "$cov_out" | grep -qiE '404|does not exist'; then
@@ -1029,6 +1253,7 @@ else
             else
                 cov_bad="$cov_bad; $cov_key UNKNOWN (jira get failed)"
             fi
+            cov_adm="$cov_adm $cov_key=$cov_adm_k"
         elif printf '%s\n' "$cov_line" | grep -qiE "$cov_owed_re"; then
             cov_oans=""; cov_orc=0
             if [ -f "$cov_reader" ]; then
@@ -1044,7 +1269,9 @@ else
                 cov_bad="$cov_bad; owed line is not accepted (who chief, operator or proof, then by YYYY-MM-DD, a real date): $cov_oline"
                 cov_shape=1
             else
-                cov_window_check "$(printf '%s' "$cov_oans" | cut -f3)" "$cov_oline"
+                cov_odue=$(printf '%s' "$cov_oans" | cut -f3)
+                cov_window_check "$cov_odue" "$(printf '%s' "$cov_oans" | cut -f4- | tr '\t' ' ' | cut -c1-160)"
+                cov_wdues="$cov_wdues $cov_odue"
             fi
         elif ! printf '%s\n' "$cov_line" | grep -qiE '(^|[^[:alnum:]])done[^[:alnum:]]*$' \
             || printf '%s\n' "$cov_line" | grep -qiE '(not|n.t)[[:space:]]+done'; then
@@ -1057,18 +1284,24 @@ EOF
     if printf '%s\n' "$cov_body" | grep -qiE "$cov_owed_re"; then
         cov_wans=""; cov_wrc=0
         if [ -f "$cov_reader" ]; then
-            cov_wans=$(printf '%s\n' "$cov_body" | python3 -I "$cov_reader" none 2>/dev/null) || cov_wrc=$?  # swallow-ok: a non-zero rc or empty answer fails the line below
+            cov_wans=$(printf '%s\n' "$cov_body" | python3 -I "$cov_reader" --owed-lines none 2>/dev/null) || cov_wrc=$?  # swallow-ok: a non-zero rc fails the body below
         else
             cov_wrc=3
         fi
-        if [ "$cov_wrc" -ne 0 ] || [ -z "$cov_wans" ]; then
+        if [ "$cov_wrc" -ne 0 ]; then
             cov_bad="$cov_bad; cannot read the body's owed line (the anchor's scripts/lib/pr_remainder.py is missing or gave no answer)"
             cov_shape=1
-        elif [ "${cov_wans%%$'\t'*}" = owed ]; then
-            cov_window_check "$(printf '%s' "$cov_wans" | cut -f3)" "$(printf '%s' "$cov_wans" | cut -f4 | cut -c1-160)"
+        else
+            while IFS= read -r cov_wrow; do
+                [ -n "$cov_wrow" ] || continue
+                cov_wdue=$(printf '%s' "$cov_wrow" | cut -f2)
+                case " $cov_wdues " in *" $cov_wdue "*) continue ;; esac
+                cov_window_check "$cov_wdue" "$(printf '%s' "$cov_wrow" | cut -f4- | tr '\t' ' ' | cut -c1-160)"
+            done <<EOF
+$cov_wans
+EOF
         fi
     fi
-    # The ledger's deferrals at the PR head and the body's deferral lines must name the same tickets.
     cov_head="$SHA"
     if [ "$ONLY7" -eq 1 ]; then
         cov_head=$("$GH" pr view "$PR" --repo "$nwo" --json headRefOid --jq '.headRefOid' 2>/dev/null | tr -d '\r') || cov_head="" # swallow-ok: an unreadable head is reported below
@@ -1091,10 +1324,17 @@ EOF
                     *) cov_bad="$cov_bad; $cov_k is deferred in the CR ledger for $cov_h12 but no coverage line defers to it" ;;
                 esac
             done
-            for cov_k in $cov_body_keys; do
-                case " $cov_led_keys " in
-                    *" $cov_k "*) ;;
-                    *) cov_bad="$cov_bad; $cov_k is deferred in the body but has no deferred_to row in the CR ledger for $cov_h12" ;;
+            for cov_k in $(printf '%s' "$cov_body_keys" | tr ' ' '\n' | sort -u); do
+                case " $cov_led_keys " in *" $cov_k "*) continue ;; esac
+                case " $cov_adm " in
+                    *" $cov_k=failed "*|*" $cov_k=linked "*) ;;
+                    *" $cov_k=residual-or-older "*)
+                        cov_linked "$cov_own" "$cov_k" && cov_rc=0 || cov_rc=$?
+                        if [ "$cov_rc" -eq 2 ]; then
+                            cov_bad="$cov_bad; $cov_k UNKNOWN (jira links failed for $cov_own)"
+                        elif [ "$cov_rc" -ne 0 ]; then
+                            cov_bad="$cov_bad; $cov_k is deferred in the body but has no deferred_to row in the CR ledger for $cov_h12 - link it from the PR's ticket (jira link ${cov_own:-<PR ticket>} $cov_k) or record the review finding's deferral"
+                        fi ;;
                 esac
             done
         else
@@ -1794,6 +2034,7 @@ check_bug_origin() {
     else
         bo_title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || bo_title=""  # swallow-ok: an unreadable title warns just below
     fi
+    PR_TITLE_READ="$bo_title"
     if [ -z "$bo_title" ]; then
         echo "[WARN] 14. bug-origin not checked: title"
         return 0
@@ -2047,11 +2288,11 @@ check_outside_pr() {
         o_cr=$(env -u CR_OK_DESC_RE -u CR_SKIP_DESC_RE -u CR_BOT_USER_ID -u CR_STATUS_CONTEXT GH_CMD="$GH" \
             "$_TIMEOUT_BIN" -k 5 20 bash -c '. "$1" 2>/dev/null || exit 3; cr_signal_state "$2" "$3" "$4"' \
             _ "$o_lib/coderabbit-signal.sh" "$owner" "$repo" "$SHA" 2>/dev/null </dev/null) || o_cr="unreadable"  # read-sink-ok: $1 is this checkout's own lib path
-        if [ "$o_cr" = success ]; then
-            echo "[PASS] 16h. CodeRabbit reviewed $o_h7 (success)"
-        else
-            o16_fail h "CodeRabbit at $o_h7 is ${o_cr:-unreadable}, want success: stage 1, comment \`@coderabbitai review\` on the PR and wait for the status at $o_h7"
-        fi
+        case "$o_cr" in
+            success) echo "[PASS] 16h. CodeRabbit reviewed $o_h7 (success)" ;;
+            failure|error) o16_fail h "CodeRabbit at $o_h7 is $o_cr, want success: fix the finding it posted, or comment \`@coderabbitai review\` on the PR and wait for the status at $o_h7" ;;
+            *) echo "[PASS] 16h. CodeRabbit at $o_h7 is ${o_cr:-unreadable} (best effort, not gating)" ;;
+        esac
         if outside_audit_passed "$PR" "$SHA" "$o16_branch"; then
             echo "[PASS] 16i. the outside security audit passed at $o_h7"
         else
@@ -2596,6 +2837,116 @@ EOF
 }
 check_conflicts_resolved
 
+# shellcheck disable=SC2016  # python program text
+C21_EVAL='import json, re, sys
+from datetime import datetime
+def when(s):
+    s = re.sub(r"Z$", "+0000", s.strip())
+    s = re.sub(r"([+-][0-9][0-9]):([0-9][0-9])$", r"\1\2", s)
+    for f in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z"):
+        try:
+            return datetime.strptime(s, f)
+        except ValueError:
+            pass
+    raise ValueError(s)
+try:
+    launched = when(sys.argv[1])
+    comments = json.load(sys.stdin)
+    if not isinstance(comments, list):
+        raise ValueError("not a list")
+except ValueError:
+    sys.exit(3)
+seen = set()
+for path in sys.argv[2:]:
+    try:
+        text = open(path, encoding="utf-8", errors="replace").read()
+    except OSError:
+        continue
+    for m in re.finditer(r"TICKET-SEEN[ \t]+([0-9]+(?:[ \t,]+[0-9]+)*)", text):
+        seen.update(re.findall(r"[0-9]+", m.group(1)))
+machine = re.compile(r"^\s*(\[release-ruling |WORKER \S+ \(|PR #[0-9]+ \(|polish-noted:)")
+total = 0
+for c in comments:
+    try:
+        at = when(c["created"])
+    except (KeyError, TypeError, ValueError):
+        sys.exit(3)
+    cid, body = str(c.get("id") or "unknown"), str(c.get("body") or "")
+    if at <= launched or machine.match(body):
+        continue
+    total += 1
+    if cid not in seen:
+        print("\t".join([cid, c["created"], str(c.get("author") or "unknown"), " ".join(body.split())[:80]]))
+print("checked\t%d" % total)'
+check_ticket_comments() {
+    local title key lib root docs doc stem cache launched first cj rc out cid created who snippet n_bad=0 n_checked=0 args=()
+    if [ "$ONLY7" -eq 1 ]; then
+        title="${PR_TITLE_READ:-}"
+    else
+        title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || title=""  # swallow-ok: an unreadable title is reported as no key just below
+    fi
+    key=""
+    lib="$(cd "$SELF_DIR/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir leaves the key unread, reported just below
+    if [ -n "$title" ] && grep -Eq '[A-Za-z][A-Za-z0-9]*-[0-9]+' <<< "$title" && [ -f "$lib/ticket-status.sh" ]; then
+        key=$(
+            # shellcheck source=/dev/null
+            . "$lib/ticket-status.sh" 2>/dev/null  # swallow-ok: declare -F on the next line decides
+            declare -F ticket_key_from_title >/dev/null || exit 70
+            ticket_key_from_title "$title"
+        ) || key=""  # swallow-ok: no key reads as not checked, just below
+    fi
+    if [ -z "$key" ]; then
+        echo "[WARN] 21. ticket comments not checked: the PR title carries no [KEY], or its reader is unreadable"
+        return 0
+    fi
+    root=$(. "$lib/handover-path.sh" 2>/dev/null && handover_root 2>/dev/null) || root=""  # swallow-ok: no handover root reads as no doc, just below
+    docs=""
+    if [ -n "$root" ]; then
+        docs=$(find "$root" -maxdepth 4 -type f -name "${key}-N*.md" -not -path '*/specs/*' 2>/dev/null | sort)  # gnu-ok: BSD find takes -maxdepth too
+    fi
+    if [ -z "$docs" ]; then
+        echo "[WARN] 21. ticket comments of $key not checked: no worker handover doc named $key-N*.md under ${root:-<no handover root>}"
+        return 0
+    fi
+    cache="${HIMMELCTL_CACHE_DIR:-${HOME:-}/.claude/himmel}"
+    launched=""
+    while IFS= read -r doc; do
+        [ -n "$doc" ] || continue
+        args+=("$doc")
+        stem="${doc##*/}"; stem="${stem%.md}"
+        first=$(grep -ho 'launched=[0-9T:Z-]*' "$cache/launch-logs/$stem.log" 2>/dev/null | sed 's/^launched=//' | sort | head -n 1)  # swallow-ok: no log reads as no launch record, just below
+        if [ -n "$first" ] && { [ -z "$launched" ] || [[ "$first" < "$launched" ]]; }; then launched="$first"; fi
+    done <<EOF
+$docs
+EOF
+    if [ -z "$launched" ]; then
+        echo "[WARN] 21. ticket comments of $key not checked: no launch record (launched=) under $cache/launch-logs for ${args[0]##*/}"
+        return 0
+    fi
+    cj=$(jira_run comments "$key" --json) || cj=""  # swallow-ok: an unreadable list is reported as a WARN just below
+    rc=0
+    out=$(printf '%s' "$cj" | python3 -I -c "$C21_EVAL" "$launched" "${args[@]}" 2>/dev/null) || rc=$?  # swallow-ok: a non-zero rc WARNs just below
+    if [ "$rc" -ne 0 ]; then
+        echo "[WARN] 21. ticket comments of $key not checked: the comment list is unreadable (jira comments $key --json, exit $rc)"
+        return 0
+    fi
+    while IFS=$'\t' read -r cid created who snippet; do
+        [ -n "$cid" ] || continue
+        if [ "$cid" = checked ]; then n_checked="$created"; continue; fi
+        n_bad=$((n_bad + 1))
+        echo "[FAIL] 21. $key has comment $cid by $who at $created, newer than the worker's launch ($launched), with no 'TICKET-SEEN $cid' line in ${args[0]}: \"$snippet\""
+    done <<EOF
+$out
+EOF
+    if [ "$n_bad" -gt 0 ]; then
+        echo "       read it (jira comments $key), act on it, then: bash scripts/handover/chief-kit/append-results.sh ${args[0]} \"LIVE — TICKET-SEEN <comment id> <what you did about it>\""
+        mark_fail
+    else
+        echo "[PASS] 21. ticket comments of $key: $n_checked newer than the launch ($launched), each has its TICKET-SEEN line"
+    fi
+}
+check_ticket_comments
+
 if [ "$ONLY7" -eq 1 ]; then
     if [ "$RESULT" -eq 0 ]; then echo "COVERAGE-LINT PASS"; exit 0; fi
     echo "COVERAGE-LINT FAIL"
@@ -2604,6 +2955,7 @@ fi
 
 echo "---"
 echo "The three-dot diff read (git diff origin/main...HEAD) stays the chief's own judgement — this script does not read it."
+printf 'owner-review: %s\n' "$(or_bounded 20 "$PR" "$snapshot")"
 [ -z "$TRUST_PATH" ] || echo "TRUST-PATH: $TRUST_PATH"
 if [ "$RESULT" -eq 0 ]; then
     echo "READY-CHECK PASS"

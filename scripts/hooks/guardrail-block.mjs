@@ -2,6 +2,7 @@
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -11,11 +12,22 @@ import zlib from 'node:zlib';
 const WRAPPER = 'guardrail-skip-in-himmel.js';
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
-export const GUARDRAILS = [
-  { basename: 'auto-approve-safe-bash.sh', matcher: 'Bash' },
-  { basename: 'block-edit-on-main.sh', matcher: 'Edit|Write|MultiEdit|NotebookEdit' },
-  { basename: 'block-read-secrets.sh', matcher: 'Bash|PowerShell|Read|Grep' },
-];
+const WIRE_LIB = path.join(MODULE_DIR, '..', 'lib', 'wire-pretooluse-hooks.sh');
+const { resolveBash } = createRequire(import.meta.url)('./run-hook-with-bash.js');
+const trioCache = new Map();
+function trioSpecs(anchor, nodePath, bashPath) {
+  const args = ['--print-trio', anchor, '--node', String(nodePath), '--bash', String(bashPath)];
+  const key = JSON.stringify(args);
+  if (!trioCache.has(key)) {
+    trioCache.set(key, JSON.parse(execFileSync(resolveBash(), [WIRE_LIB, ...args], { encoding: 'utf8' })));
+  }
+  return trioCache.get(key);
+}
+
+export const GUARDRAILS = trioSpecs('/', 'node', 'bash').map((t) => ({
+  basename: `${t.name}.sh`,
+  matcher: t.stanza.matcher,
+}));
 
 // Single source of truth for the guardrail-block "trust
 // anchor" — the himmel checkout whose scripts/hooks/ copies of the wrapper
@@ -92,9 +104,9 @@ function isOwnedHook(hook, basename) {
 }
 
 function commandFor({ nodePath, bashPath, himmelRepo, basename }) {
-  const wrapper = path.join(himmelRepo, 'scripts', 'hooks', WRAPPER);
-  const script = path.join(himmelRepo, 'scripts', 'hooks', basename);
-  return `GUARDRAIL_BASH=${JSON.stringify(bashPath)} ${JSON.stringify(nodePath)} ${JSON.stringify(wrapper)} ${JSON.stringify(script)}`;
+  const spec = trioSpecs(path.join(himmelRepo), nodePath, bashPath).find((t) => `${t.name}.sh` === basename);
+  if (!spec) throw new Error(`not a trio guardrail: ${basename}`);
+  return spec.cmd;
 }
 
 function desiredHook(opts, guardrail) {

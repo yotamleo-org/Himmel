@@ -23,7 +23,7 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   is refused and the chat is told. A group session's outbox never sends a file.
 - A missing path, a directory or a file over 50 MB is refused with a clear error and a
   non-zero exit; nothing is queued.
-- **A spec or plan page is checked before it queues**. A file under
+- **A spec or plan page is checked before it queues (a sign ask; see "Read send and sign ask" below)**. A file under
   `specs/{design,designs,spec,plan,plans}/` or `specs/HIMMEL-<n>/`, or one a plan critic file names, is a
   signature page. It is refused, naming the verdict file and queueing nothing, unless its highest-round
   `<spec>.critic-spec-r<n>.md` AND `<spec>.critic-plan-r<n>.md` each end in `SPEC CLEAN` / `PLAN CLEAN`
@@ -34,7 +34,13 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   seals the page must also be clean, or the send is refused naming it; a plan in `plans/` that has a same-named spec in a
   `design`/`designs`/`spec` folder with spec critic files is governed by that spec. A `<stem>.html`
   sign page beside a `<stem>.md` is governed by the `.md`'s critics first: it goes only when the `.md`'s
-  latest spec critic is clean and also sealed that `.html`. A folder that cannot be listed refuses the
+  latest spec critic is clean and also sealed that `.html`. A companion page `<stem>.<suffix>.html` (an
+  executive brief or another summary) beside a `<stem>.md` and with no critic file of its own is governed by
+  the `.md`'s seal, clean or capped as above, and needs one more record: its latest page critic
+  `<page>.critic-page-r<n>.md` beside it ends `PAGE CLEAN` and seals the page's exact bytes. Seal it with
+  `critic-seal.sh <page>.critic-page-r<n>.md <page> <sha256 the critic quoted>`; a page seal adds no
+  ledger row. The refusal names which record is missing, the parent's seal or the page critic, and the
+  caption adds `PAGE CLEAN r<n>`. A folder that cannot be listed refuses the
   send, naming the folder. The latest critic file of each kind, clean or not, must also pass
   `bun scripts/telegram/chief-route.ts ledger-verify <verdict file>`: its return is a sealed round of its ticket in
   the round ledger (`specs/ledgers/spec-rounds/<KEY>.jsonl`), it is that kind's latest round, and each
@@ -49,8 +55,8 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   | Round of a kind | Sealed when |
   |---|---|
   | 1 to 3 | always, as a full round |
-  | 4 | round 3 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record opens it; it is a closure check, built with `closure-pack <KEY> <spec\|plan> --specs <bucket>/specs` |
-  | 5 and on | the chief's one `round-override`, or a `round-critical` record, opens that writer round |
+  | 4 | round 3 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record without `--restores` opens it; it is a closure check, built with `closure-pack <KEY> <spec\|plan> --specs <bucket>/specs` |
+  | 5 and on | the chief's one `round-override`, or a `round-critical` record without `--restores`, opens that writer round |
 
   The three records run only from the chief's console (`HIMMEL_CONSOLE=1`), each with `--specs <bucket>/specs` like
   `closure-pack` and `round-status`, and each is checked again on every read: `round-override <KEY> --findings <id,...> --why "<line>" --chief <session>`, once per ticket, ever, naming
@@ -58,7 +64,10 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   operator's ruling on an operator-critical finding, which closes it and, without `--no-round`, also opens one
   further writer round; and `round-reset <KEY> --decision <d> --quote "<operator words>"`, the operator's order to
   start over, once per ticket. The decision file `specs/decisions/verbatim-decision-<d>-*.txt` must name the ticket
-  and hold the quote. A `<spec>.operator-round-r<n>.md` file no longer counts. A judge round is neither counted nor
+  and hold the quote. A `round-critical ... --restores` record, for a reverses-ruling finding whose fix restores a
+  ruling on record, needs neither the key in the decision file nor a fresh file: the finding must say it reverses
+  that decision, the quote must be in the file byte for byte, and the finding's kind's next round, which opens by
+  itself, checks it. A `<spec>.operator-round-r<n>.md` file no longer counts. A judge round is neither counted nor
   limited. **Adopter stations:** after `himmel-update` brings the round ledger, run
   `bun scripts/telegram/chief-route.ts round-seed --all <bucket>/specs` once for every bucket on that station, and
   add `*.jsonl.lock` (that pattern only, never the ledger) to each bucket's ignore list. Until a bucket is seeded,
@@ -70,7 +79,16 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   returns: after each critic round it runs that command once per file under review, so a spec it wrote a page for
   goes with no hand seal, and a spec it wrote no page for (a build `core-check` answers `NOT-CORE`) goes as its `.md`.
   The hand command stays for any other page and for a return in flight when this landed. Reports, logs and audits under no such path send
-  as before. Plain `send-file` has no read-only form: a signature-class file goes through the check or does not send.
+  as before.
+- **Read send and sign ask.** The check above is the **sign ask**: it applies only to
+  `send-file --sign <chat_id> <path>`, the form the spec-sign copy (`spec-cc.sh`) runs, and a refusal there
+  stands. A send **without `--sign`** is for reading: a page that passes the check goes as above, with its verdicts
+  in the caption; a `.md` or `.html` spec or plan page that does not pass (its name opens with a ticket key, or a critic file,
+  a `spec-source` marker or a plan critic governs it) goes marked **DRAFT, not for signing**, in the caption and at the top of the
+  page; any other file under `specs/` (a report, log, PDF, image, or a `.md`/`.html` with no ticket key and no critic) goes as it is, unmarked.
+  A DRAFT copy never replaces a signing send: ask for a signature only with `--sign`, after the critics pass. `--sign` and
+  `--by-request` cannot be combined. A companion page (above) sent for reading without its page critic goes DRAFT; with both
+  records it goes with its verdicts.
 - **Signing frozen nonblocking findings.** Sending a capped `FINDINGS` page does
   not itself authorize signing. The normal `release operator spec` and
   `release operator spec-review` commands automatically try verified carry only
@@ -97,15 +115,15 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   It skips the critic check and sends the `.md` or `.html` page marked **NOT PASSED. Not for signature.** at the top of the page,
   with the request quoted there, and the caption opens `NOT PASSED - not for signature (sent on request)`. An empty request is
   refused, a file that is not a `.md` or `.html` page is refused, and nothing queues. The words "Not for signature" stay in the
-  sent bytes, so that copy can never pass the signature check: when the critics pass, send the page again without the flag.
+  sent bytes, so that copy can never pass the signature check: when the critics pass, send the page again with `--sign` instead.
   Use it only when the operator asked; a page that merely is not ready yet is not a reason (decisions 725 and 729).
 - **Make a spec's sign page with the shared generator, then run the critic.** Generate first:
   `python3 -I scripts/telegram/spec-page-gen.py <spec.md> <out.html>` prints two lines, the sha256 of the
   md it read and of the page it wrote. The critic reads the md AND the page and quotes both shas; seal
   both, one `critic-seal.sh` run per file (the spec critic file, the md, its sha; then the same file, the
-  page, its sha); then `send-file` the `.html`. The page names its spec in a `spec-source` meta tag (the
-  md's absolute path), so `send-file` applies the spec's critic check to a copy in any folder under any
-  name, and refuses it when the critic's seals do not include the page's own bytes. The generator leaves
+  page, its sha); then `send-file --sign` the `.html`. The page names its spec in a `spec-source` meta tag (the
+  md's absolute path), so `send-file --sign` applies the spec's critic check to a copy in any folder under any
+  name, and refuses it when the critic's seals do not include the page's own bytes; a send without `--sign` goes marked DRAFT instead. The generator leaves
   the front matter status out and refuses, naming the line and writing nothing, an md body line that
   starts with `Status:` or says "not for signature": the draft state lives in the missing critic seal.
   The page draws the spec's `svg` fence under `## Diagrams` as a figure and carries send-file's own CSP meta; a
@@ -134,8 +152,9 @@ with only minor or medium findings. It is built and tested only in hermetic fixt
 each flag once. Both together, an empty, repeated or trailing-comma key, or a missing flag exits 1 with a
 `capped-fold:` message. It is read-only, prints one JSON line and grants no authority. A signing is
 `jira release operator spec <release> --keys <K,...> --spec <file> --plan <file> --verdict <file> --verdict <file>
---decision <n> --verbatim-file <f>`, and `--source-root <path>` names where the spec's citations are read: the primary
-or a registered live linked worktree of this repository (default: the primary).
+--decision <n> --verbatim-file <f>` for the chief, or with `--signer operator --words "<his exact words>"` in place of
+`--verbatim-file` for a spec the operator marked as his, and `--source-root <path>` names where the spec's citations
+are read: the primary or a registered live linked worktree of this repository (default: the primary).
 
 **2. The producer route and its order.** Only `jira release operator spec` takes it, and only after the normal
 residual-disposition check has refused. One key runs the shipped `--key` verifier first; only when that verifier exits

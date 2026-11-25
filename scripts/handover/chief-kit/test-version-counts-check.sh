@@ -178,7 +178,7 @@ check "empty live status stays unread, not zero: exit 2" "$RC" "2"
 if grep -q 'VERDICT' <<< "$OUT"; then bad "empty live status: no verdict" "$OUT"; else ok "empty live status: no verdict"; fi
 
 new_case longfront
-labels_json="[$(seq -s, 1 400 | sed 's/\([0-9][0-9]*\)/"label-number-\1"/g')]"
+labels_json="[$(seq 1 400 | sed 's/.*/"label-number-&"/' | paste -sd, -)]"
 mirror_issue HIMMEL-1 "To Do" "$labels_json" '["v1.1.4"]'
 live_row v1.1.4 HIMMEL-1 "To Do" ""
 run_vc
@@ -216,6 +216,42 @@ check "missing versions file: exit 2" "$RC" "2"
 new_case badarg
 run_vc --nope
 check "unknown option: exit 2" "$RC" "2"
+
+new_case surf
+mirror_issue HIMMEL-1 "To Do" '["residual"]' '["v1.1.4"]'
+mirror_issue HIMMEL-2 "In Progress" '["residual-depth-1"]' '["v1.1.4"]'
+mirror_issue HIMMEL-3 "To Do" '["backlog"]' '["v1.1.4"]'
+mirror_issue HIMMEL-4 "Done" '["residual"]' '["v1.1.4"]'
+printf '{"milestones":[{"version":"v1.1.4","done":1,"total":4,"open":3,"residual":2,"open_blockers":[]}]}\n' > "$CASE/board-same.json"
+printf '{"milestones":[{"version":"v1.1.4","done":1,"total":4,"open":4,"residual":2,"open_blockers":[]}]}\n' > "$CASE/board-diff.json"
+printf '{"milestones":[{"version":"v1.1.4","unavailable":true}]}\n' > "$CASE/board-unavail.json"
+printf '<details class="krel" data-v="v1.1.4" data-open="3" data-residual="2"><summary>x</summary></details>\n' > "$CASE/tracker-same.html"
+printf '<details class="krel" data-v="v1.1.4" data-open="3" data-residual="1"><summary>x</summary></details>\n' > "$CASE/tracker-diff.html"
+run_vc --board-json "$CASE/board-same.json" --tracker-html "$CASE/tracker-same.html"
+check "surfaces match the tick: exit 0" "$RC" "0"
+contains "surfaces match the tick: one line with all three" "$OUT" "v1.1.4 surfaces tick open=3 residual=2 board open=3 residual=2 tracker open=3 residual=2 SAME"
+contains "surfaces match the tick: verdict" "$OUT" "VERDICT SAME"
+run_vc --board-json "$CASE/board-diff.json" --tracker-html "$CASE/tracker-same.html"
+check "board open differs from the tick: exit 1" "$RC" "1"
+contains "board open differs from the tick: line DIFF" "$OUT" "board open=4 residual=2 tracker open=3 residual=2 DIFF"
+contains "board open differs from the tick: verdict DIFF" "$OUT" "VERDICT DIFF"
+run_vc --board-json "$CASE/board-same.json" --tracker-html "$CASE/tracker-diff.html"
+check "tracker residual differs from the tick: exit 1" "$RC" "1"
+run_vc --tracker-html "$CASE/tracker-same.html"
+check "tracker alone matching the tick: exit 0" "$RC" "0"
+contains "a surface not given prints a dash" "$OUT" "board - tracker open=3 residual=2 SAME"
+run_vc --board-json "$CASE/board-unavail.json"
+check "an unavailable board milestone: exit 2" "$RC" "2"
+run_vc --board-json "$CASE/missing.json"
+check "an unreadable board json: exit 2" "$RC" "2"
+printf '{"milestones":[null]}\n' > "$CASE/board-null.json"
+printf '{"milestones":[{"version":"v1.1.4","open":3.5,"residual":2}]}\n' > "$CASE/board-frac.json"
+run_vc --board-json "$CASE/board-null.json"
+check "a null board milestone: exit 2" "$RC" "2"
+run_vc --board-json "$CASE/board-frac.json"
+check "a fractional board count: exit 2" "$RC" "2"
+run_vc --tracker-html "$CASE/tracker-same.html" v1.1.9
+check "a tracker that shows none of the versions: exit 2" "$RC" "2"
 
 new_case nokey
 OUT="$(env -u JIRA_PROJECT_KEY VERSION_COUNTS_MIRROR="$M" VERSION_COUNTS_JIRA="$W/bin/jira-stub" LIVE_DIR="$LIVE_DIR" bash "$VC" 2>/dev/null)"

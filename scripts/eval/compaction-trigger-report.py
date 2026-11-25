@@ -15,27 +15,29 @@ Each compaction gets a shape:
   steady  neither: ordinary growth, the only shape that locates the trigger.
   manual  a /compact the worker asked for; it says nothing about the trigger.
 
-Input: transcript paths, or --launch-logs <dir> (headed-arm-worker logs, a line
-`... model=<opus model> (autocompact=<n>)` per launch) joined to the
-transcripts under --projects by session title.
+Input: transcript paths, or --launch-logs <dir> --ceiling <n> [--model opus|sonnet|all]: the durable launch
+records (headed-arm-worker.sh, headed-arm.sh), joined to the transcript by session id through the finder of
+profile-openings.py. A launch is at --ceiling when its autocompact= key says so, else its profile's ceiling in
+plugin-profiles.json for the transcript's model (counted as fallback_ceiling); a worker line with no session id is
+counted as no_session_id and skipped. --since skips launches and transcripts older than it.
 
 Usage:
   compaction-trigger-report.py [--json] <transcript.jsonl>...
-  compaction-trigger-report.py --launch-logs <dir> [--projects <dir>] [--since <iso>] [--json]
+  compaction-trigger-report.py --launch-logs <dir> --ceiling <n> [--model opus|sonnet|all] [--projects <dir>]
+                               [--since <iso>] [--json]
 """
 import argparse
-import glob
+import importlib.util
 import json
 import math
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 DENY = re.compile(r"^PreToolUse:\w+ hook error: worker context (?:hand-off|checkpoint) \(mode (\w+)\): "
                   r"this session is at (\d+) % context fill")
 DENY_CEILING = re.compile(r"of the (\d+)-token autocompact")
-LAUNCH = re.compile(r"^(\d{4}-\d\d-\d\d_\d\d:\d\d:\d\d) .*model=(\S+) \(autocompact=(\d+)\)")
 REFUSED_COMPACT = "refusing auto-compaction: no CHECKPOINT or RESUME yet"
 
 
@@ -133,37 +135,68 @@ def parse(path, batch_tokens, idle_s):
             "deny_ceiling": ceiling_seen, "order": order}
 
 
-def launches(log_dir, ceiling, since):
-    names = {}
-    for p in sorted(glob.glob(os.path.join(log_dir, "*.log"))):
-        name = os.path.basename(p)[:-4]
-        for line in open(p, errors="replace"):
-            m = LAUNCH.match(line)
-            if not m or "opus" not in m.group(2) or int(m.group(3)) != ceiling:
-                continue
-            at = datetime.strptime(m.group(1), "%Y-%m-%d_%H:%M:%S").timestamp()
-            if since is None or at >= since:
-                names[name] = m.group(2)
-    return names
+def _finder():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profile-openings.py")
+    spec = importlib.util.spec_from_file_location("profile_openings", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
-def find(projects, names, since):
-    found = []
-    for p in glob.glob(os.path.join(projects, "**", "*.jsonl"), recursive=True):
-        if "/subagents/" in p:
+def first_model(path):
+    try:
+        with open(path, errors="replace") as fh:
+            for _, line in zip(range(2000), fh):
+                if '"assistant"' not in line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                msg = row.get("message")
+                if row.get("type") == "assistant" and not row.get("isSidechain") and isinstance(msg, dict) \
+                        and msg.get("model") and msg["model"] != "<synthetic>":
+                    return msg["model"]
+    except OSError:
+        pass
+    return None
+
+
+def profile_ceiling(profiles, profile, model):
+    p = (profiles.get("profiles") or {}).get(profile) or {}
+    key = "opusAutocompact" if "opus" in model else "sonnetAutocompact" if "sonnet" in model else None
+    return p.get(key) or p.get("autocompact")
+
+
+def cohort(log_dir, projects, ceiling, since, model, profiles):
+    po = _finder()
+    since_iso = datetime.fromtimestamp(since or 0, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    until = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    launches = po.parse_launches(log_dir, since_iso, until, "native")
+    _, by_sid = po.index_transcripts(projects, since or 0)
+    counts = {"launches": len(launches), "no_session_id": 0, "no_transcript": 0, "fallback_ceiling": 0}
+    paths = []
+    for name, rec in sorted(launches.items()):
+        if not rec["sids"]:
+            counts["no_session_id"] += 1
             continue
-        try:
-            if since is not None and os.path.getmtime(p) < since:
+        found = [(s, by_sid[s]) for s in sorted(rec["sids"]) if s in by_sid]
+        if not found:
+            counts["no_transcript"] += 1
+            continue
+        for sid, path in found:
+            m = first_model(path) or ""
+            if model != "all" and model not in m:
                 continue
-            with open(p, errors="replace") as fh:
-                for line in fh:
-                    m = re.search(r'"customTitle"\s*:\s*"([^"]+)"', line)
-                    if m and m.group(1) in names:
-                        found.append(p)
-                        break
-        except OSError:
-            continue
-    return sorted(found)
+            used = rec["ceilings"].get(sid, rec["autocompact"])
+            if used is None:
+                used = profile_ceiling(profiles, rec["profile"], m)
+            if used != ceiling:
+                continue
+            if sid not in rec["ceilings"] and rec["autocompact"] is None:
+                counts["fallback_ceiling"] += 1
+            paths.append(path)
+    return paths, counts
 
 
 def guard_threshold_api(share, ceiling, window):
@@ -203,7 +236,9 @@ def report(rows, args, threshold):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("transcripts", nargs="*")
-    ap.add_argument("--launch-logs")
+    ap.add_argument("--launch-logs", help="a launch-logs dir: the durable records of headed-arm-worker.sh and headed-arm.sh")
+    ap.add_argument("--model", choices=("opus", "sonnet", "all"), default="all", help="the cohort read through --launch-logs")
+    ap.add_argument("--profiles", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lanes", "plugin-profiles.json"))
     ap.add_argument("--projects", default=os.path.expanduser("~/.claude/projects"))
     ap.add_argument("--since", help="ISO time; launches and transcripts older than it are skipped")
     ap.add_argument("--ceiling", type=int, default=800000)
@@ -218,8 +253,12 @@ def main():
     if args.since and since is None:
         ap.error("--since is not an ISO time: %s" % args.since)
     paths = list(args.transcripts)
+    counts = None
     if args.launch_logs:
-        paths += find(args.projects, launches(args.launch_logs, args.ceiling, since), since)
+        with open(args.profiles) as fh:
+            profiles = json.load(fh)
+        found, counts = cohort(args.launch_logs, args.projects, args.ceiling, since, args.model, profiles)
+        paths += found
     paths = sorted(set(paths))
     if not paths:
         print("compaction-trigger-report: no transcripts (give paths or --launch-logs)", file=sys.stderr)
@@ -228,6 +267,8 @@ def main():
     rows = [r for r in (parse(p, args.batch_tokens, args.idle_s) for p in paths)
             if r["api_peak"] >= args.min_peak]
     summary = report(rows, args, threshold)
+    if counts is not None:
+        summary["cohort"] = counts
     if args.json:
         print(json.dumps({"summary": summary, "workers": rows}, indent=1))
         return 0
@@ -252,6 +293,8 @@ def main():
         s["ceiling"], s["threshold_api"], s["workers"], s["compactions"],
         s["shapes"]["steady"], s["shapes"]["batch"], s["shapes"]["idle"], s["shapes"]["manual"]))
     print("order: " + ", ".join("%s %d" % kv for kv in s["orders"].items()))
+    if "cohort" in s:
+        print("cohort: " + ", ".join("%s %d" % kv for kv in s["cohort"].items()))
     print("ANSWER: " + s["answer"])
     return 0
 

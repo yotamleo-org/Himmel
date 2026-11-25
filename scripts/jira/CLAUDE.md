@@ -57,12 +57,15 @@ helpers.
   declared release, on stderr (`jira release request`); `--follow-up-of <key>` makes that
   request ask for an open parent's current version, with a why of facts (parent, status,
   version) and the same in its evidence; `--remainder` adds that the parent cannot close
-  without this ticket; a Done parent asks for none; a parent in a frozen version still asks
-  for that version (the why says frozen) and the release manager rules; the residual cap is not checked (an explicit `--fix-version`, `--backlog`,
+  without this ticket; for a Bug, Task or Story a Done parent in the current unfrozen version is filed into it at its priority, one elsewhere asks for none; a parent in a frozen version still asks
+  for that version (the why says frozen) and the release manager rules (an explicit `--fix-version`, `--backlog`,
   `--proposed-version` or `--why` wins); a Bug that blocks open work goes
   into a version, then needs a requested INTAKE. Open tickets
   that already have no version: `scripts/handover/chief-kit/intake-backfill.sh` prints a
   proposed version for each (dry run; `--commands` adds the lines for one rm-run).
+  The model release judge is parked: the door (`src/release/door.ts`) places each INTAKE by fixed rules, and `--backlog`
+  does not keep a mild ticket out of the next version. `intake-backfill.sh --unplaced` counts the open tickets with no
+  version and no backlog label (read-only; the tick's `unplaced=` and `serious-later=` read it).
 - `create --operator-update <update_id>` (digits only) is the Telegram bridge's pointer to the
   operator's update: the INTAKE evidence gains `operator_update`, `filed_by: bridge` and `bridge_chat`;
   no words are recorded. Refused before any Jira call unless `HIMMEL_BRIDGE_SESSION=1` with no worker or

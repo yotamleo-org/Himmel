@@ -61,6 +61,7 @@ if [ "${GH_TOKEN:-}" = "ghp_READTOKEN0123456789" ] && [ -n "${GH_STUB_READFAIL:-
         scope) echo "gh: Resource not accessible by personal access token" >&2 ;;
         auth) echo "gh: HTTP 401: Bad credentials" >&2 ;;
         notfound) echo "gh: HTTP 404: Not Found" >&2 ;;
+        resolve) echo "GraphQL: Could not resolve to a Repository with the name 'o/r'. (repository)" >&2 ;;
         *) echo "gh: HTTP 403: API rate limit exceeded for user" >&2 ;;
     esac
     exit 1
@@ -302,6 +303,56 @@ check "E6 GH_READ_OFF: non-zero, no gh call, one stall row" "nz||read graphql st
 GH_READ_OFF=1 GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr comment 12 --body x >/dev/null 2>&1
 check "E6b GH_READ_OFF does not stop a write" "tok=main argv=pr comment 12 --body x" "$(cat "$GHLOG")"
 
+: > "$W/used"
+GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 12 >/dev/null 2>&1
+check "G1 a stubbed read appends one main or read row to GH_READ_USED_FILE" "read graphql" "$(cat "$W/used")"
+: > "$W/used"
+GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/emptyroot" bash "$HELPER" run view 5 >/dev/null 2>&1
+check "G1b no read token: the read is counted on main in its REST bucket" "main core" "$(cat "$W/used")"
+: > "$W/used"
+GH_STUB_READFAIL=1 GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 12 >/dev/null 2>&1
+check "G2 a read retried on main counts both attempts" "read graphql|main graphql rl pr view 12" "$(tr '\n' '|' < "$W/used" | sed 's/|$//')"
+for g6 in "auth|auth" "notfound|http404" "resolve|notfound" "scope|auth"; do
+    : > "$W/used"
+    GH_STUB_READFAIL="${g6%%|*}" GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 5765 -R yotamleo-org/Himmel --json headRefOid --jq .headRefOid >/dev/null 2>&1
+    check "G6 a read refused on the read token (${g6%%|*}) is retried on main with its reason and what it read" \
+        "read graphql|main graphql ${g6#*|} pr view 5765 -R yotamleo-org/Himmel" "$(tr '\n' '|' < "$W/used" | sed 's/|$//')"
+done
+: > "$W/used"
+GH_STUB_READFAIL=notfound GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api "repos/o/r/actions/runs?access_token=0123456789abcdef0123456789abcdef01234567&per_page=100" --jq '.x' >/dev/null 2>&1
+check "G6b an api read names its path without its query string" \
+    "main core http404 api repos/o/r/actions/runs" "$(sed -n 2p "$W/used")"
+lacks "G6c no row carries a 40-hex token from the query" "0123456789abcdef0123456789abcdef01234567" "$(cat "$W/used")"
+: > "$W/used"
+GH_STUB_READFAIL=notfound GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api "search/issues?q=private terms" --jq '.x' >/dev/null 2>&1
+check "G6h a query value with a space is dropped whole" "main core http404 api search/issues" "$(sed -n 2p "$W/used")"
+: > "$W/used"
+GH_STUB_READFAIL=notfound GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api "repos/o/r/contents/ghp_SECRETDUMMY0123456789" >/dev/null 2>&1
+check "G6g a prefixed token in the path is masked" "main core http404 api repos/o/r/contents/<redacted>" "$(sed -n 2p "$W/used")"
+: > "$W/used"
+GH_STUB_READFAIL=notfound GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api "repos/o/r/contents/$(printf 'a%.0s' $(seq 1 200))" >/dev/null 2>&1
+check "G6d the summary is cut at 120 characters" "120" "$(sed -n 2p "$W/used" | cut -d' ' -f4- | tr -d '\n' | wc -c | tr -d ' ')"
+: > "$W/used"
+GH_STUB_READFAIL=notfound GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" api graphql -f query='query { viewer { login } }' >/dev/null 2>&1
+check "G6e a graphql read names only api graphql, never its query" "main graphql http404 api graphql" "$(sed -n 2p "$W/used")"
+check "G6f the read token's own row stays two columns" "read graphql" "$(sed -n 1p "$W/used")"
+: > "$W/used"
+GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr comment 12 --body x >/dev/null 2>&1
+GH_READ_OFF=1 GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 12 >/dev/null 2>&1
+check "G3 a write and a read that never ran append no row" "" "$(cat "$W/used")"
+lacks "G3b no row carries the token" "$READTOK" "$(cat "$W/used")"
+GH_READ_USED_FILE="$W/no-such-dir/used" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 12 >/dev/null 2>"$W/err"
+rc=$?
+check "G4 an unwritable count file never fails the read and never prints" "0|" "$rc|$(cat "$W/err")"
+rm -f "$W/gone"
+GH_READ_USED_FILE="$W/gone" GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr view 12 >/dev/null 2>&1
+check "G4b a removed count file is not recreated by a late read" "no" "$([ -e "$W/gone" ] && echo yes || echo no)"
+if [ -n "$_TIMEOUT_BIN" ]; then
+    : > "$W/used"
+    GH_STUB_HANG=20 GH_READ_TIMEOUT=10 GH_READ_USED_FILE="$W/used" GH_READ_ENV_ROOT="$W/root" "$_TIMEOUT_BIN" -k 1 2 bash "$HELPER" pr view 12 >/dev/null 2>&1
+    check "G5 a read killed by the caller's outer timeout still leaves its row" "read graphql" "$(cat "$W/used")"
+fi
+
 AMBTOK=ghp_AMBIENTDUMMY0123456789
 KEYTOK=ghp_KEYRINGDUMMY0123456789
 DOTTOK=ghp_DOTENVDUMMY0123456789
@@ -356,8 +407,8 @@ import re, sys, os
 ROOT = sys.argv[1]
 MARK = 'gh-main-ok:'
 VERBS = r'(?:pr\s+(?:view|list|checks|status|diff)|repo\s+view|run\s+(?:list|view)|issue\s+(?:view|list)|api)\b'
-ARG = r'(?:-\S+|\d+[smhd]?|\$\{?\w+\}?|Q)'
-WRAP = r'(?:timeout|bounded|env|command|nice|nohup|exec|time|\$_TIMEOUT_BIN|\$\{_TIMEOUT_BIN[^}]*\})'
+ARG = r'(?:-\S+|\d+[smhd]?|\$\{\w+:?[-+][^}]*\}|\$\{?\w+\}?|Q)'
+WRAP = r'(?:timeout|bounded|env|command|nice|nohup|exec|time|in_reviewed|\$_TIMEOUT_BIN|\$\{_TIMEOUT_BIN[^}]*\})'
 PREFIX = r'(?:(?:\w+=\S*|' + WRAP + r'(?:\s+' + ARG + r')*)\s+)*'
 START = r'(?:^|\$\(|\|\||\||&&|;|!|\(|\{|\b(?:then|do|else|if|elif|while|until)\b)\s*'
 GH_HIT = re.compile(START + PREFIX + r'gh\s+(' + VERBS + r')')
@@ -626,6 +677,14 @@ f0_row 0 'control: gh run cancel is no hit' sh 'gh run cancel 5'
 f0_row 0 'control: the fallback form [ -f "$G" ] || G=gh then "$G" pr view is no hit' sh $'[ -f "$G" ] || G=gh\n"$G" pr view 1'
 f0_row 0 'control: a variable the file also points at the helper is no hit' sh $'GH="${GH_CMD:-gh}"\nGH_READ_LIB=/x/scripts/lib/gh-read.sh\nGH="$GH_READ_LIB"\n"$GH" pr view 1'
 f0_row 0 'control: a hit with gh-main-ok on its line is no hit' sh $'GH="gh"\n"$GH" api x  # gh-main-ok: permission-dependent answer'
+f0_row 1 'control: in_reviewed gh pr view is a hit' sh 'in_reviewed gh pr view 1'
+f0_row 1 'control: in_reviewed ${t:+"$t" -k 5 30} gh pr view is a hit' sh 'x=$(in_reviewed ${t:+"$t" -k 5 30} gh pr view 1 --json headRefOid)'
+f0_row 0 'control: in_reviewed gh pr view with gh-main-ok on its line is no hit' sh 'in_reviewed gh pr view 1  # gh-main-ok: verdict-write read'
+mkdir -p "$W/f0wv/scripts/handover/chief-kit"
+sed 's/; gh-main-ok: [^#]*$//' "$REPO/scripts/handover/chief-kit/write-verdict.sh" > "$W/f0wv/scripts/handover/chief-kit/write-verdict.sh"
+cmp -s "$REPO/scripts/handover/chief-kit/write-verdict.sh" "$W/f0wv/scripts/handover/chief-kit/write-verdict.sh" && fail "F0 control: the write-verdict.sh copy equals the original (no marker was stripped)"
+f0_wv="$(printf 'scripts/handover/chief-kit/write-verdict.sh\n' | python3 -I "$W/f0.py" "$W/f0wv" 2>/dev/null)"
+check "F0 control: write-verdict.sh without its gh-main-ok marker is a hit on the --bind head read" "yes" "$(case "$f0_wv" in (*'in_reviewed'*'gh pr view "$PR"'*) echo yes ;; esac)"
 mkdir -p "$W/f0real/scripts/handover/chief-kit"
 sed 's|CHIEF_WAIT_GH:-\$GH_READ_BIN|CHIEF_WAIT_GH:-gh|' "$REPO/scripts/handover/chief-kit/chief-wait.sh" > "$W/f0real/scripts/handover/chief-kit/chief-wait.sh"
 cmp -s "$REPO/scripts/handover/chief-kit/chief-wait.sh" "$W/f0real/scripts/handover/chief-kit/chief-wait.sh" && fail "F0 control: the chief-wait.sh copy equals the original (nothing moved)"

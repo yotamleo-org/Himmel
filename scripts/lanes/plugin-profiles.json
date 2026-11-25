@@ -50,6 +50,23 @@
   "vmLaunchAllow": [
     "Bash(bash scripts/vm/launch-guest.sh:*)"
   ],
+  "_comment_previewBrowserTools": "The T3 preview-browser tools (served by the t3-code MCP server) a worker-shaped profile is allowed when it sets previewBrowser: true; every shipped profile leaves it off. No lane guard denies these tools (the Claude, Codex and Antigravity T3 guards allow them, pinned in scripts/t3/test-t3-guard-conformance.sh), so the option only adds an allow rule mcp__t3-code__<tool> for each name, which the Claude lane's permission check honours without a prompt. The 14 names were read from T3's provider event log (the server's own tool listing), not from a registration file.",
+  "previewBrowserTools": [
+    "preview_act",
+    "preview_close",
+    "preview_dialog",
+    "preview_evaluate",
+    "preview_list",
+    "preview_navigate",
+    "preview_open",
+    "preview_recording_start",
+    "preview_recording_stop",
+    "preview_resize",
+    "preview_set_appearance",
+    "preview_snapshot",
+    "preview_status",
+    "preview_wait_for"
+  ],
   "_comment_chiefAllow": "The chief's own go and merge rules, rendered into the chief profile (profile field chiefAllow) the way gateAllow is rendered into a worker's. Relative form only: the chief types `bash scripts/...` from the himmel checkout root, with no cd, timeout, VAR= prefix or absolute path, and a rule matches that text. Each rule is the script path plus `:*`: the script is the gate (the GO writer validates its own argv and refuses a worker, merge-on-green and merge-fork-pr check the GO file and the head), so nothing here is wider than the script path. The chief-only relative merge-on-green rule is NOT a worker rule: a worker's merge is the anchor-absolute twin, and the relative worker rule stays retired. The project file .claude/settings.json holds the go and ready-check rules too; this list is the registry's own copy of the chief's set.",
   "chiefAllow": [
     "Bash(bash scripts/handover/chief-kit/go.sh:*)",
@@ -245,6 +262,7 @@
     "hermes-artifact-design@himmel",
     "anthropic-design-skills@himmel",
     "hallmark@himmel",
+    "unslop-ui@himmel",
     "shadcn-mcp@himmel",
     "emilkowalski-skills@himmel",
     "pstack@himmel",
@@ -282,6 +300,7 @@
         "taste-skill-core@himmel",
         "shadcn-mcp@himmel",
         "builder-visual@himmel",
+        "unslop-ui@himmel",
         "context7@claude-plugins-official"
       ],
       "contextBudget": 50000,
@@ -465,7 +484,7 @@
       "gateAllow": true,
       "denyTools": ["NotebookEdit", "DesignSync", "CronCreate", "CronDelete", "CronList", "ScheduleWakeup", "ReportFindings", "RemoteTrigger", "Artifact", "AskUserQuestion", "SendFeedback"],
       "disableWorkflows": true,
-      "_comment": "worker-impl for docs workers, so the operator's per-profile context ruling (2026-10-30) has a name to attach to: docs stays at the 200000 loop on every model. Same plugins, drops and MCP servers as worker-impl except nativeDrop: worker-docs keeps lean-skills on every lane, because spec and design-leg workers launch on it; see worker-impl's _comment.",
+      "_comment": "worker-impl for docs workers, so the operator's per-profile context ruling (2026-10-30) has a name to attach to: docs stays at the 200000 loop on every model. Same plugins, drops and MCP servers as worker-impl except nativeDrop: worker-docs keeps lean-skills on every lane, because spec and design workers launch on it; see worker-impl's _comment.",
       "enable": [],
       "mcpServers": ["qmd", "himmel-bus"],
       "contextBudget": 55000,

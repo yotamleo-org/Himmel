@@ -276,7 +276,7 @@ SOFTWARE.
 
 Added 2026-10-16. `marketplace/plugins/humanizer/`, one skill
 (`humanizer`) sourced from `blader/humanizer` at pinned commit
-`b48c832f0f809c1b5658edbb838c2521b72f2413`. The `SKILL.md` header names the
+`a32f24407364c74c812b43c15926d638bee1e072`. The `SKILL.md` header names the
 pin and its one deviation (an added `disable-model-invocation: true`
 frontmatter line). Opt-in, off in every profile (eval:
 [`tool-adoption/humanizer.md`](tool-adoption/humanizer.md)).
@@ -465,6 +465,7 @@ Regenerate and check with `node scripts/docs/generate-credits.mjs` and
 | plugin:hermes-artifact-design | — | — | MIT | — |
 | plugin:anthropic-design-skills | — | — | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | — |
 | plugin:hallmark | — | — | MIT | — |
+| plugin:unslop-ui | — | — | CC-BY-4.0 | — |
 | plugin:shadcn-mcp | https://github.com/shadcn-ui/ui | shadcn / yotamleo (wrapper) | — | [Runtime pin](../marketplace/plugins/shadcn-mcp/.mcp.json) |
 | plugin:graphify | https://github.com/Graphify-Labs/graphify | Graphify-Labs / yotamleo (wrapper) | — | [Package pin](../scripts/lib/graphify-bin.sh) |
 | skill:unslop | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan | MIT | 99743e9c151c8537cbbf1f98bb38f34ef3368453 |

@@ -4,10 +4,6 @@
 # himmelctl status (one owner per fact) instead of doctor C40.
 # The probe runs against a stubbed curl through the doctor's own seams
 # (HIMMEL_DOCTOR_QMD_CURL / _URL / _INIT_TIMEOUT), read from ctx.env.
-#
-# Covers: ok (present), slow-but-alive (present, detail says slow), wedged
-# (curl rc 28 -> degraded), foreign listener (degraded), refused (absent),
-# not wanted (qmd items desired=false under profile core), and manifest-lint.
 
 set -euo pipefail
 
@@ -59,8 +55,15 @@ out=$(probe ok);      echo "$out" | jq -e '.actual == "present"' >/dev/null || f
 out=$(probe slow);    echo "$out" | jq -e '.actual == "present" and (.detail | test("slow"))' >/dev/null || fail "slow-but-alive -> present, detail says slow (got: $out)"
 out=$(probe hang);    echo "$out" | jq -e '.actual == "degraded" and (.detail | test("did not answer"))' >/dev/null || fail "wedged (rc 28) -> degraded (got: $out)"
 out=$(probe foreign); echo "$out" | jq -e '.actual == "degraded" and (.detail | test("NOT qmd"))' >/dev/null || fail "foreign listener -> degraded (got: $out)"
-out=$(probe down);    echo "$out" | jq -e '.actual == "absent"' >/dev/null || fail "refused (rc 7) -> absent (got: $out)"
-echo "ok: qmd-daemon present / slow / wedged / foreign / not-running"
+mkdir -p "$work/qmdbin"; printf '#!/usr/bin/env bash\nexit 0\n' > "$work/qmdbin/qmd"; chmod +x "$work/qmdbin/qmd"
+nq_path=""
+IFS=: read -ra path_dirs <<< "$PATH"
+for d in "${path_dirs[@]}"; do [ -x "$d/qmd" ] || nq_path="${nq_path:+$nq_path:}$d"; done
+out=$(BUN_INSTALL="$work/nobun" PATH="$work/qmdbin:$nq_path" probe down)
+echo "$out" | jq -e '.actual == "degraded" and (.detail | test("not answering")) and (.detail | test("optional") | not)' >/dev/null || fail "refused (rc 7), qmd set up -> degraded, never optional (got: $out)"
+out=$(BUN_INSTALL="$work/nobun" PATH="$nq_path" probe down)
+echo "$out" | jq -e '.actual == "absent" and (.detail | test("qmd is optional"))' >/dev/null || fail "refused (rc 7), no qmd setup -> absent, optional (got: $out)"
+echo "ok: qmd probe present / slow / wedged / foreign / refused (set up vs not)"
 
 # a daemon that requires the bearer token must not
 # read as "NOT qmd". With the token file the probe authenticates (present);
@@ -86,6 +89,22 @@ out=$(FAKE_LISTENER_PID="$fake_pid" probe_auth foreign "$work/http-token" "$(win
 kill "$fake_pid" 2>/dev/null || true
 echo "$out" | jq -e --arg p "pid $fake_pid" '.actual == "degraded" and (.detail | test("NOT qmd")) and (.detail | contains($p)) and (.detail | test("sleep|fake-listener")) and (.detail | contains("sleep 31") | not)' >/dev/null || fail "foreign listener is named by pid and executable only, no arguments (got: $out)"
 echo "ok: a non-qmd listener is named by pid and executable only, never its arguments"
+
+marker_probe() {
+  local m="$work/starting"
+  rm -f "$m"
+  [ "$1" = none ] || printf '%s\n' "$1" > "$m"
+  BUN_INSTALL="$work/nobun" PATH="$work/qmdbin:$nq_path" HIMMEL_DOCTOR_QMD_START_MARKER="$m" probe down
+}
+out=$(marker_probe "$(date +%s)")
+echo "$out" | jq -e '.actual == "starting" and (.detail | test("starting"))' >/dev/null || fail "refused inside the grace after a start marker -> starting (got: $out)"
+out=$(marker_probe "$(( $(date +%s) - 3600 ))")
+echo "$out" | jq -e '.actual == "degraded" and (.detail | test("not answering"))' >/dev/null || fail "refused past the grace -> still degraded not answering (got: $out)"
+out=$(marker_probe none)
+echo "$out" | jq -e '.actual == "degraded" and (.detail | test("not answering"))' >/dev/null || fail "refused with no marker -> still degraded not answering (got: $out)"
+out=$(marker_probe "$(( $(date +%s) + 3600 ))")
+echo "$out" | jq -e '.actual == "degraded"' >/dev/null || fail "a marker dated in the future is not a start signal (got: $out)"
+echo "ok: refused inside the start grace reads starting; past the grace, no marker, or a future marker reads degraded"
 
 # not wanted: desired follows the qmd items' profiles (luna, all). Core wants none of them.
 want=$("$node_bin" -e "

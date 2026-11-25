@@ -166,6 +166,12 @@ a row is stale when its brief or pr key is Done in the Jira mirror or its PR is 
 gh call, no Jira call. hreg=? when it fails. In chief-wait's action key whole: the value moving wakes once, and
 chief-wait pages each new ask once with its paste-ready grant command (monitors.md). Seam: HOLDS_MIRROR.
 
+relaunch=<none|?|<PR>:<resume doc>[,...]> follows ext-prs= and is ABSENT unless the --doc queue: line holds a HELD
+entry with a trigger and a resume doc (orphan-pr-check.sh --held, the reader orphan-pr-check.sh itself uses).
+Such an entry keeps its PRs out of unowned-prs=; it is listed here once its trigger fired: wake=pr:<n> no longer
+in the open-PR list, wake=done:<KEY> Done in the Jira mirror, wake=file:<path> present. A trailing ? item = a failed PR
+list or mirror read for some entry, never a fired trigger; the fired entries before it still stand. chief-wait.sh wakes `WAKE relaunch-owed <PR> <resume doc>` on it.
+
 focus=<state> sdrift=<n>:<sig8> stale=<n>:<KEY>,... follow wt-ceiling= and are ABSENT unless a
 focus-state file sits beside the console doc and --status does not read skip: focus= is
 focus-refresh.sh --status (FAILED:<stage> or DIRTY:<age>), sdrift= the drift line of the
@@ -180,7 +186,7 @@ to replay, no declaration, explicit none or unreadable docs elide it; off = unus
 deadline cut the state read (unknown, read again next tick). replay=<n> counts the state's unfinished_rulings with status
 replay (a ruling interrupted after its Jira write, which no open request shows); a blocked move is the chief's repair and is
 not counted. An oldest open
-request past TICK_RMRUN_MIN minutes (default 30), or any ruling to replay, with the lease free launches one detached `jira release
+request past TICK_RMRUN_MIN minutes (default 2), or any ruling to replay, with the lease free launches one detached `jira release
 rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600, so an unchanged ruling is retried at that pace, never every tick) and appends `,run`.
 A held lease reads as free only when the state says lease.owner_gone is true: the CLI proved the owner pid absent on this host (a
 hard-killed rm-run), the same proof rm-run's own reclaim uses; the tick judges no pid itself, and a pid that answers (a live owner, or
@@ -201,6 +207,19 @@ Sorted, so an unchanged set prints the same text on every tick; rm-blocked=? whe
 empty set): the state read is not OK, the state's mirror input is UNKNOWN (the engine then lists every ruling as replay), or
 unfinished_rulings is not a list of rows that each carry a key and a ruling id. It is in chief-wait's action key (wake-rules.tsv):
 one wake for a set, another only when the set changes, and a ? keeps the last known set.
+
+prio-review=<n>:<oldest KEY>, chief-placed=<n>:<KEY>,... and ask-apart=<n>:<KEY>,... follow rm-blocked= and read the
+same OK state's priority_review, chief_placements and asks_apart: the door's placements the chief has not yet cleared
+with `jira release reviewed <R> (--ruling <id> | --through <id>) --reason "<line>"`. Each is absent at zero and when the
+state read is not OK. Each OK read writes rm-lists-<doc stem>.tsv under $TICK_STATE_DIR (chief|apart, KEY, ruling,
+then the reason, or the version, parent and parent version); any other read deletes it. Not in chief-wait's action key
+(chief-wait reads the tsv: WAKE chief-placed, WAKE ask-apart), and never part of the exit code.
+
+unplaced=<new>[,pending=<n>][,legacy=<n>][,stale-label=<n>] and serious-later=<n>:<oldest KEY> follow ask-apart= and read
+`intake-backfill.sh --unplaced --list --since-door` over the same OK state read (the tick reads no date of its own; the script
+owns the door's date): the open tickets with no version and no backlog label, and the High or Highest tickets in a version later
+than the declared current one. Each is ABSENT at zero and when the state read is not OK; the buckets after new print only when
+non-zero. Neither is in chief-wait's action key, and neither is part of the exit code.
 
 held=<n>:<sig8> unfiled=<n> repair=off:<why> follow rm-queue= and are ABSENT unless set: held= is
 the version repair's held key count and the first 8 hex of its held signature, unfiled= the signed records no
@@ -273,6 +292,13 @@ after gql: the REST core budget of the main token and of the read-only token
 Under 10 % remaining a field ends !LOW. Absent when a budget cannot be read or no
 read token is configured; the verbose view prints them as "rest main:" and
 "rest read:" lines. Advisory: not in chief-wait's action key.
+
+reads=main:core<n>+gql<n>,read:core<n>+gql<n>, right after rest-read: this tick's own
+read attempts through gh-read.sh (its scripts' reads included), per token and bucket; a read
+retried on main counts on both. Absent when perl is missing or the count file cannot be made. Advisory: not in
+chief-wait's action key. The verbose view prints it as "reads:", then one
+"reads retried on main: <why> <what>" line per read the read token refused (why: rl,
+auth, notfound or http<code>; what: the masked gh call, no filter, field or query values).
 
 orphans=<owner>:<count>/<oldest>m is the last field: shell-tool
 wrappers older than TICK_ORPHAN_MIN minutes (default 30), per owning session
@@ -512,6 +538,17 @@ daily failure review (ci-cadence.sh review: a local read of the newest failure-r
 HIMMEL_FAILURE_REVIEW_DIR). STALE = no review for 26 h. Hidden when there is no
 review file. The waiter wakes once per review day on a filed key or a new class with 5+ failures, and once per
 last-review date on STALE; never on a 1-count class.
+drift=<n|?> counts the actionable rows of the open nightly drift issue (label fork-drift; none open reads 0), its body re-read at most once an hour (TICK_DRIFT_TTL_MIN): its Needs-update rows plus the
+held rows whose 72 h buffer has cleared (drift-brief.py count; TICK_DRIFT_GH is the gh seam; DRIFT_NOW the clock seam). ? = the
+read or the count failed and never wakes; absent when the repo has no scripts/upstreams/pin-holds.json. In compact output a
+positive count also prints one `WAKE drift-actionable <n>` line after the TICK line per UTC day (claim file
+tick-drift-wake-<date> in TICK_STATE_DIR); `drift-brief.py brief` writes the worker brief for those rows.
+arrivals=<today>/<mean>[!|?] counts the tickets ruled into the active version today (release events.jsonl, kind ruled, from null) against that
+version's own earlier days, at most TICK_ARRIVALS_DAYS (default 7) back. ! = a jump: today at least 3x the mean and above every earlier day, a bar
+relative to the version, never a ticket count. <n>/? = under 3 earlier days or none with an arrival (no baseline, no wake). Absent without a release
+directory (TICK_ARRIVALS_DIR is the seam, TICK_ARRIVALS_NOW the clock). A jump also prints one `WAKE arrivals-jump <version> <n> vs <mean>/day over <k>d:
+<source>=<n> ...` line after the TICK line per UTC day (claim file tick-arrivals-wake-<release>-<date>, one per release directory); the sources (parent, review, audit, operator, other) are read
+from the INTAKE request that placed each ticket. Read-only: no filing is refused or slowed. The waiter's relay row in chief-wait.sh is a separate ticket (see the PR).
 leaks=<n|?> counts the LEAK lines of one bounded `jira release leaks <active version>`
 read (TICK_LEAKS_PROBE gets the version and the mirror directory as its arguments; TICK_LEAKS_TIMEOUT, default 30 s): open tickets
 in a frozen version with no frozen-set membership and no admissions-ledger row. Shown only when non-zero
@@ -544,8 +581,13 @@ whose ticket is not In Progress, with the oldest one's age (a d row on an In Pro
 rows-stale= counts stale rows whose stamp changed or whose c blocker closed; a row whose ticket file is gone prints no-ticket and is not counted.
 The tick carries blocked=<n> chief-sign=<n>[:<age>] rows-stale=<n> after chief-owed=, printed at 0 whenever the record was read, `?` when it was not.
 owed=<n>:<oldest-age> counts the open rows of the owed ledger beside --doc (owed.jsonl, owe.sh; <m>m under an hour, else <h>h),
-hidden at 0, `?` when unreadable. A ticket-kind row with no key past OWED_STALE_SECS (default 14400) adds
-`ACTION owed-stale=<n>:<ids>`; closing the row with a key ends it. chief-wait.sh wakes on that stale count (changed=owed).
+hidden at 0, `?` when unreadable. A ticket-kind row with no key past OWED_STALE_SECS (default 14400), and a keyed
+step past its due date until its step-due wake is delivered (one wake per due date), add `ACTION owed-stale=<n>:<ids>`,
+then one clause per kind naming its own ids: a ticket row is filed and closed with its key; a step is done and closed
+with its evidence, or re-dated. chief-wait.sh wakes on that stale count (changed=owed).
+A --doc inside the handover root first drains its project's rows of the station spool (<state dir>/owe-spool.jsonl,
+the owed lines of partial merges) into that ledger; a spool line it cannot read or add, or a spool it cannot read or
+lock, adds `ACTION owed-spool-bad=<lines|file>` with the check, rebuild and drop commands.
 A key whose line the file reads changed (pool-changed=, same line-hash and sole-reason rules) is unresolved as
 class `changed`: `<target> merged <oldest sha since the anchor> since the line was written: re-read and stamp
 (<LL> <MM-DD> <HH:MM>Z)`, the bracket printed as written, never filled in.
@@ -1939,6 +1981,9 @@ if [ "$ready_mode" -eq 1 ]; then
     ready_mismatch_scan "$ready_dir" || { echo "tick: no READY data under '$ready_dir'" >&2; exit 1; }
     exit 0
 fi
+tick_reads_file=""
+command -v perl >/dev/null 2>&1 && { tick_reads_file="$(mktemp "${TICK_TMPDIR:-${TMPDIR:-/tmp}}/tick-reads.XXXXXX" 2>/dev/null)" || tick_reads_file=""; }  # swallow-ok: no file leaves reads= absent
+if [ -n "$tick_reads_file" ]; then export GH_READ_USED_FILE="$tick_reads_file"; else unset GH_READ_USED_FILE; fi
 hb=skip
 if [ -n "$console_doc" ] && [ -n "$TOKEN" ]; then
     if bash "$REPO/scripts/handover/queue-lock.sh" heartbeat "$console_doc" "$TOKEN" >/dev/null 2>&1; then
@@ -2891,6 +2936,12 @@ if [ -n "$cloud_tsv" ] && [ -f "$cloud_tsv" ]; then
         [ $(( $(date +%s) - c_at )) -le "$cloud_window_s" ] && owner_keys="$owner_keys$c_key "
     done < "$cloud_tsv"
 fi
+held_tsv=""
+held_read_failed=""
+if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
+    held_tsv="$(bash "$HERE/orphan-pr-check.sh" --held --doc "$console_doc" 2>/dev/null | awk -F'\t' '$2 != "-" && $3 != "-" && $4 != "-"')" || { held_tsv=""; held_read_failed=1; }  # swallow-ok: a failed read prints relaunch=? below
+fi
+held_names="$(printf '%s\n' "$held_tsv" | awk -F'\t' 'NF { n = split($4, a, ","); for (i = 1; i <= n; i++) print a[i] }')"
 unowned_grace_min="${TICK_UNOWNED_GRACE_MIN:-10}"
 prs=""
 unowned_prs=""
@@ -2906,7 +2957,9 @@ while IFS=$'\t' read -r pr pr_branch pr_draft _ pr_fork pr_updated pr_red pr_hea
     pr_key="$(ticket_key "$pr_branch")"
     if [ -n "$pr_key" ]; then
         case "$owner_keys" in *" $pr_key "*) continue ;; esac
+        if grep -qxF -- "$pr_key" <<< "$held_names"; then continue; fi
     fi
+    if grep -qxF -- "$pr" <<< "$held_names"; then continue; fi
     pr_at="$(date -d "$pr_updated" +%s 2>/dev/null)" || continue  # gnu-ok: Linux-only kit
     pr_age=$(( ($(date +%s) - pr_at) / 60 ))
     [ "$pr_age" -ge "$unowned_grace_min" ] || continue
@@ -2920,6 +2973,30 @@ done <<< "$pr_out"
 [ -n "$ext_prs" ] || ext_prs=none
 # A failed read is not an all-clear: `?` lets the waiter keep its marker instead of counting it as none.
 [ -z "${pr_read_failed:-}" ] || { prs='?'; unowned_prs='?'; ext_prs='?'; }
+relaunch=""
+[ -z "$held_read_failed" ] || relaunch='?'
+if [ -n "$held_tsv" ]; then
+    relaunch_unknown=""
+    open_nums=" $(printf '%s\n' "$pr_out" | cut -f1 | tr '\n' ' ') "
+    while IFS=$'\t' read -r h_subj h_trig h_res _; do
+        [ -n "$h_subj" ] || continue
+        h_fired=""
+        case "$h_trig" in
+            pr:*)
+                if [ -n "${pr_read_failed:-}" ]; then relaunch_unknown=1
+                else case "$open_nums" in *" ${h_trig#pr:} "*) ;; *) h_fired=1 ;; esac
+                fi ;;
+            done:*)
+                h_mirror="$tick_mirror_default/${h_trig#done:}.md"
+                if [ ! -r "$h_mirror" ]; then relaunch_unknown=1
+                elif grep -qx 'statusCategory: "Done"' <<< "$(awk 'NR == 1 { next } $0 == "---" { exit } { print }' "$h_mirror")"; then h_fired=1
+                fi ;;
+            file:*) [ ! -e "${h_trig#file:}" ] || h_fired=1 ;;
+        esac
+        [ -z "$h_fired" ] || relaunch="$(csv_add "$relaunch" "$h_subj:$h_res")"
+    done <<< "$held_tsv"
+    if [ -n "$relaunch_unknown" ]; then relaunch="$(csv_add "$relaunch" '?')"; elif [ -z "$relaunch" ]; then relaunch=none; fi
+fi
 
 # hreg=<live workers with no rows>/<stale rows>/<pending trust-path asks>: the holds register's own
 # state, read from local files by holds.py summary (no gh, no Jira call; the open PRs are the prs= read above).
@@ -3282,7 +3359,7 @@ fi
 
 # rm-queue=<n>,<oldest age>m[,run]: open placement requests of the chief doc's `release:` release,
 # from one `jira release state <R> --json` read; the age is the oldest open request's. When the oldest is
-# TICK_RMRUN_MIN minutes old (default 30), the lease is free and no run was launched inside TICK_RMRUN_MIN_SECS
+# TICK_RMRUN_MIN minutes old (default 2), the lease is free and no run was launched inside TICK_RMRUN_MIN_SECS
 # (default 600), the tick launches ONE detached `jira release rm-run <R>` (it runs a model call, far past this
 # tick's budget; its lines go to $TICK_STATE_DIR/tick-rm-run.log) and appends `,run`. rm-run takes the lease itself,
 # so a run in flight blocks a second one. 0 = nothing open, off = unusable wiring/state,
@@ -3396,8 +3473,8 @@ print(n, age, lease, d.get("status") or "UNKNOWN", len(r.get("claimed", [])), re
             rm_queue="$rm_n,${rm_age}m"
             [ "$rm_claimed" -eq 0 ] || rm_queue="$rm_queue,claimed=$rm_claimed"
             [ "$rm_replay" -eq 0 ] || rm_queue="$rm_queue,replay=$rm_replay"
-            rm_min="${TICK_RMRUN_MIN:-30}"
-            case "$rm_min" in '' | *[!0-9]*) rm_min=30 ;; esac
+            rm_min="${TICK_RMRUN_MIN:-2}"
+            case "$rm_min" in '' | *[!0-9]*) rm_min=2 ;; esac
             if [ "$rm_age" -ge "$rm_min" ] || [ "$rm_replay" -gt 0 ]; then rm_launch_run; fi
             ;;
     esac
@@ -3462,6 +3539,62 @@ if asks:
 ' "$rf_dir" "$rf_stem" 2>/dev/null)" || rm_refused=""  # swallow-ok: an unparseable state or a failed write leaves the field off
     else
         rm -f "$rf_dir/release-state-$rf_stem.json" "$rf_dir/rm-refused-$rf_stem.tsv"
+    fi
+fi
+
+prio_review="" chief_placed="" ask_apart=""
+if [ -n "$rm_rel" ] && [ "${rm_status:-}" = OK ] && [ -n "$rf_stem" ]; then
+    read -r prio_review chief_placed ask_apart < <(printf '%s' "$rm_json" | python3 -I -c '
+import json, os, re, sys, tempfile
+d = json.load(sys.stdin)
+out, stem = sys.argv[1], sys.argv[2]
+clean = lambda s: re.sub(r"[^A-Za-z0-9._-]", "_", str(s))
+flat = lambda s: " ".join(re.sub(r"[\x00-\x1f\x7f]", " ", str(s)).split())
+def rows(name):
+    v = d.get(name)
+    return [r for r in v if isinstance(r, dict) and r.get("key")] if isinstance(v, list) else []
+p, c, a = rows("priority_review"), rows("chief_placements"), rows("asks_apart")
+os.makedirs(out, exist_ok=True)
+fd, tmp = tempfile.mkstemp(dir=out, prefix=".rm-lists-%s.tsv." % stem)
+with os.fdopen(fd, "w") as f:
+    f.write("".join("chief\t%s\t%s\t%s\t\t\n" % (clean(r["key"]), clean(r.get("ruling")), flat(r.get("reason", ""))[:300]) for r in c))
+    f.write("".join("apart\t%s\t%s\t%s\t%s\t%s\n" % (clean(r["key"]), clean(r.get("ruling")), clean(r.get("version")), clean(r.get("parent")), clean(r.get("parent_version"))) for r in a))
+os.replace(tmp, os.path.join(out, "rm-lists-%s.tsv" % stem))
+print("%d:%s" % (len(p), clean(p[0]["key"])) if p else "-", "%d:%s" % (len(c), ",".join(clean(r["key"]) for r in c)) if c else "-", "%d:%s" % (len(a), ",".join(clean(r["key"]) for r in a)) if a else "-")
+' "$rf_dir" "$rf_stem" 2>/dev/null) || true  # swallow-ok: an unparseable state prints none of the three fields
+    [ "$prio_review" != - ] || prio_review=""
+    [ "$chief_placed" != - ] || chief_placed=""
+    [ "$ask_apart" != - ] || ask_apart=""
+elif [ -n "$rf_stem" ]; then
+    rm -f "$rf_dir/rm-lists-$rf_stem.tsv"
+fi
+
+unplaced_f="" serious_later=""
+if [ -n "$rm_rel" ] && [ "${rm_status:-}" = OK ]; then
+    up_state="$(mktemp "${TICK_TMPDIR:-${TMPDIR:-/tmp}}/tick-unplaced-state.XXXXXX" 2>/dev/null)" || up_state=""  # swallow-ok: no file leaves both fields off
+    if [ -n "$up_state" ]; then
+        printf '%s' "$rm_json" > "$up_state"
+        up_sut="${TICK_UNPLACED_PROBE:-$HERE/intake-backfill.sh}"
+        up_out="$(JIRA_PROJECT_KEY="$tick_project_key" timeout -k 2 "$(tick_bound 30)" bash "$up_sut" --unplaced --list --state "$up_state" --since-door 2>/dev/null)" || up_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read leaves both fields off
+        rm -f "$up_state"
+        read -r unplaced_f serious_later < <(printf '%s\n' "$up_out" | python3 -I -c '
+import re, sys
+lines = sys.stdin.read().splitlines()
+rows = [l.split("\t") for l in lines if "\t" in l]
+rest = [l for l in lines if "\t" not in l]
+m = re.fullmatch(r"pending=(\d+) legacy=(\d+) stale-label=(\d+) serious-later=(\d+)", rest[1]) if len(rest) == 2 else None
+if not (m and re.fullmatch(r"\d+", rest[0])):
+    print("- -")
+    sys.exit(0)
+new = int(rest[0])
+p, lg, st, sl = (int(x) for x in m.groups())
+tot = new + p + lg + st
+u = "%d" % new + "".join(",%s=%d" % (k, v) for k, v in (("pending", p), ("legacy", lg), ("stale-label", st)) if v)
+oldest = next((r[0] for r in rows if len(r) == 2 and r[1] == "serious-later" and re.fullmatch(r"[A-Z]+-\d+", r[0])), "")
+print(u if tot else "-", ("%d:%s" % (sl, oldest) if oldest else "%d" % sl) if sl else "-")
+' 2>/dev/null) || true  # swallow-ok: unreadable output leaves both fields off
+        [ "$unplaced_f" != - ] || unplaced_f=""
+        [ "$serious_later" != - ] || serious_later=""
     fi
 fi
 
@@ -3896,33 +4029,32 @@ fi
 owed_summary=""
 owed_stale_n=0
 owed_stale_ids=""
+owed_stale_ticket_ids=""
+owed_stale_step_ids=""
 owed_event_actions=""
-if [ -n "$console_doc" ] && [ -s "${console_doc%/*}/owed.jsonl" ]; then
-    if owed_rows="$(bash "$HERE/owe.sh" list --bucket "${console_doc%/*}" 2>/dev/null)"; then  # swallow-ok: the else branch prints owed=?
-        owed_stale_secs="${OWED_STALE_SECS:-14400}"
-        case "$owed_stale_secs" in ''|*[!0-9]*) owed_stale_secs=14400 ;; esac
-        owed_stale_secs=$((10#$owed_stale_secs))
-        tick_now_s
-        owed_calc="$(printf '%s\n' "$owed_rows" | awk -F'\t' -v now="$tick_now" -v lim="$owed_stale_secs" '
-            NF { n++; if (min == "" || $3 + 0 < min + 0) min = $3
-                 if ($2 == "ticket" && $4 == "" && now - $3 > lim) { s++; ids = ids (ids == "" ? "" : ",") $1 } }
-            END { if (n) { a = int((now - min) / 60); print n ":" (a >= 60 ? int(a / 60) "h" : a "m") "\t" s + 0 "\t" ids } }')"
-        IFS=$'\t' read -r owed_summary owed_stale_n owed_stale_ids <<< "$owed_calc"
-        [ -n "$owed_stale_n" ] || owed_stale_n=0
-    else
-        owed_summary='?'
-    fi
-fi
+owed_spool_bad=""
+owed_stale_secs="${OWED_STALE_SECS:-14400}"
+case "$owed_stale_secs" in ''|*[!0-9]*) owed_stale_secs=14400 ;; esac
+owed_stale_secs=$((10#$owed_stale_secs))
+owed_state="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+owed_spool="$owed_state/owe-spool.jsonl"
 
 # Both clocks use the existing owed identity/ack contract. A reminder grants no
 # hold and is independent of the pool's dispatchability calculation above.
-if [ -n "$console_doc" ] && { [ -s "${console_doc%/*}/owed.jsonl" ] || [[ "${pd_summary:-}" == *'# readiness-clock '* ]]; }; then
+if [ -n "$console_doc" ] && { [ -s "${console_doc%/*}/owed.jsonl" ] || [ -s "$owed_spool" ] || [[ "${pd_summary:-}" == *'# readiness-clock '* ]]; }; then
     tick_now_s
+    owed_root=$(handover_root 2>/dev/null) || owed_root=""  # swallow-ok: no handover root means no spool drain, the ledger still projects
+    owed_chief=${console_doc##*/}
+    owed_chief=${owed_chief%.md}
     if owed_events=$(printf '%s\n' "${pd_summary:-}" | sed -n 's/^# readiness-clock //p' | jq -s . | \
-        python3 -I "$HERE/owed-events.py" --bucket "${console_doc%/*}" --now "$tick_now" --stale-seconds "${owed_stale_secs:-14400}"); then
+        python3 -I "$HERE/owed-events.py" --bucket "${console_doc%/*}" --now "$tick_now" --stale-seconds "$owed_stale_secs" \
+            --spool "$owed_spool" --project "$tick_project_key" --chief "$owed_chief" --handover-root "$owed_root"); then
+        owed_spool_bad=$(printf '%s' "$owed_events" | jq -r '.spool_bad | map(tostring) | join(",")')
         owed_summary=$(printf '%s' "$owed_events" | jq -r '.summary')
         owed_stale_n=$(printf '%s' "$owed_events" | jq '.stale_ids | length')
         owed_stale_ids=$(printf '%s' "$owed_events" | jq -r '.stale_ids | join(",")')
+        owed_stale_ticket_ids=$(printf '%s' "$owed_events" | jq -r '.stale_ticket_ids | join(",")')
+        owed_stale_step_ids=$(printf '%s' "$owed_events" | jq -r '.stale_step_ids | join(",")')
         owed_event_actions=$(printf '%s' "$owed_events" | jq -r '
             (if (.pending | length) > 0 then "ACTION owed-notify=" + (.pending | join(",")) else empty end),
             (if (.invalid_ids | length) > 0 then "ACTION owed-invalid=" + (.invalid_ids | join(",")) else empty end),
@@ -4079,6 +4211,138 @@ spare_pct="$(printf '%s\n' "$spare_out" | sed -n 's/.*unspent_at_reset=\([0-9][0
 if [ -n "$spare_in" ] && [ -n "$spare_pct" ] \
    && awk -v p="$spare_pct" -v h="$spare_in" -v pm="$spare_min" -v hm="$spare_hours" 'BEGIN { exit !(p + 0 >= pm + 0 && h + 0 <= hm + 0) }'; then
     spare_tail=" spare=$(awk -v p="$spare_pct" 'BEGIN { printf "%d", p }')@$(awk -v h="$spare_in" 'BEGIN { printf "%d", h }')h"
+fi
+
+drift_tail=""
+drift_wake=""
+drift_holds="$REPO/scripts/upstreams/pin-holds.json"
+if [ -f "$drift_holds" ] && [ -f "$HERE/drift-brief.py" ]; then
+    drift_val="?"
+    drift_gh="${TICK_DRIFT_GH:-$GH_READ_BIN}"
+    drift_slug() { git -C "$HERE" remote get-url origin | sed -E 's#^.*[:/]([^/:]+/[^/]+)$#\1#; s#\.git$##'; }
+    drift_repo="$(. "$HERE/../../lib/env-value.sh" && env_value HIMMEL_REPO drift_slug)" || drift_repo=""  # swallow-ok: an unresolved repo renders as drift=?
+    drift_label="${DRIFT_ISSUE_LABEL:-fork-drift}"
+    drift_cache="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/tick-drift-body-$(printf '%s %s' "$drift_repo" "$drift_label" | cksum | cut -d' ' -f1)"
+    case "${TICK_DRIFT_TTL_MIN:-60}" in '' | *[!0-9]*) drift_ttl=60 ;; *) drift_ttl=$((10#${TICK_DRIFT_TTL_MIN:-60})) ;; esac
+    drift_have=""
+    if [ -n "$drift_repo" ] && [ -f "$drift_cache" ] && [ -n "$(find "$drift_cache" -mmin "-$drift_ttl" 2>/dev/null)" ]; then  # gnu-ok: console kit is Linux-only # swallow-ok: an unreadable cache reads as stale
+        drift_body="$(cat "$drift_cache" 2>/dev/null)" && drift_have=1  # swallow-ok: an unreadable cache is read again
+    fi
+    if [ -z "$drift_have" ] && [ -n "$drift_repo" ] && drift_body="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 20)"} "$drift_gh" issue list --label "$drift_label" --state open --limit 1 -R "$drift_repo" --json body --jq '.[0].body // ""' 2>/dev/null)"; then  # swallow-ok: a failed read renders as drift=?
+        drift_have=1
+        { mkdir -p "${drift_cache%/*}" && printf '%s' "$drift_body" > "$drift_cache.$$" && mv -f "$drift_cache.$$" "$drift_cache"; } 2>/dev/null || true  # swallow-ok: an unwritable cache only costs the next tick a read
+    fi
+    if [ -n "$drift_have" ]; then
+        drift_n="$(printf '%s\n' "$drift_body" | python3 -I "$HERE/drift-brief.py" count --holds "$drift_holds" 2>/dev/null)" || drift_n=""  # swallow-ok: a failed count renders as drift=?
+        case "$drift_n" in '' | *[!0-9]*) ;; *) drift_val="$drift_n" ;; esac
+    fi
+    drift_tail=" drift=$drift_val"
+    case "$drift_val" in '?' | 0) ;; *) drift_wake="$drift_val" ;; esac
+fi
+
+arrivals_summary=""
+arrivals_wake=""
+arr_now="${TICK_ARRIVALS_NOW:-$(date -u +%F)}"
+arr_dir="${TICK_ARRIVALS_DIR:-}"
+if [ -z "$arr_dir" ] && [ -n "$leaks_version" ]; then
+    arr_root="${HIMMEL_RELEASE_STATE_DIR:-}"
+    if [ -z "$arr_root" ] && [ -n "${USER_SLUG:-}" ] && [ -n "${lk_anchor:-}" ]; then
+        arr_ho="$(cd "${lk_anchor%/.git}" 2>/dev/null && handover_root 2>/dev/null)" || arr_ho=""  # swallow-ok: an unreadable root reads as no release directory
+        [ -z "$arr_ho" ] || arr_root="$arr_ho/$USER_SLUG/$(basename "${lk_anchor%/.git}")/release"
+    fi
+    [ -z "$arr_root" ] || arr_dir="$arr_root/$leaks_version"
+fi
+if [ -n "$arr_dir" ] && [ -f "$arr_dir/events.jsonl" ] && command -v python3 >/dev/null 2>&1; then
+    arr_out="$(ARR_DIR="$arr_dir" ARR_NOW="$arr_now" ARR_DAYS="${TICK_ARRIVALS_DAYS:-7}" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 20)"} python3 -I -c '
+import datetime, json, os
+d = os.environ["ARR_DIR"].rstrip("/")
+ver = os.path.basename(d)
+try:
+    now = datetime.date.fromisoformat(os.environ["ARR_NOW"])
+    win = max(int(os.environ["ARR_DAYS"]), 1)
+except ValueError:
+    raise SystemExit
+first = {}
+try:
+    for l in open(d + "/events.jsonl", encoding="utf-8"):
+        try:
+            r = json.loads(l, strict=False)
+        except ValueError:
+            continue
+        if not isinstance(r, dict) or r.get("kind") != "ruled" or r.get("from") not in (None, "") or r.get("to") != ver:
+            continue
+        k, ts = r.get("key"), r.get("ts")
+        if not isinstance(k, str) or not isinstance(ts, str):
+            continue
+        try:
+            day = datetime.date.fromisoformat(ts[:10])
+        except ValueError:
+            continue
+        if k not in first or day < first[k][0]:
+            first[k] = (day, r.get("ruling"))
+except OSError:
+    raise SystemExit
+per = {}
+for day, _ in first.values():
+    per[day] = per.get(day, 0) + 1
+today = per.get(now, 0)
+earlier = [x for x in per if x < now]
+mean = None
+prior = []
+if earlier:
+    start = max(min(earlier), now - datetime.timedelta(days=win))
+    prior = [per.get(start + datetime.timedelta(days=i), 0) for i in range((now - start).days)]
+    if len(prior) >= 3 and sum(prior) > 0:
+        mean = sum(prior) / len(prior)
+if mean is None:
+    print("%d/?" % today)
+    raise SystemExit
+ms = ("%.1f" % mean).rstrip("0").rstrip(".")
+jump = today >= 3 * mean and today > max(prior)
+print("%d/%s%s" % (today, ms, "!" if jump else ""))
+if not jump:
+    raise SystemExit
+by = {}
+try:
+    for l in open(d + "/requests.jsonl", encoding="utf-8"):
+        try:
+            r = json.loads(l, strict=False)
+        except ValueError:
+            continue
+        if isinstance(r, dict) and isinstance(r.get("state"), str) and r["state"].startswith("ruled:"):
+            by[r["state"][6:]] = r
+except OSError:
+    pass
+def group(row):
+    if row is None:
+        return "other"
+    ev = row.get("evidence")
+    ev = ev if isinstance(ev, dict) else {}
+    why = str(row.get("why") or "").lower()
+    if "audit" in ev:
+        return "audit"
+    if "follow_up_of" in ev or why.startswith("follow-up of"):
+        return "parent"
+    if "operator" in ev or "operator_record" in ev or ev.get("authority") == "operator":
+        return "operator"
+    if "review" in why:
+        return "review"
+    if "audit" in why:
+        return "audit"
+    if "operator" in why:
+        return "operator"
+    return "other"
+g = {}
+for day, ruling in first.values():
+    if day == now:
+        n = group(by.get(ruling))
+        g[n] = g.get(n, 0) + 1
+print("%s %d vs %s/day over %dd: %s" % (ver, today, ms, len(prior), " ".join("%s=%d" % (a, b) for a, b in sorted(g.items(), key=lambda kv: (-kv[1], kv[0])))))
+' 2>/dev/null)" || arr_out="?"  # swallow-ok: a failed read renders as arrivals=?
+    arrivals_summary="$(printf '%s\n' "$arr_out" | sed -n '1p')"
+    case "$arrivals_summary" in
+        *!) arrivals_wake="$(printf '%s\n' "$arr_out" | sed -n '2p')" ;;
+    esac
 fi
 
 # tmp=<pct>[!] -- how full the tmp filesystem is (read-only df on TICK_TMP_DIR,
@@ -4922,6 +5186,14 @@ fi
 deadline_over=""
 [ "$SECONDS" -lt "$tick_deadline" ] || deadline_over="$((SECONDS - tick_deadline))s"
 
+reads_summary=""
+reads_retried=""
+if [ -n "$tick_reads_file" ]; then
+    reads_summary="$(awk '{ n[$1 "." $2]++ } END { printf "main:core%d+gql%d,read:core%d+gql%d", n["main.core"], n["main.graphql"], n["read.core"], n["read.graphql"] }' "$tick_reads_file" 2>/dev/null)" || reads_summary=""  # swallow-ok: an unreadable count file leaves reads= absent
+    reads_retried="$(awk '$1 == "main" && NF > 2 { $1 = ""; $2 = ""; sub(/^ +/, ""); print }' "$tick_reads_file" 2>/dev/null)" || reads_retried=""  # swallow-ok: an unreadable count file prints no retried line
+    rm -f "$tick_reads_file"
+fi
+
 if [ "$verbose" -eq 1 ]; then
     printf 'TICK %s\n' "$clock"
     printf 'heartbeat: %s\n' "$hb"
@@ -4935,6 +5207,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'ci-red issues: %s\n' "$cired_summary"
     printf 'unowned-prs: %s\n' "$unowned_prs"
     printf 'ext-prs: %s\n' "$ext_prs"
+    [ -z "$relaunch" ] || printf 'relaunch: %s\n' "$relaunch"
     [ "$dispatch_summary" = none ] || printf 'dispatch: %s\n' "$dispatch_summary"
     printf 'subscription usage budget: %s\n' "$bank"
     [ -z "$vmspend" ] || printf 'vm spend today: %s\n' "$vmspend"
@@ -4960,6 +5233,8 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$quota_items" ] || printf 'quota: %s\n' "$quota_items"
     case "$rest_main_line" in ''|'?'*) ;; *) printf 'rest main: %s\n' "$rest_main_line" ;; esac
     case "$rest_read_line" in ''|'?'*) ;; *) printf 'rest read: %s\n' "$rest_read_line" ;; esac
+    [ -z "$reads_summary" ] || printf 'reads: %s\n' "$reads_summary"
+    [ -z "$reads_retried" ] || printf '%s\n' "$reads_retried" | sed 's/^/reads retried on main: /'
     printf 'orphans: %s\n' "$orphans"
     printf 'nonces: %s\n' "$nonces_summary"
     printf 'worker-session set: %s\n' "$legset_summary"
@@ -4987,6 +5262,11 @@ if [ "$verbose" -eq 1 ]; then
     printf 'rm-queue: %s\n' "$rm_queue"
     [ -z "$rm_refused" ] || printf 'rm-refused: %s\n' "$rm_refused"
     [ -z "$rm_blocked" ] || printf 'rm-blocked: %s\n' "$rm_blocked"
+    [ -z "$prio_review" ] || printf 'prio-review: %s\n' "$prio_review"
+    [ -z "$chief_placed" ] || printf 'chief-placed: %s\n' "$chief_placed"
+    [ -z "$ask_apart" ] || printf 'ask-apart: %s\n' "$ask_apart"
+    [ -z "$unplaced_f" ] || printf 'unplaced: %s\n' "$unplaced_f"
+    [ -z "$serious_later" ] || printf 'serious-later: %s\n' "$serious_later"
     [ -z "$held_summary" ] || printf 'repair held: %s\n' "$held_summary"
     [ -z "$unfiled_summary" ] || printf 'repair unfiled: %s\n' "$unfiled_summary"
     [ -z "$repair_summary" ] || printf 'repair: %s\n' "$repair_summary"
@@ -5024,6 +5304,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$slotage_tail" ] || printf 'slot age: %s\n' "${slotage_tail# slotage=}"
     [ -z "$tmp_tail" ] || printf 'tmp: %s\n' "${tmp_tail# tmp=}"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
+    [ -z "$drift_tail" ] || printf 'drift: %s\n' "${drift_tail# drift=}"
 else
     # Keep reader inputs even at their defaults: chief-wait.sh rejects
     # missing required fields, and capacity/unowned-prs/tracker clear streaks.
@@ -5050,6 +5331,7 @@ else
     compact_field prs "$prs"
     compact_field unowned-prs "$unowned_prs"
     compact_field ext-prs "$ext_prs"
+    compact_field relaunch "$relaunch"
     compact_field dispatch "$dispatch_summary"
     compact_field cadence "$cadence_summary"
     compact_field review "$review_summary"
@@ -5070,6 +5352,7 @@ else
     compact_field gql "$gql"
     compact_field rest-main "$(rest_compact "$rest_main_line")"
     compact_field rest-read "$(rest_compact "$rest_read_line")"
+    compact_field reads "$reads_summary"
     compact_field quota "$quota_items"
     compact_field orphans "$orphans"
     compact_field nonces "$nonces_summary"
@@ -5116,6 +5399,11 @@ else
     compact_field rm-queue "$rm_queue"
     compact_field rm-refused "$rm_refused"
     compact_field rm-blocked "$rm_blocked"
+    compact_field prio-review "$prio_review"
+    compact_field chief-placed "$chief_placed"
+    compact_field ask-apart "$ask_apart"
+    compact_field unplaced "$unplaced_f"
+    compact_field serious-later "$serious_later"
     compact_field held "$held_summary"
     compact_field unfiled "$unfiled_summary"
     compact_field repair "$repair_summary"
@@ -5125,7 +5413,24 @@ else
     compact_field focus "$focus_summary"
     compact_field sdrift "$sdrift_summary"
     compact_field stale "$stale_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$mon_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
+    compact_field arrivals "$arrivals_summary"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$mon_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail$drift_tail"
+    if [ -n "$drift_wake" ]; then
+        drift_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+        drift_claim="$drift_dir/tick-drift-wake-$(date -u +%F)"
+        if mkdir -p "$drift_dir" 2>/dev/null && (set -C; : > "$drift_claim") 2>/dev/null; then  # swallow-ok: an unclaimable day prints no wake, never a repeated one
+            printf 'WAKE drift-actionable %s\n' "$drift_wake"
+            find "$drift_dir" -maxdepth 1 -name 'tick-drift-wake-*' -mtime +7 -delete 2>/dev/null  # gnu-ok: console kit is Linux-only # swallow-ok: an unprunable old claim is harmless
+        fi
+    fi
+    if [ -n "$arrivals_wake" ]; then
+        arr_sdir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+        arr_claim="$arr_sdir/tick-arrivals-wake-$(printf '%s' "$arr_dir" | cksum | cut -d' ' -f1)-$arr_now"
+        if mkdir -p "$arr_sdir" 2>/dev/null && (set -C; : > "$arr_claim") 2>/dev/null; then  # swallow-ok: an unclaimable day prints no wake, never a repeated one
+            printf 'WAKE arrivals-jump %s\n' "$arrivals_wake"
+            find "$arr_sdir" -maxdepth 1 -name 'tick-arrivals-wake-*' -mtime +7 -delete 2>/dev/null  # gnu-ok: console kit is Linux-only # swallow-ok: an unprunable old claim is harmless
+        fi
+    fi
     if [ -n "$holdout_summary" ]; then
         printf 'ACTION holdout=%s: an idle worker holds on an outside event; have it WRAP with what it owes written down, then bash %q watch %q add <pr> --head <sha> --comments <n> --reviews <n> and close-wrapped-worker.sh --fleet %q <doc> (chief-wait wakes you as WAKE pr-watch)\n' \
             "$holdout_summary" "$HERE/fleet-manifest.sh" "${WORKERS_FROM:-<manifest>}" "${WORKERS_FROM:-<manifest>}"
@@ -5155,10 +5460,31 @@ else
             "$wto_summary" "${wtc_summary:+ wt-ceiling=$wtc_summary}" "$REPO/scripts/worktree.sh" "$REPO/scripts/worktree.sh"
     fi
     if [ "$owed_stale_n" -gt 0 ]; then
-        printf 'ACTION owed-stale=%s:%s: a ticket you owe has no key after %sh: file it, then bash %q close --bucket %q --id <id> --key <KEY> (chief-sections/owed.md)\n' \
-            "$owed_stale_n" "$owed_stale_ids" "$((owed_stale_secs / 3600))" "$HERE/owe.sh" "${console_doc%/*}"
+        printf -v owed_stale_line 'ACTION owed-stale=%s:%s: ' "$owed_stale_n" "$owed_stale_ids"
+        owed_stale_sep=''
+        if [ -n "$owed_stale_ticket_ids" ]; then
+            printf -v owed_stale_clause 'a ticket you owe has no key after %sh (%s): file it, then bash %q close --bucket %q --id <id> --key <KEY> (chief-sections/owed.md)' \
+                "$((owed_stale_secs / 3600))" "$owed_stale_ticket_ids" "$HERE/owe.sh" "${console_doc%/*}"
+            owed_stale_line+="$owed_stale_clause"
+            owed_stale_sep='; '
+        fi
+        if [ -n "$owed_stale_step_ids" ]; then
+            printf -v owed_stale_clause 'an owed step is past its due date (%s): do it and close the row with its evidence (bash %q close --bucket %q --id <id> --key <commit sha or decision id>), or re-date it (bash %q add --bucket %q --chief <you> --kind step --key <KEY> --text "<KEY>: <step> by YYYY-MM-DD" --metadata %s, then close this row with the decision id)' \
+                "$owed_stale_step_ids" "$HERE/owe.sh" "${console_doc%/*}" "$HERE/owe.sh" "${console_doc%/*}" \
+                "'{\"actor\":\"<who>\",\"due\":\"YYYY-MM-DD\",\"action\":\"next-step\"}'"
+            owed_stale_line+="$owed_stale_sep$owed_stale_clause"
+        fi
+        printf '%s\n' "$owed_stale_line"
     fi
     [ -z "$owed_event_actions" ] || printf '%s\n' "$owed_event_actions"
+    case "$owed_spool_bad" in
+        '') ;;
+        file) printf 'ACTION owed-spool-bad=file: the owed spool could not be read or locked: python3 -I %q spool --check --spool %q\n' \
+            "$HERE/owed-events.py" "$owed_spool" ;;
+        *) printf 'ACTION owed-spool-bad=%s: python3 -I %q spool --check --spool %q lists them; rebuild a lost row with gh pr view <n> --repo <owner/name> --json body -q .body | python3 -I %q --owed-lines | python3 -I %q spool --key <KEY> --pr <n> --repo <owner/name> --spool %q, then drop the bad line with python3 -I %q spool --drop <line> --spool %q (chief-sections/owed.md)\n' \
+            "$owed_spool_bad" "$HERE/owed-events.py" "$owed_spool" "${HERE%/scripts/handover/chief-kit}/scripts/lib/pr_remainder.py" \
+            "$HERE/owed-events.py" "$owed_spool" "$HERE/owed-events.py" "$owed_spool" ;;
+    esac
     decisions_file="${console_doc%/*}/specs/decisions/chief-decisions-$(date +%F).md"
     if [ "$handoff_bytes" -gt "$handoff_budget" ]; then
         printf 'ACTION handoff-over-budget=%s/%s: trim %q: move superseded rulings verbatim to %q, then tighten the Live state (chief-sections/live-state.md)\n' "$handoff_bytes" "$handoff_budget" "$handoff_file" "$decisions_file"

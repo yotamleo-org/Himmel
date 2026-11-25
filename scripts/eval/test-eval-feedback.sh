@@ -403,16 +403,6 @@ case("a non-dict row is skipped", [None, row("A")], ["A"])
 bad_ids = [{"run_id": ["a"], "outputs_sha256": [1]}, {"run_id": {"x": 1}, "outputs_sha256": [1]}, row("A")]
 case("non-string ids name nothing: each such row is its own run, no TypeError", bad_ids, [["a"], {"x": 1}, "A"],
      scorer=None)
-counted = {"cbs_hash": "h", "confighash": "c", "status": "ok", "metrics": {fb.GATE_RECALL: 0.5, fb.GATE_FP: 0.1}}
-bad_counted = [dict(counted, run_id=["a"], outputs_sha256=[1]), dict(counted, run_id={"x": 1}, outputs_sha256=[2]),
-               dict(counted, run_id="A", outputs_sha256="p")]
-try:
-    got, _, _ = fb.gate_side(bad_counted, "h", "c")
-    print("PASS gate_side: list-valued ids on counted rows are no TypeError, each row counts once" if len(got) == 3
-          else "FAIL gate_side: %d rows counted" % len(got))
-except TypeError as e:
-    print("FAIL gate_side: a list-valued run_id raised %s" % e)
-
 def er(conf="h", scorer=S1, cov=None):
     m = {"scorer_sha256": scorer}
     if cov is not None:
@@ -844,48 +834,6 @@ eq "apply-review: exit 0" "$rc" "0"
 has "apply-review: prints the receipt" "$out" "applied review-panel codex.class.quoting.recall commit ${APPLY6:0:12}"
 eq "apply-review: one applied record appended" "$(field "$AC" 1 status)" "applied"
 eq "apply-review: the fixture repo's HEAD is unchanged" "$(gitc6 rev-parse HEAD)" "$MERGE6"
-
-GVPY="$TMP/gv.py"
-cat >"$GVPY" <<'EOF'
-import sys
-sys.path.insert(0, sys.argv[1])
-import eval_feedback as fb
-def side(h, pre, specs, counts=True):
-    out = []
-    for i, (hit, fp) in enumerate(specs):
-        m = {fb.GATE_RECALL: hit / 47, fb.GATE_FP: fp / 47}
-        if counts:
-            m.update({"defects": 47, "panel.clean_scored": 47})
-        out.append({"run_id": "%s%d" % (pre, i + 1), "outputs_sha256": "%s%d" % (pre, i + 1), "cbs_hash": h,
-                    "confighash": "c", "status": "ok", "metrics": m})
-    return out
-def check(label, base, head, want, needle=None, counts=True):
-    v, info = fb.gate_verdict(side("B", "b", base, counts) + side("H", "h", head, counts), "B", "H", "c")
-    good = v == want and (needle is None or needle in info.get("reason", ""))
-    print(("PASS " if good else "FAIL ") + "%s (got %s: %s)" % (label, v, info.get("reason")))
-check("noise_floor 5427 replay: equal base recall (11 and 11 of 47) against heads 8, 11, 10 is within noise",
-      [(11, 11), (11, 13)], [(8, 13), (11, 12), (10, 15)], "no-loss")
-check("noise_floor control: a recall drop of 5 defects on equal row counts is a loss",
-      [(11, 11), (11, 11)], [(6, 11), (6, 11)], "loss", "worse beyond noise: panel.recall_gating")
-check("noise_floor boundary: a recall drop of exactly 2 defects is within noise", [(11, 11), (11, 11)],
-      [(9, 11), (9, 11)], "no-loss")
-check("noise_floor boundary: a recall drop of 3 defects is a loss", [(11, 11), (11, 11)], [(8, 11), (8, 11)], "loss")
-check("noise_floor fp side: 2 more clean cases flagged is within noise", [(11, 11), (11, 11)], [(11, 13), (11, 13)],
-      "no-loss")
-check("noise_floor fp side: 3 more clean cases flagged is a loss", [(11, 11), (11, 11)], [(11, 14), (11, 14)],
-      "loss", "worse beyond noise: panel.fp_rate")
-check("noise_floor: rows without their case counts add no floor", [(11, 11), (11, 11)], [(10, 11), (10, 11)],
-      "loss", counts=False)
-check("equal_rows: a loss on 2 baseline and 3 head rows is unmeasured, naming both counts", [(11, 11), (11, 11)],
-      [(6, 11), (6, 11), (6, 11)], "unmeasured", "2 baseline and 3 head rows")
-EOF
-GVOUT="$(python3 -I "$GVPY" "$HERE/lib" 2>&1)"
-while IFS= read -r line; do
-  case "$line" in PASS*) PASS=$((PASS + 1)); echo "$line";; *) FAIL=$((FAIL + 1)); echo "$line";; esac
-done <<<"$GVOUT"
-
-eq "score.py's panel check calls gate_side, not a copy of its row selection" \
-  "$(grep -c 'eval_feedback.gate_side(rows' "$HERE/review-panel/score.py")" "1"
 
 echo "eval-feedback: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -175,6 +175,72 @@ check "two-names-one-failure: exit 1" "$rc" "1"
 contains "two-names-one-failure: check 2 fails" "$out" "[FAIL] 2."
 contains "two-names-one-failure: names only the failing check" "$out" "lint=COMPLETED/FAILURE"
 
+CRB_OK='{"name":"build","status":"COMPLETED","conclusion":"SUCCESS"}'
+CRB_PEND='{"context":"CodeRabbit","state":"PENDING"}'
+CRB_PROG='{"context":"CodeRabbit","state":"IN_PROGRESS"}'
+for crb_row in "PENDING:$CRB_PEND" "IN_PROGRESS:$CRB_PROG"; do
+    crb_name="${crb_row%%:*}"; crb_json="${crb_row#*:}"
+    reset_stubs
+    STUB_MSS=UNSTABLE
+    STUB_ROLLUP="[$CRB_OK,$crb_json]"
+    rc=0; out="$(STUB_CR_STATE=pending STUB_CR_DESC='Review in progress' run)" || rc=$?
+    contains "cr-$crb_name: item 1 passes" "$out" "[PASS] 1."
+    contains "cr-$crb_name: item 2 passes" "$out" "[PASS] 2."
+    contains "cr-$crb_name: a WARN names CodeRabbit" "$out" "[WARN] 2. CodeRabbit"
+    notcontains "cr-$crb_name: no FAIL on item 1 or 2" "$out" "[FAIL] 2."
+    reset_stubs
+    STUB_MSS=UNSTABLE
+    STUB_ROLLUP="[$CRB_OK,$crb_json]"
+    rc=0; out="$(STUB_CR_STATUSES='[{"context":"CodeRabbit","state":"pending","description":"Review in progress","created_at":"2026-11-02T18:44:07Z","creator":{"id":1,"login":"someone","type":"User"}}]' run)" || rc=$?
+    contains "cr-$crb_name spoof: item 2 still fails" "$out" "[FAIL] 2."
+    contains "cr-$crb_name spoof: item 1 still fails" "$out" "[FAIL] 1."
+    reset_stubs
+    STUB_MSS=UNSTABLE
+    STUB_ROLLUP="[$CRB_OK,$crb_json]"
+    out="$(run)" || true
+    contains "cr-$crb_name unreadable statuses: item 2 still fails" "$out" "[FAIL] 2."
+    reset_stubs
+    STUB_MSS=UNSTABLE
+    STUB_ROLLUP="[$CRB_OK,{\"name\":\"lint\",\"status\":\"IN_PROGRESS\",\"conclusion\":null},$crb_json]"
+    out="$(STUB_CR_STATE=pending STUB_CR_DESC='Review in progress' run)" || true
+    contains "cr-$crb_name + other pending: item 2 fails" "$out" "[FAIL] 2."
+    contains "cr-$crb_name + other pending: names the other check" "$out" "lint="
+    contains "cr-$crb_name + other pending: item 1 fails" "$out" "[FAIL] 1."
+done
+reset_stubs
+STUB_MSS=UNSTABLE
+STUB_ROLLUP="[$CRB_OK,{\"name\":\"lint\",\"status\":\"IN_PROGRESS\",\"conclusion\":null}]"
+out="$(run)" || true
+contains "other-pending alone: item 2 fails" "$out" "[FAIL] 2."
+contains "other-pending alone: item 1 fails" "$out" "[FAIL] 1."
+reset_stubs
+STUB_MSS=UNSTABLE
+STUB_ROLLUP="[$CRB_OK,{\"context\":\"CodeRabbit\",\"state\":\"FAILURE\"}]"
+out="$(STUB_CR_STATE=failure STUB_CR_DESC='Review failed' run)" || true
+contains "cr FAILURE control: item 2 fails" "$out" "[FAIL] 2."
+contains "cr FAILURE control: names CodeRabbit" "$out" "CodeRabbit=FAILURE"
+reset_stubs
+STUB_MSS=UNSTABLE
+STUB_ROLLUP="[$CRB_PEND]"
+out="$(STUB_CR_STATE=pending STUB_CR_DESC='Review in progress' run)" || true
+contains "cr-only rollup: item 2 fails as no checks" "$out" "[FAIL] 2. statusCheckRollup: no checks reported yet"
+reset_stubs
+STUB_MSS=UNSTABLE
+STUB_ROLLUP="[$CRB_OK,{\"context\":\"ci/other\",\"state\":\"PENDING\"},$CRB_PEND]"
+out="$(STUB_CR_STATE=pending STUB_CR_DESC='Review in progress' run)" || true
+contains "name guard: item 1 fails with a pending non-CodeRabbit context" "$out" "[FAIL] 1."
+contains "name guard: item 2 fails" "$out" "[FAIL] 2."
+contains "name guard: names ci/other" "$out" "ci/other=PENDING"
+reset_stubs
+STUB_MSS=UNSTABLE
+STUB_ROLLUP="[$CRB_OK,$CRB_PEND]"
+crb_t0=$SECONDS
+out="$(STUB_CR_SLEEP=1 STUB_CR_STATE=pending STUB_CR_DESC='Review in progress' run)" || true
+crb_dt=$((SECONDS - crb_t0))
+contains "deadline: a stalled confirmation fails item 2 closed" "$out" "[FAIL] 2."
+notcontains "deadline: a stalled confirmation prints no CodeRabbit WARN" "$out" "[WARN] 2. CodeRabbit"
+check "deadline: both stalled status reads are cut at 20 s each, run took ${crb_dt}s, under 50" "$((crb_dt < 50))" "1"
+
 # --- 2f. non-gating contexts: the exact-match list in scripts/lib/non-gating-contexts.txt.
 # Only the listed status context in ERROR: row 2 passes and names it ----------
 SNYK_ERR='{"context":"security/snyk (yotamleo)","state":"ERROR","createdAt":"2026-01-01T08:10:00Z"}'
@@ -609,6 +675,24 @@ check "missing-ticket: exit 1" "$rc" "1"
 contains "missing-ticket: check 6 fails" "$out" "[FAIL] 6."
 contains "missing-ticket: names the offending subject" "$out" "tweak with no ticket"
 
+reset_stubs
+STUB_COMMITS='[{"messageHeadline":"feat(x): add a long subject that runs past the seventy character mark…","messageBody":"… and ends with (HIMMEL-1)\n\nPlatforms tested: linux\nSecurity reviewed: manual"}]'
+rc=0; out="$(run)" || rc=$?
+contains "truncated-subject: ticket in body remainder passes check 6" "$out" "[PASS] 6."
+
+STUB_COMMITS='[{"messageHeadline":"feat(x): add a long subject that runs past the seventy character mark…","messageBody":"… and ends with no id at all\n\nPlatforms tested: linux\nSecurity reviewed: manual"}]'
+rc=0; out="$(run)" || rc=$?
+contains "truncated-subject: no ticket anywhere fails check 6" "$out" "[FAIL] 6."
+contains "truncated-subject: FAIL names the rebuilt subject" "$out" "mark and ends with no id at all"
+
+STUB_COMMITS='[{"messageHeadline":"feat(x): add a long subject that runs past the seventy character mark…","messageBody":""}]'
+rc=0; out="$(run)" || rc=$?
+contains "truncated-subject: empty body still fails check 6, never a silent pass" "$out" "[FAIL] 6."
+
+STUB_COMMITS='[{"messageHeadline":"feat(x): a genuine subject that really ends in an ellipsis…","messageBody":"see (HIMMEL-1) in the body\n\nPlatforms tested: linux\nSecurity reviewed: manual"}]'
+rc=0; out="$(run)" || rc=$?
+contains "truncated-subject: a body without the continuation marker is not joined" "$out" "[FAIL] 6."
+
 # --- 6b. a merge commit (>1 parent) is exempt from check 6,
 # even though its subject carries no ticket ID -------------------------
 reset_stubs
@@ -967,6 +1051,37 @@ o7raw "9561 S4a 7c: an owed line behind a form feed is window-checked (2099 fail
 o7raw "9561 S4a 7c: a second coverage section's owed line inside the window passes" 0 "## Ticket coverage\\n- ask one: done\\n## Notes\\nx\\n## Ticket coverage\\n- b: owed $o_ar chief by $(o_day 2)\\n"
 o7raw "9561 S4a 7c: a second-section deferral to the branch's own key does not hide a 2000 owed line" 1 "## Ticket coverage\\n- ask one: owed $o_ar chief by $(o_day 2)\\n## Notes\\n## Ticket coverage\\n- y: deferred $o_ar HIMMEL-100\\n- z: owed $o_ar chief by 2000-01-01\\n"
 
+o_cnt() { printf '%s' "$out" | grep -oF -e "$1" | wc -l | tr -d ' '; }
+o_d2=$(o_day 2); o_d30=$(o_day 30); o_d31=$(o_day 31); o_past=$(o_day -3)
+o_judge="## Ticket coverage\\n- a: done\\n- sign the spec: owed $o_ar chief by $o_d2\\n"
+o7raw "10656 R1: a + proof line 30 days out beside an in-window chief line fails" 1 "${o_judge}+ run the live proof: owed $o_ar proof by $o_d30\\n"
+contains "10656 R1: names the 30-day date" "$out" "owed date $o_d30 is outside the window"
+contains "10656 R1: names the 30-day line" "$out" "run the live proof"
+o7raw "10656 R2: a second section's proof line 30 days out beside an in-window chief line fails" 1 "${o_judge}## Notes\\nx\\n## Ticket coverage\\n- run the live proof: owed $o_ar proof by $o_d30\\n"
+contains "10656 R2: names the 30-day line" "$out" "owed date $o_d30 is outside the window"
+o7raw "10656 R3: the judge's body, a past-dated + proof line, fails" 1 "${o_judge}+ run the live proof: owed $o_ar proof by $o_past\\n"
+contains "10656 R3: names the past date" "$out" "owed date $o_past is outside the window"
+o7raw "10656 R4: an owed line after an indented heading is window-checked" 1 "## Ticket coverage\\n- a: done\\n  ## Notes\\n- x: owed $o_ar proof by $o_d30\\n"
+contains "10656 R4: names the 30-day line" "$out" "owed date $o_d30 is outside the window"
+o7raw "10656 R5: the judge's body with its chief line 30 days out fails" 1 "## Ticket coverage\\n- a: done\\n- sign the spec: owed $o_ar chief by $o_d30\\n+ run the live proof: owed $o_ar proof by $o_past\\n"
+check "10656 R5: the 30-day line is reported once" "$(o_cnt "owed date $o_d30 is outside")" "1"
+check "10656 R5: the past line is reported once" "$(o_cnt "owed date $o_past is outside")" "1"
+o7raw "10656 R6: two owed lines with tabs in their asks fail" 1 "## Ticket coverage\\n- a: done\\n- a\\tb: owed $o_ar proof by $o_d30\\n- c\\t\\td: owed $o_ar proof by $o_d31\\n"
+check "10656 R6: the 30-day line is reported once" "$(o_cnt "owed date $o_d30 is outside")" "1"
+check "10656 R6: the 31-day line is reported once" "$(o_cnt "owed date $o_d31 is outside")" "1"
+o_long=$(printf 'l%.0s' $(seq 1 170))
+o7raw "10656 R7: an owed line over 160 characters with a tab in its ask fails" 1 "## Ticket coverage\\n- a: done\\n- long\\t$o_long: owed $o_ar proof by $o_d30\\n"
+check "10656 R7: the long line is reported once" "$(o_cnt "owed date $o_d30 is outside")" "1"
+o7raw "10656 E1: a + done line passes" 0 "## Ticket coverage\\n- a: done\\n+ x: done\\n"
+o7raw "10656 E2: a + not done line fails as unmarked" 1 "## Ticket coverage\\n- a: done\\n+ x: not done\\n"
+contains "10656 E2: names the unmarked line" "$out" "unmarked line: + x: not done"
+o7raw "10656 E3: a + deferral to a Done key fails" 1 "## Ticket coverage\\n- a: done\\n+ x: deferred $o_ar HIMMEL-51\\n"
+contains "10656 E3: names the Done key" "$out" "HIMMEL-51 already Done"
+o7raw "10656 F1a: a body whose only owed line is invalid fails on that line alone" 1 "## Ticket coverage\\n- a: done\\n- x: owed $o_ar bob by $o_d2\\n"
+contains "10656 F1a: says the owed line is not accepted" "$out" "owed line is not accepted"
+notcontains "10656 F1a: no whole-body read failure" "$out" "cannot read the body's owed line"
+o7raw "10656 F1b: owed prose outside the coverage section passes" 0 "## Summary\\nowed $o_ar chief by 2000-01-01\\n\\n## Ticket coverage\\n- a: done\\n"
+
 # the full run prints the same shape message on the same failure
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done pending verification\n'
@@ -1025,6 +1140,63 @@ printf 'HIMMEL-100\tHIMMEL-51\n' > "$tmp/links.db"; STUB_LINKS_DB="$tmp/links.db
 rc=0; out="$(run)" || rc=$?
 check "links: a linked but Done target is still refused: exit 1" "$rc" "1"
 contains "links: linked Done target: names the status" "$out" "HIMMEL-51 already Done"
+
+s2() {
+    reset_stubs
+    STUB_BODY="$3"
+    if [ "$4" != - ]; then printf '%b' "$4" > "$tmp/links.db"; STUB_LINKS_DB="$tmp/links.db"; fi
+    [ "$5" = - ] || seed_deferral "$5"
+    STUB_LINKS_FAIL="${6:-}"
+    rc=0; out="$(run)" || rc=$?
+    check "$1: exit $2" "$rc" "$2"
+}
+s2 "10657 G1: an open unlabelled key linked from the PR's ticket needs no ledger row" 0 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-200\n' 'HIMMEL-100\tHIMMEL-200\n' -
+contains "10657 G1: check 7 passes" "$out" "[PASS] 7."
+s2 "10657 G2: an open residual key linked from the PR's ticket needs no ledger row" 0 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-201\n' 'HIMMEL-100\tHIMMEL-201\n' -
+contains "10657 G2: check 7 passes" "$out" "[PASS] 7."
+s2 "10657 G3: an open older key linked from the PR's ticket needs no ledger row" 0 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-50\n' 'HIMMEL-100\tHIMMEL-50\n' -
+contains "10657 G3: check 7 passes" "$out" "[PASS] 7."
+s2 "10657 C1: a linked Done key fails" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-51\n' 'HIMMEL-100\tHIMMEL-51\n' -
+contains "10657 C1: names the status" "$out" "HIMMEL-51 already Done"
+notcontains "10657 C1: no second message" "$out" "has no deferred_to row"
+s2 "10657 C2: an unlinked unlabelled newer key fails" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-200\n' - -
+contains "10657 C2: names the raw-create refusal" "$out" "HIMMEL-200 was made by a raw jira create"
+notcontains "10657 C2: no second message" "$out" "has no deferred_to row"
+s2 "10657 C3: the PR's own key fails" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-100\n' 'HIMMEL-100\tHIMMEL-100\n' -
+contains "10657 C3: names the own ticket" "$out" "HIMMEL-100 is the PR's own ticket"
+notcontains "10657 C3: no second message" "$out" "has no deferred_to row"
+s2 "10657 C4: an unlinked older key with no ledger row fails" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-50\n' - -
+contains "10657 C4: names the missing row" "$out" "HIMMEL-50 is deferred in the body but has no deferred_to row"
+s2 "10657 C5: a links failure for an older key with no ledger row fails closed" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-50\n' - - 1
+contains "10657 C5: says UNKNOWN" "$out" "HIMMEL-50 UNKNOWN (jira links failed for HIMMEL-100"
+check "10657 C5: the UNKNOWN is printed once" "$(o_cnt "HIMMEL-50 UNKNOWN (jira links failed")" "1"
+notcontains "10657 C5: no missing-row message" "$out" "HIMMEL-50 is deferred in the body"
+s2 "10657 C6: a non-strict deferral to a linked key fails as unmarked" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-200 (later)\n' 'HIMMEL-100\tHIMMEL-200\n' -
+contains "10657 C6: names the unmarked line" "$out" "unmarked line: - b: deferred -> HIMMEL-200 (later)"
+s2 "10657 C7: an unlinked residual key with no ledger row fails" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-201\n' - -
+contains "10657 C7: names the missing row" "$out" "HIMMEL-201 is deferred in the body but has no deferred_to row"
+contains "10657 C7: names the link to make" "$out" "jira link HIMMEL-100 HIMMEL-201"
+s2 "10657 C8: a links failure for a newer key with no ledger row fails" 1 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-200\n' - - 1
+check "10657 C8: the UNKNOWN is printed once" "$(o_cnt "HIMMEL-200 UNKNOWN (jira links failed")" "1"
+s2_n=$(o_cnt "HIMMEL-200 is deferred in the body")
+check "10657 C8: no missing-row message" "$s2_n" "0"
+s2 "10657 O1: a ledger-backed older key passes with links failing" 0 '## Ticket coverage\n- a: done\n- b: deferred -> HIMMEL-50\n' - HIMMEL-50 1
+contains "10657 O1: check 7 passes" "$out" "[PASS] 7."
+s2 "10657 O2: an older key on two lines with no ledger row fails" 1 '## Ticket coverage\n- a: deferred -> HIMMEL-50\n- b: deferred -> HIMMEL-50\n' - -
+s2_n=$(o_cnt "HIMMEL-50 is deferred in the body")
+check "10657 O2: the missing row is reported once" "$s2_n" "1"
+cat > "$tmp/jira-count" <<EOS
+#!/usr/bin/env bash
+printf '%s %s\n' "\$1" "\${2:-}" >> "$tmp/jira-calls.log"
+exec "$tmp/bin/jira-stub" "\$@"
+EOS
+chmod +x "$tmp/jira-count"
+: > "$tmp/jira-calls.log"
+RUN_JIRA_CMD="$tmp/jira-count" s2 "10657 L1: a linked newer key on two lines passes" 0 '## Ticket coverage\n- a: deferred -> HIMMEL-200\n- b: deferred -> HIMMEL-200\n' 'HIMMEL-100\tHIMMEL-200\n' -
+check "10657 L1: one links call per line and none more" "$(grep -c '^links ' "$tmp/jira-calls.log")" "2"
+: > "$tmp/jira-calls.log"
+RUN_JIRA_CMD="$tmp/jira-count" s2 "10657 L2: a linked older key on two lines passes" 0 '## Ticket coverage\n- a: deferred -> HIMMEL-50\n- b: deferred -> HIMMEL-50\n' 'HIMMEL-100\tHIMMEL-50\n' -
+check "10657 L2: one links call for the key" "$(grep -c '^links ' "$tmp/jira-calls.log")" "1"
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done\n- ask two: done\n'
@@ -1112,6 +1284,101 @@ printf '{"kind":"finding","ts":"t","branch":"%s","head":"%s","model":"codex","fi
 seed_descendant "$REVHEAD"
 rc=0; out="$(run)" || rc=$?
 check "descendant: an amend-made deferral at the reviewed head counts: exit 0" "$rc" "0"
+
+TS_ROOT="$tmp/ts-handovers"; TS_CACHE="$tmp/ts-cache"
+TS_STEM="HIMMEL-100-N100-thing-2026-11-24"
+TS_DOC="$TS_ROOT/u/himmel/$TS_STEM.md"; TS_LOG="$TS_CACHE/launch-logs/$TS_STEM.log"
+mkdir -p "$TS_ROOT/u/himmel" "$TS_CACHE/launch-logs"
+ts_fixture() {
+    printf '# brief\n\n## Results (newest at the bottom)\n- 10:00 LIVE — started\n' > "$TS_DOC"
+    printf 'headed-arm-worker: profile=worker-impl lane=native model=m role=worker session=%s launched=2026-11-24T10:00:00Z\n' "$TS_STEM" > "$TS_LOG"
+}
+cat > "$tmp/bin/jira-comments-stub" <<'STUB'
+#!/usr/bin/env bash
+if [ "$1" = "comments" ] && [ "${3:-}" = "--json" ]; then
+    [ -z "${STUB_COMMENTS_FAIL:-}" ] || { echo "jira: comments HIMMEL-100 failed: HTTP 500" >&2; exit 1; }
+    printf '%s' "${STUB_COMMENTS:-[]}"
+    exit 0
+fi
+exec "$STUB_JIRA_BASE" "$@"
+STUB
+chmod +x "$tmp/bin/jira-comments-stub"
+ts_run() {
+    rc=0
+    out="$(
+        export HANDOVER_DIR="$TS_ROOT" HIMMELCTL_CACHE_DIR="$TS_CACHE" STUB_JIRA_BASE="$tmp/bin/jira-stub" STUB_COMMENTS="$1" STUB_COMMENTS_FAIL="${TS_FAIL:-}"
+        RUN_JIRA_CMD="$tmp/bin/jira-comments-stub" run
+    )" || rc=$?
+}
+TS_NEW='[{"id":"10001","created":"2026-11-24T12:30:00.000+0100","author":"Yotam","body":"steer: widen the Writes"}]'
+TS_OLD='[{"id":"10002","created":"2026-11-24T10:30:00.000+0100","author":"Yotam","body":"older steer"}]'
+TS_MACHINE='[{"id":"10003","created":"2026-11-24T12:30:00.000+0100","author":"Yotam","body":"WORKER N100 (live)\nPRs: none"},{"id":"10004","created":"2026-11-24T12:31:00.000+0100","author":"Yotam","body":"[release-ruling R-1] RULING audit copy"}]'
+
+reset_stubs; ts_fixture
+ts_run "$TS_NEW"
+check "21: a comment newer than the launch with no TICKET-SEEN line: exit 1" "$rc" "1"
+contains "21: it names the comment id" "$out" "[FAIL] 21."
+contains "21: it quotes the comment" "$out" "steer: widen the Writes"
+contains "21: it names the doc to put the line in" "$out" "$TS_DOC"
+
+reset_stubs; ts_fixture
+printf -- '- 12:00 LIVE — TICKET-SEEN 10001 widened Writes\n' >> "$TS_DOC"
+ts_run "$TS_NEW"
+check "21: the same comment with its TICKET-SEEN line: exit 0" "$rc" "0"
+contains "21: the same comment with its TICKET-SEEN line passes" "$out" "[PASS] 21."
+
+reset_stubs; ts_fixture
+ts_run '[{"id":"10005","created":"2026-11-24T12:30:00.000+0100","author":"","body":"steer without an author"}]'
+contains "21: a comment with no author still prints its text, not a shifted field" "$out" "by unknown at 2026-11-24T12:30:00.000+0100"
+contains "21: a comment with no author keeps its quoted text" "$out" "\"steer without an author\""
+
+reset_stubs; ts_fixture
+printf -- '- 12:00 LIVE — TICKET-SEEN 99999 some other comment\n' >> "$TS_DOC"
+ts_run "$TS_NEW"
+check "21: a TICKET-SEEN line for another id does not acknowledge it: exit 1" "$rc" "1"
+
+reset_stubs; ts_fixture
+ts_run "$TS_OLD"
+check "21: a comment older than the launch needs no line: exit 0" "$rc" "0"
+contains "21: a comment older than the launch passes" "$out" "[PASS] 21."
+
+reset_stubs; ts_fixture
+ts_run "$TS_MACHINE"
+check "21: a worker status comment and a release-ruling audit copy need no line: exit 0" "$rc" "0"
+
+reset_stubs; ts_fixture; rm -f "$TS_LOG"
+ts_run "$TS_NEW"
+check "21: no launch record says so and does not fail on that alone: exit 0" "$rc" "0"
+contains "21: no launch record is a WARN naming it" "$out" "[WARN] 21."
+contains "21: no launch record is named" "$out" "no launch record"
+
+reset_stubs; ts_fixture; rm -f "$TS_DOC"
+ts_run "$TS_NEW"
+check "21: no worker doc says so and does not fail on that alone: exit 0" "$rc" "0"
+contains "21: no worker doc is a WARN naming it" "$out" "no worker handover doc"
+
+reset_stubs; ts_fixture
+STUB_PR_TITLE="chore: a title with no key"
+ts_run "$TS_NEW"
+contains "21: no ticket key in the title says so" "$out" "[WARN] 21. ticket comments not checked"
+notcontains "21: no ticket key in the title never fails check 21" "$out" "[FAIL] 21."
+
+reset_stubs; ts_fixture
+TS_FAIL=1 ts_run "$TS_NEW"
+check "21: an unreadable comment list does not fail the run on its own: exit 0" "$rc" "0"
+contains "21: an unreadable comment list is a WARN" "$out" "[WARN] 21."
+
+reset_stubs; ts_fixture
+RUN_MODE=only7 ts_run "$TS_NEW"
+check "21: --only 7 runs it too, so a worker sees it before READY: exit 1" "$rc" "1"
+contains "21: --only 7 prints the FAIL" "$out" "[FAIL] 21."
+contains "21: --only 7 ends COVERAGE-LINT FAIL" "$out" "COVERAGE-LINT FAIL"
+reset_stubs; ts_fixture
+printf -- '- 12:00 LIVE — TICKET-SEEN 10001 widened Writes\n' >> "$TS_DOC"
+RUN_MODE=only7 ts_run "$TS_NEW"
+check "21: --only 7 with the TICKET-SEEN line: exit 0" "$rc" "0"
+contains "21: --only 7 with the TICKET-SEEN line ends COVERAGE-LINT PASS" "$out" "COVERAGE-LINT PASS"
+unset RUN_MODE
 
 
 echo "---"

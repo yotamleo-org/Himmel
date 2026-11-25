@@ -61,15 +61,18 @@
 #       line with `owner: KEY` or an arrow to KEY, or naming a chief step, or an `owed -> chief|operator by
 #       YYYY-MM-DD` step, read from the merge row or the PR body): To Do, the owner in TS_D5D_OWNER
 #       (`chief by 2026-11-22` for an owed step)
-#   D5c no PR, the latest merge row contract=no  In Progress (a partial: work remains)
-#       or, a wrapped owner and no merge row at all, a merged PR whose first [KEY] is the
-#       ticket (TS_STAGE=merged-no-row, TS_MERGED_PR); an unreadable merged list or merge-row
-#       filter is no-write + miss
+#   D5c no PR, the latest merge row contract=no  To Do (a partial: work remains, nobody on it); In Progress only
+#       while the wrapped owner's doc still holds a live queue lock
+#       or, no merge row at all, a merged PR whose first [KEY] is the ticket
+#       (TS_STAGE=merged-no-row, TS_MERGED_PR); an unreadable merged list or merge-row
+#       filter is no-write + miss. D5c and D5d need a wrapped owner or no worker doc at all;
+#       with no doc they apply only to a ticket at IN CI (any other status is D7, never moved)
 #   D6  no PR, the owner WRAPPED or HALTED       To Do (the resume state)
 #       and no other recorded worker holds its lock
 #   D6n as D6, but the ticket is In Progress and the owner's brief says Completes ticket: no
-#       above ## Results: derived equals current, so no move
-#   D7  no PR, never owned                       no-write
+#       above ## Results: To Do; In Progress (no move) only while the owner's doc still holds a live
+#       queue lock: no ticket is In Progress without a live worker
+#   D7  no PR, no worker doc, not at IN CI or no D5d/D5c   no-write
 #
 # Env: TICKET_STATUS_STATE_DIR (default ~/.himmel/state), WORKER_SESSION_JIRA_CLI (the Jira
 # CLI; an executable or a .js run under node), TICKET_STATUS_QUEUE_LOCK (an
@@ -231,11 +234,39 @@ ts_required_set() {
     printf '%s\n%s\n' "$rules" "$classic" | sed '/^$/d' | sort -u | _required_normalize
 }
 
+_ts_repo_key() {
+    local u="${GH_REPO:-}" r o h rest scp=1
+    [ -n "$u" ] || u=$(git remote get-url origin 2>/dev/null) || return 1
+    u="${u%/}"; u="${u%.git}"
+    case "$u" in *://*) u="${u#*://}"; scp=0 ;; esac
+    case "${u%%/*}" in *@*) u="${u#*@}" ;; esac
+    [ "$scp" -eq 0 ] || u="${u/:/\/}"
+    r="${u##*/}"; rest="${u%/*}"
+    [ "$rest" != "$u" ] || return 1
+    o="${rest##*/}"
+    if [ "$o" != "$rest" ]; then h="${rest%/*}"; h="${h##*/}"; h="${h%%:*}"; else h="${GH_HOST:-github.com}"; fi
+    [ -n "$h" ] && [ -n "$o" ] && [ -n "$r" ] || return 1
+    printf '%s@%s@%s' "$h" "$o" "$r"
+}
+
 # _ts_snap_required_set <base> — ts_required_set, read once per base per snapshot.
 _ts_snap_required_set() {
-    local f="$TS_SNAPSHOT_DIR/req-${1//\//_}"
+    local f="$TS_SNAPSHOT_DIR/req-${1//\//_}" ttl="${TICKET_STATUS_REQSET_TTL:-300}" kept at now repo
+    case "$ttl" in ''|*[!0-9]*) ttl=300 ;; esac
+    if repo=$(_ts_repo_key); then kept="$(ts_state_dir)/required-set/$repo@${1//\//_}"; else kept=""; ttl=0; fi
+    now=$(date +%s)
     if [ ! -e "$f" ] && [ ! -e "$f.fail" ]; then
-        if ts_required_set "$1" >"$f.t" 2>/dev/null; then mv "$f.t" "$f"; else rm -f "$f.t"; : >"$f.fail"; fi
+        at=""
+        [ "$ttl" -le 0 ] || [ ! -s "$kept" ] || { IFS= read -r at <"$kept"; }  # read-sink-ok: our own state file, a bare epoch
+        case "$at" in ''|*[!0-9]*) at="" ;; esac
+        if [ -n "$at" ] && [ $((now - at)) -ge 0 ] && [ $((now - at)) -lt "$ttl" ]; then
+            tail -n +2 "$kept" >"$f"
+        elif ts_required_set "$1" >"$f.t" 2>/dev/null; then
+            mv "$f.t" "$f"
+            if [ "$ttl" -gt 0 ] && mkdir -p "${kept%/*}" 2>/dev/null; then
+                { printf '%s\n' "$now"; cat "$f"; } >"$kept.$$" && mv "$kept.$$" "$kept"  # read-sink-ok: our own snapshot file
+            fi
+        else rm -f "$f.t"; : >"$f.fail"; fi
     fi
     [ -e "$f" ] || return 1
     # read-sink-ok: $f is under the sweep's own snapshot dir, built from a base ref name, never from argv or a record
@@ -335,7 +366,7 @@ ts_marker_newest() {
             newest=${BASH_REMATCH[3]}
             if status_marker_is_parked "$newest"; then newest=PARKED-USAGE; fi
         elif [[ "$line" =~ $succession_re ]]; then
-            newest=SUCCESSION
+            case "$newest" in WRAPPED|HALTED) ;; *) newest=SUCCESSION ;; esac
         fi
     done <<<"$bullets"
     printf '%s\n' "$newest"
@@ -420,6 +451,28 @@ ts_worker_state() {
     echo "$TS_WORKER_STATE"
 }
 
+ts_worker_ownership() {
+    _ts_worker_state "$1" ${2+"$2"}
+    if [ "$TS_ABANDONED" = yes ]; then echo abandoned; else echo "$TS_WORKER_STATE"; fi
+}
+
+_ts_no_live_session_on() {
+    local dir resolved p comm st kv
+    [ -d /proc/self ] || return 1
+    dir=$(cd -P -- "$(dirname -- "$1")" 2>/dev/null && pwd -P) && resolved="$dir/${1##*/}" || resolved=$1
+    for p in /proc/[0-9]*; do
+        IFS= read -r comm 2>/dev/null < "$p/comm" || { [ ! -d "$p" ] || return 1; continue; }
+        [ "$comm" = claude ] || continue
+        IFS= read -r st 2>/dev/null < "$p/stat" || { [ ! -d "$p" ] || return 1; continue; }
+        st=${st##*) }
+        case "${st%% *}" in Z|X) continue ;; esac
+        { while IFS= read -r -d '' kv; do
+            case "$kv" in "WORKER_SESSION_DOC=$1"|"WORKER_SESSION_DOC=$resolved") return 1 ;; esac
+        done; } 2>/dev/null < "$p/environ" || { [ ! -d "$p" ] || return 1; }
+    done
+    return 0
+}
+
 # _ts_worker_state <doc> [<disposition>] — ts_worker_state without the subshell: sets
 # TS_WORKER_STATE and TS_LOCK_HELD (yes | no | "" when the lock was not read) and TS_LOCK_DEAD
 # (yes: the lock answered rc 12 with status STALE-DEAD; no: rc 12 with any other status; "" otherwise).
@@ -427,7 +480,7 @@ ts_worker_state() {
 # passes it as the JSON word `disposition` prints; only such a word is taken, anything else is read here.
 _ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
-    TS_LOCK_HELD="" TS_LOCK_DEAD="" TS_OPEN_EVIDENCE=""
+    TS_LOCK_HELD="" TS_LOCK_DEAD="" TS_OPEN_EVIDENCE="" TS_ABANDONED=""
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
     local attempt_protected terminal="" marker_unread="" doc_absent=""
     case "${2-}" in
@@ -460,7 +513,12 @@ _ts_worker_state() {
     # A held lock, or any marker that is not an end marker (it is later than the receipt or was never wrapped), decides below.
     if [ -n "$terminal" ] && [ "$TS_LOCK_HELD" = no ] && [ -z "$marker" ] && [ -z "$marker_unread" ]; then TS_WORKER_STATE=wrapped; return 0; fi
     if status_marker_is_parked "$marker"; then TS_WORKER_STATE=parked; return 0; fi
-    if [ "$TS_LOCK_HELD" = no ]; then TS_WORKER_STATE=unknown; return 0; fi
+    if [ "$TS_LOCK_HELD" = no ]; then
+        if [ -n "$marker" ] && [ "$attempt_protected" != '"launched"' ] && _ts_no_live_session_on "$1"; then
+            TS_OPEN_EVIDENCE="" TS_ABANDONED=yes
+        fi
+        TS_WORKER_STATE=unknown; return 0
+    fi
     hb=$(printf '%s\n' "$out" | sed -n 's/.*"heartbeat"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
     if [ -n "$hb" ] && hb_epoch=$(_ts_epoch_of_iso "$hb"); then
         age=$(( $(date -u +%s) - hb_epoch ))
@@ -789,14 +847,33 @@ _ts_brief_completes_no() {
     [ "$flag" = no ]
 }
 
-# _ts_derive_d6 <doc> — the wrapped worker with nothing else to hold the ticket: To Do (D6), except that
-# an In Progress ticket whose brief says Completes ticket: no stays where it is (D6n, a noop).
+_ts_by_owner_lock() {
+    local out rc
+    [ -n "$1" ] || { TS_DERIVED="To Do"; return 0; }
+    if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
+        out=$("$TICKET_STATUS_QUEUE_LOCK" status "$1" 2>/dev/null); rc=$?
+    else
+        out=$(bash "$_TS_LIB_DIR/../handover/queue-lock.sh" status "$1" 2>/dev/null); rc=$?
+    fi
+    case "$rc" in
+        0) TS_DERIVED="To Do" ;;
+        11) TS_DERIVED="In Progress" ;;
+        12) if grep -q '^status: STALE-DEAD' <<<"$out"; then TS_DERIVED="To Do"; else TS_DERIVED="In Progress"; fi ;;
+        *) _ts_no_write miss "" lock ;;
+    esac
+}
+
 _ts_derive_d6() {
     if [ "$TS_J_STATUS" = "In Progress" ] && _ts_brief_completes_no "$1"; then
-        TS_DERIVED="In Progress"; TS_RULE=D6n
+        TS_RULE=D6n; _ts_by_owner_lock "$1"
     else
         TS_DERIVED="To Do"; TS_RULE=D6
     fi
+}
+
+_ts_other_worker_keeps_ownership() {
+    [ "$TS_WORKER_STATE" != wrapped ] || return 1
+    [ "$TS_LOCK_HELD" != no ] || [ "$TS_OPEN_EVIDENCE" = yes ]
 }
 
 ts_derive() {
@@ -822,14 +899,11 @@ ts_derive() {
             [ "$TS_GONE" -lt 2 ] || TS_WORKER_STATE=wrapped
         fi
     fi
-    # A second worker on the key keeps the ticket owned unless it reads wrapped, or its lock was read free and nothing
-    # else says its doc may be worked.
     if [ "$TS_WORKER_STATE" = wrapped ]; then
         while IFS= read -r other; do
             [ -n "$other" ] && [ "$other" != "$doc" ] || continue
             _ts_worker_state "$other"
-            [ "$TS_WORKER_STATE" != wrapped ] || continue
-            [ "$TS_LOCK_HELD" != no ] || [ "$TS_OPEN_EVIDENCE" = yes ] || continue
+            _ts_other_worker_keeps_ownership || continue
             owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
         done <<<"$(jq -r '(.docs // [])[]' <<<"$TS_REC")"
         TS_WORKER_STATE=${owner:-wrapped}
@@ -861,33 +935,34 @@ ts_derive() {
     [ "$rc" -ne 0 ] || { _ts_no_write miss D4b done-pending; return 0; }
     [ "$rc" -ne 2 ] || { _ts_no_write miss "" log; return 0; }
     if [ -z "$doc" ]; then
-        _ts_no_write skip D7
+        if [ "$TS_J_STATUS" != "IN CI" ] || ! _ts_derive_merged "$key"; then
+            TS_MERGED_PR=""
+            _ts_no_write skip D7
+        fi
         return 0
     fi
     if [ "$TS_WORKER_STATE" != wrapped ]; then TS_DERIVED="In Progress"; TS_RULE=D5
+    else _ts_derive_merged "$key" "$doc" || _ts_derive_d6 "$doc"
+    fi
+}
+
+_ts_derive_merged() {
+    local rc=0
+    ts_partial_merge "$1" || rc=$?
+    if [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
+    elif [ "$rc" -eq 0 ]; then
+        if _ts_d5d "$1" "$TS_ML_PR" "$TS_ML_REPO" "$TS_ML_OWED" "$TS_ML_OWED_DUE"; then TS_DERIVED="To Do"; TS_RULE=D5d
+        else TS_RULE=D5c; _ts_by_owner_lock "${2:-}"
+        fi
     else
-        rc=0; ts_partial_merge "$key" || rc=$?
-        if [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
-        elif [ "$rc" -eq 0 ]; then
-            if _ts_d5d "$key" "$TS_ML_PR" "$TS_ML_REPO" "$TS_ML_OWED" "$TS_ML_OWED_DUE"; then TS_DERIVED="To Do"; TS_RULE=D5d
-            else TS_DERIVED="In Progress"; TS_RULE=D5c
-            fi
-        else
-            # No partial row: a ticket with no merge row at all may still have shipped a PR merged
-            # outside merge-on-green; that is a partial too.
-            rc=0; ts_has_merge_row "$key" || rc=$?
-            if [ "$rc" -eq 1 ]; then
-                rc=0; ts_merged_no_row "$key" || rc=$?
-                if [ "$rc" -eq 0 ]; then
-                    if _ts_d5d "$key" "$TS_MERGED_PR"; then TS_DERIVED="To Do"; TS_RULE=D5d; TS_STAGE=merged-no-row
-                    else TS_DERIVED="In Progress"; TS_RULE=D5c; TS_STAGE=merged-no-row
-                    fi
-                elif [ "$rc" -eq 2 ]; then _ts_no_write miss "" gh
-                else _ts_derive_d6 "$doc"
-                fi
-            elif [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
-            else _ts_derive_d6 "$doc"
-            fi
+        rc=0; ts_has_merge_row "$1" || rc=$?
+        [ "$rc" -ne 2 ] || { _ts_no_write miss "" log; return 0; }
+        [ "$rc" -eq 1 ] || return 1
+        rc=0; ts_merged_no_row "$1" || rc=$?
+        [ "$rc" -ne 2 ] || { _ts_no_write miss "" gh; return 0; }
+        [ "$rc" -eq 0 ] || return 1
+        if _ts_d5d "$1" "$TS_MERGED_PR"; then TS_DERIVED="To Do"; TS_RULE=D5d; TS_STAGE=merged-no-row
+        else TS_RULE=D5c; TS_STAGE=merged-no-row; _ts_by_owner_lock "${2:-}"
         fi
     fi
 }

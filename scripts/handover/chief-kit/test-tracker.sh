@@ -417,6 +417,7 @@ mk 43 'Done' '["v1.0.1","v1.0.3"]' 'released and future one' 'Done' 'Done'
 mk 44 'Done' '["v1.0.4"]' 'only closed one' 'Closed'
 mk 41 'In Progress' '[]' 'flight one' 'In Progress'
 mk 42 'To Do' '[]' 'idle unversioned one' 'To Do'
+for n in 33 36 40; do sed -i 's/^type: "Bug"$/labels: ["residual"]\n&/' "$jm/HIMMEL-$n.md"; done  # gnu-ok: console kit is Linux-only
 mdir="$mir"
 printf 'v1.0.0\ttrue\t2026-09-30\nv1.0.1\ttrue\t2026-10-04\nv1.0.2\tfalse\t\nv1.0.3\tfalse\t\nv1.0.4\tfalse\t\n' > "$W/jm.versions.tsv"
 render --mirror-dir "$jm" >/dev/null
@@ -446,7 +447,10 @@ not_contains 'a Done ticket naming a released and a later unreleased version is 
 contains 'a Done ticket naming a released and a later unreleased version stays in the released one' "$jhtml" \
     '"k":43,"t":"released and future one","s":"Done","b":"done","v":0,'
 contains 'a version holding only closed-without-shipping work gets a kanban row' "$jhtml" \
-    'data-v="v1.0.4"><summary><span class="vn">v1.0.4</span> <span class="kmeta">0 open of 0 · 1 closed without shipping</span>'
+    'data-v="v1.0.4" data-open="0" data-residual="0"><summary><span class="vn">v1.0.4</span> <span class="kmeta">0 open · 0 residual · 1 closed without shipping</span>'
+contains 'a version row shows its open count as the size and its residual count by name (the tick open= and residual for v1.0.2)' "$jhtml" \
+    'data-v="v1.0.2" data-open="3" data-residual="2">'
+contains 'the version row text says open N and residual M' "$jhtml" '3 open · 2 residual'
 contains 'the client version table renders a row for a closed-only version' "$jhtml" \
     '[1];if(!t.n&&!wn)return;if(HIDE&&!t.open&&t.n){hid++;return}'
 contains 'the footnote says closed without shipping' "$jhtml" 'closed without shipping'
@@ -1542,6 +1546,23 @@ mkdir -p "$W/bk9611-empty/release/v1.1.3"
 v9611render --owed-dir "$W/bk9611-empty"
 contains 'a readable source with nothing owed says nothing is waiting' "$(grep -F 'data-section="waiting"' "$v9611out")" 'nothing is waiting on you'
 not_contains 'a page with nothing chief-owed has no Chief owes group' "$(cat "$v9611out")" 'data-section="chief-owes"'
+printf '%s\n' '{"op":"add","id":"o1","kind":"step","text":"sign the v1.1.3 release spec","actor":"operator"}' \
+    '{"op":"add","id":"o2","kind":"proof","text":"run the VM upgrade proof","actor":"operator"}' \
+    '{"op":"add","id":"o3","kind":"proof","text":"chief validates a proof"}' \
+    '{"op":"add","id":"o4","kind":"step","text":"a closed operator step","actor":"operator"}' '{"op":"close","ref":"o4","key":"1290"}' > "$W/bk9611-empty/owed.jsonl"
+v9611render --owed-dir "$W/bk9611-empty"
+w10764="$(grep -F 'data-section="waiting"' "$v9611out")"
+contains '10764: an operator-marked signature in the owed ledger is a numbered Needs you item' "$w10764" '<ol class="needs-you"><li class="owed"><b>Needs you:</b> sign the v1.1.3 release spec'
+contains '10764: an operator-marked owed proof is listed' "$w10764" 'run the VM upgrade proof'
+not_contains '10764: the empty state is not printed while an operator item is open' "$w10764" 'nothing is waiting on you'
+not_contains '10764: a chief-owed or closed ledger row is not the operator item' "$w10764" 'chief validates a proof'
+not_contains '10764: a closed operator row is not listed' "$w10764" 'a closed operator step'
+mv "$W/bk9611-empty/owed.jsonl" "$W/bk9611-empty/owed.keep"; mkdir "$W/bk9611-empty/owed.jsonl"
+v9611render --owed-dir "$W/bk9611-empty"
+w10764u="$(grep -F 'data-section="waiting"' "$v9611out")"
+contains '10764: an unreadable owed ledger is named as the owed ledger' "$w10764u" 'owed ledger unread'
+not_contains '10764: an unreadable owed ledger is not called a critic file' "$w10764u" 'critic file'
+rmdir "$W/bk9611-empty/owed.jsonl"; mv "$W/bk9611-empty/owed.keep" "$W/bk9611-empty/owed.jsonl"
 
 for t in 442 443 444 445 446 447 448 449 450; do
     cat='To Do'; st='To Do'; res='Done'
@@ -1618,6 +1639,134 @@ v9611render --owed-dir "$bk"
 contains 'a bucket whose round status cannot be read names its critic files unread' "$(grep -F 'data-section="waiting"' "$v9611out")" 'HIMMEL-452-grant.md.critic-spec-r1.md'
 contains 'a bucket whose round status cannot be read names the round ledger unread' "$(grep -F 'data-section="waiting"' "$v9611out")" 'round ledger'
 not_contains 'a bucket whose round status cannot be read lists no unsigned spec' "$(grep -F -e 'data-section="waiting"' -e 'data-section="chief-owes"' "$v9611out")" 'latest critic round'
+
+for t in 455 456; do
+    printf '%s\n' '---' "key: \"HIMMEL-$t\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
+        '---' "# HIMMEL-$t: restore ticket $t" > "$vp/HIMMEL-$t.md"
+done
+SEAL="$HERE/critic-seal.sh"
+r10628quote='the park rm keeps its simple placement under the park root'
+r10628finding='- **r1** (major; operator-critical: reverses-ruling) the spec moves the park rm. That reverses decision 1096 rule 1.'
+r10628tree() {
+    mkdir -p "$1/release/v1.1.3" "$1/specs/designs" "$1/specs/decisions"
+    : > "$1/release/v1.1.3/operator.jsonl"
+    seed "$1"
+    printf '%s\n' '---' "tickets: HIMMEL-$2" '---' '# rev' > "$1/specs/designs/HIMMEL-$2-rev.md"
+    printf '%s\n' "Operator, on HIMMEL-$2: $r10628quote, rule 1." > "$1/specs/decisions/verbatim-decision-1096-park.txt"
+}
+r10628seal() {
+    local sp="$1/specs/designs/HIMMEL-$2-rev.md" k="$2" n="$3" verdict="$4" sum o
+    shift 4
+    sum="$(sha256sum "$sp" | cut -d' ' -f1)"
+    { printf 'critic return r%s read %s\n' "$n" "$sum"; for l in "$@"; do printf '%s\n' "$l"; done; printf '%s\n' "$verdict"; } > "$sp.critic-spec-r$n.md"
+    o="$(bash "$SEAL" "$sp.critic-spec-r$n.md" "$sp" "$sum" 2>&1)" || fail "R10628-tracker: spec round $n of HIMMEL-$k did not seal: $o"
+}
+r10628waiting() { grep -F 'data-section="waiting"' "$v9611out"; }
+kc=456
+kr=455
+bkc="$W/bk10628c"
+r10628tree "$bkc" "$kc"
+r10628seal "$bkc" "$kc" 1 'SPEC CLEAN'
+r10628seal "$bkc" "$kc" 2 'SPEC FINDINGS 1' "$r10628finding"
+r2sha="$(jq -r 'select(.row == "round" and .round == 2) | .return_sha' "$bkc/specs/ledgers/spec-rounds/HIMMEL-$kc.jsonl")"
+[ -n "$r2sha" ] || fail "R10628-tracker: control: spec round 2 of HIMMEL-$kc has no sealed return_sha"
+printf '{"v":1,"ts":1,"key":"HIMMEL-%s","row":"critical","restore":true,"critic":"spec","epoch":0,"opens":3,"id":"r1","class":"reverses-ruling","decision":"1096","quote":"%s","decision_path":"%s","decision_sha":"%s","return_sha":"%s"}\n' \
+    "$kc" "$r10628quote" "$bkc/specs/decisions/verbatim-decision-1096-park.txt" "0000000000000000000000000000000000000000000000000000000000000000" "$r2sha" >> "$bkc/specs/ledgers/spec-rounds/HIMMEL-$kc.jsonl"
+v9611render --owed-dir "$bkc"
+contains 'R10628-tracker: control: a hand-appended restore row that replays invalid leaves the finding under Waiting on you' "$(r10628waiting)" 'r1 (reverses-ruling)'
+bkr="$W/bk10628"
+r10628tree "$bkr" "$kr"
+r10628seal "$bkr" "$kr" 1 'SPEC CLEAN'
+r10628seal "$bkr" "$kr" 2 'SPEC FINDINGS 1' "$r10628finding"
+v9611render --owed-dir "$bkr"
+contains 'R10628-tracker: control: the open reverses-ruling finding is under Waiting on you' "$(r10628waiting)" 'r1 (reverses-ruling)'
+o="$(HIMMEL_CONSOLE=1 bun "$ROUTE" round-critical HIMMEL-$kr --finding r1 --decision 1096 --quote "$r10628quote" --restores --specs "$bkr/specs" 2>&1)" \
+    || fail "R10628-tracker: the restore was refused: $o"
+v9611render --owed-dir "$bkr"
+not_contains 'R10628-tracker: a finding whose restore check is owed is not under Waiting on you' "$(r10628waiting)" 'r1 (reverses-ruling)'
+tok="$(bun "$ROUTE" round-status HIMMEL-$kr --specs "$bkr/specs" | sed -n 's/^RESTORE-CHECK .* token \([0-9a-f]*\)$/\1/p')"
+r10628seal "$bkr" "$kr" 3 'SPEC CLEAN' "RESTORE-BREAKS r1 decision 1096 $tok"
+v9611render --owed-dir "$bkr"
+contains 'R10628-tracker: after RESTORE-BREAKS the finding is back under Waiting on you' "$(r10628waiting)" 'r1 (reverses-ruling)'
+
+for t in 457 458 459 460 461 462 463; do
+    printf '%s\n' '---' "key: \"HIMMEL-$t\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
+        '---' "# HIMMEL-$t: signer ticket $t" > "$vp/HIMMEL-$t.md"
+done
+bk="$W/bk10644"
+mkdir -p "$bk/release/v1.1.3" "$bk/specs/designs"
+for s in 457-marked 458-slice 459-plain 460-unknown; do
+    printf '%s\n' '---' "tickets: HIMMEL-${s%%-*}" '---' '# spec' > "$bk/specs/designs/HIMMEL-$s.md"
+    printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-$s.md.critic-spec-r1.md"
+done
+printf '%s\n' '---' 'tickets: HIMMEL-458, HIMMEL-457' '---' '# slice spec' > "$bk/specs/designs/HIMMEL-458-slice.md"
+for t in 461 462 463; do
+    printf '{"kind":"spec","keys":["HIMMEL-%s"],"spec_path":"%s/specs/designs/HIMMEL-%s-signed.md"}\n' "$t" "$bk" "$t"
+done > "$bk/release/v1.1.3/operator.jsonl"
+seed "$bk"
+cat > "$W/s5jira" <<S5JIRA
+#!/bin/sh
+printf '%s\n' "\$*" >> "$W/s5-args"
+mode="\$(cat "$W/s5-mode")"
+[ "\$1" = release ] || exit 1
+verb="\$2"; shift 2
+spec=''; keys=''
+while [ \$# -gt 0 ]; do
+    case "\$1" in --spec) spec="\$2"; shift 2 ;; --mirror) shift 2 ;; *) keys="\$keys \$1"; shift ;; esac
+done
+for k in \$keys; do
+    [ "\$mode" = noline ] && { [ "\$k" = HIMMEL-457 ] || [ "\$k" = HIMMEL-461 ]; } && continue
+    if [ "\$verb" = signer-check ]; then
+        case "\$k" in
+            HIMMEL-457) echo "SIGNER \$k operator O-v1.1.3-0900" ;;
+            HIMMEL-458) case "\$spec" in *HIMMEL-458-slice.md) echo "SIGNER \$k operator O-v1.1.3-0900 via HIMMEL-457" ;; *) echo "SIGNER \$k chief default" ;; esac ;;
+            HIMMEL-460) echo "UNKNOWN \$k release v1.1.3 chain unreadable" ;;
+            *) echo "SIGNER \$k chief default" ;;
+        esac
+    else
+        case "\$k" in
+            HIMMEL-461) echo "SPEC-NEEDS-OPERATOR \$k $bk/specs/designs/HIMMEL-461-signed.md C-v1.1.3-0901 O-v1.1.3-0900" ;;
+            HIMMEL-462) echo "SPEC-SIGNER-UNKNOWN \$k C-v1.1.3-0902 release v1.1.3 chain unreadable" ;;
+            *) echo "SPEC ok \$k $bk/specs/designs/HIMMEL-\${k#HIMMEL-}-signed.md C-v1.1.3-0903" ;;
+        esac
+    fi
+done
+[ "\$mode" = exit2 ] && exit 2
+[ "\$verb" = spec-check ] && exit 1
+exit 0
+S5JIRA
+chmod +x "$W/s5jira"
+s5render() {
+    local o
+    : > "$W/s5-args"
+    printf '%s\n' "$1" > "$W/s5-mode"
+    o="$(TRACKER_JIRA="$W/s5jira" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" \
+        --prs-file "$W/vp-prs7.json" --chains-file "$W/vp-chains9611.json" --workers-dir "$W/wk9611" --owed-dir "$bk" \
+        --jira-base-url https://jira.example.test --out "$v9611out" 2>&1)" || fail "S5-tracker: the render failed: $o" >&2
+    w10644="$(grep -F 'data-section="waiting"' "$v9611out")"
+    c10644="$(grep -F 'data-section="chief-owes"' "$v9611out")"
+}
+s5render ok
+contains 'S5-tracker: an unsigned critic-clean spec of a marked key is an operator item, not chief-owed' "$w10644" 'HIMMEL-457-marked.md: latest critic round 1 reads SPEC CLEAN'
+not_contains 'S5-tracker: the marked key is not chief-owed' "$c10644" 'HIMMEL-457-marked.md'
+contains 'S5-tracker: the marked key names the governing record' "$w10644" 'signer-check: SIGNER HIMMEL-457 operator O-v1.1.3-0900'
+contains 'S5-tracker: signer-check is asked with the spec file' "$(cat "$W/s5-args")" "--spec $bk/specs/designs/HIMMEL-458-slice.md"
+contains 'S5-tracker: an unsigned slice spec whose header names a marked ticket is an operator item through its via line' "$w10644" 'SIGNER HIMMEL-458 operator O-v1.1.3-0900 via HIMMEL-457'
+not_contains 'S5-tracker: the via slice key is not chief-owed' "$c10644" 'HIMMEL-458-slice.md'
+contains 'S5-tracker: control: a spec signer-check gives the chief stays chief-owed' "$c10644" 'HIMMEL-459-plain.md: latest critic round 1'
+contains 'S5-tracker: an UNKNOWN signer stays with the chief naming why' "$c10644" 'signer unread: release v1.1.3 chain unreadable'
+contains 'S5-tracker: a SPEC-NEEDS-OPERATOR line is an operator item naming the chief signature' "$w10644" "needs the operator&#x27;s own signature: chief signature C-v1.1.3-0901 does not count (O-v1.1.3-0900)"
+contains 'S5-tracker: a SPEC-SIGNER-UNKNOWN line stays with the chief naming why' "$c10644" 'chief signature C-v1.1.3-0902 cannot be checked: signer records unreadable: release v1.1.3 chain unreadable'
+not_contains 'S5-tracker: a chief row from before a station flip (SPEC ok) stays signed' "$w10644$c10644" 'HIMMEL-463'
+equals 'S5-tracker: spec-check is asked once, for the keys with a spec row' "$(grep -c '^release spec-check' "$W/s5-args")" 1
+not_contains 'S5-tracker: a read release check is not named unread' "$w10644" 'unread, rows unchanged'
+for mode in exit2 noline; do
+    s5render "$mode"
+    contains "S5-tracker: a signer-check that fails ($mode) is listed as unread" "$w10644" 'release signer-check unread, rows unchanged'
+    contains "S5-tracker: a spec-check that fails ($mode) is listed as unread" "$w10644" 'release spec-check unread, rows unchanged'
+    contains "S5-tracker: an unread signer leaves the marked key where it was ($mode)" "$c10644" 'HIMMEL-457-marked.md: latest critic round 1'
+    not_contains "S5-tracker: an unread spec-check lists no signed key ($mode)" "$w10644$c10644" 'C-v1.1.3-090'
+done
 
 s4="$W/s4"
 mkdir -p "$s4/mirror" "$s4/wk"
@@ -1753,6 +1902,9 @@ hbfx 'Asked on Telegram: "an ask no decision repeats"' '' ''
 contains '10189 control: a HANDOFF item no newer decision answers stays under Waiting on you' "$hbw" 'an ask no decision repeats'
 hbfx 'move the obsidian key out of the codex config' 'Decision 951. move the obsidian key out of the codex config.' '2026-11-15 10:30:00'
 contains '10189 control: a HANDOFF item with no key and no quoted ask is never answered' "$hbw" 'obsidian key'
+hbfx 'Waiting on the operator for HIMMEL-8002 sign-off' 'The operator ruled on HIMMEL-8002.' '2026-11-15 10:30:00'
+contains '10357 a HANDOFF item with a key and no quoted ask stays under Waiting on you when a newer decision names the key' "$hbw" 'HIMMEL-8002 sign-off'
+not_contains '10357 that key-only item is not under Chief owes' "$hbc" 'HIMMEL-8002 sign-off'
 
 printf '%s\n' '# chief' '## Live state' 'queue: HIMMEL-21 operator-owed lines remain | HIMMEL-25 operator words: the sudo root reinstall' 'pool-disposition: HIMMEL-24 close decision 847 operator-owed: proof verdict' > "$cod/chief.md"
 codrender --owed-dir "$cod/bucket" --chief-doc "$cod/chief.md" >/dev/null || fail '10189 the Live-state render exited non-zero'

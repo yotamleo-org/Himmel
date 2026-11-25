@@ -60,9 +60,6 @@ APPLY-REVIEW: apply_review() writes one review-panel change's applied receipt fo
   proposal's target or that changes another behaviour path beside it. It runs no git operation that writes, and
   neither do keep and revert: they are recommendations.
 
-MERGE GATE: gate_verdict() grades a critic change from the tracked review-panel results rows;
-  it is separate from the keep rule, writes nothing and is called by score.py gate.
-
   eval_feedback.py run [--eval E]... [--ledger P] [--changes P] [--rules P] [--inbox P] [--repo DIR]
   eval_feedback.py apply-review --id ID --commit SHA --changes P [--repo DIR]
 --repo is the git checkout the commits are read from, else this script's own. Prints one line per record
@@ -198,10 +195,6 @@ def keep_rule(c, series, base, new, after):
              "noise": finite(noise), "min_gain": min_gain, "reason": reason})
 
 
-GATE_RECALL, GATE_FP = "panel.recall_gating", "panel.fp_rate"
-GATE_EPS = 1e-9  # float slack: two equal means must compare equal
-GATE_FLOOR_CASES = 2
-GATE_STATUS = ("ok",)  # a partial sweep scores fewer cases, so like an inconclusive one it never counts
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -506,85 +499,6 @@ def measure_review(c, receipt, series, base, new, when, cbs_of, check_receipt):
 def _hashable(v):
     """v as a set member: a list or object from a hand-edited row becomes its JSON text, never a TypeError."""
     return v if v is None or isinstance(v, (str, int, float, bool)) else json.dumps(v, sort_keys=True)
-
-
-def gate_side(rows, h, confighash, skip_ids=(), skip_bundles=()):
-    """The rows the gate counts for cbs_hash h: that confighash, a counted status and the two gate metrics, the
-    first row of a run_id or raw-output bundle. Returns (rows, run_ids, bundles)."""
-    out, ids, bundles = [], set(skip_ids), set(skip_bundles)
-    for r in rows:
-        m = r.get("metrics") if isinstance(r, dict) else None
-        if r.get("cbs_hash") != h or r.get("confighash") != confighash or not isinstance(m, dict) \
-                or r.get("status") not in GATE_STATUS \
-                or not (eval_runs._num(m.get(GATE_RECALL)) and eval_runs._num(m.get(GATE_FP))):
-            continue
-        rk, bk = _hashable(r.get("run_id")), _hashable(r.get("outputs_sha256"))
-        if rk in ids or bk in bundles:
-            continue
-        ids.add(rk)
-        bundles.add(bk)
-        out.append(r)
-    return out, ids, bundles
-
-
-def gate_verdict(rows, base_hash, head_hash, confighash, target_classes=()):
-    """(verdict, info) of the merge gate for a critic change: keep | no-loss | loss | unmeasured.
-
-    Separate from keep_rule, which judges a change record a threshold rule opened; a critic PR has none.
-    rows are results.jsonl rows (score.py export-row). The baseline is the rows at base_hash, the head the
-    rows at head_hash, both at confighash only: a row of another critic version or another fixture set never
-    counts, so it never widens the noise. A side counts one row per sweep: a repeated run_id or outputs
-    bundle is dropped, and a head row that repeats a baseline sweep does not count when the hashes differ.
-    Under two rows on either side the verdict is unmeasured.
-    noise   per metric, the larger of max - min over the baseline rows and a floor of GATE_FLOOR_CASES over the
-            metric's case count (metrics.defects for recall_gating, panel.clean_scored for fp_rate, the largest
-            over the baseline rows): equal baseline rows from cancelling per-case flips are not zero noise. A
-            baseline row without a positive count gives that metric no floor.
-    no-loss head mean recall_gating >= baseline mean - noise, and head mean fp_rate <= baseline mean + noise.
-    keep    no-loss, a target class named, and every target class's head mean recall > its baseline max.
-    Otherwise loss, read only on equal baseline and head row counts: on unequal counts a loss is unmeasured
-    instead, while no-loss and keep stand.
-    Computed at check time, never stored."""
-    base, base_ids, base_bundles = gate_side(rows, base_hash, confighash)
-    head = base if head_hash == base_hash else gate_side(rows, head_hash, confighash, base_ids, base_bundles)[0]
-    info = {"baseline_rows": len(base), "head_rows": len(head)}
-    if not base or not head:
-        where = " and ".join(w for w, rs in (("baseline", base), ("head", head)) if not rs)
-        return "unmeasured", dict(info, reason="no eval rows at the %s cbs_hash for confighash %s" % (where, confighash))
-    if len(base) < 2 or len(head) < 2:
-        return "unmeasured", dict(info, reason="%d baseline and %d head rows: each side needs 2 distinct sweeps"
-                                  % (len(base), len(head)))
-
-    def stats(rs, metric):
-        vals = [r["metrics"][metric] for r in rs]
-        return sum(vals) / len(vals), max(vals) - min(vals)
-
-    def floor(count):
-        ns = [r["metrics"].get(count) for r in base]
-        ok = all(isinstance(n, int) and not isinstance(n, bool) and n > 0 for n in ns)
-        return GATE_FLOOR_CASES / max(ns) if ok else 0.0
-    (rb, nr), (rh, _) = stats(base, GATE_RECALL), stats(head, GATE_RECALL)
-    (fb, nf), (fh, _) = stats(base, GATE_FP), stats(head, GATE_FP)
-    nr, nf = max(nr, floor("defects")), max(nf, floor("panel.clean_scored"))
-    info.update({GATE_RECALL: {"baseline": round(rb, 6), "head": round(rh, 6), "noise": round(nr, 6)},
-                 GATE_FP: {"baseline": round(fb, 6), "head": round(fh, 6), "noise": round(nf, 6)}})
-    lost = [n for n, ok in ((GATE_RECALL, rh >= rb - nr - GATE_EPS), (GATE_FP, fh <= fb + nf + GATE_EPS)) if not ok]
-    if lost and len(base) != len(head):
-        return "unmeasured", dict(info, reason="%d baseline and %d head rows: a loss is read only on equal row counts"
-                                  % (len(base), len(head)))
-    if lost:
-        return "loss", dict(info, reason="worse beyond noise: %s" % ", ".join(lost))
-    if not target_classes:
-        return "no-loss", dict(info, reason="within noise; no target class named")
-    flat = []
-    for cls in target_classes:
-        hv = [(r.get("class_recall") or {}).get(cls) for r in head]
-        bv = [(r.get("class_recall") or {}).get(cls) for r in base]
-        if not all(eval_runs._num(v) for v in hv + bv) or not sum(hv) / len(hv) > max(bv) + GATE_EPS:
-            flat.append(cls)
-    if flat:
-        return "no-loss", dict(info, reason="within noise; target class not above the baseline max: %s" % ", ".join(flat))
-    return "keep", dict(info, reason="within noise and every target class above the baseline max")
 
 
 def inbox_line(c):

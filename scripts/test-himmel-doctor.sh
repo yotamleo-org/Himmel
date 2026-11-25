@@ -26,10 +26,28 @@ if [ -n "$want" ] && [ "$(cat "$t/full/counts" 2>/dev/null)" = "$want" ]; then p
 # last.tsv is written with the counts from the same run, and a run
 # from a linked worktree judges the station (primary) checkout, so it publishes
 # the same state; a --root run judges another checkout and publishes nothing.
+tsv_agrees_with_run() {
+    local d="$1" run="$2" nl nd ne wl rows ids
+    rows="$(grep '^FAIL \|^WARN ' "$d/last.tsv" | sort)"; nl="$(printf '%s\n' "$rows" | grep -c .)"
+    ids="$(printf '%s\n' "$run" | sed -n -E 's/^(FAIL|WARN) +([^ :]+):.*/\1 \2/p' | sort -u)"; nd="$(printf '%s\n' "$ids" | grep -c .)"
+    ne="$(printf '%s\n' "$run" | grep -c -E '^(FAIL|WARN) ')"
+    wl="$(sed -n -E 's/^fail=([0-9]+) warn=([0-9]+)$/\1 \2/p' "$d/counts" | awk '{print $1+$2}')"
+    [ "$rows" = "$ids" ] && [ "$wl" = "$ne" ] && { AGREE="$nl rows = $nd distinct ids, counts $wl = $ne emits"; return 0; }
+    AGREE="last.tsv has $nl rows, run has $nd distinct ids; counts say $wl, run emitted $ne"; return 1
+}
 if [ -e "$t/full/last.tsv" ]; then
-    nl="$(grep -c '^FAIL \|^WARN ' "$t/full/last.tsv")"; wl="$(sed -n -E 's/^fail=([0-9]+) warn=([0-9]+)$/\1 \2/p' "$t/full/counts" | awk '{print $1+$2}')"
-    if [ "$nl" = "$wl" ]; then pass "full run writes last.tsv matching the counts ($nl findings)"; else fail "last.tsv has $nl findings but counts say $wl"; fi
+    if tsv_agrees_with_run "$t/full" "$out"; then pass "full run writes last.tsv matching the counts ($AGREE)"; else fail "last.tsv vs counts: $AGREE"; fi
 else fail "full run did not write last.tsv"; fi
+ctl="$t/ctl"; mkdir -p "$ctl"; ctl_out="$(printf 'WARN C1-a: x\nWARN C1-a: y\nFAIL C2-b: z\n')"
+printf 'WARN C1-a\nWARN C1-a\nFAIL C2-b\n' > "$ctl/keys"
+( . "$REPO_ROOT/scripts/doctor-counts.sh" && doctor_state_publish "$ctl" "$ctl/keys" 1 2 )
+if tsv_agrees_with_run "$ctl" "$ctl_out"; then pass "control: a doubled id publishes one row and counts twice ($AGREE)"; else fail "control: a doubled id disagrees: $AGREE"; fi
+printf 'fail=1 warn=1\n' > "$ctl/counts"
+if tsv_agrees_with_run "$ctl" "$ctl_out"; then fail "control: counts from another run still agree"; else pass "control: counts from another run disagree"; fi
+printf 'fail=1 warn=2\n' > "$ctl/counts"; printf 'FAIL C2-b\n' > "$ctl/last.tsv"
+if tsv_agrees_with_run "$ctl" "$ctl_out"; then fail "control: a last.tsv from another run still agrees"; else pass "control: a last.tsv from another run disagrees"; fi
+printf 'FAIL C9-z\nWARN C1-a\n' > "$ctl/last.tsv"
+if tsv_agrees_with_run "$ctl" "$ctl_out"; then fail "control: a same-sized last.tsv with another id still agrees"; else pass "control: a same-sized last.tsv with another id disagrees"; fi
 WTD="$t/wt"
 if git -C "$REPO_ROOT" worktree add -q --detach "$WTD" HEAD 2>/dev/null; then
     # the fixture checks out HEAD; overlay the doctor under test so an
@@ -2609,6 +2627,50 @@ if grepq "$out" 'WARN C29-child-session: 1 Mac app' && grepq "$out" 'pid 100 (Ra
 else
     fail "C29 ps-carrier -> $(printf '%s' "$out" | grep -A6 C29)"
 fi
+rm -rf "$t"
+
+echo "== C84: a station with neither USER_SLUG nor HIMMEL_RELEASE_STATE_DIR gets one note =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c84root.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }; write_settings "$t/claude" "$WRAPPER"; mkdir -p "$t/repo" "$t/home"
+out="$(USER_SLUG='' HIMMEL_RELEASE_STATE_DIR='' HANDOVER_DIR="$t/handover" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C84 --root "$t/repo" 2>&1)"
+if [ "$(grep -c 'INFO C84-release-queue: neither USER_SLUG nor HIMMEL_RELEASE_STATE_DIR' <<< "$out")" = 1 ]; then pass "C84 -> one note line naming USER_SLUG when neither variable is set"; else fail "C84 neither -> $(printf '%s' "$out" | grep C84)"; fi
+out="$(USER_SLUG=someone HIMMEL_RELEASE_STATE_DIR='' HANDOVER_DIR="$t/handover" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C84 --root "$t/repo" 2>&1)"
+if ! grepq "$out" 'neither USER_SLUG nor HIMMEL_RELEASE_STATE_DIR'; then pass "C84 -> no note when USER_SLUG is set"; else fail "C84 USER_SLUG set -> $(printf '%s' "$out" | grep C84)"; fi
+rm -rf "$t"
+
+echo "== C84: the new-only unplaced WARN (S4): new tickets warn; legacy, pending and serious-later alone stay quiet =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-unp.XXXXXX")" || { fail "C84 unplaced: mktemp -d failed"; exit 1; }
+mkdir -p "$t/home" "$t/claude" "$t/h/release/R1" "$t/mirror/ACME" "$t/git/scripts/jira/src/release"
+printf '{"name":"R1"}\n' > "$t/h/release/R1/release.json"
+printf '# chief\n## Live state\nrelease: R1\n' > "$t/h/X-chief.md"
+printf 'v1.1.3\tfalse\t\tfalse\n' > "$t/mirror/ACME.versions.tsv"
+unp_ticket() {
+    printf -- '---\nkey: "ACME-%s"\ntype: "Task"\nstatus: "x"\nstatusCategory: "To Do"\npriority: "%s"\nlabels: []\nfixVersions: %s\nparent: null\ncreated: "%sT10:00:00.000+0100"\nsector: "S"\n---\n\n# ACME-%s: t\n' "$1" "$2" "$3" "$4" "$1" > "$t/mirror/ACME/ACME-$1.md"
+}
+cat > "$t/probe" <<'EOF'
+#!/usr/bin/env bash
+printf '{"status":"OK","current":"v1.1.3","versions":["v1.1.3","v1.1.4"],"requests":{"open":[],"claimed":[],"oldest_open":null,"pending_keys":%s}}\n' "${UNP_PENDING:-[]}"
+EOF
+git -C "$t/git" init -q . && git -C "$t/git" config user.email t@t && git -C "$t/git" config user.name t
+: > "$t/git/scripts/jira/src/release/door.ts"; git -C "$t/git" add -A
+GIT_AUTHOR_DATE="2026-11-23T12:00:00" GIT_COMMITTER_DATE="2026-11-23T12:00:00" git -C "$t/git" commit -q -m door
+unp_run() { HIMMEL_DOOR_REPO="$t/git" NEXT_DISPATCH_MIRROR="$t/mirror/ACME" JIRA_PROJECT_KEY=ACME HIMMEL_DOCTOR_RM_STATE_PROBE="$t/probe" HIMMEL_RELEASE_STATE_DIR="$t/h/release" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --only C84 --no-color 2>&1; }
+rm -f "$t/mirror/ACME/"*.md
+unp_ticket 1 Medium '[]' 2026-11-24
+out="$(unp_run)"
+if grepq "$out" 'WARN C84-release-queue: 1 open ticket(s) filed since the door shipped'; then pass "C84 one new unplaced ticket -> WARN"; else fail "C84 new unplaced -> $(printf '%s' "$out" | grep C84)"; fi
+rm -f "$t/mirror/ACME/"*.md
+unp_ticket 2 Medium '[]' 2026-11-01
+out="$(unp_run)"
+if ! grepq "$out" 'filed since the door shipped'; then pass "C84 a legacy unplaced ticket alone -> no unplaced WARN"; else fail "C84 legacy only -> $(printf '%s' "$out" | grep C84)"; fi
+rm -f "$t/mirror/ACME/"*.md
+unp_ticket 3 Medium '[]' 2026-11-24
+out="$(UNP_PENDING='["ACME-3"]' unp_run)"
+if ! grepq "$out" 'filed since the door shipped'; then pass "C84 a pending unplaced ticket alone -> no unplaced WARN"; else fail "C84 pending only -> $(printf '%s' "$out" | grep C84)"; fi
+rm -f "$t/mirror/ACME/"*.md
+unp_ticket 4 High '["v1.1.4"]' 2026-11-24
+out="$(unp_run)"
+if ! grepq "$out" 'filed since the door shipped'; then pass "C84 a serious-later ticket alone -> no unplaced WARN"; else fail "C84 serious-later only -> $(printf '%s' "$out" | grep C84)"; fi
+if [ "$(sed -n '/^_c84_unplaced()/,/^}/p' "$DOC" | grep -c 'git ')" = 0 ]; then pass "C84 the doctor runs no git read of its own for the date"; else fail "C84 the doctor reads git itself"; fi
 rm -rf "$t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

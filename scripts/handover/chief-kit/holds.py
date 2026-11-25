@@ -1699,9 +1699,52 @@ def pending_asks(repo):
     return out
 
 
+ASK_LIVE_SWEEP_SECS = 10
+
+
+def parse_open_prs(v):
+    if not v or v == '?':
+        return None
+    return {x.strip().lstrip('#') for x in v.split(',') if x.strip()} - {'none'}
+
+
+def asker_gone(repo, keys, open_prs):
+    if open_prs is None or not keys:
+        return set()
+    rows = Judge(repo, time.time() + ASK_LIVE_SWEEP_SECS).sweep()
+    if rows == 'fault':
+        return set()
+    gone = set()
+    for key in keys:
+        rx = re.compile(r'(?<![A-Za-z0-9])' + re.escape(key) + r'(?!\d)')
+        if not any(st != 'STALE-DEAD' and rx.search(slug) for slug, st in rows):
+            gone.add(key)
+    for d in (slug_dir(repo), slug_dir(repo, '_abs')):
+        try:
+            names = os.listdir(d)
+        except OSError:
+            if not os.path.isdir(d):
+                continue
+            return set()
+        for n in names:
+            if n.startswith(TMP_PREFIX) or GRANT_RE.search(n):
+                continue
+            st, f = read_row(os.path.join(d, n))
+            if st == 'ok':
+                if f[0] in gone and f[4] and f[4] in open_prs:
+                    gone.discard(f[0])
+            elif st in ('bad', 'err'):
+                k = row_key(os.path.join(d, n))
+                if k == '?':
+                    return set()
+                gone.discard(k)
+    return gone
+
+
 def op_asks(a):
     """TSV key path holder command kind, one per pending trust-path ask: the command is the paste-ready grant; the kind is
-    hold-ask-chief for the route chief and hold-ask-operator for every other route."""
+    hold-ask-chief for the route chief and hold-ask-operator for every other route. With --open-prs, an ask whose asker
+    has no live worker and no open PR (asker_gone) is not printed: nobody is waiting on it."""
     repo = primary_of(a.repo)
     kit = os.path.abspath(os.path.join(HERE, '..', '..', '..'))  # the checkout this holds.py runs from, whatever --repo names
     try:
@@ -1710,7 +1753,11 @@ def op_asks(a):
         pass  # swallow-ok: no git identity for the kit checkout; its own path is the best command there is
     script = os.path.join(kit, 'scripts', 'handover', 'chief-kit', 'holds.py')
     trust = load_trust() or []
-    for key, path, holder in pending_asks(repo):
+    asks = pending_asks(repo)
+    gone = asker_gone(repo, {k for k, _p, _h in asks}, parse_open_prs(a.open_prs))
+    for key, path, holder in asks:
+        if key in gone:
+            continue
         kind = 'hold-ask-chief' if grant_route(path, canon(path, repo), trust) == 'chief' else 'hold-ask-operator'
         print('\t'.join([key, path, holder, 'python3 -I %s grant --key %s --repo %s %s'
                          % (shlex.quote(script), key, shlex.quote(repo), shlex.quote(path)), kind]))
@@ -2173,6 +2220,7 @@ def build_parser():
     sp.add_argument('--pr', default='', help='the PR number (--apply)')
     sp = add('asks', op_asks, help='TSV key path holder command: pending trust-path asks with the paste-ready grant')
     sp.add_argument('--repo', required=True)
+    sp.add_argument('--open-prs', metavar='LIST', help='open PR numbers, comma separated (#12,#34 or none); absent or ? keeps every ask')
     return ap
 
 

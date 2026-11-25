@@ -15,7 +15,7 @@ Two **different** dependency sets; do not conflate them:
 | Set | Who needs it | Deps | Installed by |
 |-----|--------------|------|--------------|
 | **Test harness** | throwaway test VMs + CI runners (to *run* himmel's bash suites) | `bash git jq` | `scripts/machine-setup/test-bootstrap.sh` |
-| **User runtime** | himmel adopters (to *use* himmel) | `bash git node npm bun python3 jq gh mktemp` (+ `claude`) | `scripts/setup.sh` `[0/10]` (R6 `ensure-tools` auto-installs git/jq/python3, flags the rest) |
+| **User runtime** | himmel adopters (to *use* himmel) | `bash git node npm bun python3 jq gh mktemp` (+ `claude`) | `scripts/setup.sh` `[0/9]` (R6 `ensure-tools` auto-installs git/jq/python3, flags the rest) |
 
 A bare test VM only needs `test-bootstrap.sh` to run the suites; it does **not**
 need the full user runtime. `bash scripts/machine-setup/test-bootstrap.sh`
@@ -460,7 +460,7 @@ bash scripts/vm/vm-maintain.sh run <vm>
 bash scripts/vm/vm-maintain.sh probe <vm>
 ```
 
-`run` takes the vm-lock, boots the VM from its current state (no restore), runs `apt update` and `apt upgrade`, brings claude and the CLIProxyAPI binary to the pins in `scripts/machine-setup/installer-pins.sh` and `scripts/setup/cli-proxy-lane.sh`, brings codex to npm latest, powers off, snapshots in place as `maint-YYYYMMDD-HHMM`, records it, and deletes `maint-*` snapshots beyond the last 3. A failed step prints `FAILED <step>`, takes no snapshot and leaves the record alone; the VM is powered off either way. Set `HIMMEL_VM_LOCK_WAIT=<seconds>` to wait behind another leg.
+`run` takes the vm-lock, boots the VM from its current state (no restore), runs `apt update` and `apt upgrade`, brings claude and the CLIProxyAPI binary to the pins in `scripts/machine-setup/installer-pins.sh` and `scripts/setup/cli-proxy-lane.sh`, brings codex to npm latest, powers off, snapshots in place as `maint-YYYYMMDD-HHMM`, records it, and deletes `maint-*` snapshots beyond the last 3. A failed step prints `FAILED <step>`, takes no snapshot and leaves the record alone; the VM is powered off either way. Set `HIMMEL_VM_LOCK_WAIT=<seconds>` to wait behind another worker.
 
 `vmsdk` cannot scan a powered-off VM for host `.env` files, so the plain `run` uses the `vmsdk` verb `scan-down-snapshot <name>`: it scans the running guest, powers it off and then snapshots. A secret-bearing file stops the run with `FAILED secret-scan <files>` before power off and before any snapshot. `run <vm> --no-secret-scan` powers off and snapshots with no scan: use it only by hand, after checking the VM holds no host copy (the run itself copies nothing from the host), never as a standing command and never in a schedule.
 
@@ -479,7 +479,7 @@ bash scripts/vm/vm-maintain-cadence.sh status
 bash scripts/vm/vm-maintain-cadence.sh disarm
 ```
 
-`run` takes the VMs one at a time (default `ubuntu_new`, or the comma list in `VM_MAINTAIN_VMS`). For each it runs `vm-maintain.sh run`, which scans for host secrets before power off and never takes `--no-secret-scan` here, then `vm-maintain.sh probe`, which prints the exact login command of each expired CLI and pages the operator once per CLI. A VM another leg holds past `VMCAD_LOCK_WAIT` seconds (default 1800) is skipped with a line and retried on the next pass. A failed step stops the pass with `CADENCE FAILED vm-maintain <vm> <step>` and one page; the station update does not run. After the VMs it runs `scripts/himmel-update.sh`, whose VM-proof gate still applies, and a package that needs `sudo` prints its command instead of running it. While any worker session is live it does nothing and logs `DEFERRED station-update`; a held chief lock and a provably dead lock do not count, and a failed census counts as live. A failed update is `CADENCE FAILED station-update`.
+`run` takes the VMs one at a time (default `ubuntu_new`, or the comma list in `VM_MAINTAIN_VMS`). For each it runs `vm-maintain.sh run`, which scans for host secrets before power off and never takes `--no-secret-scan` here, then `vm-maintain.sh probe`, which prints the exact login command of each expired CLI and pages the operator once per CLI. A VM another worker holds past `VMCAD_LOCK_WAIT` seconds (default 1800) is skipped with a line and retried on the next pass. A failed step stops the pass with `CADENCE FAILED vm-maintain <vm> <step>` and one page; the station update does not run. After the VMs it runs `scripts/himmel-update.sh`, whose VM-proof gate still applies, and a package that needs `sudo` prints its command instead of running it. While any worker session is live it does nothing and logs `DEFERRED station-update`; a held chief lock and a provably dead lock do not count, and a failed census counts as live. A failed update is `CADENCE FAILED station-update`.
 
 `arm` installs one crontab entry (default Sunday 03:30) and a runner that carries `PATH` and the handover root; nothing runs until you arm it. `status` shows whether it is armed and when it last ran; `disarm` removes only this entry. The last pass is in `~/.himmel/state/vm-maintain/cadence-last-run.log`.
 
@@ -508,20 +508,22 @@ this lands `docs/setup/settings-template.json` at
 `/tmp/<name>/docs/setup/settings-template.json` for `uninstall-plugins.sh` to
 find.
 
-A rebuilt or snapshot-restored guest has a new host key, so the next ssh to
-port 2222 fails with `REMOTE HOST IDENTIFICATION HAS CHANGED`. known_hosts keys
-the entry by the name you connected with, so remove only that entry:
-`ssh-keygen -R "[127.0.0.1]:2222"` for the examples above, `"[localhost]:2222"`
-for the vm.mode default. `vmsdk.py sync_repo` is not affected: it keeps one
-known_hosts file per VM at `~/.himmel/vm/known_hosts/<vm name>` (host-key
-checking stays on, `accept-new`), and `vmsdk.py restore` deletes that VM's file
-after the snapshot readback succeeds. A restore done outside vmsdk (raw
-`VBoxManage snapshot restore`) leaves the stale file, so the next `sync_repo`
-fails loud with `REMOTE HOST IDENTIFICATION HAS CHANGED`; delete that one file.
-The host's own `~/.ssh/known_hosts` is never read or written for it.
-`scripts/test-install-symmetry-vm.sh` needs the user spelled out
-(`himmel@localhost 2222 ~/.ssh/id_ed25519`): its default host is a bare
-`localhost`, so ssh logs in as your local user, which the guest does not have.
+A rebuilt or snapshot-restored guest has a new host key. The VM tooling and the
+host-driven VM suites (`test-install-symmetry-vm.sh`, `test-luna-upgrade-vm.sh`,
+`test-tarball-install-vm.sh`, `vm/upgrade-path-e2e.sh`, `vm/over-install-e2e.sh`)
+keep one known_hosts file per VM at `~/.himmel/vm/known_hosts/<vm name>`
+(host-key checking stays on, `accept-new`), and `vmsdk.py restore` deletes that
+VM's file after the snapshot readback succeeds, so a restore needs no
+`ssh-keygen -R`. A restore done outside vmsdk (raw `VBoxManage snapshot restore`)
+leaves the stale file, so the next run fails loud with `host key changed` and
+names that one file; delete it. For the local VM (`localhost` or `127.0.0.1` on a
+port `scripts/lib/vms.json` assigns) the host's own `~/.ssh/known_hosts` is not
+read or written; a remote target, or a run where python3 or `vms.json` cannot be
+read, falls back to it with `accept-new`. A suite whose probe cannot connect prints one of three
+classes with ssh's own text: `host key changed`, `key refused` (the guest
+rejected the key) or `no route or timeout` (the VM is off or the port is wrong).
+The vm.mode default target is `himmel@localhost` (the guest user from
+`scripts/lib/vms.json`), so a no-argument suite run needs no spelled-out user.
 Wrap a scripted run in `trap '<power off>' EXIT` so the guest always powers
 off.
 

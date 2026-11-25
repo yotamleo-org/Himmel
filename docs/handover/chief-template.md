@@ -15,20 +15,21 @@
 Run these, in order, and write the result as the first bullet under
 `## Results`.
 
-1. **One batch, one turn** — all of these as parallel tool calls:
-   - **`ListAgents`**: who is alive; a worker absent here is gone, never relay it as live.
-   - **`ToolSearch`** `select:SendMessage` (deferred).
+1. **One batch, one turn** — all as parallel tool calls:
+   - **`ListAgents`**: who is alive; an absent worker is gone, never relay it as live.
+   - **`ToolSearch`** `select:SendMessage`.
+   - **`Read`** `{{STATE_DIR}}/specs/standing-rules.md`: the station's rules, all in force.
    - **`Read`** each `specs/decisions/chief-decisions-<date>.md` `decisions:` names.
    - **`Read`** every direction companion file that the line of `## Current direction`
      beginning `Full original text` names (under `{{STATE_DIR}}`) while an OPERATOR or CHIEF
      line sits outside its `Rulings in force` index — **required, in this same batch**: those
      are one-line readings. An indexed ruling: `Read` its verbatim file before acting on it.
-     (Find that line by its words.)
-   - **`bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} --acquire --render-workers`**
-     in the **foreground** (never `run_in_background`, never twice): lock sweep,
-     head/remote, usage, worker processes, C29, load and lock state for steps 2–6
-     and 8; takes a `free` lock and prints the token (never a held one). If
-     `chief.sh next` pre-computed steps 2–6, verify them and pass `--acquire --lock-only`.
+
+   Then, after the batch returns, one call alone in its turn (auto mode drops a batched call's verdict): **`bash "{{KIT}}/action-zero.sh" --doc "<this document>" --root "{{HANDOVER_ROOT}}" --prefix {{PREFIX}} --acquire --render-workers`**
+   in the **foreground** (never `run_in_background`, never twice): lock sweep,
+   head/remote, usage, worker processes, C29, load and lock state for steps 2–6
+   and 8; takes a `free` lock, prints the token (never a held one). If
+   `chief.sh next` pre-computed steps 2–6, verify them and pass `--acquire --lock-only`.
 
    Steps 2–6 and 8 below interpret that call's output: never re-run their commands.
    Relays and quote-backs (step 9), the waiter (step 10) and LIVE stay yours.
@@ -79,7 +80,7 @@ Run these, in order, and write the result as the first bullet under
     `bash scripts/handover/chief-kit/chief-wait.sh "{{INBOX}}" --stream --since prev-arm --doc "<this file>" --token <your token> --workers-from "{{FLEET_MANIFEST}}" [--succession {{SESSION_NAME}}]`
     A WAKE may add an `absorbed since last wake:` wraps/merges line. Re-arm only on `REARM`, using your last seen seq
     (`prev-arm` when unsure); on `STOPPED`, a refusal or `waiter-error`, read `waiter.md` before any arm.
-    Before approval keep the one-shot Bash arm (`run_in_background: true`, `timeout: 7200000`), re-armed per wake (`waiter.md`). On `worker-silent` relaunch
+    Before approval keep the one-shot Bash arm (`run_in_background: true`, `timeout: 7200000`), re-armed per wake (`waiter.md`): the line above minus `--stream --since prev-arm`. On `worker-silent` relaunch
     that worker from a RESUME doc or run its blocked step yourself, then tell the
     operator which. Record the task id in your first bullet (`cat "<inbox>.wait"` is the
     heartbeat); wake keys, states, fleet-manifest arming: `chief-sections/waiter.md`.
@@ -236,6 +237,12 @@ bare `clean.sh` sweep for a worker. long-running.txt: `run_in_background` (a sho
   manager**, never a direct fixVersions write: `chief-sections/release-manager.md`. [prose]
 - **Weekly standards duty** (cadence stale): `chief-sections/weekly-duty.md`. [prose]
 - **Owed** items are `owe.sh` rows: `chief-sections/owed.md`. [prose]
+
+## The station's standing-rules file
+
+The file step 1 reads holds this station's own rules; the list above is himmel's, the same
+everywhere. `chief.sh` seeds it once from `docs/handover/standing-rules-template.md` and never
+overwrites it. The chief edits it; the operator corrects it. It stays out of `CLAUDE.md`.
 
 ## Handing over
 

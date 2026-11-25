@@ -741,6 +741,66 @@ function verifyPluginSet(enabledPlugins, ctx, settings) {
 // so a `.env` probe must look in the same files.
 const HIMMEL_CONF_KEYS = ['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_PROJECT_KEY'];
 
+const JIRA_CHAIN_NAMES = ['JIRA_EMAIL', 'JIRA_API_TOKEN'];
+const JIRA_CHAIN_SOURCE = 'the credential chain (environment, credentials directory or keyring)';
+const JIRA_VERIFY_TIMEOUT_MS = 10000;
+
+const JIRA_CHAIN_SCRIPT = `
+const { pathToFileURL } = require('url');
+import(pathToFileURL(process.argv[1]).href).then((m) => {
+  process.stdout.write(JSON.stringify(m.resolveSecrets(process.argv[2], JSON.parse(process.argv[3]))));
+}).catch(() => process.exit(2));
+`;
+
+const JIRA_VERIFY_SCRIPT = `
+let raw = '';
+process.stdin.on('data', (d) => { raw += d; });
+process.stdin.on('end', async () => {
+  const { url, email, token } = JSON.parse(raw);
+  try {
+    const r = await fetch(url, {
+      headers: { Authorization: 'Basic ' + Buffer.from(email + ':' + token).toString('base64'), Accept: 'application/json' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(${JIRA_VERIFY_TIMEOUT_MS}),
+    });
+    let who = true;
+    if (r.status === 200) {
+      try { who = Boolean((await r.json()).accountId); } catch (_e) { who = false; }
+    }
+    process.stdout.write(r.status === 200 && !who ? 'nobody' : String(r.status));
+  } catch (_e) {
+    process.stdout.write('error');
+  }
+});
+`;
+
+function resolveJiraChain(ctx) {
+  const resolver = path.resolve(__dirname, '..', '..', 'lib', 'resolve-secrets.mjs');
+  const r = spawnProbeSync(process.execPath, ['-e', JIRA_CHAIN_SCRIPT, resolver, ctx.repoRoot, JSON.stringify(JIRA_CHAIN_NAMES)], {
+    encoding: 'utf8', env: ctx.env || process.env, timeout: JIRA_VERIFY_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  if (r.status !== 0) return {};
+  try {
+    const out = JSON.parse(String(r.stdout || '{}'));
+    const kept = {};
+    for (const k of JIRA_CHAIN_NAMES) if (nonEmpty(out[k])) kept[k] = out[k];
+    return kept;
+  } catch (_e) {
+    return {};
+  }
+}
+
+function jiraWhoAmI(baseUrl, email, token, ctx) {
+  const url = `${String(baseUrl).replace(/\/+$/, '')}/rest/api/3/myself`;
+  const r = spawnProbeSync(process.execPath, ['-e', JIRA_VERIFY_SCRIPT], {
+    encoding: 'utf8', env: ctx.env || process.env, input: JSON.stringify({ url, email, token }),
+    timeout: JIRA_VERIFY_TIMEOUT_MS + 2000, stdio: ['pipe', 'pipe', 'ignore'],
+  });
+  const out = String((r && r.stdout) || '').trim();
+  if (out === 'nobody') return -1;
+  return /^\d{3}$/.test(out) ? Number(out) : 0;
+}
+
 function overlayHimmelConf(data, ctx) {
   const home = (ctx.env && ctx.env.HOME) || os.homedir();
   for (const name of ['himmel.conf.local', 'himmel.conf']) {
@@ -772,6 +832,9 @@ function probeSettingsKey(item, ctx) {
   const isEnv = item.probe.file === '.env';
   const { primary: filePath, files } = settingsLayerFiles(item.probe.file, ctx);
   const layers = [];
+  const chainOn = isEnv && Boolean(ctx.jiraChain);
+  const chain = chainOn ? resolveJiraChain(ctx) : {};
+  if (Object.keys(chain).length > 0) layers.push({ path: JIRA_CHAIN_SOURCE, data: chain, chain: true });
   for (const file of files) {
     const isPrimary = file === filePath;
     let raw;
@@ -779,6 +842,12 @@ function probeSettingsKey(item, ctx) {
       raw = fs.readFileSync(file, 'utf8');
     } catch (e) {
       if (!isPrimary || (files.length > 1 && e && e.code === 'ENOENT')) continue;
+      if (chainOn && e && e.code === 'ENOENT') {
+        const empty = {};
+        overlayHimmelConf(empty, ctx);
+        layers.push({ path: file, data: empty });
+        continue;
+      }
       // a missing.env is the ordinary "never configured" state for
       // an optional integration (jira-env-keys on a starter install). Flag it
       // so status-report can read it as opt-in rather than red. ENOENT ONLY: an
@@ -850,16 +919,35 @@ function probeSettingsKey(item, ctx) {
       const problem = verifyHudConfig(getVal(item.probe.key), ctx);
       if (problem) return { actual: 'degraded', detail: `${where}: ${problem}` };
     }
+    if (chainOn && keys.includes('JIRA_API_TOKEN')) {
+      return verifyJiraToken(getVal, layerFor, ctx);
+    }
     return { actual: 'present', detail: where };
   }
   const detail = `missing/empty key(s) in ${filePath}: ${missing.join(', ')}`;
   // an.env that DEFINES none of the required keys (not even as
   // an empty `KEY=`) was never set up for this integration; one that defines
   // some, or defines a key empty, is a half-finished setup and stays a real red.
-  if (item.probe.file === '.env' && keys.every((k) => data[k] === undefined)) {
+  if (item.probe.file === '.env' && layers.every((l) => keys.every((k) => l.data[k] === undefined))) {
     return { actual: 'absent', detail, cleanAbsence: true };
   }
   return { actual: 'absent', detail };
+}
+
+function verifyJiraToken(getVal, layerFor, ctx) {
+  const tokenLayer = layerFor('JIRA_API_TOKEN');
+  const source = tokenLayer.chain ? JIRA_CHAIN_SOURCE : tokenLayer.path;
+  const confEmail = {};
+  overlayHimmelConf(confEmail, ctx);
+  const envEmail = ((ctx.env && ctx.env.JIRA_EMAIL) || '').trim();
+  const email = nonEmpty(envEmail) ? envEmail : (nonEmpty(confEmail.JIRA_EMAIL) ? confEmail.JIRA_EMAIL : getVal('JIRA_EMAIL'));
+  const status = jiraWhoAmI(getVal('JIRA_BASE_URL'), email, getVal('JIRA_API_TOKEN'), ctx);
+  if (status === 200) return { actual: 'present', detail: `JIRA_API_TOKEN from ${source} verified: Jira answered 200` };
+  if (status === 401 || status === 403) {
+    return { actual: 'absent', detail: `Jira rejected JIRA_API_TOKEN from ${source} (HTTP ${status}): replace it, in the keyring if that is where it lives` };
+  }
+  const why = status === 0 ? 'no answer within 10s or a network error' : (status === -1 ? 'Jira answered 200 without an account' : `unexpected HTTP ${status}`);
+  return { actual: 'degraded', unverified: true, detail: `could not verify JIRA_API_TOKEN from ${source}: ${why}` };
 }
 
 // ── telegram-access: formal JSON-schema extension ───
@@ -1312,6 +1400,16 @@ function describeQmdListener(url, env) {
   return '';
 }
 
+const QMD_START_GRACE_SECS = 90;
+function qmdStartingFor(env) {
+  const file = env.HIMMEL_DOCTOR_QMD_START_MARKER
+    || path.join(env.XDG_CACHE_HOME || path.join(env.HOME || os.homedir(), '.cache'), 'qmd', 'starting');
+  let at;
+  try { at = Number(fs.readFileSync(file, 'utf8').trim()); } catch (e) { return null; }
+  const age = Math.floor(Date.now() / 1000) - at;
+  return Number.isInteger(at) && age >= 0 && age < QMD_START_GRACE_SECS ? age : null;
+}
+
 function probeQmdDaemon(item, ctx) {
   const env = ctx.env || process.env;
   const url = env.HIMMEL_DOCTOR_QMD_URL || 'http://localhost:8181/mcp';
@@ -1332,7 +1430,14 @@ function probeQmdDaemon(item, ctx) {
   let body = r.stdout || '';
   let code = '';
   if (/[0-9]{3}$/.test(body)) { code = body.slice(-3); body = body.slice(0, -3); }
-  if (!body && r.status === 7) return { actual: 'absent', detail: `no qmd daemon answering on ${url} (qmd is optional)` };
+  if (!body && r.status === 7) {
+    const starting = qmdStartingFor(env);
+    if (starting !== null) return { actual: 'starting', detail: `the qmd daemon is starting on ${url} (start marker ${starting}s old, grace ${QMD_START_GRACE_SECS}s) — connection refused until it finishes loading; not a fault yet` }; // t13b-ok: probe detail text only, starts nothing
+    const setUp = probeCmdHasQmd({ probe: { resolver: 'scripts/lib/qmd-bin.sh' } }, ctx).actual === 'present';
+    return setUp
+      ? { actual: 'degraded', detail: `the qmd daemon is not answering on ${url} (connection refused) although qmd is set up on this station — every qmd content search fails until it is back; check the log ~/.cache/qmd/mcp.log, then start it: bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh` } // t13b-ok: probe detail text naming the existing start script, starts nothing
+      : { actual: 'absent', detail: `no qmd daemon answering on ${url} (qmd is optional)` }; // t13b-ok: probe detail text, starts nothing
+  }
   // a 401/403 is checked before the empty-body fault so a body-less rejection is named too
   if (code === '401' || code === '403') {
     return { actual: 'degraded', detail: token

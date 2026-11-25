@@ -4,6 +4,7 @@ import collections
 import json
 import os
 from pathlib import Path
+import shlex
 import socket
 import subprocess
 import time
@@ -13,8 +14,9 @@ import tempfile
 import unittest
 from unittest import mock
 
+os.environ['HIMMEL_CORE_CHECK_BATCH'] = 'off'
 ROOT = Path(__file__).resolve().parents[2]
-WRITER = ROOT / 'scripts/handover/chief-kit/fleet-manifest.sh'
+WRITER =ROOT / 'scripts/handover/chief-kit/fleet-manifest.sh'
 ENTRYPOINTS = Path(os.environ.get('FLEET_RUNTIME_ENTRYPOINTS', ROOT))
 
 
@@ -170,11 +172,10 @@ class Runtime(unittest.TestCase):
         self.assertEqual(row['attempt']['attempt_id'], 'two')
 
     def test_unknown_legacy_registration_is_not_adopted(self):
+        self.own_live_row(lock=11)
         self.active()
-        data = json.loads(self.m.read_text())
-        data['workers'][0].pop('registration')
-        self.m.write_text(json.dumps(data))
-        self.rt('begin', ok=False)
+        p = self.rt('begin', ok=False)
+        self.assertIn('unknown legacy family ownership', p.stderr)
         owners = json.loads(self.call('runtime', 'owners', '--manifest', self.m).stdout)
         self.assertEqual(len(owners), 1)
         ack = json.loads(self.call('control', 'ack', self.m).stdout)
@@ -729,6 +730,214 @@ exit 1''')
         self.rt('begin', aid='explicit', doc=generated)
         self.rt('outcome', aid='explicit', doc=generated, extra=('--phase', 'refused'))
 
+    def test_admit_predicts_check_and_writes_nothing(self):
+        generated = self.bucket / 'unregistered.md'
+        generated.write_text('# worker\n> **Leg kind:** build\n')
+        files = lambda: {p.name: p.read_bytes() for p in self.bucket.glob('*.json')}
+        before = files()
+        p = self.call('runtime', 'admit', '--doc', generated, ok=False, env=dict(self.env, FLEET_LAUNCH_WORKER_INTENT='1'))
+        self.assertIn('managed worker has no manifest reference', p.stderr)
+        p = self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, ok=False)
+        self.assertIn('fleet-paused', p.stderr)
+        self.assertEqual(files(), before)
+        self.active()
+        before = files()
+        self.assertTrue(json.loads(self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m).stdout)['managed'])
+        self.assertEqual(files(), before)
+        self.rt('check')
+
+    def test_admit_predicts_begin_ownership_refusals_and_writes_nothing(self):
+        self.active()
+        self.rt('begin', aid='first')
+        files = lambda: {p.name: p.read_bytes() for p in self.bucket.glob('*.json')}
+        before = files()
+        p = self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', self.doc.stem, ok=False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(files(), before)
+        self.rt('begin', aid='second', ok=False)
+        self.rt('outcome', aid='first', extra=('--phase', 'refused'))
+        self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', self.doc.stem)
+        sibling = self.bucket / 'earlier-chief.fleet.json'
+        sibling.write_text(json.dumps({'control': json.loads(self.m.read_text())['control'], 'workers': [{'doc': str(self.doc.resolve())}]}))
+        before = files()
+        p = self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', self.doc.stem, ok=False)
+        self.assertIn('unknown legacy family ownership', p.stderr)
+        self.assertEqual(files(), before)
+        p = self.rt('begin', aid='third', ok=False)
+        self.assertIn('unknown legacy family ownership', p.stderr)
+
+    def own_live_row(self, lock=0):
+        data = json.loads(self.m.read_text())
+        data['workers'][0].pop('registration')
+        self.m.write_text(json.dumps(data))
+        self.env = dict(self.env, TICKET_STATUS_QUEUE_LOCK=self.stub('queue-lock-%d' % lock, 'exit %d' % lock))
+
+    def test_begin_admits_a_doc_only_its_own_manifest_lists_as_live_while_no_session_ran(self):
+        self.own_live_row()
+        self.active()
+        self.rt('begin', aid='own')
+        row = json.loads(self.m.read_text())['workers'][0]
+        self.assertEqual((row['registration'], row['attempt']['attempt_id']), ('pending', 'own'))
+
+    def test_begin_still_refuses_its_own_manifest_row_while_the_worker_holds_its_lock(self):
+        self.own_live_row(lock=11)
+        self.doc.write_text(self.doc.read_text() + '\n## Results\n\n- 10:00 LIVE — started\n')
+        self.active()
+        p = self.rt('begin', aid='own', ok=False)
+        self.assertIn('unknown legacy family ownership', p.stderr)
+
+    def test_begin_still_refuses_its_own_manifest_row_while_a_claude_session_is_on_the_doc(self):
+        self.own_live_row()
+        self.active()
+        code = 'import ctypes,time; ctypes.CDLL(None).prctl(15,b"claude",0,0,0); time.sleep(30)'
+        live = subprocess.Popen(['claude', '-c', code], executable=sys.executable, env=dict(self.env, WORKER_SESSION_DOC=str(self.doc)))
+        time.sleep(.2)
+        try:
+            p = self.rt('begin', aid='own', ok=False)
+        finally:
+            live.terminate()
+            live.wait(timeout=5)
+        self.assertIn('unknown legacy family ownership', p.stderr)
+
+    def test_a_doc_not_yet_written_is_unlaunched(self):
+        p = subprocess.run(['python3', '-I', str(ROOT / 'scripts/lib/fleet_runtime.py'), 'unlaunched', '--doc', str(self.bucket / 'missing.md')],
+                           env=self.env, capture_output=True, text=True, timeout=35)
+        self.assertEqual(p.stdout.strip(), 'true', p.stderr)
+
+    def test_a_sibling_manifest_row_refuses_and_names_its_file_and_row(self):
+        self.active()
+        sibling = self.bucket / 'earlier-chief.fleet.json'
+        sibling.write_text(json.dumps({'schema': 1, 'control': json.loads(self.m.read_text())['control'],
+                                       'workers': [{'doc': str(self.doc.resolve()), 'label': 'N1', 'lane': 'native'}]}))
+        p = self.rt('begin', aid='sib', ok=False)
+        self.assertIn('unknown legacy family ownership: %s row %s' % (sibling, self.doc.resolve()), p.stderr)
+
+    def test_a_sibling_manifest_refusal_offers_the_remove_command(self):
+        self.active()
+        sibling = self.bucket / 'earlier-chief.fleet.json'
+        sibling.write_text(json.dumps({'schema': 1, 'control': json.loads(self.m.read_text())['control'],
+                                       'workers': [{'doc': str(self.doc.resolve()), 'label': 'N1', 'lane': 'native'}]}))
+        p = self.rt('begin', aid='sib2', ok=False)
+        remove = 'bash %s remove %s %s' % (shlex.quote(str(ROOT / 'scripts/handover/chief-kit/fleet-manifest.sh')),
+                                           shlex.quote(str(sibling)), shlex.quote(str(self.doc.resolve())))
+        self.assertIn(remove, p.stderr)
+
+    def test_the_remove_command_quotes_a_manifest_path_with_a_space(self):
+        self.active()
+        sibling = self.bucket / 'earlier chief.fleet.json'
+        sibling.write_text(json.dumps({'schema': 1, 'control': json.loads(self.m.read_text())['control'],
+                                       'workers': [{'doc': str(self.doc.resolve()), 'label': 'N1', 'lane': 'native'}]}))
+        p = self.rt('begin', aid='sib3', ok=False)
+        self.assertIn(' remove %s ' % shlex.quote(str(sibling)), p.stderr)
+
+    def live_worker(self):
+        self.active()
+        self.rt('begin', aid='first')
+        self.rt('commit', aid='first')
+
+    def api_call(self, join, doc=None, env=None):
+        script = ('. "$1/scripts/lib/fleet-launch.sh"; fleet_launch_prepare "$2" api-managed "$3" "" "" "$4" || exit $?; '
+                  'echo "managed=$FLEET_LAUNCH_MANAGED"; echo "child_attempt=$(printenv FLEET_LAUNCH_ATTEMPT)"; '
+                  'fleet_launch_finish; fleet_launch_outcome complete; fleet_launch_release')
+        command = ['bash', '-c', script, 'api-call', str(ENTRYPOINTS), str(doc or self.doc), str(self.m), join]
+        result = subprocess.run(command, env=env or self.env, capture_output=True, text=True, timeout=35)
+        self.record(command, result)
+        return result
+
+    def attempts(self):
+        return json.loads((self.bucket / 'fleet-control.json').read_text()).get('attempts', {})
+
+    def test_api_call_inside_live_worker_joins_its_own_attempt(self):
+        self.live_worker()
+        p = self.api_call('first', env=dict(self.env, FLEET_LAUNCH_ATTEMPT='first'))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn('managed=false', p.stdout)
+        self.assertIn('child_attempt=\n', p.stdout)
+        self.assertEqual(list(self.attempts()), ['first'])
+        files = lambda: {p.name: p.read_bytes() for p in self.bucket.glob('*.json')}
+        before = files()
+        p = self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', 'api-managed', '--join-attempt', 'first')
+        self.assertEqual(json.loads(p.stdout)['joined'], 'first')
+        self.assertEqual(files(), before)
+
+    def test_joined_api_call_exit_leaves_the_worker_attempt_live(self):
+        self.live_worker()
+        before = self.attempts()['first']
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(self.attempts()['first'], before)
+        self.assertEqual(before['phase'], 'committed')
+        self.assertTrue((Path(before['reservation']['path']) / 'managed.json').is_file())
+        outcomes = [json.loads(line).get('outcome') for line in (self.bucket / '.himmel/launch-refusals.jsonl').read_text().splitlines()]
+        self.assertNotIn('complete', outcomes)
+        self.assertNotIn('refused', outcomes)
+
+    def test_api_call_naming_another_docs_attempt_or_outside_its_tree_is_refused(self):
+        self.live_worker()
+        doc2 = self.bucket / 'TEST-2-N2-worker.md'
+        doc2.write_text('# second\n')
+        self.call('add', self.m, doc2, '--lane', 'native', '--pending')
+        self.rt('begin', aid='two', doc=doc2)
+        self.rt('commit', aid='two', doc=doc2)
+        p = self.api_call('first', doc=doc2)
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        stranger = subprocess.Popen(['sleep', '30'])
+        self.addCleanup(stranger.wait)
+        self.addCleanup(stranger.kill)
+        control = json.loads((self.bucket / 'fleet-control.json').read_text())
+        stat = Path('/proc', str(stranger.pid), 'stat').read_text().rsplit(')', 1)[1].split()
+        control['attempts']['first']['owner'] = dict(control['attempts']['first']['owner'], pid=stranger.pid, start=stat[19])
+        (self.bucket / 'fleet-control.json').write_text(json.dumps(control))
+        p = self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', 'api-managed', '--join-attempt', 'first', ok=False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
+    def set_attempt(self, aid, **fields):
+        control = json.loads((self.bucket / 'fleet-control.json').read_text())
+        control['attempts'][aid].update(fields)
+        (self.bucket / 'fleet-control.json').write_text(json.dumps(control))
+
+    def test_api_call_naming_a_pending_or_unknown_attempt_of_a_live_owner_is_refused(self):
+        self.active()
+        self.rt('begin', aid='first')
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.set_attempt('first', phase='unknown')
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
+    def test_api_call_naming_a_launched_attempt_whose_ancestor_pid_was_reused_is_refused(self):
+        self.live_worker()
+        owner = self.attempts()['first']['owner']
+        self.set_attempt('first', phase='launched', owner=dict(owner, start=str(int(owner['start']) + 1)))
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(self.attempts()['first']['phase'], 'launched')
+
+    def test_api_call_with_no_inherited_attempt_is_refused_as_today(self):
+        self.live_worker()
+        p = self.api_call('')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(list(self.attempts()), ['first'])
+
+    def test_api_call_from_a_worker_whose_attempt_is_no_longer_live_is_refused(self):
+        self.live_worker()
+        gone = subprocess.Popen(['sleep', '30'])
+        stat = Path('/proc', str(gone.pid), 'stat').read_text().rsplit(')', 1)[1].split()
+        gone.kill()
+        gone.wait()
+        control = json.loads((self.bucket / 'fleet-control.json').read_text())
+        control['attempts']['first']['owner'] = dict(control['attempts']['first']['owner'], pid=gone.pid, start=stat[19])
+        (self.bucket / 'fleet-control.json').write_text(json.dumps(control))
+        p = self.api_call('first')
+        self.assertEqual(p.returncode, 10, p.stdout)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.assertEqual(self.attempts()['first']['phase'], 'unknown')
+
     def test_administrative_docs_still_obey_native_hard_cap(self):
         for number in range(4):
             doc = self.bucket / ('HIMMEL-%d-N%d-worker.md' % (number + 10, number + 10))
@@ -999,6 +1208,144 @@ exit 1''')
         self.assertEqual(self.disp(), 'launched')
         self.assertEqual(self.state(), 'unknown')
         self.rt('begin', aid='second', ok=False)
+
+    PAST_BOOT = '11111111-2222-3333-4444-555555555555'
+
+    def journal_env(self, body):
+        return dict(self.env, FLEET_JOURNAL_BOOTS_CMD=self.stub('list-boots', body))
+
+    def prior_boot_wrapped_attempt(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'launched'))
+        self.wrote('- 12:00 WRAPPED done')
+        self.forge(boot=self.PAST_BOOT)
+
+    def admit_same_doc(self, env, ok):
+        return self.call('runtime', 'admit', '--doc', self.doc, '--manifest', self.m, '--name', self.doc.stem, ok=ok, env=env)
+
+    def test_launched_attempt_from_a_past_local_boot_is_settled_and_the_doc_admits_again(self):
+        self.prior_boot_wrapped_attempt()
+        listing = ' -1 %s Sun 2026-11-22 16:43:26 CET Mon 2026-11-23 14:10:41 CET\n  0 d188f74120ee4795befadc4e452e6397 Mon x Mon y\n'
+        env = self.journal_env("cat <<'EOF'\nIDX BOOT ID\n" + listing % self.PAST_BOOT.replace('-', '') + 'EOF')
+        self.admit_same_doc(env, True)
+        self.env = env
+        self.rt('begin', aid='second')
+
+    def test_launched_attempt_from_an_unlisted_boot_stays_refused(self):
+        self.prior_boot_wrapped_attempt()
+        env = self.journal_env("echo '  0 d188f74120ee4795befadc4e452e6397 Mon x Mon y'")
+        p = self.admit_same_doc(env, False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
+    def test_launched_attempt_stays_refused_when_the_journal_is_unavailable(self):
+        self.prior_boot_wrapped_attempt()
+        p = self.admit_same_doc(self.journal_env('exit 1'), False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        listed = ' -1 %s Sun x Mon y' % self.PAST_BOOT.replace('-', '')
+        p = self.admit_same_doc(self.journal_env("echo '%s'; exit 1" % listed), False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        p = self.admit_same_doc(dict(self.env, FLEET_JOURNAL_BOOTS_CMD=str(self.bucket / 'absent')), False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
+    def listing_env(self, boot, gate=True):
+        env = self.journal_env("echo ' -1 %s Sun x Mon y'" % boot.replace('-', ''))
+        if not gate:
+            del env['HIMMEL_POLICY_FOLLOWS_HOME']
+        return env
+
+    def test_journal_seam_is_ignored_without_the_policy_gate(self):
+        self.prior_boot_wrapped_attempt()
+        p = self.admit_same_doc(self.listing_env(self.PAST_BOOT, gate=False), False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
+    def test_launched_attempt_from_a_foreign_host_with_a_listed_boot_stays_refused(self):
+        self.prior_boot_wrapped_attempt()
+        self.forge(host='another-host')
+        p = self.admit_same_doc(self.listing_env(self.PAST_BOOT), False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
+    def test_current_boot_without_dashes_is_never_a_past_boot(self):
+        self.prior_boot_wrapped_attempt()
+        current = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        self.forge(boot=current.replace('-', ''))
+        p = self.admit_same_doc(self.listing_env(current), False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+
+    def ended_launched_attempt(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'launched'))
+        self.forge(start='0')
+        self.free_env = dict(self.env, TICKET_STATUS_QUEUE_LOCK=self.stub('queue-lock-free', 'echo free'))
+
+    def control_state(self):
+        files = {p.name: p.read_bytes() for p in self.bucket.glob('*.json')}
+        history = self.bucket / '.himmel/launch-refusals.jsonl'
+        files['receipts'] = history.read_bytes() if history.exists() else b''
+        return files
+
+    def attempts_and_receipts(self):
+        history = self.bucket / '.himmel/launch-refusals.jsonl'
+        return self.attempts(), history.read_bytes() if history.exists() else b''
+
+    def test_ended_launched_attempt_is_not_an_owner_for_the_dry_run_and_begin_settles_it(self):
+        self.ended_launched_attempt()
+        slot = self.bucket / 'slots' / self.doc.stem
+        before = self.control_state()
+        self.admit_same_doc(self.free_env, True)
+        self.assertEqual(self.control_state(), before, 'the read-only admit writes nothing')
+        self.env = self.free_env
+        self.rt('begin', aid='second')
+        self.assertEqual(list(self.attempts()), ['second'])
+        self.assertFalse(slot.exists(), 'the settled attempt\'s reservation is released')
+        rows = self.history_rows('one')
+        self.assertEqual(rows[-1]['outcome'], 'refused')
+        self.assertEqual(rows[-1]['cause'], 'settled-ended-session')
+        self.assertEqual(rows[-1]['evidence']['owner'], 'dead')
+        self.assertEqual(set(rows[-1]['settled_by']), {'host', 'pid', 'uid'})
+        self.assertEqual([w['attempt']['attempt_id'] for w in json.loads(self.m.read_text())['workers']], ['second'])
+
+    def test_launched_attempt_with_a_live_session_still_refuses_and_is_untouched(self):
+        self.ended_launched_attempt()
+        self.named_session(attempt_id='one')
+        before = self.attempts_and_receipts()
+        p = self.admit_same_doc(self.free_env, False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.env = self.free_env
+        self.rt('begin', aid='second', ok=False)
+        self.assertEqual(self.attempts_and_receipts(), before)
+
+    def test_launched_attempt_with_a_live_owner_still_refuses(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'launched'))
+        self.env = dict(self.env, TICKET_STATUS_QUEUE_LOCK=self.stub('queue-lock-free', 'echo free'))
+        before = self.attempts_and_receipts()
+        self.rt('begin', aid='second', ok=False)
+        self.assertEqual(self.attempts_and_receipts(), before)
+
+    def test_launched_attempt_whose_queue_lock_is_held_still_refuses(self):
+        self.ended_launched_attempt()
+        before = self.attempts_and_receipts()
+        p = self.admit_same_doc(self.lock_env('HELD'), False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.env = self.lock_env('HELD')
+        self.rt('begin', aid='second', ok=False)
+        self.assertEqual(self.attempts_and_receipts(), before)
+
+    def test_launched_attempt_with_an_unknown_process_state_still_refuses(self):
+        self.ended_launched_attempt()
+        self.forge(host='another-host')
+        before = self.attempts_and_receipts()
+        p = self.admit_same_doc(self.free_env, False)
+        self.assertIn('family already owns worker or ticket', p.stderr)
+        self.env = self.free_env
+        self.rt('begin', aid='second', ok=False)
+        self.assertEqual(self.attempts_and_receipts(), before)
 
     # A terminal receipt ends ownership only when nothing newer or stronger contradicts it.
     def test_refused_receipt_does_not_hide_a_live_named_session(self):
@@ -1772,23 +2119,26 @@ exit 1''')
         self.assertIn('family already owns worker or ticket', p.stderr)
         self.assertEqual(list(self.anchor_attempts()), ['first'])
 
-    def dispatcher_title_expression(self):
-        """The dispatcher's own TITLE_KEY_RE and title_keys, executed from its source text."""
+    def dispatcher_title_expression(self, runtime):
         import re
-        lines = (ENTRYPOINTS / 'scripts/handover/chief-kit/next-dispatchable.sh').read_text().splitlines()
-        start = next(number for number, line in enumerate(lines) if line.startswith('TITLE_KEY_RE = re.compile('))
+        source = (ENTRYPOINTS / 'scripts/handover/chief-kit/next-dispatchable.sh').read_text()
+        self.assertTrue(re.search(r'(?m)^from fleet_runtime import .*\btitle_keys as fr_title_keys\b', source),
+                        'next-dispatchable.sh does not import title_keys from fleet_runtime')
+        self.assertFalse('TITLE_KEY_RE' in source, 'next-dispatchable.sh keeps its own TITLE_KEY_RE')
+        lines = source.splitlines()
+        start = next(number for number, line in enumerate(lines) if line.startswith('def title_keys('))
         block = [lines[start]]
         for line in lines[start + 1:]:
-            if line and not line[0].isspace() and not line.startswith('def title_keys('):
+            if line and not line[0].isspace():
                 break
             block.append(line)
-        namespace = {'re': re}
+        namespace = {'fr_title_keys': runtime.title_keys}
         exec('\n'.join(block), namespace)
         return namespace
 
     def test_the_runtime_reads_a_doc_title_as_the_dispatcher_does(self):
-        dispatcher = self.dispatcher_title_expression()
         runtime = self.runtime_module()
+        dispatcher = self.dispatcher_title_expression(runtime)
         titles = ['HIMMEL-101 / 102 — bundle', 'HIMMEL-101 + 102', 'HIMMEL-101 (+102, +103)', 'HIMMEL-101, 102 & 103',
                   'HIMMEL-101 / HIMMEL-102', 'HIMMEL-101 — worker', 'HIMMEL-101 worker 7', 'worker 7 — HIMMEL-101 / 2']
         self.assertIn('HIMMEL-103', dispatcher['title_keys'](['# ' + titles[2]]))
@@ -1797,33 +2147,134 @@ exit 1''')
             doc.write_text('# ' + title + '\n')
             expected = sorted({'HIMMEL-900', *dispatcher['title_keys'](['# ' + title])})
             self.assertEqual(runtime.worker_keys(doc), expected, title)
-        self.assertEqual(runtime.TITLE_KEY_RE.pattern, dispatcher['TITLE_KEY_RE'].pattern)
 
-    def begin_beside_old_sibling(self, key, empty=None):
+    def test_a_brief_file_name_year_tail_is_not_a_ticket_key(self):
+        runtime = self.runtime_module()
+        for name, expected in (('HIMMEL-10441-part1-vm-proof-RESUME-2026-11-22.md', ['HIMMEL-10441']),
+                               ('HIMMEL-6497-N2809b-s1-relay-fast-path-RESUME-2026-10-19.md', ['HIMMEL-6497'])):
+            self.assertEqual(runtime.worker_keys(self.bucket / 'absent' / name), expected, name)
+
+    def test_a_sibling_row_named_resume_year_does_not_refuse_an_unrelated_brief(self):
+        self.active()
+        old = self.bucket / 'HIMMEL-6497-N2809b-s1-relay-fast-path-RESUME-2026-10-19.md'
+        old.write_text('# worker\n')
+        (self.bucket / 'old.fleet.json').write_text(json.dumps({'schema': 1, 'workers': [{'doc': str(old), 'label': 'N1'}]}))
+        doc = self.bucket / 'HIMMEL-10441-part1-vm-proof-RESUME-2026-11-22.md'
+        doc.write_text('# worker\n')
+        self.call('runtime', 'admit', '--doc', doc, '--manifest', self.m, '--name', doc.stem)
+
+    def begin_beside_old_sibling(self, key, empty=None, results='- 09:00 LIVE\n', session=True, lock=None, ok=False):
         self.active()
         old, new = self.bucket / 'HIMMEL-101-N1-old.md', self.bucket / 'HIMMEL-101-N2-new.md'
-        old.write_text('# HIMMEL-101 old worker\n- 09:00 LIVE\n')
+        old.write_text('# HIMMEL-101 old worker\n' + results)
         new.write_text('# HIMMEL-101 new worker\n')
         sibling = {'schema': 1, key: [dict(doc=str(old), label='N1', added='2026-11-01T00:00:00Z', lane='native')]}
         if empty:
             sibling[empty] = []
         (self.bucket / 'old.fleet.json').write_text(json.dumps(sibling))
         self.call('add', self.m, new, '--lane', 'native', '--pending')
-        p = self.rt('begin', aid='n1', doc=new, ok=False)
+        saved = self.env
+        if lock:
+            self.env = dict(self.env, TICKET_STATUS_QUEUE_LOCK=self.stub('queue-lock-' + lock, 'exit %d' % {'held': 11, 'free': 0}[lock]))
+        live = None
+        if session:
+            code = 'import ctypes,time; ctypes.CDLL(None).prctl(15,b"claude",0,0,0); time.sleep(30)'
+            live = subprocess.Popen(['claude', '-c', code], executable=sys.executable, env=dict(self.env, WORKER_SESSION_DOC=str(old)))
+            time.sleep(.2)
+        try:
+            return self.rt('begin', aid='n1', doc=new, ok=ok)
+        finally:
+            self.env = saved
+            if live:
+                live.terminate()
+                live.wait(timeout=5)
+
+    def refused_beside_old_sibling(self, key, empty=None, **kwargs):
+        p = self.begin_beside_old_sibling(key, empty, **kwargs)
         self.assertIn('unknown legacy family ownership', p.stderr)
         self.assertEqual(self.anchor_attempts(), {})
 
     def test_begin_is_refused_beside_a_live_row_a_workers_sibling_holds(self):
-        self.begin_beside_old_sibling('workers')
+        self.refused_beside_old_sibling('workers')
 
     def test_begin_is_refused_beside_a_live_row_a_legs_sibling_holds(self):
-        self.begin_beside_old_sibling('legs')
+        self.refused_beside_old_sibling('legs')
 
     def test_begin_is_refused_beside_a_live_legs_row_when_the_sibling_also_has_an_empty_workers(self):
-        self.begin_beside_old_sibling('legs', empty='workers')
+        self.refused_beside_old_sibling('legs', empty='workers')
 
     def test_begin_is_refused_beside_a_live_workers_row_when_the_sibling_also_has_an_empty_legs(self):
-        self.begin_beside_old_sibling('workers', empty='legs')
+        self.refused_beside_old_sibling('workers', empty='legs')
+
+    def test_begin_is_admitted_beside_an_abandoned_row(self):
+        self.begin_beside_old_sibling('workers', results='- 09:00 LIVE\n- 11:40 FINDING — a question\n- 12:30 LIVE\n',
+                                      session=False, ok=True)
+        self.assertEqual(list(self.anchor_attempts()), ['n1'])
+
+    def wrapped_sibling_rows(self, count):
+        self.active()
+        shim = self.bucket / 'shim'
+        shim.mkdir()
+        slow = shim / 'python3'
+        slow.write_text('#!/bin/bash\ncase " $* " in *" disposition "*) sleep 0.4 ;; esac\nexec %s "$@"\n' % shlex.quote(sys.executable))
+        slow.chmod(0o755)
+        self.env = dict(self.env, TICKET_STATUS_QUEUE_LOCK=self.stub('queue-lock-free', 'exit 0'),
+                        PATH=str(shim) + os.pathsep + self.env['PATH'])
+        new = self.bucket / 'HIMMEL-300-N1-multi.md'
+        new.write_text('# ' + ' '.join('HIMMEL-%d' % (400 + n) for n in range(14)) + ' multi-key worker\n')
+        self.call('add', self.m, new, '--lane', 'native', '--pending')
+        rows = []
+        for n in range(count):
+            old = self.bucket / ('HIMMEL-%d-N%d-old.md' % (400 + n % 14, 100 + n))
+            old.write_text('# worker\n## Results\n\n- 09:00 LIVE\n- 10:00 WRAPPED — merged\n')
+            rows.append(dict(doc=str(old), label='N%d' % n, lane='native', added='2026-11-01T00:00:00Z'))
+        half = count // 2
+        for name, part in (('older-a', rows[:half]), ('older-b', rows[half:])):
+            (self.bucket / (name + '.fleet.json')).write_text(json.dumps({'schema': 1, 'workers': part}))
+        return new
+
+    def test_begin_is_admitted_beside_twenty_wrapped_rows_in_two_siblings_sharing_keys_with_a_14_key_brief(self):
+        new = self.wrapped_sibling_rows(20)
+        started = time.monotonic()
+        self.rt('begin', aid='multi', doc=new)
+        self.assertEqual(list(self.anchor_attempts()), ['multi'], 'took %.1f s' % (time.monotonic() - started))
+
+    def test_a_dead_unwrapped_row_still_refuses_among_wrapped_rows_and_the_refusal_names_its_file_and_why(self):
+        new = self.wrapped_sibling_rows(20)
+        dead = self.bucket / 'HIMMEL-405-N999-dead.md'
+        dead.write_text('# worker\n')
+        listed = json.loads((self.bucket / 'older-b.fleet.json').read_text())
+        listed['workers'].append(dict(doc=str(dead), label='N999', lane='native', added='2026-11-01T00:00:00Z'))
+        (self.bucket / 'older-b.fleet.json').write_text(json.dumps(listed))
+        p = self.rt('begin', aid='multi', doc=new, ok=False)
+        self.assertIn('unknown legacy family ownership: %s row %s' % (self.bucket / 'older-b.fleet.json', dead.resolve()), p.stderr)
+        self.assertIn('not wrapped', p.stderr)
+        self.assertNotIn('budget', p.stderr)
+        self.assertEqual(self.anchor_attempts(), {})
+
+    def test_begin_is_refused_beside_an_unwrapped_row_whose_lock_is_held(self):
+        self.refused_beside_old_sibling('workers', session=False, lock='held')
+
+    def test_begin_is_refused_beside_an_unwrapped_row_with_no_marker(self):
+        self.refused_beside_old_sibling('workers', results='', session=False, lock='free')
+
+    def test_begin_is_admitted_beside_a_row_that_wrapped_before_a_succession_note(self):
+        self.begin_beside_old_sibling('workers', results='- 09:00 LIVE\n- 22:30 WRAPPED — merged\n'
+                                      '- 09:00 bus-adopt: adopted: d console AP → AQ [via anchor]\n'
+                                      '- 09:00 SUCCESSION accepted: AQ replaces AP\n', session=False, lock='free', ok=True)
+        self.assertEqual(list(self.anchor_attempts()), ['n1'])
+
+    def test_a_succession_note_after_an_end_marker_still_reads_ended(self):
+        runtime = self.runtime_module()
+        doc = self.bucket / 'ended.md'
+        for lines, ended in ((['- 22:30 WRAPPED', '- 09:00 SUCCESSION accepted: AQ replaces AP'], True),
+                             (['- 22:30 HALTED', '- 09:00 bus-adopt: adopted: d', '- 09:00 SUCCESSION accepted: AQ replaces AP'], True),
+                             (['- 22:30 LIVE', '- 09:00 SUCCESSION accepted: AQ replaces AP'], False),
+                             (['- 09:00 SUCCESSION accepted: AQ replaces AP'], False),
+                             (['- 22:30 WRAPPED', '- 09:00 SUCCESSION accepted: AQ replaces AP', '- 09:10 LIVE'], False),
+                             ([], True)):
+            doc.write_text('\n'.join(['# d'] + lines) + '\n')
+            self.assertEqual(runtime.reads_ended(doc), ended, lines)
 
     def test_a_damaged_owner_reads_unknown_and_only_an_exact_identity_reads_dead(self):
         runtime = self.runtime_module()

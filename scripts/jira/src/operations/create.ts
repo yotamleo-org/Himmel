@@ -25,8 +25,8 @@ import {
   checkExistingBlocker,
   checkPlacementFlags,
   createWriterOf,
-  displaceResidual,
   followUpIntake,
+  closedParentPlacement,
   intakeOwed,
   markCore,
   placeAtFiling,
@@ -34,6 +34,7 @@ import {
   preflightIntake,
   printCore,
   queueIntakeIfUnversioned,
+  refuseOpenDuplicate,
   residualInheritedVersion,
   resolveTitle,
   sectorForCreate,
@@ -66,8 +67,11 @@ export interface CreateOptions {
   affectsVersion?: string;
   residualOf?: string;
   followUpOf?: string;
+  /** Why a new ticket is needed although an open one repeats it; skips the duplicate search. */
+  newReason?: string;
+  /** The `jira create` command sets this: only it searches for an open duplicate (move does not). */
+  checkDuplicates?: boolean;
   remainder?: boolean;
-  overCap?: string;
   fuClass?: string;
   fuWhy?: string;
   fuOverride?: string;
@@ -139,10 +143,12 @@ function checkFlagCombinations(options: CreateOptions): void {
     const stray = ([['fuClass', '--fu-class'], ['fuWhy', '--fu-why'], ['fuOverride', '--fu-override']] as const).find(([k]) => options[k] !== undefined);
     if (stray) throw new Error(`--fu-class/--fu-why/--fu-override apply only with --residual-of (got ${stray[1]})`);
   }
+  if (options.newReason !== undefined && !options.newReason.trim()) {
+    throw new Error('--new-reason needs the reason a new ticket is wanted although an open one repeats it');
+  }
   if (options.remainder && options.followUpOf === undefined) {
     throw new Error('--remainder needs --follow-up-of <key>, the parent whose remainder this ticket holds');
   }
-  if (options.overCap !== undefined && !options.overCap.trim()) throw new Error('--over-cap needs a reason');
 }
 
 async function placement(
@@ -190,7 +196,7 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   let labels = given;
   let residual: ResidualPlan | undefined;
   if (options.residualOf !== undefined) {
-    residual = await planResidual(project, { ...options, sector, residualOf: options.residualOf });
+    residual = await planResidual(project, { ...options, residualOf: options.residualOf });
     labels = [...new Set([...(labels ?? []), ...residual.labels])];
   }
   if (options.followUpOf !== undefined) labels = [...new Set([...(labels ?? []), 'residual'])];
@@ -219,21 +225,20 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   if (residual) {
     if (residual.fixVersion) fields['fixVersions'] = [{ name: residual.fixVersion }];
     if (residual.affectsVersion) fields['versions'] = [{ name: residual.affectsVersion }];
-    console.error(`jira: residual routed to ${inherited ?? residual.fixVersion ?? 'the backlog'}`);
+    console.error(`jira: residual routed to ${inherited ?? residual.fixVersion ?? 'no version, its INTAKE is placed by the door'}`);
   }
-  const versionOptions = { ...options, fixVersion: inherited ?? options.fixVersion };
-  const overCapReason = await applyVersions(project, versionOptions, fields, {
-    labels,
-    residual: residual !== undefined && inherited === undefined,
-    bugDefault,
-  });
+  const closedParent = inherited === undefined && residual === undefined ? await closedParentPlacement(options) : undefined;
+  if (closedParent?.priority !== undefined && options.priority === undefined) fields['priority'] = { name: closedParent.priority };
+  const versionOptions = { ...options, fixVersion: inherited ?? closedParent?.fixVersion ?? options.fixVersion };
+  await applyVersions(project, versionOptions, fields, { bugDefault });
   const admission = testProject ? undefined : await checkIntakeGate(project, fields['fixVersions'], { gate: options.gate, override: overrideReason !== undefined });
   await checkExistingBlocker(project, fields['fixVersions'], options);
   const intake = intakeOwed(options.type, fields, testProject) ? await followUpIntake(versionOptions) : options;
   preflightIntake(intake, fields, title, testProject);
+  if (options.checkDuplicates && !testProject) await refuseOpenDuplicate(project, title, options);
   if (run.check) return { disposition: 'checked' };
 
-  const writer = createWriterOf(options, { placed: fields['fixVersions'] !== undefined, inherited, residual, bugDefault });
+  const writer = createWriterOf(options, { placed: fields['fixVersions'] !== undefined, inherited: inherited ?? closedParent?.fixVersion, residual, bugDefault });
   const result = await postIssue(fields, writer);
   const key = result.key;
   writeJiraBreadcrumb(key);
@@ -243,7 +248,7 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   printCore(coreVerdict);
   queueIntakeIfUnversioned(key, fields, title, intake, testProject);
 
-  const steps = afterCreateSteps(options, key, title, { overrideReason: testProject ? undefined : overrideReason, admission, residual, overCapReason });
+  const steps = afterCreateSteps(options, key, title, { overrideReason: testProject ? undefined : overrideReason, admission });
   for (let i = 0; i < steps.length; i += 1) {
     const [name, step] = steps[i]!;
     try {
@@ -261,17 +266,15 @@ function afterCreateSteps(
   options: CreateOptions,
   key: string,
   title: string,
-  o: { overrideReason?: string; admission?: Awaited<ReturnType<typeof checkIntakeGate>>; residual?: ResidualPlan; overCapReason?: string },
+  o: { overrideReason?: string; admission?: Awaited<ReturnType<typeof checkIntakeGate>> },
 ): Step[] {
-  const { overrideReason, admission, residual, overCapReason } = o;
+  const { overrideReason, admission } = o;
   const parentKey = options.residualOf ?? options.followUpOf;
   const steps: Step[] = [];
   if (overrideReason !== undefined) {
     steps.push(['writing the admissions ledger row', () => appendAdmission({ version: options.fixVersion!, kind: 'override', reason: overrideReason, key })]);
   }
   if (admission) steps.push(['writing the admissions ledger row', () => appendAdmission({ ...admission, key })]);
-  if (residual?.displaced) steps.push([`displacing ${residual.displaced.key}`, () => displaceResidual(residual, key, { type: options.type, title })]);
-  if (overCapReason) steps.push(['recording the over-cap reason', () => request('POST', `/issue/${key}/comment`, { body: markdownToAdf(overCapReason) })]);
   if (parentKey) steps.push([`linking to ${parentKey}`, () => createIssueLink(key, parentKey, { name: 'Relates', inward: 'relates to' })]);
   for (const other of options.blocks) {
     steps.push([`linking ${key} to ${other}`, () => createIssueLink(key, other, { name: 'Blocks', outward: 'blocks' })]);

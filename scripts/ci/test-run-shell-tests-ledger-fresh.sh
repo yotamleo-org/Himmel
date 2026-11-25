@@ -46,7 +46,6 @@ scripts/api-lane/test-claude-api.sh	72
 scripts/chief/test-base-status.sh	21
 scripts/ci/test-billed-optin.sh	32
 scripts/ci/test-check-ci-install-locks.sh	50
-scripts/ci/test-check-critic-eval.sh	11
 scripts/ci/test-check-flags.sh	28
 scripts/ci/test-ci-lint-tree-gates.sh	38
 scripts/ci/test-home-canary.sh	34
@@ -113,7 +112,7 @@ scripts/guardrails/test-graphify-fence.sh	53
 scripts/guardrails/test-hook-probe.sh	10
 scripts/guardrails/test-lesson-write-fence.sh	191
 scripts/handover/chief-kit/test-append-results.sh	52
-scripts/handover/chief-kit/test-auto-go.sh	219
+scripts/handover/chief-kit/test-auto-go.sh	546
 scripts/handover/chief-kit/test-board.sh	90
 scripts/handover/chief-kit/test-brief-lint.sh	52
 scripts/handover/chief-kit/test-chief-kit-e2e.sh	45

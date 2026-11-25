@@ -1,7 +1,7 @@
 # The API lane: failure alert and subscription fallback
 
 `scripts/api-lane/claude-api.sh` runs one print-mode `claude` call billed to an
-API account (`HIMMEL_API_ACCOUNT=A|B|C|D|auto`; auto only for the himmel graph pass, or a kind the role map maps) instead of the subscription. It is
+API account (`HIMMEL_API_ACCOUNT=A|B|C|D|auto`; auto only from the himmel repo; any kind, by the role map or the default order) instead of the subscription. It is
 OFF unless the launching shell sets `HIMMEL_API_LANE=on`. This page covers what
 happens when a call on it fails. The launcher's header lists the
 full argument and environment contract.
@@ -15,7 +15,7 @@ feature's own switch.
 |---|---|---|
 | `scripts/api-lane/judge-call.sh` | API lane | always (a chief's verdict question) |
 | `scripts/api-lane/bulk-call.sh` | API lane | always |
-| `jira release rm-run` (release manager) | the subscription | only in the himmel repo with `judge` mapped in `roles.json` (see [The role map](#the-role-map)); there the launcher's fallback is off, and a failed lane call, a policy refusal included, makes `rm-run` rule the batch once on the subscription itself; a timed-out call ends the run |
+| `jira release rm-run` (release manager) | none: the model judge is parked and the door places each request with no call; the rest of this row is the parked judge's route (`HIMMEL_RM_JUDGE=model`) | only in the himmel repo with `judge` mapped in `roles.json` (see [The role map](#the-role-map)); there the launcher's fallback is off, and a failed lane call, a policy refusal included, makes `rm-run` rule the batch once on the subscription itself; a timed-out call ends the run |
 | `scripts/cr/critic-first-pass.sh` (claude critic) | the registry row's provider | provider `claude-api`; with the lane off, the refusal alerts (one per hour) and the critic is skipped; a critic never runs on the subscription, for any refusal or failure; a policy refusal (exit 2 with the launcher's `claude-api: policy refusal:` line) makes the critic print `claude critic BROKE` and exit 1, never a clean skip |
 | `scripts/graphify/graph-cadence.sh --semantic` | `claude-cli` when run bare; the armed `graph-publish-himmel` runner passes `claude-api` on auto | `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` |
 | `scripts/cleanup/steering-cull-cadence.sh` | `claude-cli` | `STEERING_CULL_BACKEND=claude-api`, or `arm --backend claude-api --api-account A\|B\|C\|D` |
@@ -80,7 +80,7 @@ For every other failure the launcher:
 
    | Condition | Decision |
    |---|---|
-   | `HIMMEL_API_FALLBACK=off` | no fallback |
+   | `HIMMEL_API_FALLBACK` is not exactly `on` (unset, empty, `off` or any other value) | no fallback |
    | the call is kind `critic` (any refusal or failure) | no fallback; the critic is skipped |
    | the lane is off (`HIMMEL_API_LANE` not `on`), any kind | no fallback: the caller chose the API, not the subscription |
    | the request itself was refused (bad argument, run kind, cache TTL, job id or tool grant) | no fallback |
@@ -96,7 +96,7 @@ For every other failure the launcher:
    `api-lane <class>`:
 
    ```text
-   kind judge, account A, call-failed (exit 1): error_during_execution; fallback: running on the subscription (preflight PROCEED)
+   kind judge, account A, call-failed (exit 1): error_during_execution; fallback: off (HIMMEL_API_FALLBACK unset: default off)
    ```
 
    - The class is `refused`, `rejected` (exit 6) or `call-failed`.
@@ -107,9 +107,15 @@ For every other failure the launcher:
      after the sender exits 0, so a failed send does not mute the next failure.
      The stamp files live in `~/.himmel/state/api-lane-alerts/`.
    - The sender runs with every `ANTHROPIC_*`, `LQ_API_*` and
-     `CLAUDE_CODE_OAUTH_TOKEN` variable removed. An explicitly empty
-     `TELEGRAM_GROUP_CHAT_ID` suppresses it. Without a chat id or `bun`, nothing
-     is sent and the fallback still runs.
+     `CLAUDE_CODE_OAUTH_TOKEN` variable removed. It goes to
+     `TELEGRAM_GROUP_CHAT_ID`, or to the operator chat `TELEGRAM_CHAT_ID` when no
+     group id is set (both read from the environment, `himmel.conf` or `.env`).
+   - An alert is never dropped silently. With no chat id, with an explicitly empty
+     `TELEGRAM_GROUP_CHAT_ID` (a deliberate suppression of the send), without
+     `bun`, or when the sender fails (a timeout included), the launcher prints `claude-api: alert NOT delivered (<why>)` on stderr
+     and appends one row to `undelivered.jsonl` in the alert directory (kind,
+     class, exit code, the redacted reason and why; never a key or a chat id). It
+     writes no stamp, so the next failure alerts again.
 
 3. **Runs the fallback**: the same prompt, once, as a subscription `claude -p`.
    - Same model, permission mode, tool grant, budget cap and effort, with
@@ -131,11 +137,14 @@ For every other failure the launcher:
 
 ## The per-caller switch
 
-`HIMMEL_API_FALLBACK` is **on by default**. A caller that must never spend
-the subscription sets `HIMMEL_API_FALLBACK=off`: the failure still alerts (the
-alert says `fallback: off (HIMMEL_API_FALLBACK=off)`) and the original exit code
-stands. `judge-call.sh`, `bulk-call.sh` and `critic-first-pass.sh` leave it on.
-The usage preflight remains the gate on the subscription bank.
+`HIMMEL_API_FALLBACK` is **off by default** (operator decision 1140, which
+supersedes the earlier default-on contract). Only the exact value `on`
+opts a caller in; unset, empty, `off` and any other value are off. The failure
+still alerts and the original exit code stands; the alert says which off it was:
+`fallback: off (HIMMEL_API_FALLBACK unset: default off)`,
+`fallback: off (HIMMEL_API_FALLBACK=off)` or
+`fallback: off (HIMMEL_API_FALLBACK=<value> is not on)`. No caller sets `on`.
+When a caller does, the usage preflight remains the gate on the subscription bank.
 
 ## Records
 
@@ -154,7 +163,9 @@ The fallback appends one row to the same `launches.jsonl` as the API call:
 
 The API call's own row and its reservation are settled as before.
 
-### The native release judge row
+### The native release judge row (parked)
+
+The release judge is parked: the door places requests with no model call, so this writer fires only under `HIMMEL_RM_JUDGE=model`.
 
 `launches.jsonl` has a second writer: the release judge's subscription run (`liveJudge` in
 `scripts/jira/src/commands/release.ts`) appends one `kind=judge` row per run, after the call returns. It is not
@@ -204,11 +215,11 @@ Wherever an output names an account's key, it shows only the key's last 4 charac
 `api-credit-state.mjs accounts` listing (its `key` field), the config UI's account table, doctor C92 and the lane's
 key-id and key-rejected lines. An account with no readable key file shows `key: none`. Nothing prints more of a key.
 
-Auto routing is off for every call except the himmel semantic graph pass. `HIMMEL_API_ACCOUNT=auto` is accepted
-only with `HIMMEL_API_KIND=graphify` (or a kind the role map maps, see below) and a caller whose git common dir is the launcher's own checkout. For the
+Auto routing is for the himmel repo only. `HIMMEL_API_ACCOUNT=auto` is accepted for any kind (the role map or the
+default order picks the accounts, see below) and a caller whose git common dir is the launcher's own checkout. For the
 graph pass, `semantic-update.sh` judges the corpus repo once, before any pick, in both the batch and the synchronous
 path (the shim runs the lane from a scratch directory, so it hands the judged repo over in
-`HIMMEL_API_AUTO_REPO_DIR`). Any other kind, or a graph pass over another repo (the luna graph map), exits 2 before
+`HIMMEL_API_AUTO_REPO_DIR`). A call from another repo (the luna graph map), exits 2 before
 any spawn or batch submit, with no subscription fallback. Naming the account (`HIMMEL_API_ACCOUNT=A`, `B`, `C` or
 `D`) works for every kind and every repo, judge, critic, bulk and cull included.
 
@@ -228,15 +239,16 @@ secret, only role names and account letters:
 
 - **Known roles** are the `ROLES` export of `scripts/lib/api-roles.mjs`, the one owner of reading, validating and
   writing the file: `graphify`, `judge` and `critic`. `probe` and `other` are never roles. Critics route on auto
-  through the role map (operator decision 1066): a PR critic on auto uses the accounts its `critic` entry names, and
-  with no entry it is refused like any other unmapped kind.
-- **No map means the default.** With no file, the graph pass uses every configured account and every other kind is
-  refused (exit 2, no alert, no fallback). A role with no entry gets the same default.
+  through the role map (operator decision 1066): a PR critic on auto uses the accounts its `critic` entry names.
+- **No entry means the default order (decision 1185).** Under auto, a kind with no role entry, a missing file, or a
+  kind outside `ROLES` is served from every configured account in the default order, the order the judge uses; the
+  critic is served this way, from a temp directory too (`critic-first-pass.sh` passes `HIMMEL_API_AUTO_REPO_DIR`, the
+  launcher's own repo, so the same-repo check holds). Only a broken map refuses (`walk <kind>` exit 3, no alert, no
+  fallback), and a critic call never takes the subscription fallback.
 - **Four states.** `absent` (no file): the default. `valid`: the map. `partial` (the file parses but an entry has an
   error): the live entries apply, each ignored role falls back to the default. `invalid` (not JSON, `version` is not 1
-  or `roles` is not an object): the whole file is ignored and the default applies, with `invalid-role-map:<reason>`.
-  For every kind but the graph walk a broken map only takes away widening; it never refuses what the default allows
-  and never touches `config.json`. The graph walk refuses instead, see below.
+  or `roles` is not an object): the whole file is ignored and every auto call refuses (`walk <kind>` exit 3, `invalid-role-map:<reason>`); fix or
+  remove the file. A broken map never touches `config.json`; the graph walk's refusal is described below.
 - **Dropped letters.** An unknown role (`unknown-role:<name>`) is ignored. An unknown letter in a list
   (`unknown-account:<role>:<letter>`) is dropped and the entry stays live with the rest: `judge: ["B", "E"]` routes
   to B. An empty or non-array list (`empty-role:<role>`) is ignored. A duplicate letter is deduped silently. A known
@@ -318,7 +330,7 @@ secret, only role names and account letters:
   off (`HIMMEL_API_LANE` unset) the cadence refuses the whole fire (exit 1) before any call; a direct call of
   `semantic-update.sh` refuses with exit 2 and says no API semantic call is made. Either way graphify makes no API semantic call. The
   `claude-cli` backend does not read the lane: it draws the subscription.
-- **The judge opt-in.** With `judge` mapped, the release judge tries the mapped account through the launcher first
+- **The judge opt-in (parked judge only).** With `judge` mapped, the release judge tries the mapped account through the launcher first
   (fallback off, no tools, an empty working directory, a two-dollar cap) and answers from the subscription on any
   failure. With `judge` unmapped it never touches the launcher. Only the himmel project's mirror reaches this route.
 - **Tools.** `node scripts/lib/api-roles.mjs check` prints the map state, warnings and `ROLES`;
@@ -436,6 +448,9 @@ record row. A caller names one account, and a failure shows only as the exit cod
 - `HIMMEL_API_ALERT_CMD=<path>` replaces the Telegram sender. Every test that
   can reach the failure path sets a stub, so no test sends a real message.
 - `HIMMEL_API_ALERT_DIR=<dir>` moves the rate-limit stamps.
+- `HIMMEL_API_ALERT_ENV_ROOT=<dir>` reads the alert's chat ids from `<dir>/.env`
+  instead of the primary checkout's, so a test of the real route never reads the
+  station's ids.
 - `HIMMEL_API_CLAUDE_BIN` already stubs `claude`, and the fallback runs the same binary.
 
 ## Known limits
@@ -443,6 +458,6 @@ record row. A caller names one account, and a failure shows only as the exit cod
 - A SIGKILL or an OOM kill of the launcher leaves the mode-600 stdin prompt file in `TMPDIR`, because the EXIT trap cannot run, upgrade path: sweep `claude-api-prompt.*` files older than the call timeout at launch.
 - Two failures of the same kind and class at the same moment can both send an alert (the stamp is checked, then written after the send, up to 30 seconds later), upgrade path: an atomic `mkdir` lock if duplicate alerts show up.
 - The fallback has no watchdog of its own; it is bounded by the caller's timeout (judge-call's `--timeout`) and its budget cap, upgrade path: reuse the launcher's watchdog for the fallback.
-- A looping caller (bulk, graphify) continues item by item on the subscription after the API account is marked, one alert per hour, upgrade path: a per-run circuit breaker if the subscription draw becomes a problem. graphify's own breaker trips only when the fallback does not run (`HIMMEL_API_FALLBACK=off` or a skipped usage preflight, the lane's exit 6), and it books a replayed chunk's cost to neither its API spend nor its reserve file.
+- With `HIMMEL_API_FALLBACK=on`, a looping caller (bulk, graphify) continues item by item on the subscription after the API account is marked, one alert per hour, upgrade path: a per-run circuit breaker if the subscription draw becomes a problem. graphify's own breaker trips only when the fallback does not run (`HIMMEL_API_FALLBACK` not `on`, the default, or a skipped usage preflight, the lane's exit 6), and it books a replayed chunk's cost to neither its API spend nor its reserve file.
 - Fallback rows carry no API cost, so the shift-spend report does not price them, upgrade path: price `sub_cost_usd` in the subscription spend view.
 - A call stopped by the API watchdog (`HIMMEL_API_CALL_TIMEOUT_S`) counts as a failed call, so its prompt reruns on the subscription, upgrade path: skip the fallback for a timeout if reruns of long calls cost too much.

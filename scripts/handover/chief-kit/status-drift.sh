@@ -31,28 +31,26 @@
 #                     ticket (any repo; that also skips DERIVE-MISMATCH and WORKER-COMMENT).
 #                     The derive's worker state decides: a key whose lock stayed gone for two sweeps
 #                     is no worker, and neither is a held or parked worker over a lock
-#                     `queue-lock.sh status` calls STALE-DEAD (the fix is the reap). A chief-owned
-#                     park (rule D6n: the worker wrapped and its brief says Completes ticket: no)
-#                     is UNOWNED once it is 24 h old, saying it is awaiting the chief and overdue
+#                     `queue-lock.sh status` calls STALE-DEAD (the fix is the reap). A due date never makes a
+#                     started ticket wait: the chief-owned park (rule D6n: the worker wrapped and
+#                     its brief says Completes ticket: no), a ticket-hold.sh hold, an owed step and the RESUME
+#                     remainder are each UNOWNED from the first tick, the row naming who it awaits, since when and
+#                     the date it carries. A started ticket still carrying the `held` label says it is held, still
+#                     In Progress (ticket-hold.sh moves a held ticket to To Do); one with no valid hold row also
+#                     says `held with no owner on record`
 #   CLOSE-OR-DISPATCH an In Progress ticket with no open PR, no live owner, no `standing` label and no hold, whose newest
 #                     merge row, worker doc and Jira comment are all over COD_AGE_SECONDS (72 h) old (with no merge row,
 #                     its worker docs and Jira comments alone), and that is either
-#                     left by a partial merge or past the end of its wait (an owed step, the chief's D6n park or the
-#                     RESUME remainder; a wait still inside its due date is AWAITING). It REPLACES the key's UNOWNED row,
+#                     left by a partial merge or parked on a named wait (an owed step, the chief's D6n park or the
+#                     RESUME remainder). It REPLACES the key's UNOWNED row,
 #                     so sdrift counts the ticket once. The text names the last PR (or `no merged PR`) and the owed ask (the words after
 #                     `Remaining:` in the newest ticket comment that has them): the operator close ask that
 #                     drift-summary.mjs and tracker.py list as `close KEY or name a worker`
-#   AWAITING          the same chief-owned park before its 24 h are up: a wait, not drift. Its row
-#                     ends in ` | wait=chief`. So is a ticket-hold.sh hold (a result=moved hold row with a valid
-#                     owner, while the ticket carries the `held` label) until its until date (end of that UTC day),
-#                     else its owner's wait length; the row ends in ` | wait=<owner>`. A held ticket with no valid
-#                     hold row says `held with no owner on record` on its UNOWNED row. A partial merge row
-#                     that records an owed step (`owed`, `owed_due`) is the same wait for that owner until its
-#                     due date, else UNOWNED and overdue; so is the remainder a partial merge left for a RESUME
-#                     worker (rule D5c, remainder=remaining), from its park start for TICKET_STATUS_AWAIT_TTL_RESUME
-#                     (default 6h). The newest of the hold row, the owed merge row and the park start decides
+#   AWAITING          only a release-manager ruling wait (VERSION-DRIFT, below): a ticket held in a later version whose
+#                     INTAKE was refused. Its row ends in ` | wait=<owner>`. No started ticket is AWAITING: a started
+#                     ticket with no live owner is UNOWNED however far off its date is
 #   HOLD-STALE        a ticket-hold.sh hold whose newest hold row names `on=<KEY>` and that ticket is Done in the
-#                     local Jira mirror: the wait is over. It replaces the key's AWAITING (or overdue UNOWNED) row, so
+#                     local Jira mirror: the wait is over. It replaces the key's UNOWNED row, so
 #                     sdrift counts it; the fix is the release command, never run here. A hold with no `on`, an `on`
 #                     ticket still open, or one the mirror lacks or cannot read reads as before
 #   HELD-STALE        a held or parked worker's lock is STALE and not proven dead: an owner, so not drift
@@ -83,7 +81,8 @@
 # TICKET_STATUS_AWAIT_TTL_CHIEF (default 24h), TICKET_STATUS_AWAIT_TTL_OPERATOR and _OTHER (default 72h),
 # TICKET_STATUS_AWAIT_TTL_RESUME (default 6h) and
 # TICKET_STATUS_AWAIT_MAX (default 14d, at most 14d), each
-# <n>h or <n>d, else the default and one HEALTH row; the rest is read by the lib.
+# <n>h or <n>d, else the default and one HEALTH row; they only set the `due=` a stuck UNOWNED row
+# prints (a due date never makes a started ticket wait); the rest is read by the lib.
 #
 # Platform guard: POSIX bash 3.2+ (shell-only harness).
 set -u
@@ -476,7 +475,8 @@ while IFS= read -r key; do
         fi
         IFS=$'\t' read -r okind owho osince odue osrc owhat <<<"$TS_OWNER_ANS"
         hhint=""
-        if [ "$held" = 1 ] && [ "$TS_OWNER_HOLD_VALID" != yes ]; then hhint="; held with no owner on record: re-run ticket-hold.sh $key --owner <who> --until <date> --reason <why>"; fi
+        if [ "$held" = 1 ]; then hhint="; held, still $jstatus: a held ticket belongs in To Do (jira transition $key \"To Do\") or released (ticket-hold.sh $key --release)"; fi
+        if [ "$held" = 1 ] && [ "$TS_OWNER_HOLD_VALID" != yes ]; then hhint="$hhint; held with no owner on record: re-run ticket-hold.sh $key --owner <who> --until <date> --reason <why>"; fi
         case "$okind" in
             worker)
                 if [ "$TS_LOCK_DEAD" = no ] && { [ "$TS_WORKER_STATE" = IDLE-HELD ] || [ "$TS_WORKER_STATE" = parked ]; }; then
@@ -485,9 +485,9 @@ while IFS= read -r key; do
             awaiting)
                 chieffix="the chief closes $key by hand when nothing remains, or dispatches a RESUME worker for the rest"
                 case "$osrc" in
-                    hold) wwriter=ticket-hold.sh wfix="$owho acts on $key, or re-hold it: bash scripts/handover/chief-kit/ticket-hold.sh $key --owner <who> --until <date> --reason <why>" wwho=$owho whint="" ;;
-                    owed) wwriter=merge-on-green.sh wfix="$owho acts on $key, or hold it: bash scripts/handover/chief-kit/ticket-hold.sh $key --owner <who> --until <date> --reason <why>" wwho=$owho whint="" ;;
-                    *) wwriter=$FUNNEL wfix=$chieffix wwho="the chief" whint=$hhint ;;
+                    hold) wwriter=ticket-hold.sh wfix="$owho acts on $key, or re-hold it: bash scripts/handover/chief-kit/ticket-hold.sh $key --owner <who> --until <date> --reason <why>" wwho=$owho ;;
+                    owed) wwriter=merge-on-green.sh wfix="$owho acts on $key, or hold it: bash scripts/handover/chief-kit/ticket-hold.sh $key --owner <who> --until <date> --reason <why>" wwho=$owho ;;
+                    *) wwriter=$FUNNEL wfix=$chieffix wwho="the chief" ;;
                 esac
                 hstale=""
                 if [ "$osrc" = hold ]; then
@@ -496,8 +496,6 @@ while IFS= read -r key; do
                 fi
                 if [ -n "$hstale" ]; then
                     add HOLD-STALE "$key" "on $hstale (Done)" ticket-hold.sh "bash scripts/handover/chief-kit/ticket-hold.sh $key --release"
-                elif [ "$NOW" -lt "$(_ts_epoch_of_iso "$odue")" ]; then
-                    add AWAITING "$key" "$owho since=$osince due=$odue what=$owhat source=$osrc" "$wwriter" "$wfix" "$owho"
                 else
                     case "$osrc" in
                         owed) cfb="a step owed by $owho" ;;
@@ -505,7 +503,7 @@ while IFS= read -r key; do
                         *) cfb="a RESUME worker for the remainder" ;;
                     esac
                     { [ "$held" = 0 ] && [ "$osrc" != hold ] && cod_raise "$key" "$jstatus" "$cfb"; } \
-                        || add UNOWNED "$key" "$jstatus with no open PR and no live owner, awaiting $wwho since $osince and overdue (due $odue)$whint" "$wwriter" "$wfix"
+                        || add UNOWNED "$key" "$jstatus with no open PR and no live owner; a date never makes it wait: awaiting $wwho since=$osince due=$odue what=$owhat source=$osrc$hhint" "$wwriter" "$wfix"
                 fi ;;
             *)
                 ppr=$(awk -F'\t' -v k="$key" '$1 == k { print $2 }' <<<"$partials")

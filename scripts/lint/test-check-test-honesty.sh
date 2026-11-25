@@ -237,7 +237,7 @@ case_harness_smoke() {
     assert_eq "harness-smoke stand-in records argv" "install --frozen-lockfile" "$(cat "$d/calls.log")"
     out=$("$d/scripts/lint/landmines/node_modules/.bin/oxlint" --version 2>&1)
     case "$out" in
-        *1.93.0*) pass "harness-smoke temp install runs the real oxlint" ;;
+        *1.94.0*) pass "harness-smoke temp install runs the real oxlint" ;;
         *) fail "harness-smoke temp install runs the real oxlint ($out)" ;;
     esac
     assert_eq "harness-smoke temp marker is the temp lock sha" \
@@ -732,9 +732,9 @@ case_i3_version_mismatch() {
         assert_eq "i3-version-mismatch-$dep exits 1" 1 "$GATE_RC"
         assert_has "i3-version-mismatch-$dep prints a version-mismatch line" "version mismatch: $dep" "$GATE_OUT"
     done <<'EOF'
-oxlint 1.93.0 1.93.1
-@interfere/landmines 0.1.0 0.1.1
-@babel/parser 8.0.4 8.0.5
+oxlint 1.94.0 1.94.1
+@interfere/landmines 0.1.1 0.1.2
+@babel/parser 8.1.3 8.1.4
 EOF
 }
 
@@ -753,7 +753,7 @@ case_package_shape_gate() {
     run_gate "$REPO" 0 "$PATH"
     assert_eq "package-shape-gate extra dependency exits 1" 1 "$GATE_RC"
     assert_has "package-shape-gate extra dependency is refused at the shape line" "lint package.json shape" "$GATE_OUT"
-    edit_pkg 'delete p.dependencies.extra; p.dependencies.oxlint = "^1.93.0";'
+    edit_pkg 'delete p.dependencies.extra; p.dependencies.oxlint = "^1.94.0";'
     run_gate "$REPO" 0 "$PATH"
     assert_eq "package-shape-gate inexact pin exits 1" 1 "$GATE_RC"
     assert_has "package-shape-gate inexact pin is refused at the shape line" "lint package.json shape" "$GATE_OUT"
@@ -770,7 +770,7 @@ fake_plugin() {
     mkdir -p "$d/dist"
     ln -sfn "$PKG/node_modules/@interfere/landmines/dist/testing.mjs" "$d/dist/testing.mjs"
     printf '%s\n' 'export default {};' > "$d/dist/noop.mjs"
-    printf '{"name":"@interfere/landmines","version":"0.1.0","type":"module","exports":{"./testing":%s}}\n' "$1" > "$d/package.json"
+    printf '{"name":"@interfere/landmines","version":"0.1.1","type":"module","exports":{"./testing":%s}}\n' "$1" > "$d/package.json"
 }
 
 case_resolved_specifier() {
@@ -1161,7 +1161,7 @@ case_i3_step_order() {
     mk_repo || { fail "i3-version-mismatch-no-directives (no temp repo)"; return; }
     link_install "$REPO"
     node_recorder
-    sed 's/"1.93.0"/"1.93.1"/' "$REPO/scripts/lint/landmines/package.json" > "$REPO/pkg.tmp"
+    sed 's/"1.94.0"/"1.94.1"/' "$REPO/scripts/lint/landmines/package.json" > "$REPO/pkg.tmp"
     mv "$REPO/pkg.tmp" "$REPO/scripts/lint/landmines/package.json"
     run_gate "$REPO" 0 "$REPO/bin:$PATH"
     assert_eq "i3-version-mismatch-no-directives exits 1" 1 "$GATE_RC"

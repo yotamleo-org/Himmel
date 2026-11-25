@@ -5,18 +5,21 @@
       "kind": "merge-blocked",
       "class": "escalate",
       "sender": "scripts/lib/merge-block-alert.sh",
+      "pin": "@${short}: ${rule}\" merge-blocked",
       "sample": "Merge refused: PR 4882 in octo/demo. Blocks: the merge after GO. Do: ask a reviewer for the one approval GitHub still wants"
     },
     {
       "kind": "token-in-output",
       "class": "escalate",
       "sender": "scripts/hooks/detect-token-in-output.sh",
+      "pin": "_mba_send \"$chat\" \"$msg\" token-in-output",
       "sample": "A credential leaked: a GitHub token appeared in session 81843b5d. Blocks: nothing yet, it is in the transcript. Do: rotate the GitHub token"
     },
     {
       "kind": "config-audit",
       "class": "escalate",
       "sender": "scripts/lib/config-audit.sh",
+      "pin": "reply --kind config-audit \"$chat\" \"$text\"",
       "sample": "A session changed .env: JIRA_API_TOKEN. Blocks: nothing. Do: check it was you, else restore the file from its backup"
     },
     {
@@ -51,6 +54,7 @@
       "kind": "recover-failed",
       "class": "escalate",
       "sender": "scripts/station-ops/recover.sh",
+      "pin": "reply --kind \"$kind\" \"$chat\" \"$status\"",
       "sample": "Reboot recovery failed: the bridge did not come back. Blocks: every Telegram message. Do: run systemctl --user restart telegram-bridge.service"
     },
     {
@@ -67,9 +71,19 @@
     },
     {
       "kind": "denial-page",
-      "class": "monitor",
+      "class": "silent",
       "sender": "scripts/handover/chief-kit/chief-wait.sh",
       "sample": "Session 81843b5d of the himmel chief has 3 classifier denials (PAUSE-RISK). Blocks: that session. Do: open it in Remote Control and answer the prompt"
+    },
+    {
+      "kind": "title-unresolved",
+      "class": "monitor",
+      "sender": "scripts/telegram/chief-route.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "worker-silent",
@@ -79,198 +93,426 @@
     {
       "kind": "denied-launch",
       "class": "monitor",
-      "sender": "scripts/handover/chief-kit/denied-launch-alert.sh"
+      "sender": "scripts/handover/chief-kit/denied-launch-alert.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a decision (a denial, a refusal, a merge, a launch policy) only an agent with context may make"
+      }
     },
     {
       "kind": "silent-go-merge",
       "class": "monitor",
-      "sender": "scripts/handover/chief-kit/silent-go-merge.sh"
+      "sender": "scripts/handover/chief-kit/silent-go-merge.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a decision (a denial, a refusal, a merge, a launch policy) only an agent with context may make"
+      }
     },
     {
       "kind": "claude-only-clear",
       "class": "monitor",
-      "sender": "scripts/cr/clear-review-marker.sh"
+      "sender": "scripts/cr/clear-review-marker.sh",
+      "pin": "_mba_send \"$_fca_chat\" \"$_fca_msg\" claude-only-clear",
+      "on-alert": {
+        "do": "info",
+        "why": "a record of a completed action"
+      }
     },
     {
       "kind": "cache-health",
       "class": "monitor",
-      "sender": "scripts/eval/cache-health-cadence.sh"
+      "sender": "scripts/eval/cache-health-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "failure-review",
       "class": "monitor",
-      "sender": "scripts/eval/worker-digest/failure_review.py"
+      "sender": "scripts/eval/worker-digest/failure_review.py",
+      "on-alert": {
+        "do": "info",
+        "why": "the daily digest; its router already files the tickets"
+      }
     },
     {
       "kind": "upstream-watch",
       "class": "monitor",
       "sender": "scripts/upstreams/upstream-watch.sh",
-      "ref-word": "PR or issue"
+      "ref-word": "PR or issue",
+      "on-alert": [
+        {
+          "match": "upstream-watch: \\d+ delta item\\(s\\) today",
+          "do": "info",
+          "why": "a new upstream item, reported for reading"
+        },
+        {
+          "do": "escalate",
+          "to": "chief",
+          "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+        }
+      ]
     },
     {
       "kind": "jira-nudge",
       "class": "monitor",
-      "sender": "scripts/hooks/jira-nudge-on-end.sh"
+      "sender": "scripts/hooks/jira-nudge-on-end.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a decision (a denial, a refusal, a merge, a launch policy) only an agent with context may make"
+      }
     },
     {
       "kind": "luna-sync",
       "class": "monitor",
-      "sender": "scripts/observability/luna-sync-alert.ts"
+      "sender": "scripts/observability/luna-sync-alert.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "recover-ok",
       "class": "monitor",
-      "sender": "scripts/station-ops/recover.sh"
+      "sender": "scripts/station-ops/recover.sh",
+      "on-alert": {
+        "do": "info",
+        "why": "a record of a completed action"
+      }
     },
     {
       "kind": "cadence:himmel-doctor",
       "class": "monitor",
-      "sender": "scripts/doctor-cadence.sh"
+      "sender": "scripts/doctor-cadence.sh",
+      "on-alert": [
+        {
+          "match": "^C1-guardrail$",
+          "do": "repair",
+          "verb": "doctor-fix"
+        },
+        {
+          "do": "escalate",
+          "to": "chief",
+          "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path; quote the doctor's own remedy text for the finding"
+        }
+      ]
     },
     {
       "kind": "cadence:judge-accuracy",
       "class": "monitor",
-      "sender": "scripts/eval/judge-accuracy/judge-accuracy-cadence.sh"
+      "sender": "scripts/eval/judge-accuracy/judge-accuracy-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:failure-review",
       "class": "monitor",
-      "sender": "scripts/eval/worker-digest/failure-review-cadence.sh"
+      "sender": "scripts/eval/worker-digest/failure-review-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:failure-review-digest",
       "class": "monitor",
-      "sender": "scripts/eval/worker-digest/failure-review-cadence.sh"
+      "sender": "scripts/eval/worker-digest/failure-review-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:failure-review-route",
       "class": "monitor",
-      "sender": "scripts/eval/worker-digest/failure-route-notify.sh"
+      "sender": "scripts/eval/worker-digest/failure-route-notify.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:claudex-inbox",
       "class": "monitor",
-      "sender": "scripts/lib/claudex-inbox.sh"
+      "sender": "scripts/lib/claudex-inbox.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:steering-cull",
       "class": "monitor",
-      "sender": "scripts/cleanup/steering-cull-cadence.sh"
+      "sender": "scripts/cleanup/steering-cull-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:clip-relevance",
       "class": "monitor",
-      "sender": "scripts/luna/clip-relevance-cadence.sh"
+      "sender": "scripts/luna/clip-relevance-cadence.sh",
+      "on-alert": [
+        {
+          "match": "Note: specs/audits/clip-relevance/",
+          "do": "info",
+          "why": "the weekly clip-relevance digest"
+        },
+        {
+          "do": "escalate",
+          "to": "chief",
+          "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+        }
+      ]
     },
     {
       "kind": "cadence:cache-health",
       "class": "monitor",
-      "sender": "scripts/eval/cache-health-cadence.sh"
+      "sender": "scripts/eval/cache-health-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:qmd-quality",
       "class": "monitor",
-      "sender": "scripts/eval/qmd-quality/qmd-quality-cadence.sh"
+      "sender": "scripts/eval/qmd-quality/qmd-quality-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:ledger-drift",
       "class": "monitor",
-      "sender": "scripts/handover/chief-kit/ci-cadence.sh"
+      "sender": "scripts/handover/chief-kit/ci-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:vault-stall",
       "class": "monitor",
-      "sender": "scripts/luna/vault-stall-cadence.sh"
+      "sender": "scripts/luna/vault-stall-cadence.sh",
+      "on-alert": [
+        {
+          "match": "unremediable: gitleaks",
+          "do": "escalate",
+          "to": "chief",
+          "reason": "the fault may involve a credential, and a repair would read, rewrite or commit text that may hold one"
+        },
+        {
+          "do": "escalate",
+          "to": "chief",
+          "reason": "a re-run replays the same check and reaches the same branch"
+        }
+      ]
     },
     {
       "kind": "cadence:vm-maintain-cadence",
       "class": "monitor",
-      "sender": "scripts/vm/vm-maintain-cadence.sh"
+      "sender": "scripts/vm/vm-maintain-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:graph-channel-publish",
       "class": "monitor",
-      "sender": "scripts/graphify/publish-graph-channel.sh"
+      "sender": "scripts/graphify/publish-graph-channel.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:librarian",
       "class": "monitor",
-      "sender": "scripts/handover/librarian-cadence.sh"
+      "sender": "scripts/handover/librarian-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:qmd-reindex",
       "class": "monitor",
-      "sender": "scripts/luna/qmd-cadence.sh"
+      "sender": "scripts/luna/qmd-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:rollup",
       "class": "monitor",
-      "sender": "scripts/eval/rollup-cadence.sh"
+      "sender": "scripts/eval/rollup-cadence.sh",
+      "on-alert": {
+        "do": "repair",
+        "verb": "rerun:rollup"
+      }
     },
     {
       "kind": "cadence:graphmap-himmel",
       "class": "monitor",
-      "sender": "scripts/luna/graphmap-cadence.sh"
+      "sender": "scripts/luna/graphmap-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:graphmap-luna",
       "class": "monitor",
-      "sender": "scripts/luna/graphmap-cadence.sh"
+      "sender": "scripts/luna/graphmap-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:graphmap-ast-himmel",
       "class": "monitor",
-      "sender": "scripts/luna/graphmap-cadence.sh"
+      "sender": "scripts/luna/graphmap-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:graphmap-ast-luna",
       "class": "monitor",
-      "sender": "scripts/luna/graphmap-cadence.sh"
+      "sender": "scripts/luna/graphmap-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:graphmap-semantic-luna",
       "class": "monitor",
-      "sender": "scripts/luna/graphmap-cadence.sh"
+      "sender": "scripts/luna/graphmap-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:graph-config-unreadable",
       "class": "monitor",
-      "sender": "scripts/graphify/refresh-graph-map.sh"
+      "sender": "scripts/graphify/refresh-graph-map.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:pipeline-harvest",
       "class": "monitor",
-      "sender": "scripts/luna/pipeline-cadence.sh"
+      "sender": "scripts/luna/pipeline-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:pipeline-harvest-x-media",
       "class": "monitor",
-      "sender": "scripts/luna/pipeline-cadence.sh"
+      "sender": "scripts/luna/pipeline-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:pipeline-synthesize",
       "class": "monitor",
-      "sender": "scripts/luna/pipeline-cadence.sh"
+      "sender": "scripts/luna/pipeline-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:pipeline-health",
       "class": "monitor",
-      "sender": "scripts/luna/pipeline-cadence.sh"
+      "sender": "scripts/luna/pipeline-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:pipeline-fetch-health",
       "class": "monitor",
-      "sender": "scripts/luna/pipeline-cadence.sh"
+      "sender": "scripts/luna/pipeline-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:pipeline-synthesize-index-lock",
       "class": "monitor",
-      "sender": "scripts/luna/pipeline-cadence.sh"
+      "sender": "scripts/luna/pipeline-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:upstream-watch",
       "class": "monitor",
-      "sender": "scripts/upstreams/upstream-watch-cadence.sh"
+      "sender": "scripts/upstreams/upstream-watch-cadence.sh",
+      "on-alert": [
+        {
+          "match": "upstream-watch: \\d+ delta item\\(s\\) today",
+          "do": "info",
+          "why": "a new upstream item, reported for reading"
+        },
+        {
+          "do": "escalate",
+          "to": "chief",
+          "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+        }
+      ]
     },
     {
       "kind": "cadence:security-audit",
@@ -287,99 +529,237 @@
       "sample": "snyk-scan: the scan found high findings. Cause: high-findings. Blocks: nothing yet. Do: read the scan log and decide which finding to fix"
     },
     {
+      "kind": "cadence:graph-key-*",
+      "class": "escalate",
+      "sender": "scripts/graphify/semantic-update.sh",
+      "pin": "fail \"graph-key-$1\"",
+      "sample": "graph-key-A: account A API key rejected. Cause: HTTP 401 or 403 from the provider. Blocks: the semantic graph update for that account. Do: rotate that account's key file, or remove the account from the route"
+    },
+    {
+      "kind": "bypass-ask",
+      "class": "escalate",
+      "sender": "scripts/station-ops/bypass-launchd.sh",
+      "sample": "A chief asked to launch a worker with a bypass: it wants settings access for one ticket. Blocks: that launch. Do: reply go 4821 to launch it, or no 4821 to refuse; the ask expires in 6 h"
+    },
+    {
+      "kind": "bypass-failed",
+      "class": "escalate",
+      "sender": "scripts/station-ops/bypass-launchd.sh",
+      "sample": "A bypass launch you approved failed (rc 1): the worker did not start. Blocks: that worker. Do: read the launch log in the bypass queue, then ask the chief to relaunch it"
+    },
+    {
+      "kind": "bypass-result",
+      "class": "monitor",
+      "sender": "scripts/station-ops/bypass-launchd.sh",
+      "on-alert": [
+        {
+          "match": "bypass launch \\S+: launched with ",
+          "do": "info",
+          "why": "a record of a launch the operator approved"
+        },
+        {
+          "do": "escalate",
+          "to": "chief",
+          "reason": "the line reports a decision (a denial, a refusal, a merge, a launch policy) only an agent with context may make"
+        }
+      ]
+    },
+    {
+      "kind": "version-approval",
+      "class": "escalate",
+      "sender": "scripts/handover/chief-kit/version-approval-alert.sh",
+      "pin": "_mba_send \"$chat\" \"$text\" version-approval",
+      "sample": "An out-of-version approval was signed for a ticket in the current version, for 14 days; 3 approvals are open. Blocks: nothing. Do: check you gave this approval, else revoke it"
+    },
+    {
       "kind": "cadence:graph-semantic-*",
       "class": "monitor",
-      "sender": "scripts/graphify/graph-cadence.sh"
+      "sender": "scripts/graphify/graph-cadence.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
     },
     {
       "kind": "cadence:vm-maintain-login-*",
       "class": "monitor",
-      "sender": "scripts/vm/vm-maintain.sh"
+      "sender": "scripts/vm/vm-maintain.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "operator",
+        "reason": "the fix needs an account, login or spend step, which is the operator's"
+      }
     },
     {
       "kind": "cadence:grafana-Flow_run_truncated",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-Flow_run_error",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-Flow_run_stalled",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-Flow_last-success_age_exceeded",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-Orphaned_quiet-run_suites___writer-less_tail_followers",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-Watcher_down",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-Luna_inbox_backlog_rising",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-Session_dead",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-Hook_chain_budget_pressure",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-Hook_chain_budget_denials",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-Hook_chain_log_unreadable",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-Guard_denies_a_large_share_of_sessions",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-One_session_repeatedly_denied_by_one_guard",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-Eval_regression_beyond_noise_band",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-Scheduled_eval_has_not_run_in_14_days",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-Scheduled_eval_has_no_ledger_series",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     },
     {
       "kind": "cadence:grafana-DatasourceNoData",
       "class": "monitor",
-      "sender": "scripts/observability/grafana-cadence-hook.ts"
+      "sender": "scripts/observability/grafana-cadence-hook.ts",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
+      }
     }
   ]
 }

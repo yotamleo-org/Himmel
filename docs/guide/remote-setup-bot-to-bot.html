@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bot-to-bot setup</title>
+<meta name="description" content="A one-page walk through bot-to-bot setup: two himmel stations that talk to each other through one Telegram group.">
+<style>
+  :root {
+    --bg: #0d1220; --bg-2: #121a2d; --surface: #151d31; --surface-2: #1a2339;
+    --line: #2a3654; --ink: #e8ecf5; --muted: #a3adc4; --faint: #8590aa;
+    --accent: #7aa2ff; --accent-soft: rgba(122,162,255,.14); --accent-ink: #9dbbff;
+    --amber: #e3a54a; --amber-soft: rgba(227,165,74,.15);
+    --green: #6cc596; --green-soft: rgba(108,197,150,.14);
+    --red: #f08a8a; --red-soft: rgba(240,138,138,.13);
+    --term-bg: #080c17; --term-ink: #dfe6f5; --term-dim: #8792ad; --term-ok: #7fd3a3;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 26px rgba(0,0,0,.28);
+    --serif: "Iowan Old Style", "Palatino Linotype", Charter, Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f4f6fa; --bg-2: #e9eef6; --surface: #ffffff; --surface-2: #f7f9fc;
+      --line: #d5dcea; --ink: #172033; --muted: #55607a; --faint: #5f6980;
+      --accent: #2f62d8; --accent-soft: rgba(47,98,216,.12); --accent-ink: #224aa8;
+      --amber: #8f5600; --amber-soft: rgba(143,86,0,.1);
+      --green: #2a7047; --green-soft: rgba(47,125,79,.1);
+      --red: #a83535; --red-soft: rgba(176,58,58,.08);
+      --term-bg: #10172a;
+      --shadow: 0 1px 2px rgba(23,32,51,.06), 0 6px 22px rgba(23,32,51,.06);
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f4f6fa; --bg-2: #e9eef6; --surface: #ffffff; --surface-2: #f7f9fc;
+    --line: #d5dcea; --ink: #172033; --muted: #55607a; --faint: #5f6980;
+    --accent: #2f62d8; --accent-soft: rgba(47,98,216,.12); --accent-ink: #224aa8;
+    --amber: #8f5600; --amber-soft: rgba(143,86,0,.1);
+    --green: #2a7047; --green-soft: rgba(47,125,79,.1);
+    --red: #a83535; --red-soft: rgba(176,58,58,.08);
+    --term-bg: #10172a;
+    --shadow: 0 1px 2px rgba(23,32,51,.06), 0 6px 22px rgba(23,32,51,.06);
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    background-image: radial-gradient(ellipse 90% 340px at 50% -40px, var(--bg-2), transparent);
+    font: 16px/1.6 var(--sans);
+  }
+  a { color: var(--accent-ink); text-underline-offset: 2px; }
+  code { font-family: var(--mono); font-size: .86em; background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: 0 .3em; overflow-wrap: anywhere; }
+  kbd { font-family: var(--mono); font-size: .86em; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 .35em; background: var(--surface-2); }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  .skiplink { position: absolute; left: -999px; top: 8px; background: var(--surface); padding: 8px 12px; z-index: 9; }
+  .skiplink:focus { left: 16px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 0 16px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 0 0; font-size: 14px; color: var(--muted); }
+  .topbar nav { display: flex; gap: 16px; flex-wrap: wrap; }
+  .theme-btn { font: inherit; font-size: 13px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+  .theme-btn:hover { color: var(--ink); }
+  html:not(.js) .theme-btn { display: none; }
+  header.hero { padding: 44px 0 22px; }
+  .kicker { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 600; color: var(--accent-ink); margin: 0 0 10px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(32px, 6vw, 48px); line-height: 1.08; letter-spacing: -.015em; margin: 0 0 14px; text-wrap: balance; }
+  .lede { font-size: 18px; color: var(--muted); margin: 0; max-width: 62ch; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: clamp(23px, 3.4vw, 29px); line-height: 1.15; margin: 0 0 10px; letter-spacing: -.01em; }
+  h3 { font-size: 17px; margin: 0 0 6px; }
+  section { margin: 0 0 30px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 18px 20px; }
+  .card + .card { margin-top: 12px; }
+  .card p, .card li { color: var(--muted); }
+  .card p:last-child { margin-bottom: 0; }
+  .card b, .card dt { color: var(--ink); }
+  ul.tight, ol.tight { margin: 6px 0 0; padding-left: 20px; }
+  ul.tight li + li, ol.tight li + li { margin-top: 4px; }
+
+  .endbox { border-color: var(--green); background: linear-gradient(var(--green-soft), var(--green-soft)), var(--surface); }
+  .endbox h2 { font-size: 22px; }
+
+  .who svg { display: block; width: 100%; height: auto; margin: 0 0 10px; color: var(--muted); }
+  .who text { fill: var(--ink); font: 600 14px var(--sans); text-anchor: middle; }
+  .who text.sub { fill: var(--muted); font-weight: 400; font-size: 12.5px; }
+  .who-box rect { fill: var(--surface-2); stroke: var(--line); stroke-width: 1.5; }
+  .who-group rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .who-ok line { stroke: var(--green); stroke-width: 2.5; }
+  #who-ar path { fill: var(--green); }
+  .who-no line { stroke: var(--red); stroke-width: 2; stroke-dasharray: 5 5; }
+  .who-no text { fill: var(--red); font-weight: 400; font-size: 13px; }
+  .words dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; }
+  .words dt { font-weight: 700; }
+  .words dd { margin: 0; color: var(--muted); }
+
+  .overview { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; counter-reset: ov; }
+  .overview li { counter-increment: ov; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  .overview li::before { content: counter(ov); display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+  .overview b { display: block; }
+  .overview small { color: var(--muted); font-size: 13.5px; line-height: 1.4; display: block; }
+
+  .traps { border-color: var(--amber); background: linear-gradient(var(--amber-soft), var(--amber-soft)), var(--surface); }
+  .traps ul { margin: 0; padding-left: 20px; }
+  .traps li { color: var(--ink); }
+  .traps li + li { margin-top: 6px; }
+
+  .picker { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 10px 0; border-bottom: 1px solid var(--line); margin: 0 0 18px; }
+  .picker p { margin: 0 0 6px; color: var(--muted); font-size: 14px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button { font: inherit; font-size: 14.5px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { color: var(--surface); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+  html:not(.js) .picker { display: none; }
+
+  .phase { margin: 0 0 30px; }
+  .phase-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
+  .phase-head h2 { margin: 0; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; border-radius: 999px; padding: 1px 9px; border: 1px solid; vertical-align: middle; }
+  .badge.owner { color: var(--amber); border-color: var(--amber); }
+  .badge.each { color: var(--green); border-color: var(--green); }
+  .badge.bside { color: var(--accent-ink); border-color: var(--accent); }
+  .step { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; margin: 0 0 10px; }
+  .step h3 .n { display: inline-grid; place-items: center; min-width: 30px; height: 26px; margin-right: 8px; padding: 0 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); font-size: 12.5px; font-weight: 700; }
+  .step > p { margin: 4px 0 8px; color: var(--muted); }
+  .step > p b { color: var(--ink); }
+  .see, .ifnot, .later { margin: 10px 0 0; padding: 8px 12px; border-radius: 10px; font-size: 14.5px; }
+  .see { background: var(--green-soft); }
+  .ifnot { background: var(--red-soft); }
+  .later { border: 1px dashed var(--line); color: var(--muted); }
+  .see > b, .ifnot > b, .later > b { display: block; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  .see > b { color: var(--green); }
+  .ifnot > b { color: var(--red); }
+  .later > b { color: var(--muted); }
+  .see p, .ifnot p, .later p { margin: 2px 0 0; }
+  .see .cmd { margin-top: 6px; }
+  [data-station="b"] .only-a { display: none; }
+  [data-station="a"] .only-b { display: none; }
+
+  .cmd { position: relative; background: var(--term-bg); color: var(--term-ink); border-radius: 10px; border: 1px solid rgba(0,0,0,.2); margin: 8px 0 0; }
+  .cmd pre { margin: 0; padding: 12px 84px 12px 14px; font: 14px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cmd.out pre { color: var(--term-ok); padding-right: 14px; }
+  .cmd .lab { display: block; padding: 6px 14px 0; font: 11.5px var(--mono); color: var(--term-dim); }
+  .copy { position: absolute; right: 8px; bottom: 8px; font: 600 12.5px var(--sans); color: var(--term-ink); background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); border-radius: 7px; padding: 4px 10px; cursor: pointer; }
+  .copy:hover { background: rgba(255,255,255,.16); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-top: 1px solid var(--line); }
+  th { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); border-top: 0; }
+  td { color: var(--muted); }
+  td:first-child { width: 42%; }
+  details.fixes { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 4px 18px; margin: 10px 0 0; }
+  details.fixes summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
+  details.fixes > p { color: var(--muted); }
+  .tbl { overflow-x: auto; }
+
+  footer { padding: 26px 0 60px; color: var(--faint); font-size: 14px; border-top: 1px solid var(--line); margin-top: 30px; }
+  footer nav { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 6px; }
+  @media (max-width: 760px) { .overview { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+  @media (max-width: 520px) {
+    header.hero { padding-top: 28px; }
+    .lede { font-size: 16.5px; }
+    .overview { grid-template-columns: minmax(0, 1fr); }
+    .picker { position: static; }
+    .words dl { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+    .words dd { margin-bottom: 8px; }
+    td:first-child { width: auto; }
+  }
+</style>
+</head>
+<body data-station="all">
+<a class="skiplink" href="#steps">Skip to the steps</a>
+<p class="sr-only" id="copy-status" aria-live="polite"></p>
+<div class="wrap">
+  <div class="topbar">
+    <nav aria-label="Site">
+      <a href="../README.md">Docs home</a>
+      <a href="https://github.com/yotamleo-org/Himmel/blob/main/docs/setup/remote-setup.md#part-4">Remote setup guide (text)</a>
+      <a href="installer-journey.html">Installer journey</a>
+    </nav>
+    <button class="theme-btn" id="theme" type="button">Switch to light</button>
+  </div>
+
+  <header class="hero">
+    <p class="kicker">himmel guide · remote setup part 4</p>
+    <h1>Two stations, one Telegram group</h1>
+    <p class="lede">A <b>station</b> is a computer that runs himmel. This page connects two stations so they can send each other messages through one Telegram group. The two stations can be yours and another person's, or two computers of your own. They do not need to be on the same network: everything goes through Telegram. It takes about 15 minutes.</p>
+  </header>
+
+  <main>
+    <!-- source: docs/setup/remote-setup.md, "Part 4: bot-to-bot". Every command on this page is copied from there. -->
+    <section aria-labelledby="end-h">
+      <div class="card endbox">
+        <h2 id="end-h">What you will have at the end</h2>
+        <ul class="tight">
+          <li>Each station has a new Telegram bot of its own, its <b>bridge bot</b>.</li>
+          <li>The two bridge bots share one private Telegram group, and talk to each other there.</li>
+          <li>Each station runs a <b>poller</b>: a small program that keeps checking Telegram for you.</li>
+          <li>The last line of your setup says <code>DONE:</code>.</li>
+          <li>Your <b>main bot</b>, the one you already chat with, stays private and stays out of the group.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section aria-labelledby="who-h">
+      <h2 id="who-h">Who talks to whom</h2>
+      <div class="card who">
+        <svg viewBox="0 0 760 250" role="img" aria-labelledby="who-t who-d">
+          <title id="who-t">Who talks to whom</title>
+          <desc id="who-d">You chat only with your own main bot. The two bridge bots talk to each other in the shared group. Messages that people post in the group are ignored.</desc>
+          <defs><marker id="who-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+          <g class="who-box"><rect x="10" y="20" width="160" height="56" rx="12"/><text x="90" y="54">You</text></g>
+          <g class="who-box"><rect x="10" y="150" width="160" height="56" rx="12"/><text x="90" y="176">Your main bot</text><text class="sub" x="90" y="194">private chat</text></g>
+          <g class="who-box"><rect x="590" y="20" width="160" height="56" rx="12"/><text x="670" y="54">The other person</text></g>
+          <g class="who-box"><rect x="590" y="150" width="160" height="56" rx="12"/><text x="670" y="176">Their main bot</text><text class="sub" x="670" y="194">private chat</text></g>
+          <g class="who-group"><rect x="198" y="120" width="364" height="116" rx="16"/><text class="sub" x="380" y="142">the shared Telegram group</text></g>
+          <g class="who-box"><rect x="210" y="160" width="140" height="50" rx="10"/><text x="280" y="190">Your bridge bot</text></g>
+          <g class="who-box"><rect x="410" y="160" width="140" height="50" rx="10"/><text x="480" y="190">Their bridge bot</text></g>
+          <g class="who-ok"><line x1="90" y1="78" x2="90" y2="146" marker-start="url(#who-ar)" marker-end="url(#who-ar)"/><line x1="670" y1="78" x2="670" y2="146" marker-start="url(#who-ar)" marker-end="url(#who-ar)"/><line x1="354" y1="185" x2="406" y2="185" marker-start="url(#who-ar)" marker-end="url(#who-ar)"/></g>
+          <g class="who-no"><line x1="172" y1="52" x2="300" y2="122"/><line x1="588" y1="52" x2="460" y2="122"/><text x="380" y="70">people who post in the group: ignored</text></g>
+        </svg>
+        <ul class="tight">
+          <li><b>You talk only to your own main bot</b>, in your private chat with it, the same way you do today.</li>
+          <li><b>The two bridge bots talk to each other in the group.</b> Your station reads what the other bridge bot posts, and posts its answers there.</li>
+          <li><b>People who post in the group are ignored</b>, you and the other person too. Nobody gets a reply there. Typing your message in the group does not send it to the other station.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section aria-labelledby="words-h">
+      <h2 id="words-h">Words on this page</h2>
+      <div class="card words">
+        <dl>
+          <dt>Station</dt><dd>A computer that runs himmel.</dd>
+          <dt>Operator</dt><dd>The person who runs a station. That is you, or the other person.</dd>
+          <dt>Your chief</dt><dd>The main Claude session on your station. It reads what you send to your main bot.</dd>
+          <dt>Main bot</dt><dd>The Telegram bot you made in part 1. Only you chat with it. It never joins a group.</dd>
+          <dt>Bridge bot</dt><dd>A second, new bot you make on this page. It talks only to the other station's bridge bot.</dd>
+          <dt>Token</dt><dd>A long secret password that Telegram gives you for a bot. Whoever has it controls the bot, so paste it only into the helper and never post it.</dd>
+          <dt>Username</dt><dd>A Telegram name that starts with @, such as @example_bot.</dd>
+          <dt>Group owner</dt><dd>The person who makes the group. We call that side Station A, and the other side Station B.</dd>
+          <dt>Supergroup</dt><dd>Telegram's bigger kind of group. Bridge bots need one. You make it in step 2.2.</dd>
+          <dt>Admin rights</dt><dd>Extra powers Telegram can give a group member, such as deleting messages. Bridge bots are admins with every power switched off.</dd>
+          <dt>Terminal</dt><dd>The app where you type commands. On a Mac: press <kbd>Cmd</kbd>+<kbd>Space</kbd>, type <code>Terminal</code>, press <kbd>Enter</kbd>.</dd>
+          <dt>The helper</dt><dd>The setup command you run in the Terminal. It finds every id for you.</dd>
+          <dt>Peer</dt><dd>The other station. The helper's command is called <code>peer</code>.</dd>
+          <dt>Poller</dt><dd>A small program that keeps checking Telegram for you. The helper starts it.</dd>
+          <dt><code>DONE:</code> and <code>FIX:</code></dt><dd>The helper's last line. <code>DONE:</code> means it worked. <code>FIX:</code> names one thing to do: do it, then run the same command again.</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section aria-labelledby="ov-h">
+      <h2 id="ov-h">Four steps</h2>
+      <ol class="overview">
+        <li><b>Make a bridge bot</b><small>Each station, in Telegram.</small></li>
+        <li><b>Make the group</b><small>The group owner only, once, in Telegram.</small></li>
+        <li><b>Run one command</b><small>Each station, in its Terminal.</small></li>
+        <li><b>Check</b><small>Each station: one command that only looks.</small></li>
+      </ol>
+    </section>
+
+    <section aria-labelledby="before-h">
+      <h2 id="before-h">Before you start</h2>
+      <div class="card">
+        <p>You need:</p>
+        <ul class="tight">
+          <li><b>Part 1 done:</b> your main bot works. If not, do <a href="https://github.com/yotamleo-org/Himmel/blob/main/docs/setup/remote-setup.md#part-1">part 1</a> first. It takes about 5 minutes.</li>
+          <li>The Telegram app on your phone, signed in.</li>
+          <li>A Terminal window of your own. Not Claude, and not a <code>!</code> command inside Claude. The helper handles secrets, so it refuses to run there.</li>
+        </ul>
+        <p>On a Mac, open Terminal like this: press <kbd>Cmd</kbd>+<kbd>Space</kbd>, type <code>Terminal</code>, press <kbd>Enter</kbd>.</p>
+        <p>In the Terminal, go to your himmel folder. This page assumes it is <code>~/himmel</code>:</p>
+        <div class="cmd"><pre>cd ~/himmel</pre></div>
+        <p>Is himmel somewhere else? Type <code>cd</code> and a space. Drag the himmel folder from your file manager into the Terminal window. Press <kbd>Enter</kbd>. Run every command on this page from that folder.</p>
+      </div>
+    </section>
+
+    <section aria-labelledby="traps-h">
+      <h2 id="traps-h">Watch out for these</h2>
+      <div class="card traps">
+        <ul>
+          <li><b>Your main bot never joins the group.</b> Only the two bridge bots go in.</li>
+          <li><b>Switch the group to Public, then back to Private.</b> That makes it a supergroup.</li>
+          <li><b>Switch off "Change group info" and "Pin messages"</b> for members.</li>
+          <li><b>Make each bridge bot an admin, with every admin right switched off.</b></li>
+          <li><b>Add bots by their username.</b> Invite links do not work for bots.</li>
+          <li><b>Never post anonymously "as the group".</b> The bridge ignores those messages.</li>
+          <li><b>Run the helper in a plain Terminal, not inside Claude.</b></li>
+          <li><b>On a Mac, stop it from sleeping.</b> In System Settings → Battery (or Energy), turn on "Prevent automatic sleeping when the display is off". When the Mac sleeps, the poller stops. Telegram keeps waiting messages for only 24 hours.</li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="picker" id="steps">
+      <p>Which side are you? Pick one to see only your steps. Two computers of your own? You do both sides: pick "All steps".</p>
+      <div class="seg" role="group" aria-label="Your side">
+        <button type="button" data-pick="a" aria-pressed="false">Station A: I make the group</button>
+        <button type="button" data-pick="b" aria-pressed="false">Station B: I get added</button>
+        <button type="button" data-pick="all" aria-pressed="true">All steps</button>
+      </div>
+    </div>
+
+    <section class="phase" aria-labelledby="p1-h">
+      <div class="phase-head"><h2 id="p1-h">1. Make your bridge bot</h2><span class="badge each">each station</span></div>
+
+      <div class="step">
+        <h3><span class="n">1.1</span>Make a new bot</h3>
+        <p>In Telegram, open a chat with <b>@BotFather</b>. It is Telegram's official bot for making bots, with a blue check mark. Send it this:</p>
+        <div class="cmd"><span class="lab">send to @BotFather</span><pre>/newbot</pre></div>
+        <p>It asks for a name: type any name. Then it asks for a username: type one that ends in <code>bot</code>. This must be a <b>new</b> bot, not your main bot. Two computers of your own? Make one bridge bot for each.</p>
+        <div class="see"><b>You should see</b><p>A reply with the line "Use this token to access the HTTP API". The long line below it is the token. You paste it in step 3.</p></div>
+        <div class="ifnot"><b>Closed that chat?</b><p>Send <code>/mybots</code> to @BotFather, pick the bot, then press <b>API Token</b>.</p></div>
+      </div>
+
+      <div class="step">
+        <h3><span class="n">1.2</span>Let your bot talk to other bots</h3>
+        <p>Send this to @BotFather. Pick the new bot. Open <b>Bot Settings</b>. Turn <b>Bot-to-Bot mode</b> on.</p>
+        <div class="cmd"><span class="lab">send to @BotFather</span><pre>/mybots</pre></div>
+        <div class="see"><b>You should see</b><p>Bot-to-Bot mode is switched on. Leave <b>Group Privacy</b> on: it is on already.</p></div>
+        <div class="ifnot"><b>If not</b><p>Check that you picked the new bridge bot, not your main bot.</p></div>
+      </div>
+
+      <div class="step">
+        <h3><span class="n">1.3</span>Send your usernames to the other side</h3>
+        <p>Send the other operator your bridge bot's username (the one that ends in <code>bot</code>). The group owner needs it to add your bot.</p>
+        <p class="only-b"><b>Station B:</b> also send the group owner <b>your own Telegram username</b>, so they can add you to the group.</p>
+        <div class="see"><b>You should see</b><p>Each side knows the other side's bridge bot username.</p></div>
+      </div>
+    </section>
+
+    <section class="phase" aria-labelledby="p2-h">
+      <div class="phase-head"><h2 id="p2-h">2. Make the group</h2><span class="badge owner">group owner only, once</span></div>
+
+      <div class="only-b">
+        <div class="step">
+          <h3><span class="n">2.B</span>Station B: join the group <span class="badge bside">station B</span></h3>
+          <p>The group owner does the rest of step 2. Your part:</p>
+          <ol class="tight">
+            <li>Wait until the owner adds you. The group then shows up in your chat list.</li>
+            <li>Open the group. If Telegram asks you to join or accept, say yes.</li>
+            <li>Wait until the owner says the group is ready.</li>
+            <li>Then go to step 3. You send <code>hello</code> in the group in step 3.2.</li>
+          </ol>
+          <div class="ifnot"><b>If the helper names a group setting</b><p>Ask the group owner to change it.</p></div>
+        </div>
+      </div>
+
+      <div class="only-a">
+        <p>Do these in this order. The order matters.</p>
+
+        <div class="step">
+          <h3><span class="n">2.1</span>Make the group</h3>
+          <p>In Telegram, press <b>New Group</b>. Add <b>only your own bridge bot</b>. If another person runs the other station, add only that person instead. Give the group any name.</p>
+          <div class="see"><b>You should see</b><p>A new group with you and one other member.</p></div>
+          <div class="ifnot"><b>If not</b><p>Check the username you got in step 1.3.</p></div>
+        </div>
+
+        <div class="step">
+          <h3><span class="n">2.2</span>Make it a supergroup: Public, then Private</h3>
+          <p>Open the group and press its name. Press <b>Edit</b> → <b>Group type</b> → <b>Public</b>. Set any link. Press <b>Save</b>.</p>
+          <p>Then press <b>Edit</b> → <b>Group type</b> → <b>Private</b> → <b>Save</b>.</p>
+          <div class="see"><b>You should see</b><p>The group type is Private again. The helper checks the rest in step 3.</p></div>
+          <div class="ifnot"><b>Later, if the helper says</b><p><code>and bridge bots need a supergroup</code>: do this step again.</p></div>
+        </div>
+
+        <div class="step">
+          <h3><span class="n">2.3</span>Switch off two member permissions</h3>
+          <p>Press <b>Edit</b> → <b>Permissions</b>. Switch off <b>Change group info</b>. Switch off <b>Pin messages</b>.</p>
+          <div class="see"><b>You should see</b><p>Both switches off.</p></div>
+          <div class="ifnot"><b>Later, if the helper says</b><p><code>group members are allowed to use</code>: switch both off again.</p></div>
+        </div>
+
+        <div class="step">
+          <h3><span class="n">2.4</span>Add the other bridge bot by its username</h3>
+          <p>You need the other station's bridge bot username from step 1.3. Press <b>Add Members</b> and search for that username. Invite links do not work for bots.</p>
+          <p>Another person runs the other station, so you did not add your own bridge bot in 2.1? Add your own bridge bot now too.</p>
+          <div class="see"><b>You should see</b><p>Both bridge bots in the member list. Your main bot is not there.</p></div>
+          <div class="ifnot"><b>Later, if the helper says</b><p><code>is not in the group</code>: add that bot by its username. <code>your main bot is in the group</code>: remove your main bot. Only the bridge bots belong in the group.</p></div>
+        </div>
+
+        <div class="step">
+          <h3><span class="n">2.5</span>Make each bridge bot an admin, with every right off</h3>
+          <p>Press <b>Edit</b> → <b>Administrators</b>. Pick a bridge bot. If it is not listed, press <b>Add Admin</b> first. Switch <b>every</b> right off, and "Remain anonymous" off too. Press <b>Save</b>. Do the same for the other bridge bot.</p>
+          <div class="see"><b>You should see</b><p>Both bridge bots listed as administrators.</p></div>
+          <div class="ifnot"><b>Later, if the helper says</b><p><code>is not an administrator of the group</code>: do this step for that bot. <code>has the admin right</code>: open that bot here and switch that right off. If the line names an odd word such as <code>can_manage_tags</code>, switch off the setting with the matching name. <code>is not set up as a plain administrator</code>: switch every right and "Remain anonymous" off, then Save.</p></div>
+        </div>
+
+        <div class="step">
+          <h3><span class="n">2.6</span>Say hello in the group</h3>
+          <p>Send this word in the group yourself, under your own name. Never post anonymously "as the group".</p>
+          <div class="cmd"><span class="lab">send in the group</span><pre>hello</pre></div>
+          <div class="see"><b>You should see</b><p>Your message, with your own name on it.</p></div>
+          <div class="ifnot"><b>If not</b><p>It shows the group's name instead of yours: you are posting anonymously. Switch "Remain anonymous" off for yourself under Edit → Administrators.</p></div>
+        </div>
+
+        <p>Then tell the other operator the group is ready.</p>
+      </div>
+    </section>
+
+    <section class="phase" aria-labelledby="p3-h">
+      <div class="phase-head"><h2 id="p3-h">3. Run one command</h2><span class="badge each">each station</span></div>
+
+      <div class="step">
+        <h3><span class="n">3.1</span>Run the helper</h3>
+        <p>In your own Terminal (not Claude), in your himmel folder, paste this and press <kbd>Enter</kbd>:</p>
+        <div class="cmd"><pre>bash scripts/remote-setup/remote-setup.sh peer</pre></div>
+        <p>The first time, it asks for your bridge bot's token. Paste it and press <kbd>Enter</kbd>. Nothing shows on screen while you paste: that is on purpose. Next time, just press <kbd>Enter</kbd> there.</p>
+        <p>It may stop and wait for you to send <code>hello</code> in the group (step 3.2).</p>
+        <div class="see"><b>You should see</b><p>Numbered lines that end in <code>ok</code>.</p></div>
+        <div class="ifnot"><b>If the last line says</b><p><code>do part 1 first</code>: finish part 1, then run this again. <code>this step handles secrets and must run in a separate plain Terminal</code>: open your own Terminal window, not Claude, and run it there. <code>this bot is already your ... bot</code>: you pasted the token of a bot you already use. Make a new bot (step 1.1).</p></div>
+      </div>
+
+      <div class="step">
+        <h3><span class="n">3.2</span>Send hello when it asks</h3>
+        <p>If the helper asks you to send the word <code>hello</code> in the group ("Waiting up to 10 minutes..."), send it now. A <code>hello</code> sent before that is not seen. Station B: you must be in the group first (step 2.B).</p>
+        <div class="cmd"><span class="lab">send in the group</span><pre>hello</pre></div>
+        <div class="see"><b>You should see</b><p>The helper finds your group. Your bridge bot posts <code>himmel peer hello</code> there. Then the helper waits up to 10 minutes for the other bridge bot to do the same.</p></div>
+        <div class="ifnot"><b>If the last line says</b><p><code>no hello arrived from the group</code>: run the command again, wait until it asks, then send <code>hello</code>. <code>no hello came from the other station</code>: ask the other operator to run the same command once, then run it here again.</p></div>
+      </div>
+
+      <div class="step">
+        <h3><span class="n">3.3</span>Type 1 only if the name matches</h3>
+        <p>When the other bridge bot says hello, the helper shows its username and asks if it is the right bot. Check the name with the other operator. Type <code>1</code> if it is their bridge bot. Type <code>2</code> if it is not. Nothing is connected unless you type <code>1</code>.</p>
+        <div class="cmd"><span class="lab">type in the Terminal, only if the name matches</span><pre>1</pre></div>
+        <div class="see"><b>You should see</b><p>It checks the group, connects the two stations and starts the poller. The last line:</p>
+          <div class="cmd out"><pre>DONE: peer example — group confirmed, poller running</pre></div>
+          <p>The word after <code>peer</code> is the other station's name. It comes from their bridge bot's username (here <code>example_bot</code>). Running the command again is safe.</p>
+        </div>
+        <div class="ifnot"><b>If the last line says</b><p><code>so nothing was paired</code>: ask the other operator for their bridge bot's username. Make sure only that bot is in the group. Run the command again and type <code>1</code> only if the name matches. Any other <code>FIX:</code> line: see the table below.</p></div>
+      </div>
+
+      <div class="card">
+        <h3>Who goes first</h3>
+        <ul class="tight">
+          <li><b>Two computers of your own:</b> start the command on the first one. While it says "Waiting for the other station's hello", run the same command on the second one. If the first one gave up meanwhile, run it there once more. Nothing breaks.</li>
+          <li><b>The other station finished first:</b> you still get <code>DONE:</code>. Ask the other operator to run the same command once more. It changes nothing on their side. It just posts their hello again for you.</li>
+          <li><b>On a Mac:</b> turn on "Prevent automatic sleeping when the display is off" (System Settings → Battery, or Energy). A sleeping Mac stops the poller.</li>
+        </ul>
+      </div>
+
+      <details class="fixes">
+        <summary>Every FIX line, and what to do</summary>
+        <p>Find the words from your <code>FIX:</code> line on the left. Do what it says on the right, then run the same command again. Rows marked <span class="badge owner">owner</span> are group settings: if you are not the group owner, ask the owner to change them.</p>
+        <div class="tbl">
+        <table>
+          <thead><tr><th scope="col">The line says</th><th scope="col">What to do</th></tr></thead>
+          <tbody>
+            <tr><td><code>do part 1 first</code></td><td>Finish part 1, then run the command again.</td></tr>
+            <tr><td><code>this bot is already your ... bot</code></td><td>Each job needs its own bot. Make a new bridge bot with @BotFather (<code>/newbot</code>).</td></tr>
+            <tr><td><code>a different bridge bot is already set up</code></td><td>You want to switch to a new bridge bot? See "Changed a bot or account?" below.</td></tr>
+            <tr><td><code>no hello arrived from the group</code></td><td>Run the command again. Wait until it asks you to send <code>hello</code> in the group ("Waiting up to 10 minutes..."). Then send <code>hello</code>. A <code>hello</code> sent before the command started is not seen.</td></tr>
+            <tr><td><code>no hello came from the other station</code></td><td>Ask the other operator to run the same command once, then run it here again.</td></tr>
+            <tr><td><code>so nothing was paired</code></td><td>You said the bot is not the other station's bridge bot, or gave no answer. Ask the other operator for their bridge bot's username. Make sure only that bot is in the group. Run the command again and type <code>1</code> only if the name matches.</td></tr>
+            <tr><td><code>too many queued messages</code></td><td>Wait a minute. Ask the other operator to run the same command once more. Then run it here again.</td></tr>
+            <tr><td><span class="badge owner">owner</span> <code>and bridge bots need a supergroup</code></td><td>Edit → Group type → Public → set any link → Save, then Private → Save (step 2.2).</td></tr>
+            <tr><td><span class="badge owner">owner</span> <code>group members are allowed to use</code></td><td>Edit → Permissions → switch off Change group info and Pin messages (step 2.3).</td></tr>
+            <tr><td><span class="badge owner">owner</span> <code>is not in the group</code></td><td>Press Add Members and add the bot by its username. Invite links do not work for bots.</td></tr>
+            <tr><td><span class="badge owner">owner</span> <code>is not an administrator of the group</code></td><td>Edit → Administrators → Add Admin → pick the bot, switch every right off, Save.</td></tr>
+            <tr><td><span class="badge owner">owner</span> <code>has the admin right</code></td><td>Edit → Administrators → the bot → switch that right off → Save. If the line names an odd word such as <code>can_manage_tags</code>, switch off the setting with the matching name.</td></tr>
+            <tr><td><span class="badge owner">owner</span> <code>is not set up as a plain administrator</code></td><td>The bot posts anonymously, or is not a normal admin. Edit → Administrators → the bot. Switch every right and "Remain anonymous" off. Save.</td></tr>
+            <tr><td><code>your main bot is in the group</code></td><td>Remove your main bot from the group. Only the bridge bots belong in it.</td></tr>
+            <tr><td><code>another program is already reading this bot's messages</code></td><td>Something else is using this bridge bot's token, maybe an old poller. Stop it, then run the command again. Not sure what it is? Ask your chief.</td></tr>
+            <tr><td><code>this bot has a webhook set</code></td><td>The bot is set to send its messages to a web address, so the helper cannot read them. Remove that setting (Telegram calls it <code>deleteWebhook</code>), or use another bot. Not sure how? Ask your chief.</td></tr>
+            <tr><td><code>not a usable Telegram username</code></td><td>Ask the other operator to check their bridge bot's username, then run the command again.</td></tr>
+            <tr><td><code>setup.ts did not</code></td><td>A setup step failed. The rest of the line says why, usually one of the group rows above. Fix that, then run the command again.</td></tr>
+            <tr><td><code>the peer poller did not start</code></td><td>The line names a command that shows the poller's log (its record of what went wrong). Run it, fix what it says, then run the command again. Your setup is kept.</td></tr>
+            <tr><td><code>the old poller could not be stopped</code></td><td>On a Mac, the running poller would not stop, so nothing was changed. Run the stop command the line gives, then run the command again.</td></tr>
+            <tr><td><code>unit file could not be deleted</code></td><td>Delete the file the line names, then run the command with <code>--remove</code> again.</td></tr>
+            <tr><td><code>the peer poller did not restart</code></td><td>Read the poller's log (the line names the command). Fix what it says. Then run the command with <code>--remove</code> again: it finishes the restart. The peer you removed stays removed.</td></tr>
+            <tr><td><code>the peer poller could not be stopped</code></td><td>Run the stop command the line gives, then run the command with <code>--remove</code> again. The peer is already removed.</td></tr>
+            <tr><td><code>the peer bridge is not running yet</code></td><td>Wait a minute. Read the poller's log (the line names the command). Then run the command again.</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </details>
+    </section>
+
+    <section class="phase" aria-labelledby="p4-h">
+      <div class="phase-head"><h2 id="p4-h">4. Check everything</h2><span class="badge each">each station</span></div>
+      <div class="step">
+        <h3><span class="n">4.1</span>Run the check</h3>
+        <p>This command only looks. It changes nothing, so it is safe to run any time.</p>
+        <div class="cmd"><pre>bash scripts/remote-setup/remote-setup.sh status</pre></div>
+        <div class="see"><b>You should see</b>
+          <div class="cmd out"><pre>DONE: status — all shipped parts ok</pre></div>
+        </div>
+        <div class="ifnot"><b>If not</b><p>The last line starts with <code>FIX:</code> and names the part and the command to run. Run that command.</p></div>
+      </div>
+    </section>
+
+    <section aria-labelledby="why-h">
+      <h2 id="why-h">Why doesn't it answer me?</h2>
+      <div class="card">
+        <p><b>People never get an answer in the group.</b> The group is only for the two bridge bots. Your bridge bot quietly ignores these, and never tells you it did:</p>
+        <ul class="tight">
+          <li>every message from a person, <b>including you</b>;</li>
+          <li>a new message that does not start by addressing your bridge bot (a reply inside a conversation the bots already started does go through);</li>
+          <li>edited messages and forwarded messages;</li>
+          <li>messages that arrive too fast (there is a limit per minute);</li>
+          <li>anything from a chat other than the group you set up;</li>
+          <li>posts made anonymously "as the group".</li>
+        </ul>
+        <p><b>To talk to your own station, message your main bot</b> in its private chat.</p>
+      </div>
+    </section>
+
+    <section aria-labelledby="swap-h">
+      <h2 id="swap-h">Changed a bot or account?</h2>
+      <div class="card">
+        <h3>You made a new bridge bot</h3>
+        <p>First, the group owner adds the new bot to the group and makes it an admin with every right off (steps 2.4 and 2.5). Then run this on your station, and paste the <b>new</b> bot's token when it asks:</p>
+        <div class="cmd"><pre>bash scripts/remote-setup/remote-setup.sh peer --replace</pre></div>
+      </div>
+      <div class="card">
+        <h3>The other station made a new bridge bot</h3>
+        <p>After they have done the card above, run the same command on your station. Press <kbd>Enter</kbd> at the token prompt. It finds their new bot, removes the old one from your setup, and asks you to type <code>yes</code> before it removes it.</p>
+        <div class="cmd"><pre>bash scripts/remote-setup/remote-setup.sh peer --replace</pre></div>
+      </div>
+      <div class="card">
+        <h3>You made a new main bot</h3>
+        <p>Run this for the main bot itself (part 1):</p>
+        <div class="cmd"><pre>bash scripts/remote-setup/remote-setup.sh bot --replace</pre></div>
+        <p>The bridge does not follow the new main bot by itself yet, so ask your chief.</p>
+      </div>
+      <div class="card">
+        <h3>You changed your Telegram account, or made a new group</h3>
+        <p><b>Not automatic yet.</b> Ask your chief.</p>
+      </div>
+    </section>
+
+    <section aria-labelledby="undo-h">
+      <h2 id="undo-h">Undo</h2>
+      <div class="card">
+        <p>To disconnect from the other station and stop the poller:</p>
+        <div class="cmd"><pre>bash scripts/remote-setup/remote-setup.sh peer --remove</pre></div>
+        <p>It asks you to type <code>yes</code> first. If it stops half way, run it again: it finishes the job. To delete the bridge bot itself, send <code>/deletebot</code> to @BotFather. To take it out of the group, remove it there.</p>
+      </div>
+      <div class="card">
+        <h3>Optional: let your chiefs hand each other jobs</h3>
+        <p>Not needed for <code>DONE:</code>. It needs a one-time check that you and the other operator do together, by phone or another messenger, so there is no helper for it. Ask your chief, or see <a href="https://github.com/yotamleo-org/Himmel/blob/main/docs/internals/peer-bridge.md">the peer bridge reference</a>.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div>Every command and line of output here is copied from the remote setup guide, part 4.</div>
+    <nav aria-label="Further reading">
+      <a href="https://github.com/yotamleo-org/Himmel/blob/main/docs/setup/remote-setup.md">Remote setup guide</a>
+      <a href="https://github.com/yotamleo-org/Himmel/blob/main/docs/internals/peer-bridge.md">Peer bridge reference</a>
+      <a href="../README.md">Docs home</a>
+    </nav>
+  </footer>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  root.classList.add('js');
+
+  var picks = document.querySelectorAll('[data-pick]');
+  function pick(who) {
+    document.body.setAttribute('data-station', who);
+    for (var i = 0; i < picks.length; i++) picks[i].setAttribute('aria-pressed', picks[i].getAttribute('data-pick') === who ? 'true' : 'false');
+  }
+  for (var i = 0; i < picks.length; i++) {
+    picks[i].addEventListener('click', function () { pick(this.getAttribute('data-pick')); });
+  }
+
+  var status = document.getElementById('copy-status');
+  function announce(text) {
+    status.textContent = '';
+    setTimeout(function () { status.textContent = text; }, 50);
+  }
+  function copyText(text, done) {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
+    } else {
+      fallback(text, done);
+    }
+  }
+  function fallback(text, done) {
+    var prev = document.activeElement;
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { if (document.execCommand('copy')) done(); } catch (e) { /* the text stays selectable by hand */ }
+    document.body.removeChild(ta);
+    if (prev && prev.focus) prev.focus();
+  }
+  var blocks = document.querySelectorAll('.cmd:not(.out)');
+  for (var j = 0; j < blocks.length; j++) {
+    (function (block) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'copy';
+      btn.textContent = 'Copy';
+      btn.setAttribute('aria-label', 'Copy command');
+      btn.addEventListener('click', function () {
+        copyText(block.querySelector('pre').textContent, function () {
+          btn.textContent = 'Copied';
+          announce('Copied');
+          setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+        });
+      });
+      block.appendChild(btn);
+    })(blocks[j]);
+  }
+
+  var tb = document.getElementById('theme');
+  var prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+  var mode = prefersLight ? 'light' : 'dark';
+  try {
+    var saved = localStorage.getItem('himmel-guide-theme');
+    if (saved === 'light' || saved === 'dark') mode = saved;
+  } catch (e) { /* private window */ }
+  function applyTheme() {
+    root.setAttribute('data-theme', mode);
+    tb.textContent = mode === 'dark' ? 'Switch to light' : 'Switch to dark';
+  }
+  tb.addEventListener('click', function () {
+    mode = mode === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem('himmel-guide-theme', mode); } catch (e) { /* private window */ }
+    applyTheme();
+  });
+  applyTheme();
+})();
+</script>
+</body>
+</html>

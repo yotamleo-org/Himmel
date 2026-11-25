@@ -12,8 +12,9 @@ import time
 import unittest
 from unittest import mock
 
+os.environ['HIMMEL_CORE_CHECK_BATCH'] = 'off'
 HERE = Path(__file__).resolve().parent
-spec = importlib.util.spec_from_file_location('records', HERE / 'test-proof-validate.py')
+spec =importlib.util.spec_from_file_location('records', HERE / 'test-proof-validate.py')
 records = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(records)
 

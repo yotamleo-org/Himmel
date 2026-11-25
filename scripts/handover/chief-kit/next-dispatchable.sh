@@ -54,6 +54,12 @@
 # with no PR at all it is a RESUME row. An unreadable merged-PR search prints a
 # `merged PRs unknown` header and no IN CI row.
 #
+# In Progress / In Review tickets nobody holds whose only remaining work is an open `owe.sh` proof row (with a slice on main), a chief or operator
+# gate (a `pool-disposition: KEY question|close|hold|park` line in --doc's `## Live state`, or a live c or d readiness row),
+# or nothing (a commit on main cites the key and no partial slice is recorded) print `# pool-owed <KEY> <row>`,
+# `# pool-gated <KEY> <gate>` or `# pool-done-candidate <KEY> ...` in rank order instead of a RESUME row; when the source
+# clears the ticket is a RESUME row at the same rank. Nothing is closed or moved in Jira.
+#
 # Partial-merge rows: a ticket with a merged contract=no PR reads that PR's remainder, a `Remaining:` line or the
 # `deferred -> <KEY>` lines under `## Ticket coverage` (scripts/lib/pr_remainder.py, the one reader merge-on-green.sh and
 # the brief generator share). A remainder kept on the ticket is a RESUME row (`partial=PR #n merged, Remaining: <text>`); one
@@ -65,7 +71,7 @@
 # A newer hand-off or owed PR also supersedes an older `remaining` PR.
 #
 # Scope: a ticket waits only on the files its next step writes. That is the latest `Remaining:` text when it names a write path or
-# the reader (`--units`) answers that it writes nothing: every slice of each `Remaining:` line (cut at a `, S<n>` or `; S<n>` label
+# the reader answers that it writes nothing: every slice of each `Remaining:` line (cut at a `, S<n>` or `; S<n>` label
 # outside parentheses), every deferred line kept on the ticket and every malformed owed line says so (no code, no repo write,
 # chief-run, state repo). Else a `Writes:` or `Files:` line of the description, else the description's paths, comments left out.
 # A path a text only runs (`run`, `bash <path>`) holds nothing, unless a line naming it edits it or reports it broken. A ticket with no path and no such statement prints `NEEDS-CHIEF-NOTE <KEY>: no readable scope` and
@@ -173,8 +179,9 @@
 # NEXT_DISPATCH_CLASSIFY_CMD (replaces cloud-route.mjs; called with the keys),
 # NEXT_DISPATCH_JIRA_CMD (replaces the jira CLI for the live blocker read; called `get KEY`),
 # NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default),
-# NEXT_DISPATCH_READER (replaces scripts/lib/pr_remainder.py, run as `python3 -I <file> --units <KEY>`; NO_WRITE_RE and the
-# supersede rule are always loaded from the real scripts/lib/pr_remainder.py).
+# NEXT_DISPATCH_READER (replaces scripts/lib/pr_remainder.py, run as `python3 -I <file> --full-units <KEY>` by the listing and
+# `--units <KEY>` by --why-ticket on a breadcrumb; NO_WRITE_RE, the supersede rule and the answer vocabulary are always loaded
+# from the real scripts/lib/pr_remainder.py).
 #
 # Exit: 0 printed (possibly nothing); 2 usage; 3 the mirror directory is missing or unreadable, or scripts/lib/pr_remainder.py
 # cannot be loaded.
@@ -187,15 +194,17 @@ REPO="$(cd "$HERE/../../.." && pwd)"
 . "$REPO/scripts/lib/jira-project.sh"
 top=8; top_set=0; mirror="${NEXT_DISPATCH_MIRROR:-$(jira_mirror_dir)}"
 workers_from="${WORKERS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0; why=0; dispo=0
-why_ticket=""; body_file=""; nd_list_flags=0
+why_ticket=""; body_file=""; nd_list_flags=0; scope_batch=""; batch_size=""
 nd_usage() {
-    echo 'usage: next-dispatchable.sh --why-ticket KEY [--body-file FILE] [--mirror DIR] [--doc CHIEF_DOC] [--workers-dir DIR] [--no-classify]; or listing flags --top --why --dispositions --priority-pool-only --resume-only --owners --workers-from --held' >&2
+    echo 'usage: next-dispatchable.sh --why-ticket KEY [--body-file FILE] [--mirror DIR] [--doc CHIEF_DOC] [--workers-dir DIR] [--no-classify]; or listing flags --top --why --dispositions --priority-pool-only --resume-only --owners --workers-from --held --scope-batch FILE [--batch-size 1..50]' >&2
     exit 2
 }
 workers="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/workers"
 while [ "$#" -gt 0 ]; do
-    case "$1" in --top|--why|--dispositions|--priority-pool-only|--resume-only|--owners|--workers-from|--held) nd_list_flags=1 ;; esac
+    case "$1" in --top|--why|--dispositions|--priority-pool-only|--resume-only|--owners|--workers-from|--held|--scope-batch|--batch-size) nd_list_flags=1 ;; esac
     case "$1" in
+        --scope-batch) [ "$#" -ge 2 ] && [ -n "$2" ] || nd_usage; scope_batch="$2"; shift 2 ;;
+        --batch-size) [ "$#" -ge 2 ] && [ -n "$2" ] || nd_usage; batch_size="$2"; shift 2 ;;
         --why-ticket) [ "$#" -ge 2 ] && [ -n "$2" ] || nd_usage; why_ticket="$2"; shift 2 ;;
         --body-file) [ "$#" -ge 2 ] && [ -n "$2" ] || nd_usage; body_file="$2"; shift 2 ;;
         --workers-dir) workers="${2:-}"; shift 2 || exit 2 ;;
@@ -218,7 +227,15 @@ if [ -n "$why_ticket" ]; then
     [ "$nd_list_flags" = 0 ] || nd_usage
 elif [ -n "$body_file" ]; then nd_usage
 fi
-export ND_WHY_TICKET="$why_ticket" ND_BODY_FILE="$body_file"
+if [ -n "$batch_size" ]; then
+    [ -n "$scope_batch" ] || nd_usage
+    [[ "$batch_size" =~ ^[1-9][0-9]?$ ]] && [ "$batch_size" -le 50 ] || nd_usage
+fi
+if [ -n "$scope_batch" ] && { [ -e "$scope_batch" ] || [ -L "$scope_batch" ]; }; then
+    echo "next-dispatchable: --scope-batch FILE exists, refusing to overwrite it: $scope_batch" >&2
+    exit 2
+fi
+export ND_WHY_TICKET="$why_ticket" ND_BODY_FILE="$body_file" ND_SCOPE_BATCH="$scope_batch" ND_BATCH_SIZE="${batch_size:-25}"
 case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive number" >&2; exit 2 ;; esac
 # --why with no --top asks for the whole list, not the first 8 slots the worker-less RESUME rows fill; the
 # waiter counts dispatchable work against the free slots, and 50 is the fleet cap
@@ -239,7 +256,7 @@ export ND_STACKED="$stacked"
 export ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
 export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger" ND_HOLDS="${ND_HOLDS:-$HERE/holds.py}"
 export ND_STAGING="${ND_STAGING:-$HERE/proof_staging.py}" ND_TICKET_POLICY_CLI="${ND_TICKET_POLICY_CLI:-$REPO/marketplace/plugins/himmel-ops/scripts/ticket-policy-cli.mjs}"
-export ND_OWE="$HERE/owe.sh"
+export ND_OWE="$HERE/owe.sh" ND_READINESS="$HERE/readiness.sh"
 
 # shellcheck source=scripts/lib/gh-quota.sh
 . "$REPO/scripts/lib/gh-quota.sh"
@@ -305,7 +322,9 @@ export ND_FLAGS="$nd_flags"
 nd_left=$((nd_deadline - SECONDS))
 [ "$nd_left" -gt 0 ] || nd_left=1
 ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$nd_left"} python3 -I - > "$nd_out" <<'PY' &
-import datetime, json, os, re, subprocess, sys, tempfile, time
+import datetime, functools, glob, hashlib, json, math, os, re, subprocess, sys, tempfile, time
+sys.stdout.reconfigure(errors='backslashreplace')
+sys.stderr.reconfigure(errors='backslashreplace')
 
 why_key = os.environ.get('ND_WHY_TICKET', '')
 
@@ -328,7 +347,7 @@ top = int(os.environ['ND_TOP']); mirror = os.environ['ND_MIRROR']
 repo = os.environ['ND_REPO']
 sys.path.insert(0, os.path.join(repo, 'scripts', 'lib'))
 from env_alias import legacy_names_on
-from fleet_runtime import owned_rows, WorkerStates
+from fleet_runtime import owned_rows, WorkerStates, worker_keys as gate_keys, title_keys as fr_title_keys
 worker_state = WorkerStates()  # one run: each doc's worker state is asked once, and each directory's manifests are read once for all of them
 
 RATE_LIMIT_RE = re.compile(r'rate limit|RATE_LIMIT|abuse detection|secondary rate', re.I)
@@ -467,38 +486,92 @@ def scope_of(body):
     return {'files': files, 'src': 'description', 'reads': reads, 'no_scope': not (files or reads or NO_WRITE_RE.search(desc)), 'nowrite': False}
 
 MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b')
-TITLE_KEY_RE = re.compile(r'([A-Z]+)-(\d+)((?:\s*\(?\s*(?:[/+,&]\s*)+\(?\s*\d+\b)*)')  # KEY-1 / 2, KEY-1 + 2, KEY-1 (+2, +3)
 
 def title_keys(lines):
     # every ticket a worker doc's H1 title names, `KEY-1 / 2 / 3` shorthand included: a bundle worker owns more tickets than its file name lists
-    h1 = next((l for l in lines if l.startswith('# ')), '')
-    return [('%s-%s' % (p, n)) for p, n, _ in TITLE_KEY_RE.findall(h1)] + \
-           [('%s-%s' % (p, x)) for p, _, rest in TITLE_KEY_RE.findall(h1) for x in re.findall(r'\d+', rest)]
+    return fr_title_keys(next((l for l in lines if l.startswith('# ')), ''))
 WRITES_LEAD = '> **Writes:**'
 OWN_LINE_RE = re.compile(r'^\W*Tickets?\b|^description:')  # the lines of a doc that name the tickets it carries
-PRIOR_LINE_RE = re.compile(r'Original brief|Read first|successor of|Prior art', re.I)
-DOC_NAME_RE = re.compile(r'[\w.+@-]+\.md')
+DOC_NAME_RE = re.compile(r'[\w./~+@-]+\.md')
+SIDECARS = ('.worker-preface.md', '.worker-contract.md')
+FILE_KEY_RE = re.compile(r'[A-Z]+-\d+(?!\d|-\d{2}-\d{2})')
 
-def owned_keys(doc, lines):
-    # the tickets a live worker's doc claims. A worker with no Writes line is scope-less, so its doc says all it owns: the full keys on its
-    # Ticket and description lines, and the title keys of the predecessor doc it names, count too. Over-holding a parent or prior-art key
-    # costs liveness while the worker lives, never safety.
-    keys = title_keys(lines)
-    if any(l.startswith(WRITES_LEAD) for l in lines):
-        return keys
-    for l in lines:
-        if OWN_LINE_RE.match(l):
-            keys += re.findall(r'[A-Z]+-\d+', l)
-    for l in lines:
-        if PRIOR_LINE_RE.search(l):
-            for name in DOC_NAME_RE.findall(l):
-                prior = os.path.join(os.path.dirname(doc), os.path.basename(name))
-                if os.path.isfile(prior) and os.path.realpath(prior) != os.path.realpath(doc):
-                    try:
-                        keys += title_keys(open(prior, encoding='utf-8', errors='replace').read().splitlines())
-                    except OSError:
-                        pass  # swallow-ok: an unreadable prior doc adds no key; the worker still owns the rest
+def above_results(lines):
+    return lines[:next((i for i, l in enumerate(lines) if l.startswith('## Results')), len(lines))]
+
+def scope_less(lines, paths, parse_ok, sibling):
+    if sibling or not parse_ok:
+        return True
+    writes = [l for l in lines if l.startswith(WRITES_LEAD)]
+    return not writes or (not paths and not any(l[len(WRITES_LEAD):].strip() == 'none named' for l in writes))
+
+_folder_index = {}
+_title_of = {}
+
+def folder_index(folder):
+    if folder not in _folder_index:
+        try:
+            listed = sorted(os.listdir(folder))
+        except OSError:
+            listed = None
+        index = None if listed is None else {}
+        for name in listed or []:
+            if name.endswith('.md') and not name.endswith(SIDECARS):
+                for k in set(re.findall(r'[A-Z]+-\d+', name)):
+                    index.setdefault(k, []).append(name)
+        _folder_index[folder] = index
+    return _folder_index[folder]
+
+def title_of(path):
+    if path not in _title_of:
+        try:
+            with open(path, encoding='utf-8', errors='replace') as f:
+                _title_of[path] = title_keys(f.read().splitlines())
+        except OSError:
+            _title_of[path] = None
+    return _title_of[path]
+
+def family_keys(doc, lines, seeds, who):
+    folder, own = os.path.dirname(doc), os.path.basename(doc)
+    names = []
+    here = os.path.realpath(folder)
+    for l in above_results(lines):
+        for ref in DOC_NAME_RE.findall(l):
+            where, name = os.path.split(os.path.expanduser(ref))
+            if where and os.path.realpath(os.path.join(folder, where)) != here:
+                continue
+            if name != own and not name.endswith(SIDECARS) and name not in names and os.path.lexists(os.path.join(folder, name)):
+                names.append(name)
+    index = folder_index(folder)
+    if index is None:
+        owner_unknown(who, 'family folder %s unreadable' % folder, REMEDY_DOC, keys=FILE_KEY_RE.findall(own))
+        index = {}
+    for seed in dict.fromkeys(seeds):
+        if seed not in mirror_keys:
+            continue
+        rx = re.compile(r'(?<![A-Za-z0-9])' + re.escape(seed) + r'(?!\d)')
+        names += [n for n in index.get(seed, []) if n != own and n not in names and rx.search(n)]
+    keys = []
+    for name in names:
+        got = title_of(os.path.join(folder, name))
+        if got is None:
+            owner_unknown(who, 'family doc %s unreadable' % name, REMEDY_DOC, keys=FILE_KEY_RE.findall(name))
+        else:
+            keys += got
     return keys
+
+def owned_keys(doc, lines, who, scopeless):
+    keys = title_keys(lines)
+    if not scopeless:
+        return keys
+    try:
+        gkeys = gate_keys(doc)
+    except UnicodeDecodeError:
+        gkeys = []
+        owner_unknown(who, 'doc %s unreadable' % os.path.basename(doc), REMEDY_DOC, keys=FILE_KEY_RE.findall(os.path.basename(doc)))
+    own_line = lambda ls: [k for l in ls if OWN_LINE_RE.match(l) for k in re.findall(r'[A-Z]+-\d+', l)]
+    seeds = FILE_KEY_RE.findall(os.path.basename(doc)) + keys + gkeys + own_line(above_results(lines))
+    return keys + gkeys + own_line(lines) + family_keys(doc, lines, seeds, who)
 SERIES_LEAD = '> **Series:**'
 SERIES_ITEM_RE = re.compile(r'(?<![\w.-])\d+\.\s+([A-Z]+-\d+)')
 SERIES_ID_RE = re.compile(r'(?!\d+\.\s)(\S+)\s+(\S+)')  # "<sid> <ledger path> - read ...": what follows the lead on the Series line S2a writes
@@ -590,6 +663,7 @@ def issue_from_match(m, txt):
 issues = {}
 try:
     names = sorted(n for n in os.listdir(mirror) if re.match(r'^[A-Z]+-\d+\.md$', n))
+    mirror_keys = {n[:-3] for n in names}
 except OSError as e:
     load_failure('mirror missing or unreadable (%s)' % e)  # an error, never an empty pool
 try:
@@ -645,9 +719,12 @@ def staging_of(i):
             txt = open(os.path.join(mirror, k + '.md'), encoding='utf-8', errors='replace').read()
         except OSError:
             unread.append('mirror file absent')
-        answers = i.get('parts', ())
+        answers = list(i.get('parts', ()))
+        shown = {a.get('pr') for a in answers}
+        unread += ['PR #%s body could not be read' % pr for pr in partials.get(k, []) if pr in unread_prs and pr not in shown]
         if i.get('owed_next'):
-            answers = [dict(kind='remaining', text='; '.join(r['text'] for r in i['owed_next']), nowrite=i.get('nowrite', False))]
+            answers.append(dict(kind='remaining', handed=[], text='; '.join(r['text'] for r in i['owed_next']), nowrite=i.get('nowrite', False),
+                                chief_owed=[], chief_invalid=[], owed_lines=[]))
         _staged[k] = needs(txt, answers, unread, os.environ['ND_TICKET_POLICY_CLI'])
     return _staged[k]
 
@@ -1126,22 +1203,25 @@ CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'BYPASS-NEEDS-SPEC', 'UNKNOWN')
 CORE_FIELDS = {'CORE': 3, 'BYPASS': 4, 'BYPASS-NEEDS-SPEC': 4}  # tokens a core-check line needs: CORE <K> <match>, BYPASS <K> <kind> <reason...>, BYPASS-NEEDS-SPEC <K> <kind> <missing...>
 
 def core_run(args, ok_rc, project):
-    # (stdout, '') for a run whose exit code is in ok_rc, else (None, why). A missing CLI, node or a timeout is never an answer.
+    t = os.environ.get('NEXT_DISPATCH_CORE_TIMEOUT', '')
+    timeout = int(t) if t.isascii() and t.isdigit() and 1 <= int(t) <= 120 else 120
     try:
         cli = os.environ.get('NEXT_DISPATCH_JIRA_CLI')
         if not cli:
             common = subprocess.run(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], cwd=repo, capture_output=True, text=True, timeout=20, check=True).stdout.strip()
             cli = os.path.join(os.path.dirname(common), 'scripts/jira/dist/index.js')
         if not os.path.isfile(cli):
-            return None, 'no built jira CLI at %s' % cli
+            return None, 'no built jira CLI at %s' % cli, 'absent'
         # cwd inside the CLI's own checkout: it runs `git rev-parse` from its cwd
-        r = subprocess.run(['node', cli] + args, capture_output=True, text=True, timeout=120, cwd=os.path.dirname(os.path.abspath(cli)),
+        r = subprocess.run(['node', cli] + args, capture_output=True, text=True, timeout=timeout, cwd=os.path.dirname(os.path.abspath(cli)),
                            env=dict(os.environ, JIRA_PROJECT_KEY=os.environ.get('JIRA_PROJECT_KEY', project)))
+    except subprocess.TimeoutExpired as e:
+        return None, 'the jira CLI could not run (%s)' % e, 'timeout'
     except (OSError, subprocess.SubprocessError) as e:
-        return None, 'the jira CLI could not run (%s)' % e
+        return None, 'the jira CLI could not run (%s)' % e, 'absent'
     if r.returncode not in ok_rc:
-        return None, '%s exited %d: %s' % (args[1], r.returncode, (r.stderr or r.stdout).strip()[:200])
-    return r.stdout, ''
+        return None, '%s exited %d: %s' % (args[1], r.returncode, (r.stderr or r.stdout).strip()[:200]), 'exit'
+    return r.stdout, '', 'ok'
 
 def core_lines(out, keys, spec=False):
     # The one line each key got (gen-briefs.py per_key_lines); a key with no line is absent from the result.
@@ -1150,7 +1230,8 @@ def core_lines(out, keys, spec=False):
         t = line.split()
         if spec and t[:2] == ['SPEC', 'ok'] and len(t) >= 4:
             got[t[2]] = line
-        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC') if spec else t[0] in CORE_VERBS) and len(t) >= CORE_FIELDS.get(t[0], 2):
+        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC', 'SPEC-NEEDS-OPERATOR', 'SPEC-SIGNER-UNKNOWN') if spec else t[0] in CORE_VERBS) \
+                and len(t) >= ({'SPEC-NEEDS-OPERATOR': 5, 'SPEC-SIGNER-UNKNOWN': 4} if spec else CORE_FIELDS).get(t[0], 2):
             got[t[1]] = line  # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
     return {k: got[k] for k in keys if k in got}
 
@@ -1172,13 +1253,42 @@ def core_spec_pass(cs):
     for i in cs:
         groups.setdefault(tuple(i['files']), []).append(i['key'])
     items = list(groups.items())
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=min(8, len(items))) as pool:
-        results = list(pool.map(lambda g: core_run(['release', 'core-check', '--paths', ','.join(g[0]), '--mirror', mdir, '--key'] + g[1], (0,), project), items))
-    verdict = {}
-    for (_, ks), (out, why) in zip(items, results):
-        if out is None:
+    texts = None  # one core-check answer per group, in order
+    if os.environ.get('HIMMEL_CORE_CHECK_BATCH') != 'off':
+        import json, tempfile
+        fd, bpath = tempfile.mkstemp(prefix='nd-core-batch.', suffix='.json')
+        try:
+            with os.fdopen(fd, 'w') as fh:
+                json.dump([{'paths': ','.join(g[0]), 'keys': g[1]} for g in items], fh)
+            out, why, kind = core_run(['release', 'core-check-batch', bpath, '--mirror', mdir], (0,), project)
+        finally:
+            try: os.unlink(bpath)
+            except OSError: pass
+        if out is None and kind != 'exit':
             return fail(why)
+        if out is not None:
+            heads = [l for l in out.splitlines() if re.fullmatch(r'== \d+', l)]
+            if heads == ['== %d' % n for n in range(1, len(items) + 1)]:
+                texts, cur = [], None
+                for l in out.splitlines():
+                    if re.fullmatch(r'== \d+', l):
+                        texts.append([]); cur = texts[-1]
+                    elif cur is not None:
+                        cur.append(l)
+                texts = ['\n'.join(t) for t in texts]
+        if texts is None:
+            print('# WARN CORE-CHECK-BATCH-FALLBACK %s' % ('headers' if out is not None else kind))
+    if texts is None:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(8, len(items))) as pool:
+            results = list(pool.map(lambda g: core_run(['release', 'core-check', '--paths', ','.join(g[0]), '--mirror', mdir, '--key'] + g[1], (0,), project), items))
+        texts = []
+        for out, why, _ in results:
+            if out is None:
+                return fail(why)
+            texts.append(out)
+    verdict = {}
+    for (_, ks), out in zip(items, texts):
         got = core_lines(out, ks)
         if len(got) != len(ks):
             return fail('core-check printed no parseable line for %s' % ', '.join(k for k in ks if k not in got))
@@ -1197,15 +1307,28 @@ def core_spec_pass(cs):
         if verb == 'CORE':
             core.append(i['key'])
     if core:
-        out, why = core_run(['release', 'spec-check', '--mirror', mdir] + core, (0, 1), project)
+        out, why, _ = core_run(['release', 'spec-check', '--mirror', mdir] + core, (0, 1), project)
         if out is None:
             return fail(why)
         got = core_lines(out, core, spec=True)
         if len(got) != len(core):
             return fail('spec-check printed no parseable line for %s' % ', '.join(k for k in core if k not in got))
+        withheld = {}
         for k in core:
-            if not got[k].startswith('SPEC ok'):
-                design[k] = got[k].split()[0]
+            t = got[k].split()
+            if t[0] == 'SPEC-NEEDS-OPERATOR':
+                withheld[k] = ('spec-needs-operator ' + t[-1], "needs the operator's own signature (%s)" % t[-1])
+            elif t[0] == 'SPEC-SIGNER-UNKNOWN':
+                u = ' '.join(t[3:])
+                withheld[k] = ('spec-signer-unknown ' + u, 'signer records unreadable: ' + u)
+            elif t[:2] != ['SPEC', 'ok']:
+                design[k] = t[0]
+        for i in keep:
+            if i['key'] in withheld:
+                if why_key:
+                    core_problem[i['key']] = withheld[i['key']][1]
+                drop(i, withheld[i['key']][0])
+        keep = [i for i in keep if i['key'] not in withheld]
     return keep
 
 if not why_key and cands and os.environ.get('ND_RESUME_ONLY') != '1':  # --resume-only lists no To Do row
@@ -1223,10 +1346,14 @@ WITHHELD = 'RESUME, IN CI, STACKABLE, SERIES FAMILY, To Do, DESIGN, NEXT-TIER'
 REMEDY_DOC = "restore the doc, record the worker's end, or fleet-manifest.sh remove <manifest> <label>"
 REMEDY_MANIFEST = 'repair or delete the manifest file (fleet-manifest.sh refuses an invalid one)'
 REMEDY_FLEET = 'restore or pass a readable --workers-from manifest'
+REMEDY_OWN_MANIFEST = 'repair the manifest file by hand (fleet-manifest.sh refuses an invalid one) or pass a readable --workers-from manifest'
 OWNER_UNKNOWN_DROP = 'owner unknown: a named worker source could not be fully read (see the # owner unknown line)'
+OWNER_UNKNOWN_DROP_NONE = 'owner unknown: no worker source named (see the # owner unknown line)'
+sourceless = False
 owner_unknown_lines = set()
 
 def printable(text):
+    text = '%s' % (text,)
     if text.isascii() and text.isprintable():
         return text
     enc = sys.stdout.encoding or 'utf-8'
@@ -1253,15 +1380,34 @@ def owner_unknown(owner, why, remedy, keys=()):
         owner_unknown_lines.add(line)
         unknown_notes.append(line)
 live_workers = []
+holds_py = os.environ['ND_HOLDS']
 worker_keys = set(os.environ.get('ND_OWNERS', '').split())
 owner = {k: 'the --owners list' for k in worker_keys}
 resume_only = os.environ.get('ND_RESUME_ONLY') == '1'
+def sibling_shape_refused(parsed):
+    if not isinstance(parsed, dict):
+        return True
+    return any(k in parsed and not isinstance(parsed[k], list) for k in ('workers', 'legs'))
+
+def own_rows_refused(rows):
+    return not isinstance(rows, list) or any(not isinstance(r, dict) or ('doc' in r and not isinstance(r['doc'], str)) or isinstance(r.get('label'), (list, dict)) for r in rows)
+
 if workers_from and not os.path.isfile(workers_from):
     owner_unknown('the fleet', 'manifest %s missing' % os.path.basename(workers_from), REMEDY_FLEET)
 if workers_from and os.path.isfile(workers_from):
     try:
-        manifest_workers(json.load(open(workers_from)))  # validate legacy-array policy before shared ownership
-        for worker in owned_rows(workers_from):
+        own_manifest = json.load(open(workers_from))
+        own_rows = None
+        if not sibling_shape_refused(own_manifest):
+            manifest_workers(own_manifest)
+            try:
+                own_rows = owned_rows(workers_from)
+            except (TypeError, AttributeError, KeyError):
+                own_rows = None
+        if own_rows is None or own_rows_refused(own_rows):
+            owner_unknown('the fleet', 'manifest %s malformed' % os.path.basename(workers_from), REMEDY_OWN_MANIFEST)
+            own_rows = []
+        for worker in own_rows:
             doc = worker.get('doc', '')
             if doc:
                 manifest_docs.add(os.path.realpath(doc))
@@ -1279,8 +1425,16 @@ if workers_from and os.path.isfile(workers_from):
             state = worker_state(doc)
             if state == 'wrapped':
                 continue
-            for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)) + owned_keys(doc, lines):
-                worker_keys.add(k); owner.setdefault(k, 'live worker %s' % worker.get('label', '?'))
+            try:
+                r = subprocess.run([sys.executable, '-I', holds_py, 'parse', doc, '--repo', repo], capture_output=True, text=True, timeout=30)
+                if r.returncode != 0:
+                    raise subprocess.SubprocessError(r.stderr.strip())
+                paths, parse_ok, parse_err = [l.split('\t', 1)[1] for l in r.stdout.splitlines() if '\t' in l], True, None
+            except (OSError, subprocess.SubprocessError) as e:
+                paths, parse_ok, parse_err = [], False, e
+            who = 'live worker %s' % printable('%s' % worker.get('label', '?'))
+            for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)) + owned_keys(doc, lines, who, scope_less(lines, paths, parse_ok, sibling=False)):
+                worker_keys.add(k); owner.setdefault(k, who)
             def block(i):  # a wrapped line continues on the "> " lines under it, up to the next "> **" field or a blank
                 text = lines[i]
                 for nxt in lines[i + 1:]:
@@ -1288,7 +1442,7 @@ if workers_from and os.path.isfile(workers_from):
                         break
                     text += ' ' + nxt[2:]
                 return text
-            live_workers.append((worker.get('label', '?'), doc, lines, re.findall(r'[A-Z]+-\d+', os.path.basename(doc))))
+            live_workers.append((worker.get('label', '?'), doc, lines, re.findall(r'[A-Z]+-\d+', os.path.basename(doc)), paths, parse_ok, parse_err))
             sl = [i for i, l in enumerate(lines) if l.startswith(SERIES_LEAD)] if stacked else []
             items = set(SERIES_ITEM_RE.findall(block(sl[0]))) if sl else set()
             sid_m = SERIES_ID_RE.match(lines[sl[0]][len(SERIES_LEAD):].strip()) if sl else None
@@ -1301,11 +1455,6 @@ if workers_from and os.path.isfile(workers_from):
 # in no manifest but its own. Read the chain's other manifests (same bucket, same prefix and chief name, any
 # letter) for ownership of a ticket only: shared terminal evidence releases it, and a sibling manifest that
 # cannot be read, is refused by its shape or holds a doc that cannot be opened is an owner unknown.
-def sibling_shape_refused(parsed):
-    if not isinstance(parsed, dict):
-        return True
-    return any(k in parsed and not isinstance(parsed[k], list) for k in ('workers', 'legs'))
-
 chain_m = re.match(r'^(.+)-nextleg-\d{4}-\d{2}-\d{2}[A-Z]+-(.+)\.fleet\.json$', os.path.basename(workers_from)) if workers_from else None
 if chain_m:
     sib_dir = os.path.dirname(os.path.abspath(workers_from))
@@ -1351,13 +1500,14 @@ if chain_m:
             if sstate == 'wrapped':
                 continue
             swho = 'live worker %s of the chief on %s' % (printable('%s' % worker.get('label', '?')), printable(sib[:-len('.fleet.json')]))
-            for k in sfiles + owned_keys(sdoc, slines):
+            for k in sfiles + owned_keys(sdoc, slines, swho, not sdoc_unreadable and scope_less(slines, [], True, sibling=True)):
                 worker_keys.add(k); owner.setdefault(k, swho)
             if sdoc_unreadable:
                 owner_unknown(swho, 'doc %s unreadable' % os.path.basename(sdoc), REMEDY_DOC, keys=sfiles)
 if pool_only and not workers_from and not worker_keys:
-    workers_unknown = owners_unknown = True
     print('next-dispatchable: no RESUME rows: --priority-pool-only has no worker source (--owners or --workers-from)', file=sys.stderr)
+    owner_unknown('the fleet', 'no worker source named', 'pass --workers-from <manifest> or --owners <keys>')
+    sourceless = True
 # cloud sessions own their ticket too: the same file and 48h window tick reads
 cloud_tsv = os.path.join(os.path.dirname(os.environ['ND_DOC']), 'cloud-sessions.tsv') if os.environ.get('ND_DOC') else ''
 if cloud_tsv and os.path.isfile(cloud_tsv):
@@ -1377,8 +1527,9 @@ if hf and os.path.isfile(hf):
     held += [(l.strip(), 'held list', True) for l in open(hf) if l.strip()]
 # The remainder of a merged partial PR's body, read by the ONE reader every partial-merge site shares
 # (scripts/lib/pr_remainder.py): a `Remaining:` line, or the `deferred -> <KEY>` lines under `## Ticket coverage`.
-# A body gh cannot read, or a reader that fails or answers without the two --units fields, is recorded in unread_prs and
-# returns kind none, so the ticket is never dispatched blind.
+# The listing asks the reader for --full-units: one JSON answer carrying every owed unit, checked by full_answer below. A body
+# gh cannot read, or a reader that fails or prints anything but a complete answer, is recorded in unread_prs and returns kind
+# none, so the ticket is never dispatched blind.
 remainder_cache = {}
 unread_prs = set()
 reader = os.environ.get('NEXT_DISPATCH_READER') or os.path.join(repo, 'scripts', 'lib', 'pr_remainder.py')  # NEXT_DISPATCH_READER: the test seam for the reader
@@ -1395,24 +1546,97 @@ try:
 except ValueError:
     body_ttl = 3600
 
+FULL_MAX = 1 << 20
+
+class DuplicateKeyDict(dict):
+    pass
+
+def _pairs(pairs):
+    d = dict(pairs)
+    return DuplicateKeyDict(d) if len(d) != len(pairs) else d
+
+def _no_constant(c):
+    raise ValueError('non-finite number %s' % c)
+
+def _strs(v):
+    return type(v) is list and all(type(x) is str for x in v)
+
+def valid_answer(a):
+    if type(a) is not dict or tuple(sorted(a)) != tuple(sorted(_reader.FULL_FIELDS)):
+        raise ValueError('answer fields')
+    kind, handed, rows = a['kind'], a['handed'], a['owed_lines']
+    if kind not in _reader.ANSWER_KINDS or not _strs(handed) or type(a['text']) is not str or type(a['nowrite']) is not bool \
+            or not _strs(a['chief_owed']) or not _strs(a['chief_invalid']) or type(rows) is not list:
+        raise ValueError('answer field types')
+    for r in rows:
+        if type(r) is not dict or tuple(sorted(r)) != tuple(sorted(_reader.OWED_FIELDS)) or not all(type(v) is str for v in r.values()) \
+                or r['who'] not in _reader.OWED_ACTORS:
+            raise ValueError('owed row')
+    if kind in ('none', 'remaining') and handed:
+        raise ValueError('%s answer names a handed value' % kind)
+    if kind == 'handed-off' and not handed:
+        raise ValueError('hand-off names no ticket')
+    if kind == 'owed':
+        if len(handed) != 2 or handed[0] not in _reader.OWED_ACTORS:
+            raise ValueError('owed answer shape')
+        try:
+            if datetime.date.fromisoformat(handed[1]).isoformat() != handed[1]:
+                raise ValueError('noncanonical date')
+        except ValueError:
+            raise ValueError('owed date %r' % handed[1])
+        if not any(r['who'] == handed[0] and r['due'] == handed[1] for r in rows):
+            raise ValueError('owed answer names no owed row')
+    if len(json.dumps(a, ensure_ascii=False).encode('utf-8')) > FULL_MAX:
+        raise ValueError('answer over %d bytes' % FULL_MAX)
+    return a
+
+def full_answer(raw):
+    if len(raw) > 2 * FULL_MAX:
+        raise ValueError('answer over %d bytes' % FULL_MAX)
+    env = json.loads(raw.decode('utf-8'), object_pairs_hook=_pairs, parse_constant=_no_constant)
+    if type(env) is not dict or sorted(env) != ['answer', 'schema'] or type(env['schema']) is not int or env['schema'] != 1:
+        raise ValueError('answer envelope')
+    return valid_answer(env['answer'])
+
 def body_cache_load():
     if body_cache_path == 'off':
         return {}
     try:
-        d = json.load(open(body_cache_path, encoding='utf-8'))
+        d = json.load(open(body_cache_path, encoding='utf-8'), object_pairs_hook=_pairs)
     except (OSError, ValueError):
         return {}
     return d if isinstance(d, dict) else {}
 
+def _fresh(e):
+    at = e.get('at')
+    try:
+        return type(at) in (int, float) and math.isfinite(at) and 0 <= time.time() - at < body_ttl
+    except OverflowError:
+        return False
+
+def cached_full(pr, key):
+    e = body_cache_load().get('%s:%s' % (pr, key))
+    try:
+        if type(e) is dict and sorted(e) == ['ans', 'at', 'schema'] and type(e['schema']) is int and e['schema'] == 1 and _fresh(e):
+            a = valid_answer(e['ans'])
+            if a['kind'] != 'none':
+                return a
+    except ValueError:
+        pass  # swallow-ok: an entry that fails the check is no entry, and the body is read again
+    return None
+
 def cached_remainder(pr, key):
     e = body_cache_load().get('%s:%s' % (pr, key))
+    if isinstance(e, dict) and 'schema' in e:
+        a = cached_full(pr, key)
+        return None if a is None else {f: a[f] for f in ('kind', 'handed', 'text', 'nowrite', 'chief_owed')}
     try:
         age = time.time() - float(e['at'])
         kind, handed, text, nowrite, chief_owed = e['ans']
         if 0 <= age < body_ttl and kind in ('remaining', 'handed-off', 'owed') and isinstance(handed, list) and isinstance(text, str) \
                 and isinstance(nowrite, bool) and isinstance(chief_owed, list):
             return dict(kind=kind, handed=[str(h) for h in handed], text=text, nowrite=nowrite, chief_owed=[str(t) for t in chief_owed])
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, OverflowError):
         pass  # swallow-ok: an entry that cannot be read is no entry
     return None
 
@@ -1422,8 +1646,8 @@ def store_remainder(pr, key, ans):
     try:
         d = body_cache_load()
         now = time.time()
-        d = {k: v for k, v in d.items() if isinstance(v, dict) and isinstance(v.get('at'), (int, float)) and 0 <= now - v['at'] < body_ttl}
-        d['%s:%s' % (pr, key)] = {'at': now, 'ans': [ans['kind'], list(ans['handed']), ans['text'], ans['nowrite'], list(ans['chief_owed'])]}
+        d = {k: v for k, v in d.items() if isinstance(v, dict) and _fresh(v)}
+        d['%s:%s' % (pr, key)] = {'schema': 1, 'at': now, 'ans': {f: ans[f] for f in _reader.FULL_FIELDS}}
         os.makedirs(os.path.dirname(body_cache_path), exist_ok=True)
         tmp = '%s.%d' % (body_cache_path, os.getpid())
         with open(tmp, 'w', encoding='utf-8') as f:
@@ -1435,24 +1659,16 @@ def store_remainder(pr, key, ans):
 def remainder_of(pr, key):
     if (pr, key) not in remainder_cache:
         ans = dict(kind='none', handed=[], text='', nowrite=False, chief_owed=[])
-        hit = cached_remainder(pr, key)
+        hit = cached_full(pr, key)
         if hit is not None:
             remainder_cache[(pr, key)] = hit
             return hit
         try:
             body = ghrun([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, timeout=gh_t(60), check=True).stdout.decode('utf-8', 'replace')
-            out = subprocess.run([sys.executable, '-I', reader, '--units', key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace').rstrip('\n').split('\t')
-            out, nowrite, chief_owed = out[:-2], out[-2:-1], out[-1:]
-            if nowrite not in (['nowrite=0'], ['nowrite=1']) or not chief_owed or not chief_owed[0].startswith('chief-owed='):
-                raise subprocess.SubprocessError('unrecognised reader answer')
-            units = dict(nowrite=nowrite == ['nowrite=1'], chief_owed=[t for t in chief_owed[0][len('chief-owed='):].split('¦') if t])
-            if out[:1] == ['remaining'] and len(out) == 2:
-                ans = dict(kind='remaining', handed=[], text=out[1], **units)
-            elif out[:1] == ['handed-off'] and len(out) == 3:
-                ans = dict(kind='handed-off', handed=out[1].split(', '), text=out[2], **units)
-            elif out[:1] == ['owed'] and len(out) == 4:
-                ans = dict(kind='owed', handed=[out[1], out[2]], text=out[3], **units)
-            elif out != ['none']:
+            out = subprocess.run([sys.executable, '-I', reader, '--full-units', key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout
+            try:
+                ans = full_answer(out)
+            except ValueError:
                 raise subprocess.SubprocessError('unrecognised reader answer')
             if ans['kind'] != 'none':
                 store_remainder(pr, key, ans)
@@ -1746,38 +1962,33 @@ for i in issues.values() if not pr_unknown else ():
     if partial_resume(i['key']) and i['key'] not in worker_keys and i['key'] not in pr_keys and resume_eligible(i):
         override_from_parts(i, live_answers([dict(remainder_of(pr, i['key']), pr=pr) for pr in partials[i['key']]]))
 
-holds_py = os.environ['ND_HOLDS']
 # A KEEP replacement becomes executable only after its validation action closed.
 # Read the existing ledger once; metadata supplies routing, never permission.
 owed_bucket = os.path.dirname(os.environ.get('ND_DOC') or os.environ.get('ND_WORKERS_FROM') or '')
+owed_actions = []
 if owed_bucket and os.path.lexists(os.path.join(owed_bucket, 'owed.jsonl')):
     try:
-        actions = read_owed_actions()
+        actions = owed_actions = read_owed_actions()
         apply_owed_scope(issues, actions, worker_keys, pr_keys)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
         print('# next-dispatchable: owed next-step state unreadable: ' + str(exc), file=sys.stderr)
         sys.exit(3)
 
-for label, doc, lines, wkeys in live_workers:
-    try:
-        r = subprocess.run([sys.executable, '-I', holds_py, 'parse', doc, '--repo', repo], capture_output=True, text=True, timeout=30)
-        if r.returncode != 0:
-            raise subprocess.SubprocessError(r.stderr.strip())
-    except (OSError, subprocess.SubprocessError) as e:
+for label, doc, lines, wkeys, mine, parse_ok, parse_err in live_workers:
+    if not parse_ok:
         workers_unknown = True
-        note_unknown('live worker %s' % label)
-        print('next-dispatchable: live worker %s: holds.py parse of %s failed (%s): its files are unknown' % (label, os.path.basename(doc), e), file=sys.stderr)
+        note_unknown('live worker %s' % printable(label))
+        print('next-dispatchable: live worker %s: holds.py parse of %s failed (%s): its files are unknown' % (printable(label), printable(os.path.basename(doc)), parse_err), file=sys.stderr)
         continue
-    mine = [l.split('\t', 1)[1] for l in r.stdout.splitlines() if '\t' in l]
     held += [(f, 'live worker %s' % label, True) for f in mine]
     if os.environ.get('ND_WHY') == '1':
         for f in dict.fromkeys(mine):
             if not concrete(f):
-                print('# warn: %s holds directory %s' % (label, f))
-    if not mine and not any(l[len(WRITES_LEAD):].strip() == 'none named' for l in lines if l.startswith(WRITES_LEAD)):  # "none named" is what gen-briefs writes for a worker that writes nothing
+                print('# warn: %s holds directory %s' % (printable(label), f))
+    if scope_less(lines, mine, parse_ok, sibling=False):
         workers_unknown = True  # a scope that yields no paths could be hiding the worker's files
-        note_unknown('live worker %s' % label)
-        print('next-dispatchable: live worker %s yields no held paths (no Writes line in %s): its files are unknown' % (label, os.path.basename(doc)), file=sys.stderr)
+        note_unknown('live worker %s' % printable(label))
+        print('next-dispatchable: live worker %s yields no held paths (no Writes line in %s): its files are unknown' % (printable(label), printable(os.path.basename(doc))), file=sys.stderr)
 
 # stacked_series: every ledger under <bucket>/series/ (the bucket is the --workers-from manifest's directory), read through
 # series-ledger.py, is a holder. An item holds its writes as `series <sid>` until it is abandoned or gh reports every PR of its
@@ -1886,6 +2097,110 @@ needs_note = []  # (key, partial PR numbers that record no remainder) of in-work
 scope_questions = []  # keys of tickets nothing says the write scope of: a chief question, never silently free
 handed_off = []  # (key, tickets) of in-work tickets whose every partial PR hands its remainder to other tickets
 owed_rows = []  # (key, pr, who, date) of in-work tickets whose newest clear partial PR records a step owed to the chief or operator by a date
+pool_named = []
+
+GATE_VERBS = ('question', 'close', 'hold', 'park')
+open_proofs = {}
+for a in owed_actions:
+    if not a.get('closed') and a.get('kind') == 'proof' and a.get('key'):
+        open_proofs.setdefault(str(a['key']).upper(), a)
+
+def tick_verdicts(doc):
+    stale, holds = set(), {}
+    state = os.environ.get('TICK_STATE_DIR') or os.path.join(os.environ.get('HOME') or '/tmp', '.himmel', 'state')
+    try:
+        crc = subprocess.run(['cksum'], input=('%s\n%s' % (os.path.realpath(doc), os.path.realpath(mirror))).encode(),
+                             capture_output=True, check=True, timeout=10).stdout.split()[0].decode()
+        own = [os.path.join(state, 'tick-pool-stale-%s.out' % crc)]
+    except (OSError, IndexError, subprocess.SubprocessError):
+        own = []
+    others = sorted(glob.glob(os.path.join(state, 'tick-pool-stale-*.out')), key=lambda f: (os.path.getmtime(f), f), reverse=True)
+    for n, path in enumerate(own + others):
+        try:
+            lines = open(path, encoding='utf-8', errors='replace').read().splitlines()
+        except OSError:
+            continue
+        if n < len(own) or lines[:1] == ['# mirror=' + os.path.realpath(mirror)]:
+            stale.update(re.findall(r'^STALE-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) ', '\n'.join(lines), re.M))
+            break
+    hpath = os.path.join(state, 'pool-holds-%s.json' % re.sub(r'\.md$', '', os.path.basename(doc)))
+    try:
+        if time.time() - os.path.getmtime(hpath) <= 1800:
+            holds = {(r['key'], r['line']): r.get('class') for r in json.load(open(hpath, encoding='utf-8')).get('rows') or []}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        holds = {}
+    return stale, holds
+
+def drift_closing(doc):
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(doc)), 'focus-drift.txt'), encoding='utf-8', errors='replace') as f:
+            return set(re.findall(r'^CLOSE-OR-DISPATCH ([A-Z]+-\d+) ', f.read(), re.M))
+    except OSError:
+        return set()
+
+def read_disposition_gates(path):
+    gates, newest = {}, {}
+    try:
+        lines = open(path, encoding='utf-8', errors='replace').read().splitlines() if path else []
+    except OSError:
+        return gates
+    in_state = False
+    for line in lines:
+        if line.startswith('## '):
+            in_state = line.strip() == '## Live state'
+        m = re.fullmatch(r'([A-Z]+-\d+) (slice|close|question|hold|park) (\S.*)', line.split(':', 1)[1].strip()) \
+            if in_state and line.startswith('pool-disposition:') else None
+        if m:
+            newest[m[1]] = m
+    stale, holds = tick_verdicts(path) if newest else (set(), {})
+    closing = drift_closing(path) if newest else set()
+    for key, m in newest.items():
+        lh = hashlib.sha256(m[0].encode()).hexdigest()[:12]
+        if m[2] not in GATE_VERBS or (key, lh) in stale:
+            continue
+        if key in closing and re.match(r'[A-Z]+-\d+ question [Dd]ecisions?\s*#?\d+\b', m[0]):
+            continue
+        cls = holds.get((key, lh))
+        ref = re.match(r'(?:(?:operator|waits on|blocked by|after)\s+)?(?:([A-Z]+-\d+)\b|PRs?\s*#?\d+\b|[Dd]ecisions?\s*#?\d+\b)', m[3])
+        owned_open = bool(ref) and (ref[1] is None or (ref[1] != key and ref[1].split('-')[0] == key.split('-')[0] and not done_key(ref[1])))
+        if cls in ('authority', 'wake') or (cls is None and owned_open):
+            gates[key] = 'pool-disposition %s %s' % (m[2], m[3])
+    return gates
+
+disposition_gates = read_disposition_gates(os.environ.get('ND_DOC', ''))
+@functools.lru_cache(maxsize=None)
+def readiness_gates():
+    gates = {}
+    if os.environ.get('ND_DOC') and first_ver:
+        try:
+            r = subprocess.run(['bash', os.environ['ND_READINESS'], 'read', first_ver, '--mirror', os.path.abspath(mirror)],
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20)
+            closing = drift_closing(os.environ['ND_DOC'])
+            for line in r.stdout.splitlines() if r.returncode == 0 else ():
+                row = json.loads(line)
+                if str(row.get('key')).upper() in closing and re.fullmatch(r'[0-9]+', str(row.get('blocker') or '')):
+                    continue
+                if row.get('state') == 'live' and row.get('decision') in ('c', 'd'):
+                    gates[str(row['key']).upper()] = 'readiness %s blocker=%s' % (row['decision'], row.get('blocker') or '-')
+        except (OSError, ValueError, AttributeError, KeyError, subprocess.SubprocessError):
+            gates = {}
+    return gates
+
+def pool_class(i, parts):
+    if i['status'] not in ('In Progress', 'In Review') or i.get('owed_next'):
+        return None
+    if any(p['kind'] == 'remaining' or (p['kind'] == 'owed' and p['handed'][0] == 'proof') for p in parts):
+        return None
+    k = i['key']
+    if k in open_proofs and (k in partials or cited_on_main(k, subject_only=True)):
+        return ('pool-owed', 'open owed proof %s: %s' % (open_proofs[k].get('id', '?'), open_proofs[k].get('text', '')))
+    gate = disposition_gates.get(k) or readiness_gates().get(k)
+    if gate:
+        return ('pool-gated', gate)
+    if k not in partials and cited_on_main(k, subject_only=True):
+        return ('pool-done-candidate', 'a commit on main cites [%s] and no partial slice is recorded: the chief closes it or names what remains' % k)
+    return None
+
 resume = []
 for i in issues.values():
     if i.get('owed_wait'):
@@ -1919,6 +2234,10 @@ for i in issues.values():
     if parts and all(p['kind'] == 'handed-off' for p in parts):  # nothing left on this ticket: the chief closes it or keeps it as an umbrella
         handed_off.append((i['key'], [k for p in parts for k in p['handed']]))
         continue
+    pool_kind = pool_class(i, parts)
+    if pool_kind:
+        pool_named.append((i, pool_kind))
+        continue
     if i['no_scope'] and i['key'] not in briefs and not resume_only:  # a wrapped worker's brief carries its own Writes line; --resume-only counts orphans, dispatching nothing
         scope_questions.append(i['key'])
         continue
@@ -1950,7 +2269,7 @@ for i in cands:
         if pr_unknown:  # an unread PR list could hide an open PR that owns the ticket
             drop(i, 'open PRs unknown (gh failed): ownership cannot be checked')
         elif named_unknown:
-            drop(i, OWNER_UNKNOWN_DROP)
+            drop(i, OWNER_UNKNOWN_DROP_NONE if sourceless else OWNER_UNKNOWN_DROP)
         else:
             free.append(i)
         continue
@@ -1959,12 +2278,12 @@ for i in cands:
         drop(i, 'no-scope (nothing says what it writes: a chief question)')
         continue
     if named_unknown and not pr_unknown:
-        drop(i, OWNER_UNKNOWN_DROP)
+        drop(i, OWNER_UNKNOWN_DROP_NONE if sourceless else OWNER_UNKNOWN_DROP)
         continue
     if stacked and held_hits(i):
         stack = stackable_on(i)
         if stack:
-            stackable_rows.append((i, 'STACKABLE %s %s' % (i['key'], stack[2]), 'stackable on %s (%d/%d)' % (stack[0], stack[1], SERIES_CAP)))
+            stackable_rows.append((i, 'STACKABLE %s %s' % (i['key'], printable(stack[2])), 'stackable on %s (%d/%d)' % (stack[0], stack[1], SERIES_CAP)))
             continue  # judged in emit_stackable once it is classified: a ticket that would be BLOCKED is not offered
     if pr_unknown:
         drop(i, 'open PRs unknown (gh failed): ownership cannot be checked')
@@ -2008,9 +2327,23 @@ for k, prs in needs_note:
 scope_questions.sort(key=lambda k: ranked(issues[k]))
 scope_shown = scope_questions if os.environ.get('ND_WHY') == '1' else scope_questions[:top]
 for k in scope_shown:
-    print('NEEDS-CHIEF-NOTE %s: no readable scope: its description names no file, needs a chief note before it is dispatched; to clear it add a Writes: line to the ticket, or say no code' % k)
+    print('NEEDS-CHIEF-NOTE %s: no readable scope: its description names no file, needs a chief note before it is dispatched; to clear it add a Writes: line to the ticket, or say no code, or batch it: --scope-batch FILE (docs/handover/chief-sections/scope-helper.md)' % k)
 if len(scope_questions) > len(scope_shown):
     print('# no readable scope: %d more ticket(s) not shown, --why names them' % (len(scope_questions) - len(scope_shown)))
+if os.environ.get('ND_SCOPE_BATCH'):
+    batch_keys = scope_questions[:int(os.environ['ND_BATCH_SIZE'])]
+    if not batch_keys:
+        print('# scope-batch 0: no ticket lacks a readable scope, %s not written' % os.environ['ND_SCOPE_BATCH'])
+    else:
+        batch_id = time.strftime('%Y%m%dT%H%M', time.gmtime()) + '-' + batch_keys[0]
+        try:
+            with open(os.environ['ND_SCOPE_BATCH'], 'x', encoding='utf-8') as bf:
+                for n, k in enumerate(batch_keys, 1):
+                    bf.write(json.dumps({'batch': batch_id, 'key': k, 'rank': n, 'title': issues[k]['title'], 'excerpt': issues[k]['description'][:600]}, ensure_ascii=False) + '\n')
+        except OSError as e:
+            print('next-dispatchable: --scope-batch could not write %s (%s)' % (os.environ['ND_SCOPE_BATCH'], e), file=sys.stderr)
+            sys.exit(2)
+        print('# scope-batch %d written to %s' % (len(batch_keys), os.environ['ND_SCOPE_BATCH']))
 for k, keys in handed_off:
     print('HANDED-OFF %s: remainder on %s' % (k, ', '.join(dict.fromkeys(keys))))
 for k, pr, who, due in owed_rows:
@@ -2020,8 +2353,10 @@ for k, pr, who, due in owed_rows:
     print('OWED %s: %s owes %s by %s%s' % (k, source, who, due, (' proof-staging=' + ','.join(x[0] for x in named)) if named else ''))
     if named and os.environ.get('ND_WHY') == '1':
         staging_why(issues[k])
+for i, (cls_name, detail) in sorted(pool_named, key=lambda t: (ranked if pool_only else rank)(t[0])):
+    print('# %s %s %s' % (cls_name, i['key'], detail))
 for sid, wdoc in series_orphans:
-    print('SERIES-ORPHAN %s %s' % (sid, wdoc))
+    print('SERIES-ORPHAN %s %s' % (sid, printable(wdoc)))
 
 def family_of(f):
     # a path's directory family: the first two path components, as scripts/cleanup/cleanup-batch.sh cuts it
@@ -2071,7 +2406,7 @@ def say_overlaps(i, against_listed=True):
     pairs = held_hits(i) + ([(f, 'listed ' + k) for f, k in picked_hits(i)] if against_listed else [])
     src = ' (from %s)' % i['src'] if os.environ.get('ND_WHY') == '1' else ''
     for f, who in dict.fromkeys(pairs):
-        say('# overlap %s %s with %s%s' % (i['key'], f, who, src))
+        say('# overlap %s %s with %s%s' % (i['key'], f, printable(who), src))
     if i['key'] in outside_idle:
         num, days = outside_idle[i['key']]
         say('# overlap %s also named by outside PR %s (idle %dd)' % (i['key'], num, days))

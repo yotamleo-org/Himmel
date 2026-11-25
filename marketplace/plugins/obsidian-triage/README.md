@@ -36,8 +36,8 @@ from earlier setups are no longer read; delete them by hand if present.
 `scripts/luna/fetch-health.py` runs one cheap known-good probe for every live
 external fetch integration. It is a plain Python script: no Claude invocation,
 no clip mutation, and no fetched response content is written to the Luna vault.
-The existing `pipeline-cadence` scheduler arms it daily at **01:30** as
-`HIMMEL-Pipeline-FetchHealth`, before harvest.
+The existing `pipeline-cadence` scheduler arms it daily at **03:30** as
+`HIMMEL-Pipeline-FetchHealth`, after the harvest, so it reads the night's state.
 
 | Source integration | Real authentication artifact | Daily probe |
 |---|---|---|
@@ -52,7 +52,7 @@ The existing `pipeline-cadence` scheduler arms it daily at **01:30** as
 | Firecrawl article enrichment | `FIRECRAWL_API_KEY` (process env or the primary checkout's `.env`; `FIRECRAWL_BASE_URL` optional) | `POST /v2/scrape` for `https://example.com/` |
 
 Every probe reads the primary checkout's `.env` (keys living only there once read as missing) — the merge
-happens once, at the registry boundary, so the 01:30 cadence run sees the same
+happens once, at the registry boundary, so the 03:30 cadence run sees the same
 config as a manual run even though its wrapper sources nothing. A live
 non-empty process value still wins; a set-but-empty one does not. The
 duplicate-key and empty-placeholder rules are in
@@ -690,7 +690,10 @@ full runbook.
 
 - **Ingest:** `/luna-ingest <url> --skill-scan` runs Phase 3.7 over each skill directory of the source repo and writes `skill_scan:` plus a `## Skill scan (advisory)` section, with the reports in `<repo-slug>.skillspector/` beside the note.
 - **Clips:** `/harvest-clips` passes `--skill-scan` for a clipped `/tree/<branch>/.../skills/...` URL, so a clipped skill is scanned before it is used.
-- **No egress:** the wrapper refuses (rc 2) unless `SKILLSPECTOR_PROVIDER=ollama`; upstream defaults an unset provider to `nv_build`, which sends skill text to build.nvidia.com.
+- **What leaves the machine:**
+  - **Provider:** the wrapper refuses (rc 2) unless `SKILLSPECTOR_PROVIDER=ollama`. Upstream defaults an unset provider to `nv_build`, which sends skill text to build.nvidia.com.
+  - **OSV lookup (on by default):** Stage 1 posts the package names and versions from a skill's lockfile to api.osv.dev to check them for known CVEs. This is the scan's one network call, and it stays on. If the lookup fails, the report is incomplete and the wrapper returns rc 3.
+  - **Offline (opt-in):** `SKILLSPECTOR_OFFLINE=1` skips the live CVE lookup. The wrapper runs the scanner in an empty network namespace (`unshare --user --map-root-user --net`), SkillSpector checks the dependencies against its small built-in list only, and the summary line ends `deps=offline-fallback`. Use it for a private skill whose dependency list must not leave the machine. Where the namespace cannot be made (macOS, or Linux with unprivileged user namespaces disabled), the wrapper refuses with rc 2.
 - **No install:** the wrapper never installs SkillSpector (rc 3 when missing). `pip install` belongs in a throwaway sandbox or the test VM.
 - Tests: `tests/test-skillspector-scan.sh` (hermetic stub; replays two real reports captured from skillspector 2.12.0 @182a4753 on the pilot fixtures under `tests/fixtures/skillspector/`).
 

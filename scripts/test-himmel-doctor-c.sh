@@ -1435,6 +1435,9 @@ c70_row_at "$(c70_ago 72)" ""
 out="$(c70_run)"
 if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'SEMANTIC' && grepq "$out" -F 'last semantic merge 3d ago' && ! grepq "$out" -F 'bash ~/.claude/graphmap-cadence/graphmap-himmel.sh'; then pass "C70 semantic layer 3 days old on a fresh AST graph -> WARN naming the age and the semantic pass"; else fail "C70 semantic 3d old -> $(printf '%s' "$out" | head -3)"; fi
 if grepq "$out" -F 'bash scripts/handover/chief-kit/graph-pass-detached.sh start' && grepq "$out" -F 'bash scripts/handover/chief-kit/graph-pass-detached.sh status' && ! grepq "$(printf '%s\n' "$out" | grep -F '→')" -F 'graphmap-himmel.sh'; then pass "C70 SEMANTIC-STALE remedy names the detached wrapper start and status, not a by-hand pass"; else fail "C70 stale remedy -> $(printf '%s' "$out" | head -4)"; fi
+c70_rem="$(printf '%s\n' "$out" | grep -F '→' | grep -F 'graph-pass-detached.sh' | head -1)"
+c70_pre="${c70_rem%%graph-pass-detached.sh start*}"
+if grepq "$c70_pre" -F 'graph-pass-detached.sh status' && grepq "$c70_rem" -F 'resumable, continuing' && grepq "$c70_rem" -F 'no second start'; then pass "C70 stale remedy reads status before start and says a resumable, continuing series needs no second start"; else fail "C70 status-first remedy -> $c70_rem"; fi
 c70_row_at "$(c70_ago 1)" ""
 out="$(c70_run)"
 if grepq "$out" -F 'OK   C70-graph-semantic'; then pass "C70 semantic layer 1h old -> OK"; else fail "C70 semantic fresh -> $(printf '%s' "$out" | head -3)"; fi
@@ -1585,7 +1588,7 @@ c73_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c73.XXXXXX")" || { fail "C73 m
 mkdir -p "$c73_t/home" "$c73_t/claude" "$c73_t/bin" "$c73_t/deep/a/b/c"
 printf '1.4.4\n' > "$c73_t/.bun-version"
 c73_stub() { printf 'en\0N\0\0\0\0\0\0\0https://github.com/oven-sh/bun/releases/download/bun-v%s/bun-linux-x64.zip\0\0\0\0.js.tsvm\n' "$2" > "$1"; chmod +x "$1"; }
-c73_run() { env HOME="$c73_t/home" CLAUDE_DIR="$c73_t/claude" HIMMEL_DOCTOR_BUN_VERSION_FILE="$c73_t/.bun-version" HIMMEL_DOCTOR_BUN_MIN_KB=0 HIMMEL_DOCTOR_BUN_SCAN_DIRS="$1" bash "$DOC" --no-color --only C73 2>&1; }
+c73_run() { env HOME="$c73_t/home" CLAUDE_DIR="$c73_t/claude" HIMMEL_DOCTOR_BUN_VERSION_FILE="$c73_t/.bun-version" HIMMEL_DOCTOR_BUN_MIN_KB=0 HIMMEL_DOCTOR_ACK_FILE="$c73_t/ack.txt" HIMMEL_DOCTOR_BUN_SCAN_DIRS="$1" bash "$DOC" --no-color --only C73 2>&1; }
 c73_stub "$c73_t/bin/stale-tool" 1.4.2
 out="$(c73_run "$c73_t/bin")"
 if grepq "$out" -F 'WARN C73-bun-compiled' && grepq "$out" -F "$c73_t/bin/stale-tool" && grepq "$out" -F 'Bun 1.4.2' && grepq "$out" -F '1.4.4'; then pass "C73 bun-v1.4.2 vs pin 1.4.4 -> WARN naming the binary and both versions"; else fail "C73 stale -> $(printf '%s' "$out" | head -3)"; fi
@@ -1610,6 +1613,19 @@ out="$(c73_run "$c73_t/links")"
 if grepq "$out" -F 'WARN C73-bun-compiled' && grepq "$out" -F "$c73_t/links/stale-link"; then pass "C73 an executable symlink is followed to its stale target -> WARN"; else fail "C73 symlink -> $(printf '%s' "$out" | head -3)"; fi
 out="$(c73_run "$c73_t/no-such-dir")"
 if grepq "$out" -F 'OK   C73-bun-compiled'; then pass "C73 absent scan dir -> OK"; else fail "C73 absent -> $(printf '%s' "$out" | head -3)"; fi
+mkdir -p "$c73_t/snz"
+c73_stub "$c73_t/snz/cr" 1.4.2
+out="$(c73_run "$c73_t/snz")"
+if grepq "$out" -F 'WARN C73-bun-compiled' && grepq "$out" -F 'C73-bun-compiled' && grepq "$out" -F "$c73_t/ack.txt"; then pass "C73 no ack line -> WARN, remedy names the ack file"; else fail "C73 no ack -> $(printf '%s' "$out" | head -3)"; fi
+printf 'C73-bun-compiled %s 1.4.2\n' "$c73_t/snz/cr" > "$c73_t/ack.txt"
+out="$(c73_run "$c73_t/snz")"
+if grepq "$out" -F 'INFO C73-bun-compiled' && grepq "$out" -F "$c73_t/snz/cr" && ! grepq "$out" -F 'WARN C73'; then pass "C73 ack line matching path and embedded version -> INFO, no WARN"; else fail "C73 ack match -> $(printf '%s' "$out" | head -3)"; fi
+printf 'C73-bun-compiled %s 1.4.1\n' "$c73_t/snz/cr" > "$c73_t/ack.txt"
+out="$(c73_run "$c73_t/snz")"
+if grepq "$out" -F 'WARN C73-bun-compiled' && ! grepq "$out" -F 'INFO C73-bun-compiled'; then pass "C73 ack line for an older embedded version -> still WARN"; else fail "C73 ack older -> $(printf '%s' "$out" | head -3)"; fi
+printf 'C73-bun-compiled %s/other 1.4.2\n' "$c73_t/snz" > "$c73_t/ack.txt"
+out="$(c73_run "$c73_t/snz")"
+if grepq "$out" -F 'WARN C73-bun-compiled'; then pass "C73 ack line for a different path -> still WARN"; else fail "C73 ack other path -> $(printf '%s' "$out" | head -3)"; fi
 rm -rf "$c73_t"
 
 # --- C74-config-split: himmel.conf, config keys left in .env, the policy file ---
@@ -2675,6 +2691,48 @@ A_API_KEY = \"$c97_dummy\""
 fi
 rm -rf "$c97_t"
 
+c98_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c98.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+c98_b="$c98_t/root/u/himmel"
+mkdir -p "$c98_b" "$c98_t/home" "$c98_t/claude" "$c98_t/proc"
+# shellcheck disable=SC2016
+printf '#!/usr/bin/env bash\nls "$CLAUDE_SESSIONS_PROC"\n' > "$c98_t/pgrep"; chmod +x "$c98_t/pgrep"
+c98_session() { mkdir -p "$c98_t/proc/$1"; printf 'claude\0-n\0%s\0' "$2" > "$c98_t/proc/$1/cmdline"; }
+c98_doc() {
+    local e
+    e=$(( $(date +%s) - $4 * 60 ))
+    printf '%s\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE x\n- 09:30 %s x\n' "$2" "$3" > "$c98_b/$1.md"
+    touch -t "$(date -d "@$e" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$e" +%Y%m%d%H%M.%S)" "$c98_b/$1.md"
+}
+c98_run() { HIMMEL_DOCTOR_WRAPPED_MIN=15 HANDOVER_DIR="$c98_t/root" HIMMEL_BUCKET_DIR="$c98_b" HOME="$c98_t/home" CLAUDE_DIR="$c98_t/claude" \
+    CLAUDE_SESSIONS_PROC="$c98_t/proc" CLAUDE_SESSIONS_PGREP="$c98_t/pgrep" bash "$DOC" --root "$REPO_ROOT" --no-color --only C98 2>&1; }
+echo "== C98: a wrapped, lock-free worker and chief still open 20 min later -> WARN naming each =="
+c98_doc W1 '# T-1 — a wrapped worker — worker W1' WRAPPED 20
+c98_doc AR '# AR — CHIEF — successor to AQ.md (fill signal 45 %)' WRAPPED 20
+c98_doc T-5-N5-task-2026-11-20 '# T-5 — a dated doc run under its undated session name — worker N5' WRAPPED 20
+c98_session 301 W1-r2; c98_session 302 AR; c98_session 303 T-5-N5-task
+out="$(c98_run)"
+if grepq "$out" -F 'WARN C98-wrapped-window' && grepq "$out" -F 'W1 (worker)' && grepq "$out" -F 'AR (chief)' && grepq "$out" -F 'T-5-N5-task-2026-11-20 (worker)' && grepq "$out" -F 'close-wrapped-worker.sh --check'; then pass "C98 WARN names each lingering wrapped window, a dated doc under its undated session name too"; else fail "C98 lingering -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C98: control: working, freshly wrapped and session-less docs -> OK =="
+rm -f "$c98_b/T-5-N5-task-2026-11-20.md"
+c98_doc W1 '# T-1 — a working worker — worker W1' LIVE 20
+c98_doc AR '# AR — CHIEF — successor to AQ.md (fill signal 45 %)' WRAPPED 5
+c98_doc Z1 '# T-3 — a wrapped worker whose window is gone — worker Z1' WRAPPED 20
+out="$(c98_run)"
+if grepq "$out" -F 'OK   C98-wrapped-window' && ! grepq "$out" -E '(WARN|INFO) C98'; then pass "C98 OK with no lingering wrapped window"; else fail "C98 control -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C98: an aged doc of a live session that cannot be read is INFO, never OK =="
+c98_doc U1 '# T-6 — an unreadable wrapped worker — worker U1' WRAPPED 20
+c98_session 304 U1; chmod 000 "$c98_b/U1.md"
+out="$(c98_run)"
+chmod 644 "$c98_b/U1.md"; rm -rf "$c98_t/proc/304"
+if [ "$(id -u)" = 0 ]; then pass "C98 unreadable doc -> skipped as root (chmod does not block root)"
+elif grepq "$out" -F 'INFO C98-wrapped-window' && grepq "$out" -F 'U1' && ! grepq "$out" -E '(OK  |WARN) C98'; then pass "C98 INFO names an unreadable doc"; else fail "C98 unreadable doc -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C98: a census that exits 3 with no rows is INFO, never OK =="
+printf '#!/usr/bin/env bash\nexit 3\n' > "$c98_t/pgrep3"; chmod +x "$c98_t/pgrep3"
+out="$(HIMMEL_DOCTOR_WRAPPED_MIN=15 HANDOVER_DIR="$c98_t/root" HIMMEL_BUCKET_DIR="$c98_b" HOME="$c98_t/home" CLAUDE_DIR="$c98_t/claude" \
+    CLAUDE_SESSIONS_PROC="$c98_t/proc" CLAUDE_SESSIONS_PGREP="$c98_t/pgrep3" bash "$DOC" --root "$REPO_ROOT" --no-color --only C98 2>&1)"
+if grepq "$out" -F 'INFO C98-wrapped-window' && ! grepq "$out" -E '(OK  |WARN) C98'; then pass "C98 INFO on a failed census"; else fail "C98 census rc 3 -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c98_t"
+
 printed_keys() {
     awk '/^[[:space:]]*#/ { next }
     {
@@ -2707,5 +2765,33 @@ echo "== printed text: no line the doctor prints carries a ticket key =="
 out="$(printed_keys "$DOC")"
 if [ -z "$out" ]; then pass "the doctor prints no ticket key"; else fail "the doctor prints ticket keys: $out"; fi
 rm -rf "$pk_t"
+
+c99_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c99.XXXXXX")" || exit 1
+mkdir -p "$c99_t/repo/.agents/rules" "$c99_t/repo/.gemini" "$c99_t/home" "$c99_t/claude"
+ln -s "$REPO_ROOT/scripts" "$c99_t/repo/scripts"
+git -C "$c99_t/repo" init -q
+c99_run() { HOME="$c99_t/home" CLAUDE_DIR="$c99_t/claude" bash "$DOC" --root "$c99_t/repo" --only C99 --no-color 2>&1; }
+out="$(c99_run)"
+if grepq "$out" 'OK   C99-gemini-local'; then pass "C99 clean tree -> OK"; else fail "C99 clean tree -> $out"; fi
+printf '%s\n' "Use \`graphify query lanes\` for structure." > "$c99_t/repo/.agents/rules/graphify.md"
+out="$(c99_run)"
+if grepq "$out" 'WARN C99-gemini-local' && grepq "$out" -F '.agents/rules/graphify.md'; then pass "C99 stale bare graphify rule -> WARN"; else fail "C99 stale rule -> $out"; fi
+if grep -qF 'graphify query lanes' "$c99_t/repo/.agents/rules/graphify.md"; then pass "C99 leaves stale rule unchanged"; else fail "C99 rewrote stale rule"; fi
+printf '%s\n' "Use \`bash scripts/graphify/worker-graph.sh query lanes\`." > "$c99_t/repo/.agents/rules/graphify.md"
+printf '{"hooks":{"BeforeTool":[{"command":"graphify.EXE query lanes"}]}}\n' > "$c99_t/repo/.gemini/settings.json"
+out="$(c99_run)"
+if grepq "$out" 'WARN C99-gemini-local' && grepq "$out" -F '.gemini/settings.json'; then pass "C99 untracked graphify.EXE settings -> WARN"; else fail "C99 stale settings -> $out"; fi
+if grep -qF 'graphify.EXE' "$c99_t/repo/.gemini/settings.json"; then pass "C99 leaves settings unchanged"; else fail "C99 rewrote settings"; fi
+git -C "$c99_t/repo" add .gemini/settings.json
+out="$(c99_run)"
+if grepq "$out" 'OK   C99-gemini-local'; then pass "C99 tracked settings and wrapper rule -> OK"; else fail "C99 tracked settings -> $out"; fi
+git -C "$c99_t/repo" rm --cached -q .gemini/settings.json
+printf '{"hooks":{"BeforeTool":[{"command":"/missing/graphify query lanes"}]}}\n' > "$c99_t/repo/.gemini/settings.json"
+out="$(c99_run)"
+if grepq "$out" 'WARN C99-gemini-local'; then pass "C99 missing absolute executable -> WARN"; else fail "C99 missing path -> $out"; fi
+printf '{"hooks":{"BeforeTool":[{"command":"bash scripts/graphify/worker-graph.sh query lanes"}]}}\n' > "$c99_t/repo/.gemini/settings.json"
+out="$(c99_run)"
+if grepq "$out" 'OK   C99-gemini-local' && ! grepq "$out" 'WARN C99'; then pass "C99 current settings and wrapper rule -> OK"; else fail "C99 current settings -> $out"; fi
+rm -rf "$c99_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

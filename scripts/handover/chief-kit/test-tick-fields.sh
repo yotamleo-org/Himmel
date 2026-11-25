@@ -835,6 +835,11 @@ case "${QSTUB_MODE:-}" in
         fi ;;
     pr-hang)
         if [ "${1:-}" = pr ] && [ "${2:-}" = list ]; then exec sleep 600; fi ;;
+    pr-resolve-read)
+        if [ "${1:-}" = pr ] && [ "${2:-}" = list ] && [ "${GH_TOKEN:-}" = "${QSTUB_READ_TOKEN:-none}" ]; then
+            echo "GraphQL: Could not resolve to a Repository with the name 'o/r'. (repository)" >&2
+            exit 1
+        fi ;;
     pr-limit-read)
         if [ "${1:-}" = pr ] && [ "${2:-}" = list ] && [ "${GH_TOKEN:-}" = "${QSTUB_READ_TOKEN:-none}" ]; then
             echo 'GraphQL: API rate limit already exceeded for user ID 1. (HTTP 403)' >&2
@@ -870,6 +875,25 @@ case "$(grep -c -E '(^| )graphql( |$)|rateLimit|api -i user|api rate_limit' "$W/
     0) pass 'a fresh quota.tsv costs the tick no graphql or budget call of its own' ;;
     *) fail "the tick spent a budget call with a fresh quota.tsv (log: $(tr '\n' '|' < "$W/qstub.log"))" ;;
 esac
+reads_of() { printf '%s' "$1" | sed -n -E 's/.* reads=([^ ]*).*/\1/p'; }
+contains 'reads= sits right after the rest budget fields' "$q_seed" " rest-main=4444/5000@$q_hm reads="
+q_reads="$(reads_of "$q_ok")"
+if grep -qE '^main:core[0-9]+\+gql[1-9][0-9]*,read:core0\+gql0$' <<< "$q_reads"; then pass 'the tick prints its own per-token read count (no read token: on main)'; else fail "reads= with no read token (got '$q_reads')"; fi
+mkdir -p "$W/qenv" && printf 'himmel_github_token_vm2=readfixture0123\n' > "$W/qenv/.env" && : > "$W/outer-used"
+q_reads="$(reads_of "$(q_tick "$W/q-rd" GH_READ_ENV_ROOT="$W/qenv" GH_READ_USED_FILE="$W/outer-used")")"
+if grep -qE '^main:core0\+gql0,read:core[0-9]+\+gql[1-9][0-9]*$' <<< "$q_reads"; then pass 'the tick prints its own per-token read count (read token: on read)'; else fail "reads= with a read token (got '$q_reads')"; fi
+same "a caller's own GH_READ_USED_FILE gets none of the tick's rows" "$(cat "$W/outer-used" 2>/dev/null)" ''
+q_rt_default="$(q_tick "$W/q-rt" GH_READ_ENV_ROOT="$W/qenv" QSTUB_MODE=pr-resolve-read QSTUB_READ_TOKEN=readfixture0123)"
+q_rt_reads="$(reads_of "$q_rt_default")"
+if grep -qE '^main:core0\+gql1,read:core[0-9]+\+gql[1-9][0-9]*$' <<< "$q_rt_reads"; then pass 'a read retried on main counts once on main in reads='; else fail "reads= with one retried read (got '$q_rt_reads')"; fi
+not_contains 'the default line names no retried read' "$q_rt_default" 'retried'
+q_rt_verbose="$(env W_GH="$W/bin/gh" PATH="$W/qbin:$PATH" GH_READ_ENV_ROOT="$W/qenv" HIMMEL_QUOTA_DIR="$W/q-rt" QSTUB_LOG="$W/qstub.log" QSTUB_MODE=pr-resolve-read QSTUB_READ_TOKEN=readfixture0123 \
+    timeout 100 bash "$SUT" --workers 'HIMMEL-333-legN70' --verbose 2>/dev/null)"  # gnu-ok: chief kit is Linux-only (PLATFORM GUARD)
+contains 'verbose prints each read retried on main with its reason and what it read' "$q_rt_verbose" 'reads retried on main: notfound pr list --limit 200'
+contains 'verbose prints the per-token read count' "$q_rt_verbose" 'reads: main:core0+gql1,read:core'
+q_ok_verbose="$(env W_GH="$W/bin/gh" PATH="$W/qbin:$PATH" GH_READ_ENV_ROOT="$W/qenv" HIMMEL_QUOTA_DIR="$W/q-rt" QSTUB_LOG="$W/qstub.log" \
+    timeout 100 bash "$SUT" --workers 'HIMMEL-333-legN70' --verbose 2>/dev/null)"  # gnu-ok: chief kit is Linux-only (PLATFORM GUARD)
+not_contains 'RED control: a tick with no retried read prints no retried line' "$q_ok_verbose" 'reads retried on main:'
 : > "$W/qstub.log"
 q_t0=$SECONDS
 q_hung="$(q_tick "$W/q-hung" QSTUB_MODE=hung GHQ_PROBE_TIMEOUT=2)"
@@ -965,6 +989,52 @@ same 'a paused pr-stall keeps the cached stall=' "$(st_tick 100)" '2887:conflict
 not_contains 'a paused pr-stall makes no PR list call' "$(cat "$W/qstub.log")" 'mergeStateStatus,statusCheckRollup'
 st_tick 4000 > /dev/null
 contains 'RED control: a healthy pr-stall reads its PR list' "$(cat "$W/qstub.log")" 'mergeStateStatus,statusCheckRollup'
+
+AR_DOC="$W/ar-doc/HIMMEL-ar-chief.md"; mkdir -p "${AR_DOC%/*}"; printf '# chief\n' > "$AR_DOC"
+ar_ev() { printf '{"ts":"%sT10:00:00.000Z","kind":"ruled","key":"%s","from":null,"to":"v9.9.9","ruling":"R-v9.9.9-%s","readback":"ok"}\n' "$1" "$2" "$3"; }
+ar_rq() { printf '{"verb":"INTAKE","key":"%s","from_v":null,"to_v":"v9.9.9","why":"%s","evidence":%s,"from":"console","req":"Q-%s","ts":"2026-11-24T10:00:00.000Z","state":"ruled:R-v9.9.9-%s"}\n' "$1" "$2" "$3" "$4" "$4"; }
+ar_build() {
+    local d="$1" n=0 day i p r o
+    rm -rf "$d"; mkdir -p "$d/v9.9.9"; : > "$d/v9.9.9/events.jsonl"; : > "$d/v9.9.9/requests.jsonl"
+    for day in 2026-11-19:2 2026-11-20:3 2026-11-21:2 2026-11-22:3 2026-11-23:2; do
+        for ((i = 0; i < ${day#*:}; i++)); do n=$((n + 1)); ar_ev "${day%:*}" "HIMMEL-9$n" "$n" >> "$d/v9.9.9/events.jsonl"; done
+    done
+    IFS=: read -r p r o <<< "$2"
+    for ((i = 0; i < p; i++)); do n=$((n + 1)); ar_ev 2026-11-24 "HIMMEL-9$n" "$n" >> "$d/v9.9.9/events.jsonl"; ar_rq "HIMMEL-9$n" 'follow-up of HIMMEL-1 (To Do)' '{"follow_up_of":"HIMMEL-1"}' "$n" >> "$d/v9.9.9/requests.jsonl"; done
+    for ((i = 0; i < r; i++)); do n=$((n + 1)); ar_ev 2026-11-24 "HIMMEL-9$n" "$n" >> "$d/v9.9.9/events.jsonl"; ar_rq "HIMMEL-9$n" 'filed by the daily failure review' '{}' "$n" >> "$d/v9.9.9/requests.jsonl"; done
+    for ((i = 0; i < o; i++)); do n=$((n + 1)); ar_ev 2026-11-24 "HIMMEL-9$n" "$n" >> "$d/v9.9.9/events.jsonl"; ar_rq "HIMMEL-9$n" 'operator decision 1' '{"authority":"operator","ref":"O-1"}' "$n" >> "$d/v9.9.9/requests.jsonl"; done
+}
+ar_tick() {
+    TOKEN='' TICK_ARRIVALS_DIR="$1/v9.9.9" TICK_ARRIVALS_NOW=2026-11-24 TICK_STATE_DIR="$2" bash "$SUT" --doc "$AR_DOC" 2>/dev/null
+}
+ar_build "$W/ar-jump" 6:4:2
+ar_jump="$(ar_tick "$W/ar-jump" "$W/ar-state-jump")"
+same 'a jump in arrivals prints exactly one WAKE arrivals-jump line' "$(printf '%s\n' "$ar_jump" | grep -c '^WAKE arrivals-jump ')" '1'
+contains 'the jump wake names the version and each source group with its count' "$ar_jump" 'WAKE arrivals-jump v9.9.9 12 vs 2.4/day over 5d: parent=6 review=4 operator=2'
+contains 'the jump marks the arrivals= field with !' "$ar_jump" ' arrivals=12/2.4!'
+same 'the same UTC day wakes once: a second tick prints no second wake' "$(ar_tick "$W/ar-jump" "$W/ar-state-jump" | grep -c '^WAKE arrivals-jump ')" '0'
+ar_build "$W/ar-jump2" 6:4:2
+same 'a jump in another release directory the same day still wakes: the claim is per release' "$(ar_tick "$W/ar-jump2" "$W/ar-state-jump" | grep -c '^WAKE arrivals-jump ')" '1'
+ar_build "$W/ar-steady" 3:0:0
+ar_steady="$(ar_tick "$W/ar-steady" "$W/ar-state-steady")"
+not_contains 'steady days print no arrivals wake' "$ar_steady" 'WAKE arrivals-jump'
+contains 'steady days print arrivals=<n>/<mean>' "$ar_steady" ' arrivals=3/2.4'
+not_contains 'steady days leave the arrivals= field unmarked' "$ar_steady" ' arrivals=3/2.4!'
+mkdir -p "$W/ar-new/v9.9.9"; : > "$W/ar-new/v9.9.9/events.jsonl"
+for ar_i in $(seq 1 10); do ar_ev 2026-11-24 "HIMMEL-8$ar_i" "$ar_i" >> "$W/ar-new/v9.9.9/events.jsonl"; done
+ar_new="$(ar_tick "$W/ar-new" "$W/ar-state-new")"
+not_contains 'a version with no earlier days has no baseline and wakes nothing' "$ar_new" 'WAKE arrivals-jump'
+contains 'a version with no earlier days reads arrivals=<n>/?' "$ar_new" ' arrivals=10/?'
+mkdir -p "$W/ar-big/v9.9.9"; : > "$W/ar-big/v9.9.9/events.jsonl"
+for ar_d in 2026-11-19 2026-11-20 2026-11-21 2026-11-22 2026-11-23; do for ar_i in $(seq 1 30); do ar_ev "$ar_d" "HIMMEL-5${ar_d#2026-11-}-$ar_i" "5$ar_i" >> "$W/ar-big/v9.9.9/events.jsonl"; done; done
+for ar_i in $(seq 1 40); do ar_ev 2026-11-24 "HIMMEL-4$ar_i" "4$ar_i" >> "$W/ar-big/v9.9.9/events.jsonl"; done
+not_contains 'RED control: 40 against a version that files 30 a day is no jump (the bar is relative, not a count)' "$(ar_tick "$W/ar-big" "$W/ar-state-big")" 'WAKE arrivals-jump'
+for ar_i in $(seq 41 100); do ar_ev 2026-11-24 "HIMMEL-4$ar_i" "4$ar_i" >> "$W/ar-big/v9.9.9/events.jsonl"; done
+contains 'the same version at 100 a day against 30 is a jump' "$(ar_tick "$W/ar-big" "$W/ar-state-big2")" 'WAKE arrivals-jump v9.9.9 100 vs 30/day over 5d'
+ar_before="$(cksum "$W/ar-jump/v9.9.9/"* | tr -d '\n')"
+ar_tick "$W/ar-jump" "$W/ar-state-jump2" > /dev/null
+same 'a tick with the jump wake active writes nothing under the release records' "$(cksum "$W/ar-jump/v9.9.9/"* | tr -d '\n')" "$ar_before"
+same 'no jira create path reads the arrivals wake, so a filing is never refused or slowed by it' "$(git -C "$HERE" grep -l -e 'arrivals-jump' -e 'tick-arrivals' -- ../../jira/src ../../jira/package.json | wc -l | tr -d ' ')" '0'
 
 # The waiter's wake key is the key rows of the table that its loop selects. The loop line must be this
 # one exactly, so an edit anywhere in it (a condition inside the awk, a filter after it) leaves the list empty.

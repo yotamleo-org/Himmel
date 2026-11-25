@@ -99,14 +99,38 @@ def live(owner):
 OWNER_FIELDS = {'host': str, 'boot': str, 'pid': int, 'start': str}
 
 
+_PAST_BOOTS = []
+
+
+def past_boot_of_matched_host(boot):
+    if not _PAST_BOOTS:
+        found = set()
+        try:
+            seam = os.environ.get('FLEET_JOURNAL_BOOTS_CMD') if os.environ.get('HIMMEL_POLICY_FOLLOWS_HOME') == '1' else None
+            command = shlex.split(seam or 'journalctl --list-boots')
+            run = subprocess.run(command, capture_output=True, text=True, timeout=5)
+            if run.returncode == 0:
+                found = set(re.findall(r'(?m)^\s*-?\d+\s+([0-9a-f]{32})\b', run.stdout))
+        except (OSError, subprocess.SubprocessError, ValueError):
+            pass
+        _PAST_BOOTS.append(found)
+    try:
+        plain = boot.replace('-', '')
+        return plain in _PAST_BOOTS[0] and plain != identity(os.getpid())['boot'].replace('-', '')
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def process_state(owner):
-    """Absence is proof only for an exact local host/boot/start identity; an owner that is not exactly those fields is unknown."""
+    """Absence is proof only for an exact local host/boot/start identity, or a past boot of this machine; an owner that is not exactly those fields is unknown."""
     if not isinstance(owner, dict) or set(owner) != set(OWNER_FIELDS) or any(type(owner[key]) is not kind for key, kind in OWNER_FIELDS.items()):
         return 'unknown'
     try:
         local = identity(os.getpid())
-        if any(owner[key] != local[key] for key in ('host', 'boot')):
+        if owner['host'] != local['host']:
             return 'unknown'
+        if owner['boot'] != local['boot']:
+            return 'dead' if past_boot_of_matched_host(owner['boot']) else 'unknown'
         try:
             found = identity(owner['pid'])
             state = Path('/proc', str(owner['pid']), 'stat').read_text().rsplit(')', 1)[1].split()[0]
@@ -316,6 +340,8 @@ def owned_rows(manifest):
 def reads_ended(doc):
     """True when the doc's newest marker is absent or an end marker, the only doc a terminal receipt releases."""
     newest = marker(doc)
+    if re.match(r'- \d{1,2}:\d{2} SUCCESSION\b', newest):
+        newest = marker(doc, skip=r'- \d{1,2}:\d{2} SUCCESSION\b') or newest
     return not newest or re.match(r'- \d{1,2}:\d{2} (?:WRAPPED|HALTED)\b', newest) is not None
 
 
@@ -386,10 +412,11 @@ def disposition(doc):
     return 'unknown' if protected(doc) else 'legacy'
 
 
-def worker_state(doc, timeout=10, disposition=None):
+def worker_state(doc, timeout=10, disposition=None, ownership=False):
     """The one ownership reading of a doc (ticket-status.sh ts_worker_state). A caller that already holds the doc's
     disposition, as WorkerStates does, passes it so the shell does not read every manifest again for it."""
-    script, argv = '. "$1/ticket-status.sh"; ts_worker_state "$2"', ['fleet-runtime', str(LIB), doc]
+    reading = 'ts_worker_ownership' if ownership else 'ts_worker_state'
+    script, argv = '. "$1/ticket-status.sh"; %s "$2"' % reading, ['fleet-runtime', str(LIB), doc]
     if disposition is not None:
         script, argv = script + ' "$3"', argv + [json.dumps(disposition)]
     try:
@@ -497,10 +524,10 @@ class WorkerStates:
         return 'unknown' if any(r.get('doc') == doc and r.get('phase') in ('pending', 'committed', 'unknown') for r in attempts) else 'legacy'
 
 
-def marker(doc):
+def marker(doc, skip=None):
     try:
         lines = Path(doc).read_text().splitlines()
-        return next((line for line in reversed(lines) if re.match(r'^- \d{1,2}:\d{2} [A-Z]', line)), '')
+        return next((line for line in reversed(lines) if re.match(r'^- \d{1,2}:\d{2} [A-Z]', line) and not (skip and re.match(skip, line))), '')
     except OSError:
         return ''
 
@@ -514,7 +541,7 @@ def title_keys(line):
 
 
 def worker_keys(doc):
-    keys = re.findall(r'[A-Z]+-[0-9]+', Path(doc).name)
+    keys = re.findall(r'[A-Z]+-[0-9]+(?!\d|-\d{2}-\d{2})', Path(doc).name)
     try:
         for line in Path(doc).read_text().splitlines():
             if line.startswith('## Results'):
@@ -530,8 +557,10 @@ def worker_keys(doc):
 
 def session_scan(record, deadline):
     local = identity(os.getpid())
-    if any(record['owner'][key] != local[key] for key in ('host', 'boot')):
+    if record['owner']['host'] != local['host']:
         return None, False
+    if record['owner']['boot'] != local['boot']:
+        return (None, True) if past_boot_of_matched_host(record['owner']['boot']) else (None, False)
     absent = True
     for path in Path('/proc').iterdir():
         if time.monotonic() >= deadline:
@@ -682,8 +711,8 @@ def settle_attempt(args, attempts, rows, doc, history):
     return {'phase': 'refused', 'cause': 'settled-no-session'}
 
 
-def reconcile(attempts, rows, history, deadline):
-    """Run under manifest→anchor locks, before admission as well as ack."""
+def reconcile(attempts, rows, history, deadline, effects=True):
+    """Run under manifest→anchor locks, before admission as well as ack; effects=False settles in memory only (no receipt, no slot release)."""
     settled = set()
     for aid, record in list(attempts.items()):
         if time.monotonic() >= deadline:
@@ -704,12 +733,14 @@ def reconcile(attempts, rows, history, deadline):
             session = session_evidence(record, min(deadline, time.monotonic() + 1))
             if session:
                 record['session'], record['phase'] = session, 'launched'
-                receipt(record, 'launched')
+                if effects:
+                    receipt(record, 'launched')
         if not terminal and record.get('phase') == 'launched' and marker(record['doc']) != record.get('initial_marker') and session_ended(record, deadline) and time.monotonic() < deadline and worker_state(record['doc'], max(.01, deadline - time.monotonic())) == 'wrapped':
             terminal = 'complete'
         if terminal:
-            receipt(record, terminal)
-            release_reservation(record)
+            if effects:
+                receipt(record, terminal)
+                release_reservation(record)
             del attempts[aid]
             settled.add(aid)
         # A copied manifest can retain an old attempt after another manifest
@@ -722,6 +753,107 @@ def reconcile(attempts, rows, history, deadline):
         aid = row.get('attempt', {}).get('attempt_id')
         if aid in attempts:
             row['attempt'] = attempts[aid].copy()
+
+
+def lock_free_without_session(doc, timeout=10, require_no_marker=True):
+    script = ('. "$1/ticket-status.sh"; if [ "$3" = 1 ]; then m=$(ts_marker_newest "$2"); rc=$?; [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || exit 1; '
+              '[ -z "$m" ] || exit 1; fi; if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then "$TICKET_STATUS_QUEUE_LOCK" status "$2"; '
+              'else bash "$1/../handover/queue-lock.sh" status "$2"; fi >/dev/null 2>&1 || exit 1; _ts_no_live_session_on "$2"')
+    try:
+        return subprocess.run(['bash', '-c', script, 'fleet-runtime', str(LIB), doc, '1' if require_no_marker else '0'],
+                              capture_output=True, timeout=timeout).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def unlaunched(doc, timeout=10):
+    return lock_free_without_session(doc, timeout)
+
+
+def ended_blockers(record, deadline):
+    blockers = []
+    if record['phase'] != 'launched':
+        blockers.append('phase is %s' % record['phase'])
+    for who in ('owner', 'committer'):
+        state = process_state(record[who]) if record.get(who) else 'dead'
+        if state != 'dead':
+            blockers.append('%s is not proven dead (%s)' % (who, state))
+    if not session_ended(record, deadline):
+        blockers.append('a session may exist')
+    carrying, unreadable, complete = launch_candidates(record, deadline)
+    if carrying or unreadable or not complete:
+        blockers.append('a process may still carry the attempt')
+    if not blockers and not lock_free_without_session(record['doc'], require_no_marker=False):
+        blockers.append('the doc queue lock is not free or a session is live on it')
+    return blockers
+
+
+def settle_ended(attempts, rows, doc, name, keys, effects):
+    settled = []
+    for aid, record in list(attempts.items()):
+        if not (record['doc'] == doc or record['name'] == name or set(record['keys']) & set(keys)) or record['phase'] != 'launched':
+            continue
+        if ended_blockers(record, time.monotonic() + 5):
+            continue
+        if effects:
+            record['cause'] = 'settled-ended-session'
+            receipt(record, 'refused', reason='the session of this launched attempt has ended (owner, committer and session dead, queue lock free)',
+                    evidence=dict(phase='launched', owner='dead', committer='dead' if record.get('committer') else None, scan='absent',
+                                  carriers='none', session=bool(record.get('session')), lock='free'),
+                    settled_by=dict(host=socket.gethostname(), pid=os.getpid(), uid=os.getuid()))
+            release_reservation(record)
+            rows[:] = [w for w in rows if not (w.get('doc') == record['doc'] and w.get('attempt', {}).get('attempt_id') == aid)]
+        del attempts[aid]
+        settled.append(aid)
+    return settled
+
+
+def ownership_check(attempts, manifest, doc, name, keys):
+    """begin's family ownership refusals, shared with the read-only admit a dry run uses."""
+    if any(r['doc'] == doc or r['name'] == name or set(r['keys']) & set(keys) for r in attempts.values()):
+        raise Refused('family already owns worker or ticket')
+    states = {}
+    own_row = False
+    for sibling in manifest.parent.glob('*.fleet.json'):
+        listed = read(sibling)
+        for row in listed.get('workers', []) + listed.get('legs', []):
+            if row.get('registration') != 'pending' and (row.get('doc') == doc or set(worker_keys(row['doc'])) & set(keys)):
+                if sibling.resolve() == manifest.resolve() and row.get('doc') == doc and not row.get('attempt') and unlaunched(doc):
+                    own_row = True
+                    continue
+                if row['doc'] not in states:
+                    states[row['doc']] = worker_state(row['doc'], 5, ownership=True)
+                if states[row['doc']] not in ('wrapped', 'abandoned'):
+                    raise Refused('unknown legacy family ownership: %s row %s; its worker state is %s, not wrapped; if that worker is dead, '
+                                  'retire the row with: bash %s remove %s %s'
+                                  % (sibling, row.get('doc'), states[row['doc']], shlex.quote(str(LIB.parent / 'handover/chief-kit/fleet-manifest.sh')),
+                                     shlex.quote(str(sibling)), shlex.quote(str(row.get('doc')))))
+    return own_row
+
+
+def joined_attempt(attempts, doc, attempt_id):
+    record = attempts.get(attempt_id) if attempt_id else None
+    if not record or record['doc'] != doc or record['phase'] not in ('committed', 'launched'):
+        return None
+    chain = ancestors()
+    if any(isinstance(holder, dict) and holder.get('pid') in chain and live(holder) for holder in (record['owner'], record.get('session'))):
+        return record
+    return None
+
+
+def admit_read_only(manifest, doc, name, join=''):
+    """The admission a real launch's begin and check make, with no lock, no write and no receipt."""
+    value = snapshot(manifest)
+    if value['mode'] != 'active':
+        raise Refused('fleet-paused')
+    attempts = read(manifest.parent / 'fleet-control.json').get('attempts', {})
+    reconcile(attempts, read(manifest).get('workers', []), receipts(set(attempts)), time.monotonic() + 5, effects=False)
+    doc = str(Path(doc).resolve())
+    joined = joined_attempt(attempts, doc, join)
+    if not joined:
+        settle_ended(attempts, [], doc, name, worker_keys(doc), effects=False)
+        ownership_check(attempts, manifest, doc, name, worker_keys(doc))
+    return dict(value, joined=joined['attempt_id'] if joined else None)
 
 
 def run(args):
@@ -737,6 +869,8 @@ def run(args):
         return has_reservation(record, args.pid)
     if args.op == 'protected':
         return protected(args.doc)
+    if args.op == 'unlaunched':
+        return unlaunched(args.doc)
     if args.op == 'owners':
         return owned_rows(args.manifest)
     if args.op == 'release':
@@ -764,8 +898,8 @@ def run(args):
             raise Refused('settle refused: the doc is not a managed worker')
         return {'managed': False, 'administrative': bool(args.doc and (Path(args.doc).resolve().parent / 'fleet-control.json').exists())}
     anchor = manifest.parent / 'fleet-control.json'
-    if args.op == 'resolve':
-        value = snapshot(manifest)
+    if args.op in ('resolve', 'admit'):
+        value = admit_read_only(manifest, args.doc, args.name, args.join_attempt) if args.op == 'admit' else snapshot(manifest)
         return dict(value, managed=True, manifest=str(manifest), slots=str(slots_root()))
     with lock(manifest), lock(anchor):
         value = snapshot(manifest)
@@ -781,6 +915,12 @@ def run(args):
                 for row in peer.get('workers', peer.get('legs', [])):
                     peer_rows.append(dict(row, ownership='unverified') if peer.get('control') != data.get('control') else row)
         history = receipts(set(attempts) | {args.attempt_id} | {row.get('attempt', {}).get('attempt_id') for row in peer_rows})
+        if args.op == 'ended-attempts':
+            settled = settle_ended(attempts, rows, doc, '', [], effects=True)
+            if settled:
+                publish(anchor, control)
+                publish(manifest, data)
+            return {'managed': True, 'settled': settled}
         if args.op in ('ack', 'reconcile', 'begin', 'check', 'commit'):
             deadline = time.monotonic() + 5
             reconcile(attempts, rows, history, deadline)
@@ -826,16 +966,16 @@ def run(args):
             if args.attempt_id in history:
                 raise Refused('attempt already has receipt history')
             keys = worker_keys(doc)
-            if any(r['doc'] == doc or r['name'] == args.name or set(r['keys']) & set(keys) for r in attempts.values()):
-                raise Refused('family already owns worker or ticket')
-            legacy_deadline = time.monotonic() + 5
-            for sibling in manifest.parent.glob('*.fleet.json'):
-                listed = read(sibling)
-                for row in listed.get('workers', []) + listed.get('legs', []):
-                    if row.get('registration') != 'pending' and (row.get('doc') == doc or set(worker_keys(row['doc'])) & set(keys)):
-                        if time.monotonic() >= legacy_deadline or worker_state(row['doc'], max(.01, legacy_deadline - time.monotonic())) != 'wrapped':
-                            raise Refused('unknown legacy family ownership')
+            joined = joined_attempt(attempts, doc, args.join_attempt)
+            if joined:
+                return {'joined': joined['attempt_id'], 'phase': joined['phase']}
+            if settle_ended(attempts, rows, doc, args.name, keys, effects=True):
+                publish(anchor, control)
+                publish(manifest, data)
+            own_row = ownership_check(attempts, manifest, doc, args.name, keys)
             matches = [w for w in rows if w.get('doc') == doc]
+            if own_row and len(matches) == 1 and not matches[0].get('attempt'):
+                matches[0]['registration'] = 'pending'
             if not matches:
                 result = subprocess.run(['bash', '-c', '. "$1/worker-identity.sh"; worker_label "$2"',
                                          'fleet-runtime', str(LIB), doc], capture_output=True, text=True, timeout=5, check=True)
@@ -933,11 +1073,12 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('op', choices=['resolve', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle'])
+    parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle', 'ended-attempts', 'unlaunched'])
     parser.add_argument('--doc', default='')
     parser.add_argument('--manifest', default='')
     parser.add_argument('--name', default='')
     parser.add_argument('--attempt-id', default='')
+    parser.add_argument('--join-attempt', default='')
     parser.add_argument('--pid', type=int, default=os.getppid())
     parser.add_argument('--phase', choices=['refused', 'unknown', 'launched', 'complete'])
     parser.add_argument('--slot', default='')

@@ -147,18 +147,18 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
   return { state: "ok", sdrift: last.slice("sdrift=".length) };
 }
 
-// What is owed to the operator beside the labels and the chain holds, read from the records that hold it: the same three sources as the roadmap
+// What is owed to the operator beside the labels and the chain holds, read from the records that hold it: the same sources as the roadmap
 // tracker's reader (tracker.py operator_owed), so the two views agree. All READ ONLY.
 //   1. an unsigned spec: the latest critic verdict of a spec of an open ticket of the running version is SPEC CLEAN, or the ticket's spec round
 //      in the round ledger (chief-route.ts round-status) is at the cap, and <bucket>/release/<version>/operator.jsonl has no `spec` row naming
 //      that spec file; and an open ticket whose ledger holds an operator-critical finding the operator has not ruled on, at any round;
 //   2. a `queue:` segment or `pool-disposition:` line of the newest chief doc's `## Live state` that names the operator;
-//   3. the newest *HANDOFF.md of the bucket, its `## Open operator items` lines.
+//   3. the newest *HANDOFF.md of the bucket, its `## Open operator items` lines, and the open owed.jsonl rows marked actor "operator".
 // A source that cannot be read is named in `unread`; when none can be read the whole read is absent with the reasons, never an empty list.
 export type OwedActor = "chief" | "operator" | "worker" | "external" | "unknown";
-export type OwedItem = { actor: OwedActor; source: "unsigned spec" | "operator-critical finding" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker" | "pool hold"; key: string | null; title: string; ctx: string; act: string; label?: string; since?: number };
+export type OwedItem = { actor: OwedActor; source: "unsigned spec" | "operator-critical finding" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker" | "pool hold" | "owed ledger"; key: string | null; title: string; ctx: string; act: string; label?: string; since?: number };
 export type Owed = { state: "ok"; items: OwedItem[]; unread: string[]; skipped?: string[] } | Absent;
-const OWED_SOURCES = ["unsigned specs", "handoff items", "chief doc lines"];
+const OWED_SOURCES = ["unsigned specs", "handoff items", "chief doc lines", "owed ledger"];
 type RoundKey = { spec?: unknown; critical_open?: { id: string; class: string; kind: string; round: number; verdict_path: string }[]; error?: string };
 type RoundStatus = { cap: number; classes: string[]; keys: Record<string, RoundKey> };
 const ROUTE = resolve(import.meta.dir, "../telegram/chief-route.ts"), ROUND_LEDGER = "round ledger", POOL_HOLDS = "pool holds";
@@ -190,7 +190,7 @@ const specId = (p: string) => {
   return r.replace(/\.md$/, "");
 };
 // `skipped` takes the critic files of single specs that could not be read: the rest of the list still stands.
-function specItems(bucket: string, version: string, open: Map<string, string>, skipped: string[], unread: string[], env: Env): OwedItem[] {
+function specItems(bucket: string, version: string, open: Map<string, string>, unknown: Set<string>, skipped: string[], unread: string[], env: Env): OwedItem[] {
   const signed = new Set<string>();
   let ledger = "";
   try { ledger = readText(join(bucket, "release", version, "operator.jsonl")); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; } // a release with no record yet has signed nothing
@@ -220,12 +220,14 @@ function specItems(bucket: string, version: string, open: Map<string, string>, s
         if ((e as NodeJS.ErrnoException).code !== "ENOENT") { skipped.push(basename(path)); if (actor !== "operator") actor = "unknown"; }
       }
     }
-    items.push({ actor, source: "unsigned spec", key, title: open.get(key)!, act: actor === "unknown" ? "reconcile the unread spec evidence" : "sign the spec, or rule on its findings",
+    if (unknown.has(key)) actor = "unknown";
+    items.push({ actor, source: "unsigned spec", key, title: open.get(key)!, act: actor === "unknown" ? "reconcile the ticket status and the unread spec evidence" : "sign the spec, or rule on its findings",
       ctx: `${spec}: latest critic round ${n} reads ${/^SPEC (?:CLEAN|FINDINGS \d+)$/.test(last) ? last : "no verdict line"}, no spec row in operator.jsonl` });
   }
   for (const [key, st] of Object.entries(status?.keys ?? {}).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
     if (!open.has(key) || !Array.isArray(st.critical_open) || !st.critical_open.length) continue;
-    items.push({ actor: "operator", source: "operator-critical finding", key, title: open.get(key)!, act: "rule on each finding; the chief records the ruling with chief-route.ts round-critical",
+    const unreadStatus = unknown.has(key);
+    items.push({ actor: unreadStatus ? "unknown" : "operator", source: "operator-critical finding", key, title: open.get(key)!, act: unreadStatus ? "reconcile the ticket status and responsible actor" : "rule on each finding; the chief records the ruling with chief-route.ts round-critical",
       ctx: st.critical_open.map((c) => `${c.id} (${c.class}) in ${c.kind} round ${c.round}, ${basename(String(c.verdict_path))}`).join("; ") });
   }
   return items;
@@ -233,7 +235,7 @@ function specItems(bucket: string, version: string, open: Map<string, string>, s
 function handoffAnswered(bucket: string, handoff: string, line: string): boolean {
   const keys = [...line.matchAll(/HIMMEL-\d+/g)].map((m) => m[0]);
   const asks = [...line.matchAll(/"([^"]{6,})"/g)].map((m) => m[1].toLowerCase().split(/\s+/).join(" "));
-  if (!keys.length && !asks.length) return false;
+  if (!asks.length) return false;
   const dir = join(bucket, "specs", "decisions");
   let files: string[];
   try { files = readdirSync(dir); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return false; throw e; }
@@ -253,7 +255,7 @@ function handoffItems(bucket: string): OwedItem[] | undefined {
     if (!best || t > best.t) best = { f, t };
   }
   const sec = best ? mdSection(readText(join(bucket, best.f)), "Open operator items") : undefined;
-  return sec?.map((l) => l.trim()).filter((l) => l && !/^[-*\s]*(?:none\.?|<placeholder>)$/i.test(l))
+  return sec?.map((l) => l.trim()).filter((l) => l && !/^[-*\s]*(?:none\.?|<(?![a-z][a-z0-9+.-]*:)[^>]*>)$/i.test(l))
     .map((l): OwedItem => {
       const answered = handoffAnswered(bucket, join(bucket, best!.f), l);
       return { actor: answered ? "chief" : "operator", source: "handoff", key: null, title: clip(l.replace(/^[-*]\s+/, ""), 140), ctx: best!.f,
@@ -359,6 +361,26 @@ function unclosedItems(doc: string, env: Env): OwedItem[] {
   }
   return items;
 }
+function ledgerItems(bucket: string): OwedItem[] {
+  let text: string;
+  try { text = readText(join(bucket, "owed.jsonl")); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return []; throw e; }
+  const adds = new Map<string, Record<string, unknown>>(), closed = new Set<string>();
+  for (const l of text.split("\n")) {
+    try {
+      const r = JSON.parse(l);
+      if (r?.op === "add" && typeof r.id === "string") adds.set(r.id, r);
+      else if (r?.op === "close" && typeof r.ref === "string") closed.add(r.ref);
+    } catch { continue; }
+  }
+  const items: OwedItem[] = [];
+  for (const [id, r] of adds) {
+    if (closed.has(id) || r.actor !== "operator") continue;
+    const key = typeof r.key === "string" && /^[A-Z][A-Z0-9]*-\d+$/.test(r.key) ? r.key : null;
+    items.push({ actor: "operator", source: "owed ledger", key, title: clip(String(r.text ?? id), 140), ctx: `${id} (${String(r.kind)}) in owed.jsonl`,
+      act: r.kind === "proof" ? "run the proof" : "do what the row names" });
+  }
+  return items;
+}
 function newestChiefDoc(env: Env): string | undefined {
   if (env.HIMMEL_CHIEF_DOC) return env.HIMMEL_CHIEF_DOC;
   if (!env.HANDOVER_DIR) return undefined;
@@ -418,11 +440,12 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
   const tryRead = (what: string, f: () => OwedItem[] | undefined, none: string) => {
     try { const got = f(); if (got) items.push(...got); else miss(what, none); } catch (e) { miss(what, (e as Error).message); }
   };
-  if (!bucket) { miss("unsigned specs", "no bucket: no chief doc under the handover root, and HIMMEL_BUCKET_DIR is not set"); miss("handoff items", "no bucket"); }
+  if (!bucket) { miss("unsigned specs", "no bucket: no chief doc under the handover root, and HIMMEL_BUCKET_DIR is not set"); miss("handoff items", "no bucket"); miss("owed ledger", "no bucket"); }
   else {
     if (!running) miss("unsigned specs", "no running version");
-    else tryRead("unsigned specs", () => specItems(bucket, running!, open, skipped, unread, env), "none");
+    else tryRead("unsigned specs", () => specItems(bucket, running!, open, unknownKeys, skipped, unread, env), "none");
     tryRead("handoff items", () => handoffItems(bucket), `no Open operator items section in the newest HANDOFF under ${bucket}`);
+    try { items.push(...ledgerItems(bucket)); } catch (e) { miss("owed ledger", (e as Error).message); }
   }
   if (!doc) miss("chief doc lines", "no chief doc: none found under the handover root, and HIMMEL_CHIEF_DOC is not set");
   else tryRead("chief doc lines", () => {

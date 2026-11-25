@@ -47,13 +47,18 @@ answers). The tick reads local files only: no `gh` or Jira call. `chief-wait.sh`
 the whole value, so a moved count wakes you once (`WAKE tick changed=hreg`); `hreg=?` is a
 failed read and keeps the saved value. Act on it: `a` → `holds.py on --workers-from
 <fleet.json> --repo <repo>` seeds the rows (`holds.py on` runs the backfill itself); `b` →
-`holds.py gc --repo <repo>` drops them; `c` → the operator is already paged.
+`holds.py gc --repo <repo>` drops them; `c` → an ask you can grant has already woken you as
+`WAKE hold-ask` (`waiter.md`), and an operator-only ask has already paged the operator.
 
-A pending HOLD-ASK reaches the operator on Telegram once, through the same sender as
-`DENIAL-PAGE`: `HOLD-ASK <key> wants <path> (held by <holder>). Paste in a real terminal,
-not a Claude window, and type the path back: python3 -I <primary>/scripts/handover/chief-kit/holds.py
-grant --key <key> --repo <primary> <path>`. The page record is `<inbox>.wait.holdasks`
-(one `<key>\t<path>` line per page, written before the send); delete the line to page again.
+A pending HOLD-ASK on a `ci-trust-paths.txt` path wakes you once as `WAKE hold-ask <key> wants
+<path> (held by <holder>). Grant: <command>` and pages nobody. One on settings or `.github/`
+reaches the operator on Telegram, through the same sender as `DENIAL-PAGE`: `HOLD-ASK <key> wants
+<path> (held by <holder>). Paste in a real terminal, not a Claude window, and type the path back:
+python3 -I <primary>/scripts/handover/chief-kit/holds.py grant --key <key> --repo <primary> <path>`,
+and once more as `hold-ask-stuck` if still ungranted after 30 minutes. An ask whose key has no live
+worker and no open PR does neither. The records are `<inbox>.wait.holdwoke` for a wake and
+`<inbox>.wait.holdasks` for a page (one `<key>\t<path>` line per ask, written before the wake or
+send); delete the line to wake or page again.
 You can stamp a trust path yourself with the same command plus `--chief-doc <your doc>`.
 
 `workers=<label>:IDLE-HELD` means a held lock with no session transcript activity
@@ -94,7 +99,7 @@ it what it needs (a new bus message wakes it once more), relaunch it from its RE
 or close it. A `capped` worker whose doc has had no write for `CHIEF_WAIT_WORKER_SILENT_MIN` minutes wakes the chief as `WAKE worker-silent` (`waiter.md`); rc 3 and rc 4 wake nothing, read them at the next tick. Absent when no waker
 left a state file.
 
-`chief-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <worker>` Telegram per classifier-denied `headed-arm-worker.sh` launch (worker, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter does not call it yet.
+`chief-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <worker>` Telegram per classifier-denied `headed-arm-worker.sh` launch (worker, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter does not call it yet. A launch the launcher itself refuses or fails (exit non-zero) needs no monitor: `headed-arm-worker.sh` appends `LAUNCH-REFUSED <session> <reason>` to the launch log and to your console inbox, which wakes the waiter; `chief-kit/launch-confirm.sh` reports a launch that started no session as `LAUNCH-UNCONFIRMED` the same way.
 
 Five, and no more — each filters to actionable changes. Tick and Telegram run
 inside the single step-10 waiter. Approved stream mode arms `chief-wait.sh

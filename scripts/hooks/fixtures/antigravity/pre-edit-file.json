@@ -1,0 +1,21 @@
+{
+  "artifactDirectoryPath": "/home/testuser/.t3/userdata/providers/antigravity/fixturehash0000000000000000000000000000000000000000000000000000/antigravity-acp/brain/17e2b6ee-20ff-45f8-878e-7917b1f1261c",
+  "conversationId": "17e2b6ee-20ff-45f8-878e-7917b1f1261c",
+  "cwd": "/tmp/himmel-agy-fixture",
+  "hookEventName": "PreToolUse",
+  "modelName": "gemini-3.8-flash-low",
+  "stepIdx": 20,
+  "toolCall": {
+    "args": {
+      "Path": "/tmp/himmel-agy-fixture/editme.txt",
+      "Replacement": "line2_edited",
+      "Target": "line2"
+    },
+    "id": "call_2142219446433089348",
+    "name": "edit_file"
+  },
+  "transcriptPath": "/home/testuser/.t3/userdata/providers/antigravity/fixturehash0000000000000000000000000000000000000000000000000000/antigravity-acp/brain/17e2b6ee-20ff-45f8-878e-7917b1f1261c/.system_generated/logs/transcript_full.jsonl",
+  "workspacePaths": [
+    "/tmp/himmel-agy-fixture"
+  ]
+}

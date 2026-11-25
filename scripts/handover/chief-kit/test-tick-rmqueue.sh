@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-tick-rmqueue.sh — tick.sh rm-queue=<n>,<oldest age>m and the automatic `jira release rm-run`:
-# an open placement request older than TICK_RMRUN_MIN minutes (default 30) makes the tick launch ONE
+# an open placement request older than TICK_RMRUN_MIN minutes (default 2) makes the tick launch ONE
 # detached rm-run for the chief doc's `release:` release, never while the lease is held and never
 # twice inside TICK_RMRUN_MIN_SECS. The state read and the rm-run are stubbed; nothing touches Jira.
 #
@@ -98,10 +98,10 @@ sleep 1
 check 'a second tick inside the minimum interval shows the queue but launches no second rm-run' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
 check 'and still reads the queue' '2,45m' "$(field rm-queue "$out")"
 
-reset; state '["Q-1"]' "\"$(ago 10)\"" null
+reset; state '["Q-1"]' "\"$(ago 1)\"" null
 out="$(tick)"
 sleep 1
-check 'a request younger than the threshold shows rm-queue and runs nothing' '1,10m' "$(field rm-queue "$out")"
+check 'a request younger than the threshold shows rm-queue and runs nothing' '1,1m' "$(field rm-queue "$out")"
 check 'and no rm-run ran' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
 
 reset; state '["Q-1"]' "\"$(ago 45)\"" '{"holder":"rm-run-1","epoch":3}'
@@ -189,9 +189,9 @@ out="$(tick)"
 sleep 1
 check '8731 U2: a blocked move is the chief repair, never an rm-run job: no launch, field elided' '' "$(field rm-queue "$out")"
 check '8731 U2: and no rm-run ran' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
-reset; stateu '["Q-1"]' "\"$(ago 10)\"" null "$U_REPLAY"
+reset; stateu '["Q-1"]' "\"$(ago 1)\"" null "$U_REPLAY"
 out="$(tick)"
-check '8731 U2: a young open request does not hold back the replay of an interrupted ruling' '1,10m,replay=1,run' "$(field rm-queue "$out")"
+check '8731 U2: a young open request does not hold back the replay of an interrupted ruling' '1,1m,replay=1,run' "$(field rm-queue "$out")"
 check '8731 U2: one rm-run' '1' "$(ran)"
 reset; printf '{"status":"UNKNOWN","requests":{"open":[],"claimed":[]},"unfinished_rulings":%s}\n' "$U_REPLAY" > "$W/state.json"
 out="$(TICK_RMQ_EXIT=3 tick)"
@@ -325,10 +325,10 @@ reset; stateu '[]' null null "$(ids_json 5 4 3 2 1)"
 check '8731 U4: the same five listed in descending order print the same text' "$WANT5" "$(field rm-blocked "$(tick)")"
 reset; stateu '[]' null null "$(ids_json 3 1 5 2 4)"
 check '8731 U4: and listed in a mixed order' "$WANT5" "$(field rm-blocked "$(tick)")"
-reset; stateu '["Q-1"]' "\"$(ago 10)\"" null "$U_BLOCKED"
+reset; stateu '["Q-1"]' "\"$(ago 1)\"" null "$U_BLOCKED"
 out="$(tick)"
 sleep 1
-check '8731 U4: an open request and a blocked ruling together print both fields' '1,10m 1:K-1@R-R1-0007' "$(field rm-queue "$out") $(field rm-blocked "$out")"
+check '8731 U4: an open request and a blocked ruling together print both fields' '1,1m 1:K-1@R-R1-0007' "$(field rm-queue "$out") $(field rm-blocked "$out")"
 check '8731 U4: and a young request still launches no rm-run' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
 
 reset; state '[]' null null
@@ -426,6 +426,13 @@ reset; state '["Q-1"]' "\"$(ago 45)\"" null
 out="$(TICK_RMRUN_MIN=60 tick)"
 sleep 1
 check 'TICK_RMRUN_MIN=60 moves the threshold past a 45 min request' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+
+mkdoc R1
+reset; state '["Q-1"]' "\"$(ago 3)\"" null
+out="$(tick)"
+check 'S3: with TICK_RMRUN_MIN unset, a 3 min request launches the rm-run (default 2)' '1,3m,run' "$(field rm-queue "$out")"
+check 'S3: and the rm-run ran once' '1' "$(ran)"
+check 'S3: tick --help says the default is 2' '1' "$(bash "$SUT" --help 2>&1 | grep -c 'TICK_RMRUN_MIN minutes (default 2)')"
 
 GOLDEN="$HERE/fixtures/state-golden.json"
 mkdoc R1
@@ -536,6 +543,51 @@ check '8731 U4: a different set after an unknown wakes once' 'WAKE tick changed=
 check '8731 U4: and that set is then the baseline: no second wake' '' "$(cw_wait 8 | grep '^WAKE ' || true)"
 rm -f "$W/cw/consoles/c.md.wait.state"
 check '8731 U4: a set already present when the waiter has no saved key is its baseline: wakes nobody' '' "$(cw_wait 8 | grep '^WAKE ' || true)"
+
+statel() {
+    printf '{"status":"%s","versions":["v1.1.3","v1.1.4"],"lease":null,"requests":{"open":[],"claimed":[],"oldest_open":null},"priority_review":%s,"chief_placements":%s,"asks_apart":%s}\n' "${4:-OK}" "$1" "$2" "$3" > "$W/state.json"
+}
+mkdoc R1
+reset; statel '[]' '[]' '[]'
+rc0=0; out="$(tick)" || rc0=$?
+check 'S1b: empty lists print no prio-review, chief-placed or ask-apart field' '||' "$(field prio-review "$out")|$(field chief-placed "$out")|$(field ask-apart "$out")"
+reset; statel '[{"key":"K-2","ruling":"R-R1-0002","ground":"door:mild"},{"key":"K-3","ruling":"R-R1-0003","ground":"door:started"}]' \
+    '[{"key":"K-5","ruling":"R-R1-0005","reason":"the chief placed it"}]' \
+    '[{"key":"K-7","ruling":"R-R1-0007","version":"v1.1.4","parent":"P-1","parent_version":"v1.1.3"},{"key":"K-8","ruling":"R-R1-0008","version":"backlog","parent":"P-2","parent_version":"v1.1.3"}]'
+rc1=0; out="$(tick)" || rc1=$?
+check 'S1b: prio-review= counts the priority review and names its oldest key' '2:K-2' "$(field prio-review "$out")"
+check 'S1b: chief-placed= counts the chief placements and names each key' '1:K-5' "$(field chief-placed "$out")"
+check 'S1b: ask-apart= counts the asks apart and names each key' '2:K-7,K-8' "$(field ask-apart "$out")"
+check 'S1b: rm-lists-<stem>.tsv holds a row per chief placement and ask apart for the waiter' \
+    "$(printf 'chief\tK-5\tR-R1-0005\tthe chief placed it\t\t\napart\tK-7\tR-R1-0007\tv1.1.4\tP-1\tv1.1.3\napart\tK-8\tR-R1-0008\tbacklog\tP-2\tv1.1.3')" \
+    "$(cat "$W/state/rm-lists-chief.tsv" 2>/dev/null)"
+check 'S1b: listed entries never change the tick exit code' "$rc0" "$rc1"
+check 'S1b: none of the three fields is a row of the wake table (outside the action key)' '' "$(cut -f1 "$HERE/wake-rules.tsv" | grep -xE 'prio-review|chief-placed|ask-apart' || true)"
+statel '[{"key":"K-2","ruling":"R-R1-0002","ground":"door:mild"}]' '[{"key":"K-5","ruling":"R-R1-0005","reason":"r"}]' '[]' DEGRADED
+out="$(tick)"
+check 'S1b: a state that is not OK prints none of the three fields' '||' "$(field prio-review "$out")|$(field chief-placed "$out")|$(field ask-apart "$out")"
+check 'S1b: and leaves no rm-lists tsv' 'gone' "$([ -e "$W/state/rm-lists-chief.tsv" ] || echo gone)"
+
+printf '#!/bin/sh\necho "$@" >> "%s/unplaced-asked"\ncat "%s/unplaced.out"\n' "$W" "$W" > "$W/unplaced-probe.sh"
+export TICK_UNPLACED_PROBE="$W/unplaced-probe.sh"
+mkdoc R1
+reset; rm -f "$W/unplaced-asked"; statel '[]' '[]' '[]'
+printf 'K-5\tpending\nK-6\tserious-later\nK-7\tnew\nK-8\tnew\nK-9\tlegacy\nK-10\tstale-label\nK-11\tserious-later\n2\npending=1 legacy=1 stale-label=1 serious-later=2\n' > "$W/unplaced.out"
+out="$(tick)"
+check 'S4: unplaced= counts new, then each non-zero bucket' '2,pending=1,legacy=1,stale-label=1' "$(field unplaced "$out")"
+check 'S4: serious-later= counts the tickets and names the oldest key' '2:K-6' "$(field serious-later "$out")"
+check 'S4: the tick asks for the list with --since-door and the state, and passes no date of its own' 'ok' "$(grep -q -e '--unplaced' "$W/unplaced-asked" && grep -q -e '--list' "$W/unplaced-asked" && grep -q -e '--since-door' "$W/unplaced-asked" && grep -q -e '--state ' "$W/unplaced-asked" && ! grep -q -e '--since ' "$W/unplaced-asked" && echo ok)"
+check 'S4: neither field is a row of the wake table (outside the action key)' '' "$(cut -f1 "$HERE/wake-rules.tsv" | grep -xE 'unplaced|serious-later' || true)"
+printf '0\npending=0 legacy=0 stale-label=0 serious-later=0\n' > "$W/unplaced.out"
+out="$(tick)"
+check 'S4: both fields are absent at zero' '|' "$(field unplaced "$out")|$(field serious-later "$out")"
+printf 'K-6\tserious-later\n0\npending=0 legacy=0 stale-label=0 serious-later=1\n' > "$W/unplaced.out"
+out="$(tick)"
+check 'S4: a serious-later ticket alone prints serious-later= and no unplaced=' '|1:K-6' "$(field unplaced "$out")|$(field serious-later "$out")"
+reset; rm -f "$W/unplaced-asked"; statel '[]' '[]' '[]' DEGRADED
+out="$(tick)"
+check 'S4: a state that is not OK prints neither field and asks nothing' '||no' "$(field unplaced "$out")|$(field serious-later "$out")|$([ -e "$W/unplaced-asked" ] && echo asked || echo no)"
+check 'S4: the tick runs no git read of its own for the date' '0' "$(sed -n '/^unplaced_f=/,/^# held=/p' "$HERE/tick.sh" | grep -c 'git ')"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

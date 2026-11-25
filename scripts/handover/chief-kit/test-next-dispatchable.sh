@@ -495,13 +495,13 @@ run7() { NEXT_DISPATCH_MIRROR="$M7" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATC
 o7="$(run7 --top 20 --doc "$CDOC" | grep -v '^#' | grep -v '^RESUME' | cut -f2 | paste -sd, -)"
 [ "$o7" = "HIMMEL-112,HIMMEL-111,HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130,HIMMEL-140,HIMMEL-141,HIMMEL-132,HIMMEL-170,HIMMEL-171" ] && pass "one ticket per tier on shuffled input comes out in tier order" || fail "tier order is '$o7'"
 lacks "a (CLOUD) entry on the priority line is excluded from local output" "$o7" "HIMMEL-113"
-o7b="$(run7 --doc "$CDOC" --priority-pool-only | grep -v '^#' | cut -f2 | paste -sd, -)"
+o7b="$(run7 --doc "$CDOC" --priority-pool-only --owners "$KP-999" | grep -v '^#' | cut -f2 | paste -sd, -)"
 [ "$o7b" = "HIMMEL-112,HIMMEL-111,HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130,HIMMEL-140" ] && pass "--priority-pool-only lists tiers 1-4 only: the rest of the earliest version follows tier 3, a later version stays out" || fail "pool-only is '$o7b'"
-lacks "--priority-pool-only prints no RESUME row" "$(run7 --doc "$CDOC" --priority-pool-only)" "RESUME"
+lacks "--priority-pool-only prints no RESUME row" "$(run7 --doc "$CDOC" --priority-pool-only)" "RESUME"$'\t'
 printf '# chief\n\n## Live state\n\n**priority:** K1 | 112 SCORECARD | 111 113 (CLOUD) | [PR 170] since 10.171\nqueue: none\n' > "$WORK/chief-doc-bold.md"
-o7d="$(run7 --doc "$WORK/chief-doc-bold.md" --priority-pool-only | grep -v '^#' | cut -f2 | paste -sd, -)"
+o7d="$(run7 --doc "$WORK/chief-doc-bold.md" --priority-pool-only --owners "$KP-999" | grep -v '^#' | cut -f2 | paste -sd, -)"
 [ "$o7d" = "HIMMEL-112,HIMMEL-111,HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130,HIMMEL-140" ] && pass "a bold **priority:** line with '113 (CLOUD)' and bracketed or dotted numbers ranks as written" || fail "bold-line pool is '$o7d'"
-o7c="$(run7 --priority-pool-only |grep -v '^#' | cut -f2 | paste -sd, -)"
+o7c="$(run7 --priority-pool-only --owners "$KP-999" |grep -v '^#' | cut -f2 | paste -sd, -)"
 [ "$o7c" = "HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130,HIMMEL-140" ] && pass "without --doc the pool is the labels, tiers 2-3 and the rest of the earliest version" || fail "no-doc pool is '$o7c'"
 # the tier-1 must label follows the current version: with v2.0.0 current, must-v2.0.0 is tier 1; must-v1.1.3 and a later version's label are not
 M31="$WORK/jira-mirror31/HIMMEL"; mkdir -p "$M31"
@@ -511,13 +511,13 @@ mk HIMMEL-311 "To Do" Low '["must-v1.1.3"]' '[]' '[]' "must label of another ver
 mk HIMMEL-312 "To Do" Low '["must-v2.0.1"]' '[]' '[]' "must label of a later version" "Edit scripts/lib/m3.sh only."
 M="$M_SAVE"
 printf 'v2.0.0\tfalse\t\nv2.0.1\tfalse\t\n' > "$WORK/jira-mirror31/HIMMEL.versions.tsv"
-o31="$(NEXT_DISPATCH_MIRROR="$M31" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only 2>/dev/null | grep -v '^#' | cut -f2 | paste -sd, -)"
+o31="$(NEXT_DISPATCH_MIRROR="$M31" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only --owners "$KP-999" 2>/dev/null | grep -v '^#' | cut -f2 | paste -sd, -)"
 [ "$o31" = "HIMMEL-310" ] && pass "only the must label of the current version is tier 1; another version's must label stays out of the pool" || fail "must-label pool is '$o31'"
 M8="$WORK/jira-mirror8/HIMMEL"; mkdir -p "$M8"
 M_SAVE="$M"; M="$M8"
 mk HIMMEL-160 "To Do" Highest '[]' '["v1.0.1"]' '[]' "only tier5" "Edit scripts/lib/w1.sh only."
 M="$M_SAVE"
-e8="$(NEXT_DISPATCH_MIRROR="$M8" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only 2>/dev/null)"; e8_rc=$?
+e8="$(NEXT_DISPATCH_MIRROR="$M8" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only --owners "$KP-999" 2>/dev/null)"; e8_rc=$?
 [ "$e8_rc" = 0 ] && pass "an empty pool exits 0" || fail "empty pool rc=$e8_rc"
 has "an empty pool prints POOL-EMPTY" "$e8" "POOL-EMPTY"
 lacks "an empty pool prints no dispatchable ticket row" "$(printf '%s\n' "$e8" | grep -v '^NEXT-TIER')" "HIMMEL-160"
@@ -525,7 +525,7 @@ M9="$WORK/jira-mirror9/HIMMEL"; mkdir -p "$M9"
 M_SAVE="$M"; M="$M9"
 mk HIMMEL-20 "To Do" Low '["operator-directed"]' '[]' '[]' "pool ticket the classifier blocks" "Edit scripts/lib/w2.sh only."
 M="$M_SAVE"
-e9="$(NEXT_DISPATCH_MIRROR="$M9" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only 2>/dev/null)"
+e9="$(NEXT_DISPATCH_MIRROR="$M9" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only --owners "$KP-999" 2>/dev/null)"
 has "a pool whose tickets are all classified BLOCKED prints POOL-EMPTY" "$e9" "POOL-EMPTY"
 
 # --- the pool offers worker-less In Progress tickets and reads the priority: line as written ---
@@ -583,7 +583,7 @@ x12="$(NEXT_DISPATCH_MIRROR="$M12" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH
 has "pool-only: a worker-less pool ticket alone is a RESUME row" "$x12" "RESUME	HIMMEL-420"
 lacks "pool-only: a pool with only a RESUME row is not POOL-EMPTY" "$x12" "POOL-EMPTY"
 n12="$(NEXT_DISPATCH_MIRROR="$M12" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only 2>"$WORK/n12.err")"
-lacks "pool-only: no worker source (no --owners, no --workers-from) offers no RESUME row" "$n12" "RESUME"
+lacks "pool-only: no worker source (no --owners, no --workers-from) offers no RESUME row" "$n12" "RESUME"$'\t'
 has "pool-only: no worker source says why on stderr" "$(cat "$WORK/n12.err")" "no worker source"
 # a doc whose only priority: line sits under a later heading names no tier-1 key
 printf '# chief\n\n## Live state\n\nnothing here\n\n## Later\n\npriority: 408\n' > "$D11"
@@ -613,11 +613,11 @@ has "pool-only: an ordinary worker-less pool ticket is still a RESUME row" "$f13
 # --- pool depth: --top is the free-slot count; a pool short of it says LOW, and
 # an empty pool names the next-tier candidates (tier 5, rank order unchanged)
 # on NEXT-TIER rows a dispatcher reading ticket rows never picks up.
-has "a pool shorter than the free slots prints pool=<n>/<slots>,LOW" "$(run7 --doc "$CDOC" --priority-pool-only --top 8)" "pool=7/8,LOW"
-p10="$(run7 --doc "$CDOC" --priority-pool-only --top 4)"
+has "a pool shorter than the free slots prints pool=<n>/<slots>,LOW" "$(run7 --doc "$CDOC" --priority-pool-only --owners "$KP-999" --top 8)" "pool=7/8,LOW"
+p10="$(run7 --doc "$CDOC" --priority-pool-only --owners "$KP-999" --top 4)"
 has "a pool that fills the slots prints pool=<n>/<slots>" "$p10" "pool=4/4"
 lacks "a pool that fills the slots is not LOW" "$p10" "LOW"
-e10="$(NEXT_DISPATCH_MIRROR="$M8" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only --top 8 2>/dev/null)"
+e10="$(NEXT_DISPATCH_MIRROR="$M8" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --priority-pool-only --owners "$KP-999" --top 8 2>/dev/null)"
 has "an empty pool prints pool=0/<slots>,LOW" "$e10" "pool=0/8,LOW"
 has "an empty pool lists the next-tier candidate on a NEXT-TIER row" "$e10" "NEXT-TIER	HIMMEL-160"
 
@@ -635,7 +635,7 @@ M="$M_SAVE"
 printf 'v1.0.1\tfalse\t\nv1.0.2\tfalse\t\n' > "$WORK/jira-mirror30/HIMMEL.versions.tsv"
 printf '# chief\n\n## Live state\n\npriority: \n' > "$WORK/chief-doc30.md"
 run30() { NEXT_DISPATCH_MIRROR="$M30" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
-o30="$(run30 --doc "$WORK/chief-doc30.md" --priority-pool-only --top 7 --dispositions)"
+o30="$(run30 --doc "$WORK/chief-doc30.md" --priority-pool-only --owners "$KP-806" --top 7 --dispositions)"
 r30="$(printf '%s\n' "$o30" | grep -v '^#' | grep -v '^POOL-EMPTY' | cut -f1,2 | tr '\t' ':' | paste -sd, -)"
 [ "$r30" = "LOCAL:HIMMEL-803,LOCAL:HIMMEL-801" ] && pass "(8134) an unlabelled current-version To Do ticket is a pool row after the labelled one, with an empty priority line" || fail "(8134) pool is '$r30'"
 lacks "(8134) the current-version ticket is not dropped as outside the priority pool" "$(printf '%s\n' "$o30" | grep "^# disposition $KP-801 ")" "outside the priority pool"
@@ -1248,7 +1248,7 @@ archived_out="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="Archived" 
 [ "$archived_rc" = 0 ] && pass "Done category: live Archived run exits 0" || fail "Done category: live Archived run exited $archived_rc"
 lacks "Done category: an unlisted live status (Archived) holds the dependent" "$archived_out" "HIMMEL-9304"
 # the disposition list drops a Done-category ticket from the open set and keeps an open one
-dispo_out="$(run --no-classify --priority-pool-only --dispositions)"; dispo_rc=$?
+dispo_out="$(run --no-classify --priority-pool-only --owners "$KP-999" --dispositions)"; dispo_rc=$?
 [ "$dispo_rc" = 0 ] && pass "Done category: --dispositions exits 0" || fail "Done category: --dispositions exited $dispo_rc"
 lacks "Done category: --dispositions does not list a wont do ticket" "$dispo_out" "HIMMEL-9301"
 has "Done category: --dispositions lists an open ticket" "$dispo_out" "# disposition HIMMEL-9302 "
@@ -1378,7 +1378,7 @@ mk HIMMEL-917 "To Do" Medium '["operator-directed","backlog","proposed-v1.2.0"]'
 M="$M_SAVE"
 printf 'v1.0.1\tfalse\t\n' > "$WORK/jira-mirror-intake/HIMMEL.versions.tsv"
 runi() { NEXT_DISPATCH_MIRROR="$MI" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
-oi="$(runi --priority-pool-only --top 7)"; oi_rc=$?
+oi="$(runi --priority-pool-only --owners "$KP-999" --top 7)"; oi_rc=$?
 check "(8170) the intake dispatch exits 0" "0" "$oi_rc"
 has "(8170) a pool short of the slots with versionless operator work reads INTAKE:<m>" "$oi" "# pool=3/7,INTAKE:4"
 lacks "(8170) the pool line is not a bare LOW while INTAKE is non-zero" "$(printf '%s\n' "$oi" | grep '^# pool=')" "LOW"
@@ -1406,7 +1406,7 @@ has "(8336) a --dispositions run prints the intake line with the version" "$od" 
 MN="$WORK/jira-mirror-nov/HIMMEL"; mkdir -p "$MN"; cp "$MI"/*.md "$MN"/
 printf 'v1.0.1\ttrue\t\n' > "$WORK/jira-mirror-nov/HIMMEL.versions.tsv"
 runn() { NEXT_DISPATCH_MIRROR="$MN" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
-on="$(runn --priority-pool-only --top 7)"
+on="$(runn --priority-pool-only --owners "$KP-999" --top 7)"
 has "(8336) with no open version the intake line names the keys and no version" "$on" "# intake 2: HIMMEL-901 HIMMEL-902"
 lacks "(8336) with no open version the intake line never reads 'for no open version'" "$on" "no open version"
 
@@ -1448,7 +1448,7 @@ lacks "(8349) the head has no ordinary row either" "$on" "LOCAL${TAB}HIMMEL-801$
 lacks "(8349) a series member is not dropped as a collision" "$on" "held by listed"
 tp="$(runs "$UI" 1 --top 1)"
 has "(8349) a full list still lets the colliding tickets join the series" "$tp" "SERIES${TAB}LOCAL${TAB}HIMMEL-801,HIMMEL-802,HIMMEL-803${TAB}"
-pp="$(runs "$UI" 1 --priority-pool-only --top 5)"
+pp="$(runs "$UI" 1 --priority-pool-only --owners "$KP-999" --top 5)"
 has "(8349) --priority-pool-only lists the series row too" "$pp" "SERIES${TAB}LOCAL${TAB}HIMMEL-801,HIMMEL-802,HIMMEL-803${TAB}"
 has "(8349) the drop line counts the series members as listed" "$on" "# dropped from v1.0.1: 0 of 3 To Do"
 has "(8349) --dispositions says listed SERIES for a member" "$on" "# disposition HIMMEL-803 listed SERIES HIMMEL-801"
@@ -1543,6 +1543,8 @@ st="$(runs "$SM" 1 --workers-from "$WORK/fleet-s.json" --why)"
 has "(8349) a candidate colliding only with a live series worker is STACKABLE" "$st" "STACKABLE HIMMEL-851 $WORK/HIMMEL-790-N5-series.md"
 lacks "(8349) a STACKABLE candidate has no dispatch row" "$st" "LOCAL${TAB}HIMMEL-851${TAB}"
 lacks "(8349) a STACKABLE candidate is not told as an ordinary collision" "$st" "# drop HIMMEL-851 collision"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N5\\u0007"}]}\n' "$WORK/HIMMEL-790-N5-series.md" > "$WORK/fleet-sc.json"
+has "10557 R8: a series worker whose label carries a control character is still STACKABLE" "$(runs "$SM" 1 --workers-from "$WORK/fleet-sc.json")" "STACKABLE HIMMEL-851 $WORK/HIMMEL-790-N5-series.md"
 has "(8349) a free ticket still lists beside a series worker" "$st" "LOCAL${TAB}HIMMEL-853${TAB}"
 has "(8349) a candidate also named by an open PR prints an overlap" "$st" "# overlap HIMMEL-852 "
 lacks "(8349) a candidate also held by an open PR is not STACKABLE" "$st" "STACKABLE HIMMEL-852"
@@ -2032,10 +2034,21 @@ lacks "and hands nothing off" "$pmd" "HANDED-OFF HIMMEL-133"
 
 # A reader answer the dispatcher does not recognise, or one of the wrong shape, reads as an unreadable body: never dispatched blind.
 cat > "$WORK/odd-reader.py" <<'EOF'
-import sys
+import json, sys
 answers = {140: "garbage", 141: "remaining", 142: "remaining\ta\tb", 143: "handed-off\tHIMMEL-9", 144: "handed-off\tHIMMEL-9\ttext\textra"}
-units = "\tnowrite=0\tchief-owed=" if "--units" in sys.argv else ""
-sys.stdout.write(answers[int(sys.argv[-1].rsplit("-", 1)[1])] + units + "\n")
+n = int(sys.argv[-1].rsplit("-", 1)[1])
+answer = answers[n]
+if "--full-units" in sys.argv:
+    a = {"kind": "remaining", "handed": [], "text": "x", "nowrite": False, "chief_owed": [], "chief_invalid": [], "owed_lines": []}
+    if n == 140: a["kind"] = "garbage"
+    if n == 141: del a["text"]
+    if n == 142: a["b"] = "b"
+    if n == 143: a.update(kind="handed-off", handed=["HIMMEL-9"]); del a["text"]
+    if n == 144: a.update(kind="handed-off", handed=["HIMMEL-9"], extra="extra")
+    sys.stdout.write(json.dumps({"schema": 1, "answer": a}) + "\n")
+else:
+    units = "\tnowrite=0\tchief-owed=" if "--units" in sys.argv else ""
+    sys.stdout.write(answer + units + "\n")
 EOF
 PME_STATE="$WORK/pme"; mkdir -p "$PME_STATE/workers"
 MPME="$WORK/mpme/HIMMEL"; mkdir -p "$MPME"
@@ -2213,6 +2226,48 @@ has "(9564) ... the fixture's other To Do rows still print, HIMMEL-903 among the
 lacks "(9564) ... the key is not also a dispatch row" "$cgn" "LOCAL${TAB}HIMMEL-9640"
 lacks "(9564) ... no CORE-CHECK-FAILED header" "$cgn" "CORE-CHECK-FAILED"
 rm -f "$CGM/HIMMEL-9640.md" "$CG/core/HIMMEL-9640"
+
+mk HIMMEL-908 "To Do" High '[]' '["v1.0.1"]' '[]' "cg 908" "Edit scripts/lib/cg908.sh please."
+mk HIMMEL-909 "To Do" High '[]' '["v1.0.1"]' '[]' "cg 909" "Edit scripts/lib/cg909.sh please."
+printf 'CORE HIMMEL-908 label core\n' > "$CG/core/HIMMEL-908"; printf 'SPEC-NEEDS-OPERATOR HIMMEL-908 /state/specs/HIMMEL-908-spec.md C-R1-908 O-M1-908\n' > "$CG/spec/HIMMEL-908"
+printf 'CORE HIMMEL-909 label core\n' > "$CG/core/HIMMEL-909"; printf 'SPEC-SIGNER-UNKNOWN HIMMEL-909 C-R1-909 release v1.1.3 chain unreadable\n' > "$CG/spec/HIMMEL-909"
+cgs="$(ND_WHY=1 runcg "$CGM" --why)"
+has "a SPEC-NEEDS-OPERATOR key prints the # drop line naming the governing record" "$cgs" "# drop HIMMEL-908 spec-needs-operator O-M1-908"
+lacks "a SPEC-NEEDS-OPERATOR key prints no DESIGN, LOCAL, LOCAL?, CLOUD, RESUME or SERIES row" "$cgs" "HIMMEL-908${TAB}"
+has "a SPEC-SIGNER-UNKNOWN key prints the # drop line naming the why" "$cgs" "# drop HIMMEL-909 spec-signer-unknown release v1.1.3 chain unreadable"
+lacks "a SPEC-SIGNER-UNKNOWN key prints no row of any kind" "$cgs" "HIMMEL-909${TAB}"
+lacks "the new spec-check verbs are no CORE-CHECK-FAILED" "$cgs" "CORE-CHECK-FAILED"
+has "the other To Do rows still print beside the dropped keys" "$cgs" "LOCAL${TAB}HIMMEL-903${TAB}"
+cgst="$(runcg "$CGM" --top 2)"
+[ "$(printf '%s\n' "$cgst" | grep -c "^DESIGN")" = 2 ] && pass "a dropped SPEC-NEEDS-OPERATOR or SPEC-SIGNER-UNKNOWN key takes no --top slot" || fail "--top 2 should print the two DESIGN rows: $cgst"
+for sk in 908 909; do
+    case "$sk" in
+        908) what="naming the governing record"; exp="needs the operator's own signature (O-M1-908)" ;;
+        *) what="with signer records unreadable and the why"; exp='signer records unreadable: release v1.1.3 chain unreadable' ;;
+    esac
+    has "--why-ticket on the $sk key prints GATE core-no-spec $what" "$(runcg "$CGM" --why-ticket "HIMMEL-$sk")" "GATE HIMMEL-$sk core-no-spec: $exp"
+done
+rm -f "$CGM/HIMMEL-908.md" "$CGM/HIMMEL-909.md" "$CG/core/HIMMEL-908" "$CG/core/HIMMEL-909" "$CG/spec/HIMMEL-908" "$CG/spec/HIMMEL-909"
+
+mk HIMMEL-9477 "To Do" High '[]' '["v1.0.1"]' '[]' "cg 9477" "Edit scripts/lib/cg9477.sh please."
+printf 'CORE HIMMEL-9477 label core\n' > "$CG/core/HIMMEL-9477"
+n=0
+while IFS=$'\t' read -r want line; do
+    n=$((n + 1)); printf '%s\n' "$line" > "$CG/spec/HIMMEL-9477"
+    o="$(ND_WHY=1 runcg "$CGM" --why)"
+    case "$want" in
+        none) exp='# WARN CORE-CHECK-FAILED spec-check printed no parseable line for HIMMEL-9477' ;;
+        'SPEC ok '*) exp="LOCAL${TAB}HIMMEL-9477${TAB}" ;;
+        SPEC-STALE\ *|NO-SPEC\ *) exp="DESIGN${TAB}HIMMEL-9477${TAB}${want%% *}${TAB}" ;;
+        SPEC-NEEDS-OPERATOR\ *) exp="# drop HIMMEL-9477 spec-needs-operator ${want#* governing=}" ;;
+        SPEC-SIGNER-UNKNOWN\ *) exp="# drop HIMMEL-9477 spec-signer-unknown ${want#* why=}" ;;
+        *) exp="no such answer: $want" ;;
+    esac
+    has "fixture line $n parses to its answer: $want" "$o" "$exp"
+done < "$HERE/fixtures/spec-check-lines.txt"
+[ "$n" -ge 11 ] && pass "every line of fixtures/spec-check-lines.txt parses to its expected answer, the spaced path included; a cut line is no answer ($n lines)" \
+    || fail "the fixture held $n lines, want at least 11"
+rm -f "$CGM/HIMMEL-9477.md" "$CG/core/HIMMEL-9477" "$CG/spec/HIMMEL-9477"
 
 # fail closed: a CLI that cannot run lists no To Do row and prints one CORE-CHECK-FAILED header
 for how in missing exit3 junk spec3; do
@@ -3114,7 +3169,7 @@ p_part() { # key pr kind actor
 p_run() {
     local offline=--no-classify
     [ "$P_LIVE" = 0 ] || offline=""
-    P_OUT="$(PATH="$P_PATH" NEXT_DISPATCH_DEADLINE="$P_LIMIT" NEXT_DISPATCH_JIRA_CLI="$P_CLI" NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_BODY_CACHE="$P/cache.json" NEXT_DISPATCH_READER="$P_READER" NEXT_DISPATCH_GH_CMD="$P_GH" NEXT_DISPATCH_JIRA_CMD="$P_JIRA" \
+    P_OUT="$(PATH="$P_PATH" NEXT_DISPATCH_DEADLINE="$P_LIMIT" NEXT_DISPATCH_JIRA_CLI="$P_CLI" NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_BODY_CACHE="${P_CACHE:-$P/cache.json}" NEXT_DISPATCH_READER="$P_READER" NEXT_DISPATCH_GH_CMD="$P_GH" NEXT_DISPATCH_JIRA_CMD="$P_JIRA" \
         bash "$P_SUT" $offline --workers-dir "$P/state/workers" "$@" 2> "$P/stderr")"; P_RC=$?
 }
 p_list() { p_run --why --dispositions --top 100 --doc "$P/bucket/chief.md"; }
@@ -3260,8 +3315,11 @@ lacks 'P2b other-key warning never pairs with settled own PR' "$P_OUT" 'PR #7101
 mkdir -p "$P/core"
 cat > "$P/core/index.js" <<'EOF'
 const fs = require('fs'), a = process.argv.slice(2);
-fs.appendFileSync(process.env.P_CORE_LOG, a.join(' ') + '\n');
-if (a[1] === 'core-check') {
+fs.appendFileSync(process.env.P_CORE_LOG, a.join(' ') + (a[1] === 'core-check-batch' ? ' ' + fs.readFileSync(a[2], 'utf8') : '') + '\n');
+if (a[1] === 'core-check-batch') {
+  if (process.env.P_CORE_VERB === 'FAIL') { console.error('fixture refused'); process.exit(5); }
+  JSON.parse(fs.readFileSync(a[2], 'utf8')).forEach((g, i) => { console.log('== ' + (i + 1)); for (const k of g.keys) console.log((process.env.P_CORE_VERB || 'CORE') + ' ' + k + ' fixture'); });
+} else if (a[1] === 'core-check') {
   if (process.env.P_CORE_VERB === 'FAIL') { console.error('fixture refused'); process.exit(5); }
   for (const k of a.slice(a.indexOf('--key') + 1)) console.log((process.env.P_CORE_VERB || 'CORE') + ' ' + k + ' fixture');
 } else for (const k of a.filter(x => /^HIMMEL-\d+$/.test(x))) console.log((process.env.P_SPEC_VERB || 'NO-SPEC') + ' ' + k + ' fixture');
@@ -3274,9 +3332,9 @@ for status in 'To Do' 'In Progress'; do
     if [ "$status" = 'To Do' ]; then
         p_verdict 'P6(a)' 1; has 'P6(a) core spec gate' "$P_OUT" 'core-no-spec: NO-SPEC'; has 'P6(a) proof gate' "$P_OUT" 'no-proof:'
     else p_verdict 'P6(b)' 0; lacks 'P6(b) no To Do gates' "$P_OUT" 'core-no-spec:'; lacks 'P6(b) no proof gate' "$P_OUT" 'no-proof:'; fi
-    [ "$(grep -c '^release core-check ' "$P_CORE_LOG")" = 1 ] && pass "P6 $status one core read" || fail "P6 $status core count"
+    [ "$(grep -c '^release core-check-batch ' "$P_CORE_LOG")" = 1 ] && [ "$(grep -c '^release core-check ' "$P_CORE_LOG")" = 0 ] && pass "P6 $status one core read" || fail "P6 $status core count"
     lacks "P6 $status no other key" "$(cat "$P_CORE_LOG")" HIMMEL-11002
-    has "P6 $status key-only core argv" "$(cat "$P_CORE_LOG")" '--key HIMMEL-11001'
+    has "P6 $status key-only core argv" "$(cat "$P_CORE_LOG")" '"keys": ["HIMMEL-11001"]'
 done
 for verb in UNKNOWN FAIL BYPASS-NEEDS-SPEC; do
     p_reset; p_mk HIMMEL-11001; P_CLI="$P/core/index.js"; P_CORE_VERB="$verb"
@@ -3954,30 +4012,40 @@ ow_lockstub() { # <path> <status line or empty> <rc>: a queue-lock stand-in that
     chmod +x "$1"
 }
 
-# X6: a caller naming no worker source (E3) keeps the base's output: no line, no withhold of the pool
 mkdir -p "$OW/x6a/HIMMEL" "$OW/x6b/HIMMEL"
 OW_M="$OW/x6a/HIMMEL"; ow_mk HIMMEL-420 "In Progress" Low '["must-v1.0.1"]' '[]' '[]' "only a worker-less pool ticket" "Edit scripts/lib/t1.sh only."
 printf 'v1.0.1\tfalse\t\n' > "$OW/x6a/HIMMEL.versions.tsv"
 OW_M="$OW/x6b/HIMMEL"; ow_mk HIMMEL-160 "To Do" Highest '[]' '["v1.0.1"]' '[]' "only tier5" "Edit scripts/lib/w1.sh only."
+S1_LINE='^# owner unknown: the fleet \(no worker source named\); withheld: RESUME, IN CI, STACKABLE, SERIES FAMILY, To Do, DESIGN, NEXT-TIER; reconcile: pass --workers-from <manifest> or --owners <keys>$'
 OW_M="$OW/x6a/HIMMEL"
 ow_x6n_out="$(ow_run --priority-pool-only)"; ow_x6n_err="$(ow_err --priority-pool-only)"
-has "9335 X6: the n12 shape says on stderr that it has no worker source" "$ow_x6n_err" "no worker source"
-lacks "9335 X6: the n12 shape offers no RESUME row" "$ow_x6n_out" "RESUME"
-lacks "9335 X6: the n12 shape prints no owner-unknown line" "$ow_x6n_out$ow_x6n_err" "# owner unknown"
-has "9335 X6: the n12 shape prints POOL-EMPTY" "$ow_x6n_out" "POOL-EMPTY"
+has "10557 S1: the n12 shape says on stderr that it has no worker source" "$ow_x6n_err" "no worker source"
+lacks "10557 S1: the n12 shape offers no RESUME row" "$ow_x6n_out" "RESUME${TAB}"
+check "10557 S1: the n12 shape prints one owner-unknown line for the fleet" "1" "$(ow_n "$ow_x6n_out" "$S1_LINE")"
+has "10557 S1: the n12 shape prints POOL-EMPTY" "$ow_x6n_out" "POOL-EMPTY"
 OW_M="$OW/x6b/HIMMEL"
 ow_x6e_out="$(ow_run --priority-pool-only)"; ow_x6e_err="$(ow_err --priority-pool-only)"
-has "9335 X6: the e8 shape says on stderr that it has no worker source" "$ow_x6e_err" "no worker source"
-lacks "9335 X6: the e8 shape prints no owner-unknown line" "$ow_x6e_out$ow_x6e_err" "# owner unknown"
-has "9335 X6: the e8 shape prints POOL-EMPTY" "$ow_x6e_out" "POOL-EMPTY"
-has "9335 X6: the e8 shape lists the next-tier candidate" "$ow_x6e_out" "NEXT-TIER${TAB}HIMMEL-160"
+has "10557 S1: the e8 shape says on stderr that it has no worker source" "$ow_x6e_err" "no worker source"
+check "10557 S1: the e8 shape prints one owner-unknown line for the fleet" "1" "$(ow_n "$ow_x6e_out" "$S1_LINE")"
+has "10557 S1: the e8 shape prints POOL-EMPTY" "$ow_x6e_out" "POOL-EMPTY"
+lacks "10557 S1: the e8 shape lists no next-tier candidate" "$ow_x6e_out" "NEXT-TIER${TAB}"
+lacks "10557 S1: the e8 shape lists no To Do row" "$ow_x6e_out" "HIMMEL-160${TAB}"
+lacks "10557 S1: the e8 shape lists no DESIGN row" "$ow_x6e_out" "DESIGN${TAB}"
+has "10557 S1.ctl: a core ticket with no signed spec lists DESIGN when a worker source is named" "$(runcg "$CGM" --priority-pool-only --owners "$KP-999")" "DESIGN${TAB}HIMMEL-901${TAB}NO-SPEC"
+lacks "10557 S1: with no worker source the same core ticket lists no DESIGN row" "$(runcg "$CGM" --priority-pool-only)" "DESIGN${TAB}"
 ow_x6t_out="$(ow_run --priority-pool-only --top 8)"; ow_x6t_err="$(ow_err --priority-pool-only --top 8)"
-has "9335 X6: the e10 shape says on stderr that it has no worker source" "$ow_x6t_err" "no worker source"
-lacks "9335 X6: the e10 shape prints no owner-unknown line" "$ow_x6t_out$ow_x6t_err" "# owner unknown"
-has "9335 X6: the e10 shape prints pool=0/8,LOW" "$ow_x6t_out" "pool=0/8,LOW"
-has "9335 X6: the e10 shape lists the next-tier candidate" "$ow_x6t_out" "NEXT-TIER${TAB}HIMMEL-160"
+has "10557 S1: the e10 shape says on stderr that it has no worker source" "$ow_x6t_err" "no worker source"
+check "10557 S1: the e10 shape prints one owner-unknown line for the fleet" "1" "$(ow_n "$ow_x6t_out" "$S1_LINE")"
+has "10557 S1: the e10 shape prints pool=0/8,LOW" "$ow_x6t_out" "pool=0/8,LOW"
+lacks "10557 S1: the e10 shape lists no next-tier candidate" "$ow_x6t_out" "NEXT-TIER${TAB}"
+mkdir -p "$OW/x6c/HIMMEL"; printf 'v1.0.1\tfalse\t\n' > "$OW/x6c/HIMMEL.versions.tsv"
+OW_M="$OW/x6c/HIMMEL"; ow_mk HIMMEL-430 "To Do" High '["must-v1.0.1"]' '["v1.0.1"]' '[]' "a pool To Do" "Edit scripts/lib/t2.sh only."
+ow_x6d_out="$(ow_run --priority-pool-only --dispositions)"
+check "10557 S1: with --dispositions one owner-unknown line for the fleet" "1" "$(ow_n "$ow_x6d_out" "$S1_LINE")"
+lacks "10557 S1: with --dispositions the pool To Do is not listed" "$ow_x6d_out" "HIMMEL-430${TAB}"
+has "10557 S1: with --dispositions the To Do disposition names no worker source" "$ow_x6d_out" "# disposition HIMMEL-430 owner unknown: no worker source named (see the # owner unknown line)"
 OW_M="$OW/x6a/HIMMEL"
-has "9335 X6.ctl: with an --owners key the same pool lists the worker-less ticket" "$(ow_run --priority-pool-only --owners "$KP-999")" "RESUME${TAB}HIMMEL-420"
+has "10557 S1.ctl: with an --owners key the same pool lists the worker-less ticket" "$(ow_run --priority-pool-only --owners "$KP-999")" "RESUME${TAB}HIMMEL-420"
 
 # X2: the WORKERS_FROM environment source is not read by --why-ticket, and --why-ticket refuses --workers-from
 ow_mirror x2
@@ -4074,6 +4142,51 @@ ow_go() { ow_run "$@" > "$OW/last.out"; OW_RC=$?; OW_OUT="$(cat "$OW/last.out")"
 ow_go2() { ow_run2 "$@" > "$OW/last.out"; OW_RC=$?; OW_OUT="$(cat "$OW/last.out")"; }  # stdout and stderr merged
 ow_forged() { printf '%s\n' "$1" | grep -cE "^LOCAL${TAB}${KP}-9([^0-9]|\$)" || true; }  # output lines that are the forged row for the short key (the real row carries a longer key)
 ow_norm() { sed 's/live worker [A-Za-z0-9._-]*/live worker L/; s/chief on [^ ]*/chief on S/; s/mirror_age_min=[0-9]*/mirror_age_min=N/'; }  # the mirror's age in minutes can tick between two runs
+
+ow_mirror m1
+M1_LINE_TAIL='withheld: RESUME, IN CI, STACKABLE, SERIES FAMILY, To Do, DESIGN, NEXT-TIER; reconcile: repair the manifest file by hand (fleet-manifest.sh refuses an invalid one) or pass a readable --workers-from manifest'
+m1_case() {
+    printf '%s\n' "$2" > "$OW/m1/m1$1.fleet.json"
+    ow_go2 --resume-only --workers-from "$OW/m1/m1$1.fleet.json"
+    check "10557 M1 ($1): exit 0" "0" "$OW_RC"
+    lacks "10557 M1 ($1): no Traceback" "$OW_OUT" "Traceback"
+    check "10557 M1 ($1): one owner-unknown line names the malformed manifest" "1" "$(printf '%s\n' "$OW_OUT" | grep -cxF "# owner unknown: the fleet (manifest m1$1.fleet.json malformed); $M1_LINE_TAIL" || true)"
+}
+m1_case a '{"schema":1,"workers":[7]}'
+m1_case b '{"schema":1,"workers":[{"doc":7,"label":"N1"}]}'
+m1_case c '{"schema":1,"workers":null,"legs":[{"doc":"/x/HIMMEL-63-N1-a.md","label":"N1"}]}'
+m1_case d '[{"doc":"/x/HIMMEL-63-N1-a.md","label":"N1"}]'
+m1_case e '{"schema":1,"workers":[{"doc":null,"label":"N1"}]}'
+m1_case f '{"schema":1,"workers":[{"doc":"/x/HIMMEL-63-N1-a.md","label":["N1"]}]}'
+m1_case g '{"schema":1,"workers":[{"doc":"/x/HIMMEL-63-N1-a.md","label":{"n":1}}]}'
+printf '# worker\n> **Writes:** scripts/lib/s3.sh\n\n## Results\n- 10:00 LIVE - started\n' > "$OW/m1/HIMMEL-63-N1-ctl.md"
+mkfleet "$OW/m1/m1ctl.fleet.json" "N1:$OW/m1/HIMMEL-63-N1-ctl.md"
+ow_go2 --resume-only --workers-from "$OW/m1/m1ctl.fleet.json"
+lacks "10557 M1.ctl: a valid manifest prints no owner-unknown line" "$OW_OUT" "# owner unknown"
+lacks "10557 M1.ctl: its readable worker holds its ticket" "$OW_OUT" "RESUME${TAB}HIMMEL-63"
+has "10557 M1.ctl: the orphan lists" "$OW_OUT" "RESUME${TAB}HIMMEL-60"
+
+ow_mirror p10557
+P1D="$OW/p10557"
+printf '# worker\n\n## Results\n- 10:00 LIVE - started\n' > "$P1D/HIMMEL-63-N1-p1.md"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N\\ud800"}]}\n' "$P1D/HIMMEL-63-N1-p1.md" > "$P1D/p1.fleet.json"
+ow_go --workers-from "$P1D/p1.fleet.json"
+check "10557 P1: a lone surrogate in an own label: ND exits 0" "0" "$OW_RC"
+has "10557 P1: the overlap note shows the surrogate escaped" "$OW_OUT" '# overlap unknown for live worker N\ud800'
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1\\nRESUME\\tHIMMEL-5"}]}\n' "$P1D/HIMMEL-63-N1-p1.md" > "$P1D/p1nl.fleet.json"
+ow_go --workers-from "$P1D/p1nl.fleet.json"
+check "10557 P1.nl: a newline in an own label: ND exits 0" "0" "$OW_RC"
+check "10557 P1.nl: no stdout line is a RESUME row split out of the label" "0" "$(ow_n "$OW_OUT" "^RESUME${TAB}HIMMEL-5(${TAB}|\$)")"
+has "10557 P1.nl: the overlap note shows the label escaped" "$OW_OUT" '# overlap unknown for live worker N1\nRESUME\tHIMMEL-5'
+printf '# worker\n> **Writes:** scripts/lib/x.sh\n\n## Results\n- 10:00 LIVE - started\n' > "$P1D/HIMMEL-63-N1-p1w.md"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1\\nRESUME\\tHIMMEL-5"}]}\n' "$P1D/HIMMEL-63-N1-p1w.md" > "$P1D/p1ov.fleet.json"
+ow_go --workers-from "$P1D/p1ov.fleet.json"
+check "10557 P1.ov: a newline label in an overlap line splits out no RESUME row" "0" "$(ow_n "$OW_OUT" "^RESUME${TAB}HIMMEL-5(${TAB}|\$)")"
+has "10557 P1.ov: the overlap line shows the label escaped" "$OW_OUT" '# overlap HIMMEL-90 scripts/lib/x.sh with live worker N1\nRESUME\tHIMMEL-5'
+printf '{"schema":1,"workers":[{"doc":"%s","label":7}]}\n' "$P1D/HIMMEL-63-N1-p1w.md" > "$P1D/p1num.fleet.json"
+ow_go --workers-from "$P1D/p1num.fleet.json"
+check "10557 P1.num: a numeric label on a scoped worker: ND exits 0" "0" "$OW_RC"
+has "10557 P1.num: the overlap line shows the number" "$OW_OUT" "# overlap HIMMEL-90 scripts/lib/x.sh with live worker 7"
 OW_LINE_TAIL="withheld: RESUME, IN CI, STACKABLE, SERIES FAMILY, To Do, DESIGN, NEXT-TIER; reconcile: restore the doc, record the worker's end, or fleet-manifest.sh remove"
 
 # U1: an own row whose doc cannot be opened holds the keys in its file name and withholds RESUME, with one line
@@ -4508,7 +4621,8 @@ printf '{"schema":1,"workers":[{"label":"nodoc"}],"control":{"family":"OTHER","a
 ow_sbnone SB5.d
 ow_sbdir sb5dd; printf '{"attempts":{}}\n' > "$OW_SD/fleet-control.json"
 ow_go2 --workers-from "$OW_OWN"
-check "9335 SB5.d: an anchor with no family and a readable own manifest exits 1, as at the base" "1" "$OW_RC"
+check "9335 SB5.d: an anchor with no family and a readable own manifest exits 0" "0" "$OW_RC"
+check "9335 SB5.d: one owner-unknown line names the own manifest as malformed" "1" "$(ow_n "$OW_OUT" "^# owner unknown: .*\(manifest HIMMEL-nextleg-2026-11-18B-ow\.fleet\.json malformed\)")"
 
 # SB6, SB7: workers is null
 for ow_anc in absent present; do
@@ -4529,6 +4643,597 @@ for ow_body in '"workers":[],"legs":"x"' '"workers":[],"legs":{}' '"workers":[],
     printf '{"schema":1,%s}\n' "$ow_body" > "$OW_SIB"; ow_sbn2 SB8 malformed
 done
 ow_sbdir sb8x; printf '{"schema":1,"workers":[],"legs":[]}\n' > "$OW_SIB"; ow_sbnone SB8.ctl
+
+FU_KEY="HIMMEL-$((11000 + 1))"
+FU_READER="$HERE/../../lib/pr_remainder.py"
+fu_cache() { python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); e=d.get(sys.argv[2]); print("absent" if e is None else "%s %s" % (e.get("schema", "legacy"), ",".join(sorted(e["ans"])) if isinstance(e.get("ans"), dict) else "array"))' "$P/cache.json" "7001:$FU_KEY" 2>/dev/null || echo unreadable; }
+fu_legacy() {
+    python3 -I -c 'import json,sys,time; json.dump({"7001:" + sys.argv[2]: {"at": time.time() - float(sys.argv[4]), "ans": json.loads(sys.argv[3])}}, open(sys.argv[1], "w"))' "$P/cache.json" "$FU_KEY" "$1" "${2:-0}"
+}
+FU_FIELDS='chief_invalid,chief_owed,handed,kind,nowrite,owed_lines,text'
+fu_views() { grep -c -e "pr view $1 " "$P_GH_LOG"; }
+
+test_full_units_cache_and_legacy_refetch() {
+    local id=test_full_units_cache_and_legacy_refetch
+    p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7001 remaining
+    p_list
+    has "$id fresh: the remainder lists" "$P_OUT" 'files=scripts/lib/rem.sh'
+    [ "$(fu_views 7001)" = 1 ] && pass "$id fresh: the body is read once" || fail "$id fresh views=$(fu_views 7001)"
+    [ "$(fu_cache)" = "1 $FU_FIELDS" ] && pass "$id the listing writes a complete schema-1 entry" || fail "$id cache entry: $(fu_cache)"
+    : > "$P_GH_LOG"; p_list
+    has "$id complete hit: the remainder lists" "$P_OUT" 'files=scripts/lib/rem.sh'
+    [ "$(fu_views 7001)" = 0 ] && pass "$id complete hit: no body read" || fail "$id complete hit views=$(fu_views 7001)"
+    fu_legacy '["remaining", [], "edit scripts/lib/rem.sh", false, []]'
+    : > "$P_GH_LOG"; p_list
+    [ "$(fu_views 7001)" = 1 ] && pass "$id a legacy entry is a listing miss: the body is read again" || fail "$id legacy views=$(fu_views 7001)"
+    [ "$(fu_cache)" = "1 $FU_FIELDS" ] && pass "$id and the refetch upgrades it to schema 1" || fail "$id after refetch: $(fu_cache)"
+    : > "$P_GH_LOG"; NEXT_DISPATCH_BODY_TTL=0 p_list
+    [ "$(fu_views 7001)" = 1 ] && pass "$id TTL=0 reads the body again" || fail "$id TTL=0 views=$(fu_views 7001)"
+    : > "$P_GH_LOG"; P_CACHE=off; p_list; p_list; P_CACHE=""
+    [ "$(fu_views 7001)" = 2 ] && pass "$id cache off reads each run" || fail "$id off views=$(fu_views 7001)"
+    rm -f "$P/cache.json"; P_READER="$P/missing-reader.py"; p_list; P_READER=""
+    has "$id a reader that cannot run leaves the PR unread" "$P_OUT" "NEEDS-CHIEF-NOTE $FU_KEY: merged PR #7001 body could not be read"
+    [ "$(fu_cache)" != "1 $FU_FIELDS" ] && pass "$id and caches nothing" || fail "$id a failed read was cached"
+    : > "$P/not-a-dir"; P_CACHE="$P/not-a-dir/cache.json"; p_list; P_CACHE=""
+    has "$id an unwritable cache still lists the fresh answer" "$P_OUT" 'files=scripts/lib/rem.sh'
+}
+
+test_incomplete_metadata_not_empty() {
+    local id=test_incomplete_metadata_not_empty
+    p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7001 owed proof
+    printf 'import json, sys\nsys.stdout.write(json.dumps({"schema": 1, "answer": {"kind": "owed", "handed": ["proof", "2026-11-30"], "text": "check", "nowrite": True, "chief_owed": [], "chief_invalid": []}}) + "\\n")\n' > "$P/no-units-reader.py"
+    P_READER="$P/no-units-reader.py"; p_list; P_READER=""
+    has "$id an answer without owed_lines leaves the PR unread" "$P_OUT" "NEEDS-CHIEF-NOTE $FU_KEY: merged PR #7001 body could not be read"
+    lacks "$id and lists no proof row" "$P_OUT" "$(printf 'RESUME\t%s' "$FU_KEY")"
+    rm -f "$P_BODIES/7001"
+    fu_legacy '["owed", ["proof", "2026-11-30"], "check: owed -> proof by 2026-11-30", true, []]'
+    p_list
+    has "$id an old five-value proof entry with an unreadable body withholds" "$P_OUT" "NEEDS-CHIEF-NOTE $FU_KEY: merged PR #7001 body could not be read"
+    lacks "$id and never lists a bare proof row from it" "$P_OUT" "$(printf 'RESUME\t%s' "$FU_KEY")"
+    python3 -I -c 'import json,sys,time; json.dump({"7001:" + sys.argv[2]: {"schema": 1, "at": time.time(), "ans": {"kind": "owed", "handed": ["proof", "2026-11-30"], "text": "check", "nowrite": True, "chief_owed": [], "chief_invalid": []}}}, open(sys.argv[1], "w"))' "$P/cache.json" "$FU_KEY"
+    p_list
+    has "$id a schema-1 entry without owed_lines is a miss" "$P_OUT" "NEEDS-CHIEF-NOTE $FU_KEY: merged PR #7001 body could not be read"
+    lacks "$id and lists no proof row" "$P_OUT" "$(printf 'RESUME\t%s' "$FU_KEY")"
+}
+
+cat > "$WORK/fu-matrix.py" <<'EOF'
+import copy, json, subprocess, sys, time
+reader, body, key, pr, out = sys.argv[1:6]
+base = json.loads(subprocess.run([sys.executable, '-I', reader, '--full-units', key], stdin=open(body, 'rb'), capture_output=True, check=True).stdout)['answer']
+now = time.time()
+ck = '%s:%s' % (pr, key)
+
+def mut(f):
+    a = copy.deepcopy(base)
+    f(a)
+    return a
+
+def env(a):
+    return json.dumps({'schema': 1, 'answer': a}).encode()
+
+def entry(ans_text, schema='1', at=None):
+    return ('{"%s": {"schema": %s, "at": %s, "ans": %s}}' % (ck, schema, repr(now) if at is None else at, ans_text)).encode('utf-8')
+
+valid = json.dumps(base)
+rows = [
+    ('V01-empty', b'', entry('""')),
+    ('V02-utf8', b'\xff' + env(base), entry(valid.replace('"owed"', '"o\\u00ff"', 1)).replace(b'\\u00ff', b'\xff')),
+    ('V03-duplicate', ('{"schema": 1, "answer": {"kind": "owed", %s' % valid[1:]).encode(), entry('{"kind": "owed", ' + valid[1:])),
+    ('V04-nan', env(base).replace(b'"nowrite": false', b'"nowrite": NaN'), entry(valid.replace('"nowrite": false', '"nowrite": NaN'))),
+    ('V05-version', json.dumps({'schema': 2, 'answer': base}).encode(), entry(valid, schema='2')),
+    ('V06-bool-schema', json.dumps({'schema': True, 'answer': base}).encode(), entry(valid, schema='true')),
+    ('V07-missing', env(mut(lambda a: a.pop('owed_lines'))), None),
+    ('V07-extra', env(mut(lambda a: a.update(extra=1))), None),
+    ('V08-row-type', env(mut(lambda a: a['owed_lines'][0].update(due=7))), None),
+    ('V08-list-type', env(mut(lambda a: a.update(chief_owed=[1]))), None),
+    ('V09-kind', env(mut(lambda a: a.update(kind='later'))), None),
+    ('V09-owner', env(mut(lambda a: a['owed_lines'][0].update(who='nobody'))), None),
+    ('V10-shape', env(mut(lambda a: a.update(handed=['chief']))), None),
+    ('V11-impossible', env(mut(lambda a: (a.update(handed=['chief', '2026-13-40']), a['owed_lines'][0].update(due='2026-13-40')))), None),
+    ('V11-noncanonical', env(mut(lambda a: (a.update(handed=['chief', '20261130']), a['owed_lines'][0].update(due='20261130')))), None),
+    ('V12-empty-handoff', env(mut(lambda a: a.update(kind='handed-off', handed=[]))), None),
+    ('V13-remaining-handed', env(mut(lambda a: a.update(kind='remaining', handed=['HIMMEL-1']))), None),
+    ('V14-owner', env(mut(lambda a: a.update(handed=['operator', a['handed'][1]]))), None),
+    ('V15-due', env(mut(lambda a: a.update(handed=['chief', '2026-12-01']))), None),
+    ('V16-oversize', env(mut(lambda a: a.update(text='x' * (1 << 20)))), None),
+]
+for name, fresh, cache in rows:
+    if cache is None:
+        cache = entry(json.dumps(json.loads(fresh)['answer']))
+    open('%s/%s.fresh' % (out, name), 'wb').write(fresh)
+    open('%s/%s.cache' % (out, name), 'wb').write(cache)
+    print(name, 'both')
+for name, at in (('V17-no-at', None), ('V17-text-at', '"x"'), ('V17-nan-at', 'NaN'), ('V17-future', repr(now + 1000)), ('V17-expired', repr(now - 7200)), ('V17-huge-at', '1' + '0' * 400)):
+    text = entry(valid, at=at) if at else ('{"%s": {"schema": 1, "ans": %s}}' % (ck, valid)).encode()
+    open('%s/%s.cache' % (out, name), 'wb').write(text)
+    print(name, 'cache')
+EOF
+
+test_full_units_rejection_matrix() {
+    local id=test_full_units_rejection_matrix MX="$P/matrix" row kinds
+    fu_fixture() { p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7001 owed chief; }
+    fu_fixture; rm -rf "$MX"; mkdir -p "$MX"
+    python3 -I "$WORK/fu-matrix.py" "$FU_READER" "$P_BODIES/7001" "$FU_KEY" 7001 "$MX" > "$MX/rows" || fail "$id the matrix fixture could not be built"
+    printf 'import sys\nsys.stdout.buffer.write(open(sys.argv[0].rsplit("/", 1)[0] + "/current.fresh", "rb").read())\n' > "$MX/reader.py"
+    while read -r row kinds; do
+        if [ "$kinds" = both ]; then
+            fu_fixture; cp "$MX/$row.fresh" "$MX/current.fresh"; P_READER="$MX/reader.py"; p_list; P_READER=""
+            has "$id $row fresh: the PR is unread" "$P_OUT" "NEEDS-CHIEF-NOTE $FU_KEY: merged PR #7001 body could not be read"
+            lacks "$id $row fresh: no OWED line from it" "$P_OUT" "OWED $FU_KEY:"
+            [ ! -e "$P/cache.json" ] || [ "$(fu_cache)" = absent ] && pass "$id $row fresh: nothing cached" || fail "$id $row fresh cached: $(fu_cache)"
+        fi
+        fu_fixture; cp "$MX/$row.cache" "$P/cache.json"; p_list
+        [ "$(fu_views 7001)" = 1 ] && pass "$id $row cache: a rejected entry is a miss, the body is read" || fail "$id $row cache views=$(fu_views 7001)"
+        has "$id $row cache: the real body's answer lists" "$P_OUT" "OWED $FU_KEY: merged PR #7001 owes chief by 2026-11-30"
+    done < "$MX/rows"
+    [ "$(grep -c . "$MX/rows")" = 26 ] && pass "$id all 26 matrix rows ran" || fail "$id matrix rows: $(cat "$MX/rows")"
+    fu_fixture; printf '## Ticket coverage\n- a\tb: owed -> chief by 2026-11-30\n' > "$P_BODIES/7001"
+    p_list
+    has "POS1 $id fresh: a TAB unit is accepted by owner and date" "$P_OUT" "OWED $FU_KEY: merged PR #7001 owes chief by 2026-11-30"
+    [ "$(python3 -I -c 'import json,sys; a=json.load(open(sys.argv[1]))[sys.argv[2]]["ans"]; print("\t" in a["owed_lines"][0]["text"], "\t" in a["text"])' "$P/cache.json" "7001:$FU_KEY")" = "False False" ] \
+        && pass "POS1 $id the cached row and the answer text are both TAB-free" || fail "POS1 $id cache: $(cat "$P/cache.json")"
+    : > "$P_GH_LOG"; p_list
+    has "POS1 $id cache: the TAB entry is a hit" "$P_OUT" "OWED $FU_KEY: merged PR #7001 owes chief by 2026-11-30"
+    [ "$(fu_views 7001)" = 0 ] && pass "POS1 $id cache: no body read" || fail "POS1 $id cache views=$(fu_views 7001)"
+    p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7001 remaining; p_list
+    has "POS2 $id fresh: an ordinary answer with no owed rows lists" "$P_OUT" 'files=scripts/lib/rem.sh'
+    : > "$P_GH_LOG"; p_list
+    has "POS2 $id cache: it lists from the cache" "$P_OUT" 'files=scripts/lib/rem.sh'
+    [ "$(fu_views 7001)" = 0 ] && pass "POS2 $id cache: no body read" || fail "POS2 $id cache views=$(fu_views 7001)"
+}
+
+test_cache_upgrade_preserves_other_legacy_entry() {
+    local id=test_cache_upgrade_preserves_other_legacy_entry before after
+    p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7001 remaining
+    python3 -I -c 'import json,sys,time; n=time.time(); json.dump({"7001:" + sys.argv[2]: {"at": n, "ans": ["remaining", [], "edit scripts/lib/rem.sh", False, []]}, "7002:HIMMEL-11050": {"at": n - 5, "ans": ["handed-off", ["HIMMEL-9"], "rest", False, ["x"]]}}, open(sys.argv[1], "w"))' "$P/cache.json" "$FU_KEY"
+    fu_b() { python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print(len(d), json.dumps(d.get("7002:HIMMEL-11050"), sort_keys=True, separators=(",", ":")))' "$P/cache.json"; }
+    before="$(fu_b)"; p_list; after="$(fu_b)"
+    [ "$after" = "$before" ] && pass "$id the other live legacy entry is byte-identical after the upgrade" || fail "$id other entry: before '$before' after '$after'"
+    [ "$(fu_cache)" = "1 $FU_FIELDS" ] && pass "$id only the fetched entry is upgraded" || fail "$id fetched entry: $(fu_cache)"
+}
+
+test_predicate_contract_unchanged_no_network() {
+    local id=test_predicate_contract_unchanged_no_network arm
+    fu_pred() { p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress' 'Writes: scripts/lib/desc.sh'; p_part "$FU_KEY" 7001 remaining; p_breadcrumb 7001 'edit scripts/lib/rem.sh'; }
+    for arm in cold off expired copied; do
+        fu_pred
+        case "$arm" in
+            off) P_CACHE=off ;;
+            expired) python3 -I -c 'import json,sys,time; json.dump({"7001:" + sys.argv[2]: {"schema": 1, "at": time.time() - 7200, "ans": {"kind": "remaining", "handed": [], "text": "edit scripts/lib/stale.sh", "nowrite": False, "chief_owed": [], "chief_invalid": [], "owed_lines": []}}}, open(sys.argv[1], "w"))' "$P/cache.json" "$FU_KEY" ;;
+            copied) p_tree "fu-copied" ;;
+        esac
+        p_run --why-ticket "$FU_KEY"; p_verdict "$id $arm" 0
+        has "$id $arm source is the breadcrumb remainder" "$P_OUT" "# scope $FU_KEY remainder of PR #7001: scripts/lib/rem.sh"
+        lacks "$id $arm an expired entry is not read" "$P_OUT" 'stale.sh'
+        [ ! -s "$P_GH_LOG" ] && pass "$id $arm zero GitHub calls" || fail "$id $arm reached GitHub: $(cat "$P_GH_LOG")"
+        P_CACHE=""
+    done
+    p_reset; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7003 owed chief
+    p_run --why-ticket "$FU_KEY"; p_verdict "$id owed chief" 1; has "$id owed chief named debt" "$P_OUT" 'drop: merged PR #7003 owes chief by 2026-11-30'
+    [ ! -s "$P_GH_LOG" ] && pass "$id owed chief zero GitHub calls" || fail "$id owed chief reached GitHub"
+    p_reset; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7004 remaining
+    printf '## Ticket coverage\n- first: deferred -> HIMMEL-1\n- second: deferred -> HIMMEL-2\n' > "$P_BODIES/7004"
+    p_list; : > "$P_GH_LOG"
+    p_run --why-ticket "$FU_KEY"; p_verdict "$id handed-off from a listing-written cache" 1; has "$id hand-off owner" "$P_OUT" 'drop: remainder on HIMMEL-1, HIMMEL-2'
+    [ ! -s "$P_GH_LOG" ] && pass "$id handed-off zero GitHub calls" || fail "$id handed-off reached GitHub"
+    p_reset; p_mk "$FU_KEY" 'In Progress' 'Writes: scripts/lib/desc.sh'; p_part "$FU_KEY" 7005 none; p_part "$FU_KEY" 7001 remaining; p_breadcrumb 7001 'edit scripts/lib/rem.sh'
+    p_run --why-ticket "$FU_KEY"; p_verdict "$id an older none beside a newer answer" 0
+    [ ! -s "$P_GH_LOG" ] && pass "$id none arm zero GitHub calls" || fail "$id none arm reached GitHub"
+    p_reset; p_mk "$FU_KEY" 'In Progress'; printf '{"event":"merge","result":"moved","key":"%s","pr":"7002","contract":"no"}\n' "$FU_KEY" > "$P/state/status-events.jsonl"
+    p_breadcrumb 7002 'not recorded in the PR body, see PR #7002.'
+    p_run --why-ticket "$FU_KEY"; p_verdict "$id not recorded" 1; has "$id not recorded reason" "$P_OUT" 'remainder of PR #7002 not recorded (no GitHub read)'
+}
+
+test_predicate_reads_new_and_legacy_cache_without_fallback() {
+    local id=test_predicate_reads_new_and_legacy_cache_without_fallback
+    fu_nr() {
+        p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress' 'Writes: scripts/lib/desc.sh'
+        printf '{"event":"merge","result":"moved","key":"%s","pr":"7001","contract":"no"}\n' "$FU_KEY" > "$P/state/status-events.jsonl"
+        printf 'Remaining: edit scripts/lib/rem.sh\n' > "$P_BODIES/7001"
+        p_breadcrumb 7001 'not recorded in the PR body, see PR #7001.'
+    }
+    fu_nr; p_list
+    [ "$(fu_cache)" = "1 $FU_FIELDS" ] && pass "$id the listing wrote a schema-1 entry" || fail "$id listing entry: $(fu_cache)"
+    : > "$P_GH_LOG"; p_run --why-ticket "$FU_KEY"; p_verdict "$id listing-written schema-1 hit" 0
+    has "$id the schema-1 hit is the source" "$P_OUT" "# scope $FU_KEY remainder of PR #7001: scripts/lib/rem.sh"
+    [ ! -s "$P_GH_LOG" ] && pass "$id schema-1 hit zero GitHub calls" || fail "$id schema-1 hit reached GitHub"
+    fu_nr; python3 -I -c 'import json,sys,time; json.dump({"7001:" + sys.argv[2]: {"schema": 1, "at": time.time(), "ans": {"kind": "remaining", "handed": [], "text": "edit scripts/lib/rem.sh", "nowrite": False, "chief_owed": [], "chief_invalid": [], "owed_lines": []}}}, open(sys.argv[1], "w"))' "$P/cache.json" "$FU_KEY"
+    p_run --why-ticket "$FU_KEY"; p_verdict "$id a schema-1 entry" 0
+    has "$id a schema-1 entry is the source" "$P_OUT" "# scope $FU_KEY remainder of PR #7001: scripts/lib/rem.sh"
+    fu_nr; fu_legacy '["remaining", [], "edit scripts/lib/rem.sh", false, []]'
+    p_run --why-ticket "$FU_KEY"; p_verdict "$id a legacy five-value entry" 0
+    has "$id the legacy entry is the source" "$P_OUT" "# scope $FU_KEY remainder of PR #7001: scripts/lib/rem.sh"
+    fu_nr; p_run --why-ticket "$FU_KEY"; p_verdict "$id cache miss control" 1
+    has "$id the miss takes the breadcrumb gate" "$P_OUT" 'remainder of PR #7001 not recorded (no GitHub read)'
+    [ ! -s "$P_GH_LOG" ] && pass "$id predicate arms zero GitHub calls" || fail "$id a predicate arm reached GitHub"
+}
+
+test_owed_next_preserves_pr_staging() {
+    local id=test_owed_next_preserves_pr_staging pv body tag
+    for tag in credential mixed; do
+        p_reset; P_CACHE=""; p_mk "$FU_KEY" 'In Progress'; p_part "$FU_KEY" 7001 owed proof
+        body='- run proof with a guest credential: owed -> proof by 2026-11-30'
+        [ "$tag" = mixed ] && body="- sign the spec: owed -> chief by 2026-11-30
+$body"
+        printf '## Ticket coverage\n%s\n' "$body" > "$P_BODIES/7001"
+        if [ "$tag" = credential ]; then
+            p_list
+            [ "$(printf '%s\n' "$P_OUT" | grep "^RESUME	$FU_KEY" | awk -F'\t' '{print $NF}')" = proof-staging=guest-credential ] \
+                && pass "$id credential without a next step holds" || fail "$id credential without next: $P_OUT"
+        fi
+        pv="$(p_validation "$FU_KEY")"; p_step "$FU_KEY" "$pv" proof 'rerun the proof'; p_owed close --id "$pv" --key KEEP >/dev/null
+        p_list
+        [ "$(printf '%s\n' "$P_OUT" | grep "^RESUME	$FU_KEY" | awk -F'\t' '{print $NF}')" = proof-staging=guest-credential ] \
+            && pass "$id $tag with a proof next step keeps the PR's staging need" || fail "$id $tag with next: $(printf '%s\n' "$P_OUT" | grep "$FU_KEY")"
+    done
+}
+
+test_full_units_cache_and_legacy_refetch
+test_incomplete_metadata_not_empty
+test_full_units_rejection_matrix
+test_cache_upgrade_preserves_other_legacy_entry
+test_predicate_contract_unchanged_no_network
+test_predicate_reads_new_and_legacy_cache_without_fallback
+test_owed_next_preserves_pr_staging
+P_CACHE=""
+
+ZD="$WORK/nd10557"; mkdir -p "$ZD"
+z_mirror() {
+    Z_DIR="$ZD/$1/w"; Z_M="$ZD/$1/m/HIMMEL"; mkdir -p "$Z_DIR" "$Z_M"; shift
+    local M="$Z_M" p
+    mk HIMMEL-80 "In Progress" Medium '[]' '[]' '[]' "unrelated orphan" "Edit scripts/lib/z-80.sh."
+    for p in "$@"; do mk "${p%%:*}" "${p#*:}" Medium '[]' '[]' '[]' "10557 fixture ${p%%:*}" "Edit scripts/lib/z-${p%%:*}.sh."; done
+}
+z_run() { NEXT_DISPATCH_MIRROR="$Z_M" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --resume-only --top 40 "$@" 2>/dev/null; }
+z_orphan() {
+    has "10557 $1: the unrelated orphan still lists" "$2" "RESUME${TAB}HIMMEL-80"
+    lacks "10557 $1: no owner-unknown line" "$2" "# owner unknown"
+}
+z_parses() { grep -c '^parse$' "$ZD/q1.log" || true; }
+: > "$ZD/q1.log"
+cat > "$ZD/holds-fail.py" <<'EOF'
+import os, sys
+with open(os.environ['HOLDS_LOG'], 'a') as f:
+    f.write(sys.argv[1] + '\n')
+sys.exit(1)
+EOF
+
+z_mirror z1 "$KP-81:In Progress" "$KP-82:In Progress"
+Z1D="$Z_DIR/HIMMEL-81-N21-zero-2026-11-22.md"
+printf '# N21 — HIMMEL-81\n\n> **Writes:** (none yet)\n\nTicket HIMMEL-81 with HIMMEL-82\n' > "$Z1D"
+mkfleet "$Z_DIR/fleet.json" "N21:$Z1D"
+z1="$(HOLDS_LOG="$ZD/q1.log" STUB_REAL_HOLDS="$HOLDS_PY" ND_HOLDS="$WORK/holds-log.py" z_run --workers-from "$Z_DIR/fleet.json")"
+lacks "10557 Z1: a zero-path worker holds its Ticket-line sibling" "$z1" "RESUME${TAB}HIMMEL-82"
+z_orphan Z1 "$z1"
+check "10557 Q1: one holds.py parse for the one own live row (Z1)" "1" "$(z_parses)"
+printf '# N21 — HIMMEL-81\n\n> **Writes:** none named\n\nTicket HIMMEL-81 with HIMMEL-82\n' > "$Z1D"
+has "10557 Z1.ctl: a none named worker does not hold its Ticket-line sibling" "$(z_run --workers-from "$Z_DIR/fleet.json")" "RESUME${TAB}HIMMEL-82"
+printf '# N21 — HIMMEL-81\n\n> **Writes:** scripts/lib/z1.sh\n\nTicket HIMMEL-81 with HIMMEL-82\n' > "$Z1D"
+has "10557 Z1.ctl: a scoped worker does not hold its Ticket-line sibling" "$(z_run --workers-from "$Z_DIR/fleet.json")" "RESUME${TAB}HIMMEL-82"
+
+z_mirror z4 "$KP-88:In Progress" "$KP-89:In Progress"
+Z4D="$Z_DIR/HIMMEL-88-N24-z4-2026-11-22.md"
+printf '# N24 — HIMMEL-88\n\n> **Writes:** scripts/lib/z4.sh\n\nTicket HIMMEL-88 with HIMMEL-89\n' > "$Z4D"
+mkfleet "$Z_DIR/fleet.json" "N24:$Z4D"
+z4="$(HOLDS_LOG="$ZD/q1.log" ND_HOLDS="$ZD/holds-fail.py" z_run --workers-from "$Z_DIR/fleet.json")"
+lacks "10557 Z4: a failed parse holds the Ticket-line sibling" "$z4" "RESUME${TAB}HIMMEL-89"
+has "10557 Z4: a failed parse is still told overlap unknown" "$z4" "# overlap unknown for live worker N24"
+z_orphan Z4 "$z4"
+check "10557 Q1: one holds.py parse for the one own live row (Z4's failing stub)" "2" "$(z_parses)"
+
+z_mirror z7 HIMMEL-95:"In Progress"
+Z7D="$Z_DIR/N26-z7-2026-11-22.md"
+printf '# N26 resume\n\n> **Owns:** HIMMEL-95\n' > "$Z7D"
+mkfleet "$Z_DIR/fleet.json" "N26:$Z7D"
+z7="$(z_run --workers-from "$Z_DIR/fleet.json")"
+lacks "10557 Z7: a scope-less worker holds its Owns key" "$z7" "RESUME${TAB}HIMMEL-95"
+z_orphan Z7 "$z7"
+printf '# N26 resume\n\n> **Writes:** scripts/lib/z7.sh\n> **Owns:** HIMMEL-95\n' > "$Z7D"
+has "10557 Z7.lim: a scoped worker does not hold its Owns key (L5)" "$(z_run --workers-from "$Z_DIR/fleet.json")" "RESUME${TAB}HIMMEL-95"
+z_mirror z7h1 "$KP-97:In Progress" "$KP-98:In Progress"
+Z7HD="$Z_DIR/HIMMEL-98-N28-h1-2026-11-22.md"
+printf '# N28 — HIMMEL-98\n\nnotes\n\n# HIMMEL-97 follow-up\n' > "$Z7HD"
+mkfleet "$Z_DIR/fleet.json" "N28:$Z7HD"
+z7h="$(z_run --workers-from "$Z_DIR/fleet.json")"
+lacks "10557 Z7.h1: a scope-less worker holds the key of its second # title" "$z7h" "RESUME${TAB}HIMMEL-97"
+z_orphan Z7.h1 "$z7h"
+printf '# N28 — HIMMEL-98\n\nnotes\n\n## Results\n\n# HIMMEL-97 follow-up\n' > "$Z7HD"
+has "10557 Z7.h1: a # title under Results is no gate key" "$(z_run --workers-from "$Z_DIR/fleet.json")" "RESUME${TAB}HIMMEL-97"
+z_mirror z7enc "$KP-95:In Progress" "$KP-98:In Progress"
+Z7ED="$Z_DIR/HIMMEL-98-N27-enc-2026-11-22.md"
+printf '# N27 resume \377\n\n> **Owns:** HIMMEL-95\n' > "$Z7ED"
+mkfleet "$Z_DIR/fleet.json" "N27:$Z7ED"
+z7e="$(NEXT_DISPATCH_MIRROR="$Z_M" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --resume-only --top 40 --workers-from "$Z_DIR/fleet.json" 2>&1)"
+has "10557 Z7.enc: a non-UTF-8 scope-less doc is an owner unknown naming its file-name keys" "$z7e" "# owner unknown: live worker N27 (doc $KP-98-N27-enc-2026-11-22.md unreadable; keys held: $KP-98)"
+check "10557 Z7.enc: exactly one owner-unknown line" "1" "$(printf '%s\n' "$z7e" | grep -c '^# owner unknown' || true)"
+lacks "10557 Z7.enc: no traceback" "$z7e" "Traceback"
+lacks "10557 Z7.enc: no manifest-unreadable line" "$z7e" "manifest fleet.json unreadable"
+lacks "10557 Z7.enc: the Owns key does not list" "$z7e" "RESUME${TAB}HIMMEL-95"
+lacks "10557 Z7.enc: the withhold is intended: the orphan does not list" "$z7e" "RESUME${TAB}HIMMEL-80"
+z_mirror z7sib HIMMEL-94:"In Progress"
+Z7SD="$Z_DIR/N29-sib-2026-11-22.md"
+printf '# N29 resume\n\n> **Owns:** HIMMEL-94\n' > "$Z7SD"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N29"}]}\n' "$Z7SD" > "$Z_DIR/HIMMEL-nextleg-2026-11-22ZA-z-chief.fleet.json"
+printf '{"schema":1,"workers":[]}\n' > "$Z_DIR/HIMMEL-nextleg-2026-11-22ZB-z-chief.fleet.json"
+z7s="$(z_run --workers-from "$Z_DIR/HIMMEL-nextleg-2026-11-22ZB-z-chief.fleet.json")"
+lacks "10557 Z7.sib: a chain sibling's scope-less doc holds its Owns key" "$z7s" "RESUME${TAB}HIMMEL-94"
+z_orphan Z7.sib "$z7s"
+
+z_mirror z2 "$KP-83:In Progress" "$KP-84:In Progress" "$KP-85:In Progress"
+Z2D="$Z_DIR/HIMMEL-85-N22b-z2-RESUME-2026-11-22.md"
+printf '# RESUME — HIMMEL-85 — worker N22b\n\nContinues from HIMMEL-83-N22-z2-2026-11-21.md.\n' > "$Z2D"
+printf '# bundle — HIMMEL-83 / 84\n' > "$Z_DIR/HIMMEL-83-N22-z2-2026-11-21.md"
+mkfleet "$Z_DIR/fleet.json" "N22b:$Z2D"
+z2="$(HOLDS_LOG="$ZD/q1.log" STUB_REAL_HOLDS="$HOLDS_PY" ND_HOLDS="$WORK/holds-log.py" z_run --workers-from "$Z_DIR/fleet.json")"
+lacks "10557 Z2: a scope-less worker holds its named predecessor's title key" "$z2" "RESUME${TAB}HIMMEL-84"
+z_orphan Z2 "$z2"
+check "10557 Q1: one holds.py parse for the one own live row (Z2)" "3" "$(z_parses)"
+mkdir -p "$Z_DIR/old"; mv "$Z_DIR/HIMMEL-83-N22-z2-2026-11-21.md" "$Z_DIR/old/"
+has "10557 Z2.lim: a predecessor only in a subfolder is not family" "$(z_run --workers-from "$Z_DIR/fleet.json")" "RESUME${TAB}HIMMEL-84"
+mv "$Z_DIR/old/HIMMEL-83-N22-z2-2026-11-21.md" "$Z_DIR/"
+printf '# RESUME — HIMMEL-85 — worker N22b\n\n## Results\n\nContinues from HIMMEL-83-N22-z2-2026-11-21.md.\n' > "$Z2D"
+has "10557 Z2.lim: a predecessor named only under Results is not family" "$(z_run --workers-from "$Z_DIR/fleet.json")" "RESUME${TAB}HIMMEL-84"
+z_mirror z2res "$KP-83:In Progress" "$KP-84:In Progress" "$KP-85:In Progress" "$KP-86:In Progress"
+Z2RD="$Z_DIR/HIMMEL-85-N22c-z2res-2026-11-22.md"
+printf '# N22c — HIMMEL-85\n\n## Results\n\nTicket HIMMEL-86 picked up\nContinues from HIMMEL-83-N22-z2-2026-11-21.md.\n' > "$Z2RD"
+printf '# bundle — HIMMEL-83 / 84\n' > "$Z_DIR/HIMMEL-83-N22-z2-2026-11-21.md"
+mkfleet "$Z_DIR/fleet.json" "N22c:$Z2RD"
+z2r="$(z_run --workers-from "$Z_DIR/fleet.json")"
+lacks "10557 Z2.res: a Ticket line under Results still holds its key" "$z2r" "RESUME${TAB}HIMMEL-86"
+has "10557 Z2.res: a doc named only under Results is not family" "$z2r" "RESUME${TAB}HIMMEL-84"
+
+z_mirror z5 "$KP-90:In Progress" "$KP-91:In Progress" "$KP-92:In Progress" "$KP-93:In Progress"
+Z5D="$Z_DIR/HIMMEL-90-N25b-z5-2026-11-22.md"
+printf '# N25b — HIMMEL-90\n\n> **Writes:** scripts/lib/z5.sh\n\nTicket HIMMEL-90 with HIMMEL-91\nContinues from HIMMEL-93-N25-z5.md.\n' > "$Z5D"
+printf '# HIMMEL-93 / 92\n' > "$Z_DIR/HIMMEL-93-N25-z5.md"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N25b"}]}\n' "$Z5D" > "$Z_DIR/HIMMEL-nextleg-2026-11-22ZA-z-chief.fleet.json"
+printf '{"schema":1,"workers":[]}\n' > "$Z_DIR/HIMMEL-nextleg-2026-11-22ZB-z-chief.fleet.json"
+z5="$(z_run --workers-from "$Z_DIR/HIMMEL-nextleg-2026-11-22ZB-z-chief.fleet.json")"
+lacks "10557 Z5: a scoped chain sibling holds its Ticket-line key" "$z5" "RESUME${TAB}HIMMEL-91"
+lacks "10557 Z5: a scoped chain sibling holds its named doc's title key" "$z5" "RESUME${TAB}HIMMEL-92"
+z_orphan Z5 "$z5"
+
+z_mirror z3 "$KP-86:In Progress" "$KP-87:In Progress" "$KP-97:In Progress" "$KP-99:In Progress"
+Z3D="$Z_DIR/HIMMEL-86-N23b-z3-RESUME-2026-11-22.md"
+printf '# RESUME — HIMMEL-86 — worker N23b\n\nno doc named here\n' > "$Z3D"
+printf '# bundle — HIMMEL-86 / 87\n' > "$Z_DIR/HIMMEL-86-N23-z3-2026-11-21.md"
+printf '# HIMMEL-99 / 97\n' > "$Z_DIR/HIMMEL-99-N9-x-RESUME-2026-11-20.md"
+mkfleet "$Z_DIR/fleet.json" "N23b:$Z3D"
+z3="$(HOLDS_LOG="$ZD/q1.log" STUB_REAL_HOLDS="$HOLDS_PY" ND_HOLDS="$WORK/holds-log.py" z_run --workers-from "$Z_DIR/fleet.json")"
+lacks "10557 Z3: a scope-less worker holds the title keys of a folder doc named for its seed" "$z3" "RESUME${TAB}HIMMEL-87"
+has "10557 Z3: the RESUME-2026 token seeds no family" "$z3" "RESUME${TAB}HIMMEL-97"
+z_orphan Z3 "$z3"
+check "10557 Q1: one holds.py parse for the one own live row (Z3)" "4" "$(z_parses)"
+mkdir -p "$Z_DIR/old"; mv "$Z_DIR/HIMMEL-86-N23-z3-2026-11-21.md" "$Z_DIR/old/"
+has "10557 Z3.lim: a seed doc only in a subfolder is not family" "$(z_run --workers-from "$Z_DIR/fleet.json")" "RESUME${TAB}HIMMEL-87"
+mv "$Z_DIR/old/HIMMEL-86-N23-z3-2026-11-21.md" "$Z_DIR/"
+rm -f "$Z_M/HIMMEL-86.md"
+has "10557 Z3.nomirror: a seed missing from the mirror seeds no family" "$(z_run --workers-from "$Z_DIR/fleet.json")" "RESUME${TAB}HIMMEL-87"
+z_mirror z9 "$KP-71:In Progress" "$KP-72:In Progress" "$KP-73:In Progress"
+Z9D="$Z_DIR/HIMMEL-71-N29-z9-2026-11-23.md"
+printf '# HIMMEL-72 elsewhere\n' > "$Z_DIR/README.md"
+printf '# HIMMEL-73 prior\n' > "$Z_DIR/HIMMEL-70-N9-z9.md"
+printf '# N29 — HIMMEL-71\n\nSee docs/README.md and %s/HIMMEL-70-N9-z9.md.\n' "$Z_DIR" > "$Z9D"
+mkfleet "$Z_DIR/fleet.json" "N29:$Z9D"
+z9="$(z_run --workers-from "$Z_DIR/fleet.json")"
+has "10557 Z9: a doc named by a path into another folder is not family" "$z9" "RESUME${TAB}HIMMEL-72"
+lacks "10557 Z9: a doc named by a path into its own folder is family" "$z9" "RESUME${TAB}HIMMEL-73"
+z_orphan Z9 "$z9"
+z_mirror z2neg "$KP-84:In Progress" "$KP-85:In Progress" "$KP-99:In Progress"
+Z2ND="$Z_DIR/HIMMEL-85-N22b-z2-RESUME-2026-11-22.md"
+printf '# RESUME — HIMMEL-85 — worker N22b\n\nno doc named here\n' > "$Z2ND"
+printf '# HIMMEL-99 / 84\n' > "$Z_DIR/HIMMEL-99-N9-z2-2026-11-22.md"
+printf '# HIMMEL-85 / 84\n' > "$Z_DIR/xHIMMEL-85-N1.md"
+mkfleet "$Z_DIR/fleet.json" "N22b:$Z2ND"
+has "10557 Z2.neg: a doc named for another key, or for a refused match, is not family" "$(z_run --workers-from "$Z_DIR/fleet.json")" "RESUME${TAB}HIMMEL-84"
+z_mirror z2neg85a "$KP-85:In Progress" "$KP-850:In Progress" "$KP-851:In Progress"
+printf '# HIMMEL-850\n\nTicket HIMMEL-850 with HIMMEL-851\n' > "$Z_DIR/HIMMEL-850-N1.md"
+printf '# HIMMEL-85\n' > "$Z_DIR/HIMMEL-85-N2.md"
+mkfleet "$Z_DIR/fleet.json" "N1:$Z_DIR/HIMMEL-850-N1.md"
+z85a="$(z_run --workers-from "$Z_DIR/fleet.json")"
+has "10557 Z2.neg85: a HIMMEL-850 worker does not hold a HIMMEL-85 doc's key" "$z85a" "RESUME${TAB}HIMMEL-85${TAB}"
+lacks "10557 Z2.neg85: control: the HIMMEL-850 worker holds its Ticket-line sibling" "$z85a" "RESUME${TAB}HIMMEL-851"
+z_orphan Z2.neg85 "$z85a"
+z_mirror z2neg85b "$KP-85:In Progress" "$KP-850:In Progress" "$KP-86:In Progress"
+printf '# HIMMEL-85\n\nTicket HIMMEL-85 with HIMMEL-86\n' > "$Z_DIR/HIMMEL-85-N2.md"
+printf '# HIMMEL-850\n' > "$Z_DIR/HIMMEL-850-N1.md"
+mkfleet "$Z_DIR/fleet.json" "N2:$Z_DIR/HIMMEL-85-N2.md"
+z85b="$(z_run --workers-from "$Z_DIR/fleet.json")"
+has "10557 Z2.neg85: a HIMMEL-85 worker does not hold a HIMMEL-850 doc's key" "$z85b" "RESUME${TAB}HIMMEL-850"
+lacks "10557 Z2.neg85: control: the HIMMEL-85 worker holds its Ticket-line sibling" "$z85b" "RESUME${TAB}HIMMEL-86"
+z_orphan Z2.neg85.conv "$z85b"
+z_mirror z6 "$KP-86:In Progress" "$KP-87:In Progress"
+Z6D="$Z_DIR/HIMMEL-86-N23b-z3-RESUME-2026-11-22.md"
+printf '# RESUME — HIMMEL-86 — worker N23b\n\nno doc named here\n' > "$Z6D"
+printf '# bundle — HIMMEL-86 / 87\n' > "$Z_DIR/HIMMEL-86-N23-z3-2026-11-21.md"
+ln -s "$Z_DIR/no-such-target.md" "$Z_DIR/HIMMEL-86-N23x.md"
+mkfleet "$Z_DIR/fleet.json" "N23b:$Z6D"
+z6="$(z_run --workers-from "$Z_DIR/fleet.json")"
+check "10557 Z6: one owner-unknown line names the unreadable family doc and its file-name key" "1" "$(printf '%s\n' "$z6" | grep -c '^# owner unknown: live worker N23b (family doc HIMMEL-86-N23x.md unreadable; keys held: HIMMEL-86); withheld: ')"
+lacks "10557 Z6: no RESUME row at all" "$z6" "RESUME${TAB}"
+z_mirror z6dir "$KP-86:In Progress" "$KP-87:In Progress"
+Z6R="$Z_DIR/HIMMEL-86-N23b-z3-RESUME-2026-11-22.md"
+printf '# RESUME — HIMMEL-86 — worker N23b\n\nno doc named here\n' > "$Z6R"
+mkfleet "$ZD/z6dir/fleet.json" "N23b:$Z6R"
+if [ "$(id -u)" = 0 ]; then pass '10557 Z6.dir: unlistable family folder skipped as root'; else
+    chmod 0111 "$Z_DIR"
+    z6d="$(z_run --workers-from "$ZD/z6dir/fleet.json")"
+    chmod 0755 "$Z_DIR"
+    check "10557 Z6.dir: one owner-unknown line names the unlistable family folder" "1" "$(printf '%s\n' "$z6d" | grep -c "^# owner unknown: live worker N23b (family folder $Z_DIR unreadable; keys held: HIMMEL-86); withheld: ")"
+    lacks "10557 Z6.dir: no RESUME row at all" "$z6d" "RESUME${TAB}"
+fi
+z_mirror z8 "$KP-95:In Progress" "$KP-96:In Progress"
+Z8D="$Z_DIR/HIMMEL-95-N28-lim-2026-11-22.md"
+printf '# N28 — HIMMEL-95\n\n> **Writes:** (none yet)\n\nTicket HIMMEL-95 with HIMMEL-96\n' > "$Z8D"
+mkfleet "$Z_DIR/HIMMEL-nextleg-2026-11-22ZB-other-chief.fleet.json" "N28:$Z8D"
+mkfleet "$Z_DIR/HIMMEL-nextleg-2026-11-22ZA-own-chief.fleet.json"
+z8="$(z_run --workers-from "$Z_DIR/HIMMEL-nextleg-2026-11-22ZA-own-chief.fleet.json")"
+has "10557 Z8.lim: another chain's scope-less worker does not hold its Ticket-line key here" "$z8" "RESUME${TAB}HIMMEL-96"
+z_orphan Z8.lim "$z8"
+
+PD="$WORK/nd10257"; PDM="$PD/m/HIMMEL"; PDB="$PD/b"; mkdir -p "$PDM" "$PDB" "$PD/rel"
+printf 'v1.0.1\tfalse\t\n' > "$PD/m/HIMMEL.versions.tsv"
+(
+    M="$PDM"
+    mk "$KP-9701" "In Progress" Highest '[]' '["v1.0.1"]' '[]' "owed proof only" "Edit scripts/lib/pd-9701.sh."
+    mk "$KP-9702" "In Progress" Highest '[]' '["v1.0.1"]' '[]' "gated on a chief question" "Edit scripts/lib/pd-9702.sh."
+    mk "$KP-9703" "In Progress" High '[]' '["v1.0.1"]' '[]' "done on main" "Edit scripts/lib/pd-9703.sh."
+    mk "$KP-9704" "In Progress" High '[]' '["v1.0.1"]' '[]' "true remainder" "Edit scripts/lib/pd-9704.sh."
+    mk "$KP-9705" "In Progress" Medium '[]' '["v1.0.1"]' '[]' "gated by a readiness c row" "Edit scripts/lib/pd-9705.sh."
+    mk "$KP-9706" "To Do" Medium '[]' '["v1.0.1"]' '[]' "the open blocker of 9705" "Edit scripts/lib/pd-9706.sh."
+    mk "$KP-9707" "In Progress" Low '[]' '["v1.0.1"]' '[]' "owed proof plus a remainder" "Edit scripts/lib/pd-9707.sh."
+)
+printf '# chief\n\n## Live state\n\npool-disposition: %s question decision 977\n' "$KP-9702" > "$PDB/chief.md"
+mkfleet "$PDB/fleet.json"
+bash "$HERE/owe.sh" add --bucket "$PDB" --chief fixture --kind proof --key "$KP-9701" --text 'run the 11-16 replay' >/dev/null \
+    || fail "10257: could not seed the owed proof of 9701"
+bash "$HERE/owe.sh" add --bucket "$PDB" --chief fixture --kind proof --key "$KP-9707" --text 'run the reader replay' >/dev/null \
+    || fail "10257: could not seed the owed proof of 9707"
+mkdir -p "$PD/st/workers" "$PD/state"
+printf '{"ts":"t","event":"merge","key":"%s","pr":"5707","contract":"no","result":"noop"}\n' "$KP-9707" > "$PD/st/status-events.jsonl"
+printf 'Slice one.\n\nRemaining: the reader half\n' > "$PR_BODY_DIR/5707"
+HIMMEL_RELEASE_STATE_DIR="$PD/rel" bash "$HERE/readiness.sh" append v1.0.1 "$KP-9705" c --evidence fixture --blocker "$KP-9706" --by fixture --mirror "$PDM" >/dev/null 2>&1 \
+    || fail "10257: could not seed the readiness c row"
+PDG="$PD/git"; mkdir -p "$PDG"
+git -C "$PDG" init -q -b main && git -C "$PDG" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m "fix(x): [$KP-9703] the last slice" \
+    || fail "10257: could not build the fixture main"
+cat > "$PD/jira" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PD_JIRA_LOG"
+[ "$1" = get ] && printf '%s\tTask\tTo Do\tstub\n' "$2"
+EOF
+chmod +x "$PD/jira"; export PD_JIRA_LOG="$PD/jira.log"; : > "$PD_JIRA_LOG"
+pd_run() { HIMMEL_RELEASE_STATE_DIR="${PD_REL:-$PD/rel}" TICK_STATE_DIR="$PD/state" NEXT_DISPATCH_GIT_DIR="$PDG" NEXT_DISPATCH_JIRA_CMD="$PD/jira" NEXT_DISPATCH_MIRROR="$PDM" NEXT_DISPATCH_GH_CMD="$WORK/gh" \
+    bash "$SUT" --resume-only --top 40 --doc "$PDB/chief.md" --workers-from "$PDB/fleet.json" --workers-dir "$PD/st/workers" 2>/dev/null; }
+pd_hash() { python3 -I -c 'import hashlib, sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:12])' "$1"; }
+pd_live() { printf '# chief\n\n## Live state\n\n' > "$PDB/chief.md"; printf 'pool-disposition: %s\n' "$@" >> "$PDB/chief.md"; }
+pd0="$(pd_run)"
+has "10257: an owed proof on a ticket with nothing on main stays RESUME" "$pd0" "RESUME${TAB}$KP-9701${TAB}"
+git -C "$PDG" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m "fix(x): [$KP-9701] the code slice" \
+    || fail "10257: could not land the owed ticket's slice"
+pd1="$(pd_run)"
+has "10257: the true remainder is RESUME" "$pd1" "RESUME${TAB}$KP-9704${TAB}"
+has "10257: an owed proof on a ticket with a recorded remainder stays RESUME" "$pd1" "RESUME${TAB}$KP-9707${TAB}"
+lacks "10257: an owed-proof-only ticket fills no RESUME slot" "$pd1" "RESUME${TAB}$KP-9701${TAB}"
+lacks "10257: a ticket gated on a chief question fills no RESUME slot" "$pd1" "RESUME${TAB}$KP-9702${TAB}"
+lacks "10257: a done-on-main ticket fills no RESUME slot" "$pd1" "RESUME${TAB}$KP-9703${TAB}"
+lacks "10257: a ticket a live readiness c row gates fills no RESUME slot" "$pd1" "RESUME${TAB}$KP-9705${TAB}"
+check "10257: the owed-proof ticket prints as # pool-owed" "1" "$(printf '%s\n' "$pd1" | grep -c "^# pool-owed $KP-9701 open owed proof o1: run the 11-16 replay\$")"
+check "10257: the chief question prints as # pool-gated with its gate named" "1" "$(printf '%s\n' "$pd1" | grep -c "^# pool-gated $KP-9702 pool-disposition question decision 977\$")"
+check "10257: the readiness c row prints as # pool-gated with its blocker named" "1" "$(printf '%s\n' "$pd1" | grep -c "^# pool-gated $KP-9705 readiness c blocker=$KP-9706\$")"
+check "10257: the done-on-main ticket prints as # pool-done-candidate" "1" "$(printf '%s\n' "$pd1" | grep -c "^# pool-done-candidate $KP-9703 ")"
+lacks "10257: the dispatcher writes no Jira status" "$(cat "$PD/jira.log")" "transition"
+printf '# chief\n\n## Live state\n\nlegs: none\n' > "$PDB/chief.md"
+pd2="$(pd_run)"
+lacks "10257: a cleared gate leaves no # pool-gated line" "$pd2" "# pool-gated $KP-9702"
+check "10257: a cleared gate returns the ticket to RESUME at its old rank, ahead of the lower-priority remainder" \
+    "$KP-9702 $KP-9704 $KP-9707" "$(printf '%s\n' "$pd2" | awk -F'\t' '$1 == "RESUME" {printf "%s%s", s, $2; s=" "}')"
+pd_live "$KP-9702 question decision 977" "$KP-9702 slice PR 5800"
+has "10257: the newest pool-disposition line of a key replaces its older gate" "$(pd_run)" "RESUME${TAB}$KP-9702${TAB}"
+pd_live "$KP-9702 hold until the release settles"
+has "10257: a hold line naming no ticket, PR or decision gates nothing" "$(pd_run)" "RESUME${TAB}$KP-9702${TAB}"
+printf '{"rows":[{"key":"%s","line":"%s","class":"authority"}]}\n' "$KP-9702" "$(pd_hash "$KP-9702 hold until the release settles")" > "$PD/state/pool-holds-chief.json"
+check "10257: a hold line the tick's holds run grants authority gates the ticket" "1" \
+    "$(pd_run | grep -c "^# pool-gated $KP-9702 pool-disposition hold until the release settles\$")"
+printf '{"rows":[{"key":"%s","line":"%s","class":"no-authority"}]}\n' "$KP-9702" "$(pd_hash "$KP-9702 hold until the release settles")" > "$PD/state/pool-holds-chief.json"
+has "10257: a hold line the tick's holds run finds without authority gates nothing" "$(pd_run)" "RESUME${TAB}$KP-9702${TAB}"
+printf 'not json\n' > "$PD/state/pool-holds-chief.json"
+has "10257: an unreadable holds file grants no authority" "$(pd_run)" "RESUME${TAB}$KP-9702${TAB}"
+rm -f "$PD/state/pool-holds-chief.json"
+pd_live "$KP-9702 hold waits on PR 5801"
+check "10257: a hold on an open PR gates the ticket" "1" "$(pd_run | grep -c "^# pool-gated $KP-9702 pool-disposition hold waits on PR 5801\$")"
+printf '{"rows":[{"key":"%s","line":"%s","class":"no-authority"}]}\n' "$KP-9702" "$(pd_hash "$KP-9702 hold waits on PR 5801")" > "$PD/state/pool-holds-chief.json"
+has "10257: a hold on an open PR the tick's holds run finds without authority gates nothing" "$(pd_run)" "RESUME${TAB}$KP-9702${TAB}"
+rm -f "$PD/state/pool-holds-chief.json"
+pd_live "$KP-9702 question decision 977"
+printf 'CLOSE-OR-DISPATCH %s fixture drift\n' "$KP-9702" > "$PDB/focus-drift.txt"
+has "10257: a sole question decision on a key with a CLOSE-OR-DISPATCH drift row gates nothing" "$(pd_run)" "RESUME${TAB}$KP-9702${TAB}"
+rm -f "$PDB/focus-drift.txt"
+mkdir -p "$PD/rel-dec"
+HIMMEL_RELEASE_STATE_DIR="$PD/rel-dec" bash "$HERE/readiness.sh" append v1.0.1 "$KP-9705" c --evidence fixture --blocker 977 --by fixture --mirror "$PDM" >/dev/null 2>&1 \
+    || fail "10257: could not seed the decision-blocker readiness row"
+check "10257: a readiness c row naming a bare decision gates the ticket" "1" "$(PD_REL="$PD/rel-dec" pd_run | grep -c "^# pool-gated $KP-9705 readiness c blocker=977\$")"
+printf 'CLOSE-OR-DISPATCH %s fixture drift\n' "$KP-9705" > "$PDB/focus-drift.txt"
+has "10257: a readiness row naming a bare decision on a key with a CLOSE-OR-DISPATCH drift row gates nothing" "$(PD_REL="$PD/rel-dec" pd_run)" "RESUME${TAB}$KP-9705${TAB}"
+rm -f "$PDB/focus-drift.txt"
+pd_live "$KP-9702 hold waits on PR 5801"
+printf '# mirror=%s\nSTALE-DISPOSITION %s line=%s PR5801=merged\n' "$(cd "$PDM" && pwd -P)" "$KP-9702" "$(pd_hash "$KP-9702 hold waits on PR 5801")" > "$PD/state/tick-pool-stale-1.out"
+has "10257: a hold the tick reads stale (its PR merged) gates nothing" "$(pd_run)" "RESUME${TAB}$KP-9702${TAB}"
+printf '# mirror=%s/other\nSTALE-DISPOSITION %s line=%s PR5801=merged\n' "$PD" "$KP-9702" "$(pd_hash "$KP-9702 hold waits on PR 5801")" > "$PD/state/tick-pool-stale-1.out"
+check "10257: a stale file of another mirror lifts no gate" "1" "$(pd_run | grep -c "^# pool-gated $KP-9702 ")"
+pd_own="$PD/state/tick-pool-stale-$(printf '%s\n%s' "$(cd "$PDB" && pwd -P)/chief.md" "$(cd "$PDM" && pwd -P)" | cksum | cut -d' ' -f1).out"
+printf '# mirror=%s\n' "$(cd "$PDM" && pwd -P)" > "$pd_own"
+printf '# mirror=%s\nSTALE-DISPOSITION %s line=%s PR5801=merged\n' "$(cd "$PDM" && pwd -P)" "$KP-9702" "$(pd_hash "$KP-9702 hold waits on PR 5801")" > "$PD/state/tick-pool-stale-1.out"
+check "10257: the doc's own stale file wins over a newer stale file of the same mirror" "1" "$(pd_run | grep -c "^# pool-gated $KP-9702 ")"
+rm -f "$PD/state/tick-pool-stale-1.out" "$pd_own"
+pd_live "$KP-9702 hold blocked by $KP-9706"
+check "10257: a hold blocked by an open ticket gates the ticket" "1" "$(pd_run | grep -c "^# pool-gated $KP-9702 pool-disposition hold blocked by $KP-9706\$")"
+has "10257: a failed readiness read gates nothing" "$(PD_REL="$PD/no-release" pd_run)" "RESUME${TAB}$KP-9705${TAB}"
+( M="$PDM"; mk "$KP-9706" "Done" Medium '[]' '["v1.0.1"]' '[]' "the closed blocker of 9705" "Edit scripts/lib/pd-9706.sh." )
+sed 's/^statusCategory: "x"/statusCategory: "Done"/' "$PDM/$KP-9706.md" > "$PDM/$KP-9706.md.tmp" && mv "$PDM/$KP-9706.md.tmp" "$PDM/$KP-9706.md"
+pd3="$(pd_run)"
+has "10257: a hold whose blocker is Done gates nothing" "$pd3" "RESUME${TAB}$KP-9702${TAB}"
+has "10257: a readiness c row whose blocker is Done is stale and gates nothing" "$pd3" "RESUME${TAB}$KP-9705${TAB}"
+bash "$HERE/owe.sh" close --bucket "$PDB" --id o1 --key fixture-closed >/dev/null \
+    || fail "10257: could not close the owed proof of 9701"
+pd4="$(pd_run)"
+lacks "10257: a closed owed proof no longer names the ticket # pool-owed" "$pd4" "# pool-owed $KP-9701 "
+check "10257: with its proof closed and its slice on main the ticket is a # pool-done-candidate" "1" "$(printf '%s\n' "$pd4" | grep -c "^# pool-done-candidate $KP-9701 ")"
+
+M107="$WORK/m107/HIMMEL"; mkdir -p "$M107" "$WORK/s107/workers"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m107/HIMMEL.versions.tsv"
+LONG107="$(printf 'z%.0s' $(seq 1 700))"
+(
+    M="$M107"
+    for n in $(seq 1 26); do mk "$KP-107$(printf '%02d' "$n")" "To Do" Medium '[]' '["v1.0.1"]' '[]' "no scope $n" "Keep the thing going $n."; done
+    mk "$KP-10700" "In Progress" High '[]' '["v1.0.1"]' '[]' "in work, no scope" "$LONG107"
+)
+run107() { NEXT_DISPATCH_MIRROR="$M107" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 60 --workers-dir "$WORK/s107/workers" --workers-from "$WORK/fleet5.json" "$@" 2>/dev/null; }
+B107="$WORK/b107"; mkdir -p "$B107"
+want107="$(run107 --why | grep '^NEEDS-CHIEF-NOTE ' | head -25 | cut -d: -f1 | cut -d' ' -f2)"
+b1="$(run107 --scope-batch "$B107/batch.jsonl")"; b1rc=$?
+check "10774 B1: --scope-batch exits 0" "0" "$b1rc"
+has "10774 B1: prints the written line" "$b1" "# scope-batch 25 written to $B107/batch.jsonl"
+check "10774 B1: 25 rows, the keys in the order the listing prints them" "$want107" "$(jq -r .key "$B107/batch.jsonl" 2>/dev/null)"
+check "10774 B1: ranks run 1 to 25" "$(seq 1 25)" "$(jq -r .rank "$B107/batch.jsonl" 2>/dev/null)"
+check "10774 B1: one batch id on every row, <UTC yyyymmddThhmm>-<first key>" "25 1" "$(jq -r .batch "$B107/batch.jsonl" 2>/dev/null | grep -c -E "^[0-9]{8}T[0-9]{4}-$(printf '%s' "$want107" | head -1)\$" | tr '\n' ' ')$(jq -r .batch "$B107/batch.jsonl" 2>/dev/null | sort -u | grep -c .)"
+check "10774 B1: each row carries exactly the five fields" "25" "$(jq -c 'keys' "$B107/batch.jsonl" 2>/dev/null | grep -c '^\["batch","excerpt","key","rank","title"\]$')"
+check "10774 B1: the in-work ticket is in the batch by its rank" "1" "$(jq -r .key "$B107/batch.jsonl" 2>/dev/null | grep -c -x "$KP-10700")"
+check "10774 B1: its excerpt is the first 600 characters of the description" "$(printf '\n%s' "${LONG107:0:599}")" "$(jq -r --arg k "$KP-10700" 'select(.key == $k) | .excerpt' "$B107/batch.jsonl" 2>/dev/null)"
+check "10774 B1: the title is the ticket title" "no scope 1" "$(jq -r --arg k "$KP-10701" 'select(.key == $k) | .title' "$B107/batch.jsonl" 2>/dev/null)"
+rm -f "$B107/batch.jsonl"
+b1n="$(run107 --scope-batch "$B107/n3.jsonl" --batch-size 3)"
+check "10774 B1: --batch-size 3 writes 3 rows" "3" "$(grep -c . "$B107/n3.jsonl" 2>/dev/null)"
+has "10774 B1: and says so" "$b1n" "# scope-batch 3 written to $B107/n3.jsonl"
+BASE_ND="$HERE/.nd-base-$$.sh"
+trap 'rm -rf "$WORK" "$BASE_ND"' EXIT
+if git -C "$HERE" show origin/main:scripts/handover/chief-kit/next-dispatchable.sh > "$BASE_ND" 2>/dev/null && [ -s "$BASE_ND" ]; then
+    ctl_new="$(run107 --why; echo "rc=$?")"
+    ctl_base="$(NEXT_DISPATCH_MIRROR="$M107" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$BASE_ND" --top 60 --workers-dir "$WORK/s107/workers" --workers-from "$WORK/fleet5.json" --why 2>/dev/null; echo "rc=$?")"
+    norm107() { sed -e 's/, or batch it: --scope-batch FILE (docs\/handover\/chief-sections\/scope-helper.md)//' -e 's/^\(# source mirror_age_min=\).*/\1/'; }
+    check "10774 B1.ctl: without the flag the listing is the base listing, the remedy suffix aside" "$(printf '%s\n' "$ctl_base" | norm107)" "$(printf '%s\n' "$ctl_new" | norm107)"
+else
+    echo "SKIP: 10774 B1.ctl: no origin/main ref to read the base script from"
+fi
+rm -f "$BASE_ND"
+find "$M107" "$WORK/s107" "$B107" | LC_ALL=C sort > "$B107.before"
+run107 --scope-batch "$B107/b6.jsonl" > /dev/null
+find "$M107" "$WORK/s107" "$B107" | LC_ALL=C sort > "$B107.after"
+check "10774 B6: the only new path is FILE" "$B107/b6.jsonl" "$(comm -13 "$B107.before" "$B107.after")"
+printf 'keep\n' > "$B107/exists.jsonl"
+run107 --scope-batch "$B107/exists.jsonl" > "$B107/b2.out"; b2rc=$?
+check "10774 B2: an existing FILE exits 2" "2" "$b2rc"
+check "10774 B2: and stays unchanged" "keep" "$(cat "$B107/exists.jsonl")"
+check "10774 B2: and nothing was listed" "0" "$(grep -c . "$B107/b2.out")"
+run107 --why-ticket "$KP-10701" --scope-batch "$B107/b3.jsonl" > /dev/null; b3rc=$?
+check "10774 B3: --why-ticket with --scope-batch exits 2" "2" "$b3rc"
+check "10774 B3: and writes no file" "no" "$([ -e "$B107/b3.jsonl" ] && echo yes || echo no)"
+has "10774 B4: the no-scope row prints the remedy suffix" "$(run107 | grep -m1 '^NEEDS-CHIEF-NOTE ')" "to clear it add a Writes: line to the ticket, or say no code, or batch it: --scope-batch FILE (docs/handover/chief-sections/scope-helper.md)"
+for bs in 0 51 abc 007; do
+    run107 --scope-batch "$B107/b5-$bs.jsonl" --batch-size "$bs" > /dev/null; b5rc=$?
+    check "10774 B5: --batch-size $bs exits 2" "2" "$b5rc"
+done
+run107 --batch-size 5 > /dev/null; check "10774 B5: --batch-size without --scope-batch exits 2" "2" "$?"
+check "10774 B5: and no refused run wrote a file" "0" "$(find "$B107" -name 'b5-*' | grep -c .)"
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.

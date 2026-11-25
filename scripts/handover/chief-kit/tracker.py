@@ -851,7 +851,10 @@ KCOLS = (('todo', 'To Do'), ('prog', 'In Progress'), ('rev', 'In Review'), ('ci'
 KCOL_OF = {'todo': 'todo', 'prog': 'prog', 'rev': 'rev', 'ci': 'ci', 'done': 'done'}
 
 
-def kanban(tk, vers, cur, base, wont=(), flight=()):
+RESIDUAL_RE = re.compile(r'(^|-)residual(-|$)')
+
+
+def kanban(tk, vers, cur, base, wont=(), flight=(), mir=None):
     """One <details> per release with tickets, holding a 5-column board (To Do, In Progress, In Review, IN CI, Done).
 
     A card links to <base>/browse/<key> (plain text when no base URL is configured) with the summary and the ticket's
@@ -869,9 +872,11 @@ def kanban(tk, vers, cur, base, wont=(), flight=()):
         for t in a:
             cols[KCOL_OF['prog' if t['live'] else t['b']]].append(t)
         n_open = len(a) - len(cols['done'])
-        parts = ['<details class="krel"%s data-v="%s"><summary><span class="vn">%s</span> '
-                 '<span class="kmeta">%d open of %d%s%s</span></summary><div class="kboard">'
-                 % (' open' if i == cur else '', esc(v['n']), esc(v['n']), n_open, len(a),
+        n_res = sum(1 for c in ('todo', 'prog', 'rev', 'ci') for t in cols[c]
+                    if any(RESIDUAL_RE.search(x) for x in (mir or {}).get('HIMMEL-%d' % t['k'], {}).get('labels', [])))
+        parts = ['<details class="krel"%s data-v="%s" data-open="%d" data-residual="%d"><summary><span class="vn">%s</span> '
+                 '<span class="kmeta">%d open · %d residual%s%s</span></summary><div class="kboard">'
+                 % (' open' if i == cur else '', esc(v['n']), n_open, n_res, esc(v['n']), n_open, n_res,
                     ' · released ' + esc(v['date']) if v['rel'] else '',
                     ' · %d closed without shipping' % wn[i] if wn.get(i) else '')]
         for c, title in KCOLS:
@@ -1442,7 +1447,7 @@ class OwedRow(tuple):
 def handoff_answered(handover_dir, handoff, line):
     keys = set(re.findall(r'HIMMEL-\d+', line))
     asks = {' '.join(q.lower().split()) for q in re.findall(r'"([^"]{6,})"', line)}
-    if not keys and not asks:
+    if not asks:
         return False
     try:
         since = os.path.getmtime(handoff)
@@ -1508,8 +1513,61 @@ def operator_critical(spec, critic, critical_re, unread):
     return None if unknown else False
 
 
+def owed_ledger_items(handover_dir, unread):
+    try:
+        lines = open(os.path.join(handover_dir, 'owed.jsonl'), encoding='utf-8').read().splitlines()
+    except FileNotFoundError:
+        return []
+    except (OSError, UnicodeDecodeError):
+        unread.append('owed.jsonl')
+        return []
+    adds, closed = {}, set()
+    for l in lines:
+        try:
+            r = json.loads(l)
+        except ValueError:
+            continue
+        if isinstance(r, dict) and r.get('op') == 'add' and isinstance(r.get('id'), str):
+            adds[r['id']] = r
+        elif isinstance(r, dict) and r.get('op') == 'close' and isinstance(r.get('ref'), str):
+            closed.add(r['ref'])
+    out = []
+    for i, r in adds.items():
+        if i in closed or r.get('actor') != 'operator':
+            continue
+        k = re.fullmatch(r'HIMMEL-(\d+)', str(r.get('key') or ''))
+        out.append(('owed ledger', int(k.group(1)) if k else None, clip(str(r.get('text') or i), 140), '%s (%s) in owed.jsonl' % (i, r.get('kind')),
+                    'run the proof' if r.get('kind') == 'proof' else 'do what the row names'))
+    return out
+
+
+RELEASE_LINE_RE = {
+    'signer-check': re.compile(r'SIGNER (\S+) (?:chief|operator) \S+(?: via \S+)?|UNKNOWN (\S+) \S.*'),
+    'spec-check': re.compile(r'SPEC ok (\S+) \S.*|SPEC-STALE (\S+)(?: .*)?|NO-SPEC (\S+)(?: .*)?'
+                             r'|SPEC-NEEDS-OPERATOR (\S+) \S.* \S+ \S+|SPEC-SIGNER-UNKNOWN (\S+) \S+ \S.*'),
+}
+RELEASE_ANSWER_EXITS = {'signer-check': (0,), 'spec-check': (0, 1)}
+
+
+def release_check(verb, keys, extra=()):
+    cli, pk = jira_cli(), jira_project_key()
+    cmd = (['node', cli] if cli.endswith('.js') else [cli]) + ['release', verb] + (['--mirror', MIRROR] if MIRROR else []) + list(extra) + list(keys)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60, cwd=os.path.dirname(os.path.abspath(cli)),
+                           env=dict(os.environ, JIRA_PROJECT_KEY=pk))
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode not in RELEASE_ANSWER_EXITS[verb]:
+        return None
+    got = {}
+    for l in r.stdout.splitlines():
+        m = RELEASE_LINE_RE[verb].fullmatch(l.strip())
+        if m:
+            got.setdefault(next(g for g in m.groups() if g), l.strip())
+    return got if all(k in got for k in keys) else None
+
+
 def operator_owed(handover_dir, chief_doc, version, opn, mir):
-    """(operator items, source read, unread critic files, chief-owed items): unsigned specs without the marker are chief-owed."""
     items, chief_owes, readable, unread = [], [], False, []
     if handover_dir:
         signed, signed_ticket_numbers = set(), set()
@@ -1555,11 +1613,39 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
                 if k and int(k.group(1)) in opn and int(k.group(1)) not in signed_ticket_numbers and spec_id(spec) not in signed and (last == 'SPEC CLEAN' or rnd >= status['cap']):
                     n = int(k.group(1))
                     critical = operator_critical(spec, f, critical_re, unread)
-                    (items if critical else chief_owes).append(OwedRow(('unsigned spec', n, clip(opn[n]['title'], 100),
-                                  '%s: latest critic round %d reads %s, no spec row in operator.jsonl' % (
-                                      os.path.basename(spec), rnd, last if re.fullmatch(r'SPEC (?:CLEAN|FINDINGS \d+)', last) else 'no verdict line'),
-                                  'reconcile the unread spec evidence' if critical is None else 'sign the spec, or rule on its findings'),
-                                  'unknown' if critical is None else 'operator' if critical else 'chief'))
+                    ctx = '%s: latest critic round %d reads %s, no spec row in operator.jsonl' % (
+                        os.path.basename(spec), rnd, last if re.fullmatch(r'SPEC (?:CLEAN|FINDINGS \d+)', last) else 'no verdict line')
+                    line = ''
+                    if not critical:
+                        path = spec if spec.endswith('.md') else spec + '.md'
+                        got = release_check('signer-check', ['HIMMEL-%d' % n], ['--spec', path] if os.path.isfile(path) else [])
+                        if got is None:
+                            unread += [] if 'release signer-check' in unread else ['release signer-check']
+                        else:
+                            line = got['HIMMEL-%d' % n]
+                    marked = line.split()[:1] + line.split()[2:3] == ['SIGNER', 'operator']
+                    if marked:
+                        ctx += '; signer-check: ' + line
+                    elif line.startswith('UNKNOWN '):
+                        ctx += '; signer unread: ' + line.split(None, 2)[2]
+                    actor = 'operator' if critical or marked else 'unknown' if critical is None else 'chief'
+                    (items if actor == 'operator' else chief_owes).append(OwedRow(('unsigned spec', n, clip(opn[n]['title'], 100), ctx,
+                                  'sign the spec as yours, or lift the mark' if marked else
+                                  'reconcile the unread spec evidence' if critical is None else 'sign the spec, or rule on its findings'), actor))
+            signed_keys = ['HIMMEL-%d' % n for n in sorted(signed_ticket_numbers) if n in opn]
+            got = release_check('spec-check', signed_keys) if signed_keys else {}
+            if got is None:
+                unread.append('release spec-check')
+            for key, line in sorted((got or {}).items()):
+                n, t = int(key[7:]), line.split()
+                if t[0] == 'SPEC-NEEDS-OPERATOR':
+                    items.append(OwedRow(('signed spec', n, clip(opn[n]['title'], 100),
+                                          "needs the operator's own signature: chief signature %s does not count (%s)" % (t[-2], t[-1]),
+                                          'sign the spec as yours (--signer operator --supersedes %s), or lift the mark' % t[-2]), 'operator'))
+                elif t[0] == 'SPEC-SIGNER-UNKNOWN':
+                    chief_owes.append(OwedRow(('signed spec', n, clip(opn[n]['title'], 100),
+                                               'chief signature %s cannot be checked: signer records unreadable: %s' % (t[2], line.split(None, 3)[3]),
+                                               'repair the release named, then re-run'), 'chief'))
             for n, crit in sorted((int(key[7:]), st.get('critical_open')) for key, st in (status or {'keys': {}})['keys'].items()
                                   if re.fullmatch(r'HIMMEL-\d+', key) and isinstance(st, dict)):
                 if n in opn and isinstance(crit, list) and crit:
@@ -1575,6 +1661,7 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
                     answered = handoff_answered(handover_dir, hand[-1], l)
                     (chief_owes if answered else items).append(('handoff', None, clip(l.strip(), 140), os.path.basename(hand[-1]),
                                                                 'the chief records the operator answer' if answered else 'answer the open item'))
+        items += owed_ledger_items(handover_dir, unread)
         try:
             drift_rows = open(os.path.join(handover_dir, 'focus-drift.txt'), encoding='utf-8').read().splitlines()
         except (OSError, UnicodeDecodeError):
@@ -1855,14 +1942,17 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
     wait = [k for k in sorted(opn, key=order.get) if set(OPERATOR_LABELS) & set(opn[k].get('labels', []))]
     owed, owed_read, owed_unread, chief_owes, holds_unread = operator_owed(bucket_dir, chief_doc, version, opn, mir)
     nwait = len(wait) + len(owed)
-    waithtml = '<section data-section="waiting" data-count="%d" data-actor="operator"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s%s</h2>%s</section>' % (
+    critic_unread = [u for u in owed_unread if u != 'owed.jsonl' and not u.startswith('release ')]
+    waithtml = '<section data-section="waiting" data-count="%d" data-actor="operator"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s%s%s%s</h2>%s</section>' % (
         nwait, nwait, '' if owed_read else ' <span class="n">no operator-owed source read</span>',
         ' <span class="n">%d critic file%s unread, skipped: %s</span>' % (
-            len(owed_unread), '' if len(owed_unread) == 1 else 's', esc(', '.join(owed_unread))) if owed_unread else '',
+            len(critic_unread), '' if len(critic_unread) == 1 else 's', esc(', '.join(critic_unread))) if critic_unread else '',
+        ' <span class="n">owed ledger unread</span>' if 'owed.jsonl' in owed_unread else '',
+        ''.join(' <span class="n">%s unread, rows unchanged</span>' % esc(u) for u in owed_unread if u.startswith('release ')),
         ' <span class="n">pool holds unread: %s</span>' % esc(', '.join(holds_unread)) if holds_unread else '',
-        '<ul>%s</ul>' % (''.join('<li>%s %s <span class="own">Jira %s · %s</span></li>' % (
+        '<ol class="needs-you">%s</ol>' % (''.join('<li><b>Needs you:</b> %s %s <span class="own">Jira %s · %s</span></li>' % (
             key_html(k), esc(clip(opn[k]['title'], 100)), esc(jcol[k]), esc(', '.join(sorted(set(OPERATOR_LABELS) & set(opn[k]['labels']))))) for k in wait)
-            + ''.join('<li class="owed">%s%s <span class="own">%s · %s · action: %s</span></li>' % (
+            + ''.join('<li class="owed"><b>Needs you:</b> %s%s <span class="own">%s · %s · action: %s</span></li>' % (
                 key_html(n) + ' ' if n else '', esc(t), esc(src), esc(ctx), esc(act)) for src, n, t, ctx, act in owed))
         if nwait else '<div class="empty">%s</div>' % ('nothing is waiting on you' if owed_read else
                                                        'no operator-owed source read: the Jira labels name no waiting ticket, and that is all that was checked'))
@@ -2205,7 +2295,7 @@ def main():
         urls = {'focus': a.focus_url, 'done': a.done_url, 'future': a.future_url}
         pages = split_pages(rows, notes, dirs, jt, jc, ja, jw, jf, unpl, vers, tname, paths, urls)
     for p in pages:
-        p['kb'] = kanban(p['JT'], jv, p['JC'], a.jira_base_url, p['JW'], p['JF'])
+        p['kb'] = kanban(p['JT'], jv, p['JC'], a.jira_base_url, p['JW'], p['JF'], mir)
     for t in jt:
         del t['ln']  # the card line is static HTML above; keep it out of the page data
     p90 = meta.get('version_p90_fw') if isinstance(meta.get('version_p90_fw'), dict) else {}

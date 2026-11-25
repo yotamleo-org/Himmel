@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { posix } from 'node:path';
 import type { IssueSnap, OperatorRow } from './types.js';
+import { effectiveSigner, type SignerState } from './signer.js';
 
 export type ChangeClass = 'rename' | 'bulk';
 
@@ -96,7 +97,11 @@ export interface CoreCtx {
   issues?: Map<string, IssueSnap> | null;
   // The verified core-bypass and core-snapshot records of every declared release.
   records?: OperatorRow[];
+  signer?: SignerState;
+  specFor?: (k: string) => { ok: true } | { missing: string };
 }
+
+export const SPEC_GATED_KINDS = ['operator', 'bug', 'grandfathered'];
 
 const EMERGENCY_LABELS = ['red-main', 'regression'];
 
@@ -105,26 +110,51 @@ const isDocsPath = (p: string) => p.startsWith('docs/') || p.endsWith('.md');
 
 // The spec §4 bypass table, for a key that is core: `<kind> <reason>`, or null.
 // A design leg needs the caller's --docs-only and every path a docs path: it never writes code.
-function bypassOf(k: string, snap: IssueSnap, labelOnly: boolean, docsPaths: boolean, o: CoreCtx): string | null {
-  if (labelOnly && o.docsOnly && docsPaths) return 'design core by label only, docs-only leg';
+function emergencyOrBug(snap: IssueSnap): string | null {
   if (snap.type === 'Bug' && (snap.priority === 'Highest' || snap.priority === 'Blocker')) return `emergency Bug at ${snap.priority}`;
   const label = EMERGENCY_LABELS.find((l) => snap.labels?.includes(l));
   if (label) return `emergency label ${label}`;
   if (snap.type === 'Bug') return 'bug issue type Bug';
-  const newest = (kind: OperatorRow['kind']) => (o.records ?? []).filter((r) => r.kind === kind && r.keys?.includes(k)).at(-1);
-  const op = newest('core-bypass');
-  if (op) return `operator ${op.id} decision ${op.decision}`;
-  const snapshot = newest('core-snapshot');
-  if (snapshot) return `grandfathered ${snapshot.id} core-snapshot`;
   return null;
 }
 
-// Per key: CORE <K> <first matched path | label core> | REVIEW <K> <path> <class> |
-// BYPASS <K> <kind> <reason> | UNKNOWN <K> (no mirror file) | NOT-CORE <K>.
+export function pathIndependentBypass(key: string, snap: IssueSnap, records: OperatorRow[]): string | null {
+  const answer = emergencyOrBug(snap);
+  if (answer) return answer;
+  const snapshot = records.filter((r) => r.kind === 'core-snapshot' && r.keys?.includes(key)).at(-1);
+  return snapshot ? `grandfathered ${snapshot.id} core-snapshot` : null;
+}
+
+function bypassOf(k: string, snap: IssueSnap, labelOnly: boolean, docsPaths: boolean, o: CoreCtx): string | null {
+  if (labelOnly && o.docsOnly && docsPaths) return 'design core by label only, docs-only leg';
+  const records = o.records ?? [];
+  const signer = o.signer;
+  const voided = (r: OperatorRow) => {
+    if (!signer) return false;
+    const e = effectiveSigner(k, r.ts, signer);
+    return 'unreadable' in e || e.signer === 'operator';
+  };
+  const op = records.filter((r) => r.kind === 'core-bypass' && r.keys?.includes(k) && !voided(r)).at(-1);
+  if (op && !emergencyOrBug(snap)) return `operator ${op.id} decision ${op.decision}`;
+  return pathIndependentBypass(k, snap, records);
+}
+
+function bypassLine(k: string, bypass: string, o: CoreCtx): string {
+  const kind = bypass.split(' ', 1)[0];
+  if (!SPEC_GATED_KINDS.includes(kind)) return `BYPASS ${k} ${bypass}`;
+  const answer = o.specFor ? o.specFor(k) : { missing: 'no spec reader' };
+  if ('ok' in answer && answer.ok === true) return `BYPASS ${k} ${bypass}`;
+  const missing = 'missing' in answer ? answer.missing.replace(/\s+/g, ' ').trim() : '';
+  return `BYPASS-NEEDS-SPEC ${k} ${kind} ${missing || 'no reviewed spec'} (bypass: ${bypass.slice(kind.length + 1)})`;
+}
+
+// Per key: CORE <K> <first matched path | label core> | REVIEW <K> <path> <class> | BYPASS <K> <kind> <reason> |
+// BYPASS-NEEDS-SPEC <K> <kind> <missing> (bypass: <reason>) | UNKNOWN <K> (no mirror file) | NOT-CORE <K>.
 // A path match makes every key core unless the key has its own bypass; the `core` label
 // makes only its own key core. A rename or bulk-mechanical change that touches a core path
 // is REVIEW: the chief or a judge rules it per slice (operator 10-31).
 export function coreMatch(paths: string[], keys: string[], o: CoreCtx): string[] {
+  if (o.records && !o.signer) throw new Error('core-check: the operator records came without the signer state, so the core gate cannot run');
   const res = o.patterns.map((p) => new RegExp(p));
   const norm = paths.map((p) => posix.normalize(p));
   const hit = norm.find((p) => !TEST_PATH.test(p) && matchesAny(res, p));
@@ -136,7 +166,7 @@ export function coreMatch(paths: string[], keys: string[], o: CoreCtx): string[]
     if (!snap) return `UNKNOWN ${k}`;
     if (hit === undefined && !snap.labels?.includes('core')) return `NOT-CORE ${k}`;
     const bypass = bypassOf(k, snap, hit === undefined, docsPaths, o);
-    if (bypass) return `BYPASS ${k} ${bypass}`;
+    if (bypass) return bypassLine(k, bypass, o);
     return hit === undefined ? `CORE ${k} label core` : byPath(k);
   });
 }

@@ -156,6 +156,7 @@ git init -q "$ROOT/ready-repo"
 # check 19 fetches origin/main and reads origin/main..<head>: a real head
 SHA=$(ready_pass_repo "$ROOT/ready-repo") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 export PATH="$ROOT/ready-bin:$PATH" READY_STUB_HEAD="$SHA"
+[ "$(ready_pass_owner_review)" = "$READY_PASS_OWNER_LINE" ] || fail "ready-check's owner-review line over the ready-pass fixture"
 ready_pass_ledger "$ROOT/ready-repo" "$SHA"
 cd "$ROOT/ready-repo" || { echo "FAIL: cd into the ready repo" >&2; exit 1; }
 export HIMMEL_REPO="$ROOT/ready-repo"
@@ -552,6 +553,18 @@ case "$got" in "2:list scripts/ci/ci-trust-paths.txt is missing on acme/widget@m
 aw_main '{"env":{}}' -
 got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")
 [ "$got" = "0:not-adopted" ] || fail "9k: a repo without env.HIMMEL_REPO and no list is not not-adopted: $got"
+aw_main '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash scripts/hooks/block-edit-on-main.sh"}]}]}}' -
+got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")
+case "$got" in "2:list scripts/ci/ci-trust-paths.txt is missing on acme/widget@main"*adopted*) ;; *) fail "9k: a repo wired to the himmel hook chain with no env line and no list was not refused: $got" ;; esac
+mkdir -p "$CA/scripts/guardrails"; printf '[{"nwo":"Acme/Widget","merge_allowed":true}]\n' > "$CA/scripts/guardrails/himmel-adopted.json"
+aw_main '{"env":{}}' - || fail "9k: the registry-only setup did not commit"
+[ "$(lg -C "$AW" show main:.claude/settings.json)" = '{"env":{}}' ] || fail "9k: the registry-only case still carries a hook or env adoption route"
+got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")
+case "$got" in "2:list scripts/ci/ci-trust-paths.txt is missing on acme/widget@main"*adopted*) ;; *) fail "9k: a repo listed in himmel-adopted.json with no hook was not refused: $got" ;; esac
+printf 'not json\n' > "$CA/scripts/guardrails/himmel-adopted.json"
+got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")
+[ "$got" = "2:list cannot parse scripts/guardrails/himmel-adopted.json in $CA" ] || fail "9k: a malformed himmel-adopted.json was not refused: $got"
+rm -rf "$CA/scripts/guardrails"
 # A blank settings.json is unparseable, never read as not adopted.
 aw_main ' ' -
 got=$(GH="$ROOT/ghaw" tpc acme/widget 7 "$(aw_pr .claude/settings.json)" "$CA")

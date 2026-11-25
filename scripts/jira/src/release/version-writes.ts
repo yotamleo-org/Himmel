@@ -132,7 +132,7 @@ export async function newestFixVersionEntry(get: Getter, key: string): Promise<{
   return newest ? { id: String(newest.id), ts: newest.ts } : { id: 'create', ts: '' };
 }
 
-async function setOf(get: Getter, key: string): Promise<string[]> {
+export async function setOf(get: Getter, key: string): Promise<string[]> {
   const got = await get<{ fields?: { fixVersions?: Array<{ name?: string }> } }>(`/issue/${key}?fields=fixVersions`);
   const raw = got.fields?.fixVersions;
   if (!Array.isArray(raw)) throw new Error(`${key}: the read carried no fixVersions list`);
@@ -142,7 +142,7 @@ async function setOf(get: Getter, key: string): Promise<string[]> {
 type VersionRef = { name?: string };
 
 // The set a body asks for, or null when it names a version by id (or in a shape this does not read).
-function requestedSet(before: string[], body: unknown): string[] | null {
+export function requestedSet(before: string[], body: unknown): string[] | null {
   const b = body as { fields?: { fixVersions?: VersionRef[] }; update?: { fixVersions?: Array<{ add?: VersionRef; remove?: VersionRef; set?: VersionRef[] }> } };
   const names = (refs: VersionRef[]): string[] | null => (refs.every((r) => typeof r?.name === 'string') ? refs.map((r) => r.name as string) : null);
   if (b.fields?.fixVersions !== undefined) {
@@ -167,17 +167,24 @@ function requestedSet(before: string[], body: unknown): string[] | null {
   return sorted(set);
 }
 
+export const addOnly = (body: unknown): boolean => {
+  const b = body as { fields?: { fixVersions?: unknown }; update?: { fixVersions?: unknown } } | null;
+  const ops = b?.update?.fixVersions;
+  return b?.fields?.fixVersions === undefined && Array.isArray(ops)
+    && ops.every((op) => op !== null && typeof op === 'object' && Object.keys(op).length === 1 && 'add' in op);
+};
+
 const same = (a: string[], b: string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /** Reads the key's newest entry and set before the write. Null when the hook does not act or the path cannot be resolved. */
-export async function preRead(request: WriteRequest, env: Record<string, string | undefined> = process.env): Promise<PreRead | null> {
+export async function preRead(request: WriteRequest, env: Record<string, string | undefined> = process.env, before?: string[]): Promise<PreRead | null> {
   const scope = versionWriteScope(request.apiBase, request.method, request.path, request.body);
   if (!scope) return null;
   const journal = journalPath(env);
   if (!journal) return null;
   const mechanism = mechanismOf(request.writer, env);
   if (scope.key === null) return { journal, mechanism, key: null, set: [], entry: null };
-  const set = await setOf(request.get, scope.key);
+  const set = before ?? await setOf(request.get, scope.key);
   const newest = await newestFixVersionEntry(request.get, scope.key);
   return { journal, mechanism, key: scope.key, set, entry: newest.id === 'create' ? null : BigInt(newest.id) };
 }

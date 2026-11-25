@@ -869,13 +869,98 @@ bash "$HERE/owe.sh" add --bucket "$W/ow-dir" --chief OW --kind step --key HIMMEL
 ow_out="$(ow_tick)"
 contains '(10210) a past-due keyed step raises owed-stale' "$ow_out" 'ACTION owed-stale=1:o6:'
 contains '(10210) the accepted due action is a durable notification input' "$ow_out" 'ACTION owed-notify=o7'
+ow_stale="$(grep '^ACTION owed-stale=' <<<"$ow_out" || true)"
+case "$ow_stale" in
+    *'file it'*) fail "(10194) a past-due step's owed-stale line gives the step advice, not \"file it\": $ow_stale" ;;
+    'ACTION owed-stale=1:o6: an owed step is past its due date (o6): do it and close the row with its evidence (bash '*'owe.sh close --bucket '*'owe.sh add --bucket '*)
+        pass "(10194) a past-due step's owed-stale line gives the step advice, not \"file it\"" ;;
+    *) fail "(10194) a past-due step's owed-stale line gives the step advice, not \"file it\": $ow_stale" ;;
+esac
 bash "$HERE/owe.sh" close --bucket "$W/ow-dir" --id o7 --key wake-delivered >/dev/null
 not_contains '(10210) acknowledged due action does not notify on every tick' "$(ow_tick)" 'ACTION owed-notify='
 bash "$HERE/owe.sh" add --bucket "$W/ow-dir" --chief OW --kind step --key HIMMEL-10210 --text 'date evidence missing' >/dev/null
 contains '(10210) missing due evidence is explicit reconciliation' "$(ow_tick)" 'ACTION owed-invalid=o8'
+ow_t="$(OWE_NOW_EPOCH="$(( $(date +%s) - 18000 ))" bash "$HERE/owe.sh" add --bucket "$W/ow-dir" --chief OW --kind ticket --text 'file the second lost ticket')"
+ow_s="$(bash "$HERE/owe.sh" add --bucket "$W/ow-dir" --chief OW --kind step --key drain-proof --text "run the drain proof by $ow_yesterday")"
+ow_out="$(ow_tick)"
+ow_stale="$(grep '^ACTION owed-stale=' <<<"$ow_out" || true)"
+case "$ow_stale" in
+    "ACTION owed-stale=2:$ow_t,$ow_s: a ticket you owe has no key after 4h ($ow_t): file it, then bash "*" (chief-sections/owed.md); an owed step is past its due date ($ow_s): do it and close "*)
+        pass '(10194) a stale ticket row and a past-due step row print count 2, the ticket clause first, each clause naming only its own id in brackets' ;;
+    *) fail "(10194) a stale ticket row and a past-due step row print count 2, the ticket clause first, each clause naming only its own id in brackets: $ow_stale" ;;
+esac
+ow_note="$(bash "$HERE/owe.sh" list --bucket "$W/ow-dir" --json | jq -r --arg s "$ow_s" '.[] | select(.event == "step-due" and .source_id == $s) | .id')"
+bash "$HERE/owe.sh" close --bucket "$W/ow-dir" --id "$ow_note" --key wake-delivered >/dev/null
+ow_out="$(ow_tick)"
+ow_n="$(bash "$HERE/owe.sh" list --bucket "$W/ow-dir" --json | jq -r --arg s "$ow_s" 'if any(.[]; .id == $s) then length else "step-closed" end')"
+if [[ "$ow_out" != *'an owed step is past its due date'* && "$ow_out" == *" owed=$ow_n:"* ]]; then
+    pass '(10194) after the step-due wake is delivered, the next tick has no step clause and owed= still counts the step'
+else
+    fail "(10194) after the step-due wake is delivered, the next tick has no step clause and owed= still counts the step (open rows $ow_n): $ow_out"
+fi
 printf '%s\n' 'not json' >> "$W/ow-dir/owed.jsonl"
 contains '(10006) an unreadable ledger prints owed=?' "$(ow_tick)" ' owed=?'
 rm -rf "$W/ow-tmp" "$W/ow-mirror" "$W/ow-dir"
+
+sp_root="$W/sp root"; sp_hd="$sp_root/handover"; sp_state="$sp_root/state"
+mkdir -p "$sp_hd/sp bucket" "$sp_state" "$sp_root/bin" "$sp_root/mirror/HIMMEL" "$sp_root/tmp"
+sp_doc="$sp_hd/sp bucket/sp-chief.md"; printf '# chief\n' > "$sp_doc"
+sp_body="## Ticket coverage
+- a: done
+- the live proof: owed $(printf '\342\206\222') proof by $(date -u -d '+3 days' +%F)"  # gnu-ok: chief kit is Linux-only
+printf '%s\n' "$sp_body" > "$sp_root/body.md"
+# shellcheck disable=SC2016  # the stub body is single-quoted on purpose: "$*" and "$@" expand when it runs
+printf '#!/usr/bin/env bash\nif [ "$*" = "pr view 91 --repo acme/repo --json body -q .body" ]; then cat %q; exit 0; fi\nexec %q "$@"\n' \
+    "$sp_root/body.md" "$W/bin/gh" > "$sp_root/bin/gh"
+chmod +x "$sp_root/bin/gh"
+sp_owed() {
+    printf '%s\n' "$sp_body" | python3 -I "$HERE/../../lib/pr_remainder.py" --owed-lines | \
+        python3 -I "$HERE/owed-events.py" spool --key "$2" --pr 91 --repo acme/repo --spool "$1"
+}
+sp_tick() { PATH="$sp_root/bin:$PATH" HANDOVER_DIR="$sp_hd" TICKET_STATUS_STATE_DIR="$sp_state" NEXT_DISPATCH_MIRROR="$sp_root/mirror/HIMMEL" TMPDIR="$sp_root/tmp" TOKEN='' bash "$SUT" --doc "$sp_doc" 2>/dev/null; }
+sp_spool="$(TICKET_STATUS_STATE_DIR="$sp_state" bash -c '. "$1" && ts_state_dir' _ "$HERE/../../lib/ticket-status.sh")/owe-spool.jsonl"
+sp_key="$(printf '%s-%s' HIMMEL 374)"
+sp_owed "$sp_spool" "$sp_key"
+sp_id="$(jq -r .identity "$sp_spool")"
+sp_tick > /dev/null
+if bash "$HERE/owe.sh" list --bucket "$sp_hd/sp bucket" --json 2>/dev/null | jq -e --arg i "$sp_id" --arg k "$sp_key" \
+    'length == 1 and (.[0] | .kind == "step" and .key == $k and .identity == $i and .chief == "sp-chief")' >/dev/null 2>&1; then
+    pass '(10194) one tick drains a spooled owed line into the chief'"'"'s ledger'
+else
+    fail "(10194) one tick drains a spooled owed line into the chief's ledger: $(cat "$sp_hd/sp bucket/owed.jsonl" 2>&1)"
+fi
+sp_state="$sp_root/state two"; sp_spool="$sp_state/owe-spool.jsonl"
+sp_owed "$sp_spool" ACME-5
+IFS= read -r sp_line1 < "$sp_spool" # read-sink-ok: the suite's own temp spool
+printf '%s' '{"kind":"owed","schema":1,"ts":"2026-' >> "$sp_spool"
+sp_sum="$(cksum < "$sp_spool")"
+sp_act="$(sp_tick | grep '^ACTION owed-spool-bad=')"
+case "$sp_act" in
+    'ACTION owed-spool-bad=2: '*) pass '(10194) a torn spool line prints ACTION owed-spool-bad=2' ;;
+    *) fail "(10194) a torn spool line prints ACTION owed-spool-bad=2: $sp_act" ;;
+esac
+sp_check="$(sed -n 's/^ACTION owed-spool-bad=[^:]*: \(.*\) lists them; rebuild a lost row with .*/\1/p' <<<"$sp_act")"
+sp_rebuild="$(sed -n 's/.* rebuild a lost row with \(.*\), then drop the bad line with .*/\1/p' <<<"$sp_act")"
+sp_drop="$(sed -n 's/.*, then drop the bad line with \(.*\) (chief-sections\/owed\.md)$/\1/p' <<<"$sp_act")"
+# read-sink-ok: the suite's own temp spool
+[ "$(bash -c "$sp_check" 2>&1)" = 2 ] && [ "$(cksum < "$sp_spool")" = "$sp_sum" ] \
+    && pass '(10194) the printed --check runs verbatim, lists the torn line and leaves the spool unchanged' \
+    || fail "(10194) the printed --check runs verbatim, lists the torn line and leaves the spool unchanged: $sp_check"
+bash -c "${sp_drop//<line>/2}" 2>/dev/null
+printf '%s\n' "$sp_line1" | cmp -s - "$sp_spool" \
+    && pass '(10194) the printed --drop removes only the torn line, byte for byte' \
+    || fail "(10194) the printed --drop removes only the torn line, byte for byte: $sp_drop"
+sp_rebuild="${sp_rebuild//<n>/91}"; sp_rebuild="${sp_rebuild//<owner\/name>/acme/repo}"
+PATH="$sp_root/bin:$PATH" bash -c "${sp_rebuild//<KEY>/$sp_key}" 2>/dev/null
+sp_owed "$sp_root/expect.jsonl" "$sp_key"
+# read-sink-ok: the suite's own temp spool
+if [ "$(head -n 1 "$sp_spool")" = "$sp_line1" ] && [ "$(wc -l < "$sp_spool")" -eq 2 ] \
+    && [ "$(sed -n 2p "$sp_spool" | jq -c 'del(.ts)')" = "$(jq -c 'del(.ts)' "$sp_root/expect.jsonl")" ]; then
+    pass '(10194) the printed rebuild pipeline appends the row the spool verb computes for that PR body'
+else
+    fail "(10194) the printed rebuild pipeline appends the row the spool verb computes for that PR body: $sp_rebuild"
+fi
+rm -rf "$sp_root"
 
 if [ -n "$_TIMEOUT_BIN" ]; then
     cut_m="$W/cut/HIMMEL"; mkdir -p "$cut_m" "$W/cut-bin" "$W/cut/releases"

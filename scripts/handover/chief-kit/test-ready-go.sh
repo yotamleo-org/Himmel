@@ -67,6 +67,15 @@ export READY_CHECK_ANCHOR="$ANCHOR"
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
+if [ -n "${STUB_REPO_CWD:-}" ]; then
+    case "$*" in
+        "repo view"*|"pr view "*"--json title"*)
+            case " $* " in
+                *" -R "*|*" --repo "*) ;;
+                *) [ "$(pwd -P)" = "$STUB_REPO_CWD" ] || { echo "gh: the repo here is not himmel" >&2; exit 1; } ;;
+            esac ;;
+    esac
+fi
 case "${STUB_GH_RL:-}:$*" in
     1:*|trust:"repo view --json nameWithOwner"*|trust:"repo view --json defaultBranchRef"*)
         echo "GraphQL: API rate limit already exceeded for user ID 1. (RATE_LIMIT)" >&2; exit 1 ;;
@@ -114,6 +123,7 @@ export HIMMEL_REPO="$READY_REPO"
 SHA=$(ready_pass_repo "$READY_REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 SHA2=$(ready_pass_repo "$READY_REPO" 2) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 export READY_STUB_HEAD="$SHA"
+check "ready-check's owner-review line over the ready-pass fixture" "$(ready_pass_owner_review)" "$READY_PASS_OWNER_LINE"
 ready_pass_ledger "$READY_REPO" "$SHA"
 
 run() { OUT=$(bash "$SCRIPT" "$@" 2>&1); RC=$?; }
@@ -144,6 +154,14 @@ run 77 "$SHA"
 check "no pair: exit 0" "$RC" "0"
 lacks "no pair: no SENDMESSAGE to=" "$OUT" "SENDMESSAGE to="
 contains "no pair: says it skipped" "$OUT" "SENDMESSAGE skipped"
+
+FOREIGN="$tmp/foreign"; git init -q "$FOREIGN"
+RG_REPO_CWD=$(cd "$READY_REPO" && pwd -P)
+OUT=$(cd "$FOREIGN" && STUB_REPO_CWD="$RG_REPO_CWD" bash "$SCRIPT" --to worker --token tok 77 "$SHA" 2>&1); RC=$?
+check    "foreign cwd: exit 0" "$RC" "0"
+contains "foreign cwd: TRUST none, the repo read found himmel" "$OUT" "TRUST: none"
+contains "foreign cwd: the title read found the PR" "$OUT" "TICKET: HIMMEL-1 In Review"
+contains "foreign cwd: the GO line is printed" "$OUT" "SENDMESSAGE to=worker :: GO 77 $SHA, token tok"
 
 # --- 4. no CR-ledger row at the head -------------------------------------------
 export READY_STUB_HEAD="$SHA2"
@@ -276,7 +294,8 @@ HEALTHY_TRUST="$(trust_line)"
 ttrun "$tmp/ttroot" GH_STUB_MAINFAIL=rate
 check    "8691 main spent: ready-go exits 0" "$RC" "0"
 check    "8691 main spent: the TRUST line equals the healthy-main run" "$(trust_line)" "$HEALTHY_TRUST"
-check    "8691 main spent: no call rides the main token" "$(ttn '^tok=main ')" "0"
+check    "8691 main spent: no call rides the main token" "$(grep '^tok=main ' "$TTLOG" | grep -vc 'argv=api repos/{owner}/{repo}/branches/main/protection/required_status_checks')" "0"
+check    "8691 main spent: the classic-protection read is the one main call, once" "$(grep -cF 'tok=main argv=api repos/{owner}/{repo}/branches/main/protection/required_status_checks' "$TTLOG")" "1"
 check    "8691 main spent: the repo name read logs tok=read" "$(ttseen '^tok=read argv=repo view --json nameWithOwner')" "yes"
 check    "8691 main spent: the default branch read logs tok=read" "$(ttseen '^tok=read argv=repo view --json defaultBranchRef')" "yes"
 check    "8691 main spent: the title read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json title')" "yes"

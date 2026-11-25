@@ -132,7 +132,7 @@ function ctxForItem(item, answers, targetPath, scope, deadline) {
   const resolvedTargetPath = item.id === 'luna-vault-scaffold'
     ? expandHome(answers.vault && answers.vault.path)
     : targetPath;
-  const ctx = { repoRoot: repoRoot(), targetPath: resolvedTargetPath, scope, env: process.env };
+  const ctx = { repoRoot: repoRoot(), targetPath: resolvedTargetPath, scope, env: process.env, jiraChain: item.id === 'jira-env-keys' && !trackerIsExplicitlyNotJira(targetPath) };
   if (deadline !== null) ctx.deadline = deadline;
   return ctx;
 }
@@ -317,7 +317,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
     let detail = probe.detail;
     if (probe.actual === 'present') {
       severity = 'green';
-    } else if (probe.actual === 'degraded') {
+    } else if (probe.actual === 'degraded' || probe.actual === 'starting') {
       severity = 'degraded';
     } else {
       severity = 'red';

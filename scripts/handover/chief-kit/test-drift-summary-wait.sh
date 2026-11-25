@@ -61,5 +61,15 @@ eq "3: and the UNOWNED row naming HELD-STALE in its text is the one real row" "$
 eq "3: the exempt row is the HELD-STALE one" "$(jqv "$out" '.exempt[0].key')" HIMMEL-6
 eq "3: the real row is HIMMEL-7" "$(jqv "$out" '.real[0].key')" HIMMEL-7
 
+cat > "$DRIFT" <<'EOF'
+UNOWNED HIMMEL-8 In Progress with no open PR and no live owner; a date never makes it wait: awaiting the chief since=2026-11-08T11:00:00Z due=2099-01-01T00:00:00Z what=x source=d6n | writer=a | fix=b
+sdrift=1:abcd1234
+EOF
+touch -d "@$((NOW - 600))" "$DRIFT"
+out=$(sum)
+eq "10786 4: a stuck started ticket whose date is far ahead is one real row" "$(jqv "$out" '.counts.real')" 1
+eq "10786 4: none is waiting" "$(jqv "$out" '.counts.waiting')" 0
+eq "10786 4: and the key is on the unowned list the tick reads for stale=" "$(jqv "$out" '.unowned | join(",")')" HIMMEL-8
+
 echo "---"
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; } || { echo "$fails failed"; exit 1; }

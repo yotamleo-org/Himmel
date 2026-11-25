@@ -158,5 +158,52 @@ has "proposed-only key gets a reasoned request" "$b1" 'HIMMEL-901 --to v1.0.1 --
 has "residual gets a reasoned backlog request" "$b6" 'HIMMEL-1002 --to backlog --why "backfill: low-label"'
 lacks "batches never bypass RM admission" "$b1$b6" '--chief-override'
 
+U="$WORK/un/HIMMEL"; mkdir -p "$U"
+mku() {
+    printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "x"\nstatusCategory: "To Do"\npriority: "%s"\nlabels: %s\nfixVersions: %s\nparent: null\ncreated: "%sT10:00:00.000+0100"\nsector: "Ship loop"\n---\n\n# HIMMEL-%s: t\n' "$1" "$2" "$3" "$4" "$5" "$1" > "$U/HIMMEL-$1.md"
+}
+mku 1001 Medium '[]' '["v1.1.3"]' 2026-11-01
+mku 1002 Medium '["backlog"]' '[]' 2026-11-24
+mku 1003 Medium '[]' '[]' 2026-11-24
+mku 1004 Medium '["fu-class"]' '[]' 2026-11-24
+mku 1005 Medium '[]' '[]' 2026-11-24
+mku 1006 Medium '[]' '[]' 2026-11-01
+mku 1007 Medium '["backlog"]' '["v1.1.3"]' 2026-11-24
+mku 1008 High '[]' '["v1.1.4"]' 2026-11-24
+printf 'v1.1.4\tfalse\t\tfalse\nv1.1.3\tfalse\t\tfalse\n' > "$WORK/un/HIMMEL.versions.tsv"
+printf '{"status":"OK","current":"v1.1.3","versions":["v1.1.3","v1.1.4"],"requests":{"open":[],"claimed":[],"oldest_open":null,"pending_keys":["%s-1003","%s-1004"]}}\n' "$KP" "$KP" > "$WORK/un/state.json"
+ubefore="$(cat "$U"/*.md | cksum)"
+rc=0; uout="$(bash "$SUT" --mirror "$U" --unplaced --state "$WORK/un/state.json" --since 2026-11-23 2>&1)" || rc=$?
+check "--unplaced exits 0 at any count" "0" "$rc"
+check "--unplaced prints the new count first" "1" "$(printf '%s\n' "$uout" | sed -n 1p)"
+has "--unplaced counts the two pending keys" "$uout" "pending=2"
+has "--unplaced counts the legacy unplaced ticket" "$uout" "legacy=1"
+has "--unplaced counts the versioned backlog-labelled ticket as a stale label" "$uout" "stale-label=1"
+has "--unplaced counts serious-later by the declared order, not the dated one" "$uout" "serious-later=1"
+check "--unplaced writes nothing to the mirror" "$ubefore" "$(cat "$U"/*.md | cksum)"
+ulist="$(bash "$SUT" --mirror "$U" --unplaced --list --state "$WORK/un/state.json" --since 2026-11-23 2>&1)"
+has "--list names the new ticket" "$ulist" "$(printf '%s\t%s' "$KP-1005" new)"
+has "--list names the legacy ticket" "$ulist" "$(printf '%s\t%s' "$KP-1006" legacy)"
+has "--list names a pending ticket" "$ulist" "$(printf '%s\t%s' "$KP-1004" pending)"
+has "--list names the stale-label ticket" "$ulist" "$(printf '%s\t%s' "$KP-1007" stale-label)"
+has "--list names the serious-later ticket" "$ulist" "$(printf '%s\t%s' "$KP-1008" serious-later)"
+lacks "--list leaves out a placed ticket" "$ulist" "$KP-1001"
+lacks "--list leaves out a backlog-labelled ticket" "$ulist" "$KP-1002"
+rc=0; bash "$SUT" --mirror "$U" --unplaced --state "$WORK/none.json" >/dev/null 2>&1 || rc=$?
+check "--unplaced with an unreadable state exits 1" "1" "$rc"
+rc=0; bash "$SUT" --mirror "$U" --unplaced --state "$WORK/un/state.json" --since 2026-11-23 --since-door >/dev/null 2>&1 || rc=$?
+check "--since and --since-door together exit 2" "2" "$rc"
+
+G="$WORK/git"; mkdir -p "$G/scripts/jira/src/release"
+git -C "$G" init -q . && git -C "$G" config user.email t@t && git -C "$G" config user.name t
+: > "$G/scripts/jira/src/release/door.ts"; git -C "$G" add -A
+GIT_AUTHOR_DATE="2026-11-23T12:00:00" GIT_COMMITTER_DATE="2026-11-23T12:00:00" git -C "$G" commit -q -m door
+sdout="$(HIMMEL_DOOR_REPO="$G" bash "$SUT" --mirror "$U" --unplaced --state "$WORK/un/state.json" --since-door 2>&1)"
+check "--since-door takes the date from the git history" "1" "$(printf '%s\n' "$sdout" | sed -n 1p)"
+G0="$WORK/git0"; mkdir -p "$G0"; git -C "$G0" init -q .
+sd0="$(HIMMEL_DOOR_REPO="$G0" bash "$SUT" --mirror "$U" --unplaced --state "$WORK/un/state.json" --since-door 2>&1)"
+check "--since-door with no adding commit counts no new ticket" "0" "$(printf '%s\n' "$sd0" | sed -n 1p)"
+has "and puts the unplaced tickets under legacy" "$sd0" "legacy=2"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

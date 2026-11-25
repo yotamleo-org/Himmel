@@ -3,7 +3,7 @@
 # Read-only: it never changes gh for anyone else.
 #
 #   watch [--log F] [--seconds S] [--interval I] [--floor N]
-#       Changes nothing: polls /proc for live gh processes of the whole fleet
+#       Changes nothing: polls ps for live gh processes of the whole fleet
 #       for S seconds (default 3600) and charges each, once, to its nearest .sh
 #       ancestor. A gh shorter-lived than I (default 0.2 s) is missed. The bucket
 #       line printed at the end is the probe's own reading, shared with the fleet.
@@ -54,7 +54,7 @@ gqlc_cost() {
 gqlc_caller() {
     local p="$1" n=0 words w found
     while [ -n "$p" ] && [ "$p" -gt 1 ] && [ "$n" -lt 20 ]; do
-        words=$({ tr '\0' ' ' <"/proc/$p/cmdline"; } 2>/dev/null)
+        words=$(ps -ww -o args= -p "$p" 2>/dev/null)
         found=""
         for w in $words; do
             case "$w" in
@@ -151,14 +151,15 @@ cmd_watch() {
     local seen=" " pid st key args w cost n=0 after="?" reset1=""
     { mkdir -p "$(dirname "$log")" && : >>"$log"; } || { echo "gh-graphql-callers: cannot write log '$log'; nothing was watched" >&2; exit 2; }
     while [ "$SECONDS" -lt "$end" ]; do
-        for pid in $(pgrep -x gh 2>/dev/null); do
-            st=$(cut -d' ' -f22 "/proc/$pid/stat" 2>/dev/null) || continue
+        for pid in $(pgrep -f '(^|/)gh( |$)' 2>/dev/null); do
+            st=$(ps -o lstart= -p "$pid" 2>/dev/null | tr -d ' ')
+            [ -n "$st" ] || continue
             key="$pid.$st"
             case "$seen" in *" $key "*) continue ;; esac
             seen="$seen$key "
             # the args after the word named gh (a script stub shows its interpreter first)
             args=""
-            for w in $({ tr '\0' ' ' <"/proc/$pid/cmdline"; } 2>/dev/null); do
+            for w in $(ps -ww -o args= -p "$pid" 2>/dev/null); do
                 if [ -n "$args" ]; then args="$args $w"; elif [ "${w##*/}" = gh ]; then args="gh"; fi
             done
             args="${args#gh}"

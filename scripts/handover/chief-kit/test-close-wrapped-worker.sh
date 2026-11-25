@@ -331,6 +331,58 @@ check "zero-match: rc 0 (the window already exited)" "$rc" "0"
 contains "zero-match: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
 check "zero-match: kill never called" "$(cat "$CALLS")" ""
 
+fleet_env() { HOME="$W/home" HIMMEL_POLICY_FOLLOWS_HOME=1 HIMMEL_FLEET_SLOTS="$W/slots" "$@"; }
+mk_launched_attempt() {
+    rm -f "$W/chief.fleet.json" "$W/fleet-control.json"; rm -rf "${W:?}/home" "${W:?}/slots"; mkdir -p "$W/home"
+    fleet_env bash "$HERE/fleet-manifest.sh" control init "$W/chief.fleet.json" --target 2 >/dev/null
+    fleet_env bash "$HERE/fleet-manifest.sh" add "$W/chief.fleet.json" --lane native --pending "$DOC" >/dev/null
+    local who; who=$(jq -n --arg h "$(uname -n)" --arg b "$(cat /proc/sys/kernel/random/boot_id)" '{host:$h,boot:$b,pid:999999,start:"1"}')
+    jq --arg d "$DOC" --arg n "$SESSION_NAME" --arg m "$W/chief.fleet.json" --argjson w "$who" \
+        '.attempts.one = {attempt_id:"one",phase:"launched",doc:$d,name:$n,keys:[],manifest:$m,family:.family,owner:$w,committer:$w,began_ticks:0,initial_marker:"",handoff_started:true}' \
+        "$W/fleet-control.json" > "$W/fc.tmp" && mv "$W/fc.tmp" "$W/fleet-control.json"
+}
+mkdoc "- 10:00 WRAPPED - done"
+mk_launched_attempt
+check "settle-closed: fixture holds a launched attempt" "$(jq -r '.attempts.one.phase' "$W/fleet-control.json")" "launched"
+reset_calls
+rc=0; out=$(fleet_env run "$DOC" 2>&1) || rc=$?
+check "settle-closed: rc 0" "$rc" "0"
+contains "settle-closed: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
+contains "settle-closed: says it settled attempt one" "$out" "settled attempt one"
+check "settle-closed: the control file has no row for the attempt" "$(jq -r '.attempts | length' "$W/fleet-control.json")" "0"
+contains "settle-closed: the receipt names the ended session" "$(cat "$W/home/.himmel/launch-refusals.jsonl")" "settled-ended-session"
+
+mk_launched_attempt
+acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$DOC" "cwl-test-holder" 2>&1)"
+token="$(printf '%s' "$acq_out" | sed -n "s/.*release-token: \`\([^\`]*\)\`.*/\\1/p")"
+rc=0; out=$(fleet_env run "$DOC" 2>&1) || rc=$?
+check "settle-held: rc 3" "$rc" "3"
+check "settle-held: the attempt is untouched" "$(jq -r '.attempts.one.phase' "$W/fleet-control.json")" "launched"
+[ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$DOC" "$token" >/dev/null 2>&1
+
+mk_launched_attempt
+mkcmdline 210 claude -n "$SESSION_NAME" work
+pgrep_x_stub 210
+reset_calls
+rc=0; out=$(fleet_env run "$DOC" 2>&1) || rc=$?
+not_contains "settle-live: no settle line" "$out" "settled attempt"
+check "settle-live: the attempt is untouched" "$(jq -r '.attempts.one.phase' "$W/fleet-control.json")" "launched"
+rm -rf "$W/proc/210"; pgrep_x_stub 201
+
+mk_launched_attempt
+jq '.attempts = {}' "$W/fleet-control.json" > "$W/fc.tmp" && mv "$W/fc.tmp" "$W/fleet-control.json"
+reset_calls
+rc=0; out=$(fleet_env run "$DOC" 2>&1) || rc=$?
+check "settle-none: rc 0 with no attempt" "$rc" "0"
+contains "settle-none: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
+not_contains "settle-none: no settle line" "$out" "settled attempt"
+rm -f "$W/chief.fleet.json" "$W/fleet-control.json"
+reset_calls
+rc=0; out=$(fleet_env run "$DOC" 2>&1) || rc=$?
+check "settle-nomanifest: rc 0" "$rc" "0"
+contains "settle-nomanifest: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
+not_contains "settle-nomanifest: no settle line" "$out" "settled attempt"
+
 # --- 4a. a RESUME-shaped doc (Results first, then three more sections) ----
 mkdir -p "$W/vault9607/.git"
 cp "$HERE/../../../templates/luna-second-brain/.gitleaks.toml" "$W/vault9607/.gitleaks.toml"

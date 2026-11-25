@@ -1,4 +1,4 @@
-# AGENTS.md — himmel rules for any coding agent (Codex / GPT / Cursor / Copilot / …)
+# AGENTS.md — himmel rules for any coding agent (Codex / GPT / Gemini / Cursor / Copilot / …)
 
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Source of truth: CLAUDE.md. Regenerate: node scripts/agents-md/generate.mjs --write -->

@@ -529,10 +529,10 @@ echo n
 P="$T/plan.nonshell"
 SHELLCHECK_RANGE_KEEP_PLAN="$P" sweep4; rc=$?
 [ "$rc" -eq 0 ] && ok "classify_nonshell: rc 0" || bad "classify_nonshell: want rc 0, got $rc"
-cat "$P"/fill.* 2> /dev/null | grep -Fxq 'scripts/zzn/notes.md' \
+grep -Fxq 'scripts/zzn/notes.md' "$P"/fill.* 2> /dev/null \
   && ok "classify_nonshell: notes.md is a fill-list member" || bad "classify_nonshell: notes.md is not in any fill list: $(find "$P" -type f 2>&1 | tr "\n" " ")"
-if cat "$P"/bin.* 2> /dev/null | grep -Fxq 'scripts/zzn/notes.md'; then bad "classify_nonshell: notes.md sits in a bin"; else ok "classify_nonshell: notes.md is in no bin"; fi
-cat "$P"/bin.* 2> /dev/null | grep -Fxq 'scripts/zzn/lib/n.sh' \
+if grep -Fxq 'scripts/zzn/notes.md' "$P"/bin.* 2> /dev/null; then bad "classify_nonshell: notes.md sits in a bin"; else ok "classify_nonshell: notes.md is in no bin"; fi
+grep -Fxq 'scripts/zzn/lib/n.sh' "$P"/bin.* 2> /dev/null \
   && ok "classify_nonshell: n.sh is still linted" || bad "classify_nonshell: n.sh is in no bin"
 
 # classify_failsafe: with no interpreter that can type files, every file is treated as shell (edges for all),
@@ -540,9 +540,9 @@ cat "$P"/bin.* 2> /dev/null | grep -Fxq 'scripts/zzn/lib/n.sh' \
 : > "$T/stub.log"; P="$T/plan.failsafe"
 SHELLCHECK_RANGE_KEEP_PLAN="$P" SHELLCHECK_RANGE_PY=/nonexistent/python sweep4; rc=$?
 [ "$rc" -eq 0 ] && ok "classify_failsafe: rc 0" || bad "classify_failsafe: want rc 0, got $rc"
-cat "$P"/bin.* 2> /dev/null | grep -Fxq 'scripts/zzn/notes.md' \
+grep -Fxq 'scripts/zzn/notes.md' "$P"/bin.* 2> /dev/null \
   && ok "classify_failsafe: notes.md is treated as shell and binned" || bad "classify_failsafe: notes.md is in no bin, the fallback did not run"
-if cat "$P"/fill.* 2> /dev/null | grep -Fxq 'scripts/zzn/notes.md'; then bad "classify_failsafe: notes.md is still a fill member"; else ok "classify_failsafe: notes.md is not a fill member"; fi
+if grep -Fxq 'scripts/zzn/notes.md' "$P"/fill.* 2> /dev/null; then bad "classify_failsafe: notes.md is still a fill member"; else ok "classify_failsafe: notes.md is not a fill member"; fi
 grep 'scripts/zzp/PKGBUILD\.md' "$T/stub.log" | grep -q 'scripts/zzp/lib/p\.sh' \
   && ok "classify_failsafe: the PKGBUILD.md keeps its lib without a classifier" || bad "classify_failsafe: PKGBUILD.md and p.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
 tr ' ' '\n' < "$T/stub.log" | grep -v '^$' | sort -u > "$T/shards.txt"
@@ -685,6 +685,15 @@ if git show "$pre:scripts/ci/shellcheck-pr-range.sh" >/dev/null 2>&1; then
 else
   ok "script-absent-at-base: git show fails, workflow takes --all-files"
 fi
+
+stages="sweep_plan sweep_pack sweep_verify sweep_lint sweep_dedup"
+miss=""
+for s in $stages; do grep -q "^$s() {" "$SPR" || miss="$miss $s"; done
+[ -z "$miss" ] && ok "sweep_stages: every stage function is defined" || bad "sweep_stages: not defined:$miss"
+drv=$(awk '/^sweep_all\(\) \{/ { on = 1; next } on && /^}/ { exit } on' "$SPR")
+order=$(printf '%s\n' "$drv" | grep -o -E "\\<sweep_(plan|pack|verify|lint|dedup)\\>" | tr '\n' ' ')
+[ "$order" = "sweep_plan sweep_pack sweep_verify sweep_lint sweep_dedup " ] && ok "sweep_stages: the driver calls the stages in order" || bad "sweep_stages: driver order was: $order"
+[ "$(printf '%s\n' "$drv" | grep -c .)" -le 30 ] && ok "sweep_stages: the driver is short" || bad "sweep_stages: the driver holds $(printf '%s\n' "$drv" | grep -c .) lines"
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed" >&2

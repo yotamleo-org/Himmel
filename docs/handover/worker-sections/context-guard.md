@@ -26,8 +26,17 @@ but the hand-off ones; its deny names your mode and exactly what unlocks it.
   doc (309 of 349 compacted workers still wrapped).
 - **`handoff`:** write your successor brief under your own doc's name with
   your label bumped one letter (`N<k>` becomes `N<k>b`, `N<k>b` becomes `N<k>c`: `<TICKET>-<next label>-<slug>-<date>-RESUME.md`; keep
-  `description:` double-quoted, on one line), message the chief, stop. The
-  hook unlocks once that RESUME doc exists.
+  `description:` double-quoted, on one line), message the chief, stop. Copy the
+  `> **Prior art:**` line and its `> ` continuation lines from your own doc, and keep
+  `description:` and an absolute `resume_cwd:` in the front matter: the hook runs the
+  primary checkout's `brief-lint.sh` on the RESUME doc, and unlocks (and takes your
+  `BLOCKED` bullet) only once it passes. Check it first with the deny's step 1a
+  command. A lint refusal is quoted in the deny: fix the doc with Edit and append
+  `BLOCKED` again; a refusal you cannot clear (a core ticket with no signed spec, a
+  missing Jira mirror) goes into your `BLOCKED` bullet for your chief, which always
+  passes. `scripts/handover/hop-brief.py write`
+  writes that brief from your transcript with no model call (its newest chief
+  message carried whole, tokens scrubbed); `hop-brief.py verify` checks it.
 
 In both modes a last marker of `WRAPPED` unlocks everything; `BLOCKED` frees
 only the hand-off calls and reads, so a worker that cannot commit or push sends

@@ -32,6 +32,14 @@ If you cloned himmel somewhere else, type `cd` and a space, drag that folder fro
 manager into the Terminal window, and press Enter. Every command on this page runs from that
 folder, and every command works unchanged in bash, zsh and fish.
 
+Step 1, once per machine: install himmel, if you have not done so here yet. The helpers read
+your station through the installed himmel, so without the install parts 1 and 4 show `could
+not read this part's status`. The install asks nothing. More in [install.md](install.md).
+
+```bash
+node scripts/himmelctl/bin.js install --scope user
+```
+
 <a id="part-1"></a>
 
 ## Part 1: your main bot
@@ -173,6 +181,8 @@ its steps.
 
 ## Part 4: bot-to-bot
 
+Prefer one page with copy buttons? [The bot-to-bot guide](../guide/remote-setup-bot-to-bot.html) walks this part step by step.
+
 ### What it is
 
 Two himmel stations talk to each other through one Telegram group. The two stations can be yours
@@ -190,6 +200,13 @@ Do part 1 first. Then keep the two kinds of bot apart:
 
 Only the two bridge bots talk across the group. No person's Telegram id is put on the list of who
 may talk to your station.
+
+Who talks to whom:
+
+- **You talk only to your own main bot**, in your private chat with it.
+- **The two bridge bots talk to each other in the group.**
+- **People who post in the group are ignored**, you and the other person too. Nobody gets a reply
+  there, and typing a message in the group does not send it to the other station.
 
 ### In the Telegram app: the bridge bots (each side)
 
@@ -260,11 +277,11 @@ off".
 ### You should see
 
 ```text
-DONE: peer goomal — group confirmed, poller running
+DONE: peer example — group confirmed, poller running
 ```
 
 The name after `peer` is the other station's name, taken from its bridge bot's username (here
-`goomal_bot`). Running the command again is safe: it changes no setting, and posts the hello once.
+`example_bot`). Running the command again is safe: it changes no setting, and posts the hello once.
 
 ### If you see FIX
 

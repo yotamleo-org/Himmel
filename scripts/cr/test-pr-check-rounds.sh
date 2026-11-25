@@ -3,6 +3,15 @@
 # Bash 3.2-safe; no network or paid critic calls.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
+rounds_part=a
+if [ "${1:-}" = --part ]; then
+    case "${2:-}" in
+        a|b|c) rounds_part="$2" ;;
+        *) echo "test-pr-check-rounds.sh: --part takes a, b or c" >&2; exit 2 ;;
+    esac
+    shift 2
+fi
+_rounds_part() { [ "$rounds_part" = "$1" ]; }
 _TK='HIMMEL-'
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -237,6 +246,7 @@ write_real_marker() {
         "$marker_sha" "$marker_branch" "$tmp/origin.git" "$marker_base" \
         > "$git_dir/cr-pending/$marker_branch"
 }
+if _rounds_part a; then
 
 # Removing residual creation, choosing the wrong parent/class, or clearing the
 # marker after a failed create must fail these recovery checks.
@@ -978,6 +988,21 @@ assert_eq "$rl1_rc" 4 "8429 the field defers nothing at round 1 (the tagger runs
 rl1_run feat/rl1 4 "$rl1_pre_imp$(rl1_pre_amend critic-8)"
 assert_eq "$rl1_rc" 4 "8429 the field defers nothing at round 4 ($rl1_out)"
 assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 rounds 1 and 4 write no deferral for a pre_existing Important"
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
+git -C "$rl1_repo" checkout -q feat/rl1
+printf '%s tests 0\n' "$(git -C "$rl1_repo" rev-parse HEAD)" > "$rl1_git/cr-review-rounds/feat/rl1.scope"
+rl1_run feat/rl1 1 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 hardening no-check)"
+assert_eq "$rl1_rc" 0 "10578 defer-pre-ok-scope: a free increment round at .round 1 defers a pre-existing Important ($rl1_out)"
+assert_has "$rl1_ledger" 'the cited code is older than this PR (tagged pre-existing)' "10578 defer-pre-ok-scope: the deferral is the pre-existing one"
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
+printf '%s work 1\n' "$(git -C "$rl1_repo" rev-parse HEAD)" > "$rl1_git/cr-review-rounds/feat/rl1.scope"
+rl1_flags=(--fu-override decision-762 --defer-to "${_TK}9000")
+rl1_run feat/rl1 3 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 hardening no-check)"
+rl1_flags=(--fu-override decision-762)
+assert_eq "$rl1_rc" 0 "10578 defer-pre-ok-scope: a round past the cap at .round 3 defers through the delta path ($rl1_out)"
+assert_has "$rl1_ledger" 'Finding deferred in the one delta round' "10578 defer-pre-ok-scope: the deferral carries the delta-round reason"
+assert_lacks "$rl1_ledger" 'the cited code is older than this PR (tagged pre-existing)' "10578 defer-pre-ok-scope: a round past the cap at .round 3 never takes the pre-existing path ($rl1_out)"
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.scope" "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
 
 # A batch that holds a hardening finding is filed with that class and its reason,
 # not as polish. One with no valid reason files nothing and keeps the marker.
@@ -1015,27 +1040,6 @@ assert_eq "$rl1_rc" 6 "8429 a mixed hardening batch on a reused ticket fails clo
 assert_eq "$(grep -c '"comment"' "$rl1_log" | tr -d ' ')" "$rl1_comments_before" "8429 a mixed hardening batch adds no comment to the reused ticket before it is refused"
 assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 a mixed hardening batch on a reused ticket defers none of its findings"
 printf 'HIMMEL-9500\n' > "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
-
-# `from` reads the round and its start point
-# under the counter lock, so it never reads a round start has half written.
-# Hold the lock as another process would: from waits, then refuses (exit 5)
-# and prints no start point; once the lock is free it prints it, and a leaked
-# lock would make that second call wait again.
-mkdir -p "$rl1_git/cr-review-rounds/feat"
-rl1_from_head="$(git -C "$rl1_repo" rev-parse feat/rl1)"
-printf '3\n' > "$rl1_git/cr-review-rounds/feat/rl1.round"
-printf '%s\n' "$rl1_from_head" > "$rl1_git/cr-review-rounds/feat/rl1.from"
-SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$fx/scripts/lib/shared-branch-lock.sh" acquire "$rl1_repo" feat/rl1 test-holder >/dev/null 2>&1 \
-    || fail "8429 the test could not take the counter lock"
-rl1_from_rc=0
-rl1_from_out="$(cd "$rl1_repo" && bash "$fx/scripts/cr/review-round.sh" from --branch feat/rl1 2>"$tmp/rl1-from.err")" || rl1_from_rc=$?
-SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$fx/scripts/lib/shared-branch-lock.sh" release "$rl1_repo" feat/rl1 >/dev/null 2>&1 \
-    || fail "8429 the test could not release the counter lock"
-assert_eq "$rl1_from_rc" 5 "8429 from refuses while the counter lock stays held"
-assert_eq "$rl1_from_out" "" "8429 from prints no start point while the counter lock is held"
-assert_has "$(cat "$tmp/rl1-from.err")" 'counter lock' "8429 from says it could not take the counter lock"
-assert_eq "$(cd "$rl1_repo" && bash "$fx/scripts/cr/review-round.sh" from --branch feat/rl1 2>&1)" "$rl1_from_head" "8429 from prints the start point once the lock is free"
-rm -f "$rl1_git/cr-review-rounds/feat/rl1.from"
 
 # S5: a reset moves the key aside, so the next early close files a new batch.
 cat > "$tmp/bin/rl1-reset-gh" <<'STUB'
@@ -1107,6 +1111,7 @@ if [ "${1:-}" = --residual-recovery-only ]; then
     [ "$fails" -eq 0 ]
     exit $?
 fi
+fi
 cp "$HERE/clear-review-marker.sh" "$fx/scripts/cr/clear-review-marker.sh"
 chmod +x "$fx/scripts/cr/clear-review-marker.sh"
 
@@ -1129,6 +1134,7 @@ mkdir -p "$repo"
     git commit -q -am feature-1
     git push -q -u origin feature
 ) || { printf 'FAIL - fixture setup\n' >&2; exit 1; }
+if _rounds_part a; then
 
 head1="$(git -C "$repo" rev-parse feature)"
 out1="$(cd "$repo" && bash "$SCRIPT" --head "$head1" --branch feature 2>"$tmp/err1")"; rc1=$?
@@ -1164,8 +1170,10 @@ out4="$(cd "$repo" && bash "$SCRIPT" --head "$other_head" --branch other 2>"$tmp
 assert_eq "$rc4" "0" "new-branch run succeeds"
 assert_has "$out4" "pr-check: round 1 of 3 on other" "different branch starts at round 1"
 
+fi
 git -C "$repo" checkout -q feature
 git_dir="$(cd "$repo" && cd "$(git rev-parse --git-common-dir)" && pwd)"
+if _rounds_part a; then
 
 # Concurrent starts on one branch must serialize the read/increment/write. The
 # cat shim snapshots the old value before waiting, so an unlocked implementation
@@ -1244,13 +1252,8 @@ assert_has "$full4_out" "4th full round is refused" "4th-full-round refusal name
 assert_eq "$(cat "$git_dir/cr-review-rounds/feature.round")" "3" "a refused 4th full round leaves the counter at 3"
 assert_eq "$(wc -l < "$PANEL_CALLS" | tr -d ' ')" "$before_full4_calls" "a refused 4th full round never runs the panel"
 
-# Merge-forward: a head that differs from the round-3 head only by a merge of
-# origin/main gets the ONE delta round, scoped to round-3 head..new head.
 git -C "$repo" checkout -q main
 printf 'main-forward-2\n' > "$repo/main2.txt"
-# Main also adds a line above the branch's hunk, so the branch's
-# own diff shifts (a changed context line) and this merge is not a free
-# clean-merge - it keeps the one delta round, as before.
 printf 'top\nbase\n' > "$repo/f.txt"
 git -C "$repo" add main2.txt f.txt
 git -C "$repo" commit -q -m main-forward-2
@@ -1259,13 +1262,32 @@ git -C "$repo" checkout -q feature
 git -C "$repo" merge -q --no-edit main
 head4="$(git -C "$repo" rev-parse feature)"
 git -C "$repo" push -q origin feature
-write_real_marker feature "$head4"
-out5="$(cd "$repo" && PANEL_MODE=suggestion-on PANEL_DIFF_LAST="$tmp/delta-diff" bash "$SCRIPT" --head "$head4" --branch feature 2>"$tmp/err5")"; rc5=$?
-assert_eq "$rc5" "0" "merge-forward delta round runs"
-assert_has "$out5" "pr-check: delta round 4 on feature (from $head3)" "merge-forward head gets the one delta round"
-assert_has "$(cat "$tmp/delta-diff")" "main-forward-2" "delta round reviews the round-3 head..new head diff"
+before_carried_calls="$(wc -l < "$PANEL_CALLS" | tr -d ' ')"
+out5="$(cd "$repo" && PANEL_DIFF_LAST="$tmp/carried-diff" bash "$SCRIPT" --head "$head4" --branch feature 2>"$tmp/err5")"; rc5=$?
+assert_eq "$rc5" "0" "merge-forward head runs"
+assert_has "$out5" "pr-check: round 3 carried on feature" "a clean merge-forward after the cap is carried"
+assert_eq "$(wc -l < "$PANEL_CALLS" | tr -d ' ')" "$before_carried_calls" "a carried head runs no panel"
+if [ -e "$tmp/carried-diff" ]; then fail "a carried head hands the panel no diff"; else pass "a carried head hands the panel no diff"; fi
+if [ -e "$git_dir/cr-review-rounds/feature.delta" ]; then fail "a carried head leaves the delta round unspent"; else pass "a carried head leaves the delta round unspent"; fi
+assert_eq "$(cat "$git_dir/cr-review-rounds/feature.round")" "3" "a carried head leaves the counter at 3"
+printf 'feature-5\n' >> "$repo/f.txt"
+git -C "$repo" commit -q -am feature-5
+head5="$(git -C "$repo" rev-parse feature)"
+git -C "$repo" push -q origin feature
+CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
+    --branch feature --head "$head3" --model stub --id stub-r3 --severity sug --file r3-only.txt --line 1 \
+    --verdict "" >/dev/null 2>"$tmp/feature-r3-finding.err" || fail "feature round-3 finding setup"
+write_real_marker feature "$head5"
+out5="$(cd "$repo" && PANEL_MODE=suggestion-on PANEL_DIFF_LAST="$tmp/delta-diff" bash "$SCRIPT" --head "$head5" --branch feature 2>"$tmp/err5")"; rc5=$?
+assert_eq "$rc5" "0" "the fix after a carried head runs the delta round"
+assert_has "$out5" "pr-check: delta round 4 on feature (from " "the fix after a carried head gets the one delta round"
+assert_has "$(cat "$tmp/delta-diff")" "+feature-5" "delta round reviews the increment"
+assert_lacks "$(cat "$tmp/delta-diff")" "main-forward-2" "delta round never reviews main's merged lines"
 assert_lacks "$(cat "$tmp/delta-diff")" "+feature-1" "delta round does not re-review the already-reviewed branch diff"
 assert_lacks "$(cat "$CLEAR_CALLS" 2>/dev/null)" "feature" "first pass never clears before later reviewers finish"
+CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" amend \
+    --branch feature --head "$head3" --id stub-r3 --set verdict=disproved \
+    --reason "the fixture's round-3 finding, adjudicated" >/dev/null 2>"$tmp/feature-r3-amend.err" || fail "feature round-3 finding amend"
 printf '%s\n' 'VERDICT [kept-1] = disproved' | (cd "$repo" && bash "$fx/scripts/cr/write-verdicts.sh" prior-blocking --branch feature)
 printf '%s\n' 'VERDICT [kept-1] = disproved' | (cd "$repo" && bash "$fx/scripts/cr/write-verdicts.sh" aggregate --branch feature)
 cp "$fx/scripts/cr/write-verdicts.sh" "$tmp/write-verdicts.real"
@@ -1276,15 +1298,15 @@ printf 'injected verdict scratch failure\n' >&2
 exit 9
 STUB
 chmod +x "$fx/scripts/cr/write-verdicts.sh"
-(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" defer --head "$head4" --branch feature --defer-to HIMMEL-9000 >"$tmp/defer5-first.out" 2>"$tmp/defer5-first.err"); defer5_first_rc=$?
+(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" defer --head "$head5" --branch feature --defer-to HIMMEL-9000 >"$tmp/defer5-first.out" 2>"$tmp/defer5-first.err"); defer5_first_rc=$?
 if [ "$defer5_first_rc" -ne 0 ]; then pass "post-amendment scratch failure leaves disposition incomplete"; else fail "post-amendment scratch failure leaves disposition incomplete"; fi
 assert_has "$(cat "$git_dir/cr-critic-scores.jsonl" 2>/dev/null)" '"verdict":"deferred"' "failed disposition already persisted the deferred amendment"
 if [ -e "$git_dir/cr-pending/feature" ]; then pass "failed disposition leaves the marker pending"; else fail "failed disposition leaves the marker pending"; fi
 cp "$tmp/write-verdicts.real" "$fx/scripts/cr/write-verdicts.sh"
 chmod +x "$fx/scripts/cr/write-verdicts.sh"
-defer5="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" defer --head "$head4" --branch feature --defer-to "${_TK}9000" 2>"$tmp/defer5.err")"; defer5_rc=$?
+defer5="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" defer --head "$head5" --branch feature --defer-to "${_TK}9000" 2>"$tmp/defer5.err")"; defer5_rc=$?
 assert_eq "$defer5_rc" "0" "retry repairs a post-amendment disposition failure"
-assert_has "$defer5" "clear-cr-marker CLEARED branch=feature sha=$head4" "delta-round disposition retry passes the real marker gates"
+assert_has "$defer5" "clear-cr-marker CLEARED branch=feature sha=$head5" "delta-round disposition retry passes the real marker gates"
 assert_has "$defer5" "clear-cr-marker: CR clean" "delta-round disposition retry uses sanctioned marker clearance"
 if [ -e "$git_dir/cr-pending/feature" ]; then
     fail "delta-round disposition retry clears the marker"
@@ -1303,16 +1325,17 @@ assert_has "$(cat "$git_dir/cr-prior-blocking/feature" 2>/dev/null)" "VERDICT [s
 assert_has "$(cat "$git_dir/cr-aggregate-verdicts/feature" 2>/dev/null)" "VERDICT [stub-1] = deferred -> HIMMEL-9000" "delta-round recovery repairs aggregate verdict scratch"
 
 # A second delta round after the delta round is refused.
-printf 'feature-5\n' >> "$repo/f.txt"
-git -C "$repo" commit -q -am feature-5
-head5="$(git -C "$repo" rev-parse feature)"
+printf 'feature-6\n' >> "$repo/f.txt"
+git -C "$repo" commit -q -am feature-6
+head6="$(git -C "$repo" rev-parse feature)"
 before_delta2_calls="$(wc -l < "$PANEL_CALLS" | tr -d ' ')"
-delta2_out="$(cd "$repo" && bash "$SCRIPT" --head "$head5" --branch feature 2>&1)"; delta2_rc=$?
+delta2_out="$(cd "$repo" && bash "$SCRIPT" --head "$head6" --branch feature 2>&1)"; delta2_rc=$?
 assert_eq "$delta2_rc" "8" "a second delta round is refused"
 assert_has "$delta2_out" "delta round was already used" "second-delta refusal names the reason"
 assert_eq "$(wc -l < "$PANEL_CALLS" | tr -d ' ')" "$before_delta2_calls" "a refused second delta round never runs the panel"
 assert_eq "$(cat "$git_dir/cr-review-rounds/feature.round")" "4" "a refused second delta round leaves the counter at 4"
 
+fi
 # three_rounds <branch> <round-3 panel mode>: a fresh branch off main with
 # three full rounds at one head (cap_r3_head); fix_commit adds the commit
 # that answers a round-3 finding (cap_fix_head).
@@ -1342,6 +1365,17 @@ fix_commit() {
 # Start is idempotent per head: a second start at the head the counted round
 # ran on reuses that round and spends nothing; a new head counts as before.
 RR="$fx/scripts/cr/review-round.sh"
+reaped_pid() { sh -c 'exit 0' & sn_reaped=$!; wait "$sn_reaped"; }
+snap_f() { printf '%s\n' "$git_dir/cr-review-rounds/$1.start.bak"; }
+snap_has() { if [ -f "$(snap_f "$1")" ]; then printf present; else printf absent; fi; }
+snap_field() { sed -n "s/^$2 //p" "$(snap_f "$1")" 2>/dev/null; }
+snap_set() {
+    { sed "s/^$2 .*/$2 $3/" "$(snap_f "$1")" > "$tmp/snap.tmp" 2>/dev/null && mv "$tmp/snap.tmp" "$(snap_f "$1")"; } || fail "snap_set $1 $2"
+}
+snap_dead() { reaped_pid; snap_set "$1" pid "$sn_reaped"; }
+snap_age() { snap_set "$1" time "$(( $(date +%s) - $2 ))"; }
+rr_settle() { (cd "$repo" && bash "$RR" settle --branch "$1" --head "$2" >/dev/null 2>&1) || fail "settle $1 at $2"; }
+if _rounds_part a; then
 git -C "$repo" checkout -q -b idem main
 printf 'idem\n' > "$repo/idem.txt"
 git -C "$repo" add idem.txt
@@ -1354,6 +1388,8 @@ assert_eq "$idem_rc2" "0" "5233 a repeat start at the same head succeeds"
 assert_eq "$idem_out2" "1" "5233 a repeat start at the same head reuses round 1"
 assert_eq "$(cat "$git_dir/cr-review-rounds/idem.round")" "1" "5233 a repeat start spends no round"
 git -C "$repo" commit -q --allow-empty -m "idem 2"
+CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" avail \
+    --branch idem --head "$idem_head" --model stub --status ok >/dev/null || fail "idem avail row"
 idem_out3="$(cd "$repo" && bash "$RR" start --branch idem --head "$(git -C "$repo" rev-parse idem)" 2>&1)"
 assert_eq "$idem_out3" "2" "5233 a new head still counts the next round"
 
@@ -1452,6 +1488,7 @@ replace_rc=0
 assert_eq "$replace_rc" 1 "trivial-descendant ignores replacement objects"
 git -C "$repo" replace -d "$replace_tip" >/dev/null
 
+fi
 # 7266: a hook-forced plugin version bump beside test files keeps a delta
 # tests-only; any other plugin.json change, a non-test file, or a bump alone
 # does not.
@@ -1467,6 +1504,7 @@ write_plugin() {
     fi
     git -C "$repo" add "marketplace/plugins/$1/.claude-plugin/plugin.json"
 }
+if _rounds_part a; then
 three_rounds tvb clean 0.1.0
 tvb_from="$cap_r3_head"
 tvb_commit() { # tvb_commit <branch> <plugin version> <description> [file...]
@@ -1554,7 +1592,9 @@ assert_has "$fixpath_out" "pr-check: delta round 4 on fixpath (from $cap_r3_head
 (cd "$repo" && bash "$fx/scripts/cr/clear-review-marker.sh" fixpath >"$tmp/fixpath-clear2.out" 2>&1); fixpath_clear2_rc=$?
 assert_eq "$fixpath_clear2_rc" "0" "the fix head clears after the one delta round"
 if [ -e "$git_dir/cr-pending/fixpath" ]; then fail "the delta round's rows clear the marker"; else pass "the delta round's rows clear the marker"; fi
+assert_has "$(cat "$git_dir/cr-review-rounds/fixpath.delta")" " fix" "the fix trigger still records fix"
 
+fi
 # The delta round itself raised findings and the worker fixed them.
 # postcap_setup <branch> <delta panel mode>: the third round raised a finding that was
 # fixed at the fix commit, the one delta round ran there in <mode> (stub-1, plus
@@ -1585,6 +1625,7 @@ postcap_fix() {
 postcap_start() {
     (cd "$repo" && PANEL_MODE="${PC_MODE:-clean}" bash "$SCRIPT" --head "$postcap_f_head" --branch "$1" 2>&1)
 }
+if _rounds_part a; then
 
 # a review round whose only leftover is a polish Suggestion finishes through the REAL marker
 # gates with no ticket: nothing is filed, so nothing can be refused and nothing loops.
@@ -1861,7 +1902,7 @@ plugin_case() {
     three_rounds "$1" clean "$3"
     if [ -n "${6:-}" ]; then
         CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
-            --branch "$1" --head "$cap_r3_head" --model stub --id plugin-fix --severity sug --file "$1.txt" --line 1 \
+            --branch "$1" --head "$cap_r3_head" --model stub --id plugin-fix --severity sug --file f.txt --line 1 \
             --verdict agreed >/dev/null 2>"$tmp/$1-finding.err" || fail "$1 finding setup"
         fix_commit "$1"
         (cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$cap_fix_head" --branch "$1" >/dev/null 2>"$tmp/$1-delta.err") \
@@ -1891,7 +1932,8 @@ write_plugin pvconflict 0.1.3
 plugin_merge_commit
 pv1_out="$(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$plugin_head" --branch pvconflict 2>&1)"; pv1_rc=$?
 assert_eq "$pv1_rc" "0" "a version-only conflict resolution above both parents gets the merge-forward delta round"
-assert_has "$pv1_out" "pr-check: delta round 4 on pvconflict (from $cap_r3_head)" "version-only conflict resolution is the delta round"
+assert_has "$pv1_out" "pr-check: delta round 3 on pvconflict (from " "version-only conflict resolution is a free round past the cap"
+assert_eq "$(cat "$git_dir/cr-review-rounds/pvconflict.free")" "$cap_r3_head $plugin_head merge-resolution" "version-only conflict resolution is recorded as a free merge-resolution round"
 if [ -e "$git_dir/cr-review-rounds/pvconflict.delta" ]; then fail "a version-only conflict resolution leaves the delta round unspent"; else pass "a version-only conflict resolution leaves the delta round unspent"; fi
 
 # (1b) A clean merge whose merge commit bumps the version above both: accepted.
@@ -1900,7 +1942,7 @@ write_plugin pvclean 0.1.10
 plugin_merge_commit
 pv2_out="$(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$plugin_head" --branch pvclean 2>&1)"; pv2_rc=$?
 assert_eq "$pv2_rc" "0" "a clean merge plus a version-only bump gets the merge-forward delta round"
-assert_has "$pv2_out" "pr-check: delta round 4 on pvclean (from $cap_r3_head)" "clean merge plus bump is the delta round"
+assert_has "$pv2_out" "pr-check: delta round 3 on pvclean (from " "clean merge plus bump is a free round past the cap"
 if [ -e "$git_dir/cr-review-rounds/pvclean.delta" ]; then fail "a clean merge plus a version-only bump leaves the delta round unspent"; else pass "a clean merge plus a version-only bump leaves the delta round unspent"; fi
 
 # A version-only resolution is free even after a real fix spent the delta.
@@ -1911,9 +1953,10 @@ write_plugin pvused 0.1.3
 plugin_merge_commit
 pvused_out="$(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$plugin_head" --branch pvused 2>&1)"; pvused_rc=$?
 assert_eq "$pvused_rc" "0" "a version-only conflict resolution is admitted after the delta round was spent ($pvused_out)"
-assert_has "$pvused_out" "pr-check: delta round 5 on pvused (from $pvused_from)" "the version-only round scopes from the last reviewed fix"
+assert_has "$pvused_out" "pr-check: delta round 4 on pvused (from " "the version-only round runs past the cap"
+assert_has "$(cat "$git_dir/cr-review-rounds/pvused.free")" "$pvused_from $plugin_head merge-resolution" "the version-only round starts from the last reviewed fix"
 assert_eq "$(cat "$git_dir/cr-review-rounds/pvused.delta")" "$pvused_delta" "a version-only resolution preserves the spent delta pair"
-assert_eq "$(cat "$git_dir/cr-review-rounds/pvused.round")" "5" "a version-only resolution advances the panel counter"
+assert_eq "$(cat "$git_dir/cr-review-rounds/pvused.round")" "4" "a version-only resolution is free: the counter stays"
 
 # (2) The version bump plus one other byte in plugin.json: refused.
 plugin_case pvextra 0.1.1 0.1.2 main-bumps
@@ -2062,6 +2105,7 @@ printf 'more\n' >> "$repo/pendingother.txt"
 git -C "$repo" commit -q -am "more pendingother"
 pdo_out="$(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$(git -C "$repo" rev-parse pendingother)" --branch pendingother 2>&1)"; pdo_rc=$?
 assert_eq "$pdo_rc" "8" "a pending delta round is never reused for a different head"
+assert_lacks "$pdo_out" "younger than two hours" "10578 the fallback settled the round: a different head does not wait"
 assert_has "$pdo_out" "delta round was already used" "different-pair refusal names the reason"
 
 # Round-3 findings are keyed by id + artifact + perspective, so
@@ -2451,6 +2495,7 @@ assert_eq "$promote_rc3" "1" "a malformed ledger row makes promote exit 1"
 assert_has "$(cat "$tmp/promote3.err")" "malformed CR ledger row" "malformed-ledger refusal names the reason"
 assert_eq "$promote_lines_after" "$((promote_lines_before + 1))" "malformed-ledger run appends nothing beyond the injected garbage line"
 
+fi
 # A judge NO-GO on the last reviewed head, as the chief-kit
 # verdict writer records it, buys exactly one delta round. The records are
 # written by the real writer from the fixture anchor, so the scope the writer
@@ -2493,6 +2538,7 @@ judge() {
 start_round() {
     (cd "$repo" && PANEL_MODE="${2:-clean}" bash "$SCRIPT" --head "$1" --branch "$3" 2>&1)
 }
+if _rounds_part a; then
 
 # RED: a judge NO-GO on the round-3 head enables the delta round for its fix.
 three_rounds judgenogo clean
@@ -2557,6 +2603,7 @@ fix_commit pcunrev
 (cd "$repo" && PANEL_MODE=fail bash "$SCRIPT" --head "$cap_fix_head" --branch pcunrev >/dev/null 2>&1) \
     || fail "pcunrev panel-less delta round setup exited non-zero"
 assert_has "$(cat "$git_dir/cr-review-rounds/pcunrev.delta" 2>/dev/null)" "$cap_r3_head $cap_fix_head fix" "pcunrev fixture: the pair ends on the unreviewed fix head"
+rr_settle pcunrev "$cap_fix_head"
 postcap_fix pcunrev
 postcap_out="$(postcap_start pcunrev)"; postcap_rc=$?
 assert_eq "$postcap_rc" "8" "a used pair ending on another head buys no post-cap round"
@@ -2637,6 +2684,8 @@ for pb_case in pv-bound pv-gh-fails pv-no-pr-line pv-other-pr pv-other-branch; d
     assert_eq "$(cat "$git_dir/cr-review-rounds/$pb_case.round")" "3" "$pb_case leaves counter unchanged"
 done
 
+fi
+if _rounds_part b; then
 # Real writer records on two reviewed heads must not buy
 # repeated rounds for the same class. Without the class stop this reaches 5.
 three_rounds classrepeat clean
@@ -2810,6 +2859,7 @@ jo_r3="$cap_r3_head"
 fix_commit judgeonce
 judge jo-1 NO-GO "$jo_r3"
 (start_round "$cap_fix_head" fail judgeonce >/dev/null) || fail "judgeonce pending delta setup"
+rr_settle judgeonce "$cap_fix_head"
 printf 'another\n' >> "$repo/judgeonce.txt"
 git -C "$repo" commit -q -am "judgeonce another"
 jo_out="$(start_round "$(git -C "$repo" rev-parse judgeonce)" clean judgeonce)"; jo_rc=$?
@@ -2972,11 +3022,13 @@ assert_eq "$jh_rc" "8" "an unreadable per-head .verdicts refuses the judge recor
 assert_has "$jh_out" "cannot read" "the unreadable per-head .verdicts is named"
 assert_eq "$(cat "$git_dir/cr-review-rounds/jhscan.round")" "3" "the refused per-head scan-failure round leaves the counter at 3"
 
+fi
 # A judge-signed record admits ONE post-cap delta round for a
 # test- or lint-only delta. The record is a GO written by the real writer for
 # the delta's NEW head, carrying `delta-scope:` and `delta-from:` evidence lines.
 scope_commit() {
-    # scope_commit <branch> <path> : commit a change to <path>, set scope_head
+    printf '%s %s tests\n' "$cap_r3_head" "$cap_r3_head" "$cap_r3_head" "$cap_r3_head" "$cap_r3_head" "$cap_r3_head" \
+        "$cap_r3_head" "$cap_r3_head" "$cap_r3_head" "$cap_r3_head" > "$git_dir/cr-review-rounds/$1.free"
     mkdir -p "$(dirname "$repo/$2")"
     printf '%s\n' "$2" >> "$repo/$2"
     git -C "$repo" add "$2"
@@ -2988,6 +3040,7 @@ scope_judge() {
     printf 'delta-scope: %s\ndelta-from: %s\n\nthe delta changes no production path\n' "$3" "$4" > "$jev/judge-evidence.md"
     judge "$1" GO "$2"
 }
+if _rounds_part b; then
 
 # RED: without a record a clean test-only commit after the cap gets no round.
 three_rounds scopeok clean
@@ -3154,10 +3207,8 @@ sl_rc=0; start_round "$sl_head" clean scopelint >/dev/null || sl_rc=$?
 assert_eq "$sl_rc" "0" "a judge-signed lint-only delta is admitted after the cap"
 assert_has "$(cat "$git_dir/cr-review-rounds/scopelint.delta")" "scope:sl-1" "the lint-only delta state names the scope record"
 
-# The existing fix trigger is unchanged and still records itself as fix.
-assert_has "$(cat "$git_dir/cr-review-rounds/fixpath.delta")" " fix" "the fix trigger still records fix"
-assert_has "$(cat "$git_dir/cr-review-rounds/feature.delta")" " merge-forward" "the merge-forward trigger still records merge-forward"
 
+fi
 # A CLEAN merge of main past the cap is admitted without spending
 # the one delta round; a merge that changes the PR's own diff or resolves a
 # conflict is not, unless a judge-signed merge-resolution record binds it.
@@ -3171,8 +3222,8 @@ main_commit() {
     git -C "$repo" push -q origin main
     git -C "$repo" checkout -q "$mm_back"
 }
+if _rounds_part b; then
 
-# Clean merge: admitted, repeatable, and the delta round stays unspent.
 three_rounds cmok clean
 cm_r3="$cap_r3_head"
 main_commit cm-main-1.txt one
@@ -3180,7 +3231,7 @@ git -C "$repo" merge -q --no-edit main
 cm_head="$(git -C "$repo" rev-parse cmok)"
 cm_out="$(start_round "$cm_head" clean cmok)"; cm_rc=$?
 assert_eq "$cm_rc" "0" "a clean merge of main after the cap is admitted"
-assert_has "$cm_out" "pr-check: delta round 4 on cmok (from $cm_r3)" "the clean merge is scoped from the last reviewed head"
+assert_has "$cm_out" "pr-check: round 3 carried on cmok" "the clean merge is carried"
 if [ -e "$git_dir/cr-review-rounds/cmok.delta" ]; then fail "a clean merge leaves the delta round unspent"; else pass "a clean merge leaves the delta round unspent"; fi
 main_commit cm-main-2.txt two
 git -C "$repo" merge -q --no-edit main
@@ -3193,7 +3244,7 @@ printf 'fix\n' >> "$repo/cmok.txt"
 git -C "$repo" commit -q -am "fix cmok"
 cm_fix="$(git -C "$repo" rev-parse cmok)"
 CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
-    --branch cmok --head "$cm_head2" --model stub --id stub-cm --severity sug --file f.txt --line 1 \
+    --branch cmok --head "$cm_r3" --model stub --id stub-cm --severity sug --file f.txt --line 1 \
     --verdict agreed >/dev/null 2>"$tmp/cmok-finding.err" || fail "cmok finding setup"
 cm_out="$(start_round "$cm_fix" clean cmok)"; cm_rc=$?
 assert_eq "$cm_rc" "0" "the unspent delta round still buys a fix after clean merges"
@@ -3209,8 +3260,6 @@ cf_rc=0; start_round "$cf_head" clean cmfind >/dev/null || cf_rc=$?
 assert_eq "$cf_rc" "0" "a clean merge over an unresolved finding is admitted"
 if [ -e "$git_dir/cr-review-rounds/cmfind.delta" ]; then fail "a clean merge over an unresolved finding leaves the delta round unspent"; else pass "a clean merge over an unresolved finding leaves the delta round unspent"; fi
 
-# Delta already spent: a clean merge is still admitted, one that changes the
-# PR's own diff is not (main lands the same f.txt line the PR appended).
 three_rounds cmused suggestion
 printf 'fix\n' >> "$repo/cmused.txt"
 printf 'extra\n' >> "$repo/f.txt"
@@ -3226,11 +3275,11 @@ main_commit f.txt "$(git -C "$repo" show main:f.txt; echo extra)"
 git -C "$repo" merge -q --no-edit main
 cu_head2="$(git -C "$repo" rev-parse cmused)"
 cu_rc=0; start_round "$cu_head2" clean cmused >/dev/null || cu_rc=$?
-assert_eq "$cu_rc" "8" "a merge that changes the PR's own diff is not admitted after the delta was spent"
+assert_eq "$cu_rc" "0" "a merge in which main makes the PR's own change is carried after the delta was spent"
 
-# Conflict merge: refused without a record, admitted with a bound one.
 three_rounds cmconf clean
 cc_r3="$cap_r3_head"
+printf '%s %s tests\n' "$cc_r3" "$cc_r3" "$cc_r3" "$cc_r3" "$cc_r3" "$cc_r3" "$cc_r3" "$cc_r3" "$cc_r3" "$cc_r3" > "$git_dir/cr-review-rounds/cmconf.free"
 main_commit cmconf.txt "from main"
 git -C "$repo" merge -q --no-commit main >/dev/null 2>&1 || true
 printf 'resolved\n' > "$repo/cmconf.txt"
@@ -3247,6 +3296,7 @@ assert_has "$(cat "$git_dir/cr-review-rounds/cmconf.delta")" "scope:cc-1" "the d
 # A merge-resolution record for another head, or another delta-from, is refused.
 three_rounds cmhead clean
 ch_r3="$cap_r3_head"
+printf '%s %s tests\n' "$ch_r3" "$ch_r3" "$ch_r3" "$ch_r3" "$ch_r3" "$ch_r3" "$ch_r3" "$ch_r3" "$ch_r3" "$ch_r3" > "$git_dir/cr-review-rounds/cmhead.free"
 main_commit cmhead.txt "from main"
 git -C "$repo" merge -q --no-commit main >/dev/null 2>&1 || true
 printf 'resolved\n' > "$repo/cmhead.txt"
@@ -3341,10 +3391,17 @@ for mfs_case in swap stale fork; do
         # a stale second parent adds nothing, so only a resolution can carry it
         if [ "$mfs_case" = stale ]; then mfs_content=resolved; else mfs_content=clean; fi
         mfs_build "mfs-$mfs_case-$mfs_delta" "$mfs_delta" "$mfs_case" "$mfs_content"
-        mfs_rc=0; start_round "$mfs_head" clean "mfs-$mfs_case-$mfs_delta" >/dev/null || mfs_rc=$?
+        mfs_calls="$(wc -l < "$PANEL_CALLS" | tr -d ' ')"
+        mfs_round0="$(cat "$git_dir/cr-review-rounds/mfs-$mfs_case-$mfs_delta.round")"
+        mfs_out="$(start_round "$mfs_head" clean "mfs-$mfs_case-$mfs_delta")"; mfs_rc=$?
         if [ "$mfs_case" = stale ]; then
             # a clean merge cannot be stale; a resolution without a record is refused as before
             assert_eq "$mfs_rc" "8" "$mfs_case/$mfs_delta: a resolving merge without a record gets no round"
+        elif [ "$mfs_case" = swap ]; then
+            assert_eq "$mfs_rc" "0" "$mfs_case/$mfs_delta: a merge with a swapped second parent whose tree is the clean merge is carried"
+            assert_has "$mfs_out" "carried on mfs-$mfs_case-$mfs_delta" "$mfs_case/$mfs_delta: the swapped merge is classed carried"
+            assert_eq "$(wc -l < "$PANEL_CALLS" | tr -d ' ')" "$mfs_calls" "$mfs_case/$mfs_delta: the swapped merge runs no panel"
+            assert_eq "$(cat "$git_dir/cr-review-rounds/mfs-$mfs_case-$mfs_delta.round")" "$mfs_round0" "$mfs_case/$mfs_delta: .round is unchanged"
         else
             assert_eq "$mfs_rc" "8" "$mfs_case/$mfs_delta: a merge with a $mfs_case second parent gets no round"
         fi
@@ -3391,24 +3448,6 @@ git -C "$repo" merge -q --no-edit main
 mfb_rc=0; start_round "$(git -C "$repo" rev-parse mfbasemerge)" clean mfbasemerge >/dev/null || mfb_rc=$?
 assert_eq "$mfb_rc" "0" "a merge-forward that imports a merge commit main gained is admitted free"
 
-# Clean merges are free of the delta round but not of the round count: after
-# the delta was spent they stop at the free-round cap and need a judge record.
-three_rounds mfcap suggestion
-fix_commit mfcap
-start_round "$cap_fix_head" clean mfcap >/dev/null || fail "mfcap delta setup"
-mfcap_n=0
-mfcap_last=0
-while [ "$mfcap_n" -lt 8 ]; do
-    main_commit "mfcap-$mfcap_n.txt" "$mfcap_n"
-    git -C "$repo" merge -q --no-edit main
-    mfcap_last=0; start_round "$(git -C "$repo" rev-parse mfcap)" clean mfcap >/dev/null || mfcap_last=$?
-    [ "$mfcap_last" -eq 0 ] || break
-    mfcap_n=$((mfcap_n + 1))
-done
-assert_eq "$mfcap_n" "4" "clean merges after the spent delta stop at the free-round cap"
-assert_eq "$mfcap_last" "8" "the clean merge past the cap is refused"
-assert_eq "$(cat "$git_dir/cr-review-rounds/mfcap.round")" "8" "the cap counts the free rounds in the round state"
-
 # An inherited delta_reuse never skips the counter bump on a
 # round before the cap (delta_reuse was only initialised inside delta_check).
 git -C "$repo" checkout -q -b t1init main
@@ -3433,6 +3472,7 @@ assert_has "$t2_out" "delta round was already used" "finding-row refusal names t
 three_rounds t3conc suggestion
 fix_commit t3conc
 (start_round "$cap_fix_head" fail t3conc >/dev/null) || fail "t3conc pending delta setup"
+rr_settle t3conc "$cap_fix_head"
 t3_claim="$(grep -Ec '^[0-9]+$' "$git_dir/cr-review-rounds/t3conc.delta.run" 2>/dev/null)"
 assert_eq "$t3_claim" "1" "a real delta start records its caller pid"
 sleep 60 &
@@ -3446,6 +3486,8 @@ t3b_out="$(start_round "$cap_fix_head" clean t3conc)"; t3b_rc=$?
 assert_eq "$t3b_rc" "0" "a pending delta round restarts once the earlier start's caller is gone"
 assert_has "$t3b_out" "delta round 4 on t3conc" "the restarted pair is still the delta round"
 
+fi
+if _rounds_part c; then
 # A judge NO-GO on a test- or comment-only descendant of the last
 # reviewed head is bound to that head and buys the one round; a descendant
 # that changes code does not. A layer-decision without its keyword is named.
@@ -3523,6 +3565,7 @@ sd_r3="$cap_r3_head"
 fix_commit stranded
 sd_fix1="$cap_fix_head"
 (start_round "$sd_fix1" fail stranded >/dev/null) || fail "stranded delta setup"
+rr_settle stranded "$sd_fix1"
 printf 'fix again\n' >> "$repo/stranded.txt"
 git -C "$repo" commit -q -am "stranded second fix"
 sd_fix2="$(git -C "$repo" rev-parse stranded)"
@@ -3542,6 +3585,7 @@ sd2_out="$(start_round "$sd_fix3" clean stranded)"; sd2_rc=$?
 assert_eq "$sd2_rc" "8" "the fallback buys no second round on the consumed record"
 assert_has "$sd2_out" "no judge NO-GO for $sd_fix2 is recorded" "the refusal names the check against the reviewed delta head"
 
+fi
 # A CI-red last reviewed head buys one bounded post-cap round.
 # cired_case <branch> <rows>: the delta round ran and left a finding open (so
 # the post-cap-fixed trigger stays closed), the head it reviewed is
@@ -3557,6 +3601,7 @@ cired_case() {
     postcap_fix "$1"
 }
 RED='completed\tsuccess\tlint\ncompleted\tfailure\tshell-unit (2)\n'
+if _rounds_part c; then
 cired_case cired "$RED"
 cired_out="$(postcap_start cired)"; cired_rc=$?
 assert_eq "$cired_rc" "0" "a failed check-run at the reviewed head buys one post-cap round"
@@ -3626,6 +3671,8 @@ cired_out="$(postcap_start ciredapi)"; cired_rc=$?
 unset GH_CHECKRUNS_RC
 assert_eq "$cired_rc" "8" "an unreadable check-run list refuses the CI-red round"
 
+fi
+if _rounds_part c; then
 # The base side of a merge-forward is not the PR's own change: a 60-line file
 # that main added does not count against the cap (panel-first-pass hands
 # review-round the captured base).
@@ -4076,7 +4123,7 @@ ab_y="$(git -C "$repo" rev-parse ab77)"
 (cd "$repo" && bash "$RR" start --branch ab77 --head "$ab_y" >/dev/null 2>&1) || fail "ab77 fixture start at the live head"
 sleep 60 &
 ab_live=$!
-printf '%s\n' "$ab_live" > "$git_dir/cr-review-rounds/ab77.delta.run"
+snap_set ab77 pid "$ab_live"
 ab_out="$(cd "$repo" && bash "$RR" abort --branch ab77 --head "$ab_y" 2>&1)"; ab_rc=$?
 kill "$ab_live" 2>/dev/null; wait "$ab_live" 2>/dev/null
 assert_eq "$ab_rc" "8" "7753 (f) abort refuses while the round's start caller is running ($ab_out)"
@@ -4084,9 +4131,10 @@ assert_eq "$(cat "$git_dir/cr-review-rounds/ab77.round")" "3" "7753 (f) a refuse
 assert_eq "$(cat "$git_dir/cr-review-rounds/ab77.head")" "$ab_y" "7753 (f) a refused abort leaves .head on the running round"
 for ab_run in missing '' x12; do
     if [ "$ab_run" = missing ]; then
-        rm -f "$git_dir/cr-review-rounds/ab77.delta.run"
+        { sed '/^pid /d' "$(snap_f ab77)" > "$tmp/snap.tmp" && mv "$tmp/snap.tmp" "$(snap_f ab77)"; } || fail "7753 (g) fixture drops the snapshot pid"
     else
-        printf '%s\n' "$ab_run" > "$git_dir/cr-review-rounds/ab77.delta.run"
+        printf 'pid 0\n' >> "$(snap_f ab77)"
+        snap_set ab77 pid "$ab_run"
     fi
     ab_out="$(cd "$repo" && bash "$RR" abort --branch ab77 --head "$ab_y" 2>&1)"; ab_rc=$?
     assert_eq "$ab_rc" "8" "7753 (g) abort refuses with no start caller on record (delta.run ${ab_run:-empty}: $ab_out)"
@@ -4150,10 +4198,15 @@ judge jg77-1 GO "$jg77_fix"
 jgo_out="$(jgo_verb jg77 "$jg77_fix")"; jgo_vrc=$?
 assert_eq "$jgo_vrc" "0" "7753 (b) judge-go accepts a signed GO after an aborted delta round ($jgo_out)"
 # clear-review-marker gates on .head itself, so abort is the sanctioned repair.
+snap_dead jg77
+jg77_out="$(cd "$repo" && bash "$RR" abort --branch jg77 --head "$jg77_fix" 2>&1)"; jg77_rc=$?
+assert_eq "$jg77_rc" "8" "10578 7753 (b) a by-hand abort of a young dead round is refused ($jg77_out)"
+assert_has "$jg77_out" "younger than two hours" "10578 7753 (b) the refusal names the two-hour wait"
+snap_age jg77 7300
 jg77_out="$(cd "$repo" && bash "$RR" abort --branch jg77 --head "$jg77_fix" 2>&1)"; jg77_rc=$?
 assert_eq "$jg77_rc" "0" "7753 (b) abort repairs a stranded .head by hand ($jg77_out)"
 assert_eq "$(cat "$git_dir/cr-review-rounds/jg77.head")" "$jg77_r3" "7753 (b) .head is back on the reviewed round-3 head"
-assert_eq "$(cat "$git_dir/cr-review-rounds/jg77.round")" "4" "7753 (b) the pending delta round keeps its count"
+assert_eq "$(cat "$git_dir/cr-review-rounds/jg77.round")" "3" "10578 7753 (b) the restore gives the delta round's count back"
 jgo_clear jg77; jgo_rc=$?
 assert_eq "$jgo_rc" "0" "7753 (b) the judge GO then clears the marker ($(cat "$tmp/jg77-clear.out"))"
 
@@ -4163,6 +4216,7 @@ git -C "$repo" checkout -q -b jg77n main
 printf 'jg77n\n' > "$repo/jg77n.txt"; git -C "$repo" add jg77n.txt; git -C "$repo" commit -q -m jg77n
 for n in 1 2 3; do
     (cd "$repo" && PANEL_MODE=fail bash "$SCRIPT" --head "$(git -C "$repo" rev-parse jg77n)" --branch jg77n >/dev/null 2>"$tmp/jg77n-$n.err") || fail "jg77n fixture round $n"
+    rr_settle jg77n "$(git -C "$repo" rev-parse jg77n)"
     git -C "$repo" commit -q --allow-empty -m "jg77n round $n"
 done
 jg77n_head="$(git -C "$repo" rev-parse jg77n)"
@@ -4181,29 +4235,22 @@ ev77_head="$(git -C "$repo" rev-parse ev77)"
 ev77_out="$(cd "$repo" && bash "$RR" evidence --branch ev77 --head "$ev77_head" 2>&1)"; ev77_rc=$?
 assert_eq "$ev77_rc" "0" "7753 (e) evidence scopes from the reviewed head after an aborted round ($ev77_out)"
 
-# .from is the reviewed head a new second or third round starts from; `from`
-# prints it in those rounds only; abort, a first-round start and cr-reset
-# remove it.
 fr_b=feat/fr84
 fr_state="$git_dir/cr-review-rounds/$fr_b"
-fr_from() { (cd "$repo" && bash "$RR" from --branch "$fr_b" 2>&1); }
 git -C "$repo" checkout -q -b "$fr_b" main
 printf 'fr84\n' > "$repo/fr84.txt"; git -C "$repo" add fr84.txt; git -C "$repo" commit -q -m fr84
 fr_h1="$(git -C "$repo" rev-parse "$fr_b")"
 start_round "$fr_h1" clean "$fr_b" >/dev/null || fail "8428 fixture round 1"
-assert_eq "$(fr_from)" "" "8428 at round 1 from prints nothing"
 printf 'h2\n' >> "$repo/fr84.txt"; git -C "$repo" commit -q -am "fr84 h2"
 fr_h2="$(git -C "$repo" rev-parse "$fr_b")"
 fr_out="$(start_round "$fr_h2" pin-abort "$fr_b")"; fr_rc=$?
 assert_eq "$fr_rc" "7" "8428 a round-2 start that aborts exits 7"
 assert_eq "$(cat "$fr_state.round")" "1" "8428 the aborted round 2 is given back ($fr_out)"
-assert_eq "$([ -e "$fr_state.from" ] && echo present || echo absent)" "absent" "8428 abort of a round-2 start removes .from"
-assert_eq "$(fr_from)" "" "8428 after a round-2 start and abort from prints nothing"
+assert_eq "$(cat "$fr_state.scope")" "$fr_h1 full 0" "8428 the aborted round 2 gives .scope back"
 start_round "$fr_h2" clean "$fr_b" >/dev/null || fail "8428 fixture round 2"
-assert_eq "$(cat "$fr_state.from")" "$fr_h1" "8428 a new round 2 writes .from = the last reviewed head"
-assert_eq "$(fr_from)" "$fr_h1" "8428 at round 2 from prints the start point"
+assert_eq "$(cat "$fr_state.scope")" "$fr_h2 work 0" "8428 a new round 2 writes .scope"
 (cd "$repo" && bash "$RR" start --branch "$fr_b" --head "$fr_h2" >/dev/null 2>&1) || fail "8428 same-head start"
-assert_eq "$(fr_from)" "$fr_h1" "8428 a same-head reuse keeps .from (H1)"
+assert_eq "$(cat "$fr_state.round")" "2" "8428 a same-head reuse keeps round 2"
 printf 'h3\n' >> "$repo/fr84.txt"; git -C "$repo" commit -q -am "fr84 h3"
 fr_h3="$(git -C "$repo" rev-parse "$fr_b")"
 fr_out="$(start_round "$fr_h3" pin-abort "$fr_b")"; fr_rc=$?
@@ -4211,26 +4258,672 @@ assert_eq "$fr_rc" "7" "8428 a round-3 start at H3 that aborts exits 7"
 assert_eq "$(cat "$fr_state.round")" "2" "8428 the aborted round 3 is given back ($fr_out)"
 assert_eq "$(cat "$fr_state.head")" "$fr_h2" "8428 the give-back restores .head to H2"
 (cd "$repo" && bash "$RR" start --branch "$fr_b" --head "$fr_h2" >/dev/null 2>&1) || fail "8428 same-head re-entry at H2"
-assert_eq "$(fr_from)" "" "8428 round-3 abort then a same-head start at H2: from prints nothing, never H2"
-start_round "$fr_h3" clean "$fr_b" >/dev/null || fail "8428 fixture round 3"
-assert_eq "$(fr_from)" "$fr_h2" "8428 a new round 3 writes .from = H2"
-printf '4\n' > "$fr_state.round"
-assert_eq "$(fr_from)" "" "8428 at round 4 from prints nothing"
-printf '3\n' > "$fr_state.round"
+fr_out="$(start_round "$fr_h3" clean "$fr_b")" || fail "8428 fixture round 3"
+assert_has "$fr_out" "pr-check: round 3 of 3 on $fr_b (increment from $fr_h2)" "8428 round 3 after the give-back reviews the increment from the restored H2"
+printf '%s %s tests\n' "$fr_h2" "$fr_h3" > "$fr_state.free"
 cat > "$tmp/bin/fr84-reset-gh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' '{"headRefName":"feat/fr84","isCrossRepository":false,"state":"OPEN"}'
 STUB
 chmod +x "$tmp/bin/fr84-reset-gh"
+[ -e "$fr_state.start.bak" ] || printf 'start-snapshot 1\n' > "$fr_state.start.bak"
 fr_reset_out="$(env -u CLAUDECODE CR_RESET_PRIMARY="$repo" CR_RESET_GH="$tmp/bin/fr84-reset-gh" \
     CR_RESET_LOCK_LIB="$HERE/../lib/shared-branch-lock.sh" bash "$HERE/cr-reset.sh" 8 2>&1)" || fail "8428 cr-reset runs ($fr_reset_out)"
-assert_has "$fr_reset_out" '.from' "8428 cr-reset moves .from aside"
-assert_eq "$([ -e "$fr_state.from" ] && echo present || echo absent)" "absent" "8428 after cr-reset no .from is left"
-assert_eq "$(fr_from)" "" "8428 after cr-reset from prints nothing"
-printf '%s\n' "$fr_h1" > "$fr_state.from"
+assert_has "$fr_reset_out" '.start.bak' "10578 reset-moves-snapshot: cr-reset moves .start.bak aside"
+assert_eq "$([ -e "$fr_state.start.bak" ] && echo present || echo absent)" "absent" "10578 reset-moves-snapshot: after cr-reset no snapshot is left"
+assert_has "$fr_reset_out" '.free' "10578 reset-moves-snapshot: cr-reset moves .free aside"
+assert_has "$fr_reset_out" '.scope' "10578 reset-moves-snapshot: cr-reset moves .scope aside"
+assert_eq "$([ -e "$fr_state.free" ] && echo present || echo absent)" "absent" "10578 reset-moves-snapshot: after cr-reset no .free is left"
+assert_eq "$([ -e "$fr_state.scope" ] && echo present || echo absent)" "absent" "10578 reset-moves-snapshot: after cr-reset no .scope is left"
 start_round "$fr_h3" clean "$fr_b" >/dev/null || fail "8428 fixture round 1 after reset"
 assert_eq "$(cat "$fr_state.round")" "1" "8428 the first start after a reset is round 1"
-assert_eq "$([ -e "$fr_state.from" ] && echo present || echo absent)" "absent" "8428 a round-1 start removes a stale .from"
+
+cired_rows 'completed\tsuccess\tlint\n'
+rr_start() { (cd "$repo" && bash "$RR" start --branch "$1" --head "$2" 2>&1); }
+rr_abort() { (cd "$repo" && bash "$RR" abort --branch "$1" --head "$2" 2>&1); }
+rr_file() { if [ -e "$git_dir/cr-review-rounds/$1.$2" ]; then cat "$git_dir/cr-review-rounds/$1.$2"; else printf absent; fi; }
+sn_branch() {
+    git -C "$repo" checkout -q -b "$1" main
+    printf '%s\n' "$1" > "$repo/$1.txt"; git -C "$repo" add "$1.txt"; git -C "$repo" commit -q -m "$1"
+    sn_h1="$(git -C "$repo" rev-parse "$1")"
+    start_round "$sn_h1" clean "$1" >/dev/null || fail "$1 fixture round 1"
+    printf 'two\n' >> "$repo/$1.txt"; git -C "$repo" commit -q -am "$1 two"
+    sn_h2="$(git -C "$repo" rev-parse "$1")"
+}
+sn_next() { printf 'next\n' >> "$repo/$1.txt"; git -C "$repo" commit -q -am "$1 next"; git -C "$repo" rev-parse "$1"; }
+
+three_rounds snabc clean
+git -C "$repo" push -q -u origin snabc
+cired_rows "$RED"
+fix_commit snabc
+sn_y="$cap_fix_head"
+sn_out="$(start_round "$sn_y" pin-abort snabc)"; sn_rc=$?
+assert_eq "$sn_rc" "7" "10578 abort-delta-cired: the CI-red round's panel aborts at exit 7"
+assert_has "$sn_out" "the aborted round was given back" "10578 abort-delta-cired: panel-first-pass gives the round back"
+assert_eq "$(rr_file snabc round)" "3" "10578 abort-delta-cired: the aborted CI-red round is uncounted"
+assert_eq "$(rr_file snabc cired)" "absent" "10578 abort-delta-cired: the CI-red unlock is given back"
+assert_eq "$(rr_file snabc delta)" "absent" "10578 abort-delta-cired: .delta is as before the round"
+assert_eq "$(snap_has snabc)" "absent" "10578 abort-delta-cired: the restore deletes the snapshot"
+main_commit snabc-main.txt "newer main"
+git -C "$repo" merge -q --no-edit main
+sn_y2="$(git -C "$repo" rev-parse snabc)"
+cired_rows "$RED"
+sn_out="$(start_round "$sn_y2" clean snabc)"; sn_rc=$?
+assert_eq "$sn_rc" "0" "10578 abort-then-merge: the merge of newer main after the aborted round is admitted ($sn_out)"
+assert_has "$(rr_file snabc delta)" "$cap_r3_head $sn_y2 postcap-ci-red" "10578 abort-then-merge: it takes the CI-red unlock again"
+cired_rows 'completed\tsuccess\tlint\n'
+
+three_rounds snabv clean
+fix_commit snabv
+sn_r3="$cap_r3_head"
+printf 'class: reader-allowlist\n\nthe fix does not hold\n' > "$jev/judge-evidence.md"
+judge snabv-1 NO-GO "$sn_r3"
+sn_out="$(start_round "$cap_fix_head" pin-abort snabv)"; sn_rc=$?
+assert_eq "$sn_rc" "7" "10578 abort-delta-verdict: the judge-bought round's panel aborts at exit 7"
+assert_eq "$(rr_file snabv verdicts)" "absent" "10578 abort-delta-verdict: .verdicts is byte-equal to before (absent)"
+assert_eq "$(rr_file snabv round)" "3" "10578 abort-delta-verdict: the aborted round is uncounted"
+sn_y2="$(sn_next snabv)"
+sn_out="$(start_round "$sn_y2" clean snabv)"; sn_rc=$?
+assert_eq "$sn_rc" "0" "10578 abort-delta-verdict: a start at a new head is admitted on the same record ($sn_out)"
+assert_has "$(rr_file snabv delta)" "verdict:snabv-1" "10578 abort-delta-verdict: the record buys the round again"
+
+three_rounds snabk suggestion
+fix_commit snabk
+rr_start snabk "$cap_fix_head" >/dev/null || fail "snabk fixture delta start"
+printf '{"kind":"round-scope","branch":"snabk","head":"%s","scope":"delta"}\n' "$cap_fix_head" >> "$git_dir/cr-critic-scores.jsonl"
+snap_dead snabk; snap_age snabk 7300
+sn_out="$(rr_abort snabk "$cap_fix_head")"; sn_rc=$?
+assert_eq "$sn_rc" "0" "10578 abort-bookkeeping-only: a head with only a round-scope row is given back ($sn_out)"
+assert_eq "$(rr_file snabk round)" "3" "10578 abort-bookkeeping-only: the delta round's count is given back"
+assert_eq "$(rr_file snabk delta)" "absent" "10578 abort-bookkeeping-only: .delta is restored"
+
+sn_branch snarv
+rr_start snarv "$sn_h2" >/dev/null || fail "snarv fixture start"
+CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" avail --branch snarv --head "$sn_h2" --model stub --status ok >/dev/null || fail "snarv avail row"
+sn_out="$(rr_abort snarv "$sn_h2")"; sn_rc=$?
+assert_eq "$sn_rc" "8" "10578 abort-reviewed: abort refuses a reviewed round ($sn_out)"
+assert_eq "$(rr_file snarv round)" "2" "10578 abort-reviewed: the count is unchanged"
+
+sn_branch snheal
+rr_start snheal "$sn_h2" >/dev/null || fail "snheal fixture start"
+snap_dead snheal; snap_age snheal 7300
+sn_h3="$(sn_next snheal)"
+sn_out="$(rr_start snheal "$sn_h3")"; sn_rc=$?
+assert_eq "$sn_out" "2 increment $sn_h1" "10578 start-heals-dead-round: the dead round 2 is given back, the new head is round 2"
+assert_eq "$(snap_field snheal head)" "$sn_h3" "10578 start-heals-dead-round: the snapshot now names the new round's head"
+
+sn_branch snyoung
+rr_start snyoung "$sn_h2" >/dev/null || fail "snyoung fixture start"
+snap_dead snyoung; snap_age snyoung 3600
+sn_h3="$(sn_next snyoung)"
+sn_out="$(rr_start snyoung "$sn_h3")"; sn_rc=$?
+assert_eq "$sn_rc" "8" "10578 start-waits-young-dead-round: a start at another head is refused ($sn_out)"
+assert_has "$sn_out" "a dead round at $sn_h2 is younger than two hours (60 min left)" "10578 start-waits-young-dead-round: the refusal names the time left"
+assert_eq "$(rr_file snyoung round)" "2" "10578 start-waits-young-dead-round: nothing is restored or counted"
+
+sn_branch sncont
+rr_start sncont "$sn_h2" >/dev/null || fail "sncont fixture start"
+[ "$(snap_has sncont)" = absent ] || snap_dead sncont
+sn_out="$(rr_start sncont "$sn_h2")"; sn_rc=$?
+assert_eq "$sn_out" "2 increment $sn_h1" "10578 restart-same-head-continues: the restart prints the same round"
+assert_eq "$(rr_file sncont round)" "2" "10578 restart-same-head-continues: no new count"
+
+sn_branch sncaw
+rr_start sncaw "$sn_h2" >/dev/null || fail "sncaw fixture start"
+snap_dead sncaw
+sn_out="$(start_round "$sn_h2" pin-abort sncaw)"; sn_rc=$?
+assert_eq "$sn_rc" "7" "10578 continued-abort-waits: the continued round's panel aborts at exit 7"
+assert_has "$sn_out" "younger than two hours" "10578 continued-abort-waits: its give-back is refused with the time left"
+assert_eq "$(rr_file sncaw round)" "2" "10578 continued-abort-waits: the continued round stays counted"
+assert_eq "$(snap_field sncaw continued)" "1" "10578 continued-abort-waits: the snapshot is marked continued"
+snap_age sncaw 7300
+sn_out="$(rr_abort sncaw "$sn_h2")"; sn_rc=$?
+assert_eq "$sn_rc" "0" "10578 continued-abort-waits: two hours after the original start the same abort restores ($sn_out)"
+assert_eq "$(rr_file sncaw round)" "1" "10578 continued-abort-waits: the restore uncounts the round"
+
+sn_branch snlive
+rr_start snlive "$sn_h2" >/dev/null || fail "snlive fixture start"
+sleep 60 &
+sn_live=$!
+snap_set snlive pid "$sn_live"
+sn_out="$(rr_abort snlive "$sn_h2")"; sn_rc=$?
+assert_eq "$sn_rc" "8" "10578 abort-live-starter: abort from another process refuses ($sn_out)"
+assert_eq "$(snap_has snlive)" "present" "10578 abort-live-starter: the snapshot stays"
+sn_out="$(rr_start snlive "$sn_h2")"; sn_rc=$?
+assert_eq "$sn_rc" "8" "10578 start-live-starter: start refuses while the starter runs ($sn_out)"
+assert_has "$sn_out" "already running (start by pid $sn_live)" "10578 start-live-starter: today's already-running message"
+kill "$sn_live" 2>/dev/null; wait "$sn_live" 2>/dev/null
+assert_eq "$(rr_file snlive round)" "2" "10578 live starter: the count is unchanged"
+
+three_rounds snint suggestion
+fix_commit snint
+rr_start snint "$cap_fix_head" >/dev/null || fail "snint fixture delta start"
+printf '3\n' > "$git_dir/cr-review-rounds/snint.round"
+snap_dead snint; snap_age snint 7300
+sn_out="$(rr_abort snint "$cap_fix_head")"; sn_rc=$?
+assert_eq "$sn_rc" "0" "10578 restore-interrupted: the next abort finishes the restore ($sn_out)"
+assert_eq "$(rr_file snint round)" "3" "10578 restore-interrupted: .round holds its before bytes"
+assert_eq "$(rr_file snint delta)" "absent" "10578 restore-interrupted: .delta holds its before bytes"
+assert_eq "$(rr_file snint head)" "$cap_r3_head" "10578 restore-interrupted: .head holds its before bytes"
+assert_eq "$(snap_has snint)" "absent" "10578 restore-interrupted: the snapshot is deleted last"
+
+sn_branch sndrop
+rr_start sndrop "$sn_h2" >/dev/null || fail "sndrop fixture start"
+CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" avail --branch sndrop --head "$sn_h2" --model stub --status ok >/dev/null || fail "sndrop avail row"
+snap_dead sndrop; snap_age sndrop 7300
+sn_h3="$(sn_next sndrop)"
+sn_out="$(rr_start sndrop "$sn_h3")"; sn_rc=$?
+assert_eq "$sn_out" "3 increment $sn_h2" "10578 snapshot-dropped-after-row: the reviewed round stays counted"
+assert_eq "$(snap_field sndrop head)" "$sn_h3" "10578 snapshot-dropped-after-row: the old snapshot is gone, the new round has its own"
+
+sn_branch snsettle
+rr_start snsettle "$sn_h2" >/dev/null || fail "snsettle fixture start"
+sn_out="$(cd "$repo" && bash "$RR" settle --branch snsettle --head "$sn_h2" 2>&1)"; sn_rc=$?
+assert_eq "$sn_rc" "0" "10578 settle: settle exits 0 ($sn_out)"
+assert_eq "$(snap_has snsettle)" "absent" "10578 settle: the snapshot naming the head is deleted"
+assert_eq "$(rr_file snsettle round)" "2" "10578 settle: the round stays counted"
+sn_h3="$(sn_next snsettle)"
+sn_out="$(rr_start snsettle "$sn_h3")"; sn_rc=$?
+assert_eq "$sn_out" "3 increment $sn_h1" "10578 settle: a start at a new head is admitted at once"
+
+if [ "$(id -u)" -eq 0 ]; then
+    echo "SKIP 10578 failed-start-leaves-no-snapshot: root writes a mode-444 ledger"
+else
+    three_rounds snfail clean
+    git -C "$repo" push -q -u origin snfail
+    cired_rows "$RED"
+    fix_commit snfail
+    chmod 444 "$git_dir/cr-critic-scores.jsonl" || fail "snfail chmod 444"
+    sn_out="$(rr_start snfail "$cap_fix_head")"; sn_rc=$?
+    chmod 644 "$git_dir/cr-critic-scores.jsonl" || fail "snfail chmod 644"
+    assert_eq "$sn_rc" "5" "10578 failed-start-leaves-no-snapshot: the start fails at the CI-red record ($sn_out)"
+    assert_eq "$(snap_has snfail)" "absent" "10578 failed-start-leaves-no-snapshot: no snapshot is left"
+    sn_y2="$(sn_next snfail)"
+    sn_out="$(rr_start snfail "$sn_y2")"; sn_rc=$?
+    assert_eq "$sn_rc" "0" "10578 failed-start-leaves-no-snapshot: a start at another head is not held ($sn_out)"
+    cired_rows 'completed\tsuccess\tlint\n'
+fi
+
+inc_shared() {
+    is_back="$(git -C "$repo" branch --show-current)"
+    git -C "$repo" checkout -q main
+    is_i=1; : > "$repo/$1"
+    while [ "$is_i" -le "$2" ]; do printf 's%s\n' "$is_i" >> "$repo/$1"; is_i=$((is_i + 1)); done
+    git -C "$repo" add "$1"; git -C "$repo" commit -q -m "main $1"; git -C "$repo" push -q origin main
+    git -C "$repo" checkout -q "$is_back"
+}
+inc_three() {
+    git -C "$repo" checkout -q -b "$1" main
+    sed "${3:-s/^s2$/S2/}" "$repo/$2" > "$tmp/inc.tmp" && mv "$tmp/inc.tmp" "$repo/$2"
+    printf '%s\n' "$1" > "$repo/$1.txt"
+    git -C "$repo" add "$2" "$1.txt"; git -C "$repo" commit -q -m "$1"
+    for is_n in 1 2; do
+        cap_r3_head="$(git -C "$repo" rev-parse "$1")"
+        start_round "$cap_r3_head" clean "$1" >/dev/null || fail "$1 fixture round $is_n"
+        git -C "$repo" commit -q --allow-empty -m "$1 round $is_n"
+    done
+    cap_r3_head="$(git -C "$repo" rev-parse "$1")"
+    start_round "$cap_r3_head" clean "$1" >/dev/null || fail "$1 fixture round 3"
+    git -C "$repo" push -q -u origin "$1"
+}
+on_main() {
+    om_back="$(git -C "$repo" branch --show-current)"
+    git -C "$repo" checkout -q main
+    "$@"
+    git -C "$repo" commit -q -am "main: $*" || fail "on_main commit"
+    git -C "$repo" push -q origin main
+    git -C "$repo" checkout -q "$om_back"
+}
+sed_file() { sed "$2" "$repo/$1" > "$tmp/sed.tmp" && mv "$tmp/sed.tmp" "$repo/$1"; }
+panel_calls() { wc -l < "$PANEL_CALLS" | tr -d ' '; }
+
+sn_branch mcar
+start_round "$sn_h2" clean mcar >/dev/null || fail "mcar round 2"
+main_commit mcar-main.txt "newer main"
+git -C "$repo" merge -q --no-edit main
+mc_h="$(git -C "$repo" rev-parse mcar)"
+mc_calls="$(panel_calls)"
+mc_out="$(start_round "$mc_h" clean mcar)"; mc_rc=$?
+assert_eq "$mc_rc" "0" "10578 merge-carried: a clean merge of main runs ($mc_out)"
+assert_has "$mc_out" "pr-check: round 2 carried on mcar" "10578 merge-carried: the head is carried"
+assert_eq "$(rr_file mcar round)" "2" "10578 merge-carried: .round is unchanged"
+assert_eq "$(rr_file mcar free)" "absent" "10578 merge-carried: .free is unchanged"
+assert_eq "$(panel_calls)" "$mc_calls" "10578 merge-carried: no panel runs"
+
+for mcc in next own rename pick; do
+    inc_shared "mcc-$mcc.txt" 10
+    inc_three "mcc$mcc" "mcc-$mcc.txt"
+    case "$mcc" in
+        next) on_main sed_file "mcc-$mcc.txt" 's/^s4$/S4/' ;;
+        own) on_main sed_file "mcc-$mcc.txt" 's/^s2$/S2/' ;;
+        rename) on_main git -C "$repo" mv "mcc-$mcc.txt" "mcc-$mcc-renamed.txt" ;;
+        pick)
+            main_commit "mcc-pick-fix.txt" "a fix main lands"
+            git -C "$repo" cherry-pick "$(git -C "$repo" rev-parse main)" >/dev/null 2>&1 || fail "mccpick cherry-pick" ;;
+    esac
+    git -C "$repo" merge -q --no-edit main || fail "mcc$mcc merge"
+    mcc_calls="$(panel_calls)"
+    mcc_out="$(start_round "$(git -C "$repo" rev-parse "mcc$mcc")" clean "mcc$mcc")"; mcc_rc=$?
+    assert_eq "$mcc_rc" "0" "10578 merge-carried-cases ($mcc): admitted ($mcc_out)"
+    assert_has "$mcc_out" "carried on mcc$mcc" "10578 merge-carried-cases ($mcc): carried"
+    assert_eq "$(rr_file "mcc$mcc" delta)" "absent" "10578 merge-carried-cases ($mcc): the delta slot is not spent"
+    assert_eq "$(rr_file "mcc$mcc" round)" "3" "10578 merge-carried-cases ($mcc): .round stays 3"
+    assert_eq "$(panel_calls)" "$mcc_calls" "10578 merge-carried-cases ($mcc): no panel runs"
+done
+
+inc_shared mko.txt 10
+inc_three mko mko.txt
+on_main git -C "$repo" rm -q mko.txt
+git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+{ git -C "$repo" add mko.txt && git -C "$repo" commit -q --no-edit; } || fail "mko keep ours"
+mko_out="$(start_round "$(git -C "$repo" rev-parse mko)" clean mko)"; mko_rc=$?
+assert_eq "$mko_rc" "0" "10578 merge-carried-keep-ours: admitted ($mko_out)"
+assert_has "$mko_out" "carried on mko" "10578 merge-carried-keep-ours: a modify/delete kept whole is carried"
+assert_eq "$(rr_file mko delta)" "absent" "10578 merge-carried-keep-ours: the delta slot is not spent"
+
+inc_shared kneg.txt 10
+inc_three kneg kneg.txt
+on_main sed_file kneg.txt 's/^s2$/M2/'
+git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+kn_t="$(git -C "$repo" -c merge.conflictStyle=merge merge-tree --write-tree --name-only --no-messages "$cap_r3_head" "$(git -C "$repo" rev-parse main)" | sed -n '1p')"
+{ git -C "$repo" read-tree -u --reset "$kn_t" && git -C "$repo" commit -q --no-edit; } || fail "kneg commit T"
+kn_out="$(start_round "$(git -C "$repo" rev-parse kneg)" clean kneg)"; kn_rc=$?
+assert_eq "$kn_rc" "8" "10578 k1-negative: a head committing T with markers is refused past the cap ($kn_out)"
+inc_shared knb.txt 10
+git -C "$repo" checkout -q -b knb main
+sed_file knb.txt 's/^s2$/S2/'; git -C "$repo" commit -q -am knb
+knb_h1="$(git -C "$repo" rev-parse knb)"
+start_round "$knb_h1" clean knb >/dev/null || fail "knb round 1"
+on_main sed_file knb.txt 's/^s2$/M2/'
+git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+knb_t="$(git -C "$repo" -c merge.conflictStyle=merge merge-tree --write-tree --name-only --no-messages "$knb_h1" "$(git -C "$repo" rev-parse main)" | sed -n '1p')"
+{ git -C "$repo" read-tree -u --reset "$knb_t" && git -C "$repo" commit -q --no-edit; } || fail "knb commit T"
+knb_out="$(start_round "$(git -C "$repo" rev-parse knb)" clean knb)"
+assert_has "$knb_out" "pr-check: round 2 of 3 on knb" "10578 k1-negative: below the cap it is a counted round 2"
+assert_lacks "$knb_out" "increment from" "10578 k1-negative: below the cap it reviews the whole PR"
+
+mr_setup() {
+    inc_shared "$1.shared" 10
+    inc_three "$1" "$1.shared"
+    printf '%s %s fix\n' "$cap_r3_head" "$cap_r3_head" > "$git_dir/cr-review-rounds/$1.delta"
+    on_main sed_file "$1.shared" 's/^s2$/M2/'
+    git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+    git -C "$repo" show "$cap_r3_head:$1.shared" | sed 's/^S2$/S2M2/' > "$repo/$1.shared"
+    { git -C "$repo" add "$1.shared" && git -C "$repo" commit -q --no-edit; } || fail "$1 resolve"
+    mr_h="$(git -C "$repo" rev-parse "$1")"
+}
+mr_setup mres
+mr_out="$(start_round "$mr_h" clean mres)"; mr_rc=$?
+assert_eq "$mr_rc" "0" "10578 merge-resolution-postcap: a resolved conflict past the cap is admitted ($mr_out)"
+assert_has "$mr_out" "pr-check: delta round 3 on mres" "10578 merge-resolution-postcap: it runs as a round past the cap"
+assert_eq "$(rr_file mres free)" "$cap_r3_head $mr_h merge-resolution" "10578 merge-resolution-postcap: one .free line names R, H and the class"
+assert_eq "$(rr_file mres round)" "3" "10578 merge-resolution-postcap: .round stays 3"
+assert_eq "$(rr_file mres scope)" "$mr_h merge-resolution 1" "10578 merge-resolution-postcap: .scope names the free round past the cap"
+
+mr_setup mrout
+sed_file mrout.shared 's/^s8$/X8/'; git -C "$repo" commit -q -am "mrout outside the span"
+mro_out="$(start_round "$(git -C "$repo" rev-parse mrout)" clean mrout)"; mro_rc=$?
+assert_eq "$mro_rc" "8" "10578 merge-resolution-outside-span: a line outside the spans is work, refused ($mro_out)"
+assert_eq "$(rr_file mrout free)" "absent" "10578 merge-resolution-outside-span: no free round"
+
+inc_shared mrown.shared 10
+inc_three mrown mrown.shared
+printf '%s %s fix\n' "$cap_r3_head" "$cap_r3_head" > "$git_dir/cr-review-rounds/mrown.delta"
+sed_file mrown.shared 's/^S2$/S2b/'; git -C "$repo" commit -q -am "mrown own edit"
+on_main sed_file mrown.shared 's/^s2$/M2/'
+git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+git -C "$repo" show "HEAD:mrown.shared" | sed 's/^S2b$/S2bM2/' > "$repo/mrown.shared"
+{ git -C "$repo" add mrown.shared && git -C "$repo" commit -q --no-edit; } || fail "mrown resolve"
+mrw_out="$(start_round "$(git -C "$repo" rev-parse mrown)" clean mrown)"; mrw_rc=$?
+assert_eq "$mrw_rc" "8" "10578 merge-resolution-own-commit: an own commit in range makes it work, refused ($mrw_out)"
+
+mr_setup mrceil
+printf '%s %s tests\n' "$cap_r3_head" "$cap_r3_head" "$cap_r3_head" "$cap_r3_head" "$cap_r3_head" "$cap_r3_head" \
+    "$cap_r3_head" "$cap_r3_head" "$cap_r3_head" "$cap_r3_head" > "$git_dir/cr-review-rounds/mrceil.free"
+fc_out="$(start_round "$mr_h" clean mrceil)"; fc_rc=$?
+assert_eq "$fc_rc" "8" "10578 free-ceiling: a sixth free increment is work, refused past the cap ($fc_out)"
+assert_eq "$(wc -l < "$git_dir/cr-review-rounds/mrceil.free" | tr -d ' ')" "5" "10578 free-ceiling: .free keeps five lines"
+
+mr_setup mrab
+ab_scope_before="$(rr_file mrab scope)"
+git -C "$repo" config merge.conflictStyle diff3
+csp_out1="$(start_round "$mr_h" pin-abort mrab)"; csp_rc1=$?
+git -C "$repo" config --unset merge.conflictStyle
+csp_out2="$(start_round "$mr_h" pin-abort mrab)"; csp_rc2=$?
+assert_eq "$csp_rc1" "7" "10578 abort-free-round: the free round's panel aborts at 7 ($csp_out1)"
+assert_has "$csp_out1" "the aborted round was given back" "10578 abort-free-round: panel-first-pass gives the round back"
+assert_eq "$(rr_file mrab free)" "absent" "10578 abort-free-round: .free returns to its before bytes"
+assert_eq "$(rr_file mrab scope)" "$ab_scope_before" "10578 abort-free-round: .scope returns to its before bytes"
+assert_eq "$csp_rc2" "7" "10578 conflict-style-pinned: the second run aborts at 7 too"
+csp_l1="$(printf '%s\n' "$csp_out1" | sed -n 's/^pr-check: delta round [0-9]* on mrab (from \([0-9a-f]*\))$/\1/p')"
+csp_l2="$(printf '%s\n' "$csp_out2" | sed -n 's/^pr-check: delta round [0-9]* on mrab (from \([0-9a-f]*\))$/\1/p')"
+assert_eq "${csp_l1:-none}" "${csp_l2:-other}" "10578 conflict-style-pinned: diff3 in the repo gives the same L"
+
+three_rounds mtt clean
+git -C "$repo" push -q -u origin mtt
+main_commit mtt-main.txt "mtt main"
+git -C "$repo" merge -q --no-edit main
+printf 'echo t\n' > "$repo/test-mtt.sh"; git -C "$repo" add test-mtt.sh; git -C "$repo" commit -q -m "mtt test"
+mtt_h="$(git -C "$repo" rev-parse mtt)"
+mtt_out="$(start_round "$mtt_h" clean mtt)"; mtt_rc=$?
+assert_eq "$mtt_rc" "0" "10578 merge-then-tests: a tests-only increment after a merge is admitted ($mtt_out)"
+assert_eq "$(rr_file mtt free)" "$cap_r3_head $mtt_h tests" "10578 merge-then-tests: it is a free tests round"
+assert_eq "$(rr_file mtt delta)" "absent" "10578 merge-then-tests: the delta slot is not spent"
+
+three_rounds fsb clean
+fsb_i=0; : > "$repo/test-fsb.sh"; while [ "$fsb_i" -lt 90 ]; do echo "echo $fsb_i" >> "$repo/test-fsb.sh"; fsb_i=$((fsb_i + 1)); done
+git -C "$repo" add test-fsb.sh; git -C "$repo" commit -q -m "fsb 90 lines"
+fsb_out="$(start_round "$(git -C "$repo" rev-parse fsb)" clean fsb)"; fsb_rc=$?
+assert_eq "$fsb_rc" "8" "10578 free-size-bound: a 90-line tests increment is work, refused ($fsb_out)"
+three_rounds fsbb clean
+mkdir -p "$repo/tests"; printf 'a\000b' > "$repo/tests/fsbb.bin"; git -C "$repo" add tests/fsbb.bin; git -C "$repo" commit -q -m "fsbb binary"
+fsbb_out="$(start_round "$(git -C "$repo" rev-parse fsbb)" clean fsbb)"; fsbb_rc=$?
+assert_eq "$fsbb_rc" "8" "10578 free-size-bound: a binary tests change is work, refused ($fsbb_out)"
+
+three_rounds iem suggestion
+git -C "$repo" push -q -u origin iem
+main_commit iem-main.txt "main-only-line"
+git -C "$repo" merge -q --no-edit main
+fix_commit iem
+iem_out="$(cd "$repo" && PANEL_DIFF_LAST="$tmp/iem-diff" bash "$SCRIPT" --head "$cap_fix_head" --branch iem 2>&1)"; iem_rc=$?
+assert_eq "$iem_rc" "0" "10578 increment-excludes-main: the fix round runs ($iem_out)"
+assert_has "$(cat "$tmp/iem-diff")" "+fix" "10578 increment-excludes-main: the panel sees the fix"
+assert_lacks "$(cat "$tmp/iem-diff")" "main-only-line" "10578 increment-excludes-main: the panel sees no line only main changed"
+assert_has "$(rr_file iem delta)" "$cap_r3_head $cap_fix_head fix" "10578 increment-excludes-main: .delta records R, never L"
+
+sn_branch iam
+main_commit iam-main.txt "iam main line"
+git -C "$repo" merge -q --no-edit main
+iam_h="$(git -C "$repo" rev-parse iam)"
+iam_out="$(cd "$repo" && PANEL_DIFF_LAST="$tmp/iam-diff" bash "$SCRIPT" --head "$iam_h" --branch iam 2>&1)"
+iam_l="$(printf '%s\n' "$iam_out" | sed -n 's/^pr-check: round 2 of 3 on iam (increment from \([0-9a-f]*\))$/\1/p')"
+assert_eq "$([ -n "$iam_l" ] && [ "$iam_l" != "$sn_h1" ] && echo synthetic)" "synthetic" "10578 increment-after-merge-below-cap: round 2 prints an increment from a left side that wraps the merge ($iam_out)"
+assert_eq "$(cat "$tmp/iam-diff")" "$(git -C "$repo" diff "${iam_l:-$sn_h1}" "$iam_h")" "10578 increment-after-merge-below-cap: the panel input is git diff L H"
+assert_lacks "$(cat "$tmp/iam-diff")" "iam main line" "10578 increment-after-merge-below-cap: main's line is not reviewed"
+assert_eq "$(rr_file iam scope)" "$iam_h work 0" "10578 increment-after-merge-below-cap: .scope names a work round below the cap"
+
+inc_shared crd.shared 30
+inc_three crd crd.shared 's/^s/S/'
+cired_rows "$RED"
+on_main sed_file crd.shared 's/^s/S/'
+git -C "$repo" merge -q --no-edit main
+printf 'fix\n' >> "$repo/crd.txt"; git -C "$repo" commit -q -am "crd fix"
+crd_out="$(start_round "$(git -C "$repo" rev-parse crd)" clean crd)"; crd_rc=$?
+assert_eq "$crd_rc" "0" "10578 ci-red-reads-descriptor: the CI-red unlock reads the increment's size ($crd_out)"
+assert_has "$(rr_file crd delta)" "postcap-ci-red" "10578 ci-red-reads-descriptor: the round is the CI-red unlock"
+cired_rows 'completed\tsuccess\tlint\n'
+
+rr_full() { (cd "$repo" && bash "$RR" start --branch "$1" --head "$2" --base-sha "$(git -C "$repo" rev-parse origin/main)" --full 2>&1); }
+sn_branch fnc
+start_round "$sn_h2" clean fnc >/dev/null || fail "fnc round 2"
+main_commit fnc-main.txt "fnc main"
+git -C "$repo" merge -q --no-edit main
+fnc_out="$(rr_full fnc "$(git -C "$repo" rev-parse fnc)")"
+assert_eq "$fnc_out" "3" "10578 full-not-classified: --full after a clean merge is a counted full round"
+assert_eq "$(rr_file fnc round)" "3" "10578 full-not-classified: --full adds one to .round"
+sn_branch fnt
+printf 'echo t\n' > "$repo/test-fnt.sh"; git -C "$repo" add test-fnt.sh; git -C "$repo" commit -q -m "fnt test"
+fnt_out="$(rr_full fnt "$(git -C "$repo" rev-parse fnt)")"
+assert_eq "$fnt_out" "2" "10578 full-not-classified: --full after a tests-only commit is a counted full round"
+assert_eq "$(rr_file fnt scope)" "$(git -C "$repo" rev-parse fnt) full 0" "10578 full-not-classified: .scope names a full round"
+
+sn_branch ecb
+start_round "$sn_h2" clean ecb >/dev/null || fail "ecb round 2"
+git -C "$repo" commit -q --allow-empty -m "ecb empty"
+ecb_out="$(start_round "$(git -C "$repo" rev-parse ecb)" clean ecb)"
+assert_has "$ecb_out" "pr-check: round 3 of 3 on ecb" "10578 empty-commit: below the cap an empty commit is a counted round"
+assert_lacks "$ecb_out" "increment from" "10578 empty-commit: below the cap it reviews the whole PR"
+three_rounds ecp clean
+git -C "$repo" commit -q --allow-empty -m "ecp empty"
+ecp_out="$(start_round "$(git -C "$repo" rev-parse ecp)" clean ecp)"; ecp_rc=$?
+assert_eq "$ecp_rc" "8" "10578 empty-commit: past the cap an empty commit is refused"
+assert_has "$ecp_out" "changes nothing" "10578 empty-commit: the refusal says it changes nothing"
+
+three_rounds rni clean
+git -C "$repo" reset -q --hard main
+printf 'rebased\n' > "$repo/rni.txt"; git -C "$repo" add rni.txt; git -C "$repo" commit -q -m "rni rebased"
+rni_out="$(start_round "$(git -C "$repo" rev-parse rni)" clean rni)"; rni_rc=$?
+assert_eq "$rni_rc" "8" "10578 rebase-not-increment: a head not descending from R is refused past the cap"
+assert_has "$rni_out" "does not descend" "10578 rebase-not-increment: the refusal names the descent"
+
+three_rounds vbf clean
+git -C "$repo" push -q -u origin vbf
+vbf_first="$cap_r3_head"
+fix_commit vbf
+vbf_second="$cap_fix_head"
+printf 'class: option-parsing\n\nfirst vbf finding\n' > "$jev/judge-evidence.md"
+judge vbf-1 NO-GO "$vbf_first"
+vbf_out="$(start_round "$vbf_second" clean vbf)"; vbf_rc=$?
+assert_eq "$vbf_rc" "0" "10578 veto-blocks-free: the first judge-bought round runs ($vbf_out)"
+printf 'class: option-parsing\n\nsecond vbf finding\n' > "$jev/judge-evidence.md"
+judge vbf-2 NO-GO "$vbf_second"
+printf 'echo t\n' > "$repo/test-vbf.sh"; git -C "$repo" add test-vbf.sh; git -C "$repo" commit -q -m "vbf test"
+vbf_out="$(start_round "$(git -C "$repo" rev-parse vbf)" clean vbf)"; vbf_rc=$?
+assert_eq "$vbf_rc" "8" "10578 veto-blocks-free: a free tests head under a repeated class is refused"
+assert_has "$vbf_out" "repeated NO-GO class option-parsing" "10578 veto-blocks-free: the refusal names the repeated class"
+assert_eq "$(rr_file vbf free)" "absent" "10578 veto-blocks-free: no free round is recorded"
+git -C "$repo" reset -q --hard "$vbf_second"
+main_commit vbf-main.txt "vbf main"
+git -C "$repo" merge -q --no-edit main
+vbf_out="$(start_round "$(git -C "$repo" rev-parse vbf)" clean vbf)"; vbf_rc=$?
+assert_eq "$vbf_rc" "8" "10578 veto-blocks-free: a carried head under a repeated class is refused"
+assert_has "$vbf_out" "repeated NO-GO class option-parsing" "10578 veto-blocks-free: the carried refusal names the repeated class"
+printf 'class: option-parsing\n\nthe fix does not hold\n' > "$jev/judge-evidence.md"
+
+three_rounds dpf clean
+git -C "$repo" push -q -u origin dpf
+printf 'echo t\n' > "$repo/test-dpf.sh"; git -C "$repo" add test-dpf.sh; git -C "$repo" commit -q -m "dpf test"
+dpf_h="$(git -C "$repo" rev-parse dpf)"
+start_round "$dpf_h" important dpf >/dev/null || fail "dpf free round"
+assert_eq "$(rr_file dpf scope)" "$dpf_h tests 1" "10578 defer-postcap-free: .scope names a free round past the cap"
+dpf_rc=0
+dpf_out="$(cd "$repo" && bash "$RR" defer --branch dpf --head "$dpf_h" --defer-to "${_TK}9000" 2>&1)" || dpf_rc=$?
+assert_eq "$dpf_rc" "4" "10578 defer-postcap-free: an unclassified Important asks for its class ($dpf_out)"
+assert_has "$dpf_out" "in the delta round need an explicit fu_class amend" "10578 defer-postcap-free: the delta round's blocking set applies at .round 3"
+assert_lacks "$dpf_out" "an early close needs" "10578 defer-postcap-free: no early-close trust check"
+
+attr_conflict() { inc_shared "$1.shared" 10; inc_three "$1" "$1.shared"; on_main sed_file "$1.shared" 's/^s2$/M2/'; }
+attr_merged() {
+    am_before="$(git -C "$repo" rev-parse HEAD)"
+    git -C "$repo" merge -q --no-edit main >/dev/null 2>&1 || fail "$1 merge failed"
+    [ "$(git -C "$repo" rev-parse HEAD)" != "$am_before" ] || fail "$1 merge made no new head"
+}
+attr_conflict atb
+printf '*.shared merge=binary\n' > "$repo/.gitattributes"
+git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+{ git -C "$repo" add atb.shared && git -C "$repo" commit -q --no-edit; } || fail "atb merge"
+atb_calls="$(panel_calls)"
+atb_out="$(start_round "$(git -C "$repo" rev-parse atb)" clean atb)"; atb_rc=$?
+rm -f "$repo/.gitattributes"
+assert_lacks "$atb_out" "carried on atb" "10578 attr-merge-binary: an untracked .gitattributes merge=binary never makes a conflicting merge carried ($atb_out)"
+assert_eq "$atb_rc" "0" "10578 attr-merge-binary: the kept side is reviewed as a merge-resolution round"
+assert_eq "$(( $(panel_calls) - atb_calls ))" "1" "10578 attr-merge-binary: the panel runs on it"
+attr_conflict atu
+mkdir -p "$git_dir/info"; printf '*.shared merge=union\n' > "$git_dir/info/attributes"
+attr_merged atu
+atu_out="$(start_round "$(git -C "$repo" rev-parse atu)" clean atu)"; atu_rc=$?
+rm -f "$git_dir/info/attributes"
+assert_lacks "$atu_out" "carried on atu" "10578 attr-info-union: info/attributes merge=union never makes a merge carried ($atu_out)"
+assert_eq "$atu_rc" "8" "10578 attr-info-union: with info/attributes set no free merge class applies, so it is refused past the cap"
+attr_conflict atm
+printf '*.shared conflict-marker-size=9\n' > "$tmp/atm-attributes"; git -C "$repo" config core.attributesFile "$tmp/atm-attributes"
+git -C "$repo" merge -q --no-edit main >/dev/null 2>&1
+{ git -C "$repo" add atm.shared && git -C "$repo" commit -q --no-edit; } || fail "atm merge"
+atm_calls="$(panel_calls)"
+atm_out="$(start_round "$(git -C "$repo" rev-parse atm)" clean atm)"; atm_rc=$?
+git -C "$repo" config --unset core.attributesFile
+assert_lacks "$atm_out" "carried on atm" "10578 attr-marker-size: nine-character markers from core.attributesFile never make a merge carried ($atm_out)"
+assert_eq "$atm_rc" "0" "10578 attr-marker-size: the committed markers are reviewed as a merge-resolution round"
+assert_eq "$(( $(panel_calls) - atm_calls ))" "1" "10578 attr-marker-size: the panel runs on it"
+
+attr_conflict atx
+mkdir -p "$git_dir/info"; printf '*.shared merge=union\n' > "$git_dir/info/attributes"
+attr_merged atx
+printf 'echo t\n' > "$repo/test-atx.sh"; git -C "$repo" add test-atx.sh; git -C "$repo" commit -q -m "atx test"
+atx_calls="$(panel_calls)"
+atx_out="$(start_round "$(git -C "$repo" rev-parse atx)" clean atx)"; atx_rc=$?
+rm -f "$git_dir/info/attributes"
+assert_eq "$atx_rc" "8" "10578 attr-info-tests: a union-resolved merge plus a test edit is never a free tests round past the cap ($atx_out)"
+assert_eq "$(rr_file atx free)" "absent" "10578 attr-info-tests: no free round is recorded"
+assert_eq "$(panel_calls)" "$atx_calls" "10578 attr-info-tests: no panel runs on an increment base it cannot trust"
+
+attr_conflict atd
+git -C "$repo" config merge.default union
+attr_merged atd
+atd_calls="$(panel_calls)"
+atd_out="$(start_round "$(git -C "$repo" rev-parse atd)" clean atd)"; atd_rc=$?
+git -C "$repo" config --unset merge.default
+assert_lacks "$atd_out" "carried on atd" "10578 attr-merge-default: merge.default=union never makes a conflicting merge carried ($atd_out)"
+assert_eq "$atd_rc" "0" "10578 attr-merge-default: the union-resolved merge is reviewed as a merge-resolution round"
+assert_eq "$(( $(panel_calls) - atd_calls ))" "1" "10578 attr-merge-default: the panel runs on it"
+
+attr_conflict atr
+git -C "$repo" config merge.default union
+attr_merged atr
+git -C "$repo" config --unset merge.default
+git -C "$repo" config merge.text.driver 'git merge-file --union %A %O %B'
+atr_calls="$(panel_calls)"
+atr_out="$(start_round "$(git -C "$repo" rev-parse atr)" clean atr)"; atr_rc=$?
+git -C "$repo" config --unset merge.text.driver
+assert_lacks "$atr_out" "carried on atr" "10578 attr-merge-driver: a merge.text.driver that resolves every conflict never makes a merge carried ($atr_out)"
+assert_eq "$atr_rc" "8" "10578 attr-merge-driver: with a merge driver configured no increment base exists, so it is refused past the cap"
+assert_eq "$(panel_calls)" "$atr_calls" "10578 attr-merge-driver: no panel runs on an increment base it cannot trust"
+
+attr_conflict atg
+git -C "$repo" config merge.default union
+attr_merged atg
+git -C "$repo" config --unset merge.default
+git -C "$repo" config merge.text.driver 'git merge-file --union %A %O %B'
+atg_calls="$(panel_calls)"
+atg_out="$(export GIT_CONFIG=/dev/null; start_round "$(git -C "$repo" rev-parse atg)" clean atg)"; atg_rc=$?
+git -C "$repo" config --unset merge.text.driver
+assert_lacks "$atg_out" "carried on atg" "10578 attr-git-config-env: GIT_CONFIG=/dev/null never hides a configured merge driver ($atg_out)"
+assert_eq "$atg_rc" "8" "10578 attr-git-config-env: the driver is still seen, so it is refused past the cap"
+assert_eq "$(panel_calls)" "$atg_calls" "10578 attr-git-config-env: no panel runs on an increment base it cannot trust"
+
+sn_branch atw
+start_round "$sn_h2" clean atw >/dev/null || fail "atw round 2"
+main_commit atw-main.txt "newer main"
+mkdir -p "$git_dir/info"; printf '*.shared merge=union\n' > "$git_dir/info/attributes"
+attr_merged atw
+printf 'echo t\n' > "$repo/test-atw.sh"; git -C "$repo" add test-atw.sh; git -C "$repo" commit -q -m "atw test"
+atw_h="$(git -C "$repo" rev-parse atw)"
+atw_calls="$(panel_calls)"
+atw_out="$(start_round "$atw_h" clean atw)"; atw_rc=$?
+atw_cmf=0; (cd "$repo" && bash "$RR" clean-merge-forward "$(git rev-parse main)" "$sn_h2" "$(git rev-parse HEAD~1)") >/dev/null 2>&1 || atw_cmf=$?
+rm -f "$git_dir/info/attributes"
+assert_eq "$atw_rc" "0" "10578 attr-info-below-cap: below the cap the round runs ($atw_out)"
+assert_has "$atw_out" "pr-check: round 3 of 3 on atw" "10578 attr-info-below-cap: it is a counted full round"
+assert_lacks "$atw_out" "increment from" "10578 attr-info-below-cap: it reviews the whole PR, with no increment base"
+assert_eq "$(( $(panel_calls) - atw_calls ))" "1" "10578 attr-info-below-cap: the panel runs once"
+assert_eq "$atw_cmf" "1" "10578 attr-info-carry: clean-merge-forward refuses a clean merge while info/attributes is set"
+atw_cmf=0; (cd "$repo" && bash "$RR" clean-merge-forward "$(git rev-parse main)" "$sn_h2" "$(git rev-parse HEAD~1)") >/dev/null 2>&1 || atw_cmf=$?
+assert_eq "$atw_cmf" "0" "10578 attr-info-carry: the same merge is carried once info/attributes is empty"
+
+s3_seed() { printf '%s %s postcap-fixed\n' "$cap_r3_head" "$cap_r3_head" > "$git_dir/cr-review-rounds/$1.delta"; }
+s3_f20() { for s3_i in $(seq 1 20); do printf 'fixline %s\n' "$s3_i"; done >> "$repo/f.txt"; git -C "$repo" commit -q -am "s3 fix f.txt $1"; git -C "$repo" rev-parse "$1"; }
+
+three_rounds pcf suggestion
+s3_seed pcf
+s3_h="$(s3_f20 pcf)"
+s3_out="$(start_round "$s3_h" clean pcf)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 postcap-fix-free: a 20-line fix in a file an open finding cites is admitted with the delta slot used ($s3_out)"
+assert_has "$s3_out" "pr-check: delta round 3 on pcf (from $cap_r3_head)" "10578 postcap-fix-free: it runs as a round past the cap"
+assert_eq "$(rr_file pcf free)" "$cap_r3_head $s3_h fix" "10578 postcap-fix-free: one .free line names R, H and the class fix"
+assert_eq "$(rr_file pcf round)" "3" "10578 postcap-fix-free: .round stays 3"
+
+three_rounds pcc clean
+s3_seed pcc
+printf '# a note\n# another note\n' >> "$repo/pcc.txt"; git -C "$repo" commit -q -am "pcc comment"
+s3_h="$(git -C "$repo" rev-parse pcc)"
+s3_out="$(start_round "$s3_h" clean pcc)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 postcap-comments-free: a comment-only head past the cap is admitted ($s3_out)"
+assert_eq "$(rr_file pcc free)" "$cap_r3_head $s3_h comments" "10578 postcap-comments-free: .free records the class comments"
+main_commit pcc-main.txt "main moves"
+git -C "$repo" merge -q --no-edit main
+printf '# after the merge\n' >> "$repo/pcc.txt"; git -C "$repo" commit -q -am "pcc comment after merge"
+s3_h2="$(git -C "$repo" rev-parse pcc)"
+s3_out="$(start_round "$s3_h2" clean pcc)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 postcap-comments-free: a merge of main then a comment-only commit is admitted too ($s3_out)"
+assert_eq "$(rr_file pcc free | tail -n 1)" "$s3_h $s3_h2 comments" "10578 postcap-comments-free: the second .free line is a comments round"
+
+main_commit heredoc.sh "$(printf 'cat <<EOF\nbody\nEOF')"
+three_rounds pch clean
+s3_seed pch
+awk 'NR == 2 { print "# injected" } { print }' "$repo/heredoc.sh" > "$tmp/heredoc.tmp" && mv "$tmp/heredoc.tmp" "$repo/heredoc.sh"
+git -C "$repo" commit -q -am "pch heredoc line"
+s3_h="$(git -C "$repo" rev-parse pch)"
+s3_calls="$(panel_calls)"
+s3_out="$(start_round "$s3_h" critical pch)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 comments-heredoc-bounded: a # line inside a heredoc body is a comments round ($s3_out)"
+assert_eq "$(rr_file pch free)" "$cap_r3_head $s3_h comments" "10578 comments-heredoc-bounded: it is recorded as comments"
+assert_eq "$(rr_file pch scope)" "$s3_h comments 1" "10578 comments-heredoc-bounded: .scope marks it past the cap, so defer blocks on Critical or escape-class"
+assert_eq "$(( $(panel_calls) - s3_calls ))" "1" "10578 comments-heredoc-bounded: the panel runs on the increment"
+
+three_rounds ftf suggestion
+mkdir -p "$repo/tests"
+printf 'echo t\n' > "$repo/tests/s3-ftf.sh"
+git -C "$repo" add tests/s3-ftf.sh; git -C "$repo" commit -q -m "ftf free tests round"
+s3_e="$(git -C "$repo" rev-parse ftf)"
+s3_out="$(start_round "$s3_e" clean ftf)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 fix-through-free: the free round between a finding and its fix runs ($s3_out)"
+s3_f="$(s3_f20 ftf)"
+s3_out="$(start_round "$s3_f" clean ftf)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 fix-through-free: the fix after the free round is admitted ($s3_out)"
+assert_eq "$(rr_file ftf free | tail -n 1)" "$s3_e $s3_f fix" "10578 fix-through-free: it is a fix round from the free round's head"
+assert_eq "$(rr_file ftf delta)" "absent" "10578 fix-through-free: the delta slot is untouched"
+
+postcap_setup pft clean
+postcap_amend pft "$postcap_d_head" stub-2 fixed
+mkdir -p "$repo/tests"
+printf 'echo t\n' > "$repo/tests/s3-pft.sh"; git -C "$repo" add tests/s3-pft.sh; git -C "$repo" commit -q -m "pft free tests round"
+s3_e="$(git -C "$repo" rev-parse pft)"
+s3_out="$(start_round "$s3_e" clean pft)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 postcap-fixed-through-free: the free round after the delta round runs ($s3_out)"
+postcap_fix pft
+s3_out="$(postcap_start pft)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 postcap-fixed-through-free: a fix after the free round is admitted as postcap-fixed ($s3_out)"
+assert_has "$(rr_file pft delta)" " postcap-fixed" "10578 postcap-fixed-through-free: .delta records the postcap-fixed trigger"
+
+three_rounds fup suggestion
+s3_seed fup
+printf 'one more\n' > "$repo/fup-extra.txt"; git -C "$repo" add fup-extra.txt
+s3_h="$(s3_f20 fup)"
+s3_out="$(start_round "$s3_h" clean fup)"; s3_rc=$?
+assert_eq "$s3_rc" "8" "10578 fix-uncited-path: the same fix plus one line in an uncited file is work, refused ($s3_out)"
+assert_eq "$(rr_file fup free)" "absent" "10578 fix-uncited-path: no free round recorded"
+
+three_rounds fdo suggestion
+postcap_amend fdo "$cap_r3_head" stub-1 disproved
+s3_seed fdo
+s3_h="$(s3_f20 fdo)"
+s3_out="$(start_round "$s3_h" clean fdo)"; s3_rc=$?
+assert_eq "$s3_rc" "8" "10578 fix-disproved-only: a file cited only by a disproved finding makes no fix ($s3_out)"
+
+three_rounds whc suggestion
+printf 'w1\n' >> "$repo/whc.txt"; git -C "$repo" commit -q -am "whc work 1"
+s3_h="$(git -C "$repo" rev-parse whc)"
+s3_out="$(start_round "$s3_h" clean whc)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 work-hits-cap: the first work increment past the cap is admitted by the delta round ($s3_out)"
+printf 'w2\n' >> "$repo/whc.txt"; git -C "$repo" commit -q -am "whc work 2"
+s3_h="$(git -C "$repo" rev-parse whc)"
+s3_out="$(start_round "$s3_h" clean whc)"; s3_rc=$?
+assert_eq "$s3_rc" "8" "10578 work-hits-cap: the next work increment is refused ($s3_out)"
+assert_has "$s3_out" "split the PR or narrow the change" "10578 refusal-names-rethink: the refusal names the rethink"
+assert_has "$s3_out" "neither answers a round-3 finding nor only merges" "10578 refusal-names-rethink: today's text stays as the tail"
+assert_has "$s3_out" "or a grant. $s3_h neither answers" "10578 refusal-names-rethink: the rethink comes first and today's text follows it"
+
+sn_branch h8
+git -C "$repo" checkout -q -B h8 main
+printf 'redone\n' > "$repo/h8b.txt"; git -C "$repo" add h8b.txt; git -C "$repo" commit -q -m "h8 force-pushed"
+s3_h="$(git -C "$repo" rev-parse h8)"
+s3_out="$(start_round "$s3_h" clean h8)"; s3_rc=$?
+assert_eq "$s3_rc" "0" "10578 h8-full-round-scope: a head that does not descend from R runs ($s3_out)"
+assert_has "$s3_out" "pr-check: round 2 of 3 on h8" "10578 h8-full-round-scope: it is a counted round 2"
+assert_lacks "$s3_out" "increment from" "10578 h8-full-round-scope: it is a full round, not an increment"
+assert_eq "$(rr_file h8 scope)" "$s3_h full 0" "10578 h8-full-round-scope: .scope says full, so the tagger and pre_ok still treat it as round 2"
+
+fi
 
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-pr-check-rounds (%s failures)\n' "$fails" >&2

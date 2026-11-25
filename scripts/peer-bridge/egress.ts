@@ -21,6 +21,7 @@ export type OutCtx = {
   hostname?: string;
   matrix?: { default: string; rules: unknown[] };
   usage?: { openOutbound: number; sentLastMinute: number };
+  corpus?: "peer-desk" | "operator-reply";
 };
 export type Refusal = { ok: false; rule: string; shape?: string };
 export type Outcome = { ok: true } | Refusal;
@@ -30,7 +31,7 @@ const refuse = (rule: string, shape?: string): Refusal => (shape ? { ok: false, 
 const OPENING = ["question", "status", "info"];
 let defaultMatrix: any;
 
-function matrixAllows(ctx: Pick<OutCtx, "matrix">, corpus: "peer-desk" | "peer-jobs" = "peer-desk"): boolean {
+function matrixAllows(ctx: Pick<OutCtx, "matrix">, corpus: "peer-desk" | "operator-reply" | "peer-jobs" = "peer-desk"): boolean {
   try {
     const m = ctx.matrix ?? (defaultMatrix ??= loadMatrix());
     const { verdict } = evaluate(m, corpus, "peer-telegram", "peer-message");
@@ -89,7 +90,7 @@ export async function checkOutbound(text: string, ctx: OutCtx): Promise<Outcome>
   }
   if (text.trim() === "") return refuse("empty");
   if (text.length > (ctx.maxTextChars ?? 4000)) return refuse("too-long");
-  if (!matrixAllows(ctx)) return refuse("egress-matrix");
+  if (!matrixAllows(ctx, ctx.corpus ?? "peer-desk")) return refuse("egress-matrix");
   return contentRules(text, ctx);
 }
 

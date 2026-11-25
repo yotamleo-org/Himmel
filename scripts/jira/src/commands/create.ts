@@ -12,19 +12,17 @@ import { readBodyFile } from './body-file.js';
 import { parseLabels } from './labels.js';
 import { titleSector, PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 import { CreatePartial, CreateRefused, runCreate, type CreateOptions } from '../operations/create.js';
-import { resolveSector, sectorField, sectorOptions } from './sector.js';
+import { resolveSector } from './sector.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link.js';
-import { admissionsLedgerExists, appendAdmission, readAdmissions, type Admission, type AdmissionInput } from './admissions-ledger.js';
+import { appendAdmission, type AdmissionInput } from './admissions-ledger.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, chiefOverrideOf, frozenDate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 import { ctxFor, refuseRequest, refuseTestJiraPost } from './release.js';
-import { decisionWords, operatorFence, placementOf, readOperatorRecords, request as releaseRequest, requestWithWords } from '../release/engine.js';
+import { decisionWords, operatorFence, releaseForProject, request as releaseRequest, requestWithWords } from '../release/engine.js';
 import type { TicketFacts } from '../release/operator-work.js';
-import { admits } from '../release/leaks.js';
-import { loadKey, readChain } from '../release/ledger.js';
-import type { RulingRow } from '../release/types.js';
-import { releaseKeyPath, releaseRoot } from '../release/paths.js';
+import { loadOrThrow } from '../release/engine-core.js';
+import { releaseRoot } from '../release/paths.js';
 import { ancestorValue } from '../release/fence-ancestry.js';
 import { isTestProject } from '../live-test-guard.js';
 
@@ -150,15 +148,6 @@ export function appendFuOverride(fields: Record<string, unknown>, override: stri
   if (body?.content) body.content.push(...named.content);
   else fields['description'] = named;
 }
-// Open residual slots per version; a `residual-budget:N` line in the
-// version description overrides it.
-export const RESIDUAL_BUDGET = 15;
-
-export function residualBudget(description: string | undefined): number {
-  const m = /^\s*residual-budget:\s*(\d+)\s*$/m.exec(description ?? '');
-  return m ? Number(m[1]) : RESIDUAL_BUDGET;
-}
-
 const jqlQuote = (s: string): string => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 const labelSlug = (s: string): string => s.trim().replace(/\s+/g, '-');
 
@@ -170,45 +159,12 @@ export function nextResidualDepth(parentLabels: string[]): number {
 
 export const BACKLOG_LABEL = 'backlog';
 
-export const OVER_CAP_LABEL = 'over-cap';
-const OPERATOR_DIRECTED = 'operator-directed';
-
-interface CapState {
-  current: string;
-  next?: string;
-  open: number;
-  cap: number;
-}
-
-/**
- * The current unreleased version's open residuals against its cap. With a
- * target, any other version is not gated (undefined). An unreadable Jira
- * answer skips the check with a warning rather than blocking a filing.
- */
-async function capState(project: string, target?: string): Promise<CapState | undefined> {
-  try {
-    const versions = await fetchVersions(project);
-    const current = earliestUnreleased(versions);
-    if (!current || (target !== undefined && target !== current)) return undefined;
-    const cap = residualBudget(versions.find((v) => v.name === current)?.description);
-    const jql =
-      `project = ${project} AND fixVersion = ${jqlQuote(current)} AND labels = residual AND statusCategory != Done`;
-    const open = (await searchAllIssues(jql, String(cap), request)).length;
-    return { current, next: earliestUnreleased(versions.filter((v) => v.name !== current)), open, cap };
-  } catch (e) {
-    console.error(`jira: cap check skipped (${(e as Error).message})`);
-    return undefined;
-  }
-}
-
 export interface ResidualPlan {
   labels: string[];
   fixVersion?: string;
   affectsVersion?: string;
   duplicateOf?: string;
   frozen: string[];
-  displaced?: { key: string; fixVersion?: string };
-  ranks?: { newcomer: number[]; resident?: { key: string; tuple: number[] } };
 }
 
 interface ResidualOptions {
@@ -222,7 +178,6 @@ interface ResidualOptions {
   gate?: string;
   priority?: string;
   blocks?: string[];
-  sector?: string;
 }
 
 interface TicketState {
@@ -236,149 +191,21 @@ function openVersion(t: TicketState, unreleased: Set<string>): string | undefine
   return t.fixVersions?.find((v) => unreleased.has(v.name))?.name;
 }
 
-interface RankedIssue {
-  key: string;
-  fields: TicketState & {
-    status?: { name?: string; statusCategory: { key: string } };
-    labels?: string[];
-    priority?: { name: string };
-    created?: string;
-    parent?: { key: string };
-    issuelinks?: { type: { name: string }; outwardIssue?: { key: string } }[];
-    [field: string]: unknown;
-  };
-}
-
-const GATE_RANK = ['receipt', 'must', 'regression', 'critical'];
-const PRIORITY_RANK = ['Lowest', 'Low', 'Medium', 'High', 'Highest'];
-const compareRank = (a: number[], b: number[]) => {
-  for (let i = 0; i < a.length; i += 1) {
-    if (a[i] !== b[i]) return a[i] - b[i];
-  }
-  return 0;
-};
-
-function residualGateRank(i: RankedIssue, ledger: Admission[]): number {
-  const row = ledger.filter((r) => r.key === i.key).pop();
-  const gate = row?.kind !== 'deferral' && row?.kind !== 'rm-remove' ? row?.gate?.split(':')[0] : undefined;
-  return Math.max(0, ...GATE_RANK.map((g, index) =>
-    (i.fields.labels ?? []).includes(`gate-${g}`) || gate === g ? index + 1 : 0));
+interface ParentIssue {
+  fields: TicketState & { labels?: string[] };
 }
 
 /**
- * Says whether a key's place in `version` is ruled: its latest ledger row admits it
- * (an rm-admit or an override, as the release leak diff reads it), a release manager ruling
- * still in intent or applied (its Jira write may have landed before its ledger row) puts it
- * there, or the latest signed operator decision naming it puts it there. A ruled key is moved
- * only by the release manager. Undefined when the rulings cannot be read, so the caller displaces nobody.
- */
-function rulingsOf(version: string): ((key: string) => boolean) | undefined {
-  try {
-    if (!admissionsLedgerExists()) throw new Error('the admissions ledger does not exist');
-    const rows = readAdmissions(version);
-    // readOperatorRecords skips a declared release whose key cannot be loaded, so check every key first; the same loop reads the
-    // rulings that are not yet receipted (a ruling's newest row is intent or applied), and a chain that does not verify is unknown.
-    const root = releaseRoot();
-    const unfinished: RulingRow[] = [];
-    for (const release of existsSync(root) ? readdirSync(root) : []) {
-      if (!existsSync(join(root, release, 'release.json'))) continue;
-      const chain = readChain<RulingRow>(join(root, release, 'rulings.jsonl'), loadKey(releaseKeyPath(release)));
-      if (chain.bad.length) throw new Error(`${release} rulings.jsonl does not verify (${chain.bad[0]})`);
-      const newest = new Map<string, RulingRow>();
-      for (const r of chain.verified) newest.set(r.id, r);
-      unfinished.push(...[...newest.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied'));
-    }
-    const decisions = readOperatorRecords('decision')
-      .filter((d) => d.keys !== undefined && placementOf(d) !== undefined)
-      .sort((a, b) => a.ts.localeCompare(b.ts));
-    return (key) => {
-      if (admits(rows.filter((r) => r.key === key).pop())) return true;
-      if (unfinished.some((r) => r.key === key && placementOf({ op: r.op.kind, from_v: r.op.from_v, to_v: r.op.to_v }) === version)) return true;
-      const latest = decisions.filter((d) => d.keys!.includes(key)).pop();
-      return latest !== undefined && placementOf(latest) === version;
-    };
-  } catch (e) {
-    console.error(`jira: warning: the rulings on ${version} cannot be read (${(e as Error).message}); no resident is displaced`);
-    return undefined;
-  }
-}
-
-/** Read all rank fields while retaining the shared search helper's pagination. */
-async function rankIssues(jql: string): Promise<RankedIssue[]> {
-  const fields = ['labels', 'status', 'priority', 'created', 'fixVersions', 'issuelinks', 'parent', sectorField()].filter(Boolean).join(',');
-  const req: typeof request = (method, path, body) =>
-    request(method, path.replace(/&fields=[^&]*/, `&fields=${fields}`), body);
-  return await searchAllIssues(jql, String(Number.MAX_SAFE_INTEGER), req) as unknown as RankedIssue[];
-}
-
-async function competeForSlot(
-  project: string,
-  version: string,
-  budget: number,
-  stepDown: string | undefined,
-  o: ResidualOptions,
-  labels: string[],
-  parent: RankedIssue,
-): Promise<Pick<ResidualPlan, 'fixVersion' | 'displaced' | 'ranks'>> {
-  const residents = await rankIssues(
-    `project = ${project} AND fixVersion = ${jqlQuote(version)} AND labels = residual AND statusCategory != Done`,
-  );
-  if (residents.length < budget) return { fixVersion: version };
-
-  const heads = await rankIssues(`project = ${project} AND fixVersion = ${jqlQuote(version)} AND statusCategory != Done`);
-  const byKey = new Map(heads.map((i) => [i.key, i]));
-  // The parent is already read for placement, including when it is no longer open.
-  if (!byKey.has(o.residualOf)) byKey.set(o.residualOf, parent);
-  for (const key of o.blocks ?? []) {
-    if (!byKey.has(key)) byKey.set(key, await request<RankedIssue>('GET', `/issue/${key}?fields=status,fixVersions`));
-  }
-  const links = (i: RankedIssue): string[] => [
-    ...(i.fields.parent ? [i.fields.parent.key] : []),
-    ...(i.fields.issuelinks ?? []).filter((l) => ['Blocks', 'Relates'].includes(l.type.name))
-      .flatMap((l) => l.outwardIssue ? [l.outwardIssue.key] : []),
-  ];
-  const openHead = (key: string) => {
-    const issue = byKey.get(key);
-    return issue && openVersion(issue.fields, new Set([version])) === version ? issue : undefined;
-  };
-  const newcomerLinks = [o.residualOf, ...(o.blocks ?? [])];
-  const headKeys = [...new Set([...newcomerLinks, ...residents.flatMap(links)])];
-  const sectorId = sectorField();
-  const sectorOf = (i: RankedIssue) => sectorId ? (i.fields[sectorId] as { value?: string } | undefined)?.value : undefined;
-  const sharedSectors = new Set(headKeys.map(openHead).filter((i) => i !== undefined).map(sectorOf).filter(Boolean));
-  const rank = (i: RankedIssue, targets: string[], gate: number, sector: string | undefined): number[] => {
-    const ls = i.fields.labels ?? [];
-    const created = Date.parse(i.fields.created ?? '');
-    return [gate, ls.includes('fu-escape') ? 2 : ls.includes('fu-hardening') ? 1 : 0,
-      PRIORITY_RANK.findIndex((p) => p.toLowerCase() === (i.fields.priority?.name ?? 'Medium').toLowerCase()) + 1,
-      Number(targets.some((key) => openHead(key) !== undefined)), Number(sector !== undefined && sharedSectors.has(sector)),
-      Number.isFinite(created) ? -created : 0];
-  };
-  const newcomer = rank({ key: '', fields: { labels, priority: { name: o.priority ?? 'Medium' }, created: new Date().toISOString() } },
-    newcomerLinks, GATE_RANK.indexOf(o.gate?.split(':')[0] ?? '') + 1, o.sector);
-  // With the rulings unreadable nobody is displaced, and the ledger is not read again.
-  const ruled = rulingsOf(version);
-  const ledger = ruled === undefined ? [] : readAdmissions(version);
-  const candidates = residents.filter((i) => ruled !== undefined && i.fields?.status?.name === 'To Do'
-      && residualGateRank(i, ledger) === 0 && !ruled(i.key))
-    .map((i) => ({ key: i.key, tuple: rank(i, links(i), 0, sectorOf(i)) }))
-    .sort((a, b) => compareRank(a.tuple, b.tuple) || a.key.localeCompare(b.key));
-  const lowest = candidates[0];
-  const ranks = { newcomer, resident: lowest };
-  if (lowest && compareRank(newcomer, lowest.tuple) > 0) {
-    return { fixVersion: version, displaced: { key: lowest.key, fixVersion: stepDown }, ranks };
-  }
-  labels.push('residual-displaced');
-  return { fixVersion: stepDown, ranks };
-}
-
-/**
- * Places a residual (plan 9.1 as corrected by 10.5); the first matching row wins:
- * a. depth >= 2, b. polish: backlog. c. --gate: current. d. escape: current if
- * unfrozen, else next. e. hardening with a chain: its version V if unfrozen,
- * else next. f. hardening, no chain, High or above: next. g. anything else: backlog.
- * Next is the earliest unreleased version after current. It never throws on a
+ * Places a residual. A residual of a project a declared release names is placed
+ * by the door from its priority: it files with no version and queues its INTAKE,
+ * and keeps a filing-time version only under --gate (the current version). For
+ * a project no declaration names, the first matching row wins: a. depth >= 2,
+ * b. polish: backlog. c. --gate: current. d. escape: current if unfrozen, else
+ * next. e. hardening with a chain: its version V if unfrozen, else next.
+ * f. hardening, no chain, High or above: next. g. anything else: backlog. Next
+ * is the earliest unreleased version after current. It never throws on a
  * frozen version; a frozen or missing next sends the residual to the backlog.
+ * When the declarations cannot be read it prints one line and uses those rows.
  */
 export async function planResidual(project: string, o: ResidualOptions): Promise<ResidualPlan> {
   if (!o.fuClass) throw new Error('--residual-of requires --fu-class <polish|escape|hardening>');
@@ -422,7 +249,7 @@ export async function planResidual(project: string, o: ResidualOptions): Promise
     if (dup) return { labels, duplicateOf: dup.key, frozen: [] };
   }
 
-  const parent = await request<RankedIssue>(
+  const parent = await request<ParentIssue>(
     'GET',
     `/issue/${o.residualOf}?fields=labels,status,fixVersions`,
   );
@@ -435,11 +262,18 @@ export async function planResidual(project: string, o: ResidualOptions): Promise
   const next = current ? earliestUnreleased(versions.filter((v) => v.name !== current)) : undefined;
   const nextOpen = next !== undefined && !frozen.includes(next) ? next : undefined;
   const unfrozenOrNext = (v: string): string | undefined => (frozen.includes(v) ? nextOpen : v);
+  const declared = releaseForProject(process.env, project);
+  if (declared === 'unreadable') {
+    console.error(`jira: warning: the release declarations naming ${project} cannot be read, so the residual is routed by class, not placed by the door`);
+  }
+  const doorPlaces = declared !== 'unreadable' && declared.length > 0;
 
   let fixVersion: string | undefined;
   if (current && depth < 2 && o.fuClass !== 'polish') {
     if (o.gate !== undefined) {
       fixVersion = current;
+    } else if (doorPlaces) {
+      fixVersion = undefined;
     } else if (o.fuClass === 'escape') {
       fixVersion = unfrozenOrNext(current);
     } else {
@@ -454,83 +288,38 @@ export async function planResidual(project: string, o: ResidualOptions): Promise
       else if (/^(high|highest)$/i.test(o.priority ?? '')) fixVersion = nextOpen;
     }
   }
-  const competition = fixVersion && !frozen.includes(fixVersion)
-    ? await competeForSlot(project, fixVersion, residualBudget(versions.find((v) => v.name === fixVersion)?.description),
-      fixVersion === current ? nextOpen : undefined, o, labels, parent)
-    : { fixVersion };
-  return { labels, affectsVersion: current, frozen, ...competition };
+  return { labels, affectsVersion: current, frozen, fixVersion };
 }
 
-/**
- * Sets fixVersions and versions on a new ticket. Filing into the current
- * unreleased version warns at its residual cap; an operator-directed ticket
- * is exempt and a residual is routed by planResidual. Returns the over-cap
- * reason to comment on the ticket once it exists.
- */
 export async function applyVersions(
   project: string,
-  options: { type: string; fixVersion?: string; affectsVersion?: string; overCap?: string },
+  options: { type: string; fixVersion?: string; affectsVersion?: string },
   fields: Record<string, unknown>,
-  o: { labels?: string[]; residual: boolean; bugDefault: boolean },
-): Promise<string | undefined> {
-  const gated = !o.residual && !o.labels?.includes(OPERATOR_DIRECTED);
-  let overCapReason: string | undefined;
-  const markOverCap = (st: CapState): void => {
-    overCapReason = `Filed over the ${st.current} cap (${st.open}/${st.cap} open residuals): ${options.overCap ?? 'raw create; cap is a warning'}`;
-    fields['labels'] = [...new Set([...(o.labels ?? []), OVER_CAP_LABEL])];
-  };
+  o: { bugDefault: boolean },
+): Promise<void> {
   if (options.fixVersion !== undefined) {
     await assertVersionExists(project, options.fixVersion);
     fields['fixVersions'] = [{ name: options.fixVersion }];
-    const st = gated ? await capState(project, options.fixVersion) : undefined;
-    if (st && st.open >= st.cap) {
-      console.error(`jira: warning: ${st.current} is at its residual cap (${st.open}/${st.cap} open); filing with ${OVER_CAP_LABEL}`);
-      markOverCap(st);
-    }
   }
   if (options.affectsVersion !== undefined) {
     const version = await resolveAffectsVersion(project, options.affectsVersion);
     fields['versions'] = [{ name: version }];
   }
-  // A Highest or gated Bug without an explicit --fix-version defaults to the
-  // earliest unreleased version, or the next one when that is over its cap; an
-  // unreadable/empty version list files with no fixVersion rather than
-  // guess. Any other Bug was placed in the backlog before this point.
   if (o.bugDefault) {
-    const st = gated ? await capState(project) : undefined;
     let defaultVersion: string | undefined;
-    let redirected = false;
-    if (st) {
-      const full = st.open >= st.cap;
-      const redirect = full && options.overCap === undefined;
-      redirected = redirect;
-      defaultVersion = redirect ? st.next : st.current;
-      if (full && !redirect) markOverCap(st);
-      if (redirect) {
-        console.error(
-          `jira: ${st.current} is over its cap (${st.open}/${st.cap} open); ` +
-            (st.next ? `the ${options.type} goes to ${st.next}` : `no later version, filing the ${options.type} with no fixVersion`) +
-            `; --over-cap <reason> files it into ${st.current}`,
-        );
-      }
-    } else {
-      try {
-        defaultVersion = earliestUnreleased(await fetchVersions(project));
-      } catch {
-        defaultVersion = undefined;
-      }
+    try {
+      defaultVersion = earliestUnreleased(await fetchVersions(project));
+    } catch {
+      defaultVersion = undefined;
     }
     // stderr: stdout stays the bare `Created KEY` line scripted callers capture.
     if (defaultVersion) fields['fixVersions'] = [{ name: defaultVersion }];
-    // A cap redirect already said where the Bug went.
-    if (redirected) return overCapReason;
     if (defaultVersion) {
       console.error(`jira: ${options.type} defaults to fixVersion ${defaultVersion}; --fix-version overrides`);
     } else {
       console.error(`jira: no unreleased version found; filing the ${options.type} with no fixVersion`);
     }
   }
-  return overCapReason;
 }
 
 interface PlacementOptions {
@@ -725,6 +514,7 @@ export function intakeRelease(): string {
 /** Throws unless an INTAKE with this why could be queued now, so the filing is refused before anything is created. */
 export function assertIntakeQueueable(why: string, o: IntakeWords & { toVersion?: string | null } = {}): void {
   const ctx = ctxFor(intakeRelease());
+  loadOrThrow(ctx);
   refuseRequest(ctx, { verb: 'INTAKE', key: 'NEW', from_v: null, to_v: o.toVersion ?? null, why, origin: 'create', ticket: o.ticket, decision: o.decision });
   if (o.decision === undefined && o.words === undefined) return;
   if (o.decision === undefined) throw new Error('jira create: --words needs --decision <n>, the decision whose file holds them');
@@ -748,16 +538,21 @@ interface ParentState {
  * A follow-up of an open parent in the current version asks for that version;
  * the why states only facts (parent, status, version), plus the parent's
  * remainder when the caller declares it with --remainder. A Done or closed
- * parent asks for none and the why says so. The residual cap is
- * NOT checked: the request never writes the fixVersion, and the release
- * manager is not shown the cap. Parent, status and version go in the request's
- * evidence. Explicit wins: a version, --backlog, --proposed-version or --why
+ * parent asks for none and the why says so. Parent, status and version go in
+ * the request's evidence. Explicit wins: a version, --backlog, --proposed-version or --why
  * keeps its meaning. A parent with no current version, or one that cannot be
- * read, leaves the request as it was (the ticket is filed either way).
+ * read, asks for no version (the ticket is filed either way); with --remainder
+ * the evidence still carries follow_up_of and remainder, also under an explicit
+ * why or version, and for an unreadable parent without the parent facts.
  */
-export async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; remainder?: boolean; backlog?: boolean; fixVersion?: string }>(o: T): Promise<T> {
-  if (o.followUpOf === undefined || o.fixVersion !== undefined || o.backlog || o.proposedVersion !== undefined || o.why?.trim()) return o;
-  const parentKey = o.followUpOf;
+export async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; residualOf?: string; remainder?: boolean; backlog?: boolean; fixVersion?: string }>(o: T): Promise<T> {
+  if (o.residualOf !== undefined && o.followUpOf === undefined && o.fixVersion === undefined && o.evidence === undefined) {
+    return { ...o, evidence: { residual_of: o.residualOf } };
+  }
+  if (hasOwnPlacement(o)) {
+    return o.followUpOf !== undefined && o.remainder ? { ...o, evidence: { ...o.evidence, follow_up_of: o.followUpOf, remainder: true } } : o;
+  }
+  const parentKey = o.followUpOf!;
   let parent: ParentState['fields'];
   let versions: Awaited<ReturnType<typeof fetchVersions>>;
   try {
@@ -765,7 +560,7 @@ export async function followUpIntake<T extends IntakeOptions & { followUpOf?: st
     versions = await fetchVersions(parent.project.key);
   } catch (e) {
     console.error(`jira: warning: could not read ${parentKey}'s status and version, so the follow-up's INTAKE names none: ${(e as Error).message}`);
-    return o;
+    return o.remainder ? { ...o, evidence: { ...o.evidence, follow_up_of: parentKey, remainder: true } } : o;
   }
   const status = parent.status?.name ?? 'unknown';
   const current = earliestUnreleased(versions);
@@ -777,12 +572,30 @@ export async function followUpIntake<T extends IntakeOptions & { followUpOf?: st
   if (parent.status?.statusCategory?.key === 'done') {
     return { ...o, why: `follow-up of ${parentKey}, which is closed (${status})`, evidence };
   }
-  if (!inCurrent) return o;
+  if (!inCurrent) return o.remainder ? { ...o, evidence } : o;
   const isFrozen = frozenDate(versions.find((v) => v.name === current)?.description) !== undefined;
   const target = current;
   const facts = `follow-up of ${parentKey} (${status}), which is in ${current}${isFrozen ? ' (frozen)' : ''}`;
   const why = o.remainder ? `${facts}; ${parentKey} cannot close without this ticket, which holds its remainder` : facts;
   return { ...o, proposedVersion: target, why, evidence };
+}
+
+type PlacementChoice = { followUpOf?: string; fixVersion?: string; backlog?: boolean; proposedVersion?: string; why?: string };
+const hasOwnPlacement = (o: PlacementChoice): boolean => o.followUpOf === undefined || o.fixVersion !== undefined || !!o.backlog || o.proposedVersion !== undefined || !!o.why?.trim();
+
+export async function closedParentPlacement(o: PlacementChoice & { type: string }): Promise<{ fixVersion: string; priority?: string } | undefined> {
+  if (hasOwnPlacement(o) || !/^(bug|task|story)$/i.test(o.type)) return undefined;
+  try {
+    const parent = (await request<ParentState & { fields: { priority?: { name?: string } } }>('GET', `/issue/${o.followUpOf}?fields=project,status,fixVersions,priority`)).fields;
+    if (parent.status?.statusCategory?.key !== 'done') return undefined;
+    const versions = await fetchVersions(parent.project.key);
+    const current = earliestUnreleased(versions);
+    if (current === undefined || parent.fixVersions?.some((v) => v.name === current) !== true) return undefined;
+    if (frozenDate(versions.find((v) => v.name === current)?.description) !== undefined) return undefined;
+    return { fixVersion: current, ...(parent.priority?.name ? { priority: parent.priority.name } : {}) };
+  } catch {
+    return undefined;
+  }
 }
 
 export function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions, testProject = false): void {
@@ -857,49 +670,80 @@ export async function checkExistingBlocker(project: string, fixVersions: unknown
   }
 }
 
+const TITLE_STOP = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'are', 'not', 'its', 'has', 'was', 'but', 'can', 'all']);
+const SIMILAR_TITLE = 0.7;
+const MIN_TITLE_WORDS = 3;
 
-/** Keep slot competition's decision; otherwise only ungated frozen inheritance is suppressed. */
+/** The significant words of a title: lower-case, a leading "Sector:" prefix dropped, words of 3+ characters, stop words out. */
+export function titleWords(title: string): string[] {
+  const body = title.replace(/^[^:]{1,40}:\s+/, '').toLowerCase();
+  const words = body.match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) ?? [];
+  return [...new Set(words.filter((w) => w.length >= 3 && !TITLE_STOP.has(w)))];
+}
+
+/** Share of the words two titles have in common (0 to 1), or 0 when either has too few words to compare. */
+export function titleSimilarity(a: string, b: string): number {
+  const wa = titleWords(a);
+  const wb = new Set(titleWords(b));
+  if (wa.length < MIN_TITLE_WORDS || wb.size < MIN_TITLE_WORDS) return 0;
+  const shared = wa.filter((w) => wb.has(w)).length;
+  return shared / (wa.length + wb.size - shared);
+}
+
+interface OpenHit { key: string; fields?: { summary?: string } }
+
+async function openMatches(jql: string): Promise<OpenHit[]> {
+  try {
+    return (await searchAllIssues(jql, '200', request)) as OpenHit[];
+  } catch (e) {
+    console.error(`jira: warning: the duplicate search failed (${(e as Error).message}), so the ticket is filed unchecked`);
+    return [];
+  }
+}
+
+const keyNumber = (key: string): number => Number(/-(\d+)$/.exec(key)?.[1] ?? NaN);
+
+/**
+ * Refuses a new ticket that repeats an open one: an open follow-up already linked to the same parent (a residual
+ * with both --class and --area is matched on those by planResidual instead), or an open ticket whose title is close.
+ * --new-reason names why a new ticket is needed and skips the search. A failed search files unchecked.
+ */
+export async function refuseOpenDuplicate(
+  project: string,
+  title: string,
+  o: { followUpOf?: string; residualOf?: string; class?: string; area?: string; newReason?: string },
+): Promise<void> {
+  if (o.newReason !== undefined) {
+    console.error(`jira: --new-reason: ${o.newReason.trim()}`);
+    return;
+  }
+  const refuse = (hit: OpenHit, why: string): never => {
+    throw new CreateRefused(
+      `jira create refused, nothing was filed: ${hit.key} ("${hit.fields?.summary ?? ''}") is open and ${why}; extend ${hit.key} with jira comment, or pass --new-reason <why>`,
+    );
+  };
+  const parent = o.followUpOf ?? (o.residualOf !== undefined && !(o.class && o.area) ? o.residualOf : undefined);
+  if (parent !== undefined) {
+    const jql = `project = ${project} AND statusCategory != Done AND labels = residual AND issue in linkedIssues(${jqlQuote(parent)})`;
+    const sibling = (await openMatches(jql)).find((h) => !(keyNumber(h.key) < keyNumber(parent)));
+    if (sibling) refuse(sibling, `already follows up ${parent}`);
+  }
+  const all = titleWords(title);
+  const words = all.filter((w) => /^[a-z0-9]+$/.test(w)).sort((a, b) => b.length - a.length).slice(0, 3);
+  if (all.length >= MIN_TITLE_WORDS && words.length > 0) {
+    const jql = `project = ${project} AND statusCategory != Done AND summary ~ ${jqlQuote(words.join(' '))}`;
+    const close = (await openMatches(jql)).find((h) => titleSimilarity(title, h.fields?.summary ?? '') >= SIMILAR_TITLE);
+    if (close) refuse(close, 'its title is close to this one');
+  }
+}
+
+
 export async function residualInheritedVersion(
   o: RelationshipOptions & { gate?: string },
   residual: ResidualPlan | undefined,
 ): Promise<string | undefined> {
   const inherited = await inheritedFixVersion(o);
-  if (residual?.ranks !== undefined) return undefined;
   return residual && inherited && o.gate === undefined && residual.frozen.includes(inherited) ? undefined : inherited;
-}
-
-export async function displaceResidual(
-  residual: ResidualPlan | undefined, newcomer: string, filed: { type: string; title: string },
-): Promise<void> {
-  if (!residual?.displaced) return;
-  const displaced = residual.displaced;
-  const resident = await request<RankedIssue>('GET', `/issue/${displaced.key}?fields=labels,status,fixVersions`);
-  const source = residual.fixVersion!;
-  const ruled = rulingsOf(source);
-  if (ruled === undefined || ruled(displaced.key) || !resident.fields.fixVersions?.some((v) => v.name === source) ||
-      resident.fields.status?.name !== 'To Do' || residualGateRank(resident, readAdmissions(source)) !== 0) {
-    await request('PUT', `/issue/${newcomer}`, {
-      fields: { fixVersions: displaced.fixVersion ? [{ name: displaced.fixVersion }] : [] },
-      update: { labels: [{ add: 'residual-displaced' }] },
-    }, 'create-stepdown');
-    console.error(`jira: ${displaced.key} is no longer displaceable; ${newcomer} moved to ${displaced.fixVersion ?? 'the backlog'}`);
-    // With no version to step down to the newcomer is versionless: it waits in the backlog for an INTAKE.
-    if (!displaced.fixVersion) {
-      queueIntakeIfUnversioned(newcomer, {}, filed.title, {
-        type: filed.type, why: `lost its ${source} slot to a ruled ticket and has no version to step down to: ${filed.title}`,
-      });
-    }
-    return;
-  }
-  const fixVersions = resident.fields.fixVersions.filter((v) => v.name !== source);
-  if (displaced.fixVersion && !fixVersions.some((v) => v.name === displaced.fixVersion)) fixVersions.push({ name: displaced.fixVersion });
-  await request('PUT', `/issue/${displaced.key}`, {
-    fields: { fixVersions },
-    update: { labels: [{ add: 'residual-displaced' }] },
-  }, 'displace-residual');
-  await request('POST', `/issue/${displaced.key}/comment`, {
-    body: markdownToAdf(`Displaced by higher-ranked residual ${newcomer}; moved to ${displaced.fixVersion ?? 'the backlog'}.`),
-  });
 }
 
 /** The journal name of the code path that chose a new ticket's Fix Version; undefined (hand) when the caller typed it or none was set. */
@@ -911,7 +755,7 @@ export function createWriterOf(
   if (chose.inherited !== undefined) {
     return options.residualOf !== undefined ? 'create-residual' : options.followUpOf !== undefined ? 'create-followup' : 'create-blocker-inherit';
   }
-  if (chose.residual) return chose.residual.labels.includes('residual-displaced') ? 'create-stepdown' : 'create-residual';
+  if (chose.residual) return 'create-residual';
   return chose.bugDefault ? 'create-bug-default' : undefined;
 }
 
@@ -943,7 +787,7 @@ export function registerCreate(program: Command): void {
       "Set the fixVersion (validated against the project's versions; an explicit value wins over the Bug default of the earliest unreleased version)",
     )
     .option('--priority <name>', 'Priority name (e.g. Highest); a Highest Bug is placed in the active version')
-    .option('--backlog', 'File to the backlog: label backlog, no inherited fixVersion; needs --proposed-version backlog and --why. Queues an INTAKE request when one release is declared')
+    .option('--backlog', 'File to the backlog: label backlog, no inherited fixVersion; needs --proposed-version backlog and --why. Queues an INTAKE request when one release is declared; the door places it, and --backlog does not keep a mild ticket out of the next version')
     .option(
       '--proposed-version <v>',
       'A Bug, Task or Story without --fix-version is filed with a proposed version (label proposed-<v>) and its INTAKE request queued in the same call; `backlog` needs --backlog and --why',
@@ -974,17 +818,14 @@ export function registerCreate(program: Command): void {
     )
     .option(
       '--follow-up-of <key>',
-      "File this as a follow-up of <key>: stamps the residual label and links it to <key>. With no version of its own, its INTAKE asks for <key>'s current version (an open parent; a Done parent gets none) and states parent, status and version",
+      "File this as a follow-up of <key>: stamps the residual label and links it to <key>. With no version of its own, its INTAKE asks for <key>'s current version (an open parent; a Done parent in the current unfrozen version is filed into it at its priority) and states parent, status and version",
     )
     .option(
       '--remainder',
       "With --follow-up-of: this ticket holds the parent's remainder (a deferred DoD row), so the INTAKE says the parent cannot close without it",
     )
-    .option(
-      '--over-cap <reason>',
-      'File into the current version although it is at its residual cap; the reason is recorded on the ticket',
-    )
-    .option('--fu-class <class>', 'Residual class: escape (current, else next when frozen), hardening (its chain version, else next at High or above, else backlog; needs --fu-override). polish is refused: it is noted with no ticket. Applies only with --residual-of')
+    .option('--new-reason <why>', 'Why a new ticket is needed although an open one repeats it (same --follow-up-of / --residual-of parent, or a close title): without it the filing is refused and names the open ticket to extend with jira comment')
+    .option('--fu-class <class>', 'Residual class: escape or hardening (needs --fu-override); a residual of a declared project is placed by the door from its priority, and --gate means the current version; the class routes it only for a project no declared release names (docs/release/follow-up-triage.md). polish is refused: it is noted with no ticket. Applies only with --residual-of')
     .option('--fu-why <code>', 'Why a hardening residual is one (' + FU_WHY_CODES.join('|') + '); required with --fu-class hardening')
     .option('--fu-override <id>', 'The named override a hardening residual needs: a judge verdict id (XX-jNNNN-N) or decision-N; printed into the ticket as an unverified label')
     .option('--class <id>', 'Residual class id, stamped as the class-<id> label')
@@ -1003,7 +844,7 @@ export function registerCreate(program: Command): void {
           return;
         }
         try {
-          const withPointer: CreateOptions & { pointer?: BridgePointer } = { ...options, pointer: bridgePointer(options) };
+          const withPointer: CreateOptions & { pointer?: BridgePointer } = { ...options, pointer: bridgePointer(options), checkDuplicates: true };
           await runCreate(withPointer);
         } catch (e) {
           if (!(e instanceof CreateRefused || e instanceof CreatePartial)) throw e;

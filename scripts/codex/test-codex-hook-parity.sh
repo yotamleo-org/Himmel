@@ -160,7 +160,7 @@ CODEX_ONLY="block-terminal-write-fence.sh end-session-wiki.sh"
 # Claude-side guards that MUST also be wired on Codex. The checks above run only
 # from Codex to Claude, so a guard never ported to Codex would pass them silently.
 #   peer-taint-*.sh : a session that read peer text is restricted on either harness.
-CODEX_PORTED="peer-taint-gate.sh peer-taint-mark.sh peer-taint-resume.sh"
+CODEX_PORTED="peer-taint-gate.sh peer-taint-mark.sh peer-taint-resume.sh guard-t3-thread-tools.sh block-t3code-unwatch-open-pr.sh"
 
 # Claude Stop/SessionEnd hooks deliberately not mirrored to Codex Stop/SessionEnd.
 CLAUDE_END_ONLY=(
@@ -304,7 +304,8 @@ for (const d of dupes) lines.push("DUPE " + d);
 // which must fire for every tool AND regardless of an earlier deny, so it is the
 // one deliberate second invocation.
 const TOOLS = new Set(["Bash", "PowerShell", "Read", "Grep", "Edit", "Write", "MultiEdit",
-                       "NotebookEdit", "Agent", "WebFetch", "mcp__plugin_atlassian_atlassian__x"]);
+                       "NotebookEdit", "Agent", "WebFetch", "mcp__plugin_atlassian_atlassian__x",
+                       "mcp__t3-code__unwatch_pull_request"]);
 const matchers = [];
 for (const b of codexJson.hooks.PreToolUse || []) {
   const mt = String(b.matcher || "");
@@ -401,7 +402,7 @@ assert_empty "no permission-gate Codex hook is marked --lifecycle" "$(lc_field B
 # drives the REAL chain `.codex/hooks.json` wires for the tool through the real
 # adapter and asserts a deny - a guard missing from the chain fails its row.
 command -v jq >/dev/null 2>&1 || { echo "FAIL: jq required"; exit 1; }
-for v in GIT_STASH_OK ROGUE_SCHEDULE_OK QUIET_RUN_BYPASS EDIT_LIVE_SETTINGS_OK; do unset "$v"; done
+for v in GIT_STASH_OK ROGUE_SCHEDULE_OK QUIET_RUN_BYPASS EDIT_LIVE_SETTINGS_OK T3_THREAD_TOOLS_OK T3CODE_UNWATCH_OK; do unset "$v"; done
 chain_deny() { # chain_deny <label> <matcher> <tool_name> <command>
   local label="$1" matcher="$2" tool="$3" cmd="$4" chain payload out
   chain="$(jq -r --arg m "$matcher" '.hooks.PreToolUse[] | select(.matcher == $m) | .hooks[0].command' .codex/hooks.json \
@@ -423,6 +424,31 @@ chain_deny "Codex PowerShell chain denies a raw crontab claude arm (block-rogue-
 chain_deny "Codex Bash chain denies a bare test suite run (require-quiet-run)" Bash Bash "bash scripts/hooks/test-block-git-stash.sh"
 chain_deny "Codex Bash chain denies a live settings write (block-edit-live-settings)" Bash Bash "echo x > $HOME/.claude/settings.json"
 chain_deny "Codex PowerShell chain denies a live settings write (block-edit-live-settings)" PowerShell PowerShell "echo x > $HOME/.claude/settings.json"
+
+TMP_T3_STUB="$(mktemp -d "${TMPDIR:-/tmp}/codex-parity-t3.XXXXXX")" || exit 1
+trap 'rm -rf "$TMP_T3_STUB"' EXIT
+mkdir -p "$TMP_T3_STUB/home/.himmel" "$TMP_T3_STUB/bin"
+cat > "$TMP_T3_STUB/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '{"state":"OPEN","mergeStateStatus":"BLOCKED","reviewDecision":""}\n'
+EOF
+chmod +x "$TMP_T3_STUB/bin/gh"
+
+mcp_chain_deny() {
+  local label="$1" tool="$2" args="$3" chain payload out
+  chain="$(jq -r '.hooks.PreToolUse[] | select(.matcher == "mcp__.*") | .hooks[0].command' .codex/hooks.json \
+    | sed -n 's/.*run-hook\.sh --sandbox \([^ ]*\).*/\1/p')"
+  payload="$(jq -cn --arg t "$tool" --argjson a "$args" --arg d "$PWD" \
+    '{hook_event_name:"PreToolUse",tool_name:$t,tool_input:$a,cwd:$d}')"
+  out="$(printf '%s' "$payload" | HOME="$TMP_T3_STUB/home" PATH="$TMP_T3_STUB/bin:$PATH" CLAUDE_PROJECT_DIR="$PWD" bash .codex/codex-hook-adapter.sh "$chain" 2>&1 || true)"
+  case "$out" in
+    *'"permissionDecision":"deny"'*) echo "  ok   $label";;
+    *) echo "  FAIL $label: no deny ($out)"; fails=$((fails + 1));;
+  esac
+}
+mcp_chain_deny "Codex MCP chain denies off-allowlist T3 instance (guard-t3-thread-tools)" "mcp__t3-code__t3_thread_launch" '{"title":"Work","modelSelection":{"instanceId":"antigravity","model":"gemini-4-neon"}}'
+mcp_chain_deny "Codex MCP chain denies -chief T3 thread title (guard-t3-thread-tools)" "mcp__t3-code__t3_thread_update" '{"action":"rename","title":"ops-chief"}'
+mcp_chain_deny "Codex MCP chain denies unwatch on OPEN PR (block-t3code-unwatch-open-pr)" "mcp__t3-code__unwatch_pull_request" '{"url":"https://github.com/o/r/pull/123"}'
 
 if [ "$fails" -eq 0 ]; then echo "OK: all cases passed"; exit 0; fi
 echo "FAIL: $fails case(s) failed"; exit 1

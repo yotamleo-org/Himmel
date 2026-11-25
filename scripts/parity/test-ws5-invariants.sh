@@ -342,6 +342,8 @@ else
     t13a_allow=(
         "marketplace/plugins/i-have-adhd/hooks/hooks.json|SessionStart|HIMMEL-5239 operator always-on ruling 2026-10-11: flag-gated, prints SKILL.md, no network, no writes"
         "marketplace/plugins/himmel-guard/hooks/hooks.json|PreToolUse|HIMMEL-5960 operator ruling 2026-10-16 (adapter split option A): guard-only plugin, opt-in, one destructive-command denial hook, no network, no writes"
+        ".agents/hooks.json|PreToolUse|operator ruling 2026-11-23 (decision 1249): Antigravity single-spec guard adapter, no network"
+        ".agents/hooks.json|SessionStart|operator ruling 2026-11-23 (decision 1249): Antigravity integrity and primary baseline session start, no network"
     )
     t13a_allowed() { # <path> <event>
         local e
@@ -768,22 +770,21 @@ if [ ! -f "$PARITY_DOC" ]; then
     t14c_hit=1
     echo "FAIL T14(c): lane-parity index doc missing ($PARITY_DOC)." >&2
 else
-    # Every gemini/copilot/cursor TABLE row must carry the 'deferred' token.
-    bad_rows="$(grep -Ei '^\|.*gemini|^\|.*copilot|^\|.*cursor' "$PARITY_DOC" \
+    bad_rows="$(grep -Ei '^\|.*copilot|^\|.*cursor' "$PARITY_DOC" \
         | grep -Eiv 'deferred' || true)"
     if [ -n "$bad_rows" ]; then
         t14c_hit=1
-        echo "FAIL T14(c): gemini/copilot/cursor row(s) not deferred:" >&2
+        echo "FAIL T14(c): copilot/cursor row(s) not deferred:" >&2
         printf '%s\n' "$bad_rows" >&2
     fi
-    if ! grep -Eiq '^\|.*(gemini|copilot|cursor).*deferred' "$PARITY_DOC"; then
+    if ! grep -Eiq '^\|.*(copilot|cursor).*deferred' "$PARITY_DOC"; then
         t14c_hit=1
-        echo "FAIL T14(c): no deferred gemini/copilot/cursor row in $PARITY_DOC." >&2
+        echo "FAIL T14(c): no deferred copilot/cursor row in $PARITY_DOC." >&2
     fi
 fi
 
 if [ "$t14b_hit" -eq 0 ] && [ "$t14c_hit" -eq 0 ]; then
-    echo "PASS T14 locks: no per-token-lane wiring; gemini/copilot/cursor deferred. (T14(a) claude-codex lock retired, HIMMEL-979.)"
+    echo "PASS T14 locks: no per-token-lane wiring; copilot/cursor deferred. (T14(a) claude-codex lock retired, HIMMEL-979.)"
 else
     FAIL=$((FAIL + 1))
 fi

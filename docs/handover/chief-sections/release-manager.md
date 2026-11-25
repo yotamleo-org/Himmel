@@ -10,33 +10,19 @@ release is declared (`jira release state <R>` prints a status other than
   `jira release request <R> --verb INTAKE|REVERSION|DISCHARGE --key <KEY> --from <v|backlog> --to <v|backlog> --why "<one line>"`
   prints `REQ <id>`; a duplicate of an open request returns the open one. Then
   `jira release rm-run <R>` rules every pending request and exits. It takes
-  the lease, finishes any older ruling, claims, makes one bounded model call
-  (no tools, one turn, JSON out; on the subscription, and on the API lane only in
-  the himmel repo with `judge` mapped in `roles.json`; there the launcher's own
-  fallback is off, so a failed lane call alerts as `docs/internals/api-lane.md` says
-  (a policy refusal does not) and `rm-run` itself then rules the batch once on the
-  subscription, while a stopped run or a timed-out call ends the run), rules
-  and applies each request through the engine, releases the lease, and prints
+  the lease, finishes any older ruling, claims, rules each request by the door's
+  fixed rules with no model call (the model judge is parked: only
+  `HIMMEL_RM_JUDGE=model` reaches it, and nothing sets that by default), applies
+  each request through the engine, releases the lease, and prints
   one line per request, then `RM-RUN <R> summary: N refused` when any request
   was refused. An empty queue prints `RM-RUN <R>: nothing pending`
-  and writes nothing.
-- **A request for operator work carries the operator's words.** An INTAKE or
-  REVERSION into a version, for an open ticket labelled `operator-directed` or of
-  priority High or Highest, is refused before it is filed unless it names the
-  decision and the operator's exact words in it, or a record already on file covers
-  it (next paragraph):
-  ```text
-  release request: <KEY> is operator-directed and High; a request that places it needs a record of the operator's words: cite one on file that already names <KEY> and exactly this placement (a words record newer than the key's last ruling is cited with no --decision), or record them.
-    jira release request <R> --verb INTAKE --key <KEY> --from backlog --to <v> --why "<why>" --decision <n> --words "<the operator's exact words>"
-    (<n>: specs/decisions/verbatim-decision-<n>-*.txt)
-  ```
-  A gated request files without words only when one words-checked operator decision
-  already on record names that key and that exact placement; it must be the newest
-  decision on the key among those for the request's versions, for no version, or
-  keeping the key in the backlog (two at the same instant refuse), newer than every
-  ruling on the key, and the operator and rulings chains must verify to their end.
-  Otherwise the words are required as before, and a work permission never counts.
-  `--decision <n>` must match exactly one `verbatim-decision-<n>-*.txt` in the
+  and writes nothing. The release manager keeps STATUS, BURN-DOWN and READY.
+- **A request needs no words from you.** An INTAKE or REVERSION files for every
+  filer with no `--decision`, an `operator-directed` or High ticket included, and
+  the door rules it: an operator ask lands in the current version
+  (`door:operator-ask`), and the newest operator record on the key is read by the
+  door itself, so the request cites none. `--decision <n> --words "<the operator's
+  exact words>"` still records the words when you have them. `--decision <n>` must match exactly one `verbatim-decision-<n>-*.txt` in the
   bucket's `specs/decisions`. `--words` must occur byte for byte in one paragraph
   of that file, never in a paragraph that opens with a gloss word (`Read`,
   `Reading`, `Chief`, `Asked`, `Answering`, `Note`, `Ruling`, `Relayed`, `Facts`
@@ -49,15 +35,10 @@ release is declared (`jira release state <R>` prints a status other than
   duplicate that already cites an `O-` record is returned as it is, so its `REQ`
   may cite an older record than the `OPERATOR` line names; to file the request on
   the new words, `jira release withdraw <R> --req <id> --reason "<why>"` it first,
-  then run the request again. The
-  gate reads the ticket from the mirror, else from one live read; a ticket neither
-  can read is refused, unless a record covers it as above, with both fixes (`jira mirror`, or `--decision`). `jira
+  then run the request again. `jira
   create`, `jira move` and the MCP `create` tool take the same `--decision` and
-  `--words` and check them before anything is filed. A backlog target, a closed
-  ticket, a request filed inside a worker you spawned, the close-time Done fold,
-  the version repair and the blocker pull (`jira release pull`, which files its
-  INTAKE under the standing `O-<R>-blocker-pull` record) are not gated; a worker's
-  request that the RM refuses comes back to you as a refusal.
+  `--words` and check them before anything is filed. A worker's request that the
+  RM refuses comes back to you as a refusal.
 - **A ruled-away ask wakes you once.** A refused ask is a key whose latest
   receipted ruling, on a request from the backlog into a version, left it outside
   that version (`BACKLOG`, or `KEEP` on such a REVERSION); a demotion is never one.
@@ -76,6 +57,25 @@ release is declared (`jira release state <R>` prints a status other than
   "<why the refusal is right>"`; the ack is refused for an operator-asked key, for a
   key the mirror does not hold, and inside a worker you spawned. With the mirror
   unreadable a refused ask's `asks_operator` reads `null`, and the tick skips the field.
+- **The door's placements come to you as three lists.** `jira release state <R> --json`
+  lists each receipted door ruling you have not yet cleared: `priority_review` (a priority
+  or carry-over placement: serious, mild, rest-of, operator-ask, started, undeclared, with
+  its ground), `chief_placements` (a `door:chief` placement, with its reason) and
+  `asks_apart` (an operator ask placed apart from its parent, one entry per key, version,
+  parent and parent version; a second ruling of the same tuple adds none). The tick prints
+  `prio-review=<n>:<oldest KEY>`, `chief-placed=<n>:<KEY>,...` and `ask-apart=<n>:<KEY>,...`,
+  each absent at zero and outside the waiter's action key. The waiter wakes you once per new
+  chief placement (`WAKE chief-placed <KEY> <reason>`) and once per new ask apart
+  (`WAKE ask-apart <KEY> <version> parent <P> <parent version>`); a priority entry wakes
+  nothing and waits for your next tick. What each list asks of you: for a priority entry,
+  check the ground fits the ticket and relay it to the operator only when it does not; for
+  a chief placement, tell the operator the key and your reason; for an ask apart, tell the
+  operator the ask and its version, the parent and its version, and the two choices: move
+  the parent with `jira release operator decision`, or leave the parts split. Check or relay
+  an entry, then clear it with `jira release reviewed <R> --ruling <R-id> --reason "<what you checked>"`,
+  or clear a list up to one entry with `--through <R-id>`: it clears only that entry's own
+  list, so a priority sweep never closes a chief placement or an ask apart. The verb is
+  refused inside a worker you spawned. The `reviewed` row changes no placement.
 - **Explicit changes and blocked recovery.**
 
   A pending request keeps its known required-parent relation when a repeat omits
@@ -94,12 +94,26 @@ release is declared (`jira release state <R>` prints a status other than
   normal lock/storage recovery path; do not invent a launch timestamp or claim
   an unpersisted state is authoritative.
 
-- **The batch reads only disk.** Anything the RM must weigh goes in the
-  request's `--why` or in an operator `O-` record; nothing said in a message
-  reaches it. The judge is shown the records that name the request's ticket, its
-  parent and its blockers, the rules of the release, the records recent rulings
-  use and the newest ones; to have it read any other record, put the record's
-  `O-` id or `decision <n>` in `--why`.
+- **The batch reads only disk.** The door reads no `--why` text and nothing said in a
+  message. It reads the declared current version and version order; the request (its key,
+  verb, `--from` and `--to`, and its evidence: a chief placement, a rule, an operator
+  record); the ticket's snapshot (status, priority, labels, the versions it holds, its
+  sector); its required parent's snapshot; the key's earlier rulings and ledger records;
+  and the operator's decision records that name the key. It reads no blocker record and
+  no text of the release rules. To steer a placement, record an operator decision on the
+  key or pass the request flag that carries it (`--chief-reason`, `--required-by`).
+- **A priority raise on a ticket in a later version is yours to place.** The door
+  never moves a key out of a version it holds, so a ticket raised to High or Highest
+  that sits in a version after the current one stays there. The tick's
+  `serious-later=<n>:<oldest KEY>` counts those tickets (absent at zero, no wake, no
+  doctor WARN). Place one with a REVERSION request that carries your reason:
+  `jira release request <R> --verb REVERSION --key <KEY> --from <later v> --to <current v> --why "<line>" --chief-reason "<reason>"`.
+  A priority lowering is not a placement; only an operator record moves a key out.
+- **Unplaced tickets show in the tick.** `unplaced=<new>[,pending=<n>][,legacy=<n>][,stale-label=<n>]`
+  counts the open tickets with no version and no backlog label (`intake-backfill.sh --unplaced --list --since-door --state <state.json>`,
+  with the output of `jira release state <R> --json` as the state file, shows each key and bucket as the tick sees it). `new` is a ticket filed since the door shipped: it needs your look,
+  because the door should have placed it. `pending` has an open request, `legacy` predates the door,
+  `stale-label` holds a version and the backlog label. The field is absent at zero and never wakes you.
 - **A worker's FINDING that asks "file it where?"** is a request. So is a
   follow-up you file yourself: file it to backlog, then request its INTAKE.
 - **A launch on a ticket outside the current version is refused** (`brief-lint.sh`
@@ -122,9 +136,10 @@ release is declared (`jira release state <R>` prints a status other than
 - **A RULING is a `RULING <id> <req> …` line printed by `rm-run`** for a
   request you wrote. `REFUSED <req>: <why>` is an engine refusal: the request is
   closed, so fix the cause (a missing sector, an uncovered authority) and file it
-  again, which opens a new request id. Only `REFUSED <req>: the judge returned no
-  decision` leaves the request claimed for the next `rm-run`. `HELD <req>: <why>`
-  means the judge could not rule it and nothing was ruled: a version-repair request
+  again, which opens a new request id. The door rules or refuses; it never
+  holds a request. `REFUSED <req>: the judge returned no decision` and `HELD <req>: <why>`
+  are the parked judge's results (the first leaves the request claimed for the next
+  `rm-run`; `HELD` means nothing was ruled): a version-repair request
   is set aside as held and leaves the queue, and any other request stays claimed. A held one
   shows in the repair's held list until an operator record answers it or the
   key's Fix Version changes again, and then a repair run withdraws it; you can
@@ -158,7 +173,7 @@ release is declared (`jira release state <R>` prints a status other than
   The next `rm-run` records its class and sector.
 - **Open requests are ruled without you.** The waiter's tick shows
   `rm-queue=<n>,<oldest age>m[,claimed=<n>][,replay=<n>][,run]` and, when the oldest open request is older than
-  `TICK_RMRUN_MIN` minutes (default 30), the lease is free and no run started in
+  `TICK_RMRUN_MIN` minutes (default 2), the lease is free and no run started in
   the last `TICK_RMRUN_MIN_SECS` seconds (default 600), it launches one detached
   `jira release rm-run <R>` for the `release:` line of the chief's doc
   (`,run` on the field marks the launch; the log is `tick-rm-run.log` in the

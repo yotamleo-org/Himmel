@@ -163,6 +163,13 @@ grep -qF -- "$counter" "$WORK/fixture.md" && grep -qF -- "<key>$stem" "$WORK/fix
 scan "$WORK/fixture.md"; rc=$?
 [ "$rc" -eq 0 ] && pass "quoted test-fixture text scans clean" || fail "quoted test-fixture text: gitleaks rc=$rc, expected 0"
 
+stem_md="-fix""ture-epoch1.md"
+printf '%s\n' "spec file \`<key>$stem_md\` written for epoch 1" > "$WORK/fixture-md.md"
+grep -qF -- "<key>$stem_md" "$WORK/fixture-md.md" || fail "section 7 .md fixture file was not written"
+scan "$WORK/fixture-md.md"; rc=$?
+[ "$rc" -eq 0 ] && pass "quoted .md fixture file name scans clean" || fail "quoted .md fixture file name: gitleaks rc=$rc, expected 0"
+caught "secret after the .md fixture name" "key = \"$stem_md$gen\""
+
 n=0
 for t in "S-N2802-7023775e$gen" "ab-$gen-pid1" "$aws" "$pat" "S-$gen-abcd" "Z-$short-1a2b3c4d" "S-N2802_${gen}-abcd"; do
     n=$((n + 1))

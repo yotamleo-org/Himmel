@@ -73,7 +73,7 @@ the fields retain their normal interpretation.
 | Roadmap     | `... roadmap fields [--json]` / `... roadmap set HIMMEL-N [--readiness 0-4] [--theme T] [--goals G1,G3] [--impact 1-5] [--alignment N] [--effort XS\|S\|M\|L\|XL [--guard]] [--audit-date D] [--audit-evidence URL] [--close-candidate yes\|no] [--no-roi]` / `... roadmap get HIMMEL-N` (prints `declared readiness N (source jira); evidence <state>`, the state one of declared, linked, verified, stale or unknown; verified only from a passing spec check, never from a score or a URL) / `... roadmap export --out F.json` / `... roadmap sync-sprints [--board N] [--dry-run]` (`--theme` is the retired Theme field: it works only while `HIMMEL_LEGACY_NAMES` is on (the default) and is refused when that is 0, false, no or off, naming `edit --sector`; the config-ui Roadmap and Kanban group by Sector (the mirror's `sector:` line, the old `theme-*` label as the fallback, "no sector" for neither) and a card's select writes the Sector with `edit --sector`, never a theme label; fields resolved by name, ROI = impact × alignment × confidence ÷ effort recomputed after every set; `sync-sprints` gives each dated unreleased fixVersion a same-named sprint carrying its dates and moves its open issues in — an issue on several dated versions goes to the earliest-releasing one — and `--dry-run` exits 1 on drift) | (none) |
 | Rank        | `... rank HIMMEL-N --before\|--after HIMMEL-M` / `... rank --file order.txt` (Agile `PUT /issue/rank`, the file ranks top-down in chunks of 50) | (none) |
 | Resolution  | `... resolution HIMMEL-N` (re-runs the current status's self-transition so the workflow post-function sets or clears the resolution — resolution is not on the edit screen) | (none) |
-| Release     | `... release state <R> [--json]` (exit 3 when not OK) / `... release request <R> --verb INTAKE\|REVERSION\|DISCHARGE --key K --to <v\|backlog> --why ...` (refuses a placeholder why, an INTAKE for a closed key outside the release unless `--evidence '{"pr":N}'` names its merged PR, and a REVERSION/DISCHARGE from a version the mirror does not hold the key in) / `... release withdraw <R> --req Q --reason ... [--by O-id]` (retires a pending request; `--by` names the operator decision row covering its key; an operator decision also withdraws the pending requests it contradicts) / `... release claim <R>` / `... release rule <R> --req Q --outcome O --op <kind> [--sector S] --ground G --reason-file F [--supersedes ids] [--authority operator --ref O-id]` / `... release apply <R> <R-id>` (fixVersions write, readback, receipt comment; idempotent) / `... release lease acquire\|release <R>` / `... release operator declare\|freeze\|decision\|takeover <R> ...` (refused inside a spawned worker, the release manager or a Telegram bridge session, or any process they started: the fence reads its markers from each ancestor's start-up env and refuses until the poller has written `host-ns`; see `operatorFence` in `enforcement.md`). Signed, hash-chained state under `$HANDOVER_DIR/<user>/<repo>/release/<R>/`; the release manager's verbs: `himmel-ops:release-manager` | MCP tool `release` (`sub` = state, request, claim, rule, apply, lease-acquire, lease-release; the operator verbs are CLI-only) |
+| Release     | `... release state <R> [--json]` (exit 3 when not OK) / `... release request <R> --verb INTAKE\|REVERSION\|DISCHARGE --key K --to <v\|backlog> --why ...` (refuses a placeholder why, an INTAKE for a closed key outside the release unless `--evidence '{"pr":N}'` names its merged PR, and a REVERSION/DISCHARGE from a version the mirror does not hold the key in) / `... release withdraw <R> --req Q --reason ... [--by O-id]` (retires a pending request; `--by` names the operator decision row covering its key; an operator decision also withdraws the pending requests it contradicts) / `... release rm-run <R>` (rules every request by the door's rules; `release claim` and `release rule` are parked and refuse) / `... release apply <R> <R-id>` (fixVersions write, readback, receipt comment; idempotent) / `... release lease acquire\|release <R>` / `... release operator declare\|freeze\|decision\|takeover <R> ...` (refused inside a spawned worker, the release manager or a Telegram bridge session, or any process they started: the fence reads its markers from each ancestor's start-up env and refuses until the poller has written `host-ns`; see `operatorFence` in `enforcement.md`). Signed, hash-chained state under `$HANDOVER_DIR/<user>/<repo>/release/<R>/`; the release manager's verbs: `himmel-ops:release-manager` | MCP tool `release` (`sub` = state, request, claim, rule, apply, lease-acquire, lease-release; the operator verbs are CLI-only) |
 
 **Mirror count check.** `JIRA_PROJECT_KEY=HIMMEL bash scripts/handover/chief-kit/version-counts-check.sh [<version>...]`
 prints, per unreleased version, the open count from `jira list --jql` beside the same count read from
@@ -117,7 +117,7 @@ anything is sent. Himmel's own agents use the CLI directly.
 **Write outcomes.** Every CLI write ends in one of four classes:
 
 - **Refused before writes.** A check failed and nothing was written: no issue,
-  comment, link, ledger row or displacement. `create` and `move` run every
+  comment, link or ledger row. `create` and `move` run every
   check (body against the final labels, title, sector, home, placement,
   version gates, INTAKE preflight) before the first write; `edit` checks the
   edited result before its PUT.
@@ -222,9 +222,14 @@ without knowing the code, a Plan, a DoD, a Proof, and one section for the agent
 doing the work (the lint checks that all seven are present and non-empty, and that
 Plan and DoD each hold a real list line, not their order):
 
+The operator rarely reads a ticket, so its first line is the one he would: plain
+words, no keys, no "nothing needed from you". Every section after it is for the agent
+and stays in full; one sentence is enough only when it is clear on its own
+(`docs/internals/operator-voice.md`, rule 10).
+
 ```markdown
 ## Impact
-<who notices, and what they see today — plain words, no file paths>
+<one plain line: what changes for him, and why it matters; then who notices, and what they see today: no file paths>
 
 ## What
 <what we change, in one or two sentences>
@@ -408,7 +413,8 @@ Sector configured the release manager's prompt allows a null sector, a ruling wi
 `sector=none` and applies; `release rule --sector` (and the MCP `sector`) is optional unless a field
 is configured. Configured, a ruling
 without a sector is refused (`REFUSED <req>: release rule: a ruling without a sector refuses`, the request
-is closed and a re-filed one gets a new id) and the judge HOLDs a sectorless request (nothing is ruled: a
+is closed and a re-filed one gets a new id) and the door gets the same refusal when `rm-run` applies a sectorless ruling (`rule-apply.ts`), so `rm-run` prints
+`REFUSED`; the parked model judge instead HOLDs a sectorless request (nothing is ruled: a
 version-repair request is set aside as held, any other request stays claimed). A missing config.json or an absent
 `jira.sectorField` means sectors are off; malformed JSON or a non-string value throws instead. Code:
 `scripts/jira/src/commands/sector.ts` (config + options) and `sector-setup.ts`.
@@ -418,30 +424,36 @@ placed at filing, never defaulted silently. `--proposed-version <v>` files it wi
 `proposed-<v>` label and no fixVersion and queues its INTAKE request toward `<v>` in the
 same call; `--backlog` alone is refused: it needs `--proposed-version backlog`
 and a one-line `--why`, and then files the `backlog` label with no fixVersion.
+The door places the ticket from its priority, so `--backlog` does not keep a mild ticket out of the next version: the
+door admits it into the next version and takes the `backlog` label off. A ticket stays in the backlog only by an operator record, or when no next version is declared.
+Besides the door, `create` still places a ticket at filing in three cases, a second placer: `bugDefault` (a gated ticket
+or a Highest Bug takes the active version; a Bug with no placement is refused), blocker inheritance (`--blocks` takes the
+target's version) and split inheritance (`--split-from` takes the source's version).
 `--proposed-version` cannot be combined with `--fix-version` or `--gate`, applies to a Bug, Task or
 Story only, and a named version must exist and be unreleased. The same rule covers a Task or Story, so no ticket
-is filed without at least a proposed version; a residual (`--residual-of`, `--follow-up-of`) routes itself to a version
-or the backlog, and one that lands with no version is held to the same rule as any other.
+is filed without at least a proposed version; a residual (`--residual-of`, `--follow-up-of`) of a declared project is placed by the door from its priority
+(it files with no version and queues its INTAKE; only `--gate` files it into the current version), and a project no
+declared release names keeps the class route in `docs/release/follow-up-triage.md`.
 `--follow-up-of <KEY>` reads the parent's status and fixVersion. An open parent in the current
 (earliest unreleased) version: the follow-up's INTAKE asks for that version, its why states only facts (parent,
 status, version) and its evidence carries them; it does not claim a remainder. `--remainder`, which needs
 `--follow-up-of`, is for a ticket that holds a deferred DoD row of the parent: the why then says the parent cannot
-close without this ticket and that it holds the parent's remainder. A Done or closed parent: no version, the
-request is the backlog one and the why says the parent is closed. A parent in a frozen current version: the
+close without this ticket and that it holds the parent's remainder. A Done or closed parent in the current, unfrozen version: the follow-up is filed into that
+version at the parent's priority (the caller's `--priority` wins) and linked to it with `relates`, so a chain's
+leftovers stay in the chain's version and no INTAKE is queued. This covers a Bug, Task or Story; an Epic or Sub-task follow-up keeps the old rule. A closed parent that is not in
+the current version, or whose version is frozen: no version, the request is the backlog one and the why says the
+parent is closed. A parent that cannot be read is not treated as closed: the request asks for no version, with a warning (with `--remainder` its evidence still carries `follow_up_of` and `remainder`). A parent in a frozen current version: the
 request still asks for that version and the why says it is frozen; the release manager rules on the frozen intake,
-and the filing never routes around it (operator decisions 383, 489 and 512). The residual cap is NOT checked: the request never writes
-the fixVersion and the release manager is not shown the cap. The ticket's own fixVersion is not written. An open
-parent with no current version, or a parent that cannot be read (a warning on stderr), leaves the request as before:
+and the filing never routes around it (operator decisions 383, 489 and 512). An INTAKE-only follow-up writes no fixVersion of its own (the closed-parent case above does). An open
+parent with no current version, or a parent that cannot be read (a warning on stderr), asks for no version (with `--remainder` the evidence still records `follow_up_of` and `remainder`, also under an explicit `--why` or `--proposed-version`):
 no version, filed to the backlog. A caller's own `--fix-version`, `--backlog`, `--proposed-version` or `--why` wins
 and skips the read, and `--blocks`/`--split-from` place the ticket in the target's version, so no request is queued.
 An unversioned create, a residual or follow-up included, is refused before the POST when no release can take the INTAKE (no release declared, several
 declared, the state unreadable, or a placeholder why); an INTAKE that fails after the POST leaves the key on stdout,
 says `PARTIAL: Created <KEY> but INTAKE not queued` and exits 1. The release root comes from the CLI's own
 checkout, never the caller's cwd. `edit`'s depth-2 drop only warns, and says so when no release is declared.
-A residual that wins a full version's slot displaces the lowest-ranked To Do resident, never a ruled one: a key whose latest
-admissions-ledger row admits it (an `rm-admit` or an override) or whose latest signed operator decision places it there. When the
-rulings cannot be read (no ledger file, a malformed ledger, or a declared release whose signing key cannot be loaded) nobody is displaced and the newcomer steps down; a
-newcomer left with no version, including by a ruling that lands after it was filed, queues its INTAKE.
+No count of what a version holds refuses, labels, redirects or displaces a filing: a residual of a declared project is placed by the door from its priority (a `--gate` keeps the current version),
+and no resident is moved out to make room for it.
 `next-dispatchable.sh` counts the open versionless operator-directed, High+ Bug, `scope-<version>`, `proposed-<earliest version>`
 and worker-held tickets and prints `# pool=<n>/<top>,INTAKE:<m>` (never a bare LOW) with a
 `# intake <m> for <version>: <keys>` line; the waiter's WAKE text names them and the INTAKE command.
@@ -471,7 +483,7 @@ spoofable by any same-uid caller (a known ceiling; the upgrade path is the relea
 **Intake gate for a frozen version.** A version whose description
 has a line `frozen: <date>` takes no new ticket without a reason. `create` checks
 the version the ticket will land in, whether from `--fix-version`, a Highest or
-`--gate` Bug's default, or a `--residual-of` escape or hardening route, and
+`--gate` Bug's default, or a `--residual-of` class route of a project no declared release names, and
 refuses unless `--gate critical|regression|must:<decision-ref>|receipt` is given
 (`must:` needs a non-empty ref). The refusal comes before the ticket is filed, and
 a gated filing also needs a ledger that can take an append. After the create it
@@ -490,7 +502,7 @@ gate or override row is appended after the edit reads back.
 
 **Who sets `HIMMEL_CONSOLE=1`.** `headed-arm.sh --role chief` exports it, so `chief.sh` and every arm-resume re-arm carry it; the worker launcher scrubs it from a worker's environment. The chief admits a fix to a broken chief or operator flow itself, without the release manager. When the release manager rules an INTAKE `ADMIT`, `release apply` appends the `rm-admit` ledger row (`by` is the lease owner session, once per ruling), so the board counts it like a chief admission.
 
-**Bulk guard on `rm-run`.** One `jira release rm-run` moves at most 20 open tickets into or out of the declared current version. Every fresh ruling it attempts counts (a replayed older intent writes no fixVersion, so it does not count; a voided one is counted when re-ruled), and a ruling the engine then refuses still uses its slot (the limit is on attempted moves, so it errs on the side of holding); closed tickets (per the mirror) and operator-authority rulings that carry a ref do not. The 21st move is not ruled: its request goes back to `open` (unclaimed) and prints `PENDING <req>: bulk guard ...`, so the next run picks it up. `rm-run <R> --ruling <decision-ref>` lifts the cap for the run: when the run needed it, it prints `bulk <N> lifted by ruling <ref>` and writes the same `kind: "override"` ledger row with `ruling: <ref>`. The chief lifts it with `--chief-override "<reason>"` (`HIMMEL_CONSOLE=1`, a non-empty reason and a ledger that can take an append, else it refuses before claiming anything): when the run needed it, one `kind: "override"` row `{version, key: "rm-run:<R>", reason: "bulk <N> open moves in <v>: <reason>"}` lands in the admissions ledger. The ref is recorded, not verified (ponytail, upgrade path: the release manager's signed state). A single `release apply`, `fix-version` and `edit-batch` are unchanged: `fix-version` takes one key and `edit-batch` only sets Sector, so neither can move a batch. Code: `BULK_MOVE_LIMIT` and `rmRun` in `scripts/jira/src/release/engine.ts`.
+**No count cap on `rm-run`.** `jira release rm-run <R>` rules every waiting request in one run, however many tickets it moves: the door (`scripts/jira/src/release/door.ts`) places each one by fixed rules, with no model call. A key with more than one waiting request gets one ruling per run, and the rest wait for the next run. `--ruling` and `--chief-override` are gone (unknown options), and a run writes no `kind: "override"` row. The chief places one ticket with `jira release request <R> ... --chief-reason "<reason>"` (`HIMMEL_CONSOLE=1`, never under a chief-spawned worker). The next `rm-run` rules it by the chief's rule, never later than a version the key already holds. A single `release apply`, `fix-version` and `edit-batch` are unchanged. Code: `rmRun` in `scripts/jira/src/release/rm-run.ts`, re-exported by `engine.ts`.
 
 ## Confluence CLI
 

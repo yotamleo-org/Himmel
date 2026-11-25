@@ -1,16 +1,18 @@
 import { readFile, writeFile, rename, mkdir, readdir, unlink, stat, realpath, readlink, mkdtemp, copyFile, rm, open } from "node:fs/promises";
-import { existsSync, readFileSync, lstatSync, constants } from "node:fs";
+import { existsSync, readFileSync, constants } from "node:fs";
 import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { currentNs, hostNsFile } from "../jira/src/release/fence-ancestry";
 import { appendLine, appendOutboxLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
 import { classify, isTicketKey, type Route } from "./router";
-import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, owedSendReceipt, owedReceiptSnapshot, makeChiefTap, type OwedReceipt, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
+import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, consoleInboxPath, rememberConsoleReply, owedSendReceipt, owedReceiptSnapshot, withOwedOutboxLock, makeChiefTap, type OwedReceipt, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { getUpdates, getMe, sendMessage, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
+import { getUpdates, getMe, sendMessage, sendMessageResult, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId, TelegramApiError } from "./telegram-api";
+import { makePeerReplyRoute, makePeerTap, startPeerNotify } from "./peer-notify-route";
 import { installTimestampedLogging } from "./log-timestamp";
+import { lockdownEnabled } from "./lockdown";
 import { cwdForChat, isAllowed, isGroupAllowed, isOperatorIdentity, loadAccess, operatorChatId, requireMentionForChat, vaultForChat, type Access } from "./gate";
 import { runSession, buildPrompt, isLegacyBridgeChat, BASH_BIN, REPO_ROOT, type BridgeSpawn, type BusPaths, type PermissionMode } from "./run";
 import { classifyForSpawn, type TriageVerdict, type TriageModelOverride, type ModelOverride } from "./triage";
@@ -444,11 +446,13 @@ export type OperatorFn = (fromId: number, chatId: number, senderChatId?: number)
 export type AutoFire = (msg: DeliveredMsg, route: Extract<Route, { kind: "auto" }>) => void;
 // afkSudo: the AFK sudo approve/deny route (afk-sudo-route.ts); true = consumed.
 // configRestore: the /config backups|restore route (config-restore-route.ts); true = consumed.
-export type AutoGate = { enabledOps: Set<string>; authorize: (from: number, chat_id: number) => boolean; fire: AutoFire; afkSudo?: (msg: DeliveredMsg) => boolean; configRestore?: (msg: DeliveredMsg) => boolean };
+export type AutoGate = { enabledOps: Set<string>; authorize: (from: number, chat_id: number) => boolean; fire: AutoFire; afkSudo?: (msg: DeliveredMsg) => boolean; configRestore?: (msg: DeliveredMsg) => boolean; peerReply?: (msg: DeliveredMsg) => Promise<boolean> };
 // Under lockdown the line is not consumed: it falls through to the lockdown policy, which drops it.
 // The MFA routes (afk sudo, config restore) run first; true = consumed.
 const mfaRouteConsumed = (root: string, auto: AutoGate | undefined, msg: DeliveredMsg): boolean =>
   !lockdownEnabled(root) && (auto?.afkSudo?.(msg) === true || auto?.configRestore?.(msg) === true);
+const takenBeforeRouting = async (root: string, auto: AutoGate | undefined, msg: DeliveredMsg): Promise<boolean> =>
+  mfaRouteConsumed(root, auto, msg) || (await auto?.peerReply?.(msg)) === true;
 
 // Single-threaded dispatch: the poller calls handleInbound serially, so the
 // "status === running" in-flight check needs no atomic CAS.
@@ -500,11 +504,6 @@ export function mentionsBot(text: string, botUsername: string): boolean {
   const bare = new RegExp(`(?<![A-Za-z0-9_])@${escaped}(?![A-Za-z0-9_])`, "i");
   const cmd = new RegExp(`(?<![A-Za-z0-9_])/[A-Za-z0-9_]+@${escaped}(?![A-Za-z0-9_])`, "i");
   return bare.test(text) || cmd.test(text);
-}
-
-function lockdownEnabled(root: string): boolean {
-  try { lstatSync(join(root, "lockdown")); return true; }
-  catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return false; throw e; }
 }
 
 // The journal record as handleInbound takes it; main() delivers every record through this.
@@ -623,7 +622,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // `model:`-prefixed message from a member is answered, just not re-modelled).
   // An afk-sudo approve/deny line is consumed before anything else can queue it,
   // so its TOTP code never reaches an inbox or a run.
-  if (mfaRouteConsumed(root, auto, msg)) return;
+  if (await takenBeforeRouting(root, auto, msg)) return;
   const fromOperator = isOperator(msg.from, msg.chat_id, msg.sender_chat);
   const NO_TAG = { model: null as ModelOverride | null, rest: msg.text, unknown: false };
   const tag = fromOperator ? parseModelTag(msg.text) : NO_TAG;
@@ -946,7 +945,7 @@ export async function handleAutoCommand(root: string, msg: DeliveredMsg, route: 
       await reply(refused.message);
       return;
     }
-    await reply("♻️ bouncing the poller — back in a moment");
+    await reply("♻️ restarting the Telegram bridge");
     await deps.audit({ chat_id: msg.chat_id, user: msg.from, forwarded: false, op: route.op, arg: route.arg, time: route.time, rc: 0, result: auditResult(route.op, 0) });
     const out = await deps.restart(route.arg);
     // Only reached when the fire FAILED (a successful rung 1 never returns).
@@ -1052,7 +1051,7 @@ export async function runAndSettle(root: string, session: string, run: Runner, n
   return res;
 }
 
-export type SendFn = (chat_id: number, text: string, replyToMessageId?: number, markup?: object) => Promise<void | number>;
+export type SendFn = (chat_id: number, text: string, replyToMessageId?: number, markup?: object, format?: boolean) => Promise<void | number>;
 
 // Send-then-commit: send each complete outbox line, advance the byte-cursor only
 // AFTER the send resolves (at-least-once on crash). Per-chat throttle is the caller's job.
@@ -1075,15 +1074,15 @@ const untaggedPageRefusal = (path: string): string | null => PAGE_TYPE.test(path
   ? `⚠️ ${basename(path)} was not sent: a spec or plan page reaches the operator only through the chief's send-file, which checks its critics first. A bridge report goes as .txt, .pdf, .png, .csv or .json, or as plain text.`
   : null;
 
-type OwedOut = { console: string; request_id: string; text: string; request_hash?: string; reply_to_message_id?: number; markup?: object };
+type OwedOut = { console: string; request_id: string; text: string; request_hash: string; reply_to_message_id?: number; markup?: object; format?: boolean };
 async function sendOwedPart(root: string, chat: number, out: OwedOut, retryPath: string,
-  receipt: (name: string, id: string) => Promise<number | null>, receivedThisPass: Set<string>, send: SendFn): Promise<boolean> {
+  receipt: (id: string, hash: string) => Promise<number | null>, receivedThisPass: Set<string>, send: SendFn): Promise<boolean> {
   try {
-    let received = await receipt(out.console, out.request_id);
+    let received = await receipt(out.request_id, out.request_hash);
     if (received === null) {
       const part = Number(out.request_id.split('-')[1]);
       const prior = out.request_id.replace(/-[0-9]+$/, `-${part - 1}`);
-      if (part > 0 && !receivedThisPass.has(prior) && await receipt(out.console, prior) === null) return false;
+      if (part > 0 && !receivedThisPass.has(prior) && await receipt(prior, out.request_hash) === null) return false;
       const retry = JSON.parse(await readFile(retryPath, "utf8").catch((e: NodeJS.ErrnoException) => { if (e.code === "ENOENT") return "{}"; throw e; }));
       if (!retry || typeof retry !== 'object' || Array.isArray(retry) ||
           !Number.isInteger(retry.attempts ?? 0) || (retry.attempts ?? 0) < 0 || (retry.attempts ?? 0) > 7 ||
@@ -1092,7 +1091,7 @@ async function sendOwedPart(root: string, chat: number, out: OwedOut, retryPath:
         const attempts = Math.min(7, (retry.attempts ?? 0) + 1);
         await atomicWrite(retryPath, JSON.stringify({ attempts, next: Date.now() + Math.min(1800000, 30000 * 2 ** (attempts - 1)) }));
         try {
-          const id = await send(chat, out.text, out.reply_to_message_id, out.markup);
+          const id = await send(chat, out.text, out.reply_to_message_id, out.markup, out.format === true);
           if (typeof id === "number" && Number.isSafeInteger(id) && id > 0) {
             await rememberConsoleReply(root, chat, id, out.console, out.request_id, out.request_hash);
             received = id;
@@ -1121,7 +1120,12 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
       const curFile = file + ".cursor";
       let start = 0; try { start = Number(await readFile(curFile, "utf8")) || 0; } catch {}
       let buf = ""; try { buf = await readFile(file, "utf8"); } catch { continue; }
-      if (start >= Buffer.byteLength(buf, "utf8")) { await truncateFullyConsumed(file, curFile); continue; }   // fully sent → reclaim
+      const listed = await readdir(sessionDir(root, s)).catch((e: unknown) => { logRedacted("[poller] outbox markers unreadable, reclaim skipped for " + s + ": " + e); return null; });
+      for (const n of listed ?? []) {
+        const marker = /^outbox\.jsonl\.sent-(\d+)$/.exec(n);
+        if (marker && Number(marker[1]) < start) await unlink(join(sessionDir(root, s), n)).catch((e: NodeJS.ErrnoException) => { if (e.code !== "ENOENT") throw e; });
+      }
+      if (start >= Buffer.byteLength(buf, "utf8")) { if (listed) await withOwedOutboxLock(root, () => truncateFullyConsumed(file, curFile)); continue; }   // fully sent → reclaim
       const slice = Buffer.from(buf, "utf8").subarray(start).toString("utf8");
       const lastNl = slice.lastIndexOf("\n");
       if (lastNl < 0) continue;
@@ -1129,15 +1133,23 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
       let pos = start;
       let blocked = false;
       let snapshot: Promise<Map<string, OwedReceipt>> | undefined;
-      const receipt = (name: string, id: string) => owedSendReceipt(root, meta.chat_id, name, id, undefined,
+      const receipt = (id: string, hash: string) => owedSendReceipt(root, meta.chat_id, id, hash,
         () => (snapshot ??= owedReceiptSnapshot(root, meta.chat_id)));
       const receivedThisPass = new Set<string>();
       for (const ln of complete.split("\n")) {
         const bytes = Buffer.byteLength(ln + "\n", "utf8");
+        const rowStart = pos;
         if (ln.trim()) {
-          let out: { text?: string; console?: string; request_id?: string; request_hash?: string; reply_to_message_id?: number; markup?: object; document_path?: string; caption?: string; via?: unknown; sha256?: unknown } | null = null;
+          let out: { text?: string; console?: string; request_id?: string; request_hash?: string; reply_to_message_id?: number; markup?: object; format?: boolean; document_path?: string; caption?: string; via?: unknown; sha256?: unknown } | null = null;
           try { out = JSON.parse(ln); } catch {}
-          if (out?.console && typeof out.request_id === "string" && /^[a-f0-9]{64}-[0-9]+$/.test(out.request_id) && typeof out.text === "string") {
+          if (out && (out.request_id !== undefined || out.request_hash !== undefined)) {
+            if (!(typeof out.console === "string" && consoleInboxPath(root, out.console) && typeof out.request_id === "string" && /^[a-f0-9]{64}-[0-9]+$/.test(out.request_id)
+                && typeof out.request_hash === "string" && /^[a-f0-9]{64}$/.test(out.request_hash) && typeof out.text === "string")) {
+              blocked = true;
+              logRedacted("[poller] owed row needs reconciliation at byte " + pos + " of " + file);
+              pos += bytes;
+              continue;
+            }
             const retryPath = file + ".retry-" + out.request_id;
             if (!await sendOwedPart(root, meta.chat_id, out as OwedOut, retryPath, receipt, receivedThisPass, send)) blocked = true;
             pos += bytes;
@@ -1167,15 +1179,17 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
               if (!ok) await send(meta.chat_id, `⚠️ couldn't send the file ${basename(out.document_path)} — it may be outside the send folder, missing, over 50 MB, changed since send-file queued it, sent from a group, or refused by Telegram.`);
             }
           } else if (out) {
-            const messageId = await send(meta.chat_id, out.text ?? "", out.reply_to_message_id, out.markup); // send BEFORE committing
+            const messageId = await send(meta.chat_id, out.text ?? "", out.reply_to_message_id, out.markup, out.format === true); // send BEFORE committing
             if (out.console && typeof messageId === "number") await rememberConsoleReply(root, meta.chat_id, messageId, out.console);
           }
           if (blocked) await atomicWrite(sentPath, sentHash);
           }
-          if (!blocked) await unlink(sentPath).catch((e: NodeJS.ErrnoException) => { if (e.code !== 'ENOENT') throw e; });
         }
         pos += bytes;
-        if (!blocked) await atomicWrite(curFile, String(pos));       // commit only the settled prefix
+        if (!blocked) {
+          await atomicWrite(curFile, String(pos));       // commit only the settled prefix
+          if (ln.trim()) await unlink(file + '.sent-' + rowStart).catch((e: NodeJS.ErrnoException) => { if (e.code !== 'ENOENT') throw e; });
+        }
       }
     } catch (e) { logRedacted("[poller] flush failed for " + s + ": " + e); continue; }
   }
@@ -2298,8 +2312,8 @@ async function sessionsList(root: string): Promise<string[]> {
   try { return await readdir(join(root, "sessions")); } catch { return []; }
 }
 
-export async function replyViaOutbox(root: string, chat_id: number, text: string, consoleName?: string, replyToMessageId?: number, markup?: object, requestId?: string, requestHash?: string): Promise<void> {
-  await appendOutboxLine(root, chat_id, { text, ...(consoleName ? { console: consoleName } : {}), ...(requestId ? { request_id: requestId, request_hash: requestHash } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}) });
+export async function replyViaOutbox(root: string, chat_id: number, text: string, consoleName?: string, replyToMessageId?: number, markup?: object, requestId?: string, requestHash?: string, format?: boolean): Promise<void> {
+  await appendOutboxLine(root, chat_id, { text, ...(format ? { format: true } : {}),...(consoleName ? { console: consoleName } : {}), ...(requestId ? { request_id: requestId, request_hash: requestHash } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}) });
 }
 
 export type MonitorSendFn = (text: string) => Promise<boolean>;
@@ -2413,8 +2427,10 @@ export function startMonitoringCheck(d: { check: () => ReturnType<typeof checkMo
   run();
 }
 
-export function startFlushTimers(d: { root: string; send: SendFn; sendDoc?: SendDocFn; flushMs: number; monitorMs: number; monitor: () => MonitorCfg | null; now?: () => number }): () => void {
-  const flushTimer = setInterval(guarded(() => flushOutboxes(d.root, d.send, d.sendDoc)), d.flushMs); // t13b-ok: the existing outbox flush timer, moved here so its wiring is testable
+export function startFlushTimers(d: { root: string; send: SendFn; sendDoc?: SendDocFn; flushMs: number; monitorMs: number; monitor: () => MonitorCfg | null; now?: () => number; peerFlush?: () => Promise<void> }): () => void {
+  const outboxTick = guarded(() => flushOutboxes(d.root, d.send, d.sendDoc));
+  const peerTick = d.peerFlush ? guarded(d.peerFlush) : null;
+  const flushTimer = setInterval(() => { outboxTick(); peerTick?.(); }, d.flushMs); // t13b-ok: the outbox and peer notify flush timer in the existing poller process, no new service
   const monitorTimer = setInterval(guarded(async () => { const m = d.monitor(); if (m) await flushMonitor(d.root, m.send, (d.now ?? Date.now)(), m); }), d.monitorMs); // t13b-ok: the monitoring flush's own timer in the existing poller process, no new service
   for (const t of [flushTimer, monitorTimer]) if (typeof t.unref === "function") t.unref();
   return () => { clearInterval(flushTimer); clearInterval(monitorTimer); };
@@ -2597,9 +2613,9 @@ export async function main(): Promise<void> {
   const notifyDocFail: NotifyDocFailFn = async (chatId, name) => {
     await sendMessage(token, chatId, `⚠️ couldn't download "${name}" (it may exceed Telegram's ~20MB limit) — I forwarded your caption only.`);
   };
-  const send: SendFn = async (chat, text, replyTo, markup) => {
+  const send: SendFn = async (chat, text, replyTo, markup, format) => {
     let messageId: number | undefined;
-    await sendMessage(token, chat, text, undefined, undefined, id => { messageId = id; }, replyTo, markup);
+    await sendMessage(token, chat, text, undefined, undefined, id => { messageId = id; }, replyTo, markup, format);
     return messageId;
   };
   // inbound.jsonl's cursor is ROOT-scoped, not chat-scoped, so a
@@ -2676,7 +2692,9 @@ export async function main(): Promise<void> {
     answer: (id, text) => answerCallbackQuery(token, id, text),
   }, afkPrompts);
   const configRestore = makeConfigRestoreGate({ access: () => access, enrolled: configRestoreEnrolled, run: spawnConfigRestore, reply: (chat: number, text: string) => replyViaOutbox(root, chat, text), log: logRedacted });
-  const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo, configRestore };
+  const peerReply = makePeerReplyRoute({ root, access: () => access, reply: (chat, text) => sendMessage(token, chat, text).then(() => undefined) });
+  const peerTap = makePeerTap({ root, access: () => access, answer: (id, text) => answerCallbackQuery(token, id, text) });
+  const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo, configRestore, peerReply };
   // Operator -> chief routing. Same authorize as /arm, global
   // allowFrom sender AND an allowed chat, so the gate is unchanged; the ack rides
   // the per-chat outbox like every other bridge reply.
@@ -2719,7 +2737,8 @@ export async function main(): Promise<void> {
   const FLUSH_MS = intervalEnvMs(process.env.TELEGRAM_FLUSH_MS, 1000);
   const MONITOR_FLUSH_MS = 3000;
   let monitorCfg: MonitorCfg | null = null;
-  startFlushTimers({ root, send, sendDoc: makeSendDoc(token, root, operatorChat), flushMs: FLUSH_MS, monitorMs: MONITOR_FLUSH_MS, monitor: () => monitorCfg });
+  const peerNotify = startPeerNotify({ token, access: () => access, send: sendMessageResult, log: logRedacted });
+  startFlushTimers({ root, send, sendDoc: makeSendDoc(token, root, operatorChat), flushMs: FLUSH_MS, monitorMs: MONITOR_FLUSH_MS, monitor: () => monitorCfg, peerFlush: peerNotify?.flush });
   startMonitoringCheck({ check: () => checkMonitoring(bridgeEnv), apply: (m) => { monitorCfg = { send: m.send, reason: m.reason, operatorChat }; } });
   // Stale chief-waiter heartbeat alert. chief-wait.sh
   // rewrites consoles/<name>.md.wait on every poll; a gap past
@@ -2752,6 +2771,7 @@ export async function main(): Promise<void> {
     let updates: any[] = [];
     try {
       updates = await getUpdates(token, offset, 30);
+      peerNotify?.notePoll(true);
       if (outageStartedAt !== null) {
         const downSec = Math.round((Date.now() - outageStartedAt) / 1000);
         console.error(`[poller] getUpdates recovered after ${pollFails} consecutive failure(s) — outage ran ~${downSec}s (started ${new Date(outageStartedAt).toISOString()})`);
@@ -2766,6 +2786,7 @@ export async function main(): Promise<void> {
       console.error(`[poller] heartbeat: getUpdates ok (offset=${offset}, updates=${updates.length})`);
       pollFails = 0; outageStartedAt = null; lastOutageAlertAt = null;
     } catch (e) {
+      peerNotify?.notePoll(false, e instanceof TelegramApiError ? e.code : undefined);
       pollFails++;
       if (outageStartedAt === null) outageStartedAt = Date.now();
       const backoffMs = getUpdatesBackoffMs(pollFails);
@@ -2784,7 +2805,7 @@ export async function main(): Promise<void> {
       continue;
     }
     // Button taps are not messages: ingest skips them, and they advance the offset like any update.
-    dispatchAfkCallbacks(updates, afkTapUnlessLocked(root, (t) => afkTap(t) || chiefTap(t)));
+    dispatchAfkCallbacks(updates, afkTapUnlessLocked(root, (t) => afkTap(t) || chiefTap(t) || peerTap(t)));
     // Ordering: see repairThenIngest's own comment for why
     // the repair must run before the ingest append, not after.
     await repairThenIngest(root, updates, allow, fetchImage, fetchVoice, fetchDoc, notifyDocFail, onCursorReset);

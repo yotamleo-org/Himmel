@@ -504,7 +504,7 @@ eq "M1 a test's alert never reaches the real sender" "$(calls bun)" 0
 reset
 alert_env "$CLAUDE_STUB" bash "$TMP/alert-run.sh" "$MBA"
 eq "M2 a real alert reaches the sender" "$(calls bun)" 1
-has "M2 the sender is told the operator and the alert" "$REC" "reply 555 MERGE-BLOCKED o/r#1"
+has "M2 the sender is told the operator and the alert" "$REC" "reply --kind merge-blocked 555 MERGE-BLOCKED o/r#1 @abc123def"
 reset
 alert_env MERGE_BLOCK_ALERT_CMD="$TMP/send-stub" bash "$TMP/alert-run.sh" "$MBA"
 eq "M3 a stub sender keeps working for a hermetic test" "$(calls seam)" 1
@@ -532,7 +532,7 @@ EOF
 reset
 alert_env "$CLAUDE_STUB" bash "$TMP/mog-run.sh" "$root" "$TMP/mog-alert.lib"
 eq "MOG1 merge-on-green's block alert in a real session still sends" "$(calls bun)" 1
-has "MOG1 the sender is told the operator and the merge" "$REC" "reply 555 MERGE-BLOCKED o/r#3"
+has "MOG1 the sender is told the operator and the merge" "$REC" "reply --kind merge-blocked 555 MERGE-BLOCKED o/r#3 @cafe01234567"
 reset
 alert_env bash "$TMP/mog-run.sh" "$root" "$TMP/mog-alert.lib"
 eq "MOG2 the same alert from a test sends nothing" "$(calls bun)" 0
@@ -698,7 +698,7 @@ mkdir -p "$TMP/node-only"
 ln -sf "$(PATH="${PATH#"$BIN":}" command -v node)" "$TMP/node-only/node"
 as_session env PATH="$TMP/node-only:$PATH" "${CA_ALERT[@]}" >/dev/null 2>&1
 eq "CAS2 a real session's config alert sends its Telegram message" "$(calls bun)" 1
-has "CAS2 the sender is told the operator chat" "$REC" "reply 12345"
+has "CAS2 the sender is told the operator chat" "$REC" "reply --kind config-audit 12345"
 
 # JP rows: release apply, release rm-run and jira create post to Jira.
 if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; then

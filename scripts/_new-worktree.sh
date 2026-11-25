@@ -6,7 +6,17 @@
 # after `/clean_garden` superseded the standalone `/new-worktree` command.)
 #
 # Usage (internal):
-#   ./scripts/_new-worktree.sh <branch-name> [--no-install] [--verbose]
+#   ./scripts/_new-worktree.sh <branch-name> [--no-install] [--no-fetch] [--verbose]
+#     --no-fetch: branch from the origin/<default> ref already fetched (a caller
+#     creating many worktrees fetches once; concurrent fetches race on its lock)
+#   ./scripts/_new-worktree.sh <branch-name> --resume [--check] [--no-install] [--verbose]
+#     the branch already exists (a RESUME row whose worktree is gone): fetch it and
+#     attach a worktree at a tip this script can account for. Never branches from
+#     the default branch. --check writes nothing and prints
+#     local|origin|both|none|unknown. Reached through `worktree.sh resume`.
+#   ./scripts/_new-worktree.sh --check-name <branch-name>
+#     validate the branch name only (the type list below and git's ref rules),
+#     create nothing; exit 0 when worktree.sh would accept it.
 #
 # Branch naming: type/slug (feat/foo, chore/bar, fix/baz, docs/qux).
 # Worktree path is derived by replacing `/` with `+`:
@@ -15,7 +25,7 @@
 # Quiet-mode default: prints a single OK/ERR line with the worktree path and the
 # log file. Pass --verbose to stream everything to the terminal too.
 #
-# Side effects:
+# Side effects (new):
 #   1. git fetch origin <default> (refresh refs only — does not modify local
 #      default branch; <default> = main OR master, resolved)
 #   2. git worktree add <path> -b <branch> origin/<default>
@@ -44,7 +54,7 @@ fi
 . "$SCRIPT_DIR/lib/branch-shipped.sh"
 
 usage() {
-    echo "Usage: $0 <branch-name> [--no-install] [--verbose]" >&2
+    echo "Usage: $0 <branch-name> [--no-install] [--no-fetch] [--verbose]" >&2
     echo "  branch-name format: type/slug  (feat/foo, chore/bar, fix/baz, docs/qux)" >&2
     exit 2
 }
@@ -54,10 +64,18 @@ usage() {
 BRANCH=""
 NPM_INSTALL=1
 VERBOSE=0
+CHECK_NAME=0
+NO_FETCH=0
+RESUME=0
+RESUME_CHECK=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --no-install) NPM_INSTALL=0; shift ;;
         --verbose|-v) VERBOSE=1; shift ;;
+        --check-name) CHECK_NAME=1; shift ;;
+        --no-fetch) NO_FETCH=1; shift ;;
+        --resume) RESUME=1; shift ;;
+        --check) RESUME_CHECK=1; shift ;;
         -h|--help) usage ;;
         -*) echo "Unknown flag: $1" >&2; usage ;;
         *) BRANCH="$1"; shift ;;
@@ -65,9 +83,20 @@ while [ $# -gt 0 ]; do
 done
 
 [ -z "$BRANCH" ] && usage
+if [ "$RESUME_CHECK" -eq 1 ] && [ "$RESUME" -eq 0 ]; then
+    echo "ERR new-worktree: --check belongs to --resume" >&2
+    exit 2
+fi
+if [ "$RESUME" -eq 1 ] && [ "$NO_FETCH" -eq 1 ]; then
+    echo "ERR new-worktree: --resume always fetches; --no-fetch does not apply" >&2
+    exit 2
+fi
 
-if ! [[ "$BRANCH" =~ ^(feat|fix|chore|docs|refactor|test)/[a-zA-Z0-9._+-]+$ ]]; then
-    echo "ERR new-worktree: branch '$BRANCH' invalid — must be type/slug where type ∈ feat|fix|chore|docs|refactor|test" >&2
+BRANCH_RE='^(feat|fix|chore|docs|refactor|test)/[a-zA-Z0-9._+-]+$'
+BRANCH_TYPES=${BRANCH_RE#^(}
+BRANCH_TYPES=${BRANCH_TYPES%%)*}
+if ! [[ "$BRANCH" =~ $BRANCH_RE ]]; then
+    echo "ERR new-worktree: branch '$BRANCH' invalid — must be type/slug where type ∈ $BRANCH_TYPES; fix: rename it to one of those types (e.g. docs/${BRANCH#*/})" >&2
     exit 1
 fi
 # Authoritative validation: git's own rules (rejects e.g. .lock suffix, leading
@@ -77,6 +106,7 @@ if ! git check-ref-format "refs/heads/$BRANCH" 2>/dev/null; then
     echo "ERR new-worktree: branch '$BRANCH' rejected by git check-ref-format (reserved suffix, leading dot, consecutive dots, etc.)" >&2
     exit 1
 fi
+[ "$CHECK_NAME" -eq 1 ] && exit 0
 
 COMMON_DIR=$(git rev-parse --git-common-dir 2>/dev/null) || { echo "ERR new-worktree: not in a git repo" >&2; exit 1; }
 # `git rev-parse --git-common-dir` may return relative path on Windows Git Bash;
@@ -101,11 +131,69 @@ run() {
     fi
 }
 
-if [ -e "$WORKTREE_PATH" ]; then
+post_create() {
+    # Jira is CLI-first, so the atlassian MCP plugin should not load. A
+    # session started here without a plugin profile inherits an ancestor's
+    # `atlassian: true` (the primary's hand-kept local override) and Claude
+    # records one local-scope install per worktree. This file is the nearest layer,
+    # so it wins. An existing one is the worker's own; leave it.
+    if [ ! -e "$WORKTREE_PATH/.claude/settings.local.json" ]; then
+        mkdir -p "$WORKTREE_PATH/.claude" &&
+            printf '{\n  "enabledPlugins": {\n    "atlassian@claude-plugins-official": false\n  }\n}\n' \
+                > "$WORKTREE_PATH/.claude/settings.local.json"
+    fi
+
+    INSTALL_NOTE=""
+    if [ $NPM_INSTALL -eq 1 ] && [ -f "$WORKTREE_PATH/scripts/jira/package.json" ]; then
+        JIRA_PRIMARY="$PRIMARY_WORKTREE/scripts/jira"
+        if [ -d "$JIRA_PRIMARY/node_modules" ] && [ ! -e "$WORKTREE_PATH/scripts/jira/node_modules" ] &&
+            [ -f "$JIRA_PRIMARY/package-lock.json" ] &&
+            cmp -s "$JIRA_PRIMARY/package-lock.json" "$WORKTREE_PATH/scripts/jira/package-lock.json" &&
+            cmp -s "$JIRA_PRIMARY/package.json" "$WORKTREE_PATH/scripts/jira/package.json" &&
+            cp -a --reflink=auto "$JIRA_PRIMARY/node_modules" "$WORKTREE_PATH/scripts/jira/node_modules" 2>>"$LOG"; then
+            INSTALL_NOTE=" (jira deps reused from primary, no install)"
+        elif (cd "$WORKTREE_PATH/scripts/jira" && run npm install --omit=dev --no-audit --no-fund --silent); then
+            INSTALL_NOTE=" (jira deps installed)"
+        else
+            echo "ERR new-worktree: worktree created but npm install failed (log: $LOG)" >&2
+            exit 1
+        fi
+    fi
+}
+
+if [ "$RESUME" -eq 1 ]; then
+    # shellcheck source=lib/qmd-bounded.sh
+    # shellcheck disable=SC1091
+    . "$SCRIPT_DIR/lib/qmd-bounded.sh"
+    export GIT_TERMINAL_PROMPT=0
+    resume_refuse() { echo "ERR new-worktree: $1: $2" >&2; exit 1; }
+    if git -C "$PRIMARY_WORKTREE" remote get-url origin >/dev/null 2>&1; then HAS_ORIGIN=1; else HAS_ORIGIN=0; fi
+    PROBE=absent
+    if [ "$HAS_ORIGIN" -eq 1 ]; then
+        _rp_rc=0
+        _rp_out=$(qmd_bounded 10 git -C "$PRIMARY_WORKTREE" ls-remote --heads origin "refs/heads/$BRANCH" 2>/dev/null) || _rp_rc=$?
+        if [ "$_rp_rc" -ne 0 ]; then
+            PROBE=failed
+        elif [ -n "$(printf '%s\n' "$_rp_out" | awk -v r="refs/heads/$BRANCH" '$2 == r { print $1 }')" ]; then
+            PROBE=listed
+        fi
+    fi
+    L=$(git -C "$PRIMARY_WORKTREE" rev-parse --verify -q "refs/heads/$BRANCH" 2>/dev/null) || L=""
+    if [ "$RESUME_CHECK" -eq 1 ]; then
+        case "$PROBE" in
+            failed) echo unknown ;;
+            listed) if [ -n "$L" ]; then echo both; else echo origin; fi ;;
+            *) if [ -n "$L" ]; then echo local; else echo none; fi ;;
+        esac
+        exit 0
+    fi
+fi
+
+if [ "$RESUME" -eq 0 ] && [ -e "$WORKTREE_PATH" ]; then
     echo "ERR new-worktree: worktree path exists: $WORKTREE_PATH" >&2
     exit 1
 fi
-if git -C "$PRIMARY_WORKTREE" show-ref --verify --quiet "refs/heads/$BRANCH"; then
+if [ "$RESUME" -eq 0 ] && git -C "$PRIMARY_WORKTREE" show-ref --verify --quiet "refs/heads/$BRANCH"; then
     echo "ERR new-worktree: local branch '$BRANCH' exists — delete with: git branch -D $BRANCH" >&2
     exit 1
 fi
@@ -132,6 +220,98 @@ wt_ceiling_check() {
 }
 # Early cheap refusal; re-checked under the creation lock before `worktree add`.
 wt_ceiling_check
+
+if [ "$RESUME" -eq 1 ]; then
+    [ -e "$WORKTREE_PATH" ] && resume_refuse path-exists "worktree path exists: $WORKTREE_PATH"
+    STALE=0
+    _reg_cur=""
+    _reg_path=""
+    while IFS= read -r _reg_line; do
+        case "$_reg_line" in
+            "worktree "*) _reg_cur="${_reg_line#worktree }" ;;
+            "branch refs/heads/$BRANCH") _reg_path="$_reg_cur" ;;
+        esac
+    done < <(git -C "$PRIMARY_WORKTREE" worktree list --porcelain)
+    if [ -n "$_reg_path" ]; then
+        if [ -e "$_reg_path" ]; then
+            resume_refuse checked-out "branch '$BRANCH' is already checked out at $_reg_path"
+        fi
+        STALE=1
+    fi
+    export FORGE GH_CMD 2>/dev/null || true
+    _bs_rc=0
+    branch_has_merged_pr "$BRANCH" "$PRIMARY_WORKTREE" || _bs_rc=$?
+    if [ "${REUSE_MERGED_BRANCH_OK:-0}" != "1" ]; then
+        case "$_bs_rc" in
+            0) resume_refuse merged "branch '$BRANCH' maps to a merged PR - set REUSE_MERGED_BRANCH_OK=1 to resume it anyway" ;;
+            2) resume_refuse forge-unknown "the forge could not say whether '$BRANCH' was merged - set REUSE_MERGED_BRANCH_OK=1 to resume it anyway" ;;
+        esac
+    fi
+    echo "=== new-worktree --resume $BRANCH @ $(date -Iseconds) ===" >>"$LOG"
+    O=""
+    case "$PROBE" in
+        failed) resume_refuse fetch-failed "could not ask origin about '$BRANCH' (ls-remote failed or timed out); nothing created, no ref moved" ;;
+        listed)
+            if ! run qmd_bounded "${HIMMEL_RESUME_FETCH_TIMEOUT:-120}" git -C "$PRIMARY_WORKTREE" fetch --quiet origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"; then
+                resume_refuse fetch-failed "origin lists '$BRANCH' but the fetch failed (log: $LOG); nothing created"
+            fi
+            O=$(git -C "$PRIMARY_WORKTREE" rev-parse --verify -q "refs/remotes/origin/$BRANCH") || resume_refuse fetch-failed "fetched '$BRANCH' but origin/$BRANCH did not appear"
+            ;;
+    esac
+    RESUME_NOTE=""
+    if [ -z "$L" ] && [ -z "$O" ]; then
+        resume_refuse none "branch '$BRANCH' exists neither locally nor on origin - create it with: bash scripts/worktree.sh new $BRANCH"
+    elif [ -z "$L" ]; then
+        RESUME_STATE=only-origin
+    elif [ -z "$O" ]; then
+        RESUME_STATE=only-local
+        RESUME_NOTE="no remote branch"
+    elif [ "$L" = "$O" ]; then
+        RESUME_STATE=equal
+    elif git -C "$PRIMARY_WORKTREE" merge-base --is-ancestor "$L" "$O"; then
+        RESUME_STATE=behind-ff
+    elif git -C "$PRIMARY_WORKTREE" merge-base --is-ancestor "$O" "$L"; then
+        RESUME_STATE=ahead
+        RESUME_NOTE="local ahead of origin by $(git -C "$PRIMARY_WORKTREE" rev-list --count "$O..$L")"
+    else
+        resume_refuse diverged "local $L and origin $O have diverged; nothing created - reconcile by hand (git -C $PRIMARY_WORKTREE log --oneline --graph $L $O)"
+    fi
+    if command -v flock >/dev/null 2>&1; then
+        exec 9>"$COMMON_DIR_ABS/himmel-worktree-create.lock"
+        # prim-ok: the wait is bounded (HIMMEL_WORKTREE_LOCK_TIMEOUT, default 120 s) and the lock spans the rest of the script; with_lock waits unbounded and scopes to one command
+        if ! flock -w "${HIMMEL_WORKTREE_LOCK_TIMEOUT:-120}" 9; then
+            resume_refuse lock "timed out waiting for the worktree creation lock - refusing"
+        fi
+    fi
+    if [ "$STALE" -eq 1 ]; then
+        [ -e "$_reg_path" ] && resume_refuse checked-out "branch '$BRANCH' is checked out at $_reg_path again; nothing removed"
+        git -C "$PRIMARY_WORKTREE" worktree remove --force "$_reg_path" || resume_refuse stale-registration "could not remove the stale registration of '$BRANCH' at $_reg_path"
+        echo "removed the stale registration of $BRANCH ($_reg_path)"
+    fi
+    wt_ceiling_check
+    _add_ok=1
+    if [ "$RESUME_STATE" = "only-origin" ]; then
+        run git -C "$PRIMARY_WORKTREE" worktree add "$WORKTREE_RELATIVE" -b "$BRANCH" "$O" || _add_ok=0
+    else
+        run git -C "$PRIMARY_WORKTREE" worktree add "$WORKTREE_RELATIVE" "$BRANCH" || _add_ok=0
+    fi
+    [ "$_add_ok" -eq 1 ] || resume_refuse add-failed "worktree add failed (log: $LOG); nothing created"
+    exec 9>&-
+    if [ "$RESUME_STATE" = "behind-ff" ]; then
+        if ! run git -C "$WORKTREE_PATH" merge --ff-only --quiet "$O"; then
+            git -C "$PRIMARY_WORKTREE" worktree remove --force "$WORKTREE_PATH" >>"$LOG" 2>&1 || true
+            resume_refuse ff-failed "could not fast-forward '$BRANCH' to origin $O (log: $LOG); worktree removed, local branch unchanged"
+        fi
+    fi
+    if [ "$RESUME_STATE" = "only-origin" ] && [ "$HAS_ORIGIN" -eq 1 ]; then
+        run git -C "$PRIMARY_WORKTREE" config "branch.${BRANCH}.remote" origin
+        run git -C "$PRIMARY_WORKTREE" config "branch.${BRANCH}.merge" "refs/heads/${BRANCH}"
+    fi
+    post_create
+    if [ -n "$RESUME_NOTE" ]; then echo "NOTE new-worktree: $RESUME_NOTE"; fi
+    echo "RESUMED $WORKTREE_PATH $BRANCH $(git -C "$WORKTREE_PATH" rev-parse HEAD) $RESUME_STATE"
+    exit 0
+fi
 
 # refuse creating a worktree for a branch that maps to a merged PR.
 # Run BEFORE the network fetch so the refusal is cheap and early.
@@ -170,7 +350,7 @@ else
     echo "WARN new-worktree: no 'origin' remote - branching from local '$DEFAULT_BRANCH'" >&2
 fi
 
-if [ "$HAS_ORIGIN" -eq 1 ] && ! run git -C "$PRIMARY_WORKTREE" fetch origin "$DEFAULT_BRANCH" --quiet; then
+if [ "$HAS_ORIGIN" -eq 1 ] && [ "$NO_FETCH" -eq 0 ] && ! run git -C "$PRIMARY_WORKTREE" fetch origin "$DEFAULT_BRANCH" --quiet; then
     # Common unattended-run failure (e.g. arm-resume relaunch): git's stored
     # credential (Windows Git Credential Manager, or an expired PAT git uses) is
     # stale while `gh` holds a SEPARATE valid token. `gh auth setup-git` wires git
@@ -225,25 +405,6 @@ if [ "$HAS_ORIGIN" -eq 1 ]; then
     run git -C "$PRIMARY_WORKTREE" config "branch.${BRANCH}.merge" "refs/heads/${BRANCH}"
 fi
 
-# Jira is CLI-first, so the atlassian MCP plugin should not load. A
-# session started here without a plugin profile inherits an ancestor's
-# `atlassian: true` (the primary's hand-kept settings.local.json) and Claude
-# records one local-scope install per worktree. This file is the nearest layer,
-# so it wins. An existing one is the worker's own; leave it.
-if [ ! -e "$WORKTREE_PATH/.claude/settings.local.json" ]; then
-    mkdir -p "$WORKTREE_PATH/.claude" &&
-        printf '{\n  "enabledPlugins": {\n    "atlassian@claude-plugins-official": false\n  }\n}\n' \
-            > "$WORKTREE_PATH/.claude/settings.local.json"
-fi
-
-INSTALL_NOTE=""
-if [ $NPM_INSTALL -eq 1 ] && [ -f "$WORKTREE_PATH/scripts/jira/package.json" ]; then
-    if (cd "$WORKTREE_PATH/scripts/jira" && run npm install --omit=dev --no-audit --no-fund --silent); then
-        INSTALL_NOTE=" (jira deps installed)"
-    else
-        echo "ERR new-worktree: worktree created but npm install failed (log: $LOG)" >&2
-        exit 1
-    fi
-fi
+post_create
 
 echo "OK new-worktree: $BRANCH → $WORKTREE_PATH${INSTALL_NOTE} (log: $LOG)"

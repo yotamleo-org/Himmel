@@ -6,6 +6,7 @@
 import type { Peer } from "./config";
 import { byStamp, type Tpl } from "./grammar";
 import type { PeerMsgRec } from "./gate";
+import type { ModelRoute } from "./reader";
 
 const MIN = 60_000, H = 3_600_000;
 export const ACK_BY = 30 * MIN;
@@ -37,12 +38,27 @@ export const WAKE_LABELS = [
   "closed", "declined", "peer message", "answer on a closed thread", "message on a closed thread", "cap hit",
 ] as const;
 export type WakeLabel = (typeof WAKE_LABELS)[number];
-export type WakeEvent = { peer: string; root: number; label: WakeLabel; replyBy?: number };
+export type WakeEvent = { peer: string; root: number; dir: Dir; label: WakeLabel; replyBy?: number };
 export type Action =
   | { send: { peer: string; tpl: Tpl; root: number; by?: Date } }
   | { resend: { peer: string; root: number } }
   | { wake: WakeEvent }
   | { state: ThreadRec };
+
+export type Transition = "opened" | "answered-now" | "other";
+export type Route = "escalate" | "ack" | "drop";
+
+export function effectiveRoute(kind: string, transition: Transition, proposed: ModelRoute): Route {
+  const model = proposed === "ack" || proposed === "drop" ? proposed : null;
+  if (model === null) return "escalate";
+  if (transition === "opened") {
+    if (kind === "question") return model === "drop" ? "drop" : "escalate";
+    if (kind === "status" || kind === "info") return model;
+    return "escalate";
+  }
+  if (transition === "answered-now") return "escalate";
+  return "drop";
+}
 
 export function templateLine(name: Tpl, root: number, id: string, by?: Date): string {
   return `#tpl:${name} #${root} id=${id}${by ? ` by=${byStamp(by)}` : ""}`;
@@ -104,7 +120,7 @@ export class Threads {
       return { closingSent: true };
     }
     if (rec.auto >= MAX_AUTO_PER_THREAD || this.hourly(rec.peer, now) >= MAX_AUTO_PER_HOUR) {
-      actions.push({ wake: { peer: rec.peer, root: rec.root, label: "cap hit" } });
+      actions.push({ wake: { peer: rec.peer, root: rec.root, dir: rec.dir, label: "cap hit" } });
       return {};
     }
     actions.push({ send: { peer: rec.peer, tpl, root: rec.root, by } });
@@ -119,7 +135,7 @@ export class Threads {
   }
 
   private wake(actions: Action[], rec: ThreadRec, label: WakeLabel, replyBy?: number) {
-    actions.push({ wake: { peer: rec.peer, root: rec.root, label, ...(replyBy ? { replyBy } : {}) } });
+    actions.push({ wake: { peer: rec.peer, root: rec.root, dir: rec.dir, label, ...(replyBy ? { replyBy } : {}) } });
   }
 
   private clampDeferred(rec: ThreadRec, by: number | undefined, now: number): number {
@@ -151,12 +167,39 @@ export class Threads {
     return actions;
   }
 
-  onInbound(msg: PeerMsgRec): Action[] {
+  onInbound(msg: PeerMsgRec): { actions: Action[]; transition: Transition } {
     const now = this.now(), actions: Action[] = [];
-    if (msg.root_id === msg.message_id) return this.onInboundRoot(msg, now, actions);
+    if (msg.root_id === msg.message_id) {
+      const known = this.get(msg.peer, msg.message_id);
+      this.onInboundRoot(msg, now, actions);
+      return { actions, transition: !known && this.get(msg.peer, msg.message_id) ? "opened" : "other" };
+    }
     const rec = this.get(msg.peer, msg.root_id);
-    if (!rec) return actions;
-    return rec.dir === "out" ? this.outInbound(rec, msg, now, actions) : this.inInbound(rec, msg, now, actions);
+    if (!rec) return { actions, transition: "other" };
+    if (rec.dir === "in") return { actions: this.inInbound(rec, msg, now, actions), transition: "other" };
+    const before = rec.state;
+    this.outInbound(rec, msg, now, actions);
+    const after = this.get(msg.peer, msg.root_id)!.state;
+    return { actions, transition: before !== "ANSWERED" && after === "ANSWERED" ? "answered-now" : "other" };
+  }
+
+  ack(peer: string, root: number): Action[] {
+    const now = this.now(), actions: Action[] = [];
+    const rec = this.get(peer, root);
+    if (!rec || rec.deadline === null) return actions;
+    const sends: Action[] = [];
+    const patch = this.template(sends, rec, "closing", now);
+    this.commit(actions, rec, { ...patch, state: "ACKED", deadline: null, remindAt: null }, now);
+    actions.push(...sends);
+    return actions;
+  }
+
+  drop(peer: string, root: number): Action[] {
+    const now = this.now(), actions: Action[] = [];
+    const rec = this.get(peer, root);
+    if (!rec || rec.deadline === null) return actions;
+    this.commit(actions, rec, { state: "DROPPED", deadline: null, remindAt: null }, now);
+    return actions;
   }
 
   private onInboundRoot(msg: PeerMsgRec, now: number, actions: Action[]): Action[] {

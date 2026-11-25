@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # vm-maintain.sh - keep one himmel test VM current, snapshot it, and report a dead login.
 #
-# WHY: test VMs rot between uses. On 2026-11-07 a VM proof leg failed because every snapshot's
+# WHY: test VMs rot between uses. On 2026-11-07 a VM proof worker failed because every snapshot's
 # Claude login had expired and the VM had no Codex or CLI proxy; nobody knew until a worker was
 # launched. A pure-code run (no model turn, no paid call) fixes the packages and a probe names the
 # login that needs the operator before a worker needs it.
@@ -32,7 +32,7 @@
 # The newest good snapshot per VM lives in ONE file: $STATE_DIR/newest-good.tsv
 # (default ~/.himmel/state/vm-maintain/newest-good.tsv), lines "<vm><TAB><snapshot><TAB><utc iso>".
 #
-# Waits behind other legs: export HIMMEL_VM_LOCK_WAIT=<seconds> (vm-lock.sh default 0 = refuse).
+# Waits behind other workers: export HIMMEL_VM_LOCK_WAIT=<seconds> (vm-lock.sh default 0 = refuse).
 # Exit: 0 ok / all live; 1 FAILED step or an expired login; 2 usage or lock refused.
 #
 # Seams (tests): VM_MAINTAIN_GUEST_EXEC, VM_MAINTAIN_VMSDK, VM_MAINTAIN_VBOX, VM_MAINTAIN_ALERT,

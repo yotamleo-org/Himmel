@@ -51,6 +51,53 @@
     }
   },
   "trend": {},
+  "version_lines": {
+    "v1": {
+      "status": "OK",
+      "as_of": "2026-10-21",
+      "days": [
+        {
+          "day": "2026-10-21",
+          "came_in": 1,
+          "done": 0,
+          "left": 0,
+          "open": 1,
+          "closed_undelivered": 0,
+          "arrived": {
+            "baseline": 1
+          },
+          "arrived_serious": 0
+        }
+      ],
+      "left": [],
+      "done_undated": 0,
+      "open_by_priority": {
+        "Medium": 1
+      },
+      "oldest_untouched": {
+        "key": "K-1",
+        "since": "2026-10-21",
+        "days": 0
+      },
+      "unrecorded": {
+        "open": [],
+        "closed": []
+      }
+    },
+    "v2": {
+      "status": "OK",
+      "as_of": "2026-10-21",
+      "days": [],
+      "left": [],
+      "done_undated": 0,
+      "open_by_priority": {},
+      "oldest_untouched": null,
+      "unrecorded": {
+        "open": [],
+        "closed": []
+      }
+    }
+  },
   "admissions_today": {
     "v1": 1,
     "v2": 0
@@ -67,8 +114,10 @@
   "requests": {
     "open": [],
     "claimed": [],
-    "oldest_open": null
+    "oldest_open": null,
+    "pending_keys": []
   },
+  "current": "v1",
   "heads": {
     "rulings": "",
     "operator": "",
@@ -76,6 +125,9 @@
     "requests": "",
     "mirror": null
   },
+  "priority_review": [],
+  "chief_placements": [],
+  "asks_apart": [],
   "refused_asks": [
     {
       "key": "ABC-2",

@@ -243,7 +243,10 @@ A refusal is final for that attempt: do not edit the return, write the index by 
 section, then run `bash "$S/minerva-spec-gate.sh" <spec-file>`. A non-zero exit
 means the spec lacks the estimate record, alternatives or definition of done:
 it names what is missing — fix the spec (back to 1a/1b), re-run the gate, and
-only dispatch the critic once it prints `ok`. Never skip it, and in `autonomous`
+only dispatch the critic once it prints `ok`. The gate also runs `sign-shape`: a
+`SIGN-SHAPE REFUSED` line names a tickets line or a residual line the signer
+cannot read. Re-run the gate before every re-critic, after you write that round's
+dispositions. Never skip it, and in `autonomous`
 mode the gate still applies (the answers go to ASSUMPTIONS, the record path stays
 in the spec). The critic reads the estimate record and may challenge sigma.
 
@@ -289,6 +292,18 @@ stands with `bun <himmel>/scripts/telegram/chief-route.ts round-status <KEY> --s
   Add `--no-round` when the ruling needs no revision (for example "sign it as it
   stands"); without it the record opens one further writer round. While any such
   finding is open the signature is refused, naming it.
+  A `reverses-ruling` finding that says it reverses a ruling on record, and whose
+  fix restores that ruling, goes instead to a check with
+  `round-critical <KEY> --finding <id> --decision <d> --quote "<the ruling's words>" --restores --specs <bucket>/specs`.
+  This records an owed check and opens no round: the finding's kind's next round must
+  already be open to it (within the cap, or by a record), and the signature is refused while
+  the check is owed. Paste the
+  `RESTORE-CHECK` block `round-status` prints into that round's critic brief (a
+  closure pack carries it already); the critic answers `RESTORE-HOLDS` or
+  `RESTORE-BREAKS` with the block's token. `RESTORE-HOLDS` closes the finding;
+  `RESTORE-BREAKS`, or a check round that can no longer open, makes it the
+  operator's again. Ask each spec critic to write a reverses-ruling finding as
+  "reverses decision <n>".
 - **A rethink.** Only the operator's ruling to start over lowers the count:
   `round-reset <KEY> --decision <d> --quote "<operator words>" --specs <bucket>/specs`, once per ticket.
 - The three record verbs run only from the chief's console, and every record is
@@ -309,7 +324,7 @@ R="${HIMMEL_REPO:-}"; [ -f "$R/scripts/lib/initiative-workers.sh" ] || R="$(git 
 ```
 
 It printing nothing means no checkout on this machine: skip the page and the
-seals, and say so with the return. send-file refuses that page, so nothing slips
+seals, and say so with the return. `send-file --sign` refuses that page, so nothing slips
 through. Otherwise `<himmel>` below is the path it printed. Ask whether the
 build is core with this one literal command, the build's paths comma-separated:
 
@@ -360,8 +375,12 @@ critic did not end with that line, append it yourself (`<count>` = the findings
 in the return). Never edit the critic's text. `jira release operator spec`
 signs the spec with the last round's file and hashes it. It refuses a last line
 in any other form. The normal `FINDINGS` path requires the spec's
-`## Critic rounds` section to give each residual a
-`- R<n>: fixed|ASSUMPTION|ceiling|deferred → HIMMEL-<n>` line. If that check fails
+`## Critic rounds` section to give each residual one line that names the round
+and the finding id as the critic wrote it:
+`- R<round>-<id>: fixed|ASSUMPTION|ceiling|deferred → HIMMEL-<n>`, for example
+`- R3-F27: deferred → HIMMEL-<n>`. Use `P` for a plan finding (`- P3-P17: fixed`),
+and write one id per line; a line listing several ids is refused. Advisory panel
+rows are not critic findings: write them as `- advisory <id>: <disposition>`. If that check fails
 on frozen capped artifacts, the frozen nonblocking carry route below may apply.
 
 **Seal each return to the bytes the critic read.** Straight after saving a return,
@@ -420,6 +439,10 @@ applicable standing decision, the normal signing call is:
 node <himmel>/scripts/jira/dist/index.js release operator spec <release> --keys <KEY> --spec <canonical-spec> --plan <canonical-plan> --verdict <latest-spec-return> --verdict <latest-plan-return> --decision <approved-decision> --verbatim-file <operator-words-file>
 ```
 
+The chief signs by default. For a spec the operator marked as his, he signs it
+with `--signer operator --words "<his exact words>"` in place of
+`--verbatim-file`; `jira release signer-check <KEY…>` says who signs.
+
 Each findings-bearing kind must have reached its refused cap; an under-cap
 findings return cannot qualify even if the other kind is capped. The paired
 returns must carry the required genuine artifact seals, with only minor/medium
@@ -446,7 +469,7 @@ read change only to answer an open blocking finding, and only the files round 3
 sealed: round 4 checks exactly that diff. When round 3 of either kind left no
 blocking finding, they are not edited at all: use the signing route above, and the
 minors go to the build. Stages 3 and 4 still run on a frozen spec, because
-send-file refuses a page with no plan critic file, or one neither `PLAN CLEAN` nor
+`send-file --sign` refuses a page with no plan critic file, or one neither `PLAN CLEAN` nor
 at its own round 3 in the ledger. The plan alone may still be fixed while its
 critic is under the cap. send-file lists the findings in a `FINDINGS` return and
 every open operator-critical finding. Whatever else wants an edit it cannot have,
@@ -578,7 +601,10 @@ from the target repo before any hand-off. A non-zero exit names each gap:
 - a missing or ungrepped Fact ownership row → back to the spec (1b);
 - an invariant with no named test → back to the plan (Stage 3).
 
-Do not hand off until it prints `ok`, in either mode.
+Do not hand off until it prints `ok`, in either mode. After the last
+dispositions are written, re-run the gate on the spec too: `bash
+"$S/minerva-spec-gate.sh" <spec-file>`, so a residual line the signer cannot
+read is fixed before the signing.
 
 - If mode is `autonomous` (Stage 0) **AND** the output contains `execute`: do NOT
   stop — **invoke `lean-skills:subagent-driven-development`** on the hardened plan

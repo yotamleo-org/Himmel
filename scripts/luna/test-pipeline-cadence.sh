@@ -2,7 +2,7 @@
 # Smoke test for scripts/luna/pipeline-cadence.sh (cron path,
 # daily harvest+triage worker, no-LLM fetch-health worker).
 #
-# Four cadence tasks are armed: HIMMEL-Pipeline-FetchHealth (daily 01:30 ->
+# Four cadence tasks are armed: HIMMEL-Pipeline-FetchHealth (daily 03:30 ->
 # direct fetch-health.py), HIMMEL-Pipeline-Harvest (daily 02:00 ->
 # /harvest-clips + /triage-clips), HIMMEL-Pipeline-Synthesize (daily 03:00
 # -> /synthesize-clips + /archive-clips), and HIMMEL-Pipeline-Health (daily
@@ -21,7 +21,7 @@
 # Cron suite covers (C*):
 #   C1.  status with empty crontab ("no crontab for user") -> not armed.
 #   C2.  arm --dry-run prints runner bodies + all four entries, touches nothing.
-#   C3.  arm installs the marker-tagged entries (all daily: 30 01 and
+#   C3.  arm installs the marker-tagged entries (all daily: 30 03 and
 #        00 02/03/04 * * *) + executable runner .sh files; pre-existing
 #        unrelated crontab lines survive.
 #   C4.  Runner .sh is interactive-claude shaped: bounded `< /dev/null`,
@@ -395,7 +395,7 @@ assert_rc "cron missing vault dir -> rc 1" 1 "$rc"
 
 echo "TEST: cron arm --dry-run prints plan, installs nothing"
 out=$(run_cron arm --vault "$VAULT" --dry-run)
-assert_contains "dry-run daily fetch-health entry" "30 01 * * *" "$out"
+assert_contains "dry-run daily fetch-health entry" "30 03 * * *" "$out"
 assert_contains "dry-run fetch-health marker" "# HIMMEL-Pipeline-FetchHealth" "$out"
 assert_contains "dry-run fetch-health runner is no-LLM" "fetch-health.py" "$out"
 assert_contains "dry-run daily harvest entry" "00 02 * * *" "$out"
@@ -428,7 +428,14 @@ if command -v node >/dev/null 2>&1; then
     assert_contains "cron arm pre-trusts vault in config" "true" "$trust"
 fi
 tab=$(cat "$CSTATE/crontab" 2>/dev/null || echo MISSING)
-assert_contains "daily fetch-health entry 01:30" "30 01 * * *" "$tab"
+assert_contains "daily fetch-health entry 03:30, after the harvest" "30 03 * * *" "$tab"
+fh_time=$(awk '/# HIMMEL-Pipeline-FetchHealth/{printf "%02d%02d", $2, $1}' "$CSTATE/crontab")
+hv_time=$(awk '/# HIMMEL-Pipeline-Harvest/{printf "%02d%02d", $2, $1}' "$CSTATE/crontab")
+if [ -n "$fh_time" ] && [ -n "$hv_time" ] && [ "$fh_time" -gt "$hv_time" ]; then
+    pass "fetch-health is scheduled after the harvest"
+else
+    fail "fetch-health ($fh_time) is not after the harvest ($hv_time)" "$tab"
+fi
 assert_contains "fetch-health entry marker-tagged" "# HIMMEL-Pipeline-FetchHealth" "$tab"
 assert_contains "fetch-health entry fires the runner" "pipeline-fetch-health.sh" "$tab"
 assert_contains "daily harvest entry 02:00"  "00 02 * * *" "$tab"
@@ -1729,7 +1736,7 @@ REAL_NODE="$REAL_NODE"
 STUB
 cat >>"$TMP_ROOT/bin-rec/node" <<'STUB'
 case "$1" in
-    *daily-timeline.mjs) echo "timeline-stub-ran"; exit 0 ;;
+    *daily-timeline.mjs) echo "timeline-stub-ran"; exit "${NT_RC_TIMELINE:-0}" ;;
     *feed-clip.mjs) kind=feeds; rc=${NT_RC_FEEDS:-0} ;;
     *synthesize-stubs.mjs) kind=promote; rc=${NT_RC_PROMOTE:-0} ;;
     *apply-clip-actions.mjs) kind=actions; rc=${NT_RC_ACTIONS:-0} ;;
@@ -1858,12 +1865,34 @@ assert_rc "no new input: exits 0" 0 "$rc"
 assert_not_contains "no new input: the worker did not run" "claude-stub-ran" "$NT_LOG"
 assert_contains "no new input: the promotion still ran" "[nightly-promote] promote-summary: 3 done" "$NT_LOG"
 assert_contains "no new input: the action apply still ran" "[nightly-actions] actions-summary: 3 done" "$NT_LOG"
+assert_contains "no new input: the day note is refreshed" "timeline-stub-ran" "$NT_LOG"
+l_act=$(nt_line "$NT_DIR/pipeline-synthesize.log" '[nightly-actions]'); l_tl=$(nt_line "$NT_DIR/pipeline-synthesize.log" 'timeline-stub-ran')
+if [ "${l_act:-0}" -lt "${l_tl:-0}" ] 2>/dev/null; then
+    pass "no new input: the day-note refresh comes after the nightly writers"
+else
+    fail "no new input: the day-note refresh comes after the nightly writers" "actions=$l_act timeline=$l_tl"
+fi
+: > "$NT_REC"; rc=0; NT_RC_TIMELINE=1 sh "$NT_DIR/pipeline-synthesize-none.sh" || rc=$?
+NT_LOG=$(cat "$NT_DIR/pipeline-synthesize.log")
+assert_rc "no new input: a failing day-note refresh still exits 0" 0 "$rc"
+assert_contains "no new input: the failing refresh is logged" "[daily-timeline failed rc=1 - continuing]" "$NT_LOG"
 sed "s#[^ ]*usage-preflight\\.sh#$TMP_ROOT/bank-skip-stub2.sh#" "$NT_DIR/pipeline-synthesize.sh" > "$NT_DIR/pipeline-synthesize-bank.sh"
 : > "$NT_REC"; rc=0; sh "$NT_DIR/pipeline-synthesize-bank.sh" || rc=$?
 NT_LOG=$(cat "$NT_DIR/pipeline-synthesize.log")
 assert_rc "bank at threshold: exits 0" 0 "$rc"
 assert_not_contains "bank at threshold: the worker did not run" "claude-stub-ran" "$NT_LOG"
 assert_contains "bank at threshold: the promotion still ran" "[nightly-promote] promote-summary: 3 done" "$NT_LOG"
+assert_contains "bank at threshold: the day note is refreshed" "timeline-stub-ran" "$NT_LOG"
+l_act=$(nt_line "$NT_DIR/pipeline-synthesize.log" '[nightly-actions]'); l_tl=$(nt_line "$NT_DIR/pipeline-synthesize.log" 'timeline-stub-ran')
+if [ "${l_act:-0}" -lt "${l_tl:-0}" ] 2>/dev/null; then
+    pass "bank at threshold: the day-note refresh comes after the nightly writers"
+else
+    fail "bank at threshold: the day-note refresh comes after the nightly writers" "actions=$l_act timeline=$l_tl"
+fi
+: > "$NT_REC"; rc=0; NT_RC_TIMELINE=1 sh "$NT_DIR/pipeline-synthesize-bank.sh" || rc=$?
+NT_LOG=$(cat "$NT_DIR/pipeline-synthesize.log")
+assert_rc "bank at threshold: a failing day-note refresh still exits 0" 0 "$rc"
+assert_contains "bank at threshold: the failing refresh is logged" "[daily-timeline failed rc=1 - continuing]" "$NT_LOG"
 sed "s#[^ ]*usage-preflight\\.sh#$TMP_ROOT/bank-skip-stub2.sh#" "$NT_DIR/pipeline-harvest.sh" > "$NT_DIR/pipeline-harvest-bank.sh"
 : > "$NT_REC"; rc=0; sh "$NT_DIR/pipeline-harvest-bank.sh" || rc=$?
 assert_contains "bank at threshold: the feed pull still ran" "[nightly-feeds] feeds-summary: 3 done" "$(cat "$NT_DIR/pipeline-harvest.log")"

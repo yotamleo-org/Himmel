@@ -3,9 +3,9 @@
 // decision 525 exactly; a broken map only takes away widening, it never refuses more and never touches
 // config.json. This module is the one owner of reading, validating and writing the file; it caches
 // nothing, so a fixed file takes effect on the next call.
-import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ACCOUNTS, configPathFor, configuredLetters } from './api-credit-state.mjs';
 
 // The only kinds with an auto caller. probe and other are never roles (a probe names its account; other
@@ -105,19 +105,21 @@ function noteFor(map, kind) {
   return '';
 }
 
-export function walkGraphify(env = process.env) {
+export function walkKind(env, kind) {
   const map = roleMap(env);
   if (map.state === 'invalid') return { refuse: map.errors[0] };
-  if (map.errors.includes('empty-role:graphify')) return { refuse: 'empty-role:graphify' };
-  const live = accountsFor(map, 'graphify');
-  if (live.length) return { letters: live, note: noteFor(map, 'graphify') };
-  try { return { letters: configuredLetters(env), note: noteFor(map, 'graphify') }; } catch { return { letters: ACCOUNTS, note: noteFor(map, 'graphify') }; }
+  if (kind === 'graphify' && map.errors.includes('empty-role:graphify')) return { refuse: 'empty-role:graphify' };
+  const live = accountsFor(map, kind);
+  if (live.length) return { letters: live, note: noteFor(map, kind) };
+  try { return { letters: configuredLetters(env), note: noteFor(map, kind) }; } catch { return { letters: ACCOUNTS, note: noteFor(map, kind) }; }
 }
+
+export const walkGraphify = (env = process.env) => walkKind(env, 'graphify');
 
 function main() {
   const [command, ...args] = process.argv.slice(2);
-  if (command === 'walk' && args[0] === 'graphify' && args.length === 1) {
-    const walk = walkGraphify(process.env);
+  if (command === 'walk' && args.length === 1 && /^[A-Za-z0-9._-]+$/.test(args[0])) {
+    const walk = walkKind(process.env, args[0]);
     if (walk.refuse) { console.log(`refuse ${walk.refuse}`); process.exitCode = 3; return; }
     if (walk.note) console.error(walk.note);
     console.log(walk.letters.join(','));
@@ -154,7 +156,8 @@ function main() {
     if (!result.ok) process.exitCode = 3;
     return;
   }
-  console.error('usage: api-roles.mjs accounts <kind> | walk graphify | check | write');
+  console.error('usage: api-roles.mjs accounts <kind> | walk <kind> | check | write');
   process.exitCode = 2;
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();
+const isEntry = () => { try { return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]); } catch { return false; } };
+if (process.argv[1] && isEntry()) main();

@@ -10,6 +10,22 @@
 #   wire_sessionstart_hook <settings> <prefix> <hook-basename> [<dry_run>]
 #       Wire ONE SessionStart hook object (e.g. inject-initiative.sh) into the
 #       shared SessionStart hooks[] array.
+#   wire_anchor_trio <settings> <anchor> <node> <bash> [<dry_run>]
+#       Wire the anchor trio (the user-scope commands, node and bash baked in)
+#       into <settings>, normally a project's gitignored settings.local.json.
+#   repair_pretooluse_matchers <settings> <specs JSON>
+#       adopt --repair-matchers: give a himmel hook whose stanzas leave one of
+#       its canonical tools uncovered the canonical matcher (a shared stanza
+#       loses the entry to a new canonical one); adopter entries never change.
+#
+# The hook-set list (WIRE_HOOK_SET_JSON) names every PreToolUse hook of the
+# adopted chain: the trio, then the merge gate. `aliases` is append-only, so a
+# renamed hook stays findable by unwire; test-hook-set-list.sh holds that every
+# name in this file's and adopt.sh's history is in it. Read-only views (JSON,
+# no writes):
+#   --print-hook-set                                  the list
+#   --print-chain <prefix>                            the chain specs
+#   --print-trio <anchor> [--node <p>] [--bash <p>]   the anchor trio specs
 #
 # $prefix = command path prefix (literal, e.g. '$CLAUDE_PROJECT_DIR' for project
 # scope or the himmel abs path for user scope). The hook path is FORWARD-SLASHED
@@ -95,6 +111,52 @@ WIRE_HOOK_CMD_JQ='
       + ") -- re-run the install (himmelctl install) or unwire it (himmelctl uninstall)\" >&2; exit 0; fi";
 '
 
+WIRE_HOOK_SET_JSON='[
+  {"name":"auto-approve-safe-bash","matcher":"Bash","script":"scripts/hooks/auto-approve-safe-bash.sh","aliases":[]},
+  {"name":"block-edit-on-main","matcher":"Edit|Write|MultiEdit|NotebookEdit","script":"scripts/hooks/block-edit-on-main.sh","aliases":[]},
+  {"name":"block-read-secrets","matcher":"Bash|PowerShell|Read|Grep","script":"scripts/hooks/block-read-secrets.sh","aliases":[]},
+  {"name":"block-unresolved-cr-merge","matcher":"Bash","script":"scripts/hooks/block-unresolved-cr-merge.sh","aliases":[]}
+]'
+WIRE_MERGE_GATE_NAME=block-unresolved-cr-merge
+
+# shellcheck disable=SC2016  # a jq program: $set/$gate/$pfx/$e/$cmd are jq bindings
+WIRE_CHAIN_SPECS_JQ='
+  def ownpat($e): "scripts/hooks/(" + (([$e.name] + $e.aliases) | join("|")) + ")[.]sh";
+  def gatecmd($s):
+    "if [ -r \"$CLAUDE_PROJECT_DIR/" + $s + "\" ]; then bash \"$CLAUDE_PROJECT_DIR/" + $s
+    + "\"; else echo \"himmel: merge gate missing -- re-run adopt.sh\" >&2; exit 2; fi";
+  [ $set[] as $e
+    | (if $e.name == $gate then gatecmd($e.script) else hookcmd($pfx; $e.name + ".sh") end) as $cmd
+    | { name: $e.name, pat: ownpat($e), cmd: $cmd,
+        stanza: { matcher: $e.matcher,
+                  hooks: [ { type: "command", command: $cmd }
+                           + (if $e.name == $gate then { timeout: 120 } else {} end) ] } } ]
+'
+
+# shellcheck disable=SC2016  # a jq program: $set/$gate/$anchor/$node/$bash/$e/$cmd are jq bindings
+WIRE_TRIO_SPECS_JQ='
+  def ownpat($e): "guardrail-skip-in-himmel[.]js\" \"[^\"]*scripts/hooks/(" + (([$e.name] + $e.aliases) | join("|")) + ")[.]sh\"$";
+  [ $set[] | select(.name != $gate) as $e
+    | ("GUARDRAIL_BASH=" + ($bash | tojson) + " " + ($node | tojson) + " "
+       + (($anchor + "/scripts/hooks/guardrail-skip-in-himmel.js") | tojson) + " "
+       + (($anchor + "/" + $e.script) | tojson)) as $cmd
+    | { name: $e.name, pat: ownpat($e), cmd: $cmd,
+        stanza: { matcher: $e.matcher, hooks: [ { type: "command", command: $cmd } ] } } ]
+'
+
+wire_chain_specs() {
+  # shellcheck disable=SC1003
+  local pfx="${1//'\'//}"
+  jq -n --arg pfx "$pfx" --argjson set "$WIRE_HOOK_SET_JSON" --arg gate "$WIRE_MERGE_GATE_NAME" \
+    "$WIRE_HOOK_CMD_JQ$WIRE_CHAIN_SPECS_JQ"
+}
+
+wire_trio_specs() {
+  local anchor="${1%/}"
+  jq -n --arg anchor "$anchor" --arg node "$2" --arg bash "$3" \
+    --argjson set "$WIRE_HOOK_SET_JSON" --arg gate "$WIRE_MERGE_GATE_NAME" "$WIRE_TRIO_SPECS_JQ"
+}
+
 # The merge program. For each spec, walk
 # the PreToolUse array in order and rewrite the `command` of every entry that
 # matches the spec's `pat` IN PLACE (its object, its stanza and their key order
@@ -130,6 +192,49 @@ WIRE_PRETOOLUSE_MERGE_JQ='
   .hooks = (.hooks // {})
   | .hooks.PreToolUse = (reduce $specs[] as $spec ((.hooks.PreToolUse // []); wire($spec)))
 '
+
+# shellcheck disable=SC2016  # a jq program: $specs/$spec/$m/$t/$arr/$ms/$h/$i/$first are jq bindings
+WIRE_REPAIR_MATCHERS_JQ='
+  def covers($m; $t): ($m // "") as $m | ($m == "" or $m == "*" or ($t | test("^(?:" + $m + ")$")));
+  def owns($spec): (.command // "") | test($spec.pat);
+  def carries($spec): any((.hooks // [])[]; owns($spec));
+  def repair($spec):
+    . as $arr
+    | [ $arr[] | select(carries($spec)) | .matcher ] as $ms
+    | ($spec.stanza.matcher | split("|")) as $tools
+    | if ($ms | length) == 0 or all($tools[]; . as $t | any($ms[]; covers(.; $t))) then $arr
+      else
+        ([ $arr | to_entries[] | select(.value | carries($spec)) | .key ] | .[0]) as $first
+        | ([ $arr[$first].hooks[] | select(owns($spec)) ] | .[0]) as $h
+        | (all($arr[$first].hooks[]; owns($spec))) as $alone
+        | [ $arr | to_entries[]
+            | if .key == $first and $alone then .value | .matcher = $spec.stanza.matcher | .hooks = [$h]
+              elif (.value | carries($spec)) then (.value | .hooks |= map(select(owns($spec) | not)))
+                | select((.hooks | length) > 0)
+              else .value end ]
+          + (if $alone then [] else [ { matcher: $spec.stanza.matcher, hooks: [$h] } ] end)
+      end;
+  if (.hooks.PreToolUse | type) == "array"
+  then .hooks.PreToolUse = (reduce $specs[] as $spec (.hooks.PreToolUse; repair($spec)))
+  else . end
+'
+
+repair_pretooluse_matchers() {
+  local settings="$1" specs="$2" dry="${3:-0}" out
+  [[ -f "$settings" ]] || return 0
+  out=$(jq --argjson specs "$specs" "$WIRE_REPAIR_MATCHERS_JQ" "$settings") || {
+    echo "wire-pretooluse-hooks: $settings is not valid JSON -- not repaired" >&2; return 1; }
+  if [ "$(printf '%s' "$out" | jq -cS .)" = "$(jq -cS . "$settings")" ]; then
+    echo "  matchers already cover every tool -> $settings"
+    return 0
+  fi
+  if [ "$dry" = 1 ]; then
+    echo "DRY: repair PreToolUse matchers -> $settings"
+    return 0
+  fi
+  printf '%s\n' "$out" > "$settings.repair.tmp" && mv "$settings.repair.tmp" "$settings" || return 1
+  echo "  repaired PreToolUse matchers -> $settings"
+}
 
 # record each wired hook element in the install-provenance ledger
 # (docs/internals/install-provenance.md). Called after the mv with the PRE-write
@@ -198,33 +303,24 @@ _wire_hooks_record_container() {
 wire_pretooluse_hooks() {
   local settings="$1" prefix="$2" dry_run="${3:-0}"
   command -v jq >/dev/null 2>&1 || { echo "wire-pretooluse-hooks: jq required" >&2; return 1; }
-  # shellcheck disable=SC1003  # '\' is a literal backslash to replace, not a quote escape
-  local pfx="${prefix//'\'//}"   # forward-slash any backslashes in the prefix
-  # One spec per himmel-owned hook. `pat` identifies an entry THIS installer
-  # owns (by the hook path it installs); `cmd` is the command such an entry
-  # must carry after the merge; `stanza` is the canonical stanza appended when
-  # the target carries no such entry at all.
-  #
-  # Built with `jq -n --arg pfx`, never by interpolating $pfx into JSON TEXT
-  # because a POSIX path may legally contain a `"`, which makes
-  # hand-written JSON malformed, and `jq --argjson specs` then rejects the
-  # argument outright — the settings file goes unwired. Passing the prefix as a
-  # jq --arg lets jq do the escaping, for quotes, backslashes and newlines
-  # alike.
   local specs
-  # shellcheck disable=SC2016  # a jq program: $pfx/$cmd/$name/$matcher are jq bindings, not shell expansions
-  specs=$(jq -n --arg pfx "$pfx" "$WIRE_HOOK_CMD_JQ"'
-    def spec($name; $matcher):
-      hookcmd($pfx; $name + ".sh") as $cmd
-      | { pat: ("scripts/hooks/" + $name + "[.]sh"),
-          cmd: $cmd,
-          stanza: { matcher: $matcher, hooks: [ { type: "command", command: $cmd } ] } };
-    [ spec("auto-approve-safe-bash"; "Bash"),
-      spec("block-edit-on-main"; "Edit|Write|MultiEdit|NotebookEdit"),
-      spec("block-read-secrets"; "Bash|PowerShell|Read|Grep") ]
-  ') || return 1
+  specs=$(wire_chain_specs "$prefix" | jq -c --arg gate "$WIRE_MERGE_GATE_NAME" 'map(select(.name != $gate))') || return 1
+  _wire_pretooluse_specs "$settings" "$specs" "$dry_run" \
+    "DRY: merge 3 PreToolUse hook stanzas into $settings (prefix: $prefix)"
+}
+
+wire_anchor_trio() {
+  local settings="$1" anchor="$2" node="$3" bashp="$4" dry_run="${5:-0}" specs
+  command -v jq >/dev/null 2>&1 || { echo "wire-pretooluse-hooks: jq required" >&2; return 1; }
+  specs=$(wire_trio_specs "$anchor" "$node" "$bashp") || return 1
+  _wire_pretooluse_specs "$settings" "$specs" "$dry_run" \
+    "DRY: merge the anchor guard trio into $settings (anchor: $anchor)"
+}
+
+_wire_pretooluse_specs() {
+  local settings="$1" specs="$2" dry_run="$3" dry_msg="$4"
   if [[ "$dry_run" -eq 1 ]]; then
-    echo "DRY: merge 3 PreToolUse hook stanzas into $settings (prefix: $prefix)"
+    echo "$dry_msg"
     return
   fi
   mkdir -p "$(dirname "$settings")"
@@ -404,7 +500,24 @@ wire_sessionend_hook() {
 #   bash wire-pretooluse-hooks.sh <settings> <prefix> [<dry>]            # PreToolUse trio
 #   bash wire-pretooluse-hooks.sh --sessionstart <settings> <prefix> <basename> [<dry>]
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  if [ "${1:-}" = "--sessionend" ]; then
+  if [ "${1:-}" = "--print-hook-set" ]; then
+    printf '%s\n' "$WIRE_HOOK_SET_JSON" | jq -c .
+  elif [ "${1:-}" = "--print-chain" ]; then
+    [ "$#" -eq 2 ] || { echo "usage: wire-pretooluse-hooks.sh --print-chain <prefix>" >&2; exit 2; }
+    wire_chain_specs "$2" | jq -c .
+  elif [ "${1:-}" = "--print-trio" ]; then
+    [ "$#" -ge 2 ] || { echo "usage: wire-pretooluse-hooks.sh --print-trio <anchor> [--node <p>] [--bash <p>]" >&2; exit 2; }
+    anchor="$2"; shift 2
+    node_p="$(command -v node || true)"; bash_p="$(command -v bash || true)"
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --node) [ "$#" -ge 2 ] || exit 2; node_p="$2"; shift 2 ;;
+        --bash) [ "$#" -ge 2 ] || exit 2; bash_p="$2"; shift 2 ;;
+        *) echo "wire-pretooluse-hooks: unknown flag: $1" >&2; exit 2 ;;
+      esac
+    done
+    wire_trio_specs "$anchor" "$node_p" "$bash_p" | jq -c .
+  elif [ "${1:-}" = "--sessionend" ]; then
     shift
     if [ "$#" -lt 2 ]; then
       echo "usage: wire-pretooluse-hooks.sh --sessionend <settings> <clone> [<dry_run>]" >&2

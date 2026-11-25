@@ -13,6 +13,7 @@ import { main as dock } from '../dock.mjs';
 import { DEFAULT_JOB_TIMEOUT_MS } from '../../hooks/stop-queue.mjs';
 
 const root = resolve(import.meta.dirname, '../../..');
+const ORIGIN_GIT = '#!/bin/sh\ncase "$*" in *"remote get-url"*) echo https://github.com/example/project.git; exit 0;; esac\n';
 const waitFor = async (fn) => {
   const deadline = Date.now() + 4000;
   while (!fn() && Date.now() < deadline) await new Promise((ok) => setTimeout(ok, 20));
@@ -172,7 +173,7 @@ test('production subprocesses obey the total deadline and a dead owner cannot le
   const dir = makeTmpDir('waw-deadline-review-'), bin = join(dir, 'bin'), ledger = join(dir, 'ledger.jsonl'), script = join(dir, 'run.mjs'), started = join(dir, 'started');
   mkdirSync(bin); writeFileSync(ledger, '');
   writeFileSync(join(bin, 'gh'), `#!/bin/sh\ntouch '${started}'\nsleep 5\nexit 1\n`, { mode: 0o755 });
-  writeFileSync(join(bin, 'git'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+  writeFileSync(join(bin, 'git'), ORIGIN_GIT + 'exit 1\n', { mode: 0o755 });
   writeFileSync(script, `import { main } from ${JSON.stringify(join(root, 'scripts/where-are-we/collect.mjs'))};
     main(['--ledger', process.argv[2]], {strict:true, deadlineMs: Number(process.argv[3])});`);
   const env = { ...process.env, PATH: `${bin}:/usr/bin:/bin` };
@@ -198,7 +199,7 @@ test('production subprocesses obey the total deadline and a dead owner cannot le
 
 for (const hook of ['refresh-where-are-we-on-end.sh', 'inject-where-are-we.sh']) {
   for (const mode of ['success', 'partial', 'failure', 'drop', 'write-interrupted']) {
-    test(`${hook}: real collector ${mode} preserves marker and last-good state correctly`, async () => {
+    test(`${hook}: real collector ${mode} preserves marker and last-good state correctly`, { skip: mode === 'write-interrupted' && process.getuid?.() === 0 ? 'root ignores file modes' : false }, async () => {
       const dir = makeTmpDir('waw-hook-matrix-'), repo = join(dir, 'repo'), state = join(dir, 'state'), script = join(dir, 'fixture.mjs'), done = join(dir, 'done');
       mkdirSync(join(repo, 'scripts/lib'), { recursive: true }); mkdirSync(state);
       cpSync(join(root, 'scripts/where-are-we'), join(repo, 'scripts/where-are-we'), { recursive: true });
@@ -207,12 +208,12 @@ for (const hook of ['refresh-where-are-we-on-end.sh', 'inject-where-are-we.sh'])
       writeFileSync(ledger, JSON.stringify({ ts: '2026-01-01T00:00:00Z', source: 'jira', kind: 'ticket', key: 'HIMMEL-1', status: 'in-progress' }) + '\n');
       writeFileSync(marker, 'old'); utimesSync(marker, 1000, 1000);
       writeFileSync(script, `import {main} from ${JSON.stringify(join(root, 'scripts/where-are-we/collect.mjs'))};
-        import {mkdirSync,writeFileSync} from 'node:fs';
+        import {chmodSync,writeFileSync} from 'node:fs';
         const ledger=${JSON.stringify(ledger)}, mode=${JSON.stringify(mode)};
         try { main(['--ledger',ledger,'--marker',${JSON.stringify(marker)}], {strict:true, readers:{readPRs:()=>[], readWorktrees:()=>'', readJira:()=>{
           if(mode==='failure') throw new Error('source unavailable');
           if(mode==='partial') return {rows:[],errors:['partial source']};
-          if(mode==='write-interrupted') mkdirSync(ledger+'.lock');
+          if(mode==='write-interrupted') chmodSync(ledger, 0o400);
           return [{key: mode==='drop'?'':'HIMMEL-1',status:'Done',statusCategory:'Done'}];
         }}}); } catch { process.exitCode=1; } finally {writeFileSync(${JSON.stringify(done)}, 'done');}`);
       const result = spawnSync('bash', [join(root, 'scripts/hooks', hook), ...(hook.startsWith('refresh') ? ['__himmel_detached'] : [])], {
@@ -248,26 +249,13 @@ test('a successful older attempt cannot regress the marker; corrupt ledgers star
   }
 });
 
-test('production entry bounds the whole pass including a blocked persistence lock', () => {
-  const dir = makeTmpDir('waw-whole-deadline-'), ledger = join(dir, 'ledger.jsonl'), marker = join(dir, '.refreshed-at');
-  writeFileSync(ledger, ''); mkdirSync(ledger + '.lock'); writeFileSync(marker, 'last good');
-  const before = statSync(marker).mtimeMs, start = Date.now();
-  const result = runCLI(['--ledger', ledger, '--marker', marker], { deadlineMs: 120 });
-  assert.equal(result.status, 1);
-  assert.ok(Date.now() - start < 1000);
-  assert.match(result.stderr, /deadline exhausted/);
-  assert.equal(statSync(marker).mtimeMs, before);
-  assert.equal(readFileSync(ledger, 'utf8'), '');
-});
-
 test('GitHub partial GraphQL transport failure preserves valid peers and leaves missing PR unknown', () => {
   const result = readPRBatch([1, 2], (_command, args) => {
-    if (args[0] === 'repo') return JSON.stringify({ nameWithOwner: 'fixture/repo' });
     throw Object.assign(new Error('gh GraphQL failed'), { status: 1, stdout: JSON.stringify({
       errors: [{ message: 'pull request could not be resolved' }],
       data: { repository: { p1: { number: 1, state: 'MERGED', headRefName: 'feat/x' }, p2: null } },
     }) });
-  });
+  }, 'fixture/repo');
   assert.deepEqual(result.rows.map((r) => r.number), [1]);
   assert.equal(result.rows[0].state, 'MERGED');
   assert.match(result.errors.join(' '), /missing PR #2/);
@@ -296,7 +284,7 @@ for (const deadlineMs of [2400, 1200.5]) test(`earlier successful rows survive a
   ].map(JSON.stringify).join('\n') + '\n');
   writeFileSync(marker, 'last good'); utimesSync(marker, 1000, 1000);
   writeFileSync(join(bin, 'gh'), '#!/bin/sh\nprintf \'%s\\n\' \'[{"number":7,"state":"MERGED","headRefName":"feat/x"}]\'\n', { mode: 0o755 });
-  writeFileSync(join(bin, 'git'), '#!/bin/sh\ntrap "" TERM\nsleep 5\n', { mode: 0o755 });
+  writeFileSync(join(bin, 'git'), ORIGIN_GIT + 'trap "" TERM\nsleep 5\n', { mode: 0o755 });
   const saved = process.env.PATH, began = Date.now();
   let result;
   try {

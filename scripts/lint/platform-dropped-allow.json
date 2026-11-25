@@ -228,6 +228,13 @@
       "    (\"rogue-scheduler-arm\", \"block-rogue-claude-schedule\", \"scheduler\", \"Bash\", {\"command\": \"schtasks /create /tn X /tr \\\"claude.exe go\\\" /sc ONCE /st 03:00\"}, \"feat\"),"
     ]
   },
+  "scripts/himmel-doctor.sh": {
+    "reason": "C99 detector: names the obsolete graphify.EXE path so stale untracked Gemini settings are flagged, never a Windows code path",
+    "lines": [
+      "            if (/(^|[/\\\\])graphify\\.exe$/i.test(executable) ||",
+      "            emit WARN C99-gemini-local \"untracked .gemini/settings.json has obsolete graphify.EXE or missing executable paths\" \\"
+    ]
+  },
   "scripts/himmelctl/lib/bypass-flags.json": {
     "reason": "bypass flag of the cadence-deny-powershell detector",
     "lines": [
@@ -650,7 +657,9 @@
     "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
     "lines": [
       "# lib/headless-spawn-join.sh. `gemini.exe` and the npm shim `gemini.cmd`",
-      "SPAWN_PATTERN=$(headless_spawn_pattern 'gemini(\\.exe|\\.cmd)?')"
+      "SPAWN_PATTERN=$(headless_spawn_pattern 'gemini(\\.exe|\\.cmd)?')",
+      "PATTERN='(^|[^A-Za-z0-9_-])(gemini|agy)(\\.exe|\\.cmd)?[[:space:]]+(-p|--prompt|--bg)($|[^A-Za-z0-9_-])'",
+      "SPAWN_PATTERN=$(headless_spawn_pattern '(gemini|agy)(\\.exe|\\.cmd)?')"
     ]
   },
   "scripts/hooks/check-platforms-tested.sh": {
@@ -824,7 +833,8 @@
   "scripts/lib/wire-pretooluse-hooks.sh": {
     "reason": "names the PowerShell tool for guard coverage or transcript parsing",
     "lines": [
-      "      spec(\"block-read-secrets\"; \"Bash|PowerShell|Read|Grep\") ]"
+      "      spec(\"block-read-secrets\"; \"Bash|PowerShell|Read|Grep\") ]",
+      "  {\"name\":\"block-read-secrets\",\"matcher\":\"Bash|PowerShell|Read|Grep\",\"script\":\"scripts/hooks/block-read-secrets.sh\",\"aliases\":[]},"
     ]
   },
   "scripts/lint/check-history-comments.sh": {

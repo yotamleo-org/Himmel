@@ -19,8 +19,18 @@ import json, os, re, subprocess, sys, tempfile
 
 CONTROL = ["merge-blocked", "token-in-output", "hold-ask-operator", "hold-ask-stuck", "denial-stuck", "config-audit",
            "monitor-chat-down", "chief-reply", "recover-failed", "cadence:security-audit", "cadence:snyk-scan"]
-PIN_PENDING = ["merge-blocked", "token-in-output", "config-audit", "recover-failed"]
+PIN_PENDING = []
+NAMED = {"bypass-ask": ("escalate", "scripts/station-ops/bypass-launchd.sh"),
+         "bypass-failed": ("escalate", "scripts/station-ops/bypass-launchd.sh"),
+         "bypass-result": ("monitor", "scripts/station-ops/bypass-launchd.sh"),
+         "denial-page": ("silent", "scripts/handover/chief-kit/chief-wait.sh"),
+         "version-approval": ("escalate", "scripts/handover/chief-kit/version-approval-alert.sh"),
+         "claude-only-clear": ("monitor", "scripts/cr/clear-review-marker.sh"),
+         "cadence:graph-key-*": ("escalate", "scripts/graphify/semantic-update.sh")}
+NAMED_PINNED = ["cadence:graph-key-*", "version-approval", "claude-only-clear"]
 METHOD3 = ["vault-stall", "vm-maintain-cadence", "graph-channel-publish", "librarian"]
+REPAIR_VERBS = ["doctor-fix", "rerun:rollup"]
+ESCALATE_TO = ["chief", "operator"]
 FAMILY = re.compile(r"^cadence:[a-z0-9]+-[a-z0-9]+-")
 CALL = re.compile(r"(?:cadence-alert\.sh|\$ALERT|\$alert)[\"']?\s+fail\s+(\S+)")
 EMIT = re.compile(r"cadence-alert\.sh[\"']?\s+fail\s+(\S+)")
@@ -86,6 +96,24 @@ if want("pins"):
         r = by.get(k, [None])[0]
         if r is not None and k != "chief-reply" and k not in PIN_PENDING and "pin" not in r:
             err("pins", "%s: control row has no pin" % k)
+
+if want("named"):
+    for k, (cls, sender) in NAMED.items():
+        r = by.get(k, [None])[0]
+        if r is None:
+            err("named", "%s has no row" % k)
+            continue
+        if r["class"] != cls:
+            err("named", "%s must be %s (it is %s)" % (k, cls, r["class"]))
+        if r["sender"] != sender:
+            err("named", "%s: sender must be %s (it is %s)" % (k, sender, r["sender"]))
+        if k in NAMED_PINNED:
+            if "pin" not in r:
+                err("named", "%s: row has no pin" % k)
+            else:
+                p = find(r["sender"])
+                if p is None or r["pin"] not in code_text(p):
+                    err("named", "%s: pin %r is not in %s as code" % (k, r["pin"], r["sender"]))
 
 if want("cadence-silent"):
     for r in rows:
@@ -174,6 +202,51 @@ if want("docs"):
         if not re.search(r"^\|\s*`%s`\s*\|\s*%s\s*\|" % (re.escape(r["kind"]), re.escape(r["class"])), text, re.M):
             err("docs", "%s has no table row with class %s in the doc" % (r["kind"], r["class"]))
 
+def on_alert_action(e):
+    nonempty = lambda v: isinstance(v, str) and v.strip() != ""
+    do = e.get("do")
+    if do == "repair":
+        return None if e.get("verb") in REPAIR_VERBS else "verb %s is not in the allow-list %s" % (e.get("verb"), ", ".join(REPAIR_VERBS))
+    if do == "escalate":
+        if e.get("to") not in ESCALATE_TO:
+            return "escalate to %s is not one of %s" % (e.get("to"), ", ".join(ESCALATE_TO))
+        return None if nonempty(e.get("reason")) else "escalate needs a non-empty reason"
+    if do == "info":
+        return None if nonempty(e.get("why")) else "info needs a non-empty why"
+    return "do %s is not repair, escalate or info" % do
+
+
+if want("on-alert"):
+    for r in rows:
+        if r["class"] != "monitor":
+            continue
+        k, oa = r["kind"], r.get("on-alert")
+        if oa is None:
+            err("on-alert", "%s has no on-alert" % k)
+        elif isinstance(oa, dict):
+            if "match" in oa:
+                err("on-alert", "%s: a single on-alert has no match" % k)
+            m = on_alert_action(oa)
+            if m:
+                err("on-alert", "%s: %s" % (k, m))
+        elif isinstance(oa, list) and oa and all(isinstance(e, dict) for e in oa):
+            for i, e in enumerate(oa):
+                if i < len(oa) - 1:
+                    if "match" not in oa[i]:
+                        err("on-alert", "%s: entry %d has no match and is not the last" % (k, i))
+                    else:
+                        try:
+                            re.compile(e["match"])
+                        except (re.error, TypeError):
+                            err("on-alert", "%s: entry %d match %r is not a regex" % (k, i, e["match"]))
+                m = on_alert_action(e)
+                if m:
+                    err("on-alert", "%s: entry %d: %s" % (k, i, m))
+            if "match" in oa[-1]:
+                err("on-alert", "%s: the list has no fallback (its last entry has a match)" % k)
+        else:
+            err("on-alert", "%s: on-alert is neither one entry nor a non-empty list of entries" % k)
+
 print("\n".join(errs))
 sys.exit(1 if errs else 0)
 PY
@@ -253,6 +326,40 @@ lint_dirty "a control row outside the pending list with no pin fails the lint" "
 mut "$T/op-nopin.json" '[r.pop("pin") for r in t["kinds"] if r["kind"]=="hold-ask-operator"]'
 lint_dirty "a table copy with the hold-ask-operator pin removed fails the lint" "hold-ask-operator: control row has no pin" --table "$T/op-nopin.json" --only pins
 
+lint_clean "the bypass, version-approval and graph-key escalations are named with their class and sender" --table "$TABLE" --only named
+for k in bypass-ask bypass-failed bypass-result denial-page version-approval 'cadence:graph-key-*'; do
+  mut "$T/named-drop.json" "t['kinds']=[r for r in t['kinds'] if r['kind']!='$k']"
+  lint_dirty "a table copy with the $k row dropped fails the lint" "$k has no row" --table "$T/named-drop.json" --only named
+done
+for k in bypass-ask bypass-failed version-approval 'cadence:graph-key-*'; do
+  mut "$T/named-down.json" "[r.update({'class':'monitor'}) for r in t['kinds'] if r['kind']=='$k']"
+  lint_dirty "the operator-owned $k set to monitor fails the lint" "$k must be escalate" --table "$T/named-down.json" --only named
+done
+for c in monitor escalate; do
+  mut "$T/named-up.json" "[r.update({'class':'$c'}) for r in t['kinds'] if r['kind']=='denial-page']"
+  lint_dirty "the quiet kind denial-page set to $c fails the lint (nobody acts on it, so it stays silent)" "denial-page must be silent" --table "$T/named-up.json" --only named
+done
+for c in silent escalate; do
+  mut "$T/named-up.json" "[r.update({'class':'$c'}) for r in t['kinds'] if r['kind']=='bypass-result']"
+  lint_dirty "bypass-result set to $c fails the lint (it carries real refusals, so it stays monitor)" "bypass-result must be monitor" --table "$T/named-up.json" --only named
+done
+mut "$T/named-sender.json" "[r.update({'sender':'scripts/handover/chief-kit/chief-wait.sh'}) for r in t['kinds'] if r['kind']=='version-approval']"
+lint_dirty "version-approval with another sender fails the lint" "version-approval: sender must be" --table "$T/named-sender.json" --only named
+mut "$T/key-nopin.json" "[r.pop('pin') for r in t['kinds'] if r['kind']=='cadence:graph-key-*']"
+lint_dirty "a table copy with the graph-key pin removed fails the lint" "cadence:graph-key-*: row has no pin" --table "$T/key-nopin.json" --only named
+for k in version-approval claude-only-clear; do
+  mut "$T/pin-drop.json" "[r.pop('pin') for r in t['kinds'] if r['kind']=='$k']"
+  lint_dirty "a table copy with the $k pin removed fails the lint" "$k: row has no pin" --table "$T/pin-drop.json" --only named
+done
+mkdir -p "$T/ov4/scripts/handover/chief-kit" "$T/ov5/scripts/cr"
+sed 's/"\$text" version-approval/"$text"/' "$REPO/scripts/handover/chief-kit/version-approval-alert.sh" > "$T/ov4/scripts/handover/chief-kit/version-approval-alert.sh"
+lint_dirty "a version-approval-alert copy that stops passing the kind fails the lint" "version-approval: pin" --table "$TABLE" --only named --overlay "$T/ov4"
+sed 's/ claude-only-clear ||/ ||/' "$REPO/scripts/cr/clear-review-marker.sh" > "$T/ov5/scripts/cr/clear-review-marker.sh"
+lint_dirty "a clear-review-marker copy that stops passing the kind fails the lint" "claude-only-clear: pin" --table "$TABLE" --only named --overlay "$T/ov5"
+mkdir -p "$T/ov3/scripts/graphify"
+sed 's/fail "graph-key-/fail "graph-renamed-/' "$REPO/scripts/graphify/semantic-update.sh" > "$T/ov3/scripts/graphify/semantic-update.sh"
+lint_dirty "a sender copy with the graph-key call renamed fails the lint" "cadence:graph-key-*: pin" --table "$TABLE" --only named --overlay "$T/ov3"
+
 lint_clean "no cadence row is silent" --table "$TABLE" --only cadence-silent
 mut "$T/vault-silent.json" '[r.update({"class":"silent"}) for r in t["kinds"] if r["kind"]=="cadence:vault-stall"]'
 lint_dirty "cadence:vault-stall set to silent fails the lint" "cadence:vault-stall is silent" --table "$T/vault-silent.json" --only cadence-silent
@@ -298,6 +405,16 @@ grep -v '^| `merge-blocked` ' "$DOC" > "$T/doc-no-row.md"
 lint_dirty "a doc copy with a kind's row removed fails the lint naming the kind" "merge-blocked has no table row" --table "$TABLE" --only docs --doc "$T/doc-no-row.md"
 sed 's/^| `token-in-output` | escalate |/| `token-in-output` | monitor |/' "$DOC" > "$T/doc-wrong-class.md"
 lint_dirty "a doc row with the wrong class fails the lint" "token-in-output has no table row with class escalate" --table "$TABLE" --only docs --doc "$T/doc-wrong-class.md"
+
+lint_clean "W1: every monitor row carries one valid on-alert" --table "$TABLE" --only on-alert
+mut "$T/oa-none.json" '[r.pop("on-alert", None) for r in t["kinds"] if r["kind"]=="cadence:rollup"]'
+lint_dirty "W1: a monitor row with no on-alert fails the lint" "cadence:rollup has no on-alert" --table "$T/oa-none.json" --only on-alert
+mut "$T/oa-noreason.json" '[r.update({"on-alert":{"do":"escalate","to":"chief","reason":""}}) for r in t["kinds"] if r["kind"]=="cadence:ledger-drift"]'
+lint_dirty "W1: an escalate with an empty reason fails the lint" "cadence:ledger-drift: escalate needs a non-empty reason" --table "$T/oa-noreason.json" --only on-alert
+mut "$T/oa-verb.json" '[r.update({"on-alert":{"do":"repair","verb":"rerun:pipeline"}}) for r in t["kinds"] if r["kind"]=="cadence:rollup"]'
+lint_dirty "W1: a repair verb outside the allow-list fails the lint" "cadence:rollup: verb rerun:pipeline is not in the allow-list" --table "$T/oa-verb.json" --only on-alert
+mut "$T/oa-nofallback.json" '[r.update({"on-alert":[{"match":"^C1-guardrail$","do":"repair","verb":"doctor-fix"}]}) for r in t["kinds"] if r["kind"]=="cadence:himmel-doctor"]'
+lint_dirty "W1: a list with no fallback fails the lint" "cadence:himmel-doctor: the list has no fallback" --table "$T/oa-nofallback.json" --only on-alert
 
 lint_clean "the whole lint passes on the real table" --table "$TABLE" --emitters-file "$T/emitters" --doc "$DOC"
 

@@ -13,16 +13,27 @@ at a handover; the ledger is carried by the tick, the HANDOFF and the queue fold
   without a key is refused. The file is append-only: a close adds a row, nothing is rewritten.
   `owe.sh list --bucket <dir>` prints the open rows (`--all` adds the closed ones).
 - **The tick ages it.** `owed=<n>:<oldest-age>` counts the open rows (hidden at 0; `?` when
-  the ledger cannot be read). A `ticket` row with no key after 4 hours (`OWED_STALE_SECS`) adds
-  `ACTION owed-stale=<n>:<ids>`: file the ticket, then close the row with its key. The waiter
-  wakes you once (`WAKE tick changed=owed`) when that stale count rises; closing the row with a key
-  ends it, and the age or an open row that is not stale never wakes.
+  the ledger cannot be read). A `ticket` row with no key after 4 hours (`OWED_STALE_SECS`), and a
+  keyed `step` past its due date, add `ACTION owed-stale=<n>:<ids>`, then one clause per kind naming
+  its own ids. A ticket row: file the ticket, then close the row with its key. A step row: do the
+  step and close the row with its evidence (a commit sha or a decision id), or re-date it with a new
+  `owe.sh add` row and close this one with the decision id. A step stays in the stale count until
+  its `step-due` wake is delivered (one wake per due date; a re-dated step gets a new one), and stays
+  in `owed=` while it is open. The waiter wakes you once (`WAKE tick changed=owed`) when that stale
+  count rises; closing the row ends it, and the age or an open row that is not stale never wakes.
 - **The handover keeps it.** `chief.sh next` refuses (exit 9) while a `ticket` row has no key
   after one shift (`OWED_SHIFT_SECS`, default 21600 = 6 h, the queue lock's TTL), naming each row.
   File the ticket and close the row, then retry. The HANDOFF gets an `## Owed` section listing
   every open row: the successor starts with all of them.
 - **The fold never moves it.** An older `queue:` segment that contains `owed`, `HOLD` or
   `to file` stays on the live `queue:` line; only plain segments go to the chief-history file.
+- **The Shift list and your asks must agree.** `bash <kit>/waiting-ask-drift.sh --doc <this doc>` prints
+  one line per open operator row with no delivered `OWED <key>` ask (the key is the row id or its ticket
+  key; a ticket key a closed row also carried is used up, so a new row with it needs an ask keyed by its
+  own id), and one per delivered ask whose key names no open operator row (an ask keyed to a closed row
+  or a used-up key is skipped); it prints nothing and exits 0 when they agree, 1 on drift, 2 on an
+  unreadable input or a `--bucket` that is not a directory. Run it before you tell the operator nothing
+  is waiting on them.
 
 Wrapped proof workers record a `kind: proof`, `action: validate-proof`, `actor: chief`
 obligation before worker-event cleanup or direct/sweep close. A writer failure refuses
@@ -52,7 +63,7 @@ Unknown fields or invalid types refuse. None of these fields grants authority.
 
 The recorder recognizes the explicit `> **Proof leg:**` header or an actual
 WRAPPED proof-key tail, including the event's optional worker/ticket prefix.
-Ordinary prose mentioning a proof leg does not create debt. The artifacts are the
+Ordinary prose mentioning a proof worker does not create debt. The artifacts are the
 `evidence=<path>` values of that tail or message, which name them exactly; with none
 declared, every `specs/audits/....md` path the worker document names is read as evidence
 by the rule below, so a file that is not the ticket's is judged as its evidence and a
@@ -123,6 +134,29 @@ and due date, list as executable proof rows, and leave the ticket To Do. Chief
 steps use the closed list `sign the spec`, `sign the GO`, `sign the release`,
 `signature`, `chief signature`, `release operator step`, or `station step a worker
 is refused`. Code remains `Remaining:` work. Operator staging stays operator-owned.
+
+A partial merge never writes those steps into a chief's ledger itself. `merge-on-green.sh`
+appends one row per owed line to the station spool, `<state dir>/owe-spool.jsonl`
+(`TICKET_STATUS_STATE_DIR`, default `~/.himmel/state`), with
+`owed-events.py spool --key <KEY> --pr <n> --repo <owner/name> --spool <spool>`, and records
+the outcome on its MERGED audit line as `owe=`: `none` (no owed line), `spooled:<n>`,
+`unread` (the PR body's owed lines could not be read: one `unread` row stands in for them,
+due the day before the merge), or `miss:<n|?>:write` (the spool could not be written: the
+lines go to stderr and the status log gets an `owe-miss` row for that key and PR). The
+next tick of a chief whose doc sits inside the handover root drains the spool: for each row
+of its own project it appends a `claim` row naming its bucket, then adds the step to its
+ledger under the row's identity, with the draining chief's name on the row. A row
+another live bucket has claimed is that chief's; a row already in the ledger only gets its
+claim, so re-spooling a PR is safe. Rows never leave the spool on their own.
+
+A spool line the drain cannot read or add prints
+`ACTION owed-spool-bad=<line numbers>` (`=file` when the spool itself cannot be read or
+locked). `owed-events.py spool --check --spool <spool>` lists the bad lines. Rebuild a lost
+row from the PR body: `gh pr view <n> --repo <owner/name> --json body -q .body` piped
+through `scripts/lib/pr_remainder.py --owed-lines` into the `spool` call above. Then remove
+the bad line with `owed-events.py spool --drop <line> --spool <spool>`, which takes the
+spool lock and renames a rewritten copy over the spool, so an interrupted drop leaves it
+whole; it is the only way a line leaves the spool.
 
 Tick projects keyed step dates and readiness reminders into the same owed ledger.
 A step expires after its accepted UTC by-date; missing/invalid evidence emits

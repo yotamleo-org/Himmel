@@ -6,20 +6,23 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import { join } from "node:path";
 import { atomicWrite } from "../telegram/bus";
-import { Chain, PidLockError, acquirePidLock, drainSpool, readChain, sweepResults, writeResult, type IntentRec, type SpoolRec } from "./chain";
+import { Chain, PidLockError, acquirePidLock, drainSpool, readChain, sweepResults, tapSigOk, writeResult, type IntentRec, type SpoolRec } from "./chain";
 import { ConfigError, DEFAULT_BUDGETS, EXIT_CONFIG, clampToSchema, loadAllowlist, loadConfig, type AllowEntry, type Config } from "./config";
-import { digestFile, parseAck, writeCursor, type DigestRec } from "./digests";
+import { digestFile, parseAck, writeCursor, type DigestRec, type EffectRec, type JobRec } from "./digests";
 import { checkEnvelopeOutbound, checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
 import { OUTCOMES, buildEnvelope, encodeCanonical, type Envelope } from "./envelope";
 import { admit, admitEnvelope, appendUnknownChat, createGateState, looksLikeEnvelope, matchEnvelope, noteAdmitted, noteRate, rebuildFromInbox, type GateState, type PeerEnvRec, type PeerMsgRec } from "./gate";
 import { mintId } from "./grammar";
-import { botIdFromToken, configDir, peersFile, stateDir } from "./ids";
+import { botIdFromToken, configDir, peersFile, stateDir, utcDay } from "./ids";
 import { dueJobs, isTerminal, newInJob, newOutJob, queueDepth, remaining, step, type JobEvent, type SendSpec } from "./jobstate";
-import { ReaderLedger, runReader } from "./reader";
+import { ReaderLedger, runReader, type Digest, type ModelRoute, type ReaderKind } from "./reader";
 import { resolveCapacity, resolveReq, resolveRes, type JobRecord } from "./resolve";
 import { currentSigningKey, sign } from "./sign";
 import { PeerTelegram, RetryAfter, TelegramError } from "./telegram";
-import { MAX_AUTO_PER_HOUR, Threads, templateLine, type Action, type ThreadRec } from "./threads";
+import { MAX_AUTO_PER_HOUR, Threads, effectiveRoute, templateLine, type Action, type Route, type ThreadRec, type Transition, type WakeEvent, type WakeLabel } from "./threads";
+import { appendNotify, notifyFile, type DailyNotify, type NotifyRec, type ResultNotify } from "./notify";
+import { DRAFT_TTL_MS, MAX_DRAFTS_PER_DAY, MAX_PENDING_DRAFTS, badChars, draftState, draftsToday, pendingCount, reviewTooLong } from "./drafts";
+import { lockdownEnabled } from "../telegram/lockdown";
 import { Tripwire, Waker } from "./wake";
 
 export type TgLike = Pick<PeerTelegram, "getUpdates" | "sendMessage" | "getChatMember">;
@@ -40,11 +43,20 @@ export type PollerDeps = {
 };
 
 type Pending = IntentRec & { n: number };
-type Item = { peer: string; msgKind: string; isRoot: boolean; isTemplate: boolean; replyTo: number | null; text: string; id?: string; spool?: string; resend?: boolean; allowShape?: string; checkUsage: boolean };
+type Item = { peer: string; msgKind: string; isRoot: boolean; isTemplate: boolean; replyTo: number | null; text: string; id?: string; spool?: string; resend?: boolean; allowShape?: string; corpus?: OutCtx["corpus"]; source?: string; checkUsage: boolean };
 
 const TRIPWIRE_COUNT = 3;
+const DAILY_DAYS = 7;
+const READ_TAGS = new Set(["ask:question", "status", "info", "answer", "untagged"]);
+type ReadJob = { rec: PeerMsgRec; kind: ReaderKind; transition: Transition; held: WakeEvent };
 const kindLine = (k: string) => (k === "question" ? "ask:question" : k);
 const PERMANENT = [400, 403, 404];
+
+export function sendRule(threads: Threads, peers: Config["peers"], peer: string, rec: { replyTo?: number }): { ok: true } | { ok: false; rule: string } {
+  if (!peers[peer]) return { ok: false, rule: "unknown-peer" };
+  if (rec.replyTo !== undefined && threads.get(peer, rec.replyTo)?.dir !== "in") return { ok: false, rule: "unknown-thread" };
+  return { ok: true };
+}
 
 export class Poller {
   offset = 0;
@@ -58,6 +70,7 @@ export class Poller {
   private capAsks = new Map<string, boolean>();
   private match = matchEnvelope({ jobs: () => [...this.jobs.values()], asks: () => this.capAsks });
   private tripwire = new Tripwire();
+  private dailyChecked = new Map<string, string>();
   private answers = new Map<string, number[]>();
   private rootIntents = new Map<string, Pending>();
   private spoolDone = new Map<string, number>();
@@ -72,7 +85,7 @@ export class Poller {
     this.cfg = deps.cfg;
     this.now = deps.clock ?? Date.now;
     this.log = deps.log ?? ((l: string) => console.error(l));
-    this.waker = new Waker(this.cfg, this.now);
+    this.waker = new Waker(this.cfg, this.chain, notifyFile(this.deps.stateDir), this.now);
   }
 
   static async create(deps: PollerDeps): Promise<Poller> {
@@ -95,14 +108,21 @@ export class Poller {
   }
 
   private load() {
-    const threadRecs: ThreadRec[] = [], inbox: Pick<PeerMsgRec, "peer" | "chat_id" | "from_id" | "id" | "ts">[] = [], envIds: { chat: number; from: string; id: string; exp: number }[] = [];
+    const threadRecs: ThreadRec[] = [], inbox: Pick<PeerMsgRec, "peer" | "chat_id" | "from_id" | "id" | "ts">[] = [], envIds: { chat: number; from: string; id: string; exp: number; void?: true }[] = [];
     for (const peer of Object.keys(this.cfg.peers)) {
       for (const r of readChain(this.file(peer, "threads.jsonl"))) if (r.kind === "thread") threadRecs.push(r as unknown as ThreadRec);
       for (const r of readChain(this.file(peer, "inbox.jsonl"))) {
         if (r.kind === "peer-msg") inbox.push(r as unknown as PeerMsgRec);
         else if (r.kind === "peer-env") inbox.push({ peer: r.peer, chat_id: r.chat_id, from_id: r.from_id, ts: r.ts });
       }
-      for (const r of readChain(this.file(peer, "envelope-ids.jsonl"))) if (r.kind === "env-id") envIds.push(r as any);
+      for (const r of readChain(this.file(peer, "envelope-ids.jsonl"))) {
+        if (r.kind === "env-id-done" || (r.kind === "env-id" && !r.open)) envIds.push(r as any);
+        else if (r.kind === "env-id-void") envIds.push({ ...(r as any), void: true });
+      }
+      const hourAgo = this.now() - 3_600_000;
+      const answered = readChain(this.file(peer, "answers.jsonl")).filter(r => r.kind === "answered" && typeof r.at === "number" && r.at > hourAgo).map(r => r.at as number);
+      if (answered.length) this.answers.set(peer, answered);
+      for (const r of readChain(this.file(peer, "sig-fails.jsonl"))) if (r.kind === "sig-fail" && typeof r.at === "number" && r.at > hourAgo) this.tripwire.note(peer, r.at);
       for (const r of readChain(this.file(peer, "jobs.jsonl"))) {
         if (r.kind === "cap-ask") this.capAsks.set(`${peer}:${r.msg}`, this.capAsks.get(`${peer}:${r.msg}`) ?? false);
         else if (r.kind === "capacity") this.capAsks.set(`${peer}:${r.re}`, true);
@@ -117,7 +137,7 @@ export class Poller {
     this.gate = createGateState({ ourBotId: this.deps.ourBotId, ourUsername: "", committed: this.offset - 1, now: this.now() });
     for (const r of this.threads.roots()) this.gate.roots.add(r);
     rebuildFromInbox(this.gate, inbox);
-    for (const r of envIds) this.gate.envIds.add(r.chat, r.from, r.id, r.exp);
+    for (const r of envIds) { if (r.void) this.gate.envIds.delete(r.chat, r.from, r.id); else this.gate.envIds.add(r.chat, r.from, r.id, r.exp); }
     this.gate.envIds.prune(this.ts());
     this.refreshKilled();
   }
@@ -195,14 +215,82 @@ export class Poller {
           this.pending.delete(`${i.peer}:${i.n}`);
           continue;
         }
-        const res = await this.egress(i.text, this.ctxFor({ peer: i.peer, msgKind: i.msgKind, isRoot: i.isRoot, isTemplate: !!i.tpl, replyTo: i.root, text: i.text, checkUsage: false }));
+        const res = await this.egress(i.text, this.ctxFor({ peer: i.peer, msgKind: i.msgKind, isRoot: i.isRoot, isTemplate: !!i.tpl, replyTo: i.root, text: i.text, corpus: this.corpusOf(i.source ?? "send.ts"), checkUsage: false }));
         if (res.ok) continue;
         await this.chain.append(this.file(i.peer, "outbox.jsonl"), { ...refusalRecord(i.text, res, this.ts()), intent: i.n });
         this.pending.delete(`${i.peer}:${i.n}`);
         if (i.spool) writeResult(this.dir(i.peer), i.spool, { ok: false, rule: res.rule, ...(res.shape ? { shape: res.shape } : {}) });
       }
+      for (const peer of Object.keys(this.cfg.peers)) await this.replayEffects(peer);
+      await this.settleDrafts();
       await this.flush();
     });
+  }
+
+  private async replayEffects(peer: string): Promise<void> {
+    const recs = readChain(digestFile(this.dir(peer)));
+    const by = (kind: string) => new Map(recs.filter(r => r.kind === kind).map(r => [r.message_id as number, r]));
+    const digests = by("digest"), effects = by("effect");
+    const inbox = new Map(readChain(this.file(peer, "inbox.jsonl")).filter(r => r.kind === "peer-msg").map(r => [r.message_id as number, r as unknown as PeerMsgRec]));
+    for (const job of recs.filter(r => r.kind === "job") as unknown as JobRec[]) {
+      if (effects.has(job.message_id)) continue;
+      const thread = this.threads.get(peer, job.root);
+      const rec = inbox.get(job.message_id);
+      if (!thread || !rec) continue;
+      const held = this.heldFor(peer, job, thread);
+      const digest = digests.get(job.message_id);
+      if (!digest) {
+        const kind: ReaderKind = job.transition === "opened" ? thread.msgKind as ReaderKind : job.transition === "answered-now" ? "answer" : "other";
+        const route = effectiveRoute(kind, job.transition, null);
+        const out: Omit<DigestRec, "n" | "h"> = { kind: "digest", peer, message_id: rec.message_id, root_id: rec.root_id, tag: rec.tag, from_id: rec.from_id, ts: this.ts(), summary: null, asks: [], ...(rec.id ? { id: rec.id } : {}), reason: "restart", route, model_route: null };
+        await this.chain.append(digestFile(this.dir(peer)), out);
+        await this.applyRoute(rec, route, job.transition, held, { route: null, summary: null, asks: [], reason: "restart" });
+        continue;
+      }
+      const route = digest.route as Route | undefined;
+      if (!route) continue;
+      const d: Digest = { route: digest.model_route ?? null, summary: digest.summary, asks: digest.asks, ...(digest.reason ? { reason: digest.reason } : {}) };
+      const settled = route === "ack" ? thread.state === "ACKED" : route === "drop" && job.transition === "opened" ? thread.state === "DROPPED" : false;
+      if (!settled) { await this.applyRoute(rec, route, job.transition, held, d); continue; }
+      if (route === "ack" && !readChain(this.file(peer, "outbox.jsonl")).some(r => r.kind === "intent" && r.tpl && r.msgKind === "closing" && r.root === job.root)) {
+        await this.apply([{ send: { peer, tpl: "closing", root: job.root } }]);
+      }
+      const effect: Omit<EffectRec, "n" | "h"> = { kind: "effect", peer, message_id: job.message_id, outcome: route === "ack" ? "acked" : "dropped", ts: this.ts() };
+      await this.chain.append(digestFile(this.dir(peer)), effect);
+    }
+  }
+
+  private async writeDailies(peer: string): Promise<void> {
+    const file = notifyFile(this.deps.stateDir);
+    const now = this.now(), today = utcDay(now);
+    if (this.dailyChecked.get(peer) === today) return;
+    const marker = (readChain(file) as unknown as NotifyRec[]).filter(r => r.kind === "notify" && r.type === "daily" && r.peer === peer).at(-1) as DailyNotify | undefined;
+    const days: string[] = [];
+    for (let i = DAILY_DAYS; i >= 1; i--) { const d = utcDay(now - i * 86_400_000); if (d < today && (!marker || d > marker.day)) days.push(d); }
+    if (!days.length) { this.dailyChecked.set(peer, today); return; }
+    const recs = readChain(digestFile(this.dir(peer)));
+    const outcome = new Map(recs.filter(r => r.kind === "effect").map(r => [r.message_id as number, r.outcome as string]));
+    for (const day of days) {
+      const routed = recs.filter(r => r.kind === "digest" && typeof r.route === "string" && utcDay(r.ts * 1000) === day);
+      if (!routed.length) continue;
+      const esc = routed.filter(r => r.route === "escalate");
+      const skipped: Record<string, number> = {};
+      for (const r of esc) if (r.summary === null && typeof r.reason === "string") skipped[r.reason] = (skipped[r.reason] ?? 0) + 1;
+      await appendNotify(this.chain, file, {
+        kind: "notify", type: "daily", peer, day, ts: now, skipped,
+        escalated: esc.length,
+        digests: esc.filter(r => outcome.get(r.message_id) === "escalated").length,
+        wakes: esc.filter(r => outcome.get(r.message_id) === "fallback-wake").length,
+        acked: routed.filter(r => r.route === "ack").length,
+        dropped: routed.filter(r => r.route === "drop").length,
+      });
+    }
+    this.dailyChecked.set(peer, today);
+  }
+
+  private heldFor(peer: string, job: JobRec, thread: ThreadRec): WakeEvent {
+    const label: WakeLabel = job.transition === "opened" ? `new ${thread.msgKind}` as WakeLabel : job.transition === "answered-now" ? "answer" : thread.deadline === null ? "message on a closed thread" : "peer message";
+    return { peer, root: job.root, dir: job.dir, label, ...(job.transition === "opened" && thread.deadline ? { replyBy: thread.deadline } : {}) };
   }
 
   private commitOffset(next: number): Promise<void> {
@@ -213,7 +301,7 @@ export class Poller {
   // One batch of updates. The offset moves only after every record of the batch
   // is on disk, so a failed append replays the batch.
   async processBatch(updates: any[]): Promise<void> {
-    const jobs: PeerMsgRec[] = [];
+    const jobs: ReadJob[] = [];
     await this.serial(async () => {
       let max = this.offset - 1;
       this.refreshKilled();
@@ -233,11 +321,15 @@ export class Poller {
         }
         await this.chain.append(this.file(r.peer, "inbox.jsonl"), r.rec);
         noteAdmitted(this.gate, r.rec);
-        const actions = this.threads.onInbound(r.rec);
-        await this.apply(actions);
-        const opened = actions.some(a => "state" in a && a.state.dir === "in" && a.state.root === r.rec.message_id);
-        const answered = r.rec.tag === "answer" && this.threads.get(r.peer, r.rec.root_id) !== undefined;
-        if (opened || answered) jobs.push(r.rec);
+        const { actions, transition } = this.threads.onInbound(r.rec);
+        const thread = this.threads.get(r.peer, r.rec.root_id);
+        if (!READ_TAGS.has(r.rec.tag) || !thread || (r.rec.root_id === r.rec.message_id && transition !== "opened")) { await this.apply(actions); continue; }
+        const kind: ReaderKind = transition === "opened" ? thread.msgKind as ReaderKind : transition === "answered-now" ? "answer" : "other";
+        const job: Omit<JobRec, "n" | "h"> = { kind: "job", peer: r.peer, message_id: r.rec.message_id, root: r.rec.root_id, dir: thread.dir, transition, ts: this.ts() };
+        await this.chain.append(digestFile(this.dir(r.peer)), job);
+        const held = actions.flatMap(a => ("wake" in a && a.wake.label !== "cap hit" ? [a.wake] : []));
+        await this.apply(actions.filter(a => !("wake" in a) || a.wake.label === "cap hit"));
+        jobs.push({ rec: r.rec, kind, transition, held: held[0] ?? { peer: r.peer, root: r.rec.root_id, dir: thread.dir, label: thread.deadline === null ? "message on a closed thread" : "peer message" } });
       }
       if (max >= this.offset) {
         await this.commitOffset(max + 1);
@@ -255,21 +347,37 @@ export class Poller {
       if (r.unknownChat) appendUnknownChat(join(this.deps.stateDir, "unknown-chats.jsonl"), r.unknownChat);
       if (r.step === 1 || !r.peer) return;
       noteRate(this.gate, r.peer, this.ts());
-      if (r.step === 5 && this.tripwire.note(r.peer, this.now())) await this.waker.alert(r.peer, TRIPWIRE_COUNT);
+      if (r.step === 5) {
+        await this.chain.append(this.file(r.peer, "sig-fails.jsonl"), { kind: "sig-fail", at: this.now() });
+        if (this.tripwire.note(r.peer, this.now())) await this.waker.alert(r.peer, TRIPWIRE_COUNT);
+      }
       if (!r.rec || !r.env) return;
-      await this.chain.append(this.file(r.peer, "inbox.jsonl"), r.rec);
-      if (r.env.kind === "req" && r.refused) await this.answer(r.peer, { kind: "res", body: { job: r.env.job, state: "refused", refused: r.refused } });
-      await this.recordId(r.rec, r.env.exp);
+      const { peer, env } = r;
+      await this.chain.append(this.file(peer, "inbox.jsonl"), r.rec);
+      await this.withEnvId(r.rec, env.exp, async () => {
+        if (env.kind === "req" && r.refused) await this.answer(peer, { kind: "res", body: { job: env.job, state: "refused", refused: r.refused } });
+      });
       return;
     }
     noteRate(this.gate, r.peer, this.ts());
     await this.chain.append(this.file(r.peer, "inbox.jsonl"), r.rec);
-    await this.handleEnvelope(r.peer, r.env);
-    await this.recordId(r.rec, r.env.exp);
+    await this.withEnvId(r.rec, r.env.exp, () => this.handleEnvelope(r.peer, r.env));
+  }
+
+  private async withEnvId(rec: PeerEnvRec, exp: number, handle: () => Promise<void>): Promise<void> {
+    try {
+      await this.recordId(rec, exp);
+      await handle();
+      await this.chain.append(this.file(rec.peer, "envelope-ids.jsonl"), { kind: "env-id-done", chat: rec.chat_id, from: rec.from_id, id: rec.id, exp });
+    } catch (e) {
+      this.gate.envIds.delete(rec.chat_id, rec.from_id, rec.id);
+      await this.chain.append(this.file(rec.peer, "envelope-ids.jsonl"), { kind: "env-id-void", chat: rec.chat_id, from: rec.from_id, id: rec.id }).catch(() => {});
+      throw e;
+    }
   }
 
   private async recordId(rec: PeerEnvRec, exp: number): Promise<void> {
-    await this.chain.append(this.file(rec.peer, "envelope-ids.jsonl"), { kind: "env-id", chat: rec.chat_id, from: rec.from_id, id: rec.id, exp });
+    await this.chain.append(this.file(rec.peer, "envelope-ids.jsonl"), { kind: "env-id", chat: rec.chat_id, from: rec.from_id, id: rec.id, exp, open: true });
   }
 
   private async handleEnvelope(peer: string, env: Envelope): Promise<void> {
@@ -299,7 +407,7 @@ export class Poller {
       const resolved = resolveReq(env, allow);
       const job = newInJob({ jobNo: this.nextJobNo(), peer, now: this.ts(), fields: resolved.record });
       await this.putJob(job);
-      if (!resolved.ok) await this.applyJobEvent(job, { type: "resolve-fail", refused: resolved.refused });
+      if (!resolved.ok) await this.applyJobEvent(job, { type: "resolve-fail", refused: resolved.refused }, true);
     }
   }
 
@@ -321,8 +429,7 @@ export class Poller {
     if (rec.kind === "req") {
       const b = made.env as Extract<Envelope, { kind: "req" }>;
       const job = newOutJob({ jobNo: this.nextJobNo(), peer, wireJob: b.job, sha: b.sha, suites: b.suites, reqExp: b.exp, now: this.ts() });
-      await this.putJob(job);
-      if (!(await this.queueEnvelope(peer, made))) return refuse("egress");
+      if (!(await this.queueEnvelope(peer, made, () => this.putJob(job)))) return refuse("egress");
       writeResult(dir, name, { ok: true, job: job.jobNo });
       return;
     }
@@ -374,10 +481,10 @@ export class Poller {
     writeResult(dir, name, { ok: true });
   }
 
-  private async applyJobEvent(job: JobRecord, event: JobEvent): Promise<void> {
+  private async applyJobEvent(job: JobRecord, event: JobEvent, capped = false): Promise<void> {
     const r = step(job, event, this.ts());
     if (r.record !== job) await this.putJob(r.record);
-    if (r.send) await this.sendEnvelope(job.peer, r.send);
+    if (r.send) await (capped ? this.answer(job.peer, r.send) : this.sendEnvelope(job.peer, r.send));
   }
 
   private async fireDeadlines(): Promise<void> {
@@ -407,13 +514,14 @@ export class Poller {
     return { env, lines: [`/peer@${p.theirs.username}`, line2, line3, `sig=${sign(line2, line3, key.path)}`] };
   }
 
-  private async queueEnvelope(peer: string, made: { env: Envelope; lines: string[] }): Promise<boolean> {
+  private async queueEnvelope(peer: string, made: { env: Envelope; lines: string[] }, afterEgress?: () => Promise<void>): Promise<boolean> {
     const ok = await this.checkEnv(peer, made.lines);
     if (!ok.ok) {
       await this.chain.append(this.file(peer, "outbox.jsonl"), refusalRecord(made.lines[2], ok, this.ts()));
       this.log(`env-send peer=${peer} refused: ${ok.rule}`);
       return false;
     }
+    await afterEgress?.();
     const rec = await this.chain.append(this.file(peer, "outbox.jsonl"), { kind: "intent", peer, chat: this.cfg.peers[peer].chatId, id: made.env.msg, root: null, msgKind: "env", text: made.lines.join("\n"), isRoot: false, env: true });
     this.pending.set(`${peer}:${rec.n}`, rec as unknown as Pending);
     return true;
@@ -423,6 +531,7 @@ export class Poller {
     const now = this.now();
     const recent = (this.answers.get(peer) ?? []).filter(t => now - t < 3_600_000);
     if (recent.length >= MAX_AUTO_PER_HOUR) { this.log(`env-drop peer=${peer} not answered: the hourly cap on answers is reached`); return; }
+    await this.chain.append(this.file(peer, "answers.jsonl"), { kind: "answered", at: now });
     recent.push(now);
     this.answers.set(peer, recent);
     await this.sendEnvelope(peer, spec);
@@ -452,15 +561,35 @@ export class Poller {
     };
   }
 
-  private async readAndDigest(rec: PeerMsgRec): Promise<void> {
+  private async readAndDigest(job: ReadJob): Promise<void> {
+    const { rec, kind, transition, held } = job;
     const peer = this.cfg.peers[rec.peer];
     if (!peer) return;
     const ledger = new ReaderLedger(this.file(rec.peer, "reader-ledger.json"), peer, this.now);
     const run = this.deps.readerRun ?? runReader;
-    const kind = rec.tag === "answer" ? "answer" : rec.tag.replace("ask:", "");
     const d = await run(rec.text, kind, { himmelRoot: this.cfg.himmelRoot, ledger, timeoutMs: this.deps.readerTimeoutMs });
-    const out: Omit<DigestRec, "n" | "h"> = { kind: "digest", peer: rec.peer, message_id: rec.message_id, root_id: rec.root_id, tag: rec.tag, from_id: rec.from_id, ts: this.ts(), summary: d.summary, asks: d.asks, ...(rec.id ? { id: rec.id } : {}), ...(d.reason ? { reason: d.reason } : {}) };
-    await this.chain.append(digestFile(this.dir(rec.peer)), out);
+    const model: ModelRoute = d.route === "escalate" || d.route === "ack" || d.route === "drop" ? d.route : null;
+    const route = effectiveRoute(kind, transition, model);
+    await this.serial(async () => {
+      const out: Omit<DigestRec, "n" | "h"> = { kind: "digest", peer: rec.peer, message_id: rec.message_id, root_id: rec.root_id, tag: rec.tag, from_id: rec.from_id, ts: this.ts(), summary: d.summary, asks: d.asks, ...(rec.id ? { id: rec.id } : {}), ...(d.reason ? { reason: d.reason } : {}), route, model_route: model };
+      await this.chain.append(digestFile(this.dir(rec.peer)), out);
+      await this.applyRoute(rec, route, transition, held, { ...d, route: model });
+      await this.flush();
+    });
+  }
+
+  private async applyRoute(rec: PeerMsgRec, route: Route, transition: Transition, held: WakeEvent, d: Digest): Promise<void> {
+    let outcome: EffectRec["outcome"];
+    if (route === "escalate") outcome = await this.waker.escalate({ ...held, message_id: rec.message_id, digest: d });
+    else if (transition !== "opened") outcome = "dropped";
+    else {
+      const acts = route === "ack" ? this.threads.ack(rec.peer, rec.root_id) : this.threads.drop(rec.peer, rec.root_id);
+      if (!acts.length) return;
+      await this.apply(acts);
+      outcome = route === "ack" ? "acked" : "dropped";
+    }
+    const effect: Omit<EffectRec, "n" | "h"> = { kind: "effect", peer: rec.peer, message_id: rec.message_id, outcome, ts: this.ts() };
+    await this.chain.append(digestFile(this.dir(rec.peer)), effect);
   }
 
   async tick(): Promise<void> {
@@ -471,8 +600,10 @@ export class Poller {
       await this.apply(this.threads.tick(this.now()));
       await this.fireKills();
       await this.fireDeadlines();
+      await this.settleDrafts();
       await this.flush();
       for (const peer of Object.keys(this.cfg.peers)) sweepResults(this.dir(peer), 86_400_000, this.now());
+      for (const peer of Object.keys(this.cfg.peers)) await this.writeDailies(peer);
     });
   }
 
@@ -481,7 +612,7 @@ export class Poller {
       for (const peer of Object.keys(this.cfg.peers)) {
         if (!fs.existsSync(join(this.dir(peer), "spool"))) continue;
         for (const d of drainSpool(this.dir(peer))) {
-          if ("malformed" in d) { this.log(`malformed spool file ${peer}/${d.name}`); writeResult(this.dir(peer), d.name, { ok: false, rule: "malformed" }); continue; }
+          if ("malformed" in d) { this.log(`malformed spool file ${peer}/${d.name}: ${d.why}`); writeResult(this.dir(peer), d.name, { ok: false, rule: "malformed", why: d.why }); continue; }
           await this.applySpool(peer, d.name, d.rec);
         }
       }
@@ -511,20 +642,107 @@ export class Poller {
         return;
       }
       this.threads = Threads.load(this.threads.all(), this.threadOpts());
-      this.waker = new Waker(this.cfg, this.now);
+      this.waker = new Waker(this.cfg, this.chain, notifyFile(this.deps.stateDir), this.now);
       await this.chain.append(this.file(peer, "outbox.jsonl"), { kind: "confirmed", chat_id: rec.chatId, ts: this.ts() });
       await this.ensureUsername();
       writeResult(dir, name, { ok: true });
       return;
     }
-    // A send. The result is written once Telegram has the message; until then the
-    // spool file stays, and a replay finds the pending intent by its spool name.
-    if (this.spoolDone.has(`${peer}/${name}`)) { writeResult(dir, name, { ok: true, message_id: this.spoolDone.get(`${peer}/${name}`)! }); return; }
-    if ([...this.pending.values()].some(i => i.peer === peer && i.spool === name)) return;
-    const isRoot = rec.replyTo === undefined;
-    if (!isRoot && this.threads.get(peer, rec.replyTo!)?.dir !== "in") { writeResult(dir, name, { ok: false, rule: "unknown-thread" }); return; }
-    const res = await this.enqueue({ peer, msgKind: rec.kind, isRoot, isTemplate: false, replyTo: rec.replyTo ?? null, text: rec.text, spool: name, allowShape: rec.allowShape, checkUsage: true });
-    if (!res.ok) writeResult(dir, name, { ok: false, rule: res.rule, ...(res.shape ? { shape: res.shape } : {}) });
+    if (rec.type === "draft") return this.applyDraft(peer, name, rec);
+    return this.applyTap(peer, name, rec);
+  }
+
+  private outbox = (peer: string) => readChain(this.file(peer, "outbox.jsonl")) as Record<string, any>[];
+  private allOutboxes = () => Object.keys(this.cfg.peers).map(p => this.outbox(p));
+  private corpusOf = (source: string): OutCtx["corpus"] => (source === "telegram" ? "operator-reply" : "peer-desk");
+
+  private async resultNotify(peer: string, draft: string, state: ResultNotify["state"], root: number, extra: { message_id?: number; rule?: string } = {}) {
+    const file = notifyFile(this.deps.stateDir);
+    if ((readChain(file) as Record<string, any>[]).some(r => r.type === "result" && r.draft === draft)) return;
+    await appendNotify(this.chain, file, { kind: "notify", type: "result", peer, root, draft, state, ts: this.now(), ...extra });
+  }
+
+  private async draftNotify(peer: string, d: Record<string, any>) {
+    await appendNotify(this.chain, notifyFile(this.deps.stateDir), { kind: "notify", type: "draft", peer, root: d.replyTo ?? 0, draft: d.id, source: d.source, deadline: d.deadline, text: d.text, ts: this.now() });
+  }
+
+  private async finishDraft(peer: string, d: Record<string, any>, state: "REJECTED" | "EXPIRED" | "REFUSED", rule?: string) {
+    await this.chain.append(this.file(peer, "outbox.jsonl"), { kind: "draft-result", draft: d.id, state, ...(rule ? { rule } : {}), ts: this.ts() });
+    await this.resultNotify(peer, d.id, state, d.replyTo ?? 0, rule ? { rule } : {});
+  }
+
+  private async applyDraft(peer: string, name: string, rec: Extract<SpoolRec, { type: "draft" }>): Promise<void> {
+    const dir = this.dir(peer);
+    const seen = this.outbox(peer).find(r => r.kind === "draft" && r.spool === name);
+    if (seen) { writeResult(dir, name, { ok: true, draft: seen.id, deadline: seen.deadline }); return; }
+    const refuse = async (rule: string, shape?: string) => {
+      await this.chain.append(this.file(peer, "outbox.jsonl"), refusalRecord(rec.text, { ok: false, rule, ...(shape ? { shape } : {}) }, this.ts()));
+      if (rec.source === "telegram") await this.resultNotify(peer, mintId(), "REFUSED", rec.replyTo ?? 0, { rule });
+      writeResult(dir, name, { ok: false, rule, ...(shape ? { shape } : {}) });
+    };
+    const rule = sendRule(this.threads, this.cfg.peers, peer, rec);
+    if (!rule.ok) return refuse(rule.rule);
+    if (badChars(rec.text)) return refuse("characters");
+    const res = await this.egress(rec.text, this.ctxFor({ peer, msgKind: rec.kind, isRoot: rec.replyTo === undefined, isTemplate: false, replyTo: rec.replyTo ?? null, text: rec.text, allowShape: rec.allowShape, corpus: this.corpusOf(rec.source), checkUsage: true }));
+    if (!res.ok) return refuse(res.rule, res.shape);
+    const id = mintId(), deadline = this.now() + DRAFT_TTL_MS;
+    if (reviewTooLong({ peer, root: rec.replyTo ?? 0, draft: id, source: rec.source, deadline, text: rec.text }, this.cfg.himmelRoot)) return refuse("review-length");
+    const all = this.allOutboxes();
+    if (pendingCount(all) >= MAX_PENDING_DRAFTS) return refuse("too-many-pending");
+    if (draftsToday(all, this.now()) >= MAX_DRAFTS_PER_DAY) return refuse("daily-drafts");
+    const d = { kind: "draft", id, source: rec.source, msgKind: rec.kind, replyTo: rec.replyTo ?? null, text: rec.text, ...(rec.allowShape ? { allowShape: rec.allowShape } : {}), spool: name, deadline, ts: this.ts() };
+    await this.chain.append(this.file(peer, "outbox.jsonl"), d);
+    await this.draftNotify(peer, d);
+    writeResult(dir, name, { ok: true, draft: id, deadline });
+  }
+
+  private async applyTap(peer: string, name: string, rec: Extract<SpoolRec, { type: "tap" }>): Promise<void> {
+    const dir = this.dir(peer);
+    const no = (rule: string) => writeResult(dir, name, { ok: false, rule });
+    const refuse = (rule: string) => { this.log(`tap-refused peer=${peer} draft=${rec.draft} rule=${rule}`); no(rule); };
+    if (rec.sig === undefined) return refuse("tap-unsigned");
+    if (!tapSigOk(this.deps.configDir, { ...rec, peer }, rec.sig)) return refuse("tap-bad-sig");
+    if (rec.by !== String(this.cfg.operatorChatId)) return no("not-operator");
+    const out = this.outbox(peer);
+    const d = out.find(r => r.kind === "draft" && r.id === rec.draft);
+    if (!d) return no("unknown-draft");
+    const state = draftState(out, d.id);
+    if (state !== "PENDING") return no(state === "SENDING" ? "already-sending" : `already-${state!.toLowerCase()}`);
+    const done = async (s: "REJECTED" | "EXPIRED" | "REFUSED", rule?: string) => { await this.finishDraft(peer, d, s, rule); writeResult(dir, name, s === "REJECTED" ? { ok: true } : { ok: false, rule: rule ?? s.toLowerCase() }); };
+    if (rec.verb === "no") return done("REJECTED");
+    if (this.now() > d.deadline) return done("EXPIRED");
+    if (lockdownEnabled(this.cfg.bridgeRoot)) return done("REFUSED", "lockdown");
+    const rule = sendRule(this.threads, this.cfg.peers, peer, { replyTo: d.replyTo ?? undefined });
+    if (!rule.ok) return done("REFUSED", rule.rule);
+    if (badChars(d.text)) return done("REFUSED", "characters");
+    const isRoot = d.replyTo === null;
+    const res = await this.egress(d.text, this.ctxFor({ peer, msgKind: d.msgKind, isRoot, isTemplate: false, replyTo: d.replyTo, text: d.text, allowShape: d.allowShape, corpus: this.corpusOf(d.source), checkUsage: true }));
+    if (!res.ok) return done("REFUSED", res.rule);
+    const intent = await this.chain.append(this.file(peer, "outbox.jsonl"), {
+      kind: "intent", peer, chat: this.cfg.peers[peer].chatId, id: d.id, root: d.replyTo, msgKind: d.msgKind, text: d.text, isRoot, draft: d.id, by: rec.by, source: d.source,
+    });
+    this.pending.set(`${peer}:${intent.n}`, intent as unknown as Pending);
+    writeResult(dir, name, { ok: true, draft: d.id });
+  }
+
+  private async settleDrafts(): Promise<void> {
+    for (const peer of Object.keys(this.cfg.peers)) {
+      const out = this.outbox(peer);
+      for (const d of out.filter(r => r.kind === "draft")) {
+        const state = draftState(out, d.id)!;
+        const noted = (type: string) => (readChain(notifyFile(this.deps.stateDir)) as Record<string, any>[]).some(r => r.type === type && r.draft === d.id);
+        if (state === "PENDING" && this.now() > d.deadline) { await this.finishDraft(peer, d, "EXPIRED"); continue; }
+        if (state === "PENDING") { if (!noted("draft")) await this.draftNotify(peer, d); continue; }
+        if (state === "SENDING" || state === "REJECTED" || state === "EXPIRED") { if (state !== "SENDING") await this.resultNotify(peer, d.id, state, d.replyTo ?? 0); continue; }
+        const intent = out.find(r => r.kind === "intent" && r.draft === d.id)!;
+        if (state === "SENT") { const sent = out.find(r => r.kind === "sent" && r.intent === intent.n)!; await this.resultNotify(peer, d.id, "SENT", d.replyTo ?? sent.message_id, { message_id: sent.message_id }); }
+        else if (state === "FAILED") await this.resultNotify(peer, d.id, "FAILED", d.replyTo ?? 0);
+        else {
+          const why = out.find(r => (r.kind === "refused" && r.intent === intent?.n) || (r.kind === "draft-result" && r.draft === d.id));
+          await this.resultNotify(peer, d.id, "REFUSED", d.replyTo ?? 0, { rule: String(why?.reason ?? why?.rule ?? "refused") });
+        }
+      }
+    }
   }
 
   private async apply(actions: Action[]): Promise<void> {
@@ -539,7 +757,7 @@ export class Poller {
       } else if ("resend" in a) {
         const orig = this.rootIntents.get(`${a.resend.peer}:${a.resend.root}`);
         if (!orig) { this.log(`resend: no original for ${a.resend.peer} ${a.resend.root}`); continue; }
-        await this.enqueue({ peer: orig.peer, msgKind: orig.msgKind, isRoot: true, isTemplate: false, replyTo: null, text: orig.text, id: orig.id, resend: true, checkUsage: false });
+        await this.enqueue({ peer: orig.peer, msgKind: orig.msgKind, isRoot: true, isTemplate: false, replyTo: null, text: orig.text, id: orig.id, resend: true, corpus: this.corpusOf(orig.source ?? "send.ts"), source: orig.source, checkUsage: false });
       } else {
         await this.waker.wake(a.wake);
       }
@@ -552,7 +770,7 @@ export class Poller {
     const open = this.threads.openOutbound(item.peer) + queued.filter(i => i.isRoot && !i.resend && !i.tpl).length;
     return {
       peer: this.cfg.peers[item.peer], kind: item.msgKind, isRoot: item.isRoot, isTemplate: item.isTemplate,
-      tainted: !item.allowShape, tty: Boolean(item.allowShape), claudecode: false, allowShape: item.allowShape,
+      corpus: item.corpus, tainted: !item.allowShape, tty: Boolean(item.allowShape), claudecode: false, allowShape: item.allowShape,
       himmelRoot: this.cfg.himmelRoot, maxTextChars: this.cfg.maxTextChars, matrix: this.deps.matrix, hostname: this.deps.hostname,
       usage: item.checkUsage ? { openOutbound: open, sentLastMinute: sent } : undefined,
     };
@@ -571,7 +789,7 @@ export class Poller {
     const peer = this.cfg.peers[item.peer];
     const rec = await this.chain.append(this.file(item.peer, "outbox.jsonl"), {
       kind: "intent", peer: item.peer, chat: peer.chatId, id: item.id ?? mintId(), root: item.replyTo, msgKind: item.msgKind, text: item.text,
-      isRoot: item.isRoot, ...(item.isTemplate ? { tpl: true } : {}), ...(item.resend ? { resend: true } : {}), ...(item.spool ? { spool: item.spool } : {}),
+      isRoot: item.isRoot, ...(item.isTemplate ? { tpl: true } : {}), ...(item.resend ? { resend: true } : {}), ...(item.spool ? { spool: item.spool } : {}), ...(item.source ? { source: item.source } : {}),
     });
     this.pending.set(`${item.peer}:${rec.n}`, rec as unknown as Pending);
     return { ok: true };
@@ -601,6 +819,7 @@ export class Poller {
           await this.chain.append(this.file(i.peer, "outbox.jsonl"), { kind: "failed", intent: i.n, id: i.id, code: e.code, ts: this.ts() });
           this.pending.delete(`${i.peer}:${i.n}`);
           if (i.spool) writeResult(this.dir(i.peer), i.spool, { ok: false, rule: `telegram-${e.code}` });
+          if (i.draft) await this.resultNotify(i.peer, i.draft, "FAILED", i.root ?? 0);
           continue;
         }
         this.failures += 1;
@@ -613,6 +832,7 @@ export class Poller {
       this.pending.delete(`${i.peer}:${i.n}`);
       const times = this.sentTimes.get(i.peer) ?? []; times.push(this.now()); this.sentTimes.set(i.peer, times);
       if (i.isRoot && !i.resend && !i.tpl) this.rootIntents.set(`${i.peer}:${messageId}`, i);
+      if (i.draft) await this.resultNotify(i.peer, i.draft, "SENT", i.root ?? messageId, { message_id: messageId });
       if (i.spool) { this.spoolDone.set(`${i.peer}/${i.spool}`, messageId); writeResult(this.dir(i.peer), i.spool, { ok: true, message_id: messageId }); }
       if (i.tpl || i.resend || i.env) continue;
       if (i.isRoot) await this.apply(this.threads.onOutbound({ peer: i.peer, chat: peer.chatId, root: messageId, kind: i.msgKind, isRoot: true }));

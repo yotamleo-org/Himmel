@@ -175,8 +175,13 @@ fill_template "$DOCS/judge-brief-template.md" "$tmp/filled_judge.md"
 grep -Eq '^> \*\*(Contract|Completion condition):\*\*' "$tmp/filled_worker.md" \
     && grep -Eq '^> \*\*(Contract|Completion condition):\*\*' "$tmp/filled_judge.md" \
     && ok "6a both filled templates are template-shaped (gated)" || bad "6a a filled template is not gate-shaped"
-rc=0; out="$(run_worker "$tmp/filled_worker.md" --profile worker-impl)" || rc=$?
-[ "$rc" -eq 0 ] && ok "6b a filled worker-brief-template launches" || bad "6b filled worker-brief-template refused (rc=$rc): $out"
+mkdir -p "$tmp/b6"; cp "$tmp/filled_worker.md" "$tmp/b6/filled_worker.md"
+{ bash "$HERE/fleet-manifest.sh" control init "$tmp/b6/chief.fleet.json" --target 4 \
+    && bash "$HERE/fleet-manifest.sh" control set "$tmp/b6/chief.fleet.json" --mode active --expect-gen 1 \
+    && bash "$HERE/fleet-manifest.sh" add "$tmp/b6/chief.fleet.json" "$tmp/b6/filled_worker.md" --lane native --pending; } >/dev/null \
+    || bad "6b fixture: the chief manifest for the filled worker brief could not be built"
+rc=0; out="$(run_worker "$tmp/b6/filled_worker.md" --profile worker-impl --fleet "$tmp/b6/chief.fleet.json")" || rc=$?
+[ "$rc" -eq 0 ] && ok "6b a filled worker-brief-template launches from the chief's manifest" || bad "6b filled worker-brief-template refused (rc=$rc): $out"
 rc=0; out="$(run_worker "$tmp/filled_judge.md" --judge)" || rc=$?
 [ "$rc" -eq 0 ] && ok "6c a filled judge-brief-template launches" || bad "6c filled judge-brief-template refused (rc=$rc): $out"
 # 6b and 6c pass whether or not the placeholder is quoted: put `a: b` inside its quotes and parse the line.
@@ -284,6 +289,13 @@ if (a[0] === 'release' && a[1] === 'core-check') {
 } else if (a[0] === 'release' && a[1] === 'spec-check') {
   let missing = 0;
   for (const k of a.slice(a.indexOf('--mirror') + 2)) {
+    const sl = (process.env.BRIEF_LINT_TEST_SPECLINE || '/nonexistent') + '/' + k;
+    if (fs.existsSync(sl)) {
+      const l = fs.readFileSync(sl, 'utf8').replace(/\n$/, '');
+      console.log(l);
+      if (!l.startsWith('SPEC ok ')) missing = 1;
+      continue;
+    }
     let r = '';
     try { r = fs.readFileSync(process.env.BRIEF_LINT_TEST_SIGNED + '/' + k, 'utf8').trim(); } catch (e) { missing = 1; }
     console.log(r ? 'SPEC ok ' + k + ' ' + r : 'NO-SPEC ' + k);
@@ -490,6 +502,44 @@ rm -f "$BRIEF_LINT_TEST_SPECS/"*
 rc_without=0; err_without="$(BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" bash "$LINT" "$tmp/bnsp.md" 2>&1 >/dev/null)" || rc_without=$?
 { [ "$rc_with" -eq "$rc_without" ] && [ "$err_with" = "$err_without" ] && [ "$rc_with" -eq 3 ]; } && ok "8s3 brief-lint answers the same with the fixture specs removed" || bad "8s3 specs changed the answer: rc $rc_with vs $rc_without: [$err_with] vs [$err_without]"
 rm -f "$NEEDS/HIMMEL-9640"; unset BRIEF_LINT_TEST_NEEDS BRIEF_LINT_TEST_GOLDEN BRIEF_LINT_TEST_SPECS
+SPECLINE="$tmp/cg-specline"; mkdir -p "$SPECLINE"
+cg_ticket HIMMEL-9477 Task Medium
+mk sl_core '# HIMMEL-9477 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+SL_CORE='core brief HIMMEL-9477 is core (scripts/handover/chief-kit/next-dispatchable.sh)'
+sl_run() {
+    printf '%s\n' "$1" > "$SPECLINE/HIMMEL-9477"
+    sl_rc=0; sl_err="$(BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" BRIEF_LINT_TEST_SPECLINE="$SPECLINE" bash "$LINT" "$tmp/sl_core.md" 2>&1 >/dev/null)" || sl_rc=$?
+}
+sl_run 'SPEC-NEEDS-OPERATOR HIMMEL-9477 /state/specs/HIMMEL-9477-spec.md C-R1-9477 O-M1-9477'
+{ [ "$sl_rc" -eq 3 ] && grep -Fq "$SL_CORE and needs the operator's own signature (O-M1-9477): the chief's signature C-R1-9477 does not count; see jira release signer-check HIMMEL-9477, then the operator signs it (jira release operator spec <release> ... --signer operator --supersedes C-R1-9477)" <<< "$sl_err"; } \
+    && ok "8t1 SPEC-NEEDS-OPERATOR refuses the core brief, exit 3, naming the governing record" || bad "8t1 SPEC-NEEDS-OPERATOR (rc=$sl_rc want 3): $sl_err"
+sl_run 'SPEC-SIGNER-UNKNOWN HIMMEL-9477 C-R1-9477 release v1.1.3 chain unreadable'
+{ [ "$sl_rc" -eq 3 ] && grep -Fq "$SL_CORE and its chief signature C-R1-9477 cannot be checked: signer records unreadable: release v1.1.3 chain unreadable; repair the release named, then re-run" <<< "$sl_err" \
+    && ! grep -Fqi 'minerva' <<< "$sl_err"; } \
+    && ok "8t2 SPEC-SIGNER-UNKNOWN refuses naming the why and never says run minerva" || bad "8t2 SPEC-SIGNER-UNKNOWN (rc=$sl_rc want 3): $sl_err"
+sl_run 'SPEC ok HIMMEL-9477 /state/specs/HIMMEL-9477-spec.md C-R1-9477'
+[ "$sl_rc" -eq 0 ] && ok "8t3 R1 twin: a chief-signed SPEC ok passes" || bad "8t3 chief-signed SPEC ok (rc=$sl_rc want 0): $sl_err"
+sl_run 'SPEC ok HIMMEL-9477 /state/specs/HIMMEL-9477-spec.md O-R1-9477'
+[ "$sl_rc" -eq 0 ] && ok "8t4 R3 twin: an operator-signed SPEC ok passes" || bad "8t4 operator-signed SPEC ok (rc=$sl_rc want 0): $sl_err"
+n=0
+while IFS=$'\t' read -r want line; do
+    n=$((n + 1)); sl_run "$line"; erc=3
+    case "$want" in
+        none) exp='CORE-CHECK-FAILED: build the jira CLI' ;;
+        'SPEC ok '*) exp=''; erc=0 ;;
+        SPEC-STALE\ *|NO-SPEC\ *) exp="$SL_CORE and has no signed minerva spec: $line;" ;;
+        SPEC-NEEDS-OPERATOR\ *) sig="${want#* sig=}"; sig="${sig%% *}"
+            exp="$SL_CORE and needs the operator's own signature (${want#* governing=}): the chief's signature $sig does not count;" ;;
+        SPEC-SIGNER-UNKNOWN\ *) sig="${want#* sig=}"; sig="${sig%% *}"
+            exp="$SL_CORE and its chief signature $sig cannot be checked: signer records unreadable: ${want#* why=};" ;;
+        *) exp="no such answer: $want" ;;
+    esac
+    { [ "$sl_rc" -eq "$erc" ] && { [ -z "$exp" ] || grep -Fq -- "$exp" <<< "$sl_err"; }; } \
+        && ok "8t5.$n fixture line parses to its answer: $want" || bad "8t5.$n fixture [$line] want [$want] (rc=$sl_rc want $erc): $sl_err"
+done < "$HERE/fixtures/spec-check-lines.txt"
+[ "$n" -ge 11 ] && ok "8t5 every line of fixtures/spec-check-lines.txt parses to its expected answer, the spaced path included; a cut line is no answer ($n lines)" \
+    || bad "8t5 the fixture held $n lines, want at least 11"
+rm -f "$SPECLINE/HIMMEL-9477"
 BRIEF_LINT_JIRA_CLI="$tmp/no-dist/index.js" expect_rc "8l a brief with no ticket key in its title never asks the CLI" 0 "$tmp/tmpl_ok.md"
 
 BK="$tmp/bk"; BKLOG="$tmp/bk-argv.log"; mkdir -p "$BK"
@@ -509,6 +559,7 @@ bk_lint bash "$LINT" "$tmp/bk_out.md"
     && ok "8r2 the refusal names the key, its version, current and the open count" || bad "8r2 OUTSIDE fields: $err"
 in_order "$err" 'out-of-version' 'release request' 'parallel work' 'At 0 open' 'releases it in Jira' \
     && ok "8r3 the refusal text holds its clauses in order, the 0-open clause beside the Jira release" || bad "8r3 refusal text order: $err"
+grep -Fq 'the door places it' <<< "$err" && ok "8r3a S4: a next-version ticket is refused with 'the door places it'" || bad "8r3a S4: refusal does not say the door places it: $err"
 ! grep -Fq 'VERSION_GATE_OK' <<< "$err" && ok "8r3b the refusal names no off switch (decision 855)" || bad "8r3b refusal names VERSION_GATE_OK: $err"
 rc=0; err="$(VERSION_GATE_OK=1 bash "$LINT" "$tmp/bk_out.md" 2>&1 >/dev/null)" || rc=$?
 { [ "$rc" -eq 3 ] && [ ! -e "$tmp/version-gate.jsonl" ]; } && ok "8r4 VERSION_GATE_OK=1 passes nothing and logs no row (decision 855)" || bad "8r4 VERSION_GATE_OK rc=$rc want 3, row written=$([ -e "$tmp/version-gate.jsonl" ] && echo yes || echo no): $err"

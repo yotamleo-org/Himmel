@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { constants } from "node:fs";
-import { randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import { chainHash, openChainFile, type ChainRecord } from "../telegram/bus";
 import { SESSION_ID_RE } from "./ids";
@@ -70,36 +70,106 @@ export function readChain(file: string): ChainRecord[] {
   return complete.split("\n").filter(Boolean).map(l => JSON.parse(l));
 }
 
-export function verifyChain(file: string): { ok: boolean; n: number } {
+export function verifyChain(file: string, from?: { n: number; h: string }): { ok: boolean; n: number; h: string } {
   let prev = "", n = 0;
-  for (const rec of readChain(file)) {
-    if (rec.n !== n + 1 || rec.h !== chainHash(prev, rec)) return { ok: false, n };
+  const recs = readChain(file);
+  if (from && from.n > 0) {
+    const seed = recs[from.n - 1];
+    if (!seed || seed.n !== from.n || seed.h !== from.h) return { ok: false, n: 0, h: "" };
+    prev = from.h; n = from.n;
+  }
+  for (const rec of recs.slice(n)) {
+    if (rec.n !== n + 1 || rec.h !== chainHash(prev, rec)) return { ok: false, n, h: prev };
     prev = rec.h; n = rec.n;
   }
-  return { ok: true, n };
+  return { ok: true, n, h: prev };
 }
 
 export type SpoolRec =
-  | { type: "send"; kind: "question" | "status" | "info" | "answer"; replyTo?: number; text: string; allowShape?: string }
+  | { type: "draft"; source: "send.ts" | "telegram"; kind: "question" | "status" | "info" | "answer"; replyTo?: number; text: string; allowShape?: string }
+  | { type: "tap"; verb: "ok" | "no"; draft: string; by: string; ts: number; sig?: string }
   | { type: "ack"; sid: string; token: string }
   | { type: "confirm"; chatId: number }
   | { type: "env-out"; kind: (typeof SPOOL_ENV_KINDS)[number]; body: Record<string, unknown> }
   | { type: "job-event"; job: number; event: { type: (typeof SPOOL_JOB_EVENTS)[number]; [k: string]: unknown } };
-export type SendResult = { ok: true; message_id?: number; job?: number } | { ok: false; rule: string; shape?: string };
-export type Drained = { name: string; rec: SpoolRec } | { name: string; malformed: true };
+export type SendResult = { ok: true; message_id?: number; job?: number; draft?: string; deadline?: number } | { ok: false; rule: string; shape?: string; why?: string };
+export type Drained = { name: string; rec: SpoolRec } | { name: string; malformed: true; why: string };
 
 export const SPOOL_ENV_KINDS = ["req", "capacity-ask", "cancel", "halt"] as const;
 export const SPOOL_JOB_EVENTS = ["resolve-ok", "resolve-fail", "approve", "vm-start", "vm-done"] as const;
 
 const SEND_KINDS = ["question", "status", "info", "answer"];
-function validSpool(r: any): r is SpoolRec {
-  if (!r || typeof r !== "object") return false;
-  if (r.type === "env-out") return (SPOOL_ENV_KINDS as readonly string[]).includes(r.kind) && !!r.body && typeof r.body === "object" && !Array.isArray(r.body);
-  if (r.type === "job-event") return Number.isSafeInteger(r.job) && r.job > 0 && !!r.event && typeof r.event === "object" && (SPOOL_JOB_EVENTS as readonly string[]).includes(r.event.type);
-  if (r.type === "send") return SEND_KINDS.includes(r.kind) && typeof r.text === "string" && (r.replyTo === undefined || (Number.isSafeInteger(r.replyTo) && r.replyTo > 0)) && (r.allowShape === undefined || /^[a-z_]{1,20}$/.test(r.allowShape));
-  if (r.type === "ack") return typeof r.sid === "string" && SESSION_ID_RE.test(r.sid) && typeof r.token === "string" && /^[A-Za-z0-9]+$/.test(r.token);
-  if (r.type === "confirm") return Number.isSafeInteger(r.chatId);
-  return false;
+function spoolFault(r: any): string | null {
+  if (!r || typeof r !== "object" || Array.isArray(r)) return "not a json object";
+  if (r.type === "env-out") {
+    if (!(SPOOL_ENV_KINDS as readonly string[]).includes(r.kind)) return "env-out: bad kind";
+    return r.body && typeof r.body === "object" && !Array.isArray(r.body) ? null : "env-out: bad body";
+  }
+  if (r.type === "job-event") {
+    if (!(Number.isSafeInteger(r.job) && r.job > 0)) return "job-event: bad job";
+    return r.event && typeof r.event === "object" && (SPOOL_JOB_EVENTS as readonly string[]).includes(r.event.type) ? null : "job-event: bad event";
+  }
+  if (r.type === "draft") {
+    if (r.source !== "send.ts" && r.source !== "telegram") return "draft: bad source";
+    if (!SEND_KINDS.includes(r.kind)) return "draft: bad kind";
+    if (typeof r.text !== "string") return "draft: bad text";
+    if (!(r.replyTo === undefined || (Number.isSafeInteger(r.replyTo) && r.replyTo > 0))) return "draft: bad replyTo";
+    return r.allowShape === undefined || /^[a-z_]{1,20}$/.test(r.allowShape) ? null : "draft: bad allowShape";
+  }
+  if (r.type === "tap") {
+    if (r.verb !== "ok" && r.verb !== "no") return "tap: bad verb";
+    if (!(typeof r.draft === "string" && /^[0-9a-f]{8}$/.test(r.draft))) return "tap: bad draft";
+    if (!(typeof r.by === "string" && /^[0-9]{1,15}$/.test(r.by))) return "tap: bad by";
+    if (!Number.isSafeInteger(r.ts)) return "tap: bad ts";
+    return r.sig === undefined || (typeof r.sig === "string" && r.sig.length <= 128) ? null : "tap: bad sig";
+  }
+  if (r.type === "ack") {
+    if (!(typeof r.sid === "string" && SESSION_ID_RE.test(r.sid))) return "ack: bad sid";
+    return typeof r.token === "string" && /^[A-Za-z0-9]+$/.test(r.token) ? null : "ack: bad token";
+  }
+  if (r.type === "confirm") return Number.isSafeInteger(r.chatId) ? null : "confirm: bad chatId";
+  return "unknown type";
+}
+
+export const TAP_KEY = "tap.key";
+const TAP_DOMAIN = "himmel-peer-tap-v1\n";
+
+function readTapKey(path: string): Buffer {
+  const fd = fs.openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile() || st.uid !== process.getuid!() || (st.mode & 0o777) !== 0o600) throw new Error("the tap key must be a regular file owned by you, mode 0600");
+    const key = fs.readFileSync(fd);
+    if (key.length < 32) throw new Error("the tap key is too short");
+    return key;
+  } finally { fs.closeSync(fd); }
+}
+
+export function tapKey(confDir: string): Buffer {
+  const path = join(confDir, TAP_KEY);
+  try { return readTapKey(path); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
+  fs.mkdirSync(confDir, { recursive: true, mode: 0o700 });
+  const tmp = join(confDir, `.${TAP_KEY}.${randomBytes(4).toString("hex")}.tmp`);
+  const fd = fs.openSync(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  try {
+    try { fs.writeFileSync(fd, randomBytes(32).toString("hex")); } finally { fs.closeSync(fd); }
+    try { fs.linkSync(tmp, path); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e; }
+  } finally { fs.rmSync(tmp, { force: true }); }
+  return readTapKey(path);
+}
+
+type TapFields = { peer: string; verb: string; draft: string; by: string; ts: number };
+const tapMac = (key: Buffer, t: TapFields): string => createHmac("sha256", key).update(TAP_DOMAIN + [t.peer, t.draft, t.verb, t.by, t.ts].join("\n")).digest("hex");
+
+export function signTap(confDir: string, t: TapFields): string {
+  return tapMac(tapKey(confDir), t);
+}
+
+export function tapSigOk(confDir: string, t: TapFields, sig: string): boolean {
+  try {
+    if (!/^[0-9a-f]{64}$/.test(sig)) return false;
+    return timingSafeEqual(Buffer.from(tapMac(tapKey(confDir), t), "hex"), Buffer.from(sig, "hex"));
+  } catch { return false; }
 }
 
 let spoolSeq = 0;
@@ -131,8 +201,9 @@ export function drainSpool(peerDir: string): Drained[] {
         if (!fs.fstatSync(fd).isFile()) throw new Error("not a file");
         rec = JSON.parse(fs.readFileSync(fd, "utf8"));
       } finally { fs.closeSync(fd); }
-      out.push(validSpool(rec) ? { name, rec } : { name, malformed: true });
-    } catch { out.push({ name, malformed: true }); }
+      const why = spoolFault(rec);
+      out.push(why === null ? { name, rec: rec as SpoolRec } : { name, malformed: true, why });
+    } catch (e) { out.push({ name, malformed: true, why: e instanceof SyntaxError ? "not valid json" : "not a regular file" }); }
   }
   return out;
 }
@@ -158,7 +229,7 @@ export function sweepResults(peerDir: string, maxAgeMs: number, now = Date.now()
   }
 }
 
-export type IntentRec = { kind: "intent"; peer: string; chat: number; id: string; root: number | null; msgKind: string; text: string; isRoot: boolean; tpl?: boolean; resend?: boolean; spool?: string; env?: boolean };
+export type IntentRec = { kind: "intent"; peer: string; chat: number; id: string; root: number | null; msgKind: string; text: string; isRoot: boolean; tpl?: boolean; resend?: boolean; spool?: string; env?: boolean; draft?: string; by?: string; source?: string };
 export type SentRec = { kind: "sent"; id: string; intent: number; message_id: number; ts: number };
 
 export class PidLockError extends Error {
@@ -184,11 +255,25 @@ function alive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch (e: any) { return e.code === "EPERM"; }
 }
 
+function computeCodeVersion(): string {
+  const dir = import.meta.dir, h = createHash("sha256");
+  for (const n of fs.readdirSync(dir).filter(n => n.endsWith(".ts") && !n.endsWith(".test.ts") && !n.startsWith("testlib-")).sort()) h.update(n + "\0").update(fs.readFileSync(join(dir, n))).update("\0");
+  return h.digest("hex").slice(0, 16);
+}
+export const CODE_VERSION = computeCodeVersion();
+
+export function pollerStale(path: string): boolean {
+  let holder: { pid?: number; start?: string | null; code?: string } = {};
+  try { holder = JSON.parse(fs.readFileSync(path, "utf8")) ?? {}; } catch { return false; }
+  if (!Number.isSafeInteger(holder.pid) || !alive(holder.pid!) || startIdentity(holder.pid!) !== holder.start) return false;
+  return holder.code !== CODE_VERSION;
+}
+
 export function acquirePidLock(path: string): () => void {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const fd = fs.openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-      try { fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, start: startIdentity(process.pid) })); } finally { fs.closeSync(fd); }
+      try { fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, start: startIdentity(process.pid), code: CODE_VERSION })); } finally { fs.closeSync(fd); }
       return () => {
         try { if (JSON.parse(fs.readFileSync(path, "utf8")).pid === process.pid) fs.rmSync(path, { force: true }); } catch {}
       };
@@ -196,7 +281,7 @@ export function acquirePidLock(path: string): () => void {
       if (e.code !== "EEXIST") throw e;
     }
     let holder: { pid?: number; start?: string | null } = {};
-    try { holder = JSON.parse(fs.readFileSync(path, "utf8")); } catch {}
+    try { holder = JSON.parse(fs.readFileSync(path, "utf8")) ?? {}; } catch {}
     if (Number.isSafeInteger(holder.pid) && alive(holder.pid!) && startIdentity(holder.pid!) === holder.start) throw new PidLockError(holder.pid!);
     fs.rmSync(path, { force: true });
   }

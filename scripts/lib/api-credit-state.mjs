@@ -7,7 +7,7 @@ import {
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { userInfo } from 'node:os';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const SCALE = 1000000n;
 const MAX_AGE = 600;
@@ -730,4 +730,5 @@ function main() {
     console.log(result.verdict);
   } else console.log(JSON.stringify(result));
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();
+const isEntry = () => { try { return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]); } catch { return false; } };
+if (process.argv[1] && isEntry()) main();

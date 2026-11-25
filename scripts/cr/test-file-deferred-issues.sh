@@ -340,6 +340,24 @@ assert_contains "create carries the run_mode escape class" "$(grep '^create' "$J
 assert_contains "create defaults --class unclassified" "$(grep '^create' "$JLOG")" "--class unclassified"
 assert_contains "create keeps the cr-deferred label" "$(grep '^create' "$JLOG")" "--labels cr-deferred"
 
+echo "TEST: tracker=jira files at the priority of the batch's highest token (RED: no --priority passed)"
+SAVED_INPUT="$INPUT"
+prio_of() {
+    local f="$TMP_ROOT/prio-input.txt"; : >"$f"
+    local l; for l in "$@"; do printf '%s\n' "$l" >>"$f"; done
+    INPUT="$f"; run_mode jira github >/dev/null || return 0
+    grep '^create' "$JLOG" | sed -n 's/.*--priority \([A-Za-z]*\).*/\1/p'
+}
+assert_eq "LOW batch → Medium" "Medium" "$(prio_of 'a.md:1: LOW: x. fix.')"
+assert_eq "NIT-only batch → Low" "Low" "$(prio_of 'a.md:1: NIT: x. fix.')"
+assert_eq "LOW then NIT → Medium" "Medium" "$(prio_of 'a.md:1: LOW: x. fix.' 'b.md:2: NIT: y. fix.')"
+assert_eq "NIT then LOW → Medium" "Medium" "$(prio_of 'b.md:2: NIT: y. fix.' 'a.md:1: LOW: x. fix.')"
+assert_eq "IMPROVEMENT batch → Medium" "Medium" "$(prio_of 'a.md:1: IMPROVEMENT: x. fix.')"
+assert_eq "DEFERRED batch → Medium" "Medium" "$(prio_of 'a.md:1: DEFERRED: x. fix.')"
+assert_eq "SUGGESTION batch → Low" "Low" "$(prio_of 'a.md:1: SUGGESTION: x. fix.')"
+assert_eq "SUGGESTION then NIT → Low" "Low" "$(prio_of 'a.md:1: SUGGESTION: x. fix.' 'b.md:2: NIT: y. fix.')"
+INPUT="$SAVED_INPUT"
+
 echo "TEST: polish (the script's default class) files nothing and prints the batch for the PR body"
 out=$(FDI_CLASS=polish run_mode jira github); rc=$?
 assert_eq "polish → exit 0" "0" "$rc"

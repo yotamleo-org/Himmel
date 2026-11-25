@@ -15,6 +15,7 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/bus-waker.XXXXXX") || exit 1
 trap 'rm -rf "$tmp"' EXIT
 export HANDOVER_DIR="$tmp/handovers"
 export BUS_WAKER_STATE_DIR="$tmp/wstate"
+export BUS_WAKER_BUS_ROOT="$tmp/no-bus-root"
 mkdir -p "$HANDOVER_DIR/inbox/.cursor"
 
 # Fake qdbus6: processId answers $QPID (or $QPID_LATER after its first call),
@@ -374,6 +375,55 @@ QPID=4343 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ "$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)" = rc4 ] && pass "a refused target (rc=4) leaves state rc4" || fail "rc4 state: rc=$RUN_RC '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
 BUS_N=0 run 2 0
 [ "$RUN_RC" -eq 0 ] && [ ! -e "$BUS_WAKER_STATE_DIR/legX" ] && pass "a healthy start clears a stale rc4 state" || fail "stale state kept: rc=$RUN_RC '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
+
+echo "== node starts only when the bus files changed =="
+cat > "$tmp/bus-count" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = unread ] || exit 0
+printf 'x\n' >> "$BUSC"
+cat "$BUSV"
+EOF
+chmod +x "$tmp/bus-count"
+export BUSC="$tmp/busc" BUSV="$tmp/busv"
+BROOT="$tmp/busroot"
+mkdir -p "$BROOT/log" "$BROOT/cur"
+brun() {
+  : > "$QLOG"; rm -f "$QLOG.pid" "$QLOG.screen" "$BUSC"; : > "$BUSC"
+  BUS_WAKER_QDBUS="$tmp/qdbus" BUS_WAKER_BUS="$tmp/bus-count" BUS_WAKER_BUS_ROOT="$3" \
+    bash "$WAKER" --name legX --service org.kde.konsole-1 --session /Sessions/3 \
+    --poll 0.1 --grace "$2" --rewake 100 --max-polls "$1" >/dev/null 2>&1 &
+  BPID=$!
+  [ "${4:-}" = bg ] || { wait "$BPID"; RUN_RC=$?; }
+}
+ncalls() { wc -l < "$BUSC" | tr -d ' '; }
+: > "$HANDOVER_DIR/inbox/legX.md"; printf '0' > "$HANDOVER_DIR/inbox/.cursor/legX"
+: > "$BROOT/log/legX.jsonl"; : > "$BROOT/cur/legX"
+
+printf '0\n' > "$BUSV"
+brun 30 0 "$BROOT"
+c="$(ncalls)"
+[ "$RUN_RC" -eq 0 ] && [ "$c" -eq 1 ] && pass "30 idle polls with no bus change start node exactly once (got $c)" || fail "idle polls started node $c times, rc=$RUN_RC"
+
+printf '0\n' > "$BUSV"
+brun 30 0 "$BROOT" bg
+sleep 1
+printf '1\n' > "$BUSV"; printf '{"n":1}\n' >> "$BROOT/log/legX.jsonl"
+wait "$BPID"
+grep -qF "$FIXED" "$QLOG" && pass "a bus append (count 0 to 1) wakes the worker" || fail "append did not wake: $(cat "$QLOG")"
+
+: > "$BROOT/log/legX.jsonl"; : > "$BROOT/cur/legX"
+printf '1\n' > "$BUSV"
+brun 25 1 "$BROOT" bg
+sleep 0.5
+printf '0\n' > "$BUSV"; printf '1' > "$BROOT/cur/legX"
+wait "$BPID"
+c="$(ncalls)"
+[ ! -s "$QLOG" ] && [ "$c" -ge 2 ] && pass "a cursor change (read, count to 0) ends the streak before the grace wake" || fail "cursor change: qlog '$(cat "$QLOG")', node calls $c"
+
+printf '0\n' > "$BUSV"
+brun 10 0 "$tmp/no-such-bus-root"
+c="$(ncalls)"
+[ "$RUN_RC" -eq 0 ] && [ "$c" -eq 10 ] && pass "an unreadable bus root calls node every poll (got $c of 10)" || fail "unreadable stamp: node calls $c of 10, rc=$RUN_RC"
 
 echo "== succession doc =="
 if grep -q 'run `bus adopt <new chief>` as the worker' "$REPO/docs/handover/worker-sections/succession.md" && grep -q 'no edge to' "$REPO/docs/handover/worker-sections/succession.md"; then pass "succession.md tells the worker to run bus adopt and why"; else fail "succession.md lacks the bus adopt instruction"; fi

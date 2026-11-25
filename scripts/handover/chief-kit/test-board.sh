@@ -581,9 +581,13 @@ write_v100() {  # write_v100 <done count: 3 or 4>
 write_v100 3
 {
     printf 'HIMMEL-9101%sTask%sDone%sfirst%s\n' "$T" "$T" "$T" "$T"
-    printf 'HIMMEL-9102%sTask%sTo Do%ssecond%sv1-blocker\n' "$T" "$T" "$T" "$T"
+    printf 'HIMMEL-9102%sTask%sTo Do%ssecond%sv1-blocker,residual\n' "$T" "$T" "$T" "$T"
     printf 'HIMMEL-9103%sTask%sClosed%sclosed one%s\n' "$T" "$T" "$T" "$T"
     printf 'HIMMEL-9104%sTask%swont do%swont one%s\n' "$T" "$T" "$T" "$T"
+    printf 'HIMMEL-9105%sTask%sTo Do%sresidual open%scr-residual\n' "$T" "$T" "$T" "$T"
+    printf 'HIMMEL-9106%sTask%sDone%sresidual done%sresidual\n' "$T" "$T" "$T" "$T"
+    printf 'HIMMEL-9107%sTask%sWon'"'"'t Do%sresidual out%sresidual\n' "$T" "$T" "$T" "$T"
+    printf 'HIMMEL-9108%sTask%sTo Do%sopen plain%s\n' "$T" "$T" "$T" "$T"
 } > "$JD/v1.0.1.tsv"
 DOCV="$B/HIMMEL-nextleg-2026-09-21V-chief-v.md"
 sed 's/^epics: .*/&\nversions: v1.0.0, v1.0.1/' "$DOC" > "$DOCV"  # gnu-ok: console kit is Linux-only
@@ -599,8 +603,10 @@ runv --out "$W/v-board.html" --json "$W/v-board.json" >/dev/null; rc=$?
 vhtml="$(cat "$W/v-board.html" 2>/dev/null)"
 jargv="$(cat "$W/jira-argv.log" 2>/dev/null)"
 contains 'a versions: line still renders a board (rc 0)' "rc=$rc" 'rc=0'
-contains 'each version renders done/total' "$vhtml" 'data-release="v1.0.0" data-done="3" data-total="6"'
-contains 'the second version renders its own counts, Closed and won'"'"'t do left out of done and total' "$vhtml" 'data-release="v1.0.1" data-done="1" data-total="2"'
+contains 'each version renders open N and residual M, no Done ticket in the size' "$vhtml" 'data-release="v1.0.0" data-open="3" data-residual="0"'
+contains 'the second version renders its own open and residual counts, Closed, won'"'"'t do and Done left out of open' "$vhtml" 'data-release="v1.0.1" data-open="3" data-residual="2"'
+contains 'the panel text says open N and residual M' "$vhtml" '<b>open 3</b> · <span class="residual">residual 2</span>'
+lacks 'the panel has no done/total text' "$vhtml" '<b>3/6</b>'
 contains 'the panel is titled Release <version>' "$vhtml" '<h2>Release v1.0.0</h2>'
 contains 'an open v1-blocker ticket is listed with its key' "$vhtml" 'data-blocker="HIMMEL-9001"'
 contains 'a listed blocker shows its status' "$vhtml" '<span class="pr">In Progress</span>'
@@ -614,12 +620,12 @@ contains 'v1.0.0 breakdown: In Review count' "$vhtml" 'data-status="In Review" d
 contains 'v1.0.0 breakdown: IN CI count' "$vhtml" 'data-status="IN CI" data-count="1"'
 contains 'v1.0.0 breakdown: Done count' "$vhtml" 'data-status="Done" data-count="3"'
 contains 'v1.0.0 breakdown: To Do count (zero shown)' "$vhtml" 'data-status="To Do" data-count="0"'
-contains 'v1.0.1 breakdown: its own To Do count' "$vhtml" 'data-status="To Do" data-count="1"'
+contains 'v1.0.1 breakdown: its own To Do count' "$vhtml" 'data-status="To Do" data-count="3"'
 contains 'the versions fingerprint is stored in the board JSON' "$(cat "$W/v-board.json")" '"versions": "v1.0.0'
 same 'one Jira call per version' "$(printf '%s\n' "$jargv" | grep -c .)" '2'
 contains 'the CLI is asked by fixVersion JQL' "$jargv" 'fixVersion = "v1.0.0"'
 contains 'the CLI is asked for labels' "$jargv" '--labels'
-contains 'the CLI is asked for a high limit' "$jargv" '--limit 1000'
+contains 'the CLI is asked for a high limit' "$jargv" '--limit 5000'
 contains 'JIRA_PROJECT_KEY comes from the environment' "$jargv" 'project=HIMMEL'
 
 # A failing CLI reads unavailable per version and never fails the render.
@@ -627,7 +633,12 @@ JIRA_STUB_FAIL=1 runv --out "$W/v-fail-board.html" >/dev/null; rc=$?
 vfail="$(cat "$W/v-fail-board.html" 2>/dev/null)"
 contains 'a failing Jira CLI still renders the board (rc 0)' "rc=$rc" 'rc=0'
 contains 'a failing Jira CLI reads unavailable' "$vfail" 'data-release="v1.0.0" data-unavailable="1"'
-lacks 'a failing Jira CLI fabricates no counts' "$vfail" 'data-done='
+lacks 'a failing Jira CLI fabricates no counts' "$vfail" 'data-open='
+for n in $(seq 9201 14200); do printf 'HIMMEL-%s%sTask%sTo Do%sbulk%s\n' "$n" "$T" "$T" "$T" "$T"; done > "$JD/v1.0.0.tsv"
+runv --out "$W/v-cap-board.html" >/dev/null; rc=$?
+contains 'the capped render still exits 0' "rc=$rc" 'rc=0'
+contains 'a Jira answer that reaches the row limit reads unavailable, not a short count' "$(cat "$W/v-cap-board.html")" 'data-release="v1.0.0" data-unavailable="1"'
+write_v100 3
 # A missing CLI (nothing at the seam path) reads unavailable too.
 BOARD_JIRA="$W/bin/no-such-jira" runv --out "$W/v-missing-board.html" >/dev/null; rc=$?
 contains 'a missing Jira CLI still renders the board (rc 0)' "rc=$rc" 'rc=0'
@@ -664,7 +675,7 @@ runv --out "$W/v-partial.html" >/dev/null; rc=$?
 vpart="$(cat "$W/v-partial.html" 2>/dev/null)"
 contains 'a partial Jira answer still renders the board (rc 0)' "rc=$rc" 'rc=0'
 contains 'a partial Jira answer reads unavailable, not short totals' "$vpart" 'data-release="v1.0.0" data-unavailable="1"'
-contains 'a clean version beside a partial one still renders' "$vpart" 'data-release="v1.0.1" data-done="1" data-total="2"'
+contains 'a clean version beside a partial one still renders' "$vpart" 'data-release="v1.0.1" data-open="3" data-residual="2"'
 # A row without the labels column (the CLI with --labels always emits it) would hide blockers.
 write_v100 3
 printf 'HIMMEL-9008%sTask%sTo Do%sno labels column\n' "$T" "$T" "$T" >> "$JD/v1.0.0.tsv"
@@ -1184,7 +1195,7 @@ jcheck() {  # jcheck <name> <js expression over M> -- passes when the expression
 jcheck '--json: schema himmel.board/1' 'M.schema === "himmel.board/1"'
 jcheck '--json: legend keys for stage, state, verb, ci, budget and failure' '["stage","state","verb","ci","budget","failure"].every((k) => M.legend[k] && Object.values(M.legend[k]).every((v) => v.color && v.label))'
 jcheck '--json: one recommendation per report card' '["velocity","health","tools","roadmap"].every((k) => typeof M.cards[k].recommendation === "string" && M.cards[k].recommendation.length > 0)'
-jcheck '--json: milestones are done/total per fixVersion' 'M.milestones.length === 2 && M.milestones[0].version === "v1.0.0" && M.milestones[0].done === 3 && M.milestones[0].total === 6 && M.milestones[1].done === 1 && M.milestones[1].total === 2'
+jcheck '--json: milestones keep done/total and add open and residual per fixVersion' 'M.milestones.length === 2 && M.milestones[0].version === "v1.0.0" && M.milestones[0].done === 3 && M.milestones[0].total === 6 && M.milestones[1].done === 2 && M.milestones[1].total === 5 && M.milestones[0].open === 3 && M.milestones[0].residual === 0 && M.milestones[1].open === 3 && M.milestones[1].residual === 2'
 jcheck '--json: roadmap recommendation names the open blockers' 'M.cards.roadmap.recommendation.includes("HIMMEL" + "-9001")'
 jcheck '--json: every live worker is a row with a state and stage' 'M.legs.some((l) => l.leg === "N3" && l.state === "ready-for-go" && l.stage === "ready") && M.legs.every((l) => l.state && l.stage)'
 jcheck '--json: a READY worker is a go need' 'M.needs_you.some((n) => n.leg === "N3" && n.verb === "go")'
@@ -1481,6 +1492,21 @@ done
 lacks 'a <script> in a worker bullet is escaped in the user view' "$uhtml" '<script>alert(1)'
 contains 'the user view fits a phone width' "$uhtml" 'name="viewport" content="width=device-width, initial-scale=1"'
 lacks 'the user view loads nothing from the network' "$uhtml" 'http'
+printf '%s\n' '{"op":"add","id":"o1","kind":"step","text":"sign the v1.1.3 release spec","key":"HIMMEL-9","actor":"operator"}' '{"op":"add","id":"o2","kind":"proof","text":"run the VM upgrade proof","actor":"operator"}' '{"op":"add","id":"o3","kind":"proof","text":"chief validates a proof"}' > "$B/owed.jsonl"
+HIMMEL_JIRA_MIRROR="$W/no-mirror" run --view user --out "$W/user-owed.html" >/dev/null; rc=$?
+uhtml="$(cat "$W/user-owed.html" 2>/dev/null)"
+contains '10764: the user board numbers what you owe as Needs you items' "$(section_of waiting)" '<ol><li><b>Needs you:</b>'
+contains '10764: an open signature is a Needs you item on the user board' "$(section_of waiting)" '<b>HIMMEL-9</b> sign the v1.1.3 release spec'
+contains '10764: an owed proof marked for the operator is a Needs you item on the user board' "$(section_of waiting)" 'run the VM upgrade proof'
+lacks '10764: a chief-owed ledger row is not on the user board' "$(section_of waiting)" 'chief validates a proof'
+lacks '10764: the user board does not say nothing waits while items are open' "$(section_of waiting)" 'nothing is waiting on you'
+BOARD_BUN=/bin/false run --view user --out "$W/user-owed-unread.html" >/dev/null; rc=$?
+contains '10764: an unread owed source is said, never an empty inbox' "$(cat "$W/user-owed-unread.html" 2>/dev/null)" 'what you owe could not be read'
+rm -f "$B/owed.jsonl"
+mkdir "$B/owed.jsonl"
+HIMMEL_JIRA_MIRROR="$W/no-mirror" run --view user --out "$W/user-owed-partial.html" >/dev/null; rc=$?
+contains '10764: one owed source unread while others read is still said' "$(grep -o 'what you owe could not be read ([^)]*' "$W/user-owed-partial.html" 2>/dev/null)" 'owed ledger'
+rmdir "$B/owed.jsonl"
 run --view nope --out "$W/nope.html" >/dev/null 2>&1; rc=$?
 same 'an unknown --view is a usage error' "rc=$rc" 'rc=2'
 run --view user --changed --out "$W/user-changed.html" >/dev/null 2>&1; rc=$?

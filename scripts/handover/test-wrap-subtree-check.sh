@@ -729,6 +729,99 @@ eq 'no flag: unchanged rc 0' 0 "$rc"
 out="$(run "$W/clean.txt" 101 --queue-doc 2>&1)"; rc=$?
 eq '--queue-doc without a value: usage rc 2' 2 "$rc"
 
+OWE="$HERE/chief-kit/owe.sh"
+cat > "$W/ql-free.sh" <<'STUB'
+#!/usr/bin/env bash
+echo free; exit 0
+STUB
+P7="$W/q10955"
+p7_doc() {
+    rm -rf "$P7"; mkdir -p "$P7"
+    P7_DOC="$P7/HIMMEL-77-N77-proof-in-session-2026-11-24.md"
+    { printf '# HIMMEL-77\n\n> owed → proof (a brief line above Results is never read)\n\n## Results (newest at the bottom)\n'
+      for b in "$@"; do printf '%s\n' "$b"; done; } > "$P7_DOC"
+}
+p7_run() { WRAP_SUBTREE_QUEUE_LOCK="$W/ql-free.sh" run "$W/clean.txt" 101 --queue-doc "$P7_DOC" 2>&1; }
+p7_owe() { OWE_NOW_EPOCH=1795485828 bash "$OWE" add --bucket "$P7" --chief chief "$@" >/dev/null || fail "fixture setup: owe.sh add $*"; }
+
+p7_doc '- 10:00 LIVE — started' '- 11:00 WRAPPED — merged #9; owed → proof'
+out="$(p7_run)"; rc=$?
+eq 'WRAPPED with an undated owed → proof: rc 1' 1 "$rc"
+contains 'undated owed proof: WITHHELD names the owed row' "$out" 'WITHHELD: an owed proof has no window end date or outside actor: owed → proof'
+lacks 'undated owed proof: no CLOSABLE banner' "$out" 'CLOSABLE:'
+p7_doc '- 11:00 WRAPPED — owed → chief, nothing else'
+out="$(p7_run)"; rc=$?
+eq 'WRAPPED with an undated owed → chief: rc 1' 1 "$rc"
+p7_doc '- 11:00 WRAPPED — owed → proof by 2026-12-01'
+out="$(p7_run)"; rc=$?
+eq 'positive control: owed → proof by 2026-12-01 is accepted (rc 0)' 0 "$rc"
+contains 'dated owed proof: CLOSABLE' "$out" 'CLOSABLE: no non-harness process under claude pid 101'
+for spelling in 'owed -> proof' 'Owed → proof' 'owed →proof' 'OWED->proof'; do
+    p7_doc "- 11:00 WRAPPED — merged; $spelling"
+    out="$(p7_run)"; rc=$?
+    eq "an undated owed proof spelled '$spelling' is refused: rc 1" 1 "$rc"
+done
+p7_doc '- 11:00 WRAPPED — Owed -> Proof by 2026-12-01; owed->Operator; OWED → vm'
+out="$(p7_run)"; rc=$?
+eq 'any case and either arrow with a date or an outside actor is accepted: rc 0' 0 "$rc"
+P7_DOC="$P7/HIMMEL-77-N77-absent-2026-11-24.md"
+out="$(p7_run)"; rc=$?
+eq 'an unreadable doc with a free lock: rc 2, fail closed' 2 "$rc"
+contains 'unreadable doc: WITHHELD says so' "$out" "WITHHELD: cannot read $P7_DOC"
+p7_doc '- 11:00 WRAPPED — owed → proof by 2026-02-30'
+out="$(p7_run)"; rc=$?
+eq 'an impossible calendar date is no window: rc 1' 1 "$rc"
+p7_doc '- 11:00 WRAPPED — owed → operator; owed → Mac; owed → VM'
+out="$(p7_run)"; rc=$?
+eq 'positive control: an outside actor (operator, Mac, VM) is accepted (rc 0)' 0 "$rc"
+p7_doc '- 11:00 WRAPPED — owed → proof by 2026-12-01 and owed → proof'
+out="$(p7_run)"; rc=$?
+eq 'one dated and one undated owed proof in a bullet: rc 1' 1 "$rc"
+p7_doc '- 10:00 LIVE — owed → proof, run it before wrap' '- 11:00 WRAPPED — proof run in session, quoted on the ticket'
+out="$(p7_run)"; rc=$?
+eq 'an undated owed proof in an earlier bullet, none in WRAPPED: rc 0' 0 "$rc"
+p7_doc '- 10:00 WRAPPED — owed → proof' '- 11:00 RESUMED — resumed to run the proof'
+out="$(p7_run)"; rc=$?
+eq 'a newest marker that is not WRAPPED: the owed rule is not read (rc 0)' 0 "$rc"
+
+p7_doc '- 11:00 WRAPPED — merged #9'
+p7_owe --kind step --key HIMMEL-77 --text 'HIMMEL-77 PR #9: run the live proof' --metadata '{"actor":"proof","action":"next-step"}'
+out="$(p7_run)"; rc=$?
+eq 'an open ledger proof row with no due date for the doc ticket: rc 1' 1 "$rc"
+contains 'ledger proof row: WITHHELD names the row id' "$out" 'WITHHELD: an owed proof has no window end date or outside actor: o1'
+p7_doc '- 11:00 WRAPPED — merged #9'
+p7_owe --kind step --key HIMMEL-77 --text 'HIMMEL-77 PR #9: the 5-day count' --metadata '{"actor":"proof","action":"next-step","due":"2026-11-30"}'
+p7_owe --kind proof --key HIMMEL-77 --text 'proof by 2026-12-02: the next nightly'
+p7_owe --kind proof --key HIMMEL-77 --text 'Validate proof HIMMEL-77' --metadata '{"actor":"chief","action":"validate-proof"}'
+p7_owe --kind step --key HIMMEL-77 --text 'HIMMEL-77 PR #9: operator taps' --metadata '{"actor":"operator","action":"next-step"}'
+p7_owe --kind proof --key HIMMEL-78 --text 'another ticket proof, undated'
+out="$(p7_run)"; rc=$?
+eq 'ledger rows with a due, a by-date, the chief validation, an operator step, another key: rc 0' 0 "$rc"
+p7_owe --kind step --key HIMMEL-77 --text 'HIMMEL-77 PR #9: proof by 2026-12-01 or by 2026-12-08' --metadata '{"actor":"proof","action":"next-step"}'
+out="$(p7_run)"; rc=$?
+eq 'a ledger proof row with two by-dates and no due names no date the wake fires on: rc 1' 1 "$rc"
+OWE_NOW_EPOCH=1795485900 bash "$OWE" close --bucket "$P7" --id o6 --key HIMMEL-77 >/dev/null
+p7_owe --kind step --key HIMMEL-77 --text 'HIMMEL-77 PR #9: a bad due' --metadata '{"actor":"proof","action":"next-step","due":"2026-02-30"}'
+out="$(p7_run)"; rc=$?
+eq 'a ledger proof row whose due is no calendar date: rc 1' 1 "$rc"
+OWE_NOW_EPOCH=1795485900 bash "$OWE" close --bucket "$P7" --id o7 --key HIMMEL-77 >/dev/null
+p7_owe --kind proof --key HIMMEL-77 --text 'an undated proof'
+out="$(p7_run)"; rc=$?
+eq 'an undated kind proof row with no actor: rc 1' 1 "$rc"
+contains 'undated kind proof row: WITHHELD names it' "$out" 'o8'
+OWE_NOW_EPOCH=1795485900 bash "$OWE" close --bucket "$P7" --id o8 --key HIMMEL-77 >/dev/null
+out="$(p7_run)"; rc=$?
+eq 'the same row closed: rc 0' 0 "$rc"
+p7_doc '- 11:00 WRAPPED — merged #9'
+printf 'not json\n' > "$P7/owed.jsonl"
+out="$(p7_run)"; rc=$?
+eq 'an unreadable owed ledger: rc 2, fail closed' 2 "$rc"
+contains 'unreadable ledger: WITHHELD says so' "$out" 'WITHHELD: cannot read the owed ledger'
+p7_doc '- 11:00 HALTED — chief halt'
+printf 'not json\n' > "$P7/owed.jsonl"
+out="$(p7_run)"; rc=$?
+eq 'a HALTED doc never reads the ledger: rc 0' 0 "$rc"
+
 kill_hits="$(grep -v '^[[:space:]]*#' "$SUT" | grep -E '(^|[[:space:];&|(])(kill|pkill|killall)[[:space:]]')"
 if [ -n "$kill_hits" ]; then
     fail 'wrap-subtree-check.sh must be read-only (found a kill)'

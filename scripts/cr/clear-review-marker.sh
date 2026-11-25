@@ -337,7 +337,7 @@ floor_clear_alert() (
     fi
     _fca_msg="CLAUDE-ONLY-CLEAR ${_fca_repo} ${pr_num:+PR #$pr_num }branch ${branch} @${tip:0:12}: the review marker cleared on the same-model Claude floor, NOT cross-model review. Exhausted reviewers: ${exhausted_lanes:-none}"
     _fca_rc=0
-    _mba_send "$_fca_chat" "$_fca_msg" || _fca_rc=$?
+    _mba_send "$_fca_chat" "$_fca_msg" claude-only-clear || _fca_rc=$?
     if [ "$_fca_rc" != 0 ]; then
         rm -f "$_fca_dir/$_fca_key" 2>/dev/null
         audit "FLOOR-ALERT-FAILED branch=$branch sha=$tip reason=send-rc-$_fca_rc"
@@ -613,7 +613,7 @@ command -v node >/dev/null 2>&1 || {
 ledger="$git_dir/cr-critic-scores.jsonl"
 # A pre-PR commit after the last allowed review round has no round
 # of its own to buy (a judge NO-GO binds only to an open PR, and gh pr create
-# waits on this marker), so it deadlocked. When the tip has NO ledger row at all
+# waits on this marker), so it deadlocked. When the tip has no review row
 # and is a trivial descendant of the head the last counted round ran on, in
 # --tests-only mode (every changed path is a test path; the comment-only branch
 # of the tip check is NOT used here, because this clears with no critic review of the
@@ -633,7 +633,7 @@ if [ -f "$_rr_head_file" ] && [ ! -L "$_rr_head_file" ]; then
     esac
     if { [ "${#_rr_head}" -eq 40 ] || [ "${#_rr_head}" -eq 64 ]; } && [ "$_rr_head" != "$tip" ] \
         && git cat-file -e "$_rr_head^{commit}" 2>/dev/null \
-        && ! grep -qE "\"(target_)?head\"[[:space:]]*:[[:space:]]*\"${tip:0:7}" <(grep -vF '"kind":"evidence"' "$ledger" 2>/dev/null) 2>/dev/null; then
+        && ! grep -qE "\"(target_)?head\"[[:space:]]*:[[:space:]]*\"${tip:0:7}" <(grep -vE '"kind":"(evidence|impacted|round-scope|security-audit)"' "$ledger" 2>/dev/null) 2>/dev/null; then
         if bash "$SCRIPT_DIR/review-round.sh" trivial-descendant --tests-only "$_rr_head" "$tip" >/dev/null 2>&1; then
             review_head="$_rr_head"
             echo "clear-cr-marker: ${tip:0:8} has no review round of its own and only changes test paths since the reviewed head ${review_head:0:8} - gating on the reviewed head." >&2
@@ -740,9 +740,9 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
   // CR_FLOOR_FALLBACK=claude-only eligibility tracking. claudeOk
   // is a PRESENT-model check, mirroring the nonClaudeResponders normalisation
   // just below (trim+lowercase, model must actually equal "claude") - it is
-  // MONOTONIC ("Claude was ever ok at this head"), never cleared by a later
-  // row, consistent with how responders/nonClaudeResponders are counted, not
-  // reset, elsewhere in this same pass. availByModel holds the LAST avail row
+  // monotonic ("Claude was ever ok at this head"), cleared only by a later
+  // record-failed row for that model, which also subtracts that model from
+  // responders/nonClaudeResponders, elsewhere in this same pass. availByModel holds the LAST avail row
   // seen per non-claude model, ANY status - not just ok - so an exhausted
   // (unavailable) lane is visible even when it never recovered. Plain
   // last-write-wins (each line just overwrites the Map entry, in file order)
@@ -763,6 +763,7 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
   // "claude" self-review row no longer does.
   let claudeOk = false, floorOk = false, certifyRefused = false;
   const availByModel = new Map();
+  const okTally = new Map();
   // ANY finding at this head with no EFFECTIVE verdict (null,
   // undefined or empty string, after amends are applied) — not just
   // crit|imp. Gate 4 below only ever blocks on crit|imp, so a sug-severity
@@ -919,6 +920,16 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
           // one at this head wins - not just the "ok" rows gate 3 counts -
           // so a lane that stayed unavailable is visible to the floor-fallback
           // eligibility check below.
+          if (o.status === "unavailable" && typeof o.reason === "string" &&
+              o.reason.trim().toLowerCase() === "record-failed") {
+              const t = okTally.get(model);
+              if (t) {
+                  responders -= t.n; nonClaudeResponders -= t.nc; otherFamilyResponders -= t.of;
+                  okTally.delete(model);
+                  if (model === "claude") claudeOk = false;
+                  if (model === "claude-floor") floorOk = false;
+              }
+          }
           if (model && model !== "claude" && model !== "claude-floor" && model !== "codex-adv") {
               availByModel.set(model, {
                   status: (typeof o.status === "string" ? o.status : "").trim().toLowerCase(),
@@ -927,6 +938,8 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
           }
           if (o.status === "ok") {
               responders++;
+              const tally = okTally.get(model) || { n: 0, nc: 0, of: 0 };
+              tally.n++; okTally.set(model, tally);
               // The Claude self-review floor writes model
               // "claude"; every external critic (codex/glm/coderabbit/...) is
               // non-claude. Gate 3b uses this to enforce cross-model coverage
@@ -936,9 +949,9 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
               // "codex-adv" is a RETIRED lane (the adversarial pass
               // was removed); a legacy row of that name is not cross-model
               // evidence and not an exhaustion-tracked lane.
-              if (model && model !== "claude" && model !== "claude-floor" && model !== "codex-adv") nonClaudeResponders++;
+              if (model && model !== "claude" && model !== "claude-floor" && model !== "codex-adv") { nonClaudeResponders++; tally.nc++; }
               // Family = first token of the model slug (claude-floor is claude).
-              if (e.IMPL_FAMILY && model && model !== "codex-adv" && model.split(/[-:\/]/)[0] !== e.IMPL_FAMILY) otherFamilyResponders++;
+              if (e.IMPL_FAMILY && model && model !== "codex-adv" && model.split(/[-:\/]/)[0] !== e.IMPL_FAMILY) { otherFamilyResponders++; tally.of++; }
               if (model === "claude") claudeOk = true;
               if (model === "claude-floor") floorOk = true;
           }

@@ -17,10 +17,19 @@ CLI: `pr_remainder.py [--units] KEY[,KEY...]` with the PR body on stdin prints O
   owed<TAB>who<TAB>YYYY-MM-DD<TAB>text
 The own keys are the ticket's own: a deferred line naming one is not a hand-off. Exit 0 with the line; any other exit is no answer.
 With --units every kind carries two more fields, `nowrite=<0|1>` and `chief-owed=<text¦text>` (pr_remainder_units).
+With --full-units it prints one UTF-8 JSON line instead, `{"schema": 1, "answer": {...}}`, the answer holding exactly the
+FULL_FIELDS of pr_remainder_units (each owed_lines row exactly OWED_FIELDS): next-dispatchable.sh reads every unit from it.
+An owed line owed to chief or operator is selected before any proof line; the earliest date wins within that pool.
 """
 import datetime
+import json
 import re
 import sys
+
+ANSWER_KINDS = ('none', 'remaining', 'handed-off', 'owed')
+OWED_ACTORS = ('chief', 'operator', 'proof')
+FULL_FIELDS = ('kind', 'handed', 'text', 'nowrite', 'chief_owed', 'chief_invalid', 'owed_lines')
+OWED_FIELDS = ('who', 'due', 'text', 'ask')
 
 REMAINING_RE = re.compile(r'^[ \t]*remaining:[ \t]*(.*\S)', re.I | re.M)
 HEADING_RE = re.compile(r'^(#{1,6})(?:[ \t]+\S|[ \t]*$)')
@@ -31,7 +40,7 @@ HANDOFF_RE = re.compile(r'\bdeferred[ \t]*(?:→|->)[^A-Za-z0-9]*([A-Za-z][A-Za-
 LIST_RE = re.compile(r'^(?:[-*+]|[0-9]+[.)])[ \t]')
 MARK_RE = re.compile(r'^(?:[-*+]|[0-9]+[.)])[ \t]+')  # the same marker grammar as LIST_RE, stripped once
 OWED_ANY_RE =re.compile(r'\bowed[ \t]*(?:→|->)', re.I)
-OWED_RE = re.compile(r'\bowed[ \t]*(?:→|->)[ \t]*(chief|operator|proof)[ \t]+by[ \t]+(\d{4}-\d{2}-\d{2})[^A-Za-z0-9]*$', re.I)
+OWED_RE = re.compile(r'\bowed[ \t]*(?:→|->)[ \t]*(' + '|'.join(OWED_ACTORS) + r')[ \t]+by[ \t]+(\d{4}-\d{2}-\d{2})[^A-Za-z0-9]*$', re.I)
 CHIEF_ONLY_RE = re.compile(r'^(?:sign (?:the |a )?(?:spec|GO|release)|(?:chief )?signature|release operator step|station step (?:a |the )?worker is refused)[ .:;-]*$', re.I)
 NO_WRITE_RE = re.compile(r'(?<![\w-])no (?:code(?! path)|repo(?:sitory)? (?:write|change|edit)s?)\b|(?<![\w-])chief-run\b|\bstate repo\b', re.I)
 SLICE_LABEL_RE = re.compile(r'[ \t]*S\d+[A-Za-z]?\b')
@@ -65,7 +74,8 @@ def pr_remainder_units(body, own_keys=()):
       ('none', [], '')                no remainder recorded in either form
       ('remaining', [], text)         the remainder stays on the ticket
       ('handed-off', [keys], text)    no Remaining: line, and every deferred line names one other ticket
-      ('owed', [who, date], text)     no Remaining: line, and an owed line (the earliest date) beats a hand-off"""
+      ('owed', [who, date], text)     no Remaining: line, and an owed line beats a hand-off: the earliest chief or
+                                      operator line, else the earliest proof line"""
     body = body.replace('\r', '')
     own = {k.upper() for k in own_keys}
     remaining = [m.strip() for m in REMAINING_RE.findall(body)]
@@ -97,7 +107,7 @@ def pr_remainder_units(body, own_keys=()):
                 if not m:
                     raise ValueError('not the owed grammar')
                 datetime.date.fromisoformat(m.group(2))
-                owed.append((m.group(2), m.group(1).lower(), text))
+                owed.append((m.group(2), m.group(1).lower(), re.sub(r'[\t\r\n]+', ' ', text)))
             except ValueError:
                 owed_bad.append(text)
             continue
@@ -113,8 +123,9 @@ def pr_remainder_units(body, own_keys=()):
             handed.append(key)
     units = [s for r in remaining for s in slices(r)] + staying + owed_bad
     chief = [re.sub(r'[\t\r\n]+', ' ', t) for _, who, t in owed if who == 'chief']
+    nonproof = [o for o in owed if o[1] != 'proof']
     extra = {'nowrite': (bool(units) and all(NO_WRITE_RE.search(u) for u in units)) or
-                        (not units and bool(owed) and all(who == 'proof' for _, who, _ in owed)),
+                        (not units and bool(owed) and not nonproof),
              'chief_owed': chief,
              'chief_invalid': [t for t in chief if not CHIEF_ONLY_RE.search(OWED_RE.sub('', t))],
              'owed_lines': [{'who': who, 'due': due, 'text': text,
@@ -122,7 +133,7 @@ def pr_remainder_units(body, own_keys=()):
     if not remaining and not deferred and not owed and not owed_bad:
         return dict(kind='none', handed=[], text='', **extra)
     if not remaining and not owed_bad and whole and owed:  # a deferred line that stays on this ticket is remaining work, and beats an owed step
-        due, who, line = min(owed, key=lambda o: o[0])  # min keeps the first of equal dates
+        due, who, line = min(nonproof or owed, key=lambda o: o[0])  # min keeps the first of equal dates
         return dict(kind='owed', handed=[who, due], text=re.sub(r'[\t\r\n]+', ' ', line), **extra)
     text = re.sub(r'[\t\r\n]+', ' ', '; '.join(p for p in (' '.join(remaining), '; '.join(deferred + owed_bad + [o[2] for o in owed])) if p))  # the answer line is tab-separated
     if not remaining and not owed_bad and whole:
@@ -149,12 +160,15 @@ def main(argv):
             for line in a['owed_lines']:
                 print('\t'.join(line[f] for f in ('who', 'due', 'ask', 'text')))
         return 0
-    units = argv[1:2] == ['--units']
+    units = argv[1:2] in (['--units'], ['--full-units'])
     if len(argv) != 2 + units:
-        print('usage: pr_remainder.py [--units] KEY[,KEY...]  (PR body on stdin)', file=sys.stderr)
+        print('usage: pr_remainder.py [--units|--full-units] KEY[,KEY...]  (PR body on stdin)', file=sys.stderr)
         return 2
     body = sys.stdin.buffer.read().decode('utf-8', 'replace')
     a = pr_remainder_units(body, [k for k in argv[-1].split(',') if k])
+    if argv[1] == '--full-units':
+        sys.stdout.buffer.write((json.dumps({'schema': 1, 'answer': {f: a[f] for f in FULL_FIELDS}}, ensure_ascii=False) + '\n').encode('utf-8'))
+        return 0
     kind, handed, text = a['kind'], a['handed'], a['text']
     out = kind if kind == 'none' else '\t'.join([kind] + ([', '.join(handed)] if kind == 'handed-off' else handed if kind == 'owed' else []) + [text])
     if units:

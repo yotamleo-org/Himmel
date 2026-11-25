@@ -20,8 +20,9 @@ wiring. It wakes once per down streak and clears only after recovery.
   outlives any one session.
 <!-- mem:7a7399f97076 -->
 - Tell the chief to end every milestone report with a "Blocked on you" list:
-  one clickable PR URL or absolute path per line plus the one action wanted, or
-  "Nothing blocked on you". "Held for your review" with no link is not enough.
+  one clickable PR URL or absolute path per line plus the one action wanted.
+  When nothing is blocked on you, the report leaves the list out entirely.
+  "Held for your review" with no link is not enough.
 
 The chief writes no code itself. Today the chief always runs from the himmel
 clone, whichever repo its workers change.
@@ -290,17 +291,41 @@ The chief writes a brief from
 [`worker-brief-template.md`](worker-brief-template.md) and launches it headed:
 
 ```bash
+since=$(date +%s)
 setsid nohup bash scripts/handover/chief-kit/headed-arm-worker.sh --profile worker-impl \
-  <session-name> <brief> <signal-file> <deadline-epoch> <log> <model> \
-  >/dev/null 2>&1 &
+  --fleet <chief doc stem>.fleet.json <session-name> <brief> <signal-file> <deadline-epoch> <log> <model> \
+  >>"<log>.launcher.out" 2>&1 &
+bash scripts/handover/chief-kit/launch-confirm.sh --since "$since" <session-name> <log>
 ```
+
+The launcher writes the signal file itself once the launch passes its checks; a launch that cannot write it is refused with a `LAUNCH-REFUSED` line.
+
+`--fleet` names the chief's own manifest. Without it, a managed worker is
+refused as `managed worker has no manifest reference`, or, when several
+chiefs' manifests list the doc, as `worker has multiple manifest references;
+explicit locator required`. With `--fleet`, a doc that another chief's
+manifest still lists for a worker that has not wrapped is refused as
+`unknown legacy family ownership`. Every refused or failed launch leaves one
+`LAUNCH-REFUSED <session> <reason>` line in `<log>`. The line also goes to your
+console inbox, which wakes the waiter. The full stderr is in
+`<log>.launcher.out`. `--dry-run` runs the same worktree check and, without
+writing anything, the same fleet admission a real launch makes before it
+claims a slot: the manifest reference, a paused fleet, and a family that
+already owns the worker or ticket. A dry run that passes these checks means
+the real launch passes them too. The launcher opens each attempt with a `LAUNCH-START` line in `<log>`
+and closes an exit-0 attempt with `LAUNCH-OK`. `launch-confirm.sh` reads only
+the attempt that started at or after `--since`, the epoch taken just before
+the launch, so an earlier attempt or session never decides it. It waits up to
+60 s for that attempt to end `LAUNCH-OK` with a claude session named
+`<session-name>` running. It prints `LAUNCH-CONFIRMED <session> pid=<pid>`, or exits 1
+with a `LAUNCH-UNCONFIRMED` line on stderr, in the log and in your inbox. Never
+report a worker as running until it confirms.
 
 A launch whose brief's `Writes:` paths overlap a live hold is refused before
 anything is armed: `headed-arm.sh` exits 2, writes the holder line and the grant
 text to the worker log, and appends a `BLOCKED launch ... refused, not armed`
-bullet to the brief, which `tick.sh` surfaces. The hand form above discards
-stderr, so read the log or the brief; the generated launcher keeps stderr in
-`<stem>.launch.out`.
+bullet to the brief, which `tick.sh` surfaces. The generated launcher keeps
+stderr in `<stem>.launch.out`.
 
 Three rules govern the fan-out. **A shared file is shown, not held:**
 `next-dispatchable.sh` lists the ticket and prints `# overlap <KEY> <file> with
@@ -317,17 +342,26 @@ effort guidance, including the chief's own wake-up budget, is in
 - **What core means.** The operator's definition: the ship loop, the chain a
   ticket travels from filing to merge. That is the chief, how versions are
   kept, how work is split, and the workers. Core is not "everything
-  important". The files are listed in `scripts/ci/core-paths.txt` (minerva is
-  on it). A ticket is core when its brief's Writes match that list, or when it
-  carries the Jira label `core`.
+  important". The files are listed in `scripts/ci/core-paths.txt`: the dispatch
+  and launch gates (`gen-briefs`, `next-dispatchable`, `headed-arm-worker`,
+  `brief-lint`), merge and GO (`merge-on-green.sh`, `go`, `auto-go`,
+  `ready-check`, `verdict-go`, the `pr-check-*` and `review-round` scripts), the
+  release engine under `scripts/jira/src/release/` with `core-paths.txt` itself,
+  the bus plugin and the handover libraries (`handover-path`, `flags`), the hook
+  library and `.claude/settings.json`, `queue-lock.sh`, and minerva (its skill,
+  command, spec-gate and trace-lint scripts and critic hook). A ticket is core
+  when its brief's Writes match that list, or when it carries the Jira label
+  `core`.
 - **Renames and bulk changes.** A rename or bulk-mechanical change that
   touches a core path is neither core nor not-core by default. It reads
   `REVIEW`, and you or a judge rule it case by case, per slice.
 - **Where a signed spec lives.** The spec lives in the state repo bucket,
-  `specs/designs/<KEY>-<slug>-<date>.md`. It counts as signed once you record
-  the operator's approval with `jira release operator spec <release> --keys
-  <K,…> --spec <file> --verdict <file> --verdict <file> --decision <n>
-  --verbatim-file <f>`. The two `--verdict` files are the last-round critic
+  `specs/designs/<KEY>-<slug>-<date>.md`. You, the chief, sign it after the
+  critic rounds, unless the operator marked it as his (see "Who signs a spec"
+  below): `jira release operator spec <release> --keys <K,…> --spec <file>
+  --verdict <file> --verdict <file> --decision <n> --verbatim-file <f>`. The
+  operator signs his own with `--signer operator --words "<his exact words>"`
+  in place of `--verbatim-file`. The two `--verdict` files are the last-round critic
   returns minerva saved beside the spec, `<spec>.critic-spec-r<n>.md` and
   `<spec>.critic-plan-r<n>.md`. Pass the spec's plan as `--plan <file>` (in
   `specs/designs/` or `specs/plans/`): the trace lint reads each invariant's
@@ -360,7 +394,9 @@ effort guidance, including the chief's own wake-up budget, is in
   shipped verifier refuses, is the separate v2 route: see "Ledger-bound capped carry (proof v2)" below, and do not use
   it for a real signing yet.
 - **The two checks.** `jira release spec-check <KEY…>` prints `SPEC ok`,
-  `SPEC-STALE` (the file changed since signing) or `NO-SPEC` per key. `jira
+  `SPEC-STALE` (the file changed since signing), `NO-SPEC`,
+  `SPEC-NEEDS-OPERATOR <K> <spec> <row> <record>` or
+  `SPEC-SIGNER-UNKNOWN <K> <row> <why>` per key. `jira
   release core-check --paths <p,…> --key <K…> [--change-class rename|bulk]
   [--docs-only] [--mirror <dir>]` prints one line per key: `CORE`, `REVIEW`,
   `BYPASS <K> <kind> <reason>`, `UNKNOWN` (no mirror file for the key) or
@@ -377,7 +413,114 @@ effort guidance, including the chief's own wake-up budget, is in
   --decision <n> --verbatim-file <f>`), and a key in the in-flight snapshot
   (`jira release operator core-snapshot <R> --keys-file <f>`, written once,
   when the gate became permanent). Both records are read from every declared
-  release. There is no free-text bypass.
+  release. There is no free-text bypass. An operator `core-bypass` does not
+  count for a key whose signer was the operator at the time of the bypass record (see
+  "Who signs a spec" below), and none counts while the signer records cannot be
+  read. The newest bypass that is left counts. The emergency, Bug and snapshot
+  bypasses hold whoever signs.
+- **Who signs a spec.** `spec-signer` records in every declared release say
+  whether the chief's signature counts. A record with keys marks those keys as
+  the operator's (`signer: operator`) or lifts the mark (`signer: chief`). A
+  record without keys sets the station default from its time on. For a key, its
+  own newest record decides. A sub-task with no record of its own takes its
+  parent's mark from the Jira mirror. Otherwise the station default in force when
+  the row was signed decides, and with none the chief signs. A mark also counts
+  for rows signed before it. With no `spec-signer` record, every answer is as
+  before.
+  - **`SPEC-NEEDS-OPERATOR`.** A fresh `spec` row the operator did not sign
+    reads this line when the key's signer is the operator. A row found through
+    a sub-task's parent is judged by the parent's signature. The last field is
+    the governing record.
+  - **The covered-tickets rule.** A row covers its own keys and the tickets
+    its spec's header names: the front matter's `tickets:` line, and the
+    `- Ticket(s):` and `Key(s):` lines before the first `## ` heading. When a
+    covered ticket is marked, the chief's row reads `SPEC-NEEDS-OPERATOR` for
+    every key it signs. It still counts if that ticket's own newest fresh row
+    is the operator's signature over the same spec bytes.
+  - **`SPEC-SIGNER-UNKNOWN`.** A chief row reads this when the records cannot
+    be read. That happens when a declared release's key does not load, when its
+    `operator.jsonl` does not verify, or when a parent step is needed for a key
+    missing from the mirror. A `spec-review` row is never checked for a
+    signer.
+  - **Recording who signs.** Only the operator's words set a record:
+    `jira release operator spec-signer <release> --signer chief|operator
+    [--keys <K,…>] --decision <n> --words "<his exact words>" [--mirror-root
+    <dir>]`. The words must sit in the decision's verbatim file outside a chief
+    gloss and name every key (the full key or its bare number; a PR number, a
+    decision number, a version or a path does not count). With `--keys` and
+    `--signer operator` it marks the keys; with `--signer chief` it lifts the
+    mark. Without `--keys` it sets the station default; a station default of
+    `chief` needs words holding both "chief" and "sign". A lift needs a decision
+    newer than every record of the key and its parent, and a station `chief`
+    record one newer than the newest station record. A mark is never refused
+    for its decision. Running the same record again prints the existing row.
+    A worker cannot write a record: the operator fence refuses it.
+  - **What a mark tells the operator.** Before the row is written the
+    operator gets a Telegram line with his words. For a mark it names every
+    live, fresh spec row the mark voids, with the keys you signed in each
+    (`K mark voids O-<id> for <keys>`, or `K mark voids no signature`), and an
+    emergency bypass the key holds (`K bypassed (<kind>): the mark does not
+    bind while it is`); the same lines print on stdout. A lift or a station
+    `chief` record whose alert fails is not written; a mark, or a station
+    `operator` record, is written with a `WARN`.
+  - **The refusals when you sign.** `operator spec` refuses your signature
+    while a ticket the row covers (its `--keys` and its spec's header tickets)
+    is at `operator` and the operator does not sign it in that row. A marked
+    key, a header ticket that is marked and the station default each get their
+    own message, with the operator's signing command and the lift or station
+    command. So a mark binds the whole spec: your signature for slice keys
+    alone, on a spec whose header names a marked ticket, is refused. The
+    keep-every-key and held-key rules (`scripts/jira/src/release/spec-sign.ts:396-407`)
+    run first, then the signer state; an unreadable state refuses every
+    signature, yours and his.
+  - **The operator's signature.** `operator spec ... --signer operator
+    --decision <n> --words "<his words>"` signs as the operator the keys his
+    words name (the row's `operator_keys`); any other key in the row is yours.
+    For a key at `operator` the decision must be newer than every record of the
+    key, its parent and the station default in force. He gets a Telegram line
+    naming his keys and the ones you signed; if it fails, no row is written.
+  - **The alert seams.** The alert runs `scripts/handover/chief-kit/spec-signer-alert.sh`
+    for 30 seconds at most. It is refused, and nothing is written where it
+    must succeed, while `MERGE_BLOCK_ALERT_CMD`, `TELEGRAM_ACCESS_PATH` or
+    `BRIDGE_ROOT` is set and `HIMMEL_TEST_FIXTURE` is not `1`.
+  - **The copy to the operator.** After your signature row is written and the
+    lock is released, `operator spec` runs `scripts/handover/chief-kit/spec-cc.sh`
+    for 60 seconds at most, and the operator gets a copy of the spec. It sends
+    the minerva page (`<spec without .md>.html`) only when the row's SPEC critic
+    return seals it with a `CONTENT-SHA256` line and the page on disk still
+    hashes to it; otherwise one text line names the spec path, its hash and why
+    no page went. His own signature sends no copy. A failed or hung copy never
+    blocks or undoes the signature: the command prints `WARN spec copy not sent`
+    with the resend command and exits 0. Run that line to resend.
+  - **`signer-check`.** `jira release signer-check <K…> [--spec <file>]
+    [--mirror <dir>]` prints, per key, `SIGNER <K> chief|operator <record
+    id|default>`, `SIGNER <K> operator <record id> via <V>` (the key's chief
+    row covers a marked V, or with `--spec` the spec's header names V at
+    `operator`), or `UNKNOWN <K> <why>`. It is read-only and exits 0.
+  - **The tracker.** `tracker.py` asks `signer-check --spec <spec>` once for
+    each unsigned critic-ready spec that carries no operator-critical marker.
+    A key at `operator`, a `via` line included, is listed under Waiting on
+    you, not Chief owes; an `UNKNOWN` key stays where it was, its reason in
+    the row. For the open keys with a `spec` row it asks `spec-check` once: a
+    `SPEC-NEEDS-OPERATOR` line is listed under Waiting on you, naming your
+    signature that does not count; a `SPEC-SIGNER-UNKNOWN` line is listed
+    under Chief owes with its why. A call that exits other than 0 (or 1 for
+    `spec-check`, which exits 1 whenever a key is not `SPEC ok`) or prints no
+    line for a key is named `release signer-check unread` or `release spec-check
+    unread` in the Waiting on you header, and its rows stay where they were.
+  - **What a mark does not stop.** A worker already launched on your
+    signature, and that worker's merge. `spec-check` is read at dispatch and
+    launch only (`gen-briefs.py`, `brief-lint.sh`, `next-dispatchable.sh`; no
+    merge gate reads it), so halt such a worker yourself when the operator
+    asks.
+  - **Standing rule 18, whole.** The chief signs specs after the critic
+    rounds; send the operator only a spend grant, a ToS or account change,
+    public policy, a reversal of his own ruling, a change to a `CLAUDE.md`
+    rule, relaxing a guard, or a spec he marked as his to sign. The mark is one
+    of seven; the other six still go to him.
+  - The core paths are the dispatch and launch gates
+    (`scripts/ci/core-paths.txt:15`) and the release engine
+    (`scripts/ci/core-paths.txt:21`) among the others listed above.
 - **The gate is enforced, with no flag.** `gen-briefs.py` refuses a core
   worker with no `SPEC ok`, `next-dispatchable.sh` lists such a ticket as a
   `DESIGN` row, and `brief-lint.sh` (run at every launch, even one that skips
@@ -395,7 +538,7 @@ effort guidance, including the chief's own wake-up budget, is in
   in-flight key passes only through the `core-snapshot` record. A `BYPASS` key
   is printed as `bypass=<class>` and logged to `core-gate.jsonl` beside the
   brief. Run a minerva worker for each `CORE` key without `SPEC ok`.
-- **The minerva design leg launches on a key with no spec.** The
+- **The minerva design worker launches on a key with no spec.** The
   brief for that minerva worker carries the line `> **Design leg:** minerva`,
   spelled exactly so, and a `Writes:` line that names only `.md` files in the
   state repo's `specs/` folder. Each file is either relative to the bucket,
@@ -437,10 +580,17 @@ A dispatch that sets effort to `high`, `xhigh` or `max` with no
 to the named agent's own `effort:` frontmatter, such as `judge` at `high`, draws
 no warning.
 
-Any helper other than a judge (general-purpose or a named agent) dispatched on an Opus model with no `TIER: <reason>`
-line in its prompt draws a warning from `guard-agent-model.sh` (warn only, never
-a deny; the reason must pass the same length and placeholder test as
-`ESCALATION:`). Opus is for the one hard call: put the reason on that line.
+A `general-purpose`, `claude` (the catch-all) or untyped helper defaults to `sonnet` (Sonnet 5.5). Dispatched
+on an Opus model with no escalation line (`TIER: <reason>` or `ESCALATION: <reason>`
+in its prompt), `guard-agent-model.sh` denies it and names `model: sonnet`; the
+reason must pass the same length and placeholder test as `ESCALATION:`. The types
+under this default are the `default_sonnet_agent_types` list in
+`scripts/guardrails/agent-model-policy.json`. `ticket-auditor` and `page-reviewer`
+are not on it: they stay on Opus under the operator's audit and docs rule.
+
+Any other helper (a named agent) dispatched on an Opus model with no `TIER: <reason>`
+line draws a warning from `guard-agent-model.sh` (warn only, never a deny).
+Opus is for the one hard call: put the reason on that line.
 
 **Operator-ruled Opus classes.** The table is not the whole rule.
 Standing operator rulings keep four helper classes on Opus at high effort, and
@@ -487,8 +637,8 @@ Four pre-launch checks that each cost a chief a dead worker when skipped:
   "fixed" claim yourself before you close the ticket.
 - **The Tier line needs a literal em-dash.** An Opus or Fable worker launches only
   if its brief carries `> **Tier:** opus — <category>: <reason>`. With an ASCII
-  hyphen in place of the em-dash, `headed-arm-worker.sh` refuses: no launch log,
-  nothing in `pgrep`. `--dry-run` an Opus or Fable launch first and look for
+  hyphen in place of the em-dash, `headed-arm-worker.sh` refuses: the launch log
+  holds only its `LAUNCH-REFUSED` line, and nothing is in `pgrep`. `--dry-run` an Opus or Fable launch first and look for
   `refusing` in its output. Never probe with a real launch under `timeout`
   instead: the launch reserves a fleet slot under the session name for the
   deadline plus 60 s, and a killed probe does not release it, so the real
@@ -827,8 +977,9 @@ A grant lets one key write one file; it widens no scope and no tool permission. 
 | `operator` | settings and `.github/` | the operator only, in a real terminal, typing the path back |
 
 A worker sends no `HOLD-ASK` on the last two routes. The deny itself is the ask: it is
-logged, shows as the third count of `hreg=` on your tick, and pages the operator once
-with the command, under the same `HOLD-ASK` name (`chief-sections/monitors.md`). Every route has two other exits: wait for the holder's
+logged, shows as the third count of `hreg=` on your tick, and either wakes you once as
+`WAKE hold-ask` with the command (route `chief`) or pages the operator with it under the same
+`HOLD-ASK` name (route `operator`) (`chief-sections/monitors.md`). Every route has two other exits: wait for the holder's
 release, or an operator launch with `WRITE_HOLD_OK=1`. A trust-path PR still needs its
 trust judge, whoever granted the write.
 
@@ -1178,6 +1329,16 @@ so no launch starts on extra usage. Plain `set` replaces it with a one-window we
 The Done-when for this change needs the operator to walk this once at a real
 switch and record the result (and the cache-probe verdict from step 1) in the PR.
 
+## Docker on the station
+
+Docker is off on the station by default (the operator keeps it out of the boot).
+A chief that needs it for a suite files
+`afk-sudo op-request --session <S> --ticket <T> docker action=start`, which the
+operator approves with a Telegram code, and stops it again with `action=stop`
+when the suite is done. The op only starts and stops it for the current boot and
+never changes whether it starts at boot (`docs/internals/afk-sudo.md`, the
+`docker` op).
+
 ## Controlling the VM CI runner
 
 Two VirtualBox VMs (`himmel-ci-1`, `himmel-ci-2`, cloned from the
@@ -1234,8 +1395,9 @@ with only minor or medium findings. It is built and tested only in hermetic fixt
 each flag once. Both together, an empty, repeated or trailing-comma key, or a missing flag exits 1 with a
 `capped-fold:` message. It is read-only, prints one JSON line and grants no authority. A signing is
 `jira release operator spec <release> --keys <K,...> --spec <file> --plan <file> --verdict <file> --verdict <file>
---decision <n> --verbatim-file <f>`, and `--source-root <path>` names where the spec's citations are read: the primary
-or a registered live linked worktree of this repository (default: the primary).
+--decision <n> --verbatim-file <f>` for the chief, or with `--signer operator --words "<his exact words>"` in place of
+`--verbatim-file` for a spec the operator marked as his, and `--source-root <path>` names where the spec's citations
+are read: the primary or a registered live linked worktree of this repository (default: the primary).
 
 **2. The producer route and its order.** Only `jira release operator spec` takes it, and only after the normal
 residual-disposition check has refused. One key runs the shipped `--key` verifier first; only when that verifier exits

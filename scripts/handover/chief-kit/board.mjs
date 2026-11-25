@@ -377,8 +377,10 @@ const WORKER_SESSION_STATUSES = ['To Do', 'In Progress', 'In Review', 'IN CI', '
 const DONE_STATUS = /^(done|resolved|in public)$/i;
 // Closed and won't do are out of every count, as the tracker has it.
 const OUT_STATUS = /^(closed|won['’]?t do|won['’]?t fix)$/i;
+const RESIDUAL_LABEL = /(^|-)residual(-|$)/;
+const RELEASE_LIMIT = 5000;
 const releaseOf = (version) => {
-    const a = ['list', '--jql', `project = HIMMEL AND fixVersion = "${version}"`, '--labels', '--limit', '1000'];
+    const a = ['list', '--jql', `project = HIMMEL AND fixVersion = "${version}"`, '--labels', '--limit', String(RELEASE_LIMIT)]; // env-literal-ok: the board's own project key
     let out;
     try {
         out = execFileSync(...(JIRA_CLI.endsWith('.js') ? ['node', [JIRA_CLI, ...a]] : [JIRA_CLI, a]),
@@ -389,11 +391,12 @@ const releaseOf = (version) => {
     const lines = out.split('\n').filter((l) => l.trim()).map((l) => l.split('\t'));
     const rows = lines.filter((f) => f.length >= 5 && /^[A-Z][A-Z0-9]*-\d+$/.test(f[0]))
         .map((f) => ({ key: f[0], status: f[2].trim(), title: f[3], labels: (f[4] || '').split(',').map((x) => x.trim()) }));
-    if (rows.length !== lines.length) return { version, unavailable: true };
+    if (rows.length !== lines.length || rows.length >= RELEASE_LIMIT) return { version, unavailable: true };
     const counted = rows.filter((r) => !OUT_STATUS.test(r.status));
     const open = counted.filter((r) => !DONE_STATUS.test(r.status));
     const byStatus = Object.fromEntries(WORKER_SESSION_STATUSES.map((st) => [st, rows.filter((r) => r.status === st).length]));
-    return { version, done: counted.length - open.length, total: counted.length, byStatus, blockers: open.filter((r) => r.labels.includes('v1-blocker')) };
+    const residual = open.filter((r) => r.labels.some((l) => RESIDUAL_LABEL.test(l)));
+    return { version, done: counted.length - open.length, total: counted.length, open: open.length, residual: residual.length, byStatus, blockers: open.filter((r) => r.labels.includes('v1-blocker')) };
 };
 const releases = versionsDeclared.map(releaseOf);
 // The release manager's state: ONE `release state <R> --json` call, the engine's own
@@ -417,7 +420,7 @@ const rmState = (() => {
 })();
 // A separate fingerprint (as the census one is): tick.sh never sees these counts.
 const releaseSig = releases.map((r) => (r.unavailable ? `${r.version}=unavailable`
-    : `${r.version}=${r.done}/${r.total}:${WORKER_SESSION_STATUSES.map((st) => r.byStatus[st]).join('/')}:${r.blockers.map((b) => `${b.key}@${b.status}@${redact(b.title)}`).join('+')}`))
+    : `${r.version}=${r.done}/${r.total}/${r.open}/${r.residual}:${WORKER_SESSION_STATUSES.map((st) => r.byStatus[st]).join('/')}:${r.blockers.map((b) => `${b.key}@${b.status}@${redact(b.title)}`).join('+')}`))
     .concat(rmState ? [`rm:${rmState.unavailable ? 'unavailable' : JSON.stringify([rmState.status, rmState.burndown, rmState.leaks, rmState.trend])}`] : []).join(',');
 const ciOf = (pr) => {
     const rollup = (pr && pr.statusCheckRollup) || [];
@@ -544,6 +547,15 @@ const consoleName = basename(docPath, '.md');
 // budget) are in no section on purpose: neither is running, and neither is the user's to answer.
 // The operator board, its archive and its json are not touched.
 if (opt.view === 'user') {
+    const owedRun = spawnSync(process.env.BOARD_BUN || 'bun', ['-e', `const { readOwed } = await import(${JSON.stringify(join(HERE, '..', '..', 'config-ui', 'board.ts'))}); console.log(JSON.stringify(readOwed(process.env)));`],
+        { encoding: 'utf8', timeout: 30000, env: { ...process.env, HIMMEL_BUCKET_DIR: bucket, HIMMEL_CHIEF_DOC: docPath } });
+    let owed;
+    try {
+        const o = JSON.parse(owedRun.stdout);
+        owed = o.state === 'ok' ? { items: o.items.filter((i) => i.actor === 'operator'), unread: (o.unread || []).join(', ') } : { items: [], unread: o.reason };
+    } catch {
+        owed = { items: [], unread: 'the owed reader did not run' };
+    }
     const prTitle = (n) => ((openByNum.get(n) || {}).title || '');
     const waitingLegs = workers.filter((l) => l.phase !== 'WRAPPED' && l.phase !== 'MERGED'
         && (l.phase === 'READY' || l.phase === 'BLOCKED' || l.tail === 'FINDING'));
@@ -555,11 +567,12 @@ if (opt.view === 'user') {
             ? { ticket: l.ticket, goal: goalOf(prTitle(l.prNum)) || l.desc, tag: `GO · PR #${l.prNum}` }
             : { ticket: l.ticket, goal: goalOf(prTitle(l.prNum)) || l.desc, tag: 'question', text: l.last.replace(/^(?:\d{1,2}:\d{2}\s+)?[A-Z][A-Z-]*[A-Z]\s*[—–:-]*\s*/, '') })),
         ...decisions.map((d) => ({ tag: 'decision', text: d })),
+        ...owed.items.map((i) => ({ ticket: i.key || '', goal: i.title, tag: i.source, text: `${i.ctx}; action: ${i.act}` })),
     ];
     const shipped = (mergedPrs || []).map((p) => ({ ticket: (/\[([A-Z][A-Z0-9]*-\d+)\]/.exec(p.title) || [])[1] || '', goal: goalOf(p.title), tag: `PR #${p.number}` }));
     const userOut = resolve(opt.out || join(bucket, 'chief-shift-board.html'));
     const userTmp = `${userOut}.tmp${process.pid}`;
-    writeFileSync(userTmp, renderUserBoard({ stamp, running, waiting, shipped, shippedNote: mergedPrs ? '' : 'merged PRs unavailable' }));
+    writeFileSync(userTmp, renderUserBoard({ stamp, running, waiting, shipped, shippedNote: mergedPrs ? '' : 'merged PRs unavailable', owedUnread: owed.unread }));
     renameSync(userTmp, userOut);
     console.log(userOut);
     process.exit(0);
@@ -598,10 +611,9 @@ const epicRows = epics.map((e) => {
 }).join('\n');
 const releasePanel = (r) => {
     if (r.unavailable) return `<section data-release="${esc(r.version)}" data-unavailable="1"><h2>Release ${safe(r.version)}</h2><p class="none">unavailable</p></section>`;
-    const pct = Math.round((r.done / Math.max(1, r.total)) * 100);
     const breakdown = WORKER_SESSION_STATUSES.map((st) => `<span data-status="${esc(st)}" data-count="${r.byStatus[st]}">${esc(st)} ${r.byStatus[st]}</span>`).join(' · ');
     const blockers = r.blockers.map((b) => `<li data-blocker="${esc(b.key)}"><b>${esc(b.key)}</b> ${safe(b.title, 90)} <span class="pr">${safe(b.status)}</span></li>`).join('\n');
-    return `<section data-release="${esc(r.version)}" data-done="${r.done}" data-total="${r.total}"><h2>Release ${safe(r.version)}</h2><b>${r.done}/${r.total}</b><div class="bar"><i style="width:${pct}%"></i></div><p class="status">${breakdown}</p>${blockers ? `<ul>${blockers}</ul>` : '<p class="none">no open v1-blocker tickets</p>'}</section>`;
+    return `<section data-release="${esc(r.version)}" data-open="${r.open}" data-residual="${r.residual}"><h2>Release ${safe(r.version)}</h2><b>open ${r.open}</b> · <span class="residual">residual ${r.residual}</span><p class="status">${breakdown}</p>${blockers ? `<ul>${blockers}</ul>` : '<p class="none">no open v1-blocker tickets</p>'}</section>`;
 };
 // M4 burn-down per version, the leaks and the M1 trend (last 7 days): display only, no count gate.
 const rmPanel = (s) => {
@@ -1259,7 +1271,7 @@ const bankOut = { week_pct: pct(/wk(\d+)/), five_hour_pct: pct(/5h(\d+)/) };
 const todayKey = stamp.slice(0, 10);
 const mergedToday = mergedPrs === null ? null : mergedPrs.filter((p) => p.mergedAt && isoOf(Date.parse(p.mergedAt))?.slice(0, 10) === todayKey).length;
 const milestones = releases.map((r) => (r.unavailable ? { version: r.version, unavailable: true }
-    : { version: r.version, done: r.done, total: r.total, open_blockers: r.blockers.map((b) => b.key) }));
+    : { version: r.version, done: r.done, total: r.total, open: r.open, residual: r.residual, open_blockers: r.blockers.map((b) => b.key) }));
 
 // Session transcripts: one jsonl per session under BOARD_TRANSCRIPTS (else this checkout's
 // ~/.claude/projects dir); line 1 names the session (custom-title = a chief doc stem).
@@ -1369,9 +1381,9 @@ const cards = {
     roadmap: { recommendation: (() => {
         const ok = milestones.filter((m) => !m.unavailable);
         const blocked = ok.find((m) => m.open_blockers.length);
-        if (blocked) return `${blocked.version}: ${blocked.done}/${blocked.total} done; clear ${blocked.open_blockers.join(', ')} first`;
-        const open = ok.find((m) => m.done < m.total);
-        if (open) return `${open.version}: ${open.total - open.done} ticket${open.total - open.done === 1 ? '' : 's'} left`;
+        if (blocked) return `${blocked.version}: open ${blocked.open}, residual ${blocked.residual}; clear ${blocked.open_blockers.join(', ')} first`;
+        const open = ok.find((m) => m.open > 0);
+        if (open) return `${open.version}: open ${open.open}, residual ${open.residual}`;
         if (!milestones.length) return 'add a versions: line to Live state to track milestones';
         return ok.length ? 'every milestone is done' : 'milestones unavailable: check the Jira CLI';
     })() },

@@ -11,11 +11,11 @@
 //  - one span function: first LIVE to last WRAPPED/HALTED; a doc with no LIVE starts at its predecessor's end, marked approx.
 //
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { execFile } from "node:child_process";
 import { findDoc, readBoardFile } from "./agui/board";
 import { acquireLock } from "./lock";
+import type { Owed, OwedItem } from "./board";
 import { REDACTED } from "../himmelctl/lib/redact.js";
 
 export type Opts = { idleMin: number; cuts: string[]; minHours: number };
@@ -316,8 +316,7 @@ export async function readMerged(env: Record<string, string | undefined>, cwd: s
 // ---- what the page reads ----
 type Leg = { leg: string; ticket?: string | null; goal?: string | null; description?: string | null; state?: string; stage?: string; stages?: Record<string, string | null>; pr?: { number?: number | null } | null };
 type Need = { leg: string; verb?: string; action?: string; detail?: string; since?: string | null };
-// decisions: the chief doc's open operator decisions (liveBoards adds them); needs_you is the chief's own to-do list
-export type Board = { console?: { name?: string }; legs?: Leg[]; needs_you?: Need[]; decisions?: string[] };
+export type Board = { console?: { name?: string }; legs?: Leg[]; needs_you?: Need[] };
 export type Waiting = { kind: string; ticket: string | null; title: string; detail: string; since: string | null; pr: number | null; chief: string };
 export type Running = { ticket: string | null; title: string; stage: "building" | "in review"; since: string | null; pr: number | null };
 export type Carried = { ticket: string | null; title: string; stage: string; pr: number | null };
@@ -328,6 +327,7 @@ export type View = {
   mergedUnread: boolean; // the merged-PR list could not be read: Shipped is unknown, not empty
   boardMissing: string[]; boardError: { chief: string; error: string }[]; // live chiefs whose board is absent or failed to build: Running is unknown for them, not empty
   waiting: Waiting[]; running: Running[]; shipped: { number: number; title: string; mergedAt: string; chief: string | null }[]; carried: Carried[]; gap: Gap[];
+  owedUnread?: string | null;
   pager: { prev: string | null; next: string | null };
   last: { id: string; name: string; opened: string; closed: string; chiefs: number; shipped: number | null } | null;
 };
@@ -335,15 +335,20 @@ export type View = {
 const prOf = (l?: Leg) => (typeof l?.pr?.number === "number" ? l.pr.number : null);
 const titleOf = (l?: Leg) => String(l?.goal || l?.description || "").slice(0, 200);
 
-// The live boards' rows: Waiting = what the data marks as the operator's (the chief doc's open decisions); the board's needs_you
-// (go, decide, unblock, act) are the chief's own steps and never Waiting. Running = live and PR-open workers that are not waiting (a red CI stays Running: it is the worker's to fix).
-export function rowsOf(boards: Board[]): { waiting: Waiting[]; running: Running[] } {
+export function rowsOf(boards: Board[], owed: OwedItem[] = []): { waiting: Waiting[]; running: Running[] } {
   const waiting: Waiting[] = [], running: Running[] = [];
+  const byKey = new Map<string, Waiting>();
+  for (const i of owed) {
+    if (i.actor !== "operator") continue;
+    const detail = `${i.title}: ${i.ctx}; action: ${i.act}`, seen = i.key ? byKey.get(i.key) : undefined;
+    if (seen) { seen.detail += ` | ${detail}`; continue; }
+    const w: Waiting = { kind: i.source, ticket: i.key, title: i.title, detail, since: null, pr: null, chief: "" };
+    waiting.push(w);
+    if (i.key) byKey.set(i.key, w);
+  }
   for (const b of boards) {
-    const chief = b.console?.name ?? "";
     const waits = new Set<string>();
     for (const n of b.needs_you ?? []) waits.add(n.leg);
-    for (const d of b.decisions ?? []) waiting.push({ kind: "decision", ticket: null, title: d.slice(0, 200), detail: d, since: null, pr: null, chief });
     for (const l of b.legs ?? []) {
       if (waits.has(l.leg) || l.state === "ready-for-go" || l.state === "blocked") continue;
       if (l.stage !== "live" && l.stage !== "pr") continue;
@@ -357,7 +362,7 @@ export function rowsOf(boards: Board[]): { waiting: Waiting[]; running: Running[
 }
 
 // The page's whole read. id selects a closed shift (its row), none selects the current one.
-export function viewOf(o0: { now: number; rows: Row[]; snap: Snapshot; id: string | null; merged: Pr[] | null; boards: Board[]; boardMissing?: string[]; boardError?: { chief: string; error: string }[]; opts?: Opts }): View {
+export function viewOf(o0: { now: number; rows: Row[]; snap: Snapshot; id: string | null; merged: Pr[] | null; boards: Board[]; boardMissing?: string[]; boardError?: { chief: string; error: string }[]; opts?: Opts; owed?: Owed }): View {
   const o = { ...o0, merged: o0.merged ?? [] };
   const opts = o.opts ?? DEFAULTS;
   const empty: View = { state: "none", shift: null, chiefs: [], buckets: [], mergedUnread: o0.merged === null, boardMissing: [], boardError: [], waiting: [], running: [], shipped: [], carried: [], gap: [], pager: { prev: null, next: null }, last: null };
@@ -383,9 +388,10 @@ export function viewOf(o0: { now: number; rows: Row[]; snap: Snapshot; id: strin
   if (!open) return { ...empty, state: "idle", last, pager: pager(null) };
   const off = open.offsetMin;
   const c = chiefsOf(o.snap.spans, o.merged, open.opened, null, o.now, off);
-  const { waiting, running } = rowsOf(o.boards);
+  const { waiting, running } = rowsOf(o.boards, o.owed?.state === "ok" ? o.owed.items : []);
   return {
     ...empty, state: "open", last, pager: pager(null), chiefs: c.chiefs, gap: c.gap, buckets: open.buckets, boardMissing: o.boardMissing ?? [], boardError: o.boardError ?? [], waiting, running,
+    owedUnread: !o.owed ? null : o.owed.state !== "ok" ? o.owed.reason : o.owed.unread.length ? o.owed.unread.join(", ") : null,
     shipped: shipped(open.opened, null, c.chiefs),
     shift: { id: iso(open.opened, off), name: nameOf(open.opened, off, opts), opened: iso(open.opened, off), closed: null, why: null, zone: zoneOf(off), nextCut: iso(nextCut(open.opened, off, opts), off), minutes: Math.round((o.now - open.opened) / MIN) },
   };
@@ -419,20 +425,6 @@ export const fileReader: BoardReader = async (doc) => ((await readBoardFile(doc)
 // A chief whose lock heartbeat is older than the queue-lock TTL is dead (queue-lock.sh status: STALE-DEAD): its rows are not shown.
 export const LOCK_TTL_MS = 6 * 3_600_000;
 
-// The open operator decisions of a chief doc: its Live-state `decisions:` line, ';'-separated at parenthesis depth 0 (board.mjs's split).
-// An entry that points at a decisions file lists decided entries, not open ones, so it gives none.
-export function decisionsOf(text: string): string[] {
-  const live = text.split(/^## Live state[^\n]*\n/m)[1]?.split(/^## /m)[0] ?? "";
-  const line = /^decisions:[ \t]*(.*)$/m.exec(live)?.[1].trim() ?? "";
-  const out: string[] = [];
-  let depth = 0, cur = "";
-  for (const ch of line + ";") {
-    if (ch === "(") depth++; else if (ch === ")") depth = Math.max(0, depth - 1);
-    if (ch === ";" && depth === 0) { out.push(cur.trim()); cur = ""; } else cur += ch;
-  }
-  return out.filter((d) => d && d !== "none" && !/specs\/decisions\/(?:chief|console)-decisions-[0-9-]+\.md/.test(d));
-}
-
 export async function liveBoards(root: string, locks: Lock[], spans: Span[], read: BoardReader, now = Date.now()): Promise<Live> {
   const out: Live = { boards: [], missing: [], error: [] };
   for (const s of liveChiefs(spans, locks)) {
@@ -441,11 +433,7 @@ export async function liveBoards(root: string, locks: Lock[], spans: Span[], rea
     const b = doc ? await read(doc) : null;
     if (b === null) out.missing.push(s.name);
     else if ("error" in b) out.error.push({ chief: s.name, error: String(b.error).split("\n")[0].slice(0, 200) });
-    else {
-      const text = await readFile(doc!, "utf8").catch(() => null);
-      if (text === null) out.error.push({ chief: s.name, error: "chief doc unreadable: its open decisions are not shown" }); // never reads as no decisions
-      out.boards.push({ ...b, decisions: decisionsOf(text ?? "") });
-    }
+    else out.boards.push(b);
   }
   return out;
 }

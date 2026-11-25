@@ -36,6 +36,7 @@ echo PROCEED
 EOF
 printf 'TICK 03:00 hb=1m workers=N1:FRESH livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:LIVE inbox=none tick=UNKNOWN fleet=1/1 capacity=UNDERFILLED:1 gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none or=skip fails=none\n' > "$STUB/tick.line"
 export STUB
+export HIMMEL_CORE_CHECK_BATCH=off
 export CHIEF_WAIT_TICK="$STUB/tick.sh" CHIEF_WAIT_USAGE="$STUB/bank.sh"
 export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000
 export CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1 CHIEF_WAIT_PAUSED_REPROBE_SEC=0 CHIEF_WAIT_REPOOL_TIMEOUT=5
@@ -158,6 +159,29 @@ touch -d '5 hours ago' "$INBOX.wait.resume-stale"  # gnu-ok: Linux-only suite
 chmod 000 "$LOG"
 arm "$WORK/r8.out" 6
 check '8 an unreadable status log wakes nothing and leaves the resume-stale marker as it was' '124:0:FIXT-7' "$rc:$(stale_wakes "$WORK/r8.out"):$(cat "$INBOX.wait.resume-stale" 2>/dev/null)"
+
+cp "$STUB/tick.line" "$STUB/tick.line.orig"
+relaunch_line() { sed "s/ capacity=[^ ]*/ capacity=FULL/; s/\$/ relaunch=$1/" "$STUB/tick.line.orig" > "$STUB/tick.line"; }
+relaunch_wakes() { grep -c '^WAKE relaunch-owed ' "$1" 2>/dev/null; }
+case_new rl
+relaunch_line none
+arm "$WORK/rl1.out" 6
+check '10716 a HELD entry whose trigger has not fired wakes nothing' '124:0' "$rc:$(relaunch_wakes "$WORK/rl1.out")"
+relaunch_line '#5699:\/h\/N1-RESUME.md'
+arm "$WORK/rl2.out" 12
+check '10716 a fired trigger wakes relaunch-owed naming the PR and its resume doc' '0:WAKE relaunch-owed 5699 /h/N1-RESUME.md' "$rc:$(head -n 1 "$WORK/rl2.out")"
+arm "$WORK/rl3.out" 6
+check '10716 the same fired entry does not wake again inside the window' '124:0' "$rc:$(relaunch_wakes "$WORK/rl3.out")"
+relaunch_line '?'
+arm "$WORK/rl4.out" 6
+check '10716 a failed trigger read wakes nothing and keeps the marker' '124:0:5699:/h/N1-RESUME.md' "$rc:$(relaunch_wakes "$WORK/rl4.out"):$(cat "$INBOX.wait.relaunch" 2>/dev/null)"
+relaunch_line '#5700:\/h\/y.md,?'
+arm "$WORK/rl4b.out" 12
+check '10716 an unreadable entry beside a fired one still wakes the fired one and keeps the old marker line' '0:WAKE relaunch-owed 5700 /h/y.md:5699:/h/N1-RESUME.md' "$rc:$(head -n 1 "$WORK/rl4b.out"):$(grep -x '5699:/h/N1-RESUME.md' "$INBOX.wait.relaunch" 2>/dev/null)"
+relaunch_line none
+arm "$WORK/rl5.out" 6
+check '10716 relaunch=none clears the marker' '124:no' "$rc:$([ -e "$INBOX.wait.relaunch" ] && echo yes || echo no)"
+cp "$STUB/tick.line.orig" "$STUB/tick.line"
 
 printf '\n%s failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

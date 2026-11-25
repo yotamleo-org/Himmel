@@ -99,6 +99,53 @@ run bash "$WT" prune --health --dry-run
 if [ "$rc" -eq 1 ] && grep -q 'takes no other flag' "$ERR"; then _pass "worktree.sh prune --health --dry-run still refuses"
 else _fail "worktree.sh prune --health --dry-run still refuses" "rc=$rc $(cat "$OUT" "$ERR")"; fi
 
+run bash "$REPO/scripts/_new-worktree.sh" --check-name design/x
+if [ "$rc" -eq 1 ] && grep -Fq "design/x" "$ERR" && grep -Fq "feat|fix|chore|docs|refactor|test" "$ERR" && grep -Fq "fix: rename" "$ERR" \
+    && [ ! -e "$(wt_dir design/x)" ]; then _pass "_new-worktree.sh --check-name refuses a bad type, naming the types and the fix"
+else _fail "_new-worktree.sh --check-name refuses a bad type, naming the types and the fix" "rc=$rc $(cat "$ERR")"; fi
+
+run bash "$REPO/scripts/_new-worktree.sh" --check-name docs/verb-check
+if [ "$rc" -eq 0 ] && [ ! -e "$(wt_dir docs/verb-check)" ] \
+    && ! git -C "$REPO" show-ref --verify --quiet refs/heads/docs/verb-check; then _pass "_new-worktree.sh --check-name accepts a good name and creates nothing"
+else _fail "_new-worktree.sh --check-name accepts a good name and creates nothing" "rc=$rc $(cat "$ERR")"; fi
+
+PUSHER="$TMPBASE/pusher"
+git clone -q -b main "$ORIGIN" "$PUSHER" 2>/dev/null
+git -C "$PUSHER" -c user.email=t@t -c user.name=T commit -q --allow-empty -m "moved on"
+git -C "$PUSHER" push -q origin HEAD:main
+OLD_TIP=$(git -C "$REPO" rev-parse origin/main)
+NEW_TIP=$(git -C "$PUSHER" rev-parse HEAD)
+
+run bash "$WT" new fix/verb-nofetch --no-prune --no-fetch --no-install
+if [ "$rc" -eq 0 ] && [ "$(git -C "$(wt_dir fix/verb-nofetch)" rev-parse HEAD)" = "$OLD_TIP" ]; then _pass "worktree.sh new --no-fetch branches from the origin ref already fetched"
+else _fail "worktree.sh new --no-fetch branches from the origin ref already fetched" "rc=$rc $(cat "$ERR")"; fi
+
+run bash "$WT" new fix/verb-fetch --no-prune --no-install
+if [ "$rc" -eq 0 ] && [ "$(git -C "$(wt_dir fix/verb-fetch)" rev-parse HEAD)" = "$NEW_TIP" ]; then _pass "worktree.sh new without --no-fetch still fetches origin first"
+else _fail "worktree.sh new without --no-fetch still fetches origin first" "rc=$rc $(cat "$ERR")"; fi
+
+GH_LOG="$TMPBASE/gh-calls"
+GH_STUB="$TMPBASE/gh-stub.sh"
+cat > "$GH_STUB" <<GHSTUB
+#!/bin/sh
+echo "\$*" >> "$GH_LOG"
+case "\$1 \$2" in
+    "auth status") exit 0 ;;
+    "repo view") echo "test-owner/test-repo"; exit 0 ;;
+    "api "*) exit 0 ;;
+esac
+exit 1
+GHSTUB
+chmod +x "$GH_STUB"
+: > "$GH_LOG"
+run env FORGE=github GH_CMD="$GH_STUB" bash "$WT" new fix/verb-nowalk --no-prune --no-fetch --no-install
+if [ "$rc" -eq 0 ] && [ -d "$(wt_dir fix/verb-nowalk)" ] && ! grep -q 'pulls?state' "$GH_LOG"; then _pass "worktree.sh new --no-prune creates without walking the PR list"
+else _fail "worktree.sh new --no-prune creates without walking the PR list" "rc=$rc gh=[$(cat "$GH_LOG")] $(cat "$ERR")"; fi
+: > "$GH_LOG"
+run env FORGE=github GH_CMD="$GH_STUB" bash "$WT" prune --dry-run
+if grep -q 'pulls?state' "$GH_LOG"; then _pass "worktree.sh prune still walks the PR list"
+else _fail "worktree.sh prune still walks the PR list" "rc=$rc gh=[$(cat "$GH_LOG")] $(cat "$ERR")"; fi
+
 # No verb and no branch is a usage error (rc 2): prune only ever runs behind `prune`.
 for noverb in --no-install --dry-run --verbose ''; do
     run bash "$WT" "$noverb"

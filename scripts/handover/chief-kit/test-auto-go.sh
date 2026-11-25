@@ -79,15 +79,32 @@ VDIR="$HANDOVER_DIR/u/$VBUCKET/verdicts"
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
+stub_cwd_nwo() {
+    if [ "$(pwd -P)" = "$(cd "$AUTO_GO_ANCHOR" && pwd -P)" ]; then printf 'o/r\n'
+    elif git rev-parse --git-dir >/dev/null 2>&1; then printf 'some/other\n'
+    else echo "failed to run git: fatal: not a git repository (or any parent up to mount point /)" >&2; exit 1; fi
+}
+if [ "${STUB_CWD_GH:-0}" = 1 ]; then
+    case "$*" in
+        "repo view --json nameWithOwner"*|"repo view --json defaultBranchRef"*) stub_cwd_nwo >/dev/null ;;
+        "repo view o/r --json defaultBranchRef"*) ;;
+        "pr view 77 -R o/r "*) ;;
+        "pr view "*"--json state,headRefOid,baseRefName"*)
+            echo "GraphQL: Could not resolve to a PullRequest with the number of 77. (repository.pullRequest)" >&2; exit 1 ;;
+    esac
+    case "$*" in "repo view --json nameWithOwner"*) stub_cwd_nwo; exit 0 ;; esac
+fi
 case "$*" in
-    "repo view --json nameWithOwner"*) [ "${STUB_NWO_FAIL:-0}" = 1 ] && exit 1; printf '%s\n' "${STUB_NWO:-o/r}"; exit 0 ;;
-    "repo view --json defaultBranchRef"*) printf 'main\n'; exit 0 ;;
+    "repo view --json nameWithOwner"*) [ "${STUB_NWO_FAIL:-0}" = 1 ] && { printf '%s\n' "${STUB_GH_ERR:-}" >&2; exit 1; }; printf '%s\n' "${STUB_NWO:-o/r}"; exit 0 ;;
+    "repo view "*"--json defaultBranchRef"*) printf 'main\n'; exit 0 ;;
     "pr view "*"--json state,headRefOid,baseRefName"*)
-        [ "${STUB_VIEW_FAIL:-0}" = 1 ] && exit 1
-        printf '{"state":"%s","headRefOid":"%s","baseRefName":"%s"}\n' \
-            "${STUB_PR_STATE:-OPEN}" "${STUB_PR_HEAD:-$READY_STUB_HEAD}" "${STUB_PR_BASE:-main}"; exit 0 ;;
+        [ "${STUB_VIEW_FAIL:-0}" = 1 ] && { printf '%s\n' "${STUB_GH_ERR:-}" >&2; exit 1; }
+        jq -n --arg s "${STUB_PR_STATE:-OPEN}" --arg h "${STUB_PR_HEAD:-$READY_STUB_HEAD}" --arg b "${STUB_PR_BASE:-main}" \
+            --arg body "$(printf '%b' "${READY_STUB_BODY-}")" '{state: $s, headRefOid: $h, baseRefName: $b, body: $body}'; exit 0 ;;
     "pr view "*"--json headRefOid,state"*) cat "$STUB_GC/head-$3.json" 2>/dev/null || exit 1; exit 0 ;;  # read-sink-ok: the stub reads its own fixture dir
-    "pr view "*"--json title"*) printf '%s\n' "${STUB_TITLE:-fix(x): [HIMMEL-1] t (#1)}"; exit 0 ;;
+    "pr view "*"--json title"*)
+        [ "${STUB_TITLE_NEEDS_R:-0}" = 1 ] && case "$*" in "pr view 77 -R o/r --json title"*) ;; *) echo "no git remotes found" >&2; exit 1 ;; esac
+        printf '%s\n' "${STUB_TITLE:-fix(x): [HIMMEL-1] t (#1)}"; exit 0 ;;
     # a keyed title makes ready-check read the head and author; neither stub answers them otherwise and the two bounce the call forever
     "pr view "*"--json headRefOid --jq"*) printf '%s\n' "$READY_STUB_HEAD"; exit 0 ;;
     "pr view "*"--json author"*) printf 'someone\n'; exit 0 ;;
@@ -190,6 +207,7 @@ ready_pass_origin "$READY_REPO" "$JUDGED"
 SHA=$(ready_pass_repo "$READY_REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 SHA2=$(ready_pass_repo "$READY_REPO" 2) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 export READY_STUB_HEAD="$SHA" READY_STUB_BRANCH=b
+check "ready-check's owner-review line over the ready-pass fixture" "$(ready_pass_owner_review)" "$READY_PASS_OWNER_LINE"
 printf 'more\n' >> "$READY_REPO/docs/c.md"; rgit add -A && rgit commit -qm docs
 NDOC=$(rgit rev-parse HEAD)
 rgit checkout -q -b trust "$JUDGED"
@@ -408,6 +426,26 @@ reset; STUB_PR_BASE=feat/parent run --dry-run 77 "$SHA";  esc "check 2 base is n
 reset; STUB_VIEW_FAIL=1 run --dry-run 77 "$SHA";  esc "check 2 unreadable gh" 2
 reset
 
+mkdir -p "$tmp/nogit" "$tmp/otherclone"; git init -q "$tmp/otherclone"
+cd "$tmp/nogit" || exit 1
+STUB_CWD_GH=1 run --dry-run 77 "$SHA"
+check    "10828 a non-git cwd: checks 1 and 2 pass" "$(last_row | jq -r '[.checks[] | select(.n <= 2) | "\(.n)=\(.result)"] | join(",")')" "1=pass,2=pass"
+cd "$tmp/otherclone" || exit 1
+STUB_CWD_GH=1 run --dry-run 77 "$SHA"
+check    "10828 a cwd in another repo's clone: checks 1 and 2 pass" "$(last_row | jq -r '[.checks[] | select(.n <= 2) | "\(.n)=\(.result)"] | join(",")')" "1=pass,2=pass"
+cd "$READY_REPO" || exit 1
+reset; STUB_VIEW_FAIL=1 STUB_GH_ERR="GraphQL: Could not resolve to a PullRequest with the number of 77. (repository.pullRequest)" run --dry-run 77 "$SHA"
+esc      "10828 a failed PR read" 2
+contains "10828 a failed PR read: the ESCALATE line carries gh's error" "$OUT" "ESCALATE auto-go 2 cannot read the PR or the default branch of o/r (gh: GraphQL: Could not resolve to a PullRequest with the number of 77."
+reset; STUB_VIEW_FAIL=1 STUB_GH_ERR="HTTP 403: API rate limit exceeded (https://api.github.com/graphql?access_token=ghp_SECRET0123456789abcdef)" run --dry-run 77 "$SHA"
+contains "10828 a failed PR read: the 403 reason is kept" "$OUT" "HTTP 403: API rate limit exceeded (https://api.github.com/graphql"
+lacks    "10828 a failed PR read: no URL query is kept" "$OUT" "access_token"
+lacks    "10828 a failed PR read: no token is kept" "$OUT" "ghp_SECRET"
+reset; STUB_NWO_FAIL=1 STUB_GH_ERR="failed to run git: fatal: not a git repository" run --dry-run 77 "$SHA"
+esc      "10828 a failed repo-name read" 1
+contains "10828 a failed repo-name read: the ESCALATE line carries gh's error" "$OUT" "(gh: failed to run git: fatal: not a git repository)"
+reset
+
 # --- 4/3. check 3: ready-check through ready-go ---------------------------------------------------
 # no CR-ledger row at the head: ready-check FAILs, so ready-go exits 4
 git -C "$READY_REPO" rev-parse --git-common-dir >/dev/null
@@ -426,6 +464,8 @@ reset; STUB_LABELS_HIMMEL_1="ui, needs-docs" run --dry-run 77 "$SHA"
 check "check 4 an unrelated label passes" "$RC" "0"
 reset; STUB_JIRA_FAIL=1 run --dry-run 77 "$SHA";  esc "check 4 unreadable Jira (never a pass)" 4
 reset; STUB_TITLE='fix(x): no key here' run --dry-run 77 "$SHA";  esc "check 4 a title with no ticket key is unreadable" 4
+reset; STUB_TITLE_NEEDS_R=1 run --dry-run 77 "$SHA"
+check "10828 check 4 reads the title with the repo named (a gh that needs -R still passes)" "$RC" "0"
 for hold in 'merge-hold: #77' 'merge-hold: 77' 'merge-hold: HIMMEL-1' 'merge-hold: all' 'merge-hold: #12, #77'; do
     reset; write_fixtures native "$hold"; run --dry-run 77 "$SHA";  esc "check 4 [$hold]" 4
 done
@@ -544,6 +584,36 @@ check    "A1b ordinary: the signed GO record names auto-go and script" "$(grep -
 gofresh; write_fixtures native "" '> **Completes ticket:** yes'; run 77 "$SHA"
 contains "A1b completes-ticket yes adds --jira-transition" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
 
+export READY_STUB_TITLE='fix(x): [HIMMEL-1] a partial change'
+BODY_REST=$'## Ticket coverage\n- ask: done\n\nRemaining: the docs follow\n\nRED then GREEN: the new row failed before the change\n'
+BRIEF_YES='> **Completes ticket:** yes'
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="completes-ticket: no"$'\n'"$BODY_REST" run 77 "$SHA"
+check    "C1 body no over brief yes: exit 0" "$RC" "0"
+lacks    "C1 body no over brief yes: the GO message has no --jira-transition" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition"
+contains "C1 body no over brief yes: the GO message names the GO file" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--go $GOF"
+check    "C6 body no over brief yes: check 3 audit reason" "$(q '.checks[] | select(.n == 3) | .reason')" "contract no from the PR body, brief says yes"
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY=$'completes-ticket: no\n## Ticket coverage\n- ask: done\n\nRED then GREEN: the new row failed before the change\n' run --dry-run 77 "$SHA"
+esc      "C8 body no over brief yes, no Remaining line: ready-go runs under contract no" 3
+contains "C8 body no over brief yes, no Remaining line: the escalation names item 17" "$OUT" "17."
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="completes-ticket: yes"$'\n'"$BODY_REST" run 77 "$SHA"
+contains "C2 body yes, brief yes: the GO message carries --jira-transition" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
+check    "C2 body yes, brief yes: no check 3 reason" "$(q '.checks[] | select(.n == 3) | .reason // "none"')" "none"
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY=$'completes-ticket: yes\ncompletes-ticket: no\n'"$BODY_REST" run 77 "$SHA"
+contains "C3 body yes and no, brief yes: the brief's yes stands" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
+gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="$BODY_REST" run 77 "$SHA"
+contains "C4 no body line, brief yes: the brief's yes stands" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
+for variant in 'completes-ticket: maybe' '  completes-ticket: no' $'```\ncompletes-ticket: no\n```' $'~~~\ncompletes-ticket: no\n~~~' $'```\nunclosed\ncompletes-ticket: no' $'```\n~~~\ncompletes-ticket: no\n~~~\n```' $'````\n```\ncompletes-ticket: no\n```\n````'; do
+    gofresh; write_fixtures native "" "$BRIEF_YES"; READY_STUB_BODY="$variant"$'\n'"$BODY_REST" run 77 "$SHA"
+    contains "C5 ignored body line [$(printf '%s' "$variant" | tr '\n' '|')], brief yes: the brief's yes stands" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
+done
+gofresh; write_fixtures native ""; READY_STUB_BODY="completes-ticket: yes"$'\n'"$BODY_REST" run --dry-run 77 "$SHA"
+esc      "C7 body yes over brief no" 3
+contains "C7 body yes over brief no: names the body's yes" "$OUT" "the PR body says completes-ticket: yes"
+contains "C7 body yes over brief no: names the brief's no" "$OUT" "the brief says no"
+lacks    "C7 body yes over brief no: ready-go did not run" "$OUT" "[FAIL] 17"
+unset READY_STUB_TITLE
+gofresh
+
 # 8b. --dry-run still answers and still writes nothing
 gofresh; verdict q1 "**GO** for head \`$SHA\`."
 STUB_FILE=scripts/ci/x.sh run --dry-run 77 "$SHA"
@@ -580,10 +650,18 @@ check    "A1b judge brief + judge GO: exit 0" "$RC" "0"
 contains "A1b judge brief + judge GO: the GO is trust-reviewed" "$(cat "$GOF" 2>/dev/null)" "trust-reviewed=q1"
 
 # 8e. a docs PR (decision 286): the docs judge's GO at the head
+DOCS_NEED="every changed file is under docs/ or is a .md file"
 gofresh; STUB_FILE=docs/x.md run 77 "$SHA";  esc "A1b docs PR with no verdict" 5
+contains "A1b docs PR with no verdict: says what it needs" "$OUT" "$DOCS_NEED"
+lacks    "A1b docs PR with no verdict: no decision number" "$OUT" "decision 286"
 gofresh; STUB_FILE=README.md run 77 "$SHA";  esc "A1b a *.md file anywhere is a docs PR" 5
+contains "A1b a *.md file anywhere: says what it needs" "$OUT" "$DOCS_NEED"
+lacks    "A1b a *.md file anywhere: no decision number" "$OUT" "decision 286"
 gofresh; verdict q1 "**GO** for head \`$SHA\`."; STUB_FILE=docs/x.md run 77 "$SHA"
 check    "A1b docs PR + docs judge GO: exit 0" "$RC" "0"
+C5WHY=$(last_row | jq -r '.checks[] | select(.n == 5) | .reason')
+contains "A1b docs PR + docs judge GO: says what it needs" "$C5WHY" "$DOCS_NEED"
+lacks    "A1b docs PR + docs judge GO: no decision number" "$C5WHY" "decision 286"
 gofresh; run 77 "$SHA"
 check    "A1b a non-docs PR needs no verdict (ordinary GO)" "$RC" "0"
 
@@ -827,21 +905,23 @@ ttrun() {
         GH_STUB_DELEGATE="$tmp/ttdelegate" GH_STUB_READ_TOKEN="$TTREAD" GHLOG="$TTLOG" \
         bash "${AG_SCRIPT:-$SCRIPT}" --doc "$CHIEF" --fleet "$FLEET" --worker N1 --dry-run 77 "$SHA" 2>&1); RC=$?
 }
-tt_main_reads_besides_the_crd_branch_read() { grep '^tok=main ' "$TTLOG" | grep -vc 'argv=pr view 77 --json headRefName -q .headRefName'; }
+tt_main_reads_besides_the_crd_branch_read() { grep '^tok=main ' "$TTLOG" | grep -vc -e 'argv=pr view 77 --json headRefName -q .headRefName' -e 'argv=api repos/{owner}/{repo}/branches/main/protection/required_status_checks'; }
 ttrun "$tmp/ttroot" GH_STUB_MAINFAIL=rate GH_STUB_MAINFAIL_BUCKET=core
 check    "8691 main REST core spent: exit 0" "$RC" "0"
 check    "8691 main REST core spent: exactly WOULD-GO <pr> <head>" "$OUT" "WOULD-GO 77 $SHA"
 check    "8691 main REST core spent: no read rides the main token but cr-disposition's branch read, its ready-go child's reads included" "$(tt_main_reads_besides_the_crd_branch_read)" "0"
 check    "8691 main REST core spent: the repo name read logs tok=read" "$(ttseen '^tok=read argv=repo view --json nameWithOwner')" "yes"
-check    "8691 main REST core spent: the PR state read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json state,headRefOid,baseRefName')" "yes"
-check    "8691 main REST core spent: the title read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json title')" "yes"
+check    "8691 main REST core spent: the PR state read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 -R o/r --json state,headRefOid,baseRefName')" "yes"
+check    "10828 the default-branch read names the repo and logs tok=read" "$(ttseen '^tok=read argv=repo view o/r --json defaultBranchRef')" "yes"
+check    "8691 main REST core spent: the title read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 -R o/r --json title')" "yes"
 check    "8691 main REST core spent: the file listing read logs tok=read" "$(ttseen '^tok=read argv=api repos/o/r/pulls/77/files')" "yes"
 check    "8691 main REST core spent: the commit list read logs tok=read" "$(ttseen '^tok=read argv=api repos/o/r/pulls/77/commits')" "yes"
 ttrun "$tmp/ttroot" GH_STUB_MAINFAIL=rate
 check    "8691 main spent in every bucket, read token alive: exit 0" "$RC" "0"
 check    "8691 main spent in every bucket, read token alive: exactly WOULD-GO <pr> <head>" "$OUT" "WOULD-GO 77 $SHA"
+check    "8691 main spent in every bucket: the classic-protection read is the one main call, once" "$(grep -cF 'tok=main argv=api repos/{owner}/{repo}/branches/main/protection/required_status_checks' "$TTLOG")" "1"
 check    "8691 main spent in every bucket: cr-disposition's branch read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json headRefName -q .headRefName')" "yes"
-check    "8691 main spent in every bucket: no read rides the main token" "$(grep -c '^tok=main ' "$TTLOG")" "0"
+check    "8691 main spent in every bucket: no read rides the main token" "$(grep '^tok=main ' "$TTLOG" | grep -vc 'argv=api repos/{owner}/{repo}/branches/main/protection/required_status_checks')" "0"
 ttrun "$tmp/emptyroot"
 check    "8691 control, no read token: exit 0" "$RC" "0"
 check    "8691 control, no read token: exactly WOULD-GO <pr> <head>" "$OUT" "WOULD-GO 77 $SHA"
@@ -862,6 +942,100 @@ check    "8691 control without the unset line: GH_READ_OFF fails the reads (not 
 check    "8691 control without the unset line: the refusal is ESCALATE auto-go 3 (ready-go failed)" "$(printf '%s' "$OUT" | grep -c 'ESCALATE auto-go [0-9]')" "1"
 unset AG_SCRIPT
 reset
+
+orun() { STUB_PR_HEAD=$1 READY_STUB_HEAD=$1 run "${@:2}" 77 "$1"; }
+AROOT=$(git -C "$ANCHOR" rev-list --max-parents=0 HEAD)
+MISS=$(printf 'deadbeef%.0s' 1 2 3 4 5)
+vat() {
+    local vf="$VDIR/$1/judge-$1.md" vmac
+    mkdir -p "$VDIR/$1"
+    printf '# VERDICT %s - judge\nwritten-at: %s\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n%s\n\npr: %s\n\nreason\n\n## Evidence checked\n\ne\n%s\n' "$1" "$3" "$2" "${4:-77}" "${5:-}" > "$vf"
+    # read-sink-ok: $vf is a verdict file this test just wrote under its own temp dir
+    vmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../../lib/go-gate.sh" "$VSCOPE" "$1" "judge-$1" < "$vf")" || { echo "FAIL: cannot sign $vf" >&2; return 1; }
+    printf 'mac: %s\n' "$vmac" >> "$vf"
+}
+gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`."
+orun "$NDOC"
+esc      "11022 an earlier NO-GO, a new head, no new verdict" 5
+contains "11022 the refusal names the NO-GO qid" "$OUT" "verdict qn ruled NO-GO"
+contains "11022 the refusal names the head the NO-GO was ruled at" "$OUT" "${JUDGED:0:8}"
+gofresh; verdict qn "**NO-GO** for head \`$NDOC\`."
+orun "$NDOC"
+esc      "11022 a NO-GO at the current head" 5
+contains "11022 a NO-GO at the current head: the refusal names the qid" "$OUT" "qn"
+gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`."; verdict qg "**GO** for head \`$NDOC\`."
+orun "$JUDGED"
+esc      "11022 a force-push back to the NO-GO head" 5
+gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`."; verdict qg "**GO** for head \`$NDOC\`."
+orun "$PSIB"
+esc      "11022 a head that descends the NO-GO head but not the GO head" 5
+contains "11022 a head off the GO line: the refusal names the qid" "$OUT" "verdict qn ruled NO-GO"
+gofresh; verdict qn "no verdict line here"
+orun "$NDOC"
+esc      "11022 an unparsed verdict of the PR refuses an ordinary PR" 5
+gofresh; mkdir -p "$VDIR/ql"
+# shellcheck disable=SC2016  # the backticks are literal text in the verdict file
+printf '# VERDICT ql - judge\n\n## Verdict\n\n**NO-GO** for head `%s`.\n\nreason\n' "$NDOC" > "$VDIR/ql/judge-ql.md"
+orun "$NDOC"
+esc      "11022 a legacy NO-GO at the head with no pr: line" 5
+contains "11022 a legacy NO-GO: the refusal names the qid" "$OUT" "verdict ql refuses"
+gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`." 78
+orun "$NDOC"
+sent     "11022 a NO-GO of another PR: the ordinary GO" "$NDOC" none
+gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`."; verdict qg "**GO** for head \`$NDOC\`."
+orun "$NDOC2"
+sent     "11022 a later real GO clears the NO-GO, a newer head has no verdict" "$NDOC2" none
+lacks    "11022 cleared: a plain GO carries no trust-reviewed line" "$(cat "$HANDOVER_DIR/.locks/go/77.$NDOC2" 2>/dev/null)" "trust-reviewed="
+gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`."; verdict qg "**GO** for head \`$NDOC\`." 77 judge-qg 0
+orun "$NDOC2"
+esc      "11022 an unsigned GO does not clear a NO-GO" 5
+contains "11022 an unsigned GO does not clear a NO-GO: the refusal names the NO-GO" "$OUT" "verdict qn ruled NO-GO"
+gofresh; verdict qn "**NO-GO** for head \`$JUDGED\`."; vat qg "**GO** for head \`$NDOC\`." 2026-11-24T10:00:00Z 78 "pr: 77"
+orun "$NDOC2"
+esc      "11022 a GO naming another PR that quotes pr: 77 does not clear a NO-GO" 5
+contains "11022 a GO naming another PR does not clear a NO-GO: the refusal names the NO-GO" "$OUT" "verdict qn ruled NO-GO"
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**NO-GO** for head \`$NDOC\`."
+noop "$NDOC2" "$JUDGED"
+orun "$NDOC2"
+esc      "11022 a no-op GO does not clear a NO-GO between the judged head and its own" 5
+gofresh; verdict qn "**NO-GO** for head \`$MISS\`."
+orun "$NDOC"
+esc      "11022 a NO-GO on a missing commit, no GO" 5
+contains "11022 a NO-GO on a missing commit: the refusal names the qid" "$OUT" "verdict qn ruled NO-GO"
+gofresh; verdict qn "**NO-GO** for head \`$MISS\`."; verdict qg "**GO** for head \`$NDOC\`."
+orun "$NDOC" --dry-run
+would    "11022 a NO-GO on a missing commit and a real GO at the head" "$NDOC"
+check    "11022 a NO-GO on a missing commit and a real GO at the head: audit qid" "$(q .qid)" "qg"
+gofresh; verdict qn "**NO-GO** for head \`$PSIB\`."; verdict qg "**GO** for head \`$NDOC\`."
+orun "$NDOC"
+sent     "11022 a standing NO-GO and a GO at the head" "$NDOC" qg
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**NO-GO** for head \`$NDOC\`."
+orun "$NDOC2"
+esc      "11022 a NO-GO after the judged head refuses" 5
+contains "11022 a NO-GO after the judged head: the refusal names the qid" "$OUT" "verdict qn ruled NO-GO"
+contains "11022 a NO-GO after the judged head: the refusal names its head" "$OUT" "${NDOC:0:8}"
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**NO-GO** for head \`$AROOT\`."
+orun "$NDOC" --dry-run
+would    "11022 a standing NO-GO off the judged line, a GO that carries" "$NDOC"
+check    "11022 the carry: audit qid" "$(q .qid)" "qj"
+check    "11022 the carry: audit delta none" "$(q .delta)" "none"
+gofresh; verdict q1 "**NO-GO** for head \`$PSIB\`."; verdict q2 "**NO-GO** for head \`$PX\`."
+orun "$NDOC"
+esc      "11022 two standing NO-GOs" 5
+contains "11022 two standing NO-GOs: the refusal names the newest" "$OUT" "verdict q2 ruled NO-GO"
+lacks    "11022 two standing NO-GOs: not the older" "$OUT" "verdict q1 ruled NO-GO"
+gofresh; verdict q1 "**NO-GO** for head \`$JUDGED\`."; verdict qg "**GO** for head \`$NDOC\`."; verdict q2 "**NO-GO** for head \`$ASIB\`."
+orun "$NDOC2"
+esc      "11022 one NO-GO cleared and one standing" 5
+contains "11022 one cleared and one standing: the refusal names the standing one" "$OUT" "verdict q2 ruled NO-GO"
+lacks    "11022 one cleared and one standing: not the cleared one" "$OUT" "verdict q1 ruled NO-GO"
+gofresh; vat qa "**NO-GO** for head \`$JUDGED\`." 2026-11-24T10:00:00Z; vat qb "**GO** for head \`$JUDGED\`." 2026-11-24T11:00:00Z
+orun "$NDOC"
+sent     "11022 a same-head re-judge: the later GO carries" "$NDOC" qb
+gofresh; vat qa "**NO-GO** for head \`$JUDGED\`." 2026-11-24T12:00:00Z; vat qb "**GO** for head \`$JUDGED\`." 2026-11-24T11:00:00Z
+orun "$NDOC"
+esc      "11022 a same-head re-judge: a NO-GO written after the GO refuses" 5
+gofresh
 
 if [ "$fails" -eq 0 ]; then echo "test-auto-go.sh: all rows passed"; exit 0; fi
 echo "test-auto-go.sh: $fails row(s) failed: $failrows" >&2

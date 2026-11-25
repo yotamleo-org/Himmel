@@ -709,7 +709,7 @@ canon() {
     esac
 }
 
-FENCE_DONE=0 T3_FILES="" T3_DIRS="" REG_DIRS=""
+FENCE_DONE=0 T3_FILES="" T3_DIRS="" REG_DIRS="" AGY_DIRS=""
 fence_paths() {
     [ "$FENCE_DONE" = 1 ] && return 0
     FENCE_DONE=1
@@ -720,11 +720,15 @@ fence_paths() {
         fp_want[${#fp_want[@]}]="$h/userdata/settings.json" fp_kind[${#fp_kind[@]}]=f
         fp_want[${#fp_want[@]}]="$h/userdata" fp_kind[${#fp_kind[@]}]=d
         fp_want[${#fp_want[@]}]="$h" fp_kind[${#fp_kind[@]}]=d
+        fp_want[${#fp_want[@]}]="$h/userdata/providers/antigravity" fp_kind[${#fp_kind[@]}]=a
     done
     for h in "${HOME:+$HOME/.claude}" "${CLAUDE_CONFIG_DIR:-}"; do
         [ -n "$h" ] || continue
         fp_want[${#fp_want[@]}]="$h/sessions" fp_kind[${#fp_kind[@]}]=r
     done
+    if [ -n "${HOME:-}" ]; then
+        fp_want[${#fp_want[@]}]="$HOME/.gemini/config" fp_kind[${#fp_kind[@]}]=a
+    fi
     n=${#fp_want[@]}
     [ "$n" -gt 0 ] || return 0
     if [ "$CANON_MODE" = realpath-m ]; then
@@ -759,6 +763,7 @@ fence_paths() {
                 f) T3_FILES="$T3_FILES$g"$'\n' ;;
                 d) T3_DIRS="$T3_DIRS$g"$'\n' ;;
                 r) REG_DIRS="$REG_DIRS$g"$'\n' ;;
+                a) AGY_DIRS="$AGY_DIRS$g"$'\n' ;;
             esac
         fi
         i=$((i + 1))
@@ -787,11 +792,20 @@ _fence_match() {
 #   "allow"
 #   "unknown"                      (canonicalisation failed)
 # Never exits — callers decide fail-open vs fail-closed on "unknown".
+_is_agy_artifact_path() {
+    local lc
+    lc=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    case "$lc" in
+        */userdata/providers/antigravity/*/antigravity-acp/brain|*/userdata/providers/antigravity/*/antigravity-acp/brain/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 check_target() {
-    local raw="$1" t real base parent parent_base
+    local raw="$1" t real base parent parent_base is_agents_live=0
     t="$raw"
     case "$t" in
-        /*|[A-Za-z]:/*|[A-Za-z]:\\*) : ;;   # already absolute (POSIX or Windows drive form)
+        /*|[A-Za-z]:/*|[A-Za-z]:\\*) : ;;
         *) t="$cwd/$t" ;;
     esac
 
@@ -806,24 +820,20 @@ check_target() {
         echo "deny registry Claude Code session registry: $real"
         return
     fi
+    if _fence_match "$AGY_DIRS" "$real" under && ! _is_agy_artifact_path "$real"; then
+        echo "deny agy Antigravity/Gemini live config: $real"
+        return
+    fi
 
-    # Case-FOLDED basename/parent match: NTFS and
-    # APFS/HFS+ are case-insensitive by default, so `.CLAUDE/SETTINGS.JSON`
-    # and `.claude/settings.json` name the SAME live file there — a
-    # case-sensitive `case` match would let alternate casing walk straight
-    # past this security fence. Fold both sides to lowercase before
-    # comparing; per scripts/hooks/CLAUDE.md a security fence prefers a
-    # false positive (denying an unrelated same-name-different-case file on
-    # a case-SENSITIVE filesystem, vanishingly unlikely for this basename)
-    # over a false negative (missing the real bypass).
     base=$(basename "$real")
     base_lc=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')
     case "$base_lc" in
         settings.json|settings.local.json) : ;;
+        hooks.json|skills.json) is_agents_live=1 ;;
         *) echo "allow"; return ;;
     esac
 
-    if _fence_match "$T3_FILES" "$real"; then
+    if [ "$is_agents_live" = 0 ] && _fence_match "$T3_FILES" "$real"; then
         echo "deny t3 T3 Code settings file: $real"
         return
     fi
@@ -831,7 +841,11 @@ check_target() {
     parent=$(dirname "$real")
     parent_base=$(basename "$parent")
     parent_base_lc=$(printf '%s' "$parent_base" | tr '[:upper:]' '[:lower:]')
-    if [ "$parent_base_lc" != ".claude" ]; then
+    if [ "$is_agents_live" = 1 ]; then
+        if [ "$parent_base_lc" != ".agents" ]; then
+            echo "allow"; return
+        fi
+    elif [ "$parent_base_lc" != ".claude" ]; then
         echo "allow"; return
     fi
 
@@ -1009,6 +1023,43 @@ mentions_claude_registry() {
     [[ $c =~ $var_re ]] && return 0
     fence_paths
     _text_names "$REG_DIRS" "$c" 1
+}
+
+mentions_agy_live_config() {
+    local c="$1"
+    # shellcheck disable=SC2016
+    local gem_re='(~[a-z0-9._-]*|\$home|\$\{home\}|[)`])/\.gemini/config([^a-z0-9_.-]|$)'
+    # shellcheck disable=SC2016
+    local t3_agy_re='(\.t3|\$\{?t3code_home\}?)/userdata/providers/antigravity([^a-z0-9_.-]|$)'
+    c=${c//\\//}
+    c=${c//[\"\']/}
+    case "$c" in
+        *antigravity-acp/brain/*)
+            case "$c" in
+                *.gemini/config*|*antigravity-oauth-token*) ;;
+                *) return 1 ;;
+            esac
+            ;;
+    esac
+    case "$c" in *.gemini/config*|*providers/antigravity*|*antigravity-oauth-token*) ;; *) return 1 ;; esac
+    case "$c" in *antigravity-oauth-token*) return 0 ;; esac
+    [[ $c =~ $gem_re ]] && return 0
+    [[ $c =~ $t3_agy_re ]] && return 0
+    fence_paths
+    _text_names "$AGY_DIRS" "$c" 1
+}
+
+agy_deny_message() {
+    cat >&2 <<EOF
+⛔ block-edit-live-settings: refusing $1 on \`$2\` — it can write Antigravity/Gemini
+live user configuration (~/.gemini/config/ or \${T3CODE_HOME:-\$HOME/.t3}/userdata/providers/antigravity/).
+
+Reading it with cat, jq, ls, grep or the Read tool stays allowed (except OAuth tokens).
+
+Bypass (single-run, set in the LAUNCHING shell):
+
+    EDIT_LIVE_SETTINGS_OK=1 claude
+EOF
 }
 
 registry_deny_message() {
@@ -2371,6 +2422,7 @@ _tok_cp_end() {
     _fence_match "$T3_FILES" "$r" && return 1
     _fence_match "$T3_DIRS" "$r" && return 1
     _fence_match "$REG_DIRS" "$r" under && return 1
+    _fence_match "$AGY_DIRS" "$r" under && return 1
     if [ -d "$r" ]; then
         local i=0 s f
         while [ "$i" -lt $((_CPN - 1)) ]; do
@@ -2383,6 +2435,7 @@ _tok_cp_end() {
             _fence_match "$T3_FILES" "$f" && return 1
             _fence_match "$T3_DIRS" "$f" && return 1
             _fence_match "$REG_DIRS" "$f" under && return 1
+            _fence_match "$AGY_DIRS" "$f" under && return 1
             i=$((i + 1))
         done
     fi
@@ -4530,6 +4583,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         result=$(check_claude_dir_target "$w")
         case "$result" in
             deny\ registry\ *) symlink_dest=1 registry_dest=1 ;;
+            deny\ agy\ *) symlink_dest=1 agy_dest=1 ;;
             deny\ t3\ *) symlink_dest=1 t3_dest=1 ;;
             deny\ *) symlink_dest=1 ;;
         esac
@@ -4622,6 +4676,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     symlink_dest=0
     t3_dest=0
     registry_dest=0
+    agy_dest=0
     fence_paths
     # The operand scan runs for a write verb (every word) and,
     # for any other writer's redirect target: `echo x > s`
@@ -4957,10 +5012,13 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     if [ "$registry_dest" = 0 ] && mentions_claude_registry "$cmd_lc"; then
         registry_dest=1
     fi
+    if [ "$agy_dest" = 0 ] && mentions_agy_live_config "$cmd_lc"; then
+        agy_dest=1
+    fi
 
     if [ "$mentions_settings" = "0" ] && [ "$dir_dest" = "0" ] && [ "$dirdest_climb" = "0" ] \
         && [ "$symlink_dest" = "0" ] && [ "$brace_dir_dest" = "0" ] && [ "$variant_dest" = "0" ] \
-        && [ "$t3_dest" = "0" ] && [ "$registry_dest" = "0" ]; then
+        && [ "$t3_dest" = "0" ] && [ "$registry_dest" = "0" ] && [ "$agy_dest" = "0" ]; then
         exit 0
     fi
 
@@ -4969,7 +5027,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     live=0
     if [ "$is_primary_cwd" = "1" ] || [ "$ansi_c" = "1" ] || [ "$dirdest_climb" = "1" ] \
         || [ "$symlink_dest" = "1" ] || [ "$brace_dir_dest" = "1" ] || [ "$variant_dest" = "1" ] \
-        || [ "$t3_dest" = "1" ] || [ "$registry_dest" = "1" ]; then
+        || [ "$t3_dest" = "1" ] || [ "$registry_dest" = "1" ] || [ "$agy_dest" = "1" ]; then
         live=1
     elif changes_directory "$cmd_lc" "$cmd_n"; then
         # The worktree-relative exemption is judged against the PreToolUse
@@ -5007,7 +5065,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # (variant_dest) may also be a plain `ls`, which names no file's content.
     [ "$mentions_settings" = "1" ] || _RO_LS=1
     if [ "$mentions_settings" = "1" ] || [ "$variant_dest" = "1" ] || [ "$t3_dest" = "1" ] \
-        || [ "$registry_dest" = "1" ]; then
+        || [ "$registry_dest" = "1" ] || [ "$agy_dest" = "1" ]; then
         if [ "$TOK" = 1 ]; then
             _tok_readonly_ok && exit 0
         elif is_readonly_allowlisted "$cmd_lc"; then
@@ -5023,6 +5081,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
 
     if [ "$registry_dest" = "1" ]; then
         registry_deny_message "a $tool_name command" "$cmd"
+    elif [ "$agy_dest" = "1" ]; then
+        agy_deny_message "a $tool_name command" "$cmd"
     elif [ "$t3_dest" = "1" ]; then
         t3_deny_message "a $tool_name command" "$cmd"
     elif [ "$mentions_settings" = "0" ] && [ "$variant_dest" = "1" ]; then
@@ -5052,6 +5112,13 @@ case "$result" in
             exit 0
         fi
         registry_deny_message "$tool_name" "$target"
+        exit 2
+        ;;
+    deny\ agy\ *)
+        if [ "${EDIT_LIVE_SETTINGS_OK:-0}" = "1" ]; then
+            exit 0
+        fi
+        agy_deny_message "$tool_name" "$target"
         exit 2
         ;;
     deny\ t3\ *)

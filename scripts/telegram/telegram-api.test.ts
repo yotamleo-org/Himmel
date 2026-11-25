@@ -192,3 +192,99 @@ test("answerCallbackQuery posts the id and text, and never throws", async () => 
   expect(body).toEqual({ callback_query_id: "cb9", text: "Not authorized." });
   await answerCallbackQuery("T", "cb9", "x", (async () => { throw new Error("down"); }) as any);
 });
+
+import { sendMessageResult, TelegramApiError } from "./telegram-api";
+const status = (code: number, j?: object) => (async () => new Response(JSON.stringify(j ?? { ok: false, description: "x" }), { status: code })) as any;
+const throwing = (e: unknown) => (async () => { throw e; }) as any;
+const coded = (code: string) => Object.assign(new TypeError(code), { code });
+
+test("sendMessageResult returns permanent with code 400 and 403", async () => {
+  expect(await sendMessageResult("T", 1, "x", {}, status(400))).toEqual({ ok: false, code: 400, kind: "permanent" });
+  expect(await sendMessageResult("T", 1, "x", {}, status(403))).toEqual({ ok: false, code: 403, kind: "permanent" });
+});
+test("429 and 5xx return transient", async () => {
+  expect(await sendMessageResult("T", 1, "x", {}, status(429, { ok: false, parameters: { retry_after: 3 } }))).toEqual({ ok: false, code: 429, kind: "transient" });
+  expect(await sendMessageResult("T", 1, "x", {}, status(502))).toEqual({ ok: false, code: 502, kind: "transient" });
+  expect(await sendMessageResult("T", 1, "x", {}, status(200, { ok: false }))).toEqual({ ok: false, code: 200, kind: "transient" });
+});
+test("ECONNREFUSED, ENOTFOUND and EAI_AGAIN return not-sent", async () => {
+  for (const c of ["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"]) {
+    expect(await sendMessageResult("T", 1, "x", {}, throwing(coded(c)))).toEqual({ ok: false, code: null, kind: "not-sent" });
+    expect(await sendMessageResult("T", 1, "x", {}, throwing(Object.assign(new TypeError("fetch failed"), { cause: { code: c } })))).toEqual({ ok: false, code: null, kind: "not-sent" });
+  }
+});
+test("a reset or abort after the request was written returns maybe-sent", async () => {
+  expect(await sendMessageResult("T", 1, "x", {}, throwing(coded("ECONNRESET")))).toEqual({ ok: false, code: null, kind: "maybe-sent" });
+  expect(await sendMessageResult("T", 1, "x", {}, throwing(new DOMException("aborted", "AbortError")))).toEqual({ ok: false, code: null, kind: "maybe-sent" });
+});
+test("a request past timeoutMs returns maybe-sent", async () => {
+  const hang = ((_u: string, init: any) => new Promise((_res, rej) => init.signal.addEventListener("abort", () => rej(init.signal.reason)))) as any;
+  const t0 = Date.now();
+  expect(await sendMessageResult("T", 1, "x", { timeoutMs: 30 }, hang)).toEqual({ ok: false, code: null, kind: "maybe-sent" });
+  expect(Date.now() - t0).toBeLessThan(2000);
+});
+test("noPreview sends link_preview_options.is_disabled", async () => {
+  const bodies: any[] = [];
+  const f = (async (_u: string, init: any) => { bodies.push(JSON.parse(init.body)); return Response.json({ ok: true, result: { message_id: 9 } }); }) as any;
+  expect(await sendMessageResult("T", 1, "x", { noPreview: true, replyToMessageId: 4, replyMarkup: { inline_keyboard: [] } }, f)).toEqual({ ok: true, messageId: 9 });
+  await sendMessageResult("T", 1, "x", {}, f);
+  expect(bodies[0].link_preview_options).toEqual({ is_disabled: true });
+  expect(bodies[0].reply_parameters).toEqual({ message_id: 4, allow_sending_without_reply: true });
+  expect(bodies[0].reply_markup).toEqual({ inline_keyboard: [] });
+  expect("link_preview_options" in bodies[1]).toBe(false);
+});
+test("getUpdates throws TelegramApiError with code 409", async () => {
+  const e = await getUpdates("T", 0, 30, status(409, { ok: false, error_code: 409, description: "Conflict" })).catch(x => x);
+  expect(e).toBeInstanceOf(TelegramApiError);
+  expect(e.code).toBe(409);
+  expect(String(e.message)).toMatch(/Conflict/);
+});
+test("sendMessage still returns a boolean for every case above", async () => {
+  const error = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const none = async () => {};
+    for (const f of [status(400), status(403), status(502), throwing(coded("ECONNREFUSED")), throwing(coded("ECONNRESET"))]) expect(await sendMessage("T", 1, "x", f, none)).toBe(false);
+    expect(await sendMessage("T", 1, "x", (async () => Response.json({ ok: true, result: { message_id: 1 } })) as any, none)).toBe(true);
+  } finally { error.mockRestore(); }
+});
+
+const capture = (statuses: Array<{ status: number; body: object }>) => {
+  const bodies: any[] = [];
+  const f = async (_u: string, init: any) => {
+    bodies.push(JSON.parse(init.body));
+    const r = statuses.shift() ?? { status: 200, body: { ok: true, result: { message_id: 1 } } };
+    return Response.json(r.body, { status: r.status });
+  };
+  return { bodies, f: f as any };
+};
+
+test("a flagged send posts Telegram HTML with parse_mode; a command alone stays byte-exact in code", async () => {
+  const c = capture([]);
+  expect(await sendMessage("T", 1, "go AB_C*D", c.f, async () => {}, undefined, undefined, undefined, true)).toBe(true);
+  expect(c.bodies[0].parse_mode).toBe("HTML");
+  expect(c.bodies[0].text).toBe("<code>go AB_C*D</code>");
+  const d = capture([]);
+  await sendMessage("T", 1, "echo `date` *x* _y_ | wc", d.f, async () => {}, undefined, undefined, undefined, true);
+  expect(d.bodies[0].text).toBe("<code>echo `date` *x* _y_ | wc</code>");
+});
+
+test("an unflagged send is unchanged: no parse_mode, the exact text", async () => {
+  const c = capture([]);
+  const text = "**not bold** <b>raw</b> & `x` go AB_C*D";
+  await sendMessage("T", 1, text, c.f, async () => {});
+  expect(c.bodies[0]).toEqual({ chat_id: 1, text });
+});
+
+test("a refused entity resends the plain text once, without parse_mode", async () => {
+  const c = capture([{ status: 400, body: { ok: false, description: "Bad Request: can't parse entities: Unsupported start tag" } }]);
+  expect(await sendMessage("T", 1, "Hello **x**", c.f, async () => {}, undefined, undefined, undefined, true)).toBe(true);
+  expect(c.bodies.length).toBe(2);
+  expect(c.bodies[0].parse_mode).toBe("HTML");
+  expect(c.bodies[1]).toEqual({ chat_id: 1, text: "Hello **x**" });
+});
+
+test("a 400 that is not an entity refusal is not resent", async () => {
+  const c = capture([{ status: 400, body: { ok: false, description: "Bad Request: chat not found" } }]);
+  expect(await sendMessage("T", 1, "Hello **x**", c.f, async () => {}, undefined, undefined, undefined, true)).toBe(false);
+  expect(c.bodies.length).toBe(1);
+});

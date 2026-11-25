@@ -718,6 +718,19 @@ eq "13c watch sends no alert" 0 "$(wc -l < "$ALERTS" | tr -d ' ')"
 git -C "$PRIM" worktree remove --force "$WT" 2>/dev/null
 rm -rf "$S12"
 
+mkdir -p "$TMP/k14/bin" "$TMP/k14/bridge"
+# shellcheck disable=SC2016 # $* belongs to the generated stub
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\n' "$TMP/k14/bun.log" > "$TMP/k14/bin/bun"
+chmod +x "$TMP/k14/bin/bun"
+printf '{"allowFrom":["-100777","555"]}\n' > "$TMP/k14/access.json"
+(
+    unset HIMMEL_CONFIG_ALERT_CMD
+    # shellcheck disable=SC1090
+    . "$CA"
+    PATH="$TMP/k14/bin:$PATH" BRIDGE_ROOT="$TMP/k14/bridge" TELEGRAM_ACCESS_PATH="$TMP/k14/access.json" _ca_alert "a key was lost"
+)
+has "14 the DM runs chief-route.ts reply --kind config-audit, text unchanged" "chief-route.ts reply --kind config-audit 555 a key was lost" "$(cat "$TMP/k14/bun.log" 2>/dev/null)"
+
 real_after=$(real_marks)
 eq "8 a fixture-HOME run never touches the real backups" "$real_before" "$real_after"
 

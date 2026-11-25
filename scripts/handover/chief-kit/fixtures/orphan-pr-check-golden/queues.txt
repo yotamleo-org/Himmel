@@ -1,0 +1,21 @@
+none
+HIMMEL-222, hold wake=pr:4951 resume=/h/N1-beta-RESUME.md
+#102 held (adapter merge) wake=done:HIMMEL-9032 resume=/h/N1-beta-RESUME.md
+#102 HELD wake=file:/h/specs/decisions/d-1216.txt resume=/h/N1-beta-RESUME.md
+#102 HELD waits on 4951
+#102 HELD wake=pr:4951
+#102 HELD wake=pr:soon resume=relative/doc.md
+#103 HELD waits on 102 wake=pr:102 resume=/h/N1-beta-RESUME.md
+#103 HELD-until 102 wake=pr:102 resume=/h/N1-beta-RESUME.md
+#4400 HELD wake=pr:4951 resume=/h/N1-beta-RESUME.md | #102 HELD wake=pr:4951 resume=/h/N1-beta-RESUME.md | #4401 HELD waits
+#4400 #102 HELD wake=pr:4951 resume=/h/N1-beta-RESUME.md
+#102 (adapter merge)
+4951 merging | 102 222 N5162 handed off, relaunch after 4951 merges | 4660 8992 HELD until 9032
+4951 merging | 102 222 HELD until 9032 Task 2 wake=pr:9032 resume=/h/N1-beta-RESUME.md | 4660 8992 relaunch
+102 222 threshold tuning, withheld relaunch wake=pr:9032 resume=/h/N1-beta-RESUME.md
+102 222 hold2, held_x wake=pr:9032 resume=/h/N1-beta-RESUME.md
+4951 merging || prior US queue: 102 222 HELD until 9032 wake=pr:9032 resume=/h/N1-beta-RESUME.md
+#1020, HIMMEL-2222 HELD wake=pr:9032 resume=/h/N1-beta-RESUME.md
+#4401 HELD by F1 (judge owed) | #4402 HELD by F2 | MERGED under AV: #4410 329422b3f, #4411 1234567
+MERGED under AZ: #4410, HELD #4412 wake=pr:4951 resume=/x.md
+HIMMEL-901 (see a | b) #4401 HELD | (context | #4401 HELD | more context) || MERGED under L: #4400

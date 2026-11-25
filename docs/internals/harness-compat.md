@@ -35,16 +35,22 @@ to **other coding harnesses** — Codex first — so an operator can decide what
 
 ## Frame matrix
 
-| Surface | Claude Code | Codex | Cursor | Copilot CLI |
-|---|---|---|---|---|
-| **PreToolUse guardrail hooks** | native | ✅ Claude-compatible engine (`ClaudeHooksEngine`); same stdin schema, but blocks via JSON `permissionDecision:"deny"` **not exit 2** — himmel bridges via `.codex/run-hook.sh`→`codex-hook-adapter.sh` | ✅ `.cursor/hooks.json`; events **camelCase** (`preToolUse`, `beforeShellExecution`); **fails OPEN** unless `failClosed:true` | ✅ `.github/hooks/*.json`; camel/Pascal; **fails CLOSED**; ⚠️ headless `-p` disables repo hooks unless `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` |
-| **pre-commit / pre-push git gates** | ✅ | ✅ harness-independent (git runs them) | ✅ | ✅ |
-| **Plugins / marketplace** | native | ✅ marketplaces + `@himmel` plugins load (`config.toml`) | ✅ marketplace exists (`.cursor-plugin/plugin.json`) — *corrects "no marketplace"* | ✅ `marketplace.json` registries (`copilot plugin marketplace add`) |
-| **Skills** | native | ✅ native skill loading | ✅ `SKILL.md`; reads `.cursor/skills` **+ `.claude/skills` + `.codex/skills`** | ✅ `SKILL.md`; reads `.github/skills` **+ `.claude/skills`** |
-| **Slash commands** | `.claude/commands/` | ⚠️ own slash surface; `.claude/commands/` don't auto-load | ✅ `.cursor/commands/*.md` | ⚠️ via plugins/skills/agents (`/name`); dedicated file unverified |
-| **Instruction file** | `CLAUDE.md` (always loaded) | ⚠️ **`AGENTS.md` only** | `.cursor/rules/*.mdc` + **`AGENTS.md`** | **`AGENTS.md`** (also reads `CLAUDE.md`) |
-| **Subagents** | `.claude/agents/*.md` | ⚠️ `.codex/agents/*.toml` | ✅ `.cursor/agents/*.md` (reads **`.claude/agents`**) | ✅ `*.agent.md` (`.github/agents/`) |
-| **Interactive questions (`AskUserQuestion`)** | native tool | ❌ no equivalent question-tool → **degrades to a conversational prose question** | ❌ same | ❌ same |
+- **Gemini via Antigravity T3:** use generated `AGENTS.md` and the concise
+  `.agents/rules/himmel-lane.md` adaptation (`trigger: always_on` YAML required).
+  A tracked root `GEMINI.md` is refused by `generate.mjs --check` to prevent
+  duplicate injection. The warning budget is 24000 bytes; regenerate after
+  changing `CLAUDE.md` or the preamble.
+
+| Surface | Claude Code | Codex | Antigravity (T3 Code) | Cursor | Copilot CLI |
+|---|---|---|---|---|---|
+| **PreToolUse guardrail hooks** | native | ✅ Claude-compatible engine (`ClaudeHooksEngine`); same stdin schema, but blocks via JSON `permissionDecision:"deny"` **not exit 2** — himmel bridges via `.codex/run-hook.sh`→`codex-hook-adapter.sh` | ✅ `.agents/hooks.json` (single named spec, camelCase protojson stdin); **fails CLOSED** on error/timeout/`{}`; clean pass = empty stdout + exit 0, deny = `{"decision":"deny","reason":"..."}` + exit 0 — bridged via `scripts/hooks/antigravity-hook-adapter.sh` (primary-resolved, `*_OK` stripped) | ✅ `.cursor/hooks.json`; events **camelCase** (`preToolUse`, `beforeShellExecution`); **fails OPEN** unless `failClosed:true` | ✅ `.github/hooks/*.json`; camel/Pascal; **fails CLOSED**; ⚠️ headless `-p` disables repo hooks unless `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` |
+| **pre-commit / pre-push git gates** | ✅ | ✅ harness-independent (git runs them) | ✅ harness-independent (git runs them) | ✅ | ✅ |
+| **Plugins / marketplace** | native | ✅ marketplaces + `@himmel` plugins load (`config.toml`) | ⚠️ `.agents/` workspace customizations (no Claude marketplace) | ✅ marketplace exists (`.cursor-plugin/plugin.json`) — *corrects "no marketplace"* | ✅ `marketplace.json` registries (`copilot plugin marketplace add`) |
+| **Skills** | native | ✅ native skill loading | ✅ `.agents/skills/*/SKILL.md` + `.agents/skills.json` (`exclude` supported; `pr-check` excluded) | ✅ `SKILL.md`; reads `.cursor/skills` **+ `.claude/skills` + `.codex/skills`** | ✅ `SKILL.md`; reads `.github/skills` **+ `.claude/skills`** |
+| **Slash commands** | `.claude/commands/` | ⚠️ own slash surface; `.claude/commands/` don't auto-load | ⚠️ skills/prompts only | ✅ `.cursor/commands/*.md` | ⚠️ via plugins/skills/agents (`/name`); dedicated file unverified |
+| **Instruction file** | `CLAUDE.md` (always loaded) | ⚠️ **`AGENTS.md` only** | **`AGENTS.md`** + `.agents/rules/*.md` (YAML `trigger: always_on` required) | `.cursor/rules/*.mdc` + **`AGENTS.md`** | **`AGENTS.md`** (also reads `CLAUDE.md`) |
+| **Subagents** | `.claude/agents/*.md` | ⚠️ `.codex/agents/*.toml` | ✅ `invoke_subagent` (hooks fire inside children; `swarm`/`run_workflow`/`schedule` denied) | ✅ `.cursor/agents/*.md` (reads **`.claude/agents`**) | ✅ `*.agent.md` (`.github/agents/`) |
+| **Interactive questions (`AskUserQuestion`)** | native tool | ❌ no equivalent question-tool → **degrades to a conversational prose question** | ✅ native `ask_question` tool | ❌ same | ❌ same |
 
 > **Status (2026-06-21):** Cursor / Copilot columns are now
 > audited (web + official docs). Several earlier hints were **stale** and are
@@ -844,8 +850,8 @@ node scripts/agents-md/generate.mjs --check
 
 ### 3. Plugins / marketplace — works
 
-`config.toml` registers the himmel marketplace + `handover@himmel`,
-`obsidian-triage@himmel`, `telegram-himmel@himmel` (enabled). A few **external**
+`config.toml` registers the himmel marketplace and enables `himmel-ops@himmel`,
+`handover@himmel` and `obsidian-triage@himmel` by default. A few **external**
 plugins' `hooks.json` (warp, hookify, ralph-loop, security-guidance) carry a
 top-level `description` key that Codex **before `rust-v0.143.0`** rejects
 ("unknown field description") — Codex skips just those hooks and runs normally
@@ -885,8 +891,8 @@ unavailable, or a `docs-audit` lane). It does **not** dispatch the Claude
 follow-up once the shared `cr-context.sh` assembler lands.
 
 Tier-A skills split by **delivery mechanism**: the enabled himmel plugins
-(`handover@himmel`, `obsidian-triage@himmel`, `telegram-himmel@himmel`) carry
-their own skills/commands. The **himmel-ops** skills (minerva, stuck-playbook,
+(`handover@himmel` and `obsidian-triage@himmel`) carry their own
+skills/commands. The **himmel-ops** skills (minerva, stuck-playbook,
 vm, himmel-doctor, himmel-update) require `himmel-ops@himmel` enabled in
 user-global `~/.codex/config.toml` — provisioned **reproducibly** by
 `scripts/codex/install-himmel-codex.sh` (the codex-CLI half of

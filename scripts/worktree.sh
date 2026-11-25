@@ -25,6 +25,12 @@
 # create only. A bare `worktree.sh <branch>` (no subcommand) is the older
 # create-only form and also skips the prune.
 #
+# resume <branch>: the branch already exists (a RESUME row whose worktree is gone).
+# It fetches it and recreates the worktree at a tip it can account for, never prunes
+# other worktrees, and never makes a branch from the default branch. `resume --check
+# <branch>` writes nothing and prints local|origin|both|none|unknown.
+# Both go through scripts/_new-worktree.sh --resume.
+#
 # scripts/clean-garden.sh is a deprecated forwarder to these two verbs.
 #
 # Safety:
@@ -35,6 +41,8 @@
 # Flags:
 #   --no-prune           (new) Skip the prune phase; just create.
 #   --no-install         Forwarded to _new-worktree.sh.
+#   --no-fetch           (new) Forwarded to _new-worktree.sh: branch from the
+#                        origin ref already fetched.
 #   --dry-run            Show what would happen, do nothing.
 #   --only <path|branch> (prune) Prune exactly one worktree.
 #   --pr-cache <file>    (prune --only) Read the PR list from <file> instead of
@@ -78,11 +86,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USAGE_TEXT='Usage: worktree.sh new <branch-name> [flags]   prune, then create the worktree
        worktree.sh prune [flags]               prune merged worktrees only
        worktree.sh pr-cache                    print origin'"'"'s PR list as a --pr-cache file
+       worktree.sh resume [--check] <branch>   fetch an existing branch, recreate its worktree
 
-  branch-name          type/slug (feat/foo, chore/bar, ...). new needs one;
-                        prune takes none.
+  branch-name          type/slug (feat/foo, chore/bar, ...). new and resume
+                        need one; prune takes none.
 
 Flags:
+  --check               (resume) Write nothing: print local|origin|both|none|unknown.
   --prune-only          Prune only; skip create even if branch-name given.
   --only <path|branch>  Prune exactly ONE worktree (implies --prune-only), still
                         subject to every prune gate. Exits non-zero when the
@@ -107,6 +117,8 @@ Flags:
                         another branch.
   --no-prune            Skip prune; only create.
   --no-install         Forward to _new-worktree.sh (skip jira install).
+  --no-fetch            Forward to _new-worktree.sh (branch from the origin ref
+                        already fetched; a many-worktree caller fetches once).
   --dry-run             Show plan; do nothing.
   --health              Read-only: print only alarm lines (LOST-COMMITS, STUCK,
                         SWEEP-ERROR); empty output = healthy. Exit 1 on any
@@ -123,6 +135,9 @@ Flags:
   --verbose, -v         Stream subprocess output.
   -h, --help            This message.
 
+Many worktrees at once: scripts/handover/chief-kit/worktrees-parallel.sh checks
+every branch name first, prunes and fetches once, then creates them in parallel.
+
 Note: this command never uses `git worktree remove --force`. For force
 removal (e.g., orphaned admin record, stuck lock), run
 `git worktree remove --force <path>` manually.'
@@ -138,8 +153,9 @@ print_help() {
 
 SUBCMD=""
 case "${1:-}" in
-    new|prune|pr-cache) SUBCMD="$1"; shift ;;
+    new|prune|pr-cache|resume) SUBCMD="$1"; shift ;;
 esac
+RESUME_CHECK=0
 BRANCH=""
 PRUNE_ONLY=0
 ONLY_TARGET=""
@@ -148,6 +164,7 @@ PR_CACHE_SCOPE_BRANCH=""
 ONLY_ALLOW_UNMERGED=0
 NO_PRUNE=0
 NO_INSTALL=0
+NO_FETCH=0
 DRY_RUN=0
 VERBOSE=0
 HEALTH=0
@@ -169,7 +186,9 @@ while [ $# -gt 0 ]; do
             fi
             PR_CACHE_FILE="$2"; shift 2 ;;
         --no-prune)   NO_PRUNE=1; shift ;;
+        --check)      RESUME_CHECK=1; shift ;;
         --no-install) NO_INSTALL=1; shift ;;
+        --no-fetch)   NO_FETCH=1; shift ;;
         --dry-run)           DRY_RUN=1; shift ;;
         --health)            HEALTH=1; shift ;;
         --orphans)           ORPHANS=1; shift ;;
@@ -207,10 +226,25 @@ elif [ "$SUBCMD" = "prune" ]; then
 elif [ "$SUBCMD" = "new" ] && [ -z "$BRANCH" ]; then
     echo "ERR clean-garden: new needs a branch-name" >&2
     usage_err
+elif [ "$SUBCMD" = "resume" ]; then
+    if [ -z "$BRANCH" ]; then
+        echo "ERR clean-garden: resume needs a branch-name" >&2
+        usage_err
+    fi
+    if [ "$PRUNE_ONLY" -eq 1 ] || [ "$NO_PRUNE" -eq 1 ] || [ "$NO_FETCH" -eq 1 ] || [ "$HEALTH" -eq 1 ] || [ "$ORPHANS" -eq 1 ]; then
+        echo "ERR clean-garden: resume takes only a branch-name and --check, --no-install, --dry-run, --verbose" >&2
+        exit 2
+    fi
+    NO_PRUNE=1
 elif [ -z "$SUBCMD" ] && [ -n "$BRANCH" ] && [ "$PRUNE_ONLY" -eq 0 ] && [ -z "$ONLY_TARGET" ]; then
     NO_PRUNE=1   # bare `worktree.sh <branch>`: the older create-only form
 elif [ -z "$SUBCMD" ] && [ -z "$BRANCH" ]; then
     usage_err   # no verb and no branch (bare, flags only, or ""): never prune by accident
+fi
+
+if [ "$RESUME_CHECK" -eq 1 ] && [ "$SUBCMD" != "resume" ]; then
+    echo "ERR clean-garden: --check belongs to resume (worktree.sh resume --check <branch>)" >&2
+    exit 2
 fi
 
 if [ "$HEALTH" -eq 1 ] && { [ -n "$BRANCH" ] || [ -n "$ONLY_TARGET" ] || [ "$PRUNE_ONLY" -eq 1 ] || [ "$NO_PRUNE" -eq 1 ] || [ "$DRY_RUN" -eq 1 ] || [ "$NO_INSTALL" -eq 1 ]; }; then
@@ -495,7 +529,7 @@ load_pr_cache_file() {
 
 if [ -n "$PR_CACHE_FILE" ]; then
     load_pr_cache_file
-elif [ "$HAVE_FORGE" -eq 1 ] && [ "$FORGE_KIND" = "github" ]; then
+elif [ "$NO_PRUNE" -eq 0 ] && [ "$HAVE_FORGE" -eq 1 ] && [ "$FORGE_KIND" = "github" ]; then
     if [ -n "$ORIGIN_NWO" ]; then
         if ORIGIN_PR_CACHE=$(fetch_github_pr_cache "$ORIGIN_NWO" 2>/dev/null); then
             ORIGIN_PR_CACHE_OK=1
@@ -2418,7 +2452,10 @@ fi
 
 # Create phase — delegate to _new-worktree.sh.
 NW_ARGS=("$BRANCH")
+[ "$SUBCMD" = "resume" ] && NW_ARGS+=("--resume")
+[ "$RESUME_CHECK" -eq 1 ] && NW_ARGS+=("--check")
 [ "$NO_INSTALL" -eq 1 ] && NW_ARGS+=("--no-install")
+[ "$NO_FETCH" -eq 1 ] && NW_ARGS+=("--no-fetch")
 [ "$VERBOSE" -eq 1 ] && NW_ARGS+=("--verbose")
 
 # Dry-run is intentionally NOT forwarded — _new-worktree.sh has no --dry-run

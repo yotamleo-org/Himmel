@@ -2509,6 +2509,133 @@ check_c97_codex_mcp_literal_key() {
         "write each value to a 0600 file ~/.config/himmel/mcp-secrets/<server>/<VAR> (e.g. .../$first_srv/$first_var), set the server's command to node with args [$REPO_ROOT/scripts/mcp/secret-launch.mjs, <server>, <the real command>, <its args>], keep only non-secret variables in the env table of $cfg_q, restart Codex, then rotate the key — the doctor does not edit codex config"
 }
 
+check_c99_gemini_local() {
+    local rule="$REPO_ROOT/.agents/rules/graphify.md" cfg="$REPO_ROOT/.gemini/settings.json" stale=0 node_bin rc
+    if [ -f "$rule" ] && grep -Eq "(^|[[:space:]\`])graphify[[:space:]]+(query|explain|path|build|update|scan)([[:space:]\`]|$)" "$rule"; then
+        emit WARN C99-gemini-local "stale .agents/rules/graphify.md recommends bare graphify" \
+            "use bash scripts/graphify/worker-graph.sh for repository structure; review the local rule manually"
+        stale=1
+    fi
+    if [ -f "$cfg" ] && ! git -C "$REPO_ROOT" ls-files --error-unmatch -- .gemini/settings.json >/dev/null 2>&1; then
+        if ! node_bin="$(resolve_node 2>/dev/null)"; then
+            emit INFO C99-gemini-local "node unavailable -- untracked .gemini/settings.json paths not checked"
+            return 0
+        fi
+        "$node_bin" - "$cfg" <<'JS'
+const { readFileSync, existsSync } = require('node:fs');
+let config;
+try { config = JSON.parse(readFileSync(process.argv[2], 'utf8')); }
+catch { process.exit(2); }
+let broken = false;
+function inspect(value) {
+    if (!value || typeof value !== 'object') return;
+    for (const [key, item] of Object.entries(value)) {
+        if (key === 'command' && typeof item === 'string') {
+            const match = item.trim().match(/^(?:"([^"]+)"|'([^']+)'|(\S+))/);
+            const executable = match?.slice(1).find(Boolean) || '';
+            if (/(^|[/\\])graphify\.exe$/i.test(executable) ||
+                (/^(\/|[A-Za-z]:[/\\])/.test(executable) && !existsSync(executable))) broken = true;
+        }
+        inspect(item);
+    }
+}
+inspect(config);
+process.exit(broken ? 1 : 0);
+JS
+        rc=$?
+        if [ "$rc" = 1 ]; then
+            emit WARN C99-gemini-local "untracked .gemini/settings.json has obsolete graphify.EXE or missing executable paths" \
+                "review the local hook paths manually; use the guarded Antigravity T3 lane"
+            stale=1
+        elif [ "$rc" != 0 ]; then
+            emit INFO C99-gemini-local "cannot parse untracked .gemini/settings.json -- paths not checked"
+            return 0
+        fi
+    fi
+    [ "$stale" = 1 ] || emit OK C99-gemini-local "no stale local Gemini rules or hook paths"
+}
+
+check_c98_wrapped_window() {
+    local min bucket root slug common repo rows rc pid name doc docs=() dated=() aged=() g now mt kind lingering="" unread=""
+    min="${HIMMEL_DOCTOR_WRAPPED_MIN:-15}"
+    case "$min" in ''|*[!0-9]*) min=15 ;; esac
+    min=$((10#$min))
+    bucket="${HIMMEL_BUCKET_DIR:-}"
+    if [ -z "$bucket" ]; then
+        load_dotenv --root "$REPO_ROOT" HANDOVER_DIR USER_SLUG >/dev/null 2>&1 || true
+        root="$(doctor_handover_root 2>/dev/null)" || root=""
+        # shellcheck source=lib/user-slug.sh
+        # shellcheck disable=SC1091
+        slug="$(cd "$REPO_ROOT" 2>/dev/null && . "$SELF_DIR/lib/user-slug.sh" && user_slug 2>/dev/null)" || slug=""
+        common="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""
+        if [ -n "$common" ]; then repo="$(basename "$(dirname "$common")")"; else repo="$(basename "$REPO_ROOT")"; fi
+        [ -z "$root" ] || [ -z "$slug" ] || bucket="$root/$slug/$repo"
+    fi
+    if [ -z "$bucket" ] || [ ! -d "$bucket" ]; then
+        emit INFO C98-wrapped-window "no handover bucket resolved${bucket:+ ($bucket is not a directory)} -- wrapped windows not checked"
+        return 0
+    fi
+    # shellcheck source=lanes/lib/claude-sessions.sh
+    # shellcheck disable=SC1091
+    . "$SELF_DIR/lanes/lib/claude-sessions.sh" || { emit INFO C98-wrapped-window "cannot load claude-sessions.sh -- wrapped windows not checked"; return 0; }
+    rows="$(claude_sessions 2>/dev/null)"; rc=$?
+    if [ "$rc" -ne 0 ] && { [ "$rc" -ne 3 ] || [ -z "$rows" ]; }; then
+        emit INFO C98-wrapped-window "the live session census failed (rc $rc) -- wrapped windows not checked"
+        return 0
+    fi
+    [ "$rc" -eq 0 ] || unread="the census could not read every live session"
+    while IFS=$'\t' read -r pid name _; do
+        case "$pid" in ''|'#'*) continue ;; esac
+        [[ $name =~ ^(.+)-r[0-9]+$ ]] && name="${BASH_REMATCH[1]}"
+        case "$name" in ''|.*|*[!A-Za-z0-9._#+-]*) continue ;; esac
+        doc="$bucket/$name.md"
+        if [ ! -f "$doc" ]; then
+            dated=()
+            for g in "$bucket/$name"-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md; do [ ! -f "$g" ] || dated+=("$g"); done
+            [ "${#dated[@]}" -ne 1 ] || doc="${dated[0]}"
+        fi
+        [ -f "$doc" ] && [ ! -L "$doc" ] || continue
+        case " ${docs[*]-} " in *" $doc "*) continue ;; esac
+        docs+=("$doc")
+    done <<< "$rows"
+    now="$(date +%s)"
+    aged=()
+    for doc in ${docs[@]+"${docs[@]}"}; do
+        [ -r "$doc" ] || { unread="${unread:+$unread; }cannot read $doc"; continue; }
+        mt="$(stat -c %Y "$doc" 2>/dev/null || stat -f %m "$doc" 2>/dev/null)" || mt=""
+        case "$mt" in
+            ''|*[!0-9]*) unread="${unread:+$unread; }cannot read the age of $doc" ;;
+            *) [ $(( now - mt )) -lt $(( min * 60 )) ] || aged+=("$doc") ;;
+        esac
+    done
+    docs=(${aged[@]+"${aged[@]}"})
+    if [ "${#docs[@]}" -gt 0 ]; then
+        while IFS=$'\t' read -r kind doc; do
+            [ -n "$doc" ] || continue
+            bash "$SELF_DIR/handover/queue-lock.sh" status "$doc" </dev/null >/dev/null 2>&1 || continue
+            lingering="${lingering:+$lingering, }$(basename "$doc" .md) ($kind)"
+        done <<< "$(awk '
+            function emit() { if (l ~ /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?WRAPPED([^A-Za-z0-9_]|$)/) print kind "\t" f }
+            FNR == 1 { if (f != "") emit(); f = FILENAME; kind = ($0 ~ / — CHIEF — /) ? "chief" : "worker"; r = 0; seen = 0; fence = ""; l = "" }
+            /^ {0,3}(```|~~~)/ { d = $0; sub(/^ */, "", d); d = substr(d, 1, 3); if (fence == "") fence = d; else if (d == fence) fence = ""; next }
+            fence != "" { next }
+            /^## Results([ \t]|$)/ { r = 1; seen = 1; next }
+            /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings([ \t]|$)/); next }
+            r && /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { l = $0 }
+            END { if (f != "") emit() }' "${docs[@]}" 2>/dev/null)"
+    fi
+    if [ -z "$lingering" ] && [ -n "$unread" ]; then
+        emit INFO C98-wrapped-window "no wrapped, lock-free window found past $min min, but not every session was read ($unread) -- not judged clean"
+        return 0
+    fi
+    if [ -z "$lingering" ]; then
+        emit OK C98-wrapped-window "no wrapped, lock-free chief or worker window in $bucket has stayed open past $min min"
+        return 0
+    fi
+    emit WARN C98-wrapped-window "wrapped, lock-free window(s) still open past $min min: $lingering -- each idle window still draws the subscription budget" \
+        "for each: bash $REPO_ROOT/scripts/handover/chief-kit/close-wrapped-worker.sh --check [--chief for a chief] $bucket/<name>.md, then the same without --check; a chief's waiter closes these on its own each sample, so check that one is armed"
+}
+
 # --- C35: VM after-report runner reachable -------------------
 # Advisory only — scripts/vm/after-report.sh has its own loud fallback to the
 # host invocation when the VM runner is unavailable, so nothing here is ever
@@ -3556,8 +3683,36 @@ _c84_release_state() {
     if [ -n "$out" ]; then printf '%s\n' "$out"; else printf 'UNREADABLE\tjira release state printed no readable JSON\n'; fi
 }
 
+_c84_unplaced() {
+    local rel="$1" json="" rc=0 pk node_bin cli sf out
+    if [ -n "${HIMMEL_DOCTOR_RM_STATE_PROBE:-}" ]; then
+        json="$(bash "$HIMMEL_DOCTOR_RM_STATE_PROBE" "$rel" --json 2>/dev/null)" || rc=$?  # swallow-ok: a failed read leaves the count unknown, and nothing is warned
+    else
+        load_dotenv --root "$REPO_ROOT" JIRA_PROJECT_KEY >/dev/null 2>&1 || true
+        pk="${JIRA_PROJECT_KEY:-}"
+        cli="$REPO_ROOT/scripts/jira/dist/index.js"
+        [ -f "$cli" ] || cli="$STATION_ROOT/scripts/jira/dist/index.js"
+        node_bin="$(resolve_node 2>/dev/null)" || return 0
+        { [ -n "$pk" ] && [ -f "$cli" ]; } || return 0
+        json="$(JIRA_PROJECT_KEY="$pk" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 20} "$node_bin" "$cli" release state "$rel" --json 2>/dev/null)" || rc=$?  # swallow-ok: a failed read leaves the count unknown, and nothing is warned
+    fi
+    { [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]; } && [ -n "$json" ] || return 0
+    sf="$(mktemp "${TMPDIR:-/tmp}/doctor-unplaced.XXXXXX" 2>/dev/null)" || return 0  # swallow-ok: no file leaves the count unknown
+    printf '%s' "$json" > "$sf"
+    out="$(JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-}" bash "$SELF_DIR/handover/chief-kit/intake-backfill.sh" --unplaced --state "$sf" --since-door 2>/dev/null)" || out=""  # swallow-ok: an unreadable mirror leaves the count unknown
+    rm -f "$sf"
+    out="${out%%$'\n'*}"
+    case "$out" in '' | *[!0-9]*) return 0 ;; esac
+    printf '%s\n' "$out"
+}
+
 check_c84_release_queue() {
-    local roots="" root hroot f cdir doc rel declared bad="" any=0 none=0 sep="" st note unread=0
+    local roots="" root hroot f cdir doc rel declared bad="" any=0 none=0 sep="" st note unread=0 unp=0 n
+    if [ -z "${HIMMEL_RELEASE_STATE_DIR:-}" ]; then
+        load_dotenv --root "$REPO_ROOT" USER_SLUG >/dev/null 2>&1 || true
+        [ -n "${USER_SLUG:-}" ] || emit INFO C84-release-queue "neither USER_SLUG nor HIMMEL_RELEASE_STATE_DIR is set, so the release root cannot be resolved and the Jira CLI refuses every removal of a Fix Version" \
+            "set USER_SLUG (as the launcher does) or HIMMEL_RELEASE_STATE_DIR"
+    fi
     if [ -n "${HIMMEL_RELEASE_STATE_DIR:-}" ]; then
         roots="$HIMMEL_RELEASE_STATE_DIR"
     else
@@ -3593,7 +3748,7 @@ check_c84_release_queue() {
                    st="$(_c84_release_state "$rel")"
                    case "$st" in
                        '') unread=1 ;;
-                       OK$'\t'*) ;;
+                       OK$'\t'*) n="$(_c84_unplaced "$rel")"; unp=$((unp + ${n:-0})) ;;
                        *) note="${st#*$'\t'}"
                           bad="$bad${sep}release state for $rel reads ${st%%$'\t'*}${note:+ ($note)}, so the tick shows rm-queue=off"; sep="; " ;;
                    esac
@@ -3611,6 +3766,10 @@ check_c84_release_queue() {
         emit OK C84-release-queue "the chief doc names a declared release (its signed state was not read: needs the jira CLI build, JIRA_PROJECT_KEY and jq)"
     else
         emit OK C84-release-queue "the chief doc names a declared release with a verified state, so the tick can wake the release manager"
+    fi
+    if [ "$unp" -gt 0 ]; then
+        emit WARN C84-release-queue "$unp open ticket(s) filed since the door shipped carry no version and no backlog label, so the door has not placed them" \
+            "bash scripts/handover/chief-kit/intake-backfill.sh --unplaced --list --since-door --state <state.json>   # state.json is jira release state <R> --json; names each key, then request its placement with jira release request"
     fi
 }
 
@@ -3645,10 +3804,11 @@ check_c72_design_mcp_auth() {
 # symlink is followed to its target) and
 # WARNs when the highest such version sorts below .bun-version. Report only: the
 # fix is a vendor build on the newer Bun, never a hand patch.
-# Seams: HIMMEL_DOCTOR_BUN_SCAN_DIRS (colon-separated dirs), HIMMEL_DOCTOR_BUN_VERSION_FILE.
+# Seams: HIMMEL_DOCTOR_BUN_SCAN_DIRS (colon-separated dirs), HIMMEL_DOCTOR_BUN_VERSION_FILE, HIMMEL_DOCTOR_ACK_FILE.
 check_c73_bun_compiled() {
-    local vfile="${HIMMEL_DOCTOR_BUN_VERSION_FILE:-$REPO_ROOT/.bun-version}" pin dirs d f emb scanned=0 stale=0
+    local vfile="${HIMMEL_DOCTOR_BUN_VERSION_FILE:-$REPO_ROOT/.bun-version}" pin dirs d f emb scanned=0 stale=0 snoozed=0
     local min_kb="${HIMMEL_DOCTOR_BUN_MIN_KB:-10240}" home="${HOME:-}"
+    local ack_file="${HIMMEL_DOCTOR_ACK_FILE:-${HOME:-}/.claude/himmel/doctor-ack.txt}"
     local -a dirlist=()
     pin="$(tr -d '[:space:]' < "$vfile" 2>/dev/null || true)"
     if [ -z "$pin" ]; then emit INFO C73-bun-compiled "no .bun-version at $vfile -- nothing to compare compiled binaries against"; return 0; fi
@@ -3663,13 +3823,18 @@ check_c73_bun_compiled() {
             [ -n "$emb" ] || continue
             scanned=$((scanned+1))
             if [ "$emb" != "$pin" ] && [ "$(printf '%s\n%s\n' "$emb" "$pin" | sort -V | head -1)" = "$emb" ]; then
+                if [ -f "$ack_file" ] && grep -qxF "C73-bun-compiled $f $emb" "$ack_file" 2>/dev/null; then
+                    emit INFO C73-bun-compiled "$f embeds Bun $emb, older than .bun-version $pin -- snoozed by the operator in $ack_file until a build embeds a different Bun"
+                    snoozed=$((snoozed+1))
+                    continue
+                fi
                 stale=$((stale+1))
                 emit WARN C73-bun-compiled "$f embeds Bun $emb, older than .bun-version $pin (Bun advisories fixed in $pin do not reach it)" \
-                    "update it from a vendor build on Bun $pin or later; do not hand-patch the binary. If the newest vendor release is still older, file an upstream issue and keep this warning"
+                    "update it from a vendor build on Bun $pin or later; do not hand-patch the binary. If the newest vendor release is still older, file an upstream issue and either keep this warning or snooze it until a new build by adding the line 'C73-bun-compiled $f $emb' to $ack_file"
             fi
         done < <(find -L "$d" -maxdepth 3 -type f -size "+${min_kb}k" 2>/dev/null)
     done
-    [ "$stale" -gt 0 ] || emit OK C73-bun-compiled "$scanned bun-compiled binaries scanned, none embeds a Bun older than .bun-version $pin"
+    [ "$stale" -gt 0 ] || [ "$snoozed" -gt 0 ] || emit OK C73-bun-compiled "$scanned bun-compiled binaries scanned, none embeds a Bun older than .bun-version $pin"
 }
 
 _doctor_env_file() {
@@ -4014,7 +4179,7 @@ check_c89_qmd_rerank() {
 
 # --- C90-effort-pin: a settings env block pins CLAUDE_CODE_EFFORT_LEVEL ---
 # A settings env value wins over both the launcher's process env and `claude --effort` (claude 2.1.319:
-# with the pin at high, a worker asked for medium still sent high), so every worker leg on this station
+# with the pin at high, a worker asked for medium still sent high), so every worker on this station
 # runs at the pinned effort whatever its brief asked. WARN names each file and value; OK without a pin.
 # Reads the user settings, the user settings.local.json and the project's two settings files. Read-only.
 check_c90_effort_pin() {
@@ -4026,10 +4191,10 @@ check_c90_effort_pin() {
         [ -n "$v" ] && pins="${pins:+$pins, }$f ($v)"
     done
     if [ -z "$pins" ]; then
-        emit OK C90-effort-pin "no settings env block pins CLAUDE_CODE_EFFORT_LEVEL, so a worker leg runs at the effort its launcher asks for"
+        emit OK C90-effort-pin "no settings env block pins CLAUDE_CODE_EFFORT_LEVEL, so a worker runs at the effort its launcher asks for"
         return 0
     fi
-    emit WARN C90-effort-pin "a settings env block pins CLAUDE_CODE_EFFORT_LEVEL: $pins -- it overrides the launcher's asked effort, so every worker leg runs at the pinned effort" \
+    emit WARN C90-effort-pin "a settings env block pins CLAUDE_CODE_EFFORT_LEVEL: $pins -- it overrides the launcher's asked effort, so every worker runs at the pinned effort" \
         "remove CLAUDE_CODE_EFFORT_LEVEL from the env block of each file named above (set the effort per session with /effort or --effort instead)"
 }
 
@@ -5183,10 +5348,10 @@ graph_semantic_station_verdict() {
     stale_line="$(printf '%s\n' "$res" | sed -n 's/^graph-freshness: \(SEMANTIC-STALE .*\)/\1/p' | head -1)"
     if { [ "$rc" -eq 3 ] || [ "$rc" -eq 1 ]; } && [ -n "$stuck_line" ]; then
         emit WARN C70-graph-semantic "${line:-semantic line unavailable}; $stuck_line${stale_line:+; $stale_line}" \
-            "python3 $(printf '%q' "$SELF_DIR")/graphify/semantic-merge.py unstick --out $(printf '%q' "$out")   # then start the semantic pass detached: bash scripts/handover/chief-kit/graph-pass-detached.sh start (bash scripts/handover/chief-kit/graph-pass-detached.sh status reads it); bash scripts/graphify/check-graph-freshness.sh --out $out names the stuck files"
+            "python3 $(printf '%q' "$SELF_DIR")/graphify/semantic-merge.py unstick --out $(printf '%q' "$out")   # then read bash scripts/handover/chief-kit/graph-pass-detached.sh status first (a series running or 'resumable, continuing' needs no second start) and run bash scripts/handover/chief-kit/graph-pass-detached.sh start only on none or any 'finished' (promoted, exhausted or failed); bash scripts/graphify/check-graph-freshness.sh --out $out names the stuck files"
     elif { [ "$rc" -eq 3 ] || [ "$rc" -eq 1 ]; } && [ -n "$stale_line" ]; then
         emit WARN C70-graph-semantic "${line:-semantic line unavailable}; $stale_line" \
-            "bash scripts/handover/chief-kit/graph-pass-detached.sh start   # the station's semantic pass, detached so it outlives your window; bash scripts/handover/chief-kit/graph-pass-detached.sh status says running|finished|none; bash scripts/graphify/check-graph-freshness.sh --out $out shows the bounds"
+            "bash scripts/handover/chief-kit/graph-pass-detached.sh status   # run this first: a series running or reading 'resumable, continuing' (a capped pass, exit 4, resumes itself) needs no second start; only on none or any 'finished' (promoted, exhausted or failed) run bash scripts/handover/chief-kit/graph-pass-detached.sh start (the station's semantic pass series, detached so it outlives your window); bash scripts/graphify/check-graph-freshness.sh --out $out shows the bounds"
     elif [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
         emit INFO C70-graph-semantic "graph-freshness check exited $rc, semantic freshness not judged: ${fail_line:-$(printf '%s\n' "$res" | head -1)}" \
             "bash scripts/graphify/check-graph-freshness.sh --out $out"
@@ -6089,6 +6254,8 @@ run_check C94 check_c94_graph_config
 run_heavy C95 check_c95_barrier_off C95-barrier-off
 run_check C96 check_c96_jira_test_project
 run_check C97 check_c97_codex_mcp_literal_key
+run_check C98 check_c98_wrapped_window
+run_check C99 check_c99_gemini_local
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

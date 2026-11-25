@@ -19,13 +19,16 @@
 #        [HIMMEL_API_CALL_TIMEOUT_S=<seconds>] the launcher stops a call at this age, and the credit-state sweep releases a reservation older than it plus the five-second kill grace (default 3600)
 #        [HIMMEL_API_BRANCH=<branch> HIMMEL_API_HEAD=<sha> HIMMEL_API_PR=<number>] the work the call belongs to; written to
 #        the launch record so a cost can be joined to a PR by key (absent = empty / null)
-#        [HIMMEL_API_FALLBACK=off] switches the subscription fallback below off for this caller (default on)
+#        [HIMMEL_API_FALLBACK=on] opts this caller into the subscription fallback below; unset or any other value is off (default off)
 #        [HIMMEL_API_ALERT_CMD=<path>] test seam: the alert sender, run with TG_* in its env (default the Telegram
 #        notification sender, scripts/telegram/session-status.ts)  [HIMMEL_API_ALERT_DIR=<dir>] rate-limit stamps
+#        [HIMMEL_API_ALERT_ENV_ROOT=<dir>] test seam: the directory whose .env the alert reads its chat ids from
 # OFF by default. Failure path (docs/internals/api-lane.md): a refusal (exit 2), a rejected account (exit 6)
 #        or any other non-zero call exit still happens first, then sends ONE Telegram alert (kind, account, class,
 #        exit code, one-line reason, never the key; one per kind and class per hour; never for the decision-525 auto
-#        refusal, which only appends one line to <alert dir>/policy-refusals.jsonl and never falls back), then re-runs the same prompt
+#        refusal, which only appends one line to <alert dir>/policy-refusals.jsonl and never falls back) to the group
+#        chat, or to TELEGRAM_CHAT_ID when no group id is set; an alert with no chat id is a stderr line and one
+#        <alert dir>/undelivered.jsonl row, never a stamp. Only with HIMMEL_API_FALLBACK=on does it then re-run the same prompt
 #        once as a subscription `claude -p`: native auth (every API-key variable removed), the same model,
 #        permission mode, tool grant and budget cap, --output-format json. The fallback runs only when the native
 #        usage preflight says PROCEED, BANK-STALE or BANK-UNKNOWN; SKIPPED-BANK or SKIPPED-FLEET skips it and the
@@ -51,7 +54,8 @@ CLAUDE_BIN="${HIMMEL_API_CLAUDE_BIN:-claude}"
 # shellcheck source=scripts/lib/fleet-launch.sh
 . "$REPO/scripts/lib/fleet-launch.sh" || exit 10
 if ! fleet_launch_prepare "${FLEET_LAUNCH_DOC:-${WORKER_SESSION_DOC:-}}" \
-    "${FLEET_LAUNCH_NAME:-${CADENCE_USAGE_WORKER:-api-managed}}" "${FLEET_LAUNCH_MANIFEST:-}"; then
+    "${FLEET_LAUNCH_NAME:-${CADENCE_USAGE_WORKER:-api-managed}}" "${FLEET_LAUNCH_MANIFEST:-}" "" "" \
+    "${FLEET_LAUNCH_ATTEMPT:-${WORKER_SESSION_ATTEMPT_ID:-}}"; then
   if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then
     fleet_launch_op finish >/dev/null || echo 'claude-api: managed attempt remains protected' >&2
   fi
@@ -113,9 +117,10 @@ redact() {
 
 # ONE alert per kind and class per hour, through the existing Telegram notification sender; never blocks the fallback
 send_alert() {
-  local class="$1" rc="$2" reason="$3" decision="$4" dir stamp account msg repo_name env_root
+  local class="$1" rc="$2" reason="$3" decision="$4" dir stamp account msg repo_name env_root sent why="" undelivered
   dir="${HIMMEL_API_ALERT_DIR:-${HOME:-/tmp}/.himmel/state/api-lane-alerts}"
   stamp="$dir/$KIND_SAFE.$class"
+  undelivered="$dir/undelivered.jsonl"
   mkdir -p "$dir" 2>/dev/null || return 0
   if [ -n "$(find "$stamp" -maxdepth 0 -mmin -60 2>/dev/null)" ]; then # gnu-ok: BSD find has -maxdepth/-mmin too
     echo "claude-api: alert: one already sent for $KIND_SAFE $class within the hour" >&2
@@ -133,17 +138,31 @@ send_alert() {
     done
     export TG_REPO_NAME="$repo_name" TG_NOTIFICATION_TYPE="api-lane $class" TG_MESSAGE="$msg"
     [ -z "${HIMMEL_API_ALERT_CMD:-}" ] || exec "$HIMMEL_API_ALERT_CMD" notification
-    # an explicitly empty chat id is a deliberate suppression and never falls back to .env
-    if [ "${TELEGRAM_GROUP_CHAT_ID+set}" = set ] && [ -z "$TELEGRAM_GROUP_CHAT_ID" ]; then exit 0; fi
+    if [ "${TELEGRAM_GROUP_CHAT_ID+set}" = set ] && [ -z "$TELEGRAM_GROUP_CHAT_ID" ]; then exit 73; fi
     # shellcheck source=scripts/lib/load-dotenv.sh
     { [ -r "$REPO/scripts/lib/load-dotenv.sh" ] && . "$REPO/scripts/lib/load-dotenv.sh"; } 2>/dev/null &&
-      load_dotenv --root "${env_root:-$REPO}" TELEGRAM_GROUP_CHAT_ID 2>/dev/null
-    [ -n "${TELEGRAM_GROUP_CHAT_ID:-}" ] || exit 0
+      load_dotenv --root "${HIMMEL_API_ALERT_ENV_ROOT:-${env_root:-$REPO}}" TELEGRAM_GROUP_CHAT_ID TELEGRAM_CHAT_ID 2>/dev/null
+    if [ "${TELEGRAM_GROUP_CHAT_ID+set}" = set ] && [ -z "$TELEGRAM_GROUP_CHAT_ID" ]; then exit 73; fi
+    [ -n "${TELEGRAM_GROUP_CHAT_ID:-}" ] || TELEGRAM_GROUP_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
+    [ -n "$TELEGRAM_GROUP_CHAT_ID" ] || exit 74
     export TELEGRAM_GROUP_CHAT_ID
-    command -v bun >/dev/null 2>&1 || exit 0
+    command -v bun >/dev/null 2>&1 || exit 75
     if command -v timeout >/dev/null 2>&1; then exec timeout 30 bun run "$REPO/scripts/telegram/session-status.ts" notification; fi
     exec bun run "$REPO/scripts/telegram/session-status.ts" notification
-  ) </dev/null >/dev/null 2>&1 && touch "$stamp" 2>/dev/null
+  ) </dev/null >/dev/null 2>&1
+  sent=$?
+  case "$sent" in
+    0) touch "$stamp" 2>/dev/null ;;
+    73) why="TELEGRAM_GROUP_CHAT_ID is set empty: suppressed" ;;
+    74) why="no TELEGRAM_GROUP_CHAT_ID or TELEGRAM_CHAT_ID" ;;
+    75) why="bun not on PATH" ;;
+    *) why="the sender exited $sent" ;;
+  esac
+  [ -n "$why" ] || return 0
+  echo "claude-api: alert NOT delivered ($why): kind $KIND_SAFE, $class (exit $rc); recorded in $undelivered" >&2
+  printf '{"ts":%s,"kind":"%s","class":"%s","rc":%s,"reason":"%s","why":"%s"}\n' "$(date +%s)" "$KIND_SAFE" "$class" "$rc" \
+    "$(redact "$reason" | sed 's/\\/\\\\/g; s/"/\\"/g')" "$why" >>"$undelivered" 2>/dev/null ||
+    echo "claude-api: warning: undelivered alert record not written" >&2
   return 0
 }
 
@@ -245,8 +264,12 @@ fail_over() {
     return 0
   fi
   [ "$class" != refused-role-map ] || return 0
-  if [ "${HIMMEL_API_FALLBACK:-on}" = off ]; then
+  if [ -z "${HIMMEL_API_FALLBACK:-}" ]; then
+    decision="off (HIMMEL_API_FALLBACK unset: default off)"
+  elif [ "$HIMMEL_API_FALLBACK" = off ]; then
     decision="off (HIMMEL_API_FALLBACK=off)"
+  elif [ "$HIMMEL_API_FALLBACK" != on ]; then
+    decision="off (HIMMEL_API_FALLBACK=$HIMMEL_API_FALLBACK is not on)"
   elif [ "$KIND_SAFE" = critic ]; then
     decision="not run: a critic call never runs on the subscription"
   elif [ -n "$NO_FB" ]; then
@@ -387,26 +410,24 @@ case "${HIMMEL_CLAUDE_LANE:-}" in ""|native) ;; *) refuse "conflicting lane HIMM
 KIND="${HIMMEL_API_KIND:-other}"
 case "$KIND" in ""|*[!A-Za-z0-9._-]*) refuse "HIMMEL_API_KIND has characters outside [A-Za-z0-9._-]" ;; esac
 ROLE_ACCTS=""
-if [ "$HIMMEL_API_ACCOUNT" = auto ] && [ "$KIND" = graphify ]; then
+if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   _walk_rc=0
-  ROLE_ACCTS="$(node "$REPO/scripts/lib/api-roles.mjs" walk graphify)" || _walk_rc=$?
+  ROLE_ACCTS="$(node "$REPO/scripts/lib/api-roles.mjs" walk "$KIND")" || _walk_rc=$?
+  _walk_what="$KIND"; [ "$KIND" != graphify ] || _walk_what="graph"
   if [ "$_walk_rc" -eq 3 ]; then
-    echo "claude-api: refused: graph role map broken (${ROLE_ACCTS#refuse }); fix or remove roles.json" >&2
-    fail_over 2 refused-role-map "graph role map broken"; exit 2
+    echo "claude-api: refused: $_walk_what role map broken (${ROLE_ACCTS#refuse }); fix or remove roles.json" >&2
+    fail_over 2 refused-role-map "$_walk_what role map broken"; exit 2
   fi
   if [ "$_walk_rc" -ne 0 ] || ! llm_backend_api_account_list_ok "$ROLE_ACCTS"; then
-    echo "claude-api: refused: the graph walk cannot be read (api-roles.mjs walk graphify exit $_walk_rc)" >&2
-    fail_over 2 refused-role-map "graph walk unreadable"; exit 2
+    echo "claude-api: refused: the $_walk_what walk cannot be read (api-roles.mjs walk $KIND exit $_walk_rc)" >&2
+    fail_over 2 refused-role-map "$_walk_what walk unreadable"; exit 2
   fi
-elif [ "$HIMMEL_API_ACCOUNT" = auto ]; then
-  ROLE_ACCTS="$(node "$REPO/scripts/lib/api-roles.mjs" accounts "$KIND")" || ROLE_ACCTS=""
-  llm_backend_api_account_list_ok "$ROLE_ACCTS" || ROLE_ACCTS=""
 fi
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   _auto_here="${HIMMEL_API_AUTO_REPO_DIR:-$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)}"
   _auto_own="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
-  { [ "$KIND" = graphify ] || [ -n "$ROLE_ACCTS" ]; } && [ -n "$_auto_own" ] && [ "$_auto_here" = "$_auto_own" ] ||
-    { POLICY_REPO="${_auto_here:-none}"; refuse_policy "auto routing is for the himmel graph pass only (kind $KIND, repo ${_auto_here:-none}); name HIMMEL_API_ACCOUNT=$LLM_API_ACCOUNTS_TEXT"; }
+  [ -n "$_auto_own" ] && [ "$_auto_here" = "$_auto_own" ] ||
+    { POLICY_REPO="${_auto_here:-none}"; refuse_policy "auto routing is for the himmel repo only (kind $KIND, repo ${_auto_here:-none}); name HIMMEL_API_ACCOUNT=$LLM_API_ACCOUNTS_TEXT"; }
 fi
 CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
 case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac
@@ -513,20 +534,23 @@ if [ "$HAS_PROMPT" != 1 ]; then
   [ ! -t 0 ] || { NO_FB="there is no prompt to keep"; refuse "the prompt must be an argument or piped on stdin; stdin is a terminal"; }
   PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/claude-api-prompt.XXXXXX")" || { PROMPT_FILE=""; refuse "no scratch file"; }
   chmod 600 "$PROMPT_FILE"
+  # shellcheck disable=SC2094 # the write and read handles on one file are the point
+  exec 4>"$PROMPT_FILE" 5<"$PROMPT_FILE" 3<"$PROMPT_FILE" || { NO_FB="the prompt could not be kept"; refuse "could not open the stdin prompt scratch file"; }
   # a background job gets /dev/null for stdin, so the read names fd 0; a half-read stdin cannot be replayed whole
   # at most 8 MiB plus one byte: a longer stream is refused below, so a runaway producer cannot fill TMPDIR
-  head -c 8388609 <&0 >"$PROMPT_FILE" &
+  head -c 8388609 <&0 >&4 3<&- 4<&- 5<&- &
   READ_PID=$!
   ( trap 'kill $(jobs -p) 2>/dev/null; exit 0' TERM
-    sleep "$CALL_TIMEOUT_S" & wait $!; kill "$READ_PID" 2>/dev/null ) 3<&- &
+    sleep "$CALL_TIMEOUT_S" & wait $!; kill "$READ_PID" 2>/dev/null ) 3<&- 4<&- 5<&- &
   READ_WD=$!
   trap 'kill "$READ_PID" "$READ_WD" 2>/dev/null; exit 143' TERM INT HUP
   wait "$READ_PID" || { kill "$READ_WD" 2>/dev/null; NO_FB="the prompt could not be kept"
     refuse "could not buffer the stdin prompt (read failed or stdin stayed open for ${CALL_TIMEOUT_S}s)"; }
   kill "$READ_WD" 2>/dev/null
   trap - TERM INT HUP
-  [ "$(wc -c <"$PROMPT_FILE")" -le 8388608 ] || { NO_FB="the prompt could not be kept"; refuse "the stdin prompt is over 8 MiB"; }
-  exec 3<"$PROMPT_FILE" || { NO_FB="the prompt could not be kept"; refuse "could not reopen the stdin prompt"; }
+  exec 4>&-
+  [ "$(wc -c <&5)" -le 8388608 ] || { NO_FB="the prompt could not be kept"; refuse "the stdin prompt is over 8 MiB"; }
+  exec 5<&-
 else
   # a closed stdin becomes /dev/null: the call then starts as it would have with an empty stdin (the idiom of scripts/lib/qmd-bounded.sh)
   { exec 3<&0; } 2>/dev/null || exec 3</dev/null
@@ -611,7 +635,7 @@ ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u 
   "${LLM_API_ORG_KEY_UNSET[@]}" -u HIMMEL_DOTENV_FILE -u HIMMEL_API_SNAPSHOT_OPTIONAL \
   -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE -u HIMMEL_API_KIND -u HIMMEL_API_CACHE_TTL \
   -u HIMMEL_API_BRANCH -u HIMMEL_API_HEAD -u HIMMEL_API_PR \
-  -u HIMMEL_API_FALLBACK -u HIMMEL_API_ALERT_CMD -u HIMMEL_API_ALERT_DIR \
+  -u HIMMEL_API_FALLBACK -u HIMMEL_API_ALERT_CMD -u HIMMEL_API_ALERT_DIR -u HIMMEL_API_ALERT_ENV_ROOT \
   ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
   ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 CLAUDE_CODE_PROMPT_CACHE_TTL="$CACHE_TTL" \
   "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \

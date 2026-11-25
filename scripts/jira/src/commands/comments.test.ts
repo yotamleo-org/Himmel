@@ -149,4 +149,34 @@ describe('registerComments (comments <key>)', () => {
     expect(out).toContain('second');
     expect(out).not.toContain('first');
   });
+
+  it('--json prints one array of id, created, author and body text, oldest first', async () => {
+    mockRequest.mockResolvedValue({
+      comments: [comment('20', '2026-01-02T00:00:00.000Z', 'second'), comment('10', '2026-01-01T00:00:00.000Z', 'first')],
+    });
+    const p = freshProgram();
+    const logSpy = vi.spyOn(console, 'log');
+    await p.parseAsync(['node', 'jira', 'comments', 'HIMMEL-1', '--json']);
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(logSpy.mock.calls[0]![0]))).toEqual([
+      { id: '10', created: '2026-01-01T00:00:00.000Z', author: 'author-10', body: 'first' },
+      { id: '20', created: '2026-01-02T00:00:00.000Z', author: 'author-20', body: 'second' },
+    ]);
+  });
+
+  it('--json on a ticket with no comments prints an empty array', async () => {
+    mockRequest.mockResolvedValue({ comments: [], total: 0 });
+    const p = freshProgram();
+    const logSpy = vi.spyOn(console, 'log');
+    await p.parseAsync(['node', 'jira', 'comments', 'HIMMEL-1', '--json']);
+    expect(JSON.parse(String(logSpy.mock.calls[0]![0]))).toEqual([]);
+  });
+
+  it('without --json the output is still the author and time lines, with no id', async () => {
+    mockRequest.mockResolvedValue({ comments: [comment('10', '2026-01-01T00:00:00.000Z', 'first')] });
+    const p = freshProgram();
+    const logSpy = vi.spyOn(console, 'log');
+    await p.parseAsync(['node', 'jira', 'comments', 'HIMMEL-1']);
+    expect(logSpy.mock.calls.map((c) => c[0])).toEqual(['author-10\t2026-01-01T00:00:00.000Z\nfirst']);
+  });
 });

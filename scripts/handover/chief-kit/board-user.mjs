@@ -20,9 +20,15 @@ const row = ({ ticket, goal, tag, text }) => `<li>${ticket ? `<b>${esc(ticket)}<
 
 const section = (key, title, rows, empty) => `<section data-section="${key}" data-count="${rows.length}"><h2>${esc(title)} <b>${rows.length}</b></h2>${rows.length ? `<ul>${rows.map(row).join('\n')}</ul>` : `<p class="none">${esc(empty)}</p>`}</section>`;
 
+const waitingSection = (rows, unread) => {
+    const note = unread ? `<p class="none">${plain(`what you owe could not be read (${unread}): this list may be short`, 200)}</p>` : '';
+    const body = rows.length ? `<ol>${rows.map((r) => row(r).replace(/^<li>/, '<li><b>Needs you:</b> ')).join('\n')}</ol>` : note ? '' : '<p class="none">nothing is waiting on you</p>';
+    return `<section data-section="waiting" data-count="${rows.length}"><h2>Waiting on you <b>${rows.length}</b></h2>${note}${body}</section>`;
+};
+
 // running / waiting / shipped: arrays of { ticket, goal, tag, text }; shippedNote replaces the
 // empty line when the merged list could not be read.
-export const renderUserBoard = ({ stamp, running, waiting, shipped, shippedNote }) => `<!doctype html>
+export const renderUserBoard = ({ stamp, running, waiting, shipped, shippedNote, owedUnread }) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -38,7 +44,7 @@ h1 { font-size:1.35rem; margin:0 0 2px; } h2 { font-size:.8rem; text-transform:u
 .sub { color:var(--muted); font-size:.85rem; margin:0 0 14px; }
 section { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:12px; margin:0 0 12px; }
 section[data-section="waiting"] { border-color:var(--warn); } section[data-section="shipped"] h2 b { color:var(--ok); }
-ul { list-style:none; margin:0; padding:0; } li { padding:6px 0; border-top:1px solid var(--line); } li:first-child { border-top:0; }
+ul, ol { list-style:none; margin:0; padding:0; } ol { list-style:decimal inside; } li { padding:6px 0; border-top:1px solid var(--line); } li:first-child { border-top:0; }
 li p { margin:2px 0 0; color:var(--muted); font-size:.85rem; } .tag { color:var(--accent); font-weight:600; font-size:.85rem; } .none { color:var(--muted); margin:0; }
 </style>
 </head>
@@ -47,7 +53,7 @@ li p { margin:2px 0 0; color:var(--muted); font-size:.85rem; } .tag { color:var(
 <h1>Shift board</h1>
 <p class="sub">rendered ${esc(stamp)}</p>
 ${section('running', 'Running now', running, 'nothing is running')}
-${section('waiting', 'Waiting on you', waiting, 'nothing is waiting on you')}
+${waitingSection(waiting, owedUnread)}
 ${section('shipped', 'Shipped · last 24 hours', shipped, shippedNote || 'nothing shipped in the last 24 hours')}
 </main>
 </body>

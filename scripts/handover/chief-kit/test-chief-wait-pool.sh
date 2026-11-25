@@ -33,6 +33,8 @@ STUB="$WORK/stub"
 mkdir -p "$STUB"
 cat > "$STUB/tick.sh" <<'EOF'
 #!/usr/bin/env bash
+echo x >> "$STUB/ticks"
+[ ! -f "$STUB/stall" ] || { read -r stall < "$STUB/stall"; sleep "$stall"; : > "$STUB/stalled"; }
 [ ! -f "$STUB/tick.fail" ] || exit 1
 cat "$STUB/tick.line"
 EOF
@@ -43,6 +45,7 @@ EOF
 printf 'TICK 03:00 hb=1m workers=N1:FRESH livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:LIVE inbox=none tick=UNKNOWN fleet=3/15 capacity=UNDERFILLED:7 gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none or=skip fails=none\n' > "$STUB/tick.line"
 printf 'PROCEED\n' > "$STUB/bank"
 export STUB
+export HIMMEL_CORE_CHECK_BATCH=off
 export CHIEF_WAIT_TICK="$STUB/tick.sh" CHIEF_WAIT_USAGE="$STUB/bank.sh"
 export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000
 # the re-probe cadence is seconds here; the default is 30 minutes
@@ -91,6 +94,27 @@ wakes() { grep -c '^WAKE underfilled' "$1" 2>/dev/null; }
 new_inbox() { mkdir -p "$WORK/$1/consoles"; : > "$WORK/$1/consoles/c.md"; printf '%s' "$WORK/$1/consoles/c.md"; }
 # arm <inbox> <outfile> <seconds>: one foreground arm that exits on a wake or after <seconds> (rc 124)
 arm() { timeout "$3" bash "$WAIT" "$1" --workers "N1.md" > "$2" 2>/dev/null; rc=$?; }  # gnu-ok: Linux-only kit; pipefail-ok: none set
+ticks() { if [ -f "$STUB/ticks" ]; then wc -l < "$STUB/ticks" | tr -d ' '; else echo 0; fi; }
+arm_quiet() {
+    local pid i=0 t0
+    t0="$(ticks)"
+    bash "$WAIT" "$1" --workers "N1.md" > "$2" 2>/dev/null &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "$(( $3 * 10 ))" ] && [ "$(( $(ticks) - t0 ))" -lt 3 ]; do sleep 0.1; i=$((i + 1)); done
+    if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rc=124
+    else wait "$pid"; rc=$?; fi
+}
+
+run_to_wake() {
+    local out="$1" err="$2" pid i=0
+    shift 2
+    bash "$WAIT" "$@" > "$out" 2> "$err" &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ]; do sleep 0.2; i=$((i + 1)); done
+    if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rc=124
+    else wait "$pid"; rc=$?; fi
+    digest_rc=$rc
+}
 
 # --- (8197) digest and urgent worker changes -------------------------------------------
 # Removing the buffer splits three housekeeping events; putting BLOCKED in that
@@ -100,6 +124,7 @@ housekeeping_cases() (
     export HOUSEKEEPING_DIGEST_SECS=2 WAIT_SWEEP_SEC=1 CHIEF_WAIT_BOARD_STALE_MIN=0
     cat > "$STUB/digest-tick.sh" <<'EOF'
 #!/usr/bin/env bash
+[ ! -f "$STUB/stall" ] || { read -r stall < "$STUB/stall"; sleep "$stall"; : > "$STUB/stalled"; }
 n=0; [ ! -f "$STUB/samples" ] || read -r n < "$STUB/samples"
 n=$((n + 1)); printf '%s\n' "$n" > "$STUB/samples"
 if [ -f "$STUB/urgent" ]; then
@@ -162,9 +187,12 @@ EOF
             status-sweep) export WAIT_SWEEP_CMD="$STUB/digest-sweep.sh" ;;
             deadline) digest_kind=tick ;;
         esac
-        if [ "$digest_case" = deadline ]; then mkdir "$I.wait.housekeeping.since"
+        rm -f "$STUB/stall" "$STUB/stalled"
+        if [ "$digest_case" = deadline ]; then mkdir "$I.wait.housekeeping.since"; printf '2\n' > "$STUB/stall"
         else mkdir "$I.wait.housekeeping"; fi
-        timeout 4 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/write-$digest_case.out" 2> "$WORK/write-$digest_case.err"; digest_rc=$?
+        run_to_wake "$WORK/write-$digest_case.out" "$WORK/write-$digest_case.err" "$I" --doc "$WORK/digest-chief.md" --workers N1.md
+        rm -f "$STUB/stall"
+        [ "$digest_case" != deadline ] || check "(8197) deadline fallback ran with the tick stall" yes "$([ -e "$STUB/stalled" ] && echo yes)"
         check "(8197) $digest_case buffer write failure wakes immediately once" '0:1:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/write-$digest_case.out"):$(grep -c "^WAKE $digest_kind " "$WORK/write-$digest_case.out")"
         case "$digest_case" in tick|deadline)
             check "(8197) $digest_case write failure does not advance the tick baseline" 1 "$(grep -c 'tails=N1:ACK' "$I.wait.state")"
@@ -331,7 +359,7 @@ check "(rp) a pool that grows from empty wakes (rc 0)" "0" "$rc"
 check "(rp) the re-wake is an underfilled wake" "1" "$(wakes "$WORK/rp3.out")"
 check "(rp) and it lists the new pool rows" "2" "$(grep -c "^LOCAL.$KP-900[12]" "$WORK/rp3.out")"
 
-arm "$I" "$WORK/rp4.out" 4
+arm_quiet "$I" "$WORK/rp4.out" 4
 check "(rp) the same pool on the next arm is one wake per change (rc 124)" "124" "$rc"
 
 printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nLOCAL\tHIMMEL-9003\tMedium\tv1\tthird\tfiles=c.sh\n' > "$STUB/pool.rows"
@@ -346,7 +374,7 @@ check "(rp) a failed probe never wakes (rc 124)" "124" "$rc"
 check "(rp) and the failed probe did run" "yes" "$([ "$(calls)" -gt "$c0" ] && echo yes)"
 rm -f "$STUB/pool.fail"
 : > "$STUB/pool.partial"
-arm "$I" "$WORK/rp6b.out" 4
+arm_quiet "$I" "$WORK/rp6b.out" 4
 check "(rp) a timed-out probe's partial rows never wake (rc 124)" "124" "$rc"
 rm -f "$STUB/pool.partial"
 : > "$STUB/pool.slow"
@@ -355,11 +383,11 @@ arm "$I" "$WORK/rp6c.out" 10
 check "(rp) a stalled probe never wakes (rc 124)" "124" "$rc"
 check "(rp) a stalled probe is cut at CHIEF_WAIT_REPOOL_TIMEOUT, so the next probe still starts" "yes" "$([ "$(( $(calls) - c0 ))" -ge 2 ] && echo yes)"
 rm -f "$STUB/pool.slow"
-arm "$I" "$WORK/rp7.out" 4
+arm_quiet "$I" "$WORK/rp7.out" 4
 check "(rp) a failed probe leaves the saved pool alone: the same pool stays quiet (rc 124)" "124" "$rc"
 
 rm -f "$STUB/pool.rows"
-arm "$I" "$WORK/rp8.out" 4
+arm_quiet "$I" "$WORK/rp8.out" 4
 check "(rp) a pool that empties does not wake (rc 124)" "124" "$rc"
 printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
 arm "$I" "$WORK/rp9.out" 6
@@ -618,7 +646,7 @@ for t7b_line in '# quota-pause QUOTA-PAUSE github graphql token=main remaining=0
     check "(T7b) a $t7b_kind pool writes pool=paused to the pool-paused file" "pool=paused" "$(cat "$I.wait.poolpaused" 2>/dev/null)"
     check "(T7b) a $t7b_kind pool leaves the heartbeat line in the readers' format" "1" "$(grep -cE '^hb=[0-9]+ pid=[0-9]+ key=[^ ]+ tick=(ok|fail|-) state=(waiting|sampling|exited)( exit=[^ ]+)?$' "$I.wait")"
     rm -f "$STUB/pool.paused"
-    CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 CHIEF_WAIT_PAUSED_REPROBE_SEC=0 arm "$I" "$WORK/t7b-$t7b_kind-2.out" 6
+    CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 CHIEF_WAIT_PAUSED_REPROBE_SEC=0 run_to_wake "$WORK/t7b-$t7b_kind-2.out" /dev/null "$I" --workers N1.md
     check "(T7b) after a $t7b_kind pool the next good reading wakes (rc 0)" "0" "$rc"
     check "(T7b) after a $t7b_kind pool it is one underfill wake" "1" "$(wakes "$WORK/t7b-$t7b_kind-2.out")"
     check "(T7b) after a $t7b_kind pool the good reading removes the pool-paused file" "no" "$([ -e "$I.wait.poolpaused" ] && echo yes || echo no)"
@@ -655,7 +683,11 @@ check "(T7b) a paused pool watch probe leaves its marker's age" "$t7b_old" "$(st
 cp "$STUB/tick.line.saved" "$STUB/tick.line"
 rm -f "$STUB/pool.paused" "$STUB/tick.line.ok" "$STUB/tick.line.saved"
 I="$(new_inbox t7b-empty)"
-CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 arm "$I" "$WORK/t7b-empty.out" 6
+rm -f "$STUB/stalled"
+printf '7\n' > "$STUB/stall"
+CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 run_to_wake "$WORK/t7b-empty.out" /dev/null "$I" --workers N1.md
+rm -f "$STUB/stall"
+check "(T7b) the empty-pool control ran with the tick stall" yes "$([ -e "$STUB/stalled" ] && echo yes)"
 check "(T7b) RED control: a real empty pool still wakes (rc 0)" "0" "$rc"
 check "(T7b) RED control: and says POOL-EMPTY" "1" "$(grep -c '^POOL-EMPTY' "$WORK/t7b-empty.out")"
 mkdir -p "$WORK/t7b-quota"
@@ -729,7 +761,7 @@ stale_line '1:HIMMEL-7120'
 arm "$I" "$WORK/st1.out" 15
 check "(6604) a stale disposition key wakes the waiter (rc 0)" "0" "$rc"
 check "(6604) the wake names the key" "WAKE pool-stale HIMMEL-7120" "$(head -n1 "$WORK/st1.out")"
-arm "$I" "$WORK/st2.out" 4
+arm_quiet "$I" "$WORK/st2.out" 4
 check "(6604) the same stale key does not wake again on a re-arm" "124" "$rc"
 stale_line '2:HIMMEL-7120,HIMMEL-6866'
 arm "$I" "$WORK/st3.out" 15
@@ -746,14 +778,14 @@ I2="$(new_inbox st-holds)"
 stale_line "$hs_val"
 arm "$I2" "$WORK/sh1.out" 15
 check "(9853) one pool-stale wake per newly stale key: the outside-PR hold wakes" "WAKE pool-stale HIMMEL-9190" "$(head -n1 "$WORK/sh1.out")"
-arm "$I2" "$WORK/sh2.out" 4
+arm_quiet "$I2" "$WORK/sh2.out" 4
 check "(9853) one pool-stale wake per newly stale key: the same stale set does not wake again" "124" "$rc"
 stale_line '?'
-arm "$I" "$WORK/st4.out" 4
+arm_quiet "$I" "$WORK/st4.out" 4
 check "(6604) an unreadable blocker (?) never wakes" "124" "$rc"
 check "(6604) an unreadable blocker keeps the marker" "yes" "$([ -e "$I.wait.stale" ] && echo yes)"
 stale_line '0'
-arm "$I" "$WORK/st5.out" 4
+arm_quiet "$I" "$WORK/st5.out" 4
 check "(6604) pool-stale=0 never wakes" "124" "$rc"
 check "(6604) pool-stale=0 clears the marker" "no" "$([ -e "$I.wait.stale" ] && echo yes || echo no)"
 stale_line '1:HIMMEL-7120'
@@ -766,14 +798,14 @@ stale_line '1:HIMMEL-7120'
 arm "$I" "$WORK/sm1.out" 15
 check "(6604) the first stale key wakes (rc 0)" "0" "$rc"
 sed 's/capacity=UNDERFILLED:7/capacity=ok/' "$STUB/tick.line.orig" > "$STUB/tick.line"  # no pool-stale field at all
-arm "$I" "$WORK/sm2.out" 4
+arm_quiet "$I" "$WORK/sm2.out" 4
 check "(6604) a tick without the field never wakes (rc 124)" "124" "$rc"
 check "(6604) a tick without the field keeps the marker" "yes" "$([ -e "$I.wait.stale" ] && echo yes)"
 stale_line 'skip'
 arm "$I" "$WORK/sm3.out" 4
 check "(6604) pool-stale=skip keeps the marker" "yes" "$([ -e "$I.wait.stale" ] && echo yes)"
 stale_line '1:HIMMEL-7120'
-arm "$I" "$WORK/sm4.out" 4
+arm_quiet "$I" "$WORK/sm4.out" 4
 check "(6604) the key reported before the gap does not re-wake after it (rc 124)" "124" "$rc"
 
 # a partial read (a key plus ?) merges into the marker and never shrinks it
@@ -785,10 +817,10 @@ stale_line '1:HIMMEL-6866,?'
 arm "$I" "$WORK/sp2.out" 15
 check "(6604) a later partial read wakes only for the key it adds" "WAKE pool-stale HIMMEL-6866" "$(head -n1 "$WORK/sp2.out")"
 stale_line '1:HIMMEL-7120,?'
-arm "$I" "$WORK/sp3.out" 4
+arm_quiet "$I" "$WORK/sp3.out" 4
 check "(6604) a partial read never shrinks the marker: the first key stays quiet (rc 124)" "124" "$rc"
 stale_line '2:HIMMEL-7120,HIMMEL-6866'
-arm "$I" "$WORK/sp4.out" 4
+arm_quiet "$I" "$WORK/sp4.out" 4
 check "(6604) the full read afterwards wakes nothing twice (rc 124)" "124" "$rc"
 cp "$STUB/tick.line.orig" "$STUB/tick.line"
 
@@ -798,7 +830,16 @@ rf_doc="$WORK/rf/chief-rf.md"
 printf '# chief\n' > "$rf_doc"
 rf_tsv="$TICK_STATE_DIR/rm-refused-chief-rf.tsv"
 rf_line() { sed "s/capacity=UNDERFILLED:7/capacity=ok${1:+ rm-refused=$1}/" "$STUB/tick.line.orig" > "$STUB/tick.line"; }
-rf_arm() { timeout "$3" bash "$WAIT" "$1" --doc "$rf_doc" --workers N1.md > "$2" 2>/dev/null; rc=$?; }  # gnu-ok: Linux-only kit; pipefail-ok: none set
+rf_arm() {
+    local pid i=0 t0 cut=0
+    [ "$3" -gt 4 ] || cut=3
+    t0="$(ticks)"
+    bash "$WAIT" "$1" --doc "$rf_doc" --workers N1.md > "$2" 2>/dev/null &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "$(( $3 * 10 ))" ] && { [ "$cut" -eq 0 ] || [ "$(( $(ticks) - t0 ))" -lt "$cut" ]; }; do sleep 0.1; i=$((i + 1)); done
+    if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rc=124
+    else wait "$pid"; rc=$?; fi
+}
 rf_wakes() { grep '^WAKE ' "$1" | paste -sd'|' -; }
 printf 'ABC-2\tR-1\tname the operator words for ABC-2\t1\nABC-5\tR-2\tthe ask needs decision 9\t1\nABC-6\tR-4\tother\t0\n' > "$rf_tsv"
 rf_line '3:ABC-2@R-1,ABC-5@R-2'
@@ -836,6 +877,24 @@ rf_line '26:'
 rf_arm "$I" "$WORK/rfd2.out" 4
 check "(9853) a second run the same day sends no digest (rc 124)" 124 "$rc"
 check "(9853) the held-back pair stays out of the marker for the next day's digest" 0 "$(grep -c '^ABC-126@' "$I.wait.refused" 2>/dev/null)"
+rl_tsv="$TICK_STATE_DIR/rm-lists-chief-rf.tsv"
+rl_line() { sed "s/capacity=UNDERFILLED:7/capacity=ok $1/" "$STUB/tick.line.orig" > "$STUB/tick.line"; }
+I="$(new_inbox rl)"
+printf 'chief\tK-5\tR-5\tthe chief placed it for the demo\t\t\napart\tK-7\tR-7\tv2\tP-1\tv1\napart\tK-7\tR-9\tv2\tP-1\tv1\n' > "$rl_tsv"
+rl_line 'chief-placed=1:K-5 ask-apart=2:K-7,K-7'
+rf_arm "$I" "$WORK/rl1.out" 15
+check "S1b: a new chief placement and a new apart tuple each wake once, the tuple once for its two rulings" \
+    "WAKE chief-placed K-5 the chief placed it for the demo|WAKE ask-apart K-7 v2 parent P-1 v1" "$(rf_wakes "$WORK/rl1.out")"
+rf_arm "$I" "$WORK/rl2.out" 4
+check "S1b: the same lists again wake nothing (rc 124)" 124 "$rc"
+printf 'apart\tK-7\tR-11\tv2\tP-1\tv3\n' >> "$rl_tsv"
+rl_line 'chief-placed=1:K-5 ask-apart=3:K-7,K-7,K-7'
+rf_arm "$I" "$WORK/rl3.out" 15
+check "S1b: a parent that moved is a new tuple and wakes once" "WAKE ask-apart K-7 v2 parent P-1 v3" "$(rf_wakes "$WORK/rl3.out")"
+printf 'chief\tK-6\tR-12\tanother\t\t\n' >> "$rl_tsv"
+rl_line ''
+rf_arm "$I" "$WORK/rl4.out" 4
+check "S1b: a tick line without chief-placed= or ask-apart= reads no tsv (rc 124)" 124 "$rc"
 unset TICK_STATE_DIR
 cp "$STUB/tick.line.orig" "$STUB/tick.line"
 
@@ -885,7 +944,7 @@ arm "$I" "$WORK/series1.out" 8
 check "(8349) a pool with a SERIES row wakes (rc 0)" "0" "$rc"
 check "(8349) the SERIES row is classed once, under its own heading" "1:1" "$(grep -c '^# dispatchable as one series worker' "$WORK/series1.out"):$(grep -c "^SERIES.LOCAL.$KP-9101,$KP-9102" "$WORK/series1.out")"
 check "(8349) dispatchable= counts the series' tickets" "1" "$(head -n1 "$WORK/series1.out" | grep -c 'dispatchable=3')"
-arm "$I" "$WORK/series2.out" 4
+arm_quiet "$I" "$WORK/series2.out" 4
 check "(8349) the same series pool does not wake again (rc 124)" "124" "$rc"
 printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nSERIES\tLOCAL\tHIMMEL-9101,HIMMEL-9103\tHigh\tv1\tfiles=s.sh\n' > "$STUB/pool.rows"
 arm "$I" "$WORK/series3.out" 6

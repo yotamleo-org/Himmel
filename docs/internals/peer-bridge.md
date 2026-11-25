@@ -6,8 +6,9 @@ Deadlines run on both sides. Peer text is read only in a tainted peer desk, and
 every outbound message passes one egress gate. A second, typed path carries signed
 envelopes that no model reads (see "The typed path").
 
-It is user-level: no `sudo`, no system change. It writes two state dirs, one user
-unit, and one metadata-only line per wake into the operator bot's outbox.
+It is user-level: no `sudo`, no system change. It writes two state dirs and one
+user unit. What it tells the operator goes onto its own notify chain, which the
+operator bridge sends (see "Triage and the notify chain").
 
 | Where | Path |
 |---|---|
@@ -41,7 +42,7 @@ supergroup with a new chat id, and `confirm` refuses the old id.
 3. **Add the peer.** From a terminal of your own, not from a Claude session:
 
    ```bash
-   bun scripts/peer-bridge/setup.ts add goomal --peer-bot-id <peer bot id> --peer-username <peer bot username>
+   bun scripts/peer-bridge/setup.ts add example --peer-bot-id <peer bot id> --peer-username <peer bot username>
    ```
 
    Pass `--operator-bot-id <id>` to skip the operator-bot-id prompt; a helper that already knows the id uses it.
@@ -66,7 +67,7 @@ supergroup with a new chat id, and `confirm` refuses the old id.
 6. **Confirm the chat.** Use the supergroup's id:
 
    ```bash
-   bun scripts/peer-bridge/setup.ts confirm goomal <chatId>
+   bun scripts/peer-bridge/setup.ts confirm example <chatId>
    ```
 
    It calls `getChat` and `getChatMember` and refuses, writing nothing, unless:
@@ -93,8 +94,12 @@ supergroup with a new chat id, and `confirm` refuses the old id.
      It runs `run.sh`, which loads the env file and maps exit 78 to 0 so
      `KeepAlive` with `SuccessfulExit=false` does not respawn it.
 
-`setup.ts remove <peer>` deletes one peer and its chain files. `setup.ts
-uninstall` stops the unit, deletes the unit file, `S` and `C`, and removes the
+`setup.ts runner` installs and starts the runner unit
+(`units/himmel-peer-runner.service` or `units/com.himmel.peer-runner.plist`)
+while some peer's `serves` holds `run-suite`, and stops and deletes it
+otherwise. Run it after you edit `serves`. `setup.ts remove <peer>` deletes one
+peer and its chain files, then does the same check. `setup.ts
+uninstall` stops both units, deletes the unit files, `S` and `C`, and removes the
 parent dirs it created if they are empty. Both ask for a typed `yes`. Every
 subcommand refuses when `CLAUDECODE` or `CLAUDE_CODE_SESSION_ID` is set and when
 there is no terminal. No message, template or wake can trigger any of them, and
@@ -154,9 +159,9 @@ a chief may read this path, unlike the desk's digests.
 | LLM | the tool-less reader | none, on either side |
 
 This path is inert while `serves` is empty, which is the default and what our own
-station keeps. Until the runner ships (the next change), a station that serves
-takes a request and resolves it but starts nothing: a job still unresolved after
-10 minutes is refused `no-vm`.
+station keeps. A station that serves runs the runner (see "The runner" below);
+while the runner is down, a job still unresolved after 10 minutes is refused
+`no-vm`.
 
 ### Names, keys and trust (at a terminal)
 
@@ -246,16 +251,20 @@ or a peer message changes neither.
 - The server resolves every requester value against its own state. A suite must
   equal a path in the allowlist and is stored by the alias its operator typed; the
   SHA is the requester's string until the runner resolves it in its own clone of
-  `origin`.
+  `origin`. The envelope policy does not re-establish that the SHA is on `origin`
+  or that the suites exist there; that is no wider than the spool send path of
+  slice A.
 - **Backstop.** At `vm-start` the poller writes `min(maxJobMinutes, VM minutes
   left today)` into the RUNNING record, and the runner reads it there. A backstop
   under `ALLOWANCE_S` refuses the job `budget`. The requester is told
   `timeout_s = backstop + ALLOWANCE_S` once, in `res running`.
 - VM minutes are charged from RUNNING entry to the terminal timestamp. `jobsPerDay`
-  counts every job that reached RESOLVED.
-- **Tripwire.** Three bad signatures from one peer in an hour send one wake line
-  naming the peer and the count. It is an alert, never a kill, so a key rotation
-  or a junk sender cannot cut the link.
+  counts every job that reached RESOLVED and every job received today that is
+  still waiting to resolve, so a burst cannot run past the day's budget.
+- **Tripwire.** Three bad signatures from one peer in an hour send one alert
+  line naming the peer and the count. It is an alert, never a kill, so a key rotation
+  or a junk sender cannot cut the link. The count and the hourly cap on answers
+  are kept on disk, so a poller restart does not reset either.
 - **Kill switch.** While `C/<peer>.killed` exists the peer is dropped at step 4 and
   answered nothing, its live jobs are cancelled with nothing sent, and nothing it
   asked for starts. The peer sees silence and its own deadlines end its jobs.
@@ -283,6 +292,108 @@ On start the poller drains the Telegram backlog and applies every admitted
 envelope before its first deadline tick, so a `res` waiting there is not beaten by
 an overdue SENT deadline. The poller's 30 s tick then fires each overdue deadline
 once, oldest first.
+
+### The runner
+
+`runner.ts` runs a job; it never decides one. It reads `jobs.jsonl`, submits each
+transition (`resolve-ok`, `resolve-fail`, `vm-start`, `vm-done`) through the
+spool, and the poller applies it. It runs only from its own unit, which reads no
+env file, so it holds no bot token and no signing key. It exits 0 on a refusal
+(no peer serves, no VM backend) so the unit does not restart it, and 1 on an
+error.
+
+On start it runs `vm-sweep`, which destroys every VM left from a crash, and
+deletes job logs older than 14 days. Every 30 s it then:
+
+1. **Resolves** each RECEIVED job in a bare cache of the peer's `origin` under
+   `S/<peer>/`. The SHA must be a commit on a branch of `origin` (a SHA reachable
+   only from `refs/pull/*` is `unknown-sha`) and must descend from `MIN_SHA`
+   (`min-sha.txt`, the first commit holding `job-entry.sh`), else `too-old`.
+2. **Runs** the oldest APPROVED job, one at a time. It reads the backstop from
+   the RUNNING record, fetches the one commit into an empty repo and packs only
+   its `.git` into a tar, so no file of the tree runs on the host. It then
+   clones the golden VM, pushes the tar, `job-entry.sh` and the suite list, and
+   runs `job-entry.sh` in the guest under `backstop + ALLOWANCE_S`. A job that
+   leaves RUNNING (cancel, halt, deadline) kills the exec within one watch tick.
+3. **Reports** the guest's `.job-result.json` (16 KB cap), parsed against the
+   job's own suite list: a suite the guest did not finish is `error`. The log
+   (5 MB cap) stays on the host, mode 0600, under `S/<peer>/logs/`; only its
+   SHA-256 and byte count go into `vm-done`, with the golden image's digest and
+   the VM minutes. The VM is destroyed and the work dir deleted on every path.
+
+#### A macOS peer: the Tart backend
+
+On macOS the runner unit (`units/com.himmel.peer-runner.plist`) sets
+`PEER_JOB_BACKEND=tart` and puts `/opt/homebrew/bin` on `PATH`, so `vmsdk-job.py`
+drives [Tart](https://tart.run) and runs every job in a throwaway macOS VM, never
+on the host. Each job VM is a clone of the local image `sequoia-base` named
+`himmel-peerjob-<job>`, set to 4 CPUs and 8 GB with a fresh MAC, and started with
+`tart run --no-graphics --no-audio --no-clipboard --net-host`. No `--dir` or
+`--disk` is ever passed, so the guest has no shared folder. The host reaches the
+guest by SSH at the address `tart ip` reports. A timeout kills the job's guest
+session through a small perl wrapper, because the macOS guest has no `setsid`.
+`vm-sweep` deletes only `himmel-peerjob-` VMs; `sequoia-base` and `himmel-proof`
+are never deleted. `vm-clone` refuses while any other Tart VM is running, local
+or pulled from an OCI registry, because a job guest could reach it over the
+host-only network.
+
+What the peer's operator sets up once:
+
+1. **Tart and the image.** Install Tart at `/opt/homebrew/bin/tart` and keep a
+   local macOS image named `sequoia-base` with Remote Login on and the
+   user `admin`. `job-entry.sh` runs under the guest's stock `/bin/bash` 3.2 and
+   needs `git`, `tar` and `jq` there. The suites need what `macos-cadence.yml`
+   installs (bun, shfmt, the pre-commit venv). The guest has no internet route
+   while a job runs, so everything must already be in the image.
+2. **The guest key.** Create an SSH key only for this purpose; it is never the
+   bridge key. Put its private half at `~/.config/himmel/peer-bridge/tart.guest`
+   (mode 600) and its public half in the `admin` user's `~/.ssh/authorized_keys`
+   inside the image. Boot the image once and record its host key
+   under the alias `himmel-peerjob-guest` in
+   `~/.config/himmel/peer-bridge/tart.known_hosts` (mode 600), for example
+   `ssh-keyscan <ip> | sed 's/^[^ ]*/himmel-peerjob-guest/'`. Every clone shares
+   that host key, so SSH checks it strictly. A missing file, or one not mode 600,
+   makes every job verb refuse (exit 2), so the unit does not restart. Three
+   verbs skip the check: `vm-destroy` and `golden-record` never use it, and
+   `vm-sweep` deletes leftover job VMs first and refuses only after that.
+3. **Serve and allow.** Add `run-suite` to that peer's `serves`, list the suites
+   with `setup.ts allow-suite`, and leave `approve["run-suite"]` at `tty`, so each
+   job waits for a typed `yes` from `jobs.ts approve`, unless you choose `auto`.
+   Then run `setup.ts runner` to install and start the runner unit.
+4. **Record the image.** Run `vmsdk-job.py golden-record` (with
+   `PEER_JOB_BACKEND=tart`), which hashes the image's `config.json`, `disk.img`
+   and `nvram.bin` under `~/.tart/vms/sequoia-base/` into `C/golden.digest`.
+
+Residual: `--net-host` is Tart's "host-only network". The guest has no route to
+the internet, but it can reach any service on the host that listens on the
+host-only bridge, and any other VM on that network (which is why a foreign
+running Tart VM refuses the clone). The check sees only the Tart VMs of the
+runner's user and `TART_HOME`: a VM run by another hypervisor, another user or
+another `TART_HOME` on that bridge is not checked, so the peer keeps none running
+while it serves jobs. The live check for a new peer: in a job guest,
+`curl -m 10 https://github.com` must fail. It belongs to the first live round
+trip with a macOS peer, not to the suite rows, which use a fake `tart` and `ssh`.
+
+Every `git` call runs with `core.hooksPath=/dev/null`, `GIT_CONFIG_GLOBAL=/dev/null`
+and `GIT_CONFIG_NOSYSTEM=1`, so no hook, filter (LFS included) or user config
+runs. The runner's closed list of git verbs is `init --bare`, `fetch --prune` of
+`origin`'s branches, `cat-file -e`, `branch -r --contains`,
+`merge-base --is-ancestor`, `init` and `fetch --depth 1` of one SHA from the
+cache. `policy.test.ts` pins the list.
+
+Testing the runner and the VM verbs:
+
+- `bun test scripts/peer-bridge/runner.test.ts` runs the runner on real git
+  against the stub backend, on any host.
+- `python3 scripts/lib/test-vmsdk-job.py` runs the verbs on the stub backend;
+  with `PEER_BRIDGE_VM_TEST=1` inside a test VM it also runs the VirtualBox rows.
+  Its Tart rows run on any host against a fake `tart` and a fake `ssh` that log
+  every call.
+- `scripts/peer-bridge/e2e-linux.sh` is the end-to-end run, only inside a test VM
+  that already holds the golden fixture (`vmsdk-job.py golden-build-linux`). It
+  needs `PEER_BRIDGE_VM_TEST=1`, `E2E_BOTS_FILE` (a 0600 file with the two test
+  bot tokens) and `E2E_CHAT_FILE` (the test supergroup id), and prints
+  `E2E PASS`. It never runs on a station host.
 
 ### What a chief sees
 
@@ -341,19 +452,29 @@ neither is shown. The tainted desk is still the only path for peer free text.
 ## The peer desk
 
 Peer text is never shown to a normal session. A **wake** tells you something
-arrived: one line in the operator chat, with the peer name, the thread number, a
-label, a deadline and the desk command, and never peer text. The operator bridge
-sends it with no model run.
+arrived: a message in the operator chat with the peer name, the thread number, a
+label and a deadline on line 1 and the desk command on line 2, and never peer
+text. An **escalation** carries the reader's digest instead, marked untrusted.
+The operator bridge sends both with no model run.
 
 Start the desk from a terminal:
 
 ```bash
-bash scripts/peer-bridge/desk.sh goomal
+bash scripts/peer-bridge/desk.sh example
 ```
 
 It starts a fresh interactive `claude` session in an empty 0700 dir
 (`S/desk/<peer>/`) with `PEER_DESK=<peer>` set and no CLAUDE.md. It refuses if
 the dir holds `.claude`, `CLAUDE.md`, `CLAUDE.local.md` or `.mcp.json`.
+
+The desk starts with no MCP server, plugin, skill or user hook. `desk.sh` passes
+`--strict-mcp-config` with an empty `--mcp-config`, `--setting-sources project`
+(so the user settings never load), `--tools Bash`, `--permission-mode auto`
+and `--disable-slash-commands`. It writes `S/desk/<peer>.mcp.json` and
+`S/desk/<peer>.settings.json` (mode 0600, beside the desk dir, never in it) at
+each launch; the settings file wires only the taint gate and the read-secrets
+guard, from the himmel root's tracked scripts. The gate also denies any tool but
+Bash when `PEER_DESK` is set, so a tool the flags missed is still refused.
 
 In the desk the taint gate allows only two Bash command shapes, each a single
 line with no control byte:
@@ -365,8 +486,15 @@ line with no control byte:
   or `--kind answer --reply-to N --text '...'` replies.
 
 Every other tool is denied. The read shape is auto-approved so the gate's 5 s
-stamp cannot go stale while a prompt waits. The send shape is not, so you approve
-every peer-bound message. `read.ts` refuses unless `PEER_DESK` names the peer,
+stamp cannot go stale while a prompt waits. The desk runs `--permission-mode auto`
+(never `bypassPermissions`), so the auto-mode classifier judges each send and no
+per-send prompt stalls it; the gate, the egress check and your Telegram tap on the
+draft still decide what leaves. A spool file the poller refuses comes back as
+`refused: malformed: <why>`, where `<why>` is a fixed phrase naming the first bad
+field (never a value). The poller records the code version it loaded in
+`poller.pid`; when that differs from the checkout, `send.ts` warns that the poller
+is stale and must be restarted (a poller older than the stamp has none, so it
+warns too). `read.ts` refuses unless `PEER_DESK` names the peer,
 the gate stamped this session within 5 s, and it has first written the session's
 taint file. `read.ts <peer> --raw` is the human-terminal path to the unreduced
 inbox: it needs a TTY and no `CLAUDECODE`.
@@ -374,9 +502,83 @@ inbox: it needs a TTY and no `CLAUDECODE`.
 A digest is made by the reader: `claude -p --safe-mode --strict-mcp-config`
 with an empty MCP config, no tools, `--model haiku`, one turn, a 60 s timeout
 that kills the process group, and a 4 kB output cap. It runs only when
-`usage-preflight.sh` returns `PROCEED`, and within 50 runs a day (30 questions,
-10 status, 10 info). When it is skipped or fails, the digest says so and the
-wake still fires.
+`usage-preflight.sh` returns `PROCEED`, and within 50 runs a day in total, of
+which at most 30 questions, 10 status, 10 info and 15 follow-ups. When it is skipped or fails, the digest
+says so and the message escalates with that reason instead of a summary.
+
+### Triage and the notify chain
+
+Every admitted free-text message that opens a thread or belongs to one we know
+is read, and the reader also proposes a route: `escalate`, `ack` or `drop`. Its
+output must be exactly `{"route","summary","asks"}` inside one optional code
+fence; anything else is a failed run. The proposal does not decide.
+`effectiveRoute` in `threads.ts` does, from what the message did to its thread:
+
+| Message | model escalate | model ack | model drop | model failed |
+|---|---|---|---|---|
+| opens a question | escalate | escalate | drop | escalate |
+| opens a status or info | escalate | ack | drop | escalate |
+| answers our open thread | escalate | escalate | escalate | escalate |
+| anything else on a known thread | escalate | drop | drop | escalate |
+
+- **escalate** puts the digest in front of the operator, at most 20 per peer per
+  UTC day. The first one past that sends one "escalation budget reached" line,
+  and later ones fall back to a metadata wake under the wake budget.
+- **ack** closes the thread as `ACKED` and sends the peer the `closing`
+  template.
+- **drop** sends nothing. A thread it opened ends as `DROPPED`.
+
+The poller records a `job` record before it reads, then the digest record with
+its route, then an `effect` record, all in `S/<peer>/digests.jsonl`. On start it
+replays any job whose effect is missing, once. The desk shows each digest's
+route, and once a day the operator gets one triage count per peer.
+
+Wakes, escalations, budget lines and daily counts are chained records in
+`S/notify/notify.jsonl`, written only by the peer poller. The operator bridge's
+flusher (`scripts/telegram/peer-notify-route.ts`) verifies the chain from its
+cursor (`S/notify/cursor`), renders each record with `notify.ts`, and sends it
+to the operator chat with link previews off, recording each sent message in
+`S/notify/sent/`. Line 1 of every message is built from our own values only.
+A failed verification sends one alert and stops the flusher until it restarts.
+A message Telegram refuses outright is skipped with one fallback line.
+
+The flusher sends nothing while a Claude session could also be polling the
+operator bot and so read the reply text:
+
+- the bridge's last good `getUpdates` is over 60 s old;
+- it got a 409 in the last 10 minutes;
+- a `telegram-himmel` plugin process that polls (`TELEGRAM_OWN_POLLER=1` in its
+  environment or its state-dir `.env`) resolves to the operator bot, or to no
+  single bot. A send-only plugin process never holds. Where the environment
+  cannot be read (or, on macOS, reads ambiguously), the plugin's `bot.pid`
+  decides, or the process holds.
+
+The queue waits. After 10 minutes held, one line says the notifications are held
+and why. A reply to a peer notification is never routed to a session: in this
+slice it gets one fixed line saying drafts arrive with the next update, and
+nothing is sent to the peer.
+
+### The signed tap
+
+A peer draft is approved or rejected only by a `tap` spool record the Telegram
+poller wrote after a real button press by the operator. The poller signs the
+record: an HMAC-SHA256 over a fixed domain tag (`himmel-peer-tap-v1`), the draft
+id, the verdict, the operator id (`by`) and `ts`, in the record's `sig` field (64
+hex), and over the peer name so a signed tap cannot be copied into another peer's spool. The bridge's `applyTap` recomputes it, compares in constant time, and only
+then checks `by` against the operator chat id. A tap with no `sig` is refused
+`tap-unsigned`; a malformed, wrong-length or mismatched one `tap-bad-sig`. The
+refusal is written to the spool result and logged as
+`tap-refused peer=<p> draft=<id> rule=<rule>`, never the signature or the key,
+before any draft state changes: the draft stays PENDING and nothing is sent. The
+tap's age is not bounded separately: the draft's own deadline and its settled
+state (`already-*`) stop a replayed tap.
+
+The key is `C/tap.key` (mode 0600, owned by you, 32 random bytes as hex), a file
+of its own and not the fence key. Whichever side reads first creates it (written
+complete, then linked into place, so a race cannot leave a half key). It is opened
+`O_NOFOLLOW` and refused unless it is a regular file owned by you with mode 0600.
+On the Telegram side an unusable key means no record is written and the button
+answers `Could not record the tap.`; on the bridge side every tap is refused.
 
 ### Clearing taint
 
@@ -395,8 +597,8 @@ removes the taint files and appends who cleared it and when to
 ### Why `/clear` does not weaken the gate
 
 - A tainted session cannot run `/clear` itself: the gate denies every tool except
-  Bash and Monitor, and only the two command shapes pass. A `/clear` in a tainted
-  session is the operator typing it.
+  Bash and Monitor (a desk denies Monitor too: only Bash), and only the two
+  command shapes pass. A `/clear` in a tainted session is the operator typing it.
 - `/clear` wipes the context. While tainted, the session could write no files and
   could start only the two command shapes, so nothing the peer said has been
   carried anywhere that outlives the context.
@@ -424,7 +626,9 @@ claim.
   its signature verifies, only in `envelope.ts`. The poller starts only the reader,
   the `redact_check` shell function, `usage-preflight.sh` and, on macOS, `ps`
   (`policy.test.ts` pins the list over the poller's module graph). On the typed path
-  only `jobs.ts` runs `git`, two fixed verbs on our own checkout. The reader's
+  `jobs.ts` runs `git`, two fixed verbs on our own checkout, and the runner runs
+  only `git` (its closed list, above) and `vmsdk-job.py`; it reaches no `claude`
+  and no reader. The reader's
   environment holds no `PEER_BOT_TOKEN` and no `TELEGRAM_*`.
 - **One egress gate.** Every outbound message, from `send.ts`, a template or a
   resend, passes the same checks in the poller: a secret-shape scan through
@@ -435,8 +639,9 @@ claim.
   after the Telegram call resends with the same id and the peer dedups it.
 - **The taint gate.** A tainted session or a desk may run only the two command
   shapes. The gate is a PreToolUse hook on every tool in the plugin lane, with a
-  byte-identical copy for Codex. It fails closed once a bridge dir exists, and is
-  a no-op on a station with no bridge.
+  byte-identical copy for Codex; a desk loads the tracked copy from its own
+  settings file, not through the plugin. It fails closed once a bridge dir
+  exists, and is a no-op on a station with no bridge.
 - **The fence.** Digests print inside a per-record fence whose marker carries an
   HMAC over a nonce. Only a marker whose HMAC verifies taints a session, so a
   copy of the marker in a doc, a CI log or an issue taints nothing.
@@ -462,17 +667,16 @@ claim.
 
 These are known and accepted for this slice.
 
-- **A wake line can be lost.** The poller appends each wake to the operator
-  outbox, and the operator bridge truncates that file once it has sent
-  everything in it. A line appended in the window between its final read and the
-  truncate is cut with it (the `bus.ts` truncate race). The thread state is
-  already on disk and its deadlines still fire, so the cost is a missed
-  notification, and `read.ts` shows the thread.
 - **The poller runs as the same OS user.** Anything running as you can read the
   token, the key and the inbox, or kill the poller. The path deny and the
   `block-read-secrets` hook are an accidental-leak floor: a determined Bash read,
   or a relative path from a directory outside both dirs, gets around them. The
   planned upgrade runs the bridge as its own sandboxed user.
+- **The tap key is readable by the same OS user.** The signed tap stops a spool
+  writer that cannot read `C/tap.key`, such as the desk session (its Bash is
+  limited to the two command shapes and `block-read-secrets` denies any path under
+  the bridge dirs). It does not stop another process running as you that reads the
+  file. The structural fix is the separate bridge user.
 - **Spool `allowShape` is trusted from any local writer.** `send.ts` sets it
   only from a TTY outside a Claude session, but the poller trusts the field in
   any spool file, so a local process that can write a spool record can waive one
@@ -524,14 +728,15 @@ sequence number and a hash over the previous record, and `verifyChain` in
 | `outbox.jsonl` | intents, `sent` records, refusals (fingerprint only), failures, `confirmed` |
 | `threads.jsonl` | every thread state change with its absolute deadline |
 | `digests.jsonl` | one record per reader run |
-| `envelope-ids.jsonl` | the id and `exp` of each admitted envelope; the replay window reloads from it |
+| `envelope-ids.jsonl` | the id and `exp` of each envelope, written when it is admitted and again (`env-id-done`) once its handling completes; the replay window reloads only the done ids, so an envelope cut short by a crash is handled again on redelivery |
 | `jobs.jsonl` | the typed path's jobs (one snapshot per state change), capacity asks and answers; `peer_*` fields are never printed |
 
 Beside them: `S/unknown-chats.jsonl` lists supergroups our bot was added to that
 are not configured, `S/taint/cleared.log` lists each `untaint.sh` run, and each
 dropped message is one redacted line in the poller's log (journald under
-systemd, `S/poller.log` under launchd). The wake lines live in the operator
-bot's own outbox.
+systemd, `S/poller.log` under launchd). Every operator-bound record is in
+`S/notify/notify.jsonl`, and each one the flusher sent has an entry in
+`S/notify/sent/` for 7 days.
 
 ## Tests
 

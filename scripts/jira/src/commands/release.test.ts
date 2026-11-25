@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // While a reply is set, the judge's subscription `claude` call returns it, the usage preflight prints `preflight`, and
@@ -38,9 +39,14 @@ vi.mock('node:child_process', async (orig) => {
   return { ...m, execFileSync, execFile };
 });
 const rmRunSeen = vi.hoisted(() => ({ opts: null as { judgeTimeoutMs?: number } | null }));
+const fenceTree = vi.hoisted(() => ({ at: null as { procRoot: string; hostNsPath: string } | null }));
 vi.mock('../release/engine.js', async (orig) => {
   const m = await orig<typeof import('../release/engine.js')>();
-  return { ...m, rmRun: ((c, j, o) => { rmRunSeen.opts = o ?? null; return m.rmRun(c, j, o); }) as typeof m.rmRun };
+  return {
+    ...m,
+    rmRun: ((c, j, o) => { rmRunSeen.opts = o ?? null; return m.rmRun(c, j, o); }) as typeof m.rmRun,
+    operatorFence: ((c) => m.operatorFence(fenceTree.at ? { ...c, ...fenceTree.at } : c)) as typeof m.operatorFence,
+  };
 });
 // The run options the repair command hands to the repair, as the last call saw them.
 const repairSeen = vi.hoisted(() => ({ opts: null as { apply?: boolean; refuse?: unknown } | null }));
@@ -55,10 +61,11 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { ctxFor, JUDGE_API_BUDGET_USD, JUDGE_API_PASS_ENV, JUDGE_CACHE, JUDGE_SELECTION_NOTE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, judgeSkill, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge, routedJudgeArgs } from './release.js';
+import { backlogAlerts, ctxFor, JUDGE_API_BUDGET_USD, JUDGE_API_PASS_ENV, JUDGE_CACHE, JUDGE_SELECTION_NOTE, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, judgeSkill, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, liveJudgeArgs, liveJudgeEnv, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge, routedJudgeArgs, runSpecCopy, sealedPage, sendSignerAlert } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import * as engineMod from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
+import { doorJudge } from '../release/door.js';
 import { appendChain, loadKey, readChain } from '../release/ledger.js';
 import type { OperatorRow } from '../release/types.js';
 
@@ -163,6 +170,26 @@ describe('jira release', () => {
     expect(out.join('\n')).toMatch(/^inputs: .*\bmirror=UNKNOWN\b/m);
   });
 
+  it('state prints every unfinished ruling and the remainder line from the ledger it reads, not only the first', async () => {
+    const vf = join(root, 'verbatim.txt');
+    await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', vf);
+    const doc = '/abs/rm-doc.md';
+    const rm = { ...ctxFor('R1', join(root, 'no-mirror')), env: { ...process.env, HIMMEL_RELEASE_MANAGER: '1', HIMMEL_CONSOLE_LEG: '1', HIMMEL_RM_DOC: doc, HIMMEL_RM_RELEASE: 'R1' } };
+    const asks = ['K-2', 'K-3'].map((key) => engineMod.request(ctxFor('R1'), { verb: 'INTAKE', key, from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' }));
+    engineMod.leaseAcquire(rm, { expectEpoch: 0, doc, session: 'rm-1' });
+    engineMod.claim(rm);
+    const rulings = asks.map((q) => engineMod.rule(rm, { req: q.req, outcome: 'ADMIT', op: { kind: 'add', from_v: null, to_v: 'v1' }, sector: 'Planning & tracking',
+      ground: 'regression', reason: 'breaks the console', supersedes: [], authority: { kind: 'rm', ref: null } }));
+    engineMod.leaseRelease(rm);
+    await run('request', 'R1', '--verb', 'INTAKE', '--key', 'C-1', '--to', 'v1', '--why', 'the rest of P-1', '--required-by', 'P-1');
+    const child = out.at(-1)?.replace(/^REQ /, '');
+    out.length = 0;
+    await run('state', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    const lines = out.join('\n').split('\n');
+    expect(lines.filter((l) => l.startsWith('remainder: '))).toEqual([`remainder: P-1 cannot close without C-1 (open ${child}); release-manager: jira release rm-run R1`]);
+    expect(lines.filter((l) => l.startsWith('unfinished: '))).toEqual(rulings.map((r, i) => `unfinished: ${r.id} intent K-${i + 2} add backlog→v1; release-manager runs \`jira release rm-run R1\``));
+  });
+
   it('refuses request evidence that is not a JSON object', async () => {
     const vf = join(root, 'verbatim.txt');
     await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', vf);
@@ -172,9 +199,17 @@ describe('jira release', () => {
     }
   });
 
-  it('refuses a ruling authority outside rm, operator and import', async () => {
+  it('claim and rule are parked: both refuse with the door message and write nothing (I8)', async () => {
+    const vf = join(root, 'verbatim.txt');
+    await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', vf);
+    await run('request', 'R1', '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'found work');
+    const before = readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8');
+    const door = 'placement is by the door; rm-run rules every request';
+    await expect(run('claim', 'R1')).rejects.toThrow(door);
     await expect(run('rule', 'R1', '--req', 'Q-R1-0001', '--outcome', 'ADMIT', '--op', 'add', '--to', 'v1',
-      '--sector', 's', '--ground', 'regression', '--authority', 'RM')).rejects.toThrow(/--authority is rm, operator or import/);
+      '--sector', 's', '--ground', 'regression', '--authority', 'rm')).rejects.toThrow(door);
+    expect(readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8')).toBe(before);
+    expect(existsSync(join(root, 'state', 'R1', 'rulings.jsonl')) ? readFileSync(join(root, 'state', 'R1', 'rulings.jsonl'), 'utf8') : '').toBe('');
   });
 
   it('folds a batch file, prints every skipped key with its terminal and resolution, and reopens', async () => {
@@ -213,6 +248,14 @@ describe('jira release', () => {
     await expect(run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt')))
       .rejects.toThrow(/chief-spawned worker/);
   });
+
+  it('reviewed is refused inside a chief-spawned worker and needs exactly one of --ruling and --through', async () => {
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '1');
+    await expect(run('reviewed', 'R1', '--ruling', 'R-R1-0001', '--reason', 'checked')).rejects.toThrow(/chief-spawned worker/);
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+    await expect(run('reviewed', 'R1', '--reason', 'checked')).rejects.toThrow(/exactly one of --ruling and --through/);
+    await expect(run('reviewed', 'R1', '--ruling', 'R-R1-0001', '--through', 'R-R1-0002', '--reason', 'checked')).rejects.toThrow(/exactly one of --ruling and --through/);
+  });
 });
 
 describe('jira release rm-run', () => {
@@ -223,6 +266,7 @@ describe('jira release rm-run', () => {
     vi.stubEnv('HIMMEL_PROFILE_SETTINGS_DIR', join(root, 'profiles'));
     // the judge run appends its launch row beside this path, never under the real HOME
     vi.stubEnv('HIMMEL_API_CREDIT_STATE', join(root, 'credit', 'ledger.json'));
+    vi.stubEnv('HIMMEL_RM_JUDGE', 'model');
   });
 
   async function oneRequest() {
@@ -484,16 +528,14 @@ describe('jira release rm-run', () => {
     process.exitCode = 0;
   });
 
-  it('rm-run takes --ruling and --chief-override; the override needs a reason and the console marker, and the old --console-override is an unknown option', async () => {
-    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'admissions-ledger.jsonl'));
+  it('rm-run has no count to lift: --ruling, --chief-override and the old --console-override are unknown options', async () => {
     await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt'));
     const mirror = join(root, 'no-mirror');
-    await run('rm-run', 'R1', '--mirror-root', mirror, '--ruling', '98');
+    await run('rm-run', 'R1', '--mirror-root', mirror);
     expect(out.at(-1)).toBe('RM-RUN R1: nothing pending');
-    await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--chief-override', 'big pass')).rejects.toThrow(/HIMMEL_CONSOLE=1/);
     vi.stubEnv('HIMMEL_CONSOLE', '1');
-    await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--chief-override', ' ')).rejects.toThrow(/needs a reason/);
-    await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--chief-override', 'big pass', '--ruling', '98')).rejects.toThrow(/not both/);
+    await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--ruling', '98')).rejects.toThrow(/unknown option '--ruling'/);
+    await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--chief-override', 'big pass')).rejects.toThrow(/unknown option '--chief-override'/);
     vi.stubEnv('HIMMEL_LEGACY_NAMES', '1');
     await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--console-override', 'big pass')).rejects.toThrow(/unknown option '--console-override'/);
   });
@@ -691,13 +733,14 @@ describe('jira release rm-run', () => {
 
 const FROZEN_DESC = 'frozen: 2026-10-20\nfrozen-keys: K-1';
 
-function writeMirror(...issues: Array<{ key: string; fixVersions: string[]; status?: string }>): string {
+function writeMirror(...issues: Array<{ key: string; fixVersions: string[]; status?: string; resolved?: string }>): string {
   const dir = join(root, 'mirror');
   mkdirSync(dir);
   writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync: '2026-10-23T00:00:00Z' }));
   for (const i of issues) {
     writeFileSync(join(dir, `${i.key}.md`), `---\nkey: ${JSON.stringify(i.key)}\nstatus: ${JSON.stringify(i.status ?? 'In Progress')}\n` +
-      `type: "Task"\npriority: "Medium"\nfixVersions: ${JSON.stringify(i.fixVersions)}\n---\n`);
+      `type: "Task"\npriority: "Medium"\nfixVersions: ${JSON.stringify(i.fixVersions)}\n` +
+      `${i.resolved ? `resolved: ${JSON.stringify(i.resolved)}\n` : ''}---\n`);
   }
   return dir;
 }
@@ -813,6 +856,85 @@ describe('jira release state admissions budget', () => {
     expect(admissionBudget('admission-budget:x')).toBeUndefined();
     expect(admissionBudget('see admission-budget: 3 here')).toBeUndefined();
     expect(admissionBudget(undefined)).toBeUndefined();
+  });
+});
+
+describe('jira release state prints the version lines', () => {
+  const base = {
+    release: 'R1', status: 'OK', mode: 'observe', inputs: {}, admissions_today: {},
+    leaks: { unauthorized: [], ruled_in_non_member: [] }, requests: { open: [], claimed: [] }, integrity: [],
+  };
+  const dayOf = (n: number, came: number, done: number, left = 0, extra: Record<string, unknown> = {}) => ({
+    day: `2026-10-${String(n).padStart(2, '0')}`, came_in: came, done, left, open: came - done - left,
+    closed_undelivered: 0, arrived: {}, arrived_serious: 0, ...extra,
+  });
+  const lines = (days: unknown[], extra: Record<string, unknown> = {}) => ({
+    status: 'OK', as_of: (days.at(-1) as { day: string }).day, days, left: [], done_undated: 0,
+    open_by_priority: {}, oldest_untouched: null, unrecorded: { open: [], closed: [] }, ...extra,
+  });
+
+  it('prints every line kind, with the seven-day rise and the as-of day', () => {
+    const days = [
+      dayOf(1, 2, 0, 0, { arrived: { baseline: 2 } }), dayOf(2, 3, 0, 0, { arrived: { regression: 1 } }),
+      dayOf(3, 4, 1, 0, { arrived: { fold: 1 } }), dayOf(4, 4, 1, 0), dayOf(5, 5, 1, 0, { arrived: { regression: 1 }, arrived_serious: 1 }),
+      dayOf(6, 6, 2, 1, { arrived: { 'door:repair': 1 } }), dayOf(7, 6, 2, 1), dayOf(8, 7, 3, 1, { arrived: { regression: 1 } }),
+      dayOf(9, 7, 4, 1, { closed_undelivered: 1 }),
+    ];
+    const text = renderState({ ...base, burndown: {}, version_lines: { v1: lines(days, {
+      left: [{ key: 'K-6', day: '2026-10-06', authority: 'rm' }], done_undated: 1,
+      open_by_priority: { none: 1, High: 1 }, oldest_untouched: { key: 'K-3', since: '2026-10-02', days: 7 },
+      unrecorded: { open: ['K-9'], closed: [] },
+    }) } } as never);
+    expect(text.split('\n').filter((l) => l.startsWith('v1 '))).toEqual([
+      'v1 as of 2026-10-09: came in 7 (+4 in 7 days), done 4 (+4; 1 closed without delivery), left 1 (1 not by the operator), open 2 (came in, not done, not left)',
+      'v1 arrived in 7 days: regression 2, door:repair 1, fold 1',
+      'v1 arrived serious in 7 days: 1',
+      'v1 open by priority: High 1, none 1',
+      'v1 oldest untouched: K-3, waiting 7 days since 2026-10-02',
+      'v1 in Jira with no ledger record: 1 open, 0 closed (keys in --json)',
+      'v1 done with no date: 1',
+    ]);
+  });
+
+  it('a three-day series prints its real span', () => {
+    const text = renderState({ ...base, burndown: {}, version_lines: { v1: lines([dayOf(1, 1, 0), dayOf(2, 2, 0), dayOf(3, 3, 1)]) } } as never);
+    expect(text).toContain('v1 as of 2026-10-03: came in 3 (+3 in 3 days), done 1 (+1;');
+    expect(text).toContain('v1 arrived in 3 days: none');
+    expect(text).toContain('v1 oldest untouched: none');
+    expect(text).not.toContain('in 7 days');
+  });
+
+  it('prints the burn-down\'s admitted open and the lines\' open each with its label', () => {
+    const burndown = { v1: { baseline: 1, baseline_open: 0, admitted_open: 0, emergency_open: 0, deferred_out: 0 } };
+    const text = renderState({ ...base, burndown, version_lines: { v1: lines([dayOf(1, 1, 0), dayOf(2, 2, 1)]) } } as never);
+    expect(text).toContain('v1: baseline 1 (open 0), admitted open 0,');
+    expect(text).toContain('open 1 (came in, not done, not left)');
+  });
+
+  it('prints an unknown version as UNKNOWN with its reason and no number', () => {
+    const text = renderState({ ...base, burndown: {}, version_lines: { v1: { status: 'UNKNOWN', reason: 'the Jira mirror is unknown' } } } as never);
+    expect(text.split('\n').filter((l) => l.startsWith('v1 '))).toEqual(['v1 lines: UNKNOWN (the Jira mirror is unknown)']);
+  });
+
+  it('renderState prints the state\'s figures, never a recount', () => {
+    const records = ['K-1', 'K-2', 'K-3'].map((key) => ({ key, version: 'v1', placement: 'in', actual_member: true }));
+    const burndown = { v1: { baseline: 3, baseline_open: 3, admitted_open: 1, emergency_open: 0, deferred_out: 0 } };
+    const text = renderState({ ...base, records, burndown, version_lines: { v1: lines([dayOf(1, 7, 2)]) } } as never);
+    expect(text).toContain('came in 7');
+    expect(text).toContain('open 5 (came in, not done, not left)');
+    expect(text).not.toContain('came in 3');
+  });
+
+  it.each(['2026-10-22T08:00:00.000+0000', ''])('the state command exits 0 with a resolved date of %j', async (resolved) => {
+    const vf = join(root, 'verbatim.txt');
+    await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '106', '--verbatim-file', vf);
+    await run('operator', 'freeze', 'R1', '--version', 'v1', '--keys', 'K-1', '--decision', '104', '--verbatim-file', vf);
+    const mir = writeMirror({ key: 'K-1', fixVersions: ['v1'], status: 'Done', resolved });
+    process.exitCode = undefined;
+    out = [];
+    await run('state', 'R1', '--mirror-root', mir);
+    expect(process.exitCode).toBeUndefined();
+    expect(out.join('\n')).toMatch(/v1 as of \d{4}-\d\d-\d\d: came in 1 .*, done 1 /);
   });
 });
 
@@ -1059,6 +1181,8 @@ describe('routedJudge', () => {
     writeFileSync(join(dir, 'snapshot.json'), JSON.stringify(snapshot));
     for (const a of ['A', 'B']) writeFileSync(join(dir, `key-${a}.env`), `ANTHROPIC_API_KEY=sk-ant-dummy-${a}-0000\n`, { mode: 0o600 });
     if (roles !== undefined) writeFileSync(join(dir, 'roles.json'), JSON.stringify({ version: 1, roles }));
+    const hostTmp = tmpdir();
+    const ownTmp = mkdtempSync(join(hostTmp, 'release-tmp-'));
     const script = (name: string, body: string) => { writeFileSync(join(dir, name), `#!/bin/bash\n${body}\n`); chmodSync(join(dir, name), 0o700); };
     script('claude-fake', `{ echo "cwd=$PWD"; echo "acct=\${HIMMEL_API_ACCOUNT:-}"; printf 'arg=%s\\n' "$@"; echo --; } >> '${join(dir, 'fake.log')}'\n${fake.sleep ? `echo "pid=$$" >> '${join(dir, 'fake.log')}'\nsleep ${fake.sleep}\n` : ''}printf '%s' '${fake.out ?? envelope('from-fake')}'\nexit ${fake.rc ?? 0}`);
     script('alert-stub', `echo "alert $TG_MESSAGE" >> '${join(dir, 'alert.log')}'`);
@@ -1071,12 +1195,14 @@ describe('routedJudge', () => {
       HIMMEL_FLEET_SLOTS: join(dir, 'slots'), PATH: pathWithEmptyPs(dir),
       CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1', CADENCE_USAGE_CACHE: join(dir, 'native-cache.json'),
       ANTHROPIC_API_KEY: '', HIMMEL_API_KEY_ID: '',
+      WORKER_SESSION_DOC: '', FLEET_LAUNCH_DOC: '', FLEET_LAUNCH_MANIFEST: '', FLEET_LAUNCH_ATTEMPT: '', WORKER_SESSION_ATTEMPT_ID: '', WORKER_SESSION_PROFILE: '', FLEET_LAUNCH_WORKER_INTENT: '',
+      TMPDIR: ownTmp,
     };
     for (const [k, v] of Object.entries(set)) vi.stubEnv(k, v);
     const fallbackCalls: JudgeInput[] = [];
     const fallback: Judge = async (i) => { fallbackCalls.push(i); return [decision('from-fallback')] as never; };
     const read = (f: string) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8') : '');
-    return { fallback, fallbackCalls, read };
+    return { fallback, fallbackCalls, read, hostTmp };
   }
 
   it('the outer spawn timeout outlasts the launcher call timeout plus its five-second kill grace', () => {
@@ -1122,6 +1248,21 @@ describe('routedJudge', () => {
     expect(cwd).not.toBe('');
     expect(cwd.startsWith(join(dir, '..'))).toBe(false);
     expect(existsSync(join(cwd, '.git'))).toBe(false);
+  });
+
+  it('mapped inside a registered worker session: the managed-launch variables are blank, so the launcher runs against the test fleet and the fake answers', async () => {
+    const bucket = join(root, 'handovers');
+    mkdirSync(bucket);
+    writeFileSync(join(bucket, 'fleet-control.json'), JSON.stringify({ schema: 1, family: '00000000-0000-4000-8000-000000000000', mode: 'active', generation: 1, target: 30, attempts: {} }));
+    const doc = join(bucket, 'HIMMEL-10843-N10843-routed-judge-release-tests-2026-11-23.md');
+    writeFileSync(doc, '# HIMMEL-10843 - the routed-judge release tests - worker N10843 (claude-sonnet-5-5, native), 2026-11-23\n');
+    const managed = ['WORKER_SESSION_DOC', 'FLEET_LAUNCH_DOC', 'FLEET_LAUNCH_MANIFEST', 'FLEET_LAUNCH_ATTEMPT', 'WORKER_SESSION_ATTEMPT_ID', 'WORKER_SESSION_PROFILE', 'FLEET_LAUNCH_WORKER_INTENT'];
+    for (const k of managed) vi.stubEnv(k, k === 'FLEET_LAUNCH_WORKER_INTENT' ? '1' : k === 'WORKER_SESSION_PROFILE' ? 'worker-impl' : doc);
+    const w = world({ judge: ['B'] });
+    for (const k of managed) expect(process.env[k], k).toBe('');
+    const got = await makeRoutedJudge(w.fallback)(INPUT);
+    expect(got[0]).toMatchObject({ reason: 'from-fake' });
+    expect(w.fallbackCalls).toHaveLength(0);
   });
 
   it('judgeApiEnv carries exactly the pass-through names plus the pins and no other HIMMEL_API_ name', () => {
@@ -1182,7 +1323,12 @@ describe('routedJudge', () => {
 
   it('mapped, node kills the launcher at its spawn timeout: it exits 143, the run fails and no fallback runs', async () => {
     const w = world({ judge: ['B'] }, { sleep: 30 });
-    await expect(makeRoutedJudge(w.fallback, 60, 2000)(INPUT)).rejects.toMatchObject({ killed: true, status: 143 });
+    let fire!: () => void;
+    const gate = new Promise<void>((resolve) => { fire = resolve; });
+    const got = expect(makeRoutedJudge(w.fallback, 60, undefined, gate)(INPUT)).rejects.toMatchObject({ killed: true, status: 143 });
+    await vi.waitFor(() => expect(fakePid(w)).toBeGreaterThan(0), { timeout: 10_000 });
+    fire();
+    await got;
     expect(w.fallbackCalls).toHaveLength(0);
   }, 20_000);
 
@@ -1199,9 +1345,11 @@ describe('routedJudge', () => {
     expect(got[0]).toMatchObject({ reason: 'from-fallback' });
   });
 
-  it('judgeFor: the himmel mirror routes, any other mirror (a SALUS one, or slice A\'s no-mirror) is liveJudge', () => {
+  it('judgeFor: the door places every mirror by default (I3); only HIMMEL_RM_JUDGE=model reaches the parked judges', () => {
     const w = world({ judge: ['B'] });
-    void w;
+    vi.stubEnv('TMPDIR', w.hostTmp);
+    for (const m of [defaultRoot('HIMMEL'), defaultRoot('SALUS'), join(root, 'no-mirror')]) expect(judgeFor(ctxFor('R1', m))).toBe(doorJudge);
+    vi.stubEnv('HIMMEL_RM_JUDGE', 'model');
     expect(judgeFor(ctxFor('R1', defaultRoot('HIMMEL')))).toBe(routedJudge);
     expect(judgeFor(ctxFor('R1', defaultRoot('SALUS')))).toBe(liveJudge);
     expect(judgeFor(ctxFor('R1', join(root, 'no-mirror')))).toBe(liveJudge);
@@ -1227,6 +1375,16 @@ describe('RM apply names its writer', () => {
     await liveJira.setFixVersion('HIMMEL-1', 'add', 'v1');
     const put = vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT');
     expect(put?.[3]).toBe('rm-apply');
+  });
+
+  it('RM apply passes the ruling\'s record on to the client', async () => {
+    vi.mocked(request).mockImplementation((async (method: string) =>
+      method === 'GET' ? { fields: { fixVersions: [] } } : {}) as never);
+    const op = { kind: 'move' as const, from_v: 'v1', to_v: null };
+    await liveJira.setFixVersion('HIMMEL-1', 'remove', 'v1', { by: 'O-R-0001', op });
+    const put = vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT');
+    expect(put?.[3]).toBe('rm-apply');
+    expect(put?.[4]).toEqual({ leave: { by: 'O-R-0001', op } });
   });
 });
 
@@ -1476,23 +1634,22 @@ describe('a request for operator work carries the operator\'s words', () => {
     vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
   });
 
-  it('a gated INTAKE with no --decision is refused with the fix', async () => {
+  it('an operator-directed INTAKE with no --decision files, and the door rules it', async () => {
     await declared();
-    const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1')));
-    expect(msg).toContain('HIMMEL-1 is operator-directed; a request that places it needs a record of the operator\'s words');
-    expect(msg).toContain('jira release request v1.1.3 --verb INTAKE --key HIMMEL-1 --from backlog --to v1.1.3');
-    expect(msg).toContain('--decision <n> --words "<the operator\'s exact words>"');
-    expect(msg).not.toContain('454');
-    expect(existsSync(requestsFile())).toBe(false);
+    await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
+    expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+    expect(existsSync(requestsFile())).toBe(true);
   });
 
-  it('a High ticket is gated', async () => {
+  it('a High or Highest ticket files with no words, an INTAKE and a REVERSION alike', async () => {
     await declared();
     const mir = gateMirror({ key: 'HIMMEL-2', priority: 'High' }, { key: 'HIMMEL-3', priority: 'Highest', labels: ['operator-directed'] });
-    expect(await refusal(ask(mir, ...intake('HIMMEL-2')))).toContain('HIMMEL-2 is High;');
-    expect(await refusal(ask(mir, ...intake('HIMMEL-3')))).toContain('HIMMEL-3 is operator-directed and Highest;');
-    expect(await refusal(ask(mir, '--verb', 'REVERSION', '--key', 'HIMMEL-2', '--from', 'backlog', '--to', 'v1.1.4', '--why', 'moves into the next version')))
-      .toContain('needs a record of the operator\'s words');
+    await ask(mir, ...intake('HIMMEL-2'));
+    expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+    await ask(mir, ...intake('HIMMEL-3'));
+    expect(out.at(-1)).toBe('REQ Q-v1.1.3-0002');
+    await ask(mir, '--verb', 'REVERSION', '--key', 'HIMMEL-2', '--from', 'backlog', '--to', 'v1.1.4', '--why', 'moves into the next version');
+    expect(out.at(-1)).toBe('REQ Q-v1.1.3-0003');
   });
 
   it('a backlog target is not gated', async () => {
@@ -1514,14 +1671,12 @@ describe('a request for operator work carries the operator\'s words', () => {
     expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
   });
 
-  it('close-fold and repair origins are not gated', async () => {
+  it('no origin is gated: cli, create, close-fold and repair all pass an operator-directed ask', async () => {
     await declared();
     const ctx = ctxFor('v1.1.3', gateMirror(operatorDirected));
     const row = { verb: 'INTAKE' as const, key: 'HIMMEL-1', from_v: null, to_v: 'v1.1.3', why: 'closed into frozen v1.1.3 with no version of its own' };
     const ticket = { labels: ['operator-directed'], priority: 'Medium', open: true };
-    expect(() => refuseRequest(ctx, { ...row, origin: 'close-fold', ticket })).not.toThrow();
-    expect(() => refuseRequest(ctx, { ...row, origin: 'repair', ticket })).not.toThrow();
-    expect(() => refuseRequest(ctx, { ...row, origin: 'cli', ticket })).toThrow(/needs a record of the operator's words/);
+    for (const origin of ['cli', 'create', 'close-fold', 'repair'] as const) expect(() => refuseRequest(ctx, { ...row, origin, ticket })).not.toThrow();
   });
 
   it('inside HIMMEL_CONSOLE_LEG=1 the gate files as today', async () => {
@@ -1531,25 +1686,13 @@ describe('a request for operator work carries the operator\'s words', () => {
     expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
   });
 
-  it('the live GET supplies labels when the mirror lacks the key', async () => {
-    await declared();
-    vi.mocked(request).mockReset();
-    vi.mocked(request).mockImplementation((async () => ({
-      fields: { labels: ['operator-directed'], priority: { name: 'Medium' }, status: { statusCategory: { name: 'To Do' } } },
-    })) as never);
-    expect(await refusal(ask(gateMirror(), ...intake('HIMMEL-5')))).toContain('HIMMEL-5 is operator-directed;');
-    expect(vi.mocked(request).mock.calls[0].slice(0, 2)).toEqual(['GET', '/issue/HIMMEL-5?fields=labels,priority,status']);
-  });
-
-  it('an unreadable ticket on the CLI is refused, naming jira mirror and --decision', async () => {
+  it('a key the mirror lacks files with no live read of its labels', async () => {
     await declared();
     vi.mocked(request).mockReset();
     vi.mocked(request).mockImplementation((async () => { throw new Error('HTTP 503'); }) as never);
-    const msg = await refusal(ask(gateMirror(), ...intake('HIMMEL-6')));
-    expect(msg).toMatch(/HIMMEL-6 could not be read/);
-    expect(msg).toContain('jira mirror');
-    expect(msg).toContain('--decision <n> --words');
-    expect(existsSync(requestsFile())).toBe(false);
+    await ask(gateMirror(), ...intake('HIMMEL-6'));
+    expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+    expect(vi.mocked(request).mock.calls.find((c) => String(c[1]).startsWith('/issue/HIMMEL-6'))).toBeUndefined();
   });
 
   it('request --decision --words records the words and files the request citing them', async () => {
@@ -1620,15 +1763,14 @@ describe('a request for operator work carries the operator\'s words', () => {
       expect(vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT')).toBeUndefined();
     });
 
-    it('RED: an approval never stands in for the gate: a gated key with no words is refused, queues nothing and prints no REQ', async () => {
+    it('an approval is no placement: an operator-directed key with no words files a plain request that names no record', async () => {
       await declared();
       approve('HIMMEL-1');
       quiet();
       out = [];
-      const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1')));
-      expect(msg).toContain('needs a record of the operator\'s words');
-      expect(out).toEqual([]);
-      expect(queued()).toEqual([]);
+      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
+      expect(out).toEqual(['REQ Q-v1.1.3-0001']);
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-1', state: 'open', evidence: {} }]);
       expect(vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT')).toBeUndefined();
     });
 
@@ -1668,51 +1810,34 @@ describe('a request for operator work carries the operator\'s words', () => {
     });
   });
 
-  // Decision 2026-11-19, item 8: a words record already on file that names the key and the exact placement is cited; the chief does not type the words again.
-  describe('an existing words record places a gated ask without the words again', () => {
+  describe('a words record on file is not cited at the request: the ask files plain', () => {
     const record = (key: string, kind: string, from: string, to: string, words = WORDS) =>
       run('operator', 'decision', 'v1.1.3', '--decision', '9', '--keys', key, '--op', kind, '--from', from, '--to', to, '--words', words);
-    const legacyRecord = (key: string, kind: string, from: string, to: string) =>
-      run('operator', 'decision', 'v1.1.3', '--decision', '120', '--keys', key, '--op', kind, '--from', from, '--to', to, '--verbatim-file', join(root, 'verbatim.txt'));
-    const later = () => new Promise((r) => setTimeout(r, 5));
     const queued = () => (existsSync(requestsFile()) ? readFileSync(requestsFile(), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>) : []);
     const lastId = () => String(operatorRows().at(-1)?.id);
-    const operatorFile = () => join(root, 'state', 'v1.1.3', 'operator.jsonl');
-    const forgeApproval = (key: string) => appendChain(operatorFile(), loadKey(join(root, 'keys', 'v1.1.3.key')), {
-      id: `O-v1.1.3-ov-${key}`, kind: 'out-of-version', decision: '518', keys: [key], ts: new Date(Date.now() - 86_400_000).toISOString(),
-    });
-    const tamper = (edit: (row: Record<string, unknown>) => void) => {
-      const rows = readFileSync(operatorFile(), 'utf8').trim().split('\n');
-      const row = JSON.parse(rows.at(-1) ?? '{}') as Record<string, unknown>;
-      edit(row);
-      rows[rows.length - 1] = JSON.stringify(row);
-      writeFileSync(operatorFile(), `${rows.join('\n')}\n`);
-    };
     const quietJira = () => {
       vi.mocked(request).mockReset();
       vi.mocked(request).mockImplementation((async () => ({ fields: { labels: [] } })) as never);
     };
 
-    it('files with no --decision, cites the record, and records no operator row', async () => {
+    it('files with no --decision, prints no OPERATOR line, names no record and records no operator row', async () => {
       await declared();
       decisionFile();
       await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
-      const id = lastId();
       const rows = operatorRows().length;
+      out = [];
       await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
-      expect(out.at(-2)).toContain(`OPERATOR ${id} `);
-      expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
-      expect(queued()).toMatchObject([{ key: 'HIMMEL-1', verb: 'INTAKE', from_v: null, to_v: 'v1.1.3', state: 'open', evidence: { operator: id } }]);
+      expect(out).toEqual(['REQ Q-v1.1.3-0001']);
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-1', verb: 'INTAKE', from_v: null, to_v: 'v1.1.3', state: 'open', evidence: {} }]);
       expect(operatorRows()).toHaveLength(rows);
     });
 
-    it('a REVERSION into the next version is placed by its own move record', async () => {
+    it('a REVERSION with a move record on file files plain', async () => {
       await declared();
       decisionFile();
       await record('HIMMEL-1', 'move', 'backlog', 'v1.1.4');
-      const id = lastId();
       await ask(gateMirror(operatorDirected), '--verb', 'REVERSION', '--key', 'HIMMEL-1', '--from', 'backlog', '--to', 'v1.1.4', '--why', 'moves into the next version');
-      expect(queued()).toMatchObject([{ key: 'HIMMEL-1', verb: 'REVERSION', to_v: 'v1.1.4', evidence: { operator: id } }]);
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-1', verb: 'REVERSION', to_v: 'v1.1.4', evidence: {} }]);
     });
 
     it('a repeat of the ask returns the same open request and queues nothing more', async () => {
@@ -1720,79 +1845,33 @@ describe('a request for operator work carries the operator\'s words', () => {
       decisionFile();
       await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
       await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
+      out = [];
       await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
-      expect(out.slice(-1)).toEqual(['REQ Q-v1.1.3-0001']);
+      expect(out).toEqual(['REQ Q-v1.1.3-0001']);
       expect(queued()).toHaveLength(1);
     });
 
-    it('a ticket that cannot be read is placed too, by a record that names its key', async () => {
+    it('the request reads no record: coveringRecord is never called', async () => {
       await declared();
       decisionFile();
-      await record('HIMMEL-6', 'add', 'backlog', 'v1.1.3');
-      const id = lastId();
-      vi.mocked(request).mockReset();
-      vi.mocked(request).mockImplementation((async () => { throw new Error('HTTP 503'); }) as never);
-      await ask(gateMirror(), ...intake('HIMMEL-6'));
-      expect(queued()).toMatchObject([{ key: 'HIMMEL-6', evidence: { operator: id } }]);
+      await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
+      const spy = vi.spyOn(engineMod, 'coveringRecord');
+      try {
+        await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
+        expect(spy).not.toHaveBeenCalled();
+      } finally {
+        spy.mockRestore();
+      }
     });
 
-    // Each non-match keeps today's refusal, writes no request and no operator row.
-    const noMatch: Array<[string, () => Promise<unknown>]> = [
-      ['a live out-of-version approval (work permission) is no placement', async () => { forgeApproval('HIMMEL-1'); }],
-      ['a record that names another key', () => record('HIMMEL-2', 'add', 'backlog', 'v1.1.3')],
-      ['a record for another version', () => record('HIMMEL-1', 'add', 'backlog', 'v1.1.4')],
-      ['a record with the wrong op (a move from backlog)', () => record('HIMMEL-1', 'move', 'backlog', 'v1.1.3')],
-      ['a record with the wrong from (a move from v1.1.4)', () => record('HIMMEL-1', 'move', 'v1.1.4', 'v1.1.3')],
-      ['a keep record', () => record('HIMMEL-1', 'keep', 'v1.1.3', 'v1.1.3')],
-      ['a legacy record, which holds no checked words', () => legacyRecord('HIMMEL-1', 'add', 'backlog', 'v1.1.3')],
-      ['a record superseded by a later remove', async () => {
-        await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
-        await later();
-        await record('HIMMEL-1', 'remove', 'v1.1.3', 'backlog');
-      }],
-      ['a record whose signature does not verify', async () => {
-        await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
-        tamper((row) => { row.mac = `${String(row.mac).startsWith('0') ? '1' : '0'}${String(row.mac).slice(1)}`; });
-      }],
-    ];
-    it.each(noMatch)('still refuses: %s', async (_name, setup) => {
-      await declared();
-      decisionFile();
-      await setup();
-      const rows = operatorRows().length;
-      const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1')));
-      expect(msg).toContain('HIMMEL-1 is operator-directed; a request that places it needs a record of the operator\'s words');
-      expect(msg).toContain('--decision <n> --words "<the operator\'s exact words>"');
-      expect(queued()).toEqual([]);
-      expect(operatorRows()).toHaveLength(rows);
-    });
-
-    it('an operator claim in --evidence is not a citation: a gated ask naming another record in its evidence is still refused', async () => {
+    it('an operator claim in --evidence files as the filer wrote it and adds no operator row', async () => {
       await declared();
       decisionFile();
       await record('HIMMEL-2', 'add', 'backlog', 'v1.1.3');
-      const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'), '--evidence', JSON.stringify({ operator: lastId() })));
-      expect(msg).toContain('needs a record of the operator\'s words');
-      expect(queued()).toEqual([]);
-    });
-
-    it('the refusal names both ways: cite a record already on file, or record the words', async () => {
-      await declared();
-      const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1')));
-      expect(msg).toContain('cite one on file that already names HIMMEL-1 and exactly this placement');
-      expect(msg).toContain('cited with no --decision');
-      expect(msg).toContain('jira release request v1.1.3 --verb INTAKE --key HIMMEL-1 --from backlog --to v1.1.3 --why "<why>" --decision <n> --words');
-    });
-
-    it('the unreadable-ticket refusal names both ways too', async () => {
-      await declared();
-      vi.mocked(request).mockReset();
-      vi.mocked(request).mockImplementation((async () => { throw new Error('HTTP 503'); }) as never);
-      const msg = await refusal(ask(gateMirror(), ...intake('HIMMEL-6')));
-      expect(msg).toMatch(/HIMMEL-6 could not be read/);
-      expect(msg).toContain('jira mirror');
-      expect(msg).toContain('already names HIMMEL-6 and exactly this placement');
-      expect(msg).toContain('--decision <n> --words');
+      const rows = operatorRows().length;
+      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'), '--evidence', JSON.stringify({ operator: lastId() }));
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-1', evidence: { operator: lastId() } }]);
+      expect(operatorRows()).toHaveLength(rows);
     });
 
     it('a ticket that is not gated files plain and cites nothing, even when a record on file names its key', async () => {
@@ -1818,44 +1897,6 @@ describe('a request for operator work carries the operator\'s words', () => {
       expect(queued()).toMatchObject([{ key: 'HIMMEL-1', evidence: {} }]);
     });
 
-    it('the create path offers no citation it does not make: its refusal still says to add --decision and --words to the command', () => {
-      const ctx = ctxFor('v1.1.3', gateMirror(operatorDirected));
-      const row = { verb: 'INTAKE' as const, key: 'HIMMEL-1', from_v: null, to_v: 'v1.1.3', why: 'closed into frozen v1.1.3 with no version of its own' };
-      let msg = '';
-      try {
-        refuseRequest(ctx, { ...row, origin: 'create', ticket: { labels: ['operator-directed'], priority: 'Medium', open: true } });
-      } catch (e) {
-        msg = (e as Error).message;
-      }
-      expect(msg).toContain('needs a record of the operator\'s words');
-      expect(msg).toContain('add --decision <n> --words');
-      expect(msg).not.toContain('cite one on file');
-    });
-
-    it('a record reversed after the command\'s match and before the filing: nothing is filed and the chief is told to ask again', async () => {
-      await declared();
-      decisionFile();
-      await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
-      const id = lastId();
-      const real = engineMod.coveringRecord;
-      const spy = vi.spyOn(engineMod, 'coveringRecord').mockImplementation((c, k) => {
-        const found = real(c, k);
-        appendChain(operatorFile(), loadKey(join(root, 'keys', 'v1.1.3.key')), {
-          id: 'O-v1.1.3-landed', kind: 'decision', decision: '120', keys: ['HIMMEL-1'], op: 'remove', from_v: 'v1.1.3', to_v: null,
-          verbatim: 'legacy, no words', ts: new Date(Date.now() + 60_000).toISOString(),
-        });
-        return found;
-      });
-      try {
-        const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1')));
-        expect(msg).toContain(`${id} no longer covers HIMMEL-1; ask again`);
-        expect(queued()).toEqual([]);
-        expect(spy).toHaveBeenCalledTimes(1);
-      } finally {
-        spy.mockRestore();
-      }
-    });
-
     it('--decision with WRONG words is refused as before even when a covering record is on file for the same key', async () => {
       await declared();
       decisionFile();
@@ -1878,34 +1919,7 @@ describe('a request for operator work carries the operator\'s words', () => {
       expect(operatorRows()).toHaveLength(rows);
     });
 
-    // review F4: a row after the verified prefix is invisible, so the no-words path refuses and says why
-    it('an operator chain that does not verify to its end refuses the ask and says so, though an older record covers it', async () => {
-      await declared();
-      decisionFile();
-      await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
-      await later();
-      await record('HIMMEL-1', 'remove', 'v1.1.3', 'backlog');
-      tamper((row) => { row.mac = `${String(row.mac).startsWith('0') ? '1' : '0'}${String(row.mac).slice(1)}`; });
-      const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1')));
-      expect(msg).toContain('the operator chain of v1.1.3 could not be verified to its end');
-      expect(msg).toContain('bad signature');
-      expect(msg).toContain('needs a record of the operator\'s words');
-      expect(queued()).toEqual([]);
-    });
-
-    it('a refusal on a chain that verifies does not blame the chain', async () => {
-      await declared();
-      const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1')));
-      expect(msg).not.toContain('could not be verified');
-    });
-
-    it('a release that is not declared keeps the gate refusal and creates no state', async () => {
-      const msg = await refusal(run('request', 'v9.9.9', '--mirror-root', gateMirror(operatorDirected), ...intake('HIMMEL-1')));
-      expect(msg).toContain('needs a record of the operator\'s words');
-      expect(existsSync(join(root, 'state', 'v9.9.9'))).toBe(false);
-    });
-
-    it('a console leg is exempt as before: it files plain and cites nothing, even when a record covers the ask', async () => {
+    it('a console leg files plain and cites nothing, as every filer does', async () => {
       await declared();
       decisionFile();
       await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
@@ -1916,13 +1930,13 @@ describe('a request for operator work carries the operator\'s words', () => {
       expect(out.some((l) => l.startsWith('OPERATOR '))).toBe(false);
     });
 
-    it('a bridge session cannot file on a record: refused by the fence, nothing queued', async () => {
+    it('a bridge session files plain and claims no record on file', async () => {
       await declared();
       decisionFile();
       await record('HIMMEL-1', 'add', 'backlog', 'v1.1.3');
       vi.stubEnv('HIMMEL_BRIDGE_SESSION', '1');
-      await expect(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'))).rejects.toThrow(/Telegram bridge session/);
-      expect(queued()).toEqual([]);
+      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-1', evidence: {} }]);
     });
 
     it('the release manager still cannot file a request, with or without a record', async () => {
@@ -1993,7 +2007,7 @@ describe('a request for operator work carries the operator\'s words', () => {
       const m = gateMirror({ key: 'HIMMEL-9953' });
       expect(await refusal(ask(m, ...intake('HIMMEL-9953'), '--required-by', 'HIMMEL-9953'))).toMatch(/names another ticket key/);
       expect(await refusal(ask(m, ...intake('HIMMEL-9953'), '--required-by', 'nine'))).toMatch(/names another ticket key/);
-      expect(await refusal(ask(m, ...intake('HIMMEL-9953'), '--required-by', 'HIMMEL-9914', '--evidence', '{"follow_up_of":"HIMMEL-1"}'))).toMatch(/contradicts --required-by/);
+      expect(await refusal(ask(m, ...intake('HIMMEL-9953'), '--required-by', 'HIMMEL-9914', '--evidence', '{"follow_up_of":"HIMMEL-1"}'))).toMatch(/may not carry follow_up_of; pass --required-by/);
       expect(existsSync(requestsFile())).toBe(false);
     });
 
@@ -2067,5 +2081,509 @@ describe('a request for operator work carries the operator\'s words', () => {
     decisionFile();
     expect(await refusal(decide('--op', 'add', '--to', 'v1.1.3'))).toMatch(/--words or --verbatim-file/);
     expect(await refusal(decide('--op', 'add', '--to', 'v1.1.3', '--words', WORDS, '--verbatim-file', join(root, 'verbatim.txt')))).toMatch(/--words or --verbatim-file/);
+  });
+});
+
+describe('the door at the request entry point', () => {
+  const vf = () => join(root, 'verbatim.txt');
+  const declared = () => run('operator', 'declare', 'v1.1.3', '--versions', 'v1.1.3,v1.1.4', '--decision', '106', '--verbatim-file', vf());
+  type Issue = { key: string; labels?: string[]; priority?: string; fixVersions?: string[] };
+  const doorMirror = (...issues: Issue[]): string => {
+    const dir = join(root, 'door-mirror');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-22T00:00:00Z' }));
+    for (const i of issues) {
+      writeFileSync(join(dir, `${i.key}.md`), `---\nkey: ${JSON.stringify(i.key)}\nstatus: "To Do"\nstatusCategory: "To Do"\ntype: "Task"\n`
+        + `priority: ${JSON.stringify(i.priority ?? 'Medium')}\nlabels: ${JSON.stringify(i.labels ?? [])}\nfixVersions: ${JSON.stringify(i.fixVersions ?? [])}\n---\n`);
+    }
+    return dir;
+  };
+  const ask = (mir: string, ...a: string[]) => run('request', 'v1.1.3', '--mirror-root', mir, ...a);
+  const intake = (key: string, to = 'v1.1.3') => ['--verb', 'INTAKE', '--key', key, '--from', 'backlog', '--to', to, '--why', 'the chief places it after the review'];
+  const refusal = async (p: Promise<unknown>): Promise<string> => {
+    try {
+      await p;
+    } catch (e) {
+      return (e as Error).message;
+    }
+    throw new Error('expected a refusal');
+  };
+  const requests = () => {
+    const path = join(root, 'state', 'v1.1.3', 'requests.jsonl');
+    return existsSync(path) ? readChain<Record<string, unknown>>(path, loadKey(join(root, 'keys', 'v1.1.3.key'))).verified : [];
+  };
+  const tree = (marker: Record<string, string> = {}) => {
+    const procRoot = mkdtempSync(join(root, 'proc-'));
+    for (const [pid, ppid, uid, env] of [[300, 200, 1000, {}], [200, 100, 1000, marker], [100, 1, 1000, {}], [1, 0, 0, null]] as const) {
+      mkdirSync(join(procRoot, String(pid)));
+      writeFileSync(join(procRoot, String(pid), 'status'), `Name:\tp\nPPid:\t${ppid}\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\nNSpid:\t${pid}\n`);
+      if (env) writeFileSync(join(procRoot, String(pid), 'environ'), Object.entries({ PATH: '/usr/bin', ...env }).map(([k, v]) => `${k}=${v}\0`).join(''));
+    }
+    mkdirSync(join(procRoot, '300', 'ns'));
+    symlinkSync('pid:[4026531836]', join(procRoot, '300', 'ns', 'pid'));
+    symlinkSync('user:[4026531837]', join(procRoot, '300', 'ns', 'user'));
+    symlinkSync('300', join(procRoot, 'self'));
+    const hostNsPath = join(procRoot, 'host-ns-ref');
+    writeFileSync(hostNsPath, 'pid:[4026531836] user:[4026531837]\n');
+    return { procRoot, hostNsPath };
+  };
+
+  beforeEach(() => {
+    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'admissions-ledger.jsonl'));
+    fenceTree.at = tree();
+  });
+  afterEach(() => {
+    fenceTree.at = null;
+  });
+
+  it('the evidence fence refuses each field only its own path writes, one at a time, and files nothing (I12, T8)', async () => {
+    await declared();
+    const m = doorMirror({ key: 'K-2' });
+    for (const [field, value] of [['chief_placement', { reason: 'x' }], ['operator_record', 'O-v1.1.3-0001'], ['filed_by', 'bridge'], ['operator_update', 7],
+      ['bridge_chat', 1], ['remainder', true], ['follow_up_of', 'K-1']] as const) {
+      expect(await refusal(ask(m, ...intake('K-2'), '--evidence', JSON.stringify({ [field]: value })))).toMatch(new RegExp(`--evidence may not carry ${field}`));
+    }
+    expect(requests()).toEqual([]);
+  });
+
+  it('the fence lets a PR number and the typed --required-by through (I12)', async () => {
+    await declared();
+    const m = doorMirror({ key: 'K-2' }, { key: 'K-3' });
+    await ask(m, ...intake('K-2'), '--evidence', '{"pr":12}');
+    await ask(m, ...intake('K-3'), '--required-by', 'K-1');
+    expect(requests().map((r) => r.evidence)).toEqual([{ pr: 12 }, { follow_up_of: 'K-1', remainder: true }]);
+  });
+
+  it('--chief-reason is the console session\'s only, and never under a worker (I12)', async () => {
+    await declared();
+    const m = doorMirror({ key: 'K-2' });
+    expect(await refusal(ask(m, ...intake('K-2'), '--chief-reason', 'the release needs it'))).toMatch(/--chief-reason refused: .*HIMMEL_CONSOLE=1/);
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    fenceTree.at = tree({ HIMMEL_CONSOLE_LEG: '1' });
+    expect(await refusal(ask(m, ...intake('K-2'), '--chief-reason', 'the release needs it'))).toMatch(/--chief-reason refused: .*chief-spawned worker/);
+    expect(requests()).toEqual([]);
+  });
+
+  it('an operator-directed INTAKE with no --decision files for any filer, and the door rules it (S3, I7)', async () => {
+    await declared();
+    await ask(doorMirror({ key: 'K-2', labels: ['operator-directed'] }), '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1.1.3', '--why', 'the operator asked for it in the chief window');
+    expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+    expect(requests()).toMatchObject([{ key: 'K-2', to_v: 'v1.1.3', state: 'open', evidence: {} }]);
+  });
+
+  it('with both checks passing, --chief-reason writes chief_placement on a High ticket that files without it too (I12, D-j)', async () => {
+    await declared();
+    const m = doorMirror({ key: 'K-2', priority: 'High' }, { key: 'K-3', priority: 'High' });
+    await ask(m, ...intake('K-3'));
+    expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    await ask(m, ...intake('K-2'), '--chief-reason', 'the release needs it');
+    const [, row] = requests();
+    expect(row).toMatchObject({ key: 'K-2', to_v: 'v1.1.3', state: 'open', evidence: { chief_placement: { reason: 'the release needs it' } } });
+    expect((row.evidence as { chief_placement: { ts: string } }).chief_placement.ts).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('--chief-reason never places a key later than a version it holds, nor in the backlog while it holds one (P5)', async () => {
+    await declared();
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    const m = doorMirror({ key: 'K-2', fixVersions: ['v1.1.3'] });
+    expect(await refusal(ask(m, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1.1.4', '--why', 'the chief places it after the review', '--chief-reason', 'later')))
+      .toMatch(/cannot place K-2 in v1\.1\.4, later than v1\.1\.3/);
+    expect(await refusal(ask(m, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'backlog', '--why', 'the chief places it after the review', '--chief-reason', 'out')))
+      .toMatch(/cannot send K-2 to the backlog while it holds v1\.1\.3/);
+    expect(requests()).toEqual([]);
+  });
+
+  it('--chief-reason joins a waiting request as the same request, and refuses a claimed one or another move (P11)', async () => {
+    await declared();
+    const m = doorMirror({ key: 'K-2' }, { key: 'K-3' });
+    await ask(m, ...intake('K-2', 'v1.1.4'));
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    expect(await refusal(ask(m, ...intake('K-2'), '--chief-reason', 'the release needs it')))
+      .toMatch(/Q-v1\.1\.3-0001 on K-2 waits for INTAKE backlog to v1\.1\.4; withdraw it to place the key elsewhere/);
+    await ask(m, ...intake('K-2', 'v1.1.4'), '--chief-reason', 'the release needs it');
+    const rows = requests();
+    expect(rows.map((r) => r.req)).toEqual(['Q-v1.1.3-0001', 'Q-v1.1.3-0001']);
+    expect(Object.keys(rows[1]).sort()).toEqual(Object.keys(rows[0]).sort());
+    expect(rows[1]).toMatchObject({ state: 'open', to_v: 'v1.1.4', evidence: { chief_placement: { reason: 'the release needs it' } } });
+    vi.stubEnv('HIMMEL_CONSOLE', '');
+    await ask(m, ...intake('K-3'));
+    const doc = '/abs/rm-doc.md';
+    const rm = { ...ctxFor('v1.1.3', m), env: { ...process.env, HIMMEL_RELEASE_MANAGER: '1', HIMMEL_CONSOLE_LEG: '1', HIMMEL_RM_DOC: doc, HIMMEL_RM_RELEASE: 'v1.1.3' } };
+    engineMod.leaseAcquire(rm, { expectEpoch: 0, doc, session: 'rm-1' });
+    engineMod.claim(rm);
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    expect(await refusal(ask(m, ...intake('K-3'), '--chief-reason', 'the release needs it'))).toMatch(/Q-v1\.1\.3-0002 on K-3 is claimed; ask again after the run/);
+  });
+
+  it('the repair line apply prints for a door ruling holding both ends runs as written and files the chief placement (P1, T5)', async () => {
+    await declared();
+    vi.stubEnv('HOME', join(root, 'home'));
+    vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
+    const mir = join(root, 'home', '.himmel', 'state', 'jira-mirror', 'HIMMEL');
+    mkdirSync(mir, { recursive: true });
+    writeFileSync(join(mir, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-22T00:00:00Z' }));
+    writeFileSync(join(mir, 'HIMMEL-4.md'), '---\nkey: "HIMMEL-4"\nstatus: "To Do"\nstatusCategory: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: []\nfixVersions: ["v1.1.3","v1.1.4"]\n---\n');
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    const line = 'jira release request v1.1.3 --verb REVERSION --key HIMMEL-4 --from v1.1.4 --to v1.1.3 --why "finish R-v1.1.3-0001: HIMMEL-4 holds both v1.1.4 and v1.1.3"'
+      + ' --chief-reason "repair of R-v1.1.3-0001, interrupted between its add and its remove"';
+    const argv = [...line.matchAll(/"([^"]*)"|(\S+)/g)].map((x) => x[1] ?? x[2]);
+    expect(argv.slice(0, 2)).toEqual(['jira', 'release']);
+    await run(...argv.slice(2));
+    expect(requests()).toMatchObject([{ verb: 'REVERSION', key: 'HIMMEL-4', from_v: 'v1.1.4', to_v: 'v1.1.3', state: 'open',
+      evidence: { chief_placement: { reason: 'repair of R-v1.1.3-0001, interrupted between its add and its remove' } } }]);
+  });
+});
+
+describe('jira release for-project', () => {
+  it('prints the declared release and its current for HIMMEL, and [] for SALUS (T10)', async () => {
+    await run('operator', 'declare', 'v1.1.3', '--versions', 'v1.1.3,v1.1.4', '--decision', '106', '--verbatim-file', join(root, 'verbatim.txt'));
+    await run('for-project', 'HIMMEL', '--json');
+    expect(JSON.parse(out.at(-1) as string)).toEqual([{ release: 'v1.1.3', current: 'v1.1.3', versions: ['v1.1.3', 'v1.1.4'] }]);
+    await run('for-project', 'SALUS', '--json');
+    expect(JSON.parse(out.at(-1) as string)).toEqual([]);
+  });
+
+  it('fails when a declaration that could name the project does not parse', async () => {
+    mkdirSync(join(root, 'state', 'R9'), { recursive: true });
+    writeFileSync(join(root, 'state', 'R9', 'release.json'), 'not json');
+    await expect(run('for-project', 'HIMMEL', '--json')).rejects.toThrow(/cannot be read/);
+  });
+});
+
+describe('the door\'s alerts after rm-run (N4, I13)', () => {
+  const mirror = (key: string, priority: string, labels: string[]) => {
+    const dir = join(root, 'alert-mirror');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-22T00:00:00Z' }));
+    writeFileSync(join(dir, `${key}.md`), `---\nkey: "${key}"\nstatus: "To Do"\nstatusCategory: "To Do"\ntype: "Task"\npriority: "${priority}"\nlabels: ${JSON.stringify(labels)}\nfixVersions: []\n---\n`);
+    return dir;
+  };
+  const line = (key: string, verb: string, op: string, outcome: string, ground: string) =>
+    `RULING R-R1-0001 Q-R1-0001 ${verb} ${key} ${op} backlog→backlog ${outcome} backlog sector=s — ${ground}: the reason`;
+
+  it('a door BACKLOG on a security key still alerts; a door line raises no High alert; a non-door High BACKLOG does', async () => {
+    const sec = ctxFor('R1', mirror('K-2', 'Medium', ['security']));
+    expect(await backlogAlerts(sec, 'R1', [line('K-2', 'INTAKE', 'none', 'BACKLOG', 'door:mild-no-next')]))
+      .toEqual(['RM-RUN R1 alert: K-2 security BACKLOG: the reason']);
+    const high = ctxFor('R1', mirror('K-3', 'High', []));
+    expect(await backlogAlerts(high, 'R1', [line('K-3', 'INTAKE', 'none', 'BACKLOG', 'door:operator-standing:R-R1-0009')])).toEqual([]);
+    expect(await backlogAlerts(high, 'R1', [line('K-3', 'INTAKE', 'none', 'BACKLOG', 'frozen-set')])).toEqual(['RM-RUN R1 alert: K-3 High BACKLOG: the reason']);
+  });
+
+  it('a door AD-HOC no change and a door KEEP print nothing (I13)', async () => {
+    const high = ctxFor('R1', mirror('K-3', 'High', ['security']));
+    expect(await backlogAlerts(high, 'R1', [
+      line('K-3', 'INTAKE', 'none', 'AD-HOC', 'door:operator-standing:R-R1-0009'),
+      line('K-3', 'REVERSION', 'keep', 'KEEP', 'door:only-operator-moves-out'),
+    ])).toEqual([]);
+  });
+});
+
+describe('liveJira.issue reads the labels and takes the run\'s signal (R3-F1, F4)', () => {
+  it('asks Jira for labels, returns them on the snapshot, and passes the signal on', async () => {
+    vi.mocked(request).mockReset();
+    vi.mocked(request).mockImplementation((async () => ({ fields: {
+      status: { name: 'In Progress', statusCategory: { name: 'In Progress' } }, issuetype: { name: 'Task' }, priority: null,
+      fixVersions: [], resolution: null, labels: ['operator-directed'],
+    } })) as never);
+    const stop = new AbortController();
+    const got = await liveJira.issue('HIMMEL-7', { signal: stop.signal });
+    const [method, path, body, writer, opts] = vi.mocked(request).mock.calls[0] as unknown[];
+    expect([method, body, writer]).toEqual(['GET', undefined, undefined]);
+    expect(String(path)).toMatch(/^\/issue\/HIMMEL-7\?fields=.*\blabels\b/);
+    expect((opts as { signal?: AbortSignal }).signal).toBe(stop.signal);
+    expect(got).toMatchObject({ key: 'HIMMEL-7', labels: ['operator-directed'], priority: '', statusCategory: 'In Progress', sector: null });
+  });
+
+  it('adds labels with one update call', async () => {
+    vi.mocked(request).mockReset();
+    vi.mocked(request).mockImplementation((async () => undefined) as never);
+    await liveJira.addLabels('HIMMEL-7', ['backlog']);
+    expect(vi.mocked(request).mock.calls[0]).toEqual(['PUT', '/issue/HIMMEL-7', { update: { labels: [{ add: 'backlog' }] } }]);
+  });
+});
+
+describe('release core-check reads who signs (I13)', () => {
+  const CORE_PATH = 'scripts/handover/chief-kit/tick.sh';
+  let mirror: string;
+  let corePaths: string;
+
+  beforeEach(async () => {
+    mirror = join(root, 'mirror');
+    mkdirSync(mirror);
+    writeFileSync(join(mirror, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-23T00:00:00Z' }));
+    for (const k of ['K-5', 'K-6']) writeFileSync(join(mirror, `${k}.md`), `---\nkey: "${k}"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nfixVersions: []\n---\n`);
+    corePaths = join(root, 'core-paths.txt');
+    writeFileSync(corePaths, '^scripts/handover/chief-kit/tick\\.sh$\n');
+    const vf = join(root, 'verbatim.txt');
+    for (const r of ['R1', 'R2']) await run('operator', 'declare', r, '--versions', r === 'R1' ? 'v1' : 'v2', '--decision', '1', '--verbatim-file', vf);
+    await run('operator', 'core-bypass', 'R1', '--keys', 'K-5', '--decision', '412', '--verbatim-file', vf);
+    await run('operator', 'core-bypass', 'R1', '--keys', 'K-6', '--decision', '413', '--verbatim-file', vf);
+    out = [];
+  });
+  const check = async (...keys: string[]) => {
+    out = [];
+    await run('core-check', '--paths', CORE_PATH, '--key', ...keys, '--mirror', mirror, '--core-paths', corePaths);
+    return out;
+  };
+
+  it('release core-check on a fixture root holding a mark and an operator core-bypass for the same key, both appended as chain rows, prints no BYPASS for it', async () => {
+    expect(await check('K-5', 'K-6')).toEqual([expect.stringMatching(/^BYPASS-NEEDS-SPEC K-5 operator no spec-review record for K-5 \(bypass: O-R1-\d+ decision 412\)$/), expect.stringMatching(/^BYPASS-NEEDS-SPEC K-6 operator no spec-review record for K-6 \(bypass: O-R1-\d+ decision 413\)$/)]);
+    const path = join(root, 'state', 'R1', 'operator.jsonl');
+    const key = loadKey(join(root, 'keys', 'R1.key'));
+    appendChain<OperatorRow>(path, key, {
+      id: `O-R1-${String(readChain<OperatorRow>(path, key).rows.length + 1).padStart(4, '0')}`,
+      kind: 'spec-signer', ts: new Date().toISOString(), decision: '1170', keys: ['K-5'], signer: 'operator', verbatim: 'K-5 is mine to sign',
+    });
+    expect(await check('K-5', 'K-6')).toEqual([`CORE K-5 ${CORE_PATH}`, expect.stringMatching(/^BYPASS-NEEDS-SPEC K-6 operator no spec-review record for K-6 \(bypass: O-R1-\d+ decision 413\)$/)]);
+  });
+
+  it('with the operator core-bypass in a healthy declared release and a chain break in another, release core-check prints no BYPASS for it', async () => {
+    const broken = join(root, 'state', 'R2', 'operator.jsonl');
+    writeFileSync(broken, `${readFileSync(broken, 'utf8')}not json\n`);
+    expect(await check('K-5', 'K-6')).toEqual([`CORE K-5 ${CORE_PATH}`, `CORE K-6 ${CORE_PATH}`]);
+  });
+});
+
+describe('the spec signer: operator spec-signer, operator spec --signer and signer-check', () => {
+  const opPath = () => join(root, 'state', 'R1', 'operator.jsonl');
+  const rowsOf = (kind: string) => readChain<OperatorRow>(opPath(), loadKey(join(root, 'keys', 'R1.key'))).verified.filter((r) => r.kind === kind);
+  let mir: string;
+  let sent: string;
+  const sender = (body: string) => {
+    writeFileSync(join(root, 'sender.sh'), `#!/usr/bin/env bash\n${body}\n`);
+    chmodSync(join(root, 'sender.sh'), 0o755);
+  };
+  const decide = (n: string, words: string) => {
+    mkdirSync(join(root, 'specs', 'decisions'), { recursive: true });
+    writeFileSync(join(root, 'specs', 'decisions', `verbatim-decision-${n}-operator-11-23.txt`), `Decision ${n}, operator, 2026-11-23.\n\n${words}\n`);
+  };
+  function specFile(name: string, ticket: string | null, base = 'specs'): string {
+    const dir = join(root, base, name.replace(/\.md$/, ''));
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'est.json'), JSON.stringify({ median_seq: 1, sigma: 0.1, dod: { passed: true } }));
+    const p = join(dir, name);
+    writeFileSync(p, [`# ${ticket ?? 'K-1'}: a fixture design${ticket ? `\n\n- Ticket: ${ticket}` : ''}`, '', 'Estimate record: est.json', '',
+      '## Alternatives considered', '', '- none better.', '', '## Definition of done', '', '- the fixture signs.', '', '## Invariants', '', 'none', ''].join('\n'));
+    writeFileSync(`${p}.critic-spec-r1.md`, 'the critic\'s return\n\nSPEC CLEAN\n');
+    writeFileSync(`${p}.critic-plan-r1.md`, 'the critic\'s return\n\nPLAN CLEAN\n');
+    return p;
+  }
+  const signArgs = (keys: string, p: string) => ['operator', 'spec', 'R1', '--keys', keys, '--spec', p, '--verdict', `${p}.critic-spec-r1.md`, '--verdict', `${p}.critic-plan-r1.md`];
+  const chiefSign = (keys: string, p: string) => run(...signArgs(keys, p), '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'));
+  const put = (keys: string[] | undefined, signer: 'chief' | 'operator', decision: string) => {
+    const k = loadKey(join(root, 'keys', 'R1.key'));
+    return appendChain<OperatorRow>(opPath(), k, {
+      id: `O-R1-${String(readChain<OperatorRow>(opPath(), k).rows.length + 1).padStart(4, '0')}`,
+      kind: 'spec-signer', ts: new Date().toISOString(), decision, signer, ...(keys ? { keys } : {}), verbatim: `the operator's words, decision ${decision}`,
+    });
+  };
+  const signerCheck = async (...args: string[]) => {
+    out = [];
+    await run('signer-check', '--mirror', mir, ...args);
+    return out;
+  };
+  const STATION_CHIEF = 'the chief signs every spec again from now on';
+  const OP_K1 = 'the operator signs K-1 himself, spec and plan';
+
+  beforeEach(async () => {
+    vi.stubEnv('JIRA_PROJECT_KEY', '');
+    await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '106', '--verbatim-file', join(root, 'verbatim.txt'));
+    mir = join(root, 'jira-mirror', 'HIMMEL');
+    mkdirSync(mir, { recursive: true });
+    writeFileSync(join(mir, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-23T00:00:00Z', complete: false }));
+    for (const [k, type, parent] of [['V-1', 'Task'], ['K-1', 'Task'], ['K-2', 'Task'], ['K-9', 'Task'], ['K-4', 'Subtask', 'V-1']]) {
+      writeFileSync(join(mir, `${k}.md`), `---\nkey: "${k}"\nstatus: "x"\nstatusCategory: "To Do"\ntype: "${type}"\npriority: "Medium"\n${parent ? `parent: "${parent}"\n` : ''}---\n`);
+    }
+    sent = join(root, 'sent.txt');
+    sender(`printf '%s\\n' "$2" >> ${JSON.stringify(sent)}`);
+    writeFileSync(join(root, 'access.json'), '{"allowFrom":["4242"]}\n');
+    vi.stubEnv('TELEGRAM_ACCESS_PATH', join(root, 'access.json'));
+    vi.stubEnv('MERGE_BLOCK_ALERT_CMD', join(root, 'sender.sh'));
+    vi.stubEnv('HIMMEL_TEST_FIXTURE', '1');
+    vi.stubEnv('BRIDGE_ROOT', '');
+    decide('1201', STATION_CHIEF);
+    decide('1202', OP_K1);
+    out = [];
+  });
+
+  it('with HIMMEL_TEST_FIXTURE=1 and TELEGRAM_ACCESS_PATH at a no-chat file, operator spec --signer operator writes no row, and operator spec-signer --signer chief writes no row; with the stub sender, each writes its row and the sender captured one line of its kind (I6)', async () => {
+    const p = specFile('K-1-own.md', null);
+    const opSign = () => run(...signArgs('K-1', p), '--signer', 'operator', '--decision', '1202', '--words', OP_K1);
+    const station = () => run('operator', 'spec-signer', 'R1', '--signer', 'chief', '--decision', '1201', '--words', STATION_CHIEF);
+    vi.stubEnv('TELEGRAM_ACCESS_PATH', join(root, 'absent.json'));
+    await expect(opSign()).rejects.toThrow('release operator spec: the operator alert exited 1; no record written');
+    await expect(station()).rejects.toThrow('release operator spec-signer: the operator alert exited 1; no record written');
+    expect(rowsOf('spec')).toEqual([]);
+    expect(rowsOf('spec-signer')).toEqual([]);
+    expect(existsSync(sent)).toBe(false);
+    vi.stubEnv('TELEGRAM_ACCESS_PATH', join(root, 'access.json'));
+    await opSign();
+    await station();
+    const [sig] = rowsOf('spec');
+    const [rec] = rowsOf('spec-signer');
+    expect(sig).toMatchObject({ signer: 'operator', operator_keys: ['K-1'], decision: '1202', verbatim: OP_K1 });
+    expect(rec).toMatchObject({ signer: 'chief', decision: '1201', verbatim: STATION_CHIEF });
+    expect(out).toContain(`${rec.id} spec-signer the station default signed by chief`);
+    const lines = readFileSync(sent, 'utf8').trim().split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain(`"${OP_K1}" — operator signature recorded for K-1, decision 1202`);
+    expect(lines[1]).toContain(`"${STATION_CHIEF}" — spec signer: the station default now signed by chief, decision 1201`);
+  });
+
+  it.each(['MERGE_BLOCK_ALERT_CMD', 'TELEGRAM_ACCESS_PATH', 'BRIDGE_ROOT'])('sendSignerAlert with %s set and HIMMEL_TEST_FIXTURE unset returns non-zero naming the variable and runs no sender; operator spec-signer --signer chief under the same environment writes no row (I6)', async (v) => {
+    vi.stubEnv('MERGE_BLOCK_ALERT_CMD', '');
+    vi.stubEnv('TELEGRAM_ACCESS_PATH', '');
+    vi.stubEnv(v, join(root, 'sender.sh'));
+    vi.stubEnv('HIMMEL_TEST_FIXTURE', '');
+    const errs: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((s: string) => { errs.push(s); });
+    const a = { kind: 'record' as const, scope: 'the station default', signer: 'chief' as const, decision: '1201', words: STATION_CHIEF, notes: [], chiefSigned: [] };
+    expect(sendSignerAlert(a)).not.toBe(0);
+    expect(errs.join('\n')).toContain(v);
+    await expect(run('operator', 'spec-signer', 'R1', '--signer', 'chief', '--decision', '1201', '--words', STATION_CHIEF)).rejects.toThrow(/the operator alert exited 1; no record written/);
+    expect(rowsOf('spec-signer')).toEqual([]);
+    expect(existsSync(sent)).toBe(false);
+  });
+
+  it('sendSignerAlert with timeoutMs 200, HIMMEL_TEST_FIXTURE=1 and MERGE_BLOCK_ALERT_CMD set to a sender that sleeps 2 s returns non-zero (I6)', () => {
+    sender('sleep 2');
+    const t = Date.now();
+    expect(sendSignerAlert({ kind: 'record', scope: 'K-1', signer: 'operator', decision: '1202', words: OP_K1, notes: [], chiefSigned: [] }, 200)).not.toBe(0);
+    expect(Date.now() - t).toBeLessThan(1800);
+  });
+
+  describe('the copy to the operator after a chief signature (I8, I16)', () => {
+    const bridge = () => join(root, 'bridge');
+    const docLines = (): number => {
+      const walk = (d: string): string[] => (existsSync(d) ? readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)])) : []);
+      return walk(bridge()).filter((f) => f.endsWith('.jsonl')).reduce((n, f) => n + readFileSync(f, 'utf8').split('\n').filter((l) => l.includes('document_path')).length, 0);
+    };
+    const sentLines = () => (existsSync(sent) ? readFileSync(sent, 'utf8').trim().split('\n') : []);
+    function sealed(p: string): string {
+      const page = p.replace(/\.md$/, '.html');
+      writeFileSync(page, '<!doctype html><title>spec</title>\n');
+      const sha = createHash('sha256').update(readFileSync(page)).digest('hex');
+      writeFileSync(`${p}.critic-spec-r1.md`, `the critic's return\n\nCONTENT-SHA256 ${sha} ${relative(dirname(p), page)}\nSPEC CLEAN\n`);
+      writeFileSync(`${p}.critic-plan-r1.md`, `the critic's return\n\nPLAN CLEAN\n`);
+      return page;
+    }
+    const sealedSign = (keys: string, p: string) =>
+      run('operator', 'spec', 'R1', '--keys', keys, '--spec', p, '--verdict', `${p}.critic-spec-r1.md`, '--verdict', `${p}.critic-plan-r1.md`, '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'));
+    function ledgerSealed(): string {
+      const candidate = fileURLToPath(new URL('../../../../', import.meta.url));
+      const bun = execFileSync('which', ['bun'], { encoding: 'utf8' }).trim();
+      const key = 'HIMMEL-9831';
+      const page = { path: `specs/designs/${key}-sliced.html`, text: '<!doctype html><title>spec</title>\n' };
+      const estimate = { path: 'specs/designs/estimate.json', text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' };
+      const request = {
+        scratchRoot: mkdtempSync(join(root, 'ledger-')), key, specStem: `${key}-sliced`,
+        specText: `---\ntickets: ${key}\n---\n# ${key} fixture\n\nEstimate record: estimate.json\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n`,
+        planText: `---\ntickets: ${key}\n---\n# ${key} plan\n\n- Ticket: ${key}\n\n- Task 1: build the fixture.\n`,
+        returns: [
+          { kind: 'spec', round: 1, text: 'SPEC CLEAN\n', reads: ['spec', estimate, page] },
+          { kind: 'plan', round: 1, text: 'PLAN CLEAN\n', reads: ['spec', 'plan', estimate, page] },
+        ],
+      };
+      const built = JSON.parse(execFileSync(bun, [join(candidate, 'scripts/telegram/testlib-capped-fold.ts')], { input: JSON.stringify(request), encoding: 'utf8', timeout: 15000 })) as { spec: string };
+      return built.spec;
+    }
+    const lastSpecRow = () => rowsOf('spec').at(-1) as OperatorRow;
+    beforeEach(() => { vi.stubEnv('BRIDGE_ROOT', bridge()); mkdirSync(bridge(), { recursive: true }); });
+
+    it('sealedPage gives the page when the row\'s SPEC verdict seals it at its current bytes, and null after the page is edited (I16)', async () => {
+      const p = specFile('V-1-sliced.md', 'V-1', 'work');
+      const page = sealed(p);
+      await sealedSign('V-1', p);
+      expect(sealedPage(lastSpecRow())).toBe(page);
+      writeFileSync(page, '<!doctype html><title>edited</title>\n');
+      expect(sealedPage(lastSpecRow())).toBeNull();
+    });
+
+    it('sealedPage gives null for a row whose verdicts seal nothing (I16)', async () => {
+      const p = specFile('V-1-sliced.md', 'V-1', 'work');
+      writeFileSync(p.replace(/\.md$/, '.html'), '<!doctype html>\n');
+      await chiefSign('V-1,K-1', p);
+      expect(sealedPage(lastSpecRow())).toBeNull();
+    });
+
+    it('a chief signature: a sealed page queues one document_path line; an edited page queues none and the sender captures the text line; an operator signature queues neither (I16)', async () => {
+      await sealedSign('HIMMEL-9831', ledgerSealed());
+      expect(docLines()).toBe(1);
+      expect(sentLines()).toEqual([]);
+      const q = specFile('V-2-edited.md', 'V-2', 'work');
+      writeFileSync(sealed(q), '<!doctype html><title>edited</title>\n');
+      await sealedSign('V-2', q);
+      expect(docLines()).toBe(1);
+      expect(sentLines()).toHaveLength(1);
+      expect(sentLines()[0]).toContain(`spec ${q} sha256 `);
+      const o = specFile('K-1-own.md', null, 'work');
+      await run(...signArgs('K-1', o), '--signer', 'operator', '--decision', '1202', '--words', OP_K1);
+      expect(docLines()).toBe(1);
+      expect(sentLines()).toHaveLength(2);
+      expect(sentLines()[1]).toContain('operator signature recorded');
+    });
+
+    it('a chief signature with a failing sender and no page: the row is written, the WARN with the resend line is printed, and the command exits 0', async () => {
+      sender('exit 1');
+      const errs: string[] = [];
+      vi.spyOn(console, 'error').mockImplementation((s: string) => { errs.push(s); });
+      const p = specFile('V-1-sliced.md', 'V-1');
+      await chiefSign('V-1,K-1', p);
+      expect(lastSpecRow()).toMatchObject({ signer: 'chief' });
+      const warn = errs.find((l) => l.startsWith('WARN spec copy not sent')) ?? '';
+      expect(warn).toContain('spec-cc.sh');
+      expect(warn).toContain(lastSpecRow().id);
+      expect(warn.endsWith(" '-'")).toBe(true);
+    });
+
+    it('runSpecCopy with timeoutMs 200, page -, HIMMEL_TEST_FIXTURE=1 and MERGE_BLOCK_ALERT_CMD set to a sender that sleeps 2 s returns non-zero (I8)', () => {
+      sender('sleep 2');
+      const t = Date.now();
+      expect(runSpecCopy({ oid: 'O-R1-0001', keys: 'K-1', spec: '/x/spec.md', sha: 'a'.repeat(64), page: '-' }, 200)).not.toBe(0);
+      expect(Date.now() - t).toBeLessThan(1800);
+    });
+  });
+
+  it('signer-check prints default chief with no record, the mark\'s id for a marked key, the station id under a station record, UNKNOWN on a broken chain, UNKNOWN for a sub-task missing from an incomplete mirror under a parent mark, and its answer, never UNKNOWN, for a key absent from the mirror under a station-only record or holding its own record; it runs under a test fixture root (I15)', async () => {
+    expect(await signerCheck('K-1', 'K-77')).toEqual(['SIGNER K-1 chief default', 'SIGNER K-77 chief default']);
+    const station = put(undefined, 'operator', '1180');
+    expect(await signerCheck('K-2', 'K-77')).toEqual([`SIGNER K-2 operator ${station.id}`, `SIGNER K-77 operator ${station.id}`]);
+    put(['K-88'], 'chief', '1181');
+    const mark = put(['V-1'], 'operator', '1182');
+    expect(await signerCheck('V-1', 'K-4', 'K-5', 'K-88')).toEqual([
+      `SIGNER V-1 operator ${mark.id}`, `SIGNER K-4 operator ${mark.id}`,
+      'UNKNOWN K-5 K-5 is not in the Jira mirror, so its parent\'s mark cannot be read', `SIGNER K-88 operator ${station.id}`,
+    ]);
+    vi.stubEnv('HIMMEL_REAL_STATE_ASSUME_STATION', '1');
+    vi.stubEnv('HIMMEL_REAL_STATE_EXTRA_ROOTS', root);
+    expect(await signerCheck('V-1')).toEqual([`SIGNER V-1 operator ${mark.id}`]);
+    writeFileSync(opPath(), `${readFileSync(opPath(), 'utf8')}not json\n`);
+    const [broken] = await signerCheck('K-1');
+    expect(broken).toMatch(/^UNKNOWN K-1 release R1: operator\.jsonl/);
+  });
+
+  it('signer-check K-1 prints SIGNER K-1 operator <mark id> via V-1; signer-check --spec <a spec naming V-1> K-9 prints the same via line for an unsigned key; signer-check K-1 prints SIGNER K-1 chief default once the mark is lifted (R5, I18 c)', async () => {
+    const p = specFile('V-1-sliced.md', 'V-1');
+    await chiefSign('V-1,K-1,K-2', p);
+    expect(await signerCheck('K-1')).toEqual(['SIGNER K-1 chief default']);
+    const mark = put(['V-1'], 'operator', '1170');
+    expect(await signerCheck('K-1', 'K-2')).toEqual([`SIGNER K-1 operator ${mark.id} via V-1`, `SIGNER K-2 operator ${mark.id} via V-1`]);
+    expect(await signerCheck('K-9')).toEqual(['SIGNER K-9 chief default']);
+    expect(await signerCheck('--spec', p, 'K-9')).toEqual([`SIGNER K-9 operator ${mark.id} via V-1`]);
+    put(['V-1'], 'chief', '1171');
+    expect(await signerCheck('K-1')).toEqual(['SIGNER K-1 chief default']);
+  });
+
+  it('operator spec with --signer operator and --verbatim-file is refused naming --words; the old flag set signs as chief; a chief signature without --decision is refused; a chief signature without --verbatim-file is refused', async () => {
+    const p = specFile('K-1-flags.md', null);
+    const vf = join(root, 'verbatim.txt');
+    await expect(run(...signArgs('K-1', p), '--signer', 'operator', '--decision', '1202', '--verbatim-file', vf)).rejects.toThrow(/--signer operator takes --words/);
+    await expect(run(...signArgs('K-1', p), '--verbatim-file', vf)).rejects.toThrow('release operator spec: a signature needs --decision');
+    await expect(run(...signArgs('K-1', p), '--decision', '387')).rejects.toThrow('release operator spec: a chief signature needs --decision and --verbatim-file');
+    expect(rowsOf('spec')).toEqual([]);
+    await chiefSign('K-1', p);
+    expect(rowsOf('spec')).toEqual([expect.objectContaining({ signer: 'chief', keys: ['K-1'], decision: '387' })]);
   });
 });

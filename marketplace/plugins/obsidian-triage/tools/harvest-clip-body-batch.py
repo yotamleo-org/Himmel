@@ -29,7 +29,9 @@ Usage:
         _evidence/ is retried there too (article and YouTube hosts), up to the
         defer count of 5, when the run would reprocess it; a YouTube clip whose
         transcript was unavailable is listed in the pending report only.
-        HARVEST_SCRAPE_DENY=all turns the fetch off.
+        Clips last tried more than ARTICLE_RETRY_MAX_AGE_DAYS ago run first
+        (oldest first), then never-tried clips, then the rest oldest first
+        (harvest_defer_last), so the budget rotates and no clip starves. HARVEST_SCRAPE_DENY=all turns the fetch off.
     python harvest-clip-body-batch.py <vault-path> --firecrawl-thin [--firecrawl-budget N] [--dry-run]
         Opt-in escalation: the same, plus the paid firecrawl rung after the
         free ones, via firecrawl's /v2/scrape API. Needs FIRECRAWL_API_KEY (and
@@ -51,11 +53,16 @@ Cross-platform paths via pathlib. Windows / Git Bash / macOS / Linux all work.
 Batch tooling. Triage stage stays LLM-driven via /triage-clips.
 """
 import argparse
+import contextlib
+import fcntl
 import itertools
 import os
 import re
 import socket
+import stat
 import sys
+import tempfile
+import time
 from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode, unquote, quote
@@ -159,8 +166,12 @@ _FLAG_TOKENS = "|".join(
     [re.escape(name) for name, _ in INJECTION_PATTERNS] + ["screen-error"]
 )
 _TOOL_FLAG_LINE_RE = re.compile(
-    r"^(harvest_flag:[ \t]*injection-suspect"
-    r"|harvest_flag_detail:[ \t]*(%s)(,(%s))*)[ \t]*$" % (_FLAG_TOKENS, _FLAG_TOKENS)
+    r"^(harvest_flag:[ \t]*injection-(suspect|advisory)"
+    r"|harvest_flag_detail:[ \t]*(%s)(,(%s))*"
+    r"|harvest_codex_verdict:[ \t]*(benign|suspect|malicious|error)"
+    r"|harvest_guard_verdict:[ \t]*(safe|caution|dangerous|error)"
+    r"|harvest_guard_findings:[ \t]*[a-z0-9_]{1,64}(,[a-z0-9_]{1,64})*"
+    r"|harvest_codex_passages:[ \t]*[0-9]{1,2})[ \t]*$" % (_FLAG_TOKENS, _FLAG_TOKENS)
 )
 
 
@@ -686,12 +697,71 @@ def url_gate(canonical: str, rules) -> str | None:
     return f"URL matched .harvest-deny pattern {hit}"
 
 
+CLIP_LOCK_WAIT = 30.0
+
+
+class ClipChanged(Exception):
+    pass
+
+
+@contextlib.contextmanager
+def _clip_lock(path: Path, expect: str | None = None, wait: float = CLIP_LOCK_WAIT):
+    root = next((q for q in path.parents if q.name == "Clippings"), path.parent)
+    fd = os.open(root, os.O_RDONLY)
+    try:
+        deadline = time.monotonic() + wait
+        locked = False
+        while not locked:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                locked = True
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"clip lock busy for {wait:.0f}s: {path.name}")
+                time.sleep(0.05)
+        if expect is not None and path.read_text(encoding="utf-8") != expect:
+            raise ClipChanged("the clip changed since it was read")
+        yield
+    finally:
+        os.close(fd)
+
+
+STALE_TMP = re.compile(r"\.harvest-[a-z0-9_]{8}\.tmp")
+
+
+def _sweep_stale_tmp(clippings: Path) -> None:
+    try:
+        with _clip_lock(clippings / ".sweep"):
+            for p in clippings.rglob(".harvest-*.tmp"):
+                if STALE_TMP.fullmatch(p.name) and p.is_file() and not p.is_symlink():
+                    p.unlink(missing_ok=True)
+    except (TimeoutError, OSError):
+        pass
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".harvest-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        if mode is not None:
+            os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
 def _revert(path: Path, original: str) -> None:
     """Best-effort restore of a clip to its pre-write content. Swallows a
     revert-time write error (nothing more we can do — the failure is already
     being reported to the operator) rather than masking the original error."""
     try:
-        path.write_text(original, encoding="utf-8", newline="\n")
+        _atomic_write(path, original)
     except Exception:
         pass
 
@@ -812,22 +882,26 @@ def write_youtube_harvest(path: Path, text: str, fm_raw: str, body: str, canonic
         # longer holds once the clip is harvested ok. injection-suspect stays.
         new_fm = re.sub(r"^harvest_flag:[ \t]*(?:thin-body|transcript-unavailable)[ \t]*\n?", "", new_fm, flags=re.MULTILINE)
     try:
-        path.write_text(f"---\n{new_fm}\n---\n{new_body}", encoding="utf-8", newline="\n")
-        _dfm, disk_fm_raw, disk_body, disk_present = parse_frontmatter(path.read_text(encoding="utf-8"))
-    except Exception as e:
-        _revert(path, text)
-        return ("x", f"failed (write): {e}; reverted", hits)
-    if not disk_present or disk_body != new_body:
-        _revert(path, text)
-        return ("x", "failed (G-3): youtube-scrapling post-write body mismatch; reverted", hits)
-    try:
-        import yaml  # type: ignore
-        yaml.safe_load(disk_fm_raw)
-    except ImportError:
-        pass
-    except Exception as e:
-        _revert(path, text)
-        return ("x", f"failed (frontmatter-yaml-write): {e}; reverted", hits)
+        with _clip_lock(path, text):
+            try:
+                _atomic_write(path, f"---\n{new_fm}\n---\n{new_body}")
+                _dfm, disk_fm_raw, disk_body, disk_present = parse_frontmatter(path.read_text(encoding="utf-8"))
+            except Exception as e:
+                _revert(path, text)
+                return ("x", f"failed (write): {e}; reverted", hits)
+            if not disk_present or disk_body != new_body:
+                _revert(path, text)
+                return ("x", "failed (G-3): youtube-scrapling post-write body mismatch; reverted", hits)
+            try:
+                import yaml  # type: ignore
+                yaml.safe_load(disk_fm_raw)
+            except ImportError:
+                pass
+            except Exception as e:
+                _revert(path, text)
+                return ("x", f"failed (frontmatter-yaml-write): {e}; reverted", hits)
+    except (TimeoutError, ClipChanged) as e:
+        return ("~", f"partial (thin-body): {e}; nothing written, re-run to retry", hits)
     tx = len(out.get("transcript") or [])
     tx_note = f"{tx} transcript lines" if tx else f"no transcript ({out.get('transcript_error') or 'transcript_empty'})"
     suffix = f" [injection-suspect: {', '.join(hits)}]" if hits else ""
@@ -1590,9 +1664,36 @@ def stamped_youtube_partial(fm: dict) -> bool:
     return fm.get("harvest_skill") == "youtube-scrapling" and fm.get("harvest_status") == "partial"
 
 
+def flagged_thin_article(fm: dict) -> bool:
+    return (fm.get("harvest_status") == "partial" and fm.get("harvest_flag") == "thin-body"
+            and firecrawl_eligible(canonicalize((fm.get("source") or "").strip().strip('"')) or ""))
+
+
 def reharvest_due(fm_raw: str, fm: dict, body: str) -> bool:
-    return (not already_harvested(fm_raw) or stamped_thin(fm, body)
+    return (not already_harvested(fm_raw) or stamped_thin(fm, body) or flagged_thin_article(fm)
             or junk_fetch_section(fm, body) is not None or stamped_youtube_partial(fm))
+
+
+ARTICLE_RETRY_MAX_AGE_DAYS = 2
+
+
+def last_tried(path: Path) -> str:
+    try:
+        fm = parse_frontmatter(path.read_text(encoding="utf-8"))[0]
+    except Exception:
+        return ""
+    return (fm or {}).get("harvest_defer_last", "")
+
+
+def retry_order(path: Path) -> tuple:
+    import datetime
+    tried = last_tried(path)
+    try:
+        age = (datetime.date.fromisoformat(TODAY or datetime.date.today().isoformat())
+               - datetime.date.fromisoformat(tried)).days
+    except ValueError:
+        return (1, "")
+    return (0 if age > ARTICLE_RETRY_MAX_AGE_DAYS else 2, tried)
 
 
 def insert_fm_lines(fm_raw: str, new_lines: list) -> str:
@@ -1689,11 +1790,15 @@ def persist_thin_partial(path: Path, text: str, fm: dict, fm_raw: str, body: str
         # (/ig-media-enrich), so park it the same way harvest-clips.md
         # Phase 4's own instagram routing row does.
         pairs.append(("ig_media_pending", "ig_media_pending: true"))
-    new_fm = insert_frontmatter_pairs(fm_raw, pairs, preserve_existing=preserve)
-    path.write_text(f"---\n{new_fm}\n---\n{body}", encoding="utf-8", newline="\n")
-    _dfm, _draw, disk_body, disk_ok = parse_frontmatter(path.read_text(encoding="utf-8"))
-    if not disk_ok or disk_body != body:
-        path.write_text(text, encoding="utf-8", newline="\n")
+    try:
+        with _clip_lock(path, text):
+            new_fm = insert_frontmatter_pairs(fm_raw, pairs, preserve_existing=preserve)
+            _atomic_write(path, f"---\n{new_fm}\n---\n{body}")
+            _dfm, _draw, disk_body, disk_ok = parse_frontmatter(path.read_text(encoding="utf-8"))
+            if not disk_ok or disk_body != body:
+                _atomic_write(path, text)
+                return False
+    except (TimeoutError, ClipChanged):
         return False
     return True
 
@@ -1730,11 +1835,15 @@ def bump_defer(path: Path) -> int | None:
              ("harvest_defer_last", f"harvest_defer_last: {day}")]
     if n >= DEFER_ATTENTION_AFTER:
         pairs.append(("harvest_needs_attention", "harvest_needs_attention: true"))
-    new_fm = insert_frontmatter_pairs(fm_raw, pairs)
-    path.write_text(f"---\n{new_fm}\n---\n{body}", encoding="utf-8", newline="\n")
-    _dfm, _draw, disk_body, disk_ok = parse_frontmatter(path.read_text(encoding="utf-8"))
-    if not disk_ok or disk_body != body:
-        path.write_text(text, encoding="utf-8", newline="\n")
+    try:
+        with _clip_lock(path, text):
+            new_fm = insert_frontmatter_pairs(fm_raw, pairs)
+            _atomic_write(path, f"---\n{new_fm}\n---\n{body}")
+            _dfm, _draw, disk_body, disk_ok = parse_frontmatter(path.read_text(encoding="utf-8"))
+            if not disk_ok or disk_body != body:
+                _atomic_write(path, text)
+                return None
+    except (TimeoutError, ClipChanged):
         return None
     return n
 
@@ -1785,16 +1894,75 @@ def persist_flag_only(path: Path, text: str, fm_raw: str, body: str, hits: list)
     body is byte-identical, revert to `text` on any mismatch. Returns True
     on a verified write, False after a revert. Shared by the skip/fail
     paths in process_clip and the --rescan-flags backfill."""
-    new_fm = insert_fm_lines(fm_raw, [
-        "harvest_flag: injection-suspect",
-        f"harvest_flag_detail: {','.join(hits)}",
-    ])
-    path.write_text(f"---\n{new_fm}\n---\n{body}", encoding="utf-8", newline="\n")
-    _dfm, _draw, disk_body, disk_ok = parse_frontmatter(path.read_text(encoding="utf-8"))
-    if not disk_ok or disk_body != body:
-        path.write_text(text, encoding="utf-8", newline="\n")
+    try:
+        with _clip_lock(path, text):
+            new_fm = insert_fm_lines(fm_raw, [
+                "harvest_flag: injection-suspect",
+                f"harvest_flag_detail: {','.join(hits)}",
+            ])
+            _atomic_write(path, f"---\n{new_fm}\n---\n{body}")
+            _dfm, _draw, disk_body, disk_ok = parse_frontmatter(path.read_text(encoding="utf-8"))
+            if not disk_ok or disk_body != body:
+                _atomic_write(path, text)
+                return False
+    except (TimeoutError, ClipChanged):
         return False
     return True
+
+
+def _load_second_opinion():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "second_opinion", Path(__file__).with_name("second-opinion.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def apply_second_opinion(path: Path, review_fn=None) -> tuple:
+    """Second opinion for a clip that carries `harvest_flag: injection-suspect`.
+    Writes both verdicts into the frontmatter (frontmatter-only, G-3 body
+    check, revert on mismatch). Downgrades the flag to `injection-advisory`
+    ONLY when both reviewers call the clip benign; anything else (a
+    disagreement, an error, a failed write) keeps the operator flag.
+    Returns (downgraded: bool | None, summary: str); None = the clip is already
+    an advisory, False = the operator flag is kept (including a flag missing on disk)."""
+    try:
+        text = path.read_text(encoding="utf-8")
+        fm, fm_raw, body, present = parse_frontmatter(text)
+        if not present or fm.get("harvest_flag") != "injection-suspect":
+            if present and fm.get("harvest_flag") == "injection-advisory":
+                return None, "already an advisory"
+            return False, "no injection-suspect flag on disk; operator flag kept"
+        if review_fn is None and os.environ.get("HIMMEL_BILLED_OK") != "1":
+            return False, "skipped (codex review is billed: set HIMMEL_BILLED_OK=1)"
+        res = (review_fn or _load_second_opinion().review)(text)
+        pairs = [
+            ("harvest_codex_verdict", f"harvest_codex_verdict: {res['codex']}"),
+            ("harvest_guard_verdict", f"harvest_guard_verdict: {res['guard']}"),
+            ("harvest_codex_passages", f"harvest_codex_passages: {min(len(res['passages']), 99)}"),
+        ]
+        if res["guard_ids"]:
+            pairs.append(("harvest_guard_findings", f"harvest_guard_findings: {','.join(res['guard_ids'])}"))
+        if res["downgrade"]:
+            pairs.append(("harvest_flag", "harvest_flag: injection-advisory"))
+        summary = f"codex={res['codex']} guard={res['guard']}"
+        if res["passages"]:
+            summary += " passages=" + " | ".join(res["passages"])
+        with _clip_lock(path):
+            if path.read_text(encoding="utf-8") != text:
+                return False, "clip changed during the review; nothing written, flag kept"
+            if not res["guard_ids"]:
+                fm_raw = re.sub(r"^harvest_guard_findings:.*\n?", "", fm_raw, flags=re.MULTILINE)
+            new_fm = insert_frontmatter_pairs(fm_raw, pairs)
+            _atomic_write(path, f"---\n{new_fm}\n---\n{body}")
+            _dfm, _draw, disk_body, disk_ok = parse_frontmatter(path.read_text(encoding="utf-8"))
+            if not disk_ok or disk_body != body:
+                _atomic_write(path, text)
+                return False, "second opinion write altered body; reverted, flag kept"
+        return bool(res["downgrade"]), summary
+    except Exception as e:
+        return False, f"second opinion failed ({type(e).__name__}); flag kept"
 
 
 def _stamp_refused(path: Path, text: str, fm_raw: str, body: str, canonical: str, dry_run: bool) -> str:
@@ -1806,11 +1974,15 @@ def _stamp_refused(path: Path, text: str, fm_raw: str, body: str, canonical: str
         return " [dry-run]"
     pairs = [("harvest_status", "harvest_status: refused_sensitivity"),
              ("harvest_url_canonical", f'harvest_url_canonical: "{canonical}"')]
-    path.write_text(f"---\n{insert_frontmatter_pairs(fm_raw, pairs)}\n---\n{body}", encoding="utf-8", newline="\n")
-    _d, _r, disk_body, disk_ok = parse_frontmatter(path.read_text(encoding="utf-8"))
-    if not disk_ok or disk_body != body:
-        path.write_text(text, encoding="utf-8", newline="\n")
-        return " [status-write failed (G-3); reverted]"
+    try:
+        with _clip_lock(path, text):
+            _atomic_write(path, f"---\n{insert_frontmatter_pairs(fm_raw, pairs)}\n---\n{body}")
+            _d, _r, disk_body, disk_ok = parse_frontmatter(path.read_text(encoding="utf-8"))
+            if not disk_ok or disk_body != body:
+                _atomic_write(path, text)
+                return " [status-write failed (G-3); reverted]"
+    except (TimeoutError, ClipChanged):
+        return " [status-write skipped: the clip changed or is locked; left untouched]"
     return " [harvest_status: refused_sensitivity written]"
 
 
@@ -1893,7 +2065,7 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
             return ("~", f"{msg}{flag_suffix}", injection_hits)
         return ("x", f"failed (G-3): thin-body frontmatter mark altered body; reverted{flag_suffix}", injection_hits)
 
-    if chain is not None and firecrawl_eligible(canonical) and (junk or is_thin_body(body)):
+    if chain is not None and firecrawl_eligible(canonical) and (junk or is_thin_body(body) or flagged_thin_article(fm)):
         denied = url_gate(canonical, url_rules)
         if denied:
             return flagged_early("o", f"skipped (sensitivity): {denied}{_stamp_refused(path, text, fm_raw, body, canonical, dry_run)}")
@@ -1959,29 +2131,29 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
         # here would otherwise propagate uncaught through main()'s loop and
         # abort the whole batch after the credit was already burned.
         try:
-            path.write_text(new_text, encoding="utf-8", newline="\n")
+            with _clip_lock(path, text):
+                try:
+                    _atomic_write(path, new_text)
+                    disk_text = path.read_text(encoding="utf-8")
+                except Exception as e:
+                    _revert(path, text)
+                    return ("x", f"failed (write, credit spent): {e}; reverted", merged_hits)
+                _dfm, disk_fm_raw, disk_body, disk_present = parse_frontmatter(disk_text)
+                if not disk_present or disk_body != new_body:
+                    _revert(path, text)
+                    return ("x", "failed (G-3, credit spent): firecrawl post-write body mismatch; reverted", merged_hits)
+                try:
+                    import yaml  # type: ignore
+                    yaml.safe_load(disk_fm_raw)
+                except ImportError:
+                    pass
+                except Exception as e:
+                    _revert(path, text)
+                    return ("x", f"failed (frontmatter-yaml-write, credit spent): {e}; reverted", merged_hits)
+        except (TimeoutError, ClipChanged) as e:
+            return ("~", f"partial (thin-body): {e}; nothing written (credit spent), re-run to retry", injection_hits)
         except Exception as e:
-            _revert(path, text)
-            return ("x", f"failed (write, credit spent): {e}; reverted", merged_hits)
-        try:
-            disk_text = path.read_text(encoding="utf-8")
-        except Exception as e:
-            _revert(path, text)
-            return ("x", f"failed (post-write read, credit spent): {e}; reverted", merged_hits)
-        _dfm, disk_fm_raw, disk_body, disk_present = parse_frontmatter(disk_text)
-        if not disk_present or disk_body != new_body:
-            _revert(path, text)
-            return ("x", "failed (G-3, credit spent): firecrawl post-write body mismatch; reverted", merged_hits)
-        try:
-            import yaml  # type: ignore
-            yaml.safe_load(disk_fm_raw)
-        except ImportError:
-            pass  # PyYAML optional — the structural guards above (insert_ok,
-            # disk_body byte-compare) already protect the clip; this is just
-            # the extra YAML-validity check, same as the clip-body path.
-        except Exception as e:
-            _revert(path, text)
-            return ("x", f"failed (frontmatter-yaml-write, credit spent): {e}; reverted", merged_hits)
+            return ("x", f"failed (write, credit spent): {e}; nothing written", merged_hits)
         fc_suffix = f" [injection-suspect: {', '.join(merged_hits)}]" if merged_hits else ""
         return ("v", f"harvested via {served_by}, {len(md.encode('utf-8'))}b fetched (thin-body escalation), harvest_status=ok{fc_suffix}", merged_hits)
 
@@ -2001,7 +2173,7 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
             reason = f"transcript unavailable ({out.get('transcript_error') or 'transcript_empty'})"
         yt_miss = f"; youtube-scrapling: {reason}"
 
-    if junk or yt_partial or is_thin_clip(canonical, body):
+    if junk or yt_partial or is_thin_clip(canonical, body) or flagged_thin_article(fm):
         return thin_partial(yt_miss)
 
     # clip-body path
@@ -2023,30 +2195,31 @@ def process_clip(path: Path, dry_run: bool, chain=None, url_rules=None, park=Non
     # byte-identical to the pre-write body (clip-body G-3 invariant)
     # and (b) the frontmatter parses as YAML (Phase 5 step 5).
     # On either failure, revert to the original text and report.
-    path.write_text(new_text, encoding="utf-8", newline="\n")
     try:
-        disk_text = path.read_text(encoding="utf-8")
-    except Exception as e:
-        path.write_text(text, encoding="utf-8", newline="\n")
-        return ("x", f"failed (post-write read): {e}; reverted{flag_suffix}", injection_hits)
-    disk_fm, disk_fm_raw, disk_body, disk_fm_present = parse_frontmatter(disk_text)
-    if not disk_fm_present:
-        path.write_text(text, encoding="utf-8", newline="\n")
-        return ("x", f"failed (G-3 / parse): post-write file lost frontmatter; reverted{flag_suffix}", injection_hits)
-    if disk_body != body:
-        path.write_text(text, encoding="utf-8", newline="\n")
-        return ("x", f"failed (G-3): post-write body differs from pre-write; reverted{flag_suffix}", injection_hits)
-    try:
-        import yaml  # type: ignore
-        yaml.safe_load(disk_fm_raw)
-    except ImportError:
-        # PyYAML missing — skip parse-validate but log. The minimal regex
-        # parser above is structural-only; without PyYAML we cannot verify
-        # full YAML semantics. Acceptable for a calibration tool.
-        pass
-    except Exception as e:
-        path.write_text(text, encoding="utf-8", newline="\n")
-        return ("x", f"failed (frontmatter-yaml-write): {e}; reverted{flag_suffix}", injection_hits)
+        with _clip_lock(path, text):
+            _atomic_write(path, new_text)
+            try:
+                disk_text = path.read_text(encoding="utf-8")
+            except Exception as e:
+                _atomic_write(path, text)
+                return ("x", f"failed (post-write read): {e}; reverted{flag_suffix}", injection_hits)
+            disk_fm, disk_fm_raw, disk_body, disk_fm_present = parse_frontmatter(disk_text)
+            if not disk_fm_present:
+                _atomic_write(path, text)
+                return ("x", f"failed (G-3 / parse): post-write file lost frontmatter; reverted{flag_suffix}", injection_hits)
+            if disk_body != body:
+                _atomic_write(path, text)
+                return ("x", f"failed (G-3): post-write body differs from pre-write; reverted{flag_suffix}", injection_hits)
+            try:
+                import yaml  # type: ignore
+                yaml.safe_load(disk_fm_raw)
+            except ImportError:
+                pass
+            except Exception as e:
+                _atomic_write(path, text)
+                return ("x", f"failed (frontmatter-yaml-write): {e}; reverted{flag_suffix}", injection_hits)
+    except (TimeoutError, ClipChanged) as e:
+        return ("~", f"partial (clip-body): {e}; nothing written, re-run to retry{flag_suffix}", injection_hits)
     body_bytes = len(body.encode("utf-8"))
     return ("v", f"harvested via clip-body, {body_bytes}b content (clip-body, no fetch), harvest_status=ok{flag_suffix}", injection_hits)
 
@@ -2201,17 +2374,30 @@ def run_reflag_silent_partials(vault: Path, dry_run: bool, limit: int = 0) -> in
         if dry_run:
             print(f"PART {relpath} -- silent partial ({reason}) [dry-run]")
             continue
-        if clip.read_bytes() != raw:
+        try:
+            with _clip_lock(clip):
+                changed = clip.read_bytes() != raw
+                if not changed:
+                    _atomic_write(clip, f"---\n{insert_frontmatter_pairs(fm_raw, pairs)}\n---\n{body}")
+                    _dfm, _draw, disk_body, disk_ok = parse_frontmatter(clip.read_text(encoding="utf-8"))
+                    if not disk_ok or disk_body != body:
+                        _atomic_write(clip, text)
+                        changed = None
+        except TimeoutError as e:
+            print(f"SKIP {relpath} -- {e}; left untouched", file=sys.stderr)
+            skipped += 1
+            notes -= 1
+            for r in reasons:
+                counts[r] -= 1
+            continue
+        if changed:
             print(f"SKIP {relpath} -- changed since it was read; left untouched", file=sys.stderr)
             skipped += 1
             notes -= 1
             for r in reasons:
                 counts[r] -= 1
             continue
-        clip.write_text(f"---\n{insert_frontmatter_pairs(fm_raw, pairs)}\n---\n{body}", encoding="utf-8", newline="\n")
-        _dfm, _draw, disk_body, disk_ok = parse_frontmatter(clip.read_text(encoding="utf-8"))
-        if not disk_ok or disk_body != body:
-            clip.write_text(text, encoding="utf-8", newline="\n")
+        if changed is None:
             print(f"FAIL {relpath} -- failed (G-3): reflag write altered body; reverted", file=sys.stderr)
             failed += 1
             continue
@@ -2262,6 +2448,8 @@ def main():
     ap.add_argument("--scan-only", type=Path, default=None, metavar="FILE",
                     help="Injection-scan one file; one hit class per line. "
                          "Exit 0=clean, 1=hits, 2=error.")
+    ap.add_argument("--no-second-opinion", action="store_true",
+                    help="Skip the codex + skills_guard second opinion on flagged clips.")
     ap.add_argument("--rescan-flags", action="store_true",
                     help="Backfill: scan already-harvested clips, add only "
                          "harvest_flag/_detail on hits.")
@@ -2294,6 +2482,8 @@ def main():
     if not clippings.is_dir():
         print(f"harvest-clip-body-batch: no Clippings/ at {clippings}", file=sys.stderr)
         sys.exit(2)
+    if not args.dry_run:
+        _sweep_stale_tmp(clippings)
 
     # Inbox-internal exclusions (harvest-clips.md "Scan for unharvested
     # clips"): _synthesis/ (/synthesize-clips proposal pages), _done/
@@ -2347,6 +2537,7 @@ def main():
     ev_retry, ev_partials = evidence_clips(clippings)
     in_scan = set(clips)
     clips = clips + [p for p in ev_retry if p not in in_scan]
+    clips = sorted(clips, key=retry_order)
     scanned = set(clips)
     report_extra = [p for p in ev_partials if p not in scanned]
 
@@ -2394,6 +2585,7 @@ def main():
     ok = partial = failed = skipped = 0
     processed_count = 0
     flagged = []
+    advisory = []
     for clip in clips:
         if args.limit > 0 and processed_count >= args.limit:
             break
@@ -2410,7 +2602,18 @@ def main():
         if injection_hits:
             # Structural flag state — flagged clips reach the report even
             # when the harvest write failed (any glyph).
-            flagged.append(relpath)
+            downgraded = False
+            if not args.dry_run and not args.no_second_opinion:
+                downgraded, so_msg = apply_second_opinion(clip)
+                if downgraded is not None:
+                    print(f"SECOND-OPINION {relpath} -- {so_msg} -> "
+                          f"{'downgraded to advisory' if downgraded else 'operator flag kept'}")
+            if downgraded is None:
+                pass
+            elif downgraded:
+                advisory.append(relpath)
+            else:
+                flagged.append(relpath)
         if glyph == "v":
             print(f"OK  {relpath} -- {msg}")
             ok += 1
@@ -2445,6 +2648,11 @@ def main():
         print(
             f"harvest-clip-body-batch: {len(flagged)} flagged "
             f"injection-suspect (operator review): " + ", ".join(flagged)
+        )
+    if advisory:
+        print(
+            f"harvest-clip-body-batch: {len(advisory)} injection-advisory "
+            f"(codex + skills_guard both benign, no operator action): " + ", ".join(advisory)
         )
     if args.dry_run:
         print("  (DRY-RUN — no files modified)")

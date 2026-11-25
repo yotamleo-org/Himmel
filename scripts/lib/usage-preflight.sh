@@ -42,7 +42,7 @@ chokepoint_seam_guard scripts/lib/usage-preflight.sh || exit 96
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 PREFLIGHT_LIB="$(cd "$(dirname "$0")" && pwd)"
 PRODUCER="${CADENCE_USAGE_PRODUCER:-$REPO/scripts/statusline/usage-cache-producer.sh}"
-MAX_PCT="${CADENCE_USAGE_MAX_PCT:-85}"
+MAX_PCT="${CADENCE_USAGE_MAX_PCT:-100}"
 MAX_AGE="${CADENCE_USAGE_MAX_AGE:-600}"
 # MUST match the producer + every shipped consumer. CLAUDE_USAGE_CACHE is the
 # producer's own knob; USAGE_CACHE_FILE does not exist.

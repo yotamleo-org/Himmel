@@ -306,7 +306,7 @@ def plan_summary_rewrite(text: str):
         return None
     if fm.get("summary_basis", "").strip('"') != "url-only":
         return None
-    if fm.get("harvest_flag", "").strip('"') == "injection-suspect":
+    if fm.get("harvest_flag", "").strip('"') in ("injection-suspect", "injection-advisory"):
         return None
     m = _SUMMARY_RE.search(body)
     if not m or URL_ONLY_MARKER not in m.group(1):

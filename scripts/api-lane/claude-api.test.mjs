@@ -101,7 +101,8 @@ function fixture() {
     HIMMEL_API_FALLBACK: 'off', HIMMEL_API_ALERT_CMD: paths.alert, HIMMEL_API_ALERT_DIR: join(dir, 'alerts') };
   writeFileSync(env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
   const good = ['-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'];
-  const run = (args = good, extra = {}, opts = {}) => spawnSync('bash', [LAUNCH, ...args], { env: { ...env, ...extra }, encoding: 'utf8', cwd: HIMMEL_REPO, ...opts });
+  const run = (args = good, extra = {}, opts = {}) => spawnSync('bash', [LAUNCH, ...args], {
+    env: Object.fromEntries(Object.entries({ ...env, ...extra }).filter(([, v]) => v !== undefined)), encoding: 'utf8', cwd: HIMMEL_REPO, ...opts });
   const status = (account = 'A') => {
     const r = spawnSync(process.execPath, [STATE, 'status'], { env: { ...env, HIMMEL_API_ACCOUNT: account }, encoding: 'utf8' });
     return JSON.parse(r.stdout);
@@ -225,6 +226,28 @@ test('managed API commitment is visible to pause until its terminal call is reap
     child.kill('SIGTERM');
     await done;
   }
+});
+
+test('an API call from inside a live managed worker joins its attempt and leaves it live', () => {
+  const f = fixture();
+  const managed = managedFixture(f, true);
+  const writer = join(HIMMEL_REPO, 'scripts/handover/chief-kit/fleet-manifest.sh');
+  const runtime = (op) => spawnSync('bash', [writer, 'runtime', op, '--doc', managed.WORKER_SESSION_DOC, '--manifest', managed.FLEET_LAUNCH_MANIFEST,
+    '--name', 'TEST-1-N1-api', '--attempt-id', 'worker', '--pid', String(process.pid)], { env: f.env, encoding: 'utf8' });
+  assert.equal(runtime('begin').status, 0);
+  const stamp = spawnSync('bash', [join(HIMMEL_REPO, 'scripts/lib/usage-preflight.sh')], { env: { ...f.env,
+    FLEET_LAUNCH_DOC: managed.WORKER_SESSION_DOC, FLEET_LAUNCH_MANIFEST: managed.FLEET_LAUNCH_MANIFEST, FLEET_LAUNCH_ATTEMPT: 'worker',
+    CADENCE_USAGE_LAUNCH: '1', CADENCE_USAGE_WORKER: 'TEST-1-N1-api', CADENCE_USAGE_CALLER_PID: String(process.pid),
+    CADENCE_USAGE_LANE: 'native', CADENCE_USAGE_CACHE: join(f.dir, 'missing-cache') }, encoding: 'utf8' });
+  assert.match(stamp.stdout, /PROCEED|BANK-STALE|BANK-UNKNOWN/, stamp.stderr);
+  const commit = runtime('commit');
+  assert.equal(commit.status, 0, commit.stderr);
+  const before = JSON.parse(readFileSync(join(f.dir, 'fleet-control.json'))).attempts;
+  const r = f.run(f.good, { ...managed, WORKER_SESSION_ATTEMPT_ID: 'worker' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(f.called(), true);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.dir, 'fleet-control.json'))).attempts, before);
+  assert.equal(before.worker.phase, 'committed');
 });
 
 // A managed call held open by the stub, then a TERM to its launcher. The hold file stays: only the launcher can end the call.
@@ -584,6 +607,88 @@ test('HIMMEL_API_FALLBACK=off still alerts but runs no fallback; a malformed req
   }
 });
 
+test('HIMMEL_API_FALLBACK unset or any value but on is off: no fallback, no sub-fallback row; on still runs it', () => {
+  for (const [value, want] of [[undefined, /fallback: off \(HIMMEL_API_FALLBACK unset: default off\)/],
+    ['', /fallback: off \(HIMMEL_API_FALLBACK unset: default off\)/], ['On', /fallback: off \(HIMMEL_API_FALLBACK=On is not on\)/],
+    ['yes', /fallback: off \(HIMMEL_API_FALLBACK=yes is not on\)/]]) {
+    const f = fixture();
+    native(f, 10);
+    const r = f.run(f.good, { HIMMEL_API_FALLBACK: value, HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK });
+    assert.equal(r.status, 2, `${value}: ${r.stderr}`);
+    assert.equal(fbCalls(f), 0, `${value}: the subscription ran`);
+    assert.ok(!rows(f).some((row) => row.lane === 'sub-fallback'), `${value}: a sub-fallback row was written`);
+    assert.equal(alerts(f).length, 1, `${value}: no alert`);
+    assert.match(alertText(f), want);
+  }
+  const g = fixture();
+  native(g, 10);
+  assert.equal(g.run(g.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK }).status, 0);
+  assert.equal(fbCalls(g), 1, 'on no longer runs the fallback');
+});
+
+function routeFixture(dotenv) {
+  const f = fixture();
+  const bin = join(f.dir, 'bin');
+  mkdirSync(bin);
+  const sent = join(f.dir, 'sent.log');
+  writeFileSync(join(bin, 'bun'), `#!/bin/bash\n{ echo "chat=$TELEGRAM_GROUP_CHAT_ID"; echo "args=$*"; echo "msg=$TG_MESSAGE"; } >> '${sent}'\nexit "\${BUN_RC:-0}"\n`, { mode: 0o700 });
+  if (dotenv !== undefined) writeFileSync(join(f.dir, '.env'), dotenv);
+  const go = (extra = {}) => f.run(f.good, { HIMMEL_API_ACCOUNT: 'E', HIMMEL_API_ALERT_CMD: undefined, HIMMEL_API_ALERT_ENV_ROOT: f.dir,
+    PATH: `${bin}:${process.env.PATH}`, ...extra });
+  const sends = () => (existsSync(sent) ? readFileSync(sent, 'utf8') : '');
+  const stamps = () => readdirSync(join(f.dir, 'alerts')).filter((n) => !n.endsWith('.jsonl'));
+  const undelivered = () => {
+    const p = join(f.dir, 'alerts', 'undelivered.jsonl');
+    return existsSync(p) ? readFileSync(p, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+  };
+  return { f, go, sends, stamps, undelivered };
+}
+
+test('an alert with no group chat id goes to the operator chat (TELEGRAM_CHAT_ID); a group id still wins', () => {
+  const op = routeFixture('TELEGRAM_CHAT_ID=1234567\n');
+  assert.equal(op.go().status, 2);
+  assert.match(op.sends(), /^chat=1234567$/m);
+  assert.match(op.sends(), /^args=run .*scripts\/telegram\/session-status\.ts notification$/m);
+  assert.equal(op.stamps().length, 1, 'a delivered alert stamps the hour');
+  assert.equal(op.undelivered().length, 0);
+  const grp = routeFixture('TELEGRAM_CHAT_ID=1234567\nTELEGRAM_GROUP_CHAT_ID=-7654321\n');
+  assert.equal(grp.go().status, 2);
+  assert.match(grp.sends(), /^chat=-7654321$/m);
+});
+
+test('an alert with no chat id at all is never dropped silently: stderr, one undelivered row, no stamp, the next failure alerts again', () => {
+  const none = routeFixture();
+  const r = none.go();
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /claude-api: alert NOT delivered \(no TELEGRAM_GROUP_CHAT_ID or TELEGRAM_CHAT_ID\)/);
+  assert.equal(none.sends(), '', 'a sender ran with no chat id');
+  assert.deepEqual(none.stamps(), [], 'an undelivered alert stamped the hour');
+  const [row] = none.undelivered();
+  assert.equal(row.class, 'refused');
+  assert.equal(row.rc, 2);
+  assert.match(row.reason, /HIMMEL_API_ACCOUNT must be/);
+  assert.equal(row.why, 'no TELEGRAM_GROUP_CHAT_ID or TELEGRAM_CHAT_ID');
+  assert.match(none.go().stderr, /alert NOT delivered/);
+  assert.equal(none.undelivered().length, 2, 'the second failure inside the hour was not recorded');
+  keyNowhere(none.f, r);
+  const quiet = routeFixture('TELEGRAM_CHAT_ID=1234567\n');
+  const q = quiet.go({ TELEGRAM_GROUP_CHAT_ID: '' });
+  assert.match(q.stderr, /alert NOT delivered \(TELEGRAM_GROUP_CHAT_ID is set empty: suppressed\)/);
+  assert.equal(quiet.sends(), '');
+  assert.deepEqual(quiet.stamps(), []);
+  assert.equal(quiet.undelivered().length, 1);
+  assert.ok(!readFileSync(join(quiet.f.dir, 'alerts', 'undelivered.jsonl'), 'utf8').includes('1234567'), 'a chat id reached the record');
+  const dotQuiet = routeFixture('TELEGRAM_CHAT_ID=1234567\nTELEGRAM_GROUP_CHAT_ID=\n');
+  assert.match(dotQuiet.go().stderr, /alert NOT delivered \(TELEGRAM_GROUP_CHAT_ID is set empty: suppressed\)/);
+  assert.equal(dotQuiet.sends(), '', 'an empty group id in .env reached the operator chat');
+  assert.deepEqual(dotQuiet.stamps(), []);
+  assert.equal(dotQuiet.undelivered().length, 1);
+  const failed = routeFixture('TELEGRAM_CHAT_ID=1234567\n');
+  assert.match(failed.go({ BUN_RC: '124' }).stderr, /alert NOT delivered \(the sender exited 124\)/);
+  assert.deepEqual(failed.stamps(), []);
+  assert.equal(failed.undelivered()[0].why, 'the sender exited 124');
+});
+
 // a prompt on stdin is kept in a mode-600 scratch file, so the fallback can replay it
 const STDIN_ONLY = ['-p', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'];
 const PROMPT = 'the-secret-prompt-bytes\nsecond line\n';
@@ -706,6 +811,18 @@ test('a stdin prompt over 8 MiB is refused with no call, no fallback and no scra
   const edge = g.run(STDIN_ONLY, withStdin(g), { input: Buffer.alloc(8 * 1024 * 1024, 97), maxBuffer: 1 << 26 });
   assert.equal(edge.status, 0, edge.stderr);
   assert.equal(readFileSync(join(g.dir, 'stdin.seen')).length, 8 * 1024 * 1024);
+});
+
+test('a stdin prompt whose scratch file vanishes after the size check still reaches the call', () => {
+  const f = fixture();
+  const shim = join(f.dir, 'shim');
+  mkdirSync(shim);
+  writeFileSync(join(shim, 'wc'), '#!/bin/bash\nreal="$(PATH="$REAL_PATH" command -v wc)"\n"$real" "$@"; rc=$?\n[ "$1" != -c ] || rm -f "$TMPDIR"/claude-api-prompt.*\nexit $rc\n', { mode: 0o700 });
+  const r = f.run(STDIN_ONLY, { ...withStdin(f), PATH: `${shim}:${f.env.PATH}`, REAL_PATH: f.env.PATH }, { input: PROMPT });
+  assert.doesNotMatch(r.stderr, /could not reopen the stdin prompt/);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(seenStdin(f), PROMPT, 'the call did not get the prompt');
+  assert.deepEqual(promptFiles(f), []);
 });
 
 test('a launcher stopped while it buffers a stdin prompt removes the scratch file', async () => {
@@ -1735,13 +1852,12 @@ test('an explicit account C call runs for any kind, like A and B', () => {
   }
 });
 
-test('auto routes only the himmel graphify kind; any other kind is refused before any spawn', () => {
+test('auto routes every kind of the himmel repo through the default order', () => {
   for (const kind of ['judge', 'critic', 'bulk', 'cull', 'other']) {
     const f = fixture();
     const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: kind });
-    assert.equal(r.status, 2, `${kind}: ${r.stderr}`);
-    assert.match(r.stderr, /auto routing is for the himmel graph pass only/);
-    assert.equal(f.called(), false);
+    assert.equal(r.status, 0, `${kind}: ${r.stderr}`);
+    assert.equal(f.called(), true);
   }
   const f = fixture();
   const ok = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify' });
@@ -1753,7 +1869,7 @@ test('auto with the graphify kind from another repo is refused before any spawn'
   const r = spawnSync('bash', [LAUNCH, '-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'],
     { env: { ...keyFiles(f), HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify' }, encoding: 'utf8', cwd: OTHER_REPO });
   assert.equal(r.status, 2, r.stderr);
-  assert.match(r.stderr, /auto routing is for the himmel graph pass only/);
+  assert.match(r.stderr, /auto routing is for the himmel repo only/);
   assert.equal(f.called(), false);
 });
 
@@ -1772,7 +1888,7 @@ test('the graph shim runs the lane from a scratch directory: the repo it judged 
   f = fixture();
   const other = shim(f, commonDir(OTHER_REPO));
   assert.equal(other.status, 2, other.stderr);
-  assert.match(other.stderr, /auto routing is for the himmel graph pass only/);
+  assert.match(other.stderr, /auto routing is for the himmel repo only/);
   assert.equal(f.called(), false);
 });
 
@@ -1782,7 +1898,7 @@ test('a decision-525 policy refusal sends no alert, writes no stamp, runs no fal
     { env: { ...keyFiles(f), ...FB_ON, STUB_FB_OUT: FB_OK, HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'judge', HIMMEL_API_JOB_ID: 'job-p1',
       HIMMEL_API_BRANCH: 'fix/x', HIMMEL_API_HEAD: 'abc1234' }, encoding: 'utf8', cwd: mkdtempSync(join(T, 'scratch-')) });
   assert.equal(r.status, 2, r.stderr);
-  assert.match(r.stderr, /refused: auto routing is for the himmel graph pass only \(kind judge, repo none\)/);
+  assert.match(r.stderr, /refused: auto routing is for the himmel repo only \(kind judge, repo none\)/);
   const alertDir = f.env.HIMMEL_API_ALERT_DIR;
   assert.deepEqual(alerts(f), []);
   assert.deepEqual(readdirSync(alertDir), ['policy-refusals.jsonl']);
@@ -1911,7 +2027,7 @@ const policyLines = (f) => {
 };
 const commonDirOf = (cwd) => spawnSync('git', ['-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).stdout.trim();
 
-test('judge mapped to B picks B; with the map removed the same call is refused-policy', () => {
+test('judge mapped to B picks B; with the map removed the same call uses the default order', () => {
   const f = fixture();
   putRoles(f, { judge: ['B'] });
   const ok = autoKind(f, 'judge');
@@ -1920,14 +2036,12 @@ test('judge mapped to B picks B; with the map removed the same call is refused-p
   assert.equal(JSON.parse(f.record().trim()).account, 'B');
   assert.deepEqual(policyLines(f), []);
   const g = fixture();
-  const refused = autoKind(g, 'judge');
-  assert.equal(refused.status, 2, refused.stderr);
-  assert.match(refused.stderr, /policy refusal: this call was not sent, and no alert or fallback follows\. Name an account \(A, B, C or D\) instead of auto/);
-  assert.equal(policyLines(g).length, 1);
-  assert.equal(g.called(), false);
+  const dflt = autoKind(g, 'judge');
+  assert.equal(dflt.status, 0, dflt.stderr);
+  assert.deepEqual(policyLines(g), []);
 });
 
-test('critic mapped to B picks B; with the map removed the same call is refused-policy', () => {
+test('critic mapped to B picks B; with the map removed the same call uses the default order', () => {
   const f = fixture();
   putRoles(f, { critic: ['B'] });
   const ok = autoKind(f, 'critic');
@@ -1936,11 +2050,43 @@ test('critic mapped to B picks B; with the map removed the same call is refused-
   assert.equal(JSON.parse(f.record().trim()).account, 'B');
   assert.deepEqual(policyLines(f), []);
   const g = fixture();
-  const refused = autoKind(g, 'critic');
-  assert.equal(refused.status, 2, refused.stderr);
-  assert.match(refused.stderr, /policy refusal: this call was not sent, and no alert or fallback follows\. Name an account \(A, B, C or D\) instead of auto/);
-  assert.equal(policyLines(g).length, 1);
-  assert.equal(g.called(), false);
+  const dflt = autoKind(g, 'critic');
+  assert.equal(dflt.status, 0, dflt.stderr);
+  assert.deepEqual(policyLines(g), []);
+});
+
+test('a critic call under auto from a temp directory with no role entry reaches the account chooser', () => {
+  const f = fixture();
+  f.snapshot.accounts.A.expires_at += 7200;
+  f.save();
+  const r = spawnSync('bash', [LAUNCH, '-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'],
+    { env: { ...keyFiles(f), HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'critic', HIMMEL_API_FALLBACK: 'off', HIMMEL_API_AUTO_REPO_DIR: commonDirOf(HIMMEL_REPO) },
+      encoding: 'utf8', cwd: mkdtempSync(join(T, 'scratch-')) });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(usedKey(f), 'BBBB');
+  assert.deepEqual(policyLines(f), []);
+});
+
+test('an unknown kind under auto uses the default account order', () => {
+  for (const kind of ['eval', 'other', 'bulk']) {
+    const f = fixture();
+    f.snapshot.accounts.A.expires_at += 7200;
+    f.save();
+    const r = autoKind(f, kind);
+    assert.equal(r.status, 0, `${kind}: ${r.stderr}`);
+    assert.equal(usedKey(f), 'BBBB', kind);
+    assert.deepEqual(policyLines(f), []);
+  }
+});
+
+test('a critic call under auto with a broken role map is still refused and never falls back', () => {
+  const f = fixture();
+  putRoles(f, '{not json');
+  const r = autoKind(f, 'critic', { HIMMEL_API_FALLBACK: 'on' });
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /role map broken \(invalid-role-map:not-json\)/);
+  assert.doesNotMatch(r.stderr, /running on the subscription/);
+  assert.equal(f.called(), false);
 });
 
 test('a role mapped to B whose fresh reading has no room runs on B by default, and A is never used', () => {
@@ -1977,11 +2123,9 @@ test('a partial map narrows graphify by its live entry and ignores the broken ju
   const j = fixture();
   putRoles(j, { graphify: ['B'], judge: [] });
   const r = autoKind(j, 'judge');
-  assert.equal(r.status, 2, r.stderr);
+  assert.equal(r.status, 0, r.stderr);
   assert.match(r.stderr, /judge entry ignored \(empty-role:judge\)/);
-  assert.match(r.stderr, /auto routing is for the himmel graph pass only/);
-  assert.equal(policyLines(j).length, 1);
-  assert.equal(j.status('A').verdict, 'PROCEED');
+  assert.deepEqual(policyLines(j), []);
 });
 
 test('judge:[B,E] routes to B and says the entry was kept as [B]', () => {
@@ -1993,14 +2137,14 @@ test('judge:[B,E] routes to B and says the entry was kept as [B]', () => {
   assert.match(r.stderr, /judge entry kept as \[B\]/);
 });
 
-test('an invalid map: eval is refused-policy as decision 525, and graphify refuses on the broken map', () => {
+test('an invalid map: eval and graphify both refuse on the broken map', () => {
   const f = fixture();
   f.snapshot.accounts.B.expires_at += 7200;
   f.save();
   putRoles(f, '{not json');
   const e = autoKind(f, 'eval');
   assert.equal(e.status, 2, e.stderr);
-  assert.match(e.stderr, /auto routing is for the himmel graph pass only/);
+  assert.match(e.stderr, /^claude-api: refused: eval role map broken \(invalid-role-map:not-json\); fix or remove roles\.json$/m);
   assert.equal(f.called(), false);
   const g = autoKind(f, 'graphify');
   assert.equal(g.status, 2, g.stderr);
@@ -2013,7 +2157,7 @@ test('a mapped judge from another repo is refused-policy: the map never widens t
   putRoles(f, { judge: ['B'] });
   const r = autoKind(f, 'judge', { HIMMEL_API_AUTO_REPO_DIR: commonDirOf(OTHER_REPO) });
   assert.equal(r.status, 2, r.stderr);
-  assert.match(r.stderr, /auto routing is for the himmel graph pass only/);
+  assert.match(r.stderr, /auto routing is for the himmel repo only/);
   assert.equal(f.called(), false);
   assert.equal(policyLines(f).length, 1);
 });
@@ -2027,18 +2171,17 @@ test('a named account never reads the role map', () => {
   assert.doesNotMatch(r.stderr, /role map/);
 });
 
-test('a kind that is not a role (constructor, probe, other) is refused-policy although the map is valid', () => {
-  const f = fixture();
-  putRoles(f, { judge: ['B'], graphify: ['A'] });
+test('a kind that is not a role (constructor, probe, other) uses the default order although the map is valid', () => {
   for (const kind of ['constructor', 'probe', 'other']) {
+    const f = fixture();
+    putRoles(f, { judge: ['B'], graphify: ['A'] });
     const r = autoKind(f, kind);
-    assert.equal(r.status, 2, `${kind}: ${r.stderr}`);
-    assert.match(r.stderr, /auto routing is for the himmel graph pass only/);
+    assert.equal(r.status, 0, `${kind}: ${r.stderr}`);
+    assert.equal(f.called(), true);
   }
-  assert.equal(f.called(), false);
 });
 
-test('with no roles.json an auto graphify call still picks over all accounts and eval is refused', () => {
+test('with no roles.json an auto graphify call still picks over all accounts and eval uses the default order', () => {
   const f = fixture();
   f.snapshot.accounts.A.expires_at += 7200;  // B expires first
   f.save();
@@ -2047,7 +2190,7 @@ test('with no roles.json an auto graphify call still picks over all accounts and
   assert.equal(usedKey(f), 'BBBB');
   assert.doesNotMatch(g.stderr, /role map/);
   const e = autoKind(fixture(), 'eval');
-  assert.equal(e.status, 2, e.stderr);
+  assert.equal(e.status, 0, e.stderr);
 });
 
 function graphAlerts(f) {

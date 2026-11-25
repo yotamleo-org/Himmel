@@ -78,11 +78,15 @@ set -uo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 GH_READ_BIN="$SCRIPT_DIR/../lib/gh-read.sh"
 [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+ROLLUPS='shell-unit (ubuntu-latest)|shell-unit-shard (ubuntu-latest)
+fail-fast-shell-unit-shard|shell-unit-shard (ubuntu-latest)
+fail-fast-ci-quick|ci-quick'
 # shellcheck source=../lib/git-clean.sh
 . "$SCRIPT_DIR/../lib/git-clean.sh"
 # shellcheck source=../lib/prim.sh
 . "$SCRIPT_DIR/../lib/prim.sh" || exit 2
 git_env_scrub
+rollup_of() { local line; while IFS= read -r line; do [ "${line%%|*}" = "$1" ] && { printf '%s\n' "${line#*|}"; return 0; }; done <<< "$ROLLUPS"; return 1; }
 # a run with no job rows, or only cancelled/skipped rows and at least one cancelled, was cancelled (a superseded pending sweep has 0 jobs)
 is_cancelled() { awk -F'\t' 'NF {n++} NF && $2=="cancelled" {c++} NF && $2!="cancelled" && $2!="skipped" {o=1} END {exit !(n==0 || (!o && c))}' "$1"; }
 # The chain-s2 reason: a separate mode, entered only when the FIRST argument is --chain-s2, so every
@@ -413,12 +417,14 @@ if ! git merge-base --is-ancestor "$verdict" "$rlsha" 2>/dev/null; then
   exit 1
 fi
 
-blocked=""
+blocked=""; blocked_jobs=""; rollup_reds=""
 while IFS= read -r job; do
   # a job name may repeat: base counts if ANY row is red, latest only if EVERY row is success
   b="$(J="$job" awk -F'\t' '($1 "")==(ENVIRON["J"] "") && ($2=="failure"||$2=="timed_out"||$2=="startup_failure") {print $2; f=1; exit} ($1 "")==(ENVIRON["J"] "") && !s {s=$2} END {if (!f && s) print s}' "$base")"
   l="$(J="$job" awk -F'\t' '($1 "")==(ENVIRON["J"] "") && $2!="success" {print $2; f=1; exit} ($1 "")==(ENVIRON["J"] "") {s=1} END {if (!f && s) print "success"}' "$latest")"
   pcases="$(J="$job" awk -F'\t' '($1 "")==(ENVIRON["J"] "") {print $2}' "$prc")"
+  if [ -z "$pcases" ] && rollup_of "$job" > /dev/null; then rollup_reds="${rollup_reds:+$rollup_reds
+}$job"; continue; fi
   case "$b" in failure|timed_out|startup_failure) inherited=1 ;; *) inherited=0 ;; esac
   # the covering run may already hold the fix, so it reads green though the case failed at the
   # merge-base. Only a covering-run verdict yields to a local reproduction at the merge-base: a completed run
@@ -431,9 +437,11 @@ while IFS= read -r job; do
     if [ -z "$unrepro" ]; then inherited=1; local_ok=1; fi
   fi
   if [ "$inherited" -ne 1 ]; then
+    blocked_jobs="$blocked_jobs"$'\n'"$job"
     blocked="${blocked:+$blocked, }$job (base: ${b:-absent} — not inherited${unrepro:+; not reproduced at the merge-base: $unrepro}, the PR's own red)"
     continue
   elif [ "$l" != "success" ]; then
+    blocked_jobs="$blocked_jobs"$'\n'"$job"
     blocked="${blocked:+$blocked, }$job (latest main: ${l:-absent} — not proven fixed)"
     continue
   fi
@@ -442,6 +450,7 @@ while IFS= read -r job; do
     continue
   fi
   if [ -z "$pcases" ]; then
+    blocked_jobs="$blocked_jobs"$'\n'"$job"
     blocked="${blocked:+$blocked, }$job (no failing case recorded for the PR's job — cannot prove it inherited)"
     continue
   fi
@@ -450,9 +459,30 @@ while IFS= read -r job; do
     J="$job" C="$c" awk -F'\t' '($1 "")==(ENVIRON["J"] "") && ($2 "")==(ENVIRON["C"] "") {f=1} END {exit !f}' "$bc" || extra="${extra:+$extra; }$c"
   done <<< "$pcases"
   if [ -n "$extra" ]; then
+    blocked_jobs="$blocked_jobs"$'\n'"$job"
     blocked="${blocked:+$blocked, }$job (failing case not failing at the base: $extra — the PR's own red)"
   fi
 done <<< "$reds"
+
+while IFS= read -r job; do
+  [ -n "$job" ] || continue
+  fam="$(rollup_of "$job")"
+  b="$(J="$job" awk -F'\t' '($1 "")==(ENVIRON["J"] "") && ($2=="failure"||$2=="timed_out"||$2=="startup_failure") {print $2; f=1; exit} ($1 "")==(ENVIRON["J"] "") && !s {s=$2} END {if (!f && s) print s}' "$base")"
+  l="$(J="$job" awk -F'\t' '($1 "")==(ENVIRON["J"] "") && $2!="success" {print $2; f=1; exit} ($1 "")==(ENVIRON["J"] "") {s=1} END {if (!f && s) print "success"}' "$latest")"
+  fam_red="$(J="$fam" awk -F'\t' '($1 "")==(ENVIRON["J"] "") && ($2=="failure"||$2=="timed_out"||$2=="startup_failure") {print "x"; exit}' "$pr")"
+  case "$b" in failure|timed_out|startup_failure) ;; *)
+    blocked="${blocked:+$blocked, }$job (base: ${b:-absent} — not inherited, the PR's own red)"; continue ;;
+  esac
+  if [ "$l" != "success" ]; then
+    blocked="${blocked:+$blocked, }$job (latest main: ${l:-absent} — not proven fixed)"; continue
+  fi
+  if [ -z "$fam_red" ]; then
+    blocked="${blocked:+$blocked, }$job (rollup of $fam, but no $fam job is red on the PR run — cannot prove it inherited)"; continue
+  fi
+  if grep -Fxq -- "$fam" <<< "$blocked_jobs"; then
+    blocked="${blocked:+$blocked, }$job (rollup of $fam, which is not proven inherited — the PR's own red)"
+  fi
+done <<< "$rollup_reds"
 
 if [ -n "$blocked" ]; then
   hint=""

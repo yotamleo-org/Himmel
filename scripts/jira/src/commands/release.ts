@@ -10,39 +10,43 @@ import { authHeader, baseUrl, projectKey, request } from '../client.js';
 import { refuseTestJiraPost } from '../live-test-guard.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
+import { pinnedSha } from '../release/pinned.js';
 import { newestFixVersionEntry, type Getter } from '../release/version-writes.js';
 import { repairRun, RequestRefused } from '../release/repair-run.js';
+import { doorJudge, earlierThan } from '../release/door.js';
 import { readBodyFile } from './body-file.js';
 import { defaultRoot } from './mirror.js';
 import { sectorField, sectorOf } from './sector.js';
 import { fetchVersions, setFixVersion } from './versions.js';
-import { chiefOverrideOf } from './intake-gate.js';
+import { checkConsoleOverride } from './intake-gate.js';
 import { attemptLaunch, repairStateOf } from '../release/repair-state.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
+import { coreCheckBatch, coreGroupLines, loadCoreInputs } from './core-check.js';
 import {
-  ack, apply, bucketCheck, chainFault, claim, clearProposedLabels, coreBypass, coreSnapshot, coveringRecord, declare, decisionWords, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, reopen, request as releaseRequest, requestOnRecord, requestWithWords, rmRun, rmRunSummary, rule, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
+  ack, apply, bucketCheck, clearProposedLabels, coreBypass, coreSnapshot, declare, decisionWords, fold, freeze, operatorFence, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, releaseForProject, reopen, request as releaseRequest, requestWithWords, reviewed, rmRun, rmRunSummary, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
   type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
+import { signerCheck, specSigner, type SignerAlert } from '../release/spec-sign.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
-import { coreMatch, expandPaths, loadCorePatterns, sizeGuard } from '../release/core.js';
 import { releaseDir, releaseKeyPath, releaseRoot } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
+import type { VersionLines } from '../release/lines.js';
 import { mergedPrOf } from '../release/close-placement.js';
-import { asksOperator, operatorWorkOf, type TicketFacts } from '../release/operator-work.js';
-import type { Authority, Op, OperatorKind, Verb } from '../release/types.js';
+import { isSerious, type TicketFacts } from '../release/operator-work.js';
+import type { IssueSnap, Op, OperatorKind, Verb } from '../release/types.js';
 
 // `jira release <sub>`: the CLI face of the release engine.
 // Callers in other languages read `jira release state <R> --json`.
 
-export const liveJira: JiraPort = {
+export const liveJira: JiraPort & { addLabels(key: string, labels: string[]): Promise<void>; issue(key: string, opts?: { signal?: AbortSignal }): Promise<IssueSnap | null> } = {
   async fixVersions(key) {
     const got = await request<{ fields?: { fixVersions?: Array<{ name?: string }> } }>('GET', `/issue/${key}?fields=fixVersions`);
     return (got.fields?.fixVersions ?? []).map((v) => v.name ?? '');
   },
   newestFixVersionEntry: (key) => newestFixVersionEntry(<T>(path: string) => request<T>('GET', path), key),
-  async setFixVersion(key, op, version) {
-    await setFixVersion(key, op, version, 'rm-apply');
+  async setFixVersion(key, op, version, leave) {
+    await setFixVersion(key, op, version, 'rm-apply', leave);
     writeJiraBreadcrumb(key);
   },
   async findComment(key, marker) {
@@ -68,22 +72,63 @@ export const liveJira: JiraPort = {
     await request('PUT', `/issue/${key}`, { update: { labels: labels.map((remove) => ({ remove })) } });
     writeJiraBreadcrumb(key);
   },
-  async issue(key) {
+  async addLabels(key, labels) {
+    await request('PUT', `/issue/${key}`, { update: { labels: labels.map((add) => ({ add })) } });
+    writeJiraBreadcrumb(key);
+  },
+  async issue(key: string, opts: { signal?: AbortSignal } = {}) {
     const sf = sectorField();
-    const fields = ['status', 'issuetype', 'priority', 'fixVersions', 'resolution', ...(sf ? [sf] : [])].join(',');
+    const fields = ['status', 'issuetype', 'priority', 'fixVersions', 'resolution', 'labels', ...(sf ? [sf] : [])].join(',');
     const got = await request<{ fields?: Record<string, unknown> & {
       status?: { name?: string; statusCategory?: { name?: string } }; issuetype?: { name?: string }; priority?: { name?: string };
-      fixVersions?: Array<{ name?: string }>; resolution?: { name?: string } | null;
-    } }>('GET', `/issue/${key}?fields=${fields}`);
+      fixVersions?: Array<{ name?: string }>; resolution?: { name?: string } | null; labels?: string[];
+    } }>('GET', `/issue/${key}?fields=${fields}`, undefined, undefined, { signal: opts.signal });
     const f = got.fields;
     if (!f) return null;
     return {
       key, status: f.status?.name ?? '', statusCategory: f.status?.statusCategory?.name ?? null, type: f.issuetype?.name ?? '',
       priority: f.priority?.name ?? '', fixVersions: (f.fixVersions ?? []).map((v) => v.name ?? ''),
-      resolution: f.resolution?.name ?? null, sector: sectorOf(f) ?? null,
+      resolution: f.resolution?.name ?? null, sector: sectorOf(f) ?? null, labels: f.labels ?? [],
     };
   },
 };
+
+export const DOOR_PLACES = 'placement is by the door; rm-run rules every request';
+
+const FENCED = ['chief_placement', 'operator_record', 'filed_by', 'operator_update', 'bridge_chat', 'remainder', 'follow_up_of'] as const;
+const FENCED_REMEDY: Record<string, string> = {
+  chief_placement: 'pass --chief-reason "<reason>"',
+  remainder: 'pass --required-by <key>',
+  follow_up_of: 'pass --required-by <key>',
+};
+export function evidenceFence(evidence: Record<string, unknown>): string | undefined {
+  return FENCED.find((k) => k in evidence && !(k === 'remainder' && evidence[k] === false));
+}
+
+function chiefReasonOf(ctx: Ctx, raw: string): string {
+  let reason: string;
+  try {
+    reason = checkConsoleOverride(raw);
+    operatorFence(ctx);
+  } catch (e) {
+    throw new RequestRefused(`release request: --chief-reason refused: ${(e as Error).message.replace(/--chief-override/g, '--chief-reason')}`);
+  }
+  return reason;
+}
+
+async function neverOut(ctx: Ctx, key: string, to: string | null): Promise<void> {
+  let held: string[];
+  try {
+    held = await ctx.jira.fixVersions(key);
+  } catch {
+    held = readMirror(ctx.mirrorRoot).issues?.get(key)?.fixVersions ?? [];
+  }
+  if (!held.length) return;
+  const decl = { versions: state(ctx).versions };
+  if (to === null) throw new RequestRefused(`release request: --chief-reason cannot send ${key} to the backlog while it holds ${held.join(', ')}; only the operator moves a ticket out`);
+  const later = held.find((h) => earlierThan(decl, h, to));
+  if (later) throw new RequestRefused(`release request: --chief-reason cannot place ${key} in ${to}, later than ${later} it holds; only the operator moves a ticket out`);
+}
 
 export function ctxFor(release: string, mirrorRoot?: string): Ctx {
   if (!/^[A-Za-z0-9._-]+$/.test(release) || release === '.' || release === '..') throw new Error(`release: bad release name '${release}'`);
@@ -106,31 +151,6 @@ export { asksOperator, type TicketFacts } from '../release/operator-work.js';
 
 export type Origin = 'cli' | 'create' | 'close-fold' | 'repair';
 
-export function isGated(o: { verb: Verb; to_v: string | null; origin: Origin; ticket: TicketFacts | null; env: NodeJS.ProcessEnv | Record<string, string | undefined> }): boolean {
-  if (o.verb !== 'INTAKE' && o.verb !== 'REVERSION') return false;
-  if (o.to_v === null || (o.origin !== 'cli' && o.origin !== 'create')) return false;
-  if (o.env.HIMMEL_CONSOLE_LEG === '1' || o.env.HIMMEL_RELEASE_MANAGER === '1') return false;
-  return o.ticket === null || (o.ticket.open && asksOperator(o.ticket));
-}
-
-function gateRefusal(ctx: Ctx, o: { verb: Verb; key: string; from_v: string | null; to_v: string | null; origin: Origin; ticket: TicketFacts | null }): string {
-  const words = '--decision <n> --words "<the operator\'s exact words>"';
-  const fix = o.origin === 'create'
-    ? `  add ${words} to this command`
-    : `  jira release request ${ctx.release} --verb ${o.verb} --key ${o.key} --from ${o.from_v ?? 'backlog'} --to ${o.to_v} --why "<why>" ${words}`;
-  const where = '  (<n>: specs/decisions/verbatim-decision-<n>-*.txt)';
-  // The CLI request cites a words record already on file; the create path does not, so only the request names that way.
-  // A chain that does not verify to its end is read by no citation, and the refusal says so instead of offering one.
-  const fault = o.origin === 'cli' ? chainFault(ctx) : undefined;
-  const cite = o.origin !== 'cli' ? null : fault !== undefined
-    ? `${fault}, so no record on file is cited (run \`jira release state ${ctx.release}\`)`
-    : `cite one on file that already names ${o.key} and exactly this placement (a words record newer than the key's last ruling is cited with no --decision), or record them`;
-  if (o.ticket === null) {
-    return `release request: ${o.key} could not be read (not in the mirror, and the live read failed), so it may be operator work; run \`jira mirror\` and ask again, or name the operator's words${cite === null ? '' : `: ${cite}`}:\n${fix}\n${where}`;
-  }
-  return `release request: ${o.key} is ${operatorWorkOf(o.ticket)}; a request that places it needs a record of the operator's words${cite === null ? '' : `: ${cite}`}.\n${fix}\n${where}`;
-}
-
 export async function ticketFacts(ctx: Ctx, key: string): Promise<TicketFacts | null> {
   const snap = readMirror(ctx.mirrorRoot).issues?.get(key);
   if (snap) return { labels: snap.labels ?? [], priority: snap.priority, open: terminalOf(snap) === null };
@@ -148,7 +168,7 @@ export async function ticketFacts(ctx: Ctx, key: string): Promise<TicketFacts | 
 
 /**
  * Refuses a request the release manager could only reject: a placeholder why,
- * a gated request (isGated) that names no decision, an INTAKE for a ticket the
+ * an INTAKE for a ticket the
  * mirror reads as closed outside the release, or a REVERSION / DISCHARGE from a
  * version the mirror does not hold the key in. No mirror, or an undeclared
  * release, skips the key checks.
@@ -162,8 +182,6 @@ export function refuseRequest(ctx: Ctx, o: {
   if (why.length < 8 || tail.length < 3 || PLACEHOLDER.test(tail)) {
     throw new RequestRefused(`release request: "${o.why}" is a placeholder why; say in one line why ${o.key} needs the release manager`);
   }
-  const ticket = o.ticket ?? null;
-  if (o.decision === undefined && isGated({ ...o, ticket, env: ctx.env })) throw new RequestRefused(gateRefusal(ctx, { ...o, ticket }));
   const { issues, sync } = readMirror(ctx.mirrorRoot);
   const snap = issues?.get(o.key);
   const versions = snap ? state(ctx).versions : [];
@@ -197,6 +215,41 @@ export function parseFoldFile(text: string): FoldItem[] {
   });
 }
 
+const PRIORITY_ORDER = ['Highest', 'High', 'Medium', 'Low', 'Lowest'];
+
+function linesText(v: string, l: VersionLines): string[] {
+  if (l.status !== 'OK') return [`${v} lines: UNKNOWN (${l.reason})`];
+  const last = l.days.at(-1);
+  const out: string[] = [];
+  if (last) {
+    const n = Math.min(7, l.days.length);
+    const from = l.days.length > 7 ? l.days[l.days.length - 8] : null;
+    const rise = (f: 'came_in' | 'done') => last[f] - (from ? from[f] : 0);
+    const notOperator = l.left.filter((x) => x.authority !== 'operator').length;
+    out.push(`${v} as of ${l.as_of}: came in ${last.came_in} (+${rise('came_in')} in ${n} days), done ${last.done} (+${rise('done')}; ${last.closed_undelivered} closed without delivery), left ${last.left} (${notOperator} not by the operator), open ${last.open} (came in, not done, not left)`);
+    const arrived: Record<string, number> = {};
+    let serious = 0;
+    for (const d of l.days.slice(-n)) {
+      for (const [why, k] of Object.entries(d.arrived)) arrived[why] = (arrived[why] ?? 0) + k;
+      serious += d.arrived_serious;
+    }
+    const reasons = Object.entries(arrived).sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])).map(([why, k]) => `${why} ${k}`);
+    out.push(`${v} arrived in ${n} days: ${reasons.join(', ') || 'none'}`, `${v} arrived serious in ${n} days: ${serious}`);
+  } else {
+    out.push(`${v} as of ${l.as_of}: came in 0, done 0, left 0, open 0 (came in, not done, not left)`);
+  }
+  const named = [...PRIORITY_ORDER, ...Object.keys(l.open_by_priority).filter((p) => !PRIORITY_ORDER.includes(p) && p !== 'none').sort(), 'none'];
+  const byPriority = named.filter((p) => l.open_by_priority[p]).map((p) => `${p} ${l.open_by_priority[p]}`);
+  out.push(`${v} open by priority: ${byPriority.join(', ') || 'none'}`);
+  const o = l.oldest_untouched;
+  out.push(o ? `${v} oldest untouched: ${o.key}, waiting ${o.days} days since ${o.since}` : `${v} oldest untouched: none`);
+  if (l.unrecorded.open.length || l.unrecorded.closed.length) {
+    out.push(`${v} in Jira with no ledger record: ${l.unrecorded.open.length} open, ${l.unrecorded.closed.length} closed (keys in --json)`);
+  }
+  if (l.done_undated) out.push(`${v} done with no date: ${l.done_undated}`);
+  return out;
+}
+
 export function renderState(s: StateOut, budgets: Record<string, number> = {}): string {
   const out = [`release ${s.release}: ${s.status}${s.mode ? ` (${s.mode})` : ''}`];
   out.push(`inputs: ${Object.entries(s.inputs).map(([k, v]) => `${k}=${v}`).join(' ')}`);
@@ -204,6 +257,7 @@ export function renderState(s: StateOut, budgets: Record<string, number> = {}): 
   for (const [v, b] of Object.entries(s.burndown)) {
     out.push(`${v}: baseline ${b.baseline} (open ${b.baseline_open}), admitted open ${b.admitted_open}, emergency open ${b.emergency_open}, deferred out ${b.deferred_out}`);
   }
+  for (const [v, l] of Object.entries(s.version_lines ?? {})) out.push(...linesText(v, l));
   const today = Object.entries(s.admissions_today).map(([v, n]) => {
     const budget = budgets[v];
     return `${v} ${n}${budget === undefined ? '' : ` of ${budget}${n > budget ? ' OVER BUDGET' : ''}`}`;
@@ -241,13 +295,76 @@ export function sendApprovalAlert(a: ApprovalAlert): number {
   }
 }
 
+export const SIGNER_ALERT_TIMEOUT_MS = 30_000;
+
+export function sendSignerAlert(a: SignerAlert, timeoutMs = SIGNER_ALERT_TIMEOUT_MS): number {
+  const seam = ['MERGE_BLOCK_ALERT_CMD', 'TELEGRAM_ACCESS_PATH', 'BRIDGE_ROOT'].find((v) => process.env[v]);
+  if (seam && process.env.HIMMEL_TEST_FIXTURE !== '1') {
+    console.error(`release: ${seam} is set outside a test fixture (HIMMEL_TEST_FIXTURE is not 1); the operator alert is not sent`);
+    return 1;
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'spec-signer-'));
+  try {
+    const words = join(dir, 'words.txt');
+    writeFileSync(words, a.words);
+    const note = a.kind === 'record' ? a.notes.join('; ') : a.chiefSigned.join(', ');
+    const r = spawnSync('bash', [join(repoRoot, 'scripts', 'handover', 'chief-kit', 'spec-signer-alert.sh'), a.kind, a.scope, a.signer, a.decision, words, ...(note ? [note] : [])],
+      { stdio: ['ignore', 'inherit', 'inherit'], timeout: timeoutMs });
+    return r.status ?? 1;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+export const SPEC_CC_TIMEOUT_MS = 60_000;
+
+export interface SpecCopyArgs { oid: string; keys: string; spec: string; sha: string; page: string }
+
+const specCopyScript = () => join(repoRoot, 'scripts', 'handover', 'chief-kit', 'spec-cc.sh');
+
+// The minerva page of a signed row, only when the row's SPEC verdict seals it (CONTENT-SHA256 <sha> <page>) and
+// the page on disk still hashes to that sha; null otherwise, and the copy goes as a text line.
+export function sealedPage(row: { spec_path?: string | null; verdicts?: Array<{ path: string; sha256: string }> }): string | null {
+  if (!row.spec_path) return null;
+  const page = row.spec_path.replace(/\.md$/, '.html');
+  for (const v of row.verdicts ?? []) {
+    const verdict = pinnedSha(v.path);
+    if (!('bytes' in verdict) || verdict.sha256 !== v.sha256) continue;
+    const text = verdict.bytes.toString('utf8');
+    const last = text.split('\n').map((l) => l.trim()).filter(Boolean).at(-1) ?? '';
+    if (!/^SPEC (CLEAN|FINDINGS \d+)$/.test(last)) continue;
+    for (const m of text.matchAll(/^CONTENT-SHA256 ([0-9a-f]{64}) (\S.*)$/gm)) {
+      if (resolve(dirname(v.path), m[2]) !== page) continue;
+      const got = pinnedSha(page);
+      if ('bytes' in got && got.sha256 === m[1]) return page;
+    }
+  }
+  return null;
+}
+
+export function runSpecCopy(a: SpecCopyArgs, timeoutMs = SPEC_CC_TIMEOUT_MS): number {
+  const seam = ['MERGE_BLOCK_ALERT_CMD', 'TELEGRAM_ACCESS_PATH', 'BRIDGE_ROOT'].find((v) => process.env[v]);
+  if (seam && process.env.HIMMEL_TEST_FIXTURE !== '1') {
+    console.error(`release: ${seam} is set outside a test fixture (HIMMEL_TEST_FIXTURE is not 1); the spec copy is not sent`);
+    return 1;
+  }
+  // GNU timeout signals its whole process group, so a send the script started (bun, the sender) dies with it; spawnSync's own timeout reaches only bash.
+  const args = [specCopyScript(), a.oid, a.keys, a.spec, a.sha, a.page];
+  const opts = { stdio: ['ignore', 'inherit', 'inherit'] as ['ignore', 'inherit', 'inherit'], timeout: timeoutMs + 5_000, killSignal: 'SIGKILL' as const };
+  const bounded = spawnSync('timeout', ['-k', '2', String(timeoutMs / 1000), 'bash', ...args], opts);
+  if ((bounded.error as NodeJS.ErrnoException | undefined)?.code !== 'ENOENT') return bounded.status ?? 1;
+  return spawnSync('bash', args, { ...opts, timeout: timeoutMs }).status ?? 1;
+}
+
 export async function backlogAlerts(ctx: Ctx, release: string, lines: string[]): Promise<string[]> {
   const alerts: string[] = [];
   for (const l of lines) {
     const m = /^RULING \S+ \S+ (INTAKE|REVERSION) (\S+) \S+ \S+ (BACKLOG|KEEP) .*? — .*?: (.*)$/s.exec(l);
     if (!m || (m[1] === 'INTAKE') !== (m[3] === 'BACKLOG')) continue;
+    const door = / — door:/.test(l);
+    if (door && m[3] === 'KEEP') continue;
     const t = await ticketFacts(ctx, m[2]);
-    const kinds = [t && (t.priority === 'High' || t.priority === 'Highest') ? t.priority : null, t?.labels.includes('security') ? 'security' : null].filter((k) => k !== null);
+    const kinds = [t && !door && isSerious(t.priority) ? t.priority : null, t?.labels.includes('security') ? 'security' : null].filter((k) => k !== null);
     if (kinds.length) alerts.push(`RM-RUN ${release} alert: ${m[2]} ${kinds.join(' and ')} BACKLOG: ${m[4].split('\n')[0]}`);
   }
   return alerts;
@@ -440,9 +557,9 @@ function judgePreflight(): string {
 }
 
 // Async on purpose: a synchronous child call blocks Node's event loop, so no abort signal or timer could reach it.
-export function judgeCall(file: string, args: string[], o: { input: string; cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; signal?: AbortSignal }): Promise<string> {
+export function judgeCall(file: string, args: string[], o: { input: string; cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; signal?: AbortSignal; killGate?: Promise<void> }): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = execFile(file, args, { cwd: o.cwd, env: o.env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: o.timeoutMs, signal: o.signal },
+    const child = execFile(file, args, { cwd: o.cwd, env: o.env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: o.killGate ? 0 : o.timeoutMs, signal: o.signal },
       (err, stdout, stderr) => {
         if (stderr) process.stderr.write(stderr);
         if (!err) return resolve(stdout);
@@ -451,6 +568,7 @@ export function judgeCall(file: string, args: string[], o: { input: string; cwd:
       });
     child.stdin?.on('error', () => undefined);
     child.stdin?.end(o.input);
+    void o.killGate?.then(() => child.kill('SIGTERM'));
   });
 }
 
@@ -588,7 +706,7 @@ function launcherStopped(e: unknown): boolean {
 // launcher's 900 s call timeout and node's 930 s kill.
 // Any other API-route failure (a policy refusal, no room, an API error, an unparseable reply) ends in the fallback, once.
 // A stopped run or a timed-out call ends the run instead (decision 815).
-export function makeRoutedJudge(fallback: Judge = liveJudge, callTimeoutS: number = JUDGE_TIMEOUT_S, spawnTimeoutMs: number = (callTimeoutS + 30) * 1000): Judge {
+export function makeRoutedJudge(fallback: Judge = liveJudge, callTimeoutS: number = JUDGE_TIMEOUT_S, spawnTimeoutMs: number = (callTimeoutS + 30) * 1000, killGate?: Promise<void>): Judge {
   return async (input, opts) => {
     const env = judgeApiEnv(process.env, undefined, callTimeoutS);
     const mapped = spawnSync('node', [join(repoRoot, 'scripts', 'lib', 'api-roles.mjs'), 'accounts', 'judge'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
@@ -601,7 +719,7 @@ export function makeRoutedJudge(fallback: Judge = liveJudge, callTimeoutS: numbe
       let out: string;
       try {
         out = await judgeCall('bash', [join(repoRoot, 'scripts', 'api-lane', 'claude-api.sh'), ...routedJudgeArgs()],
-          { input: judgePrompt(input, skill), cwd, env, timeoutMs: spawnTimeoutMs, signal: opts?.signal });
+          { input: judgePrompt(input, skill), cwd, env, timeoutMs: spawnTimeoutMs, signal: opts?.signal, killGate });
       } catch (e) {
         if (opts?.signal?.aborted || launcherStopped(e)) throw e;
         return fallback(input, opts);
@@ -614,9 +732,8 @@ export function makeRoutedJudge(fallback: Judge = liveJudge, callTimeoutS: numbe
 }
 export const routedJudge: Judge = makeRoutedJudge();
 
-// The API route is for the himmel project only: the judged project is the mirror the prompt is built from, so a salus
-// or adopter batch (or a run with no mirror) never reaches the API lane, whatever the role map says.
 export function judgeFor(ctx: Ctx): Judge {
+  if (ctx.env.HIMMEL_RM_JUDGE !== 'model') return doorJudge;
   return ctx.mirrorRoot === defaultRoot('HIMMEL') ? routedJudge : liveJudge;
 }
 
@@ -634,7 +751,7 @@ async function admissionBudgets(versions: string[]): Promise<Record<string, numb
   return out;
 }
 
-const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'core-check', 'bucket-check']);
+const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'signer-check', 'core-check', 'core-check-batch', 'bucket-check']);
 
 /** Each repair read carries its own deadline: the fetch has none, so a hung read must end the run, not hang it. */
 export const REPAIR_READ_DEADLINE_MS = 5000;
@@ -747,6 +864,16 @@ export function registerRelease(program: Command): void {
       if (!r.ok) process.exitCode = 1;
     });
 
+  rel.command('signer-check <keys...>')
+    .description('Per key: SIGNER <K> chief|operator <governing id|default>, SIGNER <K> operator <id> via <V>, or UNKNOWN <K> <why>; who must sign its spec now. Read-only; exit 0')
+    .option('--spec <file>', 'A spec file: a ticket its header names at operator voids the chief for every key')
+    .option('--mirror <dir>', 'Jira mirror directory, for a sub-task\'s parent (default: the JIRA_PROJECT_KEY mirror)')
+    .action((keys: string[], o: { spec?: string; mirror?: string }) => {
+      const mirror = o.mirror ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null);
+      const specText = o.spec === undefined ? undefined : readFileSync(o.spec, 'utf8');
+      for (const l of signerCheck(process.env, keys, mirror, { specText })) console.log(l);
+    });
+
   rel.command('bucket-check <keys...>')
     .description('Per key, first match: FAILED <why>, NONE <mirror>, APPROVED decision= record=, DONE, IN current= via=, or '
       + 'OUTSIDE <versions|none> current= open=; whether the key is in the current version\'s bucket. Read-only; exit 0 once every key has its line')
@@ -754,6 +881,16 @@ export function registerRelease(program: Command): void {
     .action(async (keys: string[], o: { mirror: string }) => {
       const lines = await bucketCheck(process.env, keys, o.mirror, { get: repairGetter(), deadlineMs: REPAIR_READ_DEADLINE_MS, now: new Date() });
       for (const l of lines) console.log(l);
+    });
+
+  rel.command('for-project <project>')
+    .description('The verified declarations naming the project, as [{release, current, versions}]; [] when none does. '
+      + 'Exits 1 when the release root cannot be resolved or a declaration that could name it does not parse or verify. Read-only')
+    .option('--json', 'Print JSON (the only output form)')
+    .action((project: string) => {
+      const decls = releaseForProject(process.env, project);
+      if (decls === 'unreadable') throw new Error(`release for-project: the declarations naming ${project} cannot be read (set USER_SLUG or HIMMEL_RELEASE_STATE_DIR, and check each release.json)`);
+      console.log(JSON.stringify(decls.map(({ release, current, versions }) => ({ release, current, versions }))));
     });
 
   rel.command('core-check')
@@ -770,18 +907,18 @@ export function registerRelease(program: Command): void {
       if (o.changeClass !== undefined && o.changeClass !== 'rename' && o.changeClass !== 'bulk') {
         throw new Error('release core-check: --change-class is rename or bulk');
       }
-      const patterns = loadCorePatterns(o.corePaths ?? join(repoRoot, 'scripts', 'ci', 'core-paths.txt'));
-      const tracked = execFileSync('git', ['ls-files'], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-        .split('\n').filter(Boolean);
-      const guard = sizeGuard(patterns, tracked, o.widenReason);
-      if (guard.line) console.log(guard.line);
-      const paths = expandPaths(list(o.paths), tracked);
-      const mirror = o.mirror ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null);
-      const records = [...readOperatorRecords('core-bypass'), ...readOperatorRecords('core-snapshot')]
-        .sort((a, b) => a.ts.localeCompare(b.ts));
-      const issues = mirror ? readMirrorFilesUnverified(mirror).issues : null;
-      for (const l of coreMatch(paths, o.key, { patterns, changeClass: o.changeClass, docsOnly: !!o.docsOnly, issues, records })) console.log(l);
+      const inputs = loadCoreInputs(o);
+      if (inputs.guardLine) console.log(inputs.guardLine);
+      for (const l of coreGroupLines(inputs, o.paths, o.key, { changeClass: o.changeClass, docsOnly: o.docsOnly })) console.log(l);
     });
+
+  rel.command('core-check-batch <file>')
+    .description('core-check for many groups in one process: <file> is a JSON list of {"paths": "<the --paths string>", "keys": [...]}; '
+      + 'prints an optional CORE-PATHS-WIDE line, then per group "== <n>" and that group\'s core-check lines; any fault prints nothing and exits 1')
+    .option('--core-paths <file>', 'Core list (default: scripts/ci/core-paths.txt of this checkout)')
+    .option('--widen-reason <why>', 'Let a core list matching more than 2 % of tracked files proceed, with this reason on the record')
+    .option('--mirror <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror); a key with no mirror file is UNKNOWN')
+    .action((file: string, o: { corePaths?: string; widenReason?: string; mirror?: string }) => coreCheckBatch(file, o));
 
   rel.command('repair <release>')
     .description('Classify every Fix Version mismatch into one lane and print the plan as JSON; a dry run writes nothing, --apply files, folds and writes the held file (the chief)')
@@ -818,14 +955,17 @@ export function registerRelease(program: Command): void {
     .option('--to <version>', 'Target version, or backlog', 'backlog')
     .requiredOption('--why <text>', 'One line: why the request exists')
     .option('--evidence <json>', 'Evidence object as JSON', '{}')
-    .option('--decision <n>', 'The operator decision whose words place an operator-directed or High ticket (its specs/decisions verbatim file); omit it when a words record already on file names the key and exactly this placement, which is then cited')
+    .option('--decision <n>', 'The operator decision whose words this request records (its specs/decisions verbatim file); optional for every filer, since the door rules the request')
     .option('--words <text>', 'The operator\'s exact words in that file; with --decision, recorded as an O- record the request cites')
     .option('--required-by <key>', 'The open current-version ticket that cannot close without this one: records the remainder in the evidence (follow_up_of, remainder)')
+    .option('--chief-reason <reason>', 'The chief places the ticket at --to with this reason (console session only, never from a worker); never later than a version the key holds')
     .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
-    .action(async (release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string; decision?: string; words?: string; requiredBy?: string; mirrorRoot?: string }) => {
+    .action(async (release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string; decision?: string; words?: string; requiredBy?: string; chiefReason?: string; mirrorRoot?: string }) => {
       if (!['INTAKE', 'REVERSION', 'DISCHARGE'].includes(o.verb)) throw new Error('release request: --verb is INTAKE, REVERSION or DISCHARGE');
       const evidence: unknown = JSON.parse(o.evidence);
       if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('release request: --evidence is a JSON object');
+      const forged = evidenceFence(evidence as Record<string, unknown>);
+      if (forged) throw new RequestRefused(`release request: --evidence may not carry ${forged}; ${FENCED_REMEDY[forged] ?? 'that field is written only by its own path'}`);
       if (o.requiredBy !== undefined) {
         const have = (evidence as Record<string, unknown>)['follow_up_of'];
         if (!/^[A-Z][A-Z0-9]*-\d+$/.test(o.requiredBy) || o.requiredBy === o.key) throw new RequestRefused(`release request: --required-by names another ticket key, not "${o.requiredBy}"`);
@@ -833,25 +973,17 @@ export function registerRelease(program: Command): void {
         Object.assign(evidence, { follow_up_of: o.requiredBy, remainder: true });
       }
       const ctx = ctxFor(release, o.mirrorRoot);
+      if (o.chiefReason !== undefined) {
+        const reason = chiefReasonOf(ctx, o.chiefReason);
+        await neverOut(ctx, o.key, ver(o.to));
+        Object.assign(evidence, { chief_placement: { reason, ts: ctx.now().toISOString() } });
+      }
       // An out-of-version approval is work permission only (the repair's work check reads it); it files no placement and is no authority for one.
       // A placement is queued, or refused, by the same checks with or without it.
       if (o.decision !== undefined && o.words === undefined) throw new RequestRefused('release request: --decision needs --words "<the operator\'s exact words>"');
       if (o.words !== undefined && o.decision === undefined) throw new RequestRefused('release request: --words needs --decision <n>, the decision whose file holds them');
       const row = { verb: o.verb as Verb, key: o.key, from_v: ver(o.from), to_v: ver(o.to), why: o.why };
-      const scoped = isGated({ ...row, origin: 'cli', ticket: null, env: ctx.env });
-      const ticket = scoped && o.decision === undefined ? await ticketFacts(ctx, o.key) : null;
-      // A gated ask with no --decision is placed by a words record already on file that names this key and exactly this placement.
-      const cited = scoped && o.decision === undefined && isGated({ ...row, origin: 'cli', ticket, env: ctx.env }) ? coveringRecord(ctx, row) : undefined;
-      refuseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, origin: 'cli', ticket, decision: o.decision ?? cited?.decision ?? undefined });
-      if (cited) {
-        const got = requestOnRecord(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' });
-        if (!got) throw new RequestRefused(`release request: ${cited.id} no longer covers ${o.key}; ask again`);
-        if ((got.request.evidence as { operator?: unknown } | null)?.operator === got.operator.id) {
-          console.log(`OPERATOR ${got.operator.id} (decision ${got.operator.decision}, the operator's words already on file; no new record)`);
-        }
-        console.log(`REQ ${got.request.req}`);
-        return;
-      }
+      refuseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, origin: 'cli' });
       if (o.decision !== undefined && o.words !== undefined) {
         const got = requestWithWords(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' }, { decision: o.decision, words: o.words });
         console.log(`OPERATOR ${got.operator.id} (decision ${o.decision}, the operator's words)`);
@@ -906,13 +1038,22 @@ export function registerRelease(program: Command): void {
       console.log(`ACK ${e.key}@${e.ruling}: ${e.reason}`);
     });
 
+  rel.command('reviewed <release>')
+    .description('Clear an entry of the priority review, chief placements or asks apart: one signed events row (the chief)')
+    .option('--ruling <id>', 'The listed ruling (R-<R>-NNNN) to clear')
+    .option('--through <id>', 'Clear every entry of that ruling\'s own list up to and including it')
+    .requiredOption('--reason <text>', 'What you checked or relayed')
+    .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
+    .action((release: string, o: { ruling?: string; through?: string; reason: string; mirrorRoot?: string }) => {
+      const e = reviewed(ctxFor(release, o.mirrorRoot), { ruling: o.ruling, through: o.through, reason: o.reason });
+      console.log(`REVIEWED ${e.key}@${e.ruling}${e.through === undefined ? '' : ' (through)'}: ${e.reason}`);
+    });
+
   rel.command('rm-run <release>')
-    .description('Rule every pending request in one on-demand batch: lease, claim, one judge call, rule, apply, release (the chief)')
+    .description('Rule every pending request in one on-demand batch: lease, claim, the door rules each, apply, release (the chief)')
     .option('--doc <path>', 'Absolute run doc to take the lease as (after an operator takeover of a crashed run)')
     .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
-    .option('--ruling <ref>', 'Decision ref that covers a run moving more than 20 open tickets in the current version')
-    .option('--chief-override <reason>', 'Same, console session only (HIMMEL_CONSOLE=1); the reason and the count go to the admissions ledger')
-    .action(async (release: string, o: { doc?: string; mirrorRoot?: string; ruling?: string; chiefOverride?: string }) => {
+    .action(async (release: string, o: { doc?: string; mirrorRoot?: string }) => {
       const ctx = ctxFor(release, o.mirrorRoot);
       const stop = new AbortController();
       // With its last listener gone, Node restores the default action, so a second signal kills as before.
@@ -926,7 +1067,7 @@ export function registerRelease(program: Command): void {
       let lines: string[];
       try {
         lines = await rmRun(ctx, judgeFor(ctx), {
-          doc: o.doc, session: `rm-run-${process.pid}`, ruling: o.ruling, chiefOverride: chiefOverrideOf(o), signal: stop.signal,
+          doc: o.doc, session: `rm-run-${process.pid}`, signal: stop.signal,
           judgeTimeoutMs: RM_RUN_JUDGE_DEADLINE_MS,
           onJudge: (n, ms) => { judgeLine.push(`RM-RUN ${release} judge: ${n} requests, ${ms} ms`); },
         });
@@ -946,15 +1087,13 @@ export function registerRelease(program: Command): void {
     });
 
   rel.command('claim <release>')
-    .description('Claim the open requests for this lease epoch (the release manager)')
-    .action((release: string) => {
-      for (const r of claim(ctxFor(release))) {
-        console.log(`${r.req} ${r.verb} ${r.key} ${r.from_v ?? 'backlog'}→${r.to_v ?? 'backlog'} — ${r.why}`);
-      }
+    .description('Parked: placement is by the door; rm-run claims and rules every request')
+    .action(() => {
+      throw new RequestRefused(DOOR_PLACES);
     });
 
   rel.command('rule <release>')
-    .description('Write a ruling intent for a claimed request (the release manager)')
+    .description('Parked: placement is by the door; rm-run rules every request')
     .requiredOption('--req <id>', 'Request id (Q-<R>-NNNN)')
     .requiredOption('--outcome <outcome>', 'ADMIT | BACKLOG | AD-HOC | MOVE | KEEP | ACCEPT | REJECT')
     .requiredOption('--op <kind>', 'add | remove | move | keep | discharge | none')
@@ -967,15 +1106,8 @@ export function registerRelease(program: Command): void {
     .option('--supersedes <ids>', 'Comma-separated rulings (or baseline-<v>-g<n>) this replaces', '')
     .option('--authority <kind>', 'rm | operator | import', 'rm')
     .option('--ref <id>', 'The O- record (operator) or source (import)')
-    .action((release: string, o: Record<string, string | undefined>) => {
-      if (!['rm', 'operator', 'import'].includes(o.authority as string)) throw new Error('release rule: --authority is rm, operator or import');
-      const reason = o.reasonFile ? readBodyFile(o.reasonFile, '--reason-file').trim() : o.reason ?? '';
-      const r = rule(ctxFor(release), {
-        req: o.req as string, outcome: o.outcome as string, op: op(o.op as string, o.from, o.to), sector: o.sector as string,
-        ground: o.ground as string, reason, supersedes: list(o.supersedes),
-        authority: { kind: o.authority as Authority['kind'], ref: o.ref ?? null },
-      });
-      console.log(`${r.id} intent (${r.class}); run: jira release apply ${release} ${r.id}`);
+    .action(() => {
+      throw new RequestRefused(DOOR_PLACES);
     });
 
   rel.command('apply <release> <ruling>')
@@ -1086,21 +1218,58 @@ export function registerRelease(program: Command): void {
         : `${r.id} recorded; \`jira release rm-run ${release}\` admits a delivered ticket in a later version under it`);
     });
   operator.command('spec <release>')
-    .description('Sign a minerva spec for its keys after the operator approves it')
+    .description('Sign a minerva spec for its keys: the chief by default, the operator where he marked it')
     .requiredOption('--keys <list>', 'Comma-separated keys the spec covers')
     .requiredOption('--spec <path>', 'The spec file (by convention under the state repo specs/designs/ bucket; any path signs)')
     .option('--plan <path>', 'The spec\'s plan file (the trace lint reads the invariants\' tests from it); default: the spec')
     .option('--source-root <path>', 'Citation root: primary or a registered live linked worktree of this repository (default: primary)')
     .requiredOption('--verdict <path>', 'A critic verdict file; give the spec critic\'s and the plan critic\'s', (v: string, all: string[]) => [...all, v], [] as string[])
-    .requiredOption('--decision <n>', 'Operator decision number')
-    .requiredOption('--verbatim-file <path>', 'The operator\'s words, verbatim')
+    .option('--decision <n>', 'Operator decision number')
+    .option('--signer <who>', 'chief (default) or operator: the operator signs the keys his --words name', 'chief')
+    .option('--words <text>', 'With --signer operator: the operator\'s exact words, checked against the --decision verbatim file')
+    .option('--verbatim-file <path>', 'With --signer chief: the operator\'s words, verbatim')
     .option('--supersedes <O-id>', 'The spec record this re-sign replaces')
-    .action((release: string, o: { keys: string; spec: string; plan?: string; sourceRoot?: string; verdict: string[]; decision: string; verbatimFile: string; supersedes?: string }) => {
+    .action((release: string, o: { keys: string; spec: string; plan?: string; sourceRoot?: string; verdict: string[]; decision?: string; signer: string; words?: string; verbatimFile?: string; supersedes?: string }) => {
+      if (o.signer !== 'chief' && o.signer !== 'operator') throw new Error(`release operator spec: --signer is chief or operator, not '${o.signer}'`);
+      if (o.decision === undefined) throw new Error('release operator spec: a signature needs --decision');
+      if (o.signer === 'operator' && (o.verbatimFile !== undefined || o.words === undefined)) {
+        throw new Error('release operator spec: --signer operator takes --words, the operator\'s exact words, not --verbatim-file');
+      }
+      if (o.signer === 'chief' && (o.verbatimFile === undefined || o.words !== undefined)) {
+        throw new Error('release operator spec: a chief signature needs --decision and --verbatim-file, not --words');
+      }
       const r = signSpec(ctxFor(release), {
-        keys: list(o.keys), spec: o.spec, plan: o.plan, sourceRoot: o.sourceRoot, verdicts: o.verdict, decision: o.decision,
-        verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim(), supersedes: o.supersedes,
+        keys: list(o.keys), spec: o.spec, plan: o.plan, sourceRoot: o.sourceRoot, verdicts: o.verdict, decision: o.decision, supersedes: o.supersedes,
+        ...(o.signer === 'operator'
+          ? { signer: 'operator' as const, words: o.words, alert: (a: SignerAlert) => sendSignerAlert(a) }
+          : { signer: 'chief' as const, verbatim: readBodyFile(o.verbatimFile as string, '--verbatim-file').trim() }),
       });
-      console.log(`${r.id} spec ${r.spec_path} signed for ${(r.keys ?? []).join(', ')}`);
+      console.log(`${r.id} spec ${r.spec_path} signed for ${(r.keys ?? []).join(', ')}${r.signer === 'operator' ? ` (the operator signs ${(r.operator_keys ?? []).join(', ') || 'none'})` : ''}`);
+      if (r.signer === 'chief') {
+        const copy = { oid: r.id, keys: (r.keys ?? []).join(', '), spec: r.spec_path ?? '', sha: r.spec_sha256 ?? '', page: sealedPage(r) ?? '-' };
+        const rc = runSpecCopy(copy);
+        if (rc !== 0) {
+          const quote = (x: string) => "'" + x.split("'").join("'\\''") + "'";
+          const resend = ['bash', specCopyScript(), copy.oid, copy.keys, copy.spec, copy.sha, '-'].map(quote).join(' ');
+          console.error(`WARN spec copy not sent (exit ${rc}); the signature stands; resend the text line (a page is never resent, its seal is checked only at signing): ${resend}`);
+        }
+      }
+    });
+  operator.command('spec-signer <release>')
+    .description('Record who signs specs: with --keys a mark (operator) or a lift (chief) per key, without it the station default')
+    .requiredOption('--signer <who>', 'chief or operator')
+    .option('--keys <list>', 'Comma-separated keys the operator\'s words name; omit for the station default')
+    .requiredOption('--decision <n>', 'Operator decision number')
+    .requiredOption('--words <text>', 'The operator\'s exact words, checked against the --decision verbatim file')
+    .option('--mirror-root <dir>', 'Jira mirror directory, for a sub-task\'s parent and a mark\'s bypass note (default: the JIRA_PROJECT_KEY mirror)')
+    .action((release: string, o: { signer: string; keys?: string; decision: string; words: string; mirrorRoot?: string }) => {
+      if (o.signer !== 'chief' && o.signer !== 'operator') throw new Error(`release operator spec-signer: --signer is chief or operator, not '${o.signer}'`);
+      const r = specSigner(ctxFor(release, o.mirrorRoot), {
+        signer: o.signer, keys: o.keys === undefined ? undefined : list(o.keys), decision: o.decision, words: o.words, alert: (a) => sendSignerAlert(a),
+      });
+      console.log(`${r.row.id} spec-signer ${r.row.keys?.length ? r.row.keys.join(', ') : 'the station default'} signed by ${r.row.signer}`);
+      for (const n of r.notes) console.log(n);
+      if (r.warn) console.error(r.warn);
     });
   operator.command('spec-review <release>')
     .description('Record a spec, its plan and one passing or folded critic round for its keys; no operator signature')

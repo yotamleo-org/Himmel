@@ -84,6 +84,7 @@ FHEAD=1080d424a81d7cb754e1abd312fa3d87467863b7
 SHA=$(ready_pass_repo "$REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 SHA2=$(ready_pass_repo "$REPO" 2) || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
 export READY_STUB_HEAD="$SHA" READY_STUB_BRANCH="$BR"
+check "ready-check's owner-review line over the ready-pass fixture" "$(ready_pass_owner_review)" "$READY_PASS_OWNER_LINE"
 # ready-check reads the branch from the GraphQL snapshot; a branch other than the fixture's keeps the earlier-head
 # fixture deferral out of its items 7 and 18, so this suite exercises only cr-disposition.sh's own gate
 export READY_STUB_GQL_BRANCH=gql-other
@@ -359,6 +360,19 @@ contains "12: the marker carries both routes" "$(cat "$HIMMEL_QUOTA_DIR/blocked/
 t11 "$tmp/t11noroot"
 contains "12 RED control: with no read token configured the check still runs" "$out" "[OPEN] crit adopt-9@$FHEAD"
 check    "12 RED control: the head-branch read goes out on main, as today" "$(cat "$tmp/t11.log")" "main pr view 90"
+
+mkdir -p "$tmp/t13bin" "$tmp/foreign"; git init -q "$tmp/foreign"
+cat > "$tmp/t13bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in "pr view "*"--json headRefName"*) pwd -P > "$T13_LOG" ;; esac
+exec "$T13_NEXT" "$@"
+STUB
+chmod +x "$tmp/t13bin/gh"
+: > "$tmp/t13.log"
+rc=0; out="$(cd "$tmp/foreign" && env -u GH_CMD -u himmel_github_token_vm2 PATH="$tmp/t13bin:$PATH" T13_NEXT="$tmp/ready-bin/gh" T13_LOG="$tmp/t13.log" \
+  GH_READ_ENV_ROOT="$tmp/t11noroot" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
+contains "13: from another repo's folder the gated checkout's ledger is read" "$out" "[OPEN] crit adopt-9@$FHEAD"
+check    "13: the head-branch read runs in the gated checkout" "$(cat "$tmp/t13.log")" "$(cd "$REPO" && pwd -P)"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

@@ -9,7 +9,7 @@ export const ROLE_REQUIRES = {
   user: ['lean-skills@himmel'],
   design: ['plannotator-effective-html@himmel', 'frontend-design@claude-plugins-official',
     'ui-ux-pro-max@himmel', 'impeccable@himmel', 'taste-skill-core@himmel', 'shadcn-mcp@himmel', 'builder-visual@himmel',
-    'context7@claude-plugins-official'],
+    'context7@claude-plugins-official', 'unslop-ui@himmel'],
   'design-motion': ['emilkowalski-skills@himmel', 'animejs-skills@himmel', 'gsap-skills@himmel',
     'lottie-motion-design@himmel', 'motion-lexicon@himmel', 'playground@claude-plugins-official'],
   'design-3d': ['threejs-skills@himmel'],

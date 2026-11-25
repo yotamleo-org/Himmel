@@ -85,6 +85,7 @@ dimension row so every write-fence cell sits in a real row (no home-less cell).
 |---|---|
 | main-claude | auto-mode classifier |
 | codex-direct | `tested:scripts/hooks/test-block-terminal-write-fence.sh` -- the terminal write/push/network fence (codex-lane classifier substitute), e2e-proved through the adapter (`scripts/hooks/test-codex-adapter-e2e.sh`). The Edit/Write patch path is fenced by `block-edit-on-main.sh` via the adapter. |
+| antigravity-t3 | `tested:scripts/hooks/test-block-terminal-write-fence.sh` `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` -- terminal write/push/network fence enforced with all `*_OK` overrides stripped; `edit_file`/`write_file` fenced by `block-edit-on-main.sh` plus both-home and `.agents/**` self-protect through `scripts/hooks/antigravity-hook-adapter.sh`. T3 MCP: the same tool policy as the Claude and Codex lanes (decision 1306): the shared chain (`mcp-policy.sh`, `block-backend-tier.sh`, `guard-t3-thread-tools.sh`, `peer-taint-gate.sh`) decides each tool, with no lane-only allowlist; `tested:scripts/t3/test-t3-guard-conformance.sh` asserts one verdict per tool across the three lanes. |
 | hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The other deny-guards are enforced by parity_guard too (all `present`). |
 | copilot / cursor | `deferred` |
 
@@ -121,6 +122,7 @@ sub-table below is `tested:<path>` -- no `GAP`, no `pending:`.
 |---|---|---|---|---|---|
 | main-claude | `native` (CLAUDE.md) | `native` (hooks + classifier) | `native` | `native` | `native` (baseline) |
 | codex-direct | `tested:scripts/agents-md/generate.mjs` (AGENTS.md gen + gated) | `tested:scripts/hooks/test-codex-run-hook.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+| antigravity-t3 | `tested:scripts/agents-md/generate.mjs` (AGENTS.md gen + gated) | `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 | hermes-main (DEFAULT; engine gpt-6.1-sol; GLM removed) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
 | copilot / cursor | `deferred` | `deferred` | `deferred` | `deferred` | `deferred` |
 
@@ -157,15 +159,15 @@ hermes, so the hermes-main column is `tested`-green.
 
 <!-- BEGIN guard-lane-conformance -->
 
-| deny-guard | codex-direct | hermes-main (gpt-6.1-sol) |
-|---|---|---|
-| block-edit-on-main | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-edit-on-main.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-read-secrets | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-read-secrets.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-backend-tier | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-backend-tier.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-docker-privesc | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-docker-privesc.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-rogue-claude-schedule | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-rogue-claude-schedule.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| block-merged-pr-commit | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-merged-pr-commit.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
-| write-authority / external-write-fence (cross-lane dimension, NOT a CC PreToolUse hook) | `tested:scripts/hooks/test-block-terminal-write-fence.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| deny-guard | codex-direct | antigravity-t3 | hermes-main (gpt-6.1-sol) |
+|---|---|---|---|
+| block-edit-on-main | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-edit-on-main.sh` | `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` `tested:scripts/hooks/test-block-edit-on-main.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-read-secrets | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-read-secrets.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` `tested:scripts/hooks/test-block-read-secrets.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-backend-tier | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-backend-tier.sh` | `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` `tested:scripts/hooks/test-block-backend-tier.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-docker-privesc | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-docker-privesc.sh` | `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` `tested:scripts/hooks/test-block-docker-privesc.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-rogue-claude-schedule | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-rogue-claude-schedule.sh` | `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` `tested:scripts/hooks/test-block-rogue-claude-schedule.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| block-merged-pr-commit | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-merged-pr-commit.sh` | `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` `tested:scripts/hooks/test-block-merged-pr-commit.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+| write-authority / external-write-fence (cross-lane dimension, NOT a CC PreToolUse hook) | `tested:scripts/hooks/test-block-terminal-write-fence.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hooks/test-block-terminal-write-fence.sh` `tested:scripts/hooks/test-antigravity-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
 
 <!-- END guard-lane-conformance -->
 
@@ -199,6 +201,40 @@ Notes on the cells:
   deny-guards (edit-on-main, docker-privesc, merged-PR-commit, MCP-fence) are
   enforced there too, so the hermes-main column is `tested`-green.
 - Any deny-guard with no lane proving test is `GAP` by construction.
+
+## T3 preview browser: the `previewBrowser` profile option
+
+A session can drive T3's preview browser to check its own change when its
+profile turns the option on. **Default: off** -- no shipped profile sets it.
+
+- **No lane guard denies a preview tool.** The Claude, Codex and Antigravity
+  guard chains (`guard-t3-thread-tools.sh`, `mcp-policy.sh`, the Antigravity
+  adapter) all allow the `mcp__t3-code__preview_*` tools. All 14 are proved
+  allowed on all three lanes by
+  `tested:scripts/t3/test-t3-guard-conformance.sh` (the list is read from the
+  registry, so a tool added there is checked on every lane) and the adapter
+  path by `tested:scripts/hooks/test-antigravity-adapter-e2e.sh`. The option
+  therefore tightens or relaxes nothing in a guard.
+- **What the option does.** In `scripts/lanes/plugin-profiles.json`, a
+  worker-shaped profile with `"previewBrowser": true` resolves with an
+  `mcp__t3-code__<tool>` allow rule for each name in the registry's
+  `previewBrowserTools`, so Claude does not prompt for them. A profile without
+  it (every profile today) gets no such rule. `bare`, `readiness` and the
+  chief and console profiles refuse it; the registry lint fails a non-boolean
+  value, a profile that is not worker-shaped, or a registry with no tool list.
+  Proved by `tested:scripts/lanes/tests/plugin-profiles.test.mjs`.
+- **Tool list.** `preview_act`, `preview_close`, `preview_dialog`,
+  `preview_evaluate`, `preview_list`, `preview_navigate`, `preview_open`,
+  `preview_recording_start`, `preview_recording_stop`, `preview_resize`,
+  `preview_set_appearance`, `preview_snapshot`, `preview_status`,
+  `preview_wait_for`. They were read from the T3 server's own tool listing in
+  its provider event log, not from a registration file, so a T3 release that
+  adds or renames a preview tool needs this list updated.
+- **Example: an e2e check through the preview.** Set `"previewBrowser": true`
+  on the worker profile the e2e session launches under (for example
+  `worker-e2e`), start it from a T3 thread, and have it call `preview_open`
+  on the dev server URL, `preview_wait_for` the page, then `preview_snapshot`
+  and quote the page read in its result.
 
 ## What `parity_guard.py` enforces under hermes (both engines)
 

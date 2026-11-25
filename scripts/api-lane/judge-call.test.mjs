@@ -23,8 +23,7 @@ process.on('exit', () => { rmSync(T, { recursive: true, force: true }); for (con
 const DUMMY = 'sk-ant-dummy-not-a-real-key-0000';
 const HEAD = 'a'.repeat(40);
 const OLD = 'b'.repeat(40);
-// each case gets its own PR number so the real judge-dir under /tmp/claude-<uid> never collides
-let nextPr = 100000000 + process.pid * 10;
+let nextPr = 100000000 + process.pid * 1000;
 
 const STUB = `#!/bin/bash
 echo called >> "$STUB_LOG"
@@ -261,9 +260,9 @@ test('the question carries the ceilings rows under a Claude chain, withheld unde
   assert.doesNotMatch(seen, new RegExp(secret));
 });
 
-test('a refused launch alerts once, then the judge runs once on the subscription with no key and its verdict is recorded', () => {
+test('with HIMMEL_API_FALLBACK=on, a refused launch alerts once, then the judge runs once on the subscription with no key and its verdict is recorded', () => {
   const f = fixture();
-  const r = f.run(f.args, { HIMMEL_API_ACCOUNT: 'E' });
+  const r = f.run(f.args, { HIMMEL_API_ACCOUNT: 'E', HIMMEL_API_FALLBACK: 'on' });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.art.status, 'RECORDED');
   assert.equal(r.art.verdict, 'GO');
@@ -276,6 +275,15 @@ test('a refused launch alerts once, then the judge runs once on the subscription
   assert.equal(alerts.length, 1);
   assert.match(alerts[0], /^type=api-lane refused msg=kind judge, .*HIMMEL_API_ACCOUNT must be.*fallback: running on the subscription/);
   assert.ok(!alerts[0].includes(DUMMY));
+});
+
+test('a refused launch with HIMMEL_API_FALLBACK unset alerts once and never runs on the subscription', () => {
+  const f = fixture();
+  f.run(f.args, { HIMMEL_API_ACCOUNT: 'E' });
+  assert.ok(!existsSync(f.p.log), 'the subscription ran');
+  const alerts = readFileSync(f.p.alertLog, 'utf8').trim().split('\n');
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0], /^type=api-lane refused msg=kind judge, .*fallback: off \(HIMMEL_API_FALLBACK unset: default off\)/);
 });
 
 test('a timed-out call is TIMEOUT and its reservation is settled in the ledger', () => {

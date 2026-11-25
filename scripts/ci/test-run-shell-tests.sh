@@ -856,7 +856,7 @@ done
 
 # --------------------------------------------------------------------------
 # Case 14: tier suites / SUITE_TIER + SUITE_TIER_MODE.
-#   The production SUITE_TIER table now carries three extended entries (Task
+#   The production SUITE_TIER table now carries four extended entries (Task
 #   6), but every case here still drives the filter through the SUITE_TIER
 #   env override — the same seam SUITE_REQUIRE_TOOL already exposes for its
 #   own self-test — so the mechanism is exercised without touching production.
@@ -1042,17 +1042,17 @@ fi
 rm -rf "$sb14i"
 fi
 
-# 14j — control: the production table still classifies its three
+# 14j — control: the production table still classifies its four
 # extended-listed suites, in a full scan and in a subtree scan, and a listed
 # basename elsewhere is not swept in.
 out14j=$(env -u SUITE_TIER SUITE_TIER_MODE=fast bash "$RUNNER" --list scripts 2>&1); rc14j=$?
 out14k=$(env -u SUITE_TIER SUITE_TIER_MODE=fast bash "$RUNNER" --list scripts/handover 2>&1); rc14k=$?
 n14j=$(printf '%s\n' "$out14j" | grep -c 'tier: extended (SUITE_TIER_MODE=fast)')
 n14k=$(printf '%s\n' "$out14k" | grep -c 'tier: extended (SUITE_TIER_MODE=fast)')
-if [ "$rc14j" -eq 0 ] && [ "$rc14k" -eq 0 ] && [ "$n14j" -eq 3 ] && [ "$n14k" -eq 2 ]; then
-  pass "14j: production SUITE_TIER table classifies 3 suites in a full scan and 2 in a scripts/handover subtree scan"
+if [ "$rc14j" -eq 0 ] && [ "$rc14k" -eq 0 ] && [ "$n14j" -eq 4 ] && [ "$n14k" -eq 3 ]; then
+  pass "14j: production SUITE_TIER table classifies 4 suites in a full scan and 3 in a scripts/handover subtree scan"
 else
-  fail "14j: expected 3 full / 2 subtree tier skips; rc=$rc14j/$rc14k got $n14j/$n14k"
+  fail "14j: expected 4 full / 3 subtree tier skips; rc=$rc14j/$rc14k got $n14j/$n14k"
 fi
 
 # --------------------------------------------------------------------------
@@ -1197,6 +1197,10 @@ else
   check_timeout_2267 "/repo/scripts/test-adopt.sh" "1200"
   check_timeout_2267 "scripts/ci/test-suite-concurrency.sh" "1500"
   check_timeout_2267 "/repo/scripts/ci/test-suite-concurrency.sh" "1500"
+  check_timeout_2267 "scripts/handover/chief-kit/test-chief-wait-pool.sh" "1250"
+  check_timeout_2267 "/repo/scripts/handover/chief-kit/test-chief-wait-pool.sh" "1250"
+  check_timeout_2267 "scripts/handover/chief-kit/test-auto-go.sh" "1200"
+  check_timeout_2267 "/repo/scripts/handover/chief-kit/test-auto-go.sh" "1200"
   # PR 4300 shard 3: every assertion passing, killed at 603s against the 600s
   # default (CAP EXCEEDED); 508s on the ledger. 603s is a truncation floor, so
   # 1200s is that x2 (the loaded-budget rule).
@@ -1237,6 +1241,8 @@ else
   # records 843s idle.
   check_timeout_2267 "scripts/handover/test-arm-resume-1879.sh" "1700"
   check_timeout_2267 "/repo/scripts/handover/test-arm-resume-1879.sh" "1700"
+  check_timeout_2267 "scripts/handover/test-arm-resume-1879-b.sh" "1700"
+  check_timeout_2267 "/repo/scripts/handover/test-arm-resume-1879-b.sh" "1700"
 
   # The write-fence suite hit the 600s default twice on
   # ubuntu CI (603s, CAP EXCEEDED, assertions passing).
@@ -1302,6 +1308,10 @@ else
   check_os_timeout_2267 Darwin "/repo/scripts/ci/test-tier-replay.sh" "1800"
   check_os_timeout_2267 Darwin "scripts/cr/test-pr-check-rounds.sh" "3400"
   check_os_timeout_2267 Darwin "/repo/scripts/cr/test-pr-check-rounds.sh" "3400"
+  check_os_timeout_2267 Linux "scripts/cr/test-pr-check-rounds-b.sh" "1200"
+  check_os_timeout_2267 Linux "/repo/scripts/cr/test-pr-check-rounds-c.sh" "1200"
+  check_os_timeout_2267 Darwin "scripts/cr/test-pr-check-rounds-b.sh" "3400"
+  check_os_timeout_2267 Darwin "/repo/scripts/cr/test-pr-check-rounds-c.sh" "3400"
   # The core file of the split family: every assertion green but killed at 603s
   # on both attempts of macOS run 40408566333 (129s on the Linux ledger, so the
   # last case was still pending). Its five siblings measured under the cap there

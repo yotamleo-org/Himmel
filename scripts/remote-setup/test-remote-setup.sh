@@ -20,7 +20,36 @@
 HERE=$(cd "$(dirname "$0")" && pwd -P)
 REPO=$(cd "$HERE/../.." && pwd -P)
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/rs-test.XXXXXX") || exit 1
-trap 'rm -rf "$WORK"' EXIT
+WATCHDOG_SECS=${RS_WATCHDOG_SECS:-1100}
+WATCHDOG=""
+trap 'exit 1' TERM
+trap '[ -n "$WATCHDOG" ] && kill "$WATCHDOG" 2> /dev/null; rm -rf "$WORK"' EXIT
+WORK=$(cd "$WORK" && pwd -P) || exit 1
+
+watchdog() {
+    local me sp tree
+    me=$(exec sh -c 'echo $PPID')
+    trap 'kill "$sp" 2> /dev/null; exit 0' TERM
+    /bin/sleep "$WATCHDOG_SECS" &
+    sp=$!
+    wait "$sp"
+    tree=$(ps -A -o pid= -o ppid= -o stat= -o etime= -o command= | awk -v root="$SUITE_PID" -v me="$me" '
+        { line[$1] = $0; kids[$2] = kids[$2] " " $1 }
+        function walk(p, d,   n, a, i) {
+            if (p == me) return
+            printf "%" (2 * d) "s%s\n", "", line[p]
+            n = split(kids[p], a, " ")
+            for (i = 1; i <= n; i++) walk(a[i], d + 1)
+        }
+        END { walk(root, 0) }')
+    printf 'FAIL: watchdog: the suite ran %ss, stopping it in case %s. Process tree:\n%s\n' "$WATCHDOG_SECS" "$(cat "$WORK/current-case" 2> /dev/null)" "$tree" >&2
+    printf '%s\n' "$tree" | awk -v root="$SUITE_PID" '$1 != root { print $1 }' | while read -r p; do kill -KILL "$p" 2> /dev/null; done
+    kill -TERM "$SUITE_PID" 2> /dev/null
+    exit 0
+}
+SUITE_PID=$$
+watchdog &
+WATCHDOG=$!
 PATH_BASE=$PATH
 REAL_BUN=$(command -v bun || echo /nonexistent-bun)
 
@@ -42,6 +71,7 @@ check() { # check <description> <command...>
     fi
 }
 eq() { [ "$1" = "$2" ]; }
+ended() { ! kill -0 "$1" 2> /dev/null; }
 has() { case "$1" in *"$2"*) return 0 ;; esac; return 1; }
 lacks() { case "$1" in *"$2"*) return 1 ;; esac; return 0; }
 starts() { case "$1" in "$2"*) return 0 ;; esac; return 1; }
@@ -57,6 +87,7 @@ new_case() {
     T=$WORK/$1
     mkdir -p "$T/home" "$T/tmp dir" "$T/bin" "$T/tg" "$T/units" "$T/root"
     cp "$HERE"/tests/shims/* "$T/bin/"
+    echo Linux > "$T/uname"
     # a clock the sleep shim moves: a ten-minute wait ends in a few reads (see the date shim)
     date +%s > "$T/clock"
     echo 60 > "$T/clock.step"
@@ -86,7 +117,7 @@ mk_root() {
 
 # A canary token: <id>:<35 url-safe chars>. Never a real credential.
 mk_token() {
-    printf '%s:CNRY%s' "$1" "$(LC_ALL=C tr -dc 'A-Za-z0-9_-' < /dev/urandom | head -c 31)"
+    printf '%s:CNRY%s' "$1" "$(head -c 1024 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9_-' | head -c 31)"
 }
 
 set_getme() { # set_getme <id> <username>
@@ -141,6 +172,9 @@ expect_json_contract() {
 
 RUN_SCRIPT=remote-setup.sh
 RUN_ENV=""
+RUN_CAP=20
+STALL_MAX=3
+STALLS=0
 
 run_sut() {
     local inj="" tty=1 root=0 contract=1 json=0 cwd=$ROOT without="" pbase=$PATH_BASE
@@ -185,9 +219,11 @@ run_sut() {
     : > "$T/err"
     if [ "$tty" = 1 ]; then
         if [ "$(uname)" = Darwin ]; then
-            (cd "$cwd" && script -q /dev/null "${envs[@]}" < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
+            rm -f "$T/noecho"
+            (cd "$cwd" && { i=0; while [ ! -e "$T/noecho" ] && [ "$i" -lt $((RUN_CAP * 100)) ]; do /bin/sleep 0.01; i=$((i + 1)); done; cat "$stdin"; } \
+                | perl -e 'alarm shift; exec @ARGV or exit 127' "$RUN_CAP" script -q /dev/null /bin/sh -c 'stty -echo && : > "$0" && exec "$@"' "$T/noecho" "${envs[@]}" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
         else
-            (cd "$cwd" && script -qec "$(printf '%q ' "${envs[@]}")" /dev/null -E never < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
+            (cd "$cwd" && perl -e 'alarm shift; exec @ARGV or exit 127' "$RUN_CAP" script -qec "$(printf '%q ' "${envs[@]}")" /dev/null -E never < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
         fi
     else
         (cd "$cwd" && "${envs[@]}" < "$stdin" > "$T/out.raw" 2> "$T/err") # read-sink-ok: the suite's own stdin file
@@ -198,6 +234,14 @@ run_sut() {
     cat "$T/out" "$T/err" >> "$T/allout.log"
     LAST=$(last_line "$T/out")
     ERR=$(cat "$T/err")
+    if [ "$tty" = 1 ] && [ "$RC" = 142 ]; then
+        STALLS=$((STALLS + 1))
+        check "the tty run ($*) ended within ${RUN_CAP}s" false
+        if [ "$STALLS" -ge "$STALL_MAX" ]; then
+            printf 'FAIL: %s tty runs did not end within %ss: stopping the suite\n' "$STALLS" "$RUN_CAP" >&2
+            exit 1
+        fi
+    fi
     if [ "$contract" = 1 ]; then
         if [ "$json" = 1 ]; then expect_json_contract; else expect_contract; fi
     fi
@@ -234,6 +278,32 @@ case_guard_matrix_every_writer() {
     # positive control: with nothing tripped the guard stays quiet and the run goes on
     run_sut "$T/in" away
     check "control: the guard lets a clean terminal through" has "$LAST" "later update"
+}
+
+case_mk_token_ends_when_tr_ignores_sigpipe() {
+    local stub=$T/bsd-tr pid i
+    mkdir -p "$stub"
+    cat > "$stub/tr" << 'EOF'
+#!/bin/sh
+echo $$ > "$0.pid"
+while IFS= read -r _l; do :; done
+printf %s abcdefghijklmnopqrstuvwxyz0123456789
+EOF
+    chmod +x "$stub/tr"
+    (
+        trap '' PIPE
+        PATH=$stub:$PATH
+        mk_token 7 > "$T/tok"
+    ) &
+    pid=$!
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        kill -0 "$pid" 2> /dev/null || break
+        /bin/sleep 0.5
+    done
+    check "mk_token ends within 10s when tr reads to EOF" ended "$pid"
+    kill -KILL "$(cat "$stub/tr.pid" 2> /dev/null)" 2> /dev/null
+    wait "$pid"
+    check "mk_token keeps 31 chars of tr's output" eq "$(cat "$T/tok")" "7:CNRYabcdefghijklmnopqrstuvwxyz01234"
 }
 
 case_usage_exits_2() {
@@ -363,7 +433,7 @@ all_green() {
     set_item bridge-health green "@main_bot reachable, 1 poller"
     set_item bridge-persistence green "unit installed and enabled"
     set_item distinct-tokens green "tokens distinct"
-    set_item remote-peer green "goomal: set up, poller running"
+    set_item remote-peer green "example: set up, poller running"
 }
 
 case_curl_argv_is_exact() {
@@ -1201,20 +1271,19 @@ seed_unit() { # [linux|mac]: the poller unit installed and running
         : > "$T/units/$UNIT_NAME.enabled"
     fi
 }
-# A station that finished part 4 once: goomal confirmed, checkpoint written, poller running.
 seed_confirmed_station() { # [linux|mac]
     seed_main
     seed_peer_env
     seed_bots "{\"bridge\":{\"id\":\"$OUR\",\"publishedAt\":\"2026-11-20T10:00:00Z\"}}"
-    seed_peers_json goomal "$THEIR" "$CHAT"
-    seed_checkpoint goomal "$THEIR" "$CHAT"
+    seed_peers_json example "$THEIR" "$CHAT"
+    seed_checkpoint example "$THEIR" "$CHAT"
     seed_unit "${1:-linux}"
     set_getme "$OUR" bridge_bot
     set_group
     all_green
 }
 # A discovery that ends well: the operator's hello and the other bot's hello are waiting.
-set_good_updates() { set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR")" "$(upd_peer_hello 102 "$CHAT" "$THEIR" goomal_bot)"; }
+set_good_updates() { set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR")" "$(upd_peer_hello 102 "$CHAT" "$THEIR" example_bot)"; }
 
 # a fresh fixture for a second scenario inside one case, keeping the failures counted so far
 sub_case() { local keep=$CASE_FAILS; new_case "$1"; CASE_FAILS=$keep; }
@@ -1236,14 +1305,14 @@ case_peer_fresh_fresh_discovers_via_hello() {
     feed "$tok" 1
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
-    check "the DONE line names the peer" eq "$LAST" "DONE: peer goomal — group confirmed, poller running"
-    check "setup.ts add got every id from discovery" has "$(setup_calls)" "add goomal --peer-bot-id $THEIR --peer-username goomal_bot --operator-bot-id 111"
-    check "setup.ts confirm got the group" has "$(setup_calls)" "confirm goomal $CHAT"
+    check "the DONE line names the peer" eq "$LAST" "DONE: peer example — group confirmed, poller running"
+    check "setup.ts add got every id from discovery" has "$(setup_calls)" "add example --peer-bot-id $THEIR --peer-username example_bot --operator-bot-id 111"
+    check "setup.ts confirm got the group" has "$(setup_calls)" "confirm example $CHAT"
     check "the bridge token is stored as one line" eq "$(cat "$(PEER_ENV)")" "PEER_BOT_TOKEN=$tok"
     check "owner-only token file" eq "$(file_mode "$(PEER_ENV)")" 600
     check "the bridge bot id is published" eq "$(jq -r '.bridge.id' "$(BOTS_FILE)")" "$OUR"
     check "and is no longer pending" eq "$(jq -r '.bridge.pending // false' "$(BOTS_FILE)")" false
-    check "the checkpoint holds the peer" eq "$(jq -r '.peers[0] | "\(.name) \(.peerBotId) \(.chatId)"' "$(CONFIRMED_FILE)")" "goomal $THEIR $CHAT"
+    check "the checkpoint holds the peer" eq "$(jq -r '.peers[0] | "\(.name) \(.peerBotId) \(.chatId)"' "$(CONFIRMED_FILE)")" "example $THEIR $CHAT"
     check "exactly one hello was posted" eq "$(sent_count)" 1
     check "the hello is the fixed plain line" file_has "$T/curl.stdin" 'himmel peer hello'
     check "it went to the discovered group" eq "$(sent_chat)" "$CHAT"
@@ -1257,7 +1326,7 @@ case_peer_confirmed_side_posts_hello_without_waiting() {
     feed ""
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
-    check "DONE names the peer" eq "$LAST" "DONE: peer goomal — group confirmed, poller running"
+    check "DONE names the peer" eq "$LAST" "DONE: peer example — group confirmed, poller running"
     check "one hello" eq "$(sent_count)" 1
     check "to the recorded group" eq "$(sent_chat)" "$CHAT"
     check "no getUpdates at all" eq "$(method_count getUpdates)" 0
@@ -1271,12 +1340,12 @@ case_peer_unconfirmed_pages_101_backlog() {
     set_group
     all_green
     printf '{"ok":true,"result":%s}' "$(noise_updates 1 100)" > "$T/tg/getUpdates.1.json"
-    set_updates getUpdates.2.json "$(upd_hello 101 "$CHAT" "$FAR")" "$(upd_peer_hello 102 "$CHAT" "$THEIR" goomal_bot)"
+    set_updates getUpdates.2.json "$(upd_hello 101 "$CHAT" "$FAR")" "$(upd_peer_hello 102 "$CHAT" "$THEIR" example_bot)"
     feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "the hello behind 100 other messages is found" eq "$RC" 0
     check "the second read acknowledged the first 100" file_has "$T/curl.stdin" '\"offset\":101'
-    check "the peer was added" has "$(setup_calls)" "add goomal"
+    check "the peer was added" has "$(setup_calls)" "add example"
 }
 
 case_peer_confirmed_repoint_backlog_full_gives_fix_and_restarts_poller() {
@@ -1298,7 +1367,7 @@ case_peer_no_offset_ack_on_confirmed_side() {
     seed_confirmed_station
     # a full batch of exactly 100 whose last two updates are the hellos: a side that paged would ask again
     # with an offset; the confirmed side reads once and acknowledges nothing
-    printf '{"ok":true,"result":%s}' "$(jq -nc --argjson n "$(noise_updates 1 98)" --argjson a "$(upd_hello 99 "$CHAT" "$FAR")" --argjson b "$(upd_peer_hello 100 "$CHAT" "$THEIR" goomal_bot)" '$n + [$a, $b]')" > "$T/tg/getUpdates.json"
+    printf '{"ok":true,"result":%s}' "$(jq -nc --argjson n "$(noise_updates 1 98)" --argjson a "$(upd_hello 99 "$CHAT" "$FAR")" --argjson b "$(upd_peer_hello 100 "$CHAT" "$THEIR" example_bot)" '$n + [$a, $b]')" > "$T/tg/getUpdates.json"
     feed "" "" 1
     run_sut "$T/in" peer --replace
     check "exit 0" eq "$RC" 0
@@ -1311,7 +1380,7 @@ case_peer_no_offset_ack_on_confirmed_side() {
     set_group
     all_green
     printf '{"ok":true,"result":%s}' "$(noise_updates 1 100)" > "$T/tg/getUpdates.1.json"
-    set_updates getUpdates.2.json "$(upd_hello 101 "$CHAT" "$FAR")" "$(upd_peer_hello 102 "$CHAT" "$THEIR" goomal_bot)"
+    set_updates getUpdates.2.json "$(upd_hello 101 "$CHAT" "$FAR")" "$(upd_peer_hello 102 "$CHAT" "$THEIR" example_bot)"
     feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "control: the unconfirmed side pages with an offset" file_has "$T/curl.stdin" 'offset'
@@ -1325,8 +1394,8 @@ case_peer_gate_drops_plain_hello_real_gate() {
 import { admit, createGateState } from "$REPO/scripts/peer-bridge/gate";
 const PEER_ID = "555000111", CHAT = -1001234567890;
 const caps = { opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, maxReaderRunsPerDay: 50, maxReaderRunsPerKindPerDay: { question: 30, status: 10, info: 10 }, maxWakesPerDay: 30 };
-const cfg: any = { maxTextChars: 4000, peers: { goomal: { peerBotId: PEER_ID, chatId: CHAT, allowFrom: [PEER_ID], ...caps, theirs: { username: "goomal_bot", ...caps, copiedAt: "2026-11-20" } } } };
-const msg = (text: string, id: number) => ({ update_id: id, message: { message_id: id, from: { id: Number(PEER_ID), is_bot: true, username: "goomal_bot" }, chat: { id: CHAT, type: "supergroup", title: "bridge" }, date: 1731000000, text } });
+const cfg: any = { maxTextChars: 4000, peers: { example: { peerBotId: PEER_ID, chatId: CHAT, allowFrom: [PEER_ID], ...caps, theirs: { username: "example_bot", ...caps, copiedAt: "2026-11-20" } } } };
+const msg = (text: string, id: number) => ({ update_id: id, message: { message_id: id, from: { id: Number(PEER_ID), is_bot: true, username: "example_bot" }, chat: { id: CHAT, type: "supergroup", title: "bridge" }, date: 1731000000, text } });
 const state = createGateState({ ourBotId: "111000111", ourUsername: "ours_bot", committed: 0, now: 1731000000000 });
 const hello: any = admit(msg("himmel peer hello", 5), cfg, state);
 const control: any = admit(msg("/peer@ours_bot\n#ask:question id=a1b2c3d4\nhow do I x?", 6), cfg, createGateState({ ourBotId: "111000111", ourUsername: "ours_bot", committed: 0, now: 1731000000000 }));
@@ -1367,7 +1436,7 @@ case_peer_chatid_two_groups_newest_hello_after_start_or_pick() {
     set_group "$other"
     all_green
     # a hello from before the helper started is a stale group; the one after the start wins
-    set_updates getUpdates.json "$(upd_hello 101 "$CHAT" 100 supergroup 'old group')" "$(upd_hello 102 "$other" "$FAR" supergroup 'new group')" "$(upd_peer_hello 103 "$other" "$THEIR" goomal_bot)"
+    set_updates getUpdates.json "$(upd_hello 101 "$CHAT" 100 supergroup 'old group')" "$(upd_hello 102 "$other" "$FAR" supergroup 'new group')" "$(upd_peer_hello 103 "$other" "$THEIR" example_bot)"
     feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
@@ -1377,7 +1446,7 @@ case_peer_chatid_two_groups_newest_hello_after_start_or_pick() {
     set_getme "$OUR" bridge_bot
     set_group "$other"
     all_green
-    set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR" supergroup 'group A')" "$(upd_hello 102 "$other" "$FAR" supergroup 'group B')" "$(upd_peer_hello 103 "$other" "$THEIR" goomal_bot)"
+    set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR" supergroup 'group A')" "$(upd_hello 102 "$other" "$FAR" supergroup 'group B')" "$(upd_peer_hello 103 "$other" "$THEIR" example_bot)"
     feed "$(mk_token "$OUR")" 2 1
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
@@ -1393,7 +1462,7 @@ case_peer_group_titles_with_a_pipe_stay_whole_in_the_pick() {
     set_getme "$OUR" bridge_bot
     set_group "$other"
     all_green
-    set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR" supergroup 'Ops|East')" "$(upd_hello 102 "$other" "$FAR" supergroup 'Ops|West')" "$(upd_peer_hello 103 "$other" "$THEIR" goomal_bot)"
+    set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR" supergroup 'Ops|East')" "$(upd_hello 102 "$other" "$FAR" supergroup 'Ops|West')" "$(upd_peer_hello 103 "$other" "$THEIR" example_bot)"
     feed "$(mk_token "$OUR")" 2 1
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
@@ -1424,12 +1493,12 @@ case_peer_check_group_basic_group_fix() {
     set_group -1008888888888
     printf '{"ok":false,"error_code":400,"description":"Bad Request: group chat was upgraded to a supergroup chat","parameters":{"migrate_to_chat_id":-1008888888888}}' > "$T/tg/getChat.1.json"
     printf '{"ok":true,"result":{"id":-1008888888888,"type":"supergroup","title":"bridge","permissions":{"can_change_info":false,"can_pin_messages":false}}}' > "$T/tg/getChat.2.json"
-    set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR" group)" "$(upd_peer_hello 102 "$CHAT" "$THEIR" goomal_bot)"
+    set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR" group)" "$(upd_peer_hello 102 "$CHAT" "$THEIR" example_bot)"
     all_green
     feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
-    check "confirm used the new id" has "$(setup_calls)" "confirm goomal -1008888888888"
+    check "confirm used the new id" has "$(setup_calls)" "confirm example -1008888888888"
 }
 
 case_peer_hello_post_follows_a_migrated_group() {
@@ -1439,14 +1508,14 @@ case_peer_hello_post_follows_a_migrated_group() {
     set_group "$new"
     printf '{"ok":false,"error_code":400,"description":"Bad Request: group chat was upgraded to a supergroup chat","parameters":{"migrate_to_chat_id":%s}}' "$new" > "$T/tg/sendMessage.1.json"
     printf '{"ok":true,"result":{"message_id":9}}' > "$T/tg/sendMessage.2.json"
-    set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR" group)" "$(upd_peer_hello 102 "$new" "$THEIR" goomal_bot)"
+    set_updates getUpdates.json "$(upd_hello 101 "$CHAT" "$FAR" group)" "$(upd_peer_hello 102 "$new" "$THEIR" example_bot)"
     all_green
     feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "a hello post that gets the migration error: exit 0" eq "$RC" 0
     check "the hello was posted again to the new id" eq "$(sent_chat)" "$new"
     check "two posts in all" eq "$(sent_count)" 2
-    check "confirm used the new id" has "$(setup_calls)" "confirm goomal $new"
+    check "confirm used the new id" has "$(setup_calls)" "confirm example $new"
     check "the checkpoint keeps the new id" eq "$(jq -r '.peers[0].chatId' "$(CONFIRMED_FILE)")" "$new"
     sub_case peer_hello_post_follows_a_migrated_group_confirmed_side
     seed_confirmed_station
@@ -1457,8 +1526,8 @@ case_peer_hello_post_follows_a_migrated_group() {
     run_sut "$T/in" peer
     check "confirmed side, group migrated: exit 0" eq "$RC" 0
     check "the hello went to the new id" eq "$(sent_chat)" "$new"
-    check "setup.ts confirmed the peer in the new group" has "$(setup_calls)" "confirm goomal $new"
-    check "the peer list holds the new id" eq "$(jq -r '.peers.goomal.chatId' "$(PEERS_FILE)")" "$new"
+    check "setup.ts confirmed the peer in the new group" has "$(setup_calls)" "confirm example $new"
+    check "the peer list holds the new id" eq "$(jq -r '.peers.example.chatId' "$(PEERS_FILE)")" "$new"
     check "the checkpoint holds the new id" eq "$(jq -r '.peers[0].chatId' "$(CONFIRMED_FILE)")" "$new"
     sub_case peer_hello_post_other_error_stays_a_fix
     seed_confirmed_station
@@ -1539,7 +1608,7 @@ case_peer_unit_start_failure_keeps_checkpoint() {
     run_sut "$T/in" peer
     check "exit 3" eq "$RC" 3
     check "the FIX names the poller log" has "$LAST" "journalctl --user -u himmel-peer-bridge.service"
-    check "the checkpoint is kept" eq "$(jq -r '.peers[0].name' "$(CONFIRMED_FILE)")" goomal
+    check "the checkpoint is kept" eq "$(jq -r '.peers[0].name' "$(CONFIRMED_FILE)")" example
     # the re-run resumes at the unit step: nothing is added or confirmed twice
     rm -f "$T/units/$UNIT_NAME.startfail"
     feed ""
@@ -1549,11 +1618,11 @@ case_peer_unit_start_failure_keeps_checkpoint() {
     check "and confirm exactly once" eq "$(setup_calls | grep -c '^confirm ')" 1
 }
 
-case_peer_adoption_from_goomal_end_state_reaches_done() {
+case_peer_adoption_from_example_end_state_reaches_done() {
     local before after added f bcks acks
     seed_main
     seed_peer_env
-    seed_peers_json goomal "$THEIR" "$CHAT"
+    seed_peers_json example "$THEIR" "$CHAT"
     set_getme "$OUR" bridge_bot
     set_group
     all_green
@@ -1562,7 +1631,7 @@ case_peer_adoption_from_goomal_end_state_reaches_done() {
     feed ""
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
-    check "DONE names goomal" eq "$LAST" "DONE: peer goomal — group confirmed, poller running"
+    check "DONE names example" eq "$LAST" "DONE: peer example — group confirmed, poller running"
     after=$(cd "$HOME_FIX" && find . -type f | sort)
     added=""
     while IFS= read -r f; do
@@ -1576,7 +1645,7 @@ EOF
     acks=$(cd "$HOME_FIX" && printf '%s\n' "$bcks" | sed 's/^[0-9]* [0-9]* //' | while IFS= read -r f; do cksum "$f"; done | sort)
     check "every earlier file is byte-identical" eq "$acks" "$bcks"
     check "setup.ts was not run: the peer was already confirmed" eq "$(setup_calls)" ""
-    check "the checkpoint was adopted from peers.json" eq "$(jq -r '.peers[0] | "\(.name) \(.peerBotId) \(.chatId)"' "$(CONFIRMED_FILE)")" "goomal $THEIR $CHAT"
+    check "the checkpoint was adopted from peers.json" eq "$(jq -r '.peers[0] | "\(.name) \(.peerBotId) \(.chatId)"' "$(CONFIRMED_FILE)")" "example $THEIR $CHAT"
 }
 
 case_peer_rerun_posts_exactly_one_hello() {
@@ -1599,9 +1668,9 @@ case_peer_repoint_runs_remove_then_add_confirm() {
     run_sut "$T/in" peer --replace
     check "exit 0" eq "$RC" 0
     check "says the other bot changed" has "$(cat "$T/out")" "a different bot"
-    check "the old entry was removed" has "$(setup_calls)" "remove goomal"
-    check "the new bot was added under the same name" has "$(setup_calls)" "add goomal --peer-bot-id 666 --peer-username new_bot --operator-bot-id 111"
-    check "and confirmed" has "$(setup_calls)" "confirm goomal $CHAT"
+    check "the old entry was removed" has "$(setup_calls)" "remove example"
+    check "the new bot was added under the same name" has "$(setup_calls)" "add example --peer-bot-id 666 --peer-username new_bot --operator-bot-id 111"
+    check "and confirmed" has "$(setup_calls)" "confirm example $CHAT"
     check "in that order" eq "$(setup_calls | sed 's/ .*//' | tr '\n' ' ')" "remove add confirm "
     check "the checkpoint holds the new bot" eq "$(jq -r '.peers[0].peerBotId' "$(CONFIRMED_FILE)")" 666
 }
@@ -1649,7 +1718,7 @@ case_peer_allowfrom_written_by_setup_ts_only_digit_strings() {
     run_sut "$T/in" peer
     RUN_ENV=""
     check "the real setup.ts add ran and the helper reached DONE (last: $LAST)" eq "$RC" 0
-    check "allowFrom is exactly the peer bot, as a digit string" eq "$(jq -c '.peers.goomal.allowFrom' "$(PEERS_FILE)")" "[\"$THEIR\"]"
+    check "allowFrom is exactly the peer bot, as a digit string" eq "$(jq -c '.peers.example.allowFrom' "$(PEERS_FILE)")" "[\"$THEIR\"]"
     check "every allowFrom entry is a digit string" eq "$(jq -r '[.peers[].allowFrom[] | type == "string" and test("^[0-9]+$")] | all' "$(PEERS_FILE)")" true
     check "no human id was added" lacks "$(cat "$(PEERS_FILE)")" "$OPER\""
     check "setup.ts stays the only writer: no code line writes peers.json" eq "$(grep -E 'peers\.json' "$HERE/remote-setup.sh" | grep -vE '^[[:space:]]*#' | grep -cE '[^2&<-]>[^&]|rs_json_edit|[[:space:]]mv[[:space:]]|tee ')" 0
@@ -1710,14 +1779,14 @@ case_renamed_peer_bot_keeps_name() {
     feed "" "" 1
     run_sut "$T/in" peer --replace
     check "exit 0" eq "$RC" 0
-    check "the name is kept" eq "$LAST" "DONE: peer goomal — group confirmed, poller running"
+    check "the name is kept" eq "$LAST" "DONE: peer example — group confirmed, poller running"
     check "setup.ts was not run again" eq "$(setup_calls)" ""
     # added earlier but never confirmed: the same id keeps the name, and only confirm runs
     sub_case renamed_peer_bot_unconfirmed
     seed_main
     seed_peer_env
     seed_bots "{\"bridge\":{\"id\":\"$OUR\",\"publishedAt\":\"2026-11-20T10:00:00Z\"}}"
-    seed_peers_json goomal "$THEIR" null
+    seed_peers_json example "$THEIR" null
     set_getme "$OUR" bridge_bot
     set_group
     all_green
@@ -1725,9 +1794,9 @@ case_renamed_peer_bot_keeps_name() {
     feed "" 1
     run_sut "$T/in" peer
     check "exit 0" eq "$RC" 0
-    check "the old name stays" has "$LAST" "peer goomal"
+    check "the old name stays" has "$LAST" "peer example"
     check "no new add" eq "$(setup_calls | grep -c '^add ')" 0
-    check "confirm ran for the kept name" has "$(setup_calls)" "confirm goomal $CHAT"
+    check "confirm ran for the kept name" has "$(setup_calls)" "confirm example $CHAT"
 }
 
 case_peer_done_rerun_changes_no_config_artifact() {
@@ -1775,8 +1844,8 @@ case_peer_remove_deletes_checkpoint_and_status_na() {
     feed yes
     run_sut "$T/in" peer --remove
     check "exit 0" eq "$RC" 0
-    check "DONE names what was removed" has "$LAST" "removed goomal"
-    check "setup.ts remove ran" has "$(setup_calls)" "remove goomal"
+    check "DONE names what was removed" has "$LAST" "removed example"
+    check "setup.ts remove ran" has "$(setup_calls)" "remove example"
     check "the checkpoint is gone" test ! -e "$(CONFIRMED_FILE)"
     check "the poller unit is gone" test ! -e "$(UNIT_FILE)"
     check "and not running" test ! -e "$T/units/$UNIT_NAME.active"
@@ -1793,7 +1862,7 @@ case_peer_remove_interrupted_resumes() {
     run_sut "$T/in" peer --remove
     check "interrupted: exit 3" eq "$RC" 3
     check "says so" has "$LAST" "interrupted"
-    check "setup.ts had removed the peer" eq "$(jq -r '.peers | has("goomal")' "$(PEERS_FILE)")" false
+    check "setup.ts had removed the peer" eq "$(jq -r '.peers | has("example")' "$(PEERS_FILE)")" false
     check "the checkpoint is still there" test -f "$(CONFIRMED_FILE)"
     rm -f "$T/setup.remove.sigint"
     feed ""
@@ -1822,7 +1891,7 @@ case_peer_wait_pages_when_the_group_is_busy() {
     all_green
     set_updates getUpdates.1.json "$(upd_hello 1 "$CHAT" "$FAR")"
     printf '{"ok":true,"result":%s}' "$(noise_updates 2 101)" > "$T/tg/getUpdates.2.json"
-    set_updates getUpdates.3.json "$(upd_peer_hello 102 "$CHAT" "$THEIR" goomal_bot)"
+    set_updates getUpdates.3.json "$(upd_peer_hello 102 "$CHAT" "$THEIR" example_bot)"
     feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "the hello behind the chatter is found" eq "$RC" 0
@@ -1856,7 +1925,7 @@ case_peer_remove_teardown_failure_is_a_fix() {
     check "a poller that will not stop is a FIX, never DONE" eq "$RC" 3
     check "the FIX says the poller could not be stopped" has "$LAST" "could not be stopped"
     check "the unit file is kept while the poller still runs" test -f "$(UNIT_FILE)"
-    check "the peer itself is already removed" eq "$(jq -r '.peers | has("goomal")' "$(PEERS_FILE)")" false
+    check "the peer itself is already removed" eq "$(jq -r '.peers | has("example")' "$(PEERS_FILE)")" false
     rm -f "$T/units/$UNIT_NAME.stopfail"
     feed ""
     run_sut "$T/in" peer --remove
@@ -1905,8 +1974,8 @@ case_peer_remove_one_of_two_restarts_poller() {
     run_sut "$T/in" peer --remove
     check "exit 0" eq "$RC" 0
     check "the numbered pick offered both peers" has "$(cat "$T/out")" "2) yotam"
-    check "DONE names the removed peer and the restart" has "$LAST" "removed goomal; the poller was restarted"
-    check "setup.ts removed only goomal" eq "$(setup_calls)" "remove goomal"
+    check "DONE names the removed peer and the restart" has "$LAST" "removed example; the poller was restarted"
+    check "setup.ts removed only example" eq "$(setup_calls)" "remove example"
     check "yotam stays on the record" eq "$(jq -r '.peers | map(.name) | join(",")' "$(CONFIRMED_FILE)")" yotam
     check "the poller was restarted" test -n "$(line_of 'systemctl --user restart himmel-peer-bridge.service')"
     check "and its unit file stays" test -f "$(UNIT_FILE)"
@@ -1919,7 +1988,7 @@ case_peer_remove_one_of_two_restarts_poller() {
     run_sut "$T/in" peer --remove
     check "a poller that does not restart is a FIX" eq "$RC" 3
     check "the FIX says it did not restart" has "$LAST" "did not restart"
-    check "the removed peer stays removed" eq "$(jq -r '.peers | has("goomal")' "$(PEERS_FILE)")" false
+    check "the removed peer stays removed" eq "$(jq -r '.peers | has("example")' "$(PEERS_FILE)")" false
     # nothing was running, so nothing was restarted, and DONE does not say it was
     sub_case peer_remove_one_of_two_poller_not_running
     seed_confirmed_station
@@ -1940,17 +2009,53 @@ case_peer_remove_one_of_two_interrupted_before_restart_finishes_that_removal() {
     run_sut "$T/in" peer --remove
     check "the first run stops at the restart: FIX" eq "$RC" 3
     check "the FIX says to run it again with --remove" has "$LAST" "peer --remove"
-    check "goomal is already removed" eq "$(jq -r '.peers | has("goomal")' "$(PEERS_FILE)")" false
+    check "example is already removed" eq "$(jq -r '.peers | has("example")' "$(PEERS_FILE)")" false
     rm -f "$T/units/$UNIT_NAME.startfail"
     feed ""
     run_sut "$T/in" peer --remove
     check "the re-run reaches DONE" eq "$RC" 0
-    check "it finishes the restart for goomal" has "$LAST" "removed goomal; the poller was restarted"
+    check "it finishes the restart for example" has "$LAST" "removed example; the poller was restarted"
     check "the remaining peer is never offered for removal" lacks "$(setup_calls)" "remove yotam"
     check "and stays set up" eq "$(jq -r '.peers | has("yotam")' "$(PEERS_FILE)")" true
-    check "setup.ts removed only goomal, once" eq "$(setup_calls)" "remove goomal"
+    check "setup.ts removed only example, once" eq "$(setup_calls)" "remove example"
     check "no pick prompt on the re-run" eq "$(grep -c 'Type the number' "$T/out")" 0
     check "the pending removal record is cleared" test ! -e "$HOME_FIX/.himmel/remote-setup/peer-removing.json"
+}
+
+case_peer_remove_declined_clears_its_note() {
+    seed_confirmed_station
+    seed_second_peer
+    feed 1 no
+    run_sut "$T/in" peer --remove
+    check "a declined removal is a FIX" eq "$RC" 3
+    check "the FIX says nothing was removed" has "$LAST" "nothing was removed"
+    check "example is still set up" eq "$(jq -r '.peers | has("example")' "$(PEERS_FILE)")" true
+    check "the in-progress note is gone" test ! -e "$HOME_FIX/.himmel/remote-setup/peer-removing.json"
+    feed 2 yes
+    run_sut "$T/in" peer --remove
+    check "the next run offers the normal pick" has "$(cat "$T/out")" "2) yotam"
+    check "and removes the machine picked" has "$LAST" "removed yotam"
+    check "example stays" eq "$(jq -r '.peers | has("example")' "$(PEERS_FILE)")" true
+    sub_case peer_remove_stale_note_pick_finish
+    seed_confirmed_station
+    seed_second_peer
+    mkdir -p "$HOME_FIX/.himmel/remote-setup"
+    printf '{"name":"example"}' > "$HOME_FIX/.himmel/remote-setup/peer-removing.json"
+    feed 1 yes
+    run_sut "$T/in" peer --remove
+    check "finish: exit 0" eq "$RC" 0
+    check "the pick offers finishing or cancelling" has "$(cat "$T/out")" "2) Cancel"
+    check "finish removes example" has "$LAST" "removed example"
+    sub_case peer_remove_stale_note_pick_cancel
+    seed_confirmed_station
+    seed_second_peer
+    mkdir -p "$HOME_FIX/.himmel/remote-setup"
+    printf '{"name":"example"}' > "$HOME_FIX/.himmel/remote-setup/peer-removing.json"
+    feed 2 2 yes
+    run_sut "$T/in" peer --remove
+    check "cancel: exit 0" eq "$RC" 0
+    check "cancel then pick removes yotam" has "$LAST" "removed yotam"
+    check "example stays" eq "$(jq -r '.peers | has("example")' "$(PEERS_FILE)")" true
 }
 
 case_peer_mac_bootout_then_bootstrap_order() {
@@ -2094,7 +2199,7 @@ case_peer_sole_candidate_needs_a_yes() {
     run_sut "$T/in" peer
     check "no: exit 3" eq "$RC" 3
     check "no: one FIX says what to do next" has "$LAST" "ask the other operator for the name of their bridge bot"
-    check "the prompt shows the name and masks the id" has "$(cat "$T/out")" "@goomal_bot (id masked)"
+    check "the prompt shows the name and masks the id" has "$(cat "$T/out")" "@example_bot (id masked)"
     check "the bot id is not printed" lacks "$(cat "$T/out")" "bot id $THEIR"
     check "no: setup.ts was not run" eq "$(setup_calls)" ""
     check "no: no peers.json, so nothing in allowFrom" test ! -e "$(PEERS_FILE)"
@@ -2109,7 +2214,7 @@ case_peer_sole_candidate_needs_a_yes() {
     feed "$(mk_token "$OUR")"
     run_sut "$T/in" peer
     check "no answer: exit 3" eq "$RC" 3
-    check "no answer: the FIX says no answer was given" has "$LAST" "no answer was given about @goomal_bot"
+    check "no answer: the FIX says no answer was given" has "$LAST" "no answer was given about @example_bot"
     check "no answer: setup.ts was not run" eq "$(setup_calls)" ""
     check "no answer: no peers.json" test ! -e "$(PEERS_FILE)"
     sub_case peer_sole_candidate_not_a_terminal
@@ -2134,8 +2239,8 @@ case_peer_sole_candidate_needs_a_yes() {
     feed "$(mk_token "$OUR")" 1
     run_sut "$T/in" peer
     check "control, yes: exit 0" eq "$RC" 0
-    check "control, yes: the peer was added" has "$(setup_calls)" "add goomal --peer-bot-id $THEIR"
-    check "control, yes: allowFrom is the bot only" eq "$(jq -c '.peers.goomal.allowFrom' "$(PEERS_FILE)")" "[\"$THEIR\"]"
+    check "control, yes: the peer was added" has "$(setup_calls)" "add example --peer-bot-id $THEIR"
+    check "control, yes: allowFrom is the bot only" eq "$(jq -c '.peers.example.allowFrom' "$(PEERS_FILE)")" "[\"$THEIR\"]"
 }
 
 case_peer_wait_is_bounded_by_the_clock_not_by_the_loop_count() {
@@ -2226,14 +2331,14 @@ case_peer_retry_after_a_timed_out_discovery_asks_for_a_fresh_hello() {
     # Telegram no longer holds the hello that named the group (it was acknowledged); only the other bot's hello is left
     base=$(cat "$T/tg/getUpdates.n")
     rm -f "$T/tg/getUpdates.json"
-    set_updates "getUpdates.$((base + 1)).json" "$(upd_peer_hello 102 "$CHAT" "$THEIR" goomal_bot)"
-    set_updates "getUpdates.$((base + 2)).json" "$(upd_hello 103 "$CHAT" "$FAR")" "$(upd_peer_hello 102 "$CHAT" "$THEIR" goomal_bot)"
+    set_updates "getUpdates.$((base + 1)).json" "$(upd_peer_hello 102 "$CHAT" "$THEIR" example_bot)"
+    set_updates "getUpdates.$((base + 2)).json" "$(upd_hello 103 "$CHAT" "$FAR")" "$(upd_peer_hello 102 "$CHAT" "$THEIR" example_bot)"
     feed "" 1
     run_sut "$T/in" peer
     check "run 2 reaches DONE" eq "$RC" 0
     check "run 2 asked for a fresh hello in the group" has "$(cat "$T/out")" "send the word hello in it"
     check "the peer was added once" eq "$(setup_calls | grep -c '^add ')" 1
-    check "and confirmed in the group" has "$(setup_calls)" "confirm goomal $CHAT"
+    check "and confirmed in the group" has "$(setup_calls)" "confirm example $CHAT"
 }
 
 case_peer_hostile_username_refused() {
@@ -2254,10 +2359,10 @@ case_peer_hostile_username_refused() {
 case_bun_shim_fails_when_it_cannot_write_peers_json() {
     local before verb rc
     if [ "$(id -u)" = 0 ]; then SKIPN=$((SKIPN + 1)); return 0; fi
-    seed_peers_json goomal "$THEIR" "$CHAT"
+    seed_peers_json example "$THEIR" "$CHAT"
     before=$(cksum < "$(PEERS_FILE)")
     chmod 500 "$(PEER_CFG)"
-    for verb in "add other --peer-bot-id 666 --peer-username other_bot --operator-bot-id 111" "confirm goomal -1002" "remove goomal"; do
+    for verb in "add other --peer-bot-id 666 --peer-username other_bot --operator-bot-id 111" "confirm example -1002" "remove example"; do
         # shellcheck disable=SC2086
         printf 'yes\n' | env RST="$T" HOME="$HOME_FIX" RST_REAL_BUN="$REAL_BUN" PATH="$T/bin:$PATH_BASE" "$T/bin/bun" "$ROOT/scripts/peer-bridge/setup.ts" $verb > "$T/shim.out" 2> "$T/shim.err"
         rc=$?
@@ -2286,9 +2391,9 @@ case_systemctl_shim_changes_the_running_state_only_with_now() {
 }
 
 case_peer_name_second_collision_gets_3() {
-    run_drive --no-tty --no-contract "$T/in" rs_peer_name_for Goomal_bot goomal goomal-2
-    check "the third name is -3" eq "$(sed -n 2p "$T/out")" goomal-3
-    run_drive --no-tty --no-contract "$T/in" rs_peer_name_for Fresh_Sky_Bot goomal
+    run_drive --no-tty --no-contract "$T/in" rs_peer_name_for Example_bot example example-2
+    check "the third name is -3" eq "$(sed -n 2p "$T/out")" example-3
+    run_drive --no-tty --no-contract "$T/in" rs_peer_name_for Fresh_Sky_Bot example
     check "a trailing _bot is stripped and the rest mapped to dashes" eq "$(sed -n 2p "$T/out")" fresh-sky
     run_drive --no-tty --no-contract "$T/in" rs_peer_name_for HimmelBot
     check "a trailing bot is stripped" eq "$(sed -n 2p "$T/out")" himmel
@@ -2303,7 +2408,7 @@ case_peer_name_32_char_base_with_suffix_fits() {
     check "the next free suffix" eq "$(sed -n 2p "$T/out")" "abcdefghijklmnopqrstuvwxyzabcd-3"
 }
 
-CASES="guard_matrix_every_writer usage_exits_2 usage_rows_every_subcommand contract_rows_every_subcommand
+CASES="mk_token_ends_when_tr_ignores_sigpipe guard_matrix_every_writer usage_exits_2 usage_rows_every_subcommand contract_rows_every_subcommand
 curl_argv_is_exact getme_401_gives_revoked_fix tg_429_waits_retry_after_once outside_checkout_gives_cd_fix
 status_skips_unshipped_parts status_na_counts_not_ok status_part_prereq_message status_runs_under_claudecode
 status_json_is_single_object_on_success status_json_on_item_failure status_json_never_appends_done_line
@@ -2327,12 +2432,12 @@ peer_gate_drops_plain_hello_real_gate peer_check_group_unknown_right_names_raw_f
 peer_chatid_two_groups_newest_hello_after_start_or_pick peer_group_titles_with_a_pipe_stay_whole_in_the_pick peer_hello_post_follows_a_migrated_group peer_check_group_basic_group_fix
 peer_check_group_member_change_info_fix peer_non_owner_fix_says_ask_owner
 peer_checkpoint_written_after_confirm_before_status peer_unit_start_failure_keeps_checkpoint
-peer_adoption_from_goomal_end_state_reaches_done peer_rerun_posts_exactly_one_hello
+peer_adoption_from_example_end_state_reaches_done peer_rerun_posts_exactly_one_hello
 peer_repoint_runs_remove_then_add_confirm peer_pending_publication_survives_interruption
 peer_allowfrom_written_by_setup_ts_only_digit_strings peer_canary_token_absent_everywhere
 peer_sigint_during_discovery_restarts_poller renamed_peer_bot_keeps_name
 peer_done_rerun_changes_no_config_artifact peer_inputs_are_only_the_g2_set
-peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_unreadable_peer_list_stops_before_any_change peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller peer_remove_one_of_two_interrupted_before_restart_finishes_that_removal
+peer_remove_deletes_checkpoint_and_status_na peer_remove_interrupted_resumes peer_remove_with_nothing_set_up_is_done peer_remove_unreadable_peer_list_stops_before_any_change peer_remove_teardown_failure_is_a_fix peer_wait_pages_when_the_group_is_busy peer_remove_unit_delete_failure_is_a_fix peer_remove_reload_failure_is_a_fix peer_remove_one_of_two_restarts_poller peer_remove_one_of_two_interrupted_before_restart_finishes_that_removal peer_remove_declined_clears_its_note
 peer_mac_bootout_then_bootstrap_order peer_mac_old_agent_is_not_accepted_as_the_updated_poller peer_changed_token_restarts_the_running_poller peer_mac_start_failure_names_the_poller_log peer_without_part1_fixes peer_bridge_equals_main_refuses
 peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_wait_is_bounded_by_the_clock_not_by_the_loop_count peer_a_failed_merge_of_updates_leaves_no_temp_file peer_retry_after_a_timed_out_discovery_asks_for_a_fresh_hello peer_no_group_hello_fix_puts_the_rerun_before_the_hello peer_409_names_a_webhook_or_a_competing_poller peer_sole_candidate_needs_a_yes peer_hostile_username_refused
 bun_shim_fails_when_it_cannot_write_peers_json systemctl_shim_changes_the_running_state_only_with_now
@@ -2344,6 +2449,7 @@ main() {
     local c wanted=${1:-}
     for c in $CASES; do
         if [ -n "$wanted" ] && [ "$wanted" != "$c" ]; then continue; fi
+        printf '%s\n' "$c" > "$WORK/current-case"
         new_case "$c"
         "case_$c"
         if [ "$CASE_FAILS" = 0 ]; then

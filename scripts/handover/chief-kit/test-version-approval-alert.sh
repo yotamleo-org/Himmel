@@ -18,6 +18,7 @@ cat > "$WORK/sender.sh" <<'EOF'
 #!/usr/bin/env bash
 n=$(( $(find "$SENT_DIR" -type f | wc -l) + 1 ))
 printf '%s' "$2" > "$SENT_DIR/$n"
+printf '%s' "${3:-}" > "$KIND_DIR/$n"
 EOF
 printf '#!/usr/bin/env bash\nexit 1\n' > "$WORK/fail.sh"
 chmod +x "$WORK/sender.sh" "$WORK/fail.sh"
@@ -26,7 +27,8 @@ printf '{"allowFrom":[]}\n' > "$WORK/no-chat.json"
 export TELEGRAM_ACCESS_PATH="$WORK/access.json"
 export MERGE_BLOCK_ALERT_CMD="$WORK/sender.sh"
 export SENT_DIR="$WORK/sent"
-mkdir -p "$SENT_DIR"
+export KIND_DIR="$WORK/kinds"
+mkdir -p "$SENT_DIR" "$KIND_DIR"
 sent() { find "$SENT_DIR" -type f | wc -l | tr -d ' '; }
 last() { cat "$SENT_DIR/$(sent)"; }
 has() { case "$2" in *"$1"*) echo yes ;; *) echo no ;; esac; }
@@ -38,6 +40,7 @@ alert() { bash "$SUT" "$KEY" v1.1.4 699 3 "$@" >/dev/null 2>&1; }
 alert "$WORK/words.txt"; rc=$?
 check "(a) a good send exits 0" "0" "$rc"
 check "(a) one line sent" "1" "$(sent)"
+check "(a) the sender gets the version-approval kind" "version-approval" "$(cat "$KIND_DIR/1")"
 text="$(last)"
 check "(a) the line names the key" "yes" "$(has "$KEY" "$text")"
 check "(a) the line names the version" "yes" "$(has 'in v1.1.4' "$text")"

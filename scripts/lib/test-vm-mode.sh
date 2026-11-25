@@ -32,7 +32,7 @@ check_mode_err() { # <name>: mode prints none on stdout and exits 2 on a resolve
 echo "== no config file -> local (today's behaviour)"
 check "absent config: mode" "local" 0 mode
 check "absent config: route" "local-vm localhost:2222" 0 route
-check "absent config: target" "$(printf 'localhost\t2222\t%s' "$T/home/.ssh/id_ed25519")" 0 target
+check "absent config: target (carries the guest user)" "$(printf 'himmel@localhost\t2222\t%s' "$T/home/.ssh/id_ed25519")" 0 target
 
 echo "== config without vm -> local"
 cfg '{"version":1,"luna":{}}'
@@ -181,7 +181,7 @@ out="$(env -u HOME HIMMEL_VM_MODE_CONFIG="$T/none.json" bash "$LIB" route 2>&1)"
 case "$out" in "fix-config: HOME is not an absolute, existing directory"*) ok=1 ;; *) ok=0 ;; esac
 if [ "$rc" = 2 ] && [ "$ok" = 1 ]; then pass "HOME unset"; else fail "HOME unset: rc=$rc '$out'"; fi
 out="$(env HOME="$T/home" HIMMEL_VM_MODE_CONFIG="$T/none.json" bash "$LIB" target 2>&1)"; rc=$?
-if [ "$rc" = 0 ] && [ "$out" = "$(printf 'localhost\t2222\t%s' "$T/home/.ssh/id_ed25519")" ]; then pass "valid HOME keeps the local default identity"
+if [ "$rc" = 0 ] && [ "$out" = "$(printf 'himmel@localhost\t2222\t%s' "$T/home/.ssh/id_ed25519")" ]; then pass "valid HOME keeps the local default identity"
 else fail "valid HOME default identity: rc=$rc '$out'"; fi
 
 rm -f "$T/home/.himmel/config.json"; mkdir "$T/home/.himmel/config.json"

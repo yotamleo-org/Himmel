@@ -69,6 +69,15 @@ mkcase() {
 #!/bin/sh
 c="$PMR_CASE"
 echo "qmd $* busy=${QMD_SQLITE_BUSY_TIMEOUT:-unset} nice=$(nice)" >> "$c/calls.log"
+if [ "$1" = embed ]; then
+  case "$(cat "$c/qmd.mode" 2>/dev/null)" in
+    embedbusy) echo "Another embed process is already running"; exit 1 ;;
+    embedfail) echo "qmd: embed boom"; exit 1 ;;
+  esac
+  n=$(cat "$c/embed.n" 2>/dev/null || echo 0); echo $((n + 1)) > "$c/embed.n"
+  if [ "$n" = 0 ]; then echo "Embedded 3 chunks"; else echo "All content hashes already have embeddings"; fi
+  exit 0
+fi
 case "$(cat "$c/qmd.mode" 2>/dev/null)" in
   busy) cat "$PMR_BUSY_FIXTURE"; exit 1 ;;
   fail) echo "qmd: boom"; exit 1 ;;
@@ -137,6 +146,7 @@ tick() {
         PMR_QMD="$C/bin/qmd" PMR_AST="$C/bin/ast" PMR_PRIMARY="$C/primary" PMR_STATE="$C/state" \
         PMR_NOW="$NOW" PMR_LOAD=0 PMR_ALERT="$C/bin/alert" PMR_REINDEX_LOCK="$C/reindex.lock" \
         PMR_LAG="$C/bin/lag.py" QMD_CONFIG_DIR="$C/cfg" INDEX_PATH="$C/cache/index.sqlite" \
+        PMR_REINDEX="$SCRIPT_DIR/qmd-reindex.sh" QMD_REINDEX_BUSY_WAIT_SECS=0 \
         HIMMEL_FLOW_RUNS_LEDGER="$C/flow.jsonl" "$@" \
         bash -c 'PMR_ARMED_PID=$$; export PMR_ARMED_PID; bash "$@"; rc=$?; exit "$rc"' runner "$TICK_BIN" --halves "$halves" 2>&1)
     TICK_RC=$?
@@ -227,7 +237,7 @@ row_failed_refresh_keeps_watermark() {
     mkcase failwm; seed_both; cm $((BASE+100)) docs/a.md
     printf 'fail' > "$C/qmd.mode"; printf 'fail' > "$C/ast.mode"
     NOW=$((BASE+1000)); tick both
-    assert_contains "failed_refresh_keeps_watermark: keyword fail logged" "keyword fail rc=1" "$TICK_OUT"
+    assert_contains "failed_refresh_keeps_watermark: keyword fail logged" "keyword fail rc=3" "$TICK_OUT"
     assert_contains "failed_refresh_keeps_watermark: graph fail logged" "graph fail rc=5" "$TICK_OUT"
     assert_eq "failed_refresh_keeps_watermark: keyword watermark stays" "$W0" "$(sha_of qmd)"
     assert_eq "failed_refresh_keeps_watermark: graph watermark stays" "$W0" "$(sha_of graph)"
@@ -377,6 +387,59 @@ row_reindex_lock_dead_does_not_skip() {
     assert_eq "reindex_lock_dead_does_not_skip: keyword runs" 1 "$(ncalls 'qmd update')"
 }
 
+row_merge_runs_embed_once() {
+    mkcase embedonce; seed_both; cm $((BASE+100)) docs/a.md
+    NOW=$((BASE+1000)); tick both
+    assert_eq "merge_runs_embed_once: one scoped update" 1 "$(ncalls 'qmd update -c himmel ')"
+    assert_eq "merge_runs_embed_once: the embed runs bare (work pass, then the verify pass)" 2 "$(grep -c '^qmd embed busy=' "$C/calls.log")"
+    assert_contains "merge_runs_embed_once: the run is logged ok" "keyword ok" "$TICK_OUT"
+    assert_eq "merge_runs_embed_once: the keyword watermark moves to main" "$(head_sha)" "$(sha_of qmd)"
+    NOW=$((BASE+1300)); tick both
+    assert_eq "merge_runs_embed_once: a later tick with no new merge embeds nothing more" 2 "$(grep -c '^qmd embed' "$C/calls.log")"
+    cm $((BASE+1400)) docs/b.md
+    NOW=$((BASE+2100)); tick both
+    assert_eq "merge_runs_embed_once: the next merge embeds again" 4 "$(grep -c '^qmd embed' "$C/calls.log")"
+}
+
+row_reindex_lock_live_skips_embed() {
+    mkcase reidxembed; seed_both; cm $((BASE+100)) docs/a.md
+    local lp; lp=$(livepid)
+    mkdir -p "$C/reindex.lock"; printf '%s\n' "$lp" > "$C/reindex.lock/pid"
+    NOW=$((BASE+1000)); tick both
+    assert_eq "reindex_lock_live_skips_embed: no embed while the 05:00 reindex holds its lock" 0 "$(ncalls 'qmd embed')"
+    assert_eq "reindex_lock_live_skips_embed: no qmd call at all" 0 "$(ncalls qmd)"
+    assert_contains "reindex_lock_live_skips_embed: skip logged" "keyword skip=reindex-lock" "$TICK_OUT"
+    assert_eq "reindex_lock_live_skips_embed: the watermark holds for the next tick" "$W0" "$(sha_of qmd)"
+}
+
+row_embed_busy_is_skip() {
+    mkcase embedbusy; seed_both; cm $((BASE+100)) docs/a.md
+    printf 'embedbusy' > "$C/qmd.mode"
+    NOW=$((BASE+1000)); tick both
+    assert_contains "embed_busy_is_skip: another embed holding its lock reads as a skip" "keyword skip=embed-busy" "$TICK_OUT"
+    assert_not_contains "embed_busy_is_skip: not a failure" "keyword fail" "$TICK_OUT"
+    assert_eq "embed_busy_is_skip: exit 0" 0 "$TICK_RC"
+    assert_eq "embed_busy_is_skip: the watermark holds" "$W0" "$(sha_of qmd)"
+    assert_eq "embed_busy_is_skip: no failure counted" "" "$(cat "$C/state/keyword.fails" 2>/dev/null)"
+    printf 'ok' > "$C/qmd.mode"
+    NOW=$((BASE+1300)); tick both
+    assert_eq "embed_busy_is_skip: no backoff, the next tick embeds" "$(head_sha)" "$(sha_of qmd)"
+}
+
+row_failed_embed_is_handled() {
+    mkcase embedfail; seed_both; cm $((BASE+100)) docs/a.md
+    printf 'embedfail' > "$C/qmd.mode"
+    NOW=$((BASE+1000)); tick both
+    assert_contains "failed_embed_is_handled: the failed embed is a logged failure" "keyword fail rc=4" "$TICK_OUT"
+    assert_eq "failed_embed_is_handled: the tick still exits 0" 0 "$TICK_RC"
+    assert_eq "failed_embed_is_handled: the watermark holds so the retry embeds the merge" "$W0" "$(sha_of qmd)"
+    assert_eq "failed_embed_is_handled: one failure counted" "1" "$(cat "$C/state/keyword.fails" 2>/dev/null)"
+    assert_eq "failed_embed_is_handled: a retry is set 5 minutes out" "$((BASE+1000+300))" "$(cat "$C/state/keyword.retry" 2>/dev/null)"
+    assert_eq "failed_embed_is_handled: the graph half is unaffected" "$(head_sha)" "$(sha_of graph)"
+    NOW=$((BASE+1100)); tick both
+    assert_contains "failed_embed_is_handled: inside the backoff the embed is held" "keyword hold=backoff" "$TICK_OUT"
+}
+
 row_no_paid_call() {
     mkcase nopaid; seed_both; cm $((BASE+100)) docs/a.md src/a.sh
     local tree="$TMP_ROOT/nopaid-tree"
@@ -385,7 +448,8 @@ row_no_paid_call() {
     NOW=$((BASE+1000)); tick both PATH="$tree/bin:$PATH"
     assert_eq "no_paid_call: the tick ran both halves" 2 "$(( $(ncalls 'qmd update') + $(ncalls ast) ))"
     local verbs; verbs=$(grep '^qmd ' "$C/calls.log" | sed 's/ busy=.*//' | sort -u)
-    assert_eq "no_paid_call: the only qmd verb is update -c himmel" "qmd update -c himmel" "$verbs"
+    assert_eq "no_paid_call: the only qmd verbs are update -c himmel and the bare embed" "qmd embed
+qmd update -c himmel" "$verbs"
     assert_eq "no_paid_call: semantic-update.sh and claude never ran" "" "$(cat "$tree/sentinel.log")"
     TICK_BIN="$TICK"
 }
@@ -546,7 +610,7 @@ row_no_index_no_sample() {
 row_sampler_after_keyword_before_graph() {
     mkcase order; seed_both; cm $((BASE+100)) docs/a.md src/a.sh
     NOW=$((BASE+1000)); tick both
-    assert_eq "sampler_after_keyword_before_graph: keyword, then the sampler, then graph" "qmd lag ast" "$(cut -d' ' -f1 "$C/calls.log" | tr '\n' ' ' | sed 's/ $//')"
+    assert_eq "sampler_after_keyword_before_graph: keyword, then the sampler, then graph" "qmd qmd qmd lag ast" "$(cut -d' ' -f1 "$C/calls.log" | tr '\n' ' ' | sed 's/ $//')"
 }
 
 row_missing_lag_script_is_error() {
@@ -619,7 +683,7 @@ row_deadline_without_signature_is_fail() {
     mkcase deadline; seed_both; cm $((BASE+100)) docs/a.md
     printf 'timeout' > "$C/qmd.mode"
     NOW=$((BASE+1000)); tick both
-    assert_contains "deadline_without_signature_is_fail: rc 124 with no busy signature fails" "keyword fail rc=124" "$TICK_OUT"
+    assert_contains "deadline_without_signature_is_fail: a qmd timeout with no busy signature fails" "keyword fail rc=3" "$TICK_OUT"
     assert_eq "deadline_without_signature_is_fail: the watermark holds" "$W0" "$(sha_of qmd)"
 }
 
@@ -629,7 +693,7 @@ row_busy_timeout_and_deadline_passed() {
     mk_tick_tree "$tree" stub-bounded
     TICK_BIN="$tree/scripts/luna/post-merge-refresh.sh"
     NOW=$((BASE+1000)); tick both
-    assert_eq "busy_timeout_and_deadline_passed: the update ran under a 120 s deadline" "120" "$(cat "$C/bounded.log" 2>/dev/null)"
+    assert_eq "busy_timeout_and_deadline_passed: the refresh ran under a 900 s deadline" "900" "$(cat "$C/bounded.log" 2>/dev/null)"
     assert_contains "busy_timeout_and_deadline_passed: the busy timeout is 30000" "busy=30000" "$(grep '^qmd ' "$C/calls.log")"
     TICK_BIN="$TICK"
 }
@@ -714,7 +778,8 @@ row_runs_at_low_priority() {
     mkcase nicety; seed_both; cm $((BASE+100)) docs/a.md src/a.sh
     local want; want=$(nice -n 15 nice)
     NOW=$((BASE+1000)); tick both
-    assert_eq "runs_at_low_priority: qmd ran niced" "1" "$(grep -c "^qmd .* nice=$want\$" "$C/calls.log")"
+    [ "$(grep -c "^qmd .* nice=$want\$" "$C/calls.log")" = 3 ] || sed 's/^/    call: /' "$C/calls.log"
+    assert_eq "runs_at_low_priority: every qmd call (update, embed, verify embed) ran niced" "3" "$(grep -c "^qmd .* nice=$want\$" "$C/calls.log")"
     assert_eq "runs_at_low_priority: ast ran niced" "1" "$(grep -c "^ast .* nice=$want\$" "$C/calls.log")"
 }
 
@@ -814,7 +879,8 @@ for row in quiet_window_holds max_wait_fires burst_fires_once ignored_merges_cou
     unchanged_graph_still_settles range_with_nothing_moves_watermark seeds_without_running \
     non_ancestor_runs_once dead_lock_refuses_loud live_lock_skips lock_past_30_min_alerts_once \
     lock_alert_names_pid lock_released_when_state_write_dies sampler_index_order_matches_reindex \
-    reindex_lock_live_skips_keyword reindex_lock_dead_does_not_skip no_paid_call \
+    reindex_lock_live_skips_keyword reindex_lock_dead_does_not_skip merge_runs_embed_once \
+    reindex_lock_live_skips_embed embed_busy_is_skip failed_embed_is_handled no_paid_call \
     no_paid_call_real_ast stamp_untouched no_merge_path_caller third_failure_alerts success_clears \
     hold_neither_alerts_nor_clears twelve_skips_alert alert_once_per_streak unwritable_state_dies clean_exit_clears_tick_alert \
     graph_only_arm_never_runs_qmd sampler_runs_with_keyword_off no_index_no_sample \

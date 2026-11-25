@@ -62,6 +62,9 @@ if ! { [ -r "$_CRF_DIR/review-merge-gate.sh" ] && . "$_CRF_DIR/review-merge-gate
     echo "CR-FIRST ERROR cannot load review-merge-gate.sh" >&2
     (return 0 2>/dev/null) && return 1 || exit 1
 fi
+if ! declare -F gh_read >/dev/null 2>&1; then
+    if [ -r "$_CRF_DIR/gh-read.sh" ]; then . "$_CRF_DIR/gh-read.sh"; else gh_read() { gh "$@"; }; fi
+fi
 
 _crf_now() { printf '%s' "${CR_FIRST_NOW:-$(date +%s)}"; }
 _crf_epoch() { jq -rn --arg t "$1" '$t | fromdateiso8601' 2>/dev/null; }
@@ -78,7 +81,7 @@ _crf_age() {
 # _crf_list <gh api path> — every page of a list endpoint as ONE json array.
 _crf_list() {
     local raw
-    raw=$(gh api --paginate "$1" </dev/null 2>/dev/null) || return 1
+    raw=$(gh_read api --paginate "$1" </dev/null 2>/dev/null) || return 1
     printf '%s' "$raw" | jq -s 'if all(.[]; type == "array") then add // [] else error("not a list") end' 2>/dev/null
 }
 
@@ -157,7 +160,7 @@ _crf_do_release() {
 _crf_release_locked() {
     local repo="$1" pr="$2" head="$3" reason="$4" state="$5" settled="$6" cdate="${_CRF_FLOOR:-}" events reviewers cur labels
     # The gate took a while to evaluate: a push since then means this approval is for a head that is gone.
-    cur=$(gh api "repos/$repo/pulls/$pr" </dev/null 2>/dev/null | jq -r '[.state // "", .head.sha // ""] | @tsv' 2>/dev/null) \
+    cur=$(gh_read api "repos/$repo/pulls/$pr" </dev/null 2>/dev/null | jq -r '[.state // "", .head.sha // ""] | @tsv' 2>/dev/null) \
         || { echo "CR-FIRST HOLD degraded (cannot re-read PR #$pr)"; return 3; }
     [ "$cur" = "$(printf 'open\t%s' "$head")" ] || return 0
     events=$(_crf_list "repos/$repo/issues/$pr/events?per_page=100") || { echo "CR-FIRST HOLD degraded (cannot re-read PR #$pr events)"; return 3; }
@@ -165,7 +168,7 @@ _crf_release_locked() {
         '[.[] | select(.event == "labeled" and .label.name == "ci:go" and .created_at >= $d)] | length > 0' >/dev/null 2>&1; then
         return 0
     fi
-    if ! gh api "repos/$repo/labels/ci:go" </dev/null >/dev/null 2>&1; then
+    if ! gh_read api "repos/$repo/labels/ci:go" </dev/null >/dev/null 2>&1; then
         echo "CR-FIRST ERROR label ci:go does not exist in $repo — create it once (a label write would auto-create it with no colour or description); nothing written"
         return 2
     fi
@@ -194,9 +197,17 @@ _crf_release_locked() {
 
 # cr_first_switch_on <owner/name> — rc 0 only when the repository variable
 # CI_GO_GATE reads `on`; unset, off, or unreadable is rc 1 (no label write, no HOLD).
+_CRF_SW_REPO=""; _CRF_SW_AT=0; _CRF_SW_VAL=""
 cr_first_switch_on() {
-    local sw
-    sw=$(gh variable get CI_GO_GATE --repo "$1" </dev/null 2>/dev/null) || return 1
+    local sw ttl="${CR_FIRST_SWITCH_TTL:-60}" now
+    case "$ttl" in ''|*[!0-9]*) ttl=60 ;; esac
+    now=$(date +%s)
+    if [ "$ttl" -gt 0 ] && [ "$_CRF_SW_REPO" = "$1" ] && [ $((now - _CRF_SW_AT)) -ge 0 ] && [ $((now - _CRF_SW_AT)) -lt "$ttl" ]; then
+        sw="$_CRF_SW_VAL"
+    else
+        sw=$(gh variable get CI_GO_GATE --repo "$1" </dev/null 2>/dev/null) || { _CRF_SW_REPO=""; return 1; }
+        _CRF_SW_REPO="$1"; _CRF_SW_AT="$now"; _CRF_SW_VAL="$sw"
+    fi
     [ "$(printf '%s' "$sw" | tr -d '[:space:]')" = on ]
 }
 
@@ -213,7 +224,7 @@ cr_first_release() {
 
     cr_first_switch_on "$repo" || return 0
 
-    pull=$(gh api "repos/$repo/pulls/$pr" </dev/null 2>/dev/null) || { echo "CR-FIRST HOLD degraded (cannot read PR #$pr)"; return 3; }
+    pull=$(gh_read api "repos/$repo/pulls/$pr" </dev/null 2>/dev/null) || { echo "CR-FIRST HOLD degraded (cannot read PR #$pr)"; return 3; }
     pinfo=$(printf '%s' "$pull" | jq -r '[.state // "", .head.sha // "",
         (if (.head.repo == null) or (.head.repo.fork == true)
             or (((.base.repo.full_name // "") != "") and ((.head.repo.full_name // "") != "") and (.head.repo.full_name != .base.repo.full_name))
@@ -224,13 +235,13 @@ cr_first_release() {
     [ "$pstate" = open ] || return 0
     [ "$psha" = "$head" ] || return 0
 
-    commit=$(gh api "repos/$repo/commits/$head" </dev/null 2>/dev/null) || { echo "CR-FIRST HOLD degraded (cannot read commit $head)"; return 3; }
+    commit=$(gh_read api "repos/$repo/commits/$head" </dev/null 2>/dev/null) || { echo "CR-FIRST HOLD degraded (cannot read commit $head)"; return 3; }
     cdate=$(printf '%s' "$commit" | jq -r '.commit.committer.date // empty' 2>/dev/null || true)
     cepoch=$(_crf_epoch "$cdate")
     [ -n "$cepoch" ] || { echo "CR-FIRST HOLD degraded (no commit date for $head)"; return 3; }
     age=$(_crf_age "$cepoch")
 
-    checks_raw=$(gh api --paginate "repos/$repo/commits/$head/check-runs?per_page=100" </dev/null 2>/dev/null) \
+    checks_raw=$(gh_read api --paginate "repos/$repo/commits/$head/check-runs?per_page=100" </dev/null 2>/dev/null) \
         || { echo "CR-FIRST HOLD degraded (cannot read check-runs at $head) $age"; return 3; }
     checks=$(printf '%s' "$checks_raw" | jq -s 'if all(.[]; type == "object") then {check_runs: [.[] | .check_runs[]?]} else error("bad") end' 2>/dev/null) \
         || { echo "CR-FIRST HOLD degraded (cannot parse check-runs at $head) $age"; return 3; }
@@ -239,7 +250,7 @@ cr_first_release() {
           | select(.status == "in_progress" or (.status == "completed" and (.conclusion // "") != "skipped"))
           | .check_suite.id // empty] | unique' 2>/dev/null) || heavy_suites="[]"
     if [ "$heavy_suites" != "[]" ]; then
-        runs_raw=$(gh api --paginate "repos/$repo/actions/runs?head_sha=$head&event=pull_request&per_page=100" </dev/null 2>/dev/null) \
+        runs_raw=$(gh_read api --paginate "repos/$repo/actions/runs?head_sha=$head&event=pull_request&per_page=100" </dev/null 2>/dev/null) \
             || { echo "CR-FIRST HOLD degraded (cannot read workflow runs at $head) $age"; return 3; }
         runs_rc=0
         printf '%s' "$runs_raw" | jq -se --argjson ids "$heavy_suites" \
@@ -283,7 +294,7 @@ cr_first_release() {
     esac
 
     grc=0
-    out=$(cr_reviewer_gate "$pr" "$head" "$repo" --release 2>&1 </dev/null) || grc=$?
+    out=$(GH_CMD="${GH_CMD:-$_CRF_DIR/gh-read.sh}" cr_reviewer_gate "$pr" "$head" "$repo" --release 2>&1 </dev/null) || grc=$?
     state_line=$(printf '%s\n' "$out" | grep -m1 '^cr-reviewer-gate: PR #' || true)
     # A hard reviewer that passes again ends its outage alert.
     if [ -n "$state_line" ] && [ "${CR_FIRST_READONLY:-0}" != 1 ]; then
@@ -381,11 +392,11 @@ _crf_main() {
         # `gh pr view --repo X` with no selector is an error from any directory, and `gh pr view <name>`
         # reads a numeric name as a PR number, so the caller's branch goes through a head-branch list.
         if [ -n "$pr" ]; then
-            info=$(gh pr view "$pr" ${nwo:+--repo "$nwo"} --json number,headRefOid -q '"\(.number) \(.headRefOid)"' 2>/dev/null) || info=""
+            info=$(gh_read pr view "$pr" ${nwo:+--repo "$nwo"} --json number,headRefOid -q '"\(.number) \(.headRefOid)"' 2>/dev/null) || info=""
         else
             sel=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
             info=""
-            [ -z "$sel" ] || info=$(gh pr list --head "$sel" --state open ${nwo:+--repo "$nwo"} --json number,headRefOid,isCrossRepository \
+            [ -z "$sel" ] || info=$(gh_read pr list --head "$sel" --state open ${nwo:+--repo "$nwo"} --json number,headRefOid,isCrossRepository \
                 -q '[.[] | select(.isCrossRepository | not)] | .[0] | select(. != null) | "\(.number) \(.headRefOid)"' 2>/dev/null) || info=""
         fi
         [ -n "$info" ] || { echo "CR-FIRST ERROR no pull request for the current branch (pass --pr and --head)"; return 2; }

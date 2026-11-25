@@ -91,6 +91,8 @@ jq() { command jq "$@" | tr -d '\r'; }
 
 GH_BIN="${UPSTREAM_WATCH_GH:-gh}"
 
+OWN_ORGS="yotamleo-org"
+
 TMP="$(tmpdir)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -153,10 +155,11 @@ PRS_RAW="$(run_gh_search prs)"
 ISSUES_RAW="$(run_gh_search issues)"
 
 # Own-repo exclusion (ticket rule) + tag each item with its kind.
-PRS_FILTERED=$(printf '%s' "$PRS_RAW" | jq --arg me "$ME" \
-    '[.[] | select(.repository.nameWithOwner | startswith($me + "/") | not) | . + {kind:"pr"}]')
-ISSUES_FILTERED=$(printf '%s' "$ISSUES_RAW" | jq --arg me "$ME" \
-    '[.[] | select(.repository.nameWithOwner | startswith($me + "/") | not) | . + {kind:"issue"}]')
+OWNERS_JSON=$(printf '%s\n%s\n' "$ME" "$OWN_ORGS" | tr ' ' '\n' | jq -R 'select(length>0) | ascii_downcase' | jq -s .)
+PRS_FILTERED=$(printf '%s' "$PRS_RAW" | jq --argjson owners "$OWNERS_JSON" \
+    '[.[] | select(.repository.nameWithOwner | split("/")[0] | ascii_downcase | IN($owners[]) | not) | . + {kind:"pr"}]')
+ISSUES_FILTERED=$(printf '%s' "$ISSUES_RAW" | jq --argjson owners "$OWNERS_JSON" \
+    '[.[] | select(.repository.nameWithOwner | split("/")[0] | ascii_downcase | IN($owners[]) | not) | . + {kind:"issue"}]')
 INVENTORY=$(jq -n --argjson a "$PRS_FILTERED" --argjson b "$ISSUES_FILTERED" '$a + $b')
 COUNT=$(printf '%s' "$INVENTORY" | jq 'length')
 

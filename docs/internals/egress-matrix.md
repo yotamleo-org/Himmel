@@ -56,7 +56,7 @@ Semantics.)*
   - `luna-personal × zai-glm × inference` stayed **deny** — extraction only,
     and it still denies by *default* (the GLM de-listing added explicit deny rows only
     for the four cells that were open, it did not invent new rows).
-  - `salus × * × *` stays **deny, hard** — no override can flip it. The one carve-out is the explicit `salus × openai-codex × inference` allow row ahead of it (operator ruling 2026-10-08).
+  - `salus × * × *` stays **deny, hard** — no override can flip it. The two interactive inference carve-outs ahead of it are `salus × openai-codex × inference` (operator ruling 2026-10-08) and `salus × google-antigravity × inference` (operator ruling 2026-11-23, Decision 1259; interactive Antigravity/agy via Google trusted route, distinct from hard-denied API-key `google-gemini`).
   - **Not a default.** `refresh-graph-map.sh` keeps `BACKEND=claude-cli`
     (the claude-only adopter story). GLM is a per-run opt-in for an
     operator who has a Coding Plan; an adopter without one is never expected to
@@ -334,6 +334,7 @@ Granting it is an operator call. Defense in depth around it:
 | embedding/rerank pilot client | the `alibaba` × `embedding`/`rerank`/`vision-embedding` cells — all now explicit `deny` (Alibaba de-listed; the pilot is not being pursued) |
 | `scripts/eval/worker-digest/failure_router.py` | the `worker-failure-metadata` × `jira` × `ticketing` row (conditional): the router files and comments only a summary and body its own closed-alphabet check (`check-body`) passes, through the Jira CLI by absolute path, and logs one decision line per send. It does not read the matrix at runtime; `test-egress-matrix.mjs` 5d pins the conditional row |
 | the peer bridge's egress gate | the `peer-desk` × `peer-telegram` × `peer-message` row (allow), evaluated in-process through the `evaluate` export of `egress-matrix-eval.mjs` (no spawn). The peer desk is a fresh session started for one peer under `~/.himmel/peer-bridge/desk/`; the taint gate lets it read nothing of ours, so the only text it holds, and the only text a reply to the peer can carry, is what the operator types into it. Every other corpus to `peer-telegram` stays default-deny, and `test-egress-matrix.mjs` pins the cell and the CLI's agreement with the import |
+| the peer bridge's reply drafts (`checkOutbound` with `OutCtx.corpus = "operator-reply"`) | the `operator-reply` × `peer-telegram` × `peer-message` row (allow), evaluated in-process like the desk's. The corpus is text the operator typed into the Telegram operator bot as a reply to a peer escalation; it becomes a draft and leaves only after the operator approves the exact stored text with a counted tap, and the poller re-derives the corpus from the draft's `source` and re-checks lockdown and the content rules at approval. No other purpose is allowed for `operator-reply` to `peer-telegram`; `test-egress-matrix.mjs` pins the cell |
 | the peer bridge's envelope policy (`checkEnvelopeOutbound`, slice B) | the `peer-jobs` × `peer-telegram` × `peer-message` row (allow), evaluated in-process like the desk's. The corpus is the typed envelopes `jobs.ts`, the poller and `runner.ts` build from resolved values; every field is a closed enum, a bounded integer, a resolved SHA, a hex value the receiver compares or a suite path on a public repo, so no free text can leave through it. The policy re-validates the envelope with the receiver's schema and canonical encoder, runs the slice A content rules on line 3 alone, and passes line 4 only when it verifies as our own station key's signature over lines 2 and 3. No other corpus reaches `peer-telegram` through this row and no other purpose is allowed for `peer-jobs` to it; `test-egress-matrix.mjs` pins the cell |
 | Atlassian MCP catalog capture (a one-off station script, not a shipped consumer) | the `mcp-tool-catalog` × `atlassian-mcp` × `catalog-fetch` row (allow, operator ruling 2026-10-08): an auth-only `initialize` + `tools/list` call to `https://mcp.atlassian.com/v1/mcp`, no ticket, vault or corpus content. Every `tools/call`, other purpose and other corpus stays default-deny; `test-egress-matrix.mjs` 6 pins the scope |
 
@@ -360,7 +361,11 @@ review, not a code edit.
   no recordable override, except `salus × openai-codex × inference` (an
   explicit allow row ahead of the wildcard, operator ruling
   2026-10-08, which also allows `luna-personal` and `luna-clippings` for
-  codex inference only); google-gemini is denied everywhere (keys stay
+  codex inference only) and `salus × google-antigravity × inference` (operator
+  ruling 2026-11-23, Decisions 1246 & 1259, which allows interactive
+  Antigravity/agy inference on `himmel-code`, `handover-state`,
+  `luna-personal`, `luna-clippings`, and `salus`, while denying `voice-audio`
+  and all non-inference purposes); API-key/hermes `google-gemini` stays hard-denied everywhere (keys stay
   unset); there are now **zero `pending-operator` cells** (the five
   Alibaba embedding/rerank cells were demoted to explicit `deny`); **DeepSeek +
   Alibaba are de-listed** for vault/handover egress (explicit `deny`), and stay

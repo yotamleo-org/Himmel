@@ -838,6 +838,19 @@ check "skip vs broke: the skipped attempt row has status skipped" "$(grep -c '"k
 check "skip vs broke: the skipped attempt row carries the SKIPPED stderr" "$(grep -c '"status":"skipped".*api lane is OFF' "$SK_LEDGER" || true)" "1"
 check "skip vs broke: a skipped primary with empty stderr still writes its attempt row" "$(grep -c '"kind":"attempt".*"status":"skipped"' "$SK2_LEDGER" || true)" "1"
 
+R10_LINE="claude-api: fleet launch refused: stub reason"
+R10_STUB="$tmp/r10-stub.sh"
+printf '%s\n' '#!/usr/bin/env bash' "echo '$R10_LINE' >&2" 'exit 10' > "$R10_STUB"; chmod +x "$R10_STUB"
+printf '%s' '{"panel":[{"slug":"refuser","model":"fake/primary","provider":"test","tier":"free"}]}' > "$tmp/critics-r10-plain.json"
+printf '%s' '{"panel":[{"slug":"refuser","model":"fake/primary","provider":"test","tier":"free","fallback_models":["fake/fb1"],"fallback_trigger":"any"}]}' > "$tmp/critics-r10-chain.json"
+for r10_case in plain chain; do
+    R10_LEDGER="$tmp/r10-$r10_case-ledger.jsonl"; : > "$R10_LEDGER"
+    CR_LEDGER="$R10_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
+        CRITICS_JSON="$tmp/critics-r10-$r10_case.json" CRITIC_FIRST_PASS="$R10_STUB" \
+        bash "$PANEL" <<< "$DIFF" > /dev/null 2> "$tmp/r10-$r10_case-err" || true
+    check "H10993 $r10_case: the avail row's detail names the member's stderr line" "$(grep -c '"kind":"avail".*"detail":"[^"]*stub reason' "$R10_LEDGER" || true)" "1"
+done
+
 # A crashed gate (exit 1 + cfp's BROKE line) is reason critic-broke on the avail row, an error attempt row, never critic-skipped.
 BK_STUB="$tmp/bk-stub.sh"
 printf '%s\n' '#!/bin/bash' 'echo "critic-first-pass.sh: claude critic BROKE (api bank gate said BANK-UNKNOWN) — not a clean no-op" >&2' 'exit 1' > "$BK_STUB"; chmod +x "$BK_STUB"

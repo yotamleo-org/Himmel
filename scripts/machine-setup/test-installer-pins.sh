@@ -25,12 +25,12 @@ check() { if "${@:2}"; then ok "$1"; else bad "$1"; fi; }
 work=$(mktemp -d "${TMPDIR:-/tmp}/installer-pins.XXXXXX") || exit 1; trap 'rm -rf "$work"' EXIT
 
 # ── Upstream fixtures (real) ────────────────────────────────────────────────
-FIXTURE_BUN_SHASUMS='bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c  bun-linux-x64.zip'
-FIXTURE_UV_SHA256='5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91  uv-x86_64-unknown-linux-gnu.tar.gz'
-FIXTURE_RTK_CHECKSUMS='d847c771b86a98c5dfbc5a3bad0bf6a51293d91ad52123583664b48d091853ff  rtk_1.2.0-1_amd64.deb'
+FIXTURE_BUN_SHASUMS='94559b3b528995a49452f9f2404cec74f2efd7d06e0a000a8cd214b02c3666eb  bun-linux-x64.zip'
+FIXTURE_UV_SHA256='a7fbaff2b9a271d85c1bdb540941090fd1ce011797b4abeb48e4dcd39c2471d5  uv-x86_64-unknown-linux-gnu.tar.gz'
+FIXTURE_RTK_CHECKSUMS='0a56f0481565a23922662a8f05a354cc6ae7d0b16b8f7e12a39faf71e8e1694a  rtk_1.2.1-1_amd64.deb'
 FIXTURE_NODE_TARBALL='5c063e46bab0fbc1c17cc445d7ff129cbdcd0471be6ed83b6ab864f8143bc864  node-v26.13.1-linux-x64.tar.xz'
 FIXTURE_NODE_BIN='d931c649850ffa7155b8ceffb400dc916ef325866e509cc52ae36e33e8fbb9a9  node-v26.13.1-linux-x64/bin/node'
-FIXTURE_CLAUDE_MANIFEST_LINUX_X64='0dc4f4a9a165fc60746d7ae8489712e5fc352f1e7ad4eb22e7141bd0812eb0cf'
+FIXTURE_CLAUDE_MANIFEST_LINUX_X64='f390eaa0814e6a1bff74cbb47acb74cb9c89d30ced809fe0af5af00c7bfe8ebb'
 FIXTURE_NVM_INSTALL='045932fe05f0d4247c946f2ec0ec4026dbfd8ce88a5f67ea28d8ea833227f48b  install.sh'
 FIXTURE_NVM_TAG_COMMIT='4e8758a801eea9479b32a904f31093e410ddaba4'
 FIXTURE_CERTIFI_WHEEL='e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1'
@@ -59,8 +59,8 @@ if [ -f "$pins" ]; then
   # shellcheck disable=SC1090
   . "$pins"
   check "uv sha256"            test "${UV_SHA256:-}  uv-x86_64-unknown-linux-gnu.tar.gz" = "$FIXTURE_UV_SHA256"
-  check "uv version 0.13.8"    test "${UV_VERSION:-}" = "0.13.8"
-  check "bun sha256 (1.4.4)"   test "$(bun_sha256 1.4.4 2>/dev/null):  bun-linux-x64.zip" = "${FIXTURE_BUN_SHASUMS%%  *}:  bun-linux-x64.zip"
+  check "uv version 0.13.9"    test "${UV_VERSION:-}" = "0.13.9"
+  check "bun sha256 (1.4.5)"   test "$(bun_sha256 1.4.5 2>/dev/null):  bun-linux-x64.zip" = "${FIXTURE_BUN_SHASUMS%%  *}:  bun-linux-x64.zip"
   check "rtk deb sha256"       test "${RTK_DEB_SHA256:-}  rtk_${RTK_VERSION:-}-1_amd64.deb" = "$FIXTURE_RTK_CHECKSUMS"
   check "node tarball sha256"  test "${NODE_TARBALL_SHA256:-}  node-v${NODE_VERSION:-}-linux-x64.tar.xz" = "$FIXTURE_NODE_TARBALL"
   check "node binary sha256"   test "${NODE_BIN_SHA256:-}  node-v${NODE_VERSION:-}-linux-x64/bin/node" = "$FIXTURE_NODE_BIN"

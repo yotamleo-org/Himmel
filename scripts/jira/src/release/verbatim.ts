@@ -32,6 +32,16 @@ export function checkWords(text: string, words: string): { ok: true } | { ok: fa
   return { ok: true };
 }
 
+export function namesKey(words: string, key: string, o: { bare: boolean }): boolean {
+  if (new RegExp(`\\b${escapeRe(key)}(?!\\d)`).test(words)) return true;
+  const n = /-(\d+)$/.exec(key)?.[1];
+  if (!o.bare || !n) return false;
+  for (const m of words.matchAll(new RegExp(`(?<![A-Za-z0-9./-])${n}(?![A-Za-z0-9-])`, 'g'))) {
+    if (!/(?:#|\b(?:prs?|pulls?|decisions?|v)\s*:?)\s*$/i.test(words.slice(0, m.index))) return true;
+  }
+  return false;
+}
+
 export const decisionsDirFor = (releaseDir: string): string => join(dirname(dirname(releaseDir)), 'specs', 'decisions');
 
 export function resolveDecision(decisionsDir: string, n: string): { path: string; rel: string; sha256: string; text: string } {

@@ -25,10 +25,17 @@ trap cleanup EXIT
 
 cat > "$tmp/send" <<'STUB'
 #!/usr/bin/env bash
+printf '%s|%s\n' "$2" "${1%%$'\n'*}" >> "$BYPASSD_TEST_DIR/kinds"
+[ "$2" != bypass-ask ] || printf '%s' "$1" > "$BYPASSD_TEST_DIR/ask"
 printf '%s\n' "$1" >> "$BYPASSD_TEST_DIR/sent"
 STUB
 cat > "$tmp/launcher" <<'STUB'
 #!/usr/bin/env bash
+if [ "${1:-}" = --dry-run ]; then
+    printf '%s\n' "$@" >> "$BYPASSD_TEST_DIR/dry.args"
+    [ ! -s "$BYPASSD_TEST_DIR/dry.msg" ] || cat "$BYPASSD_TEST_DIR/dry.msg" >&2
+    exit "$(cat "$BYPASSD_TEST_DIR/dry.rc" 2>/dev/null || echo 0)"
+fi
 env | grep -E '^([A-Za-z0-9_]*_OK|WORKER_SESSION_EFFORT|WORKER_SESSION_API_LANE|WORKER_SESSION_API_ACCOUNT|SKIP_FORCE_PUSH_GATE|IMPL_GUARD_DISABLE|SECURITY_REVIEW_NO_FETCH)=' | sort > "$BYPASSD_TEST_DIR/launch.env"
 printf '%s\n' "$@" > "$BYPASSD_TEST_DIR/launch.args"
 ps -o sid= -p $$ 2>/dev/null | tr -d ' ' > "$BYPASSD_TEST_DIR/launch.sid"
@@ -57,10 +64,12 @@ stop() { touch "$Q/stop"; wait "$DPID" 2>/dev/null; DPID=""; }
 wait_for() { local _; for _ in $(seq 100); do grep -qF -- "$2" "$1" 2>/dev/null && return 0; sleep 0.1; done; return 1; }
 ask_code() {
     local n=$1; shift
-    printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief "$@" > "$Q/$n.req"
-    wait_for "$D/sent" "Reply: go " || return 1
-    sed -n 's/.*Reply: go \([A-Z2-9]\{6\}\) to launch.*/\1/p' "$D/sent" | tail -n 1
+    printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief "$@" recommend=go > "$Q/$n.req"
+    wait_for "$D/sent" " → launch · no " || return 1
+    sed -n 's/^go \([A-Z2-9]\{6\}\) → launch · no [A-Z2-9]\{6\} → refuse$/\1/p' "$D/sent" | tail -n 1
 }
+last_ask() { cat "$D/ask" 2>/dev/null; }
+kind_seq() { cut -d'|' -f1 "$D/kinds" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
 reply() { printf '{"from": %s, "chat_id": %s, "text": "%s", "forwarded": %s}\n' "$1" "$2" "$3" "${4:-false}" >> "$D/bridge/inbound.jsonl"; }
 
 TIER_REL=scripts/station-ops/bypass-flag-tiers.tsv
@@ -113,7 +122,7 @@ echo "== a billed request launches only on the operator's go code =="
 setup billed-go
 start
 CODE=$(ask_code r flags=HIMMEL_BILLED_OK decision=921 effort=high)
-assert_contains "the ask names the paid run and its decision" "PAID RUN (decision 921)" "$(cat "$D/sent" 2>/dev/null)"
+assert_contains "the ask names the paid run and its decision" "DECISION 921 · PAID RUN" "$(last_ask)"
 reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
 assert_contains "RED 9922: the go code launches with the billed flag set (GRANT log line)" \
@@ -128,7 +137,7 @@ echo "== api_account= carries a named API account into the launch =="
 setup api-account
 start
 CODE=$(ask_code r api_account=A)
-assert_contains "the ask names the API lane and the account" "API LANE ON, account A" "$(cat "$D/sent" 2>/dev/null)"
+assert_contains "the ask names the API lane and the account" "API account A" "$(last_ask)"
 reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
 assert_eq "api_account=A launches with the lane seam on and account A" \
@@ -149,9 +158,9 @@ stop
 echo "== a malformed api_account= is refused =="
 setup api-account-bad
 start
-printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief 'api_account=not-a-name' > "$Q/r.req"
-wait_for "$Q/daemon.log" "REFUSED malformed $Q/r.req"
-assert_contains "a non-name api_account is refused as malformed" "REFUSED malformed" "$(cat "$Q/daemon.log" 2>/dev/null)"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief 'api_account=not-a-name' recommend=go > "$Q/r.req"
+wait_for "$Q/daemon.log" "REFUSED malformed: api_account $Q/r.req"
+assert_contains "a non-name api_account is refused and named" "REFUSED malformed: api_account $Q/r.req" "$(cat "$Q/daemon.log" 2>/dev/null)"
 assert_absent "and launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
 stop
 
@@ -181,20 +190,64 @@ stop
 echo "== refusals before any ask =="
 setup refusals
 start
-printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief flags=HIMMEL_BILLED_OK,NOT_A_HOOK_GUARD_OK > "$Q/a.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief flags=HIMMEL_BILLED_OK,NOT_A_HOOK_GUARD_OK recommend=go > "$Q/a.req"
 wait_for "$Q/daemon.log" "REFUSED flag NOT_A_HOOK_GUARD_OK is not in bypass-flags.json"
 assert_eq "an unlisted flag is refused" "a.req.refused" "$(cd "$Q" && ls a.req.* 2>/dev/null)"
-printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief flags=HIMMEL_BILLED_OK > "$Q/b.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief flags=HIMMEL_BILLED_OK recommend=go > "$Q/b.req"
 wait_for "$Q/daemon.log" "REFUSED HIMMEL_BILLED_OK needs decision"
 assert_eq "a billed request with no decision is refused" "b.req.refused" "$(cd "$Q" && ls b.req.* 2>/dev/null)"
-printf '%s\n' "brief=/etc/passwd" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief > "$Q/c.req"
-wait_for "$Q/daemon.log" "REFUSED malformed"
+printf '%s\n' "brief=/etc/passwd" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief recommend=go > "$Q/c.req"
+wait_for "$Q/daemon.log" "REFUSED malformed: brief-path"
 assert_eq "a brief outside the bucket is refused" "c.req.refused" "$(cd "$Q" && ls c.req.* 2>/dev/null)"
 ln -s "$BRIEF" "$B/HIMMEL-1-N2-link.md"
-printf '%s\n' "brief=$B/HIMMEL-1-N2-link.md" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief > "$Q/d.req"
-wait_for "$Q/daemon.log" "REFUSED malformed $Q/d.req"
+printf '%s\n' "brief=$B/HIMMEL-1-N2-link.md" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief recommend=go > "$Q/d.req"
+wait_for "$Q/daemon.log" "REFUSED malformed: brief-path $Q/d.req"
 assert_eq "RED 9922: a symlinked brief inside the bucket is refused" "d.req.refused" "$(cd "$Q" && ls d.req.* 2>/dev/null)"
-assert_absent "no refusal sends an ask" "Reply: go" "$(cat "$D/sent" 2>/dev/null)"
+assert_absent "no refusal sends an ask" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+stop
+
+echo "== current-style worker names are accepted, N-series stays accepted =="
+for name in HIMMEL-10310-F10310h-macos-hook-ports-2026-11-21 HIMMEL-2-U2-slug-2026-11-21 HIMMEL-1-N1-sweep-pr1; do
+    setup "name-$name"
+    BRIEF="$B/$name.md"
+    printf -- '---\ndescription: "a stub brief"\n---\n# brief\n' > "$BRIEF"
+    start
+    CODE=$(ask_code r)
+    assert_contains "RED 10542: $name is asked to the operator" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+    assert_eq "$name: the request is pending, not refused" "r.req.pending" "$(cd "$Q" && ls r.req.* 2>/dev/null)"
+    stop
+done
+
+echo "== every refusal names the failed field and no value =="
+setup field-names
+start
+CH=HIMMEL-nextleg-2026-11-13A-roadmap-chief
+for n in n3 NN3; do
+    printf -- '---\n---\n' > "$B/HIMMEL-3-$n-slug.md"
+done
+ln -s "$BRIEF" "$B/HIMMEL-1-N2-link.md"
+refuse_row() {
+    local n=$1 label=$2 want=$3; shift 3
+    printf '%s\n' "$@" recommend=go > "$Q/$n.req"
+    wait_for "$Q/daemon.log" "REFUSED $want $Q/$n.req"
+    wait_for "$D/sent" "refused $n.req: $want"
+    assert_eq "$label: the request is refused" "$n.req.refused" "$(cd "$Q" && ls "$n".req.* 2>/dev/null)"
+    assert_contains "$label: the log names the field" "REFUSED $want $Q/$n.req" "$(cat "$Q/daemon.log" 2>/dev/null)"
+    assert_contains "$label: the Telegram line names the field" "refused $n.req: $want" "$(cat "$D/sent" 2>/dev/null)"
+    assert_contains "RED 10558 $label: the refusal is bypass-result" "bypass-result|bypass-launchd refused $n.req: $want" "$(cat "$D/kinds" 2>/dev/null)"
+    assert_eq "RED 10558 $label: every send so far is bypass-result" 0 "$(kind_seq | tr ' ' '\n' | grep -vxc bypass-result || true)"
+}
+refuse_row m1 "a lowercase series" "malformed: brief-name" "brief=$B/HIMMEL-3-n3-slug.md" model=claude-sonnet-5-5 "chief=$CH"
+refuse_row m2 "a two-letter series" "malformed: brief-name" "brief=$B/HIMMEL-3-NN3-slug.md" model=claude-sonnet-5-5 "chief=$CH"
+refuse_row m3 "a bad model" "malformed: model" "brief=$BRIEF" model=claude-opus-4-1 "chief=$CH"
+refuse_row m4 "a bad chief" "malformed: chief" "brief=$BRIEF" model=claude-sonnet-5-5 "chief=a b"
+refuse_row m5 "a bad effort" "malformed: effort" "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" effort=ultra
+refuse_row m6 "a bad api_account" "malformed: api_account" "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" api_account=not-a-name
+refuse_row m7 "a brief outside the bucket" "malformed: brief-path, brief-name" "brief=/etc/passwd" model=claude-sonnet-5-5 "chief=$CH"
+refuse_row m8 "a symlinked brief" "malformed: brief-path" "brief=$B/HIMMEL-1-N2-link.md" model=claude-sonnet-5-5 "chief=$CH"
+refuse_row m9 "a bad model and a bad effort" "malformed: model, effort" "brief=$BRIEF" model=claude-opus-4-1 "chief=$CH" effort=ultra
+assert_absent "no refusal sends an ask" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+assert_absent "no reason carries a field value" "claude-opus-4-1" "$(cat "$D/sent" "$Q/daemon.log" 2>/dev/null)"
 stop
 
 echo "== nothing else sets the flag =="
@@ -245,6 +298,9 @@ reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "REFUSED after go"
 assert_eq "the changed brief launches nothing" "no-launch r.req.refused" \
     "$([ -e "$D/launch.env" ] && echo launched || echo no-launch) $(cd "$Q" && ls r.req.*)"
+wait_for "$D/kinds" "refused after your go"
+assert_contains "RED 10558: a refusal after the go is bypass-result" "bypass-result|bypass launch HIMMEL-1-N1-sweep-pr1: refused after your go" "$(cat "$D/kinds" 2>/dev/null)"
+assert_eq "RED 10558: a refusal after the go sends exactly the ask then bypass-result" "bypass-ask bypass-result" "$(kind_seq)"
 stop
 
 echo "== a launcher that fails is reported as failed =="
@@ -254,6 +310,29 @@ CODE=$(ask_code r)
 reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "LAUNCH-FAILED"
 assert_contains "LAUNCH-FAILED names the launcher's rc" "LAUNCH-FAILED HIMMEL-1-N1-sweep-pr1 rc=3" "$(cat "$Q/daemon.log")"
+wait_for "$D/sent" "FAILED (rc 3)"
+assert_contains "RED 10558: the ask goes out as bypass-ask" "bypass-ask|go " "$(cat "$D/kinds" 2>/dev/null)"
+assert_contains "RED 10558: the failed launch goes out as bypass-failed" "bypass-failed|bypass launch HIMMEL-1-N1-sweep-pr1: FAILED (rc 3)" "$(cat "$D/kinds" 2>/dev/null)"
+assert_eq "RED 10558: a failed launch sends exactly the ask then bypass-failed" "bypass-ask bypass-failed" "$(kind_seq)"
+stop
+
+echo "== verdict lines go out as bypass-result =="
+setup kinds-go
+start
+CODE=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+wait_for "$D/sent" "launched with"
+assert_contains "RED 10558: launched is bypass-result" "bypass-result|bypass launch HIMMEL-1-N1-sweep-pr1: launched with" "$(cat "$D/kinds" 2>/dev/null)"
+assert_eq "RED 10558: a launch sends exactly the ask then bypass-result" "bypass-ask bypass-result" "$(kind_seq)"
+stop
+setup kinds-no
+start
+CODE=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "no $CODE"
+wait_for "$D/sent" "no, nothing ran"
+assert_contains "RED 10558: a no is bypass-result" "bypass-result|bypass launch HIMMEL-1-N1-sweep-pr1: no, nothing ran." "$(cat "$D/kinds" 2>/dev/null)"
+assert_eq "RED 10558: a no sends exactly the ask then bypass-result" "bypass-ask bypass-result" "$(kind_seq)"
 stop
 
 echo "== start refusals =="
@@ -271,12 +350,11 @@ assert_absent "a refused start writes no log" "start pid" "$(cat "$Q/daemon.log"
 echo "== 9973 R8: every flag name has exactly one tier row =="
 assert_eq "R8 the tier file covers the registry and both override-env lists, and every row is well formed" "" "$(tier_problems)"
 
-DESTRUCTIVE_TEXT="$(jq -r '.flags[] | select(.name == "DESTRUCTIVE_OK") | .bypasses' "$REPO_ROOT/$REG_REL")"
 echo "== 9973 R1: a registered guard flag launches with it set =="
 setup_repo r1
 start
 launch_env_after_go flags=DESTRUCTIVE_OK
-assert_contains "R1 the ask names the flag and its registry text" "DESTRUCTIVE_OK=1 ($DESTRUCTIVE_TEXT)" "$(cat "$D/sent" 2>/dev/null)"
+assert_eq "R1 line 3 of the ask names the flag" "flag DESTRUCTIVE_OK" "$(last_ask | sed -n 3p)"
 assert_eq "R1 the launch holds DESTRUCTIVE_OK and no other flag" "DESTRUCTIVE_OK=1" "$(cat "$D/launch.env" 2>/dev/null)"
 stop
 
@@ -284,8 +362,8 @@ echo "== 9973 R3: the ask and the log name every granted flag =="
 setup_repo r3
 start
 launch_env_after_go flags=DESTRUCTIVE_OK,GIT_STASH_OK
-assert_contains "R3 the ask names the first flag" "DESTRUCTIVE_OK=1 (" "$(cat "$D/sent" 2>/dev/null)"
-assert_contains "R3 the ask names the second flag" "GIT_STASH_OK=1 (" "$(cat "$D/sent" 2>/dev/null)"
+assert_contains "R3 line 3 of the ask names the first flag" "flags DESTRUCTIVE_OK, " "$(last_ask | sed -n 3p)"
+assert_contains "R3 line 3 of the ask names the second flag" ", GIT_STASH_OK" "$(last_ask | sed -n 3p)"
 assert_contains "R3 the GRANT line names both" "env=DESTRUCTIVE_OK=1 GIT_STASH_OK=1" "$(grep GRANT "$Q/daemon.log" 2>/dev/null)"
 assert_eq "R3 the launch holds exactly both" "DESTRUCTIVE_OK=1"$'\n'"GIT_STASH_OK=1" "$(cat "$D/launch.env" 2>/dev/null)"
 stop
@@ -295,7 +373,7 @@ setup_repo refuse
 start
 refusal() {
     local label=$1 n=$2 frag=$3; shift 3
-    printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief "$@" > "$Q/$n.req"
+    printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief "$@" recommend=go > "$Q/$n.req"
     wait_for "$Q/daemon.log" "REFUSED $frag"
     assert_contains "$label is refused with its reason" "REFUSED $frag" "$(cat "$Q/daemon.log" 2>/dev/null)"
     assert_eq "$label ends .refused" "$n.req.refused" "$(cd "$Q" && ls "$n".req.* 2>/dev/null)"
@@ -305,14 +383,14 @@ refusal "R4 a floor flag" r4 "flag ROGUE_SCHEDULE_OK is floor" flags=ROGUE_SCHED
 refusal "R5 a decision flag with no decision" r5 "SKIP_SECURITY_REVIEW needs decision=" flags=SKIP_SECURITY_REVIEW
 refusal "R6 a name that is not a switch" r6 "flag BWIMC_ENGINE is not a switch" flags=BWIMC_ENGINE
 refusal "R7 six flags" r7 "more than 5 flags" flags=DESTRUCTIVE_OK,GIT_STASH_OK,AGENTS_MD_OK,BRANCH_NAME_OK,CHIEF_FG_OK,DOC_GUARD_OK
-assert_absent "R2 R4 R5 R6 R7 no refusal sends an ask" "Reply: go" "$(cat "$D/sent" 2>/dev/null)"
+assert_absent "R2 R4 R5 R6 R7 no refusal sends an ask" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
 stop
 
 echo "== 9973 R5: a decision flag with a decision says so in the ask =="
 setup_repo r5
 start
 CODE=$(ask_code r flags=SKIP_SECURITY_REVIEW decision=948)
-assert_contains "R5 the ask carries the operator decision" "OPERATOR DECISION 948" "$(cat "$D/sent" 2>/dev/null)"
+assert_contains "R5 the ask carries the operator decision" "DECISION 948" "$(last_ask)"
 stop
 
 echo "== 9973 R9: no inherited hatch reaches a launch =="
@@ -363,7 +441,7 @@ g -C "$R" replace "$(g -C "$R" rev-parse "HEAD:$TIER_REL")" "$(g -C "$R" hash-ob
 assert_contains "R13 control: an ordinary git read sees the forged tier file" $'ROGUE_SCHEDULE_OK\tgrant' "$(g -C "$R" show "HEAD:$TIER_REL")"
 start
 refusal "R13 a floor flag under a forged tier blob" r13 "flag ROGUE_SCHEDULE_OK is floor" flags=ROGUE_SCHEDULE_OK
-assert_absent "R13 no ask is sent" "Reply: go" "$(cat "$D/sent" 2>/dev/null)"
+assert_absent "R13 no ask is sent" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
 stop
 
 echo "== 9973 R14: a configured fsmonitor does not run inside the daemon =="
@@ -376,6 +454,169 @@ rm -f "$D/fsm.ran"
 start
 wait_for "$Q/daemon.log" "start pid="
 assert_eq "R14 the fsmonitor command never ran" "no" "$([ -e "$D/fsm.ran" ] && echo ran || echo no)"
+stop
+
+CH=HIMMEL-nextleg-2026-11-13A-roadmap-chief
+blob() { g -C "$R" rev-parse "HEAD:$1" | cut -c1-12; }
+commit_tiers() { printf '# %s\n' "$1" >> "$R/$TIER_REL"; g -C "$R" commit -q -am "$1"; }
+n_lines() { grep -cF -- "$1" "$2" 2>/dev/null || true; }
+has_hold() { [ -e "$Q/.hold" ] && echo yes || echo no; }
+
+echo "== HIMMEL-10717 DoD 1, 2: a stale daemon holds a request only the new code accepts, and tells =="
+setup_repo stale
+start
+wait_for "$Q/daemon.log" "start pid="
+self_a=$(blob "$DAEMON_REL")
+assert_contains "RED 10717: the start line names the daemon's own blob" "self=$self_a " "$(start_line)"
+sed -i.bak 's/-\[A-Z\]\[0-9\]+\[a-z\]?-/-[A-Z]{1,2}[0-9]+[a-z]?-/' "$R/$DAEMON_REL"; rm -f "$R/$DAEMON_REL.bak"
+assert_contains "control: commit B widens the brief-name pattern" '-[A-Z]{1,2}[0-9]+[a-z]?-' "$(cat "$R/$DAEMON_REL")"
+g -C "$R" commit -q -am "B widens brief names"
+self_b=$(blob "$DAEMON_REL")
+NN="$B/HIMMEL-3-NN3-slug.md"
+printf -- '---\ndescription: "a two-letter series brief"\n---\n' > "$NN"
+printf '%s\n' "brief=$NN" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/r.req"
+wait_for "$Q/daemon.log" "STALE hold"
+wait_for "$D/sent" "bypass request r.req waits"
+sleep 1
+assert_absent "RED 10717 DoD1: the stale daemon refuses nothing" "REFUSED" "$(cat "$Q/daemon.log")"
+assert_absent "10717 guard, also true before the change: the stale daemon asks nothing" "ASK " "$(cat "$Q/daemon.log")"
+assert_eq "RED 10717 DoD1: the request is still queued" "r.req" "$(cd "$Q" && ls r.req* 2>/dev/null)"
+assert_eq "RED 10717 DoD1: one STALE hold line over many passes" "1" "$(n_lines 'STALE hold' "$Q/daemon.log")"
+assert_contains "RED 10717 DoD1: the hold names the changed file" "(bypass-launchd.sh changed)" "$(grep 'STALE hold' "$Q/daemon.log")"
+assert_eq "RED 10717 DoD1: the hold writes .hold" "yes" "$(has_hold)"
+CAUSE_CARD="bypass-failed|bypass-launchd runs older code than its checkout (bypass-launchd.sh changed). It reads no request until you restart it: touch $Q/stop, wait for \`stop file\` in daemon.log, remove stop, start it again."
+assert_eq "RED 10717 DoD2: one card names the cause and the restart steps" "1" "$(n_lines "$CAUSE_CARD" "$D/kinds")"
+assert_eq "RED 10717 DoD2: one card names the held request" "1" "$(n_lines 'bypass-failed|bypass request r.req waits: the daemon needs a restart' "$D/kinds")"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/s.req"
+wait_for "$D/sent" "bypass request s.req waits"
+sleep 1
+assert_eq "RED 10717 DoD2: a request queued during the hold gets one card" "1" "$(n_lines 'bypass-failed|bypass request s.req waits: the daemon needs a restart' "$D/kinds")"
+assert_eq "RED 10717 DoD2: no card repeats across passes" "1 1" \
+    "$(n_lines "$CAUSE_CARD" "$D/kinds") $(n_lines 'bypass request r.req waits' "$D/kinds")"
+out=$(CLAUDECODE=1 bash "$DAEMON" --check --bucket "$B" 2>&1)
+assert_contains "RED 10717 DoD4: --check reports the holding daemon" \
+    "daemon: live pid=$(readlink "$Q/.lock.pid"), holding (bypass-launchd.sh changed)" "$out"
+stop; rm -f "$Q/stop"
+start
+for _ in $(seq 100); do [ "$(grep -c 'start pid=' "$Q/daemon.log")" -ge 2 ] && break; sleep 0.1; done
+assert_contains "RED 10717 DoD1: the restarted daemon's start line carries B's self=" "self=$self_b " "$(grep 'start pid=' "$Q/daemon.log" | sed -n 2p)"
+wait_for "$Q/daemon.log" "ASK HIMMEL-3-NN3-slug"
+assert_contains "RED 10717 DoD1: after the restart the held request is asked" "ASK HIMMEL-3-NN3-slug" "$(cat "$Q/daemon.log")"
+assert_eq "10717 guard, also true before the change: the restart removes .hold" "no" "$(has_hold)"
+stop
+
+echo "== HIMMEL-10717 DoD 1: a tier-file change holds with its own cause =="
+setup_repo stale-tiers
+start
+wait_for "$Q/daemon.log" "start pid="
+commit_tiers "B changes the tiers"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/r.req"
+wait_for "$Q/daemon.log" "STALE hold"
+sleep 0.5
+assert_contains "RED 10717 DoD1: a tier change holds, naming the tier file" "(bypass-flag-tiers.tsv changed)" "$(grep 'STALE hold' "$Q/daemon.log")"
+assert_absent "RED 10717 DoD1: nothing is asked on old tiers" "ASK " "$(cat "$Q/daemon.log")"
+assert_eq "RED 10717 DoD1: the request stays queued" "r.req" "$(cd "$Q" && ls r.req* 2>/dev/null)"
+stop
+
+echo "== HIMMEL-10717 G6: the hold latches until a restart =="
+setup_repo stale-latch
+start
+wait_for "$Q/daemon.log" "start pid="
+tiers_a=$(blob "$TIER_REL")
+commit_tiers "B changes the tiers"
+wait_for "$Q/daemon.log" "STALE hold"
+g -C "$R" checkout -q HEAD~1 -- "$TIER_REL"; g -C "$R" commit -q -m "C restores A's tiers"
+assert_eq "control: commit C restores A's tier blob" "$tiers_a" "$(blob "$TIER_REL")"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/r.req"
+sleep 1
+assert_absent "RED 10717 G6: after A's ids return nothing is asked" "ASK " "$(cat "$Q/daemon.log")"
+assert_eq "RED 10717 G6: the request stays queued" "r.req" "$(cd "$Q" && ls r.req* 2>/dev/null)"
+assert_eq "RED 10717 G6: .hold stays" "yes" "$(has_hold)"
+assert_eq "RED 10717 G6: still one STALE hold line" "1" "$(n_lines 'STALE hold' "$Q/daemon.log")"
+stop
+
+echo "== HIMMEL-10717 DoD 3: a change during the wait does not launch on old rules =="
+setup_repo stale-go
+start
+CODE=$(ask_code r)
+commit_tiers "B changes the tiers during the wait"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "STALE after go"
+wait_for "$D/sent" "bypass request r.req waits"
+assert_eq "RED 10717 DoD3: the stub launcher never runs" "no" "$([ -e "$D/launch.args" ] && echo yes || echo no)"
+assert_contains "RED 10717 DoD3: the log says the go was not used" "STALE after go $(basename "$BRIEF" .md): go not used, re-queued" "$(cat "$Q/daemon.log")"
+assert_eq "RED 10717 DoD3: one bypass-result card says the go was not used" "1" "$(n_lines "bypass-result|bypass launch $(basename "$BRIEF" .md): your go was not used" "$D/kinds")"
+assert_eq "RED 10717 DoD3: the request is queued again" "r.req" "$(cd "$Q" && ls r.req* 2>/dev/null)"
+assert_eq "RED 10717 DoD3: the daemon then holds" "yes" "$(has_hold)"
+assert_absent "RED 10717 DoD3: no GRANT line" "GRANT" "$(cat "$Q/daemon.log")"
+stop
+
+echo "== HIMMEL-10717 DoD 1: a change during one ask holds the next request of the same pass =="
+setup_repo stale-pass
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/a.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/b.req"
+start
+wait_for "$D/sent" " → launch · no "
+CODE=$(sed -n 's/^go \([A-Z2-9]\{6\}\) → launch.*/\1/p' "$D/sent" | tail -n 1)
+commit_tiers "B changes the tiers during the first ask"
+reply "$OPERATOR" "$OPERATOR" "no $CODE"
+wait_for "$Q/daemon.log" "STALE hold"
+sleep 0.5
+assert_eq "RED 10717 DoD1: only the first request of the pass is asked" "1" "$(n_lines 'ASK ' "$Q/daemon.log")"
+assert_absent "RED 10717 DoD1: the second request is not refused" "REFUSED" "$(cat "$Q/daemon.log")"
+assert_eq "RED 10717 DoD1: the second request stays queued" "b.req" "$(cd "$Q" && ls b.req* 2>/dev/null)"
+assert_contains "RED 10717 DoD1: the hold names the tier file" "(bypass-flag-tiers.tsv changed)" "$(grep 'STALE hold' "$Q/daemon.log")"
+stop
+
+echo "== HIMMEL-10717 DoD 1: a checkout that lost a loaded file holds, failing closed =="
+setup_repo stale-gone
+start
+wait_for "$Q/daemon.log" "start pid="
+g -C "$R" rm -q "$REG_REL"; g -C "$R" commit -q -m "B deletes the flag registry"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/r.req"
+wait_for "$Q/daemon.log" "STALE hold"
+sleep 0.5
+assert_contains "RED 10717 DoD1: an unreadable file holds with cannot read HEAD" "(cannot read HEAD)" "$(grep 'STALE hold' "$Q/daemon.log")"
+assert_absent "RED 10717 DoD1: nothing is asked when a file cannot be read" "ASK " "$(cat "$Q/daemon.log")"
+assert_eq "RED 10717 DoD1: the request stays queued when a file cannot be read" "r.req" "$(cd "$Q" && ls r.req* 2>/dev/null)"
+stop
+
+echo "== HIMMEL-10717 DoD 4: --check and blocks= =="
+setup_repo check
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$D/ok.req"
+printf '%s\n' "brief=$BRIEF" model=claude-opus-4-1 "chief=$CH" recommend=go > "$D/bad.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" "blocks=#5700 #5699" recommend=go > "$D/blocks.req"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" "blocks=5700" recommend=go > "$D/badblocks.req"
+out=$(env -u CLAUDECODE bash "$DAEMON" --check --bucket "$B" --request "$D/ok.req" 2>&1); rc=$?
+assert_eq "RED 10717 DoD4: --check on a valid request exits 0" "0" "$rc"
+assert_contains "RED 10717 DoD4: --check prints accepted" "accepted" "$out"
+assert_contains "RED 10717 DoD4: with no daemon, daemon: none" "daemon: none" "$out"
+out=$(env -u CLAUDECODE bash "$DAEMON" --check --bucket "$B" --request "$D/bad.req" 2>&1); rc=$?
+assert_eq "RED 10717 DoD4: a bad model exits 1" "1" "$rc"
+assert_contains "RED 10717 DoD4: a bad model is refused by name" "refused: malformed: model" "$out"
+out=$(env -u CLAUDECODE bash "$DAEMON" --check --bucket "$B" --request "$D/blocks.req" 2>&1); rc=$?
+assert_eq "RED 10717 DoD4: blocks=#5700 #5699 is accepted" "0 accepted" "$rc $(head -n 1 <<<"$out")"
+out=$(env -u CLAUDECODE bash "$DAEMON" --check --bucket "$B" --request "$D/badblocks.req" 2>&1); rc=$?
+assert_eq "RED 10717 DoD4: blocks=5700 is refused malformed: blocks" "1 refused: malformed: blocks" "$rc $(head -n 1 <<<"$out")"
+out=$(CLAUDECODE=1 bash "$DAEMON" --check --bucket "$B" --request "$D/ok.req" 2>&1); rc=$?
+assert_eq "RED 10717 DoD4: --check runs under CLAUDECODE=1" "0 accepted" "$rc $(head -n 1 <<<"$out")"
+assert_eq "10717 guard, also true before the change: --check under CLAUDECODE=1 takes no lock, logs nothing and sends nothing" "none" \
+    "$( { [ -e "$Q/.lock.pid" ] || [ -L "$Q/.lock.pid" ]; } && echo lock; [ -e "$Q/daemon.log" ] && echo log; [ -e "$D/sent" ] && echo sent; [ -e "$Q/.hold" ] && echo hold; echo none)"
+assert_absent "10717 guard, also true before the change: --check leaves no daemon running" "bypass-launchd.sh --bucket $B" "$(ps -eo args= 2>/dev/null)"
+printf '\n# dirty\n' >> "$R/$TIER_REL"
+out=$(env -u CLAUDECODE bash "$DAEMON" --check --bucket "$B" --request "$D/ok.req" 2>&1); rc=$?
+assert_eq "10717 guard, also true before the change: a dirty tier file fails the start check, exit 2" "2" "$rc"
+g -C "$R" reset -q --hard
+start
+wait_for "$Q/daemon.log" "start pid="
+out=$(env -u CLAUDECODE bash "$DAEMON" --check --bucket "$B" 2>&1)
+assert_contains "RED 10717 DoD4: with the daemon running, daemon: live pid=<p>" "daemon: live pid=$(readlink "$Q/.lock.pid")" "$out"
+assert_absent "10717 guard, also true before the change: a fresh daemon is not holding" "holding" "$out"
+cp "$D/badblocks.req" "$Q/m.req"
+wait_for "$Q/daemon.log" "REFUSED malformed: blocks $Q/m.req"
+assert_contains "RED 10717 DoD4: the daemon refuses blocks=5700" "REFUSED malformed: blocks $Q/m.req" "$(cat "$Q/daemon.log")"
+CODE=$(ask_code r "blocks=#5700 #5699")
+assert_contains "RED 10717 DoD4: the ask names the blocked PRs" "Blocks PRs: #5700 #5699" "$(cat "$D/sent" 2>/dev/null)"
 stop
 
 if [ "$(uname -s)" = Darwin ]; then
@@ -516,6 +757,345 @@ reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
 assert_contains "RED 10430: one go code launches a worker with BSD-like date, stat, hash and no flock, setsid or /run/user" "LAUNCHED HIMMEL-1-N1-sweep-pr1" "$(cat "$Q/daemon.log")"
 stop
+
+echo "== the requesting chief's manifest is the launch's explicit --fleet locator =="
+if command -v flock >/dev/null 2>&1; then
+    setup fleet-locator
+    MF="$B/HIMMEL-nextleg-2026-11-13A-roadmap-chief.fleet.json"
+    bash "$REPO_ROOT/scripts/handover/chief-kit/fleet-manifest.sh" control init "$MF" --target 4 >/dev/null 2>&1
+    start
+    CODE=$(ask_code r)
+    reply "$OPERATOR" "$OPERATOR" "go $CODE"
+    wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+    assert_contains "RED: a chief with a manifest launches with --fleet <its manifest>" "--fleet"$'\n'"$MF" "$(cat "$D/launch.args" 2>/dev/null)"
+    stop
+else
+    echo "SKIP - fleet locator row (fleet-manifest.sh needs util-linux flock)"
+fi
+
+echo "== 10866: the row the daemon writes before a go-code launch is a pending registration the fleet admits =="
+if command -v flock >/dev/null 2>&1; then
+    setup fleet-admit
+    MF="$B/HIMMEL-nextleg-2026-11-13A-roadmap-chief.fleet.json"
+    FM="$REPO_ROOT/scripts/handover/chief-kit/fleet-manifest.sh"
+    bash "$FM" control init "$MF" --target 4 >/dev/null 2>&1
+    bash "$FM" control set "$MF" --mode active --expect-gen 1 >/dev/null 2>&1
+    admit() { env HOME="$D" HIMMEL_FLEET_SLOTS="$D/slots" HIMMEL_POLICY_FOLLOWS_HOME=1 \
+        bash "$FM" runtime admit --doc "$BRIEF" --manifest "$MF" --name "$(basename "$BRIEF" .md)" 2>&1; }
+    start
+    CODE=$(ask_code r)
+    reply "$OPERATOR" "$OPERATOR" "go $CODE"
+    wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+    stop
+    assert_eq "RED 10866: the daemon's row for the brief is a pending registration" "pending" \
+        "$(jq -r --arg d "$BRIEF" '.workers[] | select(.doc == $d) | .registration // "none"' "$MF" 2>/dev/null)"
+    out=$(admit)
+    assert_absent "RED 10866: the fleet admits the go-code launch on the daemon's own row" "unknown legacy family ownership" "$out"
+    assert_contains "RED 10866: the admit for the daemon's row is managed" '"managed": true' "$out"
+    LEGACY="$B/HIMMEL-1-N2-earlier.md"
+    printf -- '---\ndescription: "a live legacy worker"\n---\n# brief\n' > "$LEGACY"
+    jq -n --arg d "$LEGACY" '{schema: 1, workers: [{doc: $d, label: "N2", lane: "native", added: "2026-11-01T00:00:00Z"}]}' > "$B/earlier-chief.fleet.json"
+    assert_contains "10866 control: a genuine legacy owner of the same ticket still refuses the admit" "unknown legacy family ownership" "$(admit)"
+else
+    echo "SKIP - fleet admit rows (fleet-manifest.sh needs util-linux flock)"
+fi
+setup fleet-none
+start
+CODE=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_absent "a chief with no manifest launches without --fleet" "--fleet" "$(cat "$D/launch.args" 2>/dev/null)"
+stop
+
+echo "== 10735: an ask leads with the code and the reply, then the worker, the flag and the chief's word =="
+setup short-ask
+BRIEF="$B/HIMMEL-10561-Y10561a-unwire-write-hold-2026-11-22.md"
+printf -- '---\ndescription: "%s"\n---\n# brief\n' "The switched-off file-hold barrier is unwired: its hook leaves the Edit/Write chain and the two pre-commit entries go, while the one-writer hold on state-repo files stays" > "$BRIEF"
+start
+printf '%s\n' "brief=$BRIEF" model=claude-opus-5-5 chief=HIMMEL-nextleg-2026-11-22AY-recovery-chief \
+    flags=HIMMEL_HOOK_INTEGRITY_BYPASS_OK effort=high recommend=go > "$Q/r.req"
+wait_for "$Q/daemon.log" "ASK HIMMEL-10561-Y10561a"
+wait_for "$D/sent" "brief sha"
+ASK=$(last_ask)
+L1=$(printf '%s\n' "$ASK" | sed -n 1p)
+c1="" c2=""
+[[ $L1 =~ ^go\ ([A-Z2-9]{6})\ →\ launch\ ·\ no\ ([A-Z2-9]{6})\ →\ refuse$ ]] && c1=${BASH_REMATCH[1]} c2=${BASH_REMATCH[2]}
+assert_eq "RED 10735: line 1 of the HIMMEL-10561 ask is the go and no reply with one code" "yes" "$([ -n "$c1" ] && [ "$c1" = "$c2" ] && echo yes || printf '%s' "$L1")"
+assert_eq "RED 10735: line 2 names the ticket, worker, model and effort" "HIMMEL-10561 Y10561a on opus-5-5 high" "$(printf '%s\n' "$ASK" | sed -n 2p)"
+assert_eq "RED 10735: line 3 names the flag and the guard it skips" "flag HIMMEL_HOOK_INTEGRITY_BYPASS_OK (skips block-worker-write-fence)" "$(printf '%s\n' "$ASK" | sed -n 3p)"
+assert_eq "RED 10735: line 4 is the chief's word" "Chief: GO" "$(printf '%s\n' "$ASK" | sed -n 4p)"
+assert_eq "RED 10735: the last line is the expiry and the brief sha" "yes" "$(grep -qE '^Expires 6 h · brief sha [0-9a-f]{12}$' <<<"${ASK##*$'\n'}" && echo yes)"
+n=$(printf '%s' "$ASK" | LC_ALL=C wc -c | tr -d ' ')
+assert_eq "RED 10735: the HIMMEL-10561 ask is at most 300 bytes (it was $n)" "yes" "$([ "$n" -le 300 ] && echo yes)"
+assert_absent "RED 10735: the brief description is not in the ask" "switched-off" "$ASK"
+reply "$OPERATOR" "$OPERATOR" "go $c1"
+wait_for "$Q/daemon.log" "GRANT HIMMEL-10561-Y10561a"
+assert_contains "10735: the code on line 1 is the code the GRANT line records" "go=$c1" "$(grep GRANT "$Q/daemon.log" 2>/dev/null)"
+stop
+
+echo "== 10735: the chief's NO reaches the ask with its reason =="
+setup short-ask-no
+start
+CODE=$(ask_code r "recommend=no:the brief widens a guard it does not need")
+assert_eq "RED 10735: recommend=no puts NO and the reason on line 4" "Chief: NO — the brief widens a guard it does not need" "$(last_ask | sed -n 4p)"
+stop
+
+echo "== 10735: a request without a valid recommend= is refused before any ask =="
+setup short-ask-refuse
+start
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief > "$Q/m.req"
+wait_for "$Q/daemon.log" "REFUSED malformed: recommend $Q/m.req"
+assert_eq "RED 10735: no recommend= refuses the request" "m.req.refused" "$(cd "$Q" && ls m.req.* 2>/dev/null)"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief recommend=maybe > "$Q/x.req"
+wait_for "$Q/daemon.log" "REFUSED malformed: recommend $Q/x.req"
+assert_eq "RED 10735: recommend=maybe refuses the request" "x.req.refused" "$(cd "$Q" && ls x.req.* 2>/dev/null)"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief "recommend=no:$(printf 'x%.0s' $(seq 61))" > "$Q/y.req"
+wait_for "$Q/daemon.log" "REFUSED malformed: recommend $Q/y.req"
+assert_eq "RED 10735: a NO reason over 60 characters refuses the request" "y.req.refused" "$(cd "$Q" && ls y.req.* 2>/dev/null)"
+assert_absent "10735: no refused request sends an ask" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+stop
+
+echo "== 10735: the longest ask a request can make stays under the cap of 400 =="
+setup short-ask-worst
+BRIEF="$B/HIMMEL-10561-Y10561a-unwire-write-hold-2026-11-22.md"
+printf -- '---\ndescription: "x"\n---\n# brief\n' > "$BRIEF"
+start
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-22AY-recovery-chief effort=xhigh \
+    flags=WORKER_SESSION_CONTEXT_HANDOFF_OK,HIMMEL_HOOK_INTEGRITY_BYPASS_OK,SUBAGENT_PARK_GUARD_DISABLE,HIMMEL_BILLED_OK,SKIP_SECURITY_REVIEW \
+    decision=12345 api_account=auto "recommend=no:$(printf 'x%.0s' $(seq 60))" > "$Q/w.req"
+wait_for "$Q/daemon.log" "ASK HIMMEL-10561-Y10561a"
+wait_for "$D/sent" "brief sha"
+ASK=$(last_ask)
+n=$(printf '%s' "$ASK" | LC_ALL=C wc -c | tr -d ' ')
+assert_eq "RED 10735: five long flags, a decision, the API lane and a 60-character NO stay at most 400 bytes (it was $n)" "yes" "$([ "$n" -le 400 ] && echo yes)"
+assert_eq "RED 10735: line 1 still leads with the code" "yes" "$(grep -qE '^go [A-Z2-9]{6} → launch' <<<"${ASK%%$'\n'*}" && echo yes)"
+assert_contains "10735: the flag line names all five flags" "WORKER_SESSION_CONTEXT_HANDOFF_OK, HIMMEL_HOOK_INTEGRITY_BYPASS_OK, SUBAGENT_PARK_GUARD_DISABLE, HIMMEL_BILLED_OK, SKIP_SECURITY_REVIEW" "$ASK"
+assert_contains "10735: the tag line names the decision, the paid run and the API account" "DECISION 12345 · PAID RUN · API account auto" "$ASK"
+stop
+
+CH=HIMMEL-nextleg-2026-11-13A-roadmap-chief
+echo "== 10912: a request whose dry-run refuses is never asked, the chief is told =="
+setup preflight-ask
+mkdir -p "$D/bridge/consoles"; printf '# console\n' > "$D/bridge/consoles/$CH.md"
+echo 10 > "$D/dry.rc"; echo "headed-arm-worker: refused: unknown legacy family ownership (stale row)" > "$D/dry.msg"
+start
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=$CH recommend=go > "$Q/r.req"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT HIMMEL-1-N1-sweep-pr1"
+sleep 0.5
+assert_contains "RED 10912: the log names the refusal and its reason" "REFUSED-PREFLIGHT HIMMEL-1-N1-sweep-pr1 rc=10 headed-arm-worker: refused: unknown legacy family ownership (stale row)" "$(cat "$Q/daemon.log" 2>/dev/null)"
+assert_absent "RED 10912: a refused dry-run sends no ask" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+assert_absent "10912: a refused dry-run sends the operator nothing at all" "bypass" "$(cat "$D/kinds" 2>/dev/null)"
+assert_contains "RED 10912: the chief's inbox gets the refusal line" "REFUSED-PREFLIGHT HIMMEL-1-N1-sweep-pr1 rc=10 headed-arm-worker: refused: unknown legacy family ownership (stale row)" "$(cat "$D/bridge/consoles/$CH.md")"
+assert_eq "10912: the request is closed as refused, not left to be re-read" "r.req.refused" "$(cd "$Q" && ls r.req.* 2>/dev/null)"
+assert_absent "10912: nothing launched" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+stop
+
+echo "== 10912: a request whose dry-run passes is asked as before, with the request's own launch shape =="
+setup preflight-pass
+start
+CODE=$(ask_code r)
+assert_contains "10912: a passing dry-run still asks" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+assert_contains "10912: the dry-run got the brief" "$BRIEF" "$(cat "$D/dry.args" 2>/dev/null)"
+assert_contains "10912: the dry-run got the model" "claude-sonnet-5-5" "$(cat "$D/dry.args" 2>/dev/null)"
+assert_contains "10912: the dry-run got the chief" "$CH" "$(cat "$D/dry.args" 2>/dev/null)"
+assert_contains "10912: the dry-run is the worker-impl profile launch" "--profile"$'\n'"worker-impl" "$(cat "$D/dry.args" 2>/dev/null)"
+stop
+
+echo "== 10912: a grant whose dry-run refuses stays pending, the go is not spent, a touch retries it =="
+setup preflight-grant
+mkdir -p "$D/bridge/consoles"; printf '# console\n' > "$D/bridge/consoles/$CH.md"
+start
+CODE=$(ask_code r)
+echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+sleep 0.5
+assert_contains "RED 10912: the log names the reason" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1 rc=10 fleet cap 18/18" "$(cat "$Q/daemon.log" 2>/dev/null)"
+assert_eq "RED 10912: the request stays pending (not done, not failed, not refused)" "r.req.held r.req.pending" "$(cd "$Q" && printf '%s ' r.req.* | sed 's/ $//')"
+assert_absent "RED 10912: no GRANT line, the go is not spent" "GRANT" "$(cat "$Q/daemon.log")"
+assert_absent "10912: no LAUNCH-FAILED" "LAUNCH-FAILED" "$(cat "$Q/daemon.log")"
+assert_absent "10912: nothing launched" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+assert_contains "RED 10912: the chief's inbox gets the held-grant line" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1 rc=10 fleet cap 18/18" "$(cat "$D/bridge/consoles/$CH.md")"
+sleep 1
+rm -f "$D/dry.rc" "$D/dry.msg"
+touch "$Q/r.req.pending"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_contains "RED 10912: after the chief touches it the same go code launches" "GRANT HIMMEL-1-N1-sweep-pr1 env=HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 decision=none go=$CODE" "$(cat "$Q/daemon.log")"
+assert_eq "10912: the retried request ends done, the hold is gone" "r.req.done" "$(cd "$Q" && ls r.req.* 2>/dev/null)"
+assert_eq "10912: the operator was asked once" "1" "$(grep -c ' → launch · no ' "$D/sent")"
+stop
+
+echo "== 10912: a held go launches only the request the operator was asked about =="
+setup preflight-tamper
+start
+CODE=$(ask_code r)
+echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+sleep 1
+rm -f "$D/dry.rc" "$D/dry.msg"
+printf 'flags=HIMMEL_BILLED_OK\ndecision=1\n' >> "$Q/r.req.pending"
+wait_for "$Q/daemon.log" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the request changed"
+assert_contains "RED 10912: a request edited while its go is held is refused" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the request changed since the ask)" "$(cat "$Q/daemon.log")"
+assert_eq "RED 10912: the edited request ends refused and nothing is left held" "r.req.refused" "$(cd "$Q" && printf '%s ' r.req.* | sed 's/ $//')"
+assert_absent "RED 10912: nothing launched on the edited request" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+stop
+
+echo "== 10912: a held file the daemon never wrote launches nothing =="
+setup preflight-forged
+start
+printf 'probe\n' > "$Q/p.req"
+wait_for "$Q/daemon.log" "REFUSED malformed"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=$CH recommend=go > "$D/f.req.prep"
+printf 'go=ABCDEF\nsha=%s\nrsha=%s\nname=HIMMEL-1-N1-sweep-pr1\n' "$(sha256sum "$BRIEF" | cut -d' ' -f1)" "$(sha256sum "$D/f.req.prep" | cut -d' ' -f1)" > "$D/f.req.held.prep"
+mv "$D/f.req.prep" "$Q/f.req.pending"
+mv "$D/f.req.held.prep" "$Q/f.req.held"
+sleep 1
+[ ! -f "$Q/f.req.pending" ] || touch "$Q/f.req.pending"
+wait_for "$Q/daemon.log" "REFUSED held go not recorded in memory"
+assert_contains "RED 10912: a forged held file is refused" "REFUSED held go not recorded in memory f.req" "$(cat "$Q/daemon.log")"
+assert_absent "RED 10912: a forged held file launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+assert_absent "10912: a forged held file sends no GRANT" "GRANT" "$(cat "$Q/daemon.log")"
+assert_eq "10912: the forged pair ends refused" "f.req.refused" "$(cd "$Q" && printf '%s ' f.req.* | sed 's/ $//')"
+stop
+
+echo "== 10912: a held go past the 6 h window launches nothing =="
+setup preflight-expired
+start BYPASSD_TTL=3
+CODE=$(ask_code r)
+echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+sleep 4
+rm -f "$D/dry.rc" "$D/dry.msg"
+touch "$Q/r.req.pending"
+wait_for "$Q/daemon.log" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the go expired"
+assert_contains "RED 10912: an expired held go is refused" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the go expired)" "$(cat "$Q/daemon.log")"
+assert_absent "RED 10912: an expired held go launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+assert_eq "10912: the expired request ends expired" "r.req.expired" "$(cd "$Q" && printf '%s ' r.req.* | sed 's/ $//')"
+stop
+
+echo "== 10912: a held go does not survive a daemon restart, the request is asked again =="
+setup preflight-restart
+start
+CODE=$(ask_code r)
+echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+stop
+rm -f "$Q/stop" "$D/dry.rc" "$D/dry.msg"
+start
+wait_for "$Q/daemon.log" "REQUEUE r.req"
+wait_for "$D/sent" "brief sha"
+sleep 1
+assert_contains "RED 10912: a restart requeues the held request" "REQUEUE r.req (a held go does not survive a restart)" "$(cat "$Q/daemon.log")"
+assert_eq "RED 10912: the operator is asked again after a restart" "2" "$(grep -c ' → launch · no ' "$D/sent")"
+assert_absent "RED 10912: the old go launches nothing after a restart" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+stop
+
+echo "== 10912: the request is read once into memory, so a planted snapshot path changes nothing =="
+setup preflight-fifo
+printf 'VICTIM\n' > "$D/victim"
+mkfifo "$Q/.ask-snapshot" "$Q/.retry-snapshot"
+start
+CODE=$(ask_code r)
+assert_contains "RED 10912: with both snapshot paths planted as FIFOs the request is still asked" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+if [ -n "$CODE" ]; then
+    reply "$OPERATOR" "$OPERATOR" "go $CODE"
+    wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+fi
+assert_eq "RED 10912: the launch fields are the asked ones with FIFOs planted" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(cat "$D/launch.env" 2>/dev/null)"
+kill "$DPID" 2>/dev/null; timeout 2 cat "$Q/.ask-snapshot" >/dev/null 2>&1; wait "$DPID" 2>/dev/null; DPID="" # gnu-ok: portable-timeout.sh above supplies a timeout on macOS
+setup preflight-symlink
+printf 'VICTIM\n' > "$D/victim"
+ln -s "$D/victim" "$Q/.ask-snapshot"; ln -s "$D/victim" "$Q/.retry-snapshot"
+start
+CODE=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_eq "RED 10912: a symlinked snapshot path is never written through" "VICTIM" "$(cat "$D/victim")"
+assert_eq "RED 10912: the launch fields are the asked ones with symlinks planted" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(cat "$D/launch.env" 2>/dev/null)"
+stop
+
+echo "== 10912: a held request swapped for a FIFO or a symlink is refused, never read =="
+for kind in fifo symlink dangling; do
+    setup "preflight-swap-$kind"
+    printf 'VICTIM\n' > "$D/victim"
+    start
+    CODE=$(ask_code r)
+    echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+    reply "$OPERATOR" "$OPERATOR" "go $CODE"
+    wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+    sleep 1
+    rm -f "$D/dry.rc" "$D/dry.msg" "$Q/r.req.pending"
+    case $kind in
+        fifo) mkfifo "$Q/r.req.pending" ;;
+        symlink) cp "$BRIEF" "$D/swapped"; ln -s "$D/swapped" "$Q/r.req.pending" ;;
+        dangling) ln -s "$D/nowhere" "$Q/r.req.pending" ;;
+    esac
+    wait_for "$Q/daemon.log" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the request changed"
+    assert_contains "RED 10912: a held request swapped for a $kind is refused" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the request changed since the ask)" "$(cat "$Q/daemon.log")"
+    assert_absent "RED 10912: a swapped $kind launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+    kill "$DPID" 2>/dev/null; timeout 2 cat "$Q/r.req.pending" >/dev/null 2>&1; wait "$DPID" 2>/dev/null; DPID="" # gnu-ok: portable-timeout.sh above supplies a timeout on macOS
+done
+
+echo "== 10912: a queued request that is a FIFO is refused and the loop goes on =="
+setup preflight-fifo-req
+start
+mkfifo "$Q/a.req"
+wait_for "$Q/daemon.log" "REFUSED request unreadable"
+CODE=$(ask_code r)
+assert_contains "RED 10912: a FIFO request is refused as unreadable" "REFUSED request unreadable $Q/a.req" "$(cat "$Q/daemon.log")"
+assert_contains "RED 10912: the next request is still asked" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+kill "$DPID" 2>/dev/null; wait "$DPID" 2>/dev/null; DPID=""
+
+echo "== 10912: a request whose file name holds a control character is refused before it can reach the held list =="
+setup preflight-ctl-name
+start
+CTL_NAME=$(printf 'a\037b.req')
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=$CH recommend=go > "$Q/$CTL_NAME"
+wait_for "$Q/daemon.log" "REFUSED request name has a control character"
+assert_contains "RED 10912: a control-character name is refused" "REFUSED request name has a control character" "$(cat "$Q/daemon.log")"
+assert_absent "RED 10912: a control-character name is never asked" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+CODE=$(ask_code r)
+assert_contains "10912: the daemon is alive and asks the next request" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+stop
+
+echo "== 10912: a held go whose ask time is in the future counts as expired =="
+setup preflight-clock
+mkdir -p "$D/clockbin"
+real_date=$(command -v date)
+# shellcheck disable=SC2016 # the wrapper's own source
+printf '#!/bin/sh\nif [ "$1" = +%%s ]; then o=$(cat "%s/clock.offset" 2>/dev/null || echo 0); echo $(( $(%s +%%s) + o )); else exec %s "$@"; fi\n' "$D" "$real_date" "$real_date" > "$D/clockbin/date"
+chmod +x "$D/clockbin/date"
+start PATH="$D/clockbin:$PATH"
+CODE=$(ask_code r)
+echo 10 > "$D/dry.rc"; echo "fleet cap 18/18" > "$D/dry.msg"
+reply "$OPERATOR" "$OPERATOR" "go $CODE"
+wait_for "$Q/daemon.log" "REFUSED-PREFLIGHT after go HIMMEL-1-N1-sweep-pr1"
+echo -3600 > "$D/clock.offset"
+sleep 1
+rm -f "$D/dry.rc" "$D/dry.msg"
+touch "$Q/r.req.pending"
+wait_for "$Q/daemon.log" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the go expired"
+assert_contains "10912: a clock moved back makes the held go expire" "REFUSED after go HIMMEL-1-N1-sweep-pr1 (the go expired)" "$(cat "$Q/daemon.log")"
+assert_absent "10912: a go held across a backward clock launches nothing" "launched" "$([ -e "$D/launch.env" ] && echo launched)"
+stop
+
+echo "== 10912: a request the daemon cannot read is refused as unreadable, never parsed from a partial copy =="
+if [ "$(id -u)" -ne 0 ]; then
+    setup unreadable-request
+    start
+    printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=$CH recommend=go > "$D/u.req.prep"
+    chmod 000 "$D/u.req.prep"
+    mv "$D/u.req.prep" "$Q/u.req"
+    wait_for "$Q/daemon.log" "REFUSED request unreadable"
+    assert_contains "RED 10912: an unreadable request is refused as unreadable" "REFUSED request unreadable $Q/u.req" "$(cat "$Q/daemon.log")"
+    assert_absent "10912: an unreadable request sends no ask" " → launch · no " "$(cat "$D/sent" 2>/dev/null)"
+    stop
+else
+    echo "SKIP - unreadable request row (root reads a mode 000 file)"
+fi
 
 echo
 echo "bypass-launchd: $PASS passed, $FAIL failed"

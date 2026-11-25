@@ -16,12 +16,12 @@ const peer = (over: Record<string, unknown> = {}) => ({
   peerBotId: "555000111", chatId: null, allowFrom: ["555000111", "42"],
   opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10,
   maxReaderRunsPerDay: 50, maxReaderRunsPerKindPerDay: { question: 30, status: 10, info: 10 }, maxWakesPerDay: 30,
-  theirs: { username: "goomal_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" },
+  theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" },
   ...over,
 });
 const base = (over: Record<string, unknown> = {}) => ({
   operatorBotId: "9876543210", operatorChatId: 4242, bridgeRoot: "/tmp/bridge", himmelRoot: "/tmp/himmel",
-  peers: { goomal: peer() }, maxTextChars: 4000, addressing: "command", ...over,
+  peers: { example: peer() }, maxTextChars: 4000, addressing: "command", ...over,
 });
 
 function write(obj: unknown, mode = 0o600): string {
@@ -39,7 +39,7 @@ function refusal(fn: () => unknown): ConfigError {
 test("a well-formed config loads", () => {
   const cfg = loadConfig(write(base()), ENV);
   expect(cfg.operatorChatId).toBe(4242);
-  expect(cfg.peers.goomal.peerBotId).toBe("555000111");
+  expect(cfg.peers.example.peerBotId).toBe("555000111");
   expect(cfg.addressing).toBe("command");
   expect(JSON.stringify(cfg)).not.toContain(TOKEN);
 });
@@ -61,7 +61,7 @@ test("another owner refuses with code 78", () => {
 });
 
 test("a peer name outside the shape refuses", () => {
-  expect(refusal(() => loadConfig(write(base({ peers: { "Goomal!": peer() } })), ENV)).code).toBe(78);
+  expect(refusal(() => loadConfig(write(base({ peers: { "Example!": peer() } })), ENV)).code).toBe(78);
   expect(refusal(() => loadConfig(write(base({ peers: { "-x": peer() } })), ENV)).code).toBe(78);
   expect(PEER_NAME_RE.test("a".repeat(33))).toBe(false);
 });
@@ -87,7 +87,7 @@ test("a non-numeric operatorChatId refuses", () => {
 test("other fields refuse: addressing, text cap, kinds, bad json, missing file", () => {
   expect(refusal(() => loadConfig(write(base({ addressing: "admin" })), ENV)).code).toBe(78);
   expect(refusal(() => loadConfig(write(base({ maxTextChars: 5000 })), ENV)).code).toBe(78);
-  expect(refusal(() => loadConfig(write(base({ peers: { goomal: peer({ opens: ["run"] }) } })), ENV)).code).toBe(78);
+  expect(refusal(() => loadConfig(write(base({ peers: { example: peer({ opens: ["run"] }) } })), ENV)).code).toBe(78);
   expect(refusal(() => loadConfig(write("{nope"), ENV)).code).toBe(78);
   expect(refusal(() => loadConfig(join(tmpdir(), "peer-config-missing", "peers.json"), ENV)).code).toBe(78);
 });
@@ -105,18 +105,18 @@ test("loading opens only peers.json, never the operator channel dir", () => {
 
 const PUB_A = Buffer.alloc(32, 1).toString("base64"), PUB_B = Buffer.alloc(32, 2).toString("base64");
 const key = (pub: string, addedAt = "2026-11-10T00:00:00Z") => ({ id: keyId(pub), pub, addedAt });
-const withTheirs = (over: Record<string, unknown>) => base({ peers: { goomal: peer({ theirs: { ...peer().theirs, ...over } }) } });
+const withTheirs = (over: Record<string, unknown>) => base({ peers: { example: peer({ theirs: { ...peer().theirs, ...over } }) } });
 
 test("station names and peer keys load; an older config without them still loads", () => {
   const old = loadConfig(write(base()), ENV);
   expect(old.self).toEqual({});
-  expect(old.peers.goomal.theirs.keys).toEqual([]);
-  expect(old.peers.goomal.theirs.stationName).toBeUndefined();
+  expect(old.peers.example.theirs.keys).toEqual([]);
+  expect(old.peers.example.theirs.stationName).toBeUndefined();
 
-  const cfg = loadConfig(write(base({ self: { stationName: "yotam" }, peers: { goomal: peer({ theirs: { ...peer().theirs, stationName: "goomal", keys: [key(PUB_A), key(PUB_B)] } }) } })), ENV);
+  const cfg = loadConfig(write(base({ self: { stationName: "yotam" }, peers: { example: peer({ theirs: { ...peer().theirs, stationName: "example", keys: [key(PUB_A), key(PUB_B)] } }) } })), ENV);
   expect(cfg.self.stationName).toBe("yotam");
-  expect(cfg.peers.goomal.theirs.stationName).toBe("goomal");
-  expect(cfg.peers.goomal.theirs.keys.map(k => k.pub)).toEqual([PUB_A, PUB_B]);
+  expect(cfg.peers.example.theirs.stationName).toBe("example");
+  expect(cfg.peers.example.theirs.keys.map(k => k.pub)).toEqual([PUB_A, PUB_B]);
 });
 
 test("a station name outside the shape, or a key that is not what it says, refuses", () => {
@@ -129,12 +129,12 @@ test("a station name outside the shape, or a key that is not what it says, refus
   expect(refusal(() => loadConfig(write(withTheirs({ keys: "none" })), ENV)).code).toBe(78);
 });
 
-const withPeer = (over: Record<string, unknown>) => base({ peers: { goomal: peer(over) } });
+const withPeer = (over: Record<string, unknown>) => base({ peers: { example: peer(over) } });
 const BUDGETS = { jobsPerDay: 10, vmMinutesPerDay: 120, queueMax: 3, maxJobMinutes: 130 };
 const MAX_JOB_MIN = TIMEOUT_S_MAX / 60 - ALLOWANCE_S / 60;
 
 test("serving defaults: nothing served, approval at a TTY, the spec's budgets, no repo", () => {
-  const p = loadConfig(write(base()), ENV).peers.goomal;
+  const p = loadConfig(write(base()), ENV).peers.example;
   expect(p.serves).toEqual([]);
   expect(p.approve).toEqual({ "run-suite": "tty" });
   expect(p.budgets).toEqual(BUDGETS);
@@ -146,7 +146,7 @@ test("serving fields load when set", () => {
   const p = loadConfig(write(withPeer({
     serves: ["run-suite"], approve: { "run-suite": "auto" }, budgets: { jobsPerDay: 1000, vmMinutesPerDay: 10000, queueMax: 1, maxJobMinutes: 30 },
     repoUrl: "https://example.org/x/y.git", theirs: { ...peer().theirs, imageDigest: "a".repeat(64) },
-  })), ENV).peers.goomal;
+  })), ENV).peers.example;
   expect(p.serves).toEqual(["run-suite"]);
   expect(p.approve["run-suite"]).toBe("auto");
   expect(p.budgets).toEqual({ jobsPerDay: 1000, vmMinutesPerDay: 10000, queueMax: 1, maxJobMinutes: 30 });
@@ -157,8 +157,8 @@ test("serving fields load when set", () => {
 test("each budget outside its bound is refused at load, and each bound itself loads", () => {
   const load = (b: Record<string, unknown>) => loadConfig(write(withPeer({ budgets: { ...BUDGETS, ...b } })), ENV);
   for (const [k, lo, hi] of [["jobsPerDay", 1, 1000], ["vmMinutesPerDay", 1, 10000], ["queueMax", 1, 3], ["maxJobMinutes", 30, MAX_JOB_MIN]] as const) {
-    expect(load({ [k]: lo }).peers.goomal.budgets[k]).toBe(lo);
-    expect(load({ [k]: hi }).peers.goomal.budgets[k]).toBe(hi);
+    expect(load({ [k]: lo }).peers.example.budgets[k]).toBe(lo);
+    expect(load({ [k]: hi }).peers.example.budgets[k]).toBe(hi);
     expect(refusal(() => load({ [k]: lo - 1 })).code).toBe(78);
     expect(refusal(() => load({ [k]: hi + 1 })).code).toBe(78);
     expect(refusal(() => load({ [k]: lo + 0.5 })).code).toBe(78);
@@ -199,18 +199,18 @@ test("a reported value is clamped to the schema's range, so our own egress re-ch
 
 function suitesFile(text: string, mode = 0o600): string {
   const dir = mkdtempSync(join(tmpdir(), "peer-suites-"));
-  writeFileSync(join(dir, "goomal.suites"), text, { mode });
-  chmodSync(join(dir, "goomal.suites"), mode);
+  writeFileSync(join(dir, "example.suites"), text, { mode });
+  chmodSync(join(dir, "example.suites"), mode);
   return dir;
 }
 
 test("loadAllowlist reads alias/path pairs from C/<peer>.suites", () => {
-  expect(loadAllowlist("goomal", suitesFile("peer-taint scripts/hooks/test-peer-taint.sh\nledger scripts/ci/test-suite-ledger.sh\n"))).toEqual([
+  expect(loadAllowlist("example", suitesFile("peer-taint scripts/hooks/test-peer-taint.sh\nledger scripts/ci/test-suite-ledger.sh\n"))).toEqual([
     { alias: "peer-taint", path: "scripts/hooks/test-peer-taint.sh" }, { alias: "ledger", path: "scripts/ci/test-suite-ledger.sh" },
   ]);
-  expect(loadAllowlist("goomal", suitesFile(""))).toEqual([]);
-  expect(loadAllowlist("goomal", suitesFile("\na scripts/x.sh\n\n"))).toEqual([{ alias: "a", path: "scripts/x.sh" }]);
-  expect(loadAllowlist("goomal", mkdtempSync(join(tmpdir(), "peer-nosuites-")))).toEqual([]);
+  expect(loadAllowlist("example", suitesFile(""))).toEqual([]);
+  expect(loadAllowlist("example", suitesFile("\na scripts/x.sh\n\n"))).toEqual([{ alias: "a", path: "scripts/x.sh" }]);
+  expect(loadAllowlist("example", mkdtempSync(join(tmpdir(), "peer-nosuites-")))).toEqual([]);
 });
 
 test("loadAllowlist refuses a bad alias, a path failing the suite regex, a bad line shape or a duplicate", () => {
@@ -218,12 +218,12 @@ test("loadAllowlist refuses a bad alias, a path failing the suite regex, a bad l
     "Bad scripts/x.sh", "a_b scripts/x.sh", `${"a".repeat(33)} scripts/x.sh`, "a scripts/../x.sh", "a scripts/UP.sh", "a /etc/passwd", "a scripts/x.py",
     "a", "a scripts/x.sh extra", "a  scripts/x.sh", " a scripts/x.sh", "a\tscripts/x.sh", "a scripts/x.sh ", "# a scripts/x.sh",
   ]) {
-    const e = refusal(() => loadAllowlist("goomal", suitesFile(line + "\n")));
+    const e = refusal(() => loadAllowlist("example", suitesFile(line + "\n")));
     expect([line, e.code]).toEqual([line, 78]);
   }
-  expect(refusal(() => loadAllowlist("goomal", suitesFile("a scripts/x.sh\na scripts/y.sh\n"))).message).toContain("duplicate");
-  expect(refusal(() => loadAllowlist("goomal", suitesFile("a scripts/x.sh\nb scripts/x.sh\n"))).message).toContain("duplicate");
-  expect(refusal(() => loadAllowlist("goomal", suitesFile("a scripts/x.sh\n", 0o644))).message).toContain("0600");
+  expect(refusal(() => loadAllowlist("example", suitesFile("a scripts/x.sh\na scripts/y.sh\n"))).message).toContain("duplicate");
+  expect(refusal(() => loadAllowlist("example", suitesFile("a scripts/x.sh\nb scripts/x.sh\n"))).message).toContain("duplicate");
+  expect(refusal(() => loadAllowlist("example", suitesFile("a scripts/x.sh\n", 0o644))).message).toContain("0600");
   expect(refusal(() => loadAllowlist("../x", suitesFile(""))).code).toBe(78);
 });
 

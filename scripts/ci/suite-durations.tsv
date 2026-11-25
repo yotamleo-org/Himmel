@@ -47,6 +47,15 @@ scripts/security/test-security-audit-cadence.sh	6
 #   headed-arm-worker suite is split into beside test-headed-arm-worker.sh. Each is its part's sandbox seconds (94, 87, 153)
 #   times 1.8, the CI-to-sandbox ratio read off where run 44635436012's two cap-killed attempts stopped. The next refresh
 #   replaces them with CI seconds.
+#   Estimated rows, no CI timing yet: the split parts of scripts/cr/test-pr-check-rounds.sh (a, -b, -c) and
+#   scripts/handover/test-arm-resume-1879.sh (-b). The rounds parts are their local sequential seconds (230, 253, 250;
+#   the three sum to 733, the old 732 row); the 1879 -b part is its share of the old 387 row by local seconds
+#   (166 of the original suite's 405). test-arm-resume-1879.sh keeps 387: it is a Case 22w fixture suite at 388, so its row follows that
+#   fixture. The next refresh replaces them with CI seconds.
+#   Estimated rows, no CI timing yet: scripts/handover/chief-kit/test-chief-wait.sh and its parts -b to -e, the five
+#   parts the two chief-wait suites are split into. Each is its part's local seconds (296, 213, 232, 210, 226); the
+#   unsplit suites ran 776 and 447 s locally against 769-813 and 428-452 s on CI, about 1:1. The next refresh replaces
+#   them with CI seconds.
 # The quarantined suites (SKIP_LIST) have no measured row.
 #
 # Read by scripts/ci/run-shell-tests.sh to assign --shard <i>/<n> by a greedy
@@ -168,7 +177,6 @@ scripts/ci/test-cancel-superseded-runs.sh	1
 scripts/ci/test-check-ci-install-locks.sh	50
 scripts/ci/test-check-claude-md-budget.sh	0
 scripts/ci/test-check-commit-range.sh	4
-scripts/ci/test-check-critic-eval.sh	13
 scripts/ci/test-check-doc-literals.sh	2
 scripts/ci/test-check-docs-decision-records.sh	0
 scripts/ci/test-check-flags.sh	27
@@ -310,7 +318,9 @@ scripts/cr/test-pr-check-context.sh	100
 scripts/cr/test-pr-check-env.sh	0
 scripts/cr/test-pr-check-outside.sh	3
 scripts/cr/test-pr-check-pair.sh	3
-scripts/cr/test-pr-check-rounds.sh	732
+scripts/cr/test-pr-check-rounds-b.sh	253
+scripts/cr/test-pr-check-rounds-c.sh	250
+scripts/cr/test-pr-check-rounds.sh	230
 scripts/cr/test-pr-check-run.sh	5
 scripts/cr/test-pr-check-step0.sh	0
 scripts/cr/test-residue-scan.sh	0
@@ -365,8 +375,8 @@ scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	1
 scripts/eval/qmd-quality/test-qmd-quality.sh	2
 scripts/eval/retrieval-eval/test-answer-ab.sh	30
 scripts/eval/retrieval-eval/test-retrieval-eval.sh	13
-scripts/eval/review-panel/test-review-panel-b.sh	218
-scripts/eval/review-panel/test-review-panel.sh	377
+scripts/eval/review-panel/test-review-panel-b.sh	230
+scripts/eval/review-panel/test-review-panel.sh	424
 scripts/eval/sandbox-poc/test-probe.sh	4
 scripts/eval/scrape-bench/test-scrape-bench.sh	0
 scripts/eval/test-autocompact-ab.sh	1
@@ -431,7 +441,7 @@ scripts/guardrails/test-settings-qmd-allow.sh	0
 scripts/handover/chief-kit/test-ack-denial.sh	2
 scripts/handover/chief-kit/test-action-zero.sh	7
 scripts/handover/chief-kit/test-append-results.sh	52
-scripts/handover/chief-kit/test-auto-go.sh	229
+scripts/handover/chief-kit/test-auto-go.sh	400
 scripts/handover/chief-kit/test-board-section.sh	2
 scripts/handover/chief-kit/test-board.sh	93
 scripts/handover/chief-kit/test-brief-lint.sh	53
@@ -444,10 +454,13 @@ scripts/handover/chief-kit/test-close-wrapped-worker.sh	52
 scripts/handover/chief-kit/test-compacted-check.sh	0
 scripts/handover/chief-kit/test-chief-budget.sh	4
 scripts/handover/chief-kit/test-chief-kit-e2e.sh	45
-scripts/handover/chief-kit/test-chief-wait-b.sh	386
-scripts/handover/chief-kit/test-chief-wait-pool.sh	173
+scripts/handover/chief-kit/test-chief-wait-b.sh	213
+scripts/handover/chief-kit/test-chief-wait-c.sh	232
+scripts/handover/chief-kit/test-chief-wait-d.sh	210
+scripts/handover/chief-kit/test-chief-wait-e.sh	226
+scripts/handover/chief-kit/test-chief-wait-pool.sh	240
 scripts/handover/chief-kit/test-chief-wait-r0.sh	202
-scripts/handover/chief-kit/test-chief-wait.sh	587
+scripts/handover/chief-kit/test-chief-wait.sh	296
 scripts/handover/chief-kit/test-cut-tag.sh	2
 scripts/handover/chief-kit/test-delta-class.sh	7
 scripts/handover/chief-kit/test-fleet-manifest.sh	2
@@ -486,12 +499,13 @@ scripts/handover/chief-kit/test-orphan-pr-check.sh	14
 scripts/handover/chief-kit/test-parked-on-prompt.sh	0
 scripts/handover/chief-kit/test-pr-stall.sh	6
 scripts/handover/chief-kit/test-priority-prune.sh	1
-scripts/handover/chief-kit/test-ready-check-b.sh	179
-scripts/handover/chief-kit/test-ready-check-c.sh	340
-scripts/handover/chief-kit/test-ready-check-d.sh	241
-scripts/handover/chief-kit/test-ready-check-e.sh	295
-scripts/handover/chief-kit/test-ready-check-f.sh	344
-scripts/handover/chief-kit/test-ready-check.sh	379
+scripts/handover/chief-kit/test-queue-prune.sh	1
+scripts/handover/chief-kit/test-ready-check-b.sh	238
+scripts/handover/chief-kit/test-ready-check-c.sh	535
+scripts/handover/chief-kit/test-ready-check-d.sh	257
+scripts/handover/chief-kit/test-ready-check-e.sh	383
+scripts/handover/chief-kit/test-ready-check-f.sh	568
+scripts/handover/chief-kit/test-ready-check.sh	556
 scripts/handover/chief-kit/test-ready-go.sh	13
 scripts/handover/chief-kit/test-relay-batch.sh	33
 scripts/handover/chief-kit/test-run-suite.sh	0
@@ -521,6 +535,7 @@ scripts/handover/chief-kit/test-write-verdict.sh	43
 scripts/handover/chief/test-chief.sh	250
 scripts/handover/test-append-cr-bugs.sh	1
 scripts/handover/test-append-cr-findings.sh	0
+scripts/handover/test-arm-resume-1879-b.sh	159
 scripts/handover/test-arm-resume-1879.sh	387
 scripts/handover/test-arm-resume-at-pty.sh	8
 scripts/handover/test-arm-resume-bank-refresh.sh	2

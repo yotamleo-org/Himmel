@@ -39,7 +39,7 @@
         "doctor:C23-unlanded", "doctor:C29-child-session", "doctor:C42-sweep-health",
         "doctor:C55-project-mode", "doctor:C71-verdict-scratch", "doctor:C80-status-drift", "doctor:C84-release-queue",
         "doctor:C85-self-heartbeat", "doctor:C86-morning-report",
-        "doctor:C87-stub-handover-state"
+        "doctor:C87-stub-handover-state", "doctor:C98-wrapped-window"
       ]
     },
     {
@@ -70,7 +70,7 @@
         "plugin:codex@openai-codex", "doctor:C12-codex", "doctor:C21-hermes-profile",
         "doctor:C31-tokensave-dropped", "doctor:C59-codex-bank-cache",
         "doctor:C60-hermes-origin", "doctor:C61-codex-cli", "doctor:C63-claude-cli",
-        "doctor:C66-hermes-cron-hooks", "doctor:C67-hermes-fail-open", "doctor:C90-effort-pin", "doctor:C91-api-policy-refusals"
+        "doctor:C66-hermes-cron-hooks", "doctor:C67-hermes-fail-open", "doctor:C90-effort-pin", "doctor:C91-api-policy-refusals", "doctor:C99-gemini-local"
       ]
     },
     {
@@ -85,7 +85,7 @@
         "plugin:lottie-motion-design@himmel", "plugin:motion-lexicon@himmel", "plugin:threejs-skills@himmel",
         "plugin:ai-image-prompts@himmel", "plugin:platform-design-skills@himmel", "plugin:diagram-design@himmel",
         "plugin:builder-visual@himmel", "plugin:frontend-slides@himmel", "plugin:design-dna@himmel",
-        "plugin:anydesign@himmel", "plugin:popular-web-designs@himmel", "plugin:design-md@himmel", "plugin:hermes-artifact-design@himmel", "plugin:anthropic-design-skills@himmel", "plugin:hallmark@himmel",
+        "plugin:anydesign@himmel", "plugin:popular-web-designs@himmel", "plugin:design-md@himmel", "plugin:hermes-artifact-design@himmel", "plugin:anthropic-design-skills@himmel", "plugin:hallmark@himmel", "plugin:unslop-ui@himmel",
         "plugin:shadcn-mcp@himmel", "plugin:higgsfield-skills@himmel", "plugin:emilkowalski-skills@himmel", "plugin:himmel-bus@himmel",
         "plugin:humanizer@himmel", "plugin:domain-modeling@himmel", "plugin:i-have-adhd@himmel",
         "doctor:C2-obsidian", "doctor:C6-mcp", "doctor:C15-plugins", "doctor:C15-plugins-ondemand",

@@ -135,6 +135,20 @@ test('a list entry that is a JSON object with a null toString never throws: the 
   assert.equal(existsSync(f.roles) && readFileSync(f.roles, 'utf8').includes('toString'), true, 'the hand-written file is untouched');
 });
 
+test('walk <kind> serves a kind with no entry the default order, and refuses a broken map', () => {
+  const none = fixture();
+  const d = none.cli(['walk', 'critic']);
+  assert.equal(d.status, 0, d.stderr);
+  assert.match(d.stdout.trim(), /^[A-D](,[A-D])*$/);
+  const mapped = fixture(doc({ critic: ['B'] }));
+  assert.equal(mapped.cli(['walk', 'critic']).stdout.trim(), 'B');
+  assert.match(mapped.cli(['walk', 'judge']).stdout.trim(), /^[A-D](,[A-D])*$/);
+  const broken = fixture('{not json');
+  const r = broken.cli(['walk', 'critic']);
+  assert.equal(r.status, 3);
+  assert.match(r.stdout, /^refuse invalid-role-map:not-json$/m);
+});
+
 test('accounts graphify with no file prints nothing, nothing on stderr', () => {
   const f = fixture();
   const r = f.cli(['accounts', 'graphify']);
@@ -309,7 +323,7 @@ test('R3: damage that does not widen walks as on main', () => {
   assert.equal(walk(h).stdout, 'A\n');
 });
 
-test('walk takes graphify only: another kind or none is a usage error', () => {
+test('walk takes one well-formed kind: none, two, or a malformed one is a usage error', () => {
   const f = fixture();
-  for (const args of [['walk', 'judge'], ['walk']]) assert.equal(f.cli(args).status, 2);
+  for (const args of [['walk'], ['walk', 'a', 'b'], ['walk', 'a/b']]) assert.equal(f.cli(args).status, 2);
 });

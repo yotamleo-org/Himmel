@@ -76,6 +76,9 @@ export BRIDGE_ROOT="$tmp/bridge"
 printf '#!/usr/bin/env bash\necho "bank-preflight: worker=unknown five_hour=9.0 seven_day=91.0 extra_usage=n/a"\necho PROCEED\n' > "$tmp/facts-bank.sh"
 printf '#!/usr/bin/env bash\necho "#5 [DEMO-1] stub pr (feat/x)"\n' > "$tmp/facts-prs.sh"
 export HANDOFF_FACTS_BANK="$tmp/facts-bank.sh" HANDOFF_FACTS_PRS="$tmp/facts-prs.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/must-resume-rows.sh"
+mkdir -p "$tmp/no-mirror"
+export CHIEF_MUST_RESUME_ROWS="$tmp/must-resume-rows.sh" NEXT_DISPATCH_MIRROR="$tmp/no-mirror"
 # `next` refuses on an open PR with no live worker or queue hold (orphan-pr-check.sh):
 # an empty PR list for the whole suite keeps every case off the real gh; the orph8501 case sets its own.
 printf '[]\n' > "$tmp/orphan-prs-none.json"
@@ -2604,6 +2607,22 @@ check "77 manifest is copied to the successor's stem" "$(cat "$man77B" 2>/dev/nu
 check "77 the predecessor's manifest is left in place (copy, not rename)" "$([ -f "$man77A" ] && echo yes)" "yes"
 check "77 successor step 10 names the carried manifest path (arm command and Your manifest line)" "$(manifest_lines77 "$man77B" "$doc77B")" "1/1/2"
 check "77 no unrendered {{FLEET_MANIFEST}} left in the successor doc" "$(grep -Fc '{{FLEET_MANIFEST' "$doc77B" 2>/dev/null)" "0"
+w77="$tmp/w77"; mkdir -p "$w77"
+orig77="$w77/HIMMEL-10257-BL1a-owed-2026-11-23.md"; res77="${orig77%.md}-RESUME.md"
+own77="$w77/HIMMEL-10464-N5-own-2026-11-23.md"; ownres77="${own77%.md}-RESUME.md"
+printf '# RESUME brief\n' > "$res77"; printf '# brief\n\n## Results\n- 10:00 LIVE — started\n' > "$own77"
+touch -d '1 hour ago' "$res77" "$own77"  # gnu-ok: Linux-only kit
+printf '# brief\n\n## Results\n- 10:00 LIVE — started\n- 19:31 READY 5793 %s GREEN\n' "$(printf 'a%.0s' $(seq 40))" > "$orig77"
+printf '# RESUME brief\n\n## Results\n- 11:00 LIVE — resumed\n' > "$ownres77"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"HIMMEL-10257-BL1a-owed-2026-11-23-RESUME","lane":"native"},{"doc":"%s","label":"N5","lane":"native"}]}\n' "$res77" "$ownres77" > "$man77A"
+doc77D="$root/tester/fleet77dst3/DEMO-nextleg-${today}B-chief.md"
+tok77own="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$ownres77" 2>/dev/null)")"
+chief next --bucket fleet77dst3 --doc "$doc77A" >/dev/null 2>&1
+HANDOVER_DIR="$root" bash "$QL" release "$ownres77" "$tok77own" >/dev/null 2>&1
+check "77 (10901) a markerless RESUME row is carried naming the original doc the worker writes" \
+    "$(jq -r '.workers[0] | "\(.doc) \(.label) \(.lane)"' "${doc77D%.md}.fleet.json" 2>/dev/null)" "$orig77 HIMMEL-10257-BL1a-owed-2026-11-23 native"
+check "77 (10901) a RESUME row whose doc carries its own marker is carried unchanged" \
+    "$(jq -r '.workers[1].doc' "${doc77D%.md}.fleet.json" 2>/dev/null)" "$ownres77"
 HANDOVER_DIR="$root" bash "$QL" release "$doc77A" "$token77" >/dev/null 2>&1
 
 # --- 78: a name without the -chief suffix is refused, nothing armed
@@ -3012,8 +3031,10 @@ go82="last GO: \`82:abc\` KEEP-82-GO$(printf ', prior 8:abcdef12%.0s' $(seq 1 15
 awk -v go="$go82" '/^last GO:/ { print go; next } /^queue:/ { print "queue: KEEP-82-MARKER"; next } /^decisions:/ { print "decisions: KEEP-82-DEC"; print "priority: KEEP-82-PRI"; next } { print }' "$doc82A" > "$doc82A.new" && mv "$doc82A.new" "$doc82A"
 HANDOFF_FACTS_PRS="$tmp/facts-prs82.sh" chief next --bucket cap82dst --doc "$doc82A" >/dev/null 2>&1
 doc82B="$root/tester/cap82dst/DEMO-nextleg-${today}B-chief.md"
-check "82 HANDOFF is at most 6000 bytes" "$([ "$(wc -c < "$handoff82A")" -le 6000 ] && echo yes || echo no)" "yes"
-check "82 over budget: open PRs become a pointer" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$handoff82A")" "1"
+check "82 over budget: every worker label stays exactly once (the set N1 to N30, no duplicate)" "$(grep -oE '^- N[0-9]+: ' "$handoff82A" | sed 's/^- //; s/: $//' | sort)" "$(printf 'N%s\n' $(seq 1 30) | sort)"
+check "82 over budget: every open-PR number stays exactly once (the set 1 to 300, no duplicate)" "$(grep -oE '^#[0-9]+ ' "$handoff82A" | tr -d '# ' | sort)" "$(seq 1 300 | sort)"
+check "82 over budget: the open-PR list is no pointer" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$handoff82A")" "0"
+check "82 over budget: the shift summary becomes a pointer" "$(grep -c 'over the HANDOFF size budget — read the tail of' "$handoff82A")" "1"
 check "82 the Live state content survives the fallback" "$(grep -c "^queue: KEEP-82-MARKER" "$doc82B")" "1"
 check "82 the decisions line survives the fallback" "$(grep -c '^decisions: KEEP-82-DEC' "$doc82B")" "1"
 check "82 the priority line survives the fallback" "$(grep -c '^priority: KEEP-82-PRI' "$doc82B")" "1"
@@ -3022,8 +3043,7 @@ check "82 over budget: last GO becomes a pointer to the successor's Live state" 
 check "82 the last GO survives the fallback, without the prior-GO chain" "$(grep -c '^last GO: `82:abc` KEEP-82-GO$' "$doc82B")" "1"
 check "82 the prior-GO chain is kept verbatim in the history file" "$(grep -cF "$go82" "$root/tester/cap82dst/specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md")" "1"
 check "82 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff82A")" "1"
-check "82 the open-PR pointer names the repo" "$(grep -c 'gh pr list -R example/himmel --state open' "$handoff82A")" "1"
-check "82 under budget: no over-budget note" "$(grep -c '^> HANDOFF over budget' "$handoff82A")" "0"
+check "82 the rows kept over budget say so in the over-budget note" "$(grep -c '^> HANDOFF over budget' "$handoff82A")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc82A" "$token82" >/dev/null 2>&1
 
 # --- 83: still over budget after the pointer pass: a stderr warning with the
@@ -3056,8 +3076,15 @@ check "9599 a PR named in a queue: segment with no hold refuses next (exit 8)" "
 check "9599 the narrative refusal names the PR" "1" "$(grep -cF 'UNMAPPED 4325 fix/demo-88-orphan' "$tmp/outo9599")"
 sed 's/^queue:.*/queue: #4325 (held for the adapter merge)/' "$doco" > "$doco.new" && mv "$doco.new" "$doco" || { echo "FAIL: orph8501 fixture rewrite"; exit 1; }
 rco=0
+ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-one.json" chief next --bucket orph8501dst --doc "$doco" >"$tmp/outo10716" 2>&1 || rco=$?
+check "10716 a HELD entry with no trigger refuses next (exit 8)" "8" "$rco"
+sed 's|^queue:.*|queue: #4325 HELD for the adapter merge wake=pr:4951 resume=/h/r.md \| #4400 HELD wake=pr:4951 resume=/h/s.md \| 4951 merging|' "$doco" > "$doco.new" && mv "$doco.new" "$doco" || { echo "FAIL: orph8501 fixture rewrite"; exit 1; }
+rco=0
 ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-one.json" chief next --bucket orph8501dst --doc "$doco" >/dev/null 2>&1 || rco=$?
 check "orph8501 a PR held on the queue: line passes" "0" "$rco"
+check "10716 next drops the HELD entry of a merged or closed PR and keeps the open one's" \
+    "#4325 HELD for the adapter merge wake=pr:4951 resume=/h/r.md | 4951 merging" \
+    "$(sed -n 's/^queue: //p' "$root/tester/orph8501dst/DEMO-nextleg-${today}B-chief.md")"
 HANDOVER_DIR="$root" bash "$QL" release "$doco" "$tokeno" >/dev/null 2>&1
 # an unreadable PR list is neither an orphan nor a refusal
 outu="$(chief new --bucket orph8501u)"
@@ -3083,7 +3110,7 @@ rc84=0
 HANDOFF_BUDGET_BYTES=1000 chief next --bucket cap84dst --doc "$doc84A" >/dev/null 2>&1 || rc84=$?
 git -C "$fixture_repo" remote add origin "$origin84"
 check "84 next with no origin exits 0" "$rc84" "0"
-check "84 the pointer falls back to the placeholder repo" "$(grep -cF 'gh pr list -R <owner/repo> --state open' "$handoff84A")" "1"
+check "84 the open-PR rows need no repo pointer" "$(grep -cF 'gh pr list -R' "$handoff84A")" "0"
 check "84 the wrapped-PR section is still written" "$(grep -c '^## Wrapped with open PR' "$handoff84A")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc84A" "$token84" >/dev/null 2>&1
 
@@ -3102,8 +3129,8 @@ chief next --bucket cap85xdst --doc "$root/tester/cap85x/DEMO-nextleg-${today}A-
 size85="$(wc -c < "$root/tester/cap85x/DEMO-nextleg-${today}A-chief-HANDOFF.md")"
 HANDOFF_BUDGET_BYTES=$((size85 - 1)) chief next --bucket cap85ydst --doc "$root/tester/cap85y/DEMO-nextleg-${today}A-chief.md" >/dev/null 2>&1
 handoff85y="$root/tester/cap85y/DEMO-nextleg-${today}A-chief-HANDOFF.md"
-check "85 under budget: the first fixture keeps its open-PR facts inline" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$root/tester/cap85x/DEMO-nextleg-${today}A-chief-HANDOFF.md")" "0"
-check "85 the wrapped-PR bytes tip the second fixture into the pointer pass" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$handoff85y")" "1"
+check "85 under budget: the first fixture keeps its shift summary inline" "$(grep -c 'over the HANDOFF size budget — read the tail of' "$root/tester/cap85x/DEMO-nextleg-${today}A-chief-HANDOFF.md")" "0"
+check "85 the wrapped-PR bytes tip the second fixture into the pointer pass" "$(grep -c 'over the HANDOFF size budget — read the tail of' "$handoff85y")" "1"
 check "85 the wrapped-PR entry is still listed" "$(grep -c '^- PR #5 (N1)' "$handoff85y")" "1"
 
 # --- 86. next carries every shift-spanning Live-state line into the successor --
@@ -3924,7 +3951,7 @@ item95 inf95y designs/DEMO-961-budget.md
 next95 inf95x
 HANDOFF_BUDGET_BYTES="$(wc -c < "$(handoff95 inf95x)")" next95 inf95y
 h95="$(handoff95 inf95y)"
-check "95f the pointer bytes tip the note into the pointer pass" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$h95")" "1"
+check "95f the pointer bytes tip the note into the pointer pass" "$(grep -c 'over the HANDOFF size budget — read the tail of' "$h95")" "1"
 check "95f the pointer is still listed" "$(grep -c 'DEMO-961-budget' "$h95")" "1"
 check "95f the over-budget note names the pointer bytes" "$(grep -cE '^> HANDOFF over budget: .*in-flight pointers [0-9]+ bytes' "$h95")" "1"
 
@@ -4043,4 +4070,200 @@ check "10006 an unreadable ledger does not refuse next" "$rc91" "0"
 check "10006 an unreadable ledger is said on stderr" "$(printf '%s\n' "$out91" | grep -c 'owed ledger .* is unreadable')" "1"
 check "10006 an unreadable ledger is said in the HANDOFF" "$(grep -c 'owed.jsonl could not be read' "$(ow_handoff own10006f)")" "1"
 
+sr_template="$fixture_repo/docs/handover/standing-rules-template.md"
+sr_file="$root/tester/seedrules/specs/standing-rules.md"
+sr_docA="$root/tester/seedrules/DEMO-nextleg-${today}A-chief.md"
+sr_out="$(chief new --bucket seedrules 2>&1)"
+HANDOVER_DIR="$root" bash "$QL" release "$sr_docA" "$(token_of "$sr_out")" >/dev/null 2>&1
+check "standing rules: a first chief start on an empty bucket seeds the file from the template" \
+    "$([ -f "$sr_template" ] && cmp -s "$sr_template" "$sr_file" && echo seeded)" "seeded"
+check "standing rules: the new chief doc names the station's standing-rules file" \
+    "$(grep -cF "$sr_file" "$sr_docA" 2>/dev/null | awk '{ print ($1 > 0) ? "named" : "absent" }')" "named"
+printf '%s\n' '# Standing rules' '1. A rule the chief wrote by hand.' > "$sr_file" 2>/dev/null
+sr_before="$(cksum < "$sr_file" 2>/dev/null)"
+sr_out="$(chief new --bucket seedrules 2>&1)"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/seedrules/DEMO-nextleg-${today}B-chief.md" "$(token_of "$sr_out")" >/dev/null 2>&1
+check "standing rules: a second chief start leaves a hand-edited file byte-identical" \
+    "$(cksum < "$sr_file" 2>/dev/null)" "$sr_before"
+sr_fail_file="$root/tester/seedfail/specs/standing-rules.md"
+chmod 000 "$sr_template"
+sr_out="$(chief new --bucket seedfail 2>&1)"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/seedfail/DEMO-nextleg-${today}A-chief.md" "$(token_of "$sr_out")" >/dev/null 2>&1
+chmod 644 "$sr_template"
+check "standing rules: a failed seed leaves no partial file behind" \
+    "$([ -e "$sr_fail_file" ] && echo partial || echo absent)" "absent"
+sr_out="$(chief new --bucket seedfail 2>&1)"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/seedfail/DEMO-nextleg-${today}B-chief.md" "$(token_of "$sr_out")" >/dev/null 2>&1
+check "standing rules: the next chief start after a failed seed seeds the full file" \
+    "$(cmp -s "$sr_template" "$sr_fail_file" && echo seeded)" "seeded"
+station_private_hits() {
+    [ -f "$1" ] || { echo missing; return; }
+    { grep -iE '/home/|/Users/|\baccounts? [A-D]\b|\b[A-Z][A-Z0-9]+-[0-9]+\b' "$1"; leak_scan "$1"; } | grep -c .
+}
+check "standing rules: the shipped template carries no station path, account letter or ticket id" \
+    "$(station_private_hits "$REPO_REAL/docs/handover/standing-rules-template.md")" "0"
+sr_planted="$tmp/standing-rules-planted.md"
+cp "$REPO_REAL/docs/handover/standing-rules-template.md" "$sr_planted" 2>/dev/null || : > "$sr_planted"
+printf '%s\n' 'Read /home/fixture/notes.md first.' 'Route paid calls to account A.' >> "$sr_planted"
+check "standing rules: control: a planted home path and account letter make the same check fail" \
+    "$(station_private_hits "$sr_planted")" "2"
+
+out10906="$(chief new --bucket ren10906 --name recovery-chief)"
+tok10906="$(token_of "$out10906")"
+pred10906="$root/tester/ren10906/DEMO-nextleg-${today}A-recovery-chief.md"
+succ10906="$root/tester/ren10906/DEMO-nextleg-${today}B-v113-chief.md"
+printf '{"schema":1,"workers":["/x/worker10906.md"]}\n' > "${pred10906%.md}.fleet.json"
+rc10906=0
+chief next --bucket ren10906 --name v113-chief --doc "$pred10906" >"$tmp/ren10906.out" 2>&1 || rc10906=$?
+check "10906 next --name <new>-chief with an old-name --doc exits 0" "$rc10906" "0"
+check "10906 the successor doc takes the new name" "$([ -f "$succ10906" ] && echo yes || echo no)" "yes"
+check "10906 the manifest is carried from the predecessor's real path" "$(cat "${succ10906%.md}.fleet.json" 2>/dev/null)" '{"schema":1,"workers":["/x/worker10906.md"]}'
+check "10906 the HANDOFF is written beside the predecessor's real stem" "$([ -f "$root/tester/ren10906/DEMO-nextleg-${today}A-recovery-chief-HANDOFF.md" ] && echo yes || echo no)" "yes"
+check "10906 the successor doc names the predecessor's real doc" "$(grep -cF 'DEMO-nextleg-'"${today}"'A-recovery-chief.md' "$succ10906" 2>/dev/null | awk '{print ($1>0)?"yes":"no"}')" "yes"
+HANDOVER_DIR="$root" bash "$QL" release "$pred10906" "$tok10906" >/dev/null 2>&1
+out10906b="$(chief new --bucket same10906)"
+tok10906b="$(token_of "$out10906b")"
+chief next --bucket same10906 >/dev/null 2>&1
+check "10906 a same-name next still writes the B doc under the same name" "$([ -f "$root/tester/same10906/DEMO-nextleg-${today}B-chief.md" ] && echo yes || echo no)" "yes"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/same10906/DEMO-nextleg-${today}A-chief.md" "$tok10906b" >/dev/null 2>&1
+out10906c="$(chief new --bucket pfx10906 --name night-chief)"
+tok10906c="$(token_of "$out10906c")"
+chief next --bucket pfx10906 --prefix OTH69 --doc "$root/tester/pfx10906/DEMO-nextleg-${today}A-night-chief.md" >/dev/null 2>&1
+check "10906 no --name and a --doc under another prefix keeps the doc's chain name" "$([ -f "$root/tester/pfx10906/OTH69-nextleg-${today}B-night-chief.md" ] && echo yes || echo no)" "yes"
+check "10906 no --name and a --doc under another prefix never mints a bare chief successor" "$([ -f "$root/tester/pfx10906/OTH69-nextleg-${today}B-chief.md" ] && echo yes || echo no)" "no"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/pfx10906/DEMO-nextleg-${today}A-night-chief.md" "$tok10906c" >/dev/null 2>&1
+
+
+mk10877() {
+    local b="$1" i w rows="" t
+    T10877=""
+    A10877="$root/tester/$b/DEMO-nextleg-${today}A-chief.md"
+    W10877="$root/tester/$b"
+    TA10877="$(token_of "$(chief new --bucket "$b")")"
+    for i in 1 2 3 4 5 6 7; do
+        w="$W10877/DEMO-$i-N$i-worker.md"
+        printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' > "$w"
+        t="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$w" 2>/dev/null)")"
+        T10877="$T10877 $w=$t"
+        [ "$i" -gt 5 ] || rows="$rows{\"label\":\"N$i\",\"doc\":\"$w\"},"
+    done
+    printf '%s\n' '# worker' '## Results' '- 09:00 LIVE — fixture' '- 09:30 WRAPPED — PR 77 merged later' > "$W10877/DEMO-9-N9-worker.md"
+    printf '%s\n' '# resume brief' > "$W10877/DEMO-9-N9-worker-RESUME.md"
+    rows="$rows{\"label\":\"N9\",\"doc\":\"$W10877/DEMO-9-N9-worker.md\"}"
+    printf '{"schema":1,"workers":[%s]}\n' "$rows" > "${A10877%.md}.fleet.json"
+    awk '/^workers:/ { print "workers: `N1:nonce-1:lock-1:11` `N2:nonce-2:lock-2:22`"; next } { print }' "$A10877" > "$A10877.new" && mv "$A10877.new" "$A10877"
+}
+rel10877() {
+    local pair
+    for pair in $T10877; do HANDOVER_DIR="$root" bash "$QL" release "${pair%%=*}" "${pair#*=}" >/dev/null 2>&1; done
+    HANDOVER_DIR="$root" bash "$QL" release "$A10877" "$TA10877" >/dev/null 2>&1
+}
+printf '#!/usr/bin/env bash\necho "#77 [DEMO-9] the wrapped worker pr (fix/demo-9-thing)"\necho "#78 [DEMO-1] the live worker pr (fix/demo-1-thing)"\n' > "$tmp/prs10877.sh"
+mk10877 m10877
+B10877="$root/tester/m10877dst/DEMO-nextleg-${today}B-chief.md"
+rc10877=0
+HANDOFF_FACTS_PRS="$tmp/prs10877.sh" chief next --bucket m10877dst --doc "$A10877" >"$tmp/m10877.out" 2>"$tmp/m10877.err" || rc10877=$?
+check "10877 next with 2 of 7 workers on the line exits 0" "$rc10877" "0"
+live10877="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$B10877" 2>/dev/null)"
+for i in 1 2 3 4 5 6 7; do
+    check "10877 the successor workers: line lists N$i" "$(printf '%s\n' "$live10877" | grep -c "^workers:.*\`N$i:")" "1"
+done
+# shellcheck disable=SC2016  # the backticks are literal span delimiters
+check "10877 the predecessor's own spans are kept as written" "$(printf '%s\n' "$live10877" | grep -c '`N1:nonce-1:lock-1:11` `N2:nonce-2:lock-2:22`')" "1"
+check "10877 a worker the line lacked is listed with no nonce, never an invented one" "$(printf '%s\n' "$live10877" | grep -c '`N3:NONCE-UNKNOWN:')" "1"
+must10877="$(awk '$0 == "## Must disposition" { f = 1; next } f && /^## / { exit } f' "$B10877" 2>/dev/null)"
+check "10877 the successor doc has a Must disposition section" "$(grep -c '^## Must disposition$' "$B10877" 2>/dev/null)" "1"
+check "10877 Must disposition lists the RESUME doc of the wrapped worker" "$(printf '%s\n' "$must10877" | grep -c 'DEMO-9-N9-worker-RESUME.md')" "1"
+check "10877 Must disposition lists the open PR of the wrapped worker" "$(printf '%s\n' "$must10877" | grep -c 'PR #77')" "1"
+check "10877 Must disposition leaves out the open PR of a live worker" "$(printf '%s\n' "$must10877" | grep -c 'PR #78')" "0"
+check "10877 next retires the dead manifest row from the successor manifest" "$(jq -r '[.workers[].label] | join(",")' "${B10877%.md}.fleet.json" 2>/dev/null)" "N1,N2,N3,N4,N5"
+check "10877 next retires the dead manifest row from the predecessor manifest" "$(jq -r '[.workers[].label] | join(",")' "${A10877%.md}.fleet.json" 2>/dev/null)" "N1,N2,N3,N4,N5"
+h10877="$root/tester/m10877/DEMO-nextleg-${today}A-chief-HANDOFF.md"
+check "10877 the HANDOFF lists the two workers that hold a lock off the manifest" "$(grep -cE '^- N[67]: .*lock only' "$h10877")" "2"
+rel10877
+mk10877 d10877
+rcd10877=0
+CHIEF_SEED_TEST_DROP=N4 HANDOFF_FACTS_PRS="$tmp/prs10877.sh" chief next --bucket d10877dst --doc "$A10877" >"$tmp/d10877.out" 2>"$tmp/d10877.err" || rcd10877=$?
+check "10877 a forced drop of a live worker exits non-zero" "$([ "$rcd10877" -ne 0 ] && echo refused || echo "rc=$rcd10877")" "refused"
+check "10877 the forced-drop refusal names the worker" "$(grep -c 'N4' "$tmp/d10877.err")" "1"
+check "10877 a forced drop leaves no successor doc" "$([ -e "$root/tester/d10877dst/DEMO-nextleg-${today}B-chief.md" ] && echo yes || echo no)" "no"
+check "10877 a forced drop retires no manifest row" "$(jq -r '[.workers[].label] | join(",")' "${A10877%.md}.fleet.json" 2>/dev/null)" "N1,N2,N3,N4,N5,N9"
+rel10877
+mk10877 o10877
+HANDOFF_BUDGET_BYTES=1000 HANDOFF_FACTS_PRS="$tmp/prs10877.sh" chief next --bucket o10877dst --doc "$A10877" >/dev/null 2>&1
+ho10877="$root/tester/o10877/DEMO-nextleg-${today}A-chief-HANDOFF.md"
+check "10877 an over-budget HANDOFF still prints every worker row" "$(grep -cE '^- N[1-5]: ' "$ho10877")" "5"
+check "10877 an over-budget HANDOFF still prints every open-PR row" "$(grep -cE '^#7[78] ' "$ho10877")" "2"
+check "10877 an over-budget HANDOFF no longer points the worker rows at a command" "$(grep -c 'over the HANDOFF size budget — run: bash .*handoff-facts.sh workers' "$ho10877")" "0"
+rel10877
+
+mir10877="$tmp/mirror10877"; mkdir -p "$mir10877"
+printf '{"lastSync":"2026-11-24T00:00:00.000Z"}\n' > "$mir10877/.cursor.json"
+mk_mirror10877() {
+    printf '%s\n' '---' "key: \"$1\"" 'type: "Task"' 'status: "To Do"' 'statusCategory: "To Do"' 'priority: "High"' "labels: $3" 'fixVersions: ["v1.1.3"]' "created: \"$2T10:00:00.000+0100\"" '---' '' "# $1: the $1 ticket" > "$mir10877/$1.md"
+}
+mk_mirror10877 DEMO-31 "$today" '["operator-directed","standalone"]'
+mk_mirror10877 DEMO-32 2020-01-01 '["operator-directed"]'
+mk_mirror10877 DEMO-33 "$today" '["standalone"]'
+printf '#!/usr/bin/env bash\nprintf "RESUME\\tDEMO-40\\tIn Progress, no worker\\n"\n' > "$tmp/resume-rows10877.sh"
+tokq10877="$(token_of "$(chief new --bucket q10877)")"
+Aq10877="$root/tester/q10877/DEMO-nextleg-${today}A-chief.md"
+awk '/^priority:/ { next } /^board:/ { print "priority: DEMO-5"; print "focus-version: v1.1.3" } { print }' "$Aq10877" > "$Aq10877.new" && mv "$Aq10877.new" "$Aq10877"
+NEXT_DISPATCH_MIRROR="$mir10877" CHIEF_MUST_RESUME_ROWS="$tmp/resume-rows10877.sh" chief next --bucket q10877dst --doc "$Aq10877" >/dev/null 2>&1
+Bq10877="$root/tester/q10877dst/DEMO-nextleg-${today}B-chief.md"
+mustq10877="$(awk '$0 == "## Must disposition" { f = 1; next } f && /^## / { exit } f' "$Bq10877" 2>/dev/null)"
+check "10877 the priority: line starts with the operator-directed ticket filed this shift" "$(grep -c '^priority: DEMO-31 | DEMO-5$' "$Bq10877")" "1"
+check "10877 an operator-directed ticket filed long ago and never named is not put on the priority: line" "$(grep '^priority:' "$Bq10877" | grep -c 'DEMO-32')" "0"
+check "10877 Must disposition lists the operator-directed To Do ticket with no worker" "$(printf '%s\n' "$mustq10877" | grep -c 'operator-directed DEMO-31 ')" "1"
+check "10877 Must disposition lists every operator-directed To Do ticket of the focus version" "$(printf '%s\n' "$mustq10877" | grep -c 'operator-directed DEMO-32 ')" "1"
+check "10877 Must disposition leaves out a ticket without the operator-directed label" "$(printf '%s\n' "$mustq10877" | grep -c 'DEMO-33')" "0"
+check "10877 Must disposition lists the RESUME row of a ticket with no worker" "$(printf '%s\n' "$mustq10877" | grep -c 'RESUME row DEMO-40 In Progress, no worker')" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$Aq10877" "$tokq10877" >/dev/null 2>&1
+tokk10877="$(token_of "$(chief new --bucket k10877)")"
+Ak10877="$root/tester/k10877/DEMO-nextleg-${today}A-chief.md"
+printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' '- 10:30 BLOCKED — waits on the chief' > "$root/tester/k10877/DEMO-51-N51-worker.md"
+printf '{"schema":1,"workers":[{"label":"N51","doc":"%s"}]}\n' "$root/tester/k10877/DEMO-51-N51-worker.md" > "${Ak10877%.md}.fleet.json"
+chief next --bucket k10877dst --doc "$Ak10877" >/dev/null 2>&1
+check "10877 a worker with a BLOCKED bullet and no lock keeps its manifest row" "$(jq -r '[.workers[].label] | join(",")' "${Ak10877%.md}.fleet.json" 2>/dev/null)" "N51"
+HANDOVER_DIR="$root" bash "$QL" release "$Ak10877" "$tokk10877" >/dev/null 2>&1
+
+check "10877 Must disposition no longer promises a tick listing" "$(grep -c 'The tick lists a row' "$B10877")" "0"
+check "10877 Must disposition says the Jira mirror is unavailable when it holds no file" "$(printf '%s\n' "$must10877" | grep -c 'operator-directed tickets unavailable')" "1"
+tokc10877="$(token_of "$(chief new --bucket c10877)")"
+Ac10877="$root/tester/c10877/DEMO-nextleg-${today}A-chief.md"
+Wc10877="$root/tester/c10877"
+for i in 1 2; do
+    printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' > "$Wc10877/DEMO-$i-N$i-worker.md"
+    tokw10877[i]="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$Wc10877/DEMO-$i-N$i-worker.md" 2>/dev/null)")"
+done
+awk '/^workers:/ { print "workers: `N1:nonce-1:lock-1:11`"; next } { print }' "$Ac10877" > "$Ac10877.new" && mv "$Ac10877.new" "$Ac10877"
+printf '#!/usr/bin/env bash\nexit 3\n' > "$tmp/resume-fail10877.sh"
+mkdir -p "$root/.locks/queue/zz-bad10877.lock"
+printf '{not json\n' > "$root/.locks/queue/zz-bad10877.lock/owner.json"
+printf '%s\n' '# resume brief' > "$Wc10877/DEMO-7-N7-worker-RESUME.md"
+CHIEF_LOCK_STATE_TEST_UNKNOWN="$root/tester/c10877/../c10877/DEMO-7-N7-worker-RESUME.md" CHIEF_MUST_RESUME_ROWS="$tmp/resume-fail10877.sh" chief next --bucket c10877dst --doc "$root/tester/c10877/../c10877/DEMO-nextleg-${today}A-chief.md" >/dev/null 2>&1
+rm -rf "$root/.locks/queue/zz-bad10877.lock"
+Bc10877="$root/tester/c10877dst/DEMO-nextleg-${today}B-chief.md"
+livec10877="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$Bc10877" 2>/dev/null)"
+mustc10877="$(awk '$0 == "## Must disposition" { f = 1; next } f && /^## / { exit } f' "$Bc10877" 2>/dev/null)"
+check "10877 a doc named by a path with a dot-dot segment still sweeps the bucket's locks" "$(printf '%s\n' "$livec10877" | grep -c '`N2:NONCE-UNKNOWN:')" "1"
+check "10877 a failed RESUME-row read puts a row naming the failure in Must disposition" "$(printf '%s\n' "$mustc10877" | grep -c 'RESUME rows unavailable.*exited 3')" "1"
+check "10877 the unavailable RESUME rows row names the command to re-run" "$(printf '%s\n' "$mustc10877" | grep -c 'next-dispatchable.sh --resume-only')" "1"
+check "10877 an unreadable lock owner file puts a row in Must disposition" "$(printf '%s\n' "$mustc10877" | grep -c 'zz-bad10877 has no readable owner file')" "1"
+check "10877 a RESUME doc whose lock state is unknown is listed apart, never as a doc with no worker" "$(printf '%s\n' "$mustc10877" | grep -c 'RESUME doc.*DEMO-7-N7-worker-RESUME.md.*lock state unknown, check before relaunch')" "1"
+check "10877 a RESUME doc with an unknown lock state is not listed as an ordinary RESUME doc" "$(printf '%s\n' "$mustc10877" | grep -c 'RESUME doc.*DEMO-7-N7-worker-RESUME.md.*last marker')" "0"
+for i in 1 2; do HANDOVER_DIR="$root" bash "$QL" release "$Wc10877/DEMO-$i-N$i-worker.md" "${tokw10877[i]}" >/dev/null 2>&1; done
+HANDOVER_DIR="$root" bash "$QL" release "$Ac10877" "$tokc10877" >/dev/null 2>&1
+
+mirstale10877="$tmp/mirror-stale10877"; mkdir -p "$mirstale10877"
+cp "$mir10877/DEMO-31.md" "$mirstale10877/DEMO-31.md"
+printf '{"lastSync":"2026-11-20T00:00:00.000Z"}\n' > "$mirstale10877/.cursor.json"
+touch -t "$(hours_ago95 72)" "$mirstale10877/.cursor.json"
+tokm10877="$(token_of "$(chief new --bucket m2-10877)")"
+Am210877="$root/tester/m2-10877/DEMO-nextleg-${today}A-chief.md"
+NEXT_DISPATCH_MIRROR="$mirstale10877" chief next --bucket m2-10877dst --doc "$Am210877" >/dev/null 2>&1
+mustm210877="$(awk '$0 == "## Must disposition" { f = 1; next } f && /^## / { exit } f' "$root/tester/m2-10877dst/DEMO-nextleg-${today}B-chief.md" 2>/dev/null)"
+check "10877 a mirror whose sync stamp is old reads as unavailable although a ticket file is fresh" "$(printf '%s\n' "$mustm210877" | grep -c 'operator-directed tickets unavailable')" "1"
+check "10877 a stale mirror lists no operator-directed ticket" "$(printf '%s\n' "$mustm210877" | grep -c 'operator-directed DEMO-31')" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$Am210877" "$tokm10877" >/dev/null 2>&1
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
