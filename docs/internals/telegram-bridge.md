@@ -211,6 +211,7 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 | `cadence:vm-maintain-cadence` | monitor | `scripts/vm/vm-maintain-cadence.sh` | The vm-maintain-cadence scheduled worker reported a failure. |
 | `cadence:graph-channel-publish` | monitor | `scripts/graphify/publish-graph-channel.sh` | The graph-channel-publish scheduled worker reported a failure. |
 | `cadence:librarian` | monitor | `scripts/handover/librarian-cadence.sh` | The librarian scheduled worker reported a failure. |
+| `cadence:qmd-outage` | monitor | `scripts/himmel-doctor.sh` | The doctor found the qmd server refusing connections where qmd is set up. |
 | `cadence:qmd-reindex` | monitor | `scripts/luna/qmd-cadence.sh` | The qmd-reindex scheduled worker reported a failure. |
 | `cadence:rollup` | monitor | `scripts/eval/rollup-cadence.sh` | The rollup scheduled worker reported a failure. |
 | `cadence:graphmap-himmel` | monitor | `scripts/luna/graphmap-cadence.sh` | The graphmap-himmel scheduled worker reported a failure. |

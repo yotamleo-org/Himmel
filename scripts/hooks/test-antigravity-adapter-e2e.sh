@@ -32,6 +32,7 @@ mkdir -p "$HOME/.himmel" "$HOME/.gemini/config" \
     "$T3CODE_HOME/userdata/providers/antigravity/hash1/config" \
     "$T3CODE_HOME/userdata/providers/antigravity/hash1/antigravity-acp/brain/conv-1" \
     "$TMP/bin"
+printf '{"providerInstances":{"claudeBypass":{"driver":"claudeAgent","environment":[{"name":"AGENTS_MD_OK","value":"1"}]}}}\n' > "$T3CODE_HOME/userdata/settings.json"
 
 cat > "$TMP/bin/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -159,8 +160,8 @@ assert_deny "block-chokepoint-env-prefix denies env-prefixed chokepoint" "chokep
 # shellcheck disable=SC2016
 assert_deny "block-jira-compound-write denies compound jira create" "desc-file" \
     "$(make_pre run_command '{"CommandLine":"JIRA_PROJECT_KEY=HIMMEL node /tmp/himmel/scripts/jira/dist/index.js create --type Task --title a --desc \"$(cat /tmp/a.md)\" ; node /tmp/himmel/scripts/jira/dist/index.js create --type Task --title b --desc \"$(cat /tmp/b.md)\""}')"
-assert_deny "guard-t3-thread-tools denies off-allowlist instance" "antigravity" \
-    "$(make_pre mcp_t3-code_t3_thread_launch '{"title":"Work","modelSelection":{"instanceId":"antigravity","model":"gemini-4-neon"}}')"
+assert_deny "guard-t3-thread-tools denies a bypass instance" "carries a himmel bypass flag" \
+    "$(make_pre mcp_t3-code_t3_thread_launch '{"title":"Work","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}')"
 assert_deny "guard-t3-thread-tools denies -chief title" "chief" \
     "$(make_pre mcp_t3-code_t3_thread_update '{"action":"rename","title":"ops-chief"}')"
 assert_deny "block-t3code-unwatch-open-pr denies unwatch on OPEN PR" "OPEN" \
