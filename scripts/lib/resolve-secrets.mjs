@@ -12,7 +12,10 @@ import { fileURLToPath } from 'node:url';
 
 const RESOLVER = join(dirname(fileURLToPath(import.meta.url)), 'himmel-secrets');
 const TIMEOUT_MS = 10000;
-const timeoutMs = (env) => Number(env?.HIMMEL_SECRETS_TIMEOUT_MS) || TIMEOUT_MS;
+const timeoutMs = (env) => {
+  const n = Number(env?.HIMMEL_SECRETS_TIMEOUT_MS);
+  return Number.isInteger(n) && n > 0 ? n : TIMEOUT_MS;
+};
 
 // `env` is the caller's own environment choice (a test's env map, the UI server's env). It is laid over
 // the process's environment, so a pin the process carries (HIMMEL_SECRETS_KEYRING=off) survives a map
