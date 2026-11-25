@@ -202,7 +202,7 @@ const hhmmLocal = (d = new Date()) => `${String(d.getHours()).padStart(2, "0")}:
 
 const ASK_TEXT = /^\s*(?:\d+[.)]\s*)?Needs you:/m;
 const asksFile = (root: string) => join(root, "consoles", "asks.ndjson");
-type AskRow = { ask: number; chat: number; console?: string; at: string; quote: string };
+type AskRow = { ask: string; id: number; chat: number; console?: string; at: string; quote: string };
 const askQuote = (text: string): string => text.split("\n", 1)[0].trim().slice(0, 200);
 const askKey = (s: string): string => s.replace(/[^\p{L}\p{N}]+/gu, "").toLowerCase();
 const sameQuote = (a: string, b: string): boolean => { const x = askKey(a), y = askKey(b); return x.length > 0 && y.length > 0 && (x.startsWith(y) || y.startsWith(x)); };
@@ -213,35 +213,34 @@ async function readAskRows(root: string): Promise<{ asks: AskRow[]; answered: Se
   for (const line of raw.split("\n")) {
     try {
       const row = JSON.parse(line);
-      if (Number.isSafeInteger(row?.ask) && Number.isSafeInteger(row.chat) && typeof row.quote === "string") asks.push(row);
+      if (typeof row?.ask === "string" && Number.isSafeInteger(row.chat) && typeof row.quote === "string") asks.push({ ...row, id: asks.length + 1 });
       else if (Number.isSafeInteger(row?.answered)) answered.add(row.answered);
     } catch {}
   }
   return { asks, answered };
 }
 
-export async function recordAsk(root: string, chat: number, text: string, consoleName?: string): Promise<number | undefined> {
-  if (!ASK_TEXT.test(text)) return undefined;
+export async function recordAsk(root: string, chat: number, text: string, consoleName?: string): Promise<void> {
+  if (!ASK_TEXT.test(text)) return;
   try {
-    const { asks } = await readAskRows(root);
-    const id = asks.reduce((m, a) => Math.max(m, a.ask), 0) + 1;
     await mkdir(join(root, "consoles"), { recursive: true });
-    await appendFile(asksFile(root), JSON.stringify({ ask: id, chat, ...(consoleName ? { console: consoleName } : {}), at: new Date().toISOString(), quote: askQuote(text) }) + "\n");
-    return id;
-  } catch (e) { console.error(`[chief-route] ask not recorded: ${e instanceof Error ? e.message : e}`); return undefined; }
+    await appendFile(asksFile(root), JSON.stringify({ ask: randomUUID(), chat, ...(consoleName ? { console: consoleName } : {}), at: new Date().toISOString(), quote: askQuote(text) }) + "\n");
+  } catch (e) { console.error(`[chief-route] ask not recorded: ${e instanceof Error ? e.message : e}`); }
 }
 
-async function bindAsk(root: string, msg: { chat_id: number; reply_to_text?: string }, consoles: string[]): Promise<string> {
+async function bindAsk(root: string, msg: { chat_id: number; reply_to_text?: string }, consoles: string[]): Promise<{ tag: string; close: () => Promise<void> }> {
+  const none = { tag: "", close: async () => {} };
   try {
     const { asks, answered } = await readAskRows(root);
-    const open = asks.filter(a => a.chat === msg.chat_id && !answered.has(a.ask) && (a.console === undefined || consoles.includes(a.console)));
-    const hit = (msg.reply_to_text ? open.find(a => sameQuote(a.quote, msg.reply_to_text!)) : undefined) ?? (open.length === 1 ? open[0] : undefined);
-    if (hit) {
-      await appendFile(asksFile(root), JSON.stringify({ answered: hit.ask, at: new Date().toISOString() }) + "\n");
-      return ` answers=${hit.ask}`;
+    const open = asks.filter(a => a.chat === msg.chat_id && !answered.has(a.id) && (a.console === undefined || consoles.includes(a.console)));
+    const quoted = msg.reply_to_text ? open.filter(a => sameQuote(a.quote, msg.reply_to_text!)) : [];
+    const pool = quoted.length ? quoted : open;
+    if (pool.length === 1) {
+      const id = pool[0].id;
+      return { tag: ` answers=${id}`, close: () => appendFile(asksFile(root), JSON.stringify({ answered: id, at: new Date().toISOString() }) + "\n") };
     }
-    return open.length > 1 ? ` ambiguous-answer=${open.map(a => a.ask).join(",")}` : "";
-  } catch (e) { console.error(`[chief-route] ask binding skipped: ${e instanceof Error ? e.message : e}`); return ""; }
+    return pool.length > 1 ? { tag: ` ambiguous-answer=${pool.map(a => a.id).join(",")}`, close: async () => {} } : none;
+  } catch (e) { console.error(`[chief-route] ask binding skipped: ${e instanceof Error ? e.message : e}`); return none; }
 }
 
 export function staleConsoleCommand(ts?: number): boolean {
@@ -416,9 +415,10 @@ export async function routeToConsole(
   // cannot open a mailbox nobody reads. The append itself is the existence
   // check, no separate existsSync() step left to race.
   const replyTag = (msg.reply_to_message_id == null ? "" : ` reply_to=${msg.reply_to_message_id}`) + (msg.reply_to_text ? ` quote=${JSON.stringify(foldLine(msg.reply_to_text).replace(/\]/g, ")"))}` : "");
-  const answerTag = await bindAsk(root, msg, path);
-  const delivered = await appendIfExists(file, `- ${hhmm()} [telegram from=${msg.from} chat=${msg.chat_id}${replyTag}${answerTag}] ${foldLine(text)}`);
+  const bound = await bindAsk(root, msg, path);
+  const delivered = await appendIfExists(file, `- ${hhmm()} [telegram from=${msg.from} chat=${msg.chat_id}${replyTag}${bound.tag}] ${foldLine(text)}`);
   if (!delivered) { await say(`⚠️ no chief "${name}" is listening (it has not armed its inbox) — nothing was sent.`); return; }
+  try { await bound.close(); } catch (e) { console.error(`[chief-route] ask not closed: ${e instanceof Error ? e.message : e}`); }
   const busy = (await armedConsoles(root)).some(c => c.name === name && c.busy);
   await say(`→ chief ${name}${name !== addressed ? ` (${addressed} handed over)` : ""}${busy ? ` — queued, ${BUSY_NOTE}` : ""}`, name);
 }

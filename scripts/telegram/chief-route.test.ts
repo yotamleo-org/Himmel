@@ -8306,6 +8306,24 @@ test("HIMMEL-10935 a reply to a bot message carries reply_to and the quote, and 
   expect(line).not.toContain("ambiguous");
 });
 
+test("HIMMEL-10935 two asks recorded at the same moment get two ids, and answering one leaves the other open", async () => {
+  const r = root(); const f = armInbox(r);
+  await Promise.all([sendAsk(r, ASK_ONE), sendAsk(r, ASK_TWO)]);
+  expect(await answer(r, f, "yes")).toContain("ambiguous-answer=1,2");
+  const one = await answer(r, f, "yes", { reply_to_message_id: 9001, reply_to_bot: true, reply_to_text: ASK_ONE });
+  const two = await answer(r, f, "no", { reply_to_message_id: 9002, reply_to_bot: true, reply_to_text: ASK_TWO });
+  expect([one, two].map(l => /answers=(\d)/.exec(l)?.[1]).sort()).toEqual(["1", "2"]);
+});
+
+test("HIMMEL-10935 two open asks that open with the same line stay ambiguous when the reply quotes that line", async () => {
+  const r = root(); const f = armInbox(r);
+  await sendAsk(r, "Needs you: two items.\n1. approve the restart");
+  await sendAsk(r, "Needs you: two items.\n1. sign the notes");
+  const line = await answer(r, f, "yes", { reply_to_message_id: 9001, reply_to_bot: true, reply_to_text: "Needs you: two items." });
+  expect(line).not.toContain("answers=");
+  expect(line).toContain("ambiguous-answer=1,2");
+});
+
 test("HIMMEL-10935 a text with no Needs you: line records no ask", async () => {
   const r = root(); const f = armInbox(r);
   await sendAsk(r, "Merge refused. Blocks: the merge. Do: ask a reviewer");
