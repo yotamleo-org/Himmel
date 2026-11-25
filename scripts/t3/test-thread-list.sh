@@ -34,7 +34,9 @@ for id in t-run t-wait t-reply t-blk; do
     echo "{\"thread\":{\"threadId\":\"$id\",\"worktreePath\":$wt},\"messages\":[]}" > "$T/show-$id.json"
 done
 
-mkproc() { mkdir -p "$T/proc/$1"; echo "$1 ($2) S $3 $1 $1 0 0" > "$T/proc/$1/stat"; ln -s "$4" "$T/proc/$1/cwd"; }
+mkproc() { mkdir -p "$T/proc/$1"; echo "$1 ($2) S $3 $1 $1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ${5:-$1} 0" > "$T/proc/$1/stat"; ln -s "$4" "$T/proc/$1/cwd"; }
+mkdir -p "$T/proc/sys/kernel/random"
+echo "boot-1" > "$T/proc/sys/kernel/random/boot_id"
 mkproc 100 t3code 1 /srv
 mkproc 200 claude 100 /wt/run
 mkproc 201 "bash -c (x)" 200 /wt/run
@@ -42,9 +44,12 @@ mkproc 202 sleep 201 /wt/run
 mkproc 210 claude 100 /wt/other
 mkproc 300 bash 1 /wt/run
 mkproc 301 cloudflared 100 /srv
+mkproc 400 t3code 1 /srv 777
+mkproc 410 claude 400 /wt/run
 mkdir -p "$T/userdata/provider-processes"
-echo '{"version":1,"instanceId":"a","owner":{"pid":100,"startTime":"b:1"},"processes":[{"pid":200,"startTime":"b:2","pgid":200},{"pid":210,"startTime":"b:3","pgid":210}]}' > "$T/userdata/provider-processes/a.json"
-echo '{"version":1,"instanceId":"dead","owner":{"pid":999,"startTime":"b:1"},"processes":[{"pid":300,"startTime":"b:2","pgid":300}]}' > "$T/userdata/provider-processes/dead.json"
+echo '{"version":1,"instanceId":"a","owner":{"pid":100,"startTime":"boot-1:100"},"processes":[{"pid":200,"startTime":"boot-1:200","pgid":200},{"pid":210,"startTime":"boot-1:210","pgid":210}]}' > "$T/userdata/provider-processes/a.json"
+echo '{"version":1,"instanceId":"dead","owner":{"pid":999,"startTime":"boot-1:1"},"processes":[{"pid":300,"startTime":"boot-1:300","pgid":300}]}' > "$T/userdata/provider-processes/dead.json"
+echo '{"version":1,"instanceId":"reused","owner":{"pid":400,"startTime":"boot-1:5"},"processes":[{"pid":410,"startTime":"boot-1:410","pgid":410}]}' > "$T/userdata/provider-processes/reused.json"
 
 export T3_SEND_BIN="$T/t3" T3_SEND_PROJECT="$T" STUB_LIST="$T/list.json" STUB_DIR="$T" T3_USERDATA="$T/userdata" T3_PROC="$T/proc"
 
@@ -61,6 +66,12 @@ expect_jq "the provider, its shell and the shell's child are owned; the server's
 expect_jq "a process whose cwd is a thread's worktree belongs to that thread" '[.owned[] | select(.pid == 202) | .thread]' '["t-run"]'
 expect_jq "a process in no thread's worktree is owned with no thread" '[.owned[] | select(.pid == 210) | .thread]' '[null]'
 expect_jq "a thread lists the pids it owns" '.threads[0].pids | sort' '[200,201,202]'
+
+jq -c '. + [{"threadId":"t-twin","title":"Same checkout","status":"idle","settled":false,"blockedOnThreadWait":false,"createdAt":.[0].createdAt,"updatedAt":.[0].updatedAt}]' "$T/list.json" > "$T/twin.json"
+echo '{"thread":{"threadId":"t-twin","worktreePath":"/wt/run"},"messages":[]}' > "$T/show-t-twin.json"
+STUB_LIST="$T/twin.json" expect_rc "two threads sharing one worktree still list" 0 bash "$LIST"
+expect_jq "a process in a worktree two threads share belongs to neither" '[.owned[] | select(.pid == 202) | .thread]' '[null]'
+expect_jq "a registry record whose owner pid was reused by another process owns nothing" '[.owned[].pid] | index(410)' 'null'
 
 echo '[]' > "$T/empty.json"
 STUB_LIST="$T/empty.json" expect_rc "an empty list exits 0" 0 bash "$LIST"

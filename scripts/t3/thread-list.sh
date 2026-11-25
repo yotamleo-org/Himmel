@@ -8,10 +8,11 @@
 #   owned[]:   pid, thread (the thread id, or null when no thread's worktree matches the process's cwd)
 # State: settled; else blockedOnThreadWait = waiting on a thread; else a run status of error/failed/blocked = blocked,
 # running/starting/active = running, anything else (idle, completed, interrupted, cancelled) = waiting on a reply.
-# Owned processes: the pids the T3 server registered as its providers (<userdata>/provider-processes/*.json whose owner is
-# alive) and every descendant of them. A process is matched to a thread when its cwd is the thread's worktreePath
-# (`t3 thread show`, read only for an unsettled thread); a thread sharing the project checkout cannot be told apart, so
-# its processes stay owned with thread null.
+# Owned processes: the pids the T3 server registered as its providers (<userdata>/provider-processes/*.json whose owner and
+# provider are still the registered process: same boot id and start time, so a reused pid owns nothing) and every
+# descendant of them. A process is matched to a thread when its cwd is the thread's worktreePath
+# (`t3 thread show`, read only for an unsettled thread); when no thread or several threads share that path the process
+# stays owned with thread null.
 # Never settles, sends to or starts a thread: it only runs `thread list` and `thread show`.
 # rc 0 printed; rc 2 the thread list could not be read (the CLI is missing or failed, or it printed no JSON array).
 # Env seams: T3_SEND_BIN, T3_SEND_PROJECT (as t3-send.sh), T3_USERDATA (default $HOME/.t3/userdata), T3_PROC (default /proc).
@@ -28,13 +29,21 @@ command -v jq >/dev/null 2>&1 || die 2 "jq is required"
 LIST="$("$BIN" thread list --json --project "$PROJECT" 2>&1)" || die 2 "thread list failed: $LIST"
 printf '%s' "$LIST" | jq -e 'type == "array"' >/dev/null 2>&1 || die 2 "thread list did not print a JSON array"
 
+BOOT="$(cat "$PROC/sys/kernel/random/boot_id" 2>/dev/null || true)"
+same_process() {
+    local line rest st
+    line="$(cat "$PROC/$1/stat" 2>/dev/null)" || return 1
+    rest="${line##*) }"
+    read -r _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ st _ <<< "$rest"
+    [ -n "$BOOT" ] && [ "$2" = "$BOOT:${st:-}" ]
+}
 ROOTS=""
 for f in "$USERDATA"/provider-processes/*.json; do
     [ -f "$f" ] || continue
-    owner="$(jq -r '.owner.pid // empty' "$f" 2>/dev/null)"
-    case "$owner" in ""|*[!0-9]*) continue ;; esac
-    [ -d "$PROC/$owner" ] || continue
-    ROOTS="$ROOTS $(jq -r '.processes[]?.pid // empty' "$f" 2>/dev/null | tr '\n' ' ')"
+    owner="$(jq -r '"\(.owner.pid // "") \(.owner.startTime // "")"' "$f" 2>/dev/null)"
+    case "${owner%% *}" in ""|*[!0-9]*) continue ;; esac
+    same_process "${owner%% *}" "${owner#* }" || continue
+    ROOTS="$ROOTS $(jq -r '.processes[]? | select(.pid != null and .startTime != null) | "\(.pid):\(.startTime)"' "$f" 2>/dev/null | tr '\n' ' ')"
 done
 PAIRS=""
 for d in "$PROC"/[0-9]*; do
@@ -46,8 +55,8 @@ for d in "$PROC"/[0-9]*; do
 done
 OWNED=" "
 for r in $ROOTS; do
-    case "$r" in ""|*[!0-9]*) continue ;; esac
-    [ -d "$PROC/$r" ] && OWNED="$OWNED$r "
+    case "${r%%:*}" in ""|*[!0-9]*) continue ;; esac
+    same_process "${r%%:*}" "${r#*:}" && OWNED="$OWNED${r%%:*} "
 done
 grew=1
 while [ "$grew" = 1 ]; do
@@ -69,14 +78,15 @@ done
 OWNJ="[]"
 for pid in $OWNED; do
     cwd="$(readlink "$PROC/$pid/cwd" 2>/dev/null || true)"
-    tid=""
+    tid=""; hits=0
     if [ -n "$cwd" ]; then
         while IFS="$(printf '\t')" read -r id path; do
-            [ -n "$id" ] && [ "$path" = "$cwd" ] && { tid="$id"; break; }
+            [ -n "$id" ] && [ "$path" = "$cwd" ] && { tid="$id"; hits=$((hits+1)); }
         done <<EOF
 $WT
 EOF
     fi
+    [ "$hits" -eq 1 ] || tid=""
     OWNJ="$(printf '%s' "$OWNJ" | jq -c --argjson p "$pid" --arg t "$tid" '. + [{pid: $p, thread: (if $t == "" then null else $t end)}]')"
 done
 
