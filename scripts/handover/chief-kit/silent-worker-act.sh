@@ -176,9 +176,9 @@ if [ "$relaunch_due" -eq 1 ] && [ "$nudged_now" -eq 0 ] && ! done_stage relaunch
                 llog="$bucket/silent-act-$label.launch.log"
                 sig="$bucket/silent-act-$label.signal"
                 if command -v setsid >/dev/null 2>&1; then
-                    setsid nohup bash "$launcher" --fleet "$manifest" --profile "$rprofile" --lane "$rlane" "$session" "$rdoc" "$sig" $((since + 300)) "$llog" "$rmodel" >>"$llog.launcher.out" 2>&1 </dev/null 8>&- 9>&- &
+                    setsid nohup bash "$launcher" --fleet "$manifest" --profile "$rprofile" --lane "$rlane" "$session" "$rdoc" "$sig" $((since + 300)) "$llog" "$rmodel" >>"$llog.launcher.out" 2>&1 </dev/null 8>&- 9>&- &  # t13b-ok: one relaunch of a dead worker, bounded by the launcher deadline, not a service
                 else
-                    nohup bash "$launcher" --fleet "$manifest" --profile "$rprofile" --lane "$rlane" "$session" "$rdoc" "$sig" $((since + 300)) "$llog" "$rmodel" >>"$llog.launcher.out" 2>&1 </dev/null 8>&- 9>&- &
+                    nohup bash "$launcher" --fleet "$manifest" --profile "$rprofile" --lane "$rlane" "$session" "$rdoc" "$sig" $((since + 300)) "$llog" "$rmodel" >>"$llog.launcher.out" 2>&1 </dev/null 8>&- 9>&- &  # t13b-ok: one relaunch of a dead worker, bounded by the launcher deadline, not a service
                 fi
                 if conf_out="$(bash "$confirm" --since "$since" --chief "$chief" "$session" "$llog" 2>&1)"; then
                     say="${say:+$say }relaunched"; log="${log:+$log }relaunched $session"
