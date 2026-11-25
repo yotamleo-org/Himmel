@@ -2878,6 +2878,22 @@ describe('create — topic search over open tickets', () => {
     expect(out.indexOf('HIMMEL-11001')).toBeLessThan(out.indexOf('HIMMEL-11002'));
   });
 
+  it('a matching ticket on the second page of the search is found', async () => {
+    held = [HELD_11001];
+    play();
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
+      if (method === 'GET' && path.startsWith('/search/jql') && decodeURIComponent(path).includes('text ~')) {
+        const first = await base(method, path.replace(/&nextPageToken=.*/, ''), body) as { issues: unknown[] };
+        return path.includes('nextPageToken=') ? first : { issues: [{ key: 'HIMMEL-9001', fields: { summary: UNRELATED.summary, status: { name: 'To Do' }, labels: [] } }], nextPageToken: 'page-2' };
+      }
+      return base(method, path, body);
+    });
+    await expect(fileTopic(NEW_TITLE, NEW_WHAT)).rejects.toThrow('exit');
+    expect(stderr()).toMatch(/HIMMEL-11001/);
+    expect(created()).toBe(false);
+  });
+
   it('control: an open ticket on another topic does not refuse', async () => {
     held = [UNRELATED];
     play();

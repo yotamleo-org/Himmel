@@ -715,6 +715,7 @@ const TOPIC_MIN_SHARED = 5;
 const TOPIC_MIN_OVERLAP = 0.3;
 const TOPIC_SHOWN = 3;
 const TOPIC_TIMEOUT_MS = 8000;
+const TOPIC_PAGES = 5;
 
 const stem = (w: string): string => (w.length > 4 ? w.replace(/(?:ies|es|s)$/, '') : w);
 
@@ -766,12 +767,24 @@ async function topicCandidates(jql: string): Promise<TopicHit[]> {
   const sector = sectorField();
   const fields = `summary,status,labels,description${sector ? `,${sector}` : ''}`;
   let timer: NodeJS.Timeout | undefined;
+  const walk = async (): Promise<TopicHit[]> => {
+    const found: TopicHit[] = [];
+    let token: string | undefined;
+    for (let page = 0; page < TOPIC_PAGES; page++) {
+      const cursor = token === undefined ? '' : `&nextPageToken=${encodeURIComponent(token)}`;
+      const r = await request<{ issues?: TopicHit[]; nextPageToken?: string }>('GET', `/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=100${cursor}`);
+      found.push(...(r.issues ?? []));
+      token = r.nextPageToken;
+      if (token === undefined || !r.issues?.length) return found;
+    }
+    console.error(`jira: warning: the topic search read only the first ${found.length} open matches`);
+    return found;
+  };
   try {
-    const search = request<{ issues?: TopicHit[] }>('GET', `/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=100`);
     const slow = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error(`no answer in ${TOPIC_TIMEOUT_MS / 1000}s`)), TOPIC_TIMEOUT_MS);
     });
-    return (await Promise.race([search, slow])).issues ?? [];
+    return await Promise.race([walk(), slow]);
   } catch (e) {
     console.error(`jira: warning: the duplicate search failed (${(e as Error).message}), so the ticket is filed unchecked`);
     return [];
