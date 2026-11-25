@@ -282,7 +282,7 @@ test("the pick-a-chief prompts tell the operator to send /chief, never /console"
 test("/chief queues the line; the dropped /console alias queues nothing", async () => {
   const r = root(); const f = armInbox(r); const replies: string[] = [];
   await handleInbound(r, say(`/chief ${NAME} go ahead`), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
-  expect(readFileSync(f, "utf8").replace(/^- \d\d:\d\d /, "")).toBe("[telegram from=1 chat=1] go ahead\n");
+  expect(readFileSync(f, "utf8").replace(/^- \d\d:\d\dZ /, "")).toBe("[telegram from=1 chat=1] go ahead\n");
   const r2 = root(); const f2 = armInbox(r2);
   await handleInbound(r2, say(`/console ${NAME} go ahead`), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate([]));
   expect(readFileSync(f2, "utf8")).toBe("");
@@ -327,7 +327,7 @@ test("allowlisted /chief message lands one line in the console inbox and spawns 
   await handleInbound(r, say(`/chief ${NAME} go ahead with PR 12`), async (s: string) => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
   const lines = readFileSync(f, "utf8").split("\n").filter(Boolean);
   expect(lines.length).toBe(1);
-  expect(lines[0]).toMatch(/^- \d\d:\d\d \[telegram from=1 chat=1\] go ahead with PR 12$/);
+  expect(lines[0]).toMatch(/^- \d\d:\d\dZ \[telegram from=1 chat=1\] go ahead with PR 12$/);
   expect(ran).toEqual([]);
   expect(existsSync(join(r, "sessions"))).toBe(false);
   expect(replies).toEqual([`→ chief ${NAME}`]);
@@ -449,7 +449,7 @@ test("trusted console outbox receipt routes a Telegram reply to that console, ev
     const msg = JSON.parse(readFileSync(join(r, "inbound.jsonl"), "utf8").trim());
     const ran: string[] = [];
     await handleInbound(r, msg, async s => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate([]));
-    expect(readFileSync(f, "utf8")).toContain(`[telegram from=1 chat=1] ${text}`);
+    expect(readFileSync(f, "utf8")).toContain(`[telegram from=1 chat=1 reply_to=777] ${text}`);
     expect(readFileSync(join(r, "consoles", "second.md"), "utf8")).toBe("");
     expect(ran).toEqual([]);
   }
@@ -1305,7 +1305,7 @@ test("an allowed Send-to-chief tap prompts for the text and the reply lands in t
   expect(prompts[0].text).toContain(NEWEST);
   const replies: string[] = [];
   await handleInbound(r, fresh("status please", { reply_to_message_id: 901 }), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
-  expect(readFileSync(next, "utf8")).toContain("[telegram from=1 chat=1] status please\n");
+  expect(readFileSync(next, "utf8")).toContain("[telegram from=1 chat=1 reply_to=901] status please\n");
   expect(readFileSync(old, "utf8")).toBe("");
 });
 
@@ -4248,7 +4248,7 @@ test("a hand-over chain is followed to its end, and a loop stops and still deliv
   utimesSync(a + ".handover", t - 60, t - 60);
   writeFileSync(a, "- 00:02 [telegram from=1 chat=1] raced the hand-over\n");
   await routeText(c, `/chief ${HX} after the chain`);
-  expect(inboxText(c, HZ)).toMatch(/^- 00:02 \[telegram from=1 chat=1\] raced the hand-over\n- \d\d:\d\d \[telegram from=1 chat=1\] after the chain\n$/);
+  expect(inboxText(c, HZ)).toMatch(/^- 00:02 \[telegram from=1 chat=1\] raced the hand-over\n- \d\d:\d\dZ \[telegram from=1 chat=1\] after the chain\n$/);
   const l = root(); heartbeat(l, HX); armInbox(l, HY); handOver(l, HX, HY); handOver(l, HY, HX);
   await routeText(l, `/chief ${HX} looped`);
   expect(inboxText(l, HY)).toContain("] looped\n");
@@ -4283,7 +4283,7 @@ test("an unread line that reached the old inbox after the hand-over moves to the
   await routeText(r, `/chief ${HY} next line`);
   const moved = inboxText(r, HY);
   expect(moved.startsWith(unread)).toBe(true);
-  expect(moved.slice(unread.length)).toMatch(/^- \d\d:\d\d \[telegram from=1 chat=1\] next line\n$/);
+  expect(moved.slice(unread.length)).toMatch(/^- \d\d:\d\dZ \[telegram from=1 chat=1\] next line\n$/);
   expect(readFileSync(x + ".cursor", "utf8").trim()).toBe(String(Buffer.byteLength(read + unread)));
   await routeText(r, `/chief ${HY} second pass`);
   expect(inboxText(r, HY).match(/listen very carefully/g)).toHaveLength(1);
@@ -4304,7 +4304,7 @@ test("an unread tail behind a hand-over marker older than the window stays put; 
   utimesSync(x + ".handover", t - 61 * 60, t - 61 * 60);
   utimesSync(x, t, t);
   await routeText(r, `/chief ${HX} today`);
-  expect(inboxText(r, HY)).toMatch(/^- \d\d:\d\d \[telegram from=1 chat=1\] today\n$/);
+  expect(inboxText(r, HY)).toMatch(/^- \d\d:\d\dZ \[telegram from=1 chat=1\] today\n$/);
   expect(existsSync(x + ".cursor")).toBe(false);
 });
 
@@ -4317,7 +4317,7 @@ test("a config-audit broadcast in an old inbox is never moved, only the operator
   const t = Date.now() / 1000;
   for (const f of [x, y]) { utimesSync(f + ".handover", t - 60, t - 60); utimesSync(f, t, t); }
   await routeText(r, `/chief ${HX} after`);
-  expect(inboxText(r, HZ)).toMatch(/^\[config-audit\] settings\.json lost keys\n- 00:02 \[telegram from=1 chat=1\] raced\n- \d\d:\d\d \[telegram from=1 chat=1\] after\n$/);
+  expect(inboxText(r, HZ)).toMatch(/^\[config-audit\] settings\.json lost keys\n- 00:02 \[telegram from=1 chat=1\] raced\n- \d\d:\d\dZ \[telegram from=1 chat=1\] after\n$/);
 });
 
 const US_KEY = "HIMMEL-9731"; const US_OTHER = "HIMMEL-9732";
@@ -8262,4 +8262,117 @@ test("the flush hands the format flag on for a flagged reply row only", async ()
   const seen: Array<[string, boolean | undefined]> = [];
   await flushOutboxes(r, async (_chat, text, _reply, _markup, format) => { seen.push([text, format]); return 5; });
   expect(seen).toEqual([["flagged", true], ["plain", false]]);
+});
+
+const ASK_ONE = "Needs you: approve the bypass for the station restart. Blocks: the bridge fix.";
+const ASK_TWO = "Needs you: sign the release notes. Blocks: the version cut.";
+async function sendAsk(r: string, text: string) { expect((await route(["--kind", "chief-reply", "1", text], { r })).code).toBe(0); }
+async function answer(r: string, f: string, text: string, extra: Record<string, unknown> = {}) {
+  await handleInbound(r, say(`/chief ${NAME} ${text}`, extra), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate([]));
+  return readFileSync(f, "utf8").split("\n").filter(Boolean).at(-1)!;
+}
+
+test("HIMMEL-10935 one open ask: a bare yes carries answers=<id> and a UTC Z stamp, and the ask closes", async () => {
+  const r = root(); const f = armInbox(r);
+  await sendAsk(r, ASK_ONE);
+  const line = await answer(r, f, "yes");
+  expect(line).toMatch(/^- \d\d:\d\dZ \[telegram from=1 chat=1 answers=1\] yes$/);
+  expect(await answer(r, f, "again")).not.toContain("answers=");
+});
+
+test("HIMMEL-10935 the inbox stamp is the UTC hour, not the local one", async () => {
+  const r = root(); const f = armInbox(r);
+  await handleInbound(r, say(`/chief ${NAME} hi`), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate([]));
+  const stamp = /^- (\d\d):(\d\d)Z /.exec(readFileSync(f, "utf8"));
+  expect(stamp).not.toBeNull();
+  const utcMin = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
+  const got = Number(stamp![1]) * 60 + Number(stamp![2]);
+  expect(Math.min((utcMin - got + 1440) % 1440, (got - utcMin + 1440) % 1440)).toBeLessThanOrEqual(2);
+});
+
+test("HIMMEL-10935 two open asks and a bare yes with no reply-to: no answers=, the line says the answer is ambiguous", async () => {
+  const r = root(); const f = armInbox(r);
+  await sendAsk(r, ASK_ONE); await sendAsk(r, ASK_TWO);
+  const line = await answer(r, f, "yes");
+  expect(line).not.toContain("answers=");
+  expect(line).toContain("ambiguous-answer=1,2");
+});
+
+test("HIMMEL-10935 a reply to a bot message carries reply_to and the quote, and picks its ask out of two", async () => {
+  const r = root(); const f = armInbox(r);
+  await sendAsk(r, ASK_ONE); await sendAsk(r, ASK_TWO);
+  const line = await answer(r, f, "yes", { reply_to_message_id: 9001, reply_to_bot: true, reply_to_text: ASK_TWO });
+  expect(line).toMatch(/\[telegram from=1 chat=1 reply_to=9001 quote="Needs you: sign the release notes\. Blocks: the version cut\." answers=2\] yes$/);
+  expect(line).not.toContain("ambiguous");
+});
+
+test("HIMMEL-10935 two asks recorded at the same moment get two ids, and answering one leaves the other open", async () => {
+  const r = root(); const f = armInbox(r);
+  await Promise.all([sendAsk(r, ASK_ONE), sendAsk(r, ASK_TWO)]);
+  expect(await answer(r, f, "yes")).toContain("ambiguous-answer=1,2");
+  const one = await answer(r, f, "yes", { reply_to_message_id: 9001, reply_to_bot: true, reply_to_text: ASK_ONE });
+  const two = await answer(r, f, "no", { reply_to_message_id: 9002, reply_to_bot: true, reply_to_text: ASK_TWO });
+  expect([one, two].map(l => /answers=(\d)/.exec(l)?.[1]).sort()).toEqual(["1", "2"]);
+});
+
+test("HIMMEL-10935 two open asks that open with the same line stay ambiguous when the reply quotes that line", async () => {
+  const r = root(); const f = armInbox(r);
+  await sendAsk(r, "Needs you: two items.\n1. approve the restart");
+  await sendAsk(r, "Needs you: two items.\n1. sign the notes");
+  const line = await answer(r, f, "yes", { reply_to_message_id: 9001, reply_to_bot: true, reply_to_text: "Needs you: two items." });
+  expect(line).not.toContain("answers=");
+  expect(line).toContain("ambiguous-answer=1,2");
+});
+
+test("HIMMEL-10935 a reply quoting an answered ask binds nothing and leaves the other open ask open", async () => {
+  const r = root(); const f = armInbox(r);
+  await sendAsk(r, ASK_ONE); await sendAsk(r, ASK_TWO);
+  expect(await answer(r, f, "yes", { reply_to_message_id: 9001, reply_to_bot: true, reply_to_text: ASK_ONE })).toContain("answers=1");
+  const late = await answer(r, f, "thanks", { reply_to_message_id: 9001, reply_to_bot: true, reply_to_text: ASK_ONE });
+  expect(late).not.toContain("answers=");
+  expect(await answer(r, f, "yes")).toContain("answers=2");
+});
+
+test("HIMMEL-10935 a reply quoting an answered ask whose first line an open ask shares binds nothing and closes nothing", async () => {
+  const r = root(); const f = armInbox(r);
+  const FIRST = "Needs you: two items.";
+  await sendAsk(r, `${FIRST}\n1. approve the restart`);
+  expect(await answer(r, f, "yes")).toContain("answers=1");
+  await sendAsk(r, `${FIRST}\n1. sign the notes`);
+  const late = await answer(r, f, "no", { reply_to_message_id: 9001, reply_to_bot: true, reply_to_text: FIRST });
+  expect(late).not.toContain("answers=");
+  expect(await answer(r, f, "yes")).toContain("answers=2");
+});
+
+test("HIMMEL-10935 an ask recorded for one chief is not answered by a yes sent to another chief", async () => {
+  const r = root(); const first = armInbox(r); const SECOND = "HIMMEL-nextleg-2026-09-22W-chief"; const second = armInbox(r, SECOND);
+  expect((await route(["--chief", SECOND, "--kind", "chief-reply", "1", ASK_ONE], { r })).code).toBe(0);
+  expect(await answer(r, first, "yes")).not.toContain("answers=");
+  await handleInbound(r, say(`/chief ${SECOND} yes`), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate([]));
+  expect(readFileSync(second, "utf8").split("\n").filter(Boolean).at(-1)).toContain("answers=1");
+});
+
+test("HIMMEL-10935 a reply to a bot message that is no ask binds nothing while one ask is open", async () => {
+  const r = root(); const f = armInbox(r);
+  await sendAsk(r, ASK_ONE);
+  const line = await answer(r, f, "ok", { reply_to_message_id: 9005, reply_to_bot: true, reply_to_text: "Merge refused. Blocks: the merge." });
+  expect(line).toContain("reply_to=9005");
+  expect(line).not.toContain("answers=");
+  expect(await answer(r, f, "yes")).toContain("answers=1");
+});
+
+test("HIMMEL-10935 an ask that lands in a later part of a split reply is recorded as one ask", async () => {
+  const r = root(); const f = armInbox(r);
+  await sendAsk(r, `${filler(2900)}\n\n${filler(2900)}\n\nNeeds you: sign the notes. Blocks: the cut.`);
+  const rows = lines(join(r, "consoles", "asks.ndjson")).map(l => JSON.parse(l));
+  expect(rows).toHaveLength(1);
+  expect(rows[0].quote).toMatch(/^\(2\/2\) /);
+  expect(await answer(r, f, "yes")).toContain("answers=1");
+});
+
+test("HIMMEL-10935 a text with no Needs you: line records no ask", async () => {
+  const r = root(); const f = armInbox(r);
+  await sendAsk(r, "Merge refused. Blocks: the merge. Do: ask a reviewer");
+  expect(existsSync(join(r, "consoles", "asks.ndjson"))).toBe(false);
+  expect(await answer(r, f, "yes")).toMatch(/^- \d\d:\d\dZ \[telegram from=1 chat=1\] yes$/);
 });
