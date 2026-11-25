@@ -22,6 +22,12 @@ describe('bitbucket pr review-thread subcommands', () => {
     expect(names).toEqual(expect.arrayContaining(['comments', 'reply', 'resolve']));
   });
 
+  it('registers the `statuses` verb with a required <id>', () => {
+    const statuses = prCommand().commands.find((c) => c.name() === 'statuses');
+    expect(statuses?.registeredArguments).toHaveLength(1);
+    expect(statuses?.registeredArguments[0].required).toBe(true);
+  });
+
   it('pr reply declares two required args (<id> <parentId>)', () => {
     const reply = prCommand().commands.find((c) => c.name() === 'reply');
     expect(reply).toBeDefined();

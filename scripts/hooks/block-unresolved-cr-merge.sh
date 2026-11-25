@@ -32,6 +32,10 @@
 # origin the harness's go.sh and merge-on-green.sh use.
 # Sibling of check-cr-marker-on-pr-create.sh / block-merged-pr-commit.sh.
 #
+# A direct Bitbucket merge (the bitbucket CLI's `pr merge`, `forge_pr_merge`) is also
+# denied, naming scripts/handover/pr-merge.sh; it needs BOTH CR_MERGE_GATE_OK=1 and
+# CI_MERGE_GATE_OK=1 to pass.
+#
 # Exit: 0 allow (incl. every fail-open path), 2 block (stderr shown to model).
 # the PR lookup itself (bounded `gh pr view`) fails CLOSED on a
 # real merge; the CR/CI gates' own API errors stay fail-open.
@@ -143,6 +147,12 @@ for _n in "$cmd_norm" "$cmd_sq"; do
             if (w == "api") api = 1; else if (w == "alias") al = 1; else g = 0 } }
         END { exit !f }' && fires=1
 done
+if printf '%s' "$cmd_norm" | grep -Eq 'bitbucket[^[:space:];&|]*[[:space:]]+(-[^[:space:]]+[[:space:]]+)*pr[[:space:]]+merge|forge_pr_merge'; then
+    if [ "${CR_MERGE_GATE_OK:-0}" != "1" ] || [ "${CI_MERGE_GATE_OK:-0}" != "1" ]; then
+        _deny "a direct Bitbucket merge skips the reviewer and CI gates. Run scripts/handover/pr-merge.sh instead (it merges at the vetted head). Bypass: CR_MERGE_GATE_OK=1 and CI_MERGE_GATE_OK=1 in the launching shell."
+    fi
+    exit 0
+fi
 [ "$fires" = "1" ] || exit 0
 # A head pin is one word to bash whether or not it is quoted: unquote a hex-only
 # value (`--match-head-commit "<sha>"`, `'<sha>'`, `=` form) before the plain-command

@@ -3431,10 +3431,18 @@ the operator's "never merge over unresolved CodeRabbit remarks" rule
 matches `coderabbit`, covering both `coderabbitai` and `coderabbitai[bot]`
 login forms) and reads CodeRabbit's commit **status** on the head SHA via
 `scripts/lib/coderabbit-signal.sh`. The same predicate is
-called from `scripts/handover/pr-merge.sh` (GitHub forge only) before its
+called from `scripts/handover/pr-merge.sh` (the GitHub forge; Bitbucket below) before its
 mergeability poll, so machines without the plugin hook still get the gate on
 that path (a block there exits `pr-merge.sh` with code 5, distinct from a
 real `gh pr merge` failure's code 4).
+
+**On Bitbucket Cloud** `pr-merge.sh` runs `bb_forge_cr_gate` (`scripts/lib/forge-bitbucket.sh`)
+instead: every inline review thread must be resolved, read with the CLI's `pr comments`.
+It fails **closed**: an unreadable or truncated thread list blocks (exit 5), where the
+GitHub gate fails open. Bypass: `CR_MERGE_GATE_OK=1` or `CR_PROFILE=none`. A direct
+`bitbucket pr merge` (or `forge_pr_merge`) typed in a session is denied by
+`block-unresolved-cr-merge.sh`, which names `pr-merge.sh`; it needs both
+`CR_MERGE_GATE_OK=1` and `CI_MERGE_GATE_OK=1` in the launching shell to pass.
 
 <!-- mem:9d6b22f2b7eb -->
 **CodeRabbit posts a STATUS, not a check-run.** This gate used to
@@ -3977,6 +3985,18 @@ adversarially-hardened selector extraction; a block prints
 `scripts/handover/pr-merge.sh` before its mergeability poll (a block there
 exits `pr-merge.sh` with code **6**, distinct from the CR gate's 5 and a real
 merge failure's 4).
+
+**On Bitbucket Cloud** `pr-merge.sh` runs `bb_forge_ci_gate` instead: every build status
+on the PR head (the CLI's `pr statuses`, which carries Pipelines and external CI alike)
+must be `SUCCESSFUL`. A failed, stopped, running or unrecognised status blocks (exit 6),
+and so does an unreadable or truncated list: this gate fails **closed**, unlike the
+GitHub gate. A head with no statuses at all is allowed with a note, as a checkless
+GitHub PR is. Bypass: `CI_MERGE_GATE_OK=1`. The gates read the head `pr-merge.sh` pinned
+first; `bb_forge_pr_merge` re-reads it just before the merge and refuses (exit 4) if it
+moved or cannot be read. Bitbucket's merge API has no server-side head pin, so a push
+landing between that re-read and the merge request is the one window left open. The
+pinned value is the abbreviated hash `pr get` returns, not a 40-hex SHA. Reading
+Reading Pipelines runs themselves and a live Bitbucket end-to-end proof are not built yet.
 
 **Fail-OPEN posture:** deny ONLY on positive red/pending evidence. `gh`/`jq`
 missing, API/parse error, and a genuinely **checkless PR** (zero check-runs AND

@@ -191,6 +191,8 @@ case "$* " in
     "pr create"*)     echo '{"id":9,"url":"https://bitbucket.org/ws/repo/pull-requests/9","state":"OPEN"}' ;;
     "pr edit"*)       echo '{"id":7,"url":"https://bitbucket.org/ws/repo/pull-requests/7","state":"OPEN"}' ;;
     "pr merge"*)      exit 0 ;;
+    "pr get 7"*)      echo '{"id":7,"title":"T","state":"OPEN","source_branch":"feat/x","destination_branch":"main","head_commit":"abc123def456"}' ;;
+    "pr statuses 7"*) echo '{"statuses":[{"name":"build","key":"b","state":"SUCCESSFUL"}],"truncated":false,"pages":1}' ;;
     "issue create"*)  echo '{"id":5,"title":"A nit","url":"https://bitbucket.org/ws/repo/issues/5"}' ;;
     *) echo "stub: unhandled bb args: $*" >&2; exit 99 ;;
 esac
@@ -206,6 +208,9 @@ assert_eq "bb pr_create url"    "https://bitbucket.org/ws/repo/pull-requests/9" 
 assert_eq "bb pr_has_merged"    "2" "$(FORGE=bitbucket BITBUCKET_CMD="$BB_STUB" forge_pr_has_merged feat/x)"
 assert_eq "bb pr_mergeable UNKNOWN (non-blocking, §5.1)" "UNKNOWN" "$(FORGE=bitbucket BITBUCKET_CMD="$BB_STUB" forge_pr_mergeable 7)"
 assert_eq "bb pr_merge rc0"     "0" "$(FORGE=bitbucket BITBUCKET_CMD="$BB_STUB" forge_pr_merge 7 >/dev/null; echo $?)"
+assert_eq "bb pr_merge pinned to the current head rc0" "0" "$(FORGE=bitbucket BITBUCKET_CMD="$BB_STUB" forge_pr_merge 7 abc123def456 >/dev/null; echo $?)"
+assert_eq "bb pr_merge refuses a moved head rc4" "4" "$(FORGE=bitbucket BITBUCKET_CMD="$BB_STUB" forge_pr_merge 7 000000000000 >/dev/null 2>&1; echo $?)"
+assert_eq "bb checks rows" "$(printf 'pass\tbuild')" "$(FORGE=bitbucket BITBUCKET_CMD="$BB_STUB" forge_checks 7)"
 
 # A failing CLI must propagate (not be swallowed into empty/0 output).
 echo "TEST: bitbucket backend propagates CLI failure (no silent empty)"

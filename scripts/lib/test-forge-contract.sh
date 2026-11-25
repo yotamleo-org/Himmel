@@ -87,6 +87,11 @@ case "$1 $2" in
                      44) printf 'null\n' ;;
                      *) echo "bb-stub: no PR $3" >&2; exit 1 ;;
                  esac ;;
+    "pr statuses") case "$3" in
+                     42) cat "$FIX/pr-statuses.json" ;;
+                     45) printf '{"statuses":[],"truncated":true,"pages":10}\n' ;;
+                     *) echo "bb-stub: no PR $3" >&2; exit 1 ;;
+                 esac ;;
     *) echo "bb-stub: unrecorded call: $*" >&2; exit 1 ;;
 esac
 EOF
@@ -161,7 +166,8 @@ expect() {
 
 GH_VIEW='{"id":"2464","head":"59d4d28d3b892290672c5e923f3b4d3b25ca8cf4","base":"main","title":"fix(lib): [HIMMEL-3571] git-clean scrub helpers clear the remaining repository-redirecting GIT_* variables","state":"MERGED","merged":true}'
 GH_CHECKS=$(printf 'pass\tshell-unit (ubuntu-latest)\npass\tjira-cli-smoke\npass\tleak-classes\npass\tgit-env-scrub')
-BB_VIEW='{"id":"42","head":"","base":"main","title":"feat: example change","state":"MERGED","merged":true}'
+BB_CHECKS=$(printf 'pass\tUnit tests\npass\tLint\nfail\tDeploy preview')
+BB_VIEW='{"id":"42","head":"59d4d28d3b89","base":"main","title":"feat: example change","state":"MERGED","merged":true}'
 LG_VIEW="{\"id\":\"br-feat-x\",\"head\":\"$LG_HEAD\",\"base\":\"main\",\"title\":\"feat: x\",\"state\":\"OPEN\",\"merged\":false}"
 
 for f in github bitbucket local-git none; do
@@ -193,8 +199,9 @@ for f in github bitbucket local-git none; do
 
     run "$f" forge_checks "$id"
     case "$f" in
-        github) expect "$f" "checks $id" 0 "$GH_CHECKS" ;;
-        *)      expect "$f" "checks is refused" 4 "" ;;
+        github)    expect "$f" "checks $id" 0 "$GH_CHECKS" ;;
+        bitbucket) expect "$f" "checks $id" 0 "$BB_CHECKS" ;;
+        *)         expect "$f" "checks is refused" 4 "" ;;
     esac
 
     run "$f" forge_repo_id
@@ -299,6 +306,12 @@ git -C "$LGM" checkout -q master
 git -C "$LGM" merge -q --ff-only feat/m
 OUT=$(cd "$LGM" && FORGE=local-git forge_change_view br-feat-m 2>/dev/null)
 assert_eq "local-git: feat/m merged into master is MERGED" "MERGED" "$(field "$OUT" state)"
+
+echo "TEST: bitbucket checks refuses a truncated or unreadable status list"
+run bitbucket forge_checks 45
+expect bitbucket "checks of a truncated list" 1 ""
+run bitbucket forge_checks 99
+expect bitbucket "checks of an unknown PR" 1 ""
 
 # ── bitbucket refuses a response it cannot read ──────────────────────────────
 echo "TEST: bitbucket change_view refuses malformed or empty JSON"

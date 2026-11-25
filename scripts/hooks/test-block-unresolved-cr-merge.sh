@@ -1580,6 +1580,21 @@ if [ "${HIMMEL_1495_SELF:-0}" != "1" ]; then
     fi
 fi
 
+t bb-merge-plain-cli-denied 2 Bash "bitbucket pr merge 7"
+t bb-merge-node-dist-denied 2 Bash "node /x/scripts/bitbucket/dist/index.js pr merge 7"
+t bb-merge-flag-before-pr-denied 2 Bash "node /x/scripts/bitbucket/dist/index.js --json pr merge 7"
+t bb-merge-forge-fn-denied 2 Bash "source scripts/lib/forge.sh; forge_pr_merge 7"
+if grep -q 'scripts/handover/pr-merge.sh' "$TMP/err-bb-merge-plain-cli-denied"; then
+    pass=$((pass+1)); echo "ok   bb-merge-deny-names-pr-merge-sh"
+else
+    fail=$((fail+1)); echo "FAIL bb-merge-deny-names-pr-merge-sh"; sed 's/^/  err: /' "$TMP/err-bb-merge-plain-cli-denied"
+fi
+CR_MERGE_GATE_OK=1 t bb-merge-cr-bypass-only-denied 2 Bash "bitbucket pr merge 7"
+CI_MERGE_GATE_OK=1 t bb-merge-ci-bypass-only-denied 2 Bash "bitbucket pr merge 7"
+CR_MERGE_GATE_OK=1 CI_MERGE_GATE_OK=1 t bb-merge-bypass-pair-allows 0 Bash "bitbucket pr merge 7"
+t bb-pr-view-not-denied 0 Bash "node /x/scripts/bitbucket/dist/index.js pr get 7"
+t bb-pr-merge-sh-not-denied 0 Bash "bash scripts/handover/pr-merge.sh"
+
 # guard against reintroducing extraction of a historical
 # commit's blob via `git show <sha>:<path>` — the class of fragility this
 # ticket fixed. Once a PR's branch is squash-merged, that commit is
