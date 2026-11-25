@@ -173,8 +173,11 @@ fleet_plain rc4b
 start "$I" "$WORK/rc4b.out" --doc "$FD" --workers-from "$FM"
 n=0; while [ "$n" -lt 100 ] && [ "$(calls)" != 2 ]; do sleep 0.1; n=$((n + 1)); done
 echo 0 > "$STUB/relay.rc"
-sleep 3
-check "(rc4b) an rc 0 run between rc 4 runs ends the streak" "0" "$(grep -c '^WAKE ' "$WORK/rc4b.out")"
+n=0; while [ "$n" -lt 100 ] && [ "$(calls)" -lt 3 ]; do sleep 0.1; n=$((n + 1)); done
+sleep 0.5
+echo 4 > "$STUB/relay.rc"
+wait_exit "$WPID"
+check "(rc4b) an rc 0 run between rc 4 runs ends the streak: the wake needs three rc 4 runs after it" "0|WAKE t3-relay list-failed list|6" "$rc|$(grep '^WAKE ' "$WORK/rc4b.out" | head -n 1)|$(calls)"
 stop_waiter "$WPID"
 
 relay_reset
