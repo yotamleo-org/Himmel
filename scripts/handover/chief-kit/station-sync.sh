@@ -4,9 +4,10 @@
 # runs them, then --versions; any component still behind is reported, and a
 # station-local edit against the shipped version is reported, never discarded.
 #
-# Usage: station-sync.sh --pr <n> | --files <file | ->
+# Usage: station-sync.sh --pr <n> | --files <file | -> | --heal --bucket <dir> --chief <name>
 #   --pr <n>      the merged PR; its changed paths come from `gh pr view`.
 #   --files <f>   one changed path per line (the test seam, also usable by hand).
+#   --heal        no PR: retry a station whose state file reads BEHIND:<components> (see Heal below).
 #
 # Path -> step:
 #   marketplace/                    marketplace
@@ -32,6 +33,19 @@
 # prints `LOCAL-DIFF luna_template <file>: <line>` so it is upstreamed or dropped.
 # A tracked edit in the qmd fork clone prints `LOCAL-DIFF qmd_fork <file>`.
 #
+# Heal (--heal): worker-event.sh starts it, detached, on an event wake while the state reads BEHIND:<components>.
+# It reads the state file and runs the step each behind component maps to, then re-checks with --versions and
+# rewrites the state file as a sync does (no usage build):
+#   plugins -> marketplace, jira_cli -> jira_cli, hermes -> hermes, qmd_fork -> qmd_fork
+# Any other behind component (himmel, luna_template, codex, claude, cli_proxy, node, npm, bun, a probe tool,
+# unverified, a *-failed marker) has no step here and stays reported, never healed. The hermes step keeps its own
+# 3-day age rule: inside the window it is reported, not forced.
+# It takes the sync's lock without waiting (`SKIP heal sync-running` when a sync holds it) and keeps a back-off stamp
+# ~/.himmel/state/station-heal.ts (SS_HEAL_WINDOW seconds, default 1800; SS_HEAL_NOW replaces the clock): a heal that
+# ran inside the window prints `SKIP heal backoff` and runs nothing, so a broken step never loops. A failed step
+# writes ONE owed row (owe.sh add, kind step, in --bucket for --chief), its identity the component list and the day,
+# so a replay returns the same row. Other skips: `SKIP heal not-behind` (ok, or no state), `SKIP heal nothing-healable`.
+#
 # Output: `STEP <step> rc=<n>` per step, any LOCAL-DIFF lines, then
 # `STATION=OK` or `STATION=BEHIND:<component>,...`, then a `STEP usage_compute rc=<n>` or
 # `SKIP usage_compute <reason>` line. The same station value (`ok` or
@@ -40,7 +54,7 @@
 # `BEHIND:pending`, so a run that is killed never leaves a stale `ok`. Exit 0 whatever the station state; 2 on usage.
 #
 # Test seams (env): SS_UPDATE SS_UPGRADE SS_GH SS_PRIMARY SS_VAULT SS_QMD_CLONE SS_STATE SS_SYSTEMCTL
-# SS_USAGE_COMPUTE SS_TIMEOUT.
+# SS_USAGE_COMPUTE SS_TIMEOUT SS_HEAL_NOW SS_HEAL_WINDOW.
 # Platform guard: Linux bash 3.2+.
 set -uo pipefail
 
@@ -50,18 +64,24 @@ GH_READ_BIN="$HERE/../../lib/gh-read.sh"
 # shellcheck source=scripts/lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
-usage() { echo "usage: station-sync.sh --pr <n> | --files <file | ->" >&2; exit 2; }
+usage() { echo "usage: station-sync.sh --pr <n> | --files <file | -> | --heal --bucket <dir> --chief <name>" >&2; exit 2; }
 
-PR=""; FILES=""
+PR=""; FILES=""; HEAL=""; BUCKET=""; CHIEF=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --pr|--files) [ "$#" -ge 2 ] || usage
-            case "$1" in --pr) PR="$2" ;; --files) FILES="$2" ;; esac
+        --heal) HEAL=1; shift ;;
+        --pr|--files|--bucket|--chief) [ "$#" -ge 2 ] || usage
+            case "$1" in --pr) PR="$2" ;; --files) FILES="$2" ;; --bucket) BUCKET="$2" ;; --chief) CHIEF="$2" ;; esac
             shift 2 ;;
         *) usage ;;
     esac
 done
-{ [ -n "$PR" ] && [ -z "$FILES" ]; } || { [ -z "$PR" ] && [ -n "$FILES" ]; } || usage
+if [ -n "$HEAL" ]; then
+    { [ -z "$PR" ] && [ -z "$FILES" ] && [ -n "$BUCKET" ] && [ -n "$CHIEF" ]; } || usage
+else
+    { [ -z "$BUCKET" ] && [ -z "$CHIEF" ]; } || usage
+    { [ -n "$PR" ] && [ -z "$FILES" ]; } || { [ -z "$PR" ] && [ -n "$FILES" ]; } || usage
+fi
 
 PRIMARY="${SS_PRIMARY:-}"
 if [ -z "$PRIMARY" ]; then
@@ -78,11 +98,35 @@ if [ -n "${SS_UPGRADE:-}" ]; then UPGRADE=("$SS_UPGRADE"); else UPGRADE=(bash "$
 # run twice at once and an earlier run's verdict never lands over a later run's pending.
 mkdir -p "$(dirname "$STATE")" 2>/dev/null
 # prim-ok: a blocking lock held on fd 9 until the script exits; with_lock wraps one command
-exec 9>"$STATE.lock" && flock 9
+exec 9>"$STATE.lock"
+# prim-ok: a heal only tries the lock; a sync in flight owns the state, so the heal skips
+if [ -z "$HEAL" ]; then flock 9; elif ! flock -n 9; then echo "SKIP heal sync-running"; exit 0; fi
+heal_want=""
+if [ -n "$HEAL" ]; then
+    cur="$(cat "$STATE" 2>/dev/null)"  # swallow-ok: no state file reads as not behind, the case below skips
+    case "$cur" in BEHIND:*) ;; *) echo "SKIP heal not-behind"; exit 0 ;; esac
+    for comp in $(printf '%s' "${cur#BEHIND:}" | tr , ' '); do
+        case "$comp" in
+            plugins) step=marketplace ;;
+            jira_cli|hermes|qmd_fork) step="$comp" ;;
+            *) continue ;;
+        esac
+        case " $heal_want " in *" $step "*) ;; *) heal_want="$heal_want $step" ;; esac
+    done
+    [ -n "$heal_want" ] || { echo "SKIP heal nothing-healable ${cur#BEHIND:}"; exit 0; }
+    HEAL_STAMP="$(dirname "$STATE")/station-heal.ts"
+    heal_now="${SS_HEAL_NOW:-$(date +%s)}"
+    last="$(cat "$HEAL_STAMP" 2>/dev/null)"  # swallow-ok: no stamp yet means never healed; the case below reads empty as 0
+    case "$last" in ''|*[!0-9]*) last=0 ;; esac
+    if [ $((heal_now - last)) -lt "${SS_HEAL_WINDOW:-1800}" ]; then echo "SKIP heal backoff"; exit 0; fi
+    echo "$heal_now" > "$HEAL_STAMP" 2>/dev/null
+    echo "HEAL$heal_want"
+fi
 # Pending until the run ends: a sync killed mid-way must not leave the previous `ok`.
 echo "BEHIND:pending" > "$STATE" 2>/dev/null
 
-if [ -n "$PR" ]; then
+if [ -n "$HEAL" ]; then paths=""
+elif [ -n "$PR" ]; then
     GH="${SS_GH:-$GH_READ_BIN}"
     paths="$(cd "$PRIMARY" && "$GH" pr view "$PR" --json files -q '.files[].path' 2>/dev/null)" \
         || { mkdir -p "$(dirname "$STATE")" 2>/dev/null && echo "BEHIND:unverified" > "$STATE" 2>/dev/null
@@ -96,6 +140,7 @@ add() { case " $want " in *" $1 "*) ;; *) want="$want $1" ;; esac; }
 # A rebuild that failed earlier (or never ran: bun missing) leaves this marker; this merge may touch no UI path, but the retry is owed.
 CUI_PENDING="$HOME/.himmel/state/config-ui-rebuild-pending"
 [ ! -f "$CUI_PENDING" ] || add config_ui
+for step in $heal_want; do add "$step"; done
 while IFS= read -r p; do
     case "$p" in
         marketplace/*) add marketplace ;;
@@ -145,7 +190,7 @@ local_template_diff() {
 }
 
 refused=""; failed=""
-for step in marketplace jira_cli config_ui qmd_fork graphify luna_template; do
+for step in marketplace jira_cli config_ui qmd_fork hermes graphify luna_template; do
     case " $want " in *" $step "*) ;; *) continue ;; esac
     if [ "$step" = luna_template ]; then
         diffs="$(local_template_diff)"
@@ -209,10 +254,19 @@ if [ -f "$CUI_PENDING" ]; then case ",$failed," in *",config_ui-failed,"*) ;; *)
 [ -z "$failed" ] || behind="${behind:+$behind,}$failed"
 [ -z "$refused" ] || case ",$behind," in *",$refused,"*) ;; *) behind="${behind:+$behind,}$refused" ;; esac
 
+if [ -n "$HEAL" ] && [ -n "$failed" ]; then
+    oid="$(python3 -I -c 'import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())' "station-heal:$((heal_now / 86400)):$failed")"
+    if owed="$(bash "$HERE/owe.sh" add --bucket "$BUCKET" --chief "$CHIEF" --kind step --identity "$oid" \
+        --text "station heal: himmel-update --only failed for $failed and the station reads BEHIND:$behind; run bash scripts/himmel-update.sh --only <step> by hand" 2>&1)"; then
+        echo "OWED station-heal $owed"
+    else echo "OWED-FAILED station-heal $owed"; fi
+fi
+
 if [ -n "$behind" ]; then val="BEHIND:$behind"; echo "STATION=BEHIND:$behind"
 else val="ok"; echo "STATION=OK"
 fi
 mkdir -p "$(dirname "$STATE")" 2>/dev/null && printf '%s\n' "$val" > "$STATE" 2>/dev/null
+[ -z "$HEAL" ] || exit 0
 
 release_sync_lock() { exec 9>&-; }
 USAGE_TERM_TIMEOUT_SECONDS=180

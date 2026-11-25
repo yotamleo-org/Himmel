@@ -46,6 +46,10 @@
 #   station back to main: ` station=pending log=<file>` is appended at once, its
 #   output goes to the log and its verdict to the state file tick.sh shows.
 #
+#   on every other event wake (handled or escalated) while the state file reads BEHIND:<components> (not `pending`),
+#   station-sync.sh --heal --bucket <the chief doc's directory> --chief <the chief doc's stem> runs detached the same way
+#   (output to the same log), and retries the steps its behind components map to, bounded by its own back-off.
+#
 # The worker is found by its N<k> label, else by its session name (the worker doc's
 # stem) quoted in the message. After a handled event the script runs
 # live-state.sh <doc>, which rewrites the `## Live state` legs: line; its failure
@@ -64,7 +68,7 @@
 #
 # `HANDLED closed-already <label>` (rc 0): a WRAPPED worker the chief already closed (its bullet is in the chief
 # doc), whose doc tail is WRAPPED, queue lock free and session gone; nothing runs.
-# Test seams (env): LE_LOCK LE_SESSIONS LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_AUTOGO LE_GH LE_DRYRUN_BOUND.
+# Test seams (env): LE_LOCK LE_SESSIONS LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_STATION_STATE LE_AUTOGO LE_GH LE_DRYRUN_BOUND.
 # Platform guard: Linux bash 3.2+ (wrap-merged.sh needs flock + jq).
 set -uo pipefail
 
@@ -123,6 +127,22 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 if [ -z "$DOC" ] || [ -z "$FLEET" ] || [ -z "$MSG" ]; then usage; fi
+
+heal_station() {
+    [ -z "${station_started:-}" ] || return 0
+    local st="${LE_STATION_STATE:-${SS_STATE:-$HOME/.himmel/state/station-sync.state}}" cur hlog
+    cur="$(cat "$st" 2>/dev/null)" || return 0  # swallow-ok: no state file means nothing to heal
+    case "$cur" in BEHIND:pending|BEHIND:) return 0 ;; BEHIND:*) ;; *) return 0 ;; esac
+    hlog="${LE_STATION_LOG:-$HOME/.himmel/state/station-sync.out}"
+    mkdir -p "$(dirname "$hlog")" 2>/dev/null || true  # swallow-ok: a missing log directory only loses the heal output
+    if command -v setsid >/dev/null 2>&1; then
+        setsid "${STATION[@]}" --heal --bucket "${DOC%/*}" --chief "$(basename "$DOC" .md)" >>"$hlog" 2>&1 </dev/null &
+    else
+        "${STATION[@]}" --heal --bucket "${DOC%/*}" --chief "$(basename "$DOC" .md)" >>"$hlog" 2>&1 </dev/null &
+    fi
+    return 0
+}
+trap heal_station EXIT
 
 if [ "$MSG" = "-" ]; then body="$(cat)"; else body="$(cat "$MSG")" || usage; fi  # read-sink-ok: MSG is the message file the caller asks to post
 line="$(printf '%s\n' "$body" | grep -m1 -E '[^[:space:]]')" || line=""
@@ -376,6 +396,7 @@ rm -f "$errf" "${outf:-}"
 # log, and its verdict lands in the state file tick.sh reads as station=.
 station=""
 if [ -n "$pr" ]; then
+    station_started=1
     slog="${LE_STATION_LOG:-$HOME/.himmel/state/station-sync.out}"
     mkdir -p "$(dirname "$slog")" 2>/dev/null || true
     # setsid is util-linux: absent on macOS, where the sync stays in this process group
