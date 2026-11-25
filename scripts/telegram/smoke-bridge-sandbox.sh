@@ -168,7 +168,6 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$work/jira.port" ] && break; sleep 0.5; 
 JPORT="$(head -n 1 "$work/jira.port")"
 [ -n "$JPORT" ] || { echo "FAIL smoke-bridge-sandbox: the fake Jira did not start"; exit 1; }
 
-# A fresh scratch release per spawn, declared with the engine on scratch state.
 cat > "$work/declare.ts" <<'EOF'
 const [ck, stateDir, keyDir] = process.argv.slice(2);
 const { declare } = await import(`${ck}/scripts/jira/src/release/engine.ts`);
