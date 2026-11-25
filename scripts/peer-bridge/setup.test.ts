@@ -10,7 +10,7 @@ import { join, relative } from "node:path";
 import { drainSpool } from "./chain";
 import { loadAllowlist, readPeersFile } from "./config";
 import { configDir, peerDir, peersFile, stateDir } from "./ids";
-import { SetupError, add, allowSuite, confirm, denySuite, keygenCmd, kill, remove, runner, stationName, trust, unkill, uninstall, untrust, type Deps } from "./setup";
+import { SetupError, add, allowSuite, confirm, denySuite, dm, keygenCmd, kill, pair, remove, runner, stationName, trust, unkill, uninstall, untrust, type Deps } from "./setup";
 import { NEXT_KEY, STATION_KEY, currentSigningKey, fingerprint, keyId, publicKeyOf } from "./sign";
 import { TelegramError } from "./telegram";
 
@@ -99,7 +99,7 @@ const spoolFiles = () => fs.readdirSync(join(peerDir("example"), "spool")).filte
 const PUB_X = Buffer.alloc(32, 7).toString("base64");
 const CLI: [string, string[]][] = [
   ["add", ["example", "--peer-bot-id", PEER_ID]], ["confirm", ["example", String(CHAT)]], ["remove", ["example"]], ["uninstall", []], ["runner", []],
-  ["station-name", ["yotam"]], ["keygen", []], ["keygen", ["--rotate"]], ["keygen", ["--activate"]],
+  ["station-name", ["yotam"]], ["keygen", []], ["keygen", ["--rotate"]], ["keygen", ["--activate"]], ["keygen", ["--show"]], ["dm", []], ["pair", ["example", "yotam"]],
   ["trust", ["example", "example", PUB_X]], ["untrust", ["example"]], ["untrust", ["example", "--key", "0123abcd"]],
   ["allow-suite", ["example", "ledger", "scripts/ci/test-suite-ledger.sh"]], ["deny-suite", ["example", "ledger"]], ["kill", ["example"]], ["unkill", ["example"]],
 ];
@@ -307,6 +307,52 @@ t("keygen writes a 0600 key, prints pub, id and fingerprint, never the private k
   const before = fs.readFileSync(path);
   expect(await refused(keygenCmd("new", mk().deps))).toContain("already exists");
   expect(fs.readFileSync(path).equals(before)).toBe(true);
+});
+
+t("keygen --show prints the current public key, id and fingerprint again, never the private key, and refuses with no key", async () => {
+  expect(await refused(keygenCmd("show", mk().deps))).toContain("no usable station key");
+  await keygenCmd("new", mk().deps);
+  const { deps, lines } = mk();
+  await keygenCmd("show", deps);
+  const k = peerKeyFor(configDir()), shown = lines.join("\n");
+  for (const v of [k.pub, k.id, k.fp]) expect(shown).toContain(v);
+  expect(shown).not.toContain("PRIVATE KEY");
+});
+
+t("dm records the operator's private chat with the peer bot, and a chat the bot cannot see or that is not private writes nothing", async () => {
+  await addExample();
+  for (const s of [stub({ chatErr: new TelegramError("getChat not ok (400): chat not found", 400) }), stub({ chat: { id: 4242, type: "group" } }), stub({ chat: { id: 77, type: "private" } })]) {
+    const before = peersBytes();
+    await refused(dm(mk({ answers: [""], ...s }).deps));
+    expect(peersBytes().equals(before)).toBe(true);
+  }
+  const { deps, lines } = mk({ answers: [""], ...stub({ chat: { id: 4242, type: "private" } }) });
+  await dm(deps);
+  expect(readPeersFile(peersFile()).operatorDmChatId).toBe(4242);
+  expect(lines.at(-1)).toContain("picks this up by itself");
+});
+
+t("pair sets a missing station name, makes the key once, prints a card without the fingerprint, and --card trusts theirs only after the fingerprint", async () => {
+  await addExample();
+  const first = mk();
+  await pair("example", "yotam", undefined, first.deps);
+  expect(readPeersFile(peersFile()).self.stationName).toBe("yotam");
+  const k = peerKeyFor(configDir());
+  const card = first.lines.find(l => l.startsWith("pairing card"))!.split("\n")[1];
+  expect(card).toBe(`#pair station=yotam key=${k.pub}`);
+  expect(card).not.toContain(k.fp);
+  expect(first.lines.join("\n")).toContain(`fingerprint: ${k.fp}`);
+  const again = mk();
+  await pair("example", undefined, undefined, again.deps);
+  expect(peerKeyFor(configDir()).pub).toBe(k.pub);
+  expect(await refused(pair("example", "other", undefined, mk().deps))).toContain("already yotam");
+  const theirs = `#pair station=example key=${PUB_X}`;
+  expect(await refused(pair("example", undefined, theirs, mk({ answers: ["0000"] }).deps))).toContain("does not match");
+  expect(trustedKeys()).toEqual([]);
+  expect(await refused(pair("example", undefined, "#pair station=Bad key=x", mk().deps))).toContain("one line");
+  await pair("example", undefined, theirs, mk({ answers: [fingerprint(PUB_X)] }).deps);
+  expect(trustedKeys().map(x => x.pub)).toEqual([PUB_X]);
+  expect(readPeersFile(peersFile()).peers.example.theirs.stationName).toBe("example");
 });
 
 t("keygen --rotate keeps the old key signing and --activate switches and deletes the old file", async () => {

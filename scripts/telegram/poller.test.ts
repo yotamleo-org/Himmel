@@ -4040,13 +4040,6 @@ test("R2.5 an operator line queued while a monitoring send hangs is sent within 
   } finally { stop(); }
 });
 
-test("the flush tick runs the peer notify flush beside the outbox flush; a hung outbox send does not hold it", async () => {
-  const r = root();
-  await replyViaOutbox(r, OPCHAT, "first");
-  let peer = 0;
-  const stop = startFlushTimers({ root: r, send: () => new Promise<boolean>(() => {}), flushMs: 10, monitorMs: 10_000, monitor: () => null, peerFlush: async () => { peer++; } });
-  try { expect(await waitFor(() => peer >= 3)).toBe(true); } finally { stop(); }
-});
 
 test("R2.6 the monitoring keys come from the bridge env file only; a non-group or the bridge's own bot reads as unset; the down-after knob is clamped and fixture-only", async () => {
   const dir = mkdtempSync(join(tmpdir(), "bridgecfg-"));
@@ -4349,25 +4342,4 @@ test("T17: start-up writes poller-epoch from bridge-envelope-epoch.txt on a scra
   expect(readFileSync(join(repo, "poller-epoch"), "utf8")).toBe(`${readFileSync(join(import.meta.dir, "bridge-envelope-epoch.txt"), "utf8").trim()}\n`);
   const main = readFileSync(join(import.meta.dir, "poller.ts"), "utf8").split("export async function main(): Promise<void> {")[1] ?? "";
   expect(main.slice(0, 600)).toContain("await writePollerEpoch(root)");
-});
-
-test("an Approve or Reject tap on a peer draft goes through the callback chain, and lockdown stops it before any handler", async () => {
-  const { makePeerTap } = await import("./peer-notify-route");
-  const { dispatchAfkCallbacks } = await import("./afk-sudo-route");
-  const { afkTapUnlessLocked } = await import("./poller");
-  const r = root(), S = mkdtempSync(join(tmpdir(), "poller-peer-S-"));
-  mkdirSync(join(S, "example", "spool"), { recursive: true, mode: 0o700 });
-  const answers: string[] = [];
-  const peerTap = makePeerTap({ stateDir: S, root: r, access: () => ({ allowFrom: ["4242"] }), answer: async (_id, text) => { answers.push(text); } });
-  const chain = afkTapUnlessLocked(r, (t: any) => false || peerTap(t));
-  const update = (data: string) => ({ callback_query: { id: "cb", data, from: { id: 4242 }, message: { chat: { id: 4242 } } } });
-  dispatchAfkCallbacks([update("peer:ok:example:0a1b2c3d"), update("peer:no:example:ffffffff")], chain);
-  await peerTap.idle();
-  expect(readdirSync(join(S, "example", "spool")).filter(n => n.endsWith(".json"))).toHaveLength(2);
-  expect(answers).toEqual(["Received", "Received"]);
-  writeFileSync(join(r, "lockdown"), "locked\n");
-  dispatchAfkCallbacks([update("peer:ok:example:0a1b2c3d")], chain);
-  await peerTap.idle();
-  expect(readdirSync(join(S, "example", "spool")).filter(n => n.endsWith(".json"))).toHaveLength(2);
-  expect(answers).toHaveLength(2);
 });

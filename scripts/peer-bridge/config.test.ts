@@ -84,6 +84,12 @@ test("a non-numeric operatorChatId refuses", () => {
   expect(refusal(() => loadConfig(write(base({ operatorChatId: null })), ENV)).code).toBe(78);
 });
 
+test("the operator DM is unset on an older config, loads when it is the operator chat, and refuses any other chat", () => {
+  expect(loadConfig(write(base()), ENV).operatorDmChatId).toBeNull();
+  expect(loadConfig(write(base({ operatorDmChatId: 4242 })), ENV).operatorDmChatId).toBe(4242);
+  for (const bad of [4243, -1001234567890, "4242"]) expect(refusal(() => loadConfig(write(base({ operatorDmChatId: bad })), ENV)).message).toBe("operatorDmChatId must be null or the operator chat id");
+});
+
 test("other fields refuse: addressing, text cap, kinds, bad json, missing file", () => {
   expect(refusal(() => loadConfig(write(base({ addressing: "admin" })), ENV)).code).toBe(78);
   expect(refusal(() => loadConfig(write(base({ maxTextChars: 5000 })), ENV)).code).toBe(78);
