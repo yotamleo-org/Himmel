@@ -232,9 +232,10 @@ async function bindAsk(root: string, msg: { chat_id: number; reply_to_message_id
   const none = { tag: "", close: async () => {} };
   try {
     const { asks, answered } = await readAskRows(root);
-    const open = asks.filter(a => a.chat === msg.chat_id && !answered.has(a.id) && (a.console === undefined || consoles.includes(a.console)));
-    const quoted = msg.reply_to_text ? open.filter(a => sameQuote(a.quote, msg.reply_to_text!)) : [];
-    const pool = msg.reply_to_message_id != null ? quoted : open;
+    const here = asks.filter(a => a.chat === msg.chat_id);
+    const isOpen = (a: AskRow) => !answered.has(a.id) && (a.console === undefined || consoles.includes(a.console));
+    const quoted = msg.reply_to_text ? here.filter(a => sameQuote(a.quote, msg.reply_to_text!)) : [];
+    const pool = msg.reply_to_message_id != null ? (quoted.some(a => answered.has(a.id)) ? [] : quoted.filter(isOpen)) : here.filter(isOpen);
     if (pool.length === 1) {
       const id = pool[0].id;
       return { tag: ` answers=${id}`, close: () => appendFile(asksFile(root), JSON.stringify({ answered: id, at: new Date().toISOString() }) + "\n") };

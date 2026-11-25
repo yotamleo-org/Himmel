@@ -8333,6 +8333,17 @@ test("HIMMEL-10935 a reply quoting an answered ask binds nothing and leaves the 
   expect(await answer(r, f, "yes")).toContain("answers=2");
 });
 
+test("HIMMEL-10935 a reply quoting an answered ask whose first line an open ask shares binds nothing and closes nothing", async () => {
+  const r = root(); const f = armInbox(r);
+  const FIRST = "Needs you: two items.";
+  await sendAsk(r, `${FIRST}\n1. approve the restart`);
+  expect(await answer(r, f, "yes")).toContain("answers=1");
+  await sendAsk(r, `${FIRST}\n1. sign the notes`);
+  const late = await answer(r, f, "no", { reply_to_message_id: 9001, reply_to_bot: true, reply_to_text: FIRST });
+  expect(late).not.toContain("answers=");
+  expect(await answer(r, f, "yes")).toContain("answers=2");
+});
+
 test("HIMMEL-10935 a reply to a bot message that is no ask binds nothing while one ask is open", async () => {
   const r = root(); const f = armInbox(r);
   await sendAsk(r, ASK_ONE);
