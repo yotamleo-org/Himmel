@@ -261,7 +261,7 @@ done
 
 echo "Test 12: full scan through nv_build or the Claude API provider"
 meta_ok='"execution_successful":true,"metadata":{"llm_requested":true,"llm_available":true,"meta_analysis_applied":true}'
-printf '%s\n' '{"risk_assessment":{"score":3},"issues":[],'"$meta_ok"'}' > "$tmpdir/s2-clean.json"
+cp "$FX/reports/clean-stage2.json" "$tmpdir/s2-clean.json"
 printf '%s\n' '{"risk_assessment":{"score":70},"issues":[{"severity":"HIGH","pattern":"External Script Fetching","match_fingerprint":"fp-aaa","location":{"file":"SKILL.md","start_line":11}},{"severity":"LOW","pattern":"x","match_fingerprint":"fp-low","location":{"file":"a.md","start_line":1}}],'"$meta_ok"'}' > "$tmpdir/s2-high.json"
 printf '%s\n' '{"risk_assessment":{"score":40},"issues":[{"severity":"HIGH","match_fingerprint":"fp-bbb","location":{"file":"SKILL.md","start_line":2}}],"execution_successful":true,"metadata":{"llm_requested":true,"llm_available":false,"meta_analysis_applied":false,"llm_error":"LLM analysis was requested but unavailable during preflight"}}' > "$tmpdir/s2-none.json"
 jget() { node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); console.log(String(eval("r."+process.argv[2])).trim())' "$1" "$2" 2>/dev/null; }
@@ -270,7 +270,7 @@ run "$tmpdir/f1.json" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k-nv S
 assert "nv_build with its key runs the scan (rc 0)" 0 "$rc"
 assert "the full scan drops --no-llm" "scan $skill --format json" "$(cat "$tmpdir/argv" 2>/dev/null)"
 assert "skillspector saw the nv_build provider" nv_build "$(cat "$tmpdir/provider" 2>/dev/null)"
-assert "a clean Stage 2 report is stored" 3 "$(jget "$tmpdir/f1.json" risk_assessment.score)"
+assert "a clean Stage 2 report is stored" 0 "$(jget "$tmpdir/f1.json" risk_assessment.score)"
 assert "scanner stderr is kept in the stored report, key redacted" "warn: nothing odd [redacted]" "$(jget "$tmpdir/f1.json" wrapper_stderr)"
 
 run "$tmpdir/f1x.json" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k-secret STUB_REPLAY="$tmpdir/s2-clean.json" STUB_RC=2 STUB_STDERR="401 bad key k-secret"; rc=$?
@@ -322,6 +322,17 @@ grep -q 'unavailable during preflight' "$tmpdir/err" && r=named || r=unnamed
 assert "the unavailable reason carries the scanner's own error" named "$r"
 [ -e "$tmpdir/u1.json" ] && r=written || r=none
 assert "a Stage 2 that did not apply writes no report" none "$r"
+
+FXC="$FX/reports/clean-stage2.json"
+run "$tmpdir/c1.json" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k STUB_REPLAY="$FXC"; rc=$?
+assert "a real clean full-scan report (no findings, so no meta-analysis) lets the vendoring through (rc 0)" 0 "$rc"
+n=0
+for mut in 'm.llm_available=false' 'm.llm_calls_succeeded=2' 'm.llm_calls_attempted=0;m.llm_calls_succeeded=0' 'm.llm_error="boom"' 'm.llm_requested=false'; do
+    n=$((n+1))
+    node -e 'const fs=require("fs"); const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const m=r.metadata; eval(process.argv[2]); fs.writeFileSync(process.argv[3], JSON.stringify(r))' "$FXC" "$mut" "$tmpdir/cm$n.json"
+    run "$tmpdir/cm$n.json.out" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k STUB_REPLAY="$tmpdir/cm$n.json"; rc=$?
+    assert "a clean report where Stage 2 did not run ($mut) is unavailable (rc 3)" 3 "$rc"
+done
 
 grep -qF 'required step of vendoring' "$DOC" && grep -qF 'NVIDIA_INFERENCE_KEY' "$DOC" && grep -qF 'ANTHROPIC_API_KEY' "$DOC" && s=ok || s=missing
 assert "Phase 3.7 names the full scan as a required vendoring step with provider and key" ok "$s"

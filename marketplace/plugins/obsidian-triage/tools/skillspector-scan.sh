@@ -121,7 +121,12 @@ const ac = r.analysis_completeness;
 if (r.execution_successful !== undefined && typeof r.execution_successful !== "boolean") process.exit(1);
 if (ac && ac.is_complete !== undefined && typeof ac.is_complete !== "boolean") process.exit(1);
 if (r.execution_successful === false) process.exit(1);
-if (process.argv[3] === "1" && !(r.metadata && r.metadata.meta_analysis_applied === true)) process.exit(1);
+if (process.argv[3] === "1") {
+    const m = r.metadata || {};
+    const nothingToReview = r.issues.length === 0 && m.llm_requested === true && m.llm_available === true && !m.llm_error &&
+        typeof m.llm_calls_attempted === "number" && m.llm_calls_attempted > 0 && m.llm_calls_succeeded === m.llm_calls_attempted;
+    if (m.meta_analysis_applied !== true && !nothingToReview) process.exit(1);
+}
 const osvAnalyzer = "static_patterns_supply_chain_dependencies_analyzer_runtime_error";
 const isOsvDenied = (e) => !!e && e.reason_code === "analyzer_runtime_error" && e.error_class === "ConnectError" &&
     Array.isArray(e.analyzers) && e.analyzers.length === 1 && e.analyzers[0] === osvAnalyzer;
