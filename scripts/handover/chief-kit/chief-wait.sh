@@ -1152,11 +1152,22 @@ page_send() {  # <text> <deadline epoch> [route kind]: the timeout is what is le
 # record is written FIRST, so the re-dispatch refusal holds even when the send
 # fails; both steps fail open. The page text is the worker label, count and class
 # only: this file never reads the denial log, only tick.sh's denials= field.
+denial_still_parked() {
+    local pg pts label ldoc
+    pg="$(denial_ack_dir)/$1.page"
+    pts="$(denial_field "$pg" ts)"
+    label="$(denial_field "$pg" leg | tr -cd 'A-Za-z0-9._#+-')"
+    [ -n "$label" ] || label="$1"
+    ldoc="$(worker_doc_of "$label")"
+    if [ -z "$ldoc" ]; then [ $(( $(stuck_now) - pts )) -le "$stuck_bound_secs" ]; return; fi
+    ! doc_written_since "$ldoc" "$pts"
+}
 page_denials() {
-    local worker cls n end rc_name kind held
+    local worker cls n end rc_name kind held key
     end=$(( $(date +%s) + page_timeout ))  # one budget for the whole batch, not one per worker
     denial_pages "$1" "$2" | while read -r worker cls n; do
-        held="$(denial_unacked "$(denial_key "$worker")" 2>/dev/null)" && [ "$(denial_rank "${held%% *}")" -ge "$(denial_rank "$cls")" ] && continue
+        key="$(denial_key "$worker")"
+        held="$(denial_unacked "$key" 2>/dev/null)" && [ "$(denial_rank "${held%% *}")" -ge "$(denial_rank "$cls")" ] && denial_still_parked "$key" && continue
         kind=denial-page
         denial_page_write "$worker" "$n" "$cls" || kind=""
         # A native worker launched with Remote Control is answered from the

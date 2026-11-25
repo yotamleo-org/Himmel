@@ -704,6 +704,30 @@ sleep 1.2
 sed -i 's/denials=none/denials=N1:1:SHIP-STEP/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(p7) after the operator acked, the same state pages again" "2" "$(pages_n)"
+
+rm -f "$HIMMEL_DENIAL_ACK_DIR/N1.ack"
+p7d_ts="$(sed -n 's/^ts=//p' "$HIMMEL_DENIAL_ACK_DIR/N1.page" 2>/dev/null)"
+mkdir -p "$WORK/p7d"; : > "$WORK/p7d/N1.md"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$WORK/p7d/N1.md" > "$WORK/p7d/chief.fleet.json"
+touch -d "@$(( p7d_ts + 60 ))" "$WORK/p7d/N1.md"
+sed -i 's/denials=N1:1:SHIP-STEP/denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox p7d)"
+start "$I" "$WORK/p7d.out" --workers "N1.md" --workers-from "$WORK/p7d/chief.fleet.json"
+wait_hb "$I" || fail "(p7d) no baseline heartbeat"
+sleep 1.2
+sed -i 's/denials=none/denials=N1:1:SHIP-STEP/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(p7d) an un-acked record and a doc written since: a second park pages again" "3" "$(pages_n)"
+p7e_ts="$(sed -n 's/^ts=//p' "$HIMMEL_DENIAL_ACK_DIR/N1.page" 2>/dev/null)"
+touch -d "@$(( p7e_ts - 100 ))" "$WORK/p7d/N1.md"
+sed -i 's/denials=N1:1:SHIP-STEP/denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox p7e)"
+start "$I" "$WORK/p7e.out" --workers "N1.md" --workers-from "$WORK/p7d/chief.fleet.json"
+wait_hb "$I" || fail "(p7e) no baseline heartbeat"
+sleep 1.2
+sed -i 's/denials=none/denials=N1:1:SHIP-STEP/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(p7e) control: a doc not written since the record keeps the park held, no new page" "3" "$(pages_n)"
 export CHIEF_WAIT_PAGE_TIMEOUT=2
 
 printf '\n%d failure(s)\n' "$fails"
