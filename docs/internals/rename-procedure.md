@@ -74,7 +74,8 @@ base's row, and each sweep PR lowers its rows with
 `bash scripts/docs/check-old-terms.sh --write-baseline` (about a minute). It reads
 identifier, marker and prose rows only; env, env-prefix, path and directory rows stay
 with `check-rename-diff.sh`. The `old-term-ok` marker and the `keep` rows exempt here
-too.
+too. Exit 0 is clean (warn-tier hits are printed), 1 a finding, 2 that it could not
+evaluate (a missing registry or baseline, or a git or awk failure): never a pass.
 
 **Report mode.** While the cosmetic rename batches have not all merged (the
 `--report` work list below still shows hits), both CI steps run with `--warn`:

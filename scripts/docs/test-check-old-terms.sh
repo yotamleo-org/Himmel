@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Platform guard (posix-bash): pure POSIX bash 3.2+ plus git/mktemp.
-#
-# Usage: bash scripts/docs/test-check-old-terms.sh
-# Exit:  0 = every case passed, 1 = at least one failed (all are reported).
 
 set -uo pipefail
 

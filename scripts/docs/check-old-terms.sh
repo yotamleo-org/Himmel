@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# Platform guard (posix-bash): POSIX bash 3.2+ plus git/awk/grep.
-#
-# Usage:
-#   check-old-terms.sh --staged                       # the index against HEAD (pre-commit)
-#   check-old-terms.sh --range <base> [--tip <ref>]   # the fork point of <base> against <tip>, tip defaults to HEAD (CI)
-#   check-old-terms.sh --write-baseline               # rewrite the baseline from the working tree
-# Exit: 0 clean (warn-tier hits are printed) · 1 findings · 2 cannot evaluate (fail-closed)
-# The rules are in docs/internals/rename-procedure.md.
 
 set -uo pipefail
 export LC_ALL=C
