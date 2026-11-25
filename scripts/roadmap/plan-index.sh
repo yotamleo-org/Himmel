@@ -95,6 +95,7 @@ if [ "$force" = 0 ] && [ -n "$registered" ] && [ "$rendered" = "$(cat "$out/.ren
     echo "plan-index: rebuilt (docs unchanged, qmd not run)"; exit 0
 fi
 # update rescans the files (embed alone only embeds what the index already knows)
+rm -f "$out/.rendered"
 "$qmd" update -c "$COLLECTION" || { echo "plan-index: qmd update failed" >&2; exit 1; }
 "$qmd" embed -c "$COLLECTION" || { echo "plan-index: qmd embed failed" >&2; exit 1; }
 printf '%s\n' "$rendered" > "$out/.rendered"

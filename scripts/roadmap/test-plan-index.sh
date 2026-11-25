@@ -91,6 +91,7 @@ bump; cp "$out/.fp" "$W/fp.keep"
 r="$(QMD_FAIL=1 run --refresh 2>&1)"; rc=$?
 [ "$rc" != 0 ] && pass "failing qmd: refresh non-zero" || fail "failing qmd rc=0"
 [ "$(cat "$out/.fp")" = "$(cat "$W/fp.keep")" ] && pass "failing qmd: fingerprint not advanced" || fail "fingerprint advanced on failure"
+[ ! -e "$out/.rendered" ] && pass "failing embed: indexed-docs record dropped, so reverting the docs cannot skip qmd" || fail "failing embed left a stale .rendered"
 r="$(run --refresh 2>&1)"; contains "failed run retried next time" "$r" "rebuilt"
 
 echo four >> "$mir/HIMMEL-111.md"; bump; cp "$out/.fp" "$W/fp.keep"
