@@ -122,7 +122,6 @@ def past_boot_of_matched_host(boot):
 
 
 def damaged(owner):
-    """True when an identity record is not exactly the host/boot/pid/start fields with their types."""
     return not isinstance(owner, dict) or set(owner) != set(OWNER_FIELDS) or any(type(owner[key]) is not kind for key, kind in OWNER_FIELDS.items())
 
 
@@ -563,7 +562,7 @@ def worker_keys(doc):
 def session_scan(record, deadline):
     owner = record.get('owner')
     if not isinstance(owner, dict) or not isinstance(owner.get('host'), str) or not isinstance(owner.get('boot'), str):
-        return None, False  # a record that names no host or boot cannot say where to look, so absence is not proven
+        return None, False
     local = identity(os.getpid())
     if owner['host'] != local['host']:
         return None, False
@@ -649,12 +648,10 @@ def launch_candidates(record, deadline):
 
 
 def damaged_identities(record):
-    """The identity records of an attempt that are not exactly host/boot/pid/start: a missing owner, and a committer that is present but empty or malformed."""
     return [who for who in ('owner', 'committer') if (who == 'owner' or who in record) and damaged(record.get(who))]
 
 
 def local_pid_alive(held):
-    """True unless a damaged identity record cannot name a running process of this machine: only a local host and boot with an int pid can be looked up."""
     if not isinstance(held, dict) or type(held.get('pid')) is not int or held['pid'] <= 0:
         return False
     local = identity(os.getpid())
@@ -665,15 +662,13 @@ def local_pid_alive(held):
     except FileNotFoundError:
         return False
     except (OSError, IndexError):
-        return True  # a process that exists and cannot be read is not proven gone
+        return True
 
 
 def settle_blockers(record, outcomes, deadline, owner_record_damaged=False):
     """Why a stuck attempt cannot be settled as refused with no session now; empty when every precondition holds.
     Evidence only: the committed or unknown phase, the process identity of the owner and the committer, one full readable
-    session scan, and the attempt's history. It reads no age and no elapsed time; the deadline only bounds the scan.
-    owner_record_damaged waives 'not proven dead' for a damaged identity record only, and only while no process of this machine
-    answers to its pid; a well-formed identity is judged as ever."""
+    session scan, and the attempt's history. It reads no age and no elapsed time; the deadline only bounds the scan."""
     blockers = []
     if record['phase'] not in ('committed', 'unknown'):
         blockers.append('phase is %s (settle takes a committed or unknown attempt)' % record['phase'])
@@ -711,7 +706,7 @@ def settle_hint(record, outcomes, deadline):
     blockers = settle_blockers(record, outcomes, deadline)
     flag = ''
     if blockers and damaged_identities(record) and not settle_blockers(record, outcomes, deadline, True):
-        blockers, flag = [], ' --owner-record-damaged'  # a damaged identity record is the only thing in the way
+        blockers, flag = [], ' --owner-record-damaged'
     if blockers:
         return {'settleable': False, 'text': 'not settleable now: ' + '; '.join(blockers)}
     command = 'fleet-manifest.sh runtime settle --manifest %s --doc %s --name %s --attempt-id %s --reason %s --confirm-no-session%s' % (
@@ -911,7 +906,6 @@ def peer_rows_of(manifest, data):
 
 
 def ack_listing(value, attempts, peer_rows, history, deadline):
-    """What ack prints: in-flight, unknown (each with its settle hint), legacy-unknown and launched attempts."""
     inflight = [r for r in attempts.values() if r['phase'] in ('pending', 'committed')]
     unknown = [r for r in attempts.values() if r['phase'] == 'unknown']
     legacy = {}
@@ -932,7 +926,6 @@ def ack_listing(value, attempts, peer_rows, history, deadline):
 
 
 def ack_read_only(manifest):
-    """ack's answer from a lock-free read, as admit_read_only reads: reconcile runs in memory with no effects, and nothing is published."""
     value = snapshot(manifest)
     attempts = read(manifest.parent / 'fleet-control.json').get('attempts', {})
     data = read(manifest)

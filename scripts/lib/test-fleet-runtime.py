@@ -2515,7 +2515,6 @@ exit 1''')
         return child.pid
 
     def partial(self, pid, **fields):
-        """An identity record that lost its start time: local host and boot, so the process scan can still prove absence."""
         record = {'host': socket.gethostname(), 'boot': Path('/proc/sys/kernel/random/boot_id').read_text().strip(), 'pid': pid}
         record.update(fields)
         return record

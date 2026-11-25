@@ -2636,13 +2636,6 @@ check_c98_wrapped_window() {
         "for each: bash $REPO_ROOT/scripts/handover/chief-kit/close-wrapped-worker.sh --check [--chief for a chief] $bucket/<name>.md, then the same without --check; a chief's waiter closes these on its own each sample, so check that one is armed"
 }
 
-# --- C100: fleet attempts left unknown ----------------------------------------------
-# A fleet attempt whose launcher died holds a family slot until the chief settles it, and nothing else shows it. Every
-# fleet lives in <handover root>/<user>/<repo>/ (fleet-control.json beside its *.fleet.json manifests); each one is asked
-# `fleet_runtime.py ack --read-only` (no lock, no write, no receipt) under a timeout. An unknown attempt, a legacy-unknown
-# row and a launched attempt whose doc cannot be read are each a WARN; a fleet that cannot be read is a WARN, never OK.
-# Test seams: HIMMEL_DOCTOR_FLEET_ACK (an executable run as <exe> ack --read-only --manifest M), HIMMEL_DOCTOR_FLEET_TIMEOUT
-# (seconds per fleet, default 20), HIMMEL_DOCTOR_TIMEOUT_BINS.
 check_c100_fleet() {
     local root anchor anchors=() n=0 cap=50 tb="" t secs picked kind manifest out rc a b c d h found=0 read_all=1 ackcmd=()
     load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
