@@ -1593,6 +1593,10 @@ CR_MERGE_GATE_OK=1 t bb-merge-cr-bypass-only-denied 2 Bash "bitbucket pr merge 7
 CI_MERGE_GATE_OK=1 t bb-merge-ci-bypass-only-denied 2 Bash "bitbucket pr merge 7"
 CR_MERGE_GATE_OK=1 CI_MERGE_GATE_OK=1 t bb-merge-bypass-pair-allows 0 Bash "bitbucket pr merge 7"
 CR_MERGE_GATE_OK=1 CI_MERGE_GATE_OK=1 t bb-merge-bypass-pair-still-gates-gh 2 Bash "bitbucket pr merge 7 && gh pr merge 42 --squash"
+t bb-merge-env-prefix-denied 2 Bash "FOO=1 node /x/scripts/bitbucket/dist/index.js pr merge 7"
+t bb-merge-after-separator-denied 2 Bash "echo hi; forge_pr_merge 7"
+t bb-text-mention-grep-not-denied 0 Bash "git grep -n forge_pr_merge scripts"
+t bb-text-mention-commit-not-denied 0 Bash "git commit -m bitbucket pr merge notes"
 t bb-pr-view-not-denied 0 Bash "node /x/scripts/bitbucket/dist/index.js pr get 7"
 t bb-pr-merge-sh-not-denied 0 Bash "bash scripts/handover/pr-merge.sh"
 

@@ -147,7 +147,7 @@ for _n in "$cmd_norm" "$cmd_sq"; do
             if (w == "api") api = 1; else if (w == "alias") al = 1; else g = 0 } }
         END { exit !f }' && fires=1
 done
-bb_merge_hit=$(printf '%s' "$cmd_norm" | grep -Eo 'bitbucket[^[:space:];&|]*[[:space:]]+(-[^[:space:]]+[[:space:]]+)*pr[[:space:]]+merge|forge_pr_merge')
+bb_merge_hit=$(printf '%s' "$cmd_norm" | grep -Eo '(^|[;&|(])[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*((node[[:space:]]+)?[^[:space:];&|]*bitbucket[^[:space:];&|]*[[:space:]]+(-[^[:space:]]+[[:space:]]+)*pr[[:space:]]+merge|forge_pr_merge([[:space:]]|$))')
 if [ -n "$bb_merge_hit" ] && { [ "${CR_MERGE_GATE_OK:-0}" != "1" ] || [ "${CI_MERGE_GATE_OK:-0}" != "1" ]; }; then
     _deny "a direct Bitbucket merge skips the reviewer and CI gates. Run scripts/handover/pr-merge.sh instead (it merges at the vetted head). Bypass: CR_MERGE_GATE_OK=1 and CI_MERGE_GATE_OK=1 in the launching shell."
 fi
