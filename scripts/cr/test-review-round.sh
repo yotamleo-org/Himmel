@@ -454,7 +454,8 @@ git -C "$repo" checkout -q main 2>/dev/null
 
 # shellcheck source=../lib/qmd-bounded.sh
 # shellcheck disable=SC1091
-. "$fx/scripts/lib/qmd-bounded.sh"unset CR_REVIEW_START_TIMEOUT_SECS RR_STUB_NODE RR_STUB_GIT RR_STUB_GH RR_STUB_PS RR_STUB_LOCKLIB
+. "$fx/scripts/lib/qmd-bounded.sh"
+unset CR_REVIEW_START_TIMEOUT_SECS RR_STUB_NODE RR_STUB_GIT RR_STUB_GH RR_STUB_PS RR_STUB_LOCKLIB
 sb="$tmp/stub-bin"
 RRTMP="$tmp/rr-tmp"
 mkdir -p "$sb" "$RRTMP"
