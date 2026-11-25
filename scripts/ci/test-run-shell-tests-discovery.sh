@@ -115,10 +115,10 @@ cat > "$sb18/scripts/xhandover/test-arm-resume.sh" <<EOF
 exit 0
 EOF
 # Control 3 (basename collision, codex-1): shares its BASENAME with the
-# SKIP_LIST entry scripts/test-adopt.sh but lives one directory deeper. It
+# SKIP_LIST entry scripts/test-plugin-test.sh but lives one directory deeper. It
 # must RUN — an entry is matched by its whole repo-relative path, never by
 # basename, or a listed suite silently drags unrelated namesakes down with it.
-cat > "$sb18/scripts/nested/test-adopt.sh" <<EOF
+cat > "$sb18/scripts/nested/test-plugin-test.sh" <<EOF
 #!/usr/bin/env bash
 : > "$sb18/ran-namesake"
 exit 0
@@ -484,16 +484,16 @@ fi
 rm -rf "$sb18/scripts/inner" "$sb18/link-target"
 
 # 18g — basename over-reach (the codex-1 panel finding on this PR). The entry
-# is scripts/test-adopt.sh; a namesake one directory deeper must still RUN.
+# is scripts/test-plugin-test.sh; a namesake one directory deeper must still RUN.
 # Without this, a boundary-anchored suffix match on an UNDER-qualified entry
 # would skip every nested suite sharing the basename — the same false-evidence
 # class as the bug this ticket fixes, pointing the other way.
 echo "== Case 18g: a same-basename suite in another directory is not skipped =="
 probe18 "$sb18/scripts"
 if [ "$ran18_namesake" = yes ]; then
-  pass "2260/18g: 'scripts/nested/test-adopt.sh' RAN — entries match the whole path, not the basename"
+  pass "2260/18g: 'scripts/nested/test-plugin-test.sh' RAN — entries match the whole path, not the basename"
 else
-  fail "2260/18g: the namesake suite was skipped by the scripts/test-adopt.sh entry; output: $out18"
+  fail "2260/18g: the namesake suite was skipped by the scripts/test-plugin-test.sh entry; output: $out18"
 fi
 
 # 18i — --skip-extra keeps its SCAN-ROOT-RELATIVE semantics. The
