@@ -271,6 +271,18 @@ if (process.env.RECOVERY_JIRA_OLD === '1' && process.argv.includes('--fu-overrid
     process.exit(1);
 }
 if (process.env.RECOVERY_JIRA_FAIL === '1') process.exit(1);
+// the create.ts duplicate refusal: an open residual of the parent refuses a create with no --new-reason.
+if (process.argv[2] === 'create' && !process.argv.includes('--new-reason')) {
+    const sibling = process.env.RECOVERY_JIRA_SIBLING;
+    const parent = process.argv[process.argv.indexOf('--residual-of') + 1];
+    const earlier = fs.readFileSync(process.env.RECOVERY_JIRA_LOG, 'utf8').split('\n').filter(Boolean).slice(0, -1)
+        .map((l) => JSON.parse(l))
+        .some((a) => a[0] === 'create' && a[a.indexOf('--residual-of') + 1] === parent);
+    if (sibling === '1' || (sibling === 'log' && earlier)) {
+        console.error('Refused: HIMMEL-9499 is an open residual linked to ' + parent + ', so this create would repeat it. Nothing was filed. Pass --new-reason to file it anyway.');
+        process.exit(1);
+    }
+}
 console.log('Created HIMMEL-9500');
 STUB
 recovery_repo="$tmp/residual-repo"
@@ -483,6 +495,31 @@ for recovery_failure in create-failed no-parent; do
         no-parent) assert_eq "$(wc -c < "$recovery_log" | tr -d ' ')" 0 "missing parent never invokes Jira" ;;
     esac
 done
+: > "$recovery_log"
+printf 'pending\n' > "$recovery_git/cr-pending/recovery"
+for recovery_sib_id in critic-1 critic-2; do
+    printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"%s","severity":"imp","fu_class":"hardening","fu_why":"no-check","class":"reader-allowlist"}\n' \
+        "$recovery_head" "$recovery_sib_id"
+done > "$recovery_git/cr-critic-scores.jsonl"
+recovery_rc=0
+recovery_out="$(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] recovery' RECOVERY_JIRA_SIBLING=log \
+    RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
+    --branch recovery --head "$recovery_head" --fu-override decision-762 2>&1)" || recovery_rc=$?
+assert_eq "$recovery_rc" 0 "11016 per-finding sibling files both findings ($recovery_out)"
+assert_eq "$(grep -c '"create"' "$recovery_log" | tr -d ' ')" 2 "11016 per-finding sibling files exactly two residuals"
+assert_has "$(cat "$recovery_log")" "\"--new-reason\",\"review-round: deferred finding critic-1 on recovery at $recovery_head; one residual per finding\"" "11016 per-finding sibling reason names critic-1"
+assert_has "$(cat "$recovery_log")" "\"--new-reason\",\"review-round: deferred finding critic-2 on recovery at $recovery_head; one residual per finding\"" "11016 per-finding sibling reason names critic-2"
+assert_eq "$(grep '"verdict":"deferred"' "$recovery_git/cr-critic-scores.jsonl" | grep -c '"deferred_to":"')" 2 "11016 per-finding sibling records a deferred_to row per finding"
+if [ -e "$recovery_git/cr-pending/recovery" ]; then fail "11016 per-finding sibling clears the marker"; else pass "11016 per-finding sibling clears the marker"; fi
+recovery_lines="$(wc -l < "$recovery_git/cr-critic-scores.jsonl" | tr -d ' ')"
+printf 'pending\n' > "$recovery_git/cr-pending/recovery"
+recovery_rc=0
+recovery_out="$(cd "$recovery_repo" && GH_PR_TITLE='fix: [HIMMEL-123] recovery' RECOVERY_JIRA_SIBLING=log \
+    RECOVERY_JIRA_LOG="$recovery_log" bash "$fx/scripts/cr/review-round.sh" defer \
+    --branch recovery --head "$recovery_head" --fu-override decision-762 2>&1)" || recovery_rc=$?
+assert_eq "$recovery_rc" 0 "11016 per-finding sibling rerun succeeds ($recovery_out)"
+assert_eq "$(grep -c '"create"' "$recovery_log" | tr -d ' ')" 2 "11016 per-finding sibling rerun files no further residual"
+assert_eq "$(wc -l < "$recovery_git/cr-critic-scores.jsonl" | tr -d ' ')" "$recovery_lines" "11016 per-finding sibling rerun writes no new amend"
 # The early close: a Suggestions-only count of 2 or 3 closes the loop on a
 # PR whose diff touches no pattern in the default branch's ci-trust-paths.txt.
 rm -f "$recovery_git/cr-review-rounds/recovery.delta"
@@ -951,6 +988,19 @@ assert_has "$rl1_out" 'rerun the same command to retry the comment' "8425 a fail
 assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8425 a failed reuse comment writes no deferred row"
 assert_eq "$(rl1_marker)" kept "8425 a failed reuse comment keeps the marker"
 assert_eq "$(rl1_creates)" "$((rl1_creates_before + 1))" "8425 a failed reuse comment files no ticket"
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 hardening no-check)" RECOVERY_JIRA_SIBLING=1
+assert_eq "$rl1_rc" 0 "11016 batch sibling files past an open sibling ($rl1_out)"
+assert_eq "$(rl1_marker)" cleared "11016 batch sibling clears the marker"
+assert_eq "$(rl1_key)" HIMMEL-9500 "11016 batch sibling remembers the filed key"
+assert_has "$(tail -n 1 "$rl1_log")" "\"--new-reason\",\"review-round: early-close batch residual for feat/rl1 at $rl1_head; no batch key was remembered for this branch\"" "11016 batch sibling create carries the new-reason"
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 hardening no-check)" RECOVERY_JIRA_FAIL=1
+assert_eq "$rl1_rc" 6 "11016 batch create-failed fails closed ($rl1_out)"
+assert_eq "$(rl1_marker)" kept "11016 batch create-failed keeps the marker"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "11016 batch create-failed writes no deferred row"
+assert_eq "$(rl1_key)" "" "11016 batch create-failed remembers no key"
+printf 'HIMMEL-9500\n' > "$rl1_git/cr-review-rounds/feat/rl1.deferred-to" || fail "11016 the key restore could not write the remembered key"
 # A polish Suggestion beside a hardening Important is noted; only the Important reaches the batch.
 rl1_sug13='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-13","severity":"sug","class":"reader-allowlist","text":"- [critic-13]: wording"}
 '
