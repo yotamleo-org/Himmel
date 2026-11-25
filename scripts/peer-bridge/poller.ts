@@ -40,7 +40,16 @@ export type PollerDeps = {
   readerRun?: typeof runReader;
   readerTimeoutMs?: number;
   log?: (line: string) => void;
+  sleep?: (ms: number) => Promise<void>;
 };
+
+export class StartLookupError extends Error {
+  constructor(message: string) { super(message); this.name = "StartLookupError"; }
+}
+
+const START_LOOKUP_TRIES = 6;
+const START_LOOKUP_FIRST_WAIT_MS = 2_000;
+const START_LOOKUP_MAX_WAIT_MS = 30_000;
 
 type Pending = IntentRec & { n: number };
 type Item = { peer: string; msgKind: string; isRoot: boolean; isTemplate: boolean; replyTo: number | null; text: string; id?: string; spool?: string; resend?: boolean; allowShape?: string; corpus?: OutCtx["corpus"]; source?: string; checkUsage: boolean };
@@ -170,20 +179,38 @@ export class Poller {
     return run;
   }
 
-  private async ensureUsername() {
+  private async lookupUsername() {
     if (this.gate.ourUsername) return;
     const peer = Object.values(this.cfg.peers).find(p => p.chatId !== null);
     if (!peer) return;
-    try {
-      const m = await this.deps.tg.getChatMember(peer.chatId!, Number(this.deps.ourBotId));
-      if (typeof m?.user?.username === "string") this.gate.ourUsername = m.user.username;
-    } catch (e) { this.log(`username lookup failed: ${(e as Error).message}`); }
+    const m = await this.deps.tg.getChatMember(peer.chatId!, Number(this.deps.ourBotId));
+    if (typeof m?.user?.username === "string") this.gate.ourUsername = m.user.username;
+  }
+
+  private async ensureUsername() {
+    try { await this.lookupUsername(); } catch (e) { this.log(`username lookup failed: ${(e as Error).message}`); }
+  }
+
+  // The first lookup after a boot can run before the network is up. Retry it with a bounded
+  // backoff (60 s of waiting in all); a lookup that never succeeds throws, so the process exits non-zero.
+  private async startLookup() {
+    const wait = this.deps.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)));
+    for (let n = 1, delay = START_LOOKUP_FIRST_WAIT_MS; ; n++) {
+      try { await this.lookupUsername(); return; } catch (e) {
+        if (e instanceof TelegramError && e.code === 401) throw e;
+        this.log(`username lookup failed (try ${n} of ${START_LOOKUP_TRIES}): ${(e as Error).message}`);
+        if (n >= START_LOOKUP_TRIES) throw new StartLookupError(`start lookup failed after ${n} tries: ${(e as Error).message}`);
+        await wait(e instanceof RetryAfter ? e.seconds * 1000 : delay);
+        delay = Math.min(delay * 2, START_LOOKUP_MAX_WAIT_MS);
+      }
+    }
   }
 
   jobsSnapshot(): Map<number, JobRecord> { return new Map(this.jobs); }
   nextJobNo(): number { return Math.max(0, ...this.jobs.keys()) + 1; }
 
   async start(): Promise<void> {
+    await this.startLookup();
     await this.recover();
     await this.drainBacklog();
     await this.tick();
@@ -868,6 +895,7 @@ export async function main(): Promise<void> {
   });
   try { await poller.start(); } catch (e) {
     if (e instanceof TelegramError && e.code === 401) { console.error("peer-bridge: the bot token was refused"); release(); process.exit(EXIT_CONFIG); }
+    if (e instanceof StartLookupError) { console.error(`peer-bridge: ${e.message}`); release(); process.exit(1); }
     throw e;
   }
   const guard = (fn: () => Promise<void>) => () => fn().catch(e => { console.error(`peer-bridge: ${(e as Error).message}`); process.exit(1); });
