@@ -751,6 +751,28 @@ def settle_attempt(args, attempts, rows, doc, history):
     return {'phase': 'refused', 'cause': record['cause']}
 
 
+def end_attempt(args, attempts, rows, history):
+    """End one launched attempt named by its attempt id alone, so a doc path that cannot be typed (a NUL byte) cannot strand it.
+    The chief or the operator types it; it touches no other attempt. It writes one refused receipt (cause ended-by-id, the reason),
+    releases the attempt's own reservation and target slot and removes its manifest row, matched by attempt id, never by doc."""
+    reason = (args.reason or '').strip()
+    if not re.fullmatch(r'[a-z0-9:_-]{1,40}', reason):
+        raise Refused('end refused: --reason must be one word, [a-z0-9:_-]{1,40}')
+    record = attempts.get(args.attempt_id)
+    if not record:
+        if history.get(args.attempt_id, {}).get('cause') == 'ended-by-id':
+            raise Refused('end refused: attempt already ended')
+        raise Refused('end refused: unknown attempt')
+    if record['phase'] != 'launched':
+        raise Refused('end refused: attempt is %s, only a launched attempt is ended by id' % record['phase'])
+    record['cause'] = 'ended-by-id'
+    receipt(record, 'refused', reason=reason, settled_by=dict(host=socket.gethostname(), pid=os.getpid(), uid=os.getuid()))
+    release_reservation(record)
+    del attempts[args.attempt_id]
+    rows[:] = [w for w in rows if w.get('attempt', {}).get('attempt_id') != args.attempt_id]
+    return {'phase': 'refused', 'cause': 'ended-by-id'}
+
+
 def reconcile(attempts, rows, history, deadline, effects=True):
     """Run under manifest→anchor locks, before admission as well as ack; effects=False settles in memory only (no receipt, no slot release)."""
     settled = set()
@@ -977,7 +999,7 @@ def run(args):
         argv = Path('/proc', str(os.getppid()), 'cmdline').read_bytes().split(b'\0')
         if len(argv) < 2 or Path(os.fsdecode(argv[1])).resolve() != LIB / 'usage-preflight.sh':
             raise Refused('only the real resource preflight stamps admission')
-    manifest = Path(args.manifest).absolute() if args.op in ('ack', 'reconcile') and args.manifest else resolve(args.doc, args.manifest)
+    manifest = Path(args.manifest).absolute() if args.op in ('ack', 'reconcile', 'end') and args.manifest else resolve(args.doc, args.manifest)
     if manifest is None:
         if args.op == 'settle':
             raise Refused('settle refused: the doc is not a managed worker')
@@ -1016,6 +1038,11 @@ def run(args):
             return ack_listing(value, attempts, peer_rows, history, deadline)
         if not re.fullmatch(r'[A-Za-z0-9-]{1,80}', args.attempt_id):
             raise Refused('invalid attempt id')
+        if args.op == 'end':
+            result = end_attempt(args, attempts, rows, history)
+            publish(anchor, control)
+            publish(manifest, data)
+            return result
         if args.op == 'settle':
             result = settle_attempt(args, attempts, rows, doc, history)
             if not result.get('replayed'):
@@ -1139,7 +1166,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser(allow_abbrev=False)
-    parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle', 'ended-attempts', 'unlaunched'])
+    parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle', 'end', 'ended-attempts', 'unlaunched'])
     parser.add_argument('--doc', default='')
     parser.add_argument('--manifest', default='')
     parser.add_argument('--name', default='')

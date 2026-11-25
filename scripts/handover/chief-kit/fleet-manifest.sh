@@ -17,7 +17,8 @@
 #   fleet-manifest.sh attempt bind <manifest> <doc> --attempt-id A
 #   fleet-manifest.sh attempt settle <manifest> <doc> --attempt-id A --phase launched|refused|unknown
 #   fleet-manifest.sh runtime settle --manifest M --doc D --name N --attempt-id A --reason "<text>" --confirm-no-session
-#   fleet-manifest.sh t3 set    <manifest> <worker doc> [--thread <threadId|pending>] [--kind ask|task] [--notice pending:0..3|sent|failed]
+#   fleet-manifest.sh attempt end <manifest> --attempt-id A --reason <word>
+#   fleet-manifest.sh t3 set   <manifest> <worker doc> [--thread <threadId|pending>] [--kind ask|task] [--notice pending:0..3|sent|failed]
 #   fleet-manifest.sh t3 unbind <manifest> <threadId> [--reason <word>]
 #
 # `t3 set` and `t3 unbind` (scripts/t3/relay-bind.sh) carry a T3 thread's binding on its fleet row: the row's
@@ -40,6 +41,14 @@
 # and a non-empty --reason. It then writes one typed `refused` receipt (cause settled-no-session, the reason, the
 # evidence, who settled), releases the attempt's own reservation, frees its target slot and removes its manifest row;
 # every earlier history row stays. It reads no age, timestamp or elapsed time.
+#
+# `attempt end` (fleet_runtime.py `end`) releases ONE launched attempt named by its attempt id alone, for an attempt whose doc
+# path is damaged (a NUL byte cannot be typed on argv, so `runtime settle`, which takes the doc, cannot name it). Only the chief
+# or the operator types it; nothing calls it. It refuses (rc 10, `end refused: <why>`) an id that is not found, an attempt that
+# is not launched, an id already ended, and a --reason that is not one word [a-z0-9:_-]{1,40}. It then writes one typed
+# `refused` receipt (cause ended-by-id, the reason), releases the attempt's own reservation, frees its target slot and removes
+# its manifest row by attempt id; no other attempt and no earlier history row changes. The id is the only evidence it reads: the
+# chief checks that no session of that worker is running before typing it.
 #
 # Control init creates one paused generation-1 anchor in the manifest's physical
 # bucket and stores only .control={family,anchor}. A copied successor reference
@@ -113,6 +122,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ "${1:-}:${2:-}" = control:ack ] && [ "$#" -eq 3 ]; then
     exec python3 -I "$HERE/../../lib/fleet_runtime.py" ack --manifest "$3"
 fi
+if [ "${1:-}:${2:-}" = attempt:end ] && [ "$#" -ge 3 ]; then
+    manifest_arg="$3"
+    shift 3
+    exec python3 -I "$HERE/../../lib/fleet_runtime.py" end --manifest "$manifest_arg" "$@"
+fi
 if [ "${1:-}" = runtime ]; then
     shift
     exec python3 -I "$HERE/../../lib/fleet_runtime.py" "$@"
@@ -141,7 +155,8 @@ usage: fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--pend
        fleet-manifest.sh control set <manifest> --mode paused|shadow|active [--target N] --expect-gen G
        fleet-manifest.sh attempt bind <manifest> <doc> --attempt-id A
        fleet-manifest.sh attempt settle <manifest> <doc> --attempt-id A --phase launched|refused|unknown
-       fleet-manifest.sh t3 set    <manifest> <worker doc> [--thread <threadId|pending>] [--kind ask|task] [--notice pending:0..3|sent|failed]
+       fleet-manifest.sh attempt end <manifest> --attempt-id A --reason <word>
+       fleet-manifest.sh t3 set   <manifest> <worker doc> [--thread <threadId|pending>] [--kind ask|task] [--notice pending:0..3|sent|failed]
        fleet-manifest.sh t3 unbind <manifest> <threadId> [--reason <word>]
 --lane is any lowercase word: native, claudex, openrouter, deepseek, t3 (a thread bound by scripts/t3/relay-bind.sh), ...
 add writes a pending row for a doc no session ever ran on (no marker bullet, free lock, no claude on it), with or without --pending
