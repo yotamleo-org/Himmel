@@ -16,7 +16,8 @@
 # Usage: timing-daily.sh [--no-run] [--alerts FILE]... [--ci-hours N]
 # Env: TIMING_DAILY_RUNNER (default scripts/ci/run-shell-tests.sh), TIMING_DAILY_SCAN (default scripts/),
 #      GH_TOKEN for --ci-hours, GITHUB_STEP_SUMMARY (the report is appended when set).
-# Exit: 0 nothing to act on; 1 a daily suite failed or a cap alert was seen; 2 usage error.
+# Exit: 0 nothing to act on; 1 a daily suite failed, a cap alert was seen, or an alert source
+#       (--alerts file, main CI run list or log) could not be read; 2 usage error.
 #
 # Platform guard: bash 3.2+; --ci-hours needs GNU date and gh (the job runs on Linux).
 # shellcheck disable=SC2016 # the summary's backticks are literal markdown
@@ -49,25 +50,37 @@ if [ "$no_run" -eq 0 ]; then
   printf '%s\n' "$out"
 fi
 
-ci_ids=""
-ci_rc=0
+src_rc=0
+alerts=""
+add_alerts() { [ -z "$1" ] || alerts="${alerts:+$alerts
+}$1"; }
+alert_lines() { grep -E 'CAP-ALERT [^ ]+ \(ran' || true; } # swallow-ok: a source with no alert line is the common case
+
+add_alerts "$(printf '%s\n' "$out" | alert_lines)"
+for f in ${alert_files[@]+"${alert_files[@]}"}; do
+  if [ -r "$f" ]; then
+    add_alerts "$(alert_lines < "$f")"
+  else
+    echo "timing-daily: cannot read $f" >&2
+    src_rc=1
+  fi
+done
 if [ -n "$ci_hours" ]; then
   since="$(date -u -d "$ci_hours hours ago" +%Y-%m-%dT%H:%M:%SZ)"
-  ci_ids="$(gh run list --workflow ci.yml --branch main --status completed --created ">=$since" --limit 50 --json databaseId --jq '.[].databaseId')" \
-    || { echo "timing-daily: gh run list failed; the last ${ci_hours}h of main CI was not read" >&2; ci_rc=1; }
+  if ci_ids="$(gh run list --workflow ci.yml --branch main --status completed --created ">=$since" --limit 50 --json databaseId --jq '.[].databaseId')"; then
+    for id in $ci_ids; do
+      if run_log="$(gh run view "$id" --log)"; then
+        add_alerts "$(printf '%s\n' "$run_log" | alert_lines)"
+      else
+        echo "timing-daily: gh run view $id failed; its log was not read" >&2
+        src_rc=1
+      fi
+    done
+  else
+    echo "timing-daily: gh run list failed; the last ${ci_hours}h of main CI was not read" >&2
+    src_rc=1
+  fi
 fi
-
-alerts="$(
-  [ -z "$out" ] || printf '%s\n' "$out" | grep -E '^CAP-ALERT [^ ]+ \(ran'
-  for f in ${alert_files[@]+"${alert_files[@]}"}; do
-    [ -r "$f" ] || { echo "timing-daily: cannot read $f" >&2; continue; }
-    grep -E 'CAP-ALERT [^ ]+ \(ran' "$f"
-  done
-  for id in $ci_ids; do
-    gh run view "$id" --log 2>/dev/null | grep -E 'CAP-ALERT [^ ]+ \(ran'
-  done
-  true
-)"
 
 would="$(printf '%s\n' "$alerts" | awk '
   { i = index($0, "CAP-ALERT "); if (!i) next
@@ -80,7 +93,7 @@ would="$(printf '%s\n' "$alerts" | awk '
 report="$(
   echo '== timing-daily =='
   if [ "$no_run" -eq 1 ]; then echo "daily run: skipped (--no-run)"; else echo "daily run: rc=$run_rc"; fi
-  [ "$ci_rc" -eq 0 ] || echo "main CI read: failed"
+  [ "$src_rc" -eq 0 ] || echo "alert sources: not all read"
   if [ -n "$would" ]; then printf '%s\n' "$would"; else echo "no cap alerts"; fi
 )"
 printf '%s\n' "$report"
@@ -88,4 +101,4 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   printf '### timing-daily\n\n```\n%s\n```\n' "$report" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true # swallow-ok: an unwritable summary must not change the verdict
 fi
 
-[ "$run_rc" -eq 0 ] && [ "$ci_rc" -eq 0 ] && [ -z "$would" ]
+[ "$run_rc" -eq 0 ] && [ "$src_rc" -eq 0 ] && [ -z "$would" ]

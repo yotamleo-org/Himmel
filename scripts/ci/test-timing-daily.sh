@@ -72,6 +72,25 @@ else
   fail "TD4: rc=$rc out: $out"
 fi
 
+td clean --no-run --alerts "$sb/missing.log"
+if [ "$rc" -eq 1 ] && grepq "$out" -F 'cannot read' && grepq "$out" -F 'alert sources: not all read'; then
+  pass "TD4b: an unreadable --alerts file exits 1 instead of being skipped"
+else
+  fail "TD4b: rc=$rc out: $out"
+fi
+
+if date -d '1 hour ago' +%s > /dev/null 2>&1; then # gnu-ok: the daily job runs on Linux; the rows skip where date has no -d
+  mkdir -p "$sb/bin"
+  printf '#!/usr/bin/env bash\ncase "$1 $2" in\n  "run list") echo 111 ;;\n  *) exit 1 ;;\nesac\n' > "$sb/bin/gh"
+  chmod +x "$sb/bin/gh"
+  out=$(PATH="$sb/bin:$PATH" TIMING_DAILY_RUNNER="$sb/clean.sh" bash "$TD" --no-run --ci-hours 1 2>&1); rc=$?
+  if [ "$rc" -eq 1 ] && grepq "$out" -F 'gh run view 111 failed' && grepq "$out" -F 'alert sources: not all read'; then
+    pass "TD4c: a main CI log that cannot be read exits 1 instead of reading as no alerts"
+  else
+    fail "TD4c: rc=$rc out: $out"
+  fi
+fi
+
 stub mode 'echo "mode=$SUITE_TIER_MODE"; exit 0'
 td mode
 if grepq "$out" -F 'mode=daily'; then
