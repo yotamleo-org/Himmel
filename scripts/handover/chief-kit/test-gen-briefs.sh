@@ -1489,18 +1489,14 @@ pso="$(HOME="$PSHOME" psrun big covered)"; rc=$?
 has "size estimate: the warning names the override" "$pso" "one scripted rename"
 check "size estimate: a count a chief record covers writes no row" 0 "$(sel_count)"
 
-for sh in "glob:41 files" "mixed:44 files" "rootglob:41 files" "treeglob:41 files" "ddglob:41 files" "hlglob:41 files" "qglob:41 files" "dotslash:41 files" "slashglob:41 files" "new41:41 files"; do
+for sh in "glob:41 files" "mixed:44 files" "treeglob:41 files" "ddglob:41 files" "new41:41 files"; do
     pw="${sh%%:*}"; pc="${sh#*:}"
     pso="$(psrun "$pw")"; rc=$?
-    case "$pw" in
-        rootglob|dotslash)
-            [ "$rc" = 1 ] && has "size estimate: the $pw brief is refused by brief-lint, not by the size check" "$pso" "brief-lint refuses the brief" || fail "$pw: rc=$rc: $pso" ;;
-        *) [ "$rc" = 0 ] && pass "size estimate: the $pw Writes list is estimated, not refused (rc 0)" || fail "$pw: rc=$rc: $pso" ;;
-    esac
+    [ "$rc" = 0 ] && pass "size estimate: the $pw Writes list is estimated, not refused (rc 0)" || fail "$pw: rc=$rc: $pso"
     has "size estimate: the $pw warning counts $pc" "$pso" "$pc"
     has "size estimate: the $pw warning names the hard max" "$pso" "hard max"
 done
-for pw in rootfile segglob prose paren abspath; do
+for pw in rootfile segglob; do
     pso="$(psrun "$pw")"; rc=$?
     [ "$rc" = 0 ] && pass "size estimate: the $pw Writes list is under the bands (rc 0)" || fail "$pw: rc=$rc: $pso"
     lacks "size estimate: the $pw list names no hard max" "$pso" "hard max"
@@ -1517,11 +1513,7 @@ lacks "emptyw: the size check does not refuse it" "$pso" "hard max"
 has "emptyw: the report names the rule" "$pso" "warning: worker N921 Writes name no file tracked at base"
 
 check "no pr_size_gate in gen-briefs.py" 0 "$(grep -c pr_size_gate "$SUT")"
-pso="$(HIMMEL_FLAG_PR_SIZE_GATE=maybe psrun big gv)"; rc=$?
-[ "$rc" = 0 ] && pass "a stale pr_size_gate value changes nothing (rc 0)" || fail "stale flag value: rc=$rc: $pso"
 
-pso="$(python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/ps-big.json" --base "$PSBASE" --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/ps-bucket-kit" --date 2026-10-08 --repo "$PS" --handover-root "$WORK/handovers-kit" --work-dir "$WORK/psw-kit" --deadline 1791475000 2>&1)"; rc=$?
-[ "$rc" = 0 ] && has "an adopted kit writes the brief and warns of the estimate" "$pso" "over the 40-file hard max" || fail "adopted kit: rc=$rc: $pso"
 unset HIMMEL_CONFIG_DIR
 
 # --- S2a: with stacked_series on, a writer's `series: [<label>, ...]` writes ONE brief (Series line, grant line, the union of

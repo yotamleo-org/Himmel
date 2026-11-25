@@ -113,13 +113,15 @@ append() {
 case "$VERB" in
 note)
     mkdir -p "$ROOT/.locks" 2>/dev/null
-    tries=0
-    while ! mkdir "$LEDGER.lk" 2>/dev/null; do
+    tries=0 held=0
+    while :; do
+        if mkdir "$LEDGER.lk" 2>/dev/null; then held=1; break; fi
+        [ -d "$LEDGER.lk" ] || break
         tries=$((tries + 1))
         [ "$tries" -le 50 ] || break
         sleep 0.1
     done
-    [ "$tries" -le 50 ] && trap 'rmdir "$LEDGER.lk" 2>/dev/null' EXIT
+    [ "$held" -eq 0 ] || trap 'rmdir "$LEDGER.lk" 2>/dev/null' EXIT
     if [ -n "$BAND" ] || [ "$KIND" != refuse ]; then
         pfx="band=$BAND ref=$REF"
         if [ -f "$LEDGER" ] && awk -F'\t' -v k="$KIND" -v key="$KEY" -v l="$LABEL" -v p="$pfx " \

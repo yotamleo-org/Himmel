@@ -144,6 +144,10 @@ check "an estimate or bulk row with no band is written once per key and label" $
 for _ in 1 2 3 4 5 6 7 8; do run note estimate HIMMEL-9502 N952 --files 41 --band hard >/dev/null & done
 wait
 check "eight concurrent notes of one case append one row" $((n0 + 9)) "$(count SIZE-ESCALATE)"
+t0=$SECONDS
+bash "$SUT" note estimate HIMMEL-9503 N953 --files 41 --band hard --root /proc/no-such-root >/dev/null 2>&1; rc=$?
+check "a note into a root it cannot create exits 2" 2 "$rc"
+check "a note into a root it cannot create does not wait for a lock" 0 "$(( (SECONDS - t0) / 3 ))"
 out=$(run note estimate HIMMEL-9500 N950 --files 41 --band huge); rc=$?
 check "note --band with an unknown band exits 2" 2 "$rc"
 out=$(run note real HIMMEL-9500 N950 --files 41 --band hard --ref 'a b'); rc=$?
