@@ -86,7 +86,7 @@ export function verifyChain(file: string, from?: { n: number; h: string }): { ok
 }
 
 export type SpoolRec =
-  | { type: "draft"; source: "send.ts" | "telegram"; kind: "question" | "status" | "info" | "answer"; replyTo?: number; text: string; allowShape?: string }
+  | { type: "draft"; source: "send.ts" | "telegram" | "chief"; kind: "question" | "status" | "info" | "answer"; replyTo?: number; text: string; allowShape?: string; session?: string }
   | { type: "tap"; verb: "ok" | "no"; draft: string; by: string; ts: number; sig?: string }
   | { type: "ack"; sid: string; token: string }
   | { type: "confirm"; chatId: number }
@@ -110,9 +110,15 @@ function spoolFault(r: any): string | null {
     return r.event && typeof r.event === "object" && (SPOOL_JOB_EVENTS as readonly string[]).includes(r.event.type) ? null : "job-event: bad event";
   }
   if (r.type === "draft") {
-    if (r.source !== "send.ts" && r.source !== "telegram") return "draft: bad source";
+    if (r.source !== "send.ts" && r.source !== "telegram" && r.source !== "chief") return "draft: bad source";
     if (!SEND_KINDS.includes(r.kind)) return "draft: bad kind";
     if (typeof r.text !== "string") return "draft: bad text";
+    if (r.session !== undefined && !(r.source === "chief" && typeof r.session === "string" && SESSION_ID_RE.test(r.session))) return "draft: bad session";
+    if (r.source === "chief") {
+      if (r.kind !== "status" && r.kind !== "info") return "draft: chief takes only status or info";
+      if (r.replyTo !== undefined) return "draft: chief takes no replyTo";
+      if (r.allowShape !== undefined) return "draft: chief takes no allowShape";
+    }
     if (!(r.replyTo === undefined || (Number.isSafeInteger(r.replyTo) && r.replyTo > 0))) return "draft: bad replyTo";
     return r.allowShape === undefined || /^[a-z_]{1,20}$/.test(r.allowShape) ? null : "draft: bad allowShape";
   }
@@ -262,12 +268,14 @@ function computeCodeVersion(): string {
 }
 export const CODE_VERSION = computeCodeVersion();
 
-export function pollerStale(path: string): boolean {
+export function codeState(path: string): "fresh" | "stale" | "absent" {
   let holder: { pid?: number; start?: string | null; code?: string } = {};
-  try { holder = JSON.parse(fs.readFileSync(path, "utf8")) ?? {}; } catch { return false; }
-  if (!Number.isSafeInteger(holder.pid) || !alive(holder.pid!) || startIdentity(holder.pid!) !== holder.start) return false;
-  return holder.code !== CODE_VERSION;
+  try { holder = JSON.parse(fs.readFileSync(path, "utf8")) ?? {}; } catch { return "absent"; }
+  if (!Number.isSafeInteger(holder.pid) || !alive(holder.pid!) || startIdentity(holder.pid!) !== holder.start) return "absent";
+  return holder.code === CODE_VERSION ? "fresh" : "stale";
 }
+
+export const pollerStale = (path: string): boolean => codeState(path) === "stale";
 
 export function acquirePidLock(path: string): () => void {
   for (let attempt = 0; attempt < 2; attempt++) {
