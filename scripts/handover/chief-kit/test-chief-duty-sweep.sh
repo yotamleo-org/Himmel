@@ -268,6 +268,26 @@ world; set_tail "- 10:05 READY 101 $H1 GREEN"
 sweep
 has "judge-owed: no verdict on the PR is a first judge, go-owed only" "DUTY go-owed 101@$H7_1" "$OUT"
 hasnt "judge-owed: no prior verdict means no judge-owed" "judge-owed" "$OUT"
+H3=3333333333333333333333333333333333333333
+noop_record() {
+    mkdir -p "$B/verdicts/$1"
+# shellcheck disable=SC2016  # the backticks are the verdict line's literal text
+    printf '# VERDICT %s - judge\n\n## Verdict\n\n**GO** for head `%s`\n\npr: 101\ndelta: no-op\ndelta-judged: %s\ndelta-class: none\n' "$1" "$H3" "$2" > "$B/verdicts/$1/judge.md"
+}
+world; set_tail "- 10:05 READY 101 $H1 GREEN"
+verdict j101a 101 "$H2" GO
+touch -d '2 hours ago' "$B/verdicts/j101a/judge.md"
+noop_record j101n "$H2"
+printf 'finding\n' > "$STUB/delta.out"
+sweep
+has "judge-owed: a newest no-op record is followed to the real judged head" "--verdict-file $B/verdicts/j101a/judge.md $H2 $H1" "$(cat "$STUB/delta-calls")"
+hasnt "judge-owed: the no-op record is never the classifier's input" "j101n" "$(cat "$STUB/delta-calls")"
+has "judge-owed: listed after a no-op record" "DUTY judge-owed 101@$H7_1 :: " "$OUT"
+world; set_tail "- 10:05 READY 101 $H1 GREEN"
+noop_record j101n "$H2"
+sweep
+check "judge-owed: a no-op record whose judged head has no record asks the classifier nothing" "" "$(cat "$STUB/delta-calls")"
+has "judge-owed: and fails closed to a trust delta" "is a trust delta" "$OUT"
 
 ticket() {
     printf -- '---\nkey: "%s"\nstatus: "%s"\nlabels: %s\nfixVersions: ["v1.1.3"]\n---\n# %s\n' "$1" "$3" "$2" "$1" > "$WORK/w/mirror/$1.md"
