@@ -753,7 +753,9 @@ def settle_attempt(args, attempts, rows, doc, history):
 
 def end_attempt(args, attempts, rows, history):
     """End one launched attempt named by its attempt id alone, so a doc path that cannot be typed (a NUL byte) cannot strand it.
-    The chief or the operator types it; it touches no other attempt. It writes one refused receipt (cause ended-by-id, the reason),
+    It refuses while the worker lives: the attempt must belong to the given manifest, its owner and committer must be proven dead,
+    no session may exist and no process may carry the attempt id (ended_blockers, minus the queue lock, which needs the doc).
+    It touches no other attempt. It writes one refused receipt (cause ended-by-id, the reason),
     releases the attempt's own reservation and target slot and removes its manifest row, matched by attempt id, never by doc."""
     reason = (args.reason or '').strip()
     if not re.fullmatch(r'[a-z0-9:_-]{1,40}', reason):
@@ -765,6 +767,11 @@ def end_attempt(args, attempts, rows, history):
         raise Refused('end refused: unknown attempt')
     if record['phase'] != 'launched':
         raise Refused('end refused: attempt is %s, only a launched attempt is ended by id' % record['phase'])
+    if Path(record.get('manifest', '')).resolve() != Path(args.manifest).resolve():
+        raise Refused('end refused: attempt belongs to another manifest')
+    blockers = ended_blockers(record, time.monotonic() + 5, check_lock=False)
+    if blockers:
+        raise Refused('end refused: ' + '; '.join(blockers))
     record['cause'] = 'ended-by-id'
     receipt(record, 'refused', reason=reason, settled_by=dict(host=socket.gethostname(), pid=os.getpid(), uid=os.getuid()))
     release_reservation(record)
@@ -832,7 +839,7 @@ def unlaunched(doc, timeout=10):
     return lock_free_without_session(doc, timeout)
 
 
-def ended_blockers(record, deadline):
+def ended_blockers(record, deadline, check_lock=True):
     blockers = []
     if record['phase'] != 'launched':
         blockers.append('phase is %s' % record['phase'])
@@ -845,7 +852,7 @@ def ended_blockers(record, deadline):
     carrying, unreadable, complete = launch_candidates(record, deadline)
     if carrying or unreadable or not complete:
         blockers.append('a process may still carry the attempt')
-    if not blockers and not lock_free_without_session(record['doc'], require_no_marker=False):
+    if check_lock and not blockers and not lock_free_without_session(record['doc'], require_no_marker=False):
         blockers.append('the doc queue lock is not free or a session is live on it')
     return blockers
 

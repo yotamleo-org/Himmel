@@ -2752,7 +2752,7 @@ PY
                 LEGACY) emit WARN C100-fleet "fleet row $b ($c) in $anchor is held by a legacy registration that is not proven wrapped" \
                             "check the worker, then retire the row with fleet-manifest.sh remove"; found=1 ;;
                 UNREAD) emit WARN C100-fleet "launched fleet attempt $b ($c) names a doc that cannot be read: $d" \
-                            "the attempt still holds a family slot; once you have checked that no session of that worker is running, release it by its id with: bash $(printf '%q' "$SELF_DIR/handover/chief-kit/fleet-manifest.sh") attempt end $(printf '%q' "$manifest") --attempt-id $(printf '%q' "$b") --reason <word>"; found=1 ;;
+                            "the attempt still holds a family slot; the end refuses while the worker lives (owner, session or a process carrying the attempt id); release it by its id with: bash $(printf '%q' "$SELF_DIR/handover/chief-kit/fleet-manifest.sh") attempt end $(printf '%q' "$manifest") --attempt-id $(printf '%q' "$b") --reason <word>"; found=1 ;;
             esac
         done <<< "$picked"
     done

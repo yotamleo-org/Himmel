@@ -45,10 +45,11 @@
 # `attempt end` (fleet_runtime.py `end`) releases ONE launched attempt named by its attempt id alone, for an attempt whose doc
 # path is damaged (a NUL byte cannot be typed on argv, so `runtime settle`, which takes the doc, cannot name it). Only the chief
 # or the operator types it; nothing calls it. It refuses (rc 10, `end refused: <why>`) an id that is not found, an attempt that
-# is not launched, an id already ended, and a --reason that is not one word [a-z0-9:_-]{1,40}. It then writes one typed
+# is not launched, an id already ended, an attempt recorded under another manifest, a live worker (owner or committer not
+# proven dead, a session that may exist, a process carrying the attempt id; only the queue-lock check is skipped, as it needs
+# the doc) and a --reason that is not one word [a-z0-9:_-]{1,40}. It then writes one typed
 # `refused` receipt (cause ended-by-id, the reason), releases the attempt's own reservation, frees its target slot and removes
-# its manifest row by attempt id; no other attempt and no earlier history row changes. The id is the only evidence it reads: the
-# chief checks that no session of that worker is running before typing it.
+# its manifest row by attempt id; no other attempt and no earlier history row changes.
 #
 # Control init creates one paused generation-1 anchor in the manifest's physical
 # bucket and stores only .control={family,anchor}. A copied successor reference

@@ -2663,11 +2663,16 @@ exit 1''')
     def ended_rows(self, aid='one'):
         return [row for row in self.history_rows(aid) if row.get('cause') == 'ended-by-id']
 
+    def launched(self, aid='one', doc=None, dead=True):
+        self.stuck(aid, doc)
+        self.rt('outcome', aid=aid, doc=doc, extra=('--phase', 'launched'))
+        if dead:
+            self.forge(aid, start='0')
+
     def test_a_launched_attempt_whose_doc_path_holds_a_nul_byte_is_released_by_its_attempt_id(self):
         self.active()
-        self.stuck()
-        self.rt('outcome', extra=('--phase', 'launched'))
-        self.damage(doc=str(self.doc) + '\x00', owner=self.partial(self.dead_pid()))
+        self.launched()
+        self.damage(doc=str(self.doc) + '\x00')
         self.assertEqual(json.loads(self.end().stdout), {'phase': 'refused', 'cause': 'ended-by-id'})
         self.assertNotIn('one', self.anchor_attempts())
         rows = self.ended_rows()
@@ -2678,11 +2683,9 @@ exit 1''')
 
     def test_ending_one_attempt_by_id_touches_no_other_attempt(self):
         self.active()
-        self.stuck()
-        self.rt('outcome', extra=('--phase', 'launched'))
+        self.launched()
         two = self.extra_doc(2)
-        self.stuck('two', two)
-        self.rt('outcome', aid='two', doc=two, extra=('--phase', 'launched'))
+        self.launched('two', two)
         before = self.anchor_attempts()['two']
         self.end()
         self.assertEqual(self.anchor_attempts()['two'], before)
@@ -2704,10 +2707,36 @@ exit 1''')
         self.assertIn('one', self.anchor_attempts())
         self.assertEqual(self.ended_rows(), [])
 
+    def test_an_attempt_whose_owner_is_alive_is_refused(self):
+        self.active()
+        self.launched(dead=False)
+        self.refused_end('owner is not proven dead')
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'launched')
+        self.assertEqual(self.ended_rows(), [])
+
+    def test_an_attempt_with_a_live_session_is_refused(self):
+        self.active()
+        self.launched()
+        session = self.named_session(attempt_id='one')
+        self.refused_end('session')
+        self.stop(session)
+        self.assertIn('one', self.anchor_attempts())
+        self.assertEqual(self.ended_rows(), [])
+
+    def test_an_attempt_recorded_under_another_manifest_is_refused(self):
+        self.active()
+        self.launched()
+        other = self.bucket / 'other.fleet.json'
+        shutil.copy(self.m, other)
+        p = self.call('attempt', 'end', other, '--attempt-id', 'one', '--reason', 'damaged-doc', ok=False)
+        self.assertIn('end refused', p.stderr)
+        self.assertIn('another manifest', p.stderr)
+        self.assertIn('one', self.anchor_attempts())
+        self.assertEqual(self.ended_rows(), [])
+
     def test_a_second_end_of_the_same_id_is_refused_and_writes_no_second_row(self):
         self.active()
-        self.stuck()
-        self.rt('outcome', extra=('--phase', 'launched'))
+        self.launched()
         self.end()
         self.refused_end('already ended')
         self.assertEqual(len(self.ended_rows()), 1)
