@@ -737,6 +737,53 @@ f_out="$(f_tick)"
 not_contains 'no focus-state file leaves focus= off the line' "$f_out" ' focus='
 not_contains 'no focus-state file leaves sdrift= off the line' "$f_out" ' sdrift='
 not_contains 'no focus-state file leaves stale= off the line' "$f_out" ' stale='
+f_drift() {
+    local n
+    : > "$f_dir/focus-drift.txt"
+    for n in "$@"; do
+        printf 'UNOWNED HIMMEL-%s In Progress with no open PR and no live owner; a date never makes it wait: awaiting chief since=2026-11-20 due=2026-12-31 what=x source=hold | writer=chief | fix=dispatch\n' "$n" >> "$f_dir/focus-drift.txt"
+    done
+    printf 'sdrift=%s:abcd1234\n' "$#" >> "$f_dir/focus-drift.txt"
+}
+f_age() { touch -d "$2" "$f_dir/$1"; }
+f_seven='HIMMEL-901,HIMMEL-902,HIMMEL-903,HIMMEL-904,HIMMEL-905,HIMMEL-906,HIMMEL-907'
+f_doc v1.0.1
+f_state ok '' 0:0f0f0f0f 0:
+f_drift 901 902 903 904 905 906 907
+f_age focus-state '10 minutes ago'
+f_out="$(f_tick)"
+contains 'seven ownerless started tickets with a future due date: stale= names all seven' "$f_out" " stale=7:$f_seven"
+f_state ok '' 0:0f0f0f0f 0:
+f_age focus-drift.txt '10 minutes ago'
+f_age focus-state 'now'
+f_out="$(f_tick)"
+not_contains 'a drift file older than the state line leaves the state line as it is' "$f_out" ' stale=7:'
+f_state ok '' 0:0f0f0f0f 0:
+f_drift 901 902 903 904 905 906
+printf 'AWAITING HIMMEL-909 a release-manager ruling wait since=2026-11-20 ruling=d1 what=x source=ruling | writer=release-manager | fix=none | wait=release-manager\n' > "$f_dir/drift-extra"
+{ sed '$d' "$f_dir/focus-drift.txt"; cat "$f_dir/drift-extra"; printf 'sdrift=7:abcd1234\n'; } > "$f_dir/drift-new" && mv -f "$f_dir/drift-new" "$f_dir/focus-drift.txt"
+f_age focus-state '10 minutes ago'
+f_out="$(f_tick)"
+contains 'a started ticket a live worker holds has no row and is not named' "$f_out" ' stale=6:HIMMEL-901,HIMMEL-902,HIMMEL-903,HIMMEL-904,HIMMEL-905,HIMMEL-906'
+not_contains 'a ruling wait is not a stuck started ticket' "$f_out" 'HIMMEL-909'
+f_state ok '' 7:abcd1234 7:HIMMEL-901,HIMMEL-902,HIMMEL-903,HIMMEL-904,HIMMEL-905,HIMMEL-906,HIMMEL-907
+f_drift
+f_age focus-state '10 minutes ago'
+f_out="$(f_tick)"
+not_contains 'after the dispositions the drift file names none and stale= is gone' "$f_out" ' stale='
+f_state ok '' 0:0f0f0f0f 0:
+f_drift 901 902 903 904 905 906 907
+f_age focus-drift.txt '5 hours ago'
+f_age focus-state '6 hours ago'
+f_out="$(f_tick)"
+contains 'a drift file older than 3 h reads partial' "$f_out" " stale=partial:7:$f_seven"
+rm -f "$f_dir/focus-drift.txt" "$f_dir/drift-extra"
+f_state ok '' 0:0f0f0f0f 0:
+f_out="$(f_tick)"
+not_contains 'no drift file leaves stale= off the line' "$f_out" ' stale='
+f_state ok '' 0:0f0f0f0f 3:HIMMEL-1,HIMMEL-2,HIMMEL-3
+f_out="$(f_tick)"
+contains 'no drift file echoes the state line as before' "$f_out" ' stale=3:HIMMEL-1,HIMMEL-2,HIMMEL-3'
 if [ ! -r "/proc/$$/status" ]; then skip 'the focus fields make no gh or jira call: no /proc to walk the callers'
 elif [ "$f_probe" != 'gh probe' ]; then fail "the call-log stub missed a gh call under focus-refresh.sh (got '$f_probe')"
 elif [ -s "$f_calls" ]; then fail "focus-refresh.sh called gh or jira from the tick: $(tr '\n' ';' < "$f_calls")"; else pass 'the focus fields make no gh or jira call'; fi

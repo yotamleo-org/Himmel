@@ -176,7 +176,9 @@ focus=<state> sdrift=<n>:<sig8> stale=<n>:<KEY>,... follow wt-ceiling= and are A
 focus-state file sits beside the console doc and --status does not read skip: focus= is
 focus-refresh.sh --status (FAILED:<stage> or DIRTY:<age>), sdrift= the drift line of the
 last good refresh, stale= the STALE feed of that refresh: the started tickets the drift check
-reads as UNOWNED, at most eight keys then ,+<m> (stale=partial:<n>:<KEY>,... when the drift file
+reads as UNOWNED (every started ticket with no live owner, whatever hold, owed or park date it carries; a
+focus-drift.txt newer than the state file is read at tick time through drift-summary.mjs, else the state's
+line stands), at most eight keys then ,+<m> (stale=partial:<n>:<KEY>,... when the drift file
 was unknown or older than 3 h; stale=unknown when no drift file could be read). focus=ok,
 sdrift=0:* and stale=0:* are elided (partial and unknown never are); --verbose prints all three.
 Read from the state file, no gh or Jira call. Advisory: not in chief-wait's action key.
@@ -3182,6 +3184,18 @@ if [ -n "$console_doc" ] && [ -f "${console_doc%/*}/focus-state" ]; then
     elif [ -n "$focus_summary" ]; then
         sdrift_summary="$(sed -n 's/^sdrift=//p' "${console_doc%/*}/focus-state" 2>/dev/null | head -n 1)"  # swallow-ok: no drift line leaves sdrift= off the line
         stale_summary="$(sed -n 's/^stale=//p' "${console_doc%/*}/focus-state" 2>/dev/null | head -n 1)"  # swallow-ok: no stale line leaves stale= off the line
+        stale_drift="${console_doc%/*}/focus-drift.txt"
+        if [ -f "$stale_drift" ] && [ "$stale_drift" -nt "${console_doc%/*}/focus-state" ] && command -v node >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+            # swallow-ok: a summary that fails or prints nothing usable leaves the state's stale= line as it was
+            stale_live="$(timeout -k 2 "$(tick_bound 20)" node "$HERE/drift-summary.mjs" --json --drift "$stale_drift" --mirror-dir "${TICK_TRACKER_MIRROR_DIR:-$tick_mirror_default}" 2>/dev/null | python3 -I -c 'import json, re, sys
+d = json.load(sys.stdin)
+keys = d["unowned"]
+assert isinstance(keys, list) and all(isinstance(k, str) and re.fullmatch(r"[A-Z][A-Z0-9]*-[0-9]+", k) for k in keys)
+assert isinstance(d["unknown"], bool) and isinstance(d["stale"], bool)
+body = ",".join(keys[:8]) + (",+%d" % (len(keys) - 8) if len(keys) > 8 else "")
+print(("partial:" if d["unknown"] or d["stale"] else "") + "%d:%s" % (len(keys), body))' 2>/dev/null)" || stale_live=""  # gnu-ok: chief kit is Linux-only
+            [ -z "$stale_live" ] || stale_summary="$stale_live"
+        fi
     fi
 fi
 
