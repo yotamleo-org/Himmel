@@ -582,8 +582,6 @@ check "D6: every recorded worker ended -> one move" "$(ntrans)" 1
 check "D6: every recorded worker ended -> To Do" "$(moved)" "transition $K To Do"
 check "D6: the move is the wrapped event's" "$(row event)/$(row rule)" wrapped/D6
 
-# A wrapped worker never drops a key to To Do while ANY worker doc in its bucket that names
-# the key holds its queue lock, even a sibling doc the record never listed.
 DOC3="$tmp/$K-N3-slug-2026-10-21.md"
 reset "In Progress"; owned WRAPPED 0
 mkdoc "$DOC3" LIVE; echo 11 > "$FX/lock.rc.${DOC3##*/}"

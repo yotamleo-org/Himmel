@@ -876,12 +876,14 @@ _ts_other_worker_keeps_ownership() {
     [ "$TS_LOCK_HELD" != no ] || [ "$TS_OPEN_EVIDENCE" = yes ]
 }
 
-# _ts_bucket_docs <KEY> <doc> — every worker doc in <doc>'s bucket directory that names KEY
-# (<KEY>-N*.md), one per line.
 _ts_bucket_docs() {
     local f
     for f in "${2%/*}/$1"-N*.md; do [ -f "$f" ] && printf '%s\n' "$f"; done
     return 0
+}
+
+_ts_unrecorded_sibling_keeps_ownership() {
+    [ "$TS_WORKER_STATE" != wrapped ] && [ "$TS_LOCK_HELD" != no ]
 }
 
 ts_derive() {
@@ -915,13 +917,12 @@ ts_derive() {
             _ts_other_worker_keeps_ownership || continue
             owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
         done <<<"$recorded"
-        # A sibling doc the record never listed still owns the key while it holds its queue lock or its lock cannot be read.
         if [ -z "$owner" ]; then
             while IFS= read -r other; do
                 [ -n "$other" ] && [ "$other" != "$doc" ] || continue
                 grep -qxF -- "$other" <<<"$recorded" && continue
                 _ts_worker_state "$other"
-                [ "$TS_WORKER_STATE" != wrapped ] && [ "$TS_LOCK_HELD" != no ] || continue
+                _ts_unrecorded_sibling_keeps_ownership || continue
                 owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
             done <<<"$(_ts_bucket_docs "$key" "$doc")"
         fi
