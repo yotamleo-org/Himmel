@@ -28,8 +28,9 @@
 # the stuck-playbook Stage 2 / Out-of-Place rows' territory, not this
 # script's.
 #
-# Also at open: SIZE-WARN on stderr when the diff passes the soft band, and SIZE-REFUSE
-# (exit 1) past CodeRabbit's 300 files; the thresholds live in scripts/ci/pr-size-bands.tsv.
+# Also on every run, open or update: the real diff is measured, the body carries one `pr-size:` line, SIZE-WARN goes to
+# stderr past the soft band, and past the hard or CodeRabbit band the chief gets one `real` SIZE-ESCALATE row. No count
+# refuses; only a diff that cannot be measured refuses an open. The thresholds live in scripts/ci/pr-size-bands.tsv.
 #
 # Success: exactly one line, `PR <number> <url> <head-sha>`.
 # Failure: the forge/gh error verbatim on stderr, non-zero exit.
@@ -226,44 +227,68 @@ if [ "$(forge_detect)" = github ]; then
     fi
 fi
 
-# PR size bands (scripts/ci/pr-size-bands.tsv, one owner of the thresholds): measures the
-# real diff against origin/<base> (renames counted once) and applies the warn and refuse
-# rows. SIZE-WARN goes to stderr so stdout stays the one `PR ...` line; SIZE-REFUSE exits 1.
-check_pr_size() {
+PR_FILES="" PR_LINES="" PR_BAND="" PR_SIZE_ERR="" PR_SIZE_WHY=""
+measure_pr_size() {
     local bands="$HERE/../ci/pr-size-bands.tsv" base_ref="origin/$BASE"
+    PR_FILES="" PR_LINES="" PR_BAND=""
     if [ ! -r "$bands" ]; then
-        echo "ERR worker-pr-open: cannot read the PR size bands: $bands" >&2
+        PR_SIZE_ERR="cannot read the PR size bands: $bands"; PR_SIZE_WHY="the size bands are unreadable"
         return 1
     fi
     if ! git rev-parse --verify -q "$base_ref" >/dev/null; then
-        echo "ERR worker-pr-open: could not measure the PR size: $base_ref is not fetched; fetch it, then open the PR" >&2
+        PR_SIZE_ERR="could not measure the PR size: $base_ref is not fetched; fetch it, then open the PR"; PR_SIZE_WHY="$base_ref is not fetched"
         return 1
     fi
     local files lines
-    # A diff that cannot be taken (no merge base, shallow clone) must refuse, never read as zero.
     if ! files=$(git diff --name-only -M "$base_ref...HEAD" | wc -l | tr -d ' ') \
         || ! lines=$(git diff --numstat -M "$base_ref...HEAD" | awk '{ if ($1 ~ /^[0-9]+$/) n += $1; if ($2 ~ /^[0-9]+$/) n += $2 } END { print n + 0 }'); then
-        echo "ERR worker-pr-open: could not measure the diff against $base_ref; refusing to open an unmeasured PR" >&2
+        PR_SIZE_ERR="could not measure the diff against $base_ref; refusing to open an unmeasured PR"; PR_SIZE_WHY="the diff against $base_ref could not be taken"
         return 1
     fi
-    local band max_lines max_files action over warned=0
-    while IFS=$'\t' read -r band max_lines max_files action; do
+    local band max_lines max_files over warned=0 hard=0 cap=0
+    while IFS=$'\t' read -r band max_lines max_files _; do
         case "$band" in ''|'#'*|band) continue ;; esac
         over=0
-        case "$max_lines" in -) ;; *[!0-9]*|'') echo "ERR worker-pr-open: bad max_lines in $bands row '$band'" >&2; return 1 ;; *) [ "$lines" -gt "$max_lines" ] && over=1 ;; esac
-        case "$max_files" in -) ;; *[!0-9]*|'') echo "ERR worker-pr-open: bad max_files in $bands row '$band'" >&2; return 1 ;; *) [ "$files" -gt "$max_files" ] && over=1 ;; esac
+        case "$max_lines" in -) ;; *[!0-9]*|'') PR_SIZE_ERR="bad max_lines in $bands row '$band'"; PR_SIZE_WHY="the size bands are unreadable"; return 1 ;; *) [ "$lines" -gt "$max_lines" ] && over=1 ;; esac
+        case "$max_files" in -) ;; *[!0-9]*|'') PR_SIZE_ERR="bad max_files in $bands row '$band'"; PR_SIZE_WHY="the size bands are unreadable"; return 1 ;; *) [ "$files" -gt "$max_files" ] && over=1 ;; esac
         [ "$over" -eq 1 ] || continue
-        case "$action" in
-            refuse)
-                echo "SIZE-REFUSE files=$files cap=$max_files: over the '$band' band in scripts/ci/pr-size-bands.tsv; split the PR" >&2
-                return 1 ;;
-            warn)
-                if [ "$warned" -eq 0 ]; then
-                    echo "SIZE-WARN lines=$lines files=$files" >&2
-                    warned=1
-                fi ;;
-        esac
+        if [ "$warned" -eq 0 ]; then
+            echo "SIZE-WARN lines=$lines files=$files" >&2
+            warned=1
+        fi
+        case "$band" in hard) hard=1 ;; coderabbit) cap=1 ;; esac
     done < "$bands"
+    PR_FILES="$files" PR_LINES="$lines"
+    if [ "$cap" -eq 1 ]; then PR_BAND=coderabbit; elif [ "$hard" -eq 1 ]; then PR_BAND=hard; fi
+    return 0
+}
+
+set_pr_size_body_line() {
+    local line
+    if [ -n "$PR_FILES" ]; then line="pr-size: files=$PR_FILES lines=$PR_LINES"; else line="pr-size: unmeasured (${PR_SIZE_WHY:-unknown})"; fi
+    if [[ $'\n'"$body" == *$'\n'pr-size:* ]]; then
+        body=$(printf '%s\n' "$body" | awk -v repl="$line" '{ if ($0 ~ /^pr-size:/) { if (!done) print repl; done = 1 } else print }')
+    else
+        body="${body}
+${line}"
+    fi
+}
+
+size_note_real() {
+    [ -n "$PR_BAND" ] || return 0
+    local key label primary note_sh="${SIZE_NOTE_SH:-}"
+    key=$(printf '%s' "${HIMMEL_HOLD_KEY:-$title_key}" | tr '[:lower:]' '[:upper:]')
+    label="${HIMMEL_HOLD_LABEL:-nolabel}"
+    if [ -z "$note_sh" ]; then
+        note_sh="$HERE/../handover/chief-kit/size-override.sh"
+        if primary=$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && [ -r "${primary%/.git}/scripts/handover/chief-kit/size-override.sh" ]; then
+            note_sh="${primary%/.git}/scripts/handover/chief-kit/size-override.sh"
+        fi
+    fi
+    if ! bash "$note_sh" note real "$key" "$label" --files "$PR_FILES" --trust unknown --band "$PR_BAND" --ref "$branch" \
+            --detail "real PR count: files=$PR_FILES lines=$PR_LINES" >/dev/null; then
+        echo "WARN worker-pr-open: could not write the SIZE-ESCALATE row for the real PR size (key '${key:-none}', label '$label'); tell your chief the PR is past the $PR_BAND band" >&2
+    fi
 }
 
 # A PR claims its files in the holds register: holds.py narrow --check names the files outside the worker's Writes for the
@@ -326,8 +351,11 @@ rm -f "$find_open_err"
 existing_pr=$(printf '%s\n' "$existing_pr" | head -n 1)
 
 if [ -z "$existing_pr" ]; then
-    # Size first: a PR CodeRabbit would skip whole is refused before anything else is checked.
-    check_pr_size || exit 1
+    if ! measure_pr_size; then
+        echo "ERR worker-pr-open: $PR_SIZE_ERR" >&2
+        exit 1
+    fi
+    set_pr_size_body_line
     # Opening a PR needs a finished /pr-check: an `avail ... ok` row at this head
     # in the CR ledger (a critic responded) AND no pending cr-pending marker,
     # which only clear-review-marker.sh removes once no finding blocks (the same
@@ -402,6 +430,7 @@ if [ -z "$existing_pr" ]; then
     # could still carry more than one line, so keep this defensive.
     url=$(printf '%s\n' "$out" | head -n 1)
     number=${url##*/}
+    size_note_real
 else
     number="$existing_pr"
     if [ -n "$title_key" ] && [ "$(forge_detect)" = github ]; then
@@ -416,11 +445,14 @@ else
     # An update is not an open: the check only prints, its refusal is never acted on.
     holds_narrow_check print
     holds_set_body_line
+    measure_pr_size || echo "WARN worker-pr-open: $PR_SIZE_ERR; the body says unmeasured" >&2
+    set_pr_size_body_line
     if ! out=$(forge_pr_set_body "$number" "$title" "$body" 2>&1); then
         echo "ERR worker-pr-open: PR body update failed:" >&2
         printf '%s\n' "$out" >&2
         exit 1
     fi
+    size_note_real
     forge=$(forge_detect)
     nwo=$(forge_repo_nwo)
     case "$forge" in
