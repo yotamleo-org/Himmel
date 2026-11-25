@@ -93,8 +93,10 @@ if date -d '1 hour ago' +%s > /dev/null 2>&1; then # gnu-ok: the daily job runs 
 #!/usr/bin/env bash
 case "$1 $2" in
   "run list")
-    q=""; prev=""
-    for a in "$@"; do [ "$prev" = --jq ] && q="$a"; prev="$a"; done
+    q=""; j=""; prev=""
+    for a in "$@"; do [ "$prev" = --jq ] && q="$a"; [ "$prev" = --json ] && j="$a"; prev="$a"; done
+    case ",$j," in *,databaseId,*) ;; *) echo "stub gh: --json must name databaseId, got '$j'" >&2; exit 1 ;; esac
+    case ",$j," in *,conclusion,*) ;; *) echo "stub gh: --json must name conclusion, got '$j'" >&2; exit 1 ;; esac
     printf '%s\n' "$*" >> "$GH_STUB_DIR/list.args"
     if [ -n "$q" ]; then jq -r "$q" "$GH_STUB_DIR/runs.json"; else cat "$GH_STUB_DIR/runs.json"; fi ;;
   "run view")
