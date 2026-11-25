@@ -54,6 +54,10 @@ printf '%s\n' '- 10:00 OWED sig-9610 sign it' '- 10:01 DELIVERED sig-9610 msg=55
 if CHIEF_WAIT_OWED_SEC=0 run_waiter "$WORK/o5.out" 30; then fail "a receipted item woke: $(cat "$WORK/o5.out")"; else pass 'an OWED item with a DELIVERED receipt does not wake'; fi
 
 reset
+printf '%s\n' '- 10:00 OWED sig-9616 sign it' '- 10:01Z DELIVERED sig-9616 msg=561 chat=1' >> "$chief"
+if CHIEF_WAIT_OWED_SEC=0 run_waiter "$WORK/o5z.out" 30; then fail "a receipt stamped with a Z woke: $(cat "$WORK/o5z.out")"; else pass 'an OWED item with a UTC-Z DELIVERED receipt does not wake'; fi
+
+reset
 printf '%s\n' '- 10:00 OWED sig-9611 sign it' '- 10:01 DELIVERED sig-9612 msg=556 chat=1' >> "$chief"
 if CHIEF_WAIT_OWED_SEC=0 run_waiter "$WORK/o6.out" 60; then pass "another key's receipt does not clear this item"; else fail "another key's receipt cleared sig-9611"; fi
 contains 'only the unreceipted key is named' "$(cat "$WORK/o6.out")" 'WAKE owed-undelivered sig-9611'

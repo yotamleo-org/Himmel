@@ -332,7 +332,7 @@ function undeliveredItems(doc: string, open: Map<string, string>): OwedItem[] {
     const m = l.match(/^- (?:\d{1,2}:\d{2} )?OWED ([A-Za-z0-9_.-]+)(?: (.*))?$/);
     if (!m || seen.has(m[1])) continue;
     seen.add(m[1]);
-    if (lines.some((x) => new RegExp(`^- (?:\\d{1,2}:\\d{2} )?DELIVERED ${m[1].replace(/[.]/g, "\\.")} msg=\\d+ chat=-?\\d+(?: .*)?$`).test(x))) continue;
+    if (lines.some((x) => new RegExp(`^- (?:\\d{1,2}:\\d{2}Z? )?DELIVERED ${m[1].replace(/[.]/g, "\\.")} msg=\\d+ chat=-?\\d+(?: .*)?$`).test(x))) continue;
     const key = /^[A-Z][A-Z0-9]*-\d+$/.test(m[1]) && open.has(m[1]) ? m[1] : null;
     items.push({ actor: "chief", source: "owed undelivered", key, title: key ? open.get(key)! : clip(`${m[1]}: ${m[2] ?? ""}`.replace(/: $/, ""), 140),
       ctx: `${key ? `${clip(m[2] ?? m[1], 120)}: ` : ""}OWED ${m[1]} has no DELIVERED receipt in ${basename(doc)}`, act: `the chief sends it with chief-route.ts reply --owed ${m[1]}` });

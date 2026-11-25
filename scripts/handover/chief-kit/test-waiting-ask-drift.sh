@@ -28,6 +28,7 @@ add() {
 }
 ask()       { printf -- '- 10:00 OWED %s %s\n' "$1" "$2" >> "$DOC"; }
 delivered() { printf -- '- 10:01 DELIVERED %s msg=7 chat=1\n' "$1" >> "$DOC"; }
+delivered_z() { printf -- '- 10:01Z DELIVERED %s msg=7 chat=1\n' "$1" >> "$DOC"; }
 run() { OUT="$(bash "$SCRIPT" --doc "$DOC" 2>"$TMP/err")"; RC=$?; }
 
 echo "D0: the script exists"
@@ -54,6 +55,14 @@ ask "TKT-200" "pick the release day"; delivered "TKT-200"
 run
 check "D2b rc 0" "$RC" "0"
 check "D2b prints nothing" "$OUT" ""
+
+echo "D2z: a receipt stamped HH:MMZ (UTC) closes the pair like the bare stamp"
+fresh d2z
+id="$(add operator step "sign the notes")"
+ask "$id" "sign the release notes"; delivered_z "$id"
+run
+check "D2z rc 0" "$RC" "0"
+check "D2z prints nothing" "$OUT" ""
 
 echo "D2c: an ask for a closed row's ticket key does not cover a new open row with that key"
 fresh d2c

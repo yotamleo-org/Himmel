@@ -2651,6 +2651,107 @@ exit 1''')
             self.assertNotIn('Traceback', p.stderr)
             self.assertEqual([r['attempt_id'] for r in json.loads(p.stdout)['launched']], ['one'])
 
+    def end(self, aid='one', reason='damaged-doc', ok=True, extra=()):
+        return self.call('attempt', 'end', self.m, '--attempt-id', aid, '--reason', reason, *extra, ok=ok)
+
+    def refused_end(self, text, **kwargs):
+        p = self.end(ok=False, **kwargs)
+        self.assertIn('end refused', p.stderr)
+        self.assertIn(text, p.stderr)
+        return p
+
+    def ended_rows(self, aid='one'):
+        return [row for row in self.history_rows(aid) if row.get('cause') == 'ended-by-id']
+
+    def launched(self, aid='one', doc=None, dead=True):
+        self.stuck(aid, doc)
+        self.rt('outcome', aid=aid, doc=doc, extra=('--phase', 'launched'))
+        if dead:
+            self.forge(aid, start='0')
+
+    def test_a_launched_attempt_whose_doc_path_holds_a_nul_byte_is_released_by_its_attempt_id(self):
+        self.active()
+        self.launched()
+        self.damage(doc=str(self.doc) + '\x00')
+        self.assertEqual(json.loads(self.end().stdout), {'phase': 'refused', 'cause': 'ended-by-id'})
+        self.assertNotIn('one', self.anchor_attempts())
+        rows = self.ended_rows()
+        self.assertEqual((len(rows), rows[0]['outcome'], rows[0]['reason']), (1, 'refused', 'damaged-doc'))
+        self.assertEqual(json.loads(self.rt('ack').stdout)['launched'], [])
+        manifest = json.loads(self.m.read_text())
+        self.assertEqual([w for w in manifest['workers'] if w.get('attempt', {}).get('attempt_id') == 'one'], [])
+
+    def test_ending_one_attempt_by_id_touches_no_other_attempt(self):
+        self.active()
+        self.launched()
+        two = self.extra_doc(2)
+        self.launched('two', two)
+        before = self.anchor_attempts()['two']
+        self.end()
+        self.assertEqual(self.anchor_attempts()['two'], before)
+        self.assertEqual(self.ended_rows('two'), [])
+
+    def test_ending_refuses_an_id_that_is_not_found(self):
+        self.active()
+        self.stuck()
+        self.rt('outcome', extra=('--phase', 'launched'))
+        self.refused_end('unknown attempt', aid='nope')
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'launched')
+        self.assertEqual(self.ended_rows(), [])
+
+    def test_ending_refuses_an_attempt_that_is_not_launched(self):
+        self.active()
+        self.stuck()
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'committed')
+        self.refused_end('committed')
+        self.assertIn('one', self.anchor_attempts())
+        self.assertEqual(self.ended_rows(), [])
+
+    def test_an_attempt_whose_owner_is_alive_is_refused(self):
+        self.active()
+        self.launched(dead=False)
+        self.refused_end('owner is not proven dead')
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'launched')
+        self.assertEqual(self.ended_rows(), [])
+
+    def test_an_attempt_with_a_live_session_is_refused(self):
+        self.active()
+        self.launched()
+        session = self.named_session(attempt_id='one')
+        self.refused_end('session')
+        self.stop(session)
+        self.assertIn('one', self.anchor_attempts())
+        self.assertEqual(self.ended_rows(), [])
+
+    def test_an_attempt_recorded_under_another_manifest_is_refused(self):
+        self.active()
+        self.launched()
+        other = self.bucket / 'other.fleet.json'
+        shutil.copy(self.m, other)
+        p = self.call('attempt', 'end', other, '--attempt-id', 'one', '--reason', 'damaged-doc', ok=False)
+        self.assertIn('end refused', p.stderr)
+        self.assertIn('another manifest', p.stderr)
+        self.assertIn('one', self.anchor_attempts())
+        self.assertEqual(self.ended_rows(), [])
+
+    def test_a_second_end_of_the_same_id_is_refused_and_writes_no_second_row(self):
+        self.active()
+        self.launched()
+        self.end()
+        self.refused_end('already ended')
+        self.assertEqual(len(self.ended_rows()), 1)
+
+    def test_ending_needs_one_id_and_a_one_word_reason(self):
+        self.active()
+        self.stuck()
+        self.rt('outcome', extra=('--phase', 'launched'))
+        self.refused_end('--reason', reason='')
+        self.refused_end('--reason', reason='two words')
+        self.end('one,two', ok=False)
+        self.end(ok=False, extra=('--attempt-id', 'one'))
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'launched')
+        self.assertEqual(self.ended_rows(), [])
+
     def test_ack_read_only_writes_nothing_where_plain_ack_rewrites_the_control_record(self):
         self.active()
         self.stuck()

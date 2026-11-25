@@ -2840,6 +2840,7 @@ if grepq "$out" -F '/h/L1.md' && grepq "$out" 'WARN C100-fleet' && grepq "$out" 
 printf '%s' '{"managed":true,"unknown":[],"legacy_unknown":[],"launched":[{"attempt_id":"a4","name":"W4","doc":"/h/nul\u0000doc.md"}]}' > "$c100_t/answer.json"
 out="$(c100_run)"
 if grepq "$out" 'WARN C100-fleet' && grepq "$out" -F 'a4' && ! grepq "$out" 'OK   C100'; then pass "C100 NUL byte in a launched doc path -> WARN"; else fail "C100 NUL doc -> $(printf '%s' "$out" | head -4)"; fi
+if grepq "$out" -F 'fleet-manifest.sh attempt end' && grepq "$out" -F 'refuses while the worker lives' && grepq "$out" -F "$c100_t/root/u/r/chief.fleet.json --attempt-id a4 --reason"; then pass "C100 launched attempt with a damaged doc path -> hint prints the release command"; else fail "C100 release hint -> $(printf '%s' "$out" | head -6)"; fi
 c100_doc="$c100_t/real-doc.md"; printf '# real\n' > "$c100_doc"
 printf '{"managed":true,"unknown":[],"legacy_unknown":[],"launched":[{"attempt_id":"a5","name":"W5","doc":"%s"}]}' "$c100_doc" > "$c100_t/answer.json"
 out="$(c100_run)"

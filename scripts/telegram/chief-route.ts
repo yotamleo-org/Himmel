@@ -198,7 +198,6 @@ export async function forwardAfterHandover(root: string, path: string[], now = D
 export const foldLine = (text: string): string => text.trim().replace(/\r?\n/g, " ⏎ ");
 
 const hhmm = (d = new Date()) => `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}Z`;
-const hhmmLocal = (d = new Date()) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
 const ASK_TEXT = /^\s*(?:\(\d+\/\d+\)\s*)?(?:\d+[.)]\s*)?Needs you:/m;
 const asksFile = (root: string) => join(root, "consoles", "asks.ndjson");
@@ -2447,7 +2446,7 @@ export async function awaitOwedReceipts(root: string, chat: number, requestHash:
 
 export async function writeOwedReceipt(doc: string, key: string, messageId: number, chat: number): Promise<void> {
   const cur = await readFile(doc, "utf8");
-  await appendFile(doc, `${cur === "" || cur.endsWith("\n") ? "" : "\n"}- ${hhmmLocal()} DELIVERED ${key} msg=${messageId} chat=${chat}\n`);
+  await appendFile(doc, `${cur === "" || cur.endsWith("\n") ? "" : "\n"}- ${hhmm()} DELIVERED ${key} msg=${messageId} chat=${chat}\n`);
 }
 
 const VERB_FLAGS: Record<string, { valued: string[]; bare: string[] }> = {
