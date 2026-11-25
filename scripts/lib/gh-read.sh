@@ -10,6 +10,12 @@
 #   sourced:   defines gh_read <gh args...> and gh_read_rates
 #   executed:  gh-read.sh <gh args...>   (for `timeout`, `exec` and TICK_GH_CMD)
 #
+# The read tokens are a pool, himmel_github_token_vm2 then himmel_github_token_vm (quota.tsv
+# names them read and read2). On a REST-core read a token whose quota.tsv core row is under
+# the floor with its reset ahead is skipped, a refused one passes the read to the next, and
+# main is the last resort: not while main's own core row is under the floor, when the read
+# exits 75 with a QUOTA-PAUSE line and calls nothing (GraphQL reads are not gated).
+#
 # The token is chosen PER CALL and handed to that one gh child as GH_TOKEN. It is
 # never exported into the caller, never in argv, never printed. The router is an
 # ALLOWLIST of read shapes (_ghr_is_read): anything else, a merge, comment,
@@ -42,6 +48,7 @@ _GHR_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/timeout-bin.sh
 . "$_GHR_HERE/timeout-bin.sh" 2>/dev/null
 _GHR_TOK=""
+_GHR_TOK2=""
 _GHR_LOADED=0
 _GHR_WARNED=0
 _GHR_WHY=""
@@ -53,26 +60,37 @@ _ghr_warn() {
     echo "gh-read: $1; using the main token for reads" >&2
 }
 
-# _ghr_load — read the token once per process into the NON-exported _GHR_TOK.
 # The loader runs in a subshell: load_dotenv exports what it reads.
 _ghr_load() {
     [ "$_GHR_LOADED" -eq 0 ] || return 0
     _GHR_LOADED=1
-    _GHR_TOK=$(
+    local pair a="" b="" bad=""
+    pair=$(
         # shellcheck source=scripts/lib/load-dotenv.sh
         . "${_GHR_LOAD_DOTENV:-$_GHR_HERE/load-dotenv.sh}" 2>/dev/null || exit 0
         root="${GH_READ_ENV_ROOT:-$(_load_dotenv_primary_for "$_GHR_HERE/../.." 2>/dev/null)}"
         if [ -n "${GH_READ_ENV_ROOT:-}" ]; then
-            unset himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+            unset himmel_github_token_vm2 himmel_github_token_vm CREDENTIALS_DIRECTORY
             export HIMMEL_SECRETS_KEYRING=off
         fi
-        load_dotenv --root "$root" himmel_github_token_vm2 2>/dev/null
-        printf '%s' "${himmel_github_token_vm2:-}"
-    ) || _GHR_TOK=""
-    case "$_GHR_TOK" in
-        '') _GHR_WHY="read token missing or unreadable" ;;
-        *[!A-Za-z0-9_]*) _GHR_TOK=""; _GHR_WHY="read token malformed" ;;
-    esac
+        load_dotenv --root "$root" himmel_github_token_vm2 himmel_github_token_vm 2>/dev/null
+        printf '%s\n%s\nend' "${himmel_github_token_vm2:-}" "${himmel_github_token_vm:-}"
+    ) || pair=""
+    {
+        IFS= read -r a
+        IFS= read -r b
+    } <<EOF
+$pair
+EOF
+    case "$a" in *[!A-Za-z0-9_]*) a=""; bad=1 ;; esac
+    case "$b" in *[!A-Za-z0-9_]*) b=""; bad=1 ;; esac
+    [ "$b" != "$a" ] || b=""
+    if [ -z "$a" ]; then a="$b"; b=""; fi
+    _GHR_TOK="$a"
+    _GHR_TOK2="$b"
+    if [ -z "$_GHR_TOK" ]; then
+        if [ -n "$bad" ]; then _GHR_WHY="read token malformed"; else _GHR_WHY="read token missing or unreadable"; fi
+    fi
 }
 
 # gh_read_init — a caller that runs many reads (some in $(...) subshells, some as
@@ -128,6 +146,29 @@ _ghr_run() {
 
 _ghr_rl() {
     ( . "$_GHR_HERE/gh-quota.sh" 2>/dev/null && ghq_is_rate_limited "$(cat "$1" 2>/dev/null)" )  # read-sink-ok: our own mktemp buffer
+}
+
+_ghr_park_scan() {
+    [ -s "${HIMMEL_QUOTA_DIR:-$HOME/.himmel/state/quota}/quota.tsv" ] || return 0
+    (
+        . "$_GHR_HERE/gh-quota.sh" 2>/dev/null || exit 0
+        [ "$(ghq_bucket_of "$@")" = core ] || exit 0
+        floor="${GHQ_SCAN_FLOOR:-500}"
+        case "$floor" in ''|*[!0-9]*) floor=500 ;; esac
+        now=$(date +%s)
+        for name in main read read2; do
+            ghq_read "$name" core || continue
+            case "$GHQ_STATE" in ok|refused) ;; *) continue ;; esac
+            if [ "$GHQ_STATE" != refused ]; then
+                [ -n "$GHQ_REMAINING" ] && [ "$GHQ_REMAINING" -lt "$floor" ] || continue
+            fi
+            r="$GHQ_RESET"
+            ghb_reset_sane "$r" || r=$((GHQ_OBSERVED + 60))
+            [ "$r" -gt "$now" ] || continue
+            printf '\n%s\tQUOTA-PAUSE github core token=%s remaining=%s floor=%s reset=%s caller=gh-read.sh nothing-was-judged' \
+                "$name" "$name" "${GHQ_REMAINING:-unknown}" "$floor" "$(_ghq_reset_words "$r")"
+        done
+    )
 }
 
 _ghr_note() {
@@ -212,26 +253,56 @@ gh_read() {
     # a refused call can already have printed pages or an error body: hold stdout so
     # a refused attempt is discarded instead of doubled by the retry
     outf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { rm -f "$errf"; _ghr_used main "$@"; _ghr_run "$@"; return $?; }
-    _ghr_used read "$@"
-    GH_TOKEN="$_GHR_TOK" _ghr_run "$@" >"$outf" 2>"$errf"
-    rc=$?
-    # a timeout (124, 137 after -k) is not retried: a hung GitHub would cost twice
-    if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] && [ "$rc" -ne 137 ] \
-        && { _ghr_rl "$errf" || grep -qiE 'bad credentials|requires authentication|not accessible by (personal access )?token|HTTP (401|403|404)|Could not resolve to a (Repository|PullRequest)' "$errf"; } \
-        && ! { [ "${GH_READ_NO_MAIN_FALLBACK:-}" = 1 ] && _ghr_rl "$errf"; }; then
-        rm -f "$outf"
-        _ghr_warn "read token refused"
-        _ghr_used_row main "$(_ghr_reason "$errf") $(_ghr_summary "$@")" "$@"
-        _ghr_run "$@" 2>"$errf"
+    local parked name stok label="" last="" why=""
+    parked=$(_ghr_park_scan "$@")
+    for name in read read2; do
+        if [ "$name" = read ]; then stok="$_GHR_TOK"; else stok="$_GHR_TOK2"; fi
+        [ -n "$stok" ] || continue
+        case "$parked" in *$'\n'"$name"$'\t'*) why=rl; continue ;; esac
+        _ghr_used "$name" "$@"
+        GH_TOKEN="$stok" _ghr_run "$@" >"$outf" 2>"$errf"
         rc=$?
+        last="$name"
+        # a timeout (124, 137 after -k) is not retried: a hung GitHub would cost twice
+        if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] && [ "$rc" -ne 137 ] \
+            && { _ghr_rl "$errf" || grep -qiE 'bad credentials|requires authentication|not accessible by (personal access )?token|HTTP (401|403|404)|Could not resolve to a (Repository|PullRequest)' "$errf"; }; then
+            why=$(_ghr_reason "$errf")
+            if [ "${GH_READ_NO_MAIN_FALLBACK:-}" = 1 ] && [ "$why" = rl ]; then label="$name"; continue; fi
+            label=""
+            continue
+        fi
+        cat "$outf"; rm -f "$outf"  # read-sink-ok: our own mktemp buffer
         cat "$errf" >&2  # read-sink-ok: our own mktemp buffer
-        _ghr_note main "$rc" "$errf" "$@"
+        _ghr_note "$name" "$rc" "$errf" "$@"
+        rm -f "$errf"
+        return "$rc"
+    done
+    if [ -n "$label" ]; then
+        cat "$outf"; rm -f "$outf"  # read-sink-ok: our own mktemp buffer
+        cat "$errf" >&2  # read-sink-ok: our own mktemp buffer
+        _ghr_note "$label" "$rc" "$errf" "$@"
         rm -f "$errf"
         return "$rc"
     fi
-    cat "$outf"; rm -f "$outf"  # read-sink-ok: our own mktemp buffer
+    rm -f "$outf"
+    case "$parked" in
+        *$'\n'main$'\t'*)
+            printf '%s\n' "$(printf '%s' "$parked" | awk -F'\t' '$1 == "main" { print $2; exit }')" >&2
+            [ -z "${GH_READ_REFUSED_FILE:-}" ] || printf 'main core rate-limit\n' >> "$GH_READ_REFUSED_FILE" 2>/dev/null
+            rm -f "$errf"
+            return 75 ;;
+    esac
+    if [ -n "$last" ]; then
+        _ghr_warn "read token refused"
+        _ghr_used_row main "$why $(_ghr_summary "$@")" "$@"
+    else
+        _ghr_warn "read tokens are under the REST floor"
+        _ghr_used_row main "rl $(_ghr_summary "$@")" "$@"
+    fi
+    _ghr_run "$@" 2>"$errf"
+    rc=$?
     cat "$errf" >&2  # read-sink-ok: our own mktemp buffer
-    _ghr_note read "$rc" "$errf" "$@"
+    _ghr_note main "$rc" "$errf" "$@"
     rm -f "$errf"
     return "$rc"
 }
