@@ -73,6 +73,7 @@ EOF
 cat >"$STUB/notify" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$(dirname "$0")/notify.log"
+printf '%s\n' "${HIMMEL_ALERT_KIND-unset}" >>"$(dirname "$0")/notify.kind"
 EOF
 cat >"$STUB/route-notify" <<'EOF'
 #!/usr/bin/env bash
@@ -149,6 +150,7 @@ check "the digest says what was filed" 'digest "$C3" | grep -q "filed denied/gua
 check "the digest names the mode live" 'digest "$C3" | grep -q "mode: live"'
 check "one Telegram line, naming the routing" '[ "$(sends)" = "$((s0 + 1))" ] && tail -n 1 "$STUB/notify.log" | grep -q "1 ticket filed"'
 check "the line is one line" '[ "$(tail -n 1 "$STUB/notify.log" | wc -l)" -eq 1 ]'
+check "the line is sent under its own kind, failure-review" '[ "$(tail -n 1 "$STUB/notify.kind")" = failure-review ]'
 check "a class the router just filed is triaged, not filed again" 'tail -n 1 "$STUB/notify.log" | grep -q "Do: open the digest and triage what the router filed" && ! tail -n 1 "$STUB/notify.log" | grep -q "file a ticket"'
 review "$C3" --live >/dev/null 2>&1
 check "a rerun routes nothing new: no second ticket, routed none" '[ "$(calls create)" = 1 ] && digest "$C3" | grep -q "routed: none"'
