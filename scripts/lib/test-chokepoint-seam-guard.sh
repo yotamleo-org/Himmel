@@ -134,6 +134,15 @@ assert_eq "R_unguarded_worker headed-arm-worker.sh enforces the opt-out seam" "y
     "$(case " $(_csg_registry_seams "$REGISTRY" scripts/handover/chief-kit/headed-arm-worker.sh) " in (*" UNGUARDED_LAUNCH_OK "*) echo yes ;; (*) echo no ;; esac)"
 assert_eq "R_unguarded_arm arm-resume.sh enforces the opt-out seam" "yes" \
     "$(case " $(_csg_registry_seams "$REGISTRY" scripts/handover/arm-resume.sh) " in (*" UNGUARDED_LAUNCH_OK "*) echo yes ;; (*) echo no ;; esac)"
+USAGE_PREFLIGHT_SEAMS="CADENCE_USAGE_MAX_PCT CADENCE_USAGE_STATUS_CMD CADENCE_USAGE_CACHE FLEET_ADMIT_TEST_HOOK HIMMEL_API_MAX_CONCURRENT FLEET_ADMIT_STALE_SECS"
+up_have=" $(_csg_registry_seams "$REGISTRY" scripts/lib/usage-preflight.sh) "
+up_missing=""
+for n in $USAGE_PREFLIGHT_SEAMS; do
+    case "$up_have" in *" $n "*) ;; *) up_missing="$up_missing $n" ;; esac
+done
+assert_eq "R6 usage-preflight enforces every usage override name" "" "$up_missing"
+assert_eq "R6b usage-preflight still enforces its earlier seams" "yes" \
+    "$(for n in FLEET_CAP_OK HIMMEL_FLEET_CAP USAGE_LIFT_FILE; do case "$up_have" in (*" $n "*) ;; (*) echo no; exit ;; esac; done; echo yes)"
 _csg_registry_seams "$REGISTRY" scripts/not-a-chokepoint.sh >/dev/null; rc=$?
 assert_eq "R4 an unregistered key fails (the gate then refuses)" "fail" "$([ "$rc" -ne 0 ] && echo fail || echo ok)"
 _csg_registry_seams "$TMP/no-registry.json" scripts/quiet-run.sh >/dev/null; rc=$?
@@ -365,6 +374,22 @@ assert_eq "G19c no ancestor, no marker (CI), a seam set -> ALLOW" "0" "$(gate "$
 Q13="$TMP/gproc13"; mkorphan "$Q13" PATH=/bin HIMMEL_CONSOLE_LEG=1
 assert_eq "G19d HIMMEL_CONSOLE_LEG alone is a marker -> 96 with a seam set" "96" "$(gate "$Q13" "$MOG" ARMAUTOMERGE=1)"
 assert_eq "G19e a seam set to the EMPTY string is still set -> 96" "96" "$(gate "$Q11" "$GO" HIMMEL_CONSOLE_LEG=)"
+
+UP=scripts/lib/usage-preflight.sh
+up_rcs=""
+for n in $USAGE_PREFLIGHT_SEAMS; do
+    up_rcs="$up_rcs$(gate "$Q1" "$UP" "HIMMEL_REPO=$GA" HIMMEL_CONSOLE_LEG=1 "$n=csgt-probe") "
+done
+assert_eq "G20 a usage override passed to usage-preflight on the anchor -> 96, every name" \
+    "96 96 96 96 96 96 " "$up_rcs"
+assert_eq "G20b negative control: no override set -> ALLOW" "0" "$(gate "$Q1" "$UP" "HIMMEL_REPO=$GA" HIMMEL_CONSOLE_LEG=1)"
+assert_eq "G20c negative control: an earlier registered seam is still refused -> 96" "96" "$(gate "$Q1" "$UP" "HIMMEL_REPO=$GA" HIMMEL_CONSOLE_LEG=1 HIMMEL_FLEET_CAP=csgt-probe)"
+Q14="$TMP/gproc14"; mkclaude "$Q14" "$GA" PATH=/bin "HOME=$GH" "HIMMEL_REPO=$GA" HIMMEL_CONSOLE_LEG=1 CADENCE_USAGE_MAX_PCT=50
+assert_eq "G20d an override set at LAUNCH and equal in the call -> ALLOW" "0" "$(gate "$Q14" "$UP" "HIMMEL_REPO=$GA" HIMMEL_CONSOLE_LEG=1 CADENCE_USAGE_MAX_PCT=50)"
+assert_eq "G20e an override set at launch but cleared in the call -> 96" "96" "$(gate "$Q14" "$UP" "HIMMEL_REPO=$GA" HIMMEL_CONSOLE_LEG=1)"
+Q15="$TMP/gproc15"; mkorphan "$Q15" PATH=/bin CLAUDECODE=1 CLAUDE_CODE_ENTRYPOINT=cli
+assert_eq "G20f an at-style job carrying a usage override beside Claude markers -> 96" "96" "$(gate "$Q15" "$UP" FLEET_ADMIT_TEST_HOOK=csgt-probe)"
+assert_eq "G20g an at-style job with markers and no override -> ALLOW" "0" "$(gate "$Q15" "$UP")"
 
 # --- Wiring: every chokepoint sources the lib and calls the gate first -------
 KEYS=$(jq -r 'keys[]' "$REGISTRY")
