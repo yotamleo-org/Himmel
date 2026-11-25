@@ -23,8 +23,7 @@
 # (default ~/.himmel/state/vault-stall-alert-last), and the same finding on a later
 # pass exits 0 without a send, until the record is 7 days old (a stall that outlives
 # a week is told again). A changed finding is sent. A send that failed or was
-# refused records nothing. Another kind's lines are never held back here. The check,
-# send and record of two concurrent calls run one after the other.
+# refused records nothing. Another kind's lines are never held back here.
 set -uo pipefail
 
 kind="${HIMMEL_ALERT_KIND:-}"
