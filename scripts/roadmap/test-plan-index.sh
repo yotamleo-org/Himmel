@@ -28,6 +28,8 @@ printf 'key\tuser_impact\tissue_plain\nHIMMEL-111\tinternal\tA plain sentence ab
 printf 'key\troi\tconfidence\teffort_mid\trank\tversion\tcommit\tslice_effort\tlayer\treason\nHIMMEL-111\t1\t1\t1\t1\tv1.0.1\tcommitted\t\tbugs\twhy-one\nHIMMEL-222\t1\t1\t1\t2\tv1.0.2\tcommitted\t\tfeatures\twhy-two\n' > "$plan/stage3/placement.tsv"
 printf '{"stage":3}\n' > "$plan/stage3/meta.json"
 dk=HIMMEL-111
+rv=0
+bump() { rv=$((rv + 1)); sed -i.bak "s/why-[a-z0-9]*/why-b$rv/" "$plan/stage3/placement.tsv"; rm -f "$plan/stage3/placement.tsv.bak"; }
 echo one > "$mir/HIMMEL-111.md"
 plan_sum() { (cd "$plan" && find . -type f | sort | xargs sha256sum | sha256sum); }
 
@@ -70,8 +72,10 @@ contains "no change: reports unchanged" "$r" "unchanged"
 
 echo two >> "$mir/HIMMEL-111.md"
 r="$(run --refresh 2>&1)"
-contains "mirror change: rebuilds" "$r" "rebuilt"
-[ -s "$calls" ] && pass "mirror change: qmd called" || fail "mirror change did not call qmd"
+contains "watch-only change: rebuilds" "$r" "rebuilt"
+! grep -qE '^(update|embed)' "$calls" && pass "watch-only change renders the same docs: no qmd update or embed" || fail "watch-only change called qmd: $(cat "$calls")"
+r="$(run --refresh 2>&1)"
+contains "watch-only change: key advanced, next refresh unchanged" "$r" "unchanged"
 
 sed -i.bak 's/why-one/why-changed/' "$plan/stage3/placement.tsv"; rm -f "$plan/stage3/placement.tsv.bak"
 r="$(run --refresh 2>&1)"
@@ -83,13 +87,13 @@ run --refresh --force >/dev/null 2>&1
 [ "$before" = "$(plan_sum)" ] && pass "source plan dir content untouched by refresh" || fail "plan dir changed"
 [ "$(find "$plan" -type f | wc -l)" -eq 4 ] && pass "no file added to the plan dir" || fail "plan dir gained files"
 
-echo three >> "$mir/HIMMEL-111.md"; cp "$out/.fp" "$W/fp.keep"
+bump; cp "$out/.fp" "$W/fp.keep"
 r="$(QMD_FAIL=1 run --refresh 2>&1)"; rc=$?
 [ "$rc" != 0 ] && pass "failing qmd: refresh non-zero" || fail "failing qmd rc=0"
 [ "$(cat "$out/.fp")" = "$(cat "$W/fp.keep")" ] && pass "failing qmd: fingerprint not advanced" || fail "fingerprint advanced on failure"
 r="$(run --refresh 2>&1)"; contains "failed run retried next time" "$r" "rebuilt"
 
-echo four >> "$mir/HIMMEL-111.md"; cp "$out/.fp" "$W/fp.keep"
+echo four >> "$mir/HIMMEL-111.md"; bump; cp "$out/.fp" "$W/fp.keep"
 r="$(ROADMAP_QMD_BIN="$W/no-such-qmd" bash "$SUT" --refresh --plan-dir "$plan" --out "$out" --watch "$mir" 2>&1)"; rc=$?
 [ "$rc" != 0 ] && pass "missing qmd: refresh non-zero" || fail "missing qmd rc=0"
 [ "$(cat "$out/.fp")" = "$(cat "$W/fp.keep")" ] && pass "missing qmd: fingerprint not advanced" || fail "fingerprint advanced with no qmd"
@@ -97,10 +101,11 @@ r="$(ROADMAP_QMD_BIN="$W/no-such-qmd" bash "$SUT" --refresh --plan-dir "$plan" -
 r="$(run --check 2>&1)"; rc=$?
 if [ "$rc" != 0 ]; then contains "--check reports stale" "$r" "stale"; else fail "--check on stale should be non-zero"; fi
 
-: > "$calls"; echo five >> "$mir/HIMMEL-111.md"
+: > "$calls"; bump
 run --refresh >/dev/null 2>&1
 u="$(grep -n '^update' "$calls" | head -1 | cut -d: -f1)"; e="$(grep -n '^embed' "$calls" | head -1 | cut -d: -f1)"
 [ -n "$u" ] && [ -n "$e" ] && [ "$u" -lt "$e" ] && pass "qmd update runs before embed" || fail "update did not precede embed: $(cat "$calls")"
+[ "$(grep -c '^update' "$calls")" = 1 ] && [ "$(grep '^update' "$calls")" = "update -c roadmap-plan" ] && pass "qmd update names only its own collection" || fail "update was not scoped to roadmap-plan: $(cat "$calls")"
 
 printf '%s\n' "$W/elsewhere" > "$calls.registered"
 echo six >> "$mir/HIMMEL-111.md"; cp "$out/.fp" "$W/fp.keep"
