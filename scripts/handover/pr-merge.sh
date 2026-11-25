@@ -195,7 +195,6 @@ fi
 # CR merge gate on the same predicate as the PreToolUse hook, so
 # machines without the plugin hook still get the gate on this path. Placed
 # before the mergeability check so a CR-blocked merge fails fast (exit 5).
-# GitHub runs cr_merge_gate (resolves via gh); Bitbucket runs bb_forge_cr_gate.
 vetted_head=""
 if [ "$forge" = "github" ]; then
     # capture the head we are about to vet, and bind the

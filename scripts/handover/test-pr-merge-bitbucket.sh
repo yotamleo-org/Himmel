@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Tests for handover/pr-merge.sh on a Bitbucket Cloud origin: the
-# merge runs the same review and CI gates a GitHub merge runs, pins the head it
-# vetted, and fails closed wherever Bitbucket cannot answer. Hermetic: the
-# `bitbucket` CLI is a stub behind BITBUCKET_CMD, no network, no real HOME.
 set -uo pipefail
 
 unset CR_MERGE_GATE_OK CI_MERGE_GATE_OK CR_PROFILE CR_APP GH_ADMIN_MERGE_OK FORGE GH_CMD
