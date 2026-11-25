@@ -7,7 +7,7 @@
 #
 # Output, one line, rc 0:
 #   SILENT-ACT <label> none|fresh|done
-#   SILENT-ACT <label> [nudged|nudge=no-window|nudge=failed] [relaunched|relaunch=failed|live-window] [owed=<id>[,<id>]]
+#   SILENT-ACT <label> [nudged|nudge=no-window|nudge=failed] [relaunched|relaunch=failed|live-window|live-silent] [owed=<id>[,<id>]]
 # Exit 2: usage.
 # PLATFORM GUARD: Linux-only kit (GNU stat, setsid), bash 3.2-safe; needs jq.
 set -uo pipefail
@@ -44,8 +44,9 @@ bound2=$((bound1 * 2))
 bus="${SILENT_ACT_BUS:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
 launcher="${SILENT_ACT_LAUNCHER:-$HERE/headed-arm-worker.sh}"
 confirm="${SILENT_ACT_CONFIRM:-$HERE/launch-confirm.sh}"
-killer="${SILENT_ACT_KILL:-kill}"
-alive="${SILENT_ACT_ALIVE:-kill -0}"
+records="${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs"
+grace="${SILENT_ACT_NUDGE_GRACE_SECS:-300}"
+case "$grace" in ''|*[!0-9]*|???????*) grace=300 ;; *) grace=$((10#$grace)) ;; esac
 state="$bucket/silent-act.state"
 
 wdoc="$(jq -r --arg l "$label" '[(.workers // .legs)[]? | select(.label == $l)][0].doc // empty' "$manifest" 2>/dev/null)" || wdoc=""  # swallow-ok: an unreadable manifest names no doc, which owes a row at the relaunch
@@ -64,7 +65,9 @@ mark_stage() { printf '%s %s %s\n' "$label" "$1" "$mtime" >> "$state" 2>/dev/nul
 
 oneline() { printf '%s' "$1" | tr '\r\n\t<>' '    ' | tr -s ' ' | cut -c1-160; }
 
-nothing_due() { done_stage nudge && { [ "$silent" -lt "$bound2" ] || done_stage relaunch; }; }
+nudge_epoch() { local e; e="$(awk -v k="$label nudge-at $mtime" '$1 " " $2 " " $3 == k { e = $4 } END { print e + 0 }' "$state" 2>/dev/null)" || e=0; echo "${e:-0}"; }  # swallow-ok: no state file yet reads as no nudge time
+grace_left() { [ $(( $(date +%s) - $(nudge_epoch) )) -lt "$grace" ]; }
+nothing_due() { done_stage nudge && { [ "$silent" -lt "$bound2" ] || done_stage relaunch || grace_left; }; }
 if nothing_due; then echo "SILENT-ACT $label done"; exit 0; fi
 if command -v flock >/dev/null 2>&1; then
     exec 8>>"$bucket/silent-act.$label.lock" || { echo "SILENT-ACT $label busy"; exit 0; }
@@ -104,7 +107,7 @@ owe_row() {
     owed="${owed:+$owed,}$id"
 }
 
-relaunch_due=0
+relaunch_due=0; nudged_now=0
 [ "$silent" -ge "$bound2" ] && relaunch_due=1
 
 if ! done_stage nudge; then
@@ -120,12 +123,13 @@ if ! done_stage nudge; then
         if [ -z "$body" ]; then
             nudge_err="mktemp failed"
         else
-            printf 'SILENT nudge from your chief %s: your handover doc has had no write for %s minutes. Append your newest status bullet to your doc'"'"'s Results now and continue the next step; if you cannot, answer on the bus. Without an answer the chief relaunches you from your RESUME doc. Your scope, token and chief are unchanged; this record carries no ruling and widens nothing.\n' "$HIMMEL_BUS_NAME" "$silent" > "$body"
+            printf 'SILENT nudge from your chief %s: your handover doc has had no write for %s minutes. Append your newest status bullet to your doc'"'"'s Results now and continue the next step; if you cannot, answer on the bus. Without an answer the chief is told you are blocked. Your scope, token and chief are unchanged; this record carries no ruling and widens nothing.\n' "$HIMMEL_BUS_NAME" "$silent" > "$body"
             wait_for=""; command -v timeout >/dev/null 2>&1 && wait_for="timeout ${SILENT_ACT_BUS_TIMEOUT:-15}"
             # shellcheck disable=SC2086  # wait_for is empty or the words `timeout <n>`
             if bus_out="$($wait_for "$bus" send "$stale_session" "$body" 2>&1)"; then
                 ref="$(printf '%s\n' "$bus_out" | sed -nE 's/^sent (#[0-9]+) to .*/\1/p' | head -n 1)"
-                say="${say:+$say }nudged"; log="${log:+$log }nudged bus=${ref:-ok}"
+                say="${say:+$say }nudged"; log="${log:+$log }nudged bus=${ref:-ok}"; nudged_now=1
+                printf '%s nudge-at %s %s\n' "$label" "$mtime" "$(date +%s)" >> "$state" 2>/dev/null || true  # swallow-ok: an unwritable state only repeats the nudge
             else
                 nudge_err="bus send: ${bus_out%%$'\n'*}"
             fi
@@ -138,35 +142,40 @@ if ! done_stage nudge; then
     fi
 fi
 
-if [ "$relaunch_due" -eq 1 ] && ! done_stage relaunch; then
+if [ "$relaunch_due" -eq 1 ] && [ "$nudged_now" -eq 0 ] && ! done_stage relaunch && ! grace_left; then
+    mark_stage relaunch
+    rdoc="${wdoc%.md}-RESUME.md"; session="$stem-RESUME"
+    relaunch_err=""
     if [ "$resume_live" -eq 1 ]; then
-        mark_stage relaunch
         say="${say:+$say }live-window"; log="${log:+$log }live-window ($stem-RESUME runs)"
+    elif [ "$stale_hits" -ge 1 ]; then
+        say="${say:+$say }live-silent"; log="${log:+$log }live-silent (pid $stale_pid, never ended)"
+        owe_row relaunch "the worker still has a live window (pid $stale_pid), silent past bound two after the nudge; it is not ended and not relaunched, its blocked step needs the chief"
     else
-        mark_stage relaunch
-        rdoc="${wdoc%.md}-RESUME.md"; session="$stem-RESUME"
-        relaunch_err=""
         if [ -z "$wdoc" ]; then
             relaunch_err="the fleet manifest names no doc for $label"
         elif [ ! -f "$rdoc" ]; then
             relaunch_err="no RESUME doc at $rdoc"
         else
-            if [ "$stale_hits" -eq 1 ] && [ -n "$stale_pid" ]; then
-                "$killer" "$stale_pid" >/dev/null 2>&1 || true  # swallow-ok: whether the window ended is read from the pid itself below
-                tries="${SILENT_ACT_KILL_TRIES:-20}"
-                # shellcheck disable=SC2086  # alive is `kill -0` or a test seam command
-                while [ "$tries" -gt 0 ] && $alive "$stale_pid" >/dev/null 2>&1; do sleep 0.5; tries=$((tries - 1)); done
-                # shellcheck disable=SC2086
-                if $alive "$stale_pid" >/dev/null 2>&1; then relaunch_err="the stale window (pid $stale_pid) did not end"; fi
-            fi
-            if [ -z "$relaunch_err" ]; then
+            rec=""
+            for n in "$stem" ${names//,/ }; do
+                [ -r "$records/$n.log" ] || continue
+                rec="$(awk '/ role=worker( |$)/ { l = $0 } END { print l }' "$records/$n.log")"
+                [ -z "$rec" ] || break
+            done
+            rprofile="$(printf '%s\n' "$rec" | sed -n 's/.* profile=\([^ ]*\).*/\1/p')"
+            rlane="$(printf '%s\n' "$rec" | sed -n 's/.* lane=\([^ ]*\).*/\1/p')"
+            rmodel="$(printf '%s\n' "$rec" | sed -n 's/.* model=\([^ ]*\).*/\1/p')"
+            if [ -z "$rprofile" ] || [ "$rprofile" = none ] || [ -z "$rlane" ] || [ -z "$rmodel" ]; then
+                relaunch_err="no launch record under $records names this worker's profile, lane and model"
+            else
                 since="$(date +%s)"
                 llog="$bucket/silent-act-$label.launch.log"
                 sig="$bucket/silent-act-$label.signal"
                 if command -v setsid >/dev/null 2>&1; then
-                    setsid nohup bash "$launcher" --fleet "$manifest" "$session" "$rdoc" "$sig" $((since + 300)) "$llog" >>"$llog.launcher.out" 2>&1 </dev/null 8>&- 9>&- &
+                    setsid nohup bash "$launcher" --fleet "$manifest" --profile "$rprofile" --lane "$rlane" "$session" "$rdoc" "$sig" $((since + 300)) "$llog" "$rmodel" >>"$llog.launcher.out" 2>&1 </dev/null 8>&- 9>&- &
                 else
-                    nohup bash "$launcher" --fleet "$manifest" "$session" "$rdoc" "$sig" $((since + 300)) "$llog" >>"$llog.launcher.out" 2>&1 </dev/null 8>&- 9>&- &
+                    nohup bash "$launcher" --fleet "$manifest" --profile "$rprofile" --lane "$rlane" "$session" "$rdoc" "$sig" $((since + 300)) "$llog" "$rmodel" >>"$llog.launcher.out" 2>&1 </dev/null 8>&- 9>&- &
                 fi
                 if conf_out="$(bash "$confirm" --since "$since" --chief "$chief" "$session" "$llog" 2>&1)"; then
                     say="${say:+$say }relaunched"; log="${log:+$log }relaunched $session"

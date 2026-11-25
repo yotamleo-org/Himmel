@@ -3136,7 +3136,9 @@ silent_emit() { # <label> <signal> <detail>: prints the WAKE line and succeeds w
     if grep -qxF -- "$key" "$silent_file" 2>/dev/null; then  # swallow-ok: no marker yet reads empty, so the first sight wakes
         act_line="$(silent_act "$label" "$signal" "$m")"
         case "$act_line" in ''|*' done'|*' none'|*' fresh'|*' busy') return 1 ;; esac
+        printf 'WAKE worker-silent %s signal=%s silent=%sm\n' "$label" "$signal" "$(( ( $(date +%s) - m ) / 60 ))"
         printf '%s\n' "$act_line"
+        silent_failed_note "$label" "$m" "$act_line"
         return 0
     fi
     printf '%s\n' "$key" >> "$silent_file" 2>/dev/null
@@ -3147,6 +3149,10 @@ silent_emit() { # <label> <signal> <detail>: prints the WAKE line and succeeds w
     act_line="$(silent_act "$label" "$signal" "$m")"
     printf 'WAKE worker-silent %s signal=%s%s\n' "$label" "$signal" "$detail"
     [ -z "$act_line" ] || printf '%s\n' "$act_line"
+    silent_failed_note "$label" "$m" "$act_line"
+}
+silent_failed_note() {
+    case "$3" in *' helper-failed '*) printf '%s helper-failed %s\n' "$1" "$2" >> "$silent_file" 2>/dev/null ;; esac
 }
 silent_act() {
     local rc=0 out
@@ -3154,7 +3160,6 @@ silent_act() {
     out="$(bash "${CHIEF_WAIT_SILENT_ACT:-$HERE/silent-worker-act.sh}" --doc "$console_doc" --fleet "${legs_from:-${console_doc%.md}.fleet.json}" --bucket "$(dirname "$console_doc")" --chief "$(basename "$console_doc" .md)" --signal "$2" "$1" $(( ( $(date +%s) - $3 ) / 60 )) 2>/dev/null 9>&-)" || rc=$?
     if [ "$rc" -eq 0 ]; then printf '%s\n' "$out"; return 0; fi
     grep -qxF -- "$1 helper-failed $3" "$silent_file" 2>/dev/null && return 0  # swallow-ok: no marker yet reads empty, so the first failure is named
-    printf '%s helper-failed %s\n' "$1" "$3" >> "$silent_file" 2>/dev/null
     printf 'SILENT-ACT %s helper-failed rc=%s\n' "$1" "$rc"
 }
 succ_row_live() {

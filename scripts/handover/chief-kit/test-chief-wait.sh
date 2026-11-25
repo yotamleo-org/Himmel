@@ -234,15 +234,19 @@ check "(ws2) and asks the acting helper again, which has nothing to do" "yes" "$
 printf 'SILENT-ACT N1 relaunched DEMO-RESUME\n' > "$STUB/silent-act.next"
 CHIEF_WAIT_WORKER_SILENT_MIN=30 start "$I" "$WORK/ws2c.out" --doc "$WD" --workers-from "$WM"
 wait_exit "$WPID"
-check "(ws2c) a keyed worker the helper later relaunches wakes the chief with that result" "SILENT-ACT N1 relaunched DEMO-RESUME" "$(head -n1 "$WORK/ws2c.out")"
-check "(ws2c) with no second worker-silent wake line and no second page" "0 1" "$(grep -c '^WAKE worker-silent' "$WORK/ws2c.out" || true) $(ws_pages)"
+check "(ws2c) a keyed worker the helper later relaunches wakes the chief with a WAKE line" "WAKE worker-silent N1 signal=capped-waker" "$(head -n1 "$WORK/ws2c.out" | cut -d' ' -f1-4)"
+check "(ws2c) and the helper's result rides under it" "SILENT-ACT N1 relaunched DEMO-RESUME" "$(sed -n 2p "$WORK/ws2c.out")"
+check "(ws2c) with no second page" "1" "$(ws_pages)"
 if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 printf '2\n' > "$STUB/silent-act.rc"
 CHIEF_WAIT_WORKER_SILENT_MIN=30 start "$I" "$WORK/ws2d.out" --doc "$WD" --workers-from "$WM"
 wait_exit "$WPID"
-check "(ws2d) a helper that exits non-zero is named in the wake, not swallowed" "SILENT-ACT N1 helper-failed rc=2" "$(head -n1 "$WORK/ws2d.out")"
-rm -f "$STUB/silent-act.rc"
+check "(ws2d) a helper that exits non-zero wakes the chief with a WAKE line" "WAKE worker-silent N1 signal=capped-waker" "$(head -n1 "$WORK/ws2d.out" | cut -d' ' -f1-4)"
+check "(ws2d) and names the failure under it" "SILENT-ACT N1 helper-failed rc=2" "$(sed -n 2p "$WORK/ws2d.out")"
 if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
+CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout -k 5 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws2e.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(ws2e) the same failure is named once per doc write: a re-arm keeps waiting" "124" "$rc"
+rm -f "$STUB/silent-act.rc"
 # the worker wrote, then went quiet again: the state moved, so it is a new silence
 touch -d "90 minutes ago" "$WL"  # gnu-ok: Linux-only kit
 CHIEF_WAIT_WORKER_SILENT_MIN=30 start "$I" "$WORK/ws2b.out" --doc "$WD" --workers-from "$WM"
