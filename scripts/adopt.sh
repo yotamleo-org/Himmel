@@ -206,6 +206,8 @@ PORTABLE_FILES=(
   scripts/lib/coderabbit-signal.sh
   scripts/lib/gh-ci-cache.sh
   scripts/lib/gh-graphql-budget.sh
+  scripts/lib/gh-quota.sh
+  scripts/lib/open-review-threads.sh
   scripts/lib/gh-read.sh
   scripts/lib/merge-block-alert.sh
   scripts/lib/required-checks.sh

@@ -20,12 +20,17 @@ has() { case "$3" in *"$2"*) pass "$1" ;; *) fail "$1 (no '$2' in '$3')" ;; esac
 lacks() { case "$3" in *"$2"*) fail "$1 (found '$2' in '$3')" ;; *) pass "$1" ;; esac; }
 
 READTOK=ghp_QUOTAREAD0123456789
+READTOK2=ghp_QUOTAREAD2_0123456789
+mkdir -p "$W/root2"
+printf 'himmel_github_token_vm2=%s\nhimmel_github_token_vm=%s\n' "$READTOK" "$READTOK2" > "$W/root2/.env"
+printf '#!/usr/bin/env bash\necho "$1" >> "$SLEEP_LOG"\n' > "$W/nosleep"
+chmod +x "$W/nosleep"
 mkdir -p "$W/bin" "$W/home" "$W/root" "$W/emptyroot" "$W/ghcfg"
 printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$W/root/.env"
 : > "$W/emptyroot/.env"
 cat > "$W/bin/gh" <<'STUB'
 #!/usr/bin/env bash
-if [ "${GH_TOKEN:-}" = ghp_QUOTAREAD0123456789 ]; then who=read; mode="${STUB_READ:-ok}"; else who=main; mode="${STUB_MAIN:-ok}"; fi
+if [ "${GH_TOKEN:-}" = ghp_QUOTAREAD0123456789 ]; then who=read; mode="${STUB_READ:-ok}"; elif [ "${GH_TOKEN:-}" = ghp_QUOTAREAD2_0123456789 ]; then who=read2; mode="${STUB_READ2:-ok}"; else who=main; mode="${STUB_MAIN:-ok}"; fi
 printf '%s %s\n' "$who" "$*" >> "$STUB_LOG"
 now=$(date +%s)
 rem=4000; reset=$((now + 1800)); extra=""
@@ -34,6 +39,8 @@ case "$mode" in
     unreadable) echo "gh: HTTP 502: Bad Gateway" >&2; exit 1 ;;
     low) rem=100 ;;
     out) rem=0 ;;
+    out-soon) rem=0; reset=$((now + 5)) ;;
+    band) rem=300; reset=$((now + 5)) ;;
     reset-past) rem=0; reset=$((now - 3600)) ;;
     reset-absent) rem=0; reset="" ;;
     reset-absurd) rem=0; reset=4102444800 ;;
@@ -48,7 +55,7 @@ case " $* " in
         printf '\r\n{}\n' ;;
 esac
 case "$mode" in
-    out|reset-*) echo "GraphQL: API rate limit already exceeded for user ID 1." >&2; exit 1 ;;
+    out|out-soon|reset-*) echo "GraphQL: API rate limit already exceeded for user ID 1." >&2; exit 1 ;;
     secondary|secondary-high) echo "gh: You have exceeded a secondary rate limit." >&2; exit 1 ;;
 esac
 exit 0
@@ -56,7 +63,7 @@ STUB
 chmod +x "$W/bin/gh"
 export PATH="$W/bin:$PATH" HOME="$W/home" GH_CONFIG_DIR="$W/ghcfg" HIMMEL_SECRETS_KEYRING=off \
     STUB_LOG="$W/gh.log" GH_READ_ENV_ROOT="$W/root" GHQ_PROBE_TIMEOUT=2
-unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY GHQ_SCAN_FLOOR GHQ_GH_CMD
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 himmel_github_token_vm CREDENTIALS_DIRECTORY GHQ_SCAN_FLOOR GHQ_GH_CMD
 : > "$STUB_LOG"
 
 # shellcheck source=scripts/lib/gh-quota.sh
@@ -109,6 +116,79 @@ mkdir -p "$W/ro" && chmod 500 "$W/ro"
 HIMMEL_QUOTA_DIR="$W/ro/q" ghq_refresh
 check "R8 an unwritable dir never fails the caller" "0" "$?"
 chmod 700 "$W/ro"
+
+fresh pool
+GH_READ_ENV_ROOT="$W/root2" ghq_refresh
+check "R9 two read tokens: six rows" "6" "$(grep -c . "$HIMMEL_QUOTA_DIR/quota.tsv" 2>/dev/null)"
+check "R9b read2 core row" "4000 ok" "$(row read2 core)"
+
+export SLEEP_LOG="$W/sleeps" GH_BUDGET_JITTER_MAX=0
+fresh wait-ok
+: > "$SLEEP_LOG"
+GH_READ_ENV_ROOT="$W/root2" ghq_wait_core 60 "$W/nosleep" 2>/dev/null
+check "W1 core healthy: rc 0, no sleep" "0 0 0" "$? $GHQ_CORE_WAITED $(grep -c . "$SLEEP_LOG")"
+check "W1b the probe wrote the first token's core row" "4000 ok" "$(row read core)"
+fresh wait-one
+: > "$SLEEP_LOG"
+STUB_MAIN=out STUB_READ=out GH_READ_ENV_ROOT="$W/root2" ghq_wait_core 60 "$W/nosleep" 2>/dev/null
+check "W2 one token with budget left ends the wait at once" "0 0 0" "$? $GHQ_CORE_WAITED $(grep -c . "$SLEEP_LOG")"
+fresh wait-out
+: > "$SLEEP_LOG"
+STUB_MAIN=out-soon STUB_READ=out-soon STUB_READ2=out-soon GH_READ_ENV_ROOT="$W/root2" ghq_wait_core 60 "$W/nosleep" 2>"$W/werr"
+rc=$?
+err=$(cat "$W/werr")
+check "W3 every token out, reset in reach: one sleep to the reset, waited" "0 1 1" "$rc $GHQ_CORE_WAITED $(grep -c . "$SLEEP_LOG")"
+has "W3a the wait names the REST core bucket" "REST core budget exhausted" "$err"
+check "W3b every probe wrote its core row" "0 refused|0 refused|0 refused" "$(row main core)|$(row read core)|$(row read2 core)"
+check "W3c the row writes go through the quota lock" "yes" "$([ -e "$HIMMEL_QUOTA_DIR/.lock" ] && echo yes || echo no)"
+fresh wait-unknown
+: > "$SLEEP_LOG"
+STUB_READ=unreadable STUB_READ2=out-soon STUB_MAIN=out-soon GH_READ_ENV_ROOT="$W/root2" ghq_wait_core 60 "$W/nosleep" 2>/dev/null
+check "W3d a probe that failed leaves the others undecided: rc 0, no sleep" "0 0 0" "$? $GHQ_CORE_WAITED $(grep -c . "$SLEEP_LOG")"
+fresh wait-main
+: > "$SLEEP_LOG"
+STUB_MAIN=out-soon STUB_READ=ok GH_READ_ENV_ROOT="$W/root2" ghq_wait_core 60 "$W/nosleep" main 2>/dev/null
+check "W3e main named: a healthy read token does not end the wait" "0 1 1" "$? $GHQ_CORE_WAITED $(grep -c . "$SLEEP_LOG")"
+fresh wait-band
+: > "$SLEEP_LOG"
+STUB_MAIN=band STUB_READ=band STUB_READ2=band GH_READ_ENV_ROOT="$W/root2" ghq_wait_core 60 "$W/nosleep" 2>/dev/null
+check "W3f 300 left is under the scan floor of 500, the park floor: the wait sleeps" "0 1 1" "$? $GHQ_CORE_WAITED $(grep -c . "$SLEEP_LOG")"
+fresh wait-far
+: > "$SLEEP_LOG"
+STUB_MAIN=out STUB_READ=out STUB_READ2=out GH_READ_ENV_ROOT="$W/root2" ghq_wait_core 60 "$W/nosleep" 2>"$W/werr"
+rc=$?
+err=$(cat "$W/werr")
+check "W4 a reset beyond the bound: rc 1, exhausted, no sleep" "1 1 0" "$rc $GHQ_CORE_EXHAUSTED $(grep -c . "$SLEEP_LOG")"
+has "W4a the refusal says it will not wait" "not waiting" "$err"
+: > "$SLEEP_LOG"; : > "$STUB_LOG"
+GH_BUDGET_PREFLIGHT=0 STUB_MAIN=out ghq_wait_core 60 "$W/nosleep" 2>/dev/null
+check "W5 GH_BUDGET_PREFLIGHT=0 probes nothing" "0 0" "$? $(grep -c . "$STUB_LOG")"
+
+low_rows() {
+    : > "$HIMMEL_QUOTA_DIR/quota.tsv"
+    local r name rem off now
+    now=$(date +%s)
+    for r in "$@"; do
+        IFS=: read -r name rem off <<< "$r"
+        printf '%s\tcore\t%s\t5000\t%s\t%s\tok\n' "$name" "$rem" "$((now + off))" "$now" >> "$HIMMEL_QUOTA_DIR/quota.tsv"
+    done
+}
+fresh core-low
+mkdir -p "$HIMMEL_QUOTA_DIR"
+ghq_core_low
+check "C1 no rows: not low" "1" "$?"
+low_rows main:100:600
+ghq_core_low
+check "C2 the only live row under the floor: low" "0" "$?"
+low_rows main:100:600 read:4000:600
+ghq_core_low
+check "C3 one token with budget left: not low" "1" "$?"
+low_rows main:100:-10
+ghq_core_low
+check "C4 a row whose reset has passed says nothing: not low" "1" "$?"
+low_rows main:100:600 read:100:600 read2:100:600
+ghq_core_low
+check "C5 every live row under the floor: low" "0" "$?"
 
 gate() {
     local out rc

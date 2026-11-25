@@ -42,6 +42,9 @@ lacks() { # <name> <needle> <haystack>
 READTOK=ghp_READTOKEN0123456789
 mkdir -p "$W/bin" "$W/home" "$W/root" "$W/emptyroot"
 printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$W/root/.env"
+READTOK2=ghp_READTOKEN2_0123456789
+mkdir -p "$W/root2" "$W/quota"
+printf 'himmel_github_token_vm2=%s\nhimmel_github_token_vm=%s\n' "$READTOK" "$READTOK2" > "$W/root2/.env"
 : > "$W/emptyroot/.env"
 cat > "$W/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -66,6 +69,13 @@ if [ "${GH_TOKEN:-}" = "ghp_READTOKEN0123456789" ] && [ -n "${GH_STUB_READFAIL:-
     esac
     exit 1
 fi
+if [ "${GH_TOKEN:-}" = "ghp_READTOKEN2_0123456789" ] && [ -n "${GH_STUB_READ2FAIL:-}" ]; then
+    case "$GH_STUB_READ2FAIL" in
+        notfound) echo "gh: HTTP 404: Not Found" >&2 ;;
+        *) echo "gh: HTTP 403: API rate limit exceeded for user" >&2 ;;
+    esac
+    exit 1
+fi
 case "$*" in
     "api rate_limit"*) if [ "${GH_TOKEN:-}" = "ghp_READTOKEN0123456789" ]; then echo "${RATE_READ:-4990 5000 1790000000}"; else echo "${RATE_MAIN:-4200 5000 1790000000}"; fi ;;
     "repo view"*) echo "yotamleo-org/Himmel main" ;;
@@ -77,7 +87,7 @@ mkdir -p "$W/ghcfg" "$W/xdg/config" "$W/xdg/data" "$W/xdg/cache" "$W/himmelcfg" 
 export GHLOG="$W/gh.log" HOME="$W/home" PATH="$W/bin:$PATH" GH_CONFIG_DIR="$W/ghcfg" HIMMEL_SECRETS_KEYRING=off \
     XDG_CONFIG_HOME="$W/xdg/config" XDG_DATA_HOME="$W/xdg/data" XDG_CACHE_HOME="$W/xdg/cache" HIMMEL_CONFIG_DIR="$W/himmelcfg"
 # only fixture tokens may be visible: the ambient token, the keyring and a systemd credential dir are all closed
-unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 himmel_github_token_vm CREDENTIALS_DIRECTORY
 # control: a forced mismatch must print the token shortened, never whole (a passing run never reaches redact otherwise)
 redaction_probe="$( (check "redaction probe" "$READTOK" "not-the-token") 2>&1)"
 has "A0 a failing assertion prints a token shortened" "<ghp…(" "$redaction_probe"
@@ -693,6 +703,81 @@ check "F0 control: chief-wait.sh with its PR watch seam default back on gh is a 
 f0_tracked="$(git -C "$REPO" ls-files scripts/handover)"
 check "F0 reads the tracked files (chief-wait.sh is among them, so the empty result below is not vacuous)" "yes" "$(case "$f0_tracked" in (*chief-kit/chief-wait.sh*) echo yes ;; esac)"
 check "F0 no read-shaped gh call under scripts/handover is unjustified" "" "$(printf '%s\n' "$f0_tracked" | python3 -I "$W/f0.py" "$REPO" 2>&1)"
+
+export HIMMEL_QUOTA_DIR="$W/quota"
+now=$(date +%s)
+qrows() {
+    : > "$W/quota/quota.tsv"
+    local r name rem off
+    for r in "$@"; do
+        IFS=: read -r name rem off <<< "$r"
+        printf '%s\tcore\t%s\t5000\t%s\t%s\tok\n' "$name" "$rem" "$((now + off))" "$now" >> "$W/quota/quota.tsv"
+    done
+}
+hrun() {
+    : > "$GHLOG"
+    GH_READ_ENV_ROOT="$1" bash "$HELPER" "${@:2}" >"$W/out" 2>"$W/err"
+    HRC=$?
+}
+glog() { tr '\n' '|' < "$GHLOG" | sed 's/|$//'; }
+qrows main:100:600
+GH_STUB_READFAIL=1 hrun "$W/root" run view 5
+check "H1 a rate-limited read token with main under the floor makes no main call" "tok=$READTOK argv=run view 5" "$(glog)"
+check "H1a the paused read exits 75" "75" "$HRC"
+has "H1b the pause names the core bucket and the main token" "QUOTA-PAUSE github core token=main" "$(cat "$W/err")"
+: > "$W/refused"
+GH_STUB_READFAIL=1 GH_READ_REFUSED_FILE="$W/refused" hrun "$W/root" run view 5
+check "H1c the pause writes one main core rate-limit row" "main core rate-limit" "$(cat "$W/refused")"
+qrows main:4000:600
+GH_STUB_READFAIL=1 hrun "$W/root" run view 5
+check "H1d control: main above the floor still takes the fallback" "tok=$READTOK argv=run view 5|tok=main argv=run view 5" "$(glog)"
+qrows main:100:600
+GH_STUB_READFAIL=1 hrun "$W/root" pr view 12
+check "H1e a GraphQL read is not gated by a core row" "tok=$READTOK argv=pr view 12|tok=main argv=pr view 12" "$(glog)"
+rm -f "$W/quota/quota.tsv"
+GH_STUB_READFAIL=1 hrun "$W/root" run view 5
+check "H1f no quota table: the fallback runs as before" "tok=$READTOK argv=run view 5|tok=main argv=run view 5" "$(glog)"
+
+qrows main:4000:600
+GH_STUB_READFAIL=1 hrun "$W/root2" run view 5
+check "H2 a refused first read token passes the read to the second, not to main" "tok=$READTOK argv=run view 5|tok=$READTOK2 argv=run view 5" "$(glog)"
+check "H2a the second token's answer returns rc 0" "0" "$HRC"
+GH_STUB_READFAIL=1 GH_STUB_READ2FAIL=1 hrun "$W/root2" run view 5
+check "H2b both read tokens refused: main is the last resort" "tok=$READTOK argv=run view 5|tok=$READTOK2 argv=run view 5|tok=main argv=run view 5" "$(glog)"
+GH_STUB_READFAIL=1 GH_STUB_READ2FAIL=1 GH_READ_NO_MAIN_FALLBACK=1 hrun "$W/root2" run view 5
+check "H2c no-fallback: both read tokens are tried and main never" "tok=$READTOK argv=run view 5|tok=$READTOK2 argv=run view 5" "$(glog)"
+check "H2d no-fallback: the refused read keeps its non-zero exit" "1" "$HRC"
+
+qrows read:100:600 main:4000:600
+hrun "$W/root2" run view 5
+check "H3 a read token under the floor with its reset ahead is parked: the second serves" "tok=$READTOK2 argv=run view 5" "$(glog)"
+qrows read:100:-10 main:4000:600
+hrun "$W/root2" run view 5
+check "H3a a parked row whose reset has passed is served again" "tok=$READTOK argv=run view 5" "$(glog)"
+qrows read:100:600 main:4000:600
+GH_READ_NO_MAIN_FALLBACK=1 hrun "$W/root" run view 5
+check "H3c no-fallback with the only read token parked: no call, not even on main" "" "$(glog)"
+check "H3d no-fallback with the only read token parked: exit 75" "75" "$HRC"
+has "H3e no-fallback pause names the parked read token" "token=read" "$(cat "$W/err")"
+qrows main:4000:600
+GH_STUB_READFAIL=1 GH_STUB_READ2FAIL=notfound GH_READ_NO_MAIN_FALLBACK=1 hrun "$W/root2" run view 5
+check "H3f no-fallback: a rate-limited first token and a 404 on the second never reach main" "tok=$READTOK argv=run view 5|tok=$READTOK2 argv=run view 5" "$(glog)"
+check "H3g no-fallback: that refusal keeps its non-zero exit" "1" "$HRC"
+qrows read:100:600 main:4000:600
+GH_STUB_READ2FAIL=notfound GH_READ_NO_MAIN_FALLBACK=1 hrun "$W/root2" run view 5
+check "H3h no-fallback: a parked first token and a 404 on the second never reach main" "tok=$READTOK2 argv=run view 5" "$(glog)"
+qrows read:100:600 read2:100:600 main:4000:600
+hrun "$W/root2" run view 5
+check "H3b both read tokens parked with main healthy: the read goes to main" "tok=main argv=run view 5" "$(glog)"
+qrows read:100:600 read2:100:600 main:100:600
+hrun "$W/root2" run view 5
+check "H4 every token under the floor: no call at all" "" "$(glog)"
+check "H4a every token under the floor: exit 75" "75" "$HRC"
+has "H4b every token under the floor: the line names the reset" "reset=" "$(cat "$W/err")"
+qrows main:100:600
+hrun "$W/emptyroot" run view 5
+check "H5 no read token configured: main is called even under the floor (nothing was refused, so nothing falls back)" "tok=main argv=run view 5" "$(glog)"
+rm -f "$W/quota/quota.tsv"
 
 mkdir -p "$W/g0root"
 printf 'touch "%s/g0marker"\n' "$W" > "$W/g0evil.sh"

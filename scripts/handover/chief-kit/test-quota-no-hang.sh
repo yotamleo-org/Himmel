@@ -291,6 +291,7 @@ run_mode() {
     [ "$class" = stall ] && [ "$FULL" = 1 ] && scaled=0 && bound=$(full_bound "$caller" "$mode")
     [ "$class" = stall ] && [ "$FULL" != 1 ] && [ "${UNSCALED_MODE:-}" = "$mode" ] && scaled=0
     ROW_DIR="$cdir/rows/$mode"; mkdir -p "$ROW_DIR"
+    rm -f "$cdir/quota/quota.tsv"
     local envs=()
     local l
     while IFS= read -r l; do envs+=("$l"); done < <(base_env "$cdir" "$mode" "$scaled"; [ -z "${EXTRA_ENV:-}" ] || printf '%s\n' "$EXTRA_ENV")
