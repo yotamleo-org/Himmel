@@ -70,9 +70,11 @@ wenv_quiet() {
     [ "$quiet_polls" -ge 2 ] || rc=125
 }
 mkdir -p "$S/slow"
-printf '%s\n' '#!/usr/bin/env bash' \
-    'case "$(cat "${2:-/dev/null}" 2>/dev/null)" in *" exit=signal-"*) sleep "$(cat "$S/slow.hold")" ;; esac' \
-    'PATH="${PATH#"$S/slow:"}"; exec mv "$@"' > "$S/slow/mv"
+{
+    printf '%s\n' '#!/usr/bin/env bash'
+    printf '%s\n' 'case "$(cat "${2:-/dev/null}" 2>/dev/null)" in *" exit=signal-"*) sleep "$(cat "$S/slow.hold")" ;; esac'  # read-sink-ok: the test's mv shim reads only the heartbeat temp file the waiter under test hands mv
+    printf '%s\n' 'PATH="${PATH#"$S/slow:"}"; exec mv "$@"'
+} > "$S/slow/mv"
 chmod +x "$S/slow/mv"; printf '3\n' > "$S/slow.hold"
 wd="$S/HIMMEL-1-N1-a.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$wd"
 M="$S/chief.fleet.json"
