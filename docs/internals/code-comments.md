@@ -31,6 +31,11 @@ file name for a tree-wide name scan to count:
 - Only the code files a change touches are judged, so a change that touches no
   commented file can never fail. A touched file's count may not exceed its row; a file
   with no row is allowed none, so a new file starts at zero.
+- A touched file's limit is the lower of its row and the count of the base's version of
+  the file (the path it was renamed from, for a rename). A sweep that deletes comments
+  therefore never has to write the baseline: it lowers the file's limit by itself, a
+  later change that adds one back is refused, and a separate PR rewrites the rows
+  afterwards. The refusal then names the base's count instead of the row.
 - The baseline only goes down. A row may not rise above the base's row for that path,
   or for the path the file was renamed from in the same change; a new row above zero
   is refused. CI reads the base's baseline, so a change cannot raise the rows that
@@ -62,8 +67,8 @@ whole-file rows of `scripts/lint/ticket-ref-allow.tsv` (fixtures, archives, gene
 and vendored trees).
 
 `bash scripts/lint/check-new-comments.sh --write-baseline` rewrites the baseline from
-the working tree. Run it after a sweep deletes comments, and after a rename so the row
-moves with the file. The sweep itself is the `/no-comments` skill
+the working tree. A sweep PR leaves the baseline alone; run it in its own PR after sweeps
+merge, and in the PR that renames a file so the row moves with the file. The sweep itself is the `/no-comments` skill
 (`.claude/skills/no-comments/SKILL.md`).
 
 To read a baseline diff, hash the paths the change touches and match the keys:
