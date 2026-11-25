@@ -82,7 +82,7 @@ prs_ok=0; prs_tsv=""
 read_prs() {
     local raw="" cache="$state/chief-duty-sweep-prs.json" age
     if [ -n "${CHIEF_DUTY_SWEEP_PRS:-}" ]; then
-        raw=$(cat "$CHIEF_DUTY_SWEEP_PRS" 2>/dev/null) || return 1  # swallow-ok: an unreadable seam file is an unread input
+        raw=$(cat "$CHIEF_DUTY_SWEEP_PRS" 2>/dev/null) || return 1  # read-sink-ok: a test seam set by the invoking process, a JSON fixture read once; swallow-ok: an unreadable seam file is an unread input
     else
         if [ -s "$cache" ]; then
             age=$(( $(date +%s) - $(stat -c %Y "$cache" 2>/dev/null || echo 0) ))  # gnu-ok: Linux-only kit; swallow-ok: an unreadable cache reads as old, so the list is read live
