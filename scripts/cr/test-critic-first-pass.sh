@@ -373,7 +373,7 @@ check "gpt-oss → NOT gpt (<task> absent)"            "$(PP openai/gpt-oss-120b
 check "gpt-6.1-sol → gpt: has <task> tag"            "$(PP gpt-6.1-sol | grep -c '<task>')"            "1"
 check "gpt-6.1-sol → NOT open (no rigid framing)"    "$(PP gpt-6.1-sol | grep -c 'reproduce precisely')" "0"
 check "gpt-6-astra → gpt: has <task> tag"            "$(PP gpt-6-astra | grep -c '<task>')"            "1"
-check "kimi → open framing"                        "$(PP moonshotai/kimi-k2.6 | grep -c 'reproduce precisely')" "1"
+check "kimi → open framing"                          "$(PP moonshotai/kimi-k2.6 | grep -c 'reproduce precisely')" "1"
 check "qwen → open framing"                          "$(PP qwen/qwen3-coder-480b | grep -c 'reproduce precisely')" "1"
 check "unknown → open framing (rigid default)"       "$(PP some/unknown-model | grep -c 'reproduce precisely')" "1"
 # claude family → XML + IMPORTANT.
@@ -444,6 +444,7 @@ mkdir -p "$tmp/hh/profiles/himmel_agent"   # so invoke.sh's existence guard pass
 printf '%s' "$DIFF" | HERMES_HOME="$tmp/hh" HERMES_PY="$tmp/py_prof.sh" bash "$CFP" --model gpt-5.5 --slug codex >/dev/null 2>&1
 check "gpt-family critic defaults to himmel_agent (senior)" "$(cat "$prof_cap" 2>/dev/null)" "himmel_agent"
 
+rm -f "$prof_cap"
 printf '%s' "$DIFF" | HERMES_HOME="$tmp/hh" HERMES_PY="$tmp/py_prof.sh" bash "$CFP" --model gpt-6.1-sol --slug codex >/dev/null 2>&1
 check "gpt-6.1-sol critic defaults to himmel_agent (senior)" "$(cat "$prof_cap" 2>/dev/null)" "himmel_agent"
 
