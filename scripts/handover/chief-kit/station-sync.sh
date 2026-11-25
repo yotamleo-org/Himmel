@@ -38,9 +38,7 @@
 # rewrites the state file as a sync does (no usage build):
 #   plugins -> marketplace, jira_cli -> jira_cli, qmd_fork -> qmd_fork
 # Any other behind component (himmel, hermes, luna_template, codex, claude, cli_proxy, node, npm, bun, a probe tool,
-# unverified, a *-failed marker) has no step here and stays reported, never healed. Hermes is left out on purpose:
-# its update step fast-forwards or hard-resets to upstream and restarts the gateway, and nothing yet holds it back
-# for the age rule, so it must not run unattended.
+# unverified, a *-failed marker) has no step here and stays reported, never healed.
 # It takes the sync's lock without waiting (`SKIP heal sync-running` when a sync holds it) and keeps a back-off stamp
 # ~/.himmel/state/station-heal.ts (SS_HEAL_WINDOW seconds, default 1800; SS_HEAL_NOW replaces the clock): a heal that
 # ran inside the window prints `SKIP heal backoff` and runs nothing, so a broken step never loops. A failed step
