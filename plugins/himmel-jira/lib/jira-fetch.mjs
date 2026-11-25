@@ -54,11 +54,11 @@ export function loadConfIntoProcess(only = CONF_KEYS) {
   }
 }
 
-// The shared resolver (environment, credentials directory, keyring) lives in the himmel checkout's
-// scripts/lib, which a plugin installed alone (a marketplace copy) does not have. Look in the plugin's
-// own checkout, the primary checkout, then HIMMEL_REPO; with none, every keyring call below is a no-op
-// and the plugin reads environment and .env exactly as before.
-async function loadResolver() {
+// The shared resolver (keyring) and Jira destination check live in the himmel checkout's scripts/, which
+// a plugin installed alone does not have. Look in the plugin's own checkout, the primary checkout, then
+// HIMMEL_REPO. With no resolver the keyring calls are no-ops; with no destination check jiraFetch sends
+// nothing.
+async function loadFromCheckout(rel) {
   const here = dirname(fileURLToPath(import.meta.url));
   const roots = [join(here, '..', '..', '..')];
   try {
@@ -73,7 +73,7 @@ async function loadResolver() {
   }
   if (process.env.HIMMEL_REPO) roots.push(process.env.HIMMEL_REPO);
   for (const root of roots) {
-    const file = join(root, 'scripts', 'lib', 'resolve-secrets.mjs');
+    const file = join(root, ...rel);
     if (!existsSync(file)) continue;
     try {
       return { root, mod: await import(pathToFileURL(file).href) };
@@ -84,7 +84,8 @@ async function loadResolver() {
   return null;
 }
 
-const resolver = await loadResolver();
+const resolver = await loadFromCheckout(['scripts', 'lib', 'resolve-secrets.mjs']);
+const destination = await loadFromCheckout(['scripts', 'jira', 'src', 'jira-destination.mjs']);
 
 /** The names the keyring path serves (environment, credentials directory, keyring); {} without the resolver. */
 export function resolveFromKeyring(names, env) {
@@ -139,6 +140,11 @@ export function envFilePath(override) {
 export async function jiraFetch(method, path, body) {
   const base = process.env.JIRA_BASE_URL;
   if (!base) throw new Error('JIRA_BASE_URL not set — run /jira-init');
+  if (!destination) {
+    throw new Error('JIRA_BASE_URL is refused: the himmel checkout holding scripts/jira/src/jira-destination.mjs was not found, so the destination cannot be checked. No request was sent and no credential left this process.');
+  }
+  if (!process.env.JIRA_ALLOW_HOST) loadConfIntoProcess(['JIRA_ALLOW_HOST']);
+  destination.mod.checkJiraDestination(base, 'JIRA_BASE_URL', process.env.JIRA_ALLOW_HOST);
   // A migrated station keeps the email in himmel.conf; the token comes from the keyring.
   if (!process.env.JIRA_EMAIL) loadConfIntoProcess(['JIRA_EMAIL']);
   fillFromKeyring();
