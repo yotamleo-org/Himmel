@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# An adopter with no Codex is not wedged at the merge gate after
-# its first recorded review. Project adoption seeds a Claude-only reviewer
-# overlay when no codex CLI is on PATH, and never when codex is present or the
-# adopter already owns a critics.local.json.
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" || exit 1
