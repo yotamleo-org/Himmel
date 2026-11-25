@@ -288,6 +288,14 @@ run Bash "$CMD"
 if wait_sent "grant abcdefgh from session S1 (chief chief-B) expired, nothing ran"; then echo "PASS RED HIMMEL-10845: the expiry line names the current chief"; else echo "FAIL RED HIMMEL-10845: the expiry line names the current chief"; echo "  got: $(cat "$TMP/outbox")"; FAILED=1; fi
 rm -f "$TMP/bridge/consoles/chief-A.md.handover" "$TMP/bridge/consoles/chief-B.md"
 
+printf 'result=pending\n' > "$TMP/status"
+run Bash "$CMD"
+: > "$TMP/bridge/consoles/chief-C.md"
+printf 'chief-C\n' > "$TMP/bridge/consoles/chief-A.md.handover"
+printf 'result=expired\n' > "$TMP/status"
+if wait_sent "grant abcdefgh from session S1 (chief chief-C) expired, nothing ran"; then echo "PASS RED HIMMEL-10845: a succession while the grant is pending moves the expiry line to the new chief"; else echo "FAIL RED HIMMEL-10845: a succession while the grant is pending moves the expiry line to the new chief"; echo "  got: $(cat "$TMP/outbox")"; FAILED=1; fi
+rm -f "$TMP/bridge/consoles/chief-A.md.handover" "$TMP/bridge/consoles/chief-C.md"
+
 : > "$TMP/status"
 run Bash "$CMD"
 quiet "a status query that fails first"

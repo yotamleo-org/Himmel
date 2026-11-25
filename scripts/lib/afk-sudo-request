@@ -105,7 +105,17 @@ if [ -n "$notify" ]; then
 fi
 if [ -n "$watch" ]; then
     [[ $watch =~ ^[a-z2-7]{8}$ && $operator =~ ^-?[0-9]{1,20}$ && $expires =~ ^[0-9]{1,12}$ ]] && [ -n "$session" ] && [ $# -eq 0 ] || usage
-    chief=$(label "${HIMMEL_CONSOLE_NAME:-}")
+    current_chief() {
+        local c=${HIMMEL_CONSOLE_NAME:-} next seen=" ${HIMMEL_CONSOLE_NAME:-} "
+        local consoles="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles"
+        while [ -n "$c" ] && [ -f "$consoles/$c.md.handover" ] && [ -r "$consoles/$c.md.handover" ]; do
+            next=$(sed -n 1p "$consoles/$c.md.handover" | tr -d '[:space:]')
+            [[ $next =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $next != *..* ]] && [ -f "$consoles/$next.md" ] || break
+            case "$seen" in *" $next "*) break ;; esac
+            seen="$seen$next "; c=$next
+        done
+        label "$c"
+    }
     deadline=$((expires + ${AFK_SUDO_WATCH_MARGIN_S:-130}))
     while [ "$(date +%s)" -lt "$deadline" ]; do
         st=$(sudo -n "$HELPER" status "$watch" 2>/dev/null | sed -n 's/^result=\([^ ]*\).*/\1/p') || st=query-failed
@@ -114,6 +124,7 @@ if [ -n "$watch" ]; then
             expired)
                 # shellcheck source=scripts/lib/merge-block-alert.sh
                 . "$(dirname "${BASH_SOURCE[0]}")/merge-block-alert.sh" 2>/dev/null || exit 5
+                chief=$(current_chief)
                 _mba_send "$operator" "grant $watch from session $(label "$session") (chief ${chief:-none}) expired, nothing ran" afk-grant-expired || exit 5
                 exit 0 ;;
             *) exit 0 ;;
