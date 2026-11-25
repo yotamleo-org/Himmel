@@ -206,5 +206,5 @@ if [ "$(carry_rows_at "$tmp" "$B")" = 0 ]; then pass; else fail "6: a refused no
 rm -rf "$tmp"
 
 echo
-echo "clear-review-marker tip rows:$PASS passed, $FAIL failed"
+echo "clear-review-marker tip rows: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
