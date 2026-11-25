@@ -3,22 +3,31 @@
 # a CHIEF session must run a long chief-kit script with the Bash tool's
 # run_in_background: true, never in the foreground. A foreground run blocks the
 # chief turn for minutes and every worker's SendMessage (READY, MERGED, BLOCKED,
-# quote-backs) queues behind it. Prose ("run it in the background") drifted
-# twice, so per root CLAUDE.md's "Adding a rule" it is a hook.
+# quote-backs) queues behind it. A run detached with `&` or a launcher loses its
+# output and its wake. Prose ("run it in the background") drifted twice, so per
+# root CLAUDE.md's "Adding a rule" it is a hook.
 #
 # TRIP CONDITION: HIMMEL_CONSOLE_DOC is set (a cheap first gate, before stdin is
 # read) AND the session's own `-n` name ends in `-chief` or `-console` (a worker launched from
 # a chief inherits the env var, so the name is the real identity) AND the Bash command runs a script named in
-# scripts/handover/chief-kit/long-running.txt AND tool_input.run_in_background
-# is not true. "Runs" means the name follows an interpreter (bash, sh, node,
-# bun, python) in command position or sits in command position behind a path,
-# after any VAR=value prefixes; a grep or cat that
-# merely names the script is not a run.
+# scripts/handover/chief-kit/long-running.txt. A command that names no listed
+# script exits at once. Otherwise the command is read through the shared command
+# model (scripts/lib/bash-ast.sh), which says where each simple command runs. A
+# quote-aware regex reader, reaching through every runner the model lists, also
+# reads it for a position the model cannot see into and whenever the model cannot
+# answer. "Runs" means a listed program, a shell or node/bun/python given the
+# script as its first non-option word, or a runner (timeout, nice, setsid, ...)
+# given it as an argument; a grep or cat that merely names the script is not a run.
+#   DETACHED    a run followed by `&`, run under `coproc`, `nohup`, `setsid` or
+#               `systemd-run`: denied whatever run_in_background says.
+#   FOREGROUND  any other run, unless tool_input.run_in_background is true.
 #
 # DENY: structured permissionDecision "deny" on stdout plus exit 2 + stderr (the
 # guard-chief-dispatch.sh idiom); the message gives the exact re-issue shape.
 # A WORKFLOW nudge, not a security fence: fails OPEN on missing jq, an
-# unparseable payload or an unreadable list (scripts/hooks/CLAUDE.md).
+# unparseable payload or an unreadable list (scripts/hooks/CLAUDE.md), and a
+# model failure (no shfmt, a parse failure, a timeout) falls back to the regex
+# reader instead of denying.
 #
 # Single-run bypass (set in the shell that LAUNCHED Claude Code; a per-call
 # prefix does not reach this hook): CHIEF_FG_OK=1. A set falsy value keeps the
@@ -46,7 +55,6 @@ tool=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null) || exit 0
 [ "$tool" = "Bash" ] || exit 0
 
 bg=$(printf '%s' "$input" | jq -r '.tool_input.run_in_background // false' 2>/dev/null) || exit 0
-[ "$bg" = "true" ] && exit 0
 
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) || exit 0
 [ -n "$cmd" ] || exit 0
@@ -63,22 +71,153 @@ case "$sname" in *-console|*-chief) ;; *) exit 0 ;; esac
 list="${CHIEF_FG_LIST:-$HERE/../handover/chief-kit/long-running.txt}"
 [ -r "$list" ] || exit 0
 
-hit=""
+names=""
+names_json=""
+named=""
 while IFS= read -r name; do
     case "$name" in ''|'#'*) continue ;; esac
-    esc=$(printf '%s' "$name" | sed 's/[.[\*^$]/\\&/g')
+    names="$names$name
+"
+    names_json="$names_json${names_json:+,}\"$name\""
+    case "$cmd" in *"$name"*) named=1 ;; esac
+done < "$list"
+[ -n "$named" ] || exit 0
+
+runners="sudo|doas|su|runuser|pkexec|script|xargs|parallel|watch|timeout|nice|stdbuf|setsid|ionice|chrt|taskset|flock|ssh|unshare|nsenter|chroot|busybox|time|strace|ltrace|firejail|bwrap|systemd-run"
+
+# swallow-ok: read -d '' on a literal heredoc always returns 1 at EOF
+IFS= read -r -d '' VERDICT_JQ <<'VERDICT_JQ_EOF' || true
+def base: (. // "") | sub("^.*/"; "");
+def listed: IN($L[]);
+def shells: ["bash","sh","zsh","dash","ksh","rbash","mksh","ash"];
+def isrunner: (.prog // "") | IN(($R | split("|"))[]);
+def sword:
+  def go($i):
+    (.argv[$i]) as $x
+    | if $x == null or $x.t != "lit" or ($x.g // false) then null
+      else $x.v as $o
+        | if $o == "--" or $o == "-" or ($o | startswith("--")) then go($i + 1)
+          elif ($o | test("^[-+][A-Za-z]+$")) then go($i + (if ($o | test("[oO]")) then 2 else 1 end))
+          else $o end
+      end;
+  go(1);
+def scriptword:
+  (.prog // "") as $p
+  | if .opaque != null then null
+    elif ($p | IN(shells[])) then (if .body != null or .stdin then null else sword end)
+    elif ($p | IN("node", "bun", "python", "python3")) then
+      ([.argv[1:][] | select(.t != "lit" or (.v | startswith("-") | not))] | first) as $a
+      | if $a != null and $a.t == "lit" then $a.v else null end
+    else null end;
+def runs:
+  (.prog // "") as $p
+  | if .opaque == null and ($p | listed) then $p
+    elif .opaque == null and ((scriptword | base) | listed) then (scriptword | base)
+    elif .opaque != null and isrunner then
+      ([.argv[1:][] | select(.t == "lit" and (.v | test("\\s") | not)) | .v | base | select(listed)] | first)
+    else null end;
+def detached:
+  ((.in // []) | any(. == "bg" or . == "coproc"))
+  or ((.via // []) | any(. == "nohup"))
+  or ((.prog // "") | IN("setsid", "systemd-run"))
+  or (isrunner and any(.argv[1:][]?; .t == "lit" and (.v == "setsid" or .v == "nohup")));
+def hasname($s): ($s | type == "string") and any($L[]; . as $n | $s | contains($n));
+def opaque_naming:
+  (.opaque != null and any(.argv[]?; hasname(.raw // "")))
+  or (.body != null and ((.via // []) | any(. == "nohup")) and hasname(.body));
+[.[] | select(runs != null) | {n: runs, d: detached}] as $r
+| if any($r[]; .d) then "detach " + ($r | map(select(.d)) | first | .n)
+  elif any(.[]; opaque_naming) then "legacy " + (($r | first | .n) // "-")
+  elif ($r | length) > 0 then "run " + $r[0].n
+  else "none -" end
+VERDICT_JQ_EOF
+
+verdict=""
+lib_ast="$HERE/../lib/bash-ast.sh"
+# shellcheck source=../lib/bash-ast.sh
+if { [ -r "$lib_ast" ] && . "$lib_ast"; } 2>/dev/null; then
+    ast_rc=0
+    pos=$(BASH_AST_MAX_S=5 bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
+    if [ "$ast_rc" = 0 ]; then
+        # swallow-ok: a failed verdict falls back to the regex reader, never to a denial
+        verdict=$(printf '%s' "$pos" | jq -r --argjson L "[$names_json]" --arg R "$runners" "$VERDICT_JQ" 2>/dev/null) || verdict=""
+    fi
+fi
+
+rhit=""
+rdet=""
+regex_read() {
+    local name esc tail tok assign wrap q via_interp via_path
+    q="[\"']?"
     tail='($|[[:space:];&|)])'
     tok='[^[:space:];&|()]+'
     assign="([A-Za-z_][A-Za-z0-9_]*=(${tok})?[[:space:]]+)*"
-    wrap="${assign}(((timeout|nohup)([[:space:]]+${tok})*)[[:space:]]+)?"
-    via_interp="(^|[;&|(])[[:space:]]*${wrap}(bash|sh|node|bun|python3?)[[:space:]]+([^[:space:]]*/)?${esc}${tail}"
-    via_path="(^|[;&|(])[[:space:]]*${wrap}[^[:space:]]*/${esc}${tail}"
-    if printf '%s' "$cmd" | grep -Eq -e "$via_interp" -e "$via_path"; then
-        hit="$name"
-        break
+    wrap="${assign}(((nohup|${runners})([[:space:]]+${tok})*)[[:space:]]+)?"
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        esc=$(printf '%s' "$name" | sed 's/[.[\*^$]/\\&/g')
+        via_interp="(^|[;&|(])[[:space:]]*${wrap}(bash|sh|node|bun|python3?)[[:space:]]+${q}([^[:space:]]*/)?${esc}${q}${tail}"
+        via_path="(^|[;&|(])[[:space:]]*${wrap}${q}[^[:space:]]*/${esc}${q}${tail}"
+        if printf '%s' "$cmd" | grep -Eq -e "$via_interp" -e "$via_path"; then
+            rhit="$name"
+            break
+        fi
+    done <<EOF
+$names
+EOF
+    [ -n "$rhit" ] || return 0
+    if printf '%s' "$cmd" | grep -Eq -e '(^|[^&<>|])&([^&>]|$)' -e '(^|[^[:alnum:]_-])(nohup|setsid|systemd-run)($|[^[:alnum:]_-])'; then
+        rdet=1
     fi
-done < "$list"
+}
+
+emit_deny() {
+    local reason
+    reason=$(printf '%s' "$1" | jq -Rs . 2>/dev/null) \
+        || reason='"guard-chief-foreground: chief session denied a long chief-kit script"'
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$reason"
+    printf '%s\n' "$1" >&2
+    exit 2
+}
+
+hit=""
+detach=""
+case "$verdict" in
+    "none "*) exit 0 ;;
+    "detach "*) hit="${verdict#detach }"; detach=1 ;;
+    "run "*) hit="${verdict#run }" ;;
+    "legacy "*)
+        regex_read
+        hit="$rhit"
+        [ -n "$hit" ] || { hit="${verdict#legacy }"; [ "$hit" != "-" ] || hit=""; }
+        detach="$rdet"
+        ;;
+    *)
+        regex_read
+        hit="$rhit"
+        detach="$rdet"
+        ;;
+esac
 [ -n "$hit" ] || exit 0
+
+if [ -n "$detach" ]; then
+    detach_msg="You are a CHIEF session running a long chief-kit script (${hit}) DETACHED — DENIED.
+
+The harness reads a background command's output, and wakes you, only when the command itself exits.
+A run detached with \`&\` or \`coproc\` outlives the command, so its output and its wake reach no reader.
+A detached chief-wait.sh also holds the one-waiter lock, so your real arm is then refused with exit 3.
+\`nohup\`, \`setsid\` and \`systemd-run\` are refused too: under run_in_background a kit script never needs them.
+
+Re-issue the SAME command without the \`&\`, \`coproc\`, \`nohup\`, \`setsid\` or \`systemd-run\`, with the Bash tool's
+run_in_background set to true (and timeout: 7200000 for chief-wait.sh):
+  Bash(command: <the command you just tried, detach word removed>, run_in_background: true)
+
+Bypass for one session: relaunch with CHIEF_FG_OK=1 in the launching
+shell (a per-call prefix does not reach this hook)."
+    emit_deny "$detach_msg"
+fi
+
+[ "$bg" = "true" ] && exit 0
 
 # A bounded run is allowed in the foreground: `timeout N` (a whole 1..90 seconds, an `s`
 # suffix, or 1m / 1.5m) as the OUTERMOST command, wrapping the interpreter or script path
@@ -114,8 +253,4 @@ fleet-manifest.sh, worker-event.sh) are not on the list and stay foreground. The
 Bypass for one session: relaunch with CHIEF_FG_OK=1 in the launching
 shell (a per-call prefix does not reach this hook)."
 
-reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
-    || reason='"guard-chief-foreground: chief session denied a foreground long chief-kit script"'
-printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$reason"
-printf '%s\n' "$deny_msg" >&2
-exit 2
+emit_deny "$deny_msg"

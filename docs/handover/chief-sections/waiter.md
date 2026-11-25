@@ -126,7 +126,7 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     `Monitor` arm is capped at 30 min, and every expiry woke this full-context
     session only to re-arm it. Instead, run `chief-wait.sh` **once** with the
     **Bash tool's `run_in_background: true` AND `timeout: 7200000`** — both
-    are required: the default background limit (30 min) killed a waiter once. The harness re-invokes you when the command exits:
+    are required: the default background limit (30 min) killed a waiter once. Never add `&`, `nohup` or `setsid` to the arm: the harness wakes you only when this command exits, and the guard refuses a detached arm. The harness re-invokes you when the command exits:
     `bash scripts/handover/chief-kit/chief-wait.sh "<inbox>" --doc "<this file>" --token <your token> --workers-from "<manifest>"`
     (everything after the inbox path is passed to `tick.sh` unchanged). It is
     silent while nothing happens and **exits on an urgent event or a due
