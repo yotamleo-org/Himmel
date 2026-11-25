@@ -1797,6 +1797,7 @@ sb5=$(new_sandbox)
 cat > "$sb5/test-block.sh" <<'SHEOF'
 #!/usr/bin/env bash
 # A wedged suite: leaves a descendant running and never returns.
+echo "FAIL: a row of its own"
 sleep 600 &
 printf '%s' "$!" > "$(dirname "$0")/descendant.pid"
 sleep 600
@@ -1863,6 +1864,7 @@ sb5b=$(new_sandbox)
 cat > "$sb5b/test-stubborn.sh" <<'SHEOF'
 #!/usr/bin/env bash
 trap '' TERM
+echo "FAIL: a row of its own"
 end=$(( $(date +%s) + 40 ))
 while [ "$(date +%s)" -lt "$end" ]; do sleep 1; done
 exit 0
@@ -1908,6 +1910,7 @@ cat > "$sb5c/test-polite.sh" <<'SHEOF'
 # Exits 0 the moment it is asked to stop -- well past the cap. Self-limits at
 # 60s so a regression cannot leave this running.
 trap 'exit 0' TERM
+echo "FAIL: a row of its own"
 end=$(( $(date +%s) + 60 ))
 while [ "$(date +%s)" -lt "$end" ]; do sleep 1; done
 exit 0

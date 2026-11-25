@@ -14,10 +14,11 @@
 # Rules:
 #   - a tracked suite (basename test-*.sh, the runner's discovery) with no row is allowed
 #     and reads as tier pr; no stale rows, no duplicate rows, no malformed rows;
-#   - the tier is one of pr, local, flow, quarantine;
+#   - the tier is one of pr, local, flow, quarantine, daily (a timing suite: the runner
+#     skips it in every mode but SUITE_TIER_MODE=daily, which .github/workflows/timing-daily.yml runs);
 #   - a pr reason is catch:<n> | trust-path | static-gate | guard | flow-miss:HIMMEL-<n>;
 #   - the trust list holds at least one pattern (an empty one would make every local row pass);
-#   - a trust-owned suite is never local. Trust-owned = its path matches a
+#   - a trust-owned suite is never local and never daily. Trust-owned = its path matches a
 #     ci-trust-paths.txt pattern, or it is the sibling of a trust-path file (same
 #     directory, the file's stem equals the suite's stem after dropping test- and
 #     trailing -words). The rule is computed, not hand-listed.
@@ -71,11 +72,12 @@ lint() { # <tiers> <trust> <tracked-list>
         s = suites[i]; seen[s] = 1
         if (!(s in tier)) continue
         t = tier[s]; r = reason[s]
-        if (t !~ /^(pr|local|flow|quarantine)$/) { printf "FAIL unknown tier %s: %s\n", t, s; bad++; continue }
+        if (t !~ /^(pr|local|flow|quarantine|daily)$/) { printf "FAIL unknown tier %s: %s\n", t, s; bad++; continue }
         if (t == "pr" && r !~ /^(catch:[0-9]+|trust-path|static-gate|guard|flow-miss:HIMMEL-[0-9]+)$/) {
           printf "FAIL pr suite with an unjustified reason (%s): %s\n", r, s; bad++
         }
         if (t == "local" && trust_owned(s)) { printf "FAIL trust-path suite is local: %s\n", s; bad++ }
+        if (t == "daily" && trust_owned(s)) { printf "FAIL trust-path suite is daily: %s\n", s; bad++ }
       }
       for (s in tier) if (!(s in seen)) { printf "FAIL stale row, no such suite: %s\n", s; bad++ }
       exit (bad > 0)
@@ -176,6 +178,15 @@ row "RED: a local trust-path suite (direct match)" 1 "trust-path suite is local:
 
 retier "$tmp/good.tsv" "$tmp/localsib.tsv" scripts/cr/test-impacted-suites-extra.sh local 'behaviour suite'
 row "RED: a local sibling of a trust-path file" 1 "trust-path suite is local: scripts/cr/test-impacted-suites-extra.sh" "$tmp/localsib.tsv"
+
+retier "$tmp/good.tsv" "$tmp/daily.tsv" scripts/foo/test-plain.sh daily 'timing rows only'
+row "a daily suite with a free-text reason is accepted" 0 "" "$tmp/daily.tsv"
+
+retier "$tmp/good.tsv" "$tmp/dailytrust.tsv" scripts/ci/test-alpha.sh daily 'timing rows only'
+row "RED: a daily trust-path suite (direct match)" 1 "trust-path suite is daily: scripts/ci/test-alpha.sh" "$tmp/dailytrust.tsv"
+
+retier "$tmp/good.tsv" "$tmp/dailysib.tsv" scripts/cr/test-impacted-suites-extra.sh daily 'timing rows only'
+row "RED: a daily sibling of a trust-path file" 1 "trust-path suite is daily: scripts/cr/test-impacted-suites-extra.sh" "$tmp/dailysib.tsv"
 
 { cat "$tmp/good.tsv"; printf 'scripts/foo/test-plain.sh\tlocal\tbehaviour suite\n'; } > "$tmp/dup.tsv"
 row "RED: a duplicate row" 1 "duplicate row: scripts/foo/test-plain.sh" "$tmp/dup.tsv"

@@ -20,6 +20,7 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/dependabot-go-test.XXXXXX")" || { echo "FAIL: 
 trap 'rm -rf "$tmp"' EXIT
 tmp="$(cd "$tmp" && pwd)"
 export HOME="$tmp/home"; mkdir -p "$HOME/.config/himmel"
+mkdir -p "$tmp/ghr-root"; export GH_READ_ENV_ROOT="$tmp/ghr-root" HIMMEL_SECRETS_KEYRING=off GH_READ_QUIET=1
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$HOME/.config/himmel/go-hmac.key"
 
 # gh stub: STUB_PR_JSON is the `gh pr view` body, STUB_FILES the names the files

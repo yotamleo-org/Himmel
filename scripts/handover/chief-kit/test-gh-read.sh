@@ -694,5 +694,11 @@ f0_tracked="$(git -C "$REPO" ls-files scripts/handover)"
 check "F0 reads the tracked files (chief-wait.sh is among them, so the empty result below is not vacuous)" "yes" "$(case "$f0_tracked" in (*chief-kit/chief-wait.sh*) echo yes ;; esac)"
 check "F0 no read-shaped gh call under scripts/handover is unjustified" "" "$(printf '%s\n' "$f0_tracked" | python3 -I "$W/f0.py" "$REPO" 2>&1)"
 
+mkdir -p "$W/g0root"
+printf 'touch "%s/g0marker"\n' "$W" > "$W/g0evil.sh"
+rm -f "$W/g0marker"
+_GHR_LOAD_DOTENV="$W/g0evil.sh" run_gh_read "$W/g0root" pr view 12
+check "G0 the environment never chooses the file gh-read.sh sources (_GHR_LOAD_DOTENV is ignored)" "" "$(ls "$W/g0marker" 2>/dev/null)"
+
 printf '%s fail\n' "$fails"
 [ "$fails" -eq 0 ]
