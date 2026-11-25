@@ -12,12 +12,12 @@
 # baseline, binary files, and the env, env-prefix, path and directory rows (those stay
 # with scripts/ci/check-rename-diff.sh). A line carrying `old-term-ok` is skipped.
 #
-# The retired-name lines already in the tree are counted per file in
+# The retired-name hits already in the tree are counted per file in
 # scripts/docs/old-terms-baseline.tsv (key<TAB>count, the key being the git blob hash
 # of the path, so the baseline carries no file name for a name scan to count). Only the
 # files a change touches are judged, so a change that touches no file holding a retired
 # name can never fail:
-#   a touched file may not hold more fail-tier lines than the base's version of it
+#   a touched file may not hold more fail-tier hits (a line naming two retired names counts two) than the base's version of it
 #   (for a renamed file, the version it was renamed from)
 #   a baseline row may not rise above the base's row for that path (or for the path it was
 #   renamed from), and a new row above zero is refused; a row that only records the
@@ -171,7 +171,7 @@ if [ "$mode" = "write" ]; then
     : > "$W/map"
     if [ -s "$W/named" ]; then keys "$W/named" "$W/map"; fi
     awk -F'\t' 'FILENAME == ARGV[1] { key[$2] = $1; next } { print key[$1] "\t" $2 }' "$W/map" "$W/rows" | sort > "$BL" || die "cannot write $BL"
-    echo "check-old-terms: wrote $BL ($(awk -F'\t' '{ n += $2 } END { print NR " files, " n + 0 " lines" }' "$BL"))"
+    echo "check-old-terms: wrote $BL ($(awk -F'\t' '{ n += $2 } END { print NR " files, " n + 0 " hits" }' "$BL"))"
     exit 0
 fi
 
@@ -192,7 +192,12 @@ esac
 has_at() { git cat-file -e "$1$2" 2>/dev/null; }
 blob_count() {
     git show "$1$2" > "$W/blob" 2>/dev/null || die "cannot read $2 at $1"
-    if ! grep -Iq . "$W/blob"; then echo 0; return; fi
+    grep -Iq . "$W/blob"
+    case $? in
+        0) ;;
+        1) echo 0; return ;;
+        *) die "grep failed on $2" ;;
+    esac
     awk -v p="$2" '{ printf "%s:%d:%s\n", p, NR, $0 }' "$W/blob" | scan > "$W/bh" || die "the scan failed on $2"
     awk -F'\t' '$1 == "fail" { n++ } END { print n + 0 }' "$W/bh"
 }
@@ -230,11 +235,12 @@ git -c core.quotePath=false diff "$@" -U0 --text --no-color --no-ext-diff --src-
 : > "$W/findings"
 while IFS= read -r p; do
     has_at "$tipspec" "$p" || continue
-    n="$(blob_count "$tipspec" "$p")"
+    n="$(blob_count "$tipspec" "$p")" || die "cannot count $p at the tip"
     was="$(awk -F'\t' -v p="$p" '$2 == p { print $1; exit }' "$W/renames")"
     m=0
-    if has_at "$fork:" "${was:-$p}"; then m="$(blob_count "$fork:" "${was:-$p}")"; fi
-    if count_ok "$n" && count_ok "$m" && [ "$n" -gt "$m" ]; then
+    if has_at "$fork:" "${was:-$p}"; then m="$(blob_count "$fork:" "${was:-$p}")" || die "cannot count ${was:-$p} at the base"; fi
+    if ! count_ok "$n" || ! count_ok "$m"; then die "no count for $p"; fi
+    if [ "$n" -gt "$m" ]; then
         printf 'A\t%s\t%s\t%s\n' "$p" "$n" "$m" >> "$W/findings"
     fi
 done < "$W/touched"
@@ -277,8 +283,9 @@ if [ "$has_base" -eq 1 ]; then
             fi
             was="$(awk -F'\t' -v p="$p" '$2 == p { print $1; exit }' "$W/renames")"
             m=0
-            if has_at "$fork:" "${was:-$p}"; then m="$(blob_count "$fork:" "${was:-$p}")"; fi
-            if count_ok "$m" && [ "$n" -le "$m" ]; then continue; fi
+            if has_at "$fork:" "${was:-$p}"; then m="$(blob_count "$fork:" "${was:-$p}")" || die "cannot count ${was:-$p} at the base"; fi
+            count_ok "$m" || die "no count for ${was:-$p}"
+            if [ "$n" -le "$m" ]; then continue; fi
             printf 'B\t%s\t%s\t%s\n' "row for $p" "$n" "$lim" >> "$W/findings"
         done < "$W/rose"
     fi
@@ -294,7 +301,7 @@ if [ -s "$W/findings" ]; then
             echo "$BL: $p raised to $n, the base allows $lim"
             continue
         fi
-        echo "$p: $n retired-name lines, the base's version has $lim"
+        echo "$p: $n retired-name hits, the base's version has $lim"
         awk -F'\t' -v p="$p" '$1 == "fail" && $2 == p { printf "  %s:%s: %s -> %s: %s\n", $2, $3, $4, $5, $6 }' "$W/added"
     done < "$W/findings"
     echo "check-old-terms: a new retired name is refused. Use the new name from scripts/lib/rename-aliases.tsv," >&2

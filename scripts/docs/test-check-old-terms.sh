@@ -84,6 +84,16 @@ run_lint() {
   OUT=$(cd "$R" && bash "$SCRIPT" "$@" 2>&1) || RC=$?
 }
 
+run_lint_with_failing_grep() {
+  local stub real
+  stub=$(tracked_fixture_dir) || exit 1
+  real=$(command -v grep)
+  printf "#!/bin/sh\ncase \"\$1\" in -Iq) exit 2 ;; esac\nexec %s \"\$@\"\n" "$real" >"$stub/grep"
+  chmod +x "$stub/grep"
+  RC=0
+  OUT=$(cd "$R" && PATH="$stub:$PATH" bash "$SCRIPT" "$@" 2>&1) || RC=$?
+}
+
 has() {
   case "$OUT" in *"$1"*) return 0 ;; esac
   return 1
@@ -310,6 +320,18 @@ must git -C "$R" rm -q "$REG"
 commit_all "drop the registry"
 run_lint --range "$BASE"
 expect_rc "no registry at the tip" 2
+
+setup_repo
+printf 'the %s name\n' "$OLD" >"$R/docs/a.md"
+commit_all
+run_lint_with_failing_grep --range "$BASE"
+expect_rc "a blob that cannot be read for its count is never a pass" 2
+
+setup_repo
+printf 'one line %s and %s\n' "$OLD" "$OLDM" >"$R/docs/a.md"
+commit_all
+run_lint --range "$BASE"
+expect_fail "a line naming two retired names counts both" "2 retired-name hits"
 
 setup_repo
 trunk=$(git -C "$R" rev-parse --abbrev-ref HEAD)

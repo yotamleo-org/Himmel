@@ -43,7 +43,7 @@ that enforce it are `scripts/ci/check-rename-diff.sh` and
 | Gate | Reads | Refuses |
 |---|---|---|
 | `scripts/ci/check-rename-diff.sh` | the lines a PR **adds**, against every registry row | a retired name (see the mapping below) |
-| `scripts/docs/check-old-terms.sh` | the files a change touches, each file's retired-name count against its base version, and a per-file baseline | a touched file with more retired-name lines than before, or a baseline row that rises |
+| `scripts/docs/check-old-terms.sh` | the files a change touches, each file's retired-name count against its base version, and a per-file baseline | a touched file with more retired-name hits than before, or a baseline row that rises |
 | `scripts/ci/check-doc-literals.sh` | `docs/**/*.md`, `marketplace/**/SKILL.md`, `.claude/commands/*.md` | a `--flag`, or a `--role` value, on a documented invocation of `bus`, `tick.sh`, `board.mjs`, `chief.sh`, `headed-arm-worker.sh`, `gen-briefs` or `append-results.sh` that the CLI does not accept |
 
 **Registry direction as mode.** `check-rename-diff.sh` scans, per `kind`:
@@ -63,7 +63,7 @@ refusal, a page that inventories old names. The registry file itself is never
 scanned.
 
 **The net-count gate.** `check-old-terms.sh --range <base>` (CI) and `--staged`
-(pre-commit) count, per touched file, the lines that hold a retired name
+(pre-commit) count, per touched file, the hits of a retired name
 (identifier and marker rows with direction `old-to-new`, prose rows with direction
 `fail`) and refuse a file that holds more than its base version, so editing a line
 that already carried an old name passes while adding one fails. A prose row with
