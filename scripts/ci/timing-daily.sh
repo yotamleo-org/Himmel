@@ -4,14 +4,8 @@
 # Timing tests leave PR and main CI: a suite tagged `daily` in scripts/ci/suite-tiers.tsv is
 # skipped by every runner mode but SUITE_TIER_MODE=daily, and a suite that only hits its time
 # cap (both attempts, no FAIL row of its own) is a CAP-ALERT line and exit 0 in CI. This script
-#   1. runs the daily-tier suites (SUITE_TIER_MODE=daily run-shell-tests.sh),
-#   2. collects CAP-ALERT lines from that run, from --alerts <file> logs, and from the last
-#      --ci-hours of main's ci.yml runs (gh run view --log),
-#   3. prints one `WOULD-CHANGE <suite> cap <old>s -> <new>s` line per alerting suite (the cap
-#      doubled, the loaded-budget rule of _suite_timeout_for), and
-#   4. exits 1 when a daily suite failed or any alert was seen, so the workflow goes red and
-#      workflow-red.yml opens the ci-red issue that wakes the chief.
-# It changes no file: the cap refresh is a PR the chief or a worker opens from the WOULD-CHANGE lines.
+# runs the daily suites, reads CAP-ALERT lines and prints `WOULD-CHANGE <suite> cap <old>s -> <new>s`
+# (the cap doubled); a red run is the alert workflow-red.yml turns into an issue.
 #
 # Usage: timing-daily.sh [--no-run] [--alerts FILE]... [--ci-hours N]
 # Env: TIMING_DAILY_RUNNER (default scripts/ci/run-shell-tests.sh), TIMING_DAILY_SCAN (default scripts/),

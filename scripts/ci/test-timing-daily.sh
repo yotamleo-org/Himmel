@@ -3,14 +3,6 @@
 # scripts/ci/test-timing-daily.sh -- scripts/ci/timing-daily.sh runs the daily-tier suites,
 # reads CAP-ALERT lines and names the cap rows it would change.
 #
-#   TD1  CAP-ALERT lines from the daily run     -> rc 1, one WOULD-CHANGE line per suite, the cap doubled
-#   TD2  a clean daily run                      -> rc 0, "no cap alerts"
-#   TD3  a daily suite that failed              -> rc 1
-#   TD4  --alerts on a CI log (prefixed lines)  -> WOULD-CHANGE from the largest cap seen
-#   TD5  the runner is called in SUITE_TIER_MODE=daily
-#   TD6  the real runner over a sandbox: only the daily suite runs, its cap hit is named
-#   TD7  timing-daily.yml is a tracked workflow listed in workflow-red-list.txt and workflow-red.yml
-#
 # Platform guard: bash-only, like every suite in this family; Linux/macOS.
 # Usage: bash scripts/ci/test-timing-daily.sh
 # Exit codes: 0 -- all cases passed; 1 -- at least one failed.

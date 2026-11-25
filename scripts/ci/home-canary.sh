@@ -19,11 +19,6 @@
 #   exit (rc 1) to a note, for a job that lacks the tools the real shard job
 #   installs; a timeout (124, or 137 after timeout -k) and the runner's refused
 #   or aborted codes (2-6, 96) still fail.
-#   A time cap is an alert, not a red: the runner's CAP-ALERT lines (a suite that hit its
-#   cap on both attempts with no FAIL row of its own) are added to $GITHUB_STEP_SUMMARY,
-#   and a runner stopped by HOME_CANARY_TIMEOUT AFTER its Summary printed FAIL: 0 is a
-#   CAP-ALERT too (every suite ran and passed; only the clock ended it). A runner stopped
-#   before its Summary has unrun suites and still fails.
 #   The sandbox is removed on every exit path.
 #   PYTHONUSERBASE is pinned to the real home's Python user base before the swap,
 #   so a `pip install --user` tool (pre-commit on a fork-PR runner, which has no CI

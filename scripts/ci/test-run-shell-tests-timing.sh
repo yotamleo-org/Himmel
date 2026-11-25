@@ -245,9 +245,6 @@ else
   fail "20: expected the Summary line 'CAP EXCEEDED (assertions passing): 1'; out: $out20"
 fi
 
-# 4. Still a real failure: exit code non-zero, three of the four counted under
-# FAIL/TIMED OUT (the fourth, with no FAIL row, is a CAP-ALERT) — a cap overrun
-# with a FAIL row is not green just because it carries the new label.
 if [ "$rc20" -eq 1 ] && grepq "$out20" -F ' FAIL: 3' && grepq "$out20" -F ' TIMED OUT: 3 (counted in FAIL)' \
     && grepq "$out20" -E '^CAP-ALERT [^ ]*test-okayword\.sh' && grepq "$out20" -F ' CAP-ALERT: 1'; then
   pass "20: exit code stays non-zero, three suites count under FAIL/TIMED OUT and the row-less one is a CAP-ALERT"

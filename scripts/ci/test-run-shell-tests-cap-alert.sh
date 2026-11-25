@@ -4,17 +4,6 @@
 # hits its time cap (after the one retry) is a CAP-ALERT and exits 0; a FAIL row
 # of its own still exits 1; a `daily` tier suite leaves every CI mode.
 #
-# Rows:
-#   CA1  cap hit on both attempts, no FAIL row      -> rc 0, CAP-ALERT, alert file, TIMED OUT not counted
-#   CA2  cap hit plus a FAIL row                    -> rc 1, CAP EXCEEDED
-#   CA3  plain FAIL                                 -> rc 1
-#   CA4  a row that got rc 124 where it wanted a wake (the real CI row of main
-#        run 45534239589, shard 6/8) on both attempts -> rc 0, CAP-ALERT
-#   CA5  a hang-guard row (want '124') that failed  -> rc 1
-#   CA6  a real FAIL on the first attempt, cap hit on the retry -> rc 1
-#   CA7  a `# no-retry` suite that hit its cap       -> rc 1 (no retry happened)
-#   CA8  a `daily` row is skipped in all / pr / fast, and the only tier run by daily
-#
 # Platform guard: bash-only, like every suite in this family; Linux/macOS.
 # Usage: bash scripts/ci/test-run-shell-tests-cap-alert.sh
 # Exit codes: 0 -- all cases passed; 1 -- at least one failed.
