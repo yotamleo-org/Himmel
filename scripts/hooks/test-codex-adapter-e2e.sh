@@ -16,7 +16,9 @@ unset CODEX_EXTERNAL_WRITES_OK T3_THREAD_TOOLS_OK T3CODE_UNWATCH_OK 2>/dev/null 
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/codex-adapter-e2e.XXXXXX")" || exit 1
 trap 'rm -rf "$TMP"' EXIT
-mkdir -p "$TMP/home/.himmel" "$TMP/bin"
+mkdir -p "$TMP/home/.himmel" "$TMP/home/.t3/userdata" "$TMP/bin"
+export T3CODE_HOME="$TMP/home/.t3"
+printf '{"providerInstances":{"claudeBypass":{"driver":"claudeAgent","environment":[{"name":"AGENTS_MD_OK","value":"1"}]}}}\n' > "$T3CODE_HOME/userdata/settings.json"
 cat > "$TMP/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '{"state":"%s","mergeStateStatus":"BLOCKED","reviewDecision":""}\n' "${GH_STUB_STATE:-OPEN}"
@@ -76,11 +78,11 @@ case "$out" in
 esac
 
 echo "== (d) T3 thread tools guard through guard-t3-thread-tools.sh =="
-out="$(HOME="$TMP/home" run guard-t3-thread-tools.sh '{"hook_event_name":"PreToolUse","tool_name":"mcp__t3-code__t3_thread_launch","tool_input":{"title":"Work","modelSelection":{"instanceId":"antigravity","model":"gemini-4-neon"}}}')"; rc=$?
-if [ "$rc" -eq 0 ]; then ok "off-allowlist instance -> adapter exits 0"; else bad "off-allowlist instance -> adapter exits 0 (got $rc)"; fi
+out="$(HOME="$TMP/home" run guard-t3-thread-tools.sh '{"hook_event_name":"PreToolUse","tool_name":"mcp__t3-code__t3_thread_launch","tool_input":{"title":"Work","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}}')"; rc=$?
+if [ "$rc" -eq 0 ]; then ok "bypass instance -> adapter exits 0"; else bad "bypass instance -> adapter exits 0 (got $rc)"; fi
 case "$out" in
-  *'"permissionDecision":"deny"'*) ok "off-allowlist instance -> JSON deny";;
-  *) bad "off-allowlist instance -> JSON deny ($out)";;
+  *'"permissionDecision":"deny"'*'carries a himmel bypass flag'*) ok "bypass instance -> JSON deny";;
+  *) bad "bypass instance -> JSON deny ($out)";;
 esac
 
 out="$(HOME="$TMP/home" run guard-t3-thread-tools.sh '{"hook_event_name":"PreToolUse","tool_name":"mcp__t3-code__t3_thread_update","tool_input":{"action":"rename","title":"ops-chief"}}')"; rc=$?
@@ -114,10 +116,10 @@ esac
 
 echo "== (f) wired .codex/hooks.json MCP chain denies both T3 guards =="
 MCP_CHAIN="$(jq -r '.hooks.PreToolUse[] | select(.matcher == "mcp__.*") | .hooks[0].command' "$REPO/.codex/hooks.json" | sed -n 's/.*run-hook\.sh --sandbox \([^ ]*\).*/\1/p')"
-out="$(HOME="$TMP/home" run "$MCP_CHAIN" '{"hook_event_name":"PreToolUse","tool_name":"mcp__t3-code__t3_thread_launch","tool_input":{"title":"Work","modelSelection":{"instanceId":"antigravity","model":"gemini-4-neon"}}}')"; rc=$?
+out="$(HOME="$TMP/home" run "$MCP_CHAIN" '{"hook_event_name":"PreToolUse","tool_name":"mcp__t3-code__t3_thread_launch","tool_input":{"title":"Work","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}}')"; rc=$?
 case "$out" in
-  *'"permissionDecision":"deny"'*) ok "wired MCP chain denies off-allowlist instance";;
-  *) bad "wired MCP chain denies off-allowlist instance (rc=$rc out=$out)";;
+  *'"permissionDecision":"deny"'*'carries a himmel bypass flag'*) ok "wired MCP chain denies a bypass instance";;
+  *) bad "wired MCP chain denies a bypass instance (rc=$rc out=$out)";;
 esac
 out="$(HOME="$TMP/home" run "$MCP_CHAIN" '{"hook_event_name":"PreToolUse","tool_name":"mcp__t3-code__t3_thread_update","tool_input":{"action":"rename","title":"ops-chief"}}')"; rc=$?
 case "$out" in

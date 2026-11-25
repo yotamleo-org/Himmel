@@ -192,7 +192,15 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   then each phase of the work and the parts it is made of. A phase row opens to its parts, each with its
   dollars, its share of the phase and a bar; every figure says whether it is counted (read from a ledger or
   the session's own usage), derived (a counted total split by the last tool a call read) or has no price
-  yet, and a part no record splits says "not countable yet" and shows no number. The page only reads:
+  yet, and a part no record splits says "not countable yet" and shows no number. Under it a **T3 Code**
+  card lists the same day's usage, tokens and dollars per provider and per thread, read from T3 Code's
+  own state database (`$T3CODE_HOME` or `~/.t3`, `userdata/statev2.sqlite`, opened read-only): the
+  token counts T3 Code stores for each turn, priced from `scripts/lanes/lib/model-prices.tsv`, so there is
+  no second collector and no second price list. A turn with no model or no price row shows its tokens
+  and no dollars, a provider that reports no usage shows neither, usage T3 Code keeps for subagents apart
+  is not added, and days are UTC. T3's Claude sessions write the transcripts the phase table already
+  counts, so the Claude line shows tokens only, marked "in the phase table", and its dollars are not
+  added a second time. With no T3 Code store the card is absent. The page only reads:
   `GET /api/cost`; with no usage records it says "no data yet"), and **Fleet** at `/agui/`.
 - **Fleet and run view (AG-UI).** `/agui/` lists every live Claude session
   with its ticket, PR and state; clicking one opens its run page: assistant

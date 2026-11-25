@@ -1397,3 +1397,46 @@ test("the tap key is created once with mode 0600 and a later read returns the sa
   expect(statSync(keyPath).mode & 0o777).toBe(0o600);
   expect(signTap(e.configDir, { peer: "example", ...tapRec(e, "0a1b2c3d") })).toBe(a);
 });
+
+test("a start lookup that fails twice and then succeeds is retried, and the poller serves the next envelope", async () => {
+  const e = await setup();
+  let calls = 0;
+  const waits: number[] = [];
+  const tg: TgLike = { ...e.tg, getChatMember: async () => { if (++calls <= 2) throw new Error("getaddrinfo EAI_AGAIN api.telegram.org"); return { user: { username: OUR_NAME } }; } };
+  const p = await Poller.create({ ...e.deps, tg, sleep: async ms => { waits.push(ms); } });
+  await p.start();
+  expect(calls).toBe(3);
+  expect(waits).toHaveLength(2);
+  await p.processBatch([askRoot()]);
+  expect(readChain(join(e.peerDir, "inbox.jsonl"))).toHaveLength(1);
+});
+
+test("a start lookup that always fails ends start() with a loud error inside its bound", async () => {
+  const e = await setup();
+  let calls = 0;
+  const waits: number[] = [];
+  const tg: TgLike = { ...e.tg, getChatMember: async () => { calls += 1; throw new Error("getaddrinfo EAI_AGAIN api.telegram.org"); } };
+  const p = await Poller.create({ ...e.deps, tg, sleep: async ms => { waits.push(ms); } });
+  await expect(p.start()).rejects.toThrow(/start lookup failed/);
+  expect(calls).toBeGreaterThan(1);
+  expect(calls).toBeLessThanOrEqual(8);
+  expect(waits.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(120_000);
+});
+
+test("a refused bot token at the start lookup is not retried", async () => {
+  const e = await setup();
+  let calls = 0;
+  const tg: TgLike = { ...e.tg, getChatMember: async () => { calls += 1; throw new TelegramError("Unauthorized", 401); } };
+  const p = await Poller.create({ ...e.deps, tg, sleep: async () => {} });
+  await expect(p.start()).rejects.toBeInstanceOf(TelegramError);
+  expect(calls).toBe(1);
+});
+
+test("a retry-after answer at the start lookup waits no longer than the backoff cap", async () => {
+  const e = await setup();
+  const waits: number[] = [];
+  const tg: TgLike = { ...e.tg, getChatMember: async () => { throw new RetryAfter(3600); } };
+  const p = await Poller.create({ ...e.deps, tg, sleep: async ms => { waits.push(ms); } });
+  await expect(p.start()).rejects.toThrow(/start lookup failed/);
+  expect(Math.max(...waits)).toBeLessThanOrEqual(30_000);
+});

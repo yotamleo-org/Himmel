@@ -122,25 +122,37 @@ if [ -z "$_TIMEOUT_BIN" ]; then
 echo "ok - 19 T8c and T8d killed-mid-read rows skipped: no GNU timeout on this host"
 else
 # T8c: a ready-check killed while item 19 reads (the chief's `timeout` TERMs it) leaves no temp dir
-S17_TMP="$tmp/s17-term-tmp"; mkdir -p "$S17_TMP"
 S17_TO_PID="$tmp/s17-term-timeout.pid"
 printf '#!/usr/bin/env bash\necho $$ > %q\nexec %q 120 bash %q "$@"\n' "$S17_TO_PID" "$_TIMEOUT_BIN" "$SCRIPT" > "$tmp/s17-term-wrap.sh"
-s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_DL_SLEEP=20; STUB_DL_STARTED="$tmp/s17-term-started"
-rm -f "$STUB_DL_STARTED" "$S17_TO_PID"
-# The timeout's own expiry path (SIGALRM) fires the moment the stalled read starts, so the
-# kill never races the time the run needs to reach item 19; the 120 s is only a backstop.
-( for _ in $(seq 1 1000); do
-    [ -f "$STUB_DL_STARTED" ] && { kill -ALRM "$(cat "$S17_TO_PID")"; exit 0; }
-    sleep 0.1
-done ) &
-S17_WATCH=$!
-RUN_SCRIPT="$tmp/s17-term-wrap.sh" TMPDIR="$S17_TMP" s17_at "$S17_H1"
-unset RUN_SCRIPT
-wait "$S17_WATCH"
-check "19 T8c: the stalled item-19 read was started, so the kill had something to interrupt" "$([ -f "$STUB_DL_STARTED" ] && echo yes || echo no)" "yes"
-check "19 T8c: the outer timeout is what ended the run (exit 124)" "$rc" "124"
-unset STUB_DL_STARTED
-check "19 T8c: killed mid-read, no ready-check-19 temp dir is left" "0" "$(find "$S17_TMP" -maxdepth 1 -name 'ready-check-19.*' | wc -l | tr -d ' ')"
+S17_SLOW="$tmp/slow-rm"; mkdir -p "$S17_SLOW"
+# shellcheck disable=SC2016
+printf '%s\n' '#!/usr/bin/env bash' \
+    'case "$*" in *ready-check-19.*) : > "${0%/*}/held"; sleep "$(cat "${0%/*}/hold")" ;; esac' \
+    'PATH="${PATH#"${0%/*}:"}"; exec rm "$@"' > "$S17_SLOW/rm"
+chmod +x "$S17_SLOW/rm"
+s17_term() {
+    local label="$1"
+    S17_TMP="$tmp/s17-term-tmp-$label"; mkdir -p "$S17_TMP"
+    printf '%s\n' "$2" > "$S17_SLOW/hold"; rm -f "$S17_SLOW/held"
+    s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_DL_SLEEP=20; STUB_DL_STARTED="$tmp/s17-term-started"
+    rm -f "$STUB_DL_STARTED" "$S17_TO_PID"
+    ( for _ in $(seq 1 1000); do
+        [ -f "$STUB_DL_STARTED" ] && { kill -ALRM "$(cat "$S17_TO_PID")"; exit 0; }
+        sleep 0.1
+    done ) &
+    S17_WATCH=$!
+    PATH="$S17_SLOW:$PATH" RUN_SCRIPT="$tmp/s17-term-wrap.sh" TMPDIR="$S17_TMP" s17_at "$S17_H1"
+    unset RUN_SCRIPT
+    wait "$S17_WATCH"
+    check "19 $label: the stalled item-19 read was started, so the kill had something to interrupt" "$([ -f "$STUB_DL_STARTED" ] && echo yes || echo no)" "yes"
+    check "19 $label: the outer timeout is what ended the run (exit 124)" "$rc" "124"
+    unset STUB_DL_STARTED
+    check "19 $label: killed mid-read, no ready-check-19 temp dir is left" "0" "$(find "$S17_TMP" -name 'ready-check-19.*' | wc -l | tr -d ' ')"
+    check "19 $label: and no run dir is left" "0" "$(find "$S17_TMP" -name 'ready-check-run.*' | wc -l | tr -d ' ')"
+}
+s17_term T8c 0
+s17_term T8s 7
+check "19 T8s control: the seam held the item-19 cleanup" "$([ -f "$S17_SLOW/held" ] && echo yes || echo no)" "yes"
 
 S_KW="$tmp/kill-wrap"; mkdir -p "$S_KW"
 printf '#!/usr/bin/env bash\necho started > "%s/started"\nsleep 40 &\necho $! > "%s/sleep.pid"\nwait\n' "$S_KW" "$S_KW" > "$S_KW/slow-gh"; chmod +x "$S_KW/slow-gh"

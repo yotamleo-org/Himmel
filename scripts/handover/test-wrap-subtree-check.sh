@@ -809,7 +809,7 @@ p7_owe --kind proof --key HIMMEL-77 --text 'an undated proof'
 out="$(p7_run)"; rc=$?
 eq 'an undated kind proof row with no actor: rc 1' 1 "$rc"
 contains 'undated kind proof row: WITHHELD names it' "$out" 'o8'
-OWE_NOW_EPOCH=1795485900 bash "$OWE" close --bucket "$P7" --id o8 --key HIMMEL-77 >/dev/null
+OWE_JIRA_CLI="$HERE/chief-kit/fixtures/jira-comments-stub.sh" OWE_STUB_DIR="$W" OWE_NOW_EPOCH=1795485900 bash "$OWE" close --bucket "$P7" --id o8 --key HIMMEL-77 --proof-result PASS --proof-artifact doc:1 >/dev/null
 out="$(p7_run)"; rc=$?
 eq 'the same row closed: rc 0' 0 "$rc"
 p7_doc '- 11:00 WRAPPED — merged #9'

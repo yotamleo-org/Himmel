@@ -100,9 +100,11 @@ wait_hb() {
 # wait_exit <pid>: wait at most ~8 s for the waiter to exit; sets rc to its
 # exit code or "running". Not a $(...) helper: `wait` must run in the shell
 # that started the waiter.
-wait_exit() {
+wait_exit() { wait_exit_for "$1" 80; }
+wait_exit_for() {
+    local max_tenths="$2"
     n=0
-    while [ "$n" -lt 80 ]; do
+    while [ "$n" -lt "$max_tenths" ]; do
         if ! kill -0 "$1" 2>/dev/null; then wait "$1"; rc=$?; return; fi
         sleep 0.1; n=$((n + 1))
     done
@@ -794,6 +796,16 @@ dr_tick() {
     sed -i "s/ denials=none/ drift=$1 denials=none/" "$STUB/tick.line"  # gnu-ok: Linux-only kit
 }
 dr_alive() { sleep 3; if kill -0 "$WPID" 2>/dev/null; then echo running; else echo exited; fi; }
+export TICK_STATE_DIR="$WORK/dr-state"; mkdir -p "$TICK_STATE_DIR"
+cat > "$STUB/gh-heads.sh" <<'EOF'
+#!/usr/bin/env bash
+[ ! -f "$STUB/gh.hang" ] || exec sleep 60
+cat "$STUB/gh.heads" 2>/dev/null
+[ ! -f "$STUB/gh.fail" ] || exit 1
+exit 0
+EOF
+chmod +x "$STUB/gh-heads.sh"
+export CHIEF_WAIT_GH="$STUB/gh-heads.sh"
 reset_stub
 dr_tick '?'
 I="$(new_inbox dr1)"
@@ -814,11 +826,87 @@ check "(dr4) a larger count the same day still wakes nothing" "running" "$(dr_al
 stop_waiter "$WPID"
 dr_tick 3
 I="$(new_inbox dr5)"
-mkdir "$I.wait.drift.$(date -u +%F)"
+rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
+dr_bslug() { local b; b="$(realpath -m -- "$1")"; b="${b%/consoles/*}"; printf '%s-%s' "${b//[!A-Za-z0-9._-]/_}" "$(printf '%s' "$b" | cksum | cut -d' ' -f1)"; }
+mkdir "$TICK_STATE_DIR/drift-wake-$(dr_bslug "$I").$(date -u +%F)"
 start "$I" "$WORK/dr5.out"
 wait_hb "$I" || fail "(dr5) no baseline heartbeat"
 check "(dr5) a day marker that cannot be claimed wakes nothing" "running" "$(dr_alive)"
 stop_waiter "$WPID"
+
+rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR" "$WORK/dr6/consoles"
+: > "$WORK/dr6/consoles/chief-a.md"; : > "$WORK/dr6/consoles/chief-b.md"
+dr_tick 2
+start "$WORK/dr6/consoles/chief-a.md" "$WORK/dr6a.out"
+wait_exit "$WPID"
+check "(dr6) the first chief's waiter wakes" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr6a.out")"
+start "$WORK/dr6/consoles/chief-b.md" "$WORK/dr6b.out"
+wait_hb "$WORK/dr6/consoles/chief-b.md" || fail "(dr6) no baseline heartbeat"
+check "(dr6) a second chief inbox in the bucket wakes nothing the same day" "running" "$(dr_alive)"
+stop_waiter "$WPID"
+check "(dr6) one claim file for the bucket and day" "1" "$(find "$TICK_STATE_DIR" -maxdepth 1 -name 'drift-wake-*' | grep -c .)"
+mkdir -p "$WORK/dr6x/consoles"; : > "$WORK/dr6x/consoles/chief-c.md"
+start "$WORK/dr6x/consoles/chief-c.md" "$WORK/dr6c.out"
+wait_exit "$WPID"
+check "(dr6) another bucket claims its own day" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr6c.out")"
+mkdir -p "$WORK/dr8/a/b/consoles" "$WORK/dr8/a_b/consoles"; : > "$WORK/dr8/a/b/consoles/c.md"; : > "$WORK/dr8/a_b/consoles/c.md"
+rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
+start "$WORK/dr8/a/b/consoles/c.md" "$WORK/dr8a.out"
+wait_exit "$WPID"
+check "(dr8) the first of two look-alike buckets wakes" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr8a.out")"
+start "$WORK/dr8/a_b/consoles/c.md" "$WORK/dr8b.out"
+wait_exit "$WPID"
+check "(dr8) a bucket whose path differs only in punctuation claims its own day" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr8b.out")"
+
+dr_today="$(date -u +%F)"
+dr_set_I_WM_for_fleet() {
+    rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR" "$WORK/$1/consoles"; I="$WORK/$1/consoles/c.md"; : > "$I"
+    printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$WORK/$1/$2"
+    WM="$WORK/$1/chief.fleet.json"; printf '{"schema":1,"workers":[{"doc":"%s/%s","label":"N10995"}]}\n' "$WORK/$1" "$2" > "$WM"
+}
+reset_stub; dr_tick 2
+dr_set_I_WM_for_fleet dr7 "HIMMEL-10995-N10995-drift-4470-$dr_today.md"
+start "$I" "$WORK/dr7.out" --workers-from "$WM"
+wait_hb "$I" || fail "(dr7) no baseline heartbeat"
+check "(dr7) an open drift worker in the manifest holds the wake" "running" "$(dr_alive)"
+check "(dr7) the hold says held-by the worker" "drift-actionable 2 held-by N10995" "$(cat "$I.wait.drift.held" 2>/dev/null)"
+check "(dr7) a held day is not claimed" "0" "$(find "$TICK_STATE_DIR" -maxdepth 1 -name 'drift-wake-*' | grep -c .)"
+stop_waiter "$WPID"
+dr_set_I_WM_for_fleet dr7b "HIMMEL-11034-N11034-drift-wake-once-a-day-$dr_today.md"
+start "$I" "$WORK/dr7b.out" --workers-from "$WM"
+wait_exit "$WPID"
+check "(dr7) a worker whose doc only has drift in its slug does not hold the wake" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr7b.out")"
+dr_set_I_WM_for_fleet dr7c "HIMMEL-10995-N10995-drift-4470-2026-01-01.md"
+start "$I" "$WORK/dr7c.out" --workers-from "$WM"
+wait_exit "$WPID"
+check "(dr7) a drift worker of another day does not hold the wake" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr7c.out")"
+rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"; rm -f "$WORK/dr7/consoles/c.md.wait.drift.held"
+printf '#5901 chore/himmel-10995-drift-%s\n' "$dr_today" > "$STUB/gh.heads"
+start "$I" "$WORK/dr7d.out"
+wait_hb "$I" || fail "(dr7) no baseline heartbeat for the PR hold"
+check "(dr7) an open drift PR for today holds the wake" "running" "$(dr_alive)"
+check "(dr7) the hold says held-by the PR" "drift-actionable 2 held-by #5901" "$(cat "$I.wait.drift.held" 2>/dev/null)"
+stop_waiter "$WPID"
+printf '#5902 fix/himmel-11034-drift-wake-once-a-day\n' > "$STUB/gh.heads"
+start "$I" "$WORK/dr7e.out"
+wait_exit "$WPID"
+check "(dr7) an open PR whose branch only has drift in its slug does not hold the wake" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr7e.out")"
+rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
+I="$(new_inbox dr9)"
+printf '#5903 chore/himmel-10995-drift-%s\n' "$dr_today" > "$STUB/gh.heads"; : > "$STUB/gh.fail"
+start "$I" "$WORK/dr9.out"
+wait_exit "$WPID"
+check "(dr9) an open-PR read that fails after printing a drift head still wakes" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr9.out")"
+rm -f "$STUB/gh.fail"
+rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
+I="$(new_inbox dr10)"
+: > "$STUB/gh.hang"
+start "$I" "$WORK/dr10.out"
+wait_exit_for "$WPID" 400
+check "(dr10) an open-PR read that hangs past its 20 s bound still wakes" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr10.out")"
+[ "$rc" = running ] && stop_waiter "$WPID"
+rm -f "$STUB/gh.hang" "$STUB/gh.heads"
+unset TICK_STATE_DIR CHIEF_WAIT_GH
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

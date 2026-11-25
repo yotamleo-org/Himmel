@@ -12,6 +12,21 @@ at a handover; the ledger is carried by the tick, the HANDOFF and the queue fold
   a ticket key for a `ticket`, a commit sha for a `proof`, a decision id for a `ruling`. A close
   without a key is refused. The file is append-only: a close adds a row, nothing is rewritten.
   `owe.sh list --bucket <dir>` prints the open rows (`--all` adds the closed ones).
+- **A proof result lands on its ticket, where the gate reads it.** A live proof that ran is one
+  machine-readable ticket comment tied to its owed row: `PROOF <row-id> PASS|FAIL <YYYY-MM-DD> <artifact>`
+  (row id `o<n>`, artifact one word: a path or `doc:line`). Closing a `proof` row (no `action`) needs
+  `--proof-result PASS|FAIL --proof-artifact <path|doc:line>` (and `--ticket <KEY>` when the row has no
+  key): the close writes that comment itself through `proof-comment.sh`, reads it back, and only then
+  appends the close row; a comment that cannot be written or read back exits 5 and the row stays open.
+  A `validate-proof` row and a decision close with `outcome` metadata are the chief's decision path
+  and need none; a `step` row owed to `proof` is closed without them by the chief's proof decision
+  and takes the same flags when a proof worker closes it by hand. A Results bullet
+  `PROOF <KEY> <row-id> PASS|FAIL <YYYY-MM-DD> <artifact> [note]` (or `LIVE-PROOF`) written with
+  `append-results.sh` in a chief doc is posted to `<KEY>` the same way before it is written (a malformed
+  one exits 8, a ticket write that fails exits 9, and neither writes the bullet). **A plan or spec gate that
+  waits on a live result names the owed row id, and its check reads `PROOF <row-id>` on the ticket**
+  (`jira comments <KEY>`), never free text such as "passed" or a result worded another way. Asked
+  "did X run", search `PROOF <row-id>` first.
 - **The tick ages it.** `owed=<n>:<oldest-age>` counts the open rows (hidden at 0; `?` when
   the ledger cannot be read). A `ticket` row with no key after 4 hours (`OWED_STALE_SECS`), and a
   keyed `step` past its due date, add `ACTION owed-stale=<n>:<ids>`, then one clause per kind naming

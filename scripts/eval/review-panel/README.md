@@ -58,6 +58,46 @@ stored outputs at any time. `eval-compare review-panel` compares two sweeps
 case by case (`hit` and `fp`, paired, with the detection floor the 24 cases
 allow); the run-level metrics carry no bands yet, so they print as info.
 
+## Paired snapshot sweeps (chief only: two sweeps of paid calls per repeat)
+
+A base and a head measured at different times compare moving targets: main
+changes a critic file between the two runs and the pair stops meaning anything.
+`run.sh --paired <snapshot>` measures both sides in one run, from one pinned
+commit:
+
+```bash
+bash scripts/eval/review-panel/run.sh --paired <snapshot-sha> --head <pr-head> --repeats 3 --out ~/.himmel/eval/review-panel/<name> --no-ledger --critics codex
+```
+
+- **Only with `--paired`.** `--head`, `--repeats` and `--results` are refused
+  without it, so a forgotten `--paired` never starts an unpaired paid sweep.
+- **One snapshot.** `<snapshot>` is a commit of main and must be an ancestor
+  of `--head` (default `HEAD`). The base side is checked out at the snapshot,
+  the head side at `--head`, each into its own scratch tree (removed when the
+  run ends). Each tree's own `run.sh` sweeps its own HEAD, so the stamp holds
+  as for a single sweep; the running `score.py` scores both sides.
+- **One case set.** The run refuses before any panel call when the fixtures or
+  the key differ between snapshot and head, and takes no `--fixtures` or
+  `--key`: both sides read their own tree's, which are then the same.
+- **Both sides in the same run, side by side.** Base and head sweep
+  concurrently, so a paired run costs the wall time of one sweep, not two.
+- **Rows.** Each sweep appends one row (`score.py export-row`) to `--results`
+  (default `results.jsonl`) with two extra fields: `snapshot` (the same full
+  sha on every row of the run) and `side` (`base` or `head`). `tree` and
+  `cbs_hash` stay each side's own, so a head whose `cbs_hash` equals the
+  base's changed no critic behaviour. Rows are written only when every sweep
+  of the run exported, base then head, repeat by repeat; a failed sweep writes
+  none.
+- **Spread rule.** One sweep per side cannot tell a change from the
+  run-to-run spread, which has been as large as the head-minus-base
+  difference itself. `--repeats N` sweeps each side `N` times (N rows a
+  side; use 3 or more). A head-minus-base difference that lies inside the
+  spread of the repeats of either side is noise: report it as no
+  measured difference. `score.py compare-paired` reads the repeats per arm.
+- A snapshot behind main is fine: the sweep never reads main's tip, only the
+  snapshot and the head, so a critic file main changes after the snapshot
+  cannot reach either side.
+
 ## Between sweeps: ongoing measurement
 
 This benchmark is not re-run on a cadence. Each sweep is a billed, separately

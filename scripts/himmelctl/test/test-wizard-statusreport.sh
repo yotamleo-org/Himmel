@@ -1353,4 +1353,58 @@ echo "$outO" | jq -e '.items[0].severity == "n/a" and (.items[0].detail | contai
   || fail "case o: a cadence-runs row for another platform must read n/a without an arm instruction (got: $outO)"
 echo "ok: case o — a cadence row for another platform is n/a and does not tell the operator to arm it"
 
+manifestP="$work/manifestP.json"
+cat > "$manifestP" <<'JSON'
+{
+  "schemaVersion": 2,
+  "harness": "claude",
+  "items": [
+    {
+      "id": "qmd-daemon",
+      "kind": "lane",
+      "scopes": ["project"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": { "type": "qmd-daemon" }
+    }
+  ]
+}
+JSON
+MANIFEST_P_PATH="$(winpath "$manifestP")"
+export MANIFEST_P_PATH
+cat > "$work/curlP" <<'STUB'
+#!/usr/bin/env bash
+w=""
+while [ $# -gt 0 ]; do case "$1" in -w) w="$2"; shift ;; esac; shift; done
+[ -n "$w" ] && printf '%s' 000
+exit 7
+STUB
+chmod +x "$work/curlP"
+casep_dir="$work/caseP-target"; mkdir -p "$casep_dir"
+date +%s > "$work/qmd-starting-fresh"
+echo 1 > "$work/qmd-starting-stale"
+caseP_run() {
+  (cd "$casep_dir" && HOME="$work/homeP" USERPROFILE="$(winpath "$work/homeP")" HIMMELCTL_CACHE_DIR="$(winpath "$work/cacheP")" \
+    HIMMEL_DOCTOR_QMD_CURL="$(winpath "$work/curlP")" HIMMEL_DOCTOR_QMD_URL="http://localhost:1/mcp" \
+    HIMMEL_DOCTOR_QMD_START_MARKER="$(winpath "$1")" "$node_bin" -e "
+const { statusReport } = require(process.env.STATUS_REPORT_LIB);
+const manifest = JSON.parse(require('fs').readFileSync(process.env.MANIFEST_P_PATH, 'utf8'));
+const answers = {
+  role: 'adopter', tier: 'standard', scope: 'project',
+  vault: { mode: 'none', path: '' },
+  handover: { mode: 'none', path: '' },
+  pluginSet: 'lean', lanes: [], alwaysOn: false,
+};
+console.log(JSON.stringify(statusReport({ manifest, scope: 'project', targetPath: process.cwd(), answers })));
+")
+}
+mkdir -p "$work/homeP" "$work/cacheP"
+outP=$(caseP_run "$work/qmd-starting-fresh")
+echo "$outP" | jq -e '.items[0].actual == "starting" and .items[0].severity == "degraded" and (.items[0].detail | contains("is starting")) and .summary.degraded == 1 and .summary.red == 0' >/dev/null \
+  || fail "case p: a starting qmd daemon (fresh start marker) must read severity degraded with the probe detail, never red (got: $outP)"
+outP2=$(caseP_run "$work/qmd-starting-stale")
+echo "$outP2" | jq -e '.items[0].actual != "starting"' >/dev/null \
+  || fail "case p: control — a stale start marker must not read starting (got: $outP2)"
+echo "ok: case p — a starting qmd daemon reads degraded (warn), not red"
+
 echo "PASS"

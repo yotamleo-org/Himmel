@@ -182,7 +182,7 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 | `bypass-failed` | escalate | `scripts/station-ops/bypass-launchd.sh` | A bypass launch you approved failed (rc 1): the worker did not start. Blocks: that worker. Do: read the launch log in the bypass queue, then ask the chief to relaunch it |
 | `chief-reply` | escalate | `docs/handover/running-a-chief.md` | A chief's reply to the operator, sent through chief-route.ts; ticket keys and PR numbers carry their plain words; a key whose title cannot be read stays bare (see title-unresolved). |
 | `hold-ask-chief` | silent | `scripts/handover/chief-kit/chief-wait.sh` | A worker wants scripts/cr/critic-panel.sh, held by another ticket. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket |
-| `denial-page` | monitor | `scripts/handover/chief-kit/chief-wait.sh` | Session 81843b5d of the himmel chief has 3 classifier denials (PAUSE-RISK). Blocks: that session. Do: open it in Remote Control and answer the prompt |
+| `denial-page` | silent | `scripts/handover/chief-kit/chief-wait.sh` | A session was parked by classifier denials; chief-wait handles it, and `denial-stuck` escalates after 30 minutes, so nothing is sent to any chat. |
 | `title-unresolved` | monitor | `scripts/telegram/chief-route.ts` | A line sent through chief-route.ts named a ticket key whose title could not be read on the station. The line keeps the bare key. One report per line names such keys, ten at most, and counts the rest. A report that names a salus key goes to the operator chat instead. |
 | `worker-silent` | silent | `scripts/handover/chief-kit/chief-wait.sh` | A worker went silent; the chief handles it, so nothing is sent to any chat. |
 | `denied-launch` | monitor | `scripts/handover/chief-kit/denied-launch-alert.sh` | A worker launch was denied by the classifier; details stay on the station log. |
@@ -211,6 +211,7 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 | `cadence:vm-maintain-cadence` | monitor | `scripts/vm/vm-maintain-cadence.sh` | The vm-maintain-cadence scheduled worker reported a failure. |
 | `cadence:graph-channel-publish` | monitor | `scripts/graphify/publish-graph-channel.sh` | The graph-channel-publish scheduled worker reported a failure. |
 | `cadence:librarian` | monitor | `scripts/handover/librarian-cadence.sh` | The librarian scheduled worker reported a failure. |
+| `cadence:qmd-outage` | monitor | `scripts/himmel-doctor.sh` | The doctor found the qmd server refusing connections where qmd is set up. |
 | `cadence:qmd-reindex` | monitor | `scripts/luna/qmd-cadence.sh` | The qmd-reindex scheduled worker reported a failure. |
 | `cadence:rollup` | monitor | `scripts/eval/rollup-cadence.sh` | The rollup scheduled worker reported a failure. |
 | `cadence:graphmap-himmel` | monitor | `scripts/luna/graphmap-cadence.sh` | The graphmap-himmel scheduled worker reported a failure. |
