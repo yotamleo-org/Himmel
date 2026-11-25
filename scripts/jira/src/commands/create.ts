@@ -766,10 +766,12 @@ async function topicCandidates(jql: string): Promise<TopicHit[]> {
   const sector = sectorField();
   const fields = `summary,status,labels,description${sector ? `,${sector}` : ''}`;
   let timer: NodeJS.Timeout | undefined;
+  let abandoned = false;
   const walk = async (): Promise<TopicHit[]> => {
     const found: TopicHit[] = [];
     let token: string | undefined;
     for (let page = 0; page < TOPIC_PAGES; page++) {
+      if (abandoned) return found;
       const cursor = token === undefined ? '' : `&nextPageToken=${encodeURIComponent(token)}`;
       const r = await request<{ issues?: TopicHit[]; nextPageToken?: string }>('GET', `/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=100${cursor}`);
       found.push(...(r.issues ?? []));
@@ -788,6 +790,7 @@ async function topicCandidates(jql: string): Promise<TopicHit[]> {
     console.error(`jira: warning: the duplicate search failed (${(e as Error).message}), so the ticket is filed unchecked`);
     return [];
   } finally {
+    abandoned = true;
     clearTimeout(timer);
   }
 }
@@ -825,9 +828,7 @@ async function openTopicMatches(
 /**
  * Refuses a new ticket that repeats an open one: an open follow-up already linked to the same parent (a residual
  * with both --class and --area is matched on those by planResidual instead), or an open ticket whose title is close.
- * A last topic search over every open ticket of the project (title, What section, labels, sector) catches the same
- * work worded differently, and lists the closest ones. A parent the new ticket names is not a candidate.
- * --new-reason names why a new ticket is needed and skips the searches. A failed or slow search files unchecked.
+ * --new-reason names why a new ticket is needed and skips the search. A failed search files unchecked.
  */
 export async function refuseOpenDuplicate(
   project: string,
