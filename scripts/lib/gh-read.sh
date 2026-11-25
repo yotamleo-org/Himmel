@@ -253,12 +253,12 @@ gh_read() {
     # a refused call can already have printed pages or an error body: hold stdout so
     # a refused attempt is discarded instead of doubled by the retry
     outf=$(mktemp "${TMPDIR:-/tmp}/gh-read.XXXXXX") || { rm -f "$errf"; _ghr_used main "$@"; _ghr_run "$@"; return $?; }
-    local parked name stok label="" last="" why=""
+    local parked name stok label="" last="" why="" skipped=""
     parked=$(_ghr_park_scan "$@")
     for name in read read2; do
         if [ "$name" = read ]; then stok="$_GHR_TOK"; else stok="$_GHR_TOK2"; fi
         [ -n "$stok" ] || continue
-        case "$parked" in *$'\n'"$name"$'\t'*) why=rl; continue ;; esac
+        case "$parked" in *$'\n'"$name"$'\t'*) why=rl; [ -n "$skipped" ] || skipped="$name"; continue ;; esac
         _ghr_used "$name" "$@"
         GH_TOKEN="$stok" _ghr_run "$@" >"$outf" 2>"$errf"
         rc=$?
@@ -285,6 +285,12 @@ gh_read() {
         return "$rc"
     fi
     rm -f "$outf"
+    if [ -z "$last" ] && [ -n "$skipped" ] && [ "${GH_READ_NO_MAIN_FALLBACK:-}" = 1 ]; then
+        printf '%s\n' "$(printf '%s' "$parked" | awk -F'\t' -v n="$skipped" '$1 == n { print $2; exit }')" >&2
+        [ -z "${GH_READ_REFUSED_FILE:-}" ] || printf '%s core rate-limit\n' "$skipped" >> "$GH_READ_REFUSED_FILE" 2>/dev/null
+        rm -f "$errf"
+        return 75
+    fi
     case "$parked" in
         *$'\n'main$'\t'*)
             printf '%s\n' "$(printf '%s' "$parked" | awk -F'\t' '$1 == "main" { print $2; exit }')" >&2

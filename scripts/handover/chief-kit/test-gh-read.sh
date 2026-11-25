@@ -751,6 +751,11 @@ check "H3 a read token under the floor with its reset ahead is parked: the secon
 qrows read:100:-10 main:4000:600
 hrun "$W/root2" run view 5
 check "H3a a parked row whose reset has passed is served again" "tok=$READTOK argv=run view 5" "$(glog)"
+qrows read:100:600 main:4000:600
+GH_READ_NO_MAIN_FALLBACK=1 hrun "$W/root" run view 5
+check "H3c no-fallback with the only read token parked: no call, not even on main" "" "$(glog)"
+check "H3d no-fallback with the only read token parked: exit 75" "75" "$HRC"
+has "H3e no-fallback pause names the parked read token" "token=read" "$(cat "$W/err")"
 qrows read:100:600 read2:100:600 main:4000:600
 hrun "$W/root2" run view 5
 check "H3b both read tokens parked with main healthy: the read goes to main" "tok=main argv=run view 5" "$(glog)"

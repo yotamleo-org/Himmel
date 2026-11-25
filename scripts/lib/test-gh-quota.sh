@@ -139,6 +139,11 @@ err=$(cat "$W/werr")
 check "W3 every token out, reset in reach: one sleep to the reset, waited" "0 1 1" "$rc $GHQ_CORE_WAITED $(grep -c . "$SLEEP_LOG")"
 has "W3a the wait names the REST core bucket" "REST core budget exhausted" "$err"
 check "W3b every probe wrote its core row" "0 refused|0 refused|0 refused" "$(row main core)|$(row read core)|$(row read2 core)"
+check "W3c the row writes go through the quota lock" "yes" "$([ -e "$HIMMEL_QUOTA_DIR/.lock" ] && echo yes || echo no)"
+fresh wait-unknown
+: > "$SLEEP_LOG"
+STUB_READ=unreadable STUB_READ2=out-soon STUB_MAIN=out-soon GH_READ_ENV_ROOT="$W/root2" ghq_wait_core 60 "$W/nosleep" 2>/dev/null
+check "W3d a probe that failed leaves the others undecided: rc 0, no sleep" "0 0 0" "$? $GHQ_CORE_WAITED $(grep -c . "$SLEEP_LOG")"
 fresh wait-far
 : > "$SLEEP_LOG"
 STUB_MAIN=out STUB_READ=out STUB_READ2=out GH_READ_ENV_ROOT="$W/root2" ghq_wait_core 60 "$W/nosleep" 2>"$W/werr"

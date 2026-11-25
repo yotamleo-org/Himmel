@@ -235,15 +235,20 @@ ghq_scan_gate() {
     return 0
 }
 
-_ghq_put_row() {
-    local dir f
-    dir=$(_ghq_dir)
-    f="$dir/quota.tsv"
-    mkdir -p "$dir" 2>/dev/null || return 0
+_ghq_put_row_locked() {
+    local f="$1" t="$2" b="$3" row="$4"
     {
-        [ ! -f "$f" ] || awk -F'\t' -v t="$1" -v b="$2" '!($1 == t && $2 == b)' "$f"
-        _ghq_row "$1" "$2"
+        [ ! -f "$f" ] || awk -F'\t' -v t="$t" -v b="$b" '!($1 == t && $2 == b)' "$f"
+        printf '%s\n' "$row"
     } 2>/dev/null | atomic_write "$f" 2>/dev/null
+}
+
+_ghq_put_row() {
+    local dir row
+    dir=$(_ghq_dir)
+    mkdir -p "$dir" 2>/dev/null || return 0
+    row=$(_ghq_row "$1" "$2")
+    with_lock "$dir/.lock" _ghq_put_row_locked "$dir/quota.tsv" "$1" "$2" "$row" >/dev/null 2>&1
     return 0
 }
 
@@ -253,7 +258,7 @@ GHQ_CORE_EXHAUSTED=0
 # shellcheck disable=SC2034  # as above
 ghq_wait_core() {
     local max_wait="${1:-0}" sleep_cmd="${2:-sleep}" floor="${GH_BUDGET_FLOOR:-200}" jmax="${GH_BUDGET_JITTER_MAX:-15}"
-    local who tok answered=0 best="" now wait_s jitter human
+    local who tok answered=0 unknown=0 best="" now wait_s jitter human
     GHQ_CORE_WAITED=0; GHQ_CORE_EXHAUSTED=0
     [ "${GH_BUDGET_PREFLIGHT:-1}" != 0 ] || return 0
     case "$max_wait" in ''|*[!0-9]*) max_wait=0 ;; esac
@@ -266,13 +271,13 @@ ghq_wait_core() {
             *) tok=main ;;
         esac
         [ -n "$tok" ] || continue
-        _ghb_probe "$who" api -i user || continue
+        _ghb_probe "$who" api -i user || { unknown=1; continue; }
         _ghq_put_row "$who" core
         [ "$GHB_REMAINING" -lt "$floor" ] || return 0
         answered=1
         if [ -n "$GHB_RESET" ] && ghb_reset_sane "$GHB_RESET" && { [ -z "$best" ] || [ "$GHB_RESET" -lt "$best" ]; }; then best="$GHB_RESET"; fi
     done
-    [ "$answered" -eq 1 ] || return 0
+    [ "$answered" -eq 1 ] && [ "$unknown" -eq 0 ] || return 0
     now=$(date +%s)
     if [ -n "$best" ]; then wait_s=$((best - now + 2)); else wait_s=60; fi
     [ "$wait_s" -ge 2 ] || wait_s=2
