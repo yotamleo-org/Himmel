@@ -91,7 +91,7 @@ read_prs() {
         fi
         if [ -z "$raw" ]; then
             raw=$(cd "$REPO" && timeout -k 2 30 "$gh_bin" pr list --limit 200 --json number,headRefName,headRefOid,isDraft,isCrossRepository,baseRefName 2>/dev/null) || return 1  # gnu-ok: Linux-only kit; swallow-ok: a failed read is an unread input
-            printf '%s\n' "$raw" > "$cache.tmp" 2>/dev/null && mv "$cache.tmp" "$cache" 2>/dev/null  # swallow-ok: a failed cache write only costs one more read
+            ( . "$REPO/scripts/lib/prim.sh" && printf '%s\n' "$raw" | atomic_write "$cache" ) 2>/dev/null  # swallow-ok: a failed cache write only costs one more read
         fi
     fi
     prs_tsv=$(printf '%s' "$raw" | jq -r '.[] | [.number, .headRefName, .headRefOid, .isDraft, .isCrossRepository, .baseRefName] | @tsv' 2>/dev/null) || return 1  # swallow-ok: a parse failure is an unread input
