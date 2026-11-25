@@ -5,14 +5,9 @@
 # Prints {"threads":[...],"owned":[...]} (jq -c, one line):
 #   threads[]: threadId, title, state (running | waiting | blocked | settled), waitingOn (thread | reply | null),
 #              provider, model, createdAt, updatedAt, pullRequests, backgroundTasks, pids (the owned pids of that thread)
-#   owned[]:   pid, thread (the thread id, or null when no thread's worktree matches the process's cwd)
+#   owned[]:   pid, thread (the thread id, or null when no thread, or several threads, have the process's cwd as their worktree)
 # State: settled; else blockedOnThreadWait = waiting on a thread; else a run status of error/failed/blocked = blocked,
 # running/starting/active = running, anything else (idle, completed, interrupted, cancelled) = waiting on a reply.
-# Owned processes: the pids the T3 server registered as its providers (<userdata>/provider-processes/*.json whose owner and
-# provider are still the registered process: same boot id and start time, so a reused pid owns nothing) and every
-# descendant of them. A process is matched to a thread when its cwd is the thread's worktreePath
-# (`t3 thread show`, read only for an unsettled thread); when no thread or several threads share that path the process
-# stays owned with thread null.
 # Never settles, sends to or starts a thread: it only runs `thread list` and `thread show`.
 # rc 0 printed; rc 2 the thread list could not be read (the CLI is missing or failed, or it printed no JSON array).
 # Env seams: T3_SEND_BIN, T3_SEND_PROJECT (as t3-send.sh), T3_USERDATA (default $HOME/.t3/userdata), T3_PROC (default /proc).

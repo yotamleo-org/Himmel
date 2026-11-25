@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# scripts/t3/test-thread-list.sh - fixture suite for thread-list.sh (a thread list and a process tree, both faked).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 LIST="$HERE/thread-list.sh"

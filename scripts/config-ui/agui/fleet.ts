@@ -21,9 +21,6 @@
 // the himmel-bus traffic comes from the one collector (busEvents, metadata only): Fleet.edges counts the messages
 // per from→to pair and a row's bus counts what is waiting on it (busOf). Read-only: no store is created.
 //
-// the T3 Code threads (t3Of: scripts/t3/thread-list.sh, cached) come beside the sessions as Fleet.t3Threads, and a
-// shell-tool wrapper under a T3 provider process is that thread's (kind "t3"), not an orphan.
-//
 import { execFile, spawn } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
