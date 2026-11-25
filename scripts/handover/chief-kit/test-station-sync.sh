@@ -495,4 +495,10 @@ SS_T_FAIL=jira_cli heal "BEHIND:jira_cli" "$W/ver-heal-behind" "$((HNOW + 1801))
 contains "41 a heal after the window retries" "$calls" "update --only jira_cli"
 check "41 the same failure that day replays the one row" "$(owed_rows)" 1
 
+rm -rf "$HEAL_STAMP"; mkdir "$HEAL_STAMP"
+heal "BEHIND:jira_cli" "$W/ver-heal-behind"
+contains "42 a stamp that cannot be written skips the heal" "$out" "SKIP heal no-stamp"
+lacks "42 and runs no step" "$calls" "--only"
+rmdir "$HEAL_STAMP"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

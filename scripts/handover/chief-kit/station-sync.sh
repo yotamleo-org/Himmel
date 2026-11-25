@@ -119,7 +119,7 @@ if [ -n "$HEAL" ]; then
     last="$(cat "$HEAL_STAMP" 2>/dev/null)"  # swallow-ok: no stamp yet means never healed; the case below reads empty as 0
     case "$last" in ''|*[!0-9]*) last=0 ;; esac
     if [ $((heal_now - last)) -lt "${SS_HEAL_WINDOW:-1800}" ]; then echo "SKIP heal backoff"; exit 0; fi
-    echo "$heal_now" > "$HEAL_STAMP" 2>/dev/null
+    echo "$heal_now" > "$HEAL_STAMP" 2>/dev/null || { echo "SKIP heal no-stamp"; exit 0; }
     echo "HEAL$heal_want"
 fi
 # Pending until the run ends: a sync killed mid-way must not leave the previous `ok`.
