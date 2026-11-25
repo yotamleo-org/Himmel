@@ -67,6 +67,7 @@ wenv_quiet() {
     i=0; while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ]; do sleep 0.1; i=$((i + 1)); done
     if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rc=137; return; fi
     wait "$pid" 2>/dev/null; rc=124
+    [ "$quiet_polls" -ge 2 ] || rc=125
 }
 mkdir -p "$S/slow"
 printf '%s\n' '#!/usr/bin/env bash' \
@@ -94,7 +95,6 @@ check 'A2. the row now holds the new head' "$H2" "$(jq -r '.watch[0].head' "$M" 
 wenv_quiet "$S/in2/consoles/c.md" "$M" "$S/o3"
 check 'A3. the same change never wakes twice (a re-armed waiter stays silent)' 124 "$rc"
 check 'A3. and prints no second wake' 0 "$(grep -c 'WAKE pr-watch' "$S/o3")"
-check 'A3. the re-armed waiter polled the PR twice before the row ended' yes "$([ "$quiet_polls" -ge 2 ] && echo yes)"
 t0=$SECONDS
 PATH="$S/slow:$PATH" wenv_quiet "$S/in2/consoles/c.md" "$M" "$S/o3s"
 check 'A3s. with the exit held 3 s (a loaded runner), the row still ends at rc 124' 124 "$rc"
