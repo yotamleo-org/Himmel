@@ -28,7 +28,7 @@ cd "$top" || die "cannot enter $top"
 W="$(mktemp -d "${TMPDIR:-/tmp}/check-old-terms.XXXXXX")" || die "mktemp failed"  # prim-ok: CI runs a base copy of this script alone, without scripts/lib
 trap 'rm -rf "$W"' EXIT
 
-# shellcheck disable=SC2016  # the awk program is single-quoted on purpose
+# shellcheck disable=SC2016
 matcher='
 function blank(n) { return substr(SP, 1, n) }
 function mask(h, ph,   out, i) {
