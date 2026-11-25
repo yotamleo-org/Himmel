@@ -297,10 +297,13 @@ reads its lists from the script's own checkout and fails closed when it cannot
 read one. It is outside `--only 7`, and an org-member PR's output is unchanged.
 The operator's GitHub code-owner approval comes last, after item 16 passes.
 
-**Stage 1 writes no record** (16h reads its CodeRabbit half). It is recomputed at the head wherever it is needed: CodeRabbit's
-status is `success` (read in a fresh child with the four `CR_*` pattern overrides unset), no changed
-path is on the lint surface, and `check-ci.sh <n> --max-wait 120 --except-context codeowner-review-gate`
-exits 0 with `CR_APP`, `CR_PROFILE`, `CR_BOT_USER_ID` and `CHECK_CI_DISTINCT_DEADLINE` unset.
+**Stage 1 writes no record** (16h reads its CodeRabbit half). It is relaxed wherever it is recomputed
+at the head, in 16h and in the audit alike: CodeRabbit's status (read in a fresh child with the four
+`CR_*` pattern overrides unset) fails stage 1 only when it is `failure` or `error`; `success` passes, and
+a running, missing, skipped, rate-limited, paged or unreadable status passes with a note, because
+CodeRabbit never holds CI. The rest of stage 1 is strict: no changed path is on the lint surface, and
+`check-ci.sh <n> --max-wait 120 --except-context codeowner-review-gate` exits 0 with `CR_APP`,
+`CR_PROFILE`, `CR_BOT_USER_ID` and `CHECK_CI_DISTINCT_DEADLINE` unset.
 
 **Stage 2 (16i) is the `security-audit` row**, written only by
 `scripts/cr/outside-security-audit.sh --pr <n> --head <40-hex>`, run from the primary checkout. The

@@ -71,11 +71,12 @@
 #       CR ledger; the exit code is unchanged, and a failed append exits 4.
 #       The range must end at --head and start from its merge-base with the
 #       remote default branch, else exit 2 and no row.
-#       --check and --plan leave out a suite whose only match is on a whole-line
-#       comment (first non-blank `#` in a shell suite, `//` in a JS/TS one; never
-#       a line inside a string, a here-document or a template literal), and
-#       print `impacted-suites: dropped-comment-only=<n>` on stderr. Every other
-#       mode, the --shell listing CI selects from among them, keeps it. A suite
+#       The plain listing, --check and --plan leave out a suite whose only match
+#       is on a whole-line comment (first non-blank `#` in a shell suite, `//` in
+#       a JS/TS one; never a line inside a string, a here-document or a template
+#       literal); --check and --plan also print
+#       `impacted-suites: dropped-comment-only=<n>` on stderr. --shell (the
+#       listing CI selects from), --selector-miss and --paths-file keep it. A suite
 #       names a file it drives on a `# selector: names <basename>...` line, which
 #       always matches, as does a `# shellcheck source=` directive.
 #   impacted-suites.sh --plan <base>..<head>
@@ -1483,7 +1484,7 @@ if [ -s "$pats" ]; then
         ':(glob)**/test-*.sh' ':(glob)**/*.test.mjs' ':(glob)**/*.test.js' ':(glob)**/*.test.ts'
     read_comments_apart=0
     cat "$work/grep.out" >> "$found" || io_fail "reading the search result"
-    if [ "$plan" -eq 0 ] && [ "$check" -eq 0 ]; then
+    if [ "$plan" -eq 0 ] && [ "$check" -eq 0 ] && { [ "$shell_only" -eq 1 ] || [ "$selector_miss" -eq 1 ] || [ -n "$paths_file" ]; }; then
         cat "$work/grep.out.comment" >> "$found" || io_fail "reading the comment search result"
     fi
 else
