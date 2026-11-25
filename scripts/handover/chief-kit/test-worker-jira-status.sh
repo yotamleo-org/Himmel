@@ -581,6 +581,32 @@ fn "$K" --event wrapped --doc "$DOC2"
 check "D6: every recorded worker ended -> one move" "$(ntrans)" 1
 check "D6: every recorded worker ended -> To Do" "$(moved)" "transition $K To Do"
 check "D6: the move is the wrapped event's" "$(row event)/$(row rule)" wrapped/D6
+
+DOC3="$tmp/$K-N3-slug-2026-10-21.md"
+reset "In Progress"; owned WRAPPED 0
+mkdoc "$DOC3" LIVE; echo 11 > "$FX/lock.rc.${DOC3##*/}"
+fn "$K" --event wrapped --doc "$DOC"
+check "11128 D6: a wrapped doc and an unrecorded sibling doc holding its lock -> no move" "$(ntrans)" 0
+check "11128 D6: the live sibling keeps rule D5" "$(row rule)" D5
+contains "11128 D6: the skip is logged with the sibling doc named" "$(cat "$tmp/out")" "worker-jira-status: HELD $K In Progress: ${DOC3##*/} holds a live lock"
+check "11128 D6: the row names the sibling doc" "$(row sibling)" "${DOC3##*/}"
+reset "In Progress"; owned WRAPPED 0
+printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
+mkdoc "$DOC3" LIVE; echo 11 > "$FX/lock.rc.${DOC3##*/}"
+fn "$K" --event wrapped --doc "$DOC"
+check "11128 D5c: a partial merge, a wrapped doc and a sibling doc holding its lock -> no move" "$(ntrans)" 0
+reset "In Progress"; owned WRAPPED 0
+mkdoc "$DOC3" LIVE; echo 0 > "$FX/lock.rc.${DOC3##*/}"
+fn "$K" --event wrapped --doc "$DOC"
+check "11128 control: a sibling doc whose lock is free leaves the wrap -> To Do" "$(moved)/$(row rule)" "transition $K To Do/D6"
+reset "In Progress"; owned WRAPPED 0
+mkdoc "$DOC3" WRAPPED; echo 11 > "$FX/lock.rc.${DOC3##*/}"
+fn "$K" --event wrapped --doc "$DOC"
+check "11128 control: a sibling doc that wrapped itself leaves the wrap -> To Do" "$(moved)/$(row rule)" "transition $K To Do/D6"
+rm -f "$DOC3"
+reset "In Progress"; owned WRAPPED 0
+fn "$K" --event wrapped --doc "$DOC"
+check "11128 control: a single doc that wraps with no live lock still -> To Do" "$(moved)/$(row rule)" "transition $K To Do/D6"
 reset "In Progress"
 fn "$K" --event sweep
 check "D7: never owned -> no write" "$(ntrans)" 0
