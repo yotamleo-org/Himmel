@@ -2284,9 +2284,9 @@ fi
 marker_claim=""
 # A tip cleared through the trivial-descendant shortcut has no ledger row of its
 # own, and ready-check item 4 wants a status=ok row at the READY head. Record one
-# through the normal writer, after the delete so a refused run leaves no row that
-# a rerun would read as the tip's own review. Model "claude" is neither
-# cross-model nor floor evidence; the detail names the head it inherits from.
+# through the normal writer, after the delete (an open PR's clean merge-forward
+# wrote it before check-ci). Model "claude" is neither cross-model nor floor
+# evidence; the detail names the head it inherits from.
 if [ "$review_head" != "$tip" ] && [ "$carry_row_written" -ne 1 ]; then
     bash "$SCRIPT_DIR/ledger-append.sh" avail --branch "$branch" --head "$tip" --model claude --status ok \
         --detail "trivial-descendant of reviewed head $review_head (carried by clear-cr-marker)" >/dev/null 2>&1 \
