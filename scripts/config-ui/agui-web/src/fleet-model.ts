@@ -95,7 +95,11 @@ const ATTENTION_REASONS = {
 const reason = (kind: keyof typeof ATTENTION_REASONS, text: string): [number, string, AttentionOwner] =>
   [ATTENTION_REASONS[kind].severity, text, ATTENTION_REASONS[kind].owner];
 // kind: wait = a live session's own long-running call, stuck = its pgrep -f wait matches itself; absent/orphan = no live owner.
-export type ProcessOrphan = { pid: number; owner: string; ageMin: number; kind?: "orphan" | "wait" | "stuck" };
+export type ProcessOrphan = { pid: number; owner: string; ageMin: number; kind?: "orphan" | "wait" | "stuck" | "t3"; thread?: string | null };
+export type T3Thread = {
+  threadId: string; title: string; state: "running" | "waiting" | "blocked" | "settled"; waitingOn: "thread" | "reply" | null;
+  provider: string | null; model: string | null; ageMin: number; idleMin: number; pullRequests: number; backgroundTasks: number; pids: number[];
+};
 // Empty lists filter nothing. states: running | waiting | idle | attention | orphaned (a finished row is "finished").
 export type Filters = { lanes: string[]; states: string[]; text: string };
 export const NO_FILTERS: Filters = { lanes: [], states: [], text: "" };
@@ -201,7 +205,7 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
     && (!filters.lanes.length || (!!ownerOf(p) && filters.lanes.includes(laneOf(ownerOf(p)!))))
     && (!text || [p.owner, shortName(p.owner), String(p.pid)].some((s) => s.toLowerCase().includes(text)));
   // A long-lived wait is its owner's own call, not an orphan: it has no state filter and is never counted as one.
-  const processOrphans = procs.filter((p) => p.kind !== "wait" && procShown(p) && (!filters.states.length || filters.states.includes("orphaned")));
+  const processOrphans = procs.filter((p) => p.kind !== "wait" && p.kind !== "t3" && procShown(p) && (!filters.states.length || filters.states.includes("orphaned")));
   const waits = procs.filter((p) => p.kind === "wait" && procShown(p) && !filters.states.length);
   const live = [...groups.flatMap((g) => [...(g.showConsole && g.console ? [g.console] : []), ...g.rows]), ...cadences];
   return {
