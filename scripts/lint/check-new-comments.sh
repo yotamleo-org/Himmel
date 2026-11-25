@@ -244,8 +244,12 @@ while IFS="$(printf '\t')" read -r kind p n lim; do
     was="$(awk -F'\t' -v p="$p" '$1 == p { print $2; exit }' "$W/renames")"
     m=0
     for parent in "$base" ${other:+"$other"}; do
-        has_at "$parent" "${was:-$p}" || continue
-        git show "$parent:${was:-$p}" > "$W/blob" || die "cannot read ${was:-$p} at the base"
+        src="${was:-$p}"
+        if ! has_at "$parent" "$src"; then
+            src="$p"
+            has_at "$parent" "$src" || continue
+        fi
+        git show "$parent:$src" > "$W/blob" || die "cannot read $src at the base"
         capper="$classifier"
         if [ "$recount" -eq 1 ] && ! listed "$p" "$W/indiff"; then capper="$W/tip.awk"; fi
         pm="$(awk -f "$capper" -v mode=count -v path="$p" "$W/blob")" || die "the classifier failed on $p"

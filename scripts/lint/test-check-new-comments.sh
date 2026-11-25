@@ -462,6 +462,24 @@ merge_setup
 printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"
 rows src/a.sh 3 > "$R/$BL"
 stage; want "a merge that adds a comment neither parent has" 1
+mkrepo
+git -C "$R" checkout -q -b topic
+git -C "$R" mv src/a.sh src/b.sh
+printf '%s!/usr/bin/env bash\n%s a.sh: prints ok\nset -u\n%s first old note, reworded\necho ok  %s second old note\n' "$HASH" "$HASH" "$HASH" "$HASH" > "$R/src/b.sh"
+rows src/b.sh 2 > "$R/$BL"
+git -C "$R" add -A
+git -C "$R" commit -q -m "topic renames the file and rewords a note"
+git -C "$R" checkout -q main
+printf '%s!/usr/bin/env bash\n%s a.sh: prints ok\nset -u\necho ok  %s second old note\n' "$HASH" "$HASH" "$HASH" > "$R/src/a.sh"
+rows src/a.sh 1 > "$R/$BL"
+git -C "$R" commit -q -am "main sweeps a note"
+git -C "$R" checkout -q topic
+git -C "$R" merge -q --no-commit main > /dev/null 2>&1
+git -C "$R" show HEAD:src/b.sh > "$R/src/b.sh"
+git -C "$R" show "HEAD:$BL" > "$R/$BL"
+git -C "$R" rm -q --cached -f src/a.sh > /dev/null 2>&1
+rm -f "$R/src/a.sh"
+stage; want "a merge that keeps a comment of a file only HEAD renamed" 0
 
 echo
 echo "test-check-new-comments: $PASS passed, $FAIL failed"
