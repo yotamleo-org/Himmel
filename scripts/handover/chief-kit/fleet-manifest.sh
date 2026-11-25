@@ -18,7 +18,7 @@
 #   fleet-manifest.sh attempt settle <manifest> <doc> --attempt-id A --phase launched|refused|unknown
 #   fleet-manifest.sh runtime settle --manifest M --doc D --name N --attempt-id A --reason "<text>" --confirm-no-session
 #   fleet-manifest.sh attempt end <manifest> --attempt-id A --reason <word>
-#   fleet-manifest.sh t3 set   <manifest> <worker doc> [--thread <threadId|pending>] [--kind ask|task] [--notice pending:0..3|sent|failed]
+#   fleet-manifest.sh t3 set    <manifest> <worker doc> [--thread <threadId|pending>] [--kind ask|task] [--notice pending:0..3|sent|failed]
 #   fleet-manifest.sh t3 unbind <manifest> <threadId> [--reason <word>]
 #
 # `t3 set` and `t3 unbind` (scripts/t3/relay-bind.sh) carry a T3 thread's binding on its fleet row: the row's
@@ -156,7 +156,7 @@ usage: fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--pend
        fleet-manifest.sh attempt bind <manifest> <doc> --attempt-id A
        fleet-manifest.sh attempt settle <manifest> <doc> --attempt-id A --phase launched|refused|unknown
        fleet-manifest.sh attempt end <manifest> --attempt-id A --reason <word>
-       fleet-manifest.sh t3 set   <manifest> <worker doc> [--thread <threadId|pending>] [--kind ask|task] [--notice pending:0..3|sent|failed]
+       fleet-manifest.sh t3 set    <manifest> <worker doc> [--thread <threadId|pending>] [--kind ask|task] [--notice pending:0..3|sent|failed]
        fleet-manifest.sh t3 unbind <manifest> <threadId> [--reason <word>]
 --lane is any lowercase word: native, claudex, openrouter, deepseek, t3 (a thread bound by scripts/t3/relay-bind.sh), ...
 add writes a pending row for a doc no session ever ran on (no marker bullet, free lock, no claude on it), with or without --pending
