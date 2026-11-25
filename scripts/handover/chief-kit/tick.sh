@@ -3186,14 +3186,13 @@ if [ -n "$console_doc" ] && [ -f "${console_doc%/*}/focus-state" ]; then
         stale_summary="$(sed -n 's/^stale=//p' "${console_doc%/*}/focus-state" 2>/dev/null | head -n 1)"  # swallow-ok: no stale line leaves stale= off the line
         stale_drift="${console_doc%/*}/focus-drift.txt"
         if [ -f "$stale_drift" ] && [ "$stale_drift" -nt "${console_doc%/*}/focus-state" ] && command -v node >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
-            # swallow-ok: a summary that fails or prints nothing usable leaves the state's stale= line as it was
             stale_live="$(timeout -k 2 "$(tick_bound 20)" node "$HERE/drift-summary.mjs" --json --drift "$stale_drift" --mirror-dir "${TICK_TRACKER_MIRROR_DIR:-$tick_mirror_default}" 2>/dev/null | python3 -I -c 'import json, re, sys
 d = json.load(sys.stdin)
 keys = d["unowned"]
 assert isinstance(keys, list) and all(isinstance(k, str) and re.fullmatch(r"[A-Z][A-Z0-9]*-[0-9]+", k) for k in keys)
 assert isinstance(d["unknown"], bool) and isinstance(d["stale"], bool)
 body = ",".join(keys[:8]) + (",+%d" % (len(keys) - 8) if len(keys) > 8 else "")
-print(("partial:" if d["unknown"] or d["stale"] else "") + "%d:%s" % (len(keys), body))' 2>/dev/null)" || stale_live=""  # gnu-ok: chief kit is Linux-only
+print(("partial:" if d["unknown"] or d["stale"] else "") + "%d:%s" % (len(keys), body))' 2>/dev/null)" || stale_live=""
             [ -z "$stale_live" ] || stale_summary="$stale_live"
         fi
     fi
