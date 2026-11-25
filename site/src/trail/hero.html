@@ -71,13 +71,17 @@
 
 <section class="sec-block" id="gets" aria-labelledby="gets-h">
   <div class="wrap">
-    <h2 class="sec" id="gets-h">What you get</h2>
+    <h2 class="sec" id="gets-h">Agents you can trust</h2>
+    <p class="sec-lede">Trust is engineered into the environment, not prompted: runtime tool-call guards, local git gates wired into your existing GitHub CI, independent review, and fleet merge sign-off.</p>
+    <figure class="flow-figure">
+      {{FLOWS_SVG}}
+    </figure>
     <ul class="proofs" aria-label="What it does">
-      <li><span class="ptitle">One road for every change</span><span class="pdesc">Each change gets its own worktree, then passes the tests, a review and one merge gate. No step can be skipped. When a check fails, the change goes back with the reason, so main only gets work that passed.</span><span class="ptag"><a href="guide/dev-graph.html">How a change ships</a></span></li>
+      <li><span class="ptitle">One road for every change</span><span class="pdesc">Each change gets its own worktree. For merges run through Claude Code on GitHub, the merge gate checks CI and review evidence before allowing the merge, sending failed checks back to the worktree with the reason.</span><span class="ptag"><a href="guide/dev-graph.html">How a change ships</a></span></li>
       <li><span class="ptitle">Guardrails that hold</span><span class="pdesc">Edits and commits on main, pushes to main, reads of secret files, <code>rm -rf</code>, hard resets and force pushes are refused before they run.</span><span class="ptag"><a href="adoption-trail-levels.html#lvl-1">Level 1</a> · in your project</span></li>
       <li><span class="ptitle">Cost you can see</span><span class="pdesc">Heavy work checks your remaining Claude usage first, and the fleet records the cost of what it merges.</span><span class="ptag"><a href="adoption-trail-levels.html#lvl-5">Level 5</a></span></li>
     </ul>
-    <p class="shipstat"><b>himmel is built this way.</b> Over 2,000 pull requests merged on its own main in 30 days (October 2026). <a href="guide/dev-graph.html">See the graph they went through</a></p>
+    <p class="shipstat"><b>himmel is built this way.</b> 4,630 branches reviewed on himmel with 19,982 review findings logged (as of 2026-11-11). <a href="guide/dev-graph.html">See the graph they went through</a></p>
     <p>New words such as worktree, gate and hook are explained on <a href="adoption-trail-questions.html#glossary">Questions and words</a>.</p>
   </div>
 </section>
