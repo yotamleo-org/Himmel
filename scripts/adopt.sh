@@ -292,6 +292,7 @@ seed_merge_trust_paths() {
     || echo "  warning: provenance record failed for $dest (uninstall will keep it)" >&2
 }
 
+CLAUDE_ONLY_CRITICS_MARKER='"_generated": "adopt.sh found no codex CLI'
 seed_claude_only_critics() {
   local dest="$TARGET/scripts/cr/critics.local.json"
   [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
@@ -655,9 +656,11 @@ commit_install() {
     return 0
   fi
   local -a paths=()
-  for f in "${PORTABLE_FILES[@]}" .claude/settings.json .gitignore .worktreeinclude scripts/ci/ci-trust-paths.txt scripts/cr/critics.local.json; do
+  for f in "${PORTABLE_FILES[@]}" .claude/settings.json .gitignore .worktreeinclude scripts/ci/ci-trust-paths.txt; do
     [[ -e "$TARGET/$f" ]] && paths+=("$f")
   done
+  grep -qF "$CLAUDE_ONLY_CRITICS_MARKER" "$TARGET/scripts/cr/critics.local.json" 2>/dev/null \
+    && paths+=(scripts/cr/critics.local.json)
   if [[ -z "$(git -C "$TARGET" status --porcelain -- "${paths[@]}")" ]]; then
     return 0
   fi

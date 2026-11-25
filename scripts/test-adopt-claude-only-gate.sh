@@ -154,3 +154,26 @@ cp "$overlay" "$work/overlay-before.json"
 HOME="$work/claude-only-home" PATH="$hermetic_path" bash "$adopt" --profile core --scope project --target "$work/claude-only" >/dev/null || fail "N3: re-adopt failed"
 cmp -s "$overlay" "$work/overlay-before.json" || fail "N3: re-adopt changed the seeded overlay"
 echo "ok: N3 re-adopting leaves the seeded overlay as it was"
+
+mkdir -p "$work/owned-commit/scripts/cr" "$work/owned-commit-home"
+echo '{"panel":[]}' > "$work/owned-commit/scripts/cr/critics.local.json"
+adopt_committed() {
+  local target="$work/$1" home="$work/$1-home"
+  mkdir -p "$target" "$home"
+  unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+  HOME="$home" git -C "$target" init -q -b main || return 1
+  HOME="$home" git -C "$target" config user.name fixture || return 1
+  HOME="$home" git -C "$target" config user.email fixture@example.invalid || return 1
+  HOME="$home" git -C "$target" commit -q --allow-empty -m 'chore: initial commit' || return 1
+  HOME="$home" PATH="$hermetic_path" bash "$adopt" --profile core --scope project --target "$target" --commit-install >/dev/null
+}
+adopt_committed owned-commit || fail "N4: adopting with --commit-install failed"
+committed=$(git -C "$work/owned-commit" show --name-only --format= HEAD)
+grepq "$committed" '^scripts/lib/review-merge-gate.sh$' || fail "N4: the install was not committed"
+grepq "$committed" 'critics.local.json' && fail "N4: the install commit swept in the adopter's own overlay"
+echo "ok: N4 the install commit leaves an adopter-owned overlay alone"
+
+adopt_committed seeded-commit || fail "C4: adopting with --commit-install failed"
+git -C "$work/seeded-commit" show --name-only --format= HEAD | grep -q '^scripts/cr/critics.local.json$' \
+  || fail "C4: the install commit left the seeded overlay out"
+echo "ok: C4 the install commit carries the seeded overlay"
