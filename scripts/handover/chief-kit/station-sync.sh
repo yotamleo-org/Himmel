@@ -36,10 +36,11 @@
 # Heal (--heal): worker-event.sh starts it, detached, on an event wake while the state reads BEHIND:<components>.
 # It reads the state file and runs the step each behind component maps to, then re-checks with --versions and
 # rewrites the state file as a sync does (no usage build):
-#   plugins -> marketplace, jira_cli -> jira_cli, hermes -> hermes, qmd_fork -> qmd_fork
-# Any other behind component (himmel, luna_template, codex, claude, cli_proxy, node, npm, bun, a probe tool,
-# unverified, a *-failed marker) has no step here and stays reported, never healed. The hermes step keeps its own
-# 3-day age rule: inside the window it is reported, not forced.
+#   plugins -> marketplace, jira_cli -> jira_cli, qmd_fork -> qmd_fork
+# Any other behind component (himmel, hermes, luna_template, codex, claude, cli_proxy, node, npm, bun, a probe tool,
+# unverified, a *-failed marker) has no step here and stays reported, never healed. Hermes is left out on purpose:
+# its update step fast-forwards or hard-resets to upstream and restarts the gateway, and nothing yet holds it back
+# for the age rule, so it must not run unattended.
 # It takes the sync's lock without waiting (`SKIP heal sync-running` when a sync holds it) and keeps a back-off stamp
 # ~/.himmel/state/station-heal.ts (SS_HEAL_WINDOW seconds, default 1800; SS_HEAL_NOW replaces the clock): a heal that
 # ran inside the window prints `SKIP heal backoff` and runs nothing, so a broken step never loops. A failed step
@@ -108,7 +109,7 @@ if [ -n "$HEAL" ]; then
     for comp in $(printf '%s' "${cur#BEHIND:}" | tr , ' '); do
         case "$comp" in
             plugins) step=marketplace ;;
-            jira_cli|hermes|qmd_fork) step="$comp" ;;
+            jira_cli|qmd_fork) step="$comp" ;;
             *) continue ;;
         esac
         case " $heal_want " in *" $step "*) ;; *) heal_want="$heal_want $step" ;; esac
@@ -190,7 +191,7 @@ local_template_diff() {
 }
 
 refused=""; failed=""
-for step in marketplace jira_cli config_ui qmd_fork hermes graphify luna_template; do
+for step in marketplace jira_cli config_ui qmd_fork graphify luna_template; do
     case " $want " in *" $step "*) ;; *) continue ;; esac
     if [ "$step" = luna_template ]; then
         diffs="$(local_template_diff)"

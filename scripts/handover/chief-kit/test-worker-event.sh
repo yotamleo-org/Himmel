@@ -845,8 +845,7 @@ cat > "$W/vers" <<'EOF2'
     himmel         current  v1          v1
     plugins        behind   1/2         2 declared  version drift: a
     jira_cli       behind   built       source
-    hermes         behind   abc1234     def5678
-    3 behind, 0 undetermined.
+    2 behind, 0 undetermined.
 EOF2
 cat > "$W/update-w" <<'EOF2'
 #!/usr/bin/env bash
@@ -865,7 +864,7 @@ export HOME="$LE_HOME" SS_UPDATE="$LE_UPDATE" SS_STATE="$LE_STATION_STATE" SS_PR
 exec bash "$LE_SS" "$@"
 EOF2
 chmod +x "$W/update-w" "$W/station-real"
-: > "$LE_UCALLS"; printf '%s\n' "BEHIND:plugins,jira_cli,hermes" > "$LE_STATION_STATE"
+: > "$LE_UCALLS"; printf '%s\n' "BEHIND:plugins,jira_cli" > "$LE_STATION_STATE"
 LE_STATION="$W/station-real" run "WRAPPED N2078"
 LE_STATION="$W/station-real" run "WRAPPED N2078"
 LE_STATION="$W/station-real" run "WRAPPED N2078"
@@ -873,7 +872,6 @@ await "$LE_STATION_STATE" "ok"; check "18f the three wakes leave the station ok"
 sleep 0.5
 check "18f the marketplace step ran once" "$(grep -c 'update --only marketplace' "$LE_UCALLS")" 1
 check "18f the jira_cli step ran once" "$(grep -c 'update --only jira_cli' "$LE_UCALLS")" 1
-check "18f the hermes step ran once" "$(grep -c 'update --only hermes' "$LE_UCALLS")" 1
-check "18f --versions then shows none behind" "$(grep -cE '^ +(plugins|jira_cli|hermes) +behind' "$LE_VERS")" 0
+check "18f --versions then shows none behind" "$(grep -cE '^ +(plugins|jira_cli) +behind' "$LE_VERS")" 0
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
