@@ -87,7 +87,7 @@ deny "7888 Write himmel/L/../bus/peers (L symlinked elsewhere)" "$(file_json Wri
 deny "7888 Edit himmel/L/../bus/peers (L symlinked elsewhere)" "$(file_json Edit "$SCR/state/himmel/L/../bus/peers/x.json")"
 allow "7888 control: himmel/L/../notes.txt" "$(file_json Write "$SCR/state/himmel/L/../notes.txt")"
 allow "7888 control: a lexical path ending outside the store" "$(file_json Write "$SCR/state/himmel/x/../../notes.txt")"
-allow "7888 Linux control: himmel/BUS is a different directory" "$(file_json Write "$SCR/state/himmel/BUS/peers/x.json")"
+case "${OSTYPE:-}" in darwin*) ;; *) allow "7888 control (case-sensitive host): himmel/BUS is a different directory" "$(file_json Write "$SCR/state/himmel/BUS/peers/x.json")" ;; esac
 deny "7888 Darwin: himmel/BUS/peers" "$(file_json Write "$SCR/state/himmel/BUS/peers/x.json")" HIMMEL_GUARD_FORCE_DARWIN=1
 deny "7888 Darwin: Himmel/bus/peers" "$(file_json Write "$SCR/state/Himmel/bus/peers/x.json")" HIMMEL_GUARD_FORCE_DARWIN=1
 deny "7888 Darwin: both gaps (Himmel/L/../BUS)" "$(file_json Write "$SCR/state/Himmel/L/../BUS/peers/x.json")" HIMMEL_GUARD_FORCE_DARWIN=1

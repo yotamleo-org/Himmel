@@ -181,7 +181,8 @@ norm() {
 }
 
 DARWIN=0
-if [ "${HIMMEL_GUARD_FORCE_DARWIN:-}" = 1 ] || [ "$(uname -s)" = Darwin ]; then DARWIN=1; fi
+case "${OSTYPE:-}" in darwin*) DARWIN=1 ;; esac
+if [ "${HIMMEL_GUARD_FORCE_DARWIN:-}" = 1 ]; then DARWIN=1; fi
 fold_to() {
     FOLDED="$1"
     if [ "$DARWIN" = 1 ]; then FOLDED=$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]'); fi

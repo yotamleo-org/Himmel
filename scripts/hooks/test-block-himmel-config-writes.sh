@@ -50,17 +50,19 @@ file_case "another file in ~/.himmel -> allow" allow Write "$HOME/.himmel/notes.
 file_case "a config.json elsewhere -> allow" allow Write "$T/other/config.json"
 
 echo "== HIMMEL-7888: lexical .. form and Darwin case-folding =="
-mkdir -p "$T/elsewhere"
-ln -s "$T/elsewhere" "$HOME/.himmel/L"
+{ mkdir -p "$T/elsewhere" && ln -s "$T/elsewhere" "$HOME/.himmel/L"; } || { echo "FAIL: cannot build the 7888 fixtures" >&2; exit 1; }
 file_case "7888 .himmel/L/../config.json (L symlinked elsewhere) -> block" block Write "$HOME/.himmel/L/../config.json"
 file_case "7888 the same through Edit -> block" block Edit "$HOME/.himmel/L/../config.json"
 file_case "7888 relative .himmel/L/../config.json -> block" block Write ".himmel/L/../config.json"
 file_case "7888 .himmel/L/../project.conf -> block" block Write "$HOME/.himmel/L/../project.conf"
 file_case "7888 .himmel/L/../outside-contributors.json -> block" block Write "$HOME/.himmel/L/../outside-contributors.json"
+file_case "7888 dot and double-slash spellings of the lexical form -> block" block Write "$HOME/.himmel/L/..//./config.json"
+file_case "7888 relative path that climbs out and back in -> block" block Write "x/../../.himmel/L/../config.json"
+file_case "7888 control: .himmel/L/../../notes.txt -> allow" allow Write "$HOME/.himmel/L/../../notes.txt"
 file_case "7888 control: .himmel/L/../notes.txt -> allow" allow Write "$HOME/.himmel/L/../notes.txt"
 file_case "7888 control: a lexical path that ends outside the config dir -> allow" allow Write "$HOME/.himmel/x/../../other/config.json"
 file_case "7888 control: .himmel/notes.txt -> allow" allow Write "$HOME/.himmel/notes.txt"
-file_case "7888 control (Linux): ~/.HIMMEL/config.json is a different file -> allow" allow Write "$HOME/.HIMMEL/config.json"
+case "${OSTYPE:-}" in darwin*) ;; *) file_case "7888 control (case-sensitive host): ~/.HIMMEL/config.json is a different file -> allow" allow Write "$HOME/.HIMMEL/config.json" ;; esac
 export HIMMEL_GUARD_FORCE_DARWIN=1
 file_case "7888 Darwin: ~/.HIMMEL/config.json -> block" block Write "$HOME/.HIMMEL/config.json"
 file_case "7888 Darwin: ~/.himmel/Config.JSON -> block" block Write "$HOME/.himmel/Config.JSON"
