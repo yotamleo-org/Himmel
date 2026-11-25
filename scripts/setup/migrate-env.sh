@@ -243,7 +243,7 @@ l ~ /^[[:space:]]*#/ { next }
     v = substr(l, i + 1); sub(/^[[:space:]]+/, "", v); c = substr(v, 1, 1)
     w = v; sub(/[[:space:]]+$/, "", w)
     if (n !~ /^(-|export:)/ && (w ~ /^=+$/ || (w == "" && n !~ /^[A-Z_][A-Z0-9_]*$/))) n = "-"
-    if ((c =="\"" || c == "\047") && !closeat(substr(v, 2), c)) { name = n; first = NR; q = c; inq = 1; next }
+    if ((c == "\"" || c == "\047") && !closeat(substr(v, 2), c)) { name = n; first = NR; q = c; inq = 1; next }
     print NR, NR, n
 }
 END { if (inq) print first, "open", name }'
