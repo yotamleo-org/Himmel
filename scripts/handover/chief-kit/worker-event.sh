@@ -131,10 +131,11 @@ if [ -z "$DOC" ] || [ -z "$FLEET" ] || [ -z "$MSG" ]; then usage; fi
 heal_station() {
     [ -z "${station_started:-}" ] || return 0
     local st="${LE_STATION_STATE:-${SS_STATE:-$HOME/.himmel/state/station-sync.state}}" cur hlog
-    cur="$(cat "$st" 2>/dev/null)" || return 0  # swallow-ok: no state file means nothing to heal
+    [ -f "$st" ] || return 0
+    cur="$(cat "$st")" || return 0
     case "$cur" in BEHIND:pending|BEHIND:) return 0 ;; BEHIND:*) ;; *) return 0 ;; esac
     hlog="${LE_STATION_LOG:-$HOME/.himmel/state/station-sync.out}"
-    mkdir -p "$(dirname "$hlog")" 2>/dev/null || true  # swallow-ok: a missing log directory only loses the heal output
+    mkdir -p "$(dirname "$hlog")" || return 0
     if command -v setsid >/dev/null 2>&1; then
         setsid "${STATION[@]}" --heal --bucket "${DOC%/*}" --chief "$(basename "$DOC" .md)" >>"$hlog" 2>&1 </dev/null &
     else

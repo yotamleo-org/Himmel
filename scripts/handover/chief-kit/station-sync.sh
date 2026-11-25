@@ -103,7 +103,7 @@ exec 9>"$STATE.lock"
 if [ -z "$HEAL" ]; then flock 9; elif ! flock -n 9; then echo "SKIP heal sync-running"; exit 0; fi
 heal_want=""
 if [ -n "$HEAL" ]; then
-    cur="$(cat "$STATE" 2>/dev/null)"  # swallow-ok: no state file reads as not behind, the case below skips
+    cur=""; [ ! -f "$STATE" ] || cur="$(cat "$STATE")"
     case "$cur" in BEHIND:*) ;; *) echo "SKIP heal not-behind"; exit 0 ;; esac
     for comp in $(printf '%s' "${cur#BEHIND:}" | tr , ' '); do
         case "$comp" in
@@ -116,7 +116,7 @@ if [ -n "$HEAL" ]; then
     [ -n "$heal_want" ] || { echo "SKIP heal nothing-healable ${cur#BEHIND:}"; exit 0; }
     HEAL_STAMP="$(dirname "$STATE")/station-heal.ts"
     heal_now="${SS_HEAL_NOW:-$(date +%s)}"
-    last="$(cat "$HEAL_STAMP" 2>/dev/null)"  # swallow-ok: no stamp yet means never healed; the case below reads empty as 0
+    last=0; [ ! -f "$HEAL_STAMP" ] || last="$(cat "$HEAL_STAMP")"
     case "$last" in ''|*[!0-9]*) last=0 ;; esac
     if [ $((heal_now - last)) -lt "${SS_HEAL_WINDOW:-1800}" ]; then echo "SKIP heal backoff"; exit 0; fi
     echo "$heal_now" > "$HEAL_STAMP" 2>/dev/null || { echo "SKIP heal no-stamp"; exit 0; }
