@@ -53,7 +53,7 @@ cat > "$WORK/census.sh" <<'EOF'
 cat "$WORK/census.txt"  # read-sink-ok: the suite's own census fixture under its mktemp dir
 exit "${CENSUS_RC:-0}"
 EOF
-printf '#!/usr/bin/env bash\nexit 1\n' > "$WORK/census-fail.sh"
+printf '#!/usr/bin/env bash\nprintf "%%s\\t%%s\\topus\\t200000\\n" 999 other-session\nexit 2\n' > "$WORK/census-fail.sh"
 {
     printf '%s\t%s\topus\t200000\n' "$LIVE_PID" "DEMO-9-N9-w-2026-11-25"
     printf '%s\t%s\topus\t200000\n' 205 "DEMO-5-N5-w-2026-11-25-RESUME"
@@ -162,7 +162,7 @@ check "14c. a partial census keeps its readable rows: the worker it shows is a l
 out="$(CENSUS_RC=3 run N12 161)"
 check "14d. and after the grace it owes as a live window, never launched" "SILENT-ACT N12 live-silent owed=o8" "$out"
 out="$(SILENT_ACT_CENSUS="$WORK/census-fail.sh" run N13 161)"
-check "14e. a census that fails with no rows never relaunches: it owes" "SILENT-ACT N13 nudge=no-window census=unknown owed=o9" "$out"
+check "14e. a census that fails (rc 2) never relaunches: it owes" "SILENT-ACT N13 nudge=no-window census=unknown owed=o9" "$out"
 out="$(SILENT_ACT_CENSUS='' SILENT_ACT_CENSUS_LIB="$WORK/no-such-lib.sh" run N14 161)"
 check "14f. a census library that cannot be loaded never relaunches: it owes" "SILENT-ACT N14 nudge=no-window census=unknown owed=o10" "$out"
 check "14g. none of the four launched" "$census_launches" "$(count "$WORK/launch.log")"
