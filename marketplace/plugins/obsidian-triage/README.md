@@ -684,18 +684,21 @@ full runbook.
 - Findings carry a fixed `kind` / `detail` and a sanitized path, never a quote of the repo text. A scan that cannot run is `fetch_error` / `unavailable`, never `clean`.
 - Tests: `tests/test-repo-security-scan.sh` (hermetic; `REPO_SCAN_GH_FIXTURE` swaps `gh`).
 
-### Advisory skill scan: SkillSpector Stage 1
+### Skill scan: SkillSpector (Stage 1 read-through, full scan for vendoring)
 
-`tools/skillspector-scan.sh <skill-dir> <report.json>` runs NVIDIA SkillSpector Stage 1 (static, `--no-llm`) over one skill directory and stores the JSON report. It is advisory: a finding means "read the flagged line before adopting or using the skill" (the SkillSpector pilot saw false positives on clean skills, and Stage 1 never returns SAFE alone). Stage 2 (LLM) is not wired.
+`tools/skillspector-scan.sh <skill-dir> <report.json>` runs NVIDIA SkillSpector over one skill directory and stores the JSON report. `SKILLSPECTOR_PROVIDER` picks the mode and has no default:
+
+- **Vendoring (required step):** a skill we want to vendor from someone else's repo gets the full scan, Stage 2 (the AI review) included: `SKILLSPECTOR_PROVIDER=nv_build` with `NVIDIA_INFERENCE_KEY`, or `SKILLSPECTOR_PROVIDER=anthropic` with `ANTHROPIC_API_KEY`, exported in the launching shell (never read from `.env`). The skill text goes to the provider. A missing key is a named refusal (rc 2), never a clean result. The scanner's stderr is kept in the report under `wrapper_stderr` (keys redacted). A HIGH or CRITICAL finding that survives Stage 2 stops the vendoring (rc 4, report stored) until a person reads the flagged line and records its `match_fingerprint` in `<report>.ack`, one per line; running the wrapper again then returns rc 0. A Stage 2 that did not run is rc 3, never clean.
+- **Read-through (advisory):** `SKILLSPECTOR_PROVIDER=ollama` runs Stage 1 only (static, `--no-llm`), nothing leaves the machine, and a finding means "read the flagged line before adopting or using the skill" (the pilot saw false positives on clean skills, and Stage 1 never returns SAFE alone).
 
 - **Ingest:** `/luna-ingest <url> --skill-scan` runs Phase 3.7 over each skill directory of the source repo and writes `skill_scan:` plus a `## Skill scan (advisory)` section, with the reports in `<repo-slug>.skillspector/` beside the note.
 - **Clips:** `/harvest-clips` passes `--skill-scan` for a clipped `/tree/<branch>/.../skills/...` URL, so a clipped skill is scanned before it is used.
 - **What leaves the machine:**
-  - **Provider:** the wrapper refuses (rc 2) unless `SKILLSPECTOR_PROVIDER=ollama`. Upstream defaults an unset provider to `nv_build`, which sends skill text to build.nvidia.com.
+  - **Provider:** the wrapper refuses (rc 2) an unset provider or any outside `ollama`, `nv_build`, `anthropic`. Upstream defaults an unset provider to `nv_build`; only the two full-scan providers send skill text out (to build.nvidia.com or the Claude API). `SKILLSPECTOR_OFFLINE=1` with a full-scan provider is refused (Stage 2 needs the network).
   - **OSV lookup (on by default):** Stage 1 posts the package names and versions from a skill's lockfile to api.osv.dev to check them for known CVEs. This is the scan's one network call, and it stays on. If the lookup fails, the report is incomplete and the wrapper returns rc 3.
   - **Offline (opt-in):** `SKILLSPECTOR_OFFLINE=1` skips the live CVE lookup. The wrapper runs the scanner in an empty network namespace (`unshare --user --map-root-user --net`), SkillSpector checks the dependencies against its small built-in list only, and the summary line ends `deps=offline-fallback`. Use it for a private skill whose dependency list must not leave the machine. Where the namespace cannot be made (macOS, or Linux with unprivileged user namespaces disabled), the wrapper refuses with rc 2.
 - **No install:** the wrapper never installs SkillSpector (rc 3 when missing). `pip install` belongs in a throwaway sandbox or the test VM.
-- Tests: `tests/test-skillspector-scan.sh` (hermetic stub; replays two real reports captured from skillspector 2.12.0 @182a4753 on the pilot fixtures under `tests/fixtures/skillspector/`).
+- Tests: `tests/test-skillspector-scan.sh` (hermetic stub, incl. a stub Stage 2 HIGH that stops, a clean report that passes, and a missing key that is a named refusal; replays two real reports captured from skillspector 2.12.0 @182a4753 on the pilot fixtures under `tests/fixtures/skillspector/`).
 
 ### Opt-in web search: DeepSeek
 
