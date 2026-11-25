@@ -479,10 +479,10 @@ row_stamp_untouched() {
 }
 
 row_no_merge_path_caller() {
-    local allow='^(scripts/luna/(post-merge-refresh\.sh|test-post-merge-refresh\.sh|graphmap-cadence\.sh|test-graphmap-cadence\.sh|keyword-lag\.py|test-keyword-lag\.sh)|scripts/lib/(observability-registry|test-observability-registry)\.sh|scripts/observability/ledgers\.json|scripts/ci/suite-durations\.tsv|scripts/ci/fixtures/|docs/)'
+    local allow='^(scripts/luna/(post-merge-refresh\.sh|test-post-merge-refresh\.sh|graphmap-cadence\.sh|test-graphmap-cadence\.sh|keyword-lag\.py|test-keyword-lag\.sh)|scripts/lib/(observability-registry|test-observability-registry)\.sh|scripts/observability/ledgers\.json|scripts/ci/suite-durations\.tsv|scripts/ci/fixtures/ledger-drift-2026-11-25/|docs/)'
     local hits
     hits=$(git -C "$REPO_ROOT" grep -l -e 'post-merge-refresh' -e 'PostMergeRefresh' 2>/dev/null | grep -Ev "$allow" || true)
-    assert_eq "no_merge_path_caller: only the tick, its verb, its tests and its docs name it" "" "$hits"
+    assert_eq "no_merge_path_caller: only the tick, its verb, its tests, its docs, the duration ledger and its dated fixtures name it" "" "$hits"
 }
 
 row_third_failure_alerts() {

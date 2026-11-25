@@ -34,8 +34,8 @@ scripts/security/test-security-audit-cadence.sh	8
 #   both that case and the replay balance; a pure mean left Case 22w 214s over its
 #   bound. test-review-panel.sh and test-ready-check.sh were measured at 1641 and
 #   1466, past the LD7 ceiling, so the blend keeps them near their earlier rows.
-#   One luna post-merge suite has no row on purpose: it refuses any file outside its
-#   allowlist that names it, and this file would be one.
+#   The luna post-merge suite has a row: its no_merge_path_caller case allowlists
+#   this file and the ledger-drift-2026-11-25 fixtures, so naming it here is safe.
 #   Replay on those three runs: slowest/floor 1.232 before, 1.250 after (the 59 new
 #   rows alone gave 1.324, over the 1.3 threshold).
 #   Refresh of 2026-11-14: the mean of the green main runs
