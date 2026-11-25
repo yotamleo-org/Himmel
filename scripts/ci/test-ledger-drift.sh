@@ -24,12 +24,7 @@
 #   LD8b --no-row with an unreadable tier file -> exit 2, no count
 #   LD9  the cadence run prints the list and keeps its verdict
 #   LD10 the REFRESH recipe in the ledger's header harvests a suite with no row
-#   LD11 the committed ledger balances the logs of the red 2026-11-25 run; the ledger it read does not
-#        (scheduled run 45599317548 read green main ci.yml runs 45579054431, 45567393122 and
-#        45538624255 and went red at slowest/floor=1.399. scripts/ci/fixtures/ledger-drift-2026-11-25/
-#        holds those runs' real `gh run view --log` shell-unit-shard lines, every suite that took
-#        >= 10s, minus the lines whose names hold the words the ws5 T13(b) shipped-source scan
-#        reads as a service; stale-ledger.tsv is the ledger as that run read it)
+#   LD11 the committed ledger balances real logs the previous ledger flagged
 #
 # Platform guard: bash-only; Linux CI is the caller.
 #
