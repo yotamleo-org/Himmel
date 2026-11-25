@@ -716,7 +716,6 @@ lookonly_carry() {
 # traps TERM that child without waiting for it (a `timeout`-wrapped child then ends itself within its
 # own kill grace).
 child_pid=""
-# stoppable <stdout file> <stderr file> <command...>: the command's status is the return status.
 stoppable() {
     local out="$1" err="$2" rc
     shift 2
@@ -726,7 +725,7 @@ stoppable() {
     child_pid=""
     return "$rc"
 }
-nap() { # <seconds>
+nap() {
     sleep "$1" 9>&- &
     child_pid=$!
     wait "$child_pid"

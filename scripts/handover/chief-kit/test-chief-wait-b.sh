@@ -858,9 +858,6 @@ CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT
 check "(cs9) a dated doc under its undated session name is found and closed" "$WORK/cs9/T-9-N9-task-2026-11-20.md" "$(cat "$STUB/close.calls")"
 unset CHIEF_WAIT_CLOSE CHIEF_WAIT_SWEEP_MIN CHIEF_WAIT_SWEEP_MAX
 
-# --- (sig) 10856: a stop signal ends the waiter within a second wherever it is, never after the
-# step it was in: asleep between polls (a 3 s poll) or inside a slow tick (3 s). ---------------
-# wait_hb_state <inbox> <state>: block until the heartbeat names that state, at most ~5 s.
 wait_hb_state() {
     n=0
     while [ "$n" -lt 100 ]; do
@@ -869,7 +866,6 @@ wait_hb_state() {
     done
     return 1
 }
-# gone_within_1s <pid>: 0 when the pid is gone within about a second.
 gone_within_1s() {
     n=0
     while [ "$n" -lt 20 ]; do
@@ -878,18 +874,17 @@ gone_within_1s() {
     done
     return 1
 }
-sig_case() { # <name> <signal> <poll seconds> <tick sleep or ""> <expected rc> <expected exit=>
-    local t0
+sig_case() {
+    local ticks_before
     reset_stub
     I="$(new_inbox "sig-$1")"
     CHIEF_WAIT_POLL_SEC="$3" start "$I" "$WORK/sig-$1.out" --workers "N1.md"
     wait_hb "$I" || fail "(sig $1) no baseline heartbeat"
     if [ -n "$4" ]; then
-        # a slow tick from the next sample on: signal once two more ticks have started (the second one is slow)
-        t0=$(wc -c < "$STUB/ticks"); printf '%s\n' "$4" > "$STUB/tick.sleep"
+        ticks_before=$(wc -c < "$STUB/ticks"); printf '%s\n' "$4" > "$STUB/tick.sleep"
         n=0
-        while [ "$n" -lt 100 ] && [ "$(wc -c < "$STUB/ticks")" -lt $((t0 + 2)) ]; do sleep 0.05; n=$((n + 1)); done
-        [ "$(wc -c < "$STUB/ticks")" -ge $((t0 + 2)) ] || fail "(sig $1) the slow ticks never started"
+        while [ "$n" -lt 100 ] && [ "$(wc -c < "$STUB/ticks")" -lt $((ticks_before + 2)) ]; do sleep 0.05; n=$((n + 1)); done
+        [ "$(wc -c < "$STUB/ticks")" -ge $((ticks_before + 2)) ] || fail "(sig $1) the slow ticks never started"
     else
         wait_hb_state "$I" waiting || fail "(sig $1) the waiter never reached state=waiting"
     fi
