@@ -15,7 +15,7 @@ export type PhaseCostRow = {
   phase: string; phase_rule: string; calls: number; in: number; out: number; cache_read: number; cc_5m: number; cc_1h: number;
   usd: number | null; mark: string;
 };
-export type Mark = "counted" | "derived" | "unpriced" | "nocount";
+export type Mark = "counted" | "derived" | "unpriced" | "nocount" | "inphase";
 export type CostPart = { id: string; name: string; note: string; usd: number | null; share: number | null; mark: Mark };
 export type CostPhase = { id: string; name: string; usd: number | null; share: number | null; mark: Mark; made: string; parts: CostPart[] };
 export type CostModel = {
@@ -147,7 +147,8 @@ const storeFile = (env: Env) => join(env.HIMMEL_USAGE_STORE || join(env.HOME ?? 
 
 export const T3_BASIS = "T3 Code's own stored turn usage, read-only, at list prices from scripts/lanes/lib/model-prices.tsv; not invoices. " +
   "A turn with no model, or a model with no price row, has tokens and no dollars; a provider that reports no usage has neither. " +
-  "Usage T3 Code keeps for subagents apart is not added. Days are UTC.";
+  "Usage T3 Code keeps for subagents apart is not added. T3's Claude sessions write the transcripts the phase table already counts, " +
+  "so the Claude line shows tokens only and no dollars are added twice. Days are UTC.";
 const T3_LABEL: Record<string, string> = { claudeAgent: "Claude", codex: "Codex", antigravity: "Antigravity", cursor: "Cursor", grok: "Grok", acpRegistry: "ACP registry" };
 const T3_THREAD_CAP = 30;
 
@@ -201,15 +202,16 @@ export function readT3Turns(env: Env): T3Turn[] | null {
   } catch { return null; } finally { db?.close(); }
 }
 
-type Priced = T3Turn & { usd: number | null; unpriced: boolean };
-const T3_RANK: Record<Mark, number> = { counted: 0, derived: 0, unpriced: 1, nocount: 2 };
+type Priced = T3Turn & { usd: number | null; unpriced: boolean; inphase: boolean };
+const T3_RANK: Record<Mark, number> = { counted: 0, derived: 0, inphase: 1, unpriced: 1, nocount: 2 };
 
 function t3Line(id: string, name: string, ts: Priced[], total: number | null, extra: string[]): T3Line {
   const usd = ts.some((t) => t.usd != null) ? round(ts.reduce((a, t) => a + (t.usd ?? 0), 0), 4) : null;
   const none = ts.filter((t) => !t.avail).length;
-  const mark: Mark = none === ts.length ? "nocount" : ts.some((t) => t.unpriced) ? "unpriced" : "counted";
+  const mark: Mark = none === ts.length ? "nocount" : ts.every((t) => t.inphase) ? "inphase" : ts.some((t) => t.unpriced) ? "unpriced" : "counted";
   const models = [...new Set(ts.map((t) => t.model).filter(Boolean).map((m) => plain(m!)).filter(Boolean))].sort();
-  const note = [...extra, models.join(", "), none ? `${none} of ${ts.length} turns carry no usage` : ""].filter(Boolean).join(" · ");
+  const counted = ts.some((t) => t.inphase) ? "Claude dollars are in the phase table" : "";
+  const note = [...extra, models.join(", "), counted, none ? `${none} of ${ts.length} turns carry no usage` : ""].filter(Boolean).join(" · ");
   const sumOf = (k: "in" | "out" | "cache_read" | "cache_write") => ts.reduce((a, t) => a + t[k], 0);
   return { id, name, note, turns: ts.length, in: sumOf("in"), out: sumOf("out"), cache_read: sumOf("cache_read"), cache_write: sumOf("cache_write"), usd, share: pct(usd, total), mark };
 }
@@ -223,9 +225,10 @@ export function buildT3Section(turns: T3Turn[] | null, day?: string): T3Section 
   let prices: ReturnType<typeof loadPrices> = [];
   try { prices = loadPrices(); } catch { prices = []; }
   const mine: Priced[] = turns.filter((t) => t.day === picked).map((t) => {
-    const row = t.avail ? priceFor(t.model ?? "", prices) : null;
+    const inphase = t.driver === "claudeAgent";
+    const row = t.avail && !inphase ? priceFor(t.model ?? "", prices) : null;
     const usd = row ? (t.in * row.input + t.out * row.output + t.cache_read * row.cacheRead + t.cache_write * (t.ttl1h ? row.cacheWrite1h : row.cacheWrite5m)) / 1e6 : null;
-    return { ...t, usd, unpriced: t.avail && !row };
+    return { ...t, usd, unpriced: t.avail && !inphase && !row, inphase };
   });
   const total = mine.some((t) => t.usd != null) ? round(mine.reduce((a, t) => a + (t.usd ?? 0), 0), 4) : null;
   const group = (key: (t: Priced) => string) => {
@@ -240,7 +243,7 @@ export function buildT3Section(turns: T3Turn[] | null, day?: string): T3Section 
   const threads = [...group((t) => t.thread)].map(([id, ts]) =>
     t3Line(id, plain(ts[0].title) || "untitled thread", ts, total, [...new Set(ts.map((t) => T3_LABEL[t.driver] ?? plain(t.driver)))].sort())).sort(byBiggest);
   return {
-    state: "ok", day: picked, days, usd: total, mark: mine.some((t) => t.unpriced) ? "unpriced" : mine.every((t) => !t.avail) ? "nocount" : "counted",
+    state: "ok", day: picked, days, usd: total, mark: mine.some((t) => t.unpriced) ? "unpriced" : mine.every((t) => !t.avail) ? "nocount" : total == null ? "inphase" : "counted",
     turns: mine.length, providers, threads: threads.slice(0, T3_THREAD_CAP), moreThreads: Math.max(0, threads.length - T3_THREAD_CAP), basis: T3_BASIS,
   };
 }

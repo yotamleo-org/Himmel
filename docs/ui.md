@@ -198,7 +198,9 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   token counts T3 Code stores for each turn, priced from `scripts/lanes/lib/model-prices.tsv`, so there is
   no second collector and no second price list. A turn with no model or no price row shows its tokens
   and no dollars, a provider that reports no usage shows neither, usage T3 Code keeps for subagents apart
-  is not added, and days are UTC. With no T3 Code store the card is absent. The page only reads:
+  is not added, and days are UTC. T3's Claude sessions write the transcripts the phase table already
+  counts, so the Claude line shows tokens only, marked "in the phase table", and its dollars are not
+  added a second time. With no T3 Code store the card is absent. The page only reads:
   `GET /api/cost`; with no usage records it says "no data yet"), and **Fleet** at `/agui/`.
 - **Fleet and run view (AG-UI).** `/agui/` lists every live Claude session
   with its ticket, PR and state; clicking one opens its run page: assistant

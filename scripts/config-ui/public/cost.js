@@ -8,6 +8,7 @@ const MARK = {
   derived: ["derived", "a counted total split by phase with the last-tool rule"],
   unpriced: ["no price yet", "a call's model has no price row; its dollars are not counted"],
   nocount: ["not countable yet", "no record splits it"],
+  inphase: ["in the phase table", "T3's Claude sessions write transcripts the phase table already counts; tokens shown, dollars not added twice"],
 };
 const mark = (m) => `<span class="mk ${esc(m)}" title="${esc(MARK[m][1])}">${esc(MARK[m][0])}</span>`;
 const usd = (n) => (n == null ? "—" : `$${n.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`);

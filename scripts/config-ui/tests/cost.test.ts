@@ -282,12 +282,12 @@ test("cost: T3 Code rows list usage, tokens and cost per provider for the day, f
   const t3 = m.t3!;
   expect(t3).toMatchObject({ state: "ok", day: T3_DAY, days: [T3_DAY, "2026-11-23"] });
   expect(t3.providers.map((p) => [p.id, p.turns, p.usd, p.mark])).toEqual([
-    ["claudeAgent", 2, 2.13, "counted"], ["codex", 1, 0.44, "counted"],
-    ["antigravity", 1, null, "unpriced"], ["cursor", 1, null, "unpriced"], ["acpRegistry", 1, null, "nocount"], ["grok", 1, null, "nocount"],
+    ["codex", 1, 0.44, "counted"], ["antigravity", 1, null, "unpriced"], ["claudeAgent", 2, null, "inphase"],
+    ["cursor", 1, null, "unpriced"], ["acpRegistry", 1, null, "nocount"], ["grok", 1, null, "nocount"],
   ]);
-  expect(t3.providers[0]).toMatchObject({ in: 150_000, out: 15_000, cache_read: 900_000, cache_write: 150_000 });
-  expect(t3.providers[1]).toMatchObject({ in: 100_000, out: 20_000, cache_read: 400_000, cache_write: 0 });
-  expect(t3.usd).toBe(2.57);
+  expect(t3.providers[2]).toMatchObject({ in: 150_000, out: 15_000, cache_read: 900_000, cache_write: 150_000 });
+  expect(t3.providers[0]).toMatchObject({ in: 100_000, out: 20_000, cache_read: 400_000, cache_write: 0 });
+  expect(t3.usd).toBe(0.44);
   expect(t3.mark).toBe("unpriced");
   expect(t3.providers.find((p) => p.id === "grok")!.note).toContain("1 of 1 turns carry no usage");
 });
@@ -296,14 +296,14 @@ test("cost: T3 Code rows list the day's threads biggest first, with the thread's
   const { env } = makeT3Home(T3_TURNS, T3_TITLES);
   const t3 = readCost(env).t3!;
   expect(t3.threads.map((t) => [t.name, t.usd, t.turns])).toEqual([
-    ["Build the thing", 2.13, 2], ["Codex thread", 0.44, 1], ["Antigravity thread", null, 1], ["Cursor thread", null, 1], ["ACP thread", null, 1], ["Grok thread", null, 1],
+    ["Codex thread", 0.44, 1], ["Antigravity thread", null, 1], ["Build the thing", null, 2], ["Cursor thread", null, 1], ["ACP thread", null, 1], ["Grok thread", null, 1],
   ]);
   expect(JSON.stringify(t3)).not.toMatch(/[A-Z][A-Z0-9]*-\d+/);
 });
 
 test("cost: a day asked for picks that day's T3 rows, and a day T3 has no turns for is no data, not another day", () => {
   const { env } = makeT3Home(T3_TURNS, T3_TITLES);
-  expect(readCost(env, "2026-11-23").t3).toMatchObject({ state: "ok", day: "2026-11-23", usd: 0.42 });
+  expect(readCost(env, "2026-11-23").t3).toMatchObject({ state: "ok", day: "2026-11-23", usd: null, mark: "inphase" });
   expect(readCost(env, "2026-10-01").t3).toMatchObject({ state: "nodata", day: "2026-10-01", usd: null, providers: [], threads: [] });
 });
 
@@ -329,7 +329,7 @@ test("cost: the page renders the T3 Code card per provider and per thread, as te
   expect(html).toContain("By thread");
   for (const name of ["Claude", "Codex", "Antigravity", "Cursor", "Grok", "ACP registry"]) expect(html).toContain(name);
   expect(html).toContain("Build the thing");
-  expect(html).toContain("$2.1");
+  expect(html).toContain("$0.4");
   expect(html).not.toContain("<script>");
   expect(html).not.toMatch(/[A-Z][A-Z0-9]*-\d+/);
 });
@@ -341,4 +341,20 @@ test("cost: a provider that reports no usage shows no token numbers, not measure
   expect(grok).toContain("not countable yet");
   expect(grok).not.toContain('<td class="n">0</td>');
   expect(grok.match(/<td class="n">—<\/td>/g)!.length).toBeGreaterThanOrEqual(6);
+});
+
+test("cost: a Claude session in both the phase table and T3's store has its dollars in the phase table only, and T3 shows its tokens", () => {
+  const { env } = makeT3Home(T3_TURNS, T3_TITLES);
+  const store = join(env.T3CODE_HOME!, "..", "usage");
+  mkdirSync(store);
+  writeFileSync(join(store, "records.jsonl"), JSON.stringify(row({ session: "1eecca75", phase: "build", usd: 5.5, day: T3_DAY, mark: "counted" })) + "\n");
+  const m = readCost({ ...env, HIMMEL_USAGE_STORE: store }, T3_DAY);
+  const claude = m.t3!.providers.find((p) => p.id === "claudeAgent")!;
+  expect(m.usd).toBe(5.5);
+  expect(claude).toMatchObject({ usd: null, mark: "inphase", in: 150_000, out: 15_000 });
+  expect(claude.note).toContain("phase table");
+  expect(m.t3!.usd).toBe(0.44);
+  const html = renderCost(m, { open: [] });
+  expect(html.match(/<tr><td>Claude<\/td>.*?<\/tr>/)![0]).toContain("in the phase table");
+  expect(html).toContain("$5.5");
 });
