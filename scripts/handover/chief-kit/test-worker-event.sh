@@ -774,4 +774,37 @@ contains "16 held lock: the normal path still runs" "$calls" "close --fleet"
 LE_LIST="$W/list16" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6016"
 contains "16 not yet closed by the chief: the normal path still runs" "$calls" "close --fleet"
 
+cat > "$W/gh" <<'EOF4'
+#!/usr/bin/env bash
+echo "gh $*" >> "$LE_CALLS"
+[ "${LE_GH_RC:-0}" -eq 0 ] || exit "$LE_GH_RC"
+echo "${LE_GH_STATE:-OPEN}"
+EOF4
+chmod +x "$W/gh"
+export LE_GH="$W/gh" HIMMEL_FLAGS_TSV="$W/flags.tsv" HIMMEL_CONFIG_DIR="$W/no-conf" LE_AUTOGO="$W/autogo" HIMMEL_FLAG_AUTO_GO=1
+printf '# chief\n\n## Results\n' > "$W/doc"
+STALE="ESCALATE auto-go 2 PR 2553 is MERGED, not OPEN"
+LE_AUTOGO_RC=10 LE_AUTOGO_OUT="$STALE" LE_GH_STATE=MERGED run "READY 2553 $H40 GREEN N2088"
+check "17a a stale READY for a MERGED PR: rc" "$rc" 0
+contains "17a a stale READY for a MERGED PR is handled" "$out" "HANDLED stale-ready N2088"
+lacks "17a no ESCALATE" "$out" "ESCALATE"
+contains "17a the PR state is read through gh" "$calls" "gh pr view 2553 --json state"
+check "17a the chief doc names the worker as closed, not escalated" "$(lastb)" "STALE-READY PR 2553 0780b95d MERGED, N2088 closed, not escalated"
+LE_AUTOGO_RC=10 LE_AUTOGO_OUT="ESCALATE auto-go 2 PR 2553 is CLOSED, not OPEN" LE_GH_STATE=CLOSED run "READY 2553 $H40 GREEN N2088"
+contains "17a2 a stale READY for a CLOSED PR is handled" "$out" "HANDLED stale-ready N2088"
+LE_AUTOGO_RC=10 LE_AUTOGO_OUT="$STALE" LE_GH_STATE=OPEN run "READY 2553 $H40 GREEN N2088"
+check "17b the refusal text for a PR that is OPEN still escalates: rc" "$rc" 10
+contains "17b the refusal text for a PR that is OPEN still escalates" "$out" "ESCALATE auto-go 2 PR 2553 is MERGED, not OPEN"
+LE_AUTOGO_RC=10 LE_AUTOGO_OUT="$STALE" LE_GH_RC=1 run "READY 2553 $H40 GREEN N2088"
+check "17b2 a PR state that cannot be read still escalates: rc" "$rc" 10
+lacks "17b2 a PR state that cannot be read is not handled" "$out" "HANDLED"
+LE_AUTOGO_RC=10 LE_AUTOGO_OUT="ESCALATE auto-go 2 PR 2553's head is now abc, not $H40" LE_GH_STATE=MERGED run "READY 2553 $H40 GREEN N2088"
+contains "17c a head mismatch still escalates" "$out" "ESCALATE auto-go 2 PR 2553's head is now abc"
+LE_AUTOGO_RC=10 LE_AUTOGO_OUT="ESCALATE auto-go 2 PR 9999 is MERGED, not OPEN" LE_GH_STATE=MERGED run "READY 2553 $H40 GREEN N2088"
+contains "17c a refusal for another PR still escalates" "$out" "ESCALATE auto-go 2 PR 9999 is MERGED"
+LE_AUTOGO_RC=3 LE_AUTOGO_OUT="auto-go: refusing - chief relay" LE_GH_STATE=MERGED run "READY 2553 $H40 GREEN N2088"
+contains "17d an auto-go failure with no such text still escalates auto-go-error" "$out" "ESCALATE auto-go-error rc=3"
+unset LE_GH HIMMEL_FLAG_AUTO_GO HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR LE_AUTOGO
+: > "$W/doc"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
