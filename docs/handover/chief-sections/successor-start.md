@@ -57,9 +57,16 @@ the relays below follow in the very next turn.
    files of another shape. Every reading is the start of its ledger line, cut at one cap
    shared by all rows; `rulings-in-force.sh find --bucket <bucket> <id or word>` prints
    the whole line. Superseded and done rulings are left out, and the index head counts
-   them (their files stay). A ruling the ledger does not hold keeps its reading line and
+   them (their files stay). `next` lists only the `Standing rules:` lines (topic folds) and
+   the rulings dated within the last 7 days (UTC); every older ruling in force that no
+   standing rule folds is named on one `Older in force:` line, by id and the first word of its
+   line (the head counts them, `, <O> older than 7 days`), and stays in the ledger. Before you
+   act on a topic, run `rulings-in-force.sh find --bucket <bucket> <id or word>` for it:
+   an older ruling still binds. To read an old ruling in the block, fold it:
+   `rulings-in-force.sh record --bucket <bucket> --id <N> --status in-force --topic <word>`
+   on each ruling that says one thing. A ruling the ledger does not hold keeps its reading line and
    its read-in-the-first-turn duty. `rulings-in-force.sh check --bucket <bucket>` on the
-   block proves every ruling in force is named once with its date, path and a reading.
+   block proves every ruling in force is a row, in a standing rule or on the `Older in force:` line, once.
    Before you act on a ruling, read its verbatim file: the index line is not the ruling. The HANDOFF points at it (and gets the `focus-chains.json` dependency-chain order). Keep the block current on
    every ruling and wrap: `next` refuses (exit 7) an absent, empty or placeholder
    block, and (exit 6) while a Results bullet quotes an `OPERATOR ... (verbatim)`
