@@ -289,7 +289,7 @@ if [ -z "${_READY_CHECK_ARMED:-}" ]; then
     rcd_ref=$(mktemp "${TMPDIR:-/tmp}/ready-check-refused.XXXXXX" 2>/dev/null) || rcd_ref=""  # swallow-ok: no scratch file runs this process unwrapped, as before
     if [ -n "$rcd_ref" ]; then
         rcd_buf=""; rcd_err=""; rcd_pid=""
-        rcd_tmp=$(mktemp -d "${TMPDIR:-/tmp}/ready-check-run.XXXXXX" 2>/dev/null) || rcd_tmp=""  # swallow-ok: no run dir leaves the child on the caller's TMPDIR, as before  # prim-ok: ready-check sources no prim.sh; the armed child's own timeout -k 5 can SIGKILL it before its EXIT traps, so this parent removes its TMPDIR
+        rcd_tmp=$(mktemp -d "${TMPDIR:-/tmp}/ready-check-run.XXXXXX" 2>/dev/null) || rcd_tmp=""  # swallow-ok: no run dir leaves the child on the caller's TMPDIR, as before  # prim-ok: ready-check sources no prim.sh
         rcd_tmpdir="${rcd_tmp:-${TMPDIR:-/tmp}}"
         trap 'rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"; [ -z "$rcd_tmp" ] || rm -rf "$rcd_tmp"' EXIT
         trap '_rcd_term' TERM INT HUP

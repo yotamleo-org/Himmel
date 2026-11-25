@@ -125,7 +125,7 @@ else
 S17_TO_PID="$tmp/s17-term-timeout.pid"
 printf '#!/usr/bin/env bash\necho $$ > %q\nexec %q 120 bash %q "$@"\n' "$S17_TO_PID" "$_TIMEOUT_BIN" "$SCRIPT" > "$tmp/s17-term-wrap.sh"
 S17_SLOW="$tmp/slow-rm"; mkdir -p "$S17_SLOW"
-# shellcheck disable=SC2016  # the shim's body expands when the shim runs
+# shellcheck disable=SC2016
 printf '%s\n' '#!/usr/bin/env bash' \
     'case "$*" in *ready-check-19.*) : > "${0%/*}/held"; sleep "$(cat "${0%/*}/hold")" ;; esac' \
     'PATH="${PATH#"${0%/*}:"}"; exec rm "$@"' > "$S17_SLOW/rm"
