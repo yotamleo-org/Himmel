@@ -516,6 +516,11 @@ describe('bitbucket client', () => {
     await expect(listPrStatuses(Number('x'))).rejects.toThrowError(/numeric id/);
   });
 
+  it('listPrComments throws when a page carries no values list instead of reading it as no threads', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes(200, { type: 'error' })));
+    await expect(listPrComments(5)).rejects.toThrowError(BitbucketHttpError);
+  });
+
   it('listPrStatuses throws when a page carries no values list instead of reading it as empty', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonRes(200, { type: 'error' })));
     await expect(listPrStatuses(5)).rejects.toThrowError(BitbucketHttpError);

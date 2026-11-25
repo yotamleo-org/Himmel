@@ -620,7 +620,14 @@ export async function listPrComments(prId: number): Promise<PrCommentsResult> {
   let pages = 0;
   let truncated = false;
   for (;;) {
-    for (const c of page.values ?? []) {
+    if (!Array.isArray(page.values)) {
+      throw new BitbucketHttpError(
+        `bitbucket: pr comments page ${pages + 1} carries no values list`,
+        first.response.status,
+        page,
+      );
+    }
+    for (const c of page.values) {
       if (c.deleted || c.parent || !c.inline) continue;
       out.push(threadFromComment(c));
     }
