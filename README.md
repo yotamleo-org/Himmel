@@ -63,6 +63,9 @@ actions inside the agent's local runtime:
   session; it dispatches isolated *workers* across worktrees, verifies test and
   review evidence on every PR, escalates guardrail or CI changes to an
   independent judge, and interrupts you only when a decision needs your call.
+  Each file keeps one writer at a time; a later PR merges the latest `main` in
+  and its description says which conflicts it resolved
+  ([parallel waves](docs/handover/running-a-chief.md#parallel-waves)).
 
 ### The daily loop
 
