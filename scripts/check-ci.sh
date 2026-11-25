@@ -768,13 +768,6 @@ _alert() { merge_watch_alert "${owner:-?}/${repo:-?}" "${num:-?}" "${head0:-}" "
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 . "$(cd "$(dirname "$0")" && pwd)/lib/required-checks.sh"
 
-# required_set — one required check context per line. The EFFECTIVE set is the
-# union of rulesets (rules/branches/<base>, which covers protect-main's ruleset
-# checks) and classic branch protection. A failed read returns 1: the caller
-# fails CLOSED — an unreadable set must never be mistaken for an empty one. Only
-# a 404 on the classic endpoint ("Branch not protected" / "Required status
-# checks not enabled") means "no classic rule".
-#
 _req_transient() {
     ghb_is_rate_limited "${1:-}" && return 0
     printf '%s' "${1:-}" | grep -i -E 'QUOTA-PAUSE github|HTTP 5[0-9][0-9]|timed? ?out|connection (reset|refused)|no such host|could not resolve|unexpected EOF|TLS handshake|network is unreachable' >/dev/null 2>&1
@@ -786,6 +779,12 @@ _read_paused() {
     return 1
 }
 
+# required_set — one required check context per line. The EFFECTIVE set is the
+# union of rulesets (rules/branches/<base>, which covers protect-main's ruleset
+# checks) and classic branch protection. A failed read returns 1: the caller
+# fails CLOSED — an unreadable set must never be mistaken for an empty one. Only
+# a 404 on the classic endpoint ("Branch not protected" / "Required status
+# checks not enabled") means "no classic rule".
 required_set() {
     local base rules classic
     local base_err
