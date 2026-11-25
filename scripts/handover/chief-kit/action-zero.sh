@@ -26,8 +26,14 @@
 #           it cannot render (no manifest next to the doc, a failure or a timeout) and
 #           when this document's lock is held (by this or another session): the workers: line is not
 #           rewritten. A chief already holding its lock re-renders with live-state.sh.
+#   CARRY   only with --acquire, and only when this doc's fleet manifest names the
+#           predecessor's it was copied from (carried_from, carried_at, written by
+#           chief.sh next): each predecessor row added at or after the copy whose doc
+#           this manifest lacks (a launch that landed after the copy) is added through
+#           fleet-manifest.sh add, lane, lockless and arm kept, one `carried <label> <doc>`
+#           line each. Runs first, so --render-workers and the waiter see those rows.
 #
-# --lock-only runs the LOCK section alone: the successor's one call once
+# --lock-only runs the LOCK section (and CARRY) alone: the successor's one call once
 # `chief.sh next` has pre-computed the other sections into its doc.
 #
 # Everything is read-only except --acquire and --render-workers. What it leaves to the chief, on
@@ -79,6 +85,39 @@ bounded() {
     if [ "$brc" -eq 124 ] || [ "$brc" -eq 137 ]; then echo "TIMEOUT $name after ${secs}s"; fi
     return "$brc"
 }
+
+smanifest="${doc%.md}.fleet.json"
+pmanifest=""
+if [ "$acquire" -eq 1 ] && [ -f "$smanifest" ]; then
+    pmanifest="$(jq -r '.carried_from // empty' "$smanifest" 2>/dev/null)" || pmanifest=""  # swallow-ok: an unreadable manifest names no predecessor, the CARRY section is skipped
+fi
+if [ -n "$pmanifest" ]; then
+    echo "== CARRY (rows the predecessor's manifest gained after the copy)"
+    if carried_at="$(jq -er '.carried_at | strings' "$smanifest")" && late="$(jq -r --slurpfile s "$smanifest" --arg t "$carried_at" '
+            ($s[0].workers // $s[0].legs // [] | map(.doc)) as $have
+            | (.workers // .legs // [])[] | objects
+            | select($t != "" and (.added // "") >= $t and ((.doc // "") as $d | $d != "" and (any($have[]; . == $d) | not)))
+            | [.doc, .label // "-", .lane // "native", (if .lockless == true then "1" else "0" end), .arm // "-"] | @tsv' "$pmanifest" 2>/dev/null)"; then
+        ncarry=0
+        while IFS=$'\t' read -r cdoc clabel clane cll carm; do
+            [ -n "$cdoc" ] || continue
+            cargs=(add "$smanifest" "$cdoc" --lane "$clane")
+            [ "$cll" != 1 ] || cargs+=(--lockless)
+            [ "$carm" = - ] || cargs+=(--arm "$carm")
+            if bash "$HERE/fleet-manifest.sh" "${cargs[@]}" >/dev/null 2>&1; then
+                echo "carried $clabel $cdoc"
+            else
+                echo "NOT carried $clabel $cdoc: add it with fleet-manifest.sh add --lane $clane"
+            fi
+            ncarry=$((ncarry + 1))
+        done <<EOF
+$late
+EOF
+        [ "$ncarry" -gt 0 ] || echo "none"
+    else
+        echo "unavailable (cannot read $pmanifest or the carried_at of $smanifest): diff them by hand"
+    fi
+fi
 
 if [ "$lockonly" -eq 0 ]; then
     echo "== LOCKS (swept at the root)"

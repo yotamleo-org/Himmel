@@ -207,4 +207,19 @@ check "--acquire writes the token into the doc" "1" "$(grep -cx "   $ttok" "$TDO
 check "--acquire leaves no none-yet placeholder" "0" "$(grep -c 'none yet — acquire your own' "$TDOC")"
 check "--acquire says the token was recorded" "1" "$(printf '%s\n' "$tout" | grep -c '^token recorded in the doc$')"
 
+CPRED="$ROOT/DEMO-nextleg-2026-11-25A-chief.md"; CSUCC="$ROOT/DEMO-nextleg-2026-11-25B-chief.md"
+printf '# chief\n\n## Live state\nworkers: none\n' > "$CSUCC"
+for n in 31 32 33; do : > "$ROOT/DEMO-$n-N$n-worker.md"; done
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N31","lane":"native","added":"2026-11-25T04:20:00Z"},{"doc":"%s","label":"N32","lane":"claudex","lockless":true,"added":"2026-11-25T04:27:00Z"},{"doc":"%s","label":"N33","lane":"native","added":"2026-11-25T04:21:00Z"}]}\n' \
+    "$ROOT/DEMO-31-N31-worker.md" "$ROOT/DEMO-32-N32-worker.md" "$ROOT/DEMO-33-N33-worker.md" > "${CPRED%.md}.fleet.json"
+printf '{"schema":1,"carried_from":"%s","carried_at":"2026-11-25T04:26:00Z","workers":[{"doc":"%s","label":"N31","lane":"native","added":"2026-11-25T04:20:00Z"}]}\n' \
+    "${CPRED%.md}.fleet.json" "$ROOT/DEMO-31-N31-worker.md" > "${CSUCC%.md}.fleet.json"
+cout="$(bash "$AZ" --doc "$CSUCC" --root "$ROOT" --acquire --lock-only 2>&1)"
+check "a row the predecessor's manifest gained after the copy joins the successor's" "1" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
+check "the carried row keeps its lane and lockless flag" "claudex true" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '.workers[] | select(.doc == $d) | "\(.lane) \(.lockless)"' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
+check "each carried row is printed" "1" "$(printf '%s\n' "$cout" | grep -c "^carried N32 $ROOT/DEMO-32-N32-worker.md")"
+check "a row older than the copy is not carried again" "0" "$(jq -r --arg d "$ROOT/DEMO-33-N33-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
+cout2="$(bash "$AZ" --doc "$CSUCC" --root "$ROOT" --acquire --lock-only 2>&1)"
+check "a second run carries nothing" "none" "$(printf '%s\n' "$cout2" | sed -n '/^== CARRY/{n;p;}')"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

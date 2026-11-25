@@ -2603,7 +2603,7 @@ check "77 no predecessor manifest: step 10 names the successor's own manifest pa
     "$(manifest_lines77 "$man77C" "$doc77C")" "1/1/2"
 printf '{"schema":1,"workers":["/x/worker.md"]}\n' > "$man77A"
 chief next --bucket fleet77dst --doc "$doc77A" >/dev/null 2>&1
-check "77 manifest is copied to the successor's stem" "$(cat "$man77B" 2>/dev/null)" '{"schema":1,"workers":["/x/worker.md"]}'
+check "77 manifest is copied to the successor's stem" "$(jq -c 'del(.carried_from, .carried_at)' "$man77B" 2>/dev/null)" '{"schema":1,"workers":["/x/worker.md"]}'
 check "77 the predecessor's manifest is left in place (copy, not rename)" "$([ -f "$man77A" ] && echo yes)" "yes"
 check "77 successor step 10 names the carried manifest path (arm command and Your manifest line)" "$(manifest_lines77 "$man77B" "$doc77B")" "1/1/2"
 check "77 no unrendered {{FLEET_MANIFEST}} left in the successor doc" "$(grep -Fc '{{FLEET_MANIFEST' "$doc77B" 2>/dev/null)" "0"
@@ -4117,7 +4117,7 @@ rc10906=0
 chief next --bucket ren10906 --name v113-chief --doc "$pred10906" >"$tmp/ren10906.out" 2>&1 || rc10906=$?
 check "10906 next --name <new>-chief with an old-name --doc exits 0" "$rc10906" "0"
 check "10906 the successor doc takes the new name" "$([ -f "$succ10906" ] && echo yes || echo no)" "yes"
-check "10906 the manifest is carried from the predecessor's real path" "$(cat "${succ10906%.md}.fleet.json" 2>/dev/null)" '{"schema":1,"workers":["/x/worker10906.md"]}'
+check "10906 the manifest is carried from the predecessor's real path" "$(jq -c 'del(.carried_from, .carried_at)' "${succ10906%.md}.fleet.json" 2>/dev/null)" '{"schema":1,"workers":["/x/worker10906.md"]}'
 check "10906 the HANDOFF is written beside the predecessor's real stem" "$([ -f "$root/tester/ren10906/DEMO-nextleg-${today}A-recovery-chief-HANDOFF.md" ] && echo yes || echo no)" "yes"
 check "10906 the successor doc names the predecessor's real doc" "$(grep -cF 'DEMO-nextleg-'"${today}"'A-recovery-chief.md' "$succ10906" 2>/dev/null | awk '{print ($1>0)?"yes":"no"}')" "yes"
 HANDOVER_DIR="$root" bash "$QL" release "$pred10906" "$tok10906" >/dev/null 2>&1
@@ -4266,4 +4266,39 @@ mustm210877="$(awk '$0 == "## Must disposition" { f = 1; next } f && /^## / { ex
 check "10877 a mirror whose sync stamp is old reads as unavailable although a ticket file is fresh" "$(printf '%s\n' "$mustm210877" | grep -c 'operator-directed tickets unavailable')" "1"
 check "10877 a stale mirror lists no operator-directed ticket" "$(printf '%s\n' "$mustm210877" | grep -c 'operator-directed DEMO-31')" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$Am210877" "$tokm10877" >/dev/null 2>&1
+
+tokl10877="$(token_of "$(chief new --bucket l10877)")"
+Al10877="$root/tester/l10877/DEMO-nextleg-${today}A-chief.md"
+wl10877="$root/tester/l10877/DEMO-21-N21-worker.md"
+printf '%s\n' '# worker' '## Results' > "$wl10877"
+printf '{"schema":1,"workers":[]}\n' > "${Al10877%.md}.fleet.json"
+# shellcheck disable=SC2016  # the $n are the stand-in launcher's own positional args
+bash -c 'sleep 3; bash "$3" add "$2" "$4" --lane native >/dev/null 2>&1; :' headed-arm-worker.sh --fleet "${Al10877%.md}.fleet.json" "$REPO_REAL/scripts/handover/chief-kit/fleet-manifest.sh" "$wl10877" &
+pidl10877=$!
+rcl10877=0
+CHIEF_NEXT_LAUNCH_WAIT=30 chief next --bucket l10877dst --doc "$Al10877" >"$tmp/l10877.out" 2>"$tmp/l10877.err" || rcl10877=$?
+wait "$pidl10877" 2>/dev/null
+Bl10877="$root/tester/l10877dst/DEMO-nextleg-${today}B-chief.md"
+check "10877 next waits for a launch writing to the predecessor's manifest, then exits 0" "$rcl10877" "0"
+check "10877 a row a launch adds while next runs is in the successor's manifest" "$(jq -r --arg d "$wl10877" '[.workers[] | select(.doc == $d)] | length' "${Bl10877%.md}.fleet.json" 2>/dev/null)" "1"
+check "10877 the successor's manifest names the predecessor's it was copied from" "$(jq -r '.carried_from // ""' "${Bl10877%.md}.fleet.json" 2>/dev/null)" "${Al10877%.md}.fleet.json"
+HANDOVER_DIR="$root" bash "$QL" release "$Al10877" "$tokl10877" >/dev/null 2>&1
+
+tokr10877="$(token_of "$(chief new --bucket r10877)")"
+Ar10877="$root/tester/r10877/DEMO-nextleg-${today}A-chief.md"
+printf '{"schema":1,"workers":[]}\n' > "${Ar10877%.md}.fleet.json"
+bash -c 'sleep 60; :' headed-arm-worker.sh --fleet "${Ar10877%.md}.fleet.json" &
+pidr10877=$!
+rcr10877=0
+CHIEF_NEXT_LAUNCH_WAIT=1 chief next --bucket r10877dst --doc "$Ar10877" >/dev/null 2>"$tmp/r10877.err" || rcr10877=$?
+kill "$pidr10877" 2>/dev/null; wait "$pidr10877" 2>/dev/null
+check "10877 a launch still in flight past the wait refuses next with exit 10" "$rcr10877" "10"
+check "10877 the refusal names the launcher's pid" "$(grep -c "launcher pid $pidr10877" "$tmp/r10877.err")" "1"
+check "10877 a refused next leaves no successor doc" "$([ -e "$root/tester/r10877dst/DEMO-nextleg-${today}B-chief.md" ] && echo yes || echo no)" "no"
+printf '{"schema":1,"workers":[{"label":"N22","doc":"%s/tester/r10877/DEMO-22-N22-worker.md","attempt":{"attempt_id":"a22","phase":"pending"}}]}\n' "$root" > "${Ar10877%.md}.fleet.json"
+rcp10877=0
+CHIEF_NEXT_LAUNCH_WAIT=1 chief next --bucket r10877dst --doc "$Ar10877" >/dev/null 2>"$tmp/p10877.err" || rcp10877=$?
+check "10877 a manifest row with a pending launch attempt refuses next with exit 10" "$rcp10877" "10"
+check "10877 the refusal names the pending row" "$(grep -c 'attempt pending: N22' "$tmp/p10877.err")" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$Ar10877" "$tokr10877" >/dev/null 2>&1
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
