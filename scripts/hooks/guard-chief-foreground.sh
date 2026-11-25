@@ -3,31 +3,20 @@
 # a CHIEF session must run a long chief-kit script with the Bash tool's
 # run_in_background: true, never in the foreground. A foreground run blocks the
 # chief turn for minutes and every worker's SendMessage (READY, MERGED, BLOCKED,
-# quote-backs) queues behind it. A run detached with `&` or a launcher loses its
-# output and its wake. Prose ("run it in the background") drifted twice, so per
-# root CLAUDE.md's "Adding a rule" it is a hook.
+# quote-backs) queues behind it. Prose ("run it in the background") drifted
+# twice, so per root CLAUDE.md's "Adding a rule" it is a hook.
 #
 # TRIP CONDITION: HIMMEL_CONSOLE_DOC is set (a cheap first gate, before stdin is
 # read) AND the session's own `-n` name ends in `-chief` or `-console` (a worker launched from
 # a chief inherits the env var, so the name is the real identity) AND the Bash command runs a script named in
-# scripts/handover/chief-kit/long-running.txt. A command that names no listed
-# script exits at once. Otherwise the command is read through the shared command
-# model (scripts/lib/bash-ast.sh), which says where each simple command runs. A
-# quote-aware regex reader, reaching through every runner the model lists, also
-# reads it for a position the model cannot see into and whenever the model cannot
-# answer. "Runs" means a listed program, a shell or node/bun/python given the
-# script as its first non-option word, or a runner (timeout, nice, setsid, ...)
-# given it as an argument; a grep or cat that merely names the script is not a run.
-#   DETACHED    a run followed by `&`, run under `coproc`, `nohup`, `setsid` or
-#               `systemd-run`: denied whatever run_in_background says.
-#   FOREGROUND  any other run, unless tool_input.run_in_background is true.
+# scripts/handover/chief-kit/long-running.txt (a grep or cat that merely names
+# it is not a run) AND the run is detached or tool_input.run_in_background is
+# not true.
 #
 # DENY: structured permissionDecision "deny" on stdout plus exit 2 + stderr (the
 # guard-chief-dispatch.sh idiom); the message gives the exact re-issue shape.
 # A WORKFLOW nudge, not a security fence: fails OPEN on missing jq, an
-# unparseable payload or an unreadable list (scripts/hooks/CLAUDE.md), and a
-# model failure (no shfmt, a parse failure, a timeout) falls back to the regex
-# reader instead of denying.
+# unparseable payload or an unreadable list (scripts/hooks/CLAUDE.md).
 #
 # Single-run bypass (set in the shell that LAUNCHED Claude Code; a per-call
 # prefix does not reach this hook): CHIEF_FG_OK=1. A set falsy value keeps the
