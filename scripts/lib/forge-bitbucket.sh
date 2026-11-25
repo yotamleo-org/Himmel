@@ -250,6 +250,8 @@ bb_forge_cr_gate() {
     _bb_reviewer_gate "$id" "${2:-}"
 }
 
+_BB_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 _bb_reviewer_gate() {
     local id="$1" abbrev="${2:-}" view full nwo out rc=0
     if [ -z "$abbrev" ]; then
@@ -267,7 +269,7 @@ _bb_reviewer_gate() {
         echo "BLOCK: PR #$id's repository cannot be read, so the hard reviewer cannot be checked; failing closed. Bypass: CR_MERGE_GATE_OK=1."
         return 2
     fi
-    if ! { [ -r "$_FORGE_LIB_DIR/review-merge-gate.sh" ] && . "$_FORGE_LIB_DIR/review-merge-gate.sh"; } 2>/dev/null; then
+    if ! { [ -r "$_BB_LIB_DIR/review-merge-gate.sh" ] && . "$_BB_LIB_DIR/review-merge-gate.sh"; } 2>/dev/null; then
         echo "BLOCK: the reviewer predicate (scripts/lib/review-merge-gate.sh) cannot be loaded; failing closed. Bypass: CR_MERGE_GATE_OK=1."
         return 2
     fi
