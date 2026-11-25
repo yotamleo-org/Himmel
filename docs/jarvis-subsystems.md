@@ -82,9 +82,9 @@ steer the fleet by messaging the chief.
   [handover/afk-mode.md](handover/afk-mode.md).
 - **Initiative.** With `HIMMEL_INITIATIVE` set, a session runs the ship steps
   you listed at a completion point without being asked. Setting it to `all`
-  means review, PR, ticket and handover; for unattended runs,
-  `HIMMEL_INITIATIVE_AFK=all` adds execute and merge (a merge still needs the
-  unattended-merge opt-in, `ARMAUTOMERGE=1`). The steps and their rails: `scripts/hooks/initiative-runbook.md`.
+  means review, PR, ticket and handover; for unattended runs, `HIMMEL_AFK=1`
+  switches to the AFK set, where `HIMMEL_INITIATIVE_AFK=all` adds execute and
+  merge (a merge still needs the unattended-merge opt-in, `ARMAUTOMERGE=1`). The steps and their rails: `scripts/hooks/initiative-runbook.md`.
 - **Lessons.** Review findings become proposed lessons. A lesson is only
   proposed, and it is adopted only after its audit passes:
   [internals/lesson-audit.md](internals/lesson-audit.md).

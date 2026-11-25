@@ -130,8 +130,8 @@ names who does what and why each hand-off exists.
    verdict from a clean session.
 8. **GO and merge.** The chief writes a GO file (merge approval):
    signed, on disk, bound to
-   one PR head. The merge script checks that file, CI and review state itself and
-   refuses a worker without them. Unattended merging also needs your opt-in
+   one PR head. The merge script checks CI and review state itself on every
+   merge, and refuses a worker without that file. Unattended merging also needs your opt-in
    (`ARMAUTOMERGE=1`) and a repo that is private, or the one configured public
    repo with required checks. A push after the GO needs a new one.
 9. **Wrap.** The worker records the merge, releases its queue lock, reports it is
