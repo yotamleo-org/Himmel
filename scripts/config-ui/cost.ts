@@ -217,7 +217,7 @@ function t3Line(id: string, name: string, ts: Priced[], total: number | null, ex
 }
 const byBiggest = (a: T3Line, b: T3Line) => (b.usd ?? -1) - (a.usd ?? -1) || T3_RANK[a.mark] - T3_RANK[b.mark] || a.name.localeCompare(b.name);
 
-export function buildT3Section(turns: T3Turn[] | null, day?: string): T3Section {
+export function buildT3Section(turns: T3Turn[] | null, day?: string, phaseCounts = true): T3Section {
   if (!turns) return { state: "nostore", day: day ?? null, days: [], ...T3_EMPTY };
   const days = [...new Set(turns.map((t) => t.day))].sort().reverse();
   const picked = day ?? days[0];
@@ -225,7 +225,7 @@ export function buildT3Section(turns: T3Turn[] | null, day?: string): T3Section 
   let prices: ReturnType<typeof loadPrices> = [];
   try { prices = loadPrices(); } catch { prices = []; }
   const mine: Priced[] = turns.filter((t) => t.day === picked).map((t) => {
-    const inphase = t.driver === "claudeAgent";
+    const inphase = phaseCounts && t.driver === "claudeAgent";
     const row = t.avail && !inphase ? priceFor(t.model ?? "", prices) : null;
     const usd = row ? (t.in * row.input + t.out * row.output + t.cache_read * row.cacheRead + t.cache_write * (t.ttl1h ? row.cacheWrite1h : row.cacheWrite5m)) / 1e6 : null;
     return { ...t, usd, unpriced: t.avail && !inphase && !row, inphase };
@@ -252,5 +252,5 @@ export function readCost(env: Env, day?: string): CostModel {
   const base: CostModel = existsSync(storeFile(env))
     ? buildCostModel(readPhaseCostRows(env), day)
     : { state: "nostore", day: day ?? null, days: [], ...EMPTY };
-  return { ...base, t3: buildT3Section(readT3Turns(env), base.day ?? day) };
+  return { ...base, t3: buildT3Section(readT3Turns(env), base.day ?? day, base.state === "ok") };
 }

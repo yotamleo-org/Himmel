@@ -259,7 +259,11 @@ function makeT3Home(turns: T3Turn[], titles: Record<string, string>): { home: st
     db.run("INSERT INTO orchestration_v2_projection_provider_turns VALUES (?,?,?,?,?,?,?,?,?,?)", [`turn-${i}`, t.thread, pt, "n", null, i, "completed", t.at, t.at, JSON.stringify(payload)]);
   });
   db.close();
-  return { home: join(dir, "t3"), env: { HIMMEL_USAGE_STORE: join(dir, "absent"), T3CODE_HOME: join(dir, "t3"), HOME: join(dir, "nohome"), PATH: process.env.PATH } };
+  const usage = join(dir, "usage");
+  mkdirSync(usage);
+  const phased = [T3_DAY, "2026-11-23"].map((day) => JSON.stringify(row({ session: "p1", phase: "build", usd: 1, day, mark: "counted" }))).join("\n");
+  writeFileSync(join(usage, "records.jsonl"), phased + "\n");
+  return { home: join(dir, "t3"), env: { HIMMEL_USAGE_STORE: usage, T3CODE_HOME: join(dir, "t3"), HOME: join(dir, "nohome"), PATH: process.env.PATH } };
 }
 const use = (inputTokens: number, cachedInputTokens: number, cacheCreationTokens: number, outputTokens: number) =>
   ({ usageScope: "main_agent", usageStatus: "complete", inputTokens, cachedInputTokens, cacheCreationTokens, outputTokens, reasoningTokens: 0, hasSubagents: false });
@@ -345,10 +349,9 @@ test("cost: a provider that reports no usage shows no token numbers, not measure
 
 test("cost: a Claude session in both the phase table and T3's store has its dollars in the phase table only, and T3 shows its tokens", () => {
   const { env } = makeT3Home(T3_TURNS, T3_TITLES);
-  const store = join(env.T3CODE_HOME!, "..", "usage");
-  mkdirSync(store);
+  const store = env.HIMMEL_USAGE_STORE!;
   writeFileSync(join(store, "records.jsonl"), JSON.stringify(row({ session: "1eecca75", phase: "build", usd: 5.5, day: T3_DAY, mark: "counted" })) + "\n");
-  const m = readCost({ ...env, HIMMEL_USAGE_STORE: store }, T3_DAY);
+  const m = readCost(env, T3_DAY);
   const claude = m.t3!.providers.find((p) => p.id === "claudeAgent")!;
   expect(m.usd).toBe(5.5);
   expect(claude).toMatchObject({ usd: null, mark: "inphase", in: 150_000, out: 15_000 });
@@ -357,4 +360,12 @@ test("cost: a Claude session in both the phase table and T3's store has its doll
   const html = renderCost(m, { open: [] });
   expect(html.match(/<tr><td>Claude<\/td>.*?<\/tr>/)![0]).toContain("in the phase table");
   expect(html).toContain("$5.5");
+});
+
+test("cost: with no phase table behind it, T3's Claude turns are priced on the T3 card, never dropped from both", () => {
+  const { env } = makeT3Home(T3_TURNS, T3_TITLES);
+  const m = readCost({ ...env, HIMMEL_USAGE_STORE: join(env.T3CODE_HOME!, "absent") });
+  expect(m.state).toBe("nostore");
+  expect(m.t3!.providers.find((p) => p.id === "claudeAgent")).toMatchObject({ usd: 2.13, mark: "counted" });
+  expect(m.t3!.usd).toBe(2.57);
 });
