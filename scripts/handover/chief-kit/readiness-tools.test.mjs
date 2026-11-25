@@ -178,6 +178,7 @@ describe('C0 credentials and port', () => {
     PATH: process.env.PATH, HOME: root, TMPDIR: root, NODE_ENV: 'test', HIMMEL_CONFIG_DIR: '/not-a-real-config',
     // Ambient decoys: the port must take its destination and credentials from the private file only.
     JIRA_BASE_URL: 'http://127.0.0.1:9', JIRA_API_TOKEN: 'ambient-decoy-token', JIRA_EMAIL: 'decoy@example.invalid', JIRA_PROJECT_KEY: 'DECOY',
+    JIRA_ALLOW_HOST: new URL(fx.baseUrl).host,
   });
   async function mkPort(extra = {}) {
     const { createJiraPort } = await load();
@@ -330,9 +331,10 @@ describe('C0 credentials and port', () => {
     test('the child environment is the credentials plus a finite allowlist; ambient JIRA_* and secrets never pass', async () => {
       const { buildChildEnv } = await load();
       const env = buildChildEnv(goodCreds('http://127.0.0.1:5'), {
-        PATH: '/usr/bin', HOME: '/h', NODE_ENV: 'test', HIMMEL_CONFIG_DIR: '/decoy', JIRA_BASE_URL: 'http://evil', JIRA_API_TOKEN: 'decoy', ANTHROPIC_API_KEY: 'x', GITHUB_TOKEN: 'y', CLAUDE_CODE_OAUTH_TOKEN: 'z', AWS_SECRET_ACCESS_KEY: 'w',
+        PATH: '/usr/bin', HOME: '/h', NODE_ENV: 'test', HIMMEL_CONFIG_DIR: '/decoy', JIRA_BASE_URL: 'http://evil', JIRA_API_TOKEN: 'decoy', JIRA_ALLOW_HOST: '127.0.0.1:5', ANTHROPIC_API_KEY: 'x', GITHUB_TOKEN: 'y', CLAUDE_CODE_OAUTH_TOKEN: 'z', AWS_SECRET_ACCESS_KEY: 'w',
       });
       assert.equal(env.JIRA_BASE_URL, 'http://127.0.0.1:5');
+      assert.equal(env.JIRA_ALLOW_HOST, '127.0.0.1:5', 'the operator opt-in names the one host the child may reach');
       assert.equal(env.JIRA_API_TOKEN, TOKEN);
       assert.equal(env.JIRA_EMAIL, EMAIL);
       assert.equal(env.JIRA_PROJECT_KEY, PROJECT);

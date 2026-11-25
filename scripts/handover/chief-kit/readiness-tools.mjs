@@ -201,7 +201,7 @@ export const jiraArgv = Object.freeze({
   label: (key, present) => ['edit', assertKey(key), present ? '--add-labels' : '--remove-labels', READINESS_LABEL],
 });
 
-const ENV_ALLOW = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'TZ', 'JIRA_REQUEST_TIMEOUT_MS'];
+const ENV_ALLOW = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'TZ', 'JIRA_REQUEST_TIMEOUT_MS', 'JIRA_ALLOW_HOST'];
 
 // The child's whole environment: a finite allowlist from the host, then the private credentials. Ambient
 // JIRA_* (and every other secret in the host environment) never passes.
