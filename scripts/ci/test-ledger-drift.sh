@@ -24,7 +24,6 @@
 #   LD8b --no-row with an unreadable tier file -> exit 2, no count
 #   LD9  the cadence run prints the list and keeps its verdict
 #   LD10 the REFRESH recipe in the ledger's header harvests a suite with no row
-#   LD11 the committed ledger balances real logs the previous ledger flagged
 #
 # Platform guard: bash-only; Linux CI is the caller.
 #
