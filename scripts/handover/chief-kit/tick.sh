@@ -448,8 +448,7 @@ crfirst=#<pr>:<reason>:<age>[,...] is the non-fork PR heads whose heavy-CI `ci:g
 label the reviewer gate has not released, with the hold reason, plus `#<pr>:manual-release` for
 a head labelled by hand. The tick calls scripts/lib/cr-first-release.sh once per unreleased head
 from the same `gh pr list` read as prs= (no second list); a head that passes is released right
-there. The release is retired (ci.yml starts every job with the push), so keep CI_GO_GATE
-off: absent when the CI_GO_GATE repository variable is off or unset, or nothing is held; crfirst=?
+there. CI_GO_GATE should stay off (ci.yml starts every job with the push): absent when the CI_GO_GATE repository variable is off or unset, or nothing is held; crfirst=?
 when the sweep outran its bound (the rest of TICK_DEADLINE_SEC, never under TICK_CRFIRST_FLOOR_SEC,
 default 20 s). A hard reviewer outage also prints one `ACTION cr-first ...` line per outage. Himmel's own repo
 only. chief-wait.sh does not wake on it.

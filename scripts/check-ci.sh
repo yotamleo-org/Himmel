@@ -839,11 +839,9 @@ _job_log_hint() {
         || echo "check-ci: the CI failure ledger write failed (advisory; the verdict stands)" >&2
 }
 
-# _cr_first_event — one CI-release event. Retired: ci.yml starts every job
-# at once and ignores CI_GO_GATE, so with the variable off or unset this is silent and with it
-# left on the lib is quiet as soon as a heavy job runs at the head (a moment after the push).
-# It used to run scripts/lib/cr-first-release.sh, which added the `ci:go` label the heavy
-# jobs waited for once the reviewer gate passed at the head; this runs that lib's CLI at the head and
+# _cr_first_event — one CI-release event. ci.yml ignores CI_GO_GATE (keep it off), so with
+# the variable off or unset this is silent, and with it on the lib is quiet once a heavy job
+# runs at the head. It runs scripts/lib/cr-first-release.sh's CLI at the head and
 # prints its CR-FIRST lines on stderr. Switch off or unset, a fork, a head already released,
 # a missing lib or a failed read: silent, rc 0. rc 1 = the head is HELD (CR-FIRST HOLD
 # printed); rc 2 = it was released just now. Best effort: it never fails check-ci.
@@ -923,10 +921,9 @@ required_gate() {
         missing=$(_join_by_status missing "$st")
         pending=$(_join_by_status pending "$st")
         if [ -z "$missing" ] && [ -z "$pending" ]; then return 0; fi
-        # Retired release: every heavy job now starts with the push, so no
-        # head waits for a release. With the CI_GO_GATE switch off or unset this block is
-        # silent; left on, the lib goes quiet once a heavy job runs at the head, which ends
-        # any hold within one poll. The release lib is read at most every CR_FIRST_EVERY seconds.
+        # CI_GO_GATE off or unset: silent. Left on, the lib is quiet once a heavy job runs
+        # at the head, which ends any hold within one poll; it is read at most every
+        # CR_FIRST_EVERY seconds.
         if [ "$wait_ok" -eq 1 ]; then
             if [ $((SECONDS - cf_at)) -ge "${CR_FIRST_EVERY:-60}" ]; then
                 cf_at=$SECONDS; cf_held=0; cf_rc=0

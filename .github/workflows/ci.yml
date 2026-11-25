@@ -11,24 +11,10 @@ on:
   # `shell-unit` itself is the aggregating gate over the sharded shell-suite
   # matrix — see its own comment block below.
   #
-  # Every job starts at once. A pull request's opened, synchronize or reopened event
-  # starts every job (the cheap ones: plan, ci-quick and its sentinels, lint,
-  # plugin-version-bump; the heavy ones: leak-classes, git-env-scrub,
-  # lanes-and-trust-suites, bun-suites, node-suites, security-scan, shell-unit and
-  # its shards) in one run, so a head goes green or red as fast as its slowest job.
-  # The ci:go label gate that held the heavy jobs back until the reviewers passed
-  # is gone: a label event starts no run, and vars.CI_GO_GATE is not
-  # read here. The reviewer gate still blocks the merge (cr_merge_gate), it no
-  # longer delays the start of CI. Trade-off: heavy runner minutes are spent before
-  # review, and a head the reviewers then reject has already paid for them.
-  # schedule and workflow_dispatch run every job as before.
-  #
-  # One failure fails the run. Every job except the shell-unit aggregator has a
-  # fail-fast-<job> twin that needs only it and, when it failed on a pull_request,
-  # cancels the whole run; the shell-unit shard matrix also stops its own siblings on a
-  # PR. A cancelled run still reads red: the failed job keeps its `failure`
-  # conclusion and the required `shell-unit` check never reports success.
-  # test-ci-go-gate.sh G16 holds the twins.
+  # Every job starts at once: a pull request's opened, synchronize or reopened event
+  # starts the cheap and the heavy jobs in one run, and a label event starts none.
+  # The reviewer gate blocks the merge (cr_merge_gate); it does not delay CI, so heavy
+  # runner minutes are spent before review.
   #
   # Rename rule: a skipped job reports `skipped` under its real name, which SATISFIES
   # a required check and, because a check name's latest run wins, replaces an earlier
@@ -2046,10 +2032,6 @@ jobs:
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.shards != '[]' }}
     strategy:
-      # A PR stops at its first red shard (one failure fails the run); the
-      # fail-fast-shell-unit-shard twin then cancels the rest of the run once the
-      # matrix has ended. The cron and dispatch runs keep every shard to the end,
-      # so one of them reports every red shard.
       fail-fast: ${{ github.event_name == 'pull_request' }}
       matrix:
         os: [ubuntu-latest]

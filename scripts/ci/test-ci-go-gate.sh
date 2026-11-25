@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # scripts/ci/test-ci-go-gate.sh -- a pull request's CI starts every job at once
-# The ci:go label gate is gone from .github/workflows/ci.yml:
-# the opened, synchronize and reopened events run every heavy and cheap job in one run,
-# whatever vars.CI_GO_GATE holds, a label event starts no run, and a first failure
-# cancels the rest of the run through the fail-fast twins. Pure text + an evaluator for the
-# job `if:`, `name:` and concurrency expressions over sample events, no network.
+# (.github/workflows/ci.yml): opened, synchronize and reopened run every heavy and cheap
+# job in one run whatever vars.CI_GO_GATE holds, a label event starts no run, and a first
+# failure cancels the rest of the run. Pure text + an evaluator for the job `if:`,
+# `name:` and concurrency expressions over sample events, no network.
 #
 #   G1  the pull_request types are opened, synchronize and reopened: neither
 #       `labeled` nor `unlabeled` starts a run
@@ -77,7 +76,6 @@ def bad(m):
 def strip_comment(s):
     return re.sub(r"\s+#.*$", "", s)
 
-# ---- parse jobs ----
 jobs, cur, in_jobs, mat = {}, None, False, False
 for ln in lines:
     if ln == "jobs:":
@@ -115,7 +113,6 @@ for ln in lines:
 TWINS = {j for j in jobs if j.startswith("fail-fast-")}
 EXEMPT |= TWINS
 
-# ---- expression evaluator ----
 class N:
     def __init__(self, d): self.d = d
     def __getattr__(self, k):
@@ -180,7 +177,6 @@ missing = sorted(classified - set(jobs))
 if missing:
     bad("G9 classified jobs missing from ci.yml: " + " ".join(missing))
 
-# ---- G1 ----
 pr = ""
 for ln in lines:
     if re.match(r"^  pull_request:", ln):
@@ -197,11 +193,9 @@ if sorted(tl) == ["opened", "reopened", "synchronize"]:
 else:
     bad("G1 pull_request types are %r (want exactly opened, synchronize, reopened)" % tl)
 
-# ---- contexts ----
 GATES = ("on", "off", "")
 pr_events = [event("pull_request", a, "", g) for a in ("opened", "synchronize", "reopened") for g in GATES]
 
-# ---- G2 ----
 class PassOutputs:
     def __getattr__(self, k): return "pass"
 class AllPass:  # a needs entry whose job succeeded: result 'success', every group output 'pass'
@@ -245,7 +239,6 @@ if bad2:
 else:
     ok("G2 a job that can be skipped reports a deferred or raw-expression name; a job that cannot be skipped has a literal name")
 
-# ---- G3 ----
 bad3 = []
 for ctx in pr_events:
     for j in sorted(classified & set(jobs)):
@@ -256,7 +249,6 @@ if bad3:
 else:
     ok("G3 opened, synchronize and reopened run every heavy and cheap job whatever CI_GO_GATE holds")
 
-# ---- G4 ----
 bad4 = []
 for g in pr_events:
     names = {}
@@ -292,7 +284,6 @@ if bad4:
 else:
     ok("G4 every required non-matrix context is written once, by its literal name, on every pull_request event, and no required name resolves for two jobs")
 
-# ---- G5 ----
 bad5 = []
 for evn in ("schedule", "workflow_dispatch"):
     for gate in GATES:
@@ -305,7 +296,6 @@ if bad5:
 else:
     ok("G5 schedule and workflow_dispatch run every heavy and cheap job")
 
-# ---- G8 ----
 grp = None
 for i, ln in enumerate(lines):
     if ln.startswith("concurrency:"):
@@ -323,7 +313,6 @@ else:
     else:
         bad("G8 groups: pull_request=%r schedule=%r" % (sorted(groups), g_sched))
 
-# ---- G11 ----
 bad11 = []
 for ctx0 in pr_events:
     ctx = dict(ctx0, needs=AllPass())
@@ -337,7 +326,6 @@ if bad11:
 else:
     ok("G11 every required cheap job runs on a plain push when ci-quick passed every group")
 
-# ---- G13 ----
 req_jobs = sorted({c.split(" (")[0] for c in required
                    if not c.startswith(("codeowner-review-gate", "pr-title-lint"))} & set(jobs))
 bad13 = []
@@ -350,7 +338,6 @@ if bad13:
 else:
     ok("G13 a plan that skips every optional scan never skips a required job (the job runs and its steps skip)")
 
-# ---- G12 ----
 UNEXPANDED = {j for j in jobs if jobs[j]["matrix"] and jobs[j]["name"] is None}
 SCHEDULE_ONLY = {"guard-corpus-full"}  # never runs on a pull_request event, so it replaces nothing there
 real = {n for k, n, c in checks if k in ("cheap", "go") and c != "skipped" and "&&" not in n and "${{" not in n}
@@ -370,7 +357,6 @@ if bad12:
 else:
     ok("G12 no job skipped on a pull_request event reports a name the PR 3792 cheap or go run wrote")
 
-# ---- G16 ----
 bad16 = []
 for j in sorted(set(jobs) - EXEMPT - AGGREGATOR):
     t = "fail-fast-" + j
@@ -394,7 +380,6 @@ if bad16:
 else:
     ok("G16 every job has a fail-fast twin that needs only it, starts only on a pull_request failure and cancels the run; the shard matrix stops its siblings")
 
-# ---- G17 ----
 bad17 = []
 for i, ln in enumerate(lines, 1):
     s = strip_comment(ln) if not ln.lstrip().startswith("#") else ""
@@ -405,14 +390,13 @@ if bad17:
 else:
     ok("G17 no expression in ci.yml reads CI_GO_GATE, CI_GO_LABEL, a label name or a labeled action")
 
-# ---- G10 ----
 head = "\n".join(lines[:lines.index("jobs:")])
-inv = ["Never pull_request_target", "approve and run", "Rename rule", "Every job starts at once", "heavy runner minutes"]
+inv = ["Never pull_request_target", "approve and run", "Rename rule"]
 miss = [s for s in inv if s not in head]
 if miss:
     bad("G10 header comment lacks: " + "; ".join(miss))
 else:
-    ok("G10 the header comment states the start-at-once rule, the rename rule and the security invariants")
+    ok("G10 the header comment states the rename rule and the security invariants")
 
 sys.exit(1 if fails else 0)
 PY

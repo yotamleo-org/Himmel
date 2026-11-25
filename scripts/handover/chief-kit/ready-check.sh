@@ -42,10 +42,10 @@
 #      CheckRun name + workflowName when present, else StatusContext
 #      context. Read via --json, never `gh pr checks` text (a green check
 #      whose name contains a space mislabels under naive text parsing).
-#      The ci:go release is retired: every heavy job starts with
-#      the push. With the CI_GO_GATE repository variable on (it should be off), a
-#      FAIL here still prints the `CR-FIRST HOLD <reason> <age>` lines of
-#      scripts/lib/cr-first-release.sh while no heavy job runs at the head
+#      Every heavy job starts with the push (keep CI_GO_GATE off). With the
+#      CI_GO_GATE repository variable on, a FAIL here also prints the
+#      `CR-FIRST HOLD <reason> <age>` lines of scripts/lib/cr-first-release.sh
+#      while no heavy job runs at the head
 #      (read-only: no label written); variable off or unset: nothing is added.
 #   3. GraphQL unresolved review threads == 0. The snapshot follows every
 #      page with cursor/hasNextPage guards and the same 50-page ceiling as
