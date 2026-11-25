@@ -239,6 +239,16 @@ Shell-unit CI runs on every pull request and is a required check (it starts with
 `ready-check.sh` item 19 reads its shard manifests as suite proof (see
 item 19 below).
 
+**A time-cap overrun alerts; an assertion failure fails.** A suite whose first
+run and retry each end on its time cap or on a timed-out row (rc 124), with no
+FAIL row of its own in either run, is a `CAP-ALERT`: `run-shell-tests.sh` prints
+the line, counts the suite `ran 0` in the shard manifest and does not fail the
+run. CI uploads the lines as a `cap-alerts-*` artifact and writes a job-summary
+line for each shard that raised one. A suite that prints a FAIL row of its own
+still exits 1, cap hit or not. For a suite on a trust path
+(`scripts/ci/ci-trust-paths.txt`), a timed-out row (`got 124`) counts as a FAIL
+row of its own, so the run exits 1.
+
 ## 8. Data-egress-safe gate lane
 
 Sensitive (Salus/PHI/secret-touching) artifacts NEVER route through cloud
@@ -411,6 +421,21 @@ it; the whole PR rides along as context). The increment's class decides what the
 
 A round whose panel wrote no row is given back. A refusal past the cap (exit 8) names the rethink first: split the
 PR or narrow the change, then ask the chief for a judge NO-GO or a grant. Detail: `scripts/cr/pr-check-ref/30-step3-panel.md`.
+
+## Correcting a finding's line token in the ledger
+
+`ledger-append.sh rekey --head <sha> --id <finding-id> --line <token> [--file <path>] --reason <text>`
+fixes a finding row recorded with the wrong line (or file) token. It appends one
+correction row (an `amend` whose `set` carries `rekey: true`, the new line
+token and, with `--file`, the new file) and leaves the finding row untouched. The
+token is a line or a range such as `1331` or `1331-1340`. The disposition reader
+(`scripts/lib/review-ledger-evidence.sh`) matches the original token or the token
+of the latest rekey row, so a second rekey replaces the first. A rekey that names
+a head or finding id with no finding row is refused and writes nothing. It never
+moves the finding to another head. A plain `amend` cannot stand in for it: the
+reader ignores an amend's `--set head`, `file` or `line`, and `amend --set
+rekey=true` is refused. Signing follows the amend rule in
+[enforcement](enforcement.md#cr-ledger-amends--only-a-signed-adjudication-lowers-a-finding).
 
 ## Defaults you can change
 
