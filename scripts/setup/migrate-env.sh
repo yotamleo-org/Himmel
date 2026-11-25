@@ -40,8 +40,9 @@
 # What an entry is is decided in one place, the entry table below: a line with an `=` outside any
 # quoted value, and a quoted value that does not close on its line runs on to the line that closes
 # it, whatever the name before the `=`. A line whose value is only `=` signs, or is empty under a name
-# that is not UPPER_CASE, is the stray tail of a value that ran on over lines (base64 padding): it is no
-# key, never printed and never moved. The plan, the readers, the private copy of the secrets, the
+# that is not UPPER_CASE (or has no `_`, right after a line with no `=`), is the stray tail of a value
+# that ran on over lines (base64 padding): it is no key, never printed and never moved. A tail one line
+# below the line that holds the `=` of its key reads as a blank key. The plan, the readers, the private copy of the secrets, the
 # copy of the behaviour keys and the removal all take their entries from it. A key whose quote never
 # closes stays whole on every route (a behaviour, policy or secret key, with a keyring or without, a
 # later duplicate too), and no line after it is moved or removed. A behaviour or policy key with a
@@ -235,14 +236,15 @@ ENTRY_TABLE="$CLOSEAT"'
 inq { if (closeat(l, q)) { print first, NR, name; inq = 0 } next }
 l ~ /^[[:space:]]*#/ { next }
 {
-    i = index(l, "="); if (!i) next
+    i = index(l, "="); if (!i) { if (l ~ /[^[:space:]]/) bare = 1; next }
+    after_bare = bare; bare = 0
     n = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", n)
     if (n !~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
         if (n ~ /^export[[:space:]]+[A-Za-z_][A-Za-z0-9_]*$/) { sub(/^export[[:space:]]+/, "", n); n = "export:" n } else n = "-"
     }
     v = substr(l, i + 1); sub(/^[[:space:]]+/, "", v); c = substr(v, 1, 1)
     w = v; sub(/[[:space:]]+$/, "", w)
-    if (n !~ /^(-|export:)/ && (w ~ /^=+$/ || (w == "" && n !~ /^[A-Z_][A-Z0-9_]*$/))) n = "-"
+    if (n !~ /^(-|export:)/ && (w ~ /^=+$/ || (w == "" && (n !~ /^[A-Z_][A-Z0-9_]*$/ || (after_bare && n !~ /_/))))) n = "-"
     if ((c == "\"" || c == "\047") && !closeat(substr(v, 2), c)) { name = n; first = NR; q = c; inq = 1; next }
     print NR, NR, n
 }
