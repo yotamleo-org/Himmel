@@ -340,6 +340,59 @@ git -C "$R" add -A; git -C "$R" commit -q -m "a file name that is not UTF-8"
 OUT="$(cd "$R" && LC_ALL=C.UTF-8 bash scripts/lint/check-new-comments.sh --range "$base" 2>&1)"; RC=$?
 want "a comment in a file whose name is not UTF-8, under a UTF-8 locale" 1
 
+echo "== 18. a touched file is held to the lower of its row and the base's count =="
+notes() {
+    local i=0
+    : > "$R/$2"
+    while [ "$i" -lt "$1" ]; do
+        i=$((i + 1))
+        printf 'echo %s  %s note %s\n' "$i" "$HASH" "$i" >> "$R/$2"
+    done
+}
+seven() {
+    mkrepo
+    notes 7 src/a.sh
+    rows src/a.sh 7 > "$R/$BL"
+    git -C "$R" add -A; git -C "$R" commit -q -m "seven comments"
+}
+seven
+notes 2 src/a.sh
+stage; want "a sweep that deletes five comments and leaves the baseline alone" 0
+git -C "$R" commit -q -m "sweep"
+notes 3 src/a.sh
+stage
+if [ "$RC" -eq 1 ] && has "src/a.sh: 3 comment lines outside the keep list, the base's version of the file holds 2" && has "src/a.sh:3: $HASH note 3"; then pass "a second change that adds one comment back is refused"; else fail "comment added back after a sweep -> rc=$RC: $OUT"; fi
+notes 2 src/a.sh
+echo 'echo more' >> "$R/src/a.sh"
+stage; want "a change that adds no comment still passes under the lowered limit" 0
+seven
+notes 2 src/a.sh
+rows src/a.sh 2 > "$R/$BL"
+stage; want "a sweep that lowers the row with it" 0
+git -C "$R" commit -q -m "sweep with its row"
+notes 3 src/a.sh
+stage
+if [ "$RC" -eq 1 ] && has "src/a.sh: 3 comment lines outside the keep list, baseline 2"; then pass "row lower: the lowered row refuses the comment added back"; else fail "row lower -> rc=$RC: $OUT"; fi
+seven
+notes 2 src/a.sh
+git -C "$R" commit -q -am "sweep"
+git -C "$R" mv src/a.sh src/b.sh
+notes 2 src/b.sh
+rows src/b.sh 7 > "$R/$BL"
+stage; want "a renamed file at the base's count passes" 0
+notes 3 src/b.sh
+stage
+if [ "$RC" -eq 1 ] && has "src/b.sh: 3 comment lines outside the keep list, the base's version of the file holds 2"; then pass "a renamed file is held to the count of the file it was renamed from"; else fail "rename after a sweep -> rc=$RC: $OUT"; fi
+seven
+notes 2 src/a.sh
+git -C "$R" commit -q -am "sweep"
+printf 'echo n\n' > "$R/src/n.sh"
+stage; want "a new file with no comment passes" 0
+printf 'echo n  %s say it\n' "$HASH" > "$R/src/n.sh"
+rows src/a.sh 7 src/n.sh 1 > "$R/$BL"
+stage
+if [ "$RC" -eq 1 ] && has "src/n.sh raised to 1, the base allows 0"; then pass "a new file with a comment and a row is refused"; else fail "new file after a sweep -> rc=$RC: $OUT"; fi
+
 echo
 echo "test-check-new-comments: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
