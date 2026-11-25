@@ -73,7 +73,8 @@ name_ok() { [ -n "$1" ] && [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && [[ $1 != 
 current_chief() {
     local c=$1 next seen=" $1 "
     while :; do
-        next=$(sed -n 1p "$CONSOLES/$c.md.handover" 2>/dev/null | tr -d '[:space:]')  # swallow-ok: no marker means no successor
+        [ -f "$CONSOLES/$c.md.handover" ] || break
+        next=$(sed -n 1p "$CONSOLES/$c.md.handover" | tr -d '[:space:]')
         name_ok "$next" && [ -f "$CONSOLES/$next.md" ] || break
         case "$seen" in *" $next "*) break ;; esac
         seen="$seen$next "; c=$next
@@ -114,7 +115,7 @@ if { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
     sname=$(current_session_name 2>/dev/null) || sname=''  # swallow-ok: an unresolvable name is not a chief
 fi
 who=${sname:-$session}
-head=$(command_head "$(jq -r '.tool_input.command' <<<"$input" 2>/dev/null)")  # swallow-ok: an unreadable command names its head unknown
+head=$(command_head "$(jq -r '.tool_input.command' <<<"$input")")
 chief=${HIMMEL_CONSOLE_NAME:-}
 if [ -n "$chief" ]; then
     name_ok "$chief" && chief=$(current_chief "$chief")
