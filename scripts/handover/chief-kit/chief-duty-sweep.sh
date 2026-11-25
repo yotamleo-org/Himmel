@@ -196,7 +196,7 @@ while IFS=$'\t' read -r label ldoc lane; do
         elif [ -z "${CHIEF_DUTY_SWEEP_DELTA:-}" ] && ! { git -C "$REPO" cat-file -e "$jh^{commit}" && git -C "$REPO" cat-file -e "$head^{commit}"; } 2>/dev/null; then
             cls="?"
         else
-            cls=$(cd "$REPO" && timeout -k 1 5 "$delta_bin" --verdict-file "$jf" "$jh" "$head" 2>/dev/null | head -n 1) || cls=""  # gnu-ok: Linux-only kit; swallow-ok: a failed call fails closed to trust below
+            cls=$(cd "$REPO" && timeout -k 1 5 "$delta_bin" --verdict-file "$jf" "$jh" "$head" 2>/dev/null | head -n 1) || cls=""  # swallow-ok: a failed call fails closed to trust below
             case "$cls" in none|finding|trust) ;; *) cls=trust ;; esac
         fi
         case "$cls" in
@@ -366,12 +366,12 @@ if [ -z "$dispo_path" ]; then
             ( timeout -k 5 300 bash "$HERE/next-dispatchable.sh" --dispositions --doc "$doc" --workers-from "$from" > "$cache.tmp" 2>/dev/null && mv "$cache.tmp" "$cache"; rmdir "$state/chief-duty-sweep-pool-$cache_key.lock" 2>/dev/null ) </dev/null >/dev/null 2>&1 &
             disown 2>/dev/null || true
         else
-            [ -z "$(find "$state/chief-duty-sweep-pool-$cache_key.lock" -maxdepth 0 -mmin +10 2>/dev/null)" ] || rmdir "$state/chief-duty-sweep-pool-$cache_key.lock" 2>/dev/null  # gnu-ok: Linux-only kit; swallow-ok: losing the race to another sweep is fine
+            [ -z "$(find "$state/chief-duty-sweep-pool-$cache_key.lock" -maxdepth 0 -mmin +10 2>/dev/null)" ] || rmdir "$state/chief-duty-sweep-pool-$cache_key.lock" 2>/dev/null  # swallow-ok: losing the race to another sweep is fine
         fi
     fi
     dispo_path="$cache"
 fi
-dispo=$(cat "$dispo_path" 2>/dev/null) || dispo=""  # read-sink-ok: the dispositions copy this script wrote, or the test seam set by the invoking process; swallow-ok: an unreadable copy reads as unread below
+dispo=$(cat "$dispo_path" 2>/dev/null) || dispo=""  # swallow-ok: an unreadable copy reads as unread below
 if [ -n "$dispo" ]; then
     dispo_age=$(( $(date +%s) - $(stat -c %Y "$dispo_path" 2>/dev/null || echo 0) ))  # gnu-ok: Linux-only kit; swallow-ok: an unreadable copy reads as old, which is unread below
     if [ "$dispo_age" -gt 1800 ] || printf '%s\n' "$dispo" | grep -qE 'open PRs unknown|core-check failed'; then dispo=""; fi
