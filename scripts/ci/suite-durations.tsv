@@ -727,7 +727,7 @@ scripts/hooks/test-block-write-into-main-checkout.sh	229
 scripts/hooks/test-bus-deliver-hook.sh	20
 scripts/hooks/test-cadence-approve-engines.sh	18
 scripts/hooks/test-cadence-deny-background.sh	0
-scripts/hooks/test-cadence-deny-powershell.sh	1
+scripts/hooks/test-cadence-deny-powershell.sh	0
 scripts/hooks/test-check-agents-md-fresh.sh	1
 scripts/hooks/test-check-artifact-leakage.sh	0
 scripts/hooks/test-check-commit-msg-precommit.sh	6
