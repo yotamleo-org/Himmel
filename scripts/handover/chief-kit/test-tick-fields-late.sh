@@ -784,6 +784,20 @@ not_contains 'no drift file leaves stale= off the line' "$f_out" ' stale='
 f_state ok '' 0:0f0f0f0f 3:HIMMEL-1,HIMMEL-2,HIMMEL-3
 f_out="$(f_tick)"
 contains 'no drift file echoes the state line as before' "$f_out" ' stale=3:HIMMEL-1,HIMMEL-2,HIMMEL-3'
+mkdir -p "$W/bin-node-fail" "$W/bin-node-slow"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$W/bin-node-fail/node"
+printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$W/bin-node-slow/node"
+chmod +x "$W/bin-node-fail/node" "$W/bin-node-slow/node"
+f_drift 901 902 903 904 905 906 907
+f_state ok '' 0:0f0f0f0f 3:HIMMEL-1,HIMMEL-2,HIMMEL-3
+f_age focus-state '10 minutes ago'
+f_out="$(PATH="$W/bin-node-fail:$W/bin-focus6829:$PATH" bash "$SUT" --doc "$f_dir/chief.md" 2>/dev/null)"
+contains 'a newer drift file read by a node that fails leaves the state line' "$f_out" ' stale=3:HIMMEL-1,HIMMEL-2,HIMMEL-3'
+f_t0=$SECONDS
+f_out="$(TICK_DEADLINE_SEC=3 PATH="$W/bin-node-slow:$W/bin-focus6829:$PATH" bash "$SUT" --doc "$f_dir/chief.md" 2>/dev/null)"
+contains 'a newer drift file read by a node that hangs leaves the state line' "$f_out" ' stale=3:HIMMEL-1,HIMMEL-2,HIMMEL-3'
+[ $((SECONDS - f_t0)) -lt 20 ] && pass 'a hung node is cut at the tick deadline, not waited out' || fail "a hung node held the tick for $((SECONDS - f_t0)) s"
+rm -f "$f_dir/focus-drift.txt"
 if [ ! -r "/proc/$$/status" ]; then skip 'the focus fields make no gh or jira call: no /proc to walk the callers'
 elif [ "$f_probe" != 'gh probe' ]; then fail "the call-log stub missed a gh call under focus-refresh.sh (got '$f_probe')"
 elif [ -s "$f_calls" ]; then fail "focus-refresh.sh called gh or jira from the tick: $(tr '\n' ';' < "$f_calls")"; else pass 'the focus fields make no gh or jira call'; fi
