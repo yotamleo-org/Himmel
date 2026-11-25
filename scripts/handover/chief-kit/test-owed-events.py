@@ -172,7 +172,7 @@ class DueEvents(unittest.TestCase):
         self.assertEqual(result['proof_wakes'], [str(brief)])
         self.assertIn(str(brief), wakes[0]['text'])
         text = brief.read_text()
-        for want in ('HIMMEL-10210', 'the 5-day count', due, 'read-only proof worker', 'owe.sh close', row):
+        for want in ('HIMMEL-10210', 'the 5-day count', due, 'read-only proof worker', 'owe.sh close', '--proof-result PASS|FAIL', '--proof-artifact', 'PROOF ' + row, row):
             self.assertIn(want, text)
         again = self.run_events(now=day + 3600)
         self.assertEqual((len(self.proof_wakes()), again['proof_wakes']), (1, [str(brief)]), 'the same row never wakes twice')

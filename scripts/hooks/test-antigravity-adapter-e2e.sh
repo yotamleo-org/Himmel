@@ -310,7 +310,7 @@ assert_deny "block-graphify-egress denies cloud graphify on salus" "salus" \
     "$(make_pre run_command "$(jq -cn --arg c "graphify update $SALUS_FX --backend deepseek" '{CommandLine:$c}')")" \
     CLAUDE_GLM_CONFIG_DIR="$TMP/empty-glm"
 
-for t3_tool in preview_open preview_act schedule_task pull_request_merge pull_request_create \
+for t3_tool in preview_open preview_act preview_navigate preview_snapshot preview_evaluate preview_list schedule_task pull_request_merge pull_request_create \
                t3_thread_search t3_thread_list t3_thread_read t3_thread_send t3_thread_transfer \
                t3_thread_launch create_threads delegate_task ci_rerun create_issue \
                t3_environment_read pull_request_read ci_logs read_issue send_to_user html_preview html_render; do

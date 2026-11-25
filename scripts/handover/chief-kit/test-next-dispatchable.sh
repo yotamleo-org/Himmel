@@ -5174,7 +5174,7 @@ sed 's/^statusCategory: "x"/statusCategory: "Done"/' "$PDM/$KP-9706.md" > "$PDM/
 pd3="$(pd_run)"
 has "10257: a hold whose blocker is Done gates nothing" "$pd3" "RESUME${TAB}$KP-9702${TAB}"
 has "10257: a readiness c row whose blocker is Done is stale and gates nothing" "$pd3" "RESUME${TAB}$KP-9705${TAB}"
-bash "$HERE/owe.sh" close --bucket "$PDB" --id o1 --key fixture-closed >/dev/null \
+OWE_JIRA_CLI="$HERE/fixtures/jira-comments-stub.sh" OWE_STUB_DIR="$WORK" bash "$HERE/owe.sh" close --bucket "$PDB" --id o1 --key fixture-closed --proof-result PASS --proof-artifact doc:1 >/dev/null \
     || fail "10257: could not close the owed proof of 9701"
 pd4="$(pd_run)"
 lacks "10257: a closed owed proof no longer names the ticket # pool-owed" "$pd4" "# pool-owed $KP-9701 "

@@ -2472,3 +2472,64 @@ test('readiness leaves the existing role resolutions untouched', () => {
   }
   assert.ok(resolveProfile(REG, 'worker-impl', { installed: [] }).permissions.allow.length > 0, 'worker-impl keeps its gate rules');
 });
+
+const PREVIEW_TOOLS = ['preview_act', 'preview_close', 'preview_dialog', 'preview_evaluate', 'preview_list', 'preview_navigate', 'preview_open',
+  'preview_recording_start', 'preview_recording_stop', 'preview_resize', 'preview_set_appearance', 'preview_snapshot', 'preview_status', 'preview_wait_for'];
+const PREVIEW_REG = {
+  floor: ['floor@m'],
+  base: ['floor@m'],
+  catalog: ['floor@m'],
+  previewBrowserTools: ['preview_open', 'preview_act'],
+  profiles: {
+    operator: null,
+    'lane-content': { enable: [], previewBrowser: true, contextBudget: 5000 },
+    'lane-review': { enable: [], contextBudget: 5000 },
+  },
+};
+const previewRules = (reg, profile) => (resolveProfile(reg, profile).permissions?.allow ?? []).filter((r) => r.startsWith('mcp__t3-code__preview_'));
+
+test('a profile with previewBrowser on is allowed each preview tool; one without is allowed none', () => {
+  assert.deepEqual(validateRegistry(PREVIEW_REG), []);
+  assert.deepEqual(previewRules(PREVIEW_REG, 'lane-content'), ['mcp__t3-code__preview_open', 'mcp__t3-code__preview_act']);
+  assert.deepEqual(previewRules(PREVIEW_REG, 'lane-review'), []);
+});
+
+test('previewBrowser reaches a composed profile list only through the member that sets it', () => {
+  assert.deepEqual(previewRules(PREVIEW_REG, 'lane-content,lane-review'), ['mcp__t3-code__preview_open', 'mcp__t3-code__preview_act']);
+  const off = { ...PREVIEW_REG, profiles: { ...PREVIEW_REG.profiles, 'lane-content': { enable: [], contextBudget: 5000 } } };
+  assert.deepEqual(previewRules(off, 'lane-content,lane-review'), []);
+});
+
+test('previewBrowser validation: boolean, worker-shaped profiles only, needs the tool list, tool names well formed', () => {
+  const withSpec = (name, spec) => ({ ...PREVIEW_REG, profiles: { ...PREVIEW_REG.profiles, [name]: spec } });
+  assert.ok(validateRegistry(withSpec('lane-content', { enable: [], previewBrowser: 'yes', contextBudget: 5000 })).some((e) => /previewBrowser must be a boolean/.test(e)));
+  assert.ok(validateRegistry(withSpec('chief', { enable: [], previewBrowser: true, contextBudget: 5000 })).some((e) => /previewBrowser is restricted to worker-shaped profiles/.test(e)));
+  const { previewBrowserTools: _dropped, ...noList } = PREVIEW_REG;
+  assert.ok(validateRegistry(noList).some((e) => /previewBrowser requires the registry previewBrowserTools list/.test(e)));
+  assert.ok(validateRegistry({ ...PREVIEW_REG, previewBrowserTools: ['open'] }).some((e) => /previewBrowserTools/.test(e)));
+  assert.ok(validateRegistry({ ...PREVIEW_REG, previewBrowserTools: [] }).some((e) => /previewBrowserTools/.test(e)));
+});
+
+test('bare and the readiness role refuse previewBrowser', () => {
+  const bare = { ...PREVIEW_REG, profiles: { ...PREVIEW_REG.profiles, bare: { enable: [], previewBrowser: true } } };
+  assert.ok(validateRegistry(bare).some((e) => /"bare" must not declare previewBrowser/.test(e)));
+  const readiness = structuredClone(REG);
+  readiness.profiles.readiness.previewBrowser = true;
+  assert.ok(validateRegistry(readiness).some((e) => /readiness.*previewBrowser|previewBrowser.*readiness/.test(e)));
+});
+
+test('the shipped registry lists the 14 T3 preview tools and turns previewBrowser on for no profile (default off)', () => {
+  assert.deepEqual(validateRegistry(REG), []);
+  assert.deepEqual([...REG.previewBrowserTools].sort(), [...PREVIEW_TOOLS].sort());
+  for (const [name, spec] of Object.entries(REG.profiles)) {
+    assert.notEqual(spec?.previewBrowser, true, `${name} must not ship with previewBrowser on`);
+    if (name !== 'operator') assert.deepEqual(previewRules(REG, name), [], `${name} resolves with no preview allow rule`);
+  }
+});
+
+test('turning previewBrowser on for a shipped worker profile adds exactly the 14 preview allow rules', () => {
+  const reg = { ...REG, profiles: { ...REG.profiles, 'worker-e2e': { ...REG.profiles['worker-e2e'], previewBrowser: true } } };
+  assert.deepEqual(validateRegistry(reg), []);
+  assert.deepEqual(previewRules(reg, 'worker-e2e').sort(), PREVIEW_TOOLS.map((t) => `mcp__t3-code__${t}`).sort());
+  assert.deepEqual(previewRules(reg, 'worker-impl'), []);
+});
