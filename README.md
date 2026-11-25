@@ -132,7 +132,7 @@ dollar claims:
 
 | Metric | Measured | Sample & methodology |
 |---|---|---|
-| **PRs reviewed on himmel** | **4,630** | 19,982 review findings logged (19,219 ruled, 763 unadjudicated) across 4,630 branches building himmel itself (as of 2026-11-11, [`review-panel.md`](docs/evals/review-panel.md)). |
+| **PRs reviewed on himmel** | **4,630** | PRs building himmel itself; 3,332 of them drew 19,982 review findings (19,219 ruled, 763 unadjudicated) (as of 2026-11-11, [`review-panel.md`](docs/evals/review-panel.md)). |
 | **Required reviewer agreement** | **80.1%** | Author agreed with 5,584 of 6,968 ruled `codex:gpt-6.1-sol` findings across 2,053 PRs (95% CI 78.7–81.5%, [`evals`](docs/evals/README.md)). |
 | **Cached session input** | **99.1%** | In a sample of 176 sessions (4.95B tokens), 99.1% of input tokens were prompt-cache reads rather than uncached input or cache writes; `cache-health-cadence.sh` watches for drift hourly ([`evals`](docs/evals/README.md)). |
 | **Hard-escape defect catch** | **38.3%** | `claude` + `codex` matched 18 of 47 planted and historical review-escape defects on a strict key-match proxy (95% CI 25.8–52.6%, as of 2026-11-04; CodeRabbit not in that sweep, [`evals`](docs/evals/README.md)). |
