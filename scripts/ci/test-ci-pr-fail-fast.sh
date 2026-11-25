@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/ci/test-ci-pr-fail-fast.sh -- fail-fast policy of .github/workflows/ci.yml:
-# the bun-suites matrix stops at the first red worker on pull_request ONLY;
+# the bun-suites and shell-unit-shard matrices stop at the first red worker on pull_request ONLY;
 # push-to-main and the nightly keep every worker running so a red stays attributable.
-# The shell-unit-shard matrix never stops early, so every red shard reports. A PR with one red shard plus fail-fast-cancelled siblings
+# A PR with one red shard plus fail-fast-cancelled siblings
 # must still read FAILED: the shell-unit aggregator's first step is executed here
 # for each rollup value, and every job has a fail-fast twin that cancels the run
 # when it fails (pull_request only). Pure text + local bash runs of extracted steps; no network.
@@ -31,8 +31,8 @@ v="$(failfast_of bun-suites)"
 if [ "$v" = "$PR_ONLY" ]; then ok "bun-suites fail-fast is pull_request only"
 else bad "bun-suites fail-fast is '${v:-<absent>}' (expected: $PR_ONLY)"; fi
 v="$(failfast_of shell-unit-shard)"
-if [ "$v" = "false" ]; then ok "shell-unit-shard fail-fast is false"
-else bad "shell-unit-shard fail-fast is '${v:-<absent>}' (expected: false)"; fi
+if [ "$v" = "$PR_ONLY" ]; then ok "shell-unit-shard fail-fast is pull_request only"
+else bad "shell-unit-shard fail-fast is '${v:-<absent>}' (expected: $PR_ONLY)"; fi
 
 # The aggregator's rollup step: extract its run: body and execute it per rollup value.
 body="$(awk '
