@@ -8,6 +8,7 @@ const MARK = {
   derived: ["derived", "a counted total split by phase with the last-tool rule"],
   unpriced: ["no price yet", "a call's model has no price row; its dollars are not counted"],
   nocount: ["not countable yet", "no record splits it"],
+  inphase: ["in the phase table", "T3's Claude sessions write transcripts the phase table already counts; tokens shown, dollars not added twice"],
 };
 const mark = (m) => `<span class="mk ${esc(m)}" title="${esc(MARK[m][1])}">${esc(MARK[m][0])}</span>`;
 const usd = (n) => (n == null ? "—" : `$${n.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`);
@@ -29,7 +30,33 @@ function phaseBody(p, top, open) {
 
 const basisNote = (m) => `<p class="sub basis">${esc(m.basis)} ${esc(m.coverageNote)}.</p>`;
 
+const tok = (n) => Number(n || 0).toLocaleString("en-US");
+const t3Row = (l) => {
+  const t = (n) => (l.mark === "nocount" ? "—" : tok(n));
+  return `<tr><td>${esc(l.name)}</td><td class="n">${usd(l.usd)}</td><td class="n">${pct(l.share)}</td><td class="n">${tok(l.turns)}</td><td class="n">${t(l.in)}</td>` +
+    `<td class="n">${t(l.out)}</td><td class="n">${t(l.cache_read)}</td><td class="n">${t(l.cache_write)}</td><td>${mark(l.mark)}</td><td class="mute">${esc(l.note)}</td></tr>`;
+};
+const t3Table = (label, first, lines) =>
+  `<h3>${esc(label)}</h3><div class="tw"><table class="tbl" aria-label="T3 Code usage ${esc(label.toLowerCase())}"><thead><tr><th>${esc(first)}</th><th class="n">$</th>` +
+  `<th class="n">share</th><th class="n">turns</th><th class="n">input</th><th class="n">output</th><th class="n">cache read</th><th class="n">cache write</th><th>how</th>` +
+  `<th class="hs">made of</th></tr></thead><tbody>${lines.map(t3Row).join("")}</tbody></table></div>`;
+
+function renderT3(t3) {
+  if (!t3 || t3.state === "nostore") return "";
+  const head = `<div class="card-h"><h2>T3 Code · ${esc(t3.day || "no day")}</h2>`;
+  if (t3.state !== "ok")
+    return `<section class="card t3">${head}</div><p class="sub">no T3 Code usage for this day</p><p class="sub basis">${esc(t3.basis)}</p></section>`;
+  const more = t3.moreThreads ? `<p class="foot">${esc(tok(t3.moreThreads))} smaller threads are not listed.</p>` : "";
+  return `<section class="card t3">${head}<span class="big">${usd(t3.usd)} ${mark(t3.mark)}</span></div>` +
+    `<p class="sub">${esc(tok(t3.turns))} turns</p><p class="sub basis">${esc(t3.basis)}</p>` +
+    t3Table("By provider", "Provider", t3.providers) + t3Table("By thread", "Thread", t3.threads) + more + `</section>`;
+}
+
 export function renderCost(model, view = {}) {
+  return renderCostPhases(model, view) + (model ? renderT3(model.t3) : "");
+}
+
+function renderCostPhases(model, view) {
   if (!model) return view.err ? "" : `<section class="card"><div class="card-h"><h2>Cost</h2></div><p class="sub">loading…</p></section>`;
   if (model.state === "nostore")
     return `<section class="card"><div class="card-h"><h2>Cost</h2></div><p class="sub">the usage store has not been built yet: run ` +
