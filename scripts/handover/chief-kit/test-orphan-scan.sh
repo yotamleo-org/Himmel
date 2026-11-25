@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/test-orphan-scan.sh - suite for orphan-scan.sh.
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh).
 set -uo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
