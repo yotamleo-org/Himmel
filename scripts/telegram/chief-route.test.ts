@@ -3426,6 +3426,9 @@ test("a closure return reopening R3-M1 classes as blocking against the bare open
   const ok = await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", "- **M2** (major; reopens R3-M1) still open", "- **n1** (major; reopens R3-Z9) never open", "- **n2** (major; reopens Z9) never open");
   expect(ok.err).toBe("");
   expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "M2", class: "reopens" }, { id: "n1", class: "out-of-closure" }, { id: "n2", class: "out-of-closure" }]);
+  const over = (id: string) => verb(true, "round-override", CAP_KEY, "--findings", id, "--why", "the build cannot carry it", "--chief", "chief-x", "--specs", t.specs);
+  expect((await over("n1")).err).toContain(`round-override: n1 is not an open blocking finding of ${CAP_KEY}'s latest round`);
+  expect((await over("M2")).code).toBe(0);
 });
 
 test("R4, R5, R8, R9: round 5 needs a record (T5); the override names only an open blocking id of the latest round (T9), once (T8), and only from the console", async () => {
