@@ -858,5 +858,54 @@ CLAUDE_SESSIONS_PROC="$SWPROC" CLAUDE_SESSIONS_PGREP="$STUB/pgrep.sh" CHIEF_WAIT
 check "(cs9) a dated doc under its undated session name is found and closed" "$WORK/cs9/T-9-N9-task-2026-11-20.md" "$(cat "$STUB/close.calls")"
 unset CHIEF_WAIT_CLOSE CHIEF_WAIT_SWEEP_MIN CHIEF_WAIT_SWEEP_MAX
 
+# --- (sig) 10856: a stop signal ends the waiter within a second wherever it is, never after the
+# step it was in: asleep between polls (a 3 s poll) or inside a slow tick (3 s). ---------------
+# wait_hb_state <inbox> <state>: block until the heartbeat names that state, at most ~5 s.
+wait_hb_state() {
+    n=0
+    while [ "$n" -lt 100 ]; do
+        grep -q "state=$2" "$1.wait" 2>/dev/null && return 0
+        sleep 0.05; n=$((n + 1))
+    done
+    return 1
+}
+# gone_within_1s <pid>: 0 when the pid is gone within about a second.
+gone_within_1s() {
+    n=0
+    while [ "$n" -lt 20 ]; do
+        kill -0 "$1" 2>/dev/null || return 0
+        sleep 0.05; n=$((n + 1))
+    done
+    return 1
+}
+sig_case() { # <name> <signal> <poll seconds> <tick sleep or ""> <expected rc> <expected exit=>
+    local t0
+    reset_stub
+    I="$(new_inbox "sig-$1")"
+    CHIEF_WAIT_POLL_SEC="$3" start "$I" "$WORK/sig-$1.out" --workers "N1.md"
+    wait_hb "$I" || fail "(sig $1) no baseline heartbeat"
+    if [ -n "$4" ]; then
+        # a slow tick from the next sample on: signal once two more ticks have started (the second one is slow)
+        t0=$(wc -c < "$STUB/ticks"); printf '%s\n' "$4" > "$STUB/tick.sleep"
+        n=0
+        while [ "$n" -lt 100 ] && [ "$(wc -c < "$STUB/ticks")" -lt $((t0 + 2)) ]; do sleep 0.05; n=$((n + 1)); done
+    else
+        wait_hb_state "$I" waiting || fail "(sig $1) the waiter never reached state=waiting"
+    fi
+    kill "-$2" "$WPID"
+    if gone_within_1s "$WPID"; then
+        wait "$WPID"; rc=$?
+        check "(sig $1) $2 ends the waiter within a second, rc $5" "$5" "$rc"
+        check "(sig $1) and its heartbeat says exit=$6" "yes" "$(grep -q "exit=$6" "$I.wait" && echo yes || echo no)"
+    else
+        fail "(sig $1) $2 left the waiter running a second later"
+        kill -KILL "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+    fi
+}
+sig_case idle-term TERM 3 "" 143 signal-TERM
+sig_case idle-hup HUP 3 "" 129 signal-HUP
+sig_case tick-term TERM 0.2 3 143 signal-TERM
+sig_case tick-hup HUP 0.2 3 129 signal-HUP
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
