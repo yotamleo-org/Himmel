@@ -1928,7 +1928,7 @@ test('a decision-525 policy refusal sends no alert, writes no stamp, runs no fal
   assert.equal(f.called(), false);
 });
 
-test('every refusal but the policy one still alerts, and a graph-pass call failure still alerts', () => {
+test('an eval-kind refusal (not the policy one) still alerts, and a graph-pass call failure still alerts', () => {
   const f = fixture();
   const off = f.run(f.good, { HIMMEL_API_LANE: '', HIMMEL_API_KIND: 'eval' });
   assert.equal(off.status, 2, off.stderr);
