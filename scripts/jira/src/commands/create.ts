@@ -12,7 +12,8 @@ import { readBodyFile } from './body-file.js';
 import { parseLabels } from './labels.js';
 import { titleSector, PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 import { CreatePartial, CreateRefused, runCreate, type CreateOptions } from '../operations/create.js';
-import { resolveSector } from './sector.js';
+import { resolveSector, sectorField, sectorOf } from './sector.js';
+import { adfToPlainText, type ADFDocument } from '../adf-render.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link.js';
 import { appendAdmission, type AdmissionInput } from './admissions-ledger.js';
@@ -703,15 +704,127 @@ async function openMatches(jql: string): Promise<OpenHit[]> {
 
 const keyNumber = (key: string): number => Number(/-(\d+)$/.exec(key)?.[1] ?? NaN);
 
+const TOPIC_STOP = new Set([
+  ...TITLE_STOP, 'ticket', 'tickets', 'work', 'file', 'files', 'filing', 'create', 'when', 'than', 'then', 'them', 'your', 'will', 'would', 'should',
+  'could', 'about', 'after', 'before', 'every', 'each', 'other', 'more', 'most', 'only', 'same', 'such', 'some', 'any', 'plain', 'words', 'also', 'both',
+  'being', 'been', 'were', 'have', 'does', 'done', 'make', 'made', 'still', 'what', 'which', 'while', 'where', 'there', 'their', 'these', 'those',
+]);
+const GENERIC_LABEL = /^(standalone|core|residual|operator-directed|backlog|proposed-.*|phase:.*|class-.*)$/;
+const TOPIC_JQL_TERMS = 8;
+const TOPIC_MIN_SHARED = 5;
+const TOPIC_MIN_OVERLAP = 0.3;
+const TOPIC_SHOWN = 3;
+const TOPIC_TIMEOUT_MS = 8000;
+
+const stem = (w: string): string => (w.length > 4 ? w.replace(/(?:ies|es|s)$/, '') : w);
+
+/** The text under the "What" heading of a plain-text body, up to the next section heading; the whole text when it has none. */
+export function whatSectionOf(text: string): string {
+  const lines = text.split('\n');
+  const head = (l: string, names: string): boolean => new RegExp(`^\\s{0,3}(?:#{1,6}\\s*)?(?:${names})\\s*:?\\s*$`, 'i').test(l);
+  const start = lines.findIndex((l) => head(l, 'what'));
+  if (start < 0) return text;
+  const end = lines.findIndex((l, i) => i > start && head(l, 'impact|why|plan|dod|proof|agent detail'));
+  return lines.slice(start + 1, end < 0 ? undefined : end).join('\n');
+}
+
+/** A ticket's topic: its distinctive words (stemmed, 4+ characters, no stop words), its non-generic labels and its sector. Maps each term to the word it came from. */
+export function topicTerms(title: string, what: string, labels: readonly string[] = [], sector?: string): Map<string, string> {
+  const terms = new Map<string, string>();
+  const text = `${title.replace(/^[^:]{1,40}:\s+/, '')} ${what}`.toLowerCase();
+  for (const w of text.match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) ?? []) {
+    if (w.length >= 4 && !TOPIC_STOP.has(w)) terms.set(stem(w), w);
+  }
+  for (const l of labels) if (!GENERIC_LABEL.test(l)) terms.set(`label:${l}`, l);
+  if (sector) terms.set(`sector:${sector.toLowerCase()}`, sector);
+  return terms;
+}
+
+/** What two topics have in common: the shared terms and their share of the smaller topic (0 to 1). */
+export function topicOverlap(a: Map<string, string>, b: Map<string, string>): { shared: number; share: number } {
+  const shared = [...a.keys()].filter((t) => b.has(t)).length;
+  const smaller = Math.min(a.size, b.size);
+  return { shared, share: smaller === 0 ? 0 : shared / smaller };
+}
+
+interface TopicHit extends OpenHit {
+  fields?: { summary?: string; status?: { name?: string }; labels?: string[]; description?: unknown; [field: string]: unknown };
+}
+
+function bodyTextOf(o: { adf?: unknown; adfFile?: string; descFile?: string; desc?: string }): string {
+  try {
+    if (o.adf !== undefined) return adfToPlainText(o.adf as ADFDocument);
+    if (o.adfFile) return adfToPlainText(JSON.parse(readFileSync(o.adfFile, 'utf8')) as ADFDocument);
+    if (o.descFile) return readBodyFile(o.descFile, '--desc-file');
+  } catch {
+    return '';
+  }
+  return o.desc ?? '';
+}
+
+async function topicCandidates(jql: string): Promise<TopicHit[]> {
+  const sector = sectorField();
+  const fields = `summary,status,labels,description${sector ? `,${sector}` : ''}`;
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    const search = request<{ issues?: TopicHit[] }>('GET', `/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=100`);
+    const slow = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`no answer in ${TOPIC_TIMEOUT_MS / 1000}s`)), TOPIC_TIMEOUT_MS);
+    });
+    return (await Promise.race([search, slow])).issues ?? [];
+  } catch (e) {
+    console.error(`jira: warning: the duplicate search failed (${(e as Error).message}), so the ticket is filed unchecked`);
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The open tickets of the project whose topic overlaps this new ticket's, closest first (at most TOPIC_SHOWN). */
+async function openTopicMatches(
+  project: string,
+  title: string,
+  o: { adf?: unknown; adfFile?: string; descFile?: string; desc?: string; labels?: string; sector?: string; followUpOf?: string; residualOf?: string; parent?: string },
+): Promise<TopicHit[]> {
+  let labels: string[] = [];
+  try {
+    labels = o.labels !== undefined ? parseLabels(o.labels) : [];
+  } catch {
+    labels = [];
+  }
+  const mine = topicTerms(title, whatSectionOf(bodyTextOf(o)), labels, o.sector);
+  const words = [...new Set([...mine].filter(([t, w]) => !t.includes(':') && /^[a-z0-9]+$/.test(w)).map(([, w]) => w))]
+    .sort((a, b) => b.length - a.length)
+    .slice(0, TOPIC_JQL_TERMS);
+  if (words.length === 0) return [];
+  const jql = `project = ${project} AND statusCategory != Done AND (${words.map((w) => `text ~ ${jqlQuote(w)}`).join(' OR ')})`;
+  const sectorId = sectorField();
+  const linked = new Set([o.followUpOf, o.residualOf, o.parent]);
+  const scored: Array<{ hit: TopicHit; shared: number; share: number }> = [];
+  for (const hit of await topicCandidates(jql)) {
+    if (linked.has(hit.key)) continue;
+    const f = hit.fields ?? {};
+    const theirs = topicTerms(f.summary ?? '', whatSectionOf(adfToPlainText(f.description as ADFDocument | undefined)), f.labels ?? [], sectorId ? sectorOf(f) : undefined);
+    const { shared, share } = topicOverlap(mine, theirs);
+    if (shared >= TOPIC_MIN_SHARED && share >= TOPIC_MIN_OVERLAP) scored.push({ hit, shared, share });
+  }
+  return scored.sort((a, b) => b.shared - a.shared || b.share - a.share).slice(0, TOPIC_SHOWN).map((m) => m.hit);
+}
+
 /**
  * Refuses a new ticket that repeats an open one: an open follow-up already linked to the same parent (a residual
  * with both --class and --area is matched on those by planResidual instead), or an open ticket whose title is close.
- * --new-reason names why a new ticket is needed and skips the search. A failed search files unchecked.
+ * A last topic search over every open ticket of the project (title, What section, labels, sector) catches the same
+ * work worded differently, and lists the closest ones. A parent the new ticket names is not a candidate.
+ * --new-reason names why a new ticket is needed and skips the searches. A failed or slow search files unchecked.
  */
 export async function refuseOpenDuplicate(
   project: string,
   title: string,
-  o: { followUpOf?: string; residualOf?: string; class?: string; area?: string; newReason?: string },
+  o: {
+    followUpOf?: string; residualOf?: string; class?: string; area?: string; newReason?: string;
+    adf?: unknown; adfFile?: string; descFile?: string; desc?: string; labels?: string; sector?: string; parent?: string;
+  },
 ): Promise<void> {
   if (o.newReason !== undefined) {
     console.error(`jira: --new-reason: ${o.newReason.trim()}`);
@@ -734,6 +847,13 @@ export async function refuseOpenDuplicate(
     const jql = `project = ${project} AND statusCategory != Done AND summary ~ ${jqlQuote(words.join(' '))}`;
     const close = (await openMatches(jql)).find((h) => titleSimilarity(title, h.fields?.summary ?? '') >= SIMILAR_TITLE);
     if (close) refuse(close, 'its title is close to this one');
+  }
+  const held = all.length >= MIN_TITLE_WORDS ? await openTopicMatches(project, title, o) : [];
+  if (held.length > 0) {
+    const list = held.map((h) => `${h.key} ("${h.fields?.summary ?? ''}", ${h.fields?.status?.name ?? 'unknown status'})`).join('; ');
+    throw new CreateRefused(
+      `jira create refused, nothing was filed: ${held.length === 1 ? 'an open ticket already holds' : 'open tickets already hold'} this topic: ${list}; extend ${held[0]!.key} with jira comment, or pass --new-reason <why>`,
+    );
   }
 }
 
@@ -824,7 +944,7 @@ export function registerCreate(program: Command): void {
       '--remainder',
       "With --follow-up-of: this ticket holds the parent's remainder (a deferred DoD row), so the INTAKE says the parent cannot close without it",
     )
-    .option('--new-reason <why>', 'Why a new ticket is needed although an open one repeats it (same --follow-up-of / --residual-of parent, or a close title): without it the filing is refused and names the open ticket to extend with jira comment')
+    .option('--new-reason <why>', 'Why a new ticket is needed although an open one repeats it (same --follow-up-of / --residual-of parent, a close title, or the same topic worded differently in the title and What section): without it the filing is refused and names the open ticket to extend with jira comment')
     .option('--fu-class <class>', 'Residual class: escape or hardening (needs --fu-override); a residual of a declared project is placed by the door from its priority, and --gate means the current version; the class routes it only for a project no declared release names (docs/release/follow-up-triage.md). polish is refused: it is noted with no ticket. Applies only with --residual-of')
     .option('--fu-why <code>', 'Why a hardening residual is one (' + FU_WHY_CODES.join('|') + '); required with --fu-class hardening')
     .option('--fu-override <id>', 'The named override a hardening residual needs: a judge verdict id (XX-jNNNN-N) or decision-N; printed into the ticket as an unverified label')
