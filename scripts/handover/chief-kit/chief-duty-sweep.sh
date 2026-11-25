@@ -37,6 +37,7 @@
 # cache), _GO_ROOT, _MIRROR, _DISPOSITIONS (dispatcher output), _GH, _DELTA (delta-class.sh), _OWE,
 # TICK_STATE_DIR, CANCEL_RUNS_PACE_STATE.
 # Exit 0, or 2 on a usage error. Linux-only kit; bash 3.2-safe apart from flock.
+# shellcheck disable=SC2031  # bucket, anchor and gh_bin are assigned once in the main shell; the pipelines below only read them
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
