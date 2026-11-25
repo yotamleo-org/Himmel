@@ -127,7 +127,7 @@ ledger_registry_path() {
 # answer for every project), "project" = the default. The per-repo index checks (graph freshness, semantic graph)
 # are project rows that name the repo they judge, so a feed saved under another project does not carry them.
 # A check id is its Cn prefix (C40-qmd-vec -> C40).
-DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 C96 C97 "
+DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 C96 C97 C100 "
 DOCTOR_REPO_CHECKS=" C33 C70 "
 DOCTOR_REPO_NAME="himmel"
 
@@ -2634,6 +2634,131 @@ check_c98_wrapped_window() {
     fi
     emit WARN C98-wrapped-window "wrapped, lock-free window(s) still open past $min min: $lingering -- each idle window still draws the subscription budget" \
         "for each: bash $REPO_ROOT/scripts/handover/chief-kit/close-wrapped-worker.sh --check [--chief for a chief] $bucket/<name>.md, then the same without --check; a chief's waiter closes these on its own each sample, so check that one is armed"
+}
+
+check_c100_fleet() {
+    local root anchor anchors=() n=0 cap=50 tb="" t secs picked kind manifest out rc a b c d h found=0 read_all=1 ackcmd=()
+    load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
+    root="$(doctor_handover_root 2>/dev/null)" || root=""
+    if [ -z "$root" ] || [ ! -d "$root" ]; then
+        emit INFO C100-fleet "no handover root resolved -- fleet attempts not checked"
+        return 0
+    fi
+    for anchor in "$root"/*/*/fleet-control.json; do
+        [ -f "$anchor" ] || continue
+        anchors+=("$anchor")
+    done
+    if [ "${#anchors[@]}" -eq 0 ]; then
+        emit INFO C100-fleet "no fleet-control.json under $root -- no fleet to check"
+        return 0
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        emit WARN C100-fleet "python3 not on PATH -- fleet attempts not read" "install python3; the fleet runtime is a python script"
+        return 0
+    fi
+    for t in ${HIMMEL_DOCTOR_TIMEOUT_BINS:-timeout gtimeout}; do
+        tb="$(command -v "$t" 2>/dev/null)" && break
+        tb=""
+    done
+    if [ -z "$tb" ]; then
+        emit WARN C100-fleet "no timeout or gtimeout binary -- fleet attempts not read, since an unbounded read could hang the doctor" "on macOS: brew install coreutils"
+        return 0
+    fi
+    secs="${HIMMEL_DOCTOR_FLEET_TIMEOUT:-20}"
+    case "$secs" in ''|*[!0-9]*) secs=20 ;; esac
+    secs=$((10#$secs)); [ "$secs" -gt 0 ] || secs=20
+    if [ -n "${HIMMEL_DOCTOR_FLEET_ACK:-}" ]; then ackcmd=("$HIMMEL_DOCTOR_FLEET_ACK"); else ackcmd=(python3 -I "$SELF_DIR/lib/fleet_runtime.py"); fi
+    for anchor in "${anchors[@]}"; do
+        n=$((n + 1))
+        if [ "$n" -gt "$cap" ]; then
+            emit WARN C100-fleet "${#anchors[@]} fleets under $root; only the first $cap were read" "move wrapped fleets out of $root"
+            read_all=0
+            break
+        fi
+        picked="$(python3 -I - "$anchor" <<'PY'
+import glob, json, os, sys
+anchor = sys.argv[1]
+try:
+    with open(anchor) as stream:
+        control = json.load(stream)
+    attempts = control.get('attempts') or {}
+    manifest = ''
+    for record in attempts.values() if isinstance(attempts, dict) else []:
+        path = record.get('manifest') if isinstance(record, dict) else None
+        if isinstance(path, str) and os.path.isfile(path):
+            manifest = path
+            break
+    if not manifest:
+        listed = sorted(glob.glob(os.path.join(os.path.dirname(anchor), '*.fleet.json')))
+        manifest = listed[0] if len(listed) == 1 else ''
+    print('MANIFEST\t' + manifest if manifest else ('NOMANIFEST' if attempts else 'SKIP'))
+except (OSError, ValueError, AttributeError) as error:
+    print('BAD\t' + str(error).replace('\n', ' '))
+PY
+)" || picked=$'BAD\tpython3 failed'
+        kind="${picked%%$'\t'*}"; manifest="${picked#*$'\t'}"
+        case "$kind" in
+            SKIP) continue ;;
+            NOMANIFEST)
+                emit WARN C100-fleet "cannot read fleet attempts for $anchor: its attempts name no manifest that exists and the bucket does not hold exactly one *.fleet.json" \
+                    "the attempts there cannot be listed; read $anchor by eye, and settle none by hand-editing it"
+                found=1; continue ;;
+            BAD)
+                emit WARN C100-fleet "cannot read fleet attempts for $anchor: $manifest"
+                found=1; continue ;;
+        esac
+        out="$("$tb" -k 2 "$secs" "${ackcmd[@]}" ack --read-only --manifest "$manifest" 2>/dev/null </dev/null)"; rc=$?
+        if [ "$rc" -ne 0 ]; then
+            emit WARN C100-fleet "cannot read fleet attempts for $anchor: the read-only ack exited $rc$([ "$rc" -ne 124 ] || printf ' (no answer within %ss)' "$secs")"
+            found=1; continue
+        fi
+        picked="$(python3 -I - "$out" <<'PY'
+import os, sys, json
+
+def clean(value):
+    text = str(value).replace('\x00', '\\0').replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
+    return text or '-'
+
+try:
+    data = json.loads(sys.argv[1])
+except ValueError as error:
+    print('BAD\t' + clean('the answer is not JSON (%s)' % error))
+    sys.exit(0)
+if not isinstance(data, dict) or data.get('managed') is not True:
+    print('BAD\t' + clean('the answer says the fleet is not managed or is not an object'))
+    sys.exit(0)
+for key in ('unknown', 'legacy_unknown', 'launched'):
+    if not isinstance(data.get(key), list) or not all(isinstance(item, dict) for item in data[key]):
+        print('BAD\t' + clean('%s is not a list of records' % key))
+        sys.exit(0)
+for item in data['unknown']:
+    hint = item.get('settle_hint')
+    print('\t'.join(['UNKNOWN', clean(item.get('attempt_id')), clean(item.get('name')), clean(item.get('doc')),
+                     clean(hint.get('text') if isinstance(hint, dict) else 'no settle hint')]))
+for item in data['legacy_unknown']:
+    print('\t'.join(['LEGACY', clean(item.get('doc')), clean(item.get('label')), clean(item.get('attempt_id'))]))
+for item in data['launched']:
+    doc = item.get('doc')
+    if not isinstance(doc, str) or '\x00' in doc or not os.path.isfile(doc) or not os.access(doc, os.R_OK):
+        print('\t'.join(['UNREAD', clean(item.get('attempt_id')), clean(item.get('name')), clean(doc)]))
+PY
+)" || picked=$'BAD\tpython3 failed'
+        while IFS=$'\t' read -r a b c d h; do
+            case "$a" in
+                '') ;;
+                BAD) emit WARN C100-fleet "cannot read fleet attempts for $anchor: $b"; found=1 ;;
+                UNKNOWN) emit WARN C100-fleet "fleet attempt $b ($c, $d) is unknown: $h" \
+                             "read the hint; a settle is typed by the chief, never by hand-editing $anchor"; found=1 ;;
+                LEGACY) emit WARN C100-fleet "fleet row $b ($c) in $anchor is held by a legacy registration that is not proven wrapped" \
+                            "check the worker, then retire the row with fleet-manifest.sh remove"; found=1 ;;
+                UNREAD) emit WARN C100-fleet "launched fleet attempt $b ($c) names a doc that cannot be read: $d" \
+                            "the attempt still holds a family slot; see ack --read-only for it"; found=1 ;;
+            esac
+        done <<< "$picked"
+    done
+    if [ "$found" -eq 0 ] && [ "$read_all" -eq 1 ]; then
+        emit OK C100-fleet "no fleet attempt is unknown across ${#anchors[@]} fleet(s) under $root"
+    fi
 }
 
 # --- C35: VM after-report runner reachable -------------------
@@ -6291,6 +6416,7 @@ run_check C96 check_c96_jira_test_project
 run_check C97 check_c97_codex_mcp_literal_key
 run_check C98 check_c98_wrapped_window
 run_check C99 check_c99_gemini_local
+run_check C100 check_c100_fleet
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

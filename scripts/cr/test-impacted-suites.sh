@@ -1346,6 +1346,20 @@ else
     if [ "$old_out" = "$cmp_out" ] && [ -n "$old_out" ]; then pass "same list as the pre-HIMMEL-5363 selector (old-selector control)"; else fail "old selector differs: old=[$old_out] new=[$out]"; fi
 fi
 if grepq "$out" '^scripts/test-nonutf8\.sh$'; then pass "a suite line with a non-UTF-8 byte is still matched"; else fail "non-UTF-8 suite not listed: $out"; fi
+mkf scripts/cr/pr-check-context.sh 'cr_guarded="scripts/cr scripts/lib
+scripts/lanes/worker-pr-open.sh scripts/lanes/names-tg.sh"'
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: restore pr-check-context.sh for 37b"
+change scripts/telegram/status.sh
+ctl="$(run_is "$range")"
+if grepq "$ctl" -Fx scripts/cr/test-cr-guarded-closure.sh; then pass "37b control: a file a guarded file names selects the closure suite through the guarded search"; else fail "37b control: $ctl"; fi
+mkdir -p "$SHIM4/trbin"
+REAL_TR="$(command -v tr)"
+printf '#!/usr/bin/env bash\nif [ "$#" -eq 2 ] && [ "$1" = "\\n" ] && [ "$2" = " " ]; then exit 1; fi\nexec "%s" "$@"\n' "$REAL_TR" > "$SHIM4/trbin/tr"
+chmod +x "$SHIM4/trbin/tr"
+out="$( cd "$FX" && PATH="$SHIM4/trbin:$PATH" bash "$IS" "$range" 2>/dev/null )"; rc=$?
+err="$( cd "$FX" && PATH="$SHIM4/trbin:$PATH" bash "$IS" "$range" 2>&1 >/dev/null )"
+if [ "$rc" -eq 2 ] && [ -z "$out" ] && grepq "$err" -F 'impacted-suites: converting the guarded pathspecs failed — cannot trust the impacted list'; then pass "37b a failing guarded-pathspec conversion exits 2 through io_fail, listing nothing"; else fail "37b guarded-pathspec conversion: rc=$rc out=$out err=$err"; fi
 PREV_IS_SHA=093218b3d9ed4eadb8d6eff8d67949d72aabb031
 mkdir -p "$SHIM4/prevcr"
 if ! git -C "$(dirname "$IS")" cat-file -e "$PREV_IS_SHA^{commit}" 2>/dev/null; then

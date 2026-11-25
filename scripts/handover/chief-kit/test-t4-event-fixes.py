@@ -298,6 +298,23 @@ class Collector(stream_tests.StreamFixture):
         self.assertEqual(self.collect().stdout, '')
         self.assertEqual(self.path('ready').read_text(), 'N2\t1\n')
 
+    def test_an_ask_row_that_stops_being_ask_meets_none_of_its_old_readys_as_new(self):
+        doc = self.root / 'N1.md'
+        for later in ({'t3_kind': 'task'}, {}):
+            with self.subTest(later=later):
+                for state in ('ready', 'ready-docs'):
+                    self.path(state).unlink(missing_ok=True)
+                doc.write_text('- 10:00 READY #1 h1\n- 10:01 READY #2 h2\n')
+                row = dict(label='N1', doc=str(doc), lane='t3', lockless=True, t3_thread='thr1')
+                self.fleet.write_text(json.dumps(dict(workers=[dict(row, t3_kind='ask')])))
+                for _ in range(2):
+                    self.assertEqual(self.collect().stdout, '')
+                self.fleet.write_text(json.dumps(dict(workers=[dict(row, **later)])))
+                for _ in range(2):
+                    self.assertEqual(self.collect().stdout, '')
+                self.append('N1.md', '- 10:10 READY #3 h3')
+                self.assertEqual(self.collect().stdout.strip(), 'N1 READY 3')
+
     def test_unchanged_document_keeps_its_handled_ready_across_passes(self):
         self.workers([b'- 10:00 READY #1 h1\n'])
         self.collect()
