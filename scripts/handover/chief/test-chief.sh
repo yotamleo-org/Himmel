@@ -3770,10 +3770,15 @@ seed94() {
 }
 man94="{\"workers\":[{\"label\":\"N1\",\"doc\":\"$root/x/N1.md\"},{\"label\":\"N2\",\"doc\":\"$root/x/N2.md\"}]}"
 
-# 94c: a manifest jq cannot read leaves the block whole and spills nothing.
-seed94 trim94c "$legs94" '{not json'
-doc94cB="$root/tester/trim94cdst/DEMO-nextleg-${today}B-chief.md"
-check "94c a malformed manifest seeds the complete workers block" "$(grep -Fxc "$legs94" "$doc94cB" 2>/dev/null)" "1"
+# 94c: a manifest jq cannot read refuses next and spills nothing.
+tok94c="$(token_of "$(chief new --bucket trim94c)")"
+A94c="$root/tester/trim94c/DEMO-nextleg-${today}A-chief.md"
+printf '%s\n' '{not json' > "${A94c%.md}.fleet.json"
+rc94c=0
+chief next --bucket trim94cdst --doc "$A94c" >/dev/null 2>&1 || rc94c=$?
+HANDOVER_DIR="$root" bash "$QL" release "$A94c" "$tok94c" >/dev/null 2>&1
+check "94c a malformed manifest refuses next with exit 10" "$rc94c" "10"
+check "94c a malformed manifest writes no successor doc" "$([ -e "$root/tester/trim94cdst/DEMO-nextleg-${today}B-chief.md" ] && echo yes || echo no)" "no"
 check "94c a malformed manifest writes no history file" "$([ -e "$root/tester/trim94cdst/specs/history" ] && echo yes || echo no)" "no"
 
 # 94f: a manifest row with no label cannot be matched to its span, so the block stays whole.
@@ -4300,5 +4305,12 @@ rcp10877=0
 CHIEF_NEXT_LAUNCH_WAIT=1 chief next --bucket r10877dst --doc "$Ar10877" >/dev/null 2>"$tmp/p10877.err" || rcp10877=$?
 check "10877 a manifest row with a pending launch attempt refuses next with exit 10" "$rcp10877" "10"
 check "10877 the refusal names the pending row" "$(grep -c 'attempt pending: N22' "$tmp/p10877.err")" "1"
+check "10877 the refusal points a dead launcher at runtime settle" "$(grep -c 'fleet-manifest.sh runtime settle' "$tmp/p10877.err")" "1"
+printf 'not json\n' > "${Ar10877%.md}.fleet.json"
+rcu10877=0
+CHIEF_NEXT_LAUNCH_WAIT=30 chief next --bucket r10877dst --doc "$Ar10877" >/dev/null 2>"$tmp/u10877.err" || rcu10877=$?
+check "10877 an unreadable predecessor manifest refuses next with exit 10" "$rcu10877" "10"
+check "10877 the refusal names the unreadable manifest" "$(grep -c "cannot read the fleet manifest ${Ar10877%.md}.fleet.json" "$tmp/u10877.err")" "1"
+check "10877 an unreadable manifest refuses without waiting" "$(grep -c 'waiting up to' "$tmp/u10877.err")" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$Ar10877" "$tokr10877" >/dev/null 2>&1
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

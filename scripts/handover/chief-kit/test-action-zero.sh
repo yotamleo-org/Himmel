@@ -214,12 +214,23 @@ printf '{"schema":1,"workers":[{"doc":"%s","label":"N31","lane":"native","added"
     "$ROOT/DEMO-31-N31-worker.md" "$ROOT/DEMO-32-N32-worker.md" "$ROOT/DEMO-33-N33-worker.md" > "${CPRED%.md}.fleet.json"
 printf '{"schema":1,"carried_from":"%s","carried_at":"2026-11-25T04:26:00Z","workers":[{"doc":"%s","label":"N31","lane":"native","added":"2026-11-25T04:20:00Z"}]}\n' \
     "${CPRED%.md}.fleet.json" "$ROOT/DEMO-31-N31-worker.md" > "${CSUCC%.md}.fleet.json"
+# shellcheck disable=SC2016 # literal backticks
+htok="$(env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" acquire "$CSUCC" 2>/dev/null | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+hout="$(bash "$AZ" --doc "$CSUCC" --root "$ROOT" --acquire --lock-only 2>&1)"
+check "a held lock prints no CARRY section" "0" "$(printf '%s\n' "$hout" | grep -c '^== CARRY')"
+check "a held lock carries no row" "0" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
+env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" release "$CSUCC" "$htok" >/dev/null 2>&1
 cout="$(bash "$AZ" --doc "$CSUCC" --root "$ROOT" --acquire --lock-only 2>&1)"
 check "a row the predecessor's manifest gained after the copy joins the successor's" "1" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
 check "the carried row keeps its lane and lockless flag" "claudex true" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '.workers[] | select(.doc == $d) | "\(.lane) \(.lockless)"' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
 check "each carried row is printed" "1" "$(printf '%s\n' "$cout" | grep -c "^carried N32 $ROOT/DEMO-32-N32-worker.md")"
 check "a row older than the copy is not carried again" "0" "$(jq -r --arg d "$ROOT/DEMO-33-N33-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
+# shellcheck disable=SC2016 # literal backticks
+ctok="$(printf '%s\n' "$cout" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" release "$CSUCC" "$ctok" >/dev/null 2>&1
+bash "$HERE/fleet-manifest.sh" remove "${CSUCC%.md}.fleet.json" "$ROOT/DEMO-32-N32-worker.md" >/dev/null 2>&1
 cout2="$(bash "$AZ" --doc "$CSUCC" --root "$ROOT" --acquire --lock-only 2>&1)"
-check "a second run carries nothing" "none" "$(printf '%s\n' "$cout2" | sed -n '/^== CARRY/{n;p;}')"
+check "a second acquire runs no CARRY" "0" "$(printf '%s\n' "$cout2" | grep -c '^== CARRY')"
+check "a carried row removed later is not carried back" "0" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

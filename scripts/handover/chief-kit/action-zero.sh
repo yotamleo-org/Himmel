@@ -26,12 +26,13 @@
 #           it cannot render (no manifest next to the doc, a failure or a timeout) and
 #           when this document's lock is held (by this or another session): the workers: line is not
 #           rewritten. A chief already holding its lock re-renders with live-state.sh.
-#   CARRY   only with --acquire, and only when this doc's fleet manifest names the
-#           predecessor's it was copied from (carried_from, carried_at, written by
-#           chief.sh next): each predecessor row added at or after the copy whose doc
-#           this manifest lacks (a launch that landed after the copy) is added through
-#           fleet-manifest.sh add, lane, lockless and arm kept, one `carried <label> <doc>`
-#           line each. Runs first, so --render-workers and the waiter see those rows.
+#   CARRY   once, right after --acquire took this doc's lock, and only when its fleet
+#           manifest names the predecessor's it was copied from (carried_from,
+#           carried_at, written by chief.sh next): each predecessor row added at or
+#           after the copy whose doc this manifest lacks (a launch that landed after
+#           the copy) is added through fleet-manifest.sh add, lane, lockless and arm
+#           kept, one `carried <label> <doc>` line each. <manifest>.carried records
+#           that it ran, so a row removed later is never carried back.
 #
 # --lock-only runs the LOCK section (and CARRY) alone: the successor's one call once
 # `chief.sh next` has pre-computed the other sections into its doc.
@@ -86,12 +87,11 @@ bounded() {
     return "$brc"
 }
 
-smanifest="${doc%.md}.fleet.json"
-pmanifest=""
-if [ "$acquire" -eq 1 ] && [ -f "$smanifest" ]; then
+carry_late_rows() {
+    local smanifest="${doc%.md}.fleet.json" pmanifest="" carried_at late ncarry cdoc clabel clane cll carm cargs
+    [ -f "$smanifest" ] && [ ! -e "$smanifest.carried" ] || return 0
     pmanifest="$(jq -r '.carried_from // empty' "$smanifest" 2>/dev/null)" || pmanifest=""  # swallow-ok: an unreadable manifest names no predecessor, the CARRY section is skipped
-fi
-if [ -n "$pmanifest" ]; then
+    [ -n "$pmanifest" ] || return 0
     echo "== CARRY (rows the predecessor's manifest gained after the copy)"
     if carried_at="$(jq -er '.carried_at | strings' "$smanifest")" && late="$(jq -r --slurpfile s "$smanifest" --arg t "$carried_at" '
             ($s[0].workers // $s[0].legs // [] | map(.doc)) as $have
@@ -114,10 +114,12 @@ if [ -n "$pmanifest" ]; then
 $late
 EOF
         [ "$ncarry" -gt 0 ] || echo "none"
+        date -u +%Y-%m-%dT%H:%M:%SZ > "$smanifest.carried" || echo "warning: could not write $smanifest.carried; a later --acquire would carry again"
+        [ "$ncarry" -eq 0 ] || echo "re-render the workers: line with live-state.sh to list them"
     else
         echo "unavailable (cannot read $pmanifest or the carried_at of $smanifest): diff them by hand"
     fi
-fi
+}
 
 if [ "$lockonly" -eq 0 ]; then
     echo "== LOCKS (swept at the root)"
@@ -195,6 +197,7 @@ if [ "$acquire" -eq 1 ]; then
         elif [ -n "$tok" ]; then
             echo "token not recorded: the doc has no none-yet line, write it in step 8"
         fi
+        [ -z "$tok" ] || carry_late_rows
     else
         echo "NOT ACQUIRED — the lock is not free: find its holder, do not take it over"
     fi

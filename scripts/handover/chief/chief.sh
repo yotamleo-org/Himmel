@@ -2479,8 +2479,7 @@ EOF
 launches_in_flight() {
     local m="$1"
     if [ -f "$m" ]; then
-        # swallow-ok: an unreadable manifest names no pending row; the process scan below still runs
-        jq -r "$JQ_W"'W[]? | objects | select((.attempt | type) == "object" and .attempt.phase == "pending") | "attempt pending: \(.label // "-") \(.doc // "")"' "$m" 2>/dev/null || true
+        jq -r "$JQ_W"'W[]? | objects | select((.attempt | type) == "object" and .attempt.phase == "pending") | "attempt pending: \(.label // "-") \(.doc // "")"' "$m" || return 2
     fi
     # swallow-ok: no ps listing names no launcher; the pending-attempt rows above still count
     ps -eo pid=,args= 2>/dev/null | awk -v m="$m" -v b="${m##*/}" '
@@ -2493,17 +2492,17 @@ launches_in_flight() {
 }
 
 wait_launches_settled() {
-    local waited=0 limit="${CHIEF_NEXT_LAUNCH_WAIT:-300}" busy
-    busy="$(launches_in_flight "$1")"
+    local waited=0 limit="${CHIEF_NEXT_LAUNCH_WAIT:-300}" busy unreadable="refusing to hand over: cannot read the fleet manifest $1; repair or restore it, then run next again"
+    busy="$(launches_in_flight "$1")" || { err "$unreadable"; return 1; }
     [ -n "$busy" ] || return 0
     err "waiting up to ${limit}s for launches still writing to $1"
     while [ -n "$busy" ] && [ "$waited" -lt "$limit" ]; do
         sleep 1
         waited=$((waited + 1))
-        busy="$(launches_in_flight "$1")"
+        busy="$(launches_in_flight "$1")" || { err "$unreadable"; return 1; }
     done
     [ -n "$busy" ] || return 0
-    err "refusing to hand over: these launches still write to $1 after ${limit}s; let them finish (or settle a dead launcher's attempt with fleet-manifest.sh attempt settle), then run next again:"
+    err "refusing to hand over: these launches still write to $1 after ${limit}s; let them finish (or, for a dead launcher, settle its attempt with fleet-manifest.sh runtime settle), then run next again:"
     printf '  %s\n' "$busy" >&2
     return 1
 }
