@@ -152,7 +152,8 @@ WRAP_SUBTREE_CHECK="${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}"
 LIVE_SUBAGENTS="${LIVE_SUBAGENTS_BIN:-$HERE/live-subagents.sh}"
 CLOSE_SWEEP="${CLOSE_SWEEP_BIN:-$HERE/close-sweep.sh}"
 CLOSE_SWEEP_STATE="${CLOSE_SWEEP_STATE_DIR:-$HOME/.himmel/state/close-sweep}"
-FINISHED_GH="${CLOSE_WRAPPED_WORKER_GH:-gh}"
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+FINISHED_GH="${CLOSE_WRAPPED_WORKER_GH:-$GH_READ_BIN}"
 
 usage() {
     echo "usage: close-wrapped-worker.sh [--check] [--finished] [--chief | --fleet <manifest>] <doc> | [--check] --sweep --fleet <manifest>" >&2

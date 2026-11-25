@@ -36,7 +36,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lanes/lib/claude-sessions.sh
 . "$HERE/../../lanes/lib/claude-sessions.sh"
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
-GH="${ORPHAN_SCAN_GH:-gh}"
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+GH="${ORPHAN_SCAN_GH:-$GH_READ_BIN}"
 
 usage() { echo "usage: orphan-scan.sh --fleet <manifest> [--self <session name>]... [--prefix <p>] [--repo <path>]" >&2; exit 2; }
 fleet=""; prefix="HIMMEL-"; repo="$(cd "$HERE/../../.." && pwd)"; selves=","
