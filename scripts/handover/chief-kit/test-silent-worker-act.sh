@@ -54,7 +54,7 @@ cat > "$WORK/bus.sh" <<'EOF'
 #!/usr/bin/env bash
 [ "$1" = send ] || exit 9
 [ -z "${BUS_FAIL:-}" ] || { echo "bus: refused" >&2; exit 1; }
-printf '%s %s\n' "$2" "$(tr '\n' ' ' < "$3")" >> "$WORK/bus.log"
+printf '%s %s\n' "$2" "$(tr '\n' ' ' < "$3")" >> "$WORK/bus.log"  # read-sink-ok: $3 is the body file the helper under test mktemps
 echo "sent #42 to $2"
 EOF
 cat > "$WORK/launcher.sh" <<'EOF'
@@ -85,7 +85,7 @@ export HIMMEL_BUS_NAME="DEMO-chief-2026-11-25"
 unset CHIEF_WAIT_WORKER_SILENT_MIN
 
 run() { bash "$ACT" --doc "$CHIEF_DOC" --fleet "$MANIFEST" --bucket "$BUCKET" --chief DEMO-chief-2026-11-25 "$@" 2>&1; }
-count() { [ -f "$1" ] && wc -l < "$1" | tr -d ' ' || echo 0; }
+count() { [ -f "$1" ] && wc -l < "$1" | tr -d ' ' || echo 0; }  # read-sink-ok: only the suite's own $WORK logs are counted
 
 out="$(run N1 161)"
 check "1a. silent 161m: nudged and relaunched" "SILENT-ACT N1 nudged relaunched" "$out"
