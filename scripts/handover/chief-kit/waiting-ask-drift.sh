@@ -9,7 +9,7 @@
 #                to. This is what scripts/config-ui/board.ts ledgerItems puts under Waiting on you;
 #                a chief-owned row, a row with no actor and a closed row are never waiting.
 #   open ask     a bullet `- [HH:MM ]OWED <key> <text>` in the chief doc (chief-wait.sh owed_wake reads the
-#                same shape) that has a receipt bullet `- [HH:MM ]DELIVERED <key> msg=<id> chat=<id>`, so the
+#                same shape) that has a receipt bullet `- [HH:MM[Z] ]DELIVERED <key> msg=<id> chat=<id>`, so the
 #                operator was really asked, and whose key names no closed row. An OWED bullet with no
 #                receipt is the chief's own undelivered step (board.ts undeliveredItems), never an open ask.
 #   match        an ask matches a row when its <key> is the row's id (o1, o2, ...) or the row's ticket key.
@@ -82,7 +82,7 @@ def unspent_keys_of(row):
     return keys_of(row) - spent_keys
 
 ask_re = re.compile(r"^- (?:\d{1,2}:\d{2} )?OWED ([A-Za-z0-9_.-]+)(?: (.*))?$")
-got_re = re.compile(r"^- (?:\d{1,2}:\d{2} )?DELIVERED ([A-Za-z0-9_.-]+) msg=\d+ chat=-?\d+(?: .*)?$")
+got_re = re.compile(r"^- (?:\d{1,2}:\d{2}Z? )?DELIVERED ([A-Za-z0-9_.-]+) msg=\d+ chat=-?\d+(?: .*)?$")
 receipts = {m.group(1) for m in map(got_re.match, doc_lines) if m}
 asks, seen = [], set()
 for l in doc_lines:
