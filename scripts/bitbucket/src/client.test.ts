@@ -24,6 +24,7 @@ import {
   listPrs,
   createIssue,
   listPrComments,
+  listPrStatuses,
   replyPrComment,
   resolvePrComment,
   BitbucketHttpError,
@@ -449,6 +450,95 @@ describe('bitbucket client', () => {
     await expect(listPrComments(5)).rejects.toThrowError(BitbucketHttpError);
   });
 
+  it('getPr reports a null head_commit when the PR response carries no source commit', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonRes(200, { id: 12, title: 't', state: 'OPEN' })),
+    );
+    expect((await getPr(12)).head_commit).toBeNull();
+  });
+
+  it('listPrStatuses maps statuses and follows pagination', async () => {
+    const urls: string[] = [];
+    const fetchMock = vi.fn(async (arg: unknown) => {
+      urls.push(reqUrl(arg));
+      if (urls.length === 1) {
+        return jsonRes(200, {
+          values: [{ key: 'pipe', name: 'Pipeline', state: 'SUCCESSFUL' }],
+          next: 'https://api.bitbucket.org/2.0/repositories/myws/myrepo/pullrequests/5/statuses?page=2',
+        });
+      }
+      return jsonRes(200, { values: [{ key: 'lint', state: 'FAILED' }] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await listPrStatuses(5);
+    expect(result).toEqual({
+      statuses: [
+        { key: 'pipe', name: 'Pipeline', state: 'SUCCESSFUL' },
+        { key: 'lint', name: 'lint', state: 'FAILED' },
+      ],
+      truncated: false,
+      pages: 2,
+    });
+    expect(urls[0]).toContain('/repositories/myws/myrepo/pullrequests/5/statuses');
+  });
+
+  it('listPrStatuses sets truncated when it hits PAGE_CAP', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonRes(200, {
+          values: [{ key: 'pipe', name: 'Pipeline', state: 'SUCCESSFUL' }],
+          next: 'https://api.bitbucket.org/2.0/repositories/myws/myrepo/pullrequests/5/statuses?page=next',
+        }),
+      ),
+    );
+    const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const result = await listPrStatuses(5);
+    expect(result.truncated).toBe(true);
+    errSpy.mockRestore();
+  });
+
+  it('listPrStatuses throws on a mid-pagination failure and on a non-numeric id', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          jsonRes(200, {
+            values: [{ key: 'pipe', state: 'SUCCESSFUL' }],
+            next: 'https://api.bitbucket.org/2.0/repositories/myws/myrepo/pullrequests/5/statuses?page=2',
+          }),
+        )
+        .mockResolvedValueOnce(jsonRes(500, { type: 'error' })),
+    );
+    await expect(listPrStatuses(5)).rejects.toThrowError(BitbucketHttpError);
+    await expect(listPrStatuses(Number('x'))).rejects.toThrowError(/numeric id/);
+  });
+
+  it('listPrComments throws when a page carries no values list instead of reading it as no threads', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes(200, { type: 'error' })));
+    await expect(listPrComments(5)).rejects.toThrowError(BitbucketHttpError);
+  });
+
+  it('listPrStatuses throws when a page carries no values list instead of reading it as empty', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes(200, { type: 'error' })));
+    await expect(listPrStatuses(5)).rejects.toThrowError(BitbucketHttpError);
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          jsonRes(200, {
+            values: [{ key: 'pipe', state: 'SUCCESSFUL' }],
+            next: 'https://api.bitbucket.org/2.0/repositories/myws/myrepo/pullrequests/5/statuses?page=2',
+          }),
+        )
+        .mockResolvedValueOnce(jsonRes(200, {})),
+    );
+    await expect(listPrStatuses(5)).rejects.toThrowError(BitbucketHttpError);
+  });
+
   it('replyPrComment POSTs content.raw + parent.id and returns the mapped comment', async () => {
     let body: unknown;
     const fetchMock = vi.fn(async (arg: unknown) => {
@@ -552,7 +642,7 @@ describe('bitbucket client', () => {
         state: 'OPEN',
         description: 'does a thing',
         author: { nickname: 'alice' },
-        source: { branch: { name: 'feat/x' } },
+        source: { branch: { name: 'feat/x' }, commit: { hash: 'abc123def456' } },
         destination: { branch: { name: 'main' } },
         created_on: '2026-06-01T00:00:00Z',
         updated_on: '2026-06-02T00:00:00Z',
@@ -569,6 +659,7 @@ describe('bitbucket client', () => {
       author: 'alice',
       source_branch: 'feat/x',
       destination_branch: 'main',
+      head_commit: 'abc123def456',
       url: 'https://bitbucket.org/myws/myrepo/pull-requests/12',
       created_on: '2026-06-01T00:00:00Z',
       updated_on: '2026-06-02T00:00:00Z',

@@ -552,7 +552,7 @@ test("HIMMEL-9974 reply --owed on a split reply writes DELIVERED only after ever
   const res = await owedReply(r, doc, true, undefined, { text: filler(7000), parts: 3, send });
   expect(res.code).toBe(0);
   expect(res.out).toContain("delivered msg=5003");
-  expect(readFileSync(doc, "utf8")).toMatch(/\n- \d\d:\d\d DELIVERED sig-1 msg=5003 chat=1\n$/);
+  expect(readFileSync(doc, "utf8")).toMatch(/\n- \d\d:\d\dZ DELIVERED sig-1 msg=5003 chat=1\n$/);
 });
 
 test("HIMMEL-9974 reply --owed on a split reply whose last part gets no receipt exits non-zero, names 2 of 3, and marks nothing delivered", async () => {
@@ -574,7 +574,7 @@ test("reply --owed prints the Telegram message id from the poller's send receipt
   const res = await owedReply(r, doc, true);
   expect(res.code).toBe(0);
   expect(res.out).toContain("delivered msg=4242");
-  expect(readFileSync(doc, "utf8")).toMatch(/\n- \d\d:\d\d DELIVERED sig-1 msg=4242 chat=1\n$/);
+  expect(readFileSync(doc, "utf8")).toMatch(/\n- \d\d:\d\dZ DELIVERED sig-1 msg=4242 chat=1\n$/);
 });
 
 test("reply --owed exits non-zero and marks nothing delivered when no send receipt arrives; a receipt written just before the reply was queued does not count", async () => {

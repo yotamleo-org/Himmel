@@ -286,7 +286,11 @@ fail_over() {
   fi
   # the preflight and the alert take time: a stop that lands in them still ends the failure path
   [ "$STOPPED" = 0 ] || { echo "claude-api: stopped by its caller during the failure path; no alert, no fallback" >&2; return 0; }
-  send_alert "$class" "$rc" "$reason" "$decision"
+  if [ "$class" = refused ] && [ "$KIND_SAFE" != eval ]; then
+    echo "claude-api: alert: none sent, a refusal alerts for HIMMEL_API_KIND=eval only (kind $KIND_SAFE)" >&2
+  else
+    send_alert "$class" "$rc" "$reason" "$decision"
+  fi
   echo "claude-api: fallback: $decision" >&2
   [ "$run" = 1 ] || return 0
   [ "$STOPPED" = 0 ] || { echo "claude-api: stopped by its caller; the fallback was not run" >&2; return 0; }

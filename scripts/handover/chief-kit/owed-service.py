@@ -17,7 +17,7 @@ def owe(bucket, *args):
 
 
 def receipt(doc, key):
-    match = re.search(r'^- (?:[0-9]{1,2}:[0-9]{2} )?DELIVERED ' + re.escape(key) +
+    match = re.search(r'^- (?:[0-9]{1,2}:[0-9]{2}Z? )?DELIVERED ' + re.escape(key) +
                       r' msg=([1-9][0-9]*) chat=-?[0-9]+(?: .*)?$', doc.read_text(), re.M)
     return match[1] if match else None
 

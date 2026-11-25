@@ -82,7 +82,7 @@ def unspent_keys_of(row):
     return keys_of(row) - spent_keys
 
 ask_re = re.compile(r"^- (?:\d{1,2}:\d{2} )?OWED ([A-Za-z0-9_.-]+)(?: (.*))?$")
-got_re = re.compile(r"^- (?:\d{1,2}:\d{2} )?DELIVERED ([A-Za-z0-9_.-]+) msg=\d+ chat=-?\d+(?: .*)?$")
+got_re = re.compile(r"^- (?:\d{1,2}:\d{2}Z? )?DELIVERED ([A-Za-z0-9_.-]+) msg=\d+ chat=-?\d+(?: .*)?$")
 receipts = {m.group(1) for m in map(got_re.match, doc_lines) if m}
 asks, seen = [], set()
 for l in doc_lines:
