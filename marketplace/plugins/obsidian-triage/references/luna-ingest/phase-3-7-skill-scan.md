@@ -18,8 +18,7 @@ Skip this entire phase unless `--skill-scan` was passed. Runs after Phase 3.6 an
 4. **Scan through the one wrapper.** Set the provider on purpose: upstream defaults an unset provider to `nv_build`, which sends the skill text to build.nvidia.com, so the wrapper refuses an unset provider. `ollama` is Stage 1 only; `nv_build` and `anthropic` are the full scan for a vendor candidate and refuse (rc 2) with a named reason when `NVIDIA_INFERENCE_KEY` / `ANTHROPIC_API_KEY` is missing, and with `SKILLSPECTOR_OFFLINE=1` (Stage 2 needs the network). Stage 1 posts the skill's lockfile package names and versions to api.osv.dev to check them for known CVEs; that lookup stays on. Only for a private skill whose dependency list must not leave the machine, also set `SKILLSPECTOR_OFFLINE=1`: the wrapper then runs the scanner with the network denied (`unshare --user --net`), skips the live CVE lookup, and refuses (rc 2) on a host where it cannot deny the network.
 
    ```bash
-   export SKILLSPECTOR_PROVIDER=ollama     # read-through: every use not named for vendoring, clips included
-   export SKILLSPECTOR_PROVIDER=nv_build   # vendor candidate only (or anthropic): the ingest request says the skill is to be vendored
+   export SKILLSPECTOR_PROVIDER=ollama   # read-through, clips included; a vendor candidate exports nv_build or anthropic here instead, never both
    bash "<plugin>/tools/skillspector-scan.sh" "$skill_tmp" "<vault>/<dest>/<repo-slug>.skillspector/<skill-slug>.json"
    ```
 

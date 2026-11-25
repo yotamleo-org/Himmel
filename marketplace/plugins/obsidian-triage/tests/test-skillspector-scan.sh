@@ -330,6 +330,8 @@ n=0
 for mut in 'm.llm_available=false' 'm.llm_calls_succeeded=2' 'm.llm_calls_attempted=0;m.llm_calls_succeeded=0' 'm.llm_error="boom"' 'm.llm_requested=false'; do
     n=$((n+1))
     node -e 'const fs=require("fs"); const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const m=r.metadata; eval(process.argv[2]); fs.writeFileSync(process.argv[3], JSON.stringify(r))' "$FXC" "$mut" "$tmpdir/cm$n.json"
+    [ -s "$tmpdir/cm$n.json" ] && s=ok || s=missing
+    assert "the mutated replay ($mut) was written" ok "$s"
     run "$tmpdir/cm$n.json.out" SKILLSPECTOR_PROVIDER=nv_build NVIDIA_INFERENCE_KEY=k STUB_REPLAY="$tmpdir/cm$n.json"; rc=$?
     assert "a clean report where Stage 2 did not run ($mut) is unavailable (rc 3)" 3 "$rc"
 done
