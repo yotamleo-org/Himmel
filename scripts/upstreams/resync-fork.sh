@@ -118,7 +118,7 @@
 #   4  rebase CONFLICTED, or the delta is NOT strictly additive, OR a
 #      pin-literal failure (PIN_FILE_MISSING / PIN_NOT_FOUND / PIN_AMBIGUOUS —
 #      a stale fork.pin_file/pin_template/pin_ref_template, not a rebase
-#      problem) — a human must resolve it; nothing was pushed
+#      problem) — nothing was pushed
 set -uo pipefail
 
 SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -219,7 +219,10 @@ sync_fork() {
       echo "resync-fork: --sync $nwo rebase failed without conflicts: $rebase_out" >&2; return 2
     fi
     echo "resync-fork: --sync $nwo CONFLICTED rebasing $ahead carried commit(s) onto $upstream@$updef; paths: ${conflicted:-?}"
-    echo "resync-fork: nothing pushed, no PR — resolve the carried commits by hand"
+    echo "resync-fork: FORK-REBASE step, owed in this drift fix (nothing pushed, no PR yet):"
+    echo "    1. git -C $dir rebase upstream/$updef   (replays the $ahead carried commit(s); stops at each conflict)"
+    echo "    2. resolve each conflicted path keeping both sides' intent, then git rebase --continue"
+    echo "    3. test the result, push it to a NEW branch and a NEW tag, never over $branch; the old tip stays reachable"
     return 4
   fi
   echo "resync-fork: $nwo@$branch rebased onto $upstream@$updef: $ahead carried, $behind upstream commit(s) absorbed, new tip $(git -C "$dir" rev-parse HEAD)"
@@ -709,6 +712,12 @@ if [ "$rebase_rc" -ne 0 ]; then
     echo "    (rebase failed before producing unmerged paths — see below)"
     printf '%s\n' "$rebase_out" | sed 's/^/    /'
   fi
+  echo ""
+  echo "  FORK-REBASE step, owed in this drift fix:"
+  echo "    1. git -C $CLONE_DIR rebase --onto $TARGET_SHA $BASE_SHA resync-tmp   (replays the fork delta; stops at each conflict)"
+  echo "    2. resolve each conflicted path keeping both sides' intent, one commit per carried commit, then git rebase --continue"
+  echo "    3. test the result, push it to a NEW branch and a NEW tag at the new tip, never over the fork's own branch"
+  echo "    4. move the pin and synced_base to the new tip in the same drift PR"
 else
   echo "  rebase:         CLEAN onto $TARGET_LABEL"
   echo "  new SHA:        $NEW_SHA"
@@ -754,8 +763,10 @@ if [ "$FINAL_RC" -eq 0 ]; then
   fi
   echo "    (apply-drift-bump.sh does not cover fork SHA/tag pins, so this stays a"
   echo "    reviewed, hand-driven step.)"
+elif [ "$rebase_rc" -ne 0 ]; then
+  echo "resync-fork: the FORK-REBASE step above is part of this drift fix; the pin moves once the rebased tip is pushed." >&2
 else
-  echo "resync-fork: a human must review or resolve this before the pin can move (see above)." >&2
+  echo "resync-fork: the delta is not additive; review the modified upstream files above before the pin can move." >&2
 fi
 
 exit "$FINAL_RC"

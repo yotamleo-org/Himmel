@@ -31,8 +31,10 @@ is why this is a runbook and not a shell script.
 carried commits → `gh repo sync` of the fork's default branch plus a rebase of
 our commits onto upstream, pushed straight to the himmel branch. A conflict
 stops and names the paths. No sync PR, no judge, no CodeRabbit on upstream
-code; `block-fork-sync-pr.sh` refuses a `gh pr create` that tries. Run `--sync`
-by hand only: the scheduled cadence must not invoke it. The steps
+code; `block-fork-sync-pr.sh` refuses a `gh pr create` that tries. The unflagged
+`--sync` moves the default branch and force-pushes the himmel branch, so only an
+operator runs it, by hand. The drift fix's step 2C and the audit-only
+`HIMMEL-ForkResync` cadence use `--sync --dry-run` only. The steps
 below audit the pin of an `upstreams.json` `fork` block; the PR in step 7 is the
 himmel pin move, never a PR into the fork.
 
@@ -40,8 +42,8 @@ himmel pin move, never a PR into the fork.
 
 1. **Never bump `synced_base` without a completed rebase.** If you cannot finish
    the re-sync, leave the entry BEHIND. A truthful BEHIND is the product here.
-2. **Never push to the fork remote unless the audit is clean.**
-   `resync-fork.sh --push` enforces this, so do not work around it.
+2. **Never push to the fork remote until the rebased result is clean, tested and
+   additive-or-declared.**
 
 `--dry-run` = report the rebase result, change nothing, push nothing.
 
@@ -90,7 +92,7 @@ remote without `--push`.
 | 1 | already on the target base | nothing to do; if the guard still says BEHIND, the registry disagrees with reality — report that, don't "fix" it by editing `synced_base` |
 | 2 | usage / registry / missing git or network | abort and report |
 | 3 | SKIP — no `fork` block | not in scope for this command |
-| 4 | rebase CONFLICTED, the delta is NOT additive, OR a pin-literal failure (`PIN_FILE_MISSING`/`PIN_NOT_FOUND`/`PIN_AMBIGUOUS`) | **stop and escalate** — see below; expected-non-additive entries are the exception |
+| 4 | rebase CONFLICTED, the delta is NOT additive, OR a pin-literal failure (`PIN_FILE_MISSING`/`PIN_NOT_FOUND`/`PIN_AMBIGUOUS`) | a conflict is resolved in the same fix (the fork-rebase step, see below); a pin-literal failure is reported; expected-non-additive entries are the exception |
 
 **Expected-non-additive entries.** An entry whose `fork.note`
 declares the delta non-additive BY DESIGN reports rc 4 NON-ADDITIVE on every
@@ -105,13 +107,17 @@ v2.1.1-himmel.1, +10 −0, before that fork was collapsed onto upstream v2.2.0) 
 entry: its healthy audit result is ADDITIVE, and a NON-ADDITIVE result there
 would be a regression to report, not a designed exception.
 
-**On rc 4, do not resolve the conflict yourself in an unattended run.** For a
-CONFLICTED/non-additive rebase, report: the conflicting paths (or the upstream
-files the delta modifies/deletes), the fork's commit list, and the upstream
-target. A conflicted fork re-sync is a design decision about which side wins —
-that is the operator's call, and getting it wrong silently corrupts a
-dependency every machine installs. Leave the entry BEHIND and file a ticket
-describing the conflict.
+**On rc 4 CONFLICTED, do the fork-rebase step.** A conflict is work to do, not a
+reason to leave the fork behind. Replay the carried commits onto the target in
+the scratch clone and resolve every conflict: keep both sides' intent, regenerate
+lockfiles with the package manager, never take a whole file from one side, keep
+every carried commit, and check the result with `git range-diff`. Then continue
+from step 5. Only a fork carrying an operator hold stays BEHIND, and no deferral
+ticket is filed. The audit-only `HIMMEL-ForkResync` cadence reports the conflicting
+paths, the fork's commit list and the upstream target and stops at step 3; the
+resolution is done by the drift fix (`/drift-fix` step 2C) or an operator run of
+this command. A non-additive delta that is not declared by design is reported the
+same way.
 
 A `PIN_FILE_MISSING`/`PIN_NOT_FOUND`/`PIN_AMBIGUOUS` rc 4 is a DIFFERENT failure
 mode — the registry's `fork.pin_file`/`fork.pin_template` is stale, not a
@@ -119,34 +125,42 @@ rebase judgment call. Report the pin mismatch instead (entry name, the
 missing/ambiguous path or template) — the conflicting-paths/commit-list report
 above does not apply.
 
-## 4. Publish the rebased fork — OPERATOR-GATED, never unattended
+## 4. Publish the rebased fork
+
+Run step 5's checks against the rebased tip in the scratch clone first, and push
+only once they pass. Then push the rebased tip to a NEW branch `himmel-main-upstream-<target>` and a NEW
+tag `himmel-pin/<version>-himmel.1`, with a plain `git push` from the scratch
+clone, and keep the old tip reachable as tag `himmel-presync/<branch>-<sha12>`.
+Never push over the fork's default branch or the himmel branch and never
+force-push: moving those is the operator's word. The command, from the scratch
+clone (remote `fork`). First prove the three refs are free, since a plain push
+would fast-forward an existing branch and accept an identical tag; the read must
+exit 2, and any other exit stops the push:
 
 ```bash
-bash scripts/upstreams/resync-fork.sh <name> --push
+git -C <clone> ls-remote --exit-code fork refs/heads/himmel-main-upstream-<target> refs/tags/himmel-pin/<version>-himmel.1 refs/tags/himmel-presync/<branch>-<sha12>
 ```
 
-**A scheduled run must NOT execute this.** It moves a branch on a remote the
-operator owns — the one genuinely irreversible-ish step in this runbook — and
-"the rebase audited clean" is not the same as "a human agreed to publish it".
-The nightly cadence has no approval to mutate a remote, exactly as it has no
-approval to merge the PR.
+```bash
+git -C <clone> push --atomic fork HEAD:refs/heads/himmel-main-upstream-<target> HEAD:refs/tags/himmel-pin/<version>-himmel.1 <old-tip>:refs/tags/himmel-presync/<branch>-<sha12>
+```
 
-So the two modes differ here, and only here:
+`resync-fork.sh --push` is not used: it force-pushes its own branch. If the check or
+the push fails, report the failure with the git output; never retry the push and
+never reach for a force flag.
 
-- **Unattended (the cadence):** STOP at the end of step 3. Report the audited
-  result — upstream target, fork commits rebased, delta confirmed additive, and
-  the rebased SHA `resync-fork.sh` computed in its scratch clone — then exit.
-  Nothing is pushed, no pin moves, the entry stays BEHIND, and the guard keeps
-  saying so. That is a complete, successful run: the expensive, judgment-heavy
-  part (does the rebase even apply cleanly?) is done and reported, and all that
-  remains is a human saying yes. Surface the exact command they need:
-  `bash scripts/upstreams/resync-fork.sh <name> --push`
-- **Operator-run (by hand):** invoking this step IS the approval. Continue to
-  step 5.
+The modes differ in who runs this step:
 
-`--push` still refuses a conflicted or non-additive rebase on its own — that
-guard is structural and independent of this one. Record the new fork SHA it
-prints; it is the pin.
+- **The audit-only cadence (`HIMMEL-ForkResync`):** STOP at the end of step 3 and
+  report the audited result — upstream target, fork commits rebased, whether
+  the delta is additive, and the rebased SHA `resync-fork.sh` computed in its
+  scratch clone. Nothing is pushed by that run; the fork is brought current by
+  the drift fix, which runs this step.
+- **The drift fix (`/drift-fix` step 2C) and an operator run:** run step 5's
+  checks on the scratch-clone tip, push the new branch and tag as above only if
+  they pass, then move the pin in step 6.
+
+Record the new fork SHA (`git -C <clone> rev-parse HEAD`); it is the pin.
 
 ## 5. Prove the fork still works
 

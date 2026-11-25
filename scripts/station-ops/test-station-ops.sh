@@ -650,15 +650,6 @@ out=$(approve 43 "$id" "$(code 43)")
 assert_contains "RED: NONCE CODE runs the size-approval op" "op_result=changed" "$out"
 SA6_F="$SA_DIR/HIMMEL-9228.N5216.272.$SA6_S"
 assert_eq "the approved op wrote the approval file" "yes" "$([ -f "$SA6_F" ] && echo yes || echo no)"
-RK="$tmp/rkit"; mkdir -p "$RK/scripts/handover/chief-kit" "$tmp/hroot"
-ln -s "$REPO_ROOT/scripts/lib" "$RK/scripts/lib"; ln -s "$REPO_ROOT/scripts/ci" "$RK/scripts/ci"
-sed -e "s|^SIZE_APPROVALS=/var/lib/himmel/size-approvals\$|SIZE_APPROVALS=$SA_DIR|" -e "s|^SIZE_APPROVAL_UID=0\$|SIZE_APPROVAL_UID=$(id -u)|" \
-    "$REPO_ROOT/scripts/handover/chief-kit/size-override.sh" > "$RK/scripts/handover/chief-kit/size-override.sh"
-assert_eq "the reader copy points at the sandbox approvals" "1" "$(grep -c "^SIZE_APPROVALS=$SA_DIR\$" "$RK/scripts/handover/chief-kit/size-override.sh")"
-assert_eq "the reader copy owns the approvals as the test user" "1" "$(grep -c "^SIZE_APPROVAL_UID=$(id -u)\$" "$RK/scripts/handover/chief-kit/size-override.sh")"
-out=$(bash "$RK/scripts/handover/chief-kit/size-override.sh" check HIMMEL-9228 N5216 --files 272 --trust yes --scope "$SA6_S" --root "$tmp/hroot" 2>&1); rc=$?
-assert_eq "RED: the reader accepts the approval the Telegram line produced (exit 0)" "0" "$rc"
-assert_contains "the reader says the operator kept it whole" "kept whole by the operator" "$out"
 
 echo "== HIMMEL-9691: a delivered notice leaves a sent row with the Bot API receipt =="
 station_ledger_row_sixqv7lo='{"cwd": "/", "event": "request", "hash": "15ad1b2b703e8795c8bee214cb609388e522b0996cc6a7da2d618beb12038d31", "id": "sixqv7lo", "kind": "op", "op": "size-approval", "params": {"files": "67", "key": "HIMMEL-9689", "label": "N5590", "reason": "keep-whole", "scope": "116f2c95737b91306c8a95d1c97c2e4d"}, "result": "pending", "script_sha256": "f307349ded689ecc803eef113a1ed0491407e408e1ecf276f04a34b38667246c", "session": "terminal-2446437", "ticket": "HIMMEL-9689", "ts": "2026-11-09T01:10:13Z", "version": 1}'

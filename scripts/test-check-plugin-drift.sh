@@ -1814,8 +1814,8 @@ fork_run() {
 }
 fork_out="$(fork_run)"; fork_rc=$?
 if grepq "$fork_out" 'yotamleo/fast@main: BEHIND.*fork-behind.*behind=5 ahead=0.*gh repo sync yotamleo/fast'; then ok "fork-behind: five behind and zero ahead recommends gh repo sync"; else bad "fork-behind: missing five-behind fast-forward action; $fork_out"; fi
-if grepq "$fork_out" 'yotamleo/carried@main: BEHIND.*behind=3 ahead=2.*/fork-resync'; then ok "fork-behind: carried commits recommend /fork-resync"; else bad "fork-behind: missing carried-commit action"; fi
-if grepq "$fork_out" 'yotamleo/renamed@main: BEHIND.*upstream=upstream/renamed@trunk behind=6 ahead=0 action=/fork-resync'; then ok "fork-behind: differing branch names require /fork-resync even without carried commits"; else bad "fork-behind: differing branch names offered an unsafe sync action"; fi
+if grepq "$fork_out" 'yotamleo/carried@main: BEHIND.*behind=3 ahead=2.*action=fork-rebase'; then ok "fork-behind: carried commits owe a fork-rebase step in the drift fix"; else bad "fork-behind: missing carried-commit action"; fi
+if grepq "$fork_out" 'yotamleo/renamed@main: BEHIND.*upstream=upstream/renamed@trunk behind=6 ahead=0 action=fork-rebase'; then ok "fork-behind: differing branch names require a fork-rebase step even without carried commits"; else bad "fork-behind: differing branch names offered an unsafe sync action"; fi
 if grepq "$fork_out" 'yotamleo/fast@himmel/pin: BEHIND.*behind=7 ahead=1'; then ok "fork-behind: pinned branch checked separately from default"; else bad "fork-behind: pinned branch was skipped"; fi
 if grepq "$fork_out" 'yotamleo/held@main: BEHIND'; then bad "fork-behind: hold-reason did not suppress drift row"; else ok "fork-behind: hold-reason suppresses drift row"; fi
 if grepq "$fork_out" 'yotamleo/current@main: BEHIND'; then bad "fork-behind: ahead-only fork reported behind"; else ok "fork-behind: ahead-only fork is not behind"; fi
