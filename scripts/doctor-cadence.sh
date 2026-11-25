@@ -124,13 +124,13 @@ $(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
 # the first one to answer busy goes first on the next run, so the pass is retried and never read as progress. Passes per
 # register stop at a complete cycle (or a busy answer, or a failure) and are capped; the whole step has one time
 # budget (DOCTORCAD_HOLDS_GC_BUDGET) that never stops the first pass of a run, so it ends within the budget plus one
-# pass (30 s). It starts before, and bounds, the repo-gone probes; an unprobed register is read. Whether a repo is gone is
-# holds.py's answer (repo-gone), the same one the doctor's C95 uses; only a proven removal skips a register. The run lock
-# held by cmd_run keeps two scheduled runs from overlapping; holds.py's own per-repo lock covers a manual gc. The step is
-# best-effort: holds-gc.log holds this run's pass lines and ends with one summary line (or one skipped line), which `status`
-# shows; a failure never fails the run. The passes run gc --keep-aged-resume: a row whose only sign of death is an unwrapped
-# RESUME doc past 24 hours is never pruned by the schedule, because nothing frees ownership by age on its own. Each is
-# counted in the pass line and the summary as waiting=; a chief or the operator releases them by running gc by hand.
+# pass (30 s). Whether a repo is gone is holds.py's answer (repo-gone), the same one the doctor's C95 uses; only a
+# proven removal skips a register. The run lock held by cmd_run keeps two scheduled runs from overlapping; holds.py's
+# own per-repo lock covers a manual gc. The step is best-effort: holds-gc.log holds this run's pass lines and ends
+# with one summary line (or one skipped line), which `status` shows; a failure never fails the run. The passes run
+# gc --keep-aged-resume: a row whose only sign of death is an unwrapped RESUME doc past 24 hours is never pruned by the
+# schedule, because nothing frees ownership by age on its own. Each such row is counted: a pass line ends waiting=<n>, and
+# the summary line ends waiting=<total> when any waited; a chief or the operator releases them by running gc by hand.
 holds_gc_note() { printf '%s %s\n' "$(date +%FT%T)" "$*" >> "$STATE_DIR/holds-gc.log"; }
 
 holds_maintenance() { # <primary root>

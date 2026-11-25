@@ -1905,7 +1905,7 @@ state = {'locks': 0}
 def dir_lock(d):
     state['locks'] += 1
     if state['locks'] == 2:
-        os.utime(row, None)  # freshened after the contender judged it dead, before the contender took the lock
+        os.utime(row, None)
     return real_lock(d)
 def link(src, dst, *a, **k):
     if '%00taken' in os.path.basename(src) and dst == row:

@@ -1505,8 +1505,7 @@ def gc_cursor_write(repo, pos, origin):
 
 
 def gc_judge_row(judge, key_state, d, n, absolute=False):
-    """Judge one row and take it out when its holder is dead or its key is Done: 1 when it was removed, else 0.
-    An absolute pr row is another repository's to judge: this repository's gh answers for its own pull requests, so the row stays 'unknown'."""
+    """Judge one row and take it out when its holder is dead or its key is Done: 1 when it was removed, else 0."""
     full = os.path.join(d, n)
     st, f = read_row(full)
     if st != 'ok':
@@ -1534,8 +1533,7 @@ def gc_judge_row(judge, key_state, d, n, absolute=False):
     return 0
 
 
-def key_has_row(listing, key):
-    """True when a row of the key is in the register now, or the register cannot be read: a key judged dead earlier in the pass may hold a row again."""
+def may_hold_row(listing, key):
     for _di, d, _names in listing:
         try:
             current = os.listdir(d)
@@ -1599,7 +1597,7 @@ def gc_sweep(repo, deadline, listing, keep_aged=False):
             gkey = m.group(0).rsplit('.', 1)[1]
             # a grant whose row is gone goes on every pass; a dead key's grant only when this pass judged every row, so key_state is the whole register's
             orphan = lambda verified: not os.path.exists(os.path.join(d, n[:m.start()])) or (
-                full and key_state.get(gkey) == 'dead' and not (verified and key_has_row(listing, gkey)))
+                full and key_state.get(gkey) == 'dead' and not (verified and may_hold_row(listing, gkey)))
             if not orphan(False):
                 continue
             lock = dir_lock(d)
