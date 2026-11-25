@@ -69,7 +69,7 @@ seven were compared before re-copying: only `principle-explain-the-number` has
 new upstream content; its change is not mislabeled as a local deviation.
 
 The manifest, README, plugin manifest, drift/prerequisite test and this document
-are himmel-owned. The plugin version is 0.1.8: the re-pin to 0b46ec39 (0.15.46) raised it, as the plugin-version gate requires for any plugin change. The plugin remains a local subset, with no upstream hooks,
+are himmel-owned. The plugin version is 0.1.9: the re-pin to 0b46ec39 (0.15.46) raised it to 0.1.8 and the full-scan re-sync step to 0.1.9, as the plugin-version gate requires for any plugin change. The plugin remains a local subset, with no upstream hooks,
 agents, autonomous skills, runtime npm packages or whole-plugin install. The
 upstream harness map is informational: himmel's chief, lane, model and tool
 contracts always win.
@@ -117,10 +117,28 @@ bash scripts/quiet-run.sh suite -- bash marketplace/plugins/pstack/test-vendor.s
 
 For re-sync: read the pinned upstream license and execution/IO surfaces first;
 copy the inventory above from an immutable commit; byte-compare every file;
-update the complete hash inventory, sha here and every skill header, plugin
+run the full SkillSpector scan over each skill directory of the new copy (a
+required step: Stage 2, the AI review, included, never the Stage 1-only
+`ollama` read-through); update the complete hash inventory, sha here and every skill header, plugin
 metadata/marketplace description, `docs/third-party-licenses.md`, integration and
 registry rows, and `scripts/lanes/tests/pstack-plugin.test.mjs`. Keep each local
 deviation explicit. Do not change the separate unslop/no-comments/technical-writing
 pins as part of a pstack-plugin-only re-sync. Do not add the fork's hooks,
 `poteto-mode`, `setup-pstack`, `shipping`, `autopilot-*`, `orchestrate` or
 `autonomous-run`.
+
+The full scan runs through the one wrapper, in the throwaway sandbox or test VM
+where SkillSpector is installed (never on the station host), with the provider
+and its key exported in the launching shell (never read from `.env`):
+
+```sh
+export SKILLSPECTOR_PROVIDER=nv_build   # key NVIDIA_INFERENCE_KEY; or anthropic with ANTHROPIC_API_KEY
+bash marketplace/plugins/obsidian-triage/tools/skillspector-scan.sh <skill-dir> <report.json>
+```
+
+rc 0 is the pass. A missing key is a refusal (rc 2) and a Stage 2 that did not
+run is rc 3; neither clears the skill. rc 4 means a HIGH or CRITICAL finding
+survived Stage 2 and the re-sync stops: the report is stored, read each
+flagged `file:line` the wrapper printed, write its `fingerprint=` value into
+`<report.json>.ack`, one per line, and run the wrapper again until it returns
+rc 0. A finding that is real stops the re-vendor instead.
