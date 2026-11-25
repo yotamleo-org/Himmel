@@ -87,12 +87,13 @@ run --refresh --force >/dev/null 2>&1
 [ "$before" = "$(plan_sum)" ] && pass "source plan dir content untouched by refresh" || fail "plan dir changed"
 [ "$(find "$plan" -type f | wc -l)" -eq 4 ] && pass "no file added to the plan dir" || fail "plan dir gained files"
 
-cp "$plan/stage3/placement.tsv" "$W/placement.a"; bump; cp "$out/.fp" "$W/fp.keep"
+cp "$plan/stage3/placement.tsv" "$W/placement.a" || fail "snapshot of the indexed plan failed"; bump; cp "$out/.fp" "$W/fp.keep"
 r="$(QMD_FAIL=1 run --refresh 2>&1)"; rc=$?
 [ "$rc" != 0 ] && pass "failing qmd: refresh non-zero" || fail "failing qmd rc=0"
 [ "$(cat "$out/.fp")" = "$(cat "$W/fp.keep")" ] && pass "failing qmd: fingerprint not advanced" || fail "fingerprint advanced on failure"
 [ ! -e "$out/.rendered" ] && pass "failing embed: indexed-docs record dropped, so reverting the docs cannot skip qmd" || fail "failing embed left a stale .rendered"
-cp "$W/placement.a" "$plan/stage3/placement.tsv"
+cp "$W/placement.a" "$plan/stage3/placement.tsv" || fail "restore of the indexed plan failed"
+cmp -s "$W/placement.a" "$plan/stage3/placement.tsv" && pass "the input is back to the indexed plan" || fail "the plan was not restored to the indexed one"
 r="$(run --check 2>&1)"; rc=$?
 [ "$rc" != 0 ] && pass "failed embed then the input returns to the indexed one: --check stale" || fail "--check fresh although qmd holds other docs: $r"
 r="$(run --refresh 2>&1)"; contains "failed run retried next time" "$r" "rebuilt"
