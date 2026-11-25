@@ -1821,6 +1821,10 @@ lacks "N38 the tail of a value wrapped over three lines, all upper case, is not 
 has "N38 a blank line after a line that holds an equals sign is still a key" "  FOO  unowned  stays (blank in .env: no value)" "$out"
 no_canary "N38 the wrapped value prints no value" "$out"
 fixture_env
+fxput "$TMP/st/.env" "TOK=%s\n%s\nTOK=\n" "$(canary a)" "$(canary b)"
+out=$(bash "$SCRIPT" --dry-run --unowned --env "$TMP/st/.env" 2>&1)
+has "N38 a blank second entry of a key after a bare line is still a duplicate" "  TOK  unowned  stays (it has several entries; keep one)" "$out"
+fixture_env
 fxput "$TMP/st/.env" 'UNREAD_SECRET=%s\nUNREAD_SECRET="%s\n%s"\n' "$(canary a)" "$(canary b)" "$(canary c)"
 cp -p "$TMP/st/.env" "$TMP/st.orig"
 apply_tty y "$SYSPATH"
