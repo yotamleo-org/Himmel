@@ -1177,10 +1177,12 @@ async function closureCheck(specs: string, key: string, kind: Kind, r: number, r
 
 function sortClosure(text: string, findings: Finding[], openIds: Set<string>, changed: string[]): Finding[] {
   const lines = text.split("\n");
+  const bare = (id: string) => id.replace(/^R\d+-(?=\S)/, "");
+  const open = new Set([...openIds].map(bare));
   return findings.map(f => {
     const line = (lines.find(l => FINDING_LINE.exec(l)?.[1] === f.id) ?? "").replaceAll("\\`", "`");
     const quoted = [...line.matchAll(/`([^`]{12,})`/g)].map(m => m[1]);
-    const cls = f.reopens && openIds.has(f.reopens) ? "reopens" : f.regression && quoted.some(q => changed.some(l => l.includes(q))) ? "regression" : "out-of-closure";
+    const cls = f.reopens && open.has(bare(f.reopens)) ? "reopens" : f.regression && quoted.some(q => changed.some(l => l.includes(q))) ? "regression" : "out-of-closure";
     return { ...f, class: cls };
   });
 }

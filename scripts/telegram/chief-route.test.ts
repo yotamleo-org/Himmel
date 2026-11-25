@@ -3421,6 +3421,13 @@ test("R2, R3, R3b, R3c: round 4 is a closure check: no marker gives T2, a new fi
   expect(row.findings).toMatchObject([{ id: "M2", class: "reopens" }, { id: "n1", class: "out-of-closure" }]);
 }, S1B);
 
+test("a closure return reopening R3-M1 classes as blocking against the bare open id M1, and a reopen of an id that was never open stays out-of-closure", async () => {
+  const t = await roundTree(MAJOR, []);
+  const ok = await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", "- **M2** (major; reopens R3-M1) still open", "- **n1** (major; reopens R3-Z9) never open", "- **n2** (major; reopens Z9) never open");
+  expect(ok.err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "M2", class: "reopens" }, { id: "n1", class: "out-of-closure" }, { id: "n2", class: "out-of-closure" }]);
+});
+
 test("R4, R5, R8, R9: round 5 needs a record (T5); the override names only an open blocking id of the latest round (T9), once (T8), and only from the console", async () => {
   const t = await roundTree(MAJOR, []);
   expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", "- **M2** (major; reopens M1) still open", "- **n1** (minor) a note")).err).toBe("");
