@@ -4272,7 +4272,7 @@ Al10877="$root/tester/l10877/DEMO-nextleg-${today}A-chief.md"
 wl10877="$root/tester/l10877/DEMO-21-N21-worker.md"
 printf '%s\n' '# worker' '## Results' > "$wl10877"
 printf '{"schema":1,"workers":[]}\n' > "${Al10877%.md}.fleet.json"
-# shellcheck disable=SC2016  # the $n are the stand-in launcher's own positional args
+# shellcheck disable=SC2016
 bash -c 'sleep 3; bash "$3" add "$2" "$4" --lane native >/dev/null 2>&1; :' headed-arm-worker.sh --fleet "${Al10877%.md}.fleet.json" "$REPO_REAL/scripts/handover/chief-kit/fleet-manifest.sh" "$wl10877" &
 pidl10877=$!
 rcl10877=0

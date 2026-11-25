@@ -2985,9 +2985,10 @@ cmd_next() {
     successor_manifest="${doc%.md}.fleet.json"
     manifest_note="none carried (the predecessor had no manifest); create it with fleet-manifest.sh add"
     if [ -f "$predecessor_manifest" ]; then
+        local carried carried_at
+        carried_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         cp "$predecessor_manifest" "$successor_manifest" || { err "could not copy fleet manifest $predecessor_manifest to $successor_manifest"; exit 1; }
-        local carried
-        if carried="$(jq --arg p "$predecessor_manifest" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '. + {carried_from: $p, carried_at: $t}' "$successor_manifest")"; then
+        if carried="$(jq --arg p "$predecessor_manifest" --arg t "$carried_at" '. + {carried_from: $p, carried_at: $t}' "$successor_manifest")"; then
             printf '%s\n' "$carried" > "$successor_manifest"
         else
             err "warning: could not record the predecessor's manifest in $successor_manifest; ACTION ZERO will not carry a launch that lands after this copy"
