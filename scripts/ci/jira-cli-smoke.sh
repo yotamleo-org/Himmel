@@ -51,7 +51,7 @@ until [ -s "$TMP/port" ]; do
   sleep 0.1
 done
 
-out="$(JIRA_BASE_URL="http://127.0.0.1:$(cat "$TMP/port")" JIRA_EMAIL=smoke@example.invalid \
+out="$(JIRA_BASE_URL="http://127.0.0.1:$(cat "$TMP/port")" JIRA_ALLOW_HOST="127.0.0.1:$(cat "$TMP/port")" JIRA_EMAIL=smoke@example.invalid \
   JIRA_API_TOKEN=smoke-not-a-secret JIRA_PROJECT_KEY=SMOKE node "$DIST" get SMOKE-1 --short)" \
   || fail "mocked get exited non-zero"
 grep -q 'SMOKE-1.*smoke summary' <<< "$out" || fail "mocked get output unexpected: $out"

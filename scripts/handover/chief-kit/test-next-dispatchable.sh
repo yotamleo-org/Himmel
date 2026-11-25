@@ -141,7 +141,7 @@ lacks "a BLOCKED classification is dropped" "$out" "HIMMEL-10	"
 first="$(printf '%s\n' "$out" | grep -v '^#' | head -n 1 | cut -f2)"
 [ "$first" = "$KP"-9 ] && pass "ranked: earliest version, then priority first" || fail "ranked first is '$first' (want $KP-9)"
 order="$(printf '%s\n' "$out" | grep -v '^#' | cut -f2 | paste -sd, -)"
-[ "$order" = "HIMMEL-9,HIMMEL-3,HIMMEL-4,HIMMEL-2,HIMMEL-1" ] && pass "ranked: v1.0.1 before v1.0.2" || fail "order is '$order'"
+[ "$order" = "HIMMEL-9,HIMMEL-3,HIMMEL-4,HIMMEL-2,HIMMEL-1" ] && pass "ranked: the lower version first" || fail "order is '$order'"
 
 top1="$(run --top 1 --workers-from "$WORK/fleet.json" | grep -vc '^#')"
 [ "$top1" = 1 ] && pass "--top caps the list" || fail "--top 1 printed $top1 lines"
@@ -797,6 +797,8 @@ mk HIMMEL-802 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual 
 mk HIMMEL-803 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual the RM deferred" "Edit scripts/lib/deferred.sh only."
 mk HIMMEL-808 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual with an unknown ledger kind" "Edit scripts/lib/typo.sh only."
 mk HIMMEL-809 "To Do" Medium '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual with a plain admission row" "Edit scripts/lib/plain.sh only."
+mk HIMMEL-811 "To Do" High '["residual-depth-1"]' '["v1.0.1"]' '[]' "residual placed at filing by rule H" "Edit scripts/lib/filed.sh only."
+mk HIMMEL-812 "To Do" Low '["residual-depth-2","proposed-v1.0.1"]' '[]' '[]' "depth-2 residual that only proposes v1.0.1" "Edit scripts/lib/proposed.sh only."
 mk HIMMEL-810 "To Do" Medium '[]' '["v1.0.1"]' '[]' "names a new extensionless file a worker holds" "Add scripts/lib/Brewfile only."
 mk HIMMEL-804 "To Do" Medium '[]' '["v1.0.1"]' '[]' "mentions trees a worker and a PR write in" "Read scripts/handover/chief-kit/ and scripts/lib/ for context; edit scripts/lib/new-thing.sh."
 mk HIMMEL-805 "To Do" Medium '[]' '["v1.0.1"]' '[]' "first of two naming a tree" "See docs/guide/ then edit scripts/lib/d1.sh."
@@ -812,7 +814,7 @@ mk HIMMEL-52 "To Do" Medium '[]' '["v1.0.1"]' '[]' "owned by an open PR" "Edit s
 mk HIMMEL-99 "To Do" Medium '[]' '["v1.0.1"]' '[]' "owned by the live worker" "Edit scripts/lib/fresh-a.sh only."
 M="$M_SAVE"
 cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror30/HIMMEL.versions.tsv"
-printf '{"ts":"t","version":"v1.0.1","key":"HIMMEL-802","kind":"rm-admit","actor":"rm","by":"rm-session"}\n{"ts":"t","version":"v1.0.1","key":"HIMMEL-803","kind":"rm-admit","actor":"rm"}\n{"ts":"t2","version":"v1.0.1","key":"HIMMEL-803","kind":"deferral","actor":"rm"}\n{"ts":"t","version":"v1.0.2","key":"HIMMEL-804","kind":"rm-admit","actor":"rm"}\n{"ts":"t","version":"v1.0.1","key":"HIMMEL-808","kind":"rm-admitt","actor":"rm"}\n{"ts":"t","version":"v1.0.1","key":"HIMMEL-809","gate":"intake","actor":"rm"}\n' > "$WORK/ledger30.jsonl"
+printf '{"ts":"t","version":"v1.0.1","key":"HIMMEL-802","kind":"rm-admit","actor":"rm","by":"rm-session"}\n{"ts":"t","version":"v1.0.1","key":"HIMMEL-803","kind":"rm-admit","actor":"rm"}\n{"ts":"t2","version":"v1.0.1","key":"HIMMEL-803","kind":"deferral","actor":"rm"}\n{"ts":"t","version":"v1.0.2","key":"HIMMEL-804","kind":"rm-admit","actor":"rm"}\n{"ts":"t","version":"v1.0.1","key":"HIMMEL-808","kind":"rm-admitt","actor":"rm"}\n{"ts":"t","version":"v1.0.1","key":"HIMMEL-809","gate":"intake","actor":"rm"}\n{"ts":"t","version":"v1.0.1","key":"HIMMEL-811","kind":"filed","actor":"create","ground":"rules:serious:High"}\n' > "$WORK/ledger30.jsonl"
 run30() { HIMMEL_ADMISSIONS_LEDGER="$WORK/ledger30.jsonl" NEXT_DISPATCH_MIRROR="$M30" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 20 --workers-from "$WORK/fleet.json" "$@" 2>/dev/null; }
 v1="$(run30)"
 has "version: a Story with no blocker is offered" "$v1" "HIMMEL-801	"
@@ -820,6 +822,8 @@ has "version: a residual the RM admitted (ledger row) is offered without residua
 lacks "version: a residual whose latest ledger row is a deferral is not offered" "$v1" "HIMMEL-803	"
 lacks "version: a residual whose ledger row has an unknown kind is not offered" "$v1" "HIMMEL-808	"
 lacks "version: a residual with a kindless intake row is not offered (only an rm-admit or override row admits)" "$v1" "HIMMEL-809	"
+has "(R22) a residual whose latest ledger row is a filed row (rule H at filing) is offered without residual-must" "$v1" "HIMMEL-811	"
+lacks "(R33b) a depth-2 residual that only proposes the version, with no ledger row, is not offered" "$v1" "HIMMEL-812	"
 has "collision: a directory named on the candidate side collides with nothing" "$v1" "HIMMEL-804	"
 has "collision: two candidates naming the same directory are both offered" "$v1" "HIMMEL-805	"
 has "collision: and the second is offered too" "$v1" "HIMMEL-806	"
@@ -905,7 +909,7 @@ has "replay: a ticket really held by a live worker stays held: listed, its share
 n113="$(printf '%s\n' "$rp" | grep -c "	v1.1.3	")"
 [ "$n113" -ge 5 ] && pass "replay: at least 5 v1.1.3 rows ($n113)" || fail "replay: at least 5 v1.1.3 rows (got $n113)"
 
-# --- the real version list: archived unreleased versions (v1.0.3b ...) sort before v1.1.3 but are not the first version ---
+# --- the real version list: archived unreleased versions (v1.0.3b ...) sort ahead of v1.1.3 but are not the first version ---
 M24="$WORK/jira-mirror24/HIMMEL"; mkdir -p "$M24"
 M_SAVE="$M"; M="$M24"
 mk HIMMEL-740 "To Do" Medium '["operator-directed"]' '["v1.1.3"]' '[]' "directed in the first live version" "Edit scripts/lib/t6a.sh only."
@@ -1356,8 +1360,8 @@ has "--resume-only prints the worker overlap on the RESUME row too" "$rh_only" "
 # a residual-depth backlog ticket or a plain versionless one does not ---
 MI="$WORK/jira-mirror-intake/HIMMEL"; mkdir -p "$MI"
 M_SAVE="$M"; M="$MI"
-mk HIMMEL-901 "To Do" Medium '["operator-directed","backlog"]' '[]' '[]' "operator asked for this, no version" "Edit scripts/lib/in1.sh only."
-mk HIMMEL-902 "To Do" High '["backlog"]' '[]' '[]' "a high bug, no version" "Edit scripts/lib/in2.sh only."
+mk HIMMEL-901 "To Do" Medium '["operator-directed"]' '[]' '[]' "operator asked for this, no version" "Edit scripts/lib/in1.sh only."
+mk HIMMEL-902 "To Do" High '[]' '[]' '[]' "a high bug, no version" "Edit scripts/lib/in2.sh only."
 retype "$MI/HIMMEL-902.md" Bug
 mk HIMMEL-903 "To Do" Medium '["backlog","residual-depth-1"]' '[]' '[]' "a residual-depth-1 backlog ticket" "Edit scripts/lib/in3.sh only."
 mk HIMMEL-904 "To Do" Medium '["backlog"]' '[]' '[]' "a plain backlog ticket" "Edit scripts/lib/in4.sh only."
@@ -1370,11 +1374,14 @@ mk HIMMEL-910 "To Do" Medium '[]' '["v1.0.1"]' '[]' "Remove the WSL station tria
 mk HIMMEL-911 "To Do" High '["backlog"]' '[]' '[]' "Windows installer crashes on start" "Edit scripts/lib/in11.sh only."
 retype "$MI/HIMMEL-911.md" Bug
 mk HIMMEL-912 "To Do" Medium '[]' '["v1.0.1"]' '[]' "Windows service crashes after device removal" "Edit scripts/lib/in12.sh only."
-mk HIMMEL-913 "To Do" Medium '["backlog","proposed-v1.0.1"]' '[]' '[]' "filed with a proposed version, INTAKE queued" "Edit scripts/lib/in13.sh only."
+mk HIMMEL-913 "To Do" Medium '["proposed-v1.0.1"]' '[]' '[]' "filed with a proposed version, INTAKE queued" "Edit scripts/lib/in13.sh only."
 mk HIMMEL-914 "To Do" Medium '["backlog","proposed-backlog"]' '[]' '[]' "filed to the backlog with INTAKE queued" "Edit scripts/lib/in14.sh only."
 mk HIMMEL-915 "To Do" Medium '[]' '["v1.0.1"]' '[]' "Windows installer fails after removal of a device" "Edit scripts/lib/in15.sh only."
 mk HIMMEL-916 "To Do" Medium '["backlog","proposed-v1.2.0"]' '[]' '[]' "proposed to a later version, INTAKE queued toward it" "Edit scripts/lib/in16.sh only."
 mk HIMMEL-917 "To Do" Medium '["operator-directed","backlog","proposed-v1.2.0"]' '[]' '[]' "operator work already proposed to a later version" "Edit scripts/lib/in17.sh only."
+mk HIMMEL-918 "To Do" Medium '["operator-directed","backlog"]' '[]' '[]' "operator work the operator sent to the backlog" "Edit scripts/lib/in18.sh only."
+mk HIMMEL-919 "To Do" High '["backlog"]' '[]' '[]' "a high bug the door ruled to the backlog" "Edit scripts/lib/in19.sh only."
+retype "$MI/HIMMEL-919.md" Bug
 M="$M_SAVE"
 printf 'v1.0.1\tfalse\t\n' > "$WORK/jira-mirror-intake/HIMMEL.versions.tsv"
 runi() { NEXT_DISPATCH_MIRROR="$MI" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
@@ -1389,6 +1396,8 @@ lacks "(8170) a versionless High bug on the dropped platform is not an intake ca
 has "(8170) a title that opens with a removal verb is kept" "$oi" "LOCAL	HIMMEL-910"
 has "(8170) the intake line names operator-directed, High+ Bug, scope-label and proposed-version tickets with the version" "$oi" "# intake 4 for v1.0.1: HIMMEL-901 HIMMEL-902 HIMMEL-905 HIMMEL-913"
 lacks "(8170) a residual-depth-1 backlog ticket is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-903"
+lacks "(R16) a versionless operator-directed ticket labelled backlog is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-918"
+lacks "(R16) a versionless High bug labelled backlog is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-919"
 lacks "(8170) a plain versionless backlog ticket is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-904"
 lacks "(8170) a ticket proposed to the backlog is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-914"
 lacks "(8170) a ticket proposed to a version other than the earliest open one is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-916"

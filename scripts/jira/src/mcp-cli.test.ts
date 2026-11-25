@@ -144,6 +144,7 @@ describe('loopback: the real CLI through the bridge', () => {
     seen = [];
     const root = tmp('mcp-loopback-');
     vi.stubEnv('JIRA_BASE_URL', `http://127.0.0.1:${port}`);
+    vi.stubEnv('JIRA_ALLOW_HOST', `127.0.0.1:${port}`);
     vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
     vi.stubEnv('JIRA_EMAIL', 'loopback@example.invalid');
     vi.stubEnv('JIRA_API_TOKEN', 'loopback-token');

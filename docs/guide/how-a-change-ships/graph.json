@@ -692,7 +692,7 @@
         210,
         52
       ],
-      "what": "The automated review has a second model family review the diff: OpenAI GPT through the Codex CLI, with Claude over the API when that lane is on. A finding you agree with sends the change back to the worktree; a pull request cannot open until the review has run, except in a starter install, which does not add that check.",
+      "what": "The automated review has a second model family review the diff: OpenAI GPT through the Codex CLI, with Claude over the API when that lane is on. A project installed without the Codex CLI reviews with Claude alone, and its merge gate asks for that Claude review instead of a Codex one. A finding you agree with sends the change back to the worktree; a pull request cannot open until the review has run, except in a starter install, which does not add that check.",
       "loop": [
         "Review round",
         "Findings",

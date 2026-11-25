@@ -262,6 +262,7 @@ describe('jira release rm-run', () => {
   beforeEach(() => {
     // rm-run posts to Jira; a loopback Jira is a stub, so the post door stays open.
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
     // profile-settings.sh bare runs for real and writes its settings file here.
     vi.stubEnv('HIMMEL_PROFILE_SETTINGS_DIR', join(root, 'profiles'));
     // the judge run appends its launch row beside this path, never under the real HOME
@@ -759,6 +760,7 @@ describe('jira release leaks', () => {
     vi.mocked(request).mockReset();
     // The mock never connects; a loopback Jira is how the post door tells a local stub from the real one.
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
     vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'ledger.jsonl'));
     writeFileSync(join(root, 'ledger.jsonl'), JSON.stringify({
       ts: '2026-10-23T00:00:00.000Z', version: 'v1', key: 'K-3', kind: 'override', actor: 'console',
@@ -1106,7 +1108,8 @@ describe.skipIf(process.platform !== 'linux')('jira release posting verbs from a
   });
 
   it('refuses apply and rm-run against a real Jira host before any post', async () => {
-    vi.stubEnv('JIRA_BASE_URL', 'http://jira.invalid');
+    vi.stubEnv('JIRA_BASE_URL', 'https://jira.invalid');
+    vi.stubEnv('JIRA_ALLOW_HOST', 'jira.invalid');
     expect(await failure('apply', 'R1', 'RU-1')).toMatch(/release apply: refused, nothing was posted/);
     expect(await failure('rm-run', 'R1')).toMatch(/release rm-run: refused, nothing was posted/);
     expect(request).not.toHaveBeenCalled();
@@ -1114,6 +1117,7 @@ describe.skipIf(process.platform !== 'linux')('jira release posting verbs from a
 
   it('lets apply and rm-run past the door against a loopback Jira', async () => {
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
     expect(await failure('apply', 'R1', 'RU-1')).toMatch(/release R1 is UNKNOWN/);
     expect(await failure('rm-run', 'R1')).toMatch(/release R1 is UNKNOWN/);
   });
@@ -2122,6 +2126,7 @@ describe('the door at the request entry point', () => {
     mkdirSync(join(procRoot, '300', 'ns'));
     symlinkSync('pid:[4026531836]', join(procRoot, '300', 'ns', 'pid'));
     symlinkSync('user:[4026531837]', join(procRoot, '300', 'ns', 'user'));
+    writeFileSync(join(procRoot, '300', 'cmdline'), 'node\0vitest\0');
     symlinkSync('300', join(procRoot, 'self'));
     const hostNsPath = join(procRoot, 'host-ns-ref');
     writeFileSync(hostNsPath, 'pid:[4026531836] user:[4026531837]\n');

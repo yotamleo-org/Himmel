@@ -7,7 +7,10 @@
 # the path, so the baseline carries no file name); a file with no
 # row is allowed none. Only the code files a change touches are judged, so a change that
 # touches no commented file can never fail:
-#   a touched file's count of comment lines outside the keep list may not exceed its row
+#   a touched file's count of comment lines outside the keep list may not exceed its row,
+#   nor the count of the base's version of the file (the path it was renamed from, for a
+#   rename), so a sweep that deletes comments and leaves the baseline alone still lowers
+#   the file's limit
 #   a row may not rise above the base's row for that path (or for the path it was renamed
 #   from in this change), and a new row may not be above zero
 #   a count or a row above that limit still passes when it is no higher than the count of
@@ -220,13 +223,16 @@ awk -F'\t' -v has_base="$has_base" '
         if ($2 + 0 > lim) printf "B\t%s\t%d\t%d\n", $1, $2, lim
         next
     }
-    { if ($2 + 0 > tip[$1] + 0) printf "A\t%s\t%d\t%d\n", $1, $2, tip[$1] + 0 }
+    {
+        if ($2 + 0 > tip[$1] + 0) printf "A\t%s\t%d\t%d\n", $1, $2, tip[$1] + 0
+        else if (has_base && $2 + 0 > 0) printf "T\t%s\t%d\t%d\n", $1, $2, tip[$1] + 0
+    }
 ' "$W/renames" "$W/base.p" "$W/tip.p" "$W/counts" > "$W/raw" || die "awk failed"
 awk -F'\t' '{ printf "B\trow %s, which names no file at the tip or the base,\t%d\t%d\n", $1, $2, $3 }' "$W/loose" >> "$W/raw" || die "awk failed"
 
 : > "$W/findings"
 while IFS="$(printf '\t')" read -r kind p n lim; do
-    if [ "$kind" = "A" ] && ! listed "$p" "$W/indiff"; then continue; fi
+    if [ "$kind" != "B" ] && ! listed "$p" "$W/indiff"; then continue; fi
     was="$(awk -F'\t' -v p="$p" '$1 == p { print $2; exit }' "$W/renames")"
     m=0
     if has_at "$base" "${was:-$p}"; then
@@ -238,6 +244,7 @@ while IFS="$(printf '\t')" read -r kind p n lim; do
     fi
     gt "$n" "$m" || continue
     if [ "$kind" = "B" ] && gt "$m" "$lim"; then lim="$m"; fi
+    if [ "$kind" = "T" ]; then lim="$m"; fi
     printf '%s\t%s\t%s\t%s\n' "$kind" "$p" "$n" "$lim" >> "$W/findings"
 done < "$W/raw"
 
@@ -261,7 +268,11 @@ while IFS="$(printf '\t')" read -r kind p n lim; do
         echo "$BL: $p raised to $n, the base allows $lim"
         continue
     fi
-    echo "$p: $n comment lines outside the keep list, baseline $lim"
+    if [ "$kind" = "T" ]; then
+        echo "$p: $n comment lines outside the keep list, the base's version of the file holds $lim"
+    else
+        echo "$p: $n comment lines outside the keep list, baseline $lim"
+    fi
     r="$(added_ranges "$p")"
     git show "$tipspec$p" > "$W/blob" 2>/dev/null || die "cannot read $p at the tip"
     if [ -n "$r" ]; then
@@ -274,7 +285,7 @@ echo "check-new-comments: a new code comment outside the keep list is refused." 
 echo "  Delete it and let a name, a type or a test say it. A constraint forced by an external" >&2
 echo "  dependency, platform or protocol stays when the comment carries its link." >&2
 if [ "$moved" -eq 1 ]; then
-    echo "  A renamed file's baseline row moves with it: run bash scripts/lint/check-new-comments.sh --write-baseline." >&2
+    echo "  A renamed file's baseline row moves with it, in the PR that renames the file (never in a sweep PR): run bash scripts/lint/check-new-comments.sh --write-baseline." >&2
 fi
 echo "  The baseline only goes down. Policy: docs/internals/code-comments.md." >&2
 exit 1

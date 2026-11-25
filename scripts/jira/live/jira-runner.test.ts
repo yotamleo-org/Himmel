@@ -51,6 +51,7 @@ describe('runJira', () => {
       expect(port, 'the loopback stub did not start').toBeGreaterThan(0);
       writeFileSync(join(conf, 'himmel.conf'), 'JIRA_TEST_PROJECT=HTEST\n');
       process.env.JIRA_BASE_URL = `http://127.0.0.1:${port}`;
+      process.env.JIRA_ALLOW_HOST = `127.0.0.1:${port}`;
       process.env.JIRA_EMAIL = 'live@example.invalid';
       process.env.JIRA_API_TOKEN = 'token';
       out = runJira(CLI, conf, 'HTEST', 'create', '--type', 'Task', '--title', 'runner probe', '--desc', LIVE_BODY);

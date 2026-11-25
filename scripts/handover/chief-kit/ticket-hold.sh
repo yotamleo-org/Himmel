@@ -5,7 +5,7 @@
 # chain step as `held`.
 #
 # Usage: ticket-hold.sh <KEY> --reason <text> --owner <who> [--until <YYYY-MM-DD>]
-#                      [--kind chain-order|gate|file-collision|operator|date] [--on <KEY>]
+#                      [--kind chain-order|gate|file-collision|operator|date] [--on <KEY>] [--thread <id>]
 #        ticket-hold.sh <KEY> --release [--owner <who>]
 #   --owner is chief, operator or a lowercase name (a-z, 0-9, -; at most 32); --until must be a real date.
 #   The hold row records owner, reason and any until (nothing releases the hold on it; the Chains tab reads a
@@ -13,6 +13,9 @@
 #   whatever the date; --kind date needs it.
 #   --kind and --on (the ticket it waits on) go into the HOLD comment and the event row;
 #   with --kind, so does --until.
+#   --thread is the threadId (scripts/t3/thread-list.sh) of the T3 thread that owns the ticket; it goes into the
+#   HOLD comment and the event row, and status-drift.sh counts the thread as a live owner while it is not settled
+#   (a settled thread, one the list lacks or an unreadable list is stuck). Not with --release.
 #
 # A hold on an In Progress ticket also moves it to To Do (a held ticket is not In Progress); a failed move
 # warns and appends an `audit-gap` row (stage transition), and the hold stands.
@@ -31,7 +34,7 @@
 set -u
 
 usage() {
-    echo "usage: ticket-hold.sh <KEY> --reason <text> --owner <who> [--until <YYYY-MM-DD>] [--kind <kind>] [--on <KEY>]" >&2
+    echo "usage: ticket-hold.sh <KEY> --reason <text> --owner <who> [--until <YYYY-MM-DD>] [--kind <kind>] [--on <KEY>] [--thread <id>]" >&2
     echo "       kind: chain-order | gate | file-collision | operator | date" >&2
     echo "       ticket-hold.sh <KEY> --release [--owner <who>]" >&2
     exit 2
@@ -39,11 +42,11 @@ usage() {
 [ "$#" -ge 2 ] || usage
 KEY="$1"
 shift
-REASON="" OWNER="" UNTIL="" KIND="" ON="" RELEASE=0
+REASON="" OWNER="" UNTIL="" KIND="" ON="" THREAD="" RELEASE=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --release) RELEASE=1; shift ;;
-        --reason | --owner | --until | --kind | --on)
+        --reason | --owner | --until | --kind | --on | --thread)
             [ "$#" -ge 2 ] || usage
             case "$1" in
                 --reason) REASON="$2" ;;
@@ -51,6 +54,7 @@ while [ "$#" -gt 0 ]; do
                 --until) UNTIL="$2" ;;
                 --kind) KIND="$2" ;;
                 --on) ON="$2" ;;
+                --thread) THREAD="$2" ;;
             esac
             shift 2 ;;
         *) usage ;;
@@ -60,11 +64,12 @@ done
 if [ "$RELEASE" -eq 0 ]; then
     [ -n "$REASON" ] && [ -n "$OWNER" ] || usage
 else
-    [ -z "$REASON$UNTIL$KIND$ON" ] || usage
+    [ -z "$REASON$UNTIL$KIND$ON$THREAD" ] || usage
 fi
 case "$KIND" in "" | chain-order | gate | file-collision | operator | date) ;; *) usage ;; esac
 [ "$KIND" != date ] || [ -n "$UNTIL" ] || usage
 [ -z "$ON" ] || [[ "$ON" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]] || usage
+[ -z "$THREAD" ] || [[ "$THREAD" =~ ^[A-Za-z0-9][A-Za-z0-9:_.-]{0,95}$ ]] || usage
 if [ -n "$OWNER" ]; then
     [[ "$OWNER" =~ ^(chief|operator|[a-z][a-z0-9-]{0,31})$ ]] || usage
 fi
@@ -87,7 +92,7 @@ else
 fi
 
 ROWREASON=$(printf '%s' "$REASON" | tr -d '|\t\r\n')
-row() { status_event event="$EVENT" key="$KEY" ${OWNER:+owner="$OWNER"} ${REASON:+reason="$ROWREASON"} ${KIND:+kind="$KIND"} ${ON:+on="$ON"} ${UNTIL:+until="$UNTIL"} "$@"; }
+row() { status_event event="$EVENT" key="$KEY" ${OWNER:+owner="$OWNER"} ${REASON:+reason="$ROWREASON"} ${KIND:+kind="$KIND"} ${ON:+on="$ON"} ${THREAD:+thread="$THREAD"} ${UNTIL:+until="$UNTIL"} "$@"; }
 
 # chain_log <k=v>... - one row in chain-log.jsonl, beside status-events.jsonl.
 chain_log() {
@@ -155,6 +160,7 @@ else
     printf 'HOLD: %s\n\nowner: %s\nuntil: %s (advisory)\n' "$REASON" "$OWNER" "${UNTIL:-none}" > "$body"
     [ -z "$KIND" ] || printf 'kind: %s\n' "$KIND" >> "$body"
     [ -z "$ON" ] || printf 'on: %s\n' "$ON" >> "$body"
+    [ -z "$THREAD" ] || printf 'thread: %s\n' "$THREAD" >> "$body"
     [ -z "$FROMST" ] || printf 'status: moved to To Do (a held ticket is not In Progress); release the hold to restart it\n' >> "$body"
 fi
 if ! ts_jira comment "$KEY" --comment-file "$body" >/dev/null 2>&1; then

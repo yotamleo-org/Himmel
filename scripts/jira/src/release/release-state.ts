@@ -77,7 +77,7 @@ export function ack(ctx: Ctx, o: { ruling: string; reason: string }): EventRow {
 }
 
 type ReviewList = 'priority' | 'chief' | 'apart';
-const PRIORITY_GROUND = /^door:(serious:.+|mild|mild-no-next|rest-of:.+|operator-ask|operator-ask:.+|started|operator-undeclared:.+)$/;
+const PRIORITY_GROUND = /^door:(serious:.+|mild|mild-no-next|rest-of:.+|operator-ask|operator-ask:.+|started|operator-undeclared:.+|label:.+)$/;
 const APART_GROUND = /^door:(?:operator-ask-apart|operator-apart):(.+)@([^@]+)$/;
 const listOf = (ground: string): ReviewList | null =>
   (ground === 'door:chief' ? 'chief' : APART_GROUND.test(ground) ? 'apart' : PRIORITY_GROUND.test(ground) ? 'priority' : null);

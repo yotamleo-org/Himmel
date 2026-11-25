@@ -53,7 +53,8 @@ describe('refuseTestKeyMint reads only exit 77 from the guard', () => {
 describe('refuseTestJiraPost reads only exit 77 from the guard', () => {
   beforeEach(() => {
     guard.calls.length = 0;
-    vi.stubEnv('JIRA_BASE_URL', 'http://jira.invalid');
+    vi.stubEnv('JIRA_BASE_URL', 'https://jira.invalid');
+    vi.stubEnv('JIRA_ALLOW_HOST', 'jira.invalid');
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -78,6 +79,7 @@ describe('refuseTestJiraPost reads only exit 77 from the guard', () => {
 
   it('never asks the guard for a loopback Jira', () => {
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
     guard.status = 77;
     expect(() => refuseTestJiraPost('create')).not.toThrow();
     expect(guard.calls.length).toBe(0);

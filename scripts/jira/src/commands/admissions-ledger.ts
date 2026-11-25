@@ -10,16 +10,20 @@ export interface Admission {
   version: string;
   key: string;
   gate?: string;
-  kind?: 'override' | 'deferral' | 'rm-admit' | 'rm-remove';
+  kind?: 'override' | 'deferral' | 'rm-admit' | 'rm-remove' | 'filed';
   actor: string;
   reason?: string;
+  /** On a `filed` row, the rules ground that placed the key (`rules:serious:High`). */
+  ground?: string;
+  /** On a `filed` row, the bridge pointer that filed the ticket, when there was one. */
+  evidence?: unknown;
   /** The release-manager session that ruled an `rm-admit` row. */
   by?: string;
   /** The release ruling an `rm-admit` or `rm-remove` row records, so a replay of that ruling finds its row; on an `rm-run` override row, the decision ref that lifted the bulk cap. */
   ruling?: string;
 }
 
-export type AdmissionInput = Pick<Admission, 'version' | 'key' | 'gate' | 'kind' | 'reason' | 'by' | 'ruling'>;
+export type AdmissionInput = Pick<Admission, 'version' | 'key' | 'gate' | 'kind' | 'reason' | 'by' | 'ruling' | 'ground' | 'evidence'>;
 
 /** True when `path` resolves strictly inside the OS temp dir. */
 export function underTmp(path: string): boolean {

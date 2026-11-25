@@ -6,7 +6,7 @@ import { join } from "node:path";
 import * as chainMod from "../peer-bridge/chain";
 import { appendNotify, notifyFile, type NotifyRec } from "../peer-bridge/notify";
 import { readNewLines } from "./bus";
-import { holdingProc, LOCKED_LINE, macProcsFrom, makePeerNotifyFlusher, makePeerReplyRoute, pluginStateDir, DRAFTING_LINE, makePeerTap, NO_DESK_LINE, OTHER_REFUSAL_LINE, OUTBOUND_REFUSAL_LINE, UNRECORDED_REFUSAL_LINE, procFromEnv, readBotPids, readCursor, readProcs, readSent, sentDir, type ProcInfo } from "./peer-notify-route";
+import { botCodeFile, holdingProc, startPeerNotify, LOCKED_LINE, macProcsFrom, makePeerNotifyFlusher, makePeerReplyRoute, pluginStateDir, DRAFTING_LINE, makePeerTap, NO_DESK_LINE, OTHER_REFUSAL_LINE, OUTBOUND_REFUSAL_LINE, UNRECORDED_REFUSAL_LINE, procFromEnv, readBotPids, readCursor, readProcs, readSent, sentDir, type ProcInfo } from "./peer-notify-route";
 import { handleInbound, inboundToDelivered, ingestUpdates, type AutoGate } from "./poller";
 import { BASH_BIN } from "./run";
 import type { SendOpts, SendResult } from "./telegram-api";
@@ -572,4 +572,33 @@ test("a reply to a non-notify bot message routes as today", async () => {
   await b.deliver(textUpdate("thanks", quoted(555, "build finished")));
   expect(b.peerReplies).toEqual([]);
   expect(b.ran).toEqual(["__chat__"]);
+});
+
+test("the operator bot stamps the peer-bridge code it loaded only once peers.json loads and its token is the operator bot's", () => {
+  const home = tmp("peer-notify-stamp-");
+  const C = join(home, ".config/himmel/peer-bridge"), S = join(home, ".himmel/peer-bridge");
+  fs.mkdirSync(C, { recursive: true });
+  const stamp = join(S, "notify/bot.code");
+  const start = (token: string) => startPeerNotify({ token, access: () => null, send: async () => ({ ok: true, messageId: 1 }) as SendResult, log: () => {} });
+  const old = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    fs.writeFileSync(join(C, "peers.json"), "{not json");
+    start(TOKEN);
+    expect(fs.existsSync(stamp)).toBe(false);
+    fs.writeFileSync(join(C, "peers.json"), JSON.stringify({ operatorBotId: OP_BOT, operatorChatId: OP_CHAT, bridgeRoot: join(home, "bridge"), himmelRoot: REPO, peers: {}, maxTextChars: 4000, addressing: "command" }));
+    fs.chmodSync(join(C, "peers.json"), 0o600);
+    start(`${OTHER_BOT}:${"A".repeat(35)}`);
+    expect(fs.existsSync(stamp)).toBe(false);
+    const planted = join(home, "planted");
+    fs.writeFileSync(planted, "keep");
+    fs.mkdirSync(join(S, "notify"), { recursive: true });
+    fs.symlinkSync(planted, stamp);
+    start(TOKEN);
+    expect(fs.lstatSync(stamp).isSymbolicLink()).toBe(false);
+    expect(fs.readFileSync(planted, "utf8")).toBe("keep");
+    expect(botCodeFile(S)).toBe(stamp);
+    expect(chainMod.codeState(stamp)).toBe("fresh");
+    expect(JSON.parse(fs.readFileSync(stamp, "utf8"))).toEqual({ pid: process.pid, start: chainMod.startIdentity(process.pid), code: chainMod.CODE_VERSION });
+  } finally { process.env.HOME = old; }
 });

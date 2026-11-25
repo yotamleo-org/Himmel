@@ -229,6 +229,17 @@ commands:
                           problem; the fail-closed pre-flight runs BEFORE the
                           --dry-run check, so --dry-run predicting THAT refusal
                           also exits 3, not 0
+  bypass on|off|restart|status [--bucket <dir>]
+                          the bypass launch service (scripts/station-ops/bypass-launchd.sh)
+                          as a service unit: 'on' installs, enables and starts it (a
+                          systemd user unit, or a macOS LaunchAgent) so it runs forever,
+                          restarts when it dies or hangs and comes back after a reboot;
+                          'off' writes the stop file and disables the unit; 'restart'
+                          restarts it now; 'status' is read only. on, off and restart
+                          refuse inside a Claude session. --bucket names the handover
+                          bucket (the directory holding bypass-queue/) for 'on'; it is
+                          remembered. himmel-update restarts an enabled, running unit
+                          whose script changed.
   trust on|off|status     wire, unwire, or report the trust shadow ledger's hook
                           entries in this project's .claude/settings.json
                           Idempotent, and 'off' removes only
@@ -276,7 +287,10 @@ commands:
                           non-GET request with 403 and shows a read-only banner.
                           The OPERATOR runs this from a
                           terminal; agents must not (refused under a Claude
-                          session env unless --allow-agent-session). Runs in the foreground,
+                          session env unless --allow-agent-session), except a
+                          plain --read-only start (no --port, --agui or
+                          --service): it serves this checkout on a free port.
+                          Runs in the foreground,
                           Ctrl-C or 30 min idle exits. Prints ONE URL: the fleet
                           page of every live session when the AG-UI page is
                           built, else the config page; both share one rail.
@@ -378,6 +392,7 @@ const ALLOWED_OPTIONS = {
   // both are admitted here and cmdScope ignores them on the read verbs.
   scope: ['yes', 'dryRun'],
   bridge: ['dryRun'],
+  bypass: ['bucket'],
   // gaps owns its OWN grammar (from-profile
   // reused generically, --preset new, --json reused generically). A fresh
   // subcommand, never a `status` mode (see the function's own header
@@ -418,6 +433,7 @@ const OPTION_FLAGS = {
   readOnly: '--read-only',
   agui: '--agui',
   service: '--service',
+  bucket: '--bucket',
 };
 const OPTION_DEFAULTS = {
   fromProfile: null, defaultScope: null, scope: null, contribute: false, dryRun: false, items: null, json: false, profile: null, yes: false,
@@ -432,6 +448,7 @@ const OPTION_DEFAULTS = {
   readOnly: false,
   agui: null,
   service: null,
+  bucket: null,
 };
 // A Claude Code session id, the same shape config-ui's /api/agui/<run> accepts (agui/sse.ts RUN_ID).
 const AGUI_RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -454,6 +471,8 @@ function parseArgs(argv) {
     yes: false,        // ensure/scope/deps ensure/deps upgrade: --yes
     scopeVerb: null,   // scope: 'set' | 'get' | 'status' (null = none given)
     trustVerb: null,   // trust: 'on' | 'off' | 'status' (null = none given)
+    bypassVerb: null,
+    bucket: null,
     bridgeVerb: null,  // bridge: 'enable' (null = none given)
     targetScope: null, // scope set: 'project' | 'user' (null = none given)
     depsVerb: null,    // deps: status|ensure|upgrade (consumed positionally, see the 'deps' case)
@@ -516,6 +535,16 @@ function parseArgs(argv) {
             return args;
           }
           args.scopeVerb = 'status';
+          break;
+        }
+        if (args.subcommand === 'bypass') {
+          if (args.bypassVerb !== null) {
+            console.error(`himmelctl: bypass takes exactly one verb (on|off|restart|status) — saw '${args.bypassVerb}' and 'status'`);
+            console.error("Run 'himmelctl --help' for usage.");
+            process.exitCode = 2;
+            return args;
+          }
+          args.bypassVerb = 'status';
           break;
         }
         // Same shape under `trust`: a positional verb, not the
@@ -590,6 +619,34 @@ function parseArgs(argv) {
       case 'bridge':
         if (!setSubcommand('bridge')) return args;
         break;
+      case 'bypass':
+        if (!setSubcommand('bypass')) return args;
+        break;
+      case 'restart':
+        if (args.subcommand !== 'bypass') {
+          console.error(`himmelctl: unknown argument: ${a}`);
+          console.error("Run 'himmelctl --help' for usage.");
+          process.exitCode = 2;
+          return args;
+        }
+        if (args.bypassVerb !== null) {
+          console.error(`himmelctl: bypass takes exactly one verb (on|off|restart|status) — saw '${args.bypassVerb}' and '${a}'`);
+          console.error("Run 'himmelctl --help' for usage.");
+          process.exitCode = 2;
+          return args;
+        }
+        args.bypassVerb = 'restart';
+        break;
+      case '--bucket': {
+        const raw = argv[++i];
+        if (raw === undefined || raw === '' || raw.startsWith('-')) {
+          console.error('himmelctl: --bucket requires a directory');
+          process.exitCode = 2;
+          return args;
+        }
+        args.bucket = raw;
+        break;
+      }
       case 'enable':
         // ONLY meaningful under `bridge`; anywhere else it is the unknown-argument error.
         if (args.subcommand !== 'bridge') {
@@ -610,6 +667,16 @@ function parseArgs(argv) {
       case 'off':
         // ONLY meaningful under `trust`; anywhere else these fall through to
         // the unknown-argument error, exactly as `set`/`get` do under `scope`.
+        if (args.subcommand === 'bypass') {
+          if (args.bypassVerb !== null) {
+            console.error(`himmelctl: bypass takes exactly one verb (on|off|restart|status) — saw '${args.bypassVerb}' and '${a}'`);
+            console.error("Run 'himmelctl --help' for usage.");
+            process.exitCode = 2;
+            return args;
+          }
+          args.bypassVerb = a;
+          break;
+        }
         if (args.subcommand !== 'trust') {
           console.error(`himmelctl: unknown argument: ${a}`);
           console.error("Run 'himmelctl --help' for usage.");
@@ -6159,12 +6226,13 @@ function cmdProjects(args) {
 // foreground. The server prints the tokened URL itself; this verb only locates
 // it, refuses a missing bun, and forwards the exit code.
 function cmdUi(args) {
-  if (!args.allowAgentSession && inClaudeSession()) {
-    console.error('himmelctl: ui: operator-only; refused inside a Claude session (CLAUDECODE / CLAUDE_CODE_* is set). Run it from your own terminal, or pass --allow-agent-session to override.');
-    return 2;
-  }
   if (args.service && args.readOnly) {
     console.error('himmelctl: ui: --read-only does not apply to --service: the installed unit would start the server without it. Run `himmelctl ui --read-only` in the foreground.');
+    return 2;
+  }
+  const agentReadOnly = args.readOnly && !args.service && !args.agui && args.port === null;
+  if (!args.allowAgentSession && !agentReadOnly && inClaudeSession()) {
+    console.error('himmelctl: ui: operator-only; refused inside a Claude session (CLAUDECODE / CLAUDE_CODE_* is set). Only a plain `ui --read-only` (no --port, --agui or --service) starts here. Run it from your own terminal, or pass --allow-agent-session to override.');
     return 2;
   }
   if (args.service) {
@@ -7958,6 +8026,33 @@ async function cmdTrust(args) {
   return typeof r.status === 'number' ? r.status : 1;
 }
 
+function cmdBypass(args) {
+  if (args.bypassVerb === null) {
+    console.error('himmelctl: bypass requires a verb: on|off|restart|status');
+    console.error("Run 'himmelctl --help' for usage.");
+    return 2;
+  }
+  if (args.bucket !== null && args.bypassVerb !== 'on') {
+    console.error(`himmelctl: --bucket is only valid with 'bypass on' (the bucket is remembered after that)`);
+    console.error("Run 'himmelctl --help' for usage.");
+    return 2;
+  }
+  const root = process.env.HIMMELCTL_REPO_ROOT || primaryCheckoutRoot(repoRoot());
+  const script = path.join(root, 'scripts', 'station-ops', 'bypass-service.sh');
+  if (!fs.existsSync(script)) {
+    console.error(`himmelctl: bypass service script not found at ${script}`);
+    return 1;
+  }
+  const argv = [script, args.bypassVerb];
+  if (args.bucket !== null) argv.push('--bucket', args.bucket);
+  const r = spawnSync(resolveBash(), argv, { stdio: 'inherit' });
+  if (r.error) {
+    console.error(`himmelctl: could not run the bypass service script: ${r.error.message}`);
+    return 1;
+  }
+  return typeof r.status === 'number' ? r.status : 1;
+}
+
 // ── config ───────────────────────
 //
 // `himmelctl config`: bare, it hands off to the UI Configure page; with
@@ -8928,6 +9023,9 @@ async function main() {
   }
   if (args.subcommand === 'trust') {
     return await cmdTrust(args);
+  }
+  if (args.subcommand === 'bypass') {
+    return cmdBypass(args);
   }
   if (args.subcommand === 'bridge') {
     if (args.bridgeVerb !== 'enable') {

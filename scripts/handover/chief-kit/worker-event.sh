@@ -24,6 +24,9 @@
 #                                                  lines (the SENDMESSAGE the chief sends) passed on, rc 11
 #                          ESCALATE auto-go <n> <reason> (exit 10) -> `AUTO-GO-REFUSED #<pr> <n>`,
 #                                                  the line passed on as is, rc 10
+#                          ESCALATE auto-go 2 PR <pr> is MERGED, not OPEN, with a gh read of MERGED at the READY head
+#                                               -> `STALE-READY PR <pr> <head8> MERGED, <label> closed, not escalated`,
+#                                                  prints `HANDLED stale-ready <label>`, rc 0
 #                        A bullet that cannot be written appends ` doc-bullet=failed <why>` (its own
 #                        line after a GO-WRITTEN). Any other auto-go answer is
 #                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: auto-go.sh --dry-run runs once, detached with its output discarded and bounded by GNU timeout where one exists (LE_DRYRUN_BOUND seconds, default 60; macOS has none, so there it is detached but unbounded; its answer is ignored, so it leaves one auto-go.jsonl row; with stacked_series on it runs under the series ledger writer's label, as the live path does), and ESCALATE marker-READY follows at once, as before.
@@ -43,6 +46,10 @@
 #   station back to main: ` station=pending log=<file>` is appended at once, its
 #   output goes to the log and its verdict to the state file tick.sh shows.
 #
+#   on every other event wake (handled or escalated) while the state file reads BEHIND:<components> (not `pending`),
+#   station-sync.sh --heal --bucket <the chief doc's directory> --chief <the chief doc's stem> runs detached the same way
+#   (output to the same log), and retries the steps its behind components map to, bounded by its own back-off.
+#
 # The worker is found by its N<k> label, else by its session name (the worker doc's
 # stem) quoted in the message. After a handled event the script runs
 # live-state.sh <doc>, which rewrites the `## Live state` legs: line; its failure
@@ -61,7 +68,7 @@
 #
 # `HANDLED closed-already <label>` (rc 0): a WRAPPED worker the chief already closed (its bullet is in the chief
 # doc), whose doc tail is WRAPPED, queue lock free and session gone; nothing runs.
-# Test seams (env): LE_LOCK LE_SESSIONS LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_AUTOGO LE_DRYRUN_BOUND.
+# Test seams (env): LE_LOCK LE_SESSIONS LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_STATION_STATE LE_AUTOGO LE_GH LE_DRYRUN_BOUND.
 # Platform guard: Linux bash 3.2+ (wrap-merged.sh needs flock + jq).
 set -uo pipefail
 
@@ -76,6 +83,7 @@ if [ -n "${LE_STATION:-}" ]; then STATION=("$LE_STATION"); else STATION=(bash "$
 if [ -n "${LE_LIVE:-}" ]; then LIVE=("$LE_LIVE"); else LIVE=(bash "$HERE/live-state.sh"); fi
 if [ -n "${LE_LIST:-}" ]; then LIST=("$LE_LIST"); else LIST=(bash "$HERE/fleet-manifest.sh" list); fi
 if [ -n "${LE_AUTOGO:-}" ]; then AUTOGO=("$LE_AUTOGO"); else AUTOGO=(bash "$HERE/auto-go.sh"); fi
+if [ -n "${LE_GH:-}" ]; then GH=("$LE_GH"); elif [ -f "$HERE/../../lib/gh-read.sh" ]; then GH=(bash "$HERE/../../lib/gh-read.sh"); else GH=(gh); fi
 if [ -n "${LE_LOCK:-}" ]; then LOCK=("$LE_LOCK"); else LOCK=(bash "$HERE/../queue-lock.sh"); fi
 # shellcheck disable=SC2016
 if [ -n "${LE_SESSIONS:-}" ]; then SESSIONS=("$LE_SESSIONS"); else SESSIONS=(bash -c '. "$1/../../lanes/lib/claude-sessions.sh" && claude_sessions' _ "$HERE"); fi
@@ -119,6 +127,23 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 if [ -z "$DOC" ] || [ -z "$FLEET" ] || [ -z "$MSG" ]; then usage; fi
+
+heal_station() {
+    [ -z "${station_started:-}" ] || return 0
+    local st="${LE_STATION_STATE:-${SS_STATE:-$HOME/.himmel/state/station-sync.state}}" cur hlog
+    [ -f "$st" ] || return 0
+    cur="$(cat "$st")" || return 0
+    case "$cur" in BEHIND:pending|BEHIND:) return 0 ;; BEHIND:*) ;; *) return 0 ;; esac
+    hlog="${LE_STATION_LOG:-$HOME/.himmel/state/station-sync.out}"
+    mkdir -p "$(dirname "$hlog")" || return 0
+    if command -v setsid >/dev/null 2>&1; then
+        setsid "${STATION[@]}" --heal --bucket "${DOC%/*}" --chief "$(basename "$DOC" .md)" >>"$hlog" 2>&1 </dev/null &
+    else
+        "${STATION[@]}" --heal --bucket "${DOC%/*}" --chief "$(basename "$DOC" .md)" >>"$hlog" 2>&1 </dev/null &
+    fi
+    return 0
+}
+trap heal_station EXIT
 
 if [ "$MSG" = "-" ]; then body="$(cat)"; else body="$(cat "$MSG")" || usage; fi  # read-sink-ok: MSG is the message file the caller asks to post
 line="$(printf '%s\n' "$body" | grep -m1 -E '[^[:space:]]')" || line=""
@@ -280,6 +305,16 @@ if [ "$marker" = READY ]; then
         [ -z "$bres" ] || printf '%s\n' "${bres# }"
         exit 11
     fi
+    stale_re="^ESCALATE auto-go 2 PR $rpr is MERGED, not OPEN\$"
+    if [ "$arc" -eq 10 ] && [[ $afirst =~ $stale_re ]]; then
+        stale_state="MERGED"
+        live_state=""
+        if gh_state="$(cd "$HERE/../../.." && "${GH[@]}" pr view "$rpr" --json state,headRefOid --jq '.state + " " + .headRefOid')"; then live_state="$gh_state"; fi
+        if [ "$live_state" = "$stale_state $rhead" ]; then
+            echo "HANDLED stale-ready $label$(bullet "STALE-READY PR $rpr ${rhead:0:8} $stale_state, $label closed, not escalated")"
+            exit 0
+        fi
+    fi
     if [ "$arc" -eq 10 ] && [[ $afirst =~ ^ESCALATE\ auto-go\ ([0-9]+)\  ]]; then
         echo "$afirst$(bullet "AUTO-GO-REFUSED #$rpr ${BASH_REMATCH[1]}")"
         exit 10
@@ -362,6 +397,7 @@ rm -f "$errf" "${outf:-}"
 # log, and its verdict lands in the state file tick.sh reads as station=.
 station=""
 if [ -n "$pr" ]; then
+    station_started=1
     slog="${LE_STATION_LOG:-$HOME/.himmel/state/station-sync.out}"
     mkdir -p "$(dirname "$slog")" 2>/dev/null || true
     # setsid is util-linux: absent on macOS, where the sync stays in this process group

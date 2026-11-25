@@ -87,6 +87,41 @@ if date -d '1 hour ago' +%s > /dev/null 2>&1; then # gnu-ok: the daily job runs 
   else
     fail "TD4c: rc=$rc out: $out"
   fi
+
+  printf '%s\n' '[{"conclusion":"success","createdAt":"2026-11-25T03:14:49Z","databaseId":45538624255},{"conclusion":"cancelled","createdAt":"2026-11-25T03:14:45Z","databaseId":45538617469},{"conclusion":"cancelled","createdAt":"2026-11-25T03:14:10Z","databaseId":45538548265},{"conclusion":"success","createdAt":"2026-11-25T03:11:25Z","databaseId":45538223936},{"conclusion":"success","createdAt":"2026-11-25T02:42:04Z","databaseId":45534820819},{"conclusion":"cancelled","createdAt":"2026-11-25T02:41:19Z","databaseId":45534736367}]' > "$sb/runs.json"
+  cat > "$sb/bin/gh" <<'GHEOF'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "run list")
+    q=""; j=""; prev=""
+    for a in "$@"; do [ "$prev" = --jq ] && q="$a"; [ "$prev" = --json ] && j="$a"; prev="$a"; done
+    case ",$j," in *,databaseId,*) ;; *) echo "stub gh: --json must name databaseId, got '$j'" >&2; exit 1 ;; esac
+    case ",$j," in *,conclusion,*) ;; *) echo "stub gh: --json must name conclusion, got '$j'" >&2; exit 1 ;; esac
+    printf '%s\n' "$*" >> "$GH_STUB_DIR/list.args"
+    if [ -n "$q" ]; then jq -r "$q" "$GH_STUB_DIR/runs.json"; else cat "$GH_STUB_DIR/runs.json"; fi ;;
+  "run view")
+    echo "$3" >> "$GH_STUB_DIR/viewed"
+    case "$3" in
+      45538617469|45538548265|45534736367) echo "log not found" >&2; exit 1 ;;
+      45538624255) printf 'shell-unit-shard (ubuntu-latest, 6)\tRun bash scripts/ci/home-canary.sh\t2026-11-25T03:11:56Z CAP-ALERT scripts/x/test-slow.sh (ran 1400s, cap 700s, rc=124) — watchdog cap hit again on the retry, no FAIL row of its own; not failing the run\n' ;;
+      *) printf 'shell-unit-shard (ubuntu-latest, 1)\tRun\t2026-11-25T03:11:56Z [PASS] scripts/x/test-fine.sh (3s)\n' ;;
+    esac ;;
+  *) exit 1 ;;
+esac
+GHEOF
+  chmod +x "$sb/bin/gh"
+  if command -v jq > /dev/null 2>&1; then
+    rm -f "$sb/viewed" "$sb/list.args"
+    out=$(GH_STUB_DIR="$sb" PATH="$sb/bin:$PATH" TIMING_DAILY_RUNNER="$sb/clean.sh" bash "$TD" --no-run --ci-hours 1 2>&1); rc=$?
+    if [ "$rc" -eq 1 ] && grepq "$out" -F 'WOULD-CHANGE scripts/x/test-slow.sh cap 700s -> 1400s' \
+        && ! grepq "$out" -F 'failed; its log was not read' && ! grepq "$out" -F 'alert sources: not all read' \
+        && ! grep -qE '45538617469|45538548265|45534736367' "$sb/viewed" \
+        && [ "$(wc -l < "$sb/viewed" | tr -d ' ')" = 3 ]; then
+      pass "TD4d: cancelled main runs are not read, so a cancelled run's missing log does not fail the job"
+    else
+      fail "TD4d: rc=$rc viewed=$(tr '\n' ' ' < "$sb/viewed" 2>/dev/null) out: $out"
+    fi
+  fi
 fi
 
 stub mode 'echo "mode=$SUITE_TIER_MODE"; exit 0'

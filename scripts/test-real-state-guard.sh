@@ -376,7 +376,31 @@ if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; the
   J="$root/scripts/jira/src/index.ts"
   printf 'R = v1\n' >"$TMP/verbatim.txt"
   DECLARE=("$REAL_BUN" "$J" release operator declare R8752 --versions v1 --decision 1 --verbatim-file "$TMP/verbatim.txt")
-  DECLARE_DOOR=("$REAL_BUN" --preload "$root/scripts/jira/src/release/fixtures/fence-env-only-preload.mjs" "$J" release operator declare R8752 --versions v1 --decision 1 --verbatim-file "$TMP/verbatim.txt")
+  fence_tree() {
+    local d="$1" u
+    u="$(id -u)"
+    mkdir -p "$d/300/ns" "$d/200" "$d/1"
+    printf 'Name:\tx\nPPid:\t200\nUid:\t%s\t%s\t%s\t%s\nNSpid:\t300\n' "$u" "$u" "$u" "$u" >"$d/300/status"
+    printf 'Name:\tx\nPPid:\t1\nUid:\t%s\t%s\t%s\t%s\nNSpid:\t200\n' "$u" "$u" "$u" "$u" >"$d/200/status"
+    printf 'Name:\tinit\nPPid:\t0\nUid:\t0\t0\t0\t0\nNSpid:\t1\n' >"$d/1/status"
+    printf 'PATH=/usr/bin\0' >"$d/300/environ"
+    printf 'PATH=/usr/bin\0' >"$d/200/environ"
+    printf 'bun\0driver.ts\0' >"$d/300/cmdline"
+    ln -s 'pid:[4026531836]' "$d/300/ns/pid"
+    ln -s 'user:[4026531837]' "$d/300/ns/user"
+    ln -s 300 "$d/self"
+    printf 'pid:[4026531836] user:[4026531837]\n' >"$d/host-ns"
+  }
+  fence_tree "$TMP/door-proc"
+  cat >"$TMP/door-driver.ts" <<'EOF'
+const [ck, procRoot, hostNsPath, ...args] = process.argv.slice(2);
+const F = await import(`${ck}/scripts/jira/src/release/fence-ancestry.ts`);
+F.setWalkDefaultsForTests({ procRoot, hostNsPath, execArgv: [], env: {} });
+process.argv = [process.argv[0], `${ck}/scripts/jira/src/index.ts`, ...args];
+await import(`${ck}/scripts/jira/src/index.ts`);
+EOF
+  DOOR=("$REAL_BUN" "$TMP/door-driver.ts" "$root" "$TMP/door-proc" "$TMP/door-proc/host-ns")
+  DECLARE_DOOR=("${DOOR[@]}" release operator declare R8752 --versions v1 --decision 1 --verbatim-file "$TMP/verbatim.txt")
   rc=0; "${DECLARE[@]}" >"$TMP/j.out" 2>&1 || rc=$?
   if [ -e "$HIMMEL_RELEASE_STATE_DIR/R8752" ]; then fail "J1 a test's release write reached the queue"; else pass "J1 a test's release write reached nothing"; fi
   has "J1 the refusal names the VM command" "$TMP/j.out" "scripts/vm/"
@@ -389,6 +413,29 @@ if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; the
   if [ "$rc" != 0 ]; then pass "JF the fence refuses a chief verb under a marked parent"; else fail "JF the fence refuses a chief verb under a marked parent"; fi
   has "JF the refusal names the marked ancestor" "$TMP/j.out" "refused inside a chief-spawned worker: HIMMEL_CONSOLE_LEG=1 in the start-up env of ancestor"
   if [ -e "$TMP/fence-state/R8752/release.json" ]; then fail "JF the refused verb wrote release.json"; else pass "JF the refused verb wrote nothing"; fi
+  JR_STATE="$TMP/jr-state"
+  JR_ATTEMPT=(repair-state R8752 --repo o/r --attempt)
+  rc=0; as_session env HIMMEL_CONSOLE_LEG=1 HIMMEL_RELEASE_STATE_DIR="$JR_STATE" HIMMEL_RELEASE_KEY_DIR="$TMP/jr-keys" bash -c 'env -u HIMMEL_CONSOLE_LEG "$@"; exit $?' _ "$REAL_BUN" --preload "$root/scripts/jira/src/release/fixtures/fence-env-only-preload.mjs" "$J" release "${JR_ATTEMPT[@]}" >"$TMP/j.out" 2>&1 || rc=$?
+  eq "JR a marked ancestor plus a /proc-hiding preload is refused with rc 2" "$rc" 2
+  has "JR the refusal carries the walk's reason" "$TMP/j.out" "refused (fenced: "
+  has "JR the reason names the preload" "$TMP/j.out" "preload"
+  if [ -e "$JR_STATE/R8752/repair-state.json" ]; then fail "JR the refused attempt wrote repair-state.json"; else pass "JR the refused attempt wrote nothing"; fi
+  if [ -n "$TITLE_NODE" ] && [ -f "$root/scripts/jira/dist/index.js" ]; then
+    printf "import fs from 'node:fs';\nimport { syncBuiltinESMExports } from 'node:module';\nconst realExists = fs.existsSync;\nfs.existsSync = (p) => (p === '/proc' ? false : realExists(p));\nsyncBuiltinESMExports();\n" >"$TMP/jr2-preload.mjs"
+    rc=0; as_session env HIMMEL_CONSOLE_LEG=1 NODE_OPTIONS="--import=file://$TMP/jr2-preload.mjs" HIMMEL_RELEASE_STATE_DIR="$TMP/jr2-state" HIMMEL_RELEASE_KEY_DIR="$TMP/jr-keys" bash -c 'env -u HIMMEL_CONSOLE_LEG "$@"; exit $?' _ "$TITLE_NODE" "$root/scripts/jira/dist/index.js" release "${JR_ATTEMPT[@]}" --json >"$TMP/j.out" 2>"$TMP/j.err" || rc=$?
+    eq "JR2 the same through NODE_OPTIONS and the built dist is refused with rc 2" "$rc" 2
+    has "JR2 the --json form's stderr carries the reason" "$TMP/j.err" "refused (fenced: "
+    if [ -e "$TMP/jr2-state/R8752/repair-state.json" ]; then fail "JR2 the refused attempt wrote repair-state.json"; else pass "JR2 the refused attempt wrote nothing"; fi
+  elif [ -z "$TITLE_NODE" ]; then
+    fail "JR2 needs node"
+  else
+    echo "SKIP - JR2: no scripts/jira/dist (run npm run build in scripts/jira)"
+  fi
+  rc=0; as_session env HIMMEL_CONSOLE_LEG=1 HIMMEL_RELEASE_STATE_DIR="$TMP/jr3-state" HIMMEL_RELEASE_KEY_DIR="$TMP/jr-keys" bash -c 'env -u HIMMEL_CONSOLE_LEG "$@"; exit $?' _ "$REAL_BUN" "$J" release repair-state R8752 --repo o/r >"$TMP/j.out" 2>&1 || rc=$?
+  if [ -e "$TMP/jr3-state/R8752/repair-state.json" ]; then fail "JR3 a plain repair-state read under a marked ancestor wrote the record"; else pass "JR3 a plain repair-state read under a marked ancestor writes nothing"; fi
+  rc=0; as_session env HIMMEL_RELEASE_STATE_DIR="$TMP/jc-state" HIMMEL_RELEASE_KEY_DIR="$TMP/jr-keys" "${DOOR[@]}" release "${JR_ATTEMPT[@]}" >"$TMP/j.out" 2>&1 || rc=$?
+  eq "JC an unfenced operator attempt with no preload records, rc 0" "$rc" 0
+  has "JC the attempt is recorded" "$TMP/j.out" "attempt recorded"
   # The mint has its own door: a temp ledger passes J1's, and homedir() follows a fixture HOME, so the default key path looks temp.
   KEY_HOME="$TMP/key-home"
   mkdir -p "$KEY_HOME"

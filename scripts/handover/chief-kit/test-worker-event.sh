@@ -50,7 +50,7 @@ echo "live $*" >> "$LE_LIVE_CALLS"
 exit "${LE_LIVE_RC:-0}"
 EOF2
 chmod +x "$W/wrap" "$W/list" "$W/live"
-export LE_STATION_LOG="$W/station.log" LE_WRAP="$W/wrap" LE_LIST="$W/list" LE_STATION="$W/station" LE_CALLS="$W/calls" LE_LIVE="$W/live" LE_LIVE_CALLS="$W/live-calls"
+export LE_STATION_LOG="$W/station.log" LE_WRAP="$W/wrap" LE_LIST="$W/list" LE_STATION="$W/station" LE_CALLS="$W/calls" LE_LIVE="$W/live" LE_LIVE_CALLS="$W/live-calls" LE_STATION_STATE="$W/no-state"
 : > "$W/doc"
 run() { : > "$LE_CALLS"; : > "$LE_LIVE_CALLS"; printf '%s\n' "$1" > "$W/msg"; out="$(bash "$SCRIPT" --doc "$W/doc" --fleet "$W/fleet.json" "$W/msg" 2>/dev/null)"; rc=$?; calls="$(cat "$LE_CALLS")"; }
 
@@ -692,7 +692,7 @@ cat > "$W/gh19" <<'EOF19'
 case "$*" in
     "repo view --json nameWithOwner"*) echo o/r ;;
     "repo view "*"--json defaultBranchRef"*) echo main ;;
-    "pr view "*"--json state,headRefOid,baseRefName"*) printf '{"state":"OPEN","headRefOid":"%s","baseRefName":"main"}\n' "$LE_HEAD19" ;;
+    "pr view "*"--json state,headRefOid,baseRefName"*) printf '{"state":"OPEN","headRefOid":"%s","baseRefName":"main","title":"fix(x): [HIMMEL-1] t (#1)"}\n' "$LE_HEAD19" ;;
     "pr view "*"--json title"*) echo "fix(x): [HIMMEL-1] t (#1)" ;;
     "api repos/"*"/files"*) printf 'scripts/ci/x.sh\t\n' ;;
     *) exit 1 ;;
@@ -773,5 +773,105 @@ contains "16 held lock: the normal path still runs" "$calls" "close --fleet"
 : > "$W/doc"
 LE_LIST="$W/list16" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6016"
 contains "16 not yet closed by the chief: the normal path still runs" "$calls" "close --fleet"
+
+cat > "$W/gh" <<'EOF4'
+#!/usr/bin/env bash
+echo "gh $*" >> "$LE_CALLS"
+[ "${LE_GH_RC:-0}" -eq 0 ] || exit "$LE_GH_RC"
+echo "${LE_GH_STATE:-OPEN} ${LE_GH_HEAD:-0780b95dcad44fe293c7798066626cd52bb2dce0}"
+EOF4
+chmod +x "$W/gh"
+export LE_GH="$W/gh" HIMMEL_FLAGS_TSV="$W/flags.tsv" HIMMEL_CONFIG_DIR="$W/no-conf" LE_AUTOGO="$W/autogo" HIMMEL_FLAG_AUTO_GO=1
+printf '# chief\n\n## Results\n' > "$W/doc"
+STALE="ESCALATE auto-go 2 PR 2553 is MERGED, not OPEN"
+LE_AUTOGO_RC=10 LE_AUTOGO_OUT="$STALE" LE_GH_STATE=MERGED run "READY 2553 $H40 GREEN N2088"
+check "17a a stale READY for a MERGED PR: rc" "$rc" 0
+contains "17a a stale READY for a MERGED PR is handled" "$out" "HANDLED stale-ready N2088"
+lacks "17a no ESCALATE" "$out" "ESCALATE"
+contains "17a the PR state is read through gh" "$calls" "gh pr view 2553 --json state"
+check "17a the chief doc names the worker as closed, not escalated" "$(lastb)" "STALE-READY PR 2553 0780b95d MERGED, N2088 closed, not escalated"
+LE_AUTOGO_RC=10 LE_AUTOGO_OUT="ESCALATE auto-go 2 PR 2553 is CLOSED, not OPEN" LE_GH_STATE=CLOSED run "READY 2553 $H40 GREEN N2088"
+check "17a2 a CLOSED PR never landed its work, so it still escalates: rc" "$rc" 10
+contains "17a2 a CLOSED PR still escalates" "$out" "ESCALATE auto-go 2 PR 2553 is CLOSED, not OPEN"
+lacks "17a2 a CLOSED PR is not handled" "$out" "HANDLED"
+LE_AUTOGO_RC=10 LE_AUTOGO_OUT="$STALE" LE_GH_STATE=MERGED LE_GH_HEAD=1111111111111111111111111111111111111111 run "READY 2553 $H40 GREEN N2088"
+check "17a3 a MERGED PR at another head (a fix pushed after the merge) still escalates: rc" "$rc" 10
+contains "17a3 a MERGED PR at another head still escalates" "$out" "ESCALATE auto-go 2 PR 2553 is MERGED, not OPEN"
+lacks "17a3 a MERGED PR at another head is not handled" "$out" "HANDLED"
+LE_AUTOGO_RC=10 LE_AUTOGO_OUT="$STALE" LE_GH_STATE=OPEN run "READY 2553 $H40 GREEN N2088"
+check "17b the refusal text for a PR that is OPEN still escalates: rc" "$rc" 10
+contains "17b the refusal text for a PR that is OPEN still escalates" "$out" "ESCALATE auto-go 2 PR 2553 is MERGED, not OPEN"
+LE_AUTOGO_RC=10 LE_AUTOGO_OUT="$STALE" LE_GH_RC=1 run "READY 2553 $H40 GREEN N2088"
+check "17b2 a PR state that cannot be read still escalates: rc" "$rc" 10
+lacks "17b2 a PR state that cannot be read is not handled" "$out" "HANDLED"
+LE_AUTOGO_RC=10 LE_AUTOGO_OUT="ESCALATE auto-go 2 PR 2553's head is now abc, not $H40" LE_GH_STATE=MERGED run "READY 2553 $H40 GREEN N2088"
+contains "17c a head mismatch still escalates" "$out" "ESCALATE auto-go 2 PR 2553's head is now abc"
+LE_AUTOGO_RC=10 LE_AUTOGO_OUT="ESCALATE auto-go 2 PR 9999 is MERGED, not OPEN" LE_GH_STATE=MERGED run "READY 2553 $H40 GREEN N2088"
+contains "17c a refusal for another PR still escalates" "$out" "ESCALATE auto-go 2 PR 9999 is MERGED"
+LE_AUTOGO_RC=3 LE_AUTOGO_OUT="auto-go: refusing - chief relay" LE_GH_STATE=MERGED run "READY 2553 $H40 GREEN N2088"
+contains "17d an auto-go failure with no such text still escalates auto-go-error" "$out" "ESCALATE auto-go-error rc=3"
+unset LE_GH HIMMEL_FLAG_AUTO_GO HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR LE_AUTOGO
+: > "$W/doc"
+
+export LE_STATION_STATE="$W/station.state"
+printf '%s\n' "BEHIND:plugins,hermes" > "$LE_STATION_STATE"
+run "WRAPPED N2078"
+await "$LE_CALLS" "station --heal --bucket $W --chief doc"; check "18 a wake while BEHIND starts the heal" "$?" 0
+check "18 the wake itself is still handled" "$rc" 0
+printf '%s\n' "BEHIND:codex" > "$LE_STATION_STATE"
+run "FINDING N2088 (token x): q"
+await "$LE_CALLS" "station --heal"; check "18 an escalated wake heals too" "$?" 0
+check "18 and keeps its escalation rc" "$rc" 10
+printf '%s\n' "ok" > "$LE_STATION_STATE"
+run "WRAPPED N2078"; sleep 0.4
+lacks "18 an ok station is not healed" "$(cat "$LE_CALLS")" "--heal"
+printf '%s\n' "BEHIND:pending" > "$LE_STATION_STATE"
+run "WRAPPED N2078"; sleep 0.4
+lacks "18 a sync in flight is not healed" "$(cat "$LE_CALLS")" "--heal"
+rm -f "$LE_STATION_STATE"
+run "WRAPPED N2078"; sleep 0.4
+lacks "18 no state file is not healed" "$(cat "$LE_CALLS")" "--heal"
+printf '%s\n' "BEHIND:plugins" > "$LE_STATION_STATE"
+run "MERGED #77 N2088"
+await "$LE_CALLS" "station --pr 77"; check "18 a MERGED wake starts its own sync" "$?" 0
+sleep 0.4
+lacks "18 and no second, heal run beside it" "$(cat "$LE_CALLS")" "--heal"
+
+mkdir -p "$W/hhome/vault"
+export LE_HOME="$W/hhome" LE_VERS="$W/vers" LE_UCALLS="$W/ucalls" LE_UPDATE="$W/update-w" LE_SS="$HERE/station-sync.sh"
+cat > "$W/vers" <<'EOF2'
+==> himmel ecosystem versions
+    component      state    installed   available   note
+    himmel         current  v1          v1
+    plugins        behind   1/2         2 declared  version drift: a
+    jira_cli       behind   built       source
+    2 behind, 0 undetermined.
+EOF2
+cat > "$W/update-w" <<'EOF2'
+#!/usr/bin/env bash
+echo "update $*" >> "$LE_UCALLS"
+case "$1" in
+    --only) c="$2"; [ "$c" != marketplace ] || c=plugins
+        sed "s/^\\(    $c  *\\)behind/\\1current/" "$LE_VERS" > "$LE_VERS.n" && mv "$LE_VERS.n" "$LE_VERS"; exit 0 ;;
+    --versions) cat "$LE_VERS"; ! grep -qw behind "$LE_VERS"; exit ;;
+esac
+exit 0
+EOF2
+cat > "$W/station-real" <<'EOF2'
+#!/usr/bin/env bash
+echo "station $*" >> "$LE_CALLS"
+export HOME="$LE_HOME" SS_UPDATE="$LE_UPDATE" SS_STATE="$LE_STATION_STATE" SS_PRIMARY="$LE_HOME" SS_QMD_CLONE="$LE_HOME/none" SS_VAULT="$LE_HOME/vault"
+exec bash "$LE_SS" "$@"
+EOF2
+chmod +x "$W/update-w" "$W/station-real"
+: > "$LE_UCALLS"; printf '%s\n' "BEHIND:plugins,jira_cli" > "$LE_STATION_STATE"
+LE_STATION="$W/station-real" run "WRAPPED N2078"
+LE_STATION="$W/station-real" run "WRAPPED N2078"
+LE_STATION="$W/station-real" run "WRAPPED N2078"
+await "$LE_STATION_STATE" "ok"; check "18f the three wakes leave the station ok" "$?" 0
+sleep 0.5
+check "18f the marketplace step ran once" "$(grep -c 'update --only marketplace' "$LE_UCALLS")" 1
+check "18f the jira_cli step ran once" "$(grep -c 'update --only jira_cli' "$LE_UCALLS")" 1
+check "18f --versions then shows none behind" "$(grep -cE '^ +(plugins|jira_cli) +behind' "$LE_VERS")" 0
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

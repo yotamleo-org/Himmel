@@ -820,7 +820,7 @@ describe('the chief\'s lists: priority review, chief placements and asks apart (
   const stub = (grounds: Record<string, string>): Judge => async (input) => input.requests.map((q) => ({
     req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 'Planning & tracking', ground: grounds[q.key], reason: `placed by ${grounds[q.key]}`,
   }));
-  const LISTED = ['door:serious:High', 'door:mild', 'door:mild-no-next', 'door:rest-of:K-1', 'door:operator-ask', 'door:operator-ask:v1', 'door:started', 'door:operator-undeclared:v9'];
+  const LISTED = ['door:serious:High', 'door:mild', 'door:mild-no-next', 'door:rest-of:K-1', 'door:operator-ask', 'door:operator-ask:v1', 'door:started', 'door:operator-undeclared:v9', 'door:label:regression'];
   const UNLISTED = ['door:operator:O-R1-0001', 'door:done', 'door:chief', 'door:operator-ask-apart:K-1@v2', 'door:operator-apart:K-1@v2', 'door:repair', 'door:repair-keeps', 'door:operator-standing:R-R1-0001', 'door:stays:v1'];
   const keyed = (grounds: string[], from: number) => Object.fromEntries(grounds.map((g, i) => [`K-${from + i}`, g]));
 
@@ -847,6 +847,7 @@ describe('the chief\'s lists: priority review, chief placements and asks apart (
     const s = state(ctx());
     expect(s.priority_review.map((e) => e.ground)).toEqual(LISTED);
     expect(s.priority_review.map((e) => e.key)).toEqual(Object.keys(keyed(LISTED, 10)));
+    expect(s.priority_review.at(-1)?.ground).toBe('door:label:regression');
     expect(s.priority_review[3]).toEqual({ key: 'K-13', ruling: receipted('K-13')[0].id, ground: 'door:rest-of:K-1' });
     expect(s.priority_review.some((e) => e.ground === 'door:repair-keeps')).toBe(false);
     expect(s.chief_placements.map((e) => e.key)).toEqual(['K-32']);
@@ -862,11 +863,11 @@ describe('the chief\'s lists: priority review, chief placements and asks apart (
     await rmRun(ctx(), stub(grounds));
     const id = (k: string) => receipted(k)[0].id;
     reviewed(ctx(), { ruling: id('K-11'), reason: 'the priority is right' });
-    expect(state(ctx()).priority_review.map((e) => e.key)).toEqual(['K-10', 'K-12', 'K-13', 'K-14', 'K-15', 'K-16', 'K-17']);
+    expect(state(ctx()).priority_review.map((e) => e.key)).toEqual(['K-10', 'K-12', 'K-13', 'K-14', 'K-15', 'K-16', 'K-17', 'K-18']);
     const row = reviewed(ctx(), { through: id('K-14'), reason: 'checked in bulk' });
     expect(row).toMatchObject({ kind: 'reviewed', key: 'K-14', from: null, to: null, ruling: id('K-14'), through: id('K-14'), reason: 'checked in bulk' });
     const s = state(ctx());
-    expect(s.priority_review.map((e) => e.key)).toEqual(['K-15', 'K-16', 'K-17']);
+    expect(s.priority_review.map((e) => e.key)).toEqual(['K-15', 'K-16', 'K-17', 'K-18']);
     expect(s.chief_placements.map((e) => e.key)).toEqual(['K-40']);
     expect(s.integrity).toEqual([]);
     expect(() => reviewed(ctx(), { ruling: id('K-11'), reason: 'again' })).toThrow(/no listed entry/);

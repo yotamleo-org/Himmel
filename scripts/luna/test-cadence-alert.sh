@@ -126,5 +126,49 @@ else
     echo "SKIP K3-K4: the chain rows need bun and jq"
 fi
 
+
+if command -v jq >/dev/null 2>&1; then
+    RC="$TMP/recover"; mkdir -p "$RC"
+    printf '{"allowFrom":["4242"]}\n' >"$RC/access.json"
+    cat >"$RC/sender.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$2" >>"$RC/sent.log"
+EOF
+    chmod +x "$RC/sender.sh"
+    recover_run() {
+        TELEGRAM_ACCESS_PATH="$RC/access.json" MERGE_BLOCK_ALERT_CMD="$RC/sender.sh" VAULT_STALL_ALERT_STATE="$RC/last" \
+            CADENCE_ALERT_SEND_CMD="$ROOT/scripts/luna/vault-stall-alert.sh" CADENCE_ALERT_FILE="$RC/alerts.log" \
+            CADENCE_ALERT_DEDUPE_DIR="$RC/sent" CADENCE_ALERT_SEND_FAILED_MARK="$RC/send-failed" bash "$SINK" "$@" >/dev/null 2>&1
+    }
+    sends() { local n; n="$(grep -c . "$RC/sent.log" 2>/dev/null)"; echo "${n:-0}"; }
+    recover_run fail vault-stall "unremediable: gitleaks generic-api-key notes/a.md:9" /tmp/v.log
+    recover_run fail vault-stall "unremediable: gitleaks generic-api-key notes/a.md:9" /tmp/v.log
+    assert_has "R1 a stall is alerted once while it lasts" "sends=1" "sends=$(sends)"
+    recover_run clear vault-stall
+    recover_run fail vault-stall "unremediable: gitleaks generic-api-key notes/a.md:9" /tmp/v.log
+    assert_has "R2 the same finding after a recovery is alerted again" "sends=2" "sends=$(sends)"
+    recover_run clear some-other-worker
+    assert_has "R3 another worker's recovery leaves the vault-stall record" "record=yes" "record=$([ -s "$RC/last" ] && echo yes || echo no)"
+    recover_run clear vault-stall
+    assert_has "R3b the vault-stall recovery removes it" "record=no" "record=$([ -e "$RC/last" ] && echo yes || echo no)"
+    if command -v flock >/dev/null 2>&1; then
+        exec 8>"$RC/last.lock"
+        flock 8
+        recover_run clear vault-stall 8>&- &
+        clearer=$!
+        printf 'in-flight\n' >"$RC/last"
+        exec 8>&-
+        wait "$clearer"
+        assert_has "R4 a recovery waits for a delivery in flight and then removes its record" "record=no" "record=$([ -e "$RC/last" ] && echo yes || echo no)"
+    fi
+    mkdir -p "$RC/bare/scripts/luna"
+    cp "$SINK" "$RC/bare/scripts/luna/"
+    printf 'kept\n' >"$RC/last"
+    VAULT_STALL_ALERT_STATE="$RC/last" CADENCE_ALERT_DEDUPE_DIR="$RC/sent" bash "$RC/bare/scripts/luna/cadence-alert.sh" clear vault-stall >/dev/null 2>&1
+    assert_has "R5 a copy with no lib/prim.sh never removes the record without the lock" "record=yes" "record=$([ -s "$RC/last" ] && echo yes || echo no)"
+else
+    echo "SKIP R1-R3: the recovery rows need jq"
+fi
+
 [ "$FAILED" -eq 0 ] || { echo "$FAILED FAILURE(S)"; exit 1; }
 echo "all passed"

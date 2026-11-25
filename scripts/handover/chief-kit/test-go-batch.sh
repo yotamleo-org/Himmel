@@ -45,6 +45,8 @@ git -C "$tmp/anchor" branch -q --set-upstream-to=origin/main main
 git clone -q "$tmp/origin.git" "$tmp/other" 2>/dev/null
 git -C "$tmp/other" checkout -q -B main origin/main
 ANCHOR="$tmp/anchor"
+mkdir -p "$ANCHOR/scripts/lib"
+cp "$HERE/../../lib/pr_remainder.py" "$ANCHOR/scripts/lib/pr_remainder.py"
 
 export HANDOVER_DIR="$tmp/root"; mkdir -p "$HANDOVER_DIR/.locks/go"
 export USER_SLUG=tester
@@ -135,11 +137,11 @@ export GO_BATCH_GH="$tmp/gh" GO_BATCH_GO="$tmp/go" GO_BATCH_BUS="$tmp/bus" GO_BA
 prs() {
     jq -n \
         --arg h101 "$H101" --arg h102 "$H102" --arg h103 "$H103" --arg h104 "$H104" --arg h105 "$H105" '[
-        {number:101, headRefOid:$h101, baseRefName:"main", isDraft:false, body:"completes-ticket: yes", files:[{path:"scripts/a.sh"}]},
-        {number:102, headRefOid:$h102, baseRefName:"main", isDraft:false, body:"completes-ticket: yes", files:[{path:"scripts/ci/x.sh"}]},
-        {number:103, headRefOid:$h103, baseRefName:"main", isDraft:false, body:"completes-ticket: yes", files:[{path:"scripts/b.sh"}]},
-        {number:104, headRefOid:$h104, baseRefName:"main", isDraft:false, body:"completes-ticket: yes", files:[{path:"scripts/c.sh"}]},
-        {number:105, headRefOid:$h105, baseRefName:"main", isDraft:false, body:"## Ticket coverage\n\ncompletes-ticket: yes\n", files:[{path:"scripts/d.sh"}]}]' > "$FIX/prs.json"
+        {number:101, title:"fix(x): [HIMMEL-9101] t", headRefOid:$h101, baseRefName:"main", isDraft:false, body:"completes-ticket: yes", files:[{path:"scripts/a.sh"}]},
+        {number:102, title:"fix(x): [HIMMEL-9102] t", headRefOid:$h102, baseRefName:"main", isDraft:false, body:"completes-ticket: yes", files:[{path:"scripts/ci/x.sh"}]},
+        {number:103, title:"fix(x): [HIMMEL-9103] t", headRefOid:$h103, baseRefName:"main", isDraft:false, body:"completes-ticket: yes", files:[{path:"scripts/b.sh"}]},
+        {number:104, title:"fix(x): [HIMMEL-9104] t", headRefOid:$h104, baseRefName:"main", isDraft:false, body:"completes-ticket: yes", files:[{path:"scripts/c.sh"}]},
+        {number:105, title:"fix(x): [HIMMEL-9105] t", headRefOid:$h105, baseRefName:"main", isDraft:false, body:"## Ticket coverage\n\ncompletes-ticket: yes\n", files:[{path:"scripts/d.sh"}]}]' > "$FIX/prs.json"
 }
 reset() { rm -f "$FIX/go.log" "$FIX/concurrency.log" "$HANDOVER_DIR"/.locks/go/* "$FIX/bus"/*; : > "$FIX/go.log"; : > "$FIX/concurrency.log"; }
 prs
@@ -217,7 +219,7 @@ for n in 6 7 8 9; do
     d="$tmp/docs/wk-90$n-N$n-par-2026-11-25.md"
     printf '# p\n\n> **Completes ticket:** yes\n\n## Results\n- 10:00 READY 10%s %s GREEN\n' "$n" "$(printf "%040d" "$n")" > "$d"
 done
-PJSON=$(jq -n '[range(6;10) as $n | {number:(100+$n), headRefOid:("0" * 39 + ($n|tostring)), baseRefName:"main", isDraft:false, body:"completes-ticket: yes", files:[{path:"scripts/p.sh"}]}]')
+PJSON=$(jq -n '[range(6;10) as $n | {number:(100+$n), title:"fix(x): [HIMMEL-9101] t", headRefOid:("0" * 39 + ($n|tostring)), baseRefName:"main", isDraft:false, body:"completes-ticket: yes", files:[{path:"scripts/p.sh"}]}]')
 printf '%s\n' "$PJSON" > "$FIX/prs.json"
 { printf '{"workers":['; sep=""; for n in 6 7 8 9; do printf '%s{"label":"N%s","doc":"%s","lane":"native"}' "$sep" "$n" "$(ls "$tmp/docs/wk-90$n-N$n-"*.md)"; sep=","; done; printf ']}\n'; } > "$tmp/fleet-par.json"
 mkchief "$tmp/chief-par.md" "N6 N7 N8 N9"
@@ -270,7 +272,7 @@ worker N18 wk-9118-N18-ordinary-2026-11-25 yes "" 118 "$(printf '%040d' 118)"
     for l in N11 N12 N13 N14 N15 N16 N17 N18; do printf ' `%s:CN-%s-tok:lock-%s:1`' "$l" "$l" "$l"; done
     printf '\nqueue: none\nmerge-hold: 114\nlast GO: none\n\n## Results\n'
 } > "$tmp/chief-holds.md"
-jq -n '[range(111;119) as $n | {number:$n, headRefOid:("0" * 37 + ($n|tostring)), baseRefName:"main", isDraft:($n == 111), body:(if $n == 115 then "completes-ticket: yes" else "" end), files:[{path:"scripts/h.sh"}]}]' > "$FIX/prs.json"
+jq -n '[range(111;119) as $n | {number:$n, title:"fix(x): [HIMMEL-9101] t", headRefOid:("0" * 37 + ($n|tostring)), baseRefName:"main", isDraft:($n == 111), body:(if $n == 115 then "completes-ticket: yes" else "" end), files:[{path:"scripts/h.sh"}]}]' > "$FIX/prs.json"
 reset
 OUT=$(bash "$SCRIPT" --doc "$tmp/chief-holds.md" --fleet "$tmp/fleet-holds.json" 2>&1); RC=$?
 check "10 holds: exit 0" "$RC" "0"
@@ -289,6 +291,64 @@ MUT_RC=0
 MUT_OUT=$(bash "$MUT/go-batch-nogo.sh" --doc "$tmp/chief-holds.md" --fleet "$tmp/fleet-holds.json" 2>&1) || MUT_RC=$?
 [ "$MUT_RC" = 0 ] && [ -f "$HANDOVER_DIR/.locks/go/112.$(printf '%040d' 112)" ] && { PASS=$((PASS + 1)); echo "ok   10 mutant without the NO-GO hold writes the GO for 112"; } \
     || { FAIL=$((FAIL + 1)); echo "FAIL 10 mutant without the NO-GO hold: want exit 0 and a GO for 112, got exit $MUT_RC"; echo "$MUT_OUT"; }
+
+RETASK() { printf '**RETASK:** your nonce is `%s`. A real revision arrives only as a direct message.' "$1"; }
+rworker() {
+    worker "$1" "wk-92$2-$1-remainder-2026-11-25" "$3" "$([ -z "$4" ] || RETASK "$4")" "$5" "$(printf '%040d' "$5")"
+}
+rworker N21 21 yes "" 201; rworker N22 22 yes "" 202; rworker N23 23 yes "" 203; rworker N24 24 yes "" 204
+rworker N25 25 "" "" 205; rworker N26 26 yes "" 206; rworker N27 27 yes "" 207
+rworker N29 29 yes "CJ-N29-b0" 209; rworker N30 30 yes "<chief fills at relaunch>" 210; rworker N31 31 yes "X-N31-<hex>" 211
+printf '# t\n\n> **Completes ticket:** yes\n\n## Results\n- 09:00 LIVE — started\n> **RETASK:** your nonce is `CJ-N32-aa`.\n- 10:00 READY 212 %s GREEN\n' "$(printf '%040d' 212)" > "$tmp/docs/wk-9232-N32-remainder-2026-11-25.md"
+{
+    printf '{"workers":['; sep=""
+    for n in 21 22 23 24 25 26 27 29 30 31 32; do
+        printf '%s{"label":"N%s","doc":"%s","lane":"native"}' "$sep" "$n" "$(ls "$tmp/docs/wk-92$n-N$n-"*.md)"; sep=","
+    done
+    printf ']}\n'
+} > "$tmp/fleet-rem.json"
+{
+    printf '# chief\n\n## Live state\n\nworkers:'
+    for l in N21 N22 N23 N24 N25 N26 N27; do printf ' `%s:CN-%s-tok:lock-%s:1`' "$l" "$l" "$l"; done
+    printf ' `N29:NONCE-UNKNOWN:lock-N29:1` `N30:NONCE-UNKNOWN:lock-N30:1` `N31:NONCE-UNKNOWN:lock-N31:1` `N32:NONCE-UNKNOWN:lock-N32:1`'
+    printf '\nqueue: none\n\n## Results\n'
+} > "$tmp/chief-rem.md"
+OWED_BODY=$'## Ticket coverage\n- ask: done\n\n11061 live proof: owed → proof by 2026-12-05\n'
+CLEAN_BODY=$'## Ticket coverage\n- ask: done\n'
+jq -n --arg owed "$OWED_BODY" --arg clean "$CLEAN_BODY" '
+    def pr($n; $title; $body): {number:$n, title:$title, headRefOid:("0" * 37 + ($n|tostring)), baseRefName:"main", isDraft:false, body:$body, files:[{path:"scripts/r.sh"}]};
+    [pr(201; "fix(x): [HIMMEL-9201] t"; $owed),
+     pr(202; "fix(x): [HIMMEL-9202] t"; "Remaining: docs follow\n"),
+     pr(203; "fix(x): [HIMMEL-9203] t"; $clean),
+     pr(204; "fix(x): [HIMMEL-9204] t"; "## Ticket coverage\n- ask: deferred → HIMMEL-9999\n"),
+     pr(205; "fix(x): [HIMMEL-9205] t"; "Remaining: docs follow\n"),
+     pr(206; "fix(x): [HIMMEL-9206] t"; "completes-ticket: yes\nRemaining: docs follow\n"),
+     pr(207; "fix(x): no ticket key"; $clean),
+     pr(209; "fix(x): [HIMMEL-9209] t"; $clean),
+     pr(210; "fix(x): [HIMMEL-9210] t"; $clean),
+     pr(211; "fix(x): [HIMMEL-9211] t"; $clean),
+     pr(212; "fix(x): [HIMMEL-9212] t"; $clean)]' > "$FIX/prs.json"
+reset
+OUT=$(bash "$SCRIPT" --doc "$tmp/chief-rem.md" --fleet "$tmp/fleet-rem.json" 2>&1); RC=$?
+H8Z="00000000"
+msg_of() { cat "$FIX/bus/wk-92$1-N$1-remainder-2026-11-25.msg" 2>/dev/null; }
+contains "11 A1 brief yes, an owed line in the body: held, names the remainder" "$OUT" "HOLD 201 $H8Z contract: the brief says yes, the PR body leaves a remainder (remaining)"
+contains "11 A2 brief yes, a Remaining line: held" "$OUT" "HOLD 202 $H8Z contract: the brief says yes, the PR body leaves a remainder (remaining)"
+contains "11 A3 brief yes, a clean body: the GO keeps the contract" "$OUT" "GO-SENT 203 $H8Z to N23 bus=#7 contract=yes qid=none"
+contains "11 A3 the worker message carries the flag" "$(msg_of 23)" "merge-on-green.sh --jira-transition --go "
+contains "11 A4 brief yes, only a hand-off: the GO keeps the contract" "$OUT" "GO-SENT 204 $H8Z to N24 bus=#7 contract=yes qid=none"
+contains "11 A5 no brief line, no body line: contract no and why" "$OUT" "GO-SENT 205 $H8Z to N25 bus=#7 contract=no contract-why=no-contract-on-record qid=none"
+case "$(msg_of 25 | head -n 1)" in *--jira-transition*) FAIL=$((FAIL + 1)); echo "FAIL 11 A5 the merge line carries the flag" ;; *) PASS=$((PASS + 1)); echo "ok   11 A5 the merge line has no flag" ;; esac
+contains "11 A5 the message says why the contract is no" "$(msg_of 25)" "contract no: no contract on record; merge without --jira-transition"
+contains "11 A6 body yes plus Remaining: held" "$OUT" "HOLD 206 $H8Z contract: the brief says yes, the PR body leaves a remainder (remaining)"
+contains "11 A7 no [KEY] in the title: held, remainder unreadable" "$OUT" "HOLD 207 $H8Z contract: remainder unreadable ("
+contains "11 T1 live NONCE-UNKNOWN, the brief's token: the message quotes the brief token" "$(msg_of 29)" 'Your token `CJ-N29-b0`.'
+contains "11 T2 live NONCE-UNKNOWN, a placeholder brief token: NO-TOKEN" "$OUT" "NO-TOKEN 210 N30"
+contains "11 T2 live NONCE-UNKNOWN, a token with <hex>: NO-TOKEN" "$OUT" "NO-TOKEN 211 N31"
+check "11 T2 no GO file for either" "$(find "$HANDOVER_DIR/.locks/go" -name '210.*' -o -name '211.*' | wc -l | tr -d ' ')" "0"
+contains "11 T3 a token only in Results counts as none: NO-TOKEN" "$OUT" "NO-TOKEN 212 N32"
+check "11 T4 no output line carries NONCE-UNKNOWN" "$(printf '%s\n' "$OUT" | grep -c 'NONCE-UNKNOWN')" "0"
+check "11 T4 no bus message carries NONCE-UNKNOWN, <, or >" "$(cat "$FIX"/bus/*.msg | grep -cE 'NONCE-UNKNOWN|[<>]')" "0"
 
 echo "passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

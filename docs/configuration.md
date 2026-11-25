@@ -821,6 +821,25 @@ A Codex-only gate drops the other two:
 { "panel": [ { "slug": "claude", "drop": true }, { "slug": "coderabbit", "drop": true } ] }
 ```
 
+A project without Codex needs no hand edit. When `adopt.sh` installs into a project
+(`--scope project`) and finds no `codex` CLI on `PATH`, it writes this Claude-only
+overlay to `scripts/cr/critics.local.json`, only if the file is absent: codex stays
+listed as `best-effort` and not required, and a Claude row is the one `hard` reviewer, so
+the merge gate asks for the Claude review `/pr-check` records instead of a Codex one.
+
+```json
+{ "panel": [
+  { "slug": "codex", "mode": "best-effort", "required": false },
+  { "slug": "claude", "model": "claude-opus-5-5", "provider": "claude-subscription", "effort": "medium", "mode": "hard" }
+] }
+```
+
+The generated file carries a `_generated` note and an install with
+`--commit-install` commits it, so worktrees carry it too. An overlay you wrote yourself
+is never replaced or committed by the installer. A project that has `codex` on `PATH`
+at install time gets no overlay and keeps codex `hard` and `required: true`. To make
+codex a hard reviewer again after you install it, delete `scripts/cr/critics.local.json`.
+
 A repo with no code review at all says so explicitly:
 
 ```json

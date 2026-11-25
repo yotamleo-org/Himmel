@@ -52,7 +52,9 @@
 # other than its own chief-wait.sh waiter, or that check could not run;
 # 6 `next` refused: a Results bullet quotes an operator ruling (verbatim) that
 # the decisions: line does not hold; 7 `next` refused: the outgoing doc has no
-# real `## Current direction` block; 18 `--project` refused: the project folder would not load the
+# real `## Current direction` block; 10 `next` refused: a launch still writes to the
+# predecessor's fleet manifest after the CHIEF_NEXT_LAUNCH_WAIT wait, or that manifest
+# is unreadable; 18 `--project` refused: the project folder would not load the
 # himmel guard hooks (UNGUARDED_LAUNCH_OK=1 in the launching shell starts it with one WARN).
 #
 # Platform guard: POSIX bash 3.2+; --arm launches through
@@ -2475,15 +2477,48 @@ EOF
     return 1
 }
 
+launches_in_flight() {
+    local m="$1"
+    if [ -f "$m" ]; then
+        jq -r "$JQ_W"'W[]? | objects | select((.attempt | type) == "object" and .attempt.phase == "pending") | "attempt pending: \(.label // "-") \(.doc // "")"' "$m" || return 2
+    fi
+    # swallow-ok: no ps listing names no launcher; the pending-attempt rows above still count
+    ps -eo pid=,args= 2>/dev/null | awk -v m="$m" -v b="${m##*/}" '
+        index($0, "headed-arm-worker.sh") {
+            for (i = 2; i < NF; i++) if ($i == "--fleet") {
+                f = $(i + 1); gsub(/["\047]/, "", f); n = f; sub(/.*\//, "", n)
+                if (f == m || n == b) { print "launcher pid " $1 ": --fleet " f; break }
+            }
+        }' || true
+}
+
+wait_launches_settled() {
+    local waited=0 limit="${CHIEF_NEXT_LAUNCH_WAIT:-300}" busy unreadable="refusing to hand over: cannot read the fleet manifest $1; repair or restore it, then run next again"
+    busy="$(launches_in_flight "$1")" || { err "$unreadable"; return 1; }
+    [ -n "$busy" ] || return 0
+    err "waiting up to ${limit}s for launches still writing to $1"
+    while [ -n "$busy" ] && [ "$waited" -lt "$limit" ]; do
+        sleep 1
+        waited=$((waited + 1))
+        busy="$(launches_in_flight "$1")" || { err "$unreadable"; return 1; }
+    done
+    [ -n "$busy" ] || return 0
+    err "refusing to hand over: these launches still write to $1 after ${limit}s; let them finish (a dead launcher's attempt is settled by hand, see the fleet-manifest.sh header), then run next again:"
+    printf '  %s\n' "$busy" >&2
+    return 1
+}
+
 dead_manifest_rows() {
-    local label ldoc rows
+    local label ldoc rows st
     [ -f "$1" ] || return 0
     # swallow-ok: an unreadable manifest retires nothing
     rows="$(jq -r "$JQ_W"'W[]? | objects | select(.lockless != true and .registration != "pending" and (.attempt == null)) | [.label // "-", .doc // ""] | @tsv' "$1" 2>/dev/null)" || return 0
     while IFS=$'\t' read -r label ldoc; do
         [ -n "$ldoc" ] || continue
         [ "$(worker_lock_state "$ldoc")" = free ] || continue
-        [ "$(worker_tail_status "$ldoc")" = WRAPPED ] || [ -z "$(worker_actionable_bullet "$ldoc")" ] || continue
+        st="$(worker_tail_status "$ldoc")"
+        [ -n "$st" ] || continue
+        [ "$st" = WRAPPED ] || [ -z "$(worker_actionable_bullet "$ldoc")" ] || continue
         printf '%s\t%s\n' "$label" "$ldoc"
     done <<EOF
 $rows
@@ -2728,8 +2763,9 @@ unavailable (action-zero.sh exited $arc): run it yourself"
 
 Steps 2–6 ran when \`next\` wrote this doc: verify these results, do not re-run them.
 Re-run action-zero.sh only if they are over 15 minutes old or a section reads
-unavailable. C29 is left out (it must see your own session): run it in the
-same batch as step 8, which is one call each:
+unavailable. C29 is left out (it must see your own session). Run these two calls
+after the parallel reads, each as its own call alone in its turn (auto mode drops a batched call's verdict),
+never inside the step 1 or step 8 batch:
 \`bash \"$repo/scripts/himmel-doctor.sh\" --only C29\`
 \`timeout 90 bash \"$kit/action-zero.sh\" --doc \"$doc\" --root \"$root\" --acquire --lock-only\`
 
@@ -2906,6 +2942,7 @@ cmd_next() {
     # below can exit: a retry that stops there must not leave the old successor armed.
     local pred_inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${predecessor_stem}.md"
     [ "$RELAY_ON_LIVE" -eq 1 ] || rm -f "$pred_inbox.relay-on-live"
+    wait_launches_settled "$predecessor_dir/${predecessor_stem}.fleet.json" || exit 10
 
     # The successor doc is never re-rendered once it exists: unlike the
     # HANDOFF just below (existence-guarded) and `new` (which bumps the
@@ -2949,7 +2986,14 @@ cmd_next() {
     successor_manifest="${doc%.md}.fleet.json"
     manifest_note="none carried (the predecessor had no manifest); create it with fleet-manifest.sh add"
     if [ -f "$predecessor_manifest" ]; then
+        local carried carried_at
+        carried_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         cp "$predecessor_manifest" "$successor_manifest" || { err "could not copy fleet manifest $predecessor_manifest to $successor_manifest"; exit 1; }
+        if carried="$(jq --arg p "$predecessor_manifest" --arg t "$carried_at" '. + {carried_from: $p, carried_at: $t}' "$successor_manifest")"; then
+            printf '%s\n' "$carried" > "$successor_manifest"
+        else
+            err "warning: could not record the predecessor's manifest in $successor_manifest; ACTION ZERO will not carry a launch that lands after this copy"
+        fi
         repoint_resume_rows "$successor_manifest"
         manifest_note="carried from the predecessor, already in place: start the waiter with --workers-from on it"
     fi
@@ -2991,7 +3035,7 @@ cmd_next() {
         esac
     fi
     if [ -f "$ledger" ] && [ "$dir_rc" -le 1 ]; then
-        if dir_in_force="$(printf '%s\n' "$predecessor_direction" | bash "$kit/rulings-in-force.sh" render --bucket "$state_dir")" && [ -n "$dir_in_force" ]; then
+        if dir_in_force="$(printf '%s\n' "$predecessor_direction" | bash "$kit/rulings-in-force.sh" render --bucket "$state_dir" --recent 7)" && [ -n "$dir_in_force" ]; then
             predecessor_direction="$dir_in_force"
         else
             err "warning: could not render the rulings in force from $ledger; carried the Current direction as it was"

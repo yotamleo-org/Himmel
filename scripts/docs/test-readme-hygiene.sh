@@ -2,7 +2,7 @@
 # test-readme-hygiene.sh — the public README reads cleanly for a new visitor.
 #
 #   1. No internal ticket IDs (HIMMEL-<n>) in README.md.
-#   2. No version-pinned support claims ("in v1.0.0", "until v1.0.1").
+#   2. No version-pinned support claims (a support claim that names a release number).
 #   3. No evidence link pinned to one Actions run (/actions/runs/<id>): platform
 #      evidence links to a filtered run list, which stays current.
 #   4. The README shows the flow graph, and docs/assets/flows.svg is exactly

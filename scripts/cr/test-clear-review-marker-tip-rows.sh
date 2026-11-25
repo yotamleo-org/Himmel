@@ -91,6 +91,16 @@ stub_check_ci() {
     chmod +x "$1/scripts/check-ci.sh"
 }
 
+stub_gh_pr() {
+    printf "#!/usr/bin/env bash\nfor a in \"\$@\"; do [ \"\$a\" = \"--head\" ] && { echo \"7 %s\"; exit 0; }; done\nexit 1\n" "$2" > "$1/bin/gh"
+    chmod +x "$1/bin/gh"
+}
+stub_check_ci_needs_carry() {
+    printf '#!/usr/bin/env bash\ngrep -F "%s" .git/cr-critic-scores.jsonl | grep -qF "trivial-descendant of reviewed head %s" && exit 0\necho "CR-FIRST HOLD codex not-yet-run" >&2\nexit 1\n' "$2" "$3" > "$1/scripts/check-ci.sh"
+    chmod +x "$1/scripts/check-ci.sh"
+}
+carry_rows_at() { { grep -F "\"head\":\"$2\"" "$1/.git/cr-critic-scores.jsonl" 2>/dev/null || true; } | grep -cF "trivial-descendant of reviewed head" || true; }
+
 run_clear() {
     local tmp="$1" expected="$2" name="$3"; shift 3
     local rc=0 out
@@ -152,6 +162,47 @@ merge_case
 write_ledger "$tmp" "$(avail_ok "$sha")" "$(printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-1","severity":"sug","file":"c.txt","line":1,"verdict":"agreed"}' "$B")"
 run_clear "$tmp" 14 "3b a finding row at the tip with no avail row of its own refuses -> exit 14"
 if carried; then fail "3b: a finding row at the tip must not take the clean-merge-forward carry"; else pass; fi
+rm -rf "$tmp"
+
+merge_case
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh_pr "$tmp" "$B"; stub_check_ci_needs_carry "$tmp" "$B" "$sha"
+run_clear "$tmp" 0 "4 an open PR's clean merge-forward clears in one run, check-ci green only on the carry row -> exit 0"
+if carried; then pass; else fail "4: the carry must audit via=clean-merge-forward (got: $LAST_CLEAR_OUT)"; fi
+if [ "$(carry_rows_at "$tmp" "$B")" = 1 ]; then pass; else fail "4: exactly one carry row at the tip expected"; fi
+if [ ! -e "$tmp/.git/cr-pending/feat/x" ]; then pass; else fail "4: the marker must be cleared"; fi
+rm -rf "$tmp"
+
+merge_case
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh_pr "$tmp" "$B"; stub_check_ci_needs_carry "$tmp" "$B" "$sha"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$tmp/scripts/check-ci.sh"
+run_clear "$tmp" 16 "5a a red check-ci refuses -> exit 16"
+stub_check_ci_needs_carry "$tmp" "$B" "$sha"
+run_clear "$tmp" 0 "5b the rerun after the refusal clears -> exit 0"
+if carried; then pass; else fail "5b: the rerun must still take the clean-merge-forward carry, not read the leftover row as the tip's own review (got: $LAST_CLEAR_OUT)"; fi
+rm -rf "$tmp"
+
+merge_case
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh_pr "$tmp" "$B"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$tmp/scripts/check-ci.sh"
+run_clear "$tmp" 16 "5c a red check-ci refuses -> exit 16"
+rm -f "$tmp/.git/cr-review-rounds/feat/x.head"
+stub_check_ci "$tmp"
+run_clear "$tmp" 14 "5c with no reviewed head to carry from, the leftover row is not the tip's own review -> exit 14"
+rm -rf "$tmp"
+
+merge_case
+echo 'echo extra' >> "$tmp/g.sh"
+git -C "$tmp" commit -qam "extra work after the merge"
+git -C "$tmp" push -q origin feat/x >/dev/null 2>&1
+B=$(git -C "$tmp" rev-parse --verify refs/heads/feat/x)
+write_marker "$tmp" "$B"
+write_ledger "$tmp" "$(avail_ok "$sha")"
+stub_gh_pr "$tmp" "$B"; stub_check_ci_needs_carry "$tmp" "$B" "$sha"
+run_clear "$tmp" 14 "6 a merge-forward plus its own code change still needs its own review -> exit 14"
+if [ "$(carry_rows_at "$tmp" "$B")" = 0 ]; then pass; else fail "6: a refused non-carry clear must leave no carry row"; fi
 rm -rf "$tmp"
 
 echo

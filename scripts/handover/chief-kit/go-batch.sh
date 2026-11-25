@@ -21,24 +21,32 @@
 #      brief does not say `Merge: chief`
 #   4. the contract: the brief's last `> **Completes ticket:** yes|no` line (none reads no, as
 #      auto-go.sh does) must equal the PR body's `completes-ticket:` line when the body
-#      has one; a disagreement is a hold, never a guess. go.sh gets it as --contract
+#      has one; a disagreement is a hold, never a guess. A brief that says yes while the PR
+#      body leaves a remainder (a `Remaining:` or `owed ->` line; scripts/lib/pr_remainder.py,
+#      read for the ticket key of the title's [KEY]) is a hold too, and so is an unreadable
+#      remainder (no [KEY] in the title, no answer from the reader). A brief with no line and a
+#      body with none is contract no with contract-why=no-contract-on-record, and the worker's
+#      message says why. go.sh gets the contract as --contract
 #   5. a judge verdict where one is required (the brief asks for a judge, every changed file is
 #      under docs/ or a *.md file, or any judge NO-GO is on record for the PR, which go.sh reads
 #      only under --trust-reviewed): the newest verdict under <root>/<user>/<bucket>/verdicts/ that
 #      rules GO for this PR at this head, a delta no-op record included. Its qid goes to go.sh as
 #      --trust-reviewed. A PR that needs none runs go.sh plain; go.sh's exit 8 (the diff hits a CI
 #      trust path) retries once with the newest verdict's qid, and no verdict holds the PR
-#   6. the worker's token is in the chief doc's workers: span; with none the row is NO-TOKEN and no
-#      GO is written, so no GO exists that its worker is never told about
+#   6. the worker has a usable token: the one in the chief doc's workers: span, else the first
+#      backticked value of the last `> **RETASK:**` line of its brief above `## Results`. A
+#      usable token has dash-joined parts (CJ-N1-b07851f7) and is not NONCE-UNKNOWN; with none
+#      the row is NO-TOKEN and no GO is written, so no GO exists that its worker is never told
+#      about and no message ever quotes a placeholder
 #
 # The primary checkout (GO_BATCH_ANCHOR, else this script's primary checkout) is fast-forwarded
 # once, before any go.sh runs; one that cannot fast-forward is exit 1 and no GO is written, because
 # go.sh and the merge gate read their libraries from it.
 #
 # Output, one row per PR, then a summary:
-#   GO-SENT <pr> <head8> to <label> bus=<#n> contract=<yes|no> qid=<qid|none>
-#   GO-WRITTEN <pr> <head8> contract=<c> qid=<q> bus-failed: <why>      (then SENDMESSAGE to=<session> :: <msg>)
-#   WOULD-GO <pr> <head8> to <label> contract=<c> qid=<q>               (--dry-run)
+#   GO-SENT <pr> <head8> to <label> bus=<#n> contract=<yes|no>[ contract-why=<slug>] qid=<qid|none>
+#   GO-WRITTEN <pr> <head8> contract=<c> qid=<q>[ contract-why=<slug>] bus-failed: <why>      (then SENDMESSAGE to=<session> :: <msg>)
+#   WOULD-GO <pr> <head8> to <label> contract=<c>[ contract-why=<slug>] qid=<q>               (--dry-run)
 #   HOLD <pr> <head8> <reason>
 #   NO-TOKEN <pr> <label>
 #   go-batch: <n> GO, <m> held
@@ -136,6 +144,29 @@ live_token() {
     ' "$DOC" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`' | tr -d '`' \
         | awk -F: -v l="$1" '$1 == l { print $2; n++ } END { exit n != 1 }'
 }
+token_usable() { [[ "$1" =~ ^[A-Za-z0-9]+(-[A-Za-z0-9._]+)+$ ]] && [ "$1" != NONCE-UNKNOWN ]; }
+# shellcheck disable=SC2016  # the backticks are the RETASK line's literal markers
+brief_token() {
+    awk '/^## Results/ { exit } /^> \*\*RETASK:\*\*/ { l = $0 } END { print l }' "$1" | grep -oE '`[^`]*`' | head -n 1 | tr -d '`'
+}
+worker_token() {
+    local t
+    t=$(live_token "$1") || t=""  # swallow-ok: no live token falls to the brief's below
+    token_usable "$t" || t=$(brief_token "$2") || t=""  # swallow-ok: no brief token is NO-TOKEN at the caller
+    token_usable "$t" || return 1
+    printf '%s\n' "$t"
+}
+remainder_answer() {
+    local key ans rc=0
+    key=$( . "$HERE/../../lib/ticket-status.sh" >/dev/null 2>&1 || exit 3; ticket_key_from_title "$1" ) || { printf 'no [KEY] in the title\n'; return 1; }
+    [ -f "$ANCHOR/scripts/lib/pr_remainder.py" ] || { printf 'the anchor has no scripts/lib/pr_remainder.py\n'; return 1; }
+    ans=$(printf '%s' "${2//$'\r'/}" | python3 -I "$ANCHOR/scripts/lib/pr_remainder.py" "$key" 2>/dev/null) || rc=$?  # swallow-ok: a non-zero rc is reported below
+    case "${ans%%$'\t'*}" in
+        none|remaining|handed-off|owed) [ "$rc" -eq 0 ] || { printf 'pr_remainder.py exit %s\n' "$rc"; return 1; }; printf '%s\n' "${ans%%$'\t'*}" ;;
+        *) printf 'pr_remainder.py gave no answer\n'; return 1 ;;
+    esac
+}
+cwhy_field() { [ "$1" = - ] || printf ' contract-why=%s' "$1"; }
 newest_qid() {
     local qs q f line want best="" bt="" t
     qs=$(go_pr_qids "$VERD" "$1" "$2") || return 0  # swallow-ok: an unreadable verdict directory reads as no verdict, and a hold is the safe answer
@@ -196,14 +227,20 @@ while IFS=$'\t' read -r PR HEADSHA _base DRAFT <&3; do
     if [ -n "$BLOCK" ]; then hold "the chief doc's Live state says $BLOCK"; continue; fi
     if grep -qE '^> \*\*Merge:\*\* chief([^A-Za-z0-9_-]|$)' "$WDOC" 2>/dev/null; then hold "the brief says Merge: chief"; continue; fi
     CONTRACT=$(grep -oE '^> \*\*Completes ticket:\*\* (yes|no)([^A-Za-z0-9_-]|$)' "$WDOC" | tail -n 1 | sed -E 's/^> \*\*Completes ticket:\*\* (yes|no).*/\1/')
+    BRIEF_LINE="$CONTRACT"
     [ -n "$CONTRACT" ] || CONTRACT=no
-    BODY_VALS=$(jq -r --argjson n "$PR" '.[] | select(.number == $n) | .body // ""' "$WORK/prs.json" | tr -d '\r' | awk '
+    PR_BODY=$(jq -r --argjson n "$PR" '.[] | select(.number == $n) | .body // ""' "$WORK/prs.json") || { hold "contract: remainder unreadable (the PR body cannot be read)"; continue; }
+    BODY_VALS=$(printf '%s\n' "$PR_BODY" | tr -d '\r' | awk '
         /^[ \t]{0,3}(```|~~~)/ { fence = !fence; next }
         !fence && /^completes-ticket:[ \t]*(yes|no)[ \t]*$/ { v = $0; sub(/^completes-ticket:[ \t]*/, "", v); sub(/[ \t]*$/, "", v); seen[v] = 1 }
         END { for (v in seen) print v }' | sort -u | tr '\n' ' ')
     case "$BODY_VALS" in "yes ") BODY_VAL=yes ;; "no ") BODY_VAL=no ;; "") BODY_VAL="" ;; *) BODY_VAL=both ;; esac
     [ "$BODY_VAL" != both ] || { hold "contract: the PR body names both yes and no"; continue; }
+    REM_KIND=$(remainder_answer "$TITLE" "$PR_BODY") || { hold "contract: remainder unreadable ($REM_KIND)"; continue; }
+    case "$REM_KIND" in remaining|owed) REM_YES=1 ;; *) REM_YES=0 ;; esac
+    [ "$REM_YES" -eq 0 ] || [ "$CONTRACT" != yes ] || { hold "contract: the brief says yes, the PR body leaves a remainder ($REM_KIND)"; continue; }
     [ -z "$BODY_VAL" ] || [ "$BODY_VAL" = "$CONTRACT" ] || { hold "contract: the brief says $CONTRACT, the PR body says $BODY_VAL"; continue; }
+    CWHY="-"; [ -n "$BRIEF_LINE" ] || [ -n "$BODY_VAL" ] || CWHY="no-contract-on-record"
     WHY=""
     if grep -qF 'the chief runs an opus judge before GO' "$WDOC" 2>/dev/null; then
         WHY="the brief asks for a judge"
@@ -217,15 +254,15 @@ while IFS=$'\t' read -r PR HEADSHA _base DRAFT <&3; do
         QID=$(newest_qid "$PR" "$HEADSHA")
         if [ -z "$QID" ]; then hold "no judge verdict at head ($WHY)"; continue; fi
     fi
-    if ! live_token "$LABEL" >/dev/null; then
+    TOKEN=$(worker_token "$LABEL" "$WDOC") || {
         printf 'NO-TOKEN %s %s\n' "$PR" "$LABEL"; HELD=$((HELD + 1)); continue
-    fi
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$PR" "$HEADSHA" "$LABEL" "$WDOC" "$CONTRACT" "$QID" >> "$WORK/golist"
+    }
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$PR" "$HEADSHA" "$LABEL" "$WDOC" "$CONTRACT" "$TOKEN" "$CWHY" "$QID" >> "$WORK/golist"
 done 3< "$WORK/pr.tsv"
 
 if [ "$DRY" -eq 1 ]; then
-    while IFS=$'\t' read -r pr head label _doc contract qid; do
-        printf 'WOULD-GO %s %s to %s contract=%s qid=%s\n' "$pr" "${head:0:8}" "$label" "$contract" "${qid:-none}"
+    while IFS=$'\t' read -r pr head label _doc contract _tok cwhy qid; do
+        printf 'WOULD-GO %s %s to %s contract=%s%s qid=%s\n' "$pr" "${head:0:8}" "$label" "$contract" "$(cwhy_field "$cwhy")" "${qid:-none}"
         WRITTEN=$((WRITTEN + 1))
     done < "$WORK/golist"
     printf 'go-batch: %s GO, %s held\n' "$WRITTEN" "$HELD"
@@ -255,7 +292,7 @@ run_one() {
     { printf '%s\n%s\n' "$rc" "${q:-none}"; printf '%s\n' "$out"; } > "$WORK/res.$pr"
 }
 N=0
-while IFS=$'\t' read -r pr head _label _doc contract qid; do
+while IFS=$'\t' read -r pr head _label _doc contract _tok _cwhy qid; do
     run_one "$pr" "$head" "$contract" "$qid" &
     N=$((N + 1))
     [ $((N % JOBS)) -ne 0 ] || wait
@@ -289,7 +326,7 @@ send_bus() {
     if [ "$bus_rc" -ne 0 ]; then BUS_ERR="bus send exit $bus_rc: $(printf '%s\n' "$bus_out" | head -n 1 | cut -c1-150)"
     elif [ -z "$BUS_REF" ]; then BUS_ERR="bus send printed no record number"; fi
 }
-while IFS=$'\t' read -r pr head label wdoc contract _qid; do
+while IFS=$'\t' read -r pr head label wdoc contract tok cwhy _qid; do
     { read -r rc; read -r qid; GOOUT=$(cat); } < "$WORK/res.$pr"
     h8="${head:0:8}"
     if [ "$rc" -ne 0 ]; then
@@ -309,13 +346,14 @@ while IFS=$'\t' read -r pr head label wdoc contract _qid; do
     WRITTEN=$((WRITTEN + 1))
     JT=" --jira-transition"; [ "$contract" = yes ] || JT=""
     MSG=$(printf 'GO %s %s - merge with: bash %q%s --go %q' "$pr" "$head" "$ANCHOR/scripts/handover/merge-on-green.sh" "$JT" "$GOFILE")
-    MSG="$MSG"$'\n'"Your token \`$(live_token "$label")\`."
+    [ "$cwhy" = - ] || MSG="$MSG"$'\n'"contract no: ${cwhy//-/ }; merge without --jira-transition"
+    MSG="$MSG"$'\n'"Your token \`$tok\`."
     send_bus "$label" "$wdoc" "$MSG"
     if [ -z "$BUS_ERR" ]; then
-        printf 'GO-SENT %s %s to %s bus=%s contract=%s qid=%s\n' "$pr" "$h8" "$label" "$BUS_REF" "$contract" "$qid"
+        printf 'GO-SENT %s %s to %s bus=%s contract=%s%s qid=%s\n' "$pr" "$h8" "$label" "$BUS_REF" "$contract" "$(cwhy_field "$cwhy")" "$qid"
     else
         UNDELIVERED=$((UNDELIVERED + 1))
-        printf 'GO-WRITTEN %s %s contract=%s qid=%s bus-failed: %s\n' "$pr" "$h8" "$contract" "$qid" "$BUS_ERR"
+        printf 'GO-WRITTEN %s %s contract=%s qid=%s%s bus-failed: %s\n' "$pr" "$h8" "$contract" "$qid" "$(cwhy_field "$cwhy")" "$BUS_ERR"
         printf 'SENDMESSAGE to=%s :: %s\n' "${SESSION:-$(basename "$wdoc" .md)}" "$(printf '%s' "$MSG" | tr '\n' ' ')"
     fi
 done < "$WORK/golist"

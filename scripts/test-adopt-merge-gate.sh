@@ -46,7 +46,7 @@ fi
 exec "$real_python3" "\$@"
 STUB
 chmod +x "$work/bin/python3" || exit 1
-qmd_free_path=$(scrub_path "$PATH" qmd bun npm node uv pipx) || exit 1
+qmd_free_path=$(scrub_path "$PATH" qmd bun npm node uv pipx codex) || exit 1
 export PATH="$work/bin:$qmd_free_path"
 
 # A missing portable gate or helper must not silently drop the merge refusal.
@@ -244,9 +244,9 @@ STUB
   HOME="$home" HIMMEL_PROVENANCE_DIR="$ledger" bash "$adopt" --profile core --scope project --target "$fresh" >/dev/null || exit 1
   jq -se '[.[] | select(.kind == "json-elem" and .unit == "/hooks/PreToolUse" and .op == "insert")] | length == 4 and all(.[]; .container_created == true)' "$ledger/provenance.jsonl" >/dev/null \
     || fail "every inserted hook must record ownership of the newly created PreToolUse container"
-  jq -se '[.[] | select(.kind == "file" and .manifest_row == "adopter-scripts")] | length == 99' "$ledger/provenance.jsonl" >/dev/null \
-    || fail "expected 98 portable file rows plus the trust policy seed"
-  echo "ok: all four hooks record fresh-container ownership for uninstall; all 99 file rows recorded"
+  jq -se '[.[] | select(.kind == "file" and .manifest_row == "adopter-scripts")] | length == 100' "$ledger/provenance.jsonl" >/dev/null \
+    || fail "expected 98 portable file rows plus the trust policy and Claude-only overlay seeds"
+  echo "ok: all four hooks record fresh-container ownership for uninstall; all 100 file rows recorded"
 )
 
 mkdir -p "$work/merge-gate-foreign-worktree"

@@ -105,7 +105,8 @@ test("a record outside the closed shape renders nothing", () => {
     { ...every("x")[0], label: "run this" },
     { ...every("x")[0], root: -1 },
     { ...every("x")[3], draft: "not-hex!" },
-    { ...every("x")[3], source: "chief" },
+    { ...every("x")[3], source: "desk" },
+    { ...every("x")[3], session: "abc" },
     { ...every("x")[2], reason: "a b" },
     { ...every("x")[0], type: "other" },
   ];

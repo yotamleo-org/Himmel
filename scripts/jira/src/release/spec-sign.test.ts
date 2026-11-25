@@ -120,6 +120,7 @@ function fakeProc(marker: Record<string, string> = {}): { procRoot: string; host
   mkdirSync(join(procRoot, '300', 'ns'));
   symlinkSync('pid:[4026531836]', join(procRoot, '300', 'ns', 'pid'));
   symlinkSync('user:[4026531837]', join(procRoot, '300', 'ns', 'user'));
+  writeFileSync(join(procRoot, '300', 'cmdline'), 'node\0vitest\0');
   symlinkSync('300', join(procRoot, 'self'));
   const hostNsPath = join(procRoot, 'host-ns-ref');
   writeFileSync(hostNsPath, 'pid:[4026531836] user:[4026531837]\n');
@@ -1481,17 +1482,17 @@ if(mode==='output')process.stdout.write(' '.repeat(4*1024*1024+1));
   it.each(['spec', 'spec-review'] as const)('capped carry uses candidate verifier built-dist: %s', api => {
     declared();
     const f = cappedFixture();
-    const preload = join(root, 'observe-child.mjs');
     const log = join(root, 'child-calls.jsonl');
-    writeFileSync(preload, `import cp from 'node:child_process'; import {syncBuiltinESMExports} from 'node:module'; import {appendFileSync} from 'node:fs';
-const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fold')appendFileSync(${JSON.stringify(log)},JSON.stringify(a[1])+'\\n');return actual(...a);}; syncBuiltinESMExports();`);
+    const observe = `import cp from 'node:child_process'; import {syncBuiltinESMExports} from 'node:module'; import {appendFileSync} from 'node:fs';
+const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fold')appendFileSync(${JSON.stringify(log)},JSON.stringify(a[1])+'\\n');return actual(...a);}; syncBuiltinESMExports();
+`;
     const engine = new URL('../../dist/release/engine.js', import.meta.url).href;
     const c = sctx();
     Object.assign(c, fakeProc());
     const input = { engine, api, ctx: { release: c.release, dir: c.dir, keyPath: c.keyPath, env: c.env, procRoot: c.procRoot, hostNsPath: c.hostNsPath },
       args: { keys: ['HIMMEL-10205'], spec: f.spec, plan: f.plan, verdicts: f.verdicts, decision: '387', verbatim: 'approve' } };
-    const script = `const i=JSON.parse(process.argv[1]); const m=await import(i.engine); const row=m[i.api==='spec'?'signSpec':'specReview']({...i.ctx,now:()=>new Date('2026-10-21T10:00:00.000Z'),jira:{},mirrorRoot:null},i.args); console.log(JSON.stringify({engine:i.engine,row}));`;
-    const child = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', script, JSON.stringify(input)], { cwd: root, encoding: 'utf8', timeout: 15000 });
+    const script = `${observe}const i=JSON.parse(process.argv[1]); const m=await import(i.engine); const row=m[i.api==='spec'?'signSpec':'specReview']({...i.ctx,now:()=>new Date('2026-10-21T10:00:00.000Z'),jira:{},mirrorRoot:null},i.args); console.log(JSON.stringify({engine:i.engine,row}));`;
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', script, JSON.stringify(input)], { cwd: root, encoding: 'utf8', timeout: 15000 });
     expect(child.status, child.stderr).toBe(0);
     const result = JSON.parse(child.stdout);
     expect(result.row.capped_carry.carried).toHaveLength(2);
@@ -1507,7 +1508,7 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
       [wrongNs, /other namespaces/],
     ] as const) {
       const deniedInput = { ...input, ctx: { ...input.ctx, ...ancestry } };
-      const denied = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', script, JSON.stringify(deniedInput)], { cwd: root, encoding: 'utf8', timeout: 15000 });
+      const denied = spawnSync(process.execPath, ['--input-type=module', '-e', script, JSON.stringify(deniedInput)], { cwd: root, encoding: 'utf8', timeout: 15000 });
       expect(denied.status).toBe(1);
       expect(denied.stderr).toMatch(reason);
       expect(readFileSync(join(c.dir, 'operator.jsonl'), 'utf8')).toBe(beforeRows);
@@ -2001,13 +2002,14 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
   const within = (path: string, dir: string) => path === dir || path.startsWith(`${dir}/`);
   function v2Hermetic(f: V2Fixture): () => void {
     const home = process.env.HOME as string;
-    const before = readdirSync(home, { recursive: true }).sort();
+    const listing = () => readdirSync(home, { recursive: true }).map(String).filter(p => !p.startsWith('.bun/install/cache/')).sort();
+    const before = listing();
     return () => {
       const env = specEnv();
       expect(within(env.HIMMEL_RELEASE_STATE_DIR, root) && within(env.HIMMEL_RELEASE_KEY_DIR, root), 'the release root and the key are inside the temporary root').toBe(true);
       expect(within(home, root) && within(f.specsRoot, root), 'HOME and the fixture are scratch directories inside the temporary root').toBe(true);
       expect(within(f.specsRoot, env.HIMMEL_RELEASE_STATE_DIR) || within(env.HIMMEL_RELEASE_STATE_DIR, f.specsRoot), 'the release root and the artifact tree share no path').toBe(false);
-      expect(readdirSync(home, { recursive: true }).sort(), 'nothing under HOME changed').toEqual(before);
+      expect(listing(), 'nothing under HOME changed').toEqual(before);
     };
   }
   function v2OnlyFixture(): V2Fixture {

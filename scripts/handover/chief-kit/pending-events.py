@@ -239,7 +239,13 @@ def candidates(fleet, inbox, last):
                 cursors[label] = n
                 continue
             cursor = 0
-        pending = [(n, marker) for n, marker in matches if marker == 'READY' and n > max(cursor, floor)]
+        if worker.get('t3_kind') == 'ask':
+            if ready_events:
+                current[label] = dict(ready=ready_events)
+                cursors[label] = ready_events[-1][0]
+            continue
+        pending = [
+            (n, marker) for n, marker in matches if marker == 'READY' and n > max(cursor, floor)]
         if pending:
             n, marker = pending[-1] if first else pending[0]
             events.append((label, marker, n))

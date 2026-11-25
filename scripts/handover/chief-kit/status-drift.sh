@@ -37,7 +37,9 @@
 #                     remainder are each UNOWNED from the first tick, the row naming who it awaits, since when and
 #                     the date it carries. A started ticket still carrying the `held` label says it is held, still
 #                     In Progress (ticket-hold.sh moves a held ticket to To Do); one with no valid hold row also
-#                     says `held with no owner on record`
+#                     says `held with no owner on record`. A hold that names a T3 thread (ticket-hold.sh --thread)
+#                     is owned while that thread is in scripts/t3/thread-list.sh and not settled: no row. Once it
+#                     settles, the list lacks it or the list cannot be read, the row stays and says which
 #   CLOSE-OR-DISPATCH an In Progress ticket with no open PR, no live owner, no `standing` label and no hold, whose newest
 #                     merge row, worker doc and Jira comment are all over COD_AGE_SECONDS (72 h) old (with no merge row,
 #                     its worker docs and Jira comments alone), and that is either
@@ -77,7 +79,9 @@
 # TICKET_STATUS_DRIFT_BUDGET seconds (default 90).
 #
 #
-# Env: TICKET_STATUS_STATE_DIR, JIRA_PROJECT_KEY (default HIMMEL); TICKET_STATUS_NOW (epoch, the clock),
+# Env: STATUS_DRIFT_T3_LIST (the thread list reader, default scripts/t3/thread-list.sh) and STATUS_DRIFT_T3_TIMEOUT
+# (its deadline in seconds, default 20); both are test seams,
+# TICKET_STATUS_STATE_DIR, JIRA_PROJECT_KEY (default HIMMEL); TICKET_STATUS_NOW (epoch, the clock),
 # TICKET_STATUS_AWAIT_TTL_CHIEF (default 24h), TICKET_STATUS_AWAIT_TTL_OPERATOR and _OTHER (default 72h),
 # TICKET_STATUS_AWAIT_TTL_RESUME (default 6h) and
 # TICKET_STATUS_AWAIT_MAX (default 14d, at most 14d), each
@@ -290,6 +294,25 @@ hold_on() {
     jq -Rrs --arg k "$1" '[split("\n")[] | fromjson? | select(type == "object" and .key == $k and (.event == "hold" or .event == "hold-release") and .result == "moved")]
         | last // empty | select(.event == "hold") | (.on // "") | select(type == "string" and test("^[A-Z][A-Z0-9]*-[0-9]+$"))' <<<"${mergeout:-}" 2>/dev/null
 }
+hold_thread() {
+    # swallow-ok: unreadable rows name no thread, so the hold reads as before
+    jq -Rrs --arg k "$1" '[split("\n")[] | fromjson? | select(type == "object" and .key == $k and (.event == "hold" or .event == "hold-release") and .result == "moved")]
+        | last // empty | select(.event == "hold") | (.thread // "") | select(type == "string" and test("^[A-Za-z0-9][A-Za-z0-9:_.-]{0,95}$"))' <<<"${mergeout:-}" 2>/dev/null
+}
+T3_LOADED=0 T3_LIST=""
+t3_load() {
+    [ "$T3_LOADED" = 0 ] || return 0
+    T3_LOADED=1
+    local out
+    # swallow-ok: an unreadable list leaves T3_LIST empty, so no thread is proven live and the ticket stays stuck
+    out=$(bounded "${STATUS_DRIFT_T3_TIMEOUT:-20}" bash "${STATUS_DRIFT_T3_LIST:-$HERE/../../t3/thread-list.sh}" 2>/dev/null) || return 0
+    jq -e '.threads | type == "array"' >/dev/null 2>&1 <<<"$out" && T3_LIST=$out
+    return 0
+}
+thread_state() {
+    [ -n "$T3_LIST" ] || { echo unreadable; return 0; }
+    jq -r --arg t "$1" '[.threads[] | select(.threadId == $t)] | first | if . == null then "missing" elif .state == "settled" then "settled" else "live" end' <<<"$T3_LIST" 2>/dev/null || echo unreadable # swallow-ok: an unreadable list proves no thread live
+}
 mirror_done() {
     local st
     [ -r "$MIRROR_DIR/$1.md" ] || return 1
@@ -489,12 +512,24 @@ while IFS= read -r key; do
                     owed) wwriter=merge-on-green.sh wfix="$owho acts on $key, or hold it: bash scripts/handover/chief-kit/ticket-hold.sh $key --owner <who> --until <date> --reason <why>" wwho=$owho ;;
                     *) wwriter=$FUNNEL wfix=$chieffix wwho="the chief" ;;
                 esac
-                hstale=""
+                hstale="" tid="" tstate=""
                 if [ "$osrc" = hold ]; then
                     hstale=$(hold_on "$key")
                     [ -z "$hstale" ] || mirror_done "$hstale" || hstale=""
+                    tid=$(hold_thread "$key")
+                    if [ -n "$tid" ]; then
+                        t3_load
+                        tstate=$(thread_state "$tid")
+                        case "$tstate" in
+                            settled) hhint="$hhint; thread $tid is settled" ;;
+                            missing) hhint="$hhint; thread $tid does not exist" ;;
+                            *) hhint="$hhint; thread $tid is not proven live: the thread list unreadable" ;;
+                        esac
+                    fi
                 fi
-                if [ -n "$hstale" ]; then
+                if [ "$tstate" = live ]; then
+                    :
+                elif [ -n "$hstale" ]; then
                     add HOLD-STALE "$key" "on $hstale (Done)" ticket-hold.sh "bash scripts/handover/chief-kit/ticket-hold.sh $key --release"
                 else
                     case "$osrc" in

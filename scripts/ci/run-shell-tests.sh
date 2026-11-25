@@ -850,7 +850,6 @@ scripts/testing/test-mock-consult-sandbox.sh  # needs the pinned claude CLI, bwr
 scripts/testing/test-mock-hook-smoke.sh  # needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
 scripts/testing/test-mock-hook-live-turn.sh  # needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
 scripts/test-plugin-test.sh          # integration: self-bootstraps a plugin's deps over npm/network — VM e2e covers it
-scripts/test-adopt.sh                # quarantined, 1203-1204 s against the 1200 s cap on Linux CI shard 2 (PRs 3687 3670 3692 3685), every reached case passing; lifted when it, or each suite it is split into, runs under 900 s on the Linux CI shard at the PR head and on 3 consecutive main runs
 scripts/hooks/test-block-write-into-main-checkout-forms.sh   # quarantined, 603 s against the 600 s cap on Linux main shard 2 (run 40226871918, 3 attempts), every reached case passing; lifted when the split parts each run under 300 s on 3 consecutive main runs
 "
 

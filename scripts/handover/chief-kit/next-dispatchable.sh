@@ -46,7 +46,7 @@
 # line of its own, bare or as an append-results bullet (`- HH:MM residual-must <KEY>`) (security, data loss or a broken operator flow only), or the
 # admissions ledger (HIMMEL_ADMISSIONS_LEDGER, else <handover root>/admissions-ledger.jsonl)
 # admitted it into the earliest unreleased version: its latest row there is an
-# `rm-admit` or `override` row (any other kind, or none, admits nothing). No label
+# `rm-admit`, `override` or `filed` row (any other kind, or none, admits nothing). No label
 # means depth 0.
 #
 # IN CI tickets: one nobody holds (no worker, no open PR) that a merged PR cites prints a
@@ -810,8 +810,6 @@ def read_residual_must(path):
 residual_must = read_residual_must(os.environ['ND_DOC']) if os.environ.get('ND_DOC') else set()
 
 def read_admitted(path, ver):
-    # the admissions ledger: a key whose latest row for the version is an override or an rm-admit
-    # was admitted into it; a deferral, an unknown kind or a kind-less intake row was not
     last = {}
     try:
         for line in open(path, encoding='utf-8', errors='replace'):
@@ -823,7 +821,7 @@ def read_admitted(path, ver):
                 last[str(r['key']).upper()] = r.get('kind')
     except OSError:
         pass
-    return {k for k, kind in last.items() if kind in ('override', 'rm-admit')}
+    return {k for k, kind in last.items() if kind in ('override', 'rm-admit', 'filed')}
 
 admitted = read_admitted(os.environ.get('ND_LEDGER', ''), first_ver) if first_ver else set()
 
@@ -2463,6 +2461,7 @@ def intake_keys():
     return sorted((i['key'] for i in issues.values()
                    if not i['ver'] and i['type'] not in ('Epic', 'Sub-task') and not done_key(i['key']) and not platform_dropped(i)
                    and not any(l.startswith('residual-depth-') for l in i['labels'])
+                   and 'backlog' not in i['labels']
                    and not any(l.startswith('proposed-') and l != 'proposed-' + str(first_ver) for l in i['labels'])
                    and ('operator-directed' in i['labels'] or (i['type'] == 'Bug' and PRIO.get(i['prio'], 5) <= 1)
                         or (first_ver is not None and 'scope-' + first_ver in i['labels']) or i['key'] in owner

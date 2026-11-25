@@ -1654,14 +1654,14 @@ RH="$W/repo-gc-abs"; mkdir -p "$RH"; git -C "$RH" init -q -b main
 rm -rf "$REG/_abs"; mkdir -p "$REG/_abs"
 for i in 1 2 3 4 5 6; do put_row "scripts/h$i.sh" "PROJ-971$i" lab "" pr "700$i" "$RH"; done
 ABSROW="$REG/_abs/$(esc /abs/bucket/h-dead.md)"
-printf 'PROJ-9719\tlab\t\tpr\t8009\n' > "$ABSROW"; touch -d '2 hours ago' "$ABSROW"
+printf 'PROJ-9719\tlab\t\tbrief\t\n' > "$ABSROW"; touch_ago 7200 "$ABSROW"
 for _ in 1 2 3 4 5 6 7 8; do HOLDS_GH="$GCSLOW" GC_GH_SLEEP=0.4 run gcbox 1.0 "$RH"; done
 same "9885 gc: a dead _abs row is reached behind a slow main directory" "$(gone_or_row "$ABSROW")" none
 
 # a row is never removed for its age or for a judge that timed out or faulted
 RU="$W/repo-gc-keep"; mkdir -p "$RU"; git -C "$RU" init -q -b main
-put_row scripts/u1.sh PROJ-9731 lab "" pr 7031 "$RU"; touch -d '30 days ago' "$(rowf scripts/u1.sh "$RU")"
-put_row scripts/u2.sh PROJ-9732 lab "$(mkdoc PROJ-9732-case.md)" brief "" "$RU"; touch -d '30 days ago' "$(rowf scripts/u2.sh "$RU")"
+put_row scripts/u1.sh PROJ-9731 lab "" pr 7031 "$RU"; touch_ago 2592000 "$(rowf scripts/u1.sh "$RU")"
+put_row scripts/u2.sh PROJ-9732 lab "$(mkdoc PROJ-9732-case.md)" brief "" "$RU"; touch_ago 2592000 "$(rowf scripts/u2.sh "$RU")"
 printf '#!/usr/bin/env bash\nexit 2\n' > "$W/bin/ql-fault9885"; chmod +x "$W/bin/ql-fault9885"
 for _ in 1 2 3; do HOLDS_QUEUE_LOCK="$W/bin/ql-fault9885" HOLDS_GH="$GCSLOW" run gcbox 10 "$RU"; done
 same "9885 gc: a 30-day-old alive row (its PR is open) survives full sweeps" "$(gone_or_row "$(rowf scripts/u1.sh "$RU")")" row
@@ -1893,6 +1893,81 @@ same "9885 residue: a leftover %00<pid>.gc-cursor in the holds root does not dis
 run hp read --repo "$RV"
 same "9885 residue: ... or read" "$RC" 0
 rm -f "$REG/%00999.gc-cursor"
+
+cat > "$W/grantrace.py" <<'PY'
+import contextlib, importlib.util, io, os, sys, time
+spec = importlib.util.spec_from_file_location("holds", sys.argv[1]); h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+h.LOCK_WAIT = 0.3
+repo, row, doc = sys.argv[2], sys.argv[3], sys.argv[4]
+grant = row + '.grant.PROJ-9802'
+real_lock, real_link = h.dir_lock, os.link
+state = {'locks': 0}
+def dir_lock(d):
+    state['locks'] += 1
+    if state['locks'] == 2:
+        os.utime(row, None)
+    return real_lock(d)
+def link(src, dst, *a, **k):
+    if '%00taken' in os.path.basename(src) and dst == row:
+        with contextlib.redirect_stdout(io.StringIO()):
+            h.main(['gc', '--repo', repo])
+    return real_link(src, dst, *a, **k)
+h.dir_lock = dir_lock; os.link = link
+rc = h.main(['claim', '--key', 'PROJ-9803', '--label', 'beta', '--doc', doc, '--repo', repo, 'scripts/race.sh'])
+os.link = real_link
+print('rc=%s row=%s grant=%s' % (rc, os.path.exists(row), os.path.exists(grant)))
+PY
+RR="$W/repo-grant-race"; mkdir -p "$RR"; git -C "$RR" init -q -b main
+RRDOC="$(mkdoc PROJ-9801-race.md)"
+put_row scripts/race.sh PROJ-9801 alpha "$RRDOC" brief "" "$RR"
+: > "$(rowf scripts/race.sh "$RR").grant.PROJ-9802"
+run python3 -I "$W/grantrace.py" "$SUT" "$RR" "$(rowf scripts/race.sh "$RR")" "$RRDOC"
+same "10373 X09-10: a gc pass during the contender's restore leaves the live row's grant, the freshened row is restored and the claim is refused" "$RC/$OUT" "0/rc=1 row=True grant=True"
+
+RX="$W/repo-abs-pr"; mkdir -p "$RX"; git -C "$RX" init -q -b main
+printf '#!/usr/bin/env bash\necho MERGED\n' > "$W/bin/gh-merged10373"; chmod +x "$W/bin/gh-merged10373"
+rm -rf "$REG/_abs"; mkdir -p "$REG/_abs"
+ABSPR="$REG/_abs/$(esc /abs/bucket/other-repo-pr.md)"
+printf 'PROJ-9811\tlab\t\tpr\t42\n' > "$ABSPR"; touch_ago 7200 "$ABSPR"
+ABSBR="$REG/_abs/$(esc /abs/bucket/no-holder.md)"
+printf 'PROJ-9812\tlab\t\tbrief\t\n' > "$ABSBR"; touch_ago 7200 "$ABSBR"
+HOLDS_GH="$W/bin/gh-merged10373" run gcbox 10 "$RX"
+same "10373 X16-2: a repository's gc leaves an absolute pr row whose PR state it reads from its own repository" "$RC/$(gone_or_row "$ABSPR")" "0/row"
+same "10373 X16-2: ... and still removes an absolute row that is not a pull-request row and has no holder" "$RC/$(gone_or_row "$ABSBR")" "0/none"
+
+cat > "$W/keeprow.py" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("holds", sys.argv[1]); h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+h.remove_dead = lambda d, n, fields, mtime: False
+sys.exit(h.main(["gc", "--repo", sys.argv[2]]))
+PY
+RK="$W/repo-dead-key-row"; mkdir -p "$RK"; git -C "$RK" init -q -b main
+put_row scripts/kd1.sh PROJ-9831 lab "" brief "" "$RK"
+put_row scripts/kd2.sh PROJ-9832 lab "" pr 7100 "$RK"
+: > "$(rowf scripts/kd2.sh "$RK").grant.PROJ-9831"
+HOLDS_GH="$GCSLOW" run python3 -I "$W/keeprow.py" "$SUT" "$RK"
+same "10373 gc: a grant to a key judged dead stays while a row of that key is still there" "$RC/$(gone_or_row "$(rowf scripts/kd2.sh "$RK").grant.PROJ-9831")" "0/row"
+
+cat > "$W/lockabs.py" <<'PY'
+import fcntl, importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("holds", sys.argv[1]); h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+h.LOCK_WAIT = 0.3
+fd = os.open(sys.argv[3], os.O_RDONLY); fcntl.flock(fd, fcntl.LOCK_EX)
+sys.exit(h.main(["gc", "--repo", sys.argv[2]]))
+PY
+RL="$W/repo-both-dirs"; mkdir -p "$RL"; git -C "$RL" init -q -b main
+put_row scripts/kl1.sh PROJ-9841 lab "" brief "" "$RL"
+put_row scripts/kl2.sh PROJ-9842 lab "" pr 7100 "$RL"
+: > "$(rowf scripts/kl2.sh "$RL").grant.PROJ-9841"
+mkdir -p "$REG/_abs"
+HOLDS_GH="$GCSLOW" run python3 -I "$W/lockabs.py" "$SUT" "$RL" "$REG/_abs"
+same "10373 gc: a dead key's grant stays while the other register directory is locked by a writer, and the pass completes" "$RC/$(gone_or_row "$(rowf scripts/kl2.sh "$RL").grant.PROJ-9841")" "0/row"
+RL2="$W/repo-both-dirs-free"; mkdir -p "$RL2"; git -C "$RL2" init -q -b main
+put_row scripts/kl1.sh PROJ-9841 lab "" brief "" "$RL2"
+put_row scripts/kl2.sh PROJ-9842 lab "" pr 7100 "$RL2"
+: > "$(rowf scripts/kl2.sh "$RL2").grant.PROJ-9841"
+HOLDS_GH="$GCSLOW" run gcbox 10 "$RL2"
+same "10373 gc: ... and goes when no writer holds either directory" "$RC/$(gone_or_row "$(rowf scripts/kl2.sh "$RL2").grant.PROJ-9841")" "0/none"
 
 # ---- the real register was never touched
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
