@@ -7,7 +7,7 @@ in runtime guards, local git gates, independent code review, and (in fleet runs)
 commit-locked merge sign-off so parallel and unattended agents ship cleanly
 without you hovering over every session.
 
-[Quick test run](#quickstart) ·
+[Quickstart](#quickstart) ·
 [How it works](#how-a-change-clears-himmel) ·
 [Modular tracks](#what-you-get) ·
 [Measured evals](#measured-not-promised) ·
@@ -66,41 +66,24 @@ actions inside the agent's local runtime:
 
 ### The daily loop
 
-1. **Create an isolated branch and worktree** (shell, from your project):
+You work in Claude Code; the agent handles git, worktrees, and PR mechanics while himmel's hooks and gates enforce the rules automatically at every step:
 
-   ```bash
-   bash scripts/worktree.sh feat/my-thing   # never edit on main; cd into the printed folder
-   ```
-
-2. **Build, commit, and push** (shell, after working with Claude in the worktree):
-
-   ```bash
-   git add <files> && git commit && git push # local git gates check message format, ticket ref, and branch safety
-   ```
-
-3. **Run independent review and rule on findings** (in Claude Code):
+1. **Give Claude a task or ticket.** If Claude tries to edit on `main`, a `PreToolUse` hook stops it and directs it into an isolated branch and worktree.
+2. **Claude implements, tests, and commits.** Local git gates verify commit format, ticket reference, and branch safety on every commit and push automatically.
+3. **Run an independent review pass** in Claude Code:
 
    ```text
-   /himmel-ops:pr-check                     # `/pr-check` inside a himmel checkout
+   /himmel-ops:pr-check    # `/pr-check` inside a himmel checkout
    ```
 
-4. **Open and merge the PR** (shell to open, Claude Code to merge through the gate):
+   Every finding is ruled against the code; blocking issues loop back for fixes before merge.
+4. **Ship through the gate.** Claude opens the PR and merges it once GitHub CI is green and findings are ruled, then prunes the merged worktree.
 
-   ```bash
-   gh pr create                             # then merge from Claude Code so the GitHub merge gate checks it
-   ```
-
-5. **Clean up the merged worktree** (shell):
-
-   ```bash
-   bash scripts/clean.sh                    # prune merged worktrees
-   ```
-
-Going unattended, in Claude Code:
+Going unattended across a queue of tickets, in Claude Code:
 
 ```text
-/afk-shift --limit 5                       # queue tickets to parallel workers, each ending in a reviewed PR
-/stop                                      # halt an unattended shift gracefully
+/afk-shift --limit 5    # dispatch tickets to parallel workers, each ending in a reviewed PR
+/stop                   # halt an unattended shift gracefully
 ```
 
 [`docs/daily-loop.md`](docs/daily-loop.md) walks every hook at the moment it
@@ -162,16 +145,17 @@ Full methodology, failure taxonomy, and pending retrieval evals live in
 ---
 
 <a id="quickstart"></a>
-## Try it on a spare project (reversible)
+## Quickstart (2 minutes, reversible)
 
-Test the guards, worktree flow, and local UI on a throwaway repo before adding
-himmel to a real project. Requires `node` (with `npm` or `bun`), `git`, `jq`,
-`python3`, and signed-in [Claude Code](https://claude.com/claude-code)
+Test the guards, worktree flow, and local UI in a fresh folder before adding
+himmel to a real repo — uninstall removes everything cleanly. Requires `node`
+(with `npm` or `bun`), `git`, `jq`, `python3`, and signed-in
+[Claude Code](https://claude.com/claude-code)
 (`curl -fsSL https://claude.ai/install.sh | bash`), plus `bun` for the UI (the
 installer warns if `claude` is missing and never checks sign-in):
 
 ```bash
-# 1. Create a spare repo, clone himmel once, preview and install
+# 1. Create a fresh folder, clone himmel once, preview and install
 mkdir ~/try-himmel && cd ~/try-himmel
 git init -b main && git commit --allow-empty -m "chore: initial commit #1"
 git clone https://github.com/yotamleo-org/Himmel ~/himmel
@@ -223,25 +207,10 @@ himmel runs on Linux and macOS. Windows (Git Bash or WSL) is not supported.
 | Dimension | Status |
 |---|---|
 | **Linux** | Supported — required check on every PR ([CI runs on `main`](https://github.com/yotamleo-org/Himmel/actions/workflows/ci.yml?query=branch%3Amain)); release tarball & project install/uninstall tested end to end. |
-| **macOS** | Supported — checked twice weekly ([scheduled macOS runs](https://github.com/yotamleo-org/Himmel/actions/workflows/macos-cadence.yml?query=event%3Aschedule)); scripts stay bash 3.2-safe. |
+| **macOS** | **Beta** — checked twice weekly ([scheduled macOS runs](https://github.com/yotamleo-org/Himmel/actions/workflows/macos-cadence.yml?query=event%3Aschedule)); scripts stay bash 3.2-safe. |
 | **Coding agents** | Built for Claude Code; guardrails also run under Codex CLI via hooks + `AGENTS.md` ([`docs/internals/harness-compat.md`](docs/internals/harness-compat.md)). |
-| **Git forges** | GitHub (full gates) and Bitbucket Cloud (worktree, PR & merge loop), detected automatically from `origin`. |
+| **Git hosts** | GitHub (full gates) and Bitbucket Cloud (worktree, PR & merge loop), detected automatically from `origin`. |
 | **Install channels** | `git clone` + `himmelctl install` (Linux/macOS), checksummed Linux [release tarballs](https://github.com/yotamleo-org/Himmel/releases), Claude Code plugin marketplace (`marketplace/plugins/`), and Arch PKGBUILD recipe in [`packaging/aur/`](packaging/aur/) (not yet on AUR). |
-
----
-
-## Go deeper
-
-| Understand the design | Operate & extend |
-|---|---|
-| [Adoption trail (interactive)](https://yotamleo-org.github.io/Himmel/adoption-trail.html) — levels, costs & off switches | [`docs/setup/install.md`](docs/setup/install.md) — scopes, install profiles, tarballs & `.env` |
-| [`docs/why-himmel.md`](docs/why-himmel.md) — the 5 failure modes & war stories | [`docs/ui.md`](docs/ui.md) — local AG-UI Fleet & setup console |
-| [`docs/system-design.md`](docs/system-design.md) & [`docs/architecture.md`](docs/architecture.md) | [`docs/jarvis-subsystems.md`](docs/jarvis-subsystems.md) & [`docs/handover/afk-mode.md`](docs/handover/afk-mode.md) — chief, workers & AFK runs |
-| [`docs/daily-loop.md`](docs/daily-loop.md) & [`docs/configuration.md`](docs/configuration.md) | [`docs/luna/README.md`](docs/luna/README.md) & [`docs/telegram-bridge.md`](docs/telegram-bridge.md) — optional vault & phone |
-| [`docs/evals/README.md`](docs/evals/README.md) & [`docs/token-economy.md`](docs/token-economy.md) | [`docs/internals/enforcement.md`](docs/internals/enforcement.md) & [`docs/glossary.md`](docs/glossary.md) |
-| [`llms.txt`](llms.txt) — repo map written for language models | [`docs/README.md`](docs/README.md) — full documentation index |
-
-Preview the Starlight docs site locally on loopback (`http://127.0.0.1:4321/Himmel/`, needs Node 22.22+): `bash scripts/docs-site/serve.sh`.
 
 ---
 
