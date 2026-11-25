@@ -453,7 +453,7 @@ test('every printed merge-on-green and merge-fork-pr command matches one allow p
   const printfs = mergePrintfCommands();
   assert.ok(spans.some((s) => s.worker) && spans.some((s) => !s.worker), 'anti-vacuity: worker-facing and chief-facing doc spans');
   assert.ok(spans.length >= 4, `anti-vacuity: expected the doc spans, got ${spans.length}`);
-  assert.equal(printfs.length, 2, 'anti-vacuity: the auto-go and verdict-go worker messages');
+  assert.equal(printfs.length, 3, 'anti-vacuity: the auto-go, verdict-go and go-batch worker messages');
   const bad = [];
   for (const hit of [...spans, ...printfs]) {
     const problems = mergePrintedProblems(hit);
