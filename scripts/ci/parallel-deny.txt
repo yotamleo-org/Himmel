@@ -16,3 +16,4 @@
 */scripts/hooks/test-block-destructive-commands-c.sh      times hook scans against 4 s budgets
 */scripts/hooks/test-block-edit-live-settings.sh          times hook scans against 2-3 s budgets
 */scripts/handover/chief-kit/test-close-wrapped-worker.sh  checks the repo root for a handovers/ dir another suite may create
+*/scripts/test-adopt.sh                                    writes the checkout .env (HANDOVER_DIR) and moves scripts/jira/dist and node_modules aside during a run
