@@ -9,9 +9,8 @@
 #     means "read the flagged line before adopting or using", never a block.
 #   nv_build or anthropic (the vendoring path): the full scan, Stage 2 (the AI
 #     review) included. The key must be in the environment: NVIDIA_INFERENCE_KEY
-#     for nv_build, ANTHROPIC_API_KEY for anthropic; a missing key is a named
-#     refusal. The scanner's stderr is kept in the stored report
-#     (`wrapper_stderr`, keys redacted). A HIGH or CRITICAL finding that
+#     for nv_build, ANTHROPIC_API_KEY for anthropic. The scanner's stderr is
+#     kept in the stored report (`wrapper_stderr`, keys redacted). A HIGH or CRITICAL finding that
 #     survives Stage 2 stops the vendoring (rc 4) until a person has read the
 #     line and recorded its match_fingerprint in `<report>.ack`, one per line.
 #
@@ -24,7 +23,7 @@
 #   3 unavailable (skillspector missing, failed, produced no JSON, or Stage 2
 #     did not run to completion);
 #   4 blocked: Stage 2 confirmed a HIGH or CRITICAL finding nobody has
-#     acknowledged; the report is stored so the line can be read.
+#     acknowledged.
 #   SKILLSPECTOR_BIN overrides the binary (tests stub it).
 #   OSV lookup: Stage 1 posts the lockfile package names and versions to
 #   api.osv.dev to check them for known CVEs; this is the scan's one network
