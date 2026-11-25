@@ -17,7 +17,7 @@ scripts/security/test-security-audit-cadence.sh	6
 #   of d29ec6e1b), 1.003 after (suite time only, excluding setup/waits).
 #   A row for a suite those runs did not print (skip-listed or off-Linux) keeps its
 #   earlier value; scripts/test-adopt.sh (512) is the half of the
-#   969s split of green main run 40030573258 that runs in CI now that it is off SKIP_LIST.
+#   969s split of green main run 40030573258.
 #   Every suite that ran >= 10 s in green main run 41928036090 (head
 #   11b19d623ec945b58496257457804e390f5cecaa, 2026-11-04, the first full run after the
 #   run-shell-tests and uninstall-provenance split, shell-unit-shard 1..8) carries that run's seconds, a single run
