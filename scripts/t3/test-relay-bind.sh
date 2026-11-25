@@ -658,6 +658,25 @@ mklist "$(th ax1 "$RELAY" completed false)" "$(th sib1 "$RELAY" completed false)
 scan "$B/s.fleet.json"
 check '13. sibling takeover on a later UTC day: S binds only its own new thread' "OWNER-TAKEN a rows=none sib1" "$(grep OWNER "$T/out") $(jq -r '.workers[].t3_thread' "$B/s.fleet.json")"
 
+mkco y3 "$HB/y3"; mkm a none; mkm b none
+ya="$B/DEMO-1-N8-t3-ya-$today.md"; fmx add "$B/a.fleet.json" --lane t3 --lockless "$ya"
+printf 'not json\n' > "$B/b.fleet.json"
+bash "$BIND" attach --manifest "$B/a.fleet.json" --doc "$ya" --thread ya1 >/dev/null 2>&1; rc=$?
+check '13. attach with an unreadable sibling manifest refuses (rc 2), never reads it as no binding' 2 "$rc"
+
+mkco y4 "$HB/y4"; mkm a none
+yb="$B/DEMO-1-N9-t3-yb-$today.md"; fmx add "$B/a.fleet.json" --lane t3 --lockless "$yb"
+( flock -x 8; sleep 45 ) 8>>"$B/t3-relay.owner.lock" & lockholder=$!
+sleep 0.3
+t0="$(date +%s)"
+bash "$BIND" attach --manifest "$B/a.fleet.json" --doc "$yb" --thread yb1 >"$T/out" 2>"$T/err"; rc=$?
+el=$(( $(date +%s) - t0 ))
+kill "$lockholder" 2>/dev/null; wait "$lockholder" 2>/dev/null
+check "13. attach waits for the bucket owner lock and gives up with rc 2 (took ${el}s)" "2 yes" "$rc $([ "$el" -ge 4 ] && [ "$el" -le 8 ] && echo yes)"
+check '13. and binds nothing while it waited' null "$(jq -r --arg d "$yb" '.workers[] | select(.doc == $d) | .t3_thread // "null"' "$B/a.fleet.json")"
+bash "$BIND" attach --manifest "$B/a.fleet.json" --doc "$yb" --thread yb1 >/dev/null 2>&1; rc=$?
+check '13. attach with the lock free binds (rc 0)' "0 yb1" "$rc $(jq -r --arg d "$yb" '.workers[] | select(.doc == $d) | .t3_thread' "$B/a.fleet.json")"
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-relay-bind.sh"
     exit 0

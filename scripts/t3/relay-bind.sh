@@ -149,11 +149,17 @@ if [ "$verb" = attach ]; then
     [[ $thread =~ $ID_RE ]] && [ "$thread" != pending ] || die 2 "--thread must be a threadId ([A-Za-z0-9:_-]{1,64})"
     [ -n "$doc" ] || usage
     fm list "$manifest" >/dev/null 2>&1 || die 2 "not a readable fleet manifest: $manifest"
+    exec 8>>"$mdir/t3-relay.owner.lock" || die 2 "cannot open the owner lock"
+    flock -w 5 8 || die 2 "the t3 relay owner lock is held (waited 5 s)"   # prim-ok: the same 5 s bounded flock on fd 8 that scan holds for its pass; with_lock waits without limit
     for f in "$mdir"/*.fleet.json; do
         [ -e "$f" ] || continue
         jq -e --arg id "$thread" --arg d "$doc" --arg own "$([ "$f" = "$manifest" ] && echo yes)" \
-            '(any((.workers // .legs // [])[]; .t3_thread == $id and ($own != "yes" or .doc != $d))) or ((.t3_tombstones // []) | any(.thread == $id))' "$f" >/dev/null 2>&1 \
-            && die 2 "thread $thread is already bound or tombstoned in $f"
+            '(any((.workers // .legs // [])[]; .t3_thread == $id and ($own != "yes" or .doc != $d))) or ((.t3_tombstones // []) | any(.thread == $id))' "$f" >/dev/null 2>&1
+        case $? in
+            0) die 2 "thread $thread is already bound or tombstoned in $f" ;;
+            1) ;;
+            *) die 2 "cannot read $f: nothing attached" ;;
+        esac
     done
     fm t3 set "$manifest" "$doc" --thread "$thread" || die 2 "fleet-manifest t3 set failed (is the doc listed?)"
     exit 0
