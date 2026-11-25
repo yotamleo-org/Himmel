@@ -314,13 +314,11 @@ f_good; printf 'host=%s\ntranscript=%s\n' "some-other-host" "$FAKEHOME/.claude/p
 f_good; : > "$tmp/elsewhere.jsonl"; printf 'host=%s\ntranscript=%s\n' "$(lv_hostname)" "$tmp/elsewhere.jsonl" > "$(lockdir_of "$A_DOC")/liveness"; f_verify_refuses "a marker naming a transcript of another session"
 f_good; printf 'host=%s\ntranscript=%s\n' "$(lv_hostname)" "relative/$A_SID.jsonl" > "$(lockdir_of "$A_DOC")/liveness"; f_verify_refuses "a marker naming a relative transcript"
 f_good; adapter verify "$A_DIR"; check "f. a good adoption still verifies after all of the above" "$H_RC" "0"
-# the act check reads an unparsable heartbeat as unknown, never as fresh: only a young transcript can then authorise
 f_tr() { printf '%s' "$FAKEHOME/.claude/projects/p/$A_SID.jsonl"; }
 set_hb() { local o; o="$(lockdir_of "$A_DOC")/owner.json"; jq -c ".heartbeat = $1" "$o" > "$tmp/o.json" && cat "$tmp/o.json" > "$o"; }
 f_good; set_hb '"not-a-date"'; touch -t 202001010000 "$(f_tr)"; f_verify_refuses "an unparsable heartbeat and an old transcript"
 f_good; set_hb '"not-a-date"'; adapter verify "$A_DIR"; check "f. an unparsable heartbeat and a young transcript verifies" "$H_RC" "0"
 f_good; set_hb '"2020-01-01T00:00:00Z"'; touch -t 202001010000 "$(f_tr)"; f_verify_refuses "a parsable old heartbeat and an old transcript"
-# SessionEnd after the session lost its transcript: verify fails, and the session still releases its own lease
 f_good; rm -f "$(f_tr)"; H_TR="$(f_tr)" hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_gone "$A_DIR"
 check "f. cleanup of an adopted session whose transcript is gone releases its own lease and removes its directory" "$H_RC:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0:free:gone"
 f_good; rm -f "$(f_tr)"; qenv bash "$QL" release "$A_DOC" "$A_TOK" >/dev/null 2>&1; qenv bash "$QL" acquire "$A_DOC" succ-token-f1 >/dev/null 2>&1
@@ -331,7 +329,6 @@ grep -rlxF -- "$A_TOK" "$XDG/himmel-queue-lock" | while IFS= read -r tf; do rm -
 H_TR="$(f_tr)" hook cleanup "$A_SID"; poll "$CLEAN_WAIT" path_there "$A_DIR/cleanup-failed"
 check "f. ... with no token left to release, the lease and the directory stay with one line saying why" "$(ql_owner "$A_DOC"):$(wc -l < "$A_DIR/cleanup-failed" 2>/dev/null | tr -d ' ')" "$A_TOK:1"
 qenv bash "$QL" release "$A_DOC" "$A_TOK" >/dev/null 2>&1
-# an interrupted adoption resumes: a run killed after publishing and before removing the transport, and a partial write
 f_good; printf '%s\n' "$A_TOK" > "$A_DIR/lease-token"; chmod 600 "$A_DIR/lease-token"; hook startup "$A_SID"
 check "f. a repeat startup completes an adoption whose transport was left behind" "$H_RC:$H_ERR:$(confirmed):$([ -e "$A_DIR/lease-token" ] && echo present || echo gone)" "0::yes:gone"
 adapter verify "$A_DIR"; check "f. ... and verify then succeeds" "$H_RC" "0"

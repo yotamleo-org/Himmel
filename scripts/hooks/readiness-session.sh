@@ -14,8 +14,7 @@
 #                        that scope and that transcript is recorded as the lease's liveness marker (no ambient session
 #                        id or config directory is consulted); the same-scope token file, .doc sidecar, CURRENT holder
 #                        and liveness marker are verified; only
-#                        then the private AttemptConfirmation is published (a temp file renamed over the name, so a repeat
-#                        startup completes an interrupted adoption) and the transport removed. Any failure
+#                        then the private AttemptConfirmation is published and the transport removed. Any failure
 #                        publishes nothing, so every act and finish refuses. Always exits 0 and prints nothing on
 #                        stdout (a hook must never block or inject text); a refusal is one reason code on stderr.
 #   verify <attempt-dir> exit 0 only if the confirmation is fresh and consistent with the startup config AND the
