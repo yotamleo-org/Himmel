@@ -69,10 +69,6 @@ rs_later() {
 cmd_away() { rs_later "part 2 (away launches)"; }
 cmd_sudo() { rs_later "part 3 (sudo bot)"; }
 # ── part 1: the main bot ────────────────────────────────────────────────
-# In order: every check that needs no write, the token (hidden prompt, getMe, role check), the token
-# store (checkpoint 1), pairing (a pasted token, or a saved token with no allowlist yet), the access.json
-# write (one id, the account that pressed Start, only when the file is absent), the bridge, and the final
-# read. An Enter-only re-run that finds an allowlist never pairs.
 cmd_bot() {
     rs_preflight curl jq node bun
     local access="$HOME/.claude/channels/telegram/access.json"
