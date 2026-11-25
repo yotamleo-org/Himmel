@@ -25,6 +25,7 @@ mk() {
         [ -f "$REPO_ROOT/$OPS/$f" ] && cp "$REPO_ROOT/$OPS/$f" "$R/$OPS/$f"
     done
     cp "$REPO_ROOT/scripts/himmelctl/lib/bypass-flags.json" "$R/scripts/himmelctl/lib/bypass-flags.json"
+    mkdir -p "$R/scripts/lib" && cp "$REPO_ROOT/scripts/lib/handover-path.sh" "$R/scripts/lib/handover-path.sh"
     g -C "$R" init -q && g -C "$R" add -A && g -C "$R" commit -q -m seed
     cat > "$BIN/systemctl" <<'STUB'
 #!/usr/bin/env bash
@@ -35,6 +36,7 @@ case $verb in enable|disable|restart|try-restart|reset-failed|is-enabled|is-acti
     case " $* " in *" himmel-bypass-launchd.service "*) ;; *) echo "stub: wrong unit: $*" >&2; exit 5 ;; esac ;;
 esac
 case $verb in
+    daemon-reload) [ -z "${STUB_RELOAD_FAIL:-}" ] || { echo "stub: daemon-reload failed" >&2; exit 1; } ;;
     is-enabled) [ -e "$STUB_DIR/enabled" ] && { echo enabled; exit 0; }; echo disabled; exit 1 ;;
     is-active) [ -e "$STUB_DIR/active" ] && { echo active; exit 0; }; echo inactive; exit 3 ;;
     enable) touch "$STUB_DIR/enabled"; case " $* " in *" --now "*) touch "$STUB_DIR/active" ;; esac ;;
@@ -59,7 +61,7 @@ STUB
 printf 'launchctl %s\n' "$*" >> "$STUB_DIR/calls"
 case ${1:-} in
     bootout|print|kickstart) case " $* " in *" gui/$(id -u)/com.himmel.bypass-launchd "*) ;; *) echo "stub: wrong target: $*" >&2; exit 5 ;; esac ;;
-    bootstrap) case " $* " in *" gui/$(id -u) "*) ;; *) echo "stub: wrong domain: $*" >&2; exit 5 ;; esac ;;
+    bootstrap) { [ "$#" -eq 3 ] && [ "$2" = "gui/$(id -u)" ] && [ "$3" = "$HOME/Library/LaunchAgents/com.himmel.bypass-launchd.plist" ] && [ -f "$3" ]; } || { echo "stub: bad bootstrap: $*" >&2; exit 5; } ;;
 esac
 exit 0
 STUB
@@ -136,8 +138,18 @@ assert_eq "off writes the stop file" yes "$([ -e "$Q/stop" ] && echo yes || echo
 assert_contains "off disables and stops the unit" "systemctl --user disable --now $UNIT" "$(calls)"
 out=$(svc_run on --bucket "$B"); rc=$?
 mk handover-dir
-out=$(HANDOVER_DIR=/srv/handovers svc_run on --bucket "$B")
-assert_contains "on records the operator's HANDOVER_DIR in the config record" "handover_dir=/srv/handovers" "$(cat "$H/.himmel/state/bypass-service/config" 2>/dev/null)"
+mkdir -p "$D/handovers" "$D/state/handovers"
+out=$(HANDOVER_DIR="$D/handovers" svc_run on --bucket "$B")
+assert_contains "on records the operator's HANDOVER_DIR in the config record" "handover_dir=$D/handovers" "$(cat "$H/.himmel/state/bypass-service/config" 2>/dev/null)"
+mk handover-rel
+mkdir -p "$D/state/handovers"
+out=$(cd "$R" && HANDOVER_DIR=../state/handovers svc_run on --bucket "$B"); rc=$?
+assert_eq "RED 11031 CR: a relative HANDOVER_DIR that names an existing directory is resolved and the on succeeds" 0 "$rc"
+assert_contains "RED 11031 CR: and the config record holds the absolute handover root, not a dropped pin" "handover_dir=$D/state/handovers" "$(cat "$H/.himmel/state/bypass-service/config" 2>/dev/null)"
+mk handover-gone
+out=$(HANDOVER_DIR="$D/no-such-handovers" svc_run on --bucket "$B"); rc=$?
+assert_eq "RED 11031 CR: a HANDOVER_DIR that is not a directory refuses the on (exit 2)" 2 "$rc"
+assert_eq "RED 11031 CR: and installs no unit" no "$([ -e "$U/$UNIT" ] && echo yes || echo no)"
 mk lingerfail
 out=$(STUB_LINGER_FAIL=1 svc_run on --bucket "$B"); rc=$?
 assert_eq "on with a refused enable-linger still exits 0" 0 "$rc"
@@ -181,7 +193,8 @@ printf '# edited\n' >> "$U/$UNIT"
 svc_run on --bucket "$B" >/dev/null
 assert_contains "an on that rewrites a running unit restarts it, so it runs the new unit" "systemctl --user restart $UNIT" "$(calls)"
 : > "$D/calls"
-HANDOVER_DIR=/srv/new-handovers svc_run on --bucket "$B" >/dev/null
+mkdir -p "$D/new-handovers"
+HANDOVER_DIR="$D/new-handovers" svc_run on --bucket "$B" >/dev/null
 assert_contains "RED CR: an on with a changed handover root restarts the running unit, so the pin is read again" "systemctl --user restart $UNIT" "$(calls)"
 mk twobucket
 svc_run on --bucket "$B" >/dev/null
@@ -196,10 +209,50 @@ assert_eq "RED CR: on for another bucket, held by a hand-started daemon, exits 1
 assert_absent "RED CR: and does not restart the running unit" "systemctl --user restart" "$(calls)"
 assert_contains "RED CR: and keeps the remembered bucket" "bucket=$B" "$(cat "$H/.himmel/state/bypass-service/config" 2>/dev/null)"
 mk mac
-out=$(env -u CLAUDECODE BYPASSD_SERVICE_OS=Darwin HOME="$H" PATH="$BIN:$PATH" STUB_DIR="$D" bash "$R/$OPS/bypass-service.sh" on --bucket "$B" 2>&1)
+out=$(env -u CLAUDECODE BYPASSD_SERVICE_OS=Darwin HOME="$H" PATH="$BIN:$PATH" STUB_DIR="$D" bash "$R/$OPS/bypass-service.sh" on --bucket "$B" 2>&1); rc=$?
+assert_eq "RED 11031 CR: macOS on exits 0 (the launchctl stub takes exactly bootstrap gui/<uid> <the installed plist>)" 0 "$rc"
 assert_eq "macOS on writes the LaunchAgent" yes "$([ -f "$H/Library/LaunchAgents/$PLIST" ] && echo yes || echo no)"
-assert_contains "macOS on bootstraps it through launchctl" "launchctl bootstrap" "$(calls)"
+assert_contains "macOS on bootstraps the installed plist through launchctl" "launchctl bootstrap gui/$(id -u) $H/Library/LaunchAgents/$PLIST" "$(calls)"
 assert_absent "macOS on never calls systemctl" "systemctl" "$(calls)"
+
+echo "== CodeRabbit review 6051987338: the placeholder check, the start check, a lost restart, an off with no queue =="
+mk placeholder
+mkdir -p "$D/@Team@/bucket/bypass-queue"
+out=$(svc_run render --bucket "$D/@Team@/bucket"); rc=$?
+assert_eq "RED 11031 CR: a bucket path holding two @ characters renders (the check reads the template, not the values)" 0 "$rc"
+assert_contains "RED 11031 CR: and the path appears literally in the unit" "--bucket $D/@Team@/bucket" "$out"
+printf '@NOPE@\n' >> "$R/$OPS/units/$UNIT"
+out=$(svc_run render --bucket "$B"); rc=$?
+assert_eq "RED 11031 CR control: a template token this script does not fill still refuses" 2 "$rc"
+mk probefail
+printf '# uncommitted\n' >> "$R/$OPS/bypass-launchd.sh"
+out=$(svc_run on --bucket "$B"); rc=$?
+assert_eq "RED 11031 CR: an on whose start check fails exits 2" 2 "$rc"
+assert_contains "RED 11031 CR: and says the start check failed" "start check failed" "$out"
+assert_eq "RED 11031 CR: and installs no unit" no "$([ -e "$U/$UNIT" ] && echo yes || echo no)"
+assert_absent "RED 11031 CR: and enables nothing" "enable" "$(calls)"
+mk pendingrestart
+svc_run on --bucket "$B" >/dev/null
+printf '# edited\n' >> "$U/$UNIT"
+: > "$D/calls"
+out=$(STUB_RELOAD_FAIL=1 svc_run on --bucket "$B"); rc=$?
+assert_eq "RED 11031 CR: an on whose daemon-reload fails exits 2" 2 "$rc"
+assert_absent "RED 11031 CR: and did not restart the running unit" "systemctl --user restart" "$(calls)"
+: > "$D/calls"
+out=$(svc_run on --bucket "$B"); rc=$?
+assert_eq "RED 11031 CR: the retry exits 0" 0 "$rc"
+assert_contains "RED 11031 CR: and restarts the running unit although the files already match, so it serves the new config" "systemctl --user restart $UNIT" "$(calls)"
+: > "$D/calls"
+svc_run on --bucket "$B" >/dev/null
+assert_absent "RED 11031 CR control: once the restart succeeded a further on restarts nothing" "systemctl --user restart" "$(calls)"
+mk offgone
+svc_run on --bucket "$B" >/dev/null
+rm -rf "$B/bypass-queue"
+: > "$D/calls"
+out=$(svc_run off); rc=$?
+assert_eq "RED 11031 CR: an off whose bucket is gone exits 0" 0 "$rc"
+assert_contains "RED 11031 CR: and still disables and stops the unit" "systemctl --user disable --now $UNIT" "$(calls)"
+assert_contains "RED 11031 CR: and says the stop file could not be written" "cannot write the stop file" "$out"
 
 echo "== status reads and changes nothing =="
 mk status

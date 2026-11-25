@@ -183,8 +183,9 @@ does, the command waits for the operator.
   `bypass-failed` card naming the cause and the restart steps, and one more for
   each waiting request (`bypass request <name> waits: the daemon needs a
   restart`), once per request. A go given while the code moved is not used:
-  the log says `STALE after go <brief>: go not used, re-queued`, a
-  outcome stays in the station log and no card is sent, and the request goes
+  the log says `STALE after go <brief>: go not used, re-queued`, the daemon
+  sends one `bypass-result` card saying the go was not used and nothing ran
+  (separate from the hold's own cards above), and the request goes
   back to `<name>.req`, to be asked again after the restart. The daemon does one thing at a time, so a
   change that lands while it waits on a go is found when that wait ends: the
   hold and its cards can come up to one ask wait (6 h) after the change.
@@ -275,15 +276,18 @@ runs forever (`--until forever`, accepted only for the service manager's own mai
 
 | command | what it does |
 |---|---|
-| `himmelctl bypass on [--bucket <dir>]` | writes the unit, enables and starts it, enables lingering; the bucket (the directory holding `bypass-queue/`) is remembered |
-| `himmelctl bypass off` | writes the stop file, disables and stops the unit, so a reboot does not bring it back |
+| `himmelctl bypass on [--bucket <dir>]` | writes the unit, enables and starts it (Linux also enables lingering); the bucket (the directory holding `bypass-queue/`) is remembered |
+| `himmelctl bypass off` | writes the stop file, disables and stops the unit, so a reboot does not bring it back; when the bucket cannot be written (moved, or its volume gone) it prints that, still disables the unit and exits 0 |
 | `himmelctl bypass restart` | clears a failed state and restarts it now; it needs an enabled service with no stop file, so after `off` it exits 2 and names `himmelctl bypass on` |
 | `himmelctl bypass status` | read only: enabled, active, pid, linger, `unit: current\|STALE`, `code: current\|STALE`, heartbeat age |
 
 `on`, `off` and `restart` refuse inside a Claude session. `on` exits 1 without enabling when a hand-started daemon
-holds the bucket (stop it with the stop file, then run `on` again). If lingering cannot be enabled (polkit may refuse
+holds the bucket (stop it with the stop file, then run `on` again), and exits 2 changing nothing when the daemon's own
+start check fails. On Linux, if lingering cannot be enabled (polkit may refuse
 it) `on` still succeeds and prints the one command to run, `loginctl enable-linger <user>`; until then the daemon
-starts at your next login instead of at boot. A template change shows as `unit: STALE` in `status`; run `on` again.
+starts at your next login instead of at boot. On macOS there is no lingering: the agent loads at your login (see below).
+A restart that did not reach the running service (a failed `daemon-reload`) is recorded in
+`~/.himmel/state/bypass-service/restart-pending`, so the next `on` restarts it even when the files already match. A template change shows as `unit: STALE` in `status`; run `on` again.
 
 **Hang and crash recovery.** The unit is `Type=notify` with `WatchdogSec=300`: the daemon sends `WATCHDOG=1` on every
 loop pass and around every call that can block, each of which is time-bounded (60 s send, 60 s fleet manifest, 120 s

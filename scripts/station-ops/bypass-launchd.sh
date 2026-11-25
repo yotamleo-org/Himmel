@@ -242,7 +242,8 @@ session_env() {
         if [ "$(uname -s)" != Darwin ]; then
             id=$(loginctl show-user "$(id -u)" -p Display --value 2>/dev/null)
             ld=$(loginctl show-session "$id" -p Display --value 2>/dev/null)
-            [ -n "$ld" ] && [ "$d" = "$ld" ] || { SESS_WHY="session env: DISPLAY failed its check"; return 1; }
+            if [ -n "$ld" ]; then [ "$d" = "$ld" ] || { SESS_WHY="session env: DISPLAY failed its check"; return 1; }
+            else [[ "$w" =~ ^wayland-[0-9]+$ ]] && [ -S "$xrd/$w" ] || { SESS_WHY="session env: DISPLAY failed its check"; return 1; }; fi
         fi
         SESS+=(DISPLAY="$d")
     fi
@@ -436,7 +437,7 @@ if [ -n "$SERVICE" ]; then
     heartbeat
 fi
 log "start pid=$$ until=$until head=${HEAD_SHA:0:12} self=${L_SELF:0:12} registry=${L_REG:0:12} tiers=${L_TIERS:0:12} grantable=$grantable${SERVICE:+ access=$ACCESS bridge=${INBOUND%/inbound.jsonl} home=$HOMEDIR}"
-if [ -n "$SERVICE" ] && [ -z "${NOTIFY_SOCKET:-}" ]; then
+if [ -n "$SERVICE" ] && { [ -z "${NOTIFY_SOCKET:-}" ] || [ "$(uname -s)" = Darwin ]; }; then
     wp=(); case $- in *p*) wp=(-p) ;; esac
     "$BASH" ${wp[@]+"${wp[@]}"} "$0" --watch "$$" "$Q/.heartbeat" "$WSECS" "$WTICK" >/dev/null 2>&1 &
     log "watchdog pid=$!"
@@ -451,6 +452,10 @@ done
 for pend in "$Q"/*.req.pending; do
     [ -e "$pend" ] || continue
     req=${pend%.pending}
+    if [ -L "$pend" ] || [ ! -f "$pend" ]; then
+        mv "$pend" "$req.refused"; log "REFUSED ${req##*/} (the pending entry is not a regular file)"
+        continue
+    fi
     if grep -q '^granted_at=' "$pend" 2>/dev/null; then
         mv "$pend" "$req.failed"; log "INTERRUPTED ${req##*/} (a go was granted before the restart and the launch may have run; file a new request)"
         send bypass-failed "bypass request ${req##*/}: the daemon restarted after your go, the launch may have run. It was not re-run; check the fleet and file a new request if needed." # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it

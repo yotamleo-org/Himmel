@@ -322,6 +322,9 @@ assert_eq "RED 10558: a failed launch sends exactly the ask then bypass-failed" 
 stop
 
 echo "== a go whose grant marker cannot be written launches nothing =="
+if [ "$(id -u)" -eq 0 ]; then
+    echo "SKIP - grant-write refusal row (root appends to a mode 444 file)"
+else
 setup grantfail
 start
 CODE=$(ask_code r)
@@ -333,6 +336,7 @@ wait_for "$D/sent" "go was not recorded"
 assert_contains "RED 11031 CR: the operator is told the go was not recorded and nothing ran" "go was not recorded" "$(cat "$D/sent" 2>/dev/null)"
 assert_eq "RED 11031 CR: the request is marked failed" yes "$([ -e "$Q/r.req.failed" ] && echo yes || echo no)"
 stop
+fi
 
 echo "== verdict lines go out as bypass-result =="
 setup kinds-go
@@ -1115,6 +1119,13 @@ else
     echo "SKIP - unreadable request row (root reads a mode 000 file)"
 fi
 
+if [ "$(uname -s)" != Linux ]; then
+    echo "SKIP - the service-unit section runs Linux fixtures (a systemctl and loginctl stub); a Darwin fixture with a launchctl stub is a follow-up"
+    echo
+    echo "bypass-launchd: $PASS passed, $FAIL failed"
+    [ "$FAIL" -eq 0 ]
+    exit
+fi
 echo "== 11031: the daemon as a service unit =="
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/systemctl" <<'STUB'
@@ -1214,11 +1225,12 @@ s=$(g -C "$R" rev-parse "HEAD:$DAEMON_REL"); t=$(g -C "$R" rev-parse "HEAD:$TIER
 assert_eq "RED 11031 m2: .loaded holds the full 40-hex ids (self/tiers/registry)" "$s/$t/$r" "$(cat "$Q/.loaded" 2>/dev/null)"
 assert_contains "RED 11031: the daemon sends READY" "--ready" "$(cat "$D/notify.log" 2>/dev/null)"
 code=$(ask_code r)
+t0=$(date +%s)
 reply "$OPERATOR" "$OPERATOR" "go $code"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
 dl=$(sed -n '/\/sig-/{n;p;}' "$D/launch.args" 2>/dev/null)
 now=$(date +%s)
-if [[ "$dl" =~ ^[0-9]+$ ]] && [ "$dl" -gt "$now" ] && [ "$dl" -le $((now + 21600 + 60)) ]; then pass "RED 11031: under forever the launcher's deadline is now + the go's 6 h, never forever"
+if [[ "$dl" =~ ^[0-9]+$ ]] && [ "$dl" -ge $((t0 + 21600)) ] && [ "$dl" -le $((now + 21600 + 60)) ]; then pass "RED 11031: under forever the launcher's deadline is now + the go's 6 h, never forever"
 else fail "RED 11031: under forever the launcher's deadline is now + the go's 6 h, never forever" "$dl"; fi
 PWHOME="$D/home"
 ALLOWED='HOME|USER|LOGNAME|PATH|LANG|XDG_RUNTIME_DIR|TMPDIR|TELEGRAM_ACCESS_PATH|BRIDGE_ROOT|DBUS_SESSION_BUS_ADDRESS|DISPLAY|WAYLAND_DISPLAY|XAUTHORITY|XDG_SESSION_TYPE|XDG_CURRENT_DESKTOP|WORKER_SESSION_EFFORT|WORKER_SESSION_API_LANE|WORKER_SESSION_API_ACCOUNT|HIMMEL_[A-Z0-9_]*_OK|BYPASSD_TEST_DIR|BYPASSD_TEST_RC|BYPASSD_TEST_DAEMON|_|PWD|SHLVL|OLDPWD'
@@ -1277,6 +1289,16 @@ session_case n2-xauth-relative :7 "session env: XAUTHORITY" "DISPLAY=:7" "XAUTHO
 session_case n2-xauth-missing :7 "session env: XAUTHORITY" "DISPLAY=:7" "XAUTHORITY=/nonexistent/xauth" "XDG_SESSION_TYPE=x11"
 session_case n2-type :7 "session env: XDG_SESSION_TYPE" "DISPLAY=:7" "XDG_SESSION_TYPE=x11; touch $tmp/n2-type/pwned"
 session_case n2-none "" "no graphical session"
+session_case n2-empty-logind "" "session env: DISPLAY" "DISPLAY=:7" "XDG_SESSION_TYPE=x11"
+setup_repo n2-xwayland; clean_session
+: > "$D/logind.display"
+printf '%s\n' "DISPLAY=:0" "WAYLAND_DISPLAY=wayland-9" "XDG_SESSION_TYPE=wayland" > "$D/session.env"
+start_svc "$UNTIL"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CHIEF" recommend=go > "$Q/s.req"
+wait_for "$Q/daemon.log" "ASK HIMMEL-1-N1-sweep-pr1"
+assert_contains "RED 11031 CR: an Xwayland DISPLAY with an empty logind Display and a valid Wayland socket passes preflight, so the ask goes out" "ASK HIMMEL-1-N1-sweep-pr1" "$(cat "$Q/daemon.log")"
+assert_absent "RED 11031 CR: and no preflight refusal" "REFUSED-PREFLIGHT" "$(cat "$Q/daemon.log")"
+stop
 
 echo "-- READY comes before the first stop-file check; an idle daemon keeps sending WATCHDOG=1 (M7) --"
 setup_repo ready-first
@@ -1321,6 +1343,11 @@ all="$out $(cat "$Q/daemon.log" 2>/dev/null)"
 assert_contains "RED 11031 C2: under the manager the operator-id file is the default under the passwd home" "$REALHOME/.claude/channels/telegram/access.json" "$all"
 assert_absent "RED 11031 C2: the injected operator-id file is not used" "$D/access.json" "$all"
 assert_absent "RED 11031 C2: nor the injected bridge journal" "$D/bridge" "$all"
+if [ -f "$REALHOME/.claude/channels/telegram/access.json" ]; then
+    assert_contains "RED 11031 C2: the daemon started and its bridge journal is the default under the passwd home" "bridge=$REALHOME/.claude/handover/bridge" "$all"
+else
+    echo "SKIP - the positive bridge row (this station has no Telegram access file; the daemon exits before it reports the bridge path, and the managed home cannot be faked without a production seam)"
+fi
 setup_repo n1-home
 mkdir -p "$D/other"
 out=$(run_svc "$UNTIL" INVOCATION_ID=unit-1 HOME="$D/other"); rc=$?
@@ -1371,8 +1398,11 @@ setup_repo pending
 clean_session
 printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CHIEF" recommend=go > "$Q/p.req.pending"
 printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CHIEF" recommend=go "granted_at=2026-11-24T20:00:00Z" "go=ABC234" > "$Q/g.req.pending"
+mkfifo "$Q/f.req.pending"
 start_svc "$UNTIL"
 wait_for "$Q/daemon.log" "ASK HIMMEL-1-N1-sweep-pr1"
+assert_contains "RED 11031 CR: a pending entry that is a FIFO is refused, not read (the daemon reaches its loop)" "REFUSED f.req (the pending entry is not a regular file)" "$(cat "$Q/daemon.log")"
+assert_eq "RED 11031 CR: and the FIFO is set aside as refused" yes "$([ -e "$Q/f.req.refused" ] && echo yes || echo no)"
 assert_contains "RED 11031 M3: a pending ask with no grant is requeued" "REQUEUE p.req" "$(cat "$Q/daemon.log")"
 assert_contains "RED 11031 M3: and asked again" "ASK HIMMEL-1-N1-sweep-pr1" "$(cat "$Q/daemon.log")"
 assert_eq "RED 11031 M3: a pending request that carries a grant is not re-run" "g.req.failed" "$(cd "$Q" && printf '%s\n' g.req* | tr '\n' ' ' | sed 's/ $//')"

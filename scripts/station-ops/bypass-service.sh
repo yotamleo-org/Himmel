@@ -22,6 +22,7 @@ PLIST=$LABEL.plist
 OS="${BYPASSD_SERVICE_OS:-$(uname -s)}"
 STATE="$HOME/.himmel/state/bypass-service"
 CONFIG="$STATE/config"
+PENDING="$STATE/restart-pending"
 UNIT_DIR="${HIMMELCTL_SYSTEMD_USER_UNIT_DIR:-$HOME/.config/systemd/user}"
 AGENT_DIR="$HOME/Library/LaunchAgents"
 CONFIRM="${BYPASSD_CONFIRM_SECS:-5}"
@@ -42,13 +43,15 @@ render() {
     [[ "$repo" =~ $PATH_RE ]] || die "the checkout path '$repo' holds a character the unit cannot carry"
     if darwin; then tpl="$repo/$OPS/units/$PLIST"; else tpl="$repo/$OPS/units/$UNIT"; fi
     [ -f "$tpl" ] || die "no template at $tpl"
+    out=$(sed 's/@HIMMEL_ROOT@//g; s/@BUCKET@//g; s/@HOME@//g' "$tpl")
+    case $out in *@[A-Z]*@*) die "the template holds a placeholder this script does not fill" ;; esac
+    out=""
     while IFS= read -r line || [ -n "$line" ]; do
         line=${line//@HIMMEL_ROOT@/${repo//%/%%}}
         line=${line//@BUCKET@/${bucket//%/%%}}
         line=$(printf "%s" "$line" | sed "s|@HOME@|$home_s|g")
         out+="$line"$'\n'
     done <"$tpl"
-    case $out in *@[A-Z]*@*) die "the template left a placeholder unfilled" ;; esac
     printf '%s' "$out"
 }
 
@@ -95,7 +98,7 @@ cmd_on() {
     bucket=$(bucket_arg "$@") || exit $?
     repo=$REPO; q="$bucket/bypass-queue"
     m_active && was_active=1
-    out=$(bash "$repo/$OPS/bypass-launchd.sh" --check --bucket "$bucket" 2>&1)
+    out=$(bash "$repo/$OPS/bypass-launchd.sh" --check --bucket "$bucket" 2>&1) || die "the bypass daemon start check failed, nothing was changed: $out" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     live=$(printf '%s\n' "$out" | sed -n 's/^daemon: live pid=\([0-9][0-9]*\).*/\1/p' | head -n 1) # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     if [ -n "$live" ]; then
         own=""; [ -z "$was_active" ] || own=$(unit_pid)
@@ -105,12 +108,17 @@ cmd_on() {
         fi
     fi
     path=$(installed_path)
+    if [ -n "${HANDOVER_DIR:-}" ]; then
+        pin_hd=$(. "$repo/scripts/lib/handover-path.sh" && handover_root 2>/dev/null) || die "HANDOVER_DIR '$HANDOVER_DIR' is not an existing directory, so it cannot be pinned for the daemon; fix or unset it"
+        [[ "$pin_hd" =~ $PATH_RE ]] || die "the handover root '$pin_hd' holds a character the unit cannot carry (use letters, digits and . _ / @ + -)"
+    fi
     mkdir -p "$STATE" "$(dirname "$path")" || die "cannot create the unit directory"
     render "$bucket" "$repo" >"$path.new" || { rm -f "$path.new"; exit 2; }
     if [ -f "$path" ] && cmp -s "$path" "$path.new"; then changed=""; fi
-    [[ "${HANDOVER_DIR:-}" =~ $PATH_RE ]] && pin_hd=$HANDOVER_DIR
     { printf 'bucket=%s\nrepo=%s\n' "$bucket" "$repo"; [ -z "$pin_hd" ] || printf 'handover_dir=%s\n' "$pin_hd"; } >"$CONFIG.new" || { rm -f "$path.new"; die "cannot save the configuration in $STATE"; }
     if [ ! -f "$CONFIG" ] || ! cmp -s "$CONFIG" "$CONFIG.new"; then changed=1; fi
+    [ ! -e "$PENDING" ] || changed=1
+    if [ -n "$changed" ] && [ -n "$was_active" ]; then : >"$PENDING" || { rm -f "$path.new" "$CONFIG.new"; die "cannot record the pending restart in $STATE"; }; fi
     mv "$path.new" "$path" || die "cannot install the unit"
     mv "$CONFIG.new" "$CONFIG" || die "cannot save the configuration in $STATE"
     rm -f "$q/stop"
@@ -118,12 +126,14 @@ cmd_on() {
         mkdir -p "$HOME/.himmel"
         launchctl bootout "gui/$UID_N/$LABEL" >/dev/null 2>&1
         launchctl bootstrap "gui/$UID_N" "$path" || die "launchctl bootstrap failed for $path" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
+        rm -f "$PENDING"
         echo "bypass daemon: on ($LABEL loaded; it starts at your login)" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
         return 0
     fi
     sctl daemon-reload || die "systemctl --user daemon-reload failed" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     sctl enable --now "$UNIT" || die "systemctl --user enable --now $UNIT failed" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     if [ -n "$was_active" ] && [ -n "$changed" ]; then sctl restart "$UNIT" || die "systemctl --user restart $UNIT failed"; fi
+    rm -f "$PENDING"
     if ! loginctl enable-linger "$(id -un)" 2>/dev/null; then
         echo "WARNING: lingering is not enabled, so the daemon starts at your next login, not at boot. Run once: loginctl enable-linger $(id -un)" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
     fi
@@ -135,10 +145,11 @@ cmd_off() {
     need_manager
     local bucket
     bucket=$(conf_get bucket); [ -n "$bucket" ] || die "the bypass daemon was never turned on here (no record at $CONFIG)" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
-    touch "$bucket/bypass-queue/stop" || die "cannot write the stop file in $bucket/bypass-queue"
+    local stopped="stop file written"
+    touch "$bucket/bypass-queue/stop" 2>/dev/null || { stopped="NO stop file, $bucket/bypass-queue cannot be written"; echo "bypass-service: cannot write the stop file in $bucket/bypass-queue; disabling the service anyway" >&2; }
     if darwin; then launchctl bootout "gui/$UID_N/$LABEL" >/dev/null 2>&1
     else sctl disable --now "$UNIT" || die "systemctl --user disable --now $UNIT failed"; fi
-    echo "bypass daemon: off (stop file written, $(if darwin; then echo "$LABEL"; else echo "$UNIT"; fi) disabled)" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
+    echo "bypass daemon: off ($stopped, $(if darwin; then echo "$LABEL"; else echo "$UNIT"; fi) disabled)" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
 }
 
 confirm_up() {
