@@ -4957,6 +4957,7 @@ nc_home() {
   alert_reset; rm -rf "$NC/scratch"; mkdir -p "$NC/scratch"; : > "$NC/ledger.jsonl"
 }
 NC_ENV=()
+NC_ANC=
 nc_run() {
   : > "$NC/graphify-calls.log"; : > "$NC/claude-calls.log"
   out=$( ${NC_BOUND:+"$NC_REAL_TIMEOUT" -k 5 "$NC_BOUND"} env ${NC_ENV[@]+"${NC_ENV[@]}"} HOME="$NC_HOME" PATH="${NC_PATH_PREFIX:+$NC_PATH_PREFIX:}$NC/bin:$PATH" \

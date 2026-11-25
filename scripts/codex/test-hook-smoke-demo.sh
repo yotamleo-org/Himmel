@@ -29,7 +29,6 @@ if [ -z "${HSD_ANCESTOR:-}" ]; then
     export HSD_ANCESTOR TMP CADENCE_USAGE_CACHE="$TMP/bank.json"
     exec -a claude bash -c '"$@"; rc=$?; chmod -R u+w "$TMP" 2>/dev/null; rm -rf "$TMP"; exit $rc' _ bash "$0" "$@"
 fi
-trap 'chmod -R u+w "$TMP" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 
 # --- fixture repo -----------------------------------------------------------
 FIX="$TMP/fixture-repo"
