@@ -2236,6 +2236,16 @@ sc_case "row 64 control: a harmless first assignment does not hide a self-dir se
 A=1; D="$(dirname "$0")"
 source "$D/../lib/armor.sh"
 E
+sc_case "row 71: a bare-variable source with an environment-chosen assignment reads as unresolved" 1 1 <<'E'
+HERE="$(dirname "$0")"
+_x="$HERE/../lib/armor.sh"; [ -z "${ENV_LIB:-}" ] || _x="$ENV_LIB"
+. "$_x"
+E
+sc_case "row 71 control: a bare-variable source whose every assignment is a literal path resolves" 1 0 <<'E'
+HERE="$(dirname "$0")"
+_x="$HERE/../lib/armor.sh"; [ -n "${A:-}" ] && _x="$HERE/../lib/armor.sh"
+. "$_x"
+E
 }
 
 # Row 65: a hook source file under marketplace/plugins/himmel-ops/hooks/ is
