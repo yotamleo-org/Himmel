@@ -155,7 +155,7 @@ _ghr_park_scan() {
         [ "$(ghq_bucket_of "$@")" = core ] || exit 0
         floor="${GHQ_SCAN_FLOOR:-500}"
         case "$floor" in ''|*[!0-9]*) floor=500 ;; esac
-        now=$(date +%s)
+        pnow=$(date +%s)
         for name in main read read2; do
             ghq_read "$name" core || continue
             case "$GHQ_STATE" in ok|refused) ;; *) continue ;; esac
@@ -164,7 +164,7 @@ _ghr_park_scan() {
             fi
             r="$GHQ_RESET"
             ghb_reset_sane "$r" || r=$((GHQ_OBSERVED + 60))
-            [ "$r" -gt "$now" ] || continue
+            [ "$r" -gt "$pnow" ] || continue
             printf '\n%s\tQUOTA-PAUSE github core token=%s remaining=%s floor=%s reset=%s caller=gh-read.sh nothing-was-judged' \
                 "$name" "$name" "${GHQ_REMAINING:-unknown}" "$floor" "$(_ghq_reset_words "$r")"
         done
