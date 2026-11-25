@@ -183,7 +183,21 @@ tracker_refresh() {
     [ "$rc" -eq 0 ] || { echo "tracker=failed:mirror-rc$rc"; return 0; }
     JIRA_PROJECT_KEY="$pk" timeout -k 5 "$tmo" "${jira[@]}" versions > "$mir.versions.tsv.tmp.$$" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
     if [ "$rc" -ne 0 ]; then rm -f "$mir.versions.tsv.tmp.$$"; echo "tracker=failed:versions-rc$rc"; return 0; fi
-    mv -f "$mir.versions.tsv.tmp.$$" "$mir.versions.tsv" || { echo "tracker=failed:versions-write"; return 0; }
+    (
+        flock -w "$tmo" 9 || exit 3  # prim-ok: the wait is bounded by WM_TRACKER_TIMEOUT; with_lock waits without limit
+        if [ -f "$mir.versions.tsv" ]; then
+            old="$(wc -l < "$mir.versions.tsv")" && new="$(wc -l < "$mir.versions.tsv.tmp.$$")" || exit 4
+            [ $((new * 2)) -ge "$old" ] || exit 5
+        fi
+        mv -f "$mir.versions.tsv.tmp.$$" "$mir.versions.tsv" || exit 6
+    ) 9> "$mir.versions.lock"; rc=$?
+    case "$rc" in
+        0) ;;
+        3) rm -f "$mir.versions.tsv.tmp.$$"; echo "tracker=failed:versions-lock"; return 0 ;;
+        4) rm -f "$mir.versions.tsv.tmp.$$"; echo "tracker=failed:versions-read"; return 0 ;;
+        5) rm -f "$mir.versions.tsv.tmp.$$"; echo "tracker=failed:versions-shrunk"; return 0 ;;
+        *) rm -f "$mir.versions.tsv.tmp.$$"; echo "tracker=failed:versions-write"; return 0 ;;
+    esac
     MIRROR_FRESH="$mir"
     # one writer per page: a focus-version chief's page is focus-refresh's
     ! focus_owned || { echo "tracker=skip:focus"; return 0; }

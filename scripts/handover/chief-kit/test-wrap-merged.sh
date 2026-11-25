@@ -32,6 +32,11 @@ SCRIPT="$HERE/wrap-merged.sh"
 W="$(mktemp -d "${TMPDIR:-/tmp}/wm-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$W"' EXIT
 W="$(cd "$W" && pwd)"
+export HOME="$W/home"
+SENT="$HOME/.himmel/state/jira-mirror/HIMMEL.versions.tsv"
+mkdir -p "${SENT%/*}"
+printf 'v1.0.1\ttrue\t2026-10-01\nv1.1.0\ttrue\t2026-10-15\nv1.1.3\tfalse\t2026-12-01\nv1.1.4\tfalse\t2027-01-01\n' > "$SENT"
+SENT_BEFORE="$(cksum < "$SENT")"
 fails=0
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] does not contain [$3]"; fails=$((fails+1)) ;; esac; }
@@ -408,6 +413,41 @@ if command -v python3 >/dev/null 2>&1; then
     wm_pk ""
     contains "23c: an unset project key keeps the HIMMEL mirror dir" "$calls" "jira mirror --root $W/pkhome/.himmel/state/jira-mirror/HIMMEL"
     contains "23c: and the HIMMEL project key" "$(cat "$WM_CALLS.pk")" "pk=HIMMEL mirror"
+
+    SHR="$W/mirshrink"; mkdir -p "$SHR"
+    cp "$SENT" "$SHR.versions.tsv"
+    tracker_fixture 'https://claude.ai/artifact/x'
+    TICK_TRACKER_MIRROR_DIR="$SHR" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+    check "23d: rc 0, the wrap never fails" "$rc" 0
+    contains "23d: a 1-row snapshot over a 4-row file is refused" "$out" "tracker=failed:versions-shrunk"
+    check "23d: and the 4-row file is left byte-unchanged" "$SENT_BEFORE" "$(cksum < "$SHR.versions.tsv")"
+    check "23d: and no temp file is left behind" "no" "$(compgen -G "$SHR.versions.tsv.tmp.*" >/dev/null && echo yes || echo no)"
+    printf 'v1.0.1\ttrue\t2026-10-01\n' > "$SHR.versions.tsv"
+    tracker_fixture 'https://claude.ai/artifact/x'
+    TICK_TRACKER_MIRROR_DIR="$SHR" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+    lacks "23d: control, an equal-size snapshot is not refused" "$out" "versions-shrunk"
+    check "23d: control, and it replaces the file" "v1.0.1	false	2026-12-01" "$(cat "$SHR.versions.tsv")"
+    printf 'v9.9.9\ttrue\t2026-01-01\n' > "$SHR.versions.tsv"
+    mkfifo "$W/held.fifo" "$W/rel.fifo"
+    bash -c 'exec 9>"$1"; flock 9; echo held > "$2"; read -r _ < "$3"' _ "$SHR.versions.lock" "$W/held.fifo" "$W/rel.fifo" &
+    holder=$!
+    read -r _ < "$W/held.fifo"
+    tracker_fixture 'https://claude.ai/artifact/x'
+    TICK_TRACKER_MIRROR_DIR="$SHR" WM_TRACKER_TIMEOUT=1 run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+    echo go > "$W/rel.fifo"; wait "$holder"
+    contains "23d: a snapshot that cannot take the versions lock gives up, tracker=failed:versions-lock" "$out" "tracker=failed:versions-lock"
+    check "23d: and the file it waited on is left untouched" "v9.9.9	true	2026-01-01" "$(cat "$SHR.versions.tsv")"
+    chmod 000 "$SHR.versions.tsv"
+    if [ -r "$SHR.versions.tsv" ]; then
+        chmod 644 "$SHR.versions.tsv"
+        echo "skip - 23d: unreadable-file rows: this user reads through chmod 000"
+    else
+        tracker_fixture 'https://claude.ai/artifact/x'
+        TICK_TRACKER_MIRROR_DIR="$SHR" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+        chmod 644 "$SHR.versions.tsv"
+        contains "23d: a versions file that cannot be read is never replaced blind, tracker=failed:versions-read" "$out" "tracker=failed:versions-read"
+        check "23d: and it keeps its content" "v9.9.9	true	2026-01-01" "$(cat "$SHR.versions.tsv")"
+    fi
 else
     echo "skip - 15-18 tracker rows: no python3"
 fi
@@ -453,14 +493,14 @@ for opt in 'focus-version: auto' ''; do
     fixture
     printf 'tracker: https://example.invalid/t\nrelease: R1\n' >> "$CHIEF"
     [ -z "$opt" ] || printf '%s\n' "$opt" >> "$CHIEF"
-    WM_FOCUS_OUT="focus=ok" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+    TICK_TRACKER_MIRROR_DIR="$W/mir26c" WM_FOCUS_OUT="focus=ok" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     contains "26c: [$opt] focus refresh runs" "$calls" "focus --doc $CHIEF"
     contains "26c: [$opt] prints focus=ok" "$out" "focus=ok"
     contains "26c: [$opt] the all-versions page is not rendered" "$out" "tracker=skip:focus"
 done
 fixture
 printf 'tracker: https://example.invalid/t\nrelease: R1\nfocus-version: none\n' >> "$CHIEF"
-run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+TICK_TRACKER_MIRROR_DIR="$W/mir26c" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 contains "26c: none beside a release: line still prints focus=skip" "$out" "focus=skip"
 lacks "26c: and runs nothing" "$calls" "focus --doc"
 unset WM_FOCUS
@@ -486,4 +526,5 @@ ttwm "$W/emptyroot"
 check "27 control, no read token: rc 0" "$rc" 0
 check "27 control: the merge-state read logs tok=main" "$(ttn '^tok=main argv=pr view 777 --json state,mergeCommit$')" 1
 check "27 control: no call logs tok=read" "$(ttn '^tok=read ')" 0
+check "28: no case wrote the default mirror's versions file" "$SENT_BEFORE" "$(cksum < "$SENT" 2>/dev/null)"
 [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails FAILED"; exit 1; }
