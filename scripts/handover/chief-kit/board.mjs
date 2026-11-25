@@ -20,6 +20,8 @@
 // file. "Changed" compares the freshness signatures (below) against what the
 // board file on disk carried before this render; it needs no HTML page.
 //
+// Exit 3: tick.sh stalled past BOARD_TICK_TIMEOUT_MS (default 40 s); the line says so and no board is written.
+//
 // Worker set: --workers wins; else the chief's fleet manifest
 // (<chief doc stem>.fleet.json, via fleet-manifest.sh list); else the Live-state scan.
 //
@@ -303,17 +305,25 @@ else if (legFiles.length) tickArgs.push('--workers', legFiles.join(' '));
 // heartbeat (no token) and reads exactly the arm passed above.
 const tickEnv = { ...process.env };
 for (const k of ['DOC', 'TOKEN', 'WORKERS']) delete tickEnv[k];
+if (tickEnv.TICK_DEADLINE_SEC === undefined) tickEnv.TICK_DEADLINE_SEC = '30';
+const tickTimeoutMs = Number(process.env.BOARD_TICK_TIMEOUT_MS) > 0 ? Number(process.env.BOARD_TICK_TIMEOUT_MS) : 40000;
 let tickLine = '';
 let fp = '';
 try {
     const cmd = tickBin.endsWith('.sh') ? ['bash', [tickBin, ...tickArgs]] : [tickBin, tickArgs];
-    const out = execFileSync(cmd[0], cmd[1], { encoding: 'utf8', env: tickEnv, timeout: 90000, stdio: ['ignore', 'pipe', 'ignore'] });
+    const out = execFileSync(cmd[0], cmd[1], { encoding: 'utf8', env: tickEnv, timeout: tickTimeoutMs, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'ignore'] });
     for (const l of out.split('\n')) {
         if (l.startsWith('TICK ') && !tickLine) tickLine = l;
         const m = /^board-fp=([0-9a-f]{16})$/.exec(l);
         if (m) fp = m[1];
     }
-} catch { /* degraded: the board still renders, marked tick-unavailable, with no fingerprint */ }
+} catch (e) {
+    if (e && e.code === 'ETIMEDOUT') {
+        console.error(`board: tick.sh did not finish within ${Math.round(tickTimeoutMs / 1000)}s (stalled); the board was not refreshed`);
+        process.exit(3);
+    }
+    /* degraded: the board still renders, marked tick-unavailable, with no fingerprint */
+}
 if (!tickLine) fp = '';
 const field = {};
 for (const m of tickLine.matchAll(/(?:^|\s)([a-z]+)=(\S*)/g)) field[m[1]] = m[2];

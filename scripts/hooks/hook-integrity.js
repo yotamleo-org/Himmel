@@ -1388,11 +1388,10 @@ function isFile(candidate) {
 // modelled real value (see prefixBases), which the caller treats as unresolved.
 function resolveSourceArg(arg, fileDir, root, assigns) {
   const bare = unquoteWord(arg).match(BARE_VAR);
-  const exprs = bare
-    ? (assigns[bare[1]] || []).filter((v) => /\.sh$/.test(unquoteWord(v)))
-    : [arg];
+  const all = bare ? assigns[bare[1]] || [] : [arg];
+  const exprs = bare ? all.filter((v) => /\.sh$/.test(unquoteWord(v))) : all;
   const found = new Set();
-  let bad = false;
+  let bad = exprs.length !== all.length;
   for (const expr of exprs) {
     const { prefix, tail } = splitRef(expr);
     if (!/\.sh$/.test(tail)) continue;

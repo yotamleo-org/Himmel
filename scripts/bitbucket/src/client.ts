@@ -135,6 +135,7 @@ export interface PrIngestInfo {
   author: string | null;
   source_branch: string | null;
   destination_branch: string | null;
+  head_commit: string | null;
   url: string | null;
   created_on: string | null;
   updated_on: string | null;
@@ -274,7 +275,7 @@ export async function getPr(id: number, ref?: RepoRef): Promise<PrIngestInfo> {
   }
   const links = d.links as { html?: { href?: string } } | undefined;
   const author = d.author as { nickname?: string; account_id?: string } | undefined;
-  const source = d.source as { branch?: { name?: string } } | undefined;
+  const source = d.source as { branch?: { name?: string }; commit?: { hash?: string } } | undefined;
   const destination = d.destination as { branch?: { name?: string } } | undefined;
   return {
     id: pid,
@@ -284,6 +285,7 @@ export async function getPr(id: number, ref?: RepoRef): Promise<PrIngestInfo> {
     author: author?.nickname ?? author?.account_id ?? null,
     source_branch: source?.branch?.name ?? null,
     destination_branch: destination?.branch?.name ?? null,
+    head_commit: source?.commit?.hash ?? null,
     url: links?.html?.href ?? null,
     created_on: (d.created_on as string | undefined) ?? null,
     updated_on: (d.updated_on as string | undefined) ?? null,
@@ -618,7 +620,14 @@ export async function listPrComments(prId: number): Promise<PrCommentsResult> {
   let pages = 0;
   let truncated = false;
   for (;;) {
-    for (const c of page.values ?? []) {
+    if (!Array.isArray(page.values)) {
+      throw new BitbucketHttpError(
+        `bitbucket: pr comments page ${pages + 1} carries no values list`,
+        first.response.status,
+        page,
+      );
+    }
+    for (const c of page.values) {
       if (c.deleted || c.parent || !c.inline) continue;
       out.push(threadFromComment(c));
     }
@@ -648,6 +657,83 @@ export async function listPrComments(prId: number): Promise<PrCommentsResult> {
     page = (await next.json()) as { values?: Record<string, unknown>[]; next?: string };
   }
   return { threads: out, truncated, pages: pages + 1 };
+}
+
+
+export interface PrStatus {
+  key: string;
+  name: string;
+  state: string;
+}
+
+export interface PrStatusesResult {
+  statuses: PrStatus[];
+  truncated: boolean;
+  pages: number;
+}
+
+function statusFromValue(d: Record<string, unknown>): PrStatus {
+  return {
+    key: String(d.key ?? ''),
+    name: String(d.name ?? d.key ?? ''),
+    state: String(d.state ?? ''),
+  };
+}
+
+export async function listPrStatuses(prId: number): Promise<PrStatusesResult> {
+  if (!Number.isInteger(prId)) {
+    throw new BitbucketHttpError(
+      `bitbucket: pr statuses requires a numeric id, got: ${prId}`,
+      0,
+      null,
+    );
+  }
+  const { workspace, repoSlug } = repoRef();
+  const out: PrStatus[] = [];
+  const first = (await withRetry(() =>
+    client().GET('/repositories/{workspace}/{repo_slug}/pullrequests/{pull_request_id}/statuses', {
+      params: {
+        path: { workspace, repo_slug: repoSlug, pull_request_id: prId },
+        query: { pagelen: 50 } as never,
+      },
+    }),
+  )) as OFResult<{ values?: Record<string, unknown>[]; next?: string }>;
+  if (!first.response.ok) fail('pr statuses', first);
+
+  let page = first.data ?? {};
+  let pages = 0;
+  let truncated = false;
+  for (;;) {
+    if (!Array.isArray(page.values)) {
+      throw new BitbucketHttpError(
+        `bitbucket: pr statuses page ${pages + 1} carries no values list`,
+        first.response.status,
+        page,
+      );
+    }
+    for (const v of page.values) out.push(statusFromValue(v));
+    if (!page.next) break;
+    if (pages + 1 >= PAGE_CAP) {
+      truncated = true;
+      process.stderr.write(
+        `bitbucket: pr statuses truncated at ${PAGE_CAP} pages — results may be incomplete\n`,
+      );
+      break;
+    }
+    pages += 1;
+    const next = await fetch(page.next, {
+      headers: { Accept: 'application/json', Authorization: authHeader() },
+    });
+    if (!next.ok) {
+      throw new BitbucketHttpError(
+        `bitbucket: pr statuses pagination failed on page ${pages + 1}: HTTP ${next.status}`,
+        next.status,
+        await next.text(),
+      );
+    }
+    page = (await next.json()) as { values?: Record<string, unknown>[]; next?: string };
+  }
+  return { statuses: out, truncated, pages: pages + 1 };
 }
 
 // reply: POST .../comments with `{ content.raw, parent.id }` (the §5.3 mutate).

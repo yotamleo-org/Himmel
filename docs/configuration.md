@@ -448,7 +448,7 @@ plugin is installed. Scripts live under `scripts/hooks/`, or under
 | `block-worker-write-fence` *(plugin)* | a dispatched worker (`HIMMEL_WORKER=1`) naming the hook-integrity pin directory, or repointing `origin/<default branch>` | auth-gated | `HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1` |
 | `block-lesson-enforcement-writes` *(plugin)* | in a lesson-loop worker (`HIMMEL_LESSON_LOOP=1`), a write to an enforcement path | HARD | none |
 | `guard-subagent-model` *(plugin)* | an `Agent` dispatch with no `model` | auth-gated | `SUBAGENT_MODEL_OK=1` |
-| `guard-chief-foreground` *(plugin)* | a chief running a long chief-kit script in the foreground | auth-gated | `CHIEF_FG_OK=1` |
+| `guard-chief-foreground` *(plugin)* | a chief running a long chief-kit script in the foreground, or detached (`&`, `coproc`, `nohup`, `setsid`, `systemd-run`) even in the background | auth-gated | `CHIEF_FG_OK=1` |
 | `guard-judge-writes` *(plugin)* | a judge session (`HIMMEL_CONSOLE_JUDGE=1`) making an outward or mutating call | HARD | none: launch without `--judge` |
 | `guard-rm-writes` *(plugin)* | a raw write to a release state directory's authority files or to `~/.config/himmel/release/` | HARD | none: the Jira CLI's `release` op is the writer |
 | `block-busy-loop` *(plugin)* | a sleepless `while`/`until … do :; done` loop, a python or node spin loop, `taskset`/`numactl`/`stress`/`stress-ng`, `yes` or `dd` into `/dev/null`, or an untracked script file the command runs that holds one of them | auth-gated | `BUSY_LOOP_BYPASS=1` |

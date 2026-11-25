@@ -414,6 +414,27 @@ contains 'a failing tick still renders a board (rc 0)' "rc=$rc" 'rc=0'
 contains 'and says the tick was unavailable' "$(cat "$board")" 'tick unavailable'
 contains 'and stores no fingerprint that would read ok' "$(cat "$W/fail-board.json")" '"board_fp": null'
 
+cat > "$W/bin/tick-stub-stall" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "${TICK_DEADLINE_SEC:-unset}" > "$TICK_ARGV_LOG"
+exec sleep 30
+STUB
+chmod +x "$W/bin/tick-stub-stall"
+rm -f "$W/stall-board.json"
+stall_t0=$SECONDS
+PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-stall" BOARD_TICK_TIMEOUT_MS=1500 TICK_ARGV_LOG="$W/argv-stall.log" \
+    BOARD_SESSIONS="$W/bin/sessions-empty.sh" GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+    node "$SUT" --doc "$DOC" --repo "$W/repo" --json "$W/stall-board.json" --changed >"$W/stall.out" 2>"$W/stall.err"
+stall_rc=$?
+stall_secs=$((SECONDS - stall_t0))
+same 'a stalled tick exits 3, not 0 and not a hang' "$stall_rc" 3
+if [ "$stall_secs" -lt 15 ]; then pass 'a stalled tick fails inside the bound'; else fail "a stalled tick took ${stall_secs}s"; fi
+contains 'the failure line names the blocking read' "$(cat "$W/stall.err")" 'board: tick.sh did not finish within'
+contains 'the failure line names the cause' "$(cat "$W/stall.err")" 'stalled'
+same 'a stalled tick prints no CHANGED/UNCHANGED line' "$(cat "$W/stall.out")" ''
+if [ ! -e "$W/stall-board.json" ]; then pass 'a stalled tick leaves the previous board alone (it reads STALE)'; else fail 'a stalled tick wrote a board'; fi
+same 'the tick is told its own deadline, inside the board bound' "$(cat "$W/argv-stall.log")" '30'
+
 # --- the follow-ups deferred from the first board
 # Results parse is section-bounded: a later section's bullet is not the worker's Results.
 lacks "a later section's bullet is not the worker's last Results bullet" "$html" 'unrelated later-section'
