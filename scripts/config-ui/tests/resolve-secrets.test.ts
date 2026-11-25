@@ -212,8 +212,9 @@ storing("the roll-up's answer masks a value stored while its job probe ran", asy
   await masked(await whileStored(b, () => b.get("/api/rollup")));
 });
 
-storing("the journal stream masks a chunk written while a stored value is still being read in", async () => {
-  const RUN = "0b6e1c2a-3f4d-4e5f-8a9b-0c1d2e3f4a5b";
+const RUN = "0b6e1c2a-3f4d-4e5f-8a9b-0c1d2e3f4a5b";
+const MSG = "msg_01AbCdEfGhIjKlMnOpQrStUvWxYz0123";
+async function journalWhileStored(): Promise<string> {
   const lines = readFileSync(join(import.meta.dir, "fixtures", "agui", "happy-path.jsonl"), "utf8").split("\n").filter(Boolean);
   const b = boot(undefined, {}, (d) => {
     mkdirSync(join(d, "home", ".claude", "projects", "-proj"), { recursive: true });
@@ -229,7 +230,7 @@ storing("the journal stream masks a chunk written while a stored value is still 
   b.h.slow();
   const ran = b.run(previewId);
   await until(() => !existsSync(`${b.k.store}.slow`));
-  appendFileSync(join(dir, "home", ".claude", "projects", "-proj", `${RUN}.jsonl`), lines.slice(2, 4).join("\n").replace("Listing the root.", `Seen ${SECRET} here`) + "\n");
+  appendFileSync(join(dir, "home", ".claude", "projects", "-proj", `${RUN}.jsonl`), lines.slice(2, 4).join("\n").replace("Listing the root.", `Seen ${SECRET} here`).replaceAll("a-text-1", MSG) + "\n");
   const end = Date.now() + 8_000;
   while (!text.includes("Seen ") && Date.now() < end) {
     const n = await Promise.race([reader.read(), sleep(end - Date.now()).then(() => null)]);
@@ -238,8 +239,29 @@ storing("the journal stream masks a chunk written while a stored value is still 
   }
   await reader.cancel();
   expect((await ran).status).toBe(200);
+  return text;
+}
+
+storing("the journal stream masks a chunk written while a stored value is still being read in", async () => {
+  const text = await journalWhileStored();
   expect(text).toContain(`Seen ${MASK} here`);
   expect(text).not.toContain(SECRET);
+});
+
+storing("an open journal stream keeps a long message id after the list changed", async () => {
+  const text = await journalWhileStored();
+  expect(text).toContain(`"messageId":"${MSG}"`);
+  expect(text).toContain(`Seen ${MASK} here`);
+});
+
+storing("the fleet answer keeps a thread id and still masks a value stored while the T3 list was read", async () => {
+  const THREAD = "9d2b7c1e-5a3f-4c8d-b6e0-1f2a3b4c5d6e";
+  const fleet = (d: string) => ({ CONFIG_UI_T3_THREADS: script("t3-gated.sh", `#!/bin/sh\n${GATED_SH(`printf '{"threads":[{"threadId":"${THREAD}","title":"t %s","state":"running"}],"owned":[]}' "$STUB_LEAK"`)}`) });
+  const b = boot(undefined, {}, fleet, { fleetScript: "/bin/true" });
+  const t = await (await whileStored(b, () => b.get("/api/agui/fleet"))).text();
+  expect(t).toContain(`"threadId":"${THREAD}"`);
+  expect(t).toContain(MASK);
+  expect(t).not.toContain(SECRET);
 });
 
 const enforcesModes = process.getuid?.() !== 0;

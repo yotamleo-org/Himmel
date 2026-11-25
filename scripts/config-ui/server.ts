@@ -11,7 +11,7 @@ import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { scrubProviderKeys } from "./scrub-provider-keys";
 // redact.js is the shared CommonJS redactor (P2); imported, not copied.
-import { redactDeep, envValues } from "../himmelctl/lib/redact.js";
+import { redact, redactDeep, envValues } from "../himmelctl/lib/redact.js";
 import { parseDotEnv } from "../himmelctl/lib/probes.js";
 import { resolveSecretsAsync } from "../lib/resolve-secrets.mjs";
 import secretsManifest from "../himmelctl/lib/secrets-manifest.json";
@@ -655,13 +655,19 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     try { return JSON.stringify(redactDeep(JSON.parse(body), { literals })); } catch { return String(redactDeep(body, { literals })); }
   };
   const feedBody = (body: string) => new Response(maskFeed(body), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
+  const maskLiterals = (body: string): string => {
+    const o = { literals: secretLiterals(), idKey: true };
+    const deep = (v: unknown): unknown => typeof v === "string" ? redact(v, o) : Array.isArray(v) ? v.map(deep) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deep(x)])) : v;
+    const one = (s: string): string => { try { return JSON.stringify(deep(JSON.parse(s))); } catch { return redact(s, o); } };
+    return /^(data: |: )/.test(body) ? body.split("\n").map((l) => l.startsWith("data: ") ? `data: ${one(l.slice(6))}` : l).join("\n") : one(body);
+  };
   const maskAgain = async (res: Response, epoch: number): Promise<Response> => {
     if (epoch === literalsEpoch || res.body === null || !/^(application\/json|text\/plain)/.test(res.headers.get("content-type") ?? "")) return res;
     let text = await res.text();
     for (let round = 0; round < 3 && epoch !== literalsEpoch; round++) {
       epoch = literalsEpoch;
       await freshLiterals();
-      text = maskFeed(text);
+      text = maskLiterals(text);
     }
     if (epoch !== literalsEpoch) return json({ error: "internal error" }, 500);
     const headers = new Headers(res.headers);
@@ -679,7 +685,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         let chunk = next.value;
         if (openedAt !== literalsEpoch) {
           await freshLiterals();
-          chunk = enc.encode(maskFeed(dec.decode(chunk)));
+          chunk = enc.encode(maskLiterals(dec.decode(chunk)));
         }
         c.enqueue(chunk);
       },
