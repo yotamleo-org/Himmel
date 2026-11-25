@@ -260,6 +260,17 @@ test('sweep-restores-orphaned-old-tree', OPTS, async t => {
   assert.equal(r.stdout, 'SERVER-UP\n');
 });
 
+test('sweep-keeps-old-tree-when-restore-fails', OPTS, async t => {
+  const { sweep } = await importEnsure();
+  const dir = tmpRoot(t, 'bus-sweep-');
+  const dead = spawnSync(process.execPath, ['-e', '0']).pid;
+  const old = join(dir, `.ensure-deps.old.${dead}`);
+  writeTree(old, STALE);
+  const fsImpl = { ...fs, renameSync: () => { throw Object.assign(new Error('denied'), { code: 'EACCES' }); } };
+  sweep(dir, fsImpl);
+  assert.equal(JSON.parse(fs.readFileSync(join(old, PKG.server, 'package.json'), 'utf8')).version, '2.3.1');
+});
+
 function swapFixture(t, live) {
   const dir = tmpRoot(t, 'bus-swap-');
   fs.writeFileSync(join(dir, 'package-lock.json'), JSON.stringify(LOCK));

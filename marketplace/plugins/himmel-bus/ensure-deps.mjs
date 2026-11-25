@@ -56,9 +56,9 @@ export function swap(dir, stage, pid, fsImpl = fs) {
   return done('swapped');
 }
 
-function sweep(dir) {
+export function sweep(dir, fsImpl = fs) {
   const live = path.join(dir, 'node_modules');
-  for (const name of fs.readdirSync(dir)) {
+  for (const name of fsImpl.readdirSync(dir)) {
     const m = /^\.ensure-deps\.(?:stage|old)\.(\d+)$/.exec(name);
     if (!m) continue;
     const pid = Number(m[1]);
@@ -68,10 +68,11 @@ function sweep(dir) {
     }
     if (!dead) continue;
     const target = path.join(dir, name);
-    if (name.startsWith('.ensure-deps.old.') && !fs.existsSync(live)) {
-      try { fs.renameSync(target, live); continue; } catch {}
+    if (name.startsWith('.ensure-deps.old.') && !fsImpl.existsSync(live)) {
+      try { fsImpl.renameSync(target, live); } catch {}
+      continue;
     }
-    quietRm(fs, target);
+    quietRm(fsImpl, target);
   }
 }
 
