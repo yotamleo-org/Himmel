@@ -2,9 +2,6 @@
 # review-round.sh promote over a finding row with a blank head.
 # Scratch repo and scratch ledger only; the real ledger is never touched.
 # Bash 3.2-safe; no network.
-# The start-bounded rows set PATH and TMPDIR for one start inside a subshell on purpose, pass a
-# single-quoted script to bash -c, and glob a temp dir with ls: each is the intended shape.
-# shellcheck disable=SC2030,SC2031,SC2016,SC2012
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -547,8 +544,10 @@ rr_run_to() {
     t0="$(date +%s)"
     (
         cd "$repo" || exit 1
+        # shellcheck disable=SC2030
         export PATH="$sb:$PATH" TMPDIR="$RRTMP" RR_ERRF="$tmp/rr.err"
         : > "$RR_ERRF"
+        # shellcheck disable=SC2016
         qmd_bounded "$secs" bash -c 'x="$(bash "$0" start "$@" 2>"$RR_ERRF")"; rc=$?; printf %s "$x"; exit "$rc"' "$RR" "$@"
     ) > "$tmp/rr.out" 2>/dev/null
     printf '%s\n' "$?" > "$tmp/rr.rc"
@@ -560,6 +559,7 @@ assert_under() { if [ "$1" -lt "$2" ]; then pass "$3"; else fail "$3 (took ${1}s
 assert_nonempty() { if [ -n "$1" ]; then pass "$2"; else fail "$2 (empty)"; fi; }
 assert_gone() { if pgrep -f "rr-stub-$RR_STUB_TAG" >/dev/null 2>&1; then fail "$1 (a stub process is still running)"; else pass "$1"; fi; }
 rr_sig_run() {
+    # shellcheck disable=SC2031
     ( cd "$repo" && PATH="$sb:$PATH" TMPDIR="$RRTMP" RR_STUB_NODE=hang exec bash "$RR" start --branch "$rb" --head "$head_b" >"$tmp/sg.out" 2>"$tmp/sg.err" ) &
     sg_pid=$!
     rr_wait_tag
@@ -572,6 +572,7 @@ rr_sig_run() {
 rr_stop_run() {
     local o i=0 d f="$3" pair=0
     rm -rf "$RRTMP"/review-round-start.*
+    # shellcheck disable=SC2031
     ( cd "$repo" && PATH="$sb:$PATH" TMPDIR="$RRTMP" CR_REVIEW_START_TIMEOUT_SECS="$B" exec bash "$RR" start --branch "$1" --head "$2" >"$tmp/ss.out" 2>"$tmp/ss.err" ) &
     o=$!
     ss_paired=0
@@ -865,6 +866,7 @@ rr_begin "$row"
 rr_restore
 (cd "$repo" && bash "$RR" start --branch "$rb" --head "$head_b" >"$tmp/ns.ref.out" 2>"$tmp/ns.ref.err"); ref_rc=$?
 rr_restore
+# shellcheck disable=SC2031
 (cd "$repo" && PATH="$sb:$PATH" RR_STUB_PS=fail-ppid bash "$RR" start --branch "$rb" --head "$head_b" >"$tmp/ns.out" 2>"$tmp/ns.err"); ns_rc=$?
 assert_eq "$ns_rc" "$ref_rc" "$row: the exit code is the plain start's"
 if cmp -s "$tmp/ns.out" "$tmp/ns.ref.out"; then pass "$row: stdout is the plain start's"; else fail "$row: stdout differs from the plain start"; fi
@@ -900,6 +902,7 @@ done
 rr_end
 
 row=start-bounded-no-temp-left
+# shellcheck disable=SC2012
 left="$(ls -d "$RRTMP"/review-round-start.* 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "$left" "0" "$row: no review-round-start directory is left after the success, refusal and signal rows"
 
