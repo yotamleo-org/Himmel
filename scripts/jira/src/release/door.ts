@@ -1,6 +1,6 @@
 import type { Judge, JudgeInput, RefuseDecision, RuledDecision, QueuedRequest } from './engine.js';
 import { operatorAsk } from './operator-work.js';
-import { placeByRules, type Placement, type Rule, type TicketIn } from './filing-rules.js';
+import { isResidual, placeByRules, type Placement, type Rule, type TicketIn } from './filing-rules.js';
 import { effectOn, terminalOf } from './reducer.js';
 import type { IssueSnap, Op, OperatorRow, RequestRow, RulingRow, Verb } from './types.js';
 
@@ -114,7 +114,9 @@ function ticketOf(b: Base): TicketIn {
   const C = input.current;
   const declared = (v: string | null): v is string => v !== null && input.versions.includes(v);
   const chief = e.chief_placement as { reason?: unknown } | undefined;
-  const labels = snap?.labels ?? [];
+  const marked = typeof e.rule === 'string' && e.rule.includes('residual-label:');
+  const held = snap?.labels ?? [];
+  const labels = marked && !isResidual(held) ? [...held, 'residual-depth-0'] : held;
   const gate = typeof e.rule === 'string' ? GATE_RULE.exec(e.rule)?.[1] : undefined;
   return {
     priority: snap?.priority ?? '', labels, type: snap?.type ?? '', statusCategory: snap?.statusCategory ?? null,

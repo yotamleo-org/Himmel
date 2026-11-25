@@ -369,6 +369,12 @@ describe('rule L in the door (R36, R41)', () => {
     expect(placed(one(gate(['residual']).s, g.q, { frozen: false }))).toEqual(L('door:label:gate-critical'));
   });
 
+  it('a residual-label mark in the evidence keeps a gated residual out of current even with no snapshot for the key (I3, R33)', () => {
+    const q = req('K-2', { evidence: { rule: 'rules:residual-label:gate-critical' } });
+    expect(placed(decide(input({ issues: [], frozen: false }), q))).toEqual(MILD);
+    expect(placed(decide(input({ issues: [snap('K-2', low)], frozen: false }), q))).toEqual(MILD);
+  });
+
   it('a REVERSION toward current never runs L: the ruling is the one main gives (R41)', () => {
     const q = { verb: 'REVERSION' as const, from_v: N, to_v: C };
     expect(placed(one({ ...label(), fixVersions: [N] }, q, { frozen: false }))).toEqual({ outcome: 'KEEP', op: 'keep', from: N, to: N, ground: `door:target:${N}` });
