@@ -45,7 +45,8 @@
 # than <days> days; year ...)`, N counting every ruling in force. check takes no window from that
 # head: an in-force ruling that is not a row, in a fold or on the Older line is MISSING, COUNT
 # older is printed when <O> is not the number of Older entries, and check --recent <days> also
-# prints RECENT <id> for an Older entry dated inside the window.
+# prints RECENT <id> for an Older entry dated inside the window; FOLDED <id> marks an Older entry
+# whose topic fold holds it.
 # To read an old ruling in the block, fold it: `record --id <N> --status in-force --topic <word>`
 # on its newest row, one word shared by the two or more rulings that say one thing.
 #
@@ -435,6 +436,8 @@ def problems(blk, before_src, nofile):
         r = rows[n]
         if older is not None:
             older_ids.append(n)
+            if topic_of(r) and sum(1 for m in live if topic_of(rows[m]) == topic_of(r)) > 1:
+                out.append("FOLDED %d" % n)
             if older != first_word(r["line"]):
                 out.append("READING %d" % n)
             if recent and r["date"] >= cutoff(int(recent)):

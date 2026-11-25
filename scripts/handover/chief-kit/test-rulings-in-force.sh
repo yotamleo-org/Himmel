@@ -424,6 +424,8 @@ same "window: check reports one ruling dropped from the Older line" "$(wchk "$(p
 same "window: check does not trust the window size its own head line states" "$(wchk "$(printf '%s\n' "$wout" | sed -e '/^Older in force: /d' -e 's/, 2 older than 7 days/, 2 older than 1 days/')" | grep -cE '^MISSING 99[37]$')" "2"
 same "window: check --recent reports a ruling of the window sitting on the Older line" "$(wchk "$(printf '%s\n' "$wout" | sed -e '/^991 /d' -e 's/^Older in force: 997 ruling, 993 older$/Older in force: 997 ruling, 993 older, 991 recent/')" --recent 7 | grep -c '^RECENT 991$')" "1"
 same "window: check reports an Older line reading that is not the ruling's first word" "$(wchk "$(printf '%s\n' "$wout" | sed 's/997 ruling/997 wrong/')" | grep -c '^READING 997$')" "1"
+same "window: check reports a folded ruling moved onto the Older line" "$(wchk "$(printf '%s\n' "$wout" | sed -e '/^wintopic: /d' -e 's/^Older in force: 997 ruling, 993 older$/Older in force: 997 ruling, 995 older, 994 older, 993 older/' -e 's/, 2 older than 7 days/, 4 older than 7 days/')" | grep -cE '^FOLDED 99[45]$')" "2"
+unset RULINGS_IN_FORCE_TODAY
 U="$W/utc"; UD="$U/specs/decisions"; mkdir -p "$UD"
 printf 'OPERATOR words of ruling 981.\n' > "$UD/verbatim-decision-981-x.txt"
 printf 'OPERATOR words of ruling 982.\n' > "$UD/verbatim-decision-982-x.txt"
