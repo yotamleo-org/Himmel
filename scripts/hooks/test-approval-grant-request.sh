@@ -237,6 +237,11 @@ run Bash "$CMD"
 check "no chief, the session is a chief: the grant is filed" "-n /usr/local/libexec/himmel/afk-sudo grant-request --session=S1 --cwd=/w --why=[Code from External] fetches a package --desc=" "$CALLS"
 has "no chief, the session is a chief: the card names it as session and chief" "session boss-chief · chief boss-chief" "$SENT"
 quiet "a chief's own ask"
+: > "$TMP/bridge/consoles/boss2-chief.md"
+printf 'boss2-chief\n' > "$TMP/bridge/consoles/boss-chief.md.handover"
+run Bash "$CMD"
+has "RED HIMMEL-10845: a chief that handed over names its successor as chief" "session boss-chief · chief boss2-chief" "$SENT"
+rm -f "$TMP/bridge/consoles/boss-chief.md.handover" "$TMP/bridge/consoles/boss2-chief.md"
 
 CHIEF_ENV='' SESSION_N_NAME=worker-x
 run Bash "$CMD"

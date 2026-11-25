@@ -119,7 +119,7 @@ chief=${HIMMEL_CONSOLE_NAME:-}
 if [ -n "$chief" ]; then
     name_ok "$chief" && chief=$(current_chief "$chief")
 elif [ -n "$sname" ] && [ -f "$CONSOLES/$sname.md" ]; then
-    chief=$sname
+    chief=$(current_chief "$sname")
 else
     grants_on && notify "AFK grant from session $who refused, no ask was sent: the session has no chief to route the ask to, so the denied call \`$head\` [$category] was not filed"
     exit 0
