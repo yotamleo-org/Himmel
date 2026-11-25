@@ -359,6 +359,16 @@
       }
     },
     {
+      "kind": "cadence:qmd-outage",
+      "class": "monitor",
+      "sender": "scripts/himmel-doctor.sh",
+      "on-alert": {
+        "do": "escalate",
+        "to": "chief",
+        "reason": "no allow-listed repair exists for this fault, and a guessed command is outside the mapped path"
+      }
+    },
+    {
       "kind": "cadence:qmd-reindex",
       "class": "monitor",
       "sender": "scripts/luna/qmd-cadence.sh",

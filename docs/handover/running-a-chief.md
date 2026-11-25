@@ -921,34 +921,23 @@ comment-only commit is written with
 keeps naming the judged head and carries a signed `reviewed-head:` line, and any
 other delta is refused with nothing written.
 
-**An oversized PR is split by default; keeping it whole is a recorded ruling.**
-A PR over the soft size band (`scripts/ci/pr-size-bands.tsv`) that
-stops at `/pr-check` exit 8 is split into smaller PRs, not given another round.
-With `pr_size_gate` on, `gen-briefs.py` also refuses a brief whose Writes project
-past the hard file max, and every such refusal and every `"bulk": "mechanical"` use
-writes a `SIZE-ESCALATE` row to `<handover root>/.locks/size-escalate.tsv` and wakes
-you as `WAKE size rows=<n>` with the new rows. Read each row and rule: **split** the
-ticket (the default), **keep it whole** by signing the reason, or **escalate**. To
-keep it whole, run the `size-override.sh record <KEY> <label> --files <n> --reason "<why a
-split is worse>"` line the refusal prints; gen-briefs then accepts that worker's brief
-for that exact file count, however often you re-run it; a change to the Writes list
-that moves the count needs a new record. Only the chief signs it: a worker or relay is refused (exit 3),
-and an unsigned or hand-written row is not read. **Escalate to the operator, never
-override alone,** a trust-path brief over the soft band, a brief past the 300-file
-CodeRabbit cap, and one past the 1500-line max: `size-override.sh` refuses to record
-these (exit 4). `gen-briefs.py` refuses the first two whatever rows exist, and
-`"bulk": "mechanical"` does not lift them; it skips only the bands you can rule. The
-line limit binds only when a line count is declared (`record --lines`): a brief has no
-line count before the code exists, so `gen-briefs.py` never computes one. For a
-trust-path brief of 21 to 300 files, send the operator the lines the refusal prints:
-the Telegram line (`/op size-approval …`) inside a code span, so a tap copies it, and
-the terminal line (`size-override.sh operator …`) for a plain terminal. The operator
-copies the Telegram line into a new message; a forwarded one is refused with no reply.
-Never run either line yourself: the approval needs the operator's nonce and code, and
-root writes it (`docs/internals/afk-sudo.md`, the `size-approval` op). It binds that
-worker's file count and file-list digest for 7 days. When the refusal says an approval
-covers another list, re-run at the base the approval was given for, or send the new
-lines. Past the 300-file cap there is no approval: split the ticket.
+**An oversized brief or PR is yours to rule; no count refuses work.** `/pr-check` exit 8 is the
+round cap, not a size check: take it to a judge, and split the PR only when you or the judge decide to.
+`gen-briefs.py` writes every brief. One whose Writes project past the hard file band
+(`scripts/ci/pr-size-bands.tsv`), past the soft band on a trust path, that cannot be projected, or that
+carries `"bulk": "mechanical"` also writes an `estimate` or `bulk` `SIZE-ESCALATE` row to
+`<handover root>/.locks/size-escalate.tsv`. `worker-pr-open.sh` measures the real diff on every run,
+puts one `pr-size:` line in the PR body, and past the hard or CodeRabbit band writes a `real` row,
+whatever the brief projected. Each new row wakes you as `WAKE size rows=<n>`, once per kind, key, worker,
+band and branch. Read each row and rule: **split** the ticket or PR (the default), or **keep it whole**
+by signing the reason with `size-override.sh record <KEY> <label> --files <n> --reason "<why a split is
+worse>"`; gen-briefs then accepts that worker's brief for that exact file count, however often you re-run
+it, and writes no row for it; a change to the Writes list that moves the count needs a new record. Only
+the chief signs it: a worker or relay is refused (exit 3), and an unsigned or hand-written row is not
+read. Every case is yours, a trust-path brief, one past 300 files and one past 1500 declared lines
+(`record --lines`) included; nothing goes to the operator. A PR past 300 files opens and CodeRabbit skips
+it, and `gh pr diff` fails on it with HTTP 406, so a judge of one that stays whole reads its files through
+the paginated files API.
 
 ### A denied write: HOLD-ASK and the write barrier
 
@@ -1527,6 +1516,63 @@ its subagent children too.
   chief-role thread holding any linked PR, open or merged (report only, never
   woken).
   `keepalive.sh` runs it with `--wake` every 15 polls (about 5 minutes).
+
+### A worker in a T3 thread reaches the chief: no relay thread
+
+A worker in a T3 thread reaches the chief through the channel every non-native worker
+already uses: marker bullets written with `append-results.sh` into a handover doc listed
+in the chief's fleet manifest. The waiter wakes the chief on READY, BLOCKED, FINDING and
+request bullets (`WAKE worker-ready`, `worker-blocked`, `worker-finding`,
+`worker-request`). **No relay thread or relay session is needed**: the hand-briefed
+"T3 relay (light)" threads are not part of this path.
+
+- **Turning it on is one field, off by default.** The operator lists base instance ids
+  in `~/.himmel/config.json`, beside `.t3.instance_allowlist`:
+  `{"t3": {"relay_instances": ["claudeAgent_worker-impl", "antigravity"]}}`. Run
+  `himmel-update` (it runs `provider-instances.sh --apply`) and T3 offers a
+  "<name> + chief relay" copy of each listed instance
+  ([`t3-provider-instances.md`](../internals/t3-provider-instances.md)). Starting a thread
+  on that copy is the one click. With the field absent or `[]` nothing is generated, the
+  binder exits before any T3 call, and nothing is bound. Turning the field off stops new
+  binds only: a bound thread stays until `relay-bind.sh unbind` or it ages out.
+- **Path A, a thread you launch for a ticket: prepare, launch, attach.**
+  1. `bash scripts/t3/relay-bind.sh prepare --manifest <chief>.fleet.json --ticket <KEY-n>
+     --label N<k> --slug <slug> --writes <file>...` writes the thread's doc beside the
+     manifest (`<KEY>-N<k>-t3-<slug>-<date>.md`), adds its `t3` lane row, and prints the
+     command block for the brief.
+  2. Launch the thread on its `_relay` instance through the guarded `mcp__t3-code__`
+     launch tool (the chief session must have it), with the brief and that command
+     block as its first message. Never use Bash `t3 thread start`.
+  3. `bash scripts/t3/relay-bind.sh attach --manifest <m> --doc <doc> --thread <threadId>`
+     records the threadId the launch returned.
+  The row then wakes like any worker's: `WAKE worker-ready <label> pr=<n> head=<head>`,
+  `worker-blocked`, `worker-finding`, `worker-request`.
+- **Path B, a thread the operator opens on a "+ chief relay" instance.** The waiter runs
+  `relay-bind.sh scan` once per `CHIEF_WAIT_T3_RELAY_SEC` (default 120) and binds an idle
+  thread: it writes a `T3ASK-<id>-<date>.md` doc, adds an `ask` row and sends the thread
+  the doc path. A bound thread is for asks; ticket work goes through path A. `BOUND` and
+  `UNBOUND` join the housekeeping digest as kind `t3-relay`. These wake once as
+  `WAKE t3-relay <kind> <threadId|list|stem>`: `ask-thread-pr` (an ask thread now has a
+  linked PR), `bind-gave-up`, `bind-refused`, `owner-taken`, and `list-failed` (three
+  `t3 thread list` failures in a row).
+- **An ask row takes no READY or resolve action.** A `READY` or `BLOCKED resolve` bullet
+  on an `ask` row prints `WAKE t3-relay ask-ready <label>` or `ask-resolve <label>` and
+  nothing runs: no ready-check, no worker-event, no auto-go, with auto_go on or off. A
+  question (`LIVE QUESTION`), BLOCKED or FINDING still wakes you as usual.
+- **Reply with `t3-send.sh`.** Answer a thread with
+  `bash scripts/t3/t3-send.sh <threadId> <msg-file>`, by threadId. It is information
+  only: never a GO, a RETASK or a token. A halt or a narrowing needs no token and may go
+  this way. You merge a T3 worker's PR yourself, so no GO has to reach the thread (a
+  `t3` READY is escalated by auto-go, never merged).
+- **Ownership follows the live chief.** One chief binds path B at a time. The owner is
+  the chief whose queue lock is held; when it is released or gone, the next chief to run
+  a scan takes over by itself and prints `OWNER-TAKEN`. A manifest that descends from the
+  old owner inherits its bindings; a sibling chief takes binding rights only, with no
+  rows. A chief that is not the owner gets no bind (the waiter stays silent). Path A
+  needs no ownership.
+- **Act only on the stem ticket's PR.** A path A thread may open a PR only for the ticket
+  key in its doc stem. Merge or review only a PR whose title carries that key; any other
+  PR a T3 thread opens is not yours to act on.
 
 ## See also
 

@@ -301,10 +301,15 @@ def sev_of($t): if ($t|test("Critical")) then "crit" elif ($t|test("Major")) the
     elif (.cur != null and ($l | test("cr-comment:v1:[A-Za-z0-9]+|^---+[ ]*$"))) then
         .cur = null
     else . end ) ) as $fu
-| ( reduce $L[] as $l ({on:false, hdr:0, file:null, cur:null, items:[]};
+| ( reduce range(($L | length) - 1; -1; -1) as $i ({st:false, out:[]};
+    .out[$i] = .st
+    | if ($L[$i] | test("comments? [(][0-9]+[)]|Prompt (?:for all|to fix) review comments")) then .st = false
+      elif ($L[$i] | test("^<summary>[^<]+ [(][0-9]+[)]</summary>") or test(sev_ent_re)) then .st = true
+      else . end ) | .out ) as $more
+| ( reduce ($L | to_entries[]) as {key: $i, value: $l} ({on:false, hdr:0, file:null, cur:null, items:[]};
     if ($l | test(sev_hdr_re)) then
         .on = true | .hdr += ($l | [ scan(sev_hdr_re) ] | .[0][1] | tonumber) | .file = null | .cur = null
-    elif (.on and ($l | test("^---+[ ]*$"))) then
+    elif (.on and ($l | test("^---+[ ]*$")) and ($more[$i] | not)) then
         .on = false | .cur = null
     elif (.on | not) then .
     elif ($l | test("^<summary>[^<]+ [(][0-9]+[)]</summary>")) then

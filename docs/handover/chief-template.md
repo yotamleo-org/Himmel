@@ -157,12 +157,12 @@ Decision 850: only `ciguard=OVER:concurrent-jobs` holds a dispatch (`monitors.md
    `bash {{REPO}}/scripts/lib/qmd-bounded.sh query -c luna "prior art"`.
 2. **Collision check:** queued workers' files must be disjoint (**single-writer**).
 3. **Name an explicit model**; raise *effort* before tier.
-4. Launch: `setsid nohup bash "{{KIT}}/headed-arm-worker.sh" --profile worker-impl
+4. Launch: `setsid nohup bash "{{KIT}}/headed-arm-worker.sh" --profile worker-impl --fleet "<this file's stem>.fleet.json"
    <session-name> "<brief>" <signal-file> <deadline-epoch> <log> <model>
-   >/dev/null 2>&1 &` — headed;
-   `--profile` is required (else exit 2; `--no-profile` when the brief
-   pastes the preface). The launcher exports
-   `HIMMEL_CONSOLE_NAME` (or `--chief <name>`) to route alerts here.
+   >>"<log>.launcher.out" 2>&1 &`. Then touch `<signal-file>` and run
+   `bash "{{KIT}}/launch-confirm.sh" <session-name> <log>`. Never report the
+   worker as running until it prints `LAUNCH-CONFIRMED`. A refusal lands as a
+   `LAUNCH-REFUSED` line in `<log>` and in this inbox. `--no-profile` replaces `--profile` when the brief pastes the preface.
 5. Record the launch log path.
 6. File every follow-up with `jira create --follow-up-of <KEY>`.
 
@@ -195,11 +195,7 @@ matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs adversarial review 
 `bash scripts/handover/chief-kit/go.sh --trust-reviewed <qid> <pr> <head>` (a plain `go.sh` GO exits 8; `merge-on-green.sh` refuses an ordinary GO with exit 21). Tag cuts and the
 merged-docs list: `chief-sections/merges.md`.
 
-**An unlisted outside author's PR walks a staged path** at its exact head `H` (a new head restarts it; a listed
-author starts at 3): 1. CodeRabbit `success` and CI green but the code-owner gate; 2. from the primary,
-`outside-security-audit.sh --pr <n> --head <H>` (a `fail` is final at `H`); 3. `outside-approve-request` with the
-CodeRabbit status, CI run ids, verdict, hard hits, counts, dropped bullets and report path; 4. `/pr-check --pr <n>`
-to item 16; 5. the code-owner approval last. Detail: `docs/internals/validation-gates.md`.
+**An unlisted outside author's PR walks a staged path** (five steps; a new head restarts it): `chief-sections/merges.md`.
 
 **19. suite evidence.** Every impacted suite of `origin/main..<head>` needs proof at the
 exact head: `local_pass` or a ruled SKIP in the head's `impacted` ledger row, or a `ran 0 <path>`
