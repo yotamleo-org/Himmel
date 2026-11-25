@@ -231,6 +231,14 @@ env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" release "$CSUCC" "$ctok" 
 bash "$HERE/fleet-manifest.sh" remove "${CSUCC%.md}.fleet.json" "$ROOT/DEMO-32-N32-worker.md" >/dev/null 2>&1
 cout2="$(bash "$AZ" --doc "$CSUCC" --root "$ROOT" --acquire --lock-only 2>&1)"
 check "a second acquire runs no CARRY" "0" "$(printf '%s\n' "$cout2" | grep -c '^== CARRY')"
+FPRED="$ROOT/DEMO-nextleg-2026-11-25C-chief.md"; FSUCC="$ROOT/DEMO-nextleg-2026-11-25D-chief.md"
+printf '# chief\n\n## Live state\nworkers: none\n' > "$FSUCC"
+: > "$ROOT/DEMO-34-N34-worker.md"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N34","lane":"native","arm":"999k","added":"2026-11-25T04:27:00Z"}]}\n' "$ROOT/DEMO-34-N34-worker.md" > "${FPRED%.md}.fleet.json"
+printf '{"schema":1,"carried_from":"%s","carried_at":"2026-11-25T04:26:00Z","workers":[]}\n' "${FPRED%.md}.fleet.json" > "${FSUCC%.md}.fleet.json"
+fout="$(bash "$AZ" --doc "$FSUCC" --root "$ROOT" --acquire --lock-only 2>&1)"
+check "a row whose add fails is printed as not carried" "1" "$(printf '%s\n' "$fout" | grep -c '^NOT carried N34 ')"
+check "a failed add leaves no carried record, so the next acquire retries" "no" "$([ -e "${FSUCC%.md}.fleet.json.carried" ] && echo yes || echo no)"
 check "a carried row removed later is not carried back" "0" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

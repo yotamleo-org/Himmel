@@ -32,7 +32,8 @@
 #           after the copy whose doc this manifest lacks (a launch that landed after
 #           the copy) is added through fleet-manifest.sh add, lane, lockless and arm
 #           kept, one `carried <label> <doc>` line each. <manifest>.carried records
-#           that it ran, so a row removed later is never carried back.
+#           that every row was carried, so a row removed later is never carried
+#           back; a failed add leaves no record, and the next --acquire retries it.
 #
 # --lock-only runs the LOCK section (and CARRY) alone: the successor's one call once
 # `chief.sh next` has pre-computed the other sections into its doc.
@@ -88,7 +89,7 @@ bounded() {
 }
 
 carry_late_rows() {
-    local smanifest="${doc%.md}.fleet.json" pmanifest="" carried_at late ncarry cdoc clabel clane cll carm cargs
+    local smanifest="${doc%.md}.fleet.json" pmanifest="" carried_at late ncarry nfail cdoc clabel clane cll carm cargs
     [ -f "$smanifest" ] && [ ! -e "$smanifest.carried" ] || return 0
     pmanifest="$(jq -r '.carried_from // empty' "$smanifest" 2>/dev/null)" || pmanifest=""  # swallow-ok: an unreadable manifest names no predecessor, the CARRY section is skipped
     [ -n "$pmanifest" ] || return 0
@@ -98,7 +99,7 @@ carry_late_rows() {
             | (.workers // .legs // [])[] | objects
             | select($t != "" and (.added // "") >= $t and ((.doc // "") as $d | $d != "" and (any($have[]; . == $d) | not)))
             | [.doc, .label // "-", .lane // "native", (if .lockless == true then "1" else "0" end), .arm // "-"] | @tsv' "$pmanifest" 2>/dev/null)"; then
-        ncarry=0
+        ncarry=0; nfail=0
         while IFS=$'\t' read -r cdoc clabel clane cll carm; do
             [ -n "$cdoc" ] || continue
             cargs=(add "$smanifest" "$cdoc" --lane "$clane")
@@ -108,13 +109,16 @@ carry_late_rows() {
                 echo "carried $clabel $cdoc"
             else
                 echo "NOT carried $clabel $cdoc: add it with fleet-manifest.sh add --lane $clane"
+                nfail=$((nfail + 1))
             fi
             ncarry=$((ncarry + 1))
         done <<EOF
 $late
 EOF
         [ "$ncarry" -gt 0 ] || echo "none"
-        date -u +%Y-%m-%dT%H:%M:%SZ > "$smanifest.carried" || echo "warning: could not write $smanifest.carried; a later --acquire would carry again"
+        if [ "$nfail" -eq 0 ]; then
+            date -u +%Y-%m-%dT%H:%M:%SZ > "$smanifest.carried" || echo "warning: could not write $smanifest.carried; a later --acquire would carry again"
+        fi
         [ "$ncarry" -eq 0 ] || echo "re-render the workers: line with live-state.sh to list them"
     else
         echo "unavailable (cannot read $pmanifest or the carried_at of $smanifest): diff them by hand"

@@ -53,7 +53,8 @@
 # 6 `next` refused: a Results bullet quotes an operator ruling (verbatim) that
 # the decisions: line does not hold; 7 `next` refused: the outgoing doc has no
 # real `## Current direction` block; 10 `next` refused: a launch still writes to the
-# predecessor's fleet manifest after the CHIEF_NEXT_LAUNCH_WAIT wait; 18 `--project` refused: the project folder would not load the
+# predecessor's fleet manifest after the CHIEF_NEXT_LAUNCH_WAIT wait, or that manifest
+# is unreadable; 18 `--project` refused: the project folder would not load the
 # himmel guard hooks (UNGUARDED_LAUNCH_OK=1 in the launching shell starts it with one WARN).
 #
 # Platform guard: POSIX bash 3.2+; --arm launches through
