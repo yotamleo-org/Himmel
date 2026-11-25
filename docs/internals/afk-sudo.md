@@ -351,10 +351,11 @@ approval, and the worker's retry passes the classifier for that one call.
      refusal): one line through the bridge outbox as kind `afk-grant-refused`, also
      appended to the chief's bridge inbox: "AFK grant refused, no ask was sent and
      nothing ran: session <S> (chief <C>) had <head> refused by the classifier as
-     [<category>]; <why>", the head in backticks. `<head>` is the program's basename (plus the next word's for a
-     runner such as bash or npx), never an argument. A never-remote result says its rule
-     and that the call can never be approved from the phone, so the worker must take
-     another route.
+     [<category>]; <why>", the head in backticks. `<head>` is the program's basename
+     (plus the next word's for a runner such as bash or npx, unless that word is a flag
+     or carries a quote), never an argument. A never-remote result says its rule and
+     that the call can never be approved from the phone, so the worker must take another
+     route.
    - no chief: with `HIMMEL_CONSOLE_NAME` unset, a session whose own console inbox
      `~/.claude/handover/bridge/consoles/<its -n name>.md` exists is a chief and routes
      its own ask. Any other session files nothing; it gets one `afk-grant-refused` line

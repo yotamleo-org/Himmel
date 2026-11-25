@@ -23,9 +23,9 @@
 # A refusal (no chief to route the ask, or any helper result but pending) sends one line that
 # says no ask was sent, why in plain words, the classifier category and the command head: the
 # program's basename, plus the next word's for a runner such as bash or npx when that word is
-# no flag and carries no quote or shell character, never an assignment. The line goes through the bridge outbox (merge-block-alert.sh's sender) as
-# kind afk-grant-refused, and into the chief's bridge inbox (consoles/<chief>.md, only if it
-# exists). The chief is the current one: HIMMEL_CONSOLE_NAME names the launching chief, and
+# no flag and carries no quote or shell character, never an assignment. The line goes through
+# the bridge outbox (merge-block-alert.sh's sender) as kind afk-grant-refused, and into the
+# chief's bridge inbox (consoles/<chief>.md, only if it exists). The chief is the current one: HIMMEL_CONSOLE_NAME names the launching chief, and
 # each consoles/<chief>.md.handover marker chief.sh writes at a succession is followed while
 # the successor's inbox exists. The card and the expiry line name that chief too.
 #
