@@ -540,7 +540,8 @@ console.log(found.size === 1 ? [...found][0] : "");
     create_rc=0
     created=$(jira_run create --type Task --title "$jira_title" --labels "$LABEL,standalone" --sector 'Ship loop' \
         --priority "$batch_priority" --project "$JIRA_PROJECT_KEY" --desc-file "$jira_body_file" \
-        --residual-of "$RESIDUAL_OF" --fu-class "$FU_CLASS" ${FU_WHY_ARGS[@]+"${FU_WHY_ARGS[@]}"} --class "$CR_CLASS" 2>"$jira_err_file") || create_rc=$?
+        --residual-of "$RESIDUAL_OF" --fu-class "$FU_CLASS" ${FU_WHY_ARGS[@]+"${FU_WHY_ARGS[@]}"} --class "$CR_CLASS" \
+        --new-reason "file-deferred-issues: deferred findings batch ${batch_marker} of PR #${PR_NUMBER}; its dedupe marker search found no ticket" 2>"$jira_err_file") || create_rc=$?
     create_err=$(cat "$jira_err_file" 2>/dev/null || true)
     rm -f "$jira_err_file" "$jira_body_file"
     dup_key=$(printf '%s\n' "$created" | sed -n 's/^Duplicate \([A-Za-z][A-Za-z0-9]*-[0-9][0-9]*\).*/\1/p' | head -n1)

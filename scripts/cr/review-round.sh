@@ -2999,7 +2999,8 @@ if [ "$auto_defer" -eq 1 ] && [ "$early_close" -eq 1 ]; then
     create_rc=0
     created="$(JIRA_PROJECT_KEY=${residual_parent%%-*} node "$primary_root/scripts/jira/dist/index.js" create \
         --type Task --title "Review follow-ups for $branch" --sector 'Ship loop' --labels standalone \
-        --desc-file "$batch_body" --residual-of "$residual_parent" --fu-class "$batch_class" ${batch_why_args[@]+"${batch_why_args[@]}"})" || create_rc=$?
+        --desc-file "$batch_body" --residual-of "$residual_parent" --fu-class "$batch_class" ${batch_why_args[@]+"${batch_why_args[@]}"} \
+        --new-reason "review-round: early-close batch residual for ${branch} at ${full_head}; no batch key was remembered for this branch")" || create_rc=$?
     rm -f "$batch_body"
     defer_to="$(printf '%s\n' "$created" | sed -nE 's/^Created ([A-Z][A-Z0-9]*-[0-9]+)$/\1/p')"
     if [ "$create_rc" -ne 0 ] || ! [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
@@ -3111,7 +3112,8 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
         created="$(JIRA_PROJECT_KEY=${residual_parent%%-*} node "$primary_root/scripts/jira/dist/index.js" create \
             --type Task --title "Deferred /pr-check finding $finding_id" --sector 'Ship loop' --labels standalone \
             --desc-file "$body_file" \
-            --residual-of "$residual_parent" --fu-class "$fu_class" ${fu_why_args[@]+"${fu_why_args[@]}"} ${class_args[@]+"${class_args[@]}"})" || create_rc=$?
+            --residual-of "$residual_parent" --fu-class "$fu_class" ${fu_why_args[@]+"${fu_why_args[@]}"} ${class_args[@]+"${class_args[@]}"} \
+            --new-reason "review-round: deferred finding ${finding_id} on ${branch} at ${full_head}; one residual per finding")" || create_rc=$?
         if [ -n "$body_tmp" ]; then rm -f "$body_tmp"; fi
         defer_to="$(printf '%s\n' "$created" | sed -nE 's/^Created ([A-Z][A-Z0-9]*-[0-9]+)$/\1/p')"
         if [ "$create_rc" -ne 0 ] || ! [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
