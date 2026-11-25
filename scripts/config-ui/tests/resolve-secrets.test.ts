@@ -116,6 +116,13 @@ test("a hung keyring read ends at the resolver timeout, so a run that waits for 
   expect(Date.now() - t0).toBeLessThan(5_000);
 });
 
+test("HIMMEL_SECRETS_TIMEOUT_MS is taken only as a positive integer up to 2147483647; else the 10 s timeout", async () => {
+  const { timeoutMs } = await import("../../lib/resolve-secrets.mjs");
+  const of = (v?: string) => timeoutMs(v === undefined ? {} : { HIMMEL_SECRETS_TIMEOUT_MS: v });
+  expect([of(), of("-1"), of("0"), of("1.5"), of("abc"), of("Infinity"), of("2147483648")]).toEqual(Array(7).fill(10000));
+  expect([of("1000"), of("2147483647")]).toEqual([1000, 2147483647]);
+});
+
 test("resolveSecretsAsync serves the same names as resolveSecrets and leaves the event loop running", async () => {
   dir = mkdtempSync(join(tmpdir(), "cfgui-rs-"));
   const k = stubKeyring(dir);
