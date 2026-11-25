@@ -1799,6 +1799,60 @@ apply_tty y "$SYSPATH"
 quote_stays "R32 a blank line then a real one" "$TMP/st/.env" "  JIRA_API_TOKEN  secret  stays (it has several entries; keep one)"
 no_item "R32 a blank line then a real one" JIRA_API_TOKEN
 
+fixture_env
+fxput "$TMP/st/.env" "TOK=%s\n%s\nfragQ9x7Tail==\nfragR3k1Tail=\n" "$(canary a)" "$(canary b)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+out=$(bash "$SCRIPT" --dry-run --unowned --env "$TMP/st/.env" 2>&1)
+lacks "N38 the dry run does not print a fragment ending in == as a key" "fragQ9x7Tail" "$out"
+lacks "N38 the dry run does not print a fragment ending in = as a key" "fragR3k1Tail" "$out"
+has "N38 the real key keeps its plan row" "  TOK  unowned  → keyring (you named it)" "$out"
+APPLY_ARGS="-y --unowned" apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N38 the apply exits 0"; else fail "N38 the apply exited $rc: $out"; fi
+lacks "N38 the apply does not print a fragment as a key" "fragQ9x7Tail" "$out"
+lacks "N38 the apply does not print a fragment ending in = as a key" "fragR3k1Tail" "$out"
+no_item "N38 a fragment" fragQ9x7Tail
+no_item "N38 a fragment ending in =" fragR3k1Tail
+has "N38 the fragment line stays in .env" "fragQ9x7Tail==" "$(cat "$TMP/st/.env")"
+no_canary "N38 no value printed" "$out"
+fixture_env
+fxput "$TMP/st/.env" 'UNREAD_SECRET=%s\nUNREAD_SECRET="%s\n%s"\n' "$(canary a)" "$(canary b)" "$(canary c)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "$SYSPATH"
+quote_stays "N39 a later several-line duplicate, keyring" "$TMP/st/.env" "  UNREAD_SECRET  secret  stays (it has several entries; keep one)"
+no_item "N39 a later several-line duplicate, keyring" UNREAD_SECRET
+fixture_env
+mkdir -p "$HOME/.config/secrets"
+fxput "$store" 'UNREAD_SECRET=%s\nUNREAD_SECRET="%s\n%s"\n' "$(canary la)" "$(canary lb)" "$(canary lc)"
+chmod 600 "$store"
+cp -p "$store" "$TMP/n39.store"
+grep -v '^UNREAD_SECRET=' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
+has "N39 the legacy file's duplicate has a plan row that says it stays" "  UNREAD_SECRET  secret  stays (it has several entries in ~/.config/secrets/himmel.env; keep one)" "$out"
+no_canary "N39 no value printed" "$out"
+fixture_env
+mkdir -p "$HOME/.config/secrets"
+fxput "$store" 'JIRA_API_TOKEN=%s\nUNREAD_SECRET=%s\nJIRA_API_TOKEN="%s\n%s"\n' "$(canary j1)" "$(canary u1)" "$(canary j2)" "$(canary j3)"
+chmod 600 "$store"
+cp -p "$store" "$TMP/n40.store"
+grep -v '^UNREAD_SECRET=\|^JIRA_API_TOKEN=' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+apply_tty y "$SYSPATH"
+if [ "$rc" = 0 ]; then pass "N40 a duplicate in the legacy file: the run exits 0"; else fail "N40 the run exited $rc: $out"; fi
+if grep -q 'CANARY-u1' "$KSTUB_STORE" 2>/dev/null; then pass "N40 the other secret reached the keyring"; else fail "N40 the other secret did not move: $out"; fi
+no_item "N40 the key with the several-line duplicate" JIRA_API_TOKEN
+lacks "N40 the moved secret left the legacy file" "UNREAD_SECRET" "$(cat "$store" 2>/dev/null)"
+has "N40 the key with the duplicate keeps its lines" "JIRA_API_TOKEN=CANARY-j1" "$(cat "$store" 2>/dev/null)"
+has "N40 the duplicate keeps its several lines" "CANARY-j3" "$(cat "$store" 2>/dev/null)"
+no_canary "N40 no value printed" "$out"
+kreset
+fxput "$TMP/n40.env" 'READ_SECRET=%s\nUNREAD_SECRET=%s\nREAD_SECRET="%s\n%s"\n' "$(canary d1)" "$(canary d2)" "$(canary d3)" "$(canary d4)"
+n40out=$(bash "$FX/scripts/lib/himmel-secrets" import-env "$TMP/n40.env" 2>&1); n40rc=$?
+if [ "$n40rc" = 0 ]; then pass "N40 import-env on a file with that duplicate exits 0"; else fail "N40 import-env exited $n40rc: $n40out"; fi
+has "N40 import-env stores the other secret" "stored UNREAD_SECRET" "$n40out"
+has "N40 import-env names the key it stopped" "skipped READ_SECRET (it has several entries, one over several lines; keep one)" "$n40out"
+no_item "N40 import-env on the key with the duplicate" READ_SECRET
+no_canary "N40 import-env prints no value" "$n40out"
+
 mkdir -p "$TMP/mvstub"
 cat > "$TMP/mvstub/mv" <<'STUB' || fail "fixture write of the mv stub failed"
 #!/usr/bin/env bash
