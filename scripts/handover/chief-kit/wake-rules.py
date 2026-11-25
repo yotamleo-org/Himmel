@@ -16,13 +16,11 @@ def rules():
 
 
 def rmrun_gap():
-    """TICK_RMRUN_MIN_SECS as the tick reads it: digits only, else the tick's default 600."""
     value = os.getenv('TICK_RMRUN_MIN_SECS', '600')
     return int(value) if re.fullmatch('[0-9]+', value) else 600
 
 
 def remedy_of(doc, release_root):
-    """The persisted operator command; '' when the doc or the record is unreadable or not an object."""
     try:
         release = re.search(r'^release:\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*$', Path(doc).read_text(), re.M) if doc else None
         if not (release and release_root):
@@ -34,7 +32,6 @@ def remedy_of(doc, release_root):
 
 
 def wake_for(row, fields, inbox, doc, release_root, gap, now):
-    """Print this rule's wake and return True when it is due."""
     field, extract, wake, minutes, marker, clears = row
     if marker not in ('station', 'repair', 'rmqueue', 'mon'):
         return False
