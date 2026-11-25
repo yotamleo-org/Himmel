@@ -2739,7 +2739,7 @@ for item in data['legacy_unknown']:
     print('\t'.join(['LEGACY', clean(item.get('doc')), clean(item.get('label')), clean(item.get('attempt_id'))]))
 for item in data['launched']:
     doc = item.get('doc')
-    if not isinstance(doc, str) or '\x00' in doc or not os.path.isfile(doc):
+    if not isinstance(doc, str) or '\x00' in doc or not os.path.isfile(doc) or not os.access(doc, os.R_OK):
         print('\t'.join(['UNREAD', clean(item.get('attempt_id')), clean(item.get('name')), clean(doc)]))
 PY
 )" || picked=$'BAD\tpython3 failed'
