@@ -1138,7 +1138,7 @@ def run(args):
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument('op', choices=['resolve', 'admit', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle', 'ended-attempts', 'unlaunched'])
     parser.add_argument('--doc', default='')
     parser.add_argument('--manifest', default='')
