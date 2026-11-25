@@ -48,7 +48,7 @@ docs_rendered() { (cd "$out/docs" 2>/dev/null && find . -type f | LC_ALL=C sort 
 
 # fresh = the inputs (the generator included, via plan_docs.py's fingerprint) match AND graph.json and exactly the recorded docs still exist
 fresh=0
-if [ "$want" = "$have" ] && [ -d "$out/docs" ] && [ -f "$out/graph.json" ] \
+if [ "$want" = "$have" ] && [ -d "$out/docs" ] && [ -f "$out/graph.json" ] && [ -f "$out/.rendered" ] \
     && [ "$(docs_manifest)" = "$(cat "$out/.docs" 2>/dev/null || true)" ]; then fresh=1; fi
 if [ "$mode" = check ]; then
     if [ "$fresh" = 1 ]; then echo "plan-index: fresh"; exit 0; fi
