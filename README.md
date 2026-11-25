@@ -26,10 +26,10 @@ go so the safe path is the default path:
 
 | Rung | Layer | What it enforces |
 |---|---|---|
-| **1 · Strongest** | **Structural & runtime hooks** | Block specified risky actions before they execute: worktree isolation (never edit `main`), secret-file read blocks (`.env`, keys), and destructive-command guards (`rm -rf`, `git reset --hard`). |
-| **2 · Deterministic** | **Local git gates + your CI** | Pre-commit, commit-message, and push gates run locally; on GitHub, himmel plugs into your existing CI and blocks Claude Code merges while checks are red or pending. |
-| **3 · Independent** | **Independent review & fleet GO** | A fresh review pass — Codex/GPT for cross-model coverage, or Claude alone once you [turn the required reviewer off](docs/configuration.md#reviewer-modes) — audits the diff; every finding is ruled against code, and in fleet runs the chief signs `GO` for that exact commit. |
-| **4 · Reserved** | **Human judgment (only what's left)** | You own specs, product calls, branch conflicts, and releases — never policing forgotten instructions. |
+| **1** | **Runtime hooks** | Block specified risky actions before they execute: worktree isolation (never edit `main`), secret-file read blocks (`.env`, keys), and destructive-command guards (`rm -rf`, `git reset --hard`). |
+| **2** | **Git gates + your CI** | Pre-commit, commit-message, and push gates run locally; on GitHub, himmel plugs into your existing CI and blocks Claude Code merges while checks are red or pending. |
+| **3** | **Independent review & fleet GO** | A fresh review pass — Codex/GPT for cross-model coverage, or Claude alone once you [turn the required reviewer off](docs/configuration.md#reviewer-modes) — audits the diff; every finding is ruled against code, and in fleet runs the chief signs `GO` for that exact commit. |
+| **4** | **Human judgment** | Reserved for what's left: you own specs, product calls, branch conflicts, and releases — never policing forgotten instructions. |
 
 himmel is most useful when you run parallel sessions, leave work unattended, or
 need decisions to survive session boundaries.
