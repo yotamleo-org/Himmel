@@ -228,13 +228,13 @@ export async function recordAsk(root: string, chat: number, text: string, consol
   } catch (e) { console.error(`[chief-route] ask not recorded: ${e instanceof Error ? e.message : e}`); }
 }
 
-async function bindAsk(root: string, msg: { chat_id: number; reply_to_text?: string }, consoles: string[]): Promise<{ tag: string; close: () => Promise<void> }> {
+async function bindAsk(root: string, msg: { chat_id: number; reply_to_message_id?: number; reply_to_text?: string }, consoles: string[]): Promise<{ tag: string; close: () => Promise<void> }> {
   const none = { tag: "", close: async () => {} };
   try {
     const { asks, answered } = await readAskRows(root);
     const open = asks.filter(a => a.chat === msg.chat_id && !answered.has(a.id) && (a.console === undefined || consoles.includes(a.console)));
     const quoted = msg.reply_to_text ? open.filter(a => sameQuote(a.quote, msg.reply_to_text!)) : [];
-    const pool = quoted.length ? quoted : open;
+    const pool = msg.reply_to_message_id != null ? quoted : open;
     if (pool.length === 1) {
       const id = pool[0].id;
       return { tag: ` answers=${id}`, close: () => appendFile(asksFile(root), JSON.stringify({ answered: id, at: new Date().toISOString() }) + "\n") };

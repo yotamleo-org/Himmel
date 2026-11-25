@@ -8324,6 +8324,24 @@ test("HIMMEL-10935 two open asks that open with the same line stay ambiguous whe
   expect(line).toContain("ambiguous-answer=1,2");
 });
 
+test("HIMMEL-10935 a reply quoting an answered ask binds nothing and leaves the other open ask open", async () => {
+  const r = root(); const f = armInbox(r);
+  await sendAsk(r, ASK_ONE); await sendAsk(r, ASK_TWO);
+  expect(await answer(r, f, "yes", { reply_to_message_id: 9001, reply_to_bot: true, reply_to_text: ASK_ONE })).toContain("answers=1");
+  const late = await answer(r, f, "thanks", { reply_to_message_id: 9001, reply_to_bot: true, reply_to_text: ASK_ONE });
+  expect(late).not.toContain("answers=");
+  expect(await answer(r, f, "yes")).toContain("answers=2");
+});
+
+test("HIMMEL-10935 a reply to a bot message that is no ask binds nothing while one ask is open", async () => {
+  const r = root(); const f = armInbox(r);
+  await sendAsk(r, ASK_ONE);
+  const line = await answer(r, f, "ok", { reply_to_message_id: 9005, reply_to_bot: true, reply_to_text: "Merge refused. Blocks: the merge." });
+  expect(line).toContain("reply_to=9005");
+  expect(line).not.toContain("answers=");
+  expect(await answer(r, f, "yes")).toContain("answers=1");
+});
+
 test("HIMMEL-10935 an ask that lands in a later part of a split reply is recorded as one ask", async () => {
   const r = root(); const f = armInbox(r);
   await sendAsk(r, `${filler(2900)}\n\n${filler(2900)}\n\nNeeds you: sign the notes. Blocks: the cut.`);
