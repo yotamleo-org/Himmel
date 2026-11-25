@@ -146,6 +146,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/../../lib/legacy-names.sh"
 # shellcheck source=../../lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
+# shellcheck source=session-pid.sh
+. "$HERE/session-pid.sh"
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 KILL="${KILL_BIN:-kill}"
 WRAP_SUBTREE_CHECK="${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}"
@@ -700,35 +702,25 @@ fi
 claim_ids=""
 own_claim_ids=""; sib_claim_ids=""
 set_claim_ids() {
-    local d first d_ids
+    local d d_ids
     claim_ids=""; own_claim_ids=""; sib_claim_ids=""
     [ "$CHIEF_MODE" -eq 0 ] || return 0
     for d in "$@"; do
-        IFS= read -r first < "$d" || continue
-        [ "$first" = "---" ] || continue
-        d_ids="$(awk 'NR == 1 { next } /^---$/ { exit } { print }' "$d" | sed -n 's/^session_ids: *//p' | tr ',' '\n' | tr -d ' ' | grep -E '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$')"$'\n'
+        d_ids="$(doc_session_ids "$d")" || continue
+        d_ids="$d_ids"$'\n'
         claim_ids="$claim_ids$d_ids"
         if [ "$d" = "$1" ]; then own_claim_ids="$own_claim_ids$d_ids"; else sib_claim_ids="$sib_claim_ids$d_ids"; fi
     done
 }
 if [ "$PREDECESSOR" -eq 0 ] && [ -n "$SIB_DOC" ]; then set_claim_ids "$DOC" "$SIB_DOC"; else set_claim_ids "$DOC"; fi
 
-proc_start_time() { sed -E 's/^.*\) //' "$1" | awk '{print $20}'; }
-
 pid_proven_by_id() {
-    local pid="$1" ids="${2-$claim_ids}" proc="${CLAUDE_SESSIONS_PROC:-/proc}" cfg="" f rec sid ps st
+    local pid="$1" ids="${2-$claim_ids}" proc="${CLAUDE_SESSIONS_PROC:-/proc}" cfg=""
     [ -n "$ids" ] || return 1
     if [ -r "$proc/$pid/environ" ]; then
         cfg=$(tr '\0' '\n' < "$proc/$pid/environ" | sed -n 's/^CLAUDE_CONFIG_DIR=//p' | head -n 1)
     fi
-    f="${CLOSE_WRAPPED_WORKER_SESSIONS_DIR:-${cfg:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}/sessions}/$pid.json"
-    [ -r "$f" ] || return 1
-    rec=$(jq -r '[.sessionId // "", (.procStart // "" | tostring)] | join(" ")' "$f") || return 1
-    sid="${rec%% *}"; ps="${rec#* }"
-    [ -n "$sid" ] && [ -n "$ps" ] && [ -r "$proc/$pid/stat" ] || return 1
-    grep -qxF -- "$sid" <<< "$ids" || return 1
-    st=$(proc_start_time "$proc/$pid/stat")
-    [ "$st" = "$ps" ]
+    (. "$HERE/session-pid.sh"; pid_proven_by_id "$pid" "$ids" "${cfg:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}" "${CLOSE_WRAPPED_WORKER_SESSIONS_DIR:-}")
 }
 
 pid_is_siblings_window() {
