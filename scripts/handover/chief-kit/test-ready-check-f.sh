@@ -136,8 +136,6 @@ s17_term() {
     printf '%s\n' "$2" > "$S17_SLOW/hold"; rm -f "$S17_SLOW/held"
     s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_DL_SLEEP=20; STUB_DL_STARTED="$tmp/s17-term-started"
     rm -f "$STUB_DL_STARTED" "$S17_TO_PID"
-    # The timeout's own expiry path (SIGALRM) fires the moment the stalled read starts, so the
-    # kill never races the time the run needs to reach item 19; the 120 s is only a backstop.
     ( for _ in $(seq 1 1000); do
         [ -f "$STUB_DL_STARTED" ] && { kill -ALRM "$(cat "$S17_TO_PID")"; exit 0; }
         sleep 0.1
