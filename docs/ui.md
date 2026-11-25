@@ -137,9 +137,10 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
 - **Run it yourself, from a terminal outside Claude.** It refuses to start
   inside a Claude session, except the read-only start below; an agent cannot open the writable UI
   for you. The server runs in the foreground and exits on Ctrl-C or after 30 minutes idle.
-- **One start an agent may make: `himmelctl ui --read-only`.** Inside a Claude session a plain
+- **One start an agent may make: `node scripts/himmelctl/bin.js ui --read-only`, run from the worktree root.** Inside a Claude session a plain
   `--read-only` start works with no override, so a worker can check a page it changed against its own
-  worktree (the always-on service serves main's build, not the worktree's). It serves GET and HEAD only,
+  worktree (the always-on service serves main's build, and the `himmelctl` on your PATH serves the checkout
+  it is installed from; only the worktree's own `bin.js` serves the worktree). It serves GET and HEAD only,
   every other request gets 403, it builds nothing, and it binds `127.0.0.1` on a free port. A start with
   `--port`, `--agui` or `--service`, or without `--read-only`, is still refused there.
 - **The token** rides the URL fragment (`#t=<hex>`), so it is never sent in a
