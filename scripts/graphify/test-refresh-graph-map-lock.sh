@@ -387,6 +387,24 @@ out_i=$( GRAPHIFY_MAP_BIN="$IBIN/graphify" PATH="$IBIN:$PATH" \
   && pass "T3i the failed run exited 2, kept its finished chunk, and promoted no graph" \
   || fail "T3i the failed run should exit 2 and keep its chunk without a graph (got $rc_i): $out_i"
 
+echo "T3j: the usage preflight child sees no CLAUDE_CODE_EFFORT_LEVEL and the graphify spawn gets high"
+T3J="$WS/t3j"; REAL_SCRIPTS="$(cd "$HERE/.." && pwd)"
+mkdir -p "$T3J/root/scripts/lib" "$T3J/corpus/notes" "$T3J/maps" "$T3J/bin"
+for e in "$REAL_SCRIPTS"/*; do [ "${e##*/}" = lib ] || ln -s "$e" "$T3J/root/scripts/"; done
+for e in "$REAL_SCRIPTS"/lib/*; do [ "${e##*/}" = usage-preflight.sh ] || ln -s "$e" "$T3J/root/scripts/lib/"; done
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${CLAUDE_CODE_EFFORT_LEVEL-__UNSET__}" >> "%s"\necho PROCEED\n' "$T3J/preflight.log" > "$T3J/root/scripts/lib/usage-preflight.sh"
+make_stub "$T3J/stub" "J"
+{ printf '#!/usr/bin/env bash\n[ "$1" = "--version" ] || printf "%%s\\n" "${CLAUDE_CODE_EFFORT_LEVEL-__UNSET__}" >> "%s"\n' "$T3J/graphify.log"; tail -n +2 "$T3J/stub/graphify"; } > "$T3J/bin/graphify"
+chmod +x "$T3J/bin/graphify"
+printf '# j\ncontent j\n' > "$T3J/corpus/notes/j.md"
+out_j=$( env -u CLAUDE_CODE_EFFORT_LEVEL GRAPHIFY_MAP_BIN="$T3J/bin/graphify" PATH="$T3J/bin:$PATH" \
+  bash "$T3J/root/scripts/graphify/refresh-graph-map.sh" --name t3j --corpus-root "$T3J/corpus" --backend claude-cli \
+  --maps-dir "$T3J/maps" --title "Lock t3j" --slug t3j-map --corpus-tag t3j 2>&1 ); rc_j=$?
+{ [ "$rc_j" -eq 0 ] && [ "$(sort -u "$T3J/preflight.log" 2>/dev/null)" = "__UNSET__" ] \
+  && [ "$(sort -u "$T3J/graphify.log" 2>/dev/null)" = "high" ]; } \
+  && pass "T3j the preflight child saw no effort level and every graphify spawn got high" \
+  || fail "T3j preflight saw '$(sort -u "$T3J/preflight.log" 2>/dev/null)', graphify saw '$(sort -u "$T3J/graphify.log" 2>/dev/null)' (rc $rc_j): $out_j"
+
 # --- T3e: the T3c helper is bounded. Against a stub that never writes the
 # capped file, the helper must give up on its own (non-zero) once its tries are
 # spent -- never run forever and hang the suite. ---

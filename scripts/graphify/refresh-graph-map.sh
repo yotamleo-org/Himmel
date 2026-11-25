@@ -529,6 +529,7 @@ fi
 # irrelevant there and must not fail an unrelated republish (same DO_UPDATE gating as
 # GRAPHIFY_MAX_CONCURRENCY).
 _TOKEN_BUDGET_ARGS=()
+_GRAPHIFY_ENV=()
 if [ "$DO_EXTRACT" -eq 1 ]; then
   if [ "$GRAPHIFY_BACKEND" = "claude-cli" ]; then
     GRAPHIFY_API_TIMEOUT="${GRAPHIFY_API_TIMEOUT-900}"
@@ -555,8 +556,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
     # so `high` is the default. `-high` (unset-only): an operator
     # override wins; an explicitly-empty value falls back to the CLI's own
     # default (the CLI ignores an empty/unknown value with a warning).
-    CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL-high}"
-    export CLAUDE_CODE_EFFORT_LEVEL
+    _GRAPHIFY_ENV=(CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL-high}")
     # Chunk cap: graphify packs 60000 tokens of docs into one
     # call by default, and one call over a whole directory returns a few facts
     # for it. `-8000` (unset-only); an explicitly-empty value passes no
@@ -2507,14 +2507,14 @@ SHIM
     if [[ $_nc_fallback != 1 ]] || [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}${!LQ_API_*}" && $_nc_ok == 1 ]]; then
       _rem="$(_deadline_left)"
       if [ "$_rem" = unbounded ]; then
-        "$@"
+        env ${_GRAPHIFY_ENV[@]+"${_GRAPHIFY_ENV[@]}"} "$@"
         return $?
       fi
       if [ "$_rem" -eq 0 ]; then
         echo "refresh-graph-map: run deadline ${GRAPHIFY_RUN_DEADLINE_SECONDS}s exhausted before this stage" >&2
         return 124
       fi
-      "$_deadline_bin" -k 30 "$_rem" "$@"
+      "$_deadline_bin" -k 30 "$_rem" env ${_GRAPHIFY_ENV[@]+"${_GRAPHIFY_ENV[@]}"} "$@"
     else
       echo "$_NC_LAUNCH_REFUSED" >&2
       return 2
@@ -2656,9 +2656,9 @@ SHIM
     mkfifo "$fifo" || return 1
     if [[ $_nc_fallback != 1 ]] || [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}${!LQ_API_*}" && $_nc_ok == 1 ]]; then
       if [ "$rem" = unbounded ]; then
-        "$@" > "$fifo" 2>&1 &
+        env ${_GRAPHIFY_ENV[@]+"${_GRAPHIFY_ENV[@]}"} "$@" > "$fifo" 2>&1 &
       else
-        "$_deadline_bin" -k 30 "$rem" "$@" > "$fifo" 2>&1 &
+        "$_deadline_bin" -k 30 "$rem" env ${_GRAPHIFY_ENV[@]+"${_GRAPHIFY_ENV[@]}"} "$@" > "$fifo" 2>&1 &
       fi
     else
       ( echo "$_NC_LAUNCH_REFUSED"; false ) > "$fifo" 2>&1 &
@@ -3230,9 +3230,9 @@ PYEOF
   if [ -n "$PROMOTE_ONLY" ]; then
     :
   elif [ -n "$_deadline_bin" ]; then
-    _graphify_version="$("$_deadline_bin" -k 2 5 "$GRAPHIFY_MAP" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | tail -n1)" || _graphify_version=""
+    _graphify_version="$("$_deadline_bin" -k 2 5 env ${_GRAPHIFY_ENV[@]+"${_GRAPHIFY_ENV[@]}"} "$GRAPHIFY_MAP" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | tail -n1)" || _graphify_version=""
   else
-    _graphify_version="$("$GRAPHIFY_MAP" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | tail -n1)" || _graphify_version=""
+    _graphify_version="$(env ${_GRAPHIFY_ENV[@]+"${_GRAPHIFY_ENV[@]}"} "$GRAPHIFY_MAP" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | tail -n1)" || _graphify_version=""
   fi
   printf '%s\n' "$_graphify_version" > "$PROMOTE_STAGE/.graphify_promoted_version"
   # Scope stamp: a hash of the effective ignore rules (the accepted
