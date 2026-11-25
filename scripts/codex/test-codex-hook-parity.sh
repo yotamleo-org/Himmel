@@ -436,18 +436,18 @@ EOF
 chmod +x "$TMP_T3_STUB/bin/gh"
 
 mcp_chain_deny() {
-  local label="$1" tool="$2" args="$3" chain payload out
+  local label="$1" tool="$2" args="$3" want="${4:-}" chain payload out
   chain="$(jq -r '.hooks.PreToolUse[] | select(.matcher == "mcp__.*") | .hooks[0].command' .codex/hooks.json \
     | sed -n 's/.*run-hook\.sh --sandbox \([^ ]*\).*/\1/p')"
   payload="$(jq -cn --arg t "$tool" --argjson a "$args" --arg d "$PWD" \
     '{hook_event_name:"PreToolUse",tool_name:$t,tool_input:$a,cwd:$d}')"
   out="$(printf '%s' "$payload" | HOME="$TMP_T3_STUB/home" T3CODE_HOME="$TMP_T3_STUB/home/.t3" PATH="$TMP_T3_STUB/bin:$PATH" CLAUDE_PROJECT_DIR="$PWD" bash .codex/codex-hook-adapter.sh "$chain" 2>&1 || true)"
   case "$out" in
-    *'"permissionDecision":"deny"'*) echo "  ok   $label";;
+    *'"permissionDecision":"deny"'*"$want"*) echo "  ok   $label";;
     *) echo "  FAIL $label: no deny ($out)"; fails=$((fails + 1));;
   esac
 }
-mcp_chain_deny "Codex MCP chain denies a bypass T3 instance (guard-t3-thread-tools)" "mcp__t3-code__t3_thread_launch" '{"title":"Work","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}'
+mcp_chain_deny "Codex MCP chain denies a bypass T3 instance (guard-t3-thread-tools)" "mcp__t3-code__t3_thread_launch" '{"title":"Work","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}' "carries a himmel bypass flag"
 mcp_chain_deny "Codex MCP chain denies -chief T3 thread title (guard-t3-thread-tools)" "mcp__t3-code__t3_thread_update" '{"action":"rename","title":"ops-chief"}'
 mcp_chain_deny "Codex MCP chain denies unwatch on OPEN PR (block-t3code-unwatch-open-pr)" "mcp__t3-code__unwatch_pull_request" '{"url":"https://github.com/o/r/pull/123"}'
 

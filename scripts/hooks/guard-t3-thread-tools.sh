@@ -74,9 +74,9 @@ case "$findings" in
         if [ -L "${HOME:-/nonexistent}/.himmel" ] || [ -L "$CONFIG" ]; then
             narrow_err="$CONFIG is a symlink"
         elif [ -e "$CONFIG" ]; then
-            if ! narrow=$(jq -c '.t3.instance_narrow' "$CONFIG" 2>&1); then
+            if ! narrow=$(jq -c 'if .t3 == null or (.t3 | has("instance_narrow") | not) then "absent" else .t3.instance_narrow end' "$CONFIG" 2>&1); then
                 narrow_err="$CONFIG is not JSON with an optional .t3.instance_narrow: $narrow" narrow=""
-            elif [ "$narrow" = null ]; then
+            elif [ "$narrow" = '"absent"' ]; then
                 narrow=""
             elif ! jq -e 'type == "array" and all(.[]; type == "string")' <<<"$narrow" >/dev/null 2>&1; then
                 narrow="" narrow_err=".t3.instance_narrow in $CONFIG is not an array of strings"
@@ -84,7 +84,9 @@ case "$findings" in
         fi
         # swallow-ok: jq's error text can quote T3's settings values, which agents may not read; a failure refuses every instance id
         bypass=$(jq -c --slurpfile reg "$REGISTRY" '
-            ([$reg[0].flags[].name | strings]) as $names
+            ([$reg[0].flags | if type == "array" then .[] else error("the bypass flag registry flags is not an array") end
+              | if (.name | type) == "string" then .name
+                else error("a bypass flag registry entry has no string name") end]) as $names
             | if type == "object" then . else error("the settings file is not an object") end
             | (if has("providerInstances") then .providerInstances else {} end)
             | if type == "object" then . else error("providerInstances is not an object") end

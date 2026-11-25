@@ -33,20 +33,20 @@ ok()  { PASS=$((PASS + 1)); printf '  ok   %s\n' "$1"; }
 bad() { FAIL=$((FAIL + 1)); printf '  FAIL %s\n' "$1"; }
 
 run_claude() {
-    local guard="$1" tool="$2" args="$3" expect="$4" label="$5"
+    local guard="$1" tool="$2" args="$3" expect="$4" label="$5" want="${6:-}"
     local payload out rc
     payload="$(jq -cn --arg t "mcp__t3-code__$tool" --argjson a "$args" \
         '{hook_event_name:"PreToolUse",tool_name:$t,tool_input:$a,cwd:"/tmp"}')"
     out="$(printf '%s' "$payload" | bash "$REPO/scripts/hooks/$guard" 2>&1)"; rc=$?
     if [ "$expect" = "deny" ]; then
-        if [ "$rc" -eq 2 ]; then ok "claude: $label"; else bad "claude: $label (rc=$rc out=$out)"; fi
+        if [ "$rc" -eq 2 ] && grep -qF -- "$want" <<<"$out"; then ok "claude: $label"; else bad "claude: $label (rc=$rc out=$out)"; fi
     else
         if [ "$rc" -eq 0 ]; then ok "claude: $label"; else bad "claude: $label (rc=$rc out=$out)"; fi
     fi
 }
 
 run_codex() {
-    local tool="$1" args="$2" expect="$3" label="$4"
+    local tool="$1" args="$2" expect="$3" label="$4" want="${5:-}"
     local full_tool="mcp__t3-code__$tool"
     local cmds="" cmd="" payload="" out="" rc=0 dec="" denied=0
     local -a parts=()
@@ -89,14 +89,14 @@ for (const b of h.PreToolUse || []) {
         fi
     done <<< "$cmds"
     if [ "$expect" = "deny" ]; then
-        if [ "$denied" -eq 1 ]; then ok "codex: $label"; else bad "codex: $label (expected deny; rc=$rc out=$out err=$(cat "$TMP/codex.err"))"; fi
+        if [ "$denied" -eq 1 ] && grep -qF -- "$want" <<<"$out"; then ok "codex: $label"; else bad "codex: $label (expected deny; rc=$rc out=$out err=$(cat "$TMP/codex.err"))"; fi
     else
         if [ "$denied" -eq 0 ]; then ok "codex: $label"; else bad "codex: $label (unexpected deny; out=$out)"; fi
     fi
 }
 
 run_antigravity() {
-    local tool="$1" args="$2" expect="$3" label="$4"
+    local tool="$1" args="$2" expect="$3" label="$4" want="${5:-}"
     local payload out rc dec
     payload="$(jq -cn --arg t "mcp_t3-code_$tool" --argjson a "$args" '{
         hookEventName:"PreToolUse",
@@ -107,7 +107,7 @@ run_antigravity() {
     out="$(printf '%s' "$payload" | bash "$REPO/scripts/hooks/antigravity-hook-adapter.sh" 2>"$TMP/agy.err")"; rc=$?
     if [ "$expect" = "deny" ]; then
         dec="$(printf '%s' "$out" | jq -r '.decision // empty' 2>/dev/null || true)"
-        if [ "$rc" -eq 0 ] && [ "$dec" = "deny" ]; then ok "antigravity: $label"; else bad "antigravity: $label (rc=$rc out=$out err=$(cat "$TMP/agy.err"))"; fi
+        if [ "$rc" -eq 0 ] && [ "$dec" = "deny" ] && grep -qF -- "$want" <<<"$out"; then ok "antigravity: $label"; else bad "antigravity: $label (rc=$rc out=$out err=$(cat "$TMP/agy.err"))"; fi
     else
         if [ "$rc" -eq 0 ] && [ -z "$out" ]; then ok "antigravity: $label"; else bad "antigravity: $label (rc=$rc out=$out err=$(cat "$TMP/agy.err"))"; fi
     fi
@@ -120,19 +120,19 @@ ARGS_BENIGN='{"toolSummary":"Read env"}'
 ARGS_SEND='{"threadId":"thread-1","message":"hello"}'
 
 echo "== T3 guard conformance: claude =="
-run_claude guard-t3-thread-tools.sh t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied"
+run_claude guard-t3-thread-tools.sh t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied" "carries a himmel bypass flag"
 run_claude guard-t3-thread-tools.sh t3_thread_update "$ARGS_CHIEF_TITLE" deny "-chief title denied"
 run_claude block-t3code-unwatch-open-pr.sh unwatch_pull_request "$ARGS_UNWATCH_OPEN" deny "unwatch OPEN PR denied"
 run_claude guard-t3-thread-tools.sh t3_environment_read "$ARGS_BENIGN" allow "benign T3 read allowed"
 
 echo "== T3 guard conformance: codex =="
-run_codex t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied"
+run_codex t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied" "carries a himmel bypass flag"
 run_codex t3_thread_update "$ARGS_CHIEF_TITLE" deny "-chief title denied"
 run_codex unwatch_pull_request "$ARGS_UNWATCH_OPEN" deny "unwatch OPEN PR denied"
 run_codex t3_environment_read "$ARGS_BENIGN" allow "benign T3 read allowed"
 
 echo "== T3 guard conformance: antigravity =="
-run_antigravity t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied"
+run_antigravity t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied" "carries a himmel bypass flag"
 run_antigravity t3_thread_update "$ARGS_CHIEF_TITLE" deny "-chief title denied"
 run_antigravity unwatch_pull_request "$ARGS_UNWATCH_OPEN" deny "unwatch OPEN PR denied"
 run_antigravity t3_environment_read "$ARGS_BENIGN" allow "benign T3 read allowed"

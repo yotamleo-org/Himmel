@@ -133,6 +133,12 @@ printf '{"t3":{"instance_narrow":["claudeAgent","codex"' > "$HOME/.himmel/config
 run "a malformed config: refused" 2 'is not JSON' "$LAUNCH_OK"
 printf '{"t3":{"instance_narrow":"codex"}}\n' > "$HOME/.himmel/config.json"
 run "a non-array allowlist: refused" 2 'not an array of strings' "$LAUNCH_OK"
+printf '{"t3":{"instance_narrow":null}}\n' > "$HOME/.himmel/config.json"
+run "an explicit null narrowing key: refused" 2 'not an array of strings' "$LAUNCH_OK"
+printf '{"t3":"codex"}\n' > "$HOME/.himmel/config.json"
+run "a non-object .t3: refused" 2 'is not JSON with an optional .t3.instance_narrow' "$LAUNCH_OK"
+printf '{"t3":null}\n' > "$HOME/.himmel/config.json"
+run "a null .t3 narrows nothing: allowed" 0 - "$(from_to codex antigravity)"
 printf '{"t3":{"instance_narrow":["claudeAgent","codex"]}}\n' > "$TMP/elsewhere.json"
 rm -f "$HOME/.himmel/config.json"
 ln -s "$TMP/elsewhere.json" "$HOME/.himmel/config.json"
@@ -161,6 +167,19 @@ run "a two-document T3 settings file: refused" 2 '"codex": whether it carries a 
 printf '{"theme":"dark"}\n' > "$T3_SETTINGS"
 run "T3 settings with no providerInstances: a built-in allowed" 0 - "$LAUNCH_OK"
 write_t3_settings
+
+mkdir -p "$TMP/regtree/hooks" "$TMP/regtree/himmelctl/lib"
+cp "$HOOK" "$TMP/regtree/hooks/guard-t3-thread-tools.sh"
+REAL_HOOK="$HOOK" HOOK="$TMP/regtree/hooks/guard-t3-thread-tools.sh"
+printf '{"flags":[{"name":"SKIP_CR"}]}\n' > "$TMP/regtree/himmelctl/lib/bypass-flags.json"
+run "a fixture registry flag: refused" 2 '"skipCr": carries a himmel bypass flag (SKIP_CR)' "$(from_to codex skipCr)"
+printf '{"flags":[{"name":7},{"name":"SKIP_CR"}]}\n' > "$TMP/regtree/himmelctl/lib/bypass-flags.json"
+run "a registry entry with a non-string name: refused" 2 'whether it carries a bypass flag is unknown' "$(from_to codex antigravity)"
+printf '{"flags":[{"bypasses":"x"}]}\n' > "$TMP/regtree/himmelctl/lib/bypass-flags.json"
+run "a registry entry with no name: refused" 2 'whether it carries a bypass flag is unknown' "$(from_to codex antigravity)"
+printf '{"flags":{"a":{"name":"SKIP_CR"}}}\n' > "$TMP/regtree/himmelctl/lib/bypass-flags.json"
+run "a registry whose flags is not an array: refused" 2 'whether it carries a bypass flag is unknown' "$(from_to codex antigravity)"
+HOOK="$REAL_HOOK"
 
 run "rename to X-chief: refused" 2 'only by the operator in the T3 UI' \
     '{"tool_name":"'$T't3_thread_update","tool_input":{"action":"rename","title":"X-chief"}}'
