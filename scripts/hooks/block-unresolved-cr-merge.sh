@@ -32,10 +32,6 @@
 # origin the harness's go.sh and merge-on-green.sh use.
 # Sibling of check-cr-marker-on-pr-create.sh / block-merged-pr-commit.sh.
 #
-# A direct Bitbucket merge (the bitbucket CLI's `pr merge`, `forge_pr_merge`) is also
-# denied, naming scripts/handover/pr-merge.sh; it needs BOTH CR_MERGE_GATE_OK=1 and
-# CI_MERGE_GATE_OK=1 to pass.
-#
 # Exit: 0 allow (incl. every fail-open path), 2 block (stderr shown to model).
 # the PR lookup itself (bounded `gh pr view`) fails CLOSED on a
 # real merge; the CR/CI gates' own API errors stay fail-open.
