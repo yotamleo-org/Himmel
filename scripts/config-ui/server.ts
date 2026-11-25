@@ -13,7 +13,7 @@ import { scrubProviderKeys } from "./scrub-provider-keys";
 // redact.js is the shared CommonJS redactor (P2); imported, not copied.
 import { redactDeep, envValues } from "../himmelctl/lib/redact.js";
 import { parseDotEnv } from "../himmelctl/lib/probes.js";
-import { resolveSecrets } from "../lib/resolve-secrets.mjs";
+import { resolveSecretsAsync } from "../lib/resolve-secrets.mjs";
 import secretsManifest from "../himmelctl/lib/secrets-manifest.json";
 import { ActionError, buildTable, loadRegistries, resolveAction, type Resolved } from "./actions";
 // @ts-ignore plain browser ES module, no types
@@ -63,6 +63,7 @@ const FEED_TIMEOUT_MS = 300_000;
 const FEED_WAIT_MS = 8_000;
 const FEED_CACHE_MS = 30_000;
 const LITERALS_TTL_MS = 5_000;
+const LITERALS_WAIT_MS = 1_500;
 // every credential the manifest names: the wizard's and the station scripts' (the redactor keeps the secret-named ones)
 const SECRET_NAMES = [...secretsManifest.secrets, ...secretsManifest.stationSecrets].map((s: { name: string }) => s.name);
 // with backgroundFeed the report starts at boot and is refreshed every FEED_REFRESH_MS, but only
@@ -342,25 +343,49 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   }
 
   // The redaction literals: the secrets resolver's values for the manifest's names (environment, credentials directory,
-  // keyring), the checkout's .env values as the last fallback, and the server env's secret values. The resolver spawns a
-  // child, so a read is reused for 5 s (a response, a poll). Never logged, never on argv.
-  // The list only grows: a locked keyring, a timeout or a partial read adds nothing and drops nothing, so a value masked
-  // once stays masked. A value no read ever saw (the keyring was locked throughout) cannot be masked.
+  // keyring), the checkout's .env values as the last fallback, and the server env's secret values. Never logged, never on argv.
+  // The list only grows: a locked keyring, a timeout or a partial read adds nothing and drops nothing; a value no read saw cannot be masked.
+  // The keyring read is async and reused for 5 s: a request waits for a stale list's refresh at most LITERALS_WAIT_MS, then answers
+  // with the list as it stands (a read that outran the wait is slow: those behind it do not wait). A stored secret invalidates it.
   const seen = new Set<string>();
-  let literalsAt = -Infinity, literalsMemo: string[] = [];
+  let literalsAt = -Infinity, literalsMemo: string[] = [], literalsEpoch = 0;
+  let literalsRun: { done: Promise<void>; slow: boolean } | null = null;
   // These two match the secret-name pattern but hold a mode ("off") and a directory, not a credential. Any other name stays.
   const NOT_SECRET_ENV = new Set(["HIMMEL_SECRETS_KEYRING", "HIMMEL_SECRETS_RUNTIME_DIR"]);
   const envForLiterals = () => Object.fromEntries(Object.entries(env).filter(([k]) => !NOT_SECRET_ENV.has(k)));
-  const secretLiterals = (): string[] => {
-    if (now() - literalsAt < LITERALS_TTL_MS) return literalsMemo;
-    let raw = "";
-    try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
-    for (const v of [...envValues(raw, parseDotEnv, envForLiterals()), ...envValues("", parseDotEnv, resolveSecrets(root, SECRET_NAMES, env))]) {
+  const absorb = (values: string[]): void => {
+    for (const v of values) {
       seen.add(v);
       seen.add(JSON.stringify(v).slice(1, -1)); // the form it takes inside a JSON string or key: a quote, a backslash, a control character escaped
     }
     literalsMemo = [...seen];
-    literalsAt = now();
+  };
+  const readLiterals = async (): Promise<void> => {
+    const epoch = literalsEpoch;
+    let raw = "";
+    try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
+    absorb(envValues(raw, parseDotEnv, envForLiterals()));
+    absorb(envValues("", parseDotEnv, await resolveSecretsAsync(root, SECRET_NAMES, env)));
+    if (epoch === literalsEpoch) literalsAt = now();
+  };
+  const startLiteralsRead = (): { done: Promise<void>; slow: boolean } => {
+    if (literalsRun) return literalsRun;
+    const run = { slow: false, done: readLiterals().catch(() => {}).finally(() => { if (literalsRun === run) literalsRun = null; }) };
+    return literalsRun = run;
+  };
+  const invalidateLiterals = (): void => { literalsEpoch++; literalsAt = -Infinity; };
+  const freshLiterals = async (): Promise<void> => {
+    for (let round = 0; round < 2 && now() - literalsAt >= LITERALS_TTL_MS; round++) {
+      const run = startLiteralsRead();
+      if (run.slow) return;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = await Promise.race([run.done.then(() => false), new Promise<boolean>((r) => { timer = setTimeout(() => r(true), LITERALS_WAIT_MS); })]);
+      clearTimeout(timer);
+      if (late) { run.slow = true; return; }
+    }
+  };
+  const secretLiterals = (): string[] => {
+    if (now() - literalsAt >= LITERALS_TTL_MS) void startLiteralsRead();
     return literalsMemo;
   };
   // Every child output passes the same redactor as the feed, with those literals.
@@ -423,7 +448,8 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     catch { audit = "failed"; }
     if (failed || !r || !before || !after) return json({ error: "internal error", audit }, 500);
     const reprobeState = before.state !== "ok" ? before.state : after.state;
-    literalsAt = -Infinity; // the action may have stored a secret: its output is masked with a fresh read
+    invalidateLiterals(); // the action may have stored a secret: its output is masked with a fresh read
+    await freshLiterals();
     return json(redactOut({ rc: r.rc, timedOut: r.timedOut, command: shellLine(p.argv), output: r.stdout + r.stderr, before: before.probe, after: after.probe, reprobe: reprobeState, audit }));
   }
 
@@ -555,7 +581,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
           before: null, after: null, ...(r.audit.ok ? {} : { outcome: "error" as const }) });
       } catch { /* the answer below still carries the outcome */ }
     }
-    if (r.status === 200) { feedRun = null; feedLast = null; feedEpoch++; literalsAt = -Infinity; } // a stored secret is masked from the next response
+    if (r.status === 200) { feedRun = null; feedLast = null; feedEpoch++; invalidateLiterals(); } // a stored secret is masked from the next response
     return json(r.body, r.status);
   }
 
@@ -652,7 +678,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     async (locks: Lock[], spans: Span[]): Promise<Live> => ({ ...(await liveBoards(handover, locks, spans, fileReader)), from: "file" });
   let fleetRun: ReturnType<typeof readFleet> | null = null;
   // The page polls every 5 s and every navigation asks too: requests that arrive during a read share it (never a cached body).
-  const warmSecretLiterals = (): void => { secretLiterals(); };
+  const warmSecretLiterals = (): void => { void freshLiterals(); };
   function fleetOnce(): ReturnType<typeof readFleet> {
     if (fleetRun) return fleetRun;
     fleetRun = readFleet({
@@ -684,6 +710,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (!session && !sameToken(req.headers.get("x-himmel-token"), token)) return new Response("unauthorized", { status: 401 });
       bump(); // only an authenticated request keeps the server alive
       lastSeen = now(); // and only one keeps the background refresh going
+      await freshLiterals();
       if (req.method === "GET" && path === "/api/mode") return new Response(JSON.stringify({ readOnly: !!opts.readOnly }), { headers: { "content-type": "application/json", "cache-control": "no-store", "x-himmel-session": session ? "1" : "0" } }); // the page's banner and disabled write controls; the header says whether this caller holds a login session
       if (req.method === "GET" && path === "/api/projects") { // never runs a doctor: each project's own cached feed, or "not checked"
         const { current, list } = projectsNow();

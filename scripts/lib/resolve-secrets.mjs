@@ -5,7 +5,7 @@
 // first "=". The resolver walks environment, CREDENTIALS_DIRECTORY, then the keyring; a reader
 // reads its own .env only for a name this returns nothing for.
 // A value is never logged and never put on argv: `put` takes it on stdin.
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -46,12 +46,19 @@ function run(args, input, env) {
   }
 }
 
-/** @returns {Record<string, string>} the names the resolver serves; a name nobody holds is absent. */
-export function resolveSecrets(root, names, env) {
+function runAsync(args, env) {
+  if (!existsSync(RESOLVER)) return Promise.resolve({ status: 2, stdout: '' });
+  return new Promise((resolve) => {
+    try {
+      execFile('bash', [RESOLVER, ...args], { encoding: 'utf8', timeout: TIMEOUT_MS, env: childEnv(env), stdio: ['ignore', 'pipe', 'ignore'] }, (e, stdout) => {
+        resolve({ status: e ? (typeof e.code === 'number' ? e.code : 2) : 0, stdout: String(stdout ?? '') });
+      });
+    } catch { resolve({ status: 2, stdout: '' }); }
+  });
+}
+
+function parseServed(stdout, names) {
   const out = {};
-  if (names.length === 0) return out;
-  // exit 1 = nothing served; the stdout of a partial hit is still usable.
-  const { stdout } = run(['get', '--root', root, '--no-dotenv', ...names], undefined, env);
   for (const line of stdout.split('\n')) {
     const i = line.indexOf('=');
     if (i < 1) continue;
@@ -59,6 +66,21 @@ export function resolveSecrets(root, names, env) {
     if (names.includes(name)) out[name] = line.slice(i + 1);
   }
   return out;
+}
+
+const getArgs = (root, names) => ['get', '--root', root, '--no-dotenv', ...names];
+
+/** @returns {Record<string, string>} the names the resolver serves; a name nobody holds is absent. */
+export function resolveSecrets(root, names, env) {
+  if (names.length === 0) return {};
+  // exit 1 = nothing served; the stdout of a partial hit is still usable.
+  return parseServed(run(getArgs(root, names), undefined, env).stdout, names);
+}
+
+/** resolveSecrets off the event loop: a wedged Secret Service holds the promise, never the process. Never rejects; a timeout or failure gives what was served so far. */
+export async function resolveSecretsAsync(root, names, env) {
+  if (names.length === 0) return {};
+  return parseServed((await runAsync(getArgs(root, names), env)).stdout, names);
 }
 
 /** True when `himmel-secrets status` reports `keyring: unlocked`. */
