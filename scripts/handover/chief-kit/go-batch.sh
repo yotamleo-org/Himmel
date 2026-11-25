@@ -229,7 +229,7 @@ while IFS=$'\t' read -r PR HEADSHA _base DRAFT <&3; do
     CONTRACT=$(grep -oE '^> \*\*Completes ticket:\*\* (yes|no)([^A-Za-z0-9_-]|$)' "$WDOC" | tail -n 1 | sed -E 's/^> \*\*Completes ticket:\*\* (yes|no).*/\1/')
     BRIEF_LINE="$CONTRACT"
     [ -n "$CONTRACT" ] || CONTRACT=no
-    PR_BODY=$(jq -r --argjson n "$PR" '.[] | select(.number == $n) | .body // ""' "$WORK/prs.json") || PR_BODY="" # swallow-ok: an unreadable body is held below by the remainder read
+    PR_BODY=$(jq -r --argjson n "$PR" '.[] | select(.number == $n) | .body // ""' "$WORK/prs.json") || { hold "contract: remainder unreadable (the PR body cannot be read)"; continue; }
     BODY_VALS=$(printf '%s\n' "$PR_BODY" | tr -d '\r' | awk '
         /^[ \t]{0,3}(```|~~~)/ { fence = !fence; next }
         !fence && /^completes-ticket:[ \t]*(yes|no)[ \t]*$/ { v = $0; sub(/^completes-ticket:[ \t]*/, "", v); sub(/[ \t]*$/, "", v); seen[v] = 1 }
