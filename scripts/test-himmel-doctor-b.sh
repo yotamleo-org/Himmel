@@ -2581,11 +2581,14 @@ c40_n3="$(grep -c . "$c40_t/sent")"
 c40_run empty204 >/dev/null
 c40_run down >/dev/null
 c40_n4="$(grep -c . "$c40_t/sent")"
+c40_run inithang >/dev/null
+c40_run down >/dev/null
+c40_n5="$(grep -c . "$c40_t/sent")"
 if [ "$c40_n1" = 1 ] && printf '%s' "$c40_msg" | grep -Fq 'cadence:qmd-outage qmd-outage: ' && printf '%s' "$c40_msg" | grep -Fq 'not answering' \
-    && grep -Fq 'qmd-outage' "$c40_t/home/.himmel/state/cadence-alerts.log" && [ "$c40_n2" = 2 ] && [ "$c40_n3" = 3 ] && [ "$c40_n4" = 4 ]; then
+    && grep -Fq 'qmd-outage' "$c40_t/home/.himmel/state/cadence-alerts.log" && [ "$c40_n2" = 2 ] && [ "$c40_n3" = 3 ] && [ "$c40_n4" = 4 ] && [ "$c40_n5" = 4 ]; then
     pass "C40 refused, qmd set up -> exactly one alert across two runs, a second after the daemon answered in between"
 else
-    fail "C40 outage alert -> after two refused runs: $c40_n1 sent (want 1), after recovery and a new outage: $c40_n2 (want 2), after a daemon that answered but failed its vec query and a third outage: $c40_n3 (want 3), after a status-reported empty 204 reply and a fourth outage: $c40_n4 (want 4); first message [$c40_msg]"
+    fail "C40 outage alert -> after two refused runs: $c40_n1 sent (want 1), after recovery and a new outage: $c40_n2 (want 2), after a daemon that answered but failed its vec query and a third outage: $c40_n3 (want 3), after a status-reported empty 204 reply and a fourth outage: $c40_n4 (want 4), a status-reported timeout (not an answer) between the fourth and a fifth refused run: $c40_n5 (want 4, no second alert for one outage); first message [$c40_msg]"
 fi
 rm -rf "$c40_t"
 

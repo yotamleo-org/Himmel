@@ -3385,7 +3385,7 @@ check_c40_qmd_vec() {
             emit WARN C40-qmd-vec "qmd daemon degraded (himmelctl status qmd-daemon): ${qd_detail:-no detail} -- vec search is not being served" "$remedy"
             case "$qd_detail" in
             *"is not answering on"*) _c40_outage_alert "$url" ;;
-            *"curl not found"*) ;;
+            *"curl not found"* | *"did not answer initialize"*) ;;
             *) _c40_outage_clear ;;
             esac
             return
