@@ -116,7 +116,7 @@ note)
     tries=0 held=0
     while :; do
         if mkdir "$LEDGER.lk" 2>/dev/null; then held=1; break; fi
-        [ -d "$LEDGER.lk" ] || break
+        [ -w "$ROOT/.locks" ] || break
         tries=$((tries + 1))
         [ "$tries" -le 50 ] || break
         sleep 0.1
