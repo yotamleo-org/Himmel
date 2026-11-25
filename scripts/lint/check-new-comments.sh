@@ -117,10 +117,10 @@ if [ "$mode" = "write" ]; then
     judged "$W/all" "$W/paths"
     : > "$W/rows"
     while IFS= read -r p; do
-        if [ -f "$p" ] && [ ! -L "$p" ]; then printf '%s\0' "$p"; fi
+        if [ -f "$p" ] && [ ! -L "$p" ]; then printf './%s\0' "$p"; fi
     done < "$W/paths" > "$W/paths0"
     if [ -s "$W/paths0" ]; then
-        xargs -0 awk -f "$classifier" -v mode=tree < "$W/paths0" > "$W/rows" || die "the classifier failed"
+        xargs -0 awk -f "$classifier" -v mode=tree < "$W/paths0" | sed 's|^\./||' > "$W/rows" || die "the classifier failed"
     fi
     awk -F'\t' '{ print $1 }' "$W/rows" > "$W/named" || die "awk failed"
     keys "$W/named" "$W/map"
@@ -131,17 +131,17 @@ if [ "$mode" = "write" ]; then
 fi
 
 case "$mode" in
-    staged) base=HEAD
-            git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1 && base=MERGE_HEAD
+    staged) base=HEAD other=""
+            git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1 && { base=MERGE_HEAD; other=HEAD; }
             tipspec=":" tiprev=""
             set -- --cached "$base" ;;
-    range)  base="$arg"
+    range)  base="$arg" other=""
             tipspec="$tip:" tiprev="$tip"
             set -- "$base" "$tip" ;;
 esac
 
 git -c core.quotePath=false diff "$@" --name-status --find-renames --diff-filter=ACMRT > "$W/status" || die "git diff failed"
-git -c core.quotePath=false diff "$@" -U0 --text --no-color --no-ext-diff --find-renames --diff-filter=ACMRT > "$W/diff" || die "git diff failed"
+git -c core.quotePath=false diff "$@" -U0 --text --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ --find-renames --diff-filter=ACMRT > "$W/diff" || die "git diff failed"
 
 grep -q "$(printf '\t')\"" "$W/status"
 case $? in
@@ -166,9 +166,17 @@ if has_at "$base" "$BL"; then
     git show "$base:$BL" > "$W/base.tsv" || die "cannot read $BL at the base"
     has_base=1
 fi
+if [ -n "$other" ] && has_at "$other" "$BL"; then
+    git show "$other:$BL" >> "$W/base.tsv" || die "cannot read $BL at $other"
+    has_base=1
+fi
 for f in tip base; do
     awk -F'\t' '$2 !~ /^[0-9]+$/ || length($2) > 9 { bad = 1 } END { exit bad }' "$W/$f.tsv" || die "a row of $BL at the $f carries no count of at most 9 digits"
 done
+if [ -n "$other" ]; then
+    awk -F'\t' '!($1 in m) || $2 + 0 > m[$1] + 0 { m[$1] = $2 } END { for (k in m) print k "\t" m[k] }' "$W/base.tsv" > "$W/base.max" || die "awk failed"
+    mv "$W/base.max" "$W/base.tsv" || die "mv failed"
+fi
 awk -F'\t' '{ print $2 }' "$W/renames" > "$W/named" || die "awk failed"
 sort -u "$W/named" "$W/touched" > "$W/named.u" || die "sort failed"
 keys "$W/named.u" "$W/map"
@@ -235,13 +243,15 @@ while IFS="$(printf '\t')" read -r kind p n lim; do
     if [ "$kind" != "B" ] && ! listed "$p" "$W/indiff"; then continue; fi
     was="$(awk -F'\t' -v p="$p" '$1 == p { print $2; exit }' "$W/renames")"
     m=0
-    if has_at "$base" "${was:-$p}"; then
-        git show "$base:${was:-$p}" > "$W/blob" || die "cannot read ${was:-$p} at the base"
+    for parent in "$base" ${other:+"$other"}; do
+        has_at "$parent" "${was:-$p}" || continue
+        git show "$parent:${was:-$p}" > "$W/blob" || die "cannot read ${was:-$p} at the base"
         capper="$classifier"
         if [ "$recount" -eq 1 ] && ! listed "$p" "$W/indiff"; then capper="$W/tip.awk"; fi
-        m="$(awk -f "$capper" -v mode=count -v path="$p" "$W/blob")" || die "the classifier failed on $p"
-        count_ok "$m" || die "the classifier printed no count for $p"
-    fi
+        pm="$(awk -f "$capper" -v mode=count -v path="$p" "$W/blob")" || die "the classifier failed on $p"
+        count_ok "$pm" || die "the classifier printed no count for $p"
+        if gt "$pm" "$m"; then m="$pm"; fi
+    done
     gt "$n" "$m" || continue
     if [ "$kind" = "B" ] && gt "$m" "$lim"; then lim="$m"; fi
     if [ "$kind" = "T" ]; then lim="$m"; fi
