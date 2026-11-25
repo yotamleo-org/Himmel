@@ -445,7 +445,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     let audit = "ok";
     try { appendAudit(auditPath, { time: new Date(now()).toISOString(), action: p.action, target: p.target, value: p.value, argv: p.argv, rc: r?.rc ?? null, before: healthOf(before?.probe ?? null), after: healthOf(after?.probe ?? null), ...(failed ? { outcome: "error" as const } : {}) }); }
     catch { audit = "failed"; }
-    if (failed || !r || !before || !after) return json({ error: "internal error", audit }, 500);
+    if (failed || !r || !before || !after) { invalidateLiterals(); return json({ error: "internal error", audit }, 500); }
     const reprobeState = before.state !== "ok" ? before.state : after.state;
     invalidateLiterals();
     await freshLiterals();
@@ -655,6 +655,37 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     try { return JSON.stringify(redactDeep(JSON.parse(body), { literals })); } catch { return String(redactDeep(body, { literals })); }
   };
   const feedBody = (body: string) => new Response(maskFeed(body), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
+  const maskAgain = async (res: Response, epoch: number): Promise<Response> => {
+    if (epoch === literalsEpoch || res.body === null || !/^(application\/json|text\/plain)/.test(res.headers.get("content-type") ?? "")) return res;
+    let text = await res.text();
+    for (let round = 0; round < 3 && epoch !== literalsEpoch; round++) {
+      epoch = literalsEpoch;
+      await freshLiterals();
+      text = maskFeed(text);
+    }
+    const headers = new Headers(res.headers);
+    headers.delete("content-length");
+    return new Response(text, { status: res.status, statusText: res.statusText, headers });
+  };
+  const guardStream = (open: (redact: (v: unknown) => unknown) => ReadableStream<Uint8Array>): ReadableStream<Uint8Array> => {
+    let maskedAt: number | null = null, dirty = false;
+    const reader = open((v) => { maskedAt ??= literalsEpoch; dirty ||= literalsDirty; return redactOut(v); }).getReader();
+    const dec = new TextDecoder(), enc = new TextEncoder();
+    return new ReadableStream<Uint8Array>({
+      async pull(c) {
+        const next = await reader.read();
+        if (next.done) return c.close();
+        let chunk = next.value;
+        if (dirty || (maskedAt !== null && maskedAt !== literalsEpoch)) {
+          await freshLiterals();
+          chunk = enc.encode(maskFeed(dec.decode(chunk)));
+        }
+        maskedAt = null; dirty = false;
+        c.enqueue(chunk);
+      },
+      cancel: (why) => reader.cancel(why),
+    });
+  };
   async function feedRoute(): Promise<Response> {
     const last = feedLast;
     const run = feedStart(); // an expired cache starts a refresh here
@@ -904,12 +935,12 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         if ("status" in found) return new Response(found.status === 400 ? "bad run id" : found.status === 404 ? "no such run" : "run id is ambiguous", { status: found.status });
         // Secrets in the transcript pass the same redactor as every other output, with the list as it is now (the stream is long-lived).
         active++; // an open stream keeps the idle timer from shutting the server down
-        const body = journalStream(found.path, {
+        const body = guardStream((redact) => journalStream(found.path, {
           threadId: run, pollMs: opts.aguiPollMs ?? AGUI_POLL_MS, idleMs: opts.aguiIdleMs ?? AGUI_IDLE_MS, maxMs: opts.aguiMaxMs ?? AGUI_MAX_MS,
-          redact: (v) => redactOut(v),
+          redact,
           busRoot: busRootOf(env, env.HOME || homedir()),
           onClose: () => { active--; if (deferred && active === 0) { deferred = false; bump(); } },
-        });
+        }));
         return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-store" } });
       }
       // which secrets are set (presence only) and the commit rules in effect, for the Setup page.
@@ -975,7 +1006,8 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     async fetch(req) {
       let res: Response;
       active++;
-      try { res = await route(req); } catch { res = json({ error: "internal error" }, 500); }
+      const epoch = literalsEpoch;
+      try { res = await maskAgain(await route(req), epoch); } catch { res = json({ error: "internal error" }, 500); }
       finally { active--; if (deferred && active === 0) { deferred = false; bump(); } }
       for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.headers.set(k, v);
       return res;
