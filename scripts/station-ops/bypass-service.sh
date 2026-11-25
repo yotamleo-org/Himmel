@@ -109,7 +109,7 @@ cmd_on() {
     fi
     path=$(installed_path)
     if [ -n "${HANDOVER_DIR:-}" ]; then
-        pin_hd=$(. "$repo/scripts/lib/handover-path.sh" && handover_root 2>/dev/null) || die "HANDOVER_DIR '$HANDOVER_DIR' is not an existing directory, so it cannot be pinned for the daemon; fix or unset it"
+        pin_hd=$(. "$repo/scripts/lib/handover-path.sh" && handover_root 2>/dev/null) || die "HANDOVER_DIR '$HANDOVER_DIR' is not an existing directory, so it cannot be pinned for the unit; fix or unset it"
         [[ "$pin_hd" =~ $PATH_RE ]] || die "the handover root '$pin_hd' holds a character the unit cannot carry (use letters, digits and . _ / @ + -)"
     fi
     mkdir -p "$STATE" "$(dirname "$path")" || die "cannot create the unit directory"
