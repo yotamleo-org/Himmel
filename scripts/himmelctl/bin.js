@@ -6230,7 +6230,6 @@ function cmdUi(args) {
     console.error('himmelctl: ui: --read-only does not apply to --service: the installed unit would start the server without it. Run `himmelctl ui --read-only` in the foreground.');
     return 2;
   }
-  // The one start an agent may make: GET and HEAD only, nothing built, this checkout's own server, an ephemeral loopback port.
   const agentReadOnly = args.readOnly && !args.service && !args.agui && args.port === null;
   if (!args.allowAgentSession && !agentReadOnly && inClaudeSession()) {
     console.error('himmelctl: ui: operator-only; refused inside a Claude session (CLAUDECODE / CLAUDE_CODE_* is set). Only a plain `ui --read-only` (no --port, --agui or --service) starts here. Run it from your own terminal, or pass --allow-agent-session to override.');
