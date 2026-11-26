@@ -557,9 +557,10 @@ fi
 rotate_mtime_before="$(stat -c %Y "$ROTATE_HOME/.claude-graphify/.seeded" 2>/dev/null || stat -f %m "$ROTATE_HOME/.claude-graphify/.seeded" 2>/dev/null)"
 sleep 1
 printf 'subscription-auth-rotated-again\n' > "$ROTATE_HOME/.claude/.credentials.json"
-run_seed >/dev/null 2>&1
+rotate_reseed_rc=0
+run_seed >/dev/null 2>&1 || rotate_reseed_rc=$?
 rotate_mtime_after="$(stat -c %Y "$ROTATE_HOME/.claude-graphify/.seeded" 2>/dev/null || stat -f %m "$ROTATE_HOME/.claude-graphify/.seeded" 2>/dev/null)"
-if [ "$rotate_mtime_before" = "$rotate_mtime_after" ]; then
+if [ "$rotate_reseed_rc" -eq 0 ] && [ "$rotate_mtime_before" = "$rotate_mtime_after" ]; then
   pass "a rotated source login does not force a reseed"
 else
   fail "a rotated source login reseeded the dedicated config dir"

@@ -2635,8 +2635,8 @@ if isinstance(d,dict) and d.get("is_error"):
         '[graphify] chunk '*' failed: claude -p exited'*)
           if [ "$probed" -eq 0 ]; then
             probed=1
-            _probe_claude_auth < /dev/null
-            [ -z "$_AUTH_CAUSE" ] || printf 'refresh-graph-map: chunk failed: claude -p reports: %s\n' "$_AUTH_CAUSE" >&2
+            ( _probe_claude_auth
+              [ -z "$_AUTH_CAUSE" ] || printf 'refresh-graph-map: chunk failed: claude -p reports: %s\n' "$_AUTH_CAUSE" >&2 ) < /dev/null &
           fi ;;
       esac
       case "$line" in
@@ -2674,6 +2674,7 @@ if isinstance(d,dict) and d.get("is_error"):
           fi ;;
       esac
     done
+    wait
   }
 
   # _run_bounded under the chunk monitor. graphify runs in the background so
