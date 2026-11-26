@@ -1447,7 +1447,7 @@ function probeQmdDaemon(item, ctx) {
   const payload = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"himmelctl-status","version":"1"}}}';
   const { token, unsafe } = qmdBearerToken(env, ctx, url);
   const tokenFile = qmdTokenFile(env);
-  if (unsafe) return { actual: 'degraded', detail: `the bearer token in ${tokenFile} has a quote, backslash or control character, so the qmd daemon probe did not send it — use a plain token` };
+  if (unsafe) return { actual: 'degraded', detail: `the bearer token in ${tokenFile} has a quote, backslash or control character, so the qmd probe did not send it — use a plain token` };
   const started = Date.now();
   const r = spawnProbeSync(curl, [...(token ? ['-q', '--noproxy', '*'] : []), '-s', '-m', String(budget), '-w', '%{http_code}', '-X', 'POST',
     ...(token ? ['-g', '-K', '-'] : []),

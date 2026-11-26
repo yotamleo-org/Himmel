@@ -107,7 +107,7 @@ for bad in 'tok"quote' 'tok\back' $'tok\001ctl'; do
   echo "$out" | jq -e --arg f "$work/bad-token" --arg t "$bad" '.actual == "degraded" and (.detail | contains($f)) and (.detail | contains($t) | not)' >/dev/null || fail "unsafe token must be refused naming its file, never echoed (got: $out)"
   [ ! -e "$work/argv.log" ] || fail "unsafe token reached curl (argv: $(cat "$work/argv.log"))"
 done
-echo "ok: the qmd-daemon probe sends the token only to loopback, without a proxy, and refuses an unsafe token"
+echo "ok: the qmd status probe sends the token only to loopback, without a proxy, and refuses an unsafe token"
 
 # A non-qmd listener is named by pid and command, from ss + /proc (read only).
 cat > "$work/ss" <<'SSSTUB'
