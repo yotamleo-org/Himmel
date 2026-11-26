@@ -652,6 +652,74 @@ assert(providers.includes("google-antigravity"), "google-antigravity provider mu
   }
 }
 
+const mcpReadProviders = ["openai-chatgpt", "xai-grokbot"];
+const mcpReadCorpora = ["luna-clippings", "luna-personal", "himmel-code", "operator-repos", "jira-mirror", "roadmap-plan", "skill-index"];
+for (const p of mcpReadProviders) assert(providers.includes(p), `provider ${p} must be declared`);
+assert(purposes.includes("luna-mcp-read"), "purpose luna-mcp-read must be declared");
+assert(!purposes.includes("luna-mcp-write"), "purpose luna-mcp-write must not be declared yet");
+assert(!m.rules.some(r => r.purpose === "luna-mcp-write"), "no rule may name luna-mcp-write yet");
+{
+  const readRules = m.rules.filter(r => r.purpose === "luna-mcp-read");
+  assert(readRules.length === 14, `exactly 14 rules may name luna-mcp-read, got ${readRules.length}`);
+  for (const r of readRules)
+    assert(mcpReadProviders.includes(r.provider) && mcpReadCorpora.includes(r.corpus) && r.verdict === "allow+log" && r.hard === undefined,
+      `luna-mcp-read rule ${r.corpus} x ${r.provider} must be a non-hard allow+log over a listed corpus and provider`);
+  for (const p of mcpReadProviders) {
+    for (const c of mcpReadCorpora) {
+      const { effective, rule } = evaluate(c, p, "luna-mcp-read");
+      assert(effective === "allow" && rule && rule.verdict === "allow+log" && rule.corpus === c && rule.provider === p &&
+        rule.purpose === "luna-mcp-read" && rule.hard === undefined,
+        `${c} x ${p} x luna-mcp-read must be allow+log via its OWN literal row, got ${effective}/${rule ? `${rule.corpus} x ${rule.provider} x ${rule.purpose}` : "default"}`);
+      assert(typeof rule?.why === "string" && rule.why.length > 0, `${c} x ${p} x luna-mcp-read row must carry a why`);
+    }
+    for (const c of mcpReadCorpora) {
+      for (const u of purposes.filter(x => x !== "luna-mcp-read").concat(["luna-mcp-write"])) {
+        const { effective, rule } = evaluate(c, p, u);
+        assert(effective === "deny", `${c} x ${p} x ${u} must deny (luna-mcp-read is the only open purpose), got ${effective}`);
+        if (c === "himmel-code")
+          assert(rule && rule.verdict === "deny" && rule.corpus === "himmel-code" && rule.provider === p && rule.purpose === "*",
+            `himmel-code x ${p} x ${u} must deny via the EXPLICIT himmel-code x ${p} x * deny row, not the himmel-code wildcard allow, got ${rule ? `${rule.corpus} x ${rule.provider} x ${rule.purpose} = ${rule.verdict}` : "default"}`);
+      }
+    }
+    for (const c of corpora.filter(x => !mcpReadCorpora.includes(x))) {
+      for (const u of purposes) {
+        assert(evaluate(c, p, u).effective === "deny", `${c} x ${p} x ${u} must deny (not a qmd read corpus)`);
+      }
+    }
+    for (const c of ["salus", "voice-audio"]) {
+      for (const u of purposes) {
+        const { effective, rule } = evaluate(c, p, u);
+        assert(effective === "deny" && rule && rule.corpus === c && rule.provider === "*" && rule.purpose === "*" && rule.hard === true,
+          `${c} x ${p} x ${u} must deny via the HARD ${c} wildcard, got ${effective}`);
+      }
+    }
+    const readIdx = m.rules.findIndex(r => r.corpus === "himmel-code" && r.provider === p && r.purpose === "luna-mcp-read");
+    const denyIdx = m.rules.findIndex(r => r.corpus === "himmel-code" && r.provider === p && r.purpose === "*");
+    const wildIdx = m.rules.findIndex(r => r.corpus === "himmel-code" && r.provider === "*" && r.purpose === "*");
+    assert(readIdx >= 0 && denyIdx > readIdx && wildIdx > denyIdx,
+      `himmel-code x ${p}: the luna-mcp-read allow must precede the provider-wide deny, which must precede the himmel-code wildcard allow (got ${readIdx}, ${denyIdx}, ${wildIdx})`);
+    const salusIdx = m.rules.findIndex(r => r.corpus === "salus" && r.provider === "*" && r.purpose === "*" && r.hard === true);
+    assert(salusIdx >= 0 && salusIdx < readIdx, `the salus hard wildcard must precede every ${p} luna-mcp-read row`);
+  }
+  assert(evaluate("himmel-code", "brand-new-provider", "inference").effective === "allow",
+    "the himmel-code wildcard allow must stay open for providers that have no deny row of their own");
+  const lunaPersonalWhy = m.corpora["luna-personal"];
+  assert(/handovers\//.test(lunaPersonalWhy) && /sessions\//.test(lunaPersonalWhy) && /chats\//.test(lunaPersonalWhy) && /repo: salus/.test(lunaPersonalWhy),
+    "the luna-personal corpus text must say nested handovers/, sessions/, chats/ and repo: salus notes classify as luna-personal");
+  for (const c of mcpReadCorpora.filter(x => x !== "himmel-code")) {
+    assert(evaluate(c, "openai-codex", "luna-mcp-read").effective === "deny",
+      `${c} x openai-codex x luna-mcp-read must deny (codex cells do not reach the chatgpt provider's purpose)`);
+  }
+  assert(evaluate("himmel-code", "openai-codex", "luna-mcp-read").rule?.provider === "*",
+    "himmel-code x openai-codex x luna-mcp-read may resolve only through the himmel-code wildcard, never a chatgpt row");
+  for (const c of ["luna-personal", "luna-clippings"]) {
+    assert(evaluate(c, "openai-codex", "inference").effective === "allow" && evaluate(c, "openai-chatgpt", "inference").effective === "deny",
+      `${c}: openai-codex inference must stay allow while openai-chatgpt inference stays deny`);
+  }
+  assert(m.rules.filter(r => r.provider === "openai-codex").every(r => r.purpose !== "luna-mcp-read"),
+    "no openai-codex row may name luna-mcp-read");
+}
+
 if (failures > 0) {
   console.error(`egress-matrix: ${failures} invariant failure(s)`);
   process.exit(1);

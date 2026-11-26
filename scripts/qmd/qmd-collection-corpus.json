@@ -5,6 +5,7 @@
     "himmel": ["himmel-code"],
     "luna": ["luna-personal", "luna-clippings"],
     "luna-archive": ["luna-personal"],
+    "luna-pa": ["luna-personal", "luna-clippings"],
     "salus": ["salus"],
     "ggs-local": ["operator-repos"],
     "ggs-bridge": ["operator-repos"],
