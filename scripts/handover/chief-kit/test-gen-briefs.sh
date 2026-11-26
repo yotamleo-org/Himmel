@@ -2429,7 +2429,7 @@ import importlib.util, os, re, sys
 mode, here, rest = sys.argv[1], sys.argv[2], sys.argv[3:]
 sys.path.insert(0, here)
 lines = [l.strip() for l in sys.stdin.read().splitlines() if l.strip()]
-if mode == 'r4':  # every added path: absolute, under the root by realpath, in the spec's or the plans directory, carrying the key
+if mode == 'r4':
     key, specdir, plansdir, root = rest
     spec = importlib.util.spec_from_file_location('gen_briefs', os.path.join(here, 'gen-briefs.py'))
     gb = importlib.util.module_from_spec(spec); spec.loader.exec_module(gb)
@@ -2437,26 +2437,26 @@ if mode == 'r4':  # every added path: absolute, under the root by realpath, in t
     bad = [p for p in lines if not (os.path.isabs(p) and os.path.commonpath((root, os.path.realpath(p))) == root
                                     and os.path.dirname(p) in (specdir, plansdir) and gb.spec_key(p) == key)]
     print('checked=%d bad=%s' % (len(lines), ' '.join(bad))); sys.exit(1 if bad or not lines else 0)
-if mode == 'r5':  # the barrier's one parser reads every added path as a file hold
+if mode == 'r5':
     import holds
     got = set(p for k, p in holds.parse_text(open(rest[0]).read()) if k == 'file')
     miss = [p for p in lines if p not in got]
     print('parsed=%d missing=%s' % (len(lines) - len(miss), ' '.join(miss))); sys.exit(1 if miss or not lines else 0)
-if mode == 'r5ctl':  # a glob on a Writes line parses to a cut path, never to the glob
+if mode == 'r5ctl':
     import holds
     got = [p for k, p in holds.parse_text('> **Writes:** ' + rest[0])]
     print('paths=%s' % ' '.join(got)); sys.exit(0 if got and rest[0] not in got else 1)
-if mode == 'r6':  # ROUNDS stays above the critic round cap chief-route.ts holds
+if mode == 'r6':
     import minerva_siblings as m
     cap = int(re.search(r'CRITIC_ROUND_CAP = (\d+)', open(rest[0]).read()).group(1))
     print('cap=%d rounds=%d' % (cap, m.ROUNDS)); sys.exit(0 if m.ROUNDS >= cap + 1 else 1)
-if mode == 'r8':  # every critic return name matches spec-sign's SERIES, read from the file
+if mode == 'r8':
     series = re.compile(re.search(r'const SERIES = /(.*)/;', open(rest[0]).read()).group(1))
     name = rest[1]
     ret = [os.path.basename(p) for p in lines if '.critic-' in os.path.basename(p)]
     bad = [n for n in ret if not (n.startswith(name) and series.match(n[len(name):]))]
     print('returns=%d bad=%s' % (len(ret), ' '.join(bad))); sys.exit(1 if bad or not ret else 0)
-if mode == 'r10':  # the page and the plan map back to the spec by chief-route's own rules
+if mode == 'r10':
     ts, spec = rest
     problems = []
     if '["design", "designs", "spec"]' not in open(ts).read():

@@ -164,7 +164,7 @@ from datetime import date as _date, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from salus_marked import salus_marked, is_adapter  # noqa: E402
 import holds  # noqa: E402  the one parser of a Writes line, and the one grant-path rule
-import minerva_siblings  # noqa: E402  the minerva files of a spec on a design leg's Writes line
+import minerva_siblings  # noqa: E402
 import proof_staging  # noqa: E402
 
 
@@ -1182,7 +1182,7 @@ KEY_FOLDER_RE = re.compile(r'^[A-Z][A-Z0-9]+-[0-9]+$')
 LEAD_KEY_RE = re.compile(r'^([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])')
 INNER_KEY_RE = re.compile(r'(?<![A-Z0-9])([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])')
 MINERVA_FILES_LINE = "> **Minerva files:** the Writes line also names this spec's minerva files (estimate, page, plan, critic returns r1-r{rounds} beside the spec); they are part of your Writes, whatever the Writes note or Scope says."
-FOLD_INSTRUCTION ='each kind-scoped id is a `## Ticket coverage` line: `- <kind>:<id>: done` or `- <kind>:<id>: deferred → HIMMEL-<n>` (for example `spec:F1` and `plan:F1` are separate)'
+FOLD_INSTRUCTION = 'each kind-scoped id is a `## Ticket coverage` line: `- <kind>:<id>: done` or `- <kind>:<id>: deferred → HIMMEL-<n>` (for example `spec:F1` and `plan:F1` are separate)'
 
 
 def spec_key(path):
