@@ -917,6 +917,7 @@ OUT_LP="$TMP_ROOT/adopted-leak-envparams.md"
 adopted_control_run "$OUT_LP" -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER GIT_CONFIG_PARAMETERS="'himmel.tracker=jira'"
 file=$(cat "$OUT_LP" 2>/dev/null || true)
 assert_contains "control: git config parameters in the environment — the adopted run names an invalid tracker setting" "tracker setting is invalid" "$file"
+assert_absent "control: git config parameters in the environment — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
 
 # Shifts, chiefs and per-shift spend ---------------------------------
 # The generator reads the shift record (shifts.jsonl), counts each shift id in exactly one
