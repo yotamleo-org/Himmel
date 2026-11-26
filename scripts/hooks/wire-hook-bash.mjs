@@ -97,6 +97,7 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // Denies an in-process subagent any Bash command naming both release and
   // operator, so a subagent never writes an operator-chain row; fails closed.
   'block-subagent-release-operator.sh',
+  'block-station-load-test.sh',
   // re-checks /pr-check step 0's three bare-literal conditions
   // (himmel lane, worktree root, no scripts/cr/ or lib.sh diff) when the
   // allow-listed `bash scripts/cr/pr-check-context.sh` is typed; no-op on any
