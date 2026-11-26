@@ -1074,20 +1074,18 @@ _agy_seg_writes() {
 }
 
 _agy_text_writes() {
-    local s seg had_f=0 rc=1
+    local s seg rc=1
+    local -a ws
     s=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
     s=${s//\\$'\n'/}
     s=${s//[\"\']/}
     s=${s//[()\`]/ }
     s=${s//[;&|]/$'\n'}
-    case $- in *f*) had_f=1 ;; esac
-    set -f
     while IFS= read -r seg || [ -n "$seg" ]; do
-        # shellcheck disable=SC2086
-        set -- $seg
-        if [ "$#" -gt 0 ] && _agy_seg_writes "$@"; then rc=0; break; fi
+        ws=()
+        read -ra ws <<< "$seg"
+        if [ "${#ws[@]}" -gt 0 ] && _agy_seg_writes "${ws[@]}"; then rc=0; break; fi
     done <<< "$s"
-    if [ "$had_f" = 1 ]; then set -f; else set +f; fi
     return "$rc"
 }
 
