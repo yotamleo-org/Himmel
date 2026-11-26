@@ -264,6 +264,31 @@ else
   printf '%s' "$lines" > "$target"
 fi
 
+if [ "$mode" = aggregate ] && [ -n "$lines" ]; then
+  _agreed_ids=$(printf '%s' "$lines" | sed -n 's/^VERDICT \[\([^]]*\)\] = agreed$/\1/p')
+  if [ -n "$_agreed_ids" ]; then
+    _owed=$(LEDGER="$git_dir/cr-critic-scores.jsonl" SWEEPS="$git_dir/cr-class-sweeps/$branch" BRANCH="$branch" IDS="$_agreed_ids" node -e '
+      const fs = require("fs"), e = process.env;
+      const read = (p) => { try { return fs.readFileSync(p, "utf8").split("\n").filter(Boolean); } catch (_) { return []; } };
+      const ids = new Set(e.IDS.split("\n").filter((i) => i !== "" && !i.includes("@")));
+      const latest = new Map();
+      for (const l of read(e.LEDGER)) {
+        let r; try { r = JSON.parse(l); } catch (_) { continue; }
+        if (r && r.kind === "finding" && r.branch === e.BRANCH && ids.has(r.finding_id) && /^[0-9a-f]{7,64}$/.test(String(r.head || ""))) latest.set(r.finding_id, r);
+      }
+      const swept = read(e.SWEEPS).map((l) => /^SWEEP \[([^\]@]+)@([0-9a-f]{7,64})\]/.exec(l)).filter(Boolean);
+      for (const [id, r] of latest) {
+        if (swept.some((s) => s[1] === id && (s[2].startsWith(r.head) || r.head.startsWith(s[2])))) continue;
+        console.log("  SWEEP [" + id + "@" + r.head + "] class=<the class> :: sites=" + (r.file ? r.file + (r.line ? ":" + r.line : "") : "<path>") + ", <path>");
+      }' 2>/dev/null) || _owed=""
+    if [ -n "$_owed" ]; then
+      echo "write-verdicts.sh: agreed finding(s) still owe a variant-sweep record, and clear-review-marker.sh gate 4d refuses the clear without one. Sweep each finding's whole class across the tree, then record it at the finding's own head (the first site is the finding's own file; add the others you checked):" >&2
+      printf '%s\n' "$_owed" >&2
+      echo "  Write those lines to a file, then: bash scripts/cr/write-verdicts.sh sweep --branch '$branch' --from-file <path>" >&2
+    fi
+  fi
+fi
+
 # Event point 2 of the ci:go release: a disposition just landed, so the reviewer
 # gate may now pass at the head. Best effort; the lib reads the CI_GO_GATE switch
 # first and prints nothing when it is off.
