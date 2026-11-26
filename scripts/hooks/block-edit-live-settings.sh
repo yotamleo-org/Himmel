@@ -1049,10 +1049,59 @@ mentions_agy_live_config() {
     _text_names "$AGY_DIRS" "$c" 1
 }
 
+_agy_verb_ro() {
+    case "$1" in list|validate|help|-h|--help|'') return 0 ;; esac
+    return 1
+}
+
+_agy_text_writes() {
+    local s rest re v
+    s=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    re='(^|[^a-z0-9_.-])agy[[:space:]]([^;&|]*[[:space:]])?(plugins?|mcp)([[:space:]]+([^[:space:];&|]+))?'
+    while [[ $s =~ $re ]]; do
+        v=${BASH_REMATCH[5]}
+        _agy_verb_ro "$v" || return 0
+        rest=${s#*"${BASH_REMATCH[0]}"}
+        [ "$rest" != "$s" ] || return 1
+        s=$rest
+    done
+    return 1
+}
+
+agy_cli_writes() {
+    local i=0 seg=-1 st=0 first=0 nested=0 w
+    if [ "$TOK" != 1 ]; then
+        _agy_text_writes "$cmd_n"
+        return
+    fi
+    while [ "$i" -lt "$ST_N" ]; do
+        if [ -n "${ST_RO[i]}" ]; then i=$((i + 1)); continue; fi
+        if [ "${ST_S[i]}" != "$seg" ]; then seg=${ST_S[i]} st=0 first=1 nested=0; fi
+        if [ "$first" = 1 ] && [ "${ST_A[i]}" = 1 ]; then i=$((i + 1)); continue; fi
+        w=${ST_LW[i]}
+        if [ "$first" = 1 ]; then
+            first=0
+            case "${w##*/}" in
+                bash|sh|zsh|dash|ksh|eval|xargs|ssh|sudo|env|timeout|nohup|nice|watch|time|command|exec|setsid|stdbuf|flock) nested=1 ;;
+            esac
+        fi
+        if [ "$nested" = 1 ] && _agy_text_writes "$w"; then return 0; fi
+        case "$st" in
+            0) case "${w##*/}" in agy|agy.exe|agy.cmd) st=1 ;; esac ;;
+            1) case "$w" in plugin|plugins|mcp) st=2 ;; esac ;;
+            2) _agy_verb_ro "$w" || return 0; st=0 ;;
+        esac
+        i=$((i + 1))
+    done
+    return 1
+}
+
 agy_deny_message() {
     cat >&2 <<EOF
 ⛔ block-edit-live-settings: refusing $1 on \`$2\` — it can write Antigravity/Gemini
-live user configuration (~/.gemini/config/ or \${T3CODE_HOME:-\$HOME/.t3}/userdata/providers/antigravity/).
+live user configuration (~/.gemini/config/ or \${T3CODE_HOME:-\$HOME/.t3}/userdata/providers/antigravity/),
+or it runs an agy plugin/mcp subcommand that does (agy ignores GEMINI_HOME there; only
+list, validate and help are read-only).
 
 Reading it with cat, jq, ls, grep or the Read tool stays allowed (except OAuth tokens).
 
@@ -5013,6 +5062,9 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         registry_dest=1
     fi
     if [ "$agy_dest" = 0 ] && mentions_agy_live_config "$cmd_lc"; then
+        agy_dest=1
+    fi
+    if [ "$agy_dest" = 0 ] && agy_cli_writes; then
         agy_dest=1
     fi
 

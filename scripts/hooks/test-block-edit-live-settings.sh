@@ -4113,6 +4113,73 @@ assert_rc "9997 Bash redirect onto T3 antigravity config/hooks.json denies" 2 \
 assert_rc "9998 Bash read of ~/.gemini/config/hooks.json allows" 0 \
     "$(bash_rc_of "$WT2" "cat $AGY_GEM_CFG/hooks.json" HOME="$T3H")"
 
+assert_rc "11257a1 agy plugin import claude denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin import claude" HOME="$T3H")"
+assert_rc "11257a2 agy plugin install <dir> denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin install ./some-plugin" HOME="$T3H")"
+assert_rc "11257a3 agy plugin uninstall denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin uninstall demolab" HOME="$T3H")"
+assert_rc "11257a4 agy plugin enable denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin enable demolab" HOME="$T3H")"
+assert_rc "11257a5 agy plugin disable denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin disable demolab" HOME="$T3H")"
+assert_rc "11257a6 agy plugins (alias) install denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugins install ./some-plugin" HOME="$T3H")"
+assert_rc "11257a7 agy plugin link denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin link mp target" HOME="$T3H")"
+assert_rc "11257a8 agy mcp add denies" 2 \
+    "$(bash_rc_of "$WT2" "agy mcp add srv -- cmd" HOME="$T3H")"
+assert_rc "11257a9 agy mcp remove denies" 2 \
+    "$(bash_rc_of "$WT2" "agy mcp remove srv" HOME="$T3H")"
+assert_rc "11257a10 agy mcp enable denies" 2 \
+    "$(bash_rc_of "$WT2" "agy mcp enable srv" HOME="$T3H")"
+assert_rc "11257a11 agy mcp disable denies" 2 \
+    "$(bash_rc_of "$WT2" "agy mcp disable srv" HOME="$T3H")"
+assert_rc "11257b1 GEMINI_HOME on a scratch path does not exempt agy plugin import (agy ignores it)" 2 \
+    "$(bash_rc_of "$WT2" "GEMINI_HOME=$SANDBOX/scratch agy plugin import claude" HOME="$T3H")"
+assert_rc "11257b2 a global flag before the subcommand still denies" 2 \
+    "$(bash_rc_of "$WT2" "agy --model m plugin install ./p" HOME="$T3H")"
+assert_rc "11257b3 agy by absolute path denies" 2 \
+    "$(bash_rc_of "$WT2" "$T3H/.local/bin/agy plugin import claude" HOME="$T3H")"
+assert_rc "11257b4 agy behind a wrapper command denies" 2 \
+    "$(bash_rc_of "$WT2" "timeout 30 agy plugin import claude" HOME="$T3H")"
+assert_rc "11257b5 agy after && denies" 2 \
+    "$(bash_rc_of "$WT2" "echo go && agy plugin import claude" HOME="$T3H")"
+assert_rc "11257b6 uppercase spelling denies" 2 \
+    "$(bash_rc_of "$WT2" "AGY PLUGIN IMPORT claude" HOME="$T3H")"
+assert_rc "11257b7 bash -c carrying an agy install denies" 2 \
+    "$(bash_rc_of "$WT2" "bash -c 'agy plugin import claude'" HOME="$T3H")"
+assert_rc "11257b8 a heredoc command (text fallback) carrying agy plugin import denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin import claude <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b9 agy plugin import after a read-only agy plugin list in one command denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin list; agy plugin import claude" HOME="$T3H")"
+assert_rc "11257c1 agy plugin list allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin list" HOME="$T3H")"
+assert_rc "11257c2 agy plugin list --json allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin list --json" HOME="$T3H")"
+assert_rc "11257c3 agy print-mode /skills allows" 0 \
+    "$(bash_rc_of "$WT2" "agy -p \"/skills\"" HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
+assert_rc "11257c4 agy print-mode /usage allows" 0 \
+    "$(bash_rc_of "$WT2" "agy -p \"/usage\"" HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
+assert_rc "11257c5 agy plugin validate allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin validate ./some-plugin --json" HOME="$T3H")"
+assert_rc "11257c6 agy plugin help allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin help" HOME="$T3H")"
+assert_rc "11257c7 agy mcp list allows" 0 \
+    "$(bash_rc_of "$WT2" "agy mcp list" HOME="$T3H")"
+assert_rc "11257c8 agy models allows" 0 \
+    "$(bash_rc_of "$WT2" "agy models" HOME="$T3H")"
+assert_rc "11257c9 an agy prompt that merely mentions plugin install allows" 0 \
+    "$(bash_rc_of "$WT2" "agy -p \"explain agy plugin install and mcp add\"" HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
+assert_rc "11257c10 a git commit message that mentions agy plugin install allows" 0 \
+    "$(bash_rc_of "$WT2" "git commit -m \"doc: agy plugin install is refused\"" HOME="$T3H")"
+assert_rc "11257c11 a plugin install of another CLI allows" 0 \
+    "$(bash_rc_of "$WT2" "claude plugin install foo" HOME="$T3H")"
+assert_rc "11257c12 grep for agy plugin install in a file allows" 0 \
+    "$(bash_rc_of "$WT2" "grep -n 'agy plugin install' README.md" HOME="$T3H")"
+
 S9INPLACE=-i
 S9H="$SANDBOX/s9256home"
 S9SP="$SANDBOX/tmp/claude-1000/-home-u-Documents-github-himmel--claude-worktrees-slug/sess-1/scratchpad"
