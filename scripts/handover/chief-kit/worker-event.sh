@@ -74,7 +74,7 @@
 #
 # `HANDLED closed-already <label>` (rc 0): a WRAPPED worker the chief already closed (its bullet is in the chief
 # doc), whose doc tail is WRAPPED, queue lock free and session gone; nothing runs.
-# `HANDLED closed-already <label>` also answers a wrap-merged or close step that outlives LE_STEP_BOUND seconds
+# `HANDLED closed-already <label>` also answers a wrap-merged or close step that outlives LE_STEP_BOUND seconds, one bound counted from the start of the run for the wrap and its close fallback together
 # (default 200, under the waiter's 240 s limit; no GNU timeout, no bound) for a worker whose doc tail is terminal
 # (worker_terminal_tail), queue lock free and session gone: the chief closed it by hand before the wrap was recorded.
 # A bullet `CLOSED-ALREADY <label> WRAPPED, window closed, relay step outlived <n>s, not escalated` is appended to the
@@ -107,7 +107,8 @@ stacked_series_state() { ( . "$HERE/../../lib/flags.sh" && himmel_flag stacked_s
 # shellcheck source=scripts/lib/timeout-bin.sh
 . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
 STEP_BOUND="${LE_STEP_BOUND:-200}"
-bounded() { ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$STEP_BOUND"} "$@"; }
+STEP_T0=$SECONDS
+bounded() { local left=$((STEP_BOUND - (SECONDS - STEP_T0))); [ "$left" -ge 1 ] || left=1; ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$left"} "$@"; }
 worker_closed() {
     local lock_state=held wstem wsess
     [ -r "$worker" ] || return 1

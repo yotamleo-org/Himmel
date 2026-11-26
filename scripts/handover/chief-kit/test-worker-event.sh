@@ -955,6 +955,15 @@ check "20c a held queue lock escalates relay-timeout" "$out" "ESCALATE relay-tim
 printf '%s\n' '## Results' '- 10:00 LIVE — x' '- 10:20 READY #77 abc' > "$W20"
 LE_STEP_BOUND=1 LE_LIST="$W/list20" LE_WRAP="$W/slowwrap" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
 check "20d a worker whose doc is not terminal escalates relay-timeout" "$out" "ESCALATE relay-timeout N6020 rc=124 limit=1s"
+printf '%s\n' '## Results' '- 10:00 LIVE — x' '- 10:20 READY #77 abc' '- 10:30 WRAPPED — done' > "$W20"
+printf '#!/usr/bin/env bash\nsleep 3\necho "wrap-merged: step pr-state failed: PR #77 is '"'"'OPEN'"'"'" >&2\nexit 3\n' > "$W/slowopen"
+printf '#!/usr/bin/env bash\nsleep 20\n' > "$W/slowclose"
+chmod +x "$W/slowopen" "$W/slowclose"
+printf '# chief\n\n## Results\n' > "$W/doc"
+t0=$SECONDS
+LE_STEP_BOUND=4 LE_LIST="$W/list20" LE_WRAP="$W/slowopen" LE_CLOSE="$W/slowclose" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
+contains "20e a slow wrap then a slow close share one bound: closed, not escalated" "$out" "HANDLED closed-already N6020"
+check "20e both steps together stay under one bound" "$([ $((SECONDS - t0)) -lt 6 ] && echo fast || echo slow)" fast
 : > "$W/doc"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
