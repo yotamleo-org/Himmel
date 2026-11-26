@@ -1158,8 +1158,6 @@ const records = (qid) => {
       if (fields.length !== 1 || classes.some(c => !allowed.has(c))) throw Error("invalid history class " + file);
     }
     return { head: verdict[2], nogo: verdict[1] === "NO-GO", classes,
-      // The kinds go_trust_verdict (go-gate.sh) refuses as merge trust: a scope record
-      // buys a round by itself, a no-op GO rests on a head no judge read.
       scope: evidence.some(l => /^delta-(scope|from): /.test(l)),
       noop: evidence.some(l => l === "delta: no-op"),
       // A layer-decision line that lacks the layer keyword is not honoured; say so.
@@ -1172,9 +1170,6 @@ try {
   // A NO-GO on a test- or comment-only descendant counts as bound to WANT.
   const alt = new Set((e.ALT || "").split(" ").filter(Boolean));
   const current = candidateRecords.filter(r => r.nogo && (r.head === e.WANT || alt.has(r.head)));
-  // A signed GO at the round head (NEW) may carry the decision too. The bash side
-  // lets a GO into SIGNED only when its mac, PR binding and the absence of a NO-GO
-  // for NEW hold; its head and kind are tested here, so each test has one place.
   const roundGo = candidateRecords.filter(r => !r.nogo && e.NEW && r.head === e.NEW && !r.scope && !r.noop);
   if (current.some(r => r.decision) || roundGo.some(r => r.decision)) process.exit(0);
   const classes = new Set(current.flatMap(r => r.classes));
