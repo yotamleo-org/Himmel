@@ -589,7 +589,7 @@ fl_out="$( env -u ANTHROPIC_BASE_URL -u ANTHROPIC_API_KEY HOME="$FL_HOME" TMPDIR
   GRAPHIFY_MAP_BIN="$WS/fl-bin/graphify" PATH="$WS/fl-bin:$PATH" GRAPHIFY_CLAUDE_CONFIG_DIR="$FL_HOME/.claude-graphify" \
   bash "$REFRESH" --name flcause --corpus-root "$WS/fl-corpus" --backend claude-cli \
   --maps-dir "$WS/fl-maps" --title "Fail Line" --slug fail-line --corpus-tag flcause 2>&1 )"
-if printf '%s\n' "$fl_out" | grep -q 'chunk failed: claude -p reports: .*OAuth session expired'; then
+if printf '%s\n' "$fl_out" | grep -q 'chunk failed: the Claude call reports: .*OAuth session expired'; then
   pass "a failed chunk is followed by the claude -p error text"
 else
   fail "no chunk failure line carried the claude -p error text: $fl_out"

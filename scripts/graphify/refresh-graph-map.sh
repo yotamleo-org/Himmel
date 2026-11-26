@@ -2632,11 +2632,11 @@ if isinstance(d,dict) and d.get("is_error"):
           [ -s "$_TRUST_FILE" ] || printf '%s\n' "$line" > "$_TRUST_FILE" ;;
       esac
       case "$line" in
-        '[graphify] chunk '*' failed: claude -p exited'*)
+        '[graphify] chunk '*' failed: '*)
           if [ "$probed" -eq 0 ]; then
             probed=1
             ( _probe_claude_auth
-              [ -z "$_AUTH_CAUSE" ] || printf 'refresh-graph-map: chunk failed: claude -p reports: %s\n' "$_AUTH_CAUSE" >&2 ) < /dev/null &
+              [ -z "$_AUTH_CAUSE" ] || printf 'refresh-graph-map: chunk failed: the Claude call reports: %s\n' "$_AUTH_CAUSE" >&2 ) < /dev/null &
           fi ;;
       esac
       case "$line" in
