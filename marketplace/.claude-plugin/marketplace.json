@@ -358,7 +358,7 @@
       "source": {
         "source": "url",
         "url": "https://github.com/youmind-openlab/ai-image-prompts-skill.git",
-        "sha": "fca090f85254f56ef168ef2cfd9ba2195cbbf79e"
+        "sha": "bd9369cdcafd0ac0abcfddba27a6bc47879da328"
       },
       "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url, pinned to a full sha fca090f85254f56ef168ef2cfd9ba2195cbbf79e per himmel supply-chain policy. Design kit, design-imagegen profile.",
       "strict": false,
