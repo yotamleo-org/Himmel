@@ -8975,6 +8975,11 @@ test("HIMMEL-11321 7c empty override", async () => {
   const s = await status(t.specs);
   expect(s.invalid).toEqual([]); expect(s.why).toContain(`spec round 6: ${T5(6)}`);
   expect((await overrideOf(t.specs, "R1,R2")).err).toContain("already used its one override");
+  decide(t.specs, 1409, OP(1409));
+  expect((await closureVerb(t.specs, 1409, "--round", "plan:5")).err).toBe("");
+  expect((await closeOn(t, "plan", 5, [t.plan], "PLAN FINDINGS 1", "- **R3** (major; reopens R1) still broken")).err).toBe("");
+  const after = await status(t.specs);
+  expect(after.invalid).toEqual([]); expect(after.why).toContain(`plan round 6: ${T5(6)}`);
 });
 
 test("HIMMEL-11321 8a pre-reset opener", async () => {
