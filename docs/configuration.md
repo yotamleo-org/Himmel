@@ -444,6 +444,7 @@ plugin is installed. Scripts live under `scripts/hooks/`, or under
 | `mcp-policy` | every `mcp__*` call, classified against `scripts/guardrails/mcp-policy.json` and audited | warn-only as shipped (`observe` mode); a server set to `enforce` denies | the registry's `mode` |
 | `allow-thread-resolve`, `approval-grant-check` | the audited review-thread resolve call; a call the operator granted over Telegram | not a veto — only ever emits *allow* | — |
 | `stop-chief-idle-guard` | Stop: a chief session ending its turn while it still holds its queue lock (once per turn) | workflow guard (fail-open) | release the lock (wrap) or `/chief next` |
+| `stop-chief-ask-mirror` | Stop: a finished reply holding `Needs you:`, handed to `ask-mirror.sh` through the stop queue so the ask reaches Telegram | workflow nudge (fail-open) | — |
 | `block-infra-destroy` *(plugin)* | one-step data destruction: `terraform`/`tofu`/`pulumi destroy`, `kubectl delete`, `helm uninstall`, cloud delete/terminate, SQL `DROP`/`TRUNCATE`/`DELETE FROM`, docker prune, … | auth-gated (fail-closed) | `INFRADESTROYOK=1` |
 | `block-worker-write-fence` *(plugin)* | a dispatched worker (`HIMMEL_WORKER=1`) naming the hook-integrity pin directory, or repointing `origin/<default branch>` | auth-gated | `HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1` |
 | `block-lesson-enforcement-writes` *(plugin)* | in a lesson-loop worker (`HIMMEL_LESSON_LOOP=1`), a write to an enforcement path | HARD | none |

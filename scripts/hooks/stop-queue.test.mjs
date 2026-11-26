@@ -473,13 +473,19 @@ test('the end-side hooks route their detached work through the queue', () => {
   // deliver (its own job always returns having already decided ALLOW). See
   // the hook's own header for the routing decision in full.
   const SYNC_DECISION_HOOKS = ['stop-chief-idle-guard.sh'];
+  const SELF_ENQUEUE_HOOKS = ['stop-chief-ask-mirror.sh'];
   for (const event of ['Stop', 'SessionEnd']) {
     const cmds = commandsFor(event);
     assert.ok(cmds.length, `${event} has no hooks`);
     for (const c of cmds) {
       if (SYNC_DECISION_HOOKS.some((name) => c.includes(`/${name}"`))) continue;
+      if (SELF_ENQUEUE_HOOKS.some((name) => c.includes(`/${name}"`))) continue;
       assert.match(c, /stop-queue\.mjs" enqueue --key /, `${event} hook is not enqueue-and-exit: ${c}`);
     }
+  }
+  for (const name of SELF_ENQUEUE_HOOKS.map((n) => n.replace(/\.sh$/, ''))) {
+    const body = readFileSync(join(HERE, `${name}.sh`), 'utf8');
+    assert.match(body, /stop-queue\.mjs" enqueue --key /, `${name}.sh does not enqueue through the queue`);
   }
   // The three plugin SessionEnd hooks self-detach, so their seam is the call
   // site inside the script, not the wiring.
