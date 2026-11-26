@@ -1436,7 +1436,7 @@ printf 'return 1\n' > "$LT33/scripts/handover/chief-kit/go-deliver.sh"
 fx33; SCRIPT33="$LT33/scripts/handover/chief-kit/go.sh" go33 --doc "$C33" --contract yes 42 "$SHA"
 check "GD17: an unloadable library -> NOT-SENT no-library, exit 0, the path last" "$(line33 1)|$rc33|${out33##*$'\n'}|$(nrec33)" "NOT-SENT 42 $H833 reason=no-library|0|$GO33|0"
 
-tp33() { grep -Ev '^[[:space:]]*(#|$)' "$1" > "$D33/pat"; printf '%s\n' "$2" | grep -qE -f "$D33/pat" && echo yes || echo no; }
+tp33() { grep -Ev '^[[:space:]]*(#|$)' "$1" > "$D33/pat"; grep -qE -f "$D33/pat" <<< "$2" && echo yes || echo no; }
 TRUST33="$ANCHOR33/scripts/ci/ci-trust-paths.txt"; CORE33="$ANCHOR33/scripts/ci/core-paths.txt"
 for p33 in scripts/handover/chief-kit/go-deliver.sh scripts/lanes/lib/claude-sessions.sh \
            marketplace/plugins/himmel-bus/bin/bus marketplace/plugins/himmel-bus/lib/store.mjs; do
