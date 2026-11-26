@@ -4369,3 +4369,34 @@ test("a reply to a peer notification gets no line from a non-operator sender, or
   expect(await peerReply({ from: 7, chat_id: 7, ...peerLine } as any)).toBe(false);
   expect(said).toEqual([]);
 });
+
+const sentTexts = () => {
+  const bodies: string[] = [];
+  const f = asFetch(async (_url, init) => { bodies.push(JSON.parse(String(init?.body)).text); return jsonRes({ ok: true, result: { message_id: bodies.length } }); });
+  return { bodies, f };
+};
+
+test("HIMMEL-10763 a 7000-character direct reply goes out as ordered parts, none over the limit, none cut inside a word, code span or link", async () => {
+  const link = `https://example.com/${"a".repeat(60)}`;
+  const span = "`npm run build --flag`";
+  const text = `${"lorem ".repeat(495)}${link} ${"ipsum ".repeat(60)}${span} ${"dolor ".repeat(600)}`.slice(0, 7000).trimEnd();
+  expect(text.length).toBeGreaterThan(6900);
+  const { bodies, f } = sentTexts();
+  expect(await makeMonitorSend("999:TESTTOKEN", -100123, { f, sleep: async () => {} })(text)).toBe(true);
+  expect(bodies.length).toBeGreaterThan(1);
+  for (const b of bodies) expect(b.length).toBeLessThanOrEqual(4096);
+  const stripped = bodies.map((b, i) => { const m = /^\((\d+)\/(\d+)\) /.exec(b)!; expect([Number(m[1]), Number(m[2])]).toEqual([i + 1, bodies.length]); return b.slice(m[0].length); });
+  expect(stripped.join("")).toBe(text);
+  const words = new Set(text.split(/\s+/));
+  for (const p of stripped) {
+    for (const w of p.split(/\s+/).filter(Boolean)) if (!words.has(w)) expect(`cut word: ${w}`).toBe("");
+    expect(bodies.filter((b) => b.includes(link))).toHaveLength(1);
+    expect((p.match(/`/g) ?? []).length % 2).toBe(0);
+  }
+});
+
+test("HIMMEL-10763 a short direct reply still goes out as one unmarked message", async () => {
+  const { bodies, f } = sentTexts();
+  expect(await makeMonitorSend("999:TESTTOKEN", -100123, { f, sleep: async () => {} })("hello")).toBe(true);
+  expect(bodies).toEqual(["hello"]);
+});
