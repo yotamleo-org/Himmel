@@ -1,0 +1,18 @@
+[Unit]
+Description=luna-mcp read-only QMD MCP facade (loopback only)
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/himmel/luna-mcp.env
+ExecStart=/usr/bin/node %h/.local/share/himmel/luna-mcp/dist/src/server.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=%h/.local/state/himmel
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

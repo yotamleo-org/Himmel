@@ -5382,6 +5382,24 @@ It does not inspect the held Jira/dispatch queue. Test seams:
 `HIMMEL_STOP_GUARD_USAGE_PREFLIGHT`, `HIMMEL_STOP_GUARD_QUEUE_LOCK`. Spec:
 `scripts/hooks/test-stop-chief-idle-guard.sh`.
 
+### `stop-chief-ask-mirror.sh` — a chief's asks reach Telegram without the chief posting them
+
+A third `Stop` entry in `.claude/settings.json`, through the same launcher as the
+idle guard. A post to Telegram waits for a send receipt, longer than a Stop hook may
+block, so the hook only hands the work to the stop queue and returns. When the
+payload's `last_assistant_message` holds `Needs you:` it pipes the payload to
+`stop-queue.mjs enqueue --key chief-ask-mirror-<16 hex of the reply's sha256> -- bash
+scripts/handover/chief-kit/ask-mirror.sh`, adding `HANDOVER_DIR`, `BRIDGE_ROOT` and
+`TELEGRAM_ACCESS_PATH` to the env names the entry carries (paths, not credentials). The
+digest is in the key because the queue keys a waiting entry by (name, session) and a
+newer enqueue replaces it: a plain key would drop a first ask when a second ask-bearing
+reply is queued behind it. `ask-mirror.sh` keeps the chief gate, the parse and the
+dedupe. The hook prints nothing and always exits 0 (fail-open; no `jq` or `node`, junk
+input, no reply or no marker all exit 0), and Stop is not an event `wire-hook-bash.mjs`
+owns, so it has no `EXPECTED_SCRIPT_ORDER` row. The queue entry holds the reply text at
+0600 until the job runs, the one queue entry that carries reply text rather than harness metadata. Spec:
+`scripts/hooks/test-stop-chief-ask-mirror.sh`.
+
 ### `chief-precompact-snapshot.sh` — snapshot a chief's Live state at compaction
 
 Wired as the repo's one `PreCompact` entry in `.claude/settings.json` (10 s

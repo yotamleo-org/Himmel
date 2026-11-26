@@ -2966,6 +2966,7 @@ const ADVISORY_CHAIN_MEMBERS = new Map([
   ['approval-grant-check.sh', 'allow-only, never denies: a starved skip leaves no decision, so the classifier refuses as before'],
   ['block-fork-sync-pr.sh', 'workflow guard, fails open on its own infra errors: a starved skip lets one sync PR through'],
   ['check-write-hold.sh', 'coordination guard, fails open: a must-run overrun would fail the chain closed, a starved skip passes one write'],
+  ['block-station-load-test.sh', 'worker-only workflow guard, fails open on its own infra errors: a starved skip lets one load command through, and a must-run deny would fail every worker call on a loaded station'],
 ]);
 
 test('check-write-hold.sh is advisory: a must-run overrun fails the chain closed, against I5, and QL_TIMEOUT is 15 s', () => {

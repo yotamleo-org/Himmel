@@ -59,6 +59,12 @@ printf '{}\n' > "$WT_REPO/.agents/hooks.json"
 printf 'ok\n' > "$WT_REPO/.agents/skills/x/SKILL.md"
 printf 'ok\n' > "$WT_REPO/work.txt"
 printf 'ok\n' > "$MAIN_REPO/work.txt"
+mkdir -p "$HOME/.agents/skills/sk" "$HOME/.claude/skills"
+printf 'ok\n' > "$HOME/.agents/skills/sk/SKILL.md"
+ln -s ../../.agents/skills/sk "$HOME/.claude/skills/sk"
+ln -s "$WT_REPO/.agents/hooks.json" "$WT_REPO/lnk-hooks"
+ln -s "$HOME/.gemini/config" "$WT_REPO/lnk-gemini"
+ln -s "$T3CODE_HOME/userdata/providers/antigravity/hash1/config" "$WT_REPO/lnk-t3"
 
 ARTIFACT_DIR="$T3CODE_HOME/userdata/providers/antigravity/hash1/antigravity-acp/brain/conv-1"
 
@@ -275,6 +281,31 @@ assert_deny "run_command cd ~/.gemini && mv config c2 denied" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"cd ~/.gemini && mv config c2"}')"
 assert_deny "run_command ls ~/.gemini (no subpath) denied" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"ls ~/.gemini"}')"
+assert_deny "run_command write through ~/.claude/skills symlink into ~/.agents denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo x > ~/.claude/skills/sk/SKILL.md"}')"
+# shellcheck disable=SC2016
+assert_deny "run_command write through \$HOME/.claude/skills symlink denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo x > $HOME/.claude/skills/sk/SKILL.md"}')"
+assert_deny "run_command write through absolute .claude/skills symlink denied" "self-protect" \
+    "$(make_pre run_command "$(jq -cn --arg c "echo x > $HOME/.claude/skills/sk/SKILL.md" '{CommandLine:$c}')")"
+assert_deny "run_command relative scratch symlink onto .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo {} > lnk-hooks"}')"
+assert_deny "run_command no-space redirect through scratch symlink denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo {} >lnk-hooks"}')"
+assert_deny "run_command dd of= through scratch symlink denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"dd if=/dev/null of=lnk-hooks"}')"
+assert_deny "run_command write through symlink into ~/.gemini/config denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo {} > lnk-gemini/hooks.json"}')"
+assert_deny "run_command write through symlink into T3 antigravity home denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo {} > lnk-t3/hooks.json"}')"
+assert_deny "run_command direct write ~/.gemini/config/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo {} > ~/.gemini/config/hooks.json"}')"
+assert_deny "run_command direct write T3 antigravity config denied" "self-protect" \
+    "$(make_pre run_command "$(jq -cn --arg c "echo {} > $T3CODE_HOME/userdata/providers/antigravity/hash1/config/hooks.json" '{CommandLine:$c}')")"
+assert_pass "run_command ls -la ~/.claude/skills (the directory itself, no symlink into .agents) allowed" \
+    "$(make_pre run_command '{"CommandLine":"ls -la ~/.claude/skills"}')"
+assert_pass "run_command echo to ordinary worktree file allowed" \
+    "$(make_pre run_command '{"CommandLine":"echo ok > work.txt"}')"
 assert_pass "read_file on worktree .agents/hooks.json allowed" \
     "$(make_pre read_file "$(jq -cn --arg p "$WT_REPO/.agents/hooks.json" '{Path:$p}')")"
 assert_pass "read_file on worktree .agents/skills/x/SKILL.md allowed" \

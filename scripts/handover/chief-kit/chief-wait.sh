@@ -505,6 +505,7 @@
 # bound a READY's CI read and its cr-disposition check; READY_CHECK_DEADLINE (ready-check's,
 # default 150) sets ready-check's bound 15 s above it; HIMMEL_QUOTA_DIR holds quota.tsv and the
 # blocked/ markers (gh-quota.sh).
+# An exported REPO naming a directory reaches the tick only (as its absolute path); the waiter's own reads keep its own checkout.
 #
 # Per-tick log: every tick the waiter runs appends one line to <inbox>.wait.ticklog:
 #   start=<epoch> wall=<s> cpu=<children user+sys s> rc=<tick rc> timedout=<1|0>
@@ -542,6 +543,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ "${1:-}" = --rules ]; then cat "$HERE/wake-rules.tsv"; exit 0; fi
+cw_tick_repo=""; [ -z "${REPO:-}" ] || cw_tick_repo="$(CDPATH='' cd -- "$REPO" 2>/dev/null && pwd)" || cw_tick_repo=""  # swallow-ok: a REPO that names no directory keeps the waiter's own checkout, as before
 REPO="$(cd "$HERE/../../.." && pwd)"
 GH_READ_BIN="$REPO/scripts/lib/gh-read.sh"; [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 # shellcheck source=../../lib/prim.sh
@@ -876,7 +878,7 @@ sample() {
     local f v raw bank rc owed_n t0 t1 extract
     key=""; cap_val=""; fail_step=""
     tick_stamp; t0="$ts"
-    stoppable "$hb_file.tickout" "$hb_file.tickerr" timeout -k 5 "$tick_timeout" bash "$tick_cmd" "$@"; rc=$?  # gnu-ok: Linux-only kit
+    stoppable "$hb_file.tickout" "$hb_file.tickerr" timeout -k 5 "$tick_timeout" ${cw_tick_repo:+env "REPO=$cw_tick_repo"} bash "$tick_cmd" "$@"; rc=$?  # gnu-ok: Linux-only kit
     raw="$(<"$hb_file.tickout")"
     tick_stamp; t1="$ts"
     tick_log_add "$rc" "$t0" "$t1"

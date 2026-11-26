@@ -14,7 +14,7 @@ const EXPECTED_COUNTS = Object.freeze({
   SessionEnd: 4,
   Notification: 1,
   PostToolUse: 2,
-  PostToolUseFailure: 2,
+  PostToolUseFailure: 3,
 });
 const EXPECTED_HOOKS = Object.freeze([
   { event: 'PreToolUse', script: 'inject-minerva-critic.sh', source: 'plugin' },
@@ -103,6 +103,7 @@ const EXPECTED_HOOKS = Object.freeze([
   { event: 'PostToolUse', script: 'phi-read-mark.sh', source: 'plugin' },
   { event: 'PostToolUseFailure', script: 'peer-taint-mark.sh', source: 'plugin' },
   { event: 'PostToolUseFailure', script: 'phi-read-mark.sh', source: 'plugin' },
+  { event: 'PostToolUseFailure', script: 'suggest-missing-path.sh', source: 'plugin' },
 ]);
 const COMMAND_FIELD = /("command")(\s*:\s*)("(?:\\.|[^"\\])*")/g;
 const COMMAND_SENTINEL = '__WIRE_PLUGIN_HOOK_BASH_COMMAND__';

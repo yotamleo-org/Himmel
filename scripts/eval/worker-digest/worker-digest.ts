@@ -105,6 +105,15 @@ const OPENINGS: [RegExp, string][] = [
   [/^Refusing a repeat:/, "guard-identical-denied-retry"],
   [/^guard-unwrap:/, "guard-unwrap"],
   [/^guard-empty-expansion:/, "guard-empty-expansion"],
+  [/^graphify-fence: DENY\b/, "block-graphify-egress"],
+  [/^\S+ is held by \S+ \(/, "check-write-hold"],
+  [/^You are a subagent \(worker\) — .* is DENIED here/, "block-subagent-park"],
+  [/^You are the dispatching parent and this is implementation — DENIED/, "orchestrator-inline-guard"],
+  [/^BLOCKED: unwatch_pull_request refused\b/, "block-t3code-unwatch-open-pr"],
+  [/^MEMORY CAPTURE DENIED\b/, "guard-memory-capture"],
+  [/^busy-loop guard: /, "block-busy-loop"],
+  [/^judge write-deny: /, "guard-judge-writes"],
+  [/^BLOCKED: guard-t3-thread-tools refused\b/, "guard-t3-thread-tools"],
 ];
 const DENY_OPENING = /^run-hook-with-bash: DENY ([\w.-]+)\.sh\b/;
 const STOP_NOOP = /\bis not running\b|\bNo task found\b/;
