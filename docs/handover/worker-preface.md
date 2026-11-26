@@ -97,6 +97,7 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
   cgroup `memory.events`; all-zero → run the suite foreground, `BLOCKED` with numbers. [prose]
 - **Never pipe into a gate script.** [enforced: block-tail-pipe-on-gates]
 - **Never bare `git stash`.** [enforced: block-git-stash]
+- **A station is never load tested**: "works under load" is proved with a stubbed clock, a simulated slow tick or CI. [prose]
 - **Token discipline.** Batch every independent tool call of a step into ONE
   turn, never emit a text-only turn between tool calls; narrate in the Results
   bullet, not in chat. [prose]
