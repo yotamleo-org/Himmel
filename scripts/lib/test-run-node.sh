@@ -841,9 +841,11 @@ for marker in 1 0 "" yes "1 "; do
     fi
 done
 rc=0; out="$(env -u CLAUDE_PROJECT_DIR CLAUDE_PLUGIN_ROOT="$fc/plugin" CLAUDE_DIR="$fc/claude" HIMMEL_READINESS=1 sh "$fc/plugin/hooks/run-node.sh" hook.js --optional --fail-closed-when HIMMEL_READINESS=1 guard.sh 2>&1)" || rc=$?
-if [ "$rc" -eq 2 ] && [ -n "$out" ]; then pass "resolver missing, marker 1 -> rc2 with a reason"; else fail "resolver missing, marker 1 -> rc=$rc out='$out'"; fi
+if [ "$rc" -eq 2 ] && case "$out" in *"no usable node while HIMMEL_READINESS=1"*) true ;; *) false ;; esac; then pass "resolver missing, marker 1 -> rc2 with a reason"; else fail "resolver missing, marker 1 -> rc=$rc out='$out'"; fi
 rc=0; out="$(env -u CLAUDE_PROJECT_DIR CLAUDE_PLUGIN_ROOT="$fc/plugin" CLAUDE_DIR="$fc/claude" HIMMEL_READINESS=1 sh "$fc/plugin/hooks/run-node.sh" hook.js 2>&1)" || rc=$?
 if [ "$rc" -eq 0 ] && [ -z "$out" ]; then pass "resolver missing, marker 1 but not the readiness guard (a Stop-hook shape) -> rc0, silent"; else fail "resolver missing, marker 1, no --fail-closed-when -> rc=$rc out='$out'"; fi
+out="$(PATH="$UTILS_DIR" RESOLVE_NODE_PROBE_DIRS="" NVM_SYMLINK="" RESOLVE_NODE_NVM4W_DIR="" RESOLVE_NODE_NVM_ROOT="$fc/none" FNM_DIR="$fc/none" CLAUDE_DIR="$fc/claude" HIMMEL_READINESS=1 bash "$RUN" "$fc/hook.js" "$fc/other.sh" --fail-closed-when HIMMEL_READINESS=1 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && [ -z "$out" ]; then pass "no node, marker 1, the pair only as literal hook arguments -> rc0, silent"; else fail "no node, marker 1, pair after the hook script -> rc=$rc out='$out'"; fi
 out="$(PATH="$UTILS_DIR" RESOLVE_NODE_PROBE_DIRS="" NVM_SYMLINK="" RESOLVE_NODE_NVM4W_DIR="" RESOLVE_NODE_NVM_ROOT="$fc/none" FNM_DIR="$fc/none" CLAUDE_DIR="$fc/claude" HIMMEL_READINESS=1 bash "$RUN" "$fc/hook.js" --fail-closed-when HIMMEL_WORKER=1 "$fc/other.sh" 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ] && [ -z "$out" ]; then pass "no node, marker 1, a different --fail-closed-when marker -> rc0, silent"; else fail "no node, marker 1, other --fail-closed-when -> rc=$rc out='$out'"; fi
 rc=0; out="$(env -u CLAUDE_PROJECT_DIR -u HIMMEL_READINESS CLAUDE_PLUGIN_ROOT="$fc/plugin" CLAUDE_DIR="$fc/claude" sh "$fc/plugin/hooks/run-node.sh" hook.js 2>&1)" || rc=$?
@@ -852,7 +854,7 @@ if [ "$(id -u)" != 0 ]; then
     cp "$REPO_ROOT/marketplace/plugins/himmel-ops/hooks/resolve-node.sh" "$fc/plugin/hooks/resolve-node.sh"; chmod 000 "$fc/plugin/hooks/resolve-node.sh"
     rc=0; out="$(env -u CLAUDE_PROJECT_DIR CLAUDE_PLUGIN_ROOT="$fc/plugin" CLAUDE_DIR="$fc/claude" HIMMEL_READINESS=1 sh "$fc/plugin/hooks/run-node.sh" hook.js --optional --fail-closed-when HIMMEL_READINESS=1 guard.sh 2>&1)" || rc=$?
     chmod 644 "$fc/plugin/hooks/resolve-node.sh"
-    if [ "$rc" -eq 2 ] && [ -n "$out" ]; then pass "resolver unreadable, marker 1 -> rc2 with a reason"; else fail "resolver unreadable, marker 1 -> rc=$rc out='$out'"; fi
+    if [ "$rc" -eq 2 ] && case "$out" in *"no usable node while HIMMEL_READINESS=1"*) true ;; *) false ;; esac; then pass "resolver unreadable, marker 1 -> rc2 with a reason"; else fail "resolver unreadable, marker 1 -> rc=$rc out='$out'"; fi
 fi
 
 echo

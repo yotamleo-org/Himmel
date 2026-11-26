@@ -71,7 +71,7 @@ fi
 # is set we are the plugin copy and the plugin root is the ONLY trusted location;
 # a damaged plugin install then finds nothing and takes the FAIL-OPEN path below
 # — one breadcrumb line and exit 0, or 2 for the readiness guard — which is the right outcome. A missing
-# resolver must degrade to silence, never to sourcing a substitute from a
+# resolver must degrade to the no-node exit below, never to sourcing a substitute from a
 # different trust domain.
 #
 # Candidates are tested with -r, not -f: `.` on an existing-but-unreadable file
@@ -195,8 +195,15 @@ printf '%s node not found; skipped: %s\n' "$(date '+%Y-%m-%dT%H:%M:%S' 2>/dev/nu
     >> "$_log_dir/himmel-node.log" 2>/dev/null || true
 _closed=0
 _prev=''
+_n=0
 for _a in "$@"; do
+    _n=$((_n + 1))
+    [ "$_n" -gt 1 ] || continue
     if [ "$_prev" = --fail-closed-when ] && [ "$_a" = HIMMEL_READINESS=1 ]; then _closed=1; fi
+    case "$_a" in
+        --*) ;;
+        *) [ "$_prev" = --fail-closed-when ] || break ;;
+    esac
     _prev="$_a"
 done
 if [ "$_closed" = 1 ] && [ "${HIMMEL_READINESS-}" = 1 ]; then

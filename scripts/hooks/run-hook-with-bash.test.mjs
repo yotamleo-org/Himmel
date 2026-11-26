@@ -3674,7 +3674,11 @@ test('readiness residuals: the lone deadline kills the stalled grandchild, not j
     let alive = true;
     const until = Date.now() + 3000;
     while (alive && Date.now() < until) {
-      try { process.kill(pid, 0); } catch (_e) { alive = false; }
+      try {
+        process.kill(pid, 0);
+        const state = readFileSync(`/proc/${pid}/stat`, 'utf8').replace(/^.*\) /, '').charAt(0);
+        if (state === 'Z') alive = false;
+      } catch (_e) { alive = false; }
       if (alive) spawnSync('sleep', ['0.1']);
     }
     if (alive) process.kill(pid, 'SIGKILL');
