@@ -333,6 +333,8 @@ smoke_line() {
 run_smoke() {
     local p id hex home hj cmd payload out dec sk bad="" n=0 d name mc k spec t
     SMOKE_RC=0
+    # shellcheck source=../lib/timeout-bin.sh
+    . "$HERE/../lib/timeout-bin.sh"
     for p in $SELECTED; do
         id="antigravity_$p"
         hex="$(printf '%s' "$id" | sha256_hex)" || die 2 "sha256 failed"
@@ -361,11 +363,7 @@ run_smoke() {
                 payload="$(jq -cn --arg cwd "$REPO_ROOT" --arg art "$home/antigravity-acp/brain/smoke" \
                     --arg path "$home/antigravity-acp/antigravity-oauth-token" \
                     '{hookEventName:"PreToolUse",conversationId:"smoke",cwd:$cwd,artifactDirectoryPath:$art,transcriptPath:($art+"/transcript_full.jsonl"),toolCall:{id:"smoke_1",name:"read_file",args:{Path:$path}}}')"
-                if command -v timeout >/dev/null 2>&1; then
-                    out="$(printf '%s' "$payload" | timeout 30 bash -c "$cmd" 2>/dev/null)"
-                else
-                    out="$(printf '%s' "$payload" | bash -c "$cmd" 2>/dev/null)"
-                fi
+                out="$(printf '%s' "$payload" | ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 30} bash -c "$cmd" 2>/dev/null)"
                 dec="$(printf '%s' "$out" | jq -r '.decision // empty' 2>/dev/null)"
                 if [ "$dec" = deny ]; then smoke_line PASS hooks "backstop wired; a control read of the login file was denied"
                 else smoke_line FAIL hooks "backstop wired but a control read of the login file was not denied (decision: ${dec:-none}); the hook does not fire"; fi

@@ -187,7 +187,9 @@ seed "$T3S"
 before="$(cksum < "$T3S")"
 runon --only agy_profiles
 check_eq  "exit 0" 0 "$RC"
-check_eq  "one profile home exists" 1 "$(find "$AGY_ROOT" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')"
+homes=0
+for h in "$AGY_ROOT"/*; do [ -d "$h" ] && homes=$((homes + 1)); done
+check_eq  "one profile home exists" 1 "$homes"
 RC=0
 (cd "$CLONE" && T3_AP_REGISTRY="$AGY_REG" T3_AP_BACKSTOP="$AGY_BACKSTOP" bash scripts/t3/antigravity-profiles.sh --check --profile design >/dev/null 2>&1) || RC=$?
 check_eq  "antigravity-profiles --check --profile design is rc 0" 0 "$RC"
