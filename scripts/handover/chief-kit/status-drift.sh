@@ -632,6 +632,7 @@ case "$nmp" in
             [ -n "$n" ] || continue
             k=$(ticket_key_from_title "$title") || continue
             case " $mseen " in *" $k "*) continue ;; esac
+            [ "${k%%-*}" = "${JIRA_PROJECT_KEY:-HIMMEL}" ] || continue
             case $'\n'"$mrows"$'\n' in *$'\n'"$k"$'\t'"$n"$'\n'*|*$'\n'"$k"$'\t\n'*) continue ;; esac
             mfile=0
             mirror_read "$k" && mfile=1
