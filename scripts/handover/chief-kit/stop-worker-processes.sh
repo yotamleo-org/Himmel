@@ -23,14 +23,14 @@
 #
 # Exit codes: 0 done (or nothing matched); 1 a process survived KILL; 2 usage or
 # a path that is not a scratchpad dir; 3 refused in a dispatched worker
-# (HIMMEL_WORKER=1: only a chief stops another worker's processes); 4 no /proc.
+# (HIMMEL_WORKER=1 or HIMMEL_CONSOLE_LEG=1: only a chief stops another worker's processes); 4 no /proc.
 set -uo pipefail
 
 ROOT="${STOP_WORKER_PROCESSES_ROOT:-/tmp}"
 
 usage() { echo "usage: stop-worker-processes.sh <scratchpad dir> [--live]" >&2; exit 2; }
 
-[ "${HIMMEL_WORKER:-0}" = "1" ] && { echo "stop-worker-processes: refused in a dispatched worker; only a chief stops another worker's processes" >&2; exit 3; }
+{ [ "${HIMMEL_WORKER:-0}" = "1" ] || [ "${HIMMEL_CONSOLE_LEG:-0}" = "1" ]; } && { echo "stop-worker-processes: refused in a dispatched worker; only a chief stops another worker's processes" >&2; exit 3; }
 
 dir=""
 live=0

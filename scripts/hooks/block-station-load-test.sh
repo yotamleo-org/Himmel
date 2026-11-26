@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # block-station-load-test.sh — PreToolUse Bash chain member: in a dispatched
-# worker session (HIMMEL_WORKER=1) denies a command that would load the station.
+# worker session (HIMMEL_WORKER=1 or HIMMEL_CONSOLE_LEG=1) denies a command that would load the station.
 # The shapes it refuses, and no others:
 #
 #   xargs-fanout   xargs with -P / --max-procs above 2 (or 0, unlimited).
@@ -26,7 +26,7 @@
 # A single foreground suite run, and a fan-out of at most 2 copies (xargs -P 2,
 # parallel -j 2, `for i in 1 2; do ...& done`), pass.
 #
-# Worker-only: a headed or chief session sets no HIMMEL_WORKER marker and exits
+# Worker-only: a headed or chief session sets neither marker and exits
 # on the first line. There is no bypass; a worker proves "works under load" with
 # a stubbed clock or a simulated slow tick (inject the deadline seam), or in CI,
 # never by loading the station.
@@ -38,7 +38,7 @@
 # reason is shown to Claude. bash 3.2-safe.
 set -uo pipefail
 
-[ "${HIMMEL_WORKER:-0}" = "1" ] || exit 0
+[ "${HIMMEL_WORKER:-0}" = "1" ] || [ "${HIMMEL_CONSOLE_LEG:-0}" = "1" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 
 input=$(cat 2>/dev/null) || exit 0  # swallow-ok: a workflow guard allows a call it cannot read
@@ -128,6 +128,7 @@ loop_copies() {
             return
         fi
         case $list in *\$* | *\`* | *\** | *\?* | *\[* | *\{* | *\(*) printf unknown; return ;; esac
+        list=${list//$'\r'/}
         list=${list//\\$NL/ }
         list=${list//$NL/ }
         read -ra wordlist <<<"$list"
@@ -212,7 +213,7 @@ scan_shapes() {
         rest=$after
         [ "$kind" = until ] && kind=while
         shopt -s extglob
-        head=${after%%@(\;|"$NL"| )do@(\;|"$NL"| )*}
+        head=${after%%@(\;|[[:space:]])do@(\;|[[:space:]])*}
         shopt -u extglob
         [ "$head" != "$after" ] || continue
         body=${after#"$head"}

@@ -26,7 +26,7 @@ NEEDLE="decision 1309"
 run_hook() {
     local input="$1"; shift
     # read-sink-ok: every caller passes a payload file the suite wrote under its own mktemp dir
-    out=$(env -u HIMMEL_WORKER "$@" "$BASH_ABS" "$HOOK" <"$input" 2>&1)
+    out=$(env -u HIMMEL_WORKER -u HIMMEL_CONSOLE_LEG "$@" "$BASH_ABS" "$HOOK" <"$input" 2>&1)
     rc=$?
 }
 
@@ -131,6 +131,9 @@ expect deny "a quoted tool name after env" "env \"stress-ng\" --cpu 32" "load-to
 expect deny "a quoted tool name after sudo" "sudo \"stress-ng\" --cpu 32" "load-tool"
 expect deny "a single-quoted tool name after nohup" "nohup 'stress' -c 8 &" "load-tool"
 expect deny "a quoted tool name after timeout and a duration" "timeout 60 'stress' --cpu 8" "load-tool"
+expect deny "a tab after do" "for i in \$(seq 32); do"$'\t'"bash $SUITE & done; wait" "loop-fanout"
+expect deny "a carriage return after do" "for i in \$(seq 32); do"$'\r'"bash $SUITE & done; wait" "loop-fanout"
+expect deny "a multi-line CRLF loop" "for i in \$(seq 32)"$'\r\n'"do"$'\r\n'"bash $SUITE &"$'\r\n'"done" "loop-fanout"
 expect deny "a word list continued over a backslash newline" "for i in 1 \\"$'\n'"2 3 4 5 6 7 8; do bash $SUITE & done; wait" "loop-fanout"
 expect deny "stress after a pipe" "echo go | stress --cpu 8" "load-tool"
 expect deny "stress in a bash -c string" "bash -c \"stress --cpu 8\"" "load-tool"
@@ -182,6 +185,10 @@ run_hook "$TMP/p$n.json"
 check allow "no HIMMEL_WORKER marker (a headed or chief session)"
 run_hook "$TMP/p$n.json" HIMMEL_WORKER=0
 check allow "HIMMEL_WORKER=0"
+run_hook "$TMP/p$n.json" HIMMEL_CONSOLE_LEG=0
+check allow "HIMMEL_CONSOLE_LEG=0"
+run_hook "$TMP/p$n.json" HIMMEL_CONSOLE_LEG=1
+check deny "a fleet worker: HIMMEL_CONSOLE_LEG=1 and no HIMMEL_WORKER"
 n=$((n + 1)); jq -n '{tool_name: "Read", tool_input: {file_path: "x"}}' >"$TMP/p$n.json"
 run_hook "$TMP/p$n.json" HIMMEL_WORKER=1
 check allow "another tool"

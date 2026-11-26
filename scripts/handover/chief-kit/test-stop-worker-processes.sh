@@ -53,7 +53,7 @@ start() {
 }
 
 run_stop() {
-    out=$(env -u HIMMEL_WORKER bash "$STOP" "$@" 2>&1)
+    out=$(env -u HIMMEL_WORKER -u HIMMEL_CONSOLE_LEG bash "$STOP" "$@" 2>&1)
     rc=$?
 }
 
@@ -150,6 +150,9 @@ rc_is 2 "two paths are refused"
 up "$B1" "the refusals stopped nothing (other scratchpad)"
 up "$C1" "the refusals stopped nothing (prefix sibling)"
 
+out=$(HIMMEL_CONSOLE_LEG=1 bash "$STOP" "$OTHER" --live 2>&1); rc=$?
+rc_is 3 "a fleet worker (HIMMEL_CONSOLE_LEG=1, no HIMMEL_WORKER) is refused, exit 3"
+up "$B1" "the fleet worker call stopped nothing"
 out=$(HIMMEL_WORKER=1 bash "$STOP" "$OTHER" --live 2>&1); rc=$?
 rc_is 3 "a dispatched worker is refused, exit 3"
 up "$B1" "the refused worker call stopped nothing"

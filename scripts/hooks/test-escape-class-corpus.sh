@@ -57,6 +57,7 @@ block-himmel-config-writes.sh|||deny|||-|||-|||cp /tmp/f ~/.himmel/config.json
 block-jira-compound-write.sh|||deny|||-|||-|||node /x/scripts/jira/dist/index.js create --type Task --title a --desc "$(cat /tmp/a.md)"
 block-read-secrets.sh|||deny|||-|||-|||cat .env
 block-rogue-claude-schedule.sh|||deny|||-|||-|||schtasks /create /tn X /tr claude.exe /sc ONCE
+block-station-load-test.sh|||deny|||HIMMEL_WORKER=1|||-|||seq 32 | xargs -P 32 -I{} bash x.sh
 block-subagent-release-operator.sh|||deny-subagent|||-|||-|||node /x/scripts/jira/dist/index.js release operator spec-review R1 --keys K-2
 block-tail-pipe-on-gates.sh|||deny|||-|||-|||bash scripts/ci/run-shell-tests.sh | tail -5
 block-write-into-main-checkout.sh|||deny|||-|||-|||echo x > @@REPO@@/f
@@ -69,7 +70,6 @@ check-cr-marker-on-pr-create.sh|||exempt|||-|||-|||-
 allow-thread-resolve.sh|||exempt|||-|||-|||-
 approval-grant-check.sh|||exempt|||-|||-|||-
 guard-merge-compound.sh|||exempt|||-|||-|||-
-block-station-load-test.sh|||exempt|||-|||-|||-
 '
 # Exempt rows (each is printed as EXEMPT on every run, never skipped silently):
 #   read-clamp.sh, require-quiet-run.sh — workflow NUDGES, not security fences;
@@ -84,7 +84,7 @@ block-station-load-test.sh|||exempt|||-|||-|||-
 #   approval-grant-check.sh — allow-only too: it allows only the exact
 #     bytes root holds a live one-use grant for, so a reshaped command has another
 #     hash and gets no decision.
-#   guard-merge-compound.sh, block-station-load-test.sh — workflow guards that fail open (the merge stays gated by the GO and the allow rules; the load guard is worker-only and its own suite carries the shapes it refuses), so the fail-closed policy for fences does not apply.
+#   guard-merge-compound.sh — a workflow nudge that fails open; the merge stays gated by the GO and the allow rules, so the fail-closed policy for fences does not apply.
 
 # <hook> <shape-id> <ticket> — a shape the guard allows today; one Bug per guard.
 KNOWN_FAILURES='

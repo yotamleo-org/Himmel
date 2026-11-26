@@ -170,8 +170,9 @@ CRLF_AGENT=""
 check block-subagent-release-operator Bash 0 "$D_RELOP" "allow the same text from the main session"
 check block-station-load-test     Bash 2 "seq 32 | xargs -P 32 -I{} bash x.sh" "deny a 32-way xargs fan-out from a worker" HIMMEL_WORKER=1
 check block-station-load-test     Bash 2 "for i in \$(seq 32); do bash x.sh & done; wait" "deny a 32-way background loop from a worker" HIMMEL_WORKER=1
+check block-station-load-test     Bash 2 $'for i in $(seq 32)\ndo\n  bash x.sh &\ndone' "deny a multi-line 32-way background loop from a fleet worker" HIMMEL_CONSOLE_LEG=1
 check block-station-load-test     Bash 0 "seq 2 | xargs -P 2 -I{} bash x.sh" "allow a 2-way xargs fan-out from a worker" HIMMEL_WORKER=1
-check block-station-load-test     Bash 0 "seq 32 | xargs -P 32 -I{} bash x.sh" "allow the same text outside a worker session" -u HIMMEL_WORKER
+check block-station-load-test     Bash 0 "seq 32 | xargs -P 32 -I{} bash x.sh" "allow the same text outside a worker session" -u HIMMEL_WORKER -u HIMMEL_CONSOLE_LEG
 check guard-identical-denied-retry Bash 0 "$A_OK"    "allow git status (byte-exact match, so a CR-tail command is a different command)"
 
 # A multi-line command is where the class actually bites: with CRLF endings the
