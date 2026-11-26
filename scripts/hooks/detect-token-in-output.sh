@@ -131,6 +131,8 @@ if command -v jq >/dev/null 2>&1; then
 fi
 case "$tool" in *[!A-Za-z0-9_.:-]*|'') tool="unknown" ;; esac
 case "$session" in *[!A-Za-z0-9_.-]*) session="" ;; esac
+if [[ $tool =~ $tok_re ]]; then tool="unknown"; fi
+if [[ $session =~ $tok_re ]]; then session=""; fi
 
 if [ "${#tokens[@]}" -eq 0 ]; then
     what="a GitHub-token-shaped value"

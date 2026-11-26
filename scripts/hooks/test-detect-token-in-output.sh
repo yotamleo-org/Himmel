@@ -218,8 +218,9 @@ if [ "$g" = 1 ] && [ -n "$(ls -A "$TMP/alerts")" ]; then pass "sentinels hold no
 # checksum is a test fixture, not a credential: one PLACEHOLDER line on screen
 # with its prefix and last four only, no agent report, no DM, no sentinel.
 is_placeholder() {
-    [ "$rc" = 0 ] && grep -q 'TOKEN-IN-OUTPUT PLACEHOLDER' "$1" && ! grep -q 'LIVE' "$1" && [ "$(wc -l <"$1" | tr -d ' ')" = 1 ] \
-        && ! jq -e '.hookSpecificOutput' "$1" >/dev/null 2>&1 && shows_only_mask "$1" "$2"
+    [ "$rc" = 0 ] && ! grep -q 'LIVE' "$1" && [ "$(wc -l <"$1" | tr -d ' ')" = 1 ] \
+        && jq -e '(.systemMessage | startswith("TOKEN-IN-OUTPUT PLACEHOLDER")) and (has("hookSpecificOutput") | not)' "$1" >/dev/null 2>&1 \
+        && shows_only_mask "$1" "$2"
 }
 before=$(sent_count)
 fixtures=("ghp""_$(rep A 36)" "ghp""_$(rep E 36)" "ghp""_$(rep C 36)" "gho""_$(rep b 36)")
@@ -248,6 +249,10 @@ if is_placeholder "$TMP/out" "$pat_fx" && [ "$(sent_count)" = "$before" ]; then 
 pat_seq="github""_pat_${B62:0:41}${B62:10:41}"
 run_hook "$(j_post Bash s12 "T=$pat_seq")"
 if is_placeholder "$TMP/out" "$pat_seq" && [ "$(sent_count)" = "$before" ]; then pass "github_pat_ with a sequential body is a PLACEHOLDER"; else fail "sequential github_pat_: $(head -c 300 "$TMP/out")"; fi
+run_hook "$(j_post "$replay" "${fixtures[0]}" "T=$replay")"
+if is_placeholder "$TMP/out" "$replay" && no_value "$TMP/out" "${fixtures[0]}" && grep -q 'in a unknown tool call or result is' "$TMP/out"; then
+    pass "a token-shaped tool or session name is never printed"
+else fail "token-shaped tool/session name: $(head -c 300 "$TMP/out")"; fi
 run_hook "$(j_post Bash s12b "T=$TOK_PAT")"
 if grep -q 'TOKEN-IN-OUTPUT LIVE' "$TMP/out" && shows_only_mask "$TMP/out" "$TOK_PAT" && [ "$(sent_count)" = "$((before + 1))" ]; then
     pass "github_pat_ with a varied, non-sequential body pages as LIVE"
