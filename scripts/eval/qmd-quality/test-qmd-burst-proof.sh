@@ -154,6 +154,8 @@ assert_eq "argv row: still passes" 0 "$RC"
 assert_eq "argv row: curl was called through the fake" 3 "$(wc -l < "$TMP/argv.log" | tr -d ' ')"
 assert_lacks "argv row: no token in curl argv" "$TOKEN" "$(cat "$TMP/argv.log")"
 assert_lacks "argv row: no token in output" "$TOKEN" "$OUT"
+assert_has "argv row: every token-carrying call turns off URL globbing (-g)" " -g " "$(head -n 1 "$TMP/argv.log")"
+assert_eq "argv row: no call lacks -g" 0 "$(grep -c -v -e ' -g ' "$TMP/argv.log")"
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "ALL PASS"; else echo "$FAILED FAILED"; exit 1; fi
