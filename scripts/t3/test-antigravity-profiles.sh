@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# scripts/t3/test-antigravity-profiles.sh - fixture suite for antigravity-profiles.sh.
-# Hermetic: HOME and T3CODE_HOME live in a mktemp sandbox, the pinned repo is a local git repo, no network.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 GEN="$HERE/antigravity-profiles.sh"
