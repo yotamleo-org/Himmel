@@ -644,6 +644,28 @@ NEXT_DISPATCH_MIRROR="$WPD/mirror2/HIMMEL" CHIEF_WAIT_DISPATCH="$WPD/dispatch-lo
 check "9335 WP2.ctl: with a valid sibling manifest the version backlog lists $KP-2" "1" "$(sed -n '/^# version backlog/,$p' "$WPD/wp2c.out" | grep -cF -- "LOCAL${TAB}${KP}-2" || true)"
 check "9335 WP2.ctl: with a valid sibling manifest there is no owner-unknown line" "0" "$(grep -c '^# owner unknown' "$WPD/wp2c.out" || true)"
 
+WP1D="$WORK/wp10769"; mkdir -p "$WP1D/mirror/HIMMEL"
+mkwp() {
+    printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "x"\npriority: "Medium"\nlabels: %s\nfixVersions: ["v1.0.1"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# %s: %s\n\n## Description\n\nEdit scripts/lib/wp10769-%s.sh only.\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n' \
+        "$1" "$2" "$3" "$1" "$4" "$1" > "$WP1D/mirror/HIMMEL/$1.md"
+}
+mkwp HIMMEL-7101 "To Do" '["ps3-blocker"]' "pool head"
+mkwp HIMMEL-7102 "In Progress" '[]' "first orphan"
+mkwp HIMMEL-7103 "In Progress" '[]' "second orphan"
+printf 'v1.0.1\ttrue\t2026-01-01\n' > "$WP1D/mirror/HIMMEL.versions.tsv"
+cat > "$WP1D/dispatch.sh" <<EOF
+#!/usr/bin/env bash
+exec bash "\${NEXT_DISPATCH:-$HERE/next-dispatchable.sh}" "\$@"
+EOF
+cp "$STUB/tick.line" "$WP1D/tick.line.saved"
+sed 's/capacity=UNDERFILLED:7/capacity=UNDERFILLED:2/' "$WP1D/tick.line.saved" > "$STUB/tick.line"
+I="$(new_inbox wp10769)"
+NEXT_DISPATCH_MIRROR="$WP1D/mirror/HIMMEL" CHIEF_WAIT_DISPATCH="$WP1D/dispatch.sh" timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.json" > "$WP1D/wake.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+cp "$WP1D/tick.line.saved" "$STUB/tick.line"
+check "10769 T-WP1: the waiter exits 0 with an underfilled wake" "0:WAKE underfilled" "$rc:$(head -n1 "$WP1D/wake.out" | cut -c1-16)"
+check "10769 T-WP1: the pool pass lists F only" "1" "$(sed '/^# version backlog/,$d' "$WP1D/wake.out" | grep -c "^LOCAL.$KP-7101")"
+check "10769 T-WP1: dispatchable= names F and R1, not R2 (the base counted 3)" "dispatchable=2 keys=HIMMEL-7101,HIMMEL-7102" "$(head -n1 "$WP1D/wake.out" | grep -o 'dispatchable=[0-9]* keys=[^ ]*')"
+
 printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
 for t7b_line in '# quota-pause QUOTA-PAUSE github graphql token=main remaining=0 floor=500 reset=unknown caller=next-dispatchable nothing-was-judged' \
     '# gh-stall GH-STALL github read timed out after 400s token=main caller=next-dispatchable nothing-was-judged'; do
