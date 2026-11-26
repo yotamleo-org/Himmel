@@ -2495,8 +2495,8 @@ fixed text and never carries the key or the Authorization header. Spec:
 ### `block-subagent-release-operator.sh`
 
 A member of the PreToolUse `Bash` chain. It denies an in-process subagent (a
-payload whose `agent_id` is present and not `null`) any Bash command that names
-both the word `release` and the word `operator`, so a subagent never writes an
+payload whose `agent_id` is present and not `null`) any Bash command that runs
+the `release operator` word sequence, so a subagent never writes an
 operator-chain row with `jira release operator …`; `spec-review` is one of those
 verbs, so a critic subagent cannot record its own verdict. `operatorFence` in the
 jira CLI reads markers from the environment and the process tree (below), and a
@@ -2571,14 +2571,26 @@ env-only path, and `test-real-state-guard.sh`'s door rows do the same through a
 test-only bun preload. JF runs the real CLI with neither and asserts the
 refusal.
 
-The match: the command is normalised (backslash-newline pairs deleted, `$'` and
-`$"` turned into `'` and `"`, then every `'`, `"` and `\` deleted), split into
-words at every space, TAB, carriage return, newline and shell metacharacter (`;&|()<>{}` and the
-backtick), and matches when both words appear anywhere, in either order. There
-is no allow-list of read-only commands, no split into simple commands and no
-order check, so `git grep "release operator"` is denied too: a subagent searches
-for the phrase with the Grep tool. An `agent_id` of `false`, `""`, a number or an
-object counts as a subagent.
+The match has two steps. A pre-filter normalises the command (backslash-newline
+pairs deleted, `$'` and `$"` turned into `'` and `"`, then every `'`, `"` and `\`
+deleted), splits it into words at every space, TAB, carriage return, newline and
+shell metacharacter (`;&|()<>{}` and the backtick), and allows at once a command
+that does not hold both words. For a command that does, the shared guard-unwrap
+library (`scripts/hooks/lib/guard-unwrap.sh`) derives the text the shell runs
+(quotes removed, wrappers stripped, `bash -c`, `eval` and `env -S` bodies read) and
+feeds each form back through the hook; the tokenizer then splits the command into
+simple commands, and a simple command is denied when `release` is directly
+followed by `operator` in its words, redirects aside. So `git diff -G
+'release|operator'`, `grep -n 'release operator' f`, `git grep "release operator"`
+and a heredoc body that writes a file naming both words are allowed, and every
+`jira release operator` verb (`declare`, `freeze`, `decision`, `takeover`, …) is
+denied plain or wrapped. Where a command's words can reach the CLI as data, both
+words anywhere still deny: an `xargs` segment (the whole command), and a shell,
+`eval`, `source`, node, python, perl, ruby, php or lua segment (that segment, or
+the whole command when it has a heredoc). A command whose quoting the tokenizer
+cannot read, and that holds both words, is denied. The refusal tells a subagent to
+quote the phrase as one argument to `grep` or `git grep` through Bash. An
+`agent_id` of `false`, `""`, a number or an object counts as a subagent.
 
 It is a security fence and fails CLOSED: no `jq` on `PATH` denies every Bash call
 (`cannot read the hook input without jq`), and stdin that is not one JSON object
@@ -2592,7 +2604,9 @@ corpus shape.
 What it cannot see is the fence residual, tracked as one follow-up ticket of the core-bypass spec work: text built at run time (a
 variable, an alias, a function, an expansion, an `eval`, a script written then
 run, an encoded string), a nested `claude` session started from a subagent, a
-chief session in another repo, and the Monitor tool. Bypass:
+chief session in another repo, the Monitor tool, and a command that runs its
+argument as code through a tool the word-sequence rule does not read as an
+executor (sed `e`, `rg --pre`, `git grep -O`, a git alias). Bypass:
 `SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1` (launching shell). Spec:
 `scripts/hooks/test-block-subagent-release-operator.sh`.
 
