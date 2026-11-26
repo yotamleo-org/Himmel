@@ -72,9 +72,9 @@ case "$tool" in
             list=$("$bin" thread list --json --project "$project" 2>/dev/null) || exit 0
         fi
         status=$(printf '%s' "$list" | jq -r --arg id "$tid" '
-            if type == "array" then ([.[] | select(.threadId == $id)] | first | .status // empty | if type == "string" then . else empty end) else empty end' 2>/dev/null) || exit 0
+            if type == "array" then ([.[] | select(.threadId == $id)] | first | .status // empty
+                | select(. == ("idle", "completed", "interrupted", "cancelled", "error", "failed"))) else empty end' 2>/dev/null) || exit 0
         [ -n "$status" ] || exit 0
-        case "$status" in idle | completed | interrupted | cancelled | error | failed) ;; *) exit 0 ;; esac
         deny "t3_thread_send with mode \"steer\" needs a thread whose turn is running, and thread ${tid} is ${status}. Send the same message with no mode: it starts a turn on an idle thread (and unsettles it) or queues behind a running one."
         ;;
 esac

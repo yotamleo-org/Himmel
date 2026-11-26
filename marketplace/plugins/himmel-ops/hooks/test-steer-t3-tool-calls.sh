@@ -119,7 +119,8 @@ allowed "an unreadable thread list passes (fail open)"
 
 cat >"$TMP/list.json" <<'EOF'
 [{"threadId":"t-idle","title":"idle one","status":"idle","settled":false},
- {"threadId":"t-new","title":"new status","status":"warming","settled":false}]
+ {"threadId":"t-new","title":"new status","status":"warming","settled":false},
+ {"threadId":"t-nl","title":"newline status","status":"idle\n","settled":false}]
 EOF
 run_case "$(send_payload t-idle steer)"
 refused "steer on an idle thread, valid list again" "no mode"
@@ -129,6 +130,9 @@ allowed "a missing t3 CLI passes (fail open)"
 
 run_case "$(send_payload t-new steer)"
 allowed "a status the hook does not know passes (fail open)"
+
+run_case "$(send_payload t-nl steer)"
+allowed "a status that is a known word plus a newline is not that word (fail open)"
 
 run_case "$(wait_payload '["b001oqmbs\n"]')"
 refused "an id with a trailing newline" "run_in_background"
