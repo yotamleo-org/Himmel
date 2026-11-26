@@ -427,7 +427,12 @@ detect() {
 }
 quiet=$(detect "$0"); quiet_rc=$?
 if [ "$quiet_rc" = "0" ] && [ -z "$quiet" ]; then pass "the detector finds no token shape in this file"; else fail "the detector finds no token shape in this file"; fi
-printf 'X=%s\n' "gh""p_$(rep aB3dE5gH7jK9 3)" >"$WORKDIR/live.txt"
+body=$(rep aB3dE5gH7jK9 3); body=${body:0:30}
+read -r b0 b1 b2 b3 < <(printf '%s' "$body" | gzip -c | tail -c 8 | head -c 4 | od -An -v -tu1)
+c=$((b0 + b1 * 256 + b2 * 65536 + b3 * 16777216)); sum=""
+b62=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
+for ((i = 0; i < 6; i++)); do sum="${b62:c%62:1}$sum"; c=$((c / 62)); done
+printf 'X=%s\n' "gh""p_$body$sum" >"$WORKDIR/live.txt"
 if detect "$WORKDIR/live.txt" | grep -q 'TOKEN-IN-OUTPUT' && [ -s "$WORKDIR/sent.mark" ]; then pass "a run-time built token still alerts"; else fail "a run-time built token still alerts"; fi
 
 echo "----"

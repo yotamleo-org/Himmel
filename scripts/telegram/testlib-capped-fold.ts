@@ -198,8 +198,11 @@ export async function buildKnownSingleFixture(scratchRoot: string, opts: KnownSi
   const plans = [1, 2, 3].map(round => issue('plan', round, [`- **P${round}** (minor) a plan note`], legacy));
   const four = opts.variant === 'refusedCap' ? [issue('plan', 4, ['- **P4** (minor) a closure note', '- **P5** (minor) another closure note'], { ...legacy, closure: true })]
     : opts.variant === 'overrideAdmitted' ? [issue('plan', 4, [`- **PR1** (major; regression) the line \`${PLAN_LINE}\` regressed`], { ...legacy, closure: true, rewrite: { plan: planDocument(`${key} known single plan`, PLAN_CHANGED) } })] : [];
+  const admitted = opts.variant === 'overrideAdmitted';
+  const returns = admitted ? [...run.returns.slice(0, 4), ...plans, ...four, run.returns[4]] : [...run.returns, ...plans, ...four];
+  const steps = admitted ? [{ ...run.steps[0], after: 7, findings: ['R1', 'PR1'] }] : run.steps;
   return buildRoundFixture({ scratchRoot, key, specText: specOf(SPEC_LINE), planText: planDocument(`${key} known single plan`, PLAN_LINE),
-    declarations: false, returns: [...run.returns, ...plans, ...four], steps: run.steps });
+    declarations: false, returns, steps });
 }
 
 export async function buildFreshSingleFixture(scratchRoot: string): Promise<RoundFixture> {

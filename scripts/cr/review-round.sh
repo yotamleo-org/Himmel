@@ -1126,7 +1126,7 @@ EOF
 # candidate evidence is the explicit way out of a repeated-class stop.
 # shellcheck disable=SC2016  # JavaScript template fields are literal here
 judge_class_check() {
-    VERDICT_DIR="$5" HISTORY="$verdict_state" CANDIDATE="$1" WANT="$2" SIGNED="$3" ALT="${4:-}" node -e '
+    VERDICT_DIR="$5" HISTORY="$verdict_state" CANDIDATE="$1" WANT="$2" SIGNED="$3" ALT="${4:-}" NEW="${6:-}" node -e '
 const fs = require("fs"), path = require("path"), cp = require("child_process"), crypto = require("crypto"), e = process.env;
 // A layer-decision counts only from a record whose mac verified; the
 // bash side hands over qid/name:sha256 of the bytes it verified, and the record
@@ -1158,6 +1158,8 @@ const records = (qid) => {
       if (fields.length !== 1 || classes.some(c => !allowed.has(c))) throw Error("invalid history class " + file);
     }
     return { head: verdict[2], nogo: verdict[1] === "NO-GO", classes,
+      scope: evidence.some(l => /^delta-(scope|from): /.test(l)),
+      noop: evidence.some(l => l === "delta: no-op"),
       // A layer-decision line that lacks the layer keyword is not honoured; say so.
       malformed: evidence.some(l => /^layer-decision:/.test(l) && !/^layer-decision: (text|os|classifier|accept)\s+\S.*$/.test(l)),
       decision: isSigned && evidence.some(l => /^layer-decision: (text|os|classifier|accept)\s+\S.*$/.test(l)) };
@@ -1168,7 +1170,8 @@ try {
   // A NO-GO on a test- or comment-only descendant counts as bound to WANT.
   const alt = new Set((e.ALT || "").split(" ").filter(Boolean));
   const current = candidateRecords.filter(r => r.nogo && (r.head === e.WANT || alt.has(r.head)));
-  if (current.some(r => r.decision)) process.exit(0);
+  const roundGo = candidateRecords.filter(r => !r.nogo && e.NEW && r.head === e.NEW && !r.scope && !r.noop);
+  if (current.some(r => r.decision) || roundGo.some(r => r.decision)) process.exit(0);
   const classes = new Set(current.flatMap(r => r.classes));
   const prior = [];
   let history = "";
@@ -1190,7 +1193,7 @@ try {
   }
   const repeated = [...new Set(prior.flatMap(r => r.classes).filter(c => classes.has(c)))];
   if (repeated.length) {
-    const lacks = current.some(r => r.malformed) ? " - a layer-decision line is present but lacks a layer keyword, so it is not honoured" : "";
+    const lacks = current.some(r => r.malformed) || roundGo.some(r => r.malformed) ? " - a layer-decision line is present but lacks a layer keyword, so it is not honoured" : "";
     console.error(`review-round: repeated NO-GO class ${repeated.join(", ")} across heads of this PR - delta round refused; record layer-decision: text|os|classifier|accept <reason> in the candidate evidence${lacks}`);
     process.exit(8);
   }
@@ -1412,7 +1415,8 @@ judge_nogo_record() (
     pr_want=""
     re_session='^writer-session: [A-Za-z0-9-]+$'
     re_written='^written-at: [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
-    hits="" check_hits="" signed="" alt=""
+    hits="" check_hits="" signed="" alt="" go_signed="" go_pend=""
+    go_tab="$(printf '\t')"
     for qdir in "$dir"/*/; do
         qdir="${qdir%/}"
         qid="${qdir##*/}"
@@ -1451,7 +1455,7 @@ judge_nogo_record() (
                 exit 1
             fi
         fi
-        hit="" bad=0 macbad=0 snapfail=0
+        hit="" bad=0 macbad=0 snapfail=0 go_pend=""
         for f in "$qdir"/*.md; do
             [ -e "$f" ] || [ -L "$f" ] || continue
             if [ -L "$f" ] || [ ! -f "$f" ]; then bad=1; break; fi
@@ -1504,7 +1508,29 @@ EOF_SNAP
                     fi
                 fi
             fi
+            case "$word" in
+                "GO "[0-9a-f]*)
+                    if [ "$mac_ok" -eq 1 ] && [ -z "$l9" ]; then
+                        case "$l10" in
+                            'pr: '*)
+                                if snap_sha="$(printf '%s' "$snap" | _go_sha256)"; then
+                                    go_pend="$go_pend$qid/$name:$snap_sha$go_tab$l10$go_tab$l11
+"
+                                fi ;;
+                        esac
+                    fi ;;
+            esac
         done
+        if [ "$bad" -eq 0 ] && [ -n "$hit" ] && [ -n "$go_pend" ]; then
+            go_pr_save="$pr_want"
+            while IFS="$go_tab" read -r go_rec go_l10 go_l11; do
+                [ -n "$go_rec" ] || continue
+                if record_binds "" "$go_l10" "$go_l11"; then go_signed="${go_signed:+$go_signed }$go_rec"; fi
+            done <<EOF_GO
+$go_pend
+EOF_GO
+            pr_want="$go_pr_save"
+        fi
         [ "$snapfail" -eq 0 ] || check_hits="${check_hits:+$check_hits }$qid/unreadable"
         if [ "$bad" -eq 0 ] && [ -n "$hit" ]; then
             check_hits="${check_hits:+$check_hits }$hit"
@@ -1512,11 +1538,57 @@ EOF_SNAP
         fi
     done
     [ -n "$check_hits" ] || exit 1
-    judge_class_check "$check_hits" "$want" "$signed" "$alt" "$dir" || exit 8
+    if [ -n "$go_signed" ] && [ -n "${2:-}" ]; then
+        if go_vs="$(verdict_select "$dir" "$2" scope)"; then
+            go_sel=""
+            while read -r go_k go_q _; do
+                [ "$go_k" != S ] || go_sel="$go_sel $go_q"
+            done <<EOF_GS
+$go_vs
+EOF_GS
+            if go_hn="$(head_nogo_scan "$dir" "$2" "$go_sel")"; then
+                case "$go_hn" in
+                    "unreadable "*) echo "review-round: ${go_hn#unreadable } cannot be read whole - a GO layer-decision at $2 is not honoured" >&2 ;;
+                    *) echo "review-round: ${go_hn#nogo } rules NO-GO for $2 - a GO layer-decision there is not honoured" >&2 ;;
+                esac
+            else
+                signed="${signed:+$signed }$go_signed"
+            fi
+        else
+            echo "review-round: cannot list the records naming $2 - a GO layer-decision there is not honoured" >&2
+        fi
+    fi
+    judge_class_check "$check_hits" "$want" "$signed" "$alt" "$dir" "${2:-}" || exit 8
     [ "$pr_want" != "-" ] || exit 8
     [ -n "$hits" ] || exit 1
     printf '%s\n' "$hits"
 )
+
+head_nogo_scan() {
+    local dir="$1" want="$2" sel="$3" nf qid nl8
+    for nf in "$dir"/*/*.md; do
+        if [ ! -f "$nf" ] || [ -L "$nf" ]; then continue; fi
+        qid="${nf#"$dir"/}"; qid="${qid%%/*}"
+        case "$qid" in
+            [ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789]*)
+                case "$qid" in
+                    *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]*) ;;
+                    *) case " $sel " in *" $qid "*) ;; *) continue ;; esac ;;
+                esac ;;
+        esac
+        if ! go_verdict_snapshot "$nf"; then
+            printf 'unreadable %s\n' "${nf#"$dir"/}"
+            return 0
+        fi
+        nl8=$(printf '%s' "$GO_VERDICT_SNAP" | sed -n '8p' | tr -d '\r')
+        case "$nl8" in
+            "**NO-GO** for head \`$want\`"|"**NO-GO** for head \`$want\`.")
+                printf 'nogo %s\n' "${nf#"$dir"/}"
+                return 0 ;;
+        esac
+    done
+    return 1
+}
 
 # Print "<qid>/<name> <scope>" for a judge GO on head $2 (the
 # delta's new head) written by chief-kit/write-verdict.sh, whose evidence
@@ -1568,28 +1640,13 @@ judge_scope_record() (
     # Any NO-GO for the new head, in any qid (consumed or not, signed
     # or not - a NO-GO only narrows), blocks the scope round: a GO beside it is
     # not the judges' last word.
-    for nf in "$dir"/*/*.md; do
-        if [ ! -f "$nf" ] || [ -L "$nf" ]; then continue; fi
-        qid="${nf#"$dir"/}"; qid="${qid%%/*}"
-        case "$qid" in
-            [ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789]*)
-                case "$qid" in
-                    *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]*) ;;
-                    *) case " $sel " in *" $qid "*) ;; *) continue ;; esac ;;
-                esac ;;
+    if hn_out="$(head_nogo_scan "$dir" "$want" "$sel")"; then
+        case "$hn_out" in
+            "unreadable "*) echo "review-round: ${hn_out#unreadable } cannot be read whole (unreadable, empty or NUL) - the scope round is refused" >&2 ;;
+            *) echo "review-round: ${hn_out#nogo } rules NO-GO for $want - the scope round is refused" >&2 ;;
         esac
-        # A record that cannot be read whole may be a NO-GO: it vetoes, never skips.
-        if ! go_verdict_snapshot "$nf"; then
-            echo "review-round: ${nf#"$dir"/} cannot be read whole (unreadable, empty or NUL) - the scope round is refused" >&2
-            exit 8
-        fi
-        nl8=$(printf '%s' "$GO_VERDICT_SNAP" | sed -n '8p' | tr -d '\r')
-        case "$nl8" in
-            "**NO-GO** for head \`$want\`"|"**NO-GO** for head \`$want\`.")
-                echo "review-round: ${nf#"$dir"/} rules NO-GO for $want - the scope round is refused" >&2
-                exit 8 ;;
-        esac
-    done
+        exit 8
+    fi
     for qdir in "$dir"/*/; do
         qdir="${qdir%/}"
         qid="${qdir##*/}"

@@ -1,0 +1,16 @@
+{
+  "profiles": {
+    "design": {
+      "fromProfiles": ["design", "design-imagegen"],
+      "pinnedSkills": [
+        {
+          "repo": "https://github.com/google-gemini/demolab.git",
+          "commit": "cd0c1f8540c0186ec9592af972a0700fa20909d4",
+          "path": "skills",
+          "include": ["gemini-frontend-design"],
+          "license": "Apache-2.0"
+        }
+      ]
+    }
+  }
+}
