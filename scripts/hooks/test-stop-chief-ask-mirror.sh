@@ -115,6 +115,7 @@ t0=$SECONDS
 run_hook "$TMP/p3.json"
 elapsed=$((SECONDS - t0))
 unset STUB_SLEEP
+wait_calls 1
 check "R3 rc 0" "$HRC" "0"
 check "R3 stdout empty" "$HOUT" ""
 check "R3 hook took under 3 s" "$([ "$elapsed" -lt 3 ] && echo yes || echo "no ($elapsed s)")" "yes"
