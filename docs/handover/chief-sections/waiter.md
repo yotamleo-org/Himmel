@@ -617,8 +617,8 @@ recorded included. An ask on settings or `.github/`
 
     **A T3 relay event wakes you once.** With `--workers-from`, the waiter runs
     `relay-bind.sh scan` once per `CHIEF_WAIT_T3_RELAY_SEC` (default 120) and prints
-    `WAKE t3-relay <kind> <id|list|stem>` plus the tick line. `<id>` is a threadId, `list`
-    is literal, `stem` is the old owner's chief doc stem. The kind decides your action:
+    `WAKE t3-relay <kind> <id|list|stem|label>` plus the tick line. `<id>` is a threadId, `list`
+    is literal, `stem` is the old owner's chief doc stem, `label` is an ask row's label (kinds `ask-ready` and `ask-resolve`). The kind decides your action:
     - `ask-thread-pr <id>`: an ask thread now has a linked PR. Read the thread's `T3ASK-` doc and the PR, and answer through `t3-send.sh <id> <msg-file>`.
     - `bind-gave-up <id>`: the send of the doc path to the thread failed three times, so the row's notice is `failed`. Send the doc path by hand with `t3-send.sh <id> <msg-file>`.
     - `bind-refused <id>`: the binder refused the thread, with reason `gitleaks` (a scan hit) or `exists` (its `T3ASK-` doc is already there), and unbound it. Tell the operator which; never copy the thread text.
@@ -640,7 +640,8 @@ recorded included. An ask on settings or `.github/`
     the partial block). The waiter already appended a `WORKER-SILENT` bullet to your doc and
     sent the operator one page naming the worker, the signal and the action; it repeats
     neither while the worker's doc is unchanged (`<inbox>.wait.silent`). The waiter also runs
-    `silent-worker-act.sh` once for that (worker, signal, doc write time), so the wake is
+    `silent-worker-act.sh` at each sighting of that (worker, signal, doc write time), and each
+    act below happens once per write time, so the wake is
     not the only thing that happens: past `CHIEF_WAIT_WORKER_SILENT_MIN` minutes of silence it sends the
     worker's one live window a bus nudge (one per doc write); past twice that bound, and a
     5-minute grace after the nudge (`SILENT_ACT_NUDGE_GRACE_SECS`, default 300), it relaunches the
@@ -651,7 +652,7 @@ recorded included. An ask on settings or `.github/`
 
     - `none`: the worker is silent for less than the first bound. Nothing to do.
     - `fresh`: the worker's doc was written within the first bound. Nothing to do.
-    - `done`: nothing is due for this write time: the nudge ran and the relaunch either ran, is not yet due, or is inside the grace after the nudge. If the worker is still silent past the grace, take over its step yourself.
+    - `done`: nothing is due for this write time: the nudge ran and the relaunch either ran, is not yet due, or is inside the grace after the nudge. The relaunch is due only at twice the first bound and after the grace, so take over by hand only once both have passed and no `relaunched` or `relaunch=failed` followed; until then the waiter relaunches on its own.
     - `busy`: another helper holds this worker's lock. Wait for the next call.
     - `nudged`: the bus nudge reached its one live window. Wait; the relaunch comes only past the grace.
     - `nudge=no-window`: no single live window named the worker. Past bound one it also opens an owed row (`owed=`) unless the relaunch is already due; find the worker with `ListAgents` and nudge it by hand.
