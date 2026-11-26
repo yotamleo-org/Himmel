@@ -839,18 +839,24 @@ function overlayHimmelConf(data, ctx, keys = HIMMEL_CONF_KEYS) {
 // Claude Code applies local over project over user settings, so a project
 // scope probe of a .claude/settings.json key reads all three: an item wired
 // at user scope is not reported missing.
-function settingsLayerFiles(file, ctx) {
-  const scopeFile = resolveConfigFile(file, ctx);
+const PROJECT_LOCAL_FILE_ITEMS = new Set(['wiring-statusline']);
+
+function settingsLayerFiles(file, ctx, item) {
+  let scopeFile = resolveConfigFile(file, ctx);
+  const localFile = path.join(ctx.targetPath || '', '.claude', 'settings.local.json');
+  const localItem = Boolean(item && PROJECT_LOCAL_FILE_ITEMS.has(item.id) && ctx.scope === 'project' && file === '.claude/settings.json');
+  if (localItem) scopeFile = localFile;
   if (file !== '.claude/settings.json' || ctx.scopeFileOnly) return { primary: scopeFile, files: [scopeFile] };
   const env = ctx.env || {};
   const userFile = path.join(env.CLAUDE_CONFIG_DIR || path.join(env.HOME || os.homedir(), '.claude'), 'settings.json');
   if (ctx.scope === 'user') return { primary: userFile, files: [userFile] };
-  return { primary: scopeFile, files: [path.join(ctx.targetPath, '.claude', 'settings.local.json'), scopeFile, userFile] };
+  const shared = resolveConfigFile(file, ctx);
+  return { primary: scopeFile, files: [localFile, ...(shared === localFile ? [] : [shared]), userFile] };
 }
 
 function probeSettingsKey(item, ctx) {
   const isEnv = item.probe.file === '.env';
-  const { primary: filePath, files } = settingsLayerFiles(item.probe.file, ctx);
+  const { primary: filePath, files } = settingsLayerFiles(item.probe.file, ctx, item);
   const layers = [];
   const chainOn = isEnv && Boolean(ctx.jiraChain);
   const chain = chainOn ? resolveJiraChain(ctx) : {};
@@ -1533,6 +1539,9 @@ function onDemandRegistryPath(ctx) {
 }
 
 function probeMcpRegistered(item, ctx) {
+  if (ctx.scope === 'project' && item.probe.server === 'graphify') {
+    return probeMcpConfigFile(item, ctx, onDemandRegistryPath(ctx));
+  }
   const primary = probeMcpConfigFile(item, ctx, mcpConfigPath(ctx));
   if (ctx.scope === 'project' || primary.actual !== 'absent' || primary.configError) return primary;
   const registryPath = onDemandRegistryPath(ctx);

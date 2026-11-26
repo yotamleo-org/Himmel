@@ -126,7 +126,7 @@ function buildEntry(item, ctx, diagnosticState) {
     case 'setup':
       return { cmd: 'bash', args: [path.join(scriptsDir, 'setup.sh')] };
     case 'wire': {
-      const settings = settingsPath(ctx.scope, ctx.targetPath, ctx.env);
+      const settings = wireSettingsPath(install.target, ctx);
       if (install.target === 'statusline') {
         return { cmd: 'bash', args: [path.join(scriptsDir, 'lib', 'wire-statusline.sh'), settings, ctx.repoRoot] };
       }
@@ -142,7 +142,7 @@ function buildEntry(item, ctx, diagnosticState) {
       // never re-implements or collapses it.
       return {
         cmd: 'bash',
-        args: [path.join(scriptsDir, 'machine-setup', 'install-plugins.sh'), '--scope', ctx.scope],
+        args: [path.join(scriptsDir, 'machine-setup', 'install-plugins.sh'), '--scope', ctx.scope, ...(ctx.scope === 'project' ? ['--strip-user-enable'] : [])],
         ...(ctx.scope === 'user' ? { watchEnabledPlugins: userEnabledPluginsWatch(ctx.env) } : {}),
       };
     case 'qmd': {
@@ -317,7 +317,13 @@ function buildEntry(item, ctx, diagnosticState) {
 // process.env and tests inject a scratch HOME via ctx.env.
 function settingsPath(scope, targetPath, env) {
   if (scope === 'user') return path.join((env && env.HOME) || os.homedir(), '.claude', 'settings.json');
+  if (scope === 'local') return path.join(targetPath, '.claude', 'settings.local.json');
   return path.join(targetPath, '.claude', 'settings.json');
+}
+
+function wireSettingsPath(target, ctx) {
+  if (target === 'statusline' && ctx.scope === 'project') return settingsPath('local', ctx.targetPath, ctx.env);
+  return settingsPath(ctx.scope, ctx.targetPath, ctx.env);
 }
 
 // planInstall(items, ctx) -> [{id, type, cmd, args, deps, coalesceKey?}]
@@ -730,7 +736,7 @@ function unwireCommand(item, ctx) {
   const unwire = item.unwire;
   if (!unwire || unwire.type !== 'wire') return { unrunnable: 'no runnable unwire descriptor' };
   const scriptsDir = path.join(ctx.repoRoot, 'scripts');
-  const settings = settingsPath(ctx.scope, ctx.targetPath, ctx.env);
+  const settings = wireSettingsPath(unwire.target, ctx);
   if (unwire.target === 'statusline') {
     return { cmd: 'bash', args: [path.join(scriptsDir, 'lib', 'unwire-statusline.sh'), settings] };
   }

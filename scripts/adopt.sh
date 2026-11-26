@@ -700,8 +700,8 @@ install_plugins() {
   local args=(--scope "$SCOPE")
   [[ $DRY_RUN -eq 1 ]] && args+=(--dry-run)
   if [[ "$SCOPE" == "project" ]]; then
-    # project scope writes to the CWD's .claude/settings.json — run from $TARGET
-    # so plugins land in the adopted repo, not wherever adopt was invoked.
+    args+=(--strip-user-enable)
+    [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && args+=(--settings "$TARGET/.claude/settings.local.json")
     ( cd "$TARGET" && bash "$HIMMEL_ROOT/scripts/machine-setup/install-plugins.sh" "${args[@]}" )
   else
     bash "$HIMMEL_ROOT/scripts/machine-setup/install-plugins.sh" "${args[@]}"
@@ -715,7 +715,7 @@ install_plugins() {
 wire_statusline_core() {
   local settings
   if [[ "$SCOPE" == "project" ]]; then
-    settings="$TARGET/.claude/settings.json"
+    settings="$TARGET/.claude/settings.local.json"
   else
     settings="$HOME/.claude/settings.json"
   fi
@@ -732,7 +732,8 @@ wire_statusline_core() {
 wire_himmel_repo_core() {
   local settings
   if [[ "$SCOPE" == "project" ]]; then
-    settings="$TARGET/.claude/settings.json"
+    echo "  env.HIMMEL_REPO: not written to the shared file at project scope"
+    return
   else
     settings="$HOME/.claude/settings.json"
   fi
@@ -759,6 +760,8 @@ wire_luna_vault_path() {
     return
   fi
   bash "$HIMMEL_ROOT/scripts/lib/wire-luna-vault.sh" "$settings" "$dest"
+  [[ "$SCOPE" == "project" ]] && move_sessionend_to_local
+  return 0
 }
 
 # env.HANDOVER_DIR — seed the handover state root at the scaffolded luna vault.
@@ -959,7 +962,7 @@ wire_graphify_core() {
   if [[ $DRY_RUN -eq 1 ]]; then
     echo "DRY: graphify_install"
     if [[ "$SCOPE" == "project" ]]; then
-      echo "DRY: claude mcp add -s project graphify -- graphify-mcp"
+      echo "DRY: register graphify MCP on demand (graph mcp-profile), not in $TARGET/.mcp.json"
     else
       echo "DRY: register graphify MCP on demand (graph mcp-profile), not in ~/.claude.json"
     fi
@@ -971,15 +974,7 @@ wire_graphify_core() {
   # registration is the shared graphify-bin.sh impl — adopt's SCOPE (project|
   # user) is a valid `claude mcp add -s` scope.
   graphify_install || { echo "  WARNING: graphify install failed — continuing without graphify." >&2; return 0; }
-  if [[ "$SCOPE" == "project" ]]; then
-    # project scope writes the committed .mcp.json relative to CWD (mirrors
-    # install_plugins) — run from $TARGET so it lands in the adopted repo.
-    ( cd "$TARGET" && graphify_register_mcp "$SCOPE" )
-  else
-    # user/local: a personal config, so register on demand (the `graph`
-    # mcp-profile) instead of loading the server into every session.
-    graphify_register_mcp_on_demand
-  fi
+  graphify_register_mcp_on_demand
   # price the hooks in the ADOPTED repo, not himmel's own — adopt
   # targets $TARGET, so the root must be passed explicitly.
   graphify_price_hooks "$TARGET"
@@ -1641,6 +1636,75 @@ if (bundleOk) {
 ' "$HIMMEL_ROOT/scripts/himmelctl/lib/standalone-bundle.js" "$HIMMEL_ROOT/scripts/himmelctl/lib/helpers.js" "$HIMMEL_ROOT" "$TARGET"
 }
 
+move_sessionend_to_local() {
+  local shared="$TARGET/.claude/settings.json" local_f="$TARGET/.claude/settings.local.json"
+  [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY: move the SessionEnd hook from $shared to $local_f"
+    return 0
+  fi
+  [[ -s "$shared" ]] || return 0
+  jq -e '[(.hooks.SessionEnd // [])[]?.hooks[]?.command // empty | select(test("scripts/hooks/end-session-wiki[.]sh"))] | length > 0' "$shared" >/dev/null 2>&1 || return 0
+  bash "$HIMMEL_ROOT/scripts/lib/wire-pretooluse-hooks.sh" --sessionend "$local_f" "$HIMMEL_ROOT" 0 || return 0
+  bash "$HIMMEL_ROOT/scripts/lib/unwire-pretooluse-hooks.sh" --sessionend "$shared" 0
+}
+
+strip_shared_station_items() {
+  local shared="$TARGET/.claude/settings.json" local_f="$TARGET/.claude/settings.local.json" base tmp
+  [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY: strip the statusLine, HUD key, clone-path hooks and himmel marketplace entry from $shared"
+    return 0
+  fi
+  [[ -s "$shared" ]] || return 0
+  if ! jq -e 'type == "object"' "$shared" >/dev/null 2>&1; then
+    echo "  WARNING: $shared is not a JSON object -- leaving it as it is" >&2
+    return 0
+  fi
+  bash "$HIMMEL_ROOT/scripts/lib/unwire-statusline.sh" "$shared" || return 1
+  bash "$HIMMEL_ROOT/scripts/lib/unwire-pretooluse-hooks.sh" --sessionstart "$shared" 0 || return 1
+  move_sessionend_to_local || return 1
+  tmp="$shared.stripstation.tmp"
+  base="$(cat "$shared")" # read-sink-ok: the adopted repo's own shared settings file, rewritten in place
+  # shellcheck disable=SC2016  # $loc is a jq variable
+  if printf '%s' "$base" | jq --slurpfile loc <(cat "$local_f" 2>/dev/null || echo '{}') '
+      (if (.env | type) == "object" then del(.env.CLAUDE_HUD_ALLOW_EXTRA_CMD) | if (.env | length) == 0 then del(.env) else . end else . end)
+      | if (($loc[0].extraKnownMarketplaces.himmel // null) != null)
+           and ((.extraKnownMarketplaces | type) == "object")
+           and (.extraKnownMarketplaces.himmel.source.source? == "directory")
+        then del(.extraKnownMarketplaces.himmel)
+             | if (.extraKnownMarketplaces | length) == 0 then del(.extraKnownMarketplaces) else . end
+        else . end
+    ' > "$tmp"; then
+    # prim-ok: the temp is a sibling of the target in the same directory, so the rename is atomic and the file keeps its content type
+    if cmp -s "$tmp" "$shared"; then rm -f "$tmp"; else mv "$tmp" "$shared"; fi
+  else
+    rm -f "$tmp"
+    echo "  WARNING: could not strip the HUD key / marketplace entry from $shared" >&2
+    return 1
+  fi
+  echo "  shared settings: station items stripped (replacements are in $local_f)"
+}
+
+strip_mcp_json_graphify() {
+  local f="$TARGET/.mcp.json" out
+  [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "DRY: strip himmel's graphify server from $f"
+    return 0
+  fi
+  [[ -s "$f" ]] || return 0
+  jq -e '(.mcpServers.graphify.command? // "") | test("(^|/)graphify-mcp$")' "$f" >/dev/null 2>&1 || return 0
+  out="$(jq 'del(.mcpServers.graphify) | if (.mcpServers | length) == 0 then del(.mcpServers) else . end' "$f")" || return 1
+  if [[ "$out" == "{}" ]]; then
+    rm -f "$f"
+    echo "  .mcp.json: removed (it held only himmel's graphify server)"
+  else
+    printf '%s\n' "$out" > "$f.stripmcp.tmp" && mv "$f.stripmcp.tmp" "$f"
+    echo "  .mcp.json: removed himmel's graphify server"
+  fi
+}
+
 GIVEN_ITEMS=()
 
 record_given_project() {
@@ -1671,16 +1735,21 @@ do_core() {
     if [[ -s "$TARGET/.claude/settings.json" ]]; then
       merge_container_created=$(jq '.hooks.PreToolUse == null' "$TARGET/.claude/settings.json")
     fi
-    # Literal $CLAUDE_PROJECT_DIR — Claude Code expands it at hook-fire time.
-    # shellcheck disable=SC2016
-    wire_pretooluse_hooks "$TARGET/.claude/settings.json" '$CLAUDE_PROJECT_DIR' "$DRY_RUN"
-    GIVEN_ITEMS+=(wiring-pretooluse)
-    wire_merge_gate "$merge_container_created"
+    if [[ "$TARGET" -ef "$HIMMEL_ROOT" ]]; then
+      echo "  himmel tree: its shared .claude/settings.json is left as it is (A25)"
+      GIVEN_ITEMS+=(wiring-pretooluse)
+    else
+      # Literal $CLAUDE_PROJECT_DIR — Claude Code expands it at hook-fire time.
+      # shellcheck disable=SC2016
+      wire_pretooluse_hooks "$TARGET/.claude/settings.json" '$CLAUDE_PROJECT_DIR' "$DRY_RUN"
+      GIVEN_ITEMS+=(wiring-pretooluse)
+      wire_merge_gate "$merge_container_created"
+    fi
     wire_local_trio
     # The initiative SessionStart hook is not a portable file: it reads THIS
     # clone's .env, which is where `himmelctl config set initiative.*` writes, so
     # it is referenced by the clone's path (like the statusline), not copied.
-    wire_sessionstart_hook "$TARGET/.claude/settings.json" "$HIMMEL_ROOT" "inject-initiative.sh" "$DRY_RUN"
+    wire_sessionstart_hook "$TARGET/.claude/settings.local.json" "$HIMMEL_ROOT" "inject-initiative.sh" "$DRY_RUN"
     echo "  worktree commands: bash $TARGET/scripts/worktree.sh feat/slug"
   else
     # user scope: reference this himmel clone, don't copy per-repo. Wire the full
@@ -1725,6 +1794,8 @@ do_core() {
   if [[ "$SCOPE" == "project" ]]; then
     ensure_worktrees_ignored
     ensure_worktreeinclude
+    strip_shared_station_items || echo "  WARNING: the shared settings strip did not complete; re-run adopt" >&2
+    strip_mcp_json_graphify || echo "  WARNING: the .mcp.json graphify strip did not complete; re-run adopt" >&2
     commit_install
     given_items_from_files
     record_given_project
@@ -1738,8 +1809,9 @@ given_items_from_files() {
     jq -e '(.enabledPlugins // {}) | length > 0' "$settings" >/dev/null 2>&1 && GIVEN_ITEMS+=(claude-plugins-pluginSet)
     jq -e '.enabledPlugins["himmel-ops@himmel"] == true' "$settings" >/dev/null 2>&1 && GIVEN_ITEMS+=(himmel-ops-plugin)
   fi
-  if [[ $WITH_GRAPHIFY -eq 1 && -s "$TARGET/.mcp.json" ]]; then
-    jq -e '.mcpServers.graphify' "$TARGET/.mcp.json" >/dev/null 2>&1 && GIVEN_ITEMS+=(graphify-mcp)
+  local ondemand="${HIMMEL_MCP_ONDEMAND_FILE:-$HOME/.config/himmel/mcp-on-demand.json}"
+  if [[ $WITH_GRAPHIFY -eq 1 && -s "$ondemand" ]]; then
+    jq -e '.mcpServers.graphify' "$ondemand" >/dev/null 2>&1 && GIVEN_ITEMS+=(graphify-mcp)
   fi
   return 0
 }

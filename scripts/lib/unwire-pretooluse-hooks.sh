@@ -129,11 +129,52 @@ unwire_sessionend_hook() {
   fi
 }
 
+unwire_sessionstart_hook() {
+  local settings="$1" dry_run="${2:-0}" base
+  command -v jq >/dev/null 2>&1 || { echo "unwire-pretooluse-hooks: jq required" >&2; return 1; }
+  if [ ! -f "$settings" ]; then
+    [ "$dry_run" -eq 1 ] && echo "DRY: $settings absent -> no-op"
+    return 0
+  fi
+  base=$(cat "$settings") # read-sink-ok: the caller-named settings.json under the operator-selected target, rewritten in place
+  if [ -z "$(printf '%s' "$base" | tr -d '[:space:]')" ]; then
+    [ "$dry_run" -eq 1 ] && echo "DRY: $settings empty -> no-op"
+    return 0
+  fi
+  if ! printf '%s' "$base" | jq -e . >/dev/null 2>&1; then
+    echo "unwire-pretooluse-hooks: $settings is not valid JSON -- refusing to modify" >&2
+    return 1
+  fi
+  if [ "$dry_run" -eq 1 ]; then
+    echo "DRY: remove himmel SessionStart inject-initiative hook from $settings"
+    return 0
+  fi
+  if printf '%s' "$base" | jq --arg ss "$_UNWIRE_SS_PAT" '
+    if (type == "object") and ((.hooks | type) == "object") and ((.hooks.SessionStart | type) == "array") then
+      .hooks.SessionStart = (.hooks.SessionStart
+        | map(.hooks = ((.hooks // []) | map(select((.command // "") | test($ss) | not))))
+        | map(select((.hooks | length) > 0)))
+      | if (.hooks.SessionStart | length) == 0 then del(.hooks.SessionStart) else . end
+    else . end
+  ' > "$settings.unwirehooks.tmp" && mv "$settings.unwirehooks.tmp" "$settings"; then
+    echo "  removed himmel SessionStart hook (if present) -> $settings"
+  else
+    rm -f "$settings.unwirehooks.tmp"
+    echo "unwire-pretooluse-hooks: could not rewrite $settings -- left unchanged" >&2
+    return 1
+  fi
+}
+
 # Allow both `source` and direct invocation (incl. --scope project --target).
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
   if [ "${1:-}" = "--sessionend" ]; then
     [ "$#" -ge 2 ] || { echo "usage: unwire-pretooluse-hooks.sh --sessionend <settings> [<dry_run>]" >&2; exit 2; }
     unwire_sessionend_hook "$2" "${3:-0}"
+    exit $?
+  fi
+  if [ "${1:-}" = "--sessionstart" ]; then
+    [ "$#" -ge 2 ] || { echo "usage: unwire-pretooluse-hooks.sh --sessionstart <settings> [<dry_run>]" >&2; exit 2; }
+    unwire_sessionstart_hook "$2" "${3:-0}"
     exit $?
   fi
   _settings=""; _scope=""; _target=""; _dry=0; _chain=""
