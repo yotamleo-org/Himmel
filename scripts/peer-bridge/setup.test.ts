@@ -506,6 +506,7 @@ t("add, remove and uninstall leave only the declared paths, then nothing", async
   const before = listing(home);
   const declaredAfterAdd = [
     ".himmel", ".himmel/peer-bridge", ".himmel/peer-bridge/example", ".himmel/peer-bridge/example/spool",
+    ".himmel/remote-setup", ".himmel/remote-setup/pairing.json",
     ...["inbox", "outbox", "threads", "digests"].map(n => `.himmel/peer-bridge/example/${n}.jsonl`),
     ".config/himmel", ".config/himmel/peer-bridge", ".config/himmel/peer-bridge/hmac.key", ".config/himmel/peer-bridge/peers.json",
   ];
@@ -524,6 +525,64 @@ t("add, remove and uninstall leave only the declared paths, then nothing", async
   expect(stopped).toBe(1);
   expect(listing(home)).toEqual(before);
 });
+const PAIRING = () => join(home, ".himmel", "remote-setup", "pairing.json");
+const PAIRING_STEPS = ["ourStationName", "ourStationKey", "groupChat", "operatorChat", "theirKey"];
+const pairingRow = (name = "example") => JSON.parse(fs.readFileSync(PAIRING(), "utf8")).peers.find((p: any) => p.name === name);
+const pairingSteps = (name = "example") => { const r = pairingRow(name); return PAIRING_STEPS.map(k => r[k]); };
+
+t("the pairing record: every pairing write moves one step, and the file is 0600 and holds no other file", async () => {
+  await addExample();
+  expect(fs.statSync(PAIRING()).mode & 0o777).toBe(0o600);
+  expect(pairingSteps()).toEqual([false, false, false, false, false]);
+  await stationName("yotam", mk().deps);
+  expect(pairingSteps()).toEqual([true, false, false, false, false]);
+  await keygenCmd("new", mk().deps);
+  expect(pairingSteps()).toEqual([true, true, false, false, false]);
+  await confirm("example", String(CHAT), mk(stub()).deps);
+  expect(pairingSteps()).toEqual([true, true, true, false, false]);
+  await dm(mk({ answers: [""], ...stub({ chat: { id: 4242, type: "private" } }) }).deps);
+  expect(pairingSteps()).toEqual([true, true, true, true, false]);
+  const k = peerKeyFor(configDir());
+  await trust("example", "example", k.pub, mk({ answers: [k.fp] }).deps);
+  expect(pairingSteps()).toEqual([true, true, true, true, true]);
+  await untrust("example", undefined, mk().deps);
+  expect(pairingSteps()).toEqual([true, true, true, true, false]);
+  expect(fs.readdirSync(join(home, ".himmel", "remote-setup"))).toEqual(["pairing.json"]);
+  await remove("example", mk({ answers: ["yes"] }).deps);
+  expect(JSON.parse(fs.readFileSync(PAIRING(), "utf8")).peers).toEqual([]);
+});
+
+t("the pairing record: pair writes our name and key, and --card their key; a second peer gets its own row", async () => {
+  await addExample();
+  await add("second", { peerBotId: "555000222", peerUsername: "second_bot" }, mk().deps);
+  await pair("example", "yotam", undefined, mk().deps);
+  expect(pairingSteps("example")).toEqual([true, true, false, false, false]);
+  expect(pairingSteps("second")).toEqual([true, true, false, false, false]);
+  await pair("example", undefined, `#pair station=example key=${PUB_X}`, mk({ answers: [fingerprint(PUB_X)] }).deps);
+  expect(pairingSteps("example")).toEqual([true, true, false, false, true]);
+  expect(pairingSteps("second")).toEqual([true, true, false, false, false]);
+});
+
+t("the pairing record holds booleans and peer names only: no key, fingerprint, id, chat id or token", async () => {
+  await addExample();
+  await stationName("yotam", mk().deps);
+  await keygenCmd("new", mk().deps);
+  await confirm("example", String(CHAT), mk(stub()).deps);
+  await dm(mk({ answers: [""], ...stub({ chat: { id: 4242, type: "private" } }) }).deps);
+  const k = peerKeyFor(configDir());
+  await trust("example", "example", PUB_X, mk({ answers: [fingerprint(PUB_X)] }).deps);
+  const text = fs.readFileSync(PAIRING(), "utf8");
+  const doc = JSON.parse(text);
+  expect(Object.keys(doc)).toEqual(["peers"]);
+  for (const row of doc.peers) {
+    expect(Object.keys(row).sort()).toEqual(["name", ...PAIRING_STEPS].sort());
+    for (const [key, v] of Object.entries(row)) { if (key !== "name") expect(typeof v).toBe("boolean"); }
+  }
+  for (const secret of [TOKEN, OUR_ID, PEER_ID, String(CHAT), "4242", PUB_X, fingerprint(PUB_X), keyId(PUB_X), k.pub, k.id, k.fp, "yotam", fs.readFileSync(join(configDir(), "hmac.key"), "utf8")]) {
+    expect(text).not.toContain(secret);
+  }
+});
+
 const RUNNER_PATH = () => process.platform === "darwin"
   ? join(home, "Library", "LaunchAgents", "com.himmel.peer-runner.plist")
   : join(home, ".config", "systemd", "user", "himmel-peer-runner.service");
