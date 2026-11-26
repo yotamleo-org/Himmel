@@ -257,3 +257,14 @@ test("jiraBin: the checkout's own dist/ wins, then HIMMEL_REPO, then the worktre
   expect(jiraBin({ HIMMEL_REPO: repo }, touch(join(base, "own")))).toBe(join(base, "own", rel));
   expect(jiraBin({ CONFIG_UI_JIRA_CLI: "/x/stub.js", HIMMEL_REPO: repo }, plain)).toBe("/x/stub.js");
 });
+
+test("8857: with JIRA_PROJECT_KEY=ZED and a ZED mirror, a drop on ZED-1 runs the CLI as ZED", async () => {
+  const log = join(mkdtempSync(join(tmpdir(), "jira-env-")), "env.log");
+  cleanups.push(() => rmSync(join(log, ".."), { recursive: true, force: true }));
+  const b = boot({ STUB_JIRA_ENV_LOG: log, JIRA_PROJECT_KEY: "ZED" }, undefined, undefined, ["ZED"]);
+  const r = await b.post({ key: "ZED-1", status: "prog" });
+  expect(r.status).toBe(200);
+  expect(b.calls().find((c) => c[0] === "transition")).toEqual(["transition", "ZED-1", "In Progress"]);
+  const seen = readFileSync(log, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  expect(seen.every((x) => x.key === "ZED")).toBe(true);
+});
