@@ -100,7 +100,7 @@ stacked_series_state() { ( . "$HERE/../../lib/flags.sh" && himmel_flag stacked_s
 usage() { echo "usage: worker-event.sh --doc <chief doc> --fleet <manifest> <message-file | ->" >&2; exit 2; }
 escalate() { if [ -n "${halted:-}" ] && [ "${1%% *}" != halted-closable ]; then echo "ESCALATE marker-HALTED"; else echo "ESCALATE $1"; fi; exit 10; }
 results_tail() {
-    awk '/^## Results( |$)/ { r = 1; next } /^## / { r = 0; next } r && match($0, /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/) { m = substr($0, RSTART, RLENGTH); sub(/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?/, "", m); sub(/[^A-Za-z0-9_]$/, "", m); last = m } END { print last }' "$1"
+    awk '/^## Results( |$)/ { seen = 1; r = 1; next } /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next } r && match($0, /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/) { m = substr($0, RSTART, RLENGTH); sub(/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?/, "", m); sub(/[^A-Za-z0-9_]$/, "", m); last = m } END { print last }' "$1"
 }
 listed_doc() {
     local cand

@@ -918,6 +918,12 @@ check "19c HALTED message but the doc resumed: not closable" "$out" "ESCALATE ma
 printf '# t\n\n## Results\n\n- 10:30 HALTED - fleet pause\n' > "$HDOC"
 LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED fleet pause, no label"
 check "19d HALTED with no worker named: the old escalation" "$out" "ESCALATE marker-HALTED"
+printf '# t\n\n## Results\n\n- 09:00 LIVE - go\n\n## Chief Rulings\n\n- 10:30 HALTED - fleet pause\n' > "$HDOC"
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N5555 fleet pause"
+check "19f a HALTED bullet below a Chief Rulings section is the tail: one wake" "$out" "ESCALATE halted-closable N5555 doc=$HDOC"
+printf '# t\n\n## Results\n\n- 10:30 HALTED - fleet pause\n\n## Chief Rulings\n\n- 10:45 LIVE - resumed\n' > "$HDOC"
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N5555 fleet pause"
+check "19g a LIVE below the rulings section after the halt: not closable" "$out" "ESCALATE marker-HALTED"
 LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N9999 fleet pause"
 check "19e HALTED for a worker not in the manifest: the old escalation" "$out" "ESCALATE marker-HALTED"
 
