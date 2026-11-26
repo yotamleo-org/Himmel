@@ -67,7 +67,8 @@ LOOP_KW_RE='(^|[^[:alnum:]_-])(for|while|until)[[:space:]]'
 
 QUOTED_RE="^([^'\"]*)('[^']*'|\"([^\"\\\\]|\\\\.)*\")(.*)\$"
 CFLAG_RE='-[[:alnum:]]*[ce][[:space:]]*$'
-CMDSTART_RE='(^|[;&|(`{]|'$NL')[[:space:]]*$'
+CMD_PREFIX='((sudo|env|nice|nohup|exec|command|time|timeout|do|then|else|elif|if|while|until|!|-[^[:space:]]+|[0-9]+[smhd]?|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*'
+CMDSTART_RE='(^|[;&|(`{]|'$NL')[[:space:]]*'$CMD_PREFIX'$'
 
 norm_text() {
     local rest=$1 pre span inner
@@ -127,6 +128,8 @@ loop_copies() {
             return
         fi
         case $list in *\$* | *\`* | *\** | *\?* | *\[* | *\{* | *\(*) printf unknown; return ;; esac
+        list=${list//\\$NL/ }
+        list=${list//$NL/ }
         read -ra wordlist <<<"$list"
         printf '%s' "${#wordlist[@]}"
         return
