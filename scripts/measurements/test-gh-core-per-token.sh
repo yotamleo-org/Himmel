@@ -1,15 +1,4 @@
 #!/usr/bin/env bash
-# Tests for scripts/measurements/gh-core-per-token.sh.
-# Hermetic: both tokens are stub commands; nothing talks to GitHub.
-#
-#   1. sample: one row per token, with used / limit / reset from rate_limit
-#   2. report: core calls an hour per token from same-reset intervals
-#   3. report: an interval that crosses a reset is left out of calls and seconds
-#   4. RED control: a log with one sample dropped does NOT give the expected table
-#   5. report --from/--to: only samples inside the window count
-#   6. sample: an unreadable token writes no row for it, the other token's row is
-#      kept, and the exit is 1
-#   7. loop --samples N: N samples, the sleep seam between them
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
