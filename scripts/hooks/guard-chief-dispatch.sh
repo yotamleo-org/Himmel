@@ -44,7 +44,7 @@
 # ones left, and both are load-bearing (structural / audited), never
 # spoofable by the dispatch's own prompt text:
 #   * subagent_type: Explore, or judge-ro (a
-#     repo agent whose frontmatter pins tools Read, Grep, Glob, Bash, or that
+#     repo agent whose frontmatter pins tools Read, Bash (Grep, Glob optional), or that
 #     line plus Write, checked at dispatch; guard-judge-write-scope.sh confines
 #     that Write to a judge dir judge-dir.sh made), or
 #     brief-drafter (a repo agent whose frontmatter pins tools
