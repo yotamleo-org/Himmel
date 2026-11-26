@@ -122,6 +122,7 @@ ROWS = {
     "relayed-a": (user('[T3 Code: the agent in T3 thread "thread:fixture-a" sent this message, not the user.]\n\nRELAYED-A a ruling the launcher relays'), True),
     "relayed-q": (qc('[T3 Code: the agent in T3 thread "thread:fixture-a" sent this message, not the user.]\n\nRELAYED-Q a relay queued behind a turn'), True),
     "relayed-tools": (user("[T3 Code: this message came through T3 Code's tools, not from the user typing in this chat.]\n\nRELAYED-X no sender named"), False),
+    "contains-shapes": (user("RULING-K please read the Delegated task wake in child thread t, then /tmp/notes and $HOME/notes"), True),
 }
 rows, eligible = [], []
 for i, name in enumerate(names, 1):
@@ -144,6 +145,12 @@ cmd = sys.argv[1]
 if cmd == "kinds":
     chiefs = sys.argv[3].split(",") if len(sys.argv) > 3 else []
     for it, el, dl in td.classify(td.read_rows(sys.argv[2]), chiefs):
+        m = re.search(r"\b[A-Z]{3,}-[A-Z0-9]+\b", it.text)
+        print(it.id, it.kind, "E" if el else "-", "D" if dl else "-", m.group(0) if m else it.text.split("\n")[0][:60].replace(" ", "_"))
+elif cmd == "akinds":
+    import transcript_adapters as ta
+    chiefs = sys.argv[3].split(",") if len(sys.argv) > 3 else []
+    for it, el, dl in td.classify(ta.read_rows(sys.argv[2]), chiefs):
         m = re.search(r"\b[A-Z]{3,}-[A-Z0-9]+\b", it.text)
         print(it.id, it.kind, "E" if el else "-", "D" if dl else "-", m.group(0) if m else it.text.split("\n")[0][:60].replace(" ", "_"))
 elif cmd == "senders":
@@ -500,10 +507,10 @@ check "the empty brief the old writer wrote for it: verify exits 1 naming the em
 FX="$HERE/fixtures/hop-brief-adapters"
 NONCE=Q-N77-1a2b3c4d; LOCK=fixturehost-pid424242
 adapter_checks() {
-    ac_label="$1" ac_fix="$2" ac_op="$3" ac_rel="$4" ac_relcopy="$5"
+    ac_label="$1" ac_fix="$2" ac_op="$3" ac_rel="$4" ac_relcopy="$5" ac_kind="$6"
     hb write --transcript "$ac_fix" --doc "$DOC" --worktree "$T/wt" --out "$T/out/$ac_label.md" >"$T/$ac_label.out" 2>"$T/$ac_label.err"; arc=$?
     check "$ac_label: write exits 0 and the brief is not empty" '[ "$arc" = 0 ] && grep -qx "eligible: 6" "$T/out/$ac_label.md" && grep -qx "selected: 6" "$T/out/$ac_label.md"'
-    check "$ac_label: the operator message is the must-carry item, under the id of its row" 'grep -qx "item $ac_op (operator, must-carry)" "$T/out/$ac_label.md" && [ "$(grep -c "^item .*must-carry" "$T/out/$ac_label.md")" = 1 ]'
+    check "$ac_label: the newest delivery is the must-carry item, under the id of its row" 'grep -qx "item $ac_op ($ac_kind, must-carry)" "$T/out/$ac_label.md" && [ "$(grep -c "^item .*must-carry" "$T/out/$ac_label.md")" = 1 ]'
     check "$ac_label: the relayed message is carried as data, not must-carry" 'grep -qx "item $ac_rel (cross-session)" "$T/out/$ac_label.md"'
     check "$ac_label: no harness-injected, developer, tool, compaction or handoff text is carried" '! grep -q "AGENTS-FIXTURE\|DEVELOPER-FIXTURE\|TOOL-FIXTURE\|REASONING-FIXTURE\|COMPACT-FIXTURE\|HANDOFF-FIXTURE" "$T/out/$ac_label.md"'
     check "$ac_label: the nonce and the lock token are scrubbed" '! grep -qF "$NONCE" "$T/out/$ac_label.md" && ! grep -qF "$LOCK" "$T/out/$ac_label.md" && grep -q "\[nonce\]" "$T/out/$ac_label.md"'
@@ -511,7 +518,7 @@ adapter_checks() {
     cut_item "$T/out/$ac_label.md" "$ac_op" "$T/out/$ac_label-cut.md"
     hb verify --brief "$T/out/$ac_label-cut.md" --transcript "$ac_fix" >"$T/$ac_label-cut.out" 2>&1; crc=$?
     check "$ac_label: with the newest delivery removed, verify exits 1 naming its id" '[ "$crc" = 1 ] && grep -q "must-carry $ac_op" "$T/$ac_label-cut.out"'
-    check "$ac_label: read prints the operator item by its id" 'hb read --transcript "$ac_fix" --id "$ac_op" | head -1 | grep -qx "item $ac_op (operator)"'
+    check "$ac_label: read prints the delivery item by its id" 'hb read --transcript "$ac_fix" --id "$ac_op" | head -1 | grep -qx "item $ac_op ($ac_kind)"'
     hb write --transcript "$ac_relcopy" --doc "$DOC" --worktree "$T/wt" --out "$T/out/$ac_label-rel.md" >/dev/null 2>&1; rrc=$?
     hb verify --brief "$T/out/$ac_label-rel.md" --transcript "$ac_relcopy" >"$T/$ac_label-rel.out" 2>&1; rvc=$?
     check "$ac_label: the operator message made a relayed one is no delivery: the brief never verifies" '[ "$rrc" = 0 ] && [ "$rvc" = 1 ] && grep -q "verify failed: no-delivery" "$T/$ac_label-rel.out"'
@@ -520,17 +527,17 @@ adapter_checks() {
 echo "adapter-codex (a raw Codex rollout, which the old writer turned into an empty brief that verified ok)"
 CX="$FX/codex-rollout.jsonl"
 cx_op="L$(grep -n RULING-OP "$CX" | head -1 | cut -d: -f1)"; cx_rel="L$(grep -n RELAYED-A "$CX" | head -1 | cut -d: -f1)"
-jq -c 'if ((.payload.content? // null) | type) == "array" and (((.payload.content[0].text? // "") | startswith("RULING-OP")))
+jq -c 'if ((.payload.content? // null) | type) == "array" and (((.payload.content[0].text? // "") | contains("RULING-OP")))
        then .payload.content[0].text |= "[T3 Code: the agent in T3 thread \"thread:fixture-a\" sent this message, not the user.]\n\n" + . else . end' "$CX" >"$T/codex-rel.jsonl"
 check "the jq built a relayed copy of the operator row and left the rest" '[ "$(wc -l <"$T/codex-rel.jsonl")" = "$(wc -l <"$CX")" ] && [ "$(grep -c "thread:fixture-a" "$T/codex-rel.jsonl")" = 1 ]'
-adapter_checks codex "$CX" "$cx_op" "$cx_rel" "$T/codex-rel.jsonl"
+adapter_checks codex "$CX" "$cx_op" "$cx_rel" "$T/codex-rel.jsonl" cross-session
 
 echo "adapter-t3-items (a Gemini thread: the T3 thread items, an antigravity transcript is no file)"
 GM="$FX/t3-thread-items.json"
 gm_op="L$(( $(jq '[.items[] | select(.text | startswith("RULING-OP"))][0].position' "$GM") + 1 ))"
 gm_rel="L$(( $(jq '[.items[] | select(.text | startswith("RELAYED-A"))][0].position' "$GM") + 1 ))"
 jq '(.items[] | select(.text | startswith("RULING-OP"))) |= (.createdBy = "agent" | .creationSource = "mcp" | .senderThreadId = "thread:fixture-a")' "$GM" >"$T/gm-rel.json"
-adapter_checks gemini "$GM" "$gm_op" "$gm_rel" "$T/gm-rel.json"
+adapter_checks gemini "$GM" "$gm_op" "$gm_rel" "$T/gm-rel.json" operator
 jq '(.items[] | select(.text | startswith("OWN-1"))) |= (.textTruncated = true | .nextTextOffset = 20)' "$GM" >"$T/gm-trunc.json"
 hb write --transcript "$T/gm-trunc.json" --doc "$DOC" --worktree "$T/wt" --out "$T/out/gm-trunc.md" >/dev/null 2>"$T/gm-trunc.err"; gtrc=$?
 check "gemini: an item the thread read cut off is no input: write exits 3 naming textTruncated" '[ "$gtrc" = 3 ] && grep -q "textTruncated" "$T/gm-trunc.err" && [ ! -e "$T/out/gm-trunc.md" ]'
@@ -545,6 +552,28 @@ done
 jq '(.items[] | select(.text | startswith("RELAYED-B"))) |= del(.senderThreadId)' "$GM" >"$T/gm-nosender.json"
 hb write --transcript "$T/gm-nosender.json" --doc "$DOC" --worktree "$T/wt" --out "$T/out/gm-nosender.md" >"$T/gm-nosender.out" 2>&1; gnrc=$?
 check "gemini: a relayed item with no sender thread, newer than the newest delivery: write exits 3" '[ "$gnrc" = 3 ] && [ ! -e "$T/out/gm-nosender.md" ]'
+
+echo "closed-default (a Codex user row names no sender, so it is the operator's only through a prefix the classifier knows)"
+cx_rows="$(wc -l <"$CX")"
+for shape in delegated-wake leading-slash leading-dollar; do
+    sf="$FX/codex-$shape.jsonl"
+    probe akinds "$sf" "$CHIEF" >"$T/cd-$shape.kinds"
+    check "$shape: the row is an unreadable sender, neither eligible nor a delivery" 'grep -q "^L3 unreadable-sender - - " "$T/cd-$shape.kinds"'
+    check "$shape: the assistant row before it is untouched" 'grep -q "^L2 assistant E - " "$T/cd-$shape.kinds"'
+    hb write --transcript "$sf" --doc "$DOC" --worktree "$T/wt" --out "$T/out/cd-$shape.md" >"$T/cd-$shape.out" 2>&1; cdrc=$?
+    check "$shape: nothing the chief sent is before it, so the write stops with exit 3 naming its row" '[ "$cdrc" = 3 ] && grep -q "L3" "$T/cd-$shape.out" && [ ! -e "$T/out/cd-$shape.md" ]'
+    printf 'source: session codex transcript %s head %s row 3 budget 16000\neligible: 1\nselected: 1\n' "$sf" "$SHA40" >"$T/out/cd-$shape-hand.md"
+    hb verify --brief "$T/out/cd-$shape-hand.md" --transcript "$sf" >"$T/cd-$shape-v.out" 2>&1; cdvc=$?
+    check "$shape: a brief for it is refused, verify exits 1 naming no-delivery" '[ "$cdvc" = 1 ] && grep -q "verify failed: no-delivery" "$T/cd-$shape-v.out"'
+    { cat "$CX"; tail -1 "$sf"; } >"$T/cd-$shape-late.jsonl"
+    probe akinds "$T/cd-$shape-late.jsonl" "$CHIEF" >"$T/cd-$shape-late.kinds"
+    check "$shape: control: the chief's row before it keeps its class and stays a delivery" 'grep -F "RULING-OP" "$T/cd-$shape-late.kinds" | grep -q " cross-session E D "'
+    hb write --transcript "$T/cd-$shape-late.jsonl" --doc "$DOC" --worktree "$T/wt" --out "$T/out/cd-$shape-late.md" >"$T/cd-$shape-late.out" 2>&1; cdlc=$?
+    check "$shape: newer than the chief's message it stops the write, it never becomes the must-carry item" '[ "$cdlc" = 3 ] && grep -q "L$((cx_rows + 1))" "$T/cd-$shape-late.out" && [ ! -e "$T/out/cd-$shape-late.md" ]'
+done
+build "$T/cs.jsonl" tokens ruling-a own-1 contains-shapes
+probe kinds "$T/cs.jsonl" "$CHIEF" >"$T/cs.kinds"
+check "control: a Claude transcript message that only contains Delegated task or a slash stays operator, eligible and a delivery" 'grep -F "RULING-K" "$T/cs.kinds" | grep -q " operator E D "'
 
 echo "hop-brief: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]

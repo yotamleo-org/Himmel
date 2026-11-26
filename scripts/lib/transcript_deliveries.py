@@ -95,7 +95,9 @@ class Item:
         return self.delivery(chiefs) and self.kind != "bus-read"
 
 
-def sort_user_text(text, meta):
+def sort_user_text(text, meta, sender_known=True):
+    """sender_known is false for a row whose source records no sender (a Codex user.text row): text that no
+    recognised prefix places is then an unreadable sender, never the operator's."""
     if text == WAKE_LINE:
         return "wake", None
     if text.startswith(CROSS_SESSION_STARTS):
@@ -121,7 +123,7 @@ def sort_user_text(text, meta):
         return "hand-back", None
     if trig == "local-command":
         return "local-command", None
-    return "operator", None
+    return ("operator", None) if sender_known else ("unreadable-sender", None)
 
 
 def _result_text(content):
@@ -194,7 +196,7 @@ def classify_rows(rows):
             if not text:
                 items.append(Item(n, "other", ""))
                 continue
-            kind, sender = sort_user_text(text, meta)
+            kind, sender = sort_user_text(text, meta, not d.get("senderUnknown"))
             items.append(Item(n, kind, text, sender))
         elif t == "attachment" and att.get("type") == "queued_command":
             text = att.get("prompt") if isinstance(att.get("prompt"), str) else ""

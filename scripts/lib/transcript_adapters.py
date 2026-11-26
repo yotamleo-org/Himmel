@@ -12,6 +12,8 @@ record has the shape of a Claude Code transcript row. The format is found from t
 Only messages map: the user's and the assistant's. Developer rows, tool calls and results, reasoning, compaction and
 handoff items are not mapped, and a user row the harness injected (AGENTS.md, environment context) is flagged isMeta.
 A message an agent relayed through T3 reaches the classifier under T3's own wrapper line, so it is never the operator's.
+A Codex user row records no sender (T3 passes a delegated-task wake and a leading `/` or `$word` relay unwrapped), so the
+row is flagged senderUnknown and the classifier never takes it for the operator's: only a prefix it recognises places it.
 This module scrubs nothing: the brief writer scrubs every text it carries.
 """
 
@@ -46,10 +48,12 @@ def detect(path):
     return "claude"
 
 
-def _user(text, meta=False):
+def _user(text, meta=False, sender_unknown=False):
     rec = {"type": "user", "message": {"role": "user", "content": text}}
     if meta:
         rec["isMeta"] = True
+    if sender_unknown:
+        rec["senderUnknown"] = True
     return rec
 
 
@@ -80,7 +84,7 @@ def codex_rows(path, upto=None):
                 kinds = (p.get("internal_chat_message_metadata_passthrough") or {}).get("content_item_kinds")
                 injected = any(k != CODEX_USER_KIND for k in kinds) if isinstance(kinds, list) and kinds \
                     else text.startswith(CODEX_INJECTED_STARTS)
-                out.append((n, _user(text, injected)))
+                out.append((n, _user(text, injected, sender_unknown=True)))
     return out
 
 
