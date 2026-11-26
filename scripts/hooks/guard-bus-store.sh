@@ -50,7 +50,10 @@
 #   Edit|Write|MultiEdit|NotebookEdit — file_path (notebook_path) names the bus
 #     root textually, or resolves to it (`hook_resolve_m`, lib/resolve-path.sh,
 #     which is `readlink -m` where the host has it: `..` segments and
-#     symlinked components).
+#     symlinked components). The path is checked as given and with `..` folded
+#     away textually (the file tools normalise lexically, so
+#     `himmel/L/../bus/x` writes the store when L is a symlink elsewhere), and
+#     on Darwin the comparison is case-insensitive (APFS).
 # ALLOWS: `bus status|peers|wait|send|adopt` (the CLI stamps `f` from its own
 #   process ancestry, so no role check is needed here) and everything else —
 #   silently, with no output.
@@ -174,6 +177,43 @@ norm() {
     while [[ "$s" == *"/./"* ]]; do s=${s//\/.\//\/}; done
     while [[ "$s" == *"//"* ]]; do s=${s//\/\//\/}; done
     printf '%s' "$s"
+}
+
+DARWIN=0
+case "${OSTYPE:-}" in darwin*) DARWIN=1 ;; esac
+if [ -e /System/Library/CoreServices/SystemVersion.plist ]; then DARWIN=1; fi
+if [ "${HIMMEL_GUARD_FORCE_DARWIN:-}" = 1 ]; then DARWIN=1; fi
+fold_to() {
+    FOLDED="$1"
+    [ "$DARWIN" = 1 ] || return 0
+    local pair u l
+    for pair in Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk Ll Mm Nn Oo Pp Qq Rr Ss Tt Uu Vv Ww Xx Yy Zz; do
+        u="${pair%?}"; l="${pair#?}"
+        case "$FOLDED" in *"$u"*) FOLDED="${FOLDED//$u/$l}" ;; esac
+    done
+    return 0
+}
+
+lexnorm() {
+    local rest="$1" comp abs=0 out=""
+    case "$rest" in /*) abs=1 ;; esac
+    while [ -n "$rest" ]; do
+        comp="${rest%%/*}"
+        case "$rest" in */*) rest="${rest#*/}" ;; *) rest="" ;; esac
+        case "$comp" in
+            ""|.) ;;
+            ..)
+                case "$out" in
+                    "") [ "$abs" = 1 ] || out=".." ;;
+                    ..|*/..) out="$out/.." ;;
+                    */*) out="${out%/*}" ;;
+                    *) out="" ;;
+                esac ;;
+            *) out="${out:+$out/}$comp" ;;
+        esac
+    done
+    if [ "$abs" = 1 ]; then LEXNORM="/$out"; else LEXNORM="${out:-.}"; fi
+    return 0
 }
 
 # normword <word>: one normaliser for both sides (the `bus` word and the verb).
@@ -576,9 +616,14 @@ case "$tool" in
     Edit|Write|MultiEdit|NotebookEdit)
         path=$(printf '%s' "$input" | jq -er '(.tool_input.file_path // .tool_input.notebook_path) | strings' 2>/dev/null) || raw_scan
         path=$(norm "$path")
-        [[ "$path" =~ $ROOT_RE ]] && deny "the target path is under the himmel-bus store"
-        resolved=$(hook_resolve_m "$path" 2>/dev/null) || deny "the target path could not be resolved (fail-closed)"
-        [[ "$resolved" =~ $ROOT_RE ]] && deny "the target path resolves under the himmel-bus store"
+        lexnorm "$path"
+        for p in "$path" "$LEXNORM"; do
+            fold_to "$p"
+            [[ "$FOLDED" =~ $ROOT_RE ]] && deny "the target path is under the himmel-bus store"
+            resolved=$(hook_resolve_m "$p" 2>/dev/null) || deny "the target path could not be resolved (fail-closed)"
+            fold_to "$resolved"
+            [[ "$FOLDED" =~ $ROOT_RE ]] && deny "the target path resolves under the himmel-bus store"
+        done
         ;;
 esac
 exit 0

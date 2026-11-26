@@ -44,7 +44,7 @@ chmod +x "$STUB/page.sh" "$STUB/off.sh"
 export STUB
 export CHIEF_WAIT_TICK="$STUB/tick.sh" CHIEF_WAIT_USAGE="$STUB/bank.sh" CHIEF_WAIT_BUDGET="$STUB/budget-off.sh"
 export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000 CHIEF_WAIT_PAGE_TIMEOUT=10
-export WAIT_SWEEP_CMD="$STUB/off.sh" WAIT_FOCUS_CMD="$STUB/off.sh"
+export WAIT_SWEEP_CMD="$STUB/off.sh" WAIT_FOCUS_CMD="$STUB/off.sh" CHIEF_WAIT_SILENT_ACT="$STUB/off.sh"
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
 
 tick_line() { # <workers> <board>

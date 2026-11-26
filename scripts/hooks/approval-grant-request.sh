@@ -144,7 +144,12 @@ case "$result" in
     pending)
         id=$(field id) expires=$(field expires) op=$(field operator)
         detach_run bash "$REQ" --card "$id" --operator "$op" --session "$who" --desc "$desc" --cmd "$cmd1"
-        detach_run bash "$REQ" --watch "$id" --expires "$expires" --operator "$op" --session "$who"
+        detach_run bash "$REQ" --watch "$id" --expires "$expires" --operator "$op" --session "$who" --for "\`$head\` [$category]"
+        until=$(date -d "@$expires" +%H:%M 2>/dev/null || date -r "$expires" +%H:%M 2>/dev/null)  # swallow-ok: GNU date, then BSD date; no time reads as empty
+        # shellcheck disable=SC2016
+        name_ok "$chief" && detach_run bash -c '. "$1" || exit 0; _mba_append_if_exists "$2" "- $(date +%H:%M) [afk-grant-request] $3"' \
+            afk-grant-request "$MBA" "$CONSOLES/$chief.md" \
+            "AFK grant $id asked on the phone: session $who had \`$head\` refused by the classifier as [$category]; approve or deny it there before ${until:-its expiry}, or it expires and nothing runs"
         ;;
     grant-disabled | disabled) ;;
     *)
