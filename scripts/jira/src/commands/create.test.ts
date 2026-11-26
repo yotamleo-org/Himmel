@@ -567,7 +567,7 @@ describe('create --residual-of', () => {
           ? []
           : [{ name: 'v1.1.3', released: false, description: o.budgetDesc }, { name: 'v1.1.4', released: false }];
       }
-      if (method === 'GET' && /linkedIssues|summary ~/.test(decodeURIComponent(path))) return { issues: [] };
+      if (method === 'GET' && /linkedIssues|summary ~|text ~/.test(decodeURIComponent(path))) return { issues: [] };
       if (method === 'GET' && path.startsWith('/search/jql')) {
         const jql = decodeURIComponent(path);
         searches.push(jql);
@@ -784,7 +784,7 @@ describe('create --residual-of placement', () => {
           ...(o.noNext ? [] : [{ name: 'v1.1.4', released: false, description: o.nextFrozen ? 'frozen: 2026-10-21' : '' }]),
         ];
       }
-      if (method === 'GET' && /linkedIssues|summary ~/.test(decodeURIComponent(path))) return { issues: [] };
+      if (method === 'GET' && /linkedIssues|summary ~|text ~/.test(decodeURIComponent(path))) return { issues: [] };
       if (method === 'GET' && path.startsWith('/search/jql')) {
         return { issues: Array.from({ length: o.open ?? 0 }, (_, i) => ({ key: `HIMMEL-${900 + i}`,
           fields: { labels: ['residual', 'fu-hardening'], status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } } })) };
@@ -972,7 +972,7 @@ describe('create --residual-of in a version holding many open residuals', () => 
       if (path.startsWith('/issue/HIMMEL-50')) return parent;
       const found = residents.find((i) => path.startsWith('/issue/' + i.key + '?'));
       if (found) return found;
-      if (/linkedIssues|summary ~/.test(decodeURIComponent(path))) return { issues: [] };
+      if (/linkedIssues|summary ~|text ~/.test(decodeURIComponent(path))) return { issues: [] };
       if (path.startsWith('/search/jql')) return { issues: residents };
       throw new Error('unexpected read ' + path);
     });
@@ -1338,7 +1338,7 @@ describe('create — no count gate', () => {
           ...(o.noNext ? [] : [{ name: 'v1.1.4', released: false }]),
         ];
       }
-      if (method === 'GET' && /linkedIssues|summary ~/.test(decodeURIComponent(path))) return { issues: [] };
+      if (method === 'GET' && /linkedIssues|summary ~|text ~/.test(decodeURIComponent(path))) return { issues: [] };
       if (method === 'GET' && path.startsWith('/search/jql')) {
         if (o.searchFails) throw new Error('search boom');
         searches.push(decodeURIComponent(path));
@@ -2783,6 +2783,145 @@ describe('create — duplicate gate', () => {
   it('a search that fails files the ticket and says the check did not run', async () => {
     play({ searchFails: true });
     await file(...FU);
+    expect(created()).toBe(true);
+    expect(stderr()).toMatch(/duplicate search failed.*search boom.*filed unchecked/s);
+  });
+});
+
+describe('create — topic search over open tickets', () => {
+  type Held = { key: string; summary: string; what: string; status?: string; labels?: string[] };
+  const NEW_TITLE = 'Planning & tracking: chief helpers and the release manager place work by four rules';
+  const NEW_WHAT =
+    'The chief helpers (chief-kit scripts and chief-sections docs) and the release-manager skill place work by the four simple placement rules only: operator ask or emergency goes to the current version; High and Highest go to the current version; below High goes to the backlog. No helper waits on, queues or requires a release-manager row.';
+  const HELD_11001: Held = {
+    key: 'HIMMEL-11001',
+    summary: 'Planning & tracking: filing places a ticket by the four rules, no release-manager round trip',
+    what: 'Filing places a ticket by the four placement rules directly (operator ask or emergency: current version; High and Highest: current; below High: backlog), writing fixVersion at create time; no INTAKE request, no release-manager run, and the launch lint accepts the result. The release-manager internals left behind are retired.',
+    status: 'To Do',
+    labels: ['core', 'operator-directed', 'standalone'],
+  };
+  const UNRELATED: Held = {
+    key: 'HIMMEL-9000',
+    summary: 'Doctor: the ssh probe times out on a cold start',
+    what: 'The doctor C53 check runs ssh -G against every host and times out when the connection cache is cold, so the report shows a false failure.',
+    status: 'In Progress',
+  };
+  let held: Held[];
+  let searches: string[];
+  let errs: string[];
+  const adf = (what: string) => ({
+    type: 'doc',
+    version: 1,
+    content: [
+      { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'What' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: what }] },
+      { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Why' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'because' }] },
+    ],
+  });
+  const play = (o: { searchFails?: boolean } = {}) => {
+    searches = [];
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) return [{ name: 'v1.1.3', released: false }];
+      if (method === 'GET' && path.startsWith('/search/jql')) {
+        const jql = decodeURIComponent(path);
+        searches.push(jql);
+        if (o.searchFails) throw new Error('search boom');
+        const rows = jql.includes('text ~') ? held : [];
+        return {
+          issues: rows.map((r) => ({
+            key: r.key,
+            fields: { summary: r.summary, status: { name: r.status ?? 'To Do' }, labels: r.labels ?? [], description: adf(r.what) },
+          })),
+        };
+      }
+      return { key: 'HIMMEL-77' };
+    });
+  };
+  const fileTopic = async (title: string, what: string, ...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    const desc = PLAIN.replace('## What\nfilled', `## What\n${what}`);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', title, '--desc', desc, ...HOME, '--labels', 'standalone', '--backlog', '--proposed-version', 'backlog', '--why', 'waits for the next release to take it', ...args]);
+  };
+  const created = () => mockRequest.mock.calls.some((x) => x[0] === 'POST' && x[1] === '/issue');
+  const stderr = () => errs.join('\n');
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    held = [];
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    errs = [];
+    vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { errs.push(a.map(String).join(' ')); });
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
+  });
+
+  it('a ticket on the topic of an open one with different wording is refused and names it (the 11190 / 11001 pair)', async () => {
+    held = [UNRELATED, HELD_11001];
+    play();
+    await expect(fileTopic(NEW_TITLE, NEW_WHAT)).rejects.toThrow('exit');
+    expect(stderr()).toMatch(/HIMMEL-11001.*To Do.*extend HIMMEL-11001 with jira comment, or pass --new-reason <why>/s);
+    expect(stderr()).not.toMatch(/HIMMEL-9000/);
+    expect(created()).toBe(false);
+    expect(searches.some((j) => /text ~/.test(j) && /statusCategory != Done/.test(j) && /project = HIMMEL/.test(j))).toBe(true);
+  });
+
+  it('the closest candidates are printed best first, with key, title and status', async () => {
+    const SECOND: Held = { ...HELD_11001, key: 'HIMMEL-11002', summary: 'Planning & tracking: the release-manager skill documents its placement rules', what: 'The release-manager skill documents the placement rules in one section, with an example for the current version and one for the backlog, and a link to the chief docs.', status: 'In Progress' };
+    held = [SECOND, HELD_11001];
+    play();
+    await expect(fileTopic(NEW_TITLE, NEW_WHAT)).rejects.toThrow('exit');
+    const out = stderr();
+    expect(out).toMatch(/HIMMEL-11001 \("Planning & tracking: filing places[^)]*", To Do\)/);
+    expect(out).toMatch(/HIMMEL-11002 \("Planning & tracking: the release-manager skill[^)]*", In Progress\)/);
+    expect(out.indexOf('HIMMEL-11001')).toBeLessThan(out.indexOf('HIMMEL-11002'));
+  });
+
+  it('a matching ticket on the second page of the search is found', async () => {
+    held = [HELD_11001];
+    play();
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
+      if (method === 'GET' && path.startsWith('/search/jql') && decodeURIComponent(path).includes('text ~')) {
+        const first = await base(method, path.replace(/&nextPageToken=.*/, ''), body) as { issues: unknown[] };
+        return path.includes('nextPageToken=') ? first : { issues: [{ key: 'HIMMEL-9001', fields: { summary: UNRELATED.summary, status: { name: 'To Do' }, labels: [] } }], nextPageToken: 'page-2' };
+      }
+      return base(method, path, body);
+    });
+    await expect(fileTopic(NEW_TITLE, NEW_WHAT)).rejects.toThrow('exit');
+    expect(stderr()).toMatch(/HIMMEL-11001/);
+    expect(created()).toBe(false);
+  });
+
+  it('a short title with a What section that holds the topic is still checked', async () => {
+    held = [HELD_11001];
+    play();
+    await expect(fileTopic('Placement rules', NEW_WHAT)).rejects.toThrow('exit');
+    expect(stderr()).toMatch(/HIMMEL-11001/);
+    expect(created()).toBe(false);
+  });
+
+  it('control: an open ticket on another topic does not refuse', async () => {
+    held = [UNRELATED];
+    play();
+    await fileTopic(NEW_TITLE, NEW_WHAT);
+    expect(created()).toBe(true);
+  });
+
+  it('--new-reason files it past the topic match, records the reason, and runs no search', async () => {
+    held = [HELD_11001];
+    play();
+    await fileTopic(NEW_TITLE, NEW_WHAT, '--new-reason', 'it retires the helper scripts, 11001 only files');
+    expect(created()).toBe(true);
+    expect(stderr()).toMatch(/--new-reason: it retires the helper scripts, 11001 only files/);
+    expect(searches).toEqual([]);
+  });
+
+  it('a topic search that fails files the ticket and says the check did not run', async () => {
+    held = [HELD_11001];
+    play({ searchFails: true });
+    await fileTopic(NEW_TITLE, NEW_WHAT);
     expect(created()).toBe(true);
     expect(stderr()).toMatch(/duplicate search failed.*search boom.*filed unchecked/s);
   });
