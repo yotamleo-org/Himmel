@@ -1916,7 +1916,7 @@ def main():
         if l.get('kind') not in ('rm', 'proof'):
             check_pr_size(l, a.repo, a.base, a.handover_root)
         if l.get('kind') != 'rm':
-            l['writes_folded'] = minerva_siblings.fold(_writes_scope(l.get('writes', '')), a.handover_root)
+            l['writes_folded'] = minerva_siblings.fold(l.get('writes', ''), a.handover_root)
             l['profile'] =l.get('profile') or (UI_PROFILE if UI_PATH_RE.search(write_paths(l.get('writes', ''))) else DOCS_PROFILE if docs_only(l['writes_folded']) else 'worker-impl')
         rm = l.get('kind') == 'rm'
         l['model'] = l.get('model') or (RM_MODEL if rm else LANE_MODELS.get(l.get('lane', 'native'), DEFAULT_MODEL))

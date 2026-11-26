@@ -2515,6 +2515,9 @@ ms3_refused ms3list "$MS_DIR/ ($MS3K-x.md, $MS3K-x.estimate.json)" "the absolute
 ms3_refused ms3out "$WORK/outside-ms/specs/designs/$MS3K-x.md $WORK/outside-ms/specs/designs/$MS3K-x.estimate.json" "a spec and estimate outside the handover root"
 ms3_refused ms3lnk "$MS_ROOT/lnk-ms/specs/designs/$MS3K-x.md $MS_ROOT/lnk-ms/specs/designs/$MS3K-x.estimate.json" "a spec and estimate reached through a symlink out of the root"
 ms3_refused ms3sym "$MS_DIR/$MS3K-sym.md $MS_DIR/$MS3K-sym.estimate.json" "an estimate that is a symlink to a file outside the root"
+cg_mirror HIMMEL-9469 Task Medium '["core"]'
+ms_gen ms3flip HIMMEL-9469 "docs/foo.md; grep scripts/ (x.sh, y.sh) -n"
+{ [ "$rc" = 1 ] && [ -z "$(cg_brief ms3flip)" ]; } && pass "R3 control: a Writes text whose read-only strip leaves build paths stays a build leg, refused as before" || fail "R3 control read-only strip rc=$rc: $cgo"
 ms_gen ms3symonly $MS3K "$MS_DIR/$MS3K-sym.md"
 B3S="$(cg_brief ms3symonly)"
 r3s_est="$(ms_added "$B3S" x | grep -cxF "$MS_DIR/$MS3K-sym.estimate.json")"
