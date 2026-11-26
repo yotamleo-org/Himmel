@@ -173,9 +173,10 @@ const OPERATOR_CLASS_RE = /\bspend|\bgrants?\b|\bpaid\b|billing|payment|\baccoun
 const OPERATOR_ONLY_RE = /\bgo code\b|phone approval|on your phone|\bclaude\.md\b|relax(?:es|ing)? (?:a|the) guard|revers(?:al|e|es|ing) (?:of )?(?:his|the operator'?s)\b|spec (?:he|the operator) marked/i;
 const CHIEF_OWNED_RE = /\bchief[- ](?:signs?|signature|kit|dut(?:y|ies))\b|\bjudge\b|\brelaunch|\bwaiter\b/i;
 export function ownerOf(text: string, declared: OwedActor): OwedActor {
-  if (OPERATOR_CLASS_RE.test(text) || OPERATOR_ONLY_RE.test(text)) return "operator";
-  if (CHIEF_OWNED_RE.test(text) || /\bGO\b/.test(text)) return "chief";
-  return declared;
+  if (OPERATOR_ONLY_RE.test(text)) return "operator";
+  if (CHIEF_OWNED_RE.test(text)) return "chief";
+  if (OPERATOR_CLASS_RE.test(text)) return "operator";
+  return /\bGO\b/.test(text) && !/operator[ -]signs?[ -]?off/i.test(text) ? "chief" : declared;
 }
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 // The lines under `## <heading>` up to the next `## `; undefined when the file has no such section.

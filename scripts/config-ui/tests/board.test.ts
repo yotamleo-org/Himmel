@@ -66,6 +66,15 @@ test("10947: one owner classifier: a chief signature, a judge GO and a relaunch 
   expect(o.items.filter((i) => i.source === "chief doc").map((i) => [i.key, i.actor])).toEqual([["HIMMEL-2", "chief"], ["HIMMEL-3", "chief"], ["HIMMEL-4", "operator"]]);
 });
 
+test("10947: an explicit operator sign-off keeps its owner beside a GO; a chief action that names a billing word stays the chief's", () => {
+  const s = scratch();
+  const env = owedFixture(s, "queue: HIMMEL-2 chief step");
+  writeFileSync(join(s.d, "chief-HANDOFF.md"), "## Open operator items\n- operator signs off: give GO for PR 5900\n- the chief signs the billing report\n- the judge relaunches the paid worker\n- the paid account renewal\n");
+  const o = readOwed(env);
+  if (o.state !== "ok") throw new Error(o.reason);
+  expect(o.items.filter((i) => i.source === "handoff").map((i) => [i.title, i.actor])).toEqual([["operator signs off: give GO for PR 5900", "operator"], ["the chief signs the billing report", "chief"], ["the judge relaunches the paid worker", "chief"], ["the paid account renewal", "operator"]]);
+});
+
 test("view parity: raw categories keep valid peers; malformed category remains reconciliation with a warning", () => {
   const s = scratch();
   writeFileSync(join(s.mirror, "HIMMEL-1.md"), mirrorIssue(1, "To Do", "To Do", [], "unread category").replace('statusCategory: "To Do"', 'statusCategory: "broken'));
