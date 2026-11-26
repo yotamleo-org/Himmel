@@ -72,6 +72,7 @@ cat > "$TMP/bin/gh" <<'EOF'
 echo "$*" >> "${GH_STUB_LOG:?}"
 [ -z "${GH_TOKEN:-}" ] || echo "$GH_TOKEN $*" >> "$GH_STUB_LOG.tok"
 [ -n "${GH_STUB_SLOW:-}" ] && sleep "$GH_STUB_SLOW"
+repo_mode() { case "$1" in *"repos/o/r/"*) printf '%s' "$GH_STUB_MODE" ;; *) printf '%s' "${GH_STUB_FORK_MODE:-$GH_STUB_MODE}" ;; esac; }
 case "${GH_STUB_MODE:?}" in
   error) exit 1 ;;
 esac
@@ -121,7 +122,7 @@ case "$1 $2" in
   # CodeRabbit posts NO check-run — these carry only the
   # tests/lint/build signal the CI gate reads.
   "api repos/"*"/commits/abc123/check-runs"*)
-    case "$GH_STUB_MODE" in
+    case "$(repo_mode "$*")" in
       cr-ci-api-error) exit 1 ;;
       ci-hang)  sleep 30; exit 1 ;;
       ci-red)   echo '{"check_runs":[{"name":"tests","status":"completed","conclusion":"failure"}]}' ;;
@@ -132,7 +133,7 @@ case "$1 $2" in
   # tail — the gates query `/statuses?per_page=100`, and an exact-match arm
   # silently falls through to the `*)` catch-all and degrades the gate open.
   "api repos/"*"/commits/abc123/statuses"*)
-    case "$GH_STUB_MODE" in
+    case "$(repo_mode "$*")" in
       cr-ci-api-error) exit 1 ;;
       inflight)   echo '[{"context":"CodeRabbit","state":"pending","created_at":"2026-07-16T19:08:46Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
       cr-absent)  echo '[]' ;;
@@ -283,6 +284,9 @@ PAYLOAD_CWD="$TMP/other" GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-lis
 GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-red t own-fork-listed-red-check-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
 err_has own-fork-listed-red-check-refuses block-red-ci-merge
 err_lacks own-fork-listed-red-check-refuses "project repo"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-red GH_STUB_FORK_MODE=ci-green t own-fork-checks-read-from-fork-allows 0 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green GH_STUB_FORK_MODE=ci-red t own-fork-checks-read-from-fork-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+err_has own-fork-checks-read-from-fork-refuses block-red-ci-merge
 GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green GH_STUB_REVIEW_DECISION=CHANGES_REQUESTED t own-fork-listed-changes-requested-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
 err_has own-fork-listed-changes-requested-refuses "requests changes"
 GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-listed-no-head-pin-refuses 2 Bash "gh pr merge 42 --squash -R x/y"
