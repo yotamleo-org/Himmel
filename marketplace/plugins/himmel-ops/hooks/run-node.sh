@@ -33,8 +33,7 @@
 # ${CLAUDE_DIR:-$HOME/.claude}/himmel-node.log and exit 0 with NOTHING on
 # stdout/stderr — converting the old per-session "node: command not found" hook
 # error (which Claude Code surfaces) into actual silence. `/himmel-doctor` C1 is
-# what surfaces a genuinely-missing node. The one exception is HIMMEL_READINESS=1 (see the end of this file): that
-# marker makes an unresolvable node exit 2.
+# what surfaces a genuinely-missing node.
 set -u
 
 # Refuse LOUDLY rather than run a payload-less node. A launcher
