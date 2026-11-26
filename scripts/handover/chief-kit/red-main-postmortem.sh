@@ -48,8 +48,8 @@ impacted="${RED_MAIN_IMPACTED:-$HERE/../../cr/impacted-suites.sh}"
 state="${RED_MAIN_STATE:-${TICK_STATE_DIR:-$HOME/.himmel/state}/red-main-postmortem.seen}"
 max_runs="${RED_MAIN_MAX_RUNS:-3}"
 max_commits="${RED_MAIN_MAX_COMMITS:-10}"
-case "$max_runs" in '' | *[!0-9]*) max_runs=3 ;; esac
-case "$max_commits" in '' | *[!0-9]*) max_commits=10 ;; esac
+case "$max_runs" in '' | *[!0-9]* | ?????*) max_runs=3 ;; esac
+case "$max_commits" in '' | *[!0-9]* | ?????*) max_commits=10 ;; esac
 max_runs=$((10#$max_runs))
 max_commits=$((10#$max_commits))
 

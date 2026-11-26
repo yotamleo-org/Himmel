@@ -137,7 +137,10 @@ contains 'a run whose download failed does not hold back the older run' "$out" '
 if rc_zero && [ "$(head -n 1 "$W/dl.log")" = 901 ] && ! grep -Fxq 901 "$W/seen" && grep -Fxq 900 "$W/seen"; then pass 'the failed run is tried first, left unseen, and the older run is marked seen'; else fail "download order or seen file wrong: dl=$(cat "$W/dl.log") seen=$(cat "$W/seen")"; fi
 rm -f "$W/seen" "$W/dl.log"
 out="$(STUB_DL_FAIL=1 run_sut)"
-if [ -z "$out" ] && rc_zero && [ "$(wc -l < "$W/dl.log")" -eq 2 ] && ! grep -Fq 9 "$W/seen"; then pass 'when every download fails nothing is reported and nothing is marked seen'; else fail "all-failed downloads: out=$out downloads=$(cat "$W/dl.log") seen=$(cat "$W/seen")"; fi
+if [ -z "$out" ] && rc_zero && [ "$(wc -l < "$W/dl.log")" -eq 2 ] && [ -f "$W/seen" ] && [ ! -s "$W/seen" ]; then pass 'when every download fails nothing is reported and nothing is marked seen'; else fail "all-failed downloads: out=$out downloads=$(cat "$W/dl.log") seen=$(cat "$W/seen")"; fi
+rm -f "$W/seen" "$W/dl.log"
+out="$(RED_MAIN_MAX_RUNS=1 STUB_DL_FAIL=1 run_sut)"
+if [ -z "$out" ] && rc_zero && [ "$(cat "$W/dl.log")" = 901 ]; then pass 'a failed download spends the call budget, so only the newest run is tried at a budget of one'; else fail "budget of one: out=$out downloads=$(cat "$W/dl.log")"; fi
 printf '900\t%s\tfailure\n899\t%s\tsuccess\n' "$head" "$base" > "$W/runs"
 
 rm -f "$W/seen"
@@ -152,6 +155,10 @@ if grep -Fxq 900 "$W/seen"; then pass 'an absent artifact marks the run seen'; e
 rm -f "$W/seen"
 out="$(RED_MAIN_MAX_COMMITS=08 run_sut)"
 contains 'a zero-padded commit cap is read as decimal' "$out" 'red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes'
+
+rm -f "$W/seen"
+out="$(RED_MAIN_MAX_COMMITS=18446744073709551615 run_sut)"
+contains 'a commit cap past the integer range falls back to the default' "$out" 'red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes'
 
 if [ "$failures" -gt 0 ]; then printf 'FAIL: %s case(s) failed\n' "$failures"; exit 1; fi
 printf 'OK: all red-main-postmortem cases passed\n'
