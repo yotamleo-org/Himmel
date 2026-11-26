@@ -2493,7 +2493,7 @@ case_monitor_checks_then_writes_both_and_echoes_neither() {
     check "the token is not on stderr" lacks "$ERR" "${tok#*:}"
     check "the token is not in any curl argv" file_lacks "$T/curl.argv" "${tok#*:}"
     check "the chat id is not echoed" lacks "$(cat "$T/out")" "$MON_CHAT"
-    printf '{"ok":true,"result":{"status":"restricted","can_send_messages":true,"user":{"id":222,"is_bot":true}}}' > "$T/tg/getChatMember.json"
+    printf '{"ok":true,"result":{"status":"restricted","is_member":true,"can_send_messages":true,"user":{"id":222,"is_bot":true}}}' > "$T/tg/getChatMember.json"
     feed "$MON_CHAT" "$tok"
     run_sut "$T/in" monitor
     check "a restricted bot that may post: exit 0" eq "$RC" 0
@@ -2532,6 +2532,11 @@ case_monitor_a_wrong_value_is_named_and_writes_nothing() {
     feed "$MON_CHAT" "$tok"
     run_sut "$T/in" monitor
     check "a muted bot: named" has "$LAST" "is not a member"
+    printf '{"ok":true,"result":{"status":"restricted","is_member":false,"can_send_messages":true,"user":{"id":222,"is_bot":true}}}' > "$T/tg/getChatMember.json"
+    feed "$MON_CHAT" "$tok"
+    run_sut "$T/in" monitor
+    check "a restricted bot that left the group: exit 3" eq "$RC" 3
+    check "a restricted bot that left the group: named" has "$LAST" "is not a member"
     printf '{"ok":true,"result":{"id":%s,"type":"supergroup","title":"Station Monitor","permissions":{"can_send_messages":false}}}' "$MON_CHAT" > "$T/tg/getChat.json"
     printf '{"ok":true,"result":{"status":"member","user":{"id":222,"is_bot":true}}}' > "$T/tg/getChatMember.json"
     feed "$MON_CHAT" "$tok"

@@ -235,7 +235,7 @@ cmd_monitor() {
     title=$(rs_clean "$(printf '%s' "$out" | jq -r '.result.title // ""' 2>/dev/null)")
     members_post=$(printf '%s' "$out" | jq -r '.result.permissions.can_send_messages != false' 2>/dev/null)
     out=$(rs_tg getChatMember "{\"chat_id\":$chat,\"user_id\":$RS_BOT_ID}") || rs_tg_fail "$out" "the membership check"
-    status=$(printf '%s' "$out" | jq -r 'if .result.status == "restricted" and .result.can_send_messages != true then "muted" else .result.status // "" end' 2>/dev/null)
+    status=$(printf '%s' "$out" | jq -r 'if .result.status == "restricted" and (.result.can_send_messages != true or .result.is_member != true) then "muted" else .result.status // "" end' 2>/dev/null)
     [ "$status" != member ] || [ "$members_post" = true ] || status=muted
     case "$status" in
         member | restricted | administrator | creator) ;;
