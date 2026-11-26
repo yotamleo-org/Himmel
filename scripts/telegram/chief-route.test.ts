@@ -3658,8 +3658,8 @@ test("CQ4: round-reclass re-classes a stored closure round once, records one row
   expect(rowsOf(t.specs, "override")).toMatchObject([{ round_opened: 5, findings: [{ id: "P1", critic: "spec" }] }]);
 });
 
-test("CQ4b: round-reclass repairs the latest spec round and the latest plan round, in either order, and both rows apply", async () => {
-  for (const order of [["plan:4", "spec:4"], ["spec:4", "plan:4"]]) {
+for (const order of [["plan:4", "spec:4"], ["spec:4", "plan:4"]]) {
+  test(`CQ4b: round-reclass repairs the latest spec round and the latest plan round (${order.join(" then ")}), and both rows apply`, async () => {
     const t = await freshWrapped();
     expect((await closeOn(t, "plan", 4, [t.plan], "PLAN FINDINGS 1", "- **Q1** (major; regression) `no such text is in either round`")).err).toBe("");
     const rows = ledgerRows(t.specs, CAP_KEY);
@@ -3668,8 +3668,8 @@ test("CQ4b: round-reclass repairs the latest spec round and the latest plan roun
     for (const round of order) { const res = await reclassOf(true, t.specs, round); expect(res.err).toBe(""); expect(res.code).toBe(0); }
     expect(rowsOf(t.specs, "reclass")).toHaveLength(2);
     expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).not.toContain("invalid:");
-  }
-});
+  });
+}
 
 test("CQ5a: round-reclass refuses off the chief console and writes nothing", async () => {
   const t = await freshWrapped(); storeAsBase(t.specs);
@@ -3732,9 +3732,9 @@ test("CQ5k: round-reclass refuses when the recomputed classes would move a findi
   await refusedReclass(t, true, `round-reclass: ${CAP_KEY} spec round 4 would move m2 to out-of-closure, which the fold refuses; nothing was written`);
 });
 
-test("CQ6: the reader drops a reclass row that breaks a fold rule, lists it as invalid, and keeps the stored classes", async () => {
-  for (const fault of ["off-blocking", "severity", "untagged", "after-override", "twice", "wrong-sha", "reorder", "later-round"]) {
-    const t = fault === "after-override" ? await freshWrapped(["- **P9** (major) a plan finding still open"]) : await freshWrapped([], "- **n1** (minor) a note");
+for (const fault of ["off-blocking", "severity", "untagged", "after-override", "twice", "wrong-sha", "reorder", "later-round"]) {
+  test(`CQ6: the reader drops a reclass row that breaks a fold rule (${fault}), lists it as invalid, and keeps the stored classes`, async () => {
+    const t =fault === "after-override" ? await freshWrapped(["- **P9** (major) a plan finding still open"]) : await freshWrapped([], "- **n1** (minor) a note");
     const stored = () => ledgerRows(t.specs, CAP_KEY).findLast(r => r.row === "round" && r.critic === "spec").findings;
     if (fault !== "off-blocking") storeAsBase(t.specs);
     if (fault === "after-override") expect((await overrideOf(t.specs, "P9")).code).toBe(0);
@@ -3749,8 +3749,9 @@ test("CQ6: the reader drops a reclass row that breaks a fold rule, lists it as i
     if (fault === "twice") { appendReclass(t.specs, up); appendReclass(t.specs, up); }
     expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).toContain("invalid: reclass");
     expect(JSON.parse((await routeCli("round-status", CAP_KEY, "--specs", t.specs, "--json")).out).latest.spec.findings).toEqual(fault === "twice" ? up : stored());
-  }
-});
+    if (fault === "later-round") expect((await verb(false, "fold-list", "--spec", t.a, "--specs", t.specs)).out).toContain("- P1 (major; out-of-closure; regression) spec r4");
+  });
+}
 
 test("R5b: a round whose findings carry no format line holds synthetic ids the override can name", async () => {
   const t = await roundTree(MAJOR, []);
