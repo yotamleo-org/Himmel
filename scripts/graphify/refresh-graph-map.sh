@@ -2633,7 +2633,7 @@ if isinstance(d,dict) and d.get("is_error"):
       esac
       case "$line" in
         '[graphify] chunk '*' failed: '*)
-          if [ "$probed" -eq 0 ]; then
+          if [ "$probed" -eq 0 ] && [ "$GRAPHIFY_BACKEND" = "claude-cli" ]; then
             probed=1
             ( _probe_claude_auth
               [ -z "$_AUTH_CAUSE" ] || printf 'refresh-graph-map: chunk failed: the Claude call reports: %s\n' "$_AUTH_CAUSE" >&2 ) < /dev/null &
