@@ -430,6 +430,19 @@ rm -f "$OW_BK/owed.jsonl"; mkdir "$OW_BK/owed.jsonl"
 out=$(HIMMEL_BUCKET_DIR="$OW_BK" HIMMEL_JIRA_MIRROR="$TMP_ROOT/no-mirror" run_script --since "$MARKER" --out "$TMP_ROOT/owed-partial.md")
 assert_contains "10764: one owed source unread while others read is still said" "owed ledger" "$(grep -o 'What you owe could not be read ([^)]*' "$TMP_ROOT/owed-partial.md")"
 
+echo "TEST: 10947 — the morning report's Needs you list holds the operator's items only: a chief signature, a judge GO and a relaunch are the chief's"
+OW2_BK="$TMP_ROOT/owed-bucket-owner"; mkdir -p "$OW2_BK"
+printf '%s\n' '## Open operator items' '- the chief signs the v1.1.3 spec' '- the judge GO for PR 5900' '- relaunch N70947' '- type the bypass go code on your phone' > "$OW2_BK/x-HANDOFF.md"
+printf '%s\n' '{"op":"add","id":"o1","kind":"ask","text":"chief signature on the release notes","actor":"operator"}' '{"op":"add","id":"o2","kind":"ask","text":"approve the held spend","actor":"operator"}' > "$OW2_BK/owed.jsonl"
+out=$(HIMMEL_BUCKET_DIR="$OW2_BK" HIMMEL_JIRA_MIRROR="$TMP_ROOT/no-mirror" run_script --since "$MARKER" --out "$TMP_ROOT/owed-owner.md")
+file=$(cat "$TMP_ROOT/owed-owner.md")
+assert_contains "10947: a bypass go code is the operator's" "Needs you: type the bypass go code on your phone" "$file"
+assert_contains "10947: a spend approval is the operator's" "Needs you: approve the held spend" "$file"
+assert_absent "10947: a chief signature in the handoff is not the operator's" "the chief signs the v1.1.3 spec" "$file"
+assert_absent "10947: a judge GO is not the operator's" "the judge GO for PR 5900" "$file"
+assert_absent "10947: a relaunch is not the operator's" "relaunch N70947" "$file"
+assert_absent "10947: a chief signature in the ledger is not the operator's" "chief signature on the release notes" "$file"
+
 # Test 14: --llm splices enriched blocks -----------------------------
 
 echo "TEST: --llm splices multi-line enriched blocks"

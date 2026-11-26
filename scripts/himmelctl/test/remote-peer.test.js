@@ -230,6 +230,90 @@ test('remote_peer_reads_no_peer_bridge_dir', (t) => {
   assert.deepEqual(touched.filter((p) => /[\\/](\.himmel|himmel)[\\/]peer-bridge([\\/]|$)/.test(p)), [], 'the probe never touches a peer-bridge state or key dir');
 });
 
+const STEPS = ['ourStationName', 'ourStationKey', 'groupChat', 'operatorChat', 'theirKey'];
+const pairRow = (name, done, extra) => Object.assign({ name }, Object.fromEntries(STEPS.map((s, i) => [s, i < done])), extra);
+const setPairing = (f, doc) => fs.writeFileSync(path.join(f.home, '.himmel', 'remote-setup', 'pairing.json'), typeof doc === 'string' ? doc : JSON.stringify(doc));
+function running(peers, pairing) {
+  const f = fixture();
+  f.setPeers(peers);
+  f.setUnitFile('linux');
+  f.setActive(true);
+  if (pairing !== undefined) setPairing(f, pairing);
+  return f;
+}
+
+test('remote_peer_names_the_first_missing_pairing_step_per_peer', () => {
+  const cases = [
+    [0, 'our station name'],
+    [1, 'our station key'],
+    [2, 'the group chat'],
+    [3, 'your chat with the peer bridge bot'],
+    [4, 'their key'],
+  ];
+  for (const [done, label] of cases) {
+    const r = run(running([peer('goomal')], { peers: [pairRow('goomal', done, undefined)] }));
+    assert.equal(r.actual, 'present', 'a missing step is information, not a red row');
+    assert.equal(r.detail, `goomal: set up, poller running, next pairing step: ${label}`);
+  }
+  const all = run(running([peer('goomal')], { peers: [pairRow('goomal', 5)] }));
+  assert.equal(all.detail, 'goomal: set up, poller running, every pairing step done');
+  const gap = run(running([peer('goomal')], { peers: [Object.assign(pairRow('goomal', 5), { ourStationKey: false })] }));
+  assert.equal(gap.detail, 'goomal: set up, poller running, next pairing step: our station key');
+});
+
+test('remote_peer_pairing_step_is_named_for_each_peer_and_when_the_poller_is_stopped', () => {
+  const f = running([peer('goomal'), peer('yotam', { peerBotId: '555000222' })], { peers: [pairRow('yotam', 2), pairRow('goomal', 5)] });
+  assert.equal(run(f).detail, 'goomal: set up, poller running, every pairing step done; yotam: set up, poller running, next pairing step: the group chat');
+  f.setActive(false);
+  assert.equal(run(f).detail, 'goomal: poller stopped, every pairing step done; yotam: poller stopped, next pairing step: the group chat');
+});
+
+test('remote_peer_no_pairing_record_or_no_row_leaves_the_detail_as_it_was', () => {
+  assert.equal(run(running([peer('goomal')])).detail, 'goomal: set up, poller running');
+  assert.equal(run(running([peer('goomal')], { peers: [pairRow('other', 1)] })).detail, 'goomal: set up, poller running');
+  assert.equal(run(running([peer('goomal')], { peers: [] })).detail, 'goomal: set up, poller running');
+});
+
+test('remote_peer_pairing_record_bad_shape_is_degraded_and_never_echoed', () => {
+  const bad = [
+    `{"peers": [ ${CANARY}`,
+    { peers: [pairRow(`${CANARY}\nINJECTED`, 1)] },
+    { peers: [pairRow('goomal', 1, { groupChat: CANARY })] },
+    { peers: [pairRow('goomal', 1, { groupChat: 1 })] },
+    { peers: [pairRow('goomal', 1, { token: CANARY })] },
+    { peers: [pairRow('goomal', 1)], extra: CANARY },
+    { peers: CANARY },
+    [pairRow('goomal', 1)],
+  ];
+  for (const doc of bad) {
+    const r = run(running([peer('goomal')], doc));
+    assert.equal(r.actual, 'degraded', `${JSON.stringify(doc)} is refused`);
+    assert.match(r.detail, /pairing/);
+    assert.ok(!JSON.stringify(r).includes(CANARY), 'no byte of a bad record is echoed');
+    assert.ok(!JSON.stringify(r).includes('INJECTED'));
+  }
+  assert.equal(run(running([peer('goomal')], { peers: [pairRow('goomal', 1)] })).actual, 'present');
+});
+
+test('remote_peer_pairing_status_item_reaches_the_status_report', () => {
+  const f = running([peer('goomal')], { peers: [pairRow('goomal', 1)] });
+  const row = report(f).items.find((i) => i.id === 'remote-peer');
+  assert.match(row.detail, /next pairing step: our station key/);
+});
+
+test('remote_peer_reads_the_pairing_record_and_no_peer_bridge_dir', (t) => {
+  const f = running([peer('goomal')], { peers: [pairRow('goomal', 1)] });
+  const touched = [];
+  for (const m of ['readFileSync', 'readdirSync', 'statSync', 'existsSync', 'openSync', 'lstatSync', 'accessSync']) {
+    const orig = fs[m];
+    t.mock.method(fs, m, function (p, ...rest) { touched.push(String(p)); return orig.call(fs, p, ...rest); });
+  }
+  const r = run(f);
+  assert.match(r.detail, /next pairing step/);
+  assert.ok(touched.some((p) => p.endsWith(path.join('remote-setup', 'pairing.json'))), 'the record is read');
+  assert.deepEqual(touched.filter((p) => /[\\/](\.himmel|himmel)[\\/]peer-bridge([\\/]|$)/.test(p)), [], 'the probe never touches a peer-bridge state or key dir');
+});
+
 test('manifest_lint_accepts_remote_peer', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(REPO, 'scripts', 'install', 'manifest.json'), 'utf8'));
   const item = manifest.items.find((i) => i.id === 'remote-peer');

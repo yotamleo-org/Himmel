@@ -237,6 +237,11 @@ bsd_patch_case "7120 no readlink -m: apply_patch .. segment to the config -> blo
 { mkdir -p "$T/loop" "$T/loophome" && ln -s l2 "$T/loop/l1" && ln -s l1 "$T/loop/l2" && ln -s "$T/loop/l1" "$T/loophome/.himmel"; } || { echo "FAIL: cannot build the symlink-loop fixtures" >&2; exit 1; }
 bsd_file_case "7120 symlink loop in the target path -> block (fail-closed)" block "$T/loop/l1/x"
 bsd_patch_case "7120 symlink loop in an apply_patch path -> block (fail-closed)" block "*** Begin Patch${NL}*** Add File: $T/loop/l1/x${NL}+{}${NL}*** End Patch"
+bsd_bash_case() { bsd_case "$1" "$2" "$(jq -nc --arg c "$3" '{tool_name:"Bash",tool_input:{command:$c}}')"; }
+bsd_bash_case "10332 no readlink -m: a copy onto a destination that cannot be resolved -> block (fail-closed)" block "cp -r x $T/loop/l1/"
+bsd_bash_case "10322 no readlink -m: a path operand that cannot be resolved -> block (fail-closed)" block "ls $T/loop/l1/x"
+bsd_bash_case "10322 no readlink -m: control, resolvable operands -> allow" allow "ls $T/other/notes.txt"
+bsd_bash_case "10332 no readlink -m: control, a copy into an unrelated directory -> allow" allow "cp -r x $T/backup/"
 BSD_HOME="$T/loophome"
 bsd_file_case "7120 unresolvable config path (loop under HOME) -> block (fail-closed)" block "$T/other.txt"
 bsd_patch_case "7120 unresolvable config path, apply_patch -> block (fail-closed)" block "*** Begin Patch${NL}*** Add File: $T/notes.txt${NL}+hi${NL}*** End Patch"
@@ -453,7 +458,8 @@ big_patch 1000 > "$T/p1000.txt"
 CAP_BOUND_MS=3000; [ "$(uname -s)" = Darwin ] && CAP_BOUND_MS=20000 # prim-ok: Darwin timing budget
 big_case "1000 benign headers (at the cap) -> allow inside the time bound" allow "$T/p1000.txt" "$CAP_BOUND_MS"
 sed 's|src/dir/file|Src/DiR/FiLe|' "$T/p1000.txt" > "$T/p1000m.txt"
-HIMMEL_GUARD_FORCE_DARWIN=1 big_case "7888 Darwin seam: 1000 benign mixed-case headers (at the cap) -> allow inside the time bound" allow "$T/p1000m.txt" 12000
+FOLD_BOUND_MS=12000; [ "$(uname -s)" = Darwin ] && FOLD_BOUND_MS=24000
+HIMMEL_GUARD_FORCE_DARWIN=1 big_case "7888 Darwin seam: 1000 benign mixed-case headers (at the cap) -> allow inside the time bound" allow "$T/p1000m.txt" "$FOLD_BOUND_MS"
 big_patch 1001 > "$T/p1001.txt"
 big_case "1001 benign headers (over the cap) -> block" block "$T/p1001.txt"
 big_patch 999 "*** Update File: $CFG" > "$T/pcfg.txt"
@@ -672,15 +678,92 @@ patch_case "7888 Darwin control: apply_patch header through an alias to notes.tx
 export HIMMEL_CONFIG_DIR="$T/CoNf"
 file_case "7888 Darwin: HIMMEL_CONFIG_DIR written to in another case -> block" block Write "$T/CONF/himmel.conf"
 file_case "7888 Darwin control: HIMMEL_CONFIG_DIR, another file -> allow" allow Write "$T/CONF/notes.txt"
+bash_case "7888 Darwin: a Bash redirect onto HIMMEL_CONFIG_DIR's himmel.conf in another case -> block" block "echo x > $T/CONF/himmel.conf"
+bash_case "7888 Darwin: a Bash tee onto a HIMMEL_CONFIG_DIR profile in another case -> block" block "tee $T/CONF/profiles/lab.conf"
+bash_case "7888 Darwin control: a Bash redirect onto another file in HIMMEL_CONFIG_DIR in another case -> allow" allow "echo x > $T/CONF/notes.txt"
 unset HIMMEL_CONFIG_DIR
 export HIMMEL_API_CREDIT_CONFIG="$T/CrEdIt/config.json"
 file_case "7888 Darwin: HIMMEL_API_CREDIT_CONFIG role map written to in another case -> block" block Write "$T/CREDIT/roles.json"
 file_case "7888 Darwin control: HIMMEL_API_CREDIT_CONFIG, another file -> allow" allow Write "$T/CREDIT/config.json"
+bash_case "7888 Darwin: a Bash redirect onto the HIMMEL_API_CREDIT_CONFIG role map in another case -> block" block "echo x > $T/CREDIT/roles.json"
+bash_case "7888 Darwin control: a Bash redirect onto another file beside the role map in another case -> allow" allow "echo x > $T/CREDIT/config.json"
 unset HIMMEL_API_CREDIT_CONFIG
 unset HIMMEL_GUARD_FORCE_DARWIN
 ln -s "$HOME/.himmel" "$T/S"
 file_case "7888 lexical form resolved: S/L/../config.json (S is ~/.himmel, L is elsewhere) -> block" block Write "$T/S/L/../config.json"
 file_case "7888 control: S/L/../notes.txt -> allow" allow Write "$T/S/L/../notes.txt"
+
+echo "== HIMMEL-7888 / HIMMEL-10322: a Bash path operand is judged by its physical location =="
+bash_case "10322 redirect through a symlinked directory to himmel.conf -> block" block "echo x > $T/station-alias/himmel.conf"
+bash_case "10322 cp through a symlinked directory onto himmel.conf -> block" block "cp $T/x $T/station-alias/himmel.conf"
+bash_case "10322 tee through a symlinked directory onto a profile -> block" block "tee $T/station-alias/profiles/lab.conf"
+bash_case "10322 sed -i through a symlinked directory on himmel.conf -> block" block "sed -i s/a/b/ $T/station-alias/himmel.conf" # gnu-ok: fixture payload, never executed
+run "10322 a relative symlinked path to himmel.conf (payload cwd) -> block" block "$(jq -nc --arg c "cp x station-alias/himmel.conf" --arg d "$T" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}')"
+bash_case "10322 a symlink to the config file written by redirect -> block" block "echo x > $T/alias.json"
+run "10322 a bare file name that is a symlink to the config (payload cwd) -> block" block "$(jq -nc --arg c "cp x alias.json" --arg d "$T" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}')"
+run "10322 a bare file name that is a symlink to himmel.conf (payload cwd) -> block" block "$(jq -nc --arg c "echo x > himmel.conf" --arg d "$T/station-alias" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}')"
+run "10322 control: a bare unrelated file name (payload cwd) -> allow" allow "$(jq -nc --arg c "cp x notes.txt" --arg d "$T" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}')"
+filler=""; for _i in $(seq 1 150); do filler="$filler w$_i"; done
+bash_case "10322 plain words before the operand do not use up its budget -> block" block "echo$filler; cp x $T/alias.json"
+bash_case "10322 control: many plain words and an unrelated operand -> allow" allow "echo$filler; cp x $T/notes.txt"
+run "10322 malformed payload naming himmel.conf through a symlinked directory -> block" block "{not json $T/station-alias/himmel.conf"
+run "10322 malformed payload naming a profile through a symlinked directory -> block" block "{not json $T/station-alias/profiles/lab.conf"
+run "10322 unparseable JSON with the station path as a string value -> block" block "{\"tool_input\":{\"file_path\":\"$T/station-alias/himmel.conf\""
+ln -s "$T/station" "$T/a,b" || { echo "FAIL: cannot build the comma fixture" >&2; exit 1; }
+run "10322 malformed payload with a literal comma in a symlinked station path -> block" block "{not json $T/a,b/himmel.conf"
+{ mkdir -p "$T/nojq-bin" && for _t in bash cat tr readlink dirname; do ln -sf "$(command -v "$_t")" "$T/nojq-bin/$_t"; done; } || { echo "FAIL: cannot build the jq-less PATH" >&2; exit 1; }
+nojq_case() {
+    local rc got
+    printf '%s' "$3" | PATH="$T/nojq-bin" "$T/nojq-bin/bash" "$HOOK" >/dev/null 2>&1
+    rc=$?
+    case "$rc" in 0) got=allow ;; 2) got=block ;; *) got="?(rc=$rc)" ;; esac
+    if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 - expected $2 got $got"; fi
+}
+nojq_case "10322 no jq: a JSON payload with a station path through a symlinked directory -> block" block "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$T/station-alias/himmel.conf\"}}"
+nojq_case "10322 no jq: control, an unrelated path through a symlinked directory -> allow" allow "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$T/station-alias/notes.txt\"}}"
+run "10322 unparseable JSON with a literal comma in the station path string -> block" block "{\"tool_input\":{\"file_path\":\"$T/a,b/himmel.conf\""
+run "10322 control: unparseable JSON with an unrelated string value -> allow" allow "{\"tool_input\":{\"file_path\":\"$T/station-alias/notes.txt\""
+{ mkdir -p "$T/cfgreal/profiles" && ln -s "$T/cfgreal" "$T/cfglink" && ln -s "$T/elsewhere/himmel.conf" "$T/cfgreal/himmel.conf"; } || { echo "FAIL: cannot build the config-dir fixtures" >&2; exit 1; }
+HIMMEL_CONFIG_DIR="$T/cfglink"; export HIMMEL_CONFIG_DIR
+bash_case "10322 a profile spelled by the physical config directory when HIMMEL_CONFIG_DIR is a symlink and himmel.conf links elsewhere -> block" block "tee $T/cfgreal/profiles/lab.conf"
+bash_case "10322 a local override spelled by the physical config directory when HIMMEL_CONFIG_DIR is a symlink -> block" block "echo x > $T/cfgreal/himmel.conf.local"
+bash_case "10322 control: another file in the physical config directory -> allow" allow "echo x > $T/cfgreal/notes.txt"
+unset HIMMEL_CONFIG_DIR
+run "10322 control: malformed payload naming an unrelated file through a symlinked directory -> allow" allow "{not json $T/station-alias/notes.txt"
+bash_case "10322 control: cat through a symlinked directory -> allow" allow "cat $T/station-alias/himmel.conf"
+bash_case "10322 control: cp through a symlinked directory onto an unrelated file -> allow" allow "cp $T/x $T/station-alias/notes.txt"
+bash_case "10322 control: redirect to a symlink of an unrelated file -> allow" allow "echo x > $T/AlNotes.txt"
+
+echo "== HIMMEL-7888 / HIMMEL-10332: a copy or move onto the config directory =="
+mkdir -p "$T/payload" "$T/backup"
+bash_case "10332 cp -r onto ~/.himmel/ -> block" block "cp -r $T/payload/. $HOME/.himmel/"
+bash_case "10332 cp -r onto ~/.himmel (no slash) -> block" block "cp -r $T/payload/. $HOME/.himmel"
+bash_case "10332 cp -r onto the tilde spelling -> block" block "cp -r $T/payload/. ~/.himmel/"
+bash_case "10332 cp -r onto the \$HOME spelling -> block" block "cp -r $T/payload/. \$HOME/.himmel/"
+bash_case "10332 cp -r onto a quoted destination -> block" block "cp -r $T/payload/. \"$HOME/.himmel/\""
+bash_case "10332 cp -t onto the directory -> block" block "cp -r -t $HOME/.himmel/ $T/payload/x"
+bash_case "10332 cp --target-directory= onto the directory -> block" block "cp -r --target-directory=$HOME/.himmel $T/payload/x"
+bash_case "10332 rsync onto ~/.himmel/ -> block" block "rsync -a $T/payload/ $HOME/.himmel/"
+bash_case "10332 mv onto ~/.himmel/ -> block" block "mv $T/payload $HOME/.himmel/"
+bash_case "10332 mv of a directory's contents onto the directory glob -> block" block "mv $T/payload/* $HOME/.himmel/*"
+bash_case "10332 cp -r onto a relative .himmel/ -> block" block "cp -r $T/payload/. .himmel/"
+bash_case "10332 cp -r onto the directory after a chained command -> block" block "echo hi; cp -r $T/payload/. $HOME/.himmel/"
+bash_case "10332 cp -r onto a symlinked spelling of the directory -> block" block "cp -r $T/payload/. $T/S/"
+bash_case "10332 cp -r onto the directory inside an if block -> block" block "if true; then cp -r $T/payload/. $HOME/.himmel/; fi"
+bash_case "10332 cp -r onto the directory inside a for loop -> block" block "for f in a; do cp -r $T/payload/. $HOME/.himmel/; done"
+bash_case "10332 cp -r onto the directory inside a brace group -> block" block "{ cp -r $T/payload/. $HOME/.himmel/; }"
+bash_case "10332 control: cp -r into an unrelated directory inside an if block -> allow" allow "if true; then cp -r $T/payload/. $T/backup/; fi"
+bash_case "10332 control: cp -r into an unrelated directory -> allow" allow "cp -r $T/payload/. $T/backup/"
+bash_case "10332 control: rsync into an unrelated directory -> allow" allow "rsync -a $T/payload/ $T/backup/"
+bash_case "10332 control: mv into an unrelated directory -> allow" allow "mv $T/payload $T/backup/"
+bash_case "10332 control: copying OUT of the config directory -> allow" allow "cp -r $HOME/.himmel/. $T/backup/"
+bash_case "10332 control: reading the config file -> allow" allow "cat $HOME/.himmel/config.json"
+bash_case "10332 control: ls of the config directory -> allow" allow "ls $HOME/.himmel/"
+bash_case "10332 control: cp onto a name that only ends like it -> allow" allow "cp -r $T/payload/. $T/not.himmelx/"
+export HIMMEL_GUARD_FORCE_DARWIN=1
+bash_case "10332 Darwin: cp -r onto ~/.HIMMEL/ -> block" block "cp -r $T/payload/. $HOME/.HIMMEL/"
+bash_case "10332 Darwin control: cp -r into an unrelated directory -> allow" allow "cp -r $T/payload/. $T/backup/"
+unset HIMMEL_GUARD_FORCE_DARWIN
 
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"

@@ -180,6 +180,7 @@ CLAUDE_END_ONLY=(
                              # enforce is itself Claude-only (chief-kit/tick.sh's
                              # own header: "Linux-only... Bash 3.2-compatible" with
                              # no Codex wiring). Not ported.
+  stop-chief-ask-mirror.sh
   readiness-session.sh     # deliberate: the readiness role is a native-lane (Claude Code)
                              # launch only -- headed-arm-worker.sh refuses --profile readiness
                              # on every other lane and the startup config it writes must say
