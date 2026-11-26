@@ -96,6 +96,15 @@ check "6b wrap not run" "$calls" ""
 run "WRAPPED N2078 (N2078 again)"
 check "6c same label twice rc" "$rc" 0
 
+run "WRAPPED N2078. RESUME brief /h/HIMMEL-1-N2078b-foo-2026-10-15-RESUME.md"
+check "6e 11192 label plus resume path rc" "$rc" 0
+contains "6e 11192 HANDLED" "$out" "HANDLED wrap-merged N2078"
+contains "6e 11192 wrap gets the listed worker" "$calls" "/h/HIMMEL-1-N2078-foo-2026-10-14.md"
+run "WRAPPED N2078 after N2088 merged, RESUME /h/HIMMEL-1-N2078b-foo-RESUME.md"
+check "6f two listed labels plus a path rc" "$rc" 10
+contains "6f two listed labels reason" "$out" "ambiguous-label"
+check "6f wrap not run" "$calls" ""
+
 # a MERGED/WRAPPED from N4304 finds the resumed manifest entry N4304b
 cat > "$W/list-resume" <<'EOF'
 #!/usr/bin/env bash
