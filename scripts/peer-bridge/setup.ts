@@ -161,8 +161,9 @@ const pairingFile = () => join(homeDir(), ".himmel", "remote-setup", "pairing.js
 
 function writePairing(deps: Deps): void {
   try { writePairingRecord(); } catch (e) {
-    try { fs.rmSync(pairingFile(), { force: true }); } catch {}
-    deps.out(`the pairing steps record could not be updated (${(e as Error).message}); the old record was dropped, the next pairing step writes it again`);
+    let dropped = false;
+    try { fs.rmSync(pairingFile(), { force: true }); dropped = !fs.existsSync(pairingFile()); } catch {}
+    deps.out(`the pairing steps record could not be updated (${(e as Error).message}); ${dropped ? "the old record was dropped, the next pairing step writes it again" : "the old record is still there and may be out of date"}`);
   }
 }
 
