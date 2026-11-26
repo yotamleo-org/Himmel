@@ -59,6 +59,11 @@ def honoured_during_adoption(self):
         fired.write_text(str(self.data['child']))
 
 
+slow = float(os.environ.get('STREAM_SLOW_START', '0'))
+if slow:
+    prepare = mod.Supervisor.prepare
+    mod.Supervisor.prepare = lambda self: (time.sleep(slow), prepare(self))[1]
+
 if os.environ['SCHEDULE'] == 'touched-after-the-sample':
     mod.Supervisor.acknowledge = after_one_wake
     mod.child_alive = touched_after_the_sample
@@ -365,7 +370,8 @@ class Stream(StreamFixture):
         self.stop(p)
         self.assertIn('STOPPED since=2', out.read_text())
         self.assertEqual(len([l for l in self.path('wakes').read_text().splitlines() if l.startswith('W\t')]), 2)
-        self.assertLessEqual(len((self.root / 'ticks').read_text().splitlines()), 1)
+        ticks = self.root / 'ticks'
+        self.assertLessEqual(len(ticks.read_text().splitlines()) if ticks.exists() else 0, 1)
 
     def test_regular_stdout_refused_without_state(self):
         env = dict(self.env)
@@ -1005,7 +1011,8 @@ echo 'HANDLED close-wrapped'
         self.assertNotIn('REARM', answer.read_text())
         self.assertFalse(self.path('stop').exists())
         self.assertEqual(self.state().get('child'), '0', 'a new child was launched')
-        third, wake = self.start(env=env)
+        third, wake = self.start(env=dict(env, CHIEF_WAIT_STREAM_SOFT_SEC=self.env['CHIEF_WAIT_STREAM_SOFT_SEC'],
+                                          CHIEF_WAIT_STREAM_HARD_SEC=self.env['CHIEF_WAIT_STREAM_HARD_SEC']))
         self.until(lambda: self.state().get('sup') == str(third.pid), seconds=20)
         self.inbox.write_text('after the stop\n')
         self.until(lambda: 'WAKE#1 telegram' in wake.read_text(), seconds=20)
@@ -1022,8 +1029,7 @@ echo 'HANDLED close-wrapped'
         self.assertEqual(first.wait(timeout=30), 0)
         self.assertIn('child=busy', out.read_text())
         child = self.state()['child']
-        again, answer = self.driven('adopted', TICK_GATE=str(gate), CHIEF_WAIT_STREAM_SOFT_SEC='.3',
-                                    CHIEF_WAIT_STREAM_HARD_SEC='1', CHIEF_WAIT_STREAM_ADOPT_SEC='120',
+        again, answer = self.driven('adopted', TICK_GATE=str(gate), CHIEF_WAIT_STREAM_ADOPT_SEC='120',
                                     CHIEF_WAIT_STREAM_REAP_MAX_SEC='240')
         self.assertEqual(again.wait(timeout=30), 0, answer.read_text())
         self.assertEqual(Path(str(self.inbox) + '.wait.schedule-fired').read_text(), child, 'the schedule was not forced')
@@ -1066,7 +1072,8 @@ echo 'HANDLED close-wrapped'
         os.kill(dog, signal.SIGKILL)
         self.until(lambda: self.gone(dog), seconds=20)
         self.assertTrue(self.path('reap').exists(), 'the request outlives a watchdog that was killed')
-        again, adopted = self.start(env=env)
+        again, adopted = self.start(env=dict(env, CHIEF_WAIT_STREAM_SOFT_SEC=self.env['CHIEF_WAIT_STREAM_SOFT_SEC'],
+                                             CHIEF_WAIT_STREAM_HARD_SEC=self.env['CHIEF_WAIT_STREAM_HARD_SEC']))
         self.until(lambda: self.state().get('sup') == str(again.pid), seconds=20)
         self.until(lambda: not self.path('reap').exists(), seconds=20)
         self.assertEqual(self.state()['child'], child, 'the successor adopted the busy child')
