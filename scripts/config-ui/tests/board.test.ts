@@ -69,15 +69,16 @@ test("10947: one owner classifier: a chief signature, a judge GO and a relaunch 
 test("10947: an explicit operator sign-off keeps its owner beside a GO; a chief action that names a billing word stays the chief's", () => {
   const s = scratch();
   const env = owedFixture(s, "queue: HIMMEL-2 chief step");
-  writeFileSync(join(s.d, "chief-HANDOFF.md"), "## Open operator items\n- operator signs off: give GO for PR 5900\n- the chief signs the billing report\n- the judge relaunches the paid worker\n- approve payment for the worker relaunch\n- the paid account renewal\n");
+  writeFileSync(join(s.d, "chief-HANDOFF.md"), "## Open operator items\n- operator signs off: give GO for PR 5900\n- the chief signs the billing report\n- the judge relaunches the paid worker\n- approve payment for the worker relaunch\n- Payment approval for the worker relaunch\n- the chief signs the proposal to approve payment\n- the paid account renewal\n");
   const o = readOwed(env);
   if (o.state !== "ok") throw new Error(o.reason);
-  expect(o.items.filter((i) => i.source === "handoff").map((i) => [i.title, i.actor])).toEqual([["operator signs off: give GO for PR 5900", "operator"], ["the chief signs the billing report", "chief"], ["the judge relaunches the paid worker", "chief"], ["approve payment for the worker relaunch", "operator"], ["the paid account renewal", "operator"]]);
+  expect(o.items.filter((i) => i.source === "handoff").map((i) => [i.title, i.actor])).toEqual([["operator signs off: give GO for PR 5900", "operator"], ["the chief signs the billing report", "chief"], ["the judge relaunches the paid worker", "chief"], ["approve payment for the worker relaunch", "operator"], ["Payment approval for the worker relaunch", "operator"], ["the chief signs the proposal to approve payment", "chief"], ["the paid account renewal", "operator"]]);
   const doc = join(s.d, "chief.md");
-  writeFileSync(doc, "## Live state\nqueue: HIMMEL-2 operator signs off: give GO for PR 5900\n");
+  writeFileSync(doc, "## Live state\nqueue: HIMMEL-2 operator signs off: give GO for PR 5900 | HIMMEL-3 GO requires operator sign-off\n");
+  writeFileSync(join(s.mirror, "HIMMEL-3.md"), mirrorIssue(3, "To Do", "To Do", [], "ticket 3"));
   const c = readOwed(env);
   if (c.state !== "ok") throw new Error(c.reason);
-  expect(c.items.filter((i) => i.source === "chief doc").map((i) => i.actor)).toEqual(["operator"]);
+  expect(c.items.filter((i) => i.source === "chief doc").map((i) => i.actor)).toEqual(["operator", "operator"]);
 });
 
 test("view parity: raw categories keep valid peers; malformed category remains reconciliation with a warning", () => {

@@ -170,13 +170,17 @@ function roundStatusAll(bucket: string, env: Env): RoundStatus | undefined {
 }
 const OWED_RE = /operator[ -](?:sign-?off|runs?|words|signs?|decides?|on Telegram|only)|Telegram ask|operator-owed/i;
 const OPERATOR_CLASS_RE = /\bspend|\bgrants?\b|\bpaid\b|billing|payment|\baccounts?\b|\bterms\b|\btos\b|\broot\b|\bsudo(?:ers)?\b|reinstall|admin install|\boauth\b|api credit|\bphysical(?:ly)?\b|hardware|public[ -]polic|policy call/i;
-const OPERATOR_ONLY_RE = /operator[ -]signs?[ -]?off\b.*\bGO\b|\b(?:approve|grant|authori[sz]e)\b[^|.]{0,40}\b(?:spend|payment|billing|paid|credit)\b|\bgo code\b|phone approval|on your phone|\bclaude\.md\b|relax(?:es|ing)? (?:a|the) guard|revers(?:al|e|es|ing) (?:of )?(?:his|the operator'?s)\b|spec (?:he|the operator) marked/i;
-const CHIEF_OWNED_RE = /\bchief[- ](?:signs?|signature|kit|dut(?:y|ies))\b|\bjudge\b|\brelaunch|\bwaiter\b/i;
+const OPERATOR_ONLY_RE = /\bgo code\b|phone approval|on your phone|\bclaude\.md\b|relax(?:es|ing)? (?:a|the) guard|revers(?:al|e|es|ing) (?:of )?(?:his|the operator'?s)\b|spec (?:he|the operator) marked/i;
+const CHIEF_SUBJECT_RE = /\bchief[- ](?:signs?|signature|kit|dut(?:y|ies))\b|\bjudge\b/i;
+const OPERATOR_APPROVAL_RE = /\b(?:approv\w+|grant|authori[sz]e)\b[^|.]{0,40}\b(?:spend|payment|billing|paid|credit)\b|\b(?:spend|payment|billing|paid|credit)\b[^|.]{0,40}\b(?:approv\w+|grant|authori[sz]e)\b|operator[ -]signs?[ -]?off\b[^|.]*\bGO\b|\bGO\b[^|.]*operator[ -]signs?[ -]?off/i;
+const CHIEF_ACT_RE = /\brelaunch|\bwaiter\b/i;
 export function ownerOf(text: string, declared: OwedActor): OwedActor {
   if (OPERATOR_ONLY_RE.test(text)) return "operator";
-  if (CHIEF_OWNED_RE.test(text)) return "chief";
+  if (CHIEF_SUBJECT_RE.test(text)) return "chief";
+  if (OPERATOR_APPROVAL_RE.test(text)) return "operator";
+  if (CHIEF_ACT_RE.test(text)) return "chief";
   if (OPERATOR_CLASS_RE.test(text)) return "operator";
-  return /\bGO\b/.test(text) && !/operator[ -]signs?[ -]?off/i.test(text) ? "chief" : declared;
+  return /\bGO\b/.test(text) ? "chief" : declared;
 }
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 // The lines under `## <heading>` up to the next `## `; undefined when the file has no such section.
