@@ -1664,7 +1664,8 @@ strip_shared_station_items() {
   fi
   bash "$HIMMEL_ROOT/scripts/lib/unwire-statusline.sh" "$shared" || return 1
   bash "$HIMMEL_ROOT/scripts/lib/unwire-pretooluse-hooks.sh" --sessionstart "$shared" 0 || return 1
-  move_sessionend_to_local || return 1
+  local moved=0
+  move_sessionend_to_local || moved=1
   tmp="$(mktemp "$shared.stripstation.XXXXXX")" || return 1
   cp -p "$shared" "$tmp" || { rm -f "$tmp"; return 1; }
   # shellcheck disable=SC2016  # $loc is a jq variable
@@ -1690,6 +1691,7 @@ strip_shared_station_items() {
     echo "  WARNING: could not strip the HUD key / marketplace entry from $shared" >&2
     return 1
   fi
+  [[ $moved -eq 0 ]] || return 1
   echo "  shared settings: station items stripped (replacements are in $local_f)"
 }
 
