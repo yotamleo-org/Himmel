@@ -4014,9 +4014,7 @@ fi
 
 # wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap>: leftover worktrees (no
 # open PR, nothing holding them) and the live worktree count once it reaches
-# HIMMEL_WORKTREE_ALARM, from one `worktree.sh prune --orphans` read that a detached refresh makes
-# (~20s on a 50-tree fleet, 90 s under load); the tick serves the last good reading from TICK_STATE_DIR,
-# one file per REPO. The usage text has the TTLs and TICK_FAST. wt-ceiling is in the waiter's wake key.
+# HIMMEL_WORKTREE_ALARM, from one `worktree.sh prune --orphans` read. wt-ceiling is in the waiter's wake key.
 wto_summary=0
 wtc_summary=""
 wto_probe="${TICK_WORKTREE_ORPHANS_PROBE:-$REPO/scripts/worktree.sh}"
@@ -4031,7 +4029,7 @@ if [ "$tick_fast" != 1 ] && [ -f "$wto_probe" ]; then
         wto_failed="$(tick_cache_age "$wto_cache.fail")"
         case "$wto_failed" in ''|*[!0-9]*) wto_failed=999999999 ;; esac
         if [ "$wto_failed" -ge $((wto_fail_ttl * 60)) ]; then
-            # shellcheck disable=SC2016  # the refresh script is single-quoted on purpose: the detached bash expands it
+            # shellcheck disable=SC2016
             tick_section_refresh "$wto_cache.refresh" 0 'out="$(cd "$3" && timeout -k 2 90 bash "$2" prune --orphans 2>/dev/null)"; rc=$?; if [ "$rc" -gt 1 ] || { [ "$rc" -eq 1 ] && ! grep -qE "^(ORPHAN|CEILING|SWEEP-ERROR) " <<<"$out"; } || case "$out" in *SWEEP-ERROR*) true ;; *) false ;; esac; then touch "$1.fail"; exit 0; fi; [ -n "$out" ] || out="# clean"; printf "%s\n" "$out" >"$1.$$" && mv -f "$1.$$" "$1" && rm -f "$1.fail"; rm -f "$1.$$"' _ "$wto_cache" "$wto_probe" "$REPO"  # gnu-ok: console kit is Linux-only; swallow-ok: the sweep's rc is kept in rc and a failure writes the .fail marker
         fi
     fi

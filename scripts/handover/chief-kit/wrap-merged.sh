@@ -300,7 +300,7 @@ focus_refresh() {
 }
 focus_refresh
 
-# 6. board - board.mjs rc 3 (its tick stalled) is a warning: the chief's board timer re-renders within minutes
+# 6. board
 BOARD_ON_FAIL=""
 board_rc=0
 "${BOARD[@]}" --doc "$DOC" --changed || board_rc=$?
