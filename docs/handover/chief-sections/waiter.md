@@ -631,7 +631,7 @@ recorded included. An ask on settings or `.github/`
     `WAKE t3-relay UNBOUND <id> <label>`). A scan that finds another live chief owning binding (rc 5) is silent.
     Design: `running-a-chief.md`, "Chief threads in T3 Code".
 
-    **A silent worker wakes you once, and the operator is already told**.
+    **A silent worker wakes you once, and the operator is already told** (a later helper result for the same write time can wake you again, as below).
     `WAKE worker-silent <worker> signal=<capped-waker|succession-partial> [silent=<n>m]`
     means no turn is coming from that worker: the tick lists `wakerstate=<worker>:capped`
     (its bus mail went unread) and, with `--workers-from`, its doc has had no write for
@@ -652,13 +652,13 @@ recorded included. An ask on settings or `.github/`
 
     - `none`: the worker is silent for less than the first bound. Nothing to do.
     - `fresh`: the worker's doc was written within the first bound. Nothing to do.
-    - `done`: nothing is due for this write time: the nudge ran and the relaunch either ran, is not yet due, or is inside the grace after the nudge. The relaunch is due only at twice the first bound and after the grace, so take over by hand only once both have passed and no `relaunched` or `relaunch=failed` followed; until then the waiter may relaunch on its own (not when `live-silent` or `census=unknown` rule it out).
+    - `done`: nothing is due for this write time: the nudge ran and the relaunch either ran, is not yet due, or is inside the grace after the nudge. The relaunch is due only at twice the first bound and after the grace, so take over by hand only once the bound has passed, the grace too when a nudge was sent, and no `relaunched` or `relaunch=failed` followed; until then the waiter may relaunch on its own (not when `live-silent` or `census=unknown` rule it out).
     - `busy`: another helper holds this worker's lock. Wait for the next call.
     - `nudged`: the bus nudge reached its one live window. Wait; the relaunch comes only past the grace.
     - `nudge=no-window`: no single live window named the worker. Past bound one it also opens an owed row (`owed=`) unless the relaunch is already due; with no nudge sent there is no grace to wait out, so the relaunch is due as soon as silence passes twice the first bound; find the worker with `ListAgents` and nudge it by hand.
     - `nudge=failed`: the bus send failed, there is no bus identity, or the message file could not be made; an owed row names why (`owed=`). Message the worker yourself.
     - `relaunched`: the worker was relaunched from its RESUME doc and the launch was confirmed. Nothing to do; confirm its first bullet.
-    - `relaunch=failed`: no manifest doc, no RESUME doc, no launch record naming profile, lane and model, or an unconfirmed launch; an owed row names why. Write the RESUME doc or fix the cause, then relaunch it yourself (`worker-resume-brief.sh <worker doc>`, `headed-arm-worker.sh --fleet <your manifest>`, `launch-confirm.sh --since <epoch> <session> <log>`).
+    - `relaunch=failed`: no manifest doc, no RESUME doc, no launch record naming profile, lane and model, or an unconfirmed launch; an owed row names why. Write the RESUME doc or fix the cause. For an unconfirmed launch, first check with `ListAgents` and `queue-lock.sh status <worker doc>` that no worker started; then relaunch it yourself (`worker-resume-brief.sh <worker doc>`, `headed-arm-worker.sh --fleet <your manifest>`, `launch-confirm.sh --since <epoch> <session> <log>`).
     - `live-window`: the `<stem>-RESUME` window already runs. Nothing to relaunch; read its newest bullet.
     - `live-silent`: the old window is still live past bound two after the nudge. It is neither ended nor relaunched, and an owed row names it. End its stale session (one pid per call), release its lock with the worker's token, then relaunch from the RESUME doc, or take over its blocked step.
     - `census=unknown`: the process census failed, so a live window cannot be ruled out and nothing was relaunched; an owed row follows. Check `ListAgents` and `queue-lock.sh status <worker doc>`, then relaunch or take over.
