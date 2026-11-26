@@ -263,8 +263,10 @@ EOF
 
 raw_names_guarded_physically() {
     local tok
-    tok=$(printf '%s' "$input" | tr '"{},[]' ' ') || deny "the payload could not be split into words (fail-closed)"
-    names_guarded_physically "$input" "$PWD" || names_guarded_physically "$tok" "$PWD"
+    tok=$(printf '%s' "$input" | tr '"{}[]' ' ') || deny "the payload could not be split into words (fail-closed)"
+    names_guarded_physically "$input" "$PWD" && return 0
+    [ "$tok" != "$input" ] || return 1
+    names_guarded_physically "$tok" "$PWD"
 }
 
 if ! command -v jq >/dev/null 2>&1; then

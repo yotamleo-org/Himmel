@@ -721,6 +721,7 @@ nojq_case() {
 }
 nojq_case "10322 no jq: a JSON payload with a station path through a symlinked directory -> block" block "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$T/station-alias/himmel.conf\"}}"
 nojq_case "10322 no jq: control, an unrelated path through a symlinked directory -> allow" allow "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$T/station-alias/notes.txt\"}}"
+run "10322 unparseable JSON with a literal comma in the station path string -> block" block "{\"tool_input\":{\"file_path\":\"$T/a,b/himmel.conf\""
 run "10322 control: unparseable JSON with an unrelated string value -> allow" allow "{\"tool_input\":{\"file_path\":\"$T/station-alias/notes.txt\""
 run "10322 control: malformed payload naming an unrelated file through a symlinked directory -> allow" allow "{not json $T/station-alias/notes.txt"
 bash_case "10322 control: cat through a symlinked directory -> allow" allow "cat $T/station-alias/himmel.conf"
