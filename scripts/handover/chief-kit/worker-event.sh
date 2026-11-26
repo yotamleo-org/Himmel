@@ -72,8 +72,8 @@
 # auto-go.sh's `GO-WRITTEN …` lines (rc 11: the GO file stands, the bus send failed).
 # Usage errors exit 2 before anything runs.
 #
-# `HANDLED closed-already <label>` (rc 0): a WRAPPED worker the chief already closed (its bullet is in the chief
-# doc), whose doc tail is WRAPPED, queue lock free and session gone; nothing runs.
+# `HANDLED closed-already <label>` (rc 0): a WRAPPED worker the chief already closed (the chief doc holds `<label> WRAPPED,
+# window closed.`), whose doc tail is WRAPPED, queue lock free and session gone; nothing runs.
 # `HANDLED closed-already <label>` also answers a wrap-merged or close step that outlives LE_STEP_BOUND seconds, one bound counted from the start of the run for the wrap and its close fallback together
 # (default 200, under the waiter's 240 s limit; no GNU timeout, no bound) for a worker whose doc tail is terminal
 # (worker_terminal_tail), queue lock free and session gone.
