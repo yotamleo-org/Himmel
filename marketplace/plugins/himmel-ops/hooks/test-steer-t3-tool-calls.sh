@@ -58,10 +58,10 @@ refused() { assert_eq "$1: refused (exit 2)" 2 "$RC"; assert_contains "$1: names
 
 assert_eq "wired: one PreToolUse command" 1 "$(printf '%s' "$plugin_cmd" | grep -c steer-t3-tool-calls.sh)"
 for t in mcp__t3-code__t3_background_wait mcp__t3-code__t3_thread_send; do
-    if printf '%s' "$t" | grep -Eq "^(${matcher})\$"; then echo "PASS matcher covers $t"; else echo "FAIL matcher covers $t"; FAILED=$((FAILED + 1)); fi
+    if grep -Eq "^(${matcher})\$" <<<"$t"; then echo "PASS matcher covers $t"; else echo "FAIL matcher covers $t"; FAILED=$((FAILED + 1)); fi
 done
 for t in mcp__t3-code__t3_thread_list mcp__t3-code__t3_thread_launch Bash; do
-    if printf '%s' "$t" | grep -Eq "^(${matcher})\$"; then echo "FAIL matcher leaves $t alone"; FAILED=$((FAILED + 1)); else echo "PASS matcher leaves $t alone"; fi
+    if grep -Eq "^(${matcher})\$" <<<"$t"; then echo "FAIL matcher leaves $t alone"; FAILED=$((FAILED + 1)); else echo "PASS matcher leaves $t alone"; fi
 done
 
 run_case "$(wait_payload '["b001oqmbs"]')"
