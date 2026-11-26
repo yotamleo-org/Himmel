@@ -1792,10 +1792,10 @@ contains 'a red main run prints its no postmortem line as an ACTION row' "$out" 
 out="$(TICK_REDMAIN_PROBE="$W/redmain-probe" bash "$SUT" --verbose)"
 contains 'verbose shows the postmortem lines' "$out" 'red-main postmortem: red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes'
 out="$(TICK_REDMAIN_PROBE="$W/no-redmain-probe" bash "$SUT")"
-if printf '%s\n' "$out" | grep -Fq 'red-main'; then fail 'a missing probe printed a postmortem row'; else pass 'a missing probe prints no postmortem row'; fi
+if grep -Fq 'red-main' <<< "$out"; then fail 'a missing probe printed a postmortem row'; else pass 'a missing probe prints no postmortem row'; fi
 printf '#!/usr/bin/env bash\nexit 1\n' > "$W/redmain-bad"
 out="$(TICK_REDMAIN_PROBE="$W/redmain-bad" bash "$SUT")"
-if printf '%s\n' "$out" | grep -Fq 'red-main'; then fail 'a failing probe printed a postmortem row'; else pass 'a failing probe prints no postmortem row'; fi
+if grep -Fq 'red-main' <<< "$out"; then fail 'a failing probe printed a postmortem row'; else pass 'a failing probe prints no postmortem row'; fi
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'

@@ -16,10 +16,10 @@ failures=0
 pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures + 1)); }
 contains() {
-    if printf '%s\n' "$2" | grep -Fq -- "$3"; then pass "$1"; else fail "$1 (wanted: $3; got: $2)"; fi
+    if grep -Fq -- "$3" <<< "$2"; then pass "$1"; else fail "$1 (wanted: $3; got: $2)"; fi
 }
 lacks() {
-    if printf '%s\n' "$2" | grep -Fq -- "$3"; then fail "$1 (unwanted: $3; got: $2)"; else pass "$1"; fi
+    if grep -Fq -- "$3" <<< "$2"; then fail "$1 (unwanted: $3; got: $2)"; else pass "$1"; fi
 }
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/test-red-main-postmortem.XXXXXX")" || exit 1
