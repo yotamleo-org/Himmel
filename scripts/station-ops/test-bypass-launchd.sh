@@ -1300,6 +1300,22 @@ reply "$OPERATOR" "$OPERATOR" "go $code"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
 assert_absent "11164: a worker_tabs value other than 1 adds nothing to the child" "HIMMEL_WORKER_SESSION_TABS" "$(cat "$D/launch.fullenv" 2>/dev/null)"
 stop
+setup tabs-handstart
+start HIMMEL_WORKER_SESSION_TABS=1
+code=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $code"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_absent "RED 11169: a hand-start launch with a granted registry flag never inherits the operator shell's tabs switch" "HIMMEL_WORKER_SESSION_TABS" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+assert_contains "11169: the hand-start child still carries its granted flag" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+stop
+setup tabs-handstart-billed
+start HIMMEL_WORKER_SESSION_TABS=1
+code=$(ask_code r flags=HIMMEL_BILLED_OK decision=921)
+reply "$OPERATOR" "$OPERATOR" "go $code"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_absent "RED 11169: a hand-start launch granted HIMMEL_BILLED_OK (not in the registry) never inherits the tabs switch" "HIMMEL_WORKER_SESSION_TABS" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+assert_contains "11169: the billed child still carries its granted flag" "HIMMEL_BILLED_OK=1" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+stop
 
 echo "-- the session environment is data, checked, and a failure refuses before the ask (N2) --"
 session_case() {

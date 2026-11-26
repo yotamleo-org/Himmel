@@ -20,7 +20,6 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"; SCRIPT="$HERE/headed-arm.sh"
 unset HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_LAUNCHER_ENV_LINES HEADED_ARM_RECORDER HIMMEL_WORKER_SESSION_TABS HIMMEL_CONSOLE_NAME 2>/dev/null || true
-while IFS= read -r _flag; do unset "$_flag"; done < <(sed -n 's/^ *"name": *"\([A-Z][A-Z0-9_]*\)".*/\1/p' "$(dirname "$0")/../himmelctl/lib/bypass-flags.json")
 export HEADED_ARM_UNAME=Linux
 export UNGUARDED_LAUNCH_OK=1  # scratch fixtures are not a guarded folder
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/headed-arm-tabs-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
@@ -431,39 +430,9 @@ check "20b the seed's row is in the dedicated holds root" "$(find "$HOLDS_FAKE/.
 check "20c no row or register of this suite reached the real holds register" "$(grep -rlF "$tmp" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)" 0
 check "20d no register directory named for this suite reached the real holds register" "$(find "$REAL_HOME/.himmel/state/holds" -maxdepth 1 -name "*$(basename "$tmp")*" 2>/dev/null | grep -c . || true)" 0
 
-echo "-- a launch carrying a bypass flag never joins or becomes the shared window (HIMMEL-11169) --"
 d21="$tmp/c21"; mk_env "$d21"
-arm "$d21" PROJ-21-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1; rc21a=$?
-w21a="$(window_of "$d21" PROJ-21-N1-a)"
-check "21a RED 11169: a bypass launch with tabs on exits 0" "$rc21a" 0
-check "21b RED 11169: a bypass launch opens its own window" "$(konsole_count "$d21")" 1
-check "21c RED 11169: a bypass launch records no shared window" "$([ -e "$d21/locks/tabs-CHIEF-A.window" ] && echo recorded || echo none)" none
-arm "$d21" PROJ-21-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; rc21b=$?
-w21b="$(window_of "$d21" PROJ-21-N2-b)"
-check "21d RED 11169: a clean launch after a bypass launch exits 0" "$rc21b" 0
-check "21e RED 11169: a clean launch after a bypass launch does not land in the bypass window" "$([ "${w21b:-x}" = "${w21a:-y}" ] && echo same || echo different)" different
-arm "$d21" PROJ-21-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
-check "21f control: a second clean launch joins the clean window as a tab" "$(window_of "$d21" PROJ-21-N3-c)" "${w21b:-unset}"
-check "21g control: and opens no third window" "$(konsole_count "$d21")" 2
-d22="$tmp/c22"; mk_env "$d22"
-arm "$d22" PROJ-22-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A DESTRUCTIVE_OK=1
-arm "$d22" PROJ-22-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A DESTRUCTIVE_OK=1
-check "22 RED 11169: any registry flag counts, two bypass launches open two windows" "$(konsole_count "$d22")" 2
-d23="$tmp/c23"; mk_env "$d23"
-arm "$d23" PROJ-23-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A DESTRUCTIVE_OK=0
-arm "$d23" PROJ-23-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A DESTRUCTIVE_OK=0
-check "23 control: a registry name set to anything but 1 is not a bypass, the launches share a window" "$(konsole_count "$d23")" 1
-
-d24="$tmp/c24"; mk_env "$d24"
-mkdir -p "$tmp/noreg/scripts/handover" "$tmp/noreg/scripts/himmelctl/lib"
-cp "$SCRIPT" "$tmp/noreg/scripts/handover/headed-arm.sh"
-printf '{"flags": []}\n' > "$tmp/noreg/scripts/himmelctl/lib/bypass-flags.json"
-cp -R "$(dirname "$SCRIPT")/../lib" "$tmp/noreg/scripts/lib"
-cp -R "$(dirname "$SCRIPT")/../lanes" "$tmp/noreg/scripts/lanes"
-SCRIPT_REAL="$SCRIPT"; SCRIPT="$tmp/noreg/scripts/handover/headed-arm.sh"
-arm "$d24" PROJ-24-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
-arm "$d24" PROJ-24-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
-SCRIPT="$SCRIPT_REAL"
-check "24 RED 11169: a registry that yields no flag names disables tabs, two launches open two windows" "$(konsole_count "$d24")" 2
+arm "$d21" PROJ-21-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A IMPL_GUARD_OK=1 INLINE_IMPL_OK=1
+arm "$d21" PROJ-21-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A IMPL_GUARD_OK=1 INLINE_IMPL_OK=1
+check "21 an implementing worker's own IMPL_GUARD_OK and INLINE_IMPL_OK do not stop it joining the shared window" "$(konsole_count "$d21")" 1
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

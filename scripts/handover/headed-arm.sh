@@ -1864,22 +1864,10 @@ tab_chain_window() {
     done < <(ls -1t -- "$LOCKDIR"/tabs-*.window 2>/dev/null)
     return 1
 }
-tab_bypass_env() {
-    local reg name seen=0
-    reg="$(dirname "$0")/../himmelctl/lib/bypass-flags.json"
-    [ -r "$reg" ] || return 0
-    while IFS= read -r name; do
-        seen=$((seen + 1))
-        [ "${!name:-}" = "1" ] && return 0
-    done < <(sed -n 's/^ *"name": *"\([A-Z][A-Z0-9_]*\)".*/\1/p' "$reg")
-    [ "$seen" -gt 0 ] || return 0
-    return 1
-}
 tab_launch() {
     local wpid sid tab_sh kv pred
     [ "${HIMMEL_WORKER_SESSION_TABS:-0}" = "1" ] || return 1
     [ "$ROLE" != "chief" ] && [ "$KONSOLE_IS_MACOS_SHIM" != "1" ] || return 1
-    ! tab_bypass_env || return 1
     case "${HIMMEL_CONSOLE_NAME:-}" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
     TAB_WINDOW_FILE="$LOCKDIR/tabs-$HIMMEL_CONSOLE_NAME.window"
     wpid="$(cat "$TAB_WINDOW_FILE" 2>/dev/null)"  # swallow-ok: no readable record means no window yet, so this arm opens one and records it

@@ -221,7 +221,7 @@ refuse() { mv "$1" "$1.refused"; log "REFUSED $2 $1"; send bypass-result "bypass
 live() { [ ! -e "$Q/stop" ] && [ "$(date +%s)" -lt "$EXPIRES" ]; }
 deadline() { if [ "$until" = forever ]; then echo $(( $(date +%s) + TTL )); else echo "$EXPIRES"; fi; }
 launch_env() {
-    local tmo=() kid_env=() b
+    local tmo=() kid_env=() tabs_off=() b
     if [ -n "$SERVICE" ]; then
         [ -z "${LE_TIMEOUT:-}" ] || tmo=(timeout -k 2 "$LE_TIMEOUT")
         for b in "${CHILD_BASE[@]}"; do
@@ -230,7 +230,8 @@ launch_env() {
         ${tmo[@]+"${tmo[@]}"} env -i "${kid_env[@]}" ${SESS[@]+"${SESS[@]}"} "${envs[@]}" "$@"
         return
     fi
-    env "${strip[@]}" -u WORKER_SESSION_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL -u WORKER_SESSION_API_LANE -u WORKER_SESSION_API_ACCOUNT \
+    [ -z "${names:-}" ] || tabs_off=(-u HIMMEL_WORKER_SESSION_TABS)
+    env "${strip[@]}" ${tabs_off[@]+"${tabs_off[@]}"} -u WORKER_SESSION_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL -u WORKER_SESSION_API_LANE -u WORKER_SESSION_API_ACCOUNT \
         -u HEADED_ARM_LAUNCHER_ENV -u HEADED_ARM_LAUNCHER_ENV_LINES "${envs[@]}" "$@"
 }
 session_env() {
