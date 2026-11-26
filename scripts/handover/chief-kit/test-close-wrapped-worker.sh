@@ -331,6 +331,27 @@ check "zero-match: rc 0 (the window already exited)" "$rc" "0"
 contains "zero-match: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
 check "zero-match: kill never called" "$(cat "$CALLS")" ""
 
+mkdoc "- 10:30 HALTED - fleet pause" "- 10:00 WRAPPED - done"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "11183 WRAPPED then HALTED, lock free: rc 0" "$rc" "0"
+contains "11183 WRAPPED then HALTED, lock free: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
+mkdoc "- 10:30 HALTED - fleet pause"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "11183 a bare HALTED tail, lock free: rc 0" "$rc" "0"
+mkdoc "- 10:30 HALTED - fleet pause" "- 10:00 WRAPPED - done"
+reset_calls
+acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$DOC" "cwl-test-holder" 2>&1)"
+token="$(printf '%s' "$acq_out" | sed -n "s/.*release-token: \`\([^\`]*\)\`.*/\\1/p")"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "11183 HALTED tail, lock held: not closable (rc 3)" "$rc" "3"
+[ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$DOC" "$token" >/dev/null 2>&1
+mkdoc "- 10:45 LIVE - resumed" "- 10:30 HALTED - fleet pause"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "11183 HALTED then LIVE, lock free: still refused (rc 4)" "$rc" "4"
+
 fleet_env() { HOME="$W/home" HIMMEL_POLICY_FOLLOWS_HOME=1 HIMMEL_FLEET_SLOTS="$W/slots" "$@"; }
 mk_launched_attempt() {
     rm -f "$W/chief.fleet.json" "$W/fleet-control.json"; rm -rf "${W:?}/home" "${W:?}/slots"; mkdir -p "$W/home"

@@ -892,4 +892,33 @@ check "18f the marketplace step ran once" "$(grep -c 'update --only marketplace'
 check "18f the jira_cli step ran once" "$(grep -c 'update --only jira_cli' "$LE_UCALLS")" 1
 check "18f --versions then shows none behind" "$(grep -cE '^ +(plugins|jira_cli) +behind' "$LE_VERS")" 0
 
+HDOC="$W/HIMMEL-5-N5555-halt-2026-11-26.md"
+cat > "$W/list-halt" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$LE_HDOC"
+EOF
+cat > "$W/lock-halt" <<'EOF'
+#!/usr/bin/env bash
+[ "${LE_LOCK_HELD:-0}" != 1 ]
+EOF
+chmod +x "$W/list-halt" "$W/lock-halt"
+export LE_HDOC="$HDOC"
+printf '# t\n\n## Results\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - done\n- 10:30 HALTED - fleet pause\n' > "$HDOC"
+: > "$W/doc"
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N5555 fleet pause"
+check "19a HALTED tail, lock free: rc" "$rc" 10
+check "19a HALTED tail, lock free: one wake naming the worker and its doc" "$out" "ESCALATE halted-closable N5555 doc=$HDOC"
+check "19a nothing was wrapped or closed" "$calls" ""
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" LE_LOCK_HELD=1 run "HALTED N5555 fleet pause"
+check "19b HALTED tail, lock held: rc" "$rc" 10
+check "19b HALTED tail, lock held: not closable" "$out" "ESCALATE marker-HALTED"
+printf '# t\n\n## Results\n\n- 10:30 HALTED - fleet pause\n- 10:45 LIVE - resumed\n' > "$HDOC"
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N5555 fleet pause"
+check "19c HALTED message but the doc resumed: not closable" "$out" "ESCALATE marker-HALTED"
+printf '# t\n\n## Results\n\n- 10:30 HALTED - fleet pause\n' > "$HDOC"
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED fleet pause, no label"
+check "19d HALTED with no worker named: the old escalation" "$out" "ESCALATE marker-HALTED"
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N9999 fleet pause"
+check "19e HALTED for a worker not in the manifest: the old escalation" "$out" "ESCALATE marker-HALTED"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
