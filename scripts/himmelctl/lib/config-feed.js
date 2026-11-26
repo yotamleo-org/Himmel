@@ -466,6 +466,8 @@ const PRESENCE_SOURCES = {
   JIRA_EMAIL: { kind: 'config' },
   JIRA_PROJECT_KEY: { kind: 'config' },
   TELEGRAM_BOT_TOKEN: { kind: 'bridge-env' },
+  TELEGRAM_MONITOR_BOT_TOKEN: { kind: 'bridge-env' },
+  TELEGRAM_MONITOR_CHAT_ID: { kind: 'bridge-env' },
   WHISPER_MODEL: { kind: 'file', home: '.himmel/whisper/ggml-small.bin', override: 'WHISPER_MODEL', dirVar: 'WHISPER_DIR', name: 'ggml-small.bin' },
 };
 

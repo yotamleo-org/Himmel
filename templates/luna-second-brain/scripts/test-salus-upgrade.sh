@@ -20,6 +20,7 @@ TPL="$WORK/template"
 mkdir -p "$TPL"
 cp -R "$TEMPLATE_SRC/scripts" "$TPL/scripts"
 cp -R "$TEMPLATE_SRC/_profiles" "$TPL/_profiles"
+cp "$TEMPLATE_SRC/AGENTS.md" "$TPL/AGENTS.md"
 mkdir -p "$TPL/marketplace/.claude-plugin"
 printf '{ "metadata": { "version": "99.0.0" }, "plugins": [] }\n' \
   > "$TPL/marketplace/.claude-plugin/marketplace.json"
@@ -48,6 +49,18 @@ chk "operator _CLAUDE rules preserved" "grep -q 'my own rules' '$MED/_CLAUDE.md'
 # make_vault fixtures above) must get the PHI guard marker backfilled by a
 # plain upgrade — this is the durability fix's own re-run path.
 chk ".salus PHI guard marker backfilled on upgrade" "[ -f '$MED/.salus' ]"
+chk "AGENTS.md delivered to the medical vault" "cmp -s '$TPL/AGENTS.md' '$MED/AGENTS.md'"
+chk "no repo-local .agents/hooks.json in the medical vault" "[ ! -e '$MED/.agents/hooks.json' ]"
+
+echo "== medical vault with the older posture block — update appended once, operator rules kept =="
+OLD="$WORK/vault-old"; make_vault "$OLD" 1
+printf '\n<!-- salus-posture-block -->\n## Salus — medical posture\nAnthropic/Claude in-session is the ONLY processor.\n\noperator-added rule after the block\n' >> "$OLD/_CLAUDE.md"
+bash "$TPL/scripts/upgrade.sh" --template-dir "$TPL" --vault-dir "$OLD" --yes >/dev/null 2>&1
+chk "older vault gets the trusted-processor update" "grep -q 'salus-posture-agy' '$OLD/_CLAUDE.md' && grep -qi 'antigravity' '$OLD/_CLAUDE.md'"
+chk "operator rule after the old block preserved" "grep -q 'operator-added rule after the block' '$OLD/_CLAUDE.md'"
+bash "$TPL/scripts/upgrade.sh" --template-dir "$TPL" --vault-dir "$OLD" --yes >/dev/null 2>&1; _rc=$?
+chk "re-upgrade succeeds" "[ '$_rc' = 0 ]"
+chk "update appended exactly once across re-upgrades" "[ \"\$(grep -c 'salus-posture-agy' '$OLD/_CLAUDE.md')\" -eq 1 ]"
 
 echo "== non-medical vault (no marker) — gate must SKIP medical assets =="
 PLAIN="$WORK/vault-plain"; make_vault "$PLAIN" 0
