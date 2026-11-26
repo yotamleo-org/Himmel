@@ -14,7 +14,10 @@
 # The match: the command is normalised (backslash-newline pairs deleted, `$'`
 # and `$"` turned into `'` and `"`, then every `'`, `"` and `\` deleted), split
 # into words at every space, TAB, CR, newline and shell metacharacter, and matches
-# when both words appear, anywhere and in either order. What it cannot see (text
+# when both words appear, anywhere and in either order. The second pair, a word
+# that starts with --decision and a word that starts with --words, is read from
+# the same words split again at every = (--words=--decision names both).
+# What it cannot see (text
 # built at run time, a nested claude session, a chief in another repo, the
 # Monitor tool) is the fence residual named in docs/internals/enforcement.md.
 #
@@ -207,7 +210,8 @@ else
       | gsub("\\$\u0027"; "\u0027") | gsub("\\$\""; "\"")
       | gsub("[\u0027\"\\\\]"; "")
       | [splits("[ \t\r\n;&|()<>{}`]+")]) as $w
-  | (any($w[]; startswith("--decision")) and any($w[]; startswith("--words"))) as $p2
+  | ($w | map(splits("=+"))) as $w2
+  | (any($w2[]; startswith("--decision")) and any($w2[]; startswith("--words"))) as $p2
   | (any($w[]; . == "release") and any($w[]; . == "operator")) as $both
   | if $p2 then (if $both then "deny-p1p2" else "deny-p2" end)
     elif ($both | not) then "allow"
