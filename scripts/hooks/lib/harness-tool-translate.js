@@ -22,9 +22,10 @@ function loadTable() {
   } catch (_e) {
     return null;
   }
-  if (!isObject(table) || !isObject(table.tools) || !Array.isArray(table.mcp_servers)) return null;
+  if (!isObject(table) || !isObject(table.tools) || !Array.isArray(table.mcp_servers) || !isObject(table.events)) return null;
   if (!Object.values(table.tools).every(validEntry)) return null;
   if (!table.mcp_servers.every((s) => typeof s === 'string')) return null;
+  if (!Object.values(table.events).every((e) => typeof e === 'string')) return null;
   return table;
 }
 
@@ -47,6 +48,11 @@ function mcpServer(name, servers) {
   if (at <= 0 || at + 2 >= name.length) return null;
   const server = name.slice(0, at);
   return servers.includes(server) ? server : null;
+}
+
+function mapEvent(payload, events) {
+  const event = payload.hook_event_name;
+  if (typeof event === 'string' && own(events, event)) payload.hook_event_name = events[event];
 }
 
 function translateToolCall(text) {
@@ -76,12 +82,14 @@ function translateToolCall(text) {
       if (renamed === null) return { refuse: `${name} names two different paths under a native key and its Claude key; refusing the tool call` };
       payload.tool_input = renamed;
     }
+    mapEvent(payload, table.events);
     return { text: JSON.stringify(payload) };
   }
   if (mcpServer(name, table.mcp_servers) !== null) {
     const ti = payload.tool_input;
     if (isObject(ti) && ti.tool_name === name && isObject(ti.tool_input)) payload.tool_input = ti.tool_input;
     payload.tool_name = `mcp__${name}`;
+    mapEvent(payload, table.events);
     return { text: JSON.stringify(payload) };
   }
   return { text };

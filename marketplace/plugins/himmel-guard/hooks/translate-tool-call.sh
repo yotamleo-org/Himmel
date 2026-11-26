@@ -34,6 +34,8 @@ shape='type == "object"
     and (.tools | type) == "object"
     and (.mcp_servers | type) == "array"
     and all(.mcp_servers[]; type == "string")
+    and (.events | type) == "object"
+    and all(.events[]; type == "string")
     and all(.tools[]; type == "object" and (.claude | type) == "string"
         and ((has("keys") | not) or ((.keys | type) == "object" and all(.keys[]; type == "string"))))'
 if ! { tbl=$(cat "$table" 2>/dev/null) && printf '%s' "$tbl" | jq -se "length == 1 and (.[0] | $shape)" >/dev/null 2>&1; }; then
@@ -43,6 +45,8 @@ fi
 
 out=$(printf '%s' "$input" | jq -c --argjson t "$tbl" '
     def obj: type == "object";
+    def mapevent: .hook_event_name as $ev
+        | if ($ev | type) == "string" and ($t.events | has($ev)) then .hook_event_name = $t.events[$ev] else . end;
     .tool_name as $n
     | if ($t.tools | has($n)) then
         $t.tools[$n] as $e
@@ -54,12 +58,14 @@ out=$(printf '%s' "$input" | jq -c --argjson t "$tbl" '
                     (if .tool_input[$k.key] == .tool_input[$k.value] then . else error("two different values under \($k.key) and \($k.value)") end)
                 else .tool_input |= with_entries(if .key == $k.key then .key = $k.value else . end) end)
           else . end
+        | mapevent
     elif ($n | startswith("mcp__") | not)
         and (($n | index("__")) as $i | $i != null and $i > 0 and ($n | length) > $i + 2
             and ($n[:$i] as $s | any($t.mcp_servers[]; . == $s))) then
         (if (.tool_input | obj) and .tool_input.tool_name == $n and (.tool_input.tool_input | obj)
          then .tool_input = .tool_input.tool_input else . end)
         | .tool_name = "mcp__" + $n
+        | mapevent
     else null end') || {
     echo "translate-tool-call: the tool call could not be translated (see jq's error above); refusing it" >&2
     exit 2

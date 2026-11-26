@@ -91,6 +91,7 @@ payload() {
         | (if has("cwd") and .cwd != "" then .cwd = $cwd else . end)
         | (if has("workspaceRoot") then .workspaceRoot = $cwd else . end)
         | (if has("sessionId") then .sessionId = $sid else . end)
+        | (if $claude == "claude" and .hook_event_name == "preToolUse" then .hook_event_name = "PreToolUse" else . end)
         | (if $claude == "claude" then del(.toolName, .toolInput)
            elif has("toolName") then .toolName = $n | .toolInput = $i else . end)' \
         "$envelope" > "$SB/p.json" || { echo "FAIL fixture: jq payload $h $kind"; exit 1; }
@@ -206,6 +207,8 @@ echo "== verdict: the DoD rows through each entry point =="
 for h in claude-grok grok claude-cursor cursor; do
     payload "$h" shell "cat $CANARY"
     run_group "$PROJECT_SETTINGS" Bash;            expect "project Bash: $h cat <canary .env> is denied" deny
+    payload "$h" shell "for f in $CANARY; do cat \$f; done"
+    run_group "$PROJECT_SETTINGS" Bash;            expect "project Bash: $h a for loop over <canary .env> is unrolled and denied" deny
     payload "$h" shell "$DOCKER_CMD"
     run_group "$OPS/hooks/hooks.json" 'Bash|PowerShell'; expect "plugin Bash|PowerShell: $h docker run --privileged is denied" deny
     payload "$h" shell 'rm -rf /'
@@ -531,6 +534,8 @@ for ep in project plugin guard user; do
     same_call "$ep: grok run_terminal_command arrives as Bash" Bash "{\"command\":\"$ORDINARY_CMD\",\"description\":\"probe\"}"
     payload cursor shell "$ORDINARY_CMD"; seen_by "$ep"
     same_call "$ep: cursor Shell arrives as Bash" Bash "{\"command\":\"$ORDINARY_CMD\",\"cwd\":\"\",\"timeout\":30000}"
+    if [ "$(jq -r .hook_event_name "$SB/seen.json" 2>/dev/null)" = PreToolUse ]; then pass "$ep: cursor preToolUse arrives as PreToolUse"
+    else fail "$ep: cursor Shell event arrives as $(jq -r .hook_event_name "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
     payload grok read "$WORK_FILE"; seen_by "$ep"
     same_call "$ep: grok read_file arrives as Read with file_path" Read "{\"file_path\":\"$WORK_FILE\"}"
     payload grok grep "$WORK_FILE"; seen_by "$ep"

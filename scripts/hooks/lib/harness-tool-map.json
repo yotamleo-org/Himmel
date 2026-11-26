@@ -8,5 +8,6 @@
     "search_replace": { "claude": "Edit" },
     "write": { "claude": "Write" }
   },
-  "mcp_servers": ["t3-code"]
+  "mcp_servers": ["t3-code"],
+  "events": { "preToolUse": "PreToolUse" }
 }
