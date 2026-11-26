@@ -84,6 +84,9 @@ if pin typescript '7\.0\.2'; then pass "typescript is pinned exactly"; else fail
 if pin yaml '2\.9\.1'; then pass "yaml is pinned exactly"; else fail "yaml is not pinned to 2.9.1"; fi
 if grep -q '"node_modules/yaml"' "$HERE/package-lock.json"; then pass "the lockfile resolves yaml"; else fail "the lockfile lacks yaml"; fi
 if grep -q 'parseDocument' "$HERE/src/paths.ts"; then pass "frontmatter is read with the yaml parser"; else fail "paths.ts does not use the yaml parser"; fi
+if grep -q '/proc/self/fd' "$HERE/src/paths.ts"; then pass "paths.ts verifies through the opened handle"; else fail "paths.ts does not use /proc/self/fd"; fi
+if grep -qi 'linux only' "$HERE/README.md"; then pass "README says the service is Linux only"; else fail "README does not say the service is Linux only"; fi
+if grep -qE 'reclaim|staleMs|rename\(lock' "$HERE/src/cli/keys.ts"; then fail "keys.ts reclaims locks automatically"; else pass "keys.ts never reclaims a lock"; fi
 check_none "package.json has no caret or tilde range" "$RANGE_RE" "$HERE/package.json"
 check_none "package.json names no v1 SDK, node adapter or web framework" '"(@modelcontextprotocol/(sdk|node)|hono|express|fastify|koa)"' "$HERE/package.json"
 check_none "the lockfile carries no v1 SDK, node adapter or hono" '"node_modules/(@modelcontextprotocol/(sdk|node)|hono)"' "$HERE/package-lock.json"

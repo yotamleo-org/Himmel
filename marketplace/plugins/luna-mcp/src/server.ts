@@ -85,6 +85,27 @@ interface McpTracker {
   dispatched: number;
 }
 
+interface Outcome {
+  verdict: "allow" | "deny";
+  reason: string | null;
+}
+
+export function outcomeOf(status: number, contentType: string, body: ArrayBuffer): Outcome {
+  if (status < 200 || status >= 300) return { verdict: "deny", reason: `mcp-status-${status}` };
+  const text = Buffer.from(body).toString("utf8").trim();
+  const payloads = contentType.includes("event-stream") ? text.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()) : [text];
+  for (const payload of payloads.filter((p) => p !== "")) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(payload);
+    } catch {
+      return { verdict: "deny", reason: "mcp-unreadable" };
+    }
+    if ((Array.isArray(parsed) ? parsed : [parsed]).some((m) => isRecord(m) && isRecord(m["error"]))) return { verdict: "deny", reason: "mcp-error" };
+  }
+  return { verdict: "allow", reason: null };
+}
+
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const contentTypeOf = (req: Request): string => (req.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
 const auditDown = (): Response => json(503, { ok: false, error: { code: "audit_unavailable", message: "the audit log is unavailable" } });
@@ -163,30 +184,28 @@ export function createApp(deps: AppDeps): App {
     const method = isRecord(message) ? message["method"] : undefined;
     if (!isRecord(message) || typeof method !== "string") return refuse(principal, reqId, "mcp", 400, "invalid_request", "not a JSON-RPC request", "invalid-request");
 
-    if (method !== "tools/call") {
-      if (message["id"] !== undefined) {
-        try {
-          await deps.audit.write(row(principal, reqId, TOOL_LABEL.test(method) ? method : "invalid", "allow", null));
-        } catch {
-          process.stderr.write("luna-mcp: audit write failed, MCP call withheld\n");
-          return auditDown();
-        }
-      }
-      return mcp.fetch(req, { authInfo: info, parsedBody: message });
-    }
+    if (method === "subscriptions/listen") return refuse(principal, reqId, "subscriptions/listen", 400, "listen_unsupported", "subscriptions are not offered", "listen-unsupported");
 
     const tracker: McpTracker = { dispatched: 0 };
     const res = await mcp.fetch(req, { authInfo: { ...info, extra: { ...info.extra, tracker } }, parsedBody: message });
-    const settled = new Response(await res.arrayBuffer(), { status: res.status, headers: res.headers });
-    if (tracker.dispatched === 0) {
+    const body = await res.arrayBuffer();
+    const settled = new Response(body, { status: res.status, headers: res.headers });
+    let tool: string;
+    let outcome: Outcome;
+    if (method === "tools/call") {
+      if (tracker.dispatched > 0) return settled;
       const params = message["params"];
-      const name = isRecord(params) && typeof params["name"] === "string" && SAFE_TOOL.test(params["name"]) ? params["name"] : "invalid";
-      try {
-        await deps.audit.write(row(principal, reqId, name, "deny", "mcp-rejected"));
-      } catch {
-        process.stderr.write("luna-mcp: audit write failed, MCP answer withheld\n");
-        return auditDown();
-      }
+      tool = isRecord(params) && typeof params["name"] === "string" && SAFE_TOOL.test(params["name"]) ? params["name"] : "invalid";
+      outcome = { verdict: "deny", reason: "mcp-rejected" };
+    } else {
+      tool = TOOL_LABEL.test(method) ? method : "invalid";
+      outcome = outcomeOf(res.status, res.headers.get("content-type") ?? "", body);
+    }
+    try {
+      await deps.audit.write(row(principal, reqId, tool, outcome.verdict, outcome.reason));
+    } catch {
+      process.stderr.write("luna-mcp: audit write failed, MCP answer withheld\n");
+      return auditDown();
     }
     return settled;
   }

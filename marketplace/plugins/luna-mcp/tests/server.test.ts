@@ -8,7 +8,7 @@ import { hashKey, type Principal } from "../src/auth.js";
 import { mintKey } from "../src/cli/keys.js";
 import { dispatch } from "../src/core/dispatch.js";
 import { OPERATIONS } from "../src/core/operations.js";
-import { ConfigError, loadConfig, startServer } from "../src/server.js";
+import { ConfigError, loadConfig, outcomeOf, startServer } from "../src/server.js";
 import {
   buildRepo,
   HOST,
@@ -936,5 +936,81 @@ describe("audit lines for refusals and protocol calls", () => {
     const res = await world.mcp("tools/list", {}, token);
     assert.equal(res.status, 503);
     assert.ok(!JSON.stringify(res.body).includes("read_doc"));
+  });
+
+  const rawMcp = (world: World, token: string, message: unknown) =>
+    world.app.fetch(
+      new Request(PUBLIC_URL, {
+        method: "POST",
+        headers: { host: HOST, authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json, text/event-stream" },
+        body: JSON.stringify(message),
+      }),
+    );
+
+  it("writes one allow line for each authenticated MCP notification", async (t) => {
+    const world = await makeWorld(t);
+    const { token, keyId } = await world.mint({ collections: ["luna"] });
+    const first = await rawMcp(world, token, { jsonrpc: "2.0", method: "notifications/initialized" });
+    const second = await rawMcp(world, token, { jsonrpc: "2.0", method: "notifications/anything-at-all", params: { x: 1 } });
+    assert.ok(first.status >= 200 && first.status < 300, String(first.status));
+    assert.ok(second.status >= 200 && second.status < 300, String(second.status));
+    const rows = await lines(world);
+    assert.deepEqual(rows.map((r) => [r.tool, r.verdict]), [["notifications/initialized", "allow"], ["notifications/anything-at-all", "allow"]]);
+    for (const r of rows) assert.equal(r.keyId, keyId);
+  });
+
+  it("refuses an MCP notification with 503 when its audit line cannot be written", async (t) => {
+    const base = await scratch(t);
+    const blocker = join(base, "blocker");
+    await writeFile(blocker, "x");
+    const world = await makeWorld(t, { auditFile: join(blocker, "audit.jsonl") });
+    const { token } = await world.mint({ collections: ["luna"] });
+    assert.equal((await rawMcp(world, token, { jsonrpc: "2.0", method: "notifications/initialized" })).status, 503);
+  });
+
+  it("records the verdict from what the MCP layer answered, one line per message", async (t) => {
+    const world = await makeWorld(t);
+    const { token } = await world.mint({ collections: ["luna"] });
+    await rawMcp(world, token, { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
+    await rawMcp(world, token, { jsonrpc: "2.0", id: 2, method: "nonexistent/method", params: {} });
+    await rawMcp(world, token, { jsonrpc: "1.0", id: 3, method: "tools/list", params: {} });
+    const rows = await lines(world);
+    assert.deepEqual(rows.map((r) => [r.tool, r.verdict]), [["tools/list", "allow"], ["nonexistent/method", "deny"], ["tools/list", "deny"]]);
+    assert.equal(rows[0]?.reason, null);
+    for (const r of rows.slice(1)) assert.match(r.reason ?? "", /^mcp-/);
+  });
+
+  describe("outcomeOf", () => {
+    const body = (text: string): ArrayBuffer => new TextEncoder().encode(text).buffer as ArrayBuffer;
+    const result = JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} });
+    const failure = JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32601, message: "Method not found" } });
+
+    it("denies any non-2xx status, even with an empty body", () => {
+      assert.deepEqual(outcomeOf(500, "application/json", body("")), { verdict: "deny", reason: "mcp-status-500" });
+      assert.deepEqual(outcomeOf(404, "text/plain", body("")), { verdict: "deny", reason: "mcp-status-404" });
+    });
+
+    it("allows an accepted notification with no body", () => {
+      assert.deepEqual(outcomeOf(202, "application/json", body("")), { verdict: "allow", reason: null });
+    });
+
+    it("denies a JSON-RPC error in a JSON body or in an event stream, and allows a result", () => {
+      assert.deepEqual(outcomeOf(200, "application/json", body(failure)), { verdict: "deny", reason: "mcp-error" });
+      assert.deepEqual(outcomeOf(200, "text/event-stream", body(`event: message\ndata: ${failure}\n\n`)), { verdict: "deny", reason: "mcp-error" });
+      assert.deepEqual(outcomeOf(200, "application/json", body(result)), { verdict: "allow", reason: null });
+      assert.deepEqual(outcomeOf(200, "text/event-stream", body(`data: \n\nevent: message\ndata: ${result}\n\n`)), { verdict: "allow", reason: null });
+    });
+
+    it("denies a body it cannot read", () => {
+      assert.deepEqual(outcomeOf(200, "application/json", body("not json")), { verdict: "deny", reason: "mcp-unreadable" });
+    });
+  });
+
+  it("refuses a subscriptions/listen stream and says so in the audit log", async (t) => {
+    const world = await makeWorld(t);
+    const { token } = await world.mint({ collections: ["luna"] });
+    const res = await rawMcp(world, token, { jsonrpc: "2.0", id: 1, method: "subscriptions/listen", params: {} });
+    assert.equal(res.status, 400);
+    assert.deepEqual((await lines(world)).map((r) => [r.tool, r.verdict, r.reason]), [["subscriptions/listen", "deny", "listen-unsupported"]]);
   });
 });

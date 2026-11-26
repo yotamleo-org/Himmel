@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { rename, symlink, writeFile } from "node:fs/promises";
+import { rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
@@ -472,5 +472,50 @@ describe("verification after the file is opened", () => {
     const file = await readVerified(root, ["30-Resources", "plain.md"], reader, "whole", hooks);
     assert.match(file.text, /body of Plain/);
     assert.equal(seen.length, 2);
+  });
+});
+
+describe("the path of the opened file decides", () => {
+  it("denies a file whose own path is reported outside the root", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    const hooks = { fdPath: async () => join(fx.outside, "secret.md") };
+    assert.equal(await kindOfAsync(() => readVerified(root, ["30-Resources", "plain.md"], reader, "whole", hooks)), "escape");
+  });
+
+  it("denies a file whose own path is reported inside a gated directory", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    const hooks = { fdPath: async () => join(root, "sessions", "plain.md") };
+    assert.equal(await kindOfAsync(() => readVerified(root, ["30-Resources", "plain.md"], reader, "whole", hooks)), "role-path");
+  });
+
+  it("denies when the path of the opened file cannot be resolved", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    const hooks = {
+      fdPath: async (): Promise<string> => {
+        throw new Error("no /proc here");
+      },
+    };
+    assert.equal(await kindOfAsync(() => readVerified(root, ["30-Resources", "plain.md"], reader, "whole", hooks)), "unverifiable");
+  });
+
+  it("denies an escaping file even when the parent is put back before the check", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    const outside = join(fx.base, "swapped-outside");
+    await put(outside, "plain.md", `${LEAK}\n`);
+    const hooks = {
+      beforeOpen: async () => {
+        await rename(join(root, "30-Resources"), join(root, "30-Resources.moved"));
+        await symlink(outside, join(root, "30-Resources"));
+      },
+      afterOpen: async () => {
+        await rm(join(root, "30-Resources"));
+        await rename(join(root, "30-Resources.moved"), join(root, "30-Resources"));
+      },
+    };
+    assert.equal(await kindOfAsync(() => readVerified(root, ["30-Resources", "plain.md"], reader, "whole", hooks)), "escape");
   });
 });

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
+import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, it, type TestContext } from "node:test";
 import { createAudit } from "../src/audit.js";
@@ -348,41 +349,94 @@ describe("key file locking", () => {
     assert.equal((await stat(r.file)).mode & 0o777, 0o600);
   });
 
-  it("takes over a lock whose process is gone", async (t) => {
-    const r = await rig(t);
+  const holdLock = async (r: Rig, content: string): Promise<string> => {
     const lock = `${r.file}.lock`;
     await mkdir(dirname(r.file), { recursive: true });
-    await writeFile(lock, JSON.stringify({ pid: 424242, at: r.clock.now(), token: "dead" }), { mode: 0o600 });
-    const owners: number[] = [];
-    await mintKey(r.file, params, {
-      ...r.io,
-      isAlive: () => false,
-      afterRead: async () => void owners.push((JSON.parse(await readFile(lock, "utf8")) as { pid: number }).pid),
-    });
-    assert.deepEqual(owners, [process.pid]);
-    assert.equal(await exists(lock), false);
+    await writeFile(lock, content, { mode: 0o600 });
+    return lock;
+  };
+  const patient = { retries: 2, backoffMs: 1, sleep: async () => undefined };
+
+  it("writes its pid, host and start time into the lock", async (t) => {
+    const r = await rig(t);
+    const lock = `${r.file}.lock`;
+    let held: Record<string, unknown> = {};
+    await mintKey(r.file, params, { ...r.io, afterRead: async () => void (held = JSON.parse(await readFile(lock, "utf8")) as Record<string, unknown>) });
+    assert.deepEqual(Object.keys(held).sort(), ["host", "pid", "startedAt"]);
+    assert.equal(held["pid"], process.pid);
+    assert.equal(held["host"], hostname());
+    assert.equal(held["startedAt"], new Date(r.clock.now()).toISOString());
   });
 
-  it("takes over a lock older than the stale age even when its pid looks alive", async (t) => {
+  it("never takes a lock whose owner is alive, however old the lock is", async (t) => {
+    const r = await rig(t);
+    const old = r.clock.now() - 10 * 60_000;
+    const body = JSON.stringify({ pid: 424242, host: hostname(), startedAt: new Date(old).toISOString() });
+    const lock = await holdLock(r, body);
+    await utimes(lock, old / 1000, old / 1000);
+    await assert.rejects(
+      mintKey(r.file, params, { ...r.io, ...patient, isAlive: () => true }),
+      (e: unknown) => e instanceof Error && e.message.includes(lock) && e.message.includes("424242") && !/stale/.test(e.message),
+    );
+    assert.equal(await readFile(lock, "utf8"), body);
+    assert.equal(await exists(r.file), false);
+  });
+
+  it("names the lock of a dead owner as stale and tells the operator to delete it, without deleting it", async (t) => {
+    const r = await rig(t);
+    const body = JSON.stringify({ pid: 424242, host: hostname(), startedAt: new Date(r.clock.now()).toISOString() });
+    const lock = await holdLock(r, body);
+    await assert.rejects(
+      mintKey(r.file, params, { ...r.io, ...patient, isAlive: () => false }),
+      (e: unknown) => e instanceof Error && e.message.includes(lock) && e.message.includes("424242") && /stale/.test(e.message) && /delete/.test(e.message),
+    );
+    assert.equal(await readFile(lock, "utf8"), body);
+    assert.equal(await exists(r.file), false);
+  });
+
+  it("does not call a lock from another host stale", async (t) => {
+    const r = await rig(t);
+    const lock = await holdLock(r, JSON.stringify({ pid: 424242, host: "other-host.invalid", startedAt: new Date(r.clock.now()).toISOString() }));
+    await assert.rejects(
+      mintKey(r.file, params, { ...r.io, ...patient, isAlive: () => false }),
+      (e: unknown) => e instanceof Error && e.message.includes(lock) && e.message.includes("other-host.invalid") && !/stale/.test(e.message),
+    );
+  });
+
+  it("reports a lock holding null, a non-object or unparsable content with the same clean error", async (t) => {
+    const r = await rig(t);
+    for (const content of ["null", "[]", "7", "not json", "", '{"pid":"x"}']) {
+      const lock = await holdLock(r, content);
+      await assert.rejects(
+        mintKey(r.file, params, { ...r.io, ...patient }),
+        (e: unknown) => e instanceof Error && !(e instanceof TypeError) && e.message.includes(lock) && /locked/.test(e.message) && /unreadable/.test(e.message),
+        JSON.stringify(content),
+      );
+      assert.equal(await readFile(lock, "utf8"), content);
+    }
+    assert.equal(await exists(r.file), false);
+  });
+
+  it("removes the lock only when its content is still exactly what it wrote", async (t) => {
     const r = await rig(t);
     const lock = `${r.file}.lock`;
-    await mkdir(dirname(r.file), { recursive: true });
-    await writeFile(lock, JSON.stringify({ pid: 424242, at: r.clock.now() - 10 * 60_000, token: "old" }), { mode: 0o600 });
-    const owners: number[] = [];
+    let altered = "";
     await mintKey(r.file, params, {
       ...r.io,
-      isAlive: () => true,
-      staleMs: 60_000,
-      afterRead: async () => void owners.push((JSON.parse(await readFile(lock, "utf8")) as { pid: number }).pid),
+      afterRead: async () => {
+        const held = JSON.parse(await readFile(lock, "utf8")) as Record<string, unknown>;
+        altered = JSON.stringify({ ...held, pid: 1 });
+        await writeFile(lock, altered);
+      },
     });
-    assert.deepEqual(owners, [process.pid]);
+    assert.equal(await readFile(lock, "utf8"), altered);
   });
 
   it("gives up after the bounded retries on a live fresh lock, backing off between tries, and leaves that lock alone", async (t) => {
     const r = await rig(t);
     const lock = `${r.file}.lock`;
     await mkdir(dirname(r.file), { recursive: true });
-    await writeFile(lock, JSON.stringify({ pid: 424242, at: r.clock.now(), token: "live" }), { mode: 0o600 });
+    await writeFile(lock, JSON.stringify({ pid: 424242, host: hostname(), startedAt: new Date(r.clock.now()).toISOString() }), { mode: 0o600 });
     const sleeps: number[] = [];
     await assert.rejects(
       mintKey(r.file, params, { ...r.io, isAlive: () => true, retries: 3, backoffMs: 20, sleep: async (ms) => void sleeps.push(ms) }),
@@ -390,6 +444,6 @@ describe("key file locking", () => {
     );
     assert.deepEqual(sleeps, [20, 40, 80]);
     assert.equal(await exists(r.file), false);
-    assert.match(await readFile(lock, "utf8"), /"token":"live"/);
+    assert.match(await readFile(lock, "utf8"), /"pid":424242/);
   });
 });

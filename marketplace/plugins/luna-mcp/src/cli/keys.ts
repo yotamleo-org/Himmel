@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { randomBytes as nodeRandomBytes, randomUUID } from "node:crypto";
+import { randomBytes as nodeRandomBytes } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { mkdir, open, readFile, rm } from "node:fs/promises";
+import { hostname } from "node:os";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -25,7 +26,6 @@ export interface LockOptions {
   isAlive?: (pid: number) => boolean;
   retries?: number;
   backoffMs?: number;
-  staleMs?: number;
 }
 
 export interface KeysDeps extends LockOptions {
@@ -123,7 +123,6 @@ const idsOf = (raw: readonly unknown[]): Set<string> =>
 const LOCK_RETRIES = 40;
 const LOCK_BACKOFF_MS = 25;
 const LOCK_BACKOFF_CAP_MS = 2000;
-const LOCK_STALE_MS = 30_000;
 
 const pidAlive = (pid: number): boolean => {
   try {
@@ -134,58 +133,38 @@ const pidAlive = (pid: number): boolean => {
   }
 };
 
-async function reclaimStaleLock(lock: string, now: number, staleMs: number, isAlive: (pid: number) => boolean, token: string): Promise<boolean> {
-  let raw: string;
-  let mtimeMs: number;
+async function describeLock(lock: string, isAlive: (pid: number) => boolean): Promise<string> {
+  const unreadable = `key file is locked and the lock ${lock} has unreadable content; if no luna-mcp-keys run is active, delete ${lock} and retry`;
+  let held: unknown;
   try {
-    raw = await readFile(lock, "utf8");
-    mtimeMs = (await stat(lock)).mtimeMs;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === "ENOENT";
-  }
-  let info: { pid?: unknown; at?: unknown } = {};
-  try {
-    info = JSON.parse(raw) as typeof info;
+    held = JSON.parse(await readFile(lock, "utf8"));
   } catch {
-    info = {};
+    return unreadable;
   }
-  const pid = typeof info.pid === "number" && Number.isInteger(info.pid) && info.pid > 0 ? info.pid : undefined;
-  const at = typeof info.at === "number" && Number.isFinite(info.at) ? info.at : mtimeMs;
-  if (!((pid !== undefined && !isAlive(pid)) || now - at > staleMs)) return false;
-  const grave = `${lock}.${token}.stale`;
-  try {
-    await rename(lock, grave);
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === "ENOENT";
+  if (typeof held !== "object" || held === null || Array.isArray(held)) return unreadable;
+  const { pid, host } = held as { pid?: unknown; host?: unknown };
+  if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0 || typeof host !== "string") return unreadable;
+  if (host === hostname() && !isAlive(pid)) {
+    return `key file is locked by pid ${pid}, which is not running on this host, so the lock ${lock} is stale; delete ${lock} and retry`;
   }
-  let moved = "";
-  try {
-    moved = await readFile(grave, "utf8");
-  } catch {
-    moved = "";
-  }
-  if (moved !== raw) {
-    await link(grave, lock).catch(() => undefined);
-    await rm(grave, { force: true });
-    return false;
-  }
-  await rm(grave, { force: true });
-  return true;
+  return `key file is locked by pid ${pid} on ${host} (${lock}); wait for that run to finish and retry`;
 }
 
 async function withKeysLock<T>(file: string, deps: Partial<KeysDeps>, fn: () => Promise<T>): Promise<T> {
   const lock = `${file}.lock`;
-  const now = deps.now ?? Date.now;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const retries = deps.retries ?? LOCK_RETRIES;
   const backoff = deps.backoffMs ?? LOCK_BACKOFF_MS;
-  const token = randomUUID();
+  const mine = JSON.stringify({ pid: process.pid, host: hostname(), startedAt: new Date((deps.now ?? Date.now)()).toISOString() });
   await mkdir(dirname(file), { recursive: true, mode: 0o700 });
   for (let attempt = 0; ; attempt++) {
     try {
       const fh = await open(lock, "wx", 0o600);
       try {
-        await fh.writeFile(JSON.stringify({ pid: process.pid, at: now(), token }));
+        await fh.writeFile(mine);
+      } catch (e) {
+        await rm(lock, { force: true });
+        throw e;
       } finally {
         await fh.close();
       }
@@ -193,13 +172,11 @@ async function withKeysLock<T>(file: string, deps: Partial<KeysDeps>, fn: () => 
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
     }
-    if (await reclaimStaleLock(lock, now(), deps.staleMs ?? LOCK_STALE_MS, deps.isAlive ?? pidAlive, token)) continue;
-    if (attempt >= retries) throw new Error(`key file is locked by another luna-mcp-keys run (${lock})`);
+    if (attempt >= retries) throw new Error(await describeLock(lock, deps.isAlive ?? pidAlive));
     await sleep(Math.min(backoff * 2 ** attempt, LOCK_BACKOFF_CAP_MS));
   }
   const release = async (): Promise<void> => {
-    const held = JSON.parse(await readFile(lock, "utf8")) as { token?: unknown };
-    if (held.token === token) await rm(lock, { force: true });
+    if ((await readFile(lock, "utf8")) === mine) await rm(lock, { force: true });
   };
   try {
     return await fn();

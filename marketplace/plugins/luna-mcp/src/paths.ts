@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { open, readdir, realpath, stat, type FileHandle } from "node:fs/promises";
+import { open, readdir, readlink, realpath, stat, type FileHandle } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import { join, sep } from "node:path";
 import { parseDocument } from "yaml";
@@ -18,6 +18,7 @@ export type DenyKind =
   | "salus"
   | "frontmatter"
   | "changed"
+  | "unverifiable"
   | "too-large"
   | "not-text";
 
@@ -41,6 +42,8 @@ export interface PolicyScope {
 export interface VerifyHooks {
   beforeOpen?: (abs: string) => void | Promise<void>;
   afterOpen?: (abs: string) => void | Promise<void>;
+  afterRead?: (abs: string) => void | Promise<void>;
+  fdPath?: (fd: number) => Promise<string>;
 }
 
 export interface VerifiedFile {
@@ -192,14 +195,7 @@ async function resolveRoot(root: string): Promise<string> {
   }
 }
 
-async function realSegmentsOf(rootReal: string, abs: string, scope: PolicyScope): Promise<string[]> {
-  let real: string;
-  try {
-    real = await realpath(abs);
-  } catch (e) {
-    if (MISSING.has((e as NodeJS.ErrnoException).code ?? "")) throw new Denied("not-found");
-    throw e;
-  }
+function containedSegments(rootReal: string, real: string, scope: PolicyScope): string[] {
   let segments: string[];
   if (real === rootReal) segments = [];
   else if (real.startsWith(rootReal + sep)) segments = real.slice(rootReal.length + 1).split(sep);
@@ -208,16 +204,28 @@ async function realSegmentsOf(rootReal: string, abs: string, scope: PolicyScope)
   return segments;
 }
 
-async function sameFile(rootReal: string, abs: string, scope: PolicyScope, opened: { dev: bigint; ino: bigint }): Promise<void> {
-  const real = await realSegmentsOf(rootReal, abs, scope);
-  let now;
+async function realSegmentsOf(rootReal: string, abs: string, scope: PolicyScope): Promise<string[]> {
+  let real: string;
   try {
-    now = await stat(join(rootReal, ...real), { bigint: true });
+    real = await realpath(abs);
   } catch (e) {
-    if (MISSING.has((e as NodeJS.ErrnoException).code ?? "")) throw new Denied("changed");
+    if (MISSING.has((e as NodeJS.ErrnoException).code ?? "")) throw new Denied("not-found");
     throw e;
   }
-  if (now.dev !== opened.dev || now.ino !== opened.ino) throw new Denied("changed");
+  return containedSegments(rootReal, real, scope);
+}
+
+const procFdPath = (fd: number): Promise<string> => readlink(`/proc/self/fd/${fd}`);
+
+async function verifyOpened(fh: FileHandle, rootReal: string, scope: PolicyScope, hooks?: VerifyHooks): Promise<void> {
+  let real: string;
+  try {
+    real = await (hooks?.fdPath ?? procFdPath)(fh.fd);
+  } catch {
+    throw new Denied("unverifiable");
+  }
+  if (real.endsWith(" (deleted)")) throw new Denied("changed");
+  containedSegments(rootReal, real, scope);
 }
 
 async function readFully(fh: FileHandle, length: number, position: number): Promise<Buffer> {
@@ -256,9 +264,9 @@ export async function readVerified(
   }
   try {
     await hooks?.afterOpen?.(abs);
+    await verifyOpened(fh, rootReal, scope, hooks);
     const st = await fh.stat();
     if (!st.isFile()) throw new Denied("not-found");
-    await sameFile(rootReal, abs, scope, await fh.stat({ bigint: true }));
     const prefixLength = Math.min(st.size, SCAN_BYTES);
     const prefix = await readFully(fh, prefixLength, 0);
     if (prefix.includes(0)) throw new Denied("not-text");
@@ -315,9 +323,10 @@ export async function readDirVerified(
     throw e;
   }
   try {
-    const opened = await fh.stat({ bigint: true });
-    const dirents = await readdir(dir.real, { withFileTypes: true });
-    await sameFile(dir.rootReal, dir.real, scope, opened);
+    await hooks?.afterOpen?.(dir.real);
+    await verifyOpened(fh, dir.rootReal, scope, hooks);
+    const dirents = await readdir(`/proc/self/fd/${fh.fd}`, { withFileTypes: true });
+    await hooks?.afterRead?.(dir.real);
     return { real: dir.real, segments: dir.segments, dirents };
   } finally {
     await fh.close();

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { rename, symlink } from "node:fs/promises";
+import { rename, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { Denied, type DenyKind, type PolicyScope } from "../src/paths.js";
@@ -316,5 +316,62 @@ describe("directory reads verified after they are opened", () => {
     const out = await recentDocs(root, reader, 50, 10_000, hooks);
     assert.equal(hooks.swapped(), 1);
     for (const d of out.docs) assert.ok(!/leak/i.test(d.path) && !/Leaked/.test(d.title), d.path);
+  });
+});
+
+describe("the listed directory is the verified handle", () => {
+  async function swapAndRestore(base: string, root: string) {
+    const outside = join(base, "swapped-dir");
+    await put(outside, "deep/leak.md", `# Leaked\n${LEAK}\n`);
+    let swaps = 0;
+    const here = (abs: string): boolean => abs.endsWith(join("docs", "deep"));
+    return {
+      swaps: () => swaps,
+      afterOpen: async (abs: string) => {
+        if (!here(abs)) return;
+        swaps++;
+        await rename(join(root, "docs"), join(root, "docs.moved"));
+        await symlink(outside, join(root, "docs"));
+      },
+      afterRead: async (abs: string) => {
+        if (!here(abs)) return;
+        await rm(join(root, "docs"));
+        await rename(join(root, "docs.moved"), join(root, "docs"));
+      },
+    };
+  }
+
+  it("lists the opened directory when an ancestor is swapped during the read and put back before the check", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    const hooks = await swapAndRestore(fx.base, root);
+    const page = await listDir(root, "docs/deep", reader, { limit: 100 }, hooks);
+    assert.equal(hooks.swaps(), 1);
+    assert.deepEqual(page.entries.map((e) => e.name), ["nested.md"]);
+  });
+
+  it("walks the opened directories when one is swapped and put back during the recent walk", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    const hooks = await swapAndRestore(fx.base, root);
+    const out = await recentDocs(root, reader, 50, 10_000, hooks);
+    assert.equal(hooks.swaps(), 1);
+    assert.ok(out.docs.some((d) => d.path === "docs/deep/nested.md"));
+    for (const d of out.docs) assert.ok(!/leak/i.test(d.path), d.path);
+  });
+
+  it("denies a listing whose handle path is reported outside the root", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    assert.equal(await kindOf(() => listDir(root, "docs", reader, { limit: 10 }, { fdPath: async () => fx.outside })), "escape");
+  });
+
+  it("denies a listing when the path of the handle cannot be resolved", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    const fdPath = async (): Promise<string> => {
+      throw new Error("no /proc here");
+    };
+    assert.equal(await kindOf(() => listDir(root, "docs", reader, { limit: 10 }, { fdPath })), "unverifiable");
   });
 });

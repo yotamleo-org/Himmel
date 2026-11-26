@@ -47,10 +47,13 @@ Operations (one table feeds both surfaces):
    start with a dot at any depth, and the vault's `scripts/`, `marketplace/`, `graphify-out/` and
    `to_be_deleted/` are closed. On a Luna collection `sessions/**` and `chats/**` need the `manager`
    role and `handovers/**` needs `manager` plus `allowHandoversRead`; a Stage 1 reader has neither.
-6. Disk check: the file is opened with `O_NOFOLLOW`, then its real path is resolved again and must
-   still sit inside the collection root, pass the same segment rules, and be the very file that was
-   opened (same device and inode), so a parent directory swapped for a symlink mid-request is refused.
-   Directory listings get the same check on their directory handle. The file's leading YAML
+6. Disk check: the file is opened with `O_NOFOLLOW`, then the path of the opened file itself is read
+   from `/proc/self/fd/<fd>`. It must sit inside the collection root and pass the same segment rules,
+   so a parent directory swapped for a symlink mid-request is refused, and a file that was unlinked or
+   replaced after it was opened is refused too. A directory is opened the same way, verified through
+   its own handle, and its entries are read from that handle, never from a pathname. This relies on
+   `/proc`, so the service is Linux only; where `/proc/self/fd` is unavailable every read is refused.
+   The file's leading YAML
    frontmatter is parsed with a real YAML parser on the first 64 KiB. `repo: salus` is refused in any
    YAML spelling (quoted, tagged, block scalar, list, anchor or merge key; any case; a string or any
    list element). A header that does not close inside that window, does not parse, is not a mapping,
@@ -60,9 +63,11 @@ Operations (one table feeds both surfaces):
    verified file. QMD's `metadata` and `context` are not forwarded. Legacy slugs that no longer
    resolve to a file are dropped.
 8. One audit line per call, allowed or denied. That includes refusals after authentication (wrong
-   content type, oversized body, bad JSON), MCP protocol calls such as `initialize` and `tools/list`,
-   and tool calls the MCP layer rejects before they reach an operation. JSON-RPC batches are not
-   accepted.
+   content type, oversized body, bad JSON) and every authenticated MCP message, request or
+   notification: `initialize`, `tools/list`, `notifications/initialized` and the rest. The verdict of
+   a protocol message is what the MCP layer answered, so an unknown method or a JSON-RPC error is a
+   denial. Tool calls the MCP layer rejects before they reach an operation are one denial line too.
+   JSON-RPC batches and `subscriptions/listen` streams are not accepted.
 
 A refusal caused by the shape of a path answers 403; anything that depends on what is on disk (a
 missing file, a symlink, a salus note) answers the same 404, so the API does not confirm what exists.
@@ -147,9 +152,12 @@ npm run --silent keys -- revoke <keyId>
 * `rotate` mints a successor with the same scope and shortens the old key to `--overlap`, so both work
   until the old one expires. `revoke` takes effect on the next call.
 * `mint`, `revoke` and `rotate` take a lock file beside the key file (`<keys file>.lock`) for their
-  whole read-modify-write, so two runs at once cannot undo each other's change. A lock left by a dead
-  process, or older than 30 seconds, is taken over; otherwise the command retries with a growing
-  delay and then fails with "locked". The write itself is a temp file and a rename, mode 0600.
+  whole read-modify-write, so two runs at once cannot undo each other's change. The lock is created
+  exclusively and holds the owner's pid, host and start time. A busy lock is retried with a growing
+  delay and then the command fails with "locked", naming the lock file and its pid. A lock is never
+  taken over or removed automatically: if the pid is not running on this host the error says the lock
+  is stale and tells you to delete that file yourself. The write itself is a temp file and a rename,
+  mode 0600.
 
 Each record in the file has `keyId`, `hash`, `principal`, `egressProvider` (`xai-grokbot` or
 `openai-chatgpt`), `resource`, `roles`, `allowedCollections`, `createdAt`, `expiresAt` and `revoked`.
