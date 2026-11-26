@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Manifest rows for the Antigravity design profile: the skill listing it resolves
-# stays under a budget and its design MCP servers are declared. Reads only the two JSON files.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REGISTRY="$HERE/antigravity-profiles.json"
