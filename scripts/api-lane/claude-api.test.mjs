@@ -529,6 +529,48 @@ test('with no HIMMEL_CONSOLE_NAME the newest armed chief gets the call-failed al
   assert.equal(inboxText(root, 'old-chief'), '');
 });
 
+const waitFile = (root, name, tail) => writeFileSync(join(root, 'consoles', `${name}.md.wait`), `hb=${Math.floor(Date.now() / 1000) - 5} pid=1 key=k tick=ok ${tail}\n`);
+
+test('a named chief whose waiter exited cannot swallow the alert: it pages the operator', () => {
+  for (const tail of ['state=exited exit=stream-stop', 'state=exited exit=signal', 'state=exited']) {
+    const f = fixture();
+    const root = chiefBridge(f, ['gone-chief']);
+    waitFile(root, 'gone-chief', tail);
+    const r = f.run(f.good, { BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'gone-chief', STUB_OUT: BUDGET_CAP, STUB_RC: '1' });
+    assert.equal(r.status, 1, r.stderr);
+    assert.equal(alerts(f).length, 1, tail);
+    assert.equal(inboxText(root, 'gone-chief'), '', tail);
+  }
+});
+
+test('the freshest heartbeat is skipped when its waiter exited: the alert goes to the armed chief, or pages the operator', () => {
+  const f = fixture();
+  const root = chiefBridge(f, ['a-armed-chief', 'z-exited-chief']);
+  writeFileSync(join(root, 'consoles', 'a-armed-chief.md.wait'), `hb=${Math.floor(Date.now() / 1000) - 300} pid=1 key=k tick=ok state=waiting\n`);
+  waitFile(root, 'z-exited-chief', 'state=exited exit=stream-stop');
+  const r = f.run(f.good, { BRIDGE_ROOT: root, STUB_OUT: BUDGET_CAP, STUB_RC: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(alerts(f).length, 0);
+  assert.match(inboxText(root, 'a-armed-chief'), /call-failed/);
+  assert.equal(inboxText(root, 'z-exited-chief'), '');
+  const g = fixture();
+  const only = chiefBridge(g, ['z-exited-chief']);
+  waitFile(only, 'z-exited-chief', 'state=exited exit=signal');
+  assert.equal(g.run(g.good, { BRIDGE_ROOT: only, STUB_OUT: BUDGET_CAP, STUB_RC: '1' }).status, 1);
+  assert.equal(alerts(g).length, 1);
+  assert.equal(inboxText(only, 'z-exited-chief'), '');
+});
+
+test('a waiter that exited on a wake reason is still armed and takes the alert', () => {
+  const f = fixture();
+  const root = chiefBridge(f, ['wake-chief']);
+  waitFile(root, 'wake-chief', 'state=exited exit=wake-inbox');
+  const r = f.run(f.good, { BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'wake-chief', STUB_OUT: BUDGET_CAP, STUB_RC: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(alerts(f).length, 0);
+  assert.match(inboxText(root, 'wake-chief'), /call-failed/);
+});
+
 test('a named chief whose waiter heartbeat is stale cannot swallow the alert: it pages the operator', () => {
   const f = fixture();
   const root = chiefBridge(f, ['stale-chief'], 7200);

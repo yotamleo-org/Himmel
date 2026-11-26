@@ -136,7 +136,9 @@ chief_inbox_alert() {
       [ -e "$w" ] || continue
       name="$(basename "$w" .md.wait)"
       f="$(_mba_chief_inbox_path "$root" "$name")" && [ -f "$f" ] || continue
-      hb="$(sed -n 's/^hb=\([0-9][0-9]*\) .*/\1/p' "$w" 2>/dev/null | head -n 1)"
+      wait_line="$(head -n 1 "$w" 2>/dev/null)"
+      case "$wait_line" in *" state=exited"*) case "$wait_line" in *" exit=wake-"*) ;; *) continue ;; esac ;; esac
+      hb="$(printf '%s\n' "$wait_line" | sed -n 's/^hb=\([0-9][0-9]*\) .*/\1/p')"
       case "$hb" in ''|*[!0-9]*) continue ;; esac
       hb=$((10#$hb))
       [ "$hb" -le "$now" ] && [ $((now - hb)) -lt 1800 ] || continue
