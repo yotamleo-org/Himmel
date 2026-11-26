@@ -2064,20 +2064,18 @@ print or grep the contents of a secret file (`.env`, `.env.*`,
 `.envrc`, `id_rsa`, `id_ed25519`, `*.pem`, `*.key`, `*.p12`, `*.pfx`,
 `credentials.json`, `secrets.y[a]ml`). Bypass: `READ_SECRETS_OK=1`.
 
-**Environment dumps and transcript reads.** Two GitHub tokens
+**Environment dumps.** Two GitHub tokens
 reached 33 and 29 transcripts through shapes this guard did not know. It now
 also denies a python/node/bun/deno command that prints the whole environment
 (`print(os.environ)`, `dict(os.environ)`, `os.environb`,
 `console.log(process.env)`, `Bun.env`, `Deno.env.toObject()`) or reads
-`/proc/<pid>/environ`, and a `Read` or `Grep` of a session transcript
-(`~/.claude/projects/**/*.jsonl`, subagent transcripts included; a `Grep`
-rooted at `~/.claude/projects` or a project directory below it too, except the
-`memory/` subtree): a transcript holds every earlier tool result verbatim. A
+`/proc/<pid>/environ`. A `Read` or `Grep` of a session transcript
+(`~/.claude/projects/**/*.jsonl`) is allowed: an agent reading
+its own history only sees what the model already saw. A
 single named key stays allowed (`os.environ.get("PATH")`, `os.environ["HOME"]`,
 `process.env.HOME`, `Bun.env.HOME`, `Deno.env.get("HOME")`), as do
-`printenv HOME` and `echo $PATH`. Not yet matched: a Bash reader
-of a transcript (`cat`, `grep -r`, `jq`), a `Grep` rooted above
-`~/.claude/projects`, an interpreter shell-out to `env`, `process['env']` and a
+`printenv HOME` and `echo $PATH`. Not yet matched: an interpreter shell-out to
+`env`, `process['env']` and a
 destructured `{env} = process`. The filtered shell dumps
 (`env | grep`, `printenv | grep`, `export -p | grep`, `set | grep`) and shell
 `/proc/*/environ` reads were denied before and keep
