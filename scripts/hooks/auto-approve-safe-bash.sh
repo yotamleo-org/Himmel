@@ -2196,7 +2196,7 @@ case "${FIND_ROOTWALK_OK:-}" in
             seg="${seg#"${seg%%[! $'\t']*}"}"
             [ -z "$seg" ] && continue
             if segment_is_rootwalk_find "$seg"; then
-                emit_deny "a root-anchored find with no -maxdepth walks the WHOLE disk and can outlive its parent for 20+ minutes in headless/cadence sessions, where the fall-through prompt is unattended. Use the Glob tool, or scope it to a repo-rooted directory: find <dir> ... -maxdepth N. One-run bypass: set FIND_ROOTWALK_OK=1 in the LAUNCHING shell."
+                emit_deny "a root-anchored find with no -maxdepth walks the WHOLE disk and can outlive its parent for 20+ minutes in headless/cadence sessions, where the fall-through prompt is unattended. List files with git ls-files, or scope it to a repo-rooted directory: find <dir> ... -maxdepth N. One-run bypass: set FIND_ROOTWALK_OK=1 in the LAUNCHING shell."
             fi
         done <<EOF
 $SCAN_SEGS

@@ -462,8 +462,11 @@ assert "find windows drive root"   DENY  "$(decide "$(j_bash 'find C:\ -name x')
 assert "find \$HOME root"          DENY  "$(decide "$(j_bash 'find $HOME -name x')")"
 assert "find ~ root"               DENY  "$(decide "$(j_bash 'find ~ -name x')")"
 assert "find /c msys drive root"   DENY  "$(decide "$(j_bash 'find /c -iname y')")"
+ROOTWALK_OUT="$(printf '%s' "$(j_bash 'find / -iname x')" | bash "$HOOK" 2>/dev/null)"
+assert "rootwalk refusal names git ls-files and -maxdepth" PASS "$(if grepq "$ROOTWALK_OUT" -F 'git ls-files' && grepq "$ROOTWALK_OUT" -F -- '-maxdepth'; then echo PASS; else echo FAIL; fi)"
+assert "rootwalk refusal does not name the Glob tool" PASS "$(if grepq "$ROOTWALK_OUT" -i 'Glob tool'; then echo FAIL; else echo PASS; fi)"
 # Not root-anchored → unchanged (falls through to the pre-existing scan).
-assert "find . still ALLOW"        ALLOW "$(decide "$(j_bash "find . -name '*.md'")")"
+assert "find . still ALLOW"       ALLOW "$(decide "$(j_bash "find . -name '*.md'")")"
 assert "find scripts still ALLOW"  ALLOW "$(decide "$(j_bash 'find scripts -type f')")"
 assert "find /c/subpath ALLOW"     ALLOW "$(decide "$(j_bash 'find /c/Users/x/repo -iname y')")"
 # Root-anchored but -maxdepth present → not the walker shape, still ALLOW.
