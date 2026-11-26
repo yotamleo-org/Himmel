@@ -84,14 +84,14 @@ tokens=()
 fakes=()
 rest=$input
 while [[ $rest =~ $tok_re ]]; do
-    t="${BASH_REMATCH[1]}"
-    after="${rest#*"$t"}"
-    if [[ $after =~ ^[0-9A-Za-z]+ ]]; then t="$t${BASH_REMATCH[0]}"; fi
+    m="${BASH_REMATCH[1]}"
+    t=$m
+    rest="${rest#*"$m"}"
+    if [[ $rest =~ ^[0-9A-Za-z]{1,60} ]]; then t="$t${BASH_REMATCH[0]}"; fi
     case " ${tokens[*]-} ${fakes[*]-} " in
         *" $t "*) ;;
         *) if is_live_token "$t"; then tokens+=("$t"); else fakes+=("$t"); fi ;;
     esac
-    rest="${rest#*"$t"}"
 done
 
 # Names are read from the DECODED string values (jq), so an escaped `\n` before

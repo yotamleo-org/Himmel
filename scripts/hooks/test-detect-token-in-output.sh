@@ -257,6 +257,11 @@ if grep -q 'TOKEN-IN-OUTPUT LIVE' "$TMP/out" && shows_only_mask "$TMP/out" "$ghr
     pass "an 80-char ghr_ refresh token is checked whole and pages as LIVE"
 else fail "80-char ghr_ (count=$(sent_count)): $(head -c 300 "$TMP/out")"; fi
 before=$(sent_count)
+run_hook "$(j_post Bash s12d "T=${fixtures[0]}$TOK_GHP")"
+if grep -q 'TOKEN-IN-OUTPUT LIVE' "$TMP/out" && grep -qF "$(masked "$TOK_GHP")" "$TMP/out" && [ "$(sent_count)" = "$((before + 1))" ]; then
+    pass "a real token glued to a fixture is still found and paged"
+else fail "glued fixture+real (count=$(sent_count)): $(head -c 300 "$TMP/out")"; fi
+before=$(sent_count)
 run_hook "$(j_post Bash s12b "T=$TOK_PAT")"
 if grep -q 'TOKEN-IN-OUTPUT LIVE' "$TMP/out" && shows_only_mask "$TMP/out" "$TOK_PAT" && [ "$(sent_count)" = "$((before + 1))" ]; then
     pass "github_pat_ with a varied, non-sequential body pages as LIVE"
