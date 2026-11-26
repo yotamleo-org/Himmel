@@ -68,6 +68,7 @@ bash "$HERE/brief-lint.sh" "$DOC" 2>"$WORK/lint.err"; rc=$?
 
 has "the question is carried verbatim" "$b" "Does PR 2599 parse the SUCCESSION bullet strictly enough that an ambiguous line reads missing?"
 has "the nonce is in the chief letter's shape" "$b" "Z-j2599a-"
+has "the brief teaches each search alone in its response" "$b" "Send each search as its own tool call, with no other call in the same response: a call sent beside one that a hook rewrites is refused unrun."
 has "the chief is named" "$b" "$CHIEF"
 has "the handover root is named" "$b" "$WORK/handovers"
 has "the Tier line is exact" "$b" "> **Tier:** opus — unverified-finding: a finding the chief could not verify at Sonnet"
@@ -278,6 +279,7 @@ has "dispatch: the prompt carries the head" "$p" "git diff origin/main...$HEAD40
 has "dispatch: the prompt carries a RETASK nonce in the chief letter's shape" "$p" "RETASK: your nonce is \`Z-j2599a-"
 has "dispatch: the prompt names the direct parent as the only authority" "$p" "direct parent"
 has "dispatch: the prompt is read-only" "$p" "read-only"
+has "dispatch: the prompt teaches each search alone in its response" "$p" "Send each search as its own tool call, with no other call in the same response: a call sent beside one that a hook rewrites is refused unrun."
 has "dispatch: the prompt carries the result contract" "$p" "**GO**"
 jbl="$(printf '%s\n' "$p" | grep -E '^JUDGE-BRIEF: [0-9a-f]{16}$')"
 [ -n "$jbl" ] && pass "dispatch: the prompt carries a JUDGE-BRIEF line of its own" || fail "dispatch: no JUDGE-BRIEF line"

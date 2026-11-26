@@ -275,5 +275,34 @@ done
 out=$(OWE_AFKSUDO_ROOT="$WORK/r-off" bash "$OWE" add --bucket "$OT" --chief Z --kind step --text 'ask for an op-request for docker later' --metadata "$OPMETA" 2>&1); rc=$?
 check "10970 R8 prose after op-request is not read as an op name" "$rc" 0
 
+C="$WORK/close-confirm"; mkdir -p "$C"
+bash "$OWE" add --bucket "$C" --chief Z --kind ticket --text 'one' >/dev/null
+bash "$OWE" add --bucket "$C" --chief Z --kind ticket --text 'two' >/dev/null
+bash "$OWE" close --bucket "$C" --id o1 --key HIMMEL-1 --metadata '{}{}' >/dev/null 2>&1; rc=$?
+check "10352 X13-16 close metadata with two JSON values exits 2" "$rc" 2
+check "10352 X13-16 the refused close appended nothing" "$(grep -c '"op":"close"' "$C/owed.jsonl")" 0
+bash "$OWE" close --bucket "$C" --id o1 --key HIMMEL-1 --metadata '{}' >/dev/null 2>&1; rc=$?
+check "10352 X13-16 close metadata with one value still closes" "$rc" 0
+bash "$OWE" close-confirm --bucket "$C" --id o1 >/dev/null 2>&1; rc=$?
+check "10352 X13-12 close-confirm of a closed row exits 0" "$rc" 0
+before="$(cat "$C/owed.jsonl")"
+bash "$OWE" close-confirm --bucket "$C" --id o2 >/dev/null 2>&1; rc=$?
+check "10352 X13-12 close-confirm of an open row exits 1" "$rc" 1
+bash "$OWE" close-confirm --bucket "$C" --id o9 >/dev/null 2>&1; rc=$?
+check "10352 X13-12 close-confirm of an unknown row exits 1" "$rc" 1
+bash "$OWE" close-confirm --bucket "$C" >/dev/null 2>&1; rc=$?
+check "10352 X13-12 close-confirm without an id exits 2" "$rc" 2
+check "10352 X13-12 close-confirm appends nothing" "$(cat "$C/owed.jsonl")" "$before"
+HASH="$(printf 'decision' | sha256sum | cut -d' ' -f1)"
+out="$(bash "$OWE" add --bucket "$C" --chief Z --kind step --text 'next' --metadata "{\"actor\":\"worker\",\"action\":\"next-step\",\"decision_hash\":\"$HASH\"}" 2>&1)"; rc=$?
+check "10352 X09-2 a step row admits a 64-hex decision hash" "$rc|$out" "0|o3"
+check "10352 X09-2 the row carries the hash" "$(jq -r 'select(.id == "o3") | .decision_hash' "$C/owed.jsonl")" "$HASH"
+UPPER="$(printf '%s' "$HASH" | tr 'a-f' 'A-F')"
+for bad in '"abc"' "\"$UPPER\"" "\"${HASH}0\"" '7' 'null'; do
+    bash "$OWE" add --bucket "$C" --chief Z --kind step --text 'bad' --metadata "{\"actor\":\"worker\",\"action\":\"next-step\",\"decision_hash\":$bad}" >/dev/null 2>&1
+    check "10352 X09-2 a decision hash of $bad refuses" "$?" 2
+done
+check "10352 X09-2 refused hashes appended nothing" "$(jq -s '[.[] | select(.op == "add")] | length' "$C/owed.jsonl")" 3
+
 [ "$fails" -eq 0 ] || { echo "$fails check(s) failed"; exit 1; }
 echo "test-owe: all checks passed"

@@ -103,6 +103,8 @@ template_version: 1
 > `none`, an empty line or this placeholder is refused at arming by
 > `brief-lint.sh`.>
 
+> **Searching:** Send each search as its own tool call, with no other call in the same response: a call sent beside one that a hook rewrites is refused unrun.
+
 ## Evidence
 
 <Every file, diff, prior finding, ticket and doc the judge needs to rule —

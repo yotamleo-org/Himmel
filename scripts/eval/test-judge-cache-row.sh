@@ -67,7 +67,7 @@ for f in judge judge-ro; do
        "$(awk '/^---$/{n++} n==1' "$p" | tr -d '\r' | grep -c 'cacheTtl')" "0"
 done
 eq "judge-ro tools pinned to the fenced line" \
-   "$(grep -m1 '^tools:' "$REPO/.claude/agents/judge-ro.md")" "tools: Read, Grep, Glob, Bash, Write, WebFetch, WebSearch"
+   "$(grep -m1 '^tools:' "$REPO/.claude/agents/judge-ro.md")" "tools: Read, Bash, Write, WebFetch, WebSearch"
 
 printf 'test-judge-cache-row: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
