@@ -1,34 +1,6 @@
 #!/usr/bin/env bash
-# steer-t3-tool-calls.sh — PreToolUse hook (matcher mcp__t3-code__t3_background_wait
-# and mcp__t3-code__t3_thread_send): refuses the two commonest wrong T3 calls
-# and names the right one. The rules: docs/internals/t3-tool-call-rules.md.
-#
-#   t3_background_wait  taskIds entries must be background Bash or Monitor task ids
-#                       (`b` plus at least six lowercase letters and digits, as the
-#                       tool that started the task printed). An Agent id (`a` plus
-#                       hex), a placeholder or any other string is refused: the
-#                       right call for a subagent is to wait for its result message.
-#   t3_thread_send      mode "steer" needs a thread whose turn is running. The
-#                       target's status is read with `t3 thread list --json`; a
-#                       thread listed as idle, completed, interrupted, cancelled,
-#                       error or failed is refused: the right call is the same
-#                       send with no mode (it queues, or starts a turn on an idle
-#                       thread, and unsettles it). Any other status is allowed.
-#
-# Delivered by the himmel-ops PLUGIN lane only. Self-contained: sources nothing.
-#
-# Fail OPEN (exit 0) on anything it cannot evaluate: no jq, unparseable input,
-# a missing or failing t3 CLI, a thread that is not in the list, an unknown
-# shape. It is a workflow nudge, not a security fence.
-#
-# Hook I/O: the tool-call JSON on stdin. Exit 0 allows; exit 2 refuses and
-# stderr is shown to Claude.
-#
-# Env seams: T3_STEER_BIN (default $HOME/.t3/bin/t3), T3_STEER_PROJECT (default
-# the payload cwd's git top-level).
-# Bypass: T3_STEER_BYPASS=1 in the shell that launched the agent (session-sticky;
-# a per-call prefix does not reach the hook).
-#
+# steer-t3-tool-calls.sh — PreToolUse hook: refuses the two commonest wrong T3 calls and names the right one (docs/internals/t3-tool-call-rules.md).
+# Hook I/O: the tool-call JSON on stdin. Exit 0 allows; exit 2 refuses and stderr is shown to Claude.
 # Bash 3.2-compatible.
 set -uo pipefail
 

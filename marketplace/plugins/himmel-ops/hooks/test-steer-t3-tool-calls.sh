@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# test-steer-t3-tool-calls.sh — suite for the PreToolUse T3 call steer. The suite is the spec.
-#
-# The behaviour rows run the INSTALLED hooks.json command with CLAUDE_PLUGIN_ROOT on
-# this plugin dir, so a hook that is not wired (or wired to the wrong matcher)
-# fails the refusal rows. The t3 CLI is a stub the hook reads through T3_STEER_BIN.
-#
 # Usage: bash marketplace/plugins/himmel-ops/hooks/test-steer-t3-tool-calls.sh
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
