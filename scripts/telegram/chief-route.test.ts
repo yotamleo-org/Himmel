@@ -3436,9 +3436,9 @@ test("round-override needs the operator's decision and a quote the decision hold
   const lie = await verb(true, "round-override", CAP_KEY, "--findings", "M2", "--why", "w", "--chief", "chief-x", "--decision", "7312", "--quote", "words the operator never wrote", "--specs", t.specs, "--no-words");
   expect(lie.code).toBe(1); expect(lie.err).toContain("round-override: decision 7312 does not hold the quote");
   const { roundOverride } = await import("./chief-route.ts");
-  process.env.HIMMEL_CONSOLE = "1";
-  try { await expect(roundOverride(t.specs, CAP_KEY, { findings: ["M2"], why: "w", chief: "chief-x", decision: "", quote: "" })).rejects.toThrow("round-override:"); }
-  finally { delete process.env.HIMMEL_CONSOLE; }
+  const consoleWas = process.env.HIMMEL_CONSOLE; process.env.HIMMEL_CONSOLE = "1";
+  try { await expect(roundOverride(t.specs, CAP_KEY, { findings: ["M2"], why: "w", chief: "chief-x", decision: "7399", quote: OVR_WORDS })).rejects.toThrow("round-override: 0 files match specs/decisions/verbatim-decision-7399-*.txt"); }
+  finally { if (consoleWas === undefined) Reflect.deleteProperty(process.env, "HIMMEL_CONSOLE"); else process.env.HIMMEL_CONSOLE = consoleWas; }
   expect(rowsOf(t.specs, "override")).toEqual([]);
 });
 
