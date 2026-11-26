@@ -120,7 +120,7 @@ case "$1 $2" in
     esac ;;
   # CodeRabbit posts NO check-run — these carry only the
   # tests/lint/build signal the CI gate reads.
-  "api repos/o/r/commits/abc123/check-runs"*|"api repos/x/y/commits/abc123/check-runs"*)
+  "api repos/"*"/commits/abc123/check-runs"*)
     case "$GH_STUB_MODE" in
       cr-ci-api-error) exit 1 ;;
       ci-hang)  sleep 30; exit 1 ;;
@@ -131,7 +131,7 @@ case "$1 $2" in
   # CodeRabbit's real signal: a commit STATUS with creator identity. Glob the
   # tail — the gates query `/statuses?per_page=100`, and an exact-match arm
   # silently falls through to the `*)` catch-all and degrades the gate open.
-  "api repos/o/r/commits/abc123/statuses"*|"api repos/x/y/commits/abc123/statuses"*)
+  "api repos/"*"/commits/abc123/statuses"*)
     case "$GH_STUB_MODE" in
       cr-ci-api-error) exit 1 ;;
       inflight)   echo '[{"context":"CodeRabbit","state":"pending","created_at":"2026-07-16T19:08:46Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
@@ -318,8 +318,11 @@ rm -f "$HOME/.himmel/config.json"
 GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-no-config-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
 err_has own-fork-no-config-refuses "project repo"
 HIMMEL_MERGE_OWN_FORKS=x/y GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-env-var-cannot-widen 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
-forks_json "x/y"
-HIMMEL_POLICY_FOLLOWS_HOME='' GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-home-file-ignored-without-seam 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+forks_json "zz-fixture/home-only"
+GH_STUB_PR_NWO=zz-fixture/home-only GH_STUB_MODE=ci-green t own-fork-home-file-read-with-seam-allows 0 Bash "gh pr merge 42 --squash -R zz-fixture/home-only $OWN_PIN"
+HIMMEL_POLICY_FOLLOWS_HOME='' GH_STUB_PR_NWO=zz-fixture/home-only GH_STUB_MODE=ci-green t own-fork-home-file-ignored-without-seam 2 Bash "gh pr merge 42 --squash -R zz-fixture/home-only $OWN_PIN"
+forks_json "x/ y"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-inner-space-entry-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
 rm -f "$HOME/.himmel/config.json"
 
 GH_STUB_MODE=unresolved t merge-with-unresolved-blocks   2 Bash "gh pr merge 42 --squash"

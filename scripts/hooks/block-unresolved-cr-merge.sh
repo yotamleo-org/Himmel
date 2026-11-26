@@ -375,7 +375,9 @@ _own_fork_listed() {
     out=$(_himmel_policy_json "$pdir/config.json" HIMMEL_MERGE_OWN_FORKS) || return 1
     out=${out#HIMMEL_MERGE_OWN_FORKS=}
     while IFS= read -r entry; do
-        entry=$(printf '%s' "$entry" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+        entry=$(printf '%s' "$entry" | tr '[:upper:]' '[:lower:]')
+        entry=${entry#"${entry%%[![:space:]]*}"}
+        entry=${entry%"${entry##*[![:space:]]}"}
         [ -n "$entry" ] && [ "$entry" = "$want" ] && return 0
     done <<EOF
 $(printf '%s' "$out" | tr ',' '\n')
