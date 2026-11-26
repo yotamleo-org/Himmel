@@ -1300,7 +1300,7 @@ case "${BUS33_MODE:-ok}" in
 esac
 STUB
 # shellcheck disable=SC2016  # the stub expands CENSUS33 when it runs
-printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${CENSUS33:-}"\n' > "$D33/bin/census"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${CENSUS33:-}"\nexit "${CENSUS33_RC:-0}"\n' > "$D33/bin/census"
 chmod +x "$D33/bin/bus" "$D33/bin/census"
 w33() {
   { printf '# %s\n\n' "$2"
@@ -1421,6 +1421,8 @@ check "GD13: two rows name PR 42 -> the last one is sent to" "$(line33 1)|$(cat 
 fx33; CENSUS33="" go33 --doc "$C33" --contract yes 42 "$SHA"
 check "GD14: no live session -> NOT-SENT no-session" "$(line33 1)|$(nrec33)" "NOT-SENT 42 $H833 reason=no-session N1 (0 live matches)|0"
 check "GD14: then the SENDMESSAGE line to the worker doc's stem" "$(line33 2)" "SENDMESSAGE to=$STEM33 :: $(msg33 "$TOK33" " --jira-transition" | tr '\n' ' ')"
+fx33; CENSUS33_RC=3 go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD18: an incomplete census (exit 3) is never read as a unique match" "$(line33 1)|$(nrec33)" "NOT-SENT 42 $H833 reason=no-session N1 (0 live matches)|0"
 fx33; CENSUS33="$(printf '4242\t%s' "$STEM33B")" go33 --doc "$C33" --contract yes 42 "$SHA"
 check "GD15: a worker relaunched under a lettered label -> SENT" "$(line33 1)|$(cat "$BUSLOG33" 2>/dev/null)" "SENT 42 $H833 to N1 bus=#7|send $STEM33B"
 

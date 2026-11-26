@@ -80,7 +80,6 @@ sender="$(basename "$doc" .md)"
 rol="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${sender}.md.relay-on-live"
 [ "$(sed -n 1p "$rol" 2>/dev/null)" = "$successor" ] && rm -f "$rol"  # swallow-ok: no marker, nothing to disarm
 send="${INBOX_SEND:-$HERE/inbox-send.sh}"
-# a worker's live session is go-deliver.sh's gd_session (it sources worker-identity.sh)
 # shellcheck source=go-deliver.sh
 . "$HERE/go-deliver.sh" || { echo "relay-batch: cannot load go-deliver.sh" >&2; exit 1; }
 # the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
@@ -184,11 +183,6 @@ $bus_queue
 EOB
     [ -z "$dir" ] || rm -rf "$dir"
 }
-# resolve_session <worker doc>: the session name is read from the live census, never
-# guessed: a worker launches under its full doc stem (dated, even -RESUME) or an undated
-# name. go-deliver.sh's gd_session matches it: candidates the full stem first, then
-# worker_identity's names, then a lettered relaunch label put back to the doc's; exactly one
-# live match (hits=1) is the session.
 resolve_session() {
     gd_session "$1" "$census_lines"
     lsession="$GD_SESSION"; hits="$GD_HITS"; cands="$GD_CANDS"

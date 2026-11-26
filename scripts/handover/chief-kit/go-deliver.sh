@@ -104,10 +104,10 @@ gd_brief_merge_chief() { grep -qE '^> \*\*Merge:\*\* chief([^A-Za-z0-9_-]|$)' "$
 gd_census() {
     local out
     if [ -n "${1:-}" ]; then
-        out=$(${_GD_TIMEOUT:+"$_GD_TIMEOUT" -k 2 10} bash "$1" 2>/dev/null) || true  # swallow-ok: a failed census prints the rows it read, an empty one reads as no live session
+        out=$(${_GD_TIMEOUT:+"$_GD_TIMEOUT" -k 2 10} bash "$1" 2>/dev/null) || out=""  # swallow-ok: a failed, cut or incomplete census reads as no live session, so a second match is never ruled out on partial rows
     else
         # shellcheck disable=SC2016  # $1 is the child shell's argument
-        out=$(${_GD_TIMEOUT:+"$_GD_TIMEOUT" -k 2 10} bash -c '. "$1" 2>/dev/null || exit 1; claude_sessions' _ "$_GD_CENSUS_LIB" 2>/dev/null) || true  # swallow-ok: as above
+        out=$(${_GD_TIMEOUT:+"$_GD_TIMEOUT" -k 2 10} bash -c '. "$1" 2>/dev/null || exit 1; claude_sessions' _ "$_GD_CENSUS_LIB" 2>/dev/null) || out=""  # swallow-ok: as above
     fi
     printf '%s\n' "$out" | grep -v '^#' || true  # swallow-ok: no rows is an empty census
 }

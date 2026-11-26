@@ -23,7 +23,6 @@
 # The merge gate, its GO writer and every helper it runs or sources.
 ^scripts/handover/merge-on-green\.sh$
 ^scripts/handover/(console|chief)-kit/go\.sh$
-# go.sh delivers its GO through go-deliver.sh, which reads the session census and runs the bus CLI.
 ^scripts/handover/chief-kit/go-deliver\.sh$
 ^scripts/lanes/lib/claude-sessions\.sh$
 ^marketplace/plugins/himmel-bus/bin/bus$

@@ -282,10 +282,9 @@ while IFS=$'\t' read -r pr head _label _doc contract _tok _cwhy qid; do
 done < "$WORK/golist"
 wait
 
-CENSUS=$(gd_census "${GO_BATCH_CENSUS:-}")
 send_bus() {
     SESSION=""; BUS_REF=""; BUS_ERR=""; BUS_CLASS=""
-    gd_session "$1" "$CENSUS"
+    gd_session "$1" "$(gd_census "${GO_BATCH_CENSUS:-}")"
     if [ "$GD_HITS" -ne 1 ]; then BUS_ERR="$GD_HITS live session(s) match the worker"; BUS_CLASS=no-session; return 0; fi
     SESSION="$GD_SESSION"
     if gd_send "$SESSION" "$2" "${GO_BATCH_BUS:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}" "$3"; then

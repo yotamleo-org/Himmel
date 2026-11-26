@@ -170,7 +170,6 @@ case "$(printf '%s' "${HIMMEL_CONSOLE_RELAY:-}" | tr '[:upper:]' '[:lower:]' | t
     ''|0|false|off|no) ;;
     *) echo "auto-go: refusing - this is a chief relay (HIMMEL_CONSOLE_RELAY is set); only the chief decides a GO." >&2; exit 3 ;;
 esac
-# the token, the session, the GO message and its send are go-deliver.sh's
 # shellcheck source=scripts/handover/chief-kit/go-deliver.sh
 # shellcheck disable=SC1091
 . "$HERE/go-deliver.sh" 2>/dev/null || { echo "auto-go: cannot load go-deliver.sh - refusing" >&2; exit 1; }

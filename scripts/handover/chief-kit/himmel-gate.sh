@@ -74,9 +74,6 @@ fi
 if ! (
     # shellcheck source=/dev/null # the anchor's copies, not this tree's
     . "$gitclean" && git_env_scrub && . "$lib" || exit 1
-    # What the gate runs or sources beyond itself, as guard-pr-check-literal.sh
-    # holds it: the pr-check pair execs other scripts/cr files and sources
-    # lib.sh / load-dotenv.sh; go.sh sources scripts/lib siblings, go-deliver.sh and the bus CLI.
     deps=
     case "$name" in
         pr-check-context | pr-check-env)
