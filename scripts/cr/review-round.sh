@@ -259,7 +259,7 @@ rr_start_outer() {
     rr_wd=$!
     set +m
     trap rr_on_signal TERM INT HUP
-    local w=0 st rc=0
+    local w=0 w2 st rc=0
     while :; do
         wait "$rr_body" 2>/dev/null
         w=$?
@@ -271,6 +271,11 @@ rr_start_outer() {
                 case "$st" in ''|Z*) continue ;; *) rc=137; break ;; esac
             fi
             continue
+        fi
+        if [ "$rr_usr1" -eq 1 ] && [ "$w" -gt 128 ]; then
+            wait "$rr_body" 2>/dev/null
+            w2=$?
+            [ "$w2" -eq 127 ] || w="$w2"
         fi
         rc="$w"
         break
