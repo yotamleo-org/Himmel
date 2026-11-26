@@ -4187,6 +4187,10 @@ assert_rc "11257b19 a command substitution carrying plugin import in a heredoc c
     "$(bash_rc_of "$WT2" "echo \$(agy plugin import claude) <<'EOF'
 y
 EOF" HOME="$T3H")"
+assert_rc "11257b20 a variable command word with an absolute-path default denies" 2 \
+    "$(bash_rc_of "$WT2" '${X:-/usr/bin/agy} plugin import claude' HOME="$T3H")"
+assert_rc "11257b21 a quoted variable command word with an absolute-path default denies" 2 \
+    "$(bash_rc_of "$WT2" '"${X:-/usr/bin/agy}" plugin import claude' HOME="$T3H")"
 assert_rc "11257c1 agy plugin list allows" 0 \
     "$(bash_rc_of "$WT2" "agy plugin list" HOME="$T3H")"
 assert_rc "11257c2 agy plugin list --json allows" 0 \
@@ -4215,6 +4219,8 @@ assert_rc "11257c13 a variable command word with plugin list allows" 0 \
     "$(bash_rc_of "$WT2" '$X plugin list' HOME="$T3H")"
 assert_rc "11257c15 a quoted variable path to another CLI's plugin install allows" 0 \
     "$(bash_rc_of "$WT2" '"$HOME/bin/claude" plugin install foo' HOME="$T3H")"
+assert_rc "11257c17 a quoted braced variable path to another CLI's plugin install allows" 0 \
+    "$(bash_rc_of "$WT2" '"${HOME}/bin/claude" plugin install foo' HOME="$T3H")"
 assert_rc "11257c16 a command substitution carrying plugin list in a heredoc command allows" 0 \
     "$(bash_rc_of "$WT2" "echo \$(agy plugin list) <<'EOF'
 y
