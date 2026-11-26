@@ -329,9 +329,9 @@ case "$tool" in
         # its behaviour on a hook timeout is undocumented (the docs only say an
         # MCP hook error/timeout "can fail the hook without blocking"), so a
         # padded patch must DENY here instead of running out the clock. The
-        # header loop is fork-free, the Darwin case fold included (a case glob
-        # pre-filters header lines before the pure-bash trim; paths are collected
-        # and resolved by ONE hook_resolve_m call afterwards), and the caps bound what is left.
+        # header loop is fork-free (a case glob pre-filters header lines before
+        # the pure-bash trim; paths are collected and resolved by ONE
+        # hook_resolve_m call afterwards) and the caps bound what is left.
         # Byte length, not ${#patch}: under a multibyte locale that counts characters.
         plen=$(printf '%s' "$patch" | LC_ALL=C wc -c 2>/dev/null) || plen=$((MAX_PATCH_BYTES + 1))
         plen=$((plen + 0))
