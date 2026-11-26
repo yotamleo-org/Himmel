@@ -396,17 +396,19 @@ wto_other="$(REPO="$W/repo-other" TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_P
 case "$wto_other" in *wt-orphans*|*wt-ceiling*) fail "a chief on another REPO never reads this REPO's cache (out='$wto_other')" ;; *) pass "a chief on another REPO never reads this REPO's cache" ;; esac
 wto_zero="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-0.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 case "$wto_zero" in *wt-orphans*|*wt-ceiling*) fail "a clean fleet hides wt-orphans and wt-ceiling (out='$wto_zero')" ;; *) pass 'a clean fleet hides wt-orphans and wt-ceiling' ;; esac
-rm -f "$wto_cache_f" "$wto_cache_f.fail"
 wto_err="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-err.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'an unavailable open-PR list reads wt-orphans=unknown, not an all-clear' "$wto_err" ' wt-orphans=unknown'
-rm -f "$wto_cache_f"
+rm -f "$wto_cache_f.fail"
 wto_crash="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-crash.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a failed probe reads wt-orphans=unknown' "$wto_crash" ' wt-orphans=unknown'
+rm -f "$wto_cache_f"
 wto_after="$(TICK_WT_ORPHANS_FAIL_TTL=0 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a failed probe is not cached, so the next tick reads afresh' "$wto_after" ' wt-orphans=2'
-rm -f "$wto_cache_f"
+printf '# clean\n' > "$wto_cache_f"
+rm -f "$wto_cache_f.fail"
 wto_silent="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-silent1.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a probe exiting 1 with no alarm line reads wt-orphans=unknown' "$wto_silent" ' wt-orphans=unknown'
+rm -f "$wto_cache_f"
 wto_after="$(TICK_WT_ORPHANS_FAIL_TTL=0 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a silent exit 1 is not cached as an all-clear' "$wto_after" ' wt-orphans=2'
 : > "$wto_cache_f"
@@ -432,6 +434,13 @@ TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-count.sh" TOKEN
 same 'a failed sweep is not re-run inside its negative TTL' "$(wc -l < "$W/wto-runs" 2>/dev/null | tr -d ' ')" '1'
 TICK_WT_ORPHANS_FAIL_TTL=0 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-count.sh" TOKEN='' bash "$SUT" --doc "$d4670" >/dev/null 2>&1
 same 'a failed sweep is re-run once its negative TTL has passed' "$(wc -l < "$W/wto-runs" 2>/dev/null | tr -d ' ')" '2'
+rm -f "$wto_cache_f" "$wto_cache_f.fail" "$W/wto-slow.pid"
+printf '# clean\n' > "$wto_cache_f"
+touch -d '2 hours ago' "$wto_cache_f"
+wto_slow0="$(TICK_DEADLINE_SEC=30 TICK_SECTION_WAIT=2 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-slow.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'a stale clean reading shows its age, never a current all-clear' "$wto_slow0" ' wt-orphans=0@2h'
+if [ -s "$W/wto-slow.pid" ]; then kill "$(cat "$W/wto-slow.pid")" 2>/dev/null || true; fi  # swallow-ok: the stub may already be gone
+for _ in $(seq 1 40); do [ -e "$wto_cache_f.fail" ] && break; sleep 0.25; done
 rm -f "$wto_cache_f" "$wto_cache_f.fail" "$W/wto-slow.pid"
 wto_fast="$(TICK_FAST=1 TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 case "$wto_fast" in *wt-orphans*) fail "a fast tick skips the worktree sweep (out='$wto_fast')" ;; *) pass 'a fast tick skips the worktree sweep' ;; esac

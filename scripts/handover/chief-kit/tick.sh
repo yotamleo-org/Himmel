@@ -4036,17 +4036,22 @@ if [ "$tick_fast" != 1 ] && [ -f "$wto_probe" ]; then
         fi
     fi
     wto_age="$(tick_cache_age "$wto_cache")"
-    if [ -s "$wto_cache" ]; then
-        wto_out="$(cat "$wto_cache" 2>/dev/null)" || wto_out="SWEEP-ERROR (tick) cache unreadable"  # swallow-ok: a failed cache read becomes wt-orphans=unknown
-    else
+    case "$wto_age" in ''|*[!0-9]*) wto_age='' ;; esac
+    wto_failed="$(tick_cache_age "$wto_cache.fail")"
+    case "$wto_failed" in ''|*[!0-9]*) wto_failed='' ;; esac
+    if [ ! -s "$wto_cache" ]; then
         wto_out="SWEEP-ERROR (tick) no worktree sweep reading yet"
+    elif [ -n "$wto_failed" ] && { [ -z "$wto_age" ] || { [ "$wto_age" -ge $((wto_ttl * 60)) ] && [ "$wto_failed" -le "$wto_age" ]; }; }; then
+        wto_out="SWEEP-ERROR (tick) the sweep failed since the last reading"
+    else
+        wto_out="$(cat "$wto_cache" 2>/dev/null)" || wto_out="SWEEP-ERROR (tick) cache unreadable"  # swallow-ok: a failed cache read becomes wt-orphans=unknown
     fi
     case "$wto_out" in
         *SWEEP-ERROR*) wto_summary=unknown ;;
         *)
             wto_summary=$(grep -c '^ORPHAN ' <<<"$wto_out") || true  # swallow-ok: grep -c exits 1 on a count of 0
             case "$wto_summary:$wto_age" in
-                0:* | *:'' | *[!0-9:]*) ;;
+                *:'' | *[!0-9:]*) ;;
                 *)
                     if [ "$wto_age" -ge 60 ] && [ "$wto_age" -gt $((wto_ttl * 60)) ]; then
                         if [ "$wto_age" -ge 3600 ]; then wto_summary="$wto_summary@$((wto_age / 3600))h"; else wto_summary="$wto_summary@$((wto_age / 60))m"; fi
