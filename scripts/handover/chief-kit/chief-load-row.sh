@@ -208,13 +208,8 @@ except OSError as e:
     raise
 if not stat.S_ISREG(os.fstat(fd).st_mode):
     refuse()
-chunks = []
-while True:
-    chunk = os.read(fd, 65536)
-    if not chunk:
-        break
-    chunks.append(chunk)
-content = b"".join(chunks)
+with os.fdopen(os.dup(fd), "rb") as reader:
+    content = reader.read()
 previous = content.decode("utf-8", "replace").splitlines()
 
 m = None
