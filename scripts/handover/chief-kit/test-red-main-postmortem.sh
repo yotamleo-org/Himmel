@@ -50,6 +50,7 @@ cat > "$W/bin/gh" <<'STUB'
 if [ "${1:-}" = run ] && [ "${2:-}" = list ]; then cat "$STUB_RUNS"; exit 0; fi
 if [ "${1:-}" = run ] && [ "${2:-}" = download ]; then
     id="$3"; dir=""
+    echo "$id" >> "$STUB_DIR/dl.log"
     [ -z "${STUB_DL_FAIL:-}" ] || { echo 'connection reset by peer' >&2; exit 1; }
     [ -z "${STUB_DL_ABSENT:-}" ] || { echo 'no valid artifacts found to download' >&2; exit 1; }
     while [ "$#" -gt 0 ]; do [ "$1" = -D ] && dir="$2"; shift; done
@@ -134,22 +135,16 @@ if [ -z "$out" ] && rc_zero && ! grep -Fxq 900 "$W/seen"; then pass 'a failed ar
 out="$(run_sut)"
 contains 'the retry after a failed download reports the run' "$out" 'red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes'
 
-rm -f "$W/seen" "$W/seen.tries"
-early=""
-for _ in 1 2 3; do early="$early$(STUB_DL_FAIL=1 run_sut)"; done
-if [ -z "$early" ]; then pass 'the first three failed downloads are silent'; else fail "a failed download reported early: $early"; fi
+rm -f "$W/seen" "$W/seen.tries" "$W/dl.log"
+printf '901\t%s\tfailure\n900\t%s\tfailure\n899\t%s\tsuccess\n' "$head" "$head" "$base" > "$W/runs"
+printf 'scripts/test-b.sh\n' > "$W/red-901"
 out="$(STUB_DL_FAIL=1 run_sut)"
-contains 'a download that has failed three ticks is reported unknown on the next' "$out" 'red-main run 900 unknown: the failing-suite artifact could not be read after 3 tries'
-if grep -Fxq 900 "$W/seen"; then pass 'a run whose download keeps failing is marked seen'; else fail 'run 900 not marked seen after three failed downloads'; fi
+if [ -z "$out" ] && [ "$(wc -l < "$W/dl.log")" -eq 1 ]; then pass 'a failed download ends the call before an older run is tried'; else fail "failed download did not end the call: out=$out downloads=$(cat "$W/dl.log")"; fi
+printf '900\t%s\tfailure\n899\t%s\tsuccess\n' "$head" "$base" > "$W/runs"
 
 rm -f "$W/seen" "$W/seen.tries"
-printf '900\n900\n900\n' > "$W/seen.tries"
-out="$(run_sut)"
-contains 'three attempts that never returned are reported without a fourth download' "$out" 'red-main run 900 unknown: the failing-suite artifact could not be read after 3 tries'
-
-rm -f "$W/seen" "$W/seen.tries"
-out="$( ( exec 9>"$W/seen.lock"; flock -n 9; run_sut ) )"
-if [ -z "$out" ] && ! grep -Fxq 900 "$W/seen"; then pass 'a second probe while one runs reports nothing and marks nothing'; else fail "probe ran under a held lock: out=$out"; fi
+out="$( ( exec 9>"$W/seen.lock"; flock -n 9 || { echo LOCKFAIL; exit 3; }; run_sut ) )"
+if [ -z "$out" ] && rc_zero && ! grep -Fxq 900 "$W/seen"; then pass 'a second probe while one runs reports nothing and marks nothing'; else fail "probe ran under a held lock: out=$out"; fi
 
 rm -f "$W/seen" "$W/seen.tries"
 out="$(STUB_DL_ABSENT=1 run_sut)"
