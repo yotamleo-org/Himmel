@@ -11,7 +11,9 @@ Optional registry fields per profile:
 - `excludePlugins`: plugin ids dropped from the profile's resolved plugin list (a list of strings,
   else rc 2), so a profile can inherit `fromProfiles` and leave one plugin out.
 - `mcpServers`: a map of MCP server definitions written to the home's `config/mcp_config.json`
-  (`{"mcpServers":{...}}`, mode 600), checked and rewritten like `skills.json`. A profile with neither
+  (`{"mcpServers":{...}}`, mode 600), checked and rewritten like `skills.json`. Write each entry in
+  the shape `agy mcp add` itself writes: `command` and `args` for a stdio server, `serverUrl` for an
+  http server (smoke also reads `url`, but agy does not). A profile with neither
   `mcpServers` nor `optionalMcpServers` leaves `mcp_config.json` alone; a profile that names either key
   (even an empty one) owns the file, so a removed server leaves it. `--check` also needs mode 600, and
   `--apply` sets it. A non-object `mcpServers`, a non-object server entry, a non-list
@@ -27,13 +29,15 @@ T3 runs each Antigravity instance as `agy acp --gemini-dir <home>` with
 `<home> = ${T3CODE_HOME:-$HOME/.t3}/userdata/providers/antigravity/<sha256 hex of the instance id>`.
 For `antigravity_design` that is `.../0a26fb5900d14a0aec6070688e23bf158dc4097e2721393e4d7b746a1b54914e`.
 
-`--apply` touches three files in that home and nothing else:
+`--apply` touches these paths in that home and nothing else:
 
 - `config/hooks.json`, through `scripts/antigravity/install-antigravity-backstop.sh` (that installer
   also writes `~/.gemini/config/hooks.json` and every other provider home's `config/hooks.json`);
-- `antigravity-acp/antigravity-oauth-token`, a symlink to the bare `antigravity` home's token (see
-  "The login");
-- `config/skills.json`, a regular file (mode 600) written by atomic rename.
+- `antigravity-acp/` (created mode 700 when missing) and `antigravity-acp/antigravity-oauth-token`, a
+  symlink to the bare `antigravity` home's token (see "The login");
+- `config/skills.json`, a regular file (mode 600) written by atomic rename;
+- `config/mcp_config.json`, only for a profile that names `mcpServers` or `optionalMcpServers`: a
+  regular file (mode 600) written by atomic rename.
 
 The home is created mode 700 if missing. A pinned skill that is not cached is fetched with `git fetch`,
 so an offline `--apply` exits 2.
@@ -109,9 +113,10 @@ no model; the thread's `modelSelection` names it, as every T3 thread does.
 
 - `--dry-run` prints the instance id, home, whether the backstop key is present, any pinned
   fetch it would do, and the `skills.json` it would write. It creates and fetches nothing.
-- `--check` writes and fetches nothing: rc 0 only when the backstop key is present and
-  `skills.json` equals what `--apply` would write now; otherwise it says why (rc 1).
-- A second `--apply` prints `UNCHANGED` and leaves `skills.json` byte-identical.
+- `--check` writes and fetches nothing: rc 0 only when the backstop key is present, `skills.json` (and
+  `mcp_config.json`, when the profile manages MCP servers) equals what `--apply` would write now with mode
+  600, and the login is shared when the bare login exists; otherwise it says why (rc 1).
+- A second `--apply` prints `UNCHANGED` for each file already right and leaves it byte-identical.
 - `--list` is the one place the profile list is computed; `provider-instances.sh` calls it and
   never reads the registry. It prints nothing else, and exits 2 on a malformed registry or a
   profile named `relay` or ending `_relay` (its relay copy id would collide).
@@ -169,8 +174,9 @@ the `playwright` CLI on PATH beats `npx playwright`, which downloads it on each 
 fallback for it and for npx-served MCP servers; `chromium` (or `chromium-browser`, `google-chrome`) is
 the browser playwright drives. An absent one is `INFO`, never `FAIL`, and does not change the exit code.
 
-A `FAIL` line names the missing link and the command that fixes it. Smoke writes and fetches nothing and
-never opens the login file; the hook command it runs may write its own hook log.
+A `FAIL` line names the missing link and the command that fixes it. Smoke writes and fetches nothing, never
+opens the login file, and reaches the network only to curl an http(s) MCP server URL (5 s); the hook
+command it runs may write its own hook log.
 
 ## Test
 

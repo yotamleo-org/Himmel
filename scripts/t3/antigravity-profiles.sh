@@ -11,15 +11,18 @@
 #              and writes nothing.
 #   --apply    for each profile, in this order: create the home (mode 700), run the hook backstop
 #              installer, verify its himmel-antigravity-backstop key is in <home>/config/hooks.json,
-#              and only then write <home>/config/skills.json (a regular file, mode 600). Missing
-#              pinned skill checkouts are fetched into the cache first. No other file in the home
-#              is created, changed or deleted.
-#   --check    rc 0 iff every selected profile's home has the backstop key and a regular-file
-#              skills.json equal to what --apply would write now. Writes and fetches nothing.
+#              link antigravity-acp/antigravity-oauth-token to the bare home's, write
+#              <home>/config/skills.json and, when the profile names MCP servers,
+#              <home>/config/mcp_config.json (regular files, mode 600). Missing pinned skill
+#              checkouts are fetched into the cache first. No other file in the home is created,
+#              changed or deleted.
+#   --check    rc 0 iff every selected profile's home has the backstop key, a regular-file skills.json
+#              (and mcp_config.json when managed) equal to what --apply would write now with mode 600,
+#              and the shared login when the bare login exists. Writes and fetches nothing.
 #   --smoke    one PASS or FAIL line per link a thread on the profile needs: login, himmel hooks (a control
 #              read of the login file must be denied), skills, MCP servers, the T3 instance and its
-#              .t3.instance_allowlist entry. rc 0 iff every line is PASS. Writes and fetches nothing and
-#              never opens the login file.
+#              .t3.instance_allowlist entry. rc 0 iff every line is PASS. Writes and fetches nothing, never
+#              opens the login file, and curls only an http(s) MCP server URL.
 #   --flag-on  rc 0 when the agy_design_profile flag is on, 1 off, 2 on a bad value (himmel-update reads it here).
 #   --profile  limit to one registry profile (repeatable); default is every profile.
 # Home: ${T3CODE_HOME:-$HOME/.t3}/userdata/providers/antigravity/<sha256 hex of the instance id>.
