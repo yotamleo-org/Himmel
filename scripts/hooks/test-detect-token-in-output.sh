@@ -214,9 +214,7 @@ grep -rqF -e "$TOK_GHO" -e "$TOK_PAT" -e "$TOK_GHP" "$TMP/alerts"
 g=$?
 if [ "$g" = 1 ] && [ -n "$(ls -A "$TMP/alerts")" ]; then pass "sentinels hold no token"; else fail "token in sentinel dir (grep rc=$g)"; fi
 
-# 13. Placeholders: a ghp_/gho_/ghu_/ghs_/ghr_ value that fails the GitHub
-# checksum is a test fixture, not a credential: one PLACEHOLDER line on screen
-# with its prefix and last four only, no agent report, no DM, no sentinel.
+# 13. Placeholders.
 is_placeholder() {
     [ "$rc" = 0 ] && ! grep -q 'LIVE' "$1" && [ "$(wc -l <"$1" | tr -d ' ')" = 1 ] \
         && jq -e '(.systemMessage | startswith("TOKEN-IN-OUTPUT PLACEHOLDER")) and (has("hookSpecificOutput") | not)' "$1" >/dev/null 2>&1 \

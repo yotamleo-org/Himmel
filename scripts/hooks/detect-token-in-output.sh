@@ -41,12 +41,8 @@ IFS= read -r -d '' input 2>/dev/null || :
 tok_re='(gh[opusr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{82})'
 [[ $input =~ $tok_re ]] || exit 0
 
-# LIVE or PLACEHOLDER. A real ghp_/gho_/ghu_/ghs_/ghr_ token ends in a 6-char
-# base62 CRC32 of the 30 chars before it, so one that fails it is a fixture,
-# however random its body looks. A fine-grained PAT carries no checksum: it is a
-# placeholder when its body has fewer than 8 distinct characters or a run of 8
-# consecutive alphabet characters, which a random body almost never holds.
-# Pure bash: the regex-hit path forks nothing.
+# A real ghp_/gho_/ghu_/ghs_/ghr_ token ends in a 6-char base62 CRC32 of the 30
+# chars before it. A fine-grained PAT carries no checksum, so its body shape decides.
 b62="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 is_live_token() {
     local t="$1" body seen="" ch c i j b n sum="" k prev=-1 run=0
@@ -99,12 +95,9 @@ while [[ $rest =~ $tok_re ]]; do
     rest="${rest#*"$t"}"
 done
 
-# Per token: the kind, its last four characters and the variable it was
-# assigned to, when the text shows one; never more of the value. Names are read
-# from the DECODED string values (jq), so an escaped `\n` before `NAME=` does
-# not become part of the name; without jq, the raw text. Quotes may still be
-# JSON-escaped there (`\"`), hence the backslash in the bracket. A name that is
-# itself a token is never used: it would echo it.
+# Names are read from the DECODED string values (jq), so an escaped `\n` before
+# `NAME=` does not become part of the name. Quotes may still be JSON-escaped
+# there (`\"`), hence the backslash in the bracket.
 scan=""
 if command -v jq >/dev/null 2>&1; then
     scan=$(jq -r '[.. | strings] | join("\n")' <<<"$input" 2>/dev/null) || scan=""
