@@ -627,8 +627,8 @@ recorded included. An ask on settings or `.github/`
     - `ask-ready <label>` / `ask-resolve <label>`: the newest bullet on an `ask` row (`t3_kind` `ask`) is a `READY …` or a `BLOCKED resolve …`. The waiter takes no READY or resolve action on such a row (no worker-ready, no ready-check, no auto-go, auto_go on or off), so nothing ran. Read the bullet and the thread yourself and answer by `t3-send.sh`. Each bullet wakes once.
 
     `BOUND <id> <label>` and `UNBOUND <id> <label>` do not wake you alone: they join the
-    housekeeping digest as kind `t3-relay` (they wake as `WAKE t3-relay BOUND …` only with the
-    digest off). A scan that finds another live chief owning binding (rc 5) is silent.
+    housekeeping digest as kind `t3-relay` (with the digest off they wake as `WAKE t3-relay BOUND <id> <label>` and
+    `WAKE t3-relay UNBOUND <id> <label>`). A scan that finds another live chief owning binding (rc 5) is silent.
     Design: `running-a-chief.md`, "Chief threads in T3 Code".
 
     **A silent worker wakes you once, and the operator is already told**.
@@ -652,7 +652,7 @@ recorded included. An ask on settings or `.github/`
 
     - `none`: the worker is silent for less than the first bound. Nothing to do.
     - `fresh`: the worker's doc was written within the first bound. Nothing to do.
-    - `done`: nothing is due for this write time: the nudge ran and the relaunch either ran, is not yet due, or is inside the grace after the nudge. The relaunch is due only at twice the first bound and after the grace, so take over by hand only once both have passed and no `relaunched` or `relaunch=failed` followed; until then the waiter relaunches on its own.
+    - `done`: nothing is due for this write time: the nudge ran and the relaunch either ran, is not yet due, or is inside the grace after the nudge. The relaunch is due only at twice the first bound and after the grace, so take over by hand only once both have passed and no `relaunched` or `relaunch=failed` followed; until then the waiter may relaunch on its own (not when `live-silent` or `census=unknown` rule it out).
     - `busy`: another helper holds this worker's lock. Wait for the next call.
     - `nudged`: the bus nudge reached its one live window. Wait; the relaunch comes only past the grace.
     - `nudge=no-window`: no single live window named the worker. Past bound one it also opens an owed row (`owed=`) unless the relaunch is already due; find the worker with `ListAgents` and nudge it by hand.
