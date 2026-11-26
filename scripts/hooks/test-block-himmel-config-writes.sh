@@ -692,6 +692,9 @@ bash_case "10322 a symlink to the config file written by redirect -> block" bloc
 run "10322 a bare file name that is a symlink to the config (payload cwd) -> block" block "$(jq -nc --arg c "cp x alias.json" --arg d "$T" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}')"
 run "10322 a bare file name that is a symlink to himmel.conf (payload cwd) -> block" block "$(jq -nc --arg c "echo x > himmel.conf" --arg d "$T/station-alias" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}')"
 run "10322 control: a bare unrelated file name (payload cwd) -> allow" allow "$(jq -nc --arg c "cp x notes.txt" --arg d "$T" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}')"
+filler=""; for _i in $(seq 1 150); do filler="$filler w$_i"; done
+bash_case "10322 plain words before the operand do not use up its budget -> block" block "echo$filler; cp x $T/alias.json"
+bash_case "10322 control: many plain words and an unrelated operand -> allow" allow "echo$filler; cp x $T/notes.txt"
 bash_case "10322 control: cat through a symlinked directory -> allow" allow "cat $T/station-alias/himmel.conf"
 bash_case "10322 control: cp through a symlinked directory onto an unrelated file -> allow" allow "cp $T/x $T/station-alias/notes.txt"
 bash_case "10322 control: redirect to a symlink of an unrelated file -> allow" allow "echo x > $T/AlNotes.txt"

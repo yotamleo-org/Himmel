@@ -609,15 +609,18 @@ fi
 
 phys_names=0
 if ! names_guarded_file "$cmd" && ! names_guarded_file "$lc"; then
-    phys=()
+    phys=() n_slash=0 n_plain=0
     set -f
     for _w in $cmd; do
         operand_clean "$_w"; _o="$OPERAND"
         case "$_o" in ""|-*) continue ;; esac
         case "$_o" in *'$'*|*'`'*|*'*'*|*'?'*|*'['*|*'{'*) continue ;; esac
+        case "$_o" in
+            */*) [ "$n_slash" -lt 100 ] || continue; n_slash=$((n_slash + 1)) ;;
+            *) [ "$n_plain" -lt 100 ] || continue; n_plain=$((n_plain + 1)) ;;
+        esac
         case "$_o" in /*) ;; *) _o="$cmd_cwd/$_o" ;; esac
         phys[${#phys[@]}]="$_o"
-        [ "${#phys[@]}" -lt 100 ] || break
     done
     set +f
     if [ "${#phys[@]}" -gt 0 ]; then
