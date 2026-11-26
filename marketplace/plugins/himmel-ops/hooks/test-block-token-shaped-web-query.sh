@@ -116,11 +116,18 @@ tok=$(gh_token r "$good_sum")
 PROJ="$TMP/no-checkout" run_case "$(search_payload "x $tok")"
 refused "a checkout without detect-token-in-output.sh still refuses (built-in regex)"
 
-mkdir -p "$TMP/narrowed/scripts/hooks" "$TMP/invalid/scripts/hooks" "$TMP/nojq"
+mkdir -p "$TMP/narrowed/scripts/hooks" "$TMP/invalid/scripts/hooks" "$TMP/wider/scripts/hooks" "$TMP/nojq"
 printf "tok_re='(ghp_[0-9A-Za-z]{99})'\n" >"$TMP/narrowed/scripts/hooks/detect-token-in-output.sh"
 printf "tok_re='(['\n" >"$TMP/invalid/scripts/hooks/detect-token-in-output.sh"
+printf "tok_re='(gh[opusr]_[0-9A-Za-z]{36}|zzq_[0-9]{4})'\n" >"$TMP/wider/scripts/hooks/detect-token-in-output.sh"
 ln -s "$(command -v cat)" "$TMP/nojq/cat"
+fixtures=0
+for d in narrowed invalid wider; do [ -s "$TMP/$d/scripts/hooks/detect-token-in-output.sh" ] && fixtures=$((fixtures + 1)); done
+assert_eq "the three detector fixtures were written" 3 "$fixtures"
+if [ -L "$TMP/nojq/cat" ] && [ -x "$TMP/nojq/cat" ]; then echo "PASS the no-jq PATH holds cat"; else echo "FAIL the no-jq PATH holds cat"; FAILED=$((FAILED + 1)); fi
 tok=$(gh_token r "$good_sum")
+PROJ="$TMP/wider" run_case "$(search_payload "look up zzq_1234")"
+refused "a checkout regex that adds a shape is followed as extra coverage"
 PROJ="$TMP/narrowed" run_case "$(search_payload "x $tok")"
 refused "a checkout whose detector regex is narrowed still refuses (built-in regex)"
 PROJ="$TMP/invalid" run_case "$(search_payload "x $tok")"
@@ -138,6 +145,16 @@ run_nojq "$(printf '{"tool_name":"WebSearch","tool_input":{"query":"x %su0067%s"
 refused "without jq, a token hidden behind a JSON escape is refused"
 run_nojq "$(search_payload "latest bun release notes")"
 allowed "without jq, an ordinary query passes"
+run_nojq "$(printf '{"tool_name":"WebSearch","tool_input":{"query":"the %s%su0067 escape syntax"}}' "$bs" "$bs")"
+allowed "without jq, a search for the literal escape syntax passes"
+run_nojq "$(printf '{"tool_name":"WebSearch","tool_input":{"query":"x %s%s%su0067%s"}}' "$bs" "$bs" "$bs" "${tok:1}")"
+refused "without jq, an escape behind an escaped backslash is still refused"
+
+tok=$(gh_token r "$good_sum")
+run_case "$(fetch_payload "https://example.com/a${bs}n${pct}67${tok#g}")"
+refused "a percent escape after a backslash sequence is still decoded"
+run_case "$(fetch_payload "https://example.com/a${bs}c${pct}67${tok#g}")"
+refused "a percent escape after a backslash-c is still decoded"
 
 run_case "$(search_payload "latest bun release notes")"
 allowed "an ordinary query passes"
