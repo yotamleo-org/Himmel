@@ -143,6 +143,10 @@ for raw in 'not json release operator' '[]' '"x"' ''; do
     check deny "stdin '$raw'" "cannot parse the hook input"
 done
 
+n=$((n + 1)); payload "$TMP/p$n.json" absent "ls"; payload "$TMP/q$n.json" "$SUB" "$WRITE"; cat "$TMP/q$n.json" >>"$TMP/p$n.json"
+run_hook "$TMP/p$n.json"
+check deny "two JSON objects, the first with no agent_id" "cannot parse the hook input"
+
 expect allow "no agent_id (the chief)" absent "$WRITE"
 expect allow "agent_id null (the chief)" 'null' "$WRITE"
 expect allow "a subagent reads spec-check" "$SUB" "$CLI release spec-check K-2"

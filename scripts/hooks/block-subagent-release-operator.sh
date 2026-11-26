@@ -63,10 +63,10 @@ command -v jq >/dev/null 2>&1 \
 # fd 0 itself would read its own output pipe, which takes the free fd 0, and hang).
 input=""
 IFS= read -r -d '' input 2>/dev/null || true # swallow-ok: read -d '' returns 1 at EOF on every input; empty input is the parse deny below
-parsed=$(jq -r '
-  if type != "object" then error("not an object")
+parsed=$(jq -rs '
+  if length != 1 or (.[0] | type) != "object" then error("not one object")
   else
-    (if .agent_id == null then "chief" else "sub" end),
+    .[0] | (if .agent_id == null then "chief" else "sub" end),
     ((.tool_input.command // "") | if type == "string" then . else tostring end)
   end' <<<"$input" 2>/dev/null) || parsed=parse
 
