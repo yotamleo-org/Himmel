@@ -165,7 +165,7 @@ below are the background and the plugin-free variant.
       this worktree first. Query `graphify query "<question>" --graph graphify-out/graph.json`,
       not the unclassified cached `/tmp` graph. Search with
       `bash scripts/lib/qmd-bounded.sh search "<terms>" -c himmel`, never bare
-      qmd search or a vault collection. The wrapper finds the installed bun-global
+      qmd search or a vault collection. Send each search alone in its response (a batched one can be refused unrun). The wrapper finds the installed bun-global
       tool even without a qmd shim on PATH.
    4. Edit ONLY the named files; keep the diff minimal and in the surrounding style.
    5. Write the new or changed test FIRST and show it RED without the fix, then
