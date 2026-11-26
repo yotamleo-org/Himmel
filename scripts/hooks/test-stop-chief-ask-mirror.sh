@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Suite for scripts/hooks/stop-chief-ask-mirror.sh: a Stop hook that hands a
-# chief reply holding `Needs you:` to ask-mirror.sh through the stop queue and
-# returns before any post starts. Real queue, stubbed route; fixtures in a temp dir.
-# bash 3.2-safe.
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
