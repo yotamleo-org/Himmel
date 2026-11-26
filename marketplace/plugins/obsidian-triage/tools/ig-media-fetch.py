@@ -66,7 +66,7 @@ DOWNLOAD_TIMEOUT = 180
 MEDIA_MAX_BYTES = 500 * 1024 * 1024
 SCRAPLING_HINT = (
     "\n  or install the cookieless Scrapling backend (needs a python 3.11.5+ for the venv; python3.12 is an example): "
-    "python3.12 -m venv ~/.himmel/scrapling-venv ; ~/.himmel/scrapling-venv/bin/pip "
+    "python3.12 -m venv --clear ~/.himmel/scrapling-venv ; ~/.himmel/scrapling-venv/bin/pip "
     "install --require-hashes -r <plugin>/tools/requirements-scrapling.txt ; "
     "~/.himmel/scrapling-venv/bin/python -m patchright install chromium")
 FFMPEG_TIMEOUT = int(os.environ.get("IG_MEDIA_FFMPEG_TIMEOUT", "300"))

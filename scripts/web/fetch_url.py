@@ -26,7 +26,7 @@ HERE = Path(__file__).resolve().parent
 TIMEOUT_S = 30
 TIMEOUT_MS = 60000
 INSTALL_HINT = ("scrapling is not installed (needs a python 3.11.5+ for the venv; python3.12 is an example): "
-                "python3.12 -m venv ~/.himmel/scrapling-venv && "
+                "python3.12 -m venv --clear ~/.himmel/scrapling-venv && "
                 "~/.himmel/scrapling-venv/bin/pip install --require-hashes -r "
                 "marketplace/plugins/obsidian-triage/tools/requirements-scrapling.txt "
                 "&& ~/.himmel/scrapling-venv/bin/python -m patchright install chromium")
