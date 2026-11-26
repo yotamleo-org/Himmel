@@ -170,7 +170,7 @@ function roundStatusAll(bucket: string, env: Env): RoundStatus | undefined {
 }
 const OWED_RE = /operator[ -](?:sign-?off|runs?|words|signs?|decides?|on Telegram|only)|Telegram ask|operator-owed/i;
 const OPERATOR_CLASS_RE = /\bspend|\bgrants?\b|\bpaid\b|billing|payment|\baccounts?\b|\bterms\b|\btos\b|\broot\b|\bsudo(?:ers)?\b|reinstall|admin install|\boauth\b|api credit|\bphysical(?:ly)?\b|hardware|public[ -]polic|policy call/i;
-const OPERATOR_ONLY_RE = /\bgo code\b|phone approval|on your phone|\bclaude\.md\b|relax(?:es|ing)? (?:a|the) guard|revers(?:al|e|es|ing) (?:of )?(?:his|the operator'?s)\b|spec (?:he|the operator) marked/i;
+const OPERATOR_ONLY_RE = /operator[ -]signs?[ -]?off\b.*\bGO\b|\b(?:approve|grant|authori[sz]e)\b[^|.]{0,40}\b(?:spend|payment|billing|paid|credit)\b|\bgo code\b|phone approval|on your phone|\bclaude\.md\b|relax(?:es|ing)? (?:a|the) guard|revers(?:al|e|es|ing) (?:of )?(?:his|the operator'?s)\b|spec (?:he|the operator) marked/i;
 const CHIEF_OWNED_RE = /\bchief[- ](?:signs?|signature|kit|dut(?:y|ies))\b|\bjudge\b|\brelaunch|\bwaiter\b/i;
 export function ownerOf(text: string, declared: OwedActor): OwedActor {
   if (OPERATOR_ONLY_RE.test(text)) return "operator";
