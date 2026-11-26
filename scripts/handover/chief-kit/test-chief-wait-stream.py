@@ -450,6 +450,26 @@ echo 'HANDLED close-wrapped'
             left.close()
             right.close()
 
+    def test_silent_helper_result_for_a_keyed_worker_rides_a_wake_line(self):
+        worker = self.root / 'HIMMEL-1-N1-a.md'
+        worker.write_text('# worker\n## Results\n')
+        old = time.time() - 3 * 3600
+        os.utime(worker, (old, old))
+        self.fleet.write_text(json.dumps({'workers': [{'doc': str(worker), 'label': 'N1'}]}))
+        self.script('tick', 'echo "TICK workers=N1:FRESH livestate=0 prs=none tails=none acts=none workerset=0 board=ok tracker=ok denials=0 capacity=FULL busedge=MISSING:N1 wakerstate=N1:capped"\n')
+        act = self.script('act', 'n=$(cat "$TEST_ROOT/acts" 2>/dev/null || echo 0)\necho $((n + 1)) > "$TEST_ROOT/acts"\n'
+                          'if [ -f "$TEST_ROOT/relaunch" ]; then rm -f "$TEST_ROOT/relaunch"; echo "SILENT-ACT N1 relaunched RESUME-N1"; exit 0; fi\n'
+                          'if [ "$n" -eq 0 ]; then echo "SILENT-ACT N1 nudged"; else echo "SILENT-ACT N1 done"; fi\n')
+        env = dict(self.env, CHIEF_WAIT_SILENT_ACT=act, CHIEF_WAIT_WORKER_SILENT_MIN='30', CHIEF_WAIT_INTERVAL='1',
+                   CHIEF_WAIT_PAGE_CMD=str(self.root / 'off'))
+        p, out = self.start(env=env)
+        self.armed()
+        self.until(lambda: 'WAKE#1 worker-silent N1' in out.read_text())
+        (self.root / 'relaunch').touch()
+        self.until(lambda: 'WAKE#2 worker-silent N1' in out.read_text())
+        self.assertIn('SILENT-ACT N1 relaunched RESUME-N1', self.path('wake-2').read_text())
+        self.stop(p)
+
     def test_repeat_and_flood_limits_keep_full_blocks(self):
         child = self.script('chief-wait-stub', "echo 'WAKE fixture repeat'\necho 'full detail retained'\n")
         env = dict(self.env, CHIEF_WAIT_STREAM_CHILD=child)
