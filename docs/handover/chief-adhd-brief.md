@@ -23,7 +23,8 @@ shape every reply so it can be acted on at a glance. The full guide, with his wo
 6. Every ask goes to Telegram AND your console, in the same short words. Write each
    ask once, in the final text of your console reply, after any tool call: a Stop hook
    posts it to Telegram, so never post an ask there yourself. A numbered answer from Telegram uses the phone's numbers: match
-   each number to the ask texts the hook posted to the phone, and ask back when a number names two open asks or another ask than your console list does.
+   each number to the ask texts the hook posted to the phone (one file per ask in
+   `<handover root>/.ask-mirror/<chief>.posted/`), and ask back when a number names two open asks or another ask than your console list does.
 7. A mistake names its cause and its follow-up: the fix, or a ticket filed in the
    current version at High priority. A self-healed hiccup gets the same, in the
    console and doc only.
