@@ -8,6 +8,9 @@ scripts/jira/dist/
 # node_modules anywhere — none are tracked. A per-package list let
 # marketplace/plugins/*/node_modules/ slip through and be sweepable.
 node_modules/
+# a worktree's node_modules SYMLINK to the primary's install is not a directory,
+# so the rule above misses it and it keeps a merged worktree from pruning.
+node_modules
 /.claude/settings.local.json
 # /allow-rule backups (.bak-<epoch>-<pid>) and mktemp orphans written beside it.
 /.claude/settings.local.json.*

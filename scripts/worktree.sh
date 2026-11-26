@@ -684,6 +684,7 @@ is_ignorable_stray() {
         __pycache__/*|*/__pycache__/*)         return 0 ;;
         *.pyc)                                 return 0 ;;
         .vitest/*|*/.vitest/*)                 return 0 ;;
+        node_modules|*/node_modules)           return 0 ;;
         # worker ship scratch at the worktree ROOT only (no */ forms:
         # the same name nested below the root is real work). Directory shapes
         # match as "<dir>/*" because --untracked-files=all lists their files.
@@ -694,7 +695,7 @@ is_ignorable_stray() {
         # WORKER_SESSION_SCRATCH_OK=0 on the --only-allow-unmerged path (the branch never
         # merged): a no-commit worker's scratch may be its only copy, so only
         # the tool churn above stays discardable there.
-        .scratch/*|.himmel-scratch/*|.os-verify-logs-*/*) [ "$WORKER_SESSION_SCRATCH_OK" -eq 1 ] && return 0; return 1 ;;
+        .scratch/*|.himmel-scratch/*|.os-verify-logs-*/*|.base-qmd-check/*|.superpowers/*) [ "$WORKER_SESSION_SCRATCH_OK" -eq 1 ] && return 0; return 1 ;;
         # A case `*` matches "/", so the filename shapes below need an
         # explicit no-slash guard or `.pr-body-notes/design.md` would match.
         */*) return 1 ;;
