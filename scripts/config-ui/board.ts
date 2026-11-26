@@ -148,7 +148,7 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
 }
 
 // What is owed to the operator beside the labels and the chain holds, read from the records that hold it: the same sources as the roadmap
-// tracker's reader (tracker.py operator_owed), but the owner comes from ownerOf here and from the tracker's own keyword set there, so the two lists can differ. All READ ONLY.
+// tracker's reader (tracker.py operator_owed). All READ ONLY.
 //   1. an unsigned spec: the latest critic verdict of a spec of an open ticket of the running version is SPEC CLEAN, or the ticket's spec round
 //      in the round ledger (chief-route.ts round-status) is at the cap, and <bucket>/release/<version>/operator.jsonl has no `spec` row naming
 //      that spec file; and an open ticket whose ledger holds an operator-critical finding the operator has not ruled on, at any round;
