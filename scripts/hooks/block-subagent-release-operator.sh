@@ -112,7 +112,6 @@ scan_segments() {
         core=${GU_CORE[s]:-0}
         if [ "$core" -lt "$n" ]; then
             cb=${ST_W[idx[core]]##*/}
-            cb=${cb%.exe}
             case "$cb" in
                 bash|sh|zsh|dash|ksh|mksh|ash|yash|posh|eval|source|.|node*|bun|deno|tsx|npx|python*|perl*|ruby*|php*|lua*)
                     if [ "$ST_HEREDOC" = 1 ]; then
