@@ -189,7 +189,20 @@ def sev_w: "Critical|Major|Minor|Trivial";
 def sev_hdr_re: "</picture> (" + sev_w + ") comments? [(]([0-9]+)[)]</summary>";
 def sev_ent_re: "(?m)^`(?<l>[0-9]+(?:-[0-9]+)?)`: [*][*]<picture>(?:(?!</picture>)[^\n])*</picture> (?<s>" + sev_w + ")[*][*]";
 def sev_hdrs: reduce ( [ scan(sev_hdr_re) ] | .[] ) as $p ({}; .[$p[0]] += ($p[1] | tonumber));
-def sev_ents: reduce ( [ scan(sev_ent_re) ] | .[] ) as $p ({}; .[$p[1]] += 1);
+def other_sec_re: "</picture> (?:" + outside_re + "|" + nitpick_re + "|" + additional_re + ")</summary>";
+def add_sec_re: "</picture> " + additional_re + "</summary>";
+def unv_re: "^<picture>(?:(?!</picture>)[^\n])*</picture> [*][*]Unverified finding[*][*][ ]*$";
+def sev_ents:
+  def flush: (if .p != null and ((.p.add and .p.unv) | not) then .m[.p.s] += 1 else . end) | .p = null;
+  reduce ( split("\n")[] ) as $l ({on:false, add:false, m:{}, p:null};
+    if ($l | test(sev_hdr_re)) then flush | .on = true | .add = false
+    elif ($l | test(other_sec_re)) then flush | .on = false | .add = ($l | test(add_sec_re))
+    elif ($l | test(sev_ent_re)) then flush
+        | ($l | capture(sev_ent_re).s) as $s
+        | if .on then .m[$s] += 1 else .p = {s: $s, add: .add, unv: false, first: true} end
+    elif (.p != null and .p.first and ($l | test("\\S"))) then
+        .p.first = false | .p.unv = ($l | test(unv_re))
+    else . end ) | flush | .m;
 def sev_n: sev_hdrs | add // 0;
 def outside_n: sum_matches(outside_re) + count_matches(fu_od_re);
 def nitpick_n: sum_matches(nitpick_re) + ( if test(fu_hdr_re) then count_matches(fu_nit_re) else 0 end );
@@ -309,6 +322,8 @@ def sev_of($t): if ($t|test("Critical")) then "crit" elif ($t|test("Major")) the
 | ( reduce ($L | to_entries[]) as {key: $i, value: $l} ({on:false, hdr:0, file:null, cur:null, items:[]};
     if ($l | test(sev_hdr_re)) then
         .on = true | .hdr += ($l | [ scan(sev_hdr_re) ] | .[0][1] | tonumber) | .file = null | .cur = null
+    elif (.on and ($l | test(other_sec_re))) then
+        .on = false | .cur = null
     elif (.on and ($l | test("^---+[ ]*$")) and ($more[$i] | not)) then
         .on = false | .cur = null
     elif (.on | not) then .
