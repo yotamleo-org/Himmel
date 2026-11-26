@@ -37,7 +37,10 @@ release is declared (`jira release state <R>` prints a status other than
   the new words, `jira release withdraw <R> --req <id> --reason "<why>"` it first,
   then run the request again. `jira
   create`, `jira move` and the MCP `create` tool take the same `--decision` and
-  `--words` and check them before anything is filed. A worker's request that the
+  `--words` and check them before anything is filed. A subagent that files a
+  ticket uses an explicit placement and no `--words` (a `jira release request`
+  needs none), or hands the exact `--decision --words` line back to you, because
+  the subagent fence refuses a command that carries both options. A worker's request that the
   RM refuses comes back to you as a refusal.
 - **A ruled-away ask wakes you once.** A refused ask is a key whose latest
   receipted ruling, on a request from the backlog into a version, left it outside
