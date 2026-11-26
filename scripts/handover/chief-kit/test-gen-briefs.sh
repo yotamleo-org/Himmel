@@ -2508,7 +2508,7 @@ mkdir -p "$WORK/outside-ms/specs/designs"; : > "$WORK/outside-ms/real.json"
 ln -s "$WORK/outside-ms" "$MS_ROOT/lnk-ms"; ln -s "$WORK/outside-ms/real.json" "$MS_DIR/$MS3K-sym.estimate.json"
 ms3_refused() {
     ms_gen "$1" $MS3K "$2"
-    { [ "$rc" = 1 ] && [ -z "$(cg_brief "$1")" ]; } && pass "R3 control: $3 is refused as before" || fail "R3 control $3 rc=$rc: $cgo"
+    { [ "$rc" = 1 ] && [ -z "$(cg_brief "$1")" ] && ms_has "$cgo" "$MS3K is core"; } && pass "R3 control: $3 is refused as before" || fail "R3 control $3 rc=$rc: $cgo"
 }
 ms3_refused ms3data "$MS3.md $MS_DIR/$MS3K-data.json" "a non-sibling .json beside the spec"
 ms3_refused ms3list "$MS_DIR/ ($MS3K-x.md, $MS3K-x.estimate.json)" "the absolute dir/ (a, b) list form"
