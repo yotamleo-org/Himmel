@@ -615,6 +615,22 @@ recorded included. An ask on settings or `.github/`
     `TICK_HOLD_MIN` minutes, default 20): read its newest bullet and answer it. It
     does not repeat while the hold stands.
 
+    **A T3 relay event wakes you once.** With `--workers-from`, the waiter runs
+    `relay-bind.sh scan` once per `CHIEF_WAIT_T3_RELAY_SEC` (default 120) and prints
+    `WAKE t3-relay <kind> <id|list|stem>` plus the tick line. `<id>` is a threadId, `list`
+    is literal, `stem` is the old owner's chief doc stem. The kind decides your action:
+    - `ask-thread-pr <id>`: an ask thread now has a linked PR. Read the thread's `T3ASK-` doc and the PR, and answer through `t3-send.sh <id> <msg-file>`.
+    - `bind-gave-up <id>`: the send of the doc path to the thread failed three times, so the row's notice is `failed`. Send the doc path by hand with `t3-send.sh <id> <msg-file>`.
+    - `bind-refused <id>`: the binder refused the thread, with reason `gitleaks` (a scan hit) or `exists` (its `T3ASK-` doc is already there), and unbound it. Tell the operator which; never copy the thread text.
+    - `owner-taken <stem>`: this chief took path B binding from the old owner `<stem>` once its queue lock ended. Nothing to run; it is information.
+    - `list-failed list`: the third `t3 thread list` failure in a row. Check by hand that `t3 thread list` answers; a good scan resets the count.
+    - `ask-ready <label>` / `ask-resolve <label>`: the newest bullet on an `ask` row (`t3_kind` `ask`) is a `READY …` or a `BLOCKED resolve …`. The waiter takes no READY or resolve action on such a row (no worker-ready, no ready-check, no auto-go, auto_go on or off), so nothing ran. Read the bullet and the thread yourself and answer by `t3-send.sh`. Each bullet wakes once.
+
+    `BOUND <id> <label>` and `UNBOUND <id> <label>` do not wake you alone: they join the
+    housekeeping digest as kind `t3-relay` (they wake as `WAKE t3-relay BOUND …` only with the
+    digest off). A scan that finds another live chief owning binding (rc 5) is silent.
+    Design: `running-a-chief.md`, "Chief threads in T3 Code".
+
     **A silent worker wakes you once, and the operator is already told**.
     `WAKE worker-silent <worker> signal=<capped-waker|succession-partial> [silent=<n>m]`
     means no turn is coming from that worker: the tick lists `wakerstate=<worker>:capped`
@@ -623,8 +639,33 @@ recorded included. An ask on settings or `.github/`
     newest Results bullet), or a `--succession` tally still waits on it (the line follows
     the partial block). The waiter already appended a `WORKER-SILENT` bullet to your doc and
     sent the operator one page naming the worker, the signal and the action; it repeats
-    neither while the worker's doc is unchanged (`<inbox>.wait.silent`). Recover the worker
-    in that turn, never wait on it. First confirm it is not working (`queue-lock.sh status
+    neither while the worker's doc is unchanged (`<inbox>.wait.silent`). The waiter also runs
+    `silent-worker-act.sh` once for that (worker, signal, doc write time), so the wake is
+    not the only thing that happens: past `CHIEF_WAIT_WORKER_SILENT_MIN` minutes of silence it sends the
+    worker's one live window a bus nudge (one per doc write); past twice that bound, and a
+    5-minute grace after the nudge (`SILENT_ACT_NUDGE_GRACE_SECS`, default 300), it relaunches the
+    worker from its `-RESUME` doc with `headed-arm-worker.sh` and confirms it with `launch-confirm.sh`, once; a
+    step that fails opens an owed row (`owe.sh`, kind `step`). It appends a `SILENT-ACT` bullet to
+    your doc and prints a `SILENT-ACT <worker> <words>` line right after the WAKE line. Read the
+    words, then do only what is left:
+
+    - `none`: the worker is silent for less than the first bound. Nothing to do.
+    - `fresh`: the worker's doc was written within the first bound. Nothing to do.
+    - `done`: both acts due for this write time already ran. Nothing new; if the worker is still silent, take over its step yourself.
+    - `busy`: another helper holds this worker's lock. Wait for the next call.
+    - `nudged`: the bus nudge reached its one live window. Wait; the relaunch comes only past the grace.
+    - `nudge=no-window`: no single live window named the worker. Past bound one it also opens an owed row (`owed=`) unless the relaunch is already due; find the worker with `ListAgents` and nudge it by hand.
+    - `nudge=failed`: the bus send failed or there is no bus identity; an owed row names why (`owed=`). Message the worker yourself.
+    - `relaunched`: the worker was relaunched from its RESUME doc and the launch was confirmed. Nothing to do; confirm its first bullet.
+    - `relaunch=failed`: no manifest doc, no RESUME doc, no launch record naming profile, lane and model, or an unconfirmed launch; an owed row names why. Write the RESUME doc or fix the cause, then relaunch it yourself (`worker-resume-brief.sh <worker doc>`, `headed-arm-worker.sh --fleet <your manifest>`, `launch-confirm.sh --since <epoch> <session> <log>`).
+    - `live-window`: the `<stem>-RESUME` window already runs. Nothing to relaunch; read its newest bullet.
+    - `live-silent`: the old window is still live past bound two after the nudge. It is neither ended nor relaunched, and an owed row names it. End its stale session (one pid per call), release its lock with the worker's token, then relaunch from the RESUME doc, or take over its blocked step.
+    - `census=unknown`: the process census failed, so a live window cannot be ruled out and nothing was relaunched; an owed row follows. Check `ListAgents` and `queue-lock.sh status <worker doc>`, then relaunch or take over.
+    - `owed=<id>[,<id>]`: rows the helper opened for a failed step (`FAILED` in place of an id means the ledger took none). Work each one as owed to you, and `owe.sh close` it when done.
+    - `helper-failed rc=<n>`: `silent-worker-act.sh` itself exited non-zero. Nothing was done: recover the worker yourself as below. It is named once per doc write time.
+
+    A repeat sight of the same write time wakes again only when the helper has something
+    new to say; `done`, `none`, `fresh` and `busy` stay silent. To recover by hand, first confirm the worker is not working (`queue-lock.sh status
     <worker doc>`, `ListAgents`, its newest Results bullet). Then do ONE of: **relaunch** it:
     write a RESUME doc from the worker's doc (`worker-resume-brief.sh <worker doc>` supplies
     the git facts; name it per `worker-brief-template.md`, and keep the `description:` line
