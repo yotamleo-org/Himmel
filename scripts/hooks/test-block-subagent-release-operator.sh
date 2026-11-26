@@ -126,6 +126,13 @@ expect deny "a pipe into a subshell around bash" "$SUB" "echo '$RO' | (bash)"
 expect deny "a pipe into an if body that runs bash" "$SUB" "echo '$RO' | if true; then bash; fi"
 expect deny "a brace group around bash with a here-string" "$SUB" "{ bash; } <<<'$RO'"
 expect deny "an fd here-string then bash reading the fd" "$SUB" "exec 3<<<'$RO'; bash <&3"
+for launcher in "taskset 1" "strace -o /dev/null" "chrt 1" "numactl -N 0" "setpriv --reuid 1000" "unshare -r" "flock /tmp/l"; do
+    expect deny "pipe into $launcher bash" "$SUB" "echo '$RO' | $launcher bash"
+done
+expect deny "taskset bash with a here-string" "$SUB" "taskset 1 bash <<<'$RO'"
+expect deny "find -exec bash with a here-string" "$SUB" "find . -maxdepth 0 -exec bash ';' <<<'$RO'"
+expect deny "coproc bash with a here-string" "$SUB" "coproc bash <<<'$RO'"
+expect deny "awk reads its program from a here-string" "$SUB" "awk -f /dev/stdin <<<'BEGIN{system(\"$RO\")}'"
 expect deny "script -qc runs its argument" "$SUB" "script -qc \"$RO\" /dev/null"
 expect deny "flock -c runs its argument" "$SUB" "flock /tmp/l -c \"$RO\""
 expect deny "watch runs its argument" "$SUB" "watch -n 1 '$RO'"

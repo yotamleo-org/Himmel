@@ -2585,18 +2585,22 @@ followed by `operator` in its words, redirects aside. So `git diff -G
 and a heredoc body that writes a file naming both words are allowed, and every
 `jira release operator` verb (`declare`, `freeze`, `decision`, `takeover`, …) is
 denied plain or wrapped. Where a command's words can reach the CLI as data, both
-words still deny: an `xargs` segment (anywhere in the whole command); a shell,
-`eval`, `source`, node, python, perl, ruby, php or lua segment in a command that has
-any other input path (more than one segment, a redirect, a substitution or a
-heredoc: a pipe, a here-string, a process substitution, a subshell, a brace group
-and an fd all end up there) is tested on the whole command, and one that stands
-alone is tested on its own words; a launcher or code-running tool (`script`,
-`flock`, `watch`, `taskset`, `strace`, `find`, `ssh`, `sed`, `awk` and the like; so
-`find -exec grep 'release operator'` and `ssh host grep 'release operator'` are
-refused too, and the refusal points to plain `grep`), and `git` or
-`rg` given `--pre`, `-O`, `--open-files-in-pager` or an `alias.` setting, anywhere
-in that segment; and any segment with a live `$` or glob word, anywhere in that
-segment, since an empty expansion can sit between the two words. A command whose quoting the tokenizer
+words still deny: an `xargs` segment (anywhere in the whole command); a segment
+that holds a shell or interpreter word anywhere in it (`bash`, `sh`, `eval`,
+`source`, `coproc`, node, python, perl, ruby, php, lua, so a launcher in front of
+the shell does not hide it) is tested on the whole command; a shell or interpreter
+as the command word, and a launcher or code-running tool as the command word
+(`script`, `flock`, `watch`, `taskset`, `strace`, `chrt`, `numactl`, `setpriv`,
+`unshare`, `find`, `ssh`, `sed`, `awk`, `coproc` and the like), are tested on the
+whole command in a command that has any other input path (more than one segment,
+a redirect, a substitution or a heredoc: a pipe, a here-string, a process
+substitution, a subshell, a brace group and an fd all end up there) and on their
+own words when they stand alone; so `find -exec grep 'release operator'` and
+`ssh host grep 'release operator'` are refused too, and the refusal points to
+plain `grep`. `git` or `rg` given `--pre`, `-O`, `--open-files-in-pager` or an
+`alias.` setting deny when both words sit anywhere in that segment, and so does any
+segment with a live `$` or glob word, since an empty expansion can sit between the
+two words. A command whose quoting the tokenizer
 cannot read, and that holds both words, is denied. The refusal tells a subagent to
 quote the phrase as one argument to `grep` or `git grep` through Bash. An
 `agent_id` of `false`, `""`, a number or an object counts as a subagent, and so does

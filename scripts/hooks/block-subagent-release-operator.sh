@@ -90,8 +90,15 @@ guard_unwrap "${BASH_SOURCE[0]}" "$cmd" 2>/dev/null || deny "$RULE"
 
 [ "$GU_TOKENIZED" = 1 ] || deny "$RULE"
 
+is_interp() {
+    case "${1##*/}" in
+        bash|sh|zsh|dash|ksh|mksh|ash|yash|posh|eval|source|coproc|node*|bun|deno|tsx|npx|python*|perl*|ruby*|php*|lua*) return 0 ;;
+    esac
+    return 1
+}
+
 scan_segments() {
-    local s=0 n j w prev segtext core cb fed live runs k
+    local s=0 n j w prev segtext core cb fed live runs k interp
     local -a idx
     fed=0
     [ "$ST_NSEG" -gt 1 ] && fed=1
@@ -110,6 +117,7 @@ scan_segments() {
         segtext=''
         live=0
         runs=0
+        interp=0
         j=0
         while [ "$j" -lt "$n" ]; do
             w=${ST_W[idx[j]]}
@@ -118,8 +126,12 @@ scan_segments() {
             segtext=$segtext${segtext:+ }$w
             if [ "${ST_X[idx[j]]}" = 1 ] || [ "${ST_G[idx[j]]}" = 1 ]; then live=1; fi
             case "$w" in --pre|--pre=*|--open-files-in-pager*|-O*|alias.*) runs=1 ;; esac
+            is_interp "$w" && interp=1
             j=$((j + 1))
         done
+        if [ "$interp" = 1 ]; then
+            both_words "$cmd" && return 0
+        fi
         if [ "$live" = 1 ]; then
             both_words "$segtext" && return 0
         fi
@@ -136,8 +148,12 @@ scan_segments() {
                     else
                         both_words "$segtext" && return 0
                     fi ;;
-                script|flock|watch|taskset|strace|ltrace|chrt|numactl|setpriv|unshare|nsenter|runuser|su|ssh|parallel|find|tmux|screen|systemd-run|at|busybox|chroot|expect|sed|gsed|awk|gawk)
-                    both_words "$segtext" && return 0 ;;
+                script|flock|watch|taskset|strace|ltrace|chrt|numactl|setpriv|unshare|nsenter|runuser|su|ssh|parallel|find|tmux|screen|systemd-run|at|busybox|chroot|expect|sed|gsed|awk|gawk|coproc)
+                    if [ "$fed" = 1 ]; then
+                        both_words "$cmd" && return 0
+                    else
+                        both_words "$segtext" && return 0
+                    fi ;;
                 git|rg|ripgrep)
                     if [ "$runs" = 1 ]; then
                         both_words "$segtext" && return 0
