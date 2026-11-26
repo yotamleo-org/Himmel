@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Usage: ask-mirror.sh < <Stop hook payload JSON>
 # Test seams: ASK_MIRROR_ROUTE replaces `bun <repo>/scripts/telegram/chief-route.ts`;
-# ASK_MIRROR_OWE replaces owe.sh.
+# ASK_MIRROR_OWE replaces owe.sh. ASK_MIRROR_BUDGET_SEC (default 80) bounds the whole run.
 set -u
+SECONDS=0
 
 KIT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$KIT/../../.." && pwd)"
@@ -62,7 +63,7 @@ fi
 case "$reply" in *"Needs you:"*) ;; *) exit 0 ;; esac
 
 blocks="$(printf '%s' "$reply" | python3 -c '
-import hashlib, json, sys
+import hashlib, json, re, sys
 chief = sys.argv[1]
 lines = sys.stdin.read().split("\n")
 blocks, i, n = [], 0, len(lines)
@@ -72,24 +73,36 @@ def fence(i):
     while i < n and not lines[i].lstrip().startswith("```"):
         code.append(lines[i]); i += 1
     return "\n".join(code), i + 1
+def squeeze(t):
+    return re.sub(r"[ \t]+", " ", t).rstrip()
+def digest(*parts):
+    return hashlib.sha256("\0".join(parts).encode()).hexdigest()
 while i < n:
     if "Needs you:" not in lines[i]:
         i += 1; continue
-    ask, codes = [lines[i]], []
+    first = lines[i]
+    cut = first.index("Needs you:")
+    num = re.search(r"(?:^|\s)(\d+[.)])\s*$", first[:cut])
+    first_n = squeeze(first[cut:])
+    first_p = num.group(1) + " " + first_n if num else first_n
+    more, codes = [], []
     i += 1
     while i < n and lines[i].strip() and "Needs you:" not in lines[i]:
         if lines[i].lstrip().startswith("```"):
             c, i = fence(i); codes.append(c)
         else:
-            ask.append(lines[i]); i += 1
+            more.append(squeeze(lines[i])); i += 1
     j = i
     while j < n and not lines[j].strip():
         j += 1
     if j < n and lines[j].lstrip().startswith("```"):
         c, i = fence(j); codes.append(c)
-    a, c = "\n".join(ask).strip(), "\n".join(codes).strip()
-    key = hashlib.sha256("\0".join([chief, a, c]).encode()).hexdigest()
-    blocks.append({"key": key, "ask": a, "code": c})
+    p = "\n".join([first_p] + more).strip()
+    nf = "\n".join([first_n] + more).strip()
+    nc = " ".join(nf.split())
+    c = "\n".join(codes).strip()
+    blocks.append({"key": digest(chief, nc, c), "askkey": digest(chief, nc),
+                   "okey": "ask-" + digest(chief, nf, c)[:16], "ask": p, "code": c})
 for b in blocks:
     print(json.dumps(b))
 ' "$chief" 2>/dev/null)" || exit 0
@@ -97,31 +110,56 @@ for b in blocks:
 
 state_dir="$root/.ask-mirror"
 sent="$state_dir/$chief.sent"
+posted_dir="$state_dir/$chief.posted"
 mkdir -p "$state_dir" 2>/dev/null || exit 0
 
+budget="${ASK_MIRROR_BUDGET_SEC:-80}"
+case "$budget" in ''|*[!0-9]*) budget=80 ;; esac
+budget=$((10#$budget))
+
 post() {
+    local t=$((budget - SECONDS))
+    [ "$t" -gt 90 ] && t=90
+    [ "$t" -lt 1 ] && t=1
     if [ -n "${ASK_MIRROR_ROUTE:-}" ]; then
-        "$ASK_MIRROR_ROUTE" reply --chief "$chief" --owed "$1" --doc "$chief_doc" --kind chief-reply operator "$2" >/dev/null
+        ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" "$t"} "$ASK_MIRROR_ROUTE" reply --chief "$chief" --owed "$1" --doc "$chief_doc" --kind chief-reply operator "$2" >/dev/null </dev/null
     else
-        ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 90} bun "$REPO/scripts/telegram/chief-route.ts" reply --chief "$chief" --owed "$1" --doc "$chief_doc" --kind chief-reply operator "$2" >/dev/null
+        ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" "$t"} bun "$REPO/scripts/telegram/chief-route.ts" reply --chief "$chief" --owed "$1" --doc "$chief_doc" --kind chief-reply operator "$2" >/dev/null </dev/null
     fi
+}
+
+owe() {
+    bash "$OWE_SH" add --bucket "${chief_doc%/*}" --chief "$chief" --kind step \
+        --text "$1: $line" --identity "$key" >/dev/null 2>&1 </dev/null \
+        || echo "ask-mirror: owed row not written for key $key" >&2
 }
 
 while IFS= read -r row; do
     [ -n "$row" ] || continue
     key="$(printf '%s' "$row" | jq -r '.key')"
+    askkey="$(printf '%s' "$row" | jq -r '.askkey')"
+    okey="$(printf '%s' "$row" | jq -r '.okey')"
     ask="$(printf '%s' "$row" | jq -r '.ask')"
     code="$(printf '%s' "$row" | jq -r '.code')"
-    [ -n "$key" ] && [ -n "$ask" ] || continue
+    [ -n "$key" ] && [ -n "$ask" ] && [ -n "$okey" ] || continue
     grep -qxF "$key" "$sent" 2>/dev/null && continue
-    okey="ask-$(printf '%s' "$key" | cut -c1-16)"
+    [ -z "$code" ] && grep -qxF "$askkey" "$sent" 2>/dev/null && continue
+    line="$(printf '%s' "$ask" | tr '\n\t' '  ')"
+    if [ "$SECONDS" -ge "$budget" ]; then
+        owe "Telegram ask not posted, check the bridge"
+        continue
+    fi
+    stored="$posted_dir/$okey"
+    if [ -s "$stored" ]; then
+        ask="$(cat "$stored")"
+    elif mkdir -p "$posted_dir" 2>/dev/null; then
+        printf '%s' "$ask" > "$stored.$$" 2>/dev/null && mv -f "$stored.$$" "$stored" 2>/dev/null
+    fi
     if post "$okey" "$ask" && { [ -z "$code" ] || post "$okey-code" "$code"; }; then
-        printf '%s\n' "$key" >> "$sent"
+        printf '%s\n%s\n' "$key" "$askkey" >> "$sent"
     else
-        line="$(printf '%s' "$ask" | tr '\n\t' '  ')"
-        bash "$OWE_SH" add --bucket "${chief_doc%/*}" --chief "$chief" --kind step \
-            --text "Telegram ask not delivered, check the bridge: $line" --identity "$key" >/dev/null 2>&1 \
-            || echo "ask-mirror: post failed and the owed row was not written for: $line" >&2
+        export CHIEF_ROUTE_RECEIPT_WAIT_SEC=0
+        owe "Telegram ask not delivered, check the bridge"
     fi
 done <<EOF
 $blocks

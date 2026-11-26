@@ -327,6 +327,15 @@ steps are the `station-name`, `keygen` and `trust` verbs of `bun scripts/peer-br
 by you in your own Terminal; to take a key away or change it use `untrust`, and `keygen --rotate`.
 The exact steps are in [the peer bridge reference](../internals/peer-bridge.md).
 
+### See which pairing step is missing
+
+`bash scripts/remote-setup/remote-setup.sh status` names, for each peer, the first pairing step that
+is not done yet: our station name, our station key, the group chat, your chat with the peer bridge
+bot, or their key. A missing step does not turn the check red: the signed chief-to-chief jobs need
+all five, the `DONE:` above needs only the group chat. The list comes from a small file,
+`~/.himmel/remote-setup/pairing.json`, that `setup.ts` rewrites after each of its pairing steps; it
+holds yes or no for each step and the peer's name, never a key or an id.
+
 ### Undo
 
 To remove a peer, stop its poller and delete the poller's unit when it was the last one:

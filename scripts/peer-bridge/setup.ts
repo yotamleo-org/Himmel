@@ -31,7 +31,7 @@ import { badHost } from "./egress";
 import { STATION_NAME_RE, SUITE_PATH_RE } from "./envelope";
 import { BOT_ID_RE, PEER_NAME_RE, TOKEN_RE, botIdFromToken, configDir, peerDir, peersFile, stateDir } from "./ids";
 import { sanitize } from "./sanitize";
-import { currentSigningKey, fingerprint, keyId, keygen, keygenActivate, keygenRotate, publicKeyOf, type KeyInfo } from "./sign";
+import { STATION_KEY, currentSigningKey, fingerprint, keyId, keygen, keygenActivate, keygenRotate, publicKeyOf, type KeyInfo } from "./sign";
 import { PeerTelegram, TelegramError } from "./telegram";
 
 export class SetupError extends Error {
@@ -157,6 +157,32 @@ function loadRaw(): any {
   return JSON.parse(fs.readFileSync(peersFile(), "utf8"));
 }
 
+const pairingFile = () => join(homeDir(), ".himmel", "remote-setup", "pairing.json");
+
+function writePairing(deps: Deps): void {
+  try { writePairingRecord(); } catch (e) {
+    let dropped = false;
+    try { fs.rmSync(pairingFile(), { force: true }); dropped = !fs.existsSync(pairingFile()); } catch {}
+    deps.out(`the pairing steps record could not be updated (${(e as Error).message}); ${dropped ? "the old record was dropped, the next pairing step writes it again" : "the old record is still there and may be out of date"}`);
+  }
+}
+
+function writePairingRecord(): void {
+  if (!fs.existsSync(peersFile())) return;
+  const raw = loadRaw();
+  const stationKey = fs.existsSync(join(configDir(), STATION_KEY));
+  const peers = Object.entries<any>(raw.peers ?? {}).filter(([name]) => PEER_NAME_RE.test(name)).map(([name, p]) => ({
+    name,
+    ourStationName: typeof raw.self?.stationName === "string",
+    ourStationKey: stationKey,
+    groupChat: typeof p.chatId === "number",
+    operatorChat: typeof raw.operatorDmChatId === "number",
+    theirKey: Array.isArray(p.theirs?.keys) && p.theirs.keys.length > 0,
+  }));
+  fs.mkdirSync(dirname(pairingFile()), { recursive: true, mode: 0o700 });
+  replaceJson(pairingFile(), { peers });
+}
+
 function hasJq(env: NodeJS.ProcessEnv): boolean {
   return spawnSync("jq", ["--version"], { env, stdio: "ignore" }).status === 0;
 }
@@ -212,6 +238,7 @@ export async function add(peer: string, opts: AddOpts, deps: Deps): Promise<void
   const doc = existing ?? { operatorBotId, operatorChatId: chatId, bridgeRoot, himmelRoot, peers: {}, maxTextChars: 4000, addressing: "command" };
   doc.peers[peer] = entry;
   if (existing) replaceJson(peersFile(), doc); else writeNew(peersFile(), JSON.stringify(doc, null, 2) + "\n", 0o600);
+  writePairing(deps);
   deps.out(`added ${peer}; next: put PEER_BOT_TOKEN=<token> in ${join(C, "env")} (mode 0600), then follow the setup steps in docs/internals/peer-bridge.md and run: setup.ts confirm ${peer} <chatId>`);
 }
 
@@ -281,6 +308,7 @@ export async function confirm(peer: string, chatArg: string, deps: Deps): Promis
   deps.out(`chat: ${sanitize(String(chat.title ?? ""), 80)} (${chatId})`);
   p.chatId = chatId;
   replaceJson(peersFile(), raw);
+  writePairing(deps);
   submitSpool(peerDir(peer), { type: "confirm", chatId });
   deps.out(`confirmed ${peer}; the poller picks it up on its next tick`);
 }
@@ -300,6 +328,7 @@ export async function dm(deps: Deps): Promise<void> {
   if (fresh.operatorChatId !== raw.operatorChatId) refuse("peers.json changed its operator while you were in Telegram; run setup.ts dm again");
   fresh.operatorDmChatId = fresh.operatorChatId;
   replaceJson(peersFile(), fresh);
+  writePairing(deps);
   deps.out("peer escalations, drafts and their buttons now arrive in your chat with the peer bridge bot; the running poller picks this up by itself");
 }
 
@@ -315,6 +344,7 @@ export async function remove(peer: string, deps: Deps): Promise<void> {
   fs.rmSync(join(stateDir(), "desk", peer), { recursive: true, force: true });
   fs.rmSync(suitesFile(peer), { force: true });
   fs.rmSync(killedFile(peer), { force: true });
+  writePairing(deps);
   syncRunner(raw, deps);
   deps.out(`removed ${peer}; restart the poller to drop it`);
 }
@@ -330,6 +360,7 @@ export async function stationName(name: string, deps: Deps): Promise<void> {
   const raw = loadRaw();
   raw.self = { ...(raw.self ?? {}), stationName: name };
   replaceJson(peersFile(), raw);
+  writePairing(deps);
   deps.out(`our station name is ${name}`);
 }
 
@@ -353,6 +384,7 @@ export async function keygenCmd(mode: "new" | "rotate" | "activate" | "show", de
   } catch (e) {
     refuse(`keygen: ${(e as NodeJS.ErrnoException).code === "EEXIST" ? "that key already exists" : (e as Error).message}`);
   }
+  if (mode !== "show") writePairing(deps);
 }
 
 export async function trust(peer: string, name: string, pub: string, deps: Deps): Promise<void> {
@@ -380,6 +412,7 @@ async function trustKey(peer: string, name: string, pub: string, deps: Deps): Pr
   theirs.stationName = name;
   theirs.keys = [...keys, { id, pub, addedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z") }];
   replaceJson(peersFile(), raw);
+  writePairing(deps);
   deps.out(`trusted ${peer} as ${name} with key ${id}; the running poller picks this up by itself`);
 }
 
@@ -400,6 +433,7 @@ export async function pair(peer: string, name: string | undefined, card: string 
   mkdir0700(configDir());
   let k: KeyInfo;
   try { k = currentKey(); } catch { k = keygen(); deps.out("created the station key"); }
+  writePairing(deps);
   deps.out(`pairing card: post this one line in the group you share with ${peer}:\n${pairCard(station, k.pub)}`);
   deps.out(`fingerprint: ${k.fingerprint}\nRead the fingerprint to the peer's operator by call or another messenger, never over the group.`);
   if (card === undefined) {
@@ -426,6 +460,7 @@ export async function untrust(peer: string, key: string | undefined, deps: Deps)
     p.theirs.keys = [];
   }
   replaceJson(peersFile(), raw);
+  writePairing(deps);
   deps.out(`${peer} now has ${p.theirs.keys.length} trusted key(s)`);
 }
 
@@ -509,7 +544,8 @@ export async function uninstall(deps: Deps): Promise<void> {
   for (const u of units) fs.rmSync(u, { force: true });
   fs.rmSync(stateDir(), { recursive: true, force: true });
   fs.rmSync(configDir(), { recursive: true, force: true });
-  for (const d of [join(h, ".himmel"), join(h, ".config", "himmel")]) { try { fs.rmdirSync(d); } catch {} }
+  fs.rmSync(pairingFile(), { force: true });
+  for (const d of [join(h, ".himmel", "remote-setup"), join(h, ".himmel"), join(h, ".config", "himmel")]) { try { fs.rmdirSync(d); } catch {} }
   deps.out("uninstalled the peer bridge");
 }
 

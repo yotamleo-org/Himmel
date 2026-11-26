@@ -33,8 +33,8 @@ FIXTURE_NODE_BIN='d931c649850ffa7155b8ceffb400dc916ef325866e509cc52ae36e33e8fbb9
 FIXTURE_CLAUDE_MANIFEST_LINUX_X64='f390eaa0814e6a1bff74cbb47acb74cb9c89d30ced809fe0af5af00c7bfe8ebb'
 FIXTURE_NVM_INSTALL='045932fe05f0d4247c946f2ec0ec4026dbfd8ce88a5f67ea28d8ea833227f48b  install.sh'
 FIXTURE_NVM_TAG_COMMIT='4e8758a801eea9479b32a904f31093e410ddaba4'
-FIXTURE_CERTIFI_WHEEL='e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1'
-FIXTURE_CERTIFI_SDIST='a9895e6e2758b371e0545e321a3a8fd1fcfd9829ada8824a936dfb16aaaf36cd'
+FIXTURE_CERTIFI_WHEEL='7422df25243767b9877031a2248cb14d09ddac9beee846f4cef3d5c9191d488f'
+FIXTURE_CERTIFI_SDIST='af1cb240a8133f105aa52684a3a3258339d7f2fd0bd4e2812698ff5cf5588c4e'
 FIXTURE_TLA2TOOLS='936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88  tla2tools.jar'
 
 echo "installers: no unpinned curl-pipe, no moving alias"
@@ -112,7 +112,7 @@ fi
 echo "certifi: pinned past the emSign-compromised release"
 f=requirements-scrapling.txt
 p="$repo_root/marketplace/plugins/obsidian-triage/tools/$f"
-check "$f pins certifi==2026.10.23"      grep -q '^certifi==2026\.10\.23 ' "$p"
+check "$f pins certifi==2026.11.20"      grep -q '^certifi==2026\.11\.20 ' "$p"
 check "$f no longer pins certifi 2026.7.22" no_match '^certifi==2026\.7\.22' "$p"
 check "$f carries the wheel hash"        grep -q "sha256:$FIXTURE_CERTIFI_WHEEL" "$p"
 check "$f carries the sdist hash"        grep -q "sha256:$FIXTURE_CERTIFI_SDIST" "$p"
