@@ -1322,7 +1322,8 @@ verdict_sel_read() {
     while read -r vs_k vs_q vs_h; do
         case "$vs_k" in
             S) sel="$sel $vs_q" ;;
-            N) case " $vs_heads " in *" $vs_h "*) ;; *) vs_heads="${vs_heads:+$vs_heads }$vs_h" ;; esac ;;
+            N) vs_heads="$vs_heads$vs_h
+" ;;
             P) vs_probe="$vs_q" ;;
         esac
     done <<EOF
@@ -1333,7 +1334,7 @@ EOF
 verdict_sel_descendants() {
     vs_crc=0
     [ -n "$vs_heads" ] || return 0
-    vs_types="$(printf '%s\n' "$vs_heads" | tr ' ' '\n' | git cat-file --batch-check)" || vs_crc=$?
+    vs_types="$(printf '%s' "$vs_heads" | sort -u | git cat-file --batch-check)" || vs_crc=$?
     [ "$vs_crc" -eq 0 ] || return 1
     vs_keep=""
     while read -r vs_sha vs_type _; do

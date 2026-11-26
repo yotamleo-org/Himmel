@@ -3175,6 +3175,9 @@ sflow() {
 js_rc_is() { if [ "$1" = "$2" ]; then pass "$3"; else fail "$3 (got rc $1, want $2; output: $4)"; fi; }
 js_under() { if [ "$1" -lt "$2" ]; then pass "$3"; else fail "$3 (got $1, want under $2)"; fi; }
 fill_bucket
+js_fills=0
+for js_f in "$vscope"/fill-*/r.md; do [ ! -f "$js_f" ] || js_fills=$((js_fills + 1)); done
+assert_eq "$js_fills" "200" "postcap-judge-scan: the filler bucket holds 200 records"
 
 row=postcap-judge-scan-nogo-count
 jflow jsn
