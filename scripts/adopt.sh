@@ -760,8 +760,9 @@ wire_luna_vault_path() {
     return
   fi
   bash "$HIMMEL_ROOT/scripts/lib/wire-luna-vault.sh" "$settings" "$dest"
-  [[ "$SCOPE" == "project" ]] && move_sessionend_to_local
-  return 0
+  if [[ "$SCOPE" == "project" ]]; then
+    move_sessionend_to_local || echo "  WARNING: the SessionEnd hook was not moved to the local file; re-run adopt" >&2
+  fi
 }
 
 # env.HANDOVER_DIR — seed the handover state root at the scaffolded luna vault.
@@ -970,9 +971,9 @@ wire_graphify_core() {
     return 0
   fi
   # Install the CLI first; a failed install returns before we try to register
-  # the MCP server (there'd be no graphify-mcp entrypoint to register). MCP
-  # registration is the shared graphify-bin.sh impl — adopt's SCOPE (project|
-  # user) is a valid `claude mcp add -s` scope.
+  # the MCP server (there'd be no graphify-mcp entrypoint to register). The
+  # server registers on demand at every adopt scope (graphify-bin.sh), never
+  # through `claude mcp add`.
   graphify_install || { echo "  WARNING: graphify install failed — continuing without graphify." >&2; return 0; }
   graphify_register_mcp_on_demand
   # price the hooks in the ADOPTED repo, not himmel's own — adopt
@@ -1645,12 +1646,12 @@ move_sessionend_to_local() {
   fi
   [[ -s "$shared" ]] || return 0
   jq -e '[(.hooks.SessionEnd // [])[]?.hooks[]?.command // empty | select(test("scripts/hooks/end-session-wiki[.]sh"))] | length > 0' "$shared" >/dev/null 2>&1 || return 0
-  bash "$HIMMEL_ROOT/scripts/lib/wire-pretooluse-hooks.sh" --sessionend "$local_f" "$HIMMEL_ROOT" 0 || return 0
+  bash "$HIMMEL_ROOT/scripts/lib/wire-pretooluse-hooks.sh" --sessionend "$local_f" "$HIMMEL_ROOT" 0 || return 1
   bash "$HIMMEL_ROOT/scripts/lib/unwire-pretooluse-hooks.sh" --sessionend "$shared" 0
 }
 
 strip_shared_station_items() {
-  local shared="$TARGET/.claude/settings.json" local_f="$TARGET/.claude/settings.local.json" base tmp
+  local shared="$TARGET/.claude/settings.json" local_f="$TARGET/.claude/settings.local.json" tmp
   [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
   if [[ $DRY_RUN -eq 1 ]]; then
     echo "DRY: strip the statusLine, HUD key, clone-path hooks and himmel marketplace entry from $shared"
@@ -1664,10 +1665,10 @@ strip_shared_station_items() {
   bash "$HIMMEL_ROOT/scripts/lib/unwire-statusline.sh" "$shared" || return 1
   bash "$HIMMEL_ROOT/scripts/lib/unwire-pretooluse-hooks.sh" --sessionstart "$shared" 0 || return 1
   move_sessionend_to_local || return 1
-  tmp="$shared.stripstation.tmp"
-  base="$(cat "$shared")" # read-sink-ok: the adopted repo's own shared settings file, rewritten in place
+  tmp="$(mktemp "$shared.stripstation.XXXXXX")" || return 1
+  cp -p "$shared" "$tmp" || { rm -f "$tmp"; return 1; }
   # shellcheck disable=SC2016  # $loc is a jq variable
-  if printf '%s' "$base" | jq --slurpfile loc <(cat "$local_f" 2>/dev/null || echo '{}') '
+  if jq --slurpfile loc <(cat "$local_f" 2>/dev/null || echo '{}') '
       (if (.env | type) == "object" then del(.env.CLAUDE_HUD_ALLOW_EXTRA_CMD) | if (.env | length) == 0 then del(.env) else . end else . end)
       | if (($loc[0].extraKnownMarketplaces.himmel // null) != null)
            and ((.extraKnownMarketplaces | type) == "object")
@@ -1675,9 +1676,15 @@ strip_shared_station_items() {
         then del(.extraKnownMarketplaces.himmel)
              | if (.extraKnownMarketplaces | length) == 0 then del(.extraKnownMarketplaces) else . end
         else . end
-    ' > "$tmp"; then
-    # prim-ok: the temp is a sibling of the target in the same directory, so the rename is atomic and the file keeps its content type
-    if cmp -s "$tmp" "$shared"; then rm -f "$tmp"; else mv "$tmp" "$shared"; fi
+    ' "$shared" > "$tmp" && [[ -s "$tmp" ]]; then
+    if cmp -s "$tmp" "$shared"; then
+      rm -f "$tmp"
+    # prim-ok: the temp is a cp -p copy of the target in the same directory, so the rename is atomic and keeps its mode
+    elif ! mv "$tmp" "$shared"; then
+      rm -f "$tmp"
+      echo "  WARNING: could not replace $shared" >&2
+      return 1
+    fi
   else
     rm -f "$tmp"
     echo "  WARNING: could not strip the HUD key / marketplace entry from $shared" >&2
@@ -1687,7 +1694,7 @@ strip_shared_station_items() {
 }
 
 strip_mcp_json_graphify() {
-  local f="$TARGET/.mcp.json" out
+  local f="$TARGET/.mcp.json" out tmp
   [[ "$TARGET" -ef "$HIMMEL_ROOT" ]] && return 0
   if [[ $DRY_RUN -eq 1 ]]; then
     echo "DRY: strip himmel's graphify server from $f"
@@ -1697,10 +1704,15 @@ strip_mcp_json_graphify() {
   jq -e '(.mcpServers.graphify.command? // "") | test("(^|/)graphify-mcp$")' "$f" >/dev/null 2>&1 || return 0
   out="$(jq 'del(.mcpServers.graphify) | if (.mcpServers | length) == 0 then del(.mcpServers) else . end' "$f")" || return 1
   if [[ "$out" == "{}" ]]; then
-    rm -f "$f"
+    rm -f "$f" || return 1
     echo "  .mcp.json: removed (it held only himmel's graphify server)"
   else
-    printf '%s\n' "$out" > "$f.stripmcp.tmp" && mv "$f.stripmcp.tmp" "$f"
+    tmp="$(mktemp "$f.stripmcp.XXXXXX")" || return 1
+    # prim-ok: the temp is a cp -p copy of the target in the same directory, so the rename is atomic and keeps its mode
+    if ! { cp -p "$f" "$tmp" && printf '%s\n' "$out" > "$tmp" && mv "$tmp" "$f"; }; then
+      rm -f "$tmp"
+      return 1
+    fi
     echo "  .mcp.json: removed himmel's graphify server"
   fi
 }

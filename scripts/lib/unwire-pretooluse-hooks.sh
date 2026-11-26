@@ -130,13 +130,13 @@ unwire_sessionend_hook() {
 }
 
 unwire_sessionstart_hook() {
-  local settings="$1" dry_run="${2:-0}" base
+  local settings="$1" dry_run="${2:-0}" base tmp
   command -v jq >/dev/null 2>&1 || { echo "unwire-pretooluse-hooks: jq required" >&2; return 1; }
   if [ ! -f "$settings" ]; then
     [ "$dry_run" -eq 1 ] && echo "DRY: $settings absent -> no-op"
     return 0
   fi
-  base=$(cat "$settings") # read-sink-ok: the caller-named settings.json under the operator-selected target, rewritten in place
+  base=$(cat "$settings") || return 1 # read-sink-ok: the caller-named settings.json under the operator-selected target, rewritten in place
   if [ -z "$(printf '%s' "$base" | tr -d '[:space:]')" ]; then
     [ "$dry_run" -eq 1 ] && echo "DRY: $settings empty -> no-op"
     return 0
@@ -149,6 +149,8 @@ unwire_sessionstart_hook() {
     echo "DRY: remove himmel SessionStart inject-initiative hook from $settings"
     return 0
   fi
+  tmp=$(mktemp "$settings.unwirestart.XXXXXX") || return 1
+  cp -p "$settings" "$tmp" || { rm -f "$tmp"; return 1; }
   if printf '%s' "$base" | jq --arg ss "$_UNWIRE_SS_PAT" '
     if (type == "object") and ((.hooks | type) == "object") and ((.hooks.SessionStart | type) == "array") then
       .hooks.SessionStart = (.hooks.SessionStart
@@ -156,10 +158,10 @@ unwire_sessionstart_hook() {
         | map(select((.hooks | length) > 0)))
       | if (.hooks.SessionStart | length) == 0 then del(.hooks.SessionStart) else . end
     else . end
-  ' > "$settings.unwirehooks.tmp" && mv "$settings.unwirehooks.tmp" "$settings"; then
+  ' > "$tmp" && [ -s "$tmp" ] && mv "$tmp" "$settings"; then # prim-ok: mktemp sibling cp -p copy of the target, so the rename is atomic and keeps its mode
     echo "  removed himmel SessionStart hook (if present) -> $settings"
   else
-    rm -f "$settings.unwirehooks.tmp"
+    rm -f "$tmp"
     echo "unwire-pretooluse-hooks: could not rewrite $settings -- left unchanged" >&2
     return 1
   fi

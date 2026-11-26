@@ -600,10 +600,11 @@ if [[ $STRIP_USER -eq 1 && -f "$USER_FILE" ]]; then
   fi
   cp -p "$USER_FILE" "$USER_STRIP_TMP" 2>/dev/null || cp "$USER_FILE" "$USER_STRIP_TMP" || {
     rm -f "$USER_STRIP_TMP"; echo "  ERROR: strip cp failed — $USER_FILE left unchanged" >&2; exit 1; }
-  if jq --argjson pre "$USER_PRE_ENABLED_JSON" --argjson absent "$USER_EP_ABSENT" '
-       (.enabledPlugins // {}) as $ep
-       | .enabledPlugins = ($ep | with_entries(select(.key as $k | $pre | has($k))))
-       | if $absent and (.enabledPlugins | length) == 0 then del(.enabledPlugins) else . end
+  USER_SPECS_JSON=$(printf '%s\n' "$SPECS" | jq -R . | jq -sc 'map(select(length > 0))')
+  if jq --argjson pre "$USER_PRE_ENABLED_JSON" --argjson absent "$USER_EP_ABSENT" --argjson specs "$USER_SPECS_JSON" '
+       reduce $specs[] as $k (.;
+         if ($pre | has($k)) then .enabledPlugins[$k] = $pre[$k] else del(.enabledPlugins[$k]) end)
+       | if $absent and ((.enabledPlugins // {}) | length) == 0 then del(.enabledPlugins) else . end
      ' "$USER_FILE" > "$USER_STRIP_TMP"; then
     if [[ "$(jq -cS . "$USER_FILE")" == "$(jq -cS . "$USER_STRIP_TMP")" ]]; then
       rm -f "$USER_STRIP_TMP"

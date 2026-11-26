@@ -136,6 +136,7 @@ cat > "$user_file" <<JSON
 {
   "enabledPlugins": {
     "himmel-ops@himmel": true,
+    "lean-skills@himmel": false,
     "hand-enabled@thirdparty": true
   },
   "extraKnownMarketplaces": {

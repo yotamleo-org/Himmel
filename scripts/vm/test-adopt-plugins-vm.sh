@@ -35,7 +35,7 @@ if [ "${HIMMEL_ADOPT_PLUGINS_GUEST:-}" = 1 ]; then
   pass() { echo "ok - $1"; }
   fail() { echo "FAIL - $1${2:+: $2}"; fails=$((fails + 1)); }
   command -v jq >/dev/null 2>&1 || { echo "FAIL: jq missing on the guest" >&2; exit 1; }
-  user_file="$HOME/.claude/settings.json"
+  user_file="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
   floor_ids=$(jq -c '[.enabledPlugins | to_entries[] | select(.value == true) | .key]' "$clone/docs/setup/settings-template.json")
 
   if [ -s "$user_file" ] && jq -e '(.enabledPlugins // {}) | length > 0' "$user_file" >/dev/null 2>&1; then
