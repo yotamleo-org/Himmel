@@ -29,7 +29,8 @@
 #                 <status> is read with the Jira CLI `get`; this script never
 #                 transitions a ticket. An unreadable status is `?`.
 #   5. board      board.mjs --doc <chief doc> --changed (rc 7); its output is
-#                 passed through.
+#                 passed through. board.mjs rc 3 (its tick stalled) is a warning,
+#                 not a failure: the chief's board timer re-renders the board.
 #   5. tracker    best effort, never fails the wrap: when the chief doc has a
 #                 `tracker:` line, jira mirror + jira versions (snapshot next to the
 #                 mirror) + tracker.py render, each under WM_TRACKER_TIMEOUT (120 s).
@@ -264,6 +265,12 @@ focus_refresh() {
 }
 focus_refresh
 
-# 6. board
+# 6. board - board.mjs rc 3 (its tick stalled) is a warning: the chief's board timer re-renders within minutes
 BOARD_ON_FAIL=""
-"${BOARD[@]}" --doc "$DOC" --changed || fail board "board.mjs --doc $DOC --changed" 7
+board_rc=0
+"${BOARD[@]}" --doc "$DOC" --changed || board_rc=$?
+case "$board_rc" in
+    0) ;;
+    3) echo "wrap-merged: WARN step board stalled (board.mjs rc 3): the board was not refreshed, the board timer will repair it" >&2 ;;
+    *) fail board "board.mjs --doc $DOC --changed" 7 ;;
+esac

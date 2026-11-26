@@ -98,6 +98,9 @@ Run these, in order, and write the result as the first bullet under
 12. **Render the chief board (local only):**
     `node "{{KIT}}/board.mjs" --doc "<this file>" --changed` prints `CHANGED <path>`
     or `UNCHANGED <path>`; record it on `board:`, never publish it (`Artifact` is denied).
+    Board timer: run it as `timeout 60 node "{{KIT}}/board.mjs" --doc "<this file>" --changed` every 2-3
+    minutes, 60 s total budget each; it asks the tick for its fast mode, so it finishes under host load.
+    A wrap's board step that stalls (rc 3) only warns, and the next timer render repairs it.
     The operator opens it in the AG-UI Fleet page (`himmelctl ui --agui`); a
     `board-section.mjs` note shows there in about 5 s. Notes, tracker: `chief-sections/board-tracker.md`.
 13. **Never call `AskUserQuestion`:** it hangs you and every waiting worker;
