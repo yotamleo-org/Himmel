@@ -69,7 +69,7 @@ set_tail() { printf '# HIMMEL-9100 — worker N1\n\n## Results (newest at the bo
 set_lane() { printf '{"schema":1,"legs":[{"doc":"%s","label":"N1","lane":"%s"}]}\n' "$DOC1" "$1" > "$WORK/w/fleet.json"; }
 
 sweep_env() {
-    CHIEF_DUTY_SWEEP_NOW="${SWEEP_AT:-$NOW}" CHIEF_DUTY_SWEEP_PRS="$WORK/w/prs.json" CHIEF_DUTY_SWEEP_RUNS="$WORK/w/runs.json" \
+    CHIEF_DUTY_STALL_SECS="${STALL_SECS:-3600}" CHIEF_DUTY_SWEEP_NOW="${SWEEP_AT:-$NOW}" CHIEF_DUTY_SWEEP_PRS="$WORK/w/prs.json" CHIEF_DUTY_SWEEP_RUNS="$WORK/w/runs.json" \
         CHIEF_DUTY_SWEEP_GO_ROOT="$WORK/w/go" CHIEF_DUTY_SWEEP_MIRROR="$WORK/w/mirror" \
         CHIEF_DUTY_SWEEP_DISPOSITIONS="$WORK/w/dispositions.txt" CHIEF_DUTY_SWEEP_GH="$STUB/seam-gh" \
         CHIEF_DUTY_SWEEP_DELTA="$STUB/delta" TICK_STATE_DIR="$WORK/w/state" CANCEL_RUNS_PACE_STATE="$WORK/w/pace" \
@@ -358,8 +358,16 @@ SWEEP_AT="" sweep
 hasnt "stalled-pr: a new head restarts the clock" "stalled-pr" "$OUT"
 world
 SWEEP_AT=$((NOW - 3660)) sweep
-CHIEF_DUTY_STALL_SECS=7200 SWEEP_AT="" sweep
+STALL_SECS=7200 SWEEP_AT="" sweep
 hasnt "stalled-pr: the threshold is configurable" "stalled-pr" "$OUT"
+world; set_tail "- 10:05 READY 101 $H1 GREEN"
+verdict j101b 101 "$H1" GO
+stall_pair 61
+has "stalled-pr: a judged READY with no GO file waits on a GO" "waiting on a GO owed" "$OUT"
+touch "$WORK/w/go/.locks/go/101.$H1"
+stall_pair 61
+has "stalled-pr: a GO file at the head names the merge" "waiting on the merge (GO given" "$OUT"
+hasnt "stalled-pr: and no longer a GO owed" "a GO owed" "$OUT"
 world; set_tail "- 10:05 BLOCKED — a permission prompt"
 stall_pair 61
 has "stalled-pr: an open BLOCKED names a ruling owed" "waiting on a ruling owed" "$OUT"

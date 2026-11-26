@@ -463,7 +463,7 @@ if [ "$prs_ok" = 1 ]; then
             orow=$(any_owner "$pkey")
             if [ -n "$orow" ]; then omark=$(printf '%s' "$orow" | cut -f4); label=$(printf '%s' "$orow" | cut -f2); odoc=$(printf '%s' "$orow" | cut -f3); lb=$(printf '%s' "$orow" | cut -f5-); fi
         fi
-        sum=$(printf '%s' "$lb" | cksum | cut -d' ' -f1)
+        sum=$(printf '%s %s' "$label" "$lb" | cksum | cut -d' ' -f1)
         since=$(awk -F'\t' -v p="$pr" -v h="$head" -v s="$sum" '$1 == p && $2 == h && $3 == s { print $4; exit }' "$stall_file" 2>/dev/null)  # swallow-ok: no stall file means nothing was seen before
         case "$since" in ''|*[!0-9]*) since="$now" ;; esac
         stall_new="$stall_new$(printf '%s\t%s\t%s\t%s' "$pr" "$head" "$sum" "$since")"$'\n'
@@ -480,7 +480,8 @@ if [ "$prs_ok" = 1 ]; then
             cirow=$([ "$runs_ok" = 1 ] && jq -r --arg h "$head" '[ .[] | select(.name == "CI" and .event == "pull_request" and .head_sha == $h) ] | sort_by(.created_at) | if length == 0 then empty else (.[-1] | [.status, (.conclusion // "")] | @tsv) end' "$runs_file" 2>/dev/null)  # swallow-ok: an unreadable runs cache names no CI blocker
             if [ -n "$ask" ]; then blocker="a ruling owed (open $ask)"
             elif [ -n "$rd" ] && [ "${rd#* }" = "$head" ]; then
-                if verdict_heads "$pr" | awk -v h="$head" '$2 == h { f = 1 } END { exit !f }'; then blocker="a GO owed (READY at this head, judged)"; else blocker="a judge or GO owed (READY at this head)"; fi
+                if [ -n "$go_root" ] && [ -e "$go_root/.locks/go/$pr.$head" ]; then blocker="the merge (GO given at this head)"
+                elif verdict_heads "$pr" | awk -v h="$head" '$2 == h { f = 1 } END { exit !f }'; then blocker="a GO owed (READY at this head, judged)"; else blocker="a judge or GO owed (READY at this head)"; fi
             elif [ -n "$cirow" ] && [ "$(printf '%s' "$cirow" | cut -f1)" != completed ]; then blocker="CI running"
             elif [ -n "$cirow" ] && [ "$(printf '%s' "$cirow" | cut -f2)" = failure ]; then blocker="CI red"
             else
