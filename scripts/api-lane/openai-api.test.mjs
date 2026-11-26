@@ -69,7 +69,7 @@ const PRICES = JSON.parse(readFileSync(join(dirname(SUT), 'openai-prices.json'),
 const NANO = { input: PRICES.input * 1000, cached: PRICES.cached_input * 1000, output: PRICES.output * 1000 };
 const COST = `0.${String(Math.ceil((800 * NANO.input + 200 * NANO.cached + 500 * NANO.output) / 1000)).padStart(6, '0')}`;
 
-const args = (extra = []) => ['-p', 'say hello', '--model', MODEL, '--max-budget-usd', '0.01', ...extra];
+const args = (extra = [], model = MODEL) => ['-p', 'say hello', '--model', model, '--max-budget-usd', '0.01', ...extra];
 
 async function withFixture(opts, fn) {
   const f = await fixture(opts);
@@ -163,7 +163,7 @@ test('success prints the text, bounds the request and settles the exact cost', (
   assert.ok(!r.stdout.includes(KEY) && !r.stderr.includes(KEY));
 }));
 
-test('the system-prompt file becomes instructions and counts toward the bound', () => withFixture({}, async (f) => {
+test('legacy models keep top-level instructions and count them toward the bound', () => withFixture({}, async (f) => {
   const file = join(f.dir, 'sys.txt');
   writeFileSync(file, 'be brief');
   const r = await f.run(args(['--append-system-prompt-file', file]));
@@ -171,6 +171,37 @@ test('the system-prompt file becomes instructions and counts toward the bound', 
   assert.equal(f.requests[0].body.instructions, 'be brief');
   assert.equal(f.requests[0].body.max_output_tokens, Math.floor((10000000 - (8 + 9 + 256) * 250) / 2000));
 }));
+
+for (const model of ['gpt-6.2-sol', 'gpt-6.2-astra']) {
+  test(`${model} gets a developer prefix and maps none to low`, () => withFixture({}, async (f) => {
+    const file = join(f.dir, 'sys.txt');
+    writeFileSync(file, 'be brief');
+    const r = await f.run(args(['--effort', 'none', '--append-system-prompt-file', file], model));
+    assert.equal(r.code, 0, r.stderr);
+    const { body } = f.requests[0];
+    assert.equal(body.model, model);
+    assert.deepEqual(body.input, [
+      { role: 'developer', content: 'be brief' },
+      { role: 'user', content: 'say hello' },
+    ]);
+    assert.equal('instructions' in body, false);
+    assert.deepEqual(body.reasoning, { effort: 'low' });
+  }));
+}
+
+for (const model of ['gpt-6.1-sol', 'gpt-6-astra']) {
+  test(`${model} keeps the existing prompt shape`, () => withFixture({}, async (f) => {
+    const file = join(f.dir, 'sys.txt');
+    writeFileSync(file, 'be brief');
+    const r = await f.run(args(['--effort', 'medium', '--append-system-prompt-file', file], model));
+    assert.equal(r.code, 0, r.stderr);
+    const { body } = f.requests[0];
+    assert.equal(body.model, model);
+    assert.equal(body.instructions, 'be brief');
+    assert.equal(body.input, 'say hello');
+    assert.deepEqual(body.reasoning, { effort: 'medium' });
+  }));
+}
 
 test('json output carries the result, the cost and the usage', () => withFixture({}, async (f) => {
   const r = await f.run(args(['--output-format', 'json']));

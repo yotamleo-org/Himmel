@@ -778,10 +778,10 @@ subscription usage budget, and opens mixed subagent lanes that the plain codex C
 | Var | Value |
 |---|---|
 | `CODEX_PROXY_BASE_URL` | `http://127.0.0.1:8317` by default |
-| `CODEX_MODEL` | `gpt-6.1-sol` by default |
+| `CODEX_MODEL` | `gpt-6.2-sol` by default |
 | `CODEX_HAIKU` | `$CODEX_MODEL` by default |
 | `CODEX_SUBAGENT_MODEL` | `$CODEX_MODEL` by default |
-| `CODEX_CONTEXT_WINDOW` | `272000` by default → `CLAUDE_CODE_AUTO_COMPACT_WINDOW`. Without it Claude Code assumes its ~200k default for the unrecognized `gpt-6.1-sol` slug and compacts early. The window was measured on gpt-5.6, not yet re-measured for gpt-6.1: gpt-5.6's real window is **~372k** (95% effective ~353k, [openai/codex#32486](https://github.com/openai/codex/issues/32486)); **272k is the 2× pricing cliff, NOT a hard ceiling** — input past 272k bills 2× input / 1.5× output. `272000` is the cost-optimal default (compact at the cliff); raise to `353000` to use the full window at 2× cost past 272k. |
+| `CODEX_CONTEXT_WINDOW` | `272000` by default → `CLAUDE_CODE_AUTO_COMPACT_WINDOW`. This sets the compaction window explicitly for Codex models outside Claude Code’s catalog. For larger windows, verify the model and proxy limits before overriding it. |
 | `CLIPROXY_API_KEY` | Must match an `api-keys` entry in `~/.cli-proxy-api/config.yaml` |
 | `CLAUDE_CONFIG_DIR` | `$HOME/.claude-codex` |
 
@@ -848,7 +848,7 @@ override, so a per-dispatch effort **downgrade does reach `gpt-6.1-sol`** (proxy
 `apply.go` debug lines: `original config from request` == `processed config to
 apply`, `mode=level level=<X>`).
 
-| `CLAUDE_CODE_EFFORT_LEVEL` | Level sent to `gpt-6.1-sol` |
+| `CLAUDE_CODE_EFFORT_LEVEL` | Level sent to `gpt-6.2-sol` |
 |---|---|
 | _(unset — the lane default)_ | **`xhigh`** (the launcher pins `CLAUDE_CODE_EFFORT_LEVEL=xhigh` when unset; a truly bare invocation that bypasses the launcher lands on Claude Code's own implicit `xhigh` too) |
 | `low` / `medium` / `high` / `xhigh` | `low` / `medium` / `high` / `xhigh` |
@@ -870,7 +870,7 @@ apply`, `mode=level level=<X>`).
   effort at `xhigh`.
 - **The implicit default is `xhigh`** (theo's "rare" tier) — higher than his
   recommended medium/high default; himmel keeps `xhigh` as the claudex
-  default for `gpt-6.1-sol` and the launcher pins it explicitly.
+  default for `gpt-6.2-sol` and the launcher pins it explicitly.
 
 _Method: one bounded `claude -p` turn per tier through the live proxy with
 `debug: true` + `logging-to-file: true` added to `~/.cli-proxy-api/config.yaml`
@@ -954,7 +954,7 @@ APPLIED, one remains UNTESTED, not refuted:
    sets the compaction *threshold*, not the declared window). **APPLIED:** the launcher now exports it, tied to
    `CODEX_CONTEXT_WINDOW`. Evidence: Claude Code resolves the effective
    compact window as `min(modelWindow, configured)`, and for a model absent
-   from its catalog (such as `gpt-6.1-sol`) the modelWindow falls back to a hardcoded
+   from its catalog (such as `gpt-6.2-sol`) the modelWindow falls back to a hardcoded
    `200000` — so `CODEX_CONTEXT_WINDOW` was inert, silently clamped to 200k,
    until this export declared the window. Both env vars get the SAME value so
    the clamp is structurally unreachable; guarded by
@@ -973,7 +973,7 @@ APPLIED, one remains UNTESTED, not refuted:
 ### spawn-claudex dispatch path (`scripts/telegram/spawn-claudex.ts`)
 
 **What:** lets a parent Claude session hand a scoped implementation chunk to an inline
-codex-lane worker (`gpt-6.1-sol` by default) running the FULL himmel harness (skills/hooks/guardrails/
+codex-lane worker (`gpt-6.2-sol` by default) running the FULL himmel harness (skills/hooks/guardrails/
 worktree) on the **codex weekly subscription usage budget**; the parent owns
 review and merge. `spawn-claudex.ts` dispatches THROUGH `claude-codex` itself
 (`bash <primary-repo>/scripts/claude-codex --permission-mode <mode>
@@ -995,7 +995,7 @@ through `scripts/lanes/claudex-session-root.mjs` and still look in the old
 `meta.json` records `lane: "codex"`.
 
 ```
-bun scripts/telegram/spawn-claudex.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--branch <existing>] [--timeout-mins <n>] [--permission-mode <mode>] [--effort low|medium|high|xhigh] [--model gpt-6.1-sol|gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--force]
+bun scripts/telegram/spawn-claudex.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--branch <existing>] [--timeout-mins <n>] [--permission-mode <mode>] [--effort low|medium|high|xhigh] [--model <id>] [--force]
 ```
 
 **Codex weekly subscription usage budget preflight:** reads the LAST
@@ -1013,12 +1013,13 @@ REFUSES `--effort max` (undocumented codex juice) and `--effort ultra`
 (unreachable — Claude Code silently falls back to `xhigh`) at parse time,
 pointing back at this section.
 
-**Model tier:** `--model` is optional and selects the GPT-5.6
-tier for one dispatch by setting `CODEX_MODEL` in the worker's child env —
-exactly how `--effort` sets `CLAUDE_CODE_EFFORT_LEVEL`. Unset lets the
-launcher's own `${CODEX_MODEL:-gpt-6.1-sol}` default apply. Accepted values are
-`gpt-6.1-sol`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`; anything else is a parse-time
-refusal (exit 2) pointing back at this section.
+**Model selection.** Pass `--model` to set `CODEX_MODEL` for one dispatch.
+Without it, the launcher uses its normal `${CODEX_MODEL:-gpt-6.2-sol}`
+resolution. The selector accepts these IDs, subject to proxy availability.
+
+`gpt-6.2-sol`, `gpt-6.2-astra`, `gpt-6.1-sol`, `gpt-6.1-terra`,
+`gpt-6-sol`, `gpt-6-astra`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`,
+and `gpt-5.6-luna`. An unlisted ID exits with status 2.
 
 The allowlist is deliberately scoped to **this flag**, not to the launcher.
 `scripts/claude-codex`'s own `CODEX_MODEL` knob stays unvalidated because its
@@ -1143,7 +1144,7 @@ wrong (not on PATH) or bypasses the wrapper's guards (hook-blocked).
 | hermes one-shot (`hermes-oneshot`) | `bash scripts/hermes/dispatch-trusted.sh <args>` (trusted-engine writes) or `scripts/hermes/invoke.sh` (untrusted default `todo` toolset) — the `/pr-check`-internal `hermes-critics`/`codex(paid)` critic lanes route through this same sanctioned script; see the CR Scripts section below |
 | codex CLI sandbox (`codex-exec`) | `bash scripts/codex/dispatch-codex-exec.sh --worktree <wt> [--stdin-brief] <args>` — ACL preflight fail-closed, model from the codex critic in `scripts/cr/critics.json` (explicit override wins), bounded one-byte stdout presence tracking; stdin defaults to `/dev/null`, only explicit `--stdin-brief` passes a caller-supplied brief through (after optional `--shared-branch <branch>`, before codex args) |
 | Antigravity T3 thread (`antigravity-t3`) | T3 Code thread with the Antigravity provider; guarded `.agents/hooks.json` surface; select model and `thought_level` explicitly; no headless dispatch block |
-| Codex T3 thread (`codex-t3`) | T3 Code thread with the Codex provider and `gpt-6.1-sol`; guarded `.codex/hooks.json` surface; no headless dispatch block |
+| Codex T3 thread (`codex-t3`) | T3 Code thread with the Codex provider and GPT-6.2 Sol or Astra; GPT-6.1 and GPT-6 models remain selectable; guarded `.codex/hooks.json` surface; no headless dispatch block |
 | ollama, local (`ollama-local`) | `ollama run <model>` — bare model name only; zero-egress guarantee is structural (cloud requires the explicit `-cloud` suffix) |
 | Ollama Cloud (`ollama-cloud`) | `ollama run <model>-cloud` — same CLI, opt-in cloud suffix; content egresses to ollama.com |
 | OpenRouter free models (`openrouter-free`) | `OPENROUTER_API_KEY`-gated API calls, not a CLI dispatch; `scripts/openrouter/free-watch.sh` (below) watches catalog churn, it does not dispatch work |
@@ -1856,7 +1857,7 @@ Shell scripts that implement `/pr-check` sub-steps. Called by the `/pr-check` co
 
 - `scripts/cr/file-deferred-issues.sh` — reads `/pr-review-toolkit:review-pr` output, dedupes low-severity findings by content hash, and files them on the repo's tracker, tagged `cr-deferred`: one Jira ticket per run when Jira is configured, forge issues otherwise, nothing remote with no tracker (prints `tracker=jira|forge|none`). Called by `/pr-check` step 7. Idempotent; `--dry-run` mode for inspection.
 - `scripts/cr/critic-first-pass.sh` — generic model-parametrized automated reviewer (supersedes retired `gemini-first-pass.sh`): diff on stdin → findings with stable `[<slug>-N]` IDs; routes through `scripts/hermes/invoke.sh`; `--model`/`--slug` flags select the model. **Senior-reviewer routing:** the gpt/codex-family critic runs under the `himmel_agent` hermes profile (main-tier SOUL) instead of the user-default junior SOUL — the junior framing produced shallow/discarded codex output. Only the gpt family by default because `himmel_agent` is Codex-provider-bound (a non-OpenAI model like the free qwen3coder anchor 400s under it); open/claude critics stay on the hermes default profile and take their senior framing from the role-prompt. Override with `CR_CRITIC_PROFILE` (applies to every family when set; `none`/empty → hermes default). `invoke.sh --profile` is fail-open (missing profile warns + falls back). Tests: `scripts/cr/test-critic-first-pass.sh` (deterministic, PATH-stubbed fake hermes).
-- `scripts/cr/critic-panel.sh` + `scripts/cr/critics.json` — NIM critic panel (roster defined in `critics.json`). **`critics.json`'s `panel` holds two rows — `codex`/`gpt-6.1-sol` (tier `paid`, mode `hard`, required) and `coderabbit` (the GitHub app, `best-effort`, never dispatched by the panel) — and NO free critics; a separate `claude_floor` entry (`claude`/`claude-opus-5-5`, effort `medium`) runs only when codex is exhausted.** The free lane was **removed deliberately** — it made more trouble than it was worth: gptoss + kimi dropped 2026-07-03 (their 12%/13% ledger agreed-rate was noise), and the surviving qwen3coder anchor kept erroring rc=1. Paid-by-default is the intended posture, not drift. So `/pr-check` **auto-runs the PAID codex anchor by default** (~2min, bounded by the 240 s per-member timeout): an unset `CR_PROFILE` **AND** unset `CRITIC_PANEL_TIERS` resolve to tier filter `free` (`CRITIC_PANEL_TIERS` is the low-level override, honored ONLY when `CR_PROFILE` is unset), which matches zero rows, so the panel falls back to the paid anchor — **spending the OpenAI subscription usage budget on any default run that actually runs the panel** — skipped, and therefore free, on an empty diff or `CR_PROFILE=none` (an accepted cost). Note this fallback also bypasses the triviality gate, which only fires when `paid` is already IN the tier filter. `CR_PROFILE=none` = instant claude-only (skip panel). `CR_PROFILE=thorough` = adds the `thorough` tier (currently EMPTY — kept for future heavier critics). `CR_PROFILE=paid` / `free,paid` = the paid codex critic. Any other value is the tier filter verbatim. **`CR_PROFILE` is authoritative:** `/pr-check` loads it from `.env` and the panel derives its tiers from it directly — it wins over the low-level `CRITIC_PANEL_TIERS` override (honored only when `CR_PROFILE` is unset). This closed a drift where a run hand-scoped the panel to free-only and silently dropped the paid critic. Retired the gemini-only CR lane. Per-member hang protection via `CRITIC_TIMEOUT_SECS` — default **240 s**, which is ALSO the fallback when the supplied value is non-numeric or ≤0 (the panel warns and uses 240 rather than failing). It was raised from 150 s after codex + qwen3coder were seen clipping at 150 s. It needs the `timeout` binary, but does not *require* it: when `timeout` is absent the panel prints "per-member hang protection disabled" and runs each member **unbounded**.
+- `scripts/cr/critic-panel.sh` + `scripts/cr/critics.json` — NIM critic panel (roster defined in `critics.json`). **`critics.json`'s `panel` holds two rows — `codex`/`gpt-6.2-sol` (tier `paid`, mode `hard`, required) and `coderabbit` (the GitHub app, `best-effort`, never dispatched by the panel) — and NO free critics; a separate `claude_floor` entry (`claude`/`claude-opus-5-5`, effort `medium`) runs only when codex is exhausted.** The free lane was **removed deliberately** — it made more trouble than it was worth: gptoss + kimi dropped 2026-07-03 (their 12%/13% ledger agreed-rate was noise), and the surviving qwen3coder anchor kept erroring rc=1. Paid-by-default is the intended posture, not drift. So `/pr-check` **auto-runs the PAID codex anchor by default** (~2min, bounded by the 240 s per-member timeout): an unset `CR_PROFILE` **AND** unset `CRITIC_PANEL_TIERS` resolve to tier filter `free` (`CRITIC_PANEL_TIERS` is the low-level override, honored ONLY when `CR_PROFILE` is unset), which matches zero rows, so the panel falls back to the paid anchor — **spending the OpenAI subscription usage budget on any default run that actually runs the panel** — skipped, and therefore free, on an empty diff or `CR_PROFILE=none` (an accepted cost). Note this fallback also bypasses the triviality gate, which only fires when `paid` is already IN the tier filter. `CR_PROFILE=none` = instant claude-only (skip panel). `CR_PROFILE=thorough` = adds the `thorough` tier (currently EMPTY — kept for future heavier critics). `CR_PROFILE=paid` / `free,paid` = the paid codex critic. Any other value is the tier filter verbatim. **`CR_PROFILE` is authoritative:** `/pr-check` loads it from `.env` and the panel derives its tiers from it directly — it wins over the low-level `CRITIC_PANEL_TIERS` override (honored only when `CR_PROFILE` is unset). This closed a drift where a run hand-scoped the panel to free-only and silently dropped the paid critic. Retired the gemini-only CR lane. Per-member hang protection via `CRITIC_TIMEOUT_SECS` — default **240 s**, which is ALSO the fallback when the supplied value is non-numeric or ≤0 (the panel warns and uses 240 rather than failing). It was raised from 150 s after codex + qwen3coder were seen clipping at 150 s. It needs the `timeout` binary, but does not *require* it: when `timeout` is absent the panel prints "per-member hang protection disabled" and runs each member **unbounded**.
 - `scripts/cr/ledger-append.sh` — appends `finding` / `avail` / `usage` records to the CR ledger (`cr-critic-scores.jsonl`); called by `/pr-check` adjudication step. The `usage` kind records a chars/4 **estimated** token count for a critic (hermes does not expose real usage through the one-shot sanctioned script); written best-effort by `critic-first-pass.sh` when `CR_USAGE_LOG=1`. The `score` kind is one row per COMPLETED critic run (rc 0 or the all-dropped rc 4; a failed run writes none): `critical`/`important`/`suggestions` counts (+ `dropped`), `model`, `head`, and `raw_path` — so a clean 0/0/0 verdict is distinguishable from a non-run. `critic-first-pass.sh` writes it, and keeps the raw critic response at `raw_path` under `cr-panel-raw/` beside the ledger (`<head12>.<slug>.<diff|artifact>.<UTC ts>.<pid>.raw`, mode 0600); files older than `CR_RAW_RETAIN_DAYS` (default 30) are pruned on each write — no separate sweeper process. Fail-open: a raw/ledger write failure warns and never changes the critic's stdout or exit code. Every ledger reader filters on `kind`, so a `score` row changes no gate verdict.
 - `scripts/cr/cr-scores.sh` — generates a per-critic correctness scorecard from the ledger; surfaced via `/cr-scores`. Adds an estimated-token Usage section (per-model + cumulative) when the ledger holds `usage` records.
 

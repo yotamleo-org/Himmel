@@ -32,7 +32,7 @@ are also partial-merge rows (`NEEDS-CHIEF-NOTE … merged PR`): those stay hand 
 - Read the ticket's mirror file (`<mirror>/<KEY>.md`: description and comments).
 - Run `bash scripts/graphify/worker-graph.sh explain "<symbol>"` (or `path "<a>" "<b>"`) on each symbol,
   script or doc the ticket names.
-- Run one bounded qmd query on the title: `bash scripts/lib/qmd-bounded.sh query -c himmel "<title>"`.
+- Run one bounded qmd query on the title: `bash scripts/lib/qmd-bounded.sh query -c himmel "<title>"`. Send each search as its own tool call, with no other call in the same response: a call sent beside one that a hook rewrites is refused unrun.
 - Propose the files the ticket's next step edits and write these fields on the row, and no others:
   - `writes`: the repo-relative paths, as files, never directories; leave it `[]` when it is not sure.
   - `new`: the subset of `writes` that does not exist yet (its parent directory must exist).

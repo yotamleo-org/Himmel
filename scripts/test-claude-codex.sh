@@ -32,7 +32,7 @@ run_launcher() {
   local name="$1"
   shift
   ( cd "$WORK" && HOME="$FAKEHOME" PATH="$BIN:$PATH" CLIPROXY_API_KEY="test-key" \
-      CODEX_MODEL="${MODEL:-gpt-5.6-sol}" CLAUDE_CODEX_DOTENV_ROOT="$WORK" \
+      CODEX_MODEL="${MODEL-gpt-5.6-sol}" CLAUDE_CODEX_DOTENV_ROOT="$WORK" \
       bash "$LAUNCHER" "$@" >"$WORK/out.txt" 2>&1 )
   local got=$?
   if [ "$got" -ne 0 ]; then
@@ -51,7 +51,8 @@ cat > "$BIN/claude" <<'MOCK'
 #!/usr/bin/env bash
 env > "$HOME/child-env.txt"
 MOCK
-CLAUDE_CODE_AUTO_MODE_SERVER=1 run_launcher "gateway forces client-side auto mode"
+MODEL="" CLAUDE_CODE_AUTO_MODE_SERVER=1 run_launcher "gateway defaults to GPT-6.2 Sol and forces client-side auto mode"
+grep -qxF 'ANTHROPIC_MODEL=gpt-6.2-sol' "$FAKEHOME/child-env.txt" || { echo "FAIL: child env missing the GPT-6.2 Sol default"; FAILS=$((FAILS + 1)); }
 grep -qxF 'CLAUDE_CODE_AUTO_MODE_SERVER=0' "$FAKEHOME/child-env.txt" || { echo "FAIL: child env missing CLAUDE_CODE_AUTO_MODE_SERVER=0"; FAILS=$((FAILS + 1)); }
 
 # a claudex session started from another Claude session's Bash tool must not

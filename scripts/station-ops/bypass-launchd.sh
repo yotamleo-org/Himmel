@@ -392,18 +392,16 @@ lock_owner_alive() {
     local args re='(^|[ /])bypass-launchd\.sh'
     [ -n "$1" ] && kill -0 "$1" 2>/dev/null && args=$(ps -p "$1" -o args= 2>/dev/null) && [[ $args =~ $re ]]
 }
-take_lock() {
-    local seen cur rc=1 rl="$LOCK.reclaim"
-    ln -s "$$" "$LOCK" 2>/dev/null && return 0
-    seen=$(readlink "$LOCK" 2>/dev/null)
-    ! lock_owner_alive "$seen" || return 1
-    # Only the holder of the reclaim link may remove the stale lock, so a live lock is never moved aside. A
-    # reclaim link left by a starter that died is never removed here (that would be a second check-then-unlink):
-    # the operator removes it, and the start is refused with its path.
+refuse_dead_reclaim_link() {
+    echo "bypass-launchd: $1 was left by a starter that died; remove it and start again" >&2
+    return 2
+}
+reclaim_stale_lock() {
+    local seen=$1 cur rc=1 rl="$LOCK.reclaim"
     if ! ln -s "$$" "$rl" 2>/dev/null; then
         lock_owner_alive "$(readlink "$rl" 2>/dev/null)" && return 1
-        echo "bypass-launchd: $rl was left by a starter that died; remove it and start again" >&2
-        return 2
+        refuse_dead_reclaim_link "$rl"
+        return
     fi
     cur=$(readlink "$LOCK" 2>/dev/null)
     if [ "$cur" = "$seen" ] || [ -z "$cur" ]; then
@@ -412,6 +410,13 @@ take_lock() {
     fi
     rm -f "$rl"
     return $rc
+}
+take_lock() {
+    local seen
+    ln -s "$$" "$LOCK" 2>/dev/null && return 0
+    seen=$(readlink "$LOCK" 2>/dev/null)
+    ! lock_owner_alive "$seen" || return 1
+    reclaim_stale_lock "$seen"
 }
 release_lock() { [ "$(readlink "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"; }
 

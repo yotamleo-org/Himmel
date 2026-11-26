@@ -4113,6 +4113,65 @@ assert_rc "9997 Bash redirect onto T3 antigravity config/hooks.json denies" 2 \
 assert_rc "9998 Bash read of ~/.gemini/config/hooks.json allows" 0 \
     "$(bash_rc_of "$WT2" "cat $AGY_GEM_CFG/hooks.json" HOME="$T3H")"
 
+S9INPLACE=-i
+S9H="$SANDBOX/s9256home"
+S9SP="$SANDBOX/tmp/claude-1000/-home-u-Documents-github-himmel--claude-worktrees-slug/sess-1/scratchpad"
+S9TR="$S9H/.claude/projects/-home-u-Documents-github-himmel/abc.jsonl"
+S9SET="$S9H/.claude/settings.json"
+mkdir -p "$S9SP" "$S9H/.claude/projects/-home-u-Documents-github-himmel" "$SANDBOX/s9256tmp"
+printf '{"hooks":{}}\n' > "$S9SET"
+printf '{"x":1}\n' > "$S9TR"
+printf 'a\n' > "$S9SP/a.txt"
+assert_rc "9256a1 ls of a -claude- scratchpad allows" 0 \
+    "$(bash_rc_of "$WT2" "ls $S9SP" HOME="$S9H")"
+assert_rc "9256a2 cp inside a -claude- scratchpad allows" 0 \
+    "$(bash_rc_of "$WT2" "cp $S9SP/a.txt $S9SP/b.txt" HOME="$S9H")"
+assert_rc "9256a3 python3 -I on a -claude- scratchpad script allows" 0 \
+    "$(bash_rc_of "$WT2" "python3 -I $S9SP/x.py" HOME="$S9H")"
+assert_rc "9256a4 cd into a -claude- scratchpad and run git log allows" 0 \
+    "$(bash_rc_of "$WT2" "cd $S9SP && git log -1" HOME="$S9H")"
+assert_rc "9256b1 cp out of a transcript under ~/.claude/projects allows" 0 \
+    "$(bash_rc_of "$WT2" "cp $S9TR $S9SP/t.jsonl" HOME="$S9H")"
+assert_rc "9256b2 grep of a transcript under ~/.claude/projects allows" 0 \
+    "$(bash_rc_of "$WT2" "grep x $S9TR" HOME="$S9H")"
+assert_rc "9256b3 sed -n of a transcript under ~/.claude/projects allows" 0 \
+    "$(bash_rc_of "$WT2" "sed -n 1,5p $S9TR" HOME="$S9H")"
+assert_rc "9256b4 f= assignment then grep of a transcript allows" 0 \
+    "$(bash_rc_of "$WT2" "f=$S9TR; grep x \"\$f\"" HOME="$S9H")"
+assert_rc "9256b5 cp into ~/.claude/projects from a scratchpad denies" 2 \
+    "$(bash_rc_of "$WT2" "cp $S9SP/a.txt $S9H/.claude/projects/-home-u-Documents-github-himmel/" HOME="$S9H")"
+assert_rc "9256b6 cp of a transcript onto the ~/.claude directory itself denies" 2 \
+    "$(bash_rc_of "$WT2" "cp $S9TR $S9H/.claude" HOME="$S9H")"
+assert_rc "9256b7 mv of a transcript out of ~/.claude/projects denies" 2 \
+    "$(bash_rc_of "$WT2" "mv $S9TR $S9SP/t.jsonl" HOME="$S9H")"
+assert_rc "9256c1 jq read of ~/.claude/settings.json allows" 0 \
+    "$(bash_rc_of "$WT2" "jq '.hooks | keys' $S9SET" HOME="$S9H")"
+assert_rc "9256c2 python3 -I json.load of ~/.claude/settings.json allows" 0 \
+    "$(bash_rc_of "$WT2" "python3 -I -c \"import json;print(json.load(open('$S9SET')).keys())\"" HOME="$S9H")"
+assert_rc "9256d1 cat heredoc redirect into a scratch dir allows" 0 \
+    "$(bash_rc_of "$WT2" "cat > $SANDBOX/s9256tmp/x.py <<'EOF'
+print(1)
+EOF" HOME="$S9H")"
+assert_rc "9256d2 bun test in a worktree allows" 0 \
+    "$(bash_rc_of "$WT2" "bun test scripts/x.test.ts" HOME="$S9H")"
+assert_rc "9256e1 redirect onto ~/.claude/settings.json denies" 2 \
+    "$(bash_rc_of "$WT2" "echo {} > $S9SET" HOME="$S9H")"
+assert_rc "9256e2 tee onto ~/.claude/settings.json denies" 2 \
+    "$(bash_rc_of "$WT2" "echo {} | tee $S9SET" HOME="$S9H")"
+assert_rc "9256e3 in-place sed on ~/.claude/settings.json denies" 2 \
+    "$(bash_rc_of "$WT2" "sed $S9INPLACE s/a/b/ $S9SET" HOME="$S9H")"
+assert_rc "9256e4 cp onto ~/.claude/settings.json denies" 2 \
+    "$(bash_rc_of "$WT2" "cp $S9SP/a.txt $S9SET" HOME="$S9H")"
+assert_rc "9256e5 mv onto ~/.claude/settings.json denies" 2 \
+    "$(bash_rc_of "$WT2" "mv $S9SP/a.txt $S9SET" HOME="$S9H")"
+assert_rc "9256e6 jq redirect onto ~/.claude/settings.json denies" 2 \
+    "$(bash_rc_of "$WT2" "jq . $S9SP/a.txt > $S9SET" HOME="$S9H")"
+assert_rc "9256e7 a scratchpad command that also redirects onto ~/.claude/settings.json denies" 2 \
+    "$(bash_rc_of "$WT2" "ls $S9SP && echo {} > $S9SET" HOME="$S9H")"
+ln -s "$S9H/.claude" "$SANDBOX/s9256dlink"
+assert_rc "9256e8 cp through a symlinked dir onto ~/.claude/settings.json denies" 2 \
+    "$(bash_rc_of "$WT2" "cp $S9SP/a.txt $SANDBOX/s9256dlink/settings.json" HOME="$S9H")"
+
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
 git -C "$SANDBOX/primary" worktree remove --force "$SANDBOX/primary/.claude/worktrees/feat+x" 2>/dev/null || true
