@@ -32,8 +32,10 @@
 #
 # FAIL CLOSED: from the readiness gate on, the only path to exit 0 is the single allow verdict; one trap turns any other
 # exit, and a HUP/INT/QUIT/TERM, into guard-failure with exit 2. Direct tests of that cover a missing, crashing, silent
-# and lying jq, an unreadable stdin and a TERM while blocked reading stdin; they are NOT a proof of what the supervisor
-# does when this process is killed (SIGKILL cannot be trapped) - that is the supervisor's, not claimed here.
+# and lying jq, an unreadable stdin and a TERM while blocked reading stdin. A guard that stalls is bounded by the runner, not
+# by this script: the lone `--optional --fail-closed-when HIMMEL_READINESS=1` delivery gives it a 12 s deadline
+# (RUN_HOOK_LONE_GUARD_TIMEOUT_MS), under the 15 s host timeout hooks.json registers, and returns exit 2. What the host does
+# after it kills a PreToolUse hook is NOT claimed here (SIGKILL cannot be trapped); that is an owed real-session run.
 #
 # BYPASS: none. This is a security fence; there is no per-call or per-session switch. A session that is not the readiness
 # role simply does not carry HIMMEL_READINESS=1.

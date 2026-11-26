@@ -309,6 +309,32 @@ for failure in failed interrupted; do
     fi
 done
 
+race_shim="$TMP/race-shim"; mkdir -p "$race_shim"
+real_node_for_race="$(command -v node)"
+cat > "$race_shim/node" <<EOF
+#!/bin/bash
+if [ "\${1:-}" = "-e" ] && [[ "\${2:-}" == *statSync* ]]; then
+  out="\$("$real_node_for_race" "\$@")"; rc=\$?; sleep 1; printf '%s' "\$out"; exit \$rc
+fi
+exec "$real_node_for_race" "\$@"
+EOF
+chmod +x "$race_shim/node"
+race_state="$TMP/race"; seed_ledger "$race_state"
+for racer in A B; do
+    PATH="$race_shim:$PATH" HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$race_state" \
+        HIMMEL_WHERE_ARE_WE=1 WHERE_ARE_WE_BRANCH_OVERRIDE=main \
+        HIMMEL_WHERE_ARE_WE_COLLECT_CMD="echo $racer >> '$race_state/attempts'" \
+        bash "$HOOK" </dev/null >/dev/null 2>&1 &
+done
+wait
+sleep 1.5
+race_n="$(wc -l < "$race_state/attempts" 2>/dev/null | tr -d ' ')"
+if [ "${race_n:-0}" = 1 ]; then
+    pass "two simultaneous stale startups -> exactly one collector start"
+else
+    fail "two simultaneous stale startups -> ${race_n:-0} collector starts (want 1)"
+fi
+
 # --- Case 4: ON but broken node path → still exit 0 (fail-open) -------------
 state4="$TMP/s4"; seed_ledger "$state4"
 HIMMEL_REPO="$TMP/nonexistent-repo" WHERE_ARE_WE_STATE_DIR="$state4" \

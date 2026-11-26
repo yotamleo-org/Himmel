@@ -3645,6 +3645,29 @@ test('readiness residuals: lone delivery denies a guard killed by a signal', () 
   assert.match(ready.stderr, /DENY guard-readiness-tools\.sh \(signal SIGKILL\)/);
 });
 
+test('readiness residuals: lone delivery denies a stalled guard at its own deadline, with the stalled child gone', () => {
+  const started = Date.now();
+  const ready = readinessLoneRun('sleep 30 & wait', { HIMMEL_READINESS: '1', RUN_HOOK_LONE_GUARD_TIMEOUT_MS: '700' });
+  const elapsed = Date.now() - started;
+  assert.equal(ready.status, 2, ready.stderr);
+  assert.match(ready.stderr, /DENY guard-readiness-tools\.sh \(deadline 700ms\)/);
+  assert.equal(ready.stdout, '', 'a deadline deny carries no stdout');
+  assert.ok(elapsed < 8000, `the deny came at the deadline, not after the stalled child (${elapsed}ms)`);
+});
+
+test('readiness residuals: the lone deadline default sits under the 15 s host timeout hooks.json registers', () => {
+  const { DEFAULT_LONE_GUARD_TIMEOUT_MS } = require('./run-hook-with-bash.js');
+  assert.ok(DEFAULT_LONE_GUARD_TIMEOUT_MS > 0 && DEFAULT_LONE_GUARD_TIMEOUT_MS < 15_000, String(DEFAULT_LONE_GUARD_TIMEOUT_MS));
+});
+
+test('readiness residuals: a guard inside the lone deadline is unchanged, and outside the readiness context no deadline applies', () => {
+  const quick = readinessLoneRun('sleep 0.2', { HIMMEL_READINESS: '1', RUN_HOOK_LONE_GUARD_TIMEOUT_MS: '5000' });
+  assert.equal(quick.status, 0, quick.stderr);
+  assert.equal(quick.stdout, '');
+  const generic = readinessLoneRun('sleep 1.2', { RUN_HOOK_LONE_GUARD_TIMEOUT_MS: '300' });
+  assert.equal(generic.status, 0, generic.stderr);
+});
+
 test('readiness residuals: lone delivery keeps the parsed condition for a missing guard', () => {
   const missing = join(tmpdir(), 'nowhere', READINESS_GUARD);
   const ready = spawnSync(process.execPath, [LAUNCHER, ...READINESS_LONE_ARGS, missing], {

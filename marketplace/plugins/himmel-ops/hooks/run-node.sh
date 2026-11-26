@@ -33,7 +33,8 @@
 # ${CLAUDE_DIR:-$HOME/.claude}/himmel-node.log and exit 0 with NOTHING on
 # stdout/stderr — converting the old per-session "node: command not found" hook
 # error (which Claude Code surfaces) into actual silence. `/himmel-doctor` C1 is
-# what surfaces a genuinely-missing node.
+# what surfaces a genuinely-missing node. The one exception is HIMMEL_READINESS=1 (see the end of this file): that
+# marker makes an unresolvable node exit 2.
 set -u
 
 # Refuse LOUDLY rather than run a payload-less node. A launcher
@@ -199,4 +200,8 @@ _log_dir="${CLAUDE_DIR:-${HOME:-.}/.claude}"
 mkdir -p "$_log_dir" 2>/dev/null || true
 printf '%s node not found; skipped: %s\n' "$(date '+%Y-%m-%dT%H:%M:%S' 2>/dev/null || echo '?')" "$*" \
     >> "$_log_dir/himmel-node.log" 2>/dev/null || true
+if [ "${HIMMEL_READINESS-}" = 1 ]; then
+    printf '%s\n' 'run-node.sh: no usable node while HIMMEL_READINESS=1 - failing closed' >&2
+    exit 2
+fi
 exit 0
