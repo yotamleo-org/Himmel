@@ -38,6 +38,10 @@ HOOK="$SCRIPT_DIR/block-unresolved-cr-merge.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"; mkdir -p "$HOME"
+mkdir -p "$TMP/ghread-none" "$TMP/ghread-pool"
+: > "$TMP/ghread-none/.env"
+printf 'himmel_github_token_vm2=hookpooltoken\n' > "$TMP/ghread-pool/.env"
+export GH_READ_ENV_ROOT="$TMP/ghread-none"
 # The reviewer set is this tree's critics.json with no overlay, never the
 # primary checkout's main or a local critics.local.json.
 export CRITICS_BASE_JSON="$SCRIPT_DIR/../cr/critics.json" CRITICS_LOCAL_JSON="$TMP/no-overlay.json"
@@ -65,6 +69,8 @@ mkdir -p "$TMP/bin"
 cat > "$TMP/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 echo "$*" >> "${GH_STUB_LOG:?}"
+# A call gh_read routed to a pool token carries it as GH_TOKEN.
+[ -z "${GH_TOKEN:-}" ] || echo "$GH_TOKEN $*" >> "$GH_STUB_LOG.tok"
 [ -n "${GH_STUB_SLOW:-}" ] && sleep "$GH_STUB_SLOW"
 case "${GH_STUB_MODE:?}" in
   error) exit 1 ;;
@@ -502,6 +508,23 @@ _t0=$SECONDS
 GH_STUB_MODE=cr-hang-noterm t gh-ignores-sigterm-denies 2 Bash "gh pr merge 42 --squash $PIN"
 [ $((SECONDS - _t0)) -lt 25 ] || { echo "FAIL gh-ignores-sigterm-denies took $((SECONDS - _t0))s - a SIGTERM-proof gh outlived its bound"; fail=$((fail+1)); }
 grep -q "timed out (10s bound)" "$TMP/err-gh-ignores-sigterm-denies" || { echo "FAIL gh-ignores-sigterm-denies: not the gate-timeout refusal"; fail=$((fail+1)); }
+if grep -n 'command gh' "$HOOK"; then fail=$((fail+1)); echo "FAIL hook-no-bare-gh-binary: the hook runs the gh binary past gh_read"; else pass=$((pass+1)); echo "ok   hook-no-bare-gh-binary"; fi
+GH_READ_ENV_ROOT="$TMP/ghread-pool" GH_STUB_MODE=clean t pool-clean-allows 0 Bash "gh pr merge 42 --squash $PIN"
+if grep -q "^hookpooltoken pr view 42" "$TMP/calls-pool-clean-allows.log.tok" 2>/dev/null \
+        && grep -q "^hookpooltoken api graphql" "$TMP/calls-pool-clean-allows.log.tok"; then
+    pass=$((pass+1)); echo "ok   pool-clean-reads-on-pool-token"
+else fail=$((fail+1)); echo "FAIL pool-clean-reads-on-pool-token: the hook's reads did not carry the pool token"; fi
+for _row in "pool-cr-graphql-hang|cr-hang" "pool-gh-ignores-sigterm-denies|cr-hang-noterm"; do
+    _n=${_row%%|*}; _m=${_row#*|}
+    _t0=$SECONDS
+    GH_READ_ENV_ROOT="$TMP/ghread-pool" GH_STUB_MODE=$_m t "$_n" 2 Bash "gh pr merge 42 --squash $PIN"
+    [ $((SECONDS - _t0)) -lt 25 ] || { echo "FAIL $_n took $((SECONDS - _t0))s - the pool path is not bounded"; fail=$((fail+1)); }
+    grep -q "timed out (10s bound)" "$TMP/err-$_n" || { echo "FAIL $_n: not the gate-timeout refusal"; fail=$((fail+1)); }
+    grep -q "^hookpooltoken api graphql" "$TMP/calls-$_n.log.tok" 2>/dev/null || { echo "FAIL $_n: the hung read did not ride the pool token"; fail=$((fail+1)); }
+    if pgrep -f "$TMP/bin/gh api graphql" >/dev/null 2>&1; then
+        fail=$((fail+1)); echo "FAIL $_n-no-survivor: a gh outlived the bound"; pkill -9 -f "$TMP/bin/gh api graphql" 2>/dev/null
+    else pass=$((pass+1)); echo "ok   $_n-no-survivor"; fi
+done
 # A quoted head pin is the same word to bash: allowed when it equals the head,
 # denied when it does not, and a quoted value that is not a bare sha stays refused.
 GH_STUB_MODE=clean t quoted-pin-dq-allows 0 Bash "gh pr merge 42 --squash --match-head-commit \\\"abc123\\\""
