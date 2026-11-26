@@ -22,9 +22,6 @@
 #      refusal (rc 6, or 2 sessions rc 5) propagates, no pull, no bullet
 #  12. checkout path with a space: default close/board commands still run
 #  13. board failure -> rc 7;  14. append failure -> rc 6, the board still re-rendered
-#  29. the worker's merged worktree (its doc's resume_cwd) is pruned once the close succeeded: real
-#      worktree.sh over a temp repo; dirty, unmerged, primary, no resume_cwd, refused close and
-#      unmerged PR leave every tree in place, and another worker's merged worktree is never touched
 #
 # Platform guard: Linux bash 3.2+ (fleet-manifest.sh needs flock + jq).
 set -uo pipefail
