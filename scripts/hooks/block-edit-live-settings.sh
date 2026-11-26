@@ -1055,21 +1055,25 @@ _agy_verb_ro() {
 }
 
 _agy_seg_writes() {
-    local st=0 first=1 w
+    local st=0 first=1 w cw=''
     for w in "$@"; do
         [ -n "$w" ] || continue
         if [ "$first" = 1 ]; then
             case "$w" in [a-z_]*=*) continue ;; esac
             first=0
-            case "${w##*[/\\]}" in *'$'*) st=1 ;; esac
-            case "$w" in *\$\{*) case "${w##*[/\\]}" in *\}*) st=1 ;; esac ;; esac
+            cw=${w##*/}
+            case "$cw" in *'$'*) st=1; continue ;; esac
+            case "$w" in *\$\{*) case "$cw" in *\}*) st=1; continue ;; esac ;; esac
         fi
         case "$st" in
-            0) case "${w##*[/\\]}" in agy|agy.exe|agy.cmd) st=1 ;; esac ;;
-            1) case "$w" in plugin|plugins|mcp) st=2 ;; esac ;;
+            0) [ "${w##*/}" != agy ] || st=1 ;;
+            1) case "$w" in plugin|plugins|mcp|*'$'*|*'*'*|*'?'*|*'['*|*'{'*) st=2 ;; esac ;;
             2) _agy_verb_ro "$w" || return 0; st=0 ;;
         esac
     done
+    if [ "$st" = 2 ]; then
+        case "$cw" in xargs|parallel|entr) return 0 ;; esac
+    fi
     return 1
 }
 
@@ -1079,7 +1083,7 @@ _agy_text_writes() {
     s=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
     s=${s//\\$'\n'/}
     s=${s//[\"\']/}
-    s=${s//[()\`]/ }
+    s=${s//[()\`<>]/ }
     s=${s//[;&|]/$'\n'}
     while IFS= read -r seg || [ -n "$seg" ]; do
         ws=()

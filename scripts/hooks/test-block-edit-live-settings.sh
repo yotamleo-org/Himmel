@@ -4157,10 +4157,8 @@ assert_rc "11257b9 agy plugin import after a read-only agy plugin list in one co
     "$(bash_rc_of "$WT2" "agy plugin list; agy plugin import claude" HOME="$T3H")"
 assert_rc "11257b10 a variable command word followed by plugin import denies" 2 \
     "$(bash_rc_of "$WT2" 'a=agy; $a plugin import claude' HOME="$T3H")"
-assert_rc "11257b11 agy.exe in a heredoc command (text fallback) denies" 2 \
-    "$(bash_rc_of "$WT2" "agy.exe plugin import claude <<'EOF'
-y
-EOF" HOME="$T3H")"
+assert_rc "11257b11 a default expansion in the subcommand slot denies" 2 \
+    "$(bash_rc_of "$WT2" 'agy ${x:-plugin} install ./p' HOME="$T3H")"
 assert_rc "11257b12 a line continuation inside a heredoc command denies" 2 \
     "$(bash_rc_of "$WT2" "agy plugin \\
  import claude <<'EOF'
@@ -4170,8 +4168,18 @@ assert_rc "11257b13 bash -c with a trailing plugin word after the verb denies" 2
     "$(bash_rc_of "$WT2" 'bash -c "agy plugin install plugin"' HOME="$T3H")"
 assert_rc "11257b14 bash -c with a quoted subcommand denies" 2 \
     "$(bash_rc_of "$WT2" "bash -c \"agy 'plugin' import claude\"" HOME="$T3H")"
-assert_rc "11257b15 a Windows path to agy.exe in a heredoc command denies" 2 \
-    "$(bash_rc_of "$WT2" "C:\\Users\\x\\agy.exe plugin import claude <<'EOF'
+assert_rc "11257b15 a variable assigned in the same command fills the subcommand slot and denies" 2 \
+    "$(bash_rc_of "$WT2" 'P=plugin; agy "$P" import claude' HOME="$T3H")"
+assert_rc "11257b23 an ANSI-C quoted subcommand denies" 2 \
+    "$(bash_rc_of "$WT2" "agy \$'plugin' install ./p" HOME="$T3H")"
+assert_rc "11257b24 a glob in the subcommand slot denies" 2 \
+    "$(bash_rc_of "$WT2" 'agy plug* install ./p' HOME="$T3H")"
+assert_rc "11257b25 xargs supplying the verb to agy plugin denies" 2 \
+    "$(bash_rc_of "$WT2" "printf 'import claude\\n' | xargs agy plugin" HOME="$T3H")"
+assert_rc "11257b26 xargs supplying the verb to agy mcp denies" 2 \
+    "$(bash_rc_of "$WT2" 'xargs -n1 agy mcp' HOME="$T3H")"
+assert_rc "11257b27 a redirect glued to the subcommand in a heredoc command denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin>/dev/null install ./p <<'EOF'
 y
 EOF" HOME="$T3H")"
 assert_rc "11257b16 a subcommand word split by a line continuation in a heredoc command denies" 2 \
@@ -4227,6 +4235,16 @@ assert_rc "11257c19 a literal closing brace ending another executable's name all
     "$(bash_rc_of "$WT2" '/opt/tool} plugin install foo' HOME="$T3H")"
 assert_rc "11257b22 a braced default whose suffix completes the agy name denies" 2 \
     "$(bash_rc_of "$WT2" '${X:-/usr/bin/ag}y plugin import claude' HOME="$T3H")"
+assert_rc "11257c20 an agy prompt held in a variable allows" 0 \
+    "$(bash_rc_of "$WT2" 'agy -p "$PROMPT"' HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
+assert_rc "11257c21 a variable subcommand followed by a read verb allows" 0 \
+    "$(bash_rc_of "$WT2" 'agy "$M" list' HOME="$T3H")"
+assert_rc "11257c22 xargs feeding a read verb to agy plugin allows" 0 \
+    "$(bash_rc_of "$WT2" 'xargs agy plugin list' HOME="$T3H")"
+assert_rc "11257c23 a redirect glued to a read verb in a heredoc command allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin list >/dev/null <<'EOF'
+y
+EOF" HOME="$T3H")"
 assert_rc "11257c16 a command substitution carrying plugin list in a heredoc command allows" 0 \
     "$(bash_rc_of "$WT2" "echo \$(agy plugin list) <<'EOF'
 y
