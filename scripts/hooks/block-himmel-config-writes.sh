@@ -188,7 +188,7 @@ station_path() {
     fold_to "$1"
     case "$FOLDED" in
         */.himmel/himmel.conf|.himmel/himmel.conf|*/.himmel/himmel.conf.local|.himmel/himmel.conf.local|*/.himmel/profiles/*.conf|.himmel/profiles/*.conf) return 0 ;;
-        "$F_STATION_DIR/himmel.conf"|"$F_STATION_DIR/himmel.conf.local"|"$F_STATION_DIR"/profiles/*.conf|"$F_STATION_CONF"|"$F_STATION_LOCAL"|"$F_STATION_PROFILES"/*.conf) return 0 ;;
+        "$F_STATION_DIR/himmel.conf"|"$F_STATION_DIR/himmel.conf.local"|"$F_STATION_DIR"/profiles/*.conf|"$F_STATION_DIR_R"/himmel.conf|"$F_STATION_DIR_R"/himmel.conf.local|"$F_STATION_DIR_R"/profiles/*.conf|"$F_STATION_CONF"|"$F_STATION_LOCAL"|"$F_STATION_PROFILES"/*.conf) return 0 ;;
     esac
     return 1
 }

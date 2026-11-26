@@ -723,6 +723,12 @@ nojq_case "10322 no jq: a JSON payload with a station path through a symlinked d
 nojq_case "10322 no jq: control, an unrelated path through a symlinked directory -> allow" allow "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$T/station-alias/notes.txt\"}}"
 run "10322 unparseable JSON with a literal comma in the station path string -> block" block "{\"tool_input\":{\"file_path\":\"$T/a,b/himmel.conf\""
 run "10322 control: unparseable JSON with an unrelated string value -> allow" allow "{\"tool_input\":{\"file_path\":\"$T/station-alias/notes.txt\""
+{ mkdir -p "$T/cfgreal/profiles" && ln -s "$T/cfgreal" "$T/cfglink" && ln -s "$T/elsewhere/himmel.conf" "$T/cfgreal/himmel.conf"; } || { echo "FAIL: cannot build the config-dir fixtures" >&2; exit 1; }
+HIMMEL_CONFIG_DIR="$T/cfglink"; export HIMMEL_CONFIG_DIR
+bash_case "10322 a profile spelled by the physical config directory when HIMMEL_CONFIG_DIR is a symlink and himmel.conf links elsewhere -> block" block "tee $T/cfgreal/profiles/lab.conf"
+bash_case "10322 a local override spelled by the physical config directory when HIMMEL_CONFIG_DIR is a symlink -> block" block "echo x > $T/cfgreal/himmel.conf.local"
+bash_case "10322 control: another file in the physical config directory -> allow" allow "echo x > $T/cfgreal/notes.txt"
+unset HIMMEL_CONFIG_DIR
 run "10322 control: malformed payload naming an unrelated file through a symlinked directory -> allow" allow "{not json $T/station-alias/notes.txt"
 bash_case "10322 control: cat through a symlinked directory -> allow" allow "cat $T/station-alias/himmel.conf"
 bash_case "10322 control: cp through a symlinked directory onto an unrelated file -> allow" allow "cp $T/x $T/station-alias/notes.txt"
