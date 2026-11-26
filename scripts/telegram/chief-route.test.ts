@@ -3474,6 +3474,53 @@ const closureTree = async (plan3: string[] = []) => {
 };
 const overrideOf = (specs: string, ids: string) => verb(true, "round-override", CAP_KEY, "--findings", ids, "--why", "a regression the fix made", "--chief", "chief-x", "--specs", specs);
 
+const legacyTree = async (spec3: string[]) => {
+  const t = specsTree(); const a = join(t.dir, `${CAP_KEY}-a.md`); const html = join(t.dir, `${CAP_KEY}-a.html`);
+  writeFileSync(a, front(CAP_KEY, "# A\n")); writeFileSync(html, "<h1>A</h1>\n");
+  for (const n of [1, 2, 3]) { const s = n === 3 ? spec3 : []; writeFileSync(`${a}.critic-spec-r${n}.md`, ret(verdictFor("SPEC", s), "a return from before the round ledger", ...s)); }
+  expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  return { ...t, a, html };
+};
+const readLine = (p: string, shaOf = p) => `READ-SHA256 ${sha(readFileSync(shaOf, "utf8"))} ${p}`;
+
+test("a round-4 closure seals over a round 3 that sealed no file, taking the files its READ-SHA256 lines quote as the baseline and recording that it was inferred", async () => {
+  const t = await legacyTree(MAJOR);
+  expect(ledgerRows(t.specs, CAP_KEY)[0].latest.spec[0].seals).toEqual([]);
+  const ok = await closeOn(t, "spec", 4, [t.a, t.html], "SPEC FINDINGS 1", readLine(t.a), readLine(t.html), "- **M2** (major; reopens M1) still open");
+  expect(ok.err).toBe("");
+  const round4 = ledgerRows(t.specs, CAP_KEY).filter((x) => x.row === "round").at(-1);
+  expect(round4).toMatchObject({ critic: "spec", round: 4, mode: "closure", baseline: "inferred", baseline_files: [{ read_path: t.a, read_sha: sha(readFileSync(t.a, "utf8")) }, { read_path: t.html, read_sha: sha(readFileSync(t.html, "utf8")) }] });
+  expect(round4.findings).toMatchObject([{ id: "M2", class: "reopens" }]);
+  expect(ledgerRows(t.specs, CAP_KEY).filter((x) => x.row === "seal").length).toBe(1);
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toContain(T5(5));
+});
+
+test("a round-4 closure over a round 3 that sealed no file is still refused when its return quotes no READ line for the file it seals, or quotes another sha for it", async () => {
+  const t = await legacyTree(MAJOR);
+  const none = await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **M2** (major; reopens M1) still open");
+  expect(none.err).toContain(T3("spec", 4, "")); expect(none.code).not.toBe(0);
+  const other = await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", readLine(t.html), "- **M2** (major; reopens M1) still open");
+  expect(other.err).toContain(T3("spec", 4, t.html)); expect(other.code).not.toBe(0);
+  const wrong = await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", `READ-SHA256 ${sha("not the spec")} ${t.a}`, "- **M2** (major; reopens M1) still open");
+  expect(wrong.err).toContain(T3("spec", 4, t.a)); expect(wrong.code).not.toBe(0);
+  expect(ledgerRows(t.specs, CAP_KEY).filter((x) => x.row === "round").length).toBe(0);
+});
+
+test("a round 3 that sealed a file keeps the strict match: a closure return quoting another file for its READ line is refused", async () => {
+  const t = await roundTree(MAJOR, []);
+  const v2 = join(t.dir, `${CAP_KEY}-a-v2.md`); writeFileSync(v2, front(CAP_KEY, "# A v2\n"));
+  const moved = await closeOn(t, "spec", 4, [v2], "SPEC FINDINGS 1", readLine(v2), "- **M2** (major; reopens M1) still open");
+  expect(moved.err).toContain(T3("spec", 4, t.a)); expect(moved.code).not.toBe(0);
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1)).not.toHaveProperty("baseline");
+});
+
+test("closure-pack for a round 3 that sealed no file says the closure return's READ-SHA256 lines are the baseline", async () => {
+  const t = await legacyTree(MAJOR);
+  const pack = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs);
+  expect(pack.code).toBe(0);
+  expect(pack.out).toContain("round 3 sealed no file; the READ-SHA256 lines of the closure return are its baseline");
+});
+
 test("a closure return whose regression heading holds its quote inside the parenthesis is a blocking regression the override can name; a minor finding in it is still refused", async () => {
   const t = await closureTree();
   const lines = [`- **P1** (major; regression \`${QUOTED}\`) the fix did not resolve the path`, "- **n1** (minor) a note"];
