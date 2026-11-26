@@ -69,8 +69,10 @@ if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); 
 export HIMMEL_FAILURE_REVIEW_DIR="$TMP_ROOT/failure-review"
 mkdir -p "$TMP_ROOT/emptyroot"; : > "$TMP_ROOT/emptyroot/.env"
 export GH_READ_ENV_ROOT="$TMP_ROOT/emptyroot" HIMMEL_SECRETS_KEYRING=off
-mkdir -p "$TMP_ROOT/emptyconf"
+mkdir -p "$TMP_ROOT/emptyconf" "$TMP_ROOT/emptycache"
+: > "$TMP_ROOT/emptygitconfig"
 export HIMMEL_CONFIG_DIR="$TMP_ROOT/emptyconf" HIMMEL_JIRA_MIRROR="$TMP_ROOT/no-mirror"
+export HIMMELCTL_CACHE_DIR="$TMP_ROOT/emptycache" GIT_CONFIG_GLOBAL="$TMP_ROOT/emptygitconfig" GIT_CONFIG_NOSYSTEM=1
 unset HANDOVER_DIR HIMMEL_CHIEF_DOC HIMMEL_BUCKET_DIR TRACKER JIRA_PROJECT_KEY 2>/dev/null || true
 
 # Fake gh + jira + claude CLIs -----------------------------------------
@@ -882,6 +884,30 @@ OUT_LKI="$TMP_ROOT/adopted-leak-invalid.md"
 file=$(cat "$OUT_LKI" 2>/dev/null || true)
 assert_contains "control: leaked key — the invalid-tracker run still wrote its report, on jira" "jira unavailable" "$file"
 assert_absent "control: leaked key — the tracker setting is no longer invalid (invalid tracker: setting named)" "tracker setting is invalid" "$file"
+
+echo "TEST: control — a cache .env naming JIRA_PROJECT_KEY, or a global git config naming a tracker, puts the adopted runs back on the station's tracker"
+LEAK_CACHE="$TMP_ROOT/leakcache"; mkdir -p "$LEAK_CACHE"
+printf 'JIRA_PROJECT_KEY=LEAK\n' > "$LEAK_CACHE/.env"
+OUT_LC="$TMP_ROOT/adopted-leak-cache.md"
+( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER HIMMELCTL_CACHE_DIR="$LEAK_CACHE" GH_CMD="$FAKE_GH" \
+    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_LC" >/dev/null 2>&1 ) || true
+file=$(cat "$OUT_LC" 2>/dev/null || true)
+assert_contains "control: leaked cache .env — the adopted run is back on jira (adopted: no 'jira unavailable')" "jira unavailable" "$file"
+assert_absent "control: leaked cache .env — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
+OUT_LCI="$TMP_ROOT/adopted-leak-cache-invalid.md"
+( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD HIMMELCTL_CACHE_DIR="$LEAK_CACHE" TRACKER=jira GH_CMD="$FAKE_GH" \
+    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_LCI" >/dev/null 2>&1 ) || true
+file=$(cat "$OUT_LCI" 2>/dev/null || true)
+assert_contains "control: leaked cache .env — the invalid-tracker run is on jira" "jira unavailable" "$file"
+assert_absent "control: leaked cache .env — the tracker setting is no longer invalid (invalid tracker: setting named)" "tracker setting is invalid" "$file"
+LEAK_GITCFG="$TMP_ROOT/leakgitconfig"
+printf '[himmel]\n\ttracker = jira\n' > "$LEAK_GITCFG"
+OUT_LG="$TMP_ROOT/adopted-leak-gitcfg.md"
+( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER GIT_CONFIG_GLOBAL="$LEAK_GITCFG" GH_CMD="$FAKE_GH" \
+    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_LG" >/dev/null 2>&1 ) || true
+file=$(cat "$OUT_LG" 2>/dev/null || true)
+assert_contains "control: leaked global git config — the adopted run names an invalid tracker setting" "tracker setting is invalid" "$file"
+assert_absent "control: leaked global git config — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
 
 # Shifts, chiefs and per-shift spend ---------------------------------
 # The generator reads the shift record (shifts.jsonl), counts each shift id in exactly one
