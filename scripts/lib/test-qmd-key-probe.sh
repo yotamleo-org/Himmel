@@ -52,6 +52,7 @@ class H(http.server.BaseHTTPRequestHandler):
         self.rfile.read(int(self.headers.get('Content-Length') or 0))
         auth = self.headers.get('Authorization', '')
         open(portfile + '.auth', 'w').write(auth)
+        open(portfile + '.paths', 'a').write(self.path + '\n')
         if mode == 'needauth' and auth != 'Bearer ' + want:
             return self.reply(403, b'{"error":"forbidden"}', 'application/json')
         if mode == 'hang':
@@ -236,6 +237,17 @@ OUT=$(env -u CURL_HOME -u XDG_CONFIG_HOME no_proxy='' NO_PROXY='' HOME="$TMP/hom
 RC=$?
 assert_eq "curlrc row: probe still reaches the target (exit 0)" 0 "$RC"
 assert_eq "curlrc row: no request was redirected to the capture stub" "absent" "$([ -e "$CAP.auth" ] && echo present || echo absent)"
+
+start_stub capture
+CAP="$TMP/port.capture"
+rm -f "$CAP.paths"
+run_probe "http://127.0.0.1:$(cat "$CAP")/{a,b}[1-2]"
+assert_eq "glob row: the probe made exactly one request" 1 "$(wc -l < "$CAP.paths" 2>/dev/null | tr -d ' ')"
+assert_eq "glob row: the path reached the stub unexpanded" "/{a,b}[1-2]" "$(head -n 1 "$CAP.paths" 2>/dev/null)"
+rm -f "$CAP.paths"
+run_probe "http://127.0.0.1:$(cat "$CAP")/mcp"
+assert_eq "glob control row: an ordinary URL makes one request" 1 "$(wc -l < "$CAP.paths" 2>/dev/null | tr -d ' ')"
+assert_eq "glob control row: an ordinary URL path is unchanged" "/mcp" "$(head -n 1 "$CAP.paths" 2>/dev/null)"
 
 # 14: 127.x must be exactly four dotted octets; a trailing dot or extra labels are not loopback.
 run_probe "http://127.0.0.1.0.0:9/mcp" 2
