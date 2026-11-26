@@ -29,6 +29,12 @@
 #     cfg` (quotes), `cat cfg 2>/dev/null` (redirect), `grep x cfg | head`,
 #     a CRLF-terminated read and a trailing `# comment` are all denied; the
 #     deny message points at the quote-free reads and the Read tool.
+#     Two more Bash rules run first. A path operand spelled through a symlinked
+#     directory (a Mac's /tmp is /private/tmp) is also judged by where it
+#     resolves, so it names a guarded file when its physical form does. A cp,
+#     rsync, mv or install whose destination (last operand, or -t DIR) is a
+#     config directory (~/.himmel, a repo's .himmel, the station directory or
+#     its profiles) denies, since it replaces the files in it without naming one.
 #   Edit|Write|MultiEdit|NotebookEdit - file_path / notebook_path whose literal
 #     name is `.himmel/config.json`, or which resolves (`readlink -m`: `..`
 #     segments, symlinked components) to $HOME/.himmel/config.json. The path is
@@ -512,7 +518,124 @@ fi
 if [[ "$lcv" =~ api-roles\.mjs[^\|\;\&]*[[:space:]]write([^a-z0-9_-]|$) ]]; then
     deny "a session runs api-roles.mjs write. Only the operator maps API roles (the config UI, or node scripts/lib/api-roles.mjs write at their own prompt); read-only: api-roles.mjs check"
 fi
-names_guarded_file "$cmd" || names_guarded_file "$lc" || exit 0
+
+cmd_cwd=$(printf '%s' "$input" | jq -r '.cwd // ""' 2>/dev/null) || cmd_cwd="" # swallow-ok: an unreadable cwd falls back to $PWD just below
+[ -n "$cmd_cwd" ] || cmd_cwd="$PWD"
+
+operand_clean() {
+    local w="${1//[\"\']/}" re='^[0-9]*[<>(]+(.*)$'
+    if [[ "$w" =~ $re ]]; then w="${BASH_REMATCH[1]}"; fi
+    w="${w#--target-directory=}"
+    w="${w%%[;&|)]*}"
+    case "$w" in
+        \~) w="$HOME" ;;
+        \~/*) w="$HOME/${w#\~/}" ;;
+    esac
+    w="${w/#\$\{HOME\}/$HOME}"
+    w="${w/#\$HOME/$HOME}"
+    OPERAND="$w"
+}
+
+config_dir_operand() {
+    local o="$1" f r sd
+    while :; do
+        case "$o" in
+            ?*/.|?*/\*) o="${o%/?}" ;;
+            ?*/) o="${o%/}" ;;
+            *) break ;;
+        esac
+    done
+    fold_to "$o"; f="$FOLDED"
+    case "$f" in .himmel|*/.himmel) return 0 ;; esac
+    case "$o" in /*) ;; *) o="$cmd_cwd/$o" ;; esac
+    r=$(hook_resolve_m "$o" 2>/dev/null) || return 1 # swallow-ok: a destination that cannot be resolved (a symlink loop) cannot be written either
+    fold_to "$r"; f="$FOLDED"
+    case "$f" in */.himmel) return 0 ;; esac
+    sd=$(hook_resolve_m "$STATION_DIR" 2>/dev/null) || sd="" # swallow-ok: the station directory already resolved at startup, so only an empty compare is left
+    fold_to "$sd"
+    [ -n "$FOLDED" ] && [ "$f" = "$FOLDED" ] && return 0
+    [ "$f" = "${F_STATION_CONF%/*}" ] && return 0
+    [ "$f" = "$F_STATION_PROFILES" ] && return 0
+    return 1
+}
+
+config_dir_destination() {
+    local t w o seg_verb="" last="" tdir="" expect_t=0 skip_next=0 re_op='^[0-9]*[<>]+$' re_red='^[0-9]*[<>]'
+    DEST_VERB=""
+    case "$cmd" in *cp*|*mv*|*rsync*|*install*) ;; *) return 1 ;; esac
+    t="${cmd//[;&|]/ ; }"; t="${t//$'\n'/ ; }"
+    set -f
+    for w in $t ";"; do
+        if [ "$w" = ";" ]; then
+            case "$seg_verb" in
+                cp|mv|rsync|install)
+                    o="${tdir:-$last}"
+                    if [ -n "$o" ] && config_dir_operand "$o"; then DEST_VERB="$seg_verb"; set +f; return 0; fi ;;
+            esac
+            seg_verb="" last="" tdir="" expect_t=0 skip_next=0
+            continue
+        fi
+        if [ "$skip_next" = 1 ]; then skip_next=0; continue; fi
+        if [[ "$w" =~ $re_op ]]; then skip_next=1; continue; fi
+        if [[ "$w" =~ $re_red ]]; then continue; fi
+        operand_clean "$w"; o="$OPERAND"
+        [ -n "$o" ] || continue
+        if [ -z "$seg_verb" ]; then
+            case "$o" in
+                *=*|-*|sudo|env|command|nohup|time|exec|nice) continue ;;
+            esac
+            seg_verb="${o##*/}"
+            continue
+        fi
+        if [ "$expect_t" = 1 ]; then tdir="$o"; expect_t=0; continue; fi
+        if [ "$seg_verb" != rsync ]; then
+            case "$w" in
+                -t|--target-directory) expect_t=1; continue ;;
+                --target-directory=*) tdir="$o"; continue ;;
+                -t?*) tdir="${o#-t}"; continue ;;
+                -[!-]*t) expect_t=1; continue ;;
+            esac
+        fi
+        case "$w" in -*) continue ;; esac
+        last="$o"
+    done
+    set +f
+    return 1
+}
+
+if config_dir_destination; then
+    deny "$DEST_VERB onto a config directory replaces the files in it without naming one (the operator's ~/.himmel holds config.json and the station config): copy single named files with the file tools, or ask the operator to do it at their own prompt"
+fi
+
+phys_names=0
+if ! names_guarded_file "$cmd" && ! names_guarded_file "$lc"; then
+    phys=()
+    set -f
+    for _w in $cmd; do
+        operand_clean "$_w"; _o="$OPERAND"
+        case "$_o" in */*) ;; *) continue ;; esac
+        case "$_o" in *'$'*|*'`'*|*'*'*|*'?'*|*'['*|*'{'*) continue ;; esac
+        case "$_o" in /*) ;; *) _o="$cmd_cwd/$_o" ;; esac
+        phys[${#phys[@]}]="$_o"
+        [ "${#phys[@]}" -lt 100 ] || break
+    done
+    set +f
+    if [ "${#phys[@]}" -gt 0 ]; then
+        _res=$(hook_resolve_m "${phys[@]}" 2>/dev/null) || _res="" # swallow-ok: an unresolvable operand set leaves the text rules above as the verdict (the guard's stated ceiling)
+        _cfgr=$(hook_resolve_m "$CFG_REAL" 2>/dev/null) || _cfgr="" # swallow-ok: an unresolvable config path (a symlink loop) leaves the name checks above as the verdict
+        fold_to "$_cfgr"; _fcfg="$FOLDED"
+        while IFS= read -r _r; do
+            [ -n "$_r" ] || continue
+            if names_guarded_file "$_r"; then phys_names=1; break; fi
+            fold_to "$_r"
+            if [ "$DARWIN" = 1 ] && names_guarded_file "$FOLDED"; then phys_names=1; break; fi
+            if [ -n "$_fcfg" ] && [ "$FOLDED" = "$_fcfg" ]; then phys_names=1; break; fi
+        done <<EOF
+$_res
+EOF
+    fi
+    [ "$phys_names" = 1 ] || exit 0
+fi
 # rm/mv/unlink as a command word: every such command denies below, so the row is
 # written from deny(). The first word naming a guarded file is the row's path.
 if [[ "$lc" =~ (^|[^a-z0-9_.-])(rm|mv|unlink)([[:space:]]|$) ]]; then
