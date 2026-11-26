@@ -4192,6 +4192,18 @@ assert_rc "11257b31 a stderr redirect before the write verb denies" 2 \
     "$(bash_rc_of "$WT2" "agy plugin 2>&1 install ./p <<'EOF'
 y
 EOF" HOME="$T3H")"
+assert_rc "11257b32 a variable path ending in agy denies" 2 \
+    "$(bash_rc_of "$WT2" '"$HOME/.local/bin/agy" plugin install ./p' HOME="$T3H")"
+assert_rc "11257b33 an unquoted variable path ending in agy denies" 2 \
+    "$(bash_rc_of "$WT2" '$HOME/.local/bin/agy plugin import claude' HOME="$T3H")"
+assert_rc "11257b34 a quoted redirect character before the subcommand does not hide it" 2 \
+    "$(bash_rc_of "$WT2" "agy --x '>' plugin install ./p <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b35 bash -lc carrying an agy install denies" 2 \
+    "$(bash_rc_of "$WT2" "bash -lc 'agy plugin import claude'" HOME="$T3H")"
+assert_rc "11257b36 bash with an option argument before -c carrying an agy install denies" 2 \
+    "$(bash_rc_of "$WT2" "bash -o pipefail -c 'agy plugin import claude'" HOME="$T3H")"
 assert_rc "11257b27 a redirect glued to the subcommand in a heredoc command denies" 2 \
     "$(bash_rc_of "$WT2" "agy plugin>/dev/null install ./p <<'EOF'
 y
@@ -4259,6 +4271,10 @@ assert_rc "11257c23 a redirect glued to a read verb in a heredoc command allows"
     "$(bash_rc_of "$WT2" "agy plugin list>/dev/null <<'EOF'
 y
 EOF" HOME="$T3H")"
+assert_rc "11257c26 a variable path ending in agy with a read verb allows" 0 \
+    "$(bash_rc_of "$WT2" '"$HOME/.local/bin/agy" plugin list' HOME="$T3H")"
+assert_rc "11257c27 a script argument that only names agy plugin install allows" 0 \
+    "$(bash_rc_of "$WT2" "bash scripts/x.sh --ceiling 'harmless text: agy plugin install foo'" HOME="$T3H")"
 assert_rc "11257c24 a quoted prompt ending in a question mark allows" 0 \
     "$(bash_rc_of "$WT2" 'agy -p "What changed?" --model m' HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
 assert_rc "11257c25 a read verb after a stderr redirect in a heredoc command allows" 0 \

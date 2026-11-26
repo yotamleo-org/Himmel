@@ -1055,19 +1055,21 @@ _agy_verb_ro() {
 }
 
 _agy_seg_writes() {
-    local st=0 first=1 app=0 w cw=''
+    local st=0 first=1 app=0 w b cw=''
     for w in "$@"; do
         [ -n "$w" ] || continue
+        b=${w%$'\001'}
+        b=${b##*/}
         if [ "$first" = 1 ]; then
             case "$w" in [a-z_]*=*) continue ;; esac
             first=0
-            cw=${w##*/}
+            cw=$b
             case "$cw" in *'$'*) st=1; continue ;; esac
             case "$w" in *\$\{*) case "$cw" in *\}*) st=1; continue ;; esac ;; esac
         fi
-        case "${w##*/}" in xargs|parallel|entr) app=1 ;; esac
+        case "$b" in xargs|parallel|entr) app=1 ;; esac
         case "$st" in
-            0) [ "${w##*/}" != agy ] || st=1 ;;
+            0) [ "$b" != agy ] || st=1 ;;
             1) case "$w" in plugin|plugins|mcp|*$'\001') st=2 ;; esac ;;
             2) _agy_verb_ro "$w" || return 0; st=0 ;;
         esac
@@ -1076,12 +1078,24 @@ _agy_seg_writes() {
     return 1
 }
 
+_agy_mask_quoted_redirects() {
+    printf '%s' "$1" | LC_ALL=C awk 'BEGIN { RS = "\001"; ORS = "" }
+        { n = length($0); q = ""
+          for (i = 1; i <= n; i++) {
+              c = substr($0, i, 1)
+              if (q != "") { if (c == q) q = ""; else if (c == "<") c = "\002"; else if (c == ">") c = "\003" }
+              else if (c == "\"" || c == "\047") q = c
+              printf "%s", c
+          } }'
+}
+
 _agy_text_writes() {
     local s seg k rc=1
     local -a ws
     local rre='[0-9]*[<>]+&?[[:space:]]*[^[:space:]<>;&|()`]*'
     s=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
     s=${s//\\$'\n'/}
+    case "$s" in *[\"\']*) case "$s" in *[\<\>]*) s=$(_agy_mask_quoted_redirects "$s") ;; esac ;; esac
     s=${s//[\"\']/}
     while [[ $s =~ $rre ]]; do s=${s/"${BASH_REMATCH[0]}"/ }; done
     s=${s//[()\`]/ }
@@ -1099,7 +1113,7 @@ _agy_text_writes() {
 }
 
 agy_cli_writes() {
-    local i=0 seg=-1 first=0 nested=0 w
+    local i=0 seg=-1 first=0 nested=0 shellc=0 w prevw=''
     local -a sw=()
     if [ "$TOK" != 1 ]; then
         _agy_text_writes "$cmd"
@@ -1110,16 +1124,24 @@ agy_cli_writes() {
         if [ "$i" -eq "$ST_N" ] || [ "${ST_S[i]}" != "$seg" ]; then
             if [ "${#sw[@]}" -gt 0 ] && _agy_seg_writes "${sw[@]}"; then return 0; fi
             [ "$i" -lt "$ST_N" ] || break
-            sw=() seg=${ST_S[i]} first=1 nested=0
+            sw=() seg=${ST_S[i]} first=1 nested=0 shellc=0
         fi
         if [ "$first" = 1 ] && [ "${ST_A[i]}" = 1 ]; then i=$((i + 1)); continue; fi
         w=${ST_LW[i]}
         if [ "$first" = 1 ]; then
             first=0
             case "${w##*/}" in
-                bash|sh|zsh|dash|ksh|eval|xargs|ssh|sudo|env|timeout|nohup|nice|watch|time|command|exec|setsid|stdbuf|flock) nested=1 ;;
+                bash|sh|zsh|dash|ksh) shellc=1 ;;
+                eval|xargs|ssh|sudo|env|timeout|nohup|nice|watch|time|command|exec|setsid|stdbuf|flock) nested=1 ;;
+            esac
+        elif [ "$shellc" = 1 ]; then
+            case "$w" in
+                -[!-]*c*) nested=1 ;;
+                -*) ;;
+                *) case "$prevw" in -o|+o|-O|+O|--rcfile|--init-file) ;; *) [ "$nested" = 1 ] || shellc=0 ;; esac ;;
             esac
         fi
+        prevw=$w
         if [ "$nested" = 1 ] && _agy_text_writes "$w"; then return 0; fi
         if [ "${ST_X[i]}" = 1 ] || [ "${ST_G[i]}" = 1 ]; then w=$w$'\001'; fi
         sw[${#sw[@]}]=$w
