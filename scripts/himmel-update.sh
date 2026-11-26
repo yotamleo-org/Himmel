@@ -1482,7 +1482,7 @@ run_env_migration() {
 }
 
 sync_agy_profiles() {
-    local file="${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json" script="$ROOT/scripts/t3/antigravity-profiles.sh" out rc=0 names ready p
+    local file="${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json" script="$ROOT/scripts/t3/antigravity-profiles.sh" out rc=0 names ready sep p
     if [ ! -f "$script" ]; then
         echo "==> Antigravity profiles: skipped (scripts/t3/antigravity-profiles.sh is not in this checkout)"
         STATUS_agy_profiles="skipped"; DETAIL_agy_profiles="script missing"
@@ -1519,14 +1519,20 @@ sync_agy_profiles() {
         STATUS_agy_profiles="failed"; DETAIL_agy_profiles="see the report above; no instance is added for a home that did not pass"
         return 1
     fi
-    names=$(bash "$script" --list 2>/dev/null) || names=""
+    if ! names=$(bash "$script" --list 2>&1); then
+        printf '%s\n' "$names" | sed 's/^/    /'
+        STATUS_agy_profiles="failed"; DETAIL_agy_profiles="the profile list could not be read; see the report above"
+        return 1
+    fi
     ready=""
     for p in $names; do
         if bash "$script" --check --profile "$p" >/dev/null 2>&1; then ready="$ready $p"; else echo "    antigravity_$p is not ready (run --check --profile $p to see why); no allowlist line for it"; fi
     done
     if [ -n "$ready" ]; then
-        echo "    add these to .t3.instance_allowlist in ~/.himmel/config.json (himmel never writes that file):"
-        for p in $ready; do printf '      "antigravity_%s",\n' "$p"; done
+        echo "    add these ids to the .t3.instance_allowlist array in ~/.himmel/config.json (himmel never writes that file):"
+        sep=""
+        for p in $ready; do printf '%s      "antigravity_%s"' "$sep" "$p"; sep=$',\n'; done
+        echo ""
     fi
     case "$out" in
         *WROTE*|*LOGIN-LINKED*) STATUS_agy_profiles="updated"; DETAIL_agy_profiles="homes set up; paste the allowlist lines above" ;;

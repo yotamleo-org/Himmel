@@ -6,6 +6,18 @@ that already has the himmel hooks and the profile's skills. The registry is
 `scripts/t3/antigravity-profiles.json`: per profile, `fromProfiles` (names in
 `scripts/lanes/plugin-profiles.json`) and `pinnedSkills` (extra skills from a pinned git commit).
 
+Optional registry fields per profile:
+
+- `excludePlugins`: plugin ids dropped from the profile's resolved plugin list (a list of strings,
+  else rc 2), so a profile can inherit `fromProfiles` and leave one plugin out.
+- `mcpServers`: a map of MCP server definitions written to the home's `config/mcp_config.json`
+  (`{"mcpServers":{...}}`, mode 600), checked and rewritten like `skills.json`. A profile with neither
+  `mcpServers` nor `optionalMcpServers` leaves `mcp_config.json` alone.
+- `optionalMcpServers`: names resolved from `mcpCatalog` in `scripts/lanes/plugin-profiles.json` and
+  added to the same file. A name missing from the catalog, or whose definition needs a checkout path
+  (`${...}`), is skipped with a note on stderr, not an error. An own `mcpServers` entry wins over a
+  catalog entry of the same name.
+
 ## What it writes
 
 T3 runs each Antigravity instance as `agy acp --gemini-dir <home>` with
@@ -108,7 +120,9 @@ no model; the thread's `modelSelection` names it, as every T3 thread does.
 - The bare `antigravity` instance is not touched; only `antigravity_<profile>` homes are.
 
 rc: 0 ok (`--list` too); 1 `--check` not satisfied; 2 usage, missing `jq`, malformed registry or JSON input,
-unknown `fromProfiles` name, a reserved `--list` profile name, pinned fetch or verify failure, backstop failure; 3 fence refusal.
+unknown `fromProfiles` name, a reserved `--list` profile name, pinned fetch or verify failure, backstop failure,
+a symlinked profile `antigravity-acp` or a token path that is not a file or link; 3 fence refusal.
+`--smoke`: 0 every line PASS, 1 any FAIL. `--flag-on`: 0 flag on, 1 off, 2 bad value or unreadable reader.
 
 Env seams (tests): `T3_AP_REGISTRY`, `T3_AP_PLUGIN_PROFILES`, `T3_AP_BACKSTOP`,
 `HIMMEL_AGY_SKILL_CACHE`; `HOME` and `T3CODE_HOME` as usual. Modes also include `--smoke` and `--flag-on`
@@ -143,6 +157,13 @@ link a thread needs and exits 0 only when every line is `PASS`:
 | `mcp` | every server in `config/mcp_config.json` has its command on PATH, or its URL answers (none configured is a pass: T3 serves its own `t3-code` server to each thread) |
 | `instance` | T3's settings has an enabled `antigravity_<profile>` |
 | `allowlist` | `.t3.instance_allowlist` in `~/.himmel/config.json` names it |
+
+With registry MCP servers, `mcp` also fails when `config/mcp_config.json` is missing or differs from the
+registry. After the profile lines, smoke prints four `INFO cli` lines (`pnpm`, `playwright`, `npx`,
+`chromium`): optional local tools a design thread may use. `pnpm` serves shadcn and frontend scaffolds;
+the `playwright` CLI on PATH beats `npx playwright`, which downloads it on each use; `npx` is the
+fallback for it and for npx-served MCP servers; `chromium` (or `chromium-browser`, `google-chrome`) is
+the browser playwright drives. An absent one is `INFO`, never `FAIL`, and does not change the exit code.
 
 A `FAIL` line names the missing link and the command that fixes it. Smoke writes and fetches nothing and
 never opens the login file; the hook command it runs may write its own hook log.

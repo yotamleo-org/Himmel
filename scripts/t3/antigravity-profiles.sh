@@ -57,10 +57,10 @@ SELECTED=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --dry-run|--apply|--check|--list|--flag-on|--smoke)
-            [ -z "$MODE" ] || [ "$MODE" = "${1#--}" ] || die 2 "only one of --dry-run, --apply, --check"
+            [ -z "$MODE" ] || [ "$MODE" = "${1#--}" ] || die 2 "only one of --dry-run, --apply, --check, --list, --smoke, --flag-on"
             MODE="${1#--}"; shift ;;
         --profile) [ $# -ge 2 ] || die 2 "--profile needs a name"; SELECTED="$SELECTED $2"; shift 2 ;;
-        *) die 2 "usage: antigravity-profiles.sh [--dry-run | --apply | --check | --list] [--profile <name>]... (got '$1')" ;;
+        *) die 2 "usage: antigravity-profiles.sh [--dry-run | --apply | --check | --list | --smoke | --flag-on] [--profile <name>]... (got '$1')" ;;
     esac
 done
 MODE="${MODE:-dry-run}"
@@ -68,7 +68,7 @@ MODE="${MODE:-dry-run}"
 if [ "$MODE" = flag-on ]; then
     [ -z "$SELECTED" ] || die 2 "--flag-on takes no --profile"
     # shellcheck source=../lib/flags.sh
-    . "$HERE/../lib/flags.sh" 2>/dev/null || exit 1
+    . "$HERE/../lib/flags.sh" 2>/dev/null || exit 2
     himmel_flag agy_design_profile >/dev/null 2>&1; rc=$?
     exit "$rc"
 fi
@@ -194,13 +194,16 @@ add_skill_dirs() {
 }
 
 resolve_plugins() {
-    local p="$1" out="$2" froms f ids id ip spec
+    local p="$1" out="$2" froms f ids id ip spec ex
     froms="$(jq -c --arg p "$p" '.profiles[$p].fromProfiles // []' "$REGISTRY")" || die 2 "malformed fromProfiles for '$p'"
     for f in $(printf '%s' "$froms" | jq -r '.[]'); do
         jq -e --arg f "$f" '.profiles | has($f)' "$PLUGIN_PROFILES" >/dev/null 2>&1 || die 2 "profile '$p': unknown fromProfile '$f' (not in $PLUGIN_PROFILES)"
     done
-    ids="$(jq -r --argjson froms "$froms" '. as $d | [$froms[] | $d.profiles[.].enable // []] | add // []
-        | reduce .[] as $x ([]; if index($x) then . else . + [$x] end) | .[]' "$PLUGIN_PROFILES")" || die 2 "malformed plugin profiles: $PLUGIN_PROFILES"
+    ex="$(jq -c --arg p "$p" '.profiles[$p].excludePlugins // []' "$REGISTRY")" || die 2 "malformed excludePlugins for '$p'"
+    printf '%s' "$ex" | jq -e 'type == "array" and all(.[]; type == "string")' >/dev/null 2>&1 || die 2 "profile '$p': excludePlugins must be a list of plugin ids"
+    ids="$(jq -r --argjson froms "$froms" --argjson ex "$ex" '. as $d | [$froms[] | $d.profiles[.].enable // []] | add // []
+        | reduce .[] as $x ([]; if index($x) then . else . + [$x] end)
+        | map(select(. as $i | $ex | index($i) | not)) | .[]' "$PLUGIN_PROFILES")" || die 2 "malformed plugin profiles: $PLUGIN_PROFILES"
     : > "$out"
     for id in $ids; do
         ip=""
@@ -274,6 +277,21 @@ EOF
     done
 }
 
+build_mcp_json() {
+    local p="$1" out="$2" n
+    jq -e --arg p "$p" '((.profiles[$p].mcpServers // {}) | type) == "object"
+        and ((.profiles[$p].optionalMcpServers // []) | type == "array" and all(.[]; type == "string"))' "$REGISTRY" >/dev/null 2>&1 \
+        || die 2 "profile '$p': mcpServers must be an object and optionalMcpServers a list of names"
+    for n in $(jq -r --arg p "$p" --slurpfile pp "$PLUGIN_PROFILES" '(.profiles[$p].optionalMcpServers // [])[] as $n
+        | select((($pp[0].mcpCatalog // {})[$n]) == null or ((($pp[0].mcpCatalog // {})[$n] | tostring) | contains("${"))) | $n' "$REGISTRY"); do
+        echo "antigravity-profiles: skip optional MCP server '$n': not in mcpCatalog, or it needs a checkout path" >&2
+    done
+    jq -S --arg p "$p" --slurpfile pp "$PLUGIN_PROFILES" '
+        (($pp[0].mcpCatalog // {}) as $cat
+         | [(.profiles[$p].optionalMcpServers // [])[] | select($cat[.] != null and (($cat[.] | tostring) | contains("${") | not)) | {(.): $cat[.]}] | add // {})
+        + (.profiles[$p].mcpServers // {}) | if length == 0 then empty else {mcpServers: .} end' "$REGISTRY" > "$out" || die 2 "cannot build mcp_config.json for '$p'"
+}
+
 build_skills_json() {
     jq -R -s -S 'split("\n") | map(select(length > 0) | split("\t"))
         | group_by(.[0]) | map({path: .[0][0], include_only: (map(.[1]) | unique)})
@@ -297,7 +315,7 @@ login_ok() {
 }
 
 share_login() {
-    local id="$1" home="$2" acp="$2/antigravity-acp" dst="$2/antigravity-acp/antigravity-oauth-token"
+    local id="$1" home="$2" acp="$2/antigravity-acp" dst="$2/antigravity-acp/antigravity-oauth-token" lnflags=-s
     if ! bare_login_present; then
         echo "NOLOGIN $id: the bare antigravity home has no usable login (absent, or a symlink); log in there once, then re-run --apply"
         return 0
@@ -305,6 +323,7 @@ share_login() {
     [ ! -L "$acp" ] || die 2 "$acp is a symlink; refusing (no login link written for $id)"
     if [ -L "$dst" ]; then
         if [ "$(readlink "$dst")" = "$LOGIN_SRC" ]; then echo "LOGIN-OK $dst"; return 0; fi
+        lnflags=-sfn
     elif [ -f "$dst" ]; then
         echo "LOGIN-KEPT $dst (its own login, not replaced)"
         return 0
@@ -312,7 +331,7 @@ share_login() {
         die 2 "$dst is not a regular file or a link; refusing"
     fi
     if ! mkdir -p "$acp" || ! chmod 700 "$acp"; then die 2 "cannot create $acp"; fi
-    ln -sfn "$LOGIN_SRC" "$dst" || die 2 "cannot link the login at $dst"
+    ln $lnflags "$LOGIN_SRC" "$dst" || die 2 "cannot link the login at $dst (a token appeared there; nothing replaced)"
     echo "LOGIN-LINKED $dst -> $LOGIN_SRC"
 }
 
@@ -330,8 +349,20 @@ smoke_line() {
     [ "$1" = PASS ] || SMOKE_RC=1
 }
 
+adapter_path() {
+    local c="$1" a
+    a="${c#exec bash \'}"
+    [ "$a" != "$c" ] || return 1
+    a="${a%\' --event PreToolUse}"
+    case "$a" in
+        *\'*) return 1 ;;
+        */antigravity-hook-adapter.sh) printf '%s' "$a" ;;
+        *) return 1 ;;
+    esac
+}
+
 run_smoke() {
-    local p id hex home hj cmd payload out dec sk bad="" n=0 d name mc k spec t
+    local p id hex home hj cmd adapter hrc payload out dec sk bad="" n=0 d name mc k spec t
     SMOKE_RC=0
     # shellcheck source=../lib/timeout-bin.sh
     . "$HERE/../lib/timeout-bin.sh"
@@ -357,16 +388,21 @@ run_smoke() {
             smoke_line FAIL hooks "config/hooks.json lacks the $BACKSTOP_KEY key (run --apply --profile $p)"
         else
             cmd="$(jq -r --arg k "$BACKSTOP_KEY" '.[$k].PreToolUse[0].hooks[0].command // empty' "$hj" 2>/dev/null)"
+            adapter="$(adapter_path "$cmd")" || adapter=""
             if [ -z "$cmd" ]; then
                 smoke_line FAIL hooks "the $BACKSTOP_KEY key has no PreToolUse command"
+            elif [ -z "$adapter" ]; then
+                smoke_line FAIL hooks "the PreToolUse command is not the himmel backstop (want: exec bash '<path>/antigravity-hook-adapter.sh' --event PreToolUse); not run"
+            elif [ ! -f "$adapter" ]; then
+                smoke_line FAIL hooks "the backstop adapter $adapter is missing"
             else
                 payload="$(jq -cn --arg cwd "$REPO_ROOT" --arg art "$home/antigravity-acp/brain/smoke" \
                     --arg path "$home/antigravity-acp/antigravity-oauth-token" \
                     '{hookEventName:"PreToolUse",conversationId:"smoke",cwd:$cwd,artifactDirectoryPath:$art,transcriptPath:($art+"/transcript_full.jsonl"),toolCall:{id:"smoke_1",name:"read_file",args:{Path:$path}}}')"
-                out="$(printf '%s' "$payload" | ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 30} bash -c "$cmd" 2>/dev/null)"
+                out="$(printf '%s' "$payload" | ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 30} bash "$adapter" --event PreToolUse 2>/dev/null)"; hrc=$?
                 dec="$(printf '%s' "$out" | jq -r '.decision // empty' 2>/dev/null)"
-                if [ "$dec" = deny ]; then smoke_line PASS hooks "backstop wired; a control read of the login file was denied"
-                else smoke_line FAIL hooks "backstop wired but a control read of the login file was not denied (decision: ${dec:-none}); the hook does not fire"; fi
+                if [ "$dec" = deny ] && [ "$hrc" -eq 0 ]; then smoke_line PASS hooks "backstop wired; a control read of the login file was denied"
+                else smoke_line FAIL hooks "backstop wired but a control read of the login file was not denied (decision: ${dec:-none}, rc $hrc); the hook does not fire"; fi
             fi
         fi
         sk="$home/config/skills.json"
@@ -386,7 +422,10 @@ run_smoke() {
             else smoke_line PASS skills "$n skills visible"; fi
         fi
         mc="$home/config/mcp_config.json"
-        if [ ! -s "$mc" ]; then
+        build_mcp_json "$p" "$WORK/$p.mcp.json"
+        if [ -s "$WORK/$p.mcp.json" ] && ! cmp -s "$WORK/$p.mcp.json" "$mc" 2>/dev/null; then
+            smoke_line FAIL mcp "config/mcp_config.json is missing or differs from the registry's MCP servers (run --apply --profile $p)"
+        elif [ ! -s "$mc" ]; then
             smoke_line PASS mcp "no MCP servers in the profile home (T3 serves its own t3-code server to each thread)"
         elif ! jq -e '(.mcpServers // {}) | type == "object"' "$mc" >/dev/null 2>&1; then
             smoke_line FAIL mcp "config/mcp_config.json is not valid {mcpServers:{...}}"
@@ -411,13 +450,27 @@ run_smoke() {
             smoke_line FAIL instance "T3's settings has no enabled $id (run himmel-update with the agy_design_profile flag on, or provider-instances.sh --apply)"
         fi
         t="$HOME/.himmel/config.json"
-        if [ -f "$t" ] && jq -e --arg i "$id" '(.t3.instance_allowlist // []) | index($i) != null' "$t" >/dev/null 2>&1; then
+        if [ -f "$t" ] && jq -e --arg i "$id" '(.t3.instance_allowlist // null) | type == "array" and index($i) != null' "$t" >/dev/null 2>&1; then
             smoke_line PASS allowlist "$id is in .t3.instance_allowlist"
         else
             smoke_line FAIL allowlist "$id is not in .t3.instance_allowlist of ~/.himmel/config.json (paste the line himmel-update printed)"
         fi
     done
+    echo "== local CLIs (optional, INFO only)"
+    smoke_cli pnpm "pnpm" "shadcn and frontend scaffolds in a design thread"
+    smoke_cli playwright "playwright" "browser screenshots without npx downloading it each time"
+    smoke_cli npx "npx" "the fallback for 'npx playwright' and npx-served MCP servers"
+    smoke_cli chromium "chromium chromium-browser google-chrome google-chrome-stable" "the browser playwright drives"
     exit "$SMOKE_RC"
+}
+
+smoke_cli() {
+    local label="$1" cands="$2" why="$3" c found=""
+    for c in $cands; do
+        if command -v "$c" >/dev/null 2>&1; then found="$c"; break; fi
+    done
+    if [ -n "$found" ]; then printf 'INFO cli %s: found (%s)\n' "$label" "$found"
+    else printf 'INFO cli %s: not on PATH (optional: %s)\n' "$label" "$why"; fi
 }
 [ "$MODE" != smoke ] || run_smoke
 
@@ -428,6 +481,7 @@ for p in $SELECTED; do
     resolve_pins "$p" "$WORK/$p.pairs" "$WORK/$p.notes"
     fence_pairs "$WORK/$p.pairs"
     build_skills_json "$WORK/$p.pairs" > "$WORK/$p.skills.json" || die 2 "cannot build skills.json for '$p'"
+    build_mcp_json "$p" "$WORK/$p.mcp.json"
 done
 
 RC=0
@@ -445,6 +499,10 @@ for p in $SELECTED; do
             login_plan "$home"
             printf 'skills.json (%s):\n' "$cur"
             cat "$new"
+            if [ -s "$WORK/$p.mcp.json" ]; then
+                printf 'mcp_config.json (%s):\n' "$home/config/mcp_config.json"
+                cat "$WORK/$p.mcp.json"
+            fi
             ;;
         check)
             why=""
@@ -460,6 +518,14 @@ for p in $SELECTED; do
             elif ! cmp -s "$new" "$cur"; then
                 why="$why; skills.json differs from what apply would write"
             fi
+            if [ -s "$WORK/$p.mcp.json" ]; then
+                mcur="$home/config/mcp_config.json"
+                if [ ! -f "$mcur" ] || [ -L "$mcur" ]; then
+                    why="$why; mcp_config.json is not a regular file"
+                elif ! cmp -s "$WORK/$p.mcp.json" "$mcur"; then
+                    why="$why; mcp_config.json differs from what apply would write"
+                fi
+            fi
             if [ -z "$why" ]; then echo "OK $id"; else echo "NOT OK $id${why}"; RC=1; fi
             ;;
         apply)
@@ -468,6 +534,15 @@ for p in $SELECTED; do
             "$BACKSTOP" > "$WORK/backstop.out" 2>&1 || { cat "$WORK/backstop.out" >&2; die 2 "backstop installer failed; skills.json not written for $id"; }
             hooks_present "$home" || die 2 "$home/config/hooks.json has no $BACKSTOP_KEY after the backstop ran; skills.json not written for $id"
             share_login "$id" "$home"
+            if [ -s "$WORK/$p.mcp.json" ]; then
+                mcur="$home/config/mcp_config.json"
+                if [ -f "$mcur" ] && [ ! -L "$mcur" ] && cmp -s "$WORK/$p.mcp.json" "$mcur"; then
+                    echo "UNCHANGED $mcur"
+                else
+                    atomic_write "$mcur" < "$WORK/$p.mcp.json" || die 2 "cannot write $mcur"
+                    echo "WROTE $mcur"
+                fi
+            fi
             if [ -f "$cur" ] && [ ! -L "$cur" ] && cmp -s "$new" "$cur"; then
                 echo "UNCHANGED $cur"
             else

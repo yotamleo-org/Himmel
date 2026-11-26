@@ -393,20 +393,21 @@ expect_eq "35 a bare token that is a symlink exits 0" "$rc" 0
 expect_ok "35 it is not shared: NOLOGIN" grep -q "^NOLOGIN antigravity_design" <<<"$out"
 expect_eq "35 no profile link is made" "$(test -e "$H/$TOK_REL" -o -L "$H/$TOK_REL" && echo yes || echo no)" no
 
-cat > "$T/adapter-deny.sh" <<'STUB'
+mkdir -p "$T/adp-deny" "$T/adp-allow" "$T/adp-rc1"
+cat > "$T/adp-deny/antigravity-hook-adapter.sh" <<'STUB'
 #!/usr/bin/env bash
 in="$(cat)"
 case "$in" in *antigravity-oauth-token*) printf '{"decision":"deny","reason":"stub self-protect"}\n' ;; esac
 exit 0
 STUB
-printf '#!/usr/bin/env bash\ncat >/dev/null\nexit 0\n' > "$T/adapter-allow.sh"
-chmod +x "$T/adapter-deny.sh" "$T/adapter-allow.sh"
+printf '#!/usr/bin/env bash\ncat >/dev/null\nexit 0\n' > "$T/adp-allow/antigravity-hook-adapter.sh"
+chmod +x "$T/adp-deny/antigravity-hook-adapter.sh" "$T/adp-allow/antigravity-hook-adapter.sh"
 smoke_hooks() { jq -n --arg c "exec bash '$1' --event PreToolUse" '{"himmel-antigravity-backstop":{PreToolUse:[{matcher:"*",hooks:[{type:"command",command:$c}]}]}}' > "$(home_of)/config/hooks.json"; }
 smoke_ready() {
     fresh
     mk_bare_tok
     bash "$GEN" --apply --profile design >/dev/null 2>&1
-    smoke_hooks "$T/adapter-deny.sh"
+    smoke_hooks "$T/adp-deny/antigravity-hook-adapter.sh"
     jq -n '{providerInstances:{antigravity_design:{driver:"antigravity",enabled:true}}}' > "$T3CODE_HOME/userdata/settings.json"
     mkdir -p "$HOME/.himmel"
     jq -n '{t3:{instance_allowlist:["antigravity_design"]}}' > "$HOME/.himmel/config.json"
@@ -418,7 +419,8 @@ smoke
 expect_eq "25 smoke on a ready profile exits 0" "$SRC" 0
 expect_eq "25 smoke prints six PASS lines" "$(grep -c '^PASS ' <<<"$SOUT")" 6
 expect_eq "25 smoke prints no FAIL line" "$(grep -c '^FAIL ' <<<"$SOUT")" 0
-expect_eq "25 smoke wrote no profile file (check still ok)" "$(bash "$GEN" --check --profile design >/dev/null 2>&1; echo $?)" 0
+expect_eq "25 smoke prints four INFO cli lines, never FAIL" "$(grep -c '^INFO cli ' <<<"$SOUT")" 4
+expect_eq "25 check still passes after smoke" "$(bash "$GEN" --check --profile design >/dev/null 2>&1; echo $?)" 0
 
 smoke_ready
 rm -f "$HOME/.himmel/config.json"
@@ -428,15 +430,33 @@ expect_ok "26 the FAIL names the allowlist" grep -q '^FAIL allowlist: antigravit
 expect_eq "26 the other five links still PASS" "$(grep -c '^PASS ' <<<"$SOUT")" 5
 
 smoke_ready
+jq -n '{t3:{instance_allowlist:"antigravity_design"}}' > "$HOME/.himmel/config.json"
+smoke
+expect_ok "27 an allowlist that is a string, not an array, FAILs allowlist" grep -q '^FAIL allowlist: ' <<<"$SOUT"
+
+smoke_ready
 rm -f "$T3CODE_HOME/userdata/settings.json"
 smoke
 expect_ok "27 a missing T3 instance FAILs by name" grep -q '^FAIL instance: ' <<<"$SOUT"
 
 smoke_ready
-smoke_hooks "$T/adapter-allow.sh"
+smoke_hooks "$T/adp-allow/antigravity-hook-adapter.sh"
 smoke
 expect_eq "28 a hook that does not deny exits 1" "$SRC" 1
 expect_ok "28 the FAIL says the control deny did not fire" grep -q '^FAIL hooks: .*not denied' <<<"$SOUT"
+printf '#!/usr/bin/env bash\ncat >/dev/null\nprintf %%s "{\\"decision\\":\\"deny\\"}"\nexit 1\n' > "$T/adp-rc1/antigravity-hook-adapter.sh"
+smoke_ready
+smoke_hooks "$T/adp-rc1/antigravity-hook-adapter.sh"
+smoke
+expect_ok "28 a hook that denies but exits non-zero FAILs hooks" grep -q '^FAIL hooks: .*rc 1' <<<"$SOUT"
+smoke_ready
+jq -n '{"himmel-antigravity-backstop":{PreToolUse:[{matcher:"*",hooks:[{type:"command",command:"exec bash /bin/true --event PreToolUse"}]}]}}' > "$(home_of)/config/hooks.json"
+smoke
+expect_ok "28 a command that is not the backstop is not run and FAILs hooks" grep -q '^FAIL hooks: the PreToolUse command is not the himmel backstop' <<<"$SOUT"
+smoke_ready
+jq -n --arg c "exec bash '$T/adp-allow/antigravity-hook-adapter.sh'; touch $T/injected; echo '/x/antigravity-hook-adapter.sh' --event PreToolUse" '{"himmel-antigravity-backstop":{PreToolUse:[{matcher:"*",hooks:[{type:"command",command:$c}]}]}}' > "$(home_of)/config/hooks.json"
+smoke
+expect_eq "28 a command with an injected tail is never executed" "$(test -e "$T/injected" && echo yes || echo no)" no
 smoke_ready
 printf '{}' > "$(home_of)/config/hooks.json"
 smoke
@@ -465,6 +485,54 @@ fresh
 smoke
 expect_eq "32 smoke on a profile with no home exits 1" "$SRC" 1
 expect_ok "32 the FAIL names the missing home" grep -q '^FAIL home: ' <<<"$SOUT"
+
+REG_ORIG="$T/registry.json"
+jq '.profiles.design.excludePlugins = ["b@mp"]' "$REG_ORIG" > "$T/registry-ex.json"
+fresh
+env T3_AP_REGISTRY="$T/registry-ex.json" bash "$GEN" --apply --profile design >/dev/null 2>&1; rc=$?
+S="$(home_of)/config/skills.json"
+expect_eq "36 apply with excludePlugins exits 0" "$rc" 0
+expect_eq "36 the excluded plugin's skills are gone" "$(entry_of "$S" "$T/plug/b/skills")" null
+expect_eq "36 the other plugins stay (entry count 6)" "$(jq '.entries | length' "$S")" 6
+jq '.profiles.design.excludePlugins = "b@mp"' "$REG_ORIG" > "$T/registry-exbad.json"
+env T3_AP_REGISTRY="$T/registry-exbad.json" bash "$GEN" --dry-run --profile design >/dev/null 2>&1; rc=$?
+expect_eq "36 a non-list excludePlugins exits 2" "$rc" 2
+
+jq '.mcpCatalog = {playwright:{command:"sh",args:["-c","true"]},needsrepo:{command:"npm",args:["--prefix","${HIMMEL_REPO}/x"]}}' "$T/plugin-profiles.json" > "$T/plugin-profiles-mcp.json"
+jq '.profiles.design.mcpServers = {ctx:{command:"sh",args:["-c","true"]}} | .profiles.design.optionalMcpServers = ["playwright","ghost","needsrepo"]' "$REG_ORIG" > "$T/registry-mcp.json"
+mcp_env() { env T3_AP_REGISTRY="$T/registry-mcp.json" T3_AP_PLUGIN_PROFILES="$T/plugin-profiles-mcp.json" "$@"; }
+fresh
+out="$(mcp_env bash "$GEN" --apply --profile design 2>&1)"; rc=$?
+M="$(home_of)/config/mcp_config.json"
+expect_eq "37 apply with MCP servers exits 0" "$rc" 0
+expect_eq "37 mcp_config.json holds the own and the catalog server" "$(jq -c '.mcpServers | keys' "$M")" '["ctx","playwright"]'
+expect_ok "37 an optional server missing from the catalog is skipped with a note" grep -q "skip optional MCP server 'ghost'" <<<"$out"
+expect_ok "37 an optional server that needs a checkout path is skipped with a note" grep -q "skip optional MCP server 'needsrepo'" <<<"$out"
+expect_eq "37 mcp_config.json is mode 600" "$(mode_of "$M")" 600
+mcp_env bash "$GEN" --check --profile design >/dev/null 2>&1; rc=$?
+expect_eq "37 check passes after apply" "$rc" 0
+out="$(mcp_env bash "$GEN" --apply --profile design 2>&1)"
+expect_ok "37 a second apply leaves mcp_config.json UNCHANGED" grep -q "^UNCHANGED .*mcp_config.json" <<<"$out"
+printf '{"mcpServers":{}}\n' > "$M"
+mcp_env bash "$GEN" --check --profile design >/dev/null 2>&1; rc=$?
+expect_eq "37 check fails on a drifted mcp_config.json" "$rc" 1
+fresh
+bash "$GEN" --apply --profile design >/dev/null 2>&1
+expect_eq "37 a registry with no MCP data writes no mcp_config.json" "$(test -e "$(home_of)/config/mcp_config.json" && echo yes || echo no)" no
+fresh
+mk_bare_tok
+mcp_env bash "$GEN" --apply --profile design >/dev/null 2>&1
+smoke_hooks "$T/adp-deny/antigravity-hook-adapter.sh"
+jq -n '{providerInstances:{antigravity_design:{driver:"antigravity",enabled:true}}}' > "$T3CODE_HOME/userdata/settings.json"
+mkdir -p "$HOME/.himmel"
+jq -n '{t3:{instance_allowlist:["antigravity_design"]}}' > "$HOME/.himmel/config.json"
+SOUT="$(mcp_env bash "$GEN" --smoke --profile design 2>&1)"; SRC=$?
+expect_eq "38 smoke with registry MCP servers exits 0" "$SRC" 0
+expect_ok "38 smoke counts the two MCP servers" grep -q '^PASS mcp: 2 MCP servers reachable' <<<"$SOUT"
+rm -f "$(home_of)/config/mcp_config.json"
+SOUT="$(mcp_env bash "$GEN" --smoke --profile design 2>&1)"; SRC=$?
+expect_eq "38 smoke with the MCP config missing exits 1" "$SRC" 1
+expect_ok "38 the FAIL says the MCP config differs from the registry" grep -q '^FAIL mcp: .*differs from the registry' <<<"$SOUT"
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" = 0 ]
