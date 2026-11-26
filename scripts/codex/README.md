@@ -99,7 +99,7 @@ The wrapper enforces these invariants:
 
 1. **Model follows the codex critic in `scripts/cr/critics.json`.**
    The registry is read with Node.js; only an unreadable file uses the named
-   fallback (`gpt-6.1-sol`). Readable but invalid data refuses the dispatch.
+   fallback (`gpt-6.2-sol`). Readable but invalid data refuses the dispatch.
    `CODEX_CRITICS_FILE` overrides the registry path for tests. A caller-named
    `--model` bypasses registry lookup and wins unchanged; only `-codex`-suffixed
    variant names warn about HTTP 400 under ChatGPT-plan auth.

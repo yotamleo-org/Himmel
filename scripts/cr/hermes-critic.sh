@@ -31,7 +31,7 @@
 # Defaults: repo = cwd; base = merge-base with the default branch — origin/main,
 # origin/master, main, then master in order;
 # route = hermes with NO --model, but the HERMES route itself now defaults to
-# the critics.json-pinned gpt-6.1-sol/openai-codex (operator
+# the critics.json-pinned gpt-6.2-sol/openai-codex (operator
 # ruling 2026-08-23) — NOT the himmel_agent hermes profile default (ox-alpha
 # today: free, front-tier, temporary; operator ruling 2026-08-22).
 # ox-alpha stays the profile
@@ -65,14 +65,14 @@ the diff. Routing is by implementer:
 
   no --implementer and no CRITIC_ROUTE
       -> HERMES reviewer with no --model: defaults to the critics.json-pinned
-         gpt-6.1-sol — NOT the himmel_agent profile default.
+         gpt-6.2-sol — NOT the himmel_agent profile default.
          Spends no Claude bank (it spends the OpenAI Codex bank instead).
   hermes (any hermes-driven dev plan, incl. ox-alpha)
       -> CLAUDE CLI reviewer (claude print-mode; opt-in bank spend);
          optionally add a second hermes pass via --route both.
   codex CLI / claude CLI / other lanes
       -> HERMES reviewer, UNLESS the hermes reviewer is itself codex-family
-         (HERMES_CRITIC_MODEL / HERMES_CRITIC_FAMILY, or the gpt-6.1-sol
+         (HERMES_CRITIC_MODEL / HERMES_CRITIC_FAMILY, or the gpt-6.2-sol
          default itself) — then CLAUDE CLI.
 
 An explicit --route overrides all of that and may knowingly break the
@@ -130,7 +130,7 @@ fi
 # Operator ruling 2026-08-23: CR critics must not ride the
 # himmel_agent hermes profile default; the reviewer is pinned separately. When neither
 # --model nor HERMES_CRITIC_MODEL pins the hermes reviewer, default it to the
-# critics.json "codex" row's model (gpt-6.1-sol/openai-codex) — the same pin
+# critics.json "codex" row's model (gpt-6.2-sol/openai-codex) — the same pin
 # the codex-CLI panel critic uses. Reused rather than duplicated into a
 # second panel row: critic-panel.sh iterates every critics.json row with a
 # slug+model as a live /pr-check panel member, so a second row would
@@ -150,11 +150,11 @@ if [ -z "$model" ] && [ -z "$hermes_model" ]; then
           } catch (e) {}
         ' 2>/dev/null)"
     fi
-    [ -n "$hermes_model" ] || hermes_model="gpt-6.1-sol"
+    [ -n "$hermes_model" ] || hermes_model="gpt-6.2-sol"
 fi
 
 # Which model family the HERMES reviewer actually is. hermes_model
-# now defaults to the critics.json-pinned gpt-6.1-sol (codex family) rather
+# now defaults to the critics.json-pinned gpt-6.2-sol (codex family) rather
 # than the profile default, so `codex -> hermes` is SAME-family by default —
 # the route-derivation case below already falls back to claude for that
 # combination. The "" branch is a defensive fallback only (e.g. an explicit
@@ -395,10 +395,10 @@ run_claude_review() {
 
 run_hermes_review() {
     # hermes_model is resolved above to the critics.json-pinned
-    # gpt-6.1-sol whenever neither --model nor HERMES_CRITIC_MODEL set it, so
+    # gpt-6.2-sol whenever neither --model nor HERMES_CRITIC_MODEL set it, so
     # "$m" is no longer empty in the default case — the profile default is not
     # used for critics. The openai-codex provider pin applies ONLY to
-    # codex-family model ids: a gpt-6.1-sol reviewer is ChatGPT-auth and
+    # codex-family model ids: a gpt-6.2-sol reviewer is ChatGPT-auth and
     # without the pin lands on openai-api and dies on a missing OPENAI_API_KEY
     # (observed 2026-08-22). Pinning it for any other model would misroute it.
     local m="${model:-$hermes_model}"
