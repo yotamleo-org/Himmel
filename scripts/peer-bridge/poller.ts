@@ -1030,13 +1030,9 @@ export class Poller {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-function writeCodeStamp(S: string): void {
-  const dir = join(S, "notify");
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const path = join(dir, "bot.code"), tmp = `${path}.${randomBytes(4).toString("hex")}.tmp`;
-  const fd = fs.openSync(tmp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
-  try { fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, start: startIdentity(process.pid), code: CODE_VERSION })); } finally { fs.closeSync(fd); }
-  try { fs.renameSync(tmp, path); } catch (e) { fs.rmSync(tmp, { force: true }); throw e; }
+async function writeCodeStamp(S: string): Promise<void> {
+  fs.mkdirSync(join(S, "notify"), { recursive: true, mode: 0o700 });
+  await atomicWrite(join(S, "notify", "bot.code"), JSON.stringify({ pid: process.pid, start: startIdentity(process.pid), code: CODE_VERSION }));
 }
 
 const fileStamp = (path: string) => { try { const st = fs.statSync(path); return `${st.ino}:${st.size}:${st.mtimeMs}`; } catch { return ""; } };
@@ -1059,7 +1055,7 @@ export async function main(): Promise<void> {
   process.on("SIGTERM", done);
   process.on("SIGINT", done);
 
-  try { writeCodeStamp(stateDir()); } catch (e) { console.error(`peer-bridge: cannot write the code stamp: ${(e as Error).message}`); }
+  try { await writeCodeStamp(stateDir()); } catch (e) { console.error(`peer-bridge: cannot write the code stamp: ${(e as Error).message}`); }
   const tg = new PeerTelegram(token);
   const poller = await Poller.create({
     cfg, tg, ourBotId: botIdFromToken(token), stateDir: stateDir(), configDir: configDir(),
