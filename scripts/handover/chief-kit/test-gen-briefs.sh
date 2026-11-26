@@ -2517,7 +2517,10 @@ ms3_refused ms3lnk "$MS_ROOT/lnk-ms/specs/designs/$MS3K-x.md $MS_ROOT/lnk-ms/spe
 ms3_refused ms3sym "$MS_DIR/$MS3K-sym.md $MS_DIR/$MS3K-sym.estimate.json" "an estimate that is a symlink to a file outside the root"
 cg_mirror HIMMEL-9469 Task Medium '["core"]'
 ms_gen ms3flip HIMMEL-9469 "docs/foo.md; grep scripts/ (x.sh, y.sh) -n"
-{ [ "$rc" = 1 ] && [ -z "$(cg_brief ms3flip)" ]; } && pass "R3 control: a Writes text whose read-only strip leaves build paths stays a build leg, refused as before" || fail "R3 control read-only strip rc=$rc: $cgo"
+{ [ "$rc" = 1 ] && [ -z "$(cg_brief ms3flip)" ] && ms_has "$cgo" "HIMMEL-9469 is core"; } && pass "R3 control: a Writes text whose read-only strip leaves build paths stays a build leg, refused as core" || fail "R3 control read-only strip rc=$rc: $cgo"
+cg_mirror HIMMEL-9470 Task Medium '["core"]'
+ms_gen ms3ro HIMMEL-9470 "docs/foo.md (grep -n x $MS_DIR/HIMMEL-9470-x.md) $MS_DIR/HIMMEL-9470-x.estimate.json"
+{ [ "$rc" = 1 ] && [ -z "$(cg_brief ms3ro)" ] && ms_has "$cgo" "HIMMEL-9470 is core"; } && pass "R3 control: a spec named only in a read-only clause exempts no sibling, refused as core" || fail "R3 control spec in a read-only clause rc=$rc: $cgo"
 ms_gen ms3symonly $MS3K "$MS_DIR/$MS3K-sym.md"
 B3S="$(cg_brief ms3symonly)"
 r3s_est="$(ms_added "$B3S" x | grep -cxF "$MS_DIR/$MS3K-sym.estimate.json")"

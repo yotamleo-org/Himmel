@@ -58,9 +58,9 @@ def sibling_set(text, hroot):
     return out
 
 
-def fold(scope, hroot):
-    """scope with every token that is a sibling of a spec token of scope replaced by a space."""
-    drop = sibling_set(scope, hroot)
+def fold(scope, hroot, basis=None):
+    """scope with every token that is a sibling of a spec token of basis (default scope) replaced by a space."""
+    drop = sibling_set(scope if basis is None else basis, hroot)
     if not drop:
         return scope
     return _TOKEN_RE.sub(lambda m: ' ' if m.group(0).rstrip('.,;:)]') in drop else m.group(0), scope)

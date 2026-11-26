@@ -117,13 +117,14 @@ for i, line in enumerate(lines):
 # way; `text` above stays raw, because raw_docs_only needs the prose tokens.
 sys.path.insert(0, sys.argv[4])
 import minerva_siblings  # noqa: E402
-sibling_paths = minerva_siblings.sibling_set(text, doc_state_root)
-text = minerva_siblings.fold(text, doc_state_root)
 try:
     import holds  # noqa: E402
     tokens = [p for _kind, p in holds.parse_text('\n'.join(lines), os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(cli)))))]
 except Exception:  # swallow-ok: a broken holds.py must not fail the core check; it falls back to the raw split of the Writes text
     tokens = [t.rstrip('.,;:)]') for t in re.findall(r'[\w.+@/-]+', text)]
+basis = ' '.join(tokens)
+sibling_paths = minerva_siblings.sibling_set(basis, doc_state_root)
+text = minerva_siblings.fold(text, doc_state_root, basis)
 tokens = [p for p in tokens if p not in sibling_paths]
 paths, stray_absolute = [], False
 for p in tokens:
