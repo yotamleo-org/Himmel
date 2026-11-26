@@ -1201,7 +1201,7 @@ def design_writes(writes, hroot):
     out = []
     for spec in named:
         for s in minerva_siblings.siblings(spec, hroot):
-            if s in named or s in out:
+            if s in named or s in out or not under_root(s, hroot):
                 continue
             if os.path.basename(os.path.dirname(s)) == 'plans' and spec_key(spec) in plan_keys:
                 continue

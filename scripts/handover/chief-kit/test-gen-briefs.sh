@@ -2515,6 +2515,11 @@ ms3_refused ms3list "$MS_DIR/ ($MS3K-x.md, $MS3K-x.estimate.json)" "the absolute
 ms3_refused ms3out "$WORK/outside-ms/specs/designs/$MS3K-x.md $WORK/outside-ms/specs/designs/$MS3K-x.estimate.json" "a spec and estimate outside the handover root"
 ms3_refused ms3lnk "$MS_ROOT/lnk-ms/specs/designs/$MS3K-x.md $MS_ROOT/lnk-ms/specs/designs/$MS3K-x.estimate.json" "a spec and estimate reached through a symlink out of the root"
 ms3_refused ms3sym "$MS_DIR/$MS3K-sym.md $MS_DIR/$MS3K-sym.estimate.json" "an estimate that is a symlink to a file outside the root"
+ms_gen ms3symonly $MS3K "$MS_DIR/$MS3K-sym.md"
+B3S="$(cg_brief ms3symonly)"
+r3s_est="$(ms_added "$B3S" x | grep -cxF "$MS_DIR/$MS3K-sym.estimate.json")"
+r3s_page="$(ms_added "$B3S" x | grep -cxF "$MS_DIR/$MS3K-sym.html")"
+{ [ "$rc" = 0 ] && [ "$r3s_est" = 0 ] && [ "$r3s_page" = 1 ]; } && pass "R3 a spec whose estimate is a symlink out of the root generates, naming its other siblings but not the estimate" || fail "R3 symlinked estimate left to the generator rc=$rc estimate=$r3s_est page=$r3s_page: $cgo"
 
 ms_added "$MS1" "$MS_SPEC" > "$WORK/ms1.added"
 o="$(msck r4 "$HERE" "$MS_K" "$MS_DIR" "$MS_PLANS" "$MS_ROOT" < "$WORK/ms1.added")"; rc=$?
