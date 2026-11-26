@@ -4162,7 +4162,7 @@ mk10906lean() {
 OPERATOR 2026-11-22 03:20Z (not marked binding): "scale in waves". Wave 1 is about 13 live workers.
 
 RECOVERY ADMINISTRATION ONLY, WITH NAMED EXISTING-WORKER SUPERVISION. The old recovery rule.' \
-    L_go='5856:aaaa (CB ordinary, contract yes); earlier 5764:bbbb (BJ trust-reviewed)' \
+    L_go='5856:aaaa (CB ordinary, earlier 2 workers approved); earlier 5764:bbbb (BJ trust-reviewed)' \
     awk '
         $0 == "## Current direction" { print; print ""; print ENVIRON["L_dir"]; print ""; skip = 1; next }
         skip && /^## / { skip = 0 }
@@ -4172,21 +4172,25 @@ RECOVERY ADMINISTRATION ONLY, WITH NAMED EXISTING-WORKER SUPERVISION. The old re
     lean10906doc="$d"
 }
 mk10906lean lean10906 recovery-chief
-chief next --bucket lean10906 --name v113-chief --doc "$lean10906doc" >"$tmp/lean10906.out" 2>&1 || :
+lean10906rc=0
+chief next --bucket lean10906 --name v113-chief --doc "$lean10906doc" >"$tmp/lean10906.out" 2>&1 || lean10906rc=$?
+check "10906 renamed: next exits 0" "$lean10906rc" "0"
 lean10906succ="$root/tester/lean10906/DEMO-nextleg-${today}B-v113-chief.md"
 lean10906dir="$(awk '$0 == "## Current direction" { f = 1; next } f && /^## / { exit } f' "$lean10906succ" 2>/dev/null)"
 check "10906 renamed: the kept ruling stays in the Current direction" "$(printf '%s\n' "$lean10906dir" | grep -cF 'In work: the kept ruling.')" "1"
 check "10906 renamed: the RECOVERY ADMINISTRATION ONLY paragraph is left out of the Current direction" "$(printf '%s\n' "$lean10906dir" | grep -cF 'RECOVERY ADMINISTRATION ONLY')" "0"
 check "10906 renamed: the 11-22 wave-scaling paragraph is left out of the Current direction" "$(printf '%s\n' "$lean10906dir" | grep -cF 'OPERATOR 2026-11-22 03:20Z')" "0"
 check "10906 renamed: the left-out paragraphs are kept in the history file" "$(cat "$root"/tester/lean10906/specs/decisions/chief-history-*.md 2>/dev/null | grep -cF -e 'RECOVERY ADMINISTRATION ONLY' -e 'OPERATOR 2026-11-22 03:20Z')" "2"
-check "10906 renamed: last GO carries only the newest entry" "$(grep -m1 '^last GO: ' "$lean10906succ" 2>/dev/null)" "last GO: 5856:aaaa (CB ordinary, contract yes)"
+check "10906 renamed: last GO carries only the newest entry" "$(grep -m1 '^last GO: ' "$lean10906succ" 2>/dev/null)" "last GO: 5856:aaaa (CB ordinary, earlier 2 workers approved)"
 HANDOVER_DIR="$root" bash "$QL" release "$lean10906doc" "$tok10906lean" >/dev/null 2>&1
 mk10906lean same10906lean chief
-chief next --bucket same10906lean --doc "$lean10906doc" >"$tmp/same10906lean.out" 2>&1 || :
+same10906rc=0
+chief next --bucket same10906lean --doc "$lean10906doc" >"$tmp/same10906lean.out" 2>&1 || same10906rc=$?
+check "10906 same-name: next exits 0" "$same10906rc" "0"
 same10906succ="$root/tester/same10906lean/DEMO-nextleg-${today}B-chief.md"
 same10906dir="$(awk '$0 == "## Current direction" { f = 1; next } f && /^## / { exit } f' "$same10906succ" 2>/dev/null)"
 check "10906 same-name: both superseded paragraphs are still carried" "$(printf '%s\n' "$same10906dir" | grep -cF -e 'RECOVERY ADMINISTRATION ONLY' -e 'OPERATOR 2026-11-22 03:20Z')" "2"
-check "10906 same-name: last GO is carried as written" "$(grep -m1 '^last GO: ' "$same10906succ" 2>/dev/null)" "last GO: 5856:aaaa (CB ordinary, contract yes); earlier 5764:bbbb (BJ trust-reviewed)"
+check "10906 same-name: last GO is carried as written" "$(grep -m1 '^last GO: ' "$same10906succ" 2>/dev/null)" "last GO: 5856:aaaa (CB ordinary, earlier 2 workers approved); earlier 5764:bbbb (BJ trust-reviewed)"
 HANDOVER_DIR="$root" bash "$QL" release "$lean10906doc" "$tok10906lean" >/dev/null 2>&1
 
 

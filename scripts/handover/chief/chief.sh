@@ -2680,11 +2680,11 @@ superseded_direction_paras() {
         function flush(   i, sup) {
             if (n == 0) return
             sup = (para[1] ~ /^RECOVERY ADMINISTRATION ONLY/ || para[1] ~ /^OPERATOR 2026-11-22 03:20Z/)
-            if ((mode == "drop") == sup) { if (shown) print ""; for (i = 1; i <= n; i++) print para[i]; shown = 1 }
-            n = 0
+            if ((mode == "drop") == sup) for (i = 1; i <= n; i++) print para[i]
+            n = 0; blank = 0
         }
-        /^[[:space:]]*$/ { flush(); next }
-        { para[++n] = $0 }
+        /^[[:space:]]*$/ { if (n) { para[++n] = $0; blank = 1 }; next }
+        { if (blank) flush(); para[++n] = $0 }
         END { flush() }'
 }
 
@@ -2709,7 +2709,7 @@ seed_live_fields() {
     go="$(seeded_live_field "$live" "last GO")"
     new_legs="$(open_legs_block "$workers" "${doc%.md}.fleet.json")"
     new_go="$(latest_go_only "$go")"
-    [ "$CHAIN_RENAMED" -ne 1 ] || new_go="$(printf '%s\n' "$new_go" | sed -E 's/(;|,)? earlier [`0-9#].*$//')"
+    [ "$CHAIN_RENAMED" -ne 1 ] || new_go="$(printf '%s\n' "$new_go" | sed -E 's/(;|,)? earlier [`#]?[0-9]+:.*$//')"
     if [ "$new_legs" != "$workers" ] || [ "$new_go" != "$go" ]; then
         hdir="$(dirname "$doc")/specs/history"
         hfile="$hdir/chief-live-state-$stem.md"
