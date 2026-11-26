@@ -37,7 +37,7 @@ vi.mock('../release/fence-ancestry.js', async (orig) => {
   return { ...m, walk, ancestorValue: (name: string) => (ancestry.procRoot === undefined ? null : m.ancestorValue(name, { procRoot: ancestry.procRoot })) };
 });
 
-import { resolveTitle, registerCreate, agentDetailOf, agentDetailOfAdf, pathsIn, bridgePointer } from './create.js';
+import { resolveTitle, registerCreate, agentDetailOf, agentDetailOfAdf, pathsIn, bridgePointer, topicTerms } from './create.js';
 import { registerRelease } from './release.js';
 import { request } from '../client.js';
 import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
@@ -2968,6 +2968,14 @@ describe('create — topic search over open tickets', () => {
     play();
     await fileTopic(NEW_TITLE, NEW_WHAT);
     expect(created()).toBe(true);
+  });
+
+  it('chief-miss is a generic label: it adds no topic term, so two tickets sharing only it do not match', () => {
+    expect(topicTerms('t', 'w', ['chief-miss']).has('label:chief-miss')).toBe(false);
+  });
+
+  it('control: a non-generic label still adds a topic term', () => {
+    expect(topicTerms('t', 'w', ['fl-suite-x']).has('label:fl-suite-x')).toBe(true);
   });
 
   it('--new-reason files it past the topic match, records the reason, and runs no search', async () => {

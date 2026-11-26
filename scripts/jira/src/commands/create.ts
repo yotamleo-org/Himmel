@@ -695,7 +695,7 @@ const TOPIC_STOP = new Set([
   'could', 'about', 'after', 'before', 'every', 'each', 'other', 'more', 'most', 'only', 'same', 'such', 'some', 'any', 'plain', 'words', 'also', 'both',
   'being', 'been', 'were', 'have', 'does', 'done', 'make', 'made', 'still', 'what', 'which', 'while', 'where', 'there', 'their', 'these', 'those',
 ]);
-const GENERIC_LABEL = /^(standalone|core|residual|operator-directed|backlog|proposed-.*|phase:.*|class-.*)$/;
+const GENERIC_LABEL = /^(standalone|core|residual|operator-directed|chief-miss|backlog|proposed-.*|phase:.*|class-.*)$/;
 const TOPIC_JQL_TERMS = 8;
 const TOPIC_MIN_SHARED = 5;
 const TOPIC_MIN_OVERLAP = 0.3;
