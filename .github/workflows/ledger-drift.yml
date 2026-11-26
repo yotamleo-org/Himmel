@@ -44,3 +44,11 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
+
+      # The committed required-check fixtures (and the non-gating list) against
+      # main's live rules/branches; a red here means refresh the fixture.
+      - name: Compare the required-check fixtures with main's live protection
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/check-required-fixture.sh --branch main
