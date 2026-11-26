@@ -2495,8 +2495,9 @@ fixed text and never carries the key or the Authorization header. Spec:
 ### `block-subagent-release-operator.sh`
 
 A member of the PreToolUse `Bash` chain. It denies an in-process subagent (a
-payload whose `agent_id` is present and not `null`) any Bash command that runs
-the `release operator` word sequence, so a subagent never writes an
+payload whose `agent_id` is present and not `null`) any Bash command that names
+both `release` and `operator` and is not a read-only search or file write, so a
+subagent never writes an
 operator-chain row with `jira release operator …`; `spec-review` is one of those
 verbs, so a critic subagent cannot record its own verdict. `operatorFence` in the
 jira CLI reads markers from the environment and the process tree (below), and a
@@ -2575,33 +2576,33 @@ The match has two steps. A pre-filter normalises the command (backslash-newline
 pairs deleted, `$'` and `$"` turned into `'` and `"`, then every `'`, `"` and `\`
 deleted), splits it into words at every space, TAB, carriage return, newline and
 shell metacharacter (`;&|()<>{}` and the backtick), and allows at once a command
-that does not hold both words. For a command that does, the shared guard-unwrap
-library (`scripts/hooks/lib/guard-unwrap.sh`) derives the text the shell runs
-(quotes removed, wrappers stripped, `bash -c`, `eval` and `env -S` bodies read) and
-feeds each form back through the hook; the tokenizer then splits the command into
-simple commands, and a simple command is denied when `release` is directly
-followed by `operator` in its words, redirects aside. So `git diff -G
-'release|operator'`, `grep -n 'release operator' f`, `git grep "release operator"`
-and a heredoc body that writes a file naming both words are allowed, and every
-`jira release operator` verb (`declare`, `freeze`, `decision`, `takeover`, …) is
-denied plain or wrapped. Where a command's words can reach the CLI as data, both
-words still deny: an `xargs` segment (anywhere in the whole command); a segment
-that holds a shell or interpreter word anywhere in it (`bash`, `sh`, `eval`,
-`source`, `coproc`, node, python, perl, ruby, php, lua, so a launcher in front of
-the shell does not hide it) is tested on the whole command; a shell or interpreter
-as the command word, and a launcher or code-running tool as the command word
-(`script`, `flock`, `watch`, `taskset`, `strace`, `chrt`, `numactl`, `setpriv`,
-`unshare`, `find`, `ssh`, `sed`, `awk`, `coproc` and the like), are tested on the
-whole command in a command that has any other input path (more than one segment,
-a redirect, a substitution or a heredoc: a pipe, a here-string, a process
-substitution, a subshell, a brace group and an fd all end up there) and on their
-own words when they stand alone; so `find -exec grep 'release operator'` and
-`ssh host grep 'release operator'` are refused too, and the refusal points to
-plain `grep`. `git` or `rg` given `--pre`, `-O`, `--open-files-in-pager` or an
-`alias.` setting deny when both words sit anywhere in that segment, and so does any
-segment with a live `$` or glob word, since an empty expansion can sit between the
-two words. A command whose quoting the tokenizer
-cannot read, and that holds both words, is denied. The refusal tells a subagent to
+that does not hold both words. A command that does is denied unless every part of
+it is read-only. The shared guard-unwrap library
+(`scripts/hooks/lib/guard-unwrap.sh`) tokenizes it into simple commands, with
+wrappers (`env`, `timeout`, `sudo`, assignments) stripped to the command word, and
+the command is allowed only when all of these hold:
+
+- every simple command's command word is on the allowlist: `grep`, `egrep`,
+  `fgrep`, `rg`, `git grep`, `git log`, `git diff` (only the `-C <path>`,
+  `--no-pager` and `-P` global options; no `-c`), `sed` with only the print
+  command (`p`, optionally addressed) and the options `-n`, `-E`, `-r`, `-s`,
+  `cat` and `tee` (a heredoc that only writes a file), and `cd`;
+- no run-a-string option is present: `rg --pre`, `rg --hostname-bin`,
+  `git grep -O` or `--open-files-in-pager`, `--ext-diff`, `--textconv`;
+- the command holds no command or process substitution, and no word with a live
+  `$` or an unquoted glob, since an empty expansion can sit between the two words;
+- no `xargs` segment is present;
+- its quoting is one the tokenizer can read.
+
+So `git diff -G 'release|operator'`, `grep -n 'release operator' f`,
+`git grep "release operator"`, `git log --grep 'release operator'`,
+`sed -n '10,40p' f | grep -n 'release operator'` and a heredoc body that writes a
+file naming both words are allowed. Everything else that names both words is
+denied as it was before this change: every `jira release operator` verb
+(`declare`, `freeze`, `decision`, `takeover`, …) plain or wrapped, a shell or
+interpreter reading it from a pipe, a here-string, a process substitution or a
+heredoc, a launcher in front of a shell, `find -exec grep 'release operator'`,
+`ssh host grep 'release operator'` and `awk`. The refusal tells a subagent to
 quote the phrase as one argument to `grep` or `git grep` through Bash. An
 `agent_id` of `false`, `""`, a number or an object counts as a subagent, and so does
 a guard-unwrap child call, which carries no `agent_id` but runs with
@@ -2619,8 +2620,7 @@ corpus shape.
 What it cannot see is the fence residual, tracked as one follow-up ticket of the core-bypass spec work: text built at run time (a
 variable, an alias, a function, an expansion, an `eval`, a script written then
 run, an encoded string), a nested `claude` session started from a subagent, a
-chief session in another repo, the Monitor tool, and a command that runs its
-argument as code through a tool the executor list above does not name. Bypass:
+chief session in another repo, and the Monitor tool. Bypass:
 `SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1` (launching shell). Spec:
 `scripts/hooks/test-block-subagent-release-operator.sh`.
 

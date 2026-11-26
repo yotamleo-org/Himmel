@@ -425,7 +425,7 @@ plugin is installed. Scripts live under `scripts/hooks/`, or under
 | `block-fork-sync-pr` | a `gh pr create` that syncs a registered fork with its upstream | auth-gated (fail-open on its own errors) | `FORK_SYNC_PR_OK=1` |
 | `read-clamp` | in a chief-spawned worker (`HIMMEL_CONSOLE_LEG=1`): a whole-file read over `HIMMEL_READ_CLAMP_LINES` lines, or a repeat of an identical Read of an unchanged file | auth-gated (fail-open) | `HIMMEL_READ_CLAMP_OK=1` |
 | `guard-bus-store` | a Bash or file write into the himmel-bus store | auth-gated | `BUS_STORE_GUARD_OK=1` |
-| `block-subagent-release-operator` | a subagent Bash command that runs the `release operator` word sequence | auth-gated (fail-closed) | `SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1` |
+| `block-subagent-release-operator` | a subagent Bash command that names both `release` and `operator` and is not a read-only search or file write | auth-gated (fail-closed) | `SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1` |
 | `guard-judge-write-scope` | a `judge-ro` subagent call other than one Write of its evidence file | auth-gated (fail-closed) | `JUDGE_WRITE_SCOPE_OK=1` |
 | `check-write-hold` | an Edit/Write onto a file another live worker or open PR holds (the single-writer barrier) | auth-gated (fail-open on its own errors) | `WRITE_HOLD_OK=1` |
 | `orchestrator-inline-guard` | a top-tier parent (Fable/Opus) editing an implementation file directly past the per-PR budget | auth-gated | `INLINE_IMPL_OK=1` (audited override) / `ORCH_GUARD_DISABLE=1` (kill switch) |

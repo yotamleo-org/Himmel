@@ -9,9 +9,10 @@
 # is not exactly one JSON object is denied. `agent_id` absent or null is the main
 # session (the chief) and is allowed without reading the command; any other value
 # is a subagent. A command that does not hold both words `release` and `operator`
-# is allowed at once; otherwise the forms guard-unwrap derives and the tokenizer's
-# simple commands are scanned for `release` directly followed by `operator`.
-# The full match rules and the fence residual (what it cannot see) are in
+# is allowed at once. One that does is allowed only when every simple command in
+# it is on a short read-only allowlist and it holds no substitution, no live `$`
+# or glob word and no run-a-string option; anything else is denied.
+# The allowlist and the fence residual (what it cannot see) are in
 # docs/internals/enforcement.md.
 # git-env-ok: git is matched as a command word in a case pattern and never run here
 #
@@ -28,7 +29,7 @@ deny() {
 }
 
 BYPASS='Bypass: SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1 in the shell that launched Claude Code.'
-RULE="block-subagent-release-operator: a subagent may not run a Bash command that runs jira release operator (or one this fence cannot read); it writes an operator-chain row, and only the main session (the chief) records one. To search for the phrase, quote it as one argument to grep or git grep through Bash, for example grep -n 'release operator' <file>. To write a file that names it, use the Write tool or a heredoc. $BYPASS"
+RULE="block-subagent-release-operator: a subagent may not run a Bash command that names both release and operator unless it is only a read-only search or file write (grep, egrep, fgrep, rg, git grep, git log, git diff, sed -n, cat or tee to a file); jira release operator writes an operator-chain row, and only the main session (the chief) records one. To search for the phrase, quote it as one argument to grep or git grep through Bash, for example grep -n 'release operator' <file>. To write a file that names it, use the Write tool or a heredoc. $BYPASS"
 
 [ "${SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE:-0}" = "1" ] && exit 0
 
@@ -90,82 +91,79 @@ guard_unwrap "${BASH_SOURCE[0]}" "$cmd" 2>/dev/null || deny "$RULE"
 
 [ "$GU_TOKENIZED" = 1 ] || deny "$RULE"
 
-is_interp() {
-    case "${1##*/}" in
-        bash|sh|zsh|dash|ksh|mksh|ash|yash|posh|eval|source|coproc|node*|bun|deno|tsx|npx|python*|perl*|ruby*|php*|lua*) return 0 ;;
-    esac
-    return 1
+readonly_sed() {
+    local a script='' re='^(([0-9]+|\$|/[^/]*/)(,([0-9]+|\$|/[^/]*/))?)?p$'
+    for a in "$@"; do
+        case "$a" in
+            -n|-E|-r|-s|--quiet|--silent|-nE|-En|-nr|-rn) ;;
+            -*) return 1 ;;
+            *) [ -n "$script" ] || script=$a ;;
+        esac
+    done
+    [[ $script =~ $re ]]
 }
 
-scan_segments() {
-    local s=0 n j w prev segtext core cb fed live runs k interp
-    local -a idx
-    fed=0
-    [ "$ST_NSEG" -gt 1 ] && fed=1
-    [ "$ST_SUBST" = 1 ] && fed=1
-    [ "$ST_HEREDOC" = 1 ] && fed=1
-    k=0
+readonly_git() {
+    local a sub='' skip=0
+    for a in "$@"; do
+        if [ "$skip" = 1 ]; then skip=0; continue; fi
+        if [ -z "$sub" ]; then
+            case "$a" in
+                -C) skip=1 ;;
+                --no-pager|-P) ;;
+                -*) return 1 ;;
+                grep|log|diff) sub=$a ;;
+                *) return 1 ;;
+            esac
+        else
+            case "$a" in -O*|--open-files-in-pager*|--ext-diff|--textconv) return 1 ;; esac
+        fi
+    done
+    [ -n "$sub" ]
+}
+
+readonly_rg() {
+    local a
+    for a in "$@"; do
+        case "$a" in --pre|--pre=*|--hostname-bin|--hostname-bin=*) return 1 ;; esac
+    done
+    return 0
+}
+
+readonly_command() {
+    local s=0 k=0 n core cw j
+    local -a idx args
+    [ "$ST_SUBST" = 1 ] && return 1
     while [ "$k" -lt "$ST_N" ]; do
-        [ -z "${ST_RO[k]}" ] || fed=1
+        if [ "${ST_X[k]}" = 1 ] || [ "${ST_G[k]}" = 1 ]; then return 1; fi
         k=$((k + 1))
     done
     while [ "$s" -lt "$ST_NSEG" ]; do
         idx=()
+        args=()
         read -r -a idx <<<"${GU_SW[s]:-}"
         n=${#idx[@]}
-        prev=''
-        segtext=''
-        live=0
-        runs=0
-        interp=0
-        j=0
-        while [ "$j" -lt "$n" ]; do
-            w=${ST_W[idx[j]]}
-            [ "$prev" = release ] && [ "$w" = operator ] && return 0
-            prev=$w
-            segtext=$segtext${segtext:+ }$w
-            if [ "${ST_X[idx[j]]}" = 1 ] || [ "${ST_G[idx[j]]}" = 1 ]; then live=1; fi
-            case "$w" in --pre|--pre=*|--open-files-in-pager*|-O*|alias.*) runs=1 ;; esac
-            is_interp "$w" && interp=1
-            j=$((j + 1))
-        done
-        if [ "$interp" = 1 ]; then
-            both_words "$cmd" && return 0
-        fi
-        if [ "$live" = 1 ]; then
-            both_words "$segtext" && return 0
-        fi
-        if [ -n "${GU_XA[s]:-}" ]; then
-            both_words "$cmd" && return 0
-        fi
         core=${GU_CORE[s]:-0}
+        if [ -n "${GU_XA[s]:-}" ]; then return 1; fi
         if [ "$core" -lt "$n" ]; then
-            cb=${ST_W[idx[core]]##*/}
-            case "$cb" in
-                bash|sh|zsh|dash|ksh|mksh|ash|yash|posh|eval|source|.|node*|bun|deno|tsx|npx|python*|perl*|ruby*|php*|lua*)
-                    if [ "$fed" = 1 ]; then
-                        both_words "$cmd" && return 0
-                    else
-                        both_words "$segtext" && return 0
-                    fi ;;
-                script|flock|watch|taskset|strace|ltrace|chrt|numactl|setpriv|unshare|nsenter|runuser|su|ssh|parallel|find|tmux|screen|systemd-run|at|busybox|chroot|expect|sed|gsed|awk|gawk|coproc)
-                    if [ "$fed" = 1 ]; then
-                        both_words "$cmd" && return 0
-                    else
-                        both_words "$segtext" && return 0
-                    fi ;;
-                git|rg|ripgrep)
-                    if [ "$runs" = 1 ]; then
-                        both_words "$segtext" && return 0
-                    fi ;;
+            cw=${ST_W[idx[core]]}
+            j=$((core + 1))
+            while [ "$j" -lt "$n" ]; do
+                args[${#args[@]}]=${ST_W[idx[j]]}
+                j=$((j + 1))
+            done
+            case "$cw" in
+                grep|egrep|fgrep|cat|tee|cd) ;;
+                rg|ripgrep) readonly_rg "${args[@]+"${args[@]}"}" || return 1 ;;
+                sed|gsed) readonly_sed "${args[@]+"${args[@]}"}" || return 1 ;;
+                git) readonly_git "${args[@]+"${args[@]}"}" || return 1 ;;
+                *) return 1 ;;
             esac
         fi
         s=$((s + 1))
     done
-    return 1
+    return 0
 }
 
-if scan_segments; then
-    deny "$RULE"
-fi
+readonly_command || deny "$RULE"
 exit 0
