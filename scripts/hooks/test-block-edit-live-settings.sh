@@ -4303,6 +4303,14 @@ assert_rc "11341c5 the test builtin comparing a word to plugin allows" 0 \
     "$(bash_rc_of "$WT2" '[ "$k" = plugin ] && echo install' HOME="$T3H")"
 assert_rc "11341c6 a brace group whose body mentions plugin install allows" 0 \
     "$(bash_rc_of "$WT2" '{ echo plugin install; }' HOME="$T3H")"
+assert_rc "11341a7 a bracket glob holding an equals sign ahead of an agy path denies" 2 \
+    "$(bash_rc_of "$WT2" 's[c=]ripts/x/agy plugin install ./p' HOME="$T3H")"
+assert_rc "11341a8 a real assignment prefix before agy still denies" 2 \
+    "$(bash_rc_of "$WT2" 'k=v agy plugin install ./p' HOME="$T3H")"
+assert_rc "11341c7 a real assignment prefix before an agy read verb allows" 0 \
+    "$(bash_rc_of "$WT2" 'k1=v agy plugin list' HOME="$T3H")"
+assert_rc "11341c8 an array assignment prefix before an agy read verb allows" 0 \
+    "$(bash_rc_of "$WT2" 'k[1]=v agy plugin list' HOME="$T3H")"
 assert_rc "11257c20 an agy prompt held in a variable allows" 0 \
     "$(bash_rc_of "$WT2" 'agy -p "$PROMPT"' HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
 assert_rc "11257c21 a variable subcommand followed by a read verb allows" 0 \

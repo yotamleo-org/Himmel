@@ -1055,13 +1055,13 @@ _agy_verb_ro() {
 }
 
 _agy_seg_writes() {
-    local st=0 first=1 app=0 w b cw=''
+    local st=0 first=1 app=0 w b cw='' asg_re='^[a-z_][a-z0-9_]*(\[[^]]*\])?\+?='
     for w in "$@"; do
         [ -n "$w" ] || continue
         b=${w%$'\001'}
         b=${b##*/}
         if [ "$first" = 1 ]; then
-            case "$w" in [a-z_]*=*) continue ;; esac
+            [[ $w =~ $asg_re ]] && continue
             first=0
             cw=$b
             case "$cw" in
