@@ -1802,7 +1802,7 @@ fi
 # so closing a worker - close-wrapped-worker TERMs its claude pid - closes only
 # its tab, and a crashed worker leaves only its own tab dead.
 # Returns 1 to open a window instead: the switch is off, this is a chief
-# arm, the macOS shim, no valid HIMMEL_CONSOLE_NAME to group by, or no live
+# arm, the macOS shim, a bypass flag set to 1 in this arm's env (a bypass launch never shares the window), no valid HIMMEL_CONSOLE_NAME to group by, or no live
 # window recorded for the chief or its predecessor chief yet (TAB_RECORD=1:
 # the window this arm opens, or adopts from a live konsole predecessor, becomes
 # the chief's window). A D-Bus failure also returns 1, with a WARN:
@@ -1864,10 +1864,20 @@ tab_chain_window() {
     done < <(ls -1t -- "$LOCKDIR"/tabs-*.window 2>/dev/null)
     return 1
 }
+tab_bypass_env() {
+    local reg name
+    reg="$(dirname "$0")/../himmelctl/lib/bypass-flags.json"
+    [ -r "$reg" ] || return 0
+    while IFS= read -r name; do
+        [ "${!name:-}" = "1" ] && return 0
+    done < <(sed -n 's/^ *"name": *"\([A-Z][A-Z0-9_]*\)".*/\1/p' "$reg")
+    return 1
+}
 tab_launch() {
     local wpid sid tab_sh kv pred
     [ "${HIMMEL_WORKER_SESSION_TABS:-0}" = "1" ] || return 1
     [ "$ROLE" != "chief" ] && [ "$KONSOLE_IS_MACOS_SHIM" != "1" ] || return 1
+    ! tab_bypass_env || return 1
     case "${HIMMEL_CONSOLE_NAME:-}" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
     TAB_WINDOW_FILE="$LOCKDIR/tabs-$HIMMEL_CONSOLE_NAME.window"
     wpid="$(cat "$TAB_WINDOW_FILE" 2>/dev/null)"  # swallow-ok: no readable record means no window yet, so this arm opens one and records it
