@@ -1,0 +1,8 @@
+no-trailer-1l	incomplete:no-trailer	NOTE	DEMO-1	/b/DEMO-1-N1-a-RESUME.md	2026-11-20T10:00:00Z	status=In Progress	orig=-
+two-trailers-2l	incomplete:bad-trailer	# open-notes: complete n=0 unverified=0 merge_hidden=0 mirror_cursor_age_min=3\n# open-notes: complete n=0 unverified=0 merge_hidden=0 mirror_cursor_age_min=3
+trailer-not-last-2l	incomplete:bad-trailer	# open-notes: complete n=1 unverified=0 merge_hidden=0 mirror_cursor_age_min=3\nNOTE	DEMO-1	/b/DEMO-1-N1-a-RESUME.md	2026-11-20T10:00:00Z	status=In Progress	orig=-
+n-mismatch-2l	incomplete:bad-trailer	NOTE	DEMO-1	/b/DEMO-1-N1-a-RESUME.md	2026-11-20T10:00:00Z	status=In Progress	orig=-\n# open-notes: complete n=0 unverified=0 merge_hidden=0 mirror_cursor_age_min=3
+u-mismatch-2l	incomplete:bad-trailer	UNVERIFIED	DEMO-2	/b/DEMO-2-N2-b-RESUME.md	2026-11-20T10:00:00Z	reason=no-mirror-file\n# open-notes: complete n=0 unverified=0 merge_hidden=0 mirror_cursor_age_min=3
+malformed-1l	incomplete:bad-trailer	# open-notes: complete n=x
+valid-complete-2l	complete	NOTE	DEMO-1	/b/DEMO-1-N1-a-RESUME.md	2026-11-20T10:00:00Z	status=In Progress	orig=-\n# open-notes: complete n=1 unverified=0 merge_hidden=0 mirror_cursor_age_min=3
+valid-incomplete-2l	incomplete:locks-unknown	NOTE	DEMO-1	/b/DEMO-1-N1-a-RESUME.md	2026-11-20T10:00:00Z	status=In Progress	orig=-\n# open-notes: incomplete locks-unknown n=1 unverified=0 merge_hidden=0 mirror_cursor_age_min=3
