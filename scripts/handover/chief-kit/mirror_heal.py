@@ -138,16 +138,22 @@ def heal_root(cli, root, prefix, deadline):
             return
         since = st.get('lastSync')
         started = time.monotonic()
-        p = subprocess.Popen(['node', cli, 'mirror', '--repair', '--root', root], env=_env(prefix), cwd=_run_cwd(cli),
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        p = None
         try:
+            signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+            try:
+                p = subprocess.Popen(['node', cli, 'mirror', '--repair', '--root', root], env=_env(prefix), cwd=_run_cwd(cli),
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            finally:
+                signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
             rc = p.wait(timeout=max(left(), 0))
         except subprocess.TimeoutExpired:
             kill_group(p)
             say('mirror %s heal timed out after %d s' % (root, round(time.monotonic() - started)))
             return
         except BaseException:
-            kill_group(p)
+            if p is not None:
+                kill_group(p)
             raise
         try:
             now = status(cli, root, prefix, left())['complete']

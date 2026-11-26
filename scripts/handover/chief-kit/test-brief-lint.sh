@@ -795,6 +795,20 @@ lock_ok="$(python3 -I -c 'import fcntl,sys; f=open(sys.argv[1],"a"); fcntl.flock
 { [ "$rc" -eq 3 ] && [ "$took" -lt 10 ] && grep -Fq 'heal timed out after' <<< "$err" && [ -n "$p1" ] && [ -n "$p2" ] && [ "$alive" -eq 0 ] && [ "$lock_ok" = free ]; } \
     && ok "BL6 a hung repair is killed with its group at the budget and its lock is freed" || bad "BL6 rc=$rc took=$took alive=$alive lock=$lock_ok: $err"
 
+hl_mirror m16 "$HL_INC"
+env BRIEF_LINT_MIRROR="$HL/m16" BRIEF_LINT_TEST_HEAL=hang BRIEF_LINT_TEST_PIDS="$HL/m16.pids" python3 -I "$HERE/mirror_heal.py" "$tmp/hl_brief.md" "$HL/stub/index.js" 2>/dev/null & h16=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$HL/m16.pids" ] && break; sleep 0.5; done
+kill -TERM "$h16" 2>/dev/null; wait "$h16" 2>/dev/null
+alive=1; p1=""; p2=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    alive=0; p1=""; p2=""; [ ! -r "$HL/m16.pids" ] || read -r p1 p2 < "$HL/m16.pids"  # read-sink-ok: the stub's own pid file
+    for p in $p1 $p2; do kill -0 "$p" 2>/dev/null && alive=1; done
+    [ "$alive" -eq 0 ] && break; sleep 0.5
+done
+lock_ok="$(python3 -I -c 'import fcntl,sys; f=open(sys.argv[1],"a"); fcntl.flock(f, fcntl.LOCK_EX|fcntl.LOCK_NB); print("free")' "$HL/m16.lock" 2>&1)"
+{ [ -n "$p1" ] && [ -n "$p2" ] && [ "$alive" -eq 0 ] && [ "$lock_ok" = free ]; } \
+    && ok "BL16 a helper that is terminated kills its repair group and frees the lock" || bad "BL16 pids=$p1 $p2 alive=$alive lock=$lock_ok"
+
 hl_mirror m7 "$HL_FULL"
 hl_lint m7 bash "$LINT" "$tmp/hl_brief.md"
 { [ "$rc" -eq 3 ] && [ "$(hl_n 'mirror --repair')" -eq 0 ] && grep -Fq 'needs a full backfill; no heal at launch' <<< "$err" && grep -Fq 'repair: full' <<< "$err"; } \
