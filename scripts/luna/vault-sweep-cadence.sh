@@ -21,14 +21,14 @@
 # vault-stall-cadence.sh both take <git-dir>/vault-writer.lock (flock -n): a
 # run that finds it held skips.
 #
-# Exit (arm): 0 armed (or dry-run), 1 bad argument, 2 environment (Windows, no crontab or
+# Exit (arm): 0 armed (or dry-run), 1 bad argument, 2 environment (no crontab or
 # flock, not a git repo, no primary checkout, sweeper missing), 3 already armed (no --force),
 # 4 crontab read/write or runner write failed, 5 github-sync is enabled in the vault,
 # 77 refused by the test guard. run: the runner's own rc (0 committed/clean/busy), 2 not armed.
 # disarm: 0 (also nothing armed), 4 crontab write failed, 77 test guard.
 # Seams (tests): VAULT_SWEEP_CRONTAB, VAULT_SWEEP_RUNNER_DIR, VAULT_SWEEP_ROOT (the checkout whose
 # scripts the runner bakes in, instead of the primary checkout).
-# Platform: cron (Linux/macOS). Windows development is parked.
+# Platform: cron (Linux/macOS).
 set -uo pipefail
 
 TASK_NAME="HIMMEL-VaultSweep"
@@ -79,7 +79,6 @@ cmd_arm() {
             *) echo "ERR vault-sweep: unknown arg: $1" >&2; return 1 ;;
         esac
     done
-    case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) echo "ERR vault-sweep: cron only; Windows is parked" >&2; return 2 ;; esac
     command -v "$CRONTAB_BIN" >/dev/null 2>&1 || { echo "ERR vault-sweep: '$CRONTAB_BIN' not on PATH" >&2; return 2; }
     command -v flock >/dev/null 2>&1 || { echo "ERR vault-sweep: flock not on PATH (every run needs it; on macOS: brew install flock)" >&2; return 2; }
     gitdir="$(git -C "$vault" rev-parse --absolute-git-dir 2>/dev/null)" || { echo "ERR vault-sweep: not a git repo: $vault" >&2; return 2; }

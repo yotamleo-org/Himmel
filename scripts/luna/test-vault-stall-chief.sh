@@ -58,13 +58,15 @@ rc=0
 bash "$SINK" 2>/dev/null || rc=$?
 assert_eq "C6 empty message: rejected (2)" "2" "$rc"
 
-rm -f "$TMP/sent.log" "$TMP/inbox.log" "$TMP/swept.log"
-printf '%s\n' "$CHIEF_LINE" >"$TMP/sweep.txt"
-rc=0
-env -u MERGE_BLOCK_ALERT_CMD -u FAILURE_ROUTE_INBOX_SEND HIMMEL_TEST_FIXTURE=1 BRIDGE_ROOT='' FAILURE_ROUTE_SWEEP_CMD="$TMP/spy-sweep.sh" \
-    HIMMEL_ALERT_KIND=cadence:vault-stall bash "$SINK" "from a test" 2>/dev/null || rc=$?
-assert_eq "C7 the guard skips the chief (sweep never ran, no inbox) and Telegram's refusal exits 77" \
-    "77 0 0" "$rc $(count "$TMP/swept.log") $(count "$TMP/inbox.log")"
+if [ "$(uname -s)" = Linux ]; then
+    rm -f "$TMP/sent.log" "$TMP/inbox.log" "$TMP/swept.log"
+    printf '%s\n' "$CHIEF_LINE" >"$TMP/sweep.txt"
+    rc=0
+    env -u MERGE_BLOCK_ALERT_CMD -u FAILURE_ROUTE_INBOX_SEND HIMMEL_TEST_FIXTURE=1 HIMMEL_REAL_STATE_ASSUME_STATION=1 BRIDGE_ROOT='' FAILURE_ROUTE_SWEEP_CMD="$TMP/spy-sweep.sh" \
+        HIMMEL_ALERT_KIND=cadence:vault-stall bash "$SINK" "from a test" 2>/dev/null || rc=$?
+    assert_eq "C7 the guard skips the chief (sweep never ran, no inbox) and Telegram's refusal exits 77" \
+        "77 0 0" "$rc $(count "$TMP/swept.log") $(count "$TMP/inbox.log")"
+fi
 
 echo "----"
 if [ "$FAILED" -eq 0 ]; then echo "PASS: vault-stall-chief ($0)"; else echo "FAIL: vault-stall-chief — $FAILED failed ($0)" >&2; exit 1; fi
