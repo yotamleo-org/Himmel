@@ -19,13 +19,16 @@ One `providerInstances.claudeAgent_<profile>` entry per profile:
 - `operator` resolves to no settings file, so its `claudeAgent_operator` instance gets a
   settings file holding only the resolver's default for a profile that sets nothing: the
   Artifact tool denied. The built-in default instance, `providerInstances.claudeAgent`
-  (created when absent, its other `config` kept, its `launchArgs` owned), gets the same
-  file, so a T3 thread on either writes local HTML like a terminal session. A profile
+  (created when absent, its other `config` kept), gets the same file, so a T3 thread on
+  either writes local HTML like a terminal session. A `launchArgs` the user set on
+  `claudeAgent` is left alone with a warning (only a `--settings .../artifact-deny.json`
+  the script wrote itself is refreshed), and that entry never counts as covering a profile. A profile
   with `artifact: true` (`user`, the design family) keeps the tool through its own file.
 - A profile already reachable through another instance (same `<profile>.json` in
   its `--settings`, e.g. the hand-made `claudeAgent_claude_chief`) gets no new id.
   Existing instances are never removed, and none is edited except a
-  `claudeAgent_<profile>` whose stable path moved (its `launchArgs` is refreshed).
+  `claudeAgent_<profile>` whose stable path moved (its `launchArgs` is refreshed) and the
+  default `claudeAgent` (its `launchArgs` only when empty or a deny file the script wrote).
 - A resolved path containing whitespace is refused (rc 2): `launchArgs` would split it.
   If the settings file changes while the profiles resolve, `--apply` writes nothing (rc 2).
 - A final settings document in which any `env` / `environment` entry is named

@@ -90,19 +90,24 @@ for p in $PROFILES; do
     GEN="$(printf '%s' "$GEN" | jq --arg p "$p" --arg a "$args" '.[$p] = $a')" || die 2 "jq failed"
 done
 
-NEW="$(jq --argjson gen "$GEN" --arg deny "$DENY_ARGS" '
+OWNED_RE='^--settings [^ ]*/artifact-deny\.json$'
+USER_ARGS="$(jq -r --arg re "$OWNED_RE" '(.providerInstances.claudeAgent.config.launchArgs // "") | if . == "" or test($re) then "" else . end' "$FILE")" || die 2 "jq failed"
+[ -z "$USER_ARGS" ] || echo "provider-instances: claudeAgent carries its own launchArgs; left alone, so the default Artifact deny is not added to it" >&2
+
+NEW="$(jq --argjson gen "$GEN" --arg deny "$DENY_ARGS" --arg re "$OWNED_RE" '
   def basenames: (.config.launchArgs // "") | [scan("--settings ([^ ]+)")[0] | split("/")[-1]];
   . as $doc
   | (.providerInstances // {}) as $pi
   | reduce ($gen | keys_unsorted[]) as $p (.;
       ("claudeAgent_" + $p) as $id
-      | (($pi | to_entries | map(select(.key != $id and (.key | endswith("_relay") | not)) | .value | basenames | index($p + ".json")) | any)) as $covered
+      | (($pi | to_entries | map(select(.key != $id and .key != "claudeAgent" and (.key | endswith("_relay") | not)) | .value | basenames | index($p + ".json")) | any)) as $covered
       | if $covered then .
         else .providerInstances[$id] = (($pi[$id] // {"driver":"claudeAgent","displayName":("Claude (" + $p + ")"),"enabled":true})
               | .config = ((.config // {}) + {launchArgs: $gen[$p]}))
         end)
   | .providerInstances.claudeAgent = ((.providerInstances.claudeAgent // {"driver":"claudeAgent","displayName":"Claude","enabled":true})
-        | .config = ((.config // {}) + {launchArgs: $deny}))' "$FILE")" || die 2 "merge failed"
+        | if ((.config.launchArgs // "") == "" or ((.config.launchArgs // "") | test($re)))
+          then .config = ((.config // {}) + {launchArgs: $deny}) else . end)' "$FILE")" || die 2 "merge failed"
 
 RELAY='[]'
 CFG="$HOME/.himmel/config.json"

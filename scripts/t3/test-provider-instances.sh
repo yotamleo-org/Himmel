@@ -63,7 +63,7 @@ expect_ok "second apply leaves file byte-identical" cmp -s "$S" "$T/after1.json"
 nbak=0; for f in "$T"/settings.json.bak.*; do [ -e "$f" ] && nbak=$((nbak+1)); done
 expect_eq "apply wrote exactly one timestamped backup" "$nbak" 1
 
-expect_ok "empty-resolving profile skipped, rc 0" env T3_PI_PROFILES="alpha,ghost" bash "$GEN" --settings-file "$S"
+expect_ok "empty-resolving profile gets the deny-only instance, rc 0" env T3_PI_PROFILES="alpha,ghost" bash "$GEN" --settings-file "$S"
 expect_fail "resolver failure refused" env T3_PI_PROFILES="alpha,broken" bash "$GEN" --settings-file "$S"
 
 B="$T/bypass.json"
@@ -223,6 +223,24 @@ expect_eq "default instance is created when absent" "$(jq -r '.providerInstances
 cp "$A" "$T/artifact.after1"
 env T3_PI_RESOLVER= T3_PI_PROFILES="user" bash "$GEN" --apply --settings-file "$A" >/dev/null 2>&1
 expect_ok "default instance: second apply is a no-op" cmp -s "$A" "$T/artifact.after1"
+
+U="$T/userargs.json"
+printf '{"providerInstances":{"claudeAgent":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--model my-own"}}}}' > "$U"
+out="$(env T3_PI_RESOLVER= T3_PI_PROFILES="user" bash "$GEN" --apply --settings-file "$U" 2>&1)"; rc=$?
+expect_eq "user launchArgs on the default instance: rc 0" "$rc" 0
+expect_eq "user launchArgs on the default instance are kept" "$(launch_args "$U" claudeAgent)" "--model my-own"
+expect_ok "user launchArgs on the default instance: warns naming claudeAgent" grep -q 'claudeAgent.*own launchArgs' <<<"$out"
+
+U2="$T/userargs2.json"
+printf '{"providerInstances":{"claudeAgent":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /stable/h1/alpha.json"}}}}' > "$U2"
+env T3_PI_RESOLVER="$T/resolver.sh" T3_PI_PROFILES="alpha" bash "$GEN" --apply --settings-file "$U2" >/dev/null 2>&1
+expect_eq "default instance naming a profile's --settings is kept" "$(launch_args "$U2" claudeAgent)" "--settings /stable/h1/alpha.json"
+expect_eq "that profile still gets its own instance" "$(launch_args "$U2" claudeAgent_alpha)" "--settings /stable/h1/alpha.json --mcp-config /stable/mcp-aaa/alpha.mcp.json --strict-mcp-config"
+
+U3="$T/userargs3.json"
+printf '{"providerInstances":{"claudeAgent":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /old/abc/artifact-deny.json"}}}}' > "$U3"
+env T3_PI_RESOLVER= T3_PI_PROFILES="user" bash "$GEN" --apply --settings-file "$U3" >/dev/null 2>&1
+expect_eq "launchArgs the script wrote earlier are refreshed" "$(artifact_of "$(settings_of "$U3" claudeAgent)")" 0
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" = 0 ]
