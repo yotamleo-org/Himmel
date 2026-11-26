@@ -1064,7 +1064,10 @@ _agy_seg_writes() {
             case "$w" in [a-z_]*=*) continue ;; esac
             first=0
             cw=$b
-            case "$cw" in *'$'*) st=1; continue ;; esac
+            case "$cw" in
+                '{'|'['|'[[') ;;
+                *'$'*|*'{'*|*'*'*|*'?'*|*'['*) st=1; continue ;;
+            esac
             case "$w" in *\$\{*) case "$cw" in *\}*) st=1; continue ;; esac ;; esac
         fi
         case "$b" in xargs|parallel|entr) app=1 ;; esac

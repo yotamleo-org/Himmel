@@ -4281,6 +4281,28 @@ assert_rc "11257c19 a literal closing brace ending another executable's name all
     "$(bash_rc_of "$WT2" '/opt/tool} plugin install foo' HOME="$T3H")"
 assert_rc "11257b22 a braced default whose suffix completes the agy name denies" 2 \
     "$(bash_rc_of "$WT2" '${X:-/usr/bin/ag}y plugin import claude' HOME="$T3H")"
+assert_rc "11341a1 a brace command word that expands to agy denies" 2 \
+    "$(bash_rc_of "$WT2" '{agy,} plugin install ./p' HOME="$T3H")"
+assert_rc "11341a2 a brace inside the agy command word denies" 2 \
+    "$(bash_rc_of "$WT2" 'a{g,}y plugin import claude' HOME="$T3H")"
+assert_rc "11341a3 a star glob command word that matches agy denies" 2 \
+    "$(bash_rc_of "$WT2" 'a*y plugin import claude' HOME="$T3H")"
+assert_rc "11341a4 a question-mark glob command word that matches agy denies" 2 \
+    "$(bash_rc_of "$WT2" 'a?y mcp add srv -- cmd' HOME="$T3H")"
+assert_rc "11341a5 a bracket glob command word that matches agy denies" 2 \
+    "$(bash_rc_of "$WT2" '[a]gy plugin install ./p' HOME="$T3H")"
+assert_rc "11341c1 a brace command word followed by a read verb allows" 0 \
+    "$(bash_rc_of "$WT2" '{agy,} plugin list' HOME="$T3H")"
+assert_rc "11341c2 a glob command word followed by a read verb allows" 0 \
+    "$(bash_rc_of "$WT2" 'a*y mcp list' HOME="$T3H")"
+assert_rc "11341c3 a brace command word that is plainly another program allows" 0 \
+    "$(bash_rc_of "$WT2" '{echo,} hello world' HOME="$T3H")"
+assert_rc "11341c4 a glob argument to another program allows" 0 \
+    "$(bash_rc_of "$WT2" 'ls a*y plugin' HOME="$T3H")"
+assert_rc "11341c5 the test builtin comparing a word to plugin allows" 0 \
+    "$(bash_rc_of "$WT2" '[ "$k" = plugin ] && echo install' HOME="$T3H")"
+assert_rc "11341c6 a brace group whose body mentions plugin install allows" 0 \
+    "$(bash_rc_of "$WT2" '{ echo plugin install; }' HOME="$T3H")"
 assert_rc "11257c20 an agy prompt held in a variable allows" 0 \
     "$(bash_rc_of "$WT2" 'agy -p "$PROMPT"' HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
 assert_rc "11257c21 a variable subcommand followed by a read verb allows" 0 \
