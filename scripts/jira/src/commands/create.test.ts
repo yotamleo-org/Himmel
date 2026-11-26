@@ -37,7 +37,7 @@ vi.mock('../release/fence-ancestry.js', async (orig) => {
   return { ...m, walk, ancestorValue: (name: string) => (ancestry.procRoot === undefined ? null : m.ancestorValue(name, { procRoot: ancestry.procRoot })) };
 });
 
-import { resolveTitle, registerCreate, agentDetailOf, agentDetailOfAdf, pathsIn, bridgePointer } from './create.js';
+import { resolveTitle, registerCreate, agentDetailOf, agentDetailOfAdf, pathsIn, bridgePointer, topicTerms } from './create.js';
 import { registerRelease } from './release.js';
 import { request } from '../client.js';
 import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
@@ -1492,7 +1492,7 @@ describe('create — Bug placement', () => {
     const p = new Command();
     p.exitOverride();
     registerCreate(p);
-    await p.parseAsync(['node', 'jira', 'create', '--type', 'Bug', '--title', 'b', '--desc', PLAIN, ...HOME, ...args]);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Bug', '--title', 'b', '--desc', PLAIN, ...HOME, '--not-chief-miss', ...args]);
   };
   const created = () => {
     const c = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
@@ -1755,7 +1755,7 @@ describe('create — intake gate for a frozen version', () => {
 
   it('lets the console past the gate with a reason, and writes an override row carrying it', async () => {
     process.env['HIMMEL_CONSOLE'] = '1';
-    await file('Bug', '--fix-version', 'v1.1.3', '--chief-override', 'blocks the v1 gate');
+    await file('Bug', '--fix-version', 'v1.1.3', '--chief-override', 'blocks the v1 gate', '--not-chief-miss');
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
     expect(ledger()).toMatchObject([{ key: 'HIMMEL-77', version: 'v1.1.3', kind: 'override', reason: 'blocks the v1 gate' }]);
   });
@@ -2849,6 +2849,69 @@ describe('create — duplicate gate', () => {
   });
 });
 
+describe('create — a Bug filed from a chief session carries chief-miss or says it is not one', () => {
+  let errs: string[];
+  let saved: string | undefined;
+  const file = async (type: string, ...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', type, '--title', 'Ship loop: a bug filed by a test', '--desc', PLAIN, ...HOME, '--backlog', '--proposed-version', 'backlog', '--why', 'waits for the next release', ...args]);
+  };
+  const posted = () => mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    saved = process.env['HIMMEL_CONSOLE'];
+    errs = [];
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { errs.push(a.map(String).join(' ')); });
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) return [{ name: 'v1.1.3', released: false }];
+      if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      return { key: 'HIMMEL-77' };
+    });
+  });
+  afterEach(() => {
+    if (saved === undefined) delete process.env['HIMMEL_CONSOLE'];
+    else process.env['HIMMEL_CONSOLE'] = saved;
+  });
+
+  it('a Bug from a chief session with neither the label nor the flag is refused, naming both', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await expect(file('Bug', '--labels', 'standalone')).rejects.toThrow('exit');
+    expect(errs.join('\n')).toMatch(/chief-miss/);
+    expect(errs.join('\n')).toMatch(/--not-chief-miss/);
+    expect(posted()).toBeUndefined();
+  });
+
+  it('a Bug from a chief session carrying chief-miss files', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await file('Bug', '--labels', 'standalone,chief-miss');
+    expect(posted()).toBeDefined();
+  });
+
+  it('a Bug from a chief session with --not-chief-miss files and carries no chief-miss label', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await file('Bug', '--labels', 'standalone', '--not-chief-miss');
+    const body = posted()![2] as { fields: { labels: string[] } };
+    expect(body.fields.labels).not.toContain('chief-miss');
+  });
+
+  it('control: a Bug outside a chief session files with neither', async () => {
+    delete process.env['HIMMEL_CONSOLE'];
+    await file('Bug', '--labels', 'standalone');
+    expect(posted()).toBeDefined();
+  });
+
+  it('control: a Task from a chief session is not asked', async () => {
+    process.env['HIMMEL_CONSOLE'] = '1';
+    await file('Task', '--labels', 'standalone');
+    expect(posted()).toBeDefined();
+  });
+});
+
 describe('create — topic search over open tickets', () => {
   type Held = { key: string; summary: string; what: string; status?: string; labels?: string[] };
   const NEW_TITLE = 'Planning & tracking: chief helpers and the release manager place work by four rules';
@@ -2968,6 +3031,14 @@ describe('create — topic search over open tickets', () => {
     play();
     await fileTopic(NEW_TITLE, NEW_WHAT);
     expect(created()).toBe(true);
+  });
+
+  it('chief-miss is a generic label: it adds no topic term, so two tickets sharing only it do not match', () => {
+    expect(topicTerms('t', 'w', ['chief-miss']).has('label:chief-miss')).toBe(false);
+  });
+
+  it('control: a non-generic label still adds a topic term', () => {
+    expect(topicTerms('t', 'w', ['fl-suite-x']).has('label:fl-suite-x')).toBe(true);
   });
 
   it('--new-reason files it past the topic match, records the reason, and runs no search', async () => {
