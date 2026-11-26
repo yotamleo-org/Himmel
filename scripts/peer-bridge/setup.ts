@@ -160,7 +160,10 @@ function loadRaw(): any {
 const pairingFile = () => join(homeDir(), ".himmel", "remote-setup", "pairing.json");
 
 function writePairing(deps: Deps): void {
-  try { writePairingRecord(); } catch (e) { deps.out(`the pairing steps record could not be updated (${(e as Error).message}); the step itself is done`); }
+  try { writePairingRecord(); } catch (e) {
+    try { fs.rmSync(pairingFile(), { force: true }); } catch {}
+    deps.out(`the pairing steps record could not be updated (${(e as Error).message}); the old record was dropped, the next pairing step writes it again`);
+  }
 }
 
 function writePairingRecord(): void {

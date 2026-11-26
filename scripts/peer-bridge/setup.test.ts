@@ -576,6 +576,16 @@ t("the pairing record: a write that fails never stops the step it follows", asyn
   expect(Object.keys(readPeersFile(peersFile()).peers)).toEqual([]);
 });
 
+t("the pairing record: a write that fails drops the old record, so status never reads a stale one", async () => {
+  await addExample();
+  expect(fs.existsSync(PAIRING())).toBe(true);
+  fs.writeFileSync(peersFile(), "{");
+  const { deps, lines } = mk();
+  await keygenCmd("new", deps);
+  expect(fs.existsSync(PAIRING())).toBe(false);
+  expect(lines.join("\n")).toContain("old record was dropped");
+});
+
 t("the pairing record holds booleans and peer names only: no key, fingerprint, id, chat id or token", async () => {
   await addExample();
   await stationName("yotam", mk().deps);
