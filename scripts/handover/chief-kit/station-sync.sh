@@ -138,7 +138,7 @@ bypass_step() {
     echo "STEP bypass_daemon rc=$rc" # t13b-ok: prints the step's result line; nothing is started here
     printf '%s\n' "$out" | grep -E -m1 '^ +(restarted|inactive:|not-enabled:|failed:)'
     if [ "$rc" -ne 0 ]; then BYPASS_MARK="bypass_daemon-failed" # t13b-ok: names the marker for a step that failed; nothing is started here
-    elif printf '%s\n' "$out" | grep -qE '^ *inactive: '; then BYPASS_MARK="bypass_daemon-inactive" # t13b-ok: names the marker for a unit that is not running
+    elif grep -qE '^ *inactive: ' <<< "$out"; then BYPASS_MARK="bypass_daemon-inactive" # t13b-ok: names the marker for a unit that is not running
     fi
 }
 
