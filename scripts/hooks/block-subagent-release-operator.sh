@@ -14,12 +14,9 @@
 # The match: the command is normalised (backslash-newline pairs deleted, `$'`
 # and `$"` turned into `'` and `"`, then every `'`, `"` and `\` deleted), split
 # into words at every space, TAB, CR, newline and shell metacharacter, and matches
-# when both words appear, anywhere and in either order. A command that matches is
-# still allowed when the whole raw string is a plain read or a quoted-heredoc
-# write, and a `--decision` word beside a `--words` word is denied first. What it
-# cannot see (text built at run time, a nested claude session, a chief in another
-# repo, the Monitor tool) is the fence residual named in
-# docs/internals/enforcement.md.
+# when both words appear, anywhere and in either order. What it cannot see (text
+# built at run time, a nested claude session, a chief in another repo, the
+# Monitor tool) is the fence residual named in docs/internals/enforcement.md.
 #
 # Bypass (set in the shell that launched Claude Code; session-sticky, a per-call
 # prefix does not reach the hook): SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1
