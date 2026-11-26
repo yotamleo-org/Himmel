@@ -69,6 +69,9 @@ if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); 
 export HIMMEL_FAILURE_REVIEW_DIR="$TMP_ROOT/failure-review"
 mkdir -p "$TMP_ROOT/emptyroot"; : > "$TMP_ROOT/emptyroot/.env"
 export GH_READ_ENV_ROOT="$TMP_ROOT/emptyroot" HIMMEL_SECRETS_KEYRING=off
+mkdir -p "$TMP_ROOT/emptyconf"
+export HIMMEL_CONFIG_DIR="$TMP_ROOT/emptyconf" HIMMEL_JIRA_MIRROR="$TMP_ROOT/no-mirror"
+unset HANDOVER_DIR HIMMEL_CHIEF_DOC HIMMEL_BUCKET_DIR TRACKER JIRA_PROJECT_KEY 2>/dev/null || true
 
 # Fake gh + jira + claude CLIs -----------------------------------------
 
@@ -472,6 +475,14 @@ OUT_BLK="$TMP_ROOT/blankorder.md"
 out=$( cd "$REPO"; GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" CLAUDE_CMD="$FAKE_CLAUDE_BLANK" \
        bash "$SCRIPT" --since "$MARKER" --out "$OUT_BLK" --llm )
 assert_contains "blank-first order: next step" "Next step: 1. FIRST NONBLANK STEP" "$(lead_of "$(cat "$OUT_BLK")")"
+OW_ROOT="$TMP_ROOT/owed-root"; mkdir -p "$OW_ROOT/slug/himmel"
+: > "$OW_ROOT/slug/himmel/a-chief.md"
+printf '%s\n' '{"op":"add","id":"c1","kind":"step","text":"sign the control spec","key":"HIMMEL-9","actor":"operator"}' > "$OW_ROOT/slug/himmel/owed.jsonl"
+OUT_BLK_C="$TMP_ROOT/blankorder-control.md"
+out=$( cd "$REPO"; HANDOVER_DIR="$OW_ROOT" GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" CLAUDE_CMD="$FAKE_CLAUDE_BLANK" \
+       bash "$SCRIPT" --since "$MARKER" --out "$OUT_BLK_C" --llm )
+assert_absent "control: a handover root's owed ledger replaces the LLM next step (blank-first order: next step)" "Next step: 1. FIRST NONBLANK STEP" "$(lead_of "$(cat "$OUT_BLK_C")")"
+assert_contains "control: the owed item is the next step" "Next step: 1. Needs you: HIMMEL-9 sign the control spec" "$(lead_of "$(cat "$OUT_BLK_C")")"
 
 # Test 16: --llm per-block fail-open (only TLDR present) --------------
 
@@ -855,6 +866,20 @@ rc=0
 if [ "$rc" -eq 0 ]; then pass "invalid tracker: run exits 0"; else fail "invalid tracker: run exits 0" "rc=$rc"; fi
 file=$(cat "$OUT_ADI" 2>/dev/null || true)
 assert_contains "invalid tracker: setting named" "tracker setting is invalid" "$file"
+
+echo "TEST: control — a station conf naming JIRA_PROJECT_KEY puts the adopted runs back on jira"
+LEAK_CONF="$TMP_ROOT/leakconf"; mkdir -p "$LEAK_CONF"
+printf 'JIRA_PROJECT_KEY=LEAK\n' > "$LEAK_CONF/himmel.conf"
+OUT_LK="$TMP_ROOT/adopted-leak.md"
+( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER HIMMEL_CONFIG_DIR="$LEAK_CONF" GH_CMD="$FAKE_GH" \
+    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_LK" >/dev/null 2>&1 ) || true
+file=$(cat "$OUT_LK" 2>/dev/null || true)
+assert_absent "control: leaked key — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
+assert_contains "control: leaked key — 'jira unavailable' is back (adopted: no 'jira unavailable')" "jira unavailable" "$file"
+OUT_LKI="$TMP_ROOT/adopted-leak-invalid.md"
+( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD HIMMEL_CONFIG_DIR="$LEAK_CONF" TRACKER=jira GH_CMD="$FAKE_GH" \
+    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_LKI" >/dev/null 2>&1 ) || true
+assert_absent "control: leaked key — the tracker setting is no longer invalid (invalid tracker: setting named)" "tracker setting is invalid" "$(cat "$OUT_LKI" 2>/dev/null || true)"
 
 # Shifts, chiefs and per-shift spend ---------------------------------
 # The generator reads the shift record (shifts.jsonl), counts each shift id in exactly one
