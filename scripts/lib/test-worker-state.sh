@@ -149,6 +149,9 @@ check 'loader: a missing row against # rows exits 3' "$(WS_STATES_TSV="$tmp/miss
 sed 's/^NOLIVE	/NOLIVEX	/' "$TSV" > "$tmp/renamed-state.tsv"
 check 'loader: a table without a state the reducer can emit exits 3' "$(WS_STATES_TSV="$tmp/renamed-state.tsv" cli --json "$doc_ok" >/dev/null; echo $?)" 3
 { sed 's/^# rows: 16$/# rows: 17/' "$TSV"; grep '^FRESH	' "$TSV"; } > "$tmp/dup-state.tsv"
+check 'loader: the duplicate-state fixture holds FRESH twice and declares 17 rows' "$(grep -c '^FRESH	' "$tmp/dup-state.tsv")/$(grep -c '^# rows: 17$' "$tmp/dup-state.tsv")" 2/1
+check 'loader: every broken-table fixture was generated and holds the header and its rows' "$(for f in bad-count bad-cols missing-row renamed-state dup-state; do awk -F'\t' '/^#/ { next } NF { n++ } END { print n }' "$tmp/$f.tsv"; done | tr '\n' ' ')" '17 17 16 17 18 '
+check 'loader: the valid table loads under an IFS of tab and newline' "$( ( IFS=$'\t\n'; . "$LIB" >/dev/null 2>&1 && ws_load_table; echo $? ) 2>/dev/null )" 0
 check 'loader: a duplicate state exits 3' "$(WS_STATES_TSV="$tmp/dup-state.tsv" cli --json "$doc_ok" >/dev/null; echo $?)" 3
 check 'loader: a missing table exits 3' "$(WS_STATES_TSV="$tmp/none.tsv" cli --json "$doc_ok" >/dev/null; echo $?)" 3
 check 'loader: a changed table is the one the CLI reads' \
@@ -292,8 +295,9 @@ b="$(cli --json "$lh")"
 check 'lockless HALTED agreement: the label and the unlabelled record both read NOLOCK' "$(jget "$a" state)/$(jget "$b" state)" NOLOCK/NOLOCK
 
 o="$(cli --json "$d" "$fr")"
-check 'cli: one JSON object per doc, in argument order' "$(printf '%s\n' "$o" | jq -r '.doc' | tr '\n' ' ')" "$d $fr "
-check 'cli: every object carries the same eleven keys' "$(printf '%s\n' "$o" | jq -c 'keys | join(",")' | sort -u)" '"age,display,doc,ended,holds_lock,needs_chief,reason,remedy,source,state,tick"'
+check 'cli: two docs exit 0' "$(cli --json "$d" "$fr" >/dev/null; echo $?)" 0
+check 'cli: the output is exactly two JSON objects, in argument order' "$(printf '%s\n' "$o" | jq -s -r 'length as $n | "\($n):" + (map(.doc) | join(" "))')" "2:$d $fr"
+check 'cli: every object carries the same eleven keys' "$(printf '%s\n' "$o" | jq -s -c 'map(keys | join(",")) | unique')" '["age,display,doc,ended,holds_lock,needs_chief,reason,remedy,source,state,tick"]'
 
 if [ "$fails" -eq 0 ]; then
     echo "all rows passed"

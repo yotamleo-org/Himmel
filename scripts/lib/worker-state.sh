@@ -56,6 +56,7 @@ _ws_sha1() {
 }
 
 ws_load_table() {
+    local IFS=$' \t\n'
     local path="${WS_STATES_TSV:-$_WS_LIB_DIR/worker-states.tsv}"
     local line decl="" hdr=0 n=0 rows="" s h nc t d r tabs names=$'\n' need
     if [ "$_WS_T_PATH" = "$path" ] && [ -n "$_WS_T_ROWS" ]; then return 0; fi
