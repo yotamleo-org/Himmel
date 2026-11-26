@@ -3655,6 +3655,35 @@ test('readiness residuals: lone delivery denies a stalled guard at its own deadl
   assert.ok(elapsed < 8000, `the deny came at the deadline, not after the stalled child (${elapsed}ms)`);
 });
 
+test('readiness residuals: the lone deadline kills the stalled grandchild, not just the guard', () => {
+  const dir = makeTmpDir('hook-bash-readiness-grandchild-');
+  const pidFile = join(dir, 'grandchild.pid');
+  try {
+    readinessMember(dir, READINESS_GUARD, `sleep 30 & echo $! > '${pidFile}'; wait`);
+    const started = Date.now();
+    const ready = spawnSync(process.execPath, [LAUNCHER, ...READINESS_LONE_ARGS, join(dir, READINESS_GUARD)], {
+      encoding: 'utf8',
+      input: PAYLOAD,
+      env: readinessEnv({ HIMMEL_READINESS: '1', RUN_HOOK_LONE_GUARD_TIMEOUT_MS: '700' }),
+    });
+    const elapsed = Date.now() - started;
+    assert.equal(ready.status, 2, ready.stderr);
+    assert.ok(elapsed < 8000, `the deny came at the deadline, not after the grandchild's own exit (${elapsed}ms)`);
+    const pid = Number(readFileSync(pidFile, 'utf8').trim());
+    assert.ok(pid > 1, 'the guard recorded its grandchild');
+    let alive = true;
+    const until = Date.now() + 3000;
+    while (alive && Date.now() < until) {
+      try { process.kill(pid, 0); } catch (_e) { alive = false; }
+      if (alive) spawnSync('sleep', ['0.1']);
+    }
+    if (alive) process.kill(pid, 'SIGKILL');
+    assert.equal(alive, false, 'the stalled grandchild is gone after the deadline');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('readiness residuals: the lone deadline default sits under the host timeout hooks.json registers', () => {
   const { DEFAULT_LONE_GUARD_TIMEOUT_MS } = require('./run-hook-with-bash.js');
   const hooks = JSON.parse(readFileSync(join(HERE, '../../marketplace/plugins/himmel-ops/hooks/hooks.json'), 'utf8'));

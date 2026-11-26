@@ -70,7 +70,7 @@ fi
 # would be sourced, and a hostile one could plant it. So when CLAUDE_PLUGIN_ROOT
 # is set we are the plugin copy and the plugin root is the ONLY trusted location;
 # a damaged plugin install then finds nothing and takes the FAIL-OPEN path below
-# — one breadcrumb line and exit 0 — which is the right outcome. A missing
+# — one breadcrumb line and exit 0, or 2 for the readiness guard — which is the right outcome. A missing
 # resolver must degrade to silence, never to sourcing a substitute from a
 # different trust domain.
 #
@@ -188,12 +188,18 @@ if [ -n "$_node" ]; then
     exec "$_node" "$@"
 fi
 
-# No node: silent fail-open + a breadcrumb for the doctor / a curious operator.
+# No node: silent fail-open (exit 2 only for the readiness guard's --fail-closed-when HIMMEL_READINESS=1) + a breadcrumb for the doctor / a curious operator.
 _log_dir="${CLAUDE_DIR:-${HOME:-.}/.claude}"
 mkdir -p "$_log_dir" 2>/dev/null || true
 printf '%s node not found; skipped: %s\n' "$(date '+%Y-%m-%dT%H:%M:%S' 2>/dev/null || echo '?')" "$*" \
     >> "$_log_dir/himmel-node.log" 2>/dev/null || true
-if [ "${HIMMEL_READINESS-}" = 1 ]; then
+_closed=0
+_prev=''
+for _a in "$@"; do
+    if [ "$_prev" = --fail-closed-when ] && [ "$_a" = HIMMEL_READINESS=1 ]; then _closed=1; fi
+    _prev="$_a"
+done
+if [ "$_closed" = 1 ] && [ "${HIMMEL_READINESS-}" = 1 ]; then
     printf '%s\n' 'run-node.sh: no usable node while HIMMEL_READINESS=1 - failing closed' >&2
     exit 2
 fi
