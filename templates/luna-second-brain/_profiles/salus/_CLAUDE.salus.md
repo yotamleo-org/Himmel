@@ -9,6 +9,7 @@
 <!-- salus-posture-block -->
 ## Salus — medical posture (STRUCTURAL floor)
 
+<!-- salus-posture-agy -->
 ### Posture A — egress floor (`.claude/hooks/block-cloud-egress.sh`)
 - This vault holds medical PHI. The trusted INTERACTIVE processors are Anthropic/Claude
   **in-session**, Codex, and Google Antigravity (`agy`, the Gemini harness, a trusted

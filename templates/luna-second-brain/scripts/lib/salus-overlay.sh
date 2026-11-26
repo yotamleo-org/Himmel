@@ -7,7 +7,8 @@
 #     .claude/settings.json) → always (re)installed (settings.json only if absent).
 #   - _-root scaffolds (_skin-photo-archive.md, _derm-visit-prep.template.md,
 #     _media/skin/) → scaffold-new ONLY; never overwrites operator content.
-#   - appends the medical posture block to _CLAUDE.md once (idempotent).
+#   - appends the medical posture block to _CLAUDE.md once (idempotent); a vault
+#     with the older block gets the trusted-processor update appended once.
 #   - drops the .salus-profile marker (upgrade.sh gates on it) AND the .salus
 #     PHI guard marker — never overwrites an existing .salus.
 #   - installs NO repo-local .agents/hooks.json: Antigravity (agy, a trusted
@@ -45,6 +46,10 @@ apply_salus_overlay() {
   if [ -f "$repo_root/_CLAUDE.md" ] && ! grep -q "salus-posture-block" "$repo_root/_CLAUDE.md"; then
     printf '\n' >> "$repo_root/_CLAUDE.md"
     cat "$ov/_CLAUDE.salus.md" >> "$repo_root/_CLAUDE.md"
+  fi
+  if [ -f "$repo_root/_CLAUDE.md" ] && ! grep -q "salus-posture-agy" "$repo_root/_CLAUDE.md"; then
+    printf '\n' >> "$repo_root/_CLAUDE.md"
+    cat "$ov/_CLAUDE.salus-agy.md" >> "$repo_root/_CLAUDE.md"
   fi
   if [ -e "$repo_root/.agents/hooks.json" ]; then
     echo "salus-overlay: WARNING .agents/hooks.json exists in the vault — it fails closed outside himmel; remove it (Antigravity hooks come from the user-scope backstop)" >&2

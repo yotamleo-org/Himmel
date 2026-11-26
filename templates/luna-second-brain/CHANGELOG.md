@@ -8,11 +8,11 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.4.116] — 2026-11-26
+## [0.4.117] — 2026-11-26
 
 ### Changed
 - `AGENTS.md` now ships to new vaults (`setup.sh`) and upgraded vaults (`/luna-upgrade`), so Antigravity (Gemini) sessions load the vault rules. It keeps the `_CLAUDE.md` pointer and adds an Antigravity addendum: native file tools plus `scripts/lib/qmd-bounded.sh`, no `obsidian-vault` MCP.
-- The salus posture block names Antigravity (`agy`) as a trusted interactive processor beside Claude and Codex (operator decision 1259); API-key Gemini and untrusted clouds stay denied. The overlay installs no repo-local `.agents/hooks.json`.
+- The salus posture block names Antigravity (`agy`) as a trusted interactive processor beside Claude and Codex (operator decision 1259); API-key Gemini and untrusted clouds stay denied. The overlay installs no repo-local `.agents/hooks.json`. A salus vault that already carries the older posture block gets the update appended once; its other content is untouched.
 
 ## [0.4.115] — 2026-11-23
 
