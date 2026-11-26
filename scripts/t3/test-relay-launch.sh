@@ -2,6 +2,7 @@
 # scripts/t3/test-relay-launch.sh - suite for the slim T3 relay: the `t3-relay` registry profile and relay-launch.sh.
 # Platform: POSIX bash 3.2+, jq, node. Fixture copies only; no T3 server and no model call.
 set -u
+unset T3_RELAY_MODEL STUB_LIST_FAIL HANDOVER_DIR
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REAL="$(cd "$HERE/../.." && pwd -P)"
 RL="$HERE/relay-launch.sh"
@@ -12,7 +13,7 @@ ok()  { PASS=$((PASS+1)); echo "ok   $1"; }
 bad() { FAIL=$((FAIL+1)); echo "FAIL $1"; }
 expect_eq() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (got: $2, want: $3)"; fi; }
 expect_in() { if grep -q -- "$2" "$3"; then ok "$1"; else bad "$1 (missing: $2)"; fi; }
-expect_out() { if grep -q -- "$2" "$3"; then bad "$1 (found: $2)"; else ok "$1"; fi; }
+expect_out() { grep -q -- "$2" "$3"; case $? in 0) bad "$1 (found: $2)" ;; 1) ok "$1" ;; *) bad "$1 (grep could not read $3)" ;; esac; }
 command -v jq >/dev/null 2>&1 || { echo "skip - test-relay-launch.sh: jq is required"; exit 0; }
 
 PROF="$(cd "$REAL" && node scripts/lanes/plugin-profiles.mjs t3-relay 2>"$T/prof.err")"; rc=$?
@@ -55,6 +56,14 @@ expect_eq "a refused launch prints no block" "$(wc -c < "$T/out" | tr -d ' ')" 0
 
 STUB_LIST="$T/settled.json" bash "$RL" --brief "$T/brief.md" >"$T/out" 2>"$T/err"; rc=$?
 expect_eq "a settled relay does not block a new one" "$rc" 0
+
+mkdir -p "$T/h/u/p/specs/status" && cp "$T/brief.md" "$T/h/u/p/specs/status/t3-relay-brief.md"
+HANDOVER_DIR="$T/h" STUB_LIST="$T/none.json" bash "$RL" >"$T/out" 2>"$T/err"; rc=$?
+expect_eq "the default brief is found under the handover root, rc 0" "$rc" 0
+expect_in "the block names the discovered brief" "^brief: $T/h/u/p/specs/status/t3-relay-brief.md$" "$T/out"
+mkdir -p "$T/h/u/q/specs/status" && cp "$T/brief.md" "$T/h/u/q/specs/status/t3-relay-brief.md"
+HANDOVER_DIR="$T/h" STUB_LIST="$T/none.json" bash "$RL" >"$T/out" 2>"$T/err"; rc=$?
+expect_eq "two default briefs refuse and ask for --brief, rc 2" "$rc" 2
 
 STUB_LIST="$T/none.json" STUB_LIST_FAIL=1 bash "$RL" --brief "$T/brief.md" >"$T/out" 2>"$T/err"; rc=$?
 expect_eq "an unreadable thread list refuses, rc 4" "$rc" 4

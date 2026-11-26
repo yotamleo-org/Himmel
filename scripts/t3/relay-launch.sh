@@ -7,7 +7,8 @@
 # The block is `provider:`, `model:`, `title:`, `project:` and `brief:` lines, then `--- first message ---` and the
 # brief verbatim (the thread's first message). The provider is claudeAgent_t3-relay, the instance
 # provider-instances.sh generates from the `t3-relay` registry profile (docs/internals/t3-relay.md).
-# Brief default: the one specs/status/t3-relay-brief.md under $HANDOVER_DIR/<user>/<project>/ (none or several: pass --brief).
+# Brief default: the one specs/status/t3-relay-brief.md under <handover root>/<user>/<project>/ (handover_root, so an unset
+# HANDOVER_DIR resolves as everywhere else; none or several: pass --brief).
 # Live relay: a thread with the relay's exact title that is not settled.
 # rc 0 block printed; rc 2 usage or unreadable brief; rc 3 a relay is already live (its id is printed, no block);
 # rc 4 `thread list` failed, printed no JSON array, or could not be read, so "no live relay" is unproven and nothing is printed.
@@ -35,8 +36,11 @@ done
 command -v jq >/dev/null 2>&1 || die 2 "jq is required"
 
 if [ -z "$BRIEF" ]; then
+    # shellcheck source=../lib/handover-path.sh
+    . "$HERE/../lib/handover-path.sh" || die 2 "cannot load scripts/lib/handover-path.sh"
+    HROOT="$(handover_root)" || die 2 "no handover root; pass --brief <file>"
     n=0
-    for f in "${HANDOVER_DIR:-/nonexistent}"/*/*/specs/status/t3-relay-brief.md; do
+    for f in "$HROOT"/*/*/specs/status/t3-relay-brief.md; do
         [ -f "$f" ] || continue
         n=$((n + 1)); BRIEF="$f"
     done
