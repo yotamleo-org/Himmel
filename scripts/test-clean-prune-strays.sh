@@ -198,6 +198,8 @@ mk_leftovers "$WT_LEFT"
 mk_leftovers "$WT_LEFTWIP"; printf 'changed\n' >> "$WT_LEFTWIP/README"
 mk_leftovers "$WT_LEFTNEW"; printf 'real\n' > "$WT_LEFTNEW/design-note.md"
 mkdir -p "$WT_LEFTNEST/.base-qmd-check"; mk_nested_repo "$WT_LEFTNEST/.base-qmd-check/nested"
+WT_LEFTFILE=$(mk_wt wt-leftfile feat/leftfile)
+mkdir -p "$WT_LEFTFILE/scripts/jira"; printf 'real\n' > "$WT_LEFTFILE/scripts/jira/node_modules"
 
 run_clean() {
     (
@@ -386,10 +388,12 @@ fi
 if [ -f "$SHARED_MODULES/marker" ]; then pass "25: the node_modules symlink target survived the prune"; else fail "25: the node_modules symlink target was deleted" "$out"; fi
 if [ -d "$WT_LEFTWIP" ] && grepq "$(cat "$WT_LEFTWIP/README")" changed; then pass "26: leftovers + tracked edit worktree kept, edit intact"; else fail "26: worktree with a real edit was pruned or lost the edit" "$out"; fi
 if grepq "$(printf '%s\n' "$out" | grep -F "feat/leftwip")" "uncommitted changes.*$WT_LEFTWIP"; then pass "26: WARN reports the kept worktree path"; else fail "26: expected WARN naming the path of feat/leftwip" "$out"; fi
-if git -C "$REPO" rev-parse -q --verify "refs/checkpoints/wt-leftwip-autosave" >/dev/null 2>&1; then pass "26: the real edit is saved under refs/checkpoints"; else fail "26: no checkpoint ref saved for feat/leftwip" "$out"; fi
+if grepq "$(git -C "$REPO" show "refs/checkpoints/wt-leftwip-autosave:README" 2>/dev/null)" changed; then pass "26: the real edit is saved under refs/checkpoints"; else fail "26: the checkpoint for feat/leftwip does not hold the edited README" "$out"; fi
 if [ -d "$WT_LEFTNEW" ] && [ -f "$WT_LEFTNEW/design-note.md" ]; then pass "27: leftovers + untracked real file worktree kept"; else fail "27: worktree with an untracked real file was pruned" "$out"; fi
 if grepq "$(printf '%s\n' "$out" | grep -F "feat/leftnew")" "design-note\.md"; then pass "27: WARN names the untracked real file"; else fail "27: expected WARN naming design-note.md for feat/leftnew" "$out"; fi
 if [ -d "$WT_LEFTNEST/.base-qmd-check/nested/.git" ]; then pass "28: nested repo under .base-qmd-check/ kept"; else fail "28: nested repo under .base-qmd-check/ was pruned" "$out"; fi
+if [ -f "$WT_LEFTFILE/scripts/jira/node_modules" ] && [ ! -L "$WT_LEFTFILE/scripts/jira/node_modules" ]; then pass "29: a regular file named node_modules keeps its worktree"; else fail "29: a regular file named node_modules was discarded with its worktree" "$out"; fi
+if grepq "$(printf '%s\n' "$out" | grep -F "feat/leftfile")" "not known strays.*scripts/jira/node_modules"; then pass "29: WARN names the regular node_modules file"; else fail "29: expected WARN naming scripts/jira/node_modules for feat/leftfile" "$out"; fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo

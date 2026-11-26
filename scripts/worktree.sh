@@ -684,7 +684,6 @@ is_ignorable_stray() {
         __pycache__/*|*/__pycache__/*)         return 0 ;;
         *.pyc)                                 return 0 ;;
         .vitest/*|*/.vitest/*)                 return 0 ;;
-        node_modules|*/node_modules)           return 0 ;;
         # worker ship scratch at the worktree ROOT only (no */ forms:
         # the same name nested below the root is real work). Directory shapes
         # match as "<dir>/*" because --untracked-files=all lists their files.
@@ -810,7 +809,7 @@ classify_worktree() {
     if [ -z "$untracked" ]; then echo "clean"; return 0; fi
     while IFS= read -r u; do
         [ -z "$u" ] && continue
-        if is_ignorable_stray "$u"; then
+        if is_ignorable_stray "$u" || { case "$u" in node_modules|*/node_modules) [ -L "$wt/$u" ] ;; *) false ;; esac; }; then
             strays="${strays:+$strays }$u"
         else
             nonign="${nonign:+$nonign }$u"
