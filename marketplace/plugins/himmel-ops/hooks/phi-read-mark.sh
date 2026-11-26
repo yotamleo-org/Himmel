@@ -12,9 +12,10 @@
 #   Read file_path, NotebookRead notebook_path, Grep path, Glob path and the part
 #   of an absolute Glob pattern before its first wildcard (Grep and Glob with no
 #   path: the cwd).
-#   Bash and Monitor command: every word that starts with "/" once the text is
-#   split on unquoted, unescaped blanks and shell punctuation, quotes and
-#   backslashes honoured as a shell reads them.
+#   Bash and Monitor command: every word that starts with "/" in either of two
+#   splits of the text: on unquoted, unescaped blanks and shell punctuation, quotes
+#   and backslashes honoured as a shell reads them; and on every blank, quote and
+#   shell punctuation character.
 # A path is PHI when a .salus or .salus-profile marker sits at or above its raw or
 # canonical form, or _guard_phi_decision returns 1 (listed) or 2 (unreadable).
 #
@@ -59,7 +60,9 @@ case "$tool" in
         fi
         ;;
     Bash | Monitor)
-        words=$(str '.tool_input.command // ""' | awk 'BEGIN { sep = " \t\r;|&<>()`=:,{}" }
+        cmd=$(str '.tool_input.command // ""')
+        plain=$(printf '%s\n' "$cmd" | tr -s " \t\r;|&<>()'\"\`=:,{}" '\n')
+        words=$(printf '%s\n' "$cmd" | awk 'BEGIN { sep = " \t\r;|&<>()`=:,{}" }
         {
             n = length($0)
             for (i = 1; i <= n; i++) {
@@ -74,6 +77,7 @@ case "$tool" in
             if (q == "") { if (w != "") print w; w = "" } else w = w " "
         }
         END { if (w != "") print w }')
+        words=$(printf '%s\n%s\n' "$plain" "$words" | LC_ALL=C sort -u)
         while IFS= read -r w; do
             case "$w" in /*) add "$w" ;; esac
         done <<<"$words"

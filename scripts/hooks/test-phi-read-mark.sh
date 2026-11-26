@@ -83,6 +83,12 @@ run "$HOOK" "$(post sEsc Bash "$(bash_in "echo don\\'t; cat $VAULT/notes/visit.m
 expect_mark sEsc "an escaped quote outside quotes does not hide a later path"
 run "$HOOK" "$(post sDqEsc Bash "$(bash_in "echo \"say \\\"hi\\\"\"; cat $VAULT/notes/visit.md")")"
 expect_mark sDqEsc "an escaped double quote inside double quotes does not hide a later path"
+run "$HOOK" "$(post sSub Bash "$(bash_in "echo \"\$(cat $VAULT/notes/visit.md)\"")")"
+expect_mark sSub "a path inside a double-quoted command substitution marks"
+BSL="$tmp/patient\\records"
+mkdir -p "$BSL"; : > "$BSL/.salus"
+run "$HOOK" "$(post sBsl Bash "$(bash_in "cat \"$BSL/chart.md\"")")"
+expect_mark sBsl "a backslash before an ordinary character inside double quotes stays in the path"
 run "$HOOK" "$(post sMon Monitor "$(bash_in "tail -f $VAULT/notes/visit.md")")"
 expect_mark sMon "a Monitor command naming a salus path marks"
 
