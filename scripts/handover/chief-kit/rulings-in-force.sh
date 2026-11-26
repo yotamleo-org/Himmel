@@ -7,6 +7,16 @@
 #   rulings-in-force.sh render --bucket <dir> [--recent <days>]   (a Current direction block on stdin)
 #   rulings-in-force.sh check --bucket <dir> [--before <file>]    (a rendered block on stdin)
 #   rulings-in-force.sh find --bucket <dir> <id or word>
+#   rulings-in-force.sh next-id --bucket <dir>
+#
+# next-id: takes the next decision number, one more than the highest id held by a ledger row or
+# a specs/decisions/verbatim-decision-<id>-*.txt file (1 in a bucket with neither), and
+# reserves it with a placeholder row (status done, line "reserved by next-id; no ruling recorded yet", no verbatim file
+# yet) before printing it, all under the lock <dir>/specs/decisions/rulings-in-force.jsonl.lock,
+# so two sessions never take one number. Every session that writes a decision file takes its
+# number here and then writes the file and `record`s it; the first `record` replaces the
+# placeholder. record takes the same lock. render, check and find read a placeholder as absent, so
+# a ruling whose number was taken and never recorded is never dropped or counted done.
 #
 # <dir> is the bucket directory holding specs/ (the chief doc's directory). The ledger is
 # <dir>/specs/decisions/rulings-in-force.jsonl, append-only, one JSON row per record:
@@ -18,7 +28,10 @@
 # of the three, and the topic, it omits from the id's newest row. A topic is one word of
 # letters, digits, dots, dashes and underscores. The path must be a readable, non-empty
 # file under <dir>/specs/decisions/. Refused (exit 1): a bad id, date or status, a line
-# that is empty or more than one line, a missing verbatim file. Superseding by a decision
+# that is empty or more than one line, a missing verbatim file, an id that a ledger row already
+# holds with a different path, and the first row of an id when another
+# verbatim-decision-<id>-*.txt file exists under a different path (the two paths are named; a
+# file that differs only by a -copied suffix is the same ruling). Superseding by a decision
 # with no ledger row yet is recorded with a warning.
 #
 # retire pass (render, check and find read it, the ledger is never rewritten): a ruling whose
@@ -122,7 +135,7 @@
 # Platform guard: bash 3.2+ and python3; same scope as chief.sh.
 set -uo pipefail
 
-usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 [ "$#" -ge 1 ] || usage
 verb="$1"; shift
@@ -148,12 +161,12 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 [ -n "$bucket" ] && [ -d "$bucket" ] || { echo "rulings-in-force: --bucket <dir> must name an existing directory" >&2; exit 2; }
-case "$verb" in record|render|check) ;; find) [ -n "$word" ] || usage ;; *) usage ;; esac
+case "$verb" in record|render|check|next-id) ;; find) [ -n "$word" ] || usage ;; *) usage ;; esac
 [ -z "$recent" ] || { { [ "$verb" = render ] || [ "$verb" = check ]; } && case "$recent" in *[!0-9]*|0*) false ;; *) true ;; esac; } || { echo "rulings-in-force: --recent <days> needs render or check and a whole number of days, 1 or more" >&2; exit 2; }
 [ -z "$before" ] || { [ "$verb" = check ] && [ -r "$before" ]; } || { echo "rulings-in-force: --before <file> needs check and a readable file" >&2; exit 2; }
 
 exec python3 -I -c '
-import datetime, json, os, re, sys, time
+import datetime, fcntl, json, os, re, sys, time
 verb, bucket, rid, status, date, line, path, budget, before, word, topic, recent = sys.argv[1:13]
 budget = int(budget)
 RESERVE, FLOOR, WIDTH = 6000, 16, 100
@@ -166,7 +179,7 @@ def die(msg, rc=1):
     sys.stderr.write("rulings-in-force: %s\n" % msg)
     sys.exit(rc)
 
-def load():
+def load(reserved=False):
     rows, hist = {}, {}
     if not os.path.exists(ledger):
         return None, None
@@ -179,14 +192,54 @@ def load():
                 ok = (type(r["id"]) is int and r["id"] >= 0 and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", r["date"])
                       and r["line"].strip() and "\n" not in r["line"] and r["path"].strip()
                       and re.fullmatch(r"in-force|done|superseded-by [0-9]+", r["status"])
-                      and (r.get("topic") is None or re.fullmatch(TOPIC, r["topic"])))
+                      and (r.get("topic") is None or re.fullmatch(TOPIC, r["topic"]))
+                      and ("reserved" not in r or r["reserved"] is True))
             except (ValueError, KeyError, TypeError, AttributeError):
                 ok = False
             if not ok:
                 die("%s line %d is not a whole ledger row (id, date, line, status, path); repair it" % (LEDGER, k), 3)
+            if r.get("reserved") and not reserved:
+                continue
             rows[r["id"]] = r
             hist.setdefault(r["id"], set()).add(r["line"])
     return rows, hist
+
+RESERVED = "reserved by next-id; no ruling recorded yet"
+
+def append(row):
+    os.makedirs(os.path.dirname(ledger), exist_ok=True)
+    with os.fdopen(os.open(ledger, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644), "wb") as f:
+        f.write((json.dumps(row, ensure_ascii=False) + "\n").encode())
+
+def take_lock():
+    os.makedirs(os.path.dirname(ledger), exist_ok=True)
+    fd = os.open(ledger + ".lock", os.O_RDWR | os.O_CREAT, 0o644)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    return fd
+
+def verbatim_files(n):
+    names = os.listdir(os.path.join(bucket, "specs", "decisions"))
+    return sorted("specs/decisions/" + f for f in names if re.fullmatch(r"verbatim-decision-0*%d-.*\.txt" % n, f))
+
+def same_ruling(a, b):
+    return re.sub(r"(-copied)?\.txt$", "", os.path.normpath(a)) == re.sub(r"(-copied)?\.txt$", "", os.path.normpath(b))
+
+if verb == "next-id":
+    lock = take_lock()
+    known = load(True)[0] or {}
+    ids = set(known)
+    for f in os.listdir(os.path.join(bucket, "specs", "decisions")):
+        m = re.fullmatch(r"verbatim-decision-([0-9]+)-.*\.txt", f)
+        if m:
+            ids.add(int(m.group(1)))
+    n = max(ids, default=0) + 1
+    today = os.environ.get("RULINGS_IN_FORCE_TODAY") or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", today):
+        die("RULINGS_IN_FORCE_TODAY must be YYYY-MM-DD", 2)
+    append({"id": n, "date": today, "line": RESERVED, "status": "done",
+            "path": "specs/decisions/verbatim-decision-%d-reserved.txt" % n, "reserved": True})
+    print(n)
+    sys.exit(0)
 
 if verb == "record":
     if not re.fullmatch(r"[0-9]+", rid):
@@ -194,9 +247,15 @@ if verb == "record":
     m = re.fullmatch(r"in-force|done|superseded-by ([0-9]+)", status)
     if not m or (m.group(1) and int(m.group(1)) == int(rid)):
         die("--status must be in-force, done or superseded-by <another decision number>")
-    known = load()[0] or {}
+    lock = take_lock()
+    known = load(True)[0] or {}
     prev = known.get(int(rid), {})
-    if m.group(1) and int(m.group(1)) not in known:
+    held = prev if prev and not prev.get("reserved") else {}
+    if held and path and os.path.normpath(path) != os.path.normpath(held["path"]):
+        die("decision %s is already held by %s; --path %s names another file" % (rid, held["path"], path))
+    if prev.get("reserved"):
+        prev = {}
+    if m.group(1) and (int(m.group(1)) not in known or known[int(m.group(1))].get("reserved")):
         sys.stderr.write("rulings-in-force: warning: decision %s has no ledger row yet; record it too\n" % m.group(1))
     date = date or prev.get("date", "")
     line = line or prev.get("line", "")
@@ -212,15 +271,14 @@ if verb == "record":
     top = os.path.realpath(os.path.join(bucket, "specs", "decisions")) + os.sep
     if not path or os.path.isabs(path) or not full.startswith(top) or not os.path.isfile(full) or os.path.getsize(full) == 0:
         die("--path must name the ruling verbatim file, non-empty, under specs/decisions/ in the bucket (got %r)" % path)
+    if not held:
+        for other in verbatim_files(int(rid)):
+            if not same_ruling(other, path):
+                die("decision %s is already in use: %s exists, and --path names %s" % (rid, other, path))
     row = {"id": int(rid), "date": date, "line": line.strip(), "status": status, "path": path}
     if topic:
         row["topic"] = topic
-    os.makedirs(os.path.dirname(ledger), exist_ok=True)
-    fd = os.open(ledger, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
-    try:
-        os.write(fd, (json.dumps(row, ensure_ascii=False) + "\n").encode())
-    finally:
-        os.close(fd)
+    append(row)
     print("recorded: %d %s" % (row["id"], status))
     sys.exit(0)
 

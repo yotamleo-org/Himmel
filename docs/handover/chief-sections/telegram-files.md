@@ -67,7 +67,10 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   as a closure check (refused when that round needs no record, and once per decision: a decision any record already
   used is refused); and `round-reset <KEY> --decision <d> --quote "<operator words>"`, the operator's order to
   start over, once per ticket. The decision file `specs/decisions/verbatim-decision-<d>-*.txt` must name the ticket
-  and hold the quote. A `round-critical ... --restores` record, for a reverses-ruling finding whose fix restores a
+  and hold the quote. **Never pick `<d>` by hand** (a chief and a T3 thread did, on one station, and gave two rulings one
+  number): take it with `bash <himmel>/scripts/handover/chief-kit/rulings-in-force.sh next-id --bucket <bucket>`, which
+  reserves the next free number under a lock and prints it, then write the file with that number and `record` it;
+  `record` refuses a number whose file or ledger row sits at another path. A `round-critical ... --restores` record, for a reverses-ruling finding whose fix restores a
   ruling on record, needs neither the key in the decision file nor a fresh file: the finding must say it reverses
   that decision, the quote must be in the file byte for byte, and the finding's kind's next round, which opens by
   itself, checks it. A `<spec>.operator-round-r<n>.md` file no longer counts. A judge round is neither counted nor
