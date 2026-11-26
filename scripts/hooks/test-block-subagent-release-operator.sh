@@ -108,11 +108,10 @@ P2O='block-subagent-release-operator-word-free: a subagent may not run a Bash co
 P2ROUTE='explicit placement and no --words'
 
 also() {
-    if printf '%s' "$out" | grep -qF -- "$2"; then
-        echo "ok   also: $1"; pass=$((pass + 1))
-    else
-        echo "FAIL also: $1"; printf '  out: %s\n' "$out"; fail=$((fail + 1))
-    fi
+    case "$out" in
+        *"$2"*) echo "ok   also: $1"; pass=$((pass + 1)) ;;
+        *) echo "FAIL also: $1"; printf '  out: %s\n' "$out"; fail=$((fail + 1)) ;;
+    esac
 }
 
 A3="cat > /abs/f.md <<'EOF'${NL}release operator text${NL}EOF"
