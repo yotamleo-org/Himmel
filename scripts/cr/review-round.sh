@@ -1124,7 +1124,7 @@ EOF
 # qid are its verdict history, not every other PR in the verdict scope.
 # Legacy classless records contribute no classes. A decision in the current
 # candidate evidence is the explicit way out of a repeated-class stop.
-# shellcheck disable=SC2016  # JavaScript template fields are literal here
+# shellcheck disable=SC2016,SC2031  # JavaScript template fields are literal here; dir is the caller's, set outside any subshell
 judge_class_check() {
     VERDICT_DIR="$dir" HISTORY="$verdict_state" CANDIDATE="$1" WANT="$2" SIGNED="$3" ALT="${4:-}" node -e '
 const fs = require("fs"), path = require("path"), cp = require("child_process"), crypto = require("crypto"), e = process.env;
