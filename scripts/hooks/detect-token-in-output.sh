@@ -60,7 +60,7 @@ is_live_token() {
         [ "$k" -lt 62 ] || prev=-1
     done
     case "$t" in github_pat_*) [ "${#seen}" -ge 8 ]; return ;; esac
-    if [ "$n" -ne 36 ]; then [ "${#seen}" -ge 8 ]; return; fi
+    if [ "$n" -ne 36 ] || [ "${2:-0}" = 1 ]; then [ "${#seen}" -ge 8 ]; return; fi
     body="${t:4:30}"
     c=4294967295
     for ((i = 0; i < 30; i++)); do
@@ -87,10 +87,13 @@ while [[ $rest =~ $tok_re ]]; do
     m="${BASH_REMATCH[1]}"
     t=$m
     rest="${rest#*"$m"}"
-    if [[ $rest =~ ^[0-9A-Za-z]{1,60} ]]; then t="$t${BASH_REMATCH[0]}"; fi
+    long=0
+    case "$rest" in [0-9A-Za-z]*) long=1 ;; esac
+    if [[ $rest =~ ^(gh[opusr]_|github_pat_) ]]; then long=0; fi
+    case "$m" in ghr_*) if [ "$long" = 1 ] && [[ $rest =~ ^[0-9A-Za-z]{1,60} ]]; then t="$t${BASH_REMATCH[0]}"; fi ;; esac
     case " ${tokens[*]-} ${fakes[*]-} " in
         *" $t "*) ;;
-        *) if is_live_token "$t"; then tokens+=("$t"); else fakes+=("$t"); fi ;;
+        *) if is_live_token "$t" "$long"; then tokens+=("$t"); else fakes+=("$t"); fi ;;
     esac
 done
 

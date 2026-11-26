@@ -262,6 +262,11 @@ if grep -q 'TOKEN-IN-OUTPUT LIVE' "$TMP/out" && grep -qF "$(masked "$TOK_GHP")" 
     pass "a real token glued to a fixture is still found and paged"
 else fail "glued fixture+real (count=$(sent_count)): $(head -c 300 "$TMP/out")"; fi
 before=$(sent_count)
+run_hook "$(j_post Bash s12e "T=$TOK_GHO${fixtures[0]}")"
+if grep -q 'TOKEN-IN-OUTPUT LIVE' "$TMP/out" && grep -qF "$(masked "$TOK_GHO")" "$TMP/out" && [ "$(sent_count)" = "$((before + 1))" ]; then
+    pass "a real token with a fixture glued after it is checked on its own 40 chars"
+else fail "glued real+fixture (count=$(sent_count)): $(head -c 300 "$TMP/out")"; fi
+before=$(sent_count)
 run_hook "$(j_post Bash s12b "T=$TOK_PAT")"
 if grep -q 'TOKEN-IN-OUTPUT LIVE' "$TMP/out" && shows_only_mask "$TMP/out" "$TOK_PAT" && [ "$(sent_count)" = "$((before + 1))" ]; then
     pass "github_pat_ with a varied, non-sequential body pages as LIVE"
