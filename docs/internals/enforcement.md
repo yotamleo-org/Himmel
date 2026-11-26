@@ -4221,12 +4221,12 @@ marker families — `worktree` (`.claude/worktrees`, `clean-garden.sh`,
 `clear-cr-marker`, "CodeRabbit"). A single-family match never denies — that
 conjunction is the false-positive budget keeping bounded read-only research
 frictionless. `subagent_type: Explore` always allows, and `judge-ro` allows while `.claude/agents/<id>.md` pins exactly
-one `tools:` line, `tools: Read, Grep, Glob, Bash` or `tools: Read, Grep, Glob, Bash, Write`, the same structural
+one `tools:` line, `tools: Read, Grep, Glob, Bash`, `tools: Read, Grep, Glob, Bash, Write` or `tools: Read, Grep, Glob, Bash, Write, WebFetch, WebSearch`, the same structural
 read-only lane: [`guard-judge-write-scope.sh`](#guard-judge-write-scopesh--judge-ro-write-fence) confines that Write
 to `.md`/`.txt` files directly in a judge dir `judge-dir.sh` made. Any other grant (`Edit`, `MultiEdit`, `NotebookEdit`) costs the lane.
 `brief-drafter` is a separate allowance for drafting worker briefs: it allows
 while `.claude/agents/brief-drafter.md` pins exactly `tools: Read, Write, Edit,
-Bash`, and each such dispatch is appended to the `CHIEF_DISPATCH_LOG` audit log
+Bash` or `tools: Read, Write, Edit, Bash, WebFetch, WebSearch`, and each such dispatch is appended to the `CHIEF_DISPATCH_LOG` audit log
 as `brief-drafter-dispatch`, best-effort: a failed write never blocks the
 dispatch. These three subagent types are the
 ONLY carve-outs. `guard-implementor-dispatch.sh` exempts `Explore` and
