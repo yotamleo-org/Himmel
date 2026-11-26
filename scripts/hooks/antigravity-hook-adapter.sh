@@ -346,6 +346,22 @@ check_self_protect_cmd() {
     if [ "$mentions_protected" -eq 1 ]; then
         emit_deny "antigravity-hook-adapter: self-protect denies run_command referencing .agents/**, ~/.gemini/config, or T3 Antigravity home (use read_file to inspect)"
     fi
+
+    local toks tk
+    toks="${raw_c//[;&|<>=()]/ }"
+    toks="${toks//\`/ }"
+    set -f
+    for tk in $toks; do
+        case "$tk" in
+            \~|\$HOME|\$\{HOME\}) continue ;;
+            \$HOME/*) tk="${HOME:-}/${tk#\$HOME/}" ;;
+            \$\{HOME\}/*) tk="${HOME:-}/${tk#\$\{HOME\}/}" ;;
+            \~/*|/*) ;;
+            *) [ -n "$AGENT_CWD" ] || continue ;;
+        esac
+        check_self_protect_path "$tk"
+    done
+    set +f
     return 0
 }
 
