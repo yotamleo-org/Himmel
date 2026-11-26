@@ -107,8 +107,8 @@ For every other failure the launcher:
      to handle, so it is one line in a chief's bridge inbox
      (`<bridge root>/consoles/<name>.md`, tagged `[api-lane call-failed]`) and no
      Telegram message. Only a chief whose waiter heartbeat is under 30 minutes old
-     counts as armed (a chief that ended leaves its inbox file behind, and that
-     file never takes the line): the inbox is `HIMMEL_CONSOLE_NAME`'s when that
+     counts as armed (a chief that has stopped leaves its inbox file behind, and
+     that file takes no line once its heartbeat has aged out): the inbox is `HIMMEL_CONSOLE_NAME`'s when that
      chief is armed, else the armed chief with the freshest heartbeat; the
      launcher never creates an inbox. With no armed chief inbox it pages the
      operator as below, so an alert is never lost. A `rejected` alert (credit gone,

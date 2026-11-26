@@ -138,6 +138,7 @@ chief_inbox_alert() {
       f="$(_mba_chief_inbox_path "$root" "$name")" && [ -f "$f" ] || continue
       hb="$(sed -n 's/^hb=\([0-9][0-9]*\) .*/\1/p' "$w" 2>/dev/null | head -n 1)"
       case "$hb" in ''|*[!0-9]*) continue ;; esac
+      hb=$((10#$hb))
       [ "$hb" -le "$now" ] && [ $((now - hb)) -lt 1800 ] || continue
       if [ "$name" = "${HIMMEL_CONSOLE_NAME:-}" ]; then file="$f"; break; fi
       [ "$hb" -gt "$newest" ] || continue
