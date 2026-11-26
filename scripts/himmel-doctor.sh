@@ -2712,7 +2712,7 @@ PY
             emit WARN C100-fleet "cannot read fleet attempts for $anchor: the read-only ack exited $rc$([ "$rc" -ne 124 ] || printf ' (no answer within %ss)' "$secs")"
             found=1; continue
         fi
-        picked="$(python3 -I - "$out" <<'PY'
+        answer_reader="$(cat <<'PY'
 import os, sys, json
 
 def clean(value):
@@ -2720,7 +2720,7 @@ def clean(value):
     return text or '-'
 
 try:
-    data = json.loads(sys.argv[1])
+    data = json.loads(sys.stdin.read())
 except ValueError as error:
     print('BAD\t' + clean('the answer is not JSON (%s)' % error))
     sys.exit(0)
@@ -2742,7 +2742,8 @@ for item in data['launched']:
     if not isinstance(doc, str) or '\x00' in doc or not os.path.isfile(doc) or not os.access(doc, os.R_OK):
         print('\t'.join(['UNREAD', clean(item.get('attempt_id')), clean(item.get('name')), clean(doc)]))
 PY
-)" || picked=$'BAD\tpython3 failed'
+)"
+        picked="$(python3 -I -c "$answer_reader" <<< "$out")" || picked=$'BAD\tpython3 failed'
         while IFS=$'\t' read -r a b c d h; do
             case "$a" in
                 '') ;;
