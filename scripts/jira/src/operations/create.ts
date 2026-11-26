@@ -223,6 +223,9 @@ async function decidePlacement(
       proposedVersion: options.proposedVersion, followUpOf: options.followUpOf, remainder: options.remainder,
       pointer: options.pointer, parent: parentFacts, words: words !== undefined,
     }, declared);
+  if (options.pointer !== undefined && rules === undefined) {
+    throw new CreateRefused('jira create: --operator-update refused, nothing was filed: the pointer rides on a rules placement, and this filing is placed by hand (--gate must|receipt, an inherited blocker version or a Done parent), where no filed row would carry it; drop --operator-update or the hand placement');
+  }
   return { parentFacts, closedParent, explicitVersion, words, rules };
 }
 

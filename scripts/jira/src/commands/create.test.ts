@@ -2538,6 +2538,13 @@ describe('create --operator-update: the bridge names the operator\'s update (T4,
     expect(requests()).toEqual([]);
   });
 
+  it('R17: a pointer on a hand placement (--gate receipt) is refused before the POST, since no filed row would carry it', async () => {
+    tree({ ...BRIDGE, HIMMEL_BRIDGE_CHAT: '111' }, {});
+    await expect(file('--type', 'Task', '--gate', 'receipt')).rejects.toThrow(/exit 1/);
+    expect(errs.join('\n')).toMatch(/pointer rides on a rules placement.*placed by hand/s);
+    expect(mockRequest.mock.calls.filter((c) => c[0] === 'POST')).toEqual([]);
+  });
+
   it('refuses an update_id that is not digits only, at option parse', async () => {
     tree({ ...BRIDGE, HIMMEL_BRIDGE_CHAT: '111' }, {});
     await expect(file('--type', 'Task', '--proposed-version', 'v1.1.3', '--operator-update', '9e8')).rejects.toThrow(/digits only/);
