@@ -2,10 +2,6 @@
 # scripts/handover/chief-kit/test-open-resume-notes.sh - suite: open-resume-notes.sh, the one owner of
 # "which resume notes still owe a relaunch".
 #
-# Every case runs against a fresh fixture under one mktemp -d: a bucket (<root>/yotamleo/himmel), a Jira
-# mirror with a .cursor.json, an events file, and a seam for the lock sweep and the merge filter. The seams
-# act only under HIMMEL_TEST_FIXTURE=1. A real sweep and the real merge filter run in one row each.
-#
 # Platform guard: Linux bash 3.2+ (GNU touch -d / date -d), as the owner itself.
 set -uo pipefail
 

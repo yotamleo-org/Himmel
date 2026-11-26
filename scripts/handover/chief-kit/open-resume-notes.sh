@@ -91,6 +91,7 @@ export OPEN_NOTES_DEF_ROOT="$def_root" OPEN_NOTES_DEF_BUCKET="$def_bucket" OPEN_
     OPEN_NOTES_DEF_EVENTS="$def_events" OPEN_NOTES_QL="$HERE/../queue-lock.sh" OPEN_NOTES_MERGE_PY="$LIB/merge-rows-effective.py"
 
 exec python3 -I - "$@" <<'PYBODY'
+import collections
 import datetime
 import json
 import os
@@ -125,6 +126,7 @@ MID_DAY = re.compile(r'-([0-9]{4}-[0-9]{2}-[0-9]{2})-')
 TRAIL_DAY = re.compile(r'-([0-9]{4}-[0-9]{2}-[0-9]{2})\.md$')
 
 live = set()
+Run = collections.namedtuple('Run', 'rc out err timed_out')
 
 
 class Terminated(Exception):
@@ -149,17 +151,16 @@ def left():
 
 
 def run(argv, timeout, env=None):
-    """(rc, stdout, stderr, timed_out); the child runs in its own process group."""
     try:
         p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              start_new_session=True, env=env)
     except OSError:
-        return None, '', '', False
+        return Run(None, '', '', False)
     live.add(p.pid)
     try:
         try:
             out, err = p.communicate(timeout=timeout)
-            return p.returncode, out.decode('utf-8', 'replace'), err.decode('utf-8', 'replace'), False
+            return Run(p.returncode, out.decode('utf-8', 'replace'), err.decode('utf-8', 'replace'), False)
         except subprocess.TimeoutExpired:
             try:
                 os.killpg(p.pid, signal.SIGTERM)
@@ -173,7 +174,7 @@ def run(argv, timeout, env=None):
                 except OSError:
                     pass
                 p.communicate()
-            return None, '', '', True
+            return Run(None, '', '', True)
     finally:
         try:
             os.killpg(p.pid, signal.SIGKILL)
@@ -280,7 +281,6 @@ def main(opts):
 
 def run_steps(opts, reasons, reason, notes, unverified, hidden, cursor_age):
     bucket, mirror, events, root = opts['--bucket'], opts['--mirror'], opts['--events'], opts['--root']
-    # step 1: candidates
     try:
         names = os.listdir(bucket) if bucket else None
         if names is None:
@@ -293,7 +293,6 @@ def run_steps(opts, reasons, reason, notes, unverified, hidden, cursor_age):
         m = CAND.match(name)
         if m:
             by_key.setdefault(m.group(1), []).append((name, int(m.group(2) or 0)))
-    # step 2 and 3: note_at, the newest per key
     newest = {}
     for key in sorted(by_key):
         best = None
@@ -322,7 +321,6 @@ def run_steps(opts, reasons, reason, notes, unverified, hidden, cursor_age):
             continue
         if best is not None:
             newest[key] = best
-    # step 4: the mirror
     if left() <= 0:
         reason('deadline')
         return
@@ -361,7 +359,6 @@ def run_steps(opts, reasons, reason, notes, unverified, hidden, cursor_age):
         if cat == 'Done':
             continue
         open_[key] = {'key': key, 'path': path, 'at': at, 'name': name, 'status': fm.get('status') or cat}
-    # step 5: locks
     if open_:
         if left() <= 0:
             reason('deadline')
@@ -384,7 +381,6 @@ def run_steps(opts, reasons, reason, notes, unverified, hidden, cursor_age):
                 for key in list(open_):
                     if stem.startswith(key + '-'):
                         del open_[key]
-    # step 6: merges
     if open_:
         if left() <= 0:
             reason('deadline')
@@ -419,7 +415,6 @@ def run_steps(opts, reasons, reason, notes, unverified, hidden, cursor_age):
                     if key in newest_merge and newest_merge[key] > open_[key]['at']:
                         del open_[key]
                         hidden[0] += 1
-    # step 7: the original doc, shown and not judged
     for key, r in open_.items():
         name = r['name']
         stem = re.sub(r'-RESUME(?:[0-9]+|-[0-9]{4}-[0-9]{2}-[0-9]{2})?\.md$', '', name)
