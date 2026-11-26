@@ -1388,10 +1388,15 @@ function qmdTokenFile(env) {
   return path.join(env.XDG_CONFIG_HOME || path.join(env.HOME || os.homedir(), '.config'), 'qmd', 'http-token');
 }
 
-function qmdBearerToken(env, ctx) {
+function qmdBearerToken(env, ctx, url) {
   const helper = path.resolve(ctx.repoRoot, 'marketplace/plugins/qmd/scripts/qmd-auth-headers.sh');
-  const r = spawnBashProbe([helper, '--token'], { env, encoding: 'utf8' });
-  return r.error || r.status !== 0 ? '' : String(r.stdout || '').trim();
+  const read = (args) => {
+    const r = spawnBashProbe([helper, ...args], { env, encoding: 'utf8' });
+    return r.error || r.status !== 0 ? '' : String(r.stdout || '').trim();
+  };
+  const token = read(['--token-for', url]);
+  if (token) return { token, unsafe: false };
+  return { token: '', unsafe: /["\\\x00-\x1f\x7f]/.test(read(['--token'])) };
 }
 
 // describeQmdListener(url, env) -> ", listener: pid N (executable)" or "". Names
@@ -1440,10 +1445,11 @@ function probeQmdDaemon(item, ctx) {
   const override = env.HIMMEL_DOCTOR_QMD_INIT_TIMEOUT;
   const budget = override !== undefined && /^[1-9][0-9]*$/.test(override) ? Number(override) : QMD_DAEMON_INIT_TIMEOUT_SECS;
   const payload = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"himmelctl-status","version":"1"}}}';
-  const token = qmdBearerToken(env, ctx);
+  const { token, unsafe } = qmdBearerToken(env, ctx, url);
   const tokenFile = qmdTokenFile(env);
+  if (unsafe) return { actual: 'degraded', detail: `the bearer token in ${tokenFile} has a quote, backslash or control character, so the qmd daemon probe did not send it — use a plain token` };
   const started = Date.now();
-  const r = spawnProbeSync(curl, [...(token ? ['-q'] : []), '-s', '-m', String(budget), '-w', '%{http_code}', '-X', 'POST',
+  const r = spawnProbeSync(curl, [...(token ? ['-q', '--noproxy', '*'] : []), '-s', '-m', String(budget), '-w', '%{http_code}', '-X', 'POST',
     ...(token ? ['-g', '-K', '-'] : []),
     '-H', 'Content-Type: application/json', '-H', 'Accept: application/json, text/event-stream', '-d', payload, url],
   { env, encoding: 'utf8', timeout: (budget + 5) * 1000, ...(token ? { input: `header = "Authorization: Bearer ${token}"\n` } : {}) });

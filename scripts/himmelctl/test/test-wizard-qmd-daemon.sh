@@ -91,6 +91,24 @@ QD_ARGLOG="$work/argv.log" probe_auth auth "$work/http-token" >/dev/null
 grep -q -F 'http://localhost:1/mcp' "$work/argv.log" || fail "control: an ordinary URL was changed (argv: $(cat "$work/argv.log"))"
 echo "ok: the token-bearing qmd-daemon probe turns off curl URL globbing"
 
+rm -f "$work/argv.log"
+out=$(QD_ARGLOG="$work/argv.log" QD_URL='http://qmd.example.invalid:8181/mcp' probe_auth auth "$work/http-token")
+echo "$out" | jq -e '.actual == "degraded" and (.detail | test("401"))' >/dev/null || fail "non-loopback URL must get no bearer token, so the stub answers 401 (got: $out)"
+if grep -q -e ' -K ' "$work/argv.log"; then fail "non-loopback URL: curl was handed a -K config with the token (argv: $(cat "$work/argv.log"))"; fi
+rm -f "$work/argv.log"
+out=$(QD_ARGLOG="$work/argv.log" probe_auth auth "$work/http-token")
+echo "$out" | jq -e '.actual == "present"' >/dev/null || fail "control: loopback URL with a plain token -> present (got: $out)"
+grep -q -F -e '-q --noproxy * -s ' "$work/argv.log" || fail "token-bearing probe lacks --noproxy '*' right after -q (argv: $(cat "$work/argv.log"))"
+grep -q -F -e ' -g -K - ' "$work/argv.log" || fail "control: loopback plain token no longer sent as -g -K - (argv: $(cat "$work/argv.log"))"
+for bad in 'tok"quote' 'tok\back' $'tok\001ctl'; do
+  printf '%s\n' "$bad" > "$work/bad-token"; chmod 600 "$work/bad-token"
+  rm -f "$work/argv.log"
+  out=$(QD_ARGLOG="$work/argv.log" probe_auth auth "$work/bad-token")
+  echo "$out" | jq -e --arg f "$work/bad-token" --arg t "$bad" '.actual == "degraded" and (.detail | contains($f)) and (.detail | contains($t) | not)' >/dev/null || fail "unsafe token must be refused naming its file, never echoed (got: $out)"
+  [ ! -e "$work/argv.log" ] || fail "unsafe token reached curl (argv: $(cat "$work/argv.log"))"
+done
+echo "ok: the qmd-daemon probe sends the token only to loopback, without a proxy, and refuses an unsafe token"
+
 # A non-qmd listener is named by pid and command, from ss + /proc (read only).
 cat > "$work/ss" <<'SSSTUB'
 #!/usr/bin/env bash
