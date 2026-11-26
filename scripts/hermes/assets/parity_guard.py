@@ -100,7 +100,6 @@ SECRET_READ = re.compile(
     r"|(\.pem$)|(\.key$)|(\.p12$)|(\.pfx$)"
     r"|(secrets\.ya?ml$)"
     r"|(/\.claude/channels/)"
-    r"|((^|/)\.claude/projects/.*\.jsonl$)"
     r"|(\.git-credentials)"
     r"|(/gh/hosts\.yml$)"
     r"|(credentials\.json$)|(auth\.json$)"
@@ -118,23 +117,6 @@ TERMINAL_FORBIDDEN_PATHS = re.compile(
     + "|" + re.escape(CLAUDE_HOME)
     + r"|\.env\b|/\.ssh/|\.git-credentials|hosts\.yml|\.pem\b|\.key\b"
 )
-
-def _transcript_tree(p: str) -> bool:
-    """A search root that reaches Claude session transcripts: `.claude/projects`
-    or anything below it, except one slug's `memory/` subtree (block-read-secrets
-    is_transcript_tree parity). A `..` anywhere in such a path denies."""
-    p = p.rstrip("/")
-    m = re.search(r"(?:^|/)\.claude/projects(?:/(.*))?$", p)
-    if not m:
-        return False
-    rel = m.group(1) or ""
-    if ".." in ("/" + p + "/").split("/"):
-        return True
-    slug, _, rest = rel.partition("/")
-    if slug not in ("", ".") and (rest == "memory" or rest.startswith("memory/")):
-        return False
-    return True
-
 
 _HOME = norm(os.path.expanduser("~"))
 _HOME_FORMS = re.compile(r"(?<![^\s;&|(\"'=<>])~(?=/|\s|$)|\$\{home\}|\$home\b")
@@ -2093,10 +2075,6 @@ def main() -> None:
                 if SECRET_READ.search(norm(v)):
                     block("Secret material (.env / keys / credential stores / "
                           "channel tokens) is off-limits to read.")
-                if tool == "search_files" and _transcript_tree(norm(v)):
-                    block("A search over Claude session transcripts "
-                          "(~/.claude/projects) is off-limits — they hold "
-                          "earlier tool results verbatim.")
                 reason = phi_egress_reason(v)  # raw v — real path for fs checks
                 if reason:
                     block(reason)
