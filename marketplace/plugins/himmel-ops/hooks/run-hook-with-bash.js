@@ -325,6 +325,22 @@ function envMs(name, fallback) {
   return Number.isFinite(raw) && raw > 0 ? raw : fallback;
 }
 
+const DEFAULT_LONE_GUARD_TIMEOUT_MS = 12_000;
+
+function killProcessGroup(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch (_e) {
+    return false;
+  }
+  return true;
+}
+
+function loneGuardTimeoutMs() {
+  return Math.max(1, Math.min(DEFAULT_LONE_GUARD_TIMEOUT_MS, Math.floor(envMs('RUN_HOOK_LONE_GUARD_TIMEOUT_MS', DEFAULT_LONE_GUARD_TIMEOUT_MS))));
+}
+
 // A member's cost grows with the hook payload (the chokepoint
 // text guard timed out its 15 s window on ~15 KB heredoc commands: 257 logged
 // denies, nothing ran). The window therefore grows 1 s per KiB of payload past
@@ -1567,12 +1583,18 @@ function main() {
   // its protocol, so it is captured like an unvouched session's.
   const readinessGuard = failClosedActive && path.basename(hookScript) === READINESS_GUARD;
   const capture = integrity.unvouched === true || readinessGuard;
+  const loneDeadlineMs = readinessGuard ? loneGuardTimeoutMs() : 0;
   const result = spawnSync(bash, hookArgs, {
     input: translated.text,
     stdio: ['pipe', capture ? 'pipe' : 'inherit', 'inherit'],
     env: hookChildEnv(),
     ...(capture ? { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 } : {}),
+    ...(readinessGuard ? { timeout: loneDeadlineMs, killSignal: 'SIGKILL', detached: true } : {}),
   });
+  if (readinessGuard && result.error && result.error.code === 'ETIMEDOUT') {
+    killProcessGroup(result.pid);
+    process.exit(denyReadinessProtocolFault(path.basename(hookScript), `deadline ${loneDeadlineMs}ms`));
+  }
   if (result.error && !isRecoverableEpipe(result)) {
     if (capture && typeof result.stdout === 'string') process.stdout.write(result.stdout);
     process.stderr.write(`run-hook-with-bash: failed to start ${bash}: ${result.error.message}\n`);
@@ -1603,6 +1625,8 @@ function main() {
 
 module.exports = {
   DEFAULT_CHAIN_BUDGET_MS,
+  DEFAULT_LONE_GUARD_TIMEOUT_MS,
+  loneGuardTimeoutMs,
   MIN_MEMBER_TIMEOUT_MS,
   MUST_RUN_CHAIN_MEMBERS,
   memberTimeoutMs,

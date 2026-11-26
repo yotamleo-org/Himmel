@@ -169,5 +169,27 @@ bound="$(node --input-type=module -e "import { DEFAULT_JOB_TIMEOUT_MS } from '$Q
 check "R8 both numbers read" "$([ -n "$budget" ] && [ -n "$bound" ] && echo yes || echo "no (budget='$budget' bound='$bound')")" "yes"
 check "R8 default budget + 40 is at most the job bound" "$([ -n "$budget" ] && [ -n "$bound" ] && [ $((budget + 40)) -le "$bound" ] && echo yes || echo "no ($budget + 40 vs $bound)")" "yes"
 
+echo "R9: only a marker at the start of a line queues a job"
+wait_status 'worker: idle'; check "R9 the queue is idle" "$?" "0"
+before="$(queue_rows)"
+: > "$CALLS"
+fixture chief-sid "Status: Needs you: R9 label." "$TMP/p9a.json"
+run_hook "$TMP/p9a.json"
+fixture chief-sid $'All merged.\n\nThe hook looks for the Needs you: marker at a line start.' "$TMP/p9b.json"
+run_hook "$TMP/p9b.json"
+check "R9 a marker named mid-line writes no queue row" "$(queue_rows)" "$before"
+check "R9 a marker named mid-line leaves no pending entry" "$(find "$HIMMEL_STOP_QUEUE_DIR/entries" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+check "R9 a marker named mid-line reaches no route call" "$(ncalls)" "0"
+n=0
+for ask in "Needs you: R9 start." "5. Needs you: R9 numbered." "- Needs you: R9 bullet."; do
+    n=$((n+1))
+    wait_status 'worker: idle'
+    : > "$CALLS"
+    fixture chief-sid "$ask" "$TMP/p9c$n.json"
+    run_hook "$TMP/p9c$n.json"
+    wait_calls 1
+    check "R9 control $n: '${ask%% R9*}' reaches the route" "$(ncalls)" "1"
+done
+
 printf '\nstop-chief-ask-mirror: %s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

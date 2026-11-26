@@ -171,9 +171,13 @@ fi
 if [ -f "$_wa_flag" ] && [ "$(cat "$_wa_flag" 2>/dev/null)" = 1 ]; then
     # An interrupted refresh may leave its attempt behind. Retry after a minute;
     # an attempt timestamp never claims the ledger was successfully refreshed.
-    if _wa_retry="$("$_wa_node" -e 'const fs=require("fs"); try { process.stdout.write(Date.now()-fs.statSync(process.argv[1]).mtimeMs >= 60000 ? "1" : "0"); } catch (err) { if (err.code !== "ENOENT") throw err; process.stdout.write("1"); }' "$_wa_attempt")" \
+    if _wa_retry="$("$_wa_node" -e 'const fs=require("fs"); const a=process.argv[1], lock=a+".claim";
+const age=(p)=>{ try { return Date.now()-fs.statSync(p).mtimeMs; } catch (err) { if (err.code !== "ENOENT") throw err; return Infinity; } };
+const take=()=>{ try { fs.mkdirSync(lock); return true; } catch (err) { if (err.code !== "EEXIST") throw err; return false; } };
+let held=take();
+if (!held && age(lock) >= 60000) { try { fs.rmdirSync(lock); } catch (err) { if (err.code !== "ENOENT") throw err; } held=take(); }
+if (!held) { process.stdout.write("0"); } else { try { if (age(a) >= 60000) { fs.closeSync(fs.openSync(a, "w")); process.stdout.write("1"); } else { process.stdout.write("0"); } } finally { try { fs.rmdirSync(lock); } catch (err) { if (err.code !== "ENOENT") throw err; } } }' "$_wa_attempt")" \
         && [ "$_wa_retry" = 1 ]; then
-        touch "$_wa_attempt" 2>/dev/null || true
         if [ -n "${HIMMEL_WHERE_ARE_WE_COLLECT_CMD:-}" ]; then
             ( nohup bash -c "$HIMMEL_WHERE_ARE_WE_COLLECT_CMD" >/dev/null 2>&1 & ) || true
         else

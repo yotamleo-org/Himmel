@@ -34,6 +34,12 @@ line endings). It is **idempotent** and **non-destructive**:
    `export QMD_HTTP_TOKEN="$(cat ~/.config/qmd/http-token)"`; without it qmd answers
    401, and the installer prints a WARN naming that line.
 
+4. **Drops `claude-obsidian-marketplace`.** The fork's marketplace file now names
+   itself `agricidaniel-claude-obsidian`, so Codex fails every upgrade of the old
+   entry; claude-obsidian is served `@himmel`. The installer runs `codex plugin
+   marketplace remove claude-obsidian-marketplace` when no Codex plugin comes from
+   it, and otherwise prints a WARN with the remove commands and changes nothing.
+
 The installer does **not** touch external plugins' `hooks.json`. A few of them
 (warp, hookify, ralph-loop, security-guidance) ship a top-level `description`
 that Codex versions **before `rust-v0.143.0`** reject ("unknown field
@@ -41,8 +47,9 @@ description"); upstream fixed that in codex PR #30229, so the fix is to upgrade
 codex. Installs pinned below it can run the manual sanitizer (see Usage).
 
 For himmel plugin enablement it only ever *adds* — it never removes or disables a
-himmel plugin (the one removal is upstream's `qmd@qmd`, step 3), and a re-run on a
-provisioned machine is a no-op.
+himmel plugin (the removals are upstream's `qmd@qmd`, step 3, and the stale
+claude-obsidian marketplace, step 4), and a re-run on a provisioned machine is a
+no-op.
 
 Codex passes the Telegram plugin's `${CLAUDE_PLUGIN_ROOT}` launcher path
 literally, which makes the MCP server fail at startup. To stop attempts on a

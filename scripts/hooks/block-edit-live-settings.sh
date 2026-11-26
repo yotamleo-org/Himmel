@@ -1049,10 +1049,148 @@ mentions_agy_live_config() {
     _text_names "$AGY_DIRS" "$c" 1
 }
 
+_agy_verb_ro() {
+    case "$1" in list|validate|help|-h|--help) return 0 ;; esac
+    return 1
+}
+
+_agy_seg_writes() {
+    local st=0 first=1 app=0 w b cw=''
+    for w in "$@"; do
+        [ -n "$w" ] || continue
+        b=${w%$'\001'}
+        b=${b##*/}
+        if [ "$first" = 1 ]; then
+            case "$w" in [a-z_]*=*) continue ;; esac
+            first=0
+            cw=$b
+            case "$cw" in *'$'*) st=1; continue ;; esac
+            case "$w" in *\$\{*) case "$cw" in *\}*) st=1; continue ;; esac ;; esac
+        fi
+        case "$b" in xargs|parallel|entr) app=1 ;; esac
+        case "$st" in
+            0) [ "$b" != agy ] || st=1 ;;
+            1) case "$w" in plugin|plugins|mcp|*$'\001') st=2 ;; esac ;;
+            2) _agy_verb_ro "$w" || return 0; st=0 ;;
+        esac
+    done
+    [ "$st" = 2 ] && [ "$app" = 1 ] && return 0
+    return 1
+}
+
+_agy_mask_quoted_redirects() {
+    printf '%s' "$1" | LC_ALL=C awk 'BEGIN { RS = "\001"; ORS = "" }
+        { n = length($0); q = ""
+          for (i = 1; i <= n; i++) {
+              c = substr($0, i, 1)
+              if (q != "") { if (c == q) q = ""; else if (c == "<") c = "\002"; else if (c == ">") c = "\003" }
+              else if (c == "\"" || c == "\047") q = c
+              printf "%s", c
+          } }'
+}
+
+_agy_text_writes() {
+    local LC_ALL=C s seg k rc=1
+    local -a ws
+    local rre='&?[0-9]*[<>]+[&|]?[[:space:]]*[^[:space:]<>;&|()`]*'
+    s=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    s=${s//\\$'\n'/}
+    case "$s" in *[\"\']*) case "$s" in *[\<\>]*) s=$(_agy_mask_quoted_redirects "$s") ;; esac ;; esac
+    s=${s//[\"\']/}
+    while [[ $s =~ $rre ]]; do s=${s/"${BASH_REMATCH[0]}"/ }; done
+    s=${s//[()\`]/ }
+    s=${s//[;&|]/$'\n'}
+    while IFS= read -r seg || [ -n "$seg" ]; do
+        ws=()
+        read -ra ws <<< "$seg"
+        [ "${#ws[@]}" -gt 0 ] || continue
+        for k in "${!ws[@]}"; do
+            case "${ws[k]}" in *'$'*|*'*'*|*'?'*|*'['*|*'{'*) ws[k]=${ws[k]}$'\001' ;; esac
+        done
+        if _agy_seg_writes "${ws[@]}"; then rc=0; break; fi
+    done <<< "$s"
+    return "$rc"
+}
+
+agy_cli_writes() {
+    local i=0 s=0 d=0 bt=0 sep first=1 la=0 fo=0 nested=0 shellc=0 w prevw='' opener closer
+    local -a sw=() stw=() stf=()
+    if [ "$TOK" != 1 ]; then
+        _agy_text_writes "$cmd"
+        return
+    fi
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        while [ "$i" -lt "$ST_N" ] && [ "${ST_S[i]}" = "$s" ]; do
+            if [ -n "${ST_RO[i]}" ]; then i=$((i + 1)); continue; fi
+            if [ "$first" = 1 ] && [ "${ST_A[i]}" = 1 ]; then la=1; i=$((i + 1)); continue; fi
+            la=0
+            w=${ST_LW[i]}
+            if [ "$first" = 1 ]; then
+                first=0
+                case "${w##*/}" in
+                    bash|sh|zsh|dash|ksh) shellc=1 ;;
+                    eval|xargs|ssh|sudo|env|timeout|nohup|nice|watch|time|command|exec|setsid|stdbuf|flock) nested=1 ;;
+                esac
+            elif [ "$shellc" = 1 ]; then
+                case "$w" in
+                    -[!-]*c*) nested=1 ;;
+                    -*) ;;
+                    *) case "$prevw" in -o|+o|-O|+O|--rcfile|--init-file) ;; *) [ "$nested" = 1 ] || shellc=0 ;; esac ;;
+                esac
+            fi
+            prevw=$w
+            if [ "$nested" = 1 ] && _agy_text_writes "$w"; then return 0; fi
+            if [ "${ST_X[i]}" = 1 ] || [ "${ST_G[i]}" = 1 ]; then w=$w$'\001'; fi
+            sw[${#sw[@]}]=$w
+            i=$((i + 1))
+        done
+        sep=${ST_SEP[s]-}
+        opener=0 closer=0
+        case "$sep" in
+            \$\(|\<\(|\>\() opener=1 ;;
+            '`') if [ "$bt" = 1 ]; then closer=1; else opener=1; fi ;;
+            ')') [ "$d" -gt 0 ] && closer=1 ;;
+        esac
+        if [ "$opener" = 1 ]; then
+            [ "$sep" != '`' ] || bt=1
+            fo=0
+            if [ "$first" = 1 ] && [ "$la" = 1 ]; then
+                fo=1
+            else
+                sw[${#sw[@]}]=$'$()\001'
+            fi
+            stw[d]=$(IFS=$'\002'; printf '%s' "${sw[*]}")
+            stf[d]="$fo"$'\002'"$nested"$'\002'"$shellc"$'\002'"$prevw"
+            d=$((d + 1))
+            sw=() first=1 la=0 nested=0 shellc=0 prevw=''
+        else
+            if [ "${#sw[@]}" -gt 0 ] && _agy_seg_writes "${sw[@]}"; then return 0; fi
+            sw=() first=1 la=0 nested=0 shellc=0 prevw=''
+            if [ "$closer" = 1 ]; then
+                d=$((d - 1))
+                [ "$sep" != '`' ] || bt=0
+                IFS=$'\002' read -r -a sw <<< "${stw[d]}"
+                IFS=$'\002' read -r first nested shellc prevw <<< "${stf[d]}"
+            fi
+        fi
+        s=$((s + 1))
+    done
+    if [ "${#sw[@]}" -gt 0 ] && _agy_seg_writes "${sw[@]}"; then return 0; fi
+    while [ "$d" -gt 0 ]; do
+        d=$((d - 1))
+        sw=()
+        IFS=$'\002' read -r -a sw <<< "${stw[d]}"
+        if [ "${#sw[@]}" -gt 0 ] && _agy_seg_writes "${sw[@]}"; then return 0; fi
+    done
+    return 1
+}
+
 agy_deny_message() {
     cat >&2 <<EOF
 ⛔ block-edit-live-settings: refusing $1 on \`$2\` — it can write Antigravity/Gemini
-live user configuration (~/.gemini/config/ or \${T3CODE_HOME:-\$HOME/.t3}/userdata/providers/antigravity/).
+live user configuration (~/.gemini/config/ or \${T3CODE_HOME:-\$HOME/.t3}/userdata/providers/antigravity/),
+or it runs an agy plugin/mcp subcommand that does (agy ignores GEMINI_HOME there; only
+list, validate and help are read-only).
 
 Reading it with cat, jq, ls, grep or the Read tool stays allowed (except OAuth tokens).
 
@@ -5013,6 +5151,9 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         registry_dest=1
     fi
     if [ "$agy_dest" = 0 ] && mentions_agy_live_config "$cmd_lc"; then
+        agy_dest=1
+    fi
+    if [ "$agy_dest" = 0 ] && agy_cli_writes; then
         agy_dest=1
     fi
 

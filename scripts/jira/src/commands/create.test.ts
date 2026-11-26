@@ -3436,3 +3436,24 @@ describe('create — placed by the four rules (S2)', () => {
     });
   });
 });
+
+describe('create — commander takes no abbreviated long option (the subagent fence pair 2 relies on it)', () => {
+  it.each([
+    ['--decis with --wor', ['--decis', '1', '--wor', 'y']],
+    ['--decis beside the full --words', ['--decis', '1', '--words', 'y']],
+    ['--wor beside the full --decision', ['--decision', '1', '--wor', 'y']],
+  ])('rejects %s, and never reaches the action', async (_label, opts) => {
+    const p = new Command();
+    p.exitOverride();
+    p.configureOutput({ writeErr: () => {}, writeOut: () => {} });
+    registerCreate(p);
+    const stub = vi.fn();
+    const create = p.commands.find((c) => c.name() === 'create');
+    expect(create).toBeDefined();
+    create!.exitOverride();
+    create!.configureOutput({ writeErr: () => {}, writeOut: () => {} });
+    create!.action(stub);
+    await expect(p.parseAsync(['node', 'jira', 'create', '--title', 't', '--type', 'Task', ...opts])).rejects.toThrow(/unknown option/);
+    expect(stub).not.toHaveBeenCalled();
+  });
+});

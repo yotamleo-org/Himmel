@@ -7,8 +7,6 @@ set -uo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 
-HOOKS_FIXED_ELSEWHERE='block-subagent-release-operator.sh'
-
 HOOK_SAYS='(use|using|try|trying|with|via)[[:space:]]+(the[[:space:]]+)?(Grep|Glob)[[:space:]]+tool'
 
 hits=0
@@ -54,7 +52,6 @@ else
     for f in scripts/hooks/*.sh marketplace/plugins/*/hooks/*.sh; do
         [ -f "$f" ] || continue
         case "${f##*/}" in test-*) continue ;; esac
-        case " $HOOKS_FIXED_ELSEWHERE " in *" ${f##*/} "*) continue ;; esac
         hooksn=$((hooksn + 1))
         scan_hook "$f"
     done
