@@ -268,6 +268,12 @@ expect_eq "18 a modified pinned checkout exits 2 on apply" "$rc" 2
 bash "$GEN" --check --profile design >/dev/null 2>&1; rc=$?
 expect_eq "18 a modified pinned checkout exits 2 on check" "$rc" 2
 
+fresh
+bash "$GEN" --apply --profile design >/dev/null 2>&1
+printf 'garbage\n' > "$HIMMEL_AGY_SKILL_CACHE/pinsrc@$PIN/.git/index"
+bash "$GEN" --apply --profile design >/dev/null 2>&1; rc=$?
+expect_eq "18 a pinned checkout whose state cannot be read exits 2" "$rc" 2
+
 out="$(bash "$GEN" --list 2>"$T/err-l1")"; rc=$?
 expect_eq "L1 --list exits 0" "$rc" 0
 expect_eq "L1 --list prints the registry's profile names" "$out" design

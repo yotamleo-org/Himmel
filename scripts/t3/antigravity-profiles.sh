@@ -247,7 +247,8 @@ EOF
             fi
         fi
         [ "$(git -C "$dir" rev-parse HEAD 2>/dev/null)" = "$commit" ] || die 2 "pinned checkout $dir is not at $commit"
-        [ -z "$(git -C "$dir" status --porcelain 2>/dev/null)" ] || die 2 "pinned checkout $dir has local changes"
+        pin_state="$(git --no-optional-locks -C "$dir" status --porcelain 2>/dev/null)" || die 2 "cannot read the state of pinned checkout $dir"
+        [ -z "$pin_state" ] || die 2 "pinned checkout $dir has local changes"
         for name in $(printf '%s' "$names" | tr ',' ' '); do
             case "$name" in ''|*[!A-Za-z0-9._-]*) die 2 "profile '$p': bad pinned skill name '$name'" ;; esac
             [ -f "$dir/$rpath/$name/SKILL.md" ] || die 2 "pinned skill '$name' has no SKILL.md under $dir/$rpath"
