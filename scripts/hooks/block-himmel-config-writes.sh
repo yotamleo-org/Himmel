@@ -270,7 +270,6 @@ raw_names_guarded_physically() {
 }
 
 if ! command -v jq >/dev/null 2>&1; then
-    # No parser: raw-text scan, deny a mention of the subject, a path that resolves to it, or one that cannot be resolved.
     names_guarded_file "$input" && deny "jq not found and the payload names a guarded .himmel config file (fail-closed)"
     raw_names_guarded_physically && deny "jq not found and a path in the payload resolves to a guarded .himmel config file (fail-closed)"
     exit 0
