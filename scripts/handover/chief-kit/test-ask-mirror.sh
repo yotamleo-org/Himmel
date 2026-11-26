@@ -153,6 +153,7 @@ else
 fi
 
 echo "R11: after a failed post the rest still post, with no receipt wait"
+unset CHIEF_ROUTE_RECEIPT_WAIT_SEC
 export ASK_MIRROR_TEST_FAIL_FIRST=1
 run chief-sid "$(printf 'Needs you: R11 one.\n\nNeeds you: R11 two.\n\nNeeds you: R11 three.\n\nNeeds you: R11 four.')"
 unset ASK_MIRROR_TEST_FAIL_FIRST

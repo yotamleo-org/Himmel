@@ -115,6 +115,7 @@ mkdir -p "$state_dir" 2>/dev/null || exit 0
 
 budget="${ASK_MIRROR_BUDGET_SEC:-80}"
 case "$budget" in ''|*[!0-9]*) budget=80 ;; esac
+budget=$((10#$budget))
 
 post() {
     local t=$((budget - SECONDS))
