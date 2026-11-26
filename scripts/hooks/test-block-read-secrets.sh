@@ -1222,8 +1222,7 @@ assert_rc "5412 ctl git commit names environ"   0 "$(run_case "$(j_bash "git com
 assert_rc "5412 ctl ls /proc/1"                 0 "$(run_case "$(j_bash 'ls /proc/1/')")"
 assert_rc "5412 ctl Read memory .md"            0 "$(run_case "$(j_read '/home/u/.claude/projects/-home-u-repo/memory/MEMORY.md')")"
 assert_rc "5412 ctl Read repo .jsonl"           0 "$(run_case "$(j_read '/home/u/repo/data/arms.jsonl')")"
-# Grep over transcripts is allowed too; bun/deno whole-env objects.
-assert_rc "11232 Grep transcript .jsonl allowed"         0 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/0b1c2d3e.jsonl')")"
+assert_rc "11232 Grep transcript .jsonl allowed"        0 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/0b1c2d3e.jsonl')")"
 assert_rc "11232 Grep projects dir allowed"              0 "$(run_case "$(j_grep '/home/u/.claude/projects')")"
 assert_rc "11232 Grep projects slug dir allowed"         0 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/')")"
 # shellcheck disable=SC2088  # a literal tilde, as the Grep tool receives it
@@ -1237,7 +1236,8 @@ assert_rc "11232 Grep projects/./memory allowed"         0 "$(run_case "$(j_grep
 assert_rc "11232 ctl Grep .env still refused"            2 "$(run_case "$(j_grep '/home/u/repo/.env')")"
 assert_rc "5412 ctl Grep memory dir"          0 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/memory')")"
 assert_rc "5412 ctl Grep memory .md"            0 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/memory/MEMORY.md')")"
-assert_rc "5412 bun Bun.env"                    2 "$(run_case "$(j_bash "bun -e 'console.log(Bun.env)'")")"
+# bun/deno whole-env objects.
+assert_rc "5412 bun Bun.env"                  2 "$(run_case "$(j_bash "bun -e 'console.log(Bun.env)'")")"
 assert_rc "5412 bun JSON.stringify(Bun.env)"    2 "$(run_case "$(j_bash "bun -e 'console.log(JSON.stringify(Bun.env))'")")"
 assert_rc "5412 deno Deno.env.toObject()"       2 "$(run_case "$(j_bash "deno eval 'console.log(Deno.env.toObject())'")")"
 assert_rc "5412 python os.environb"             2 "$(run_case "$(j_bash "python3 -c 'import os; print(os.environb)'")")"

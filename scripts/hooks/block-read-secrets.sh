@@ -46,9 +46,7 @@
 # shell tracing that can print the inherited environment (`bash -x`, `-o xtrace`,
 # `set -x`, SHELLOPTS=xtrace, BASH_XTRACEFD; denied even under `env -i`). Another entry adds
 # a python/node/bun/deno command that prints the whole environment or reads
-# /proc/*/environ (interp_env_dump; a single named key still passes). A Read or
-# Grep of a session transcript (~/.claude/projects) is allowed: it only replays
-# what the model already saw.
+# /proc/*/environ (interp_env_dump; a single named key still passes).
 #
 # Known limitations (consciously accepted — gate targets accidental leaks,
 # not a determined attacker):
