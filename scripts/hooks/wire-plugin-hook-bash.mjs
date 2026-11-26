@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXPECTED_COUNTS = Object.freeze({
-  PreToolUse: 21,
+  PreToolUse: 22,
   SessionStart: 7,
   SessionEnd: 4,
   Notification: 1,
@@ -60,6 +60,7 @@ const EXPECTED_HOOKS = Object.freeze([
   // plugin-shipped so an adopter repo gets the walled-host WebFetch redirect
   // too; it names the himmel fetcher only when the checkout has one.
   { event: 'PreToolUse', script: 'redirect-webfetch-walled-hosts.sh', source: 'plugin' },
+  { event: 'PreToolUse', script: 'steer-t3-tool-calls.sh', source: 'plugin' },
   // the readiness role's exact-tool allow-list. HIMMEL_READINESS=1 is the role marker (set only by the trusted readiness
   // launcher, headed-arm-worker.sh): with it a missing script fails CLOSED, without it this hook is absent or silent. It is
   // the project-delivered copy (scripts/hooks/) behind the runner's lone `--optional --fail-closed-when HIMMEL_READINESS=1`
