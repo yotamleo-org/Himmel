@@ -5,6 +5,7 @@
 # The jq copy of himmel-ops' lib/harness-tool-translate.js (this plugin ships
 # no node), over lib/harness-tool-map.json beside this file:
 #   - no string tool_name: the payload unchanged, the table never read.
+#   - toolInputTruncated true (Grok's flag), or stdin unreadable: exit 2.
 #   - a string tool_name and a missing, unreadable, unparseable or misshapen
 #     table (or no jq): exit 2, Claude names included.
 #   - tools[name]: tool_name becomes its claude name, each keys entry renamed
@@ -21,7 +22,10 @@ if [ -z "$guard" ]; then
 fi
 table="$(cd "$(dirname "$0")" && pwd)/lib/harness-tool-map.json"
 
-input=$(cat; printf x)
+input=$(cat && printf x) || {
+    echo "translate-tool-call: could not read the hook payload; refusing the tool call" >&2
+    exit 2
+}
 input=${input%x}
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -34,6 +38,10 @@ if [ "$kind" != tool ]; then
     printf '%s' "$input" | bash "$guard"
     exit $?
 fi
+if [ "$(printf '%s' "$input" | jq -r '.toolInputTruncated == true')" != false ]; then
+    echo "translate-tool-call: the harness marked this tool input truncated, so no guard can judge all of it; refusing the tool call" >&2
+    exit 2
+fi
 
 shape='type == "object"
     and (.tools | type) == "object"
@@ -41,7 +49,7 @@ shape='type == "object"
     and all(.mcp_servers[]; type == "string")
     and all(.tools[]; type == "object" and (.claude | type) == "string"
         and ((has("keys") | not) or ((.keys | type) == "object" and all(.keys[]; type == "string"))))'
-if ! { [ -r "$table" ] && jq -e "$shape" "$table" >/dev/null 2>&1; }; then
+if ! { [ -r "$table" ] && jq -se "length == 1 and (.[0] | $shape)" "$table" >/dev/null 2>&1; }; then
     echo "translate-tool-call: harness tool table $table is missing, unreadable or malformed; refusing the tool call" >&2
     exit 2
 fi

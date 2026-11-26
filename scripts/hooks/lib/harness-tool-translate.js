@@ -5,6 +5,8 @@
 //   - no string tool_name (SessionStart, Stop, unparseable stdin): the text
 //     unchanged; the table is never read, so a table fault cannot refuse a
 //     non-tool event.
+//   - toolInputTruncated true (Grok's flag): refused, the guards would judge
+//     part of the input.
 //   - a string tool_name: harness-tool-map.json beside this file is read now.
 //     Missing, unreadable, not JSON or the wrong shape refuses, Claude names
 //     included, so a deleted table never lets a native call through.
@@ -76,6 +78,9 @@ function translateToolCall(text) {
     return { text };
   }
   if (!isObject(payload) || typeof payload.tool_name !== 'string') return { text };
+  if (payload.toolInputTruncated === true) {
+    return { refuse: `${payload.tool_name}: the harness marked this tool input truncated, so no guard can judge all of it; refusing the tool call` };
+  }
 
   const table = loadTable();
   if (!table) {

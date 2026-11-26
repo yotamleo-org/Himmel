@@ -305,9 +305,11 @@ parity() {
     for h in $hs; do
         payload "claude-$h" "$kind" "$@"; "$fn" "$target"; cv=$V
         payload "$h" "$kind" "$@"; "$fn" "$target"; nv=$V
-        if [ "$cv" = "$nv" ]; then pass "parity $label: $h $kind '$1' -> $cv"
+        if [ "${cv#rc}" != "$cv" ] || [ "${nv#rc}" != "$nv" ]; then
+            fail "parity $label: $h $kind '$1' native $nv, Claude $cv - an exit code no verdict uses ($(head -c 200 "$SB/err" | tr '\n' ' '))"
+        elif [ "$cv" = "$nv" ]; then pass "parity $label: $h $kind '$1' -> $cv"
         else fail "parity $label: $h $kind '$1' native $nv, Claude $cv"; fi
-        [ "$cv" = pass ] || nonpass=1
+        case "$cv" in deny|allow|ask) nonpass=1 ;; esac
     done
     [ "$nonpass" = 1 ] && PROVED="$PROVED $label"
 }
@@ -596,7 +598,7 @@ for ep in project plugin guard user; do
         '{"hook_event_name":"PreToolUse","session_id":"h1073-m","tool_name":"mcp__t3-code__t3_thread_list","tool_input":{"tool_name":"t3-code__x","tool_input":{}}}' \
         '{"hook_event_name":"PreToolUse","session_id":"h1073-n","tool_name":"t3code__nope","tool_input":{"limit":1}}'; do
         printf '%s' "$sent" > "$SB/p.json"; seen_by "$ep"
-        if [ "$(jq -cS . "$SB/seen.json" 2>/dev/null)" = "$(printf '%s' "$sent" | jq -cS .)" ]; then
+        if [ -f "$SB/seen.json" ] && [ "$(cat "$SB/seen.json")" = "$sent" ]; then
             pass "$ep: $(printf '%s' "$sent" | jq -r .tool_name) passes through unchanged"
         else fail "$ep: $(printf '%s' "$sent" | jq -r .tool_name) changed: $(cat "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
     done
@@ -605,6 +607,11 @@ for ep in project plugin guard user; do
     seen_by "$ep"
     if [ "$SEEN_RC" = 2 ] && [ ! -e "$SB/seen.json" ]; then pass "$ep: grok read_file naming a different file_path beside target_file is refused"
     else fail "$ep: grok read_file with two paths - rc $SEEN_RC, member saw $(cat "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
+    payload grok shell "$ORDINARY_CMD"
+    jq -c '.toolInputTruncated = true' "$SB/p.json" > "$SB/p2.json" && mv "$SB/p2.json" "$SB/p.json"
+    seen_by "$ep"
+    if [ "$SEEN_RC" = 2 ] && [ ! -e "$SB/seen.json" ]; then pass "$ep: a grok call marked toolInputTruncated is refused"
+    else fail "$ep: truncated grok call - rc $SEEN_RC, member saw $(cat "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
 done
 
 echo "== fail-closed: no readable table, every entry point refuses =="
@@ -627,6 +634,7 @@ stage() {
             missing) rm -f "$t" ;;
             unreadable) [ -f "$t" ] && chmod 000 "$t" ;;
             unparseable) mkdir -p "$(dirname "$t")"; printf '{ not json\n' > "$t" ;;
+            two-document) printf '{}\n' | cat - "$HERE/$TABLE_REL" > "$t" ;;
         esac
     done
 }
@@ -645,7 +653,7 @@ fc_run() {
 for ep in project plugin guard user; do
     stage "$SB/fc" present; fc_run "$SB/fc" "$ep"
     expect "fail-closed $ep: with the table an ordinary call passes (mutation control)" pass
-    states="missing unparseable"
+    states="missing unparseable two-document"
     [ "$(id -u)" = 0 ] || states="$states unreadable"
     for s in $states; do
         stage "$SB/fc" "$s"; fc_run "$SB/fc" "$ep"
