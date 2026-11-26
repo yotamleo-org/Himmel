@@ -251,6 +251,12 @@ run_hook "$(j_post "$replay" "${fixtures[0]}" "T=$replay")"
 if is_placeholder "$TMP/out" "$replay" && no_value "$TMP/out" "${fixtures[0]}" && grep -q 'in a unknown tool call or result is' "$TMP/out"; then
     pass "a token-shaped tool or session name is never printed"
 else fail "token-shaped tool/session name: $(head -c 300 "$TMP/out")"; fi
+ghr_long="ghr""_${pat_body:0:76}"
+run_hook "$(j_post Bash s12c "T=$ghr_long")"
+if grep -q 'TOKEN-IN-OUTPUT LIVE' "$TMP/out" && shows_only_mask "$TMP/out" "$ghr_long" && [ "$(sent_count)" = "$((before + 1))" ]; then
+    pass "an 80-char ghr_ refresh token is checked whole and pages as LIVE"
+else fail "80-char ghr_ (count=$(sent_count)): $(head -c 300 "$TMP/out")"; fi
+before=$(sent_count)
 run_hook "$(j_post Bash s12b "T=$TOK_PAT")"
 if grep -q 'TOKEN-IN-OUTPUT LIVE' "$TMP/out" && shows_only_mask "$TMP/out" "$TOK_PAT" && [ "$(sent_count)" = "$((before + 1))" ]; then
     pass "github_pat_ with a varied, non-sequential body pages as LIVE"

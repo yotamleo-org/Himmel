@@ -41,29 +41,26 @@ IFS= read -r -d '' input 2>/dev/null || :
 tok_re='(gh[opusr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{82})'
 [[ $input =~ $tok_re ]] || exit 0
 
-# A real ghp_/gho_/ghu_/ghs_/ghr_ token ends in a 6-char base62 CRC32 of the 30
-# chars before it. A fine-grained PAT carries no checksum, so its body shape decides.
+# A real 40-char ghp_/gho_/ghu_/ghs_/ghr_ token ends in a 6-char base62 CRC32 of
+# the 30 chars before it (a longer ghr_ does not). A fine-grained PAT carries none.
 b62="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 is_live_token() {
     local t="$1" body seen="" ch c i j b n sum="" k prev=-1 run=0
-    case "$t" in
-        github_pat_*)
-            body="${t#github_pat_}"
-            n=${#body}
-            for ((i = 0; i < n; i++)); do
-                ch="${body:i:1}"
-                case "$seen" in *"$ch"*) ;; *) seen="$seen$ch" ;; esac
-                k="${b62%%"$ch"*}"
-                k=${#k}
-                if [ "$k" -lt 62 ] && [ "$prev" -ge 0 ] && [ "$k" = $(((prev + 1) % 62)) ]; then run=$((run + 1)); else run=1; fi
-                [ "$run" -ge 8 ] && return 1
-                prev=$k
-                [ "$k" -lt 62 ] || prev=-1
-            done
-            [ "${#seen}" -ge 8 ]
-            return
-            ;;
-    esac
+    case "$t" in github_pat_*) body="${t#github_pat_}" ;; *) body="${t:4}" ;; esac
+    n=${#body}
+    for ((i = 0; i < n; i++)); do
+        ch="${body:i:1}"
+        case "$seen" in *"$ch"*) ;; *) seen="$seen$ch" ;; esac
+        case "$t" in github_pat_*) ;; *) continue ;; esac
+        k="${b62%%"$ch"*}"
+        k=${#k}
+        if [ "$k" -lt 62 ] && [ "$prev" -ge 0 ] && [ "$k" = $(((prev + 1) % 62)) ]; then run=$((run + 1)); else run=1; fi
+        [ "$run" -ge 8 ] && return 1
+        prev=$k
+        [ "$k" -lt 62 ] || prev=-1
+    done
+    case "$t" in github_pat_*) [ "${#seen}" -ge 8 ]; return ;; esac
+    if [ "$n" -ne 36 ]; then [ "${#seen}" -ge 8 ]; return; fi
     body="${t:4:30}"
     c=4294967295
     for ((i = 0; i < 30; i++)); do
@@ -88,6 +85,8 @@ fakes=()
 rest=$input
 while [[ $rest =~ $tok_re ]]; do
     t="${BASH_REMATCH[1]}"
+    after="${rest#*"$t"}"
+    if [[ $after =~ ^[0-9A-Za-z]+ ]]; then t="$t${BASH_REMATCH[0]}"; fi
     case " ${tokens[*]-} ${fakes[*]-} " in
         *" $t "*) ;;
         *) if is_live_token "$t"; then tokens+=("$t"); else fakes+=("$t"); fi ;;
