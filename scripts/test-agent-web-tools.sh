@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Every repo agent file with a frontmatter tools: line names
-# WebFetch and WebSearch in it. A file with no tools: line inherits every tool
-# and passes. No file is exempt.
 set -u
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root" || exit 1

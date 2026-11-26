@@ -45,11 +45,10 @@
 # spoofable by the dispatch's own prompt text:
 #   * subagent_type: Explore, or judge-ro (a
 #     repo agent whose frontmatter pins tools Read, Grep, Glob, Bash, or that
-#     line plus Write, with or without WebFetch, WebSearch after it, checked at
-#     dispatch; guard-judge-write-scope.sh confines that Write to a judge dir
-#     judge-dir.sh made), or
+#     line plus Write, checked at dispatch; guard-judge-write-scope.sh confines
+#     that Write to a judge dir judge-dir.sh made), or
 #     brief-drafter (a repo agent whose frontmatter pins tools
-#     Read, Write, Edit, Bash, with or without WebFetch, WebSearch after it; its job is writing brief files for the chief,
+#     Read, Write, Edit, Bash; its job is writing brief files for the chief,
 #     and its prompt forbids launch, commit, push and PR. Each such dispatch
 #     is appended to the CHIEF_DISPATCH_LOG audit log best-effort: a failed
 #     write never blocks the dispatch)
@@ -160,10 +159,10 @@ subagent_type="${subagent_type%x}"
 subagent_type="${subagent_type%$'\n'}"
 # judge-ro and brief-drafter are matched exactly and keep their lane only
 # while the project agent file has one tools: line, exactly an expected one
-# (judge-ro: Read, Grep, Glob, Bash, or that line plus Write (confined by
-# guard-judge-write-scope.sh), each with or without WebFetch, WebSearch after
-# it; brief-drafter: Read, Write, Edit, Bash, with or without them). A file that
-# grants more, or no file, gets none.
+# (judge-ro: Read, Grep, Glob, Bash, or that line plus Write, which
+# guard-judge-write-scope.sh confines to a judge dir judge-dir.sh made;
+# brief-drafter: Read, Write, Edit, Bash). A file that grants more, or no file,
+# gets none.
 agent_pinned() {
     local f
     f="$(dirname "${BASH_SOURCE[0]}")/../../.claude/agents/$1.md"
