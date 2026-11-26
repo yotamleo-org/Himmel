@@ -127,8 +127,8 @@
 # prints `# overlap unknown for PR <n>` / `live worker <N>` / `series ledger <n>` under the header and gates no row.
 # What still gates: an open-PR LIST that fails (the list is printed with an `open PRs unknown` header and no RESUME or
 # IN CI row, rather than silently trusting an empty set) and a live-worker manifest that cannot be read (`live workers unknown`).
-# An open PR that is not ours (cross-repository) and has been idle OUTSIDE_OWN_DAYS (7) or more days no longer owns a ticket key
-# its title names: the ticket is listed with `# overlap <KEY> also named by outside PR <n> (idle <d>d)`.
+# An open PR owns every ticket key its title or branch names, inside this repository or outside it, whatever its idle days. A
+# cross-repository PR's owner text carries its idle days (`open PR <n> (idle <d>d)`, or `(idle unknown)`); the age is printed, never acted on.
 #
 # Series ledgers (stacked_series only): each ledger under the --workers-from manifest's `series/` directory, read through
 # chief-kit/series-ledger.py read, names every non-abandoned item's writes as `series <sid>`, so the files stay an overlap
@@ -410,8 +410,7 @@ def manifest_workers(m):
 excl = set(filter(None, os.environ.get('NEXT_DISPATCH_EXCLUDE_LABELS',
     'operator-decision,operator,operator-present,operator-gated,blocked,decision,windows-parked,design-deferred,placeholder,held').split(',')))
 FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
-OUTSIDE_OWN_DAYS = 7
-PRIO = {'Highest': 0, 'Blocker': 0, 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Lowest': 4}
+PRIO ={'Highest': 0, 'Blocker': 0, 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Lowest': 4}
 
 def files_in(text):
     out = []
@@ -1915,7 +1914,6 @@ pr_unknown = False
 pr_keys = set()
 pr_file_map = {}  # PR number -> its files
 pr_meta = {}  # PR number -> (title, head branch)
-outside_idle = {}
 now_s = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())
 gh = os.environ.get('NEXT_DISPATCH_GH_CMD') or os.environ.get('ND_GH_READ') or 'gh'
 gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
@@ -1952,11 +1950,10 @@ try:
                 idle = int((now_s - datetime.datetime.fromisoformat(cols[4].replace('Z', '+00:00')).timestamp()) // 86400)
             except ValueError:
                 idle = None
+        cross = len(cols) >= 5 and cols[3] == 'true'
+        idle_txt = '' if not cross else (' (idle %dd)' % idle if idle is not None else ' (idle unknown)')
         for k in re.findall(r'[A-Za-z]+-\d+', '\t'.join(cols[1:3]) if len(cols) >= 3 else line):
-            if idle is not None and idle >= OUTSIDE_OWN_DAYS:
-                outside_idle.setdefault(k.upper(), (cols[0], idle))
-            else:
-                pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s' % cols[0])
+            pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s%s' % (cols[0], idle_txt))
 except (OSError, subprocess.SubprocessError):
     pr_unknown = True
 
@@ -2409,9 +2406,6 @@ def say_overlaps(i, against_listed=True):
     src = ' (from %s)' % i['src'] if os.environ.get('ND_WHY') == '1' else ''
     for f, who in dict.fromkeys(pairs):
         say('# overlap %s %s with %s%s' % (i['key'], f, printable(who), src))
-    if i['key'] in outside_idle:
-        num, days = outside_idle[i['key']]
-        say('# overlap %s also named by outside PR %s (idle %dd)' % (i['key'], num, days))
 
 def flush_rows():
     for t in out_buf:
