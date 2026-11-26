@@ -22,11 +22,11 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   prompt for a PR head names the judge's own `write-verdict.sh` line (qid,
   head, PR, model and effort filled in). judge-ro writes its evidence with the
   Write tool into the dir `scripts/judge-dir.sh <PR>` makes, then runs that
-  line through Bash. Its tools line is `Read, Grep, Glob, Bash, Write`:
+  line through Bash. Its tools line is `Read, Grep, Glob, Bash, Write, WebFetch, WebSearch`:
   `guard-judge-write-scope.sh` refuses any judge-ro write but one `.md`/`.txt`
   file directly in a judge dir that `judge-dir.sh` made, and the two dispatch
   guards give the read-only lane to that line and to the older `Read, Grep,
-  Glob, Bash`. You write the file by hand only when the judge's reply reports a
+  Glob, Bash, Write` and `Read, Grep, Glob, Bash`. You write the file by hand only when the judge's reply reports a
   refused write.
 - **A judge whose verdict never landed is re-dispatched by code**: `chief.sh
   next` reads the outgoing session's subagent registry (the one

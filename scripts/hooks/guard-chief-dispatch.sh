@@ -173,9 +173,11 @@ case "$subagent_type" in
     Explore) exit 0 ;;
     judge-ro)
         agent_pinned "$subagent_type" 'Read, Grep, Glob, Bash' && exit 0
-        agent_pinned "$subagent_type" 'Read, Grep, Glob, Bash, Write' && exit 0 ;;
+        agent_pinned "$subagent_type" 'Read, Grep, Glob, Bash, Write' && exit 0
+        agent_pinned "$subagent_type" 'Read, Grep, Glob, Bash, Write, WebFetch, WebSearch' && exit 0 ;;
     brief-drafter)
-        if agent_pinned "$subagent_type" 'Read, Write, Edit, Bash'; then
+        if agent_pinned "$subagent_type" 'Read, Write, Edit, Bash' \
+            || agent_pinned "$subagent_type" 'Read, Write, Edit, Bash, WebFetch, WebSearch'; then
             log_record brief-drafter-dispatch
             exit 0
         fi ;;
@@ -309,7 +311,7 @@ prompt-text read-only claim is NOT a carve-out here — three CR rounds proved i
     (audited; a per-call prefix does not reach this hook).
 
 Drafting worker briefs is a separate allowance: dispatch with subagent_type: brief-drafter
-(its agent file must pin tools Read, Write, Edit, Bash; each dispatch is logged best-effort)."
+(its agent file must pin tools Read, Write, Edit, Bash, WebFetch, WebSearch, or the line without the last two; each dispatch is logged best-effort)."
 
 reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
     || reason='"guard-chief-dispatch: chief session denied a ship-flow-shaped Agent dispatch"'

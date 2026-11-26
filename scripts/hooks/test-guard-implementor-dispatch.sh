@@ -330,6 +330,21 @@ RC1JE=$(run_hook impl-judge-ro-edit "$REG_CLAUDEX" "$(payload judge-ro sonnet 'J
 HOOK="$REAL_HOOK"
 assert_rc "judge-ro whose agent file also declares Edit is not lane-exempt" 2 "$RC1JE"
 
+printf -- '---\nname: judge-ro\ntools: Read, Grep, Glob, Bash, Write, WebFetch, WebSearch\nmodel: opus\n---\n' > "$JRW_ROOT/.claude/agents/judge-ro.md"
+HOOK="$JRW_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
+RC1JF=$(run_hook impl-judge-ro-web "$REG_CLAUDEX" "$(payload judge-ro sonnet 'Judge PR 1513' 'Fix the failing test, commit the changes and write the verdict.')")
+HOOK="$REAL_HOOK"
+assert_rc "judge-ro whose agent file pins Read/Grep/Glob/Bash/Write/WebFetch/WebSearch is lane-exempt" 0 "$RC1JF"
+
+printf -- '---\nname: judge-ro\ntools: Read, Grep, Glob, Bash, Write, WebFetch, WebSearch, Edit\nmodel: opus\n---\n' > "$JRW_ROOT/.claude/agents/judge-ro.md"
+HOOK="$JRW_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
+RC1JG=$(run_hook impl-judge-ro-web-edit "$REG_CLAUDEX" "$(payload judge-ro sonnet 'Judge PR 1513' 'Fix the failing test, commit the changes and write the verdict.')")
+HOOK="$REAL_HOOK"
+assert_rc "judge-ro with the fetch tools plus Edit is not lane-exempt" 2 "$RC1JG"
+
+RC1JR=$(run_hook impl-judge-ro-real "$REG_CLAUDEX" "$(payload judge-ro sonnet 'Judge PR 1513' 'Fix the failing test, commit the changes and write the verdict.')")
+assert_rc "the real judge-ro.md is lane-exempt" 0 "$RC1JR"
+
 # The retired console-judge-ro id is not lane-exempt, even beside a read-only agent file.
 printf -- '---\nname: console-judge-ro\ntools: Read, Grep, Glob, Bash\nmodel: opus\n---\n' > "$JRW_ROOT/.claude/agents/console-judge-ro.md"
 HOOK="$JRW_ROOT/scripts/hooks/guard-implementor-dispatch.sh"

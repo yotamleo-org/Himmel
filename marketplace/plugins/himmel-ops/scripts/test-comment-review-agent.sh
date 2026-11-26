@@ -8,7 +8,7 @@ ok() { echo "ok - $1"; }
 bad() { echo "FAIL - $1"; fails=$((fails + 1)); }
 check() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1: [$2]!=[$3]"; fi; }
 
-SICKO_BLOB=c311add9b48042d4323fb75fae95d09799165642
+SICKO_BLOB=73f3f3a0655f9e25d6ca849ade2704591b941bea
 NOCOMMENTS_BLOB=4738fabdc7df1d14d42be189b387267c74773a92
 
 [ -f "$agent" ] || { bad "agents/comment-review.md exists"; echo "$fails failed"; exit 1; }
@@ -16,7 +16,7 @@ NOCOMMENTS_BLOB=4738fabdc7df1d14d42be189b387267c74773a92
 front="$(awk 'NR == 1 && $0 == "---" { f = 1; next } f && $0 == "---" { exit } f { print }' "$agent")"
 body="$(awk 'NR == 1 && $0 == "---" { f = 1; next } f && $0 == "---" { f = 0; next } !f { print }' "$agent")"
 
-check "tools are exactly Read, Grep, Glob" "$(printf '%s\n' "$front" | sed -n 's/^tools: *//p')" "Read, Grep, Glob"
+check "tools are exactly Read, Grep, Glob, WebFetch, WebSearch" "$(printf '%s\n' "$front" | sed -n 's/^tools: *//p')" "Read, Grep, Glob, WebFetch, WebSearch"
 check "model is sonnet" "$(printf '%s\n' "$front" | sed -n 's/^model: *//p')" "sonnet"
 check "name is comment-review" "$(printf '%s\n' "$front" | sed -n 's/^name: *//p')" "comment-review"
 
