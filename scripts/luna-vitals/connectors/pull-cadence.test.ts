@@ -81,3 +81,28 @@ test('PULL_CMD exit 1 -> wrapper exits 1, no re-consent reminder', async () => {
   expect(rc).toBe(1);
   expect(stderr.toLowerCase()).not.toContain('re-consent');
 }, TIMEOUT);
+
+test('defaults: artifact goes to ~/.claude/gh-vitals and the window ends 2 days ago', async () => {
+  const tmpHome = mkdtempSync(join(tmpdir(), 'pull-cadence-home-')).replace(/\\/g, '/');
+  const env = {
+    ...process.env,
+    PULL_CMD: 'exit 0',
+    HOME: tmpHome,
+    HIMMEL_FLOW_RUNS_LEDGER: join(tmpHome, 'flow-runs.jsonl'),
+  };
+  delete env.FROM;
+  delete env.TO;
+  delete env.LUNA_VITALS_ARTIFACT_DIR;
+  const expectedTo = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
+  const proc = Bun.spawn([BASH, SCRIPT], {
+    env,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const [rc, stdout] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+  ]);
+  expect(rc).toBe(0);
+  expect(stdout.trim()).toBe(`${tmpHome}/.claude/gh-vitals/gh-${expectedTo}.json`);
+});
