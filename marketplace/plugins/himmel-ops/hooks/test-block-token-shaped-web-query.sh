@@ -42,10 +42,11 @@ pat_body="Zq7Xw3Er9Ty1Ui5Op2As4Df6Gh8Jk0Lm_Nb3Vc5Xz7Qw9Ee1Rr3Tt5Yy7Uu9Ii1Oo3Pp5A
 pat_token() { printf 'github%s%s' "_pat_" "${pat_body:0:82}"; }
 
 run_case() {
-    ERR=$(printf '%s' "$1" | env CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" CLAUDE_PROJECT_DIR="${PROJ:-$REPO}" \
+    OUT=$(printf '%s' "$1" | env CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" CLAUDE_PROJECT_DIR="${PROJ:-$REPO}" \
         WEB_TOKEN_QUERY_OK=0 ${2:+"$2"} \
-        sh -c "${plugin_cmd:-exit 0}" 2>&1 >/dev/null)
+        sh -c "${plugin_cmd:-exit 0}" 2>"$TMP/stderr.txt")
     RC=$?
+    ERR=$(cat "$TMP/stderr.txt")
 }
 
 assert_eq() {
@@ -63,8 +64,8 @@ assert_lacks() {
         *) echo "PASS $1" ;;
     esac
 }
-allowed() { assert_eq "$1: exit 0" 0 "$RC"; if [ -z "$ERR" ]; then echo "PASS $1: no text"; else echo "FAIL $1: expected no text, got: $ERR"; FAILED=$((FAILED + 1)); fi; }
-refused() { assert_eq "$1: refused (exit 2)" 2 "$RC"; assert_contains "$1: names the bypass" "WEB_TOKEN_QUERY_OK=1" "$ERR"; }
+allowed() { assert_eq "$1: exit 0" 0 "$RC"; if [ -z "$ERR$OUT" ]; then echo "PASS $1: no text on either stream"; else echo "FAIL $1: expected no text, got: $ERR$OUT"; FAILED=$((FAILED + 1)); fi; }
+refused() { assert_eq "$1: refused (exit 2)" 2 "$RC"; assert_contains "$1: names the bypass" "WEB_TOKEN_QUERY_OK=1" "$ERR"; assert_eq "$1: nothing on stdout" "" "$OUT"; }
 
 search_payload() { jq -n --arg q "$1" '{session_id:"s-web",hook_event_name:"PreToolUse",cwd:"/",tool_name:"WebSearch",tool_input:{query:$q}}'; }
 fetch_payload() { jq -n --arg u "$1" '{session_id:"s-web",hook_event_name:"PreToolUse",cwd:"/",tool_name:"WebFetch",tool_input:{url:$u,prompt:"summarize"}}'; }
@@ -91,6 +92,13 @@ for l in p o u s r; do
         refused "WebFetch url with gh${l}_ token, ${kind%%:*} checksum"
     done
 done
+
+tok=$(gh_token r "$good_sum")
+pct="%"
+run_case "$(fetch_payload "https://example.com/lookup?q=${pct}67${tok#g}")"
+refused "WebFetch url with a percent-encoded character of a token"
+run_case "$(fetch_payload "https://example.com/lookup?q=100${pct}25+sure")"
+allowed "WebFetch url with an encoded percent sign passes"
 
 tok=$(pat_token)
 run_case "$(search_payload "find $tok")"
@@ -119,8 +127,9 @@ PROJ="$TMP/invalid" run_case "$(search_payload "x $tok")"
 refused "a checkout whose detector regex is invalid still refuses (built-in regex)"
 
 run_nojq() {
-    ERR=$(printf '%s' "$1" | env PATH="$TMP/nojq" CLAUDE_PROJECT_DIR="$REPO" WEB_TOKEN_QUERY_OK=0 "$BASH" "$PLUGIN_DIR/hooks/block-token-shaped-web-query.sh" 2>&1 >/dev/null)
+    OUT=$(printf '%s' "$1" | env PATH="$TMP/nojq" CLAUDE_PROJECT_DIR="$REPO" WEB_TOKEN_QUERY_OK=0 "$BASH" "$PLUGIN_DIR/hooks/block-token-shaped-web-query.sh" 2>"$TMP/stderr.txt")
     RC=$?
+    ERR=$(cat "$TMP/stderr.txt")
 }
 run_nojq "$(search_payload "x $tok")"
 refused "without jq, a raw token is refused"
