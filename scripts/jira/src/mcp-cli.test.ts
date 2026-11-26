@@ -185,11 +185,11 @@ describe('loopback: the real CLI through the bridge', () => {
     expect(sent.fields.issuetype.name).toBe('Epic');
   });
 
-  it('a Task create with a valid body and a home but no placement is refused naming placement, with no POST at all', async () => {
-    await expect(
-      tool('create').handler({ type: 'Task', title: 'Loopback task', desc: FILLED, labels: 'standalone' }, deps()),
-    ).rejects.toThrow(/placement/i);
-    expect(posts()).toEqual([]);
+  it('a Task create with a valid body and a home but no placement flag is placed by the rules (the backlog) and files once', async () => {
+    const out = await tool('create').handler({ type: 'Task', title: 'Loopback task', desc: FILLED, labels: 'standalone' }, deps());
+    expect(out).toContain('Created HIMMEL-1');
+    expect(issuePosts()).toHaveLength(1);
+    expect((JSON.parse(issuePosts()[0].body) as { fields: { labels: string[] } }).fields.labels).toEqual(['standalone', 'backlog']);
   });
 
   it('control: the same Task with a placement files through the CLI', async () => {

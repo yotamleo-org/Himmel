@@ -1069,5 +1069,200 @@ eq "ruling_row_matches: an arm that missed a question stops the ruling, never a 
 ruling deg 7 0 0 0 1000 2000 degraded > "$W/vr-deg.txt"
 eq "degraded_row_not_eligible: a degraded row stops the ruling, says re-run and names the count, and no row is proposed" "1 1 0" "$(grep -c '^ruling: not eligible' "$W/vr-deg.txt") $(grep -c '1 degraded' "$W/vr-deg.txt") $(grep -c -E '^ruling: (Both|AST|qmd)' "$W/vr-deg.txt")"
 
+cat > "$W/plant.py" <<'PY'
+import datetime, json, os, sys
+
+root, name = sys.argv[1], sys.argv[2]
+T = "2026-11-20T10:00:00Z"
+QMD = 'bash scripts/lib/qmd-bounded.sh query -c himmel "%s"'
+MQ = lambda q: {"searches": [{"type": "lex", "query": q}]}
+GEXP = 'bash scripts/graphify/worker-graph.sh explain "%s"'
+VOID1 = ("The server-side auto mode classifier gave no verdict for Bash: another call in this response was changed by a hook "
+         "after auto mode reviewed it, or could not be confirmed unchanged, so this call's review no longer applies.")
+VOID2 = ("The server-side auto mode classifier gave no verdict for Bash: another call in this response was changed after "
+         "auto mode reviewed it, or could not be confirmed unchanged, so this call's review no longer applies.")
+
+
+class S:
+    def __init__(self, first="start the work", title="HIMMEL-9-N9-census"):
+        self.l = [{"type": "custom-title", "customTitle": title},
+                  {"type": "user", "message": {"role": "user", "content": first}}]
+        self.n = 0
+
+    def call(self, mid, name, inp, result=None, err=False, ts=T, also=()):
+        """One assistant message `mid` holding this call and any sibling calls in `also`."""
+        self.n += 1
+        cid = "c%d" % self.n
+        self.l.append({"type": "assistant", "timestamp": ts,
+                       "message": {"id": mid, "content": [{"type": "tool_use", "id": cid, "name": name, "input": inp}]}})
+        sibs = []
+        for sn, si in also:
+            self.n += 1
+            sibs.append("c%d" % self.n)
+            self.l.append({"type": "assistant", "timestamp": ts,
+                           "message": {"id": mid, "content": [{"type": "tool_use", "id": sibs[-1], "name": sn, "input": si}]}})
+        if result is not None:
+            self.l.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": cid, "is_error": err, "content": result}]}})
+        for sid in sibs:
+            self.l.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": sid, "content": "ok"}]}})
+
+    def write(self, fname="s.jsonl"):
+        d = os.path.join(root, name, "-home-x-himmel")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, fname), "w") as fh:
+            fh.write("".join(json.dumps(x) + "\n" for x in self.l))
+
+
+def causes(s):
+    s.call("q1", "Bash", {"command": QMD % "a"}, VOID1, True)
+    s.call("q2", "Bash", {"command": QMD % "b"}, VOID2, True)
+    s.call("q3", "Bash", {"command": QMD % "c"}, "PreToolUse:Bash hook error: [command hook 5]: block-bare-qmd-query: a bare qmd query is refused, request denied", True)
+    s.call("q4", "Bash", {"command": QMD % "d"}, "Exit code 124\nqmd_bounded: deadline", True)
+    s.call("q5", "Bash", {"command": QMD % "e"}, "Exit code 1\nqmd-jina-gate: OK\n16 |     CREATE TABLE IF NOT EXISTS processor_outputs (", True)
+    s.call("q6", "Bash", {"command": QMD % "f"})
+    s.call("q7", "mcp__qmd__query", {"searches": [{"type": "lex", "query": "g"}]}, '{"results":[]}')
+    s.call("q8", "Bash", {"command": QMD % "h"}, "Exit code 2\nusage: request denied, invalid option", True)
+    s.call("q9", "Bash", {"command": QMD % "i"}, "Exit code 1\nerror: see 'No node matching' in the docs", True)
+    s.call("q10", "Bash", {"command": QMD % "j"}, "Exit code 1\nthe PreToolUse:Bash hook error: [command hook 1]: x: y was logged", True)
+    s.call("g1", "Bash", {"command": GEXP % "zzz"}, "No node matching 'zzz'", False)
+    s.call("g2", "Bash", {"command": GEXP % "x"}, "Exit code 3\nworker-graph: NOTE graph built at abc is 1 commits behind\nAmbiguous: 'x' matches 2 nodes in a.sh.", True)
+    s.call("g3", "Bash", {"command": GEXP % "y"}, "Exit code 3\nNo exact match for 'y'", True)
+
+
+if name == "sib":
+    s = S()
+    s.call("m1", "mcp__qmd__query", MQ("census"), '{"results":[{"file":"himmel/docs/used1.md"}]}', also=[("Read", {"file_path": "/r/docs/used1.md"})])
+    s.call("m2", "Bash", {"command": GEXP % "census-fn"}, "NODE f [src=docs/g2.md loc=L1]")
+    s.call("m3", "Read", {"file_path": "/r/docs/g2.md"}, "x")
+    s.write()
+elif name == "previs":
+    s = S(first="Read docs/seen.md and HIMMEL-77 first")
+    s.call("m1", "mcp__qmd__query", MQ("q"), '{"results":[{"file":"himmel/docs/seen.md","title":"HIMMEL-77"}]}')
+    s.call("m2", "Read", {"file_path": "/r/docs/seen.md"}, "x")
+    s.call("m3", "Bash", {"command": "node jira get HIMMEL-77"}, "x")
+    s.call("m4", "Read", {"file_path": "/r/x.md"}, "see docs/early.md:3 for more")
+    s.call("m5", "mcp__qmd__query", MQ("x"), '{"results":[{"file":"himmel/docs/early.md"}]}')
+    s.call("m6", "Read", {"file_path": "/r/docs/early.md"}, "x")
+    s.write()
+elif name == "credit":
+    s = S()
+    s.call("m1", "Bash", {"command": QMD % "a"}, "the owning ticket is HIMMEL-555")
+    s.call("m2", "Bash", {"command": "node jira get HIMMEL-555"}, "x")
+    s.call("m3", "mcp__qmd__query", {"searches": [{"type": "lex", "query": "b"}]}, '{"results":[{"title":"Retrieval census design notes"}]}')
+    s.call("m4", "Bash", {"command": "echo retrieval census design notes"}, "x")
+    s.call("m5", "Bash", {"command": QMD % "c"}, "qmd://himmel/docs/c1.md:1 body")
+    s.call("m6", "Read", {"file_path": "/r/docs/c1.md"}, "x")
+    s.write()
+elif name == "causes":
+    s = S()
+    causes(s)
+    s.write()
+elif name == "sweeps":
+    s = S()
+    for i, cmd in enumerate(("rtk grep -rn foo .", "rtk rg foo", "rtk find . -name x", "rtk proxy git grep foo",
+                             "rtk proxy grep -rn foo .", "rtk read docs/a.md", "rtk git status")):
+        s.call("w%d" % i, "Bash", {"command": cmd}, "x")
+    s.call("p1", "Bash", {"command": 'bash scripts/graphify/worker-graph.sh path "a" "b"'}, "a -> b")
+    s.write()
+elif name == "miss":
+    s = S()
+    s.call("m1", "mcp__qmd__query", {"searches": [{"type": "lex", "query": "x"}]}, "The operation timed out.", True)
+    s.call("m2", "Bash", {"command": "rtk grep -rn x ."}, "docs/a.md:1:x")
+    s.call("m3", "Bash", {"command": GEXP % "zzz"}, "No node matching 'zzz'")
+    s.call("m4", "Bash", {"command": "git grep -n x"}, "docs/a.md:1:x")
+    s.write("s1.jsonl")
+    t = S(title="HIMMEL-8-N8-other")
+    t.call("m1", "mcp__qmd__query", {"searches": [{"type": "lex", "query": "x"}]}, '{"results":[{"file":"himmel/docs/z.md"}]}')
+    t.write("s2.jsonl")
+elif name == "old":
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    s = S()
+    s.call("m1", "mcp__qmd__query", {"searches": [{"type": "lex", "query": "x"}]}, '{"results":[]}', ts="2020-01-01T10:00:00Z")
+    s.call("m2", "Bash", {"command": "rtk grep -rn x ."}, "x", ts="2020-01-01T10:00:00Z")
+    s.call("m3", "mcp__qmd__query", {"searches": [{"type": "lex", "query": "y"}]}, '{"results":[{"file":"himmel/docs/a.md"}]}', ts=now)
+    s.call("m4", "Bash", {"command": "rtk grep -rn y ."}, "x", ts=now)
+    s.write()
+elif name == "samp":
+    s = S()
+    causes(s)
+    s.call("k1", "Bash", {"command": QMD % "tok"}, "qmd://himmel/docs/k.md:1 token " + "ghp" + "_" + "x" * 36)
+    s.call("k2", "Bash", {"command": 'bash scripts/lib/qmd-bounded.sh query -c luna "private"'}, "qmd://luna/notes/n.md:1 body")
+    s.call("k3", "Bash", {"command": QMD % "home"}, "qmd://himmel/docs/h.md:1 at " + "/" + "home" + "/someone/Documents/himmel/docs/h.md")
+    s.call("k4", "Read", {"file_path": "/r/docs/h.md"}, "x")
+    s.write()
+PY
+plant() { py "$W/plant.py" "$W/v2" "$1"; }
+v2run() { plant "$1"; py "$EV" census --projects "$W/v2/$1" --days "${2:-0}" --out "$W/v2/$1.json" > /dev/null 2>&1; }
+cv() { py -c 'import json,sys; d=json.load(open(sys.argv[1]))["roles"]["worker"]; print(" ".join(str(d.get(k, "MISSING")) for k in sys.argv[2:]))' "$W/v2/$1.json" "${@:2}"; }
+
+v2run sib
+eq "census v2: a sibling read in the same message is not use (old used 1, v2 0); a read in a later message is (graphify v2 1)" \
+    "1 0 0 1 1 1" "$(cv sib qmd_used qmd_used_v2 qmd_used_path graphify_used graphify_used_v2 graphify_used_path)"
+v2run previs
+eq "census v2: a path and a ticket key visible in the brief or an earlier result are not credit (old used 2, v2 0)" \
+    "2 0 0 0" "$(cv previs qmd_used qmd_used_v2 qmd_used_path qmd_used_key)"
+v2run credit
+eq "census v2: path, ticket key and note title are credited separately and v2 is any of them" \
+    "1 1 1 3" "$(cv credit qmd_used_path qmd_used_key qmd_used_title qmd_used_v2)"
+v2run causes
+eq "census v2: voided by a sibling rewrite (both wordings), a named guard, timeout, db error, missing, empty; loose words stay other" \
+    "2 1 1 1 1 1 3" "$(cv causes qmd_cause_voided_sibling_rewrite qmd_cause_guard qmd_cause_timeout qmd_cause_qmd_db_error qmd_cause_missing_result qmd_cause_empty qmd_cause_other)"
+eq "census v2: the guard is named by the hook before its colon" "1" "$(cv causes qmd_guard_block-bare-qmd-query)"
+eq "census v2: graphify No node matching (no error flag), Ambiguous and No exact match are failed no_match" "3 2 3" "$(cv causes graphify_cause_no_match graphify_failed graphify_failed_v2)"
+eq "census v2: every failed call has one cause (the cause counts sum to failed_v2)" "10 3" "$(cv causes qmd_failed_v2 graphify_failed_v2)"
+v2run sweeps
+eq "census v2: rtk grep, rtk rg, rtk find and rtk proxy sweeps count, rtk read and rtk git do not; graphify path is a graphify call" "5 1 0" "$(cv sweeps sweeps graphify_calls qmd_calls)"
+v2run miss
+eq "census v2: miss-then-grep splits by route, the pooled key is their sum, sessions count per route" "1 1 2 2 1" "$(cv miss qmd_miss_then_grep graphify_miss_then_grep fallback_after_miss qmd_sessions graphify_sessions)"
+v2run old 7
+eq "census v2: a sweep or a retrieval call older than the window is not counted whatever the file mtime" "1 1" "$(cv old sweeps qmd_calls)"
+
+LEDC="$W/ledger-census.jsonl"
+HIMMEL_EVAL_RUNS_LEDGER="$LEDC" py "$EV" census --projects "$W/v2/causes" --days 0 --out "$W/v2/l0.json" > /dev/null 2>&1
+eq "census ledger: no row without --ledger" "no" "$([ -e "$LEDC" ] && echo yes || echo no)"
+HIMMEL_EVAL_RUNS_LEDGER="$LEDC" py "$EV" census --projects "$W/v2/causes" --days 0 --out "$W/v2/l1.json" --ledger > /dev/null 2>&1
+eq "census ledger: --ledger appends exactly one retrieval-census row" "1" "$(grep -c '"eval":"retrieval-census"' "$LEDC")"
+eq "census ledger: the row is valid, aggregate counts only (no query text, no path, no hook name)" "ok" "$(py - "$LEDC" "$REPO_ROOT/scripts/eval/lib/eval_runs.py" <<'PY'
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("er", sys.argv[2])
+er = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(er)
+raw = open(sys.argv[1]).read()
+row = json.loads(raw.splitlines()[0])
+bad = er.validate(row)
+leaks = [w for w in ("qmd-bounded", "block-bare-qmd-query", "docs/", "worker-graph", "/home") if w in raw]
+m = row["metrics"]
+ok = not bad and not leaks and row["eval"] == "retrieval-census" and m.get("qmd_calls") == 10 and m.get("graphify_calls") == 3 \
+    and m.get("qmd_cause_guard") == 1 and row["cases"]["worker"]["qmd_calls"] == 10
+print("ok" if ok else "bad=%s leaks=%s metrics=%s" % (bad, leaks, m))
+PY
+)"
+
+plant samp
+py "$EV" census --projects "$W/v2/samp" --days 0 --sample 5 --seed 3 --out "$W/v2/s5a.jsonl" > /dev/null 2>&1
+py "$EV" census --projects "$W/v2/samp" --days 0 --sample 5 --seed 3 --out "$W/v2/s5b.jsonl" > /dev/null 2>&1
+eq "census sample: the same seed draws the same sample" "$(sha256sum < "$W/v2/s5a.jsonl")" "$(sha256sum < "$W/v2/s5b.jsonl")"
+eq "census sample: a sample of 5 spans 5 different strata (tool x role x cause)" "5" "$(py -c 'import json,sys
+print(len({(r["tool"], r["role"], r["stratum"]) for r in map(json.loads, open(sys.argv[1]))}))' "$W/v2/s5a.jsonl")"
+py "$EV" census --projects "$W/v2/samp" --days 0 --sample 100 --seed 1 --out "$W/v2/sall.jsonl" > /dev/null 2>&1
+eq "census sample: a secret-looking call, a luna call and a someone-owned home path never reach the file" "0 0 0" "$(grep -c 'ghp_' "$W/v2/sall.jsonl") $(grep -c 'luna' "$W/v2/sall.jsonl") $(grep -c '/someone/' "$W/v2/sall.jsonl")"
+eq "census sample: every retrieval call that is safe is drawn (13 causes calls + the home-path call)" "14" "$(wc -l < "$W/v2/sall.jsonl" | tr -d ' ')"
+cat > "$W/agree.jsonl" <<'EOF'
+{"id":"r1","tool":"qmd","role":"worker","stratum":"voided_sibling_rewrite","name":"Bash","command":"q","result":"The server-side auto mode classifier gave no verdict for Bash: another call in this response was changed after auto mode reviewed it","error":true,"has_result":true,"later":[],"cand":{"path":[],"key":[],"title":[]},"pre_visible":[],"label":{"cause":"voided_sibling_rewrite","used":null}}
+{"id":"r2","tool":"qmd","role":"worker","stratum":"guard","name":"Bash","command":"q","result":"PreToolUse:Bash hook error: [command hook 5]: block-bare-qmd-query: refused","error":true,"has_result":true,"later":[],"cand":{"path":[],"key":[],"title":[]},"pre_visible":[],"label":{"cause":"guard","used":null}}
+{"id":"r3","tool":"qmd","role":"worker","stratum":"ok_used","name":"Bash","command":"q","result":"qmd://himmel/docs/a.md:1","error":false,"has_result":true,"later":["{\"file_path\": \"/r/docs/a.md\"}"],"cand":{"path":["docs/a.md"],"key":[],"title":[]},"pre_visible":[],"label":{"cause":"ok","used":true}}
+{"id":"r4","tool":"qmd","role":"worker","stratum":"ok_unused","name":"Bash","command":"q","result":"qmd://himmel/docs/b.md:1","error":false,"has_result":true,"later":["{\"command\": \"ls\"}"],"cand":{"path":["docs/b.md"],"key":[],"title":[]},"pre_visible":[],"label":{"cause":"ok","used":false}}
+{"id":"r5","tool":"qmd","role":"worker","stratum":"other","name":"Bash","command":"q","result":"Exit code 2\nusage: x","error":true,"has_result":true,"later":[],"cand":{"path":[],"key":[],"title":[]},"pre_visible":[],"label":{"cause":"empty","used":null}}
+{"id":"r6","tool":"graphify","role":"worker","stratum":"ok_unused","name":"Bash","command":"q","result":"NODE c [src=docs/c.md]","error":false,"has_result":true,"later":["{\"file_path\": \"/r/docs/c.md\"}"],"cand":{"path":["docs/c.md"],"key":[],"title":[]},"pre_visible":["docs/c.md"],"label":{"cause":"ok","used":false}}
+EOF
+py "$EV" census --agreement "$W/agree.jsonl" > "$W/agree.txt" 2>&1
+eq "census agreement: cause 5 of 6, used 3 of 3, failed 6 of 6" "5/6 3/3 6/6" "$(awk -F'\t' '$1=="cause"{a=$3"/"$2} $1=="used"{b=$3"/"$2} $1=="failed"{c=$3"/"$2} END{print a, b, c}' "$W/agree.txt")"
+eq "census agreement: the disagreeing record is named" "1" "$(grep -c '^disagree cause: r5' "$W/agree.txt")"
+FIX="$HERE/fixtures/census-labelled-2026-11-26.jsonl"
+py "$EV" census --agreement "$FIX" > "$W/agree-fix.txt" 2>&1
+eq "census agreement: the frozen hand-labelled fixture holds 150 calls" "150" "$(awk -F'\t' '$1=="cause"{print $2}' "$W/agree-fix.txt")"
+eq "census agreement: the census names the cause of at least 95% of the labelled calls, and the failed flag too" "ok ok" "$(awk -F'\t' '$1=="cause"{a=($4>=0.95?"ok":"low")} $1=="failed"{b=($4>=0.95?"ok":"low")} END{print a, b}' "$W/agree-fix.txt")"
+eq "census agreement: the fixture holds no home directory and no secret-looking token" "0" "$( { grep -o -E '/home/[A-Za-z0-9_.-]+|ghp_|github_pat_|AKIA[0-9A-Z]|BEGIN [A-Z ]*PRIVATE' "$FIX" || true; } | { grep -c -v -x '/home/user' || true; })"
+
 [ "$fails" -eq 0 ] && echo "all passed" || echo "$fails failed"
 exit "$fails"

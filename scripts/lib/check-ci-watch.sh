@@ -5,7 +5,7 @@
 #        check-ci-watch.sh --run <id> <job-name-or-empty> <max-wait>
 # PR contract: 0 + success text; 1 + X rows on red; 2 + stderr on unreadable.
 # Run contract: 0 success; 1 red/cancelled; 2 unreadable/deadline (7 opt-in).
-# Env: CHECK_CI_CACHE_TTL (60), CHECK_CI_DECIDE_TTL (5),
+# Env: CHECK_CI_CACHE_TTL (120), CHECK_CI_DECIDE_TTL (5),
 # CHECK_CI_WATCH_INTERVAL (30), CHECK_CI_WATCH_INTERVAL_MAX (120),
 # CHECK_CI_WATCH_SLEEP_CMD (test seam), CHECK_CI_RUN_HEARTBEAT (optional path),
 # plus gh-ci-cache.sh knobs. Run heartbeat uses chief-wait.sh's shape.
@@ -25,7 +25,7 @@ _num() { case "$2" in ''|*[!0-9]*|0) echo "$3" ;; *) echo "$2" ;; esac; }
 FLOOR=$(_num floor "${CHECK_CI_WATCH_INTERVAL:-30}" 30)
 CEIL=$(_num ceil "${CHECK_CI_WATCH_INTERVAL_MAX:-120}" 120)
 [ "$CEIL" -lt "$FLOOR" ] && CEIL=$FLOOR
-TTL=$(_num ttl "${CHECK_CI_CACHE_TTL:-60}" 60)
+TTL=$(_num ttl "${CHECK_CI_CACHE_TTL:-120}" 120)
 DTTL=$(_num dttl "${CHECK_CI_DECIDE_TTL:-5}" 5)
 export CIC_MAX_WAIT="${CIC_MAX_WAIT:-${CHECK_CI_MAX_WAIT:-0}}"
 

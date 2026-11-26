@@ -2312,3 +2312,15 @@ test("Board: unclosed workers and undelivered chief replies leave the operator c
   expect(waitingSec(both)).not.toContain("N5805");
   expect(asideOf(both)).toContain("0 tickets wait for you, any version");
 });
+
+test("8857: JIRA_PROJECT_KEY=ZED with a ZED-1.md mirror shows its ticket on /api/roadmap", async () => {
+  const d = mkdtempSync(join(tmpdir(), "roadmap-zed-"));
+  cleanups.push(() => rmSync(d, { recursive: true, force: true }));
+  const home = join(d, "home"), root = join(home, ".himmel", "state", "jira-mirror");
+  mkdirSync(join(root, "ZED"), { recursive: true });
+  writeFileSync(join(root, "ZED", "ZED-1.md"), issueOf("ZED", 1, ["v1.1.2"], "zed work"));
+  writeFileSync(join(root, "ZED.versions.tsv"), "v1.1.2\tfalse\t\n");
+  const r = await serveBoard(home, { JIRA_PROJECT_KEY: "ZED" })();
+  expect(r.state).toBe("ok");
+  expect(r.tickets.map((t: { id: string; project: string }) => [t.id, t.project])).toEqual([["ZED-1", "ZED"]]);
+});

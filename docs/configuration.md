@@ -488,7 +488,7 @@ in `.env` or the launching shell):
 |---|---|---|
 | `CHECK_CI_CACHE` | `1` | `0` = no cache: gh's own `--watch` and one gh call per probe (the pre-cache behaviour) |
 | `CHECK_CI_CACHE_DIR` | `$HOME/.himmel/state/ci-cache` | shared cache dir; point every caller at one dir (per user) |
-| `CHECK_CI_CACHE_TTL` | `60` | seconds a snapshot serves poll-grade reads |
+| `CHECK_CI_CACHE_TTL` | `120` | seconds a snapshot serves poll-grade reads |
 | `CHECK_CI_DECIDE_TTL` | `5` | max age of the snapshot a terminal verdict (green/red confirm, required-check gate) may rest on |
 | `CHECK_CI_WATCH_INTERVAL` / `CHECK_CI_WATCH_INTERVAL_MAX` | `30` / `120` | poll-interval floor / ceiling; doubles while the rollup is unchanged, resets on a change |
 | `CHECK_CI_LOW_CORE_FACTOR` | `6` | check-ci multiplies its poll sleeps and `CR_FIRST_EVERY` by this while every live REST `core` row in quota.tsv is under `GHQ_SCAN_FLOOR`. At the start check-ci also waits for the REST core reset when every token (`read`, `read2`, `main`) is under `GHQ_SCAN_FLOOR`, as it already does for GraphQL, and after a refusal or a `QUOTA-PAUSE` it waits on main alone (a read that ends on main, such as the classic protection endpoint, needs it); a reset beyond `--max-wait` is exit 2 |
@@ -521,6 +521,7 @@ prints the live budget as one read-only line (`gh-api: remaining=R/5000 reset=HH
 `next-dispatchable` and `ticket-status`; every other caller is `main`. A scan gates on the token its
 reads ride (`ghq_scan_token`), and a `blocked/` marker records the caller's routes.
 `scripts/measurements/gh-graphql-callers.sh` is a read-only measurement that prints an estimate of GraphQL points per hour by calling script (1 point per call), with `watch` (samples the live fleet, changes nothing), `run` (one command under a counting shim) and `report` modes.
+`scripts/measurements/gh-core-per-token.sh` is the free per-token counterpart: `sample` and `loop` write `rate_limit` for the main and the read token to a log (every 5 minutes by default), and `report` prints core calls an hour per token for any window (`--from`, `--to`), leaving out an interval that crosses a reset.
 Never run your own `gh pr checks` poll loop — that is the spend this replaces;
 call `scripts/check-ci.sh` once, bounded by `--max-wait`. Run a long wait with
 `run_in_background`: its completion notification carries the exit code.

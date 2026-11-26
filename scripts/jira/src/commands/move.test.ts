@@ -245,6 +245,7 @@ describe('jira move into a version, for operator work', () => {
     root = mkdtempSync(join(tmpdir(), 'move-gate-'));
     vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'state'));
     vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));
+    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'adm.jsonl'));
     vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
     vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
@@ -275,12 +276,15 @@ describe('jira move into a version, for operator work', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  const lastRequest = () => JSON.parse(readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8').trim().split('\n').at(-1) ?? '{}');
+  const filedRow = () => JSON.parse(readFileSync(join(root, 'adm.jsonl'), 'utf8').trim().split('\n').at(-1) ?? '{}');
+  const operatorDecisions = () => readFileSync(join(root, 'state', 'R1', 'operator.jsonl'), 'utf8').trim().split('\n')
+    .map((l) => JSON.parse(l) as { kind: string; id: string; op?: string; to_v?: string }).filter((o) => o.kind === 'decision');
 
-  it('an operator-directed move --proposed-version files with no words, and the door rules its INTAKE', async () => {
+  it('an operator-directed move --proposed-version is filed into current by the rules with a filed row, and queues no INTAKE', async () => {
     await move();
     expect(posted()).toBe(true);
-    expect(lastRequest()).toMatchObject({ key: 'HIMMEL-78', to_v: 'v1.1.3', state: 'open', evidence: {} });
+    expect(filedRow()).toMatchObject({ kind: 'filed', key: 'HIMMEL-78', version: 'v1.1.3', ground: 'rules:operator-ask:label' });
+    expect(operatorDecisions()).toEqual([]);
   });
 
   it('an operator-directed move --proposed-version with --decision and --words still records them', async () => {
@@ -288,6 +292,8 @@ describe('jira move into a version, for operator work', () => {
     writeFileSync(join(root, 'specs', 'decisions', 'verbatim-decision-9-op.txt'), 'Operator:\n\n"Approved one more round"\n');
     await move('--decision', '9', '--words', 'Approved one more round');
     expect(posted()).toBe(true);
-    expect(lastRequest()).toMatchObject({ key: 'HIMMEL-78', to_v: 'v1.1.3', evidence: { operator: expect.stringMatching(/^O-R1-\d{4}$/) } });
+    const [record] = operatorDecisions();
+    expect(record).toMatchObject({ op: 'add', to_v: 'v1.1.3', id: expect.stringMatching(/^O-R1-\d{4}$/) });
+    expect(filedRow()).toMatchObject({ kind: 'filed', key: 'HIMMEL-78', version: 'v1.1.3', ruling: record!.id });
   });
 });

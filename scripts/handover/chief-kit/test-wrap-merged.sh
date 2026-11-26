@@ -260,6 +260,13 @@ contains "13: names the step" "$out" "board"
 contains "13: bullet was written first" "$(tail -n 1 "$CHIEF")" "MERGED #777"
 contains "13: the board failure line the waiter reports, not retries" "$out" "wrap-merged: step board failed"
 
+fixture
+WM_BOARD_RC=3 run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+check "13b: a stalled board is not a wrap failure (rc 0)" "$rc" 0
+contains "13b: the warning names the step and the timer" "$out" "WARN step board stalled"
+lacks "13b: no step failure line" "$out" "wrap-merged: step board failed"
+contains "13b: the bullet was written" "$(tail -n 1 "$CHIEF")" "MERGED #777"
+
 # --- 14. append failure -> rc 6, the board still re-rendered ----------------
 fixture
 chmod 444 "$CHIEF"

@@ -36,19 +36,20 @@ export function checkConsoleOverride(reason: string): string {
 /**
  * Holds a filing into a frozen version to --gate. Returns the ledger row to
  * append once the ticket exists, or undefined when no gate applies: no frozen
- * version, or a chief override (which writes its own row).
+ * version, a chief override (which writes its own row), or a filing the rules
+ * placed (`rules`): placeByRules already ruled on the freeze, and its filed row is the record.
  */
 export async function checkIntakeGate(
   project: string,
   fixVersions: unknown,
-  o: { gate?: string; override: boolean },
+  o: { gate?: string; override: boolean; rules?: boolean },
 ): Promise<Pick<AdmissionInput, 'version' | 'gate'> | undefined> {
   const targets = ((fixVersions ?? []) as { name: string }[]).map((v) => v.name);
   if (targets.length === 0) return undefined;
   const known = await fetchVersions(project);
   for (const version of targets) {
     const date = frozenDate(known.find((v) => v.name === version)?.description);
-    if (date === undefined || o.override) continue;
+    if (date === undefined || o.override || o.rules) continue;
     if (o.gate === undefined) {
       throw new Error(`${version} is frozen (${date}): file with --proposed-version <v>, the version the operator named, or ${version} when the operator named none; the door places it (--gate ${INTAKE_GATES} still files into ${version} directly)`);
     }

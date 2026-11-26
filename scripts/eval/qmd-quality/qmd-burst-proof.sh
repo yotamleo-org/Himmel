@@ -96,7 +96,7 @@ one_call() {
   start="$(date +%s%N)"
   # -q skips ~/.curlrc and --noproxy '*' ignores proxy variables: either could carry the bearer elsewhere.
   reply="$(printf 'header = "Authorization: Bearer %s"\n' "$token" |
-    curl -q --noproxy '*' ${auth[@]+"${auth[@]}"} -s -m "$cap" -w '\n%{http_code}' -X POST \
+    curl -q --noproxy '*' -g ${auth[@]+"${auth[@]}"} -s -m "$cap" -w '\n%{http_code}' -X POST \
       -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
       -d "$payload" -- "$url" 2>/dev/null)"
   rc=$?

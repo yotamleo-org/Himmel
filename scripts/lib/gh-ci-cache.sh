@@ -157,7 +157,7 @@ _cic_gh() {   # _cic_gh <gh pr subcommand> args… — appends the selector when
 _cic_head_now() { _cic_gh view --json headRefOid --jq .headRefOid 2>/dev/null; }
 
 cic_init() {
-    local dir key url branch
+    local dir key url
     CIC_RUN_ID=""
     CIC_SELECTOR="${1:-}"
     CIC_HEAD="${2:-}"
@@ -182,9 +182,7 @@ cic_init() {
     case "$CIC_SELECTOR" in
         https://github.com/*/pull/*) CIC_PR_REPO="${CIC_SELECTOR#https://github.com/}"; CIC_PR_REPO="${CIC_PR_REPO%/pull/*}" ;;
     esac
-    branch=""
-    [ -n "$CIC_SELECTOR" ] || branch=$(git branch --show-current 2>/dev/null) || branch=""
-    key=$(printf '%s|%s|%s' "${CIC_PR_REPO:-$url}" "$CIC_SELECTOR" "$branch" | cksum | awk '{print $1}')
+    key=$(printf '%s|%s' "${CIC_PR_REPO:-$url}" "$CIC_HEAD" | cksum | awk '{print $1}')
     CIC_FILE="$dir/pr-$key.rows"
     CIC_LOCK="$CIC_FILE.lock"
     return 0

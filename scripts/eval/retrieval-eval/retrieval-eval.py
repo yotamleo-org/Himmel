@@ -7,7 +7,17 @@ file set, then counts how sessions really use qmd and graphify.
   run     --questions Q --out DIR [--repo R] [--arms A,B] [--k 5] [--timeout 60]
           [--collection himmel] [--label L]
   check   --questions Q [--repo R]           validate a question set, print its size
-  census  --out FILE [--projects DIR] [--days 7]
+  census  --out FILE [--projects DIR] [--days 7] [--ledger]
+          Counts, per role: sessions per route, calls, failures with their cause, "used" (the
+          old *_used, plus a v2 that credits path, ticket key and note title separately from
+          calls sent in later assistant messages, ignoring what the session had already
+          shown), sweeps (rtk-wrapped too) and miss-then-grep per route. --ledger appends ONE
+          aggregate-only eval-runs row (eval retrieval-census): no query text, path or hook name.
+  census  --sample N --seed S --out FILE [--days 30]
+          Draws a stratified sample (tool x role x cause) of retrieval calls with a trimmed
+          result and the next calls, redacted, for hand labelling. FILE stays outside every checkout.
+  census  --agreement FIXTURE
+          Per-field agreement (cause, failed, used) between a hand-labelled sample and the census logic.
   replay  --results FILE [--questions Q] [--arms grep,qmd-hybrid,graphify]
           [--rrf-k 60] [--k 5] [--add path,ident-grep]
           Re-fuse saved files offline; compare with saved combined hits. Questions
@@ -97,6 +107,7 @@ import hashlib
 import json
 import math
 import os
+import random
 import re
 import shlex
 import shutil
@@ -1100,13 +1111,34 @@ def cmd_replay(a):
 
 # ---- census -------------------------------------------------------------------
 
-SWEEP = re.compile(r"(?:^|[;&|(\n]\s*)(?:git\s+grep\b|grep\s+-\w*[rR]|rg\s|find\s)")
+SWEEP = re.compile(r"(?:^|[;&|(\n]\s*)(?:rtk\s+(?:grep\b|rg\b|find\b)|(?:rtk\s+proxy\s+)?(?:git\s+grep\b|grep\s+-\w*[rR]|rg\s|find\s))")
 QMD_BASH = re.compile(r"(?:qmd-bounded\.sh|(?:^|[;&|(\n]\s*)qmd)\s+(?:query|search|vsearch)\b")
-GRAPH_BASH = re.compile(r"(?:(?:^|[;&|(\n]\s*)graphify|(?:leg|worker)-graph\.sh)\s+(?:query|explain)\b")
+GRAPH_BASH = re.compile(r"(?:(?:^|[;&|(\n]\s*)graphify|(?:leg|worker)-graph\.sh)\s+(?:query|explain|path)\b")
 PATHS = re.compile(r"src=([^\s\]]+)|qmd://[^/\s]+/([^\"\s\]]+)|([\w./-]+\.(?:md|sh|py|js|mjs|ts|json))")
 RESOURCE = re.compile(r"\[Resource from [^\]]*?qmd://[^/\s\]]+/([^\s\]]+)\]")
 QMD_TOOL =re.compile(r"^mcp__(?:plugin_qmd_)?qmd__(?:query|get|multi_get)$")
 FEATURE = re.compile(r"qmd|graphify|retrieval|graph-|semantic", re.I)
+
+VOID_SIBLING = re.compile(r"gave no verdict for \w+: another call in this response was changed")
+VOID_SELF = re.compile(r"gave no verdict for \w+: a hook changed this call's input")
+GUARD = re.compile(r"(?m)^PreToolUse:\w+ hook error: (?:\[.*?\]: )?([\w.-]+(?: [\w.-]+)?):")
+GUARD_UNNAMED = re.compile(r"(?m)^PreToolUse:\w+ hook error:")
+NO_MATCH = re.compile(r"(?m)^(?:No node matching|No exact match|No matching nodes found|Ambiguous:)")
+TIMED_OUT = re.compile(r"(?m)^(?:Exit code 124\b|Command timed out|Command did not complete within its \d+s timeout)")
+DB_ERROR = re.compile(r"\bprocessor_outputs\b")
+CAUSES = ("voided_sibling_rewrite", "voided_self_rewrite", "guard", "no_match", "timeout", "qmd_db_error",
+          "missing_result", "empty", "other")
+ROUTES = ("qmd", "graphify")
+KEY = re.compile(r"\bHIMMEL-\d+\b")
+ROOT_DOC = re.compile(r"(?:^|/)(HIMMEL-\d+)\.md$")
+TITLE = re.compile(r"\"title\":\s*\"([^\"]{12,120})\"|(?m:^\s*Title:\s*(.{12,120})$)")
+PATH_TAIL = re.compile(r":\d+(?::\d+)?$")
+LATER_CALLS, LATER_CAP, CAND_CAP = 5, 600, 60
+COUNT_KEYS = (["sessions", "sessions_with_retrieval", "qmd_calls", "qmd_failed", "qmd_used", "graphify_calls",
+               "graphify_failed", "graphify_used", "sweeps", "fallback_after_miss",
+               "qmd_sessions", "graphify_sessions", "qmd_miss_then_grep", "graphify_miss_then_grep"]
+              + [r + "_" + x for r in ROUTES for x in ("failed_v2", "used_path", "used_key", "used_title", "used_v2")])
+CAUSE_KEYS = [r + "_cause_" + c for r in ROUTES for c in CAUSES]
 
 
 def role_of(title, path, side):
@@ -1122,8 +1154,31 @@ def role_of(title, path, side):
     return "interactive"
 
 
-def session_calls(path):
-    title, side, calls, res = None, False, [], {}
+class Seen:
+    """Everything a session has shown the model so far, in transcript order. A call keeps the length
+    of the text before it (plus its own input), so what was already visible is a prefix search."""
+
+    def __init__(self):
+        self.parts, self.size, self._text, self._lower = [], 0, None, None
+
+    def add(self, text):
+        if text:
+            self.parts.append(text)
+            self.size += len(text) + 1
+
+    def text(self):
+        if self._text is None:
+            self._text = "\n".join(self.parts)
+        return self._text
+
+    def lower(self):
+        if self._lower is None:
+            self._lower = self.text().lower()
+        return self._lower
+
+
+def parse_session(path):
+    title, side, calls, res, seen = None, False, [], {}, Seen()
     with open(path, errors="replace") as fh:
         for line in fh:
             try:
@@ -1139,22 +1194,36 @@ def session_calls(path):
                 side = True
             m = d.get("message")
             c = m.get("content") if isinstance(m, dict) else None
+            if isinstance(c, str):
+                seen.add(c)
+                continue
             if not isinstance(c, list):
                 continue
             for b in c:
                 if not isinstance(b, dict):
                     continue
-                if t == "assistant" and b.get("type") == "tool_use":
-                    calls.append(dict(id=b.get("id"), name=b.get("name", ""), input=b.get("input") or {},
-                                      ts=d.get("timestamp")))
-                elif t == "user" and b.get("type") == "tool_result":
+                bt = b.get("type")
+                if t == "assistant" and bt == "tool_use":
+                    inp = b.get("input") or {}
+                    seen.add(json.dumps(inp))
+                    calls.append(dict(id=b.get("id"), name=b.get("name", ""), input=inp, ts=d.get("timestamp"),
+                                      mid=m.get("id") or "u%d" % len(calls), vis=seen.size))
+                elif t == "user" and bt == "tool_result":
                     r = b.get("content")
                     if isinstance(r, list):
                         r = " ".join(x.get("text", "") for x in r if isinstance(x, dict))
                     res[b.get("tool_use_id")] = (str(r or ""), bool(b.get("is_error")))
+                    seen.add(str(r or ""))
+                elif bt == "text":
+                    seen.add(b.get("text") or "")
     for cl in calls:
+        cl["has_result"] = cl["id"] in res
         cl["result"], cl["error"] = res.get(cl["id"], ("", False))
-    return title, side, calls
+    return title, side, calls, seen
+
+
+def session_calls(path):
+    return parse_session(path)[:3]
 
 
 def kind_of(cl):
@@ -1174,15 +1243,51 @@ def kind_of(cl):
     return None
 
 
-def failed(cl):
-    r = cl["result"].strip()
-    if cl["error"] or not r:
+def empty_result(r, error=False):
+    r = r.strip()
+    if error or not r:
         return True
     try:
         d = json.loads(r)
     except ValueError:
         return False
     return d in ([], {}) or (isinstance(d, dict) and d.get("results") == [])
+
+
+def failed(cl):
+    return empty_result(cl["result"], cl["error"])
+
+
+def soft_miss(route, r, error):
+    """A call the exit status passes whose answer is a miss: graphify names no node (no error flag), or
+    the shell moved the command to the background after its timeout, so no answer came back."""
+    if error:
+        return False
+    return (route == "graphify" and bool(NO_MATCH.search(r))) or bool(TIMED_OUT.search(r))
+
+
+def cause_of(r, has_result=True):
+    """Why a failed call failed: one of CAUSES, a guard as `guard:<hook name>`."""
+    if VOID_SIBLING.search(r):
+        return "voided_sibling_rewrite"
+    if VOID_SELF.search(r):
+        return "voided_self_rewrite"
+    g = GUARD.search(r)
+    if g:
+        return "guard:" + g.group(1).replace(" ", "-")
+    if GUARD_UNNAMED.search(r):
+        return "guard:unnamed"
+    if NO_MATCH.search(r):
+        return "no_match"
+    if TIMED_OUT.search(r):
+        return "timeout"
+    if DB_ERROR.search(r):
+        return "qmd_db_error"
+    if not has_result:
+        return "missing_result"
+    if not r.strip() or empty_result(r):
+        return "empty"
+    return "other"
 
 
 def result_paths(cl):
@@ -1202,6 +1307,29 @@ def result_paths(cl):
     return {p for p in paths if "/" in p.strip("/")}
 
 
+def result_paths_v2(cl):
+    """result_paths without a `:<line>` tail, and with a qmd:// document that sits at a collection root
+    (a ticket mirror note) kept: its name is the path."""
+    qmd = cl["name"].startswith("mcp__")
+    roots = set()
+    if qmd and not cl["name"].endswith("__query"):
+        inp = cl["input"]
+        found = [x.strip() for x in str(inp.get("file") or inp.get("pattern") or "").split(",")]
+        found += RESOURCE.findall(cl["result"])
+    else:
+        found = []
+        for mt in PATHS.finditer(cl["result"]):
+            p = PATH_TAIL.sub("", next(g for g in mt.groups() if g))
+            found.append(p)
+            if mt.group(2):
+                roots.add(p)
+    found = [PATH_TAIL.sub("", p) for p in found]
+    paths = set(found)
+    if qmd:
+        paths |= {p.partition("/")[2] for p in found}
+    return {p for p in paths if "/" in p.strip("/") or p in roots}
+
+
 def used(cl, later):
     paths = result_paths(cl)
     for nx in later:
@@ -1209,6 +1337,90 @@ def used(cl, later):
         if any(re.search(r"(?<![\w.-])" + re.escape(p) + r"(?![\w-])", blob) for p in paths):
             return True
     return False
+
+
+@functools.lru_cache(maxsize=4096)
+def bounded(p):
+    return re.compile(r"(?<![\w.-])" + re.escape(p) + r"(?![\w-])")
+
+
+def surfaced(cl):
+    """What a result handed over that a later call could use: paths, ticket keys, note titles.
+    A path the call's own input names (by basename too) is not handed over, only echoed."""
+    own = json.dumps(cl["input"])
+    r = cl["result"]
+    titles = {(a or b).strip() for a, b in TITLE.findall(r)}
+    cand = dict(path=sorted(p for p in result_paths_v2(cl) if os.path.basename(p) not in own),
+                key=sorted(set(KEY.findall(r))),
+                title=sorted(t for t in titles if t))
+    return {k: v[:CAND_CAP] for k, v in cand.items()}
+
+
+def credit(cand, later, visible):
+    """Which of path, key and title the `later` input texts use out of `cand`, ignoring what was
+    already `visible` before the call."""
+    low = [b.lower() for b in later]
+    return dict(
+        path=any(bounded(p).search(b) for p in cand["path"] if p not in visible for b in later),
+        key=any(bounded(k).search(b) for k in cand["key"] if k not in visible for b in later),
+        title=any(t.lower() in b for t in cand["title"] if t not in visible for b in low))
+
+
+def previously_visible(cand, seen, end, ownkeys):
+    text, low = seen.text(), None
+    hit = set()
+    for kind in ("path", "key"):
+        for c in cand[kind]:
+            root = ROOT_DOC.search(c) if kind == "path" else None
+            if bounded(c).search(text, 0, end) or (kind == "key" and c in ownkeys) \
+                    or (root and bounded(root.group(1)).search(text, 0, end)):
+                hit.add(c)
+    for t in cand["title"]:
+        low = low or seen.lower()
+        if low.find(t.lower(), 0, end) >= 0:
+            hit.add(t)
+    return hit
+
+
+def later_inputs(cl, i, calls):
+    """The inputs of the next calls sent in LATER assistant messages (siblings never count)."""
+    later = [x for x in calls[i + 1:i + 41] if x["mid"] != cl["mid"]][:LATER_CALLS]
+    return later, [json.dumps(x["input"])[:LATER_CAP] for x in later]
+
+
+def call_facts(cl, i, calls, kinds, seen, ownkeys):
+    route, r = kinds[i], cl["result"]
+    legacy = failed(cl)
+    v2 = legacy or soft_miss(route, r, cl["error"])
+    f = dict(route=route, failed=legacy, failed_v2=v2, cause=cause_of(r, cl["has_result"]) if v2 else None,
+             used=(not legacy) and used(cl, calls[i + 1:i + 6]),
+             miss_grep=v2 and "sweep" in kinds[i + 1:i + 4],
+             cand=None, pre_visible=[], later=[], credit=dict(path=False, key=False, title=False))
+    if not v2:
+        later, blobs = later_inputs(cl, i, calls)
+        cand = surfaced(cl)
+        pv = previously_visible(cand, seen, cl["vis"], ownkeys)
+        f.update(cand=cand, pre_visible=sorted(pv), later=blobs, credit=credit(cand, blobs, pv))
+    return f
+
+
+def tally(s, f):
+    k = f["route"]
+    s[k + "_calls"] += 1
+    s[k + "_failed"] += int(f["failed"])
+    s[k + "_used"] += int(f["used"])
+    s[k + "_failed_v2"] += int(f["failed_v2"])
+    if f["failed_v2"]:
+        fam, _, name = f["cause"].partition(":")
+        s[k + "_cause_" + fam] += 1
+        if name:
+            s[k + "_guard_" + name] = s.get(k + "_guard_" + name, 0) + 1
+        if f["miss_grep"]:
+            s[k + "_miss_then_grep"] += 1
+    else:
+        for kind in ("path", "key", "title"):
+            s[k + "_used_" + kind] += int(f["credit"][kind])
+        s[k + "_used_v2"] += int(any(f["credit"].values()))
 
 
 def call_time(cl):
@@ -1219,52 +1431,193 @@ def call_time(cl):
         return None
 
 
-def cmd_census(a):
+def census_files(a):
     cut = time.time() - a.days * 86400 if a.days > 0 else 0
     files = glob.glob(os.path.join(a.projects, "*", "*.jsonl")) + \
         glob.glob(os.path.join(a.projects, "*", "*", "subagents", "*.jsonl"))
-    keys = ["sessions", "sessions_with_retrieval", "qmd_calls", "qmd_failed", "qmd_used", "graphify_calls",
-            "graphify_failed", "graphify_used", "sweeps", "fallback_after_miss"]
-    roles, organic = {}, {}
-    for f in files:
+    keep = []
+    for f in sorted(files):
         try:
-            if os.path.getmtime(f) < cut:
-                continue
+            if os.path.getmtime(f) >= cut:
+                keep.append(f)
         except OSError:
             continue
-        title, side, calls = session_calls(f)
-        # The mtime check only skips whole files; a long session also holds older calls.
-        calls = [cl for cl in calls if (call_time(cl) or cut) >= cut]
-        role = role_of(title, f, side)
+    return cut, keep
+
+
+def session_facts(f, cut):
+    """(role, title, [facts of each retrieval call], sweeps) for the calls inside the window. The
+    mtime check only skips whole files; a long session also holds older calls, so each call is
+    filtered by its own event time."""
+    title, side, calls, seen = parse_session(f)
+    calls = [cl for cl in calls if (call_time(cl) or cut) >= cut]
+    kinds = [kind_of(cl) for cl in calls]
+    ownkeys = {k.upper() for k in re.findall(r"himmel-\d+", title or "", re.I)}
+    facts = [call_facts(cl, i, calls, kinds, seen, ownkeys) | dict(call=cl)
+             for i, cl in enumerate(calls) if kinds[i] in ROUTES]
+    return role_of(title, f, side), title, facts, kinds.count("sweep")
+
+
+def cmd_census(a):
+    if a.agreement:
+        return cmd_agreement(a)
+    if not a.out:
+        raise Usage("census needs --out FILE (or --agreement FIXTURE)")
+    cut, files = census_files(a)
+    if a.sample:
+        return cmd_sample(a, cut, files)
+    roles, organic = {}, {}
+    for f in files:
+        role, title, facts, sweeps = session_facts(f, cut)
         for book, include in ((roles, True), (organic, not FEATURE.search(title or ""))):
             if not include:
                 continue
-            s = book.setdefault(role, dict.fromkeys(keys, 0))
+            s = book.setdefault(role, dict.fromkeys(COUNT_KEYS + CAUSE_KEYS, 0))
             s["sessions"] += 1
-            any_r = False
-            for i, cl in enumerate(calls):
-                k = kind_of(cl)
-                if k == "sweep":
-                    s["sweeps"] += 1
-                elif k in ("qmd", "graphify"):
-                    any_r = True
-                    s[k + "_calls"] += 1
-                    if failed(cl):
-                        s[k + "_failed"] += 1
-                        if any(kind_of(x) == "sweep" for x in calls[i + 1:i + 4]):
-                            s["fallback_after_miss"] += 1
-                    elif used(cl, calls[i + 1:i + 6]):
-                        s[k + "_used"] += 1
-            s["sessions_with_retrieval"] += int(any_r)
+            s["sweeps"] += sweeps
+            for fx in facts:
+                tally(s, fx)
+            routes = {fx["route"] for fx in facts}
+            s["sessions_with_retrieval"] += int(bool(routes))
+            for r in routes:
+                s[r + "_sessions"] += 1
+    for book in (roles, organic):
+        for s in book.values():
+            s["fallback_after_miss"] = s["qmd_miss_then_grep"] + s["graphify_miss_then_grep"]
     out = dict(window_days=a.days, sessions_scanned=sum(v["sessions"] for v in roles.values()),
                roles=roles, organic=organic)
     with open(a.out, "w") as fh:
         json.dump(out, fh, indent=1)
     for name, book in (("all", roles), ("organic (titles without qmd/graphify/retrieval)", organic)):
         print("## " + name)
-        print("\t".join(["role"] + keys))
-        for r in sorted(book):
-            print("\t".join([r] + [str(book[r][k]) for k in keys]))
+        for keys in (COUNT_KEYS, CAUSE_KEYS):
+            print("\t".join(["role"] + keys))
+            for r in sorted(book):
+                print("\t".join([r] + [str(book[r][k]) for k in keys]))
+    if a.ledger:
+        write_census_row(a, out)
+    return 0
+
+
+def write_census_row(a, out):
+    """One aggregate-only row: counts pooled over roles in `metrics`, per role in `cases`. No query
+    text, path or hook name reaches it."""
+    fixed = COUNT_KEYS + CAUSE_KEYS
+    metrics = {k: sum(s[k] for s in out["roles"].values()) for k in fixed}
+    cases = {r: {k: s[k] for k in fixed} for r, s in out["roles"].items()}
+    repo = os.path.normpath(os.path.join(HERE, "..", "..", ".."))
+    row = eval_runs.make_row("retrieval-census", "scripts/eval/retrieval-eval/retrieval-eval.py",
+                             dict(window_days=a.days, census="v2"), metrics, n=out["sessions_scanned"],
+                             cases=cases, repo=repo)
+    eval_runs.append_safe(row, who="retrieval-census")
+
+
+# ---- labelled sample ------------------------------------------------------------
+
+SECRETISH = re.compile(r"ghp_|gho_|github_pat_|sk-[A-Za-z0-9]{16,}|xox[abprs]-|AKIA[0-9A-Z]{12,}|-----BEGIN|eyJ[A-Za-z0-9_-]{20,}"
+                       r"|(?i:bearer\s+[A-Za-z0-9._-]{16,})|(?i:(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*\S{6,})"
+                       r"|[A-Fa-f0-9]{40,}|[A-Za-z0-9+]{40,}={0,2}")
+PRIVATE = re.compile(r"luna|salus|\bggs\b|ggs-|patient|nvidia", re.I)
+HOME = re.compile(r"/(?:home|Users)/[^/\s\"'\\]+")
+RESULT_CAP, COMMAND_HEAD = 2000, 400
+GUARD_PREFIX = re.compile(r"^(PreToolUse:\w+ hook error: )\[.*?\]: ")
+
+
+def trim_result(r):
+    """The first 25 lines, each cut to 240 characters: a diagnostic sits at the start of a line, and a
+    long preamble (version warnings, a stale-graph note) must not push it out of the sample."""
+    lines = [GUARD_PREFIX.sub(r"\1[...]: ", x) for x in r.splitlines()[:25]]
+    return "\n".join(x[:240] for x in lines)[:RESULT_CAP]
+
+
+def redact(o):
+    if isinstance(o, str):
+        return HOME.sub("/home/user", o)  # env-literal-ok: the redaction placeholder
+    if isinstance(o, list):
+        return [redact(x) for x in o]
+    if isinstance(o, dict):
+        return {k: redact(v) for k, v in o.items()}
+    return o
+
+
+def sample_record(fx):
+    cl = fx["call"]
+    command = cl["input"].get("command") if cl["name"] == "Bash" else json.dumps(cl["input"])
+    hit = (GRAPH_BASH if fx["route"] == "graphify" else QMD_BASH).search(command or "") if cl["name"] == "Bash" else None
+    trigger = command[max(0, hit.start() - 60):hit.end() + 60] if hit else ""
+    result = trim_result(cl["result"])
+    parts = [command or "", trigger, result] + fx["later"] + sum((fx["cand"] or {}).values(), [])
+    if any(SECRETISH.search(p) or PRIVATE.search(p) for p in parts):
+        return None
+    stratum = fx["cause"].partition(":")[0] if fx["failed_v2"] else ("ok_used" if any(fx["credit"].values()) else "ok_unused")
+    rec = dict(tool=fx["route"], stratum=stratum, name=cl["name"], command=(command or "")[:COMMAND_HEAD],
+               trigger=trigger, result=result, error=cl["error"], has_result=cl["has_result"], later=fx["later"],
+               cand=fx["cand"] or dict(path=[], key=[], title=[]), pre_visible=fx["pre_visible"],
+               label=dict(real=None, cause=None, used=None))
+    return redact(rec)
+
+
+def cmd_sample(a, cut, files):
+    refuse_repo_path(a.out, os.path.join(HERE, "..", "..", ".."), "--out")
+    pool = {}
+    for f in files:
+        role, _, facts, _ = session_facts(f, cut)
+        for fx in facts:
+            rec = sample_record(fx)
+            if rec:
+                rec["role"] = role
+                pool.setdefault((rec["tool"], role, rec["stratum"]), []).append(rec)
+    rng = random.Random(a.seed)
+    strata = sorted(pool)
+    for k in strata:
+        rng.shuffle(pool[k])
+    drawn = []
+    while len(drawn) < a.sample and any(pool[k] for k in strata):
+        for k in strata:
+            if pool[k] and len(drawn) < a.sample:
+                drawn.append(pool[k].pop())
+    for n, rec in enumerate(drawn, 1):
+        rec["id"] = "s%03d" % n
+    with open(a.out, "w") as fh:
+        for rec in drawn:
+            fh.write(json.dumps(dict(id=rec.pop("id"), **rec), ensure_ascii=False) + "\n")
+    print("sample: %d calls from %d strata (seed %d)" % (len(drawn), len({(r["tool"], r["role"], r["stratum"]) for r in drawn}), a.seed))
+    return 0
+
+
+def judge_record(rec):
+    """(cause family or 'ok', failed, used) the census logic gives a stored sample record."""
+    r = rec["result"]
+    bad = empty_result(r, rec["error"]) or soft_miss(rec["tool"], r, rec["error"])
+    if bad:
+        return cause_of(r, rec["has_result"]).partition(":")[0], True, None
+    return "ok", False, any(credit(rec["cand"], rec["later"], set(rec["pre_visible"])).values())
+
+
+def cmd_agreement(a):
+    try:
+        with open(a.agreement) as fh:
+            recs = [json.loads(line) for line in fh if line.strip()]
+    except (OSError, ValueError) as e:
+        raise Usage("cannot read the labelled fixture: %s" % e) from e
+    rows = dict(cause=[], failed=[], used=[], retrieval=[])
+    for rec in recs:
+        lab = rec["label"]
+        cause, bad, used_v2 = judge_record(rec)
+        rows["cause"].append((rec["id"], lab["cause"], cause))
+        rows["failed"].append((rec["id"], lab["cause"] != "ok", bad))
+        if lab.get("real") is not None:
+            rows["retrieval"].append((rec["id"], lab["real"], True))
+        if lab["used"] is not None and not bad and lab["cause"] == "ok":
+            rows["used"].append((rec["id"], lab["used"], used_v2))
+    print("field\tn\tagree\trate")
+    for field, rs in rows.items():
+        ok = sum(1 for _, human, census in rs if human == census)
+        print("%s\t%d\t%d\t%.2f" % (field, len(rs), ok, ok / len(rs) if rs else 0.0))
+    for field, rs in rows.items():
+        for rid, human, census in rs:
+            if human != census:
+                print("disagree %s: %s (label %s, census %s)" % (field, rid, human, census))
     return 0
 
 
@@ -1587,9 +1940,13 @@ def main(argv=None):
     c.add_argument("--questions", required=True)
     c.add_argument("--repo", default=".")
     s = sub.add_parser("census")
-    s.add_argument("--out", required=True)
+    s.add_argument("--out", default=None)
     s.add_argument("--projects", default=os.path.join(os.path.expanduser("~"), ".claude", "projects"))
     s.add_argument("--days", type=int, default=7)
+    s.add_argument("--ledger", action="store_true")
+    s.add_argument("--sample", type=int, default=0)
+    s.add_argument("--seed", type=int, default=1)
+    s.add_argument("--agreement", default=None)
     rp = sub.add_parser("replay")
     rp.add_argument("--results", required=True)
     rp.add_argument("--questions", default=os.path.join(HERE, "questions.jsonl"))
