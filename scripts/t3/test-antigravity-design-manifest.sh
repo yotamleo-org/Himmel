@@ -33,8 +33,8 @@ for id in taste-skill-core@himmel higgsfield-skills@himmel; do
 done
 if printf '%s\n' "$PLUGINS" | grep -qx "builder-visual@himmel"; then bad "design still resolves builder-visual@himmel"; else ok "design excludes builder-visual@himmel"; fi
 
-expect_eq "design declares context7 over https" "$(jq -r '.profiles.design.mcpServers.context7.url // "" | split("?")[0]' "$REGISTRY")" "https://mcp.context7.com/mcp"
-expect_eq "context7 is an http server" "$(jq -r '.profiles.design.mcpServers.context7.type // ""' "$REGISTRY")" "http"
+expect_eq "design declares context7 over https" "$(jq -r '.profiles.design.mcpServers.context7.serverUrl // "" | split("?")[0]' "$REGISTRY")" "https://mcp.context7.com/mcp"
+expect_eq "context7 uses agy's serverUrl key only" "$(jq -c '.profiles.design.mcpServers.context7 | keys' "$REGISTRY")" '["serverUrl"]'
 expect_eq "shadcn runs through npx" "$(jq -r '.profiles.design.mcpServers.shadcn.command // ""' "$REGISTRY")" "npx"
 expect_eq "design declares shadcn pinned and starts its mcp server" "$(jq -c '.profiles.design.mcpServers.shadcn.args // []' "$REGISTRY")" '["-y","shadcn@4.21.0","mcp"]'
 expect_eq "design names playwright as optional" "$(jq -c '.profiles.design.optionalMcpServers // []' "$REGISTRY")" '["playwright"]'

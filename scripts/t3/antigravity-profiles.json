@@ -5,8 +5,7 @@
       "excludePlugins": ["builder-visual@himmel"],
       "mcpServers": {
         "context7": {
-          "type": "http",
-          "url": "https://mcp.context7.com/mcp?client=claude-code-plugin"
+          "serverUrl": "https://mcp.context7.com/mcp?client=claude-code-plugin"
         },
         "shadcn": {
           "command": "npx",
