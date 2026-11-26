@@ -366,6 +366,20 @@ out="$(env T3_PI_PROFILES=alpha T3_PI_RESOLVER="$T/resolver2.sh" STUB_RC=0 bash 
 expect_eq "R6 a settings file outside userdata/: no relay copy" "$(jq -r '.providerInstances|has("antigravity_design_relay")' "$SOUT")" false
 rm -f "$CFG"
 
+fresh_as; cp "$AS" "$T/as.orig"
+agy_run STUB_RC=1 STUB_OUT="NOT OK antigravity_design2; home missing" >/dev/null; rc=$?
+expect_eq "a NOT OK line naming another id that starts with the expected one: rc 2" "$rc" 2
+expect_ok "a NOT OK line naming another id: settings byte-identical" cmp -s "$AS" "$T/as.orig"
+fresh_as; cp "$AS" "$T/as.orig"
+agy_run STUB_RC=1 STUB_OUT="NOT OK antigravity_design" >/dev/null; rc=$?
+expect_eq "a bare NOT OK line for the expected id: rc 0" "$rc" 0
+
+set_cfg '{"t3":{"relay_instances":["antigravity_gone"]}}'
+fresh_as '{"providerInstances":{"antigravity_gone":{"driver":"antigravity","enabled":true}}}'
+out="$(agy_run STUB_RC=0)"
+expect_eq "no relay copy of an antigravity_ id whose profile left the registry" "$(jq -r '.providerInstances|has("antigravity_gone_relay")' "$AS")" false
+rm -f "$CFG"
+
 cat > "$T/agy-registry.json" <<'JSON'
 {"profiles":{"design":{"fromProfiles":["design"]}}}
 JSON

@@ -20,7 +20,7 @@
 # antigravity-profiles.sh --list names, only when `T3CODE_HOME=<settings file's T3 home> ... --check
 # --profile <p>` exits 0 with "OK antigravity_<p>". rc 1 with "NOT OK antigravity_<p>..." adds nothing;
 # any other outcome, or a failed --list, writes nothing and exits 2. Existing antigravity entries
-# are never edited, and no "_relay" copy is made of one. Seam: T3_PI_AGY_PROFILES (the script).
+# are never edited, and no "_relay" copy is made of any antigravity_* id. Seam: T3_PI_AGY_PROFILES (the script).
 # Platform: POSIX bash 3.2+, jq, node (default resolver).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -55,7 +55,6 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/t3pi.XXXXXX")" || die 2 "mktemp failed"
 trap 'rm -rf "$WORK"' EXIT
 
 AGY_SCRIPT="${T3_PI_AGY_PROFILES:-$HERE/antigravity-profiles.sh}"
-AGY_IDS='[]'
 AGY_ADD='{}'
 if ! AGY_LIST="$(bash "$AGY_SCRIPT" --list 2>"$WORK/agy.err")"; then
     cat "$WORK/agy.err" >&2
@@ -69,7 +68,6 @@ if [ -n "$AGY_LIST" ]; then
 fi
 for p in $AGY_LIST; do
     case "$p" in ''|*[!A-Za-z0-9._-]*) die 2 "bad Antigravity profile name '$p'" ;; esac
-    AGY_IDS="$(printf '%s' "$AGY_IDS" | jq -c --arg i "antigravity_$p" '. + [$i]')" || die 2 "jq failed"
     [ -n "$AGY_X" ] || continue
     agy_have="$(jq -r --arg i "antigravity_$p" '(.providerInstances // {}) | has($i)' "$FILE")" || die 2 "jq failed"
     agy_out="$(T3CODE_HOME="$AGY_X" bash "$AGY_SCRIPT" --check --profile "$p" 2>"$WORK/agy.err")"; agy_rc=$?
@@ -77,7 +75,7 @@ for p in $AGY_LIST; do
     if [ "$agy_rc" = 0 ] && [ "$agy_out" = "OK antigravity_$p" ]; then
         AGY_ADD="$(printf '%s' "$AGY_ADD" | jq --arg i "antigravity_$p" --arg n "Antigravity ($p)" \
             '.[$i] = {"driver":"antigravity","displayName":$n,"enabled":true}')" || die 2 "jq failed"
-    elif [ "$agy_rc" = 1 ] && case "$agy_first" in "NOT OK antigravity_$p"*) true ;; *) false ;; esac; then
+    elif [ "$agy_rc" = 1 ] && case "$agy_first" in "NOT OK antigravity_$p"|"NOT OK antigravity_$p;"*) true ;; *) false ;; esac; then
         if [ "$agy_have" = true ]; then
             echo "provider-instances: antigravity_$p: home is stale, run --apply" >&2
         elif command -v agy >/dev/null 2>&1 || [ -d "$AGY_X/userdata/providers/antigravity" ]; then
@@ -165,10 +163,10 @@ if [ -f "$CFG" ]; then
     RELAY="$(jq -c '(.t3.relay_instances // []) | if type == "array" then map(select(type == "string")) else [] end' "$CFG" 2>/dev/null)" \
         || { echo "provider-instances: warning: $CFG is not readable; no relay copies" >&2; RELAY='[]'; }
 fi
-RELAY_PLAN="$(printf '%s' "$NEW" | jq -r --argjson ids "$RELAY" --argjson agy "$AGY_IDS" --arg bi "${T3_PI_BUILTIN_RELAY:-0}" '
+RELAY_PLAN="$(printf '%s' "$NEW" | jq -r --argjson ids "$RELAY" --arg bi "${T3_PI_BUILTIN_RELAY:-0}" '
   (.providerInstances // {}) as $pi
   | $ids[] | if (test("^[A-Za-z0-9._-]+$") | not) or endswith("_relay") then "unknown\t" + (gsub("[^A-Za-z0-9._-]"; "?"))
-             elif (. as $r | $agy | index($r)) != null then "skip-agy\t" + .
+             elif startswith("antigravity_") then "skip-agy\t" + .
              elif ($pi[.] | type) == "object" then "copy\t" + .
              elif . == "codex" then (if $bi == "1" then "copy\t" + . else "skip-builtin\t" + . end)
              else "unknown\t" + . end')" || die 2 "relay plan failed"

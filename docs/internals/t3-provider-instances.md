@@ -64,8 +64,8 @@ the Claude entries go ahead.
   nothing written), and `himmel-update` shows `failed`. A run makes one consistent write or none; a Claude
   profile change waits until the operator fixes the Antigravity cause the report names.
 - An existing `antigravity_<p>` and the bare `antigravity` instance are never edited or removed.
-- No `_relay` copy is made of an `antigravity_<p>` id (the relay rule below): its `<id>_relay` home would
-  be one no check ever passed. Each is skipped with a warning.
+- No `_relay` copy is made of any `antigravity_*` id, even one whose profile left the registry (the relay
+  rule below): its `<id>_relay` home would be one no check ever passed. Each is skipped with a warning.
 - Seam: `T3_PI_AGY_PROFILES` replaces the `antigravity-profiles.sh` path (tests).
 - Run `antigravity-profiles.sh --apply` first: T3 starts an instance the moment it is in its settings, and
   a home that `--check` has not passed has no himmel hooks. The operator runs it, on the live home.
@@ -84,7 +84,7 @@ beside `.t3.instance_allowlist`:
   same run (same driver and `config`), `enabled: true`, named `<base displayName> + chief relay`.
   A hand-edited copy is regenerated from its base; picking the copy in T3 is the click.
 - A `*_relay` key never marks a profile covered, so the base still refreshes.
-- An `antigravity_<profile>` id gets no `_relay` copy (see "Antigravity profile instances"); the bare
+- An `antigravity_*` id gets no `_relay` copy (see "Antigravity profile instances"); the bare
   `antigravity` id still does.
 - Off by default: an absent field, `[]` or no config file generates nothing. The file is
   read only from `$HOME/.himmel/config.json`; no env variable moves it.

@@ -83,7 +83,7 @@ if [ -z "$SELECTED" ]; then
     SELECTED="$ALL"
 else
     for p in $SELECTED; do
-        printf '%s\n' "$ALL" | grep -qx -- "$p" || die 2 "no profile '$p' in $REGISTRY"
+        printf '%s\n' "$ALL" | grep -qxF -- "$p" || die 2 "no profile '$p' in $REGISTRY"
     done
 fi
 for p in $SELECTED; do
@@ -247,6 +247,7 @@ EOF
             fi
         fi
         [ "$(git -C "$dir" rev-parse HEAD 2>/dev/null)" = "$commit" ] || die 2 "pinned checkout $dir is not at $commit"
+        [ -z "$(git -C "$dir" status --porcelain 2>/dev/null)" ] || die 2 "pinned checkout $dir has local changes"
         for name in $(printf '%s' "$names" | tr ',' ' '); do
             case "$name" in ''|*[!A-Za-z0-9._-]*) die 2 "profile '$p': bad pinned skill name '$name'" ;; esac
             [ -f "$dir/$rpath/$name/SKILL.md" ] || die 2 "pinned skill '$name' has no SKILL.md under $dir/$rpath"
@@ -261,7 +262,7 @@ build_skills_json() {
         | {entries: sort_by(.path)}' "$1"
 }
 
-hooks_present() { jq -e --arg k "$BACKSTOP_KEY" 'has($k)' "$1/config/hooks.json" >/dev/null 2>&1; }
+hooks_present() { jq -e --arg k "$BACKSTOP_KEY" '(.[$k] | type) == "object"' "$1/config/hooks.json" >/dev/null 2>&1; }
 
 for p in $SELECTED; do
     resolve_plugins "$p" "$WORK/$p.pairs"
@@ -290,6 +291,7 @@ for p in $SELECTED; do
         check)
             why=""
             [ -d "$home" ] || why="$why; home missing"
+            if [ -L "$home" ] || [ -L "$home/config" ]; then why="$why; home or its config dir is a symlink"; fi
             hooks_present "$home" || why="$why; hooks.json lacks $BACKSTOP_KEY"
             [ -s "$WORK/$p.notes" ] && why="$why; pinned checkout not fetched"
             if [ ! -f "$cur" ] || [ -L "$cur" ]; then
