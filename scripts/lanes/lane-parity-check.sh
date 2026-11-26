@@ -22,10 +22,10 @@ done
 
 command -v jq >/dev/null 2>&1 || { echo "lane-parity-check: jq not on PATH" >&2; exit 2; }
 
-CLAUDE_SRC="$ROOT/.claude/settings.json $ROOT/marketplace/plugins/himmel-ops/hooks/hooks.json"
+CLAUDE_SRC=("$ROOT/.claude/settings.json" "$ROOT/marketplace/plugins/himmel-ops/hooks/hooks.json")
 CODEX_SRC="$ROOT/.codex/hooks.json"
 ADAPTER="$ROOT/scripts/hooks/antigravity-hook-adapter.sh"
-for f in $CLAUDE_SRC $CODEX_SRC $ADAPTER "$DOC"; do
+for f in "${CLAUDE_SRC[@]}" "$CODEX_SRC" "$ADAPTER" "$DOC"; do
     [ -f "$f" ] || { echo "lane-parity-check: missing input: $f" >&2; exit 2; }
 done
 
@@ -36,17 +36,18 @@ T="$(tmpdir)" || exit 2
 trap 'rm -rf "$T"' EXIT
 
 names_of() {
-    grep -oE '[A-Za-z0-9_-]+\.sh' | grep -vxE 'run-node\.sh|resolve-node\.sh|run-hook\.sh|antigravity-hook-adapter\.sh' | sort -u
+    { grep -oE '[A-Za-z0-9_-]+\.sh' || true; } | { grep -vxE 'run-node\.sh|resolve-node\.sh|run-hook\.sh|antigravity-hook-adapter\.sh' || true; } | sort -u
 }
 
 : > "$T/claude.raw"
-for f in $CLAUDE_SRC; do
+for f in "${CLAUDE_SRC[@]}"; do
     jq -r '.hooks.PreToolUse[]?.hooks[]?.command // empty' "$f" >> "$T/claude.raw" || { echo "lane-parity-check: unreadable json: $f" >&2; exit 2; }
 done
 names_of < "$T/claude.raw" > "$T/claude.txt"
 
-jq -r '.hooks.PreToolUse[]?.hooks[]?.command // empty' "$CODEX_SRC" | sed 's/.*--sandbox//' | tr '+' '\n' | names_of > "$T/codex.txt" \
+codex_cmds="$(jq -r '.hooks.PreToolUse[]?.hooks[]?.command // empty' "$CODEX_SRC")" \
     || { echo "lane-parity-check: unreadable json: $CODEX_SRC" >&2; exit 2; }
+printf '%s\n' "$codex_cmds" | sed 's/.*--sandbox//' | tr '+' '\n' | names_of > "$T/codex.txt"
 
 sed -n '/^build_claude_payload() {/,$p' "$ADAPTER" | sed -e 's/^[[:space:]]*#.*//' -e 's/[[:space:]]#.*//' | names_of > "$T/antigravity.txt"
 
