@@ -61,7 +61,7 @@ function attributed(pr, s) {
   const made = Date.parse(pr.createdAt ?? '');
   if (!Number.isNaN(made) && made < s.launched) return false;
   const body = pr.body ?? '';
-  if (new RegExp(`cloud-pilot:\\s*${literal(s.ticket)}(?!\\d)`).test(body)) return true;
+  if (new RegExp(`^\\s*cloud-pilot:\\s*${literal(s.ticket)}(?!\\d)`, 'm').test(body)) return true;
   if ((pr.comments ?? []).some((c) => DONE.test(c.body ?? '') && s.session && (c.body ?? '').includes(s.session))) return true;
   return /^claude\//.test(pr.headRefName ?? '') && new RegExp(`${literal(slugOf(s.ticket))}(?!\\d)`, 'i').test(pr.headRefName);
 }

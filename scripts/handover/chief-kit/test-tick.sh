@@ -503,6 +503,15 @@ printf '%s\n' '# chief' > "$W/cloudbucket/chief.md"
 printf '%s\t%s\t%s\t%s\n' "$(date +%Y-%m-%dT%H:%M:%S)" HIMMEL-999 session_x 'claude --teleport session_x' > "$W/cloudbucket/cloud-sessions.tsv"
 cloud_own_out="$(STUB_PR_ROWS="$rows_5542" bash "$SUT" --doc "$W/cloudbucket/chief.md")"
 not_contains 'a PR whose ticket has a live cloud session is not unowned' "$cloud_own_out" '#3002:'
+printf '%s\t%s\t%s\t%s\n' "$(date -d '60 hours ago' +%Y-%m-%dT%H:%M:%S)" HIMMEL-999 session_x 'claude --teleport session_x' > "$W/cloudbucket/cloud-sessions.tsv"  # gnu-ok: Linux-only kit
+out="$(STUB_PR_ROWS="$rows_5542" bash "$SUT" --doc "$W/cloudbucket/chief.md")"
+not_contains '10378 T1: a cloud session 60 hours old still owns its PR' "$out" '#3002:'
+printf '%s\t%s\t%s\t%s\n' garbage HIMMEL-999 session_x 'claude --teleport session_x' > "$W/cloudbucket/cloud-sessions.tsv"
+out="$(STUB_PR_ROWS="$rows_5542" bash "$SUT" --doc "$W/cloudbucket/chief.md")"
+not_contains '10378 T2: a cloud row whose time does not parse still owns its PR' "$out" '#3002:'
+printf '%s\t%s\t%s\t%s\n' "$(date +%Y-%m-%dT%H:%M:%S)" HIMMEL-999-probe session_x 'claude --teleport session_x' > "$W/cloudbucket/cloud-sessions.tsv"
+out="$(STUB_PR_ROWS="$rows_5542" bash "$SUT" --doc "$W/cloudbucket/chief.md")"
+contains '10378 T3: control: a row whose key field is not a key owns nothing' "$out" 'unowned-prs=#3002:'
 
 mkdir -p "$W/heldbucket" "$W/held-mirror"
 held_doc() {

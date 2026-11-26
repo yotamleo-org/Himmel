@@ -596,7 +596,7 @@ c11="$(run11 --doc "$WORK/cl11/doc.md" --workers-from "$WORK/fleet11.json" --pri
 lacks "pool-only: a cloud-owned In Progress ticket is not offered" "$c11" "HIMMEL-401"
 printf '%s\tHIMMEL-401\tsess\n' "2020-01-01T00:00:00Z" > "$WORK/cl11/cloud-sessions.tsv"
 c11b="$(run11 --doc "$WORK/cl11/doc.md" --workers-from "$WORK/fleet11.json" --priority-pool-only | rows11)"
-has "pool-only: a cloud session past the liveness window owns nothing" "$c11b" "RESUME:HIMMEL-401"
+lacks "pool-only: a 2020 cloud row with no end event still owns its ticket" "$c11b" "RESUME:HIMMEL-401"
 # dropped-platform and residual-depth rules apply to RESUME rows as they do to To Do rows
 M13="$WORK/jira-mirror13/HIMMEL"; mkdir -p "$M13"
 M_SAVE="$M"; M="$M13"
@@ -2927,6 +2927,156 @@ has "10378 X3: an outside PR whose updatedAt does not parse owns, idle unknown" 
 printf '5201\tfix(x): [HIMMEL-9710] a change from outside\tfork/q8\ttrue\t%s\n' "$(q8_at 8)" > "$S1Q/prs.tsv"
 q8_dis="$(NEXT_DISPATCH_NOW="$S1NOW" DD_DIR="$S1Q" NEXT_DISPATCH_MIRROR="$S1QM" NEXT_DISPATCH_GH_CMD="$WORK/gh-dd" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --top 20 --dispositions 2>/dev/null)"
 has "10378 X4: the disposition line carries the idle days" "$q8_dis" "# disposition HIMMEL-9710 owned by open PR 5201 (idle 8d)"
+
+CL="$WORK/cl"; mkdir -p "$CL/state/workers"; : > "$CL/doc.md"
+printf '{"schema":1,"workers":[]}\n' > "$CL/own.fleet.json"
+CLM="$WORK/clm/HIMMEL"; mkdir -p "$CLM"; cp "$S1QM"/*.md "$CLM/"; cp "$WORK/s1qm/HIMMEL.versions.tsv" "$WORK/clm/HIMMEL.versions.tsv"
+M_SAVE="$M"; M="$CLM"
+mk HIMMEL-9712 "To Do" High '[]' '[]' '[]' "versionless, cloud-held" "Edit scripts/s1/q9.sh only."
+mk HIMMEL-9713 "Done" High '[]' '["v1.0.1"]' '[]' "done, cloud row" "Edit scripts/s1/q10.sh only."
+M="$M_SAVE"
+CL_NOW="$(date +%s)"
+cat > "$WORK/gh-cl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CL_DIR/gh.args"
+if [ "$2" = list ]; then
+    case "$*" in
+        *'--state all'*)
+            [ -f "$CL_DIR/stall" ] && sleep 5
+            [ -f "$CL_DIR/fail" ] && exit 1
+            cat "$CL_DIR/search.json" ;;
+        *) : ;;
+    esac
+fi
+EOF
+chmod +x "$WORK/gh-cl"
+cl_at() { python3 -I -c 'import datetime, sys
+print(datetime.datetime.fromtimestamp(float(sys.argv[1]) - float(sys.argv[2]) * 3600, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$CL_NOW" "$1"; }
+cl_row() { printf '%s\t%s\t%s\tclaude --teleport %s\n' "$1" "${3:-HIMMEL-9710}" "$2" "$2"; }
+cl_pr() {
+    CL_NOW="$CL_NOW" python3 -I -c 'import json, os, sys, datetime
+n, st, h, now = sys.argv[1], sys.argv[2], float(sys.argv[3]), float(os.environ["CL_NOW"])
+iso = lambda t: datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+c = iso(now - h * 3600)
+com = [{"body": sys.argv[4], "createdAt": iso(now - 600)}] if len(sys.argv) > 4 else []
+print(json.dumps([{"number": int(n), "title": "fix(x): [HIMMEL-9710] cloud", "body": "cloud-pilot: HIMMEL-9710", "state": st,
+  "headRefName": "claude/himmel-9710-x", "createdAt": c, "mergedAt": c if st == "MERGED" else None,
+  "closedAt": c if st != "OPEN" else None, "comments": com}]))' "$@"; }
+cl_edit() {
+    python3 -I -c 'import json, sys
+o = json.load(sys.stdin)[0]
+exec(sys.argv[1])
+print(json.dumps([o]))' "$1"; }
+cl_run() { NEXT_DISPATCH_NOW="$CL_NOW" CL_DIR="$CL" TICKET_STATUS_STATE_DIR="$CL/state" NEXT_DISPATCH_MIRROR="$CLM" NEXT_DISPATCH_GH_CMD="$WORK/gh-cl" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --top 20 --why --doc "$CL/doc.md" --workers-from "$CL/own.fleet.json" --workers-dir "$CL/state/workers" 2>/dev/null; }
+cl_run_t() { NEXT_DISPATCH_NOW="$CL_NOW" CL_DIR="$CL" TICKET_STATUS_STATE_DIR="$CL/state" NEXT_DISPATCH_MIRROR="$CLM" NEXT_DISPATCH_GH_CMD="$WORK/gh-cl" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --why-ticket HIMMEL-9710 --doc "$CL/doc.md" --workers-from "$CL/own.fleet.json" --workers-dir "$CL/state/workers" 2>/dev/null; }
+cl_reset() { rm -rf "$CL/fail" "$CL/stall" "$CL/state/status-events.jsonl" "$CL/gh.args"; : > "$CL/gh.args"; printf '[]\n' > "$CL/search.json"; }
+cl_take() { printf '{"event":"cloud-takeover","key":"%s","session":"%s","owner":"chief","reason":"r","result":"done"}\n' "$1" "$2" >> "$CL/state/status-events.jsonl"; }
+cl_reads() { grep -c -e '--state all' "$CL/gh.args"; }
+
+cl_reset; cl_row "$(cl_at 60)" session_p > "$CL/cloud-sessions.tsv"
+o="$(cl_run)"
+has "10378 C1: a cloud row 60 hours old with no PR still owns, idle printed" "$o" "# drop HIMMEL-9710 owned by cloud session session_p (idle 2d, no end event)"
+lacks "10378 C1: and the key is not listed" "$o" "LOCAL	HIMMEL-9710"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"
+o="$(cl_run)"
+has "10378 C2: a 10 hour old row names its session and no end event" "$o" "owned by cloud session session_p (idle 0d, no end event)"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"; cl_pr 6001 MERGED 5 > "$CL/search.json"
+o="$(cl_run)"
+has "10378 C3: an attributed MERGED PR ends the session: the key is listed" "$o" "LOCAL	HIMMEL-9710"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"; cl_pr 6001 CLOSED 5 > "$CL/search.json"
+o="$(cl_run)"
+has "10378 C4: an attributed CLOSED PR ends the session: the key is listed" "$o" "LOCAL	HIMMEL-9710"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"; cl_pr 6001 MERGED 20 > "$CL/search.json"
+o="$(cl_run)"
+has "10378 C5: a MERGED PR made before the launch does not end the session" "$o" "owned by cloud session session_p (idle 0d, no end event)"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"; touch "$CL/fail"
+o="$(cl_run)"
+has "10378 C6: a failed PR read keeps the key owned, end unknown" "$o" "(idle 0d, end unknown)"
+lacks "10378 C6: and the key is not listed" "$o" "LOCAL	HIMMEL-9710"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"; cl_pr 6001 MERGED 5 | python3 -I -c 'import json, sys
+print(json.dumps(json.load(sys.stdin) * 100))' > "$CL/search.json"
+o="$(cl_run)"
+has "10378 C7: a full page of 100 PRs is unknown, so owned" "$o" "(idle 0d, end unknown)"
+
+cl_reset; cl_row garbage session_p > "$CL/cloud-sessions.tsv"
+o="$(cl_run)"
+has "10378 C8: a launch time that does not parse is unknown, so owned" "$o" "owned by cloud session session_p (idle unknown, end unknown)"
+lacks "10378 C8: and the key is not listed" "$o" "LOCAL	HIMMEL-9710"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"; cl_take himmel-9710 session_p
+o="$(cl_run)"
+has "10378 C9: a takeover row for the session lists the key (lowercase key read)" "$o" "LOCAL	HIMMEL-9710"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"; cl_take himmel-9710 session_q
+o="$(cl_run)"
+has "10378 C10: a takeover row for another session frees nothing" "$o" "owned by cloud session session_p (idle 0d, no end event)"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"; mkdir "$CL/state/status-events.jsonl"
+o="$(cl_run)"
+has "10378 C11: an unreadable events log keeps the key owned" "$o" "owned by cloud session session_p"
+rmdir "$CL/state/status-events.jsonl"
+
+cl_reset; { cl_row "$(cl_at 30)" session_a; cl_row "$(cl_at 10)" session_b; } > "$CL/cloud-sessions.tsv"; cl_take HIMMEL-9710 session_a
+o="$(cl_run)"
+has "10378 C12: a takeover frees only the session it names; the other still owns" "$o" "owned by cloud session session_b (idle 0d, no end event)"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"; cl_pr 6001 OPEN 5 'CLOUD-BLOCKED need a person' > "$CL/search.json"
+o="$(cl_run)"
+has "10378 C13: a CLOUD-BLOCKED comment on the open PR reads blocked" "$o" "owned by cloud session session_p (idle 0d, blocked)"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"; touch "$CL/stall"
+o="$(NEXT_DISPATCH_GH_TIMEOUT=2 cl_run)"
+has "10378 C14: a stalled cloud read keeps the key owned, end unknown" "$o" "(idle 0d, end unknown)"
+has "10378 C14: and the run still lists the rest" "$o" "# dropped from"
+lacks "10378 C14: and sets no run-wide gh-stall" "$o" "# gh-stall"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"; cl_pr 6001 MERGED 5 | cl_edit 'del o["createdAt"]' > "$CL/search.json"
+o="$(cl_run)"
+has "10378 C15: a PR with no createdAt is unknown, so owned" "$o" "(idle 0d, end unknown)"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"
+o="$(cl_run_t)"
+check "10378 C16: --why-ticket makes no cloud read" "0" "$(cl_reads)"
+
+cl_reset; { cl_row "$(cl_at 10)" session_p HIMMEL-9710; cl_row "$(cl_at 10)" session_v HIMMEL-9712; cl_row "$(cl_at 10)" session_d HIMMEL-9713; } > "$CL/cloud-sessions.tsv"
+o="$(cl_run)"
+check "10378 C17: one read per open candidate key and none for the Done key" "2" "$(cl_reads)"
+has "10378 C17: the cloud-held line names every held key in key order" "$o" "# cloud-held 2: HIMMEL-9710 (session_p, idle 0d, no end event), HIMMEL-9712 (session_v, idle 0d, no end event)"
+
+cl_reset; python3 -I -c 'import os, time
+os.environ["TZ"] = "Europe/Berlin"; time.tzset()
+print(time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 60 * 3600)))' > "$CL/naive-time"
+cl_row "$(cat "$CL/naive-time")" session_p > "$CL/cloud-sessions.tsv"
+o="$(TZ=Europe/Berlin cl_run)"
+has "10378 C18: a naive local launch time reads in the station zone" "$o" "(idle 2d, no end event)"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"; cl_pr 6001 MERGED 5 > "$CL/search.json"
+o="$(cl_run)"
+lacks "10378 C19: control: an ended session prints no cloud-held line" "$o" "# cloud-held"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"
+cl_pr 6001 MERGED 5 | cl_edit 'o["body"] = "notes: the brief line cloud-pilot: HIMMEL-9710 is quoted here"; o["headRefName"] = "docs/x"; o["comments"] = []' > "$CL/search.json"
+o="$(cl_run)"
+lacks "10378 C20: a PR that only quotes the cloud-pilot line mid-line does not end the session" "$o" "LOCAL	HIMMEL-9710"
+has "10378 C20: and the session still owns" "$o" "owned by cloud session session_p (idle 0d, no end event)"
+
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"; cl_take HIMMEL-9710 session_p
+o="$(cl_run_t)"
+lacks "10378 C21: control: --why-ticket prints no cloud owner text" "$o" "owned by cloud session"
+lacks "10378 C21: control: and no old cloud owner text" "$o" "owned by a cloud session"
+check "10378 C21: control: and makes no read" "0" "$(cl_reads)"
+
+CLM_SAVE="$CLM"; CLM="$WORK/clm22/HIMMEL"; mkdir -p "$CLM"; cp "$CLM_SAVE"/*.md "$CLM/"; printf 'v1.0.1\ttrue\t\n' > "$WORK/clm22/HIMMEL.versions.tsv"
+cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"
+o="$(cl_run)"
+CLM="$CLM_SAVE"
+has "10378 C22: the cloud-held line prints when the mirror has no open version" "$o" "# cloud-held 1: HIMMEL-9710 (session_p, idle 0d, no end event)"
 
 Q6="$WORK/q6"; mkdir -p "$Q6/realbin" "$Q6/envroot"
 printf '{"schema":1,"workers":[]}\n' > "$Q6/fleet.json"

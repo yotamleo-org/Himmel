@@ -2943,7 +2943,7 @@ if [ "$pr_list_rc" -eq 124 ] || [ "$pr_list_rc" -eq 137 ]; then
 fi
 
 # unowned-prs= / ext-prs=: an open PR whose head branch names a ticket that
-# no worker this tick reads holds (a held or lockless lock), and no recent cloud session
+# no worker this tick reads holds (a held or lockless lock), and no cloud session
 # covers, has no one working it. Fork PRs are listed apart, drafts and PRs younger than
 # the grace period never. Built from the one gh read above: no per-PR call.
 ticket_key() { printf '%s\n' "$1" | grep -oiE '[a-z][a-z0-9]*-[0-9]+' | head -n 1 | tr '[:lower:]' '[:upper:]'; }
@@ -2954,13 +2954,12 @@ while IFS=$'\t' read -r o_label o_lock _; do
     o_key="$(ticket_key "${o_doc##*/}")"
     [ -z "$o_key" ] || owner_keys="$owner_keys$o_key "
 done <<< "$leg_candmap"
+leg_owner_keys="$owner_keys"
 cloud_tsv=""
 [ -n "$console_doc" ] && cloud_tsv="${console_doc%/*}/cloud-sessions.tsv"
 if [ -n "$cloud_tsv" ] && [ -f "$cloud_tsv" ]; then
-    cloud_window_s=$(( ${CLOUD_LIVENESS_WINDOW_H:-48} * 3600 ))
-    while IFS=$'\t' read -r c_time c_key _; do
-        c_at="$(date -d "$c_time" +%s 2>/dev/null)" || continue  # gnu-ok: Linux-only kit
-        [ $(( $(date +%s) - c_at )) -le "$cloud_window_s" ] && owner_keys="$owner_keys$c_key "
+    while IFS=$'\t' read -r _ c_key _; do
+        [[ "$c_key" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]] && owner_keys="$owner_keys$c_key "
     done < "$cloud_tsv"
 fi
 held_tsv=""
@@ -3912,7 +3911,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         pd_age=0
     fi
     if [ "$pd_age" -ge "$pd_gap" ] && mkdir -p "$pd_dir" 2>/dev/null; then
-        pd_args=(--dispositions --top 1000 --doc "$console_doc" --owners "$owner_keys")
+        pd_args=(--dispositions --top 1000 --doc "$console_doc" --owners "$leg_owner_keys")
         [ -z "$WORKERS_FROM" ] || pd_args+=(--workers-from "$WORKERS_FROM")
         # setsid: the waiter's timeout kills the tick's process group, never the snapshot.
         # A running snapshot holds the lock, so this launch exits at once.

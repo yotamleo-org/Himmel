@@ -443,6 +443,7 @@ cat > "$sk/handover/chief-kit/next-dispatchable.sh" <<'EOF'
 case " $* " in *" --dispositions "*)
     # the parent is `timeout`; a bash is re-niced by some stations' ananicy rules, a timeout is not
     printf 'x\n' >> "$PS_LAUNCH_LOG"; ps -o ni= -p "$PPID" | tr -d ' ' >> "$PS_NICE_LOG"
+    printf '%s\n' "$*" >> "$PS_LAUNCH_LOG.args"
     [ -z "${PS_FAIL:-}" ] || exit 1
     printf '# disposition HIMMEL-1 in-flight owned by worker N1\n' ;;
 esac
@@ -469,6 +470,8 @@ touch "$pl_doc"
 pl_go 'a changed chief doc launches a snapshot past the floor' 3
 printf '%s\tZZTEST-7\t\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${pl_doc%/*}/cloud-sessions.tsv"
 pl_go 'a changed owner set (a cloud session now owns a key) launches a snapshot past the floor' 4
+check '10378 T4: control: the snapshot launch logs its --owners' 1 "$(tail -n 1 "$pl_log.args" | grep -c -- '--owners')"
+check '10378 T4: the pool snapshot gets leg keys only, not the cloud key' 0 "$(tail -n 1 "$pl_log.args" | grep -o -- '--owners .*' | grep -c ZZTEST-7)"
 printf 'v1.1.3\ttrue\t\n' > "$WORK/mirror/HIMMEL.versions.tsv"
 pl_go 'a changed versions table launches a snapshot past the floor' 5
 printf '{"key":"ZZTEST-7"}\n' > "$pl_dir/tss/status-events.jsonl"
