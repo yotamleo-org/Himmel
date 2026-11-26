@@ -114,5 +114,23 @@ sleep 1
 check '4 a later waiter inside the back-off starts no second heal' 1 "$(count "$STUB/heal.calls")"
 check '4 and the owed row is not repeated' 1 "$(owed_rows)"
 
+reset
+export CHIEF_WAIT_STATION="$STUB/heal-ok.sh"
+tick_line ' station=BEHIND:plugins'
+run_waiter "$WORK/o5.out" 60 > /dev/null
+contains '5 control: the single sample wakes the chief' "$(cat "$WORK/o5.out")" 'WAKE station BEHIND:plugins'
+check '5 one BEHIND sample counts one and records no heal start' '1 0' "$(sed -n 1p "$inbox.wait.station-heal") $(sed -n 2p "$inbox.wait.station-heal")"
+check '5 one BEHIND sample runs no heal' 0 "$(count "$STUB/heal.calls")"
+
+reset
+printf '#!/usr/bin/env bash\necho tick >> "$STUB/tick.calls"\ncat "$STUB/tick.line"\nexit 1\n' > "$STUB/tick-fail.sh"
+chmod +x "$STUB/tick-fail.sh"
+tick_line ' station=BEHIND:plugins'
+printf '2\n0\n' > "$inbox.wait.station-heal"
+CHIEF_WAIT_TICK="$STUB/tick-fail.sh" run_waiter "$WORK/o6.out" 50 > /dev/null
+if [ "$(count "$STUB/tick.calls")" -ge 4 ]; then pass '6 control: the waiter sampled at least four times'; else fail "6 control: the waiter sampled $(count "$STUB/tick.calls") times"; fi
+check '6 a failing tick runs no heal' 0 "$(count "$STUB/heal.calls")"
+check '6 and leaves the streak as it was' '2 0' "$(sed -n 1p "$inbox.wait.station-heal") $(sed -n 2p "$inbox.wait.station-heal")"
+
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed"; exit 1
