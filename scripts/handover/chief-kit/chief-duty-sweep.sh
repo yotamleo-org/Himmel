@@ -84,10 +84,12 @@ add() { items="$items$1"$'\n'; }
 unread() { add "DUTY? $1 unread"; }
 short() { printf '%s' "${1:0:7}"; }
 
-legs=$(jq -r '(.legs // [])[]? | [(.label // ""), (.doc // ""), (.lane // "unknown")] | @tsv' "$from" 2>/dev/null) || legs=""  # swallow-ok: an unreadable manifest reads as no legs, named below
-if ! jq -e '.legs | type == "array" and all(.[]; type == "object")' "$from" >/dev/null 2>&1; then
+fleet_ok=1
+legs=$(jq -r '(.workers // .legs // [])[]? | [(.label // ""), (.doc // ""), (.lane // "unknown")] | @tsv' "$from" 2>/dev/null) || legs=""  # swallow-ok: an unreadable manifest reads as no legs, named below
+if ! jq -e '(.workers // .legs) | type == "array" and all(.[]; type == "object")' "$from" >/dev/null 2>&1; then
     unread "fleet"
     legs=""
+    fleet_ok=0
 fi
 
 prs_ok=0; prs_tsv=""
@@ -447,7 +449,7 @@ if held=$(bash "$HERE/orphan-pr-check.sh" --held --doc "$doc" 2>/dev/null); then
 
 stall_secs="${CHIEF_DUTY_STALL_SECS:-3600}"
 case "$stall_secs" in ''|*[!0-9]*) stall_secs=3600 ;; esac
-if [ "$prs_ok" = 1 ]; then
+if [ "$prs_ok" = 1 ] && [ "$fleet_ok" = 1 ]; then
     stall_file="$state/chief-duty-sweep-stall.tsv"
     stall_new=""
     while IFS=$'\t' read -r pr branch head draft fork base; do
@@ -502,14 +504,15 @@ if [ "$prs_ok" = 1 ]; then
     ( . "$REPO/scripts/lib/prim.sh" && printf '%s' "$stall_new" | atomic_write "$stall_file" ) 2>/dev/null  # swallow-ok: an unwritten stall file restarts every clock, which only delays a row
 fi
 
-if [ "$held_ok" = 1 ]; then
+if [ "$held_ok" = 1 ] && [ "$fleet_ok" = 1 ]; then
     if [ -n "$dispo" ]; then
         while IFS=$'\t' read -r hsubj htrig _ _ hseg; do
             case "$htrig" in done:?*) ;; *) continue ;; esac
             hkey="${htrig#done:}"
             [ -z "$(live_owner "$hkey")" ] || continue
             printf '%s\n' "$dispo" | grep -qE "^# disposition $hkey listed " && continue
-            [ -z "${mirror:-}" ] || ! grep -qs '^statusCategory: "Done"' "$mirror/$hkey.md" || continue
+            [ -d "${mirror:-}" ] || continue
+            ! grep -qs '^statusCategory: "Done"' "$mirror/$hkey.md" || continue
             add "$(printf 'DUTY dead-wake %s :: hold wake=done:%s can never fire: no live worker and no dispatchable row for %s :: next: re-rule the hold (dispatch %s, change its wake, or drop it) in the chief doc queue: %s' "$hsubj" "$hkey" "$hkey" "$hkey" "$(printf '%s' "$hseg" | sed -E 's/^ +| +$//g')")"
         done <<< "$held"
     fi

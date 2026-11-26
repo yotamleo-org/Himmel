@@ -387,12 +387,29 @@ world
 printf '[{"number":101,"headRefName":"feat/himmel-9100-thing","headRefOid":"%s","isDraft":true,"isCrossRepository":false,"baseRefName":"main"}]\n' "$H1" > "$WORK/w/prs.json"
 stall_pair 61
 hasnt "stalled-pr: a draft is not listed" "stalled-pr" "$OUT"
+world; printf '{"schema":1,"workers":[{"doc":"%s","label":"N1","lane":"t3"}]}\n' "$DOC1" > "$WORK/w/fleet.json"
+stall_pair 61
+has "workers shape: the manifest's own owner is read" "owner N1" "$OUT"
+hasnt "workers shape: an owned PR is not a dead wake" "dead-wake" "$OUT"
+world; printf '{"schema":1,"legs":[42]}\n' > "$WORK/w/fleet.json"
+stall_pair 61
+has "unread fleet: named" "DUTY? fleet unread" "$OUT"
+hasnt "unread fleet: no PR is called ownerless" "dead-wake" "$OUT"
+hasnt "unread fleet: no PR is called stalled" "stalled-pr" "$OUT"
+world; printf '{"schema":1}\n' > "$WORK/w/fleet.json"
+stall_pair 61
+has "a manifest with neither workers nor legs is unread" "DUTY? fleet unread" "$OUT"
+hasnt "a manifest with neither adds no ownerless PR" "dead-wake" "$OUT"
 
 world; CHIEF="$FIX/chief-dead-wake.md"
 sweep
 has "dead-wake: a hold with wake=done:KEY where KEY has no owner is listed" "DUTY dead-wake #5929 :: " "$OUT"
 has "dead-wake: names the key" "done:HIMMEL-11114" "$OUT"
 has "dead-wake: says to re-rule" "re-rule" "$OUT"
+world; CHIEF="$FIX/chief-dead-wake.md"; rm -rf "$WORK/w/mirror"
+sweep
+has "dead-wake: a missing mirror is named" "DUTY? mirror unread" "$OUT"
+hasnt "dead-wake: a missing mirror lists no hold as dead" "dead-wake #5929" "$OUT"
 world; CHIEF="$FIX/chief-live-wake.md"
 sweep
 hasnt "dead-wake: a key with a live worker is not dead" "dead-wake" "$OUT"
