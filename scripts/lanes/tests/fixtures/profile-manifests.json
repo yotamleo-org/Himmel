@@ -237,6 +237,14 @@
     ],
     "contextBudget": 35000
   },
+  "t3-relay": {
+    "enabled": [
+      "handover@himmel",
+      "himmel-ops@himmel",
+      "qmd@himmel"
+    ],
+    "contextBudget": 45000
+  },
   "console-judge": {
     "enabled": [
       "handover@himmel",
