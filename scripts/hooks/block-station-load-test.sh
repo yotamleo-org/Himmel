@@ -74,6 +74,7 @@ LOOP_KW_RE='(^|[^[:alnum:]_-])(for|while|until)[[:space:]]'
 
 QUOTED_RE="^([^'\"]*)('[^']*'|\"([^\"\\\\]|\\\\.)*\")(.*)\$"
 CFLAG_RE='-[[:alnum:]]*[ce][[:space:]]*$'
+CMDSTART_RE='(^|[;&|(`{]|'$NL')[[:space:]]*$'
 
 norm_text() {
     local rest=$1 pre span inner
@@ -89,6 +90,10 @@ norm_text() {
         inner=${span:1:${#span}-2}
         if [[ $normed$pre =~ $CFLAG_RE ]]; then
             normed+="$pre;$inner;"
+        elif [[ ${span:0:1} = '"' && ( $inner == *\$\(* || $inner == *\`* ) ]]; then
+            normed+="$pre;$inner;"
+        elif [[ $normed$pre =~ $CMDSTART_RE && $inner != *[[:space:]]* ]]; then
+            normed+="$pre$inner"
         else
             normed+="$pre${span//&/_}"
         fi
