@@ -15,7 +15,8 @@
 # yet) before printing it, all under the lock <dir>/specs/decisions/rulings-in-force.jsonl.lock,
 # so two sessions never take one number. Every session that writes a decision file takes its
 # number here and then writes the file and `record`s it; the first `record` replaces the
-# placeholder. record takes the same lock.
+# placeholder. record takes the same lock. render, check and find read a placeholder as absent, so
+# a ruling whose number was taken and never recorded is never dropped or counted done.
 #
 # <dir> is the bucket directory holding specs/ (the chief doc's directory). The ledger is
 # <dir>/specs/decisions/rulings-in-force.jsonl, append-only, one JSON row per record:
@@ -178,7 +179,7 @@ def die(msg, rc=1):
     sys.stderr.write("rulings-in-force: %s\n" % msg)
     sys.exit(rc)
 
-def load():
+def load(reserved=False):
     rows, hist = {}, {}
     if not os.path.exists(ledger):
         return None, None
@@ -196,6 +197,8 @@ def load():
                 ok = False
             if not ok:
                 die("%s line %d is not a whole ledger row (id, date, line, status, path); repair it" % (LEDGER, k), 3)
+            if r.get("reserved") and not reserved:
+                continue
             rows[r["id"]] = r
             hist.setdefault(r["id"], set()).add(r["line"])
     return rows, hist
@@ -222,7 +225,7 @@ def same_ruling(a, b):
 
 if verb == "next-id":
     lock = take_lock()
-    known = load()[0] or {}
+    known = load(True)[0] or {}
     ids = set(known)
     for f in os.listdir(os.path.join(bucket, "specs", "decisions")):
         m = re.fullmatch(r"verbatim-decision-([0-9]+)-.*\.txt", f)
@@ -244,7 +247,7 @@ if verb == "record":
     if not m or (m.group(1) and int(m.group(1)) == int(rid)):
         die("--status must be in-force, done or superseded-by <another decision number>")
     lock = take_lock()
-    known = load()[0] or {}
+    known = load(True)[0] or {}
     prev = known.get(int(rid), {})
     held = prev if prev and not prev.get("reserved") else {}
     if held and path and os.path.normpath(path) != os.path.normpath(held["path"]):
