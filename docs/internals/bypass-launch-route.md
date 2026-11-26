@@ -274,11 +274,13 @@ daemon waits on a go is written and told when that wait ends, at most 6 h later.
 On a Linux chief station that card can still fire, within the daemon's poll interval of the pull, because the daemon
 cannot know the station sync is about to restart it, and the card's text says to restart by hand. When the merge was
 one the chief's waiter handled you can ignore it: the sync restarts the daemon, and a hand `himmelctl bypass restart`
-before it spends one of the unit's start-limit slots (5 starts within 600 s trip the limit). A merge the waiter never
-handled (the GitHub UI, Dependabot, by hand) runs no sync, so run
-`bash <primary checkout>/scripts/himmel-update.sh --only bypass_daemon` instead. Do not ignore the card when the tick
-reads `station=BEHIND:bypass_daemon-failed` or `-inactive`, or `himmelctl bypass status` shows `active: no`: the unit
-is down, and `himmelctl bypass restart` is the way back.
+before it spends one of the unit's start-limit slots (five starts within 600 s use up the allowance, and the next start
+is refused). A merge the waiter never handled (the GitHub UI, Dependabot, by hand) runs no sync, so run
+`bash <primary checkout>/scripts/himmel-update.sh --only bypass_daemon` instead. Do not ignore the card when the tick's
+`station=BEHIND:` list (comma-separated, other components may sit beside it) names `bypass_daemon-failed` or
+`bypass_daemon-inactive`, or `himmelctl bypass status` shows `active: no`. `-inactive` means the unit is enabled but not
+running. `-failed` means the step itself returned an error, so read its line in `~/.himmel/state/station-sync.out` and
+run `himmelctl bypass status` before choosing; when the unit is not running, `himmelctl bypass restart` is the way back.
 
 `bypass-launchd.sh --check --bucket <bucket> [--request <file>]` reports without
 starting anything. It runs the start checks (not the Claude-session refusal, the
