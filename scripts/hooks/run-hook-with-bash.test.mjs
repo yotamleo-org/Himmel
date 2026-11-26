@@ -3683,7 +3683,9 @@ test('readiness residuals: the lone deadline kills the stalled grandchild, not j
       if (alive) spawnSync('sleep', ['0.1']);
     }
     alive = isAlive();
-    try { process.kill(pid, 'SIGKILL'); } catch (_e) { alive = false; }
+    if (alive) {
+      try { process.kill(pid, 'SIGKILL'); } catch (_e) { alive = false; }
+    }
     if (hasProcfs) assert.equal(alive, false, 'the stalled grandchild is gone after the deadline');
   } finally {
     rmSync(dir, { recursive: true, force: true });
