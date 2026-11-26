@@ -146,6 +146,16 @@ ws_tick() { # [wakerstate value]: the standing tick line, a held worker with no 
 }
 ws_pages() { cat "$STUB/pages" 2>/dev/null | grep -c . || true; }  # pipefail-ok: none set; a missing file counts 0
 ws_bullets() { grep -c '^- [0-9:]* WORKER-SILENT N1 signal=capped-waker' "$WD" 2>/dev/null || true; }
+cat > "$STUB/silent-act.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB/silent-act.log"
+[ ! -f "$STUB/silent-act.rc" ] || exit "$(cat "$STUB/silent-act.rc")"
+if [ -f "$STUB/silent-act.next" ]; then cat "$STUB/silent-act.next"; rm -f "$STUB/silent-act.next"; exit 0; fi
+echo "SILENT-ACT N1 done"
+EOF
+export CHIEF_WAIT_SILENT_ACT="$STUB/silent-act.sh"
+rm -f "$STUB/silent-act.log"
+ws_acts() { grep -c . "$STUB/silent-act.log" 2>/dev/null || true; }
 reset_stub
 
 tl_line() {
@@ -200,6 +210,7 @@ if [ "${1:-}" = --ticklog-only ]; then
 fi
 ws_fleet ws1 "2 hours ago"
 ws_tick "N1:capped"
+printf 'SILENT-ACT N1 stub-ran\n' > "$STUB/silent-act.next"
 CHIEF_WAIT_WORKER_SILENT_MIN=30 start "$I" "$WORK/ws1.out" --doc "$WD" --workers-from "$WM"
 wait_exit "$WPID"
 check "(ws1) a capped waker on a doc quiet past the bound ends the wait" "0" "$rc"
@@ -210,6 +221,8 @@ check "(ws1) the operator alert went out once" "1" "$(ws_pages)"
 check "(ws1) and names the worker and the signal" "1" "$(grep -c 'WORKER-SILENT N1 signal=capped-waker' "$STUB/pages" 2>/dev/null)"
 check "(ws1) the chief doc got one bullet naming the action" "1" "$(ws_bullets)"
 check "(ws1) the exit reason is logged" "yes" "$(grep -q 'exit=wake-worker-silent' "$I.wait" && echo yes)"
+check "(ws1) the acting helper ran once for the worker, with its signal and silent minutes" "1" "$(grep -cE -- "--doc $WD --fleet $WM --bucket $WORK/ws1 --chief chief --signal capped-waker N1 1[12][0-9]$" "$STUB/silent-act.log" 2>/dev/null || true)"
+check "(ws1) its result line follows the wake line" "SILENT-ACT N1 stub-ran" "$(sed -n 2p "$WORK/ws1.out")"
 if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 # the state is unchanged: a re-arm repeats neither the wake, the page nor the bullet
 CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout -k 5 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
@@ -217,6 +230,23 @@ check "(ws2) a re-arm on an unchanged silent worker keeps waiting" "124" "$rc"
 check "(ws2) and prints no worker-silent line" "0" "$(grep -c 'worker-silent' "$WORK/ws2.out")"
 check "(ws2) and pages nothing more" "1" "$(ws_pages)"
 check "(ws2) and writes no second bullet" "1" "$(ws_bullets)"
+check "(ws2) and asks the acting helper again, which has nothing to do" "yes" "$([ "$(ws_acts)" -ge 2 ] && echo yes)"
+printf 'SILENT-ACT N1 relaunched DEMO-RESUME\n' > "$STUB/silent-act.next"
+CHIEF_WAIT_WORKER_SILENT_MIN=30 start "$I" "$WORK/ws2c.out" --doc "$WD" --workers-from "$WM"
+wait_exit "$WPID"
+check "(ws2c) a keyed worker the helper later relaunches wakes the chief with a WAKE line" "WAKE worker-silent N1 signal=capped-waker" "$(head -n1 "$WORK/ws2c.out" | cut -d' ' -f1-4)"
+check "(ws2c) and the helper's result rides under it" "SILENT-ACT N1 relaunched DEMO-RESUME" "$(sed -n 2p "$WORK/ws2c.out")"
+check "(ws2c) with no second page" "1" "$(ws_pages)"
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
+printf '2\n' > "$STUB/silent-act.rc"
+CHIEF_WAIT_WORKER_SILENT_MIN=30 start "$I" "$WORK/ws2d.out" --doc "$WD" --workers-from "$WM"
+wait_exit "$WPID"
+check "(ws2d) a helper that exits non-zero wakes the chief with a WAKE line" "WAKE worker-silent N1 signal=capped-waker" "$(head -n1 "$WORK/ws2d.out" | cut -d' ' -f1-4)"
+check "(ws2d) and names the failure under it" "SILENT-ACT N1 helper-failed rc=2" "$(sed -n 2p "$WORK/ws2d.out")"
+if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
+CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout -k 5 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws2e.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(ws2e) the same failure is named once per doc write: a re-arm keeps waiting" "124" "$rc"
+rm -f "$STUB/silent-act.rc"
 # the worker wrote, then went quiet again: the state moved, so it is a new silence
 touch -d "90 minutes ago" "$WL"  # gnu-ok: Linux-only kit
 CHIEF_WAIT_WORKER_SILENT_MIN=30 start "$I" "$WORK/ws2b.out" --doc "$WD" --workers-from "$WM"
@@ -227,6 +257,7 @@ if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 
 # negative: a Results bullet inside the bound keeps the worker out of the silent set
 reset_stub
+ws_acts_before="$(ws_acts)"
 ws_fleet ws3 "1 minute ago"
 ws_tick "N1:capped"
 CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout -k 5 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws3.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
@@ -240,6 +271,7 @@ ws_tick
 CHIEF_WAIT_WORKER_SILENT_MIN=30 timeout -k 5 3 bash "$WAIT" "$I" --doc "$WD" --workers-from "$WM" > "$WORK/ws4.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(ws4) a quiet doc with no capped waker keeps waiting" "124" "$rc"
 check "(ws4) and prints no worker-silent wake" "0" "$(grep -c 'worker-silent' "$WORK/ws4.out")"
+check "(ws3, ws4) a worker kept out of the silent set never reaches the acting helper" "$ws_acts_before" "$(ws_acts)"
 # the bound is a named, overridable value: 20 quiet minutes sit inside the default and outside a 10-minute bound
 reset_stub
 ws_fleet ws5 "20 minutes ago"
@@ -263,6 +295,7 @@ wait_exit "$WPID"
 check "(ws6) the partial wake still comes first" "WAKE succession partial 0/1 silent 0 min" "$(head -n1 "$WORK/ws6.out")"
 check "(ws6) the worker it names gets one worker-silent line" "1" "$(grep -c '^WAKE worker-silent N1 signal=succession-partial' "$WORK/ws6.out")"
 check "(ws6) and one operator alert" "1" "$(ws_pages)"
+check "(ws6) a succession-partial worker reaches the acting helper with its signal" "1" "$(grep -c -- '--signal succession-partial N1 ' "$STUB/silent-act.log" 2>/dev/null || true)"
 if [ "$rc" = running ]; then stop_waiter "$WPID"; fi
 rm -f "$STUB/pages"
 
