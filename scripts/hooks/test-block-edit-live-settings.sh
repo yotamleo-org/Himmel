@@ -4204,6 +4204,10 @@ assert_rc "11257b35 bash -lc carrying an agy install denies" 2 \
     "$(bash_rc_of "$WT2" "bash -lc 'agy plugin import claude'" HOME="$T3H")"
 assert_rc "11257b36 bash with an option argument before -c carrying an agy install denies" 2 \
     "$(bash_rc_of "$WT2" "bash -o pipefail -c 'agy plugin import claude'" HOME="$T3H")"
+assert_rc "11257b43 an assignment from a substitution before bash -c carrying an agy install denies" 2 \
+    "$(bash_rc_of "$WT2" "X=\$(pwd) bash -c 'agy plugin import claude'" HOME="$T3H")"
+assert_rc "11257b44 an assignment from a substitution before an agy install denies" 2 \
+    "$(bash_rc_of "$WT2" 'X=$(echo y) agy plugin import claude' HOME="$T3H")"
 assert_rc "11257b37 a command substitution filling the namespace slot denies" 2 \
     "$(bash_rc_of "$WT2" 'agy $(echo plugin) install ./p' HOME="$T3H")"
 assert_rc "11257b38 a backtick substitution filling the namespace slot denies" 2 \
@@ -4291,6 +4295,14 @@ assert_rc "11257c26 a variable path ending in agy with a read verb allows" 0 \
     "$(bash_rc_of "$WT2" '"$HOME/.local/bin/agy" plugin list' HOME="$T3H")"
 assert_rc "11257c27 a script argument that only names agy plugin install allows" 0 \
     "$(bash_rc_of "$WT2" "bash scripts/x.sh --ceiling 'harmless text: agy plugin install foo'" HOME="$T3H")"
+assert_rc "11257c31 an assignment from a substitution before gh api allows" 0 \
+    "$(bash_rc_of "$WT2" 'GH_TOKEN=$(cat f) gh api "repos/$R/pulls" --paginate' HOME="$T3H")"
+assert_rc "11257c32 an assignment from a substitution before cp allows" 0 \
+    "$(bash_rc_of "$WT2" 'TMP=$(mktemp -d /tmp/x.XXXXXX) cp src/*.ts "$TMP"' HOME="$T3H")"
+assert_rc "11257c33 an assignment from a substitution before ls allows" 0 \
+    "$(bash_rc_of "$WT2" 'X=$(pwd) ls *.md -la' HOME="$T3H")"
+assert_rc "11257c34 an assignment from a substitution before agy plugin list allows" 0 \
+    "$(bash_rc_of "$WT2" 'X=$(echo y) agy plugin list' HOME="$T3H")"
 assert_rc "11257c28 a substitution before a read verb allows" 0 \
     "$(bash_rc_of "$WT2" 'agy $(echo plugin) list' HOME="$T3H")"
 assert_rc "11257c29 a substitution holding agy plugin list inside another command allows" 0 \

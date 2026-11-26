@@ -1113,7 +1113,7 @@ _agy_text_writes() {
 }
 
 agy_cli_writes() {
-    local i=0 s=0 d=0 bt=0 sep first=1 nested=0 shellc=0 w prevw='' opener closer
+    local i=0 s=0 d=0 bt=0 sep first=1 la=0 fo=0 nested=0 shellc=0 w prevw='' opener closer
     local -a sw=() stw=() stf=()
     if [ "$TOK" != 1 ]; then
         _agy_text_writes "$cmd"
@@ -1121,7 +1121,9 @@ agy_cli_writes() {
     fi
     while [ "$s" -lt "$ST_NSEG" ]; do
         while [ "$i" -lt "$ST_N" ] && [ "${ST_S[i]}" = "$s" ]; do
-            if [ -n "${ST_RO[i]}" ] || { [ "$first" = 1 ] && [ "${ST_A[i]}" = 1 ]; }; then i=$((i + 1)); continue; fi
+            if [ -n "${ST_RO[i]}" ]; then i=$((i + 1)); continue; fi
+            if [ "$first" = 1 ] && [ "${ST_A[i]}" = 1 ]; then la=1; i=$((i + 1)); continue; fi
+            la=0
             w=${ST_LW[i]}
             if [ "$first" = 1 ]; then
                 first=0
@@ -1151,20 +1153,24 @@ agy_cli_writes() {
         esac
         if [ "$opener" = 1 ]; then
             [ "$sep" != '`' ] || bt=1
-            sw[${#sw[@]}]=$'$()\001'
+            fo=0
+            if [ "$first" = 1 ] && [ "$la" = 1 ]; then
+                fo=1
+            else
+                sw[${#sw[@]}]=$'$()\001'
+            fi
             stw[d]=$(IFS=$'\002'; printf '%s' "${sw[*]}")
-            stf[d]="$nested"$'\002'"$shellc"$'\002'"$prevw"
+            stf[d]="$fo"$'\002'"$nested"$'\002'"$shellc"$'\002'"$prevw"
             d=$((d + 1))
-            sw=() first=1 nested=0 shellc=0 prevw=''
+            sw=() first=1 la=0 nested=0 shellc=0 prevw=''
         else
             if [ "${#sw[@]}" -gt 0 ] && _agy_seg_writes "${sw[@]}"; then return 0; fi
-            sw=() first=1 nested=0 shellc=0 prevw=''
+            sw=() first=1 la=0 nested=0 shellc=0 prevw=''
             if [ "$closer" = 1 ]; then
                 d=$((d - 1))
                 [ "$sep" != '`' ] || bt=0
                 IFS=$'\002' read -r -a sw <<< "${stw[d]}"
-                IFS=$'\002' read -r nested shellc prevw <<< "${stf[d]}"
-                first=0
+                IFS=$'\002' read -r first nested shellc prevw <<< "${stf[d]}"
             fi
         fi
         s=$((s + 1))
