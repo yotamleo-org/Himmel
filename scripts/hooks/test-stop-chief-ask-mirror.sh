@@ -73,7 +73,7 @@ wait_calls() {
 }
 fixture() { jq -cn --arg s "$1" --arg m "$2" '{session_id:$s, hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:$m}' > "$3"; }
 run_hook() {
-    HOUT="$(bash "$HOOK" < "$1" 2>/dev/null)"; HRC=$?
+    HOUT="$(bash "$HOOK" < "$1" 2>/dev/null)"; HRC=$?  # read-sink-ok: every caller passes a payload file this suite wrote under its own mktemp dir
 }
 
 if [ ! -f "$HOOK" ]; then
