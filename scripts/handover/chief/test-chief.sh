@@ -57,6 +57,7 @@ export UNGUARDED_LAUNCH_OK=1  # scratch --project fixtures; the guard rows drop 
 # Pin that dir under $tmp for the WHOLE suite so no case can leave a fixture row
 # (session DEMO-nextleg-...) in the operator's real launch-record directory.
 export HIMMELCTL_CACHE_DIR="$tmp/himmelctl-cache"
+unset CLAUDE_CODE_SESSION_ID
 
 # registry_lookup_for_project() falls back
 # to $HOME/.claude/handover/registry.json when HANDOVER_REGISTRY is unset. Pin
@@ -4327,4 +4328,62 @@ check "10877 an unreadable predecessor manifest refuses next with exit 10" "$rcu
 check "10877 the refusal names the unreadable manifest" "$(grep -c "cannot read the fleet manifest ${Ar10877%.md}.fleet.json" "$tmp/u10877.err")" "1"
 check "10877 an unreadable manifest refuses without waiting" "$(grep -c 'waiting up to' "$tmp/u10877.err")" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$Ar10877" "$tokr10877" >/dev/null 2>&1
+
+tok11266="$(token_of "$(chief new --bucket load11266)")"
+A11266="$root/tester/load11266/DEMO-nextleg-${today}A-chief.md"
+sid11266=11266aaa-0000-4000-8000-000000000001
+cfg11266="$tmp/cfg11266"; mkdir -p "$cfg11266/projects/p"
+{
+    printf '{"type":"custom-title","customTitle":"DEMO-nextleg-%sA-chief","sessionId":"%s"}\n' "$today" "$sid11266"
+    printf '{"type":"user","timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"load the doc and continue"}}\n'
+    printf '{"type":"assistant","timestamp":"2026-01-01T00:00:30Z","message":{"id":"m1","usage":{"input_tokens":10,"cache_read_input_tokens":90000,"cache_creation_input_tokens":9990},"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"bash scripts/handover/chief-kit/chief-wait.sh x"}}]}}\n'
+    printf '{"type":"user","timestamp":"2026-01-01T00:01:00Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"PreToolUse:Bash hook timed out after 30s"}]}}\n'
+    printf '{"type":"user","timestamp":"2026-01-01T00:10:00Z","message":{"role":"user","content":"<task-notification>waiter woke</task-notification>"}}\n'
+    printf '{"type":"assistant","timestamp":"2026-01-01T00:10:30Z","message":{"id":"m2","usage":{"input_tokens":10,"cache_read_input_tokens":149990,"cache_creation_input_tokens":0},"content":[{"type":"text","text":"ok"}]}}\n'
+    printf '{"type":"user","timestamp":"2026-01-01T00:20:00Z","message":{"role":"user","content":"<cross-session-message from=\\"N1\\" from-mode=\\"worker\\">JUDGE-REQUEST 4242 abc</cross-session-message>"}}\n'
+    printf '{"type":"assistant","timestamp":"2026-01-01T00:26:00Z","message":{"id":"m3","usage":{"input_tokens":10,"cache_read_input_tokens":199990,"cache_creation_input_tokens":0},"content":[{"type":"tool_use","id":"t3","name":"Agent","input":{"subagent_type":"judge-ro","description":"Judge q1 on HIMMEL-1"}}]}}\n'
+    printf '{"type":"user","timestamp":"2026-01-01T00:30:00Z","message":{"role":"user","content":"status?"}}\n'
+    printf '{"type":"assistant","timestamp":"2026-01-01T00:31:00Z","message":{"id":"m4","usage":{"input_tokens":10,"cache_read_input_tokens":249990,"cache_creation_input_tokens":0},"content":[{"type":"text","text":"ok"}]}}\n'
+    printf '{"type":"assistant","timestamp":"2026-01-01T02:00:00Z","message":{"id":"m5","usage":{"input_tokens":10,"cache_read_input_tokens":299990,"cache_creation_input_tokens":0},"content":[{"type":"text","text":"handing over"}]}}\n'
+} > "$cfg11266/projects/p/$sid11266.jsonl"
+mkdir -p "$HIMMELCTL_CACHE_DIR/launch-logs"
+printf 'headed-arm: role=chief session=DEMO-nextleg-%sA-chief context=standard source=explicit autocompact=0 launched=x lane=native\n' "$today" > "$HIMMELCTL_CACHE_DIR/launch-logs/DEMO-nextleg-${today}A-chief.log"
+rc11266=0
+CLAUDE_CONFIG_DIR="$cfg11266" CLAUDE_CODE_SESSION_ID="$sid11266" chief next --bucket load11266 --doc "$A11266" --reason operator-asked >/dev/null 2>"$tmp/11266.err" || rc11266=$?
+check "11266 next with a fixture transcript exits 0" "$rc11266" "0"
+L11266="$root/tester/load11266/chief-load.jsonl"
+check "11266 the handover appends exactly one load row to the bucket" "$(wc -l < "$L11266" 2>/dev/null | tr -d ' ')" "1"
+check "11266 the row carries every field of the record" \
+    "$(jq -r '[has("shift","next_shift","started_at","ended_at","hours","workers_start","workers_end","workers_mean","workers_peak","ctx_window","ctx_start","ctx_end","wakes_waiter","wakes_worker","wakes_subagent","wakes_other","operator_lines","operator_turns","judge_requests","judge_dispatches","judge_wait_min","rulings","spans_unknown","hook_timeouts","host_load","reason")] | all' "$L11266" 2>/dev/null)" "true"
+check "11266 the row names the outgoing and the next shift" "$(jq -r '.shift + " " + .next_shift' "$L11266" 2>/dev/null)" "DEMO-nextleg-${today}A-chief DEMO-nextleg-${today}B-chief"
+check "11266 the row reads context at the first waiter arm and at the end" "$(jq -r '"\(.ctx_start) \(.ctx_end)"' "$L11266" 2>/dev/null)" "100000 300000"
+check "11266 the row reads the shift's hours" "$(jq -r '.hours == 2' "$L11266" 2>/dev/null)" "true"
+check "11266 the row counts wakes by kind and operator lines" "$(jq -r '"\(.wakes_waiter) \(.wakes_worker) \(.operator_lines)"' "$L11266" 2>/dev/null)" "1 1 1"
+check "11266 the row counts the model calls an operator line triggers" "$(jq -r '.operator_turns' "$L11266" 2>/dev/null)" "2"
+check "11266 the row counts judge requests, dispatches and the wait" "$(jq -r '"\(.judge_requests) \(.judge_dispatches) \(.judge_wait_min == 6)"' "$L11266" 2>/dev/null)" "1 1 true"
+check "11266 the row counts hook-timeout refusals" "$(jq -r '.hook_timeouts' "$L11266" 2>/dev/null)" "1"
+check "11266 the row carries the handover reason given to next" "$(jq -r '.reason' "$L11266" 2>/dev/null)" "operator-asked"
+check "11266 the row carries a host load" "$(jq -r '.host_load | type' "$L11266" 2>/dev/null)" "number"
+check "11266 the row's context window is the outgoing chief's launch mode" "$(jq -r '.ctx_window' "$L11266" 2>/dev/null)" "200000"
+rc11266b=0
+CLAUDE_CONFIG_DIR="$cfg11266" CLAUDE_CODE_SESSION_ID="$sid11266" chief next --bucket load11266 --doc "$A11266" >/dev/null 2>&1 || rc11266b=$?
+check "11266 a second next for the same shift is refused" "$rc11266b" "1"
+check "11266 a refused second next for the same shift appends no second row" "$(wc -l < "$L11266" 2>/dev/null | tr -d ' ')" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$A11266" "$tok11266" >/dev/null 2>&1
+
+tokf11266="$(token_of "$(chief new --bucket loadfail11266)")"
+Af11266="$root/tester/loadfail11266/DEMO-nextleg-${today}A-chief.md"
+check "11266 the fixture puts a FIFO in the record's place" "$(mkfifo "$root/tester/loadfail11266/chief-load.jsonl" && echo made)" "made"
+logf11266="$HIMMELCTL_CACHE_DIR/launch-logs/DEMO-nextleg-${today}A-chief.log"
+chmod 000 "$logf11266"
+rcf11266=0
+outf11266="$(chief next --bucket loadfail11266 --doc "$Af11266" 2>"$tmp/f11266.err")" || rcf11266=$?
+check "11266 next warns that the load row was not appended" "$(grep -c 'could not append the shift' "$tmp/f11266.err")" "1"
+check "11266 next exits 0 when the load row cannot be written" "$rcf11266" "0"
+check "11266 next still prints the launch line when the load row cannot be written" "$(printf '%s\n' "$outf11266" | grep -c '^launch: ')" "1"
+if [ -r "$logf11266" ]; then
+    echo "SKIP - 11266 an unreadable launch log: chmod 000 did not deny reads (root or filesystem permissions)"
+fi
+chmod 644 "$logf11266"
+HANDOVER_DIR="$root" bash "$QL" release "$Af11266" "$tokf11266" >/dev/null 2>&1
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

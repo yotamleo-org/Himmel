@@ -27,6 +27,7 @@ write_t3_settings() {
   "orchestratorNeon":{"driver":"antigravity","displayName":"Orchestrator (Neon)","enabled":true,"config":{}},
   "gemini":{"driver":"gemini","displayName":"Gemini","enabled":true},
   "claudeAgent_worker-impl":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /x/worker-impl.json"}},
+  "claudeAgent_maintainer-hooks":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /x/maintainer-hooks.json"}},
   "claudeBypass":{"driver":"claudeAgent","enabled":true,"environment":[{"name":"AGENTS_MD_OK","value":"1"}],"config":{}},
   "skipArgs":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /x/y.json --dangerously-skip-permissions"}},
   "skipCr":{"driver":"codex","enabled":true,"config":{"env":{"SKIP_CR":"1"}}},
@@ -105,6 +106,16 @@ run "a non-object instance config: refused" 2 '"stringConfig": carries a himmel 
     "$(from_to codex stringConfig)"
 run "non-string launchArgs: refused" 2 '"arrayArgs": carries a himmel bypass flag (malformed launchArgs)' \
     "$(from_to codex arrayArgs)"
+run "launch on the maintainer-hooks instance: refused" 2 '"claudeAgent_maintainer-hooks": is a maintainer-profile instance' "$(from_to antigravity claudeAgent_maintainer-hooks)"
+run "launch on the maintainer-billed instance, not yet in T3 settings: refused" 2 '"claudeAgent_maintainer-billed": is a maintainer-profile instance' "$(from_to codex claudeAgent_maintainer-billed)"
+run "launch on a maintainer relay copy: refused" 2 '"claudeAgent_maintainer-hooks_relay": is a maintainer-profile instance' "$(from_to codex claudeAgent_maintainer-hooks_relay)"
+run "launch on the billed relay copy: refused" 2 '"claudeAgent_maintainer-billed_relay": is a maintainer-profile instance' "$(from_to codex claudeAgent_maintainer-billed_relay)"
+run "a maintainer instance as the source is judged too: refused" 2 '"claudeAgent_maintainer-hooks"' "$(from_to claudeAgent_maintainer-hooks codex)"
+run "create_threads naming a maintainer instance: refused" 2 '"claudeAgent_maintainer-hooks"' \
+    '{"tool_name":"'$T'create_threads","tool_input":{"threads":[{"title":"a","target":{"providerInstanceId":"claudeAgent_maintainer-hooks"}}]}}'
+run "negative control, claudeAgent_worker-impl: allowed" 0 - "$(from_to codex claudeAgent_worker-impl)"
+run "a name that only starts like a maintainer profile: allowed" 0 - "$(from_to codex claudeAgent_maintainer-hooks-other)"
+run "operator route: a maintainer instance is allowed, on stderr" 0 'override: allowed' "$(from_to codex claudeAgent_maintainer-hooks)" T3_THREAD_TOOLS_OK=1
 run "launch with a built-in instance: allowed" 0 - "$LAUNCH_OK"
 run "launch with no instance key: allowed" 0 - "$LAUNCH_PLAIN"
 run "create_threads with one good and one bad providerInstanceId: refused" 2 '"claudeBypass"' "$CREATE_MIXED"

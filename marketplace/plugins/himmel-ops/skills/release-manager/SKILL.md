@@ -157,16 +157,30 @@ Every row is PASS, FAIL or UNKNOWN, and UNKNOWN fails:
 
 1. every baseline key of `v` is terminal or carries an effective move out;
 2. every effective `in` key of `v` is terminal;
-3. no open Critical, Blocker or Highest bug is `in` (or emergency) for `v`;
+3. `jira version-ready <v> --sha <candidate full sha>` exited 0. Your Jira
+   allowlist does not run it: the chief runs it with
+   `--out release/<R>/version-ready-<v>-<sha7>.txt`, which ends with
+   `sha=<sha>` and `exit=<code>`. A missing file, a `sha=` line naming
+   another sha, or no `exit=` line is UNKNOWN. Its rows: the
+   members done (`frozen-set`), no open Highest or High bug and none labelled
+   critical, blocker or v1-blocker (`no-blocker-bug`), no open station-adhoc
+   ticket, the newest run of every workflow and event green at the sha (`main-ci`), the
+   frozen keys folded (`done-fold`), every promise sentence shown true with
+   its proof (`promise-proof`), and no open owed step on a member
+   (`owed-steps`);
 4. no leaks, no open or claimed requests for `v`, no integrity lines;
 5. every required check succeeded on the candidate sha;
 6. the fold covers every Done key merged in the tag range;
 7. no open PR is linked to an `in` key of `v` without a deferral ruling.
 
-Sync the mirror first (`mirror`), then read the state. Write
-`release/<R>/ready-<v>-<sha7>.md` and send
-`READY <v|R> <sha> TAG-READY|NOT-READY <path>`. The operator tags and judges
-stability; a FAIL row is overridden only by an operator record naming it.
+Sync the mirror first (`mirror`), then read that file and the state.
+Write `release/<R>/ready-<v>-<sha7>.md` with the file's content and the
+state rows, and send `READY <v|R> <sha> TAG-READY|NOT-READY <path>`.
+TAG-READY only when every row passes. A FAIL row is overridden only by an
+operator record naming it; for row 3 the record names the command's row id
+and each FAIL item it exempts (a key, a sentence number or an owed-row id),
+and you list each exempted FAIL line in the file.
+The operator confirms the cut; the chief then cuts it.
 
 ## Lease and hand-off
 
