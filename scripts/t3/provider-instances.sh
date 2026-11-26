@@ -10,7 +10,9 @@
 # rc 3 an instance environment entry names a himmel guard bypass flag, or an instance's
 # launchArgs carry a permission-bypass flag (nothing written).
 # Env seams (tests): T3_PI_RESOLVER (resolver script), T3_PI_PROFILES (comma list),
-# T3_PI_EMPTY_OK (comma list of profiles that resolve to no settings; default "operator").
+# T3_PI_EMPTY_OK (comma list of profiles that resolve to no settings; default "operator"; each
+# gets an instance carrying only the resolver's default Artifact deny, as does the built-in
+# "claudeAgent" instance).
 # Relay copies: .t3.relay_instances in $HOME/.himmel/config.json (absent or [] = none) adds
 # "<id>_relay" beside each listed instance; T3_PI_BUILTIN_RELAY=1 also lets the built-in
 # "codex" (no entry) get a driver-only copy.
@@ -51,12 +53,34 @@ BYPASS_JQ='[ .providerInstances // {} | to_entries[] | .key as $id | .value as $
       , ( ($c.launchArgs // "") | select(test("dangerously-skip-permissions|bypassPermissions"; "i")) | "launchArgs" ) )
   | "\($id): \(.)" ] | .[]'
 
+DENY_JSON="$(cd "$HERE/../.." && node --input-type=module -e "
+import { resolveProfile } from './scripts/lanes/plugin-profiles.mjs';
+console.log(JSON.stringify({ permissions: resolveProfile({ profiles: { x: {} } }, 'x').permissions }));
+" 2>/dev/null)" || die 2 "cannot resolve the default Artifact deny"
+case "$DENY_JSON" in '{"permissions":{"deny":['*) ;; *) die 2 "the resolver default carries no deny list: $DENY_JSON" ;; esac
+if command -v sha256sum >/dev/null 2>&1; then DENY_HASH="$(printf '%s\n' "$DENY_JSON" | sha256sum | cut -c1-12)"
+else DENY_HASH="$(printf '%s\n' "$DENY_JSON" | shasum -a 256 | cut -c1-12)"; fi
+DENY_DIR="${HIMMEL_PROFILE_SETTINGS_DIR:-$HOME/.himmel/launch-profiles}/$DENY_HASH"
+DENY_FILE="$DENY_DIR/artifact-deny.json"
+case "$DENY_FILE" in *[[:space:]]*) die 2 "default deny settings path has whitespace; launchArgs would split it: $DENY_FILE" ;; esac
+mkdir -p "$DENY_DIR" 2>/dev/null || die 2 "cannot create $DENY_DIR"
+if ! printf '%s\n' "$DENY_JSON" > "$DENY_FILE.tmp.$$" || ! mv -f "$DENY_FILE.tmp.$$" "$DENY_FILE"; then
+    rm -f "$DENY_FILE.tmp.$$"
+    die 2 "cannot write $DENY_FILE"
+fi
+DENY_ARGS="--settings $DENY_FILE"
+
 SUM_READ="$(cksum < "$FILE")"
 GEN='{}'
 for p in $PROFILES; do
     case "$p" in ''|*[!A-Za-z0-9._-]*) die 2 "bad profile name '$p'" ;; esac
     if ! sp="$("$RESOLVER" "$p" 2>/dev/null)" || [ -z "$sp" ]; then
-        case "$EMPTY_OK" in *",$p,"*) echo "provider-instances: skip '$p' (resolves to no settings file)" >&2; continue ;; esac
+        case "$EMPTY_OK" in
+            *",$p,"*)
+                echo "provider-instances: '$p' resolves to no settings file; its instance carries the default Artifact deny only" >&2
+                GEN="$(printf '%s' "$GEN" | jq --arg p "$p" --arg a "$DENY_ARGS" '.[$p] = $a')" || die 2 "jq failed"
+                continue ;;
+        esac
         die 2 "profile '$p' did not resolve to a settings file"
     fi
     mp="$("$RESOLVER" "$p" --mcp-config 2>/dev/null)" || die 2 "profile '$p' mcp-config did not resolve"
@@ -66,17 +90,24 @@ for p in $PROFILES; do
     GEN="$(printf '%s' "$GEN" | jq --arg p "$p" --arg a "$args" '.[$p] = $a')" || die 2 "jq failed"
 done
 
-NEW="$(jq --argjson gen "$GEN" '
+OWNED_RE='^--settings [^ ]*/[0-9a-f]{12}/artifact-deny\.json$'
+USER_ARGS="$(jq -r --arg re "$OWNED_RE" '(.providerInstances.claudeAgent.config.launchArgs // "") | if . == "" or test($re) then "" else . end' "$FILE")" || die 2 "jq failed"
+[ -z "$USER_ARGS" ] || echo "provider-instances: claudeAgent carries its own launchArgs; left alone, so the default Artifact deny is not added to it" >&2
+
+NEW="$(jq --argjson gen "$GEN" --arg deny "$DENY_ARGS" --arg re "$OWNED_RE" '
   def basenames: (.config.launchArgs // "") | [scan("--settings ([^ ]+)")[0] | split("/")[-1]];
   . as $doc
   | (.providerInstances // {}) as $pi
   | reduce ($gen | keys_unsorted[]) as $p (.;
       ("claudeAgent_" + $p) as $id
-      | (($pi | to_entries | map(select(.key != $id and (.key | endswith("_relay") | not)) | .value | basenames | index($p + ".json")) | any)) as $covered
+      | (($pi | to_entries | map(select(.key != $id and .key != "claudeAgent" and (.key | endswith("_relay") | not)) | .value | basenames | index($p + ".json")) | any)) as $covered
       | if $covered then .
         else .providerInstances[$id] = (($pi[$id] // {"driver":"claudeAgent","displayName":("Claude (" + $p + ")"),"enabled":true})
               | .config = ((.config // {}) + {launchArgs: $gen[$p]}))
-        end)' "$FILE")" || die 2 "merge failed"
+        end)
+  | .providerInstances.claudeAgent = ((.providerInstances.claudeAgent // {"driver":"claudeAgent","displayName":"Claude","enabled":true})
+        | if ((.config.launchArgs // "") == "" or ((.config.launchArgs // "") | test($re)))
+          then .config = ((.config // {}) + {launchArgs: $deny}) else . end)' "$FILE")" || die 2 "merge failed"
 
 RELAY='[]'
 CFG="$HOME/.himmel/config.json"

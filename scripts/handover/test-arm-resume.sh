@@ -2055,8 +2055,6 @@ if grep -q 'stdin=tty' "$T32_REC" 2>/dev/null; then
         PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$1" --dry-run 2>&1 \
             | awk '/^DRY arm-resume: would at -t/ { on = 1; next } /^    CMD$/ { on = 0 } on { sub(/^    /, ""); print }'
     }
-    # t32_expect_tty <row title> <body> [<shell>] [<path prefix>]: runs the body through <shell> (default sh;
-    # "blind" is sh reading $' as t32_blind does), stdin=/dev/null, with <path prefix> ahead of PATH when given.
     t32_expect_tty() {
         local rec shell="${3:-sh}" body="$2"
         [ "$shell" = blind ] && body=$(t32_blind "$body")
@@ -2072,8 +2070,6 @@ if grep -q 'stdin=tty' "$T32_REC" 2>/dev/null; then
             *) echo "     claude recorded: ${rec:-nothing}"; head -n 8 "$TMP/t32-run.out" | sed 's/^/     run output: /' ;;
         esac
     }
-    # t32_expect_tty_all <row title> <body> [<path prefix>]: the row under sh, then under each other shell of
-    # T32_SHELLS that this host has.
     t32_expect_tty_all() {
         local s cmd
         t32_expect_tty "$1" "$2" sh "${3:-}"
