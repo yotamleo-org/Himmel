@@ -69,7 +69,6 @@ mkdir -p "$TMP/bin"
 cat > "$TMP/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 echo "$*" >> "${GH_STUB_LOG:?}"
-# A call gh_read routed to a pool token carries it as GH_TOKEN.
 [ -z "${GH_TOKEN:-}" ] || echo "$GH_TOKEN $*" >> "$GH_STUB_LOG.tok"
 [ -n "${GH_STUB_SLOW:-}" ] && sleep "$GH_STUB_SLOW"
 case "${GH_STUB_MODE:?}" in
