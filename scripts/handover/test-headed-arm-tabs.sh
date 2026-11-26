@@ -430,4 +430,10 @@ check "20b the seed's row is in the dedicated holds root" "$(find "$HOLDS_FAKE/.
 check "20c no row or register of this suite reached the real holds register" "$(grep -rlF "$tmp" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)" 0
 check "20d no register directory named for this suite reached the real holds register" "$(find "$REAL_HOME/.himmel/state/holds" -maxdepth 1 -name "*$(basename "$tmp")*" 2>/dev/null | grep -c . || true)" 0
 
+d21="$tmp/c21"; mk_env "$d21"
+arm "$d21" PROJ-21-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A IMPL_GUARD_OK=1 INLINE_IMPL_OK=1; rc21a=$?
+arm "$d21" PROJ-21-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A IMPL_GUARD_OK=1 INLINE_IMPL_OK=1; rc21b=$?
+check "21a both implementing-worker launches exit 0" "$rc21a$rc21b" 00
+check "21b an implementing worker's own IMPL_GUARD_OK and INLINE_IMPL_OK do not stop it joining the shared window" "$(konsole_count "$d21")" 1
+
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }
