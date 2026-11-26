@@ -134,6 +134,18 @@ exec 8>&-
 assert_eq "S5 run exits 0 while the lock is held" "0" "$rc"
 assert_has "S5b the log says busy" "busy" "$(cat "$LOG" 2>/dev/null)"
 assert_eq "S5c no new commit" "$before" "$(head_sha)"
+if [ "$(id -u)" -eq 0 ]; then
+    pass "S5d skipped: running as root, a read-only .git does not stop the writer lock"
+else
+    rm -f "$V/.git/vault-writer.lock"
+    before="$(head_sha)"
+    chmod a-w "$V/.git"
+    sweep run >/dev/null; rc=$?
+    chmod u+w "$V/.git"
+    assert_eq "S5d a runner whose writer lock cannot be opened exits 2" "2" "$rc"
+    assert_has "S5e and its log says cannot open the writer lock" "cannot open the writer lock" "$(cat "$LOG" 2>/dev/null)"
+    assert_eq "S5f no new commit" "$before" "$(head_sha)"
+fi
 
 mkdir -p "$V/notes"
 # shellcheck disable=SC2016  # the planted script's own $1 stays literal
@@ -161,6 +173,15 @@ assert_has "S7c it names the hook" "hook: shellcheck" "$line"
 assert_has "S7d it names the file" "file: notes/bad.sh" "$line"
 assert_has "S7e it names the reason" "reason: SC" "$line"
 assert_eq "S7f the chief's inbox got nothing" "0" "$(lines "$INBOX")"
+RO="$TMP/ro'ot\$x"
+ln -s "$ROOT" "$RO"
+out="$(VAULT_SWEEP_ROOT="$RO" sweep arm --vault "$V" --force)"; rc=$?
+assert_eq "S7g arm with a checkout path holding a quote and a dollar exits 0" "0" "$rc"
+bash -n "$TMP/runner/vault-sweep-cadence.sh" >/dev/null 2>&1; rc=$?
+assert_eq "S7h the generated runner parses" "0" "$rc"
+assert_eq "S7i the runner carries its _alert line" "1" "$(grep -c '^_alert=' "$TMP/runner/vault-sweep-cadence.sh")"
+sweep arm --vault "$V" --force >/dev/null; rc=$?
+assert_eq "S7j re-arm with the normal checkout exits 0" "0" "$rc"
 
 assert_has "S8 status prints ARMED" "ARMED" "$(sweep status)"
 out="$(sweep disarm)"; rc=$?
