@@ -26,11 +26,6 @@
 #   4. Pins --model auto unless the caller names one (free-bank chores; the
 #      full model catalog likely burns the same 2,000-completion bank faster
 #      and duplicates paid lanes we already have).
-#   5. Egress: himmel-code-only BY CONSTRUCTION. The preflight here is a
-#      containment+class assertion, not a matrix-eval call: a dispatch only
-#      ever runs inside a himmel worktree (step 1), and a worktree is always
-#      himmel-code corpus. If a future non-code corpus is ever exposed to
-#      this lane, that needs a matrix cell first.
 #   6. Appends a JSONL line per dispatch to a per-lane ledger (quota
 #      visibility - the free banks are the whole point; an invisible bank is
 #      an exhausted bank. A failed append WARNs, it is not a security gate).
