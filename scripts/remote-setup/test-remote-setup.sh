@@ -2470,6 +2470,7 @@ peer_name_second_collision_gets_3 peer_name_32_char_base_with_suffix_fits"
 MON_CHAT=-1009876543210
 set_mon_chat() {
     printf '{"ok":true,"result":{"id":%s,"type":"%s","title":"Station Monitor"}}' "$MON_CHAT" "$1" > "$T/tg/getChat.json"
+    printf '{"ok":true,"result":{"status":"member","user":{"id":222,"is_bot":true}}}' > "$T/tg/getChatMember.json"
 }
 monitor_lines() { grep -c '^TELEGRAM_MONITOR_' "$(STORE_FILE)" 2>/dev/null || true; }
 
@@ -2517,12 +2518,31 @@ case_monitor_a_wrong_value_is_named_and_writes_nothing() {
     run_sut "$T/in" monitor
     check "a private chat: exit 3" eq "$RC" 3
     check "a private chat: named" has "$LAST" "is not a group"
+    set_mon_chat supergroup
+    printf '{"ok":true,"result":{"status":"left","user":{"id":222,"is_bot":true}}}' > "$T/tg/getChatMember.json"
+    feed "$MON_CHAT" "$tok"
+    run_sut "$T/in" monitor
+    check "a public group the bot is not in: exit 3" eq "$RC" 3
+    check "a public group the bot is not in: named" has "$LAST" "is not a member"
+    printf '{"ok":true,"result":{"status":"restricted","can_send_messages":false,"user":{"id":222,"is_bot":true}}}' > "$T/tg/getChatMember.json"
+    feed "$MON_CHAT" "$tok"
+    run_sut "$T/in" monitor
+    check "a muted bot: named" has "$LAST" "is not a member"
     printf '{"ok":false,"error_code":401,"description":"Unauthorized"}' > "$T/tg/getMe.json"
     feed "$MON_CHAT" "$tok"
     run_sut "$T/in" monitor
     check "a refused token: exit 3" eq "$RC" 3
     check "no monitor key was ever written" eq "$(monitor_lines)" 0
     check "the main token is untouched" file_has "$(STORE_FILE)" "TELEGRAM_BOT_TOKEN=$main"
+    set_getme 222 station_monitor_bot
+    set_mon_chat supergroup
+    chmod 000 "$(STORE_FILE)"
+    feed "$MON_CHAT" "$tok"
+    run_sut "$T/in" monitor
+    chmod 600 "$(STORE_FILE)"
+    check "an unreadable store: exit 3" eq "$RC" 3
+    check "an unreadable store: named" has "$LAST" "could not be read"
+    check "an unreadable store: nothing written" eq "$(monitor_lines)" 0
 }
 
 # ── run ─────────────────────────────────────────────────────────────────

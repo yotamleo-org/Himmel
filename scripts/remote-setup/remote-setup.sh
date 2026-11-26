@@ -181,7 +181,7 @@ const fs = require("fs");
 const roles = require(process.argv[1]);
 const key = process.argv[2];
 let raw = "";
-try { raw = fs.readFileSync(roles.mainEnvFile({ home: process.env.HOME, env: process.env }), "utf8"); } catch (_e) { process.exit(0); }
+try { raw = fs.readFileSync(roles.mainEnvFile({ home: process.env.HOME, env: process.env }), "utf8"); } catch (e) { process.exit(e && e.code === "ENOENT" ? 0 : 1); }
 for (const line of raw.split(/\r?\n/)) {
   const m = /^\s*(?:export\s+)?([A-Z_]+)\s*=\s*(.*?)\s*$/.exec(line);
   if (m && m[1] === key) { process.stdout.write(m[2].replace(/^(["\x27])(.*)\1$/, (_all, _quote, inner) => inner)); break; }
@@ -233,9 +233,15 @@ cmd_monitor() {
         *) rs_fix "chat $chat is not a group (Telegram says ${type:-nothing}): use the monitoring group's id. Nothing was written" ;;
     esac
     title=$(rs_clean "$(printf '%s' "$out" | jq -r '.result.title // ""' 2>/dev/null)")
-    rs_step "the monitor bot can read the group ${title:0:60}"
+    out=$(rs_tg getChatMember "{\"chat_id\":$chat,\"user_id\":$RS_BOT_ID}") || rs_tg_fail "$out" "the membership check"
+    case "$(printf '%s' "$out" | jq -r 'if .result.status == "restricted" and .result.can_send_messages != true then "muted" else .result.status // "" end' 2>/dev/null)" in
+        member | administrator | creator) ;;
+        *) rs_fix "@$RS_BOT_USER is not a member of ${title:0:60} that may post there: add it to the monitoring group, then run the same command again. Nothing was written" ;;
+    esac
+    rs_step "the monitor bot is in the group ${title:0:60} and may post there"
 
-    prev_chat=$(monitor_stored TELEGRAM_MONITOR_CHAT_ID)
+    prev_chat=$(monitor_stored TELEGRAM_MONITOR_CHAT_ID) \
+        || rs_fix "the bridge settings file could not be read, so nothing was written: check that $(rs_tilde "$HOME")/.claude/channels/telegram/.env is yours and readable, then run the same command again"
     err=$(printf '%s\n' "$chat" | monitor_store TELEGRAM_MONITOR_CHAT_ID 2>&1) \
         || rs_fix "the chat id could not be saved (${err#store refused: }). Nothing was written"
     if ! err=$(printf '%s\n' "$RS_TOKEN" | monitor_store TELEGRAM_MONITOR_BOT_TOKEN 2>&1); then
