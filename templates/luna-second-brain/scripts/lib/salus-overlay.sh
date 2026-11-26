@@ -42,6 +42,13 @@ apply_salus_overlay() {
     printf '\n' >> "$repo_root/_CLAUDE.md"
     cat "$ov/_CLAUDE.salus.md" >> "$repo_root/_CLAUDE.md"
   fi
+  if [ -f "$repo_root/_CLAUDE.md" ] && ! grep -q "salus-posture-agy" "$repo_root/_CLAUDE.md"; then
+    printf '\n' >> "$repo_root/_CLAUDE.md"
+    cat "$ov/_CLAUDE.salus-agy.md" >> "$repo_root/_CLAUDE.md"
+  fi
+  if [ -e "$repo_root/.agents/hooks.json" ]; then
+    echo "salus-overlay: WARNING .agents/hooks.json exists in the vault — it fails closed outside himmel; remove it (Antigravity hooks come from the user-scope backstop)" >&2
+  fi
   printf 'salus medical-vault profile - managed by setup --medical / upgrade\n' > "$repo_root/.salus-profile"
   # PHI guard marker: the PHI launcher guards (claude-glm/
   # claude-codex + the hermes parity guard)

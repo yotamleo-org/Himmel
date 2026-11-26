@@ -2059,5 +2059,21 @@ stamp_vault "$V" "0.9.0"
 run_upgrade --yes >/dev/null 2>&1
 assert_eq "T73 a later template change to the feed list does not overwrite the vault's" "$mine" "$(sha_of "$V/.feed-clip-feeds")"
 
+T="$TMP/t74-tmpl"; V="$TMP/t74-vault"; make_template "$T" "1.0.0"; mkdir -p "$V"; stamp_vault "$V" "0.9.0"
+printf '<!-- pointer -->\n\nRules live in _CLAUDE.md.\n\n## Antigravity\nUse bash scripts/lib/qmd-bounded.sh.\n' > "$T/AGENTS.md"
+mkdir -p "$T/.agents"; printf '{}\n' > "$T/.agents/hooks.json"
+run_upgrade --yes >/dev/null 2>&1; rc=$?
+assert_eq "T74 upgrade rc" "0" "$rc"
+assert_eq "T74 a vault without AGENTS.md receives the template's" "$(sha_of "$T/AGENTS.md")" "$(sha_of "$V/AGENTS.md")"
+assert_eq "T74 no workspace .agents/hooks.json is copied into the vault" "MISSING" "$(sha_of "$V/.agents/hooks.json")"
+T="$TMP/t74b-tmpl"; V="$TMP/t74b-vault"; make_template "$T" "1.0.0"; mkdir -p "$V"; stamp_vault "$V" "0.9.0"
+printf 'new AGENTS.md\n' > "$T/AGENTS.md"; printf 'old AGENTS.md\n' > "$V/AGENTS.md"
+run_upgrade --yes >/dev/null 2>&1
+assert_eq "T74 a stale vault AGENTS.md is refreshed" "$(sha_of "$T/AGENTS.md")" "$(sha_of "$V/AGENTS.md")"
+SETUP_SH="$HERE/setup.sh"; REAL_AGENTS="$HERE/../AGENTS.md"
+if grep -E 'README\.md.*_CLAUDE\.md' "$SETUP_SH" | grep -q 'AGENTS\.md'; then pass "T74 setup.sh initial commit list includes AGENTS.md"; else fail "T74 setup.sh initial commit list includes AGENTS.md" "AGENTS.md absent from the _p list"; fi
+if grep -q '_CLAUDE\.md' "$REAL_AGENTS" && grep -q 'scripts/lib/qmd-bounded\.sh' "$REAL_AGENTS" && grep -qi 'antigravity' "$REAL_AGENTS"; then pass "T74 template AGENTS.md keeps the _CLAUDE.md pointer and has the Antigravity addendum"; else fail "T74 template AGENTS.md keeps the _CLAUDE.md pointer and has the Antigravity addendum" "missing pointer, qmd-bounded or Antigravity"; fi
+if [ ! -e "$HERE/../.agents/hooks.json" ]; then pass "T74 the template ships no .agents/hooks.json"; else fail "T74 the template ships no .agents/hooks.json" "present"; fi
+
 echo
 if [ "$FAILED" -eq 0 ]; then echo "All upgrade tests passed."; else echo "$FAILED test(s) failed."; exit 1; fi

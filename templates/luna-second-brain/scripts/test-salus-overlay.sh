@@ -34,6 +34,9 @@ check "posture appended to _CLAUDE"  "grep -q 'salus-posture-block' '$VAULT/_CLA
 check "base _CLAUDE preserved"       "grep -q 'base rules here' '$VAULT/_CLAUDE.md'"
 check ".salus-profile marker dropped" "[ -f '$VAULT/.salus-profile' ]"
 check ".salus PHI guard marker dropped" "[ -f '$VAULT/.salus' ]"
+check "posture names Antigravity/agy as a trusted interactive processor" "grep -qi 'antigravity' '$VAULT/_CLAUDE.md' && grep -q 'agy' '$VAULT/_CLAUDE.md'"
+check "posture keeps API-key Gemini denied" "grep -qi 'API-key Gemini' '$VAULT/_CLAUDE.md'"
+check "no repo-local .agents/hooks.json installed" "[ ! -e '$VAULT/.agents/hooks.json' ] && [ ! -d '$VAULT/.agents' ]"
 
 # skin archive ships schema-only (header + separator, ZERO data rows)
 _datarows="$(grep -cE '^\| 20[0-9][0-9]-' "$VAULT/_skin-photo-archive.md" 2>/dev/null || true)"
@@ -74,6 +77,22 @@ check "operator data row preserved"  "grep -q '2026-01-02 | hands' '$VAULT/_skin
 check "existing settings NOT clobbered" "grep -q 'do-not-clobber' '$VAULT/.claude/settings.json'"
 check "posture appended ONCE (idempotent)" "[ \"\$(grep -c 'salus-posture-block' '$VAULT/_CLAUDE.md')\" -eq 1 ]"
 check "existing .salus NOT clobbered" "grep -q 'operator-customized' '$VAULT/.salus'"
+check "trusted-processor text present ONCE after re-apply" "[ \"\$(grep -c 'salus-posture-agy' '$VAULT/_CLAUDE.md')\" -eq 1 ]"
+OLDV="$(mktemp -d 2>/dev/null || mktemp -d -t saluso)"
+[ -d "$OLDV" ] || { bad "mktemp for the older-block vault failed"; exit 1; }
+mkdir -p "$OLDV/_profiles"; cp -R "$TEMPLATE_ROOT/_profiles/salus" "$OLDV/_profiles/salus"
+printf '# base\n\n<!-- salus-posture-block -->\nold posture\n\noperator rule\n' > "$OLDV/_CLAUDE.md"
+apply_salus_overlay "$OLDV" || bad "apply on an older-block vault returned non-zero"
+apply_salus_overlay "$OLDV" || bad "re-apply on an older-block vault returned non-zero"
+check "older block gets the update appended once" "[ \"\$(grep -c 'salus-posture-agy' '$OLDV/_CLAUDE.md')\" -eq 1 ] && grep -qi 'antigravity' '$OLDV/_CLAUDE.md'"
+check "older block and operator rule preserved" "grep -q 'old posture' '$OLDV/_CLAUDE.md' && grep -q 'operator rule' '$OLDV/_CLAUDE.md'"
+rm -rf "$OLDV"
+
+mkdir -p "$VAULT/.agents"; printf '{}\n' > "$VAULT/.agents/hooks.json"
+_warn="$(apply_salus_overlay "$VAULT" 2>&1 >/dev/null)"
+check "a stray repo-local .agents/hooks.json is reported" "printf '%s' \"\$_warn\" | grep -q 'agents/hooks.json'"
+check "a stray .agents/hooks.json is left untouched" "[ -f '$VAULT/.agents/hooks.json' ]"
+rm -rf "$VAULT/.agents"
 
 echo "== egress floor BEHAVIOR (the structural PHI floor must actually DENY, not just exist) =="
 # CR Critical: assert the installed hook's exit codes per tool, so a
@@ -90,6 +109,7 @@ e_qmd="$(egress_exit '{"tool_name":"mcp__plugin_qmd_qmd__query"}')"
 e_obs="$(egress_exit '{"tool_name":"mcp__obsidian-vault__x"}')"
 e_skillok="$(egress_exit '{"tool_name":"Skill","tool_input":{"command":"obsidian-daily"}}')"
 e_benign="$(egress_exit '{"tool_name":"Bash","tool_input":{"command":"cp a b"}}')"
+e_gsub="$(egress_exit '{"tool_name":"gemini-subagent"}')"
 check "egress DENIES WebFetch (exit 2)"   "[ '$e_web' = 2 ]"
 check "egress DENIES git push (exit 2)"   "[ '$e_push' = 2 ]"
 check "egress DENIES curl (exit 2)"       "[ '$e_curl' = 2 ]"
@@ -100,6 +120,7 @@ check "egress ALLOWS local qmd (exit 0)"  "[ '$e_qmd' = 0 ]"
 check "egress ALLOWS localhost obsidian (exit 0)" "[ '$e_obs' = 0 ]"
 check "egress ALLOWS benign Skill (exit 0)" "[ '$e_skillok' = 0 ]"
 check "egress ALLOWS benign bash (exit 0)" "[ '$e_benign' = 0 ]"
+check "egress DENIES the gemini-subagent tool (exit 2)" "[ '$e_gsub' = 2 ]"
 
 echo "== error path: apply against a dir with no overlay must fail =="
 NOOV="$(mktemp -d 2>/dev/null || mktemp -d -t noov)"

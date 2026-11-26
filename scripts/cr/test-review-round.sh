@@ -23,7 +23,7 @@ for f in anchor-handoff.sh base-resolver.sh review-round.sh ledger-append.sh led
          known-findings.sh known-findings.json critic-pre-existing-tag.py; do
     cp "$HERE/$f" "$fx/scripts/cr/$f"
 done
-for f in chokepoint-seam-guard.sh load-dotenv.sh shared-branch-lock.sh go-gate.sh gh-read.sh open-review-threads.sh; do
+for f in chokepoint-seam-guard.sh load-dotenv.sh shared-branch-lock.sh go-gate.sh gh-read.sh open-review-threads.sh qmd-bounded.sh; do
     cp "$HERE/../lib/$f" "$fx/scripts/lib/$f"
 done
 cp "$HERE/../guardrails/lib.sh" "$fx/scripts/guardrails/lib.sh"
@@ -447,6 +447,471 @@ STUB_THREADS_FAIL=1 jg
 assert_eq "$rc" "1" "an unreadable thread read does not stand in for a clean one: it warns and goes on"
 assert_has "$out" "could not read the review threads" "the unreadable read is named"
 unset STUB_PRS STUB_THREADS
+git -C "$repo" checkout -q main 2>/dev/null
+
+# shellcheck source=../lib/qmd-bounded.sh
+# shellcheck disable=SC1091
+. "$fx/scripts/lib/qmd-bounded.sh"
+unset CR_REVIEW_START_TIMEOUT_SECS RR_STUB_NODE RR_STUB_GIT RR_STUB_GH RR_STUB_PS RR_STUB_LOCKLIB
+sb="$tmp/stub-bin"
+RRTMP="$tmp/rr-tmp"
+mkdir -p "$sb" "$RRTMP"
+RR_REAL_NODE="$(command -v node)"; RR_REAL_GIT="$(command -v git)"; RR_REAL_PS="$(command -v ps)"
+RR_REAL_GH="$tmp/prbin/gh"
+export RR_REAL_NODE RR_REAL_GIT RR_REAL_PS RR_REAL_GH
+cat > "$sb/node" <<'STUB'
+#!/usr/bin/env bash
+tag="rr-stub-${RR_STUB_TAG:-x}"
+case "${RR_STUB_NODE:-}" in
+    hang) [ "${MODE:-}" != avail ] || exec -a "$tag" sleep 600 ;;
+    holder) [ "${3:-}" != before ] || ( exec -a "$tag" sleep 30 & ) ;;
+    slow) [ "${MODE:-}" != avail ] || sleep 1 ;;
+    slow-seen) [ "${MODE:-}" != seen ] || sleep 1 ;;
+    term-trap) [ "${MODE:-}" != avail ] || exec bash -c 'trap "" TERM; exec -a "$0" sleep 600' "$tag" ;;
+esac
+exec "$RR_REAL_NODE" "$@"
+STUB
+cat > "$sb/git" <<'STUB'
+#!/usr/bin/env bash
+if [ "${RR_STUB_GIT:-}" = hang-ancestor ] && [ "${1:-}" = merge-base ] && [ "${2:-}" = --is-ancestor ]; then
+    exec -a "rr-stub-${RR_STUB_TAG:-x}" sleep 600
+fi
+exec "$RR_REAL_GIT" "$@"
+STUB
+cat > "$sb/gh" <<'STUB'
+#!/usr/bin/env bash
+if [ "${RR_STUB_GH:-}" = hang-pr-view ] && [ "${1:-}" = pr ] && [ "${2:-}" = view ]; then
+    exec -a "rr-stub-${RR_STUB_TAG:-x}" sleep 600
+fi
+exec "$RR_REAL_GH" "$@"
+STUB
+cat > "$sb/ps" <<'STUB'
+#!/usr/bin/env bash
+case "${RR_STUB_PS:-}" in
+    hang) for a in "$@"; do [ "$a" != -A ] || exec -a "rr-stub-${RR_STUB_TAG:-x}" sleep 600; done ;;
+    fail-ppid) if [ "${1:-}" = -o ] && [ "${2:-}" = "ppid=" ]; then exit 0; fi ;;
+esac
+exec "$RR_REAL_PS" "$@"
+STUB
+chmod +x "$sb/node" "$sb/git" "$sb/gh" "$sb/ps"
+mv "$fx/scripts/lib/shared-branch-lock.sh" "$fx/scripts/lib/shared-branch-lock-real.sh"
+cat > "$fx/scripts/lib/shared-branch-lock.sh" <<'STUB'
+#!/usr/bin/env bash
+here="$(cd "$(dirname "$0")" && pwd)"
+if [ -n "${RR_STUB_LOCKLIB:-}" ] && [ -e "${RR_STUB_LOCKMARK:-/nonexistent}" ]; then
+    case "$RR_STUB_LOCKLIB:${1:-}" in
+        hang-status:status|hang-release:release-if-owner)
+            exec bash -c 'trap "" TERM; exec -a "$0" sleep 600' "rr-stub-${RR_STUB_TAG:-x}" ;;
+    esac
+fi
+exec bash "$here/shared-branch-lock-real.sh" "$@"
+STUB
+LOCKLIB="$fx/scripts/lib/shared-branch-lock.sh"
+
+rr_branch() {
+    rb="$1"
+    git -C "$repo" checkout -q -b "$rb" "$head_b" 2>/dev/null || { fail "$1: fixture branch"; return 1; }
+    [ "${2:-}" = settled ] || return 0
+    (cd "$repo" && bash "$RR" start --branch "$rb" --head "$head_a" >/dev/null 2>&1) || fail "$1: round 1 fixture"
+    CR_LEDGER="$ledger" bash "$LA" avail --branch "$rb" --head "$head_a" --model "stub-$rb" --status ok >/dev/null 2>&1 || fail "$1: avail fixture"
+}
+rr_save() { rm -rf "$tmp/rr-save"; cp -R "$git_dir/cr-review-rounds" "$tmp/rr-save"; }
+rr_restore() { rm -rf "$git_dir/cr-review-rounds"; cp -R "$tmp/rr-save" "$git_dir/cr-review-rounds"; }
+rr_begin() {
+    row="$1"
+    RR_STUB_TAG="$1-$$"; export RR_STUB_TAG
+    rr_branch "$1" "${2:-settled}"
+    rr_save
+}
+rr_end() { pkill -KILL -f "rr-stub-$RR_STUB_TAG" 2>/dev/null; git -C "$repo" checkout -q main 2>/dev/null; return 0; }
+rr_lock_status() { (cd "$repo" && SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$LOCKLIB" status . "$1" 2>&1); }
+rr_wait_tag() {
+    local n=0
+    while ! pgrep -f "rr-stub-$RR_STUB_TAG" >/dev/null 2>&1; do
+        n=$((n + 1)); [ "$n" -le 300 ] || return 1
+        sleep 0.1
+    done
+}
+rr_reap() {
+    local n=0
+    while kill -0 "$1" 2>/dev/null && [ "$n" -lt $(($2 * 10)) ]; do n=$((n + 1)); sleep 0.1; done
+    kill -KILL "$1" 2>/dev/null
+    wait "$1" 2>/dev/null; reap_rc=$?
+}
+rr_run_to() {
+    local secs="$1" t0
+    shift
+    t0="$(date +%s)"
+    (
+        cd "$repo" || exit 1
+        # shellcheck disable=SC2030
+        export PATH="$sb:$PATH" TMPDIR="$RRTMP" RR_ERRF="$tmp/rr.err"
+        : > "$RR_ERRF"
+        # shellcheck disable=SC2016
+        qmd_bounded "$secs" bash -c 'x="$(bash "$0" start "$@" 2>"$RR_ERRF")"; rc=$?; printf %s "$x"; exit "$rc"' "$RR" "$@"
+    ) > "$tmp/rr.out" 2>/dev/null
+    printf '%s\n' "$?" > "$tmp/rr.rc"
+    printf '%s\n' "$(( $(date +%s) - t0 ))" > "$tmp/rr.dur"
+}
+rr_load() { sout="$(cat "$tmp/rr.out")"; serr="$(cat "$tmp/rr.err")"; src="$(cat "$tmp/rr.rc")"; sdur="$(cat "$tmp/rr.dur")"; }
+rr_run() { rr_run_to "$@"; rr_load; }
+assert_under() { if [ "$1" -lt "$2" ]; then pass "$3"; else fail "$3 (took ${1}s, want under ${2}s)"; fi; }
+assert_nonempty() { if [ -n "$1" ]; then pass "$2"; else fail "$2 (empty)"; fi; }
+assert_gone() { if pgrep -f "rr-stub-$RR_STUB_TAG" >/dev/null 2>&1; then fail "$1 (a stub process is still running)"; else pass "$1"; fi; }
+rr_sig_run() {
+    # shellcheck disable=SC2031
+    ( cd "$repo" && PATH="$sb:$PATH" TMPDIR="$RRTMP" RR_STUB_NODE=hang exec bash "$RR" start --branch "$rb" --head "$head_b" >"$tmp/sg.out" 2>"$tmp/sg.err" ) &
+    sg_pid=$!
+    rr_wait_tag
+    sleep 1
+    kill -TERM "$sg_pid" 2>/dev/null
+    rr_reap "$sg_pid" 20
+    sg_rc="$reap_rc"; sg_err="$(cat "$tmp/sg.err")"
+    pkill -KILL -f "rr-stub-$RR_STUB_TAG" 2>/dev/null
+}
+rr_stop_run() {
+    local o="" sp i=0 d f="$3" pair=0
+    rm -rf "$RRTMP"/review-round-start.*
+    rm -f "$tmp/ss.rc"
+    # shellcheck disable=SC2031
+    ( cd "$repo" && PATH="$sb:$PATH" TMPDIR="$RRTMP" CR_REVIEW_START_TIMEOUT_SECS="$B" bash "$RR" start --branch "$1" --head "$2" >"$tmp/ss.out" 2>"$tmp/ss.err"; printf '%s\n' "$?" > "$tmp/ss.rc" ) &
+    sp=$!
+    while [ -z "$o" ] && [ "$i" -lt 300 ] && kill -0 "$sp" 2>/dev/null; do
+        o="$(ps -A -o pid=,ppid= | awk -v p="$sp" '$2 == p { print $1; exit }')"
+        [ -n "$o" ] || { i=$((i + 1)); sleep 0.05; }
+    done
+    i=0
+    ss_paired=0
+    while [ -n "$o" ] && [ "$i" -lt 300 ] && kill -0 "$o" 2>/dev/null; do
+        pair="$(ps -A -o pid=,ppid=,pgid= | awk -v o="$o" '$2 == o && $1 == $3 { n++ } END { print n + 0 }')"
+        [ "$pair" -lt 2 ] || break
+        i=$((i + 1)); sleep 0.05
+    done
+    if [ "$pair" -ge 2 ]; then
+        ss_paired=1
+        kill -STOP "$o"
+        i=0; d=""
+        while [ "$i" -lt 300 ]; do
+            for d in "$RRTMP"/review-round-start.*; do [ -d "$d" ] && break; done
+            if [ -d "$d" ] && [ -s "$d/$f" ] && [ -e "$d/flag" ]; then break; fi
+            i=$((i + 1)); sleep 0.1
+        done
+        kill -CONT "$o"
+    fi
+    rr_reap "$sp" 60
+    ss_rc="$(cat "$tmp/ss.rc" 2>/dev/null)"; ss_out="$(cat "$tmp/ss.out")"; ss_err="$(cat "$tmp/ss.err")"
+}
+
+RR_STUB_TAG="selfcheck-$$"; export RR_STUB_TAG
+MODE=avail RR_STUB_NODE=hang qmd_bounded 2 "$sb/node" -e 1 >/dev/null 2>&1
+sc_rc=$?
+pkill -KILL -f "rr-stub-$RR_STUB_TAG" 2>/dev/null
+if [ "$sc_rc" -ne 124 ]; then
+    fail "start-bounded: the node stub in $sb does not hang under MODE=avail (rc $sc_rc)"
+    printf 'FAIL test-review-round (%s failures)\n' "$fails" >&2
+    exit 1
+fi
+
+rr_begin tprobe
+t0="$(date +%s)"
+(cd "$repo" && bash "$RR" start --branch tprobe --head "$head_b" >/dev/null 2>&1) || fail "tprobe: the plain start failed"
+T=$(( $(date +%s) - t0 ))
+rr_end
+B=$(( 2 * T + 3 ))
+[ "$B" -ge 3 ] || B=3
+
+row=start-bounded-hung-child-stops
+rr_begin "$row"
+RR_STUB_NODE=hang CR_REVIEW_START_TIMEOUT_SECS="$B" rr_run $((B + 12)) --branch "$rb" --head "$head_b"
+assert_eq "$src" "5" "$row: a hung child ends in a refusal, exit 5"
+assert_under "$sdur" $((B + 5)) "$row: the refusal comes inside the bound plus 5 s"
+assert_has "$serr" "did not finish within ${B}s" "$row: the refusal says the bound"
+assert_has "$serr" "last step: reviewed-head" "$row: the refusal names the step"
+assert_has "$serr" "rr-stub-" "$row: the refusal names the stuck process"
+assert_has "$serr" "the counter lock it held was released" "$row: the refusal says the lock was released"
+rr_end
+
+row=start-bounded-hung-increment-stops
+rr_begin "$row"
+RR_STUB_GIT=hang-ancestor CR_REVIEW_START_TIMEOUT_SECS="$B" rr_run $((B + 12)) --branch "$rb" --head "$head_b"
+assert_eq "$src" "5" "$row: a hung git child ends in a refusal, exit 5"
+assert_under "$sdur" $((B + 5)) "$row: the refusal comes inside the bound plus 5 s"
+assert_has "$serr" "last step: increment" "$row: the refusal names the increment step"
+rr_end
+
+row=start-pr-bounded-authorize-stops
+rr_begin "$row" plain
+STUB_LOGIN=Goomal STUB_ID=U_goomal STUB_OID="$h1" RR_STUB_GH=hang-pr-view CR_REVIEW_START_TIMEOUT_SECS="$B" rr_run $((B + 30)) --pr 31 --head "$h1"
+assert_eq "$src" "5" "$row: a hung gh read ends in a refusal, exit 5"
+assert_under "$sdur" $((B + 5)) "$row: the refusal comes inside the bound plus 5 s"
+assert_has "$serr" "did not finish within ${B}s" "$row: the refusal says the bound"
+assert_has "$serr" "last step: authorize" "$row: the refusal names the authorize step"
+assert_eq "$(rr_lock_status outside-31)" "free" "$row: the lock for outside-31 is free"
+n=0; while pgrep -f "rr-stub-$RR_STUB_TAG" >/dev/null 2>&1 && [ "$n" -lt 250 ]; do n=$((n + 1)); sleep 0.1; done
+rr_end
+
+row=start-bounded-ps-hangs
+rr_begin "$row"
+RR_STUB_NODE=hang RR_STUB_PS=hang CR_REVIEW_START_TIMEOUT_SECS="$B" rr_run $((B + 14)) --branch "$rb" --head "$head_b"
+assert_eq "$src" "5" "$row: a hung ps still ends in a refusal, exit 5"
+assert_under "$sdur" $((B + 7)) "$row: the refusal comes inside the bound plus 7 s"
+assert_has "$serr" "tree not read" "$row: the refusal says the tree was not read"
+rr_end
+
+for lk in status release; do
+    row="start-bounded-lock-$lk-hangs"
+    rr_begin "$row"
+    lm="$tmp/lockmark.$lk"; rm -f "$lm"
+    if [ "$lk" = status ]; then lim=$((B + 6 + 11 + 3)); else lim=$((B + 6 + 22 + 3)); fi
+    (RR_STUB_NODE=hang RR_STUB_LOCKLIB="hang-$lk" RR_STUB_LOCKMARK="$lm" QMD_KILL_GRACE_SECS=60 CR_REVIEW_START_TIMEOUT_SECS="$B" \
+        rr_run_to $((lim + 30)) --branch "$rb" --head "$head_b") &
+    bgp=$!
+    rr_wait_tag && : > "$lm"
+    wait "$bgp"
+    rr_load
+    assert_eq "$src" "5" "$row: a hung lock call still ends in a refusal, exit 5"
+    assert_under "$sdur" "$lim" "$row: the refusal comes inside the bound plus the lock caps"
+    assert_has "$serr" "the counter lock was not checked" "$row: the refusal says the lock was not checked"
+    rr_end
+    (cd "$repo" && SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$LOCKLIB" release . "$rb" >/dev/null 2>&1)
+done
+
+row=start-detached-holder-returns
+rr_begin "$row"
+RR_STUB_NODE=holder rr_run 20 --branch "$rb" --head "$head_b"
+assert_eq "$src" "0" "$row: a start whose child outlives it still returns"
+assert_under "$sdur" 5 "$row: the capture returns in under 5 s"
+assert_nonempty "$sout" "$row: the capture holds the round answer"
+rr_end
+
+row=start-bounded-fast-same-output
+rr_begin "$row"
+rr_restore
+(cd "$repo" && bash "$RR" start --branch "$rb" --head "$head_b" >"$tmp/i2.a.out" 2>"$tmp/i2.a.err"); a_rc=$?
+rr_restore
+(cd "$repo" && bash -c '_RR_START_INNER=1 _RR_START_CALLER=$PPID bash "$0" start --branch "$1" --head "$2" >"$3" 2>"$4"; r=$?; exit "$r"' \
+    "$RR" "$rb" "$head_b" "$tmp/i2.b.out" "$tmp/i2.b.err"); b_rc=$?
+assert_eq "$a_rc:$b_rc" "0:0" "$row: both runs exit 0"
+if [ -s "$tmp/i2.a.out" ] && cmp -s "$tmp/i2.a.out" "$tmp/i2.b.out"; then pass "$row: stdout is byte-equal to the body alone"; else fail "$row: stdout differs from the body alone"; fi
+if cmp -s "$tmp/i2.a.err" "$tmp/i2.b.err"; then pass "$row: stderr is byte-equal to the body alone"; else fail "$row: stderr differs from the body alone"; fi
+rr_end
+
+row=start-bounded-answer-after-bound
+rr_begin "$row"
+RR_STUB_NODE=slow rr_stop_run "$rb" "$head_b" out
+assert_eq "$ss_rc" "0" "$row: an answered start is not refused after the bound"
+assert_nonempty "$ss_out" "$row: the answer is printed"
+assert_lacks "$ss_err" "did not finish" "$row: no refusal line"
+rr_end
+
+row=start-bounded-self-exit-after-bound
+rr_begin "$row" plain
+(cd "$repo" && bash "$RR" start --branch "$rb" --head "$head_a" >/dev/null 2>&1) || fail "$row: round 1 fixture"
+rr_save
+k=0
+while [ "$k" -lt 5 ]; do
+    k=$((k + 1))
+    rr_restore
+    RR_STUB_NODE=slow-seen rr_stop_run "$rb" "$head_b" err
+    assert_eq "$ss_rc" "8" "$row: run $k: a body that exits 8 by itself keeps its code"
+    assert_has "$ss_err" "a dead round" "$row: run $k: the body's own stderr line is kept"
+    assert_lacks "$ss_err" "did not finish" "$row: run $k: no refusal line"
+    [ "$ss_paired" -eq 1 ] || break
+done
+rr_end
+
+row=start-bounded-no-late-refusal
+rr_begin "$row"
+k=0; nl_bad=0
+while [ "$k" -lt 10 ] && [ "$nl_bad" -eq 0 ]; do
+    k=$((k + 1))
+    rr_restore
+    RR_STUB_NODE=slow CR_REVIEW_START_TIMEOUT_SECS="$B" rr_run $((B + 30)) --branch "$rb" --head "$head_b"
+    if [ "$src" != 0 ] || [ -z "$sout" ]; then nl_bad=1; fail "$row: run $k: rc $src, answer '$sout', stderr: $serr"; fi
+done
+[ "$nl_bad" -ne 0 ] || pass "$row: ten starts near the bound all answer"
+rr_end
+
+row=start-bounded-cleans-tree-and-lock
+rr_begin "$row"
+RR_STUB_NODE=hang CR_REVIEW_START_TIMEOUT_SECS="$B" rr_run $((B + 12)) --branch "$rb" --head "$head_b"
+assert_eq "$src" "5" "$row: the hung start is refused, exit 5"
+assert_gone "$row: no stub process is left"
+assert_eq "$(rr_lock_status "$rb")" "free" "$row: the lock is free"
+rr_run $((B + 30)) --branch "$rb" --head "$head_b"
+assert_eq "$src" "0" "$row: the next plain start exits 0"
+assert_nonempty "$sout" "$row: the next plain start gives an answer"
+rr_end
+
+row=start-bounded-term-trapping-child
+rr_begin "$row"
+RR_STUB_NODE=term-trap CR_REVIEW_START_TIMEOUT_SECS="$B" rr_run $((B + 12)) --branch "$rb" --head "$head_b"
+assert_eq "$src" "5" "$row: a child that ignores TERM is still refused, exit 5"
+assert_gone "$row: the TERM-ignoring child is gone"
+rr_end
+
+row=start-bounded-lock-other-owner-kept
+rr_begin "$row"
+lockdir="$git_dir/himmel-cr-review-round/$rb.lock"
+(RR_STUB_NODE=hang CR_REVIEW_START_TIMEOUT_SECS="$B" rr_run_to $((B + 12)) --branch "$rb" --head "$head_b") &
+bgp=$!
+rr_wait_tag
+mv "$lockdir" "$lockdir.aside" 2>/dev/null
+sleep 300 &
+spid=$!
+(cd "$repo" && SHARED_BRANCH_LOCK_NS=himmel-cr-review-round SHARED_BRANCH_LOCK_HOLDER_PID="$spid" bash "$LOCKLIB" acquire . "$rb" row >/dev/null 2>&1)
+wait "$bgp"
+rr_load
+assert_eq "$src" "5" "$row: the start is refused, exit 5"
+assert_has "$serr" "it holds no counter lock" "$row: the refusal says it holds no counter lock"
+assert_has "$(rr_lock_status "$rb")" "\"pid\":$spid" "$row: the lock still names the other holder"
+kill "$spid" 2>/dev/null; wait "$spid" 2>/dev/null
+(cd "$repo" && SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$LOCKLIB" release . "$rb" >/dev/null 2>&1)
+rm -rf "$lockdir.aside"
+rr_end
+
+row=start-bounded-lock-no-owner
+rr_begin "$row"
+lockdir="$git_dir/himmel-cr-review-round/$rb.lock"
+(RR_STUB_NODE=hang CR_REVIEW_START_TIMEOUT_SECS="$B" rr_run_to $((B + 12)) --branch "$rb" --head "$head_b") &
+bgp=$!
+rr_wait_tag
+rm -f "$lockdir/owner.json"
+wait "$bgp"
+rr_load
+assert_eq "$src" "5" "$row: the start is refused, exit 5"
+assert_has "$serr" "has no owner record; if no start or grant is running" "$row: the refusal names the missing owner record"
+(cd "$repo" && SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$LOCKLIB" release . "$rb" >/dev/null 2>&1)
+rr_end
+
+row=start-bounded-signal-cleans
+rr_begin "$row"
+rr_sig_run
+assert_eq "$sg_rc" "5" "$row: TERM to the outer ends in a refusal, exit 5"
+assert_has "$sg_err" "was stopped by signal inside its 240s bound" "$row: the refusal says the signal"
+assert_gone "$row: no stub process is left"
+assert_eq "$(rr_lock_status "$rb")" "free" "$row: the lock is free"
+(cd "$repo" && SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$LOCKLIB" release . "$rb" >/dev/null 2>&1)
+rr_end
+
+wp="$tmp/wrap.pid"
+rr_wrap_start() {
+    bash -c 'echo $$ > "$1"; cd "$2"; bash "$3" start --branch "$4" --head "$5" >"$6" 2>&1; true' _ "$wp" "$repo" "$RR" "$1" "$2" "$tmp/wrap.out"
+}
+snapf() { printf '%s' "$git_dir/cr-review-rounds/$1.start.bak"; }
+row=start-bounded-caller-pid
+rr_begin "$row" plain
+rr_wrap_start "$rb" "$head_b"
+want="$(cat "$wp")"
+assert_eq "$(sed -n 's/^pid //p' "$(snapf "$rb")")" "$want" "$row: the snapshot names the shell that ran start"
+assert_eq "$(cat "$git_dir/cr-review-rounds/$rb.delta.run")" "$want" "$row: .delta.run names the shell that ran start"
+rr_end
+
+row=start-bounded-continue-caller-pid
+rr_begin "$row" plain
+bash -c 'cd "$1"; bash "$2" start --branch "$3" --head "$4" >/dev/null 2>&1; true' _ "$repo" "$RR" "$rb" "$head_b"
+dead="$(sed -n 's/^pid //p' "$(snapf "$rb")")"
+if [ -n "$dead" ] && ! kill -0 "$dead" 2>/dev/null; then pass "$row: the setup shell has ended"; else fail "$row: the setup shell ($dead) is still alive"; fi
+rr_wrap_start "$rb" "$head_b"
+want="$(cat "$wp")"
+assert_has "$(cat "$(snapf "$rb")")" "continued 1" "$row: the restart continues the snapshot"
+assert_eq "$(sed -n 's/^pid //p' "$(snapf "$rb")")" "$want" "$row: the snapshot now names the restarting shell"
+assert_eq "$(cat "$git_dir/cr-review-rounds/$rb.delta.run")" "$want" "$row: .delta.run names the restarting shell"
+rr_end
+
+row=start-pr-bounded-caller-pid
+rr_begin "$row" plain
+bash -c 'echo $$ > "$1"; cd "$2"; export PATH="$3:$PATH" STUB_LOGIN=Goomal STUB_ID=U_goomal STUB_OID="$5"; bash "$4" start --pr 33 --head "$5" >/dev/null 2>&1; bash "$4" start --pr 33 --head "$5" >/dev/null 2>&1; true' _ "$wp" "$repo" "$sb" "$RR" "$h1"
+want="$(cat "$wp")"
+assert_eq "$(sort -u "$git_dir/cr-review-rounds/outside-33.delta.run")" "$want" "$row: outside-33.delta.run names the shell that ran start"
+assert_eq "$(wc -l < "$git_dir/cr-review-rounds/outside-33.delta.run" | tr -d ' ')" "2" "$row: a second start at the same head appends it again"
+rr_end
+
+row=start-bounded-delta-restart-caller
+rr_begin "$row" plain
+dr_h1="$(git -C "$repo" rev-parse HEAD)"
+bash -c 'cd "$1"; bash "$2" start --branch "$3" --head "$4" >/dev/null 2>&1; true' _ "$repo" "$RR" "$rb" "$dr_h1"
+CR_LEDGER="$ledger" bash "$LA" avail --branch "$rb" --head "$dr_h1" --model "stub-$rb" --status ok >/dev/null 2>&1
+for n in 2 3; do
+    printf 'dr%s\n' "$n" >> "$repo/f.txt"; git -C "$repo" commit -q -am "$row $n"
+    dr_h="$(git -C "$repo" rev-parse HEAD)"
+    bash -c 'cd "$1"; bash "$2" start --branch "$3" --head "$4" >/dev/null 2>&1; true' _ "$repo" "$RR" "$rb" "$dr_h"
+    CR_LEDGER="$ledger" bash "$LA" avail --branch "$rb" --head "$dr_h" --model "stub-$rb" --status ok >/dev/null 2>&1
+done
+TW_FILE=z.sh real_row "$rb" "$dr_h" dr-1 "" "a finding at the third round"
+printf 'dr4\n' >> "$repo/f.txt"; git -C "$repo" commit -q -am "$row 4"
+dr_h4="$(git -C "$repo" rev-parse HEAD)"
+bash -c 'cd "$1"; bash "$2" start --branch "$3" --head "$4" >"$5" 2>&1; true' _ "$repo" "$RR" "$rb" "$dr_h4" "$tmp/dr.first"
+wp_first="$(cat "$tmp/dr.first")"
+case "$wp_first" in *delta*) pass "$row: the post-cap start is a delta round" ;; *) fail "$row: the post-cap start was not a delta round ($wp_first)" ;; esac
+CR_LEDGER="$ledger" bash "$LA" avail --branch "$rb" --head "$dr_h4" --model "stub-$rb" --status unavailable >/dev/null 2>&1
+bash -c 'echo $$ > "$1"; cd "$2"; bash "$3" start --branch "$4" --head "$5" >"$6" 2>&1; echo "rc=$?" >> "$6"; true' _ "$wp" "$repo" "$RR" "$rb" "$dr_h4" "$tmp/dr.again"
+case "$(cat "$tmp/dr.again")" in *delta*rc=0*) pass "$row: the restart reuses the pending delta" ;; *) fail "$row: the restart did not reuse the pending delta ($(cat "$tmp/dr.again"))" ;; esac
+rr_end
+
+row=start-bounded-live-restart
+rr_begin "$row" plain
+bash -c 'cd "$1"; bash "$2" start --branch "$3" --head "$4" >"$5" 2>&1; echo "rc=$?" >> "$5"; bash "$2" start --branch "$3" --head "$4" >"$6" 2>&1; echo "rc=$?" >> "$6"; true' _ "$repo" "$RR" "$rb" "$head_b" "$tmp/lr.1" "$tmp/lr.2"
+assert_has "$(cat "$tmp/lr.1")" "rc=0" "$row: the first start exits 0"
+assert_has "$(cat "$tmp/lr.2")" "rc=0" "$row: the restart from the same shell exits 0"
+assert_has "$(cat "$(snapf "$rb")")" "continued 1" "$row: the restart is answered from the snapshot"
+rr_end
+
+row=start-body-unconfirmed-caller-refused
+rr_begin "$row"
+sleep 0 & dead_pid=$!; wait "$dead_pid" 2>/dev/null
+before_ub="$(cat "$git_dir/cr-review-rounds/$rb".* 2>/dev/null | cksum)"
+ub_err="$(cd "$repo" && _RR_START_INNER=1 _RR_START_CALLER="$dead_pid" bash "$RR" start --branch "$rb" --head "$head_b" 2>&1 >/dev/null)"; ub_rc=$?
+assert_eq "$ub_rc" "5" "$row: a body whose caller cannot be confirmed exits 5"
+assert_has "$ub_err" "cannot confirm the caller" "$row: it says so"
+assert_eq "$(cat "$git_dir/cr-review-rounds/$rb".* 2>/dev/null | cksum)" "$before_ub" "$row: no round file changed"
+rr_end
+
+row=start-no-split-when-ps-fails
+rr_begin "$row"
+rr_restore
+(cd "$repo" && bash "$RR" start --branch "$rb" --head "$head_b" >"$tmp/ns.ref.out" 2>"$tmp/ns.ref.err"); ref_rc=$?
+rr_restore
+# shellcheck disable=SC2031
+(cd "$repo" && PATH="$sb:$PATH" RR_STUB_PS=fail-ppid bash "$RR" start --branch "$rb" --head "$head_b" >"$tmp/ns.out" 2>"$tmp/ns.err"); ns_rc=$?
+assert_eq "$ns_rc" "$ref_rc" "$row: the exit code is the plain start's"
+if cmp -s "$tmp/ns.out" "$tmp/ns.ref.out"; then pass "$row: stdout is the plain start's"; else fail "$row: stdout differs from the plain start"; fi
+assert_has "$(sed -n '1p' "$tmp/ns.err")" "review-round: start runs unbounded" "$row: the first stderr line says start runs unbounded"
+if [ "$(sed -n '2,$p' "$tmp/ns.err")" = "$(cat "$tmp/ns.ref.err")" ]; then pass "$row: the rest of stderr is the plain start's"; else fail "$row: the rest of stderr differs from the plain start"; fi
+rr_end
+
+row=start-bounded-lib-absent
+rr_begin "$row"
+rr_restore
+(cd "$repo" && bash "$RR" start --branch "$rb" --head "$head_b" >"$tmp/la.ref.out" 2>"$tmp/la.ref.err")
+mv "$fx/scripts/lib/qmd-bounded.sh" "$fx/scripts/lib/qmd-bounded.sh.away"
+rr_restore
+(cd "$repo" && bash "$RR" start --branch "$rb" --head "$head_b" >"$tmp/la.out" 2>"$tmp/la.err")
+if cmp -s "$tmp/la.out" "$tmp/la.ref.out" && cmp -s "$tmp/la.err" "$tmp/la.ref.err"; then pass "$row: a fast start without the library is the same start"; else fail "$row: a fast start without the library differs"; fi
+rr_restore
+RR_STUB_NODE=hang CR_REVIEW_START_TIMEOUT_SECS="$B" rr_run $((B + 12)) --branch "$rb" --head "$head_b"
+assert_eq "$src" "5" "$row: a hung start without the library is refused, exit 5"
+assert_has "$serr" "the counter lock was not checked" "$row: the refusal says the lock was not checked"
+mv "$fx/scripts/lib/qmd-bounded.sh.away" "$fx/scripts/lib/qmd-bounded.sh"
+(cd "$repo" && SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$LOCKLIB" release . "$rb" >/dev/null 2>&1)
+rr_end
+
+row=start-bounded-bound-parse
+rr_begin "$row"
+for bp in 0 281 abc "" 280; do
+    rr_restore
+    want_n=240; [ "$bp" != 280 ] || want_n=280
+    CR_REVIEW_START_TIMEOUT_SECS="$bp" rr_sig_run
+    assert_has "$sg_err" "stopped by signal inside its ${want_n}s bound" "$row: '$bp' reads as ${want_n}s"
+    (cd "$repo" && SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$LOCKLIB" release . "$rb" >/dev/null 2>&1)
+done
+rr_end
+
+row=start-bounded-no-temp-left
+# shellcheck disable=SC2012
+left="$(ls -d "$RRTMP"/review-round-start.* 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "$left" "0" "$row: no review-round-start directory is left after the success, refusal and signal rows"
+
 git -C "$repo" checkout -q main 2>/dev/null
 
 if [ "$fails" -gt 0 ]; then

@@ -67,9 +67,13 @@ Invariants (not model-tuned): spawn depth and concurrency are capped by
 — read the env; unset means the harness default applies, so treat it as a cap
 you did not choose. **Haiku does NOT spawn.** **Single-writer** — many readers,
 ONE writer, never fan parallel writes at one shared artifact. **salus dev/impl
-work routes to Claude tiers + Codex lanes only (never GLM)** — a routing
-invariant distinct from salus PHI **egress**, which
-`scripts/guardrails/egress-matrix.json` governs authoritatively.
+work may route to the six harnesses operator decision 1375 (R2) approved —
+Gemini (antigravity-t3), Cursor, xAI/Grok, Copilot, Anthropic (Claude tiers) and
+OpenAI (Codex lanes); never GLM** — a routing invariant distinct from salus PHI
+**egress**, which `scripts/guardrails/egress-matrix.json` governs authoritatively
+per corpus. A launch for Cursor, Grok or Copilot is still refused until their
+lane descriptors are complete, so the sentence is not "dispatch Grok to salus
+today".
 
 **RETASK channel:** every dispatch carries a RETASK block with a fresh nonce; a revision arrives only as a direct message quoting it (a narrowing or halt needs no token) and never widens permissions. → `docs/internals/retask-channel.md`
 

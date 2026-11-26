@@ -415,6 +415,29 @@ review, not a code edit.
   process when the config names a remote model. A hand-typed `qmd` on PATH
   bypasses it: salus is protected by living in its own local-only index.
   Windows launchers are out of scope (Windows is dropped).
+- `openai-chatgpt` (Dots) and `xai-grokbot` (Grokbot), the operator's external
+  personal assistants, may read through the audited qmd MCP read service for the
+  purpose `luna-mcp-read`, and for nothing else. Each of the seven non-salus qmd
+  corpora (`luna-clippings`, `luna-personal`, `himmel-code`, `operator-repos`,
+  `jira-mirror`, `roadmap-plan`, `skill-index`) has its own literal `allow+log`
+  row per provider, 14 in all, so the service must append a ledger line per call.
+  The purpose is read only: no write purpose is declared, and a write row waits
+  for the stage that exercises it. `himmel-code × <provider> × *` is an explicit
+  deny placed right after that provider's `luna-mcp-read` allow and ahead of the
+  `himmel-code × * × *` wildcard allow, the same shape as the `jina` rows, so the
+  wildcard cannot open `inference`, `extraction` or any other purpose for them.
+  A later `himmel-code × <provider> × pa-*` allow row goes ahead of these two
+  provider-wide denies or it is shadowed. Every other corpus stays default-deny
+  for both providers, and `salus` and `voice-audio` resolve through their hard
+  wildcards. `openai-chatgpt` is a different provider from `openai-codex`: no
+  codex cell carries over, and the test pins that. Nested `handovers/`,
+  `sessions/`, `chats/` and `repo: salus` notes inside the vault classify as
+  `luna-personal`, so the matrix cannot tell them apart; they are governed by
+  the consumer's per-key collection scope, `manager` role path and
+  disk-frontmatter `salus` guards, not by this file.
+  `scripts/qmd/qmd-collection-corpus.json` also maps the optional `luna-pa`
+  clean-notes collection to `luna-personal` and `luna-clippings`, so it is mapped
+  before it joins an index; the gate refuses an unmapped collection.
 - **qmd enforcement.** qmd's model config is per index, not per
   collection, so salus lives in its own index (`qmd --index salus`, own
   `salus.yml`/db/daemon port, local models). `scripts/qmd/qmd-jina-gate.mjs`

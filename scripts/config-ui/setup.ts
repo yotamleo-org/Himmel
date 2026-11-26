@@ -27,6 +27,8 @@ const EXAMPLES: Record<string, string> = {
   BITBUCKET_API_TOKEN: "<app password from Bitbucket settings>",
   BITBUCKET_EMAIL: "you@example.com",
   TELEGRAM_BOT_TOKEN: "<token from @BotFather, digits:letters>",
+  TELEGRAM_MONITOR_BOT_TOKEN: "<token of a second bot from @BotFather, digits:letters>",
+  TELEGRAM_MONITOR_CHAT_ID: "-1001234567890",
   JIRA_API_TOKEN: "<API token from id.atlassian.com>",
   JIRA_BASE_URL: "https://your-team.atlassian.net", // env-literal-ok: a placeholder shown as an example, never used as a host
   JIRA_EMAIL: "you@example.com",
