@@ -5064,6 +5064,12 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # A command that only reached here through a glob/alias/tree-copy leaf
     # (variant_dest) may also be a plain `ls`, which names no file's content.
     [ "$mentions_settings" = "1" ] || _RO_LS=1
+    if [ "$TOK" = 1 ] && [ "$dir_dest" = "1" ] && [ "$dirdest_climb" = "0" ] \
+        && [ "$symlink_dest" = "0" ] && [ "$brace_dir_dest" = "0" ] \
+        && [ "$mentions_settings" = "0" ] && [ "$variant_dest" = "0" ] && [ "$t3_dest" = "0" ] \
+        && [ "$registry_dest" = "0" ] && [ "$agy_dest" = "0" ]; then
+        _tok_readonly_ok && exit 0
+    fi
     if [ "$mentions_settings" = "1" ] || [ "$variant_dest" = "1" ] || [ "$t3_dest" = "1" ] \
         || [ "$registry_dest" = "1" ] || [ "$agy_dest" = "1" ]; then
         if [ "$TOK" = 1 ]; then

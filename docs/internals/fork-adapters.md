@@ -17,6 +17,20 @@ cannot widen it. Shape and coverage are checked by
 | `pin_site` | the himmel file that pins the fork, or `null` |
 | `role` | `runtime-dependency`, `upstream-contribution`, `vendored-source`, `dormant` or `first-party` |
 | `merge_allowed` | `true` only for a fork himmel carries a delta on and merges into itself, or a first-party repo himmel merges into |
+| `tier` | `CORE`, `LIGHT` or `PARK`: how much of the himmel flow the fork carries (below) |
+
+Tiers (operator decision 2026-11-26: light himmel on the qmd and graphify forks only):
+
+- `CORE` — himmel runs on the fork and gives it the whole flow, including a required
+  check. Only `qmd` and `graphify` are `CORE`.
+- `LIGHT` — pre-commit and review only, no required check. No row is `LIGHT` today; the
+  value is kept for a fork that earns it.
+- `PARK` — listed and marked, with no flow work and no required check. Every other row,
+  archived or not, including the first-party repo.
+
+A reader that needs "which forks are core" (the merge allowlist, the fork ruleset, the
+CI file) takes it from this field instead of carrying its own list. The registry test
+refuses a row with no tier or an unknown tier, and checks the `CORE` set.
 
 Roles: a runtime dependency is installed or loaded by himmel; an upstream
 contribution keeps the upstream PR flow (no upstream PRs where there are no
@@ -37,7 +51,8 @@ is left out of the third-party credits page.
    `fixtures/himmel-adapters/yotamleo-org-first-party.json`.
 3. Per-fork gates (commit-msg ticket check, judge gate, branch protection note)
    are the pre-commit core in `docs/internals/fork-precommit.md`; a gap is a
-   follow-up ticket, not a registry field.
+   follow-up ticket, not a registry field (the `tier` field is the one ruled exception).
+4. Give the row a `tier`; a new fork is `PARK` until the operator rules otherwise.
 
 ## Branch protection
 

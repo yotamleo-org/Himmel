@@ -317,7 +317,8 @@ def search_fields(worker):
 
 
 ALONE = ('Send each search as its own tool call, with no other call in the same response: '
-         'a call sent beside one that a hook rewrites is refused unrun. ')
+         'a call sent beside one that a hook rewrites is refused unrun. '
+         'Run the wrapper as the whole command: no `cd`, pipe, redirect or chained command (it already caps its output). ')
 
 
 def search_directive(worker, ctx):

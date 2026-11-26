@@ -195,12 +195,20 @@ else
     fi
     # The remedy names an explicit model: an omitted one is not a remedy, because
     # guard-subagent-model.sh denies a dispatch with no model.
-    if [ "$isj" = "judge" ]; then
-        remedy="Re-dispatch with model: opus (the judge's frontmatter tier). Only a finding-class delta re-judge may use model: sonnet, with a prompt line 'DELTA-JUDGE: <head sha>'"
+    iscritic=$(printf '%s' "$input" | jq -r '.tool_input.description | strings | test("^\\s*(plan|spec)[ -]critic"; "i")' 2>/dev/null || true)  # swallow-ok: a failed read means the generic judge remedy is named
+    escalate="or for ONE genuinely hard call add a prompt line 'ESCALATION: <reason>' with a real reason and re-dispatch"
+    if [ "$isj" = "judge" ] && [ "$iscritic" = "true" ] && [ "$kind" = "judge" ]; then
+        remedy="A plan or spec critic is not a judge dispatch (a judge is the Opus verdict agent): re-dispatch the critic as subagent_type: general-purpose with model: sonnet at high effort (what minerva Stage 4 says)"
+        escalate="a judge verdict that really needs another model than Opus takes a prompt line 'ESCALATION: <reason>' with a real reason"
+    elif [ "$isj" = "judge" ]; then
+        remedy="Re-dispatch with model: opus (the judge's frontmatter tier): the first full judge of a PR and a delta that delta-class.sh prints as trust keep Opus. Only the re-judge of a LATER push whose delta-class.sh prints finding may use model: sonnet, with a line of its own 'DELTA-JUDGE: <head sha>' (7 to 40 lowercase hex; it rescues Sonnet only, never haiku or fable)"
+    elif [ "$kind" = "blocked" ]; then
+        remedy="Re-dispatch with an explicit permitted model (model: opus, model: sonnet or model: haiku), or keep model: fable for the one hard call (general-purpose, high effort) by adding a line of its own 'ESCALATION: <reason>' to the prompt, a real reason, not empty and not a placeholder such as 'test' or 'n/a'"
+        escalate="the marker is the only way to keep a blocked model"
     else
         remedy="Re-dispatch with an explicit permitted model (model: opus, model: sonnet or model: haiku)"
     fi
-    deny_msg="agent-model-deny: ${lead} — Fable is retired as the judge default (Opus 5.5 high measured ~2.7x cheaper per verdict, \$8.23 vs \$21.94, with no missed finding). ${remedy}; or for ONE genuinely hard call add a prompt line 'ESCALATION: <reason>' with a real reason and re-dispatch. Never leave the model out: guard-subagent-model.sh denies a dispatch with no model. A judge call from 'gen-judge-brief.py <spec> --dispatch-json' passes both guards. To unblock a model for good, edit scripts/guardrails/agent-model-policy.json."
+    deny_msg="agent-model-deny: ${lead} — Fable is retired as the judge default (Opus 5.5 high measured ~2.7x cheaper per verdict, \$8.23 vs \$21.94, with no missed finding). ${remedy}; ${escalate}. Never leave the model out: guard-subagent-model.sh denies a dispatch with no model. A judge call from 'gen-judge-brief.py <spec> --dispatch-json' passes both guards. To unblock a model for good, edit scripts/guardrails/agent-model-policy.json."
 fi
 
 reason_json=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
