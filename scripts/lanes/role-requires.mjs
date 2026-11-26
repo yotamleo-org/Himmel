@@ -36,7 +36,7 @@ export const ROLE_REQUIRES = {
   'lane-content': ['obsidian-triage@himmel'],
   telegram: ['obsidian-triage@himmel'],
   chief: ['himmel-ops@himmel'],
-  bare: [], 'chief-relay': ['himmel-ops@himmel'], 'console-judge': ['himmel-ops@himmel'],
+  bare: [], 'chief-relay': ['himmel-ops@himmel'], 't3-relay': ['himmel-ops@himmel'], 'console-judge': ['himmel-ops@himmel'],
   'release-manager': ['himmel-ops@himmel'],
   readiness: ['himmel-ops@himmel'],
 };
