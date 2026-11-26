@@ -1281,7 +1281,7 @@ const nogo = /^\*\*NO-GO\*\* for head `([0-9a-f]{40})`\.?$/;
 const want = Buffer.from(e.VS_WANT || "");
 let top;
 try { top = fs.readdirSync(e.VS_DIR); } catch (_) { process.exit(2); }
-const out = [];
+const out = [], heads = new Set();
 let probe = "";
 for (const q of top) {
   if (q.startsWith(".")) continue;
@@ -1306,12 +1306,13 @@ for (const q of top) {
     if (e.VS_MODE === "nogo" && plain) {
       const l8 = buf.toString("latin1").split("\n")[7];
       const m = l8 === undefined ? null : nogo.exec(l8.replace(/\r/g, ""));
-      if (m && m[1] !== e.VS_WANT) out.push("N " + q + " " + m[1]);
+      if (m && m[1] !== e.VS_WANT) { out.push("N " + q + " " + m[1]); heads.add(m[1]); }
     }
     if (!probe && plain && seg.test(n.slice(0, -3))) probe = q + "/" + n;
   }
   if (named && plain) out.push("S " + q);
 }
+for (const h of heads) out.push("H " + h);
 if (probe) out.push("P " + probe);
 if (out.length) process.stdout.write(out.join("\n") + "\n");
 '
@@ -1322,7 +1323,7 @@ verdict_sel_read() {
     while read -r vs_k vs_q vs_h; do
         case "$vs_k" in
             S) sel="$sel $vs_q" ;;
-            N) vs_heads="$vs_heads$vs_h
+            H) vs_heads="$vs_heads$vs_q
 " ;;
             P) vs_probe="$vs_q" ;;
         esac
@@ -1334,7 +1335,7 @@ EOF
 verdict_sel_descendants() {
     vs_crc=0
     [ -n "$vs_heads" ] || return 0
-    vs_types="$(printf '%s' "$vs_heads" | sort -u | git cat-file --batch-check)" || vs_crc=$?
+    vs_types="$(printf '%s' "$vs_heads" | git cat-file --batch-check)" || vs_crc=$?
     [ "$vs_crc" -eq 0 ] || return 1
     vs_keep=""
     while read -r vs_sha vs_type _; do
