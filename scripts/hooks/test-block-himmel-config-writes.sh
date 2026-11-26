@@ -237,6 +237,11 @@ bsd_patch_case "7120 no readlink -m: apply_patch .. segment to the config -> blo
 { mkdir -p "$T/loop" "$T/loophome" && ln -s l2 "$T/loop/l1" && ln -s l1 "$T/loop/l2" && ln -s "$T/loop/l1" "$T/loophome/.himmel"; } || { echo "FAIL: cannot build the symlink-loop fixtures" >&2; exit 1; }
 bsd_file_case "7120 symlink loop in the target path -> block (fail-closed)" block "$T/loop/l1/x"
 bsd_patch_case "7120 symlink loop in an apply_patch path -> block (fail-closed)" block "*** Begin Patch${NL}*** Add File: $T/loop/l1/x${NL}+{}${NL}*** End Patch"
+bsd_bash_case() { bsd_case "$1" "$2" "$(jq -nc --arg c "$3" '{tool_name:"Bash",tool_input:{command:$c}}')"; }
+bsd_bash_case "10332 no readlink -m: a copy onto a destination that cannot be resolved -> block (fail-closed)" block "cp -r x $T/loop/l1/"
+bsd_bash_case "10322 no readlink -m: a path operand that cannot be resolved -> block (fail-closed)" block "ls $T/loop/l1/x"
+bsd_bash_case "10322 no readlink -m: control, resolvable operands -> allow" allow "ls $T/other/notes.txt"
+bsd_bash_case "10332 no readlink -m: control, a copy into an unrelated directory -> allow" allow "cp -r x $T/backup/"
 BSD_HOME="$T/loophome"
 bsd_file_case "7120 unresolvable config path (loop under HOME) -> block (fail-closed)" block "$T/other.txt"
 bsd_patch_case "7120 unresolvable config path, apply_patch -> block (fail-closed)" block "*** Begin Patch${NL}*** Add File: $T/notes.txt${NL}+hi${NL}*** End Patch"

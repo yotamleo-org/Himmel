@@ -125,6 +125,7 @@ STATION_DIR="${HIMMEL_CONFIG_DIR:-${HOME:-/nonexistent}/.himmel}"
 STATION_CONF=$(hook_resolve_m "$STATION_DIR/himmel.conf") || deny "station config path could not be resolved (fail-closed)"
 STATION_LOCAL=$(hook_resolve_m "$STATION_DIR/himmel.conf.local") || deny "station local path could not be resolved (fail-closed)"
 STATION_PROFILES=$(hook_resolve_m "${STATION_CONF%/*}/profiles") || deny "station profile directory could not be resolved (fail-closed)"
+STATION_DIR_R=$(hook_resolve_m "$STATION_DIR") || deny "station directory could not be resolved (fail-closed)"
 
 ROLES_RAW="" ROLES_CFG=""
 if [ -n "${HIMMEL_API_CREDIT_CONFIG:-}" ]; then
@@ -149,6 +150,7 @@ fold_to "$STATION_DIR"; F_STATION_DIR="$FOLDED"
 fold_to "$STATION_CONF"; F_STATION_CONF="$FOLDED"
 fold_to "$STATION_LOCAL"; F_STATION_LOCAL="$FOLDED"
 fold_to "$STATION_PROFILES"; F_STATION_PROFILES="$FOLDED"
+fold_to "$STATION_DIR_R"; F_STATION_DIR_R="$FOLDED"
 fold_to "$ROLES_CFG"; F_ROLES_CFG="$FOLDED"
 
 lexnorm() {
@@ -519,7 +521,7 @@ if [[ "$lcv" =~ api-roles\.mjs[^\|\;\&]*[[:space:]]write([^a-z0-9_-]|$) ]]; then
     deny "a session runs api-roles.mjs write. Only the operator maps API roles (the config UI, or node scripts/lib/api-roles.mjs write at their own prompt); read-only: api-roles.mjs check"
 fi
 
-cmd_cwd=$(printf '%s' "$input" | jq -r '.cwd // ""' 2>/dev/null) || cmd_cwd="" # swallow-ok: an unreadable cwd falls back to $PWD just below
+cmd_cwd=$(printf '%s' "$input" | jq -r '.cwd // ""') || deny "the payload cwd could not be read (fail-closed)"
 [ -n "$cmd_cwd" ] || cmd_cwd="$PWD"
 
 operand_clean() {
@@ -537,7 +539,7 @@ operand_clean() {
 }
 
 config_dir_operand() {
-    local o="$1" f r sd
+    local o="$1" f r
     while :; do
         case "$o" in
             ?*/.|?*/\*) o="${o%/?}" ;;
@@ -548,12 +550,10 @@ config_dir_operand() {
     fold_to "$o"; f="$FOLDED"
     case "$f" in .himmel|*/.himmel) return 0 ;; esac
     case "$o" in /*) ;; *) o="$cmd_cwd/$o" ;; esac
-    r=$(hook_resolve_m "$o" 2>/dev/null) || return 1 # swallow-ok: a destination that cannot be resolved (a symlink loop) cannot be written either
+    r=$(hook_resolve_m "$o") || deny "a destination ($o) could not be resolved (fail-closed)"
     fold_to "$r"; f="$FOLDED"
     case "$f" in */.himmel) return 0 ;; esac
-    sd=$(hook_resolve_m "$STATION_DIR" 2>/dev/null) || sd="" # swallow-ok: the station directory already resolved at startup, so only an empty compare is left
-    fold_to "$sd"
-    [ -n "$FOLDED" ] && [ "$f" = "$FOLDED" ] && return 0
+    [ "$f" = "$F_STATION_DIR_R" ] && return 0
     [ "$f" = "${F_STATION_CONF%/*}" ] && return 0
     [ "$f" = "$F_STATION_PROFILES" ] && return 0
     return 1
@@ -624,8 +624,8 @@ if ! names_guarded_file "$cmd" && ! names_guarded_file "$lc"; then
     done
     set +f
     if [ "${#phys[@]}" -gt 0 ]; then
-        _res=$(hook_resolve_m "${phys[@]}" 2>/dev/null) || _res="" # swallow-ok: an unresolvable operand set leaves the text rules above as the verdict (the guard's stated ceiling)
-        _cfgr=$(hook_resolve_m "$CFG_REAL" 2>/dev/null) || _cfgr="" # swallow-ok: an unresolvable config path (a symlink loop) leaves the name checks above as the verdict
+        _res=$(hook_resolve_m "${phys[@]}") || deny "a path operand could not be resolved (fail-closed)"
+        _cfgr=$(hook_resolve_m "$CFG_REAL") || deny "the config path could not be resolved (fail-closed)"
         fold_to "$_cfgr"; _fcfg="$FOLDED"
         while IFS= read -r _r; do
             [ -n "$_r" ] || continue
