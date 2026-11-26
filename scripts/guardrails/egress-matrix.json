@@ -15,7 +15,7 @@
   },
   "corpora": {
     "salus": "any path under a `.salus`-marked root, or under a root listed in ~/.config/claude-glm/phi-roots or ~/.config/claude-glm/egress-denylist (the shared glm-guard.ts / parity_guard.py primitives). No guard reads ~/.config/himmel/phi/ yet, so a root listed only there is NOT enforced",
-    "luna-personal": "the luna vault root EXCLUDING Clippings/ (journals, maps, sessions, notes)",
+    "luna-personal": "the luna vault root EXCLUDING Clippings/ (journals, maps, sessions, notes). Nested handovers/, sessions/, chats/ and repo: salus notes inside the vault classify as luna-personal here; for an external qmd MCP reader they are governed by the consumer's per-key collection, manager role-path and disk-frontmatter salus guards, not by this matrix",
     "luna-clippings": "<luna-root>/Clippings/ (clipped public web content)",
     "handover-state": "the handover state repo root (HANDOVER_DIR; work artifacts, specs, session notes). Kept for Mode-B EXTERNAL state repos: a HANDOVER_DIR nested INSIDE a vault classifies as that vault's corpus instead (fence precedence checks vault roots first — more restrictive; pinned by test)",
     "himmel-code": "himmel checkout(s), worktrees, and the public mirror (code + docs; public-propagated)",
@@ -51,9 +51,11 @@
     "builder-io": { "region": "US", "note": "The hosted OAuth MCP `agent-native-dispatch` (https://dispatch.agent-native.com/mcp) that builder-visual@himmel registers for the design profile. Every tool argument (prompts, file paths, pasted content) goes to Builder.io servers. Enforced at the MCP call by marketplace/plugins/himmel-ops/hooks/block-agent-native-egress.sh" },
     "jira": { "region": "US", "note": "The Atlassian Jira Cloud project the himmel Jira CLI (scripts/jira/dist/index.js, by absolute path) writes; the failure router is its only automated caller" },
     "peer-telegram": { "region": "Telegram (global)", "note": "another station's bot in an untrusted Telegram supergroup, reached by the peer bridge. Every message also passes the bridge's own egress gate (secret shapes, length, kind and thread rules)" },
-    "atlassian-mcp": { "region": "US", "note": "The hosted Atlassian remote MCP server (https://mcp.atlassian.com/v1/mcp). Only the initialize handshake and tools/list are permitted; every tools/call stays denied" }
+    "atlassian-mcp": { "region": "US", "note": "The hosted Atlassian remote MCP server (https://mcp.atlassian.com/v1/mcp). Only the initialize handshake and tools/list are permitted; every tools/call stays denied" },
+    "openai-chatgpt": { "region": "US", "note": "Dots, the operator's external personal assistant on OpenAI ChatGPT, reaching the qmd MCP read service. Receives the full text of every search result and document it reads. Distinct from openai-codex (the codex claudex lane): no codex cell carries over to this provider" },
+    "xai-grokbot": { "region": "US", "note": "Grokbot, the operator's external personal assistant on xAI, reaching the qmd MCP read service. Receives the full text of every search result and document it reads" }
   },
-  "purposes": ["extraction", "embedding", "rerank", "query-expansion", "inference", "vision-embedding", "enrichment", "stt", "tts", "ticketing", "catalog-fetch", "peer-message"],
+  "purposes": ["extraction", "embedding", "rerank", "query-expansion", "inference", "vision-embedding", "enrichment", "stt", "tts", "ticketing", "catalog-fetch", "peer-message", "luna-mcp-read"],
   "rules": [
     {
       "corpus": "salus", "provider": "local-ollama", "purpose": "*",
@@ -379,6 +381,86 @@
       "corpus": "himmel-code", "provider": "google-antigravity", "purpose": "*",
       "verdict": "deny",
       "why": "Operator ruling 2026-11-23 (Decisions 1246 & 1259): google-antigravity is scoped to interactive inference only. Placed ahead of the himmel-code wildcard allow below so non-inference purposes default-deny"
+    },
+    {
+      "corpus": "luna-clippings", "provider": "openai-chatgpt", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy: Dots (openai-chatgpt) may search and read luna-clippings through the audited qmd MCP read service, scoped per key by the service's allowed collections. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Every other purpose stays default-deny."
+    },
+    {
+      "corpus": "luna-clippings", "provider": "xai-grokbot", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy: Grokbot (xai-grokbot) may search and read luna-clippings through the audited qmd MCP read service, scoped per key by the service's allowed collections. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Every other purpose stays default-deny."
+    },
+    {
+      "corpus": "luna-personal", "provider": "openai-chatgpt", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy: Dots (openai-chatgpt) may search and read luna-personal through the audited qmd MCP read service, scoped per key by the service's allowed collections. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Every other purpose stays default-deny."
+    },
+    {
+      "corpus": "luna-personal", "provider": "xai-grokbot", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy: Grokbot (xai-grokbot) may search and read luna-personal through the audited qmd MCP read service, scoped per key by the service's allowed collections. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Every other purpose stays default-deny."
+    },
+    {
+      "corpus": "himmel-code", "provider": "openai-chatgpt", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy: Dots (openai-chatgpt) may search and read himmel-code through the audited qmd MCP read service, scoped per key by the service's allowed collections. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Explicit row ahead of this provider's himmel-code deny below, which keeps every other purpose denied."
+    },
+    {
+      "corpus": "himmel-code", "provider": "xai-grokbot", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy: Grokbot (xai-grokbot) may search and read himmel-code through the audited qmd MCP read service, scoped per key by the service's allowed collections. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Explicit row ahead of this provider's himmel-code deny below, which keeps every other purpose denied."
+    },
+    {
+      "corpus": "himmel-code", "provider": "openai-chatgpt", "purpose": "*",
+      "verdict": "deny",
+      "why": "The read ruling covers luna-mcp-read only. Placed after this provider's himmel-code luna-mcp-read allow and ahead of the himmel-code wildcard allow below, so that wildcard cannot open inference, extraction or any other purpose for Dots. A later himmel-code x openai-chatgpt x pa-* allow row must be inserted ahead of this deny. Not hard: a future operator decision may widen it"
+    },
+    {
+      "corpus": "himmel-code", "provider": "xai-grokbot", "purpose": "*",
+      "verdict": "deny",
+      "why": "The read ruling covers luna-mcp-read only. Placed after this provider's himmel-code luna-mcp-read allow and ahead of the himmel-code wildcard allow below, so that wildcard cannot open inference, extraction or any other purpose for Grokbot. A later himmel-code x xai-grokbot x pa-* allow row must be inserted ahead of this deny. Not hard: a future operator decision may widen it"
+    },
+    {
+      "corpus": "operator-repos", "provider": "openai-chatgpt", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy: Dots (openai-chatgpt) may search and read operator-repos through the audited qmd MCP read service, scoped per key by the service's allowed collections. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Every other purpose stays default-deny."
+    },
+    {
+      "corpus": "operator-repos", "provider": "xai-grokbot", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy: Grokbot (xai-grokbot) may search and read operator-repos through the audited qmd MCP read service, scoped per key by the service's allowed collections. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Every other purpose stays default-deny."
+    },
+    {
+      "corpus": "jira-mirror", "provider": "openai-chatgpt", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy: Dots (openai-chatgpt) may search and read jira-mirror through the audited qmd MCP read service, scoped per key by the service's allowed collections. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Every other purpose stays default-deny."
+    },
+    {
+      "corpus": "jira-mirror", "provider": "xai-grokbot", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy: Grokbot (xai-grokbot) may search and read jira-mirror through the audited qmd MCP read service, scoped per key by the service's allowed collections. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Every other purpose stays default-deny."
+    },
+    {
+      "corpus": "roadmap-plan", "provider": "openai-chatgpt", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy: Dots (openai-chatgpt) may search and read roadmap-plan through the audited qmd MCP read service, scoped per key by the service's allowed collections. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Every other purpose stays default-deny."
+    },
+    {
+      "corpus": "roadmap-plan", "provider": "xai-grokbot", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy: Grokbot (xai-grokbot) may search and read roadmap-plan through the audited qmd MCP read service, scoped per key by the service's allowed collections. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Every other purpose stays default-deny."
+    },
+    {
+      "corpus": "skill-index", "provider": "openai-chatgpt", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy: Dots (openai-chatgpt) may search and read skill-index through the audited qmd MCP read service, scoped per key by the service's allowed collections. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Every other purpose stays default-deny."
+    },
+    {
+      "corpus": "skill-index", "provider": "xai-grokbot", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy: Grokbot (xai-grokbot) may search and read skill-index through the audited qmd MCP read service, scoped per key by the service's allowed collections. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Every other purpose stays default-deny."
     },
     {
       "corpus": "himmel-code", "provider": "*", "purpose": "*",
