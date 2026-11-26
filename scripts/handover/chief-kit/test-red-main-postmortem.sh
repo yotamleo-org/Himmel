@@ -50,6 +50,7 @@ cat > "$W/bin/gh" <<'STUB'
 if [ "${1:-}" = run ] && [ "${2:-}" = list ]; then cat "$STUB_RUNS"; exit 0; fi
 if [ "${1:-}" = run ] && [ "${2:-}" = download ]; then
     id="$3"; dir=""
+    [ -z "${STUB_DL_FAIL:-}" ] || { echo 'connection reset by peer' >&2; exit 1; }
     while [ "$#" -gt 0 ]; do [ "$1" = -D ] && dir="$2"; shift; done
     [ -f "$STUB_DIR/red-$id" ] && cp "$STUB_DIR/red-$id" "$dir/shard-red-suites.txt"
     exit 0
@@ -59,7 +60,9 @@ STUB
 chmod +x "$W/bin/gh"
 export STUB_DIR="$W" STUB_RUNS="$W/runs"
 export RED_MAIN_GH="$W/bin/gh" RED_MAIN_IMPACTED="$IS" RED_MAIN_REPO="$FX"
-run_sut() { RED_MAIN_STATE="$W/seen" bash "$SUT" 2>/dev/null; }
+export RED_MAIN_MAX_RUNS=3 RED_MAIN_MAX_COMMITS=10
+run_sut() { RED_MAIN_STATE="$W/seen" bash "$SUT" 2>/dev/null; echo "$?" > "$W/rc"; }
+rc_zero() { [ "$(cat "$W/rc")" = 0 ]; }
 
 printf '900\t%s\tfailure\n899\t%s\tsuccess\n' "$head" "$base" > "$W/runs"
 
@@ -70,7 +73,7 @@ lacks 'yes: a PR that did not select the suite gets no line' "$out" '#101'
 lacks 'yes: no no-line for a suite some PR selected' "$out" 'impacted list: no'
 
 out="$(run_sut)"
-if [ -z "$out" ]; then pass 'a reported run prints nothing on the next call'; else fail "second call printed: $out"; fi
+if [ -z "$out" ] && rc_zero; then pass 'a reported run prints nothing on the next call'; else fail "second call printed: $out (rc $(cat "$W/rc"))"; fi
 
 rm -f "$W/seen"
 printf 'scripts/test-c.sh\n' > "$W/red-900"
@@ -93,7 +96,33 @@ if grep -Fxq 900 "$W/seen"; then pass 'unknown: the run is marked seen'; else fa
 rm -f "$W/seen"
 printf '900\t%s\tsuccess\n' "$head" > "$W/runs"
 out="$(run_sut)"
-if [ -z "$out" ]; then pass 'a green main prints nothing'; else fail "green main printed: $out"; fi
+if [ -z "$out" ] && rc_zero; then pass 'a green main prints nothing'; else fail "green main printed: $out (rc $(cat "$W/rc"))"; fi
+
+printf '900\t%s\tfailure\n899\t%s\tsuccess\n' "$head" "$base" > "$W/runs"
+printf 'scripts/test-b.sh\n' > "$W/red-900"
+timeout 5 bash "$SUT" --repo >/dev/null 2>&1; rc=$?
+if [ "$rc" -eq 2 ]; then pass 'a trailing --repo is a usage error, not a hang'; else fail "trailing --repo exited $rc (124 = hang)"; fi
+
+rm -f "$W/seen"
+out="$(RED_MAIN_MAX_COMMITS=1 run_sut)"
+contains 'a range longer than the commit cap says so' "$out" 'red-main run 900 unknown: range holds more than 1 commit'
+lacks 'a range longer than the commit cap prints no no-line' "$out" 'impacted list: no'
+
+rm -f "$W/seen"
+printf 'scripts/test-c.sh\n' > "$W/red-900"
+cat > "$W/bin/is" <<STUB
+#!/usr/bin/env bash
+case "\$2" in "$head"*) exit 2 ;; esac
+exec bash "$IS" "\$@"
+STUB
+out="$(RED_MAIN_IMPACTED="$W/bin/is" run_sut)"
+contains 'a commit whose selection cannot be read leaves the suite unknown' "$out" 'red-main run 900 scripts/test-c.sh unknown'
+lacks 'an unchecked PR never lets a no-line print' "$out" 'impacted list: no'
+
+rm -f "$W/seen"
+printf 'scripts/test-b.sh\n' > "$W/red-900"
+out="$(STUB_DL_FAIL=1 run_sut)"
+if [ -z "$out" ] && ! grep -Fxq 900 "$W/seen"; then pass 'a failed artifact download prints nothing and the run is retried'; else fail "transient download failure: out=$out seen=$(cat "$W/seen")"; fi
 
 if [ "$failures" -gt 0 ]; then printf 'FAIL: %s case(s) failed\n' "$failures"; exit 1; fi
 printf 'OK: all red-main-postmortem cases passed\n'

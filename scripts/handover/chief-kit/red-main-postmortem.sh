@@ -38,7 +38,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="${RED_MAIN_REPO:-}"
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --repo) repo="${2:-}"; shift 2 ;;
+        --repo) [ "$#" -ge 2 ] || { echo "usage: red-main-postmortem.sh [--repo DIR]" >&2; exit 2; }; repo="$2"; shift 2 ;;
         *) echo "usage: red-main-postmortem.sh [--repo DIR]" >&2; exit 2 ;;
     esac
 done
@@ -61,7 +61,7 @@ runs="$(cd "$repo" 2>/dev/null && "$gh_bin" run list --branch main --workflow ci
 work="$(tmpdir)" || exit 0  # swallow-ok: no scratch dir, no postmortem this tick
 trap 'rm -rf "$work"' EXIT
 printf '%s\n' "$runs" > "$work/runs"
-mkdir -p "${state%/*}" 2>/dev/null || exit 0  # swallow-ok: an unwritable state dir would repeat lines every tick, so report nothing
+mkdir -p "$(dirname "$state")" 2>/dev/null || exit 0  # swallow-ok: an unwritable state dir would repeat lines every tick, so report nothing
 touch "$state" 2>/dev/null || exit 0  # swallow-ok: as above
 
 ids=(); shas=(); concs=()
@@ -86,13 +86,26 @@ while [ "$i" -lt "$n" ] && [ "$done_runs" -lt "$max_runs" ]; do
         dl="$work/dl-$id"
         mkdir -p "$dl"
         red="$dl/shard-red-suites.txt"
-        (cd "$repo" && "$gh_bin" run download "$id" -n selector-miss-ledger -D "$dl" >/dev/null 2>&1)  # swallow-ok: a missing artifact reads unknown below
+        dlerr="$(cd "$repo" && "$gh_bin" run download "$id" -n selector-miss-ledger -D "$dl" 2>&1 >/dev/null)"; dlrc=$?  # swallow-ok: rc and message decide absent artifact versus a failed read below
+        if [ "$dlrc" -ne 0 ] && ! grep -Fq 'no valid artifacts' <<< "$dlerr"; then
+            i=$((i + 1))
+            continue
+        fi
+        commits=""
+        lrc=0
+        if [ -n "$prev" ]; then
+            commits="$(git -C "$repo" log --first-parent --format='%H%x09%s' -n "$((max_commits + 1))" "$prev..$sha" 2>/dev/null)"; lrc=$?  # swallow-ok: lrc is the verdict, an unreadable range prints the unknown line
+        fi
         if [ ! -s "$red" ]; then
             printf 'red-main run %s unknown: no failing-suite list (selector-miss-ledger artifact absent or empty)\n' "$id"
         elif [ -z "$prev" ]; then
             printf 'red-main run %s unknown: no earlier completed main run, so the merge range is unknown\n' "$id"
-        elif ! commits="$(git -C "$repo" log --first-parent --format='%H%x09%s' -n "$max_commits" "$prev..$sha" 2>/dev/null)" || [ -z "$commits" ]; then  # swallow-ok: an unreadable range prints the unknown line
+        elif [ "$lrc" -ne 0 ]; then
             printf 'red-main run %s unknown: range %s..%s is not in this checkout\n' "$id" "$prev" "$sha"
+        elif [ -z "$commits" ]; then
+            printf 'red-main run %s unknown: range %s..%s holds no commits\n' "$id" "$prev" "$sha"
+        elif [ "$(printf '%s\n' "$commits" | wc -l)" -gt "$max_commits" ]; then
+            printf 'red-main run %s unknown: range holds more than %s commits, not checked\n' "$id" "$max_commits"
         else
             : > "$dl/yes"; : > "$dl/no"
             unk=0
@@ -104,10 +117,14 @@ while [ "$i" -lt "$n" ] && [ "$done_runs" -lt "$max_runs" ]; do
                 case "$rc" in
                     0) while IFS= read -r s; do [ -z "$s" ] || printf '%s\t%s\n' "$pr" "$s" >> "$dl/yes"; done < "$red" ;;
                     1) printf '%s\n' "$out" | awk '$1 == "selector-miss:" { print $2 }' | sort -u > "$dl/missed"
-                       while IFS= read -r s; do
-                           [ -n "$s" ] || continue
-                           if grep -Fxq -- "$s" "$dl/missed"; then printf '%s\t%s\n' "$pr" "$s" >> "$dl/no"; else printf '%s\t%s\n' "$pr" "$s" >> "$dl/yes"; fi
-                       done < "$red" ;;
+                       if [ ! -s "$dl/missed" ]; then
+                           unk=1
+                       else
+                           while IFS= read -r s; do
+                               [ -n "$s" ] || continue
+                               if grep -Fxq -- "$s" "$dl/missed"; then printf '%s\t%s\n' "$pr" "$s" >> "$dl/no"; else printf '%s\t%s\n' "$pr" "$s" >> "$dl/yes"; fi
+                           done < "$red"
+                       fi ;;
                     *) unk=1 ;;
                 esac
             done <<< "$commits"
@@ -116,7 +133,7 @@ while [ "$i" -lt "$n" ] && [ "$done_runs" -lt "$max_runs" ]; do
                 [ -n "$s" ] || continue
                 if awk -F'\t' -v s="$s" '$2 == s { f = 1 } END { exit !f }' "$dl/yes"; then
                     awk -F'\t' -v s="$s" -v id="$id" '$2 == s { printf "red-main run %s #%s %s suite in its impacted list: yes\n", id, $1, s }' "$dl/yes"
-                elif awk -F'\t' -v s="$s" '$2 == s { f = 1 } END { exit !f }' "$dl/no"; then
+                elif [ "$unk" -eq 0 ] && awk -F'\t' -v s="$s" '$2 == s { f = 1 } END { exit !f }' "$dl/no"; then
                     awk -F'\t' -v s="$s" -v id="$id" '$2 == s { printf "red-main run %s #%s %s suite in its impacted list: no\n", id, $1, s }' "$dl/no"
                 else
                     printf 'red-main run %s %s unknown: impacted-suites could not read the range\n' "$id" "$s"
