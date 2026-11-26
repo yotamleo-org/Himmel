@@ -2276,7 +2276,7 @@ update_luna_template() {
         if command -v uv >/dev/null 2>&1; then pc_fix="uv tool install pre-commit"
         elif command -v pipx >/dev/null 2>&1; then pc_fix="pipx install pre-commit"
         elif [ "$(uname -s)" = "Darwin" ]; then pc_fix="brew install uv, then uv tool install pre-commit"
-        else pc_fix="curl -LsSf https://astral.sh/uv/install.sh | sh, then uv tool install pre-commit"
+        else pc_fix="bash scripts/machine-setup/ubuntu.sh (installs the checksum-pinned uv), then uv tool install pre-commit"
         fi
         echo "    FIX: pre-commit is not on PATH — the vault's git hooks (the secret scan) need it, so the upgrade fails closed. Install: $pc_fix"
         pc_note=" — pre-commit is not on PATH (install: $pc_fix)"

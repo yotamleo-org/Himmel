@@ -357,7 +357,7 @@ assert_eq "no pre-commit: the luna row still fails (the secret scan stays fail-c
 assert_contains "no pre-commit: a FIX line says pre-commit is missing" 'FIX: pre-commit is not on PATH' "$OUT"
 assert_eq "no pre-commit: exactly one FIX line" "1" "$(grep -c 'FIX: pre-commit' <<< "$OUT")"
 assert_contains "no pre-commit: the luna row detail names the missing tool" 'luna_template  *failed  *upgrade.sh exited 1.*pre-commit is not on PATH' "$OUT"
-assert_contains "no uv, no pipx, Linux: FIX names the uv installer then the pre-commit install" 'astral.sh/uv/install.sh.*uv tool install pre-commit' "$OUT"
+assert_contains "no uv, no pipx, Linux: FIX names the pinned uv installer then the pre-commit install" 'machine-setup/ubuntu.sh.*uv tool install pre-commit' "$OUT"
 OUT="$(run_luna_path "$PC_FREE_BIN" Darwin)"
 assert_contains "no uv, no pipx, macOS: FIX names brew install uv" 'brew install uv.*uv tool install pre-commit' "$OUT"
 OUT="$(run_luna_path "$TMP/uv-stub-bin:$PC_FREE_BIN")"
