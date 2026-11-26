@@ -307,7 +307,7 @@ template_version: 3
 >    `needs a round-critical record with the operator's words`): only the operator's words open it:
 >    ask the operator one plain line, write the verbatim-decision file, run
 >    `round-critical <KEY> --decision <d> --quote "<operator words>" --closure` (or `--finding <id>` for
->    an operator-critical finding); under standing decision 1418 the chief writes that decision file itself, quoting 1418 and giving its reason; the chief never skips the file.
+>    an operator-critical finding); under standing decision 1418 the chief writes that decision file itself, quoting 1418 and giving its reason; the chief never skips the file. A worker never runs it: escalate a refused round to your chief.
 >    <Anything else unusual: a PR body that must carry other
 >    specific numbers, a public-CI wait, a second ticket to comment on but
 >    leave open.>

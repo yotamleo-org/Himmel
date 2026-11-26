@@ -1745,7 +1745,7 @@ async function verifyReturn(abs: string, text: string, opts: { spec?: string; si
 const appendRow = (specs: string, key: string, row: Record<string, unknown>) => appendFile(join(ledgerDirOf(specs), ledgerEntryNames(key).file), `${JSON.stringify({ v: 1, ts: Date.now(), key, ...row })}\n`);
 const needConsole = (verb: string) => { if (process.env.HIMMEL_CONSOLE !== "1") throw new Error(`${verb}: needs HIMMEL_CONSOLE=1, the chief's marker; a worker never writes a record`); };
 
-export async function roundOverride(specs: string, key: string, o: { findings: string[]; why: string; chief: string; decision?: string; quote?: string }): Promise<void> {
+export async function roundOverride(specs: string, key: string, o: { findings: string[]; why: string; chief: string; decision: string; quote: string }): Promise<void> {
   needConsole("round-override");
   await withLedgerLock(specs, key, async () => {
     const rows = await loadLedger(specs, key);
@@ -1771,14 +1771,10 @@ export async function roundOverride(specs: string, key: string, o: { findings: s
       throw new Error(`round-override: ${lagging} is open only in ${kinds.join(" and ")}, which lags the writer round; ${how}, or name a finding of a kind at the writer round`);
     }
     const entries = named.filter(f => f.round === writer).map(({ round: _, ...f }) => f);
-    let words: Record<string, unknown> = {};
-    if (o.decision !== undefined) {
-      const q = await quoteRule(specs, key, o.decision, o.quote ?? "", rows.some(r => spendsDecision(r) && String(r.decision) === o.decision), latestRoundTs(rows));
-      if ("error" in q) throw new Error(`round-override: ${q.error}`);
-      if (approvalSpentByExtension(rows, o.decision, q)) throw new Error(`round-override: decision ${o.decision} was already used by a round-extension`);
-      words = { decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha };
-    }
-    await appendRow(specs, key, { row: "override", epoch: rows.checked.epoch, round_opened: writer + 1, findings: entries, why: o.why, chief: o.chief, ...words });
+    const q = await quoteRule(specs, key, o.decision, o.quote, rows.some(r => spendsDecision(r) && String(r.decision) === o.decision), latestRoundTs(rows));
+    if ("error" in q) throw new Error(`round-override: ${q.error}`);
+    if (approvalSpentByExtension(rows, o.decision, q)) throw new Error(`round-override: decision ${o.decision} was already used by a round-extension`);
+    await appendRow(specs, key, { row: "override", epoch: rows.checked.epoch, round_opened: writer + 1, findings: entries, why: o.why, chief: o.chief, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha });
   });
 }
 

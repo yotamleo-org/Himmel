@@ -3435,6 +3435,10 @@ test("round-override needs the operator's decision and a quote the decision hold
   decide(t.specs, 7312, `${CAP_KEY} operator: ${OVR_WORDS}\n`);
   const lie = await verb(true, "round-override", CAP_KEY, "--findings", "M2", "--why", "w", "--chief", "chief-x", "--decision", "7312", "--quote", "words the operator never wrote", "--specs", t.specs, "--no-words");
   expect(lie.code).toBe(1); expect(lie.err).toContain("round-override: decision 7312 does not hold the quote");
+  const { roundOverride } = await import("./chief-route.ts");
+  process.env.HIMMEL_CONSOLE = "1";
+  try { await expect(roundOverride(t.specs, CAP_KEY, { findings: ["M2"], why: "w", chief: "chief-x", decision: "", quote: "" })).rejects.toThrow("round-override:"); }
+  finally { delete process.env.HIMMEL_CONSOLE; }
   expect(rowsOf(t.specs, "override")).toEqual([]);
 });
 
