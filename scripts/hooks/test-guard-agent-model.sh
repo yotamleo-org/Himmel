@@ -335,6 +335,49 @@ case "$daud" in
 esac
 silent "delta marker with nothing to override (opus, judge) -> no output" "$(agent judge opus "$DM"$'\n'"$JBL")"
 
+echo "== a refusal names the dispatch that passes (HIMMEL-9929) =="
+deny_text() { printf '%s' "$1" | bash "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null; }
+described() { printf '%s' "$2" | jq -c --arg d "$1" '.tool_input.description = $d'; }
+needs() {
+    local label="$1" txt="$2" n miss=""
+    shift 2
+    for n in "$@"; do case "$txt" in *"$n"*) ;; *) miss="$miss [$n]" ;; esac; done
+    if [ -z "$miss" ]; then ok "$label"; else bad "$label - missing:$miss - got: $txt"; fi
+}
+ptxt="$(deny_text "$(described 'Plan critic r1' "$(agent judge sonnet 'critique the plan')")")"
+needs "plan critic sent as judge on sonnet -> text names general-purpose on sonnet" "$ptxt" \
+    "general-purpose" "model: sonnet" "critic"
+stxt="$(deny_text "$(described 'Spec critic r1' "$(agent judge-ro sonnet 'critique the spec')")")"
+needs "spec critic sent as judge-ro on sonnet -> text names general-purpose on sonnet" "$stxt" \
+    "general-purpose" "model: sonnet" "critic"
+ptxt2="$(deny_text "$(agent judge sonnet $'judge the PR that adds the Plan critic dispatch\nand report findings')")"
+needs "a judge whose prompt only mentions a plan critic keeps the judge remedy" "$ptxt2" \
+    "delta-class.sh" "first full judge"
+case "$ptxt2" in
+    *"general-purpose"*) bad "a prompt-only plan critic mention must not steer to general-purpose - got: $ptxt2" ;;
+    *) ok "a prompt-only plan critic mention does not name general-purpose" ;;
+esac
+mtxt="$(deny_text "$(described 'Judge plan-critic changes' "$(agent judge sonnet 'Judge the PR and report findings')")")"
+needs "a full judge whose description only mentions plan-critic changes keeps the judge remedy" "$mtxt" \
+    "whose delta-class.sh prints finding may use model: sonnet"
+case "$mtxt" in
+    *"general-purpose"*) bad "a description that merely mentions a critic must not steer to general-purpose - got: $mtxt" ;;
+    *) ok "a description that merely mentions a critic does not name general-purpose" ;;
+esac
+check "plan critic on judge + sonnet is still denied" block "$(described 'Plan critic r1' "$(agent judge sonnet 'x')")"
+check "plan critic on general-purpose + sonnet is still allowed" allow "$(described 'Plan critic r1' "$(agent general-purpose sonnet 'x')")"
+ftxt="$(deny_text "$(agent judge sonnet 'judge the PR')")"
+needs "full judge on sonnet -> text names the DELTA-JUDGE rule and its limits" "$ftxt" \
+    "DELTA-JUDGE: <head sha>" "a delta that delta-class.sh prints as trust keep Opus" \
+    "whose delta-class.sh prints finding may use model: sonnet" "first full judge" "model: opus"
+case "$ftxt" in
+    *"general-purpose"*) bad "a full judge refusal must not steer to a critic dispatch - got: $ftxt" ;;
+    *) ok "full judge refusal does not mention a critic dispatch" ;;
+esac
+btxt="$(deny_text "$(agent general-purpose fable 'do the review')")"
+needs "fable with no ESCALATION line -> text names the line and the dispatch that keeps fable" "$btxt" \
+    "keep model: fable" "ESCALATION: <reason>" "line of its own"
+
 echo "== the deny remedy passes BOTH model guards =="
 SUBGUARD="$HOOKS/guard-subagent-model.sh"
 both() { # <label> <allow|block> <json>: the verdict of the two guards in a row
@@ -344,7 +387,6 @@ both() { # <label> <allow|block> <json>: the verdict of the two guards in a row
     if [ "$rc1" = 0 ] && [ "$rc2" = 0 ]; then got=allow; else got=block; fi
     if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 - expected $2 got $got (agent-model rc=$rc1, subagent-model rc=$rc2)"; fi
 }
-deny_text() { printf '%s' "$1" | bash "$HOOK" 2>/dev/null | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null; }
 jdeny="$(deny_text "$(agent judge-ro sonnet 'x')")"
 case "$jdeny" in
     *"Drop the model override"*|*"drop the model"*|*"omit"*) bad "judge deny recommends dropping the model: $jdeny" ;;

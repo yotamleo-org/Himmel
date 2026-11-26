@@ -3,6 +3,11 @@
 This preface is appended by `headed-arm-worker.sh --lane claudex`.
 It overrides the native coordination channel in the profile's worker preface.
 
+Use the brief's outcome and completion checks to drive the work. State any
+reasonable, reversible assumptions. Continue independent work when a step is
+blocked, subject to the stop conditions below. In Results, record the outcome,
+the checks you ran, and any unresolved blockers.
+
 You run under `CLAUDE_CONFIG_DIR=~/.claude-codex`, a separate session
 namespace. **`ListAgents` will NOT show the chief; that is by design, not
 an outage, and it is NOT a reason to stop.** Do NOT call `SendMessage` or

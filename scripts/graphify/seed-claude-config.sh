@@ -118,23 +118,26 @@ seed_config_dir() {
   fi
 
   umask 077
-  # A same-directory mv atomically replaces the complete file without
-  # truncating live credentials or settings in place.
-  CREDENTIALS_TMP="$(mktemp "$CONFIG_DIR/.credentials.json.tmp.XXXXXX")" \
-    || seed_fail "create a subscription credentials temp file"
   if [ -f "$SOURCE_DIR/.credentials.json" ]; then
-    cp "$SOURCE_DIR/.credentials.json" "$CREDENTIALS_TMP"
+    CREDENTIALS_TMP="$CONFIG_DIR/.credentials.json.tmp.$$"
+    rm -f "$CREDENTIALS_TMP"
+    ln -s "$SOURCE_DIR/.credentials.json" "$CREDENTIALS_TMP" \
+      || seed_fail "stage the subscription credentials link"
+    mv -f "$CREDENTIALS_TMP" "$CONFIG_DIR/.credentials.json" || seed_fail "link subscription credentials to the source login" # prim-ok: renames a staged link over the destination; atomic_write only writes file content
+    CREDENTIALS_TMP=""
   else
-    keychain_credentials > "$CREDENTIALS_TMP"
-  fi || seed_fail "stage subscription credentials"
-  chmod 600 "$CREDENTIALS_TMP" \
-    || seed_fail "restrict staged subscription credentials"
-  atomic_write "$CONFIG_DIR/.credentials.json" < "$CREDENTIALS_TMP" \
-    || seed_fail "replace subscription credentials"
-  rm -f "$CREDENTIALS_TMP"
-  CREDENTIALS_TMP=""
-  chmod 600 "$CONFIG_DIR/.credentials.json" \
-    || seed_fail "restrict subscription credentials"
+    CREDENTIALS_TMP="$(mktemp "$CONFIG_DIR/.credentials.json.tmp.XXXXXX")" || seed_fail "create a subscription credentials temp file"
+    keychain_credentials > "$CREDENTIALS_TMP" \
+      || seed_fail "stage subscription credentials"
+    chmod 600 "$CREDENTIALS_TMP" \
+      || seed_fail "restrict staged subscription credentials"
+    atomic_write "$CONFIG_DIR/.credentials.json" < "$CREDENTIALS_TMP" \
+      || seed_fail "replace subscription credentials"
+    rm -f "$CREDENTIALS_TMP"
+    CREDENTIALS_TMP=""
+    chmod 600 "$CONFIG_DIR/.credentials.json" \
+      || seed_fail "restrict subscription credentials"
+  fi
 
   PROFILE_TMP="$CONFIG_DIR/.bare-profile.$$"
   CLAUDE_CONFIG_DIR="$SOURCE_DIR" node "$PROFILE_RESOLVER" bare > "$PROFILE_TMP" \
@@ -189,8 +192,8 @@ config_seed_stale() { # rc=0 when the dedicated profile must be rebuilt
   [ ! -d "$CONFIG_DIR/hooks" ] || return 0
 
   if [ -f "$SOURCE_DIR/.credentials.json" ]; then
-    [ "$SOURCE_DIR/.credentials.json" -nt "$CONFIG_DIR/.seeded" ] && return 0
-    cmp -s "$SOURCE_DIR/.credentials.json" "$CONFIG_DIR/.credentials.json" || return 0
+    [ -L "$CONFIG_DIR/.credentials.json" ] || return 0
+    [ "$(readlink "$CONFIG_DIR/.credentials.json")" = "$SOURCE_DIR/.credentials.json" ] || return 0
   else
     keychain_credentials | cmp -s - "$CONFIG_DIR/.credentials.json" || return 0
   fi

@@ -165,8 +165,15 @@ for model_args in '--model fixture-codex' '--model=fixture-codex' '-m fixture-co
   assert_rc 0 "variant override accepted: $model_args" "variant rc=$RC out=$OUT"
   case "$OUT" in *"WARN"*"codex-variant"*) pass "variant warning: $model_args";; *) fail "missing variant warning: $OUT";; esac
 done
-run_dispatch --worktree "$WT" --model gpt-6-astra do-it
-case "$OUT" in *WARN*) fail "explicit plain model warned: $OUT";; *) pass "explicit gpt-6-astra remains warning-free";; esac
+for model in gpt-6.2-astra gpt-6.1-sol gpt-6-astra; do
+  run_dispatch --worktree "$WT" --model "$model" do-it
+  assert_rc 0 "explicit $model accepted" "explicit $model rc=$RC out=$OUT"
+  case "$(cat "$TMP/codex.args")" in
+    *" --model $model do-it") pass "explicit $model reaches Codex" ;;
+    *) fail "explicit $model argv: $(cat "$TMP/codex.args")" ;;
+  esac
+  case "$OUT" in *WARN*) fail "explicit $model warned: $OUT";; esac
+done
 
 # A different registry model must actually change the rendered codex argv.
 printf '%s\n' '{"panel":[{"slug":"codex","model":"fixture-next","provider":"openai-codex","route_provider":"openai-codex","tier":"paid"}]}' > "$TMP/critics.json"
@@ -197,7 +204,7 @@ export CODEX_CRITICS_FILE="$TMP/missing-critics.json"
 run_dispatch --worktree "$WT" do-it
 assert_rc 0 "unreadable registry uses fallback" "missing registry rc=$RC out=$OUT"
 case "$(cat "$TMP/codex.args")" in
-  'exec --model gpt-6.1-sol --sandbox workspace-write -c model_context_window=272000 do-it') pass "unreadable registry uses named fallback model" ;;
+  'exec --model gpt-6.2-sol --sandbox workspace-write -c model_context_window=272000 do-it') pass "unreadable registry uses named fallback model" ;;
   *) fail "fallback argv: $(cat "$TMP/codex.args")" ;;
 esac
 unset CODEX_CRITICS_FILE

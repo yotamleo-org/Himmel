@@ -246,7 +246,7 @@ RC7=$(run_hook chief-explore "$(payload Explore 'ship it' "$SHIP_FLOW_PROMPT")" 
 assert_rc "chief + subagent_type Explore + ship-flow markers allowed" 0 "$RC7"
 
 RC7D=$(run_hook judge-ro "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
-assert_rc "chief + subagent_type judge-ro (new id, tools Read/Grep/Glob/Bash) + ship-flow markers allowed" 0 "$RC7D"
+assert_rc "chief + subagent_type judge-ro (new id, the repo's own agent file) + ship-flow markers allowed" 0 "$RC7D"
 
 RC7E=$(run_hook judge-still-denied "$(payload judge 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
 assert_rc "judge (not -ro) + ship-flow markers still denied" 2 "$RC7E"
@@ -278,6 +278,26 @@ assert_rc "judge-ro whose agent file pins Read/Grep/Glob/Bash/Write/WebFetch/Web
 agent_md judge-ro 'Read, Grep, Glob, Bash, Write, WebFetch, WebSearch, Edit'
 RC7HX=$(run_tree tree-judge-ro-web-edit "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
 assert_rc "judge-ro with the fetch tools plus Edit gets no read-only carve-out" 2 "$RC7HX"
+
+agent_md judge-ro 'Read, Bash'
+RC7N1=$(run_tree tree-judge-ro-narrow-ro "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
+assert_rc "judge-ro whose agent file pins Read/Bash allowed" 0 "$RC7N1"
+
+agent_md judge-ro 'Read, Bash, Write'
+RC7N2=$(run_tree tree-judge-ro-narrow-write "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
+assert_rc "judge-ro whose agent file pins Read/Bash/Write allowed" 0 "$RC7N2"
+
+agent_md judge-ro 'Read, Bash, Write, WebFetch, WebSearch'
+RC7N3=$(run_tree tree-judge-ro-narrow-web "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
+assert_rc "judge-ro whose agent file pins Read/Bash/Write/WebFetch/WebSearch allowed" 0 "$RC7N3"
+
+agent_md judge-ro 'Read, Bash, Write, WebFetch, WebSearch, Edit'
+RC7N4=$(run_tree tree-judge-ro-narrow-edit "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
+assert_rc "judge-ro with the narrow fetch line plus Edit gets no read-only carve-out" 2 "$RC7N4"
+
+agent_md judge-ro 'Read, Bash, Edit'
+RC7N5=$(run_tree tree-judge-ro-narrow-bash-edit "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
+assert_rc "judge-ro pinning Read/Bash/Edit gets no read-only carve-out" 2 "$RC7N5"
 
 agent_md judge-ro 'Read, Grep, Glob, Bash, Write, Edit'
 RC7HE=$(run_tree tree-judge-ro-edit "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)

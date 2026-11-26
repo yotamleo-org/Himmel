@@ -29,7 +29,7 @@ expect "the taught files pass" 0 "$(run)"
 # suite no longer pins the old l71-qmd-graphify span (that line was rewritten on purpose).
 REPO="$(cd "$(dirname "$CHECK")/../.." && pwd)"
 expect "CLAUDE.md teaches the qmd wrapper form" 0 "$(grep -q -F 'bash scripts/lib/qmd-bounded.sh query -c' "$REPO/CLAUDE.md"; echo $?)"
-expect "CLAUDE.md teaches the graph wrapper form" 0 "$(grep -q -F 'bash scripts/graphify/worker-graph.sh query|explain|path' "$REPO/CLAUDE.md"; echo $?)"
+expect "CLAUDE.md teaches the graph wrapper form" 0 "$(grep -q -F 'bash scripts/graphify/worker-graph.sh explain|path' "$REPO/CLAUDE.md"; echo $?)"
 # The check skips CLAUDE.md's installer-owned `## graphify` section, so pin that section here: it names the wrapper,
 # not a bare graphify form (a worktree has no graph, so the bare form fails there), and has no `graphify update`.
 GSEC="$(awk '/^## graphify[[:space:]]*$/ { on = 1; next } /^## / { on = 0 } on' "$REPO/CLAUDE.md")"

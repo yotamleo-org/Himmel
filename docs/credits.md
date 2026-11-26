@@ -87,6 +87,7 @@ source of truth for the shipped revision; no pin is invented for dormant forks.
 | yotamleo-org/claude-obsidian | https://github.com/AgriciDaniel/claude-obsidian | AgriciDaniel | MIT | branch main; no pin site registered | dormant |
 | yotamleo-org/claude-squad | https://github.com/smtg-ai/claude-squad | smtg-ai | AGPL-3.0 | branch main; no pin site registered | dormant |
 | yotamleo-org/claude-statusline | https://github.com/nilbuild/claude-statusline | Kamran Ahmed | MIT | branch main; [pin site](../scripts/statusline/VENDORED.md) | dormant |
+| yotamleo-org/claude-video | https://github.com/bradautomates/claude-video | bradautomates | MIT | branch main; no pin site registered | dormant |
 | yotamleo-org/codex | https://github.com/openai/codex | OpenAI | Apache-2.0 | branch main; no pin site registered | dormant |
 | yotamleo-org/codex-plugin-cc | https://github.com/openai/codex-plugin-cc | OpenAI | Apache-2.0 | branch main; no pin site registered | upstream-contribution |
 | yotamleo-org/core | https://github.com/home-assistant/core | Home Assistant contributors | Apache-2.0 | branch dev; no pin site registered | upstream-contribution |
@@ -94,7 +95,8 @@ source of truth for the shipped revision; no pin is invented for dormant forks.
 | yotamleo-org/graphify | https://github.com/Graphify-Labs/graphify | Graphify-Labs | Apache-2.0 | branch himmel-main; [pin site](../scripts/lib/graphify-bin.sh) | runtime-dependency |
 | yotamleo-org/hermes-agent | https://github.com/NousResearch/hermes-agent | NousResearch | MIT | branch main; [pin site](../scripts/upstreams.json) | dormant |
 | yotamleo-org/home-assistant.io | https://github.com/home-assistant/home-assistant.io | Home Assistant contributors | CC-BY-NC-SA-4.0 | branch current; no pin site registered | upstream-contribution |
-| yotamleo-org/obsidian-skills | https://github.com/kepano/obsidian-skills | Steph Ango | MIT | branch himmel-main; no pin site registered | runtime-dependency |
+| yotamleo-org/obsidian-second-brain | https://github.com/eugeniughelbur/obsidian-second-brain | eugeniughelbur | MIT | branch main; no pin site registered | dormant |
+| yotamleo-org/obsidian-skills | https://github.com/obsidianmd/obsidian-skills | Steph Ango | MIT | branch himmel-main; no pin site registered | dormant |
 | yotamleo-org/qmd | https://github.com/tobi/qmd | Tobi Lütke | MIT | branch main; [pin site](../scripts/lib/qmd-bin.sh) | runtime-dependency |
 | yotamleo-org/twitter-cli | https://github.com/public-clis/twitter-cli | public-clis | Apache-2.0 | branch himmel-main; no pin site registered | dormant |
 
