@@ -32,7 +32,6 @@ if ! { [ -r "$HERE/tick-test-fixture.sh" ] && . "$HERE/tick-test-fixture.sh"; } 
     exit 1
 fi
 mkdir -p "$W/leak-mirror/HIMMEL"
-export TICK_REDMAIN_PROBE="$W/no-redmain-probe"
 printf '%s\n' '# chief' > "$W/handover/leak-chief.md"
 NEXT_DISPATCH_MIRROR="$W/leak-mirror/HIMMEL" TOKEN='' bash "$SUT" --doc "$W/handover/leak-chief.md" > /dev/null 2>&1
 if cmp -s "$leak_home/events.before" "$leak_home/.himmel/state/holds/events.log" && [ "$(find "$leak_home/.himmel" -type f | wc -l)" -eq 1 ]; then
