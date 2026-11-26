@@ -9,13 +9,19 @@
 <!-- salus-posture-block -->
 ## Salus — medical posture (STRUCTURAL floor)
 
+<!-- salus-posture-agy -->
 ### Posture A — egress floor (`.claude/hooks/block-cloud-egress.sh`)
-- This vault holds medical PHI. Anthropic/Claude **in-session** is the ONLY
-  processor that may see the content.
+- This vault holds medical PHI. The trusted INTERACTIVE processors are Anthropic/Claude
+  **in-session**, Codex, and Google Antigravity (`agy`, the Gemini harness, a trusted
+  Google route, operator decision 1259). No other processor may see the content.
+- API-key Gemini (`GEMINI_API_KEY` / `GOOGLE_API_KEY`, the `gemini-subagent` tool,
+  hermes) and every untrusted cloud stay DENIED.
 - The egress hook HARD-BLOCKS: WebSearch/WebFetch, cloud MCP tools, research-class
   skills, `git push` / `git remote add`, curl/wget. Local qmd + the localhost
   obsidian-vault MCP are allowed (they do not egress PHI).
-- **Run Claude from THIS repo** (`cwd = the vault`) so the hook loads.
+- **Run Claude from THIS repo** (`cwd = the vault`) so the hook loads. Antigravity
+  hooks come from the user-scope backstop, never a repo-local `.agents/hooks.json`;
+  its secret and provider-home read fences apply here too.
 - **Local repo — never add a remote, never push.** Disk only.
 
 ### Medical safety
