@@ -38,10 +38,6 @@
 # Bypass: CR_MERGE_GATE_OK=1 and/or CI_MERGE_GATE_OK=1 in the LAUNCHING shell
 # (each gates its own check independently). CR_PROFILE=none skips the CR gate.
 # The chief-GO and trust-path gates have no bypass (see gates 3 and 4 above).
-# Another repo's merge is refused unless the station lists it as one of our own
-# forks (HIMMEL_MERGE_OWN_FORKS under .policy in ~/.himmel/config.json,
-# owner/name comma-separated, empty by default): a listed fork's PR then runs
-# every gate above on its own head, and one that requests changes is refused.
 set -uo pipefail
 # NOT set -e: fail-open hook, must never abort on a sub-call's rc 1.
 
