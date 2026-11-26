@@ -648,6 +648,10 @@ describe('version-freeze / version-ready / version-defer', () => {
     await run(['version-ready', 'v1.1.3']);
     expect(out()).toMatch(/FAIL\s+promise-proof\s+bad row 3 in .*: duplicate sentence 1/);
     vi.mocked(console.log).mockClear();
+    promise([PASSING_PROMISE[0], ' 1\tA\tSame number, padded.\tshown_true\tPR 6102']);
+    await run(['version-ready', 'v1.1.3']);
+    expect(out()).toMatch(/FAIL\s+promise-proof\s+bad row 3 in .*: duplicate sentence 1/);
+    vi.mocked(console.log).mockClear();
     promise([PASSING_PROMISE[0], '2\tA\t \tshown_true\tPR 6102']);
     await run(['version-ready', 'v1.1.3']);
     expect(out()).toMatch(/FAIL\s+promise-proof\s+bad row 3 in .*: blank sentence number or text/);

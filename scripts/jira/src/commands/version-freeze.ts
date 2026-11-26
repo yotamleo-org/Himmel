@@ -340,8 +340,8 @@ function promiseProofRow(name: string, bucket: string): Row {
     const fields = lines[at].split('\t');
     if (fields.length < 4 || fields.length > 5) return fail(`bad row ${at + 1} in ${path}: ${fields.length} fields`);
     if (fields[0].trim() === '' || fields[2].trim() === '') return fail(`bad row ${at + 1} in ${path}: blank sentence number or text`);
-    if (seen.has(fields[0])) return fail(`bad row ${at + 1} in ${path}: duplicate sentence ${fields[0]}`);
-    seen.add(fields[0]);
+    if (seen.has(fields[0].trim())) return fail(`bad row ${at + 1} in ${path}: duplicate sentence ${fields[0].trim()}`);
+    seen.add(fields[0].trim());
     sentences += 1;
     const proof = (fields[4] ?? '').trim();
     if (fields[3].trim() !== 'shown_true' || proof === '' || PLACEHOLDER.test(proof)) bad.push(`${fields[0]} "${clip(fields[2])}"`);
@@ -420,11 +420,13 @@ export async function versionReady(
   if (code === 1) process.exitCode = 1;
   if (opts.out !== undefined) {
     const tmp = `${opts.out}.tmp-${process.pid}-${Date.now()}`;
+    let made = false;
     try {
       writeFileSync(tmp, `${out.join('\n')}\nsha=${opts.sha}\nat=${new Date().toISOString()}\nexit=${code}\n`, { flag: 'wx' });
+      made = true;
       renameSync(tmp, opts.out);
     } finally {
-      rmSync(tmp, { force: true });
+      if (made) rmSync(tmp, { force: true });
     }
   }
   return out;
