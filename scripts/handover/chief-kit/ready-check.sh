@@ -747,7 +747,11 @@ blocked_by() {
     rb=$("$tb" -k 5 20 "$GH" api "repos/$nwo/pulls/$PR" --jq '[.base.ref,.base.sha,.head.sha]|@tsv' 2>/dev/null) || rb=""  # swallow-ok: an unreadable base prints the unknown line below
     base=${rb%%$'\t'*}
     [ -n "$base" ] || { echo "       blocked by: unknown (the PR's base branch is unreadable)"; return 0; }
-    [ "${rb##*$'\t'}" = "$SHA" ] || { echo "       blocked by: unknown (the PR head moved during the read)"; return 0; }
+    case "${rb##*$'\t'}" in
+        "$SHA") ;;
+        ''|"$rb") echo "       blocked by: unknown (the PR head is unreadable)"; return 0 ;;
+        *) echo "       blocked by: unknown (the PR head moved during the read)"; return 0 ;;
+    esac
     rs_err=$(mktemp "${TMPDIR:-/tmp}/ready-check-blocked.XXXXXX" 2>/dev/null) || { echo "       blocked by: unknown (no scratch file)"; return 0; }  # prim-ok: removed on every path below
     # shellcheck disable=SC2016  # the body expands in the child shell
     if ! rset=$("$tb" -k 5 30 bash -c '. "$1" >/dev/null 2>&1 || exit 3; ts_required_set "$2"' _ "$SELF_DIR/../../lib/ticket-status.sh" "$base" 2>"$rs_err"); then  # read-sink-ok: $1 is the own lib path built from this script dir
@@ -781,7 +785,7 @@ blocked_by() {
     n_open=$(printf '%s' "$snapshot" | jq -r '[.[0].reviewThreads.nodes[]? | select(.isResolved == false)] | length' 2>/dev/null) || n_open=0  # swallow-ok: item 3 judges the threads
     case "$n_open" in ''|*[!0-9]*) n_open=0 ;; esac
     [ "$n_open" -eq 0 ] || lines="${lines:+$lines
-}       blocked by: $n_open unresolved review thread(s) (see item 3)"
+}       blocked by: $n_open unresolved review thread(s) (item 3; GitHub blocks on them only when $base requires conversation resolution)"
     [ -n "$lines" ] || lines="       blocked by: no unmet required check, review or thread found — GitHub reports BLOCKED for a rule ready-check does not read, or a producer-pinned check came from another app (checks match by name; see the PR page)"
     printf '%s\n' "$lines"
 }

@@ -1995,7 +1995,7 @@ _cbg_note() {
 # computed yet", and a BLOCKED can lag checks that just went green), then
 # decided on the last read.
 merge_state_gate() {
-    local row state mhead="" start=$SECONDS tries=0 max_tries runs
+    local row state mhead="" start=$SECONDS tries=0 max_tries runs rev
     max_tries=$(( GRACE / (POLL > 0 ? POLL : 1) + 1 ))
     while :; do
         state=""
@@ -2018,8 +2018,9 @@ merge_state_gate() {
             # Diagnosis only: which runs on the head did not pass. Never a verdict input.
             runs=$(gh_read api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
                 --jq '.check_runs[] | select(.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped") | "\(.name) \(.conclusion // .status)"' 2>/dev/null | sort -u | paste -sd, - | sed 's/,/, /g')
-            case "${initial_decision:-}" in REVIEW_REQUIRED|CHANGES_REQUESTED) runs="${runs:+$runs; }review owed: reviewDecision=$initial_decision (as read when the watch started)" ;; esac
-            echo "check-ci: every gate passed but GitHub's mergeStateStatus=$state at ${head0} blocks merging this PR (no merge was tried). Non-passing check runs on this head: ${runs:-none found}. GitHub's state is the verdict (exit 6)" >&2
+            rev=""
+            case "${initial_decision:-}" in REVIEW_REQUIRED|CHANGES_REQUESTED) rev=" When the watch started, a review was owed: reviewDecision=$initial_decision." ;; esac
+            echo "check-ci: every gate passed but GitHub's mergeStateStatus=$state at ${head0} blocks merging this PR (no merge was tried). Non-passing check runs on this head: ${runs:-none found}.${rev} GitHub's state is the verdict (exit 6)" >&2
             exit 6 ;;
         "")
             echo "check-ci: could not read GitHub's mergeStateStatus within ${GRACE}s — cannot evaluate; re-run" >&2

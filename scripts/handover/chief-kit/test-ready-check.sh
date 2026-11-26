@@ -1404,6 +1404,21 @@ rc=0; out="$(STUB_REQ_RULES='[{"type":"required_status_checks","parameters":{"re
 check "11356-names-nongating-required: exit 1" "$rc" "1"
 contains "11356-names-nongating-required: names the required non-gating context" "$out" "blocked by: required check security/snyk (yotamleo)=ERROR — listed non-gating, but main requires it"
 
+reset_stubs
+STUB_MSS=BLOCKED
+rc=0; out="$(STUB_OR_BASE_HEAD=0000000000000000000000000000000000000001 STUB_REQ_RULES="[$adopter_checks]" run)" || rc=$?
+check "11356-head-moved: exit 1" "$rc" "1"
+contains "11356-head-moved: a moved head names no blocker" "$out" "blocked by: unknown (the PR head moved during the read)"
+notcontains "11356-head-moved: no check is attributed" "$out" "blocked by: required check"
+
+reset_stubs
+STUB_MSS=BLOCKED
+rc=0; out="$(STUB_OR_RULES_FAIL=1 STUB_OR_RD=REVIEW_REQUIRED STUB_UNRESOLVED=2 run)" || rc=$?
+check "11356-set-unreadable: exit 1" "$rc" "1"
+contains "11356-set-unreadable: says the required set is unreadable" "$out" "blocked by: unknown (the required checks of main are unreadable"
+contains "11356-set-unreadable: still names the owed review" "$out" "blocked by: review owed (reviewDecision=REVIEW_REQUIRED"
+contains "11356-set-unreadable: still names the threads" "$out" "blocked by: 2 unresolved review thread(s)"
+
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

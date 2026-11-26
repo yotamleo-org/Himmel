@@ -2719,7 +2719,7 @@ if grep -q '^555 MERGE-BLOCKED octo/demo#42 @sha1: .*codeowner-review-gate' "$ST
 else
     fail "3381-a the DM goes to the first positive allowFrom id and names repo/PR/head/rule" "$(cat "$STUBDIR/alerts.log")"
 fi
-if grep -q 'no merge was tried' "$STUBDIR/alerts.log" && ! grep -q 'will refuse' "$STUBDIR/alerts.log"; then
+if grep -q 'no merge was tried' "$STUBDIR/alerts.log" && [ "$(grep -c 'will refuse' "$STUBDIR/alerts.log")" = 0 ]; then
     pass "11356-wording the never-reported DM says no merge was tried"
 else
     fail "11356-wording the never-reported DM says no merge was tried" "$(cat "$STUBDIR/alerts.log")"
@@ -2795,7 +2795,7 @@ assert_rc 1 "3381-f a FAILED required check exits 1"
 assert_err_has "codeowner-review-gate" "3381-f the refusal names the failed required check"
 if [ "$(wc -l < "$STUBDIR/sleepcount" | tr -d ' ')" = 0 ]; then pass "3381-f a failed required check is never slept on"; else fail "3381-f a failed required check is never slept on" "sleeps=$(wc -l < "$STUBDIR/sleepcount")"; fi
 if [ "$(alert_count)" = 1 ]; then pass "3381-f one alert for a failed required check"; else fail "3381-f one alert for a failed required check" "count=$(alert_count)"; fi
-if grep -q 'no merge was tried' "$STUBDIR/alerts.log" && ! grep -q 'will refuse' "$STUBDIR/alerts.log"; then
+if grep -q 'no merge was tried' "$STUBDIR/alerts.log" && [ "$(grep -c 'will refuse' "$STUBDIR/alerts.log")" = 0 ]; then
     pass "11356-wording the FAILED DM says no merge was tried"
 else
     fail "11356-wording the FAILED DM says no merge was tried" "$(cat "$STUBDIR/alerts.log")"
@@ -3185,7 +3185,7 @@ assert_err_has "codeowner-review-gate cancelled" "3473-a the refusal names the n
 RULES_OVERRIDE="json:$_rule_id"; CHECKS_OVERRIDE="$_both_checks"; PRODUCERS_OVERRIDE="json:$_runs_1115"; MERGE_STATE_OVERRIDE=BLOCKED; DECISION_OVERRIDE=REVIEW_REQUIRED
 run cr-completed --grace 0
 assert_rc 6 "11356-exit6-review a BLOCKED head with a review owed -> exit 6"
-assert_err_has "review owed: reviewDecision=REVIEW_REQUIRED" "11356-exit6-review the refusal names the owed review"
+assert_err_has "a review was owed: reviewDecision=REVIEW_REQUIRED" "11356-exit6-review the refusal names the owed review"
 assert_err_has "no merge was tried" "11356-exit6-review the refusal says no merge was tried"
 
 # 3473-b — the same runs once GitHub reports CLEAN (the cancelled runs re-run):

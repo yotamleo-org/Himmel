@@ -33,10 +33,12 @@ done
 case "$repo" in */*) ;; *) echo "required-fixture: no repo (pass --repo or set GITHUB_REPOSITORY)" >&2; exit 2 ;; esac
 
 ctx_of_rules='.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | .context'
+pin_of_rules='.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | "\(.context) (app \(.integration_id // "any"))"'
 raw=$(gh api "repos/$repo/rules/branches/$branch") || { echo "required-fixture: cannot read rules/branches/$branch of $repo" >&2; exit 2; }
 live=$(printf '%s' "$raw" | jq -r "$ctx_of_rules" | sort -u) || { echo "required-fixture: unreadable rules/branches answer" >&2; exit 2; }
 [ -n "$live" ] || { echo "required-fixture: $repo $branch requires no status check — refusing to call that a match" >&2; exit 2; }
-fix_rules=$(jq -r "$ctx_of_rules" "$RULES_FIXTURE" | sort -u) || { echo "required-fixture: cannot read $RULES_FIXTURE" >&2; exit 2; }
+live_pins=$(printf '%s' "$raw" | jq -r "$pin_of_rules" | sort -u) || { echo "required-fixture: unreadable rules/branches answer" >&2; exit 2; }
+fix_pins=$(jq -r "$pin_of_rules" "$RULES_FIXTURE" | sort -u) || { echo "required-fixture: cannot read $RULES_FIXTURE" >&2; exit 2; }
 [ -r "$CONTEXTS_FIXTURE" ] || { echo "required-fixture: cannot read $CONTEXTS_FIXTURE" >&2; exit 2; }
 fix_contexts=$(sed '/^[[:space:]]*$/d' "$CONTEXTS_FIXTURE" | sort -u) || { echo "required-fixture: cannot read $CONTEXTS_FIXTURE" >&2; exit 2; }
 [ -r "$NON_GATING" ] || { echo "required-fixture: cannot read $NON_GATING" >&2; exit 2; }
@@ -45,15 +47,15 @@ non_gating=$(sed -e '/^#/d' -e '/^[[:space:]]*$/d' "$NON_GATING" | sort -u) || {
 drift=0
 compare() {
     local n
-    while IFS= read -r n; do [ -z "$n" ] || { echo "missing-from-$1: $n"; drift=1; }; done < <(comm -23 <(printf '%s\n' "$live") <(printf '%s\n' "$2"))
-    while IFS= read -r n; do [ -z "$n" ] || { echo "stale-in-$1: $n"; drift=1; }; done < <(comm -13 <(printf '%s\n' "$live") <(printf '%s\n' "$2"))
+    while IFS= read -r n; do [ -z "$n" ] || { echo "missing-from-$1: $n"; drift=1; }; done < <(comm -23 <(printf '%s\n' "$2") <(printf '%s\n' "$3"))
+    while IFS= read -r n; do [ -z "$n" ] || { echo "stale-in-$1: $n"; drift=1; }; done < <(comm -13 <(printf '%s\n' "$2") <(printf '%s\n' "$3"))
 }
-compare rules-fixture "$fix_rules"
-compare contexts-fixture "$fix_contexts"
+compare rules-fixture "$live_pins" "$fix_pins"
+compare contexts-fixture "$live" "$fix_contexts"
 while IFS= read -r n; do [ -z "$n" ] || { echo "non-gating-but-required: $n"; drift=1; }; done < <(comm -12 <(printf '%s\n' "$live") <(printf '%s\n' "$non_gating"))
 
 if [ "$drift" -ne 0 ]; then
     echo "required-fixture: DRIFT against $repo $branch — refresh the fixture from 'gh api repos/$repo/rules/branches/$branch', or drop the non-gating line" >&2
     exit 1
 fi
-echo "required-fixture: OK — $(printf '%s\n' "$live" | wc -l | tr -d ' ') required checks on $repo $branch match both fixtures; no non-gating context is required"
+echo "required-fixture: OK — $(printf '%s\n' "$live" | wc -l | tr -d ' ') required checks on $repo $branch match both fixtures; no non-gating context is required (rulesets read; classic protection needs an admin token and is not)"

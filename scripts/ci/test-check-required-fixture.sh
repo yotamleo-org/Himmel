@@ -68,6 +68,9 @@ expect "a fixture name live protection no longer requires: exit 1" 1 "stale-in-r
 STUB_RULES=$(rules_of build lint "security/snyk (yotamleo)") run
 expect "a non-gating context that is required: exit 1" 1 "non-gating-but-required: security/snyk (yotamleo)"
 
+STUB_RULES='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"build","integration_id":999},{"context":"lint","integration_id":15368}]}}]' run
+expect "a required check pinned to another app than the fixture's: exit 1" 1 "missing-from-rules-fixture: build (app 999)"
+
 STUB_FAIL=1 STUB_RULES=x run
 expect "an unreadable live read: exit 2" 2
 
