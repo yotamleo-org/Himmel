@@ -5185,6 +5185,13 @@ tick_deadline_off
 cired_out="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound "$cired_bound")"} "$GH_READ_BIN" issue list --label ci-red --state open --limit 1000 --json number -q 'length' 2>/dev/null)" || cired_out=""  # swallow-ok: a failed read leaves cired=unknown
 case "$cired_out" in ''|*[!0-9]*) ;; 1000) cired_summary='1000+' ;; *) cired_summary="$cired_out" ;; esac
 
+redmain_lines=""
+redmain_probe="${TICK_REDMAIN_PROBE:-$HERE/red-main-postmortem.sh}"
+if [ "$tick_fast" != 1 ] && [ -f "$redmain_probe" ]; then
+    tick_deadline_off
+    redmain_lines="$(RED_MAIN_GH="${TICK_GH_CMD:-$GH_READ_BIN}" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 20)"} bash "$redmain_probe" --repo "$pr_repo" 2>/dev/null | grep '^red-main run ')" || true  # swallow-ok: a probe killed at its bound keeps the lines it printed
+fi
+
 # vmrun=off|ok:<up>/<want>,busy=<n>|DISAGREE:<up>/<want>,online=<n>|DEAD|STUCK|
 # FAILING: the himmel-vm self-hosted runner, one bounded `vm-runner.sh status
 # --tick` call. DEAD = the repo variable is on but no unit is up; STUCK = a job
@@ -5331,6 +5338,9 @@ if [ "$verbose" -eq 1 ]; then
     printf 'ci guardrail: %s%s\n' "$ciguard_summary" "${ciguard_age:+ (read $ciguard_age ago)}"
     [ -z "$deadline_over" ] || printf 'deadline over: %s\n' "$deadline_over"
     [ -z "$ciguard_alerts" ] || printf '%s\n' "$ciguard_alerts"
+    while IFS= read -r redmain_line; do
+        [ -z "$redmain_line" ] || printf 'red-main postmortem: %s\n' "$redmain_line"
+    done <<< "$redmain_lines"
     printf 'plan-index: %s\n' "$plan_index_summary"
     printf 'OpenRouter: %s\n' "$openrouter"
     printf 'worker-session failures: %s\n' "$fails_summary"
@@ -5530,6 +5540,10 @@ else
         [ -n "$ciguard_line" ] || continue
         printf 'ACTION ci-guardrail %s: 500 or more jobs are running or queued: hold new dispatches until they drop below 500 and find the burst (chief-sections/monitors.md)\n' "${ciguard_line#ALERT }"
     done <<< "$ciguard_alerts"
+    while IFS= read -r redmain_line; do
+        [ -n "$redmain_line" ] || continue
+        printf 'ACTION red-main-postmortem %s\n' "$redmain_line"
+    done <<< "$redmain_lines"
     case "$vdone_summary" in
         ''|0|skip|unknown) ;;
         *) printf 'ACTION versionless-done=%s: bash %q --backfill (lists the fix; --apply needs operator approval)\n' "$vdone_summary" "$HERE/versionless-done.sh" ;;
