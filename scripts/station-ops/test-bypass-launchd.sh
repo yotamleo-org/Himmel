@@ -1276,7 +1276,8 @@ wait_for "$Q/daemon.log" "start pid="
 code=$(ask_code r)
 reply "$OPERATOR" "$OPERATOR" "go $code"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
-assert_contains "RED 11164: a recorded worker_tabs=1 puts HIMMEL_WORKER_SESSION_TABS=1 in the launched child" "HIMMEL_WORKER_SESSION_TABS=1" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+assert_absent "RED 11169: a recorded worker_tabs=1 never puts the tabs switch in a child that carries granted bypass flags" "HIMMEL_WORKER_SESSION_TABS" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+assert_contains "11169: the child still carries its granted flag" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(cat "$D/launch.fullenv" 2>/dev/null)"
 assert_absent "11164: and the pin's own name never joins the child" "worker_tabs=" "$(cat "$D/launch.fullenv" 2>/dev/null)"
 stop
 setup_repo tabs-unpinned
