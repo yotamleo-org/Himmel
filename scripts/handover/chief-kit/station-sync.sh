@@ -10,6 +10,12 @@
 #   --heal        no PR: retry a station whose state file reads BEHIND:<components> (see Heal below).
 #
 # Path -> step:
+#   (every non-heal sync, first)    bypass_daemon (himmel-update's own step: a service-manager try-restart of the bypass
+#                                   launcher, only when its loaded code differs from HEAD; no path is matched, and the sync
+#                                   calls no systemctl or launchctl itself. Prints the step's one outcome line under the
+#                                   STEP line (restarted, inactive:, not-enabled:, failed:; nothing on current). A unit that
+#                                   is enabled but not running reads BEHIND:bypass_daemon-inactive on every sync until it is
+#                                   up; an off unit is not flagged. A heal never runs it but carries the marker forward.)
 #   marketplace/                    marketplace
 #   scripts/jira/                   jira_cli
 #   scripts/config-ui/              config_ui     (rebuild the UI bundle, restart himmel-ui.service if active;
@@ -45,7 +51,7 @@
 # writes ONE owed row (owe.sh add, kind step, in --bucket for --chief), its identity the component list and the day,
 # so a replay returns the same row. Other skips: `SKIP heal not-behind` (ok, or no state), `SKIP heal nothing-healable`.
 #
-# Output: `STEP <step> rc=<n>` per step, any LOCAL-DIFF lines, then
+# Output: a first `SYNC start=<UTC ISO> pr=<n|none>` line (` heal` on a heal run, after its HEAL line), `STEP <step> rc=<n>` per step, any LOCAL-DIFF lines, then
 # `STATION=OK` or `STATION=BEHIND:<component>,...`, then a `STEP usage_compute rc=<n>` or
 # `SKIP usage_compute <reason>` line. The same station value (`ok` or
 # `BEHIND:...`) is written to the state file tick.sh reads as station=; it
@@ -121,14 +127,27 @@ if [ -n "$HEAL" ]; then
     echo "$heal_now" > "$HEAL_STAMP" 2>/dev/null || { echo "SKIP heal no-stamp"; exit 0; }
     echo "HEAL$heal_want"
 fi
+echo "SYNC start=$(date -u +%FT%TZ) pr=${PR:-none}${HEAL:+ heal}"
 # Pending until the run ends: a sync killed mid-way must not leave the previous `ok`.
 echo "BEHIND:pending" > "$STATE" 2>/dev/null
+
+bypass_step() {
+    local out rc
+    BYPASS_MARK=""
+    out="$("${UPDATE[@]}" --only bypass_daemon 2>&1)"; rc=$? # t13b-ok: asks himmel-update's own bypass step; the sync starts nothing itself
+    echo "STEP bypass_daemon rc=$rc" # t13b-ok: prints the step's result line; nothing is started here
+    printf '%s\n' "$out" | grep -E -m1 '^ +(restarted|inactive:|not-enabled:|failed:)'
+    if [ "$rc" -ne 0 ]; then BYPASS_MARK="bypass_daemon-failed" # t13b-ok: names the marker for a step that failed; nothing is started here
+    elif printf '%s\n' "$out" | grep -qE '^ *inactive: '; then BYPASS_MARK="bypass_daemon-inactive" # t13b-ok: names the marker for a unit that is not running
+    fi
+}
 
 if [ -n "$HEAL" ]; then paths=""
 elif [ -n "$PR" ]; then
     GH="${SS_GH:-$GH_READ_BIN}"
     paths="$(cd "$PRIMARY" && "$GH" pr view "$PR" --json files -q '.files[].path' 2>/dev/null)" \
-        || { mkdir -p "$(dirname "$STATE")" 2>/dev/null && echo "BEHIND:unverified" > "$STATE" 2>/dev/null
+        || { bypass_step
+             mkdir -p "$(dirname "$STATE")" 2>/dev/null && echo "BEHIND:unverified${BYPASS_MARK:+,$BYPASS_MARK}" > "$STATE" 2>/dev/null
              echo "STATION=failed:gh-pr-view"; exit 0; }
 elif [ "$FILES" = "-" ]; then paths="$(cat)"
 else paths="$(cat "$FILES")" || usage
@@ -139,6 +158,7 @@ add() { case " $want " in *" $1 "*) ;; *) want="$want $1" ;; esac; }
 # A rebuild that failed earlier (or never ran: bun missing) leaves this marker; this merge may touch no UI path, but the retry is owed.
 CUI_PENDING="$HOME/.himmel/state/config-ui-rebuild-pending"
 [ ! -f "$CUI_PENDING" ] || add config_ui
+[ -n "$HEAL" ] || add bypass_daemon # t13b-ok: every non-heal sync asks the existing step; it restarts only a stale unit
 for step in $heal_want; do add "$step"; done
 while IFS= read -r p; do
     case "$p" in
@@ -189,8 +209,13 @@ local_template_diff() {
 }
 
 refused=""; failed=""
-for step in marketplace jira_cli config_ui qmd_fork graphify luna_template; do
+for step in bypass_daemon marketplace jira_cli config_ui qmd_fork graphify luna_template; do # t13b-ok: the bypass step runs first so slow steps never keep a stale launcher holding
     case " $want " in *" $step "*) ;; *) continue ;; esac
+    if [ "$step" = bypass_daemon ]; then # t13b-ok: this branch runs the existing step through bypass_step
+        bypass_step
+        [ -z "$BYPASS_MARK" ] || failed="${failed:+$failed,}$BYPASS_MARK"
+        continue
+    fi
     if [ "$step" = luna_template ]; then
         diffs="$(local_template_diff)"
         if [ -n "$diffs" ]; then
@@ -251,6 +276,11 @@ fi
 # the marker outlives a step that ran (or never could): the UI is still behind, so the state must not read ok
 if [ -f "$CUI_PENDING" ]; then case ",$failed," in *",config_ui-failed,"*) ;; *) failed="${failed:+$failed,}config_ui-failed" ;; esac; fi
 [ -z "$failed" ] || behind="${behind:+$behind,}$failed"
+if [ -n "$HEAL" ]; then
+    for comp in $(printf '%s' "${cur#BEHIND:}" | tr , ' '); do
+        case "$comp" in bypass_daemon-*) behind="${behind:+$behind,}$comp" ;; esac # t13b-ok: carries the marker forward; nothing is started here
+    done
+fi
 [ -z "$refused" ] || case ",$behind," in *",$refused,"*) ;; *) behind="${behind:+$behind,}$refused" ;; esac
 
 if [ -n "$HEAL" ] && [ -n "$failed" ]; then
