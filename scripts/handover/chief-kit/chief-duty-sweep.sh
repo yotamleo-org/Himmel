@@ -6,7 +6,7 @@
 # This reads the fleet manifest, the worker docs' Results tails, the open PRs, the CI runs cache, the
 # verdicts, the Jira mirror (through the dispatcher's dispositions) and owed.jsonl, and prints
 #   DUTY <kind> <id> :: <why> :: next: <command>
-# for each of seven kinds:
+# for each of nine kinds:
 #   go-owed        a standing READY (no FINDING, HALTED, BLOCKED, PARKED-*, WRAPPED or MERGED after
 #                  it) at the PR's current head, with no GO file
 #   merge-owed     the GO file exists (10 min old or more), the PR is open at that head, and the
@@ -19,6 +19,11 @@
 #                  was dispatched within 60 min)
 #   dispatch-owed  an operator-directed To Do ticket the dispatcher lists LOCAL, CLOUD, DESIGN or SERIES
 #   owed-stale     an owed.jsonl row open for OWED_STALE_SECS (default 14400) or more
+#   stalled-pr     an open, non-draft PR whose head sha and whose owner's last Results bullet have both been
+#                  unchanged for CHIEF_DUTY_STALL_SECS (default 3600), with owner, last marker, age and the
+#                  one thing it waits on (a ruling, a judge or GO, CI, an operator ask, a launcher state)
+#   dead-wake      a HELD queue entry with wake=done:<KEY> where KEY has no live worker and no dispatchable
+#                  row, or an open PR with no live owner that no hold names: a chief defect to re-rule
 # A clean fleet prints nothing and exits 0. An input that cannot be read prints one
 #   DUTY? <source> unread
 # line and the kinds that depend on it are left out: an unread input never adds an item.
@@ -31,6 +36,8 @@
 #       CHIEF_DUTY_AUTORUN=0 turns it off.
 #   <state>/chief-duty-judge/<pr>-<head7>.json
 #       a spec for gen-judge-brief.py (--dispatch-json), written once and never rewritten.
+#   <state>/chief-duty-sweep-stall.tsv
+#       the clock of each open PR: head, owner-tail checksum and the epoch they were first seen unchanged.
 # It writes nothing else: no GO, verdict, message, bucket file or Jira row.
 #
 # Seams (tests): CHIEF_DUTY_SWEEP_NOW (epoch), _PRS (a `gh pr list` JSON file), _RUNS (the CI runs
@@ -77,10 +84,12 @@ add() { items="$items$1"$'\n'; }
 unread() { add "DUTY? $1 unread"; }
 short() { printf '%s' "${1:0:7}"; }
 
-legs=$(jq -r '(.legs // [])[]? | [(.label // ""), (.doc // ""), (.lane // "unknown")] | @tsv' "$from" 2>/dev/null) || legs=""  # swallow-ok: an unreadable manifest reads as no legs, named below
-if ! jq -e '.legs | type == "array" and all(.[]; type == "object")' "$from" >/dev/null 2>&1; then
+fleet_ok=1
+legs=$(jq -r '(.workers // .legs // [])[]? | [(.label // ""), (.doc // ""), (.lane // "unknown")] | @tsv' "$from" 2>/dev/null) || legs=""  # swallow-ok: an unreadable manifest reads as no legs, named below
+if ! jq -e '(.workers // .legs) | type == "array" and all(.[]; type == "object" and all((.label, .doc, .lane); . == null or type == "string"))' "$from" >/dev/null 2>&1; then
     unread "fleet"
     legs=""
+    fleet_ok=0
 fi
 
 prs_ok=0; prs_tsv=""
@@ -395,6 +404,129 @@ if [ -n "$dispo" ]; then
             printf 'DUTY dispatch-owed %s :: operator-directed To Do ticket, the dispatcher says %s :: next: bash %s/next-dispatchable.sh --doc %s --workers-from %s --why, then dispatch it\n' "$key" "$rest" "$(q "$kit")" "$(q "$doc")" "$(q "$from")"
         done)
         items="$items$dispatch_lines"$'\n'
+    fi
+fi
+
+ticket_key() { printf '%s' "$1" | grep -oiE '[a-z]+-[0-9]+' | head -n 1 | tr '[:lower:]' '[:upper:]'; }  # swallow-ok: a name with no key reads as no key
+last_bullet() {
+    local body
+    body=$(sed -n '/^## Results/,$p' "$1" 2>/dev/null)  # swallow-ok: an unreadable doc reads as no bullet
+    [ -n "$body" ] || body=$(sed -n 'p' "$1" 2>/dev/null)  # swallow-ok: a doc with no Results heading is scanned whole
+    printf '%s\n' "$body" | sed -nE '/^- /p' | tail -n 1 | tr '\t' ' '
+}
+bullet_marker() {
+    printf '%s' "$1" | sed -nE 's/^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-[A-Z]+|RESUMED|MERGED)([^A-Za-z0-9-].*)?$/\3/p'  # swallow-ok: a bullet with no marker reads as none
+}
+launcher_note() {
+    local cause
+    if [ -e "$bucket/bypass-queue/.hold" ]; then
+        cause=$(sed -n 's/^cause=//p' "$bucket/bypass-queue/.hold" 2>/dev/null | head -n 1)  # swallow-ok: an unreadable hold file still names the hold, without its cause
+        printf '; bypass launcher STALE hold (%s)' "$cause"
+    elif [ -e "$bucket/bypass-queue/stop" ]; then
+        printf '; bypass launcher stop file'
+    fi
+}
+owners=""
+while IFS=$'\t' read -r label ldoc lane; do
+    [ -n "$label" ] || continue
+    okey=$(ticket_key "$(basename "$ldoc")")
+    if [ -f "$ldoc" ] && [ -r "$ldoc" ]; then
+        lb=$(last_bullet "$ldoc"); om=$(bullet_marker "$lb")
+    else
+        lb=""; om=""
+    fi
+    owners="$owners$(printf '%s\t%s\t%s\t%s\t%s' "$okey" "$label" "$ldoc" "${om:--}" "$lb")"$'\n'
+done <<< "$legs"
+live_owner() {
+    printf '%s' "$owners" | awk -F'\t' -v k="$1" '$1 == k && $4 !~ /^(WRAPPED|HALTED|MERGED)$/ { print; exit }'
+}
+any_owner() {
+    printf '%s' "$owners" | awk -F'\t' -v k="$1" '$1 == k { print; exit }'
+}
+
+held=""; held_ok=0
+if held=$(bash "$HERE/orphan-pr-check.sh" --held --doc "$doc" 2>/dev/null); then held_ok=1; else unread "holds"; fi  # swallow-ok: a failed hold read is named as unread
+
+stall_secs="${CHIEF_DUTY_STALL_SECS:-3600}"
+case "$stall_secs" in ''|*[!0-9]*) stall_secs=3600 ;; esac
+if [ "$prs_ok" = 1 ] && [ "$fleet_ok" = 1 ]; then
+    stall_file="$state/chief-duty-sweep-stall.tsv"
+    stall_new=""
+    while IFS=$'\t' read -r pr branch head draft fork base; do
+        [ -n "$pr" ] || continue
+        [ "$draft" = false ] && [ "$fork" = false ] || continue
+        case "$branch" in dependabot/*) continue ;; esac
+        pkey=$(ticket_key "$branch")
+        orow=""; [ -z "$pkey" ] || orow=$(live_owner "$pkey")
+        label=none; omark=-; lb=""; odoc=""
+        if [ -n "$orow" ]; then
+            label=$(printf '%s' "$orow" | cut -f2); odoc=$(printf '%s' "$orow" | cut -f3); omark=$(printf '%s' "$orow" | cut -f4); lb=$(printf '%s' "$orow" | cut -f5-)
+        elif [ -n "$pkey" ]; then
+            orow=$(any_owner "$pkey")
+            if [ -n "$orow" ]; then omark=$(printf '%s' "$orow" | cut -f4); label=$(printf '%s' "$orow" | cut -f2); odoc=$(printf '%s' "$orow" | cut -f3); lb=$(printf '%s' "$orow" | cut -f5-); fi
+        fi
+        sum=$(printf '%s %s' "$label" "$lb" | cksum | cut -d' ' -f1)
+        since=$(awk -F'\t' -v p="$pr" -v h="$head" -v s="$sum" '$1 == p && $2 == h && $3 == s { print $4; exit }' "$stall_file" 2>/dev/null)  # swallow-ok: no stall file means nothing was seen before
+        case "$since" in ''|*[!0-9]*) since="$now" ;; esac
+        stall_new="$stall_new$(printf '%s\t%s\t%s\t%s' "$pr" "$head" "$sum" "$since")"$'\n'
+        age=$(( now - since ))
+        [ "$age" -ge "$stall_secs" ] || continue
+        blocker=""
+        if [ -z "$odoc" ] || [ "$label" = none ]; then
+            blocker="no owner"; nx="relaunch the leg or name an owner; gh pr view $pr"
+        else
+            st=$(doc_state "$odoc")
+            ask=$(printf '%s\n' "$st" | sed -n 's/^ask //p')
+            rd=$(printf '%s\n' "$st" | sed -n 's/^ready //p')
+            nx="read $(q "$odoc"), then reply or relaunch $label"
+            cirow=$([ "$runs_ok" = 1 ] && jq -r --arg h "$head" '[ .[] | select(.name == "CI" and .event == "pull_request" and .head_sha == $h) ] | sort_by(.created_at) | if length == 0 then empty else (.[-1] | [.status, (.conclusion // "")] | @tsv) end' "$runs_file" 2>/dev/null)  # swallow-ok: an unreadable runs cache names no CI blocker
+            if [ -n "$ask" ]; then blocker="a ruling owed (open $ask)"
+            elif [ -n "$rd" ] && [ "${rd#* }" = "$head" ]; then
+                if [ -n "$go_root" ] && [ -e "$go_root/.locks/go/$pr.$head" ]; then blocker="the merge (GO given at this head)"
+                elif verdict_heads "$pr" | awk -v h="$head" '$2 == h { f = 1 } END { exit !f }'; then blocker="a GO owed (READY at this head, judged)"; else blocker="a judge or GO owed (READY at this head)"; fi
+            elif [ -n "$cirow" ] && [ "$(printf '%s' "$cirow" | cut -f1)" != completed ]; then blocker="CI running"
+            elif [ -n "$cirow" ] && [ "$(printf '%s' "$cirow" | cut -f2)" = failure ]; then blocker="CI red"
+            else
+                case "$omark" in
+                    WRAPPED|HALTED|MERGED)
+                        blocker="owner ended ($omark) with the PR open$(launcher_note)" ;;
+                    PARKED-*)
+                        blocker="owner parked ($omark)$(launcher_note)" ;;
+                    *)
+                        if printf '%s' "$lb" | grep -qi 'operator'; then blocker="an operator ask"
+                        elif [ "$omark" = LIVE ]; then blocker="worker idle (last marker LIVE)"
+                        else blocker="none named (last marker $omark)"; fi ;;
+                esac
+            fi
+        fi
+        add "$(printf 'DUTY stalled-pr %s@%s :: owner %s, last %s, %sm unchanged (head and owner tail), waiting on %s :: next: %s' "$pr" "$(short "$head")" "$label" "$omark" "$((age / 60))" "$blocker" "$nx")"
+    done <<< "$prs_tsv"
+    ( . "$REPO/scripts/lib/prim.sh" && printf '%s' "$stall_new" | atomic_write "$stall_file" ) 2>/dev/null  # swallow-ok: an unwritten stall file restarts every clock, which only delays a row
+fi
+
+if [ "$held_ok" = 1 ] && [ "$fleet_ok" = 1 ]; then
+    if [ -n "$dispo" ]; then
+        while IFS=$'\t' read -r hsubj htrig _ _ hseg; do
+            case "$htrig" in done:?*) ;; *) continue ;; esac
+            hkey="${htrig#done:}"
+            [ -z "$(live_owner "$hkey")" ] || continue
+            printf '%s\n' "$dispo" | grep -qE "^# disposition $hkey listed " && continue
+            [ -d "${mirror:-}" ] || continue
+            [ ! -e "$mirror/$hkey.md" ] || [ -r "$mirror/$hkey.md" ] || continue
+            ! grep -qs '^statusCategory: "Done"' "$mirror/$hkey.md" || continue
+            add "$(printf 'DUTY dead-wake %s :: hold wake=done:%s can never fire: no live worker and no dispatchable row for %s :: next: re-rule the hold (dispatch %s, change its wake, or drop it) in the chief doc queue: %s' "$hsubj" "$hkey" "$hkey" "$hkey" "$(printf '%s' "$hseg" | sed -E 's/^ +| +$//g')")"
+        done <<< "$held"
+    fi
+    if [ "$prs_ok" = 1 ]; then
+        while IFS=$'\t' read -r pr branch head draft fork base; do
+            [ -n "$pr" ] || continue
+            [ "$draft" = false ] && [ "$fork" = false ] || continue
+            case "$branch" in dependabot/*) continue ;; esac
+            pkey=$(ticket_key "$branch")
+            [ -z "$pkey" ] || [ -z "$(live_owner "$pkey")" ] || continue
+            printf '%s\n' "$held" | awk -F'\t' -v p="$pr" -v k="$pkey" '{ n = split($4, a, ","); for (i = 1; i <= n; i++) if (a[i] == p || (k != "" && a[i] == k)) f = 1 } END { exit !f }' && continue
+            add "$(printf 'DUTY dead-wake #%s :: open PR with no owner: no live worker for %s and no hold names it :: next: re-rule PR %s: relaunch an owner, hold it with a wake, or close it' "$pr" "${pkey:-its branch}" "$pr")"
+        done <<< "$prs_tsv"
     fi
 fi
 
