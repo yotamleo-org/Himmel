@@ -75,6 +75,13 @@ def lex:
           | .toks += [($w | mkword)] | .rest = $r[($w | length):] | .prev = "word"
         else .bad = true end)
   | if .bad then null else .toks end;
+def bexp:
+  if test("\\{[^{}]*,[^{}]*\\}") then
+    match("\\{([^{}]*,[^{}]*)\\}") as $m
+    | ($m.captures[0].string | split(",")[]) as $alt
+    | (.[:$m.offset] + $alt + .[$m.offset + $m.length:])
+    | bexp
+  else . end;
 def segs: reduce .[] as $t ([[]]; if $t.t == "sep" then . + [[]] else .[-1] += [$t] end);
 def opnd($w; $s):
   if ($w.deq | test("\\A[A-Za-z_][A-Za-z0-9_]*=")) then .ok = false
@@ -207,9 +214,9 @@ else
       | gsub("\\$\u0027"; "\u0027") | gsub("\\$\""; "\"")
       | gsub("[\u0027\"\\\\]"; "")) as $t
   | ($t | [splits("[ \t\r\n;&|()<>{}`]+")]) as $w
-  | ($w | map(splits("=+"))) as $split_at_eq
-  | (($t | contains("{")) and ($t | gsub("[{},]"; "") | (contains("decision") and contains("words")))) as $braced
-  | ((any($split_at_eq[]; startswith("--decision")) and any($split_at_eq[]; startswith("--words"))) or $braced) as $p2
+  | ([limit(257; ($t | [splits("[ \t\r\n;&|()<>`]+")])[] | bexp)]) as $expanded
+  | ($expanded | map(splits("[{}=]+"))) as $pairwords
+  | (($expanded | length) > 256 or (any($pairwords[]; startswith("--decision")) and any($pairwords[]; startswith("--words")))) as $p2
   | (any($w[]; . == "release") and any($w[]; . == "operator")) as $both
   | if $p2 then (if $both then "deny-p1p2" else "deny-p2" end)
     elif ($both | not) then "allow"
