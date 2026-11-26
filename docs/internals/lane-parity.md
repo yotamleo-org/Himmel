@@ -362,6 +362,7 @@ carry it. The other rows are read by people.
 | `guard:block-read-secrets.sh` | has | has | has |
 | `guard:block-rogue-claude-schedule.sh` | has | has | has |
 | `guard:block-rogue-codex-exec.sh` | has | gap-ticketed: .codex/hooks.json: add block-rogue-codex-exec.sh to the Bash chain | has |
+| `guard:block-station-load-test.sh` | has | gap-ticketed: .codex/hooks.json: add block-station-load-test.sh to the Bash chain | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: add block-station-load-test.sh to the run_command chain |
 | `guard:block-subagent-park.sh` | has | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs |
 | `guard:block-subagent-release-operator.sh` | has | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs |
 | `guard:block-t3code-unwatch-open-pr.sh` | has | has | has |
