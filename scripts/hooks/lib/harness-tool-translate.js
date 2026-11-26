@@ -9,7 +9,8 @@
 //     Missing, unreadable, not JSON or the wrong shape refuses, Claude names
 //     included, so a deleted table never lets a native call through.
 //   - tools[name]: tool_name becomes its claude name, each keys entry renamed
-//     when the target key is absent.
+//     when the target key is absent; both keys present with different values
+//     refuses, since the guards would judge a value the harness does not use.
 //   - <server>__<tool> with <server> in mcp_servers: tool_name becomes
 //     mcp__<server>__<tool>, and Grok's use_tool wrapper is unwrapped.
 //   - any other name: the original text, byte for byte.
@@ -49,7 +50,11 @@ function loadTable() {
 function renameKeys(input, keys) {
   let out = input;
   for (const [from, to] of Object.entries(keys || {})) {
-    if (!own(out, from) || own(out, to)) continue;
+    if (!own(out, from)) continue;
+    if (own(out, to)) {
+      if (JSON.stringify(out[from]) !== JSON.stringify(out[to])) return null;
+      continue;
+    }
     out = Object.fromEntries(Object.entries(out).map(([k, v]) => [k === from ? to : k, v]));
   }
   return out;
@@ -81,7 +86,11 @@ function translateToolCall(text) {
   if (own(table.tools, name)) {
     const entry = table.tools[name];
     payload.tool_name = entry.claude;
-    if (isObject(payload.tool_input)) payload.tool_input = renameKeys(payload.tool_input, entry.keys);
+    if (isObject(payload.tool_input)) {
+      const renamed = renameKeys(payload.tool_input, entry.keys);
+      if (renamed === null) return { refuse: `${name} names two different paths under a native key and its Claude key; refusing the tool call` };
+      payload.tool_input = renamed;
+    }
     return { text: JSON.stringify(payload) };
   }
   if (mcpServer(name, table.mcp_servers) !== null) {

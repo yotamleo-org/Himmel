@@ -8,7 +8,7 @@
 #   - a string tool_name and a missing, unreadable, unparseable or misshapen
 #     table (or no jq): exit 2, Claude names included.
 #   - tools[name]: tool_name becomes its claude name, each keys entry renamed
-#     when the target key is absent.
+#     when the target key is absent; both keys with different values: exit 2.
 #   - <server>__<tool> with <server> in mcp_servers: tool_name becomes
 #     mcp__<server>__<tool>, and Grok's use_tool wrapper is unwrapped.
 #   - any other name: the payload byte for byte.
@@ -54,9 +54,10 @@ out=$(printf '%s' "$input" | jq -c --slurpfile t "$table" '
         | .tool_name = $e.claude
         | if (.tool_input | obj) then
             reduce (($e.keys // {}) | to_entries[]) as $k (.;
-                if (.tool_input | has($k.key)) and ((.tool_input | has($k.value)) | not)
-                then .tool_input |= with_entries(if .key == $k.key then .key = $k.value else . end)
-                else . end)
+                if (.tool_input | has($k.key)) | not then .
+                elif .tool_input | has($k.value) then
+                    (if .tool_input[$k.key] == .tool_input[$k.value] then . else error("two different values under \($k.key) and \($k.value)") end)
+                else .tool_input |= with_entries(if .key == $k.key then .key = $k.value else . end) end)
           else . end
     elif ($n | startswith("mcp__") | not)
         and (($n | index("__")) as $i | $i != null and $i > 0 and ($n | length) > $i + 2
@@ -65,7 +66,7 @@ out=$(printf '%s' "$input" | jq -c --slurpfile t "$table" '
          then .tool_input = .tool_input.tool_input else . end)
         | .tool_name = "mcp__" + $n
     else null end') || {
-    echo "translate-tool-call: jq failed translating the tool call; refusing it" >&2
+    echo "translate-tool-call: the tool call could not be translated (see jq's error above); refusing it" >&2
     exit 2
 }
 

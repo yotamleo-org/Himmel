@@ -221,7 +221,7 @@ echo "== matcher: each registration selects the native name =="
 term_selected() {
     local m=$1 t=$2
     case "|$m|" in *"|$t|"*) return 0 ;; esac
-    case "$m" in *[!A-Za-z0-9_\|,\ -]*) printf '%s' "$t" | grep -q -E "$m" ;; *) return 1 ;; esac
+    case "$m" in *[!A-Za-z0-9_\|,\ -]*) grep -q -E "$m" <<< "$t" ;; *) return 1 ;; esac
 }
 matcher_row() {
     if [ -z "$(reg_cmds "$2" "$3")" ]; then fail "matcher: $1 has no '$3' registration"; return; fi
@@ -566,6 +566,7 @@ seen_by() {
         guard)   (cd "$SB/work" && PROJECT_DIR=$NONHIMMEL PLUGIN_ROOT="$SB/guard-dump" hook_env sh -c "$GUARD_CMD" < "$SB/p.json" >/dev/null 2>&1) ;;
         user)    (cd "$SB/work" && PROJECT_DIR=$NONHIMMEL hook_env node "$WRAPPER" "$SB/dump.sh" < "$SB/p.json" >/dev/null 2>&1) ;;
     esac
+    SEEN_RC=$?
 }
 same_call() {
     local got
@@ -599,6 +600,11 @@ for ep in project plugin guard user; do
             pass "$ep: $(printf '%s' "$sent" | jq -r .tool_name) passes through unchanged"
         else fail "$ep: $(printf '%s' "$sent" | jq -r .tool_name) changed: $(cat "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
     done
+    payload grok read "$CANARY"
+    jq -c --arg p "$WORK_FILE" '.tool_input.file_path = $p' "$SB/p.json" > "$SB/p2.json" && mv "$SB/p2.json" "$SB/p.json"
+    seen_by "$ep"
+    if [ "$SEEN_RC" = 2 ] && [ ! -e "$SB/seen.json" ]; then pass "$ep: grok read_file naming a different file_path beside target_file is refused"
+    else fail "$ep: grok read_file with two paths - rc $SEEN_RC, member saw $(cat "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
 done
 
 echo "== fail-closed: no readable table, every entry point refuses =="
