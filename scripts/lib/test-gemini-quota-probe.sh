@@ -34,7 +34,7 @@ stub_json() { printf '#!/bin/sh\ncat "%s"\n' "$2" > "$W/$1"; chmod +x "$W/$1"; }
 
 probe() {
   local agy="$1"; shift
-  OUT="$(GEMINI_QUOTA_AGY="$agy" GEMINI_QUOTA_NOW="$NOW" GEMINI_QUOTA_STATE_FILE="$W/state" \
+  OUT="$(GEMINI_QUOTA_FLOOR=0.02 GEMINI_QUOTA_TIMEOUT=20 GEMINI_QUOTA_AGY="$agy" GEMINI_QUOTA_NOW="$NOW" GEMINI_QUOTA_STATE_FILE="$W/state" \
     ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 30} bash "$SUT" "$@" 2>/dev/null)"; RC=$?
 }
 
@@ -127,6 +127,20 @@ check "the quota line without a duration → exit 2" 2 "$RC"
 printf 'garbage' > "$W/state"
 probe "$W/agy-full"
 check "a garbled state file is ignored, /usage decides" 0 "$RC"
+
+rm -f "$W/state"
+probe "$W/agy-full" --record "Individual quota reached. Resets in 40h"
+probe "$W/agy-full" --record "Individual quota reached. Resets in 5m"
+check "a shorter later cap does not erase a longer one" "$((NOW + 40*3600))" "$(cat "$W/state" 2>/dev/null)"
+rm -f "$W/state"
+
+echo "== 6. an unreadable reset_time =="
+payload 0 "not-a-date" 1 "$FUT2" > "$W/badreset.json"; stub_json agy-badreset "$W/badreset.json"
+probe "$W/agy-badreset"
+check "empty bucket with an unreadable reset_time → exit 2, not admitted" 2 "$RC"
+payload 0.9 "not-a-date" 1 "$FUT2" > "$W/badresetfull.json"; stub_json agy-badresetfull "$W/badresetfull.json"
+probe "$W/agy-badresetfull"
+check "a full bucket with an unreadable reset_time still admits" 0 "$RC"
 
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]

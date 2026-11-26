@@ -18,6 +18,9 @@
 #   1  GEMINI-EMPTY until=<iso>      a bucket is empty (or a recorded cap is live)
 #   2  GEMINI-UNKNOWN reason=<why>   agy missing, unreadable JSON, probe timed out
 # A caller that cannot tell must treat 2 like 1: refusing is the default.
+# `--record` is the one exception: a successful write prints GEMINI-EMPTY and
+# exits 0, which records a cap and is not an admission. It keeps the later of the
+# new and any live recorded deadline.
 #
 # A bucket is empty when remaining_fraction <= GEMINI_QUOTA_FLOOR (default 0.02)
 # AND its reset_time is in the future; an epoch reset means no window is running.
@@ -46,7 +49,13 @@ if [ "${1:-}" = "--record" ]; then
     d="${BASH_REMATCH[2]}"; h="${BASH_REMATCH[4]}"; m="${BASH_REMATCH[6]}"; s="${BASH_REMATCH[8]}"
     [ -n "$d$h$m$s" ] || unknown "no-duration"
     until_epoch=$((NOW + 10#${d:-0} * 86400 + 10#${h:-0} * 3600 + 10#${m:-0} * 60 + 10#${s:-0}))
-    if ! { mkdir -p "$(dirname "$STATE")" 2>/dev/null && printf '%s\n' "$until_epoch" > "$STATE"; }; then unknown "state-unwritable"; fi
+    old="$(head -n1 "$STATE" 2>/dev/null)"
+    case "$old" in ''|*[!0-9]*) ;; *) [ "$old" -gt "$until_epoch" ] && until_epoch="$old" ;; esac
+    # shellcheck source=scripts/lib/prim.sh
+    . "$(dirname "${BASH_SOURCE[0]}")/prim.sh" || unknown "prim-missing"
+    if ! { mkdir -p "$(dirname "$STATE")" 2>/dev/null && printf '%s\n' "$until_epoch" | atomic_write "$STATE"; }; then
+        unknown "state-unwritable"
+    fi
     echo "GEMINI-EMPTY until=$(iso "$until_epoch")"
     exit 0
 fi
@@ -71,7 +80,8 @@ rows="$(jq -r --argjson now "$NOW" --argjson floor "$FLOOR" '
   else [.command.data.groups[]? | select(.name == "Gemini Models") | .buckets[]?] as $b
   | if ($b | length) == 0 then error("no-buckets") else $b[] end
   | (.remaining_fraction | if type == "number" then . else error("fraction") end) as $f
-  | (try (.reset_time | sub("\\.[0-9]+"; "") | fromdateiso8601) catch 0) as $r
+  | (try (.reset_time | sub("\\.[0-9]+"; "") | fromdateiso8601) catch null) as $r0
+  | (if $r0 == null and $f <= $floor then error("reset_time") else ($r0 // 0) end) as $r
   | [.id, $f, .reset_time, $r, (if $f <= $floor and $r > $now then "empty" else "ok" end)] | @tsv
   end' <<<"$raw" 2>/dev/null)" || unknown "unreadable-usage-json"
 [ -n "$rows" ] || unknown "unreadable-usage-json"
