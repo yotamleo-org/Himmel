@@ -86,7 +86,7 @@ short() { printf '%s' "${1:0:7}"; }
 
 fleet_ok=1
 legs=$(jq -r '(.workers // .legs // [])[]? | [(.label // ""), (.doc // ""), (.lane // "unknown")] | @tsv' "$from" 2>/dev/null) || legs=""  # swallow-ok: an unreadable manifest reads as no legs, named below
-if ! jq -e '(.workers // .legs) | type == "array" and all(.[]; type == "object")' "$from" >/dev/null 2>&1; then
+if ! jq -e '(.workers // .legs) | type == "array" and all(.[]; type == "object" and all((.label, .doc, .lane); . == null or type == "string"))' "$from" >/dev/null 2>&1; then
     unread "fleet"
     legs=""
     fleet_ok=0
@@ -512,6 +512,7 @@ if [ "$held_ok" = 1 ] && [ "$fleet_ok" = 1 ]; then
             [ -z "$(live_owner "$hkey")" ] || continue
             printf '%s\n' "$dispo" | grep -qE "^# disposition $hkey listed " && continue
             [ -d "${mirror:-}" ] || continue
+            [ ! -e "$mirror/$hkey.md" ] || [ -r "$mirror/$hkey.md" ] || continue
             ! grep -qs '^statusCategory: "Done"' "$mirror/$hkey.md" || continue
             add "$(printf 'DUTY dead-wake %s :: hold wake=done:%s can never fire: no live worker and no dispatchable row for %s :: next: re-rule the hold (dispatch %s, change its wake, or drop it) in the chief doc queue: %s' "$hsubj" "$hkey" "$hkey" "$hkey" "$(printf '%s' "$hseg" | sed -E 's/^ +| +$//g')")"
         done <<< "$held"

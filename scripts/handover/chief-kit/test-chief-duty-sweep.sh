@@ -410,6 +410,18 @@ world; CHIEF="$FIX/chief-dead-wake.md"; rm -rf "$WORK/w/mirror"
 sweep
 has "dead-wake: a missing mirror is named" "DUTY? mirror unread" "$OUT"
 hasnt "dead-wake: a missing mirror lists no hold as dead" "dead-wake #5929" "$OUT"
+world; CHIEF="$FIX/chief-dead-wake.md"
+printf -- '---\nkey: "HIMMEL-11114"\nstatus: "Done"\nstatusCategory: "Done"\n---\n' > "$WORK/w/mirror/HIMMEL-11114.md"
+sweep
+hasnt "dead-wake: a Done key's wake fires, so it is not dead" "dead-wake #5929" "$OUT"
+chmod 000 "$WORK/w/mirror/HIMMEL-11114.md"
+sweep
+chmod 644 "$WORK/w/mirror/HIMMEL-11114.md"
+if [ "$(id -u)" = 0 ]; then pass "dead-wake: an unreadable mirror record is not called dead (skipped as root)"; else hasnt "dead-wake: an unreadable mirror record is not called dead" "dead-wake #5929" "$OUT"; fi
+world; printf '{"schema":1,"workers":[{"doc":{"path":"x"},"label":"N1","lane":"t3"}]}\n' > "$WORK/w/fleet.json"
+stall_pair 61
+has "a worker whose doc is not a string is an unread fleet" "DUTY? fleet unread" "$OUT"
+hasnt "a worker whose doc is not a string adds no ownerless PR" "dead-wake" "$OUT"
 world; CHIEF="$FIX/chief-live-wake.md"
 sweep
 hasnt "dead-wake: a key with a live worker is not dead" "dead-wake" "$OUT"
