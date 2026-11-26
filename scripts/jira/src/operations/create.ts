@@ -87,7 +87,6 @@ export interface CreateOptions {
   area?: string;
   project?: string;
   changeClass?: string;
-  /** The Telegram bridge's pointer to the operator's update, set by `jira create --operator-update`. */
   pointer?: BridgePointer;
   attach: string[];
 }

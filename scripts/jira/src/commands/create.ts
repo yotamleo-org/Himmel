@@ -423,7 +423,6 @@ const intakeWhy = (o: { why?: string; proposedVersion?: string }, title: string)
   const proposed = o.proposedVersion !== undefined && o.proposedVersion !== 'backlog' ? `proposed for ${o.proposedVersion}` : 'filed to the backlog';
   return o.why?.trim() || `${proposed}: ${title}`;
 };
-/** An INTAKE is owed only for a proposal: the rules place every other ticket in a version or the backlog, and only a proposal waits for the chief. */
 export const intakeOwed = (type: string, fields: Record<string, unknown>, testProject = false, proposal = false): boolean =>
   proposal && !testProject && !fields['fixVersions'] && /^(bug|task|story)$/i.test(type);
 
@@ -524,7 +523,6 @@ interface ParentState {
   fields: { project: { key: string }; status?: { name?: string; statusCategory?: { key?: string } }; fixVersions?: { name: string }[]; priority?: { name?: string } };
 }
 
-/** A follow-up's parent as Jira holds it now, with its project's current version (the earliest unreleased) and whether that is frozen. */
 export interface FollowUpParent {
   key: string;
   status: string;
@@ -535,7 +533,6 @@ export interface FollowUpParent {
   frozen: boolean;
 }
 
-/** Reads the parent of a follow-up before the POST; a parent that cannot be read refuses the filing (D5), never files it unplaced. */
 export async function readFollowUpParent(key: string): Promise<FollowUpParent> {
   try {
     const parent = (await request<ParentState>('GET', `/issue/${key}?fields=project,status,fixVersions,priority`)).fields;
@@ -582,7 +579,6 @@ export function followUpIntake<T extends IntakeOptions & { followUpOf?: string; 
 type PlacementChoice = { followUpOf?: string; fixVersion?: string; backlog?: boolean; proposedVersion?: string; why?: string };
 const hasOwnPlacement = (o: PlacementChoice): boolean => o.followUpOf === undefined || o.fixVersion !== undefined || !!o.backlog || o.proposedVersion !== undefined || !!o.why?.trim();
 
-/** A Done parent in the current version, when that version is not frozen, takes its follow-up into it at the parent's priority (create-followup); ahead of the rules. */
 export function closedParentPlacement(o: PlacementChoice & { type: string }, p: FollowUpParent | undefined): { fixVersion: string; priority?: string } | undefined {
   if (p === undefined || hasOwnPlacement(o) || !/^(bug|task|story)$/i.test(o.type)) return undefined;
   if (!p.done || p.current === undefined || !p.versions.includes(p.current) || p.frozen) return undefined;
@@ -870,7 +866,6 @@ export async function residualInheritedVersion(
 
 type Declared = { release: string; current: string; versions: string[] };
 
-/** The one declared release naming the project, or null when none does (an adopter repo); an unreadable or ambiguous declaration refuses (D5). */
 export function declaredFor(project: string): Declared | null {
   const declared = releaseForProject(process.env, project);
   if (declared === 'unreadable') {
@@ -884,7 +879,6 @@ export function declaredFor(project: string): Declared | null {
 
 export interface VerifiedWords { ctx: ReturnType<typeof ctxFor>; decision: string; words: string; record: ReturnType<typeof decisionWords> }
 
-/** D3: the operator's words, verified before the POST wherever --decision or --words is given, exactly as an INTAKE would verify them. */
 export function verifyWords(o: { decision?: string; words?: string }, declared: Declared | null): VerifiedWords | undefined {
   if (o.decision === undefined && o.words === undefined) return undefined;
   if (o.decision === undefined) throw new Error('jira create: --words needs --decision <n>, the decision whose file holds them');
@@ -897,7 +891,6 @@ export function verifyWords(o: { decision?: string; words?: string }, declared: 
   return { ctx, decision: o.decision, words: o.words, record: decisionWords(ctx, o.decision, o.words) };
 }
 
-/** Writes the operator decision record for verified words: op `add` into a version, `none` for the backlog. */
 export function recordWords(w: VerifiedWords, key: string, to: string | null): string {
   return operatorDecision(w.ctx, { decision: w.decision, keys: [key], op: to ? 'add' : 'none', from_v: null, to_v: to, verbatim: w.words, ...w.record }).id;
 }
@@ -918,13 +911,9 @@ export interface RulesInput {
 
 export interface RulesPlacement {
   placement: Placement;
-  /** The `rules:*` ground the filed row, the INTAKE evidence and the stderr line carry. */
   ground: string;
-  /** The version the ticket is filed into; absent for the backlog and for a proposal. */
   target: string | undefined;
-  /** The labels the placement adds: `backlog`, or `proposed-<current>` on a proposal. */
   labels: string[];
-  /** The declared release, whose admissions ledger gets the filed row; absent in a project no declaration names. */
   release: string | undefined;
 }
 
@@ -963,7 +952,6 @@ async function filingRelease(project: string, declared: Declared | null): Promis
   return { current: declared.current, versions: declared.versions, frozen: ledgerFrozen };
 }
 
-/** Places a new ticket by the four rules; every refusal of D5 lands here, before the POST. */
 export async function rulesPlacement(o: RulesInput, declared: Declared | null): Promise<RulesPlacement> {
   const rel = await filingRelease(o.project, declared);
   const gate = o.gate === 'critical' || o.gate === 'regression' ? o.gate : null;
