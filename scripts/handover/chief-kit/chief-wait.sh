@@ -149,7 +149,7 @@
 #                               both the sample's key and the saved one, so a move the saved key lacks
 #                               stays the tick change's wake. A READY past the relay's <inbox>.wait.ready
 #                               cursor is the relay's: it wakes nothing here until the relay hands it on.
-#                               The relay offers a newest-marker READY first (before any wrap); a
+#                               The one-shot relay offers a newest-marker READY first (before any wrap); a
 #                               retried candidate moves behind the others; a refused READY (auto-go
 #                               refused it) wakes with this line first, then the WAKE worker-event line.
 #                               Named = in <inbox>.wait.markerwoke: this wake, a WAKE tick

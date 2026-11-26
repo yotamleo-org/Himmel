@@ -565,7 +565,7 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     first after its existing READYs), one already in the doc at the first sample (a
     silent baseline), and one another wake folded into its saved key; the tick's tails=
     must already show it in the saved key, so a fresh move still wakes as `WAKE tick`, and a READY
-    the relay has not yet handed on (past its `.wait.ready` cursor) is left to the relay. The relay's own
+    the relay has not yet handed on (past its `.wait.ready` cursor) is left to the relay. The one-shot relay's own
     refused READY wake (auto-go refused it) is one of the wakes that names a READY: its first line is
     `WAKE worker-ready`, so a READY is never first named as a bare `WAKE worker-event ESCALATE auto-go` line. A `WAKE tick` on
     that worker's tails= or acts=, a READY the relay handed to worker-event, and the
