@@ -46,7 +46,11 @@ if [ "${1:-}" = run ] && [ "${2:-}" = download ]; then
     id="$3"; dir=""
     echo "$id" >> "$STUB_DIR/dl.log"
     case "${STUB_DL_FAIL:-}" in '') ;; 1 | "$id") echo 'connection reset by peer' >&2; exit 1 ;; esac
-    [ -z "${STUB_DL_ABSENT:-}" ] || { echo 'no valid artifacts found to download' >&2; exit 1; }
+    case "${STUB_DL_ABSENT:-}" in
+        '') ;;
+        other) echo 'no artifact matches any of the names or patterns provided' >&2; exit 1 ;;
+        *) echo 'no valid artifacts found to download' >&2; exit 1 ;;
+    esac
     while [ "$#" -gt 0 ]; do [ "$1" = -D ] && dir="$2"; shift; done
     [ -f "$STUB_DIR/red-$id" ] && cp "$STUB_DIR/red-$id" "$dir/shard-red-suites.txt"
     exit 0
@@ -151,6 +155,11 @@ rm -f "$W/seen"
 out="$(STUB_DL_ABSENT=1 run_sut)"
 contains 'an artifact GitHub reports absent is unknown at once' "$out" 'red-main run 900 unknown: no failing-suite list'
 if grep -Fxq 900 "$W/seen"; then pass 'an absent artifact marks the run seen'; else fail 'run 900 not marked seen for an absent artifact'; fi
+
+rm -f "$W/seen"
+out="$(STUB_DL_ABSENT=other run_sut)"
+contains 'a run with other artifacts but not the ledger is unknown at once' "$out" 'red-main run 900 unknown: no failing-suite list'
+if grep -Fxq 900 "$W/seen"; then pass 'a run with no ledger artifact is marked seen'; else fail 'run 900 not marked seen when gh finds no matching artifact'; fi
 
 rm -f "$W/seen"
 out="$(RED_MAIN_MAX_COMMITS=08 run_sut)"
