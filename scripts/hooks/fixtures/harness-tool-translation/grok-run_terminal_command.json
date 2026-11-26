@@ -1,0 +1,26 @@
+{
+ "cwd": "/work/grokcap1073",
+ "hookEventName": "pre_tool_use",
+ "hook_event_name": "PreToolUse",
+ "permissionMode": "bypassPermissions",
+ "permission_mode": "bypassPermissions",
+ "sessionId": "01a215da-18c4-7933-87be-57970f36cfa2",
+ "session_id": "01a215da-18c4-7933-87be-57970f36cfa2",
+ "timestamp": "2026-11-26T03:15:48.784735486+00:00",
+ "toolInput": {
+  "command": "echo himmel-probe-1073",
+  "description": "Echo the probe string"
+ },
+ "toolInputTruncated": false,
+ "toolName": "run_terminal_command",
+ "toolUseId": "call-c2ac2f32-3c13-4140-868e-0b38f60b621b-0",
+ "tool_input": {
+  "command": "echo himmel-probe-1073",
+  "description": "Echo the probe string"
+ },
+ "tool_name": "run_terminal_command",
+ "tool_use_id": "call-c2ac2f32-3c13-4140-868e-0b38f60b621b-0",
+ "transcriptPath": "/home/user/.grok/sessions/fixture/updates.jsonl",
+ "transcript_path": "/home/user/.grok/sessions/fixture/updates.jsonl",
+ "workspaceRoot": "/work/grokcap1073"
+}
