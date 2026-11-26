@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 # scripts/guardrails/test-himmel-adapters.sh - shape and coverage of the fork registry
-# scripts/guardrails/himmel-adapters.json: every yotamleo fork and first-party adapter repo has
-# exactly one row, each row has the seven fields with a legal role and a legal tier, and the
-# operator-ruled merge_allowed and CORE sets hold. A first-party repo has upstream null and
-# role first-party.
 #
 # Platform guard: POSIX bash 3.2+, jq.
 set -uo pipefail
@@ -50,19 +46,19 @@ out=$(registry_checks "$HERE/himmel-adapters.json")
 printf '%s\n' "$out"
 fails=$(printf '%s\n' "$out" | grep -c '^FAIL')
 
-# a broken copy of the real registry must be refused by the named check itself
-refused() { # name jq-filter check-name
-  if ! jq "$2" "$HERE/himmel-adapters.json" > "$TMP/reg.json"; then
-    echo "FAIL $1: jq could not build the broken copy"; fails=$((fails + 1)); return
+refused() {
+  local name=$1 filter=$2 check_name=$3
+  if ! jq "$filter" "$HERE/himmel-adapters.json" > "$TMP/reg.json"; then
+    echo "FAIL $name: jq could not build the broken copy"; fails=$((fails + 1)); return
   fi
   case "$(registry_checks "$TMP/reg.json")" in
-    *"FAIL $3:"*) hit=1 ;;
+    *"FAIL $check_name:"*) hit=1 ;;
     *) hit=0 ;;
   esac
   if [ "$hit" -eq 1 ]; then
-    echo "ok   $1"
+    echo "ok   $name"
   else
-    echo "FAIL $1: the '$3' check did not refuse it"; fails=$((fails + 1))
+    echo "FAIL $name: the '$check_name' check did not refuse it"; fails=$((fails + 1))
   fi
 }
 refused "a dormant row with upstream null is refused" 'map(if .nwo == "yotamleo-org/himmel-voice" then .role = "dormant" else . end)' "role first-party exactly when upstream is null"
