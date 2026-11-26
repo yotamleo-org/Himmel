@@ -555,7 +555,7 @@ check "gemini: a relayed item with no sender thread, newer than the newest deliv
 
 echo "closed-default (a Codex user row names no sender, so it is the operator's only through a prefix the classifier knows)"
 cx_rows="$(wc -l <"$CX")"
-for shape in delegated-wake leading-slash leading-dollar; do
+for shape in delegated-wake leading-slash leading-dollar plain; do
     sf="$FX/codex-$shape.jsonl"
     probe akinds "$sf" "$CHIEF" >"$T/cd-$shape.kinds"
     check "$shape: the row is an unreadable sender, neither eligible nor a delivery" 'grep -q "^L3 unreadable-sender - - " "$T/cd-$shape.kinds"'
