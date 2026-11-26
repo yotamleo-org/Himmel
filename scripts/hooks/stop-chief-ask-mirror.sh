@@ -13,7 +13,7 @@ IFS= read -r -t 5 -d '' payload
 
 reply="$(printf '%s' "$payload" | jq -r '.last_assistant_message // empty' 2>/dev/null)" || exit 0  # swallow-ok: junk payload holds no ask
 [ -n "$reply" ] || exit 0
-printf '%s\n' "$reply" | grep -Eq '^[[:space:]]*((([0-9]+[.)])|-|\*|•)[[:space:]]*)?Needs you:' || exit 0
+grep -Eq '^[[:space:]]*((([0-9]+[.)])|-|\*|•)[[:space:]]*)?Needs you:' <<<"$reply" || exit 0
 
 if command -v sha256sum >/dev/null 2>&1; then reply_digest="$(printf '%s' "$reply" | sha256sum | cut -c1-16)"
 elif command -v shasum >/dev/null 2>&1; then reply_digest="$(printf '%s' "$reply" | shasum -a 256 | cut -c1-16)"

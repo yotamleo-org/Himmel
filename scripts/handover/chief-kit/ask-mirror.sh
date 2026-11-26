@@ -60,7 +60,7 @@ if [ -z "$reply" ] && [ -n "$transcript" ] && [ -r "$transcript" ]; then
     ' "$transcript" 2>/dev/null)"
 fi
 [ -n "$reply" ] || exit 0
-printf '%s\n' "$reply" | grep -Eq '^[[:space:]]*((([0-9]+[.)])|-|\*|•)[[:space:]]*)?Needs you:' || exit 0
+grep -Eq '^[[:space:]]*((([0-9]+[.)])|-|\*|•)[[:space:]]*)?Needs you:' <<<"$reply" || exit 0
 
 blocks="$(printf '%s' "$reply" | python3 -c '
 import hashlib, json, re, sys
