@@ -96,8 +96,8 @@ while [[ $rest =~ $tok_re ]]; do
 done
 
 # Names are read from the DECODED string values (jq), so an escaped `\n` before
-# `NAME=` does not become part of the name. Quotes may still be JSON-escaped
-# there (`\"`), hence the backslash in the bracket.
+# `NAME=` does not become part of the name; without jq, the raw text. Quotes may
+# still be JSON-escaped there (`\"`), hence the backslash in the bracket.
 scan=""
 if command -v jq >/dev/null 2>&1; then
     scan=$(jq -r '[.. | strings] | join("\n")' <<<"$input" 2>/dev/null) || scan=""
