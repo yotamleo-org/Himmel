@@ -350,9 +350,13 @@ needs "plan critic sent as judge on sonnet -> text names general-purpose on sonn
 stxt="$(deny_text "$(described 'Spec critic r1' "$(agent judge-ro sonnet 'critique the spec')")")"
 needs "spec critic sent as judge-ro on sonnet -> text names general-purpose on sonnet" "$stxt" \
     "general-purpose" "model: sonnet" "critic"
-ptxt2="$(deny_text "$(agent judge sonnet $'Plan critic: read the plan\nand report findings')")"
-needs "plan critic named only in the prompt -> text names general-purpose on sonnet" "$ptxt2" \
-    "general-purpose" "model: sonnet"
+ptxt2="$(deny_text "$(agent judge sonnet $'judge the PR that adds the Plan critic dispatch\nand report findings')")"
+needs "a judge whose prompt only mentions a plan critic keeps the judge remedy" "$ptxt2" \
+    "delta-class.sh" "first full judge"
+case "$ptxt2" in
+    *"general-purpose"*) bad "a prompt-only plan critic mention must not steer to general-purpose - got: $ptxt2" ;;
+    *) ok "a prompt-only plan critic mention does not name general-purpose" ;;
+esac
 check "plan critic on judge + sonnet is still denied" block "$(described 'Plan critic r1' "$(agent judge sonnet 'x')")"
 check "plan critic on general-purpose + sonnet is still allowed" allow "$(described 'Plan critic r1' "$(agent general-purpose sonnet 'x')")"
 ftxt="$(deny_text "$(agent judge sonnet 'judge the PR')")"
