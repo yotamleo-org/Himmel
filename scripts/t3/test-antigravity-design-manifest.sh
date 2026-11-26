@@ -38,7 +38,7 @@ if printf '%s\n' "$PLUGINS" | grep -qx "builder-visual@himmel"; then bad "design
 expect_eq "design declares context7 over https" "$(jq -r '.profiles.design.mcpServers.context7.url // "" | split("?")[0]' "$REGISTRY")" "https://mcp.context7.com/mcp"
 expect_eq "context7 is an http server" "$(jq -r '.profiles.design.mcpServers.context7.type // ""' "$REGISTRY")" "http"
 expect_eq "shadcn runs through npx" "$(jq -r '.profiles.design.mcpServers.shadcn.command // ""' "$REGISTRY")" "npx"
-expect_eq "design declares shadcn pinned" "$(jq -r '.profiles.design.mcpServers.shadcn.args[1] // ""' "$REGISTRY")" "shadcn@4.21.0"
+expect_eq "design declares shadcn pinned and starts its mcp server" "$(jq -c '.profiles.design.mcpServers.shadcn.args // []' "$REGISTRY")" '["-y","shadcn@4.21.0","mcp"]'
 expect_eq "design names playwright as optional" "$(jq -c '.profiles.design.optionalMcpServers // []' "$REGISTRY")" '["playwright"]'
 expect_eq "playwright is in the plugin-profiles mcpCatalog" "$(jq -r '.mcpCatalog.playwright.args[1] // ""' "$PLUGIN_PROFILES")" "@playwright/mcp@0.0.83"
 expect_eq "agent-native-dispatch is not wired" "$(jq -r '[.profiles.design.mcpServers // {} | keys[] | select(test("agent-native"))] | length' "$REGISTRY")" "0"
