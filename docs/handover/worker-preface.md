@@ -176,7 +176,7 @@ chief `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is
 subtree clean** with
 `bash scripts/handover/wrap-subtree-check.sh --queue-doc <doc>`: paste its
 `CLOSABLE:` line; on `WITHHELD:` TaskStop only what it lists as still running,
-re-run, no `WRAPPED`. A worker the chief halted ends the same way once `CLOSABLE:` prints: release the lock, then append `WRAPPED`, never a `HALTED` last line.
+re-run, no `WRAPPED`. A halted worker ends the same way, never on a `HALTED` last line.
 
 **Context past 75 % of your `--autocompact` ceiling, when the guard
 is on** (off by default; on in Sonnet 5.5 worker-impl/eval, Opus 5.5 worker-*;

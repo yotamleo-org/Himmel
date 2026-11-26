@@ -37,7 +37,8 @@
 #                        (worker_terminal_tail, scripts/lib/worker-tail-status.sh): one line
 #                        `ESCALATE halted-closable <label> doc=<worker doc>` tells the chief to close it
 #                        (close-wrapped-worker.sh closes it). A HALTED worker that is still running, a worker
-#                        not found, or a doc that moved on is the old `ESCALATE marker-HALTED`.
+#                        not found, or a doc that moved on is the old `ESCALATE marker-HALTED`; a worker
+#                        already closed (the chief doc holds `<label> WRAPPED, window closed.`) is `HANDLED noop`.
 #   anything else     -> ESCALATE (READY with the flag off, and FINDING, need a judge or the chief)
 #
 #   stacked_series on: series-ledger.py find (the bucket is the manifest's directory) says whether the worker's

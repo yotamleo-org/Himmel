@@ -926,5 +926,9 @@ LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N5555 fleet pause"
 check "19g a LIVE below the rulings section after the halt: not closable" "$out" "ESCALATE marker-HALTED"
 LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N9999 fleet pause"
 check "19e HALTED for a worker not in the manifest: the old escalation" "$out" "ESCALATE marker-HALTED"
+printf '%s\n' '- 10:00 N9999 WRAPPED, window closed.' > "$W/doc"
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N9999 fleet pause"
+check "19h HALTED for a worker already closed and gone from the manifest: noop" "$out" "HANDLED noop N9999"
+: > "$W/doc"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

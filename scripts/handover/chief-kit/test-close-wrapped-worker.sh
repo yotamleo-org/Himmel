@@ -1617,6 +1617,12 @@ rc=0; out=$(run --chief "$CDOC" 2>&1) || rc=$?
 check "console: non-WRAPPED tail -> rc 4" "$rc" "4"
 not_contains "console: non-WRAPPED -> nothing signalled" "$(cat "$CALLS")" "kill"
 
+mkcdoc "- 10:00 HALTED - fleet pause"
+reset_calls
+rc=0; out=$(run --chief "$CDOC" 2>&1) || rc=$?
+check "console: a HALTED tail is not WRAPPED, rc 4" "$rc" "4"
+not_contains "console: a HALTED tail signals nothing" "$(cat "$CALLS")" "kill"
+
 mkcdoc "- 10:00 WRAPPED - done"
 reset_calls
 acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$CDOC" "cwl-test-holder" 2>&1)"
@@ -1892,6 +1898,12 @@ rc=0; out=$(run "$HP" 2>&1) || rc=$?
 check "handoff: final context BLOCKED naming successor closes predecessor (base rc 4)" "$rc" "0"
 exact_count "handoff: BLOCKED hand-off signals predecessor alone" "$(cat "$CALLS")" "kill -TERM 389" "1"
 not_contains "handoff: BLOCKED hand-off never signals successor" "$(cat "$CALLS")" "kill -TERM 390"
+
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 10:00 BLOCKED - context 34 percent, RESUME written: %s\n- 10:30 HALTED - fleet pause\n' "$HS" > "$HP"
+reset_calls
+rc=0; out=$(run "$HP" 2>&1) || rc=$?
+check "halt after a named hand-off: the HALTED tail is not finished (rc 4)" "$rc" "4"
+check "halt after a named hand-off: nothing signaled" "$(cat "$CALLS")" ""
 
 # Safety controls: a named file alone and an unrelated held sibling prove no hand-off.
 printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - waiting for review\n' > "$HP"
