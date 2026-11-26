@@ -190,13 +190,13 @@ check "R14 that text is the first one" "$first_text" "1. Needs you: R14 X"
 echo "R15: every posted ask is one chief-route records for reply binding"
 if command -v bun >/dev/null 2>&1; then
     printf 'import { recordAsk } from "%s/scripts/telegram/chief-route.ts";\nawait recordAsk(process.argv[2], 1, process.argv[3]);\n' "$REPO" > "$TMP/rec.ts"
-    run chief-sid "$(printf '1. Needs you: R15 A\n\n- Needs you: R15 B\n\nStatus: Needs you: R15 C')"
-    check "R15 three posts" "$(ncalls)" "3"
+    run chief-sid "$(printf '1. Needs you: R15 A\n\n- Needs you: R15 B')"
+    check "R15 two posts" "$(ncalls)" "2"
     ROUTE_ROOT="$TMP/route-root"; mkdir -p "$ROUTE_ROOT"
     while IFS= read -r text; do bun "$TMP/rec.ts" "$ROUTE_ROOT" "$text" >/dev/null 2>&1; done <<EOF
 $(posted_text)
 EOF
-    check "R15 each posted text adds one ask row" "$(wc -l < "$ROUTE_ROOT/consoles/asks.ndjson" 2>/dev/null | tr -d ' ')" "3"
+    check "R15 each posted text adds one ask row" "$(wc -l < "$ROUTE_ROOT/consoles/asks.ndjson" 2>/dev/null | tr -d ' ')" "2"
 else
     echo "  skip R15: no bun"
 fi
@@ -208,6 +208,20 @@ run chief-sid "$(printf '1. Needs you: R16 B\n\n2. Needs you: R16 C')"
 check "R16 one post (C) in the second run" "$(ncalls)" "1"
 check "R16 the store lists two files that start with 2., the texts of B and C" \
     "$(grep -h '^2\. Needs you: R16' "$POSTED"/* 2>/dev/null | sort | tr '\n' ' ')" "2. Needs you: R16 B 2. Needs you: R16 C "
+
+echo "R17: a reply that only names the marker mid-line posts nothing"
+run chief-sid "Status: Needs you: R17 A"
+check "R17 a mid-line marker after a label posts nothing" "$(ncalls)" "0"
+run chief-sid "The hook looks for the Needs you: marker at the start of a line."
+check "R17 a marker named in prose posts nothing" "$(ncalls)" "0"
+run chief-sid "$(printf 'All merged.\n\nSee the Needs you: line above.\nNothing else.')"
+check "R17 a marker named in a later line posts nothing" "$(ncalls)" "0"
+run chief-sid "Needs you: R17 start"
+check "R17 control: the marker at the start of a line posts" "$(ncalls)" "1"
+run chief-sid "4. Needs you: R17 numbered"
+check "R17 control: the marker after a list number posts" "$(ncalls)" "1"
+run chief-sid "- Needs you: R17 bullet"
+check "R17 control: the marker after a bullet posts" "$(ncalls)" "1"
 
 for f in "$TMP"/xdg/himmel-queue-lock/* "$TMP"/handover/.locks/queue/*/owner.json; do rm -f "$f"; done
 echo "ask-mirror: $pass passed, $fail failed"
