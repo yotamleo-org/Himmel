@@ -1126,7 +1126,7 @@ EOF
 # candidate evidence is the explicit way out of a repeated-class stop.
 # shellcheck disable=SC2016  # JavaScript template fields are literal here
 judge_class_check() {
-    VERDICT_DIR="$dir" HISTORY="$verdict_state" CANDIDATE="$1" WANT="$2" SIGNED="$3" ALT="${4:-}" node -e '
+    VERDICT_DIR="$5" HISTORY="$verdict_state" CANDIDATE="$1" WANT="$2" SIGNED="$3" ALT="${4:-}" node -e '
 const fs = require("fs"), path = require("path"), cp = require("child_process"), crypto = require("crypto"), e = process.env;
 // A layer-decision counts only from a record whose mac verified; the
 // bash side hands over qid/name:sha256 of the bytes it verified, and the record
@@ -1393,7 +1393,7 @@ EOF_SNAP
         fi
     done
     [ -n "$check_hits" ] || exit 1
-    judge_class_check "$check_hits" "$want" "$signed" "$alt" || exit 8
+    judge_class_check "$check_hits" "$want" "$signed" "$alt" "$dir" || exit 8
     [ "$pr_want" != "-" ] || exit 8
     [ -n "$hits" ] || exit 1
     printf '%s\n' "$hits"

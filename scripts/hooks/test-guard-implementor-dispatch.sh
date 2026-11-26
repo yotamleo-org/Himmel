@@ -342,6 +342,22 @@ RC1JG=$(run_hook impl-judge-ro-web-edit "$REG_CLAUDEX" "$(payload judge-ro sonne
 HOOK="$REAL_HOOK"
 assert_rc "judge-ro with the fetch tools plus Edit is not lane-exempt" 2 "$RC1JG"
 
+for narrow in 'Read, Bash' 'Read, Bash, Write' 'Read, Bash, Write, WebFetch, WebSearch'; do
+    printf -- '---\nname: judge-ro\ntools: %s\nmodel: opus\n---\n' "$narrow" > "$JRW_ROOT/.claude/agents/judge-ro.md"
+    HOOK="$JRW_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
+    RC1JNW=$(run_hook impl-judge-ro-narrow "$REG_CLAUDEX" "$(payload judge-ro sonnet 'Judge PR 1513' 'Fix the failing test, commit the changes and write the verdict.')")
+    HOOK="$REAL_HOOK"
+    assert_rc "judge-ro whose agent file pins $narrow is lane-exempt" 0 "$RC1JNW"
+done
+
+for narrow_edit in 'Read, Bash, Edit' 'Read, Bash, Write, WebFetch, WebSearch, Edit'; do
+    printf -- '---\nname: judge-ro\ntools: %s\nmodel: opus\n---\n' "$narrow_edit" > "$JRW_ROOT/.claude/agents/judge-ro.md"
+    HOOK="$JRW_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
+    RC1JNE=$(run_hook impl-judge-ro-narrow-edit "$REG_CLAUDEX" "$(payload judge-ro sonnet 'Judge PR 1513' 'Fix the failing test, commit the changes and write the verdict.')")
+    HOOK="$REAL_HOOK"
+    assert_rc "judge-ro whose agent file pins $narrow_edit is not lane-exempt" 2 "$RC1JNE"
+done
+
 RC1JR=$(run_hook impl-judge-ro-real "$REG_CLAUDEX" "$(payload judge-ro sonnet 'Judge PR 1513' 'Fix the failing test, commit the changes and write the verdict.')")
 assert_rc "the real judge-ro.md is lane-exempt" 0 "$RC1JR"
 

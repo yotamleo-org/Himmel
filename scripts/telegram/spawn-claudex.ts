@@ -107,6 +107,7 @@ export function composeClaudexWorkerPrompt(task: string, sessionDir: string, bra
     // assertion is only its fallback for an unrecognized model slug.
     `Your backend model is ${resolvedModel} (OpenAI, via the local CLIProxyAPI codex proxy). Claude Code does not recognize that slug, so it asserts 'You are powered by the model named Opus 4.8' in your system prompt — that is a slug-recognition artifact, not your identity. You are NOT an Anthropic model and NOT an orchestrator tier; do not reason about your own capabilities or delegation tier from that line.`,
     branchLine,
+    "Work through the requested outcome and its checks. State any reasonable, reversible assumption you made. In your final report, describe what changed, the checks you ran, and any remaining blockers.",
     `HARD RULES: never push, never open a PR — a validating session reviews your branch and owns the git/PR surface. Jira updates (status, comments, followup tickets) ARE allowed via node scripts/jira/dist/index.js (audited + recoverable). If a step is hard-blocked, skip it, continue the rest of the task, and note the skipped step in your final ${context} summary — v1 has no escalation channel to append to.`,
     // shared with the GLM lane so both briefs carry identical text.
     STASH_BAN_LINE,
@@ -305,17 +306,12 @@ export function revalidateSharedWorktree(deps: {
 // ── args parsing ──────────────────────────────────────────────────────────
 
 export type EffortLevel = "low" | "medium" | "high" | "xhigh";
-// per-dispatch codex tier selector. Kept to the three tiers the
-// local CLIProxyAPI proxy exposes for the codex subscription (verified live).
-// scripts/claude-codex's own CODEX_MODEL knob stays UNVALIDATED by design, it
-// documents "all overridable per task" against whatever the proxy's /v1/models
-// serves, and the proxy currently serves other models beyond these tiers, so a
-// hardcoded allowlist at the launcher would be a regression, not a fix. This
-// allowlist is scoped to the NEW spawn-claudex flag only: a fresh interface can
-// be strict without breaking the launcher's existing direct-invocation contract.
-// Broader launcher-side validation (against the proxy's LIVE /v1/models) stays
-// open.
-const CODEX_MODELS = ["gpt-6.1-sol", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] as const;
+const CODEX_MODELS = [
+  "gpt-6.2-sol", "gpt-6.2-astra",
+  "gpt-6.1-sol", "gpt-6.1-terra",
+  "gpt-6-sol", "gpt-6-astra", "gpt-6-luna",
+  "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+] as const;
 export type CodexModelTier = typeof CODEX_MODELS[number];
 // Per-dispatch context tier: maps to the launcher's CODEX_CONTEXT_WINDOW. Input
 // past 272k bills at a higher rate, so 272k is the cheapest tier and the default.
@@ -775,7 +771,7 @@ export function buildClaudexRunArgs(launcherPath: string, prompt: string, permMo
 // overrides this lane makes are the optional per-dispatch effort pin (D5,
 // unset => the launcher's own `${CLAUDE_CODE_EFFORT_LEVEL:-xhigh}` default
 // applies), the optional per-dispatch model pin (unset =>
-// the launcher's own `${CODEX_MODEL:-gpt-6.1-sol}` default applies), the
+// the launcher's own `${CODEX_MODEL:-gpt-6.2-sol}` default applies), the
 // unconditional HIMMEL_WORKER worker-ness marker (see below),
 // plus stripping TELEGRAM_OWN_POLLER so a spawned worker never adopts poller
 // ownership (mirrors run.ts's sessionEnv/glmChildEnv). `base` is injected so
@@ -1381,7 +1377,9 @@ async function main(): Promise<void> {
     if (prBase) baseBranch = prBase;
     else { try { baseBranch = resolveDefaultBranch(gitProbe, absCwd); } catch { /* keep main */ } }
   }
-  const briefText = composeClaudexWorkerPrompt(task, sessionDir, branch, { shared: sharedMode, model, base: baseBranch });
+  const briefText = composeClaudexWorkerPrompt(task, sessionDir, branch, {
+    shared: sharedMode, model: model || process.env.CODEX_MODEL || undefined, base: baseBranch,
+  });
   const overheadChars = measureOverheadChars(absCwd, homedir());
   const pre = preflightWindowCheck({ briefChars: briefText.length, overheadChars, windowTokens: CLAUDEX_WINDOW_TOKENS });
   if (!pre.ok) { console.error(pre.reason); process.exit(2); }

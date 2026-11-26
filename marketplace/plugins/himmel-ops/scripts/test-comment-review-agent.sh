@@ -16,7 +16,7 @@ NOCOMMENTS_BLOB=4738fabdc7df1d14d42be189b387267c74773a92
 front="$(awk 'NR == 1 && $0 == "---" { f = 1; next } f && $0 == "---" { exit } f { print }' "$agent")"
 body="$(awk 'NR == 1 && $0 == "---" { f = 1; next } f && $0 == "---" { f = 0; next } !f { print }' "$agent")"
 
-check "tools are exactly Read, Grep, Glob, WebFetch, WebSearch" "$(printf '%s\n' "$front" | sed -n 's/^tools: *//p')" "Read, Grep, Glob, WebFetch, WebSearch"
+check "tools are exactly Read, WebFetch, WebSearch" "$(printf '%s\n' "$front" | sed -n 's/^tools: *//p')" "Read, WebFetch, WebSearch"
 check "model is sonnet" "$(printf '%s\n' "$front" | sed -n 's/^model: *//p')" "sonnet"
 check "name is comment-review" "$(printf '%s\n' "$front" | sed -n 's/^name: *//p')" "comment-review"
 
