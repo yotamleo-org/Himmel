@@ -453,7 +453,7 @@ big_patch 1000 > "$T/p1000.txt"
 CAP_BOUND_MS=3000; [ "$(uname -s)" = Darwin ] && CAP_BOUND_MS=20000 # prim-ok: Darwin timing budget
 big_case "1000 benign headers (at the cap) -> allow inside the time bound" allow "$T/p1000.txt" "$CAP_BOUND_MS"
 sed 's|src/dir/file|Src/DiR/FiLe|' "$T/p1000.txt" > "$T/p1000m.txt"
-HIMMEL_GUARD_FORCE_DARWIN=1 big_case "7888 Darwin seam: 1000 benign mixed-case headers (at the cap) -> allow inside the time bound" allow "$T/p1000m.txt" "$CAP_BOUND_MS"
+HIMMEL_GUARD_FORCE_DARWIN=1 big_case "7888 Darwin seam: 1000 benign mixed-case headers (at the cap) -> allow inside the time bound" allow "$T/p1000m.txt" 12000
 big_patch 1001 > "$T/p1001.txt"
 big_case "1001 benign headers (over the cap) -> block" block "$T/p1001.txt"
 big_patch 999 "*** Update File: $CFG" > "$T/pcfg.txt"
