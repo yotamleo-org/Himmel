@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# luna-mcp static hygiene suite. It needs no node_modules, so the shell-unit shards run it.
-# It pins the dependency policy (v2 SDK only, exact pins), the public-mirror rule (no
-# absolute home paths, no real tailnet names or addresses), the systemd hardening
-# lines, and the security primitives the behaviour suite relies on being present.
-# Every detector has a planted-violation control so a lint that stops matching fails.
-#
-# Usage: bash marketplace/plugins/luna-mcp/tests/test-luna-mcp.sh
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
