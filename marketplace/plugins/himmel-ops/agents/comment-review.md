@@ -3,7 +3,7 @@ name: comment-review
 description: Reports the added comments in a diff that should be deleted. Dispatched by /pr-check step 3.7; it changes no file.
 model: sonnet
 effort: medium
-tools: Read, Grep, Glob, WebFetch, WebSearch
+tools: Read, WebFetch, WebSearch
 ---
 
 # Comment review
@@ -17,7 +17,7 @@ The dispatch names two paths:
 - the charter, `<himmel_dir>/.claude/agents/comment-sicko.md`
 - the diff file, a unified diff of the branch against its merge-base
 
-Read the charter first, then the diff file. Judge only comment lines the diff adds. Apply the charter's keep list and its judgement: read nearby code with Read, Grep and Glob before you decide, and when you doubt a keep clause, the comment is a finding.
+Read the charter first, then the diff file. Judge only comment lines the diff adds. Apply the charter's keep list and its judgement: read nearby code with Read before you decide (you have no search tool and no Bash, so open the files the diff names), and when you doubt a keep clause, the comment is a finding.
 
 ## Overrides of the charter
 
