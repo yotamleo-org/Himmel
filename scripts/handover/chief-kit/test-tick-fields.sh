@@ -1114,9 +1114,9 @@ attempts = {}
 for spec in sys.argv[4:]:
     aid, kind, pid = spec.split(':')
     pid = int(pid)
-    attempts[aid] = {'attempt_id': aid, 'phase': 'launched', 'doc': bucket + '/' + aid + '.md', 'name': 'HIMMEL-' + aid,
+    attempts[aid] = {'attempt_id': aid, 'phase': 'unknown' if kind == 'unknown' else 'launched', 'doc': bucket + '/' + aid + '.md', 'name': 'HIMMEL-' + aid,
                      'keys': [], 'manifest': bucket + '/chief.fleet.json', 'family': 'fam', 'control_generation': 1,
-                     'owner': ident(pid, True), 'session': ident(pid, kind == 'dead'), 'began_ticks': 0, 'initial_marker': '',
+                     'owner': ident(pid, True), 'session': ident(pid, kind != 'live'), 'began_ticks': 0, 'initial_marker': '',
                      'receipt': {'v': 2, 'kind': 'launch-attempt', 'attempt_id': aid}}
 json.dump({'schema': 1, 'family': 'fam', 'mode': mode, 'generation': 1, 'target': target,
            'updated': '2026-11-26T00:00:00Z', 'reason': 'test', 'attempts': attempts}, open(bucket + '/fleet-control.json', 'w'))
@@ -1163,6 +1163,9 @@ fr_stale="$(fr_tick "$fr_census" "$fr_root/fr-stale/chief.fleet.json")"
 contains 'one launched record whose session is gone: stale-attempts=1' "$fr_stale" 'stale-attempts=1'
 contains 'a wake line names fleet-manifest.sh runtime ack' "$fr_stale" 'ACTION stale-attempts=1:'
 contains 'the wake line points at the read-only ack listing' "$fr_stale" 'fleet-manifest.sh runtime ack --read-only --manifest'
+mkdir -p "$fr_root/fr-unk"
+python3 -I "$fr_build" "$fr_root/fr-unk" 35 active "live1:live:$fr_live" "lost1:unknown:$fr_dead"
+contains 'an unknown attempt whose session is gone counts too: stale-attempts=1' "$(fr_tick "$fr_census" "$fr_root/fr-unk/chief.fleet.json")" 'stale-attempts=1'
 same 'a tick settles and edits no record: fleet-control.json and the manifest are byte-identical' "$(cksum "$fr_root/fr-stale/fleet-control.json" "$fr_root/fr-stale/chief.fleet.json" | tr -d '\n')" "$fr_before"
 kill "$fr_live" 2>/dev/null
 

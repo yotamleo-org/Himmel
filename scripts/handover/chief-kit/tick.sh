@@ -135,8 +135,8 @@ work, not the chief. capacity= itself never changes, chief-wait.sh matches it.
 With --workers-from a manifest that names a fleet control, <cap> is the lower of that census cap and
 the family target a managed launch is refused at, and a target below the policy cap prints as
 fleet=<live>/<target>(policy-cap=<cap>); capacity= is held to the same number.
-stale-attempts=<n> follows capacity= (only with such a manifest): the launched attempt records whose
-session is gone plus the unknown ones settleable now, read-only through fleet_runtime.py ack, so the
+stale-attempts=<n> follows capacity= (only with such a manifest): the launched or unknown attempt
+records whose session is proven gone, read-only through fleet_runtime.py ack, so the
 tick never settles or edits a record; ? when the control cannot be read. A count above 0 adds one
 `ACTION stale-attempts=<n>: ...` line naming fleet-manifest.sh runtime ack. Not in chief-wait's key.
 
@@ -4919,8 +4919,7 @@ try:
         sys.exit(0)
     ack = fr.ack_read_only(manifest)
     deadline = time.monotonic() + 5
-    stale = [r for r in ack["unknown"] if r["settle_hint"]["settleable"]]
-    stale += [r for r in ack["launched"] if fr.session_ended(r, deadline)]
+    stale = [r for r in ack["unknown"] + ack["launched"] if fr.session_ended(r, deadline)]
     print(ack["target"], len(stale))
 except (fr.Refused, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
     print("? ?")
@@ -4931,7 +4930,7 @@ except (fr.Refused, OSError, ValueError, KeyError, TypeError, subprocess.Subproc
         case "$stale_attempts" in
             ''|*[!0-9]*) stale_attempts='?' ;;
             0) ;;
-            *) stale_attempts_listing="$(printf 'ACTION stale-attempts=%s: %s launch record(s) still hold family-target slots with no live session; list them: bash %q runtime ack --read-only --manifest %q (its settle commands are for you to type: runtime settle for an unknown attempt, attempt end for a launched one; the tick never settles)' "$stale_attempts" "$stale_attempts" "$HERE/fleet-manifest.sh" "$WORKERS_FROM")" ;;
+            *) stale_attempts_listing="$(printf 'ACTION stale-attempts=%s: %s launch record(s) still hold family-target slots with no live session; list them: bash %q runtime ack --read-only --manifest %q (its settle commands are for you to type, the tick settles nothing: settle for an unknown attempt, attempt end for a launched one)' "$stale_attempts" "$stale_attempts" "$HERE/fleet-manifest.sh" "$WORKERS_FROM")" ;;
         esac
         case "$fleet_target" in ''|*[!0-9]*) fleet_target="" ;; esac
     fi
