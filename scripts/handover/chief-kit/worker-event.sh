@@ -33,6 +33,12 @@
 #                        A WRAPPED whose PR wrap-merged finds still OPEN (rc 3 at its pr-state step) is closed the
 #                        same way: HANDLED close-wrapped, or ESCALATE close-wrapped-failed when that close refuses.
 #                        A MERGED line for an OPEN PR still escalates wrap-merged-failed.
+#   HALTED            -> a worker whose doc still ends on HALTED with its queue lock free is finished
+#                        (worker_terminal_tail, scripts/lib/worker-tail-status.sh): one line
+#                        `ESCALATE halted-closable <label> doc=<worker doc>` tells the chief to close it
+#                        (close-wrapped-worker.sh closes it). A HALTED worker that is still running, a worker
+#                        not found, or a doc that moved on is the old `ESCALATE marker-HALTED`; a worker
+#                        already closed (the chief doc holds `<label> WRAPPED, window closed.`) is `HANDLED noop`.
 #   anything else     -> ESCALATE (READY with the flag off, and FINDING, need a judge or the chief)
 #
 #   stacked_series on: series-ledger.py find (the bucket is the manifest's directory) says whether the worker's
@@ -93,7 +99,10 @@ auto_go_on() { ( . "$HERE/../../lib/flags.sh" && himmel_flag auto_go ) >/dev/nul
 stacked_series_state() { ( . "$HERE/../../lib/flags.sh" && himmel_flag stacked_series ) >/dev/null 2>&1; }
 
 usage() { echo "usage: worker-event.sh --doc <chief doc> --fleet <manifest> <message-file | ->" >&2; exit 2; }
-escalate() { echo "ESCALATE $1"; exit 10; }
+escalate() { if [ -n "${halted:-}" ] && [ "${1%% *}" != halted-closable ]; then echo "ESCALATE marker-HALTED"; else echo "ESCALATE $1"; fi; exit 10; }
+results_tail() {
+    awk '/^## Results( |$)/ { seen = 1; r = 1; next } /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next } r && match($0, /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/) { m = substr($0, RSTART, RLENGTH); sub(/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?/, "", m); sub(/[^A-Za-z0-9_]$/, "", m); last = m } END { print last }' "$1"
+}
 listed_doc() {
     local cand
     while IFS= read -r cand; do
@@ -178,8 +187,10 @@ dry_run_ready() {
     return 0
 }
 
+halted=""
 case "$marker" in
     MERGED|WRAPPED) ;;
+    HALTED) halted=1 ;;
     READY) auto_go_on || { dry_run_ready; escalate "marker-READY"; } ;;
     *) escalate "marker-${marker:-none}" ;;
 esac
@@ -253,10 +264,20 @@ EOF
     [[ $stem =~ -(N[0-9]+)- ]] && label="${BASH_REMATCH[1]}"
 fi
 
+if [ -n "$halted" ]; then
+    if [ -r "$worker" ]; then
+        . "$HERE/../../lib/worker-tail-status.sh"
+        lock_state=held
+        "${LOCK[@]}" status "$worker" >/dev/null 2>&1 && lock_state=free
+        if worker_terminal_tail "$(results_tail "$worker")" "$lock_state"; then escalate "halted-closable $label doc=$worker"; fi
+    fi
+    escalate "marker-HALTED"
+fi
+
 if [ "$marker" = WRAPPED ] && [ -r "$worker" ] \
     && grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null \
     && "${LOCK[@]}" status "$worker" >/dev/null 2>&1 \
-    && [ "$(awk '/^## Results( |$)/ { r = 1; next } /^## / { r = 0; next } r && match($0, /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/) { m = substr($0, RSTART, RLENGTH); sub(/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?/, "", m); sub(/[^A-Za-z0-9_]$/, "", m); last = m } END { print last }' "$worker")" = WRAPPED ]; then
+    && [ "$(results_tail "$worker")" = WRAPPED ]; then
     gstem="${worker##*/}"; gstem="${gstem%.md}"
     if gsess="$("${SESSIONS[@]}")" && ! printf '%s\n' "$gsess" | awk -F'\t' -v s="$gstem" '$2 == s { f = 1 } END { exit !f }'; then
         echo "HANDLED closed-already $label"; exit 0
