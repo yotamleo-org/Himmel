@@ -517,13 +517,9 @@
 # Worker messages (SendMessage) wake a chief on their own; only the Telegram
 # and tick paths depend on this waiter.
 #
-# Station heal (needs --doc): a good sample whose tick line carries station=BEHIND:<components> counts
-# toward a streak kept in <inbox>.wait.station-heal (line 1 the streak, line 2 when a heal was last
-# started); a wake ends the waiter between samples, so the streak lives in that file. After three
-# consecutive BEHIND samples the waiter starts `station-sync.sh --heal --bucket <chief doc dir> --chief
-# <chief doc stem>` detached (fd 9 closed, never waited on) and starts no second one for 1800 s;
-# any other station value (current, absent, BEHIND:pending) zeroes the streak. station-sync.sh keeps
-# the lock, its own back-off and the one owed row of a failed step. CHIEF_WAIT_STATION replaces
+# Station heal (needs --doc): after three consecutive samples whose tick line reads station=BEHIND:<components>
+# the waiter starts `station-sync.sh --heal` detached for the chief doc's bucket, at most once per 1800 s;
+# the streak and the start time live in <inbox>.wait.station-heal. CHIEF_WAIT_STATION replaces
 # station-sync.sh (tests).
 #
 # A pool-unresolved wake joins the housekeeping digest unless its value changed since the last
@@ -3231,7 +3227,8 @@ if [ -n "${CHIEF_WAIT_STATION:-}" ]; then station_cmd=("$CHIEF_WAIT_STATION"); e
 station_heal_step() {
     local val="$1" streak last now hlog
     [ -n "$console_doc" ] || return 0
-    streak="$(sed -n 1p "$station_heal_file" 2>/dev/null)"; last="$(sed -n 2p "$station_heal_file" 2>/dev/null)"  # swallow-ok: no file is streak 0, never healed
+    streak=0; last=0
+    [ ! -f "$station_heal_file" ] || { IFS= read -r streak; IFS= read -r last; } < "$station_heal_file"
     case "$streak" in ''|*[!0-9]*) streak=0 ;; esac
     case "$last" in ''|*[!0-9]*) last=0 ;; esac
     case "$val" in
@@ -3241,7 +3238,7 @@ station_heal_step() {
     esac
     now="$(date +%s)"
     if [ "$streak" -ge "$STATION_HEAL_SAMPLES" ] && [ $((now - last)) -ge "$STATION_HEAL_WINDOW" ]; then
-        printf '0\n%s\n' "$now" | atomic_write "$station_heal_file" 2>/dev/null || return 0  # swallow-ok: a start stamp that cannot be saved starts no heal, so an unwritable file never loops one
+        printf '0\n%s\n' "$now" | atomic_write "$station_heal_file" 2>/dev/null || return 0
         hlog="$HOME/.himmel/state/station-sync.out"
         mkdir -p "$(dirname "$hlog")" 2>/dev/null
         if command -v setsid >/dev/null 2>&1; then
@@ -3251,7 +3248,7 @@ station_heal_step() {
         fi
         return 0
     fi
-    printf '%s\n%s\n' "$streak" "$last" | atomic_write "$station_heal_file" 2>/dev/null || true  # swallow-ok: an unwritable streak only delays the heal to a later sample
+    printf '%s\n%s\n' "$streak" "$last" | atomic_write "$station_heal_file" 2>/dev/null || true
     return 0
 }
 
