@@ -1093,11 +1093,11 @@ function closureKinds(r: LedgerRow, s: ReplayState, maxRound: Record<Kind, numbe
 
 function capRefusal(key: string, rows: LedgerRow[], kind: Kind, round: number): string | null {
   if (!roundNeedsRecord(replayStateOf(rows as Rows), kind, round)) return null;
-  if (round === CRITIC_ROUND_CAP + 1) return `${key} ${kind} round ${round} needs a blocking finding in round ${CRITIC_ROUND_CAP} of either kind; sign it under 848, its minors go to the build`;
-  const base = `${key} writer round ${round} needs a round-override or round-critical record`;
+  const base = round === CRITIC_ROUND_CAP + 1 ? `${key} ${kind} round ${round} needs a blocking finding in round ${CRITIC_ROUND_CAP} of either kind; sign it under 848, its minors go to the build`
+    : `${key} writer round ${round} needs a round-override or round-critical record`;
   if (round !== kindRound(rows, kind) + 1 || kindRound(rows, kind) >= writerRound(rows)) return base;
   const aim = extensionAim({ spec: kindRound(rows, "spec"), plan: kindRound(rows, "plan") }, { spec: latestReturns(rows, "spec"), plan: latestReturns(rows, "plan") });
-  const extension = !!aim && "round" in aim && aim.round === round && aim.kinds.includes(kind) ? " or round-extension" : "";
+  const extension = round > CRITIC_ROUND_CAP + 1 && !!aim && "round" in aim && aim.round === round && aim.kinds.includes(kind) ? " or round-extension" : "";
   return `${base} (${kind} lags the writer round: open it with round-critical --closure --round ${kind}:${round}${extension})`;
 }
 
@@ -1764,8 +1764,9 @@ export async function roundOverride(specs: string, key: string, o: { findings: s
     if (writer < CRITIC_ROUND_CAP + 1) throw new Error(`round-override: ${key} is at writer round ${writer}; rounds 1 to ${CRITIC_ROUND_CAP} are free and round ${CRITIC_ROUND_CAP + 1} opens on its own`);
     const lagging = o.findings.find(id => !named.some(f => f.id === id && f.round === writer));
     if (lagging !== undefined) {
-      const kinds = named.filter(f => f.id === lagging).map(f => f.critic);
-      throw new Error(`round-override: ${lagging} is open only in ${kinds.join(" and ")}, which lags the writer round; open ${kinds[0]} round ${kindRound(rows, kinds[0]) + 1} with round-critical --closure --round ${kinds[0]}:${kindRound(rows, kinds[0]) + 1} or round-extension`);
+      const kinds = named.filter(f => f.id === lagging).map(f => f.critic); const next = kindRound(rows, kinds[0]) + 1;
+      const how = roundNeedsRecord(replayStateOf(rows), kinds[0], next) ? `open ${kinds[0]} round ${next} with round-critical --closure --round ${kinds[0]}:${next} or round-extension` : `${kinds[0]} round ${next} needs no record, so seal it as it is`;
+      throw new Error(`round-override: ${lagging} is open only in ${kinds.join(" and ")}, which lags the writer round; ${how}, or name a finding of a kind at the writer round`);
     }
     const entries = named.filter(f => f.round === writer).map(({ round: _, ...f }) => f);
     await appendRow(specs, key, { row: "override", epoch: rows.checked.epoch, round_opened: writer + 1, findings: entries, why: o.why, chief: o.chief });

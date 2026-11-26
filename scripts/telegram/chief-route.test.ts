@@ -3576,7 +3576,7 @@ test("an ordinary full-mode major finding of the lagging kind is still an open b
   const t = await closureTree(["- **P1** (major) a plan finding still open"]);
   expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", `- **R1** (major; regression \`${QUOTED}\`) a fault`)).err).toBe("");
   const lag = await overrideOf(t.specs, "P1,R1");
-  expect(lag.err).toContain("round-override: P1 is open only in plan, which lags the writer round"); expect(lag.code).not.toBe(0);
+  expect(lag.err).toContain("round-override: P1 is open only in plan, which lags the writer round; plan round 4 needs no record, so seal it as it is"); expect(lag.code).not.toBe(0);
   expect(rowsOf(t.specs, "override")).toEqual([]);
   const ok = await overrideOf(t.specs, "R1");
   expect(ok.err).toBe(""); expect(ok.code).toBe(0);
@@ -8948,6 +8948,15 @@ test("HIMMEL-11321 7a refusal suffix", async () => {
   expect(whyB).toContain(`spec round 6: ${T5(6)}; plan round 5: ${T5(5)} (${lagging("plan", 5)} or round-extension)`);
   const c = await lag3Tree(true); const whyC = (await status(c.specs)).why;
   expect(whyC).toContain(`plan round 5: ${T5(5)} (${lagging("plan", 5)})`); expect(whyC).not.toContain("round-extension");
+});
+
+test("HIMMEL-11321 7d round-4 refusal of a lagging kind", async () => {
+  const t = await roundTree([], []); decide(t.specs, 1409, OP(1409));
+  expect((await closureVerb(t.specs, 1409, "--round", "plan:4")).err).toBe("");
+  expect((await closeOn(t, "plan", 4, [t.plan], "PLAN CLEAN")).err).toBe("");
+  const why = (await status(t.specs)).why;
+  expect(why).toContain(`spec round 4: ${T1("spec")} (spec lags the writer round: open it with round-critical --closure --round spec:4)`);
+  expect(why).not.toContain("round-extension");
 });
 
 test("HIMMEL-11321 7b no named kinds", async () => {

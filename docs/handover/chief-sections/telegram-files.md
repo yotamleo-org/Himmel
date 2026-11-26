@@ -71,8 +71,8 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   operator's ruling on an operator-critical finding, which closes it and, without `--no-round`, also opens one
   further writer round; `round-critical <KEY> --decision <d> --quote "<operator words>" --closure [--round <spec|plan>:<n>]`, with no `--finding`,
   the operator's yes to one more round when no finding is operator-critical, which opens the next refused round as a
-  closure check, for the kinds whose next round it is (`--round` names one kind that lags; refused when that round needs
-  no record, and once per decision: a decision any record already used is refused); and `round-reset <KEY> --decision <d> --quote "<operator words>"`, the operator's order to
+  closure check, for the kinds whose next round it is (`--round` names the one refused target to open, and is required when
+  the targets sit at different rounds; refused when that round needs no record, and once per decision: a decision any record already used is refused); and `round-reset <KEY> --decision <d> --quote "<operator words>"`, the operator's order to
   start over, once per ticket. The decision file `specs/decisions/verbatim-decision-<d>-*.txt` must name the ticket
   and hold the quote. **Never pick `<d>` by hand** (a chief and a T3 thread did, on one station, and gave two rulings one
   number): take it with `bash <himmel>/scripts/handover/chief-kit/rulings-in-force.sh next-id --bucket <bucket>`, which
