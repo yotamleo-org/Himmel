@@ -615,7 +615,7 @@ recorded included. An ask on settings or `.github/`
     `TICK_HOLD_MIN` minutes, default 20): read its newest bullet and answer it. It
     does not repeat while the hold stands.
 
-    **A T3 relay event wakes you once.** With `--workers-from`, the waiter runs
+    **Each T3 relay event wakes you once, except `BOUND` and `UNBOUND` with the digest on, which only join the housekeeping digest.** With `--workers-from`, the waiter runs
     `relay-bind.sh scan` once per `CHIEF_WAIT_T3_RELAY_SEC` (default 120) and prints
     `WAKE t3-relay <kind> <id|list|stem|label>` plus the tick line (with the digest off, `BOUND` and `UNBOUND` print `WAKE t3-relay <kind> <id> <label>`). `<id>` is a threadId, `list`
     is literal, `stem` is the old owner's chief doc stem, `label` is an ask row's label (kinds `ask-ready` and `ask-resolve`). The kind decides your action:
@@ -647,7 +647,7 @@ recorded included. An ask on settings or `.github/`
     5-minute grace after the nudge (`SILENT_ACT_NUDGE_GRACE_SECS`, default 300), it relaunches the
     worker from its `-RESUME` doc with `headed-arm-worker.sh` and confirms it with `launch-confirm.sh`, once; a
     step that fails opens an owed row (`owe.sh`, kind `step`). It appends a `SILENT-ACT` bullet to
-    your doc and prints a `SILENT-ACT <worker> <words>` line right after the WAKE line. Read the
+    your doc and, when it has something new to say, prints a `SILENT-ACT <worker> <words>` line right after the WAKE line. Read the
     words, then do only what is left:
 
     - `none`: the worker is silent for less than the first bound. Nothing to do.
