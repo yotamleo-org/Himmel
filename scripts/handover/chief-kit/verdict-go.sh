@@ -124,7 +124,7 @@ if [ "$ANSWER" = "GO" ]; then
     # go.sh prints the GO file it wrote as its last stdout line; the worker's merge
     # names that file with --go.
     if [ "$TRUST" -eq 1 ]; then
-        GO_OUT=$(bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} ${CONTRACT:+--contract "$CONTRACT"} --trust-reviewed "$QID" ${DOC:+--doc "$DOC"} "$PR" "$HEAD_SHA") || step_fail go.sh $?
+        GO_OUT=$(bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} ${CONTRACT:+--contract "$CONTRACT"} ${DOC:+--doc "$DOC"} --trust-reviewed "$QID" "$PR" "$HEAD_SHA") || step_fail go.sh $?
     else
         GO_OUT=$(bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} ${CONTRACT:+--contract "$CONTRACT"} ${DOC:+--doc "$DOC"} "$PR" "$HEAD_SHA") || step_fail go.sh $?
     fi

@@ -12,7 +12,7 @@
 # Usage: go.sh [--contract yes|no] [--trust-reviewed <reviewer-id>] [--doc <chief doc>] [--no-deliver] <pr-number> <full-40-hex-head-sha>
 #        go.sh --fix-main-red <red-run-id> <pr-number> <full-40-hex-head-sha>
 #        go.sh --repo <owner/repo> [--checkout <dir>] --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>
-# Prints the written path as its last stdout line. Re-running overwrites (idempotent) and
+# Prints the written path. It is the last stdout line. Re-running overwrites (idempotent) and
 # delivers again.
 #
 # Delivery (a himmel merge GO, plain or --trust-reviewed; never a fork GO, a FIX-GO or

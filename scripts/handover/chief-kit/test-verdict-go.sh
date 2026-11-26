@@ -122,7 +122,7 @@ lacks "3: no board after a refusal" "$log" "board"
 
 # --- 4. --trust adds --trust-reviewed <qid> ---------------------------------
 run q4 GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --trust
-contains "4: go gets --trust-reviewed qid" "$log" "go [--trust-reviewed] [q4] [--doc] [$DOC] [77] [$HEAD40]"
+contains "4: go gets --trust-reviewed qid" "$log" "go [--doc] [$DOC] [--trust-reviewed] [q4] [77] [$HEAD40]"
 run q4 GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
 lacks "4: without --trust no flag" "$log" "--trust-reviewed"
 
@@ -214,7 +214,7 @@ contains "9c: go gets --contract no" "$log" "go [--contract] [no] [--doc] [$DOC]
 lacks    "9c: the merge line carries no --jira-transition" "$out" "--jira-transition"
 contains "9c: the merge line is still printed" "$out" "merge-on-green.sh"
 GO_NEEDS_CONTRACT=1 run q9d GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --contract no --trust
-contains "9d: with --trust the contract rides beside --trust-reviewed" "$log" "go [--contract] [no] [--trust-reviewed] [q9d] [--doc] [$DOC] [77] [$HEAD40]"
+contains "9d: with --trust the contract rides beside --trust-reviewed" "$log" "go [--contract] [no] [--doc] [$DOC] [--trust-reviewed] [q9d] [77] [$HEAD40]"
 run q9e GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
 lacks    "9e: no --contract given, none forwarded" "$log" "--contract"
 run q9f GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --contract maybe
