@@ -357,6 +357,8 @@ PRE='PreToolUse:Bash hook error: [bash $CLAUDE_PROJECT_DIR/scripts/hooks'
   pair op16 Bash '{"command":"while true; do :; done"}' "PreToolUse:Bash hook error: [bash \$CLAUDE_PLUGIN_ROOT/hooks/block-busy-loop.sh]: busy-loop guard: sleepless busy loop refused. A while loop whose body is only \":\" spins a core at 100% CPU."
   pair op17 Bash '{"command":"npx x"}' "PreToolUse:Bash hook error: [bash \$CLAUDE_PROJECT_DIR/scripts/hooks/guard-judge-writes.sh]: judge write-deny: package-fetch (npx: run an installed tool by its own name) — a judge reports by SendMessage"
   pair op18 mcp__t3-code__delegate_task '{"x":1}' "PreToolUse:mcp__t3-code__delegate_task hook error: [bash \$CLAUDE_PROJECT_DIR/scripts/hooks/guard-t3-thread-tools.sh]: BLOCKED: guard-t3-thread-tools refused mcp__t3-code__delegate_task."
+  pair op19 Bash '{"command":"jira release operator spec R1"}' "$PRE/block-subagent-release-operator.sh]: block-subagent-release-operator: a subagent may not run a Bash command that names both release and operator; jira release operator writes an operator-chain row."
+  pair op20 Bash '{"command":"jira create --decision 1 --words y"}' "$PRE/block-subagent-release-operator.sh]: block-subagent-release-operator-word-free: a subagent may not run a Bash command that carries both --decision and --words."
   pair ts1 TaskStop '{"task_id":"t1"}' "Task t1 is not running (status: completed)"
   pair ts2 TaskStop '{"task_id":"t2"}' "No task found with ID: t2"
   pair ts3 TaskStop '{"task_id":"t3"}' "TaskStop failed: the task runner crashed"
@@ -379,6 +381,8 @@ check "a memory-capture refusal is denied/guard-memory-capture" '[ "$(orow denie
 check "a busy-loop refusal is denied/block-busy-loop" '[ "$(orow denied/block-busy-loop | jq .count)" = 1 ]'
 check "a judge write-deny refusal is denied/guard-judge-writes" '[ "$(orow denied/guard-judge-writes | jq .count)" = 1 ]'
 check "a t3 thread-tools refusal is denied/guard-t3-thread-tools" '[ "$(orow denied/guard-t3-thread-tools | jq .count)" = 1 ]'
+check "a subagent-fence refusal with P1's opening is denied/block-subagent-release-operator" '[ "$(orow denied/block-subagent-release-operator | jq .count)" = 1 ]'
+check "a subagent-fence refusal with the word-free opening is denied/block-subagent-release-operator-word-free, counted" '[ "$(orow denied/block-subagent-release-operator-word-free | jq .count)" = 1 ]'
 check "control: a refusal no guard claims, and a DENY of a name that is no hook, stay denied/other" '[ "$(orow denied/other | jq .count)" = 2 ]'
 check "a TaskStop error saying not running or No task found is a no-op, not error/TaskStop" '[ "$(orow error/TaskStop | jq .count)" = 1 ] && jq -e ".metrics.ok_noop_stop == 2" "$TMP/op/out.json" >/dev/null'
 check "control: any other TaskStop error is still a failure" '[ "$(jq -r "[.tool_health[] | select(.tool == \"TaskStop\")] | .[0] | \"\(.calls) \(.failures)\"" "$TMP/op/out.json")" = "3 1" ]'
