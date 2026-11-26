@@ -570,13 +570,19 @@ rr_sig_run() {
     pkill -KILL -f "rr-stub-$RR_STUB_TAG" 2>/dev/null
 }
 rr_stop_run() {
-    local o i=0 d f="$3" pair=0
+    local o="" sp i=0 d f="$3" pair=0
     rm -rf "$RRTMP"/review-round-start.*
+    rm -f "$tmp/ss.rc"
     # shellcheck disable=SC2031
-    ( cd "$repo" && PATH="$sb:$PATH" TMPDIR="$RRTMP" CR_REVIEW_START_TIMEOUT_SECS="$B" exec bash "$RR" start --branch "$1" --head "$2" >"$tmp/ss.out" 2>"$tmp/ss.err" ) &
-    o=$!
+    ( cd "$repo" && PATH="$sb:$PATH" TMPDIR="$RRTMP" CR_REVIEW_START_TIMEOUT_SECS="$B" bash "$RR" start --branch "$1" --head "$2" >"$tmp/ss.out" 2>"$tmp/ss.err"; printf '%s\n' "$?" > "$tmp/ss.rc" ) &
+    sp=$!
+    while [ -z "$o" ] && [ "$i" -lt 300 ] && kill -0 "$sp" 2>/dev/null; do
+        o="$(ps -A -o pid=,ppid= | awk -v p="$sp" '$2 == p { print $1; exit }')"
+        [ -n "$o" ] || { i=$((i + 1)); sleep 0.05; }
+    done
+    i=0
     ss_paired=0
-    while [ "$i" -lt 300 ] && kill -0 "$o" 2>/dev/null; do
+    while [ -n "$o" ] && [ "$i" -lt 300 ] && kill -0 "$o" 2>/dev/null; do
         pair="$(ps -A -o pid=,ppid=,pgid= | awk -v o="$o" '$2 == o && $1 == $3 { n++ } END { print n + 0 }')"
         [ "$pair" -lt 2 ] || break
         i=$((i + 1)); sleep 0.05
@@ -592,8 +598,8 @@ rr_stop_run() {
         done
         kill -CONT "$o"
     fi
-    rr_reap "$o" 60
-    ss_rc="$reap_rc"; ss_out="$(cat "$tmp/ss.out")"; ss_err="$(cat "$tmp/ss.err")"
+    rr_reap "$sp" 60
+    ss_rc="$(cat "$tmp/ss.rc" 2>/dev/null)"; ss_out="$(cat "$tmp/ss.out")"; ss_err="$(cat "$tmp/ss.err")"
 }
 
 RR_STUB_TAG="selfcheck-$$"; export RR_STUB_TAG
