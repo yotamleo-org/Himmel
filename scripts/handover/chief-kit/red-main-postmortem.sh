@@ -26,7 +26,8 @@
 # scripts/cr/impacted-suites.sh beside this kit), RED_MAIN_STATE (seen file, default
 # ${TICK_STATE_DIR:-$HOME/.himmel/state}/red-main-postmortem.seen), RED_MAIN_REPO (checkout).
 # A failed artifact download (anything but GitHub's "no valid artifacts", which is reported
-# unknown and marked seen) ends the call and leaves the run unreported for the next one.
+# unknown and marked seen) leaves that run unreported for the next call and moves on to the
+# next older run; each try spends one of the call's RED_MAIN_MAX_RUNS.
 # One probe runs at a time (flock on <seen file>.lock).
 # Exit 0, or 2 on a bad option; an unreadable run list prints nothing.
 #
@@ -96,7 +97,8 @@ while [ "$i" -lt "$n" ] && [ "$done_runs" -lt "$max_runs" ]; do
         red="$dl/shard-red-suites.txt"
         dlerr="$(cd "$repo" && "$gh_bin" run download "$id" -n selector-miss-ledger -D "$dl" 2>&1 >/dev/null)"; dlrc=$?  # swallow-ok: rc and message decide absent artifact versus a failed read below
         if [ "$dlrc" -ne 0 ] && ! grep -Fq 'no valid artifacts' <<< "$dlerr"; then
-            break
+            i=$((i + 1))
+            continue
         fi
         commits=""
         lrc=0
