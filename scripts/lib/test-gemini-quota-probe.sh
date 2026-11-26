@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# test-gemini-quota-probe.sh — suite for scripts/lib/gemini-quota-probe.sh.
-# Every row drives the probe against a fixture `agy` stub (GEMINI_QUOTA_AGY);
-# no live call, no quota spent. SUT is a variable so the same suite runs
-# against a missing/old script for RED evidence.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SUT="${GEMINI_PROBE_SUT:-$REPO/scripts/lib/gemini-quota-probe.sh}"

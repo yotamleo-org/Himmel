@@ -8,9 +8,8 @@
 #                                         thread's output and mark the group empty
 #                                         until the reset
 #
-# `/usage` runs no agent turn and spends no quota. All Gemini models (Neon,
-# Carbon, Argon, Hydrogen, Orchestrators, 3.8 Flash) share ONE group with a
-# weekly and a 5-hour bucket, so this keys on the group, not on a pool.
+# All Gemini models (Neon, Carbon, Argon, Hydrogen, Orchestrators, 3.8 Flash)
+# share ONE group with a weekly and a 5-hour bucket, so this keys on the group.
 #
 # Prints one line per bucket (`bucket=<id> remaining_fraction=<f> reset_time=<iso>
 # state=ok|empty`), then ONE verdict token, and exits:
