@@ -38,14 +38,14 @@ payload() {
 check() {
     local want="$1" label="$2" needle="${3:-$NEEDLE}"
     if [ "$want" = deny ]; then
-        if [ "$rc" = 2 ] && printf '%s' "$out" | grep -q '"permissionDecision":"deny"' \
-            && printf '%s' "$out" | grep -qF "$needle"; then
+        if [ "$rc" = 2 ] && grep -q '"permissionDecision":"deny"' <<<"$out" \
+            && grep -qF "$needle" <<<"$out"; then
             echo "ok   deny: $label"; pass=$((pass + 1))
         else
             echo "FAIL deny: $label (rc=$rc)"; printf '  out: %s\n' "$out"; fail=$((fail + 1))
         fi
     else
-        if [ "$rc" = 0 ] && ! printf '%s' "$out" | grep -q deny; then
+        if [ "$rc" = 0 ] && ! grep -q deny <<<"$out"; then
             echo "ok   allow: $label"; pass=$((pass + 1))
         else
             echo "FAIL allow: $label (rc=$rc)"; printf '  out: %s\n' "$out"; fail=$((fail + 1))
