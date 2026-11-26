@@ -1481,6 +1481,60 @@ run_env_migration() {
     return 0
 }
 
+sync_agy_profiles() {
+    local file="${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json" script="$ROOT/scripts/t3/antigravity-profiles.sh" out rc=0 names ready p
+    if [ ! -f "$script" ]; then
+        echo "==> Antigravity profiles: skipped (scripts/t3/antigravity-profiles.sh is not in this checkout)"
+        STATUS_agy_profiles="skipped"; DETAIL_agy_profiles="script missing"
+        return 0
+    fi
+    bash "$script" --flag-on >/dev/null 2>&1 || rc=$?
+    case "$rc" in
+        0) ;;
+        1)
+            echo "==> Antigravity profiles: skipped (flag agy_design_profile is off)"
+            STATUS_agy_profiles="skipped"; DETAIL_agy_profiles="flag agy_design_profile is off"
+            return 0 ;;
+        *)
+            echo "==> Antigravity profiles: failed (flag agy_design_profile has a bad value; want 1, 0, on or off)"
+            STATUS_agy_profiles="failed"; DETAIL_agy_profiles="bad agy_design_profile value; see scripts/lib/flags.sh"
+            return 1 ;;
+    esac
+    rc=0
+    if [ ! -f "$file" ]; then
+        echo "==> Antigravity profiles: skipped (T3 Code not installed: no settings file)"
+        STATUS_agy_profiles="skipped"; DETAIL_agy_profiles="T3 Code not installed"
+        return 0
+    fi
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "==> Antigravity profiles: skipped (jq is not on PATH)"
+        STATUS_agy_profiles="skipped"; DETAIL_agy_profiles="jq missing"
+        return 0
+    fi
+    echo ""
+    echo "==> Antigravity profiles"
+    out=$(bash "$script" --apply 2>&1) || rc=$?
+    printf '%s\n' "$out" | sed 's/^/    /'
+    if [ "$rc" -ne 0 ]; then
+        STATUS_agy_profiles="failed"; DETAIL_agy_profiles="see the report above; no instance is added for a home that did not pass"
+        return 1
+    fi
+    names=$(bash "$script" --list 2>/dev/null) || names=""
+    ready=""
+    for p in $names; do
+        if bash "$script" --check --profile "$p" >/dev/null 2>&1; then ready="$ready $p"; else echo "    antigravity_$p is not ready (run --check --profile $p to see why); no allowlist line for it"; fi
+    done
+    if [ -n "$ready" ]; then
+        echo "    add these to .t3.instance_allowlist in ~/.himmel/config.json (himmel never writes that file):"
+        for p in $ready; do printf '      "antigravity_%s",\n' "$p"; done
+    fi
+    case "$out" in
+        *WROTE*|*LOGIN-LINKED*) STATUS_agy_profiles="updated"; DETAIL_agy_profiles="homes set up; paste the allowlist lines above" ;;
+        *) STATUS_agy_profiles="up-to-date"; DETAIL_agy_profiles="every profile home already set up" ;;
+    esac
+    return 0
+}
+
 sync_t3_providers() {
     local file="${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json" out rc=0
     if [ ! -f "$file" ]; then
@@ -1620,6 +1674,7 @@ STATUS_graph="";                      DETAIL_graph=""
 STATUS_env_migration="";              DETAIL_env_migration=""
 STATUS_cron_runner_migration="";      DETAIL_cron_runner_migration=""
 STATUS_t3_providers="";               DETAIL_t3_providers=""
+STATUS_agy_profiles="";               DETAIL_agy_profiles=""
 # The config UI rebuild + service restart is advisory too: its row prints only when the pulled range touched scripts/config-ui.
 STATUS_config_ui="";                  DETAIL_config_ui=""
 STATUS_bypass_daemon="";              DETAIL_bypass_daemon="" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
@@ -2377,6 +2432,9 @@ EOF
     fi
     if [ -n "$STATUS_bypass_daemon" ]; then # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
         printf '    %-14s %-14s %s\n' "bypass_daemon" "$STATUS_bypass_daemon" "$DETAIL_bypass_daemon" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
+    fi
+    if [ -n "$STATUS_agy_profiles" ]; then
+        printf '    %-14s %-14s %s\n' "agy_profiles" "$STATUS_agy_profiles" "$DETAIL_agy_profiles"
     fi
     if [ -n "$STATUS_t3_providers" ]; then
         printf '    %-14s %-14s %s\n' "t3_providers" "$STATUS_t3_providers" "$DETAIL_t3_providers"
@@ -3796,6 +3854,8 @@ USAGE
                       differs from the checkout; exit 1 if a reinstall fails)
                       t3_providers (one T3 Code provider instance per launch
                       profile in T3's settings file; skipped without T3)
+                      agy_profiles (Antigravity profile homes before that sync,
+                      behind the agy_design_profile flag, default off)
   --graphify-only     alias for --only graphify: clear a graphify pin-sync skip
                       from a slot with no live Claude session
   --plugins-check     just the plugin install-state report; no git, no network
@@ -3921,7 +3981,7 @@ fi
 if [ "${1:-}" = "--only" ]; then
     only_item="${2:-}"
     if [ -z "$only_item" ]; then
-        echo "update --only: needs an item — one of: pull marketplace jira_cli config_ui bypass_daemon qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration t3_providers" >&2 # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
+        echo "update --only: needs an item — one of: pull marketplace jira_cli config_ui bypass_daemon qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration t3_providers agy_profiles" >&2 # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
         exit 2
     fi
     branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
@@ -3968,8 +4028,9 @@ if [ "${1:-}" = "--only" ]; then
         drift-check)   report_drift check ;;
         env_migration) run_env_migration apply || only_rc=1 ;;
         t3_providers)  sync_t3_providers || only_rc=1 ;;
+        agy_profiles)  sync_agy_profiles || only_rc=1 ;;
         *)
-            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli config_ui bypass_daemon qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration t3_providers" >&2 # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
+            echo "update --only: unknown item '$only_item' — one of: pull marketplace jira_cli config_ui bypass_daemon qmd_fork hermes luna_template graphify graph cli_proxy marketplaces toolchain clis plugins plugin-refresh tools drift drift-check env_migration t3_providers agy_profiles" >&2 # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
             exit 2 ;;
     esac
     report_qmd_daemon_restart
@@ -4289,6 +4350,7 @@ backfill_user_claude_md
 ensure_bus_state_dirs
 report_qmd_daemon_restart
 report_drift apply
+sync_agy_profiles || true
 sync_t3_providers || true
 
 print_status_table

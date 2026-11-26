@@ -12,12 +12,38 @@ T3 runs each Antigravity instance as `agy acp --gemini-dir <home>` with
 `<home> = ${T3CODE_HOME:-$HOME/.t3}/userdata/providers/antigravity/<sha256 hex of the instance id>`.
 For `antigravity_design` that is `.../0a26fb5900d14a0aec6070688e23bf158dc4097e2721393e4d7b746a1b54914e`.
 
-`--apply` touches two files in that home and nothing else:
+`--apply` touches three files in that home and nothing else:
 
-- `config/hooks.json`, through `scripts/antigravity/install-antigravity-backstop.sh`;
+- `config/hooks.json`, through `scripts/antigravity/install-antigravity-backstop.sh` (that installer
+  also writes `~/.gemini/config/hooks.json` and every other provider home's `config/hooks.json`);
+- `antigravity-acp/antigravity-oauth-token`, a symlink to the bare `antigravity` home's token (see
+  "The login");
 - `config/skills.json`, a regular file (mode 600) written by atomic rename.
 
-The home is created mode 700 if missing.
+The home is created mode 700 if missing. A pinned skill that is not cached is fetched with `git fetch`,
+so an offline `--apply` exits 2.
+
+## The login
+
+A thread on a profile home asks for an Antigravity login unless the home holds
+`antigravity-acp/antigravity-oauth-token` (every home keeps its login there; `agy acp` has no flag or
+env that moves it). `--apply` links that path to the bare `antigravity` home's token
+(`<T3 home>/userdata/providers/antigravity/<sha256 hex of "antigravity">/antigravity-acp/antigravity-oauth-token`):
+
+- the script only tests and links paths; it never opens, copies or prints the token;
+- a profile's own token file (a regular file) is kept, never replaced (`LOGIN-KEPT`);
+- a stale or dangling link is repaired (`ln -sfn`); a token path that is a directory is refused (rc 2);
+- a symlinked bare home, bare `antigravity-acp` or bare token is not shared (`NOLOGIN`), and with no
+  bare login at all it prints `NOLOGIN` and rc stays 0: log in once on the bare instance, then re-run;
+- `--check` fails (`login not shared`) only when the bare login exists and the profile has neither the
+  link nor its own token, so a station that never logged in is not blocked. This applies to every
+  `--check` caller, with the flag on or off.
+
+Risks, accepted: if agy writes the token in place, a refresh or logout in a profile thread changes the
+bare login too; if it renames on refresh, the link becomes the profile's own token file (a valid login of
+its own, kept). The mechanism is provisional until the operator's live check passes: delete the design
+home's own token, run `--apply`, start a thread on `antigravity_design`, expect no login prompt, then
+confirm the bare `antigravity` instance still works.
 
 ## Why skills.json and not copied skills
 
@@ -75,7 +101,8 @@ no model; the thread's `modelSelection` names it, as every T3 thread does.
   never reads the registry. It prints nothing else, and exits 2 on a malformed registry or a
   profile named `relay` or ending `_relay` (its relay copy id would collide).
 - Only the operator runs `--apply` on the live home; no guard enforces this (`block-edit-live-settings`
-  matches path text, and `--apply` names none). `himmel-update` does not run this step yet.
+  matches path text, and `--apply` names none). `himmel-update` runs it for the operator when the
+  `agy_design_profile` flag is on (see "himmel-update").
 - Provision before the instance exists: T3 starts an instance the moment it is in T3's settings,
   and a home that `--check` has not passed has no himmel hooks.
 - The bare `antigravity` instance is not touched; only `antigravity_<profile>` homes are.
@@ -84,7 +111,41 @@ rc: 0 ok (`--list` too); 1 `--check` not satisfied; 2 usage, missing `jq`, malfo
 unknown `fromProfiles` name, a reserved `--list` profile name, pinned fetch or verify failure, backstop failure; 3 fence refusal.
 
 Env seams (tests): `T3_AP_REGISTRY`, `T3_AP_PLUGIN_PROFILES`, `T3_AP_BACKSTOP`,
-`HIMMEL_AGY_SKILL_CACHE`; `HOME` and `T3CODE_HOME` as usual.
+`HIMMEL_AGY_SKILL_CACHE`; `HOME` and `T3CODE_HOME` as usual. Modes also include `--smoke` and `--flag-on`
+(below).
+
+## himmel-update
+
+The `agy_profiles` step (`bash scripts/himmel-update.sh --only agy_profiles`, and in a full update right
+before `t3_providers`) sits behind the feature flag `agy_design_profile` (`scripts/lib/flags.tsv`, default
+off; a follow-up ticket removes it at publish, and it expires 2026-12-10). Turn it on with
+`HIMMEL_FLAG_AGY_DESIGN_PROFILE=1` in `~/.himmel/himmel.conf.local`.
+
+- Off: one line, `Antigravity profiles: skipped (flag agy_design_profile is off)`; nothing is written.
+  A bad flag value is a `failed` row, not a silent off.
+- On: `antigravity-profiles.sh --apply` for every registry profile (so each home passes `--check` before
+  `t3_providers` adds its instance), then the `.t3.instance_allowlist` lines to paste into
+  `~/.himmel/config.json`, for the profiles whose `--check` passes. The step never writes T3's settings
+  or `~/.himmel/config.json`; skipped without T3's settings file or `jq`. A failed apply is a `failed` row.
+- The flag is read through `antigravity-profiles.sh --flag-on`, because a gate script reaches
+  `himmel-update.sh` by path and a flag never wraps a gate (`scripts/ci/check-flags.sh`).
+
+## Smoke
+
+`bash scripts/t3/antigravity-profiles.sh --smoke [--profile design]`, run after setup, prints one line per
+link a thread needs and exits 0 only when every line is `PASS`:
+
+| line | PASS means |
+|---|---|
+| `login` | the profile has the bare login's link, or its own token file |
+| `hooks` | `config/hooks.json` has the backstop key, and its PreToolUse command denies a control read of the login file |
+| `skills` | every `skills.json` entry's skill has a `SKILL.md` |
+| `mcp` | every server in `config/mcp_config.json` has its command on PATH, or its URL answers (none configured is a pass: T3 serves its own `t3-code` server to each thread) |
+| `instance` | T3's settings has an enabled `antigravity_<profile>` |
+| `allowlist` | `.t3.instance_allowlist` in `~/.himmel/config.json` names it |
+
+A `FAIL` line names the missing link and the command that fixes it. Smoke writes and fetches nothing and
+never opens the login file; the hook command it runs may write its own hook log.
 
 ## Test
 

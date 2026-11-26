@@ -16,7 +16,16 @@
 #              is created, changed or deleted.
 #   --check    rc 0 iff every selected profile's home has the backstop key and a regular-file
 #              skills.json equal to what --apply would write now. Writes and fetches nothing.
+#   --smoke    one PASS or FAIL line per link a thread on the profile needs: login, himmel hooks (a control
+#              read of the login file must be denied), skills, MCP servers, the T3 instance and its
+#              .t3.instance_allowlist entry. rc 0 iff every line is PASS. Writes and fetches nothing and
+#              never opens the login file.
+#   --flag-on  rc 0 when the agy_design_profile flag is on, 1 off, 2 on a bad value (himmel-update reads it here).
 #   --profile  limit to one registry profile (repeatable); default is every profile.
+# Login: --apply makes <home>/antigravity-acp/antigravity-oauth-token a symlink to the bare antigravity
+# home's token, so a profile thread asks for no second login. A profile's own token file is kept; a
+# symlinked bare home, bare antigravity-acp or bare token is not shared (NOLOGIN). --check requires the
+# link (or an own token) only when the bare login exists.
 # Home: ${T3CODE_HOME:-$HOME/.t3}/userdata/providers/antigravity/<sha256 hex of the instance id>.
 # Every skills.json entry path is a canonical directory. One that resolves under
 # <T3 home>/userdata/providers/antigravity, or has a path segment starting /.agents or /.gemini, is
@@ -47,7 +56,7 @@ MODE=""
 SELECTED=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --dry-run|--apply|--check|--list)
+        --dry-run|--apply|--check|--list|--flag-on|--smoke)
             [ -z "$MODE" ] || [ "$MODE" = "${1#--}" ] || die 2 "only one of --dry-run, --apply, --check"
             MODE="${1#--}"; shift ;;
         --profile) [ $# -ge 2 ] || die 2 "--profile needs a name"; SELECTED="$SELECTED $2"; shift 2 ;;
@@ -55,6 +64,14 @@ while [ $# -gt 0 ]; do
     esac
 done
 MODE="${MODE:-dry-run}"
+
+if [ "$MODE" = flag-on ]; then
+    [ -z "$SELECTED" ] || die 2 "--flag-on takes no --profile"
+    # shellcheck source=../lib/flags.sh
+    . "$HERE/../lib/flags.sh" 2>/dev/null || exit 1
+    himmel_flag agy_design_profile >/dev/null 2>&1; rc=$?
+    exit "$rc"
+fi
 
 command -v jq >/dev/null 2>&1 || die 2 "jq is required"
 # shellcheck source=../lib/sha256-bin.sh
@@ -265,6 +282,147 @@ build_skills_json() {
 
 hooks_present() { jq -e --arg k "$BACKSTOP_KEY" '(.[$k] | type) == "object"' "$1/config/hooks.json" >/dev/null 2>&1; }
 
+BARE_HEX="$(printf '%s' antigravity | sha256_hex)" || die 2 "sha256 failed"
+LOGIN_SRC="$AGY_RAW/$BARE_HEX/antigravity-acp/antigravity-oauth-token"
+BARE_HOME="$AGY_RAW/$BARE_HEX"
+bare_login_present() {
+    [ -f "$LOGIN_SRC" ] && [ ! -L "$LOGIN_SRC" ] && [ ! -L "$BARE_HOME" ] && [ ! -L "$BARE_HOME/antigravity-acp" ]
+}
+login_ok() {
+    local dst="$1/antigravity-acp/antigravity-oauth-token"
+    [ ! -L "$1/antigravity-acp" ] || return 1
+    if [ -L "$dst" ]; then [ "$(readlink "$dst")" = "$LOGIN_SRC" ] && [ -f "$dst" ]
+    else [ -f "$dst" ]
+    fi
+}
+
+share_login() {
+    local id="$1" home="$2" acp="$2/antigravity-acp" dst="$2/antigravity-acp/antigravity-oauth-token"
+    if ! bare_login_present; then
+        echo "NOLOGIN $id: the bare antigravity home has no usable login (absent, or a symlink); log in there once, then re-run --apply"
+        return 0
+    fi
+    [ ! -L "$acp" ] || die 2 "$acp is a symlink; refusing (no login link written for $id)"
+    if [ -L "$dst" ]; then
+        if [ "$(readlink "$dst")" = "$LOGIN_SRC" ]; then echo "LOGIN-OK $dst"; return 0; fi
+    elif [ -f "$dst" ]; then
+        echo "LOGIN-KEPT $dst (its own login, not replaced)"
+        return 0
+    elif [ -e "$dst" ]; then
+        die 2 "$dst is not a regular file or a link; refusing"
+    fi
+    if ! mkdir -p "$acp" || ! chmod 700 "$acp"; then die 2 "cannot create $acp"; fi
+    ln -sfn "$LOGIN_SRC" "$dst" || die 2 "cannot link the login at $dst"
+    echo "LOGIN-LINKED $dst -> $LOGIN_SRC"
+}
+
+login_plan() {
+    local dst="$1/antigravity-acp/antigravity-oauth-token"
+    if ! bare_login_present; then echo "login: none to share (the bare antigravity home has no login)"
+    elif [ -L "$dst" ] && [ "$(readlink "$dst")" = "$LOGIN_SRC" ]; then echo "login: linked to the bare antigravity login"
+    elif [ -e "$dst" ] && [ ! -L "$dst" ]; then echo "login: its own (kept)"
+    else echo "login: would link to the bare antigravity login ($LOGIN_SRC)"
+    fi
+}
+
+smoke_line() {
+    printf '%s %s: %s\n' "$1" "$2" "$3"
+    [ "$1" = PASS ] || SMOKE_RC=1
+}
+
+run_smoke() {
+    local p id hex home hj cmd payload out dec sk bad="" n=0 d name mc k spec t
+    SMOKE_RC=0
+    for p in $SELECTED; do
+        id="antigravity_$p"
+        hex="$(printf '%s' "$id" | sha256_hex)" || die 2 "sha256 failed"
+        home="$AGY_RAW/$hex"
+        echo "== $id"
+        if [ ! -d "$home" ] || [ -L "$home" ]; then
+            smoke_line FAIL home "$home is missing or a symlink (run: bash scripts/t3/antigravity-profiles.sh --apply --profile $p)"
+            continue
+        fi
+        if login_ok "$home"; then
+            if [ -L "$home/antigravity-acp/antigravity-oauth-token" ]; then smoke_line PASS login "linked to the bare antigravity login"
+            else smoke_line PASS login "the profile has its own login file"; fi
+        elif ! bare_login_present; then
+            smoke_line FAIL login "no login to reuse: the bare antigravity home has none (log in once on the bare instance, then run --apply --profile $p)"
+        else
+            smoke_line FAIL login "the profile home has no login link (run --apply --profile $p)"
+        fi
+        hj="$home/config/hooks.json"
+        if ! hooks_present "$home"; then
+            smoke_line FAIL hooks "config/hooks.json lacks the $BACKSTOP_KEY key (run --apply --profile $p)"
+        else
+            cmd="$(jq -r --arg k "$BACKSTOP_KEY" '.[$k].PreToolUse[0].hooks[0].command // empty' "$hj" 2>/dev/null)"
+            if [ -z "$cmd" ]; then
+                smoke_line FAIL hooks "the $BACKSTOP_KEY key has no PreToolUse command"
+            else
+                payload="$(jq -cn --arg cwd "$REPO_ROOT" --arg art "$home/antigravity-acp/brain/smoke" \
+                    --arg path "$home/antigravity-acp/antigravity-oauth-token" \
+                    '{hookEventName:"PreToolUse",conversationId:"smoke",cwd:$cwd,artifactDirectoryPath:$art,transcriptPath:($art+"/transcript_full.jsonl"),toolCall:{id:"smoke_1",name:"read_file",args:{Path:$path}}}')"
+                if command -v timeout >/dev/null 2>&1; then
+                    out="$(printf '%s' "$payload" | timeout 30 bash -c "$cmd" 2>/dev/null)"
+                else
+                    out="$(printf '%s' "$payload" | bash -c "$cmd" 2>/dev/null)"
+                fi
+                dec="$(printf '%s' "$out" | jq -r '.decision // empty' 2>/dev/null)"
+                if [ "$dec" = deny ]; then smoke_line PASS hooks "backstop wired; a control read of the login file was denied"
+                else smoke_line FAIL hooks "backstop wired but a control read of the login file was not denied (decision: ${dec:-none}); the hook does not fire"; fi
+            fi
+        fi
+        sk="$home/config/skills.json"
+        bad=""; n=0
+        if [ ! -f "$sk" ]; then
+            smoke_line FAIL skills "config/skills.json is missing (run --apply --profile $p)"
+        elif ! jq -e '(.entries | type) == "array"' "$sk" >/dev/null 2>&1; then
+            smoke_line FAIL skills "config/skills.json is not {entries:[...]}"
+        else
+            while IFS="$(printf '\t')" read -r d name; do
+                [ -n "$d" ] || continue
+                n=$((n+1))
+                [ -f "$d/$name/SKILL.md" ] || bad="$bad $d/$name"
+            done < <(jq -r '.entries[] | .path as $d | .include_only[]? | [$d, .] | @tsv' "$sk")
+            if [ "$n" -eq 0 ]; then smoke_line FAIL skills "skills.json lists no skills"
+            elif [ -n "$bad" ]; then smoke_line FAIL skills "$(printf '%s' "$bad" | wc -w | tr -d ' ') of $n skills have no SKILL.md:$bad"
+            else smoke_line PASS skills "$n skills visible"; fi
+        fi
+        mc="$home/config/mcp_config.json"
+        if [ ! -s "$mc" ]; then
+            smoke_line PASS mcp "no MCP servers in the profile home (T3 serves its own t3-code server to each thread)"
+        elif ! jq -e '(.mcpServers // {}) | type == "object"' "$mc" >/dev/null 2>&1; then
+            smoke_line FAIL mcp "config/mcp_config.json is not valid {mcpServers:{...}}"
+        else
+            bad=""; n=0
+            for k in $(jq -r '(.mcpServers // {}) | keys[]' "$mc"); do
+                n=$((n+1))
+                spec="$(jq -r --arg k "$k" '.mcpServers[$k] | (.command // .serverUrl // .url // "")' "$mc")"
+                case "$spec" in
+                    http://*|https://*)
+                        command -v curl >/dev/null 2>&1 && curl -s -o /dev/null --max-time 5 "$spec" || bad="$bad $k(unreachable $spec)" ;;
+                    '') bad="$bad $k(no command or url)" ;;
+                    *) command -v "$spec" >/dev/null 2>&1 || bad="$bad $k(command $spec not on PATH)" ;;
+                esac
+            done
+            if [ -n "$bad" ]; then smoke_line FAIL mcp "not reachable:$bad"; else smoke_line PASS mcp "$n MCP servers reachable"; fi
+        fi
+        t="$T3_HOME/userdata/settings.json"
+        if [ -f "$t" ] && jq -e --arg i "$id" '(.providerInstances // {})[$i] | type == "object" and (.enabled != false)' "$t" >/dev/null 2>&1; then
+            smoke_line PASS instance "$id is an enabled instance in T3's settings"
+        else
+            smoke_line FAIL instance "T3's settings has no enabled $id (run himmel-update with the agy_design_profile flag on, or provider-instances.sh --apply)"
+        fi
+        t="$HOME/.himmel/config.json"
+        if [ -f "$t" ] && jq -e --arg i "$id" '(.t3.instance_allowlist // []) | index($i) != null' "$t" >/dev/null 2>&1; then
+            smoke_line PASS allowlist "$id is in .t3.instance_allowlist"
+        else
+            smoke_line FAIL allowlist "$id is not in .t3.instance_allowlist of ~/.himmel/config.json (paste the line himmel-update printed)"
+        fi
+    done
+    exit "$SMOKE_RC"
+}
+[ "$MODE" != smoke ] || run_smoke
+
 for p in $SELECTED; do
     resolve_plugins "$p" "$WORK/$p.pairs"
     fence_pairs "$WORK/$p.pairs"
@@ -286,6 +444,7 @@ for p in $SELECTED; do
             hooks=absent; hooks_present "$home" && hooks=present
             printf '== %s\nhome: %s\nhooks: backstop %s\n' "$id" "$home" "$hooks"
             cat "$WORK/$p.notes"
+            login_plan "$home"
             printf 'skills.json (%s):\n' "$cur"
             cat "$new"
             ;;
@@ -295,6 +454,9 @@ for p in $SELECTED; do
             if [ -L "$home" ] || [ -L "$home/config" ]; then why="$why; home or its config dir is a symlink"; fi
             hooks_present "$home" || why="$why; hooks.json lacks $BACKSTOP_KEY"
             [ -s "$WORK/$p.notes" ] && why="$why; pinned checkout not fetched"
+            if bare_login_present && ! login_ok "$home"; then
+                why="$why; login not shared (run --apply to link the bare antigravity login)"
+            fi
             if [ ! -f "$cur" ] || [ -L "$cur" ]; then
                 why="$why; skills.json is not a regular file"
             elif ! cmp -s "$new" "$cur"; then
@@ -307,6 +469,7 @@ for p in $SELECTED; do
             if ! mkdir -p "$home" || ! chmod 700 "$home"; then die 2 "cannot create $home"; fi
             "$BACKSTOP" > "$WORK/backstop.out" 2>&1 || { cat "$WORK/backstop.out" >&2; die 2 "backstop installer failed; skills.json not written for $id"; }
             hooks_present "$home" || die 2 "$home/config/hooks.json has no $BACKSTOP_KEY after the backstop ran; skills.json not written for $id"
+            share_login "$id" "$home"
             if [ -f "$cur" ] && [ ! -L "$cur" ] && cmp -s "$new" "$cur"; then
                 echo "UNCHANGED $cur"
             else

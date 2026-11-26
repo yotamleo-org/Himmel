@@ -14,7 +14,7 @@ export CLAUDE_CONFIG_DIR="$TMP/no-claude-config"
 export HERMES_HOME="$TMP/no-hermes"
 export HIMMELCTL_CACHE_DIR="$TMP/himmelctl-cache"
 mkdir -p "$HOME" "$HIMMELCTL_CACHE_DIR" || exit 1
-unset HIMMEL_UPDATE_CHANNEL T3CODE_HOME
+unset HIMMEL_UPDATE_CHANNEL T3CODE_HOME HIMMEL_CONFIG_DIR HIMMEL_FLAG_AGY_DESIGN_PROFILE HIMMEL_FLAGS_TSV
 
 pass=0
 fail=0
@@ -35,6 +35,12 @@ if ! { cp "$SCRIPT" "$CLONE/scripts/himmel-update.sh" \
     && cp "$src_scripts/lib/claude-version.sh"    "$CLONE/scripts/lib/claude-version.sh" \
     && cp "$src_scripts/lib/update-channel.sh"    "$CLONE/scripts/lib/update-channel.sh" \
     && cp "$src_scripts/t3/provider-instances.sh" "$CLONE/scripts/t3/provider-instances.sh" \
+    && cp "$src_scripts/t3/antigravity-profiles.sh" "$CLONE/scripts/t3/antigravity-profiles.sh" \
+    && cp "$src_scripts/lib/flags.sh"             "$CLONE/scripts/lib/flags.sh" \
+    && cp "$src_scripts/lib/flags.tsv"            "$CLONE/scripts/lib/flags.tsv" \
+    && cp "$src_scripts/lib/prim.sh"              "$CLONE/scripts/lib/prim.sh" \
+    && cp "$src_scripts/lib/sha256-bin.sh"        "$CLONE/scripts/lib/sha256-bin.sh" \
+    && cp "$src_scripts/lanes/plugin-profiles.json" "$CLONE/scripts/lanes/plugin-profiles.json" \
     && cp "$src_scripts/lanes/plugin-profiles.mjs" "$CLONE/scripts/lanes/plugin-profiles.mjs" \
     && cp "$src_scripts/lib/env-alias.mjs"        "$CLONE/scripts/lib/env-alias.mjs" \
     && cp "$src_scripts/lib/is-main.mjs"          "$CLONE/scripts/lib/is-main.mjs" \
@@ -137,9 +143,84 @@ check_eq  "exit 1" 1 "$RC"
 check_has "status row reads failed" "t3_providers *failed" "$OUT"
 check_eq  "settings file untouched" "$before" "$(cksum < "$T3S")"
 
+AGY_REG="$TMP/agy-registry.json"
+printf '%s\n' '{"profiles":{"design":{"fromProfiles":[]}}}' > "$AGY_REG"
+AGY_BACKSTOP="$TMP/agy-backstop.sh"
+cat > "$AGY_BACKSTOP" <<'STUB'
+#!/usr/bin/env bash
+for d in "${T3CODE_HOME:-$HOME/.t3}"/userdata/providers/antigravity/*/; do
+  [ -d "$d" ] || continue
+  mkdir -p "$d/config"
+  printf '{"himmel-antigravity-backstop":{}}' > "$d/config/hooks.json"
+done
+STUB
+chmod +x "$AGY_BACKSTOP"
+AGY_ROOT="$HOME/.t3/userdata/providers/antigravity"
+runon() {
+    RC=0
+    OUT="$(cd "$CLONE" && HIMMEL_FLAG_AGY_DESIGN_PROFILE=1 T3_AP_REGISTRY="$AGY_REG" T3_AP_BACKSTOP="$AGY_BACKSTOP" \
+        T3_PI_AGY_PROFILES="$CLONE/scripts/t3/antigravity-profiles.sh" T3_PI_RESOLVER="$RESOLVER" T3_PI_PROFILES="alpha,beta" \
+        bash scripts/himmel-update.sh "$@" 2>&1)" || RC=$?
+}
+
+echo "--only agy_profiles: the flag is off by default, one skipped line and nothing written"
+rm -rf "$HOME/.t3"
+seed "$T3S"
+before="$(cksum < "$T3S")"
+run --only agy_profiles
+check_eq  "exit 0" 0 "$RC"
+check_eq  "exactly one skip line" 1 "$(grep -c 'Antigravity profiles: skipped' <<< "$OUT")"
+check_has "the skip line names the flag" "agy_design_profile" "$OUT"
+check_has "status row reads skipped" "agy_profiles *skipped" "$OUT"
+check_eq  "no provider home tree created" no "$([ -e "$AGY_ROOT" ] && echo yes || echo no)"
+check_eq  "settings file untouched" "$before" "$(cksum < "$T3S")"
+
+echo "--only agy_profiles: flag on, no T3 settings file skips with one line"
+rm -rf "$HOME/.t3"
+runon --only agy_profiles
+check_eq  "exit 0" 0 "$RC"
+check_eq  "exactly one skip line" 1 "$(grep -c 'Antigravity profiles: skipped' <<< "$OUT")"
+check_eq  "no provider home tree created" no "$([ -e "$AGY_ROOT" ] && echo yes || echo no)"
+
+echo "--only agy_profiles: flag on applies every registry profile and prints the allowlist lines"
+seed "$T3S"
+before="$(cksum < "$T3S")"
+runon --only agy_profiles
+check_eq  "exit 0" 0 "$RC"
+check_eq  "one profile home exists" 1 "$(find "$AGY_ROOT" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')"
+RC=0
+(cd "$CLONE" && T3_AP_REGISTRY="$AGY_REG" T3_AP_BACKSTOP="$AGY_BACKSTOP" bash scripts/t3/antigravity-profiles.sh --check --profile design >/dev/null 2>&1) || RC=$?
+check_eq  "antigravity-profiles --check --profile design is rc 0" 0 "$RC"
+check_has "the allowlist line is printed ready to paste" '"antigravity_design"' "$OUT"
+check_has "the allowlist is the operator's to paste" "instance_allowlist" "$OUT"
+check_has "status row reads updated" "agy_profiles *updated" "$OUT"
+check_eq  "the T3 settings file is not written by this step" "$before" "$(cksum < "$T3S")"
+
+echo "--only agy_profiles: a second run changes nothing"
+runon --only agy_profiles
+check_eq  "exit 0" 0 "$RC"
+check_has "status row reads up-to-date" "agy_profiles *up-to-date" "$OUT"
+
+echo "--only agy_profiles: a bad flag value is a failed row, not a silent off"
+RC=0
+OUT="$(cd "$CLONE" && HIMMEL_FLAG_AGY_DESIGN_PROFILE=maybe bash scripts/himmel-update.sh --only agy_profiles 2>&1)" || RC=$?
+check_eq  "exit 1" 1 "$RC"
+check_has "status row reads failed" "agy_profiles *failed" "$OUT"
+check_has "names the bad value" "bad value" "$OUT"
+
+echo "--only t3_providers after agy_profiles: the antigravity_design instance is added"
+runon --only t3_providers
+check_eq  "exit 0" 0 "$RC"
+check_has "the profile instance is in T3's settings" "antigravity_design" "$(ids "$T3S")"
+
+echo "full run order: agy_profiles runs before sync_t3_providers"
+awk '/^sync_agy_profiles \|\| true/{a=NR} /^sync_t3_providers \|\| true/{b=NR} END{exit !(a && b && a < b)}' "$SCRIPT"
+check_eq  "the step is called before sync_t3_providers" 0 "$?"
+
 echo "usage and unknown-item texts name t3_providers"
 run --help
 check_has "usage lists the item" "t3_providers" "$OUT"
+check_has "usage lists agy_profiles" "agy_profiles" "$OUT"
 run --only no_such_item
 check_eq  "unknown item exits 2" 2 "$RC"
 check_has "unknown-item list names t3_providers" "env_migration t3_providers" "$OUT"
