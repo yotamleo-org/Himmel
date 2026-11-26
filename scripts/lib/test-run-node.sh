@@ -842,7 +842,7 @@ for marker in 1 0 "" yes "1 "; do
 done
 rc=0; out="$(env -u CLAUDE_PROJECT_DIR CLAUDE_PLUGIN_ROOT="$fc/plugin" CLAUDE_DIR="$fc/claude" HIMMEL_READINESS=1 sh "$fc/plugin/hooks/run-node.sh" hook.js 2>&1)" || rc=$?
 if [ "$rc" -eq 2 ] && [ -n "$out" ]; then pass "resolver missing, marker 1 -> rc2 with a reason"; else fail "resolver missing, marker 1 -> rc=$rc out='$out'"; fi
-rc=0; out="$(env -u CLAUDE_PROJECT_DIR CLAUDE_PLUGIN_ROOT="$fc/plugin" CLAUDE_DIR="$fc/claude" sh "$fc/plugin/hooks/run-node.sh" hook.js 2>&1)" || rc=$?
+rc=0; out="$(env -u CLAUDE_PROJECT_DIR -u HIMMEL_READINESS CLAUDE_PLUGIN_ROOT="$fc/plugin" CLAUDE_DIR="$fc/claude" sh "$fc/plugin/hooks/run-node.sh" hook.js 2>&1)" || rc=$?
 if [ "$rc" -eq 0 ] && [ -z "$out" ]; then pass "resolver missing, no marker -> rc0, silent"; else fail "resolver missing, no marker -> rc=$rc out='$out'"; fi
 if [ "$(id -u)" != 0 ]; then
     cp "$REPO_ROOT/marketplace/plugins/himmel-ops/hooks/resolve-node.sh" "$fc/plugin/hooks/resolve-node.sh"; chmod 000 "$fc/plugin/hooks/resolve-node.sh"

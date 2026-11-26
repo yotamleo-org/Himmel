@@ -175,8 +175,13 @@ if [ -f "$_wa_flag" ] && [ "$(cat "$_wa_flag" 2>/dev/null)" = 1 ]; then
 const age=(p)=>{ try { return Date.now()-fs.statSync(p).mtimeMs; } catch (err) { if (err.code !== "ENOENT") throw err; return Infinity; } };
 const take=()=>{ try { fs.mkdirSync(lock); return true; } catch (err) { if (err.code !== "EEXIST") throw err; return false; } };
 let held=take();
-if (!held && age(lock) >= 60000) { try { fs.rmdirSync(lock); } catch (err) { if (err.code !== "ENOENT") throw err; } held=take(); }
-if (!held) { process.stdout.write("0"); } else { try { if (age(a) >= 60000) { fs.closeSync(fs.openSync(a, "w")); process.stdout.write("1"); } else { process.stdout.write("0"); } } finally { fs.rmdirSync(lock); } }' "$_wa_attempt")" \
+if (!held && age(lock) >= 60000) {
+  const old=lock+"."+process.pid; let moved=true;
+  try { fs.renameSync(lock, old); } catch (err) { if (err.code !== "ENOENT") throw err; moved=false; }
+  if (moved && age(old) >= 60000) { fs.rmdirSync(old); held=take(); }
+  else if (moved) { try { fs.renameSync(old, lock); } catch (err) { fs.rmdirSync(old); } }
+}
+if (!held) { process.stdout.write("0"); } else { try { if (age(a) >= 60000) { fs.closeSync(fs.openSync(a, "w")); process.stdout.write("1"); } else { process.stdout.write("0"); } } finally { try { fs.rmdirSync(lock); } catch (err) { if (err.code !== "ENOENT") throw err; } } }' "$_wa_attempt")" \
         && [ "$_wa_retry" = 1 ]; then
         if [ -n "${HIMMEL_WHERE_ARE_WE_COLLECT_CMD:-}" ]; then
             ( nohup bash -c "$HIMMEL_WHERE_ARE_WE_COLLECT_CMD" >/dev/null 2>&1 & ) || true

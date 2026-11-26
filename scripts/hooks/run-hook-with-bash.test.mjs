@@ -3655,9 +3655,31 @@ test('readiness residuals: lone delivery denies a stalled guard at its own deadl
   assert.ok(elapsed < 8000, `the deny came at the deadline, not after the stalled child (${elapsed}ms)`);
 });
 
-test('readiness residuals: the lone deadline default sits under the 15 s host timeout hooks.json registers', () => {
+test('readiness residuals: the lone deadline default sits under the host timeout hooks.json registers', () => {
   const { DEFAULT_LONE_GUARD_TIMEOUT_MS } = require('./run-hook-with-bash.js');
-  assert.ok(DEFAULT_LONE_GUARD_TIMEOUT_MS > 0 && DEFAULT_LONE_GUARD_TIMEOUT_MS < 15_000, String(DEFAULT_LONE_GUARD_TIMEOUT_MS));
+  const hooks = JSON.parse(readFileSync(join(HERE, '../../marketplace/plugins/himmel-ops/hooks/hooks.json'), 'utf8'));
+  const entry = hooks.hooks.PreToolUse.flatMap((group) => group.hooks).find((hook) => hook.command.includes(READINESS_GUARD));
+  assert.ok(entry && entry.timeout > 0, 'hooks.json registers the readiness guard with a timeout');
+  assert.ok(DEFAULT_LONE_GUARD_TIMEOUT_MS > 0 && DEFAULT_LONE_GUARD_TIMEOUT_MS < entry.timeout * 1000, String(DEFAULT_LONE_GUARD_TIMEOUT_MS));
+});
+
+test('readiness residuals: the lone deadline override can only lower the default, and a fractional value still denies', () => {
+  const { DEFAULT_LONE_GUARD_TIMEOUT_MS, loneGuardTimeoutMs } = require('./run-hook-with-bash.js');
+  const saved = process.env.RUN_HOOK_LONE_GUARD_TIMEOUT_MS;
+  try {
+    process.env.RUN_HOOK_LONE_GUARD_TIMEOUT_MS = '999999';
+    assert.equal(loneGuardTimeoutMs(), DEFAULT_LONE_GUARD_TIMEOUT_MS);
+    process.env.RUN_HOOK_LONE_GUARD_TIMEOUT_MS = '700.5';
+    assert.equal(loneGuardTimeoutMs(), 700);
+    process.env.RUN_HOOK_LONE_GUARD_TIMEOUT_MS = '0.4';
+    assert.equal(loneGuardTimeoutMs(), 1);
+  } finally {
+    if (saved === undefined) delete process.env.RUN_HOOK_LONE_GUARD_TIMEOUT_MS;
+    else process.env.RUN_HOOK_LONE_GUARD_TIMEOUT_MS = saved;
+  }
+  const ready = readinessLoneRun('sleep 30 & wait', { HIMMEL_READINESS: '1', RUN_HOOK_LONE_GUARD_TIMEOUT_MS: '700.5' });
+  assert.equal(ready.status, 2, ready.stderr);
+  assert.match(ready.stderr, /DENY guard-readiness-tools\.sh \(deadline 700ms\)/);
 });
 
 test('readiness residuals: a guard inside the lone deadline is unchanged, and outside the readiness context no deadline applies', () => {
