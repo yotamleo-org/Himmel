@@ -4492,8 +4492,8 @@ check_c94_graph_config() {
 # a register whose repo path is gone is skipped. Whether it is gone is holds.py's answer (repo-gone: a real ENOENT and nothing
 # else), the same question the doctor cadence asks before it prunes a register; no answer, a slow one or an older holds.py without
 # the verb reads the register as before.
-c95_repo_gone() { # <holds.py> <repo>
-    ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 1 10} python3 -I "$1" repo-gone --repo "$2" </dev/null >/dev/null 2>&1
+c95_repo_gone() {
+    ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 1 "$(( $3 < 10 ? $3 : 10 ))"} python3 -I "$1" repo-gone --repo "$2" </dev/null >/dev/null 2>&1
 }
 
 check_c95_barrier_off() {
@@ -4534,7 +4534,8 @@ check_c95_barrier_off() {
     for name in "${regs[@]}"; do
         [ -e "$name" ] || [ -L "$name" ] || continue
         repo="$(printf '%s' "${name##*/}" | sed -e 's/%2F/\//g' -e 's/%25/%/g')"
-        if c95_repo_gone "$py" "$repo"; then gone=$((gone + 1)); continue; fi
+        left=$(( ${HIMMEL_DOCTOR_HOLDS_T:-33} - (SECONDS - started) ))
+        if { [ -z "$_TIMEOUT_BIN" ] || [ "$left" -ge 1 ]; } && c95_repo_gone "$py" "$repo" "$left"; then gone=$((gone + 1)); continue; fi
         left=$(( ${HIMMEL_DOCTOR_HOLDS_T:-33} - (SECONDS - started) ))
         if [ -n "$_TIMEOUT_BIN" ] && [ "$left" -lt 1 ]; then
             warned=1

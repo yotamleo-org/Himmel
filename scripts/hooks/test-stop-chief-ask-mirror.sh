@@ -163,5 +163,11 @@ check "R6 no EXPECTED_SCRIPT_ORDER row" "$(grep -c 'stop-chief-ask-mirror' "$HOO
 echo "R7: the Stop entry is wired in .claude/settings.json"
 check "R7 a Stop group runs the hook" "$(jq -r '[.hooks.Stop[].hooks[].command | select(contains("stop-chief-ask-mirror.sh"))] | length' "$REPO/.claude/settings.json")" "1"
 
+echo "R8: ask-mirror.sh's default budget plus 40 s fits the queue's job bound"
+budget="$(sed -n 's/.*ASK_MIRROR_BUDGET_SEC:-\([0-9][0-9]*\)}.*/\1/p' "$REPO/scripts/handover/chief-kit/ask-mirror.sh" | head -1)"
+bound="$(node --input-type=module -e "import { DEFAULT_JOB_TIMEOUT_MS } from '$QUEUE'; process.stdout.write(String(DEFAULT_JOB_TIMEOUT_MS / 1000));" 2>/dev/null)"
+check "R8 both numbers read" "$([ -n "$budget" ] && [ -n "$bound" ] && echo yes || echo "no (budget='$budget' bound='$bound')")" "yes"
+check "R8 default budget + 40 is at most the job bound" "$([ -n "$budget" ] && [ -n "$bound" ] && [ $((budget + 40)) -le "$bound" ] && echo yes || echo "no ($budget + 40 vs $bound)")" "yes"
+
 printf '\nstop-chief-ask-mirror: %s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
