@@ -100,7 +100,6 @@ printf '%s\n' "$*" >> "$d/qdbus-record"
 [ -e "$d/qdbus-fail" ] && { echo "Error: org.freedesktop.DBus.Error.ServiceUnknown" ; exit 2; }
 svc="$1"; obj="$2"; method="$3"; shift 3
 [ -e "$d/runcommand-fail" ] && [ "$method" = runCommand ] && { echo "Error: org.freedesktop.DBus.Error.NoReply"; exit 2; }
-# runcommand-late: the typed line IS delivered, 0.6 s after the call, but the caller is told NoReply.
 if [ -e "$d/runcommand-late" ] && [ "$method" = runCommand ]; then
   lpid="${svc#org.kde.konsole-}"
   ( sleep 0.6; env -i bash -c '. "$1"; eval "$2"' tabshell "$d/window-env.$lpid" "$1" < /dev/null > /dev/null 2>&1 ) &
