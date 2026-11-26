@@ -46,7 +46,8 @@ The chief carries these rules as its reply style (`docs/handover/chief-adhd-brie
    it. Worker and judge replies post nothing. A post with no Telegram
    delivery receipt becomes an `owe.sh` step row in the chief's bucket, so the tick shows it.
    A numbered answer that comes from Telegram uses the phone's numbers: the chief matches
-   each number to the ask texts the hook posted to the phone, not to its console list, and asks back when a number names two open asks or another ask
+   each number to the ask texts the hook posted to the phone (one file per ask in
+   `<handover root>/.ask-mirror/<chief>.posted/`), not to its console list, and asks back when a number names two open asks or another ask
    than its console list does.
 7. **A mistake names its cause and its follow-up,** the fix or a ticket in the current
    version at High priority. Operator: "we need mistakes to be diagnosed and always
