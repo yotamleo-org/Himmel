@@ -5397,7 +5397,7 @@ reply is queued behind it. `ask-mirror.sh` keeps the chief gate, the parse and t
 dedupe. The hook prints nothing and always exits 0 (fail-open; no `jq` or `node`, junk
 input, no reply or no marker all exit 0), and Stop is not an event `wire-hook-bash.mjs`
 owns, so it has no `EXPECTED_SCRIPT_ORDER` row. The queue entry holds the reply text at
-0600 until the job runs; `stop-queue.mjs` names this hook as that exception. Spec:
+0600 until the job runs, the one queue entry that carries reply text rather than harness metadata. Spec:
 `scripts/hooks/test-stop-chief-ask-mirror.sh`.
 
 ### `chief-precompact-snapshot.sh` — snapshot a chief's Live state at compaction

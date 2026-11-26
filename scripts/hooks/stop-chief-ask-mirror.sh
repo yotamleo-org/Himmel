@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# stop-chief-ask-mirror.sh — Stop hook: queues ask-mirror.sh for a reply holding `Needs you:`.
 set -u
 
 HOOKS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
