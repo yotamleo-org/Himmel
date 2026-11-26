@@ -1021,9 +1021,6 @@ if [ "$ci_rc" -eq 7 ]; then
     exit 14
 fi
 if [ "$ci_rc" -eq 5 ]; then
-    # check-ci exit 5 = branch protection blocks this merge (a required
-    # check never reported, or the required set is unreadable). Not a red CI, and
-    # not something a re-run of this script fixes — fail fast, one alert.
     echo "merge-on-green: GitHub-blocked — check-ci reported a required check missing or the required set unreadable (exit 5) — not merging." >&2
     block_alert "a required check never reported or the required set is unreadable (check-ci exit 5)"
     audit "REFUSED reason=github-blocked phase=check-ci rule=required-check gate=check-ci:5 repo=$nwo pr=#$pr_num sha=$sha"

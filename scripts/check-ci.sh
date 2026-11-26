@@ -2117,9 +2117,6 @@ review_state_gate
 # longer gated here — CodeRabbit is best effort.
 cr_body_gate
 
-# GitHub's own verdict decides, last: our gates can all be green
-# while GitHub's merge state blocks it. Run after every other gate so a reported cause
-# of ours (red check, thread, body finding) still names itself first.
 merge_state_gate
 
 # Re-read the head: the green verdict only holds for the SHA we watched.

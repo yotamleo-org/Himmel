@@ -6,9 +6,7 @@
 # required checks) and compares its required_status_checks contexts with:
 #   - scripts/ci/check-run-timelines/testdata/rules-main.json (the suites' fixture)
 #   - scripts/ci/fixtures/ci-go-gate-required-contexts.txt
-# and checks that no line of scripts/lib/non-gating-contexts.txt is required:
-# the ship loop drops a non-gating context, so a required one would read as
-# never reported.
+# and checks that no line of scripts/lib/non-gating-contexts.txt is required.
 #
 # Usage: check-required-fixture.sh [--repo <owner/name>] [--branch <b>]
 #   --repo defaults to GITHUB_REPOSITORY, --branch to main.

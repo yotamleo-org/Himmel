@@ -21,8 +21,6 @@ fails=0
 ok()  { echo "ok - $1"; }
 bad() { echo "FAIL - $1" >&2; fails=$((fails + 1)); }
 
-# The required contexts on `main`, from the rules/branches fixture that
-# scripts/ci/check-required-fixture.sh compares with live protection.
 REQUIRED_FIXTURE="${REQUIRED_FIXTURE_RULES:-$ROOT/scripts/ci/check-run-timelines/testdata/rules-main.json}"
 REQUIRED_CONTEXTS=$(jq -r '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | .context' "$REQUIRED_FIXTURE") || REQUIRED_CONTEXTS=""
 [ -n "$REQUIRED_CONTEXTS" ] || { echo "FAIL - cannot read the required contexts from $REQUIRED_FIXTURE" >&2; exit 1; }
