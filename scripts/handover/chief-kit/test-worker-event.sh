@@ -931,4 +931,30 @@ LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N9999 fleet pause"
 check "19h HALTED for a worker already closed and gone from the manifest: noop" "$out" "HANDLED noop N9999"
 : > "$W/doc"
 
+D20="$W/d20"; mkdir -p "$D20"
+W20="$D20/HIMMEL-20-N6020-closed-by-hand-2026-10-14.md"
+printf '%s\n' '## Results' '- 10:00 LIVE — x' '- 10:20 READY #77 abc' '- 10:30 WRAPPED — done' > "$W20"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" %s\n' "$W20" > "$W/list20"
+chmod +x "$W/list20"
+printf '# chief\n\n## Results\n' > "$W/doc"
+t0=$SECONDS
+LE_STEP_BOUND=1 LE_LIST="$W/list20" LE_WRAP="$W/slowwrap" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
+check "20a a closed worker whose wrap outlives its bound: rc" "$rc" 0
+contains "20a it is done, not escalated" "$out" "HANDLED closed-already N6020"
+lacks "20a no ESCALATE" "$out" "ESCALATE"
+check "20a returns within 5 s" "$([ $((SECONDS - t0)) -lt 5 ] && echo fast || echo slow)" fast
+check "20a the chief doc names the worker as closed, not escalated" "$(lastb)" "CLOSED-ALREADY N6020 WRAPPED, window closed, relay step outlived 1s, not escalated"
+printf '# chief\n\n## Results\n' > "$W/doc"
+printf '#!/usr/bin/env bash\nprintf "4242\\tHIMMEL-20-N6020-closed-by-hand-2026-10-14\\tm\\t1\\n"\n' > "$W/livesession20"
+chmod +x "$W/livesession20"
+LE_STEP_BOUND=1 LE_LIST="$W/list20" LE_WRAP="$W/slowwrap" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/livesession20" run "WRAPPED N6020"
+check "20b a live session: rc" "$rc" 10
+check "20b a live session escalates relay-timeout" "$out" "ESCALATE relay-timeout N6020 rc=124 limit=1s"
+LE_STEP_BOUND=1 LE_LIST="$W/list20" LE_WRAP="$W/slowwrap" LE_LOCK="$W/lockheld" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
+check "20c a held queue lock escalates relay-timeout" "$out" "ESCALATE relay-timeout N6020 rc=124 limit=1s"
+printf '%s\n' '## Results' '- 10:00 LIVE — x' '- 10:20 READY #77 abc' > "$W20"
+LE_STEP_BOUND=1 LE_LIST="$W/list20" LE_WRAP="$W/slowwrap" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
+check "20d a worker whose doc is not terminal escalates relay-timeout" "$out" "ESCALATE relay-timeout N6020 rc=124 limit=1s"
+: > "$W/doc"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
