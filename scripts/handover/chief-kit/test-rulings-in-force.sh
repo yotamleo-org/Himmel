@@ -442,6 +442,39 @@ same "window: --recent 0 is refused with exit 2" "$(wrender "$wptr" --recent 0 >
 same "window: --recent +7 is refused with exit 2" "$(wrender "$wptr" --recent +7 >/dev/null 2>&1; echo $?)" "2"
 same "window: the ledger is not rewritten" "$(wc -l < "$VD/rulings-in-force.jsonl" | tr -d ' ')" "7"
 
+N="$W/nextid"; ND="$N/specs/decisions"; mkdir -p "$ND" "$W/race"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-1240-a.txt"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-1245-a.txt"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-1245-b.txt"
+k=1
+while [ "$k" -le 12 ]; do
+    ( bash "$SUT" next-id --bucket "$N" > "$W/race/$k" 2>/dev/null ) &
+    k=$((k + 1))
+done
+wait
+same "next-id: 12 racing callers get 12 different ids, the next free ones after the highest file" \
+    "$(cat "$W/race"/* | sort -n | tr '\n' ' ')" "$(seq 1246 1257 | tr '\n' ' ')"
+same "next-id: each id is reserved with a placeholder row" "$(wc -l < "$ND/rulings-in-force.jsonl" | tr -d ' ')" "12"
+same "next-id: the next call continues after the reservations" "$(bash "$SUT" next-id --bucket "$N" 2>/dev/null)" "1258"
+mkdir -p "$W/nextid-empty"
+same "next-id: a bucket with no ruling starts at 1" "$(bash "$SUT" next-id --bucket "$W/nextid-empty" 2>/dev/null)" "1"
+nrec() { bash "$SUT" record --bucket "$N" "$@" 2>&1; echo "rc=$?"; }
+out="$(nrec --id 1245 --status in-force --date 2026-11-23 --line 'ruling a' --path specs/decisions/verbatim-decision-1245-b.txt)"
+same "record: an id whose verbatim file exists under another path is refused" "$(printf '%s\n' "$out" | tail -n 1)" "rc=1"
+same "record: that refusal names both paths" "$(printf '%s\n' "$out" | grep -c 'verbatim-decision-1245-a.txt.*verbatim-decision-1245-b.txt\|verbatim-decision-1245-b.txt.*verbatim-decision-1245-a.txt')" "1"
+out="$(nrec --id 1240 --status in-force --date 2026-11-23 --line 'ruling 1240' --path specs/decisions/verbatim-decision-1240-a.txt)"
+same "record: an id with one file at its own path is accepted" "$(printf '%s\n' "$out" | tail -n 1)" "rc=0"
+out="$(nrec --id 1240 --status "done" --date 2026-11-23 --line 'ruling 1240' --path specs/decisions/verbatim-decision-1240-a.txt)"
+same "record: re-recording the same id and path stays accepted" "$(printf '%s\n' "$out" | tail -n 1)" "rc=0"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-1240-b.txt"
+out="$(nrec --id 1240 --status in-force --path specs/decisions/verbatim-decision-1240-b.txt)"
+same "record: an id another row holds with a different path is refused" "$(printf '%s\n' "$out" | tail -n 1)" "rc=1"
+same "record: that refusal names both paths" "$(printf '%s\n' "$out" | grep -c 'verbatim-decision-1240-a.txt.*verbatim-decision-1240-b.txt\|verbatim-decision-1240-b.txt.*verbatim-decision-1240-a.txt')" "1"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-1246-operator-11-23-ZZ.txt"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-1246-operator-11-23-ZZ-copied.txt"
+out="$(nrec --id 1246 --status in-force --date 2026-11-23 --line 'ruling 1246' --path specs/decisions/verbatim-decision-1246-operator-11-23-ZZ.txt)"
+same "record: a reserved id is recorded with its real path, beside its -copied twin" "$(printf '%s\n' "$out" | tail -n 1)" "rc=0"
+
 printf 'not json\n' >> "$L"
 out="$(render "$blk")"; rc=$?
 same "render: an unreadable ledger row exits 3" "$rc" "3"
