@@ -1090,9 +1090,9 @@ _agy_mask_quoted_redirects() {
 }
 
 _agy_text_writes() {
-    local s seg k rc=1
+    local LC_ALL=C s seg k rc=1
     local -a ws
-    local rre='[0-9]*[<>]+&?[[:space:]]*[^[:space:]<>;&|()`]*'
+    local rre='&?[0-9]*[<>]+[&|]?[[:space:]]*[^[:space:]<>;&|()`]*'
     s=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
     s=${s//\\$'\n'/}
     case "$s" in *[\"\']*) case "$s" in *[\<\>]*) s=$(_agy_mask_quoted_redirects "$s") ;; esac ;; esac
@@ -1113,39 +1113,68 @@ _agy_text_writes() {
 }
 
 agy_cli_writes() {
-    local i=0 seg=-1 first=0 nested=0 shellc=0 w prevw=''
-    local -a sw=()
+    local i=0 s=0 d=0 bt=0 sep first=1 nested=0 shellc=0 w prevw='' opener closer
+    local -a sw=() stw=() stf=()
     if [ "$TOK" != 1 ]; then
         _agy_text_writes "$cmd"
         return
     fi
-    while [ "$i" -le "$ST_N" ]; do
-        if [ "$i" -lt "$ST_N" ] && [ -n "${ST_RO[i]}" ]; then i=$((i + 1)); continue; fi
-        if [ "$i" -eq "$ST_N" ] || [ "${ST_S[i]}" != "$seg" ]; then
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        while [ "$i" -lt "$ST_N" ] && [ "${ST_S[i]}" = "$s" ]; do
+            if [ -n "${ST_RO[i]}" ] || { [ "$first" = 1 ] && [ "${ST_A[i]}" = 1 ]; }; then i=$((i + 1)); continue; fi
+            w=${ST_LW[i]}
+            if [ "$first" = 1 ]; then
+                first=0
+                case "${w##*/}" in
+                    bash|sh|zsh|dash|ksh) shellc=1 ;;
+                    eval|xargs|ssh|sudo|env|timeout|nohup|nice|watch|time|command|exec|setsid|stdbuf|flock) nested=1 ;;
+                esac
+            elif [ "$shellc" = 1 ]; then
+                case "$w" in
+                    -[!-]*c*) nested=1 ;;
+                    -*) ;;
+                    *) case "$prevw" in -o|+o|-O|+O|--rcfile|--init-file) ;; *) [ "$nested" = 1 ] || shellc=0 ;; esac ;;
+                esac
+            fi
+            prevw=$w
+            if [ "$nested" = 1 ] && _agy_text_writes "$w"; then return 0; fi
+            if [ "${ST_X[i]}" = 1 ] || [ "${ST_G[i]}" = 1 ]; then w=$w$'\001'; fi
+            sw[${#sw[@]}]=$w
+            i=$((i + 1))
+        done
+        sep=${ST_SEP[s]-}
+        opener=0 closer=0
+        case "$sep" in
+            \$\(|\<\(|\>\() opener=1 ;;
+            '`') if [ "$bt" = 1 ]; then closer=1; else opener=1; fi ;;
+            ')') [ "$d" -gt 0 ] && closer=1 ;;
+        esac
+        if [ "$opener" = 1 ]; then
+            [ "$sep" != '`' ] || bt=1
+            sw[${#sw[@]}]=$'$()\001'
+            stw[d]=$(IFS=$'\002'; printf '%s' "${sw[*]}")
+            stf[d]="$nested"$'\002'"$shellc"$'\002'"$prevw"
+            d=$((d + 1))
+            sw=() first=1 nested=0 shellc=0 prevw=''
+        else
             if [ "${#sw[@]}" -gt 0 ] && _agy_seg_writes "${sw[@]}"; then return 0; fi
-            [ "$i" -lt "$ST_N" ] || break
-            sw=() seg=${ST_S[i]} first=1 nested=0 shellc=0
+            sw=() first=1 nested=0 shellc=0 prevw=''
+            if [ "$closer" = 1 ]; then
+                d=$((d - 1))
+                [ "$sep" != '`' ] || bt=0
+                IFS=$'\002' read -r -a sw <<< "${stw[d]}"
+                IFS=$'\002' read -r nested shellc prevw <<< "${stf[d]}"
+                first=0
+            fi
         fi
-        if [ "$first" = 1 ] && [ "${ST_A[i]}" = 1 ]; then i=$((i + 1)); continue; fi
-        w=${ST_LW[i]}
-        if [ "$first" = 1 ]; then
-            first=0
-            case "${w##*/}" in
-                bash|sh|zsh|dash|ksh) shellc=1 ;;
-                eval|xargs|ssh|sudo|env|timeout|nohup|nice|watch|time|command|exec|setsid|stdbuf|flock) nested=1 ;;
-            esac
-        elif [ "$shellc" = 1 ]; then
-            case "$w" in
-                -[!-]*c*) nested=1 ;;
-                -*) ;;
-                *) case "$prevw" in -o|+o|-O|+O|--rcfile|--init-file) ;; *) [ "$nested" = 1 ] || shellc=0 ;; esac ;;
-            esac
-        fi
-        prevw=$w
-        if [ "$nested" = 1 ] && _agy_text_writes "$w"; then return 0; fi
-        if [ "${ST_X[i]}" = 1 ] || [ "${ST_G[i]}" = 1 ]; then w=$w$'\001'; fi
-        sw[${#sw[@]}]=$w
-        i=$((i + 1))
+        s=$((s + 1))
+    done
+    if [ "${#sw[@]}" -gt 0 ] && _agy_seg_writes "${sw[@]}"; then return 0; fi
+    while [ "$d" -gt 0 ]; do
+        d=$((d - 1))
+        sw=()
+        IFS=$'\002' read -r -a sw <<< "${stw[d]}"
+        if [ "${#sw[@]}" -gt 0 ] && _agy_seg_writes "${sw[@]}"; then return 0; fi
     done
     return 1
 }
