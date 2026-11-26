@@ -424,10 +424,10 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     subtree alive) stays retryable. The next sample starts after that worker,
     using an atomically saved label in `<inbox>.wait.r0-next` even after a
     waiter re-arm; a missing or stale label leaves plain candidate order.
-    A standing refusal cannot starve later workers. With auto_go on, a newest-marker READY
+    A standing refusal cannot starve later workers. On the one-shot waiter (not `--stream`) with auto_go on, a newest-marker READY
     (the worker's `tails=` token reads `READY` or `READY!stale`) is offered before any wrap, and a
     retried candidate moves behind the others, keyed on label plus marker; a READY that a wrap
-    of its own worker follows is still offered after the wraps. A refused READY (auto-go's
+    of its own worker follows is still offered after the wraps. There, a refused READY (auto-go's
     `ESCALATE auto-go` or `auto-go-error` answer) wakes with
     `WAKE worker-ready <label> pr=<pr> head=<head40>` as the first line, then the
     `WAKE worker-event` line. In stream mode it is also paced, so a
