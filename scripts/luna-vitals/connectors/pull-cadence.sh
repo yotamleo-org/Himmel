@@ -11,6 +11,7 @@
 # Exit codes:
 #   0  - success; artifact path printed to stdout.
 #   75 - re-consent needed (OAuth token expired/revoked); see stderr.
+#  127 - a needed tool (bun) is missing; one alert names it (cadence-alert.sh).
 #   *  - connector error; original message already on stderr.
 #
 # Environment:
@@ -518,10 +519,27 @@ if [ -n "${PULL_CMD:-}" ]; then
 else
     # cd to repo root so bun auto-loads .env from <repo>/.env (bun reads .env from CWD).
     cd "$REPO_ROOT"
-    bun "$SCRIPT_DIR/google-health.ts" pull --from "$FROM" --to "$TO" --out "$artifact"
+    BUN_BIN=""
+    if [ -n "${HOME:-}" ] && [ -f "$REPO_ROOT/scripts/lib/resolve-bun.sh" ]; then
+        # shellcheck source=../../lib/resolve-bun.sh
+        . "$REPO_ROOT/scripts/lib/resolve-bun.sh"
+        BUN_BIN="$(resolve_bun 2>/dev/null)" || BUN_BIN=""
+    else
+        BUN_BIN="$(command -v bun 2>/dev/null)" || BUN_BIN=""
+    fi
+    if [ -n "$BUN_BIN" ]; then
+        "$BUN_BIN" "$SCRIPT_DIR/google-health.ts" pull --from "$FROM" --to "$TO" --out "$artifact"
+    else
+        MISSING_CMD=bun
+        echo "[pull-cadence] bun: command not found (not at ~/.bun/bin/bun, not on PATH=$PATH)" >&2
+        (exit 127)
+    fi
 fi
 pull_rc=$?
 set -e
+
+ALERT_LIB="$REPO_ROOT/scripts/luna/cadence-alert.sh"
+ALERT_LOG="${PULLCADENCE_BAT_DIR:-${HOME:-/tmp}/.claude/pull-cadence}/pull-cadence.log"
 
 FLOW_RUN_OUTCOME=$(bash "$FLOW_RUN_LEDGER" --classify "$pull_rc" "" 2>/dev/null) || FLOW_RUN_OUTCOME=complete
 [ -n "$FLOW_RUN_OUTCOME" ] || FLOW_RUN_OUTCOME=complete
@@ -540,10 +558,18 @@ if [ "$pull_rc" -eq "$RECONSENT_EXIT" ]; then
     exit "$RECONSENT_EXIT"
 fi
 
+if [ "$pull_rc" -eq 127 ]; then
+    bash "$ALERT_LIB" fail luna-vitals-pull "rc-127" "$ALERT_LOG" \
+        "${MISSING_CMD:-a command the pull runs}: command not found" \
+        "install it or fix PATH, then run the pull runner by hand" || true
+fi
+
 if [ "$pull_rc" -ne 0 ]; then
     echo "[pull-cadence] error: connector pull exited with code $pull_rc" >&2
     exit "$pull_rc"
 fi
+
+bash "$ALERT_LIB" clear luna-vitals-pull || true
 
 # -- success ------------------------------------------------------------------
 
