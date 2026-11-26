@@ -20,7 +20,7 @@
 # run. Lanes run one at a time: the canary never adds more than one worker.
 #
 # Cheapest model per lane: native pins claude-haiku-5-5; the other lanes take
-# the launcher's own default (gpt-6.1-sol on claudex, the lane's pinned slug).
+# the launcher's own default (gpt-6.2-sol on claudex, the lane's pinned slug).
 # A lane whose backend is not configured here (no key, no launcher) is SKIP,
 # never FAIL. Exit 0 when nothing FAILed, 1 otherwise, 2 usage.
 #

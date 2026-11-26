@@ -36,7 +36,7 @@ fires.
 
 ## Scope and standing permissions
 
-These three notes are hand-written here rather than generated from `CLAUDE.md`:
+These notes are hand-written here rather than generated from `CLAUDE.md`:
 they are addressed to non-Claude harnesses reading this file, and `CLAUDE.md`
 is not the place to describe how another harness should scope its reading.
 
@@ -62,6 +62,12 @@ once they pass, broaden or repeat only when new changes justify it. Do not add
 tests that merely restate the implementation for a reversible, low-impact
 edit; the preference for the minimum code that solves the problem governs
 test code too.
+
+**Codex task completion.** Work toward the requested result and verify it
+before handing back. State reasonable, reversible assumptions and keep
+working within the task's permissions. If an approval, scope decision, or
+external dependency blocks one step, continue independent work. In the final
+report, give the result, the checks you ran, and any unresolved blockers.
 
 ---
 

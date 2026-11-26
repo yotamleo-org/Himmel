@@ -99,20 +99,14 @@ check "T3: CRITICS_JSON row dispatched"                "$(grep -c 'slug=onlyme '
 check "T3: local overlay NOT merged (CRITICS_JSON wins)" "$(grep -c 'slug=other ' "$LOG3")" "0"
 
 # ---------------------------------------------------------------------------
-# T4 — the SHIPPED default registry (scripts/cr/critics.json, no
-# CRITICS_JSON/CRITICS_BASE_JSON/CRITICS_LOCAL_JSON override) actually dispatches
-# the codex row with the model the operator's codex CLI default expects
-# (gpt-6.1-sol). CR_PROFILE=paid selects the codex
-# row's tier; CR_TRIVIALITY_OVERRIDE=full stops the triviality gate from
-# stripping the paid tier for this tiny fixture diff.
+# T4 — test this branch's shipped registry with no local overlay. The
+# production resolver reads the trusted main copy until the change lands.
 # ---------------------------------------------------------------------------
 LOG4="$tmp/t4.log"; : > "$LOG4"
-env -u CRITICS_JSON -u CRITICS_BASE_JSON -u CRITICS_LOCAL_JSON \
+env -u CRITICS_JSON CRITICS_BASE_JSON="$HERE/critics.json" CRITICS_LOCAL_JSON="$tmp/no-local.json" \
     PANEL_TEST_LOG="$LOG4" CR_PROFILE="paid" CR_TRIVIALITY_OVERRIDE=full \
     CRITIC_FIRST_PASS="$STUB" bash "$PANEL" >/dev/null 2>&1 <<< "$DIFF"
-check "T4: default registry dispatched codex"           "$(grep -c 'slug=codex ' "$LOG4")" "1"
-check "T4: default registry pinned codex to gpt-6.1-sol"  "$(grep -c 'model=gpt-6.1-sol' "$LOG4")" "1"
-check "T4: default registry did NOT pin the retired id" "$(grep -c 'model=gpt-6-astra' "$LOG4")" "0"
+check "T4: shipped registry dispatches GPT-6.2 Sol" "$(cat "$LOG4")" "slug=codex model=gpt-6.2-sol"
 
 # ---------------------------------------------------------------------------
 # T5 — an unset CRITICS_LOCAL_JSON checks the himmelctl cache

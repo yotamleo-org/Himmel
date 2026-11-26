@@ -208,15 +208,15 @@ audit_locked() {
     [ "$tp_rc" -eq 0 ] || die 7 "trust_path_check refused (rc $tp_rc): ${tp:-no reason}"
     binaries=$(sed -n 's/^Binary files \(.*\) differ$/\1/p' "$work/diff")
 
-    provider=$(jq -r '[.panel[]? | select(type == "object" and .model == "gpt-6.1-sol" and .drop != true and (.provider | type) == "string")]
+    provider=$(jq -r '[.panel[]? | select(type == "object" and .model == "gpt-6.2-sol" and .drop != true and (.provider | type) == "string")]
         | first | .provider // empty' "$anchor/scripts/cr/critics.json" 2>/dev/null)
-    [ -n "$provider" ] || die 7 "the anchor's scripts/cr/critics.json has no row whose model is gpt-6.1-sol"
+    [ -n "$provider" ] || die 7 "the anchor's scripts/cr/critics.json has no row whose model is gpt-6.2-sol"
     n0=0
     [ ! -e "$ledger" ] || n0=$(wc -l < "$ledger" | tr -d ' ')
     crit_rc=0
     env -u CRITICS_BASE_JSON -u CR_LEDGER CR_TARGET_PR="$PR" CR_TARGET_HEAD="$H" CR_TARGET_BRANCH="$branch" \
         CRITIC_KNOWN_FINDINGS=0 CRITIC_PERSPECTIVES=1 CRITIC_FIRST_PASS_CAP_BYTES=$((CAP * 2)) \
-        "$_TIMEOUT_BIN" -k 10 1200 bash "$anchor/scripts/cr/critic-first-pass.sh" --model gpt-6.1-sol --provider "$provider" \
+        "$_TIMEOUT_BIN" -k 10 1200 bash "$anchor/scripts/cr/critic-first-pass.sh" --model gpt-6.2-sol --provider "$provider" \
         --slug outside-security --perspective-file "$persp" < "$work/diff" > "$work/critic.out" || crit_rc=$?
     case "$crit_rc" in 0|4) ;; *) die 7 "the critic gave no verdict (critic-first-pass.sh exit $crit_rc); stage 2 stays unpassed and may be re-run" ;; esac
 
@@ -243,7 +243,7 @@ audit_locked() {
         printf '# Outside security audit: PR #%s at %s\n\n' "$PR" "$H"
         printf -- '- verdict: %s\n- branch: %s, base %s, merge base %s\n' "$verdict" "$branch" "$base" "$M"
         printf -- '- hard: [%s]; critical %s, important %s, dropped %s; critic exit %s\n' "$hard" "$crit_n" "$imp_n" "$drop_n" "$crit_rc"
-        printf -- '- auditor codex, model gpt-6.1-sol via %s; perspective sha256 %s; diff %s bytes\n\n' "$provider" "$psha" "$size"
+        printf -- '- auditor codex, model gpt-6.2-sol via %s; perspective sha256 %s; diff %s bytes\n\n' "$provider" "$psha" "$size"
         printf '## Hard hits\n\n'
         if [ -s "$work/hits" ]; then cat "$work/hits"; else echo "none"; fi
         printf '\n## Flags (never a verdict)\n\n- trust path: %s\n' "$tp"
@@ -254,7 +254,7 @@ audit_locked() {
     rsha=$(_oc_sha256 "$report")
     env -u CR_LEDGER bash "$anchor/scripts/cr/ledger-append.sh" security-audit --pr "$PR" --branch "$branch" --head "$H" \
         --base-sha "$M" --verdict "$verdict" --hard "$hard" --critical-n "$crit_n" --important-n "$imp_n" --dropped-n "$drop_n" \
-        --critic-exit "$crit_rc" --model gpt-6.1-sol --perspective-sha256 "$psha" --report "$report" --report-sha256 "$rsha" >/dev/null \
+        --critic-exit "$crit_rc" --model gpt-6.2-sol --perspective-sha256 "$psha" --report "$report" --report-sha256 "$rsha" >/dev/null \
         || die 7 "ledger-append.sh security-audit refused the row (the report $report stays)"
     printf 'outside-audit: %s %s\n' "$verdict" "$report"
     exit 0

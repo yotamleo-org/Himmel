@@ -7,7 +7,8 @@
 // Usage: node openai-api.mjs -p [prompt] --model M --max-budget-usd N [--output-format text|json]
 //                            [--effort none|low|medium|high|xhigh] [--append-system-prompt-file F]  (no other flags)
 //        With no prompt after -p the prompt is read from stdin (a TTY and a prompt over 8 MiB are refused).
-//        The system-prompt file's content is sent as `instructions`.
+//        GPT-6.2 receives the system-prompt file as a developer message before the task.
+//        Earlier models receive it as `instructions`.
 // Env:   HIMMEL_API_LANE=on  HIMMEL_OPENAI_ACCOUNT=<A|B|C|D>   (auto is not supported)
 //        [HIMMEL_OPENAI_CREDIT_CONFIG=<roster>] default ~/.himmel/state/api-credit-openai/config.json
 //        [HIMMEL_OPENAI_BASE_URL=<url>] test seam, default https://api.openai.com/v1
@@ -170,8 +171,16 @@ async function main() {
   }
 
   const body = { model: o.model, input: prompt, max_output_tokens: Number(maxOut), store: false };
-  if (instructions) body.instructions = instructions;
-  if (o.effort) body.reasoning = { effort: o.effort };
+  const gpt62 = o.model.startsWith('gpt-6.2-');
+  if (instructions && gpt62) {
+    body.input = [
+      { role: 'developer', content: instructions },
+      { role: 'user', content: prompt },
+    ];
+  } else if (instructions) {
+    body.instructions = instructions;
+  }
+  if (o.effort) body.reasoning = { effort: gpt62 && o.effort === 'none' ? 'low' : o.effort };
 
   const ctl = new AbortController();
   let timedOut = false;
