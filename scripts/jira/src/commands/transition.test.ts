@@ -121,10 +121,18 @@ describe('confirmed Done recovery', () => {
       .rejects.toThrow(/not changed.*timed out after 30000 ms/s);
   });
 
-  it('a definite server answer is never swallowed, with or without recovery', async () => {
+  it('a definite server answer is the original error, with or without recovery, and nothing is read after it', async () => {
     for (const recover of [true, false]) {
-      await expect(transitionIssue('HIMMEL-1', 'Done', { version: false, recover }, failing('HTTP 400: validator says no')))
-        .rejects.toThrow('HTTP 400: validator says no');
+      const original = new Error('HTTP 400: validator says no');
+      const calls: string[] = [];
+      const req = vi.fn(async (method: string, path: string) => {
+        calls.push(`${method} ${path}`);
+        if (path.endsWith('/transitions') && method === 'GET') return { transitions: LIVE };
+        if (method === 'POST') throw original;
+        return { fields: { status: { name: 'To Do' }, labels: [] } };
+      }) as typeof request;
+      await expect(transitionIssue('HIMMEL-1', 'Done', { version: false, recover }, req)).rejects.toBe(original);
+      expect(calls.slice(calls.findIndex((c) => c.startsWith('POST')) + 1)).toEqual([]);
     }
   });
 

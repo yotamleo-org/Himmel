@@ -482,6 +482,14 @@ Argon and 3.8 Flash stay unranked. The mapping says which Claude tier's work a
 Gemini model fits. It does not make Gemini an implementation lane: ruling 34
 keeps implementation on Claude tiers until the operator rules otherwise.
 
+**Quota.** Every Gemini 4 model, Orchestrators and 3.8 Flash included, draws one
+shared weekly bucket and one 5-hour bucket, so Neon and Argon do not have separate
+pools. `bash scripts/lib/gemini-quota-probe.sh` reads them from `agy -p "/usage"
+--output-format json` (no turn, no quota spent) and exits 0 to admit, 1 when a
+bucket is empty, 2 when it cannot tell; a caller treats 2 as 1. With `--record "<line>"`
+it parses the "Individual quota reached ... Resets in" output line and marks the group
+empty until the reset.
+
 | Model | Claude tier | Benchmark verdict (vs the same-tier Claude 5.5 model) | `thought_level` (default) |
 |---|---|---|---|
 | [`gemini-4-carbon`](https://aistudio.google.com/docs/whats-new-gemini-4-carbon) | Opus | Holds. Level with or ahead of Opus 5.5 on 4 of 6. Behind on FrontierCode and Arena WebDev | low, **medium**, high |

@@ -7,6 +7,7 @@
 #   owe.sh add   --bucket <dir> --chief <name> --kind ticket|proof|ruling|step --text <one line> [--key <KEY>]
 #   owe.sh close --bucket <dir> --id <oN> --key <ticket key | sha | decision id>
 #                [--proof-result PASS|FAIL --proof-artifact <path|doc:line> [--ticket <KEY>]]
+#   owe.sh close-confirm --bucket <dir> --id <oN>   (exit 0 once the closed row is synced under the lock; 1 if it is not closed)
 #   owe.sh list  --bucket <dir> [--all] [--json]
 # add also accepts --identity <full sha256> and --metadata <allowlisted JSON>,
 # or --metadata-stdin (one JSON value, at most 1 MiB, mutually exclusive).
@@ -37,6 +38,7 @@ set -u
 usage() {
     echo "usage: owe.sh add --bucket <dir> --chief <name> --kind ticket|proof|ruling|step --text <text> [--key <KEY>] [--identity <sha256>] [--metadata <JSON> | --metadata-stdin]" >&2
     echo "       owe.sh close --bucket <dir> --id <oN> --key <key|sha|decision id> [--proof-result PASS|FAIL --proof-artifact <path|doc:line> [--ticket <KEY>]]" >&2
+    echo "       owe.sh close-confirm --bucket <dir> --id <oN>" >&2
     echo "       owe.sh list --bucket <dir> [--all] [--json]" >&2
     exit 2
 }
@@ -145,7 +147,7 @@ case "$CMD" in
                 elif $e.key == "validation" then $e.value == "pending"
                 elif $e.key == "recommendation" then (["CLOSE","KEEP","unknown"] | index($e.value)) != null
                 elif $e.key == "binding" then (["matched","unknown","mismatch"] | index($e.value)) != null
-                elif (["evidence_hash","requirements_digest","original_requirements_digest"] | index($e.key)) then ($e.value | type == "string" and test("^[0-9a-f]{64}$"))
+                elif (["evidence_hash","requirements_digest","original_requirements_digest","decision_hash"] | index($e.key)) then ($e.value | type == "string" and test("^[0-9a-f]{64}$"))
                 else false end))' >/dev/null 2>&1 || { echo "owe: refused metadata field or value" >&2; exit 2; }
         lock_ledger
         ledger_ok || { echo "owe: $F is unreadable" >&2; exit 4; }
@@ -208,13 +210,13 @@ case "$CMD" in
         printf 'o%s\n' "$n"
         ;;
     close)
-        printf '%s' "$METADATA" | jq -e '
-            type == "object" and (keys - ["outcome"] | length) == 0 and
+        printf '%s' "$METADATA" | jq -e -s '
+            length == 1 and (.[0] | type == "object" and (keys - ["outcome"] | length) == 0 and
             (if has("outcome") then .outcome | type == "object" and
               (keys | sort) == ["decision_hash","decision_json","identity","rationale","status","verdict","version_pending"] and
               (.identity | test("^[0-9a-f]{64}$")) and (.decision_hash | test("^[0-9a-f]{64}$")) and
               (.verdict == "CLOSE" or .verdict == "KEEP") and (.status | type == "string") and
-              (.rationale | type == "string") and (.decision_json | type == "string") and (.version_pending | type == "boolean") else true end)
+              (.rationale | type == "string") and (.decision_json | type == "string") and (.version_pending | type == "boolean") else true end))
         ' >/dev/null 2>&1 || { echo 'owe: refused close metadata' >&2; exit 2; }
         [ -n "$ID" ] || usage
         case "$KEY" in ''|*[[:space:]]*|*$'\037'*) echo "owe: close needs --key (a ticket key, sha or decision id), one word" >&2; exit 2 ;; esac
@@ -248,6 +250,15 @@ case "$CMD" in
         row="$(printf '%s' "$METADATA" | jq -c --arg ref "$ID" --argjson e "$NOW" --arg chief "${CHIEF:-}" --arg key "$KEY" \
             '{op: "close", ref: $ref, ts: ($e | todate), epoch: $e, chief: $chief, key: $key} + .')" || exit 4
         printf '%s\n' "$row" >> "$F" || exit 4
+        persist
+        ;;
+    close-confirm)
+        [ -n "$ID" ] || usage
+        [ -f "$F" ] || { echo "owe: no closed row '$ID'" >&2; exit 1; }
+        lock_ledger
+        ledger_ok || { echo "owe: $F is unreadable" >&2; exit 4; }
+        closed="$(jq -s --arg id "$ID" '[.[] | select(.op == "close" and .ref == $id)] | length' "$F")" || exit 4
+        [ "$closed" -ge 1 ] || { echo "owe: no closed row '$ID'" >&2; exit 1; }
         persist
         ;;
     list)

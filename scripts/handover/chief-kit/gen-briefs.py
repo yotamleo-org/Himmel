@@ -316,6 +316,10 @@ def search_fields(worker):
     return q, (s or None)
 
 
+ALONE = ('Send each search as its own tool call, with no other call in the same response: '
+         'a call sent beside one that a hook rewrites is refused unrun. ')
+
+
 def search_directive(worker, ctx):
     if ctx.get('salus') or (worker.get('wt') and salus_marked(worker['wt'])):
         # A query leaves the machine (embedding and rerank send the text to a provider), which scripts/guardrails/egress-matrix.json denies for a salus path.
@@ -331,12 +335,12 @@ def search_directive(worker, ctx):
     notes += ')'
     if ctx['adapter'] or s is None:
         why = 'an adopter repo has no himmel graph' if ctx['adapter'] else 'it names no code path to look up'
-        return ('Before you design, run %s, and cite what each returned, or write none found with the query you ran. '
+        return ('Before you design, run %s, and cite what each returned, or write none found with the query you ran. %s'
                 'This leg has no graph lookup (%s). Your Results carry a `graph-qmd: <what the notes search returned and whether used>` bullet saying so.'
-                % (notes, why))
-    return ('Before you design, run %s, and `bash scripts/graphify/worker-graph.sh explain "%s"`, and cite what each returned, or write none found with the query you ran. '
+                % (notes, ALONE, why))
+    return ('Before you design, run %s, and `bash scripts/graphify/worker-graph.sh explain "%s"`, and cite what each returned, or write none found with the query you ran. %s'
             'Your Results carry a `graph-qmd: <what each returned and whether used>` bullet, '
-            'or `graph-qmd: n/a, shipping` on a resume that only ships.' % (notes, s))
+            'or `graph-qmd: n/a, shipping` on a resume that only ships.' % (notes, s, ALONE))
 
 
 TRUST_LINE = "If your diff touches a pattern in `scripts/ci/ci-trust-paths.txt`, say so in READY (trust-reviewed GO)."
