@@ -38,6 +38,10 @@
 # Bypass: CR_MERGE_GATE_OK=1 and/or CI_MERGE_GATE_OK=1 in the LAUNCHING shell
 # (each gates its own check independently). CR_PROFILE=none skips the CR gate.
 # The chief-GO and trust-path gates have no bypass (see gates 3 and 4 above).
+# Another repo's merge is refused unless the station lists it as one of our own
+# forks (HIMMEL_MERGE_OWN_FORKS under .policy in ~/.himmel/config.json,
+# owner/name comma-separated, empty by default): a listed fork's PR then runs
+# every gate above on its own head, and one that requests changes is refused.
 set -uo pipefail
 # NOT set -e: fail-open hook, must never abort on a sub-call's rc 1.
 
@@ -334,9 +338,9 @@ _go_view() {
     go_meta=""
     [ -n "$go_tmp" ] || return 1
     if [ -n "${2:-}" ]; then
-        _gate4_bounded "$(_budget_left 10)" "$go_tmp" gh pr view "$1" --repo "$2" --json number,headRefOid,url || return 1
+        _gate4_bounded "$(_budget_left 10)" "$go_tmp" gh pr view "$1" --repo "$2" --json number,headRefOid,url,reviewDecision || return 1
     else
-        _gate4_bounded "$(_budget_left 10)" "$go_tmp" gh pr view "$1" --json number,headRefOid,url || return 1
+        _gate4_bounded "$(_budget_left 10)" "$go_tmp" gh pr view "$1" --json number,headRefOid,url,reviewDecision || return 1
     fi
     go_meta=$(cat "$go_tmp" 2>/dev/null) || go_meta=""
 }
@@ -360,7 +364,26 @@ _nwo_key() {
     esac
     printf '%s' "$n"
 }
+_own_fork_listed() {
+    local want=$1 lib="$SCRIPT_DIR/../lib/load-dotenv.sh" pdir out entry
+    case "$want" in */*/*|*[!a-z0-9._/-]*|/*|*/|*/.|*/..) return 1 ;; */*) ;; *) return 1 ;; esac
+    # shellcheck source=/dev/null
+    { [ -r "$lib" ] && . "$lib"; } 2>/dev/null || return 1
+    declare -F _himmel_policy_dir >/dev/null 2>&1 && declare -F _himmel_policy_json >/dev/null 2>&1 || return 1
+    pdir=$(_himmel_policy_dir) || return 1
+    [ -f "$pdir/config.json" ] || return 1
+    out=$(_himmel_policy_json "$pdir/config.json" HIMMEL_MERGE_OWN_FORKS) || return 1
+    out=${out#HIMMEL_MERGE_OWN_FORKS=}
+    while IFS= read -r entry; do
+        entry=$(printf '%s' "$entry" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+        [ -n "$entry" ] && [ "$entry" = "$want" ] && return 0
+    done <<EOF
+$(printf '%s' "$out" | tr ',' '\n')
+EOF
+    return 1
+}
 proj_nwo=$(gh repo view --json url --jq .url 2>/dev/null) || proj_nwo=""
+own_fork=0
 eff_nwo=$repo
 if [ -z "$eff_nwo" ] && [ -n "$cwd" ]; then
     eff_nwo=$(cd "$cwd" 2>/dev/null && gh repo view --json url --jq .url 2>/dev/null) || eff_nwo=""
@@ -371,6 +394,9 @@ if [ -n "$eff_nwo" ]; then
     if [ "$(_nwo_key "$eff_nwo")" != "$(_nwo_key "$proj_nwo")" ]; then
         if [ "${CR_MERGE_GATE_OK:-}" = "1" ]; then
             [ -n "$repo" ] || repo=$eff_nwo
+        elif _own_fork_listed "$(_nwo_key "$eff_nwo")"; then
+            own_fork=1
+            [ -n "$repo" ] || repo=$eff_nwo
         else
             _deny "this merge targets $eff_nwo, not the project repo ($proj_nwo) — PR #$sel would be read from the wrong repo — refusing (GATE INTEGRITY). Run scripts/handover/merge-on-green.sh from that repo's own checkout, or set CR_MERGE_GATE_OK=1 in the LAUNCHING shell to merge it deliberately. (For help run: gh help pr merge)"
         fi
@@ -380,7 +406,7 @@ _gh_timed_out && _deny "a gh call binding PR #$sel to its repo timed out (10s bo
 _go_view "$sel" "$repo" || go_meta=""
 go_num=$(printf '%s' "$go_meta" | jq -r '.number // empty' 2>/dev/null || true)
 go_sha=$(printf '%s' "$go_meta" | jq -r '.headRefOid // empty' 2>/dev/null || true)
-if { [ -z "$go_num" ] || [ -z "$go_sha" ]; } && [ -n "$cwd_branch" ] && { [ "$cwd_branch" != "$sel" ] || [ -n "$repo" ]; }; then
+if { [ -z "$go_num" ] || [ -z "$go_sha" ]; } && [ "$own_fork" != "1" ] && [ -n "$cwd_branch" ] && { [ "$cwd_branch" != "$sel" ] || [ -n "$repo" ]; }; then
     _go_view "$cwd_branch" "" || go_meta=""
     go_num=$(printf '%s' "$go_meta" | jq -r '.number // empty' 2>/dev/null || true)
     go_sha=$(printf '%s' "$go_meta" | jq -r '.headRefOid // empty' 2>/dev/null || true)
@@ -388,6 +414,12 @@ fi
 if [ -z "$go_num" ] || [ -z "$go_sha" ]; then
     echo "block-unresolved-cr-merge: cannot resolve the PR for '$sel' (gh pr view failed or timed out) — refusing (GATE INTEGRITY: the CR, CI, worker-GO and trust-path gates need the PR number and head). Retry the merge, or use scripts/handover/merge-on-green.sh. (For help run: gh help pr merge)" >&2
     exit 2
+fi
+if [ "$own_fork" = "1" ]; then
+    go_review=$(printf '%s' "$go_meta" | jq -r '.reviewDecision // empty') \
+        || _deny "cannot read the review decision of PR #$go_num on $repo — refusing (GATE INTEGRITY). Use scripts/handover/merge-on-green.sh. (For help run: gh help pr merge)"
+    [ "$go_review" != "CHANGES_REQUESTED" ] \
+        || _deny "PR #$go_num on $repo has a review that requests changes — refusing (an own-fork merge needs none outstanding). Resolve it, or use scripts/handover/merge-on-green.sh. (For help run: gh help pr merge)"
 fi
 
 # a gate library that will not load DENIES on a real merge (it
@@ -403,7 +435,7 @@ fi
 reason=""
 rc=0
 reason=$(cr_merge_gate "$sel" "$repo") || rc=$?
-if [ "$rc" = "3" ] && [ -n "$cwd_branch" ]; then
+if [ "$rc" = "3" ] && [ "$own_fork" != "1" ] && [ -n "$cwd_branch" ]; then
     # The extracted token did not resolve to a PR (a value-taking flag's
     # argument or leftover quoting mistaken for the selector — codex-1).
     # Re-anchor to the cwd branch IN THE CWD REPO (drop the extracted repo:
@@ -436,7 +468,7 @@ fi
 ci_reason=""
 ci_rc=0
 ci_reason=$(ci_green_gate "$sel" "$repo") || ci_rc=$?
-if [ "$ci_rc" = "3" ] && [ -n "$cwd_branch" ]; then
+if [ "$ci_rc" = "3" ] && [ "$own_fork" != "1" ] && [ -n "$cwd_branch" ]; then
     # Mirror the CR gate's re-anchor: the extracted token did not resolve to a
     # PR, so retry once on the cwd branch (in the cwd repo) so ordinary CLI
     # syntax cannot dodge the gate; if this also fails, ci_green_gate fails open.
