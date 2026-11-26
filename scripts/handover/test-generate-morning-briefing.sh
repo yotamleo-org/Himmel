@@ -869,18 +869,21 @@ if [ "$rc" -eq 0 ]; then pass "invalid tracker: run exits 0"; else fail "invalid
 file=$(cat "$OUT_ADI" 2>/dev/null || true)
 assert_contains "invalid tracker: setting named" "tracker setting is invalid" "$file"
 
+adopted_control_run() {
+    local out="$1" rc=0; shift
+    ( cd "$ADOPTED"; env "$@" GH_CMD="$FAKE_GH" bash scripts/handover/generate-morning-briefing.sh --out "$out" >/dev/null 2>&1 ) || rc=$?
+    if [ "$rc" -eq 0 ]; then pass "control run exits 0: ${out##*/}"; else fail "control run exits 0: ${out##*/}" "rc=$rc"; fi
+}
 echo "TEST: control — a station conf naming JIRA_PROJECT_KEY puts the adopted runs back on jira"
 LEAK_CONF="$TMP_ROOT/leakconf"; mkdir -p "$LEAK_CONF"
 printf 'JIRA_PROJECT_KEY=LEAK\n' > "$LEAK_CONF/himmel.conf"
 OUT_LK="$TMP_ROOT/adopted-leak.md"
-( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER HIMMEL_CONFIG_DIR="$LEAK_CONF" GH_CMD="$FAKE_GH" \
-    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_LK" >/dev/null 2>&1 ) || true
+adopted_control_run "$OUT_LK" -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER HIMMEL_CONFIG_DIR="$LEAK_CONF"
 file=$(cat "$OUT_LK" 2>/dev/null || true)
 assert_absent "control: leaked key — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
 assert_contains "control: leaked key — 'jira unavailable' is back (adopted: no 'jira unavailable')" "jira unavailable" "$file"
 OUT_LKI="$TMP_ROOT/adopted-leak-invalid.md"
-( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD HIMMEL_CONFIG_DIR="$LEAK_CONF" TRACKER=jira GH_CMD="$FAKE_GH" \
-    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_LKI" >/dev/null 2>&1 ) || true
+adopted_control_run "$OUT_LKI" -u JIRA_PROJECT_KEY -u JIRA_CMD HIMMEL_CONFIG_DIR="$LEAK_CONF" TRACKER=jira
 file=$(cat "$OUT_LKI" 2>/dev/null || true)
 assert_contains "control: leaked key — the invalid-tracker run still wrote its report, on jira" "jira unavailable" "$file"
 assert_absent "control: leaked key — the tracker setting is no longer invalid (invalid tracker: setting named)" "tracker setting is invalid" "$file"
@@ -889,28 +892,24 @@ echo "TEST: control — a cache .env naming JIRA_PROJECT_KEY, or a global git co
 LEAK_CACHE="$TMP_ROOT/leakcache"; mkdir -p "$LEAK_CACHE"
 printf 'JIRA_PROJECT_KEY=LEAK\n' > "$LEAK_CACHE/.env"
 OUT_LC="$TMP_ROOT/adopted-leak-cache.md"
-( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER HIMMELCTL_CACHE_DIR="$LEAK_CACHE" GH_CMD="$FAKE_GH" \
-    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_LC" >/dev/null 2>&1 ) || true
+adopted_control_run "$OUT_LC" -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER HIMMELCTL_CACHE_DIR="$LEAK_CACHE"
 file=$(cat "$OUT_LC" 2>/dev/null || true)
 assert_contains "control: leaked cache .env — the adopted run is back on jira (adopted: no 'jira unavailable')" "jira unavailable" "$file"
 assert_absent "control: leaked cache .env — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
 OUT_LCI="$TMP_ROOT/adopted-leak-cache-invalid.md"
-( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD HIMMELCTL_CACHE_DIR="$LEAK_CACHE" TRACKER=jira GH_CMD="$FAKE_GH" \
-    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_LCI" >/dev/null 2>&1 ) || true
+adopted_control_run "$OUT_LCI" -u JIRA_PROJECT_KEY -u JIRA_CMD HIMMELCTL_CACHE_DIR="$LEAK_CACHE" TRACKER=jira
 file=$(cat "$OUT_LCI" 2>/dev/null || true)
 assert_contains "control: leaked cache .env — the invalid-tracker run is on jira" "jira unavailable" "$file"
 assert_absent "control: leaked cache .env — the tracker setting is no longer invalid (invalid tracker: setting named)" "tracker setting is invalid" "$file"
 LEAK_GITCFG="$TMP_ROOT/leakgitconfig"
 printf '[himmel]\n\ttracker = jira\n' > "$LEAK_GITCFG"
 OUT_LG="$TMP_ROOT/adopted-leak-gitcfg.md"
-( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER GIT_CONFIG_GLOBAL="$LEAK_GITCFG" GH_CMD="$FAKE_GH" \
-    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_LG" >/dev/null 2>&1 ) || true
+adopted_control_run "$OUT_LG" -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER GIT_CONFIG_GLOBAL="$LEAK_GITCFG"
 file=$(cat "$OUT_LG" 2>/dev/null || true)
 assert_contains "control: leaked global git config — the adopted run names an invalid tracker setting" "tracker setting is invalid" "$file"
 assert_absent "control: leaked global git config — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
 OUT_LE="$TMP_ROOT/adopted-leak-envcfg.md"
-( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=himmel.tracker GIT_CONFIG_VALUE_0=jira GH_CMD="$FAKE_GH" \
-    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_LE" >/dev/null 2>&1 ) || true
+adopted_control_run "$OUT_LE" -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=himmel.tracker GIT_CONFIG_VALUE_0=jira
 file=$(cat "$OUT_LE" 2>/dev/null || true)
 assert_contains "control: git config injected through the environment — the adopted run names an invalid tracker setting" "tracker setting is invalid" "$file"
 assert_absent "control: git config injected through the environment — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
