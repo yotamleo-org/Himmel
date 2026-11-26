@@ -1,0 +1,8 @@
+2026-11-25T09:00:00.000Z hold-ask-operator escalate chat:123 300 1 ok
+2026-11-25T10:05:00.000Z weird-new-kind escalate chat:123 80 0 ok
+2026-11-25T10:06:00.000Z cadence:vault-stall monitor monitor 276 0 ok
+2026-11-25T10:07:00.000Z hold-ask-operator escalate chat:123 300 1 ok
+2026-11-25T10:08:00.000Z bypass-ask escalate operator 292 1 ok
+2026-11-25T10:09:00.000Z hold-ask-chief silent none 100 1 ok
+2026-11-25T10:10:00.000Z unclassified escalate chat:123 50 0 ok
+2026-11-25T10:11:00.000Z title-unresolved report-failed none 12 3 ok

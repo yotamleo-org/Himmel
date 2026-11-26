@@ -1,0 +1,3 @@
+load-dotenv: .env absent under worktree '/x' - reading the primary checkout's .env.
+bank-preflight: FLEET native=46 claudex=0 openrouter=0 reserved=2 total=48/50
+bank-preflight: worker=ok five_hour=10 seven_day=40.0 extra_usage=n/a age=12s codex=5hnone/wk14
