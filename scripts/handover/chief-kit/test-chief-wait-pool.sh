@@ -654,6 +654,7 @@ mkwp HIMMEL-7102 "In Progress" '[]' "first orphan"
 mkwp HIMMEL-7103 "In Progress" '[]' "second orphan"
 printf 'v1.0.1\ttrue\t2026-01-01\n' > "$WP1D/mirror/HIMMEL.versions.tsv"
 cat > "$WP1D/dispatch.sh" <<EOF
+#!/usr/bin/env bash
 exec bash "\${NEXT_DISPATCH:-$HERE/next-dispatchable.sh}" "\$@"
 EOF
 cp "$STUB/tick.line" "$WP1D/tick.line.saved"

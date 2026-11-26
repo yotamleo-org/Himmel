@@ -5252,6 +5252,7 @@ nm69() {
 ip69() { mk "HIMMEL-$1" "${3:-In Progress}" Medium "${4:-[]}" "$V69" '[]' "t$1" "Edit ${2:-scripts/lib/f69-$1.sh} only."; }
 td69() { mk "HIMMEL-$1" "To Do" Medium "${3:-[]}" "$V69" '[]' "t$1" "Edit ${2:-scripts/lib/f69-$1.sh} only."; }
 cat > "$WORK/classify69" <<'EOF'
+#!/usr/bin/env bash
 [ -n "${CLASSIFY69_LOG:-}" ] && printf 'call %s\n' "$#" >> "$CLASSIFY69_LOG"
 for k in "$@"; do
     [ -n "${CLASSIFY69_LOG:-}" ] && printf 'key %s\n' "$k" >> "$CLASSIFY69_LOG"
