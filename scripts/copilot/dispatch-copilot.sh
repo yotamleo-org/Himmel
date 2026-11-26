@@ -26,8 +26,8 @@
 #   4. Pins --model auto unless the caller names one (free-bank chores; the
 #      full model catalog likely burns the same 2,000-completion bank faster
 #      and duplicates paid lanes we already have).
-#   5. Egress: himmel-code-only BY CONSTRUCTION. copilot has no declared
-#      egress-matrix provider cell (scripts/guardrails/egress-matrix.json) -
+#   5. Egress: himmel-code-only BY CONSTRUCTION. copilot's only matrix cell
+#      beyond himmel-code is salus inference (egress-matrix.json, copilot-cli) -
 #      the preflight here is a containment+class assertion, not a matrix-eval
 #      call: a dispatch only ever runs inside a himmel worktree (step 1), and
 #      a worktree is always himmel-code corpus. If a future non-code corpus

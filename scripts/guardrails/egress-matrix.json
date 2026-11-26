@@ -55,7 +55,7 @@
     "openai-chatgpt": { "region": "US", "note": "Dots, the operator's external personal assistant on OpenAI ChatGPT, reaching the qmd MCP read service. Receives the full text of every search result and document it reads. Distinct from openai-codex (the codex claudex lane): no codex cell carries over to this provider" },
     "xai-grokbot": { "region": "US", "note": "Grokbot, the operator's external personal assistant on xAI, reaching the qmd MCP read service. Receives the full text of every search result and document it reads" },
     "cursor": { "region": "US", "note": "The Cursor harness (T3 driver `cursor`, Cursor agent sessions). Receives whatever its session reads or writes. Opened for salus inference only by decision 1375 R2; the Cursor lane descriptor still refuses a launch until it is complete" },
-    "grok": { "region": "US", "note": "The xAI Grok harness (T3 driver `grok`, xAI Grok agent sessions). Receives whatever its session reads or writes. Distinct from xai-grokbot, the external assistant that reaches the qmd MCP read service: no xai-grokbot cell carries over. Opened for salus inference only by decision 1375 R2; the Grok lane descriptor still refuses a launch until it is complete" },
+    "grok-harness": { "region": "US", "note": "The xAI Grok harness (T3 driver `grok`, xAI Grok agent sessions). The id is deliberately not `grok`: hermes resolves `--provider grok` to its xai API provider, so a `grok` salus allow would let `invoke.sh --provider grok` reach xAI through the hermes lane. Receives whatever its session reads or writes. Distinct from xai-grokbot, the external assistant that reaches the qmd MCP read service: no xai-grokbot cell carries over. Opened for salus inference only by decision 1375 R2; the Grok lane descriptor still refuses a launch until it is complete" },
     "copilot-cli": { "region": "US", "note": "The GitHub Copilot CLI harness (lane id copilot-cli, dispatched through scripts/copilot/dispatch-copilot.sh). Receives whatever its session reads or writes. Opened for salus inference only by decision 1375 R2; the Copilot lane stays dormant and refused until its descriptor is complete" }
   },
   "purposes": ["extraction", "embedding", "rerank", "query-expansion", "inference", "vision-embedding", "enrichment", "stt", "tts", "ticketing", "catalog-fetch", "peer-message", "luna-mcp-read"],
@@ -128,9 +128,9 @@
       "why": "Operator ruling 2026-11-26 (decision 1375 R2): the Cursor harness may take salus work, inference only. This opens the egress fence only; the Cursor lane descriptor still refuses a launch until it is complete. Every other purpose stays on the hard salus wildcard below"
     },
     {
-      "corpus": "salus", "provider": "grok", "purpose": "inference",
+      "corpus": "salus", "provider": "grok-harness", "purpose": "inference",
       "verdict": "allow",
-      "why": "Operator ruling 2026-11-26 (decision 1375 R2, `x`): the xAI Grok harness (provider grok) may take salus work, inference only. This opens the egress fence only; the Grok lane descriptor still refuses a launch until it is complete. The xai-grokbot assistant is a different provider and stays on the hard salus wildcard below"
+      "why": "Operator ruling 2026-11-26 (decision 1375 R2, `x`): the xAI Grok harness (provider grok-harness) may take salus work, inference only. This opens the egress fence only; the Grok lane descriptor still refuses a launch until it is complete. The xai-grokbot assistant is a different provider and stays on the hard salus wildcard below"
     },
     {
       "corpus": "salus", "provider": "copilot-cli", "purpose": "inference",

@@ -103,7 +103,7 @@ for (const p of providers) {
       assert(effective === "allow" && rule && rule.corpus === "salus" && rule.provider === "google-antigravity" &&
         rule.purpose === "inference" && rule.hard === undefined,
         `salus x ${p} x ${u} must be allow via its OWN google-antigravity row (Decision 1259), got ${effective}`);
-    } else if (["anthropic", "cursor", "grok", "copilot-cli"].includes(p) && u === "inference") {
+    } else if (["anthropic", "cursor", "grok-harness", "copilot-cli"].includes(p) && u === "inference") {
       assert(effective === "allow" && rule && rule.corpus === "salus" && rule.provider === p &&
         rule.purpose === "inference" && rule.hard === undefined,
         `salus x ${p} x ${u} must be allow via its OWN ${p} row (decision 1375 R2), got ${effective}`);
@@ -658,7 +658,7 @@ assert(providers.includes("google-antigravity"), "google-antigravity provider mu
 
 {
   const salusHarnesses = {
-    gemini: "google-antigravity", cursor: "cursor", x: "grok",
+    gemini: "google-antigravity", cursor: "cursor", x: "grok-harness",
     copilot: "copilot-cli", anthropic: "anthropic", openai: "openai-codex",
   };
   const salusSix = Object.values(salusHarnesses);
@@ -678,7 +678,7 @@ assert(providers.includes("google-antigravity"), "google-antigravity provider mu
   const salusAllowProviders = m.rules.filter(r => r.corpus === "salus" && (r.verdict === "allow" || r.verdict === "allow+log")).map(r => r.provider).sort();
   assert(JSON.stringify(salusAllowProviders) === JSON.stringify([...salusSix].sort()),
     `salus allow rows must name exactly the six ruled providers, got ${JSON.stringify(salusAllowProviders)}`);
-  for (const p of providers.filter(x => !salusSix.includes(x) && x !== "local-ollama" && x !== "ollama-cloud").concat(["brand-new-provider", "xai", "github-copilot"])) {
+  for (const p of providers.filter(x => !salusSix.includes(x) && x !== "local-ollama" && x !== "ollama-cloud").concat(["brand-new-provider", "xai", "grok", "github-copilot"])) {
     for (const u of purposes) {
       assert(evaluate("salus", p, u).effective === "deny", `salus x ${p} x ${u} must deny (not one of the six ruled harnesses)`);
     }
@@ -695,11 +695,11 @@ assert(providers.includes("google-antigravity"), "google-antigravity provider mu
       `salus x openrouter x ${u} must stay its OWN HARD deny row`);
   }
   const wildIdx = m.rules.findIndex(r => r.corpus === "salus" && r.provider === "*" && r.purpose === "*");
-  for (const p of ["cursor", "grok", "copilot-cli", "anthropic"]) {
+  for (const p of ["cursor", "grok-harness", "copilot-cli", "anthropic"]) {
     const idx = m.rules.findIndex(r => r.corpus === "salus" && r.provider === p && r.purpose === "inference");
     assert(idx >= 0 && idx < wildIdx, `the salus x ${p} allow row must precede the salus hard wildcard`);
   }
-  for (const p of ["cursor", "grok", "copilot-cli"])
+  for (const p of ["cursor", "grok-harness", "copilot-cli"])
     assert(typeof m.providers[p]?.region === "string" && m.providers[p].region.length > 0, `provider ${p} must declare a region`);
 }
 
