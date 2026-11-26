@@ -24,10 +24,6 @@
 # (confirm-the-cut, allow-live-spend and move-a-ticket-out have no kind of their own: they are chief questions, so
 # a chief-ask or chief-reply row is UNCLASSIFIED and the record sorts it by hand.)
 #
-# Phone approval prompt: the root afk-sudo helper files a grant ask and sends it through its own notice bot; the
-# station keeps only 0-byte markers under /var/lib/himmel/afk-grants, so that source was NOT SEEN, and this
-# script says so on stderr every run. The asks the bridge itself sends (bypass-ask, afk-grant-expired) are route.log lines.
-#
 # An unreadable source prints `UNKNOWN <what>` (route-log, inbound, bucket, chief-doc-date) and exits 3 with no
 # row, never a list that may have lost an item. Exit 2 usage.
 #

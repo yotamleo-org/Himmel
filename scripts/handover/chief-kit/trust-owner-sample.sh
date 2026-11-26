@@ -26,10 +26,6 @@
 # chief docs and cloud-sessions.tsv live there); --config-dir ~/.claude and ~/.claude-codex (the sessions/<pid>.json
 # registries; at least one must be readable). Test seam: CLAUDE_SESSIONS_PROC (the /proc the pid proof reads).
 #
-# The pid proof runs in two cheap steps, since a station keeps a thousand manifests and a few dozen live sessions:
-# first the sessions a live pid proves (pid_proven_by_id: a recycled pid fails), then only the manifest docs that
-# name one of those session ids (doc_session_ids).
-#
 # PLATFORM GUARD: the chief kit is Linux-only (the pid proof reads /proc). Needs jq and python3.
 set -uo pipefail
 
@@ -162,7 +158,6 @@ def utc(s):
 now = utc(os.environ['SO_NOW'])
 mirror, bucket = os.environ['SO_MIRROR'], os.environ['SO_BUCKET']
 
-# mirror: started tickets and the age of its last sync
 started = {}
 newest = 0.0
 for f in glob.glob(os.path.join(mirror, '*.md')):
@@ -192,7 +187,6 @@ if synced is None:
     synced = datetime.datetime.fromtimestamp(newest, datetime.timezone.utc)
 age = max(0, int((now - synced).total_seconds()))
 
-# owners: key -> list of (rank, kind, owner, proof)
 RANK = {'worker': 0, 't3': 1, 'cloud': 2, 'peer': 3, 'chief-go': 4}
 owners = {}
 
