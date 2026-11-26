@@ -12,10 +12,14 @@ sender is known when the newest is a fetched bus body), then the worker's last m
 oldest. Every carried text goes through scrub of scripts/lib/handover_tokens.py and every line the writer did not author
 starts with `> | `, so no carried line reads as a marker bullet or a header field. It launches nothing.
 
-Exit (write): 0 path on stdout; 2 a must-carry item does not fit whole; 3 a missing input, a doc with no
-chief or no Prior art, a cross-session message with no readable sender newer than the newest delivery, or a
-failed git-facts call; 4 the deadline.
-Exit (verify): 0 `hop-brief: ok`; 1 the first failed check and its item id; 3 a missing input; 4 the deadline.
+The transcript is a Claude Code transcript, a Codex rollout or the T3 thread items of a Gemini thread
+(scripts/lib/transcript_adapters.py finds which). A message an agent relayed through T3 is never the operator's.
+
+Exit (write): 0 path on stdout; 2 a must-carry item does not fit whole; 3 a missing input, a transcript with no
+readable item or a cut-off thread item, a doc with no chief or no Prior art, a cross-session or T3-relayed
+message with no readable sender newer than the newest delivery, or a failed git-facts call; 4 the deadline.
+Exit (verify): 0 `hop-brief: ok`; 1 the first failed check and its item id (an empty brief and a transcript with
+no delivery fail); 3 a missing input; 4 the deadline.
 """
 
 import argparse
@@ -29,6 +33,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 import handover_tokens  # noqa: E402
+import transcript_adapters as ta  # noqa: E402
 import transcript_deliveries as td  # noqa: E402
 
 DEFAULT_BUDGET, MIN_BUDGET, MAX_BUDGET = 16000, 1024, 64000
@@ -69,6 +74,13 @@ class Clock:
 
 def carried(text):
     return [CARRY + line for line in text.split("\n")]
+
+
+def rows_of(path, upto=None):
+    try:
+        return ta.read_rows(path, upto)
+    except ta.AdapterError as e:
+        raise Stop(3, "hop-brief: %s" % e)
 
 
 def select(rows, chiefs, budget):
@@ -205,7 +217,7 @@ def cmd_write(a):
     field = prior_art(doc_text.splitlines())
     if field is None:
         raise Stop(3, "hop-brief: the doc has no Prior art field")
-    rows = td.read_rows(a.transcript)
+    rows = rows_of(a.transcript)
     last_row = rows[-1][0] if rows else 0
     try:
         sel = select(rows, chiefs, budget)
@@ -214,10 +226,12 @@ def cmd_write(a):
         task_texts = handover_tokens.scrub([desc for _, desc in tasks])
     except handover_tokens.TokenError as e:
         raise Stop(3, "hop-brief: %s" % e)
+    if not sel["items"]:
+        raise Stop(3, "hop-brief: the transcript %s has no readable item (a foreign format needs an adapter in scripts/lib/transcript_adapters.py)" % a.transcript)
     newest = sel["newest_delivery"]
     late = [it for it in sel["unreadable"] if newest is None or it.row > newest.row]
     if late:
-        raise Stop(3, "hop-brief: cross-session message %s has no readable sender and is newer than the newest delivery" % late[-1].id)
+        raise Stop(3, "hop-brief: cross-session or T3-relayed message %s has no readable sender and is newer than the newest delivery" % late[-1].id)
     clock.check()
     try:
         facts = handover_tokens.scrub(git_facts(a.doc, a.worktree))
@@ -320,11 +334,15 @@ def cmd_verify(a):
     upto, budget = int(src.group(4)), int(src.group(5))
     chiefs = td.chief_names(text)
     try:
-        sel = select(td.read_rows(a.transcript, upto), chiefs, budget)
+        sel = select(rows_of(a.transcript, upto), chiefs, budget)
         tokened = handover_tokens.has_token(text)
     except handover_tokens.TokenError as e:
         raise Stop(3, "hop-brief: %s" % e)
     clock.check()
+    if not sel["items"]:
+        return fail("empty", "-")
+    if not sel["must"]:
+        return fail("no-delivery", "-")
     held = brief_items(lines)
     for iid in sel["must"]:
         if held.get(iid) != sel["texts"][iid]:
@@ -339,7 +357,7 @@ def cmd_verify(a):
     if a.fresh:
         if not a.worktree:
             raise Stop(3, "hop-brief: --fresh needs --worktree")
-        later = [it for it, _, dl in td.classify(td.read_rows(a.transcript), chiefs) if dl and it.row > upto]
+        later = [it for it, _, dl in td.classify(rows_of(a.transcript), chiefs) if dl and it.row > upto]
         if later:
             return fail("fresh: newer delivery", later[-1].id)
         if git(a.worktree, "rev-parse", "HEAD") != src.group(3):
@@ -359,7 +377,7 @@ def fail(check, iid):
 def cmd_read(a):
     if not os.path.isfile(a.transcript):
         raise Stop(3, "hop-brief: cannot read the transcript %s" % a.transcript)
-    items, _ = td.classify_rows(td.read_rows(a.transcript))
+    items, _ = td.classify_rows(rows_of(a.transcript))
     found = [it for it in items if it.id == a.id]
     if not found:
         print("hop-brief: no item %s" % a.id, file=sys.stderr)
