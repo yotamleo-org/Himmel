@@ -350,13 +350,13 @@ export function registerMirror(program: Command, req: Req = request): void {
     .option('--repair', 'Run an incremental repair when the cursor says one is due; never a full backfill (exit 3 when it cannot)')
     .option('--qmd', `Register the ${COLLECTION} qmd collection if missing, then qmd update + embed (failure is reported, not fatal)`)
     .action(async (options: { root?: string; full?: boolean; status?: boolean; json?: boolean; repair?: boolean; qmd?: boolean }) => {
-      const project = projectKey();
-      const root = options.root ?? defaultRoot(project);
       if (options.json && !options.status) {
         console.error('jira mirror: --json goes with --status');
         process.exitCode = 2;
         return;
       }
+      const project = projectKey();
+      const root = options.root ?? defaultRoot(project);
       if (options.status) {
         const age = mirrorAgeMinutes(root);
         if (options.json) {

@@ -743,7 +743,7 @@ hl_lint() {
 }
 hl_n() { grep -c "$1" "$HLLOG" || true; }  # swallow-ok: grep -c exits 1 on a count of 0
 hl_alive() {
-    local s; s="$(ps -o stat= -p "$1" 2>/dev/null)" || return 1
+    local s; s="$(ps -o stat= -p "$1" 2>/dev/null)" || { kill -0 "$1" 2>/dev/null; return; }
     case "$s" in ""|Z*) return 1 ;; esac
     return 0
 }
