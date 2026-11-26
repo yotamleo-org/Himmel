@@ -429,14 +429,14 @@ rows below use. `claudex` is the exception: a live implementation lane with no
 | Lane (`lanes.json` id) | Class | Default effort convention | Cost-optimal context window | Quota | Calibration status |
 |---|---|---|---|---|---|
 | `glm` — GLM lane | impl | — | — | — | removed: dropped, registry row and dispatcher deleted |
-| `claudex` — claudex lane (claude-codex over CLIProxyAPI) | impl | model `gpt-6.1-sol`; launcher default `xhigh` (decision 223); a brief's `effort` key or `WORKER_SESSION_EFFORT` overrides it per dispatch; never `ultra`/`max` | 900000 — declared window raised by operator ruling (2026-08-17) alongside `hermes-oneshot`; the CLIProxyAPI path itself is UNMEASURED at 900k (see below) — the launcher's `CODEX_CONTEXT_WINDOW` default stays 272000 (its own code warns past the ~372k backend ceiling it has evidence for), so a caller opts UP toward 900k per-dispatch and accepts the risk | codex | live — calibrated; `dispatch-lane.sh` accepts it once 5 consecutive verified passes exist (`readiness.passesRequired`) |
-| `hermes-critics` — hermes free critics (scripts/cr/hermes-critic.sh) | critic | — (critic pass, not effort-tiered) | unverified/varies | none (dashboard-omitted) | calibrated — model is PINNED to gpt-6.1-sol via `critics.json` (re-pinned 2026-09-29, operator moved codex lanes to GPT-6.1 Sol; gpt-6-sol before it, re-pinned 2026-09-23, operator adopted GPT-6 Sol for codex lanes; gpt-6-astra before it, re-pinned 2026-09-05, operator switched the codex CLI default; the pin-via-critics.json mechanism itself dates to operator ruling 2026-08-23, which pinned gpt-5.6-sol), not the himmel_agent profile default that `hermes-oneshot`/dispatch-trusted rides; not yet wired into the `/pr-check` gate |
-| `codex` (paid, via hermes) | critic | — (critic pass) | 900000 — raised by operator ruling (2026-08-17); pins gpt-6.1-sol via `critics.json` (2026-09-29; gpt-6-sol before it, 2026-09-23; gpt-6-astra before it, 2026-09-05) — the window figure predates and is independent of the model pin; least-verified of the four raised lanes | none (dashboard-omitted); opt-in `CR_PROFILE=paid` | calibrated — automated review escalation / second opinions only |
+| `claudex` — claudex lane (claude-codex over CLIProxyAPI) | impl | launcher default model `gpt-6.2-sol` (a headed worker started by `headed-arm-worker.sh` runs that script's own default, `gpt-6.1-sol`); launcher default `xhigh` (decision 223); a brief's `effort` key or `WORKER_SESSION_EFFORT` overrides it per dispatch; never `ultra`/`max` | 900000 — declared window raised by operator ruling (2026-08-17) alongside `hermes-oneshot`; the CLIProxyAPI path itself is UNMEASURED at 900k (see below) — the launcher's `CODEX_CONTEXT_WINDOW` default stays 272000 (its own code warns past the ~372k backend ceiling it has evidence for), so a caller opts UP toward 900k per-dispatch and accepts the risk | codex | live — calibrated; `dispatch-lane.sh` accepts it once 5 consecutive verified passes exist (`readiness.passesRequired`) |
+| `hermes-critics` — hermes free critics (scripts/cr/hermes-critic.sh) | critic | — (critic pass, not effort-tiered) | unverified/varies | none (dashboard-omitted) | calibrated — model is PINNED to gpt-6.2-sol via `critics.json`; the `himmel_agent` profile supplies a separate default for `hermes-oneshot`; not yet wired into the `/pr-check` gate |
+| `codex` (paid, via hermes) | critic | — (critic pass) | 900000 — raised by operator ruling (2026-08-17); pins gpt-6.2-sol via `critics.json` — the window figure predates and is independent of the model pin; least-verified of the four raised lanes | none (dashboard-omitted); opt-in `CR_PROFILE=paid` | calibrated — automated review escalation / second opinions only |
 | `copilot-cli` — GitHub Copilot CLI (free tier) | bulk | small tasks; model tier is mini-class unless the caller overrides the auto pin | unverified/varies | none (dashboard-omitted); 2,000 completions/mo | **not calibrated yet** — worker-spawn-matrix row UNVERIFIED (live smoke pending eval); route only for free chores / second opinions, and only through the `dispatch-copilot.sh` sanctioned script |
 | `hermes-oneshot` — hermes one-shot dispatch | impl | invoke.sh wall-clock timebox (default 1800s) + Nth-identical-deny abort | 900000 — re-confirmed on ox-alpha (2026-08-22: 300K/600K/900K probes all accepted); previously operator-verified inside hermes v0.20.2 (2026.8.16), upstream commit `bab7be3c` (2026-08-17), superseding 350000 (hermes-agent commit 522997543, 2026-08-16) | none (dashboard-omitted) | calibrated — live-proven spawn path; see [the hermes default](#the-hermes-himmel_agent-default-and-the-ox-alpha-record) |
-| `codex-exec` — codex CLI sandbox | impl | well-scoped chunks; job registry is per-workspace | 900000 — raised by operator ruling (2026-08-17) despite the 360K rejection hermes measured on the gpt-5.5 pin it carried then (codex-exec now follows the `codex` critic's model, `gpt-6.1-sol` (`gpt-6-sol` before it; `gpt-6-astra` before that); that probe was not repeated there); least-verified of the four raised lanes | codex | calibrated |
+| `codex-exec` — codex CLI sandbox | impl | well-scoped chunks; job registry is per-workspace | 900000 declared, least-verified of the raised lanes; uses the `codex` critic model (`gpt-6.2-sol`) by default, with 272000 as the dispatcher’s effective window unless overridden | codex | calibrated |
 | `antigravity-t3` — Antigravity T3 thread | t3-thread | `thought_level` low/medium/high/xhigh maps 1:1 to himmel effort; xhigh only on Neon and Hydrogen | unverified/varies | `gemini-4-neon` and `gemini-4-argon` have separate quota pools; reset windows unmeasured | `gemini-4-carbon` and `gemini-4-neon` = `tier: opus`, `gemini-4-hydrogen` = `tier: sonnet`; tiers per Decision 1328, benchmark citations in [Gemini 4 on the T3 Antigravity lane](#gemini-4-on-the-t3-antigravity-lane); Argon/3.8-flash unranked until measured; google-antigravity is allowed for inference only on himmel-code, handover-state, luna and salus (Decision 1259); every other purpose is denied |
-| `codex-t3` — Codex T3 thread | t3-thread | `gpt-6.1-sol`, explicit per-thread effort | unverified/varies | codex, weekly subscription | guarded T3 thread; no headless dispatch recipe; model selection is an operator ruling |
+| `codex-t3` — Codex T3 thread | t3-thread | `gpt-6.2-sol` or `gpt-6.2-astra`, explicit per-thread effort | unverified/varies | codex, weekly subscription | guarded T3 thread; no headless dispatch recipe; model selection is an operator ruling |
 | `ollama-local` — ollama (local models) | bulk | slow, small tasks | unverified/varies | none (dashboard-omitted); free, local wall-clock | calibrated — zero-egress guarantee is structural; the only salus-eligible backend |
 | `openrouter-free` — OpenRouter free models | bulk | simple tasks only; rate-limited | unverified/varies | none (dashboard-omitted) | **not calibrated yet** — parity/guards UNVERIFIED pending eval; probe live availability before routing, route only for simple free-tier chores |
 | `ollama-cloud` — Ollama Cloud (free tier) | bulk | simple tasks; free-tier usage caps | unverified/varies | none (dashboard-omitted) | **not calibrated yet** — parity/guards UNVERIFIED pending eval; egresses to ollama.com, an undeclared egress-matrix provider — vault corpora default-DENY (himmel-code only) until the operator declares a cell; route only for free-bank chores on non-vault corpora |
@@ -572,7 +572,7 @@ profile's default rather than from a pin in this repo. That default is
 `gpt-6.1-sol` (provider `openai-codex`) again since 2026-10-04,
 when the temporary ox-alpha trial ended. Hermes-routed critics do not ride the
 profile default: `hermes-critic.sh` pins the `scripts/cr/critics.json` codex
-model (`gpt-6.1-sol`; `--model` or `HERMES_CRITIC_MODEL` overrides it).
+model (`gpt-6.2-sol`; `--model` or `HERMES_CRITIC_MODEL` overrides it).
 
 From 2026-08-22 the default was `stealth/ox-alpha` (provider `nous`,
 `https://inference-api.nousresearch.com/v1`), free and front-tier; before that
@@ -706,13 +706,34 @@ The Fable 5.2 guide repeats the instruction: rerun the sweep rather than carry
 over a level tuned on Fable 5.1. The `fable` lane's sweep is still open; see
 [Fable 5.2](#fable-52).
 
+### Prompting GPT-6.2 Sol and Astra
+
+Use Sol for routine implementation and review. Select Astra explicitly for
+harder design or debugging work. Use the same brief structure for GPT-6.1 and
+GPT-6 selections. [OpenAI model selection](https://developers.openai.com/api/docs/guides/model-selection)
+
+- Lead with the outcome and relevant context. Name the scope, permissions,
+  and observable completion checks. Give the worker room to choose its
+  implementation within those bounds.
+- Tell the worker to make and disclose reasonable, reversible assumptions.
+  Reserve escalation for missing input that changes scope or requires approval.
+  Ask for completed work and verification evidence in the final report.
+- Specify repository conventions that matter to the task, including tests to
+  run and compatibility to preserve. Ask for a final answer that can stand on
+  its own after the progress updates collapse.
+- Keep reusable instructions at the start of managed prompt templates. Append
+  the task and follow-up steering after that prefix to support cache reuse.
+
+[GPT-6.2 prompting guide](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6.2-astra#prompting-best-practices)
+· [GPT-6 and GPT-6.1 prompting guide](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra#prompting-best-practices)
+
 ### claudex effort — the launcher defaults to `xhigh` (decision 223), `low` first for mechanical chunks
 
 The `claudex` launcher (`scripts/claude-codex`, documented in
 `scripts/lanes/lanes.json`) defaulted `CLAUDE_CODE_EFFORT_LEVEL` to `high`,
-then to `medium`. Decision 223 makes `gpt-6.1-sol` at
-**`xhigh`** the claudex default; an explicitly exported value
-still wins. The `medium` step rested on a vendor calibration note, recorded on
+then to `medium`. Decision 223 raised the claudex default to **`xhigh`**
+while the lane used GPT-6.1 Sol. An explicitly exported value still wins.
+The `medium` step rested on a vendor calibration note, recorded on
 the ticket as reported (we have not re-measured it) and about an earlier model,
 not the current default model:
 
@@ -721,8 +742,8 @@ not the current default model:
 
 The ladder stays; only its resting point moves. Mind which model each lane runs:
 `codex-exec` follows the `codex` critic in `scripts/cr/critics.json` (currently
-`gpt-6.1-sol`), and the `claudex` launcher's own default model now
-matches it (`gpt-6.1-sol`, `CODEX_MODEL` in `scripts/claude-codex`, overridable) —
+`gpt-6.2-sol`), and the `claudex` launcher's own default model now
+matches it (`gpt-6.2-sol`, `CODEX_MODEL` in `scripts/claude-codex`, overridable) —
 the claudex launcher runs at effort `xhigh` by default; export
 `CLAUDE_CODE_EFFORT_LEVEL` (or set `WORKER_SESSION_EFFORT` on a worker) to
 step down when a brief does not need it. The rungs:
@@ -1109,7 +1130,7 @@ to gate new arms, not reads.
 
 `headed-arm-worker.sh --lane claudex` (or `WORKER_SESSION_LANE=claudex`) routes a worker arm
 through `scripts/claude-codex` — the Claude Code harness running against
-GPT-6.1 Sol (`gpt-6.1-sol`) via the local CLIProxyAPI service — drawing on the **codex weekly
+a GPT model (the launcher's default is GPT-6.2 Sol, `gpt-6.2-sol`) via the local CLIProxyAPI service — drawing on the **codex weekly
 usage budget** (`usage-preflight.sh` parks a claudex worker on
 `scripts/lanes/codex-usage-probe.ts`'s cache, never the Claude five-hour/weekly
 check) instead of the Claude subscription usage budget the native lane spends from.
@@ -1120,8 +1141,9 @@ without a DORMANT note, and no opt-in variable is needed to dispatch it. Two
 routes reach it:
 
 - **A worker** (`headed-arm-worker.sh --lane claudex`) runs `gpt-6.1-sol` by
-  default (a brief's `model` key overrides it). The launcher's own default
-  effort is `xhigh`; a brief's `effort` key exports `WORKER_SESSION_EFFORT`
+  default, that script's own default (a brief's `model` key overrides it); the
+  launcher's own default, used when no model is passed, is `gpt-6.2-sol`. The
+  launcher's own default effort is `xhigh`; a brief's `effort` key exports `WORKER_SESSION_EFFORT`
   to override it per dispatch.
 - **A one-off dispatch** (`dispatch-lane.sh --lane claudex`) is accepted once
   the flow-runs ledger holds 5 consecutive verified passes on `claudex/`
@@ -1174,7 +1196,7 @@ or message anything else running — it is not a substitute for:
   ambiguous ticket) belongs on a native tier that can actually escalate.
 
 **Operating model — claudex workers cannot ask, so they never park.** A claudex
-worker is `scripts/claude-codex` (Claude Code) talking to GPT-6.1 Sol (`gpt-6.1-sol`) through
+worker is `scripts/claude-codex` (Claude Code) talking to a GPT model (the launcher's default is `gpt-6.2-sol`) through
 CLIProxyAPI; it is not a peer session in this operator's `ListAgents`
 registry and structurally cannot see or message any native session —
 `ListAgents`/`SendMessage` simply do not reach it, and it cannot reach them.

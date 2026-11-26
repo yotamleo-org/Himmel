@@ -398,21 +398,56 @@ wto_zero="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-0.sh
 case "$wto_zero" in *wt-orphans*|*wt-ceiling*) fail "a clean fleet hides wt-orphans and wt-ceiling (out='$wto_zero')" ;; *) pass 'a clean fleet hides wt-orphans and wt-ceiling' ;; esac
 wto_err="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-err.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'an unavailable open-PR list reads wt-orphans=unknown, not an all-clear' "$wto_err" ' wt-orphans=unknown'
-rm -f "$wto_cache_f"
+rm -f "$wto_cache_f.fail"
 wto_crash="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-crash.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a failed probe reads wt-orphans=unknown' "$wto_crash" ' wt-orphans=unknown'
-wto_after="$(TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
-contains 'a failed probe is not cached, so the next tick reads afresh' "$wto_after" ' wt-orphans=2'
 rm -f "$wto_cache_f"
+wto_after="$(TICK_WT_ORPHANS_FAIL_TTL=0 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'a failed probe is not cached, so the next tick reads afresh' "$wto_after" ' wt-orphans=2'
+printf '# clean\n' > "$wto_cache_f"
+rm -f "$wto_cache_f.fail"
 wto_silent="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-silent1.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a probe exiting 1 with no alarm line reads wt-orphans=unknown' "$wto_silent" ' wt-orphans=unknown'
-wto_after="$(TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+rm -f "$wto_cache_f"
+wto_after="$(TICK_WT_ORPHANS_FAIL_TTL=0 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a silent exit 1 is not cached as an all-clear' "$wto_after" ' wt-orphans=2'
 : > "$wto_cache_f"
-wto_empty="$(TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+wto_empty="$(TICK_WT_ORPHANS_FAIL_TTL=0 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'an empty cache is not an all-clear, so the tick reads afresh' "$wto_empty" ' wt-orphans=2'
-case "$(find "$TICK_STATE_DIR" -name 'tick-wt-orphans-*.*' 2>/dev/null)" in '') pass 'the cache write leaves no temp file behind' ;; *) fail 'the cache write leaves no temp file behind' ;; esac
+case "$(find "$TICK_STATE_DIR" -name 'tick-wt-orphans-*.[0-9]*' 2>/dev/null)" in '') pass 'the cache write leaves no temp file behind' ;; *) fail 'the cache write leaves no temp file behind' ;; esac
 rm -f "$wto_cache_f"
+printf '#!/bin/sh\necho $$ > "%s"\nexec sleep 100\n' "$W/wto-slow.pid" > "$W/wto-probe-slow.sh"
+printf '#!/bin/sh\necho x >> "%s"\nexit 3\n' "$W/wto-runs" > "$W/wto-probe-count.sh"
+printf 'ORPHAN /w/a branch=x dirty=0 ahead=1 idle=2d\nORPHAN /w/b branch=y dirty=0 ahead=0 idle=3d\n' > "$wto_cache_f"
+touch -d '2 hours ago' "$wto_cache_f"
+rm -f "$W/wto-slow.pid"
+wto_t0=$SECONDS
+wto_slow="$(TICK_DEADLINE_SEC=30 TICK_SECTION_WAIT=2 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-slow.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+wto_slow_secs=$((SECONDS - wto_t0))
+if [ "$wto_slow_secs" -lt 20 ]; then pass 'a 100 s sweep does not stall the tick'; else fail "a 100 s sweep stalled the tick for ${wto_slow_secs}s"; fi
+contains 'a slow sweep serves the last good reading with its age' "$wto_slow" ' wt-orphans=2@2h'
+if [ -s "$W/wto-slow.pid" ]; then kill "$(cat "$W/wto-slow.pid")" 2>/dev/null || true; fi  # swallow-ok: the stub may already be gone
+for _ in $(seq 1 40); do [ -e "$wto_cache_f.fail" ] && break; sleep 0.25; done
+rm -f "$wto_cache_f" "$wto_cache_f.fail" "$W/wto-runs"
+TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-count.sh" TOKEN='' bash "$SUT" --doc "$d4670" >/dev/null 2>&1
+TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-count.sh" TOKEN='' bash "$SUT" --doc "$d4670" >/dev/null 2>&1
+same 'a failed sweep is not re-run inside its negative TTL' "$(wc -l < "$W/wto-runs" 2>/dev/null | tr -d ' ')" '1'
+TICK_WT_ORPHANS_FAIL_TTL=0 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-count.sh" TOKEN='' bash "$SUT" --doc "$d4670" >/dev/null 2>&1
+same 'a failed sweep is re-run once its negative TTL has passed' "$(wc -l < "$W/wto-runs" 2>/dev/null | tr -d ' ')" '2'
+rm -f "$wto_cache_f" "$wto_cache_f.fail" "$W/wto-slow.pid"
+printf '# clean\n' > "$wto_cache_f"
+touch -d '2 hours ago' "$wto_cache_f"
+wto_slow0="$(TICK_DEADLINE_SEC=30 TICK_SECTION_WAIT=2 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-slow.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'a stale clean reading shows its age, never a current all-clear' "$wto_slow0" ' wt-orphans=0@2h'
+if [ -s "$W/wto-slow.pid" ]; then kill "$(cat "$W/wto-slow.pid")" 2>/dev/null || true; fi  # swallow-ok: the stub may already be gone
+for _ in $(seq 1 40); do [ -e "$wto_cache_f.fail" ] && break; sleep 0.25; done
+rm -f "$wto_cache_f" "$wto_cache_f.fail" "$W/wto-slow.pid"
+wto_fast="$(TICK_FAST=1 TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+case "$wto_fast" in *wt-orphans*) fail "a fast tick skips the worktree sweep (out='$wto_fast')" ;; *) pass 'a fast tick skips the worktree sweep' ;; esac
+fp_full="$(TOKEN='' bash "$SUT" --doc "$d4670" --emit-fp 2>/dev/null | sed -n 's/^board-fp=//p')"
+fp_fast="$(TICK_FAST=1 TOKEN='' bash "$SUT" --doc "$d4670" --emit-fp 2>/dev/null | sed -n 's/^board-fp=//p')"
+if [ -n "$fp_full" ] && [ "$fp_full" = "$fp_fast" ]; then pass 'board-fp is equal under the fast and the full tick'; else fail "board-fp differs (full '$fp_full', fast '$fp_fast')"; fi
+rm -f "$wto_cache_f" "$wto_cache_f.fail"
 contains 'verbose labels worker failures' "$(TOKEN='' bash "$SUT" --doc "$d4670" --verbose 2>/dev/null)" 'worker-session failures: 1/1@error/Edit*1'
 printf '%s\n' '{"v":1,"ts":"2026-10-07T03:05:00Z","leg":"N8","class":"denied/a b\tc","failure":"denied","count":1}' > "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 same 'whitespace in the top class cannot split the TICK line' "$(fails_of "$d4670")" '1/1@denied/a_b_c*1'

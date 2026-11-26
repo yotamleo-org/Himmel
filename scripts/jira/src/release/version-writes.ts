@@ -23,6 +23,7 @@ export const WRITER_TABLE: readonly WriterRow[] = [
   { site: CREATE, mechanism: 'create-bug-default', machine: true },
   { site: CREATE, mechanism: 'create-blocker-inherit', machine: true },
   { site: CREATE, mechanism: 'create-stepdown', machine: true },
+  { site: CREATE, mechanism: 'create-rules', machine: false },
   { site: CREATE, mechanism: 'displace-residual', machine: true },
   { site: 'scripts/jira/src/commands/transition.ts', mechanism: 'transition-stamp', machine: true },
   { site: 'scripts/handover/merge-on-green.sh', mechanism: 'merge-stamp', machine: true },

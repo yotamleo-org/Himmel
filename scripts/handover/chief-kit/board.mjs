@@ -306,6 +306,7 @@ else if (legFiles.length) tickArgs.push('--workers', legFiles.join(' '));
 const tickEnv = { ...process.env };
 for (const k of ['DOC', 'TOKEN', 'WORKERS']) delete tickEnv[k];
 if (tickEnv.TICK_DEADLINE_SEC === undefined) tickEnv.TICK_DEADLINE_SEC = '30';
+tickEnv.TICK_FAST = '1';
 const tickTimeoutMs = Number(process.env.BOARD_TICK_TIMEOUT_MS) > 0 ? Number(process.env.BOARD_TICK_TIMEOUT_MS) : 40000;
 let tickLine = '';
 let fp = '';

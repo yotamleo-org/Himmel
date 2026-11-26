@@ -213,9 +213,11 @@ describe.each(cases)('corpus $id', (c) => {
 const VALID = bodyOf({});
 
 describe('MCP bridge (7412 1, 6281, F3, F6)', () => {
-  it('mcp-no-placement: a bare Task with a valid body and home is refused like the CLI, with no write', async () => {
-    await expect(tool('create').handler({ type: 'Task', title: 'Planning & tracking: x', desc: VALID, labels: 'standalone' }, mcpDeps())).rejects.toThrow(/placement/);
-    expect(writes()).toEqual([]);
+  it('mcp-no-placement-flag: a bare Task with a valid body and home is placed by the rules like the CLI (the backlog), in one write', async () => {
+    const out = await tool('create').handler({ type: 'Task', title: 'Planning & tracking: x', desc: VALID, labels: 'standalone' }, mcpDeps());
+    expect(out).toMatch(/Created HIMMEL-1/);
+    expect(writes()).toEqual(['POST /issue']);
+    expect(jira.issues.get('HIMMEL-1')?.fields.labels).toEqual(['standalone', 'backlog']);
   });
 
   it('6281: an explicit sector with sectors not configured comes back as a warning in the MCP reply', async () => {
@@ -346,11 +348,12 @@ describe('CLI create effects (I4, I8)', () => {
     expect(writes()).toEqual([]);
   });
 
-  it('created-intake-failed: a created ticket whose INTAKE fails reports PARTIAL with its key and the unfinished INTAKE', async () => {
+  it('created-intake-failed: a created proposal whose INTAKE fails reports PARTIAL with its key and the unfinished INTAKE', async () => {
+    issue('HIMMEL-5', VALID, { fixVersions: [{ name: 'v1.1.3' }] });
     jira.onCreate = () => rmSync(join(root, 'state'), { recursive: true, force: true });
     const f = join(root, 'ok.md');
     writeFileSync(f, VALID);
-    const r = await cli(['create', '--type', 'Task', '--title', 'Planning & tracking: partial', '--desc-file', f, '--labels', 'standalone', ...placement('Task')]);
+    const r = await cli(['create', '--type', 'Task', '--title', 'Planning & tracking: partial', '--desc-file', f, '--labels', 'standalone', '--follow-up-of', 'HIMMEL-5']);
     expect(r.code).not.toBe(0);
     expect(r.stdout).toMatch(/Created HIMMEL-1/);
     expect(r.stderr).toMatch(/PARTIAL.*HIMMEL-1.*INTAKE/s);
