@@ -20,7 +20,10 @@ shape every reply so it can be acted on at a glance. The full guide, with his wo
    when there is one, when the ask expires. The link goes in the same message.
 5. A code he must type, or a command he must paste, goes alone in its own message,
    straight after the `Needs you:` line. Never "yes" first and the link or code later.
-6. Every ask goes to Telegram AND your console, in the same short words.
+6. Every ask goes to Telegram AND your console, in the same short words. Write each
+   ask once, in your console reply: a Stop hook posts it to Telegram, so never post an
+   ask there yourself. A numbered answer from Telegram uses the phone's numbers: match
+   each number to the ask texts the hook posted to the phone, and ask back when a number names two open asks or another ask than your console list does.
 7. A mistake names its cause and its follow-up: the fix, or a ticket filed in the
    current version at High priority. A self-healed hiccup gets the same, in the
    console and doc only.
