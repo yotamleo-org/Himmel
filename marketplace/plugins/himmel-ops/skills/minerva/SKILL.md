@@ -282,8 +282,9 @@ stands with `bun <himmel>/scripts/telegram/chief-route.ts round-status <KEY> --s
   are separate. After a minors-only round 3, use the signing route below: do not
   ask for round 4.
 - **Past round 4.** Ask the operator one plain line, write the verbatim-decision file,
-  run `round-critical <KEY> --decision <d> --quote "<operator words>" --closure --specs <bucket>/specs`.
-  Under standing decision 1418 the chief writes that decision file itself, quoting 1418 and giving its reason.
+  run `round-critical <KEY> --decision <d> --quote "<operator words>" --closure [--round <spec|plan>:<n>] --specs <bucket>/specs`
+  (`--round` opens a lagging critic's own round). Under standing decision 1418 the chief asks no one: it
+  writes that decision file itself, quoting 1418 and giving its reason.
 - **Operator-critical.** A finding tagged `operator-critical: <class>`, with one
   of the four classes (`spend-grant`, `account-or-terms`, `public-policy`,
   `reverses-ruling`), goes to the operator, not to a round. It stays open until the
