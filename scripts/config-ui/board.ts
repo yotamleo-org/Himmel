@@ -259,9 +259,12 @@ function handoffAnswered(bucket: string, handoff: string, line: string): boolean
 }
 function handoffAsks(sec: string[]): string[] {
   const asks: string[] = [];
+  let base = -1;
   for (const raw of sec) {
     if (!raw.trim()) continue;
-    if (/^\s/.test(raw) && asks.length) asks[asks.length - 1] += ` ${raw.trim().replace(/^[-*]\s+/, "")}`;
+    const indent = raw.length - raw.trimStart().length;
+    if (base < 0) base = indent;
+    if (indent > base && asks.length) asks[asks.length - 1] += ` ${raw.trim().replace(/^[-*]\s+/, "")}`;
     else asks.push(raw.trim());
   }
   return asks;

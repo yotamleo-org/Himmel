@@ -71,6 +71,20 @@ test("10947: a HANDOFF ask is one row with its indented lines; a none line, a ch
   expect(o.items.filter((i) => i.source === "owed ledger").map((i) => [i.key, i.title])).toEqual([["HIMMEL-2", "approve the paid seat"], [null, "approve the account renewal"]]);
 });
 
+test("10947: equally indented sibling HANDOFF bullets stay separate asks, so a checked one hides only itself", () => {
+  const s = scratch();
+  const env = owedFixture(s, "queue: HIMMEL-2 chief step");
+  writeFileSync(join(s.d, "chief-HANDOFF.md"), [
+    "## Open operator items", "",
+    "  - [x] approve the paid seat (answered)",
+    "  - approve the held spend",
+    "    - detail of the spend", "",
+  ].join("\n"));
+  const o = readOwed(env);
+  if (o.state !== "ok") throw new Error(o.reason);
+  expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["approve the held spend detail of the spend"]);
+});
+
 test("10947: one owner classifier: a chief signature, a judge GO and a relaunch are the chief's in every source; a bypass go code is the operator's", () => {
   const s = scratch();
   for (const n of [2, 3, 4]) writeFileSync(join(s.mirror, `HIMMEL-${n}.md`), mirrorIssue(n, "To Do", "To Do", [], `ticket ${n}`));
