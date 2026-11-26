@@ -3645,6 +3645,88 @@ test('readiness residuals: lone delivery denies a guard killed by a signal', () 
   assert.match(ready.stderr, /DENY guard-readiness-tools\.sh \(signal SIGKILL\)/);
 });
 
+test('readiness residuals: lone delivery denies a stalled guard at its own deadline, with the stalled child gone', () => {
+  const started = Date.now();
+  const ready = readinessLoneRun('sleep 30 & wait', { HIMMEL_READINESS: '1', RUN_HOOK_LONE_GUARD_TIMEOUT_MS: '700' });
+  const elapsed = Date.now() - started;
+  assert.equal(ready.status, 2, ready.stderr);
+  assert.match(ready.stderr, /DENY guard-readiness-tools\.sh \(deadline 700ms\)/);
+  assert.equal(ready.stdout, '', 'a deadline deny carries no stdout');
+  assert.ok(elapsed < 8000, `the deny came at the deadline, not after the stalled child (${elapsed}ms)`);
+});
+
+test('readiness residuals: the lone deadline kills the stalled grandchild, not just the guard', () => {
+  const dir = makeTmpDir('hook-bash-readiness-grandchild-');
+  const pidFile = join(dir, 'grandchild.pid');
+  try {
+    readinessMember(dir, READINESS_GUARD, `sleep 30 & echo $! > '${pidFile}'; wait`);
+    const started = Date.now();
+    const ready = spawnSync(process.execPath, [LAUNCHER, ...READINESS_LONE_ARGS, join(dir, READINESS_GUARD)], {
+      encoding: 'utf8',
+      input: PAYLOAD,
+      env: readinessEnv({ HIMMEL_READINESS: '1', RUN_HOOK_LONE_GUARD_TIMEOUT_MS: '700' }),
+    });
+    const elapsed = Date.now() - started;
+    assert.equal(ready.status, 2, ready.stderr);
+    assert.ok(elapsed < 8000, `the deny came at the deadline, not after the grandchild's own exit (${elapsed}ms)`);
+    const pid = Number(readFileSync(pidFile, 'utf8').trim());
+    assert.ok(pid > 1, 'the guard recorded its grandchild');
+    const hasProcfs = existsSync('/proc/self/stat');
+    const isAlive = () => {
+      try { process.kill(pid, 0); } catch (_e) { return false; }
+      try { return readFileSync(`/proc/${pid}/stat`, 'utf8').replace(/^.*\) /, '').charAt(0) !== 'Z'; } catch (_e) { return true; }
+    };
+    let alive = true;
+    const until = Date.now() + 3000;
+    while (alive && Date.now() < until) {
+      alive = isAlive();
+      if (alive) spawnSync('sleep', ['0.1']);
+    }
+    alive = isAlive();
+    if (alive) {
+      try { process.kill(pid, 'SIGKILL'); } catch (_e) { alive = false; }
+    }
+    if (hasProcfs) assert.equal(alive, false, 'the stalled grandchild is gone after the deadline');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('readiness residuals: the lone deadline default sits under the host timeout hooks.json registers', () => {
+  const { DEFAULT_LONE_GUARD_TIMEOUT_MS } = require('./run-hook-with-bash.js');
+  const hooks = JSON.parse(readFileSync(join(HERE, '../../marketplace/plugins/himmel-ops/hooks/hooks.json'), 'utf8'));
+  const entry = hooks.hooks.PreToolUse.flatMap((group) => group.hooks).find((hook) => hook.command.includes(READINESS_GUARD));
+  assert.ok(entry && entry.timeout > 0, 'hooks.json registers the readiness guard with a timeout');
+  assert.ok(DEFAULT_LONE_GUARD_TIMEOUT_MS > 0 && DEFAULT_LONE_GUARD_TIMEOUT_MS < entry.timeout * 1000, String(DEFAULT_LONE_GUARD_TIMEOUT_MS));
+});
+
+test('readiness residuals: the lone deadline override can only lower the default, and a fractional value still denies', () => {
+  const { DEFAULT_LONE_GUARD_TIMEOUT_MS, loneGuardTimeoutMs } = require('./run-hook-with-bash.js');
+  const saved = process.env.RUN_HOOK_LONE_GUARD_TIMEOUT_MS;
+  try {
+    process.env.RUN_HOOK_LONE_GUARD_TIMEOUT_MS = '999999';
+    assert.equal(loneGuardTimeoutMs(), DEFAULT_LONE_GUARD_TIMEOUT_MS);
+    process.env.RUN_HOOK_LONE_GUARD_TIMEOUT_MS = '700.5';
+    assert.equal(loneGuardTimeoutMs(), 700);
+    process.env.RUN_HOOK_LONE_GUARD_TIMEOUT_MS = '0.4';
+    assert.equal(loneGuardTimeoutMs(), 1);
+  } finally {
+    if (saved === undefined) delete process.env.RUN_HOOK_LONE_GUARD_TIMEOUT_MS;
+    else process.env.RUN_HOOK_LONE_GUARD_TIMEOUT_MS = saved;
+  }
+  const ready = readinessLoneRun('sleep 30 & wait', { HIMMEL_READINESS: '1', RUN_HOOK_LONE_GUARD_TIMEOUT_MS: '700.5' });
+  assert.equal(ready.status, 2, ready.stderr);
+  assert.match(ready.stderr, /DENY guard-readiness-tools\.sh \(deadline 700ms\)/);
+});
+
+test('readiness residuals: a guard inside the lone deadline is unchanged, and outside the readiness context no deadline applies', () => {
+  const quick = readinessLoneRun('sleep 0.2', { HIMMEL_READINESS: '1', RUN_HOOK_LONE_GUARD_TIMEOUT_MS: '5000' });
+  assert.equal(quick.status, 0, quick.stderr);
+  assert.equal(quick.stdout, '');
+  const generic = readinessLoneRun('sleep 1.2', { RUN_HOOK_LONE_GUARD_TIMEOUT_MS: '300' });
+  assert.equal(generic.status, 0, generic.stderr);
+});
+
 test('readiness residuals: lone delivery keeps the parsed condition for a missing guard', () => {
   const missing = join(tmpdir(), 'nowhere', READINESS_GUARD);
   const ready = spawnSync(process.execPath, [LAUNCHER, ...READINESS_LONE_ARGS, missing], {
