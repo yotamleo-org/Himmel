@@ -123,9 +123,10 @@ check "R3 hook took under 3 s" "$([ "$elapsed" -lt 3 ] && echo yes || echo "no (
 echo "R4: two different ask replies queued behind a busy worker both run"
 queue_status() { node "$QUEUE" status 2>/dev/null; }
 wait_status() {
-    local i=0
+    local i=0 out
     while [ "$i" -lt 150 ]; do
-        queue_status | grep -q "$1" && return 0
+        out="$(queue_status)"
+        case "$out" in *"$1"*) return 0 ;; esac
         sleep 0.2; i=$((i+1))
     done
     return 1
