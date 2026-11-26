@@ -1,0 +1,3 @@
+{"ts":"2026-11-25T10:20:12Z","reason_tag":"[Out-of-Place Publication]","session_id":"s1","tool":"Bash","cwd":"/x","input_head":"curl LEAKCHECK-COMMAND-TEXT-3","input_sha":"abc"}
+{"ts":"2026-11-25T10:20:14Z","reason_tag":"[Out-of-Place Publication]","session_id":"s7","tool":"Bash","cwd":"/x","input_head":"another session, same tag","input_sha":"abd"}
+{"ts":"2026-11-25T10:40:00Z","reason_tag":"[Unauthorized Persistence]","session_id":"s3","tool":"Bash","cwd":"/x","input_head":"only in the log","input_sha":"abe"}

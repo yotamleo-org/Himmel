@@ -1,0 +1,1 @@
+{"timestamp":"2026-11-25T10:40:00.000Z","sessionId":"s5","message":{"content":[{"type":"tool_result","is_error":true,"content":"PreToolUse:Bash hook error: [command hook 5]: block-unresolved-cr-merge: the merge must be a single plain command"}]}}
