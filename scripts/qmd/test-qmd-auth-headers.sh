@@ -63,6 +63,21 @@ grep -q "$SECRET" "$work/mock/argv"; [ $? -eq 1 ] || fail "(d) token leaked into
 case "$out" in *"$SECRET"*) fail "(d) token leaked into ensure output" ;; esac
 grep -q -e '--noproxy [*]' "$work/mock/argv" || fail "(d) token-bearing probe lacks --noproxy '*'"
 
+rm -f "$work/mock/stdin" "$work/mock/argv"
+brace_url='http://{a@localhost:8181/,evil.example/}/mcp'
+out="$(HOME="$home" MOCK_DIR="$work/mock" QMD_CURL="$mockbin/curl" QMD_HTTP_TOKEN_FILE="$tok" \
+  QMD_MCP_URL="$brace_url" PATH="$mockbin:/usr/bin:/bin" bash "$ensure" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] || fail "(d1) ensure rc $rc: $out"
+grep -q "Authorization: Bearer $SECRET" "$work/mock/stdin" || fail "(d1) the brace URL did not reach the token-bearing probe"
+grep -q -e '^-q ' "$work/mock/argv" || fail "(d1) token-bearing probe lacks -q as its first argument"
+grep -q -e ' -g ' "$work/mock/argv" || fail "(d1) token-bearing probe lacks -g, so a brace in the URL would be expanded"
+grep -q -F "$brace_url" "$work/mock/argv" || fail "(d1) the brace URL was not passed whole"
+rm -f "$work/mock/stdin" "$work/mock/argv"
+out="$(HOME="$home" MOCK_DIR="$work/mock" QMD_CURL="$mockbin/curl" QMD_HTTP_TOKEN_FILE="$tok" \
+  QMD_MCP_URL="http://127.0.0.1:1/mcp" PATH="$mockbin:/usr/bin:/bin" bash "$ensure" 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] || fail "(d1 control) ensure rc $rc: $out"
+grep -q -F 'http://127.0.0.1:1/mcp' "$work/mock/argv" || fail "(d1 control) an ordinary URL was changed"
+
 # (d2) a non-loopback URL gets no Authorization header at all
 rm -f "$work/mock/stdin" "$work/mock/argv"
 out="$(HOME="$home" MOCK_DIR="$work/mock" QMD_CURL="$mockbin/curl" QMD_HTTP_TOKEN_FILE="$tok" \
