@@ -133,7 +133,7 @@ fence_pairs() {
         [ -n "$par" ] || continue
         fence_check "$par"
         fence_check "$par/$item"
-    done < "$1"
+    done < "$1"  # read-sink-ok: the caller's own scratch pairs file under $WORK, never caller text
 }
 
 install_path() {
