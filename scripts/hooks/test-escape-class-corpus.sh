@@ -69,6 +69,7 @@ check-cr-marker-on-pr-create.sh|||exempt|||-|||-|||-
 allow-thread-resolve.sh|||exempt|||-|||-|||-
 approval-grant-check.sh|||exempt|||-|||-|||-
 guard-merge-compound.sh|||exempt|||-|||-|||-
+block-station-load-test.sh|||exempt|||-|||-|||-
 '
 # Exempt rows (each is printed as EXEMPT on every run, never skipped silently):
 #   read-clamp.sh, require-quiet-run.sh — workflow NUDGES, not security fences;
@@ -83,7 +84,7 @@ guard-merge-compound.sh|||exempt|||-|||-|||-
 #   approval-grant-check.sh — allow-only too: it allows only the exact
 #     bytes root holds a live one-use grant for, so a reshaped command has another
 #     hash and gets no decision.
-#   guard-merge-compound.sh — a workflow nudge that fails open; the merge stays gated by the GO and the allow rules, so the fail-closed policy for fences does not apply.
+#   guard-merge-compound.sh, block-station-load-test.sh — workflow guards that fail open (the merge stays gated by the GO and the allow rules; the load guard is worker-only and its own suite carries the shapes it refuses), so the fail-closed policy for fences does not apply.
 
 # <hook> <shape-id> <ticket> — a shape the guard allows today; one Bug per guard.
 KNOWN_FAILURES='
