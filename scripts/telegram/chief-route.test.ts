@@ -4805,7 +4805,7 @@ test("capped fold return selection rechecks cached directory observations before
   }
 });
 
-test("capped fold requires Key declarations in real sealed returns", async () => {
+test("capped fold reads a Key declaration in a real sealed return when there is one and takes the key from the ledger when there is none", async () => {
   expect((await runCapped((await finishCappedRounds()).args)).returns).toHaveLength(2);
   const documents = await cappedFixture({
     specText: fixtureSpecText.replace("# HIMMEL", `- Ticket: ${cappedKey}\n\n# HIMMEL`),
@@ -4816,7 +4816,7 @@ test("capped fold requires Key declarations in real sealed returns", async () =>
     const f = await finishCappedRounds({ ticketReturn: kind });
     const path = kind === "spec" ? f.args.specReturn : f.args.planReturn;
     expect([...readFileSync(path, "utf8").matchAll(/^Keys?:\s*(.+)$/gm)]).toHaveLength(0);
-    await expect(runCapped(f.args)).rejects.toThrow("return must declare");
+    expect((await runCapped(f.args)).returns, `a ${kind} return with a Ticket line and no Key line is bound by its ledger row`).toHaveLength(2);
   }
 });
 
@@ -5945,7 +5945,7 @@ test("P1 return selection refuses an aliased, an unreadable and an unbounded dir
   expect(c.ids).toHaveLength(6); expect(c.bad).toEqual([]);
 }, S1B);
 
-test("P1 Key declarations in real sealed returns: a Ticket line in the documents is accepted, a Ticket line in a return is refused", async () => {
+test("P1 Key declarations in real sealed returns: a Ticket line in the documents is accepted, a Ticket line in a return is no Key line and the ledger binds the key", async () => {
   const c = p1Cases();
   const finished = await finishCappedRounds(); await c.accepts("declarations/finished", finished, finished.args, P1_ONE_CARRIED);
   const documents = await cappedFixture({
@@ -5957,7 +5957,7 @@ test("P1 Key declarations in real sealed returns: a Ticket line in the documents
     const f = await finishCappedRounds({ ticketReturn: kind });
     const path = kind === "spec" ? f.args.specReturn : f.args.planReturn;
     expect([...readFileSync(path, "utf8").matchAll(/^Keys?:\s*(.+)$/gm)]).toHaveLength(0);
-    c.refuses(`declarations/ticket-line-in-${kind}-return`, f.args, P1_RETURN);
+    await c.accepts(`declarations/ticket-line-in-${kind}-return`, f, f.args, P1_ONE_CARRIED);
   }
   expect(c.ids).toHaveLength(4); expect(c.bad).toEqual([]);
 }, S1B);
@@ -6793,7 +6793,9 @@ test("3c v1Policy keeps its strict decisions: one quote shape, exactly minor or 
   for (const line of [`READ-SHA256 ${S}  ${p}`, `READ-SHA256 ${p} ${S}`, `READ-SHA256 ${S}   ${p}`, `READ-SHA256 ${S.toUpperCase()} ${p}`, "READ", "READ-SHA256"]) expect(() => v1.quotes(line), line).toThrow(C3_MALFORMED);
   for (const ok of ["minor", "medium"]) expect(v1.headingOk(ok), ok).toBe(true);
   for (const bad of ["medium; Fact overlap", "major", "Minor", " medium", "minor; regression", ""]) expect(v1.headingOk(bad), bad).toBe(false);
-  expect(() => v1.declaration("Fixture: no key\n", cappedKey)).toThrow(`capped-fold: return must declare only ${cappedKey}`);
+  expect(() => v1.declaration("Fixture: no key\n", cappedKey), "no Key line: the ledger row binds the key").not.toThrow();
+  expect(() => v1.declaration("Key: HIMMEL-99\n", cappedKey)).toThrow(`capped-fold: return must declare only ${cappedKey}`);
+  expect(() => v1.declaration(`Key: ${cappedKey}\nKey: ${cappedKey}\n`, cappedKey)).toThrow(`capped-fold: return must declare only ${cappedKey}`);
   expect(() => v1.declaration(`Key: ${cappedKey}\n`, cappedKey)).not.toThrow();
   expect(() => v1.reviewed("Fixture: none\n", specSha, "spec")).toThrow("capped-fold: spec must review the current spec exactly once");
   expect(() => v1.reviewed(`Reviewed: spec ${specSha}\n`, specSha, "plan")).not.toThrow();
@@ -6860,7 +6862,7 @@ test("Q2 v2 quotes must equal the seals: an altered sha, swapped paths, a quote 
     ["an altered sha", text => text.replace(/^(READ-SHA256 )([0-9a-f]{64})/m, (_line, verb: string, digest: string) => verb + c3Flip(digest)), f => `capped-fold: missing/conflicting critic READ quote: ${realpathSync(f.spec)}`],
     ["two paths swapped", text => { const [a, b] = c3Quotes(text); return text.replace(a[0], `READ-SHA256 ${a[1]} ${b[2]}`).replace(b[0], `READ-SHA256 ${b[1]} ${a[2]}`); },
       f => `capped-fold: missing/conflicting critic READ quote: ${realpathSync(f.spec)}`],
-    ["a quote of an unsealed file", (text, f) => c3BeforeSeals(text, `READ-SHA256 ${sha(readFileSync(f.plan, "utf8"))} ${f.plan}`), () => C3_COVERAGE],
+    ["a quote of an unsealed file", (text, f) => c3BeforeSeals(text, `READ-SHA256 ${c3Flip(sha(readFileSync(f.plan, "utf8")))} ${f.plan}`), () => C3_COVERAGE],
     ["a sealed file with no quote", text => text.replace(`${c3Quotes(text).at(-1)![0]}\n`, ""), f => `capped-fold: missing/conflicting critic READ quote: ${join(f.specsRoot, "designs", "estimate.json")}`],
   ];
   for (const shape of shapes) {
@@ -6896,7 +6898,7 @@ test("Q3 v2 quotes: a duplicate artifact quote, an unknown shape, a relative leg
     expect(await c3Message(c3Kind(f, "spec", policy)), what).toBe(message);
   }
   const spaced = await cappedFixture(); await c3Edit(spaced, "spec", text => text.replace(first(text)[0], `${first(text)[0]} `));
-  expect(await c3Message(c3Kind(spaced, "spec", policy)), "a path with a trailing space is not trimmed into the real file").toContain("no such file");
+  expect(await c3Message(c3Kind(spaced, "spec", policy)), "a path with a trailing space is not trimmed into the real file, so its seal has no quote").toContain("missing/conflicting critic READ quote");
 }, S1B);
 
 test("Q4 v2 quotes: an altered seal line and a sealed file edited after the critic read each refuse in every shape, and so does a ledger seal row that disagrees", async () => {
@@ -6934,7 +6936,7 @@ test("C2 v2 cap: the refusedCap closure shape carries its minors under legacy an
   await c3Expect(f, "spec", got.spec, 5, 0, []); await c3Expect(f, "plan", got.plan, 4, 0, [["P4", "minor"], ["P5", "minor"]]);
   expect(readFileSync(b1Kind(f, "spec").at(-1)!, "utf8")).toMatch(/^READ-SHA256 [0-9a-f]{64}  \/\S+$/m);
   expect(readFileSync(b1Kind(f, "plan").at(-1)!, "utf8")).toMatch(/^READ-SHA256 \/\S+ [0-9a-f]{64}$/m);
-  expect(await c3Message(c3Kind(f, "spec", route.v1Policy)), "the strict v1 policy refuses the same real bytes at its own first step").toBe(`capped-fold: return must declare only ${key}`);
+  expect(await c3Message(c3Kind(f, "spec", route.v1Policy)), "the strict v1 policy refuses the same real bytes at its Reviewed step: the Key line is optional there too").toBe("capped-fold: spec must review the current spec exactly once");
   const finding = (id: string) => `- **${id}** (minor) a wording note`;
   const specCapped = await c3Build([1, 2, 3].map(round => ({ kind: "spec" as const, round, findings: finding("F1") })).concat([1, 2].map(round => ({ kind: "plan" as const, round, findings: round === 2 ? finding("P1") : "" }))));
   await c3Expect(specCapped, "spec", await c3Kind(specCapped, "spec", route.v2Policy([cappedKey])), 3, 0, [["F1", "minor"]]);
@@ -7031,11 +7033,12 @@ test("D6 v2 declarations: Key and Reviewed absent or equal are accepted, wrong o
   for (const kind of ["spec", "plan"] as const) { const text = readFileSync(b1Kind(control, kind).at(-1)!, "utf8"); expect(lines(text, "Key:").length, `${kind} control Key`).toBe(1); expect(lines(text, "Reviewed:").length, `${kind} control Reviewed`).toBe(1); }
   await c3Expect(control, "spec", await c3Kind(control, "spec", policy), 3, 0, [["F1", "minor"]]); await c3Expect(control, "plan", await c3Kind(control, "plan", policy), 3, 0, []);
   const strip = (pattern: RegExp) => (text: string) => text.replace(pattern, "");
-  const strictHeader = `capped-fold: return must declare only ${cappedKey}`; const strictReviewed = "capped-fold: spec must review the current spec exactly once";
-  for (const [what, edit, strict] of [["both absent", strip(/^(?:Key|Reviewed): .*\n/gm), strictHeader], ["Key absent", strip(/^Key: .*\n/m), strictHeader], ["Reviewed absent", strip(/^Reviewed: .*\n/m), strictReviewed]] as const) {
+  const strictReviewed = "capped-fold: spec must review the current spec exactly once";
+  for (const [what, edit, strict] of [["both absent", strip(/^(?:Key|Reviewed): .*\n/gm), strictReviewed], ["Key absent", strip(/^Key: .*\n/m), null], ["Reviewed absent", strip(/^Reviewed: .*\n/m), strictReviewed]] as const) {
     const f = await cappedFixture(); await c3Edit(f, "spec", edit); await c3Edit(f, "plan", edit);
     const got = await c3Both(f, policy); await c3Expect(f, "spec", got.spec, 3, 0, [["F1", "minor"]]); await c3Expect(f, "plan", got.plan, 3, 0, []);
-    expect(await c3Message(c3Kind(f, "spec", route.v1Policy)), `${what}: the strict policy refuses the same bytes`).toBe(strict);
+    if (strict) expect(await c3Message(c3Kind(f, "spec", route.v1Policy)), `${what}: the strict policy refuses the same bytes`).toBe(strict);
+    else await c3Kind(f, "spec", route.v1Policy);
   }
   const wrongSha = (text: string) => text.replace(/^(Reviewed: spec )([0-9a-f]{64})/m, (_line, head: string, digest: string) => head + c3Flip(digest));
   const refused: [string, (text: string) => string, string][] = [
@@ -8248,9 +8251,61 @@ test("T-T1..T-T4: v1 capped-fold reads the tickets line with the one parser", as
   expect(p1Cli("--keys", cappedKey, ...p1Flags(relates.args).slice(2)).err, "T-T2: and on --keys").toContain("tickets must declare only");
   const keyless = await cappedFixture();
   await editCappedReturn(keyless, keyless.args.specReturn, text => text.replace(/^Keys?: .*\n/m, ""));
-  expect(p1Fold(keyless.args).err, "T-T3: a return with no Key line names the return").toBe(p1Line(`capped-fold: return must declare only ${cappedKey}`));
+  expect(p1Fold(keyless.args), "T-T3: a return with no Key line is bound to its key by the ledger row and accepted").toMatchObject({ code: 0, err: "" });
   const bare = await cappedFixture();
   expect(kinds(p1Fold(bare.args)), "T-T4: a bare tickets line with one Key header passes (control)").toEqual([]);
+});
+
+const specAheadOfLedger = async (options: Parameters<typeof cappedFixture>[0] = {}, keyless = false) => {
+  const f = await cappedFixture(options);
+  const specReturns = f.verdicts.filter(p => p.includes("critic-spec-")).sort().reverse();
+  for (const path of specReturns) renameSync(path, path.replace(/-r(\d+)\.md$/, (_m, n) => `-r${Number(n) + 1}.md`));
+  editLedger(f, rows => rows.filter(row => row.critic === "spec" && row.verdict_path).forEach(row => { row.verdict_path = row.verdict_path.replace(/-r(\d+)\.md$/, (_m: string, n: string) => `-r${Number(n) + 1}.md`); }));
+  f.args.specReturn = f.args.specReturn.replace(/-r(\d+)\.md$/, (_m, n) => `-r${Number(n) + 1}.md`);
+  if (keyless) for (const path of [f.args.specReturn, f.args.planReturn]) await editCappedReturn(f, path, text => text.replace(/^Keys?: .*\n/m, ""));
+  return f;
+};
+const v2Cli = (a: P1Args) => p1Cli("--keys", a.key, ...p1Flags(a).slice(2));
+
+test("capped carry: a sealed closure whose file round is past its ledger round, with or without a Key line, signs on the v1 and the v2 route", async () => {
+  const c = p1Cases();
+  for (const keyless of [false, true]) {
+    const f = await specAheadOfLedger({}, keyless);
+    if (keyless) for (const path of [f.args.specReturn, f.args.planReturn]) expect([...readFileSync(path, "utf8").matchAll(/^Keys?:\s*(.+)$/gm)]).toHaveLength(0);
+    await c.accepts(`ahead/${keyless ? "keyless" : "keyed"}/v1`, f, f.args, { rounds: [4, 3], residuals: [1, 0], carried: [["spec", "F1", "minor", 4]] });
+    const v2 = v2Cli(f.args); expect(v2.err, `ahead/${keyless ? "keyless" : "keyed"}/v2`).toBe(""); expect(v2.code).toBe(0);
+    const proof = JSON.parse(v2.out); expect(proof.mode).toBe("capped-carry-ledger");
+    expect(proof.returns.map((r: any) => r.round)).toEqual([4, 3]);
+    expect(proof.carried.map((x: any) => [x.kind, x.finding_id, x.severity, x.round, x.status])).toEqual([["spec", "F1", "minor", 4, "open-carried"]]);
+  }
+  expect(c.bad).toEqual([]);
+});
+
+test("capped carry: a keyless sealed final round still refuses a major finding, a wrong Key line, a stray later return and a changed spec", async () => {
+  const major = await specAheadOfLedger({ specFindings: "- **F1** (major) a blocking gap" }, true);
+  for (const run of [p1Fold(major.args), v2Cli(major.args)]) { expect(run.out).toBe(""); expect(run.err).toContain("capped-fold: ineligible finding heading: - **F1** (major) a blocking gap"); }
+  const wrong = await specAheadOfLedger({}, true);
+  await editCappedReturn(wrong, wrong.args.specReturn, text => `Key: HIMMEL-99999\n${text}`);
+  expect(p1Fold(wrong.args).err).toBe(p1Line(`capped-fold: return must declare only ${cappedKey}`));
+  const stray = await specAheadOfLedger({}, true);
+  const copy = stray.args.specReturn.replace("-r4.md", "-r5.md"); copyFileSync(stray.args.specReturn, copy);
+  for (const run of [p1Fold(stray.args), v2Cli(stray.args)]) expect(run.err).toContain(`ambiguous or unaccounted latest return: ${copy}`);
+  const changed = await specAheadOfLedger({}, true);
+  writeFileSync(changed.spec, readFileSync(changed.spec, "utf8") + "\nA later edit.\n");
+  for (const run of [p1Fold(changed.args), v2Cli(changed.args)]) { expect(run.out).toBe(""); expect(run.code).toBe(1); expect(run.err).toMatch(/must review the current spec|seal provenance disagrees|missing\/extra ledger seals|Reviewed declaration/); }
+});
+
+test("capped carry: a closure return's READ quote that names no seal is context on the v2 route and still refused on the strict v1 route", async () => {
+  const f = await cappedFixture();
+  const stray = `READ-SHA256 ${"a".repeat(64)} /pruned-worktree/scripts/check-ci.sh\n`;
+  await editCappedReturn(f, f.args.specReturn, text => stray + text);
+  const v2 = v2Cli(f.args); expect(v2.err).toBe(""); expect(v2.code).toBe(0);
+  expect(JSON.parse(v2.out).returns.map((r: any) => r.round)).toEqual([3, 3]);
+  const v1 = p1Fold(f.args); expect(v1.out).toBe(""); expect(v1.code).toBe(1);
+  const wrong = await cappedFixture();
+  await editCappedReturn(wrong, wrong.args.specReturn, text => text.replace(/^(READ-SHA256 )[0-9a-f]{64}( .*estimate\.json)$/m, `$1${"b".repeat(64)}$2`));
+  expect(v2Cli(wrong.args).err, "a sealed artifact's quote still has to carry its sha").toContain("capped-fold:");
+  expect(v2Cli(wrong.args).code).toBe(1);
 });
 
 const signShape = (...argv: string[]): P1Run => {
