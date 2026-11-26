@@ -57,7 +57,8 @@ function translateToolCall(text) {
     return { text };
   }
   if (!isObject(payload) || typeof payload.tool_name !== 'string') return { text };
-  if (payload.toolInputTruncated === true) {
+  const postTool = payload.hook_event_name === 'PostToolUse' || payload.hook_event_name === 'PostToolUseFailure';
+  if (payload.toolInputTruncated === true && !postTool) {
     return { refuse: `${payload.tool_name}: the harness marked this tool input truncated, so no guard can judge all of it; refusing the tool call` };
   }
 

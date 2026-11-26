@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Suite: a Grok or Cursor tool call reaches himmel's guards in Claude's shape
-# through each shared hook entry point.
 # shellcheck disable=SC2016
 set -uo pipefail
 
@@ -550,7 +548,7 @@ for ep in project plugin guard user; do
         '{"hook_event_name":"PreToolUse","session_id":"h1073-m","tool_name":"mcp__t3-code__t3_thread_list","tool_input":{"tool_name":"t3-code__x","tool_input":{}}}' \
         '{"hook_event_name":"PreToolUse","session_id":"h1073-n","tool_name":"t3code__nope","tool_input":{"limit":1}}'; do
         printf '%s' "$sent" > "$SB/p.json"; seen_by "$ep"
-        if [ -f "$SB/seen.json" ] && [ "$(cat "$SB/seen.json")" = "$sent" ]; then
+        if cmp -s "$SB/seen.json" <(printf '%s' "$sent"); then
             pass "$ep: $(printf '%s' "$sent" | jq -r .tool_name) passes through unchanged"
         else fail "$ep: $(printf '%s' "$sent" | jq -r .tool_name) changed: $(cat "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
     done
@@ -564,6 +562,10 @@ for ep in project plugin guard user; do
     seen_by "$ep"
     if [ "$SEEN_RC" = 2 ] && [ ! -e "$SB/seen.json" ]; then pass "$ep: a grok call marked toolInputTruncated is refused"
     else fail "$ep: truncated grok call - rc $SEEN_RC, member saw $(cat "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
+    jq -c '.hook_event_name = "PostToolUse"' "$SB/p.json" > "$SB/p2.json" && mv "$SB/p2.json" "$SB/p.json"
+    seen_by "$ep"
+    if [ "$SEEN_RC" = 0 ] && [ "$(jq -r .tool_name "$SB/seen.json" 2>/dev/null)" = Bash ]; then pass "$ep: a truncated grok PostToolUse event still reaches its members"
+    else fail "$ep: truncated grok PostToolUse - rc $SEEN_RC, member saw $(cat "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
 done
 
 echo "== fail-closed: no readable table, every entry point refuses =="
@@ -586,7 +588,8 @@ stage() {
             missing) rm -f "$t" ;;
             unreadable) [ -f "$t" ] && chmod 000 "$t" ;;
             unparseable) mkdir -p "$(dirname "$t")"; printf '{ not json\n' > "$t" ;;
-            two-document) printf '{}\n' | cat - "$HERE/$TABLE_REL" > "$t" ;;
+            two-document) printf '{}\n' | cat - "$HERE/$TABLE_REL" > "$t" && [ "$(jq -s length "$t")" = 2 ] \
+                || { echo "FAIL fixture: two-document table"; exit 1; } ;;
         esac
     done
 }

@@ -25,7 +25,7 @@ if [ "$kind" != tool ]; then
     printf '%s' "$input" | bash "$guard"
     exit $?
 fi
-if [ "$(printf '%s' "$input" | jq -r '.toolInputTruncated == true')" != false ]; then
+if [ "$(printf '%s' "$input" | jq -r '.toolInputTruncated == true and (.hook_event_name | IN("PostToolUse", "PostToolUseFailure") | not)')" != false ]; then
     echo "translate-tool-call: the harness marked this tool input truncated, so no guard can judge all of it; refusing the tool call" >&2
     exit 2
 fi
@@ -36,14 +36,14 @@ shape='type == "object"
     and all(.mcp_servers[]; type == "string")
     and all(.tools[]; type == "object" and (.claude | type) == "string"
         and ((has("keys") | not) or ((.keys | type) == "object" and all(.keys[]; type == "string"))))'
-if ! { [ -r "$table" ] && jq -se "length == 1 and (.[0] | $shape)" "$table" >/dev/null 2>&1; }; then
+if ! { tbl=$(cat "$table" 2>/dev/null) && printf '%s' "$tbl" | jq -se "length == 1 and (.[0] | $shape)" >/dev/null 2>&1; }; then
     echo "translate-tool-call: harness tool table $table is missing, unreadable or malformed; refusing the tool call" >&2
     exit 2
 fi
 
-out=$(printf '%s' "$input" | jq -c --slurpfile t "$table" '
+out=$(printf '%s' "$input" | jq -c --argjson t "$tbl" '
     def obj: type == "object";
-    $t[0] as $t | .tool_name as $n
+    .tool_name as $n
     | if ($t.tools | has($n)) then
         $t.tools[$n] as $e
         | .tool_name = $e.claude
