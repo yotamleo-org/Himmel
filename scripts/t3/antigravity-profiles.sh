@@ -44,6 +44,7 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd -P)"
 REGISTRY="${T3_AP_REGISTRY:-$HERE/antigravity-profiles.json}"
 PLUGIN_PROFILES="${T3_AP_PLUGIN_PROFILES:-$REPO_ROOT/scripts/lanes/plugin-profiles.json}"
 BACKSTOP="${T3_AP_BACKSTOP:-$REPO_ROOT/scripts/antigravity/install-antigravity-backstop.sh}"
+ADAPTER="${T3_AP_ADAPTER:-$REPO_ROOT/scripts/hooks/antigravity-hook-adapter.sh}"
 CACHE_ROOT="${HIMMEL_AGY_SKILL_CACHE:-$HOME/.himmel/cache/agy-skills}"
 T3_HOME="${T3CODE_HOME:-$HOME/.t3}"
 INSTALLED_PLUGINS="$HOME/.claude/plugins/installed_plugins.json"
@@ -199,7 +200,7 @@ resolve_plugins() {
     for f in $(printf '%s' "$froms" | jq -r '.[]'); do
         jq -e --arg f "$f" '.profiles | has($f)' "$PLUGIN_PROFILES" >/dev/null 2>&1 || die 2 "profile '$p': unknown fromProfile '$f' (not in $PLUGIN_PROFILES)"
     done
-    ex="$(jq -c --arg p "$p" '.profiles[$p].excludePlugins // []' "$REGISTRY")" || die 2 "malformed excludePlugins for '$p'"
+    ex="$(jq -c --arg p "$p" '.profiles[$p] | if has("excludePlugins") then .excludePlugins else [] end' "$REGISTRY")" || die 2 "malformed excludePlugins for '$p'"
     printf '%s' "$ex" | jq -e 'type == "array" and all(.[]; type == "string")' >/dev/null 2>&1 || die 2 "profile '$p': excludePlugins must be a list of plugin ids"
     ids="$(jq -r --argjson froms "$froms" --argjson ex "$ex" '. as $d | [$froms[] | $d.profiles[.].enable // []] | add // []
         | reduce .[] as $x ([]; if index($x) then . else . + [$x] end)
@@ -279,17 +280,20 @@ EOF
 
 build_mcp_json() {
     local p="$1" out="$2" n
-    jq -e --arg p "$p" '((.profiles[$p].mcpServers // {}) | type) == "object"
-        and ((.profiles[$p].optionalMcpServers // []) | type == "array" and all(.[]; type == "string"))' "$REGISTRY" >/dev/null 2>&1 \
-        || die 2 "profile '$p': mcpServers must be an object and optionalMcpServers a list of names"
+    jq -e --arg p "$p" '.profiles[$p]
+        | (if has("mcpServers") then (.mcpServers | type == "object" and all(.[]; type == "object")) else true end)
+        and (if has("optionalMcpServers") then (.optionalMcpServers | type == "array" and all(.[]; type == "string")) else true end)' "$REGISTRY" >/dev/null 2>&1 \
+        || die 2 "profile '$p': mcpServers must be an object of server objects and optionalMcpServers a list of names"
     for n in $(jq -r --arg p "$p" --slurpfile pp "$PLUGIN_PROFILES" '(.profiles[$p].optionalMcpServers // [])[] as $n
         | select((($pp[0].mcpCatalog // {})[$n]) == null or ((($pp[0].mcpCatalog // {})[$n] | tostring) | contains("${"))) | $n' "$REGISTRY"); do
         echo "antigravity-profiles: skip optional MCP server '$n': not in mcpCatalog, or it needs a checkout path" >&2
     done
     jq -S --arg p "$p" --slurpfile pp "$PLUGIN_PROFILES" '
-        (($pp[0].mcpCatalog // {}) as $cat
-         | [(.profiles[$p].optionalMcpServers // [])[] | select($cat[.] != null and (($cat[.] | tostring) | contains("${") | not)) | {(.): $cat[.]}] | add // {})
-        + (.profiles[$p].mcpServers // {}) | if length == 0 then empty else {mcpServers: .} end' "$REGISTRY" > "$out" || die 2 "cannot build mcp_config.json for '$p'"
+        .profiles[$p] as $prof
+        | (($pp[0].mcpCatalog // {}) as $cat
+           | [($prof.optionalMcpServers // [])[] | select($cat[.] != null and (($cat[.] | tostring) | contains("${") | not)) | {(.): $cat[.]}] | add // {})
+          + ($prof.mcpServers // {})
+        | if ($prof | has("mcpServers") or has("optionalMcpServers")) then {mcpServers: .} else empty end' "$REGISTRY" > "$out" || die 2 "cannot build mcp_config.json for '$p'"
 }
 
 build_skills_json() {
@@ -298,6 +302,7 @@ build_skills_json() {
         | {entries: sort_by(.path)}' "$1"
 }
 
+mode_of() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; } # gnu-ok: BSD fallback on the same line
 hooks_present() { jq -e --arg k "$BACKSTOP_KEY" '(.[$k] | type) == "object"' "$1/config/hooks.json" >/dev/null 2>&1; }
 
 BARE_HEX="$(printf '%s' antigravity | sha256_hex)" || die 2 "sha256 failed"
@@ -353,6 +358,7 @@ adapter_path() {
     local c="$1" a
     a="${c#exec bash \'}"
     [ "$a" != "$c" ] || return 1
+    [ "${a%\' --event PreToolUse}" != "$a" ] || return 1
     a="${a%\' --event PreToolUse}"
     case "$a" in
         *\'*) return 1 ;;
@@ -393,6 +399,8 @@ run_smoke() {
                 smoke_line FAIL hooks "the $BACKSTOP_KEY key has no PreToolUse command"
             elif [ -z "$adapter" ]; then
                 smoke_line FAIL hooks "the PreToolUse command is not the himmel backstop (want: exec bash '<path>/antigravity-hook-adapter.sh' --event PreToolUse); not run"
+            elif [ "$adapter" != "$ADAPTER" ]; then
+                smoke_line FAIL hooks "the PreToolUse command runs $adapter, not this checkout's $ADAPTER; not run (run --apply --profile $p from this checkout)"
             elif [ ! -f "$adapter" ]; then
                 smoke_line FAIL hooks "the backstop adapter $adapter is missing"
             else
@@ -423,7 +431,9 @@ run_smoke() {
         fi
         mc="$home/config/mcp_config.json"
         build_mcp_json "$p" "$WORK/$p.mcp.json"
-        if [ -s "$WORK/$p.mcp.json" ] && ! cmp -s "$WORK/$p.mcp.json" "$mc" 2>/dev/null; then
+        if [ -L "$mc" ]; then
+            smoke_line FAIL mcp "config/mcp_config.json is a symlink (run --apply --profile $p)"
+        elif [ -s "$WORK/$p.mcp.json" ] && ! cmp -s "$WORK/$p.mcp.json" "$mc" 2>/dev/null; then
             smoke_line FAIL mcp "config/mcp_config.json is missing or differs from the registry's MCP servers (run --apply --profile $p)"
         elif [ ! -s "$mc" ]; then
             smoke_line PASS mcp "no MCP servers in the profile home (T3 serves its own t3-code server to each thread)"
@@ -517,6 +527,8 @@ for p in $SELECTED; do
                 why="$why; skills.json is not a regular file"
             elif ! cmp -s "$new" "$cur"; then
                 why="$why; skills.json differs from what apply would write"
+            elif [ "$(mode_of "$cur")" != 600 ]; then
+                why="$why; skills.json mode is not 600"
             fi
             if [ -s "$WORK/$p.mcp.json" ]; then
                 mcur="$home/config/mcp_config.json"
@@ -524,6 +536,8 @@ for p in $SELECTED; do
                     why="$why; mcp_config.json is not a regular file"
                 elif ! cmp -s "$WORK/$p.mcp.json" "$mcur"; then
                     why="$why; mcp_config.json differs from what apply would write"
+                elif [ "$(mode_of "$mcur")" != 600 ]; then
+                    why="$why; mcp_config.json mode is not 600"
                 fi
             fi
             if [ -z "$why" ]; then echo "OK $id"; else echo "NOT OK $id${why}"; RC=1; fi
@@ -537,6 +551,7 @@ for p in $SELECTED; do
             if [ -s "$WORK/$p.mcp.json" ]; then
                 mcur="$home/config/mcp_config.json"
                 if [ -f "$mcur" ] && [ ! -L "$mcur" ] && cmp -s "$WORK/$p.mcp.json" "$mcur"; then
+                    chmod 600 "$mcur" || die 2 "cannot set mode 600 on $mcur"
                     echo "UNCHANGED $mcur"
                 else
                     atomic_write "$mcur" < "$WORK/$p.mcp.json" || die 2 "cannot write $mcur"
@@ -544,6 +559,7 @@ for p in $SELECTED; do
                 fi
             fi
             if [ -f "$cur" ] && [ ! -L "$cur" ] && cmp -s "$new" "$cur"; then
+                chmod 600 "$cur" || die 2 "cannot set mode 600 on $cur"
                 echo "UNCHANGED $cur"
             else
                 atomic_write "$cur" < "$new" || die 2 "cannot write $cur"

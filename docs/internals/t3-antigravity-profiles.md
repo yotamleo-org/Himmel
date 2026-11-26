@@ -12,7 +12,10 @@ Optional registry fields per profile:
   else rc 2), so a profile can inherit `fromProfiles` and leave one plugin out.
 - `mcpServers`: a map of MCP server definitions written to the home's `config/mcp_config.json`
   (`{"mcpServers":{...}}`, mode 600), checked and rewritten like `skills.json`. A profile with neither
-  `mcpServers` nor `optionalMcpServers` leaves `mcp_config.json` alone.
+  `mcpServers` nor `optionalMcpServers` leaves `mcp_config.json` alone; a profile that names either key
+  (even an empty one) owns the file, so a removed server leaves it. `--check` also needs mode 600, and
+  `--apply` sets it. A non-object `mcpServers`, a non-object server entry, a non-list
+  `optionalMcpServers` or a non-list `excludePlugins` exits 2.
 - `optionalMcpServers`: names resolved from `mcpCatalog` in `scripts/lanes/plugin-profiles.json` and
   added to the same file. A name missing from the catalog, or whose definition needs a checkout path
   (`${...}`), is skipped with a note on stderr, not an error. An own `mcpServers` entry wins over a
@@ -122,9 +125,9 @@ no model; the thread's `modelSelection` names it, as every T3 thread does.
 rc: 0 ok (`--list` too); 1 `--check` not satisfied; 2 usage, missing `jq`, malformed registry or JSON input,
 unknown `fromProfiles` name, a reserved `--list` profile name, pinned fetch or verify failure, backstop failure,
 a symlinked profile `antigravity-acp` or a token path that is not a file or link; 3 fence refusal.
-`--smoke`: 0 every line PASS, 1 any FAIL. `--flag-on`: 0 flag on, 1 off, 2 bad value or unreadable reader.
+`--smoke`: 0 every line PASS, 1 any FAIL, 2 malformed registry data (the same rc 2 causes as above). `--flag-on`: 0 flag on, 1 off, 2 bad value or unreadable reader.
 
-Env seams (tests): `T3_AP_REGISTRY`, `T3_AP_PLUGIN_PROFILES`, `T3_AP_BACKSTOP`,
+Env seams (tests): `T3_AP_REGISTRY`, `T3_AP_PLUGIN_PROFILES`, `T3_AP_BACKSTOP`, `T3_AP_ADAPTER`,
 `HIMMEL_AGY_SKILL_CACHE`; `HOME` and `T3CODE_HOME` as usual. Modes also include `--smoke` and `--flag-on`
 (below).
 
@@ -152,7 +155,7 @@ link a thread needs and exits 0 only when every line is `PASS`:
 | line | PASS means |
 |---|---|
 | `login` | the profile has the bare login's link, or its own token file |
-| `hooks` | `config/hooks.json` has the backstop key, and its PreToolUse command denies a control read of the login file |
+| `hooks` | `config/hooks.json` has the backstop key, and its PreToolUse command (run only when it is exactly `exec bash '<this checkout's scripts/hooks/antigravity-hook-adapter.sh>' --event PreToolUse`) exits 0 with a deny for a control read of the login file |
 | `skills` | every `skills.json` entry's skill has a `SKILL.md` |
 | `mcp` | every server in `config/mcp_config.json` has its command on PATH, or its URL answers (none configured is a pass: T3 serves its own `t3-code` server to each thread) |
 | `instance` | T3's settings has an enabled `antigravity_<profile>` |

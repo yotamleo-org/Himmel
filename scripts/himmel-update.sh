@@ -1496,8 +1496,8 @@ sync_agy_profiles() {
             STATUS_agy_profiles="skipped"; DETAIL_agy_profiles="flag agy_design_profile is off"
             return 0 ;;
         *)
-            echo "==> Antigravity profiles: failed (flag agy_design_profile has a bad value; want 1, 0, on or off)"
-            STATUS_agy_profiles="failed"; DETAIL_agy_profiles="bad agy_design_profile value; see scripts/lib/flags.sh"
+            echo "==> Antigravity profiles: failed (flag agy_design_profile has a bad value or its reader cannot load; want 1, 0, on or off)"
+            STATUS_agy_profiles="failed"; DETAIL_agy_profiles="bad agy_design_profile value or an unreadable flag reader; see scripts/lib/flags.sh"
             return 1 ;;
     esac
     rc=0

@@ -402,7 +402,7 @@ exit 0
 STUB
 printf '#!/usr/bin/env bash\ncat >/dev/null\nexit 0\n' > "$T/adp-allow/antigravity-hook-adapter.sh"
 chmod +x "$T/adp-deny/antigravity-hook-adapter.sh" "$T/adp-allow/antigravity-hook-adapter.sh"
-smoke_hooks() { jq -n --arg c "exec bash '$1' --event PreToolUse" '{"himmel-antigravity-backstop":{PreToolUse:[{matcher:"*",hooks:[{type:"command",command:$c}]}]}}' > "$(home_of)/config/hooks.json"; }
+smoke_hooks() { SMOKE_ADAPTER="$1"; jq -n --arg c "exec bash '$1' --event PreToolUse" '{"himmel-antigravity-backstop":{PreToolUse:[{matcher:"*",hooks:[{type:"command",command:$c}]}]}}' > "$(home_of)/config/hooks.json"; }
 smoke_ready() {
     fresh
     mk_bare_tok
@@ -412,7 +412,7 @@ smoke_ready() {
     mkdir -p "$HOME/.himmel"
     jq -n '{t3:{instance_allowlist:["antigravity_design"]}}' > "$HOME/.himmel/config.json"
 }
-smoke() { SOUT="$(bash "$GEN" --smoke --profile design 2>&1)"; SRC=$?; }
+smoke() { SOUT="$(env T3_AP_ADAPTER="${SMOKE_ADAPTER:-}" bash "$GEN" --smoke --profile design 2>&1)"; SRC=$?; }
 
 smoke_ready
 smoke
@@ -457,6 +457,15 @@ smoke_ready
 jq -n --arg c "exec bash '$T/adp-allow/antigravity-hook-adapter.sh'; touch $T/injected; echo '/x/antigravity-hook-adapter.sh' --event PreToolUse" '{"himmel-antigravity-backstop":{PreToolUse:[{matcher:"*",hooks:[{type:"command",command:$c}]}]}}' > "$(home_of)/config/hooks.json"
 smoke
 expect_eq "28 a command with an injected tail is never executed" "$(test -e "$T/injected" && echo yes || echo no)" no
+expect_eq "28 a command with an injected tail exits 1" "$SRC" 1
+expect_ok "28 a command with an injected tail FAILs hooks as not the backstop" grep -q '^FAIL hooks: the PreToolUse command is not the himmel backstop' <<<"$SOUT"
+smoke_ready
+jq -n --arg c "exec bash '$T/adp-deny/antigravity-hook-adapter.sh" '{"himmel-antigravity-backstop":{PreToolUse:[{matcher:"*",hooks:[{type:"command",command:$c}]}]}}' > "$(home_of)/config/hooks.json"
+smoke
+expect_ok "28 a command with no closing quote and no event suffix FAILs hooks" grep -q '^FAIL hooks: the PreToolUse command is not the himmel backstop' <<<"$SOUT"
+smoke_ready
+SOUT="$(env T3_AP_ADAPTER="$T/adp-allow/antigravity-hook-adapter.sh" bash "$GEN" --smoke --profile design 2>&1)"; SRC=$?
+expect_ok "28 an adapter that is not this checkout's is not run" grep -q "^FAIL hooks: .*not this checkout's" <<<"$SOUT"
 smoke_ready
 printf '{}' > "$(home_of)/config/hooks.json"
 smoke
@@ -526,13 +535,50 @@ smoke_hooks "$T/adp-deny/antigravity-hook-adapter.sh"
 jq -n '{providerInstances:{antigravity_design:{driver:"antigravity",enabled:true}}}' > "$T3CODE_HOME/userdata/settings.json"
 mkdir -p "$HOME/.himmel"
 jq -n '{t3:{instance_allowlist:["antigravity_design"]}}' > "$HOME/.himmel/config.json"
-SOUT="$(mcp_env bash "$GEN" --smoke --profile design 2>&1)"; SRC=$?
+SOUT="$(mcp_env T3_AP_ADAPTER="$T/adp-deny/antigravity-hook-adapter.sh" bash "$GEN" --smoke --profile design 2>&1)"; SRC=$?
 expect_eq "38 smoke with registry MCP servers exits 0" "$SRC" 0
 expect_ok "38 smoke counts the two MCP servers" grep -q '^PASS mcp: 2 MCP servers reachable' <<<"$SOUT"
+cp "$(home_of)/config/mcp_config.json" "$T/mcp-copy.json"
 rm -f "$(home_of)/config/mcp_config.json"
-SOUT="$(mcp_env bash "$GEN" --smoke --profile design 2>&1)"; SRC=$?
+SOUT="$(mcp_env T3_AP_ADAPTER="$T/adp-deny/antigravity-hook-adapter.sh" bash "$GEN" --smoke --profile design 2>&1)"; SRC=$?
 expect_eq "38 smoke with the MCP config missing exits 1" "$SRC" 1
 expect_ok "38 the FAIL says the MCP config differs from the registry" grep -q '^FAIL mcp: .*differs from the registry' <<<"$SOUT"
+ln -s "$T/mcp-copy.json" "$(home_of)/config/mcp_config.json"
+SOUT="$(mcp_env T3_AP_ADAPTER="$T/adp-deny/antigravity-hook-adapter.sh" bash "$GEN" --smoke --profile design 2>&1)"; SRC=$?
+expect_ok "38 a symlinked mcp_config.json FAILs mcp" grep -q '^FAIL mcp: config/mcp_config.json is a symlink' <<<"$SOUT"
+
+fresh
+mcp_env bash "$GEN" --apply --profile design >/dev/null 2>&1
+M="$(home_of)/config/mcp_config.json"
+chmod 644 "$M"
+mcp_env bash "$GEN" --check --profile design >/dev/null 2>&1; rc=$?
+expect_eq "39 check fails on a byte-identical mcp_config.json with mode 644" "$rc" 1
+mcp_env bash "$GEN" --apply --profile design >/dev/null 2>&1
+expect_eq "39 apply sets mode 600 on an identical file" "$(mode_of "$M")" 600
+
+fresh
+bash "$GEN" --apply --profile design >/dev/null 2>&1
+chmod 644 "$(home_of)/config/skills.json"
+bash "$GEN" --check --profile design >/dev/null 2>&1; rc=$?
+expect_eq "39 check fails on a byte-identical skills.json with mode 644" "$rc" 1
+bash "$GEN" --apply --profile design >/dev/null 2>&1
+expect_eq "39 apply sets mode 600 on an identical skills.json" "$(mode_of "$(home_of)/config/skills.json")" 600
+
+jq '.profiles.design.mcpServers = {}' "$REG_ORIG" > "$T/registry-mcp-empty.json"
+fresh
+mkdir -p "$(home_of)/config"
+printf '{"mcpServers":{"stale":{"command":"sh"}}}\n' > "$(home_of)/config/mcp_config.json"
+env T3_AP_REGISTRY="$T/registry-mcp-empty.json" bash "$GEN" --apply --profile design >/dev/null 2>&1
+expect_eq "39 an explicit empty mcpServers removes a stale server" "$(jq -c '.mcpServers' "$(home_of)/config/mcp_config.json")" '{}'
+
+jq '.profiles.design.excludePlugins = false' "$REG_ORIG" > "$T/registry-bad1.json"
+jq '.profiles.design.mcpServers = false' "$REG_ORIG" > "$T/registry-bad2.json"
+jq '.profiles.design.optionalMcpServers = false' "$REG_ORIG" > "$T/registry-bad3.json"
+jq '.profiles.design.mcpServers = {x:"notanobject"}' "$REG_ORIG" > "$T/registry-bad4.json"
+for b in 1 2 3 4; do
+    env T3_AP_REGISTRY="$T/registry-bad$b.json" bash "$GEN" --dry-run --profile design >/dev/null 2>&1; rc=$?
+    expect_eq "39 a malformed profile field (case $b) exits 2" "$rc" 2
+done
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" = 0 ]
