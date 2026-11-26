@@ -29,7 +29,7 @@
     "peer-desk": "the peer desk (~/.himmel/peer-bridge/desk/**): a fresh session started for one peer that may read nothing of ours, so the only text it holds is what the operator types into it. A message to a peer bot leaves only from here",
     "operator-reply": "text the operator types into the Telegram operator bot as a reply to a peer escalation, drafted for the peer and sent only after a counted Approve tap. Operator-typed only: the reply handler reads nothing of ours into it and the review message shows it verbatim before the tap",
     "peer-jobs": "typed peer-bridge envelopes (slice B): signed four-line messages that jobs.ts, the poller and runner.ts build from resolved values. Every field is a closed enum, a bounded integer, a resolved commit SHA, a hex value the receiver compares or a suite path on a public repo; no free text. Each also passes the bridge's own envelope policy (schema re-check, content rules on line 3, line 4 verified as our signature)",
-    "chief-tell": "the one line of text scripts/peer-bridge/tell.ts was given by a station Claude session that is not a peer desk and not peer-tainted, after the bridge content rules. tell.ts is refused when the transcript names a salus or PHI path; an unnamed path is the residual, the same deliberate-evasion class as a same-user process that writes the bridge spool directly",
+    "chief-tell": "the one line of text scripts/peer-bridge/tell.ts was given by a station Claude session that is not a peer desk and not peer-tainted, after the bridge content rules. tell.ts is refused when the transcript names a salus or PHI path or phi-read-mark.sh marked the session when a tool touched one; a path neither sees (one a command builds at run time) is the residual, the same deliberate-evasion class as a same-user process that writes the bridge spool directly",
     "skill-index": "the generated skill-index markdown (~/.claude/skill-index): skill names and descriptions indexed by qmd as collection skills"
   },
   "providers": {
@@ -156,7 +156,7 @@
     {
       "corpus": "chief-tell", "provider": "peer-telegram", "purpose": "peer-message",
       "verdict": "allow",
-      "why": "a station Claude session's one-line draft, written through tell.ts for a configured peer, checked by the content rules at queue, draft and tap time and sent only after the operator approves the exact bytes under a label naming it an unverified tell.ts draft. tell.ts is refused when the transcript names a salus or PHI path; an unnamed path is the residual, the same deliberate-evasion class as a same-user process that can read the tap key or write the bridge spool, which bypasses tell.ts and the tap today and gains nothing from this row."
+      "why": "a station Claude session's one-line draft, written through tell.ts for a configured peer, checked by the content rules at queue, draft and tap time and sent only after the operator approves the exact bytes under a label naming it an unverified tell.ts draft. tell.ts is refused when the transcript names a salus or PHI path or phi-read-mark.sh marked the session when a tool touched one; a path neither sees (one a command builds at run time) is the residual, the same deliberate-evasion class as a same-user process that can read the tap key or write the bridge spool, which bypasses tell.ts and the tap today and gains nothing from this row."
     },
     {
       "corpus": "chief-tell", "provider": "*", "purpose": "*",
