@@ -2590,7 +2590,9 @@ words anywhere still deny: an `xargs` segment (the whole command), and a shell,
 the whole command when it has a heredoc). A command whose quoting the tokenizer
 cannot read, and that holds both words, is denied. The refusal tells a subagent to
 quote the phrase as one argument to `grep` or `git grep` through Bash. An
-`agent_id` of `false`, `""`, a number or an object counts as a subagent.
+`agent_id` of `false`, `""`, a number or an object counts as a subagent, and so does
+a guard-unwrap child call, which carries no `agent_id` but runs with
+`GUARD_UNWRAP_DEPTH` set and is always a subagent's.
 
 It is a security fence and fails CLOSED: no `jq` on `PATH` denies every Bash call
 (`cannot read the hook input without jq`), and stdin that is not one JSON object

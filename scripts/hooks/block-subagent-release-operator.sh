@@ -6,38 +6,13 @@
 # CLI reads only the environment, and a subagent inherits the chief's.
 #
 # A security fence, so it fails CLOSED: no jq denies every call, and stdin that
-# is not a JSON object is denied. `agent_id` absent or null is the main session
-# (the chief) and is allowed without reading the command; any other value is a
-# subagent. A guard-unwrap child call carries no agent_id; it runs with
-# GUARD_UNWRAP_DEPTH set and is always a subagent's, so the hook treats it as one.
-#
-# The match, for a subagent:
-#   1. Pre-filter. The command is normalised (backslash-newline pairs deleted,
-#      `$'` and `$"` turned into `'` and `"`, then every `'`, `"` and `\`
-#      deleted) and split into words at every space, TAB, CR, newline and shell
-#      metacharacter. A command that does not hold both words `release` and
-#      `operator` is allowed at once: no visible spelling of the writer lacks
-#      them.
-#   2. Otherwise guard-unwrap derives the text the shell runs (quotes removed,
-#      wrappers stripped, `bash -c`, `eval` and `env -S` bodies read) and feeds
-#      each derived form back through this hook.
-#   3. The tokenizer then splits the command into simple commands, and a simple
-#      command is denied when `release` is directly followed by `operator` in
-#      its words (redirects aside): the command-word sequence the jira CLI
-#      runs. `git diff -G 'release|operator'`, `grep -n 'release operator' f`
-#      and a heredoc body that writes a file naming both words are allowed.
-#   4. Where a command's words can reach the CLI as DATA rather than as its own
-#      words, both words anywhere in it still deny: an `xargs` segment (any
-#      word of the whole command), a shell, `eval`, `source`, node, python,
-#      perl, ruby, php or lua segment (any word of the segment, or of the whole
-#      command when it has a heredoc).
-#   5. A command whose quoting the tokenizer cannot read, and that holds both
-#      words, is denied.
-#
-# What it cannot see (text built at run time, a nested claude session, a chief
-# in another repo, the Monitor tool; and a command that runs its argument as
-# code from another tool: sed `e`, rg --pre, git grep -O, a git alias) is the
-# fence residual named in docs/internals/enforcement.md.
+# is not exactly one JSON object is denied. `agent_id` absent or null is the main
+# session (the chief) and is allowed without reading the command; any other value
+# is a subagent. A command that does not hold both words `release` and `operator`
+# is allowed at once; otherwise the forms guard-unwrap derives and the tokenizer's
+# simple commands are scanned for `release` directly followed by `operator`.
+# The full match rules and the fence residual (what it cannot see) are in
+# docs/internals/enforcement.md.
 #
 # Bypass (set in the shell that launched Claude Code; session-sticky, a per-call
 # prefix does not reach the hook): SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1
@@ -74,8 +49,11 @@ verdict=${parsed%%$'\n'*}
 cmd=''
 case "$parsed" in *$'\n'*) cmd=${parsed#*$'\n'} ;; esac
 
+unwrap_child=0
+[ -z "${GUARD_UNWRAP_DEPTH:-}" ] || unwrap_child=1
+
 case "$verdict" in
-    chief) [ -n "${GUARD_UNWRAP_DEPTH:-}" ] || exit 0 ;;
+    chief) [ "$unwrap_child" = 1 ] || exit 0 ;;
     sub) ;;
     *) deny "block-subagent-release-operator: cannot parse the hook input as a JSON object; the call is denied. $BYPASS" ;;
 esac
