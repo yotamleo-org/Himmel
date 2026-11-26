@@ -19,6 +19,7 @@ Exit: 0 printed; 2 usage or an unreadable record; 3 no row carries the fields th
 
 import argparse
 import json
+import math
 import os
 import statistics
 import sys
@@ -30,6 +31,8 @@ def main(argv=None):
     ap.add_argument("--last", type=int, default=7)
     ap.add_argument("--workers", type=float)
     a = ap.parse_args(argv)
+    if a.workers is not None and not (math.isfinite(a.workers) and a.workers > 0):
+        ap.error("--workers must be a finite number above 0")
     path = os.path.join(a.record, "chief-load.jsonl") if os.path.isdir(a.record) else a.record
     rows = []
     try:
@@ -45,7 +48,7 @@ def main(argv=None):
         print("chief-load-report: cannot read %s: %s" % (path, e.strerror), file=sys.stderr)
         return 2
     rows = rows[-a.last:] if a.last > 0 else rows
-    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
     full = [r for r in rows if all(num(r.get(k)) for k in ("hours", "workers_mean", "ctx_start", "ctx_end"))
             and r["hours"] > 0 and r["workers_mean"] > 0]
     fmt = lambda v, f="%d": f % v if num(v) else "-"
@@ -64,7 +67,7 @@ def main(argv=None):
     g = sum(r["ctx_end"] - r["ctx_start"] for r in full) / worker_hours
     boot = statistics.median(r["ctx_start"] for r in full)
     end = statistics.mean(r["ctx_end"] for r in full)
-    n = a.workers if a.workers else worker_hours / hours
+    n = a.workers if a.workers is not None else worker_hours / hours
     print("shifts %d of %d, chief-hours %.2f, worker-hours %.1f" % (len(full), len(rows), hours, worker_hours))
     print("tokens per live worker-hour: %s" % format(round(g), ","))
     print("start-up context (median at the first waiter arm): %s" % format(round(boot), ","))

@@ -48,8 +48,15 @@ rc=0; python3 "$R" "$tmp/empty.jsonl" >/dev/null 2>&1 || rc=$?
 check "a record with no usable row exits 3" "$rc" "3"
 printf '{"schema":1,"shift":"DZ","workers_mean":2,"hours":1,"ctx_start":5,"ctx_end":5}\n' > "$tmp/flat.jsonl"
 check "a shift with no context growth leaves T(N) undefined" "$(python3 "$R" "$tmp/flat.jsonl" | grep -c '^T(2.0) undefined')" "1"
-printf '\377\376 not utf-8\n' >> "$tmp/flat.jsonl"
+check "the fixture appends a line of invalid UTF-8" "$(printf '\377\376 not utf-8\n' >> "$tmp/flat.jsonl" && echo appended)" "appended"
 rc=0; python3 "$R" "$tmp/flat.jsonl" >/dev/null 2>&1 || rc=$?
 check "a line of invalid UTF-8 is skipped" "$rc" "0"
+printf '{"schema":1,"shift":"DI","workers_mean":2,"hours":1,"ctx_start":5,"ctx_end":1e309}\n' >> "$tmp/flat.jsonl"
+out="$(python3 "$R" "$tmp/flat.jsonl")"; rc=$?
+check "a non-finite value is listed as a dash and leaves the report running" "$rc $(printf '%s\n' "$out" | grep -c '^shift DI .* end - ')" "0 1"
+for w in -1 0 nan inf; do
+    rc=0; python3 "$R" "$B" --workers "$w" >/dev/null 2>&1 || rc=$?
+    check "--workers $w is a usage error" "$rc" "2"
+done
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

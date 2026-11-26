@@ -3259,7 +3259,7 @@ cmd_next() {
     bash "$kit/chief-load-row.sh" --bucket "$state_dir" --shift "$predecessor_stem" --next-shift "$session" \
         --workers-end "$(printf '%s' "$LIVE_WORKER_ROWS" | grep -c .)" \
         --rulings "$(verbatim_rulings "$predecessor_doc" | grep -c .)" \
-        --spans-unknown "$(grep -o 'NONCE-UNKNOWN' "$doc" | grep -c .)" \
+        --spans-unknown "$(grep -o ':NONCE-UNKNOWN:' "$doc" | grep -c .)" \
         --reason "$REASON" --fill-percent "$fill_percent" --window "$load_window" \
         || err "warning: could not append the shift's load row to the load record in $state_dir"
     retire_manifest_rows "$predecessor_manifest" "$dead_rows"

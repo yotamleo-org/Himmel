@@ -36,18 +36,23 @@ check "the row's keys come in the fixed order" "$(jq -r 'keys_unsorted | .[0:3] 
 
 transcript S-B 300000 > "$cfg/projects/p/$sid.jsonl"
 printf '[]\nnull\n{"partial' >> "$rec"
-write --shift S-B --next-shift S-C --workers-end 20 --rulings 0 --spans-unknown 0 >/dev/null 2>&1
+rc=0; write --shift S-B --next-shift S-C --workers-end 20 --rulings 0 --spans-unknown 0 >/dev/null 2>&1 || rc=$?
+check "the second shift's row is appended (exit 0)" "$rc" "0"
 check "a line that is JSON but no object, or a partial last line, does not stop the next append or join it" "$(tail -n 1 "$rec" | jq -r '.shift')" "S-B"
 check "workers_start is the previous shift's workers_end" "$(tail -n 1 "$rec" | jq -r '"\(.workers_start) \(.workers_mean == 16) \(.workers_peak)"')" "12 true 20"
 check "an end context under the fill gives reason unstated" "$(tail -n 1 "$rec" | jq -r '.reason')" "unstated"
 
-write --shift S-OTHER --next-shift S-D --workers-end 1 --rulings 0 --spans-unknown 0 --reason operator-asked >/dev/null 2>&1
+rc=0; write --shift S-OTHER --next-shift S-D --workers-end 1 --rulings 0 --spans-unknown 0 --reason operator-asked >/dev/null 2>&1 || rc=$?
+check "a row with an unreadable transcript is still appended (exit 0)" "$rc" "0"
 check "a transcript titled for another session is not read" "$(tail -n 1 "$rec" | jq -r '"\(.transcript) \(.ctx_end) \(.hours)"')" "unavailable null null"
 check "--reason is recorded as given" "$(tail -n 1 "$rec" | jq -r '.reason')" "operator-asked"
 
-bash "$W" --bucket "$B" --shift S-E --next-shift S-F --workers-end 1 --rulings 0 --spans-unknown 0 >/dev/null 2>&1
+rc=0; bash "$W" --bucket "$B" --shift S-E --next-shift S-F --workers-end 1 --rulings 0 --spans-unknown 0 >/dev/null 2>&1 || rc=$?
+check "a row with no session id is appended (exit 0)" "$rc" "0"
 check "no session id still writes a row, transcript unavailable" "$(tail -n 1 "$rec" | jq -r '.shift + " " + .transcript')" "S-E unavailable"
 check "four rows after four handovers" "$(grep -c '"schema"' "$rec")" "4"
+rc=0; bash "$W" --bucket "$B" --shift S-E --next-shift S-G --workers-end 1 --rulings 0 --spans-unknown 0 >/dev/null 2>&1 || rc=$?
+check "a second row for the same shift is skipped (exit 0, still four rows)" "$rc $(grep -c '"schema"' "$rec")" "0 4"
 B3="$tmp/bucket3"; mkdir -p "$B3"; mkfifo "$B3/chief-load.jsonl"
 rc=0; bash "$W" --bucket "$B3" --shift S-A --next-shift S-B --workers-end 1 --rulings 0 --spans-unknown 0 >/dev/null 2>&1 || rc=$?
 check "a FIFO in the record's place is refused with exit 3, without blocking" "$rc" "3"

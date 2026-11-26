@@ -29,7 +29,7 @@
 # reason is --reason, else `fill` when ctx_end reached --fill-percent of --window, else `unstated`.
 # A field that cannot be read is null; the row is still written.
 #
-# Exit: 0 row appended; 1 the row was not written whole; 2 usage; 3 the record is not a regular
+# Exit: 0 row appended, or the shift already has its row (nothing appended); 1 the row was not written whole; 2 usage; 3 the record is not a regular
 # file (a symlink, FIFO or other), refused.
 set -uo pipefail
 
@@ -210,7 +210,18 @@ if not stat.S_ISREG(os.fstat(fd).st_mode):
     refuse()
 with os.fdopen(os.dup(fd), "rb") as reader:
     content = reader.read()
-previous = content.decode("utf-8", "replace").splitlines()
+previous = []
+for line in content.decode("utf-8", "replace").splitlines():
+    try:
+        r = json.loads(line)
+    except ValueError:
+        continue
+    if isinstance(r, dict):
+        previous.append(r)
+if any(r.get("shift") == shift for r in previous):
+    os.close(fd)
+    print("chief-load-row: %s already has its row in %s, nothing appended" % (shift, path), file=sys.stderr)
+    sys.exit(0)
 
 m = None
 if transcript:
@@ -221,12 +232,8 @@ if transcript:
 m = m or {}
 
 workers_start = None
-for line in previous:
-    try:
-        r = json.loads(line)
-    except ValueError:
-        continue
-    if isinstance(r, dict) and r.get("next_shift") == shift and isinstance(r.get("workers_end"), int):
+for r in previous:
+    if r.get("next_shift") == shift and isinstance(r.get("workers_end"), int):
         workers_start = r["workers_end"]
 ends = [x for x in (workers_start, workers_end) if x is not None]
 ctx_end = m.get("ctx_end")
