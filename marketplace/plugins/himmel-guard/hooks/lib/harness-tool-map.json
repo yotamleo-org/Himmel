@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "tools": {
+    "run_terminal_command": { "claude": "Bash" },
+    "Shell": { "claude": "Bash" },
+    "read_file": { "claude": "Read", "keys": { "target_file": "file_path" } },
+    "grep": { "claude": "Grep" },
+    "search_replace": { "claude": "Edit" },
+    "write": { "claude": "Write" }
+  },
+  "mcp_servers": ["t3-code"],
+  "events": { "preToolUse": "PreToolUse" }
+}

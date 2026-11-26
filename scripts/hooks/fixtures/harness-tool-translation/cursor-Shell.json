@@ -1,0 +1,21 @@
+{
+ "conversation_id": "a67e751a-6eb7-4cdb-bee2-f934216271e1",
+ "cursor_version": "2026.11.22-e9042b2",
+ "cwd": "",
+ "generation_id": "a67e751a-6eb7-4cdb-bee2-f934216271e1",
+ "hook_event_name": "preToolUse",
+ "model": "default",
+ "session_id": "a67e751a-6eb7-4cdb-bee2-f934216271e1",
+ "tool_input": {
+  "command": "echo himmel-probe",
+  "cwd": "",
+  "timeout": 30000
+ },
+ "tool_name": "Shell",
+ "tool_use_id": "67e71c9c-c290-4f6c-8f6b-5cebae7274a1",
+ "transcript_path": null,
+ "user_email": "",
+ "workspace_roots": [
+  "/work/cursorcap"
+ ]
+}

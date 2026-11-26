@@ -1410,6 +1410,20 @@ function guardPayload(input, hookInput) {
   return JSON.stringify({ ...hookInput, tool_input: { ...toolInput, command: unrolled } });
 }
 
+function translatedInput(input) {
+  let result;
+  try {
+    result = require('./lib/harness-tool-translate.js').translateToolCall(input);
+  } catch (error) {
+    const call = parseJsonObject(input);
+    result = call && typeof call.tool_name === 'string'
+      ? { refuse: `harness tool translation failed to load: ${error.message}` }
+      : { text: input };
+  }
+  if (result.refuse) process.stderr.write(`run-hook-with-bash: ${result.refuse}\n`);
+  return result;
+}
+
 // Returns the exit code rather than calling process.exit(): on Windows a pipe
 // stdout is ASYNC, so exiting immediately after a write can truncate the very
 // JSON decision this exists to deliver. The caller sets process.exitCode and
@@ -1431,13 +1445,17 @@ function runChain(members, lifecycle = false) {
   // chain decisions, which stay per-member exactly as before.
   const hookInput = parseJsonObject(input);
   const sessionId = hookInput && typeof hookInput.session_id === 'string' ? hookInput.session_id : null;
+  const translated = translatedInput(input);
+  if (translated.refuse) return 2;
+  const memberInput = translated.text;
+  const memberCall = memberInput === input ? hookInput : parseJsonObject(memberInput);
 
-  if (lifecycle) return runLifecycleChain(members, bash, input, sessionId, hookInput);
+  if (lifecycle) return runLifecycleChain(members, bash, memberInput, sessionId, hookInput);
 
   const chainStartedAt = Date.now();
   const ctx = {
     bash,
-    input: guardPayload(input, hookInput),
+    input: guardPayload(memberInput, memberCall),
     hookInput,
     sessionId,
     startedAt: chainStartedAt,
@@ -1516,6 +1534,8 @@ function main() {
   const input = readAllStdin();
   const hookInput = parseJsonObject(input);
   const sessionId = hookInput && typeof hookInput.session_id === 'string' ? hookInput.session_id : null;
+  const translated = translatedInput(input);
+  if (translated.refuse) process.exit(2);
   const integrity = verifyProjectHookIntegrity(hookScript, sessionId);
   if (!integrity.ok) {
     if (watchdogSkip(hookScript, integrity)) {
@@ -1548,7 +1568,7 @@ function main() {
   const readinessGuard = failClosedActive && path.basename(hookScript) === READINESS_GUARD;
   const capture = integrity.unvouched === true || readinessGuard;
   const result = spawnSync(bash, hookArgs, {
-    input,
+    input: translated.text,
     stdio: ['pipe', capture ? 'pipe' : 'inherit', 'inherit'],
     env: hookChildEnv(),
     ...(capture ? { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 } : {}),

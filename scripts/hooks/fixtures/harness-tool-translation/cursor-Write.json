@@ -1,0 +1,19 @@
+{
+ "conversation_id": "a67e751a-6eb7-4cdb-bee2-f934216271e1",
+ "cursor_version": "2026.11.22-e9042b2",
+ "generation_id": "a67e751a-6eb7-4cdb-bee2-f934216271e1",
+ "hook_event_name": "preToolUse",
+ "model": "default",
+ "session_id": "a67e751a-6eb7-4cdb-bee2-f934216271e1",
+ "tool_input": {
+  "content": "hi\n",
+  "file_path": "/work/cursorcap/readme.txt"
+ },
+ "tool_name": "Write",
+ "tool_use_id": "call-545e8437-6e5f-4bfe-bf9b-04aa9a57b8cf-2\nfc_aca82d52-6dd3-9357-8a55-33a766dcb499_0",
+ "transcript_path": "/home/user/.cursor/projects/fixture/transcript.jsonl",
+ "user_email": "",
+ "workspace_roots": [
+  "/work/cursorcap"
+ ]
+}
