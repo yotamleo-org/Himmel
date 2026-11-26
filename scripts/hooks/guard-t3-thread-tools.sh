@@ -49,6 +49,7 @@ record_refusal() {
         fi
         cap() { printf '%s' "$(redact "$1")" | tr '\n\r' '  ' | cut -c1-200; }
         mkdir -p "$(dirname "$REFUSALS")" || exit 0
+        [ ! -e "$REFUSALS" ] || [ -f "$REFUSALS" ] || exit 0
         host=$(hostname 2>/dev/null || uname -n 2>/dev/null || echo unknown) # swallow-ok: the host is a label, unknown stands in
         jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg host "$host" \
             --arg rule "$1" --arg instance "$(cap "$2")" --arg title "$(cap "$title")" \

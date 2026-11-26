@@ -9,6 +9,7 @@ HOOK="$HOOKS/guard-t3-thread-tools.sh"
 # shellcheck disable=SC1091
 . "$HOOKS/../lib/override-env.sh"
 scrub_override_env
+unset HIMMEL_GUARD_REFUSALS_LOG
 command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/t3threadtools.XXXXXX")" || exit 1
@@ -276,6 +277,15 @@ run "row: a refusal with HIMMEL_GUARD_REFUSALS_LOG set still refuses" 2 '"claude
 check "row: HIMMEL_GUARD_REFUSALS_LOG moves the row" '[ "$(row_count "$ALT")" = 1 ] && [ "$(row_count "$ROWS")" = 5 ]'
 mkdir -p "$TMP/ro"; : > "$TMP/ro/blocker"
 run "row: an unwritable log path never changes the refusal" 2 '"claudeBypass"' "$LAUNCH_BAD" HIMMEL_GUARD_REFUSALS_LOG="$TMP/ro/blocker/x.jsonl"
+
+# shellcheck source=../lib/portable-timeout.sh
+# shellcheck disable=SC1091
+. "$HOOKS/../lib/portable-timeout.sh"
+FIFO="$TMP/fifo.jsonl"; mkfifo "$FIFO"
+N=$((N+1))
+printf '%s' "$LAUNCH_BAD" | timeout 5 env HIMMEL_GUARD_REFUSALS_LOG="$FIFO" bash "$HOOK" >/dev/null 2>&1; rc=$?
+if [ "$rc" = 2 ]; then echo "ok   row: a log path that is a pipe with no reader never hangs the refusal"
+else echo "FAIL row: a log path that is a pipe with no reader never hangs the refusal: rc=$rc (124 = the guard hung)"; FAIL=$((FAIL+1)); fi
 
 echo "$((N-FAIL))/$N cases; failures=$FAIL"
 [ "$FAIL" = 0 ]
