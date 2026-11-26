@@ -521,6 +521,7 @@ prints the live budget as one read-only line (`gh-api: remaining=R/5000 reset=HH
 `next-dispatchable` and `ticket-status`; every other caller is `main`. A scan gates on the token its
 reads ride (`ghq_scan_token`), and a `blocked/` marker records the caller's routes.
 `scripts/measurements/gh-graphql-callers.sh` is a read-only measurement that prints an estimate of GraphQL points per hour by calling script (1 point per call), with `watch` (samples the live fleet, changes nothing), `run` (one command under a counting shim) and `report` modes.
+`scripts/measurements/gh-core-per-token.sh` is the free per-token counterpart: `sample` and `loop` write `rate_limit` for the main and the read token to a log (every 5 minutes by default), and `report` prints core calls an hour per token for any window (`--from`, `--to`), leaving out an interval that crosses a reset.
 Never run your own `gh pr checks` poll loop — that is the spend this replaces;
 call `scripts/check-ci.sh` once, bounded by `--max-wait`. Run a long wait with
 `run_in_background`: its completion notification carries the exit code.
