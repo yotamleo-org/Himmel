@@ -238,7 +238,7 @@ if [ -z "$SEALLINE" ]; then fail "k: the seal command is in SKILL.md"; else
   accepted "k: both critics at r4: accepted" "$HTML"
   printf 'decision 7\n' > "$SPEC.operator-round-r5.md"; printf 'verbatim\n' > "$S/decisions/verbatim-decision-7-x.txt"
   retspec 5 "SPEC CLEAN"; sealspec 5
-  [ "$SEALRC" -ne 0 ] && has "k: round 5 with an operator-round file: the seal is refused, naming the record it needs" "HIMMEL-1 writer round 5 needs a round-override or round-critical record" "$SEALOUT" || fail "k: round 5 with an operator-round file: the seal is refused" "$SEALOUT"
+  [ "$SEALRC" -ne 0 ] && has "k: round 5 with an operator-round file: the seal is refused, naming the record it needs" "HIMMEL-1 writer round 5 needs a round-critical record with the operator's words" "$SEALOUT" || fail "k: round 5 with an operator-round file: the seal is refused" "$SEALOUT"
 fi
 
 echo "== l: the core-check command reaches the primary's CLI from a worktree =="
