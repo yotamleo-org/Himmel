@@ -73,7 +73,7 @@ mkdir -p "$TMP_ROOT/emptyconf" "$TMP_ROOT/emptycache"
 : > "$TMP_ROOT/emptygitconfig"
 export HIMMEL_CONFIG_DIR="$TMP_ROOT/emptyconf" HIMMEL_JIRA_MIRROR="$TMP_ROOT/no-mirror"
 export HIMMELCTL_CACHE_DIR="$TMP_ROOT/emptycache" GIT_CONFIG_GLOBAL="$TMP_ROOT/emptygitconfig" GIT_CONFIG_NOSYSTEM=1
-unset HANDOVER_DIR HIMMEL_CHIEF_DOC HIMMEL_BUCKET_DIR TRACKER JIRA_PROJECT_KEY 2>/dev/null || true
+unset HANDOVER_DIR HIMMEL_CHIEF_DOC HIMMEL_BUCKET_DIR TRACKER JIRA_PROJECT_KEY GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS 2>/dev/null || true
 
 # Fake gh + jira + claude CLIs -----------------------------------------
 
@@ -908,6 +908,12 @@ OUT_LG="$TMP_ROOT/adopted-leak-gitcfg.md"
 file=$(cat "$OUT_LG" 2>/dev/null || true)
 assert_contains "control: leaked global git config — the adopted run names an invalid tracker setting" "tracker setting is invalid" "$file"
 assert_absent "control: leaked global git config — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
+OUT_LE="$TMP_ROOT/adopted-leak-envcfg.md"
+( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=himmel.tracker GIT_CONFIG_VALUE_0=jira GH_CMD="$FAKE_GH" \
+    bash scripts/handover/generate-morning-briefing.sh --out "$OUT_LE" >/dev/null 2>&1 ) || true
+file=$(cat "$OUT_LE" 2>/dev/null || true)
+assert_contains "control: git config injected through the environment — the adopted run names an invalid tracker setting" "tracker setting is invalid" "$file"
+assert_absent "control: git config injected through the environment — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
 
 # Shifts, chiefs and per-shift spend ---------------------------------
 # The generator reads the shift record (shifts.jsonl), counts each shift id in exactly one
