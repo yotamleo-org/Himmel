@@ -301,7 +301,7 @@ release is declared (`jira release state <R>` prints a status other than
 - **STATUS, BURN-DOWN and READY** remain release-manager verbs, run by an
   on-demand session armed from `docs/handover/rm-brief-template.md` only when
   you need one of them. That session does the verb, reports, releases the
-  lease and wraps.
+  lease and wraps. Before you arm READY, run `jira version-ready <v> --sha <full sha> --out <bucket>/release/<R>/version-ready-<v>-<sha7>.txt`; READY row 3 reads that file.
 - **The board's release manager panel** (`board.mjs`, from the `release:`
   line) shows M4 burn-down per version, the leaks and the M1 trend; a leak (`leaks:` non-empty) is a mismatch to request a ruling
   for, never a number to manage down. No line is a count gate (decision 104).

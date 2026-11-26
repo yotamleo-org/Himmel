@@ -1,19 +1,23 @@
 import type { Command } from 'commander';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { request, projectKey } from '../client.js';
 import { searchAllIssues } from './list.js';
 import { fetchVersions, checkDate, setFixVersion, addFixVersionGated } from './versions.js';
 import { appendAdmission, readAdmissions, type Admission } from './admissions-ledger.js';
 import { chiefOverrideOf } from './intake-gate.js';
+import { releaseRoot } from '../release/paths.js';
+import { PLACEHOLDER } from '../release/operator-acts.js';
 import type { JiraIssue } from '../types.js';
 
 // A version's scope is frozen by two description lines, `frozen: <date>` and
 // `frozen-keys: A,B`; the open set also carries label `scope-<v>`. version-ready
-// prints the P1 tag criterion as PASS/FAIL rows and refuses nothing: the
-// chief reads the rows and decides, and may overrule a FAIL row with a
-// reason that lands in the admissions ledger. A key in the version that is not
-// in the frozen list was admitted after the freeze and needs a ledger row.
+// prints the checks before a cut as PASS/FAIL rows and exits 1 on a FAIL row after
+// overrides (a chief overrule needs a reason, which lands in the admissions ledger).
+// A key not in the frozen list was admitted after the freeze and needs a ledger row.
+// `--out` also writes the file READY row 3 reads.
 
 type Issue = JiraIssue & {
   fields: JiraIssue['fields'] & { labels?: string[]; status: { name: string; statusCategory?: { key?: string } } };
@@ -49,24 +53,56 @@ export function mainCiGreen(sha?: string): CiResult {
     const runs = JSON.parse(
       execFileSync(
         'gh',
-        ['run', 'list', '--branch', 'main', '--commit', head, '--limit', String(CI_RUN_LIMIT), '--json', 'conclusion,headSha,workflowName'],
+        ['run', 'list', '--branch', 'main', '--commit', head, '--limit', String(CI_RUN_LIMIT), '--json', 'conclusion,headSha,workflowName,number,event'],
         { encoding: 'utf8' },
       ),
-    ) as Array<{ conclusion: string; headSha: string; workflowName: string }>;
+    ) as Array<{ conclusion: string; headSha: string; workflowName: string; number?: number; event?: string }>;
     if (runs.length >= CI_RUN_LIMIT) return { ok: false, detail: `${runs.length}+ runs at ${head.slice(0, 9)}: list may be truncated` };
     const mine = runs.filter((r) => r.headSha.startsWith(head));
     if (mine.length === 0) return { ok: false, detail: `no CI run found for ${head}` };
-    const bad = mine.filter((r) => r.conclusion !== 'success' && r.conclusion !== 'skipped');
+    const newest = new Map<string, (typeof mine)[number]>();
+    mine.forEach((r, i) => {
+      const group = typeof r.number === 'number' ? `${r.workflowName}\u0000${r.event ?? ''}` : `#${i}`;
+      const seen = newest.get(group);
+      if (seen === undefined || (r.number ?? 0) > (seen.number ?? 0)) newest.set(group, r);
+    });
+    const judged = [...newest.values()];
+    const bad = judged.filter((r) => r.conclusion !== 'success' && r.conclusion !== 'skipped');
     return bad.length === 0
-      ? { ok: true, detail: `${mine.length} run(s) green at ${head?.slice(0, 9)}` }
+      ? { ok: true, detail: `${judged.length} workflow(s) green at ${head?.slice(0, 9)}` }
       : { ok: false, detail: `not green at ${head?.slice(0, 9)}: ${bad.map((r) => `${r.workflowName}=${r.conclusion || 'pending'}`).join(', ')}` };
   } catch (e) {
     return { ok: false, detail: `could not read main CI: ${(e as Error).message.split('\n')[0]}` };
   }
 }
 
+export interface OwedRow {
+  id: string;
+  kind: string;
+  key?: string;
+  actor?: string;
+  action?: string;
+  text?: string;
+}
+
+const OWE_SH = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'handover', 'chief-kit', 'owe.sh');
+const OWE_MAX_BUFFER = 256 * 1024 * 1024;
+
+export function owedOpenDefault(bucket: string): OwedRow[] {
+  const raw = execFileSync('bash', [OWE_SH, 'list', '--bucket', bucket, '--json'], { encoding: 'utf8', maxBuffer: OWE_MAX_BUFFER });
+  const rows: unknown = JSON.parse(raw);
+  if (!Array.isArray(rows)) throw new Error('owe.sh list --json: output is not a JSON array');
+  return rows as OwedRow[];
+}
+
+export function bucketDefault(): string {
+  const root = releaseRoot();
+  if (basename(root) !== 'release') throw new Error(root);
+  return dirname(root);
+}
+
 // Swapped by tests; the CLI never touches it.
-export const probes = { mainCi: mainCiGreen };
+export const probes = { mainCi: mainCiGreen, owedOpen: owedOpenDefault, bucket: bucketDefault };
 
 async function findVersion(project: string, name: string) {
   const found = (await fetchVersions(project)).find((v) => v.name === name);
@@ -76,6 +112,9 @@ async function findVersion(project: string, name: string) {
 
 const addLabel = (key: string, label: string) =>
   request('PUT', `/issue/${key}`, { update: { labels: [{ add: label }] } });
+
+const openMembers = (project: string, name: string) =>
+  `project=${project} AND fixVersion="${name}" AND statusCategory != Done ORDER BY key`;
 
 const inKeys = (keys: string[]) => `key in (${keys.join(',')})`;
 
@@ -121,12 +160,7 @@ export async function freezeVersion(
     opts.keysFile !== undefined
       ? keysFromFile(opts.keysFile)
       : (
-          (await searchAllIssues(
-            `project=${project} AND fixVersion="${name}" AND statusCategory != Done ORDER BY key`,
-            SEARCH_LIMIT,
-            request,
-            true,
-          )) as Issue[]
+          (await searchAllIssues(openMembers(project, name), SEARCH_LIMIT, request, true)) as Issue[]
         ).map((i) => i.key);
   const block = `frozen: ${date}\nfrozen-keys: ${keys.join(',')}`;
   const base = (version.description ?? '').trimEnd();
@@ -172,6 +206,7 @@ async function readinessRows(
   name: string,
   description: string | undefined,
   ledger: Admission[],
+  sha?: string,
 ): Promise<Readiness> {
   const frozen = parseFrozen(description);
   const rows: Row[] = [];
@@ -181,7 +216,12 @@ async function readinessRows(
   const leaks: string[] = [];
   let folded = 0;
   if (!frozen) {
-    rows.push({ id: 'frozen-set', ok: false, detail: `${name} is not frozen (no frozen: and frozen-keys: lines in its description)` });
+    const open = (await searchAllIssues(openMembers(project, name), SEARCH_LIMIT, request)).map((i) => i.key);
+    rows.push({
+      id: 'frozen-set',
+      ok: open.length === 0,
+      detail: open.length === 0 ? 'not frozen; every member Done' : `not frozen; open: ${list(open)}`,
+    });
   } else {
     const issues = frozen.keys.length === 0 ? [] : ((await searchKeys(frozen.keys, '', true)) as Issue[]);
     const deferred = (i: Issue) =>
@@ -218,14 +258,17 @@ async function readinessRows(
     });
   }
   const blockers = await searchAllIssues(
-    `project=${project} AND fixVersion="${name}" AND issuetype=Bug AND statusCategory != Done AND (priority = Highest OR labels in (critical, blocker, v1-blocker))`,
+    `project=${project} AND fixVersion="${name}" AND issuetype=Bug AND statusCategory != Done AND (priority in (Highest, High) OR labels in (critical, blocker, v1-blocker))`,
     SEARCH_LIMIT,
     request,
   );
   rows.push({
     id: 'no-blocker-bug',
     ok: blockers.length === 0,
-    detail: blockers.length === 0 ? 'no open Critical/Blocker/Highest bug' : `open: ${list(blockers.map((i) => i.key))}`,
+    detail:
+      blockers.length === 0
+        ? 'no open Highest or High priority bug, none labelled critical, blocker or v1-blocker'
+        : `open: ${list(blockers.map((i) => i.key))}`,
   });
   const stationAdhoc = await searchAllIssues(
     `project=${project} AND fixVersion="${name}" AND labels = station-adhoc AND statusCategory != Done`,
@@ -237,7 +280,7 @@ async function readinessRows(
     ok: stationAdhoc.length === 0,
     detail: stationAdhoc.length === 0 ? 'no open station-adhoc ticket' : `open: ${list(stationAdhoc.map((i) => i.key))}`,
   });
-  const ci = probes.mainCi();
+  const ci = probes.mainCi(sha);
   rows.push({ id: 'main-ci', ok: ci.ok, detail: ci.detail });
   // The Done-fold stamps each Done ticket with the version; a Done frozen key
   // that lacks it means the fold has not run for the range.
@@ -247,25 +290,96 @@ async function readinessRows(
       : [];
   rows.push({
     id: 'done-fold',
-    ok: frozen !== undefined && unfolded.length === 0,
+    ok: unfolded.length === 0,
     detail: !frozen
-      ? 'nothing to check: not frozen'
+      ? 'not frozen: this row checks nothing here; READY row 6 reads the fold'
       : unfolded.length === 0
         ? 'every Done frozen key carries the version'
         : `not folded: ${list(unfolded.map((i) => i.key))}`,
   });
+  const placed = placeBucket();
+  rows.push(
+    'error' in placed
+      ? { id: 'promise-proof', ok: false, detail: placed.error }
+      : promiseProofRow(name, placed.bucket),
+    'error' in placed ? { id: 'owed-steps', ok: false, detail: placed.error } : await owedStepsRow(name, placed.bucket),
+  );
   return { rows, openCount, admitted, leaks, folded };
+}
+
+const clip = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 60);
+
+function placeBucket(): { bucket: string } | { error: string } {
+  try {
+    return { bucket: probes.bucket() };
+  } catch (e) {
+    return { error: `cannot place the bucket: ${(e as Error).message}` };
+  }
+}
+
+const PROMISE_HEADER = 'n\tpart\ttext\tstate\tproof';
+
+function promiseProofRow(name: string, bucket: string): Row {
+  const id = 'promise-proof';
+  const path = join(bucket, 'specs', 'versions', `${name}-promise.tsv`);
+  const fail = (detail: string): Row => ({ id, ok: false, detail });
+  if (!existsSync(path)) return fail(`no promise record at ${path}`);
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (e) {
+    return fail(`cannot read ${path}: ${(e as Error).message.split('\n')[0]}`);
+  }
+  const lines = text.split('\n').map((l) => l.replace(/\r$/, ''));
+  if (lines[0] !== PROMISE_HEADER) return fail(`bad header in ${path}`);
+  const bad: string[] = [];
+  let sentences = 0;
+  for (let at = 1; at < lines.length; at += 1) {
+    if (lines[at].trim() === '') continue;
+    const fields = lines[at].split('\t');
+    if (fields.length < 4 || fields.length > 5) return fail(`bad row ${at + 1} in ${path}: ${fields.length} fields`);
+    sentences += 1;
+    const proof = (fields[4] ?? '').trim();
+    if (fields[3].trim() !== 'shown_true' || proof === '' || PLACEHOLDER.test(proof)) bad.push(`${fields[0]} "${clip(fields[2])}"`);
+  }
+  if (sentences === 0) return fail(`no sentences in ${path}`);
+  return bad.length === 0
+    ? { id, ok: true, detail: `${sentences} sentences shown true, each with its proof` }
+    : fail(`no proof: ${bad.join('; ')}`);
+}
+
+async function owedStepsRow(name: string, bucket: string): Promise<Row> {
+  const id = 'owed-steps';
+  const ledger = join(bucket, 'owed.jsonl');
+  if (!existsSync(ledger)) return { id, ok: false, detail: `no owed ledger at ${ledger}` };
+  try {
+    const keyed = probes.owedOpen(bucket).filter((r) => r.action !== 'notify' && typeof r.key === 'string' && KEY.test(r.key));
+    const members =
+      keyed.length === 0
+        ? new Set<string>()
+        : new Set((await searchKeys([...new Set(keyed.map((r) => r.key as string))], ` AND fixVersion="${name}"`)).map((i) => i.key));
+    const open = keyed.filter((r) => members.has(r.key as string));
+    return open.length === 0
+      ? { id, ok: true, detail: 'no open owed step on a member' }
+      : {
+          id,
+          ok: false,
+          detail: `open: ${open.map((r) => `${r.key} ${r.id} (${r.actor ?? r.kind}) "${clip(r.text ?? '')}"`).join('; ')}`,
+        };
+  } catch (e) {
+    return { id, ok: false, detail: `owed ledger unreadable: ${(e as Error).message.split('\n')[0]}` };
+  }
 }
 
 export async function versionReady(
   project: string,
   name: string,
-  opts: { chiefOverride?: Override[] },
+  opts: { chiefOverride?: Override[]; sha?: string; out?: string },
 ): Promise<string[]> {
   const version = await findVersion(project, name);
   const frozen = parseFrozen(version.description);
   const ledger = readAdmissions(name);
-  const checked = await readinessRows(project, name, version.description, ledger);
+  const checked = await readinessRows(project, name, version.description, ledger, opts.sha);
   let rows = checked.rows;
   const lines: string[] = [];
   const overrides = opts.chiefOverride ?? [];
@@ -296,6 +410,13 @@ export async function versionReady(
   }
   for (const l of ledger.filter((x) => !isAdmission(x))) {
     out.push(`${l.kind}\t${l.key}\t${l.reason ?? ''} (${l.actor}, ${l.ts})`);
+  }
+  const code = rows.some((r) => !r.ok) ? 1 : 0;
+  if (code === 1) process.exitCode = 1;
+  if (opts.out !== undefined) {
+    const tmp = `${opts.out}.tmp-${process.pid}`;
+    writeFileSync(tmp, `${out.join('\n')}\nsha=${opts.sha}\nat=${new Date().toISOString()}\nexit=${code}\n`);
+    renameSync(tmp, opts.out);
   }
   return out;
 }
@@ -351,18 +472,26 @@ export function registerVersionFreeze(program: Command): void {
 
   program
     .command('version-ready <name>')
-    .description('Print the P1 tag criterion for a frozen version as PASS/FAIL rows (informational; refuses nothing)')
+    .description('Print the checks before a cut as PASS/FAIL rows and exit 1 when a row FAILs; --out writes the file READY row 3 reads')
     .option('--project <key>', 'Project key (default: JIRA_PROJECT_KEY env var)')
+    .option('--sha <sha>', 'The candidate commit, 40 lowercase hex: main-ci reads the runs at this sha (default: main\'s head)')
+    .option('--out <path>', 'Also write the rows to this file, then sha=, at= and exit=; needs --sha, refuses --chief-override')
     .option(
       '--chief-override <values...>',
       'Chief only (HIMMEL_CONSOLE=1), repeatable, as <row-id> "<reason>": turn one FAIL row into an overridden PASS, recording the reason in the admissions ledger',
     )
-    .action(async (name: string, options: { project?: string; chiefOverride?: string[] }) => {
+    .action(async (name: string, options: { project?: string; sha?: string; out?: string; chiefOverride?: string[] }) => {
       const flat = chiefOverrideOf(options) ?? [];
       if (flat.length % 2 !== 0) throw new Error('--chief-override takes <row-id> "<reason>" pairs');
+      if (options.sha !== undefined && !/^[0-9a-f]{40}$/.test(options.sha)) {
+        throw new Error(`--sha must be 40 hex characters (lowercase), got "${options.sha}"`);
+      }
+      if (options.out !== undefined && options.sha === undefined) throw new Error('--out needs --sha');
+      if (options.out !== undefined && flat.length > 0) throw new Error('--out refuses --chief-override');
       const chiefOverride: Override[] = [];
       for (let i = 0; i < flat.length; i += 2) chiefOverride.push({ id: flat[i], reason: flat[i + 1] });
-      for (const line of await versionReady(options.project ?? projectKey(), name, { chiefOverride })) console.log(line);
+      const lines = await versionReady(options.project ?? projectKey(), name, { chiefOverride, sha: options.sha, out: options.out });
+      for (const line of lines) console.log(line);
     });
 
   program
