@@ -836,15 +836,18 @@ function overlayHimmelConf(data, ctx, keys = HIMMEL_CONF_KEYS) {
   }
 }
 
+function writesProjectLocalFile(item) {
+  const install = (item && item.install) || {};
+  return install.type === 'wire' && install.target === 'statusline';
+}
+
 // Claude Code applies local over project over user settings, so a project
 // scope probe of a .claude/settings.json key reads all three: an item wired
 // at user scope is not reported missing.
-const PROJECT_LOCAL_FILE_ITEMS = new Set(['wiring-statusline']);
-
 function settingsLayerFiles(file, ctx, item) {
   let scopeFile = resolveConfigFile(file, ctx);
   const localFile = path.join(ctx.targetPath || '', '.claude', 'settings.local.json');
-  const localItem = Boolean(item && PROJECT_LOCAL_FILE_ITEMS.has(item.id) && ctx.scope === 'project' && file === '.claude/settings.json');
+  const localItem = Boolean(writesProjectLocalFile(item) && ctx.scope === 'project' && file === '.claude/settings.json');
   if (localItem) scopeFile = localFile;
   if (file !== '.claude/settings.json' || ctx.scopeFileOnly) return { primary: scopeFile, files: [scopeFile] };
   const env = ctx.env || {};

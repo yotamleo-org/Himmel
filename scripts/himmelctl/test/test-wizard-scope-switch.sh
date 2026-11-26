@@ -158,8 +158,8 @@ write_cache "$cache/install-profile.json" adopter project none "" inline "" lean
 # settings/state assertions below prove it took.
 ( cd "$target" && HIMMELCTL_REPO_ROOT="$(winpath "$repo")" HIMMELCTL_CACHE_DIR="$(winpath "$cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cache")-luna-config.json" HOME="$home" USERPROFILE="$(winpath "$home")" \
   "$node_bin" "$wizard" ensure --yes </dev/null ) >/dev/null
-jq -e '.statusLine.command' "$target/.claude/settings.json" >/dev/null \
-  || fail "seed: ensure should have wired wire-item into the project settings (got: $(cat "$target/.claude/settings.json" 2>/dev/null))"
+jq -e '.statusLine.command' "$target/.claude/settings.local.json" >/dev/null \
+  || fail "seed: ensure should have wired wire-item into the project settings (got: $(cat "$target/.claude/settings.local.json" 2>/dev/null))"
 [ "$(jq '.targets | length' "$cache/state.json")" = "1" ] \
   || fail "seed: state.json should carry exactly one target (the project cwd) (got: $(jq -c '.targets|keys' "$cache/state.json"))"
 echo "ok: seed — project-scope install wired (wire-item green, project target persisted)"
@@ -170,8 +170,8 @@ switchOut=$( cd "$target" && HIMMELCTL_REPO_ROOT="$(winpath "$repo")" HIMMELCTL_
 grepq "$switchOut" -F "scope switched 'project' -> 'user'" \
   || fail "case a: expected the switch success line (got: $switchOut)"
 # (a) the OLD (project) scope's wiring is GONE:
-[ "$(jq '.statusLine' "$target/.claude/settings.json")" = "null" ] \
-  || fail "case a: project settings statusLine should be null (unwired) after the switch (got: $(jq -c '.statusLine' "$target/.claude/settings.json"))"
+[ "$(jq '.statusLine' "$target/.claude/settings.local.json")" = "null" ] \
+  || fail "case a: project settings statusLine should be null (unwired) after the switch (got: $(jq -c '.statusLine' "$target/.claude/settings.local.json"))"
 # (a) the NEW (user) scope's wiring is PRESENT:
 [ -f "$home/.claude/settings.json" ] || fail "case a: user settings.json should exist after the switch"
 [ "$(jq -r '.statusLine.command' "$home/.claude/settings.json")" = "himmel" ] \
@@ -315,8 +315,8 @@ homeD="$work/homeD"; mkdir -p "$homeD"
 write_cache "$cacheD/install-profile.json" adopter project none "" inline "" lean
 ( cd "$targetD" && HIMMELCTL_REPO_ROOT="$(winpath "$repo")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheD")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheD")-luna-config.json" HOME="$homeD" USERPROFILE="$(winpath "$homeD")" \
   "$node_bin" "$wizard" ensure --yes </dev/null ) >/dev/null
-jq -e '.statusLine.command' "$targetD/.claude/settings.json" >/dev/null \
-  || fail "case d seed: ensure should wire wire-item (got: $(cat "$targetD/.claude/settings.json" 2>/dev/null))"
+jq -e '.statusLine.command' "$targetD/.claude/settings.local.json" >/dev/null \
+  || fail "case d seed: ensure should wire wire-item (got: $(cat "$targetD/.claude/settings.local.json" 2>/dev/null))"
 
 snapDBefore=$(snapshot_dir "$work")
 set +e
@@ -336,7 +336,7 @@ snapDAfter=$(snapshot_dir "$work")
 [ "$(jq '.targets | length' "$cacheD/state.json")" = "1" ] \
   || fail "case d: state.json must stay re-keyed to the project target under dry-run (got: $(jq -c '.targets|keys' "$cacheD/state.json"))"
 [ ! -f "$homeD/.claude/settings.json" ] || fail "case d: user settings must NOT be created under dry-run"
-[ "$(jq -r '.statusLine.command' "$targetD/.claude/settings.json")" = "himmel" ] \
+[ "$(jq -r '.statusLine.command' "$targetD/.claude/settings.local.json")" = "himmel" ] \
   || fail "case d: project settings must stay wired under dry-run"
 echo "ok: case d — --dry-run previews the switch (unwire old, wire new, re-key) and changes nothing"
 
@@ -347,8 +347,8 @@ homeE="$work/homeE"; mkdir -p "$homeE"
 write_cache "$cacheE/install-profile.json" adopter project none "" inline "" lean
 ( cd "$targetE" && HIMMELCTL_REPO_ROOT="$(winpath "$repo")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheE")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheE")-luna-config.json" HOME="$homeE" USERPROFILE="$(winpath "$homeE")" \
   "$node_bin" "$wizard" ensure --yes </dev/null ) >/dev/null
-jq -e '.statusLine.command' "$targetE/.claude/settings.json" >/dev/null \
-  || fail "case e seed: ensure should wire wire-item (got: $(cat "$targetE/.claude/settings.json" 2>/dev/null))"
+jq -e '.statusLine.command' "$targetE/.claude/settings.local.json" >/dev/null \
+  || fail "case e seed: ensure should wire wire-item (got: $(cat "$targetE/.claude/settings.local.json" 2>/dev/null))"
 
 snapEBefore=$(snapshot_dir "$work")
 set +e
@@ -374,8 +374,8 @@ homeG="$work/homeG";    mkdir -p "$homeG"
 write_cache "$cacheG/install-profile.json" adopter project none "" inline "" lean
 ( cd "$targetG" && HIMMELCTL_REPO_ROOT="$(winpath "$repo")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheG")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheG")-luna-config.json" HOME="$homeG" USERPROFILE="$(winpath "$homeG")" \
   "$node_bin" "$wizard" ensure --yes </dev/null ) >/dev/null
-jq -e '.statusLine.command' "$targetG/.claude/settings.json" >/dev/null \
-  || fail "case g seed: ensure should wire the project (got: $(cat "$targetG/.claude/settings.json" 2>/dev/null))"
+jq -e '.statusLine.command' "$targetG/.claude/settings.local.json" >/dev/null \
+  || fail "case g seed: ensure should wire the project (got: $(cat "$targetG/.claude/settings.local.json" 2>/dev/null))"
 
 snapGBefore=$(snapshot_dir "$work")
 set +e
