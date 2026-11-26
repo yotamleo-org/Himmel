@@ -15,6 +15,7 @@ Run under `python -I` from the scrapling venv (fetch-url.sh does this).
 import argparse
 import html as htmllib
 import re
+import shlex
 import sys
 import urllib.error
 import urllib.request
@@ -25,10 +26,12 @@ from urllib.parse import urlparse
 HERE = Path(__file__).resolve().parent
 TIMEOUT_S = 30
 TIMEOUT_MS = 60000
-INSTALL_HINT = ("scrapling is not installed: python3 -m venv ~/.himmel/scrapling-venv && "
-                "~/.himmel/scrapling-venv/bin/pip install -r "
-                "marketplace/plugins/obsidian-triage/tools/requirements-scrapling.txt "
-                "&& ~/.himmel/scrapling-venv/bin/scrapling install")
+INSTALL_HINT = ("scrapling is not installed (needs a python 3.11.5+ for the venv; python3.12 is an example): "
+                "python3.12 -m venv --clear ~/.himmel/scrapling-venv && "
+                "~/.himmel/scrapling-venv/bin/pip install --require-hashes -r "
+                + shlex.quote(str(HERE.parent.parent / "marketplace/plugins/obsidian-triage/tools/requirements-scrapling.txt"))
+                + " "
+                "&& ~/.himmel/scrapling-venv/bin/python -m patchright install chromium")
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
         "source", "track", "wbr"}
 SKIP = {"script", "style", "noscript", "template", "svg"}

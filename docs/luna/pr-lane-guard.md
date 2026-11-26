@@ -6,8 +6,9 @@ Worktree/branch isolation is structurally enforced only in himmel
 (`block-edit-on-main.sh`, `check-worktree-isolation.sh`). luna documents a
 **two-lane model** in its `_CLAUDE.md`: a PR lane (worktree + branch + PR)
 for structural files, and a plugin lane (direct commits to main via the
-github-sync plugin, or the `vault-autosync.sh` sweeper; the two are
-mutually exclusive opt-in/default sync mechanisms) for
+`vault-autosync.sh` sweeper cron'd by `scripts/luna/vault-sweep-cadence.sh`, or the
+legacy github-sync plugin; the two are mutually exclusive, and the sweeper needs no
+open Obsidian) for
 vault content. Nothing enforced the PR lane.
 A structural edit committed directly to luna `main` passed every luna hook
 (observed risk: luna PR #33 used a worktree voluntarily).

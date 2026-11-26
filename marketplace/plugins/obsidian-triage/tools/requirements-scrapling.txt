@@ -2,7 +2,7 @@
 # Without it the slot is skipped and the chain falls through to jina.
 # Direct pins: scrapling[fetchers]==0.5.1, markdownify==1.2.4 (the rest is the hashed closure).
 # Regenerate: uv pip compile <a .in with those two pins> --universal --generate-hashes -o requirements-scrapling.txt
-#   python3 -m venv ~/.himmel/scrapling-venv
+#   python3.12 -m venv --clear ~/.himmel/scrapling-venv   # any python 3.11.5+; --clear drops an old 3.10 venv, whose bin/python would otherwise stay
 #   ~/.himmel/scrapling-venv/bin/pip install --require-hashes -r requirements-scrapling.txt
 #   ~/.himmel/scrapling-venv/bin/python -m patchright install chromium   # user-level browser; NOT `scrapling install` (it runs sudo install-deps)
 # Run the harvest with that venv's python. ~360 MB venv + a Chromium download

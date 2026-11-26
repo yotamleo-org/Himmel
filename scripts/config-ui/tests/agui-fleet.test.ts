@@ -656,3 +656,20 @@ test("an unreadable T3 thread list is null, never an empty list, and the rest of
   expect(b.t3Threads).toBeNull();
   expect(b.census).toBe("ok");
 });
+
+test("a chief-doc list over the 128 KiB argv limit still yields an ok census listing every doc", () => {
+  const { dir, env } = boot();
+  const bucket = join(dir, "handover", "yotam", "himmel");
+  const docs: string[] = [];
+  for (let i = 0; i < 700; i++) {
+    const f = join(bucket, `${String(i).padStart(4, "0")}-${"x".repeat(190)}-chief.md`);
+    writeFileSync(f, "# chief\n");
+    docs.push(f);
+  }
+  expect(docs.join("\n").length).toBeGreaterThan(131072);
+  const r = spawnSync("bash", [join(import.meta.dir, "../fleet.sh")], { env: { PATH: process.env.PATH, ...env }, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const b = JSON.parse(r.stdout);
+  expect(b.census).toBe("ok");
+  expect(b.sessions.length).toBeGreaterThan(0);
+  for (const f of docs) expect(b.consoleDocs).toContain(f);
+});
