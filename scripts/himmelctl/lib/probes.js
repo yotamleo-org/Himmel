@@ -4266,9 +4266,6 @@ function probeBridgePersistence(item, ctx) {
 
 // ── remote-peer (status item) ────────────────────────────────────────
 
-// Sessions run this probe and may not open the peer-bridge state or key dirs, so it reads only the record
-// `remote-setup.sh peer` keeps (peers-confirmed.json) and the poller unit's state. The one value it shows from
-// the record is a peer name that passes setup.ts's PEER_NAME_RE; any other field, or a bad entry, is never echoed.
 const REMOTE_PEER_NAME_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const REMOTE_PEER_UNIT = 'himmel-peer-bridge.service';
 const REMOTE_PEER_LABEL = 'com.himmel.peer-bridge';
@@ -4296,6 +4293,39 @@ function remotePeerRead(home) {
   return { state: 'ok', names };
 }
 
+const REMOTE_PEER_STEPS = [
+  ['ourStationName', 'our station name'],
+  ['ourStationKey', 'our station key'],
+  ['groupChat', 'the group chat'],
+  ['operatorChat', 'your chat with the peer bridge bot'],
+  ['theirKey', 'their key'],
+];
+
+function remotePairingRead(home) {
+  const file = path.join(home, '.himmel', 'remote-setup', 'pairing.json');
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    return e && e.code === 'ENOENT' ? { state: 'none' } : { state: 'bad' };
+  }
+  let doc;
+  try { doc = JSON.parse(raw); } catch (_e) { return { state: 'bad' }; }
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc) || Object.keys(doc).join() !== 'peers' || !Array.isArray(doc.peers)) return { state: 'bad' };
+  const wanted = ['name'].concat(REMOTE_PEER_STEPS.map((s) => s[0])).sort().join();
+  const next = new Map();
+  for (const row of doc.peers) {
+    const okRow = row && typeof row === 'object' && !Array.isArray(row)
+      && Object.keys(row).sort().join() === wanted
+      && typeof row.name === 'string' && REMOTE_PEER_NAME_RE.test(row.name)
+      && REMOTE_PEER_STEPS.every((s) => typeof row[s[0]] === 'boolean');
+    if (!okRow) return { state: 'bad' };
+    const missing = REMOTE_PEER_STEPS.find((s) => !row[s[0]]);
+    next.set(row.name, missing ? `next pairing step: ${missing[1]}` : 'every pairing step done');
+  }
+  return { state: 'ok', next };
+}
+
 function probeRemotePeer(item, ctx) {
   const env = ctx.env || process.env;
   const home = env.HOME || os.homedir();
@@ -4318,6 +4348,11 @@ function probeRemotePeer(item, ctx) {
   if (names.length === 0) {
     return { actual: 'degraded', detail: 'the peer poller is installed, but no peer is recorded as set up — run: bash scripts/remote-setup/remote-setup.sh peer' };
   }
+  const pairing = remotePairingRead(home);
+  if (pairing.state === 'bad') {
+    return { actual: 'degraded', detail: 'the pairing steps record could not be read — the next setup.ts pairing step rewrites it' };
+  }
+  const pairingNote = (n) => (pairing.state === 'ok' && pairing.next.has(n) ? `, ${pairing.next.get(n)}` : '');
   const probeArgs = platform === 'darwin'
     ? ['launchctl', ['print', `gui/${process.getuid()}/${REMOTE_PEER_LABEL}`]]
     : ['systemctl', ['--user', 'is-active', REMOTE_PEER_UNIT]];
@@ -4328,9 +4363,9 @@ function probeRemotePeer(item, ctx) {
   // launchctl print exits 0 for a job that is loaded, running or not; only a running one lists a pid.
   const running = platform === 'darwin' ? /^\s*pid = [0-9]+\s*$/m.test(String(r.stdout || '')) : true;
   if (r.status === 0 && running) {
-    return { actual: 'present', detail: names.map((n) => `${n}: set up, poller running`).join('; ') };
+    return { actual: 'present', detail: names.map((n) => `${n}: set up, poller running${pairingNote(n)}`).join('; ') };
   }
-  return { actual: 'degraded', detail: names.map((n) => `${n}: poller stopped`).join('; ') };
+  return { actual: 'degraded', detail: names.map((n) => `${n}: poller stopped${pairingNote(n)}`).join('; ') };
 }
 
 // ── observability-stack ───────────────────────────────────
