@@ -16,7 +16,12 @@ One `providerInstances.claudeAgent_<profile>` entry per profile:
 - The paths come from `scripts/lanes/profile-settings.sh`: content-addressed, so a
   path stays valid after the registry changes. Re-run the script after a registry
   change; it updates `launchArgs` of the `claudeAgent_<profile>` ids it owns.
-- `operator` resolves to no settings file and is skipped.
+- `operator` resolves to no settings file, so its `claudeAgent_operator` instance gets a
+  settings file holding only the resolver's default for a profile that sets nothing: the
+  Artifact tool denied. The built-in default instance, `providerInstances.claudeAgent`
+  (created when absent, its other `config` kept, its `launchArgs` owned), gets the same
+  file, so a T3 thread on either writes local HTML like a terminal session. A profile
+  with `artifact: true` (`user`, the design family) keeps the tool through its own file.
 - A profile already reachable through another instance (same `<profile>.json` in
   its `--settings`, e.g. the hand-made `claudeAgent_claude_chief`) gets no new id.
   Existing instances are never removed, and none is edited except a

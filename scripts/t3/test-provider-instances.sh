@@ -208,5 +208,21 @@ expect_ok "bypass refusal names the copy" grep -q 'evil_relay' <<<"$out"
 expect_ok "bypass refusal leaves file untouched" cmp -s "$R" "$T/evil.orig"
 rm -f "$CFG"
 
+settings_of() { launch_args "$1" "$2" | sed -n 's/^--settings \([^ ]*\).*/\1/p'; }
+artifact_of() { jq -r '(.permissions.deny // []) | index("Artifact") | tostring' "$1" 2>/dev/null || echo unreadable; }
+A="$T/artifact.json"; printf '{"providerInstances":{"claudeAgent":{"driver":"claudeAgent","enabled":true,"config":{"binaryPath":"/opt/claude"}}}}' > "$A"
+env T3_PI_RESOLVER= T3_PI_PROFILES="user,code,operator" T3_PI_EMPTY_OK=operator bash "$GEN" --apply --settings-file "$A" >/dev/null 2>&1
+expect_eq "default instance denies Artifact" "$(artifact_of "$(settings_of "$A" claudeAgent)")" 0
+expect_eq "default instance keeps its other config" "$(jq -r '.providerInstances.claudeAgent.config.binaryPath' "$A")" /opt/claude
+expect_eq "no-settings profile instance denies Artifact" "$(artifact_of "$(settings_of "$A" claudeAgent_operator)")" 0
+expect_eq "profile without artifact: true denies Artifact" "$(artifact_of "$(settings_of "$A" claudeAgent_code)")" 0
+expect_eq "artifact: true profile (user) keeps Artifact" "$(artifact_of "$(settings_of "$A" claudeAgent_user)")" null
+printf '{"providerInstances":{}}' > "$A"
+env T3_PI_RESOLVER= T3_PI_PROFILES="user" bash "$GEN" --apply --settings-file "$A" >/dev/null 2>&1
+expect_eq "default instance is created when absent" "$(jq -r '.providerInstances.claudeAgent|"\(.driver) \(.enabled)"' "$A")" "claudeAgent true"
+cp "$A" "$T/artifact.after1"
+env T3_PI_RESOLVER= T3_PI_PROFILES="user" bash "$GEN" --apply --settings-file "$A" >/dev/null 2>&1
+expect_ok "default instance: second apply is a no-op" cmp -s "$A" "$T/artifact.after1"
+
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" = 0 ]
