@@ -99,6 +99,10 @@ run "$HOOK" "$(post sAnsi Bash "$(bash_in "cat \$'$tmp/sal\\x75s-vault/notes/vis
 expect_mark sAnsi "an ANSI-C quoted string marks"
 run "$HOOK" "$(post sLoc Bash "$(bash_in "cat \$\"$tmp/sal\"us-vault/notes/visit.md")")"
 expect_mark sLoc "a locale-quoted string marks"
+run "$HOOK" "$(post sLocNl Bash "$(bash_in "cat \$\\${NL}\"$tmp/sal\"us-vault/notes/visit.md")")"
+expect_mark sLocNl "a backslash-newline between \$ and a double quote marks"
+run "$HOOK" "$(post sAnsiNl Bash "$(bash_in "cat \$\\${NL}'$tmp/sal\\x75s-vault/notes/visit.md'")")"
+expect_mark sAnsiNl "a backslash-newline between \$ and a single quote marks"
 run "$HOOK" "$(post sMon Monitor "$(bash_in "tail -f $VAULT/notes/visit.md")")"
 expect_mark sMon "a Monitor command naming a salus path marks"
 

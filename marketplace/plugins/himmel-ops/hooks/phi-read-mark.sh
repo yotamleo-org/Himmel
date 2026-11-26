@@ -62,8 +62,8 @@ case "$tool" in
         ;;
     Bash | Monitor)
         cmd=$(str '.tool_input.command // ""')
-        case "$cmd" in *"\$'"* | *'$"'*) mark ;; esac
         joined=${cmd//$'\\\n'/}
+        case "$cmd$joined" in *"\$'"* | *'$"'*) mark ;; esac
         plain=$(printf '%s\n%s\n' "$cmd" "$joined" | tr -s " \t\r;|&<>()'\"\`=:,{}" '\n')
         # shellcheck disable=SC2016 # an awk program, not shell text
         shell='BEGIN { sep = " \t\r;|&<>()`=:,{}" }
