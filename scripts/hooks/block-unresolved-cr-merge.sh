@@ -259,11 +259,17 @@ _gate4_bounded() {
         ticks=$((ticks + 1))
     done
     if kill -0 "$pid" 2>/dev/null; then
-        kill -9 "$pid" 2>/dev/null
+        _gate4_kill_tree "$pid"
         wait "$pid" 2>/dev/null
         return 124
     fi
     wait "$pid"
+}
+_gate4_kill_tree() {
+    local c
+    kill -STOP "$1" 2>/dev/null
+    for c in $(pgrep -P "$1" 2>/dev/null); do _gate4_kill_tree "$c"; done
+    kill -9 "$1" 2>/dev/null
 }
 go_tmp=$(mktemp "${TMPDIR:-/tmp}/block-unresolved-cr-merge-view.XXXXXX" 2>/dev/null) || go_tmp=""
 gh_t0=$SECONDS
@@ -285,6 +291,14 @@ trap 'rm -f "$go_tmp" "$gh_to_flag" "${trust_tmp:-}"' EXIT
 # in $gh_to_flag and the hook DENIES after each gate call (_gh_timed_out). Set in
 # the hook, not the libs: it also bounds the transitive calls, and the libs'
 # other callers (check-ci, pr-merge.sh) keep their own behaviour.
+# shellcheck disable=SC1091
+{ [ -r "$SCRIPT_DIR/../lib/gh-read.sh" ] && . "$SCRIPT_DIR/../lib/gh-read.sh"; } 2>/dev/null || true
+declare -F gh_read_init >/dev/null 2>&1 && GH_READ_QUIET=1 gh_read_init
+# shellcheck disable=SC2329 # invoked through _gate4_bounded "$@"
+_gh_bounded_read() {
+    unset -f gh
+    if declare -F gh_read >/dev/null 2>&1; then gh_read "$@"; else gh "$@"; fi
+}
 gh() {
     local out errf rc=0 cap _gate4_err
     # One timeout already means deny: skip later calls so a run of hung gh calls
@@ -307,7 +321,7 @@ gh() {
     fi
     # stderr is replayed: trust_path_check tells a 404 from an outage by it.
     _gate4_err=$errf
-    _gate4_bounded "$cap" "$out" command gh "$@" || rc=$?
+    _gate4_bounded "$cap" "$out" _gh_bounded_read "$@" || rc=$?
     if [ "$rc" = "124" ] && [ -n "$gh_to_flag" ]; then echo 1 >"$gh_to_flag"; fi
     cat "$out" 2>/dev/null
     cat "$errf" >&2 2>/dev/null

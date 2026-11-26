@@ -16,7 +16,7 @@ command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 
 T="$(mktemp -d "${TMPDIR:-/tmp}/himmel-config-hook.XXXXXX")" || exit 1
 trap 'rm -rf "$T"' EXIT
-export HOME="$T/home"
+export HOME="$T/HoMe"
 mkdir -p "$HOME/.himmel"
 printf '{}\n' > "$HOME/.himmel/config.json"
 ln -s "$HOME/.himmel/config.json" "$T/alias.json"
@@ -48,6 +48,30 @@ file_case "symlink resolving to the config -> block" block Write "$T/alias.json"
 file_case ".. segment resolving to the config -> block" block Write "$HOME/.himmel/x/../config.json"
 file_case "another file in ~/.himmel -> allow" allow Write "$HOME/.himmel/notes.txt"
 file_case "a config.json elsewhere -> allow" allow Write "$T/other/config.json"
+
+echo "== HIMMEL-7888: lexical .. form and Darwin case-folding =="
+{ mkdir -p "$T/elsewhere" && ln -s "$T/elsewhere" "$HOME/.himmel/L"; } || { echo "FAIL: cannot build the 7888 fixtures" >&2; exit 1; }
+file_case "7888 .himmel/L/../config.json (L symlinked elsewhere) -> block" block Write "$HOME/.himmel/L/../config.json"
+file_case "7888 the same through Edit -> block" block Edit "$HOME/.himmel/L/../config.json"
+file_case "7888 relative .himmel/L/../config.json -> block" block Write ".himmel/L/../config.json"
+file_case "7888 .himmel/L/../project.conf -> block" block Write "$HOME/.himmel/L/../project.conf"
+file_case "7888 .himmel/L/../outside-contributors.json -> block" block Write "$HOME/.himmel/L/../outside-contributors.json"
+file_case "7888 dot and double-slash spellings of the lexical form -> block" block Write "$HOME/.himmel/L/..//./config.json"
+file_case "7888 relative path that climbs out and back in -> block" block Write "x/../../.himmel/L/../config.json"
+file_case "7888 control: .himmel/L/../../notes.txt -> allow" allow Write "$HOME/.himmel/L/../../notes.txt"
+file_case "7888 control: .himmel/L/../notes.txt -> allow" allow Write "$HOME/.himmel/L/../notes.txt"
+file_case "7888 control: a lexical path that ends outside the config dir -> allow" allow Write "$HOME/.himmel/x/../../other/config.json"
+file_case "7888 control: .himmel/notes.txt -> allow" allow Write "$HOME/.himmel/notes.txt"
+case "${OSTYPE:-}" in darwin*) ;; *) [ -e /System/Library/CoreServices/SystemVersion.plist ] || file_case "7888 control (case-sensitive host): ~/.HIMMEL/config.json is a different file -> allow" allow Write "$HOME/.HIMMEL/config.json" ;; esac
+export HIMMEL_GUARD_FORCE_DARWIN=1
+file_case "7888 Darwin: ~/.HIMMEL/config.json -> block" block Write "$HOME/.HIMMEL/config.json"
+file_case "7888 Darwin: ~/.himmel/Config.JSON -> block" block Write "$HOME/.himmel/Config.JSON"
+file_case "7888 Darwin: .HIMMEL/PROJECT.CONF -> block" block Write ".HIMMEL/PROJECT.CONF"
+file_case "7888 Darwin: ~/.HIMMEL/himmel.conf (station config) -> block" block Write "$HOME/.HIMMEL/himmel.conf"
+file_case "7888 Darwin: ~/.HIMMEL/L/../config.json (both gaps) -> block" block Write "$HOME/.HIMMEL/L/../config.json"
+file_case "7888 Darwin control: ~/.HIMMEL/notes.txt -> allow" allow Write "$HOME/.HIMMEL/notes.txt"
+file_case "7888 Darwin control: a config.json elsewhere -> allow" allow Write "$T/other/Config.json"
+unset HIMMEL_GUARD_FORCE_DARWIN
 
 echo "== apply_patch (Codex's only edit tool, j2409d) =="
 patch_case() { run "$1" "$2" "$(jq -nc --arg c "$3" '{tool_name:"apply_patch",tool_input:{command:$c}}')"; }
@@ -428,6 +452,8 @@ big_patch 1000 > "$T/p1000.txt"
 # bash 3.2 on the macOS runner took 7.3 s here (macos-cadence run 40745067827); the 60 s hook budget is what matters.
 CAP_BOUND_MS=3000; [ "$(uname -s)" = Darwin ] && CAP_BOUND_MS=20000 # prim-ok: Darwin timing budget
 big_case "1000 benign headers (at the cap) -> allow inside the time bound" allow "$T/p1000.txt" "$CAP_BOUND_MS"
+sed 's|src/dir/file|Src/DiR/FiLe|' "$T/p1000.txt" > "$T/p1000m.txt"
+HIMMEL_GUARD_FORCE_DARWIN=1 big_case "7888 Darwin seam: 1000 benign mixed-case headers (at the cap) -> allow inside the time bound" allow "$T/p1000m.txt" 12000
 big_patch 1001 > "$T/p1001.txt"
 big_case "1001 benign headers (over the cap) -> block" block "$T/p1001.txt"
 big_patch 999 "*** Update File: $CFG" > "$T/pcfg.txt"
@@ -619,6 +645,42 @@ export HIMMEL_CONFIG_AUDIT_ENV_FILE="$T/loop/l1/x"
 bsd_file_case "a .env write when the station .env cannot be resolved -> block (fail-closed)" block "$T/other/.env"
 bsd_file_case "a non-.env write when the station .env cannot be resolved -> allow" allow "$T/other/notes.txt"
 unset HIMMEL_CONFIG_AUDIT_ENV_FILE
+
+echo "== HIMMEL-7888 round 2: Darwin folds on the resolved forms, and the lexical form resolved =="
+mkdir -p "$T/StAtIoN-Env" "$T/CoNf" "$T/CrEdIt"
+: > "$T/StAtIoN-Env/.env"
+ln -s "$HOME/.HIMMEL/config.json" "$T/AlCfg.json"
+ln -s "$HOME/.HIMMEL/state/api-credit/roles.json" "$T/AlRoles.json"
+ln -s "$HOME/.HIMMEL/outside-contributors.json" "$T/AlStore.json"
+ln -s "$HOME/.HIMMEL/project.conf" "$T/AlProj.conf"
+ln -s "$HOME/.HIMMEL/notes.txt" "$T/AlNotes.txt"
+ln -s "$T/elsewhere/himmel.conf" "$T/CoNf/himmel.conf"
+export HIMMEL_GUARD_FORCE_DARWIN=1
+export HIMMEL_CONFIG_AUDIT_ENV_FILE="$T/StAtIoN-Env/.env"
+file_case "7888 Darwin: Write to the station .ENV -> block" block Write "$T/StAtIoN-Env/.ENV"
+patch_case "7888 Darwin: apply_patch on the station .ENV -> block" block "*** Begin Patch${NL}*** Update File: $T/StAtIoN-Env/.ENV${NL}@@${NL}-a${NL}+b${NL}*** End Patch"
+file_case "7888 Darwin control: another project's .ENV -> allow" allow Write "$T/other/.ENV"
+unset HIMMEL_CONFIG_AUDIT_ENV_FILE
+file_case "7888 Darwin: alias to ~/.HIMMEL/config.json -> block" block Write "$T/AlCfg.json"
+file_case "7888 Darwin: alias to the role map in another case -> block" block Write "$T/AlRoles.json"
+file_case "7888 Darwin: alias to outside-contributors.json in another case -> block" block Write "$T/AlStore.json"
+file_case "7888 Darwin control: alias to ~/.HIMMEL/notes.txt -> allow" allow Write "$T/AlNotes.txt"
+patch_case "7888 Darwin: apply_patch header through an alias to the config -> block" block "*** Begin Patch${NL}*** Update File: $T/AlCfg.json${NL}@@${NL}*** End Patch"
+patch_case "7888 Darwin: apply_patch header through an alias to project.conf -> block" block "*** Begin Patch${NL}*** Update File: $T/AlProj.conf${NL}@@${NL}*** End Patch"
+patch_case "7888 Darwin: apply_patch header through an alias to outside-contributors.json -> block" block "*** Begin Patch${NL}*** Update File: $T/AlStore.json${NL}@@${NL}*** End Patch"
+patch_case "7888 Darwin control: apply_patch header through an alias to notes.txt -> allow" allow "*** Begin Patch${NL}*** Update File: $T/AlNotes.txt${NL}@@${NL}*** End Patch"
+export HIMMEL_CONFIG_DIR="$T/CoNf"
+file_case "7888 Darwin: HIMMEL_CONFIG_DIR written to in another case -> block" block Write "$T/CONF/himmel.conf"
+file_case "7888 Darwin control: HIMMEL_CONFIG_DIR, another file -> allow" allow Write "$T/CONF/notes.txt"
+unset HIMMEL_CONFIG_DIR
+export HIMMEL_API_CREDIT_CONFIG="$T/CrEdIt/config.json"
+file_case "7888 Darwin: HIMMEL_API_CREDIT_CONFIG role map written to in another case -> block" block Write "$T/CREDIT/roles.json"
+file_case "7888 Darwin control: HIMMEL_API_CREDIT_CONFIG, another file -> allow" allow Write "$T/CREDIT/config.json"
+unset HIMMEL_API_CREDIT_CONFIG
+unset HIMMEL_GUARD_FORCE_DARWIN
+ln -s "$HOME/.himmel" "$T/S"
+file_case "7888 lexical form resolved: S/L/../config.json (S is ~/.himmel, L is elsewhere) -> block" block Write "$T/S/L/../config.json"
+file_case "7888 control: S/L/../notes.txt -> allow" allow Write "$T/S/L/../notes.txt"
 
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"
