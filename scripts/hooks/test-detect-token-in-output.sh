@@ -216,7 +216,7 @@ if [ "$g" = 1 ] && [ -n "$(ls -A "$TMP/alerts")" ]; then pass "sentinels hold no
 
 # 13. Placeholders.
 is_placeholder() {
-    [ "$rc" = 0 ] && ! grep -q 'LIVE' "$1" && [ "$(wc -l <"$1" | tr -d ' ')" = 1 ] \
+    [ "$rc" = 0 ] && ! grep -q 'LIVE' "$1" && [ "$(grep -c '' "$1")" = 1 ] \
         && jq -e '(.systemMessage | startswith("TOKEN-IN-OUTPUT PLACEHOLDER")) and (has("hookSpecificOutput") | not)' "$1" >/dev/null 2>&1 \
         && shows_only_mask "$1" "$2"
 }
