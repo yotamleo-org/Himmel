@@ -2583,8 +2583,6 @@ def classify_new(batch):
     if fresh:
         cls_cache.update(classify(fresh))
 
-# One classify call costs a fixed ~20 s: the first 2*fresh_budget free rows go in two parallel calls
-# of fresh_budget rows each, so a refused or colliding row in the first call does not cost a serial round.
 fresh_budget = top - min(len(resume), half_up(top))
 if classified and fresh_budget > 0:
     from concurrent.futures import ThreadPoolExecutor
