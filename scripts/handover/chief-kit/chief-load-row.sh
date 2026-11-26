@@ -221,7 +221,7 @@ m = None
 if transcript:
     try:
         m = measure(transcript)
-    except (OSError, ValueError, KeyError, TypeError):
+    except Exception:
         m = None
 m = m or {}
 

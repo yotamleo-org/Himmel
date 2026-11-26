@@ -4372,11 +4372,12 @@ HANDOVER_DIR="$root" bash "$QL" release "$A11266" "$tok11266" >/dev/null 2>&1
 
 tokf11266="$(token_of "$(chief new --bucket loadfail11266)")"
 Af11266="$root/tester/loadfail11266/DEMO-nextleg-${today}A-chief.md"
-mkfifo "$root/tester/loadfail11266/chief-load.jsonl"
+check "11266 the fixture puts a FIFO in the record's place" "$(mkfifo "$root/tester/loadfail11266/chief-load.jsonl" && echo made)" "made"
 logf11266="$HIMMELCTL_CACHE_DIR/launch-logs/DEMO-nextleg-${today}A-chief.log"
 chmod 000 "$logf11266"
 rcf11266=0
-outf11266="$(chief next --bucket loadfail11266 --doc "$Af11266" 2>/dev/null)" || rcf11266=$?
+outf11266="$(chief next --bucket loadfail11266 --doc "$Af11266" 2>"$tmp/f11266.err")" || rcf11266=$?
+check "11266 next warns that the load row was not appended" "$(grep -c 'could not append the shift' "$tmp/f11266.err")" "1"
 check "11266 next exits 0 when the load row cannot be written" "$rcf11266" "0"
 check "11266 next still prints the launch line when the load row cannot be written" "$(printf '%s\n' "$outf11266" | grep -c '^launch: ')" "1"
 if [ -r "$logf11266" ]; then

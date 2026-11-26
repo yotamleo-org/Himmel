@@ -3252,7 +3252,9 @@ cmd_next() {
     trap - EXIT
     local load_window=1000000 load_mode="$CHIEF_CONTEXT_RESOLVED_MODE" load_record
     load_record="${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs/$predecessor_stem.log"
-    [ ! -r "$load_record" ] || load_mode="$(sed -n 's/^headed-arm: .* context=\([a-z0-9]*\) .*/\1/p' "$load_record" | tail -n 1)" || load_mode=""
+    if [ -f "$load_record" ] && [ -r "$load_record" ]; then
+        load_mode="$(sed -n 's/^headed-arm: .* context=\([a-z0-9]*\) .*/\1/p' "$load_record" | tail -n 1)" || load_mode=""
+    fi
     [ "${load_mode:-$CHIEF_CONTEXT_RESOLVED_MODE}" = 1m ] || load_window=200000
     bash "$kit/chief-load-row.sh" --bucket "$state_dir" --shift "$predecessor_stem" --next-shift "$session" \
         --workers-end "$(printf '%s' "$LIVE_WORKER_ROWS" | grep -c .)" \
