@@ -306,8 +306,6 @@ export function revalidateSharedWorktree(deps: {
 // ── args parsing ──────────────────────────────────────────────────────────
 
 export type EffortLevel = "low" | "medium" | "high" | "xhigh";
-// Selector for this CLI's --model flag. Direct launches accept CODEX_MODEL
-// for any model served by the configured proxy.
 const CODEX_MODELS = [
   "gpt-6.2-sol", "gpt-6.2-astra",
   "gpt-6.1-sol", "gpt-6.1-terra",

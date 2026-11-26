@@ -99,8 +99,7 @@ check "T3: CRITICS_JSON row dispatched"                "$(grep -c 'slug=onlyme '
 check "T3: local overlay NOT merged (CRITICS_JSON wins)" "$(grep -c 'slug=other ' "$LOG3")" "0"
 
 # ---------------------------------------------------------------------------
-# T4 — test this branch's shipped registry with no local overlay. The
-# production resolver reads the trusted main copy until the change lands.
+# T4 — the shipped registry with no local overlay.
 # ---------------------------------------------------------------------------
 LOG4="$tmp/t4.log"; : > "$LOG4"
 env -u CRITICS_JSON CRITICS_BASE_JSON="$HERE/critics.json" CRITICS_LOCAL_JSON="$tmp/no-local.json" \
