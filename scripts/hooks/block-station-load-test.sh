@@ -8,9 +8,9 @@
 #   xargs-fanout   xargs with -P / --max-procs above 2 (or 0, unlimited).
 #   parallel       GNU parallel with no job flag (it defaults to every core), or
 #                  -j / --jobs / -P above 2, 0, or a percentage.
-#   loop-fanout    a for/while/until loop whose body starts a background job (a
-#                  standalone `&`) and whose count the guard cannot show to be 2
-#                  or fewer: a literal word list or `seq N` / {1..N} / `-lt N`
+#   loop-fanout    a for/while/until loop whose body starts background jobs (a
+#                  standalone `&`) and whose passes times jobs the guard cannot
+#                  show to be 2 or fewer: a literal word list or `seq N` / {1..N} / `-lt N`
 #                  with N at most 2 passes; `$(nproc)`, a variable or no bound
 #                  does not.
 #   bg-fanout      more than 2 standalone background `&` launches in one command.
@@ -129,7 +129,7 @@ shape=""
 detail=""
 
 scan_shapes() {
-    local text=$1 rest n m after head body kind copies bg segment
+    local text=$1 rest n m after head body kind copies bg segment per
 
     rest=$text
     while [[ $rest =~ $XARGS_RE ]]; do
@@ -192,10 +192,11 @@ scan_shapes() {
         body=${after#"$head"}
         body=${body#*do}
         case $body in *done*) body=${body%done*} ;; esac
-        [ "$(count_bg "$body")" -gt 0 ] || continue
+        per=$(count_bg "$body")
+        [ "$per" -gt 0 ] || continue
         copies=$(loop_copies "$kind" "$head")
-        if [ "$copies" = unknown ] || [ "$copies" -gt "$CAP" ]; then
-            shape=loop-fanout detail="a $kind loop starts background jobs and does not stay at $CAP or fewer (count: $copies)"
+        if [ "$copies" = unknown ] || [ "$((copies * per))" -gt "$CAP" ]; then
+            shape=loop-fanout detail="a $kind loop starts $per background job(s) per pass and does not stay at $CAP or fewer in all (passes: $copies)"
             return 0
         fi
     done
@@ -250,11 +251,11 @@ if ! scan_shapes "$cmd"; then
         run_pos=$((at_start + interp))
         at_start=0 interp=0
         [ "$run_pos" -gt 0 ] || continue
+        tok=${tok#[\'\"]}
+        tok=${tok%[\'\"]}
         case $tok in *.sh|*.bash|*.py|*.js|*.mjs|*.cjs) ;; *) continue ;; esac
         [ "$read_count" -lt 8 ] || break
         read_count=$((read_count + 1))
-        tok=${tok#[\'\"]}
-        tok=${tok%[\'\"]}
         case $tok in /*) p=$tok ;; *) p=$base/$tok ;; esac
         readable_script "$p" || continue
         ftext=$(cat "$p" 2>/dev/null) || continue  # swallow-ok: an unreadable script is skipped, not scanned

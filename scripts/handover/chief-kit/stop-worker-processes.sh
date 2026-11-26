@@ -15,7 +15,9 @@
 #
 # DRY RUN BY DEFAULT: without --live it only lists the matching processes.
 # A process matches when its command line names <scratchpad dir>/ or its working
-# directory is <scratchpad dir> or below it, and the chief's own uid owns it. The
+# directory is <scratchpad dir> or below it, or when it descends from such a process,
+# and the chief's own uid owns it. A signal is sent only while the process still has
+# the start time it had when listed, so a recycled pid is never signalled. The
 # script's own process and its ancestors never match. --live sends TERM, waits up
 # to 3 seconds, then sends KILL to what is left.
 #
@@ -52,50 +54,88 @@ fi
 
 [ -d /proc/self ] || { echo "stop-worker-processes: needs /proc (Linux)" >&2; exit 4; }
 
+stat_fields() { sed 's/.*) //' "/proc/$1/stat" 2>/dev/null; }  # swallow-ok: a process that exited has no stat and reads as empty
+
+ppid_of() { stat_fields "$1" | awk '{print $2}'; }
+
+starttime() { stat_fields "$1" | awk '$1 == "Z" {exit} {print $20}'; }
+
 skip=" $$ "
 p=$$
 while [ -r "/proc/$p/stat" ]; do
-    p=$(awk '{print $4}' "/proc/$p/stat" 2>/dev/null) || break  # swallow-ok: the ancestor walk ends when a parent stat is unreadable
+    p=$(ppid_of "$p")
     [ -n "$p" ] && [ "$p" -gt 1 ] 2>/dev/null || break
     skip="$skip$p "
 done
 
 pids=""
+idents=""
 matched=0
+pairs=""
 for d in /proc/[0-9]*; do
     pid=${d#/proc/}
     case $skip in *" $pid "*) continue ;; esac
     [ -O "$d" ] || continue
+    pairs="$pairs $pid:$(ppid_of "$pid")"
     cmdline=$(tr '\0' ' ' <"$d/cmdline" 2>/dev/null) || continue  # swallow-ok: a process that exited mid-scan has no cmdline and is skipped
     cwd=$(readlink "$d/cwd" 2>/dev/null) || cwd=""  # swallow-ok: a process with no readable cwd matches on its command line only
     hit=0
     case $cmdline in *"$dir/"*) hit=1 ;; esac
     case $cwd in "$dir" | "$dir"/*) hit=1 ;; esac
     [ "$hit" = 1 ] || continue
-    matched=$((matched + 1))
     pids="$pids $pid"
-    printf '%s\t%s\n' "$pid" "${cmdline:0:120}"
 done
+
+grew=1
+while [ "$grew" = 1 ]; do
+    grew=0
+    for pair in $pairs; do
+        pid=${pair%%:*}
+        parent=${pair#*:}
+        case " $pids " in *" $pid "*) continue ;; esac
+        case " $pids " in *" $parent "*) pids="$pids $pid"; grew=1 ;; esac
+    done
+done
+
+for pid in $pids; do
+    st=$(starttime "$pid")
+    [ -n "$st" ] || continue
+    idents="$idents $pid:$st"
+    matched=$((matched + 1))
+    printf '%s\t%s\n' "$pid" "$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | cut -c1-120)"  # swallow-ok: a process gone since the scan prints an empty command line
+done
+
+ident_ok() {
+    local want="" e
+    for e in $idents; do
+        [ "${e%%:*}" = "$1" ] && want=${e#*:}
+    done
+    [ -n "$want" ] && [ "$(starttime "$1")" = "$want" ]
+}
+
+send() {
+    ident_ok "$2" && kill -"$1" "$2" 2>/dev/null
+}
 
 stopped=0
 killed=0
 remaining=0
 if [ "$live" = 1 ] && [ "$matched" -gt 0 ]; then
-    # shellcheck disable=SC2086 # pids is a space-separated list of numbers built above
-    kill -TERM $pids 2>/dev/null
+    for e in $idents; do send TERM "${e%%:*}"; done
     tries=0
     while [ "$tries" -lt 6 ]; do
         alive=""
-        for pid in $pids; do kill -0 "$pid" 2>/dev/null && alive="$alive $pid"; done
+        for e in $idents; do ident_ok "${e%%:*}" && alive="$alive ${e%%:*}"; done
         [ -n "$alive" ] || break
         sleep 0.5
         tries=$((tries + 1))
     done
-    for pid in $pids; do
-        if kill -0 "$pid" 2>/dev/null; then
-            kill -KILL "$pid" 2>/dev/null
+    for e in $idents; do
+        pid=${e%%:*}
+        if ident_ok "$pid"; then
+            send KILL "$pid"
             sleep 0.2
-            if kill -0 "$pid" 2>/dev/null; then remaining=$((remaining + 1)); else killed=$((killed + 1)); fi
+            if ident_ok "$pid"; then remaining=$((remaining + 1)); else killed=$((killed + 1)); fi
         else
             stopped=$((stopped + 1))
         fi

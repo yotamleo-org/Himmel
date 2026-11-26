@@ -99,6 +99,31 @@ run_stop "$SP" --live
 case $out in *"matched=1 stopped=0 killed=1 remaining=0"*) ok "KILL follows an ignored TERM" ;; *) bad "KILL follows an ignored TERM: $out" ;; esac
 down "$S1" "the stubborn process is gone"
 
+echo "== a descendant that names no scratchpad path is stopped with its parent =="
+DESC="$TMP/claude-$UID_N/proj-a/sess-c/scratchpad"
+mkdir -p "$DESC"
+cat >"$DESC/spawn.sh" <<'SPAWN'
+#!/usr/bin/env bash
+(cd / && exec sleep 300) &
+echo $! > "$(dirname "$0")/child.pid"
+wait
+SPAWN
+bash "$DESC/spawn.sh" >/dev/null 2>&1 &
+D1=$!
+PIDS="$PIDS $D1"
+sleep 1
+DCHILD=$(cat "$DESC/child.pid")
+PIDS="$PIDS $DCHILD"
+run_stop "$DESC"
+case $out in *"$DCHILD"*) ok "dry run lists the sleep child that names no scratchpad path" ;; *) bad "dry run lists the child: $out" ;; esac
+run_stop "$DESC" --live
+rc_is 0 "--live exits 0 with a descendant"
+case $out in *"stopped=2 killed=0 remaining=0"*) ok "--live reports the parent and the child stopped" ;; *) bad "--live descendant report: $out" ;; esac
+down "$DCHILD" "the sleep child is gone"
+down "$D1" "the parent script is gone"
+run_stop "$DESC"
+case $out in *"matched=0 "*) ok "no process of that scratchpad is left" ;; *) bad "a process is left: $out" ;; esac
+
 echo "== nothing matched =="
 run_stop "$SP" --live
 rc_is 0 "no match exits 0"
