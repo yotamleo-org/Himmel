@@ -260,14 +260,14 @@ EOF
 }
 
 if ! command -v jq >/dev/null 2>&1; then
-    # No parser: raw-text scan, deny only a mention of the subject.
+    # No parser: raw-text scan, deny a mention of the subject, a path that resolves to it, or one that cannot be resolved.
     names_guarded_file "$input" && deny "jq not found and the payload names a guarded .himmel config file (fail-closed)"
-    names_guarded_physically "$input" "$PWD" && deny "jq not found and a path in the payload resolves to a guarded .himmel config file (fail-closed)"
+    names_guarded_physically "$(printf '%s' "$input" | tr '"{},[]' ' ')" "$PWD" && deny "jq not found and a path in the payload resolves to a guarded .himmel config file (fail-closed)"
     exit 0
 fi
 if ! printf '%s' "$input" | jq -e 'type == "object"' >/dev/null 2>&1; then
     names_guarded_file "$input" && deny "unparseable payload names a guarded .himmel config file (fail-closed)"
-    names_guarded_physically "$input" "$PWD" && deny "unparseable payload has a path that resolves to a guarded .himmel config file (fail-closed)"
+    names_guarded_physically "$(printf '%s' "$input" | tr '"{},[]' ' ')" "$PWD" && deny "unparseable payload has a path that resolves to a guarded .himmel config file (fail-closed)"
     exit 0
 fi
 

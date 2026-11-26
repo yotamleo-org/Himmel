@@ -703,6 +703,8 @@ bash_case "10322 plain words before the operand do not use up its budget -> bloc
 bash_case "10322 control: many plain words and an unrelated operand -> allow" allow "echo$filler; cp x $T/notes.txt"
 run "10322 malformed payload naming himmel.conf through a symlinked directory -> block" block "{not json $T/station-alias/himmel.conf"
 run "10322 malformed payload naming a profile through a symlinked directory -> block" block "{not json $T/station-alias/profiles/lab.conf"
+run "10322 unparseable JSON with the station path as a string value -> block" block "{\"tool_input\":{\"file_path\":\"$T/station-alias/himmel.conf\""
+run "10322 control: unparseable JSON with an unrelated string value -> allow" allow "{\"tool_input\":{\"file_path\":\"$T/station-alias/notes.txt\""
 run "10322 control: malformed payload naming an unrelated file through a symlinked directory -> allow" allow "{not json $T/station-alias/notes.txt"
 bash_case "10322 control: cat through a symlinked directory -> allow" allow "cat $T/station-alias/himmel.conf"
 bash_case "10322 control: cp through a symlinked directory onto an unrelated file -> allow" allow "cp $T/x $T/station-alias/notes.txt"
