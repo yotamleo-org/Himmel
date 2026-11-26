@@ -9,6 +9,7 @@ CLI="$HERE/worker-state.sh"
 TSV="$HERE/worker-states.tsv"
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/worker-state-test.XXXXXX")" || exit 1
+tmp="$(cd -P "$tmp" && pwd -P)" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/docs" "$tmp/state"
 fails=0
