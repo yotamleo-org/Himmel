@@ -3241,6 +3241,7 @@ station_heal_step() {
     esac
     now="$(date +%s)"
     if [ "$streak" -ge "$STATION_HEAL_SAMPLES" ] && [ $((now - last)) -ge "$STATION_HEAL_WINDOW" ]; then
+        printf '0\n%s\n' "$now" | atomic_write "$station_heal_file" 2>/dev/null || return 0  # swallow-ok: a start stamp that cannot be saved starts no heal, so an unwritable file never loops one
         hlog="$HOME/.himmel/state/station-sync.out"
         mkdir -p "$(dirname "$hlog")" 2>/dev/null
         if command -v setsid >/dev/null 2>&1; then
@@ -3248,7 +3249,7 @@ station_heal_step() {
         else
             "${station_cmd[@]}" --heal --bucket "$(dirname "$console_doc")" --chief "$(basename "$console_doc" .md)" 9>&- >>"$hlog" 2>&1 </dev/null &
         fi
-        last="$now"; streak=0
+        return 0
     fi
     printf '%s\n%s\n' "$streak" "$last" | atomic_write "$station_heal_file" 2>/dev/null || true  # swallow-ok: an unwritable streak only delays the heal to a later sample
     return 0

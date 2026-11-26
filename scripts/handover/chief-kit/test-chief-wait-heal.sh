@@ -97,6 +97,7 @@ reset
 tick_line ' station=BEHIND:pending'
 run_waiter "$WORK/o3a.out" 60 > /dev/null
 run_waiter "$WORK/o3.out" 50 > /dev/null
+if [ "$(count "$STUB/tick.calls")" -ge 4 ]; then pass '3 control: the waiter sampled at least four times'; else fail "3 control: the waiter sampled $(count "$STUB/tick.calls") times"; fi
 check '3 a sync in flight is not healed' 0 "$(count "$STUB/heal.calls")"
 
 reset
