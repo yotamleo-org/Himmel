@@ -11,9 +11,10 @@
 # never hand-edits config.toml — so Codex owns all config writes (trust hashes,
 # MCP secrets, long-path marketplace sources). NON-DESTRUCTIVE + idempotent: it
 # only registers the himmel marketplace when absent and enables the himmel plugin
-# set; it never removes or disables a himmel plugin, and re-runs are no-ops. The one
-# removal is upstream's qmd@qmd plugin + marketplace, replaced by an MCP entry for
-# the shared qmd daemon (token via $QMD_HTTP_TOKEN, never in config).
+# set; it never removes or disables a himmel plugin, and re-runs are no-ops. The
+# removals are upstream's qmd@qmd plugin + marketplace, replaced by an MCP entry for
+# the shared qmd daemon (token via $QMD_HTTP_TOKEN, never in config), and the
+# claude-obsidian-marketplace entry once no Codex plugin still comes from it.
 #
 #   install-himmel-codex.sh                 # register marketplace + enable default set
 #   install-himmel-codex.sh --all           # also enable luna-correlate
@@ -162,6 +163,23 @@ if [ -z "${QMD_HTTP_TOKEN:-}" ]; then
   QMD_TOKEN_FILE="${QMD_HTTP_AUTH_FILE:-${QMD_HTTP_TOKEN_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd/http-token}}"   # same resolution as qmd-auth-headers.sh
   echo "WARN        : $QMD_TOKEN_ENV is not set in this environment; Codex's qmd server needs it at launch or qmd answers 401."
   echo "              Add to the environment that launches Codex: export $QMD_TOKEN_ENV=\"\$(cat $(printf '%q' "$QMD_TOKEN_FILE"))\""
+fi
+
+OBS_MARKET="claude-obsidian-marketplace"
+if "$CODEX" plugin marketplace list 2>/dev/null | awk -v n="$OBS_MARKET" '$1==n{f=1} END{exit f?0:1}'; then
+  obs_plugins="$(printf '%s\n' "$plugin_list" | awk -v m="@$OBS_MARKET" 'length($1) > length(m) && substr($1, length($1) - length(m) + 1) == m {printf "%s ", $1}')"
+  if [ -n "$obs_plugins" ]; then
+    echo "WARN        : marketplace '$OBS_MARKET' can no longer update but still serves: ${obs_plugins% }"
+    echo "              To drop it: $(for p in $obs_plugins; do printf 'codex plugin remove %s && ' "$p"; done)codex plugin marketplace remove $OBS_MARKET"
+  else
+    if [ "$DRY_RUN" = "1" ]; then
+      echo "WOULD REMOVE: marketplace '$OBS_MARKET' (claude-obsidian is served @$MARKET)"
+    else
+      "$CODEX" plugin marketplace remove "$OBS_MARKET" >/dev/null
+      echo "CHANGED     : removed marketplace '$OBS_MARKET' (claude-obsidian is served @$MARKET)"
+    fi
+    changed=$((changed + 1))
+  fi
 fi
 
 # (No phase for third-party plugin hooks.json: codex < rust-v0.143.0 rejects a

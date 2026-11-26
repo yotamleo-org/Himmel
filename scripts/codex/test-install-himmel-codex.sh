@@ -288,5 +288,30 @@ out="$(env -u QMD_HTTP_TOKEN -u QMD_HTTP_AUTH_FILE -u QMD_HTTP_TOKEN_FILE XDG_CO
 # shellcheck disable=SC2016  # the literal $(cat ...) is the expected WARN text
 if grepq "$out" -F 'export QMD_HTTP_TOKEN="$(cat /x/my\ cfg/qmd/http-token)"'; then pass "M9 export line shell-quotes the token path"; else fail "M9 export line leaves the token path unquoted"; fi
 
+echo "== scenario N: the claude-obsidian-marketplace entry Codex can no longer update (HIMMEL-11349) =="
+OBS="claude-obsidian-marketplace"
+S="$TMP/N1"; mk_state "$S"
+printf 'himmel\n%s\n' "$OBS" > "$S/marketplaces.txt"
+{ for p in $DEFAULT_SET; do printf '%s@himmel\tinstalled, enabled\n' "$p"; done; } > "$S/plugins.txt"
+QMD_HTTP_TOKEN=x run "$S" >/dev/null
+assert_log_has   "$S/calls.log" "marketplace remove $OBS" "N1 removes the stale claude-obsidian marketplace"
+assert_log_lacks "$S/calls.log" "marketplace remove himmel" "N1 never touches the himmel marketplace"
+S="$TMP/N2"; mk_state "$S"
+printf 'himmel\n%s\n' "$OBS" > "$S/marketplaces.txt"
+{ for p in $DEFAULT_SET; do printf '%s@himmel\tinstalled, enabled\n' "$p"; done; printf 'claude-obsidian@%s\tinstalled, enabled\n' "$OBS"; } > "$S/plugins.txt"
+out="$(QMD_HTTP_TOKEN=x run "$S")"
+assert_log_lacks "$S/calls.log" "marketplace remove $OBS" "N2 keeps the marketplace while a plugin comes from it"
+assert_log_lacks "$S/calls.log" "plugin remove claude-obsidian" "N2 never removes the operator's plugin"
+if grepq "$out" -F "codex plugin remove claude-obsidian@$OBS && codex plugin marketplace remove $OBS"; then pass "N2 WARN names the remove commands"; else fail "N2 WARN lacks the remove commands"; fi
+S="$TMP/N3"; mk_state "$S"
+printf 'himmel\n%s\n' "$OBS" > "$S/marketplaces.txt"
+out="$(QMD_HTTP_TOKEN=x run "$S" --dry-run --plugins=himmel-ops)"
+assert_log_lacks "$S/calls.log" "remove" "N3 --dry-run removes nothing"
+if grepq "$out" "WOULD REMOVE: marketplace '$OBS'"; then pass "N3 --dry-run reports the removal"; else fail "N3 --dry-run did not report the removal"; fi
+S="$TMP/N4"; mk_state "$S"
+printf 'himmel\n%s-x\n' "$OBS" > "$S/marketplaces.txt"
+QMD_HTTP_TOKEN=x run "$S" --plugins=himmel-ops >/dev/null
+assert_log_lacks "$S/calls.log" "marketplace remove" "N4 leaves a near-miss marketplace name alone"
+
 echo ""
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED" >&2; exit 1; fi
