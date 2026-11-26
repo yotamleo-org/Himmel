@@ -211,7 +211,7 @@ try {
 
 cmd_monitor() {
     rs_preflight curl jq node
-    local chat="" tok="" out type title prev_chat err
+    local chat="" tok="" out type title members_post status prev_chat err
     rs_secret chat "Paste the monitoring group's chat id (a negative number such as -1001234567890):" \
         || rs_fix "no chat id was entered: run the same command again and paste the monitoring group's chat id; nothing was written"
     [[ $chat =~ ^-[0-9]{1,15}$ ]] \
@@ -233,9 +233,12 @@ cmd_monitor() {
         *) rs_fix "chat $chat is not a group (Telegram says ${type:-nothing}): use the monitoring group's id. Nothing was written" ;;
     esac
     title=$(rs_clean "$(printf '%s' "$out" | jq -r '.result.title // ""' 2>/dev/null)")
+    members_post=$(printf '%s' "$out" | jq -r '.result.permissions.can_send_messages != false' 2>/dev/null)
     out=$(rs_tg getChatMember "{\"chat_id\":$chat,\"user_id\":$RS_BOT_ID}") || rs_tg_fail "$out" "the membership check"
-    case "$(printf '%s' "$out" | jq -r 'if .result.status == "restricted" and .result.can_send_messages != true then "muted" else .result.status // "" end' 2>/dev/null)" in
-        member | administrator | creator) ;;
+    status=$(printf '%s' "$out" | jq -r 'if .result.status == "restricted" and .result.can_send_messages != true then "muted" else .result.status // "" end' 2>/dev/null)
+    [ "$status" != member ] || [ "$members_post" = true ] || status=muted
+    case "$status" in
+        member | restricted | administrator | creator) ;;
         *) rs_fix "@$RS_BOT_USER is not a member of ${title:0:60} that may post there: add it to the monitoring group, then run the same command again. Nothing was written" ;;
     esac
     rs_step "the monitor bot is in the group ${title:0:60} and may post there"
