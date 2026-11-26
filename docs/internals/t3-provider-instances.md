@@ -38,6 +38,38 @@ One `providerInstances.claudeAgent_<profile>` entry per profile:
   carry `--dangerously-skip-permissions` or `bypassPermissions` is refused the same way.
 - A malformed settings file is refused (rc 2) and left untouched.
 
+## Antigravity profile instances
+
+One `providerInstances.antigravity_<profile>` entry per profile that
+`scripts/t3/antigravity-profiles.sh --list` names (see `docs/internals/t3-antigravity-profiles.md`),
+only when that profile's home is ready:
+
+```json
+{ "driver": "antigravity", "displayName": "Antigravity (<profile>)", "enabled": true }
+```
+
+The script never reads the Antigravity registry; it calls `--list`, then runs
+`T3CODE_HOME=<X> antigravity-profiles.sh --check --profile <p>` for each name. `<X>` is the T3 home the
+settings file belongs to: a `--settings-file` of the form `<X>/userdata/<file>` (made absolute first),
+not the ambient `T3CODE_HOME`. Any other shape warns, and no Antigravity entry is added or checked;
+the Claude entries go ahead.
+
+| check outcome | entry absent | entry present |
+|---|---|---|
+| rc 0 and stdout `OK antigravity_<p>` | add the entry above | kept as is |
+| rc 1 and stdout `NOT OK antigravity_<p>...` | no entry; says `skipped, home not ready (run: bash scripts/t3/antigravity-profiles.sh --apply --profile <p>)` (only when `agy` is on PATH or `<X>/userdata/providers/antigravity` exists, else `not provisioned`) | kept as is; says `home is stale, run --apply` |
+| anything else (rc 2, 3, 126, 127, a signal, rc 1 without the `NOT OK` line, an `OK` line naming another id), or `--list` fails | nothing written, the check's output shown, rc 2 | same |
+
+- **Blast radius, intended:** an Antigravity fault also holds back that run's `claudeAgent_*` sync (rc 2,
+  nothing written), and `himmel-update` shows `failed`. A run makes one consistent write or none; a Claude
+  profile change waits until the operator fixes the Antigravity cause the report names.
+- An existing `antigravity_<p>` and the bare `antigravity` instance are never edited or removed.
+- No `_relay` copy is made of an `antigravity_<p>` id (the relay rule below): its `<id>_relay` home would
+  be one no check ever passed. Each is skipped with a warning.
+- Seam: `T3_PI_AGY_PROFILES` replaces the `antigravity-profiles.sh` path (tests).
+- Run `antigravity-profiles.sh --apply` first: T3 starts an instance the moment it is in its settings, and
+  a home that `--check` has not passed has no himmel hooks. The operator runs it, on the live home.
+
 ## Relay copies (`.t3.relay_instances`)
 
 A relay-marked instance is the one-click switch for a thread to reach the chief.
@@ -52,6 +84,8 @@ beside `.t3.instance_allowlist`:
   same run (same driver and `config`), `enabled: true`, named `<base displayName> + chief relay`.
   A hand-edited copy is regenerated from its base; picking the copy in T3 is the click.
 - A `*_relay` key never marks a profile covered, so the base still refreshes.
+- An `antigravity_<profile>` id gets no `_relay` copy (see "Antigravity profile instances"); the bare
+  `antigravity` id still does.
 - Off by default: an absent field, `[]` or no config file generates nothing. The file is
   read only from `$HOME/.himmel/config.json`; no env variable moves it.
 - An id that names no instance warns and is skipped (rc 0). The bypass-flag refusal
