@@ -22,11 +22,12 @@ HOOK_SAYS='(use|using|try|trying|with|via)[[:space:]]+(the[[:space:]]+)?(Grep|Gl
 hits=0
 
 scan_agent() {
-    local file=$1 tools
+    local file=$1 tools listed
     [ -r "$file" ] || { echo "check-no-absent-search-tools: cannot read: $file" >&2; exit 2; }
     tools=$(awk 'NR == 1 { if ($0 != "---") exit; next } /^---[[:space:]]*$/ { exit } /^tools:/ { print; exit }' "$file") ||
         { echo "check-no-absent-search-tools: awk failed on: $file" >&2; exit 2; }
-    if printf '%s\n' "${tools#tools:}" | tr ',' '\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -q -x -E 'Grep|Glob'; then
+    listed=$(printf '%s\n' "${tools#tools:}" | tr ',' '\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -x -E 'Grep|Glob')
+    if [ -n "$listed" ]; then
         echo "HIT $file: tools line lists the Grep or Glob tool, which sessions here do not load: $tools"
         hits=$((hits + 1))
     fi
