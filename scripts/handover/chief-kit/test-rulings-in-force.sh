@@ -442,6 +442,66 @@ same "window: --recent 0 is refused with exit 2" "$(wrender "$wptr" --recent 0 >
 same "window: --recent +7 is refused with exit 2" "$(wrender "$wptr" --recent +7 >/dev/null 2>&1; echo $?)" "2"
 same "window: the ledger is not rewritten" "$(wc -l < "$VD/rulings-in-force.jsonl" | tr -d ' ')" "7"
 
+N="$W/nextid"; ND="$N/specs/decisions"; mkdir -p "$ND" "$W/race"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-1240-a.txt"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-1245-a.txt"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-1245-b.txt"
+k=1
+while [ "$k" -le 12 ]; do
+    ( bash "$SUT" next-id --bucket "$N" > "$W/race/$k" 2>/dev/null ) &
+    k=$((k + 1))
+done
+wait
+same "next-id: 12 racing callers get 12 different ids, the next free ones after the highest file" \
+    "$(cat "$W/race"/* | sort -n | tr '\n' ' ')" "$(seq 1246 1257 | tr '\n' ' ')"
+same "next-id: each id is reserved with a placeholder row" "$(wc -l < "$ND/rulings-in-force.jsonl" | tr -d ' ')" "12"
+same "next-id: the next call continues after the reservations" "$(bash "$SUT" next-id --bucket "$N" 2>/dev/null)" "1258"
+mkdir -p "$W/nextid-empty"
+same "next-id: a bucket with no ruling starts at 1" "$(bash "$SUT" next-id --bucket "$W/nextid-empty" 2>/dev/null)" "1"
+nrec() { bash "$SUT" record --bucket "$N" "$@" 2>&1; echo "rc=$?"; }
+out="$(nrec --id 1245 --status in-force --date 2026-11-23 --line 'ruling a' --path specs/decisions/verbatim-decision-1245-b.txt)"
+same "record: an id whose verbatim file exists under another path is refused" "$(printf '%s\n' "$out" | tail -n 1)" "rc=1"
+same "record: that refusal names both paths" "$(printf '%s\n' "$out" | grep -c 'verbatim-decision-1245-a.txt.*verbatim-decision-1245-b.txt\|verbatim-decision-1245-b.txt.*verbatim-decision-1245-a.txt')" "1"
+out="$(nrec --id 1240 --status in-force --date 2026-11-23 --line 'ruling 1240' --path specs/decisions/verbatim-decision-1240-a.txt)"
+same "record: an id with one file at its own path is accepted" "$(printf '%s\n' "$out" | tail -n 1)" "rc=0"
+out="$(nrec --id 1240 --status "done" --date 2026-11-23 --line 'ruling 1240' --path specs/decisions/verbatim-decision-1240-a.txt)"
+same "record: re-recording the same id and path stays accepted" "$(printf '%s\n' "$out" | tail -n 1)" "rc=0"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-1240-b.txt"
+out="$(nrec --id 1240 --status in-force --path specs/decisions/verbatim-decision-1240-b.txt)"
+same "record: an id another row holds with a different path is refused" "$(printf '%s\n' "$out" | tail -n 1)" "rc=1"
+same "record: that refusal names both paths" "$(printf '%s\n' "$out" | grep -c 'verbatim-decision-1240-a.txt.*verbatim-decision-1240-b.txt\|verbatim-decision-1240-b.txt.*verbatim-decision-1240-a.txt')" "1"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-1246-operator-11-23-ZZ.txt"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-1246-operator-11-23-ZZ-copied.txt"
+out="$(nrec --id 1246 --status in-force --date 2026-11-23 --line 'ruling 1246' --path specs/decisions/verbatim-decision-1246-operator-11-23-ZZ.txt)"
+same "record: a reserved id is recorded with its real path, beside its -copied twin" "$(printf '%s\n' "$out" | tail -n 1)" "rc=0"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-0099-a.txt"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-99-b.txt"
+out="$(nrec --id 99 --status in-force --date 2026-11-23 --line 'ruling 99' --path specs/decisions/verbatim-decision-99-b.txt)"
+same "record: a file that spells the id with leading zeros holds the id" "$(printf '%s\n' "$out" | tail -n 1)" "rc=1"
+RS="$W/reserved"; RSD="$RS/specs/decisions"; mkdir -p "$RSD"
+printf 'OPERATOR words.\n' > "$RSD/verbatim-decision-950-x.txt"
+same "next-id: the fixture's real ruling 950 is recorded" "$(bash "$SUT" record --bucket "$RS" --id 950 --status in-force --date 2026-11-26 --line 'ruling 950' --path specs/decisions/verbatim-decision-950-x.txt >/dev/null 2>&1; echo $?)" "0"
+rn="$(bash "$SUT" next-id --bucket "$RS" 2>/dev/null)"
+printf 'OPERATOR words.\n' > "$RSD/verbatim-decision-$rn-x.txt"
+printf '%s\n\n' '# Current direction, full text (part 1 of 1), byte for byte, written by chief.sh next' "OPERATOR 11-26 ZA (BINDING, decision $rn): unrecorded reading, the full text." > "$RSD/chief-direction-2026-11-26-p1.md"
+rblk="Full original text of every ruling below, byte for byte, is in 1 file under the bucket (specs/decisions/chief-direction-2026-11-26-p1.md).
+
+OPERATOR 11-26 ZA, decision $rn: unrecorded reading …"
+printf '%s\n' "$rblk" > "$W/reserved-in.txt"
+rout="$(printf '%s\n' "$rblk" | bash "$SUT" render --bucket "$RS" 2>/dev/null)"
+same "next-id: render keeps the line of a reserved id nobody has recorded" "$(printf '%s\n' "$rout" | grep -cF "OPERATOR 11-26 ZA, decision $rn: unrecorded")" "1"
+same "next-id: render does not count a reserved id as done" "$(printf '%s\n' "$rout" | grep -c 'left out: 0 done, 0 superseded')" "1"
+same "next-id: check --before reports no lost line" "$(printf '%s\n' "$rout" | bash "$SUT" check --bucket "$RS" --before "$W/reserved-in.txt" 2>/dev/null | grep -c '^LOST ')" "0"
+same "next-id: check --before exits 0 on that render" "$(printf '%s\n' "$rout" | bash "$SUT" check --bucket "$RS" --before "$W/reserved-in.txt" >/dev/null 2>&1; echo $?)" "0"
+same "next-id: find does not list a reserved id" "$(bash "$SUT" find --bucket "$RS" "$rn" >/dev/null 2>&1; echo $?)" "1"
+same "next-id: superseding by a reserved id warns that it has no ledger row" "$(bash "$SUT" record --bucket "$RS" --id 950 --status "superseded-by $rn" 2>&1 >/dev/null | grep -c 'has no ledger row yet')" "1"
+same "next-id: that superseding is recorded" "$(bash "$SUT" find --bucket "$RS" 950 2>/dev/null | grep -c "superseded-by $rn")" "1"
+for rv in '"false"' 1 1.0 null; do
+    RB="$W/rsvbad"; rm -rf "$RB"; mkdir -p "$RB/specs/decisions"
+    printf '{"id": 1, "date": "2026-11-26", "line": "x", "status": "done", "path": "specs/decisions/v.txt", "reserved": %s}\n' "$rv" > "$RB/specs/decisions/rulings-in-force.jsonl"
+    same "next-id: a reserved marker of $rv is an unreadable row, exit 3" "$(bash "$SUT" find --bucket "$RB" x >/dev/null 2>&1; echo $?)" "3"
+done
+
 printf 'not json\n' >> "$L"
 out="$(render "$blk")"; rc=$?
 same "render: an unreadable ledger row exits 3" "$rc" "3"

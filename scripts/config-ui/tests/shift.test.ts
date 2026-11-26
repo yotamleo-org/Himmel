@@ -721,7 +721,7 @@ test("a live chief with no board file shows no leg, a missing-board note, and ru
 
 const mirrorTicket = (n: number, status: string) => ["---", `key: "HIMMEL-${n}"`, `type: "Task"`, `status: "${status}"`, `statusCategory: "${status}"`, `priority: "Medium"`, "labels: []", `fixVersions: ["v1.1.3"]`, "parent: null",
   `created: "2026-10-01T00:00:00.000+0000"`, `updated: "2026-10-02T00:00:00.000+0000"`, "resolution: null", "links:", "  blocks: []", "  blocked_by: []", "  relates: []", "---", "", `# HIMMEL-${n}: ticket ${n}`, "", "## Description", "", "x", "", "## Comments", "", "_(none)_", ""].join("\n");
-async function owedStation() {
+async function owedStation(handoff = "<What only the operator can do: a merge, a credential, a dashboard flip.>", more: string[] = []) {
   const { readOwed } = await import("../board");
   const d = tmp(), mirror = join(d, "mirror"), home = join(d, "home");
   mkdirSync(mirror); mkdirSync(home); mkdirSync(join(d, "specs", "designs"), { recursive: true });
@@ -734,8 +734,9 @@ async function owedStation() {
     add("o2", { actor: "operator", key: "HIMMEL-3", text: "closed ask", kind: "ask" }), JSON.stringify({ op: "close", ref: "o2" }),
     add("o3", { actor: "chief", key: "HIMMEL-3", text: "chief validates", kind: "step" }),
     add("o4", { actor: "operator", key: null, text: "loose ask", kind: "ask" }),
+    ...more.map((text, i) => add(`m${i}`, { actor: "operator", key: null, text, kind: "ask" })),
   ].join("\n") + "\n");
-  writeFileSync(join(d, "x-HANDOFF.md"), "## Open operator items\n\n<What only the operator can do: a merge, a credential, a dashboard flip.>\n");
+  writeFileSync(join(d, "x-HANDOFF.md"), `## Open operator items\n\n${handoff}\n`);
   const doc = join(d, "c-chief.md");
   writeFileSync(doc, "## Live state\nqueue: HIMMEL-2 operator words: approve paid TWO | HIMMEL-3 chief runs the GO\n");
   const o = readOwed({ PATH: process.env.PATH, HOME: home, HIMMEL_JIRA_MIRROR: mirror, HIMMEL_CHIEF_DOC: doc, HIMMEL_BUCKET_DIR: d } as never);
@@ -768,4 +769,18 @@ test("10947: Waiting is the board's operator list from the same readOwed call: o
     expect(boardWaiting).not.toContain(gone);
   }
   expect(html).toContain(`<h2 id="h-sh-waiting">Waiting on you <b>${v.waiting.length}</b></h2>`);
+});
+
+test("10947: a chief signature, a judge GO and a relaunch never reach Waiting on you; a bypass go code does; the Shift list and the board's operator list agree", async () => {
+  const o = await owedStation("- the chief signs the v1.1.3 spec\n- the judge GO for PR 5900\n- relaunch N70947\n- type the bypass go code on your phone", ["chief signature on the release notes", "approve the bypass go code"]);
+  const v = viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [], boards: [], owed: o });
+  const boardWaiting = renderBoard(readRoadmap({ mirrorDir: o.mirror, workers: { state: "absent" } }), {}, { owed: o }).match(/<section id="rm-waiting"[\s\S]*?<\/section>/)?.[0] ?? "";
+  const html = renderShift(v, {});
+  for (const chiefs of ["chief signs the v1.1.3", "judge GO for PR 5900", "relaunch N70947", "chief signature on the release notes"]) {
+    expect(html).not.toContain(chiefs);
+    expect(boardWaiting).not.toContain(chiefs);
+  }
+  for (const operators of ["type the bypass go code on your phone", "approve the bypass go code", "loose ask"]) expect(html).toContain(operators);
+  expect(v.waiting.length).toBe(boardWaiting.match(/<li>/g)?.length);
+  for (const w of v.waiting) expect(boardWaiting).toContain(w.ticket ?? w.title);
 });

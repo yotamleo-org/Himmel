@@ -147,8 +147,6 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
   return { state: "ok", sdrift: last.slice("sdrift=".length) };
 }
 
-// What is owed to the operator beside the labels and the chain holds, read from the records that hold it: the same sources as the roadmap
-// tracker's reader (tracker.py operator_owed), so the two views agree. All READ ONLY.
 //   1. an unsigned spec: the latest critic verdict of a spec of an open ticket of the running version is SPEC CLEAN, or the ticket's spec round
 //      in the round ledger (chief-route.ts round-status) is at the cap, and <bucket>/release/<version>/operator.jsonl has no `spec` row naming
 //      that spec file; and an open ticket whose ledger holds an operator-critical finding the operator has not ruled on, at any round;
@@ -170,6 +168,18 @@ function roundStatusAll(bucket: string, env: Env): RoundStatus | undefined {
 }
 const OWED_RE = /operator[ -](?:sign-?off|runs?|words|signs?|decides?|on Telegram|only)|Telegram ask|operator-owed/i;
 const OPERATOR_CLASS_RE = /\bspend|\bgrants?\b|\bpaid\b|billing|payment|\baccounts?\b|\bterms\b|\btos\b|\broot\b|\bsudo(?:ers)?\b|reinstall|admin install|\boauth\b|api credit|\bphysical(?:ly)?\b|hardware|public[ -]polic|policy call/i;
+const OPERATOR_ONLY_RE = /\bgo code\b|phone approval|on your phone|\bclaude\.md\b|relax(?:es|ing)? (?:a|the) guard|revers(?:al|e|es|ing) (?:of )?(?:his|the operator'?s)\b|spec (?:he|the operator) marked/i;
+const CHIEF_SUBJECT_RE = /\bchief[- ](?:signs?|signature|kit|dut(?:y|ies))\b|\bjudge\b/i;
+const OPERATOR_APPROVAL_RE = /\b(?:approv\w+|grant|authori[sz]e)\b[^|.]{0,40}\b(?:spend|payment|billing|paid|credit)\b|\b(?:spend|payment|billing|paid|credit)\b[^|.]{0,40}\b(?:approv\w+|grant|authori[sz]e)\b|operator[ -]signs?[ -]?off\b[^|.]*\bGO\b|\bGO\b[^|.]*operator[ -]signs?[ -]?off/i;
+const CHIEF_ACT_RE = /\brelaunch|\bwaiter\b/i;
+export function ownerOf(text: string, declared: OwedActor): OwedActor {
+  if (OPERATOR_ONLY_RE.test(text)) return "operator";
+  if (CHIEF_SUBJECT_RE.test(text)) return "chief";
+  if (OPERATOR_APPROVAL_RE.test(text)) return "operator";
+  if (CHIEF_ACT_RE.test(text)) return "chief";
+  if (OPERATOR_CLASS_RE.test(text)) return "operator";
+  return /\bGO\b/.test(text) ? "chief" : declared;
+}
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 // The lines under `## <heading>` up to the next `## `; undefined when the file has no such section.
 function mdSection(text: string, heading: string): string[] | undefined {
@@ -258,8 +268,9 @@ function handoffItems(bucket: string): OwedItem[] | undefined {
   return sec?.map((l) => l.trim()).filter((l) => l && !/^[-*\s]*(?:none\.?|<(?![a-z][a-z0-9+.-]*:)[^>]*>)$/i.test(l))
     .map((l): OwedItem => {
       const answered = handoffAnswered(bucket, join(bucket, best!.f), l);
-      return { actor: answered ? "chief" : "operator", source: "handoff", key: null, title: clip(l.replace(/^[-*]\s+/, ""), 140), ctx: best!.f,
-        act: answered ? "the chief records the operator answer" : "answer the open item" };
+      const actor = answered ? "chief" : ownerOf(l, "operator");
+      return { actor, source: "handoff", key: null, title: clip(l.replace(/^[-*]\s+/, ""), 140), ctx: best!.f,
+        act: answered ? "the chief records the operator answer" : actor === "chief" ? "the chief acts on what the item names" : "answer the open item" };
     });
 }
 const POOL_HOLD_ACT = "record the operator's words (O- record) or a near wake=, or dispatch it", HOLDS_TTL_MS = 30 * 60 * 1000;
@@ -317,7 +328,7 @@ function chiefDocItems(doc: string, open: Map<string, string>, terminal: Set<str
       if (key && terminal.has(key)) continue;
       if (key && held.has(key) && l.startsWith("pool-disposition:")) continue;
       const known = !!key && open.has(key);
-      const actor = key && (!known || unknown.has(key)) ? "unknown" : OPERATOR_CLASS_RE.test(s) ? "operator" : "chief";
+      const actor = key && (!known || unknown.has(key)) ? "unknown" : ownerOf(s, "chief");
       if (actor === "unknown" && key && !unknown.has(key)) unread.push(`chief doc ${key} status`);
       items.push({ actor, source: "chief doc", key: key ?? null, title: known ? open.get(key!)! : clip(s, 140), ctx: clip(s, 160),
         act: actor === "unknown" ? "reconcile the ticket status and responsible actor" : `the ${actor} acts on what the line names` });
@@ -376,8 +387,9 @@ function ledgerItems(bucket: string): OwedItem[] {
   for (const [id, r] of adds) {
     if (closed.has(id) || r.actor !== "operator") continue;
     const key = typeof r.key === "string" && /^[A-Z][A-Z0-9]*-\d+$/.test(r.key) ? r.key : null;
-    items.push({ actor: "operator", source: "owed ledger", key, title: clip(String(r.text ?? id), 140), ctx: `${id} (${String(r.kind)}) in owed.jsonl`,
-      act: r.kind === "proof" ? "run the proof" : "do what the row names" });
+    const actor = ownerOf(String(r.text ?? ""), "operator");
+    items.push({ actor, source: "owed ledger", key, title: clip(String(r.text ?? id), 140), ctx: `${id} (${String(r.kind)}) in owed.jsonl`,
+      act: actor === "chief" ? "the chief acts on what the row names" : r.kind === "proof" ? "run the proof" : "do what the row names" });
   }
   return items;
 }

@@ -1,0 +1,30 @@
+{
+  "name": "luna-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "luna-mcp-keys": "dist/src/cli/keys.js",
+    "luna-mcp-audit": "dist/src/cli/audit.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/src/server.js",
+    "keys": "node dist/src/cli/keys.js",
+    "audit": "node dist/src/cli/audit.js",
+    "pretest": "npm run build",
+    "test": "node --test dist/tests/*.test.js && bash tests/test-luna-mcp.sh"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.4.0",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "7.0.2"
+  }
+}

@@ -69,7 +69,7 @@ set_tail() { printf '# HIMMEL-9100 — worker N1\n\n## Results (newest at the bo
 set_lane() { printf '{"schema":1,"legs":[{"doc":"%s","label":"N1","lane":"%s"}]}\n' "$DOC1" "$1" > "$WORK/w/fleet.json"; }
 
 sweep_env() {
-    CHIEF_DUTY_SWEEP_NOW="$NOW" CHIEF_DUTY_SWEEP_PRS="$WORK/w/prs.json" CHIEF_DUTY_SWEEP_RUNS="$WORK/w/runs.json" \
+    CHIEF_DUTY_STALL_SECS="${STALL_SECS:-3600}" CHIEF_DUTY_SWEEP_NOW="${SWEEP_AT:-$NOW}" CHIEF_DUTY_SWEEP_PRS="$WORK/w/prs.json" CHIEF_DUTY_SWEEP_RUNS="$WORK/w/runs.json" \
         CHIEF_DUTY_SWEEP_GO_ROOT="$WORK/w/go" CHIEF_DUTY_SWEEP_MIRROR="$WORK/w/mirror" \
         CHIEF_DUTY_SWEEP_DISPOSITIONS="$WORK/w/dispositions.txt" CHIEF_DUTY_SWEEP_GH="$STUB/seam-gh" \
         CHIEF_DUTY_SWEEP_DELTA="$STUB/delta" TICK_STATE_DIR="$WORK/w/state" CANCEL_RUNS_PACE_STATE="$WORK/w/pace" \
@@ -213,7 +213,7 @@ if [ "$(id -u)" = 0 ]; then pass "an unreadable worker doc is named (skipped as 
 world; printf '{"schema":1,"legs":[42]}\n' > "$WORK/w/fleet.json"
 sweep
 has "a leg that is not an object is named" "DUTY? fleet unread" "$OUT"
-world; printf '{"schema":1,"legs":[]}\n' > "$WORK/w/fleet.json"
+world; printf '{"schema":1,"legs":[]}\n' > "$WORK/w/fleet.json"; printf '[]\n' > "$WORK/w/prs.json"
 sweep
 check "an empty legs array is a clean fleet" "" "$OUT"
 world; : > "$WORK/w/prs.json"
@@ -329,6 +329,117 @@ check "owed-stale: setup made the fresh row" "o2" "$id_new"
 sweep
 has "owed-stale: an old row" "DUTY owed-stale o1 :: " "$OUT"
 hasnt "owed-stale: a fresh row is not stale" "owed-stale o2" "$OUT"
+
+FIX="$HERE/fixtures/chief-duty-sweep"
+stall_pair() {
+    SWEEP_AT=$((NOW - $1 * 60)) sweep
+    SWEEP_AT="" sweep
+}
+world
+stall_pair 61
+has "stalled-pr: unchanged head and tail for 61 min is listed" "DUTY stalled-pr 101@$H7_1 :: " "$OUT"
+has "stalled-pr: names the owner" "owner N1" "$OUT"
+has "stalled-pr: names the last marker" "last LIVE" "$OUT"
+has "stalled-pr: names the age" "61m" "$OUT"
+has "stalled-pr: names the blocker" "waiting on worker idle" "$OUT"
+world
+stall_pair 59
+hasnt "stalled-pr: 59 min is not listed" "stalled-pr" "$OUT"
+world
+SWEEP_AT=$((NOW - 3660)) sweep
+set_tail "- 10:00 LIVE — working
+- 11:00 LIVE — a new bullet"
+SWEEP_AT="" sweep
+hasnt "stalled-pr: a new owner bullet restarts the clock" "stalled-pr" "$OUT"
+world
+SWEEP_AT=$((NOW - 3660)) sweep
+printf '[{"number":101,"headRefName":"feat/himmel-9100-thing","headRefOid":"%s","isDraft":false,"isCrossRepository":false,"baseRefName":"main"}]\n' "$H2" > "$WORK/w/prs.json"
+SWEEP_AT="" sweep
+hasnt "stalled-pr: a new head restarts the clock" "stalled-pr" "$OUT"
+world
+SWEEP_AT=$((NOW - 3660)) sweep
+STALL_SECS=7200 SWEEP_AT="" sweep
+hasnt "stalled-pr: the threshold is configurable" "stalled-pr" "$OUT"
+world; set_tail "- 10:05 READY 101 $H1 GREEN"
+verdict j101b 101 "$H1" GO
+stall_pair 61
+has "stalled-pr: a judged READY with no GO file waits on a GO" "waiting on a GO owed" "$OUT"
+touch "$WORK/w/go/.locks/go/101.$H1"
+stall_pair 61
+has "stalled-pr: a GO file at the head names the merge" "waiting on the merge (GO given" "$OUT"
+hasnt "stalled-pr: and no longer a GO owed" "a GO owed" "$OUT"
+world; set_tail "- 10:05 BLOCKED — a permission prompt"
+stall_pair 61
+has "stalled-pr: an open BLOCKED names a ruling owed" "waiting on a ruling owed" "$OUT"
+world; printf '{"schema":1,"legs":[]}\n' > "$WORK/w/fleet.json"
+stall_pair 61
+has "stalled-pr: no leg for the ticket reads as no owner" "owner none" "$OUT"
+has "stalled-pr: no owner is the blocker" "waiting on no owner" "$OUT"
+world
+printf '[{"id":13,"name":"CI","event":"pull_request","status":"in_progress","conclusion":null,"created_at":"2026-11-25T10:00:00Z","head_sha":"%s","run_attempt":1}]\n' "$H1" > "$WORK/w/runs.json"
+stall_pair 61
+has "stalled-pr: a CI run in progress names CI" "waiting on CI running" "$OUT"
+world; set_tail "- 10:05 PARKED-USAGE — weekly budget"
+mkdir -p "$B/bypass-queue"; printf 'cause=HEAD changed\n' > "$B/bypass-queue/.hold"
+stall_pair 61
+has "stalled-pr: a parked owner with a STALE bypass hold names the launcher" "bypass launcher STALE hold" "$OUT"
+world
+printf '[{"number":101,"headRefName":"feat/himmel-9100-thing","headRefOid":"%s","isDraft":true,"isCrossRepository":false,"baseRefName":"main"}]\n' "$H1" > "$WORK/w/prs.json"
+stall_pair 61
+hasnt "stalled-pr: a draft is not listed" "stalled-pr" "$OUT"
+world; printf '{"schema":1,"workers":[{"doc":"%s","label":"N1","lane":"t3"}]}\n' "$DOC1" > "$WORK/w/fleet.json"
+stall_pair 61
+has "workers shape: the manifest's own owner is read" "owner N1" "$OUT"
+hasnt "workers shape: an owned PR is not a dead wake" "dead-wake" "$OUT"
+world; printf '{"schema":1,"legs":[42]}\n' > "$WORK/w/fleet.json"
+stall_pair 61
+has "unread fleet: named" "DUTY? fleet unread" "$OUT"
+hasnt "unread fleet: no PR is called ownerless" "dead-wake" "$OUT"
+hasnt "unread fleet: no PR is called stalled" "stalled-pr" "$OUT"
+world; printf '{"schema":1}\n' > "$WORK/w/fleet.json"
+stall_pair 61
+has "a manifest with neither workers nor legs is unread" "DUTY? fleet unread" "$OUT"
+hasnt "a manifest with neither adds no ownerless PR" "dead-wake" "$OUT"
+
+world; CHIEF="$FIX/chief-dead-wake.md"
+sweep
+has "dead-wake: a hold with wake=done:KEY where KEY has no owner is listed" "DUTY dead-wake #5929 :: " "$OUT"
+has "dead-wake: names the key" "done:HIMMEL-11114" "$OUT"
+has "dead-wake: says to re-rule" "re-rule" "$OUT"
+world; CHIEF="$FIX/chief-dead-wake.md"; rm -rf "$WORK/w/mirror"
+sweep
+has "dead-wake: a missing mirror is named" "DUTY? mirror unread" "$OUT"
+hasnt "dead-wake: a missing mirror lists no hold as dead" "dead-wake #5929" "$OUT"
+world; CHIEF="$FIX/chief-dead-wake.md"
+printf -- '---\nkey: "HIMMEL-11114"\nstatus: "Done"\nstatusCategory: "Done"\n---\n' > "$WORK/w/mirror/HIMMEL-11114.md"
+sweep
+hasnt "dead-wake: a Done key's wake fires, so it is not dead" "dead-wake #5929" "$OUT"
+chmod 000 "$WORK/w/mirror/HIMMEL-11114.md"
+sweep
+chmod 644 "$WORK/w/mirror/HIMMEL-11114.md"
+if [ "$(id -u)" = 0 ]; then pass "dead-wake: an unreadable mirror record is not called dead (skipped as root)"; else hasnt "dead-wake: an unreadable mirror record is not called dead" "dead-wake #5929" "$OUT"; fi
+world; printf '{"schema":1,"workers":[{"doc":{"path":"x"},"label":"N1","lane":"t3"}]}\n' > "$WORK/w/fleet.json"
+stall_pair 61
+has "a worker whose doc is not a string is an unread fleet" "DUTY? fleet unread" "$OUT"
+hasnt "a worker whose doc is not a string adds no ownerless PR" "dead-wake" "$OUT"
+world; CHIEF="$FIX/chief-live-wake.md"
+sweep
+hasnt "dead-wake: a key with a live worker is not dead" "dead-wake" "$OUT"
+world; CHIEF="$FIX/chief-dispatchable-wake.md"
+printf '# disposition HIMMEL-9300 listed LOCAL tier 2\n' > "$WORK/w/dispositions.txt"
+sweep
+hasnt "dead-wake: a key with a dispatchable row is not dead" "dead-wake" "$OUT"
+world; CHIEF="$FIX/chief-live-wake.md"; set_tail "- 10:50 WRAPPED — done"
+sweep
+has "dead-wake: a wrapped worker no longer owns the key" "DUTY dead-wake #5929 :: " "$OUT"
+world
+printf '[{"number":101,"headRefName":"feat/himmel-9100-thing","headRefOid":"%s","isDraft":false,"isCrossRepository":false,"baseRefName":"main"},{"number":102,"headRefName":"feat/himmel-9999-other","headRefOid":"%s","isDraft":false,"isCrossRepository":false,"baseRefName":"main"}]\n' "$H1" "$H2" > "$WORK/w/prs.json"
+sweep
+has "dead-wake: an open PR with no owner is listed" "DUTY dead-wake #102 :: " "$OUT"
+hasnt "dead-wake: an owned PR is not listed" "dead-wake #101" "$OUT"
+CHIEF="$FIX/chief-held-pr.md"
+sweep
+hasnt "dead-wake: a PR named by a hold is held, not unowned" "dead-wake #102" "$OUT"
 
 world; set_tail "- 10:05 READY 101 $H1 GREEN"; printf 'not json' > "$WORK/w/prs.json"
 sweep

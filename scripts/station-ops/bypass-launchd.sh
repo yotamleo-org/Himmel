@@ -302,7 +302,7 @@ check_request() {
     [ -n "$flags" ] || flags=HIMMEL_HOOK_INTEGRITY_BYPASS_OK
     base=$(basename "$brief" .md)
     [[ "$brief" == "$BUCKET/$base.md" && ! -L "$brief" && -f "$brief" ]] || why+="${why:+, }brief-path"
-    [[ "$base" =~ ^[A-Z][A-Z0-9]+-[0-9]+-[A-Z][0-9]+[a-z]?-[A-Za-z0-9.-]+$ ]] || why+="${why:+, }brief-name"
+    [[ "$base" =~ ^[A-Z][A-Z0-9]+-[0-9]+-[A-Z]{1,2}[0-9]+[a-z]?-[A-Za-z0-9.-]+$ ]] || why+="${why:+, }brief-name"
     [[ "$model" =~ ^claude-(opus|sonnet|haiku)-5-5$ ]] || why+="${why:+, }model"
     [[ "$chief" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{2,119}$ ]] || why+="${why:+, }chief"
     [[ -z "$effort" || "$effort" =~ ^(low|medium|high|xhigh)$ ]] || why+="${why:+, }effort"

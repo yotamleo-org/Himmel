@@ -3091,6 +3091,250 @@ scope_judge() {
     judge "$1" GO "$2"
 }
 if _rounds_part b; then
+cp "$jev/judge-evidence.md" "$tmp/js-evidence.bak"
+fill_record() {
+    mkdir -p "$vscope/$1"
+    printf '# VERDICT %s - r\n\nwriter-session: fill\nwritten-at: 2026-01-01T00:00:00Z\n\n## Verdict\n\n%s\n\npr: 1\nmac: %064d\n' \
+        "$1" "$2" 0 > "$vscope/$1/r.md"
+}
+fill_bucket() {
+    local n=1
+    while [ "$n" -le 200 ]; do
+        fill_record "fill-$n" "**GO** for head \`$(printf 'f%039d' "$n")\`."
+        n=$((n + 1))
+    done
+    printf 'evidence\n' > "$vscope/VE-x-evidence.md"
+    ln -s missing "$vscope/fill-dangling"
+    mkdir -p "$vscope/fill-1/sub"
+    printf 'out\n' > "$vscope/fill-1/a-out"
+}
+count_shim() {
+    local d="$1" t real
+    shift
+    mkdir -p "$d"
+    for t in "$@"; do
+        real="$(command -v "$t")" || { fail "count_shim: no $t"; return 1; }
+        cat > "$d/$t" <<SHIM
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$d/$t.count"
+exec "$real" "\$@"
+SHIM
+        chmod +x "$d/$t"
+    done
+}
+count_of() {
+    case "$1" in "$tmp"/*) ;; *) fail "count_of: $1 is outside the fixture"; return 1 ;; esac
+    if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else printf 0; fi
+}
+snap_count() {
+    case "$1" in "$tmp"/*) ;; *) fail "snap_count: $1 is outside the fixture"; return 1 ;; esac
+    if [ -f "$1" ]; then grep -c go-verdict-snap "$1"; else printf 0; fi
+}
+phase_shim() {
+    local d="$1" t="$2" ph="$3" rc="$4" real p pats=""
+    shift 4
+    real="$(command -v "$t")" || { fail "phase_shim: no $t"; return 1; }
+    for p in "$@"; do pats="$pats $(printf '%q' "$p")"; done
+    mkdir -p "$d"
+    cat > "$d/$t" <<SHIM
+#!/usr/bin/env bash
+cur=""
+for pf in "\${TMPDIR:-}"/review-round-start.*/phase; do
+    { IFS= read -r cur < "\$pf"; } 2>/dev/null || cur=""
+done
+if [ "\$cur" = "$ph" ]; then
+    all=1
+    for p in$pats; do
+        m=0
+        for a in "\$@"; do
+            case "\$a" in \$p) m=1; break ;; esac
+        done
+        [ "\$m" -eq 1 ] || { all=0; break; }
+    done
+    [ "\$all" -eq 0 ] || exit $rc
+fi
+exec "$real" "\$@"
+SHIM
+    chmod +x "$d/$t"
+}
+select_shim() {
+    local real
+    real="$(command -v node)" || { fail "select_shim: no node"; return 1; }
+    mkdir -p "$1"
+    cat > "$1/node" <<SHIM
+#!/usr/bin/env bash
+[ "\${VS_MODE:-}" != "$2" ] || exit 3
+exec "$real" "\$@"
+SHIM
+    chmod +x "$1/node"
+}
+jflow() {
+    three_rounds "$1" clean
+    fix_commit "$1"
+    printf 'class: option-parsing\n\nthe fix does not hold\n' > "$jev/judge-evidence.md"
+    judge "$1-1" NO-GO "$cap_r3_head"
+}
+sflow() {
+    three_rounds "$1" clean
+    fix_commit "$1"
+}
+js_rc_is() { if [ "$1" = "$2" ]; then pass "$3"; else fail "$3 (got rc $1, want $2; output: $4)"; fi; }
+js_under() { if [ "$1" -lt "$2" ]; then pass "$3"; else fail "$3 (got $1, want under $2)"; fi; }
+fill_bucket
+js_fills=0
+for js_f in "$vscope"/fill-*/r.md; do [ ! -f "$js_f" ] || js_fills=$((js_fills + 1)); done
+assert_eq "$js_fills" "200" "postcap-judge-scan: the filler bucket holds 200 records"
+
+row=postcap-judge-scan-nogo-count
+jflow jsn
+count_shim "$tmp/jsn-shim" openssl
+js_out=""; js_rc=0; js_out="$(PATH="$tmp/jsn-shim:$PATH" start_round "$cap_fix_head" clean jsn)" || js_rc=$?
+js_n="$(count_of "$tmp/jsn-shim/openssl.count")"
+rm -rf "$tmp/jsn-shim"
+js_rc_is "$js_rc" 0 "$row: the judge NO-GO still buys the round" "$js_out"
+js_under "$js_n" 20 "$row: unrelated records cost no mac check"
+
+row=postcap-judge-scan-scope-count
+sflow jss
+count_shim "$tmp/jss-shim" mktemp openssl
+js_out=""; js_rc=0; js_out="$(PATH="$tmp/jss-shim:$PATH" start_round "$cap_fix_head" clean jss)" || js_rc=$?
+js_n="$(count_of "$tmp/jss-shim/openssl.count")"
+js_s="$(snap_count "$tmp/jss-shim/mktemp.count")"
+rm -rf "$tmp/jss-shim"
+js_rc_is "$js_rc" 8 "$row: new work with no record is refused" "$js_out"
+assert_has "$js_out" "new product work after three rounds" "$row: the refusal is the new-work line"
+js_under "$js_n" 20 "$row: unrelated records cost no mac check"
+js_under "$js_s" 21 "$row: unrelated records are not snapshotted"
+
+row=postcap-judge-scan-empty-record-still-refuses
+jflow jse
+mkdir -p "$vscope/fill-empty"
+: > "$vscope/fill-empty/x.md"
+js_out=""; js_rc=0; js_out="$(start_round "$cap_fix_head" clean jse)" || js_rc=$?
+rm -rf "$vscope/fill-empty"
+js_rc_is "$js_rc" 8 "$row: an empty record anywhere still refuses" "$js_out"
+assert_has "$js_out" "cannot read class history" "$row: the refusal is the class check's"
+
+row=postcap-judge-scan-crcr-nogo-still-vetoes
+three_rounds jsc clean
+fix_commit jsc
+scope_judge jsc-1 "$cap_fix_head" lint-only "$cap_r3_head"
+fill_record fill-crcr "**NO-GO** for head \`$cap_fix_head\`.$(printf '\r\r')"
+js_out=""; js_rc=0; js_out="$(start_round "$cap_fix_head" clean jsc)" || js_rc=$?
+rm -rf "$vscope/fill-crcr"
+js_rc_is "$js_rc" 8 "$row: a NO-GO line ended by two CRs still vetoes the scope round" "$js_out"
+assert_has "$js_out" "rules NO-GO for" "$row: the refusal is the veto"
+
+row=postcap-judge-scan-dangling-verdicts-refuses
+if grep -rqsF --include='*.verdicts' -e ' jy-1/' -e ' jbr-1/' "$git_dir/cr-review-rounds"; then
+    pass "$row: a qid of the bucket is consumed"
+else
+    fail "$row: a qid of the bucket is consumed"
+fi
+jflow jsd
+ln -s missing "$git_dir/cr-review-rounds/jsd.verdicts"
+js_out=""; js_rc=0; js_out="$(start_round "$cap_fix_head" clean jsd)" || js_rc=$?
+rm -f "$git_dir/cr-review-rounds/jsd.verdicts"
+js_rc_is "$js_rc" 8 "$row: a dangling .verdicts refuses the judge record" "$js_out"
+assert_has "$js_out" "for class history - delta round refused" "$row: the refusal names the class history"
+assert_lacks "$js_out" "no judge NO-GO is honoured" "$row: the start does not fall through to the head scan"
+
+row=postcap-judge-scan-select-fails-refuses-nogo
+jflow jsfn
+select_shim "$tmp/jsfn-shim" nogo
+js_out=""; js_rc=0; js_out="$(PATH="$tmp/jsfn-shim:$PATH" start_round "$cap_fix_head" clean jsfn)" || js_rc=$?
+rm -rf "$tmp/jsfn-shim"
+js_rc_is "$js_rc" 8 "$row: a failed selection refuses" "$js_out"
+assert_has "$js_out" "verdict selection failed (rc 3) - the judge record is refused" "$row: the refusal names the selection"
+
+row=postcap-judge-scan-select-fails-refuses-scope
+sflow jsfs
+select_shim "$tmp/jsfs-shim" scope
+js_out=""; js_rc=0; js_out="$(PATH="$tmp/jsfs-shim:$PATH" start_round "$cap_fix_head" clean jsfs)" || js_rc=$?
+rm -rf "$tmp/jsfs-shim"
+js_rc_is "$js_rc" 8 "$row: a failed selection refuses" "$js_out"
+assert_has "$js_out" "verdict selection failed (rc 3) - the scope round is refused" "$row: the refusal names the selection"
+
+row=postcap-judge-scan-scope-tree-probe
+sflow jstp
+phase_shim "$tmp/jstp-shim" grep judge-scope 2 '--include=*.verdicts'
+mkdir -p "$tmp/jstp-tmp"
+js_out=""; js_rc=0; js_out="$(TMPDIR="$tmp/jstp-tmp" PATH="$tmp/jstp-shim:$PATH" start_round "$cap_fix_head" clean jstp)" || js_rc=$?
+rm -rf "$tmp/jstp-shim" "$tmp/jstp-tmp"
+js_rc_is "$js_rc" 8 "$row: a failed consumed-tree scan refuses" "$js_out"
+assert_has "$js_out" "- the scope record is refused" "$row: the scope reader names the refusal"
+assert_lacks "$js_out" "- the judge record is refused" "$row: the NO-GO reader did not refuse"
+
+row=postcap-judge-scan-names-step
+jflow jsns-twin
+js_t0="$(date +%s)"
+start_round "$cap_fix_head" clean jsns-twin >/dev/null || fail "$row: the timing start failed"
+js_t=$(( $(date +%s) - js_t0 + 1 ))
+js_b=$(( 2 * js_t + 3 ))
+[ "$js_b" -le 100 ] || js_b=100
+jflow jsns
+mkdir -p "$tmp/jsns-shim"
+cat > "$tmp/jsns-shim/openssl" <<'SHIM'
+#!/usr/bin/env bash
+sleep 300
+SHIM
+chmod +x "$tmp/jsns-shim/openssl"
+js_out=""; js_rc=0; js_out="$(CR_REVIEW_START_TIMEOUT_SECS="$js_b" PATH="$tmp/jsns-shim:$PATH" start_round "$cap_fix_head" clean jsns)" || js_rc=$?
+n=0; while pgrep -f "$tmp/jsns-shim" >/dev/null 2>&1 && [ "$n" -lt 250 ]; do n=$((n + 1)); sleep 0.1; done
+rm -rf "$tmp/jsns-shim"
+js_rc_is "$js_rc" 5 "$row: a hung mac check ends at the bound" "$js_out"
+assert_has "$js_out" "last step: judge-nogo" "$row: the refusal names the reader"
+
+row=postcap-judge-scan-catfile-fails-refuses
+js_l8=""
+for js_f in "$vscope"/jy-1/*.md; do js_l8="$(sed -n 8p "$js_f")"; done
+case "$js_l8" in
+    "**NO-GO** for head"*) pass "$row: the bucket holds a NO-GO on another head" ;;
+    *) fail "$row: the bucket holds a NO-GO on another head (line 8: $js_l8)" ;;
+esac
+jflow jscf
+phase_shim "$tmp/jscf-shim" git judge-nogo 3 cat-file --batch-check
+mkdir -p "$tmp/jscf-tmp"
+js_out=""; js_rc=0; js_out="$(TMPDIR="$tmp/jscf-tmp" PATH="$tmp/jscf-shim:$PATH" start_round "$cap_fix_head" clean jscf)" || js_rc=$?
+rm -rf "$tmp/jscf-shim" "$tmp/jscf-tmp"
+js_rc_is "$js_rc" 8 "$row: a failed cat-file refuses" "$js_out"
+assert_has "$js_out" "(cat-file rc 3) - the judge record is refused" "$row: the refusal names the cat-file"
+
+row=postcap-judge-scan-nogo-snapshot-probe
+jflow jsnp
+phase_shim "$tmp/jsnp-shim" mktemp judge-nogo 1 '*go-verdict-snap*'
+mkdir -p "$tmp/jsnp-tmp"
+js_out=""; js_rc=0; js_out="$(TMPDIR="$tmp/jsnp-tmp" PATH="$tmp/jsnp-shim:$PATH" start_round "$cap_fix_head" clean jsnp)" || js_rc=$?
+rm -rf "$tmp/jsnp-shim" "$tmp/jsnp-tmp"
+js_rc_is "$js_rc" 8 "$row: a failed snapshot refuses" "$js_out"
+assert_has "$js_out" "cannot snapshot a verdict record" "$row: the refusal names the snapshot"
+assert_has "$js_out" "- the judge record is refused" "$row: the NO-GO reader refuses"
+
+row=postcap-judge-scan-scope-snapshot-probe
+sflow jssp
+phase_shim "$tmp/jssp-shim" mktemp judge-scope 1 '*go-verdict-snap*'
+mkdir -p "$tmp/jssp-tmp"
+js_out=""; js_rc=0; js_out="$(TMPDIR="$tmp/jssp-tmp" PATH="$tmp/jssp-shim:$PATH" start_round "$cap_fix_head" clean jssp)" || js_rc=$?
+rm -rf "$tmp/jssp-shim" "$tmp/jssp-tmp"
+js_rc_is "$js_rc" 8 "$row: a failed snapshot refuses" "$js_out"
+assert_has "$js_out" "cannot be read whole" "$row: the refusal names the snapshot"
+assert_has "$js_out" "- the scope round is refused" "$row: the scope reader refuses"
+
+row=postcap-judge-scan-nogo-tree-probe
+jflow jsnt
+phase_shim "$tmp/jsnt-shim" grep judge-nogo 2 '--include=*.verdicts'
+mkdir -p "$tmp/jsnt-tmp"
+js_out=""; js_rc=0; js_out="$(TMPDIR="$tmp/jsnt-tmp" PATH="$tmp/jsnt-shim:$PATH" start_round "$cap_fix_head" clean jsnt)" || js_rc=$?
+rm -rf "$tmp/jsnt-shim" "$tmp/jsnt-tmp"
+js_rc_is "$js_rc" 8 "$row: a failed consumed-tree scan refuses" "$js_out"
+assert_has "$js_out" "cr-review-rounds (grep rc 2) - the judge record is refused" "$row: the refusal names the tree"
+assert_lacks "$js_out" "for a consumed" "$row: the refusal is the probe, not a per-qid scan"
+assert_lacks "$js_out" "- the scope record is refused" "$row: the scope reader is not reached"
+
+cp "$tmp/js-evidence.bak" "$jev/judge-evidence.md"
+rm -rf "$vscope"/fill-* "$vscope"/VE-x-evidence.md
+fi
+if _rounds_part b; then
 
 # RED: without a record a clean test-only commit after the cap gets no round.
 three_rounds scopeok clean
