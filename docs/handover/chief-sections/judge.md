@@ -145,6 +145,10 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   `gen-judge-brief.py` spec (`finding` or `trust`; a first judge omits it). `finding` runs on
   Sonnet and carries the `DELTA-JUDGE: <head>` line (it needs `pr` and `head`, takes no `tier`,
   and refuses another model); `trust` and no key keep Opus.
+  **A re-judge after a class NO-GO reuses that NO-GO's qid** (write the GO into the qid that holds
+  the current NO-GO, as `judge-<head>.md` beside it): the panel route reads the GO's
+  `layer-decision:` line only from a qid that holds a current NO-GO, so a GO in a fresh qid is not
+  read.
 - **Dispatch an in-process judge from the generator's object, never by hand**:
   `python3 scripts/handover/chief-kit/gen-judge-brief.py <spec.json> --chief <you> --dispatch-json`
   prints ONE Agent input object (`description`, `subagent_type: "judge-ro"`, `model`, `prompt`,

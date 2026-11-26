@@ -2552,6 +2552,7 @@ fi
 # and review-round.sh resolve must agree.
 mkdir -p "$fx/scripts/handover/chief-kit"
 cp "$HERE/../handover/chief-kit/write-verdict.sh" "$fx/scripts/handover/chief-kit/write-verdict.sh"
+cp "$HERE/../handover/chief-kit/delta-class.sh" "$fx/scripts/handover/chief-kit/delta-class.sh"
 for lib in go-gate.sh handover-path.sh user-slug.sh forge.sh forge-github.sh forge-bitbucket.sh git-clean.sh gate-repo-resolver.sh; do
     cp "$HERE/../lib/$lib" "$fx/scripts/lib/$lib"
 done
@@ -2587,6 +2588,11 @@ judge() {
 }
 start_round() {
     (cd "$repo" && PANEL_MODE="${2:-clean}" bash "$SCRIPT" --head "$1" --branch "$3" 2>&1)
+}
+judge_go() {
+    env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-4700 \
+        bash "$fx/scripts/handover/chief-kit/write-verdict.sh" "$1" GO "$2" \
+        --pr "$3" --evidence-file "$jev/judge-evidence.md" >/dev/null 2>"$tmp/judge-go-$1.err" || fail "judge writes GO $1 at $2"
 }
 if _rounds_part a; then
 
@@ -2757,7 +2763,8 @@ assert_has "$cr_out" "option-parsing" "class repeat refusal names the class"
 assert_has "$cr_out" "layer-decision:" "class repeat refusal names the way out"
 # Keep the first head's history on this branch, but use a different class
 # for other positive controls so unrelated fixture qids cannot stop them.
-for class_case in different-class-allowed layer-decision-unlocks other-repeat-refused class-set-overlap-refused legacy-classless-nogo-never-matches finding-trigger-history-retained second-candidate-repeat-refused candidate-class-history-retained unsigned-nogo-still-vetoes forged-layer-decision-refused foreign-pr-layer-decision-refused unreadable-sibling-fails-closed; do
+for class_case in different-class-allowed layer-decision-unlocks other-repeat-refused class-set-overlap-refused legacy-classless-nogo-never-matches finding-trigger-history-retained second-candidate-repeat-refused candidate-class-history-retained unsigned-nogo-still-vetoes forged-layer-decision-refused foreign-pr-layer-decision-refused unreadable-sibling-fails-closed go-layer-round-head-unlocks go-layer-edited-refused go-layer-unsigned-refused go-layer-other-head-refused go-layer-foreign-pr-refused go-layer-unbound-nogo-buys-nothing go-layer-malformed-hint go-layer-scope-go-refused go-layer-delta-from-go-refused go-layer-noop-go-refused go-layer-nogo-at-round-head-refused go-layer-unsigned-nogo-at-round-head-refused go-layer-unreadable-at-round-head-refused go-layer-veto-keeps-stdout-clean; do
+    cc_L='layer-decision: os same-uid file access belongs at the OS layer'
     cc_panel=clean
     [ "$class_case" != finding-trigger-history-retained ] || cc_panel=suggestion
     three_rounds "$class_case" "$cc_panel"
@@ -2775,6 +2782,8 @@ for class_case in different-class-allowed layer-decision-unlocks other-repeat-re
         class-set-overlap-refused) cc_first_class='shell-parsing, option-parsing'; cc_next_class='reader-allowlist, shell-parsing' ;;
         legacy-classless-nogo-never-matches) cc_want=0 ;;
         unreadable-sibling-fails-closed) cc_next_class=cwd-indirection ;;
+        go-layer-round-head-unlocks) cc_want=0 ;;
+        go-layer-veto-keeps-stdout-clean) cc_layer="$cc_L"; cc_want=0 ;;
     esac
     printf 'class: %s\nclass-reason: fixture\n\nfirst finding\n' "$cc_first_class" > "$jev/judge-evidence.md"
     judge "$class_case-first" NO-GO "$cc_first"
@@ -2794,7 +2803,13 @@ for class_case in different-class-allowed layer-decision-unlocks other-repeat-re
     git -C "$repo" commit -q -am "$class_case next fix"
     cc_third="$(git -C "$repo" rev-parse "$class_case")"
     printf 'class: %s\nclass-reason: fixture\n%s\n\nnext finding\n' "$cc_next_class" "$cc_layer" > "$jev/judge-evidence.md"
-    judge "$class_case-next" NO-GO "$cc_second"
+    if [ "$class_case" = go-layer-unbound-nogo-buys-nothing ]; then
+        env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-4700 \
+            bash "$fx/scripts/handover/chief-kit/write-verdict.sh" "$class_case-next" NO-GO "$cc_second" \
+            --pr 2 --evidence-file "$jev/judge-evidence.md" >/dev/null 2>"$tmp/judge-$class_case-next.err" || fail "judge writes $class_case-next for another PR"
+    else
+        judge "$class_case-next" NO-GO "$cc_second"
+    fi
     if [ "$class_case" = second-candidate-repeat-refused ]; then
         printf 'class: cwd-indirection\n\nanother current candidate\n' > "$jev/judge-evidence.md"
         judge "a-$class_case-next" NO-GO "$cc_second"
@@ -2822,15 +2837,89 @@ for class_case in different-class-allowed layer-decision-unlocks other-repeat-re
         judge "b-$class_case" NO-GO "$cc_second"
         : > "$vscope/b-$class_case/z-empty.md"
     fi
+    cc_round="$cc_third"
+    case "$class_case" in
+        go-layer-*)
+            cc_goq="$class_case-next" cc_gohead="$cc_third" cc_gopr=1 cc_goev="$cc_L" cc_gofile=""
+            case "$class_case" in
+                go-layer-edited-refused) cc_goq="a-$class_case-next"; cc_goev="" ;;
+                go-layer-unsigned-refused) cc_goq="a-$class_case-next" ;;
+                go-layer-other-head-refused) cc_gohead="$cc_first" ;;
+                go-layer-foreign-pr-refused) cc_gopr=2 ;;
+                go-layer-malformed-hint) cc_goev='layer-decision: same-uid access is OS work' ;;
+                go-layer-scope-go-refused) cc_goev="$cc_L"$'\n'"delta-scope: test-only"$'\n'"delta-from: $cc_second" ;;
+                go-layer-delta-from-go-refused) cc_goev="$cc_L"$'\n'"delta-from: $cc_second" ;;
+                go-layer-noop-go-refused) cc_goev="" ;;
+            esac
+            case "$class_case" in
+                go-layer-edited-refused|go-layer-unsigned-refused)
+                    printf 'class: option-parsing\n\nanother current candidate\n' > "$jev/judge-evidence.md"
+                    judge "$cc_goq" NO-GO "$cc_second" ;;
+            esac
+            printf '%s\n\nthe next fix holds\n' "$cc_goev" > "$jev/judge-evidence.md"
+            judge_go "$cc_goq" "$cc_gohead" "$cc_gopr"
+            cc_gofile="$vscope/$cc_goq/judge-$cc_gohead.md"
+            [ -f "$cc_gofile" ] || fail "$class_case: the writer left no GO at $cc_gofile"
+            case "$class_case" in
+                go-layer-edited-refused)
+                    awk -v l="$cc_L" '/^mac: / { print l } { print }' "$cc_gofile" > "$tmp/go-edited.md" && mv "$tmp/go-edited.md" "$cc_gofile" ;;
+                go-layer-unsigned-refused)
+                    sed -i.bak '/^mac: /d' "$cc_gofile"; rm -f "$cc_gofile.bak" ;;
+                go-layer-nogo-at-round-head-refused|go-layer-unsigned-nogo-at-round-head-refused|go-layer-veto-keeps-stdout-clean)
+                    printf 'class: option-parsing\n\na NO-GO for the round head\n' > "$jev/judge-evidence.md"
+                    judge "b-$class_case" NO-GO "$cc_third"
+                    [ "$class_case" != go-layer-unsigned-nogo-at-round-head-refused ] || sed -i.bak '/^mac: /d' "$vscope/b-$class_case/judge.md"
+                    rm -f "$vscope/b-$class_case/judge.md.bak" ;;
+                go-layer-unreadable-at-round-head-refused)
+                    mkdir -p "$vscope/_x"; : > "$vscope/_x/judge.md" ;;
+                go-layer-noop-go-refused)
+                    printf 'next fix again\n' >> "$repo/$class_case.txt"
+                    git -C "$repo" commit -q -am "$class_case no-op head"
+                    cc_fourth="$(git -C "$repo" rev-parse "$class_case")"
+                    printf '%s\n\nnothing new to judge\n' "$cc_L" > "$jev/judge-evidence.md"
+                    cc_om="$(git -C "$repo" rev-parse refs/remotes/origin/main)"
+                    cc_blob="$(printf '%s\n' '^scripts/ci/ci-trust-paths\.txt$' | git -C "$repo" hash-object -w --stdin)"
+                    GIT_INDEX_FILE="$tmp/noop-index" git -C "$repo" read-tree "$cc_om"
+                    GIT_INDEX_FILE="$tmp/noop-index" git -C "$repo" update-index --add --cacheinfo "100644,$cc_blob,scripts/ci/ci-trust-paths.txt"
+                    cc_tree="$(GIT_INDEX_FILE="$tmp/noop-index" git -C "$repo" write-tree)"
+                    cc_tc="$(git -C "$repo" commit-tree "$cc_tree" -p "$cc_om" -m "trust list")"
+                    git -C "$repo" update-ref refs/remotes/origin/main "$cc_tc"
+                    rm -f "$tmp/noop-index"
+                    (cd "$repo" && env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY HIMMEL_REPO="$repo" CLAUDE_CODE_SESSION_ID=judge-sess-4700 \
+                        bash "$fx/scripts/handover/chief-kit/write-verdict.sh" "$class_case-next" GO "$cc_fourth" \
+                        --pr 1 --evidence-file "$jev/judge-evidence.md" --delta-noop "$cc_third") \
+                        >/dev/null 2>"$tmp/judge-$class_case-noop.err" || fail "judge writes the $class_case no-op GO: $(cat "$tmp/judge-$class_case-noop.err")"
+                    git -C "$repo" update-ref refs/remotes/origin/main "$cc_om"
+                    [ -f "$vscope/$class_case-next/delta-noop-$cc_fourth.md" ] || fail "$class_case: the writer left no no-op GO"
+                    cc_round="$cc_fourth" ;;
+            esac ;;
+    esac
     # An unsigned NO-GO buys no round but still feeds the class veto.
     [ "$class_case" != unsigned-nogo-still-vetoes ] || sed -i.bak '/^mac: /d' "$vscope/$class_case-next/judge.md"
-    cc_out="$(start_round "$cc_third" clean "$class_case")"; cc_rc=$?
+    cc_out="$(start_round "$cc_round" clean "$class_case")"; cc_rc=$?
     assert_eq "$cc_rc" "$cc_want" "$class_case"
     rm -f "$vscope/b-$class_case/z-empty.md"
+    rm -rf "$vscope/_x"
     if [ "$cc_want" = 8 ]; then
         assert_eq "$(cat "$git_dir/cr-review-rounds/$class_case.round")" "4" "$class_case leaves counter unchanged"
-        [ "$class_case" = unreadable-sibling-fails-closed ] || assert_has "$cc_out" "layer-decision:" "$class_case names decision remedy"
+        case "$class_case" in
+            unreadable-sibling-fails-closed|go-layer-unbound-nogo-buys-nothing) ;;
+            *) assert_has "$cc_out" "layer-decision:" "$class_case names decision remedy" ;;
+        esac
     fi
+    case "$class_case" in
+        go-layer-unbound-nogo-buys-nothing)
+            assert_has "$cc_out" "no judge NO-GO for" "$class_case: the lift happened, only the buying failed" ;;
+        go-layer-malformed-hint)
+            assert_has "$cc_out" "lacks a layer keyword" "$class_case names the missing keyword" ;;
+        go-layer-nogo-at-round-head-refused|go-layer-unsigned-nogo-at-round-head-refused)
+            assert_has "$cc_out" "b-$class_case/judge.md rules NO-GO for $cc_third - a GO layer-decision there is not honoured" "$class_case names the round-head NO-GO" ;;
+        go-layer-unreadable-at-round-head-refused)
+            assert_has "$cc_out" "_x/judge.md cannot be read whole - a GO layer-decision at $cc_third is not honoured" "$class_case names the unreadable record" ;;
+        go-layer-veto-keeps-stdout-clean)
+            assert_has "$cc_out" "b-$class_case/judge.md rules NO-GO for $cc_third - a GO layer-decision there is not honoured" "$class_case names the round-head NO-GO"
+            assert_eq "$(awk '{ print $3 }' "$git_dir/cr-review-rounds/$class_case.delta")" "verdict:$class_case-next" "$class_case keeps the delta trigger clean" ;;
+    esac
 done
 # A consumed qid cannot buy another round, but later NO-GOs in that
 # same-PR qid must still veto a fresh, different-class judge trigger.
@@ -3432,11 +3521,24 @@ for sx_case in sx-ok sx-unsigned sx-edited sx-other-pr sx-other-branch sx-nogo-b
                 --pr 1 --evidence-file "$jev/judge-evidence.md" --bind-reviewed "$sx_r3") \
                 >/dev/null 2>"$tmp/judge-$sx_case-nogo.err" || fail "judge writes $sx_case-nogo bound" ;;
     esac
-    sx_rc=0; start_round "$sx_head" clean "$sx_case" >/dev/null || sx_rc=$?
+    sx_rc=0; sx_out="$(start_round "$sx_head" clean "$sx_case")" || sx_rc=$?
     assert_eq "$sx_rc" "$sx_want" "$sx_case"
     rm -rf "$vscope/$sx_case-other"
     [ "$sx_want" = 0 ] || assert_eq "$(cat "$git_dir/cr-review-rounds/$sx_case.round")" "3" "$sx_case leaves counter unchanged"
+    case "$sx_case" in
+        sx-nogo-beside|sx-bound-nogo-beside)
+            assert_has "$sx_out" "$sx_case-nogo/judge.md rules NO-GO for $sx_head - the scope round is refused" "$sx_case names the NO-GO that blocks the scope round" ;;
+    esac
 done
+three_rounds sx-unreadable-scan-text clean
+scope_commit sx-unreadable-scan-text tests/test-sx-unreadable-scan-text.sh
+su2_head="$scope_head"
+mkdir -p "$vscope/_x"; : > "$vscope/_x/judge.md"
+su2_rc=0; su2_out="$(start_round "$su2_head" clean sx-unreadable-scan-text)" || su2_rc=$?
+rm -rf "$vscope/_x"
+assert_eq "$su2_rc" "8" "sx-unreadable-scan-text"
+assert_has "$su2_out" "_x/judge.md cannot be read whole" "sx-unreadable-scan-text names the unreadable record"
+assert_has "$su2_out" "the scope round is refused" "sx-unreadable-scan-text refuses the scope round"
 
 # An unknown scope word is refused.
 three_rounds scopeword clean
