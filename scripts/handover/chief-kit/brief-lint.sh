@@ -120,9 +120,10 @@ import minerva_siblings  # noqa: E402
 try:
     import holds  # noqa: E402
     tokens = [p for _kind, p in holds.parse_text('\n'.join(lines), os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(cli)))))]
+    basis = ' '.join(tokens)
 except Exception:  # swallow-ok: a broken holds.py must not fail the core check; it falls back to the raw split of the Writes text
     tokens = [t.rstrip('.,;:)]') for t in re.findall(r'[\w.+@/-]+', text)]
-basis = ' '.join(tokens)
+    basis = ''
 sibling_paths = minerva_siblings.sibling_set(basis, doc_state_root)
 text = minerva_siblings.fold(text, doc_state_root, basis)
 tokens = [p for p in tokens if p not in sibling_paths]
