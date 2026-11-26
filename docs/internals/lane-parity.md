@@ -400,6 +400,7 @@ carry it. The other rows are read by people.
 | `guard:read-clamp.sh` | has | has | has |
 | `guard:redirect-webfetch-walled-hosts.sh` | has | structural: no URL-fetch tool: Codex reads the web through hosted web_search only | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: the read_url_content arm is open, add the walled-host redirect when it lands |
 | `guard:require-quiet-run.sh` | has | has | has |
+| `guard:steer-t3-tool-calls.sh` | has | gap-ticketed: .codex/hooks.json: add steer-t3-tool-calls.sh to the t3-code MCP chain for the thread-status steer check (the background-id check is Claude Code's own task ids and does not apply) | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: add steer-t3-tool-calls.sh to the t3-code MCP chain for the thread-status steer check (the background-id check is Claude Code's own task ids and does not apply) |
 
 <!-- END cli-lane-parity -->
 

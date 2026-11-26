@@ -182,6 +182,16 @@
         ]
       },
       {
+        "matcher": "mcp__t3-code__t3_background_wait|mcp__t3-code__t3_thread_send",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" \"${CLAUDE_PLUGIN_ROOT}/hooks/steer-t3-tool-calls.sh\"",
+            "timeout": 15
+          }
+        ]
+      },
+      {
         "matcher": "*",
         "hooks": [
           {
