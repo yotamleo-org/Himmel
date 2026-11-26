@@ -68,7 +68,7 @@ fi
 
 exec python3 -I - "$bucket/chief-load.jsonl" "$transcript" "$shift_name" "$next_shift" \
     "$workers_end" "$rulings" "$spans_unknown" "$reason" "$fill_percent" "$window" <<'PY'
-import datetime, errno, fcntl, json, os, re, stat, statistics, sys
+import datetime, errno, json, os, re, stat, statistics, sys
 
 path, transcript, shift, next_shift = sys.argv[1:5]
 workers_end, rulings, spans_unknown = (int(x) for x in sys.argv[5:8])
@@ -248,8 +248,9 @@ except OSError as e:
         print("chief-load-row: refusing %s, it is not a regular file" % path, file=sys.stderr)
         sys.exit(3)
     raise
-with os.fdopen(fd, "a") as out:
-    fcntl.flock(out, fcntl.LOCK_EX)
-    out.write(json.dumps(row, separators=(",", ":")) + "\n")
+try:
+    os.write(fd, (json.dumps(row, separators=(",", ":")) + "\n").encode())
+finally:
+    os.close(fd)
 print("chief-load: %s" % path)
 PY
