@@ -367,6 +367,15 @@
       ]
     },
     {
+      "kind": "cadence:vault-stall-repair",
+      "class": "monitor",
+      "sender": "scripts/luna/vault-stall-cadence.sh",
+      "on-alert": {
+        "do": "info",
+        "why": "a record of a completed repair"
+      }
+    },
+    {
       "kind": "cadence:vm-maintain-cadence",
       "class": "monitor",
       "sender": "scripts/vm/vm-maintain-cadence.sh",

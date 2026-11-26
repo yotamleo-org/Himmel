@@ -41,6 +41,22 @@ printf '%s\n' "\$1" >>"$TMP/sent.log"
 EOF
 chmod +x "$TMP/sender.sh"
 
+printf '{"allowFrom":["4242"]}\n' >"$TMP/access.json"
+printf 'slug=u__himmel__X-chief session=s host=h age=5s status=OK\n' >"$TMP/sweep.txt"
+cat >"$TMP/sweep.sh" <<EOF
+#!/usr/bin/env bash
+cat "$TMP/sweep.txt" 2>/dev/null
+EOF
+cat >"$TMP/inbox-send.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s|%s\n' "\$1" "\$2" >>"$TMP/inbox.log"
+EOF
+cat >"$TMP/telegram.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s|%s\n' "\$1" "\$2" >>"$TMP/telegram.log"
+EOF
+chmod +x "$TMP/sweep.sh" "$TMP/inbox-send.sh" "$TMP/telegram.sh"
+
 # The stand-in pre-commit wrapper.
 cat >"$TMP/fake-pre-commit" <<'HOOK'
 #!/usr/bin/env bash
@@ -147,7 +163,7 @@ EOF
         git -C "$V" commit -q -m seed
     mkdir -p "$V/.git/hooks"   # an init without templates (as under the CI runner) has none
     cp "$TMP/fake-pre-commit" "$V/.git/hooks/pre-commit"
-    : >"$TMP/sent.log"
+    : >"$TMP/sent.log"; : >"$TMP/inbox.log"; : >"$TMP/telegram.log"
     S="$TMP/state$N"
     rm -f "$TMP/alerts.log"; rm -rf "$TMP/dedupe"
 }
@@ -155,7 +171,9 @@ EOF
 run_sut() {
     HOME="$TMP/home" VAULT_STALL_STATE_DIR="$S" \
         CADENCE_ALERT_SEND_CMD="$TMP/sender.sh" CADENCE_ALERT_FILE="$TMP/alerts.log" \
-        CADENCE_ALERT_DEDUPE_DIR="$TMP/dedupe" \
+        CADENCE_ALERT_DEDUPE_DIR="$TMP/dedupe" VAULT_STALL_ALERT_STATE="$TMP/alert-last" \
+        FAILURE_ROUTE_SWEEP_CMD="$TMP/sweep.sh" FAILURE_ROUTE_INBOX_SEND="$TMP/inbox-send.sh" \
+        TELEGRAM_ACCESS_PATH="$TMP/access.json" MERGE_BLOCK_ALERT_CMD="$TMP/telegram.sh" \
         bash "$SUT" run --vault "$V" "$@" 2>&1
 }
 head_sha() { git -C "$V" rev-parse HEAD; }
@@ -165,6 +183,7 @@ want_rec() { printf '%s\n' "$V"; git -C "$V" diff --cached --raw --no-abbrev --n
 have_rec() { cat "$S"/autocommit-owned* 2>/dev/null; }
 hook_rc() { (cd "$V" && SKIP=trailing-whitespace,end-of-file-fixer git hook run pre-commit >/dev/null 2>&1); echo $?; }
 sent() { cat "$TMP/sent.log" 2>/dev/null; }
+inbox() { cat "$TMP/inbox.log" 2>/dev/null; }
 
 # --- T1 shellcheck stall under handovers/ → exclude re-applied, committed ----
 mkvault
@@ -179,6 +198,12 @@ assert_has "T1 shellcheck exclude now covers handovers/" "exclude: '^handovers/|
 assert_eq "T1 the hook now passes on the backlog" "0" "$(hook_rc)"
 assert_eq "T1 no alert sent" "" "$(sent)"
 assert_eq "T1 the cadence never ran the content fixers" "no" "$([ -f "$V/.git/fixer-ran.log" ] && echo yes || echo no)"
+assert_eq "T1 the chief's inbox got exactly one line" "1" "$(inbox | grep -c .)"
+assert_has "T1 it goes to the live chief" "X-chief|" "$(inbox)"
+assert_has "T1 it says REPAIRED" "vault-stall REPAIRED" "$(inbox)"
+assert_has "T1 it names the hook and the file" "shellcheck handovers/x.sh" "$(inbox)"
+assert_has "T1 it says what was changed" "added ^handovers/ to the shellcheck exclude in .pre-commit-config.yaml" "$(inbox)"
+assert_eq "T1 Telegram was not used for the repair" "0" "$(grep -c . "$TMP/telegram.log")"
 
 # --- T2 handover-token gitleaks stall → canonical regex added, committed ---------
 mkvault
@@ -273,6 +298,16 @@ exec 8>&-
 assert_eq "T9 exits 0" "0" "$rc"
 assert_has "T9 reports busy" "busy" "$out"
 assert_eq "T9 no commit" "$before" "$(head_sha)"
+
+exec 8>"$V/.git/vault-writer.lock"
+flock 8
+out="$(run_sut)"; rc=$?
+exec 8>&-
+assert_eq "T9b exits 0" "0" "$rc"
+assert_has "T9b says the sweeper holds the lock" "busy (the vault sweeper holds vault-writer.lock)" "$out"
+assert_eq "T9b no commit" "$before" "$(head_sha)"
+assert_eq "T9b config untouched" "" "$(git -C "$V" diff -- .pre-commit-config.yaml)"
+assert_eq "T9b nothing reported to the chief" "" "$(inbox)"
 
 # --- T10 --dry-run: classification + plan printed, nothing written -----------
 out="$(run_sut --dry-run)"; rc=$?

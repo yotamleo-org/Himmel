@@ -18,7 +18,8 @@
 # Stall alert: a pre-commit hook that keeps refusing the pending
 # changes stops the vault committing without a word. Once the refusals have
 # gone on for LUNA_VAULT_STALL_THRESHOLD_MIN minutes (default 30) the operator
-# is alerted ONCE per stall episode, naming the failing hook and file. An
+# is alerted ONCE per stall episode, naming the failing hook, file and reason (the
+# linter's code, a gitleaks rule id or pre-commit's exit code; never a source line). An
 # episode starts at the first refused run and ends at the next commit or clean
 # tree. Delivery is pluggable: LUNA_VAULT_ALERT_CMD names an executable that is
 # called with one argument, the message. Unset → the stall is only logged. A
@@ -48,6 +49,16 @@ _stall_clear() {
 # file says `In <file> line N:` (shellcheck) or `File: <file>` (gitleaks).
 _refused_files() { # <captured output>: every file the hooks named, one per line
   printf '%s\n' "$1" | sed -n -e 's/^In \(.*\) line [0-9]*:$/\1/p' -e 's/^File:[[:space:]]*//p'
+}
+_refusal_reason() {
+  local r
+  r="$(printf '%s\n' "$1" | grep -Eo '(\^-- |\[)SC[0-9]{4}' | head -n1 | grep -Eo 'SC[0-9]{4}')"
+  [ -n "$r" ] || r="$(printf '%s\n' "$1" | sed -n 's/^RuleID:[[:space:]]*//p' | head -n1 | tr -c 'A-Za-z0-9._\n-' '_')"
+  if [ -z "$r" ]; then
+    r="$(printf '%s\n' "$1" | sed -n 's/^- exit code:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1)"
+    [ -z "$r" ] || r="exit code $r"
+  fi
+  printf '%s' "${r:-none reported}"
 }
 _stall_reason() { # <captured output>: record `<hook>:<first file>` for vault-status.sh
   local hook file
@@ -118,7 +129,7 @@ _stall_note() {
 
   hook="$(printf '%s\n' "$out" | sed -n 's/^- hook id: //p' | head -n1)"
   file="$(_refused_files "$out" | head -n1)"
-  msg="vault-autosync STALL: commit refused (hook: ${hook:-none reported}, file: ${file:-none reported}) for $(((now - first) / 60)) min in $REPO_ROOT - pending changes are not being committed."
+  msg="vault-autosync STALL: commit refused (hook: ${hook:-none reported}, file: ${file:-none reported}, reason: $(_refusal_reason "$out")) for $(((now - first) / 60)) min in $REPO_ROOT - pending changes are not being committed."
   log "$msg" >&2
   if [ -z "${LUNA_VAULT_ALERT_CMD:-}" ]; then
     log "LUNA_VAULT_ALERT_CMD is not set - no operator alert sent." >&2

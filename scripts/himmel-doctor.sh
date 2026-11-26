@@ -223,9 +223,9 @@ check_c3() {
     [ -n "$v" ] || { emit OK C3-luna "no local luna vault found (skipped)"; return; }
     if [ ! -f "$v/.single-writer" ]; then emit OK C3-luna "luna vault present, not single-writer (skipped)"; return; fi
     # the vault holds the handover root, which workers write to
-    # continuously between github-sync ticks (the plugin owns the commits), so
-    # handovers/ churn is ignored. Any other dirty path is a finding only once it
-    # is older than the sync cadence (HIMMEL_DOCTOR_C3_DIRTY_MIN, default 30 min).
+    # continuously between sweeper ticks (scripts/luna/vault-sweep-cadence.sh owns the
+    # commits; github-sync is the legacy alternative), so handovers/ churn is ignored.
+    # Any other dirty path is a finding only once it is older than the sync cadence (HIMMEL_DOCTOR_C3_DIRTY_MIN, default 30 min).
     local dirty_min="${HIMMEL_DOCTOR_C3_DIRTY_MIN:-30}" rec p age last stale="" fresh=0 skip_orig=0 commit_old=""
     case "$dirty_min" in ''|*[!0-9]*) dirty_min=30 ;; esac
     # porcelain v2 -z — paths arrive raw (never C-quoted), so a
@@ -274,7 +274,7 @@ check_c3() {
         # shellcheck source=scripts/lib/vault-sync.sh
         . "$SELF_DIR/lib/vault-sync.sh"
         if vault_has_sync "$v"; then
-            emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault's sync plugin owns its commits, so a stall here means the sync is stuck" "check the vault sync (github-sync / scripts/luna/vault-stall-cadence.sh status); do not hand-commit"
+            emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault sweeper (scripts/luna/vault-sweep-cadence.sh) owns its commits, so a stall here means the sweep is stuck" "check bash $(printf %q "$REPO_ROOT/scripts/luna/vault-sweep-cadence.sh") status and scripts/luna/vault-stall-cadence.sh status (a vault still on the github-sync plugin: check the plugin); do not hand-commit"
         else
             emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault has no git remote and no sync plugin, so nothing commits it" "commit it (git add -A && git commit in the vault), or let the stall cadence commit it: set LUNA_VAULT_AUTOCOMMIT=1 in ~/.himmel/himmel.conf, then arm it with bash $(printf %q "$REPO_ROOT/scripts/luna/vault-stall-cadence.sh") arm --vault $(printf %q "$v") (or add a remote / sync plugin)"
         fi
