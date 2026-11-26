@@ -31,8 +31,11 @@
 #                non-himmel project, and skips inside himmel (control)
 #   parity       each member gives the native call the verdict it gives the
 #                matching Claude call, allow and approval members included; a
-#                member whose every trigger passes for Claude is printed as a
-#                NOTE, since its parity proves nothing
+#                member the shared triggers never fire also gets rule rows, a
+#                call its own test refuses or allows under that test's env;
+#                mcp-policy.sh (observe mode) is judged by its audit record; a
+#                member whose every trigger still passes for Claude is printed
+#                as a NOTE, since its parity proves nothing
 #
 # A verdict is deny (exit 2 or a deny decision), allow, ask, pass (exit 0 with
 # no decision) or rc<N>. A group's verdict is the strictest of its
@@ -142,12 +145,19 @@ payload() {
         | (if $claude == "claude" then del(.toolName, .toolInput)
            elif has("toolName") then .toolName = $n | .toolInput = $i else . end)' \
         "$envelope" > "$SB/p.json" || { echo "FAIL fixture: jq payload $h $kind"; exit 1; }
+    if [ -n "$ROW_JQ" ]; then
+        if ! jq -c "$ROW_JQ" "$SB/p.json" > "$SB/p2.json"; then echo "FAIL fixture: row filter $ROW_JQ"; exit 1; fi
+        mv "$SB/p2.json" "$SB/p.json"
+    fi
 }
 
+ROW_ENV=""
+ROW_JQ=""
 hook_env() {
+    # shellcheck disable=SC2086  # ROW_ENV is a list of VAR=value words
     env -i PATH="$PATH" HOME="$SB/home" TMPDIR="$SB/tmp" T3CODE_HOME="$SB/t3" \
         CLAUDE_PROJECT_DIR="${PROJECT_DIR:-$ROOT}" CLAUDE_PLUGIN_ROOT="${PLUGIN_ROOT:-$OPS}" \
-        GUARDRAIL_BASH="$(command -v bash)" "$@"
+        GUARDRAIL_BASH="$(command -v bash)" $ROW_ENV "$@"
 }
 decide() {
     local d
@@ -313,8 +323,148 @@ each_shell_trigger() {
 note_owed() { case " $PROVED " in *" $1 "*) ;; *) OWED="$OWED $1" ;; esac; }
 PROVED=""
 
+FX2="$SB/fx"
+mkdir -p "$FX2/sudo" "$FX2/marks" "$FX2/stub" "$FX2/vstate" "$FX2/peerhome/.himmel/peer-bridge" \
+    "$SB/handover/inbox" "$SB/handover/u/r" "$SB/home/Documents/luna" "$SB/home/.claude/projects/proj/memory" \
+    "$SB/work/.git/cr-pending/feature" || { echo "FAIL fixture: rule dirs"; exit 1; }
+seq 1 10 > "$FX2/big.txt"
+printf 'notes\n' > "$SB/home/Documents/luna/a.md"
+printf 'claude\0-n\0N-fixture-chief\0' > "$FX2/cmdline-chief"
+: > "$SB/work/.git/cr-pending/feature/fixture"
+printf '#!/usr/bin/env bash\necho 1\n' > "$FX2/stub/gh-merged"
+GRANT_CMD='npx --yes cowsay@1.6.0 N4198-probe'
+: > "$FX2/marks/$(printf '%s' "$GRANT_CMD" | sha256sum | cut -d' ' -f1).abcdefgh"
+printf '#!/bin/sh\necho "result=granted id=abcdefgh"\n' > "$FX2/sudo/sudo"
+chmod +x "$FX2/stub/gh-merged" "$FX2/sudo/sudo"
+if ! { mk_repo "$FX2/primary" main && mkdir -p "$FX2/primary/plugins/himmel-gh/lib" \
+    && echo '// cli' > "$FX2/primary/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs" \
+    && git -C "$FX2/primary" -c user.email=t@t -c user.name=t add plugins \
+    && git -C "$FX2/primary" -c user.email=t@t -c user.name=t commit -q -m cli \
+    && git -C "$FX2/primary" worktree add -q -b worker "$FX2/wt"; }; then
+    echo "FAIL fixture: resolve primary"; exit 1
+fi
+RESOLVE_CMD="node $FX2/primary/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner yotamleo-org --repo Himmel --number 3628 --thread-id PRRT_kwDOAbCdEf4A-b_Z9 --reason \"fixed abc1234\""
+RETRY_CMD='bash scripts/foo.sh --flag'
+for i in 1 2; do
+    jq -nc --arg id "t$i" --arg c "$RETRY_CMD" '{type:"assistant",message:{role:"assistant",content:[{type:"tool_use",id:$id,name:"Bash",input:{command:$c}}]}}'
+    jq -nc --arg id "t$i" '{type:"user",message:{role:"user",content:[{type:"tool_result",tool_use_id:$id,content:"This command requires approval",is_error:true}]}}'
+done > "$FX2/denied.jsonl"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]}}' \
+    '{"type":"assistant","message":{"model":"claude-opus-4-8","content":[{"type":"text","text":"ok"}]}}' > "$FX2/opus.jsonl"
+HOLD_ENV="HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR=$SB/handover"
+printf '# doc\n' > "$SB/handover/u/r/HIMMEL-101-case.md"
+printf '# doc\n' > "$SB/handover/u/r/HIMMEL-102-case.md"
+jq -nc --arg c "$SB/work" '{hook_event_name:"PreToolUse", tool_name:"Write", cwd:$c, tool_input:{file_path:($c + "/held.txt")}}' > "$SB/p.json"
+# shellcheck disable=SC2086  # HOLD_ENV is a list of VAR=value words
+(cd "$SB/work" && hook_env $HOLD_ENV HIMMEL_HOLD_KEY=HIMMEL-101 HIMMEL_HOLD_DOC="$SB/handover/u/r/HIMMEL-101-case.md" \
+    HIMMEL_HOLD_LABEL=HIMMEL-101 bash "$ROOT/scripts/hooks/check-write-hold.sh" < "$SB/p.json" >/dev/null 2>&1) \
+    || { echo "FAIL fixture: HIMMEL-101 claims held.txt"; exit 1; }
+jq -nc --arg c "$SB/work" --arg t "$FX2/opus.jsonl" '{hook_event_name:"PreToolUse", tool_name:"Edit", session_id:"h1073-spent", cwd:$c, transcript_path:$t, tool_input:{file_path:"scripts/hooks/first.sh"}}' > "$SB/p.json"
+(cd "$SB/work" && hook_env bash "$ROOT/scripts/hooks/orchestrator-inline-guard.sh" < "$SB/p.json" >/dev/null 2>&1) \
+    || { echo "FAIL fixture: the first inline edit spends the budget"; exit 1; }
+LONG_LINE="- $(printf 'x%.0s' $(seq 1 250)) -> luna [[n]]"
+
+rule() {
+    local g hit=0
+    for g in $1; do case " $RL_GROUPS " in *" $g "*) hit=1 ;; esac; done
+    [ "$hit" = 1 ] || return 0
+    if [ "$4" = - ]; then ROW_ENV=""; else ROW_ENV=$4; fi
+    if [ "$5" = - ]; then ROW_JQ=""; else ROW_JQ=$5; fi
+    parity "$RL_LABEL" "$RL_FN" "$RL_TARGET" "$2" "$3" "$6" "${7:-}"
+    ROW_ENV=""; ROW_JQ=""
+}
+member_rules() {
+    local judge='.agent_type = "judge-ro" | .agent_id = "aj1"'
+    RL_LABEL=$1 RL_FN=$2 RL_TARGET=$3 RL_GROUPS=$4
+    case "${1##*:}" in
+        guard-identical-denied-retry.sh)
+            rule shell shell grok - ".transcript_path = \"$FX2/denied.jsonl\"" "$RETRY_CMD" ;;
+        guard-merge-compound.sh) rule shell shell "grok cursor" - - 'cd x && bash scripts/handover/merge-on-green.sh' ;;
+        check-cr-marker-on-pr-create.sh) rule shell shell "grok cursor" - - 'gh pr create --head feature/fixture --title x --body y' ;;
+        block-fork-sync-pr.sh)
+            rule shell shell "grok cursor" - - 'gh pr create --repo yotamleo-org/graphify --base himmel-main --head Graphify-Labs:v8 --title x --body y' ;;
+        block-jira-compound-write.sh)
+            rule shell shell "grok cursor" - - 'node /x/scripts/jira/dist/index.js create --desc "$(cat b)" 2>&1' ;;
+        block-tail-pipe-on-gates.sh) rule shell shell "grok cursor" - - 'bash scripts/ci/run-shell-tests.sh scripts/handover 2>&1 | tail -80' ;;
+        read-clamp.sh)
+            rule shell shell "grok cursor" "HIMMEL_CONSOLE_LEG=1 HIMMEL_READ_CLAMP_LINES=5 XDG_RUNTIME_DIR=$SB/tmp" - "cat $FX2/big.txt"
+            rule read read "grok cursor" "HIMMEL_CONSOLE_LEG=1 HIMMEL_READ_CLAMP_LINES=5 XDG_RUNTIME_DIR=$SB/tmp" - "$FX2/big.txt" ;;
+        block-rogue-claude-schedule.sh)
+            rule shell shell "grok cursor" - - 'echo "30 4 * * * /home/u/.local/bin/claude load" | crontab -'
+            rule shell shell "grok cursor" - - 'echo "claude load" | at now + 1 hour'
+            rule shell shell "grok cursor" - - 'schtasks /create /tn X /tr "claude load" /sc ONCE /st 09:00 /f' ;;
+        block-chokepoint-env-prefix.sh) rule shell shell "grok cursor" - - 'USAGE_LIFT_FILE=/tmp/x.json bash scripts/lib/usage-preflight.sh' ;;
+        require-quiet-run.sh) rule shell shell "grok cursor" - - 'bash scripts/hooks/test-block-destructive-commands.sh' ;;
+        block-edit-live-settings.sh) rule shell shell "grok cursor" - - "echo {} > $SB/home/.claude/settings.json" ;;
+        block-bank-lift-writes.sh)
+            rule shell shell "grok cursor" - - 'echo {} > ~/.himmel/state/usage-lift.json'
+            rule file write "grok cursor" - - "$SB/home/.himmel/state/usage-lift.json" ;;
+        block-himmel-config-writes.sh)
+            rule shell shell "grok cursor" - - 'echo {} > ~/.himmel/config.json'
+            rule file write "grok cursor" - - "$SB/home/.himmel/config.json" ;;
+        guard-relay-writes.sh)
+            rule shell shell "grok cursor" "HIMMEL_CONSOLE_RELAY=1 HANDOVER_DIR=$SB/handover" - "chmod 000 $SB/handover/inbox/X.md"
+            rule file write "grok cursor" "HIMMEL_CONSOLE_RELAY=1 HANDOVER_DIR=$SB/handover" - "$SB/handover/inbox/X.md" ;;
+        guard-bus-store.sh)
+            rule shell shell "grok cursor" - - 'bus register x --role chief'
+            rule file write "grok cursor" - - /var/tmp/fixture-state/himmel/bus/peers/x.json ;;
+        block-subagent-release-operator.sh)
+            rule shell shell "grok cursor" - '.agent_id = "a1"' 'node /x/scripts/jira/dist/index.js release operator spec-review R1 --keys K-2 --spec s.md --plan p.md --verdict s.md.critic-spec-r1.md' ;;
+        guard-pr-check-literal.sh) rule shell shell "grok cursor" - - 'bash scripts/cr/pr-check-context.sh' ;;
+        allow-thread-resolve.sh)
+            rule shell shell "grok cursor" "HIMMEL_REPO=$FX2/primary" ".cwd = \"$FX2/wt\"" "$RESOLVE_CMD" ;;
+        approval-grant-check.sh)
+            rule shell shell "grok cursor" "PATH=$FX2/sudo:$PATH AFK_GRANT_DIR=$FX2/marks" - "$GRANT_CMD" ;;
+        guard-judge-write-scope.sh) rule file write "grok cursor" - "$judge" "$WORK_FILE" ;;
+        guard-memory-capture.sh)
+            rule file write "grok cursor" - ".tool_input.content = \"$LONG_LINE\"" "$SB/home/.claude/projects/proj/memory/MEMORY.md" ;;
+        check-write-hold.sh)
+            rule file write "grok cursor" "$HOLD_ENV HIMMEL_HOLD_KEY=HIMMEL-102 HIMMEL_HOLD_DOC=$SB/handover/u/r/HIMMEL-102-case.md HIMMEL_HOLD_LABEL=HIMMEL-102" - "$SB/work/held.txt" ;;
+        orchestrator-inline-guard.sh)
+            rule file edit grok - ".transcript_path = \"$FX2/opus.jsonl\"" scripts/hooks/second.sh ;;
+        block-infra-destroy.sh) rule shell shell "grok cursor" - - 'terraform destroy -auto-approve' ;;
+        block-merged-pr-commit.sh) rule shell shell "grok cursor" "FORGE=github GH_CMD=$FX2/stub/gh-merged" - 'git commit -m x' ;;
+        block-unresolved-cr-merge.sh) rule shell shell "grok cursor" - - 'gh pr merge 42 --squash' ;;
+        block-graphify-egress.sh) rule shell shell "grok cursor" - - 'graphify . --backend openai' ;;
+        block-rogue-codex-exec.sh) rule shell shell "grok cursor" - - 'codex exec hi' ;;
+        block-worker-write-fence.sh) rule shell shell "grok cursor" HIMMEL_WORKER=1 - 'git config --get remote.origin.url' ;;
+        block-lesson-enforcement-writes.sh)
+            rule shell shell "grok cursor" HIMMEL_LESSON_LOOP=1 - 'echo x > scripts/guardrails/x.sh'
+            rule file write "grok cursor" HIMMEL_LESSON_LOOP=1 - scripts/guardrails/x.sh ;;
+        guard-chief-foreground.sh)
+            rule shell shell "grok cursor" "HIMMEL_CONSOLE_DOC=/x/N-chief.md CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE=$FX2/cmdline-chief" - 'bash scripts/handover/chief-kit/wrap-merged.sh --pr 12' ;;
+        block-busy-loop.sh) rule shell shell "grok cursor" - - 'until [ -f /tmp/x ]; do :; done' ;;
+        block-agent-native-egress.sh)
+            rule shell shell "grok cursor" - - 'higgsfield generate create seedance --image /home/x/github/salus/scan.png --wait' ;;
+        guard-judge-writes.sh) rule shell shell "grok cursor" HIMMEL_CONSOLE_JUDGE=1 - 'git push origin HEAD' ;;
+        guard-rm-writes.sh) rule shell shell "grok cursor" HIMMEL_RELEASE_MANAGER=1 - 'node scripts/jira/dist/index.js create --type Task --title x' ;;
+        block-vault-sweep.sh)
+            rule shell shell "grok cursor" "HIMMEL_VAULT_SWEEP_DENY=1 HIMMEL_VAULT_SWEEP_DIR=$FX2/vstate HIMMEL_REPO=$ROOT" - "grep -rl notes $SB/home/Documents/luna" ;;
+        guard-readiness-tools.sh)
+            rule shell shell "grok cursor" HIMMEL_READINESS=1 - "$ORDINARY_CMD"
+            rule file write "grok cursor" HIMMEL_READINESS=1 - "$WORK_FILE" ;;
+        peer-taint-gate.sh)
+            rule shell shell "grok cursor" "HOME=$FX2/peerhome" - "cat $FX2/peerhome/.himmel/peer-bridge/x"
+            rule file write "grok cursor" "HOME=$FX2/peerhome" - "$FX2/peerhome/.himmel/peer-bridge/x" ;;
+    esac
+}
+mcp_classification() {
+    local label=$1 c=$2 h cv nv
+    for h in claude-grok grok; do
+        payload "$h" t3 t3_thread_launch '{"title":"fixture-chief","prompt":"noop"}'
+        : > "$SB/audit.jsonl"
+        ROW_ENV="MCP_POLICY_AUDIT_LOG=$SB/audit.jsonl"; run_cmd "$c"; ROW_ENV=""
+        nv=$(jq -c '[.server, .tool, .class, .verdict]' "$SB/audit.jsonl" 2>/dev/null | tail -n 1)
+        [ "$h" = claude-grok ] && cv=$nv
+    done
+    if [ -n "$cv" ] && [ "$cv" = "$nv" ] && [ "$(printf '%s' "$cv" | jq -r '.[2]')" != malformed ]; then
+        pass "parity $label: grok use_tool t3_thread_launch is classified as its twin: $cv"; PROVED="$PROVED $label"
+    else fail "parity $label: grok use_tool classified ${nv:-nothing}, Claude ${cv:-nothing}"; fi
+}
+
 while IFS= read -r m; do
-    each_shell_trigger "project:Bash:$(basename "$m")" run_member "$m"; note_owed "project:Bash:$(basename "$m")"
+    l="project:Bash:$(basename "$m")"
+    each_shell_trigger "$l" run_member "$m"; member_rules "$l" run_member "$m" shell; note_owed "$l"
 done <<EOF
 $(chain_members Bash)
 EOF
@@ -323,6 +473,7 @@ while IFS= read -r m; do
     parity "$l" run_member "$m" read "grok cursor" "$CANARY"
     parity "$l" run_member "$m" read "grok cursor" "$WORK_FILE"
     parity "$l" run_member "$m" grep "grok" "$CANARY"
+    member_rules "$l" run_member "$m" read
     note_owed "$l"
 done <<EOF
 $(chain_members 'Read|Grep')
@@ -334,6 +485,7 @@ while IFS= read -r m; do
     parity "$l" run_member "$m" write "grok cursor" "$MAIN_FILE"
     parity "$l" run_member "$m" write "grok cursor" "$WORK_FILE"
     parity "$l" run_member "$m" write "grok cursor" "$SB/home/.claude/settings.json"
+    member_rules "$l" run_member "$m" file
     note_owed "$l"
 done <<EOF
 $(chain_members 'Edit|Write|MultiEdit|NotebookEdit')
@@ -343,6 +495,7 @@ while IFS= read -r c; do
     l="project:$matcher:$(printf '%s' "$c" | grep -o -E '[A-Za-z0-9_.-]+\.sh' | grep -v run-node | head -n 1)"
     parity "$l" run_cmd "$c" edit "grok" "$WORK_FILE"
     parity "$l" run_cmd "$c" write "grok cursor" "$WORK_FILE"
+    member_rules "$l" run_cmd "$c" file
     note_owed "$l"
 done <<EOF
 $(reg_cmds "$PROJECT_SETTINGS" "$matcher")
@@ -352,6 +505,7 @@ for matcher in 'mcp__t3-code__.*' 'mcp__.*'; do
         l="project:$matcher:$(printf '%s' "$c" | grep -o -E '[A-Za-z0-9_.-]+\.sh' | grep -v run-node | head -n 1)"
         parity "$l" run_cmd "$c" t3 "grok" t3_thread_launch '{"title":"fixture-chief","prompt":"noop"}'
         parity "$l" run_cmd "$c" t3 "grok" t3_thread_list '{"limit":1}'
+        case "$l" in *:mcp-policy.sh) mcp_classification "$l" "$c" ;; esac
         note_owed "$l"
     done <<EOF
 $(reg_cmds "$PROJECT_SETTINGS" "$matcher")
@@ -377,6 +531,10 @@ while IFS= read -r matcher; do
         esac
         case "$matcher" in
             *mcp__*|'*') parity "$l" run_cmd "$c" t3 "grok" t3_thread_list '{"limit":1}' ;;
+        esac
+        case "$matcher" in
+            *Edit*|'*') member_rules "$l" run_cmd "$c" "shell file" ;;
+            *) member_rules "$l" run_cmd "$c" shell ;;
         esac
         note_owed "$l"
     done <<EOF

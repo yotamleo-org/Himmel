@@ -41,6 +41,7 @@ cp "$PLUGIN_RUN_NODE" "$T/plugin/hooks/run-node.sh"
 cp "$PLUGIN_RESOLVE_NODE" "$T/plugin/hooks/resolve-node.sh"
 # The sandboxed launcher requires ./hook-integrity.js from its own directory.
 cp "$PLUGIN_HOOK_INTEGRITY" "$T/plugin/hooks/hook-integrity.js"
+cp -R "$PLUGIN_ROOT/hooks/lib" "$T/plugin/hooks/lib"
 
 pass=0
 fail=0
@@ -70,6 +71,14 @@ if cmp -s "$CANONICAL_HOOK_INTEGRITY" "$PLUGIN_HOOK_INTEGRITY"; then
 else
     bad "plugin hook-integrity.js drifted from scripts/hooks/hook-integrity.js"
 fi
+
+for f in lib/harness-tool-translate.js lib/harness-tool-map.json; do
+    if cmp -s "$HOOKS_DIR/$f" "$PLUGIN_ROOT/hooks/$f"; then
+        ok "plugin $f is byte-identical to scripts/hooks/$f"
+    else
+        bad "plugin $f drifted from scripts/hooks/$f"
+    fi
+done
 
 # The judge write guard ships in the plugin (a judge's cwd is
 # outside any checkout) but is authored and tested in scripts/hooks.
