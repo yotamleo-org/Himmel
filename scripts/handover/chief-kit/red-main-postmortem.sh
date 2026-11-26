@@ -5,14 +5,6 @@
 #
 #   red-main-postmortem.sh [--repo DIR]
 #
-# For each completed non-PR run of ci.yml on main that went red and is not in the seen file:
-#   1. its failing suites: the shard-red-suites.txt the run uploads in its selector-miss-ledger
-#      artifact;
-#   2. its merge range: the previous completed non-PR main run's head sha .. this run's head sha
-#      (the range ci.yml's own ledger step uses), one squash commit per PR, the PR number read
-#      from the subject's trailing (#N);
-#   3. per commit, `impacted-suites.sh --selector-miss <c>^..<c> --red-file <suites>`: a suite it
-#      names was not in that PR's impacted list.
 # Each failing suite prints
 #   red-main run <id> #<pr> <suite> suite in its impacted list: yes|no
 # A suite that some PR in the range selected prints its yes lines (those PRs' CI ran it); a suite

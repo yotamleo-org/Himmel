@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# test-red-main-postmortem.sh — red-main-postmortem.sh over a scratch git range, a stub gh and
-# the real scripts/cr/impacted-suites.sh. Rows: the yes control (a failing suite the breaking PR's
-# selection listed), the no control (a failing suite no PR in the range selected), the once-only
-# seen file, and the unknown lines. No live GitHub, no live checkout.
-#
 # PLATFORM GUARD: chief kit, Linux-only; Bash 3.2-compatible.
-# SUT overrides the script under test (the RED run points it at a path that does not exist).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
