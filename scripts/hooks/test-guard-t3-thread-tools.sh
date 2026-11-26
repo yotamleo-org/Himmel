@@ -240,7 +240,7 @@ check() {
     N=$((N+1))
     if eval "$cond"; then echo "ok   $name"; else echo "FAIL $name: rows=$(tail -n 2 "$ROWS" 2>/dev/null | tr '\n' ' ')"; FAIL=$((FAIL+1)); fi
 }
-row_count() { if [ -f "$1" ]; then wc -l <"$1" | tr -d ' '; else echo 0; fi; }
+row_count() { if [ -f "$1" ]; then wc -l <"$1" | tr -d ' '; else echo 0; fi; } # read-sink-ok: counts lines of this suite's own fixture row files
 
 rm -rf "$HOME/.himmel/state"
 write_t3_settings
