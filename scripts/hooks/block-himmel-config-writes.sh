@@ -131,7 +131,12 @@ if [ -e /System/Library/CoreServices/SystemVersion.plist ]; then DARWIN=1; fi
 if [ "${HIMMEL_GUARD_FORCE_DARWIN:-}" = 1 ]; then DARWIN=1; fi
 fold_to() {
     FOLDED="$1"
-    if [ "$DARWIN" = 1 ]; then FOLDED=$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]'); fi
+    [ "$DARWIN" = 1 ] || return 0
+    local pair u l
+    for pair in Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk Ll Mm Nn Oo Pp Qq Rr Ss Tt Uu Vv Ww Xx Yy Zz; do
+        u="${pair%?}"; l="${pair#?}"
+        case "$FOLDED" in *"$u"*) FOLDED="${FOLDED//$u/$l}" ;; esac
+    done
     return 0
 }
 fold_to "$STATION_DIR"; F_STATION_DIR="$FOLDED"
@@ -324,9 +329,9 @@ case "$tool" in
         # its behaviour on a hook timeout is undocumented (the docs only say an
         # MCP hook error/timeout "can fail the hook without blocking"), so a
         # padded patch must DENY here instead of running out the clock. The
-        # header loop is fork-free (a case glob pre-filters header lines before
-        # the pure-bash trim; paths are collected and resolved by ONE
-        # hook_resolve_m call afterwards) and the caps bound what is left.
+        # header loop is fork-free, the Darwin case fold included (a case glob
+        # pre-filters header lines before the pure-bash trim; paths are collected
+        # and resolved by ONE hook_resolve_m call afterwards), and the caps bound what is left.
         # Byte length, not ${#patch}: under a multibyte locale that counts characters.
         plen=$(printf '%s' "$patch" | LC_ALL=C wc -c 2>/dev/null) || plen=$((MAX_PATCH_BYTES + 1))
         plen=$((plen + 0))

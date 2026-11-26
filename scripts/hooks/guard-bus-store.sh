@@ -185,7 +185,12 @@ if [ -e /System/Library/CoreServices/SystemVersion.plist ]; then DARWIN=1; fi
 if [ "${HIMMEL_GUARD_FORCE_DARWIN:-}" = 1 ]; then DARWIN=1; fi
 fold_to() {
     FOLDED="$1"
-    if [ "$DARWIN" = 1 ]; then FOLDED=$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]'); fi
+    [ "$DARWIN" = 1 ] || return 0
+    local pair u l
+    for pair in Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk Ll Mm Nn Oo Pp Qq Rr Ss Tt Uu Vv Ww Xx Yy Zz; do
+        u="${pair%?}"; l="${pair#?}"
+        case "$FOLDED" in *"$u"*) FOLDED="${FOLDED//$u/$l}" ;; esac
+    done
     return 0
 }
 
