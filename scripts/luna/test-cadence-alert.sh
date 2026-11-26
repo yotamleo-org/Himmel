@@ -134,9 +134,12 @@ if command -v jq >/dev/null 2>&1; then
 #!/usr/bin/env bash
 printf '%s\n' "\$2" >>"$RC/sent.log"
 EOF
-    chmod +x "$RC/sender.sh"
+    printf '#!/usr/bin/env bash\nexit 0\n' >"$RC/sweep.sh"
+    printf '#!/usr/bin/env bash\nexit 1\n' >"$RC/inbox-send.sh"
+    chmod +x "$RC/sender.sh" "$RC/sweep.sh" "$RC/inbox-send.sh"
     recover_run() {
-        TELEGRAM_ACCESS_PATH="$RC/access.json" MERGE_BLOCK_ALERT_CMD="$RC/sender.sh" VAULT_STALL_ALERT_STATE="$RC/last" \
+        FAILURE_ROUTE_SWEEP_CMD="$RC/sweep.sh" FAILURE_ROUTE_INBOX_SEND="$RC/inbox-send.sh" \
+            TELEGRAM_ACCESS_PATH="$RC/access.json" MERGE_BLOCK_ALERT_CMD="$RC/sender.sh" VAULT_STALL_ALERT_STATE="$RC/last" \
             CADENCE_ALERT_SEND_CMD="$ROOT/scripts/luna/vault-stall-alert.sh" CADENCE_ALERT_FILE="$RC/alerts.log" \
             CADENCE_ALERT_DEDUPE_DIR="$RC/sent" CADENCE_ALERT_SEND_FAILED_MARK="$RC/send-failed" bash "$SINK" "$@" >/dev/null 2>&1
     }

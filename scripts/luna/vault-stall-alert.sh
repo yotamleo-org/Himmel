@@ -12,10 +12,19 @@
 #
 #   vault-stall-alert.sh <message...>
 #
+# A vault stall (cadence:vault-stall) and a stall repair (cadence:vault-stall-repair)
+# go to the live chief's inbox first, as the one line given: failure-route-notify.sh
+# live-chief names the chief, inbox-send.sh sends the line, and a sent line is a
+# delivered alert. No live chief, or an inbox send that failed, falls through to
+# Telegram. Every other kind goes to Telegram only. A test on the station never reaches
+# the live queue: with FAILURE_ROUTE_INBOX_SEND unset, the test guard's refusal skips
+# the chief.
+#
 # Exit 0 = delivered; 77 = refused by the test guard, nothing sent, neither
 # delivered nor failed; any other non-zero = not delivered (autosync then retries
-# next run instead of marking the stall episode alerted). Seams are merge-block-alert.sh's
-# own: MERGE_BLOCK_ALERT_CMD (replaces the sender, `$CMD <chat_id> <text>`) and
+# next run instead of marking the stall episode alerted). Seams: FAILURE_ROUTE_SWEEP_CMD
+# and FAILURE_ROUTE_INBOX_SEND (failure-route-notify.sh's own), and merge-block-alert.sh's:
+# MERGE_BLOCK_ALERT_CMD (replaces the sender, `$CMD <chat_id> <text>`) and
 # TELEGRAM_ACCESS_PATH (access.json holding the operator id).
 #
 # A vault stall is sent once: the finding of the last delivered cadence:vault-stall
@@ -41,10 +50,28 @@ if [ -z "$msg" ]; then
     exit 2
 fi
 
+tell_chief() {
+    local chief guard_rc=0
+    case "$kind" in cadence:vault-stall | cadence:vault-stall-repair) ;; *) return 1 ;; esac
+    if [ -z "${FAILURE_ROUTE_INBOX_SEND:-}" ]; then
+        bash "$_here/../lib/test-run-guard" check --real vault-stall-alert-chief || guard_rc=$?
+        [ "$guard_rc" -ne 77 ] || return 1
+    fi
+    chief="$(bash "$_here/../eval/worker-digest/failure-route-notify.sh" live-chief 2>/dev/null)" || return 1
+    [ -n "$chief" ] || return 1
+    bash "${FAILURE_ROUTE_INBOX_SEND:-$_here/../handover/chief-kit/inbox-send.sh}" "$chief" "$msg" >/dev/null
+}
+
 deliver() {
     local sig="${1:-}" chat
     if [ -n "$sig" ] && [ "$(cat "$state" 2>/dev/null)" = "$sig" ] && [ -n "$(find "$state" -mmin -10080 2>/dev/null)" ]; then
         echo "vault-stall-alert: same finding as the last one sent - not sent again" >&2
+        return 0
+    fi
+    if tell_chief; then
+        if [ -n "$sig" ]; then
+            printf '%s\n' "$sig" >"$state" 2>/dev/null || echo "vault-stall-alert: could not record the finding in $state" >&2
+        fi
         return 0
     fi
     chat="$(_mba_operator_chat)" || chat=""

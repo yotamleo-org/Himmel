@@ -71,9 +71,19 @@ rc=0
 for f in "$@"; do
   case "$f" in
     Preferences | */Preferences | "Local State" | */"Local State" | leak-*.md | */leak-*.md | *-journal)
-      printf 'Finding:     token\nFile:        %s\n\n' "$f"
+      printf 'Finding:     token\nRuleID:      generic-api-key\nFile:        %s\n\n' "$f"
       rc=1
       ;;
+  esac
+done
+exit "$rc"
+EOF
+cat >"$V/refuse-silent.sh" <<'EOF'
+#!/usr/bin/env bash
+rc=0
+for f in "$@"; do
+  case "$f" in
+    silent-*.md | */silent-*.md) rc=1 ;;
   esac
 done
 exit "$rc"
@@ -91,6 +101,11 @@ repos:
         name: fake-gitleaks
         entry: bash refuse-secret.sh
         language: system
+      - id: fake-silent
+        name: fake-silent
+        entry: bash refuse-silent.sh
+        language: system
+        files: 'silent-.*\.md$'
 EOF
 export LUNA_VAULT_QUARANTINE_DIR="$TMP/quarantine"
 : >"$V/.gitignore"
@@ -136,6 +151,7 @@ assert_eq "S3 stall past threshold: exactly one alert" "1" "$(alert_count)"
 msg="$(cat "$ALERTS" 2>/dev/null)"
 assert_has "S3b alert names the failing hook" "fake-shellcheck" "$msg"
 assert_has "S3c alert names the offending file" "handovers/x/logs/bad-scratch.sh" "$msg"
+assert_has "S3d alert names the shellcheck code as the reason" "reason: SC2148)" "$msg"
 
 # --- S4: further refused retries in the SAME episode stay silent ------------
 run_sync
@@ -227,6 +243,9 @@ run_sync
 assert_eq "S10 secret note stays in the vault" "yes" "$([ -e "$V/handovers/n/leak-note.md" ] && echo yes || echo no)"
 assert_eq "S10b nothing quarantined for it" "" "$(find "$TMP/quarantine" -name 'leak-note.md')"
 assert_eq "S10c stall reason names hook and path" "fake-gitleaks:handovers/n/leak-note.md" "$(cat "$V/.git/vault-autosync-reason" 2>/dev/null)"
+backdate
+run_sync
+assert_has "S10d the alert names the gitleaks rule id as the reason" "reason: generic-api-key)" "$(tail -n 1 "$ALERTS")"
 
 # --- S11: tool state mixed with a real secret: nothing is moved (all or nothing)
 mkdir -p "$V/specs/shots2/Default"
@@ -266,6 +285,18 @@ assert_eq "S12e1 the stall names the refused file" "fake-gitleaks:notes/dev-jour
 assert_eq "S12e journal-named file outside a profile stays in the vault" "yes" "$([ -e "$V/notes/dev-journal" ] && echo yes || echo no)"
 assert_eq "S12f it is not quarantined" "" "$(find "$TMP/quarantine" -name 'dev-journal')"
 rm -f "$V/notes/dev-journal"
+run_sync
+
+git -C "$V" reset -q --hard HEAD
+run_sync
+assert_eq "S12g0 control: the earlier refusals are gone and the episode cleared" "no" "$([ -e "$STATE" ] && echo yes || echo no)"
+mkdir -p "$V/notes"
+printf 'quiet\n' >"$V/notes/silent-x.md"
+run_sync
+backdate
+run_sync
+assert_has "S12g the alert names pre-commit's exit code as the reason" "reason: exit code 1)" "$(tail -n 1 "$ALERTS")"
+rm -f "$V/notes/silent-x.md"
 run_sync
 
 # --- S13: the template .gitignore hides tool state, not ordinary notes -------

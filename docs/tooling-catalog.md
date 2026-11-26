@@ -1769,6 +1769,16 @@ no resident poller and no tokens. Pure bash + `gh` +
   Report-only: repair is `himmel-update`'s drift pass. Arming is
   operator-invoked: `bash scripts/doctor-cadence.sh arm`. Test:
   `scripts/test-doctor-cadence.sh`.
+- `scripts/luna/vault-sweep-cadence.sh arm [--vault <p>] [--force] [--dry-run]|run|status|disarm`
+  — the vault's committer. Cron fires a generated runner every 10 min; it takes
+  `<git-dir>/vault-writer.lock` (`flock -n`), exports `LUNA_VAULT_AUTOSYNC=1`
+  and runs the template's `vault-autosync.sh` from the vault, so the vault
+  commits (through its pre-commit hooks, never `--no-verify`) and pushes with
+  Obsidian closed. `arm` refuses while `github-sync` is enabled in the vault
+  (one writer). A refused commit older than `LUNA_VAULT_STALL_THRESHOLD_MIN`
+  (default 45) goes through `scripts/luna/vault-stall-alert.sh` as one line
+  naming hook, file and reason: the live chief's inbox first, Telegram only when
+  no chief is live. Test: `scripts/luna/test-vault-sweep-cadence.sh`.
 - `scripts/luna/vault-stall-cadence.sh run [--vault <p>] [--dry-run]|arm|status|disarm`
   — every 15 min, catches a vault auto-commit stall (staged paths
   plus a last commit older than `VAULT_STALL_MIN`, default 25 min) and
@@ -1782,8 +1792,12 @@ no resident poller and no tokens. Pure bash + `gh` +
   `git commit --only` takes just the config files; the staged backlog is left
   to the next sync. Anything else alerts through
   `scripts/luna/cadence-alert.sh` with rule, file and line only, never the
-  secret, and commits nothing. The cadence skips as `busy` while
-  `.git/index.lock` exists or another run holds its flock. Each class is
+  secret, and commits nothing. A completed repair is reported in one line
+  (hook, files, what changed) to the live chief's inbox, Telegram only when no
+  chief is live (`scripts/luna/vault-stall-alert.sh`, kind
+  `cadence:vault-stall-repair`). The cadence skips as `busy` while
+  `.git/index.lock` exists, the vault sweeper holds `<git-dir>/vault-writer.lock`
+  or another run holds its flock. Each class is
   remediated at most once per 24 h: a repeat stall alerts instead
   (`~/.himmel/state/vault-stall/`). Never `--no-verify`, never
   `pre-commit install`. Registered in `cadence-registry.json` as `vault-stall`

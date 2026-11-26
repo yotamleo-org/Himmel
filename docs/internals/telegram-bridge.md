@@ -212,6 +212,7 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 | `cadence:qmd-quality` | monitor | `scripts/eval/qmd-quality/qmd-quality-cadence.sh` | The qmd-quality scheduled worker reported a failure. |
 | `cadence:ledger-drift` | monitor | `scripts/handover/chief-kit/ci-cadence.sh` | The ledger-drift scheduled worker reported a failure. |
 | `cadence:vault-stall` | monitor | `scripts/luna/vault-stall-cadence.sh` | The vault-stall scheduled worker reported a failure. |
+| `cadence:vault-stall-repair` | monitor | `scripts/luna/vault-stall-cadence.sh` | The vault-stall worker repaired a known-benign refusal under handovers/ (to the live chief first, here only when none is live). |
 | `cadence:vm-maintain-cadence` | monitor | `scripts/vm/vm-maintain-cadence.sh` | The vm-maintain-cadence scheduled worker reported a failure. |
 | `cadence:graph-channel-publish` | monitor | `scripts/graphify/publish-graph-channel.sh` | The graph-channel-publish scheduled worker reported a failure. |
 | `cadence:librarian` | monitor | `scripts/handover/librarian-cadence.sh` | The librarian scheduled worker reported a failure. |
