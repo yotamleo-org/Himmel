@@ -535,7 +535,8 @@ async function main(): Promise<void> {
     else if (cmd === "keygen" && args.length === 1 && args[0] === "--activate") await keygenCmd("activate", deps);
     else if (cmd === "keygen" && args.length === 1 && args[0] === "--show") await keygenCmd("show", deps);
     else if (cmd === "dm" && args.length === 0) await dm(deps);
-    else if (cmd === "pair" && args[0] && args.length <= 4) await pair(args[0], args[1] !== undefined && args[1] !== "--card" ? args[1] : undefined, flag(args, "--card"), deps);
+    else if (cmd === "pair" && (args.length === 1 || args.length === 2) && !args.some(a => a.startsWith("--"))) await pair(args[0], args[1], undefined, deps);
+    else if (cmd === "pair" && (args.length === 3 || args.length === 4) && args.at(-2) === "--card" && !args.slice(0, -2).some(a => a.startsWith("--"))) await pair(args[0], args.length === 4 ? args[1] : undefined, args.at(-1), deps);
     else if (cmd === "trust" && args.length === 3) await trust(args[0], args[1], args[2], deps);
     else if (cmd === "untrust" && args.length === 1) await untrust(args[0], undefined, deps);
     else if (cmd === "untrust" && args.length === 3 && args[1] === "--key") await untrust(args[0], args[2], deps);

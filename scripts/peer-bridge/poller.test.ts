@@ -1399,6 +1399,9 @@ test("a DM reply to an escalation drafts an answer; a stranger's private message
   writeFileSync(join(e.stateDir, "notify", "sent", "777"), JSON.stringify({ n: 1, type: "escalate", peer: "example", root: 101, dir: "in", ts: e.c.t }));
   await e.poller.processBatch([dmUpdate({ text: "to an operator-bot entry", reply_to_message: { message_id: 777, from: { id: Number(OUR_ID), is_bot: true } } })]);
   expect(dmSends(e).at(-1)!.text).toBe("that message is not on record; nothing was sent");
+  const before = dmSends(e).length;
+  await e.poller.processBatch([dmUpdate({ text: "/start" }), dmUpdate({ text: "/lockdown" })]);
+  expect(dmSends(e).slice(before).map(s => s.text)).toEqual(["commands are not taken in this chat, /lockdown included: send them to your operator bot; nothing was done"]);
   expect(e.sent.some(s => s.chat === 31337)).toBe(false);
   expect(readChain(join(e.peerDir, "inbox.jsonl")).some(r => JSON.stringify(r).includes("my answer") || JSON.stringify(r).includes("stranger"))).toBe(false);
 });

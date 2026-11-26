@@ -4343,3 +4343,15 @@ test("T17: start-up writes poller-epoch from bridge-envelope-epoch.txt on a scra
   const main = readFileSync(join(import.meta.dir, "poller.ts"), "utf8").split("export async function main(): Promise<void> {")[1] ?? "";
   expect(main.slice(0, 600)).toContain("await writePollerEpoch(root)");
 });
+
+test("a reply to a peer notification the operator bot sent earlier is refused with one line and reaches no session", async () => {
+  const { makeLegacyPeerReply, PEER_MOVED_LINE } = await import("./poller");
+  const r = root(); const ran: string[] = []; const said: string[] = [];
+  const auto = { authorize: () => true, enabledOps: new Set(), fire: () => {}, peerReply: makeLegacyPeerReply(async (_c, t) => { said.push(t); }) } as any;
+  await handleInbound(r, { from: 1, chat_id: 7, text: "my answer", reply_to_bot: true, reply_to_text: "peer example · T12 · new question" }, async (s) => { ran.push(s); }, auto, undefined, () => true);
+  expect(ran).toEqual([]);
+  expect(said).toEqual([PEER_MOVED_LINE]);
+  await handleInbound(r, { from: 1, chat_id: 7, text: "my answer", reply_to_bot: true, reply_to_text: "a chief line" }, async (s) => { ran.push(s); }, auto, undefined, () => true);
+  expect(ran).toEqual(["__chat__"]);
+  expect(said).toHaveLength(1);
+});

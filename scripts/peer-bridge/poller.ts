@@ -70,6 +70,7 @@ export const UNRECORDED_REFUSAL_LINE = "that message is not on record; nothing w
 export const REPLY_HINT_LINE = "reply to a peer message to draft an answer; nothing was sent";
 export const NO_DESK_LINE = "the peer bridge is not set up for this peer; nothing was sent";
 export const LOCKED_LINE = "locked, reset at the station";
+export const COMMANDS_LINE = "commands are not taken in this chat, /lockdown included: send them to your operator bot; nothing was done";
 
 export const notifyCursorFile = (S: string) => join(S, "notify", "cursor");
 export const dmSentDir = (S: string) => join(S, "notify", "sent");
@@ -412,8 +413,9 @@ export class Poller {
       this.log(`dm-drop update=${u.update_id} chat=${msg?.chat?.id} from=${msg?.from?.id}`);
       return;
     }
-    if (typeof msg.text !== "string" || msg.text.trimStart().startsWith("/")) return;
+    if (typeof msg.text !== "string") return;
     const say = async (text: string) => { await this.dmSend(dm, text); };
+    if (msg.text.trimStart().startsWith("/")) return /^\/start(@\w+)?$/.test(msg.text.trim()) ? undefined : say(COMMANDS_LINE);
     const replyTo = msg.reply_to_message;
     if (!replyTo || String(replyTo.from?.id) !== this.deps.ourBotId) return say(REPLY_HINT_LINE);
     if (lockdownEnabled(this.cfg.bridgeRoot)) return say(LOCKED_LINE);

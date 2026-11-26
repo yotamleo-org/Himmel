@@ -332,6 +332,14 @@ t("dm records the operator's private chat with the peer bot, and a chat the bot 
   expect(lines.at(-1)).toContain("picks this up by itself");
 });
 
+t("pair refuses a misspelled flag or a stray argument as a usage error and writes nothing", () => {
+  for (const args of [["example", "yotam", "--crad", "x"], ["example", "--card"], ["example", "yotam", "extra"], ["example", "--card", "x", "extra"]]) {
+    const r = spawnSync("bun", [join(DIR, "setup.ts"), "pair", ...args], { env: { ...process.env, HOME: home }, encoding: "utf8" });
+    expect([args.join(" "), r.status]).toEqual([args.join(" "), 2]);
+  }
+  expect(listing(home)).toEqual([]);
+});
+
 t("pair sets a missing station name, makes the key once, prints a card without the fingerprint, and --card trusts theirs only after the fingerprint", async () => {
   await addExample();
   const first = mk();

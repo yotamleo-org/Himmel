@@ -445,13 +445,21 @@ export type OperatorFn = (fromId: number, chatId: number, senderChatId?: number)
 export type AutoFire = (msg: DeliveredMsg, route: Extract<Route, { kind: "auto" }>) => void;
 // afkSudo: the AFK sudo approve/deny route (afk-sudo-route.ts); true = consumed.
 // configRestore: the /config backups|restore route (config-restore-route.ts); true = consumed.
-export type AutoGate = { enabledOps: Set<string>; authorize: (from: number, chat_id: number) => boolean; fire: AutoFire; afkSudo?: (msg: DeliveredMsg) => boolean; configRestore?: (msg: DeliveredMsg) => boolean };
+export type AutoGate = { enabledOps: Set<string>; authorize: (from: number, chat_id: number) => boolean; fire: AutoFire; afkSudo?: (msg: DeliveredMsg) => boolean; configRestore?: (msg: DeliveredMsg) => boolean; peerReply?: (msg: DeliveredMsg) => Promise<boolean> };
 // Under lockdown the line is not consumed: it falls through to the lockdown policy, which drops it.
 // The MFA routes (afk sudo, config restore) run first; true = consumed.
 const mfaRouteConsumed = (root: string, auto: AutoGate | undefined, msg: DeliveredMsg): boolean =>
   !lockdownEnabled(root) && (auto?.afkSudo?.(msg) === true || auto?.configRestore?.(msg) === true);
 const takenBeforeRouting = async (root: string, auto: AutoGate | undefined, msg: DeliveredMsg): Promise<boolean> =>
-  mfaRouteConsumed(root, auto, msg);
+  mfaRouteConsumed(root, auto, msg) || (await auto?.peerReply?.(msg)) === true;
+
+const PEER_NOTIFY_LINE1_RE = /^peer [a-z0-9][a-z0-9-]{0,31} · /;
+export const PEER_MOVED_LINE = "peer messages now arrive in your chat with the peer bridge bot: reply there; nothing was sent";
+export const makeLegacyPeerReply = (reply: (chat: number, text: string) => Promise<void>) => async (msg: DeliveredMsg): Promise<boolean> => {
+  if (msg.reply_to_bot !== true || msg.caption === true || msg.text.trimStart().startsWith("/") || !PEER_NOTIFY_LINE1_RE.test(msg.reply_to_text ?? "")) return false;
+  await reply(msg.chat_id, PEER_MOVED_LINE);
+  return true;
+};
 
 // Single-threaded dispatch: the poller calls handleInbound serially, so the
 // "status === running" in-flight check needs no atomic CAS.
@@ -2690,7 +2698,8 @@ export async function main(): Promise<void> {
     answer: (id, text) => answerCallbackQuery(token, id, text),
   }, afkPrompts);
   const configRestore = makeConfigRestoreGate({ access: () => access, enrolled: configRestoreEnrolled, run: spawnConfigRestore, reply: (chat: number, text: string) => replyViaOutbox(root, chat, text), log: logRedacted });
-  const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo, configRestore };
+  const peerReply = makeLegacyPeerReply((chat, text) => sendMessage(token, chat, text).then(() => undefined));
+  const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo, configRestore, peerReply };
   // Operator -> chief routing. Same authorize as /arm, global
   // allowFrom sender AND an allowed chat, so the gate is unchanged; the ack rides
   // the per-chat outbox like every other bridge reply.
