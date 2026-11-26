@@ -102,9 +102,10 @@ if [ "$rc" -eq 0 ] && ! grep -qF "$TEMPLATE" <<< "$out"; then pass "other row ov
 echo "== T9: one row over, another missing =="
 r="$tmp/t9"; mkroot "$r"; pad "$r/$PREFACE" $((MAX_PREFACE + 1)); rm -f "$r/$TEMPLATE"
 run "$r"
+missing_line=$(grep -F "$TEMPLATE" <<< "$out")
 if [ "$rc" -eq 2 ] \
     && grep -qF "$PREFACE is $((MAX_PREFACE + 1)) bytes" <<< "$out" \
-    && grep -F "$TEMPLATE" <<< "$out" | grep -qv ' is [0-9]* bytes'; then
+    && [ -n "$missing_line" ] && ! grep -q ' is [0-9]* bytes' <<< "$missing_line"; then
     pass "exit 2, both named, the missing one with no size"
 else
     fail "T9 rc=$rc out=$out"
