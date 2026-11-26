@@ -268,4 +268,21 @@ for ref in pr-check-ref/31-step3-adjudicate.md pr-check-ref/40-step4-crosscheck.
   [ "$grc" -eq 1 ] || { echo "FAIL: T21 $ref stale-note scan rc=$grc (0 = stale note present, 2 = grep error)"; fail=1; }
 done
 
+t22_head=$(git -C "$repo" rev-parse --verify refs/heads/feat/t19)
+printf '{"kind":"finding","head":"%s","branch":"feat/t22","model":"codex","finding_id":"t22-1","severity":"imp","file":"a.sh","line":1}\n{"kind":"finding","head":"%s","branch":"feat/t22","model":"codex","finding_id":"t22-2","severity":"sug","file":"b.sh","line":1}\n' "$t22_head" "$t22_head" >> "$git_dir/cr-critic-scores.jsonl"
+( cd "$repo" && printf 'VERDICT [t22-1] = agreed\nVERDICT [t22-2] = disproved\nVERDICT [t22-ghost] = agreed\n' | bash "$SCRIPT" aggregate --branch feat/t22 ) 2>"$tmp/err22.txt"
+check "$?" "0" "T22 rc (hint never refuses)"
+check "$(wc -l <"$git_dir/cr-aggregate-verdicts/feat/t22" | tr -d ' ')" "3" "T22 aggregate file written whole"
+grep -q "SWEEP \[t22-1@$t22_head\]" "$tmp/err22.txt" || { echo "FAIL: T22 the agreed finding's owed sweep is not named with its head"; fail=1; }
+grep -q 'a\.sh' "$tmp/err22.txt" || { echo "FAIL: T22 the hint does not offer the finding's own file as the first site"; fail=1; }
+grep -q 'write-verdicts.sh sweep --branch' "$tmp/err22.txt" || { echo "FAIL: T22 the hint does not name the command that records it"; fail=1; }
+grep -q 't22-2' "$tmp/err22.txt" && { echo "FAIL: T22 a disproved finding was named as owing a sweep"; fail=1; }
+grep -q 't22-ghost' "$tmp/err22.txt" && { echo "FAIL: T22 an id with no ledger row was named as owing a sweep"; fail=1; }
+( cd "$repo" && printf 'SWEEP [t22-1@%s] class=x :: sites=a.sh:1, b.sh:1\n' "${t22_head:0:12}" | bash "$SCRIPT" sweep --branch feat/t22 )
+( cd "$repo" && printf 'VERDICT [t22-1] = agreed\n' | bash "$SCRIPT" aggregate --branch feat/t22 ) 2>"$tmp/err22b.txt"
+check "$?" "0" "T22b rc"
+grep -q 'SWEEP \[' "$tmp/err22b.txt" && { echo "FAIL: T22b a covered finding was named again"; fail=1; }
+( cd "$repo" && printf 'VERDICT [t22-2] = agreed\n' | bash "$SCRIPT" prior-blocking --branch feat/t22 ) 2>"$tmp/err22c.txt"
+grep -q 'SWEEP \[' "$tmp/err22c.txt" && { echo "FAIL: T22c prior-blocking named a sweep (only the step-4 aggregate write does)"; fail=1; }
+
 [ "$fail" -eq 0 ] && echo "PASS test-write-verdicts" || exit 1
