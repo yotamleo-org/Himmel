@@ -59,11 +59,6 @@ def honoured_during_adoption(self):
         fired.write_text(str(self.data['child']))
 
 
-slow = float(os.environ.get('STREAM_SLOW_START', '0'))
-if slow:
-    prepare = mod.Supervisor.prepare
-    mod.Supervisor.prepare = lambda self: (time.sleep(slow), prepare(self))[1]
-
 if os.environ['SCHEDULE'] == 'touched-after-the-sample':
     mod.Supervisor.acknowledge = after_one_wake
     mod.child_alive = touched_after_the_sample
