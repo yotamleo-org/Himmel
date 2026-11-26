@@ -454,4 +454,16 @@ arm "$d23" PROJ-23-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
 arm "$d23" PROJ-23-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A DESTRUCTIVE_OK=0
 check "23 control: a registry name set to anything but 1 is not a bypass, the launches share a window" "$(konsole_count "$d23")" 1
 
+d24="$tmp/c24"; mk_env "$d24"
+mkdir -p "$tmp/noreg/scripts/handover" "$tmp/noreg/scripts/himmelctl/lib"
+cp "$SCRIPT" "$tmp/noreg/scripts/handover/headed-arm.sh"
+printf '{"flags": []}\n' > "$tmp/noreg/scripts/himmelctl/lib/bypass-flags.json"
+cp -R "$(dirname "$SCRIPT")/../lib" "$tmp/noreg/scripts/lib"
+cp -R "$(dirname "$SCRIPT")/../lanes" "$tmp/noreg/scripts/lanes"
+SCRIPT_REAL="$SCRIPT"; SCRIPT="$tmp/noreg/scripts/handover/headed-arm.sh"
+arm "$d24" PROJ-24-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
+arm "$d24" PROJ-24-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
+SCRIPT="$SCRIPT_REAL"
+check "24 RED 11169: a registry that yields no flag names disables tabs, two launches open two windows" "$(konsole_count "$d24")" 2
+
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

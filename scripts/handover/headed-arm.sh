@@ -1865,12 +1865,14 @@ tab_chain_window() {
     return 1
 }
 tab_bypass_env() {
-    local reg name
+    local reg name seen=0
     reg="$(dirname "$0")/../himmelctl/lib/bypass-flags.json"
     [ -r "$reg" ] || return 0
     while IFS= read -r name; do
+        seen=$((seen + 1))
         [ "${!name:-}" = "1" ] && return 0
     done < <(sed -n 's/^ *"name": *"\([A-Z][A-Z0-9_]*\)".*/\1/p' "$reg")
+    [ "$seen" -gt 0 ] || return 0
     return 1
 }
 tab_launch() {
