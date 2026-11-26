@@ -133,6 +133,13 @@ probe "$W/agy-full" --record "Individual quota reached. Resets in 40h"
 probe "$W/agy-full" --record "Individual quota reached. Resets in 5m"
 check "a shorter later cap does not erase a longer one" "$((NOW + 40*3600))" "$(cat "$W/state" 2>/dev/null)"
 rm -f "$W/state"
+for n in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  GEMINI_QUOTA_FLOOR=0.02 GEMINI_QUOTA_AGY="$W/agy-full" GEMINI_QUOTA_NOW="$NOW" GEMINI_QUOTA_STATE_FILE="$W/state" \
+    bash "$SUT" --record "Individual quota reached. Resets in ${n}h" >/dev/null 2>&1 &
+done
+wait
+check "twelve concurrent records keep the longest deadline" "$((NOW + 12*3600))" "$(cat "$W/state" 2>/dev/null)"
+rm -f "$W/state"
 
 echo "== 6. an unreadable reset_time =="
 payload 0 "not-a-date" 1 "$FUT2" > "$W/badreset.json"; stub_json agy-badreset "$W/badreset.json"

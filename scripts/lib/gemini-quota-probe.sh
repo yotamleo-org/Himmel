@@ -49,14 +49,18 @@ if [ "${1:-}" = "--record" ]; then
     d="${BASH_REMATCH[2]}"; h="${BASH_REMATCH[4]}"; m="${BASH_REMATCH[6]}"; s="${BASH_REMATCH[8]}"
     [ -n "$d$h$m$s" ] || unknown "no-duration"
     until_epoch=$((NOW + 10#${d:-0} * 86400 + 10#${h:-0} * 3600 + 10#${m:-0} * 60 + 10#${s:-0}))
-    old="$(head -n1 "$STATE" 2>/dev/null)"
-    case "$old" in ''|*[!0-9]*) ;; *) [ "$old" -gt "$until_epoch" ] && until_epoch="$old" ;; esac
     # shellcheck source=scripts/lib/prim.sh
     . "$(dirname "${BASH_SOURCE[0]}")/prim.sh" || unknown "prim-missing"
-    if ! { mkdir -p "$(dirname "$STATE")" 2>/dev/null && printf '%s\n' "$until_epoch" | atomic_write "$STATE"; }; then
-        unknown "state-unwritable"
-    fi
-    echo "GEMINI-EMPTY until=$(iso "$until_epoch")"
+    # shellcheck disable=SC2329
+    record_deadline() {
+        local old
+        old="$(head -n1 "$STATE" 2>/dev/null)"
+        case "$old" in ''|*[!0-9]*) ;; *) [ "$old" -gt "$until_epoch" ] && until_epoch="$old" ;; esac
+        printf '%s\n' "$until_epoch" | atomic_write "$STATE" || return 1
+        echo "GEMINI-EMPTY until=$(iso "$until_epoch")"
+    }
+    mkdir -p "$(dirname "$STATE")" 2>/dev/null || unknown "state-unwritable"
+    with_lock "$STATE.lock" record_deadline || unknown "state-unwritable"
     exit 0
 fi
 
