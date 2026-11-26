@@ -84,6 +84,8 @@ export CHIEF_MUST_RESUME_ROWS="$tmp/must-resume-rows.sh" NEXT_DISPATCH_MIRROR="$
 # an empty PR list for the whole suite keeps every case off the real gh; the orph8501 case sets its own.
 printf '[]\n' > "$tmp/orphan-prs-none.json"
 export ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-none.json" TICKET_STATUS_STATE_DIR="$tmp/ticket-status-state"
+printf '#!/usr/bin/env bash\necho "# open-notes: complete n=0 unverified=0 merge_hidden=0 mirror_cursor_age_min=0"\n' > "$tmp/open-notes-none.sh"
+export HIMMEL_TEST_FIXTURE=1 CHIEF_OPEN_NOTES="$tmp/open-notes-none.sh"
 # `next` pre-computes ACTION ZERO through action-zero.sh. A stub keeps every case
 # fast and keeps the lock sweep's host names out of case 8's leak scan; case 90
 # runs the real script.
@@ -4227,7 +4229,8 @@ printf '#!/usr/bin/env bash\necho "#77 [DEMO-9] the wrapped worker pr (fix/demo-
 mk10877 m10877
 B10877="$root/tester/m10877dst/DEMO-nextleg-${today}B-chief.md"
 rc10877=0
-HANDOFF_FACTS_PRS="$tmp/prs10877.sh" chief next --bucket m10877dst --doc "$A10877" >"$tmp/m10877.out" 2>"$tmp/m10877.err" || rc10877=$?
+printf '#!/usr/bin/%s\nprintf "NOTE\\tDEMO-9\\t%s\\t2026-11-26T00:00:00Z\\tstatus=To Do\\torig=-\\n"\necho "# open-notes: complete n=1 unverified=0 merge_hidden=0 mirror_cursor_age_min=0"\n' env "$W10877/DEMO-9-N9-worker-RESUME.md" > "$tmp/notes10877.sh"
+CHIEF_OPEN_NOTES="$tmp/notes10877.sh" HANDOFF_FACTS_PRS="$tmp/prs10877.sh" chief next --bucket m10877dst --doc "$A10877" >"$tmp/m10877.out" 2>"$tmp/m10877.err" || rc10877=$?
 check "10877 next with 2 of 7 workers on the line exits 0" "$rc10877" "0"
 live10877="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$B10877" 2>/dev/null)"
 for i in 1 2 3 4 5 6 7; do
@@ -4306,7 +4309,8 @@ printf '#!/usr/bin/env bash\nexit 3\n' > "$tmp/resume-fail10877.sh"
 mkdir -p "$root/.locks/queue/zz-bad10877.lock"
 printf '{not json\n' > "$root/.locks/queue/zz-bad10877.lock/owner.json"
 printf '%s\n' '# resume brief' > "$Wc10877/DEMO-7-N7-worker-RESUME.md"
-CHIEF_LOCK_STATE_TEST_UNKNOWN="$root/tester/c10877/../c10877/DEMO-7-N7-worker-RESUME.md" CHIEF_MUST_RESUME_ROWS="$tmp/resume-fail10877.sh" chief next --bucket c10877dst --doc "$root/tester/c10877/../c10877/DEMO-nextleg-${today}A-chief.md" >/dev/null 2>&1
+printf '#!/usr/bin/env bash\nprintf "NOTE\\tDEMO-7\\t%s\\t2026-11-26T00:00:00Z\\tstatus=To Do\\torig=-\\n"\necho "# open-notes: incomplete locks-unknown n=1 unverified=0 merge_hidden=0 mirror_cursor_age_min=0"\n' "$Wc10877/DEMO-7-N7-worker-RESUME.md" > "$tmp/notes-locks10877.sh"
+CHIEF_OPEN_NOTES="$tmp/notes-locks10877.sh" CHIEF_MUST_RESUME_ROWS="$tmp/resume-fail10877.sh" chief next --bucket c10877dst --doc "$root/tester/c10877/../c10877/DEMO-nextleg-${today}A-chief.md" >/dev/null 2>&1
 rm -rf "$root/.locks/queue/zz-bad10877.lock"
 Bc10877="$root/tester/c10877dst/DEMO-nextleg-${today}B-chief.md"
 livec10877="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$Bc10877" 2>/dev/null)"
@@ -4315,10 +4319,84 @@ check "10877 a doc named by a path with a dot-dot segment still sweeps the bucke
 check "10877 a failed RESUME-row read puts a row naming the failure in Must disposition" "$(printf '%s\n' "$mustc10877" | grep -c 'RESUME rows unavailable.*exited 3')" "1"
 check "10877 the unavailable RESUME rows row names the command to re-run" "$(printf '%s\n' "$mustc10877" | grep -c 'next-dispatchable.sh --resume-only')" "1"
 check "10877 an unreadable lock owner file puts a row in Must disposition" "$(printf '%s\n' "$mustc10877" | grep -c 'zz-bad10877 has no readable owner file')" "1"
-check "10877 a RESUME doc whose lock state is unknown is listed apart, never as a doc with no worker" "$(printf '%s\n' "$mustc10877" | grep -c 'RESUME doc.*DEMO-7-N7-worker-RESUME.md.*lock state unknown, check before relaunch')" "1"
-check "10877 a RESUME doc with an unknown lock state is not listed as an ordinary RESUME doc" "$(printf '%s\n' "$mustc10877" | grep -c 'RESUME doc.*DEMO-7-N7-worker-RESUME.md.*last marker')" "0"
+check "10877 an unknown lock state is said as an incomplete read, never as a doc with no worker" "$(printf '%s\n' "$mustc10877" | grep -c 'RESUME docs incomplete (locks-unknown)')" "1"
+check "10877 an unknown lock state tells the chief not to relaunch until a complete read" "$(printf '%s\n' "$mustc10877" | grep -c 'do not relaunch until a complete read')" "1"
 for i in 1 2; do HANDOVER_DIR="$root" bash "$QL" release "$Wc10877/DEMO-$i-N$i-worker.md" "${tokw10877[i]}" >/dev/null 2>&1; done
 HANDOVER_DIR="$root" bash "$QL" release "$Ac10877" "$tokc10877" >/dev/null 2>&1
+
+tab11333="$(printf '\t')"
+iso_ago11333() { date -u -d "$1 hours ago" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-"$1"H '+%Y-%m-%dT%H:%M:%SZ'; }  # gnu-ok: GNU date -d is paired with BSD date -v on this line
+seam11333() { { printf '#!/usr/bin/env bash\ncat <<'"'"'SEAM_EOF'"'"'\n'; printf '%b\n' "$2"; printf 'SEAM_EOF\n'; } > "$1"; }
+must11333() {
+    local tag="$1" seam="$2" tok A B
+    mkdir -p "$root/tester/$tag"
+    tok="$(token_of "$(chief new --bucket "$tag")")"
+    A="$root/tester/$tag/DEMO-nextleg-${today}A-chief.md"
+    CHIEF_OPEN_NOTES="$seam" chief next --bucket "${tag}dst" --doc "$A" >/dev/null 2>&1
+    B="$root/tester/${tag}dst/DEMO-nextleg-${today}B-chief.md"
+    check "11333 $tag chief next wrote the successor doc" "$([ -f "$B" ] && echo yes || echo no)" "yes"
+    MUST11333="$(awk '$0 == "## Must disposition" { f = 1; next } f && /^## / { exit } f' "$B" 2>/dev/null)"
+    HANDOVER_DIR="$root" bash "$QL" release "$A" "$tok" >/dev/null 2>&1
+}
+trailer11333() { printf '# open-notes: complete n=%s unverified=%s merge_hidden=0 mirror_cursor_age_min=0' "$1" "$2"; }
+t3h11333="$(iso_ago11333 3)"; t1h11333="$(iso_ago11333 1)"; t5h11333="$(iso_ago11333 5)"
+
+bk11333="$root/tester/r1-11333"; mkdir -p "$bk11333"; printf '%s\n' '# resume brief' > "$bk11333/DEMO-41-N41-w-RESUME.md"
+seam11333 "$tmp/n1-11333.sh" "NOTE\tDEMO-41\t$bk11333/DEMO-41-N41-w-RESUME.md\t$t3h11333\tstatus=In Progress\torig=-\n$(trailer11333 1 0)"
+must11333 r1-11333 "$tmp/n1-11333.sh"
+check "11333 an open note prints a RESUME doc row with its age from note_at" "$(printf '%s\n' "$MUST11333" | grep -c 'RESUME doc .*DEMO-41-N41-w-RESUME.md.*open 3 h')" "1"
+
+bk11333="$root/tester/r2-11333"; mkdir -p "$bk11333"
+seam11333 "$tmp/n2-11333.sh" "NOTE\tDEMO-42a\t$bk11333/DEMO-42a-N1-w-RESUME.md\t$t1h11333\tstatus=To Do\torig=-\nNOTE\tDEMO-42b\t$bk11333/DEMO-42b-N1-w-RESUME.md\t$t5h11333\tstatus=To Do\torig=-\n$(trailer11333 2 0)"
+must11333 r2-11333 "$tmp/n2-11333.sh"
+# shellcheck disable=SC2016  # the backticks are literal characters of the markdown code span
+check "11333 two open notes print newest first" "$(printf '%s\n' "$MUST11333" | sed -n 's/^- RESUME doc `[^`]*\/\(DEMO-42[ab]\)-.*/\1/p' | tr '\n' ' ')" "DEMO-42a DEMO-42b "
+
+bk11333="$root/tester/r3-11333"; mkdir -p "$bk11333"; printf '%s\n' '# resume brief' > "$bk11333/DEMO-43-N43-w-RESUME.md"
+must11333 r3-11333 "$tmp/open-notes-none.sh"
+check "11333 a bucket RESUME note the owner does not list prints no row" "$(printf '%s\n' "$MUST11333" | grep -c 'DEMO-43')" "0"
+
+bk11333="$root/tester/r4-11333"; mkdir -p "$bk11333"
+seam11333 "$tmp/n4-11333.sh" "NOTE\tDEMO-45a\t$bk11333/DEMO-45a-N1-w-RESUME.md\t$t1h11333\tstatus=To Do\torig=-\nNOTE\tDEMO-45b\t$bk11333/DEMO-45b-N1-w-RESUME.md\t$t3h11333\tstatus=To Do\torig=-\nNOTE\tDEMO-45c\t$bk11333/DEMO-45c-N1-w-RESUME.md\t$t5h11333\tstatus=To Do\torig=-\n# open-notes: incomplete locks-unknown n=3 unverified=0 merge_hidden=2 mirror_cursor_age_min=0"
+CHIEF_MUST_CAP=1 must11333 r4-11333 "$tmp/n4-11333.sh"
+rows4_11333="$(printf '%s\n' "$MUST11333" | grep '^- ')"
+check "11333 the incomplete row is the first Must row" "$(printf '%s\n' "$rows4_11333" | sed -n 1p | grep -c 'RESUME docs incomplete (locks-unknown)')" "1"
+check "11333 the incomplete row says not to relaunch until a complete read" "$(printf '%s\n' "$rows4_11333" | sed -n 1p | grep -c 'do not relaunch until a complete read')" "1"
+check "11333 the incomplete row carries merge_hidden" "$(printf '%s\n' "$rows4_11333" | sed -n 1p | grep -c 'merge_hidden=2')" "1"
+check "11333 one NOTE row follows under the cap" "$(printf '%s\n' "$rows4_11333" | sed -n 2p | grep -c 'RESUME doc .*DEMO-45a-N1-w-RESUME.md')" "1"
+check "11333 the +N more row names the owner command with --mirror" "$(printf '%s\n' "$rows4_11333" | sed -n 3p | grep -c '+2 more open RESUME docs: list them with bash .*open-resume-notes.sh --bucket .* --mirror ')" "1"
+check "11333 the +N more row carries merge_hidden" "$(printf '%s\n' "$rows4_11333" | sed -n 3p | grep -c 'merge_hidden=2')" "1"
+
+bk11333="$root/tester/r5-11333"; mkdir -p "$bk11333"
+seam11333 "$tmp/n5-11333.sh" "NOTE\tDEMO-46a\t$bk11333/DEMO-46a-N1-w-RESUME.md\t$t1h11333\tstatus=To Do\torig=-\nNOTE\tDEMO-46b\t$bk11333/DEMO-46b-N1-w-RESUME.md\t$t3h11333\tstatus=To Do\torig=-\nUNVERIFIED\tDEMO-44\t$bk11333/DEMO-44-N1-w-RESUME.md\t$t5h11333\treason=no-mirror-file\n$(trailer11333 2 1)"
+CHIEF_MUST_CAP=1 must11333 r5-11333 "$tmp/n5-11333.sh"
+check "11333 an UNVERIFIED row is printed outside the cap" "$(printf '%s\n' "$MUST11333" | grep -c 'ticket DEMO-44 not checked (no-mirror-file), check before relaunch')" "1"
+check "11333 the cap still holds the NOTE rows to one" "$(printf '%s\n' "$MUST11333" | grep -c 'RESUME doc .*DEMO-46[ab]-N1-w-RESUME.md.*open')" "1"
+
+vi11333=0
+while IFS="$tab11333" read -r vname vexp vout; do
+    [ -n "$vname" ] || continue
+    vi11333=$((vi11333 + 1))
+    bk11333="$root/tester/v$vi11333-11333"; mkdir -p "$bk11333"
+    { printf '#!/usr/bin/env bash\ncat <<'"'"'SEAM_EOF'"'"'\n'; printf '%s\n' "${vout//\\n/$'\n'}"; printf 'SEAM_EOF\n'; } > "$tmp/v$vi11333-11333.sh"
+    must11333 "v$vi11333-11333" "$tmp/v$vi11333-11333.sh"
+    case "$vexp" in
+        complete) check "11333 vector $vname reads as complete" "$(printf '%s\n' "$MUST11333" | grep -c 'RESUME docs incomplete')" "0" ;;
+        incomplete:*) check "11333 vector $vname reads as incomplete (${vexp#incomplete:})" "$(printf '%s\n' "$MUST11333" | grep -c "RESUME docs incomplete (${vexp#incomplete:})")" "1" ;;
+    esac
+done < "$REPO_REAL/scripts/handover/chief-kit/fixtures/open-notes-trailers.tsv"
+check "11333 the shared vector file holds eight vectors" "$vi11333" "8"
+
+bk11333="$root/tester/r7-11333"; mkdir -p "$bk11333"
+seam11333 "$tmp/n7-11333.sh" "NOTE\tDEMO-47\t$bk11333/DEMO-47-N1-w-RESUME.md\t$t1h11333\tstatus=To Do\torig=SEAMMARKER11333\n$(trailer11333 1 0)"
+HIMMEL_TEST_FIXTURE='' must11333 r7-11333 "$tmp/n7-11333.sh"
+check "11333 the CHIEF_OPEN_NOTES seam is ignored without HIMMEL_TEST_FIXTURE" "$(printf '%s\n' "$MUST11333" | grep -c 'DEMO-47')" "0"
+check "11333 the real owner ran instead and said its read is incomplete" "$(printf '%s\n' "$MUST11333" | grep -c 'RESUME docs incomplete (mirror-unreadable)')" "1"
+
+bk11333="$root/tester/r8-11333"; mkdir -p "$bk11333"
+seam11333 "$tmp/n8-11333.sh" "NOTE\tDEMO-48\t$bk11333/DEMO-48-N1-w-RESUME.md\t$t1h11333\tstatus=To Do\torig=-\n# open-notes: incomplete mirror-stale n=1 unverified=0 merge_hidden=0 mirror_cursor_age_min=2000"
+must11333 r8-11333 "$tmp/n8-11333.sh"
+check "11333 a stale mirror tells the chief not to relaunch until a complete read" "$(printf '%s\n' "$MUST11333" | grep -c 'RESUME docs incomplete (mirror-stale).*do not relaunch until a complete read')" "1"
 
 mirstale10877="$tmp/mirror-stale10877"; mkdir -p "$mirstale10877"
 cp "$mir10877/DEMO-31.md" "$mirstale10877/DEMO-31.md"
