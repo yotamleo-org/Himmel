@@ -22,14 +22,14 @@
 # 120 s) in a transcript and in the denial log; a brief-lint launch refusal and the front-matter refusal of the same
 # brief within 120 s. Two refusals of one source stay two rows.
 #
-# An unreadable source prints `UNKNOWN <what>` (transcripts, classifier-denials, launch-refusals,
+# An unreadable source prints `UNKNOWN <what>` (transcripts, classifier-denials, launch-refusals, bucket,
 # front-matter-refusals) and exits 3 with no row, never a list that may have lost a refusal. A missing
 # front-matter-refusals.jsonl is no refusal (brief-lint creates it on the first one); a missing denial log or
 # launch record is unread. Exit 2 usage.
 #
 # Defaults: --projects ~/.claude/projects and ~/.claude-codex/projects (at least one must exist),
 # --denials ~/.himmel/state/classifier-denials.jsonl (HIMMEL_CLASSIFIER_DENIALS_LOG), --launch-refusals
-# ~/.himmel/launch-refusals.jsonl, --bucket $HANDOVER_DIR/${USER_SLUG:-yotamleo}/himmel, --friction the
+# ~/.himmel/launch-refusals.jsonl, --bucket the handover bucket (handover_root, user_slug and the primary checkout name), --friction the
 # scripts/eval/friction/friction.py beside this repo's chief kit.
 #
 # PLATFORM GUARD: the chief kit is Linux-only. Needs python3.
@@ -42,10 +42,25 @@ usage() {
     exit 2
 }
 
+default_bucket() {
+    # shellcheck source=../../lib/load-dotenv.sh
+    . "$HERE/../../lib/load-dotenv.sh" || return 1
+    # shellcheck source=../../lib/user-slug.sh
+    . "$HERE/../../lib/user-slug.sh" || return 1
+    # shellcheck source=../../lib/handover-path.sh
+    . "$HERE/../../lib/handover-path.sh" || return 1
+    local primary root slug
+    primary="$(_load_dotenv_primary_for "$HERE/../../..")" || return 1
+    load_dotenv --root "$primary" HANDOVER_DIR USER_SLUG || return 1
+    root="$(handover_root)" || return 1
+    slug="$(cd "$HERE/../../.." && user_slug)" || return 1
+    printf '%s/%s/%s\n' "$root" "$slug" "$(basename "$primary")"
+}
+
 projects=()
 denials="${HIMMEL_CLASSIFIER_DENIALS_LOG:-$HOME/.himmel/state/classifier-denials.jsonl}"
 launch="$HOME/.himmel/launch-refusals.jsonl"
-bucket="${HANDOVER_DIR:-$HOME/Documents/luna/handovers}/${USER_SLUG:-yotamleo}/himmel"
+bucket=""
 friction="$HERE/../../eval/friction/friction.py"
 since=""
 now=""
@@ -62,6 +77,7 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 [ "${#projects[@]}" -gt 0 ] || projects=("$HOME/.claude/projects" "$HOME/.claude-codex/projects")
+[ -n "$bucket" ] || bucket="$(default_bucket)" || bucket=""
 [ -n "$now" ] || now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"  # gnu-ok: chief kit is Linux-only
 
 unknown=()
@@ -73,6 +89,7 @@ done
 [ -n "$existing" ] && [ -r "$friction" ] || unknown+=("transcripts")
 { [ -f "$denials" ] && [ -r "$denials" ]; } || unknown+=("classifier-denials")
 { [ -f "$launch" ] && [ -r "$launch" ]; } || unknown+=("launch-refusals")
+{ [ -d "$bucket" ] && [ -r "$bucket" ]; } || unknown+=("bucket")
 fm="$bucket/front-matter-refusals.jsonl"
 if [ -e "$fm" ] && ! { [ -f "$fm" ] && [ -r "$fm" ]; }; then unknown+=("front-matter-refusals"); fi
 if [ "${#unknown[@]}" -gt 0 ]; then
@@ -132,7 +149,8 @@ for r in tx:
         continue
     ts = utc(r['ts'])
     kind = 'merge' if 'merge' in (r['source'] + r['class']).lower() else 'command'
-    row = dict(ts=ts, kind=kind, source=r['source'], reason=r['class'], verdict=VERDICT.get(r['verdict'], 'unsorted'))
+    verdict = 'unsorted' if kind == 'merge' else VERDICT.get(r['verdict'], 'unsorted')
+    row = dict(ts=ts, kind=kind, source=r['source'], reason=r['class'], verdict=verdict)
     rows.append(row)
     if r['source'] == 'classifier':
         transcript_classifier.append((r['session'], r['class'], ts, row))
@@ -156,12 +174,14 @@ for r, ts in jsonl(os.environ['TR_LAUNCH']):
     row = dict(ts=ts, kind='launch', source='launch:' + cause, reason=str(r.get('reason') or cause), verdict='unsorted')
     rows.append(row)
     if cause == 'brief-lint':
-        brief_lint.append((stem(r.get('name') or r.get('doc')), ts))
+        brief_lint.append([stem(r.get('name') or r.get('doc')), ts, False])
 
 fm = os.environ['TR_FRONT_MATTER']
 if os.path.isfile(fm):
     for r, ts in jsonl(fm):
-        if any(b == stem(r.get('brief')) and abs((t - ts).total_seconds()) <= DEDUP_S for b, t in brief_lint):
+        twin = [x for x in brief_lint if not x[2] and x[0] == stem(r.get('brief')) and abs((x[1] - ts).total_seconds()) <= DEDUP_S]
+        if twin:
+            twin[0][2] = True
             continue
         rows.append(dict(ts=ts, kind='launch', source='front-matter', verdict='unsorted',
                          reason='brief front matter did not parse (line %s)' % r.get('line', '?')))

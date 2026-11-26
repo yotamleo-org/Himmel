@@ -49,6 +49,12 @@ same 'an operator message is its own class, not a reach' "$(jf "$out" 'select(.s
 same 'no row carries any message text' "$(printf '%s\n' "$out" | grep -c LEAKCHECK)" '0'
 same 'rows are in time order' "$(jf "$out" '.ts' | sort -c && echo sorted)" 'sorted'
 
+primary_name="$(basename "$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")")"
+mkdir -p "$W/ho/fixture/$primary_name"
+cp "$FIX/bucket/"*.md "$W/ho/fixture/$primary_name/"
+dflt="$(HANDOVER_DIR="$W/ho" USER_SLUG=fixture bash "$SUT" --since "$SINCE" --now "$NOW" --bridge "$FIX/bridge" 2>/dev/null)"
+same 'with no --bucket the handover root, user slug and primary checkout name give the bucket' "$dflt" "$out"
+
 note="$(bash "$SUT" --since "$SINCE" --now "$NOW" --bridge "$FIX/bridge" --bucket "$FIX/bucket" 2>&1 >/dev/null)"
 case "$note" in *'phone-approval-prompt'*'not seen'*) pass 'the run records that the phone approval prompt source was not seen' ;; *) fail "the run records that the phone approval prompt source was not seen (got '$note')" ;; esac
 

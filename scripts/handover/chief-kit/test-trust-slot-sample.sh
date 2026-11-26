@@ -15,6 +15,7 @@ pass() { printf 'PASS - %s\n' "$1"; }
 fail() { printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }
 same() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi; }
 
+unset PF_ERR PF_OUT PF_RC DP_OUT DP_RC
 NOW=2026-11-26T01:00:00Z
 SINCE=2026-11-26T00:45:00Z
 run() {
@@ -56,6 +57,9 @@ same 'no free slot (50/50) leaves nothing unfilled' "$(jf "$out5" '[.free, .sile
 u="$(PF_ERR='' PF_OUT='' run "$FIX/refusals-nofill.jsonl")"; urc=$?
 same 'a preflight with no FLEET line prints UNKNOWN fleet' "$u" 'UNKNOWN fleet'
 same 'a preflight with no FLEET line exits 3' "$urc" '3'
+u="$(PF_RC=3 run "$FIX/refusals-nofill.jsonl")"; urc=$?
+same 'a preflight that prints a FLEET line and then fails prints UNKNOWN fleet' "$u" 'UNKNOWN fleet'
+same 'a preflight that fails exits 3' "$urc" '3'
 u="$(DP_OUT="$FIX/dispatch-paused.txt" run "$FIX/refusals-nofill.jsonl")"; urc=$?
 same 'a paused dispatcher (quota-pause, no rows) prints UNKNOWN dispatcher' "$u" 'UNKNOWN dispatcher'
 same 'a paused dispatcher exits 3' "$urc" '3'

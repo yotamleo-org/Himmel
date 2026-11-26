@@ -53,6 +53,20 @@ out3="$(run --bucket "$FIX/bucket")"
 same 'the front-matter refusal of a brief already refused at launch is counted once' "$(count "$out3")" '4'
 same 'a front-matter refusal of another brief is a launch row' "$(jf "$out3" 'select(.source == "front-matter") | .reason')" 'brief front matter did not parse (line 4)'
 
+out4="$(run --bucket "$FIX/bucket-twice")"
+same 'a launch refusal matches one front-matter refusal, so a second of the same brief is a row' "$(count "$out4")" '4'
+out5="$(run --projects "$FIX/projects-merge")"
+same 'a merge refusal is kind merge' "$(jf "$out5" 'select(.kind == "merge") | .source')" 'hook:block-unresolved-cr-merge'
+same 'a merge refusal is unsorted whatever friction.py judged' "$(jf "$out5" 'select(.kind == "merge") | .verdict')" 'unsorted'
+
+primary_name="$(basename "$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")")"
+mkdir -p "$W/ho/fixture/$primary_name"
+dflt="$(HANDOVER_DIR="$W/ho" USER_SLUG=fixture bash "$SUT" --projects "$FIX/projects" --denials "$FIX/classifier-denials.jsonl" --launch-refusals "$FIX/launch-refusals.jsonl" --since "$SINCE" --now "$NOW" 2>/dev/null)"
+same 'with no --bucket the handover root, user slug and primary checkout name give the bucket' "$dflt" "$out"
+u="$(HANDOVER_DIR="$W/ho" USER_SLUG=nobody bash "$SUT" --projects "$FIX/projects" --denials "$FIX/classifier-denials.jsonl" --launch-refusals "$FIX/launch-refusals.jsonl" --since "$SINCE" --now "$NOW" 2>/dev/null)"; urc=$?
+same 'a bucket that is not there prints UNKNOWN bucket' "$u" 'UNKNOWN bucket'
+same 'a bucket that is not there exits 3' "$urc" '3'
+
 u="$(bash "$SUT" --projects "$W/no-projects" --denials "$FIX/classifier-denials.jsonl" --launch-refusals "$FIX/launch-refusals.jsonl" --bucket "$W/empty-bucket" --since "$SINCE" --now "$NOW" 2>/dev/null)"; urc=$?
 same 'no transcript directory prints UNKNOWN transcripts' "$u" 'UNKNOWN transcripts'
 same 'no transcript directory exits 3' "$urc" '3'

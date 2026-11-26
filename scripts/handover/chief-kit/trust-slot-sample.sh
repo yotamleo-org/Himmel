@@ -16,7 +16,8 @@
 # --since defaults to 15 minutes before --now (the sample period): pass the previous sample's time.
 #
 # An unreadable source prints `UNKNOWN <what>` (fleet, dispatcher, launch-refusals) and exits 3, never a row built
-# on a guess. The dispatcher is unread when it exits non-zero, prints a quota-pause or gh-stall line (no rows
+# on a guess. The fleet is unread when the preflight exits non-zero (it always exits 0) or prints no FLEET line.
+# The dispatcher is unread when it exits non-zero, prints a quota-pause or gh-stall line (no rows
 # at all), or says its open PRs or live workers are unknown. Exit 2 usage.
 #
 # Seams: TRUST_SLOT_PREFLIGHT_CMD (a script run with bash in place of scripts/lib/usage-preflight.sh),
@@ -53,9 +54,11 @@ preflight="${TRUST_SLOT_PREFLIGHT_CMD:-$HERE/../../lib/usage-preflight.sh}"
 dispatch="${TRUST_SLOT_DISPATCH_CMD:-$HERE/next-dispatchable.sh}"
 
 unknown=()
-pf_out="$(bash "$preflight" 2>&1)"
+pf_rc=0
+pf_out="$(bash "$preflight" 2>&1)" || pf_rc=$?
+[ "$pf_rc" -eq 0 ] || unknown+=("fleet")
 fleet="$(printf '%s\n' "$pf_out" | sed -n -E 's/.*FLEET .*total=([0-9]+)\/([0-9]+).*/\1 \2/p' | tail -n 1)"
-[ -n "$fleet" ] || unknown+=("fleet")
+[ -n "$fleet" ] || { [ "$pf_rc" -ne 0 ] || unknown+=("fleet"); }
 verdict="$(printf '%s\n' "$pf_out" | sed '/^[[:space:]]*$/d' | tail -n 1)"
 
 dp_rc=0

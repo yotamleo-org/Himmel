@@ -22,7 +22,7 @@
 # An unreadable source prints `UNKNOWN <what>` (mirror, manifests, cloud-sessions, sessions) and exits 3 with no
 # row at all, never a partial list that would call a held ticket UNOWNED. Exit 2 usage.
 #
-# Defaults: --mirror the jira mirror dir; --bucket $HANDOVER_DIR/${USER_SLUG:-yotamleo}/himmel (the fleet manifests,
+# Defaults: --mirror the jira mirror dir; --bucket the handover bucket (handover_root, user_slug and the primary checkout name) (the fleet manifests,
 # chief docs and cloud-sessions.tsv live there); --config-dir ~/.claude and ~/.claude-codex (the sessions/<pid>.json
 # registries; at least one must be readable). Test seam: CLAUDE_SESSIONS_PROC (the /proc the pid proof reads).
 #
@@ -40,6 +40,21 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 usage() {
     printf 'usage: trust-owner-sample.sh [--mirror DIR] [--bucket DIR] [--config-dir DIR]... [--now ISO]\n' >&2
     exit 2
+}
+
+default_bucket() {
+    # shellcheck source=../../lib/load-dotenv.sh
+    . "$HERE/../../lib/load-dotenv.sh" || return 1
+    # shellcheck source=../../lib/user-slug.sh
+    . "$HERE/../../lib/user-slug.sh" || return 1
+    # shellcheck source=../../lib/handover-path.sh
+    . "$HERE/../../lib/handover-path.sh" || return 1
+    local primary root slug
+    primary="$(_load_dotenv_primary_for "$HERE/../../..")" || return 1
+    load_dotenv --root "$primary" HANDOVER_DIR USER_SLUG || return 1
+    root="$(handover_root)" || return 1
+    slug="$(cd "$HERE/../../.." && user_slug)" || return 1
+    printf '%s/%s/%s\n' "$root" "$slug" "$(basename "$primary")"
 }
 
 mirror=""
@@ -60,7 +75,7 @@ if [ -z "$mirror" ]; then
     . "$HERE/../../lib/jira-project.sh"
     mirror="$(jira_mirror_dir)"
 fi
-[ -n "$bucket" ] || bucket="${HANDOVER_DIR:-$HOME/Documents/luna/handovers}/${USER_SLUG:-yotamleo}/himmel"
+[ -n "$bucket" ] || bucket="$(default_bucket)" || bucket=""
 [ "${#cfgs[@]}" -gt 0 ] || cfgs=("$HOME/.claude" "$HOME/.claude-codex")
 [ -n "$now" ] || now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"  # gnu-ok: chief kit is Linux-only
 

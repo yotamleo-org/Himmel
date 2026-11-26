@@ -31,18 +31,35 @@
 # An unreadable source prints `UNKNOWN <what>` (route-log, inbound, bucket, chief-doc-date) and exits 3 with no
 # row, never a list that may have lost an item. Exit 2 usage.
 #
-# Defaults: --bridge ${BRIDGE_ROOT:-~/.claude/handover/bridge}; --bucket $HANDOVER_DIR/${USER_SLUG:-yotamleo}/himmel.
+# Defaults: --bridge ${BRIDGE_ROOT:-~/.claude/handover/bridge}; --bucket the handover bucket (handover_root, user_slug and the primary checkout name).
 #
 # PLATFORM GUARD: the chief kit is Linux-only. Needs python3.
 set -uo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
     printf 'usage: trust-reach-sample.sh [--bridge DIR] [--bucket DIR] [--since ISO] [--now ISO]\n' >&2
     exit 2
 }
 
+default_bucket() {
+    # shellcheck source=../../lib/load-dotenv.sh
+    . "$HERE/../../lib/load-dotenv.sh" || return 1
+    # shellcheck source=../../lib/user-slug.sh
+    . "$HERE/../../lib/user-slug.sh" || return 1
+    # shellcheck source=../../lib/handover-path.sh
+    . "$HERE/../../lib/handover-path.sh" || return 1
+    local primary root slug
+    primary="$(_load_dotenv_primary_for "$HERE/../../..")" || return 1
+    load_dotenv --root "$primary" HANDOVER_DIR USER_SLUG || return 1
+    root="$(handover_root)" || return 1
+    slug="$(cd "$HERE/../../.." && user_slug)" || return 1
+    printf '%s/%s/%s\n' "$root" "$slug" "$(basename "$primary")"
+}
+
 bridge="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}"
-bucket="${HANDOVER_DIR:-$HOME/Documents/luna/handovers}/${USER_SLUG:-yotamleo}/himmel"
+bucket=""
 since=""
 now=""
 while [ "$#" -gt 0 ]; do
@@ -54,6 +71,7 @@ while [ "$#" -gt 0 ]; do
         *) usage ;;
     esac
 done
+[ -n "$bucket" ] || bucket="$(default_bucket)" || bucket=""
 [ -n "$now" ] || now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"  # gnu-ok: chief kit is Linux-only
 
 printf 'NOTE phone-approval-prompt: source not seen (the afk-sudo grant ask goes through the root notice bot and leaves only 0-byte markers); bypass-ask and afk-grant-expired lines of route.log are read\n' >&2

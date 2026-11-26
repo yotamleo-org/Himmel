@@ -49,6 +49,11 @@ same 'every row carries the sample time' "$(printf '%s\n' "$out" | jq -r 'select
 same 'a mirror synced 10 minutes ago is 600 s old' "$(field "$out" FIX-1 mirror_age_s)" '600'
 same 'a mirror inside 15 minutes is not stale' "$(field "$out" FIX-1 stale)" 'false'
 same 'every row carries status' "$(field "$out" FIX-3 status)" 'In Review'
+primary_name="$(basename "$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")")"
+mkdir -p "$W/ho/fixture/$primary_name"
+cp "$F/bucket/"* "$W/ho/fixture/$primary_name/"
+dflt="$(HANDOVER_DIR="$W/ho" USER_SLUG=fixture CLAUDE_SESSIONS_PROC="$F/proc" bash "$SUT" --mirror "$F/mirror-root/HIMMEL" --config-dir "$F/config" --now "$NOW" 2>/dev/null)"
+same 'with no --bucket the handover root, user slug and primary checkout name give the bucket' "$dflt" "$out"
 late="$(NOW=x run --now 2026-11-26T01:30:00Z)"
 same 'a stale sample still lists every started ticket' "$(printf '%s\n' "$late" | grep -c '^{')" '8'
 same 'a mirror older than 15 minutes marks every row stale' "$(printf '%s\n' "$late" | jq -r 'select(.stale != true) | .key')" ''
