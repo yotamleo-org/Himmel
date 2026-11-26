@@ -59,9 +59,10 @@
 # which this script never touches. It never runs `pre-commit install` (that
 # clobbers the no-stash wrapper). A repair is reported in one line (hook, files,
 # what changed) to the live chief's inbox, Telegram when none is live
-# (scripts/luna/vault-stall-alert.sh, kind cadence:vault-stall-repair).
+# (scripts/luna/vault-stall-chief.sh, kind cadence:vault-stall-repair).
 #
-# ALERT (scripts/luna/cadence-alert.sh: Telegram once + cadence-alerts.log),
+# ALERT (scripts/luna/cadence-alert.sh through vault-stall-chief.sh: the live chief
+# first, else Telegram once; plus cadence-alerts.log),
 # no commit: any other hook, rule or shape; any file outside handovers/; a
 # remediation already present; a class that stalls again within 24 h of its
 # own remediation (the fix did not hold, e.g. a luna-upgrade clobbered it); or
@@ -74,7 +75,7 @@
 #
 # Seams (tests): VAULT_STALL_STATE_DIR, VAULT_STALL_MIN, VAULT_STALL_GITLEAKS,
 # VAULT_STALL_CRONTAB, VAULT_STALL_RUNNER_DIR, plus cadence-alert.sh's and
-# vault-stall-alert.sh's own.
+# vault-stall-chief.sh's own.
 # Platform: cron (Linux/macOS). Windows development is parked.
 set -uo pipefail
 
@@ -317,7 +318,7 @@ alert() {
     reason="${reason:0:160}"
     if [ "$dry" -eq 1 ]; then echo "vault-stall: would alert: $reason"; return 0; fi
     echo "vault-stall: ALERT $reason"
-    bash "$ALERT" fail "$WORKER" "$reason" "$STATE_DIR/last-run.log"
+    CADENCE_ALERT_SEND_CMD="${CADENCE_ALERT_SEND_CMD:-$SCRIPT_DIR/vault-stall-chief.sh}" bash "$ALERT" fail "$WORKER" "$reason" "$STATE_DIR/last-run.log"
 }
 
 # A remediation runs as four phases that share cmd_run's vault, dry, now, classes,
@@ -441,7 +442,7 @@ report_repair() {
     done
     [ "$nbenign" -le 3 ] || more=" (+$((nbenign - 3)) more)"
     line="vault-stall REPAIRED: ${benign%, }$more - $what and committed; the next sweep flushes the backlog."
-    HIMMEL_ALERT_KIND=cadence:vault-stall-repair bash "$SCRIPT_DIR/vault-stall-alert.sh" "${line:0:300}" || true
+    HIMMEL_ALERT_KIND=cadence:vault-stall-repair bash "$SCRIPT_DIR/vault-stall-chief.sh" "${line:0:300}" || true
 }
 
 run_phases() {

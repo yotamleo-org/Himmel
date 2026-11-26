@@ -1776,7 +1776,7 @@ no resident poller and no tokens. Pure bash + `gh` +
   commits (through its pre-commit hooks, never `--no-verify`) and pushes with
   Obsidian closed. `arm` refuses while `github-sync` is enabled in the vault
   (one writer). A refused commit older than `LUNA_VAULT_STALL_THRESHOLD_MIN`
-  (default 45) goes through `scripts/luna/vault-stall-alert.sh` as one line
+  (default 45) goes through `scripts/luna/vault-stall-chief.sh` as one line
   naming hook, file and reason: the live chief's inbox first, Telegram only when
   no chief is live. Test: `scripts/luna/test-vault-sweep-cadence.sh`.
 - `scripts/luna/vault-stall-cadence.sh run [--vault <p>] [--dry-run]|arm|status|disarm`
@@ -1794,7 +1794,7 @@ no resident poller and no tokens. Pure bash + `gh` +
   `scripts/luna/cadence-alert.sh` with rule, file and line only, never the
   secret, and commits nothing. A completed repair is reported in one line
   (hook, files, what changed) to the live chief's inbox, Telegram only when no
-  chief is live (`scripts/luna/vault-stall-alert.sh`, kind
+  chief is live (`scripts/luna/vault-stall-chief.sh`, kind
   `cadence:vault-stall-repair`). The cadence skips as `busy` while
   `.git/index.lock` exists, the vault sweeper holds `<git-dir>/vault-writer.lock`
   or another run holds its flock. Each class is

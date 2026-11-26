@@ -17,13 +17,6 @@ command -v jq >/dev/null 2>&1 || { echo "SKIP all — jq not on PATH"; exit 0; }
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/vault-stall-alert.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 export VAULT_STALL_ALERT_STATE="$TMP/last-finding"
-export FAILURE_ROUTE_SWEEP_CMD="$TMP/sweep.sh"
-export FAILURE_ROUTE_INBOX_SEND="$TMP/inbox-send.sh"
-printf '#!/usr/bin/env bash\ncat "%s" 2>/dev/null\n' "$TMP/sweep.txt" >"$TMP/sweep.sh"
-# shellcheck disable=SC2016  # the stub's own $1 and $2 stay literal
-printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "$1" "$2" >>"%s"\n' "$TMP/inbox.log" >"$TMP/inbox-send.sh"
-printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/bad-inbox-send.sh"
-chmod +x "$TMP/sweep.sh" "$TMP/inbox-send.sh" "$TMP/bad-inbox-send.sh"
 printf '{"allowFrom":["4242"]}\n' >"$TMP/access.json"
 printf '{"allowFrom":[]}\n' >"$TMP/empty-access.json"
 cat >"$TMP/sender.sh" <<EOF
@@ -127,35 +120,6 @@ rm -f "$TMP/sent.log" "$VAULT_STALL_ALERT_STATE"
 HIMMEL_ALERT_KIND=cadence:qmd-reindex send_with sender.sh "same line"
 HIMMEL_ALERT_KIND=cadence:qmd-reindex send_with sender.sh "same line"
 assert_eq "V14 another sender's repeated line is left to that sender: both are sent" "2" "$(sent_count)"
-
-CHIEF_LINE='slug=u__himmel__X-chief session=s host=h age=5s status=OK'
-inbox_count() { if [ -f "$TMP/inbox.log" ]; then grep -c . "$TMP/inbox.log"; else echo 0; fi; }
-chief_case() {
-    local rc=0
-    rm -f "$TMP/sent.log" "$TMP/inbox.log" "$VAULT_STALL_ALERT_STATE"
-    printf '%s\n' "$2" >"$TMP/sweep.txt"
-    HIMMEL_ALERT_KIND="$1" send_with sender.sh "$3" || rc=$?
-    echo "$rc"
-}
-rc="$(chief_case cadence:vault-stall "$CHIEF_LINE" "msg one")"
-assert_eq "V17 a live chief gets the stall as one inbox line, Telegram is not used, exit 0" \
-    "0 1 X-chief|msg one 0" "$rc $(inbox_count) $(cat "$TMP/inbox.log") $(sent_count)"
-send_with sender.sh "msg one"
-assert_eq "V17b a chief-delivered finding is recorded: the same finding again sends nothing" "1" "$(inbox_count)"
-rc="$(chief_case cadence:vault-stall "" "msg two")"
-assert_eq "V18 no live chief: Telegram gets it, the inbox nothing" "0 0 1" "$rc $(inbox_count) $(sent_count)"
-rm -f "$TMP/sent.log" "$TMP/inbox.log" "$VAULT_STALL_ALERT_STATE"
-printf '%s\n' "$CHIEF_LINE" >"$TMP/sweep.txt"
-rc=0
-FAILURE_ROUTE_INBOX_SEND="$TMP/bad-inbox-send.sh" HIMMEL_ALERT_KIND=cadence:vault-stall send_with sender.sh "msg three" || rc=$?
-assert_eq "V19 a failed inbox send falls through to Telegram, and the finding is recorded once" "0 0 1" "$rc $(inbox_count) $(sent_count)"
-rc="$(chief_case cadence:qmd-reindex "$CHIEF_LINE" "msg four")"
-assert_eq "V20 another cadence kind goes to Telegram even with a chief live" "0 0 1" "$rc $(inbox_count) $(sent_count)"
-rc="$(chief_case cadence:vault-stall-repair "$CHIEF_LINE" "vault-stall REPAIRED: x")"
-assert_eq "V21 a stall repair goes to the live chief" "0 1 X-chief|vault-stall REPAIRED: x 0" "$rc $(inbox_count) $(cat "$TMP/inbox.log") $(sent_count)"
-rc="$(chief_case failure-review "$CHIEF_LINE" "msg five")"
-assert_eq "V22 the failure-review kind is not routed to the chief" "0 0 1" "$rc $(inbox_count) $(sent_count)"
-printf '' >"$TMP/sweep.txt"
 
 # The fixture refusal runs everywhere; the guard's own refusal needs Linux, where the guard runs.
 rc=0
