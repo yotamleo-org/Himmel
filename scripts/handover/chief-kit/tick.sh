@@ -132,6 +132,13 @@ are read from. supply=SHORT:<free> is its own field, printed only beside
 capacity=UNDERFILLED:<slack> when the pool count is numeric and free (the listed
 rows minus the pool-parked ones) is below the slack: the shortage is startable
 work, not the chief. capacity= itself never changes, chief-wait.sh matches it.
+With --workers-from a manifest that names a fleet control, <cap> is the lower of that census cap and
+the family target a managed launch is refused at, and a target below the policy cap prints as
+fleet=<live>/<target>(policy-cap=<cap>); capacity= is held to the same number.
+stale-attempts=<n> follows capacity= (only with such a manifest): the launched attempt records whose
+session is gone plus the unknown ones settleable now, read-only through fleet_runtime.py ack, so the
+tick never settles or edits a record; ? when the control cannot be read. A count above 0 adds one
+`ACTION stale-attempts=<n>: ...` line naming fleet-manifest.sh runtime ack. Not in chief-wait's key.
 
 flakes=<rows>/<suites>@<top-suite>*<k> sits between fails= and spare=
 and is ABSENT unless this repo's suite-flake ledger (run-shell-tests.sh)
@@ -4896,10 +4903,47 @@ fleet_total="$(printf '%s\n' "$fleet_out" | sed -n 's/^bank-preflight: FLEET .*t
 supply=""
 underfill_min="${TICK_UNDERFILL_MIN:-10}"
 case "$underfill_min" in ''|*[!0-9]*) underfill_min=10 ;; esac
+fleet_target=""
+stale_attempts=""
+stale_attempts_listing=""
+if [ -n "$WORKERS_FROM" ] && [ -r "$WORKERS_FROM" ]; then
+    fleet_rt="$(timeout -k 2 "$(tick_bound 20)" python3 -I -c '
+import importlib.util, json, subprocess, sys, time
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("fleet_runtime", sys.argv[1])
+fr = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(fr)
+manifest = Path(sys.argv[2]).absolute()
+try:
+    if "control" not in json.loads(manifest.read_text()):
+        sys.exit(0)
+    ack = fr.ack_read_only(manifest)
+    deadline = time.monotonic() + 5
+    stale = [r for r in ack["unknown"] if r["settle_hint"]["settleable"]]
+    stale += [r for r in ack["launched"] if fr.session_ended(r, deadline)]
+    print(ack["target"], len(stale))
+except (fr.Refused, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+    print("? ?")
+' "$HERE/../../lib/fleet_runtime.py" "$WORKERS_FROM" 2>/dev/null)" || fleet_rt="? ?"  # gnu-ok: Linux-only kit; swallow-ok: an unreadable control reads ?, never a clean 0
+    if [ -n "$fleet_rt" ]; then
+        fleet_target="${fleet_rt% *}"
+        stale_attempts="${fleet_rt#* }"
+        case "$stale_attempts" in
+            ''|*[!0-9]*) stale_attempts='?' ;;
+            0) ;;
+            *) stale_attempts_listing="$(printf 'ACTION stale-attempts=%s: %s launch record(s) still hold family-target slots with no live session; list them: bash %q runtime ack --read-only --manifest %q (its settle commands are for you to type: runtime settle for an unknown attempt, attempt end for a launched one; the tick never settles)' "$stale_attempts" "$stale_attempts" "$HERE/fleet-manifest.sh" "$WORKERS_FROM")" ;;
+        esac
+        case "$fleet_target" in ''|*[!0-9]*) fleet_target="" ;; esac
+    fi
+fi
 if [ -n "$fleet_total" ]; then
     fleet_live="${fleet_total% *}"
     fleet_cap="${fleet_total#* }"
     fleet="$fleet_live/$fleet_cap"
+    if [ -n "$fleet_target" ] && [ $((10#$fleet_target)) -lt $((10#$fleet_cap)) ]; then
+        fleet="$fleet_live/$((10#$fleet_target))(policy-cap=$((10#$fleet_cap)))"
+        fleet_cap=$((10#$fleet_target))
+    fi
     # Last dispatch = newest <name>.launch.log under the chief work dir: the
     # file's final write is the "konsole launched" line, so its mtime is the
     # real window start (the sig- file is touched again at release, and lock
@@ -5265,6 +5309,7 @@ if [ "$verbose" -eq 1 ]; then
     fi
     printf 'fleet: %s\n' "$fleet"
     printf 'capacity: %s\n' "$capacity"
+    [ -z "$stale_attempts" ] || printf 'stale-attempts: %s\n' "$stale_attempts"
     [ -z "$supply" ] || printf 'supply: %s\n' "$supply"
     printf 'gql: %s\n' "$gql"
     [ -z "$quota_items" ] || printf 'quota: %s\n' "$quota_items"
@@ -5386,6 +5431,7 @@ else
     [ "$burn" -eq 0 ] || compact_field burn "$burn_summary"
     compact_field fleet "$fleet"
     compact_field capacity "$capacity"
+    compact_field stale-attempts "$stale_attempts"
     compact_field gql "$gql"
     compact_field rest-main "$(rest_compact "$rest_main_line")"
     compact_field rest-read "$(rest_compact "$rest_read_line")"
@@ -5468,6 +5514,7 @@ else
             find "$arr_sdir" -maxdepth 1 -name 'tick-arrivals-wake-*' -mtime +7 -delete 2>/dev/null  # gnu-ok: console kit is Linux-only # swallow-ok: an unprunable old claim is harmless
         fi
     fi
+    [ -z "$stale_attempts_listing" ] || printf '%s\n' "$stale_attempts_listing"
     if [ -n "$holdout_summary" ]; then
         printf 'ACTION holdout=%s: an idle worker holds on an outside event; have it WRAP with what it owes written down, then bash %q watch %q add <pr> --head <sha> --comments <n> --reviews <n> and close-wrapped-worker.sh --fleet %q <doc> (chief-wait wakes you as WAKE pr-watch)\n' \
             "$holdout_summary" "$HERE/fleet-manifest.sh" "${WORKERS_FROM:-<manifest>}" "${WORKERS_FROM:-<manifest>}"

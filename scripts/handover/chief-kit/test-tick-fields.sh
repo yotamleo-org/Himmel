@@ -1099,6 +1099,73 @@ for q_field in workers livestate prs tails acts vmrun; do
 done
 not_contains "chief-wait's key field list gains no quota" "$q_key_line" 'quota'
 
+fr_build="$W/fr-build.py"
+cat > "$fr_build" <<'PY'
+import json, socket, sys
+bucket, target, mode = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+host = socket.gethostname()
+boot = open('/proc/sys/kernel/random/boot_id').read().strip()
+def ident(pid, dead):
+    if dead:
+        return {'host': host, 'boot': boot, 'pid': pid, 'start': '1'}
+    start = open('/proc/%d/stat' % pid).read().rsplit(')', 1)[1].split()[19]
+    return {'host': host, 'boot': boot, 'pid': pid, 'start': start}
+attempts = {}
+for spec in sys.argv[4:]:
+    aid, kind, pid = spec.split(':')
+    pid = int(pid)
+    attempts[aid] = {'attempt_id': aid, 'phase': 'launched', 'doc': bucket + '/' + aid + '.md', 'name': 'HIMMEL-' + aid,
+                     'keys': [], 'manifest': bucket + '/chief.fleet.json', 'family': 'fam', 'control_generation': 1,
+                     'owner': ident(pid, True), 'session': ident(pid, kind == 'dead'), 'began_ticks': 0, 'initial_marker': '',
+                     'receipt': {'v': 2, 'kind': 'launch-attempt', 'attempt_id': aid}}
+json.dump({'schema': 1, 'family': 'fam', 'mode': mode, 'generation': 1, 'target': target,
+           'updated': '2026-11-26T00:00:00Z', 'reason': 'test', 'attempts': attempts}, open(bucket + '/fleet-control.json', 'w'))
+json.dump({'schema': 1, 'workers': [], 'control': {'family': 'fam', 'anchor': bucket + '/fleet-control.json'}}, open(bucket + '/chief.fleet.json', 'w'))
+PY
+sleep 300 & fr_live=$!
+{ true & fr_dead=$!; wait "$fr_dead"; } 2>/dev/null
+fr_root="$(cd "$W" && pwd -P)"
+fr_tick() {
+    if [ "$2" = - ]; then
+        STUB_FLEET_LINE="$1" TICK_LAUNCH_DIR="$W/no-launch-dir-fr" bash "$SUT" 2>/dev/null
+    else
+        STUB_FLEET_LINE="$1" TICK_LAUNCH_DIR="$W/no-launch-dir-fr" bash "$SUT" --workers-from "$2" 2>/dev/null
+    fi
+}
+fr_census='bank-preflight: FLEET native=31 claudex=0 openrouter=0 reserved=0 total=31/50'
+mkdir -p "$fr_root/fr-low" "$fr_root/fr-eq" "$fr_root/fr-high"
+python3 -I "$fr_build" "$fr_root/fr-low" 35 active "live1:live:$fr_live"
+python3 -I "$fr_build" "$fr_root/fr-eq" 50 active "live1:live:$fr_live"
+python3 -I "$fr_build" "$fr_root/fr-high" 60 active "live1:live:$fr_live"
+fr_low="$(fr_tick "$fr_census" "$fr_root/fr-low/chief.fleet.json")"
+contains 'a family target of 35 under a policy cap of 50 reads fleet=<live>/35' "$fr_low" ' fleet=31/35'
+contains 'the line names the policy cap beside the family target' "$fr_low" 'policy-cap=50'
+contains 'capacity= is held to the family target too: 35 minus 31 live' "$fr_low" 'capacity=UNDERFILLED:4'
+fr_eq="$(fr_tick "$fr_census" "$fr_root/fr-eq/chief.fleet.json")"
+contains 'control: a target equal to the policy cap keeps fleet=<live>/<cap>' "$fr_eq" ' fleet=31/50 '
+not_contains 'control: no policy-cap note when the target equals the cap' "$fr_eq" 'policy-cap'
+contains 'control: capacity= still reads against the cap' "$fr_eq" 'capacity=UNDERFILLED:19'
+fr_high="$(fr_tick "$fr_census" "$fr_root/fr-high/chief.fleet.json")"
+contains 'a target above the policy cap leaves the policy cap the effective cap' "$fr_high" ' fleet=31/50 '
+fr_none="$(fr_tick "$fr_census" -)"
+contains 'no manifest: fleet= reads the census cap unchanged' "$fr_none" ' fleet=31/50 '
+not_contains 'no manifest: no stale-attempts field' "$fr_none" 'stale-attempts'
+printf '%s\n' '{"schema":1,"workers":[]}' > "$fr_root/fr-unbound.fleet.json"
+fr_unbound="$(fr_tick "$fr_census" "$fr_root/fr-unbound.fleet.json")"
+contains 'an unmanaged manifest (no control reference): fleet= reads the census cap unchanged' "$fr_unbound" ' fleet=31/50 '
+not_contains 'an unmanaged manifest: no stale-attempts field' "$fr_unbound" 'stale-attempts'
+contains 'only live records: stale-attempts=0' "$fr_low" 'stale-attempts=0'
+not_contains 'only live records: no stale-attempts wake line' "$fr_low" 'ACTION stale-attempts'
+mkdir -p "$fr_root/fr-stale"
+python3 -I "$fr_build" "$fr_root/fr-stale" 35 active "live1:live:$fr_live" "gone1:dead:$fr_dead"
+fr_before="$(cksum "$fr_root/fr-stale/fleet-control.json" "$fr_root/fr-stale/chief.fleet.json" | tr -d '\n')"
+fr_stale="$(fr_tick "$fr_census" "$fr_root/fr-stale/chief.fleet.json")"
+contains 'one launched record whose session is gone: stale-attempts=1' "$fr_stale" 'stale-attempts=1'
+contains 'a wake line names fleet-manifest.sh runtime ack' "$fr_stale" 'ACTION stale-attempts=1:'
+contains 'the wake line points at the read-only ack listing' "$fr_stale" 'fleet-manifest.sh runtime ack --read-only --manifest'
+same 'a tick settles and edits no record: fleet-control.json and the manifest are byte-identical' "$(cksum "$fr_root/fr-stale/fleet-control.json" "$fr_root/fr-stale/chief.fleet.json" | tr -d '\n')" "$fr_before"
+kill "$fr_live" 2>/dev/null
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick-fields.sh'
     exit 0
