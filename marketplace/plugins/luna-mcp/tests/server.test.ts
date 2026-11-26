@@ -1004,6 +1004,35 @@ describe("audit lines for refusals and protocol calls", () => {
     it("denies a body it cannot read", () => {
       assert.deepEqual(outcomeOf(200, "application/json", body("not json")), { verdict: "deny", reason: "mcp-unreadable" });
     });
+
+    const spread = (message: unknown): string =>
+      JSON.stringify(message, null, 1)
+        .split("\n")
+        .map((line) => `data: ${line}`)
+        .join("\n");
+
+    it("reads a JSON-RPC error split across several data lines of one event", () => {
+      const event = `event: message\n${spread({ jsonrpc: "2.0", id: 1, error: { code: -32601, message: "Method not found" } })}\n\n`;
+      assert.deepEqual(outcomeOf(200, "text/event-stream", body(event)), { verdict: "deny", reason: "mcp-error" });
+    });
+
+    it("reads a JSON-RPC result split across several data lines of one event", () => {
+      const event = `event: message\n${spread({ jsonrpc: "2.0", id: 1, result: { tools: [{ name: "read_doc" }] } })}\n\n`;
+      assert.deepEqual(outcomeOf(200, "text/event-stream", body(event)), { verdict: "allow", reason: null });
+    });
+
+    it("reads events with CRLF line endings and judges them all, one verdict for the message", () => {
+      const first = spread({ jsonrpc: "2.0", id: 1, result: {} });
+      const second = spread({ jsonrpc: "2.0", id: 2, error: { code: -32600, message: "Invalid Request" } });
+      const stream = `${first}\n\n${second}\n\n`.replace(/\n/g, "\r\n");
+      assert.deepEqual(outcomeOf(200, "text/event-stream", body(stream)), { verdict: "deny", reason: "mcp-error" });
+    });
+
+    it("keeps data lines of different events apart, and denies a split event that is still not JSON", () => {
+      const apart = `data: {"jsonrpc":"2.0",\n\ndata: "id":1,"result":{}}\n\n`;
+      assert.deepEqual(outcomeOf(200, "text/event-stream", body(apart)), { verdict: "deny", reason: "mcp-unreadable" });
+      assert.deepEqual(outcomeOf(200, "text/event-stream", body(`data: {"jsonrpc":\ndata: "2.0"\n\n`)), { verdict: "deny", reason: "mcp-unreadable" });
+    });
   });
 
   it("refuses a subscriptions/listen stream and says so in the audit log", async (t) => {

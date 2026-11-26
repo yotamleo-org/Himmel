@@ -52,6 +52,18 @@ check_none() {
   esac
 }
 
+RECLAIM_RE='reclaim|staleMs|rename\(lock'
+printf 'async function reclaimStaleLock() {}\n' > "$planted/reclaim.ts"
+printf 'const lock = 1;\n' > "$planted/lock-clean.ts"
+expect_hit "a lock reclaim" "$planted/reclaim.ts" "$RECLAIM_RE"
+verdict_of() { ( check_none "x" "$@" ) 2>&1; }
+found=$(verdict_of "$RECLAIM_RE" "$planted/reclaim.ts")
+clean=$(verdict_of "$RECLAIM_RE" "$planted/lock-clean.ts")
+broken=$(verdict_of "$RECLAIM_RE" "$tmp/does-not-exist")
+case "$found" in *FAIL*) pass "control: a scan that finds the pattern fails" ;; *) fail "control: a scan that finds the pattern did not fail" ;; esac
+case "$clean" in *PASS*) pass "control: a scan that finds nothing passes" ;; *) fail "control: a clean scan did not pass" ;; esac
+case "$broken" in *"scan failed"*) pass "control: a scan error is a failure, not a pass" ;; *) fail "control: a scan error was not reported as a failure" ;; esac
+
 for f in .claude-plugin/plugin.json package.json package-lock.json .npmrc README.md tsconfig.json systemd/luna-mcp.service; do
   if [ -f "$HERE/$f" ]; then pass "$f exists"; else fail "$f is missing"; fi
 done
@@ -86,7 +98,7 @@ if grep -q '"node_modules/yaml"' "$HERE/package-lock.json"; then pass "the lockf
 if grep -q 'parseDocument' "$HERE/src/paths.ts"; then pass "frontmatter is read with the yaml parser"; else fail "paths.ts does not use the yaml parser"; fi
 if grep -q '/proc/self/fd' "$HERE/src/paths.ts"; then pass "paths.ts verifies through the opened handle"; else fail "paths.ts does not use /proc/self/fd"; fi
 if grep -qi 'linux only' "$HERE/README.md"; then pass "README says the service is Linux only"; else fail "README does not say the service is Linux only"; fi
-if grep -qE 'reclaim|staleMs|rename\(lock' "$HERE/src/cli/keys.ts"; then fail "keys.ts reclaims locks automatically"; else pass "keys.ts never reclaims a lock"; fi
+check_none "keys.ts never reclaims a lock" "$RECLAIM_RE" "$HERE/src/cli/keys.ts"
 check_none "package.json has no caret or tilde range" "$RANGE_RE" "$HERE/package.json"
 check_none "package.json names no v1 SDK, node adapter or web framework" '"(@modelcontextprotocol/(sdk|node)|hono|express|fastify|koa)"' "$HERE/package.json"
 check_none "the lockfile carries no v1 SDK, node adapter or hono" '"node_modules/(@modelcontextprotocol/(sdk|node)|hono)"' "$HERE/package-lock.json"
@@ -99,8 +111,11 @@ check_none "src imports no web framework, v1 SDK or node adapter" "$NET_IMPORT_R
 if grep -rqE "from \"@modelcontextprotocol/server\"" "$HERE/src/server.ts" && grep -q 'createMcpHandler' "$HERE/src/server.ts" && grep -q 'requireBearerAuth' "$HERE/src/auth.ts"; then pass "src uses createMcpHandler and requireBearerAuth from the v2 server package"; else fail "src does not use the v2 createMcpHandler and requireBearerAuth"; fi
 
 check_none "no absolute home path in src, tests, README, systemd or package.json" "$HOME_RE" "$HERE/src" "$HERE/tests" "$HERE/README.md" "$HERE/systemd" "$HERE/package.json"
-tailnet_hits=$(scan "$TAILNET_RE" "$HERE/src" "$HERE/tests" "$HERE/README.md" "$HERE/systemd" 2>/dev/null | grep -vE 'example-tailnet\.ts\.net')
-if [ -z "$tailnet_hits" ]; then pass "every tailnet host is the example placeholder"; else fail "a tailnet host is not a placeholder:"; printf '%s\n' "$tailnet_hits" | head -5; fi
+tailnet_out=$(scan "$TAILNET_RE" "$HERE/src" "$HERE/tests" "$HERE/README.md" "$HERE/systemd" 2>/dev/null); tailnet_rc=$?
+tailnet_hits=$(printf '%s\n' "$tailnet_out" | { grep -vE 'example-tailnet\.ts\.net' || true; })
+if [ "$tailnet_rc" -gt 1 ]; then fail "the tailnet scan failed (grep rc=$tailnet_rc)"
+elif [ -z "$tailnet_hits" ]; then pass "every tailnet host is the example placeholder"
+else fail "a tailnet host is not a placeholder:"; printf '%s\n' "$tailnet_hits" | head -5; fi
 check_none "no tailnet address in src, tests, README or systemd" "$CGNAT_RE" "$HERE/src" "$HERE/tests" "$HERE/README.md" "$HERE/systemd"
 
 unit="$HERE/systemd/luna-mcp.service"
@@ -117,7 +132,12 @@ for needle in 'timingSafeEqual:src/auth.ts' 'expectedResource:src/auth.ts' 'O_NO
   word=${needle%%:*}; file=${needle#*:}
   if grep -qF "$word" "$HERE/$file"; then pass "$file uses $word"; else fail "$file does not use $word"; fi
 done
-if grep -qiE 'headers?\.(set|append)\([^)]*origin' "$HERE/src/qmd-proxy.ts" || grep -qiE '"origin"[[:space:]]*:' "$HERE/src/qmd-proxy.ts"; then fail "qmd-proxy sets an Origin header"; else pass "qmd-proxy sets no Origin header"; fi
+grep -qiE 'headers?\.(set|append)\([^)]*origin|"origin"[[:space:]]*:' "$HERE/src/qmd-proxy.ts"; origin_rc=$?
+case "$origin_rc" in
+  0) fail "qmd-proxy sets an Origin header" ;;
+  1) pass "qmd-proxy sets no Origin header" ;;
+  *) fail "qmd-proxy.ts could not be scanned (grep rc=$origin_rc)" ;;
+esac
 
 for doc in 'luna-mcp-keys' 'luna-mcp-audit' 'systemctl --user' '/luna/health' 'LUNA_MCP_PUBLIC_URL' 'HIMMEL_REPO' 'QMD_HTTP_TOKEN_FILE' 'LUNA_MCP_KEYS_FILE' 'LUNA_MCP_AUDIT_FILE' 'QMD_CONFIG_FILE'; do
   if grep -qF -- "$doc" "$HERE/README.md"; then pass "README documents $doc"; else fail "README does not document $doc"; fi

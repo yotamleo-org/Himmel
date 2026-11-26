@@ -90,11 +90,26 @@ interface Outcome {
   reason: string | null;
 }
 
+function eventData(text: string): string[] {
+  const events: string[] = [];
+  let lines: string[] = [];
+  for (const line of text.split(/\r\n|\r|\n/)) {
+    if (line === "") {
+      if (lines.length > 0) events.push(lines.join("\n"));
+      lines = [];
+    } else if (line.startsWith("data:")) {
+      lines.push(line.slice(5).replace(/^ /, ""));
+    }
+  }
+  if (lines.length > 0) events.push(lines.join("\n"));
+  return events;
+}
+
 export function outcomeOf(status: number, contentType: string, body: ArrayBuffer): Outcome {
   if (status < 200 || status >= 300) return { verdict: "deny", reason: `mcp-status-${status}` };
   const text = Buffer.from(body).toString("utf8").trim();
-  const payloads = contentType.includes("event-stream") ? text.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()) : [text];
-  for (const payload of payloads.filter((p) => p !== "")) {
+  const payloads = contentType.includes("event-stream") ? eventData(text) : [text];
+  for (const payload of payloads.filter((p) => p.trim() !== "")) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(payload);
