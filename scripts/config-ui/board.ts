@@ -259,12 +259,12 @@ function handoffAnswered(bucket: string, handoff: string, line: string): boolean
 }
 function handoffAsks(sec: string[]): string[] {
   const asks: string[] = [];
-  let base = 0;
+  let base = 0, open = false;
   for (const raw of sec) {
-    if (!raw.trim()) continue;
+    if (!raw.trim()) { open = false; continue; }
     const indent = raw.length - raw.trimStart().length;
-    if (indent > base && asks.length) asks[asks.length - 1] += ` ${raw.trim().replace(/^[-*]\s+/, "")}`;
-    else { asks.push(raw.trim()); base = indent; }
+    if (open && indent > base) asks[asks.length - 1] += ` ${raw.trim().replace(/^[-*]\s+/, "")}`;
+    else { asks.push(raw.trim()); base = indent; open = true; }
   }
   return asks;
 }

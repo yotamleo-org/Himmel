@@ -80,10 +80,12 @@ test("10947: equally indented sibling HANDOFF bullets stay separate asks, so a c
     "  - approve the held spend",
     "    - detail of the spend",
     "- approve the account renewal", "  - detail of the renewal", "",
+    "**None** other.", "",
+    "  - approve the seat after the blank line", "",
   ].join("\n"));
   const o = readOwed(env);
   if (o.state !== "ok") throw new Error(o.reason);
-  expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["approve the held spend detail of the spend", "approve the account renewal detail of the renewal"]);
+  expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["approve the held spend detail of the spend", "approve the account renewal detail of the renewal", "approve the seat after the blank line"]);
 });
 
 test("10947: one owner classifier: a chief signature, a judge GO and a relaunch are the chief's in every source; a bypass go code is the operator's", () => {
