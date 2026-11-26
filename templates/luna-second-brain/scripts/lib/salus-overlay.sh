@@ -10,6 +10,10 @@
 #   - appends the medical posture block to _CLAUDE.md once (idempotent).
 #   - drops the .salus-profile marker (upgrade.sh gates on it) AND the .salus
 #     PHI guard marker — never overwrites an existing .salus.
+#   - installs NO repo-local .agents/hooks.json: Antigravity (agy, a trusted
+#     interactive route per decision 1259) gets its hooks from the user-scope
+#     backstop, and a workspace file would fail closed on every tool call in a
+#     non-himmel repo. An existing one is reported, never touched.
 # Returns non-zero only on a missing overlay dir. bash 3.2-safe.
 apply_salus_overlay() {
   local repo_root="$1"
@@ -41,6 +45,9 @@ apply_salus_overlay() {
   if [ -f "$repo_root/_CLAUDE.md" ] && ! grep -q "salus-posture-block" "$repo_root/_CLAUDE.md"; then
     printf '\n' >> "$repo_root/_CLAUDE.md"
     cat "$ov/_CLAUDE.salus.md" >> "$repo_root/_CLAUDE.md"
+  fi
+  if [ -e "$repo_root/.agents/hooks.json" ]; then
+    echo "salus-overlay: WARNING .agents/hooks.json exists in the vault — it fails closed outside himmel; remove it (Antigravity hooks come from the user-scope backstop)" >&2
   fi
   printf 'salus medical-vault profile - managed by setup --medical / upgrade\n' > "$repo_root/.salus-profile"
   # PHI guard marker: the PHI launcher guards (claude-glm/

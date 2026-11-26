@@ -34,6 +34,9 @@ check "posture appended to _CLAUDE"  "grep -q 'salus-posture-block' '$VAULT/_CLA
 check "base _CLAUDE preserved"       "grep -q 'base rules here' '$VAULT/_CLAUDE.md'"
 check ".salus-profile marker dropped" "[ -f '$VAULT/.salus-profile' ]"
 check ".salus PHI guard marker dropped" "[ -f '$VAULT/.salus' ]"
+check "posture names Antigravity/agy as a trusted interactive processor" "grep -qi 'antigravity' '$VAULT/_CLAUDE.md' && grep -q 'agy' '$VAULT/_CLAUDE.md'"
+check "posture keeps API-key Gemini denied" "grep -qi 'API-key Gemini' '$VAULT/_CLAUDE.md'"
+check "no repo-local .agents/hooks.json installed" "[ ! -e '$VAULT/.agents/hooks.json' ] && [ ! -d '$VAULT/.agents' ]"
 
 # skin archive ships schema-only (header + separator, ZERO data rows)
 _datarows="$(grep -cE '^\| 20[0-9][0-9]-' "$VAULT/_skin-photo-archive.md" 2>/dev/null || true)"
@@ -75,6 +78,12 @@ check "existing settings NOT clobbered" "grep -q 'do-not-clobber' '$VAULT/.claud
 check "posture appended ONCE (idempotent)" "[ \"\$(grep -c 'salus-posture-block' '$VAULT/_CLAUDE.md')\" -eq 1 ]"
 check "existing .salus NOT clobbered" "grep -q 'operator-customized' '$VAULT/.salus'"
 
+mkdir -p "$VAULT/.agents"; printf '{}\n' > "$VAULT/.agents/hooks.json"
+_warn="$(apply_salus_overlay "$VAULT" 2>&1 >/dev/null)"
+check "a stray repo-local .agents/hooks.json is reported" "printf '%s' \"\$_warn\" | grep -q 'agents/hooks.json'"
+check "a stray .agents/hooks.json is left untouched" "[ -f '$VAULT/.agents/hooks.json' ]"
+rm -rf "$VAULT/.agents"
+
 echo "== egress floor BEHAVIOR (the structural PHI floor must actually DENY, not just exist) =="
 # CR Critical: assert the installed hook's exit codes per tool, so a
 # regression that inverted a deny-arm would fail loudly instead of passing green.
@@ -90,6 +99,7 @@ e_qmd="$(egress_exit '{"tool_name":"mcp__plugin_qmd_qmd__query"}')"
 e_obs="$(egress_exit '{"tool_name":"mcp__obsidian-vault__x"}')"
 e_skillok="$(egress_exit '{"tool_name":"Skill","tool_input":{"command":"obsidian-daily"}}')"
 e_benign="$(egress_exit '{"tool_name":"Bash","tool_input":{"command":"cp a b"}}')"
+e_gsub="$(egress_exit '{"tool_name":"gemini-subagent"}')"
 check "egress DENIES WebFetch (exit 2)"   "[ '$e_web' = 2 ]"
 check "egress DENIES git push (exit 2)"   "[ '$e_push' = 2 ]"
 check "egress DENIES curl (exit 2)"       "[ '$e_curl' = 2 ]"
@@ -100,6 +110,7 @@ check "egress ALLOWS local qmd (exit 0)"  "[ '$e_qmd' = 0 ]"
 check "egress ALLOWS localhost obsidian (exit 0)" "[ '$e_obs' = 0 ]"
 check "egress ALLOWS benign Skill (exit 0)" "[ '$e_skillok' = 0 ]"
 check "egress ALLOWS benign bash (exit 0)" "[ '$e_benign' = 0 ]"
+check "egress DENIES the gemini-subagent tool (exit 2)" "[ '$e_gsub' = 2 ]"
 
 echo "== error path: apply against a dir with no overlay must fail =="
 NOOV="$(mktemp -d 2>/dev/null || mktemp -d -t noov)"

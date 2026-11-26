@@ -20,6 +20,7 @@ TPL="$WORK/template"
 mkdir -p "$TPL"
 cp -R "$TEMPLATE_SRC/scripts" "$TPL/scripts"
 cp -R "$TEMPLATE_SRC/_profiles" "$TPL/_profiles"
+cp "$TEMPLATE_SRC/AGENTS.md" "$TPL/AGENTS.md"
 mkdir -p "$TPL/marketplace/.claude-plugin"
 printf '{ "metadata": { "version": "99.0.0" }, "plugins": [] }\n' \
   > "$TPL/marketplace/.claude-plugin/marketplace.json"
@@ -48,6 +49,8 @@ chk "operator _CLAUDE rules preserved" "grep -q 'my own rules' '$MED/_CLAUDE.md'
 # make_vault fixtures above) must get the PHI guard marker backfilled by a
 # plain upgrade — this is the durability fix's own re-run path.
 chk ".salus PHI guard marker backfilled on upgrade" "[ -f '$MED/.salus' ]"
+chk "AGENTS.md delivered to the medical vault" "cmp -s '$TPL/AGENTS.md' '$MED/AGENTS.md'"
+chk "no repo-local .agents/hooks.json in the medical vault" "[ ! -e '$MED/.agents/hooks.json' ]"
 
 echo "== non-medical vault (no marker) — gate must SKIP medical assets =="
 PLAIN="$WORK/vault-plain"; make_vault "$PLAIN" 0
