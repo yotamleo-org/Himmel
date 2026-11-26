@@ -102,6 +102,22 @@ For every other failure the launcher:
    ```
 
    - The class is `refused`, `rejected` (exit 6) or `call-failed`.
+   - **Who is told.** A `call-failed` alert (a per-call budget cap such as
+     `error_max_budget_usd`, a call timeout, any other non-zero exit) is the chief's
+     to handle, so it is one line in a chief's bridge inbox
+     (`<bridge root>/consoles/<name>.md`, tagged `[api-lane call-failed]`) and no
+     Telegram message. Only a chief whose waiter heartbeat is under 30 minutes old
+     and whose waiter has not exited counts as armed (a waiter that exited on a
+     `wake-` reason still does; a chief that has stopped leaves its inbox file
+     behind, and that file takes no line once its waiter has exited on a
+     non-`wake-` reason or its heartbeat has aged out; a wait file with no
+     recognised `state=` takes none either). The inbox is `HIMMEL_CONSOLE_NAME`'s when that
+     chief is armed, else the armed chief with the freshest heartbeat across every
+     project; the launcher never creates an inbox. With no armed chief inbox it pages the
+     operator as below, so an alert is never lost. A `rejected` alert (credit gone,
+     or the key is invalid) and an eval `refused` alert need an operator act and
+     still page the operator, whatever chief is armed. The message class is
+     `api-lane-call-failed` (`silent`) in `scripts/telegram/message-classes.json`.
    - **A refusal alerts for the eval only.** The API lane's own use is the eval
      (`HIMMEL_API_KIND=eval`). A `refused` call of any other kind (a critic, a
      judge, a bulk call, and a lane that is off by design) sends no alert: the
