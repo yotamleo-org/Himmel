@@ -540,8 +540,9 @@ effort guidance, including the chief's own wake-up budget, is in
   brief. Run a minerva worker for each `CORE` key without `SPEC ok`.
 - **The minerva design worker launches on a key with no spec.** The
   brief for that minerva worker carries the line `> **Design leg:** minerva`,
-  spelled exactly so, and a `Writes:` line that names only `.md` files in the
-  state repo's `specs/` folder. Each file is either relative to the bucket,
+  spelled exactly so, and a `Writes:` line that names the `.md` files of the
+  state repo's `specs/` folder (and, beside an absolute spec, that spec's own
+  minerva files, below). Each file is either relative to the bucket,
   such as `specs/designs/<KEY>-<slug>.md` or `specs/plans/<KEY>-<slug>.md`,
   or an absolute path under the handover root. `brief-lint.sh` then reads the
   brief as a design worker. A key that is core only because of its label gets
@@ -550,6 +551,20 @@ effort guidance, including the chief's own wake-up budget, is in
   file or a word of prose, the marker brief is refused outright. A build brief
   never carries the marker, so it still needs `SPEC ok`. Without the marker, a
   `specs/` token is not a path, and the ticket's own paths decide.
+- **A design leg's `Writes:` line also names its spec's minerva files.**
+  `gen-briefs.py` adds them itself, after the core gate, for every absolute spec
+  under `specs/design`, `specs/designs` or `specs/spec` on a design leg: the
+  `<stem>.estimate.json`, the `<stem>.html` page, the plan in `specs/plans/`, and
+  the spec and plan critic returns r1 to r6 beside the spec. So a design leg's
+  `scope` text need not list them and should not say "spec and plan only": a
+  `> **Minerva files:**` line right after the `Writes:` line tells the worker they
+  are part of its Writes. `brief-lint.sh` and `gen-briefs.py` fold those exact names
+  out of the docs-only test, so a ticket may name them too and the leg stays a
+  design leg; any other `.json` or `.html` still makes it a build leg. Siblings fold
+  only beside an absolute spec path under the handover root: next to a
+  bucket-relative spec, a sibling still refuses the `Design leg: minerva` brief.
+  A spec that keeps its estimate under another name, the `specs/<KEY>/` layout and a
+  round past r6 are not added; those still cost one ask to the chief.
 
 The chief's own helper subagents (`Agent` dispatches inside the chief session)
 follow the same policy: raise *effort* before tier, and name the model per
