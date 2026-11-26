@@ -2558,14 +2558,15 @@ open_notes_age_text() {
 
 # shellcheck disable=SC2016  # the backticks are literal markdown code spans
 must_open_notes_rows() {
-    local pdir="$1" mirror="$2" cap="$3" on_out="" last ntr nrows urows verdict="" reasons="" hidden=0 clause cmd tag key path at st orig rest label marker total=0 tab
+    local pdir="$1" mirror="$2" cap="$3" on_out="" last ntr nrows urows verdict="" reasons="" hidden=0 clause cmd tag key path at st orig rest label marker total=0 tab tb
     local trailer_re='^# open-notes: (complete|incomplete [^ ]+) n=([0-9]+) unverified=([0-9]+) merge_hidden=([0-9]+) mirror_cursor_age_min=([0-9]+|-)$'
     tab="$(printf '\t')"
     cmd="bash $kit/open-resume-notes.sh --bucket $pdir --mirror $mirror"
     if [ "${HIMMEL_TEST_FIXTURE:-}" = 1 ] && [ -n "${CHIEF_OPEN_NOTES:-}" ]; then
         on_out="$(bash "$CHIEF_OPEN_NOTES" 2>/dev/null)" || :  # swallow-ok: a failed read is judged by its trailer below
     else
-        on_out="$(timeout -k 3 90 bash "$kit/open-resume-notes.sh" --bucket "$pdir" --mirror "$mirror" 2>/dev/null)" || :  # swallow-ok: a failed read is judged by its trailer below
+        tb="$(bash -c '. "$1" >/dev/null 2>&1; printf %s "$_TIMEOUT_BIN"' _ "$HERE/../../lib/timeout-bin.sh" 2>/dev/null)" || tb=""  # swallow-ok: no timeout binary = an unbounded run
+        on_out="$(${tb:+"$tb" -k 3 90} bash "$kit/open-resume-notes.sh" --bucket "$pdir" --mirror "$mirror" 2>/dev/null)" || :  # swallow-ok: a failed read is judged by its trailer below
     fi
     last="${on_out##*$'\n'}"
     ntr="$(printf '%s\n' "$on_out" | grep -c '^# open-notes:')" || ntr=0  # swallow-ok: grep -c exits 1 on a count of 0
