@@ -116,7 +116,8 @@ tok=$(gh_token r "$good_sum")
 PROJ="$TMP/no-checkout" run_case "$(search_payload "x $tok")"
 refused "a checkout without detect-token-in-output.sh still refuses (built-in regex)"
 
-mkdir -p "$TMP/narrowed/scripts/hooks" "$TMP/invalid/scripts/hooks" "$TMP/wider/scripts/hooks" "$TMP/empty/scripts/hooks" "$TMP/plain/scripts/hooks" "$TMP/nojq"
+mkdir -p "$TMP/narrowed/scripts/hooks" "$TMP/invalid/scripts/hooks" "$TMP/wider/scripts/hooks" "$TMP/empty/scripts/hooks" "$TMP/plain/scripts/hooks" "$TMP/nullable/scripts/hooks" "$TMP/nojq"
+printf "tok_re='(zzq_[0-9]{4}|)'\n" >"$TMP/nullable/scripts/hooks/detect-token-in-output.sh"
 printf "tok_re='(ghp_[0-9A-Za-z]{99})'\n" >"$TMP/narrowed/scripts/hooks/detect-token-in-output.sh"
 printf "tok_re='(['\n" >"$TMP/invalid/scripts/hooks/detect-token-in-output.sh"
 printf "tok_re='(zzq_[0-9]{4})'\n" >"$TMP/wider/scripts/hooks/detect-token-in-output.sh"
@@ -124,8 +125,8 @@ printf "tok_re='(x*)'\n" >"$TMP/empty/scripts/hooks/detect-token-in-output.sh"
 printf "tok_re='(secretword)'\n" >"$TMP/plain/scripts/hooks/detect-token-in-output.sh"
 ln -s "$(command -v cat)" "$TMP/nojq/cat"
 fixtures=0
-for d in narrowed invalid wider empty plain; do if [ -s "$TMP/$d/scripts/hooks/detect-token-in-output.sh" ]; then fixtures=$((fixtures + 1)); fi; done
-assert_eq "the five detector fixtures were written" 5 "$fixtures"
+for d in narrowed invalid wider empty plain nullable; do if [ -s "$TMP/$d/scripts/hooks/detect-token-in-output.sh" ]; then fixtures=$((fixtures + 1)); fi; done
+assert_eq "the six detector fixtures were written" 6 "$fixtures"
 if [ -L "$TMP/nojq/cat" ] && [ -x "$TMP/nojq/cat" ]; then echo "PASS the no-jq PATH holds cat"; else echo "FAIL the no-jq PATH holds cat"; FAILED=$((FAILED + 1)); fi
 tok=$(gh_token r "$good_sum")
 PROJ="$TMP/wider" run_case "$(search_payload "look up zzq_1234")"
@@ -133,6 +134,8 @@ refused "a checkout regex that adds a shape is followed as extra coverage"
 PROJ="$TMP/plain" run_case "$(search_payload "look up secretword")"
 refused "a checkout regex match with no underscore is refused"
 assert_lacks "a checkout regex match with no underscore: message omits the match" "secretword" "$ERR"
+PROJ="$TMP/nullable" run_case "$(search_payload "look up zzq_1234")"
+refused "a checkout regex that can match the empty string still finds a later nonempty match"
 PROJ="$TMP/empty" run_case "$(fetch_payload "https://example.com/lookup?q=${pct}67${tok#g}")"
 refused "a checkout regex that matches the empty string does not hide a percent-encoded token"
 PROJ="$TMP/narrowed" run_case "$(search_payload "x $tok")"

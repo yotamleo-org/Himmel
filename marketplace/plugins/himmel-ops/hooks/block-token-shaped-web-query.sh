@@ -45,10 +45,17 @@ percent_decode() {
 }
 
 match_token() {
-    local re
+    local re rest tries
     for re in "$default_re" "$extra_re"; do
         [ -n "$re" ] || continue
-        if [[ $1 =~ $re ]] && [ -n "${BASH_REMATCH[0]}" ]; then found="${BASH_REMATCH[1]:-${BASH_REMATCH[0]}}"; return 0; fi
+        rest="$1"
+        tries=0
+        while [[ $rest =~ $re ]]; do
+            if [ -n "${BASH_REMATCH[0]}" ]; then found="${BASH_REMATCH[1]:-${BASH_REMATCH[0]}}"; return 0; fi
+            tries=$((tries + 1))
+            if [ -z "$rest" ] || [ "$tries" -ge 512 ]; then break; fi
+            rest="${rest:1}"
+        done
     done
     return 1
 }
