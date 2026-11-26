@@ -258,7 +258,7 @@ audit_case A6 plugin_version_bump "$EF"
 # A7 (lint) is gone: the job is ungated.
 # A8 (lanes_and_trust) is gone: the job is ungated. The A8 test below
 # pins that no gate group or ci.yml output brings it back.
-tests_under 'scripts/jira|scripts/bitbucket|scripts/himmel-run|scripts/ci-orchestrator|plugins/himmel-gh|plugins/himmel-jira|marketplace/plugins/himmel-bus' > "$EF"
+tests_under 'scripts/jira|scripts/bitbucket|scripts/himmel-run|scripts/ci-orchestrator|plugins/himmel-gh|plugins/himmel-jira|marketplace/plugins/himmel-bus|marketplace/plugins/luna-mcp' > "$EF"
 audit_case A9 node_suites "$EF"
 # A10 (bun_suites) is gone: the job is ungated.
 # A11 control: the audit sees the one-hop reference the judge found (a vacuous

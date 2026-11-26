@@ -49,6 +49,7 @@ updates:
       - "/plugins/himmel-gh"
       - "/plugins/himmel-jira"
       - "/marketplace/plugins/himmel-bus"
+      - "/marketplace/plugins/luna-mcp"
       - "/scripts/ci-orchestrator"
       - "/scripts/config-ui/agui-web"
       - "/scripts/config-ui/tests/e2e"
