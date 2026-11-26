@@ -437,6 +437,23 @@ dl_refused "8q8 --core-only: the marker on a specs/ path with a .. segment is re
 dl_refused "8q9 --core-only: the marker on a specs/ path with a . segment is refused" "$tmp/dl_dot.md" 'specs/./HIMMEL-9419-x.md' --core-only
 dl_refused "8q10 the marker on a specs/ path with an empty segment is refused" "$tmp/dl_empty.md" 'specs//HIMMEL-9419-x.md'
 HANDOVER_DIR="$tmp/state" dl_refused "8q11 the marker on an absolute bucket .md outside specs/ is refused" "$tmp/dl_absout.md" "$tmp/state/u/r/HIMMEL-9419-x.md"
+MSD="$tmp/state/specs/designs"; mkdir -p "$MSD" "$tmp/outside-l"; : > "$tmp/outside-l/real.json"
+ln -s "$tmp/outside-l/real.json" "$MSD/HIMMEL-9415-sym.estimate.json"
+MSX='## Results (newest at the bottom)'
+mk l1_ok '# HIMMEL-9415 — a design leg naming its spec, estimate and page' "$PA" '> **Contract:** y' "> **Writes:** $MSD/HIMMEL-9415-x.md $MSD/HIMMEL-9415-x.estimate.json $MSD/HIMMEL-9415-x.html" "$MSX"
+mk l1_tick '# HIMMEL-9415 — the same names in backticks' "$PA" '> **Contract:** y' "> **Writes:** \`$MSD/HIMMEL-9415-x.md\` \`$MSD/HIMMEL-9415-x.estimate.json\` \`$MSD/HIMMEL-9415-x.html\`" "$MSX"
+mk l1_data '# HIMMEL-9415 — a .json that is no sibling of the spec' "$PA" '> **Contract:** y' "> **Writes:** $MSD/HIMMEL-9415-x.md $MSD/HIMMEL-9415-data.json" "$MSX"
+mk l1_sym '# HIMMEL-9415 — an estimate that is a symlink out of the root' "$PA" '> **Contract:** y' "> **Writes:** $MSD/HIMMEL-9415-sym.md $MSD/HIMMEL-9415-sym.estimate.json" "$MSX"
+mk l1_out '# HIMMEL-9415 — a spec and estimate outside the root' "$PA" '> **Contract:** y' "> **Writes:** $tmp/outside-l/specs/designs/HIMMEL-9415-x.md $tmp/outside-l/specs/designs/HIMMEL-9415-x.estimate.json" "$MSX"
+HANDOVER_DIR="$tmp/state" expect_rc "L1 a core-labelled design leg naming its spec, estimate and page passes" 0 "$tmp/l1_ok.md"
+HANDOVER_DIR="$tmp/state" expect_rc "L1 the same names in backticks pass" 0 "$tmp/l1_tick.md"
+HANDOVER_DIR="$tmp/state" expect_rc "L1 control: a .json that is no sibling of the spec is refused" 3 "$tmp/l1_data.md"
+HANDOVER_DIR="$tmp/state" expect_rc "L1 control: an estimate that is a symlink out of the root is refused (rc 1: the Writes validation)" 1 "$tmp/l1_sym.md"
+HANDOVER_DIR="$tmp/state" expect_rc "L1 control: a spec and estimate outside the root are refused (rc 1: the Writes validation)" 1 "$tmp/l1_out.md"
+mk l2_ok '# HIMMEL-9415 — a minerva design leg naming its spec, estimate and page' "$PA" '> **Contract:** y' "$DL" "> **Writes:** $MSD/HIMMEL-9415-x.md $MSD/HIMMEL-9415-x.estimate.json $MSD/HIMMEL-9415-x.html" "$MSX"
+mk l2_data '# HIMMEL-9415 — the marker beside a .json that is no sibling' "$PA" '> **Contract:** y' "$DL" "> **Writes:** $MSD/HIMMEL-9415-x.md $MSD/HIMMEL-9415-data.json" "$MSX"
+HANDOVER_DIR="$tmp/state" expect_rc "L2 the marker brief naming its spec, estimate and page passes" 0 "$tmp/l2_ok.md"
+HANDOVER_DIR="$tmp/state" dl_refused "L2 control: the marker beside a .json that is no sibling is refused, naming it" "$tmp/l2_data.md" "$MSD/HIMMEL-9415-data.json"
 # a relative token is a path only when it reads as a repo file: n/a and and/or name nothing
 mk na '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '> **Writes:** n/a' '## Results (newest at the bottom)'
 mk andor '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '> **Writes:** and/or' '## Results (newest at the bottom)'
@@ -741,7 +758,7 @@ unset CLAUDE_GLM_CONFIG_DIR
 H_BADB="$tmp/home-badbytes"; mkdir -p "$H_BADB/.config/claude-codex"; printf '\377\376\000bad\n' > "$H_BADB/.config/claude-codex/phi-roots"
 sal_rc "10a a phi-roots list with bad bytes reads as salus-marked, not as a crash" 0 "$H_BADB" "$CW_HIM"
 KIT="$tmp/kit"; mkdir -p "$KIT/scripts/handover/chief-kit" "$KIT/scripts/lib"
-cp "$LINT" "$KIT/scripts/handover/chief-kit/"; cp "$HERE/../../lib/"*.sh "$KIT/scripts/lib/"
+cp "$LINT" "$HERE/minerva_siblings.py" "$KIT/scripts/handover/chief-kit/"; cp "$HERE/../../lib/"*.sh "$KIT/scripts/lib/"
 mkc s_kit_ok "$CW_HIM" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
 KLINT="$KIT/scripts/handover/chief-kit/brief-lint.sh"
 rc=0; bash "$KLINT" "$tmp/s_kit_ok.md" >/dev/null 2>&1 || rc=$?

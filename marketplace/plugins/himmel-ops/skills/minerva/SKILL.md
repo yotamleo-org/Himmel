@@ -351,8 +351,10 @@ link out of the figure. The generator draws it on the page and refuses a spec
 with none, or with one it will not draw. A refusal names a line in the spec to
 fix; fix that first. Generate the page again every round and never edit it by
 hand: the spec is the one source of the page. The
-generator prints two shas: never pass them on or use them. The page goes unnamed
-in a design brief's Writes, as `brief-lint.sh` admits only `.md` there. The **files
+generator prints two shas: never pass them on or use them.
+The page is named on a generated design brief's Writes line beside its spec, with the
+spec's estimate record, plan and critic returns; `brief-lint.sh` folds those names out
+of its docs-only test. The **files
 under review** are the spec and its page, if it has one. Add these words after the
 charter, and give the critic no hash yourself:
 
