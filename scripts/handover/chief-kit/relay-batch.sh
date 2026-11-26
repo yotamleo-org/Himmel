@@ -80,8 +80,8 @@ sender="$(basename "$doc" .md)"
 rol="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${sender}.md.relay-on-live"
 [ "$(sed -n 1p "$rol" 2>/dev/null)" = "$successor" ] && rm -f "$rol"  # swallow-ok: no marker, nothing to disarm
 send="${INBOX_SEND:-$HERE/inbox-send.sh}"
-# shellcheck source=../../lib/worker-identity.sh
-. "$HERE/../../lib/worker-identity.sh"
+# shellcheck source=go-deliver.sh
+. "$HERE/go-deliver.sh" || { echo "relay-batch: cannot load go-deliver.sh" >&2; exit 1; }
 # the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
 # shellcheck source=../../lib/legacy-names.sh
 . "$HERE/../../lib/legacy-names.sh"
@@ -183,37 +183,9 @@ $bus_queue
 EOB
     [ -z "$dir" ] || rm -rf "$dir"
 }
-# resolve_session <worker doc>: the session name is read from the live census, never
-# guessed: a worker launches under its full doc stem (dated, even -RESUME) or an undated
-# name. Candidates: the full stem first, then worker_identity's names; exactly one live
-# match (hits=1) is the session.
 resolve_session() {
-    local lnames
-    lstem="$(basename "$1" .md)"
-    lnames="$(worker_identity "$1")"; lnames="${lnames#*$'\t'}"
-    cands=",$lstem,$lnames,"
-    hits=0; lsession=""
-    while IFS=$'\t' read -r _cpid cname _rest; do
-        [ -n "$cname" ] || continue
-        case "$cands" in *",$cname,"*) hits=$((hits + 1)); lsession="$cname" ;; esac
-    done <<EOC
-$census_lines
-EOC
-    [ "$hits" -eq 0 ] || return 0
-    # A worker relaunched under a lettered label (doc N90, session N90b): with that label put back
-    # to the doc's, the session name must equal a candidate.
-    local dlabel clabel back
-    dlabel="$(worker_label "$1")"
-    [[ $dlabel =~ ^N[0-9]+$ ]] || return 0
-    while IFS=$'\t' read -r _cpid cname _rest; do
-        [ -n "$cname" ] || continue
-        clabel="$(worker_label "$cname")"
-        [[ $clabel =~ ^${dlabel}[a-z]+$ ]] || continue
-        back="$(printf '%s' "$cname" | sed -E "s/-${clabel}(-|\$)/-${dlabel}\\1/")"
-        case "$cands" in *",$back,"*) hits=$((hits + 1)); lsession="$cname" ;; esac
-    done <<EOC
-$census_lines
-EOC
+    gd_session "$1" "$census_lines"
+    lsession="$GD_SESSION"; hits="$GD_HITS"; cands="$GD_CANDS"
 }
 bus_queue=""
 # The live process census (pid<TAB>name<TAB>model<TAB>autocompact), taken once.
