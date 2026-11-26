@@ -31,7 +31,15 @@ mk_tok() {
 }
 TOK_GHP=$(mk_tok "ghp""_" "$(rep A 30)")
 TOK_GHO=$(mk_tok "gho""_" "$(rep b 30)")
-TOK_PAT="github""_pat_${B62:0:41}${B62:10:41}"
+pat_body=""
+for ((i = 0; i < 82; i++)); do pat_body="$pat_body${B62:i*7%62:1}"; done
+TOK_PAT="github""_pat_$pat_body"
+masked() { case "$1" in github_pat_*) printf 'github_pat_…%s' "${1:${#1}-4}" ;; *) printf '%s…%s' "${1:0:4}" "${1:${#1}-4}" ;; esac; }
+shows_only_mask() {
+    local pre
+    case "$2" in github_pat_*) pre=11 ;; *) pre=4 ;; esac
+    grep -qF "$(masked "$2")" "$1" && ! grep -qF "${2:${#2}-5}" "$1" && ! grep -qF "${2:0:pre+1}" "$1"
+}
 TOK_SHORT="ghp""_$(rep A 35)"
 
 printf '{"allowFrom":["12345"]}' >"$TMP/access.json"
@@ -72,6 +80,10 @@ else fail "hook output JSON shape"; fi
 if [ "$(sent_count)" = 1 ] && grep -q '^12345	TOKEN-IN-OUTPUT' "$TMP/sent.log" && no_value "$TMP/sent.log" "$TOK_GHO"; then
     pass "one DM to the operator, without the value"
 else fail "DM sent once without value (count=$(sent_count))"; fi
+if grep -q 'TOKEN-IN-OUTPUT LIVE' "$TMP/out" && shows_only_mask "$TMP/out" "$TOK_GHO" && grep -q 'TOKEN-IN-OUTPUT LIVE' "$TMP/sent.log" \
+    && shows_only_mask "$TMP/sent.log" "$TOK_GHO"; then
+    pass "a checksum-valid token pages as LIVE with its prefix and last four only"
+else fail "LIVE text with prefix and last four: $(head -c 300 "$TMP/out")"; fi
 
 # 3. Same token, same session: no second DM (still shown on screen).
 run_hook "$(j_post Read s1 "GITHUB_PERSONAL_ACCESS_TOKEN=$TOK_GHO")"
@@ -202,28 +214,45 @@ grep -rqF -e "$TOK_GHO" -e "$TOK_PAT" -e "$TOK_GHP" "$TMP/alerts"
 g=$?
 if [ "$g" = 1 ] && [ -n "$(ls -A "$TMP/alerts")" ]; then pass "sentinels hold no token"; else fail "token in sentinel dir (grep rc=$g)"; fi
 
-# 13. Fixtures: a token-shaped value that is low-entropy AND fails the GitHub
-# checksum is a test fixture, not a credential: no screen alert, no DM, no sentinel.
+# 13. Placeholders: a ghp_/gho_/ghu_/ghs_/ghr_ value that fails the GitHub
+# checksum is a test fixture, not a credential: one PLACEHOLDER line on screen
+# with its prefix and last four only, no agent report, no DM, no sentinel.
+is_placeholder() {
+    [ "$rc" = 0 ] && grep -q 'TOKEN-IN-OUTPUT PLACEHOLDER' "$1" && ! grep -q 'LIVE' "$1" && [ "$(wc -l <"$1" | tr -d ' ')" = 1 ] \
+        && ! jq -e '.hookSpecificOutput' "$1" >/dev/null 2>&1 && shows_only_mask "$1" "$2"
+}
 before=$(sent_count)
 fixtures=("ghp""_$(rep A 36)" "ghp""_$(rep E 36)" "ghp""_$(rep C 36)" "gho""_$(rep b 36)")
 for fx in "${fixtures[@]}"; do
     run_hook "$(j_post Bash s12 "T=$fx")"
-    if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ] && [ "$(sent_count)" = "$before" ]; then pass "repeated-char fixture ${fx:0:4} x36 is silent"; else fail "fixture ${fx:0:4} paged (rc=$rc)"; fi
+    if is_placeholder "$TMP/out" "$fx" && [ "$(sent_count)" = "$before" ]; then pass "repeated-char fixture ${fx:0:4} x36 is a PLACEHOLDER, not paged"; else fail "fixture ${fx:0:4} (rc=$rc): $(head -c 300 "$TMP/out")"; fi
 done
 if [ -z "$(find "$TMP/alerts" -name 's12__*' 2>/dev/null)" ]; then pass "a fixture leaves no sentinel"; else fail "fixture sentinel written"; fi
 off="${TOK_GHP%?}0"
 [ "$off" != "$TOK_GHP" ] || off="${TOK_GHP%?}1"
 run_hook "$(j_post Bash s12 "T=$off")"
-if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ]; then pass "a low-entropy token with a changed checksum is silent"; else fail "bad-checksum low-entropy token paged"; fi
-# The fail-safe: a random-looking body with a wrong checksum is NOT called a
-# fixture, so a wrong checksum rule can never hide a real token.
+if is_placeholder "$TMP/out" "$off" && [ "$(sent_count)" = "$before" ]; then pass "a low-entropy token with a changed checksum is a PLACEHOLDER"; else fail "bad-checksum low-entropy token: $(head -c 300 "$TMP/out")"; fi
 rnd="ghp""_${B62:5:36}"
 [ "$rnd" != "$(mk_tok "ghp""_" "${B62:5:30}")" ] || rnd="ghp""_${B62:9:36}"
 run_hook "$(j_post Bash s12 "T=$rnd")"
-if grep -q 'TOKEN-IN-OUTPUT' "$TMP/out"; then pass "random-looking body with a wrong checksum still alerts"; else fail "random wrong-checksum token went silent"; fi
+if is_placeholder "$TMP/out" "$rnd" && [ "$(sent_count)" = "$before" ]; then pass "high-entropy body with a wrong checksum is a PLACEHOLDER, not paged"; else fail "high-entropy wrong-checksum token: $(head -c 300 "$TMP/out")"; fi
+replay="ghp""_${B62:36:26}${B62:0:10}"
+run_hook "$(j_post Bash s12 "SECRET=$replay")"
+if is_placeholder "$TMP/out" "$replay" && grep -q 'ghp_…6789, variable SECRET' "$TMP/out" && [ "$(sent_count)" = "$before" ] \
+    && [ -z "$(find "$TMP/alerts" -name 's12__*' 2>/dev/null)" ]; then
+    pass "the 2026-11-26 alphabet fixture is a PLACEHOLDER ghp_…6789, not paged"
+else fail "2026-11-26 replay (count=$(sent_count)): $(head -c 300 "$TMP/out")"; fi
 pat_fx="github""_pat_$(rep C 82)"
 run_hook "$(j_post Bash s12 "T=$pat_fx")"
-if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ]; then pass "github_pat_ of one repeated char is silent"; else fail "repeated github_pat_ paged"; fi
+if is_placeholder "$TMP/out" "$pat_fx" && [ "$(sent_count)" = "$before" ]; then pass "github_pat_ of one repeated char is a PLACEHOLDER"; else fail "repeated github_pat_: $(head -c 300 "$TMP/out")"; fi
+pat_seq="github""_pat_${B62:0:41}${B62:10:41}"
+run_hook "$(j_post Bash s12 "T=$pat_seq")"
+if is_placeholder "$TMP/out" "$pat_seq" && [ "$(sent_count)" = "$before" ]; then pass "github_pat_ with a sequential body is a PLACEHOLDER"; else fail "sequential github_pat_: $(head -c 300 "$TMP/out")"; fi
+run_hook "$(j_post Bash s12b "T=$TOK_PAT")"
+if grep -q 'TOKEN-IN-OUTPUT LIVE' "$TMP/out" && shows_only_mask "$TMP/out" "$TOK_PAT" && [ "$(sent_count)" = "$((before + 1))" ]; then
+    pass "github_pat_ with a varied, non-sequential body pages as LIVE"
+else fail "varied github_pat_ (count=$(sent_count)): $(head -c 300 "$TMP/out")"; fi
+before=$(sent_count)
 for pre in ghp gho ghu ghs ghr; do
     run_hook "$(j_post Bash "s13$pre" "T=$(mk_tok "${pre}_" "$(rep Q9 15)")")"
     if grep -q "${pre}_…" "$TMP/out"; then pass "checksum-valid ${pre}_ token alerts"; else fail "valid ${pre}_ token silent"; fi

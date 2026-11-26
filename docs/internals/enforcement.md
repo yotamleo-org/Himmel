@@ -5186,7 +5186,12 @@ shapes (`ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_` + 36 alphanumerics, `github_pat_` +
 result. On a hit it emits `systemMessage` plus `additionalContext` and sends
 one Telegram DM through `merge-block-alert.sh`'s sender, naming the tool, the
 token kind and the variable it was assigned to when the text shows one, never
-the value. One DM per (session, token); the sentinel under
+the value. The alert says LIVE or PLACEHOLDER and shows only the prefix and the
+last four characters: a `ghp_`-family value that fails the GitHub CRC32
+checksum, or a `github_pat_` body with fewer than 8 distinct characters or a
+run of 8 consecutive alphabet characters, is a PLACEHOLDER (a test fixture) and
+gets one `systemMessage` line, no agent report and no DM; only LIVE pages.
+One DM per (session, token); the sentinel under
 `~/.himmel/state/token-in-output` is a sha256 prefix, never the token, and a
 failed send removes it so a later call retries; a sent DM writes `sent` into
 it, and an empty one older than 2 minutes (a hook killed mid-send) is

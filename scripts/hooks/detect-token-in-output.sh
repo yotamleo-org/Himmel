@@ -15,13 +15,15 @@
 # array, Codex or Claude) does not matter, and a token in tool_input (a Write
 # body) counts too: it lands in the transcript all the same.
 #
-# On a hit it emits ONE JSON object on stdout: `systemMessage` for the
+# On a LIVE hit it emits ONE JSON object on stdout: `systemMessage` for the
 # operator's screen and `additionalContext` telling the agent to report it, and
 # sends one Telegram DM to the operator through merge-block-alert.sh's bridge
-# sender (the same path vault-stall-alert.sh uses). The alert names the tool,
-# the token kind and the variable it was assigned to when the text shows one
-# (`NAME=token`, `'NAME': 'token'`), NEVER the value. One DM per (session,
-# token): the sentinel is a sha256 of the token, never the token.
+# sender (the same path vault-stall-alert.sh uses). A PLACEHOLDER hit (a test
+# fixture, see is_live_token) gets the `systemMessage` line only: no report, no
+# DM. Either names the tool, the token kind, its last four characters and the
+# variable it was assigned to when the text shows one (`NAME=token`,
+# `'NAME': 'token'`), NEVER more of the value. One DM per (session, token): the
+# sentinel is a sha256 of the token, never the token.
 #
 # Fail-OPEN: a detector must never break a tool call on its own bug, and a
 # PostToolUse hook cannot stop a call that already ran. Always exits 0.
@@ -39,24 +41,33 @@ IFS= read -r -d '' input 2>/dev/null || :
 tok_re='(gh[opusr]_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{82})'
 [[ $input =~ $tok_re ]] || exit 0
 
-# A test fixture is never a credential, and we call a value one only when two
-# independent signals agree, so a wrong guess about either cannot hide a real
-# token. (1) Low entropy: a random base62 body has far more than 7 distinct
-# characters; a fixture is one or two characters repeated. (2) A real
-# ghp_/gho_/ghu_/ghs_/ghr_ token ends in a 6-char base62 CRC32 of the 30 chars
-# before it, so a fixture fails it. A fine-grained PAT carries no checksum, so
-# low entropy alone decides it. Pure bash: the regex-hit path forks nothing.
+# LIVE or PLACEHOLDER. A real ghp_/gho_/ghu_/ghs_/ghr_ token ends in a 6-char
+# base62 CRC32 of the 30 chars before it, so one that fails it is a fixture,
+# however random its body looks. A fine-grained PAT carries no checksum: it is a
+# placeholder when its body has fewer than 8 distinct characters or a run of 8
+# consecutive alphabet characters, which a random body almost never holds.
+# Pure bash: the regex-hit path forks nothing.
 b62="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-is_real_token() {
-    local t="$1" body seen="" ch c i j b n sum=""
-    case "$t" in github_pat_*) body="${t#github_pat_}" ;; *) body="${t:4}" ;; esac
-    n=${#body}
-    for ((i = 0; i < n; i++)); do
-        ch="${body:i:1}"
-        case "$seen" in *"$ch"*) ;; *) seen="$seen$ch" ;; esac
-    done
-    [ "${#seen}" -ge 8 ] && return 0
-    case "$t" in github_pat_*) return 1 ;; esac
+is_live_token() {
+    local t="$1" body seen="" ch c i j b n sum="" k prev=-1 run=0
+    case "$t" in
+        github_pat_*)
+            body="${t#github_pat_}"
+            n=${#body}
+            for ((i = 0; i < n; i++)); do
+                ch="${body:i:1}"
+                case "$seen" in *"$ch"*) ;; *) seen="$seen$ch" ;; esac
+                k="${b62%%"$ch"*}"
+                k=${#k}
+                if [ "$k" -lt 62 ] && [ "$prev" -ge 0 ] && [ "$k" = $(((prev + 1) % 62)) ]; then run=$((run + 1)); else run=1; fi
+                [ "$run" -ge 8 ] && return 1
+                prev=$k
+                [ "$k" -lt 62 ] || prev=-1
+            done
+            [ "${#seen}" -ge 8 ]
+            return
+            ;;
+    esac
     body="${t:4:30}"
     c=4294967295
     for ((i = 0; i < 30; i++)); do
@@ -75,40 +86,43 @@ is_real_token() {
 }
 
 # Every distinct token in the text, not just the first: a token already alerted
-# on must not hide a new one printed after it. A fixture is skipped here, so a
-# text holding only fixtures ends the hook below, silent.
+# on must not hide a new one printed after it.
 tokens=()
+fakes=()
 rest=$input
 while [[ $rest =~ $tok_re ]]; do
     t="${BASH_REMATCH[1]}"
-    case " ${tokens[*]-} " in
+    case " ${tokens[*]-} ${fakes[*]-} " in
         *" $t "*) ;;
-        *) if is_real_token "$t"; then tokens+=("$t"); fi ;;
+        *) if is_live_token "$t"; then tokens+=("$t"); else fakes+=("$t"); fi ;;
     esac
     rest="${rest#*"$t"}"
 done
-[ "${#tokens[@]}" -gt 0 ] || exit 0
 
-# Per token: the kind and the variable it was assigned to, when the text shows
-# one. Names are read from the DECODED string values (jq), so an escaped `\n`
-# before `NAME=` does not become part of the name; without jq, the raw text.
-# Quotes may still be JSON-escaped there (`\"`), hence the backslash in the
-# bracket. A name that is itself a token is never used: it would echo it.
+# Per token: the kind, its last four characters and the variable it was
+# assigned to, when the text shows one; never more of the value. Names are read
+# from the DECODED string values (jq), so an escaped `\n` before `NAME=` does
+# not become part of the name; without jq, the raw text. Quotes may still be
+# JSON-escaped there (`\"`), hence the backslash in the bracket. A name that is
+# itself a token is never used: it would echo it.
 scan=""
 if command -v jq >/dev/null 2>&1; then
     scan=$(jq -r '[.. | strings] | join("\n")' <<<"$input" 2>/dev/null) || scan=""
 fi
 [ -n "$scan" ] || scan=$input
-desc=""
-for token in "${tokens[@]}"; do
-    kind="${token%%_*}_"
-    case "$token" in github_pat_*) kind="github_pat_" ;; esac
-    var="unknown"
-    name_re="([A-Za-z_][A-Za-z0-9_]*)[\"'\\\\]*[=:][[:space:]]*[\"'\\\\]*${token}"
-    if [[ $scan =~ $name_re ]]; then var="${BASH_REMATCH[1]}"; fi
-    if [[ $var =~ $tok_re ]]; then var="unknown"; fi
-    desc="${desc:+$desc; }${kind}…, variable ${var}"
-done
+describe() {
+    local token kind var name_re out=""
+    for token in "$@"; do
+        kind="${token%%_*}_"
+        case "$token" in github_pat_*) kind="github_pat_" ;; esac
+        var="unknown"
+        name_re="([A-Za-z_][A-Za-z0-9_]*)[\"'\\\\]*[=:][[:space:]]*[\"'\\\\]*${token}"
+        if [[ $scan =~ $name_re ]]; then var="${BASH_REMATCH[1]}"; fi
+        if [[ $var =~ $tok_re ]]; then var="unknown"; fi
+        out="${out:+$out; }${kind}…${token:${#token}-4}, variable ${var}"
+    done
+    printf '%s' "$out"
+}
 
 tool="unknown"; session=""
 if command -v jq >/dev/null 2>&1; then
@@ -118,9 +132,22 @@ fi
 case "$tool" in *[!A-Za-z0-9_.:-]*|'') tool="unknown" ;; esac
 case "$session" in *[!A-Za-z0-9_.-]*) session="" ;; esac
 
+if [ "${#tokens[@]}" -eq 0 ]; then
+    what="a GitHub-token-shaped value"
+    if [ "${#fakes[@]}" -gt 1 ]; then what="${#fakes[@]} GitHub-token-shaped values"; fi
+    pmsg="TOKEN-IN-OUTPUT PLACEHOLDER: ${what} ($(describe "${fakes[@]}")) in a ${tool} tool call or result${session:+ in session ${session}} is a test fixture (no GitHub checksum, or a repeated or sequential body), not a credential. Nothing to rotate; the operator was not paged."
+    if command -v jq >/dev/null 2>&1; then
+        jq -cn --arg m "$pmsg" '{systemMessage: $m}'
+    else
+        echo "$pmsg" >&2
+    fi
+    exit 0
+fi
+
+desc=$(describe "${tokens[@]}")
 what="a GitHub token"
 if [ "${#tokens[@]}" -gt 1 ]; then what="${#tokens[@]} GitHub tokens"; fi
-msg="TOKEN-IN-OUTPUT: ${what} (${desc}) appeared in a ${tool} tool call or result${session:+ in session ${session}}. It is now in the transcript: rotate it."
+msg="TOKEN-IN-OUTPUT LIVE: ${what} (${desc}) appeared in a ${tool} tool call or result${session:+ in session ${session}}. It is now in the transcript: rotate it."
 ctx="SECURITY: ${msg} Do not repeat, quote or re-read that output. Report it to your chief or the operator now (tool ${tool}; ${desc}; never the value)."
 
 if command -v jq >/dev/null 2>&1; then
