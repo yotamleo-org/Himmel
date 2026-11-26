@@ -86,6 +86,17 @@ if [ ! -f "$HOOK" ]; then
     exit 1
 fi
 
+queue_status() { node "$QUEUE" status 2>/dev/null; }
+wait_status() {
+    local i=0 out
+    while [ "$i" -lt 150 ]; do
+        out="$(queue_status)"
+        case "$out" in *"$1"*) return 0 ;; esac
+        sleep 0.2; i=$((i+1))
+    done
+    return 1
+}
+
 echo "R1: a chief reply with an ask reaches ask-mirror.sh with the session paths"
 fixture chief-sid $'Status: done.\n\nNeeds you: approve the restart.\nReply yes.' "$TMP/p1.json"
 run_hook "$TMP/p1.json"
@@ -97,6 +108,7 @@ check "R1 call is a chief-reply to operator with the ask" "$(head -1 "$CALLS" | 
     "reply --chief FIX-nextleg-chief --owed ask-K --doc $CHIEF_DOC --kind chief-reply operator Needs you: approve the restart. Reply yes."
 check "R1 the job saw BRIDGE_ROOT and TELEGRAM_ACCESS_PATH" "$(head -1 "$CALLS" | cut -d'|' -f2-3)" \
     "bridge=$BRIDGE_ROOT|access=$TELEGRAM_ACCESS_PATH"
+wait_status 'worker: idle'; check "R1 the job finished" "$?" "0"
 
 echo "R2: a reply without Needs you: writes no queue entry"
 before="$(queue_rows)"
@@ -121,16 +133,6 @@ check "R3 stdout empty" "$HOUT" ""
 check "R3 hook took under 3 s" "$([ "$elapsed" -lt 3 ] && echo yes || echo "no ($elapsed s)")" "yes"
 
 echo "R4: two different ask replies queued behind a busy worker both run"
-queue_status() { node "$QUEUE" status 2>/dev/null; }
-wait_status() {
-    local i=0 out
-    while [ "$i" -lt 150 ]; do
-        out="$(queue_status)"
-        case "$out" in *"$1"*) return 0 ;; esac
-        sleep 0.2; i=$((i+1))
-    done
-    return 1
-}
 wait_status 'worker: idle'; check "R4 R3's slow job drained" "$?" "0"
 : > "$CALLS"
 RELEASE="$TMP/release"
@@ -144,6 +146,7 @@ check "R4 nothing ran while the blocker waited" "$(ncalls)" "0"
 wait_calls 2
 check "R4 both asks reached the route" "$(ncalls)" "2"
 rm -f "$RELEASE"
+wait_status 'worker: idle'; check "R4 the queue drained" "$?" "0"
 
 echo "R5: junk input exits 0, prints nothing, queues nothing"
 n0="$(find "$HIMMEL_STOP_QUEUE_DIR/entries" -type f 2>/dev/null | wc -l | tr -d ' ')"
