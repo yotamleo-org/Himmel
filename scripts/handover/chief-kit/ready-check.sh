@@ -785,7 +785,7 @@ blocked_by() {
     n_open=$(printf '%s' "$snapshot" | jq -r '[.[0].reviewThreads.nodes[]? | select(.isResolved == false)] | length' 2>/dev/null) || n_open=0  # swallow-ok: item 3 judges the threads
     case "$n_open" in ''|*[!0-9]*) n_open=0 ;; esac
     [ "$n_open" -eq 0 ] || lines="${lines:+$lines
-}       blocked by: $n_open unresolved review thread(s) (item 3; GitHub blocks on them only when $base requires conversation resolution)"
+}       may block: $n_open unresolved review thread(s) (item 3; GitHub blocks on them only when $base requires conversation resolution)"
     [ -n "$lines" ] || lines="       blocked by: no unmet required check, review or thread found — GitHub reports BLOCKED for a rule ready-check does not read, or a producer-pinned check came from another app (checks match by name; see the PR page)"
     printf '%s\n' "$lines"
 }

@@ -70,7 +70,12 @@ expect "a non-gating context that is required: exit 1" 1 "non-gating-but-require
 
 STUB_RULES='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"build","integration_id":999},{"context":"lint","integration_id":15368}]}}]' run
 expect "a required check pinned to another app than the fixture's: exit 1" 1 "missing-from-rules-fixture: build (app 999)"
-if grep -qF -- "contexts-fixture" <<< "$out"; then bad "an app-pin drift leaves the names-only contexts fixture quiet (out: $out)"; else ok "an app-pin drift leaves the names-only contexts fixture quiet"; fi
+if [ "$(grep -cF -- "contexts-fixture" <<< "$out")" = 0 ]; then ok "an app-pin drift leaves the names-only contexts fixture quiet"; else bad "an app-pin drift leaves the names-only contexts fixture quiet (out: $out)"; fi
+
+printf '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"build","integration_id":"15368"},{"context":"lint","integration_id":15368}]}}]' > "$tmp/rules.json"
+STUB_RULES=$(rules_of build lint) run
+expect "a fixture pin written as a string is drift, never equal to the number: exit 1" 1 'stale-in-rules-fixture: build (app invalid "15368")'
+rules_of lint build > "$tmp/rules.json"
 
 STUB_FAIL=1 STUB_RULES=x run
 expect "an unreadable live read: exit 2" 2

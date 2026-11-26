@@ -33,7 +33,7 @@ done
 case "$repo" in */*) ;; *) echo "required-fixture: no repo (pass --repo or set GITHUB_REPOSITORY)" >&2; exit 2 ;; esac
 
 ctx_of_rules='.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | .context'
-pin_of_rules='.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | "\(.context) (app \(.integration_id // "any"))"'
+pin_of_rules='.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | "\(.context) (app \(if .integration_id == null then "any" elif (.integration_id | type) == "number" then .integration_id else "invalid \(.integration_id | tojson)" end))"'
 raw=$(gh api "repos/$repo/rules/branches/$branch") || { echo "required-fixture: cannot read rules/branches/$branch of $repo" >&2; exit 2; }
 live=$(printf '%s' "$raw" | jq -r "$ctx_of_rules" | sort -u) || { echo "required-fixture: unreadable rules/branches answer" >&2; exit 2; }
 [ -n "$live" ] || { echo "required-fixture: $repo $branch requires no status check — refusing to call that a match" >&2; exit 2; }

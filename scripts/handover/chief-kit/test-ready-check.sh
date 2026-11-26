@@ -1423,7 +1423,7 @@ rc=0; out="$(STUB_OR_RULES_FAIL=1 STUB_OR_RD=REVIEW_REQUIRED STUB_UNRESOLVED=2 r
 check "11356-set-unreadable: exit 1" "$rc" "1"
 contains "11356-set-unreadable: says the required set is unreadable" "$out" "blocked by: unknown (the required checks of main are unreadable"
 contains "11356-set-unreadable: still names the owed review" "$out" "blocked by: review owed (reviewDecision=REVIEW_REQUIRED"
-contains "11356-set-unreadable: still names the threads" "$out" "blocked by: 2 unresolved review thread(s)"
+contains "11356-set-unreadable: still names the threads, as a possible blocker" "$out" "may block: 2 unresolved review thread(s)"
 
 
 echo "---"
