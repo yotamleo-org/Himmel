@@ -1,34 +1,28 @@
 #!/usr/bin/env bash
-# block-subagent-release-operator.sh — PreToolUse Bash chain member: keeps an in-process
-# subagent from appending an operator-chain row. Only the main session (the chief) records one.
-# operatorFence in the jira CLI reads only the environment, and a subagent inherits the chief's.
+# block-subagent-release-operator.sh — PreToolUse Bash chain member: denies an
+# in-process subagent any Bash command that names both the word `release` and
+# the word `operator`, so a subagent never writes an operator-chain row with
+# `jira release operator ...` (spec-review included: a critic subagent must not
+# record its own verdict). operatorFence in the jira CLI reads only the
+# environment, and a subagent inherits the chief's.
 #
-# A security fence, so it fails CLOSED: no jq denies every call, and stdin that is not a JSON
-# object is denied. `agent_id` absent or null is the main session and is allowed without reading
-# the command; any other value is a subagent.
+# A security fence, so it fails CLOSED: no jq denies every call, and stdin that
+# is not a JSON object is denied. `agent_id` absent or null is the main session
+# (the chief) and is allowed without reading the command; any other value is a
+# subagent.
 #
-# Decision order for a subagent (the jq program below; docs/internals/enforcement.md):
-#   1. Pair 2: a word that starts with --decision and a word that starts with --words denies.
-#      `jira create`, `jira move` and `jira release request` write an operator-chain row from
-#      those two options with neither fence word, and commander takes no abbreviated option.
-#   2. Pair 1: the command is normalised (backslash-newline pairs deleted, `$'` and `$"` turned
-#      into `'` and `"`, then every `'`, `"` and `\` deleted), split into words at every space,
-#      TAB, CR, newline and shell metacharacter. Without both words `release` and `operator` the
-#      command is allowed.
-#   3. A command with both words is allowed only when the whole raw string is a member of
-#      grammar R (plain readers over a fixed program table, no expansion, no redirect but
-#      2>/dev/null and 2>&1) or grammar H (a quoted-heredoc `cat > PATH <<'EOF'` write followed
-#      only by echo, or by wc/ls/head/tail/cat of PATH). Every other string is denied.
-# What it cannot see (text built at run time, a nested claude session, a chief in another repo,
-# the Monitor tool, an interpreter reaching the jira engine) is the fence residual named in
+# The match: the command is normalised (backslash-newline pairs deleted, `$'`
+# and `$"` turned into `'` and `"`, then every `'`, `"` and `\` deleted), split
+# into words at every space, TAB, CR, newline and shell metacharacter, and matches
+# when both words appear, anywhere and in either order. A command that matches is
+# still allowed when the whole raw string is a plain read or a quoted-heredoc
+# write, and a `--decision` word beside a `--words` word is denied first. What it
+# cannot see (text built at run time, a nested claude session, a chief in another
+# repo, the Monitor tool) is the fence residual named in
 # docs/internals/enforcement.md.
 #
-# The reason opening decides the Tool health class (scripts/eval/worker-digest/worker-digest.ts):
-# a deny of a command naming both words opens with P1's opening, a deny of a command that only
-# carries --decision with --words opens with the word-free opening.
-#
-# Bypass (set in the shell that launched Claude Code; session-sticky, a per-call prefix does not
-# reach the hook): SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1
+# Bypass (set in the shell that launched Claude Code; session-sticky, a per-call
+# prefix does not reach the hook): SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1
 set -uo pipefail
 # shellcheck disable=SC2154 # rc is assigned inside the trap string.
 trap 'rc=$?;if [ "$rc" != 0 ] && [ "$rc" != 2 ]; then exit 2; fi' EXIT
