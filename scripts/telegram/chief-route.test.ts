@@ -3575,9 +3575,12 @@ test("a quote with a semicolon inside the parenthesis, and a reopens heading wit
 test("an ordinary full-mode major finding of the lagging kind is still an open blocking finding next to a closure return", async () => {
   const t = await closureTree(["- **P1** (major) a plan finding still open"]);
   expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", `- **R1** (major; regression \`${QUOTED}\`) a fault`)).err).toBe("");
-  const ok = await overrideOf(t.specs, "P1,R1");
+  const lag = await overrideOf(t.specs, "P1,R1");
+  expect(lag.err).toContain("round-override: P1 is open only in plan, which lags the writer round; plan round 4 needs no record, so seal it as it is"); expect(lag.code).not.toBe(0);
+  expect(rowsOf(t.specs, "override")).toEqual([]);
+  const ok = await overrideOf(t.specs, "R1");
   expect(ok.err).toBe(""); expect(ok.code).toBe(0);
-  expect(rowsOf(t.specs, "override")).toMatchObject([{ findings: [{ id: "P1", critic: "plan" }, { id: "R1", critic: "spec" }] }]);
+  expect(rowsOf(t.specs, "override")).toMatchObject([{ findings: [{ id: "R1", critic: "spec" }] }]);
 });
 
 const QUOTE_WRAPPED = "# A\n\nthe realpath of the primary checkout,\n   resolved by realpath -e\n";
@@ -3738,7 +3741,10 @@ for (const fault of ["off-blocking", "severity", "untagged", "after-override", "
     const t = fault === "after-override" ? await freshWrapped(["- **P9** (major) a plan finding still open"]) : await freshWrapped([], "- **n1** (minor) a note");
     const stored = () => ledgerRows(t.specs, CAP_KEY).findLast(r => r.row === "round" && r.critic === "spec").findings;
     if (fault !== "off-blocking") storeAsBase(t.specs);
-    if (fault === "after-override") expect((await overrideOf(t.specs, "P9")).code).toBe(0);
+    if (fault === "after-override") {
+      const p3 = ledgerRows(t.specs, CAP_KEY).find(r => r.row === "round" && r.critic === "plan" && r.round === 3);
+      appendFileSync(ledgerFile(t.specs), `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "override", epoch: 0, round_opened: 5, findings: [{ id: "P9", severity: "major", critic: "plan", return_sha: p3.return_sha }], why: "a legacy override", chief: "chief-x" })}\n`);
+    }
     const up = stored().map((f: any) => f.id === "P1" ? { ...f, class: "regression" } : f);
     if (fault === "off-blocking") appendReclass(t.specs, stored().map((f: any) => f.id === "P1" ? { ...f, class: "out-of-closure" } : f));
     if (fault === "severity") appendReclass(t.specs, up.map((f: any) => f.id === "n1" ? { ...f, severity: "medium" } : f));
@@ -4208,6 +4214,9 @@ test("round-extension: one chief record bound to the sealed returns and the open
 test("round-extension: the grant opens round 6 only for the kind that carries the named findings, not for a clean plan at the same round", async () => {
   const t = await extTree();
   expect((await closeOn(t, "plan", 4, [t.plan], "PLAN CLEAN")).err).toBe("");
+  decide(t.specs, 985, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await closeOn(t, "plan", 5, [t.plan], "PLAN CLEAN")).err).toContain(T5(5));
+  expect((await closureVerb(t.specs, 985, "--round", "plan:5")).err).toBe("");
   expect((await closeOn(t, "plan", 5, [t.plan], "PLAN CLEAN")).err).toBe("");
   decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
   expect((await extend(true, t)).err).toBe("");
@@ -4270,6 +4279,7 @@ test("round-extension: editing the approval after the record kills the grant; a 
 
 // A kind that lags the writer round: the other kind went ahead on its own grant, so the lagging kind's next refused round is below writer + 1.
 const LAG_APPROVE = "approve one plan closure round for the two regressions";
+const LAG_OPEN = "open the lagging closure round five";
 const REG = (id: string, line: string) => `- **${id}** (major; regression) the changed line breaks an earlier rule: \`${line}\``;
 const lagTree = async (lag: "spec" | "plan" = "plan", aheadSix: string[] | null = null) => {
   const ahead = lag === "plan" ? "spec" : "plan"; const A = ahead.toUpperCase(); const L = lag.toUpperCase();
@@ -4280,6 +4290,8 @@ const lagTree = async (lag: "spec" | "plan" = "plan", aheadSix: string[] | null 
   expect((await verb(true, "round-override", CAP_KEY, "--findings", "F3,F4", "--why", "a second closure", "--chief", "chief-x", "--specs", t.specs)).err).toBe("");
   expect((await closeOn(t, ahead, 5, files[ahead], `${A} FINDINGS 2`, F3_R5, F4_R5)).err).toBe("");
   expect((await closeOn(t, lag, 4, files[lag], `${L} CLEAN`)).err).toBe("");
+  decide(t.specs, 985, `${CAP_KEY} operator: ${LAG_OPEN}\n`);
+  expect((await verb(true, "round-critical", CAP_KEY, "--decision", "985", "--quote", LAG_OPEN, "--closure", "--round", `${lag}:5`, "--specs", t.specs)).err).toBe("");
   decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
   expect((await extend(true, t)).err).toBe("");
   const one = `the first changed ${lag} line`; const two = `the second changed ${lag} line`;
@@ -4342,7 +4354,8 @@ test("round-extension: aligned counters keep the old grant: one row at writer + 
   const t = await roundTree(["- **M2** (major) the quota rule is stated twice"], ["- **P2** (major) the plan repeats the quota rule"]);
   expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 3", F3_R4, BLK_N, F4_R4)).err).toBe("");
   expect((await closeOn(t, "plan", 4, [t.plan], "PLAN FINDINGS 1", "- **P3** (major; reopens P2) the plan still repeats it")).err).toBe("");
-  expect((await verb(true, "round-override", CAP_KEY, "--findings", "F3,F4", "--why", "a second closure", "--chief", "chief-x", "--specs", t.specs)).err).toBe("");
+  expect((await verb(true, "round-override", CAP_KEY, "--findings", "F3,F4,P3", "--why", "a second closure", "--chief", "chief-x", "--specs", t.specs)).err).toBe("");
+  expect(rowsOf(t.specs, "override")[0].findings.map((f: { critic: string }) => f.critic)).toEqual(["spec", "spec", "plan"]);
   expect((await closeOn(t, "spec", 5, [t.a], "SPEC FINDINGS 2", F3_R5, F4_R5)).err).toBe("");
   expect((await closeOn(t, "plan", 5, [t.plan], "PLAN FINDINGS 1", "- **P4** (major; reopens P3) the plan repeats it once more")).err).toBe("");
   decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
@@ -8340,6 +8353,8 @@ test("DoD 6, openers: a restore opens no round; the spec-only extension's round 
   expect((await verb(true, "round-override", CAP_KEY, "--findings", "F3,F4", "--why", "a second closure", "--chief", "chief-x", "--specs", t.specs)).err).toBe("");
   expect((await closeOn(t, "spec", 5, [t.a], "SPEC FINDINGS 3", F3_R5, F4_R5, REV("X1"))).err).toBe("");
   expect((await closeOn(t, "plan", 4, [t.plan], "PLAN CLEAN")).err).toBe("");
+  decide(t.specs, 985, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await closureVerb(t.specs, 985, "--round", "plan:5")).err).toBe("");
   decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
   expect((await extend(true, t)).err).toBe("");
   const ok = await restore(t.specs, "X1"); expect(ok.err).toBe(""); expect(ok.code).toBe(0);
@@ -8364,8 +8379,10 @@ test("DoD 6, openers: a restore whose round loses its opener goes back to the op
   const p1 = "- **P1** (minor; operator-critical: reverses-ruling) the plan moves the park rm off its simple placement. That reverses decision 1096 rule 1.";
   expect((await closeOn(t, "plan", 4, [t.plan], "PLAN FINDINGS 1", p1)).err).toBe("");
   expect((await verb(true, "round-override", CAP_KEY, "--findings", "F3,F4", "--why", "a second closure", "--chief", "chief-x", "--specs", t.specs)).err).toBe("");
-  const ok = await restore(t.specs, "P1"); expect(ok.err).toBe(""); expect(ok.code).toBe(0);
-  expect((await status(t.specs)).restore_owed).toMatchObject([{ id: "P1", opens: 5 }]);
+  const x = await restore(t.specs, "P1");
+  expect(x.err).toContain("round-critical: plan round 5 needs a record to open and a restore opens none; the operator rules on P1"); expect(x.code).not.toBe(0);
+  expect(rowsOf(t.specs, "critical")).toEqual([]);
+  expect((await status(t.specs)).restore_owed).toEqual([]);
   expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toBe("");
   const s = await status(t.specs);
   expect(s.restore_owed).toEqual([]); expect(s.critical_open).toMatchObject([{ id: "P1", kind: "plan" }]);
@@ -8750,4 +8767,274 @@ test("HIMMEL-10935 a text with no Needs you: line records no ask", async () => {
   await sendAsk(r, "Merge refused. Blocks: the merge. Do: ask a reviewer");
   expect(existsSync(join(r, "consoles", "asks.ndjson"))).toBe(false);
   expect(await answer(r, f, "yes")).toMatch(/^- \d\d:\d\dZ \[telegram from=1 chat=1\] yes$/);
+});
+
+const OP = (d: number) => `${CAP_KEY} operator: ${SPEND} ${d}\n`;
+const legacyClosure = (specs: string, opens: number, d: number, o: Record<string, unknown> = {}) => {
+  const path = decide(specs, d, OP(d));
+  return `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "critical", closure: true, epoch: 0, opens, decision: String(d), quote: SPEND, decision_path: path, decision_sha: sha(readFileSync(path, "utf8")), ...o })}\n`;
+};
+const closureVerb = (specs: string, d: number, ...more: string[]) => verb(true, "round-critical", CAP_KEY, "--decision", String(d), "--quote", SPEND, "--closure", ...more, "--specs", specs);
+const resetVerb = (specs: string, d: number) => verb(true, "round-reset", CAP_KEY, "--decision", String(d), "--quote", SPEND, "--specs", specs);
+const lagClosureTree = async () => {
+  const t = await roundTree([], []);
+  for (const [i, n] of [4, 5, 6, 7].entries()) {
+    appendFileSync(ledgerFile(t.specs), legacyClosure(t.specs, n, 1400 + i));
+    expect((await closeOn(t, "plan", n, [t.plan], "PLAN CLEAN")).err).toBe("");
+  }
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC CLEAN")).err).toBe("");
+  return t;
+};
+const C1_MEDIUM = "- **C1** (medium; operator-critical: spend-grant) the spec grants a spend";
+const lag3Tree = async (specBlocking = false) => {
+  const t = await roundTree(["- **M2** (major) the quota rule is stated twice"], []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 3", F3_R4, BLK_N, F4_R4)).err).toBe("");
+  decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
+  expect((await extend(true, t)).err).toBe("");
+  const five = specBlocking ? [F3_R5, C1_MEDIUM] : [C1_MEDIUM];
+  expect((await closeOn(t, "spec", 5, [t.a], `SPEC FINDINGS ${five.length}`, ...five)).err).toBe("");
+  const one = "the first changed plan line"; const two = "the second changed plan line";
+  writeFileSync(t.plan, `# A plan\n\n${one}\n${two}\n`);
+  expect((await closeOn(t, "plan", 4, [t.plan], "PLAN FINDINGS 2", REG("R1", one), REG("R2", two))).err).toBe("");
+  return t;
+};
+const m2Tree = async () => {
+  const t = await roundTree(MAJOR, []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **M2** (major; reopens M1) still open")).err).toBe("");
+  return t;
+};
+
+test("HIMMEL-11321 1 lagging closure", async () => {
+  const t = await lagClosureTree(); decide(t.specs, 1409, OP(1409));
+  const ok = await closureVerb(t.specs, 1409, "--round", "spec:5");
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "critical").at(-1)).toMatchObject({ closure: true, critics: ["spec"], opens: 5 });
+  const why = (await status(t.specs)).why;
+  expect(why).toContain("spec round 5: closure"); expect(why).toContain(`plan round 8: ${T5(8)}`);
+});
+
+test("HIMMEL-11321 2 stale override", async () => {
+  const t = await roundTree(MAJOR, []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **M2** (major; reopens M1) still open")).err).toBe("");
+  expect((await closeOn(t, "plan", 4, [t.plan], "PLAN CLEAN")).err).toBe("");
+  expect((await overrideOf(t.specs, "M2")).err).toBe("");
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC FINDINGS 1", "- **M3** (major; reopens M2) still open")).err).toBe("");
+  const s = await status(t.specs);
+  expect(s).toMatchObject({ spec: 5, plan: 4, invalid: [] });
+  expect(s.why).toContain(`plan round 5: ${T5(5)}`);
+  expect((await closeOn(t, "plan", 5, [t.plan], "PLAN CLEAN")).err).toContain(T5(5));
+});
+
+test("HIMMEL-11321 3 writer plus one critical", async () => {
+  const t = await lag3Tree();
+  decide(t.specs, 990, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await critical(true, t.specs, "C1", 990, SPEND)).err).toBe("");
+  expect(rowsOf(t.specs, "critical").at(-1)).toMatchObject({ id: "C1", opens: 6 });
+  decide(t.specs, 987, `${CAP_KEY} operator: ${LAG_APPROVE}\n`);
+  expect((await lagExtend(t)).err).toBe("");
+  expect((await closeOn(t, "plan", 5, [t.plan], "PLAN CLEAN")).err).toBe("");
+  const s = await status(t.specs);
+  expect(s).toMatchObject({ spec: 5, plan: 5, invalid: [] });
+  expect(s.why).toContain(`plan round 6: ${T5(6)}`); expect(s.why).toContain("spec round 6: closure");
+});
+
+test("HIMMEL-11321 3b --round refusals", async () => {
+  const t = await lagClosureTree(); decide(t.specs, 1409, OP(1409));
+  const file = ledgerFile(t.specs); const before = readFileSync(file, "utf8");
+  for (const at of ["plan:6", "spec:6"]) {
+    const x = await closureVerb(t.specs, 1409, "--round", at);
+    expect(x.err).toContain("is not a closure target"); expect(x.code).not.toBe(0);
+  }
+  for (const more of [["--no-round"], ["--restores"]]) {
+    const x = await closureVerb(t.specs, 1409, "--round", "spec:5", ...more);
+    expect(x.code, more.join(" ")).not.toBe(0);
+  }
+  const named = await verb(true, "round-critical", CAP_KEY, "--finding", "C1", "--decision", "1409", "--quote", SPEND, "--closure", "--round", "spec:5", "--specs", t.specs);
+  expect(named.err).toContain("drop --finding"); expect(named.code).not.toBe(0);
+  expect(readFileSync(file, "utf8")).toBe(before);
+  const ok = await closureVerb(t.specs, 1409, "--round", "spec:5");
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+});
+
+test("HIMMEL-11321 3c critics validation", async () => {
+  const t = await m2Tree(); const file = ledgerFile(t.specs); const base = readFileSync(file, "utf8");
+  const replay = async (o: Record<string, unknown>) => { writeFileSync(file, base + legacyClosure(t.specs, 5, 1400, o)); return status(t.specs); };
+  for (const o of [{ critics: [] }, { critics: ["spec", "spec"] }, { critics: ["draft"] }, { critics: ["plan"] }, { critics: ["spec"], epoch: 1 }]) {
+    const s = await replay(o);
+    expect(s.invalid, JSON.stringify(o)).toEqual(["critical 1400"]);
+    expect(s.why, JSON.stringify(o)).toContain(`spec round 5: ${T5(5)}`);
+  }
+  const good = await replay({ critics: ["spec"] });
+  expect(good.invalid).toEqual([]); expect(good.why).toContain("spec round 5: closure");
+});
+
+test("HIMMEL-11321 4a reset CLI refuses", async () => {
+  const t = await m2Tree(); decide(t.specs, 1349, OP(1349));
+  expect((await closureVerb(t.specs, 1349)).err).toBe("");
+  const x = await resetVerb(t.specs, 1349);
+  expect(x.code).not.toBe(0); expect(rowsOf(t.specs, "reset")).toEqual([]);
+  const u = await m2Tree(); decide(u.specs, 1350, OP(1350));
+  const ok = await resetVerb(u.specs, 1350);
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(u.specs, "reset")).toHaveLength(1); expect((await status(u.specs)).epoch).toBe(1);
+});
+
+test("HIMMEL-11321 4b reset replay invalid", async () => {
+  const t = await m2Tree(); const path = decide(t.specs, 1349, OP(1349));
+  expect((await closureVerb(t.specs, 1349)).err).toBe("");
+  appendFileSync(ledgerFile(t.specs), `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "reset", epoch: 1, decision: "1349", quote: SPEND, decision_path: path, decision_sha: sha(readFileSync(path, "utf8")) })}\n`);
+  const s = await status(t.specs);
+  expect(s.invalid).toEqual(["reset 1349"]); expect(s.epoch).toBe(0);
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toBe("");
+  expect(await status(t.specs)).toMatchObject({ epoch: 0, spec: 5, invalid: ["reset 1349"] });
+});
+
+test("HIMMEL-11321 5a two rounds refuse", async () => {
+  const t = await lagClosureTree(); decide(t.specs, 1409, OP(1409));
+  const before = readFileSync(ledgerFile(t.specs), "utf8");
+  const x = await closureVerb(t.specs, 1409);
+  expect(x.code).not.toBe(0); expect(x.err).toContain("--round spec:5"); expect(x.err).toContain("--round plan:8");
+  expect(readFileSync(ledgerFile(t.specs), "utf8")).toBe(before);
+});
+
+test("HIMMEL-11321 5b level closure opens both", async () => {
+  const t = await roundTree(["- **M1** (major) the spec is open"], ["- **P1** (major) the plan is open"]);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **M2** (major; reopens M1) still open")).err).toBe("");
+  expect((await closeOn(t, "plan", 4, [t.plan], "PLAN FINDINGS 1", "- **P2** (major; reopens P1) still open")).err).toBe("");
+  expect((await overrideOf(t.specs, "M2,P2")).err).toBe("");
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toBe("");
+  expect((await closeOn(t, "plan", 5, [t.plan], "PLAN CLEAN")).err).toBe("");
+  decide(t.specs, 1409, OP(1409));
+  const ok = await closureVerb(t.specs, 1409);
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "critical").at(-1)).toMatchObject({ closure: true, critics: ["spec", "plan"], opens: 6 });
+  const s = await status(t.specs);
+  expect(s.invalid).toEqual([]); expect(s.why).toBe("spec round 6: closure; plan round 6: closure");
+});
+
+test("HIMMEL-11321 5c round-4 closure", async () => {
+  const t = await roundTree([], []); decide(t.specs, 1409, OP(1409));
+  const ok = await closureVerb(t.specs, 1409);
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "critical")).toMatchObject([{ closure: true, opens: 4 }]);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC CLEAN")).err).toBe("");
+  expect((await closeOn(t, "plan", 4, [t.plan], "PLAN CLEAN")).err).toBe("");
+  expect((await status(t.specs)).invalid).toEqual([]);
+});
+
+test("HIMMEL-11321 5d lagging-only override", async () => {
+  const t = await lag3Tree(); const before = readFileSync(ledgerFile(t.specs), "utf8");
+  const x = await overrideOf(t.specs, "R1,R2");
+  expect(x.code).not.toBe(0); expect(x.err).toContain("--closure --round plan:5 or round-extension");
+  expect(readFileSync(ledgerFile(t.specs), "utf8")).toBe(before);
+  const split = await lag3Tree(true); const none = await overrideOf(split.specs, "R1,R2");
+  expect(none.code).not.toBe(0); expect(none.err).toContain("--closure --round plan:5,"); expect(none.err).not.toContain("round-extension");
+});
+
+test("HIMMEL-11321 5e id in both kinds", async () => {
+  const t = await roundTree(["- **M1** (major) the spec is open"], ["- **P1** (major) the plan is open"]);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **X1** (major; reopens M1) still open")).err).toBe("");
+  expect((await closeOn(t, "plan", 4, [t.plan], "PLAN FINDINGS 1", "- **X1** (major; reopens P1) still open")).err).toBe("");
+  const ok = await overrideOf(t.specs, "X1"); expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "override")[0].findings.map((f: { critic: string }) => f.critic)).toEqual(["spec", "plan"]);
+  const s = await status(t.specs);
+  expect(s.invalid).toEqual([]); expect(s.why).toBe("spec round 5: closure; plan round 5: closure");
+});
+
+test("HIMMEL-11321 7a refusal suffix", async () => {
+  const lagging = (kind: string, n: number) => `${kind} lags the writer round: open it with round-critical --closure --round ${kind}:${n}`;
+  const a = await lagClosureTree(); const whyA = (await status(a.specs)).why;
+  expect(whyA).toContain(`spec round 5: ${T5(5)} (${lagging("spec", 5)})`);
+  expect(whyA.endsWith(`plan round 8: ${T5(8)}`)).toBe(true);
+  const b = await lag3Tree(); const whyB = (await status(b.specs)).why;
+  expect(whyB).toContain(`spec round 6: ${T5(6)}; plan round 5: ${T5(5)} (${lagging("plan", 5)} or round-extension)`);
+  const c = await lag3Tree(true); const whyC = (await status(c.specs)).why;
+  expect(whyC).toContain(`plan round 5: ${T5(5)} (${lagging("plan", 5)})`); expect(whyC).not.toContain("round-extension");
+});
+
+test("HIMMEL-11321 7d round-4 refusal of a lagging kind", async () => {
+  const t = await roundTree([], []); decide(t.specs, 1409, OP(1409));
+  expect((await closureVerb(t.specs, 1409, "--round", "plan:4")).err).toBe("");
+  expect((await closeOn(t, "plan", 4, [t.plan], "PLAN CLEAN")).err).toBe("");
+  const why = (await status(t.specs)).why;
+  expect(why).toContain(`spec round 4: ${T1("spec")} (spec lags the writer round: open it with round-critical --closure --round spec:4)`);
+  expect(why).not.toContain("round-extension");
+});
+
+test("HIMMEL-11321 7b no named kinds", async () => {
+  const t = await extTree(); const path = decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
+  appendFileSync(ledgerFile(t.specs), `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "extension", epoch: 0, round_opened: 6, findings: "not a list", returns: {}, why: "w", chief: "c", decision: "986", quote: APPROVE, decision_path: path, decision_sha: sha(readFileSync(path, "utf8")) })}\n`);
+  const x = await routeCli("round-status", CAP_KEY, "--specs", t.specs, "--json");
+  expect(x.code).toBe(0); expect(JSON.parse(x.out).invalid).toEqual(["extension 986"]);
+});
+
+test("HIMMEL-11321 7c empty override", async () => {
+  const t = await lag3Tree(); const p4 = latestOf(t.specs, "plan", 4);
+  const entry = (id: string) => ({ id, severity: "major", critic: "plan", return_sha: p4.return_sha });
+  appendFileSync(ledgerFile(t.specs), `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "override", epoch: 0, round_opened: 6, findings: [entry("R1"), entry("R2")], why: "a legacy override", chief: "chief-x" })}\n`);
+  const s = await status(t.specs);
+  expect(s.invalid).toEqual([]); expect(s.why).toContain(`spec round 6: ${T5(6)}`);
+  expect((await overrideOf(t.specs, "R1,R2")).err).toContain("already used its one override");
+  decide(t.specs, 1409, OP(1409));
+  expect((await closureVerb(t.specs, 1409, "--round", "plan:5")).err).toBe("");
+  expect((await closeOn(t, "plan", 5, [t.plan], "PLAN FINDINGS 1", "- **R3** (major; reopens R1) still broken")).err).toBe("");
+  const after = await status(t.specs);
+  expect(after.invalid).toEqual([]); expect(after.why).toContain(`plan round 6: ${T5(6)}`);
+});
+
+test("HIMMEL-11321 8a pre-reset opener", async () => {
+  const t = await m2Tree(); expect((await overrideOf(t.specs, "M2")).err).toBe("");
+  decide(t.specs, 1500, OP(1500)); expect((await resetVerb(t.specs, 1500)).err).toBe("");
+  expect(await status(t.specs)).toMatchObject({ epoch: 1, spec: 0, plan: 0 });
+  const r = ledgerRows(t.specs, CAP_KEY).filter(x => x.row === "round" && x.critic === "spec" && x.round === 4).at(-1);
+  const fake = (round: number, findings: unknown[]) => JSON.stringify({ ...r, ts: Date.now(), epoch: 1, round, mode: round > 3 ? "closure" : "full", return_sha: sha(`a spec round ${round}`), findings, unrated_ids: [] });
+  appendFileSync(ledgerFile(t.specs), `${[fake(1, []), fake(2, []), fake(3, []), fake(4, [{ id: "Z1", severity: "major", class: "reopens" }])].join("\n")}\n`);
+  const s = await status(t.specs);
+  expect(s).toMatchObject({ epoch: 1, spec: 4, invalid: [] }); expect(s.why).toContain(`spec round 5: ${T5(5)}`);
+});
+
+test("HIMMEL-11321 8b plan opener does not block a spec extension", async () => {
+  const t = await roundTree(["- **M2** (major) the quota rule is stated twice"], []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 3", F3_R4, BLK_N, F4_R4)).err).toBe("");
+  expect((await closeOn(t, "plan", 4, [t.plan], "PLAN CLEAN")).err).toBe("");
+  appendFileSync(ledgerFile(t.specs), legacyClosure(t.specs, 5, 1500, { critics: ["plan"] }));
+  decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
+  const ok = await extend(true, t);
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "extension")).toHaveLength(1);
+  const s = await status(t.specs);
+  expect(s.invalid).toEqual([]); expect(s.why).toBe("spec round 5: closure; plan round 5: closure");
+});
+
+test("HIMMEL-11321 8c closurePack kinds", async () => {
+  const t = await lag3Tree();
+  decide(t.specs, 990, `${CAP_KEY} operator: ${SPEND}\n`); expect((await critical(true, t.specs, "C1", 990, SPEND)).err).toBe("");
+  decide(t.specs, 987, `${CAP_KEY} operator: ${LAG_APPROVE}\n`); expect((await lagExtend(t)).err).toBe("");
+  expect((await closeOn(t, "plan", 5, [t.plan], "PLAN CLEAN")).err).toBe("");
+  appendFileSync(ledgerFile(t.specs), legacyClosure(t.specs, 6, 1500, { critics: ["plan"] }));
+  const pack = await verb(false, "closure-pack", CAP_KEY, "plan", "--specs", t.specs);
+  expect(pack.err).toBe(""); expect(pack.code).toBe(0);
+  expect(pack.out).not.toContain("- **C1**");
+});
+
+test("HIMMEL-11321 8d level finding critical", async () => {
+  const t = await roundTree(["- **M1** (major) the quota rule is stated twice"], []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", "- **M2** (major; reopens M1) still open", C1_MEDIUM)).err).toBe("");
+  expect((await closeOn(t, "plan", 4, [t.plan], "PLAN CLEAN")).err).toBe("");
+  decide(t.specs, 990, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await critical(true, t.specs, "C1", 990, SPEND)).err).toBe("");
+  expect(rowsOf(t.specs, "critical").at(-1)).toMatchObject({ id: "C1", opens: 5 });
+  const s = await status(t.specs);
+  expect(s.invalid).toEqual([]); expect(s.why).toBe("spec round 5: closure; plan round 5: closure");
+});
+
+test("HIMMEL-11321 8e stored kinds", async () => {
+  const t = await lag3Tree();
+  decide(t.specs, 990, `${CAP_KEY} operator: ${SPEND}\n`); expect((await critical(true, t.specs, "C1", 990, SPEND)).err).toBe("");
+  decide(t.specs, 987, `${CAP_KEY} operator: ${LAG_APPROVE}\n`); expect((await lagExtend(t)).err).toBe("");
+  expect((await closeOn(t, "spec", 6, [t.a], "SPEC CLEAN")).err).toBe("");
+  decide(t.specs, 988, `${CAP_KEY} operator: ${LAG_APPROVE} (a second file)\n`);
+  const again = await lagExtend(t, { decision: 988 });
+  expect(again.err).toContain("already open"); expect(again.code).not.toBe(0);
+  expect(rowsOf(t.specs, "extension")).toHaveLength(2);
 });
