@@ -1112,19 +1112,8 @@ _agy_text_writes() {
     return "$rc"
 }
 
-_agy_glued_subst() {
-    local w=$1 o=$2 rest
-    case "$o" in '`') ;; *) o=\$\( ;; esac
-    case "$cmd" in *"$w$o"*) ;; *) return 1 ;; esac
-    rest=${cmd//"$w$o"/}
-    rest=${rest//$'\t'/ }
-    while [[ $rest == *"  "* ]]; do rest=${rest//  / }; done
-    case "$rest" in *"$w $o"*) return 1 ;; esac
-    return 0
-}
-
 agy_cli_writes() {
-    local i=0 s=0 d=0 bt=0 sep first=1 la=0 asg='' fo=0 nested=0 shellc=0 w prevw='' opener closer
+    local i=0 s=0 d=0 bt=0 sep first=1 la=0 fo=0 nested=0 shellc=0 w prevw='' opener closer
     local -a sw=() stw=() stf=()
     if [ "$TOK" != 1 ]; then
         _agy_text_writes "$cmd"
