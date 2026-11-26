@@ -154,7 +154,7 @@ Decision 850: only `ciguard=OVER:concurrent-jobs` holds a dispatch (`monitors.md
 
 1. Write the brief from `{{REPO}}/docs/handover/worker-brief-template.md` into
    `{{STATE_DIR}}`; a child inherits **nothing**. Search the topic (not salus):
-   `bash {{REPO}}/scripts/lib/qmd-bounded.sh query -c luna "prior art"`. Send each search as its own tool call, with no other call in the same response: a call sent beside one that a hook rewrites is refused unrun.
+   `bash {{REPO}}/scripts/lib/qmd-bounded.sh query -c luna "prior art"`.
 2. **Collision check:** queued workers' files must be disjoint (**single-writer**).
 3. **Name an explicit model**; raise *effort* before tier.
 4. Launch: `setsid nohup bash "{{KIT}}/headed-arm-worker.sh" --profile worker-impl --fleet "<this file's stem>.fleet.json"
