@@ -119,6 +119,26 @@
       "sample": "An AFK grant ask expired unanswered: a worker's blocked command did not run. Blocks: that worker. Do: answer its next ask in time, or tell its chief to take another route"
     },
     {
+      "kind": "afk-grant-approved",
+      "class": "monitor",
+      "sender": "scripts/lib/afk-sudo-request",
+      "pin": "next identical call runs once\" afk-grant-approved",
+      "on-alert": {
+        "do": "info",
+        "why": "an outcome the operator just caused; the chief gets the same line in its bridge inbox"
+      }
+    },
+    {
+      "kind": "afk-grant-denied",
+      "class": "monitor",
+      "sender": "scripts/lib/afk-sudo-request",
+      "pin": "denied, nothing ran\" afk-grant-denied",
+      "on-alert": {
+        "do": "info",
+        "why": "an outcome the operator just caused; the chief gets the same line in its bridge inbox"
+      }
+    },
+    {
       "kind": "silent-go-merge",
       "class": "monitor",
       "sender": "scripts/handover/chief-kit/silent-go-merge.sh",

@@ -80,7 +80,11 @@ s17_at() {
     SHA="$keep_sha"; REPO="$keep_repo"; LEDGER="$keep_ledger"
 }
 line17() { printf '%s\n' "$1" | grep -F '] 19. ' || true; }
-s17_clear() { unset S17_RUNBOOK_CMD S17_LP S17_RS S17_ROW_BRANCH S17_ROW_PR S17_ROLLUP STUB_MANIFEST_DIR STUB_DL_FAIL STUB_DL_SLEEP STUB_RUN_SLEEP STUB_RUN_HEAD_SHA STUB_RUN_CONC READY_CHECK_ITEM19_BOUND STUB_JS_MANIFEST_DIR STUB_JS_DL_FAIL STUB_JOBS STUB_JOBS_FAIL; reset_stubs; }
+s17_tier() {
+    mkdir -p "$TP_ANCHOR/scripts/ci"
+    printf '%s\t%s\ttest fixture\n' "$1" "$2" > "$TP_ANCHOR/scripts/ci/suite-tiers.tsv"
+}
+s17_clear() { rm -f "$TP_ANCHOR/scripts/ci/suite-tiers.tsv"; unset S17_RUNBOOK_CMD S17_LP S17_RS S17_ROW_BRANCH S17_ROW_PR S17_ROLLUP STUB_MANIFEST_DIR STUB_DL_FAIL STUB_DL_SLEEP STUB_RUN_SLEEP STUB_RUN_HEAD_SHA STUB_RUN_CONC READY_CHECK_ITEM19_BOUND STUB_JS_MANIFEST_DIR STUB_JS_DL_FAIL STUB_JOBS STUB_JOBS_FAIL; reset_stubs; }
 
 # T6 / T21: every suite has a ran-0 row in the head's run; the PR touches no plugin file
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
@@ -91,12 +95,34 @@ contains "19 T21: check 9 has no plugin files" "$out" "[PASS] 9. no plugin files
 contains "19 T6: the manifests of the head's run are downloaded" "$(gh_log)" "run download 555"
 notcontains "19 T6: never lists runs" "$(gh_log)" "run list"
 
-# T7 / T8: a suite CI skipped needs a local PASS
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_ASKIPB"
 s17_at "$S17_H1"
-check "19 T7 CI skipped a suite: exit 1" "$rc" "1"
-contains "19 T7: names the skipped suite" "$out" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (CI skipped it)"
-contains "19 T7: no row prints the chief's remediation" "$out" "the chief runs pr-check step 3.6"
+check "19 T7 CI skipped a suite: exit 0" "$rc" "0"
+contains "19 T7: the CI-skipped suite is named as tier-skipped" "$(line17 "$out")" "[PASS] 19. suite evidence: 2 impacted, 1 from CI run 555, 0 local, 1 tier-skipped: $S17_B (CI skip)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; s17_tier "$S17_B" daily
+s17_at "$S17_H1"
+check "19 T7b daily-tier suite with no CI row: exit 0" "$rc" "0"
+contains "19 T7b: the daily-tier suite is named with its tier" "$(line17 "$out")" "[PASS] 19. suite evidence: 2 impacted, 1 from CI run 555, 0 local, 1 tier-skipped: $S17_B (daily)"
+for s17_t in local quarantine; do
+    s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; s17_tier "$S17_B" "$s17_t"
+    s17_at "$S17_H1"
+    contains "19 T7b $s17_t-tier suite with no CI row: tier-skipped" "$(line17 "$out")" "1 tier-skipped: $S17_B ($s17_t)"
+done
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; s17_tier "$S17_B" pr
+s17_at "$S17_H1"
+check "19 T7c pr-tier suite with no CI row: exit 1" "$rc" "1"
+contains "19 T7c: names the suite" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (no ran-0 row in run 555)"
+contains "19 T7c: the hint says a suite CI does not run needs no local run" "$out" "a suite CI does not run (tier daily, local or quarantine, or a CI skip) needs no local run"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; s17_tier "$S17_B" flow
+s17_at "$S17_H1"
+check "19 T7c2 flow-tier suite with no CI row: exit 1" "$rc" "1"
+contains "19 T7c2: names the suite" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (no ran-0 row in run 555)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; s17_tier "$S17_B" bogus
+s17_at "$S17_H1"
+check "19 T7d an unknown tier fails closed: exit 1" "$rc" "1"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; s17_tier "$S17_B" daily; STUB_FILES="$S17_B"
+s17_at "$S17_H1"
+contains "19 T7e a changed daily-tier suite with no local PASS: FAIL" "$(line17 "$out")" "$S17_B (the PR changed it: a CI line does not count, run it locally)"
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_ASKIPB"; S17_LP="[\"$S17_B\"]"
 s17_at "$S17_H1"
 check "19 T8 that suite passed locally: exit 0" "$rc" "0"
@@ -233,7 +259,7 @@ check "19 T5c control: the same row on this branch and PR proves it: exit 0" "$r
 # T22: only an exact `ran 0 <path>` proves a suite
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_NEAR"
 s17_at "$S17_H1"
-contains "19 T22 ran 00, ran 10, a .bak path: not proof" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_B (no ran-0 row in run 555)"
+contains "19 T22 ran 00, ran 10, a .bak path: not proof (ran 10 is a red CI run)" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_B (CI ran it and it failed)"
 
 # T11-T14b, T16: CI evidence only from the latest SUCCESS aggregator whose run is at the head
 S17_OLDOK=$(s17_agg COMPLETED SUCCESS 2026-11-05T01:00:00Z 554)
@@ -434,19 +460,23 @@ s17_man_cs() {
 S17_MAN_CS_OK="$tmp/s17-man-cs-ok"; s17_man "$S17_MAN_CS_OK" "ran 0 $S17_A" "skip $S17_B"; s17_man_cs "$S17_MAN_CS_OK" "ran 0 $S17_B"
 S17_MAN_CS_ONLYA="$tmp/s17-man-cs-onlya"; s17_man "$S17_MAN_CS_ONLYA" "skip $S17_A" "skip $S17_B"; s17_man_cs "$S17_MAN_CS_ONLYA" "ran 0 $S17_A"
 S17_MAN_CS_77="$tmp/s17-man-cs-77"; s17_man "$S17_MAN_CS_77" "ran 0 $S17_A" "skip $S17_B"; s17_man_cs "$S17_MAN_CS_77" "ran 77 $S17_B"
+S17_MAN_CS_BOTH="$tmp/s17-man-cs-both"; s17_man "$S17_MAN_CS_BOTH" "ran 0 $S17_A" "ran 0 $S17_B"; s17_man_cs "$S17_MAN_CS_BOTH" "ran 77 $S17_B"
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_CS_OK"
 s17_at "$S17_H1"
 check "19 T26 the shard skipped B, the published file ran it: exit 0" "$rc" "0"
 contains "19 T26: both suites proven from CI" "$out" "[PASS] 19. suite evidence: 2 impacted, 2 from CI run 555, 0 local"
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_CS_ONLYA"
 s17_at "$S17_H1"
-check "19 T26b the published file proves only A: exit 1" "$rc" "1"
-contains "19 T26b: B is the suite proven nowhere" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (CI skipped it)"
-notcontains "19 T26b: A is not named" "$(line17 "$out")" "$S17_A ("
+check "19 T26b the published file proves only A, the shard skipped B: exit 0" "$rc" "0"
+contains "19 T26b: B is tier-skipped as a CI skip" "$(line17 "$out")" "1 tier-skipped: $S17_B (CI skip)"
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_CS_77"
 s17_at "$S17_H1"
 check "19 T26c the published file says ran 77 for B: exit 1" "$rc" "1"
-contains "19 T26c: B is the suite proven nowhere" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (CI skipped it)"
+contains "19 T26c: B is the suite proven nowhere (CI ran it and it failed)" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (CI ran it and it failed)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_CS_BOTH"
+s17_at "$S17_H1"
+check "19 T26d a ran 0 row and a ran 77 row for B in two shards: exit 1" "$rc" "1"
+contains "19 T26d: the green shard does not mask the red one" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (CI ran it and it failed)"
 s17_clear
 
 s17_js_man() {
@@ -492,7 +522,7 @@ s17_at "$S17_HJS"
 contains "19 T-JS6 ran 0 in one JS artifact, ran 1 in another: FAIL" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_JS (CI ran it and it failed)"
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_SKIP"
 s17_at "$S17_HJS"
-contains "19 T-JS7 a JS skip line: FAIL" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_JS (CI skipped it)"
+contains "19 T-JS7 a JS skip line: tier-skipped" "$(line17 "$out")" "[PASS] 19. suite evidence: 1 impacted, 0 from CI run 555, 0 local, 1 tier-skipped: $S17_JS (CI skip)"
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"; STUB_RUN_HEAD_SHA="$S17_BASE"
 s17_at "$S17_HJS"
 contains "19 T-JS8 control: the run is at another head: FAIL" "$(line17 "$out")" "(no settled CI run (run 555 is not at ${S17_HJS:0:7}))"

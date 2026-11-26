@@ -297,10 +297,13 @@ reads its lists from the script's own checkout and fails closed when it cannot
 read one. It is outside `--only 7`, and an org-member PR's output is unchanged.
 The operator's GitHub code-owner approval comes last, after item 16 passes.
 
-**Stage 1 writes no record** (16h reads its CodeRabbit half). It is recomputed at the head wherever it is needed: CodeRabbit's
-status is `success` (read in a fresh child with the four `CR_*` pattern overrides unset), no changed
-path is on the lint surface, and `check-ci.sh <n> --max-wait 120 --except-context codeowner-review-gate`
-exits 0 with `CR_APP`, `CR_PROFILE`, `CR_BOT_USER_ID` and `CHECK_CI_DISTINCT_DEADLINE` unset.
+**Stage 1 writes no record** (16h reads its CodeRabbit half). It is relaxed wherever it is recomputed
+at the head, in 16h and in the audit alike: CodeRabbit's status (read in a fresh child with the four
+`CR_*` pattern overrides unset) fails stage 1 only when it is `failure` or `error`; `success` passes, and
+a running, missing, skipped, rate-limited, paged or unreadable status passes with a note, because
+CodeRabbit never holds CI. The rest of stage 1 is strict: no changed path is on the lint surface, and
+`check-ci.sh <n> --max-wait 120 --except-context codeowner-review-gate` exits 0 with `CR_APP`,
+`CR_PROFILE`, `CR_BOT_USER_ID` and `CHECK_CI_DISTINCT_DEADLINE` unset.
 
 **Stage 2 (16i) is the `security-audit` row**, written only by
 `scripts/cr/outside-security-audit.sh --pr <n> --head <40-hex>`, run from the primary checkout. The
@@ -347,8 +350,8 @@ file from step 3 on describes the route. A live run on a real outside PR is stil
 step 3.6 records it `SUITE <p> = CI` (`scripts/cr/pr-check-ref/33-step3-impacted.md`),
 and `ready-check.sh` item 19 needs proof for every impacted suite of
 `origin/main..<head>` at the exact head. A worker runs on the station only the
-suite its PR changed, with its failing-first proof, and a suite CI cannot run, each with a
-named reason; `impacted-suites.sh --plan <base>..<head>` prints that split (`LOCAL <p> (<reason>)`
+suite its PR changed, with its failing-first proof; a suite CI does not run needs no local run (the
+tier-skipped row below). `impacted-suites.sh --plan <base>..<head>` prints that split (`LOCAL <p> (<reason>)`
 or `CI <p>`; the failing-first proof is an instruction the plan prints, no gate checks it) (operator decision 775).
 A JS/TS suite follows the same rule: it is `CI` when the PR did not change it, `--runner` maps it, it is not
 on the CI-skips list and, for a vitest suite, the diff's node_suites gate is on. A typical PR plans 5 or fewer
@@ -358,6 +361,7 @@ on the CI-skips list and, for a vitest suite, the diff's node_suites gate is on.
 |---|---|
 | local | the head's `impacted` ledger row lists the suite in `local_pass` |
 | ruled SKIP | that row lists it in `ruled_skip` (`SUITE <p> = SKIP ruled <chief-session> <reason>`); the PASS line counts and names it apart from the local count. Only a hand GO reads that line: `auto-go.sh` does not stop on a ruled SKIP |
+| tier-skipped | a suite CI does not run needs no local run: the CI manifest lists it as `skip`, or it has no `ran 0` row and its tier in `scripts/ci/suite-tiers.tsv` (the anchor's copy, never the PR's) is `daily`, `local` or `quarantine`. The PASS line names each one with its tier (`<p> (daily)`) or `(CI skip)`. A `pr`-tier or `flow`-tier suite (CI runs both on every PR; a suite with no table row reads as `pr`, as does an unknown tier) with no `ran 0` row still FAILs, and so does a suite CI ran red, whatever its tier |
 | CI | an exact `ran 0 <path>` line in a manifest of the run behind the latest `SUCCESS` `shell-unit (ubuntu-latest)` check-run of workflow `CI`, whose `head_sha` is the head: a shell shard manifest (artifacts `shell-unit-manifest-ubuntu-latest-shard*`, files `manifest-shard*.txt`), or, for a suite no shard line proves, a JS suite manifest (artifacts `js-suite-manifest-*`, files `manifest-js-*.txt`) whose producing job concluded `success` in that run. A nonzero `ran` line in any JS manifest is red even if another job wrote `ran 0` |
 
 A suite the PR changed (it is on the PR's file list) needs the local proof or a

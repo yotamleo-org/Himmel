@@ -418,7 +418,7 @@ function keyNowhere(f, r) {
 
 test('a refused call (an invalid account) sends one alert and re-runs the prompt once on the subscription, native auth, no key', () => {
   const f = fixture();
-  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK, CLAUDE_CODE_OAUTH_TOKEN: 'oauth-dummy',
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_KIND: 'eval', HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK, CLAUDE_CODE_OAUTH_TOKEN: 'oauth-dummy',
     ANTHROPIC_BASE_URL: 'https://evil.example', ANTHROPIC_ORG_A_KEY: DUMMY, LQ_API_KEY: DUMMY, CLAUDECODE: '1' },
   { argv0: SESSION_ARGV0 }); // a marker needs a `claude` ancestor, or the subscription preflight's seam guard refuses on CI's primary checkout
   assert.equal(r.status, 0, r.stderr);
@@ -549,7 +549,7 @@ test('the call watchdog ending a hung read-only call is a failed call: one alert
 test('a subscription preflight refusal runs no fallback, the alert names it and the original code stands', () => {
   const f = fixture();
   native(f, 100);
-  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E' });
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_KIND: 'eval', HIMMEL_API_ACCOUNT: 'E' });
   assert.equal(r.status, 2);
   assert.equal(fbCalls(f), 0);
   assert.equal(alerts(f).length, 1);
@@ -567,33 +567,33 @@ test('a subscription preflight refusal runs no fallback, the alert names it and 
 
 test('one alert per kind and class per hour; a new class or an hour later alerts again', () => {
   const f = fixture();
-  for (let i = 0; i < 2; i++) assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E' }).status, 0);
+  for (let i = 0; i < 2; i++) assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_KIND: 'eval', HIMMEL_API_ACCOUNT: 'E' }).status, 0);
   assert.equal(alerts(f).length, 1, 'the second refusal within the hour alerted again');
   assert.equal(fbCalls(f), 2, 'the rate limit holds the alert, never the fallback');
-  assert.equal(f.run(f.good, { ...FB_ON, STUB_OUT: CREDIT_LOW, STUB_RC: '1' }).status, 0);
+  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_KIND: 'eval', STUB_OUT: CREDIT_LOW, STUB_RC: '1' }).status, 0);
   assert.equal(alerts(f).length, 2);
   const old = (Date.now() - 2 * 3600 * 1000) / 1000;
   for (const s of readdirSync(join(f.dir, 'alerts'))) utimesSync(join(f.dir, 'alerts', s), old, old);
-  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E' }).status, 0);
+  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_KIND: 'eval', HIMMEL_API_ACCOUNT: 'E' }).status, 0);
   assert.equal(alerts(f).length, 3);
 });
 
 test('a failed alert send writes no stamp, so the next failure inside the hour alerts again', () => {
   const f = fixture();
-  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E', ALERT_RC: '1' }).status, 0);
-  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_ACCOUNT: 'E' }).status, 0);
+  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_KIND: 'eval', HIMMEL_API_ACCOUNT: 'E', ALERT_RC: '1' }).status, 0);
+  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_KIND: 'eval', HIMMEL_API_ACCOUNT: 'E' }).status, 0);
   assert.equal(alerts(f).length, 2, 'a failed send muted the next alert');
 });
 
 test('HIMMEL_API_FALLBACK=off still alerts but runs no fallback; a malformed request never falls back', () => {
   const f = fixture();
-  const r = f.run(f.good, { HIMMEL_API_LANE: '' });
+  const r = f.run(f.good, { HIMMEL_API_LANE: '', HIMMEL_API_KIND: 'eval' });
   assert.equal(r.status, 2);
   assert.equal(fbCalls(f), 0);
   assert.equal(alerts(f).length, 1);
   assert.match(alertText(f), /fallback: off/);
   const g = fixture();
-  assert.equal(g.run([...g.good, '--bogus'], FB_ON).status, 2);
+  assert.equal(g.run([...g.good, '--bogus'], { ...FB_ON, HIMMEL_API_KIND: 'eval' }).status, 2);
   assert.equal(fbCalls(g), 0);
   assert.equal(alerts(g).length, 1);
   // the lane-off refusal comes first, yet a malformed request still never reaches the subscription
@@ -601,9 +601,10 @@ test('HIMMEL_API_FALLBACK=off still alerts but runs no fallback; a malformed req
   for (const [args, env] of [[noPrint, {}], [null, { HIMMEL_API_KIND: 'bad kind' }], [null, { HIMMEL_API_CACHE_TTL: '9h' }],
     [null, { HIMMEL_API_JOB_ID: 'bad id' }], [null, { HIMMEL_API_TOOLS: 'Bash(*)' }]]) {
     const m = fixture();
-    assert.equal(m.run(args ?? m.good, { ...FB_ON, HIMMEL_API_LANE: '', ...env }).status, 2);
+    const run = m.run(args ?? m.good, { ...FB_ON, HIMMEL_API_LANE: '', ...env });
+    assert.equal(run.status, 2);
     assert.equal(fbCalls(m), 0, JSON.stringify(env));
-    assert.match(alertText(m), /fallback: not run: the request itself was refused/);
+    assert.match(run.stderr, /fallback: not run: the request itself was refused/);
   }
 });
 
@@ -613,7 +614,7 @@ test('HIMMEL_API_FALLBACK unset or any value but on is off: no fallback, no sub-
     ['yes', /fallback: off \(HIMMEL_API_FALLBACK=yes is not on\)/]]) {
     const f = fixture();
     native(f, 10);
-    const r = f.run(f.good, { HIMMEL_API_FALLBACK: value, HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK });
+    const r = f.run(f.good, { HIMMEL_API_FALLBACK: value, HIMMEL_API_KIND: 'eval', HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK });
     assert.equal(r.status, 2, `${value}: ${r.stderr}`);
     assert.equal(fbCalls(f), 0, `${value}: the subscription ran`);
     assert.ok(!rows(f).some((row) => row.lane === 'sub-fallback'), `${value}: a sub-fallback row was written`);
@@ -633,7 +634,7 @@ function routeFixture(dotenv) {
   const sent = join(f.dir, 'sent.log');
   writeFileSync(join(bin, 'bun'), `#!/bin/bash\n{ echo "chat=$TELEGRAM_GROUP_CHAT_ID"; echo "args=$*"; echo "msg=$TG_MESSAGE"; } >> '${sent}'\nexit "\${BUN_RC:-0}"\n`, { mode: 0o700 });
   if (dotenv !== undefined) writeFileSync(join(f.dir, '.env'), dotenv);
-  const go = (extra = {}) => f.run(f.good, { HIMMEL_API_ACCOUNT: 'E', HIMMEL_API_ALERT_CMD: undefined, HIMMEL_API_ALERT_ENV_ROOT: f.dir,
+  const go = (extra = {}) => f.run(f.good, { HIMMEL_API_KIND: 'eval', HIMMEL_API_ACCOUNT: 'E', HIMMEL_API_ALERT_CMD: undefined, HIMMEL_API_ALERT_ENV_ROOT: f.dir,
     PATH: `${bin}:${process.env.PATH}`, ...extra });
   const sends = () => (existsSync(sent) ? readFileSync(sent, 'utf8') : '');
   const stamps = () => readdirSync(join(f.dir, 'alerts')).filter((n) => !n.endsWith('.jsonl'));
@@ -1405,6 +1406,19 @@ test('a lane-off refusal never takes the subscription fallback, whatever the kin
   }
 });
 
+test('a refusal alerts for the eval kind only: a critic kind or a lane off by design sends none', () => {
+  const critic = fixture();
+  const a = critic.run(critic.good, { HIMMEL_API_LANE: '', HIMMEL_API_KIND: 'critic' });
+  assert.equal(a.status, 2, a.stderr);
+  assert.match(a.stderr, /api lane is OFF/);
+  assert.deepEqual(alerts(critic), [], 'a critic refusal raised an alert');
+  const evalKind = fixture();
+  const b = evalKind.run(evalKind.good, { HIMMEL_API_LANE: '', HIMMEL_API_KIND: 'eval' });
+  assert.equal(b.status, 2, b.stderr);
+  assert.equal(alerts(evalKind).length, 1, 'an eval refusal raised no alert');
+  assert.match(alertText(evalKind), /kind eval/);
+});
+
 test('a critic call never takes the subscription fallback, for a refusal or a failed call', () => {
   const refused = fixture();
   const a = refused.run(refused.good, { ...FB_ON, HIMMEL_API_KIND: 'critic', HIMMEL_API_ACCOUNT: 'E', STUB_FB_OUT: FB_OK });
@@ -1914,11 +1928,11 @@ test('a decision-525 policy refusal sends no alert, writes no stamp, runs no fal
   assert.equal(f.called(), false);
 });
 
-test('every refusal but the policy one still alerts, and a graph-pass call failure still alerts', () => {
+test('an eval-kind refusal (not the policy one) still alerts, and a graph-pass call failure still alerts', () => {
   const f = fixture();
-  const off = f.run(f.good, { HIMMEL_API_LANE: '', HIMMEL_API_KIND: 'judge' });
+  const off = f.run(f.good, { HIMMEL_API_LANE: '', HIMMEL_API_KIND: 'eval' });
   assert.equal(off.status, 2, off.stderr);
-  assert.ok(existsSync(join(f.env.HIMMEL_API_ALERT_DIR, 'judge.refused')));
+  assert.ok(existsSync(join(f.env.HIMMEL_API_ALERT_DIR, 'eval.refused')));
   assert.equal(alerts(f).length, 1);
   assert.doesNotMatch(off.stderr, /policy refusal/);
   const g = fixture();
@@ -2320,7 +2334,7 @@ test('10425: a stale balance (BANK-STALE) is not a block: the call runs on the n
 test('10425: a locked ledger refuses under its own name, and the alert says ledger-locked, never a bare BANK-UNKNOWN', () => {
   const f = fixture();
   mkdirSync(`${f.paths.state}.lock`);
-  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_LOCK_WAIT_MS: '100' });
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_KIND: 'eval', HIMMEL_API_LOCK_WAIT_MS: '100' });
   assert.equal(f.called(), false, r.stderr);
   assert.equal(fbCalls(f), 1);
   assert.match(r.stderr, /refused: .*ledger-locked/);

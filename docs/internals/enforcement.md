@@ -3446,10 +3446,24 @@ the operator's "never merge over unresolved CodeRabbit remarks" rule
 matches `coderabbit`, covering both `coderabbitai` and `coderabbitai[bot]`
 login forms) and reads CodeRabbit's commit **status** on the head SHA via
 `scripts/lib/coderabbit-signal.sh`. The same predicate is
-called from `scripts/handover/pr-merge.sh` (GitHub forge only) before its
+called from `scripts/handover/pr-merge.sh` (the GitHub forge; Bitbucket below) before its
 mergeability poll, so machines without the plugin hook still get the gate on
 that path (a block there exits `pr-merge.sh` with code 5, distinct from a
 real `gh pr merge` failure's code 4).
+
+**On Bitbucket Cloud** `pr-merge.sh` runs `bb_forge_cr_gate` (`scripts/lib/forge-bitbucket.sh`)
+instead. Every inline review thread must be resolved (read with the CLI's `pr comments`),
+and the reviewer set must pass at the head: it calls `cr_reviewer_gate`, the same
+predicate GitHub's gate and the release check use, so every hard reviewer needs an
+`avail ok` row and no open finding at the head in the local CR ledger. The head is
+resolved to its full commit locally; one that cannot be resolved blocks. CodeRabbit's
+own status and outside-diff body findings are GitHub-App reads and are not part of the
+Bitbucket gate. It fails **closed**: an unreadable or truncated thread list, an
+unreadable ledger or a failed config read blocks (exit 5), where the
+GitHub gate fails open. Bypass: `CR_MERGE_GATE_OK=1` or `CR_PROFILE=none`. A direct
+`bitbucket pr merge` (or `forge_pr_merge`) typed in a session is denied by
+`block-unresolved-cr-merge.sh`, which names `pr-merge.sh`; it needs both
+`CR_MERGE_GATE_OK=1` and `CI_MERGE_GATE_OK=1` in the launching shell to pass.
 
 <!-- mem:9d6b22f2b7eb -->
 **CodeRabbit posts a STATUS, not a check-run.** This gate used to
@@ -3993,6 +4007,18 @@ adversarially-hardened selector extraction; a block prints
 exits `pr-merge.sh` with code **6**, distinct from the CR gate's 5 and a real
 merge failure's 4).
 
+**On Bitbucket Cloud** `pr-merge.sh` runs `bb_forge_ci_gate` instead: every build status
+on the PR head (the CLI's `pr statuses`, which carries Pipelines and external CI alike)
+must be `SUCCESSFUL`. A failed, stopped, running or unrecognised status blocks (exit 6),
+and so does an unreadable or truncated list: this gate fails **closed**, unlike the
+GitHub gate. A head with no statuses at all is allowed with a note, as a checkless
+GitHub PR is. Bypass: `CI_MERGE_GATE_OK=1`. The gates read the head `pr-merge.sh` pinned
+first; `bb_forge_pr_merge` re-reads it just before the merge and refuses (exit 4) if it
+moved or cannot be read. Bitbucket's merge API has no server-side head pin, so a push
+landing between that re-read and the merge request is the one window left open. The
+pinned value is the abbreviated hash `pr get` returns, not a 40-hex SHA. Reading
+Pipelines runs themselves and a live Bitbucket end-to-end proof are not built yet.
+
 **Fail-OPEN posture:** deny ONLY on positive red/pending evidence. `gh`/`jq`
 missing, API/parse error, and a genuinely **checkless PR** (zero check-runs AND
 zero commit statuses) all exit **0**, and an unresolvable selector (`gh pr view`
@@ -4261,8 +4287,24 @@ session, but a worker launched from a chief can inherit it) and the resolved ses
 name ends in `-chief` or `-console` (an unresolvable name is allowed), and denies a command that runs a script
 named in `scripts/handover/chief-kit/long-running.txt` unless
 `tool_input.run_in_background` is true. The deny message gives the re-issue shape.
-A textual match (interpreter + name, or a path in command position), so a grep that
-names a script is allowed. A workflow nudge: fails open on missing `jq` or an
+A command that names no listed script exits at once. Otherwise the command is read
+through the shared command model (`scripts/lib/bash-ast.sh`): a position runs a listed
+script when its program is listed, when a shell or `node`/`bun`/`python` is given it as
+its script word, or when a runner (`timeout`, `nice`, `setsid`, ...) takes it as an
+argument, so a quoted path and a run behind `env`, `exec`, `bash -c` or `eval` count,
+and a grep or cat that names a script is allowed. A quote-aware regex also reads the
+command through every runner the model lists, for a position the model cannot see into
+that names a listed script and whenever the model cannot answer (no `shfmt`, a parse
+failure, a timeout): a workflow nudge falls back to the regex there, unlike the callers
+the `bash-ast.sh` header describes, which fail closed on rc 2 and rc 5.
+
+A **detached** run (`&`, `coproc`, `nohup`, `setsid`, `systemd-run`) is denied even with
+`run_in_background: true`: the harness wakes the chief only when the command itself
+exits, so a detached run's output and wake reach no reader, and a detached
+`chief-wait.sh` holds the one-waiter lock. Its message starts
+`You are a CHIEF session running a long chief-kit script (<name>) DETACHED — DENIED.`;
+the foreground message keeps `in the foreground — DENIED`. Both begin with the prefix
+`worker-digest.ts` classifies. A workflow nudge: fails open on missing `jq` or an
 unparseable payload.
 
 **Bypass:** `CHIEF_FG_OK=1` in the LAUNCHING shell, session-sticky.

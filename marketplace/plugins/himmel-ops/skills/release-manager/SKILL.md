@@ -110,6 +110,7 @@ The chief writes the request and sends `REQ <id>`. Then:
 3. `release apply <R> <R-id>` — writes Jira, reads it back, records `applied`,
    posts the receipt comment, records `receipted`, and prints the RULING line.
    Re-run it after any failure: it is idempotent and never posts twice.
+   Each phase is its own signed row of `rulings.jsonl`. A finished ruling is two or three lines: `intent` then `void`, or `intent`, `applied` and `receipted`. Count rulings by distinct `id`, and applied ones by `receipted` rows, never by lines. Never edit or de-duplicate the file: it is a hash chain, and a removed row leaves every later row unverified.
 4. Send the chief the printed line, verbatim:
    `RULING <id> <req> <verb> <key> <op> <from>→<to> <outcome> <class> sector=<s> — <ground>: <reason>`.
    Only a receipted ruling is sent.

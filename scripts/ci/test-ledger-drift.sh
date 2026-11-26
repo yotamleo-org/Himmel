@@ -257,4 +257,17 @@ else
   fail "LD10: recipe '$recipe' harvested '$harvest'"
 fi
 
+echo "== LD11: the committed ledger balances the runs behind the red 2026-11-25 check =="
+FX11="$RST_FIXTURE_DIR/fixtures/ledger-drift-2026-11-25"
+out=$(bash "$LD" --logs "$FX11" --ledger "$FX11/stale-ledger.tsv" 2>&1); rc_stale=$?
+out_now=$(bash "$LD" --logs "$FX11" --ledger "$SRC_ROOT/scripts/ci/suite-durations.tsv" 2>&1); rc_now=$?
+ratio_now=$(sed -n 's/.*slowest\/floor=\([0-9.]*\).*/\1/p' <<< "$out_now")
+if [ "$rc_stale" -ne 1 ]; then
+  fail "LD11: control: the 2026-11-14 ledger on the red run's logs should flag DRIFT (rc 1); rc=$rc_stale $(grep -F 'slowest/floor' <<< "$out")"
+elif [ "$rc_now" -eq 0 ] && grepq "$out_now" -F 'ledger-drift: OK' && [ -n "$ratio_now" ]; then
+  pass "LD11: the 2026-11-14 ledger flags DRIFT on the red run's logs; the committed ledger balances them at slowest/floor=$ratio_now"
+else
+  fail "LD11: the committed ledger does not balance the red run's logs; rc=$rc_now $(grep -F 'slowest/floor' <<< "$out_now")"
+fi
+
 rst_tally

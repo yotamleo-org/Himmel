@@ -2468,6 +2468,11 @@ s17_bound() {  # <default seconds>: READY_CHECK_ITEM19_BOUND wins only when 1 or
     case "$b" in ''|*[!0-9]*) printf '%s' "$1" ;; *) if [ "$b" -ge 1 ] && [ "$b" -lt "$1" ]; then printf '%s' "$b"; else printf '%s' "$1"; fi ;; esac
 }
 s17_fail() { echo "[FAIL] 19. suite evidence: $1"; mark_fail; }
+s17_tier() {
+    local t=""
+    [ ! -r "$1" ] || t=$(awk -F '\t' -v p="$2" '$1 == p { print $2; exit }' "$1" 2>/dev/null) || t=""  # swallow-ok: an unreadable table reads as tier pr, which fails closed
+    printf '%s' "${t:-pr}"
+}
 # s17_run <name> <seconds> <out> <cmd...>: bounded; rc 124/137 is a timeout, said by name
 s17_run() {
     local name="$1" n="$2" out="$3" rc=0
@@ -2580,7 +2585,7 @@ check_suite_evidence() {
 }
 s17_body() {
     local d="$1" anchor n_imp branch ledger row="" have_row=0 run_id="" agg n_ci=0 n_local=0 n_ruled=0 s why bad=0 reasons="" ruled_names="" grc
-    local js_names="" job
+    local js_names="" job tier n_tskip=0 tskip_names=""
     s17_why=""
     _TIMEOUT_BIN=""
     # shellcheck source=../../lib/timeout-bin.sh
@@ -2730,6 +2735,7 @@ s17_body() {
             find "$d/m" -type f -name 'manifest-shard*.txt' -exec cat {} + 2>/dev/null | tr -d '\r' > "$d/man" || : > "$d/man"  # swallow-ok: no manifest proves nothing
             awk 'index($0, "ran 0 ") == 1 { print substr($0, 7) }' "$d/man" | sort -u > "$d/ran0"
             awk 'index($0, "skip ") == 1 { print substr($0, 6) }' "$d/man" | sort -u > "$d/skip"
+            awk 'index($0, "ran ") == 1 && index($0, "ran 0 ") != 1 { r = substr($0, 5); k = index(r, " "); if (k > 1) print substr(r, k + 1) }' "$d/man" | sort -u > "$d/shred"
             : > "$d/jsran0"; : > "$d/jsskip"; : > "$d/jsred"; : > "$d/jsbad"
             while IFS= read -r s; do
                 if ! grep -Fxq -- "$s" "$d/ran0" && ! grep -Fxq -- "$s" "$d/skip"; then
@@ -2741,10 +2747,12 @@ s17_body() {
         while IFS= read -r s; do
             if [ -z "$run_id" ]; then
                 why="$s17_why"
+            elif grep -Fxq -- "$s" "$d/shred"; then
+                why="CI ran it and it failed"
             elif grep -Fxq -- "$s" "$d/ran0"; then
                 n_ci=$((n_ci + 1)); continue
             elif grep -Fxq -- "$s" "$d/skip"; then
-                why="CI skipped it"
+                n_tskip=$((n_tskip + 1)); tskip_names="$tskip_names, $s (CI skip)"; continue
             elif grep -Fxq -- "$s" "$d/jsred"; then
                 why="CI ran it and it failed"
             elif grep -Fxq -- "$s" "$d/jsran0"; then
@@ -2752,8 +2760,12 @@ s17_body() {
             elif job=$(awk -F '\t' -v p="$s" '$1 == p { print $2; exit }' "$d/jsbad") && [ -n "$job" ]; then
                 why="CI job $job did not succeed"
             elif grep -Fxq -- "$s" "$d/jsskip"; then
-                why="CI skipped it"
+                n_tskip=$((n_tskip + 1)); tskip_names="$tskip_names, $s (CI skip)"; continue
             else
+                tier=$(s17_tier "$anchor/scripts/ci/suite-tiers.tsv" "$s")
+                case "$tier" in
+                    daily|local|quarantine) n_tskip=$((n_tskip + 1)); tskip_names="$tskip_names, $s ($tier)"; continue ;;
+                esac
                 why="no ran-0 row in run $run_id"
             fi
             reasons="$reasons, $s ($why)"; bad=$((bad + 1))
@@ -2763,12 +2775,13 @@ s17_body() {
     if [ "$bad" -gt 0 ]; then
         s17_fail "$bad suite(s) proven nowhere: ${reasons#, }"
         [ -z "$js_names" ] || echo "       note: from JS manifests: ${js_names#, }"
+        echo "       note: a suite CI does not run (tier daily, local or quarantine, or a CI skip) needs no local run; a suite with no ran-0 row and tier pr or flow means CI has not proved it yet: wait for CI, never run it on the station"
         if [ "$have_row" -eq 0 ]; then
             echo "       no impacted row at ${SHA:0:7} on ${branch:-?}: the chief runs pr-check step 3.6 (impacted-suites.sh --check --record) for this head from a worktree of the branch, so the row lands in the shared ledger"
         fi
         return 0
     fi
-    echo "[PASS] 19. suite evidence: $n_imp impacted, $n_ci from CI run ${run_id:--}, $n_local local${ruled_names:+, $n_ruled ruled SKIP: ${ruled_names#, }}"
+    echo "[PASS] 19. suite evidence: $n_imp impacted, $n_ci from CI run ${run_id:--}, $n_local local${ruled_names:+, $n_ruled ruled SKIP: ${ruled_names#, }}${tskip_names:+, $n_tskip tier-skipped: ${tskip_names#, }}"
     [ -z "$js_names" ] || echo "       note: from JS manifests: ${js_names#, }"
 }
 check_suite_evidence

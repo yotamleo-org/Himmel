@@ -97,6 +97,9 @@ has "RED HIMMEL-10735: a pending grant: the card's line 1 is the exact reply" "t
 has "a pending grant: the card names the session and chief" "session S1 · chief chief-A" "$SENT"
 has "RED HIMMEL-10735: a pending grant: the card shows the command, marked unverified" "Command (unverified): \$ $CMD" "$SENT"
 has "a pending grant: the card carries the Approve button" "afk:approve:abcdefgh" "$SENT"
+check "RED HIMMEL-11185: a pending grant: one line in the requesting chief's bridge inbox" "1" "$(lines "$(inbox chief-A)")"
+has "RED HIMMEL-11185: a pending grant: the inbox line names the ask in plain words" "[afk-grant-request] AFK grant abcdefgh asked on the phone: session S1 had \`npx\` refused by the classifier as [Code from External]; approve or deny it there before " "$(inbox chief-A)"
+lacks "RED HIMMEL-11185: a pending grant: the inbox line carries no command argument" "N4198-probe" "$(inbox chief-A)"
 
 # shellcheck disable=SC2016 # literal text with shell metacharacters, nothing to expand
 GDESC='Prints $(whoami) `id` <b>x</b> & "q"'
@@ -209,6 +212,8 @@ check "RED HIMMEL-10845: the launching chief's inbox gets nothing" "" "$(inbox c
 pending
 run Bash "$CMD"
 has "RED HIMMEL-10845: a pending grant's card names the current chief" "chief chief-B" "$SENT"
+has "RED HIMMEL-11185: a pending grant's inbox line goes to the current chief" "[afk-grant-request] AFK grant abcdefgh" "$(inbox chief-B)"
+check "RED HIMMEL-11185: the launching chief's inbox gets no request line" "" "$(inbox chief-A)"
 
 printf 'chief-gone\n' > "$TMP/bridge/consoles/chief-A.md.handover"
 printf 'result=busy\n' > "$TMP/reply"
@@ -289,14 +294,18 @@ CHIEF_ENV=chief-A SESSION_N_NAME=''
 printf 'result=expired\n' > "$TMP/status"
 run Bash "$CMD"
 quiet "a grant that will expire"
-if wait_sent "grant abcdefgh from session S1 (chief chief-A) expired, nothing ran"; then echo "PASS the waiter posts the expiry line"; else echo "FAIL the waiter posts the expiry line"; echo "  got: $(cat "$TMP/outbox")"; FAILED=1; fi
+if wait_sent "grant abcdefgh for \`npx\` [Code from External] from session S1 (chief chief-A) expired, nothing ran"; then echo "PASS the waiter posts the expiry line"; else echo "FAIL the waiter posts the expiry line"; echo "  got: $(cat "$TMP/outbox")"; FAILED=1; fi
 has "RED HIMMEL-10845: the expiry line goes to the outbox as kind afk-grant-expired, to the operator chat" "chat=4242 kind=afk-grant-expired " "$(grep -F 'expired, nothing ran' "$TMP/outbox")"
 lacks "RED HIMMEL-10845: the expiry line is no direct Telegram call" "expired, nothing ran" "$(cat "$TMP/curl")"
+check "RED HIMMEL-11185: an expired grant: one outcome line on Telegram" "1" "$(grep -c 'kind=afk-grant-' "$TMP/outbox")"
+has "RED HIMMEL-11185: an expired grant: the Telegram line names what it was for" "for \`npx\` [Code from External] from session S1" "$(grep -F 'expired, nothing ran' "$TMP/outbox")"
+check "RED HIMMEL-11185: an expired grant: one outcome line in the chief's bridge inbox" "1" "$(grep -c '\[afk-grant-expired\]' "$TMP/bridge/consoles/chief-A.md")"
+has "RED HIMMEL-11185: an expired grant: the inbox line names what it was for" "[afk-grant-expired] grant abcdefgh for \`npx\` [Code from External] from session S1 (chief chief-A) expired, nothing ran" "$(inbox chief-A)"
 
 : > "$TMP/bridge/consoles/chief-B.md"
 printf 'chief-B\n' > "$TMP/bridge/consoles/chief-A.md.handover"
 run Bash "$CMD"
-if wait_sent "grant abcdefgh from session S1 (chief chief-B) expired, nothing ran"; then echo "PASS RED HIMMEL-10845: the expiry line names the current chief"; else echo "FAIL RED HIMMEL-10845: the expiry line names the current chief"; echo "  got: $(cat "$TMP/outbox")"; FAILED=1; fi
+if wait_sent "grant abcdefgh for \`npx\` [Code from External] from session S1 (chief chief-B) expired, nothing ran"; then echo "PASS RED HIMMEL-10845: the expiry line names the current chief"; else echo "FAIL RED HIMMEL-10845: the expiry line names the current chief"; echo "  got: $(cat "$TMP/outbox")"; FAILED=1; fi
 rm -f "$TMP/bridge/consoles/chief-A.md.handover" "$TMP/bridge/consoles/chief-B.md"
 
 printf 'result=pending\n' > "$TMP/status"
@@ -304,14 +313,40 @@ run Bash "$CMD"
 : > "$TMP/bridge/consoles/chief-C.md"
 printf 'chief-C\n' > "$TMP/bridge/consoles/chief-A.md.handover"
 printf 'result=expired\n' > "$TMP/status"
-if wait_sent "grant abcdefgh from session S1 (chief chief-C) expired, nothing ran"; then echo "PASS RED HIMMEL-10845: a succession while the grant is pending moves the expiry line to the new chief"; else echo "FAIL RED HIMMEL-10845: a succession while the grant is pending moves the expiry line to the new chief"; echo "  got: $(cat "$TMP/outbox")"; FAILED=1; fi
+if wait_sent "grant abcdefgh for \`npx\` [Code from External] from session S1 (chief chief-C) expired, nothing ran"; then echo "PASS RED HIMMEL-10845: a succession while the grant is pending moves the expiry line to the new chief"; else echo "FAIL RED HIMMEL-10845: a succession while the grant is pending moves the expiry line to the new chief"; echo "  got: $(cat "$TMP/outbox")"; FAILED=1; fi
+has "RED HIMMEL-11185: a succession while the grant is pending moves the inbox outcome line to the new chief" "[afk-grant-expired] grant abcdefgh" "$(inbox chief-C)"
 rm -f "$TMP/bridge/consoles/chief-A.md.handover" "$TMP/bridge/consoles/chief-C.md"
+
+outcome() {
+    local status=$1 kind=$2 text=$3 name=$4
+    printf '%s\n' "$status" > "$TMP/status"
+    run Bash "$CMD"
+    quiet "$name"
+    if wait_sent "$text"; then echo "PASS RED HIMMEL-11185: $name: one Telegram outcome line"; else echo "FAIL RED HIMMEL-11185: $name: one Telegram outcome line"; echo "  got: $(cat "$TMP/outbox")"; FAILED=1; fi
+    has "RED HIMMEL-11185: $name: the Telegram line goes to the operator chat as kind $kind" "chat=4242 kind=$kind text=$text" "$(cat "$TMP/outbox")"
+    check "RED HIMMEL-11185: $name: exactly one outcome line on Telegram" "1" "$(grep -c 'kind=afk-grant-' "$TMP/outbox")"
+    has "RED HIMMEL-11185: $name: the chief's bridge inbox gets the same line" "[$kind] $text" "$(inbox chief-A)"
+    lacks "RED HIMMEL-11185: $name: the outcome is no direct Telegram call" "$text" "$(cat "$TMP/curl")"
+}
+outcome "result=granted id=abcdefgh" afk-grant-approved "grant abcdefgh for \`npx\` [Code from External] from session S1 (chief chief-A) approved: that session's next identical call runs once" "an approved grant"
+outcome "result=denied id=abcdefgh" afk-grant-denied "grant abcdefgh for \`npx\` [Code from External] from session S1 (chief chief-A) denied, nothing ran" "a denied grant"
+outcome "result=denied:bad-nonce id=abcdefgh" afk-grant-denied "grant abcdefgh for \`npx\` [Code from External] from session S1 (chief chief-A) denied, nothing ran" "a grant denied on a wrong nonce"
+outcome "result=refused:never-remote id=abcdefgh" afk-grant-denied "grant abcdefgh for \`npx\` [Code from External] from session S1 (chief chief-A) approved but refused by the helper (never-remote), nothing ran" "a grant refused after approval"
+printf 'result=running id=abcdefgh\n' > "$TMP/status"
+run Bash "$CMD"
+sleep 0.6
+printf 'result=granted id=abcdefgh\n' > "$TMP/status"
+if wait_sent "approved: that session's next identical call runs once"; then echo "PASS RED HIMMEL-11185: a grant seen running keeps the waiter until its outcome"; else echo "FAIL RED HIMMEL-11185: a grant seen running keeps the waiter until its outcome"; echo "  got: $(cat "$TMP/outbox")"; FAILED=1; fi
+printf 'result=unknown id=abcdefgh\n' > "$TMP/status"
+run Bash "$CMD"
+sleep 0.6
+check "RED HIMMEL-11185: an unknown status posts no outcome" "" "$(cat "$TMP/outbox")"
 
 : > "$TMP/status"
 run Bash "$CMD"
 quiet "a status query that fails first"
 printf 'result=expired\n' > "$TMP/status"
-if wait_sent "grant abcdefgh from session S1 (chief chief-A) expired, nothing ran"; then echo "PASS a failed status query does not end the waiter"; else echo "FAIL a failed status query does not end the waiter"; FAILED=1; fi
+if wait_sent "grant abcdefgh for \`npx\` [Code from External] from session S1 (chief chief-A) expired, nothing ran"; then echo "PASS a failed status query does not end the waiter"; else echo "FAIL a failed status query does not end the waiter"; FAILED=1; fi
 
 printf 'result=pending\n' > "$TMP/status"; : > "$TMP/status.argv"
 pending 0; MARGIN=1
@@ -330,7 +365,7 @@ printf 'result=error OSError\n' > "$TMP/status"; printf '5' > "$TMP/status.rc"
 run Bash "$CMD"
 quiet "a status query the helper cannot answer"
 printf 'result=expired\n' > "$TMP/status"; rm -f "$TMP/status.rc"
-if wait_sent "grant abcdefgh from session S1 (chief chief-A) expired, nothing ran"; then echo "PASS a status query the helper cannot answer does not end the waiter"; else echo "FAIL a status query the helper cannot answer does not end the waiter"; FAILED=1; fi
+if wait_sent "grant abcdefgh for \`npx\` [Code from External] from session S1 (chief chief-A) expired, nothing ran"; then echo "PASS a status query the helper cannot answer does not end the waiter"; else echo "FAIL a status query the helper cannot answer does not end the waiter"; FAILED=1; fi
 
 touch "$TMP/slow"; printf 'result=approved\n' > "$TMP/status"
 t0=$(date +%s)

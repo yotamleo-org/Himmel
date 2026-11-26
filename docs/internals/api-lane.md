@@ -18,7 +18,7 @@ feature's own switch.
 | `scripts/api-lane/judge-call.sh` | API lane | always (a chief's verdict question) |
 | `scripts/api-lane/bulk-call.sh` | API lane | always |
 | `jira release rm-run` (release manager) | none: the model judge is parked and the door places each request with no call; the rest of this row is the parked judge's route (`HIMMEL_RM_JUDGE=model`) | only in the himmel repo with `judge` mapped in `roles.json` (see [The role map](#the-role-map)); there the launcher's fallback is off, and a failed lane call, a policy refusal included, makes `rm-run` rule the batch once on the subscription itself; a timed-out call ends the run |
-| `scripts/cr/critic-first-pass.sh` (claude critic) | the registry row's provider | provider `claude-api`; with the lane off, the refusal alerts (one per hour) and the critic is skipped; a critic never runs on the subscription, for any refusal or failure; a policy refusal (exit 2 with the launcher's `claude-api: policy refusal:` line) makes the critic print `claude critic BROKE` and exit 1, never a clean skip |
+| `scripts/cr/critic-first-pass.sh` (claude critic) | no standing row: the panel has no claude row, and the `claude_floor` critic (codex out of quota, with a loud alert from the panel) runs on the subscription, not the API lane; a claude row an adopter adds in `critics.local.json` is the only critic route here | provider `claude-api` for that adopter row; with the lane off, the refusal sends no alert (the lane is off by design) and the critic is skipped; a critic never runs on the subscription, for any refusal or failure; a policy refusal (exit 2 with the launcher's `claude-api: policy refusal:` line) makes the critic print `claude critic BROKE` and exit 1, never a clean skip |
 | `scripts/graphify/graph-cadence.sh --semantic` | `claude-cli` when run bare; the armed `graph-publish-himmel` runner passes `claude-api` on auto | `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` |
 | `scripts/cleanup/steering-cull-cadence.sh` | `claude-cli` | `STEERING_CULL_BACKEND=claude-api`, or `arm --backend claude-api --api-account A\|B\|C\|D` |
 
@@ -102,6 +102,11 @@ For every other failure the launcher:
    ```
 
    - The class is `refused`, `rejected` (exit 6) or `call-failed`.
+   - **A refusal alerts for the eval only.** The API lane's own use is the eval
+     (`HIMMEL_API_KIND=eval`). A `refused` call of any other kind (a critic, a
+     judge, a bulk call, and a lane that is off by design) sends no alert: the
+     launcher prints `claude-api: alert: none sent` on stderr and the refusal line
+     stands. `rejected` and `call-failed` still alert for every kind.
    - The reason is one line of at most 200 characters. The key, any key the caller
      holds and anything shaped like `sk-ant-…` become `[key]`. The call's result
      text is never included.

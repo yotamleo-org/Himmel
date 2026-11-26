@@ -108,7 +108,7 @@ _deny() { echo "block-unresolved-cr-merge: $1" >&2; exit 2; }
 # `gh api .../merge`, `gh alias set mm "pr merge"`, `bash -c`, `eval`, a prefix or
 # any other flag placement DENIES. No per-spelling grammar to drift.
 _norm() {
-    printf '%s' "$1" | sed -e ':a' -e '$!N' -e '$!ba' -e 's/\\\n//g' -e 's/\\//g' -e "s/['\"\$\`{}]//g" | tr '\n' ' '
+    printf '%s' "$1" | sed -e ':a' -e '$!N' -e '$!ba' -e 's/\\\n//g' -e 's/\\//g' -e "s/['\"\$\`{}]//g" | tr '\n' "${2:- }"
 }
 # Monotone versus main: main's own detector runs byte for byte and every rule
 # below only ADDS a deny, so nothing main denied can pass (judge r1, C1).
@@ -143,6 +143,10 @@ for _n in "$cmd_norm" "$cmd_sq"; do
             if (w == "api") api = 1; else if (w == "alias") al = 1; else g = 0 } }
         END { exit !f }' && fires=1
 done
+bb_merge_hit=$(_norm "$cmd" ';' | grep -Eo '(^|[;&|(])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|env|command|exec|nohup|time|sudo|builtin|setsid|xargs|eval|bash|sh|zsh|-[^[:space:]]+|[0-9]*[<>]+[[:space:]]*[^[:space:];&|]+|[0-9]*>&[0-9]+)[[:space:]]+)*((node[[:space:]]+)?[^[:space:];&|]*bitbucket[^[:space:];&|]*[[:space:]]+(-[^[:space:]]+[[:space:]]+)*pr[[:space:]]+merge|forge_pr_merge([[:space:]]|$))')
+if [ -n "$bb_merge_hit" ] && { [ "${CR_MERGE_GATE_OK:-0}" != "1" ] || [ "${CI_MERGE_GATE_OK:-0}" != "1" ]; }; then
+    _deny "a direct Bitbucket merge skips the reviewer and CI gates. Run scripts/handover/pr-merge.sh instead (it merges at the vetted head). Bypass: CR_MERGE_GATE_OK=1 and CI_MERGE_GATE_OK=1 in the launching shell."
+fi
 [ "$fires" = "1" ] || exit 0
 # A head pin is one word to bash whether or not it is quoted: unquote a hex-only
 # value (`--match-head-commit "<sha>"`, `'<sha>'`, `=` form) before the plain-command

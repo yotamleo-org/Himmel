@@ -282,7 +282,7 @@ describe('cursor + qmd', () => {
     expect(run.mock.calls.map((c) => (c[0] as string[]).join(' '))).toEqual([
       'collection list',
       `collection add ${root} --name jira-himmel`,
-      'update',
+      'update -c jira-himmel',
       'embed -c jira-himmel',
     ]);
   });

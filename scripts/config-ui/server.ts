@@ -11,7 +11,7 @@ import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { scrubProviderKeys } from "./scrub-provider-keys";
 // redact.js is the shared CommonJS redactor (P2); imported, not copied.
-import { redactDeep, envValues } from "../himmelctl/lib/redact.js";
+import { redact, redactDeep, envValues } from "../himmelctl/lib/redact.js";
 import { parseDotEnv } from "../himmelctl/lib/probes.js";
 import { resolveSecretsAsync } from "../lib/resolve-secrets.mjs";
 import secretsManifest from "../himmelctl/lib/secrets-manifest.json";
@@ -66,8 +66,6 @@ const LITERALS_TTL_MS = 5_000;
 const LITERALS_WAIT_MS = 1_500;
 // every credential the manifest names: the wizard's and the station scripts' (the redactor keeps the secret-named ones)
 const SECRET_NAMES = [...secretsManifest.secrets, ...secretsManifest.stationSecrets].map((s: { name: string }) => s.name);
-// with backgroundFeed the report starts at boot and is refreshed every FEED_REFRESH_MS, but only
-// while the chief is in use (an authenticated request within the last FEED_REFRESH_MS), so a closed UI idles out.
 const FEED_REFRESH_MS = 10 * 60 * 1000;
 // The progress line probe-progress.cjs writes; anything else on the report's stderr is ignored.
 const PROBE_LINE = "himmel-probe ";
@@ -347,6 +345,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   // The list only grows: a locked keyring, a timeout or a partial read adds nothing and drops nothing; a value no read saw cannot be masked.
   const seen = new Set<string>();
   let literalsAt = -Infinity, literalsMemo: string[] = [], literalsEpoch = 0, literalsDirty = false;
+  let storing = 0;
   let literalsRun: { done: Promise<void>; slow: boolean; epoch: number } | null = null;
   // These two match the secret-name pattern but hold a mode ("off") and a directory, not a credential. Any other name stays.
   const NOT_SECRET_ENV = new Set(["HIMMEL_SECRETS_KEYRING", "HIMMEL_SECRETS_RUNTIME_DIR"]);
@@ -383,6 +382,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (late) { run.slow = true; return; }
     }
   };
+  const readLiteralsNow = async (): Promise<void> => { literalsRun = null; literalsAt = -Infinity; await freshLiterals(); };
   const secretLiterals = (): string[] => {
     if (now() - literalsAt >= LITERALS_TTL_MS) void startLiteralsRead();
     return literalsMemo;
@@ -434,18 +434,19 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     const lock = acquireLock(lockPath);
     if ("busy" in lock) return json({ error: lock.busy }, 409);
     previews.delete(id); // single-use from here on
-    let before, r, after, failed = false;
+    let before, r, after, failed = false, counted = false;
     try {
       before = await reprobe(p.rowIds);
       onStart(); // the station is about to change; a request rejected earlier leaves the feed alone
+      storing++; counted = true;
       r = await runChild(p.argv, childOpts(p, lock));
       after = await reprobe(p.rowIds);
-    } catch { failed = true; } finally { lock.release(); }
+    } catch { failed = true; } finally { if (counted) storing--; lock.release(); }
     // The action has already run (or was started): a failed append must not hide that behind a 500.
     let audit = "ok";
     try { appendAudit(auditPath, { time: new Date(now()).toISOString(), action: p.action, target: p.target, value: p.value, argv: p.argv, rc: r?.rc ?? null, before: healthOf(before?.probe ?? null), after: healthOf(after?.probe ?? null), ...(failed ? { outcome: "error" as const } : {}) }); }
     catch { audit = "failed"; }
-    if (failed || !r || !before || !after) return json({ error: "internal error", audit }, 500);
+    if (failed || !r || !before || !after) { invalidateLiterals(); return json({ error: "internal error", audit }, 500); }
     const reprobeState = before.state !== "ok" ? before.state : after.state;
     invalidateLiterals();
     await freshLiterals();
@@ -655,6 +656,43 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     try { return JSON.stringify(redactDeep(JSON.parse(body), { literals })); } catch { return String(redactDeep(body, { literals })); }
   };
   const feedBody = (body: string) => new Response(maskFeed(body), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
+  const maskLiterals = (body: string, stream = false): string => {
+    const o = { literals: secretLiterals(), idKey: true };
+    const deep = (v: unknown): unknown => typeof v === "string" ? redact(v, o) : Array.isArray(v) ? v.map(deep) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deep(x)])) : v;
+    const one = (s: string): string => { try { return JSON.stringify(deep(JSON.parse(s))); } catch { return redact(s, o); } };
+    return stream && /^(data: |: )/.test(body) ? body.split("\n").map((l) => l.startsWith("data: ") ? `data: ${one(l.slice(6))}` : l).join("\n") : one(body);
+  };
+  const maskAgain = async (res: Response, epoch: number): Promise<Response> => {
+    if ((epoch === literalsEpoch && storing === 0) || res.body === null || !/^(application\/json|text\/plain)/.test(res.headers.get("content-type") ?? "")) return res;
+    let text = await res.text();
+    for (let round = 0; round < 3 && (round === 0 || epoch !== literalsEpoch); round++) {
+      epoch = literalsEpoch;
+      await (storing > 0 ? readLiteralsNow() : freshLiterals());
+      text = maskLiterals(text);
+    }
+    if (epoch !== literalsEpoch) return json({ error: "internal error" }, 500);
+    const headers = new Headers(res.headers);
+    headers.delete("content-length");
+    return new Response(text, { status: res.status, statusText: res.statusText, headers });
+  };
+  const guardStream = (inner: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> => {
+    const openedAt = literalsDirty ? -1 : literalsEpoch;
+    const reader = inner.getReader();
+    const dec = new TextDecoder(), enc = new TextEncoder();
+    return new ReadableStream<Uint8Array>({
+      async pull(c) {
+        const next = await reader.read();
+        if (next.done) return c.close();
+        let chunk = next.value;
+        if (openedAt !== literalsEpoch || storing > 0) {
+          await (storing > 0 ? readLiteralsNow() : freshLiterals());
+          chunk = enc.encode(maskLiterals(dec.decode(chunk), true));
+        }
+        c.enqueue(chunk);
+      },
+      cancel: (why) => reader.cancel(why),
+    });
+  };
   async function feedRoute(): Promise<Response> {
     const last = feedLast;
     const run = feedStart(); // an expired cache starts a refresh here
@@ -700,7 +738,6 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       const from = req.headers.get("origin");
       if (from !== null && from !== origin) return new Response("bad origin", { status: 403 });
       bump();
-      lastSeen = now();
       return new Response(JSON.stringify({ token }), { headers: { "content-type": "application/json", "cache-control": "no-store", "referrer-policy": "no-referrer" } });
     }
     if (path.startsWith("/api/")) {
@@ -708,7 +745,6 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       const session = auth.session(req.headers.get("cookie")) !== null;
       if (!session && !sameToken(req.headers.get("x-himmel-token"), token)) return new Response("unauthorized", { status: 401 });
       bump(); // only an authenticated request keeps the server alive
-      lastSeen = now(); // and only one keeps the background refresh going
       await freshLiterals();
       if (req.method === "GET" && path === "/api/mode") return new Response(JSON.stringify({ readOnly: !!opts.readOnly }), { headers: { "content-type": "application/json", "cache-control": "no-store", "x-himmel-session": session ? "1" : "0" } }); // the page's banner and disabled write controls; the header says whether this caller holds a login session
       if (req.method === "GET" && path === "/api/projects") { // never runs a doctor: each project's own cached feed, or "not checked"
@@ -721,6 +757,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         return c ? feedBody(c.body) : json({ state: "not-checked", project: other }, 404);
       }
       if (req.method === "GET" && path === "/api/feed") {
+        lastSeen = now();
         if (new URL(req.url).searchParams.get("refresh") === "1") { feedRun = null; feedLast = null; feedEpoch++; } // the refresh button waits for a probe it started: never the cached report, never a run already in flight
         return feedRoute();
       }
@@ -904,12 +941,12 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         if ("status" in found) return new Response(found.status === 400 ? "bad run id" : found.status === 404 ? "no such run" : "run id is ambiguous", { status: found.status });
         // Secrets in the transcript pass the same redactor as every other output, with the list as it is now (the stream is long-lived).
         active++; // an open stream keeps the idle timer from shutting the server down
-        const body = journalStream(found.path, {
+        const body = guardStream(journalStream(found.path, {
           threadId: run, pollMs: opts.aguiPollMs ?? AGUI_POLL_MS, idleMs: opts.aguiIdleMs ?? AGUI_IDLE_MS, maxMs: opts.aguiMaxMs ?? AGUI_MAX_MS,
           redact: (v) => redactOut(v),
           busRoot: busRootOf(env, env.HOME || homedir()),
           onClose: () => { active--; if (deferred && active === 0) { deferred = false; bump(); } },
-        });
+        }));
         return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-store" } });
       }
       // which secrets are set (presence only) and the commit rules in effect, for the Setup page.
@@ -975,14 +1012,15 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     async fetch(req) {
       let res: Response;
       active++;
-      try { res = await route(req); } catch { res = json({ error: "internal error" }, 500); }
+      const epoch = literalsEpoch;
+      try { res = await maskAgain(await route(req), epoch); } catch { res = json({ error: "internal error" }, 500); }
       finally { active--; if (deferred && active === 0) { deferred = false; bump(); } }
       for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.headers.set(k, v);
       return res;
     },
   });
   bump();
-  if (opts.backgroundFeed) feedStart(true); // prewarm, so the report is there when the console opens
+  if (opts.backgroundFeed && !opts.noIdle) feedStart(true); // prewarm, so the report is there when the console opens
   return { server, port: server.port, token, stop: () => { clearTimeout(idle); clearInterval(refresher); server.stop(true); } };
 }
 

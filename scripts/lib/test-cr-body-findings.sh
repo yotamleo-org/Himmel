@@ -111,6 +111,29 @@ SEV_SEP_BODY="$FIXDIR/test-pr-5890-minor-comments-separators.body.txt"
 mk_json_from_file "$RESP_DIR/sev-sep.json"            "$UID_OK"    "$HEAD"  "$SEV_SEP_BODY"
 sed 's/Minor comments: 20/Minor comments: 21/' "$SEV_SEP_BODY" > "$TMP/sev-sep-header-high.body.txt"
 mk_json_from_file "$RESP_DIR/sev-sep-header-high.json" "$UID_OK"   "$HEAD"  "$TMP/sev-sep-header-high.body.txt"
+ADD_UNV_BODY="$FIXDIR/pr-5929-additional-unverified.body.txt"
+grep -A1 '[*][*]Unverified finding[*][*]' "$ADD_UNV_BODY" > "$TMP/add-unv-snippet.txt"
+printf '%s\n' '<!-- cr-comment:v1:ffff000011112222 -->' > "$TMP/add-unv-extra-marker.txt"
+mk_json_from_file "$RESP_DIR/add-unv.json"            "$UID_OK"    "$HEAD"  "$ADD_UNV_BODY"
+mk_json_from_file "$RESP_DIR/add-unv-prior.json"      "$UID_OK"    "oldsha1" "$ADD_UNV_BODY"
+sed 's/Additional comments: 1/Additional comments: 2/' "$ADD_UNV_BODY" > "$TMP/add-unv-addcount.body.txt"
+mk_json_from_file "$RESP_DIR/add-unv-addcount.json"   "$UID_OK"    "$HEAD"  "$TMP/add-unv-addcount.body.txt"
+sed 's/Minor comments: 1/Minor comments: 2/' "$ADD_UNV_BODY" > "$TMP/add-unv-minorcount.body.txt"
+mk_json_from_file "$RESP_DIR/add-unv-minorcount.json" "$UID_OK"    "$HEAD"  "$TMP/add-unv-minorcount.body.txt"
+sed "/\`351-354\`/s/<\/picture> Minor\*\*/<\/picture> Moderate**/" "$ADD_UNV_BODY" > "$TMP/add-unv-unknownsev.body.txt"
+mk_json_from_file "$RESP_DIR/add-unv-unknownsev.json" "$UID_OK"    "$HEAD"  "$TMP/add-unv-unknownsev.body.txt"
+sed '/cr-comment:v1:ab2b2d71f21e962ee405fca9/r '"$TMP/add-unv-extra-marker.txt" "$ADD_UNV_BODY" > "$TMP/add-unv-extramarker.body.txt"
+mk_json_from_file "$RESP_DIR/add-unv-extramarker.json" "$UID_OK"   "$HEAD"  "$TMP/add-unv-extramarker.body.txt"
+grep -v -e '[*][*]Unverified finding[*][*]' -e 'Verification ran but could not confirm' "$ADD_UNV_BODY" > "$TMP/add-unv-stray-verified.body.txt"
+mk_json_from_file "$RESP_DIR/add-unv-stray-verified.json" "$UID_OK" "$HEAD" "$TMP/add-unv-stray-verified.body.txt"
+sed '/cr-comment:v1:ab2b2d/r '"$TMP/add-unv-snippet.txt" "$TMP/add-unv-stray-verified.body.txt" > "$TMP/add-unv-label-after-marker.body.txt"
+mk_json_from_file "$RESP_DIR/add-unv-label-after-marker.json" "$UID_OK" "$HEAD" "$TMP/add-unv-label-after-marker.body.txt"
+sed '/^[*][*]Require an explicit first-attempt value/r '"$TMP/add-unv-snippet.txt" "$TMP/add-unv-stray-verified.body.txt" > "$TMP/add-unv-label-not-first.body.txt"
+mk_json_from_file "$RESP_DIR/add-unv-label-not-first.json" "$UID_OK" "$HEAD" "$TMP/add-unv-label-not-first.body.txt"
+sed 's/Additional comments: 1/Nitpick comments: 1/' "$ADD_UNV_BODY" > "$TMP/add-unv-as-nitpick.body.txt"
+mk_json_from_file "$RESP_DIR/add-unv-as-nitpick.json" "$UID_OK"    "$HEAD"  "$TMP/add-unv-as-nitpick.body.txt"
+sed "/^\`351-354\`/r $TMP/add-unv-snippet.txt" "$ADD_UNV_BODY" > "$TMP/add-unv-in-minor.body.txt"
+mk_json_from_file "$RESP_DIR/add-unv-in-minor.json"   "$UID_OK"    "$HEAD"  "$TMP/add-unv-in-minor.body.txt"
 mk_json_from_str  "$RESP_DIR/colon-malformed.json"    "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: one</summary> <!-- cr-comment:v1:abc123 -->"
 mk_json_from_str  "$RESP_DIR/colon-suffix-1.json"     "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: 1.5</summary> <!-- cr-comment:v1:abc123 -->"
 mk_json_from_str  "$RESP_DIR/colon-suffix-2.json"     "$UID_OK"    "$HEAD"  "<summary>Nitpick comments: 1foo</summary> <!-- cr-comment:v1:abc123 -->"
@@ -198,6 +221,15 @@ t severity-unknown-section-beside-known-blocks sev-unknown-section 2
 t severity-prior-head-counted                 sev-prior           0 "outside=0 nitpick=0 additional=0 prior_outside=1 markers=0 head_reviews=0 substantive=0"
 t severity-header-n-above-entries-blocks      sev-header-high     2
 t severity-header-word-differs-from-entry-blocks sev-header-word  2
+t additional-unverified-pr5929-counts             add-unv                    0 "outside=1 nitpick=0 additional=1 prior_outside=0 markers=2 head_reviews=1 substantive=1"
+t additional-unverified-header-above-markers       add-unv-addcount           2
+t additional-unverified-minor-header-above-entry   add-unv-minorcount         2
+t additional-unverified-unknown-severity-word      add-unv-unknownsev         2
+t additional-unverified-extra-marker               add-unv-extramarker        2
+t additional-verified-stray-severity-blocks        add-unv-stray-verified     2
+t additional-unverified-label-after-marker-blocks  add-unv-label-after-marker 2
+t additional-unverified-label-not-first-line-blocks add-unv-label-not-first   2
+t nitpick-unverified-stray-severity-blocks         add-unv-as-nitpick         2
 t colon-malformed-count-blocks                colon-malformed     2
 t colon-decimal-count-blocks                  colon-suffix-1      2
 t colon-alnum-suffix-count-blocks             colon-suffix-2      2
@@ -435,6 +467,10 @@ OD_FOLLOWUP_ROW="cr-od-4bf4bd0d34fe${TAB}sug${TAB}scripts/guardrails/test-guardr
 OD_SEV_ROW="cr-od-5ce5dda0e5d7${TAB}sug${TAB}scripts/ci/check-flags.sh${TAB}101-101${TAB}Do not drop Git-quoted filenames in the scan list."
 to od-severity-minor-section-row            sev-minor                  0 "$OD_SEV_ROW"
 to od-severity-header-n-above-entries       sev-header-high            2 ""
+OD_5929_ROW="cr-od-1e4023a16c49${TAB}sug${TAB}scripts/handover/chief-kit/chief-duty-sweep.sh${TAB}351-354${TAB}Read the dispatcher copy's content and mtime from one open file."
+to od-additional-unverified-pr5929-one-row  add-unv                    0 "$OD_5929_ROW"
+to od-additional-verified-stray-severity-blocks add-unv-stray-verified 2 ""
+to od-unverified-in-minor-keeps-title-and-id add-unv-in-minor          0 "$OD_5929_ROW"
 OD_SEP_ROWS=$(sed "s/~/$TAB/g" <<'SEP_ROWS_EOF'
 cr-od-0965c327c1ec~sug~scripts/station-ops/test-bypass-launchd.sh~1331-1331~Assert which Bun executable the sender runs.
 cr-od-2f69dec5ab09~sug~scripts/station-ops/test-bypass-launchd.sh~1244-1244~Build the injected marker path from the fixture that the case uses.
@@ -516,6 +552,7 @@ top od-prior-plain-beside-nit-drifts        fu-plain-beside-nit-prior  2 ""
 top od-prior-legacy-unparse-nit-drifts      fu-legacy-unparse-nit-prior 2 ""
 top od-prior-nit-legacy-unk-drifts          fu-nit-legacy-unk-prior    2 ""
 top od-prior-plain-title-legacy-drifts      fu-plain-title-legacy-prior 2 ""
+top ph-additional-unverified-prior-head-one-row add-unv-prior          0 "$OD_5929_ROW"
 t  followup-nit-alt-in-title-blocks        fu-nit-in-title            2
 t  followup-nit-alt-in-title-prior-drift    fu-nit-in-title-prior      0 "$FU_PRIOR1"
 to od-infra-error-rc1         error             1 ""
@@ -606,6 +643,7 @@ tp ph-followup-nit-alt-in-title-kept        fu-nit-in-title-prior      0 "oldsha
 tp ph-followup-nit-legacy-unk-kept          fu-nit-legacy-unk-prior    0 "oldsha1"
 tp ph-followup-plain-title-legacy-kept      fu-plain-title-legacy-prior 0 "oldsha1"
 tp ph-infra-error-rc1                     error                      1 ""
+tp ph-additional-unverified-prior-head-listed add-unv-prior            0 "oldsha1"
 
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

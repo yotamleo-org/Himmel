@@ -1,0 +1,1 @@
+{"statuses":[{"name":"Unit tests","key":"pipelines-unit","state":"SUCCESSFUL"},{"name":"Lint","key":"pipelines-lint","state":"SUCCESSFUL"},{"name":"Deploy preview","key":"external-preview","state":"FAILED"}],"truncated":false,"pages":1}

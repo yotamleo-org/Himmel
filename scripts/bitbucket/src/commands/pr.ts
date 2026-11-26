@@ -7,6 +7,7 @@ import {
   listPrs,
   getPr,
   listPrComments,
+  listPrStatuses,
   replyPrComment,
   resolvePrComment,
 } from '../client.js';
@@ -112,6 +113,20 @@ export function registerPr(program: Command): void {
         printJson(await getPr(Number(id), opts.repo ? parseRepoArg(opts.repo) : undefined));
       } catch (err) {
         const { code, message } = exitFor(err, 'pr get');
+        process.stderr.write(`${message}\n`);
+        process.exit(code);
+      }
+    });
+
+  pr.command('statuses <id>')
+    .description(
+      'List the build statuses on the PR head (GET .../{id}/statuses). JSON { statuses, truncated, pages }.',
+    )
+    .action(async (id: string) => {
+      try {
+        printJson(await listPrStatuses(Number(id)));
+      } catch (err) {
+        const { code, message } = exitFor(err, 'pr statuses');
         process.stderr.write(`${message}\n`);
         process.exit(code);
       }

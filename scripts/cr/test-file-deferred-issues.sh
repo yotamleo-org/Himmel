@@ -255,6 +255,12 @@ case "$1" in
     list)   [ "${JIRA_LIST_FAIL:-}" = 1 ] && { echo "jira: 500" >&2; exit 1; }
             printf '%s' "${JIRA_LIST_RESULT:-}" ;;
     create) [ "${JIRA_CREATE_FAIL:-}" = 1 ] && { echo "jira: create refused" >&2; exit 1; }
+            if [ "${JIRA_CREATE_SIBLING:-}" = 1 ]; then
+                case " $* " in *" --new-reason "*) ;; *)
+                    echo "Refused: TST-6 is an open residual linked to TST-5, so this create would repeat it. Nothing was filed. Pass --new-reason to file it anyway." >&2
+                    exit 1 ;;
+                esac
+            fi
             while [ $# -gt 0 ]; do [ "$1" = --desc-file ] && cp "$2" "$JDESC"; shift; done
             [ "${JIRA_CREATE_DUP:-}" = 1 ] && { echo "Duplicate TST-31"; exit 0; }
             echo "Created TST-7" ;;
@@ -273,7 +279,7 @@ run_mode() {  # run_mode <TRACKER> <FORGE> [args...] — gh+jira stubs, logs res
     ( cd "$REPO" && PATH="$LBIN_UNIX:$PATH" TRACKER="$t" FORGE="$f" GH_CMD="$LBIN/gh" \
         JIRA_PROJECT_KEY="${JKEY-TST}" JIRA_CMD="$JSTUB" GLOG="$GLOG" JLOG="$JLOG" JDESC="$JDESC" \
         JCOMMENT="$JCOMMENT" JCOMMENTS="${JCOMMENTS:-}" JIRA_COMMENT_FAIL="${JIRA_COMMENT_FAIL:-}" JIRA_COMMENTS_FAIL="${JIRA_COMMENTS_FAIL:-}" GH_PR_JSON="${GH_PR_JSON:-}" \
-        JIRA_LIST_RESULT="${JIRA_LIST_RESULT:-}" JIRA_LIST_FAIL="${JIRA_LIST_FAIL:-}" JIRA_CREATE_FAIL="${JIRA_CREATE_FAIL:-}" JIRA_CREATE_DUP="${JIRA_CREATE_DUP:-}" \
+        JIRA_LIST_RESULT="${JIRA_LIST_RESULT:-}" JIRA_LIST_FAIL="${JIRA_LIST_FAIL:-}" JIRA_CREATE_FAIL="${JIRA_CREATE_FAIL:-}" JIRA_CREATE_DUP="${JIRA_CREATE_DUP:-}" JIRA_CREATE_SIBLING="${JIRA_CREATE_SIBLING:-}" \
         bash "$FDI" --pr 1 --input "$INPUT" --fu-class "${FDI_CLASS:-escape}" "$@" 2>&1 )
 }
 
@@ -331,6 +337,12 @@ out=$(JIRA_CREATE_FAIL=1 run_mode jira github); rc=$?
 assert_eq "jira create-fail → exit 3" "3" "$rc"
 assert_contains "jira FAILED line" "$out" "FAILED"
 assert_eq "jira create-fail never calls gh" "0" "$(wc -c <"$GLOG" | tr -d ' ')"
+
+echo "TEST: tracker=jira files past an open sibling residual with a --new-reason (RED: refusal, exit 3)"
+out=$(JIRA_CREATE_SIBLING=1 run_mode jira github); rc=$?
+assert_eq "fdi sibling → exit 0" "0" "$rc"
+assert_contains "fdi sibling prints the created key" "$out" "filed TST-7"
+assert_contains "fdi sibling create carries the new-reason" "$(grep '^create' "$JLOG")" "--new-reason file-deferred-issues: deferred findings batch crbatch"
 
 echo "TEST: tracker=jira files through the residual writer (RED: raw create, no --residual-of)"
 out=$(run_mode jira github); rc=$?

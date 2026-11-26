@@ -204,7 +204,7 @@ test('a claude error result keeps its cost but is ERROR with no sites', () => {
   assert.deepEqual(r.art.sites, []);
 });
 
-test('with HIMMEL_API_FALLBACK=on, an invalid account is refused, alerts once, then the same call runs once on the subscription with no key', () => {
+test('with HIMMEL_API_FALLBACK=on, an invalid account is refused, sends no alert (not the eval), then the same call runs once on the subscription with no key', () => {
   const f = fixture();
   const r = f.run(f.args, { HIMMEL_API_ACCOUNT: 'E', HIMMEL_API_FALLBACK: 'on' });
   assert.equal(r.status, 0, r.stderr);
@@ -214,19 +214,22 @@ test('with HIMMEL_API_FALLBACK=on, an invalid account is refused, alerts once, t
   assert.match(seen, /^key_present=0$/m);
   assert.match(seen, /--permission-mode dontAsk/);
   assert.match(seen, /--tools Read,Glob,Grep /);
-  const alerts = readFileSync(f.p.alertLog, 'utf8').trim().split('\n');
-  assert.equal(alerts.length, 1);
-  assert.match(alerts[0], /^type=api-lane refused msg=kind bulk, .*HIMMEL_API_ACCOUNT must be.*fallback: running on the subscription/);
-  assert.ok(!alerts[0].includes(DUMMY));
+  assert.ok(!existsSync(f.p.alertLog), 'a bulk refusal raised an alert');
 });
 
-test('a refused launch with HIMMEL_API_FALLBACK unset alerts once and never runs on the subscription', () => {
+test('a refused launch with HIMMEL_API_FALLBACK unset sends no alert (the bulk kind is not the eval) and never runs on the subscription', () => {
   const f = fixture();
   f.run(f.args, { HIMMEL_API_ACCOUNT: 'E' });
   assert.ok(!existsSync(f.p.log), 'the subscription ran');
-  const alerts = readFileSync(f.p.alertLog, 'utf8').trim().split('\n');
-  assert.equal(alerts.length, 1);
-  assert.match(alerts[0], /^type=api-lane refused msg=kind bulk, .*fallback: off \(HIMMEL_API_FALLBACK unset: default off\)/);
+  assert.ok(!existsSync(f.p.alertLog), 'a bulk refusal raised an alert');
+});
+
+test('a lane off by design sends no refused alert for the bulk kind', () => {
+  const f = fixture();
+  const r = f.run(f.args, { HIMMEL_API_LANE: '' });
+  assert.ok(!existsSync(f.p.log), 'the subscription ran');
+  assert.equal(r.art.status, 'REFUSED');
+  assert.ok(!existsSync(f.p.alertLog), 'a lane-off refusal raised an alert');
 });
 
 test('a timed-out call is TIMEOUT and its reservation is settled in the ledger', () => {

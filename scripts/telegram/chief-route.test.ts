@@ -552,7 +552,7 @@ test("HIMMEL-9974 reply --owed on a split reply writes DELIVERED only after ever
   const res = await owedReply(r, doc, true, undefined, { text: filler(7000), parts: 3, send });
   expect(res.code).toBe(0);
   expect(res.out).toContain("delivered msg=5003");
-  expect(readFileSync(doc, "utf8")).toMatch(/\n- \d\d:\d\d DELIVERED sig-1 msg=5003 chat=1\n$/);
+  expect(readFileSync(doc, "utf8")).toMatch(/\n- \d\d:\d\dZ DELIVERED sig-1 msg=5003 chat=1\n$/);
 });
 
 test("HIMMEL-9974 reply --owed on a split reply whose last part gets no receipt exits non-zero, names 2 of 3, and marks nothing delivered", async () => {
@@ -574,7 +574,7 @@ test("reply --owed prints the Telegram message id from the poller's send receipt
   const res = await owedReply(r, doc, true);
   expect(res.code).toBe(0);
   expect(res.out).toContain("delivered msg=4242");
-  expect(readFileSync(doc, "utf8")).toMatch(/\n- \d\d:\d\d DELIVERED sig-1 msg=4242 chat=1\n$/);
+  expect(readFileSync(doc, "utf8")).toMatch(/\n- \d\d:\d\dZ DELIVERED sig-1 msg=4242 chat=1\n$/);
 });
 
 test("reply --owed exits non-zero and marks nothing delivered when no send receipt arrives; a receipt written just before the reply was queued does not count", async () => {
@@ -3420,6 +3420,16 @@ test("R2, R3, R3b, R3c: round 4 is a closure check: no marker gives T2, a new fi
   expect(row).toMatchObject({ row: "round", critic: "spec", round: 4, mode: "closure", verdict_path: r4 });
   expect(row.findings).toMatchObject([{ id: "M2", class: "reopens" }, { id: "n1", class: "out-of-closure" }]);
 }, S1B);
+
+test("a closure return reopening R3-M1 classes as blocking against the bare open id M1, and a reopen of an id that was never open stays out-of-closure", async () => {
+  const t = await roundTree(MAJOR, []);
+  const ok = await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", "- **M2** (major; reopens R3-M1) still open", "- **n1** (major; reopens R3-Z9) never open", "- **n2** (major; reopens Z9) never open");
+  expect(ok.err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "M2", class: "reopens" }, { id: "n1", class: "out-of-closure" }, { id: "n2", class: "out-of-closure" }]);
+  const over = (id: string) => verb(true, "round-override", CAP_KEY, "--findings", id, "--why", "the build cannot carry it", "--chief", "chief-x", "--specs", t.specs);
+  expect((await over("n1")).err).toContain(`round-override: n1 is not an open blocking finding of ${CAP_KEY}'s latest round`);
+  expect((await over("M2")).code).toBe(0);
+});
 
 test("R4, R5, R8, R9: round 5 needs a record (T5); the override names only an open blocking id of the latest round (T9), once (T8), and only from the console", async () => {
   const t = await roundTree(MAJOR, []);

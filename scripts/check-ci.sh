@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2031  # pre-commit lints this with gh-quota.sh and gh-graphql-budget.sh in one run, and charges their subshell assignments (repo) to the uses here; each file alone is clean
 # check-ci.sh — token-free PR merge-gate watcher.
 #
 # Friction this prevents: merge-on-green sessions burn tokens re-running
@@ -523,6 +524,18 @@ fi
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 . "$(cd "$(dirname "$0")" && pwd)/lib/gh-read.sh"
 gh_read_init
+_load_quota() {
+    # shellcheck source=/dev/null
+    . "$(cd "$(dirname "$0")" && pwd)/lib/gh-quota.sh"
+}
+_load_quota
+_poll_secs() { _every_secs "$POLL"; }
+_every_secs() {
+    local n="$1" f="${CHECK_CI_LOW_CORE_FACTOR:-6}"
+    case "$f" in ''|*[!0-9]*|0) f=6 ;; esac
+    if [ "$n" -gt 0 ] && ghq_core_low; then n=$((n * f)); fi
+    printf '%s' "$n"
+}
 # shellcheck source=scripts/lib/open-review-threads.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 . "$(cd "$(dirname "$0")" && pwd)/lib/open-review-threads.sh"
@@ -533,11 +546,17 @@ RL_RECOVERIES=0
 # preflight saw a healthy budget so waiting would not help): the caller keeps
 # its original fail-closed exit.
 _rl_recover() {
-    local bound
+    local bound waited
+    GHQ_CORE_WAITED=0; GHQ_CORE_EXHAUSTED=0
     [ "$RL_RECOVERIES" -ge 3 ] && return 1
     bound=$(_rl_bound) || return 1
     ghb_wait_for_budget "$bound" "$CHECK_CI_SLEEP_CMD" || return 1
-    [ "$GHB_WAITED" -eq 1 ] || return 1
+    waited="$GHB_WAITED"
+    if [ "${1:-}" = core ]; then
+        bound=$(_rl_bound) || return 1
+        ghq_wait_core "$bound" "$CHECK_CI_SLEEP_CMD" main || return 1
+    fi
+    [ "$waited" -eq 1 ] || [ "$GHQ_CORE_WAITED" -eq 1 ] || return 1
     RL_RECOVERIES=$((RL_RECOVERIES + 1))
     _refused_clear
     return 0
@@ -545,6 +564,12 @@ _rl_recover() {
 if ! rl_bound=$(_rl_bound) || ! ghb_wait_for_budget "$rl_bound" "$CHECK_CI_SLEEP_CMD"; then
     echo "check-ci: GitHub GraphQL budget exhausted and the reset is beyond --max-wait (${MAX_WAIT}s) — cannot evaluate the gate; re-run after the reset" >&2
     _refused_note graphql
+    exit 2
+fi
+_refused_clear
+if ! rl_bound=$(_rl_bound) || ! ghq_wait_core "$rl_bound" "$CHECK_CI_SLEEP_CMD"; then
+    echo "check-ci: GitHub REST core budget exhausted on every token and the reset is beyond --max-wait (${MAX_WAIT}s) — cannot evaluate the gate; re-run after the reset" >&2
+    _refused_note core
     exit 2
 fi
 _refused_clear
@@ -743,18 +768,23 @@ _alert() { merge_watch_alert "${owner:-?}/${repo:-?}" "${num:-?}" "${head0:-}" "
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 . "$(cd "$(dirname "$0")" && pwd)/lib/required-checks.sh"
 
+_req_transient() {
+    ghb_is_rate_limited "${1:-}" && return 0
+    printf '%s' "${1:-}" | grep -i -E 'QUOTA-PAUSE github|HTTP 5[0-9][0-9]|timed? ?out|connection (reset|refused)|no such host|could not resolve|unexpected EOF|TLS handshake|network is unreachable' >/dev/null 2>&1
+}
+
+_read_paused() {
+    ghb_is_rate_limited "${1:-}" && return 0
+    case "${1:-}" in *"QUOTA-PAUSE github"*) return 0 ;; esac
+    return 1
+}
+
 # required_set — one required check context per line. The EFFECTIVE set is the
 # union of rulesets (rules/branches/<base>, which covers protect-main's ruleset
 # checks) and classic branch protection. A failed read returns 1: the caller
 # fails CLOSED — an unreadable set must never be mistaken for an empty one. Only
 # a 404 on the classic endpoint ("Branch not protected" / "Required status
 # checks not enabled") means "no classic rule".
-#
-_req_transient() {
-    ghb_is_rate_limited "${1:-}" && return 0
-    printf '%s' "${1:-}" | grep -i -E 'HTTP 5[0-9][0-9]|timed? ?out|connection (reset|refused)|no such host|could not resolve|unexpected EOF|TLS handshake|network is unreachable' >/dev/null 2>&1
-}
-
 required_set() {
     local base rules classic
     local base_err
@@ -794,8 +824,17 @@ _required_rows() {
 # started_at is carried for diagnostics only — ordering uses `id` alone (see
 # `_required_status`).
 _producer_rows() {
-    gh_read api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
-        --jq '.check_runs[] | if .id == null then error("check-run with no id") else "\(if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" elif .conclusion == "cancelled" then "cancel" else "fail" end)\t\(.name)\t\(.app.id // "")\t\(.started_at // "")\t\(.id)" end' 2>/dev/null
+    local errf out rc
+    errf=$(mktemp "${TMPDIR:-/tmp}/check-ci-prod.XXXXXX") || return 1
+    out=$(gh_read api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
+        --jq '.check_runs[] | if .id == null then error("check-run with no id") else "\(if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" elif .conclusion == "cancelled" then "cancel" else "fail" end)\t\(.name)\t\(.app.id // "")\t\(.started_at // "")\t\(.id)" end' 2>"$errf") && rc=0 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        if _read_paused "$(cat "$errf")"; then rc=3; else rc=1; fi  # read-sink-ok: our own mktemp buffer
+        rm -f "$errf"
+        return "$rc"
+    fi
+    rm -f "$errf"
+    [ -z "$out" ] || printf '%s\n' "$out"
 }
 
 # _status_only <required status rows> — of the MISSING producer-pinned
@@ -864,11 +903,11 @@ _cr_first_event() {
 # the settle round.
 required_gate() {
     local wait_ok="$1" reqs rows prows="" st missing pending status_only failed req_start tries=0 max_tries
-    local cf_at=-100000 cf_held=0 cf_rc=0
+    local cf_at=-100000 cf_held=0 cf_rc=0 pr_rc
     # Backstop beside the SECONDS bound: a no-op sleep seam (CHECK_CI_SLEEP_CMD=:)
     # or a POLL of 0 must not turn the bounded wait into a spin.
     max_tries=$(( GRACE / (POLL > 0 ? POLL : 1) + 1 ))
-    local rs_rc=0 rt_start rt_tries=0 rt_nap
+    local rs_rc=0 rt_start rt_tries=0 rt_nap rt_poll
     reqs=$(required_set) || rs_rc=$?
     if [ "$rs_rc" -eq 3 ] && [ "$wait_ok" -eq 1 ]; then
         echo "check-ci: the required-check list read failed transiently (rate limit, 5xx or network); deferring the required-check gate until after the watch (it retries then and refuses if still unreadable)" >&2
@@ -878,8 +917,8 @@ required_gate() {
     while [ "$rs_rc" -eq 3 ] && [ $((SECONDS - rt_start)) -lt "$GRACE" ] && [ "$rt_tries" -lt "$max_tries" ]; do
         rt_tries=$((rt_tries + 1))
         rt_nap=$((GRACE - (SECONDS - rt_start)))
-        [ "$rt_nap" -le "$POLL" ] || rt_nap=$POLL
-        _rl_recover || "$CHECK_CI_SLEEP_CMD" "$rt_nap"
+        rt_poll=$(_poll_secs); [ "$rt_nap" -le "$rt_poll" ] || rt_nap=$rt_poll
+        _rl_recover core || { [ "$GHQ_CORE_EXHAUSTED" -eq 1 ] && break; "$CHECK_CI_SLEEP_CMD" "$rt_nap"; }
         rs_rc=0
         reqs=$(required_set) || rs_rc=$?
     done
@@ -903,11 +942,24 @@ required_gate() {
         fi
         # An unreadable producer read fails CLOSED like the set itself —
         # falling back to the name-only rows would certify the wrong producer.
-        if _has_producer_ids "$reqs" && ! prows=$(_producer_rows); then
-            echo "check-ci: BLOCKED — required-check producers unreadable: could not read which app reported each check on this PR's head, so a required check pinned to an app cannot be verified. Refusing rather than matching by name alone; re-run once gh/API access recovers (exit 5)" >&2
-            _alert "required-check producers unreadable — a required check pinned to an app could not be verified; nothing was assumed"
-            _threads_at_exit 5
-            exit 5
+        if _has_producer_ids "$reqs"; then
+            pr_rc=0
+            prows=$(_producer_rows) || pr_rc=$?
+            if [ "$pr_rc" -eq 3 ] && _rl_recover core; then
+                pr_rc=0
+                prows=$(_producer_rows) || pr_rc=$?
+            fi
+            if [ "$pr_rc" -eq 3 ]; then
+                echo "check-ci: BLOCKED — required-check producers unreadable (transient): the read of which app reported each check kept failing with a rate limit or a quota pause. Refusing rather than matching by name alone; no operator alert, re-run once GitHub answers (exit 5)" >&2
+                _threads_at_exit 5
+                exit 5
+            fi
+            if [ "$pr_rc" -ne 0 ]; then
+                echo "check-ci: BLOCKED — required-check producers unreadable: could not read which app reported each check on this PR's head, so a required check pinned to an app cannot be verified. Refusing rather than matching by name alone; re-run once gh/API access recovers (exit 5)" >&2
+                _alert "required-check producers unreadable — a required check pinned to an app could not be verified; nothing was assumed"
+                _threads_at_exit 5
+                exit 5
+            fi
         fi
         st=$(_required_status "$reqs" "$rows" "$prows")
         failed=$(_join_by_status fail "$st")
@@ -925,7 +977,7 @@ required_gate() {
         # at the head, which ends any hold within one poll; it is read at most every
         # CR_FIRST_EVERY seconds.
         if [ "$wait_ok" -eq 1 ]; then
-            if [ $((SECONDS - cf_at)) -ge "${CR_FIRST_EVERY:-60}" ]; then
+            if [ $((SECONDS - cf_at)) -ge "$(_every_secs "${CR_FIRST_EVERY:-60}")" ]; then
                 cf_at=$SECONDS; cf_held=0; cf_rc=0
                 _cr_first_event || cf_rc=$?
                 case "$cf_rc" in
@@ -938,7 +990,7 @@ required_gate() {
                     echo "check-ci: DEADLINE-PENDING — the ${MAX_WAIT}s --max-wait deadline passed while the reviewer gate still holds ci:go (CR-FIRST HOLD above); not an error, re-invoke" >&2
                     _deadline_exit
                 fi
-                "$CHECK_CI_SLEEP_CMD" "$POLL"
+                "$CHECK_CI_SLEEP_CMD" "$(_poll_secs)"
                 continue
             fi
         fi
@@ -964,7 +1016,7 @@ required_gate() {
             _threads_at_exit 5
             exit 5
         fi
-        "$CHECK_CI_SLEEP_CMD" "$POLL"
+        "$CHECK_CI_SLEEP_CMD" "$(_poll_secs)"
     done
 }
 
@@ -1223,7 +1275,7 @@ watch_round() {
         # instead means the cap fires within ~1s of the deadline regardless
         # of POLL, through the same CHECK_CI_SLEEP_CMD seam (hermetic suites
         # still see one no-op `:` call either way).
-        sleep_for=$POLL
+        sleep_for=$(_poll_secs)
         if [ "$MAX_WAIT" -gt 0 ]; then
             elapsed=$((SECONDS - watch_start))
             if [ "$elapsed" -ge "$WATCH_CAP" ]; then stopped=cap; break; fi
@@ -1528,7 +1580,7 @@ if [ "$THREADS_ONLY" -eq 0 ]; then
             echo "check-ci: no checks registered within ${GRACE}s — is CI configured for this branch, or did the push land?" >&2
             exit 2
         fi
-        "$CHECK_CI_SLEEP_CMD" "$POLL"
+        "$CHECK_CI_SLEEP_CMD" "$(_poll_secs)"
     done
 
     # Bind the verdict to this head: a concurrent push during the run would
@@ -1959,7 +2011,7 @@ merge_state_gate() {
         if [ "$state" = BLOCKED ] && [ -n "$EXCEPT_CTX" ] && _except_ctx_not_green; then return 0; fi
         tries=$((tries + 1))
         if [ $((SECONDS - start)) -ge "$GRACE" ] || [ "$tries" -ge "$max_tries" ]; then break; fi
-        "$CHECK_CI_SLEEP_CMD" "$POLL"
+        "$CHECK_CI_SLEEP_CMD" "$(_poll_secs)"
     done
     case "$state" in
         BLOCKED|BEHIND|DIRTY|DRAFT)

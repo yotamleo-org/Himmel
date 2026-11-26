@@ -5,15 +5,17 @@
 #   afk-sudo-request --session S --ticket T -- ARGV...
 #   afk-sudo-request --card ID --operator OP --session S [--desc TEXT] [--cmd TEXT]
 #   afk-sudo-request --notify TEXT --operator OP
-#   afk-sudo-request --watch ID --expires EPOCH --operator OP --session S
+#   afk-sudo-request --watch ID --expires EPOCH --operator OP --session S [--for TEXT]
 #
 # --card sends only the bridge card (the id, the asking session and its chief,
 # Approve / Deny) for a grant request root already filed, so a grant ask lands in
 # the operator's bridge chat beside the chief's messages, not only in the
 # notice-bot chat. --notify sends one plain line to that chat. --watch polls a
-# grant request until it ends and posts one line if it expired, through the
-# bridge outbox as kind afk-grant-expired (merge-block-alert.sh's sender); it
-# gives up at EPOCH plus a margin. approval-grant-request.sh calls --card and
+# grant request until it ends and posts one outcome line, naming what the grant
+# was for (--for: the command head and category), through the bridge outbox as
+# kind afk-grant-approved, afk-grant-denied or afk-grant-expired
+# (merge-block-alert.sh's sender), and appends the same line to the current
+# chief's bridge inbox; it gives up at EPOCH plus a margin. approval-grant-request.sh calls --card and
 # --watch; exit 0 sent (or watched to the end), 5 not sent.
 #
 # Asks the root helper (sudo -n, the one NOPASSWD rule install.sh writes) to
@@ -30,7 +32,7 @@ set -uo pipefail
 
 HELPER=/usr/local/libexec/himmel/afk-sudo
 
-usage() { echo "usage: afk-sudo-request --session S --ticket T -- ARGV... | --card ID --operator OP --session S [--desc TEXT] [--cmd TEXT] | --notify TEXT --operator OP | --watch ID --expires EPOCH --operator OP --session S" >&2; exit 2; }
+usage() { echo "usage: afk-sudo-request --session S --ticket T -- ARGV... | --card ID --operator OP --session S [--desc TEXT] [--cmd TEXT] | --notify TEXT --operator OP | --watch ID --expires EPOCH --operator OP --session S [--for TEXT]" >&2; exit 2; }
 
 label() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._-' | cut -c1-80; }
 
@@ -82,7 +84,7 @@ send_card() {
     bridge_send "$op" "$text" ${markup[@]+"${markup[@]}"}
 }
 
-session="" ticket="" card="" operator="" notify="" watch="" expires="" card_desc="" card_cmd=""
+session="" ticket="" card="" operator="" notify="" watch="" expires="" card_desc="" card_cmd="" grant_for=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --session) [ $# -ge 2 ] || usage; session=$2; shift 2 ;;
@@ -94,6 +96,7 @@ while [ $# -gt 0 ]; do
         --expires) [ $# -ge 2 ] || usage; expires=$2; shift 2 ;;
         --desc) [ $# -ge 2 ] || usage; card_desc=$2; shift 2 ;;
         --cmd) [ $# -ge 2 ] || usage; card_cmd=$2; shift 2 ;;
+        --for) [ $# -ge 2 ] || usage; grant_for=$2; shift 2 ;;
         --) shift; break ;;
         *) usage ;;
     esac
@@ -116,17 +119,26 @@ if [ -n "$watch" ]; then
         done
         label "$c"
     }
+    say() {
+        local text=$1 kind=$2 chief
+        # shellcheck source=scripts/lib/merge-block-alert.sh
+        . "$(dirname "${BASH_SOURCE[0]}")/merge-block-alert.sh" 2>/dev/null || exit 5
+        chief=$(current_chief)
+        text="grant $watch ${grant_for:+for $grant_for }from session $(label "$session") (chief ${chief:-none}) $text"
+        [[ $chief =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $chief != *..* ]] && _mba_append_if_exists "${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/$chief.md" "- $(date +%H:%M) [$kind] $text"
+        _mba_send "$operator" "$text" "$kind" || exit 5
+        exit 0
+    }
+    grant_for=$(printf '%s' "$grant_for" | tr -cd 'A-Za-z0-9._@+ \140\133\135-' | cut -c1-120)
     deadline=$((expires + ${AFK_SUDO_WATCH_MARGIN_S:-130}))
     while [ "$(date +%s)" -lt "$deadline" ]; do
         st=$(sudo -n "$HELPER" status "$watch" 2>/dev/null | sed -n 's/^result=\([^ ]*\).*/\1/p') || st=query-failed
         case "${st:-query-failed}" in
-            pending | query-failed) sleep "${AFK_SUDO_POLL_S:-3}" ;;
-            expired)
-                # shellcheck source=scripts/lib/merge-block-alert.sh
-                . "$(dirname "${BASH_SOURCE[0]}")/merge-block-alert.sh" 2>/dev/null || exit 5
-                chief=$(current_chief)
-                _mba_send "$operator" "grant $watch from session $(label "$session") (chief ${chief:-none}) expired, nothing ran" afk-grant-expired || exit 5
-                exit 0 ;;
+            pending | running | query-failed) sleep "${AFK_SUDO_POLL_S:-3}" ;;
+            expired) say "expired, nothing ran" afk-grant-expired ;;
+            granted) say "approved: that session's next identical call runs once" afk-grant-approved ;;
+            denied | denied:*) say "denied, nothing ran" afk-grant-denied ;;
+            refused:*) say "approved but refused by the helper ($(label "${st#refused:}")), nothing ran" afk-grant-denied ;;
             *) exit 0 ;;
         esac
     done

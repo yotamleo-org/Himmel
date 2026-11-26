@@ -17,6 +17,8 @@ import type { Getter } from './version-writes.js';
 
 const HERMETIC_ENV = [...FENCE_MARKERS, 'HIMMEL_RM_DOC', 'HIMMEL_RM_RELEASE', 'HIMMEL_VERSION_WRITES', 'HIMMEL_VERSION_WRITER'] as const;
 
+const CHILD_ENV = ['PATH', 'VITEST', 'NODE_ENV', 'TMPDIR', 'HOME', 'HIMMEL_ADMISSIONS_LEDGER', 'HIMMEL_CONFIG_DIR', 'HANDOVER_DIR', 'HIMMEL_SECRETS_KEYRING'] as const;
+
 let root: string;
 const DOC = '/abs/rm-doc.md';
 const rmEnv = { HIMMEL_RELEASE_MANAGER: '1', HIMMEL_CONSOLE_LEG: '1', HIMMEL_RM_DOC: DOC, HIMMEL_RM_RELEASE: 'R1' };
@@ -1158,7 +1160,8 @@ describe('T8 C: one serialized repair-state writer and the retry clock', () => {
   const rec = (): Record<string, unknown> => JSON.parse(readFileSync(recPath(), 'utf8'));
   const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'dist', 'index.js');
   const envOf = (): Record<string, string> => ({
-    ...(process.env as Record<string, string>), HIMMEL_RELEASE_STATE_DIR: join(root, 'release'), HIMMEL_RELEASE_KEY_DIR: join(root, 'keys'), JIRA_PROJECT_KEY: 'TESTKEY',
+    ...Object.fromEntries(CHILD_ENV.filter((n) => process.env[n] !== undefined).map((n) => [n, process.env[n] as string])),
+    HIMMEL_RELEASE_STATE_DIR: join(root, 'release'), HIMMEL_RELEASE_KEY_DIR: join(root, 'keys'), JIRA_PROJECT_KEY: 'TESTKEY',
   });
   const fenceDriver = (): string => {
     const proc = join(root, 'fence-proc');
@@ -1377,5 +1380,15 @@ describe('T8 C: one serialized repair-state writer and the retry clock', () => {
     const out = await cli('repair-state', 'R1', '--repo', 'o/r', '--attempt');
     expect(out.code).toBe(2);
     expect(out.lines[0]).toMatch(/attempt refused \(fenced: release operator: .* refused inside a chief-spawned worker\), 0 so far/);
+  });
+
+  it('the spawned CLI knows it is under test and inherits nothing outside its allow-list', () => {
+    vi.stubEnv('HIMMEL_TEST_CANARY', '1');
+    const envFile = pathToFileURL(join(dirname(CLI), 'env-file.js')).href;
+    const script = `import { underTest } from ${JSON.stringify(envFile)};`
+      + 'console.log(JSON.stringify({ t: underTest(), vitest: !!process.env.VITEST, canary: process.env.HIMMEL_TEST_CANARY ?? null }));';
+    const run = spawnSync(process.execPath, ['--input-type=module', '-e', script], { env: envOf(), encoding: 'utf8', timeout: 20_000 });
+    expect(run.status).toBe(0);
+    expect(JSON.parse(run.stdout)).toEqual({ t: true, vitest: true, canary: null });
   });
 });

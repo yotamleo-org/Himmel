@@ -198,7 +198,6 @@ export async function forwardAfterHandover(root: string, path: string[], now = D
 export const foldLine = (text: string): string => text.trim().replace(/\r?\n/g, " ⏎ ");
 
 const hhmm = (d = new Date()) => `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}Z`;
-const hhmmLocal = (d = new Date()) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
 const ASK_TEXT = /^\s*(?:\(\d+\/\d+\)\s*)?(?:\d+[.)]\s*)?Needs you:/m;
 const asksFile = (root: string) => join(root, "consoles", "asks.ndjson");
@@ -1178,10 +1177,12 @@ async function closureCheck(specs: string, key: string, kind: Kind, r: number, r
 
 function sortClosure(text: string, findings: Finding[], openIds: Set<string>, changed: string[]): Finding[] {
   const lines = text.split("\n");
+  const bare = (id: string) => id.replace(/^R\d+-(?=\S)/, "");
+  const open = new Set([...openIds].map(bare));
   return findings.map(f => {
     const line = (lines.find(l => FINDING_LINE.exec(l)?.[1] === f.id) ?? "").replaceAll("\\`", "`");
     const quoted = [...line.matchAll(/`([^`]{12,})`/g)].map(m => m[1]);
-    const cls = f.reopens && openIds.has(f.reopens) ? "reopens" : f.regression && quoted.some(q => changed.some(l => l.includes(q))) ? "regression" : "out-of-closure";
+    const cls = f.reopens && open.has(bare(f.reopens)) ? "reopens" : f.regression && quoted.some(q => changed.some(l => l.includes(q))) ? "regression" : "out-of-closure";
     return { ...f, class: cls };
   });
 }
@@ -2447,7 +2448,7 @@ export async function awaitOwedReceipts(root: string, chat: number, requestHash:
 
 export async function writeOwedReceipt(doc: string, key: string, messageId: number, chat: number): Promise<void> {
   const cur = await readFile(doc, "utf8");
-  await appendFile(doc, `${cur === "" || cur.endsWith("\n") ? "" : "\n"}- ${hhmmLocal()} DELIVERED ${key} msg=${messageId} chat=${chat}\n`);
+  await appendFile(doc, `${cur === "" || cur.endsWith("\n") ? "" : "\n"}- ${hhmm()} DELIVERED ${key} msg=${messageId} chat=${chat}\n`);
 }
 
 const VERB_FLAGS: Record<string, { valued: string[]; bare: string[] }> = {

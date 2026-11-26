@@ -350,9 +350,13 @@
 #                               and a worker that wrote and went quiet again wakes again. Each line also
 #                               appends a `WORKER-SILENT` bullet to --doc and sends the operator ONE page
 #                               (the worker, the signal and the action; same sender and budget as
-#                               DENIAL-PAGE). The chief relaunches the worker from a RESUME doc or runs its
-#                               blocked step itself and says which it did (chief-template.md). The tick line
-#                               follows a capped-waker wake.
+#                               DENIAL-PAGE), then runs silent-worker-act.sh once for that same (worker, signal,
+#                               doc write time): a nudge past bound one, the relaunch from the RESUME doc past
+#                               twice it, an owed row for a failed step, in a succession as in any other wait.
+#                               Its `SILENT-ACT <worker> ...` result line follows the WAKE line
+#                               (CHIEF_WAIT_SILENT_ACT replaces the helper). What the helper left undone, the
+#                               chief does and says which it did (chief-template.md). The tick line follows a
+#                               capped-waker wake.
 #
 # Per-field key, entry and reminder policy: wake-rules.tsv, printed by --rules.
 # Specialized readers below retain exact-head, set/rise and receipt semantics.
@@ -610,7 +614,7 @@ for mode_arg in "$@"; do
 done
 # page/ack record helpers. A missing lib fails open: no records, the
 # page still sends.
-if [ -r "$HERE/denial-ack-lib.sh" ]; then . "$HERE/denial-ack-lib.sh"; else denial_page_write() { return 1; }; fi
+if [ -r "$HERE/denial-ack-lib.sh" ]; then . "$HERE/denial-ack-lib.sh"; else denial_page_write() { return 1; }; denial_key() { return 1; }; denial_unacked() { return 1; }; fi
 hb_file="$inbox.wait"
 key_file="$inbox.wait.state"
 interval="${CHIEF_WAIT_INTERVAL:-180}"
@@ -1152,10 +1156,22 @@ page_send() {  # <text> <deadline epoch> [route kind]: the timeout is what is le
 # record is written FIRST, so the re-dispatch refusal holds even when the send
 # fails; both steps fail open. The page text is the worker label, count and class
 # only: this file never reads the denial log, only tick.sh's denials= field.
+denial_still_parked() {
+    local pg pts label ldoc
+    pg="$(denial_ack_dir)/$1.page"
+    pts="$(denial_field "$pg" ts)"
+    label="$(denial_field "$pg" leg | tr -cd 'A-Za-z0-9._#+-')"
+    [ -n "$label" ] || label="$1"
+    ldoc="$(worker_doc_of "$label")"
+    if [ -z "$ldoc" ]; then [ $(( $(stuck_now) - pts )) -le "$stuck_bound_secs" ]; return; fi
+    ! doc_written_since "$ldoc" "$pts"
+}
 page_denials() {
-    local worker cls n end rc_name kind
+    local worker cls n end rc_name kind held key
     end=$(( $(date +%s) + page_timeout ))  # one budget for the whole batch, not one per worker
     denial_pages "$1" "$2" | while read -r worker cls n; do
+        key="$(denial_key "$worker")"
+        held="$(denial_unacked "$key" 2>/dev/null)" && [ "$(denial_rank "${held%% *}")" -ge "$(denial_rank "$cls")" ] && denial_still_parked "$key" && continue
         kind=denial-page
         denial_page_write "$worker" "$n" "$cls" || kind=""
         # A native worker launched with Remote Control is answered from the
@@ -1237,11 +1253,10 @@ page_denials_stuck() {
         pts="$(denial_field "$pg" ts)"
         [ -z "$cutover" ] || [ "$pts" -gt "$cutover" ] || continue
         [ $(( now - pts )) -ge "$stuck_secs" ] || continue
+        denial_still_parked "$key" || continue
         label="$(denial_field "$pg" leg | tr -cd 'A-Za-z0-9._#+-')"
         [ -n "$label" ] || label="$key"
         ldoc="$(worker_doc_of "$label")"
-        if [ -z "$ldoc" ] && [ $(( now - pts )) -gt "$stuck_bound_secs" ]; then continue; fi
-        if [ -n "$ldoc" ] && doc_written_since "$ldoc" "$pts"; then continue; fi
         ticket="$(ticket_of_doc "$ldoc")"
         rc_name="$(rc_session_for "$label")"
         act="run ack-denial.sh $label"
@@ -1595,7 +1610,7 @@ owed_wake() {
     now="$(date +%s)"
     keys="$(sed -nE 's/^- ([0-9]{1,2}:[0-9]{2} )?OWED ([A-Za-z0-9_.-]+)( .*)?$/\2/p' "$console_doc" | awk '!seen[$0]++')"
     for k in $keys; do
-        grep -qE "^- ([0-9]{1,2}:[0-9]{2} )?DELIVERED ${k//./\\.} msg=[0-9]+ chat=-?[0-9]+( .*)?$" "$console_doc" && continue
+        grep -qE "^- ([0-9]{1,2}:[0-9]{2}Z? )?DELIVERED ${k//./\\.} msg=[0-9]+ chat=-?[0-9]+( .*)?$" "$console_doc" && continue
         st=""
         [ ! -r "$owed_file" ] || st="$(awk -v k="$k" '$1 == k { print $2, $3; exit }' "$owed_file")"
         first="${st% *}"; woken="${st#* }"
@@ -3122,20 +3137,41 @@ worker_doc_of() { # <label>: the worker's doc from the fleet manifest (--workers
     jq -r --arg l "$1" "$JQ_W"'[W[]? | select(.label == $l)][0].doc // empty' "$mf" 2>/dev/null || true  # swallow-ok: an unreadable manifest names no doc, the worker is then keyed without a write time
 }
 silent_emit() { # <label> <signal> <detail>: prints the WAKE line and succeeds when this (worker, signal, doc write time) is new
-    local label signal="$2" detail="$3" ldoc m key act
+    local label signal="$2" detail="$3" ldoc m key act act_line
     label="$(printf '%s' "$1" | tr -cd 'A-Za-z0-9._#+-')"  # the label goes into an operator message and a marker line
     [ -n "$label" ] || return 1
     ldoc="$(worker_doc_of "$label")"
     m=-
     [ -z "$ldoc" ] || m="$(stat -c %Y "$ldoc" 2>/dev/null)" || m=-  # gnu-ok: Linux-only kit; swallow-ok: no write time keys the worker on the signal alone
     key="$label $signal $m"
-    grep -qxF -- "$key" "$silent_file" 2>/dev/null && return 1  # swallow-ok: no marker yet reads empty, so the first sight wakes
+    if grep -qxF -- "$key" "$silent_file" 2>/dev/null; then  # swallow-ok: no marker yet reads empty, so the first sight wakes
+        act_line="$(silent_act "$label" "$signal" "$m")"
+        case "$act_line" in ''|*' done'|*' none'|*' fresh'|*' busy') return 1 ;; esac
+        printf 'WAKE worker-silent %s signal=%s silent=%sm\n' "$label" "$signal" "$(( ( $(date +%s) - m ) / 60 ))"
+        printf '%s\n' "$act_line"
+        silent_failed_note "$label" "$m" "$act_line"
+        return 0
+    fi
     printf '%s\n' "$key" >> "$silent_file" 2>/dev/null
     act="the chief relaunches it from a RESUME doc or runs its blocked step itself, and will say which it did"
     heartbeat sampling
     [ -z "$console_doc" ] || bash "$HERE/append-results.sh" "$console_doc" "WORKER-SILENT $label signal=$signal$detail: $act; the chief was woken" >/dev/null 2>&1 9>&- || true  # swallow-ok: a doc that cannot take the bullet still wakes and pages
     page_send "WORKER-SILENT $label signal=$signal$detail - $act" $(( $(date +%s) + page_timeout )) worker-silent
+    act_line="$(silent_act "$label" "$signal" "$m")"
     printf 'WAKE worker-silent %s signal=%s%s\n' "$label" "$signal" "$detail"
+    [ -z "$act_line" ] || printf '%s\n' "$act_line"
+    silent_failed_note "$label" "$m" "$act_line"
+}
+silent_failed_note() {
+    case "$3" in *' helper-failed '*) printf '%s helper-failed %s\n' "$1" "$2" >> "$silent_file" 2>/dev/null ;; esac
+}
+silent_act() {
+    local rc=0 out
+    { [ -n "$console_doc" ] && [ "$3" != - ]; } || return 0
+    out="$(bash "${CHIEF_WAIT_SILENT_ACT:-$HERE/silent-worker-act.sh}" --doc "$console_doc" --fleet "${legs_from:-${console_doc%.md}.fleet.json}" --bucket "$(dirname "$console_doc")" --chief "$(basename "$console_doc" .md)" --signal "$2" "$1" $(( ( $(date +%s) - $3 ) / 60 )) 2>/dev/null 9>&-)" || rc=$?
+    if [ "$rc" -eq 0 ]; then printf '%s\n' "$out"; return 0; fi
+    grep -qxF -- "$1 helper-failed $3" "$silent_file" 2>/dev/null && return 0  # swallow-ok: no marker yet reads empty, so the first failure is named
+    printf 'SILENT-ACT %s helper-failed rc=%s\n' "$1" "$rc"
 }
 succ_row_live() {
     local mf="${legs_from:-${console_doc%.md}.fleet.json}" docs d

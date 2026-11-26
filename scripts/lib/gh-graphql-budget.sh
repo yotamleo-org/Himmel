@@ -79,7 +79,22 @@ _ghb_read_token() {
     )
 }
 
-# _ghb_probe <main|read|''> <gh api -i args...> — one header read; sets GHB_*.
+_ghb_read_token2() {
+    if declare -F _ghr_load >/dev/null 2>&1; then
+        _ghr_load
+        # shellcheck disable=SC2031  # read here in the caller's shell, set by _ghr_load there
+        printf '%s' "$_GHR_TOK2"
+        return 0
+    fi
+    (
+        # shellcheck source=scripts/lib/gh-read.sh
+        . "$_GHB_HERE/gh-read.sh" 2>/dev/null || exit 0
+        _ghr_load
+        printf '%s' "$_GHR_TOK2"
+    )
+}
+
+# _ghb_probe <main|read|read2|''> <gh api -i args...> — one header read; sets GHB_*.
 # rc 0 = remaining parsed (GHB_STATE ok or refused); rc 1 otherwise.
 # An exhausted budget makes gh exit non-zero yet still print the headers, so
 # the headers decide, and the exit status only marks a timeout.
@@ -90,8 +105,8 @@ _ghb_probe() {
     t="${GHQ_PROBE_TIMEOUT:-10}"
     case "$t" in ''|*[!0-9]*) t=10 ;; esac
     case "$who" in
-        read)
-            tok=$(_ghb_read_token)
+        read|read2)
+            if [ "$who" = read2 ]; then tok=$(_ghb_read_token2); else tok=$(_ghb_read_token); fi
             if [ -z "$tok" ]; then GHB_STATE=none; return 1; fi
             out=$(_ghb_bounded "$t" "$tok" "$@" 2>&1); rc=$? ;;
         main)
