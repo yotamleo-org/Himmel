@@ -213,7 +213,7 @@ redirect and the peer-taint gate stay in force wherever a himmel hook runs.
 | codex-direct | hosted `web_search`, cached, on by default | himmel sets nothing; live mode is the operator's `~/.codex/config.toml` choice |
 | antigravity-t3 | `search_web` only | the `read_url_content` adapter arm is OPEN: its URL argument key is unread without a live thread; the adapter denies an unlisted tool |
 | hermes-main | `web_search` and `web_extract` via the parity_guard allowlist | unchanged |
-| copilot / cursor | none by design (`--deny-url "*"`) | a guarded bulk lane |
+| copilot / cursor | `deferred`: none by design (`--deny-url "*"`) | a guarded bulk lane |
 
 ## T3 preview browser: the `previewBrowser` profile option
 
