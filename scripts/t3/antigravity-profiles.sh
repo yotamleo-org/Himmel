@@ -22,10 +22,6 @@
 #              never opens the login file.
 #   --flag-on  rc 0 when the agy_design_profile flag is on, 1 off, 2 on a bad value (himmel-update reads it here).
 #   --profile  limit to one registry profile (repeatable); default is every profile.
-# Login: --apply makes <home>/antigravity-acp/antigravity-oauth-token a symlink to the bare antigravity
-# home's token, so a profile thread asks for no second login. A profile's own token file is kept; a
-# symlinked bare home, bare antigravity-acp or bare token is not shared (NOLOGIN). --check requires the
-# link (or an own token) only when the bare login exists.
 # Home: ${T3CODE_HOME:-$HOME/.t3}/userdata/providers/antigravity/<sha256 hex of the instance id>.
 # Every skills.json entry path is a canonical directory. One that resolves under
 # <T3 home>/userdata/providers/antigravity, or has a path segment starting /.agents or /.gemini, is
@@ -368,7 +364,7 @@ adapter_path() {
 }
 
 run_smoke() {
-    local p id hex home hj cmd adapter hrc payload out dec sk bad="" n=0 d name mc k spec t
+    local p id hex home hj cmd adapter hrc payload out dec sk bad="" n=0 d name mc k spec t skipped optional why
     SMOKE_RC=0
     # shellcheck source=../lib/timeout-bin.sh
     . "$HERE/../lib/timeout-bin.sh"
@@ -442,18 +438,23 @@ run_smoke() {
         elif ! jq -e '(.mcpServers // {}) | type == "object"' "$mc" >/dev/null 2>&1; then
             smoke_line FAIL mcp "config/mcp_config.json is not valid {mcpServers:{...}}"
         else
-            bad=""; n=0
+            bad=""; n=0; skipped=""
+            optional=" $(jq -r --arg p "$p" '.profiles[$p] as $pr | (($pr.optionalMcpServers // []) - (($pr.mcpServers // {}) | keys)) | join(" ")' "$REGISTRY") "
             for k in $(jq -r '(.mcpServers // {}) | keys[]' "$mc"); do
-                n=$((n+1))
                 spec="$(jq -r --arg k "$k" '.mcpServers[$k] | (.command // .serverUrl // .url // "")' "$mc")"
+                why=""
                 case "$spec" in
                     http://*|https://*)
-                        command -v curl >/dev/null 2>&1 && curl -s -o /dev/null --max-time 5 "$spec" || bad="$bad $k(unreachable $spec)" ;;
-                    '') bad="$bad $k(no command or url)" ;;
-                    *) command -v "$spec" >/dev/null 2>&1 || bad="$bad $k(command $spec not on PATH)" ;;
+                        command -v curl >/dev/null 2>&1 && curl -s -o /dev/null --max-time 5 "$spec" || why="$k(unreachable $spec)" ;;
+                    '') why="$k(no command or url)" ;;
+                    *) command -v "$spec" >/dev/null 2>&1 || why="$k(command $spec not on PATH)" ;;
                 esac
+                if [ -z "$why" ]; then n=$((n+1))
+                elif case "$optional" in *" $k "*) true ;; *) false ;; esac; then skipped="$skipped $why"
+                else bad="$bad $why"; fi
             done
             if [ -n "$bad" ]; then smoke_line FAIL mcp "not reachable:$bad"; else smoke_line PASS mcp "$n MCP servers reachable"; fi
+            [ -z "$skipped" ] || printf 'INFO mcp: optional servers not available:%s\n' "$skipped"
         fi
         t="$T3_HOME/userdata/settings.json"
         if [ -f "$t" ] && jq -e --arg i "$id" '(.providerInstances // {})[$i] | type == "object" and (.enabled != false)' "$t" >/dev/null 2>&1; then

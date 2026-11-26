@@ -547,6 +547,20 @@ ln -s "$T/mcp-copy.json" "$(home_of)/config/mcp_config.json"
 SOUT="$(mcp_env T3_AP_ADAPTER="$T/adp-deny/antigravity-hook-adapter.sh" bash "$GEN" --smoke --profile design 2>&1)"; SRC=$?
 expect_ok "38 a symlinked mcp_config.json FAILs mcp" grep -q '^FAIL mcp: config/mcp_config.json is a symlink' <<<"$SOUT"
 
+jq '.mcpCatalog = {playwright:{command:"no-such-optional-cmd-xyz"}}' "$T/plugin-profiles.json" > "$T/plugin-profiles-opt.json"
+jq '.profiles.design.mcpServers = {ctx:{command:"sh"}} | .profiles.design.optionalMcpServers = ["playwright"]' "$REG_ORIG" > "$T/registry-opt.json"
+fresh
+mk_bare_tok
+env T3_AP_REGISTRY="$T/registry-opt.json" T3_AP_PLUGIN_PROFILES="$T/plugin-profiles-opt.json" bash "$GEN" --apply --profile design >/dev/null 2>&1
+smoke_hooks "$T/adp-deny/antigravity-hook-adapter.sh"
+jq -n '{providerInstances:{antigravity_design:{driver:"antigravity",enabled:true}}}' > "$T3CODE_HOME/userdata/settings.json"
+mkdir -p "$HOME/.himmel"
+jq -n '{t3:{instance_allowlist:["antigravity_design"]}}' > "$HOME/.himmel/config.json"
+SOUT="$(env T3_AP_REGISTRY="$T/registry-opt.json" T3_AP_PLUGIN_PROFILES="$T/plugin-profiles-opt.json" T3_AP_ADAPTER="$T/adp-deny/antigravity-hook-adapter.sh" bash "$GEN" --smoke --profile design 2>&1)"; SRC=$?
+expect_eq "38 an optional MCP server missing from PATH does not fail smoke" "$SRC" 0
+expect_ok "38 the required server still counts as reachable" grep -q '^PASS mcp: 1 MCP servers reachable' <<<"$SOUT"
+expect_ok "38 the missing optional server is an INFO line" grep -q '^INFO mcp: optional servers not available: playwright(command no-such-optional-cmd-xyz' <<<"$SOUT"
+
 fresh
 mcp_env bash "$GEN" --apply --profile design >/dev/null 2>&1
 M="$(home_of)/config/mcp_config.json"

@@ -161,6 +161,7 @@ link a thread needs and exits 0 only when every line is `PASS`:
 | `instance` | T3's settings has an enabled `antigravity_<profile>` |
 | `allowlist` | `.t3.instance_allowlist` in `~/.himmel/config.json` names it |
 
+A server from `optionalMcpServers` whose command is not on PATH (or whose URL does not answer) is an `INFO mcp` line, not a `FAIL`; a server from `mcpServers` still fails.
 With registry MCP servers, `mcp` also fails when `config/mcp_config.json` is missing or differs from the
 registry. After the profile lines, smoke prints four `INFO cli` lines (`pnpm`, `playwright`, `npx`,
 `chromium`): optional local tools a design thread may use. `pnpm` serves shadcn and frontend scaffolds;
