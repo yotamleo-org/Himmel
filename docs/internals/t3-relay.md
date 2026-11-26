@@ -36,8 +36,8 @@ read-only `t3 thread list`.
 - The brief is `specs/status/t3-relay-brief.md` in the state repo bucket (the one match under
   `$HANDOVER_DIR/<user>/<project>/`; pass `--brief` when there are none or several).
 - A second live relay is refused (rc 3, the live thread id printed): a live relay is a thread with the relay's
-  exact title that is not settled. If `t3 thread list` fails the script refuses too (rc 4), because "no live
-  relay" is then unproven.
+  exact title that is not settled. If `t3 thread list` fails, prints no JSON array or cannot be read, the script
+  refuses too (rc 4), because "no live relay" is then unproven.
 
 ## No keepalive
 

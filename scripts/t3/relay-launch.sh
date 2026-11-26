@@ -10,7 +10,7 @@
 # Brief default: the one specs/status/t3-relay-brief.md under $HANDOVER_DIR/<user>/<project>/ (none or several: pass --brief).
 # Live relay: a thread with the relay's exact title that is not settled.
 # rc 0 block printed; rc 2 usage or unreadable brief; rc 3 a relay is already live (its id is printed, no block);
-# rc 4 `thread list` failed, so "no live relay" is unproven and nothing is printed.
+# rc 4 `thread list` failed, printed no JSON array, or could not be read, so "no live relay" is unproven and nothing is printed.
 # Env seams: T3_SEND_BIN (default $HOME/.t3/bin/t3), T3_SEND_PROJECT (default: this repo's root),
 # T3_RELAY_MODEL (default claude-sonnet-5-5).
 # Platform: POSIX bash 3.2+, jq.
