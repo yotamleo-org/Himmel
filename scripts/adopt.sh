@@ -971,9 +971,7 @@ wire_graphify_core() {
     return 0
   fi
   # Install the CLI first; a failed install returns before we try to register
-  # the MCP server (there'd be no graphify-mcp entrypoint to register). The
-  # server registers on demand at every adopt scope (graphify-bin.sh), never
-  # through `claude mcp add`.
+  # the MCP server (there'd be no graphify-mcp entrypoint to register).
   graphify_install || { echo "  WARNING: graphify install failed — continuing without graphify." >&2; return 0; }
   graphify_register_mcp_on_demand
   # price the hooks in the ADOPTED repo, not himmel's own — adopt
