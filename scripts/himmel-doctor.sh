@@ -3524,7 +3524,7 @@ check_c40_qmd_vec() {
     # curl as a config on stdin (never argv), read through the plugin's helper.
     local qd_tok qd_auth=()
     qd_tok="$(bash "$REPO_ROOT/marketplace/plugins/qmd/scripts/qmd-auth-headers.sh" --token-for "$url" 2>/dev/null)" || qd_tok=""
-    [ -n "$qd_tok" ] && qd_auth=(--noproxy '*' -K -)
+    [ -n "$qd_tok" ] && qd_auth=(-q --noproxy '*' -g -K -)
     # `-w '%{http_code}'` appends the status after the body ("000" when no HTTP
     # exchange happened); peel it off so an empty body can be told apart by status.
     init="$(printf 'header = "Authorization: Bearer %s"\n' "$qd_tok" | "$curl_bin" ${qd_auth[@]+"${qd_auth[@]}"} -s -m "$init_timeout" -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$init_payload" "$url" 2>/dev/null)"; init_rc=$?
@@ -3554,7 +3554,11 @@ check_c40_qmd_vec() {
     case "$init_code" in
     401|403)
         local tok_state="none is readable"
-        [ -n "$qd_tok" ] && tok_state="rejected the one read from the token file"
+        if [ -n "$qd_tok" ]; then
+            tok_state="rejected the one read from the token file"
+        elif [ -n "$(bash "$REPO_ROOT/marketplace/plugins/qmd/scripts/qmd-auth-headers.sh" --token 2>/dev/null)" ]; then
+            tok_state="the readable one was not sent (the URL is not a loopback address, or the token holds a character a curl config cannot carry)"
+        fi
         emit WARN C40-qmd-vec "the qmd server on $url answered HTTP $init_code: it requires a bearer token and $tok_state -- vec search is not being served" \
             "set QMD_HTTP_AUTH_FILE to the qmd server's token file (default ~/.config/qmd/http-token, mode 600); see marketplace/plugins/qmd/README.md"
         return
