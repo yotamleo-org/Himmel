@@ -14,7 +14,8 @@ cfg="$tmp/cfg"; mkdir -p "$cfg/projects/p"
 transcript() {
     printf '{"type":"custom-title","customTitle":"%s","sessionId":"%s"}\n' "$1" "$sid"
     printf '{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"id":"m0","usage":{"input_tokens":90000},"content":[{"type":"tool_use","id":"t0","name":"Bash","input":{"command":"grep -n wake scripts/handover/chief-kit/chief-wait.sh"}}]}}\n'
-    printf '{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"id":"m1","usage":{"input_tokens":100000},"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"bash \\"/opt/kit/chief-wait.sh\\" --doc x"}}]}}\n'
+    printf '{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"id":"m00","usage":{"input_tokens":95000},"content":[{"type":"tool_use","id":"t00","name":"Bash","input":{"command":"echo '"'"'example; bash chief-wait.sh --doc x'"'"'"}}]}}\n'
+    printf '{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"id":"m1","usage":{"input_tokens":100000},"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"  cd /opt/kit \\u0026\\u0026 bash \\"./chief-wait.sh\\" --doc x"}}]}}\n'
     printf '{"type":"user","timestamp":"2026-01-01T00:05:00Z","message":{"role":"user","content":"<task-notification>w</task-notification>"}}\n'
     printf '{"type":"assistant","timestamp":"2026-01-01T00:05:10Z","isSidechain":true,"message":{"id":"s1","usage":{"input_tokens":900000},"content":[]}}\n'
     printf '{"type":"assistant","timestamp":"2026-01-01T00:30:00Z","message":{"id":"m2","usage":{"input_tokens":%s},"content":[]}}\n' "$2"
@@ -27,7 +28,7 @@ rc=0; write --shift S-A --next-shift S-B --workers-end 12 --rulings 2 --spans-un
 check "a row is appended (exit 0)" "$rc" "0"
 check "one row in the record" "$(wc -l < "$L" | tr -d ' ')" "1"
 check "the transcript is read" "$(jq -r '.transcript' "$L")" "read"
-check "a sidechain call is not the shift's context, and a command that only names chief-wait.sh is not the arm" "$(jq -r '"\(.ctx_start) \(.ctx_end)"' "$L")" "100000 460000"
+check "a sidechain call is not the shift's context, a command that only names or quotes chief-wait.sh is not the arm, a chained quoted run is" "$(jq -r '"\(.ctx_start) \(.ctx_end)"' "$L")" "100000 460000"
 check "the arguments land in the row" "$(jq -r '"\(.workers_end) \(.rulings) \(.spans_unknown)"' "$L")" "12 2 3"
 check "the first row of a chain has no workers_start; mean and peak are the end" "$(jq -r '"\(.workers_start) \(.workers_mean == 12) \(.workers_peak)"' "$L")" "null true 12"
 check "an end context at the 45 % fill gives reason fill" "$(jq -r '.reason' "$L")" "fill"

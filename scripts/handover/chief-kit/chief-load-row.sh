@@ -68,12 +68,23 @@ fi
 
 exec python3 -I - "$bucket/chief-load.jsonl" "$transcript" "$shift_name" "$next_shift" \
     "$workers_end" "$rulings" "$spans_unknown" "$reason" "$fill_percent" "$window" <<'PY'
-import datetime, errno, json, os, re, stat, statistics, sys
+import datetime, errno, json, os, re, shlex, stat, statistics, sys
 
 path, transcript, shift, next_shift = sys.argv[1:5]
 workers_end, rulings, spans_unknown = (int(x) for x in sys.argv[5:8])
 reason, fill_percent, window = sys.argv[8], int(sys.argv[9]), int(sys.argv[10])
-WAITER_ARM = re.compile(r"(^|[;&|(]\s*)bash\s+[\"']?[^\s\"']*chief-wait\.sh[\"']?(\s|$)")
+SEPARATORS = {";", "&&", "||", "|", "&", "(", "{"}
+
+
+def runs_waiter(cmd):
+    try:
+        lexer = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        toks = list(lexer)
+    except ValueError:
+        return False
+    return any(t == "bash" and (i == 0 or toks[i - 1] in SEPARATORS) and i + 1 < len(toks)
+               and toks[i + 1].endswith("chief-wait.sh") for i, t in enumerate(toks))
 HOOK_TIMEOUT = re.compile(r"hook[^\n]{0,80}timed out|timed out[^\n]{0,40}\bhook", re.I)
 
 
@@ -159,7 +170,7 @@ def measure(file):
                 if not isinstance(b, dict) or b.get("type") != "tool_use":
                     continue
                 inp = b.get("input") or {}
-                if arm is None and b.get("name") == "Bash" and WAITER_ARM.search(str(inp.get("command") or "")):
+                if arm is None and b.get("name") == "Bash" and runs_waiter(str(inp.get("command") or "")):
                     arm = mid
                 if b.get("name") in ("Agent", "Task") and inp.get("subagent_type") in ("judge", "judge-ro"):
                     m["judge_dispatches"] += 1
