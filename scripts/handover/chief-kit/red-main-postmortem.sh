@@ -25,7 +25,9 @@
 # Env seams: RED_MAIN_GH (default gh-read.sh, else gh), RED_MAIN_IMPACTED (default
 # scripts/cr/impacted-suites.sh beside this kit), RED_MAIN_STATE (seen file, default
 # ${TICK_STATE_DIR:-$HOME/.himmel/state}/red-main-postmortem.seen), RED_MAIN_REPO (checkout).
-# Exit 0 always; an unreadable run list prints nothing.
+# A failed artifact download leaves the run unreported for the next call; the third failed call
+# (counted in <seen file>.tries) prints an unknown line and marks it seen.
+# Exit 0, or 2 on a bad option; an unreadable run list prints nothing.
 #
 # PLATFORM GUARD: chief kit, Linux-only; Bash 3.2-compatible.
 set -uo pipefail
@@ -54,6 +56,8 @@ max_runs="${RED_MAIN_MAX_RUNS:-3}"
 max_commits="${RED_MAIN_MAX_COMMITS:-10}"
 case "$max_runs" in '' | *[!0-9]*) max_runs=3 ;; esac
 case "$max_commits" in '' | *[!0-9]*) max_commits=10 ;; esac
+max_runs=$((10#$max_runs))
+max_commits=$((10#$max_commits))
 
 runs="$(cd "$repo" 2>/dev/null && "$gh_bin" run list --branch main --workflow ci.yml --status completed --limit 30 --json databaseId,headSha,conclusion,event --jq '.[] | select(.event != "pull_request") | [.databaseId, .headSha, .conclusion] | @tsv' 2>/dev/null)" || exit 0  # swallow-ok: an unreadable run list reports nothing this tick
 [ -n "$runs" ] || exit 0
@@ -88,6 +92,11 @@ while [ "$i" -lt "$n" ] && [ "$done_runs" -lt "$max_runs" ]; do
         red="$dl/shard-red-suites.txt"
         dlerr="$(cd "$repo" && "$gh_bin" run download "$id" -n selector-miss-ledger -D "$dl" 2>&1 >/dev/null)"; dlrc=$?  # swallow-ok: rc and message decide absent artifact versus a failed read below
         if [ "$dlrc" -ne 0 ] && ! grep -Fq 'no valid artifacts' <<< "$dlerr"; then
+            printf '%s\n' "$id" >> "$state.tries"
+            if [ "$(grep -Fxc -- "$id" "$state.tries")" -ge 3 ]; then
+                printf 'red-main run %s unknown: the failing-suite artifact could not be read after 3 tries\n' "$id"
+                printf '%s\n' "$id" >> "$state"
+            fi
             i=$((i + 1))
             continue
         fi

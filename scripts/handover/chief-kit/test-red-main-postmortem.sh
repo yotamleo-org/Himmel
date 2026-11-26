@@ -51,6 +51,7 @@ if [ "${1:-}" = run ] && [ "${2:-}" = list ]; then cat "$STUB_RUNS"; exit 0; fi
 if [ "${1:-}" = run ] && [ "${2:-}" = download ]; then
     id="$3"; dir=""
     [ -z "${STUB_DL_FAIL:-}" ] || { echo 'connection reset by peer' >&2; exit 1; }
+    [ -z "${STUB_DL_ABSENT:-}" ] || { echo 'no valid artifacts found to download' >&2; exit 1; }
     while [ "$#" -gt 0 ]; do [ "$1" = -D ] && dir="$2"; shift; done
     [ -f "$STUB_DIR/red-$id" ] && cp "$STUB_DIR/red-$id" "$dir/shard-red-suites.txt"
     exit 0
@@ -58,6 +59,7 @@ fi
 exit 1
 STUB
 chmod +x "$W/bin/gh"
+unset STUB_DL_FAIL STUB_DL_ABSENT
 export STUB_DIR="$W" STUB_RUNS="$W/runs"
 export RED_MAIN_GH="$W/bin/gh" RED_MAIN_IMPACTED="$IS" RED_MAIN_REPO="$FX"
 export RED_MAIN_MAX_RUNS=3 RED_MAIN_MAX_COMMITS=10
@@ -125,10 +127,28 @@ out="$(RED_MAIN_IMPACTED="$W/bin/is" run_sut)"
 contains 'a commit whose selection cannot be read leaves the suite unknown' "$out" 'red-main run 900 scripts/test-c.sh unknown'
 lacks 'an unchecked PR never lets a no-line print' "$out" 'impacted list: no'
 
-rm -f "$W/seen"
+rm -f "$W/seen" "$W/seen.tries"
 printf 'scripts/test-b.sh\n' > "$W/red-900"
 out="$(STUB_DL_FAIL=1 run_sut)"
-if [ -z "$out" ] && ! grep -Fxq 900 "$W/seen"; then pass 'a failed artifact download prints nothing and the run is retried'; else fail "transient download failure: out=$out seen=$(cat "$W/seen")"; fi
+if [ -z "$out" ] && rc_zero && ! grep -Fxq 900 "$W/seen"; then pass 'a failed artifact download prints nothing and the run is retried'; else fail "transient download failure: out=$out rc=$(cat "$W/rc") seen=$(cat "$W/seen")"; fi
+out="$(run_sut)"
+contains 'the retry after a failed download reports the run' "$out" 'red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes'
+
+rm -f "$W/seen" "$W/seen.tries"
+out="$(STUB_DL_FAIL=1 run_sut)"
+out="$(STUB_DL_FAIL=1 run_sut)"
+out="$(STUB_DL_FAIL=1 run_sut)"
+contains 'a download that fails three ticks running is reported unknown' "$out" 'red-main run 900 unknown: the failing-suite artifact could not be read after 3 tries'
+if grep -Fxq 900 "$W/seen"; then pass 'a run whose download keeps failing is marked seen'; else fail 'run 900 not marked seen after three failed downloads'; fi
+
+rm -f "$W/seen" "$W/seen.tries"
+out="$(STUB_DL_ABSENT=1 run_sut)"
+contains 'an artifact GitHub reports absent is unknown at once' "$out" 'red-main run 900 unknown: no failing-suite list'
+if grep -Fxq 900 "$W/seen"; then pass 'an absent artifact marks the run seen'; else fail 'run 900 not marked seen for an absent artifact'; fi
+
+rm -f "$W/seen" "$W/seen.tries"
+out="$(RED_MAIN_MAX_COMMITS=08 run_sut)"
+contains 'a zero-padded commit cap is read as decimal' "$out" 'red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes'
 
 if [ "$failures" -gt 0 ]; then printf 'FAIL: %s case(s) failed\n' "$failures"; exit 1; fi
 printf 'OK: all red-main-postmortem cases passed\n'
