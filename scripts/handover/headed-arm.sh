@@ -1802,7 +1802,7 @@ fi
 # so closing a worker - close-wrapped-worker TERMs its claude pid - closes only
 # its tab, and a crashed worker leaves only its own tab dead.
 # Returns 1 to open a window instead: the switch is off, this is a chief
-# arm, the macOS shim, a bypass flag set to 1 in this arm's env (a bypass launch never shares the window), no valid HIMMEL_CONSOLE_NAME to group by, or no live
+# arm, the macOS shim, no valid HIMMEL_CONSOLE_NAME to group by, or no live
 # window recorded for the chief or its predecessor chief yet (TAB_RECORD=1:
 # the window this arm opens, or adopts from a live konsole predecessor, becomes
 # the chief's window). A D-Bus failure also returns 1, with a WARN:
