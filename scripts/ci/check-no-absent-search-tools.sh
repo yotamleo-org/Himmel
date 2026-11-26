@@ -2,8 +2,6 @@
 #   check-no-absent-search-tools.sh           scan the agent files and hook scripts, from the repo root
 #   check-no-absent-search-tools.sh FILE...   scan these files (*.md as an agent file, anything else as a hook script)
 #
-# Agent file: the `tools:` line of its frontmatter lists Grep or Glob as a tool.
-# Hook script: a non-comment line says to use, try or search with the Grep or Glob tool.
 # Exit: 0 clean, 1 a hit, 2 cannot evaluate (a named file is unreadable, or the repo scan finds no file).
 set -uo pipefail
 
