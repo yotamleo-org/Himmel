@@ -98,9 +98,6 @@ env -u CR_PROFILE -u CRITIC_PANEL_TIERS \
 check "T3: CRITICS_JSON row dispatched"                "$(grep -c 'slug=onlyme ' "$LOG3")" "1"
 check "T3: local overlay NOT merged (CRITICS_JSON wins)" "$(grep -c 'slug=other ' "$LOG3")" "0"
 
-# ---------------------------------------------------------------------------
-# T4 — the shipped registry with no local overlay.
-# ---------------------------------------------------------------------------
 LOG4="$tmp/t4.log"; : > "$LOG4"
 env -u CRITICS_JSON CRITICS_BASE_JSON="$HERE/critics.json" CRITICS_LOCAL_JSON="$tmp/no-local.json" \
     PANEL_TEST_LOG="$LOG4" CR_PROFILE="paid" CR_TRIVIALITY_OVERRIDE=full \
