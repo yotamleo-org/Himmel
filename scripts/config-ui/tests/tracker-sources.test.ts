@@ -281,3 +281,16 @@ test("GET /api/board: on a GitHub board or a populated local store the Jira-back
     expect(r.chains.reason).toContain("not Jira");
   }
 });
+
+const zedTicket = '---\nkey: "ZED-1"\nstatus: "To Do"\nstatusCategory: "To Do"\nlabels: []\nfixVersions: ["v1.1.3"]\nupdated: "2026-10-01T00:00:00.000+0000"\nresolution: null\n---\n\n# ZED-1: x\n';
+test("8857: JIRA_PROJECT_KEY=ZED with a ZED-1.md mirror lists jira, in an explicit mirror dir and under the mirror root", async () => {
+  const s = scratch();
+  writeFileSync(join(s.env.HIMMEL_JIRA_MIRROR, "ZED-1.md"), zedTicket);
+  expect(await trackerSources({ ...s.env, JIRA_PROJECT_KEY: "ZED" }, "/")).toEqual(["jira"]);
+  const s2 = scratch();
+  mkdirSync(join(s2.d, ".himmel", "state", "jira-mirror", "ZED"), { recursive: true });
+  writeFileSync(join(s2.d, ".himmel", "state", "jira-mirror", "ZED", "ZED-1.md"), zedTicket);
+  const { HIMMEL_JIRA_MIRROR: _unused, ...noMirror } = s2.env;
+  const { get } = serve({ ...noMirror, JIRA_PROJECT_KEY: "ZED" }, s2.d);
+  expect(await get("/api/sources")).toEqual({ sources: ["jira"] });
+});
