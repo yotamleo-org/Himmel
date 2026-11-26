@@ -131,19 +131,18 @@ chief_inbox_alert() {
     bash "$REPO/scripts/lib/test-run-guard" check --quiet api-lane-alert-route "$root" || guard_rc=$?
     [ "$guard_rc" != 77 ] || exit 1
     file=""
-    if f="$(_mba_chief_inbox_path "$root" "${HIMMEL_CONSOLE_NAME:-}")" && [ -f "$f" ]; then
-      file="$f"
-    else
-      now="$(date +%s)"; newest=-1
-      for w in "$root"/consoles/*.md.wait; do
-        [ -e "$w" ] || continue
-        f="$(_mba_chief_inbox_path "$root" "$(basename "$w" .md.wait)")" && [ -f "$f" ] || continue
-        hb="$(sed -n 's/^hb=\([0-9][0-9]*\) .*/\1/p' "$w" 2>/dev/null | head -n 1)"
-        case "$hb" in ''|*[!0-9]*) continue ;; esac
-        [ "$hb" -le "$now" ] && [ $((now - hb)) -lt 1800 ] && [ "$hb" -gt "$newest" ] || continue
-        newest="$hb"; file="$f"
-      done
-    fi
+    now="$(date +%s)"; newest=-1
+    for w in "$root"/consoles/*.md.wait; do
+      [ -e "$w" ] || continue
+      name="$(basename "$w" .md.wait)"
+      f="$(_mba_chief_inbox_path "$root" "$name")" && [ -f "$f" ] || continue
+      hb="$(sed -n 's/^hb=\([0-9][0-9]*\) .*/\1/p' "$w" 2>/dev/null | head -n 1)"
+      case "$hb" in ''|*[!0-9]*) continue ;; esac
+      [ "$hb" -le "$now" ] && [ $((now - hb)) -lt 1800 ] || continue
+      if [ "$name" = "${HIMMEL_CONSOLE_NAME:-}" ]; then file="$f"; break; fi
+      [ "$hb" -gt "$newest" ] || continue
+      newest="$hb"; file="$f"
+    done
     [ -n "$file" ] || exit 1
     _mba_append_if_exists "$file" "$(printf -- '- %s [api-lane call-failed] %s' "$(date +%H:%M)" "$line" | tr '\n' ' ')"
   ) </dev/null >/dev/null 2>&1

@@ -490,10 +490,13 @@ test('a failed call alerts once and falls back; a failing fallback returns its o
 });
 
 const BUDGET_CAP = JSON.stringify({ type: 'result', is_error: true, subtype: 'error_max_budget_usd', result: 'budget' });
-const chiefBridge = (f, names) => {
+const chiefBridge = (f, names, ageSecs = 5) => {
   const root = join(f.dir, 'bridge');
   mkdirSync(join(root, 'consoles'), { recursive: true });
-  for (const n of names) writeFileSync(join(root, 'consoles', `${n}.md`), '');
+  for (const n of names) {
+    writeFileSync(join(root, 'consoles', `${n}.md`), '');
+    writeFileSync(join(root, 'consoles', `${n}.md.wait`), `hb=${Math.floor(Date.now() / 1000) - ageSecs} pid=1 key=k tick=ok state=waiting\n`);
+  }
   return root;
 };
 const inboxText = (root, name) => readFileSync(join(root, 'consoles', `${name}.md`), 'utf8');
@@ -526,6 +529,15 @@ test('with no HIMMEL_CONSOLE_NAME the newest armed chief gets the call-failed al
   assert.equal(inboxText(root, 'old-chief'), '');
 });
 
+test('a named chief whose waiter heartbeat is stale cannot swallow the alert: it pages the operator', () => {
+  const f = fixture();
+  const root = chiefBridge(f, ['stale-chief'], 7200);
+  const r = f.run(f.good, { BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'stale-chief', STUB_OUT: BUDGET_CAP, STUB_RC: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(alerts(f).length, 1);
+  assert.equal(inboxText(root, 'stale-chief'), '');
+});
+
 test('a call-failed alert with no chief inbox still pages the operator', () => {
   const f = fixture();
   const root = chiefBridge(f, []);
@@ -551,11 +563,15 @@ test('an operator-actionable failure (credit gone, key rejected) pages the opera
 test('every account out of credit still pages the operator, chief inbox present', () => {
   const f = fixture();
   const root = chiefBridge(f, ['test-chief']);
-  for (const a of ['A', 'B']) spawnSync(process.execPath, [STATE, 'exhausted'], { env: { ...f.env, HIMMEL_API_ACCOUNT: a }, encoding: 'utf8' });
-  const r = f.run(f.good, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'eval', BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'test-chief', STUB_OUT: CREDIT_LOW, STUB_RC: '1' });
-  assert.notEqual(r.status, 0, r.stderr);
+  const marked = spawnSync(process.execPath, [STATE, 'exhausted'], { env: { ...f.env, HIMMEL_API_ACCOUNT: 'B' }, encoding: 'utf8' });
+  assert.equal(marked.status, 0, marked.stderr);
+  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-all-dry',
+    BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'test-chief', STUB_DEAD_TAILS: 'AAAA', STUB_DEAD_OUT: DEAD });
+  assert.equal(r.status, 6, r.stderr);
+  assert.doesNotMatch(r.stderr, /rotating this call/);
+  assert.equal(alerts(f).length, 1);
+  assert.match(alertText(f), /rejected/);
   assert.equal(inboxText(root, 'test-chief'), '', 'an all-accounts-exhausted alert reached the chief inbox');
-  assert.ok(alerts(f).length >= 1 || /alert: none sent/.test(r.stderr), r.stderr);
 });
 
 test('a call granted Edit, Write or Bash re-runs only after a refusal before any request; a run that started is never replayed', () => {
