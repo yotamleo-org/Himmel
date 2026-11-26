@@ -104,6 +104,15 @@ run "WRAPPED N2078 after N2088 merged, RESUME /h/HIMMEL-1-N2078b-foo-RESUME.md"
 check "6f two listed labels plus a path rc" "$rc" 10
 contains "6f two listed labels reason" "$out" "ambiguous-label"
 check "6f wrap not run" "$calls" ""
+cat > "$W/list-succ-and-listed" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' /h/HIMMEL-1-N2078-foo-2026-10-14.md /h/HIMMEL-8-N4304b-resumed-2026-10-31-RESUME.md
+EOF
+chmod +x "$W/list-succ-and-listed"
+LE_LIST="$W/list-succ-and-listed" run "WRAPPED N4304 after N2078 merged"
+check "6g a listed label plus a label listed only through its successor rc" "$rc" 10
+contains "6g reason" "$out" "ambiguous-label"
+check "6g wrap not run" "$calls" ""
 
 # a MERGED/WRAPPED from N4304 finds the resumed manifest entry N4304b
 cat > "$W/list-resume" <<'EOF'

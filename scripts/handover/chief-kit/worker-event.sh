@@ -202,7 +202,9 @@ if [ -n "$labels" ]; then
     if [ "$(printf '%s\n' "$labels" | wc -l)" -ne 1 ]; then
         listed_labels=""
         while IFS= read -r cand_label; do
-            listed_doc "$cand_label" "$listing" >/dev/null && listed_labels="$listed_labels$cand_label"$'\n'
+            if listed_doc "$cand_label" "$listing" >/dev/null || [ -n "$(successor_docs "$cand_label" "$listing")" ]; then
+                listed_labels="$listed_labels$cand_label"$'\n'
+            fi
         done <<EOF
 $labels
 EOF
