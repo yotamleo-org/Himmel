@@ -1,0 +1,18 @@
+{
+ "conversation_id": "a67e751a-6eb7-4cdb-bee2-f934216271e1",
+ "cursor_version": "2026.11.22-e9042b2",
+ "generation_id": "a67e751a-6eb7-4cdb-bee2-f934216271e1",
+ "hook_event_name": "preToolUse",
+ "model": "default",
+ "session_id": "a67e751a-6eb7-4cdb-bee2-f934216271e1",
+ "tool_input": {
+  "file_path": "/work/grokprobe/.env"
+ },
+ "tool_name": "Read",
+ "tool_use_id": "call-c6082091-af5e-42b7-b3f9-b9b5c0286408-3\nfc_35f204c5-cb5b-4952-b044-70752865fe8a_0",
+ "transcript_path": "/home/user/.cursor/projects/fixture/transcript.jsonl",
+ "user_email": "",
+ "workspace_roots": [
+  "/work/cursorcap"
+ ]
+}

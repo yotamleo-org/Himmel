@@ -158,6 +158,11 @@ cat > "$tmp/bus" <<'STUB'
 #!/usr/bin/env bash
 [ "${STUB_BUS_FAIL:-0}" = 1 ] && { echo "bus: no such peer" >&2; exit 1; }
 [ "$1" = send ] || exit 2
+if [ "${STUB_BUS_TOKFAIL:-0}" = 1 ]; then
+    echo send >> "$STUB_BUS_DIR/sends"
+    case "$3" in "${TMPDIR:-/tmp}"/*) ;; *) exit 2 ;; esac
+    printf 'bus: rejected token %s: %s\n' "$(sed -n 's/^Your token `\(.*\)`\.$/\1/p' "$3")" "$(tr '\n' ' ' < "$3")" >&2; exit 1
+fi
 printf '%s\n' "$2" > "$STUB_BUS_DIR/to"
 cp "$3" "$STUB_BUS_DIR/body"
 echo send >> "$STUB_BUS_DIR/sends"
@@ -1088,6 +1093,35 @@ sent     "11022 a same-head re-judge: the later GO carries" "$NDOC" qb
 gofresh; vat qa "**NO-GO** for head \`$JUDGED\`." 2026-11-24T12:00:00Z; vat qb "**GO** for head \`$JUDGED\`." 2026-11-24T11:00:00Z
 orun "$NDOC"
 esc      "11022 a same-head re-judge: a NO-GO written after the GO refuses" 5
+gofresh
+
+REALTREE="$(cd "$HERE/../../.." && pwd)"; AGT="$tmp/agtree"
+mkdir -p "$AGT/scripts/handover/chief-kit"
+for e in "$REALTREE"/scripts/*; do [ "${e##*/}" = handover ] || ln -s "$e" "$AGT/scripts/${e##*/}"; done
+for e in "$REALTREE"/scripts/handover/*; do [ "${e##*/}" = chief-kit ] || ln -s "$e" "$AGT/scripts/handover/${e##*/}"; done
+for e in "$REALTREE"/scripts/handover/chief-kit/*; do [ "${e##*/}" = go.sh ] || ln -s "$e" "$AGT/scripts/handover/chief-kit/${e##*/}"; done
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\nexec bash "%s" "$@"\n' "$tmp/ag-argv.log" "$REALTREE/scripts/handover/chief-kit/go.sh" > "$AGT/scripts/handover/chief-kit/go.sh"
+gofresh; rm -f "$tmp/ag-argv.log"
+OUT=$(bash "$AGT/scripts/handover/chief-kit/auto-go.sh" --doc "$CHIEF" --fleet "$FLEET" --worker N1 77 "$SHA" 2>&1); RC=$?
+check    "AG1 the GO act: exit 0" "$RC" "0"
+contains "AG1 go.sh runs with --no-deliver" "$(cat "$tmp/ag-argv.log" 2>/dev/null)" "--no-deliver"
+
+gofresh; write_fixtures native "" "- 10:00 READY 77 $SHA GREEN"
+mkdir -p "$HANDOVER_DIR/u/$VBUCKET"; cp "$CHIEF" "$HANDOVER_DIR/u/$VBUCKET/chief-ag.md"; cp "$FLEET" "$HANDOVER_DIR/u/$VBUCKET/chief-ag.fleet.json"
+: > "$tmp/busdir/sends"
+OUT=$(HIMMEL_BUS_NAME=chief-ag GO_DELIVER_BUS="$tmp/bus" GO_DELIVER_CENSUS="$tmp/census" bash "$SCRIPT" --doc "$CHIEF" --fleet "$FLEET" --worker N1 77 "$SHA" 2>&1); RC=$?
+check "AG1c the real go.sh behind auto-go: GO-SENT" "$OUT" "GO-SENT 77 $SHA to N1 bus=#7 qid=none"
+check "AG1c exactly one bus record" "$(wc -l < "$tmp/busdir/sends" | tr -d ' ')" "1"
+
+gofresh; STUB_BUS_TOKFAIL=1 run 77 "$SHA"
+check    "AG1d exit 11" "$RC" "11"
+contains "AG1d GO-WRITTEN names the redacted bus error" "$(grep '^GO-WRITTEN ' <<< "$OUT")" "bus-failed: bus send exit 1: bus: rejected token <token>: GO 77"
+check    "AG1d no token outside the SENDMESSAGE line" "$(grep -v '^SENDMESSAGE to=' <<< "$OUT" | grep -c 'CS-N1-tok1')" "0"
+check    "AG1d no token in the audit row" "$(last_row | grep -c 'CS-N1-tok1')" "0"
+contains "AG1d the audit row carries the redacted error" "$(last_row)" "rejected token <token>"
+
+gofresh; STUB_SESSION='' run 77 "$SHA"
+contains "AG2 the census miss names the stem first" "$OUT" "candidates HIMMEL-1-N1-feature-2026-10-31,"
 gofresh
 
 if [ "$fails" -eq 0 ]; then echo "test-auto-go.sh: all rows passed"; exit 0; fi

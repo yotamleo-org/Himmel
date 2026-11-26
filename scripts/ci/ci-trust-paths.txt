@@ -23,6 +23,10 @@
 # The merge gate, its GO writer and every helper it runs or sources.
 ^scripts/handover/merge-on-green\.sh$
 ^scripts/handover/(console|chief)-kit/go\.sh$
+^scripts/handover/chief-kit/go-deliver\.sh$
+^scripts/lanes/lib/claude-sessions\.sh$
+^marketplace/plugins/himmel-bus/bin/bus$
+^marketplace/plugins/himmel-bus/lib/
 # The scripted GO: auto-go.sh repeats the chief's GO checks and, from slice A1b, writes the GO.
 ^scripts/handover/chief-kit/auto-go\.sh$
 # The silent-worker merge: silent-go-merge.sh runs merge-on-green.sh on a GO'd PR whose worker went silent.
@@ -64,6 +68,10 @@
 ^marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts\.sh$
 # The plugin's vendored launcher twins (byte-identical to run-hook-with-bash and hook-integrity above; test-plugin-hook-bash-wiring.sh).
 ^marketplace/plugins/himmel-ops/hooks/(run-hook-with-bash|hook-integrity)\.js$
+# The harness tool translation every plugin hook runs through: the vendored table and translator, himmel-guard's jq twin, and their suite.
+^marketplace/plugins/himmel-ops/hooks/lib/
+^marketplace/plugins/himmel-guard/hooks/(translate-tool-call\.sh$|lib/)
+^scripts/hooks/test-harness-tool-translation\.sh$
 # Commit/push gates and CR triggers.
 ^scripts/hooks/(check-(cr-|security-reviewed|platforms-tested|push-target|no-force-push|main-ref|merged-branch|pr-mergeable|single-writer|pr-lane|worktree-isolation|hookspath|lockfile|settings-portability|fail-open|trust-suites|guardrail)|trigger-cr-on-|install-(single-writer-floor|main-ref-transaction|cr-pre-push-legacy))
 # RED suites for the trust-path hook denials, allow logic and commit/push gates.

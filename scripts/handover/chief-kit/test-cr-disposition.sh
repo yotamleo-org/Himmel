@@ -137,7 +137,7 @@ check "4: record follow-up with repeated --attest -> exit 0" "$rc" "0"
 contains "4: the source names CHIEF_SESSION_NAME over its old name" "$(cat "$LEDGER")" "console:chief-x"
 gos 90 "$SHA"
 check "4: judged follow-up with three attests -> exit 0" "$rc" "0"
-check "4: the GO is written" "$out" "$HDIR/.locks/go/90.$SHA"
+check "4: the GO is written (its path is go.sh's last line)" "${out##*$'\n'}" "$HDIR/.locks/go/90.$SHA"
 rm -rf "$HDIR/.locks"
 
 # --- 5. head-bound, tamper-evident, fix-here never clears -----------------

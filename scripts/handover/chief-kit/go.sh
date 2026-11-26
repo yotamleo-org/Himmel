@@ -6,13 +6,33 @@
 # and carries head=<that sha> plus a mac= line: HMAC-SHA256 of
 # nwo|pr|sha under
 # the key this script mints at ~/.config/himmel/go-hmac.key (see
-# scripts/lib/go-gate.sh). The chief's SendMessage GO is only the
-# notification. A GO binds ONE head: a push after it needs a fresh GO.
+# scripts/lib/go-gate.sh). A GO binds ONE head: a push after it needs a fresh GO.
+# A himmel merge GO is also delivered to the PR's worker (below), so no second step is owed.
 #
-# Usage: go.sh [--contract yes|no] [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>
+# Usage: go.sh [--contract yes|no] [--trust-reviewed <reviewer-id>] [--doc <chief doc>] [--no-deliver] <pr-number> <full-40-hex-head-sha>
 #        go.sh --fix-main-red <red-run-id> <pr-number> <full-40-hex-head-sha>
 #        go.sh --repo <owner/repo> [--checkout <dir>] --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>
-# Prints the written path. Re-running overwrites (idempotent).
+# Prints the written path. It is the last stdout line. Re-running overwrites (idempotent) and
+# delivers again.
+#
+# Delivery (a himmel merge GO, plain or --trust-reviewed; never a fork GO, a FIX-GO or
+# --no-deliver): after the GO file and its verdict record are written, go-deliver.sh finds the
+# PR's worker in the chief's fleet manifest and sends it `GO <pr> <sha> - merge with: ...`
+# quoting its token by himmel-bus record. The chief doc is --doc, else
+# <root>/<user>/<bucket>/$HIMMEL_BUS_NAME.md; its manifest is <doc minus .md>.fleet.json; the
+# worker is the last manifest row whose doc's newest READY or MERGED bullet names the PR; only
+# a native worker is sent to; the token is the chief doc's Live state span when usable, else
+# the brief's RETASK line. Before the path, stdout carries one line:
+#   SENT <pr> <head8> to <label> bus=#<n>
+#   NOT-SENT <pr> <head8> reason=<no-library|no-chief-doc|no-manifest|no-manifest-worker|
+#            lane-<lane>|no-token <label>|no-session <label> (<n> live matches)|bus-failed <why>>
+# and after a no-session or bus-failed line, `SENDMESSAGE to=<session or worker doc stem> :: <msg>`
+# for the chief to send by hand (the only printed line that carries the token). Delivery never
+# changes the exit code and never refuses or undoes the GO: the file is written first.
+# --doc and --no-deliver belong to a himmel merge GO: either with --repo or --fix-main-red is
+# exit 2. go-batch.sh and auto-go.sh pass --no-deliver: they send themselves.
+# Seams (tests): GO_DELIVER_BUS replaces the himmel-bus CLI, GO_DELIVER_CENSUS the process census
+# (a script printing claude_sessions rows).
 #
 # Every merge GO (not --fix-main-red) is also persisted as a signed verdict record
 # through write-verdict.sh: <root>/<user>/<bucket>/verdicts/go-pr-<n>/chief-go-<head>.md,
@@ -153,7 +173,7 @@ GH_READ="$(cd "$_csg_dir/../../lib" 2>/dev/null && pwd)/gh-read.sh"  # swallow-o
 [ -f "$GH_READ" ] || GH_READ=gh
 
 usage() {
-    echo "usage: go.sh [--model <id>] [--effort <level>] [--contract yes|no] [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>" >&2
+    echo "usage: go.sh [--model <id>] [--effort <level>] [--contract yes|no] [--trust-reviewed <reviewer-id>] [--doc <chief doc>] [--no-deliver] <pr-number> <full-40-hex-head-sha>" >&2
     echo "       go.sh --fix-main-red <red-run-id> <pr-number> <full-40-hex-head-sha>" >&2
     echo "       go.sh --repo <owner/repo> [--checkout <dir>] --trust-reviewed <judge-qid> <pr-number> <full-40-hex-head-sha>" >&2
 }
@@ -173,9 +193,19 @@ CONTRACT=""
 CONTRACT_SET=0
 CHECKOUT=""
 CHECKOUT_SET=0
+DELIVER_DOC=""
+DELIVER_DOC_SET=0
+NO_DELIVER=0
 # Each option, in any order, at most once (a repeat is a usage error).
 while :; do
     case "${1:-}" in
+        --doc)
+            [ "$DELIVER_DOC_SET" -eq 0 ] || { usage; exit 2; }
+            DELIVER_DOC="${2:-}"; DELIVER_DOC_SET=1
+            shift 2 2>/dev/null || shift "$#" ;;
+        --no-deliver)
+            [ "$NO_DELIVER" -eq 0 ] || { usage; exit 2; }
+            NO_DELIVER=1; shift ;;
         --model)
             [ "$GO_MODEL_SET" -eq 0 ] || { usage; exit 2; }
             GO_MODEL="${2:-}"; GO_MODEL_SET=1
@@ -212,6 +242,11 @@ if [ "$#" -ne 2 ]; then
     exit 2
 fi
 PR="$1"; SHA="$2"
+if { [ "$DELIVER_DOC_SET" -eq 1 ] || [ "$NO_DELIVER" -eq 1 ]; } && { [ "$FORK_SET" -eq 1 ] || [ "$FIX_SET" -eq 1 ]; }; then
+    usage
+    echo "go: --doc and --no-deliver belong to a himmel merge GO and cannot be combined with --repo or --fix-main-red" >&2
+    exit 2
+fi
 if [ "$CONTRACT_SET" -eq 1 ]; then
     case "$CONTRACT" in
         yes|no) ;;
@@ -747,6 +782,52 @@ if [ "$FIX_SET" -eq 0 ]; then
         echo "go: warning - the GO is written but its verdict record was not persisted: ${GO_WV:-could not stage the evidence under $GO_SCRATCH}" >&2
     fi
     [ -z "${GO_EVD:-}" ] || rm -rf "$GO_EVD"
+fi
+
+_go_deliver() {
+    local h8="${SHA:0:8}" f cdoc scope manifest row label wdoc lane tok msg census cls
+    unset -f gd_token_usable gd_live_token gd_brief_token gd_worker_token gd_worker_map gd_pr_worker \
+        gd_brief_merge_chief gd_census gd_session gd_message gd_send gd_fallback_due \
+        gd_sendmessage_line gd_chief_doc 2>/dev/null || true
+    # shellcheck source=scripts/handover/chief-kit/go-deliver.sh
+    # shellcheck disable=SC1091
+    . "$HERE/go-deliver.sh" 2>/dev/null || { echo "NOT-SENT $PR $h8 reason=no-library"; return 0; }
+    for f in gd_worker_token gd_pr_worker gd_census gd_session gd_message gd_send gd_fallback_due \
+            gd_sendmessage_line gd_chief_doc; do
+        declare -F "$f" >/dev/null 2>&1 || { echo "NOT-SENT $PR $h8 reason=no-library"; return 0; }
+    done
+    if [ "$DELIVER_DOC_SET" -eq 1 ]; then
+        cdoc="$DELIVER_DOC"
+        [ -f "$cdoc" ] && [ -r "$cdoc" ] || { echo "NOT-SENT $PR $h8 reason=no-chief-doc"; return 0; }
+    else
+        if ! scope=$(go_verdict_scope "$ANCHOR") || ! cdoc=$(gd_chief_doc "$ROOT" "$scope"); then
+            echo "NOT-SENT $PR $h8 reason=no-chief-doc"; return 0
+        fi
+    fi
+    manifest="${cdoc%.md}.fleet.json"
+    [ -f "$manifest" ] && [ -r "$manifest" ] || { echo "NOT-SENT $PR $h8 reason=no-manifest"; return 0; }
+    row=$(gd_pr_worker "$manifest" "$PR") || { echo "NOT-SENT $PR $h8 reason=no-manifest-worker"; return 0; }
+    IFS=$'\t' read -r label wdoc lane <<< "$row"
+    [ "$lane" = native ] || { echo "NOT-SENT $PR $h8 reason=lane-$lane"; return 0; }
+    tok=$(gd_worker_token "$cdoc" "$label" "$wdoc") || { echo "NOT-SENT $PR $h8 reason=no-token $label"; return 0; }
+    msg=$(gd_message "$PR" "$SHA" "$DEST" "$ANCHOR" "${CONTRACT:--}" - "$tok")
+    census=$(gd_census "${GO_DELIVER_CENSUS:-}")
+    gd_session "$wdoc" "$census"
+    if [ "$GD_HITS" -ne 1 ]; then
+        echo "NOT-SENT $PR $h8 reason=no-session $label ($GD_HITS live matches)"
+        GD_SESSION=""; cls=no-session
+    elif gd_send "$GD_SESSION" "$msg" "${GO_DELIVER_BUS:-$ANCHOR/marketplace/plugins/himmel-bus/bin/bus}" "$tok"; then
+        echo "SENT $PR $h8 to $label bus=$GD_REF"
+        return 0
+    else
+        echo "NOT-SENT $PR $h8 reason=bus-failed $(printf '%s' "$GD_ERR" | tr '\r\n\t' '   ')"
+        cls=bus-failed
+    fi
+    if gd_fallback_due "$cls"; then gd_sendmessage_line "${GD_SESSION:-$(basename "$wdoc" .md)}" "$msg"; fi
+    return 0
+}
+if [ "$FIX_SET" -eq 0 ] && [ "$FORK_SET" -eq 0 ] && [ "$NO_DELIVER" -eq 0 ]; then
+    _go_deliver
 fi
 printf '%s\n' "$DEST"
 [ -z "${_GO_SENTINEL:-}" ] || printf 'printed\n' >> "$_GO_SENTINEL" 2>/dev/null || true  # swallow-ok: the path is already printed; at worst a cut here prints it twice
