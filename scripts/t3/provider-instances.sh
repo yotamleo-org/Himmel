@@ -16,6 +16,11 @@
 # Relay copies: .t3.relay_instances in $HOME/.himmel/config.json (absent or [] = none) adds
 # "<id>_relay" beside each listed instance; T3_PI_BUILTIN_RELAY=1 also lets the built-in
 # "codex" (no entry) get a driver-only copy.
+# Antigravity: antigravity_<p> (driver antigravity) is added for each profile that
+# antigravity-profiles.sh --list names, only when `T3CODE_HOME=<settings file's T3 home> ... --check
+# --profile <p>` exits 0 with "OK antigravity_<p>". rc 1 with "NOT OK antigravity_<p>..." adds nothing;
+# any other outcome, or a failed --list, writes nothing and exits 2. Existing antigravity entries
+# are never edited, and no "_relay" copy is made of any antigravity_* id. Seam: T3_PI_AGY_PROFILES (the script).
 # Platform: POSIX bash 3.2+, jq, node (default resolver).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -44,6 +49,46 @@ if [ -n "${T3_PI_PROFILES:-}" ]; then
 else
     PROFILES="$(cd "$HERE/../.." && node scripts/lanes/plugin-profiles.mjs --list)" || die 2 "cannot list profiles"
 fi
+
+# prim-ok: scratch dir removed by the EXIT trap below
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/t3pi.XXXXXX")" || die 2 "mktemp failed"
+trap 'rm -rf "$WORK"' EXIT
+
+AGY_SCRIPT="${T3_PI_AGY_PROFILES:-$HERE/antigravity-profiles.sh}"
+AGY_ADD='{}'
+if ! AGY_LIST="$(bash "$AGY_SCRIPT" --list 2>"$WORK/agy.err")"; then
+    cat "$WORK/agy.err" >&2
+    die 2 "$AGY_SCRIPT --list failed; nothing written"
+fi
+AGY_X=""
+if [ -n "$AGY_LIST" ]; then
+    agy_dir="$(cd "$(dirname "$FILE")" && pwd)" || die 2 "cannot resolve the directory of $FILE"
+    case "$agy_dir" in */userdata) AGY_X="${agy_dir%/userdata}" ;; esac
+    [ -n "$AGY_X" ] || echo "provider-instances: warning: $FILE is not <T3 home>/userdata/<file>; no Antigravity instance is added or checked" >&2
+fi
+for p in $AGY_LIST; do
+    case "$p" in ''|*[!A-Za-z0-9._-]*) die 2 "bad Antigravity profile name '$p'" ;; esac
+    [ -n "$AGY_X" ] || continue
+    agy_have="$(jq -r --arg i "antigravity_$p" '(.providerInstances // {}) | has($i)' "$FILE")" || die 2 "jq failed"
+    agy_out="$(T3CODE_HOME="$AGY_X" bash "$AGY_SCRIPT" --check --profile "$p" 2>"$WORK/agy.err")"; agy_rc=$?
+    agy_first="${agy_out%%$'\n'*}"
+    if [ "$agy_rc" = 0 ] && [ "$agy_out" = "OK antigravity_$p" ]; then
+        AGY_ADD="$(printf '%s' "$AGY_ADD" | jq --arg i "antigravity_$p" --arg n "Antigravity ($p)" \
+            '.[$i] = {"driver":"antigravity","displayName":$n,"enabled":true}')" || die 2 "jq failed"
+    elif [ "$agy_rc" = 1 ] && case "$agy_first" in "NOT OK antigravity_$p"|"NOT OK antigravity_$p;"*) true ;; *) false ;; esac; then
+        if [ "$agy_have" = true ]; then
+            echo "provider-instances: antigravity_$p: home is stale, run --apply" >&2
+        elif command -v agy >/dev/null 2>&1 || [ -d "$AGY_X/userdata/providers/antigravity" ]; then
+            echo "provider-instances: antigravity_$p skipped, home not ready (run: bash scripts/t3/antigravity-profiles.sh --apply --profile $p)" >&2
+        else
+            echo "provider-instances: antigravity_$p: not provisioned" >&2
+        fi
+    else
+        cat "$WORK/agy.err" >&2
+        [ -z "$agy_out" ] || printf '%s\n' "$agy_out" >&2
+        die 2 "antigravity_$p: the check ended rc=$agy_rc with neither OK nor NOT OK; nothing written"
+    fi
+done
 
 # shellcheck disable=SC2016
 BYPASS_JQ='[ .providerInstances // {} | to_entries[] | .key as $id | .value as $v | ($v.config // {}) as $c
@@ -108,6 +153,9 @@ NEW="$(jq --argjson gen "$GEN" --arg deny "$DENY_ARGS" --arg re "$OWNED_RE" '
   | .providerInstances.claudeAgent = ((.providerInstances.claudeAgent // {"driver":"claudeAgent","displayName":"Claude","enabled":true})
         | if ((.config.launchArgs // "") == "" or ((.config.launchArgs // "") | test($re)))
           then .config = ((.config // {}) + {launchArgs: $deny}) else . end)' "$FILE")" || die 2 "merge failed"
+NEW="$(printf '%s' "$NEW" | jq --argjson add "$AGY_ADD" '
+  reduce ($add | keys_unsorted[]) as $id (.; if ((.providerInstances // {}) | has($id)) then . else .providerInstances[$id] = $add[$id] end)')" \
+    || die 2 "antigravity merge failed"
 
 RELAY='[]'
 CFG="$HOME/.himmel/config.json"
@@ -118,6 +166,7 @@ fi
 RELAY_PLAN="$(printf '%s' "$NEW" | jq -r --argjson ids "$RELAY" --arg bi "${T3_PI_BUILTIN_RELAY:-0}" '
   (.providerInstances // {}) as $pi
   | $ids[] | if (test("^[A-Za-z0-9._-]+$") | not) or endswith("_relay") then "unknown\t" + (gsub("[^A-Za-z0-9._-]"; "?"))
+             elif startswith("antigravity_") then "skip-agy\t" + .
              elif ($pi[.] | type) == "object" then "copy\t" + .
              elif . == "codex" then (if $bi == "1" then "copy\t" + . else "skip-builtin\t" + . end)
              else "unknown\t" + . end')" || die 2 "relay plan failed"
@@ -126,6 +175,7 @@ while IFS=$'\t' read -r kind rid; do
     case "$kind" in
         copy) COPIES="$(printf '%s' "$COPIES" | jq -c --arg i "$rid" '. + [$i]')" || die 2 "jq failed" ;;
         skip-builtin) echo "provider-instances: skip relay copy of built-in '$rid': T3 is not shown to accept a driver-only entry (T3_PI_BUILTIN_RELAY=1 forces it)" >&2 ;;
+        skip-agy) echo "provider-instances: skip relay copy of '$rid': an Antigravity profile instance gets no relay copy (its '${rid}_relay' home would be one no check passed)" >&2 ;;
         unknown) echo "provider-instances: skip relay id '$rid': no such provider instance" >&2 ;;
     esac
 done <<EOF
@@ -144,9 +194,6 @@ if [ -n "$BAD" ]; then
     exit 3
 fi
 
-# prim-ok: scratch diff dir removed by the EXIT trap below
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/t3pi.XXXXXX")" || die 2 "mktemp failed"
-trap 'rm -rf "$WORK"' EXIT
 jq -S '.' "$FILE" > "$WORK/before.json"
 printf '%s' "$NEW" | jq -S '.' > "$WORK/after.json"
 if cmp -s "$WORK/before.json" "$WORK/after.json"; then

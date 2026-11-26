@@ -51,6 +51,15 @@ echo "$TMP/profiles/\$1.json"
 EOF
 chmod +x "$RESOLVER"
 
+AGY_STUB="$TMP/agy-empty-list.sh"
+cat > "$AGY_STUB" <<'STUB'
+#!/bin/sh
+[ "$1" = --list ] && exit 0
+exit 2
+STUB
+chmod +x "$AGY_STUB"
+export T3_PI_AGY_PROFILES="$AGY_STUB"
+
 T3S="$HOME/.t3/userdata/settings.json"
 seed() {
     mkdir -p "$(dirname "$1")"
