@@ -1,18 +1,5 @@
 #!/usr/bin/env bash
-# translate-tool-call.sh <guard.sh> — runs <guard.sh> on the hook payload with a
-# Grok or Cursor tool call mapped onto Claude's shape, so the guard sees it.
-#
-# The jq copy of himmel-ops' lib/harness-tool-translate.js (this plugin ships
-# no node), over lib/harness-tool-map.json beside this file:
-#   - no string tool_name: the payload unchanged, the table never read.
-#   - toolInputTruncated true (Grok's flag), or stdin unreadable: exit 2.
-#   - a string tool_name and a missing, unreadable, unparseable or misshapen
-#     table (or no jq): exit 2, Claude names included.
-#   - tools[name]: tool_name becomes its claude name, each keys entry renamed
-#     when the target key is absent; both keys with different values: exit 2.
-#   - <server>__<tool> with <server> in mcp_servers: tool_name becomes
-#     mcp__<server>__<tool>, and Grok's use_tool wrapper is unwrapped.
-#   - any other name: the payload byte for byte.
+# translate-tool-call.sh <guard.sh>: runs <guard.sh> on the hook payload in Claude's shape.
 set -u
 
 guard=${1:-}

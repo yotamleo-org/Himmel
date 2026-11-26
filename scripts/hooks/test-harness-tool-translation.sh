@@ -1,56 +1,7 @@
 #!/usr/bin/env bash
-# Suite for the harness tool translation: a Grok or Cursor tool call reaches
-# himmel's guards in Claude's shape through each shared hook entry point.
-#
-# Usage: bash scripts/hooks/test-harness-tool-translation.sh
-#
-# Entry points:
-#   project  scripts/hooks/run-hook-with-bash.js, the .claude/settings.json chains
-#   plugin   marketplace/plugins/himmel-ops/hooks/run-hook-with-bash.js, its hooks.json
-#   guard    marketplace/plugins/himmel-guard/hooks/hooks.json, its registration
-#   user     scripts/hooks/guardrail-skip-in-himmel.js, the user-level forwarding
-#
-# Envelopes are real captures in fixtures/harness-tool-translation/: Grok 1.0.92
-# (2026-11-25 write; 2026-11-26 shell, read, grep, search_replace and a t3-code
-# tool through use_tool) and Cursor CLI 2026.11.22 (Shell, Read, Write). A row
-# swaps only the tool input into the captured envelope; its Claude twin is the
-# same envelope with Claude's tool name and input.
-#
-# Sections:
-#   matcher      the registration a row runs through selects the native name:
-#                its matcher carries the Claude term seen live to fire for it.
-#                Grok tests Claude terms against its native names (Bash ->
-#                run_terminal_command, Read -> read_file, Grep -> grep, Edit and
-#                Write -> search_replace and write) and an mcp__ matcher against
-#                mcp__<server>__<tool>; Cursor fires a Bash matcher on Shell.
-#                Seen live: Grok 2026-11-26, Cursor 2026-11-25.
-#   verdict      canary .env reads and docker --privileged are denied, the
-#                edit-on-main rows stay denied (control), an ordinary shell
-#                command and repo read pass (controls), the Grok use_tool call
-#                reaches guard-t3-thread-tools.sh; the user wrapper runs in a
-#                non-himmel project, and skips inside himmel (control)
-#   parity       each member gives the native call the verdict it gives the
-#                matching Claude call, allow and approval members included; a
-#                member the shared triggers never fire also gets rule rows, a
-#                call its own test refuses or allows under that test's env;
-#                mcp-policy.sh (observe mode) is judged by its audit record; a
-#                member whose every trigger still passes for Claude is printed
-#                as a NOTE, since its parity proves nothing
-#
-# A verdict is deny (exit 2 or a deny decision), allow, ask, pass (exit 0 with
-# no decision) or rc<N>. A group's verdict is the strictest of its
-# registrations. Rows run in a feature-branch repo, edit-on-main rows in a repo
-# on main; the user wrapper and himmel-guard rows run in a project with no
-# .claude/settings.json, so neither skips; guard-t3-thread-tools.sh reads a T3
-# settings file with no provider instances.
-#   passthrough  a member sees an unknown or Claude tool call unchanged, and a
-#                native call in Claude's shape
-#   fail-closed  each entry point, copied with its table missing, unreadable or
-#                unparseable, refuses a tool call; the same copy with the table
-#                passes it (mutation control)
-#
-# Exit codes: 0 all rows passed, 1 at least one failed.
-# shellcheck disable=SC2016  # rows carry command TEXT; nothing expands there
+# Suite: a Grok or Cursor tool call reaches himmel's guards in Claude's shape
+# through each shared hook entry point.
+# shellcheck disable=SC2016
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -151,13 +102,12 @@ payload() {
     fi
 }
 
-ROW_ENV=""
+ROW_ENV=()
 ROW_JQ=""
 hook_env() {
-    # shellcheck disable=SC2086  # ROW_ENV is a list of VAR=value words
     env -i PATH="$PATH" HOME="$SB/home" TMPDIR="$SB/tmp" T3CODE_HOME="$SB/t3" \
         CLAUDE_PROJECT_DIR="${PROJECT_DIR:-$ROOT}" CLAUDE_PLUGIN_ROOT="${PLUGIN_ROOT:-$OPS}" \
-        GUARDRAIL_BASH="$(command -v bash)" $ROW_ENV "$@"
+        GUARDRAIL_BASH="$(command -v bash)" ${ROW_ENV[@]+"${ROW_ENV[@]}"} "$@"
 }
 decide() {
     local d
@@ -353,12 +303,11 @@ for i in 1 2; do
 done > "$FX2/denied.jsonl"
 printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]}}' \
     '{"type":"assistant","message":{"model":"claude-opus-4-8","content":[{"type":"text","text":"ok"}]}}' > "$FX2/opus.jsonl"
-HOLD_ENV="HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR=$SB/handover"
+HOLD_ENV=(HIMMEL_CONSOLE_LEG=1 "HANDOVER_DIR=$SB/handover")
 printf '# doc\n' > "$SB/handover/u/r/HIMMEL-101-case.md"
 printf '# doc\n' > "$SB/handover/u/r/HIMMEL-102-case.md"
 jq -nc --arg c "$SB/work" '{hook_event_name:"PreToolUse", tool_name:"Write", cwd:$c, tool_input:{file_path:($c + "/held.txt")}}' > "$SB/p.json"
-# shellcheck disable=SC2086  # HOLD_ENV is a list of VAR=value words
-(cd "$SB/work" && hook_env $HOLD_ENV HIMMEL_HOLD_KEY=HIMMEL-101 HIMMEL_HOLD_DOC="$SB/handover/u/r/HIMMEL-101-case.md" \
+(cd "$SB/work" && hook_env "${HOLD_ENV[@]}" HIMMEL_HOLD_KEY=HIMMEL-101 HIMMEL_HOLD_DOC="$SB/handover/u/r/HIMMEL-101-case.md" \
     HIMMEL_HOLD_LABEL=HIMMEL-101 bash "$ROOT/scripts/hooks/check-write-hold.sh" < "$SB/p.json" >/dev/null 2>&1) \
     || { echo "FAIL fixture: HIMMEL-101 claims held.txt"; exit 1; }
 jq -nc --arg c "$SB/work" --arg t "$FX2/opus.jsonl" '{hook_event_name:"PreToolUse", tool_name:"Edit", session_id:"h1073-spent", cwd:$c, transcript_path:$t, tool_input:{file_path:"scripts/hooks/first.sh"}}' > "$SB/p.json"
@@ -370,10 +319,11 @@ rule() {
     local g hit=0
     for g in $1; do case " $RL_GROUPS " in *" $g "*) hit=1 ;; esac; done
     [ "$hit" = 1 ] || return 0
-    if [ "$4" = - ]; then ROW_ENV=""; else ROW_ENV=$4; fi
+    ROW_ENV=()
+    [ "$4" = - ] || read -r -a ROW_ENV <<< "$4"
     if [ "$5" = - ]; then ROW_JQ=""; else ROW_JQ=$5; fi
     parity "$RL_LABEL" "$RL_FN" "$RL_TARGET" "$2" "$3" "$6" "${7:-}"
-    ROW_ENV=""; ROW_JQ=""
+    ROW_ENV=(); ROW_JQ=""
 }
 member_rules() {
     local judge='.agent_type = "judge-ro" | .agent_id = "aj1"'
@@ -382,6 +332,8 @@ member_rules() {
         guard-identical-denied-retry.sh)
             rule shell shell grok - ".transcript_path = \"$FX2/denied.jsonl\"" "$RETRY_CMD" ;;
         guard-merge-compound.sh) rule shell shell "grok cursor" - - 'cd x && bash scripts/handover/merge-on-green.sh' ;;
+        block-station-load-test.sh)
+            rule shell shell "grok cursor" HIMMEL_WORKER=1 - 'for i in {1..32}; do bash scripts/handover/chief-kit/test-chief-wait-stream.sh & done; wait' ;;
         check-cr-marker-on-pr-create.sh) rule shell shell "grok cursor" - - 'gh pr create --head feature/fixture --title x --body y' ;;
         block-fork-sync-pr.sh)
             rule shell shell "grok cursor" - - 'gh pr create --repo yotamleo-org/graphify --base himmel-main --head Graphify-Labs:v8 --title x --body y' ;;
@@ -421,7 +373,7 @@ member_rules() {
         guard-memory-capture.sh)
             rule file write "grok cursor" - ".tool_input.content = \"$LONG_LINE\"" "$SB/home/.claude/projects/proj/memory/MEMORY.md" ;;
         check-write-hold.sh)
-            rule file write "grok cursor" "$HOLD_ENV HIMMEL_HOLD_KEY=HIMMEL-102 HIMMEL_HOLD_DOC=$SB/handover/u/r/HIMMEL-102-case.md HIMMEL_HOLD_LABEL=HIMMEL-102" - "$SB/work/held.txt" ;;
+            rule file write "grok cursor" "${HOLD_ENV[*]} HIMMEL_HOLD_KEY=HIMMEL-102 HIMMEL_HOLD_DOC=$SB/handover/u/r/HIMMEL-102-case.md HIMMEL_HOLD_LABEL=HIMMEL-102" - "$SB/work/held.txt" ;;
         orchestrator-inline-guard.sh)
             rule file edit grok - ".transcript_path = \"$FX2/opus.jsonl\"" scripts/hooks/second.sh ;;
         block-infra-destroy.sh) rule shell shell "grok cursor" - - 'terraform destroy -auto-approve' ;;
@@ -455,7 +407,7 @@ mcp_classification() {
     for h in claude-grok grok; do
         payload "$h" t3 t3_thread_launch '{"title":"fixture-chief","prompt":"noop"}'
         : > "$SB/audit.jsonl"
-        ROW_ENV="MCP_POLICY_AUDIT_LOG=$SB/audit.jsonl"; run_cmd "$c"; ROW_ENV=""
+        ROW_ENV=("MCP_POLICY_AUDIT_LOG=$SB/audit.jsonl"); run_cmd "$c"; ROW_ENV=()
         nv=$(jq -c '[.server, .tool, .class, .verdict]' "$SB/audit.jsonl" 2>/dev/null | tail -n 1)
         [ "$h" = claude-grok ] && cv=$nv
     done

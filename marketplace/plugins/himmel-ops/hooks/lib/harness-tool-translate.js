@@ -1,25 +1,4 @@
 // Maps a Grok or Cursor tool call onto Claude's shape so every guard sees it.
-//
-// translateToolCall(text) takes the raw hook stdin and returns { text } (the
-// payload the guards get) or { refuse: <reason> } (the caller exits 2).
-//   - no string tool_name (SessionStart, Stop, unparseable stdin): the text
-//     unchanged; the table is never read, so a table fault cannot refuse a
-//     non-tool event.
-//   - toolInputTruncated true (Grok's flag): refused, the guards would judge
-//     part of the input.
-//   - a string tool_name: harness-tool-map.json beside this file is read now.
-//     Missing, unreadable, not JSON or the wrong shape refuses, Claude names
-//     included, so a deleted table never lets a native call through.
-//   - tools[name]: tool_name becomes its claude name, each keys entry renamed
-//     when the target key is absent; both keys present with different values
-//     refuses, since the guards would judge a value the harness does not use.
-//   - <server>__<tool> with <server> in mcp_servers: tool_name becomes
-//     mcp__<server>__<tool>, and Grok's use_tool wrapper is unwrapped.
-//   - any other name: the original text, byte for byte.
-// marketplace/plugins/himmel-guard/hooks/translate-tool-call.sh is the jq copy
-// of these rules; test-harness-tool-translation.sh runs both. The runners
-// require this module at call time, not at load: install-engine and the CI
-// base gates load run-hook-with-bash.js for resolveBash with no lib/ beside it.
 'use strict';
 
 const fs = require('node:fs');
