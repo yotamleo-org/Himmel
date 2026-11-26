@@ -40,10 +40,9 @@ call; work above your tier is returned.
 Invariants: spawn depth and concurrency are capped by
 `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` / `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`;
 haiku does NOT spawn; single-writer (many readers, ONE writer); salus dev/impl
-work may route to the six harnesses decision 1375 approved: Gemini (antigravity-t3),
-Cursor, xAI/Grok, Copilot, Anthropic (Claude tiers), OpenAI (Codex lanes); a Cursor,
-Grok or Copilot launch stays refused until its lane descriptor is complete; never
-GLM. Salus PHI egress is governed by
+work may route to the six harnesses decision 1375 approved: Gemini, Cursor, xAI/Grok,
+Copilot, Anthropic, OpenAI; Cursor, Grok and Copilot launches stay refused until their
+lane descriptors are complete; never GLM. Salus PHI egress is governed by
 `scripts/guardrails/egress-matrix.json`. Every dispatch
 carries a RETASK block with a fresh nonce; a revision arrives only as a direct
 message quoting it (a narrowing or halt needs no token), never widens

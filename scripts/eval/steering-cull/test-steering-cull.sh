@@ -36,7 +36,7 @@ kept_missing() { python3 -c 'import json,sys
 rows={r["id"]: r for r in json.load(open(sys.argv[1]))["rows"]}
 rows["r5-invariants"]["old"]=rows["r5-invariants"]["old"].replace(
     "work routes to Claude tiers + Codex lanes only (never GLM), while salus PHI\negress is governed by ",
-    "work may route to the six harnesses decision 1375 approved: Gemini (antigravity-t3),\nCursor, xAI/Grok, Copilot, Anthropic (Claude tiers), OpenAI (Codex lanes); a Cursor,\nGrok or Copilot launch stays refused until its lane descriptor is complete; never\nGLM. Salus PHI egress is governed by\n"
+    "work may route to the six harnesses decision 1375 approved: Gemini, Cursor, xAI/Grok,\nCopilot, Anthropic, OpenAI; Cursor, Grok and Copilot launches stay refused until their\nlane descriptors are complete; never GLM. Salus PHI egress is governed by\n"
 )
 t=open(sys.argv[2]).read()
 print(" ".join(i for i in sys.argv[3:] if rows[i]["old"] not in t) or "none")' "$HERE/rows.json" "$1" \
