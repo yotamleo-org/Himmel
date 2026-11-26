@@ -16,7 +16,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${POINTERS_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 MODE="${1:---check}"
-EXCLUDE='^marketplace/plugins/claude-hud/'
+EXCLUDE='^marketplace/plugins/claude-hud/|^templates/luna-second-brain/_CLAUDE\.md$'
 
 case "$MODE" in --write|--check) ;; *) echo "usage: pointers.sh --write|--check" >&2; exit 2;; esac
 
