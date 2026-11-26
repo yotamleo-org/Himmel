@@ -888,6 +888,7 @@ the relay ceiling**.
 | `telegram` | 0 | 32,541 first-turn, #680 | 45,000 |
 | `lane-impl`, `lane-review`, `lane-content`, `bare` (each) | 0 | none | 45,000 each |
 | `chief-relay` | 0 | none | 35,000 |
+| `t3-relay` | 0 | none | 45,000 |
 | `console-judge` | 0 | none | 55,000 |
 | `user`, `design`, `chief` (each) | 0 | none | 50,000 each |
 | `design-motion`, `design-3d`, `design-imagegen`, `design-a11y`, `design-diagram`, `design-slides`, `design-reference`, `design-trial` (each) | 0 | none | 50,000 each |

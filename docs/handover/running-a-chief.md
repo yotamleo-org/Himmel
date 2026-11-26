@@ -1486,13 +1486,13 @@ its subagent children too.
   `HIMMEL_T3_CHIEF_TITLES` (newline-separated; default `Manage T3 Code Sync`).
   This binds the operator's own T3 UI as well. A released or settled thread is
   not lost: it is woken from outside (below).
-- **The co-chief arms keepalive.** As its one background task
-  (`run_in_background`) it runs `bash scripts/t3/keepalive.sh`. That keeps its
-  session pinned so it stays on the bus. It ends (exit 0) when the wake file
-  `${XDG_RUNTIME_DIR:-/tmp}/himmel-t3/cochief.wake` appears (`WOKEN`, with the
-  file's contents) or after 3.5 hours (`KEEPALIVE-EXPIRED`). Either way the
-  co-chief gets a turn and re-arms it. `--wake-file` and `--max-seconds`
-  override the defaults.
+- **A relay is launched on demand and runs no keepalive.** When you need one, or the
+  last one has gone silent, run `bash scripts/t3/relay-launch.sh`: it refuses a second
+  live relay and prints the launch block (provider `claudeAgent_t3-relay`, model, title,
+  brief) that you send through the guarded `mcp__t3-code__` launch tool. The relay
+  holds no background task, so T3 closes it 30 minutes after its last turn and you
+  launch a fresh one. [`docs/internals/t3-relay.md`](../internals/t3-relay.md).
+  `scripts/t3/keepalive.sh` is no longer part of any relay contract.
 - **A chief wakes a released thread** with
   `bash scripts/t3/t3-send.sh <title|threadId> <msg-file>` (`-` reads stdin). It
   starts a turn with full context, queued if the thread is busy, and unsettles
@@ -1515,7 +1515,8 @@ its subagent children too.
   It also prints `LINKED-PR <id> <title> linked=<n> open=<m>` for an unsettled
   chief-role thread holding any linked PR, open or merged (report only, never
   woken).
-  `keepalive.sh` runs it with `--wake` every 15 polls (about 5 minutes).
+  Run it by hand or from a chief duty; the retired `keepalive.sh` ran it with `--wake`
+  every 15 polls (about 5 minutes) while it was armed.
 
 ### A worker in a T3 thread reaches the chief: no relay thread
 
