@@ -90,10 +90,14 @@ while [[ $rest =~ $tok_re ]]; do
     long=0
     case "$rest" in [0-9A-Za-z]*) long=1 ;; esac
     if [[ $rest =~ ^(gh[opusr]_|github_pat_) ]]; then long=0; fi
-    case "$m" in ghr_*) if [ "$long" = 1 ] && [[ $rest =~ ^[0-9A-Za-z]{1,60} ]]; then t="$t${BASH_REMATCH[0]}"; fi ;; esac
-    case " ${tokens[*]-} ${fakes[*]-} " in
+    case "$m" in ghr_*) if [ "$long" = 1 ] && [[ $rest =~ ^[0-9A-Za-z]{1,40} ]]; then t="$t${BASH_REMATCH[0]}"; fi ;; esac
+    case " ${tokens[*]-} " in
         *" $t "*) ;;
-        *) if is_live_token "$t" "$long"; then tokens+=("$t"); else fakes+=("$t"); fi ;;
+        *) if is_live_token "$t" "$long"; then
+               tokens+=("$t")
+           else
+               case " ${fakes[*]-} " in *" $t "*) ;; *) fakes+=("$t") ;; esac
+           fi ;;
     esac
 done
 
