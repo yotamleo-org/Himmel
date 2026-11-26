@@ -51,6 +51,26 @@ test("10947: the unfilled HANDOFF template line is no operator item; a real ask 
   expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["approve the held spend", "<https://example.invalid/approve>"]);
 });
 
+test("10947: a HANDOFF ask is one row with its indented lines; a none line, a checked item, a struck item and an item of a closed ticket are no ask; a ledger row of a closed ticket is dropped", () => {
+  const s = scratch();
+  const env = owedFixture(s, "queue: HIMMEL-2 chief step");
+  writeFileSync(join(s.d, "chief-HANDOFF.md"), [
+    "## Open operator items", "",
+    "- approve the held spend", "  - detail of the spend", "  wrapped text of the spend", "",
+    "- [x] approve the paid seat (answered)",
+    "- ~~approve the old account~~ done",
+    "- HIMMEL-1: approve the paid grant",
+    "- HIMMEL-1 and HIMMEL-2: approve the paid billing",
+    "**None** other.", "",
+  ].join("\n"));
+  const add = (id: string, key: string | null, text: string) => JSON.stringify({ op: "add", id, actor: "operator", key, text, kind: "ask" });
+  writeFileSync(join(s.d, "owed.jsonl"), [add("o1", "HIMMEL-2", "approve the paid seat"), add("o2", "HIMMEL-1", "approve the paid grant of a closed ticket"), add("o3", null, "approve the account renewal")].join("\n") + "\n");
+  const o = readOwed(env);
+  if (o.state !== "ok") throw new Error(o.reason);
+  expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["approve the held spend detail of the spend wrapped text of the spend", "HIMMEL-1 and HIMMEL-2: approve the paid billing"]);
+  expect(o.items.filter((i) => i.source === "owed ledger").map((i) => [i.key, i.title])).toEqual([["HIMMEL-2", "approve the paid seat"], [null, "approve the account renewal"]]);
+});
+
 test("10947: one owner classifier: a chief signature, a judge GO and a relaunch are the chief's in every source; a bypass go code is the operator's", () => {
   const s = scratch();
   for (const n of [2, 3, 4]) writeFileSync(join(s.mirror, `HIMMEL-${n}.md`), mirrorIssue(n, "To Do", "To Do", [], `ticket ${n}`));

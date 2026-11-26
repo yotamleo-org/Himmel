@@ -257,7 +257,17 @@ function handoffAnswered(bucket: string, handoff: string, line: string): boolean
   }
   return false;
 }
-function handoffItems(bucket: string): OwedItem[] | undefined {
+function handoffAsks(sec: string[]): string[] {
+  const asks: string[] = [];
+  for (const raw of sec) {
+    if (!raw.trim()) continue;
+    if (/^\s/.test(raw) && asks.length) asks[asks.length - 1] += ` ${raw.trim().replace(/^[-*]\s+/, "")}`;
+    else asks.push(raw.trim());
+  }
+  return asks;
+}
+const NO_ASK_RE = /^[-*\s]*(?:<(?![a-z][a-z0-9+.-]*:)[^>]*>|(?:\*\*|__)?(?:none|nothing|n\/a)(?![\w-]).*|\[[xX]\].*|~~.*)$/i;
+function handoffItems(bucket: string, terminal: Set<string>): OwedItem[] | undefined {
   let best: { f: string; t: number } | undefined;
   for (const f of readdirSync(bucket)) {
     if (!f.endsWith("HANDOFF.md")) continue;
@@ -265,7 +275,11 @@ function handoffItems(bucket: string): OwedItem[] | undefined {
     if (!best || t > best.t) best = { f, t };
   }
   const sec = best ? mdSection(readText(join(bucket, best.f)), "Open operator items") : undefined;
-  return sec?.map((l) => l.trim()).filter((l) => l && !/^[-*\s]*(?:none\.?|<(?![a-z][a-z0-9+.-]*:)[^>]*>)$/i.test(l))
+  return sec && handoffAsks(sec).filter((l) => {
+    if (NO_ASK_RE.test(l)) return false;
+    const keys = l.match(/\b[A-Z][A-Z0-9]*-\d+\b/g);
+    return !(keys && keys.every((k) => terminal.has(k)));
+  })
     .map((l): OwedItem => {
       const answered = handoffAnswered(bucket, join(bucket, best!.f), l);
       const actor = answered ? "chief" : ownerOf(l, "operator");
@@ -372,7 +386,7 @@ function unclosedItems(doc: string, env: Env): OwedItem[] {
   }
   return items;
 }
-function ledgerItems(bucket: string): OwedItem[] {
+function ledgerItems(bucket: string, terminal: Set<string>): OwedItem[] {
   let text: string;
   try { text = readText(join(bucket, "owed.jsonl")); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return []; throw e; }
   const adds = new Map<string, Record<string, unknown>>(), closed = new Set<string>();
@@ -387,6 +401,7 @@ function ledgerItems(bucket: string): OwedItem[] {
   for (const [id, r] of adds) {
     if (closed.has(id) || r.actor !== "operator") continue;
     const key = typeof r.key === "string" && /^[A-Z][A-Z0-9]*-\d+$/.test(r.key) ? r.key : null;
+    if (key && terminal.has(key)) continue;
     const actor = ownerOf(String(r.text ?? ""), "operator");
     items.push({ actor, source: "owed ledger", key, title: clip(String(r.text ?? id), 140), ctx: `${id} (${String(r.kind)}) in owed.jsonl`,
       act: actor === "chief" ? "the chief acts on what the row names" : r.kind === "proof" ? "run the proof" : "do what the row names" });
@@ -456,8 +471,8 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
   else {
     if (!running) miss("unsigned specs", "no running version");
     else tryRead("unsigned specs", () => specItems(bucket, running!, open, unknownKeys, skipped, unread, env), "none");
-    tryRead("handoff items", () => handoffItems(bucket), `no Open operator items section in the newest HANDOFF under ${bucket}`);
-    try { items.push(...ledgerItems(bucket)); } catch (e) { miss("owed ledger", (e as Error).message); }
+    tryRead("handoff items", () => handoffItems(bucket, terminalKeys), `no Open operator items section in the newest HANDOFF under ${bucket}`);
+    try { items.push(...ledgerItems(bucket, terminalKeys)); } catch (e) { miss("owed ledger", (e as Error).message); }
   }
   if (!doc) miss("chief doc lines", "no chief doc: none found under the handover root, and HIMMEL_CHIEF_DOC is not set");
   else tryRead("chief doc lines", () => {
