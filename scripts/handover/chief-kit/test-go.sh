@@ -15,6 +15,7 @@
 #   7. unresolvable handover root -> exit 1.
 #   13. --trust-reviewed <id>: id validated, signed into the mac.
 #   20. --fix-main-red <run-id>: the signed fix-GO for the red-main gate.
+#   33. a himmel merge GO is delivered to the PR's worker (SENT / NOT-SENT, the path last).
 #
 # Platform guard: POSIX bash 3.2+.
 set -uo pipefail
@@ -29,7 +30,7 @@ tmp="$(cd "$tmp" && pwd)"
 # Sections 14-15 run after section 13 sources go-gate.sh, which assigns its
 # own `tmp`; name their dirs here so nothing below reads `$tmp` past that point.
 ROOT14="$tmp/root14"; ROOT15="$tmp/root15"; ROOT16="$tmp/root16"; ROOT18="$tmp/root18"
-NOWHERE32="$tmp/nowhere32"; DECOY32="$tmp/decoy32"; ROOT32="$tmp/root32"
+NOWHERE32="$tmp/nowhere32"; DECOY32="$tmp/decoy32"; ROOT32="$tmp/root32"; D33="$tmp/d33"
 # go.sh mints its GO key under $HOME/.config/himmel — keep it off
 # the operator's real key.
 export HOME="$tmp/home"; mkdir -p "$HOME"
@@ -126,7 +127,7 @@ check "usage: nothing written" "$(ls -A "$ROOT")" ""
 # --- 2. write ----------------------------------------------------------------
 rc=0; out="$(HANDOVER_DIR="$ROOT" CHIEF_SESSION_NAME=chief-x bash "$SCRIPT" 77 "$SHA" 2>&1)" || rc=$?
 check "write: exit 0" "$rc" "0"
-check "write: prints the GO path" "$out" "$GO"
+check "write: prints the GO path last" "${out##*$'\n'}" "$GO"
 body="$(cat "$GO" 2>/dev/null || true)"
 contains "write: pr= field" "$body" "pr=77"
 contains "write: head= field" "$body" "head=$SHA"
@@ -398,7 +399,7 @@ rc=0; out="$(cd "$ROOT14" && HIMMEL_REPO="$ROOT14/gone" HANDOVER_DIR="$ROOT14" b
 check    "9841: a HIMMEL_REPO that is not a directory -> exit 1 and the exact refusal" "$rc|$out" "1|go: the gated checkout HIMMEL_REPO ($ROOT14/gone) is not a directory - no GO written"
 rc=0; out="$(READY_STUB_HEAD="$SHA14" HANDOVER_DIR="$ROOT14" bash "$SCRIPT" 82 "$SHA14" 2>/dev/null)" || rc=$?
 check    "4565: reviewed head -> exit 0" "$rc" "0"
-check    "4565: reviewed head -> the GO path" "$out" "$ROOT14/.locks/go/82.$SHA14"
+check    "4565: reviewed head -> the GO path last" "${out##*$'\n'}" "$ROOT14/.locks/go/82.$SHA14"
 
 ROOT14L="$tmp/root14-later"; ROOT14N="$tmp/root14-none"
 mkdir -p "$ROOT14L" "$ROOT14N"
@@ -407,7 +408,7 @@ LATER14='[{"oid":"'"$C14A"'","messageHeadline":"docs(x): [HIMMEL-1] note (#1)","
 NONE14='[{"oid":"'"$C14A"'","messageHeadline":"docs(x): [HIMMEL-1] note (#1)","messageBody":"","parents":{"totalCount":1}},{"oid":"'"$C14B"'","messageHeadline":"fix(x): [HIMMEL-2] code (#1)","messageBody":"","parents":{"totalCount":1}}]'
 rc=0; out="$(READY_STUB_COMMITS="$LATER14" READY_STUB_HEAD="$SHA14" HANDOVER_DIR="$ROOT14L" bash "$SCRIPT" 82 "$SHA14" 2>&1)" || rc=$?
 check    "9671: trailers only on a later commit -> exit 0" "$rc" "0"
-check    "9671: later-commit trailers -> the GO path" "$out" "$ROOT14L/.locks/go/82.$SHA14"
+check    "9671: later-commit trailers -> the GO path last" "${out##*$'\n'}" "$ROOT14L/.locks/go/82.$SHA14"
 rc=0; out="$(READY_STUB_COMMITS="$NONE14" READY_STUB_HEAD="$SHA14" HANDOVER_DIR="$ROOT14N" bash "$SCRIPT" 82 "$SHA14" 2>&1)" || rc=$?
 check    "9671: no trailer in any commit -> exit 4" "$rc" "4"
 contains "9671: no trailer anywhere -> check 5 is the refusal" "$out" "[FAIL] 5."
@@ -1084,7 +1085,7 @@ contains "8918 b-go: names item 17" "$out" "[FAIL] 17."
 check    "8918 b-go: nothing written" "$(find "$ROOT30" -type f | wc -l | tr -d ' ')" "0"
 rc=0; out="$(go30 "$KEYED30" $'## Ticket coverage\n- ask: done\n\nRemaining: the docs follow\n\nRED then GREEN: the new row failed before the change\n' --contract no 77 "$SHA" 2>/dev/null)" || rc=$?
 check    "8918 b2: contract no with a Remaining line -> exit 0" "$rc" "0"
-check    "8918 b2: the GO path" "$out" "$ROOT30/.locks/go/77.$SHA"
+check    "8918 b2: the GO path last" "${out##*$'\n'}" "$ROOT30/.locks/go/77.$SHA"
 rm -rf "$ROOT30"; mkdir -p "$ROOT30"
 rc=0; out="$(go30 "$KEYED30" - --contract yes 77 "$SHA" 2>/dev/null)" || rc=$?
 check    "8918 b3: contract yes with no remainder -> exit 0" "$rc" "0"
@@ -1276,6 +1277,174 @@ for cwd32 in "$NOWHERE32" "$DECOY32" "$READY_REPO"; do
   check "cwd ${cwd32##*/}: go.sh exits 0, as from the checkout" "$rc" "0"
   check "cwd ${cwd32##*/}: the GO is written" "$(test -f "$ROOT32/.locks/go/77.$SHA" && echo yes)" "yes"
 done
+
+TOK33=CJ-N1-b07851f7; BTOK33=CJ-N1-aaaa1111; H833="${SHA:0:8}"
+STEM33=HIMMEL-1-N1-go-s1-2026-11-26; STEM33B=HIMMEL-1-N1b-go-s1-2026-11-26; STEM33N2=HIMMEL-2-N2-go-s1-2026-11-26
+ANCHOR33="$(cd "$HERE/../../.." && pwd)"
+mkdir -p "$D33/bin" "$D33/fx"
+W33="$D33/fx/$STEM33.md"; W33N2="$D33/fx/$STEM33N2.md"; C33="$D33/fx/chief-33.md"
+ROOT33="$D33/root"; GO33="$ROOT33/.locks/go/42.$SHA"
+BUSLOG33="$D33/bus.log"; BODY33="$D33/bus.body"; export BUSLOG33 BODY33
+CENSUS33_DEF=$(printf '4242\t%s' "$STEM33")
+cat > "$D33/bin/bus" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = send ] || exit 64
+printf 'send %s\n' "$2" >> "$BUSLOG33"
+cp "$3" "$BODY33"
+case "${BUS33_MODE:-ok}" in
+    ok) echo "sent #7 to $2" ;;
+    fail) printf 'bus: rejected token %s: %s\n' "$BUS33_TOK" "$(tr '\n' ' ' < "$3")" >&2; exit 1 ;;
+    straddle) printf '%0145d%s tail\n' 0 "$BUS33_TOK" >&2; exit 1 ;;
+    noref) printf 'bus: rejected token %s\n' "$BUS33_TOK"; exit 0 ;;
+    sleep) exec sleep 60 ;;
+esac
+STUB
+# shellcheck disable=SC2016  # the stub expands CENSUS33 when it runs
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${CENSUS33:-}"\n' > "$D33/bin/census"
+chmod +x "$D33/bin/bus" "$D33/bin/census"
+w33() {
+  { printf '# %s\n\n' "$2"
+    # shellcheck disable=SC2016  # the backticks are the RETASK line's literal markers
+    [ "$3" = - ] || printf '> **RETASK:** your nonce is `%s`.\n' "$3"
+    [ "${5:-0}" = 0 ] || printf '> **Merge:** chief\n'
+    printf '\n## Results\n\n%s\n' "$4"; } > "$1"
+}
+c33() { printf '# chief\n\n## Live state\n\n%s\n\n## Results\n' "$2" > "$1"; }
+m33() { printf '{"workers":[%s]}\n' "$2" > "${1%.md}.fleet.json"; }
+row33() { printf '{"label":"%s","doc":"%s"%s}' "$1" "$2" "${3:+,\"lane\":\"$3\"}"; }
+fx33() {
+  rm -rf "$ROOT33" "$BUSLOG33" "$BODY33" "${C33%.md}.fleet.json"; mkdir -p "$ROOT33"
+  w33 "$W33" N1 "$BTOK33" "- 10:00 READY 42 $SHA GREEN"
+  c33 "$C33" "workers: \`N1:$TOK33:lock-n1:4242\`"
+  m33 "$C33" "$(row33 N1 "$W33" native)"
+}
+go33() {
+  rc33=0
+  out33=$(env -u HIMMEL_BUS_NAME HANDOVER_DIR="$ROOT33" GO_DELIVER_BUS="$D33/bin/bus" GO_DELIVER_CENSUS="$D33/bin/census" \
+    CENSUS33="${CENSUS33-$CENSUS33_DEF}" ${BUS_NAME33:+HIMMEL_BUS_NAME="$BUS_NAME33"} \
+    bash "${SCRIPT33:-$SCRIPT}" "$@" 2>"$D33/err") || rc33=$?
+  err33=$(cat "$D33/err")
+}
+nrec33() { if [ -f "$BUSLOG33" ]; then wc -l < "$BUSLOG33" | tr -d ' '; else echo 0; fi; }
+tokleak33() {
+  { printf '%s\n' "$out33" | grep -v '^SENDMESSAGE to='; printf '%s\n' "$err33"; cat "$GO33" 2>/dev/null
+    find "$ROOT33" -path '*/verdicts/*' -type f -exec cat {} + 2>/dev/null; } | grep -cE "$TOK33|$BTOK33" || true
+}
+line33() { printf '%s\n' "$out33" | sed -n "${1}p"; }
+msg33() {
+  # shellcheck disable=SC2016  # the backticks are the message's literal markers
+  printf 'GO 42 %s - merge with: bash %q%s --go %q\nYour token `%s`.' "$SHA" "$ANCHOR33/scripts/handover/merge-on-green.sh" "$2" "$GO33" "$1"
+}
+
+fx33; go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD1: exit 0" "$rc33" "0"
+check "GD1: one bus record, to N1's session" "$(cat "$BUSLOG33" 2>/dev/null)" "send $STEM33"
+check "GD1: the body names the merge and quotes the Live state token" "$(cat "$BODY33" 2>/dev/null)" "$(msg33 "$TOK33" " --jira-transition")"
+check "GD1: stdout is SENT, then the GO path" "$out33" "SENT 42 $H833 to N1 bus=#7"$'\n'"$GO33"
+check "GD1: no token in stdout, stderr, the GO file or the record" "$(tokleak33)" "0"
+fx33; READY_STUB_HEAD=0000000000000000000000000000000000000000 go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD1c: ready-check refuses -> exit 4, no bus record" "$rc33|$(nrec33)" "4|0"
+
+fx33; w33 "$W33" N1 "$BTOK33" "- 10:00 READY 43 $SHA GREEN"; go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD2: no manifest worker names PR 42 -> NOT-SENT" "$(line33 1)" "NOT-SENT 42 $H833 reason=no-manifest-worker"
+check "GD2: exit 0, the GO file exists, no record" "$rc33|$(test -f "$GO33" && echo yes)|$(nrec33)" "0|yes|0"
+check "GD2c: the last stdout line is the GO path" "${out33##*$'\n'}" "$GO33"
+
+fx33; c33 "$C33" "workers: \`N1:NONCE-UNKNOWN:lock-n1:4242\`"; go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD3: a NONCE-UNKNOWN span -> the body quotes the brief's token" "$(cat "$BODY33" 2>/dev/null)" "$(msg33 "$BTOK33" " --jira-transition")"
+fx33; c33 "$C33" "workers: \`N1:NONCE-UNKNOWN:lock-n1:4242\`"; w33 "$W33" N1 - "- 10:00 READY 42 $SHA GREEN"
+go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD3c: no usable token -> NOT-SENT no-token, no record" "$(line33 1)|$(nrec33)" "NOT-SENT 42 $H833 reason=no-token N1|0"
+check "GD3c: no line carries NONCE-UNKNOWN" "$(printf '%s\n%s\n' "$out33" "$err33" | grep -c NONCE-UNKNOWN)" "0"
+
+fx33; BUS33_MODE=fail BUS33_TOK="$TOK33" go33 --doc "$C33" --contract yes 42 "$SHA"
+case "$(line33 1)" in
+  "NOT-SENT 42 $H833 reason=bus-failed bus send exit 1: bus: rejected token <token>: GO 42 "*) echo "ok - GD4: bus-failed names the redacted error" ;;
+  *) echo "FAIL - GD4: bus-failed line: [$(line33 1)]"; fails=$((fails+1)) ;;
+esac
+check "GD4: then the SENDMESSAGE line to N1's session" "$(line33 2)" "SENDMESSAGE to=$STEM33 :: $(msg33 "$TOK33" " --jira-transition" | tr '\n' ' ')"
+check "GD4: the GO path last, exit 0" "${out33##*$'\n'}|$rc33" "$GO33|0"
+check "GD4: no token outside the SENDMESSAGE line" "$(tokleak33)" "0"
+fx33; BUS33_MODE=straddle BUS33_TOK="$TOK33" go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD4d: a token across character 150 is redacted before the cut" "$(line33 1 | grep -c 'CJ-N1')|$(line33 1 | grep -c 'reason=bus-failed bus send exit 1: 0000')" "0|1"
+fx33; BUS33_MODE=noref BUS33_TOK="$TOK33" go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD4e: exit 0 with no record number -> bus-failed, redacted" "$(line33 1)" "NOT-SENT 42 $H833 reason=bus-failed bus send printed no record number: bus: rejected token <token>"
+check "GD4e: no token outside the SENDMESSAGE line" "$(tokleak33)" "0"
+fx33; go33 --fix-main-red 9 42 "$SHA"
+check "GD4c: a FIX-GO sends no record" "$(nrec33)" "0"
+if command -v timeout >/dev/null 2>&1; then
+  fx33; t33=$SECONDS; BUS33_MODE='sleep' go33 --doc "$C33" --contract yes 42 "$SHA"; t33=$((SECONDS - t33))
+  check "GD4b: a hung bus send is cut: bus-failed, exit 0, the path last" "$(line33 1 | grep -c 'reason=bus-failed bus send exit 124')|$rc33|${out33##*$'\n'}" "1|0|$GO33"
+  check "GD4b: within 30 s" "$([ "$t33" -lt 30 ] && echo yes || echo "no ($t33 s)")" "yes"
+else
+  echo "ok - GD4b: skipped, no timeout binary"
+fi
+
+fx33; mkdir -p "$ROOT33/$VSCOPE"; cp "$C33" "$ROOT33/$VSCOPE/chief-33.md"; cp "${C33%.md}.fleet.json" "$ROOT33/$VSCOPE/chief-33.fleet.json"
+BUS_NAME33=chief-33 go33 --contract yes 42 "$SHA"
+check "GD5: no --doc, the chief doc from HIMMEL_BUS_NAME -> SENT" "$(line33 1)" "SENT 42 $H833 to N1 bus=#7"
+fx33; rc33=0; HANDOVER_DIR="$ROOT33" HIMMEL_CONSOLE_LEG=1 GO_DELIVER_BUS="$D33/bin/bus" GO_DELIVER_CENSUS="$D33/bin/census" \
+  _as_claude bash "$SCRIPT" --doc "$C33" --contract yes 42 "$SHA" >/dev/null 2>&1 || rc33=$?
+check "GD5c: a worker -> exit 3, no record" "$rc33|$(nrec33)" "3|0"
+
+fx33; m33 "$C33" "$(row33 N1 "$W33" claudex)"; go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD6: a claudex worker -> NOT-SENT lane-claudex" "$(line33 1)|$(nrec33)" "NOT-SENT 42 $H833 reason=lane-claudex|0"
+fx33; m33 "$C33" "$(row33 N1 "$W33")"; go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD6c: a row with no lane -> no record" "$(line33 1)|$(nrec33)" "NOT-SENT 42 $H833 reason=lane-unknown|0"
+
+fx33; go33 --no-deliver --contract yes 42 "$SHA"
+check "GD7: --no-deliver -> the path alone, exit 0, no record" "$out33|$rc33|$(nrec33)" "$GO33|0|0"
+fx33; go33 --repo o/r --trust-reviewed q33 42 "$SHA"
+check "GD7c: a fork GO sends no record" "$(nrec33)" "0"
+
+fx33; w33 "$W33" N1 "$BTOK33" "- 10:00 READY 42 $SHA GREEN" 1; go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD8: a Merge: chief brief is GOed by hand -> SENT" "$(line33 1)" "SENT 42 $H833 to N1 bus=#7"
+fx33; go33 --no-deliver --repo o/r --trust-reviewed q33 42 "$SHA"
+check "GD8c: --no-deliver with --repo -> exit 2" "$rc33|$(nrec33)" "2|0"
+
+fx33; VPR=42 verdict "$ROOT33" q33 "**GO** for head \`$SHA\`."; go33 --doc "$C33" --contract yes --trust-reviewed q33 42 "$SHA"
+check "GD9: a trust-reviewed GO -> SENT" "$(line33 1)" "SENT 42 $H833 to N1 bus=#7"
+fx33; go33 --doc "$C33" --contract yes --trust-reviewed q33 42 "$SHA"
+check "GD9c: no verdict -> exit 5, no record" "$rc33|$(nrec33)" "5|0"
+
+fx33; go33 --contract yes 42 "$SHA"
+check "GD11: no --doc and no HIMMEL_BUS_NAME -> NOT-SENT no-chief-doc" "$(line33 1)|$(nrec33)" "NOT-SENT 42 $H833 reason=no-chief-doc|0"
+fx33; rm -f "${C33%.md}.fleet.json"; go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD12: no fleet manifest -> NOT-SENT no-manifest" "$(line33 1)" "NOT-SENT 42 $H833 reason=no-manifest"
+
+fx33; w33 "$W33N2" N2 CJ-N2-cccc2222 "- 10:00 READY 42 $SHA GREEN"
+c33 "$C33" "workers: \`N1:$TOK33:lock-n1:4242\` \`N2:CJ-N2-dddd3333:lock-n2:4343\`"
+m33 "$C33" "$(row33 N1 "$W33" native),$(row33 N2 "$W33N2" native)"
+CENSUS33="$CENSUS33_DEF"$'\n'"$(printf '4343\t%s' "$STEM33N2")" go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD13: two rows name PR 42 -> the last one is sent to" "$(line33 1)|$(cat "$BUSLOG33" 2>/dev/null)" "SENT 42 $H833 to N2 bus=#7|send $STEM33N2"
+
+fx33; CENSUS33="" go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD14: no live session -> NOT-SENT no-session" "$(line33 1)|$(nrec33)" "NOT-SENT 42 $H833 reason=no-session N1 (0 live matches)|0"
+check "GD14: then the SENDMESSAGE line to the worker doc's stem" "$(line33 2)" "SENDMESSAGE to=$STEM33 :: $(msg33 "$TOK33" " --jira-transition" | tr '\n' ' ')"
+fx33; CENSUS33="$(printf '4242\t%s' "$STEM33B")" go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD15: a worker relaunched under a lettered label -> SENT" "$(line33 1)|$(cat "$BUSLOG33" 2>/dev/null)" "SENT 42 $H833 to N1 bus=#7|send $STEM33B"
+
+fx33; mkdir -p "$ROOT33/$VSCOPE"; cp "$C33" "$ROOT33/$VSCOPE/chief-33.md"; cp "${C33%.md}.fleet.json" "$ROOT33/$VSCOPE/chief-33.fleet.json"
+BUS_NAME33=chief-33 go33 --doc "$D33/fx/missing.md" --contract yes 42 "$SHA"
+check "GD16: an unreadable --doc never falls back to HIMMEL_BUS_NAME" "$(line33 1)|$(nrec33)" "NOT-SENT 42 $H833 reason=no-chief-doc|0"
+
+LT33="$D33/libtree"; mkdir -p "$LT33/scripts/handover/chief-kit"
+for e in "$ANCHOR33"/scripts/*; do [ "${e##*/}" = handover ] || ln -s "$e" "$LT33/scripts/${e##*/}"; done
+for e in "$ANCHOR33"/scripts/handover/*; do [ "${e##*/}" = chief-kit ] || ln -s "$e" "$LT33/scripts/handover/${e##*/}"; done
+for e in "$ANCHOR33"/scripts/handover/chief-kit/*; do [ "${e##*/}" = go-deliver.sh ] || ln -s "$e" "$LT33/scripts/handover/chief-kit/${e##*/}"; done
+printf 'return 1\n' > "$LT33/scripts/handover/chief-kit/go-deliver.sh"
+fx33; SCRIPT33="$LT33/scripts/handover/chief-kit/go.sh" go33 --doc "$C33" --contract yes 42 "$SHA"
+check "GD17: an unloadable library -> NOT-SENT no-library, exit 0, the path last" "$(line33 1)|$rc33|${out33##*$'\n'}|$(nrec33)" "NOT-SENT 42 $H833 reason=no-library|0|$GO33|0"
+
+tp33() { grep -Ev '^[[:space:]]*(#|$)' "$1" > "$D33/pat"; printf '%s\n' "$2" | grep -qE -f "$D33/pat" && echo yes || echo no; }
+TRUST33="$ANCHOR33/scripts/ci/ci-trust-paths.txt"; CORE33="$ANCHOR33/scripts/ci/core-paths.txt"
+for p33 in scripts/handover/chief-kit/go-deliver.sh scripts/lanes/lib/claude-sessions.sh \
+           marketplace/plugins/himmel-bus/bin/bus marketplace/plugins/himmel-bus/lib/store.mjs; do
+  check "TP1: $p33 is a CI trust path" "$(tp33 "$TRUST33" "$p33")" "yes"
+done
+check "TP1: go-deliver.sh is a core path" "$(tp33 "$CORE33" scripts/handover/chief-kit/go-deliver.sh)" "yes"
+check "TP1c: go.sh is a trust and a core path" "$(tp33 "$TRUST33" scripts/handover/chief-kit/go.sh)|$(tp33 "$CORE33" scripts/handover/chief-kit/go.sh)" "yes|yes"
+check "TP1c: a path no line names matches neither list" "$(tp33 "$TRUST33" zz/no-such-path)|$(tp33 "$CORE33" zz/no-such-path)" "no|no"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

@@ -14,6 +14,7 @@
 #   6. write-verdict refusal: exit code passes through, go.sh never runs
 #   7. usage: bad answer / missing --pr / short head -> exit 2, nothing runs
 #   8. a residual line with no HIMMEL key or no-ticket reason -> exit 2, nothing runs
+#   VG. --doc reaches go.sh; a SENT GO prints `delivered`, anything else the worker message
 #
 # Hermetic: temp dir only. Platform guard: POSIX bash 3.2+.
 set -uo pipefail
@@ -34,6 +35,8 @@ KIT="$tmp/kit/scripts/handover/chief-kit"; LOG="$tmp/log"; mkdir -p "$KIT" "$tmp
 cp "$HERE/../../lib/gate-repo-resolver.sh" "$HERE/../../lib/git-clean.sh" "$tmp/kit/scripts/lib/" 2>/dev/null || true
 cp "$SCRIPT" "$KIT/verdict-go.sh" 2>/dev/null || true
 cp "$HERE/residual-lines.sh" "$KIT/residual-lines.sh" 2>/dev/null || true
+cp "$HERE/go-deliver.sh" "$HERE/close-facts.sh" "$KIT/" 2>/dev/null || true
+cp "$HERE/../../lib/worker-identity.sh" "$HERE/../../lib/legacy-names.sh" "$HERE/../../lib/timeout-bin.sh" "$tmp/kit/scripts/lib/" 2>/dev/null || true
 for s in write-verdict go append-results; do
     cat > "$KIT/$s.sh" <<EOF
 #!/usr/bin/env bash
@@ -47,6 +50,7 @@ case "$s" in
         if [ -n "\${GO_NEEDS_CONTRACT:-}" ]; then
             case " \$* " in *" --contract "*) ;; *) echo "go: a keyed PR needs --contract yes|no" >&2; exit 4 ;; esac
         fi
+        [ -z "\${GO_STATUS_OUT:-}" ] || echo "\$GO_STATUS_OUT"
         echo "\${GO_PATH_OUT:-/fake/root/.locks/go/\$*}"; exit "\${GO_RC:-0}" ;;
     *) exit "\${AR_RC:-0}" ;;
 esac
@@ -75,7 +79,7 @@ order="$(cut -d' ' -f1 "$LOG" | tr '\n' ',')"
 check "1: order write-verdict,go,append-results,board" "$order" "write-verdict,go,append-results,board,"
 contains "1: write-verdict gets qid answer head" "$log" "write-verdict [q1] [GO] [$HEAD40]"
 contains "1: write-verdict gets --pr and --evidence-file" "$log" "[--pr] [77] [--evidence-file] [$EV]"
-contains "1: go gets pr and head" "$log" "go [77] [$HEAD40]"
+contains "1: go gets --doc, pr and head" "$log" "go [--doc] [$DOC] [77] [$HEAD40]"
 contains "1: bullet names qid, answer, pr and head8" "$log" "q1 answer: GO · GO 77 01234567"
 contains "1: board is --changed on the doc" "$log" "board [--doc] [$DOC] [--changed]"
 contains "1: worker message names the merge command" "$out" "merge-on-green.sh --jira-transition"
@@ -87,6 +91,18 @@ GO_PATH_OUT="/r/.locks/go/77.$HEAD40" run q1b GO "$HEAD40" --pr 77 --evidence-fi
 contains "1b: worker message carries --go with the GO file" "$out" "merge-on-green.sh --jira-transition --go /r/.locks/go/77.$HEAD40"
 run q1c GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
 lacks "1c: no --go when go.sh named no GO file for this head" "$out" "--go "
+
+GO_STATUS_OUT="SENT 77 01234567 to N1 bus=#7" GO_PATH_OUT="/r/.locks/go/77.$HEAD40" run vg1 GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
+check    "VG1: rc 0" "$rc" 0
+contains "VG1: a SENT GO prints one delivered line" "$out" "worker message: delivered (bus #7)"
+lacks    "VG1: and no worker message block" "$out" "--- worker message"
+GO_STATUS_OUT="NOT-SENT 77 01234567 reason=no-manifest-worker" GO_PATH_OUT="/r/.locks/go/77.$HEAD40" run vg1c GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
+contains "VG1c: a NOT-SENT GO prints the worker message block" "$out" "--- worker message"
+contains "VG1c: the block names the merge and the GO file" "$out" "merge-on-green.sh --jira-transition --go /r/.locks/go/77.$HEAD40"
+lacks    "VG1c: the block quotes no token" "$out" "Your token"
+contains "VG2: --doc reaches go.sh" "$(grep '^go ' <<< "$log")" "[--doc] [$DOC]"
+GO_PATH_OUT="/r/.locks/go/77.$HEAD40" run vg3 GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
+contains "VG3: a path with no status line (a deadline cut) prints the block" "$out" "--- worker message"
 
 # --- 2. NO-GO ---------------------------------------------------------------
 run q2 NO-GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
@@ -106,7 +122,7 @@ lacks "3: no board after a refusal" "$log" "board"
 
 # --- 4. --trust adds --trust-reviewed <qid> ---------------------------------
 run q4 GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --trust
-contains "4: go gets --trust-reviewed qid" "$log" "go [--trust-reviewed] [q4] [77] [$HEAD40]"
+contains "4: go gets --trust-reviewed qid" "$log" "go [--trust-reviewed] [q4] [--doc] [$DOC] [77] [$HEAD40]"
 run q4 GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
 lacks "4: without --trust no flag" "$log" "--trust-reviewed"
 
@@ -190,15 +206,15 @@ contains "9a: failing step named" "$out" "go.sh failed"
 lacks    "9a: no bullet after the refusal" "$log" "append-results"
 GO_NEEDS_CONTRACT=1 run q9b GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --contract yes
 check    "9b: --contract yes: rc 0" "$rc" 0
-contains "9b: go gets --contract yes before the pr" "$log" "go [--contract] [yes] [77] [$HEAD40]"
+contains "9b: go gets --contract yes before the pr" "$log" "go [--contract] [yes] [--doc] [$DOC] [77] [$HEAD40]"
 contains "9b: the merge line keeps --jira-transition" "$out" "merge-on-green.sh --jira-transition"
 GO_NEEDS_CONTRACT=1 run q9c GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --contract no
 check    "9c: --contract no: rc 0" "$rc" 0
-contains "9c: go gets --contract no" "$log" "go [--contract] [no] [77] [$HEAD40]"
+contains "9c: go gets --contract no" "$log" "go [--contract] [no] [--doc] [$DOC] [77] [$HEAD40]"
 lacks    "9c: the merge line carries no --jira-transition" "$out" "--jira-transition"
 contains "9c: the merge line is still printed" "$out" "merge-on-green.sh"
 GO_NEEDS_CONTRACT=1 run q9d GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --contract no --trust
-contains "9d: with --trust the contract rides beside --trust-reviewed" "$log" "go [--contract] [no] [--trust-reviewed] [q9d] [77] [$HEAD40]"
+contains "9d: with --trust the contract rides beside --trust-reviewed" "$log" "go [--contract] [no] [--trust-reviewed] [q9d] [--doc] [$DOC] [77] [$HEAD40]"
 run q9e GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
 lacks    "9e: no --contract given, none forwarded" "$log" "--contract"
 run q9f GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --contract maybe

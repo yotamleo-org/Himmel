@@ -66,10 +66,12 @@
 # The GO act (no --dry-run, every check passed), in this order:
 #   a. a GO that carries from an earlier head: write-verdict.sh --delta-noop <judged> records the
 #      new head under the carried qid
-#   b. go.sh [--trust-reviewed <qid>] <pr> <head> --model auto-go --effort script. go.sh re-runs
+#   b. go.sh --no-deliver [--trust-reviewed <qid>] <pr> <head> --model auto-go --effort script
+#      (this script sends the GO itself, in c). go.sh re-runs
 #      ready-check and every gate of its own; its signed record names model auto-go and effort
 #      script, so a scripted GO is told apart from a chief's. Any refusal is `ESCALATE auto-go 9`
-#   c. the bus GO to the worker's live session, exactly as verdict-go.sh words it
+#   c. the bus GO to the worker's live session, through go-deliver.sh (its token, session, wording,
+#      send and fallback rules), exactly as verdict-go.sh words it
 #      (`GO <pr> <head> - merge with: bash <merge-on-green.sh> [--jira-transition] --go <GO file>`,
 #      the flag only for a contract-yes merge), a `contract no: <why>; merge without --jira-transition`
 #      line when the contract was downgraded, then `Your token `<nonce>`` (the token of check 9).
@@ -84,7 +86,7 @@
 #   ESCALATE auto-go <check#> <reason>                exit 10 (check 9 = the GO act refused)
 # <q> is the judge qid the GO rests on, `none` for an ordinary GO.
 # Exit: 0 would-go or sent; 1 a shared library cannot be loaded (git-clean.sh, go-gate.sh,
-# handover-path.sh) or the git environment cannot be scrubbed, the audit trail
+# handover-path.sh, go-deliver.sh) or the git environment cannot be scrubbed, the audit trail
 # cannot be resolved at the start or is not a regular file, or the WOULD-GO row cannot be written
 # (no answer is given, nothing is acted on); 2 usage; 3 a chief-spawned worker
 # (HIMMEL_CONSOLE_LEG) or a relay (HIMMEL_CONSOLE_RELAY) - checked first, before anything is read;
@@ -168,6 +170,13 @@ case "$(printf '%s' "${HIMMEL_CONSOLE_RELAY:-}" | tr '[:upper:]' '[:lower:]' | t
     ''|0|false|off|no) ;;
     *) echo "auto-go: refusing - this is a chief relay (HIMMEL_CONSOLE_RELAY is set); only the chief decides a GO." >&2; exit 3 ;;
 esac
+# the token, the session, the GO message and its send are go-deliver.sh's
+# shellcheck source=scripts/handover/chief-kit/go-deliver.sh
+# shellcheck disable=SC1091
+. "$HERE/go-deliver.sh" 2>/dev/null || { echo "auto-go: cannot load go-deliver.sh - refusing" >&2; exit 1; }
+for f in gd_worker_token gd_brief_merge_chief gd_census gd_session gd_message gd_send gd_fallback_due gd_sendmessage_line; do
+    declare -F "$f" >/dev/null 2>&1 || { echo "auto-go: go-deliver.sh defines no $f - refusing" >&2; exit 1; }
+done
 
 usage() { echo "usage: auto-go.sh --doc <chief doc> --fleet <manifest> --worker <label> [--graph <file>] [--dry-run] <pr-number> <full-40-hex-head-sha>" >&2; exit 2; }
 
@@ -297,11 +306,11 @@ fi
 add_check 2 pass
 
 # --- 3. ready-go.sh: the output the chief reads by hand ------------------------------------------------
-JT=""; CONTRACT=no; BRIEF=none
+CONTRACT=no; BRIEF=none
 BRIEF_YES_RC=0; BRIEF_NO_RC=0
 grep -qE '^> \*\*Completes ticket:\*\* yes([^A-Za-z0-9_-]|$)' "$WORKER_DOC" || BRIEF_YES_RC=$?
 grep -qE '^> \*\*Completes ticket:\*\* no([^A-Za-z0-9_-]|$)' "$WORKER_DOC" || BRIEF_NO_RC=$?
-[ "$BRIEF_YES_RC" -ne 0 ] || { JT=" --jira-transition"; CONTRACT=yes; BRIEF=yes; }
+[ "$BRIEF_YES_RC" -ne 0 ] || { CONTRACT=yes; BRIEF=yes; }
 [ "$BRIEF" = yes ] || [ "$BRIEF_NO_RC" -ne 0 ] || BRIEF=no
 BODY_VALS=$(printf '%s\n' "$PR_BODY" | tr -d '\r' | awk '
     /^[ \t]{0,3}(```|~~~)/ {
@@ -349,9 +358,9 @@ elif [ -n "$REM_BAD" ]; then
 elif [ "$BODY_VAL" = yes ] && [ "$REM_YES" -eq 1 ]; then
     fail 3 "the PR body says completes-ticket: yes but leaves a remainder ($REM_KIND)"
 elif [ "$BODY_VAL" = no ] && [ "$CONTRACT" = yes ]; then
-    JT=""; CONTRACT=no; CONTRACT_WHY="contract no from the PR body, brief says yes"
+    CONTRACT=no; CONTRACT_WHY="contract no from the PR body, brief says yes"
 elif [ "$CONTRACT" = yes ] && [ "$REM_YES" -eq 1 ]; then
-    JT=""; CONTRACT=no; CONTRACT_WHY="the PR body leaves a remainder ($REM_KIND)"
+    CONTRACT=no; CONTRACT_WHY="the PR body leaves a remainder ($REM_KIND)"
 elif [ "$BRIEF" = none ] && [ -z "$BODY_VAL" ]; then
     CONTRACT_WHY="no contract on record"
 fi
@@ -394,7 +403,7 @@ done
 [ -f "$WORKER_DOC" ] || fail 4 "the worker's brief $WORKER_DOC is not a regular file"
 [ -r "$WORKER_DOC" ] || fail 4 "cannot read the worker's brief $WORKER_DOC"
 BRIEF_RC=0
-grep -qE '^> \*\*Merge:\*\* chief([^A-Za-z0-9_-]|$)' "$WORKER_DOC" || BRIEF_RC=$?
+gd_brief_merge_chief "$WORKER_DOC" || BRIEF_RC=$?
 case "$BRIEF_RC" in
     0) fail 4 "the worker's brief says Merge: chief (the chief GOes this dispatch by hand)" ;;
     1) ;;
@@ -623,24 +632,7 @@ if printf '%s\n' "$MSGS" | tr -d '\r' | grep -q '^Fixes-main-red:'; then
 fi
 add_check 8 pass
 
-# shellcheck disable=SC2016  # the backticks are the Live state entry's literal markers
-live_token() { # <key>: the RETASK token of $WORKER from the chief doc's ## Live state <key>: block, only when listed once
-    awk -v k="$1" '
-        $0 == "## Live state" { s = 1; next }
-        s && /^## / { exit }
-        s && index($0, k ":") == 1 { b = 1; print; next }
-        b && (/^[[:space:]]*$/ || /^[0-9]+\. / || /^[A-Za-z][A-Za-z ]*:/ || /^[-*+>#]/) { b = 0 }
-        b { print }
-    ' "$DOC" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`' | tr -d '`' \
-        | awk -F: -v l="$WORKER" '$1 == l { print $2; n++ } END { exit n != 1 }'
-}
-token_usable() { [[ "$1" =~ ^[A-Za-z0-9]+(-[A-Za-z0-9._]+)+$ ]] && [ "$1" != NONCE-UNKNOWN ]; }
-# shellcheck disable=SC2016  # the backticks are the RETASK line's literal markers
-brief_token() { awk '/^## Results/ { exit } /^> \*\*RETASK:\*\*/ { l = $0 } END { print l }' "$WORKER_DOC" | grep -oE '`[^`]*`' | head -n 1 | tr -d '`'; }
-TOKEN=$(live_token workers) || TOKEN=""  # swallow-ok: no live token falls to the legacy block and the brief below
-if ! token_usable "$TOKEN" && legacy_names_on; then TOKEN=$(live_token legs) || TOKEN=""; fi  # swallow-ok: as above
-if ! token_usable "$TOKEN"; then TOKEN=$(brief_token) || TOKEN=""; fi  # swallow-ok: no brief token fails check 9 below
-token_usable "$TOKEN" || fail 9 "no usable RETASK token for $WORKER in the chief doc's Live state or its brief"
+TOKEN=$(gd_worker_token "$DOC" "$WORKER" "$WORKER_DOC") || fail 9 "no usable RETASK token for $WORKER in the chief doc's Live state or its brief"
 
 if [ "$DRY" -eq 1 ]; then
     write_audit would-go || { echo "auto-go: cannot write the audit row to $AUDIT - no answer given" >&2; exit 1; }
@@ -681,7 +673,7 @@ if [ -n "$CARRY_FROM" ]; then
 fi
 # b. the GO file: go.sh re-runs ready-check and every gate of its own
 GO_RC=0
-GO_OUT=$(bash "$HERE/go.sh" --model auto-go --effort script --contract "$CONTRACT" ${GO_QID:+--trust-reviewed "$GO_QID"} "$PR" "$SHA" 2>&1) || GO_RC=$?
+GO_OUT=$(bash "$HERE/go.sh" --no-deliver --model auto-go --effort script --contract "$CONTRACT" ${GO_QID:+--trust-reviewed "$GO_QID"} "$PR" "$SHA" 2>&1) || GO_RC=$?
 if [ "$GO_RC" -ne 0 ]; then
     GO_WHY=$(printf '%s\n' "$GO_OUT" | grep -m1 -E '^go: ') || GO_WHY=$(first_line "$GO_OUT")  # swallow-ok: no go: line falls back to the first output line
     fail 9 "go.sh exit $GO_RC: $GO_WHY${CARRY_FROM:+ (the delta no-op record for $GO_QID at ${SHA:0:8}, written before go.sh ran, stays under verdicts/$GO_QID)}"
@@ -698,51 +690,18 @@ esac
 A_GOFILE="$GO_FILE"
 
 # c. the bus GO to the worker's session, exactly as verdict-go.sh words it, with the worker's token
-MSG=$(printf 'GO %s %s - merge with: bash %q%s --go %q' "$PR" "$SHA" "$ANCHOR/scripts/handover/merge-on-green.sh" "$JT" "$GO_FILE")
-[ -z "$CONTRACT_WHY" ] || MSG="$MSG"$'\n'"contract no: $CONTRACT_WHY; merge without --jira-transition"
-MSG="$MSG"$'\n'"Your token \`$TOKEN\`."
-# shellcheck source=scripts/lib/worker-identity.sh
-# shellcheck disable=SC1091
-. "$HERE/../../lib/worker-identity.sh" 2>/dev/null || true  # swallow-ok: an unloadable lib leaves no session candidates, reported as a failed bus send below
-SESSION=""; BUS_ERR=""; BUS_REF=""
-if ! declare -F worker_identity >/dev/null 2>&1; then
-    BUS_ERR="cannot load scripts/lib/worker-identity.sh"
+MSG=$(gd_message "$PR" "$SHA" "$GO_FILE" "$ANCHOR" "$CONTRACT" "${CONTRACT_WHY:--}" "$TOKEN")
+SESSION=""; BUS_ERR=""; BUS_REF=""; BUS_CLASS=""
+gd_session "$WORKER_DOC" "$(gd_census "${AUTO_GO_CENSUS:-}")"
+if [ "$GD_HITS" -ne 1 ]; then
+    BUS_ERR="$GD_HITS live session(s) match the worker (candidates ${GD_CANDS#,})"; BUS_CLASS=no-session
 else
-    IDENT=$(worker_identity "$WORKER_DOC"); CANDS=",${IDENT#*$'\t'},"
-    CANDS="$CANDS$(basename "$WORKER_DOC" .md),"
-    if [ -n "${AUTO_GO_CENSUS:-}" ]; then
-        CENSUS=$(bash "$AUTO_GO_CENSUS" 2>/dev/null) || CENSUS="" # swallow-ok: an empty census reads as no live session, reported below
+    SESSION="$GD_SESSION"
+    if gd_send "$SESSION" "$MSG" "${AUTO_GO_BUS:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}" "$TOKEN"; then
+        BUS_REF="$GD_REF"
     else
-        # shellcheck source=scripts/lanes/lib/claude-sessions.sh
-        # shellcheck disable=SC1091
-        . "$HERE/../../lanes/lib/claude-sessions.sh" 2>/dev/null || true  # swallow-ok: an unloadable census leaves no live session, reported below
-        CENSUS=""; declare -F claude_sessions >/dev/null 2>&1 && { CENSUS=$(claude_sessions 2>/dev/null) || true; }  # swallow-ok: as above
-    fi
-    HITS=0
-    while IFS=$'\t' read -r _cpid cname _crest; do
-        [ -n "$cname" ] || continue
-        case "$CANDS" in *",$cname,"*) HITS=$((HITS + 1)); SESSION="$cname" ;; esac
-    done <<< "$CENSUS"
-    if [ "$HITS" -ne 1 ]; then
-        BUS_ERR="$HITS live session(s) match the worker (candidates ${CANDS#,})"; SESSION=""
-    else
-        BUS_BIN="${AUTO_GO_BUS:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
-        MSGDIR=$(mktemp -d "${TMPDIR:-/tmp}/auto-go-bus.XXXXXX") || MSGDIR=""  # prim-ok: holds one message file and is removed right after the send
-        if [ -z "$MSGDIR" ]; then
-            BUS_ERR="mktemp failed"
-        elif ! printf '%s\n' "$MSG" > "$MSGDIR/msg"; then
-            rm -rf "$MSGDIR"
-            BUS_ERR="cannot write the bus message file"
-        else
-            WAIT=""; command -v timeout >/dev/null 2>&1 && WAIT="timeout 15"
-            BUS_RC=0
-            # shellcheck disable=SC2086  # WAIT is empty or the two words `timeout 15`
-            BUS_OUT=$($WAIT "$BUS_BIN" send "$SESSION" "$MSGDIR/msg" 2>&1) || BUS_RC=$?
-            rm -rf "$MSGDIR"
-            BUS_REF=$(printf '%s\n' "$BUS_OUT" | sed -nE 's/^sent (#[0-9]+) to .*/\1/p' | head -n 1)
-            if [ "$BUS_RC" -ne 0 ]; then BUS_ERR="bus send exit $BUS_RC: $(first_line "$BUS_OUT")"
-            elif [ -z "$BUS_REF" ]; then BUS_ERR="bus send printed no record number: $(first_line "$BUS_OUT")"; fi
-        fi
+        # shellcheck disable=SC2153  # GD_ERR is set by go-deliver.sh's gd_send
+        BUS_ERR="$GD_ERR"; BUS_CLASS=bus-failed
     fi
 fi
 if [ -z "$BUS_ERR" ]; then
@@ -755,5 +714,5 @@ fi
 add_check 9 pass "GO written; bus: $(printf '%s' "$BUS_ERR" | tr '\r\n\t' '   ' | cut -c1-200)"
 write_audit go || echo "auto-go: warning - the GO is written but the audit row could not be written to $AUDIT" >&2
 printf 'GO-WRITTEN %s %s qid=%s bus-failed: %s\n' "$PR" "$SHA" "${A_QID:-none}" "$(printf '%s' "$BUS_ERR" | tr '\r\n\t' '   ')"
-printf 'SENDMESSAGE to=%s :: %s\n' "${SESSION:-$(basename "$WORKER_DOC" .md)}" "$(printf '%s' "$MSG" | tr '\n' ' ')"
+if gd_fallback_due "$BUS_CLASS"; then gd_sendmessage_line "${SESSION:-$(basename "$WORKER_DOC" .md)}" "$MSG"; fi
 exit 11

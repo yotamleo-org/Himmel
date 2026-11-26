@@ -16,14 +16,17 @@
 #
 #   1. write-verdict.sh <qid> <answer> <head> --pr <n> --evidence-file <path> [--prior <GO|NO-GO>] [--residual-of <KEY>]
 #      [--model <id>] [--effort <level>]   (the judge's; write-verdict.sh refuses a verdict without both)
-#   2. GO only: go.sh [--trust-reviewed <qid>] <n> <head>   (--trust adds the flag;
-#      go.sh's own ready-check is never bypassed; it also persists the chief GO as a record)
+#   2. GO only: go.sh [--trust-reviewed <qid>] [--doc <doc>] <n> <head>   (--trust adds the
+#      flag; go.sh's own ready-check is never bypassed; it also persists the chief GO as a
+#      record and delivers it to the PR's worker, printing SENT or NOT-SENT <reason>)
 #   3. with --doc: append-results.sh <doc> "<qid> answer: <answer> · GO <n> <head8>"
 #   4. GO with --doc: node board.mjs --doc <doc> --changed. A render failure only
 #      warns: the GO is already written.
-#   5. GO: prints the worker message (GO <n> <head> and the merge command). The
-#      script never sends it: SendMessage is the chief's, and the worker's token
-#      is quoted by the chief in that message.
+#   5. GO: when go.sh printed `SENT <n> <head8> to <label> bus=#<k>`, prints
+#      `worker message: delivered (bus #<k>)`: the worker has its GO. Otherwise (NOT-SENT,
+#      or a path alone after a deadline cut) prints the worker message without a token
+#      (go-deliver.sh's gd_message: GO <n> <head> and the merge command) for the chief to
+#      send with the worker's token.
 #
 # A NO-GO runs steps 1 and 3 only. Without --doc steps 3 and 4 are skipped.
 # An evidence line that leaves a residual unfiled (residual-lines.sh) is refused
@@ -121,13 +124,14 @@ if [ "$ANSWER" = "GO" ]; then
     # go.sh prints the GO file it wrote as its last stdout line; the worker's merge
     # names that file with --go.
     if [ "$TRUST" -eq 1 ]; then
-        GO_OUT=$(bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} ${CONTRACT:+--contract "$CONTRACT"} --trust-reviewed "$QID" "$PR" "$HEAD_SHA") || step_fail go.sh $?
+        GO_OUT=$(bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} ${CONTRACT:+--contract "$CONTRACT"} --trust-reviewed "$QID" ${DOC:+--doc "$DOC"} "$PR" "$HEAD_SHA") || step_fail go.sh $?
     else
-        GO_OUT=$(bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} ${CONTRACT:+--contract "$CONTRACT"} "$PR" "$HEAD_SHA") || step_fail go.sh $?
+        GO_OUT=$(bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} ${CONTRACT:+--contract "$CONTRACT"} ${DOC:+--doc "$DOC"} "$PR" "$HEAD_SHA") || step_fail go.sh $?
     fi
     [ -z "$GO_OUT" ] || printf '%s\n' "$GO_OUT"
     GO_LAST=${GO_OUT##*$'\n'}
     case "$GO_LAST" in */.locks/go/"$PR.$HEAD_SHA") GO_FILE="$GO_LAST" ;; esac
+    SENT_LINE=$(printf '%s\n' "$GO_OUT" | grep -m1 -E "^SENT $PR ${HEAD_SHA:0:8} to [^ ]+ bus=#[0-9]+$") || SENT_LINE=""  # swallow-ok: no SENT line prints the worker message below
 fi
 
 if [ -n "$DOC" ]; then
@@ -140,15 +144,23 @@ if [ -n "$DOC" ]; then
 fi
 
 if [ "$ANSWER" = "GO" ]; then
+    echo
+    if [ -n "$SENT_LINE" ]; then
+        echo "worker message: delivered (bus ${SENT_LINE##*bus=})"
+        exit 0
+    fi
     # The primary checkout holds the merge script the worker's allow rule names; a
     # worktree copy of this file still resolves it through the git common dir.
     ANCHOR="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
     ANCHOR="${ANCHOR%/.git}"
     [ -n "$ANCHOR" ] || ANCHOR="$(cd "$HERE/../../.." && pwd)"
-    echo
+    # shellcheck source=scripts/handover/chief-kit/go-deliver.sh
+    # shellcheck disable=SC1091
+    if ! . "$HERE/go-deliver.sh" 2>/dev/null || ! declare -F gd_message >/dev/null 2>&1; then
+        echo "verdict-go: cannot load go-deliver.sh, so the worker message is not printed (the GO is written: $GO_FILE)" >&2
+        exit 0
+    fi
     echo "--- worker message (send to ${WORKER:-the worker}; add its token) ---"
-    JT=" --jira-transition"; [ "$CONTRACT" != no ] || JT=""
-    printf 'GO %s %s - merge with: bash %q%s' "$PR" "$HEAD_SHA" "$ANCHOR/scripts/handover/merge-on-green.sh" "$JT"
-    if [ -n "$GO_FILE" ]; then printf ' --go %q\n' "$GO_FILE"; else printf '\n'; fi
+    gd_message "$PR" "$HEAD_SHA" "$GO_FILE" "$ANCHOR" "${CONTRACT:--}" -
 fi
 exit 0

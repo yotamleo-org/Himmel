@@ -55,10 +55,27 @@ the worker `cd`s out, sends `WRAPPED` and releases its lock. A merge that exits
 non-zero is not `MERGED`: send the worker the exit and reason instead, and it
 stays held. Native workers merge themselves on your GO.
 
-**Native workers: the GO message names the GO file.** `chief-kit/verdict-go.sh`
-prints the worker message as `GO <pr> <head> - merge with: bash <merge script>
---jira-transition --go <GO file>`; send it as printed (with your token). After
-a bare GO run, give the worker the path it printed as its `--go` argument. A chief worker's
+**Native workers: `go.sh` delivers the GO.** A himmel merge GO (plain or
+`--trust-reviewed`) is sent to the PR's worker as a himmel-bus record,
+`GO <pr> <head> - merge with: bash <merge script> --jira-transition --go <GO file>`
+quoting the worker's token (your `workers:` span when usable, else its brief's RETASK line),
+through `chief-kit/go-deliver.sh`.
+Run `go.sh --doc <this chief doc>` (without it, the doc
+named by your `HIMMEL_BUS_NAME` is read). Before the GO path, `go.sh` prints one line:
+`SENT <pr> <head8> to <label> bus=#<n>` (nothing more to do), or `NOT-SENT <pr> <head8> reason=<slug>`:
+- `no-chief-doc`, `no-manifest`, `no-manifest-worker`: the doc, its `.fleet.json` or a manifest
+  row whose doc's newest `READY` or `MERGED` bullet names the PR is missing. Fix that and
+  re-run `go.sh`, or send the GO by hand.
+- `lane-<lane>`: a claudex or unknown-lane worker; you merge for it (above).
+- `no-token <label>`: no usable token in your span or the brief; send the GO by hand.
+- `no-session <label> (<n> live matches)` or `bus-failed <why>`: `go.sh` then prints a
+  `SENDMESSAGE to=<worker> :: <message>` line; send it as printed.
+- `no-library`: `go-deliver.sh` did not load; the GO stands, send it by hand.
+
+A brief marked `Merge: chief` is GOed by hand through `go.sh`, which delivers it.
+`chief-kit/verdict-go.sh` forwards `--doc` and prints `worker message: delivered (bus #<n>)`
+after a `SENT`; otherwise it prints the worker message without a token: send it with
+the token. Re-running `go.sh` sends again. A chief worker's
 `merge-on-green.sh` exits 17 without `--go`, or with the file of another PR or
 head, and prints the verified GO evidence, so the merge command shows the
 review it relies on (a merge with no visible review was denied as
@@ -81,8 +98,9 @@ brief that says yes while the PR body leaves a remainder (a `Remaining:` or `owe
 judge NO-GO on record unless a judge GO rules at its head; takes the judge qid from the newest verdict at the PR's
 head (delta no-op records included) and retries a plain GO that `go.sh` refuses
 for a trust path (exit 8) once with it; fast-forwards the primary checkout once
-before any `go.sh` runs (a checkout that cannot is exit 1, no GO written); and sends
-each worker its GO line with its token: the one in your `workers:` span when it is usable
+before any `go.sh` runs (a checkout that cannot is exit 1, no GO written); runs each
+`go.sh` with `--no-deliver` and sends each worker its GO line itself, through `go-deliver.sh`,
+with its token: the one in your `workers:` span when it is usable
 (dash-joined parts such as `CJ-N1-b07851f7`, never `NONCE-UNKNOWN`), else the first backticked value of
 the last `> **RETASK:**` line of its brief above `## Results`. `auto-go.sh` follows the same two rules: it
 escalates at check 9 when neither source is usable, and its GO carries `--jira-transition` only for a

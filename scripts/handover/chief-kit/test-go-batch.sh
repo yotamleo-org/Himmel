@@ -103,7 +103,8 @@ STUB
 cat > "$tmp/go" <<'STUB'
 #!/usr/bin/env bash
 args="$*"; q=""; c=""
-while [ $# -gt 2 ]; do case "$1" in --contract) c="$2"; shift 2 ;; --trust-reviewed) q="$2"; shift 2 ;; *) shift 2 ;; esac; done
+printf '%s\n' "$args" >> "$GB_FIX/argv.log"
+while [ $# -gt 2 ]; do case "$1" in --contract) c="$2"; shift 2 ;; --trust-reviewed) q="$2"; shift 2 ;; --no-deliver) shift ;; *) shift 2 ;; esac; done
 pr="$1"; head="$2"
 printf 'pr=%s contract=%s trust=%s anchor=%s\n' "$pr" "$c" "$q" "$(git -C "$GB_ANCHOR" rev-parse HEAD)" >> "$GB_FIX/go.log"
 touch "$GB_FIX/running/$$"
@@ -124,7 +125,13 @@ STUB
 cat > "$tmp/bus" <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = send ] || exit 2
-cp "$3" "$GB_FIX/bus/$2.msg"; echo "sent #7 to $2"
+cp "$3" "$GB_FIX/bus/$2.msg"
+printf 'send %s\n' "$2" >> "$GB_FIX/sends.log"
+if [ "${GB_BUS_MODE:-ok}" = fail ]; then
+    tok=$(sed -n 's/^Your token `\(.*\)`\.$/\1/p' "$3")
+    printf 'bus: rejected token %s: %s\n' "$tok" "$(tr '\n' ' ' < "$3")" >&2; exit 1
+fi
+echo "sent #7 to $2"
 STUB
 cat > "$tmp/census" <<'STUB'
 #!/usr/bin/env bash
@@ -349,6 +356,71 @@ check "11 T2 no GO file for either" "$(find "$HANDOVER_DIR/.locks/go" -name '210
 contains "11 T3 a token only in Results counts as none: NO-TOKEN" "$OUT" "NO-TOKEN 212 N32"
 check "11 T4 no output line carries NONCE-UNKNOWN" "$(printf '%s\n' "$OUT" | grep -c 'NONCE-UNKNOWN')" "0"
 check "11 T4 no bus message carries NONCE-UNKNOWN, <, or >" "$(cat "$FIX"/bus/*.msg | grep -cE 'NONCE-UNKNOWN|[<>]')" "0"
+
+prs; reset; rm -f "$FIX/argv.log" "$FIX/sends.log"
+OUT=$(bash "$SCRIPT" --doc "$tmp/chief.md" --fleet "$tmp/fleet.json" 2>&1); RC=$?
+check "GB1 every go.sh run carries --no-deliver" "$(grep -vc -- '--no-deliver' "$FIX/argv.log")|$(grep -c -- '--no-deliver' "$FIX/argv.log")" "0|3"
+
+prs; reset
+OUT=$(GB_BUS_MODE=fail bash "$SCRIPT" --doc "$tmp/chief.md" --fleet "$tmp/fleet.json" 2>&1); RC=$?
+ROW=$(grep '^GO-WRITTEN 101 ' <<< "$OUT")
+contains "GB1d a failed send names the redacted bus error" "$ROW" "bus-failed: bus send exit 1: bus: rejected token <token>: GO 101"
+check "GB1d no token outside the SENDMESSAGE lines" "$(grep -v '^SENDMESSAGE to=' <<< "$OUT" | grep -c 'CN-N[12]-tok')" "0"
+contains "GB1d the SENDMESSAGE line still quotes the token" "$(grep '^SENDMESSAGE to=wk-9001-' <<< "$OUT")" 'Your token `CN-N1-tok`.'
+
+cat > "$tmp/census-lettered" <<'STUB'
+#!/usr/bin/env bash
+for d in "$GB_DOCS"/*.md; do printf '1\t%s\t-\n' "$(basename "$d" .md | sed -E 's/-(N[0-9]+)-/-\1b-/')"; done
+STUB
+chmod +x "$tmp/census-lettered"
+prs; reset
+OUT=$(GO_BATCH_CENSUS="$tmp/census-lettered" bash "$SCRIPT" --doc "$tmp/chief.md" --fleet "$tmp/fleet.json" 2>&1); RC=$?
+contains "GB2 a worker relaunched under a lettered label gets GO-SENT" "$OUT" "GO-SENT 101 ${H101:0:8} to N1 bus=#7"
+check "GB2 the record goes to the lettered session" "$(test -f "$FIX/bus/wk-9001-N1b-ordinary-2026-11-25.msg" && echo yes)" "yes"
+
+{
+    printf '# chief\n\n## Live state\n\nlegs:'
+    for l in N1 N2 N3 N4 N5; do printf ' `%s:CL-%s-legs:lock-%s:1`' "$l" "$l" "$l"; done
+    printf '\nqueue: none\n\n## Results\n'
+} > "$tmp/chief-legs.md"
+prs; reset
+OUT=$(env -u HIMMEL_LEGACY_NAMES bash "$SCRIPT" --doc "$tmp/chief-legs.md" --fleet "$tmp/fleet.json" 2>&1); RC=$?
+contains "GB3 legacy names on: the legs: span's token is used" "$OUT" "GO-SENT 101 ${H101:0:8} to N1"
+contains "GB3 the message quotes the legs: token" "$(cat "$FIX/bus/wk-9001-N1-ordinary-2026-11-25.msg" 2>/dev/null)" 'Your token `CL-N1-legs`.'
+
+worker NX wk-9099-NX-second-2026-11-25 yes "" 101 "$H101"
+jq --arg d "$tmp/docs/wk-9099-NX-second-2026-11-25.md" '.workers += [{label:"NX", doc:$d, lane:"native"}]' "$tmp/fleet.json" > "$tmp/fleet-two.json"
+mkchief "$tmp/chief-two.md" "N1 N2 N3 N4 N5 NX"
+prs; reset
+OUT=$(bash "$SCRIPT" --dry-run --doc "$tmp/chief-two.md" --fleet "$tmp/fleet-two.json" 2>&1); RC=$?
+contains "GD13c two rows name PR 101: the last one is the PR's worker" "$OUT" "WOULD-GO 101 ${H101:0:8} to NX"
+rm -f "$tmp/docs/wk-9099-NX-second-2026-11-25.md"
+
+# shellcheck source=scripts/handover/chief-kit/testlib-ready-pass.sh
+# shellcheck disable=SC1091
+. "$HERE/testlib-ready-pass.sh"
+ready_pass_bin "$tmp/rbin"
+mkdir -p "$tmp/ghbin"
+printf '#!/usr/bin/env bash\n[ "$1 $2" = "repo view" ] && { printf o/r; exit 0; }\nexit 91\n' > "$tmp/ghbin/gh"
+chmod +x "$tmp/ghbin/gh"
+RREPO="$tmp/ready-repo"; git init -q "$RREPO"
+RSHA=$(ready_pass_repo "$RREPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
+ready_pass_ledger "$RREPO" "$RSHA"
+worker N40 wk-9140-N40-real-2026-11-25 yes "" 140 "$RSHA"
+RDOC="$tmp/docs/wk-9140-N40-real-2026-11-25.md"
+printf '{"workers":[{"label":"N40","doc":"%s","lane":"native"}]}\n' "$RDOC" > "$tmp/fleet-real.json"
+mkchief "$tmp/chief-real.md" "N40"
+RSCOPE=$(go_verdict_scope "$HERE/../../..") || { echo "FAIL: cannot resolve the real go.sh's verdict scope" >&2; exit 1; }
+mkdir -p "$HANDOVER_DIR/$RSCOPE"
+cp "$tmp/chief-real.md" "$HANDOVER_DIR/$RSCOPE/chief-real.md"
+cp "$tmp/fleet-real.json" "$HANDOVER_DIR/$RSCOPE/chief-real.fleet.json"
+jq -n --arg h "$RSHA" '[{number:140, title:"fix(x): [HIMMEL-9140] t", headRefOid:$h, baseRefName:"main", isDraft:false, body:"completes-ticket: yes", files:[{path:"scripts/a.sh"}]}]' > "$FIX/prs.json"
+reset; rm -f "$FIX/sends.log"
+OUT=$(PATH="$tmp/rbin:$tmp/ghbin:$PATH" READY_STUB_HEAD="$RSHA" HIMMEL_REPO="$RREPO" HIMMEL_BUS_NAME=chief-real \
+    GO_BATCH_GO="$HERE/go.sh" GO_DELIVER_BUS="$tmp/bus" GO_DELIVER_CENSUS="$tmp/census" \
+    bash "$SCRIPT" --doc "$tmp/chief-real.md" --fleet "$tmp/fleet-real.json" 2>&1); RC=$?
+contains "GB1c the real go.sh writes the GO and go-batch sends it" "$OUT" "GO-SENT 140 ${RSHA:0:8} to N40"
+check "GB1c exactly one bus record for the PR" "$(grep -c 'send wk-9140-' "$FIX/sends.log" 2>/dev/null)" "1"
 
 echo "passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
