@@ -1,7 +1,7 @@
 ---
 name: ticket-auditor
 description: Checks whether tickets are still open, fixed or partial on current main.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
 model: sonnet
 effort: medium
 ---

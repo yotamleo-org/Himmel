@@ -1,7 +1,7 @@
 ---
 name: page-reviewer
 description: Reviews one docs page for a chief and returns findings.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
 model: sonnet
 effort: medium
 ---

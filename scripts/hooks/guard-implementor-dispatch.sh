@@ -146,13 +146,14 @@ esac
 # a Plan prompt is genuinely implementation-shaped. A judge-ro id is exempt only
 # while its agent file pins the tool list to Read, Grep, Glob and Bash, or that
 # list plus Write, which guard-judge-write-scope.sh confines to a judge dir
-# judge-dir.sh made.
+# judge-dir.sh made, or that Write line plus WebFetch, WebSearch.
 ro_judge_pinned() {
     local f t
     f="$(dirname "${BASH_SOURCE[0]}")/../../.claude/agents/$1.md"
     [ -f "$f" ] && [ -r "$f" ] || return 1
     t="$(awk 'NR == 1 { if ($0 != "---") exit; next } /^---$/ { exit } /^tools:/ { n++; t = $0 } END { if (n == 1) print t }' "$f")"
-    [ "$t" = "tools: Read, Grep, Glob, Bash" ] || [ "$t" = "tools: Read, Grep, Glob, Bash, Write" ]
+    [ "$t" = "tools: Read, Grep, Glob, Bash" ] || [ "$t" = "tools: Read, Grep, Glob, Bash, Write" ] \
+        || [ "$t" = "tools: Read, Grep, Glob, Bash, Write, WebFetch, WebSearch" ]
 }
 lane_exempt=0
 case "$subagent_type" in

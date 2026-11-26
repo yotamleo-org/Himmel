@@ -1,7 +1,7 @@
 ---
 name: edit-runner
 description: Applies a specified edit list, then runs the machine check it ends in.
-tools: Read, Edit, Write, Bash
+tools: Read, Edit, Write, Bash, WebFetch, WebSearch
 model: haiku
 effort: medium
 ---

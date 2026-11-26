@@ -202,6 +202,19 @@ Notes on the cells:
   enforced there too, so the hermes-main column is `tested`-green.
 - Any deny-guard with no lane proving test is `GAP` by construction.
 
+## Web read per lane
+
+Whether a lane can read a live page, and the fence on it. The walled-host
+redirect and the peer-taint gate stay in force wherever a himmel hook runs.
+
+| Lane | Web read today | Note |
+|---|---|---|
+| main-claude (workers, chiefs, repo agents) | WebFetch and WebSearch; every repo agent file names both on its `tools:` line | the project allow rule and the `Agent(web-fetch)` deny are owed to B15 (settings.json) |
+| codex-direct | hosted `web_search`, cached, on by default | himmel sets nothing; live mode is the operator's `~/.codex/config.toml` choice |
+| antigravity-t3 | `search_web` only | the `read_url_content` adapter arm is OPEN: its URL argument key is unread without a live thread; the adapter denies an unlisted tool |
+| hermes-main | `web_search` and `web_extract` via the parity_guard allowlist | unchanged |
+| copilot / cursor | none by design (`--deny-url "*"`) | a guarded bulk lane |
+
 ## T3 preview browser: the `previewBrowser` profile option
 
 A session can drive T3's preview browser to check its own change when its
