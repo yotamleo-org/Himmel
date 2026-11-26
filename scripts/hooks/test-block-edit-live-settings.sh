@@ -4221,6 +4221,8 @@ assert_rc "11257c15 a quoted variable path to another CLI's plugin install allow
     "$(bash_rc_of "$WT2" '"$HOME/bin/claude" plugin install foo' HOME="$T3H")"
 assert_rc "11257c17 a quoted braced variable path to another CLI's plugin install allows" 0 \
     "$(bash_rc_of "$WT2" '"${HOME}/bin/claude" plugin install foo' HOME="$T3H")"
+assert_rc "11257c18 a braced default with a slash before a fixed claude basename allows" 0 \
+    "$(bash_rc_of "$WT2" '"${HOME:-/home/operator}/bin/claude" plugin install foo' HOME="$T3H")"
 assert_rc "11257c16 a command substitution carrying plugin list in a heredoc command allows" 0 \
     "$(bash_rc_of "$WT2" "echo \$(agy plugin list) <<'EOF'
 y
