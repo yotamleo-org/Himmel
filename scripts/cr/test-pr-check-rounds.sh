@@ -3122,8 +3122,14 @@ SHIM
         chmod +x "$d/$t"
     done
 }
-count_of() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else printf 0; fi; }
-snap_count() { if [ -f "$1" ]; then grep -c go-verdict-snap "$1"; else printf 0; fi; }
+count_of() {
+    case "$1" in "$tmp"/*) ;; *) fail "count_of: $1 is outside the fixture"; return 1 ;; esac
+    if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else printf 0; fi
+}
+snap_count() {
+    case "$1" in "$tmp"/*) ;; *) fail "snap_count: $1 is outside the fixture"; return 1 ;; esac
+    if [ -f "$1" ]; then grep -c go-verdict-snap "$1"; else printf 0; fi
+}
 phase_shim() {
     local d="$1" t="$2" ph="$3" rc="$4" real p pats=""
     shift 4
