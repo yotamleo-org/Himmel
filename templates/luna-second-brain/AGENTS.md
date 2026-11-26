@@ -1,5 +1,3 @@
-<!-- _CLAUDE.md is the one source of rules for this directory; edit that file for rules. This file adds only the Antigravity addendum below, and upgrade.sh overwrites it. -->
-
 The rules for this directory live in [`_CLAUDE.md`](_CLAUDE.md). Read it first.
 
 ## Antigravity (Gemini) addendum

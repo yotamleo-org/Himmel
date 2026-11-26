@@ -8,7 +8,7 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.4.117] — 2026-11-26
+## [0.4.118] — 2026-11-26
 
 ### Changed
 - `AGENTS.md` now ships to new vaults (`setup.sh`) and upgraded vaults (`/luna-upgrade`), so Antigravity (Gemini) sessions load the vault rules. It keeps the `_CLAUDE.md` pointer and adds an Antigravity addendum: native file tools plus `scripts/lib/qmd-bounded.sh`, no `obsidian-vault` MCP.

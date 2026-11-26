@@ -79,6 +79,7 @@ check "posture appended ONCE (idempotent)" "[ \"\$(grep -c 'salus-posture-block'
 check "existing .salus NOT clobbered" "grep -q 'operator-customized' '$VAULT/.salus'"
 check "trusted-processor text present ONCE after re-apply" "[ \"\$(grep -c 'salus-posture-agy' '$VAULT/_CLAUDE.md')\" -eq 1 ]"
 OLDV="$(mktemp -d 2>/dev/null || mktemp -d -t saluso)"
+[ -d "$OLDV" ] || { bad "mktemp for the older-block vault failed"; exit 1; }
 mkdir -p "$OLDV/_profiles"; cp -R "$TEMPLATE_ROOT/_profiles/salus" "$OLDV/_profiles/salus"
 printf '# base\n\n<!-- salus-posture-block -->\nold posture\n\noperator rule\n' > "$OLDV/_CLAUDE.md"
 apply_salus_overlay "$OLDV" || bad "apply on an older-block vault returned non-zero"

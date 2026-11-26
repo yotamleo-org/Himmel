@@ -11,9 +11,7 @@
 # Env:    POINTERS_ROOT  repo to scan (default: this repo's root)
 #
 # Excluded: vendored upstream trees, where an added file would be himmel delta
-# on every re-vendor (marketplace/plugins/claude-hud), and the luna template,
-# whose AGENTS.md is hand-owned: the pointer plus an Antigravity addendum that
-# upgrade.sh ships to vaults.
+# on every re-vendor (marketplace/plugins/claude-hud).
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${POINTERS_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"

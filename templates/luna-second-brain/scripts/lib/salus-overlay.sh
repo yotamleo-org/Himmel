@@ -7,14 +7,9 @@
 #     .claude/settings.json) → always (re)installed (settings.json only if absent).
 #   - _-root scaffolds (_skin-photo-archive.md, _derm-visit-prep.template.md,
 #     _media/skin/) → scaffold-new ONLY; never overwrites operator content.
-#   - appends the medical posture block to _CLAUDE.md once (idempotent); a vault
-#     with the older block gets the trusted-processor update appended once.
+#   - appends the medical posture block to _CLAUDE.md once (idempotent).
 #   - drops the .salus-profile marker (upgrade.sh gates on it) AND the .salus
 #     PHI guard marker — never overwrites an existing .salus.
-#   - installs NO repo-local .agents/hooks.json: Antigravity (agy, a trusted
-#     interactive route per decision 1259) gets its hooks from the user-scope
-#     backstop, and a workspace file would fail closed on every tool call in a
-#     non-himmel repo. An existing one is reported, never touched.
 # Returns non-zero only on a missing overlay dir. bash 3.2-safe.
 apply_salus_overlay() {
   local repo_root="$1"

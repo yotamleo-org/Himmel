@@ -58,7 +58,8 @@ printf '\n<!-- salus-posture-block -->\n## Salus — medical posture\nAnthropic/
 bash "$TPL/scripts/upgrade.sh" --template-dir "$TPL" --vault-dir "$OLD" --yes >/dev/null 2>&1
 chk "older vault gets the trusted-processor update" "grep -q 'salus-posture-agy' '$OLD/_CLAUDE.md' && grep -qi 'antigravity' '$OLD/_CLAUDE.md'"
 chk "operator rule after the old block preserved" "grep -q 'operator-added rule after the block' '$OLD/_CLAUDE.md'"
-bash "$TPL/scripts/upgrade.sh" --template-dir "$TPL" --vault-dir "$OLD" --yes >/dev/null 2>&1
+bash "$TPL/scripts/upgrade.sh" --template-dir "$TPL" --vault-dir "$OLD" --yes >/dev/null 2>&1; _rc=$?
+chk "re-upgrade succeeds" "[ '$_rc' = 0 ]"
 chk "update appended exactly once across re-upgrades" "[ \"\$(grep -c 'salus-posture-agy' '$OLD/_CLAUDE.md')\" -eq 1 ]"
 
 echo "== non-medical vault (no marker) — gate must SKIP medical assets =="
