@@ -489,6 +489,75 @@ test('a failed call alerts once and falls back; a failing fallback returns its o
   assert.equal(rows(g).at(-1).outcome, 'sub-fallback-failed');
 });
 
+const BUDGET_CAP = JSON.stringify({ type: 'result', is_error: true, subtype: 'error_max_budget_usd', result: 'budget' });
+const chiefBridge = (f, names) => {
+  const root = join(f.dir, 'bridge');
+  mkdirSync(join(root, 'consoles'), { recursive: true });
+  for (const n of names) writeFileSync(join(root, 'consoles', `${n}.md`), '');
+  return root;
+};
+const inboxText = (root, name) => readFileSync(join(root, 'consoles', `${name}.md`), 'utf8');
+
+test('a budget-capped judge call alerts the chief inbox and does not page the operator', () => {
+  const f = fixture();
+  const root = chiefBridge(f, ['test-chief']);
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_KIND: 'judge', BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'test-chief', STUB_OUT: BUDGET_CAP, STUB_RC: '1', STUB_FB_OUT: FB_OK });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(alerts(f).length, 0, 'the operator was paged for a chief-actionable failure');
+  const line = inboxText(root, 'test-chief');
+  assert.match(line, /\[api-lane call-failed\]/);
+  assert.match(line, /kind judge, account A, call-failed \(exit 1\): the call exited 1 \(error_max_budget_usd\)/);
+  assert.match(line, /fallback: running on the subscription/);
+  assert.equal(line.trim().split('\n').length, 1);
+  keyNowhere(f, r);
+});
+
+test('with no HIMMEL_CONSOLE_NAME the newest armed chief gets the call-failed alert', () => {
+  const f = fixture();
+  const root = chiefBridge(f, ['old-chief', 'new-chief']);
+  const stamp = (n, hb) => writeFileSync(join(root, 'consoles', `${n}.md.wait`), `hb=${hb} pid=1 key=k tick=ok state=waiting\n`);
+  const now = Math.floor(Date.now() / 1000);
+  stamp('old-chief', now - 100);
+  stamp('new-chief', now - 5);
+  const r = f.run(f.good, { BRIDGE_ROOT: root, STUB_OUT: CALL_FAIL, STUB_RC: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(alerts(f).length, 0);
+  assert.match(inboxText(root, 'new-chief'), /call-failed/);
+  assert.equal(inboxText(root, 'old-chief'), '');
+});
+
+test('a call-failed alert with no chief inbox still pages the operator', () => {
+  const f = fixture();
+  const root = chiefBridge(f, []);
+  const r = f.run(f.good, { BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'gone-chief', STUB_OUT: BUDGET_CAP, STUB_RC: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(alerts(f).length, 1);
+  assert.match(alertText(f), /call-failed/);
+  assert.equal(existsSync(join(root, 'consoles', 'gone-chief.md')), false, 'a missing chief inbox was created');
+});
+
+test('an operator-actionable failure (credit gone, key rejected) pages the operator even with a chief inbox', () => {
+  for (const out of [CREDIT_LOW, JSON.stringify({ type: 'result', is_error: true, result: 'Invalid API key' })]) {
+    const f = fixture();
+    const root = chiefBridge(f, ['test-chief']);
+    const r = f.run(f.good, { BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'test-chief', STUB_OUT: out, STUB_RC: '1' });
+    assert.equal(r.status, 6, r.stderr);
+    assert.equal(alerts(f).length, 1, out);
+    assert.match(alertText(f), /rejected/);
+    assert.equal(inboxText(root, 'test-chief'), '', 'an operator-actionable alert reached the chief inbox');
+  }
+});
+
+test('every account out of credit still pages the operator, chief inbox present', () => {
+  const f = fixture();
+  const root = chiefBridge(f, ['test-chief']);
+  for (const a of ['A', 'B']) spawnSync(process.execPath, [STATE, 'exhausted'], { env: { ...f.env, HIMMEL_API_ACCOUNT: a }, encoding: 'utf8' });
+  const r = f.run(f.good, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'eval', BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'test-chief', STUB_OUT: CREDIT_LOW, STUB_RC: '1' });
+  assert.notEqual(r.status, 0, r.stderr);
+  assert.equal(inboxText(root, 'test-chief'), '', 'an all-accounts-exhausted alert reached the chief inbox');
+  assert.ok(alerts(f).length >= 1 || /alert: none sent/.test(r.stderr), r.stderr);
+});
+
 test('a call granted Edit, Write or Bash re-runs only after a refusal before any request; a run that started is never replayed', () => {
   for (const tools of ['Read,Edit', 'Write', 'Read,Grep,Bash']) {
     const f = fixture();

@@ -70,6 +70,11 @@
       "sample": "A worker wants scripts/cr/critic-panel.sh, held by another ticket. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket"
     },
     {
+      "kind": "api-lane-call-failed",
+      "class": "silent",
+      "sender": "scripts/api-lane/claude-api.sh"
+    },
+    {
       "kind": "denial-page",
       "class": "silent",
       "sender": "scripts/handover/chief-kit/chief-wait.sh",

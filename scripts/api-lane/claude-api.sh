@@ -27,7 +27,8 @@
 #        or any other non-zero call exit still happens first, then sends ONE Telegram alert (kind, account, class,
 #        exit code, one-line reason, never the key; one per kind and class per hour; never for the decision-525 auto
 #        refusal, which only appends one line to <alert dir>/policy-refusals.jsonl and never falls back) to the group
-#        chat, or to TELEGRAM_CHAT_ID when no group id is set; an alert with no chat id is a stderr line and one
+#        chat, or to TELEGRAM_CHAT_ID when no group id is set (a call-failed alert goes to a chief's bridge inbox instead,
+#        when one is armed; only a refused or rejected one, or no armed chief, pages the operator); an alert with no chat id is a stderr line and one
 #        <alert dir>/undelivered.jsonl row, never a stamp. Only with HIMMEL_API_FALLBACK=on does it then re-run the same prompt
 #        once as a subscription `claude -p`: native auth (every API-key variable removed), the same model,
 #        permission mode, tool grant and budget cap, --output-format json. The fallback runs only when the native
@@ -115,6 +116,39 @@ redact() {
   printf '%s' "${s:0:200}"
 }
 
+chief_inbox_alert() {
+  local line="$1"
+  [ -r "$REPO/scripts/lib/merge-block-alert.sh" ] || return 1
+  (
+    for v in $(compgen -e); do
+      case "$v" in ANTHROPIC_*|LQ_API_*|CLAUDE_CODE_OAUTH_TOKEN) unset "$v" ;; esac
+    done
+    # shellcheck source=scripts/lib/merge-block-alert.sh
+    . "$REPO/scripts/lib/merge-block-alert.sh" || exit 1
+    [ "${HIMMEL_TEST_FIXTURE:-}" != 1 ] || [ -n "${BRIDGE_ROOT:-}" ] || exit 1
+    root="${BRIDGE_ROOT:-${HOME:-/tmp}/.claude/handover/bridge}"
+    guard_rc=0
+    bash "$REPO/scripts/lib/test-run-guard" check --quiet api-lane-alert-route "$root" || guard_rc=$?
+    [ "$guard_rc" != 77 ] || exit 1
+    file=""
+    if f="$(_mba_chief_inbox_path "$root" "${HIMMEL_CONSOLE_NAME:-}")" && [ -f "$f" ]; then
+      file="$f"
+    else
+      now="$(date +%s)"; newest=-1
+      for w in "$root"/consoles/*.md.wait; do
+        [ -e "$w" ] || continue
+        f="$(_mba_chief_inbox_path "$root" "$(basename "$w" .md.wait)")" && [ -f "$f" ] || continue
+        hb="$(sed -n 's/^hb=\([0-9][0-9]*\) .*/\1/p' "$w" 2>/dev/null | head -n 1)"
+        case "$hb" in ''|*[!0-9]*) continue ;; esac
+        [ "$hb" -le "$now" ] && [ $((now - hb)) -lt 1800 ] && [ "$hb" -gt "$newest" ] || continue
+        newest="$hb"; file="$f"
+      done
+    fi
+    [ -n "$file" ] || exit 1
+    _mba_append_if_exists "$file" "$(printf -- '- %s [api-lane call-failed] %s' "$(date +%H:%M)" "$line" | tr '\n' ' ')"
+  ) </dev/null >/dev/null 2>&1
+}
+
 # ONE alert per kind and class per hour, through the existing Telegram notification sender; never blocks the fallback
 send_alert() {
   local class="$1" rc="$2" reason="$3" decision="$4" dir stamp account msg repo_name env_root sent why="" undelivered
@@ -129,6 +163,11 @@ send_alert() {
   account="?"
   { llm_backend_api_account_ok "${HIMMEL_API_ACCOUNT:-}" || [ "${HIMMEL_API_ACCOUNT:-}" = auto ]; } && account="$HIMMEL_API_ACCOUNT"
   msg="kind $KIND_SAFE, account $account, $class (exit $rc): $(redact "$reason"); fallback: $(redact "$decision")"
+  if [ "$class" = call-failed ] && chief_inbox_alert "$msg"; then
+    touch "$stamp" 2>/dev/null
+    echo "claude-api: alert: $class sent to the chief inbox, not the operator (kind $KIND_SAFE)" >&2
+    return 0
+  fi
   # the caller's repo names the message, so a salus caller gets the sender's content-free line
   repo_name="$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")"
   env_root="$(cd "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/.." 2>/dev/null && pwd)"
