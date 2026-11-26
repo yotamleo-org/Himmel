@@ -13,11 +13,7 @@ import { PLACEHOLDER } from '../release/operator-acts.js';
 import type { JiraIssue } from '../types.js';
 
 // A version's scope is frozen by two description lines, `frozen: <date>` and
-// `frozen-keys: A,B`; the open set also carries label `scope-<v>`. version-ready
-// prints the checks before a cut as PASS/FAIL rows and exits 1 on a FAIL row after
-// overrides (a chief overrule needs a reason, which lands in the admissions ledger).
-// A key not in the frozen list was admitted after the freeze and needs a ledger row.
-// `--out` also writes the file READY row 3 reads.
+// `frozen-keys: A,B`; the open set also carries label `scope-<v>`.
 
 type Issue = JiraIssue & {
   fields: JiraIssue['fields'] & { labels?: string[]; status: { name: string; statusCategory?: { key?: string } } };
