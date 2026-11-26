@@ -130,47 +130,25 @@ else
   fail "seeded settings are not hook-free bare-profile settings"
 fi
 
-mkdir -p "$WS/mode-bin"
-cat > "$WS/mode-bin/chmod" <<'SH'
-#!/usr/bin/env bash
-set -u
-if [ "$#" -eq 2 ] && [ "$1" = "600" ] && [ "$2" = "$MODE_CREDENTIAL_DEST" ]; then
-  : > "$MODE_CHMOD_OBSERVED"
-fi
-exec "$REAL_CHMOD" "$@"
-SH
-chmod +x "$WS/mode-bin/chmod"
-REAL_CHMOD="$(command -v chmod)"
-MODE_CHMOD_OBSERVED="$WS/mode-chmod-observed"
+rm -f "$TEST_HOME/.claude-graphify/.credentials.json"
+printf 'legacy-copy\n' > "$TEST_HOME/.claude-graphify/.credentials.json"
 chmod 666 "$TEST_HOME/.claude-graphify/.credentials.json"
-credential_mode_before="$(stat -c %a "$TEST_HOME/.claude-graphify/.credentials.json" 2>/dev/null || stat -f %Lp "$TEST_HOME/.claude-graphify/.credentials.json" 2>/dev/null)"
+chmod 640 "$TEST_HOME/.claude/.credentials.json"
 printf 'subscription-auth-v2\n' > "$TEST_HOME/.claude/.credentials.json"
 printf '{"marker":"reseeded"}\n' > "$TEST_HOME/.claude/settings.json"
 touch -t 202001010000 "$TEST_HOME/.claude-graphify/.seeded"
-if HOME="$TEST_HOME" \
-   GRAPHIFY_CLAUDE_CONFIG_DIR="$TEST_HOME/.claude-graphify" \
-   PATH="$WS/mode-bin:$PATH" \
-   REAL_CHMOD="$REAL_CHMOD" \
-   MODE_CREDENTIAL_DEST="$TEST_HOME/.claude-graphify/.credentials.json" \
-   MODE_CHMOD_OBSERVED="$MODE_CHMOD_OBSERVED" \
-   bash "$HELPER" \
+if run_seed \
    && grep -q 'subscription-auth-v2' "$TEST_HOME/.claude-graphify/.credentials.json" \
    && grep -q 'reseeded' "$TEST_HOME/.claude-graphify/settings.json"; then
   pass "stale source credentials/settings trigger an automatic reseed"
 else
   fail "stale seed did not refresh credentials and settings"
 fi
-credential_mode_after="$(stat -c %a "$TEST_HOME/.claude-graphify/.credentials.json" 2>/dev/null || stat -f %Lp "$TEST_HOME/.claude-graphify/.credentials.json" 2>/dev/null)"
-credential_mode_ok=0
-if [ -e "$MODE_CHMOD_OBSERVED" ]; then
-  if [ "$credential_mode_before" != "666" ] || [ "$credential_mode_after" = "600" ]; then
-    credential_mode_ok=1
-  fi
-fi
-if [ "$credential_mode_ok" -eq 1 ]; then
-  pass "reseed explicitly restricts an existing credential destination to mode 600"
+credential_mode_after="$(stat -c %a "$TEST_HOME/.claude/.credentials.json" 2>/dev/null || stat -f %Lp "$TEST_HOME/.claude/.credentials.json" 2>/dev/null)"
+if [ -L "$TEST_HOME/.claude-graphify/.credentials.json" ] && [ "$credential_mode_after" = "640" ]; then
+  pass "reseed replaces a loose-mode credentials copy with a link and leaves the source mode alone"
 else
-  fail "credential mode was not explicitly tightened to 600 (saw $credential_mode_before -> $credential_mode_after)"
+  fail "reseed left a loose copy or changed the source mode (source mode=$credential_mode_after)"
 fi
 
 DELETED_SETTINGS_HOME="$WS/deleted-settings-home"
@@ -539,6 +517,81 @@ if [ "$rc_a" -eq 0 ] && [ "$rc_b" -eq 0 ] \
   pass "concurrent first seeds serialize and release the seed lock"
 else
   fail "concurrent seeds did not compose (rc=$rc_a/$rc_b): $(cat "$WS/concurrent-a.log" "$WS/concurrent-b.log")"
+fi
+
+ROTATE_HOME="$WS/rotate-home"
+setup_home "$ROTATE_HOME"
+TEST_HOME="$ROTATE_HOME"
+run_seed >/dev/null 2>&1 || fail "rotation: initial seed failed"
+mkdir -p "$WS/rotate-bin"
+cat > "$WS/rotate-bin/claude" <<'SH'
+#!/usr/bin/env bash
+if cmp -s "$ROTATE_SRC" "$CLAUDE_CONFIG_DIR/.credentials.json"; then
+  echo '{"type":"result","is_error":false,"result":"ok"}'
+else
+  echo '{"type":"result","is_error":true,"result":"Failed to authenticate: stale login copy"}'; exit 1
+fi
+SH
+chmod +x "$WS/rotate-bin/claude"
+rotate_results=""
+for chunk in 1 2 3 4 5; do
+  if [ "$chunk" -eq 3 ]; then printf 'subscription-auth-rotated\n' > "$ROTATE_HOME/.claude/.credentials.json"; fi
+  if PATH="$WS/rotate-bin:$PATH" ROTATE_SRC="$ROTATE_HOME/.claude/.credentials.json" \
+     CLAUDE_CONFIG_DIR="$ROTATE_HOME/.claude-graphify" claude -p >/dev/null 2>&1; then
+    rotate_results="$rotate_results ok"
+  else
+    rotate_results="$rotate_results fail"
+  fi
+done
+if [ "$rotate_results" = " ok ok ok ok ok" ]; then
+  pass "chunks after the source login rotates mid-run still authenticate"
+else
+  fail "chunks after a mid-run source rotation failed:$rotate_results"
+fi
+if [ -L "$ROTATE_HOME/.claude-graphify/.credentials.json" ] \
+   && [ "$(readlink "$ROTATE_HOME/.claude-graphify/.credentials.json")" = "$ROTATE_HOME/.claude/.credentials.json" ]; then
+  pass "the dedicated config dir points at the source credentials instead of copying them"
+else
+  fail "the dedicated config dir holds its own copy of the credentials"
+fi
+rotate_mtime_before="$(stat -c %Y "$ROTATE_HOME/.claude-graphify/.seeded" 2>/dev/null || stat -f %m "$ROTATE_HOME/.claude-graphify/.seeded" 2>/dev/null)"
+sleep 1
+printf 'subscription-auth-rotated-again\n' > "$ROTATE_HOME/.claude/.credentials.json"
+run_seed >/dev/null 2>&1
+rotate_mtime_after="$(stat -c %Y "$ROTATE_HOME/.claude-graphify/.seeded" 2>/dev/null || stat -f %m "$ROTATE_HOME/.claude-graphify/.seeded" 2>/dev/null)"
+if [ "$rotate_mtime_before" = "$rotate_mtime_after" ]; then
+  pass "a rotated source login does not force a reseed"
+else
+  fail "a rotated source login reseeded the dedicated config dir"
+fi
+
+REFRESH="$HERE/refresh-graph-map.sh"
+FL_HOME="$WS/fail-line-home"
+setup_home "$FL_HOME"
+mkdir -p "$FL_HOME/.himmel" "$WS/fl-bin" "$WS/fl-corpus" "$WS/fl-maps" "$WS/fl-tmp"
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$FL_HOME/.himmel/config.json"
+printf '# x\n' > "$WS/fl-corpus/x.md"
+cat > "$WS/fl-bin/graphify" <<'SH'
+#!/usr/bin/env bash
+[ "$1" != "--version" ] || { echo "graphify 0.9.93"; exit 0; }
+echo "[graphify] chunk 1/1 failed: claude -p exited 1: Warning: this workspace has not been trusted"
+echo "[graphify] all semantic chunks failed for backend 'claude-cli'"
+exit 1
+SH
+cat > "$WS/fl-bin/claude" <<'SH'
+#!/usr/bin/env bash
+echo '{"type":"result","is_error":true,"result":"Failed to authenticate: OAuth session expired and could not be refreshed"}'; exit 1
+SH
+chmod +x "$WS/fl-bin/graphify" "$WS/fl-bin/claude"
+fl_out="$( env -u ANTHROPIC_BASE_URL -u ANTHROPIC_API_KEY HOME="$FL_HOME" TMPDIR="$WS/fl-tmp" GRAPHIFY_LEDGER="$WS/fl-ledger.jsonl" \
+  CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_CACHE="$WS/fl-no-cache.json" \
+  GRAPHIFY_MAP_BIN="$WS/fl-bin/graphify" PATH="$WS/fl-bin:$PATH" GRAPHIFY_CLAUDE_CONFIG_DIR="$FL_HOME/.claude-graphify" \
+  bash "$REFRESH" --name flcause --corpus-root "$WS/fl-corpus" --backend claude-cli \
+  --maps-dir "$WS/fl-maps" --title "Fail Line" --slug fail-line --corpus-tag flcause 2>&1 )"
+if printf '%s\n' "$fl_out" | grep -q 'chunk failed: claude -p reports: .*OAuth session expired'; then
+  pass "a failed chunk is followed by the claude -p error text"
+else
+  fail "no chunk failure line carried the claude -p error text: $fl_out"
 fi
 
 if [ "$FAILS" -ne 0 ]; then
