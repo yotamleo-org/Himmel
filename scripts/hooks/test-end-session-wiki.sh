@@ -216,6 +216,57 @@ else
 fi
 rm -rf "$SB"
 
+run_hook_curlshim() {
+    local sb="$1" payload
+    mkdir -p "$sb/shim"
+    printf '#!/bin/sh\necho called >> "%s/curl.log"\nprintf 204\n' "$sb" > "$sb/shim/curl"
+    chmod +x "$sb/shim/curl"
+    payload=$(printf '{"transcript_path":"%s","cwd":"%s","session_id":"t","reason":"other"}' \
+        "$sb/transcript.jsonl" "$sb/proj")
+    printf '%s' "$payload" | \
+        env OSTYPE="linux-gnu" OS="" HOME="$sb/home" PATH="$sb/shim:$PATH" \
+            LUNA_VAULT_PATH="$sb/vault" OBSIDIAN_API_KEY="dummy-key" CLAUDE_PROJECT_DIR="$sb/proj" \
+        bash "$HOOK"
+    echo "$?"
+}
+SB="$(make_sandbox)"
+mkdir -p "$SB/proj/.claude" "$SB/home/.claude/logs/end-session-wiki"
+printf '%s\n' '{"write_order":"disk-first"}' > "$SB/proj/.claude/end-session-wiki.json"
+printf 'stale\n' > "$(marker_path_for "$SB/home" "$SB/proj")"
+RC="$(run_hook_curlshim "$SB")"
+if [ "$RC" = "0" ]; then pass "hook exits 0 (write_order disk-first)"; else fail "disk-first exit was $RC, expected 0"; fi
+if [ -n "$(find "$SB/vault/sessions" -type f -name '*.md' 2>/dev/null | head -1)" ]; then
+    pass "disk-first wrote the note to disk with an API key present"
+else
+    fail "disk-first wrote no note under $SB/vault/sessions"
+fi
+if [ ! -e "$SB/curl.log" ]; then pass "disk-first made no REST call"; else fail "disk-first called curl"; fi
+if grep -q 'wrote (local fs, disk-first)' "$(log_path_for "$SB/home" "$SB/proj")" 2>/dev/null \
+    && ! grep -q 'DEGRADED' "$(log_path_for "$SB/home" "$SB/proj")" 2>/dev/null; then
+    pass "disk-first logs its write and no DEGRADED line"
+else
+    fail "disk-first log is missing the write line or carries DEGRADED"
+fi
+if [ ! -e "$(marker_path_for "$SB/home" "$SB/proj")" ]; then pass "disk-first clears a stale degraded marker"; else fail "disk-first left the degraded marker"; fi
+rm -rf "$SB"
+
+SB="$(make_sandbox)"
+RC="$(run_hook_curlshim "$SB")"
+if [ "$RC" = "0" ] && [ -e "$SB/curl.log" ]; then pass "default write_order calls the REST API first"; else fail "default write_order made no REST call (rc $RC)"; fi
+rm -rf "$SB"
+
+SB="$(make_sandbox)"
+mkdir -p "$SB/proj/.claude"
+printf '%s\n' '{"write_order":"sideways"}' > "$SB/proj/.claude/end-session-wiki.json"
+RC="$(run_hook_curlshim "$SB")"
+if [ "$RC" = "0" ] && [ -e "$SB/curl.log" ] \
+    && grep -q "unknown write_order 'sideways' (using rest-first)" "$(log_path_for "$SB/home" "$SB/proj")" 2>/dev/null; then
+    pass "an unknown write_order is logged and behaves as rest-first"
+else
+    fail "unknown write_order was not logged or did not fall back to rest-first"
+fi
+rm -rf "$SB"
+
 # --- Case 3: dry-run writes no note file ------------------------------------
 SB="$(make_sandbox)"
 mkdir -p "$SB/proj/.claude"

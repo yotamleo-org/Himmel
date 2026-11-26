@@ -136,6 +136,26 @@ test("sendMessage reports a too-long message as not delivered and logs Telegram'
     expect(error).toHaveBeenCalledWith("[telegram] sendMessage 400 chat=***23: Bad Request: message is too long");
   } finally { error.mockRestore(); }
 });
+test("sendMessage sends a text over 4096 characters as ordered parts: reply on the first, markup on the last, a receipt per part", async () => {
+  const bodies: any[] = [];
+  const f = (async (_u: string, init: any) => { bodies.push(JSON.parse(init.body)); return Response.json({ ok: true, result: { message_id: bodies.length } }); }) as any;
+  const ids: number[] = [];
+  const markup = { force_reply: true };
+  expect(await sendMessage("T", 1, "word ".repeat(1500), f, async () => {}, id => { ids.push(id); }, 55, markup)).toBe(true);
+  expect(bodies.length).toBeGreaterThan(1);
+  expect(bodies.map(b => b.reply_parameters?.message_id)).toEqual([55, ...bodies.slice(1).map(() => undefined)]);
+  expect(bodies.map(b => b.reply_markup)).toEqual([...bodies.slice(0, -1).map(() => undefined), markup]);
+  expect(ids).toEqual(bodies.map((_, i) => i + 1));
+});
+test("sendMessage stops at the first part Telegram does not accept", async () => {
+  let calls = 0;
+  const f = (async () => { calls++; return calls === 2 ? new Response(JSON.stringify({ ok: false, description: "bad" }), { status: 400 }) : Response.json({ ok: true, result: { message_id: calls } }); }) as any;
+  const error = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    expect(await sendMessage("T", 1, "word ".repeat(3000), f, async () => {})).toBe(false);
+    expect(calls).toBe(2);
+  } finally { error.mockRestore(); }
+});
 // --- getFile + downloadFile ---
 import { getFile, downloadFile } from "./telegram-api";
 import { mkdtempSync, readFileSync } from "node:fs";

@@ -9,6 +9,8 @@
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_REPO="$(cd "$HERE/../.." && pwd)"
+# shellcheck source=/dev/null
+. "$HERE/../lib/portable-timeout.sh"
 FAILS=0
 pass() { echo "  ok: $1"; }
 fail() { echo "  FAIL: $1"; FAILS=$((FAILS+1)); }
