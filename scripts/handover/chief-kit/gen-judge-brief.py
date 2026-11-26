@@ -214,7 +214,7 @@ def persist_text(s):
 
 SEARCH_ALONE = ('Send each search as its own tool call, with no other call in the same response: '
                 'a call sent beside one that a hook rewrites is refused unrun. '
-                'Describe a credential shape in words and never paste one into a query: a token-shaped string, '
+                'Describe a credential shape in words and never paste one into a query: a GitHub-token-shaped string, '
                 'real or invented, leaves the station and is refused.')
 
 

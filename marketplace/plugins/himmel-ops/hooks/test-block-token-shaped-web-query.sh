@@ -108,6 +108,28 @@ tok=$(gh_token r "$good_sum")
 PROJ="$TMP/no-checkout" run_case "$(search_payload "x $tok")"
 refused "a checkout without detect-token-in-output.sh still refuses (built-in regex)"
 
+mkdir -p "$TMP/narrowed/scripts/hooks" "$TMP/invalid/scripts/hooks" "$TMP/nojq"
+printf "tok_re='(ghp_[0-9A-Za-z]{99})'\n" >"$TMP/narrowed/scripts/hooks/detect-token-in-output.sh"
+printf "tok_re='(['\n" >"$TMP/invalid/scripts/hooks/detect-token-in-output.sh"
+ln -s "$(command -v cat)" "$TMP/nojq/cat"
+tok=$(gh_token r "$good_sum")
+PROJ="$TMP/narrowed" run_case "$(search_payload "x $tok")"
+refused "a checkout whose detector regex is narrowed still refuses (built-in regex)"
+PROJ="$TMP/invalid" run_case "$(search_payload "x $tok")"
+refused "a checkout whose detector regex is invalid still refuses (built-in regex)"
+
+run_nojq() {
+    ERR=$(printf '%s' "$1" | env PATH="$TMP/nojq" CLAUDE_PROJECT_DIR="$REPO" WEB_TOKEN_QUERY_OK=0 "$BASH" "$PLUGIN_DIR/hooks/block-token-shaped-web-query.sh" 2>&1 >/dev/null)
+    RC=$?
+}
+run_nojq "$(search_payload "x $tok")"
+refused "without jq, a raw token is refused"
+bs=$(printf '\134')
+run_nojq "$(printf '{"tool_name":"WebSearch","tool_input":{"query":"x %su0067%s"}}' "$bs" "${tok:1}")"
+refused "without jq, a token hidden behind a JSON escape is refused"
+run_nojq "$(search_payload "latest bun release notes")"
+allowed "without jq, an ordinary query passes"
+
 run_case "$(search_payload "latest bun release notes")"
 allowed "an ordinary query passes"
 run_case "$(fetch_payload "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github")"
