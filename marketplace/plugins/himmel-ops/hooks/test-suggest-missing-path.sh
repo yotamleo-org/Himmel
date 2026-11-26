@@ -29,7 +29,12 @@ git init -q "$REPO"
 for d in a b c d e; do mkdir -p "$REPO/pkg/$d"; : >"$REPO/pkg/$d/index.md"; done
 : >"$HANDOVER/me/proj/proj-note.md"
 : >"$OUTSIDE/queue-lock.sh"
+mkdir -p "$REPO/old" "$REPO/new"
+: >"$REPO/old/stale-note.md"
+: >"$REPO/new/stale-note.md"
+: >"$REPO/docs/My Guide.md"
 git -C "$REPO" add -A
+rm "$REPO/old/stale-note.md"
 
 payload() {
     jq -n --arg t "$1" --arg e "$2" --arg c "$3" \
@@ -62,10 +67,10 @@ assert_contains() {
 }
 
 assert_empty() {
-    if [ -z "$2" ]; then
+    if [ -z "$2" ] && [ "${RC:-0}" = 0 ]; then
         echo "PASS $1"
     else
-        echo "FAIL $1 - expected no output"
+        echo "FAIL $1 - expected no output and exit 0, got rc=${RC:-0}"
         echo "  got: $2"
         FAILED=$((FAILED + 1))
     fi
@@ -93,6 +98,16 @@ assert_contains "moved file, quoted ls form: names the real path" "scripts/hando
 
 run_case "$(payload Bash "python3: can't open file '$REPO/tools/queue-lock.sh': [Errno 2] No such file or directory" "$REPO")"
 assert_contains "moved file, python form: names the real path" "scripts/handover/queue-lock.sh" "$OUT"
+
+run_case "$(payload Bash "cat: notes/stale-note.md: No such file or directory" "$REPO")"
+assert_contains "an index entry whose file is gone: the live file is named" "new/stale-note.md" "$OUT"
+case "$OUT" in
+    *old/stale-note.md*) echo "FAIL an index entry whose file is gone: the dead path is not named"; FAILED=$((FAILED + 1)) ;;
+    *) echo "PASS an index entry whose file is gone: the dead path is not named" ;;
+esac
+
+run_case "$(payload Bash "cat: guide/My Guide.md: No such file or directory" "$REPO")"
+assert_contains "a name with a space stays whole" "docs/My Guide.md" "$OUT"
 
 run_case "$(payload Bash "bash: $HANDOVER/me/proj-note.md: No such file or directory" "$REPO")"
 assert_contains "moved file under the handover root: names the real path" "$HANDOVER/me/proj/proj-note.md" "$OUT"

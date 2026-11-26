@@ -69,14 +69,14 @@ main() {
 
         matches=""
         if [ -n "$root" ]; then
-            case "$dir/" in "$root"/*) matches=$(git -C "$root" ls-files 2>/dev/null | awk -v b="$base" '{ n = split($0, a, "/"); if (a[n] == b) { print; if (++c == 3) exit } }') ;; esac
+            case "$dir/" in "$root"/*) matches=$(git -c core.quotePath=false -C "$root" ls-files 2>/dev/null | awk -v b="$base" '{ n = split($0, a, "/"); if (a[n] == b) { print; if (++c == 20) exit } }' | while IFS= read -r m; do [ -f "$root/$m" ] && printf '%s\n' "$m"; done | head -3) ;; esac
         fi
         if [ -z "$matches" ] && [ -n "$handover" ]; then
             case "$dir/" in "$handover"/*) matches=$(find "$handover" -maxdepth 6 -name .git -prune -o -type f -name "$base" -print 2>/dev/null | head -3) ;; esac
         fi
         [ -n "$matches" ] || continue
         hint="${hint}${hint:+
-}Missing path hint: ${path} does not exist; a file named ${base} exists at: $(printf '%s' "$matches" | head -3 | paste -sd ' ' - | sed 's/ /, /g')"
+}Missing path hint: ${path} does not exist; a file named ${base} exists at: $(printf '%s\n' "$matches" | awk 'NR > 1 { printf ", " } { printf "%s", $0 }')"
     done <<EOF
 $err
 EOF
