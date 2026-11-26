@@ -1610,7 +1610,7 @@ echo "ok: mcp-registered is scope-aware — project scope resolves .mcp.json, us
 # ── mcp-registered: the on-demand registry counts at user scope ─
 # graphify registers into ~/.config/himmel/mcp-on-demand.json (override
 # HIMMEL_MCP_ONDEMAND_FILE), never ~/.claude.json, so a user-scope probe must
-# read it too; a project-scope probe must not.
+# read it too; a project-scope graphify probe reads it as well, since a project adopt registers it there.
 mcp_od_home="$work/mcp-od-home"; mkdir -p "$mcp_od_home/.config/himmel"
 : > "$mcp_od_home/graphify-mcp-stub"
 chmod +x "$mcp_od_home/graphify-mcp-stub"
@@ -1622,14 +1622,14 @@ const graphifyItem = { id: 'graphify-mcp', probe: { type: 'mcp-registered', serv
 const env = Object.assign({}, process.env, { HOME: '$(winpath "$mcp_od_home")' });
 delete env.HIMMEL_MCP_ONDEMAND_FILE;
 const userHit = runProbe(graphifyItem, { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user', env });
-const projectMiss = runProbe(graphifyItem, { repoRoot: '$repo_root_w', targetPath: '$(winpath "$mcp_od_home")', scope: 'project', env });
-console.log(JSON.stringify({ userHit, projectMiss }));
+const projectHit = runProbe(graphifyItem, { repoRoot: '$repo_root_w', targetPath: '$(winpath "$mcp_od_home")', scope: 'project', env });
+console.log(JSON.stringify({ userHit, projectHit }));
 ")
 echo "$outOD" | jq -e '.userHit.actual == "present"' >/dev/null \
   || fail "mcp-registered user-scope probe should read a server registered only in the on-demand registry (got: $outOD)"
-echo "$outOD" | jq -e '.projectMiss.actual == "absent"' >/dev/null \
-  || fail "mcp-registered project-scope probe must NOT read the on-demand registry (got: $outOD)"
-echo "ok: mcp-registered user scope also reads the on-demand registry, project scope never does"
+echo "$outOD" | jq -e '.projectHit.actual == "present"' >/dev/null \
+  || fail "mcp-registered project-scope graphify probe should read the on-demand registry (got: $outOD)"
+echo "ok: mcp-registered graphify reads the on-demand registry at user scope and at project scope"
 
 # ── mcp-registered: deepening (bin + initMarker) ───────────────
 # Registration alone used to read 'present' even when the wrapped binary is

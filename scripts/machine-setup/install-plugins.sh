@@ -605,7 +605,7 @@ if [[ $STRIP_USER -eq 1 && -f "$USER_FILE" ]]; then
        | .enabledPlugins = ($ep | with_entries(select(.key as $k | $pre | has($k))))
        | if $absent and (.enabledPlugins | length) == 0 then del(.enabledPlugins) else . end
      ' "$USER_FILE" > "$USER_STRIP_TMP"; then
-    if cmp -s "$USER_FILE" "$USER_STRIP_TMP"; then
+    if [[ "$(jq -cS . "$USER_FILE")" == "$(jq -cS . "$USER_STRIP_TMP")" ]]; then
       rm -f "$USER_STRIP_TMP"
     else
       # prim-ok: the temp is a cp -p copy of the target, so the replace keeps its mode; atomic_write would reset it to 0600

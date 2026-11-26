@@ -1539,11 +1539,9 @@ function onDemandRegistryPath(ctx) {
 }
 
 function probeMcpRegistered(item, ctx) {
-  if (ctx.scope === 'project' && item.probe.server === 'graphify') {
-    return probeMcpConfigFile(item, ctx, onDemandRegistryPath(ctx));
-  }
   const primary = probeMcpConfigFile(item, ctx, mcpConfigPath(ctx));
-  if (ctx.scope === 'project' || primary.actual !== 'absent' || primary.configError) return primary;
+  const registryHolds = ctx.scope !== 'project' || item.probe.server === 'graphify';
+  if (!registryHolds || primary.actual !== 'absent' || primary.configError) return primary;
   const registryPath = onDemandRegistryPath(ctx);
   if (!fs.existsSync(registryPath)) return primary;
   const fromRegistry = probeMcpConfigFile(item, ctx, registryPath);
