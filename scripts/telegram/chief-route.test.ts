@@ -3667,7 +3667,8 @@ for (const order of [["plan:4", "spec:4"], ["spec:4", "plan:4"]]) {
     writeFileSync(ledgerFile(t.specs), rows.map(r => JSON.stringify(r)).join("\n") + "\n");
     for (const round of order) { const res = await reclassOf(true, t.specs, round); expect(res.err).toBe(""); expect(res.code).toBe(0); }
     expect(rowsOf(t.specs, "reclass")).toHaveLength(2);
-    expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).not.toContain("invalid:");
+    const st = await routeCli("round-status", CAP_KEY, "--specs", t.specs, "--json");
+    expect(st.code).toBe(0); expect(JSON.parse(st.out)).toMatchObject({ invalid: [], latest: { spec: { findings: [{ id: "P1", class: "regression" }] }, plan: { findings: [{ id: "Q1", class: "regression-unverified" }] } } });
   });
 }
 
@@ -3734,7 +3735,7 @@ test("CQ5k: round-reclass refuses when the recomputed classes would move a findi
 
 for (const fault of ["off-blocking", "severity", "untagged", "after-override", "twice", "wrong-sha", "reorder", "later-round"]) {
   test(`CQ6: the reader drops a reclass row that breaks a fold rule (${fault}), lists it as invalid, and keeps the stored classes`, async () => {
-    const t =fault === "after-override" ? await freshWrapped(["- **P9** (major) a plan finding still open"]) : await freshWrapped([], "- **n1** (minor) a note");
+    const t = fault === "after-override" ? await freshWrapped(["- **P9** (major) a plan finding still open"]) : await freshWrapped([], "- **n1** (minor) a note");
     const stored = () => ledgerRows(t.specs, CAP_KEY).findLast(r => r.row === "round" && r.critic === "spec").findings;
     if (fault !== "off-blocking") storeAsBase(t.specs);
     if (fault === "after-override") expect((await overrideOf(t.specs, "P9")).code).toBe(0);
