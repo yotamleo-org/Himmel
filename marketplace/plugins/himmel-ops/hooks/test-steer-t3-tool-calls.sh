@@ -39,7 +39,7 @@ send_payload() {
 
 run_case() {
     ERR=$(printf '%s' "$1" | env CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" CLAUDE_PROJECT_DIR="$PLUGIN_DIR" \
-        STUB_DIR="$TMP" T3_STEER_BIN="$STUB" T3_STEER_PROJECT="$TMP" ${2:+"$2"} \
+        STUB_DIR="$TMP" T3_STEER_BYPASS=0 T3_STEER_BIN="$STUB" T3_STEER_PROJECT="$TMP" ${2:+"$2"} \
         sh -c "${plugin_cmd:-exit 0}" 2>&1 >/dev/null)
     RC=$?
 }
@@ -117,12 +117,22 @@ printf 'not json' >"$TMP/list.json"
 run_case "$(send_payload t-idle steer)"
 allowed "an unreadable thread list passes (fail open)"
 
+cat >"$TMP/list.json" <<'EOF'
+[{"threadId":"t-idle","title":"idle one","status":"idle","settled":false},
+ {"threadId":"t-new","title":"new status","status":"warming","settled":false}]
+EOF
+run_case "$(send_payload t-idle steer)"
+refused "steer on an idle thread, valid list again" "no mode"
+
 run_case "$(send_payload t-idle steer)" "T3_STEER_BIN=$TMP/missing"
 allowed "a missing t3 CLI passes (fail open)"
 
-cat >"$TMP/list.json" <<'EOF'
-[{"threadId":"t-idle","title":"idle one","status":"idle","settled":false}]
-EOF
+run_case "$(send_payload t-new steer)"
+allowed "a status the hook does not know passes (fail open)"
+
+run_case "$(wait_payload '["b001oqmbs\n"]')"
+refused "an id with a trailing newline" "run_in_background"
+
 run_case "$(send_payload t-idle steer)" "T3_STEER_BYPASS=1"
 allowed "T3_STEER_BYPASS=1 passes a refused steer"
 

@@ -64,8 +64,8 @@ right one:
 
 | Call | Refused when | The deny names |
 |---|---|---|
-| `t3_background_wait` | a `taskIds` entry is not a string starting with `b` (an Agent id, a placeholder, an empty or non-string entry) | waiting for the subagent's result message, or starting the command with `run_in_background` and passing its id |
-| `t3_thread_send` | `mode` is `steer` and `t3 thread list --json` lists the target thread as anything but running | the same send with no `mode` |
+| `t3_background_wait` | a `taskIds` entry is not a whole string of `b` plus at least six lowercase letters or digits (an Agent id, a placeholder, an empty or non-string entry) | waiting for the subagent's result message, or starting the command with `run_in_background` and passing its id |
+| `t3_thread_send` | `mode` is `steer` and `t3 thread list --json` lists the target thread as idle, completed, interrupted, cancelled, error or failed (any other status passes) | the same send with no `mode` |
 
 It is a workflow nudge, so it fails **open**: no `jq`, input it cannot parse, a missing or failing `t3` CLI, or a
 thread absent from the list all allow the call. It cannot see a finished task (rule 1) or a thread that ends

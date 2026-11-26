@@ -4,15 +4,16 @@
 # and names the right one. The rules: docs/internals/t3-tool-call-rules.md.
 #
 #   t3_background_wait  taskIds entries must be background Bash or Monitor task ids
-#                       (`b` plus lowercase letters and digits, as the tool that
-#                       started the task printed). An Agent id (`a` plus hex), a
-#                       placeholder or any other string is refused: the right
-#                       call for a subagent is to wait for its result message.
+#                       (`b` plus at least six lowercase letters and digits, as the
+#                       tool that started the task printed). An Agent id (`a` plus
+#                       hex), a placeholder or any other string is refused: the
+#                       right call for a subagent is to wait for its result message.
 #   t3_thread_send      mode "steer" needs a thread whose turn is running. The
 #                       target's status is read with `t3 thread list --json`; a
-#                       thread that is listed and not running is refused: the
-#                       right call is the same send with no mode (it queues, or
-#                       starts a turn on an idle thread, and unsettles it).
+#                       thread listed as idle, completed, interrupted, cancelled,
+#                       error or failed is refused: the right call is the same
+#                       send with no mode (it queues, or starts a turn on an idle
+#                       thread, and unsettles it). Any other status is allowed.
 #
 # Delivered by the himmel-ops PLUGIN lane only. Self-contained: sources nothing.
 #
@@ -47,7 +48,7 @@ case "$tool" in
         bad=$(printf '%s' "$input" | jq -r '
             (.tool_input // {}) | if type == "object" then .taskIds else null end
             | if type == "array" then .[] else empty end
-            | select((type == "string" and test("^b[a-z0-9]{6,}$")) | not) | tojson' 2>/dev/null) || exit 0
+            | select((type == "string" and test("\\Ab[a-z0-9]{6,}\\z")) | not) | tojson' 2>/dev/null) || exit 0
         [ -n "$bad" ] || exit 0
         list=$(printf '%s' "$bad" | awk 'NR > 1 { printf ", " } { printf "%s", $0 }')
         deny "t3_background_wait takes the id of a running background Bash command or Monitor (it starts with b, e.g. b001oqmbs), and these are not: ${list}. An Agent id (starts with a) or a placeholder never works here. To wait on a subagent, end your turn and its result arrives as a message; to wait on a command, start it with Bash run_in_background (or Monitor) and pass the id that call printed."
@@ -73,7 +74,7 @@ case "$tool" in
         status=$(printf '%s' "$list" | jq -r --arg id "$tid" '
             if type == "array" then ([.[] | select(.threadId == $id)] | first | .status // empty | if type == "string" then . else empty end) else empty end' 2>/dev/null) || exit 0
         [ -n "$status" ] || exit 0
-        case "$status" in running | starting | active) exit 0 ;; esac
+        case "$status" in idle | completed | interrupted | cancelled | error | failed) ;; *) exit 0 ;; esac
         deny "t3_thread_send with mode \"steer\" needs a thread whose turn is running, and thread ${tid} is ${status}. Send the same message with no mode: it starts a turn on an idle thread (and unsettles it) or queues behind a running one."
         ;;
 esac
