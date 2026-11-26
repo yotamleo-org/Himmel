@@ -160,7 +160,7 @@ cat > "$tmp/bus" <<'STUB'
 [ "$1" = send ] || exit 2
 if [ "${STUB_BUS_TOKFAIL:-0}" = 1 ]; then
     echo send >> "$STUB_BUS_DIR/sends"
-    printf 'bus: rejected token %s: %s\n' "$(sed -n 's/^Your token `\(.*\)`\.$/\1/p' "$3")" "$(tr '\n' ' ' < "$3")" >&2; exit 1
+    printf 'bus: rejected token %s: %s\n' "$(sed -n 's/^Your token `\(.*\)`\.$/\1/p' "$3")" "$(tr '\n' ' ' < "$3")" >&2; exit 1  # read-sink-ok: the bus stub reads the message file auto-go.sh hands it, inside the suite's temp dir
 fi
 printf '%s\n' "$2" > "$STUB_BUS_DIR/to"
 cp "$3" "$STUB_BUS_DIR/body"

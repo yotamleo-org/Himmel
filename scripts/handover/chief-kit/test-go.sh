@@ -1327,7 +1327,7 @@ go33() {
 }
 nrec33() { if [ -f "$BUSLOG33" ]; then wc -l < "$BUSLOG33" | tr -d ' '; else echo 0; fi; }
 tokleak33() {
-  { printf '%s\n' "$out33" | grep -v '^SENDMESSAGE to='; printf '%s\n' "$err33"; cat "$GO33" 2>/dev/null
+  { printf '%s\n' "$out33" | grep -v '^SENDMESSAGE to='; printf '%s\n' "$err33"; cat "$GO33" 2>/dev/null  # read-sink-ok: the suite's own GO file under its temp root
     find "$ROOT33" -path '*/verdicts/*' -type f -exec cat {} + 2>/dev/null; } | grep -cE "$TOK33|$BTOK33" || true
 }
 line33() { printf '%s\n' "$out33" | sed -n "${1}p"; }
@@ -1339,7 +1339,7 @@ msg33() {
 fx33; go33 --doc "$C33" --contract yes 42 "$SHA"
 check "GD1: exit 0" "$rc33" "0"
 check "GD1: one bus record, to N1's session" "$(cat "$BUSLOG33" 2>/dev/null)" "send $STEM33"
-check "GD1: the body names the merge and quotes the Live state token" "$(cat "$BODY33" 2>/dev/null)" "$(msg33 "$TOK33" " --jira-transition")"
+check "GD1: the body names the merge and quotes the Live state token" "$(cat "$BODY33" 2>/dev/null)" "$(msg33 "$TOK33" " --jira-transition")"  # read-sink-ok: the bus stub's copy of the body, inside the suite's temp dir
 check "GD1: stdout is SENT, then the GO path" "$out33" "SENT 42 $H833 to N1 bus=#7"$'\n'"$GO33"
 check "GD1: no token in stdout, stderr, the GO file or the record" "$(tokleak33)" "0"
 fx33; READY_STUB_HEAD=0000000000000000000000000000000000000000 go33 --doc "$C33" --contract yes 42 "$SHA"
@@ -1351,7 +1351,7 @@ check "GD2: exit 0, the GO file exists, no record" "$rc33|$(test -f "$GO33" && e
 check "GD2c: the last stdout line is the GO path" "${out33##*$'\n'}" "$GO33"
 
 fx33; c33 "$C33" "workers: \`N1:NONCE-UNKNOWN:lock-n1:4242\`"; go33 --doc "$C33" --contract yes 42 "$SHA"
-check "GD3: a NONCE-UNKNOWN span -> the body quotes the brief's token" "$(cat "$BODY33" 2>/dev/null)" "$(msg33 "$BTOK33" " --jira-transition")"
+check "GD3: a NONCE-UNKNOWN span -> the body quotes the brief's token" "$(cat "$BODY33" 2>/dev/null)" "$(msg33 "$BTOK33" " --jira-transition")"  # read-sink-ok: the bus stub's copy of the body, inside the suite's temp dir
 fx33; c33 "$C33" "workers: \`N1:NONCE-UNKNOWN:lock-n1:4242\`"; w33 "$W33" N1 - "- 10:00 READY 42 $SHA GREEN"
 go33 --doc "$C33" --contract yes 42 "$SHA"
 check "GD3c: no usable token -> NOT-SENT no-token, no record" "$(line33 1)|$(nrec33)" "NOT-SENT 42 $H833 reason=no-token N1|0"
