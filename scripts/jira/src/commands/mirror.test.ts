@@ -470,6 +470,14 @@ describe('mirror CLI verbs (RM3, RM5)', () => {
     expect(JSON.parse(readFileSync(join(root, '.cursor.json'), 'utf8'))).not.toHaveProperty('complete');
   });
 
+  it('--json without --status is refused with exit 2 and no request', async () => {
+    const stub: Stub = { issues: [], pageSize: 10, calls: [] };
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    expect(await run(stub, '--json')).toBe('');
+    expect(process.exitCode).toBe(2);
+    expect(stub.calls).toHaveLength(0);
+  });
+
   it('RM5: runMirror incrementalOnly on a repair-full cursor returns refused with no request', async () => {
     plant({ ...base, complete: false, repair: 'full' });
     const stub: Stub = { issues: [], pageSize: 10, calls: [] };

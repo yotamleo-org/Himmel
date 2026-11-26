@@ -742,6 +742,11 @@ hl_lint() {
     err="$(env BRIEF_LINT_MIRROR="$HL/$n" BRIEF_LINT_JIRA_CLI="$HL/stub/index.js" BRIEF_LINT_TEST_LOG="$HLLOG" "$@" 2>&1 >/dev/null)" || rc=$?
 }
 hl_n() { grep -c "$1" "$HLLOG" || true; }  # swallow-ok: grep -c exits 1 on a count of 0
+hl_alive() {
+    local s; s="$(ps -o stat= -p "$1" 2>/dev/null)" || return 1
+    case "$s" in ""|Z*) return 1 ;; esac
+    return 0
+}
 hl_first() { grep -n "$1" "$HLLOG" | head -1 | cut -d: -f1; }
 mk hl_brief '# QQQ-9441 — a heal row' "$PA" '> **Contract:** y' "$RES0"
 
@@ -788,7 +793,7 @@ hl_lint m6 BRIEF_LINT_TEST_HEAL=hang BRIEF_LINT_TEST_PIDS="$HL/m6.pids" BRIEF_LI
 took=$((SECONDS - t0)); alive=1
 for _ in 1 2 3 4 5 6 7 8 9 10; do
     alive=0; p1=""; p2=""; [ ! -r "$HL/m6.pids" ] || read -r p1 p2 < "$HL/m6.pids"  # read-sink-ok: the stub's own pid file
-    for p in $p1 $p2; do kill -0 "$p" 2>/dev/null && alive=1; done
+    for p in $p1 $p2; do hl_alive "$p" && alive=1; done
     [ "$alive" -eq 0 ] && break; sleep 0.5
 done
 lock_ok="$(python3 -I -c 'import fcntl,sys; f=open(sys.argv[1],"a"); fcntl.flock(f, fcntl.LOCK_EX|fcntl.LOCK_NB); print("free")' "$HL/m6.lock" 2>&1)"
@@ -802,7 +807,7 @@ kill -TERM "$h16" 2>/dev/null; wait "$h16" 2>/dev/null
 alive=1; p1=""; p2=""
 for _ in 1 2 3 4 5 6 7 8 9 10; do
     alive=0; p1=""; p2=""; [ ! -r "$HL/m16.pids" ] || read -r p1 p2 < "$HL/m16.pids"  # read-sink-ok: the stub's own pid file
-    for p in $p1 $p2; do kill -0 "$p" 2>/dev/null && alive=1; done
+    for p in $p1 $p2; do hl_alive "$p" && alive=1; done
     [ "$alive" -eq 0 ] && break; sleep 0.5
 done
 lock_ok="$(python3 -I -c 'import fcntl,sys; f=open(sys.argv[1],"a"); fcntl.flock(f, fcntl.LOCK_EX|fcntl.LOCK_NB); print("free")' "$HL/m16.lock" 2>&1)"

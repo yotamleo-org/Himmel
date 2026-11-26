@@ -406,7 +406,7 @@ describe('release bucket-check verdict', () => {
     });
 
     it('BC1f: a root with a space is single-quoted in the heal command and the repair kind is named', async () => {
-      const dir = join(root, 'my mirror', 'BKT');
+      const dir = join(root, 'my  mirror', 'BKT');
       mkdirSync(dir, { recursive: true });
       cursor({ complete: false, repair: 'full' }, dir);
       const [line] = await checkCli(['BKT-1'], '/x/index.js', dir);

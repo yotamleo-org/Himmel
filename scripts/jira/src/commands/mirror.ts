@@ -352,6 +352,11 @@ export function registerMirror(program: Command, req: Req = request): void {
     .action(async (options: { root?: string; full?: boolean; status?: boolean; json?: boolean; repair?: boolean; qmd?: boolean }) => {
       const project = projectKey();
       const root = options.root ?? defaultRoot(project);
+      if (options.json && !options.status) {
+        console.error('jira mirror: --json goes with --status');
+        process.exitCode = 2;
+        return;
+      }
       if (options.status) {
         const age = mirrorAgeMinutes(root);
         if (options.json) {

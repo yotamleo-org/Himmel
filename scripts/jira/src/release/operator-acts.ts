@@ -263,7 +263,7 @@ export async function bucketCheck(env: Record<string, string | undefined>, keys:
 
 async function bucketLine(env: Record<string, string | undefined>, key: string, mirrorRoot: string, versionsPath: string,
   issues: Map<string, IssueSnap> | null, o: BucketOptions, state: MirrorState | null): Promise<string> {
-  const failed = (why: string) => `FAILED ${key} ${why.replace(/\s+/g, ' ')}`;
+  const failed = (why: string) => `FAILED ${key} ${why.replace(/[\r\n]+/g, ' ')}`;
   if (!ISSUE_KEY.test(key)) return failed('is not a ticket key');
   const project = key.split('-')[0];
   if (!issues && state?.complete === 'no') {
