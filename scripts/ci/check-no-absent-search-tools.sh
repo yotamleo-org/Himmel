@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# check-no-absent-search-tools.sh — no agent definition and no hook refusal text may send a session to
-# the Grep or Glob tool. Sessions here do not load those tools: a call to one fails with "No such tool
-# available" (114 wasted calls in 15 days), so a `tools:` line that lists them and a refusal that says
-# "Use the Glob tool" both steer into a dead end. The route is Bash: grep, git grep, find with -maxdepth,
-# git ls-files.
-#
 #   check-no-absent-search-tools.sh           scan the agent files and hook scripts, from the repo root
 #   check-no-absent-search-tools.sh FILE...   scan these files (*.md as an agent file, anything else as a hook script)
 #

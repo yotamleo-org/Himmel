@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Smoke test for scripts/ci/check-no-absent-search-tools.sh: the repo's agent files and hook refusals
-# name no Grep or Glob tool, and a planted one of each is refused.
-#
 # Usage: bash scripts/ci/test-check-no-absent-search-tools.sh
 # shellcheck disable=SC2016  # the planted hook lines are literal text, not expansions
 set -uo pipefail
