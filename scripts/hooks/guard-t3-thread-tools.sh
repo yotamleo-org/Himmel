@@ -8,7 +8,10 @@
 # env / environment (on the instance or its config) names a *_OK or *BYPASS*
 # variable (any case) or a flag in scripts/himmelctl/lib/bypass-flags.json, is
 # malformed (entry, config, environment entry name or launchArgs), or whose launchArgs carry
-# --dangerously-skip-permissions or bypassPermissions. Any other instance id is
+# --dangerously-skip-permissions or bypassPermissions. A maintainer-profile instance
+# (claudeAgent_maintainer-hooks or claudeAgent_maintainer-billed, each with an optional
+# _relay suffix) is a bypass instance by id, because its grant rides the profile's
+# settings file, which the scan above never sees. Any other instance id is
 # allowed, from any provider to any provider.
 #
 # Narrowing: .t3.instance_narrow in $HOME/.himmel/config.json, an array of
@@ -127,6 +130,10 @@ while IFS= read -r line; do
             case "$val" in
                 'non-string '*) bad_instances="$bad_instances  ${val}: not a string instance id"$'\n'; continue ;;
             esac
+            if jq -en --argjson v "$val" '$v | test("^claudeAgent_maintainer-(hooks|billed)(_relay)?$")' >/dev/null 2>&1; then
+                bad_instances="$bad_instances  ${val}: is a maintainer-profile instance (its hook bypass rides the profile's settings file)"$'\n'
+                continue
+            fi
             if [ -n "$settings_err" ]; then
                 bad_instances="$bad_instances  ${val}: whether it carries a bypass flag is unknown ($settings_err)"$'\n'
                 continue
