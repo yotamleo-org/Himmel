@@ -159,7 +159,11 @@ function loadRaw(): any {
 
 const pairingFile = () => join(homeDir(), ".himmel", "remote-setup", "pairing.json");
 
-function writePairing(): void {
+function writePairing(deps: Deps): void {
+  try { writePairingRecord(); } catch (e) { deps.out(`the pairing steps record could not be updated (${(e as Error).message}); the step itself is done`); }
+}
+
+function writePairingRecord(): void {
   if (!fs.existsSync(peersFile())) return;
   const raw = loadRaw();
   const stationKey = fs.existsSync(join(configDir(), STATION_KEY));
@@ -230,7 +234,7 @@ export async function add(peer: string, opts: AddOpts, deps: Deps): Promise<void
   const doc = existing ?? { operatorBotId, operatorChatId: chatId, bridgeRoot, himmelRoot, peers: {}, maxTextChars: 4000, addressing: "command" };
   doc.peers[peer] = entry;
   if (existing) replaceJson(peersFile(), doc); else writeNew(peersFile(), JSON.stringify(doc, null, 2) + "\n", 0o600);
-  writePairing();
+  writePairing(deps);
   deps.out(`added ${peer}; next: put PEER_BOT_TOKEN=<token> in ${join(C, "env")} (mode 0600), then follow the setup steps in docs/internals/peer-bridge.md and run: setup.ts confirm ${peer} <chatId>`);
 }
 
@@ -300,7 +304,7 @@ export async function confirm(peer: string, chatArg: string, deps: Deps): Promis
   deps.out(`chat: ${sanitize(String(chat.title ?? ""), 80)} (${chatId})`);
   p.chatId = chatId;
   replaceJson(peersFile(), raw);
-  writePairing();
+  writePairing(deps);
   submitSpool(peerDir(peer), { type: "confirm", chatId });
   deps.out(`confirmed ${peer}; the poller picks it up on its next tick`);
 }
@@ -320,7 +324,7 @@ export async function dm(deps: Deps): Promise<void> {
   if (fresh.operatorChatId !== raw.operatorChatId) refuse("peers.json changed its operator while you were in Telegram; run setup.ts dm again");
   fresh.operatorDmChatId = fresh.operatorChatId;
   replaceJson(peersFile(), fresh);
-  writePairing();
+  writePairing(deps);
   deps.out("peer escalations, drafts and their buttons now arrive in your chat with the peer bridge bot; the running poller picks this up by itself");
 }
 
@@ -336,7 +340,7 @@ export async function remove(peer: string, deps: Deps): Promise<void> {
   fs.rmSync(join(stateDir(), "desk", peer), { recursive: true, force: true });
   fs.rmSync(suitesFile(peer), { force: true });
   fs.rmSync(killedFile(peer), { force: true });
-  writePairing();
+  writePairing(deps);
   syncRunner(raw, deps);
   deps.out(`removed ${peer}; restart the poller to drop it`);
 }
@@ -352,7 +356,7 @@ export async function stationName(name: string, deps: Deps): Promise<void> {
   const raw = loadRaw();
   raw.self = { ...(raw.self ?? {}), stationName: name };
   replaceJson(peersFile(), raw);
-  writePairing();
+  writePairing(deps);
   deps.out(`our station name is ${name}`);
 }
 
@@ -376,7 +380,7 @@ export async function keygenCmd(mode: "new" | "rotate" | "activate" | "show", de
   } catch (e) {
     refuse(`keygen: ${(e as NodeJS.ErrnoException).code === "EEXIST" ? "that key already exists" : (e as Error).message}`);
   }
-  if (mode !== "show") writePairing();
+  if (mode !== "show") writePairing(deps);
 }
 
 export async function trust(peer: string, name: string, pub: string, deps: Deps): Promise<void> {
@@ -404,7 +408,7 @@ async function trustKey(peer: string, name: string, pub: string, deps: Deps): Pr
   theirs.stationName = name;
   theirs.keys = [...keys, { id, pub, addedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z") }];
   replaceJson(peersFile(), raw);
-  writePairing();
+  writePairing(deps);
   deps.out(`trusted ${peer} as ${name} with key ${id}; the running poller picks this up by itself`);
 }
 
@@ -425,7 +429,7 @@ export async function pair(peer: string, name: string | undefined, card: string 
   mkdir0700(configDir());
   let k: KeyInfo;
   try { k = currentKey(); } catch { k = keygen(); deps.out("created the station key"); }
-  writePairing();
+  writePairing(deps);
   deps.out(`pairing card: post this one line in the group you share with ${peer}:\n${pairCard(station, k.pub)}`);
   deps.out(`fingerprint: ${k.fingerprint}\nRead the fingerprint to the peer's operator by call or another messenger, never over the group.`);
   if (card === undefined) {
@@ -452,7 +456,7 @@ export async function untrust(peer: string, key: string | undefined, deps: Deps)
     p.theirs.keys = [];
   }
   replaceJson(peersFile(), raw);
-  writePairing();
+  writePairing(deps);
   deps.out(`${peer} now has ${p.theirs.keys.length} trusted key(s)`);
 }
 

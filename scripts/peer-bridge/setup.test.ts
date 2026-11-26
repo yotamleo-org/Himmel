@@ -563,6 +563,19 @@ t("the pairing record: pair writes our name and key, and --card their key; a sec
   expect(pairingSteps("second")).toEqual([true, true, false, false, false]);
 });
 
+t("the pairing record: a write that fails never stops the step it follows", async () => {
+  await addExample();
+  fs.rmSync(join(home, ".himmel", "remote-setup"), { recursive: true });
+  fs.writeFileSync(join(home, ".himmel", "remote-setup"), "not a directory");
+  const { deps, lines } = mk(stub());
+  await confirm("example", String(CHAT), deps);
+  expect(readPeersFile(peersFile()).peers.example.chatId).toBe(CHAT);
+  expect(spoolFiles().length).toBe(1);
+  expect(lines.join("\n")).toContain("pairing steps record could not be updated");
+  await remove("example", mk({ answers: ["yes"] }).deps);
+  expect(Object.keys(readPeersFile(peersFile()).peers)).toEqual([]);
+});
+
 t("the pairing record holds booleans and peer names only: no key, fingerprint, id, chat id or token", async () => {
   await addExample();
   await stationName("yotam", mk().deps);
