@@ -210,13 +210,64 @@ names_guarded_file() {
     return 1
 }
 
+CFG_REAL="${HOME:-/nonexistent}/.himmel/config.json"
+
+operand_clean() {
+    local w="${1//[\"\']/}" re='^[0-9]*[<>(]+(.*)$'
+    if [[ "$w" =~ $re ]]; then w="${BASH_REMATCH[1]}"; fi
+    w="${w#--target-directory=}"
+    w="${w%%[;&|)]*}"
+    case "$w" in
+        \~) w="$HOME" ;;
+        \~/*) w="$HOME/${w#\~/}" ;;
+    esac
+    w="${w/#\$\{HOME\}/$HOME}"
+    w="${w/#\$HOME/$HOME}"
+    OPERAND="$w"
+}
+
+names_guarded_physically() {
+    local text="$1" cwd="$2" w o res cfgr fcfg r n_slash=0 n_plain=0
+    local -a phys
+    phys=()
+    set -f
+    for w in $text; do
+        operand_clean "$w"; o="$OPERAND"
+        case "$o" in ""|-*) continue ;; esac
+        case "$o" in *'$'*|*'`'*|*'*'*|*'?'*|*'['*|*'{'*) continue ;; esac
+        case "$o" in
+            */*) [ "$n_slash" -lt 100 ] || continue; n_slash=$((n_slash + 1)) ;;
+            *) [ "$n_plain" -lt 100 ] || continue; n_plain=$((n_plain + 1)) ;;
+        esac
+        case "$o" in /*) ;; *) o="$cwd/$o" ;; esac
+        phys[${#phys[@]}]="$o"
+    done
+    set +f
+    [ "${#phys[@]}" -gt 0 ] || return 1
+    res=$(hook_resolve_m "${phys[@]}") || deny "a path operand could not be resolved (fail-closed)"
+    cfgr=$(hook_resolve_m "$CFG_REAL") || deny "the config path could not be resolved (fail-closed)"
+    fold_to "$cfgr"; fcfg="$FOLDED"
+    while IFS= read -r r; do
+        [ -n "$r" ] || continue
+        names_guarded_file "$r" && return 0
+        fold_to "$r"
+        if [ "$DARWIN" = 1 ] && names_guarded_file "$FOLDED"; then return 0; fi
+        if [ -n "$fcfg" ] && [ "$FOLDED" = "$fcfg" ]; then return 0; fi
+    done <<EOF
+$res
+EOF
+    return 1
+}
+
 if ! command -v jq >/dev/null 2>&1; then
     # No parser: raw-text scan, deny only a mention of the subject.
     names_guarded_file "$input" && deny "jq not found and the payload names a guarded .himmel config file (fail-closed)"
+    names_guarded_physically "$input" "$PWD" && deny "jq not found and a path in the payload resolves to a guarded .himmel config file (fail-closed)"
     exit 0
 fi
 if ! printf '%s' "$input" | jq -e 'type == "object"' >/dev/null 2>&1; then
     names_guarded_file "$input" && deny "unparseable payload names a guarded .himmel config file (fail-closed)"
+    names_guarded_physically "$input" "$PWD" && deny "unparseable payload has a path that resolves to a guarded .himmel config file (fail-closed)"
     exit 0
 fi
 
@@ -524,20 +575,6 @@ fi
 cmd_cwd=$(printf '%s' "$input" | jq -r '.cwd // ""') || deny "the payload cwd could not be read (fail-closed)"
 [ -n "$cmd_cwd" ] || cmd_cwd="$PWD"
 
-operand_clean() {
-    local w="${1//[\"\']/}" re='^[0-9]*[<>(]+(.*)$'
-    if [[ "$w" =~ $re ]]; then w="${BASH_REMATCH[1]}"; fi
-    w="${w#--target-directory=}"
-    w="${w%%[;&|)]*}"
-    case "$w" in
-        \~) w="$HOME" ;;
-        \~/*) w="$HOME/${w#\~/}" ;;
-    esac
-    w="${w/#\$\{HOME\}/$HOME}"
-    w="${w/#\$HOME/$HOME}"
-    OPERAND="$w"
-}
-
 config_dir_operand() {
     local o="$1" f r
     while :; do
@@ -607,37 +644,8 @@ if config_dir_destination; then
     deny "$DEST_VERB onto a config directory replaces the files in it without naming one (the operator's ~/.himmel holds config.json and the station config): copy single named files with the file tools, or ask the operator to do it at their own prompt"
 fi
 
-phys_names=0
 if ! names_guarded_file "$cmd" && ! names_guarded_file "$lc"; then
-    phys=() n_slash=0 n_plain=0
-    set -f
-    for _w in $cmd; do
-        operand_clean "$_w"; _o="$OPERAND"
-        case "$_o" in ""|-*) continue ;; esac
-        case "$_o" in *'$'*|*'`'*|*'*'*|*'?'*|*'['*|*'{'*) continue ;; esac
-        case "$_o" in
-            */*) [ "$n_slash" -lt 100 ] || continue; n_slash=$((n_slash + 1)) ;;
-            *) [ "$n_plain" -lt 100 ] || continue; n_plain=$((n_plain + 1)) ;;
-        esac
-        case "$_o" in /*) ;; *) _o="$cmd_cwd/$_o" ;; esac
-        phys[${#phys[@]}]="$_o"
-    done
-    set +f
-    if [ "${#phys[@]}" -gt 0 ]; then
-        _res=$(hook_resolve_m "${phys[@]}") || deny "a path operand could not be resolved (fail-closed)"
-        _cfgr=$(hook_resolve_m "$CFG_REAL") || deny "the config path could not be resolved (fail-closed)"
-        fold_to "$_cfgr"; _fcfg="$FOLDED"
-        while IFS= read -r _r; do
-            [ -n "$_r" ] || continue
-            if names_guarded_file "$_r"; then phys_names=1; break; fi
-            fold_to "$_r"
-            if [ "$DARWIN" = 1 ] && names_guarded_file "$FOLDED"; then phys_names=1; break; fi
-            if [ -n "$_fcfg" ] && [ "$FOLDED" = "$_fcfg" ]; then phys_names=1; break; fi
-        done <<EOF
-$_res
-EOF
-    fi
-    [ "$phys_names" = 1 ] || exit 0
+    names_guarded_physically "$cmd" "$cmd_cwd" || exit 0
 fi
 # rm/mv/unlink as a command word: every such command denies below, so the row is
 # written from deny(). The first word naming a guarded file is the row's path.
