@@ -60,7 +60,7 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
 
   The four records run only from the chief's console (`HIMMEL_CONSOLE=1`), each with `--specs <bucket>/specs` like
   `closure-pack` and `round-status`, and each is checked again on every read: `round-override <KEY> --findings <id,...> --why "<line>" --chief <session>`, once per ticket, ever, naming
-  open blocking ids; `round-reclass <KEY> --round <spec|plan>:<n> --why "<line>" --chief <session>`, once per closure round, which re-classes a closure round stored before a classifier fix towards blocking and is refused once any record follows that round; `round-critical <KEY> --finding <id> --decision <d> --quote "<operator words>" [--no-round]`, the
+  open blocking ids; `round-reclass <KEY> --round <spec|plan>:<n> --why "<line>" --chief <session>`, once per closure round, which re-classes a closure round stored before a classifier fix towards blocking and is refused once a `reset`, `critical`, `override` or `extension` record, or a later round or re-class of the same critic, follows that round; `round-critical <KEY> --finding <id> --decision <d> --quote "<operator words>" [--no-round]`, the
   operator's ruling on an operator-critical finding, which closes it and, without `--no-round`, also opens one
   further writer round; `round-critical <KEY> --decision <d> --quote "<operator words>" --closure`, with no `--finding`,
   the operator's yes to one more round when no finding is operator-critical, which opens exactly the next writer round

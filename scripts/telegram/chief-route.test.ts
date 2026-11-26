@@ -3748,6 +3748,7 @@ test("CQ6: the reader drops a reclass row that breaks a fold rule, lists it as i
     if (fault === "after-override" || fault === "wrong-sha") appendReclass(t.specs, up, fault === "wrong-sha" ? "0".repeat(64) : undefined);
     if (fault === "twice") { appendReclass(t.specs, up); appendReclass(t.specs, up); }
     expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).toContain("invalid: reclass");
+    expect(JSON.parse((await routeCli("round-status", CAP_KEY, "--specs", t.specs, "--json")).out).latest.spec.findings).toEqual(fault === "twice" ? up : stored());
   }
 });
 
