@@ -11,7 +11,7 @@
 #
 # next-id: takes the next decision number, one more than the highest id held by a ledger row or
 # a specs/decisions/verbatim-decision-<id>-*.txt file (1 in a bucket with neither), and
-# reserves it with a placeholder row (status done, line "reserved by next-id", no verbatim file
+# reserves it with a placeholder row (status done, line "reserved by next-id; no ruling recorded yet", no verbatim file
 # yet) before printing it, all under the lock <dir>/specs/decisions/rulings-in-force.jsonl.lock,
 # so two sessions never take one number. Every session that writes a decision file takes its
 # number here and then writes the file and `record`s it; the first `record` replaces the
@@ -204,11 +204,8 @@ RESERVED = "reserved by next-id; no ruling recorded yet"
 
 def append(row):
     os.makedirs(os.path.dirname(ledger), exist_ok=True)
-    fd = os.open(ledger, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
-    try:
-        os.write(fd, (json.dumps(row, ensure_ascii=False) + "\n").encode())
-    finally:
-        os.close(fd)
+    with os.fdopen(os.open(ledger, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644), "wb") as f:
+        f.write((json.dumps(row, ensure_ascii=False) + "\n").encode())
 
 def take_lock():
     os.makedirs(os.path.dirname(ledger), exist_ok=True)
@@ -217,12 +214,8 @@ def take_lock():
     return fd
 
 def verbatim_files(n):
-    base = os.path.join(bucket, "specs", "decisions")
-    try:
-        names = os.listdir(base)
-    except OSError:
-        return []
-    return sorted("specs/decisions/" + f for f in names if re.fullmatch(r"verbatim-decision-%d-.*\.txt" % n, f))
+    names = os.listdir(os.path.join(bucket, "specs", "decisions"))
+    return sorted("specs/decisions/" + f for f in names if re.fullmatch(r"verbatim-decision-0*%d-.*\.txt" % n, f))
 
 def same_ruling(a, b):
     return re.sub(r"(-copied)?\.txt$", "", os.path.normpath(a)) == re.sub(r"(-copied)?\.txt$", "", os.path.normpath(b))
@@ -231,13 +224,10 @@ if verb == "next-id":
     lock = take_lock()
     known = load()[0] or {}
     ids = set(known)
-    try:
-        for f in os.listdir(os.path.join(bucket, "specs", "decisions")):
-            m = re.fullmatch(r"verbatim-decision-([0-9]+)-.*\.txt", f)
-            if m:
-                ids.add(int(m.group(1)))
-    except OSError:
-        pass
+    for f in os.listdir(os.path.join(bucket, "specs", "decisions")):
+        m = re.fullmatch(r"verbatim-decision-([0-9]+)-.*\.txt", f)
+        if m:
+            ids.add(int(m.group(1)))
     n = max(ids, default=0) + 1
     today = os.environ.get("RULINGS_IN_FORCE_TODAY") or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
     if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", today):

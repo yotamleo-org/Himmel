@@ -474,6 +474,10 @@ printf 'OPERATOR words.\n' > "$ND/verbatim-decision-1246-operator-11-23-ZZ.txt"
 printf 'OPERATOR words.\n' > "$ND/verbatim-decision-1246-operator-11-23-ZZ-copied.txt"
 out="$(nrec --id 1246 --status in-force --date 2026-11-23 --line 'ruling 1246' --path specs/decisions/verbatim-decision-1246-operator-11-23-ZZ.txt)"
 same "record: a reserved id is recorded with its real path, beside its -copied twin" "$(printf '%s\n' "$out" | tail -n 1)" "rc=0"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-0099-a.txt"
+printf 'OPERATOR words.\n' > "$ND/verbatim-decision-99-b.txt"
+out="$(nrec --id 99 --status in-force --date 2026-11-23 --line 'ruling 99' --path specs/decisions/verbatim-decision-99-b.txt)"
+same "record: a file that spells the id with leading zeros holds the id" "$(printf '%s\n' "$out" | tail -n 1)" "rc=1"
 
 printf 'not json\n' >> "$L"
 out="$(render "$blk")"; rc=$?
