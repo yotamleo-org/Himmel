@@ -4266,9 +4266,6 @@ function probeBridgePersistence(item, ctx) {
 
 // ── remote-peer (status item) ────────────────────────────────────────
 
-// Sessions run this probe and may not open the peer-bridge state or key dirs, so it reads only the record
-// `remote-setup.sh peer` keeps (peers-confirmed.json), setup.ts's pairing.json and the poller unit's state.
-// The one value it shows from a record is a peer name that passes setup.ts's PEER_NAME_RE.
 const REMOTE_PEER_NAME_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const REMOTE_PEER_UNIT = 'himmel-peer-bridge.service';
 const REMOTE_PEER_LABEL = 'com.himmel.peer-bridge';
