@@ -231,11 +231,10 @@
 #       head is not the certified sha. After the main-red gate, before
 #       any mutation, on --dry-run too.
 #   24  static re-check: the merge of the live base tip and the certified PR head
-#       (built in a throwaway repo) fails test-unwired-hooks,
-#       test-ledgers-registry, check-host-file-read-sinks --merge-ref or
-#       shell-lint --changed HEAD^1..HEAD, so two PRs that are each green alone
-#       are red together; the message names every failing check. Also when the
-#       base or head fetch, the certified-head match, git merge-tree, the
+#       (built in a throwaway repo) fails a static check the gate runs (the
+#       sr_run calls in the STATIC RE-CHECK GATE), so two PRs that are each
+#       green alone are red together; the message names every failing check.
+#       Also when the base or head fetch, the certified-head match, git merge-tree, the
 #       scratch repo or a check script (missing, or over its 150 s ceiling)
 #       fails, or neither timeout nor gtimeout is on PATH to enforce that
 #       ceiling. A textual conflict is not refused here: it defers to the
@@ -1648,10 +1647,8 @@ fi
 # sweep finds the pair only after the second merge. This is the one place that
 # sees the live base, so it builds the merge of the freshly fetched base tip and
 # the certified PR head in a throwaway repo (git merge-tree, the same tree the
-# squash will land) and runs the four static checks there:
-#   test-unwired-hooks, test-ledgers-registry, check-host-file-read-sinks
-#   --merge-ref, and shell-lint --changed HEAD^1..HEAD with the pinned shellcheck.
-# The scripts run are the merge result's own copies, which is what main's sweep
+# squash will land) and runs the static checks there. The scripts run are the
+# merge result's own copies, which is what main's sweep
 # runs after the merge. Fail CLOSED (exit 24, naming every failing check): an
 # unfetchable base or head, a head that is not the certified one, a merge-tree
 # error, a missing check script, a check that times out. A textual conflict is
@@ -1687,7 +1684,9 @@ sr_failed=""
 # sr_run <name> <script under the merge result> [args...] — one check, run from
 # the merge result's root with a per-check ceiling; a failing one is named.
 sr_run() {
-    local name="$1" script="$2" rc=0
+    local name script rc=0 link=""
+    if [ "$1" = "--refuse-link" ]; then link="$2"; shift 2; fi
+    name="$1" script="$2"
     shift 2
     if [ ! -e "$sr_tmp/work/$script" ] && [ ! -L "$sr_tmp/work/$script" ] && [ -n "$SOLO_TAG" ]; then
         echo "merge-on-green: static re-check: $name SKIPPED — $script is absent from the merge result (solo mode)." >&2
@@ -1699,7 +1698,12 @@ sr_run() {
         sr_failed="${sr_failed:+$sr_failed,}$name"
         return 0
     fi
-    ( cd "$sr_tmp/work" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE ${sr_timeout:+$sr_timeout} bash "$script" "$@" ) > "$sr_tmp/$name.out" 2>&1 || rc=$?
+    if [ -n "$link" ] && [ -L "$sr_tmp/work/$link" ]; then
+        printf '%s is a symlink in the merge result\n' "$link" > "$sr_tmp/$name.out"
+        sr_failed="${sr_failed:+$sr_failed,}$name"
+        return 0
+    fi
+    ( cd "$sr_tmp/work" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u CLAUDE_MD_MAX_BYTES -u BASH_ENV ${sr_timeout:+$sr_timeout} bash "$script" "$@" ) > "$sr_tmp/$name.out" 2>&1 || rc=$?
     if [ "$rc" -ne 0 ]; then
         case "$rc" in 124|137) printf 'timed out after 150s\n' >> "$sr_tmp/$name.out" ;; esac
         sr_failed="${sr_failed:+$sr_failed,}$name"
@@ -1780,6 +1784,8 @@ else
         sr_run test-unwired-hooks scripts/testing/test-unwired-hooks.sh
         sr_run test-ledgers-registry scripts/observability/test-ledgers-registry.sh
         sr_run check-host-file-read-sinks scripts/ci/check-host-file-read-sinks.sh --range --merge-ref
+        sr_run doc-byte-budgets scripts/ci/check-doc-byte-budgets.sh
+        sr_run --refuse-link CLAUDE.md claude-md-budget scripts/ci/check-claude-md-budget.sh CLAUDE.md
         # The same pin CI installs: shellcheck-py's rev from the pre-commit config,
         # compared on its first three fields against what `shellcheck --version` says.
         sr_pin=$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' "$sr_tmp/work/.pre-commit-config.yaml") || sr_pin=""

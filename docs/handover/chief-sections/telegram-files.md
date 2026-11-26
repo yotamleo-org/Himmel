@@ -58,14 +58,21 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   | 4 | round 3 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record without `--restores` (a finding ruling or a `--closure` round) opens it; it is a closure check, built with `closure-pack <KEY> <spec\|plan> --specs <bucket>/specs` |
   | 5 and on | the chief's one `round-override`, or a `round-critical` record without `--restores` (a finding ruling or a `--closure` round), opens that writer round |
 
+  A record opens a round only for the kind or kinds whose next round it is: a finding ruling or an unscoped `--closure`
+  opens round N for each kind whose next round is N (both kinds when spec and plan are level), a `round-override` for the
+  kinds of the findings it names, a `round-extension` for the kinds it names. A kind that lags the writer round gets its
+  round with `round-critical ... --closure --round <spec|plan>:<n>`; when the targets of a bare `--closure` sit at two
+  different rounds the verb refuses and names each `--round`. A `round-reset` is refused, and read as invalid, on a
+  decision any earlier record already spent. The refusal text of a lagging kind ends with the `--closure --round` line to type.
+
   The four records run only from the chief's console (`HIMMEL_CONSOLE=1`), each with `--specs <bucket>/specs` like
   `closure-pack` and `round-status`, and each is checked again on every read: `round-override <KEY> --findings <id,...> --why "<line>" --chief <session>`, once per ticket, ever, naming
   open blocking ids; `round-reclass <KEY> --round <spec|plan>:<n> --why "<line>" --chief <session>`, once per closure round, which re-classes a closure round stored before a classifier fix towards blocking and is refused once a `reset`, `critical`, `override` or `extension` record, or a later round or re-class of the same critic, follows that round; `round-critical <KEY> --finding <id> --decision <d> --quote "<operator words>" [--no-round]`, the
   operator's ruling on an operator-critical finding, which closes it and, without `--no-round`, also opens one
-  further writer round; `round-critical <KEY> --decision <d> --quote "<operator words>" --closure`, with no `--finding`,
-  the operator's yes to one more round when no finding is operator-critical, which opens exactly the next writer round
-  as a closure check (refused when that round needs no record, and once per decision: a decision any record already
-  used is refused); and `round-reset <KEY> --decision <d> --quote "<operator words>"`, the operator's order to
+  further writer round; `round-critical <KEY> --decision <d> --quote "<operator words>" --closure [--round <spec|plan>:<n>]`, with no `--finding`,
+  the operator's yes to one more round when no finding is operator-critical, which opens the next refused round as a
+  closure check, for the kinds whose next round it is (`--round` names the one refused target to open, and is required when
+  the targets sit at different rounds; refused when that round needs no record, and once per decision: a decision any record already used is refused); and `round-reset <KEY> --decision <d> --quote "<operator words>"`, the operator's order to
   start over, once per ticket. The decision file `specs/decisions/verbatim-decision-<d>-*.txt` must name the ticket
   and hold the quote. **Never pick `<d>` by hand** (a chief and a T3 thread did, on one station, and gave two rulings one
   number): take it with `bash <himmel>/scripts/handover/chief-kit/rulings-in-force.sh next-id --bucket <bucket>`, which

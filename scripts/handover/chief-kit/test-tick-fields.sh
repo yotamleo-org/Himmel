@@ -1169,6 +1169,21 @@ contains 'an unknown attempt whose session is gone counts too: stale-attempts=1'
 same 'a tick settles and edits no record: fleet-control.json and the manifest are byte-identical' "$(cksum "$fr_root/fr-stale/fleet-control.json" "$fr_root/fr-stale/chief.fleet.json" | tr -d '\n')" "$fr_before"
 kill "$fr_live" 2>/dev/null
 
+wo_doc="HIMMEL-10572-N5801-wrapped-open-2026-11-26-RESUME"
+printf '%s\n' '# worker' '- 12:00 LIVE — working' '- 12:30 WRAPPED — released' > "$W/handover/$wo_doc.md"
+mkcmdline 5801 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-10572-N5801-wrapped-open-2026-11-26 work
+mk_pgrep_x "$W/bin-wo-live" 5801
+mk_pgrep_x "$W/bin-wo-gone"
+wo_live="$(PATH="$W/bin-wo-live:$PATH" bash "$SUT" --workers "$W/handover/$wo_doc.md")"
+contains 'a WRAPPED worker whose session is alive is named in wrapped-open=' "$wo_live" ' wrapped-open=N5801'
+wo_gone="$(PATH="$W/bin-wo-gone:$PATH" bash "$SUT" --workers "$W/handover/$wo_doc.md")"
+not_contains 'a WRAPPED worker whose session is gone leaves wrapped-open= absent' "$wo_gone" 'wrapped-open='
+wo_held="HIMMEL-10572-N61-held-2026-11-26-RESUME"
+printf '%s\n' '# worker' '- 12:00 LIVE — working' > "$W/handover/$wo_held.md"
+mkcmdline 5802 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-10572-N61-held-2026-11-26 work
+mk_pgrep_x "$W/bin-wo-held" 5802
+not_contains 'a live worker that has not wrapped leaves wrapped-open= absent' "$(PATH="$W/bin-wo-held:$PATH" bash "$SUT" --workers "$W/handover/$wo_held.md")" 'wrapped-open='
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick-fields.sh'
     exit 0
