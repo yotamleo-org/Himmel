@@ -5,7 +5,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { createMcpHandler, McpServer, type AuthInfo } from "@modelcontextprotocol/server";
-import { createAudit, defaultAuditFile, type Audit } from "./audit.js";
+import { createAudit, defaultAuditFile, type Audit, type AuditInput } from "./audit.js";
 import { bearerGate, checkHostAndOrigin, defaultKeysFile, KeyStore, principalFrom, type AuthTrace, type Principal } from "./auth.js";
 import { dispatch, fail, type DispatchResult } from "./core/dispatch.js";
 import { OPERATIONS } from "./core/operations.js";
@@ -52,6 +52,7 @@ const HEALTH_PATH = "/luna/health";
 const OPS_PREFIX = "/luna/v1/ops/";
 const OP_NAME = /^[A-Za-z0-9_]{1,64}$/;
 const SAFE_TOOL = /^[a-z_]{1,32}$/;
+const TOOL_LABEL = /^[A-Za-z0-9_/.-]{1,64}$/;
 const MAX_BODY_BYTES = 256 * 1024;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 
@@ -80,36 +81,53 @@ async function readLimited(req: Request, max: number): Promise<string | null> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+interface McpTracker {
+  dispatched: number;
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const contentTypeOf = (req: Request): string => (req.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+const auditDown = (): Response => json(503, { ok: false, error: { code: "audit_unavailable", message: "the audit log is unavailable" } });
+
 export function createApp(deps: AppDeps): App {
-  const audit = async (trace: AuthTrace, reqId: string, tool: string, reason: string): Promise<void> => {
+  const row = (principal: Principal | undefined, reqId: string, tool: string, verdict: "allow" | "deny", reason: string | null): AuditInput => ({
+    reqId,
+    principal: principal?.principal ?? null,
+    keyId: principal?.keyId ?? null,
+    role: principal?.roles.join(",") ?? null,
+    collection: null,
+    corpus: null,
+    provider: principal?.provider ?? null,
+    purpose: PURPOSE,
+    path: null,
+    tool,
+    verdict,
+    reason,
+  });
+
+  const auditDeny = async (principal: Principal | undefined, reqId: string, tool: string, reason: string): Promise<void> => {
     try {
-      await deps.audit.write({
-        reqId,
-        principal: trace.principal?.principal ?? null,
-        keyId: trace.principal?.keyId ?? null,
-        role: trace.principal?.roles.join(",") ?? null,
-        collection: null,
-        corpus: null,
-        provider: trace.principal?.provider ?? null,
-        purpose: PURPOSE,
-        path: null,
-        tool,
-        verdict: "deny",
-        reason,
-      });
+      await deps.audit.write(row(principal, reqId, tool, "deny", reason));
     } catch {
       process.stderr.write("luna-mcp: audit write failed for a refused request\n");
     }
+  };
+
+  const refuse = async (principal: Principal, reqId: string, tool: string, status: number, code: string, message: string, reason: string): Promise<Response> => {
+    await auditDeny(principal, reqId, tool, reason);
+    return json(status, { ok: false, error: { code, message } });
   };
 
   const dispatchDeps = { roots: deps.roots, egress: deps.egress, qmd: deps.qmd, limiter: deps.limiter, audit: deps.audit };
 
   const factory = ({ authInfo }: { authInfo?: AuthInfo }): McpServer => {
     const principal: Principal | null = authInfo ? principalFrom(authInfo) : null;
+    const tracker = authInfo?.extra?.["tracker"] as McpTracker | undefined;
     const server = new McpServer({ name: "luna-mcp", version: deps.version });
     for (const op of OPERATIONS) {
       for (const name of [op.name, ...op.aliases]) {
         server.registerTool(name, { description: op.description, inputSchema: op.input }, async (args: unknown) => {
+          if (tracker) tracker.dispatched++;
           const result = principal ? await dispatch(dispatchDeps, principal, name, args, deps.newReqId()) : fail(401, "unauthorized", "no verified principal");
           const text = result.body.ok ? JSON.stringify(result.body.result) : JSON.stringify({ error: result.body.error });
           return { content: [{ type: "text" as const, text }], ...(result.body.ok ? {} : { isError: true }) };
@@ -124,10 +142,53 @@ export function createApp(deps: AppDeps): App {
     const trace: AuthTrace = {};
     const out = await bearerGate(deps.keys, deps.publicUrl, trace)(req);
     if (out instanceof Response) {
-      await audit(trace, reqId, tool, trace.reason ?? "auth");
+      await auditDeny(trace.principal, reqId, tool, trace.reason ?? "auth");
       return { refusal: out };
     }
     return { info: out };
+  }
+
+  async function handleMcp(req: Request, reqId: string, info: AuthInfo): Promise<Response> {
+    const principal = principalFrom(info);
+    if (contentTypeOf(req) !== "application/json") return refuse(principal, reqId, "mcp", 415, "unsupported_media_type", "send application/json", "unsupported-media-type");
+    const text = await readLimited(req, MAX_BODY_BYTES);
+    if (text === null) return refuse(principal, reqId, "mcp", 413, "payload_too_large", "request body too large", "payload-too-large");
+    let message: unknown;
+    try {
+      message = JSON.parse(text);
+    } catch {
+      return refuse(principal, reqId, "mcp", 400, "invalid_json", "body is not valid JSON", "invalid-json");
+    }
+    if (Array.isArray(message)) return refuse(principal, reqId, "mcp", 400, "batch_unsupported", "JSON-RPC batches are not accepted", "batch-unsupported");
+    const method = isRecord(message) ? message["method"] : undefined;
+    if (!isRecord(message) || typeof method !== "string") return refuse(principal, reqId, "mcp", 400, "invalid_request", "not a JSON-RPC request", "invalid-request");
+
+    if (method !== "tools/call") {
+      if (message["id"] !== undefined) {
+        try {
+          await deps.audit.write(row(principal, reqId, TOOL_LABEL.test(method) ? method : "invalid", "allow", null));
+        } catch {
+          process.stderr.write("luna-mcp: audit write failed, MCP call withheld\n");
+          return auditDown();
+        }
+      }
+      return mcp.fetch(req, { authInfo: info, parsedBody: message });
+    }
+
+    const tracker: McpTracker = { dispatched: 0 };
+    const res = await mcp.fetch(req, { authInfo: { ...info, extra: { ...info.extra, tracker } }, parsedBody: message });
+    const settled = new Response(await res.arrayBuffer(), { status: res.status, headers: res.headers });
+    if (tracker.dispatched === 0) {
+      const params = message["params"];
+      const name = isRecord(params) && typeof params["name"] === "string" && SAFE_TOOL.test(params["name"]) ? params["name"] : "invalid";
+      try {
+        await deps.audit.write(row(principal, reqId, name, "deny", "mcp-rejected"));
+      } catch {
+        process.stderr.write("luna-mcp: audit write failed, MCP answer withheld\n");
+        return auditDown();
+      }
+    }
+    return settled;
   }
 
   async function handle(req: Request): Promise<Response> {
@@ -139,7 +200,7 @@ export function createApp(deps: AppDeps): App {
 
     const bad = checkHostAndOrigin(req, deps.publicUrl);
     if (bad) {
-      await audit({}, reqId, "http", bad);
+      await auditDeny(undefined, reqId, "http", bad);
       return json(403, { ok: false, error: { code: "forbidden_origin", message: `${bad} not allowed` } });
     }
 
@@ -153,7 +214,7 @@ export function createApp(deps: AppDeps): App {
       if (req.method !== "POST") return json(405, { ok: false, error: { code: "method_not_allowed", message: "use POST" } }, { allow: "POST" });
       const auth = await authenticate(req, reqId, "mcp");
       if ("refusal" in auth) return auth.refusal;
-      return mcp.fetch(req, { authInfo: auth.info });
+      return handleMcp(req, reqId, auth.info);
     }
 
     if (isOps && OP_NAME.test(opName)) {
@@ -161,17 +222,17 @@ export function createApp(deps: AppDeps): App {
       const tool = SAFE_TOOL.test(opName) ? opName : "invalid";
       const auth = await authenticate(req, reqId, tool);
       if ("refusal" in auth) return auth.refusal;
-      const type = (req.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase();
-      if (type !== "application/json") return json(415, { ok: false, error: { code: "unsupported_media_type", message: "send application/json" } });
+      const principal = principalFrom(auth.info);
+      if (contentTypeOf(req) !== "application/json") return refuse(principal, reqId, tool, 415, "unsupported_media_type", "send application/json", "unsupported-media-type");
       const text = await readLimited(req, MAX_BODY_BYTES);
-      if (text === null) return json(413, { ok: false, error: { code: "payload_too_large", message: "request body too large" } });
+      if (text === null) return refuse(principal, reqId, tool, 413, "payload_too_large", "request body too large", "payload-too-large");
       let args: unknown;
       try {
         args = text === "" ? {} : JSON.parse(text);
       } catch {
-        return json(400, { ok: false, error: { code: "invalid_json", message: "body is not valid JSON" } });
+        return refuse(principal, reqId, tool, 400, "invalid_json", "body is not valid JSON", "invalid-json");
       }
-      return fromDispatch(await dispatch(dispatchDeps, principalFrom(auth.info), opName, args, reqId, req.signal));
+      return fromDispatch(await dispatch(dispatchDeps, principal, opName, args, reqId, req.signal));
     }
 
     return json(404, { ok: false, error: { code: "not_found", message: "no such route" } });
@@ -284,15 +345,25 @@ export async function startServer(env: NodeJS.ProcessEnv): Promise<{ port: numbe
     newReqId: randomUUID,
     version: "0.1.0",
   });
+  const badRequest = (res: ServerResponse, message: string): void => {
+    res.writeHead(400, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: false, error: { code: "bad_request", message } }));
+  };
   const server = createServer((req, res) => {
     const target = req.url ?? "";
     if (!target.startsWith("/") || target.startsWith("//")) {
-      res.writeHead(400, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: false, error: { code: "bad_request", message: "bad request target" } }));
+      badRequest(res, "bad request target");
+      return;
+    }
+    let web: Request;
+    try {
+      web = toWebRequest(req, res);
+    } catch {
+      badRequest(res, "malformed request");
       return;
     }
     void app
-      .fetch(toWebRequest(req, res))
+      .fetch(web)
       .then((out) => writeWebResponse(out, res))
       .catch(() => {
         if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });

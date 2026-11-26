@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, utimes, writeFile } from "node:fs/promises";
+import { chmod, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { createEgress, PURPOSE } from "../src/egress.js";
@@ -162,5 +162,37 @@ describe("egress gate fails closed when the repo is unusable", () => {
     const repo = await buildRepo(t, { corpus: { himmel: ["himmel-code"] }, matrix: { default: "deny", rules: [literalRule("himmel-code", GROK)] } });
     await chmod(join(repo, "scripts/guardrails/egress-matrix.json"), 0o000);
     assert.equal((await createEgress(repo).check("himmel", GROK)).allow, false);
+  });
+});
+
+describe("egress evaluator changes without a restart", () => {
+  const corpus = { himmel: ["himmel-code"] };
+  const matrix = { default: "deny", rules: [literalRule("himmel-code", GROK)] };
+
+  it("re-imports a swapped evaluator, and denies once it is removed", async (t) => {
+    const repo = await buildRepo(t, { corpus, matrix });
+    const egress = createEgress(repo);
+    assert.equal((await egress.check("himmel", GROK)).allow, true);
+    const file = join(repo, "scripts/guardrails/egress-matrix-eval.mjs");
+    await writeFile(file, stubEval('{ verdict: "deny", note: "" }'));
+    await utimes(file, 3, 4);
+    assert.equal((await egress.check("himmel", GROK)).allow, false);
+    await writeFile(file, stubEval('{ verdict: "allow+log", note: "" }'));
+    await utimes(file, 5, 6);
+    assert.equal((await egress.check("himmel", GROK)).allow, true);
+    await rm(file);
+    const gone = await egress.check("himmel", GROK);
+    assert.equal(gone.allow, false);
+    assert.match(gone.reason ?? "", /egress-unavailable/);
+  });
+
+  it("denies when a swapped evaluator no longer exports the contract", async (t) => {
+    const repo = await buildRepo(t, { corpus, matrix });
+    const egress = createEgress(repo);
+    assert.equal((await egress.check("himmel", GROK)).allow, true);
+    const file = join(repo, "scripts/guardrails/egress-matrix-eval.mjs");
+    await writeFile(file, "export const nothing = 1;\n");
+    await utimes(file, 7, 8);
+    assert.equal((await egress.check("himmel", GROK)).allow, false);
   });
 });

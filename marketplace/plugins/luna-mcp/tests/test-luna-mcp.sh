@@ -81,6 +81,9 @@ pin() { grep -qE "\"$1\"[[:space:]]*:[[:space:]]*\"$2\"" "$HERE/package.json"; }
 if pin '@modelcontextprotocol/server' '2\.4\.0'; then pass "the v2 server SDK is pinned exactly"; else fail "@modelcontextprotocol/server is not pinned to 2.4.0"; fi
 if pin zod '4\.6\.7'; then pass "zod is pinned exactly"; else fail "zod is not pinned to 4.6.7"; fi
 if pin typescript '7\.0\.2'; then pass "typescript is pinned exactly"; else fail "typescript is not pinned to 7.0.2"; fi
+if pin yaml '2\.9\.1'; then pass "yaml is pinned exactly"; else fail "yaml is not pinned to 2.9.1"; fi
+if grep -q '"node_modules/yaml"' "$HERE/package-lock.json"; then pass "the lockfile resolves yaml"; else fail "the lockfile lacks yaml"; fi
+if grep -q 'parseDocument' "$HERE/src/paths.ts"; then pass "frontmatter is read with the yaml parser"; else fail "paths.ts does not use the yaml parser"; fi
 check_none "package.json has no caret or tilde range" "$RANGE_RE" "$HERE/package.json"
 check_none "package.json names no v1 SDK, node adapter or web framework" '"(@modelcontextprotocol/(sdk|node)|hono|express|fastify|koa)"' "$HERE/package.json"
 check_none "the lockfile carries no v1 SDK, node adapter or hono" '"node_modules/(@modelcontextprotocol/(sdk|node)|hono)"' "$HERE/package-lock.json"

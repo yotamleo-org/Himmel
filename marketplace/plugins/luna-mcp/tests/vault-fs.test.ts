@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { rename, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { Denied, type DenyKind, type PolicyScope } from "../src/paths.js";
@@ -276,5 +277,44 @@ describe("titleOf and buildSnippet", () => {
   it("never returns the secret or PHI marker from a clean note", () => {
     const s = buildSnippet("# Clean\nordinary text\n", ["ordinary"]);
     assert.ok(!s.snippet.includes(LEAK) && !s.snippet.includes(PHI));
+  });
+});
+
+describe("directory reads verified after they are opened", () => {
+  async function swapDocsForOutside(base: string, root: string) {
+    const outside = join(base, "swapped-dir");
+    await put(outside, "deep/leak.md", `# Leaked\n${LEAK}\n`);
+    let swapped = 0;
+    const beforeOpen = async (abs: string) => {
+      if (swapped === 0 && abs.endsWith(join("docs", "deep"))) {
+        swapped++;
+        await rename(join(root, "docs"), join(root, "docs.moved"));
+        await symlink(outside, join(root, "docs"));
+      }
+    };
+    return { beforeOpen, swapped: () => swapped };
+  }
+
+  it("denies a listing when an ancestor directory is swapped for an escaping symlink after the pre-check", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    const hooks = await swapDocsForOutside(fx.base, root);
+    assert.equal(await kindOf(() => listDir(root, "docs/deep", reader, { limit: 100 }, hooks)), "escape");
+    assert.equal(hooks.swapped(), 1);
+  });
+
+  it("lists normally when nothing changes under it", async (t) => {
+    const fx = await buildFixture(t);
+    const page = await listDir(fx.roots.get("luna")!, "docs/deep", reader, { limit: 100 }, { beforeOpen: () => undefined });
+    assert.deepEqual(page.entries.map((e) => e.name), ["nested.md"]);
+  });
+
+  it("returns nothing from outside the root when a directory is swapped during the recent walk", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    const hooks = await swapDocsForOutside(fx.base, root);
+    const out = await recentDocs(root, reader, 50, 10_000, hooks);
+    assert.equal(hooks.swapped(), 1);
+    for (const d of out.docs) assert.ok(!/leak/i.test(d.path) && !/Leaked/.test(d.title), d.path);
   });
 });

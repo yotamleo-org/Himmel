@@ -783,3 +783,158 @@ describe("node:http bridge", () => {
     for (const row of rows) assert.ok(!row.includes(minted.token));
   });
 });
+
+describe("node:http bridge under hostile requests", () => {
+  async function bridge(t: TestContext) {
+    const base = await scratch(t);
+    const world = await makeWorld(t);
+    const rootsFile = join(base, "roots.json");
+    await writeFile(rootsFile, JSON.stringify(Object.fromEntries(world.fx.roots)));
+    const keysFile = join(base, "cfg", "keys.json");
+    await mkdir(join(base, "cfg"), { recursive: true });
+    const minted = await mintKey(keysFile, { principal: "grokbot", provider: "xai-grokbot", resource: PUBLIC_URL, roles: ["reader"], collections: ["luna"], ttlMs: 3600_000 }, { now: makeClock().now, randomBytes });
+    const server = await startServer({
+      HIMMEL_REPO: world.repo,
+      LUNA_MCP_PUBLIC_URL: PUBLIC_URL,
+      LUNA_MCP_COLLECTION_ROOTS: rootsFile,
+      LUNA_MCP_KEYS_FILE: keysFile,
+      LUNA_MCP_AUDIT_FILE: join(base, "state", "audit.jsonl"),
+      QMD_URL: world.qmd.url,
+      QMD_HTTP_TOKEN_FILE: world.tokenFile,
+      LUNA_MCP_PORT: "0",
+    });
+    t.after(() => server.close());
+    return { server, token: minted.token };
+  }
+
+  it("answers 400 to a malformed Host header and keeps serving the next request", async (t) => {
+    const { server, token } = await bridge(t);
+    const bad = await http(server.port, { method: "GET", path: "/luna/health", headers: { host: "[" } });
+    assert.equal(bad.status, 400);
+    const health = await http(server.port, { method: "GET", path: "/luna/health", headers: { host: HOST } });
+    assert.equal(health.status, 200);
+    const read = await http(server.port, {
+      method: "POST",
+      path: "/luna/v1/ops/read_doc",
+      headers: { host: HOST, authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ collection: "luna", path: "CLAUDE.md" }),
+    });
+    assert.equal(read.status, 200);
+  });
+
+  it("never crashes on other malformed Host values", async (t) => {
+    const { server } = await bridge(t);
+    for (const host of ["[::1", "][", "[]]", "%", "a b"]) {
+      const res = await http(server.port, { method: "GET", path: "/luna/health", headers: { host } });
+      assert.ok(res.status === 400 || res.status === 403, `${host} -> ${res.status}`);
+    }
+    assert.equal((await http(server.port, { method: "GET", path: "/luna/health", headers: { host: HOST } })).status, 200);
+  });
+});
+
+describe("a frontmatter header that never closes inside the scan window", () => {
+  it("is refused on read, multi_read, search hits, list_dir and recent_docs", async (t) => {
+    const world = await makeWorld(t);
+    const { token } = await world.mint({ collections: ["luna"] });
+    const root = world.fx.roots.get("luna")!;
+    const path = "30-Resources/long-header.md";
+    await writeFile(join(root, path), `---\n${"k: v\n".repeat(14_000)}repo: salus\n---\n# Long header\n${PHI}\n`);
+
+    const read = await world.ops("read_doc", { collection: "luna", path }, token);
+    assert.equal(read.status, 404);
+    assert.ok(!JSON.stringify(read.body).includes(PHI));
+
+    const multi = await world.ops("multi_read", { entries: [{ collection: "luna", path }, { collection: "luna", path: "CLAUDE.md" }] }, token);
+    assert.deepEqual(multi.body.result.results.map((r: { ok: boolean }) => r.ok), [false, true]);
+    assert.ok(!JSON.stringify(multi.body).includes(PHI));
+
+    world.qmd.reply([qmdHit("luna", path), qmdHit("luna", "docs/guide.md")]);
+    const search = await world.ops("qmd_search", { searches: [{ type: "lex", query: "header" }], collections: ["luna"] }, token);
+    assert.deepEqual(search.body.result.hits.map((h: { path: string }) => h.path), ["docs/guide.md"]);
+
+    const list = await world.ops("list_dir", { collection: "luna", dir: "30-Resources", limit: 100 }, token);
+    assert.ok(!list.body.result.entries.some((e: { name: string }) => e.name === "long-header.md"));
+
+    const recent = await world.ops("recent_docs", { collection: "luna", limit: 50 }, token);
+    assert.ok(!recent.body.result.docs.some((d: { path: string }) => d.path === path));
+
+    const reasons = (await lines(world)).filter((l) => l.path === path).map((l) => l.reason);
+    assert.ok(reasons.length >= 2 && reasons.every((r) => r === "frontmatter"), reasons.join(","));
+  });
+});
+
+describe("audit lines for refusals and protocol calls", () => {
+  const initParams = { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } };
+
+  it("writes exactly one line for an authenticated 415, 413 and 400 on the JSON API, with no body or token", async (t) => {
+    const world = await makeWorld(t);
+    const { token, keyId } = await world.mint({ collections: ["luna"] });
+    assert.equal((await world.ops("list_collections", {}, token, { "content-type": "text/plain" })).status, 415);
+    assert.equal((await world.ops("read_doc", { path: "x".repeat(300 * 1024) }, token)).status, 413);
+    const bad = await world.app.fetch(new Request(`https://${HOST}/luna/v1/ops/read_doc`, { method: "POST", headers: { host: HOST, authorization: `Bearer ${token}`, "content-type": "application/json" }, body: "{nope" }));
+    assert.equal(bad.status, 400);
+    const rows = await lines(world);
+    assert.deepEqual(rows.map((r) => [r.tool, r.verdict, r.reason]), [
+      ["list_collections", "deny", "unsupported-media-type"],
+      ["read_doc", "deny", "payload-too-large"],
+      ["read_doc", "deny", "invalid-json"],
+    ]);
+    for (const r of rows) assert.deepEqual([r.principal, r.keyId, r.role], ["grokbot", keyId, "reader"]);
+    const raw = await readFile(world.auditFile, "utf8");
+    for (const secret of [token, "xxxxxxxx", "{nope"]) assert.ok(!raw.includes(secret));
+  });
+
+  it("writes one line for MCP initialize and tools/list, and no extra line for a tool call dispatch already audits", async (t) => {
+    const world = await makeWorld(t);
+    const { token } = await world.mint({ collections: ["luna"] });
+    assert.equal((await world.mcp("initialize", initParams, token)).status, 200);
+    assert.equal((await world.mcp("tools/list", {}, token)).status, 200);
+    assert.deepEqual((await lines(world)).map((r) => [r.tool, r.verdict]), [["initialize", "allow"], ["tools/list", "allow"]]);
+    assert.equal((await world.mcp("tools/call", { name: "read_doc", arguments: { collection: "luna", path: "CLAUDE.md" } }, token)).status, 200);
+    assert.equal((await world.mcp("tools/call", { name: "read_doc", arguments: { collection: "luna", path: ".env" } }, token)).status, 200);
+    assert.deepEqual((await lines(world)).slice(2).map((r) => [r.tool, r.verdict]), [["read_doc", "allow"], ["read_doc", "deny"]]);
+  });
+
+  it("writes one line for an MCP tool call that schema validation rejects before the callback runs", async (t) => {
+    const world = await makeWorld(t);
+    const { token, keyId } = await world.mint({ collections: ["luna"] });
+    await world.mcp("tools/call", { name: "read_doc", arguments: { path: 7 } }, token);
+    await world.mcp("tools/call", { name: "drop_tables", arguments: {} }, token);
+    const rows = await lines(world);
+    assert.deepEqual(rows.map((r) => [r.tool, r.verdict, r.reason]), [
+      ["read_doc", "deny", "mcp-rejected"],
+      ["drop_tables", "deny", "mcp-rejected"],
+    ]);
+    for (const r of rows) assert.equal(r.keyId, keyId);
+  });
+
+  it("writes one deny line for MCP bodies that are not usable JSON-RPC", async (t) => {
+    const world = await makeWorld(t);
+    const { token } = await world.mint({ collections: ["luna"] });
+    const post = (body: string, type = "application/json") =>
+      world.app.fetch(new Request(PUBLIC_URL, { method: "POST", headers: { host: HOST, authorization: `Bearer ${token}`, "content-type": type, accept: "application/json, text/event-stream" }, body }));
+    assert.equal((await post("{}", "text/plain")).status, 415);
+    assert.equal((await post("{nope")).status, 400);
+    assert.equal((await post(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { pad: "x".repeat(300 * 1024) } }))).status, 413);
+    assert.equal((await post(JSON.stringify([{ jsonrpc: "2.0", id: 1, method: "tools/list" }]))).status, 400);
+    assert.equal((await post(JSON.stringify({ jsonrpc: "2.0", id: 1 }))).status, 400);
+    assert.deepEqual((await lines(world)).map((r) => [r.tool, r.verdict, r.reason]), [
+      ["mcp", "deny", "unsupported-media-type"],
+      ["mcp", "deny", "invalid-json"],
+      ["mcp", "deny", "payload-too-large"],
+      ["mcp", "deny", "batch-unsupported"],
+      ["mcp", "deny", "invalid-request"],
+    ]);
+  });
+
+  it("refuses an MCP protocol call with 503 when its audit line cannot be written", async (t) => {
+    const base = await scratch(t);
+    const blocker = join(base, "blocker");
+    await writeFile(blocker, "x");
+    const world = await makeWorld(t, { auditFile: join(blocker, "audit.jsonl") });
+    const { token } = await world.mint({ collections: ["luna"] });
+    const res = await world.mcp("tools/list", {}, token);
+    assert.equal(res.status, 503);
+    assert.ok(!JSON.stringify(res.body).includes("read_doc"));
+  });
+});

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-import { randomBytes as nodeRandomBytes } from "node:crypto";
+import { randomBytes as nodeRandomBytes, randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
+import { link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
@@ -18,9 +20,18 @@ import {
 } from "../auth.js";
 import { loadRoots } from "../vault-fs.js";
 
-export interface KeysDeps {
+export interface LockOptions {
+  sleep?: (ms: number) => Promise<void>;
+  isAlive?: (pid: number) => boolean;
+  retries?: number;
+  backoffMs?: number;
+  staleMs?: number;
+}
+
+export interface KeysDeps extends LockOptions {
   now: () => number;
   randomBytes: (n: number) => Buffer;
+  afterRead?: () => Promise<void>;
 }
 
 export interface MintParams {
@@ -109,40 +120,134 @@ function newKeyId(deps: KeysDeps, taken: ReadonlySet<string>): string {
 const idsOf = (raw: readonly unknown[]): Set<string> =>
   new Set(raw.map((r) => (r && typeof r === "object" ? (r as { keyId?: unknown }).keyId : undefined)).filter((x): x is string => typeof x === "string"));
 
-export async function mintKey(file: string, p: MintParams, deps: KeysDeps): Promise<Minted> {
-  validate(p);
-  const raw = await readKeysRaw(file, true);
-  const token = newToken(deps);
-  const keyId = newKeyId(deps, idsOf(raw));
-  const now = deps.now();
-  const record: KeyRecord = {
-    keyId,
-    hash: hashKey(token),
-    principal: p.principal,
-    egressProvider: p.provider,
-    resource: p.resource,
-    roles: p.roles as KeyRecord["roles"],
-    allowedCollections: [...p.collections],
-    createdAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + p.ttlMs).toISOString(),
-    revoked: false,
-  };
-  await writeKeysFile(file, [...raw, record]);
-  return { keyId, token, expiresAt: record.expiresAt };
+const LOCK_RETRIES = 40;
+const LOCK_BACKOFF_MS = 25;
+const LOCK_BACKOFF_CAP_MS = 2000;
+const LOCK_STALE_MS = 30_000;
+
+const pidAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
+
+async function reclaimStaleLock(lock: string, now: number, staleMs: number, isAlive: (pid: number) => boolean, token: string): Promise<boolean> {
+  let raw: string;
+  let mtimeMs: number;
+  try {
+    raw = await readFile(lock, "utf8");
+    mtimeMs = (await stat(lock)).mtimeMs;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "ENOENT";
+  }
+  let info: { pid?: unknown; at?: unknown } = {};
+  try {
+    info = JSON.parse(raw) as typeof info;
+  } catch {
+    info = {};
+  }
+  const pid = typeof info.pid === "number" && Number.isInteger(info.pid) && info.pid > 0 ? info.pid : undefined;
+  const at = typeof info.at === "number" && Number.isFinite(info.at) ? info.at : mtimeMs;
+  if (!((pid !== undefined && !isAlive(pid)) || now - at > staleMs)) return false;
+  const grave = `${lock}.${token}.stale`;
+  try {
+    await rename(lock, grave);
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "ENOENT";
+  }
+  let moved = "";
+  try {
+    moved = await readFile(grave, "utf8");
+  } catch {
+    moved = "";
+  }
+  if (moved !== raw) {
+    await link(grave, lock).catch(() => undefined);
+    await rm(grave, { force: true });
+    return false;
+  }
+  await rm(grave, { force: true });
+  return true;
 }
 
-export async function revokeKey(file: string, keyId: string): Promise<void> {
-  const raw = await readKeysRaw(file);
-  let found = false;
-  const next = raw.map((r) => {
-    if (r && typeof r === "object" && (r as { keyId?: unknown }).keyId === keyId) {
-      found = true;
-      return { ...(r as object), revoked: true };
+async function withKeysLock<T>(file: string, deps: Partial<KeysDeps>, fn: () => Promise<T>): Promise<T> {
+  const lock = `${file}.lock`;
+  const now = deps.now ?? Date.now;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const retries = deps.retries ?? LOCK_RETRIES;
+  const backoff = deps.backoffMs ?? LOCK_BACKOFF_MS;
+  const token = randomUUID();
+  await mkdir(dirname(file), { recursive: true, mode: 0o700 });
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const fh = await open(lock, "wx", 0o600);
+      try {
+        await fh.writeFile(JSON.stringify({ pid: process.pid, at: now(), token }));
+      } finally {
+        await fh.close();
+      }
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
     }
-    return r;
+    if (await reclaimStaleLock(lock, now(), deps.staleMs ?? LOCK_STALE_MS, deps.isAlive ?? pidAlive, token)) continue;
+    if (attempt >= retries) throw new Error(`key file is locked by another luna-mcp-keys run (${lock})`);
+    await sleep(Math.min(backoff * 2 ** attempt, LOCK_BACKOFF_CAP_MS));
+  }
+  const release = async (): Promise<void> => {
+    const held = JSON.parse(await readFile(lock, "utf8")) as { token?: unknown };
+    if (held.token === token) await rm(lock, { force: true });
+  };
+  try {
+    return await fn();
+  } finally {
+    await release().catch(() => undefined);
+  }
+}
+
+export async function mintKey(file: string, p: MintParams, deps: KeysDeps): Promise<Minted> {
+  validate(p);
+  return withKeysLock(file, deps, async () => {
+    const raw = await readKeysRaw(file, true);
+    await deps.afterRead?.();
+    const token = newToken(deps);
+    const keyId = newKeyId(deps, idsOf(raw));
+    const now = deps.now();
+    const record: KeyRecord = {
+      keyId,
+      hash: hashKey(token),
+      principal: p.principal,
+      egressProvider: p.provider,
+      resource: p.resource,
+      roles: p.roles as KeyRecord["roles"],
+      allowedCollections: [...p.collections],
+      createdAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + p.ttlMs).toISOString(),
+      revoked: false,
+    };
+    await writeKeysFile(file, [...raw, record]);
+    return { keyId, token, expiresAt: record.expiresAt };
   });
-  if (!found) throw new UsageError(`no key ${keyId}`);
-  await writeKeysFile(file, next);
+}
+
+export async function revokeKey(file: string, keyId: string, deps: Partial<KeysDeps> = {}): Promise<void> {
+  await withKeysLock(file, deps, async () => {
+    const raw = await readKeysRaw(file);
+    await deps.afterRead?.();
+    let found = false;
+    const next = raw.map((r) => {
+      if (r && typeof r === "object" && (r as { keyId?: unknown }).keyId === keyId) {
+        found = true;
+        return { ...(r as object), revoked: true };
+      }
+      return r;
+    });
+    if (!found) throw new UsageError(`no key ${keyId}`);
+    await writeKeysFile(file, next);
+  });
 }
 
 export async function rotateKey(
@@ -151,29 +256,32 @@ export async function rotateKey(
   opts: { ttlMs: number; overlapMs: number },
   deps: KeysDeps,
 ): Promise<Rotated> {
-  const raw = await readKeysRaw(file);
-  const index = raw.findIndex((r) => r && typeof r === "object" && (r as { keyId?: unknown }).keyId === keyId);
-  const old = index < 0 ? undefined : parseRecord(raw[index]);
-  if (!old) throw new UsageError(`no valid key ${keyId}`);
-  if (old.revoked) throw new UsageError(`key ${keyId} is revoked`);
-  if (!(opts.overlapMs > 0 && opts.overlapMs <= MAX_TTL_MS)) throw new UsageError("overlap must be positive and at most 365d");
-  validate({ principal: old.principal, provider: old.egressProvider, resource: old.resource, roles: old.roles, collections: old.allowedCollections, ttlMs: opts.ttlMs });
-  const now = deps.now();
-  const token = newToken(deps);
-  const newId = newKeyId(deps, idsOf(raw));
-  const oldExpires = Math.min(Date.parse(old.expiresAt), now + opts.overlapMs);
-  const oldExpiresAt = oldExpires === Date.parse(old.expiresAt) ? old.expiresAt : new Date(oldExpires).toISOString();
-  const successor: KeyRecord = {
-    ...old,
-    keyId: newId,
-    hash: hashKey(token),
-    createdAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + opts.ttlMs).toISOString(),
-    revoked: false,
-  };
-  const next = raw.map((r, i) => (i === index ? { ...(r as object), expiresAt: oldExpiresAt } : r));
-  await writeKeysFile(file, [...next, successor]);
-  return { keyId: newId, token, expiresAt: successor.expiresAt, oldKeyId: keyId, oldExpiresAt };
+  return withKeysLock(file, deps, async () => {
+    const raw = await readKeysRaw(file);
+    await deps.afterRead?.();
+    const index = raw.findIndex((r) => r && typeof r === "object" && (r as { keyId?: unknown }).keyId === keyId);
+    const old = index < 0 ? undefined : parseRecord(raw[index]);
+    if (!old) throw new UsageError(`no valid key ${keyId}`);
+    if (old.revoked) throw new UsageError(`key ${keyId} is revoked`);
+    if (!(opts.overlapMs > 0 && opts.overlapMs <= MAX_TTL_MS)) throw new UsageError("overlap must be positive and at most 365d");
+    validate({ principal: old.principal, provider: old.egressProvider, resource: old.resource, roles: old.roles, collections: old.allowedCollections, ttlMs: opts.ttlMs });
+    const now = deps.now();
+    const token = newToken(deps);
+    const newId = newKeyId(deps, idsOf(raw));
+    const oldExpires = Math.min(Date.parse(old.expiresAt), now + opts.overlapMs);
+    const oldExpiresAt = oldExpires === Date.parse(old.expiresAt) ? old.expiresAt : new Date(oldExpires).toISOString();
+    const successor: KeyRecord = {
+      ...old,
+      keyId: newId,
+      hash: hashKey(token),
+      createdAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + opts.ttlMs).toISOString(),
+      revoked: false,
+    };
+    const next = raw.map((r, i) => (i === index ? { ...(r as object), expiresAt: oldExpiresAt } : r));
+    await writeKeysFile(file, [...next, successor]);
+    return { keyId: newId, token, expiresAt: successor.expiresAt, oldKeyId: keyId, oldExpiresAt };
+  });
 }
 
 export async function listKeys(file: string, now: () => number): Promise<KeySummary[]> {
@@ -251,7 +359,7 @@ export async function runKeys(argv: string[], io: KeysIo): Promise<number> {
       case "revoke": {
         const { positionals } = parseArgs({ args: rest, strict: true, allowPositionals: true, options: {} });
         if (positionals.length !== 1 || !positionals[0]) throw new UsageError("revoke needs exactly one keyId");
-        await revokeKey(file, positionals[0]);
+        await revokeKey(file, positionals[0], deps);
         io.stdout(`revoked ${positionals[0]}\n`);
         return 0;
       }

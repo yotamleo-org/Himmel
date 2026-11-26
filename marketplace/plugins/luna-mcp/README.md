@@ -47,13 +47,22 @@ Operations (one table feeds both surfaces):
    start with a dot at any depth, and the vault's `scripts/`, `marketplace/`, `graphify-out/` and
    `to_be_deleted/` are closed. On a Luna collection `sessions/**` and `chats/**` need the `manager`
    role and `handovers/**` needs `manager` plus `allowHandoversRead`; a Stage 1 reader has neither.
-6. Disk check: the file is opened with `O_NOFOLLOW`, its real path must stay inside the collection
-   root, and its own YAML frontmatter is read. `repo: salus` means refused.
+6. Disk check: the file is opened with `O_NOFOLLOW`, then its real path is resolved again and must
+   still sit inside the collection root, pass the same segment rules, and be the very file that was
+   opened (same device and inode), so a parent directory swapped for a symlink mid-request is refused.
+   Directory listings get the same check on their directory handle. The file's leading YAML
+   frontmatter is parsed with a real YAML parser on the first 64 KiB. `repo: salus` is refused in any
+   YAML spelling (quoted, tagged, block scalar, list, anchor or merge key; any case; a string or any
+   list element). A header that does not close inside that window, does not parse, is not a mapping,
+   repeats a key, or holds a `repo` value that cannot be classified is refused too.
 7. Search hits are never trusted as QMD sent them. Each `qmd://` URI is decoded per segment, run
    through the same jail and disk check, and the returned `title` and `snippet` are rebuilt from the
    verified file. QMD's `metadata` and `context` are not forwarded. Legacy slugs that no longer
    resolve to a file are dropped.
-8. One audit line per call, allowed or denied.
+8. One audit line per call, allowed or denied. That includes refusals after authentication (wrong
+   content type, oversized body, bad JSON), MCP protocol calls such as `initialize` and `tools/list`,
+   and tool calls the MCP layer rejects before they reach an operation. JSON-RPC batches are not
+   accepted.
 
 A refusal caused by the shape of a path answers 403; anything that depends on what is on disk (a
 missing file, a symlink, a salus note) answers the same 404, so the API does not confirm what exists.
@@ -137,6 +146,10 @@ npm run --silent keys -- revoke <keyId>
 * `--roles` defaults to `reader`, the only role Stage 1 supports.
 * `rotate` mints a successor with the same scope and shortens the old key to `--overlap`, so both work
   until the old one expires. `revoke` takes effect on the next call.
+* `mint`, `revoke` and `rotate` take a lock file beside the key file (`<keys file>.lock`) for their
+  whole read-modify-write, so two runs at once cannot undo each other's change. A lock left by a dead
+  process, or older than 30 seconds, is taken over; otherwise the command retries with a growing
+  delay and then fails with "locked". The write itself is a temp file and a rename, mode 0600.
 
 Each record in the file has `keyId`, `hash`, `principal`, `egressProvider` (`xai-grokbot` or
 `openai-chatgpt`), `resource`, `roles`, `allowedCollections`, `createdAt`, `expiresAt` and `revoked`.

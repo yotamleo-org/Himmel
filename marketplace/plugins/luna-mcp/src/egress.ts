@@ -32,48 +32,49 @@ interface EvalModule {
 
 interface Loaded {
   sig: string;
+  mod: EvalModule;
   matrix: Matrix;
   corpora: Record<string, unknown>;
 }
 
 const deny = (reason: string, corpora: string[] = []): EgressDecision => ({ allow: false, corpora, reason });
 
+const fileSig = (s: { ino: bigint; size: bigint; mtimeNs: bigint; ctimeNs: bigint }): string => [s.ino, s.size, s.mtimeNs, s.ctimeNs].join(":");
+
 export function createEgress(himmelRepo: string | undefined): Egress {
-  let mod: EvalModule | undefined;
   let cache: Loaded | undefined;
 
-  async function load(): Promise<{ mod: EvalModule; loaded: Loaded }> {
+  async function load(): Promise<Loaded> {
     if (!himmelRepo) throw new Error("HIMMEL_REPO is not set");
     const evalFile = join(himmelRepo, "scripts", "guardrails", "egress-matrix-eval.mjs");
     const matrixFile = join(himmelRepo, "scripts", "guardrails", "egress-matrix.json");
     const corpusFile = join(himmelRepo, "scripts", "qmd", "qmd-collection-corpus.json");
-    if (!mod) {
-      const imported = (await import(pathToFileURL(evalFile).href)) as Partial<EvalModule>;
-      if (typeof imported.evaluate !== "function" || typeof imported.loadMatrix !== "function") {
-        throw new Error("egress evaluator does not export loadMatrix and evaluate");
-      }
-      mod = imported as EvalModule;
+    const [e, m, c] = await Promise.all([stat(evalFile, { bigint: true }), stat(matrixFile, { bigint: true }), stat(corpusFile, { bigint: true })]);
+    const evalSig = fileSig(e);
+    const sig = [evalSig, fileSig(m), fileSig(c)].join("|");
+    if (cache?.sig === sig) return cache;
+    const imported = (await import(`${pathToFileURL(evalFile).href}?v=${evalSig}`)) as Partial<EvalModule>;
+    if (typeof imported.evaluate !== "function" || typeof imported.loadMatrix !== "function") {
+      throw new Error("egress evaluator does not export loadMatrix and evaluate");
     }
-    const [m, c] = await Promise.all([stat(matrixFile, { bigint: true }), stat(corpusFile, { bigint: true })]);
-    const sig = [m.ino, m.size, m.mtimeNs, m.ctimeNs, c.ino, c.size, c.mtimeNs, c.ctimeNs].join(":");
-    if (cache?.sig === sig) return { mod, loaded: cache };
+    const mod = imported as EvalModule;
     const matrix = mod.loadMatrix(matrixFile) as Matrix | null;
     if (!matrix || !Array.isArray(matrix.rules)) throw new Error("egress matrix has no rules");
     const corpusMap = JSON.parse(await readFile(corpusFile, "utf8")) as { collections?: unknown };
     if (!corpusMap.collections || typeof corpusMap.collections !== "object") throw new Error("corpus map has no collections");
-    cache = { sig, matrix, corpora: corpusMap.collections as Record<string, unknown> };
-    return { mod, loaded: cache };
+    cache = { sig, mod, matrix, corpora: corpusMap.collections as Record<string, unknown> };
+    return cache;
   }
 
   return {
     async check(collection, provider) {
       let loaded: Loaded;
-      let evaluator: EvalModule;
       try {
-        ({ mod: evaluator, loaded } = await load());
+        loaded = await load();
       } catch {
         return deny("egress-unavailable");
       }
+      const evaluator = loaded.mod;
       const mapped = Object.hasOwn(loaded.corpora, collection) ? loaded.corpora[collection] : undefined;
       if (!Array.isArray(mapped) || mapped.length === 0 || !mapped.every((c) => typeof c === "string" && c.length > 0)) {
         return deny(`unmapped:${collection}`);

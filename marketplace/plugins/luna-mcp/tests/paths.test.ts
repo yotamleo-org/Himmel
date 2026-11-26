@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
@@ -310,5 +311,166 @@ describe("resolveDir", () => {
     assert.equal(await kindOfAsync(() => resolveDir(root, ["sessions"], reader)), "role-path");
     assert.equal(await kindOfAsync(() => resolveDir(root, [".obsidian"], reader)), "dot-segment");
     assert.equal(await kindOfAsync(() => resolveDir(root, ["nope"], reader)), "not-found");
+  });
+});
+
+describe("frontmatter read as YAML", () => {
+  const salus: [string, string][] = [
+    ["an indented key", "---\n  repo: salus\n---\nbody"],
+    ["a double-quoted value", '---\nrepo: "salus"\n---\nbody'],
+    ["a single-quoted capitalised value", "---\nrepo: 'Salus'\n---\nbody"],
+    ["a !!str tag", "---\nrepo: !!str salus\n---\nbody"],
+    ["a folded block scalar", "---\nrepo: >-\n  salus\n---\nbody"],
+    ["a literal block scalar", "---\nrepo: |\n  salus\n---\nbody"],
+    ["an unindented block list", "---\nrepo:\n- himmel\n- salus\n---\nbody"],
+    ["a flow list of quoted strings", '---\nrepo: [himmel, "salus"]\n---\nbody'],
+    ["a nested list", "---\nrepo:\n  - himmel\n  - [salus]\n---\nbody"],
+    ["a double-quoted key", '---\n"repo": salus\n---\nbody'],
+    ["a single-quoted key", "---\n'repo': salus\n---\nbody"],
+    ["an explicit key", "---\n? repo\n: salus\n---\nbody"],
+    ["an anchor", "---\nrepo: &r salus\n---\nbody"],
+    ["a merge key", "---\nbase: &b\n  repo: salus\n<<: *b\n---\nbody"],
+    ["an escaped line continuation", '---\nrepo: "sal\\\n  us"\n---\nbody'],
+    ["a trailing comment", "---\nrepo: salus # clinical\n---\nbody"],
+    ["a document end marker", "---\nrepo: salus\n...\nbody"],
+    ["a BOM and CRLF with a quoted value", '\ufeff---\r\nrepo: "salus"\r\n---\r\nbody'],
+    ["no trailing newline", "---\nrepo: salus\n---"],
+    ["upper case", "---\nrepo: SALUS\n---\nbody"],
+  ];
+  const unreadable: [string, string][] = [
+    ["a mapping as the repo value", "---\nrepo:\n  name: salus\n---\nbody"],
+    ["a mapping inside the repo list", "---\nrepo:\n  - {name: salus}\n---\nbody"],
+    ["a duplicate repo key", "---\nrepo: himmel\nrepo: salus\n---\nbody"],
+    ["a duplicate repo key with salus first", "---\nrepo: salus\nrepo: himmel\n---\nbody"],
+    ["an unresolved tag on the repo value", "---\nrepo: !custom himmel\n---\nbody"],
+    ["a list as the whole document", "---\n- repo\n- salus\n---\nbody"],
+    ["a bare scalar as the whole document", "---\nsalus\n---\nbody"],
+    ["a parse error", "---\nrepo: [salus\n---\nbody"],
+    ["a colon inside a plain value", "---\ntitle: a: b\nrepo: himmel\n---\nbody"],
+    ["a tab indent", "---\n\trepo: himmel\n---\nbody"],
+    ["an undefined alias", "---\nrepo: *nope\n---\nbody"],
+    ["a header that never closes", "---\nrepo: himmel\nbody with no closing fence\n"],
+    ["a lone fence", "---\n"],
+  ];
+  const clean: [string, string][] = [
+    ["another repo", "---\nrepo: himmel\n---\nbody"],
+    ["a list without salus", "---\nrepo: [himmel, luna]\n---\nbody"],
+    ["a null repo", "---\nrepo: ~\n---\nbody"],
+    ["a numeric repo", "---\nrepo: 5\n---\nbody"],
+    ["an empty header", "---\n---\nbody"],
+    ["salus only in other keys", "---\nnotes: repo is salus\nrepository: salus\n---\nbody"],
+    ["salus only in the body", "---\ntitle: x\n---\nrepo: salus\n"],
+    ["a longer word", "---\nrepo: salusbury\n---\nbody"],
+    ["no frontmatter at all", "repo: salus\njust text"],
+  ];
+
+  for (const [label, text] of salus) {
+    it(`flags salus written as ${label}`, () => {
+      assert.equal(hasSalusFrontmatter(text), true);
+    });
+  }
+  for (const [label, text] of unreadable) {
+    it(`refuses ${label}`, () => {
+      assert.equal(hasSalusFrontmatter(text), true);
+    });
+  }
+  for (const [label, text] of clean) {
+    it(`lets through ${label}`, () => {
+      assert.equal(hasSalusFrontmatter(text), false);
+    });
+  }
+
+  it("reports salus as salus and every other refusal as frontmatter when reading files", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    let n = 0;
+    for (const [label, text] of salus) {
+      const name = `yaml-salus-${n++}.md`;
+      await put(root, `30-Resources/${name}`, text);
+      assert.equal(await kindOfAsync(() => readVerified(root, ["30-Resources", name], reader, "whole")), "salus", label);
+    }
+    for (const [label, text] of unreadable) {
+      const name = `yaml-bad-${n++}.md`;
+      await put(root, `30-Resources/${name}`, text);
+      const kind = await kindOfAsync(() => readVerified(root, ["30-Resources", name], reader, "prefix"));
+      assert.ok(kind === "salus" || kind === "frontmatter", `${label}: ${kind}`);
+    }
+    for (const [label, text] of clean.filter(([, body]) => body.startsWith("---"))) {
+      const name = `yaml-clean-${n++}.md`;
+      await put(root, `30-Resources/${name}`, text);
+      assert.match((await readVerified(root, ["30-Resources", name], reader, "whole")).text, /body|repo/, label);
+    }
+  });
+});
+
+describe("frontmatter longer than the scan window", () => {
+  const longHeader = (tail: string): string => `---\n${"k: v\n".repeat(Math.ceil(SCAN_BYTES / 5) + 100)}${tail}`;
+
+  it("denies a header that does not close inside the scanned bytes, in whole and prefix mode", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    await put(root, "30-Resources/long-header.md", longHeader(`repo: salus\n---\n# T\n${PHI}\n`));
+    assert.ok(Buffer.byteLength(longHeader("")) > SCAN_BYTES);
+    assert.equal(await kindOfAsync(() => readVerified(root, ["30-Resources", "long-header.md"], reader, "whole")), "frontmatter");
+    assert.equal(await kindOfAsync(() => readVerified(root, ["30-Resources", "long-header.md"], reader, "prefix")), "frontmatter");
+  });
+
+  it("still reads a note with a short header and a long body", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    await put(root, "30-Resources/long-body.md", `---\ntitle: x\n---\n${"line\n".repeat(SCAN_BYTES)}`);
+    const file = await readVerified(root, ["30-Resources", "long-body.md"], reader, "prefix");
+    assert.match(file.text, /^---\ntitle: x/);
+  });
+});
+
+describe("verification after the file is opened", () => {
+  it("denies a read when a parent directory is swapped for an escaping symlink after the pre-check", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    const outside = join(fx.base, "swapped-outside");
+    await put(outside, "plain.md", `${LEAK}\n`);
+    const hooks = {
+      beforeOpen: async () => {
+        await rename(join(root, "30-Resources"), join(root, "30-Resources.moved"));
+        await symlink(outside, join(root, "30-Resources"));
+      },
+    };
+    assert.equal(await kindOfAsync(() => readVerified(root, ["30-Resources", "plain.md"], reader, "whole", hooks)), "escape");
+  });
+
+  it("applies the role-path gate to the real path when a parent is swapped for an in-root symlink", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    await put(root, "sessions/plain.md", `${PHI}\n`);
+    const hooks = {
+      beforeOpen: async () => {
+        await rename(join(root, "30-Resources"), join(root, "30-Resources.moved"));
+        await symlink(join(root, "sessions"), join(root, "30-Resources"));
+      },
+    };
+    assert.equal(await kindOfAsync(() => readVerified(root, ["30-Resources", "plain.md"], reader, "whole", hooks)), "role-path");
+  });
+
+  it("denies a read when the file is replaced by another inode after it was opened", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    const hooks = {
+      afterOpen: async () => {
+        await writeFile(join(root, "30-Resources", "replacement.tmp"), "# replaced\n");
+        await rename(join(root, "30-Resources", "replacement.tmp"), join(root, "30-Resources", "plain.md"));
+      },
+    };
+    assert.equal(await kindOfAsync(() => readVerified(root, ["30-Resources", "plain.md"], reader, "whole", hooks)), "changed");
+  });
+
+  it("reads normally when the hooks change nothing", async (t) => {
+    const fx = await buildFixture(t);
+    const root = fx.roots.get("luna")!;
+    const seen: string[] = [];
+    const hooks = { beforeOpen: (abs: string) => void seen.push(abs), afterOpen: (abs: string) => void seen.push(abs) };
+    const file = await readVerified(root, ["30-Resources", "plain.md"], reader, "whole", hooks);
+    assert.match(file.text, /body of Plain/);
+    assert.equal(seen.length, 2);
   });
 });

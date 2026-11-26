@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { describe, it, type TestContext } from "node:test";
 import { createAudit } from "../src/audit.js";
 import { bearerGate, hashKey, KeyStore, readKeysFile } from "../src/auth.js";
@@ -267,5 +267,129 @@ describe("luna-mcp-audit", () => {
     assert.notEqual(await runAudit(["--tail", "abc"], s.io), 0);
     assert.notEqual(await runAudit(["--verdict", "maybe"], s.io), 0);
     assert.notEqual(await runAudit(["--bogus"], s.io), 0);
+  });
+});
+
+describe("key file locking", () => {
+  const params = { principal: "a", provider: "xai-grokbot" as const, resource: PUBLIC_URL, roles: ["reader"], collections: ["luna"], ttlMs: DAY };
+  const exists = (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
+
+  it("keeps a revocation when a mint is in flight on the same key file", async (t) => {
+    const r = await rig(t);
+    const first = await mintKey(r.file, params, r.io);
+    let mintPaused!: () => void;
+    const mintIsPaused = new Promise<void>((resolve) => (mintPaused = resolve));
+    let revokerWaiting!: () => void;
+    const revokerIsWaiting = new Promise<void>((resolve) => (revokerWaiting = resolve));
+    let revokerDone!: () => void;
+    const revokerFinished = new Promise<void>((resolve) => (revokerDone = resolve));
+    const minting = mintKey(r.file, { ...params, principal: "b" }, {
+      ...r.io,
+      afterRead: async () => {
+        mintPaused();
+        await Promise.race([revokerIsWaiting, revokerFinished]);
+      },
+    });
+    await mintIsPaused;
+    const revoking = revokeKey(r.file, first.keyId, {
+      ...r.io,
+      sleep: async () => {
+        revokerWaiting();
+        await minting;
+      },
+    }).finally(revokerDone);
+    await Promise.all([minting, revoking]);
+    const { keys } = await readKeysFile(r.file);
+    assert.equal(keys.length, 2);
+    assert.equal(keys.find((k) => k.keyId === first.keyId)?.revoked, true);
+    assert.equal((await stat(r.file)).mode & 0o777, 0o600);
+  });
+
+  it("keeps a revocation when a rotation is in flight on the same key file", async (t) => {
+    const r = await rig(t);
+    const first = await mintKey(r.file, params, r.io);
+    const other = await mintKey(r.file, { ...params, principal: "c" }, r.io);
+    let rotatePaused!: () => void;
+    const rotateIsPaused = new Promise<void>((resolve) => (rotatePaused = resolve));
+    let revokerWaiting!: () => void;
+    const revokerIsWaiting = new Promise<void>((resolve) => (revokerWaiting = resolve));
+    let revokerDone!: () => void;
+    const revokerFinished = new Promise<void>((resolve) => (revokerDone = resolve));
+    const rotating = rotateKey(r.file, first.keyId, { ttlMs: DAY, overlapMs: DAY / 2 }, {
+      ...r.io,
+      afterRead: async () => {
+        rotatePaused();
+        await Promise.race([revokerIsWaiting, revokerFinished]);
+      },
+    });
+    await rotateIsPaused;
+    const revoking = revokeKey(r.file, other.keyId, {
+      ...r.io,
+      sleep: async () => {
+        revokerWaiting();
+        await rotating;
+      },
+    }).finally(revokerDone);
+    await Promise.all([rotating, revoking]);
+    const { keys } = await readKeysFile(r.file);
+    assert.equal(keys.length, 3);
+    assert.equal(keys.find((k) => k.keyId === other.keyId)?.revoked, true);
+  });
+
+  it("holds a lock file while it works and removes it afterwards, also when the operation fails", async (t) => {
+    const r = await rig(t);
+    const lock = `${r.file}.lock`;
+    const seen: boolean[] = [];
+    await mintKey(r.file, params, { ...r.io, afterRead: async () => void seen.push(await exists(lock)) });
+    assert.deepEqual(seen, [true]);
+    assert.equal(await exists(lock), false);
+    await assert.rejects(revokeKey(r.file, "lk_nonesuch", r.io));
+    assert.equal(await exists(lock), false);
+    assert.equal((await stat(r.file)).mode & 0o777, 0o600);
+  });
+
+  it("takes over a lock whose process is gone", async (t) => {
+    const r = await rig(t);
+    const lock = `${r.file}.lock`;
+    await mkdir(dirname(r.file), { recursive: true });
+    await writeFile(lock, JSON.stringify({ pid: 424242, at: r.clock.now(), token: "dead" }), { mode: 0o600 });
+    const owners: number[] = [];
+    await mintKey(r.file, params, {
+      ...r.io,
+      isAlive: () => false,
+      afterRead: async () => void owners.push((JSON.parse(await readFile(lock, "utf8")) as { pid: number }).pid),
+    });
+    assert.deepEqual(owners, [process.pid]);
+    assert.equal(await exists(lock), false);
+  });
+
+  it("takes over a lock older than the stale age even when its pid looks alive", async (t) => {
+    const r = await rig(t);
+    const lock = `${r.file}.lock`;
+    await mkdir(dirname(r.file), { recursive: true });
+    await writeFile(lock, JSON.stringify({ pid: 424242, at: r.clock.now() - 10 * 60_000, token: "old" }), { mode: 0o600 });
+    const owners: number[] = [];
+    await mintKey(r.file, params, {
+      ...r.io,
+      isAlive: () => true,
+      staleMs: 60_000,
+      afterRead: async () => void owners.push((JSON.parse(await readFile(lock, "utf8")) as { pid: number }).pid),
+    });
+    assert.deepEqual(owners, [process.pid]);
+  });
+
+  it("gives up after the bounded retries on a live fresh lock, backing off between tries, and leaves that lock alone", async (t) => {
+    const r = await rig(t);
+    const lock = `${r.file}.lock`;
+    await mkdir(dirname(r.file), { recursive: true });
+    await writeFile(lock, JSON.stringify({ pid: 424242, at: r.clock.now(), token: "live" }), { mode: 0o600 });
+    const sleeps: number[] = [];
+    await assert.rejects(
+      mintKey(r.file, params, { ...r.io, isAlive: () => true, retries: 3, backoffMs: 20, sleep: async (ms) => void sleeps.push(ms) }),
+      /locked/,
+    );
+    assert.deepEqual(sleeps, [20, 40, 80]);
+    assert.equal(await exists(r.file), false);
+    assert.match(await readFile(lock, "utf8"), /"token":"live"/);
   });
 });

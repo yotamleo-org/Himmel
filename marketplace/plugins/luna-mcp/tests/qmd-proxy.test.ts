@@ -102,6 +102,71 @@ describe("QMD proxy request", () => {
   });
 });
 
+describe("QMD proxy response cap", () => {
+  it("stops reading and drops the connection once the answer passes the size cap", async (t) => {
+    const dir = await scratch(t);
+    const tokenFile = join(dir, "qmd-http-token");
+    await writeFile(tokenFile, QMD_TOKEN, { mode: 0o600 });
+    const qmd = await startFakeQmd(t);
+    const total = 200;
+    const chunk = Buffer.alloc(64 * 1024, 0x61);
+    let written = 0;
+    let finished = false;
+    let closed!: () => void;
+    const connectionClosed = new Promise<void>((resolve) => (closed = resolve));
+    qmd.setHandler((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.on("close", closed);
+      const pump = (): void => {
+        while (written < total) {
+          written++;
+          if (!res.write(chunk)) {
+            res.once("drain", pump);
+            return;
+          }
+        }
+        finished = true;
+        res.end();
+      };
+      pump();
+    });
+    const proxy = createQmdProxy({ url: qmd.url, tokenFile, timeoutMs: 5000, maxResponseBytes: 1024 });
+    await assert.rejects(
+      proxy.search({ searches, collections: ["luna"], limit: 5 }),
+      (e: unknown) => e instanceof QmdUnavailable && e.kind === "bad-response",
+    );
+    await connectionClosed;
+    assert.equal(finished, false);
+    assert.ok(written < total, `server wrote ${written} of ${total} chunks`);
+  });
+
+  it("refuses at once when the declared length is already over the cap", async (t) => {
+    const dir = await scratch(t);
+    const tokenFile = join(dir, "qmd-http-token");
+    await writeFile(tokenFile, QMD_TOKEN, { mode: 0o600 });
+    const qmd = await startFakeQmd(t);
+    qmd.setHandler((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json", "content-length": String(10_000_000) });
+      res.write("{");
+    });
+    const proxy = createQmdProxy({ url: qmd.url, tokenFile, timeoutMs: 5000, maxResponseBytes: 1024 });
+    await assert.rejects(
+      proxy.search({ searches, collections: ["luna"], limit: 5 }),
+      (e: unknown) => e instanceof QmdUnavailable && e.kind === "bad-response",
+    );
+  });
+
+  it("still reads an answer that fits under the cap", async (t) => {
+    const dir = await scratch(t);
+    const tokenFile = join(dir, "qmd-http-token");
+    await writeFile(tokenFile, QMD_TOKEN, { mode: 0o600 });
+    const qmd = await startFakeQmd(t);
+    qmd.reply([qmdHit("luna", "a.md")]);
+    const proxy = createQmdProxy({ url: qmd.url, tokenFile, timeoutMs: 5000, maxResponseBytes: 4096 });
+    assert.equal((await proxy.search({ searches, collections: ["luna"], limit: 5 })).length, 1);
+  });
+});
+
 describe("RateLimiter", () => {
   it("admits up to the cap per window per key and recovers when the clock advances", () => {
     const clock = makeClock(1_000_000);

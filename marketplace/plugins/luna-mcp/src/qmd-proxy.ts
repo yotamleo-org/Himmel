@@ -35,6 +35,7 @@ export interface QmdProxyOptions {
   url: string;
   tokenFile: string;
   timeoutMs: number;
+  maxResponseBytes?: number;
   fetch?: typeof fetch;
   timeoutSignal?: (ms: number) => AbortSignal;
 }
@@ -54,8 +55,31 @@ export interface VerifyContext {
   limit: number;
 }
 
-const MAX_RESPONSE_CHARS = 8 * 1024 * 1024;
+const DEFAULT_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const HEALTH_TIMEOUT_MS = 2000;
+
+async function readCapped(res: Response, max: number): Promise<string> {
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > max) {
+    await res.body?.cancel();
+    throw new QmdUnavailable("bad-response", "QMD answer is too large");
+  }
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel();
+      throw new QmdUnavailable("bad-response", "QMD answer is too large");
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
 const ResponseSchema = z.object({ results: z.array(z.unknown()) });
 const FileSchema = z.object({ file: z.string() });
 
@@ -102,12 +126,11 @@ export function createQmdProxy(opts: QmdProxyOptions): QmdProxy {
           await res.body?.cancel();
           throw new QmdUnavailable("bad-response", `QMD answered ${res.status}`);
         }
-        text = await res.text();
+        text = await readCapped(res, opts.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES);
       } catch (e) {
         if (e instanceof QmdUnavailable) throw e;
         throw new QmdUnavailable(timer.aborted ? "timeout" : "down");
       }
-      if (text.length > MAX_RESPONSE_CHARS) throw new QmdUnavailable("bad-response", "QMD answer is too large");
       let json: unknown;
       try {
         json = JSON.parse(text);

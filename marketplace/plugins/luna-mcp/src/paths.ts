@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { open, realpath, stat, type FileHandle } from "node:fs/promises";
+import { open, readdir, realpath, stat, type FileHandle } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import { join, sep } from "node:path";
+import { parseDocument } from "yaml";
 
 export type DenyKind =
   | "bad-path"
@@ -14,6 +16,8 @@ export type DenyKind =
   | "escape"
   | "symlink"
   | "salus"
+  | "frontmatter"
+  | "changed"
   | "too-large"
   | "not-text";
 
@@ -32,6 +36,11 @@ export interface PolicyScope {
   vault: boolean;
   roles: readonly string[];
   allowHandoversRead: boolean;
+}
+
+export interface VerifyHooks {
+  beforeOpen?: (abs: string) => void | Promise<void>;
+  afterOpen?: (abs: string) => void | Promise<void>;
 }
 
 export interface VerifiedFile {
@@ -116,39 +125,62 @@ export function checkSegments(segments: readonly string[], scope: PolicyScope): 
   if (first === "handovers" && !(manager && scope.allowHandoversRead)) throw new Denied("role-path");
 }
 
-const stripComment = (s: string): string => s.replace(/\s+#.*$/, "");
-const unquote = (s: string): string => s.replace(/^(["'])(.*)\1$/, "$2");
+export type FrontmatterVerdict = "clean" | "salus" | "unreadable";
 
-export function hasSalusFrontmatter(text: string): boolean {
+const MAX_YAML_ALIASES = 100;
+const MAX_REPO_DEPTH = 8;
+
+function repoVerdict(value: unknown, depth: number): FrontmatterVerdict {
+  if (value === null || value === undefined) return "clean";
+  if (typeof value === "string") return value.trim().toLowerCase() === "salus" ? "salus" : "clean";
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return "clean";
+  if (Array.isArray(value) && depth < MAX_REPO_DEPTH) {
+    let verdict: FrontmatterVerdict = "clean";
+    for (const item of value) {
+      const v = repoVerdict(item, depth + 1);
+      if (v === "salus") return "salus";
+      if (v === "unreadable") verdict = "unreadable";
+    }
+    return verdict;
+  }
+  return "unreadable";
+}
+
+export function frontmatterVerdict(text: string): FrontmatterVerdict {
   const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
   const lines = src.split(/\r?\n/);
-  if (lines[0]?.trimEnd() !== "---") return false;
-  const front: string[] = [];
+  if (lines[0]?.trimEnd() !== "---") return "clean";
+  let close = -1;
   for (let i = 1; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    const end = line.trimEnd();
-    if (end === "---" || end === "...") break;
-    front.push(line);
-  }
-  for (let i = 0; i < front.length; i++) {
-    const m = /^["']?repo["']?\s*:\s*(.*)$/i.exec(front[i] ?? "");
-    if (!m) continue;
-    const inline = stripComment(m[1] ?? "").trim();
-    const values: string[] = [];
-    if (inline === "") {
-      for (let j = i + 1; j < front.length; j++) {
-        const item = /^\s*-\s*(.*)$/.exec(front[j] ?? "");
-        if (item) values.push(stripComment(item[1] ?? ""));
-        else if ((front[j] ?? "").trim() !== "") break;
-      }
-    } else if (inline.startsWith("[")) {
-      values.push(...inline.replace(/^\[|\]$/g, "").split(","));
-    } else {
-      values.push(inline);
+    const end = (lines[i] ?? "").trimEnd();
+    if (end === "---" || end === "...") {
+      close = i;
+      break;
     }
-    if (values.some((v) => unquote(v.trim()).toLowerCase() === "salus")) return true;
   }
-  return false;
+  if (close < 0) return "unreadable";
+  let data: unknown;
+  try {
+    const doc = parseDocument(lines.slice(1, close).join("\n"), { uniqueKeys: true, merge: true });
+    if (doc.errors.length > 0 || doc.warnings.length > 0) return "unreadable";
+    data = doc.toJS({ maxAliasCount: MAX_YAML_ALIASES });
+  } catch {
+    return "unreadable";
+  }
+  if (data === null || data === undefined) return "clean";
+  if (typeof data !== "object" || Array.isArray(data)) return "unreadable";
+  let verdict: FrontmatterVerdict = "clean";
+  for (const [key, value] of Object.entries(data)) {
+    if (key.trim().toLowerCase() !== "repo") continue;
+    const v = repoVerdict(value, 0);
+    if (v === "salus") return "salus";
+    if (v === "unreadable") verdict = "unreadable";
+  }
+  return verdict;
+}
+
+export function hasSalusFrontmatter(text: string): boolean {
+  return frontmatterVerdict(text) !== "clean";
 }
 
 async function resolveRoot(root: string): Promise<string> {
@@ -176,6 +208,18 @@ async function realSegmentsOf(rootReal: string, abs: string, scope: PolicyScope)
   return segments;
 }
 
+async function sameFile(rootReal: string, abs: string, scope: PolicyScope, opened: { dev: bigint; ino: bigint }): Promise<void> {
+  const real = await realSegmentsOf(rootReal, abs, scope);
+  let now;
+  try {
+    now = await stat(join(rootReal, ...real), { bigint: true });
+  } catch (e) {
+    if (MISSING.has((e as NodeJS.ErrnoException).code ?? "")) throw new Denied("changed");
+    throw e;
+  }
+  if (now.dev !== opened.dev || now.ino !== opened.ino) throw new Denied("changed");
+}
+
 async function readFully(fh: FileHandle, length: number, position: number): Promise<Buffer> {
   const buf = Buffer.alloc(length);
   let filled = 0;
@@ -192,6 +236,7 @@ export async function readVerified(
   segments: readonly string[],
   scope: PolicyScope,
   mode: "whole" | "prefix",
+  hooks?: VerifyHooks,
 ): Promise<VerifiedFile> {
   checkSegments(segments, scope);
   const name = segments[segments.length - 1];
@@ -199,6 +244,7 @@ export async function readVerified(
   const rootReal = await resolveRoot(root);
   const abs = join(rootReal, ...segments);
   await realSegmentsOf(rootReal, abs, scope);
+  await hooks?.beforeOpen?.(abs);
   let fh: FileHandle;
   try {
     fh = await open(abs, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -209,13 +255,17 @@ export async function readVerified(
     throw e;
   }
   try {
+    await hooks?.afterOpen?.(abs);
     const st = await fh.stat();
     if (!st.isFile()) throw new Denied("not-found");
+    await sameFile(rootReal, abs, scope, await fh.stat({ bigint: true }));
     const prefixLength = Math.min(st.size, SCAN_BYTES);
     const prefix = await readFully(fh, prefixLength, 0);
     if (prefix.includes(0)) throw new Denied("not-text");
     const head = prefix.toString("utf8");
-    if (hasSalusFrontmatter(head)) throw new Denied("salus");
+    const verdict = frontmatterVerdict(head);
+    if (verdict === "salus") throw new Denied("salus");
+    if (verdict === "unreadable") throw new Denied("frontmatter");
     if (mode === "prefix") return { text: head, size: st.size, mtimeMs: st.mtimeMs, sha256: "" };
     if (st.size > READ_CAP_BYTES) throw new Denied("too-large");
     const rest = st.size > prefixLength ? await readFully(fh, st.size - prefixLength, prefixLength) : Buffer.alloc(0);
@@ -231,7 +281,7 @@ export async function resolveDir(
   root: string,
   segments: readonly string[],
   scope: PolicyScope,
-): Promise<{ real: string; segments: string[] }> {
+): Promise<{ real: string; rootReal: string; segments: string[] }> {
   checkSegments(segments, scope);
   const rootReal = await resolveRoot(root);
   const real = await realSegmentsOf(rootReal, join(rootReal, ...segments), scope);
@@ -244,5 +294,32 @@ export async function resolveDir(
     throw e;
   }
   if (!st.isDirectory()) throw new Denied("not-found");
-  return { real: realPath, segments: real };
+  return { real: realPath, rootReal, segments: real };
+}
+
+export async function readDirVerified(
+  root: string,
+  segments: readonly string[],
+  scope: PolicyScope,
+  hooks?: VerifyHooks,
+): Promise<{ real: string; segments: string[]; dirents: Dirent[] }> {
+  const dir = await resolveDir(root, segments, scope);
+  await hooks?.beforeOpen?.(dir.real);
+  let fh: FileHandle;
+  try {
+    fh = await open(dir.real, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code ?? "";
+    if (code === "ELOOP") throw new Denied("symlink");
+    if (MISSING.has(code)) throw new Denied("not-found");
+    throw e;
+  }
+  try {
+    const opened = await fh.stat({ bigint: true });
+    const dirents = await readdir(dir.real, { withFileTypes: true });
+    await sameFile(dir.rootReal, dir.real, scope, opened);
+    return { real: dir.real, segments: dir.segments, dirents };
+  } finally {
+    await fh.close();
+  }
 }

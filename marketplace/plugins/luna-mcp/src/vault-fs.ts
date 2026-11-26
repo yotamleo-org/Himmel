@@ -1,7 +1,7 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { checkSegments, Denied, parseRelPath, readVerified, resolveDir, type PolicyScope } from "./paths.js";
+import { checkSegments, Denied, parseRelPath, readDirVerified, readVerified, resolveDir, type PolicyScope, type VerifyHooks } from "./paths.js";
 
 export interface DocResult {
   collection: string;
@@ -163,11 +163,11 @@ export async function listDir(
   rawDir: string | undefined,
   scope: PolicyScope,
   page: { cursor?: string | undefined; limit: number },
+  hooks?: VerifyHooks,
 ): Promise<DirPage> {
   const trimmed = (rawDir ?? "").replace(/\/+$/, "");
   const requested = trimmed === "" ? [] : parseRelPath(trimmed);
-  const { real, segments } = await resolveDir(root, requested, scope);
-  const dirents = await readdir(real, { withFileTypes: true });
+  const { segments, dirents } = await readDirVerified(root, requested, scope, hooks);
   dirents.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const after = page.cursor ? decodeCursor(page.cursor) : null;
   const entries: DirEntry[] = [];
@@ -202,6 +202,7 @@ export async function recentDocs(
   scope: PolicyScope,
   limit: number,
   maxVisited: number,
+  hooks?: VerifyHooks,
 ): Promise<{ docs: RecentDoc[]; truncated: boolean }> {
   const { real: rootReal } = await resolveDir(root, [], scope);
   const stack: string[][] = [[]];
@@ -212,7 +213,7 @@ export async function recentDocs(
     const dir = stack.pop() ?? [];
     let dirents;
     try {
-      dirents = await readdir(join(rootReal, ...dir), { withFileTypes: true });
+      ({ dirents } = await readDirVerified(root, dir, scope, hooks));
     } catch {
       continue;
     }
