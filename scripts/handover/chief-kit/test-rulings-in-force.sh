@@ -495,9 +495,12 @@ same "next-id: check --before reports no lost line" "$(printf '%s\n' "$rout" | b
 same "next-id: check --before exits 0 on that render" "$(printf '%s\n' "$rout" | bash "$SUT" check --bucket "$RS" --before "$W/reserved-in.txt" >/dev/null 2>&1; echo $?)" "0"
 same "next-id: find does not list a reserved id" "$(bash "$SUT" find --bucket "$RS" "$rn" >/dev/null 2>&1; echo $?)" "1"
 same "next-id: superseding by a reserved id warns that it has no ledger row" "$(bash "$SUT" record --bucket "$RS" --id 950 --status "superseded-by $rn" 2>&1 >/dev/null | grep -c 'has no ledger row yet')" "1"
-RB="$W/rsvbad"; mkdir -p "$RB/specs/decisions"
-printf '{"id": 1, "date": "2026-11-26", "line": "x", "status": "done", "path": "specs/decisions/v.txt", "reserved": "false"}\n' > "$RB/specs/decisions/rulings-in-force.jsonl"
-same "next-id: a reserved marker that is not true or absent is an unreadable row, exit 3" "$(bash "$SUT" find --bucket "$RB" x >/dev/null 2>&1; echo $?)" "3"
+same "next-id: that superseding is recorded" "$(bash "$SUT" find --bucket "$RS" 950 2>/dev/null | grep -c "superseded-by $rn")" "1"
+for rv in '"false"' 1 1.0 null; do
+    RB="$W/rsvbad"; rm -rf "$RB"; mkdir -p "$RB/specs/decisions"
+    printf '{"id": 1, "date": "2026-11-26", "line": "x", "status": "done", "path": "specs/decisions/v.txt", "reserved": %s}\n' "$rv" > "$RB/specs/decisions/rulings-in-force.jsonl"
+    same "next-id: a reserved marker of $rv is an unreadable row, exit 3" "$(bash "$SUT" find --bucket "$RB" x >/dev/null 2>&1; echo $?)" "3"
+done
 
 printf 'not json\n' >> "$L"
 out="$(render "$blk")"; rc=$?

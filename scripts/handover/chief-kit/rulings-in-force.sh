@@ -193,7 +193,7 @@ def load(reserved=False):
                       and r["line"].strip() and "\n" not in r["line"] and r["path"].strip()
                       and re.fullmatch(r"in-force|done|superseded-by [0-9]+", r["status"])
                       and (r.get("topic") is None or re.fullmatch(TOPIC, r["topic"]))
-                      and r.get("reserved") in (None, True))
+                      and ("reserved" not in r or r["reserved"] is True))
             except (ValueError, KeyError, TypeError, AttributeError):
                 ok = False
             if not ok:
