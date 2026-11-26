@@ -25,7 +25,7 @@ check_has() { if has "$2" "$3"; then assert_pass "$1"; else assert_fail "$1 — 
 check_eq() { if [ "$2" = "$3" ]; then assert_pass "$1"; else assert_fail "$1 — expected '$2', got '$3'"; fi; }
 
 CLONE="$TMP/clone"
-mkdir -p "$CLONE/scripts/guardrails" "$CLONE/scripts/lib" "$CLONE/scripts/t3" || exit 1
+mkdir -p "$CLONE/scripts/guardrails" "$CLONE/scripts/lib" "$CLONE/scripts/t3" "$CLONE/scripts/lanes" || exit 1
 if ! { cp "$SCRIPT" "$CLONE/scripts/himmel-update.sh" \
     && cp "$src_scripts/guardrails/lib.sh"        "$CLONE/scripts/guardrails/lib.sh" \
     && cp "$src_scripts/lib/cadence-format.sh"    "$CLONE/scripts/lib/cadence-format.sh" \
@@ -35,6 +35,9 @@ if ! { cp "$SCRIPT" "$CLONE/scripts/himmel-update.sh" \
     && cp "$src_scripts/lib/claude-version.sh"    "$CLONE/scripts/lib/claude-version.sh" \
     && cp "$src_scripts/lib/update-channel.sh"    "$CLONE/scripts/lib/update-channel.sh" \
     && cp "$src_scripts/t3/provider-instances.sh" "$CLONE/scripts/t3/provider-instances.sh" \
+    && cp "$src_scripts/lanes/plugin-profiles.mjs" "$CLONE/scripts/lanes/plugin-profiles.mjs" \
+    && cp "$src_scripts/lib/env-alias.mjs"        "$CLONE/scripts/lib/env-alias.mjs" \
+    && cp "$src_scripts/lib/is-main.mjs"          "$CLONE/scripts/lib/is-main.mjs" \
     && git init --quiet "$CLONE"; }; then
     echo "FAIL: mock clone setup" >&2
     exit 1
