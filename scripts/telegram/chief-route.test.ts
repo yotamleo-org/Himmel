@@ -3467,9 +3467,9 @@ test("round override nonblocking hint preserves refusal and names the normal ver
 const QUOTE_OLD = "# A\n\nthe realpath of the primary checkout is read by cd and pwd\n";
 const QUOTE_NEW = "# A\n\nthe realpath of the primary checkout, resolved by realpath -e\n";
 const QUOTED = "the realpath of the primary checkout, resolved by";
-const closureTree = async (plan3: string[] = []) => {
+const closureTree = async (plan3: string[] = [], next = QUOTE_NEW) => {
   const t = await roundTree(MAJOR, plan3, false, [], QUOTE_OLD);
-  writeFileSync(t.a, front(CAP_KEY, QUOTE_NEW));
+  writeFileSync(t.a, front(CAP_KEY, next));
   return t;
 };
 const overrideOf = (specs: string, ids: string) => verb(true, "round-override", CAP_KEY, "--findings", ids, "--why", "a regression the fix made", "--chief", "chief-x", "--specs", specs);
@@ -3578,6 +3578,177 @@ test("an ordinary full-mode major finding of the lagging kind is still an open b
   const ok = await overrideOf(t.specs, "P1,R1");
   expect(ok.err).toBe(""); expect(ok.code).toBe(0);
   expect(rowsOf(t.specs, "override")).toMatchObject([{ findings: [{ id: "P1", critic: "plan" }, { id: "R1", critic: "spec" }] }]);
+});
+
+const QUOTE_WRAPPED = "# A\n\nthe realpath of the primary checkout,\n   resolved by realpath -e\n";
+const CONTEXT_OLD = "# A\n\nthis context line is the same in both rounds\nold text\n";
+const CONTEXT_NEW = "# A\n\nthis context line is the same in both rounds\nnew text\n";
+const SPLIT_OLD = "# A\n\nthe first context line stays\nthe second context line stays\n";
+const SPLIT_NEW = "# A\n\nthe first context line stays\n\nthe second context line stays\n";
+const WRAPPED_P1 = `- **P1** (major; regression) the fix asks \`${QUOTED}\``;
+const reclassOf = (console: boolean, specs: string, round = "spec:4") => verb(console, "round-reclass", CAP_KEY, "--round", round, "--why", "the quote wrapped", "--chief", "chief-x", "--specs", specs);
+const storeAs = (specs: string, cls: (f: any) => string = () => "out-of-closure") => {
+  const rows = ledgerRows(specs, CAP_KEY); const at = rows.findLastIndex(r => r.row === "round");
+  rows[at].findings = rows[at].findings.map((f: any) => ({ ...f, class: cls(f) }));
+  writeFileSync(ledgerFile(specs), rows.map(r => JSON.stringify(r)).join("\n") + "\n");
+};
+const storeAsBase = (specs: string) => storeAs(specs);
+const appendReclass = (specs: string, findings: unknown[], returnSha?: string) => {
+  const round = ledgerRows(specs, CAP_KEY).findLast(r => r.row === "round" && r.critic === "spec");
+  appendFileSync(ledgerFile(specs), JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "reclass", epoch: 0, critic: "spec", round: 4, return_sha: returnSha ?? round.return_sha, findings, why: "w", chief: "c" }) + "\n");
+};
+const freshWrapped = async (plan3: string[] = [], ...more: string[]) => {
+  const t = await closureTree(plan3, QUOTE_WRAPPED);
+  expect((await closeOn(t, "spec", 4, [t.a], `SPEC FINDINGS ${1 + more.length}`, WRAPPED_P1, ...more)).err).toBe("");
+  return t;
+};
+const refusedReclass = async (t: { specs: string }, console: boolean, text: string, round = "spec:4") => {
+  const before = ledgerRows(t.specs, CAP_KEY).length; const res = await reclassOf(console, t.specs, round);
+  expect(res.err).toContain(text); expect(res.code).not.toBe(0); expect(ledgerRows(t.specs, CAP_KEY).length).toBe(before);
+};
+
+test("CQ1: a major closure regression whose quote wraps over two changed lines is a blocking regression the override can name", async () => {
+  const t = await freshWrapped();
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "P1", class: "regression" }]);
+  expect((await overrideOf(t.specs, "P1")).code).toBe(0);
+});
+
+test("CQ1b: a medium closure regression whose quote wraps over two changed lines is a regression", async () => {
+  const t = await closureTree([], QUOTE_WRAPPED);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", `- **P1** (medium; regression) the fix asks \`${QUOTED}\``)).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "P1", class: "regression" }]);
+});
+
+test("CQ2: a major closure regression whose quote is in no changed line is regression-unverified, carried by round-status and fold-list, and the override can name it", async () => {
+  const t = await closureTree();
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **P1** (major; regression) `no such text is in either round`")).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "P1", class: "regression-unverified" }]);
+  expect(JSON.stringify(JSON.parse((await routeCli("round-status", CAP_KEY, "--specs", t.specs, "--json")).out).latest.spec)).toContain('"class":"regression-unverified"');
+  expect((await verb(false, "fold-list", "--spec", t.a, "--specs", t.specs)).out).toContain("- P1 (major; regression-unverified; regression) spec r4");
+  expect((await overrideOf(t.specs, "P1")).code).toBe(0);
+});
+
+test("CQ3a: a medium closure regression whose quote is in no changed line stays out-of-closure", async () => {
+  const t = await closureTree();
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **P1** (medium; regression) `no such text is in either round`")).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "P1", class: "out-of-closure" }]);
+});
+
+test("CQ3b: a quote that lies only in a context line does not match", async () => {
+  const t = await roundTree(MAJOR, [], false, [], CONTEXT_OLD); writeFileSync(t.a, front(CAP_KEY, CONTEXT_NEW));
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **P2** (medium; regression) `this context line is the same in both rounds`")).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "P2", class: "out-of-closure" }]);
+});
+
+test("CQ3c: a quote over two context lines around an added blank line does not match", async () => {
+  const t = await roundTree(MAJOR, [], false, [], SPLIT_OLD); writeFileSync(t.a, front(CAP_KEY, SPLIT_NEW));
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **P2** (medium; regression) `the first context line stays the second context line stays`")).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1).findings).toMatchObject([{ id: "P2", class: "out-of-closure" }]);
+});
+
+test("CQ4: round-reclass re-classes a stored closure round once, records one row, and round-override then opens round 5", async () => {
+  const t = await freshWrapped(); storeAsBase(t.specs);
+  expect((await overrideOf(t.specs, "P1")).code).not.toBe(0);
+  const res = await reclassOf(true, t.specs);
+  expect(res.err).toBe(""); expect(res.code).toBe(0);
+  expect(res.out).toContain(`round-reclass: ${CAP_KEY} spec round 4: P1 out-of-closure to regression`);
+  expect(rowsOf(t.specs, "reclass")).toMatchObject([{ critic: "spec", round: 4, findings: [{ id: "P1", class: "regression" }], chief: "chief-x" }]);
+  const ok = await overrideOf(t.specs, "P1");
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "override")).toMatchObject([{ round_opened: 5, findings: [{ id: "P1", critic: "spec" }] }]);
+});
+
+test("CQ4b: round-reclass repairs the latest spec round and the latest plan round, in either order, and both rows apply", async () => {
+  for (const order of [["plan:4", "spec:4"], ["spec:4", "plan:4"]]) {
+    const t = await freshWrapped();
+    expect((await closeOn(t, "plan", 4, [t.plan], "PLAN FINDINGS 1", "- **Q1** (major; regression) `no such text is in either round`")).err).toBe("");
+    const rows = ledgerRows(t.specs, CAP_KEY);
+    for (const r of rows) if (r.row === "round" && r.round === 4) r.findings = r.findings.map((f: any) => ({ ...f, class: "out-of-closure" }));
+    writeFileSync(ledgerFile(t.specs), rows.map(r => JSON.stringify(r)).join("\n") + "\n");
+    for (const round of order) { const res = await reclassOf(true, t.specs, round); expect(res.err).toBe(""); expect(res.code).toBe(0); }
+    expect(rowsOf(t.specs, "reclass")).toHaveLength(2);
+    expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).not.toContain("invalid:");
+  }
+});
+
+test("CQ5a: round-reclass refuses off the chief console and writes nothing", async () => {
+  const t = await freshWrapped(); storeAsBase(t.specs);
+  await refusedReclass(t, false, "round-reclass: needs HIMMEL_CONSOLE=1");
+});
+
+test("CQ5b: round-reclass refuses a second run on the same round and writes nothing", async () => {
+  const t = await freshWrapped(); storeAsBase(t.specs);
+  expect((await reclassOf(true, t.specs)).code).toBe(0);
+  await refusedReclass(t, true, `round-reclass: ${CAP_KEY} spec round 4 was already re-classed`);
+});
+
+test("CQ5c: round-reclass refuses when no class would change and writes nothing", async () => {
+  const t = await freshWrapped();
+  await refusedReclass(t, true, `round-reclass: ${CAP_KEY} spec round 4 has nothing to re-class`);
+});
+
+test("CQ5d: round-reclass refuses a round that a record follows and writes nothing", async () => {
+  const t = await freshWrapped(); expect((await overrideOf(t.specs, "P1")).code).toBe(0); storeAsBase(t.specs);
+  await refusedReclass(t, true, `round-reclass: ${CAP_KEY} spec round 4 is followed by an override record`);
+});
+
+test("CQ5e: round-reclass refuses a return edited after its seal and writes nothing", async () => {
+  const t = await freshWrapped(); storeAsBase(t.specs); appendFileSync(`${t.a}.critic-spec-r4.md`, "\nan edit after the seal\n");
+  await refusedReclass(t, true, `round-reclass: ${CAP_KEY} spec round 4's return changed since it was sealed`);
+});
+
+test("CQ5f: round-reclass refuses a full-mode round and writes nothing", async () => {
+  const t = await freshWrapped(); storeAsBase(t.specs);
+  await refusedReclass(t, true, `round-reclass: ${CAP_KEY} spec round 3 is not the latest closure round of spec`, "spec:3");
+});
+
+test("CQ5g: round-reclass refuses a malformed --round and writes nothing", async () => {
+  const t = await freshWrapped(); storeAsBase(t.specs);
+  await refusedReclass(t, true, "round-reclass: --round is <spec|plan>:<round>, not 'spec-4'", "spec-4");
+});
+
+test("CQ5h: round-reclass refuses a round over an inferred baseline and writes nothing", async () => {
+  const t = await legacyTree(MAJOR);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", readLine(t.a), "- **P1** (major; regression `the realpath of the primary checkout`) the fix broke it")).err).toBe("");
+  await refusedReclass(t, true, `round-reclass: ${CAP_KEY} spec round 4 has an inferred baseline or a round 3 that sealed no file; nothing to re-class`);
+});
+
+test("CQ5i: round-reclass refuses a blank --why and writes nothing", async () => {
+  const t = await freshWrapped(); storeAsBase(t.specs); const before = ledgerRows(t.specs, CAP_KEY).length;
+  const res = await verb(true, "round-reclass", CAP_KEY, "--round", "spec:4", "--why", " ", "--chief", "chief-x", "--specs", t.specs);
+  expect(res.err).toContain("round-reclass: --round, --why and --chief are all required"); expect(res.code).not.toBe(0); expect(ledgerRows(t.specs, CAP_KEY).length).toBe(before);
+});
+
+test("CQ5j: round-reclass refuses a round that sealed one path at two shas and writes nothing", async () => {
+  const t = await freshWrapped(); storeAsBase(t.specs);
+  const x = ledgerRows(t.specs, CAP_KEY).findLast(r => r.row === "round" && r.critic === "spec");
+  appendFileSync(ledgerFile(t.specs), JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "seal", return_sha: x.return_sha, read_path: x.read_path, read_sha: "0".repeat(64) }) + "\n");
+  await refusedReclass(t, true, `round-reclass: ${CAP_KEY} spec round 4 sealed ${x.read_path} at more than one sha`);
+});
+
+test("CQ5k: round-reclass refuses when the recomputed classes would move a finding off blocking, and writes nothing", async () => {
+  const t = await freshWrapped([], "- **m2** (medium; regression) `no such text is in either round`");
+  storeAs(t.specs, (f: any) => f.id === "P1" ? "out-of-closure" : "regression");
+  await refusedReclass(t, true, `round-reclass: ${CAP_KEY} spec round 4 would move m2 to out-of-closure, which the fold refuses; nothing was written`);
+});
+
+test("CQ6: the reader drops a reclass row that breaks a fold rule, lists it as invalid, and keeps the stored classes", async () => {
+  for (const fault of ["off-blocking", "severity", "untagged", "after-override", "twice", "wrong-sha", "reorder", "later-round"]) {
+    const t = fault === "after-override" ? await freshWrapped(["- **P9** (major) a plan finding still open"]) : await freshWrapped([], "- **n1** (minor) a note");
+    const stored = () => ledgerRows(t.specs, CAP_KEY).findLast(r => r.row === "round" && r.critic === "spec").findings;
+    if (fault !== "off-blocking") storeAsBase(t.specs);
+    if (fault === "after-override") expect((await overrideOf(t.specs, "P9")).code).toBe(0);
+    const up = stored().map((f: any) => f.id === "P1" ? { ...f, class: "regression" } : f);
+    if (fault === "off-blocking") appendReclass(t.specs, stored().map((f: any) => f.id === "P1" ? { ...f, class: "out-of-closure" } : f));
+    if (fault === "severity") appendReclass(t.specs, up.map((f: any) => f.id === "n1" ? { ...f, severity: "medium" } : f));
+    if (fault === "untagged") appendReclass(t.specs, up.map((f: any) => f.id === "n1" ? { ...f, class: "regression" } : f));
+    if (fault === "reorder") appendReclass(t.specs, [...up].reverse());
+    if (fault === "later-round") { const x = ledgerRows(t.specs, CAP_KEY).findLast(r => r.row === "round" && r.critic === "spec");
+      appendFileSync(ledgerFile(t.specs), JSON.stringify({ ...x, ts: Date.now(), round: 5, return_sha: "1".repeat(64) }) + "\n"); appendReclass(t.specs, up, x.return_sha); }
+    if (fault === "after-override" || fault === "wrong-sha") appendReclass(t.specs, up, fault === "wrong-sha" ? "0".repeat(64) : undefined);
+    if (fault === "twice") { appendReclass(t.specs, up); appendReclass(t.specs, up); }
+    expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).toContain("invalid: reclass");
+  }
 });
 
 test("R5b: a round whose findings carry no format line holds synthetic ids the override can name", async () => {
@@ -5060,6 +5231,28 @@ test("capped fold still verifies a ledger whose latest closure round was opened 
   await expect(runCapped(f.args)).rejects.toThrow("invalid ledger records: extension 990");
 }, S1B);
 
+test("CQ7: a capped carry still verifies a ledger whose round 4 was re-classed and whose round 5, opened by the override, left only a minor", async () => {
+  const f = await cappedFixture({ specFindings: "- **M2** (major) blocking at the cap" }); const { sealRound } = await import("./chief-route");
+  const nextSpec = async (round: number, ...body: string[]) => {
+    const previous = f.args.specReturn; const lines = readFileSync(previous, "utf8").split("\n");
+    const header = lines.slice(0, lines.findLastIndex(l => l.startsWith("READ-SHA256 ")) + 1).map(l => l.replace(/^Fixture: spec round \d+$/, `Fixture: spec round ${round}`));
+    const next = previous.replace(/r\d+\.md$/, `r${round}.md`);
+    const seals = lines.filter(l => l.startsWith("CONTENT-SHA256 "));
+    writeFileSync(next, [...header, markerFor(f.specsRoot, cappedKey, "spec", round), ...body, ...seals, `SPEC FINDINGS ${body.filter(l => l.startsWith("- **")).length}`, ""].join("\n"));
+    for (const s of seals) await sealRound(next, resolve(dirname(next), s.split(" ").slice(2).join(" ")));
+    f.args.specReturn = next;
+  };
+  const run = (...args: string[]) => verb(true, ...args, "--specs", f.specsRoot);
+  await nextSpec(4, "- **U1** (major; regression) `this text is in no changed line`");
+  editLedger(f, rows => { rows.findLast(row => row.row === "round" && row.critic === "spec").findings[0].class = "out-of-closure"; });
+  const re = await run("round-reclass", cappedKey, "--round", "spec:4", "--why", "a stored unverified major", "--chief", "chief-x");
+  expect(re.err).toBe(""); expect(re.out).toContain("U1 out-of-closure to regression-unverified");
+  expect((await run("round-override", cappedKey, "--findings", "U1", "--why", "the re-classed major", "--chief", "chief-x")).err).toBe("");
+  await nextSpec(5, "- **m1** (minor) a nonblocking wording note");
+  const proof = await runCapped(f.args);
+  expect(proof).toMatchObject({ key: cappedKey, epoch: 0, returns: [{ kind: "spec", round: 5, residuals: 1 }, { kind: "plan", round: 3 }], carried: [{ finding_id: "m1", severity: "minor", round: 5 }] });
+});
+
 const B1_LIB = join(import.meta.dir, "testlib-capped-fold.ts");
 const B1_MINERVA = join(import.meta.dir, "..", "..", "marketplace", "plugins", "himmel-ops", "scripts");
 const b1Lib = async (): Promise<any> => import("./testlib-capped-fold.ts");
@@ -5325,7 +5518,7 @@ test("B1 generic options: declarations, specStem, quote shapes, real closure wit
   expect(wr.find(r => r.row === "round" && r.round === 5)).toMatchObject({ mode: "closure", verdict: "SPEC CLEAN" });
   expect(readFileSync(withRewrite.spec, "utf8")).toContain("and its owner");
   // control: without the rewrite the same quoted line is not among the changed lines, so the ledger classes it out-of-closure and nothing is blocking
-  const noRewrite = await run({}, [full(1), full(2), full(3), ret("spec", 4, REG, { closure: true })]);
+  const noRewrite = await run({}, [full(1), full(2), full(3), ret("spec", 4, REG.replace("(major; regression)", "(medium; regression)"), { closure: true })]);
   expect(b1Rows(noRewrite).find(r => r.row === "round" && r.round === 4).findings).toMatchObject([{ id: "R1", class: "out-of-closure" }]);
   // control: a closure round without the real marker is refused by the real ledger
   await expect(run({}, [full(1), full(2), full(3), ret("spec", 4, "SPEC CLEAN\n")])).rejects.toThrow("closure check of round 3");
