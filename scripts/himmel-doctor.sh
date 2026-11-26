@@ -3523,8 +3523,8 @@ check_c40_qmd_vec() {
     # the daemon requires a bearer token; it goes to
     # curl as a config on stdin (never argv), read through the plugin's helper.
     local qd_tok qd_auth=()
-    qd_tok="$(bash "$REPO_ROOT/marketplace/plugins/qmd/scripts/qmd-auth-headers.sh" --token 2>/dev/null)" || qd_tok=""
-    [ -n "$qd_tok" ] && qd_auth=(-K -)
+    qd_tok="$(bash "$REPO_ROOT/marketplace/plugins/qmd/scripts/qmd-auth-headers.sh" --token-for "$url" 2>/dev/null)" || qd_tok=""
+    [ -n "$qd_tok" ] && qd_auth=(--noproxy '*' -K -)
     # `-w '%{http_code}'` appends the status after the body ("000" when no HTTP
     # exchange happened); peel it off so an empty body can be told apart by status.
     init="$(printf 'header = "Authorization: Bearer %s"\n' "$qd_tok" | "$curl_bin" ${qd_auth[@]+"${qd_auth[@]}"} -s -m "$init_timeout" -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$init_payload" "$url" 2>/dev/null)"; init_rc=$?

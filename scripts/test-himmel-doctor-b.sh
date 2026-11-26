@@ -2071,12 +2071,17 @@ c40_setup() {
     c40_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c40.XXXXXX")" || { fail "C40 setup: mktemp -d failed"; exit 1; }
     cat > "$c40_t/curl" <<'STUB'
 #!/usr/bin/env bash
-m=""; d=""; w=""; k=""
+m=""; d=""; w=""; k=""; np=""
 while [ $# -gt 0 ]; do
-    case "$1" in -m) m="$2"; shift ;; -d) d="$2"; shift ;; -w) w="$2"; shift ;; -K) k=$(cat) ;; esac
+    case "$1" in -m) m="$2"; shift ;; -d) d="$2"; shift ;; -w) w="$2"; shift ;; -K) k=$(cat) ;; --noproxy) np="$2"; shift ;; esac
     shift
 done
 mode="${C40_MODE:-ok}"
+# one record per call: whether the bearer reached curl's config and whether --noproxy was set
+# (the token value itself is only compared, never written)
+case "$k" in *"Authorization: Bearer tok-for-the-test-only"*) hdr_auth=yes ;; *) hdr_auth=no ;; esac
+case "$d" in *'"method":"initialize"'*) hdr_call=init ;; *) hdr_call=vec ;; esac
+[ -n "${C40_HDR_LOG:-}" ] && echo "$hdr_call auth=$hdr_auth noproxy=${np:-none}" >> "$C40_HDR_LOG"
 # Like real curl, `-w %{http_code}` appends the status AFTER the body ("000" when
 # no HTTP exchange happened); finish <code> [rc] models that and exits.
 finish() { [ -n "$w" ] && printf '%s' "$1"; exit "${2:-0}"; }
@@ -2227,6 +2232,25 @@ if grepq "$out" 'OK   C40-qmd-vec' && ! grepq "$out" 'WARN C40-qmd-vec'; then
     pass "C40 with the token file -> initialize and vec probe authenticate -> OK"
 else
     fail "C40 with the token file -> $(printf '%s' "$out" | grep -A1 C40)"
+fi
+rm -rf "$c40_t"
+
+echo "== C40: the bearer goes only to a loopback qmd and never through a proxy (HIMMEL-10299, RED) =="
+c40_setup
+mkdir -p "$c40_t/home/.config/qmd"; printf 'tok-for-the-test-only\n' > "$c40_t/home/.config/qmd/http-token"; chmod 600 "$c40_t/home/.config/qmd/http-token"
+: > "$c40_t/hdr"
+out="$(C40_HDR_LOG="$c40_t/hdr" c40_run ok)"
+if [ "$(grep -c '^init auth=yes noproxy=\*$' "$c40_t/hdr")" -eq 1 ] && [ "$(grep -c '^vec auth=yes noproxy=\*$' "$c40_t/hdr")" -eq 1 ] && [ "$(wc -l < "$c40_t/hdr")" -eq 2 ]; then
+    pass "C40 loopback url -> initialize and vec calls carry the bearer and --noproxy '*'"
+else
+    fail "C40 loopback url -> calls: $(tr '\n' ';' < "$c40_t/hdr")"
+fi
+: > "$c40_t/hdr"
+out="$(HIMMEL_DOCTOR_QMD_URL=http://qmd.example.invalid:8181/mcp C40_HDR_LOG="$c40_t/hdr" c40_run ok)"
+if [ "$(wc -l < "$c40_t/hdr")" -ge 1 ] && ! grep -q 'auth=yes' "$c40_t/hdr"; then
+    pass "C40 non-loopback url with a token file -> no call carries the bearer"
+else
+    fail "C40 non-loopback url -> calls: $(tr '\n' ';' < "$c40_t/hdr")"
 fi
 rm -rf "$c40_t"
 
