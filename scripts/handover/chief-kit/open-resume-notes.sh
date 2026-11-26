@@ -53,7 +53,7 @@
 # `no-trailer` (no trailer line at all: a crash, a kill, an older checkout) or `bad-trailer` (a malformed or
 # doubled trailer, a trailer that is not last, or a count that does not match). Both readers share
 # fixtures/open-notes-trailers.tsv.
-# Exit 0 on any listing, 2 on usage. Test seams (honoured only under HIMMEL_TEST_FIXTURE=1):
+# Exit 0 on any listing, 2 on usage or when a bootstrap library cannot be read. Test seams (honoured only under HIMMEL_TEST_FIXTURE=1):
 # OPEN_NOTES_SWEEP_CMD, OPEN_NOTES_MERGE_ROWS_CMD, OPEN_NOTES_NOW (epoch), OPEN_NOTES_BUDGET_SECS,
 # OPEN_NOTES_SWEEP_SECS, OPEN_NOTES_MERGE_SECS.
 set -uo pipefail
@@ -96,6 +96,7 @@ import json
 import os
 import re
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -174,6 +175,10 @@ def run(argv, timeout, env=None):
                 p.communicate()
             return None, '', '', True
     finally:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except OSError:
+            pass
         live.discard(p.pid)
 
 
@@ -215,8 +220,16 @@ def parse_args(argv):
 
 
 def front_matter(path):
-    with open(path, encoding='utf-8', errors='replace') as f:
-        lines = f.read().split('\n')
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError('not a regular file')
+        with os.fdopen(fd, encoding='utf-8', errors='replace') as f:
+            fd = -1
+            lines = f.read().split('\n')
+    finally:
+        if fd >= 0:
+            os.close(fd)
     fm = {}
     if lines and lines[0].strip() == '---':
         for ln in lines[1:]:
@@ -257,6 +270,8 @@ def main(opts):
         run_steps(opts, reasons, reason, notes, unverified, hidden, cursor_age)
     except Terminated:
         reason('deadline')
+    except Exception:
+        reason('internal-error')
     finally:
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         emit_and_trailer()
@@ -290,7 +305,7 @@ def run_steps(opts, reasons, reason, notes, unverified, hidden, cursor_age):
             except OSError:
                 failed = True
                 continue
-            if not os.path.isfile(path):
+            if not stat.S_ISREG(st.st_mode):
                 continue
             at = int(st.st_mtime)
             dm = MID_DAY.search(name) or TRAIL_DAY.search(name)
@@ -324,9 +339,9 @@ def run_steps(opts, reasons, reason, notes, unverified, hidden, cursor_age):
     except OSError:
         reason('mirror-unreadable')
         return
-    age = max(0, (now - int(cur.st_mtime)) // 60)
-    cursor_age[0] = str(age)
-    if age > limit:
+    age_secs = max(0, now - int(cur.st_mtime))
+    cursor_age[0] = str(age_secs // 60)
+    if age_secs > limit * 60:
         reason('mirror-stale')
     open_ = {}
     for key, (at, n, name) in sorted(newest.items()):
@@ -352,18 +367,20 @@ def run_steps(opts, reasons, reason, notes, unverified, hidden, cursor_age):
             reason('deadline')
             return
         own = SWEEP_SECS
+        bound = min(own, left())
         cmd = [seam('OPEN_NOTES_SWEEP_CMD'), root] if seam('OPEN_NOTES_SWEEP_CMD') else \
             ['bash', os.environ.get('OPEN_NOTES_QL', ''), 'status', '--sweep', root]
-        rc, out, _err, timed_out = run(cmd, min(own, left()))
+        rc, out, _err, timed_out = run(cmd, bound)
         if timed_out or rc not in (0, 20):
-            reason('deadline' if timed_out and left() < own else 'locks-unknown')
+            reason('deadline' if timed_out and bound < own else 'locks-unknown')
         else:
             for ln in out.splitlines():
                 sm = re.search(r'(?:^|\s)slug=(\S+)', ln)
                 tm = re.search(r'(?:^|\s)status=(\S+)', ln)
                 if not sm or not tm or tm.group(1) == 'STALE-DEAD':
                     continue
-                stem = sm.group(1).split('__')[-1]
+                parts = sm.group(1).split('__', 2)
+                stem = parts[2] if len(parts) == 3 else parts[-1]
                 for key in list(open_):
                     if stem.startswith(key + '-'):
                         del open_[key]
@@ -377,8 +394,9 @@ def run_steps(opts, reasons, reason, notes, unverified, hidden, cursor_age):
             env.setdefault('MERGE_ROWS_BUDGET_SECS', '25')
             cmd = [seam('OPEN_NOTES_MERGE_ROWS_CMD'), events] if seam('OPEN_NOTES_MERGE_ROWS_CMD') else \
                 ['python3', os.environ.get('OPEN_NOTES_MERGE_PY', ''), events]
-            rc, out, err, timed_out = run(cmd, min(own, left()), env=env)
-            if timed_out and left() < own:
+            bound = min(own, left())
+            rc, out, err, timed_out = run(cmd, bound, env=env)
+            if timed_out and bound < own:
                 reason('deadline')
             elif timed_out or rc != 0:
                 reason('events-unreadable')
@@ -395,10 +413,10 @@ def run_steps(opts, reasons, reason, notes, unverified, hidden, cursor_age):
                         continue
                     ts = parse_ts(r.get('ts'))
                     k = str(r.get('key', ''))
-                    if ts is not None and ts > newest_merge.get(k, -1):
+                    if ts is not None and (k not in newest_merge or ts > newest_merge[k]):
                         newest_merge[k] = ts
                 for key in list(open_):
-                    if newest_merge.get(key, -1) > open_[key]['at']:
+                    if key in newest_merge and newest_merge[key] > open_[key]['at']:
                         del open_[key]
                         hidden[0] += 1
     # step 7: the original doc, shown and not judged

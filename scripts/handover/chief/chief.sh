@@ -2561,7 +2561,7 @@ must_open_notes_rows() {
     local pdir="$1" mirror="$2" cap="$3" on_out="" last ntr nrows urows verdict="" reasons="" hidden=0 clause cmd tag key path at st orig rest label marker total=0 tab tb
     local trailer_re='^# open-notes: (complete|incomplete [^ ]+) n=([0-9]+) unverified=([0-9]+) merge_hidden=([0-9]+) mirror_cursor_age_min=([0-9]+|-)$'
     tab="$(printf '\t')"
-    cmd="bash $kit/open-resume-notes.sh --bucket $pdir --mirror $mirror"
+    cmd="bash $(printf '%q' "$kit/open-resume-notes.sh") --bucket $(printf '%q' "$pdir") --mirror $(printf '%q' "$mirror")"
     if [ "${HIMMEL_TEST_FIXTURE:-}" = 1 ] && [ -n "${CHIEF_OPEN_NOTES:-}" ]; then
         on_out="$(bash "$CHIEF_OPEN_NOTES" 2>/dev/null)" || :  # swallow-ok: a failed read is judged by its trailer below
     else
@@ -2584,7 +2584,7 @@ must_open_notes_rows() {
     if [ -n "$reasons" ]; then
         clause=""
         case ",$reasons," in
-            *,locks-unknown,*|*,events-unreadable,*|*,merges-partial,*|*,deadline,*|*,no-trailer,*|*,bad-trailer,*)
+            *,locks-unknown,*|*,events-unreadable,*|*,merges-partial,*|*,deadline,*|*,mirror-stale,*|*,internal-error,*|*,no-trailer,*|*,bad-trailer,*)
                 clause=" and listed notes may be held or superseded: do not relaunch until a complete read" ;;
         esac
         printf -- '- RESUME docs incomplete (%s): some open notes may be missing%s; re-run: %s%s\n' "$reasons" "$clause" "$cmd" "$([ "$hidden" -le 0 ] || printf ' (merge_hidden=%s)' "$hidden")"

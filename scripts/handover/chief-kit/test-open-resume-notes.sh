@@ -18,7 +18,7 @@ TAB=$'\t'
 W="$(mktemp -d "${TMPDIR:-/tmp}/open-notes-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 W="$(cd "$W" && pwd -P)"
 trap 'rm -rf "$W"' EXIT
-unset GIT_DIR GIT_WORK_TREE
+unset GIT_DIR GIT_WORK_TREE CHIEF_MUST_MIRROR_MIN OPEN_NOTES_BUDGET_SECS OPEN_NOTES_SWEEP_SECS OPEN_NOTES_MERGE_SECS MERGE_ROWS_BUDGET_SECS MERGE_ROWS_GH
 export HOME="$W/home"; mkdir -p "$HOME"
 unset HANDOVER_DIR TICKET_STATUS_STATE_DIR HIMMEL_JIRA_MIRROR
 
@@ -27,7 +27,8 @@ ok()   { echo "  PASS: $1"; pass=$((pass+1)); }
 bad()  { echo "  FAIL: $1"; [ $# -lt 2 ] || printf '    %s\n' "$2"; fails=$((fails+1)); }
 check() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "[$2] != [$3]"; fi; }
 has()   { if grep -qF -e "$2" <<<"$OUT"; then ok "$1"; else bad "$1" "output does not contain [$2]: $OUT"; fi; }
-lacks() { if grep -qF -e "$2" <<<"$OUT"; then bad "$1" "output contains [$2]: $OUT"; else ok "$1"; fi; }
+lacks() { grep -qF -e "$2" <<<"$OUT"; case $? in 1) ok "$1" ;; 0) bad "$1" "output contains [$2]: $OUT" ;; *) bad "$1" "grep failed" ;; esac; }
+alive() { local s; s="$(ps -o stat= -p "$1" 2>/dev/null)" || return 1; case "$s" in ''|Z*) return 1 ;; esac; return 0; }
 count_notes() { grep -c "^NOTE$TAB" <<<"$OUT" || true; }
 
 NOW_ISO="2026-11-26T12:00:00Z"
@@ -80,7 +81,7 @@ run_owner() {
     [ -z "$SWEEP_CMD" ] || e+=("OPEN_NOTES_SWEEP_CMD=$SWEEP_CMD")
     [ -z "$MERGE_CMD" ] || e+=("OPEN_NOTES_MERGE_ROWS_CMD=$MERGE_CMD")
     [ $# -eq 0 ] || e+=("$@")
-    OUT="$(env "${e[@]}" bash "$SUT" --bucket "$BUCKET_ARG" --mirror "$MIRROR_ARG" --events "$EVENTS_ARG" --root "$C" 2>"$C/err")"; RC=$?
+    OUT="$(timeout 60 env "${e[@]}" bash "$SUT" --bucket "$BUCKET_ARG" --mirror "$MIRROR_ARG" --events "$EVENTS_ARG" --root "$C" 2>"$C/err")"; RC=$?
     last="$(tail -n 1 <<<"$OUT")"
     nt="$(grep -c '^# open-notes:' <<<"$OUT" || true)"
     nn="$(count_notes)"; nu="$(grep -c "^UNVERIFIED$TAB" <<<"$OUT" || true)"
@@ -176,6 +177,7 @@ lock_case "row8 UNKNOWN" "slug=$SLUG session=s host=h age=unknown status=UNKNOWN
 lock_case "row8 INDETERMINATE" "slug=$SLUG status=INDETERMINATE reason=owner.json-missing-recent age=1s" 0 no
 lock_case "row8 IDLE-HELD?" "slug=$SLUG session=s host=h age=9999s status=IDLE-HELD?" 20 no
 lock_case "row8 no held locks" "sweep: no held locks" 0 yes
+lock_case "row8 a stem holding __" "slug=yotamleo__himmel__DEMO-6-N6x__other session=s host=h age=1s status=OK" 0 no
 
 echo "row 9: the wrap sequence keeps the note open"
 newcase
@@ -210,6 +212,10 @@ mknote DEMO-11-N11-a-2026-11-20-RESUME.md 2026-11-20T10:00:00Z; mkmirror DEMO-11
 echo '{"ts":"t","event":"merge","key":"DEMO-11","pr":"7","contract":"no","result":"noop"}' > "$E"
 run_owner "row11"
 has "row 11: DEMO-11 is listed" "NOTE${TAB}DEMO-11${TAB}"
+echo '{"ts":"0001-01-01T00:00:00+14:00","event":"merge","key":"DEMO-11","pr":"7","contract":"no","result":"noop"}' > "$E"
+run_owner "row11 out-of-range ts"
+has "row 11: a ts no timestamp can hold hides nothing" "NOTE${TAB}DEMO-11${TAB}"
+has "row 11: and the read is complete" "# open-notes: complete "
 
 echo "row 12: the merge compare is to the second"
 newcase
@@ -330,8 +336,8 @@ sleep 1
 kill -TERM "$OPID" 2>/dev/null
 wait "$OPID" 2>/dev/null
 CPID="$(cat "$PIDF" 2>/dev/null)"
-i=0; while [ -n "$CPID" ] && kill -0 "$CPID" 2>/dev/null && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
-check "row 21: the sweep seam's child is gone" "$([ -n "$CPID" ] && ! kill -0 "$CPID" 2>/dev/null && echo gone || echo "pid=[$CPID] alive or unwritten")" gone
+i=0; while [ -n "$CPID" ] && alive "$CPID" && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+check "row 21: the sweep seam's child is gone" "$([ -n "$CPID" ] && ! alive "$CPID" && echo gone || echo "pid=[$CPID] alive or unwritten")" gone
 OUT="$(cat "$C/out21")"
 check "row 21: the output still ends in an incomplete trailer" "$(tail -n 1 <<<"$OUT" | grep -Ec '^# open-notes: incomplete ')" "1"
 check "row 21: exactly one trailer" "$(grep -c '^# open-notes:' <<<"$OUT")" "1"
@@ -355,6 +361,13 @@ else
     has "row 24: mirror-unreadable" "UNVERIFIED${TAB}DEMO-20${TAB}$B/DEMO-20-N20-a-2026-11-20-RESUME.md${TAB}2026-11-20T10:00:00Z${TAB}reason=mirror-unreadable"
     chmod 644 "$M/DEMO-20.md"
 fi
+
+echo "row 26: a FIFO as a mirror file is UNVERIFIED, never a hang"
+newcase
+mknote DEMO-22-N22-a-2026-11-20-RESUME.md 2026-11-20T10:00:00Z
+mkfifo "$M/DEMO-22.md"
+run_owner "row26"
+has "row 26: mirror-unreadable" "UNVERIFIED${TAB}DEMO-22${TAB}$B/DEMO-22-N22-a-2026-11-20-RESUME.md${TAB}2026-11-20T10:00:00Z${TAB}reason=mirror-unreadable"
 
 echo "row 25: the shared vectors decode"
 nv=0

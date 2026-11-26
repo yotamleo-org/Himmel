@@ -4334,6 +4334,7 @@ must11333() {
     A="$root/tester/$tag/DEMO-nextleg-${today}A-chief.md"
     CHIEF_OPEN_NOTES="$seam" chief next --bucket "${tag}dst" --doc "$A" >/dev/null 2>&1
     B="$root/tester/${tag}dst/DEMO-nextleg-${today}B-chief.md"
+    check "11333 $tag chief next wrote the successor doc" "$([ -f "$B" ] && echo yes || echo no)" "yes"
     MUST11333="$(awk '$0 == "## Must disposition" { f = 1; next } f && /^## / { exit } f' "$B" 2>/dev/null)"
     HANDOVER_DIR="$root" bash "$QL" release "$A" "$tok" >/dev/null 2>&1
 }
@@ -4391,6 +4392,11 @@ seam11333 "$tmp/n7-11333.sh" "NOTE\tDEMO-47\t$bk11333/DEMO-47-N1-w-RESUME.md\t$t
 HIMMEL_TEST_FIXTURE='' must11333 r7-11333 "$tmp/n7-11333.sh"
 check "11333 the CHIEF_OPEN_NOTES seam is ignored without HIMMEL_TEST_FIXTURE" "$(printf '%s\n' "$MUST11333" | grep -c 'DEMO-47')" "0"
 check "11333 the real owner ran instead and said its read is incomplete" "$(printf '%s\n' "$MUST11333" | grep -c 'RESUME docs incomplete (mirror-unreadable)')" "1"
+
+bk11333="$root/tester/r8-11333"; mkdir -p "$bk11333"
+seam11333 "$tmp/n8-11333.sh" "NOTE\tDEMO-48\t$bk11333/DEMO-48-N1-w-RESUME.md\t$t1h11333\tstatus=To Do\torig=-\n# open-notes: incomplete mirror-stale n=1 unverified=0 merge_hidden=0 mirror_cursor_age_min=2000"
+must11333 r8-11333 "$tmp/n8-11333.sh"
+check "11333 a stale mirror tells the chief not to relaunch until a complete read" "$(printf '%s\n' "$MUST11333" | grep -c 'RESUME docs incomplete (mirror-stale).*do not relaunch until a complete read')" "1"
 
 mirstale10877="$tmp/mirror-stale10877"; mkdir -p "$mirstale10877"
 cp "$mir10877/DEMO-31.md" "$mirstale10877/DEMO-31.md"
