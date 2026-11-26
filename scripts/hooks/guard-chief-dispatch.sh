@@ -159,7 +159,7 @@ subagent_type="${subagent_type%x}"
 subagent_type="${subagent_type%$'\n'}"
 # judge-ro and brief-drafter are matched exactly and keep their lane only
 # while the project agent file has one tools: line, exactly an expected one
-# (judge-ro: Read, Grep, Glob, Bash, or that line plus Write, which
+# (judge-ro: Read, Bash (with or without Grep, Glob), or that line plus Write, which
 # guard-judge-write-scope.sh confines to a judge dir judge-dir.sh made;
 # brief-drafter: Read, Write, Edit, Bash). A file that grants more, or no file,
 # gets none.
@@ -174,7 +174,10 @@ case "$subagent_type" in
     judge-ro)
         agent_pinned "$subagent_type" 'Read, Grep, Glob, Bash' && exit 0
         agent_pinned "$subagent_type" 'Read, Grep, Glob, Bash, Write' && exit 0
-        agent_pinned "$subagent_type" 'Read, Grep, Glob, Bash, Write, WebFetch, WebSearch' && exit 0 ;;
+        agent_pinned "$subagent_type" 'Read, Grep, Glob, Bash, Write, WebFetch, WebSearch' && exit 0
+        agent_pinned "$subagent_type" 'Read, Bash' && exit 0
+        agent_pinned "$subagent_type" 'Read, Bash, Write' && exit 0
+        agent_pinned "$subagent_type" 'Read, Bash, Write, WebFetch, WebSearch' && exit 0 ;;
     brief-drafter)
         if agent_pinned "$subagent_type" 'Read, Write, Edit, Bash' \
             || agent_pinned "$subagent_type" 'Read, Write, Edit, Bash, WebFetch, WebSearch'; then
