@@ -12,12 +12,9 @@
 #   Read file_path, NotebookRead notebook_path, Grep path, Glob path and the part
 #   of an absolute Glob pattern before its first wildcard (Grep and Glob with no
 #   path: the cwd).
-#   Bash and Monitor command: every quoted string that starts with "/", and every
-#   word that starts with "/" once the text is split on blanks, quotes and shell
-#   punctuation (a backslash-escaped blank stays in its word). This is a command-text match:
-#   a path built at run time (a variable, a glob, a cd then a relative name)
-#   escapes it, so it narrows the residual tell.ts's transcript scan leaves and is
-#   not a boundary.
+#   Bash and Monitor command: every word that starts with "/" once quotes are
+#   joined to their word (a quoted or backslash-escaped blank stays in it) and the
+#   text is split on blanks and shell punctuation.
 # A path is PHI when a .salus or .salus-profile marker sits at or above its raw or
 # canonical form, or _guard_phi_decision returns 1 (listed) or 2 (unreadable).
 #
@@ -62,13 +59,17 @@ case "$tool" in
         fi
         ;;
     Bash | Monitor)
-        cmd=$(str '.tool_input.command // ""')
-        quoted=$(printf '%s\n' "$cmd" | grep -oE "'/[^']*'|\"/[^\"]*\"")
-        while IFS= read -r w; do
-            [ -n "$w" ] && add "${w:1:${#w}-2}"
-        done <<<"$quoted"
-        cmd=${cmd//\\ /$'\001'}
-        words=$(printf '%s\n' "$cmd" | tr -s " \t\r;|&<>()'\"\`=:,{}" '\n')
+        words=$(str '.tool_input.command // ""' | awk '{
+            o = ""
+            for (i = 1; i <= length($0); i++) {
+                c = substr($0, i, 1)
+                if (q != "") { if (c == q) q = ""; else o = o (c == " " ? "\001" : c); continue }
+                if (c == "\047" || c == "\"") { q = c; continue }
+                if (c == "\\" && substr($0, i + 1, 1) == " ") { o = o "\001"; i++; continue }
+                o = o c
+            }
+            print o
+        }' | tr -s " \t\r;|&<>()\`=:,{}" '\n')
         while IFS= read -r w; do
             case "$w" in /*) add "${w//$'\001'/ }" ;; esac
         done <<<"$words"

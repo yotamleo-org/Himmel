@@ -1,32 +1,7 @@
 #!/usr/bin/env bash
-# scripts/guardrails/phi-egress-lib.sh — shared fail-closed predicates for the
-# PHI/egress guard family.
-#
-# WHY: scripts/guardrails/graphify-fence.sh (the interactive path) and
-# scripts/graphify/refresh-graph-map.sh (the scheduled path) each classify (a)
-# PHI-root/egress-denylist file readability and (b) an Anthropic endpoint URL
-# down to a hostname. Before this file existed, each had its OWN copy of
-# both checks, and the scheduled copy fell behind the fence's fail-closed
-# behavior at least once, found only in review. A parity TEST can only catch drift already committed;
-# sourcing ONE implementation from both call sites makes the drift itself
-# impossible instead of merely detectable.
-#
-# Contract: every predicate here fails CLOSED — an absent, unreadable, or
-# unparseable input is never treated as an allow. Callers own the deny
-# message and any exact-value allowlisting; these functions only classify.
-#
-# Deliberately does NOT call `set` itself: it is sourced into callers running
-# under different shell options (graphify-fence.sh: `-uo pipefail`;
-# refresh-graph-map.sh: `-euo pipefail`) — `set` mutates the CALLING shell
-# once sourced, so declaring options here would silently drop the sourcing
-# script's own `-e` (exactly the fail-open-by-accident shape this ticket is
-# about).
+# phi-egress-lib.sh — the plugin lane's comment-stripped copy of
+# scripts/guardrails/phi-egress-lib.sh; test-plugin-hook-bash-wiring.sh pins its functions.
 
-# _guard_file_readable <path> -> rc 0 iff <path> exists, is a regular file,
-# and is readable by this process; rc 1 otherwise (missing, a directory/
-# special file, or present-but-unreadable). Callers must NOT collapse
-# "unreadable" into "absent": an EXISTING-but-unreadable PHI-roots/denylist
-# file must still deny, not silently proceed as if it declared nothing
 _guard_file_readable() {
     [ -f "$1" ] && [ -r "$1" ]
 }

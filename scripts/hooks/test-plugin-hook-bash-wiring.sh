@@ -87,8 +87,8 @@ else
     bad "plugin guard-rm-writes.sh drifted from scripts/hooks/guard-rm-writes.sh"
 fi
 
-# The peer taint hooks and the PHI read mark ship in the plugin (a peer desk's
-# cwd is outside any checkout); the scripts/hooks copies are what the Codex lane wires.
+# The peer taint hooks ship in the plugin (a peer desk's cwd is outside any
+# checkout); the scripts/hooks copies are what the Codex lane wires.
 for peer_hook in peer-taint-gate.sh peer-taint-mark.sh peer-taint-resume.sh phi-read-mark.sh; do
     if cmp -s "$HOOKS_DIR/$peer_hook" "$PLUGIN_ROOT/hooks/$peer_hook"; then
         ok "plugin $peer_hook is byte-identical to scripts/hooks/$peer_hook"
