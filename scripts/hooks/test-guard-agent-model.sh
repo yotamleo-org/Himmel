@@ -357,11 +357,19 @@ case "$ptxt2" in
     *"general-purpose"*) bad "a prompt-only plan critic mention must not steer to general-purpose - got: $ptxt2" ;;
     *) ok "a prompt-only plan critic mention does not name general-purpose" ;;
 esac
+mtxt="$(deny_text "$(described 'Judge plan-critic changes' "$(agent judge sonnet 'Judge the PR and report findings')")")"
+needs "a full judge whose description only mentions plan-critic changes keeps the judge remedy" "$mtxt" \
+    "whose delta-class.sh prints finding may use model: sonnet"
+case "$mtxt" in
+    *"general-purpose"*) bad "a description that merely mentions a critic must not steer to general-purpose - got: $mtxt" ;;
+    *) ok "a description that merely mentions a critic does not name general-purpose" ;;
+esac
 check "plan critic on judge + sonnet is still denied" block "$(described 'Plan critic r1' "$(agent judge sonnet 'x')")"
 check "plan critic on general-purpose + sonnet is still allowed" allow "$(described 'Plan critic r1' "$(agent general-purpose sonnet 'x')")"
 ftxt="$(deny_text "$(agent judge sonnet 'judge the PR')")"
 needs "full judge on sonnet -> text names the DELTA-JUDGE rule and its limits" "$ftxt" \
-    "DELTA-JUDGE: <head sha>" "delta-class.sh" "first full judge" "model: opus"
+    "DELTA-JUDGE: <head sha>" "a delta that delta-class.sh prints as trust keep Opus" \
+    "whose delta-class.sh prints finding may use model: sonnet" "first full judge" "model: opus"
 case "$ftxt" in
     *"general-purpose"*) bad "a full judge refusal must not steer to a critic dispatch - got: $ftxt" ;;
     *) ok "full judge refusal does not mention a critic dispatch" ;;

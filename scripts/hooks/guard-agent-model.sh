@@ -195,7 +195,7 @@ else
     fi
     # The remedy names an explicit model: an omitted one is not a remedy, because
     # guard-subagent-model.sh denies a dispatch with no model.
-    iscritic=$(printf '%s' "$input" | jq -r '.tool_input.description | strings | test("(plan|spec)[ -]critic"; "i")' 2>/dev/null || true)  # swallow-ok: a failed read means the generic judge remedy is named
+    iscritic=$(printf '%s' "$input" | jq -r '.tool_input.description | strings | test("^\\s*(plan|spec)[ -]critic"; "i")' 2>/dev/null || true)  # swallow-ok: a failed read means the generic judge remedy is named
     escalate="or for ONE genuinely hard call add a prompt line 'ESCALATION: <reason>' with a real reason and re-dispatch"
     if [ "$isj" = "judge" ] && [ "$iscritic" = "true" ] && [ "$kind" = "judge" ]; then
         remedy="A plan or spec critic is not a judge dispatch (a judge is the Opus verdict agent): re-dispatch the critic as subagent_type: general-purpose with model: sonnet at high effort (what minerva Stage 4 says)"
