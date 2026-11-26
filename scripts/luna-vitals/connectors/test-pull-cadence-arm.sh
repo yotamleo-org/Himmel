@@ -203,11 +203,18 @@ STUB
 }
 cron_home=$(mktemp -d "${TMPDIR:-/tmp}/pull-cadence-test-home.XXXXXX") || exit 1
 mkdir -p "$cron_home/.bun/bin" "$cron_home/art"
-printf '#!/bin/sh\necho "bun-called $*" > "%s/bun-args"\nexit 0\n' "$cron_home" > "$cron_home/.bun/bin/bun"
+cat > "$cron_home/.bun/bin/bun" <<'STUB'
+#!/bin/sh
+case "$1" in */google-health.ts) ;; *) exit 1 ;; esac
+[ "$2" = pull ] && [ "$3" = --from ] && [ "$4" = 2026-06-28 ] && [ "$5" = --to ] && [ "$6" = 2026-06-29 ] && [ "$7" = --out ] || exit 1
+case "$8" in */gh-2026-06-29.json) ;; *) exit 1 ;; esac
+echo "bun-called $*" > "$(dirname "$0")/../../bun-args"
+exit 0
+STUB
 chmod +x "$cron_home/.bun/bin/bun"
 make_stub_sender "$cron_home"
 run_cron_pull() {
-  env -i PATH=/usr/bin:/bin HOME="$1" \
+  env -i PATH="${2:-/usr/bin:/bin}" HOME="$1" \
     LUNA_VITALS_ARTIFACT_DIR="$1/art" HIMMEL_FLOW_RUNS_LEDGER="$1/flow-runs.jsonl" \
     CADENCE_ALERT_FILE="$1/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$1/alert-sent" \
     CADENCE_ALERT_SEND_CMD="$1/send.sh" CADENCE_ALERT_SEND_FAILED_MARK="$1/send-failed" \
@@ -222,7 +229,12 @@ echo "== test: exit 127 (bun missing) writes ONE alert line naming bun =="
 empty_home=$(mktemp -d "${TMPDIR:-/tmp}/pull-cadence-test-nobun.XXXXXX") || exit 1
 mkdir -p "$empty_home/art"
 make_stub_sender "$empty_home"
-out=$(run_cron_pull "$empty_home" 2>&1); rc=$?
+nobun_bin="$empty_home/bin"
+mkdir -p "$nobun_bin"
+for tool in bash sh env date dirname mkdir cat rm sed grep head tr cut sha256sum shasum cksum hostname uname mktemp basename tail chmod; do
+  tool_path=$(command -v "$tool" 2>/dev/null) && [ -x "$tool_path" ] && ln -s "$tool_path" "$nobun_bin/$tool"
+done
+out=$(run_cron_pull "$empty_home" "$nobun_bin" 2>&1); rc=$?
 if [ "$rc" -eq 127 ]; then pass "no bun: pull exits 127"; else fail "no bun: expected rc=127 got rc=$rc; output: $out"; fi
 n=$(grep -c . "$empty_home/alerts.log" 2>/dev/null || true)
 if [ "${n:-0}" = "1" ]; then pass "no bun: exactly one alert line"; else fail "no bun: expected one alert line, got ${n:-0}"; fi
