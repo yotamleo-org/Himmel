@@ -89,6 +89,7 @@ printf '%s\n' "$*" > "$STUB/le.args"
 cat > "$STUB/le.stdin"
 cp "$STUB/le.stdin" "$STUB/le.stdin.$n"
 [ -f "$STUB/le.sleep" ] && sleep "$(cat "$STUB/le.sleep")"
+if [ -f "$STUB/le.timeout-once" ]; then rm -f "$STUB/le.timeout-once"; exit 124; fi
 if [ -f "$STUB/le.retry-first" ] && grep -q '^N1 ' "$STUB/le.stdin"; then
     printf 'ESCALATE wrap-merged-failed rc=3 close-wrapped-worker: refusing - queue lock held\n'
     exit 10
@@ -235,6 +236,22 @@ contains "(r0l) the wake explains the timeout" "$(head -n 1 "$WORK/r0l.out")" "W
 contains "(r0l) the wake names the output artifact" "$(head -n 1 "$WORK/r0l.out")" "out=$I.wait.le-N1"
 if test -s "$I.wait.le-N1"; then pass "(r0l) test -s on the out file"; else fail "(r0l) test -s on the out file"; fi
 contains "(r0l) the out file explains the timeout" "$(cat "$I.wait.le-N1" 2>/dev/null)" "ESCALATE relay-timeout N1 rc=124"
+stop_waiter
+
+reset_stub
+fleet r0t
+: > "$STUB/le.timeout-once"
+start "$I" "$WORK/r0t.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0t) no baseline heartbeat"
+printf -- '- 11:00 WRAPPED — done\n' >> "$L"
+tick_line "N1:WRAPPED"
+n=0
+while [ "$n" -lt 80 ] && [ ! -s "$I.wait.digest" ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(r0t) the close is attempted again after the timeout" "2" "$(cat "$STUB/le.calls" 2>/dev/null)"
+check "(r0t) the second attempt is recorded in the digest" "N1 wrap-merged -" "$(cat "$I.wait.digest" 2>/dev/null)"
+sleep 2.5
+check "(r0t) it is not repeated after rc 0" "2" "$(cat "$STUB/le.calls" 2>/dev/null)"
+check "(r0t) the one timeout wakes nothing" "" "$(cat "$WORK/r0t.out")"
 stop_waiter
 # --- (r0m/n) keep the relay within the heartbeat consumers' contract --------
 # Match the variable name literally in the source.

@@ -322,7 +322,12 @@ wrapper here left a background loop running -- tell the leg to TaskStop it.
 orphans= lists only wrappers older than that, so a live leg without one never
 shows here: procs=...,unwatched= (below) is what names a live leg the arm omits.
 
-deadwin=<label>:closed|held[,...] follows closable= and is ABSENT
+wrapped-open=<label>[,<label>] follows closable= and is ABSENT unless a worker whose lock
+is free and whose tail is WRAPPED still has a live session (the workers= CLOSABLE rows, at
+once, with no age floor): the window the chief owes a close. Unlike closable=<n> it names
+the labels.
+
+deadwin=<label>:closed|held[,...] follows wrapped-open= and is ABSENT
 unless a leg konsole (tabtitle HIMMEL-<n>-N<k>-...) has no child process and is
 older than TICK_DEADWIN_GRACE seconds (default 30): its session died. :closed =
 tick TERMed the window (the leg's lock is FREE/WRAPPED, or a live <tabtitle>-r<n>
@@ -2728,6 +2733,7 @@ while IFS=$'\t' read -r m_label m_status m_cands; do
     fi
 done <<< "$leg_candmap"
 closable_n=0
+wrapped_open_csv=""
 # a WRAPPED worker (lock free, tail says WRAPPED) whose own
 # session process is STILL alive in this same census is CLOSABLE -- the
 # window sitting there finished but not yet closed is exactly what a chief
@@ -2741,6 +2747,7 @@ if [ "$census_failed" -eq 0 ]; then
         for w_cand in ${w_cands//,/ }; do
             if grep -Fxq -- "$w_cand" <<< "$census_names"; then
                 legs_summary="${legs_summary//$w_label:WRAPPED/$w_label:CLOSABLE}"
+                wrapped_open_csv="$(csv_add "$wrapped_open_csv" "$w_label")"
                 # closable=<n>: only a window that has sat finished for
                 # TICK_CLOSABLE_MIN minutes (the doc's mtime: a wrapped worker writes
                 # nothing more), so the close the chief is doing right now never wakes it.
@@ -4854,6 +4861,8 @@ holdout_tail=""
 # ABSENT when 0; run `close-wrapped-worker.sh --sweep --fleet <manifest>`.
 closable_tail=""
 [ "$closable_n" -eq 0 ] || closable_tail=" closable=$closable_n"
+wrapped_open_tail=""
+[ -z "$wrapped_open_csv" ] || wrapped_open_tail=" wrapped-open=$wrapped_open_csv"
 
 fill="$(bash "$REPO/scripts/context-fill.sh" --percent 2>/dev/null)" || fill=""
 case "$fill" in ''|*[!0-9]*) fill='?' ;; esac
@@ -5506,7 +5515,7 @@ else
     compact_field sdrift "$sdrift_summary"
     compact_field stale "$stale_summary"
     compact_field arrivals "$arrivals_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$mon_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail$drift_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$wrapped_open_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$mon_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail$drift_tail"
     if [ -n "$drift_wake" ]; then
         drift_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
         drift_claim="$drift_dir/tick-drift-wake-$(date -u +%F)"

@@ -115,8 +115,9 @@
 #                               wrapped by `timeout -k 5 240 worker-event.sh --doc --fleet` on
 #                               a line built from its newest such bullet; HANDLED is a
 #                               digest line, no wake; a lock-held / not-yet-WRAPPED /
-#                               subtree-alive refusal retries next sample; any other
-#                               ESCALATE or rc wakes once per bullet, <line> being
+#                               subtree-alive refusal retries next sample, and so does a first
+#                               timeout (rc 124/137; the second in a row wakes);
+#                               any other ESCALATE or rc wakes once per bullet, <line> being
 #                               worker-event's first non-blank output line (a silent failure
 #                               gets an ESCALATE reason with its rc), the tick line after it
 #                               (its key is saved) (CHIEF_WAIT_WORKER_EVENT = seam). Every WAKE block ends with `absorbed since last
@@ -2451,7 +2452,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
             break
         fi
         if [ "$rc" -eq 0 ]; then
-            rm -f "$outf.tries"
+            rm -f "$outf.tries" "$outf.slow"
             printf '%s\n' "$sum" >> "$r0_file"
             [ "$marker" != READY ] || { ready_advance "$label" "$ready_line"; marker_note_bullet "$label" "$bullet"; }
             r0_handled=1
@@ -2467,6 +2468,12 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
             printf '%s %s %s\n' "$label" "${what:-handled}" "${pr:--}" >> "$digest_file"
             break  # service the inbox before another slow wrap, next sample
         fi
+        if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" != 1 ] && { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; } && [ "$(cat "$outf.slow" 2>/dev/null)" != "${sum##* }" ]; then  # swallow-ok: no marker file reads empty, a first timeout
+            printf '%s\n' "${sum##* }" > "$outf.slow"
+            r0_retry="$label"
+            printf '%s\n' "$label" | atomic_write "$inbox.wait.r0-next"
+            break
+        fi
         case "$rc:$out" in
             *"step pr-state"*) ;;
             *"wrap-merged: step log failed"*|*"wrap-merged: step board failed"*) ;;
@@ -2479,7 +2486,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
                 fi
                 break ;;
         esac
-        rm -f "$outf.tries"
+        rm -f "$outf.tries" "$outf.slow"
         # Print the wake before recording it: a kill between the two leaves the READY or
         # bullet unrecorded, so it is relayed once more (idempotent) and woken again,
         # never recorded and lost.
