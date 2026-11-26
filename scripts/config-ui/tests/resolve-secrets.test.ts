@@ -278,3 +278,48 @@ storing("a run that fails after it started still invalidates the list: a value i
   expect(next).toContain("plan: graphmap-cadence");
   expect(next).not.toContain(SECRET);
 }, !enforcesModes);
+
+const CAD_SCRIPT = join("cad", "scripts", "luna", "graphmap-cadence.sh");
+const GATED_CHILD = ['#!/usr/bin/env bash', '[ "${2:-}" = "--dry-run" ] && exit 0', 'touch "$GATE.started"', 'while [ ! -e "$GATE.open" ]; do sleep 0.05; done', 'exit 0', ''].join("\n");
+const leakyFeed = () => ({ CONFIG_UI_HIMMELCTL: script("feed-leak.js", `if (process.argv[2] !== "report" || process.argv.includes("--items")) require(${JSON.stringify(join(import.meta.dir, "stub-recorder.js"))});\nelse process.stdout.write(JSON.stringify({ schema: "himmel-config-feed/1", rows: [{ id: "x", title: "t " + process.env.STUB_LEAK }], seq: 1 }) + "\\n");\n`) });
+const BRIEF_WORKER = "HIMMEL-5968-N2368-agui-fleet-board-2026-10-16";
+const briefDoc = (d: string) => {
+  const bucket = join(d, "handovers", "op", "himmel");
+  mkdirSync(bucket, { recursive: true });
+  writeFileSync(join(bucket, `${BRIEF_WORKER}.md`), `data: a first line\nthe second line holds ${SECRET} here\n`);
+  return { HANDOVER_DIR: join(d, "handovers") };
+};
+async function answerDuringSlowChild(store: boolean, path = "/api/feed"): Promise<string> {
+  const b = boot(undefined, {}, (d) => ({ ...leakyFeed(), ...briefDoc(d) }));
+  script(CAD_SCRIPT, GATED_CHILD);
+  expect((await b.get("/api/projects")).status).toBe(200);
+  const { previewId } = await (await b.preview()).json() as { previewId: string };
+  const ran = b.run(previewId);
+  await until(() => existsSync(`${b.gate}.started`));
+  try {
+    if (store) b.k.put("FIRECRAWL_API_KEY", SECRET);
+    const page = await b.get(path);
+    expect(page.status).toBe(200);
+    return await page.text();
+  } finally {
+    writeFileSync(`${b.gate}.open`, "");
+    expect((await ran).status).toBe(200);
+  }
+}
+storing("a page answer that ends while a slow child has stored a value masks it", async () => {
+  const t = await answerDuringSlowChild(true);
+  expect(t).toContain(MASK);
+  expect(t).not.toContain(SECRET);
+});
+storing("a page answer during a child that stores nothing is left as it is", async () => {
+  const t = await answerDuringSlowChild(false);
+  expect(t).toContain(SECRET);
+  expect(t).not.toContain(MASK);
+});
+
+storing("a brief that starts with data: has a stored value masked on a line that does not", async () => {
+  const text = await answerDuringSlowChild(true, `/api/agui/brief?worker=${BRIEF_WORKER}`);
+  expect(text).toContain("a first line");
+  expect(text).toContain(MASK);
+  expect(text).not.toContain(SECRET);
+});
