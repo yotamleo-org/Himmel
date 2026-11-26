@@ -435,6 +435,21 @@ same 'a stalled tick prints no CHANGED/UNCHANGED line' "$(cat "$W/stall.out")" '
 if [ ! -e "$W/stall-board.json" ]; then pass 'a stalled tick leaves the previous board alone (it reads STALE)'; else fail 'a stalled tick wrote a board'; fi
 same 'the tick is told its own deadline, inside the board bound' "$(cat "$W/argv-stall.log")" '30'
 
+cat > "$W/bin/tick-stub-slow-full" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "${TICK_FAST:-unset}" > "$TICK_ARGV_LOG"
+[ "${TICK_FAST:-0}" = 1 ] || exec sleep 30
+exec "$TICK_STUB_FAST_BIN" "$@"
+STUB
+chmod +x "$W/bin/tick-stub-slow-full"
+fast_t0=$SECONDS
+PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-slow-full" TICK_STUB_FAST_BIN="$W/bin/tick-stub" BOARD_TICK_TIMEOUT_MS=3000 TICK_ARGV_LOG="$W/argv-fast.log" \
+    BOARD_SESSIONS="$W/bin/sessions-empty.sh" GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+    node "$SUT" --doc "$DOC" --repo "$W/repo" --json "$W/fast-board.json" --changed >"$W/fast.out" 2>"$W/fast.err"
+fast_rc=$?
+same 'a tick slow only in the sections the board never reads lets --changed exit 0' "$fast_rc" 0
+if [ $((SECONDS - fast_t0)) -lt 15 ]; then pass 'the fast tick finishes inside the board bound'; else fail 'the fast tick overran the board bound'; fi
+
 # --- the follow-ups deferred from the first board
 # Results parse is section-bounded: a later section's bullet is not the worker's Results.
 lacks "a later section's bullet is not the worker's last Results bullet" "$html" 'unrelated later-section'
