@@ -26,7 +26,7 @@ index_up || { sleep 5; index_up; } || skip "package index unreachable"
 printf 'scrapling[fetchers]\n' > "$tmp/fetchers.in"
 resolve() { local py=$1; shift; uv pip compile --universal --python-version "$py" --no-header --no-annotate -o /dev/null "$@" 2>&1; }
 
-# The scrapling venv is built with a bare `python3`, so its lock must resolve below 3.12
+# The scrapling venv is built with any python 3.11.5+, so its lock must resolve below 3.12
 # (pyee 14 needs 3.12+). 3.11.5 is the lowest the lock reaches: soupsieve 4.0 requires
 # Python 3.11.5 (cssselect 1.6.0 needs 3.11+).
 # The whisper lock only runs under `uv run --python 3.12`.
