@@ -3,7 +3,7 @@ name: comment-review
 description: Reports the added comments in a diff that should be deleted. Dispatched by /pr-check step 3.7; it changes no file.
 model: sonnet
 effort: medium
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, WebFetch, WebSearch
 ---
 
 # Comment review

@@ -3,14 +3,15 @@ name: comment-sicko
 description: Finds comments and hacks to delete.
 model: sonnet
 effort: medium
-tools: Read, Edit, Bash
+tools: Read, Edit, Bash, WebFetch, WebSearch
 ---
 
 <!--
 Vendored, pinned to a commit (HIMMEL-5630). Source: cursor/plugins (pstack),
 commit 99743e9c151c8537cbbf1f98bb38f34ef3368453, path pstack/agents/comment-sicko.md.
 License: MIT, (c) 2026 Lauren Tan (.claude/skills/no-comments/LICENSE).
-Deviations from upstream: frontmatter model/effort/tools added; the /how and /why
+Deviations from upstream: frontmatter model/effort/tools added; tools gain WebFetch,
+WebSearch; the /how and /why
 skills are not shipped, so the hunt reads nearby code and `git grep`s callers
 instead; the frontmatter description is rewritten to say when to dispatch the agent;
 a line after the keep list sends an accepted limitation to the ceilings ledger;

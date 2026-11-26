@@ -271,6 +271,14 @@ agent_md judge-ro 'Read, Grep, Glob, Bash, Write'
 RC7H=$(run_tree tree-judge-ro-write "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
 assert_rc "judge-ro whose agent file pins Read/Grep/Glob/Bash/Write allowed (guard-judge-write-scope.sh confines the Write)" 0 "$RC7H"
 
+agent_md judge-ro 'Read, Grep, Glob, Bash, Write, WebFetch, WebSearch'
+RC7HW=$(run_tree tree-judge-ro-web "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
+assert_rc "judge-ro whose agent file pins Read/Grep/Glob/Bash/Write/WebFetch/WebSearch allowed" 0 "$RC7HW"
+
+agent_md judge-ro 'Read, Grep, Glob, Bash, Write, WebFetch, WebSearch, Edit'
+RC7HX=$(run_tree tree-judge-ro-web-edit "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
+assert_rc "judge-ro with the fetch tools plus Edit gets no read-only carve-out" 2 "$RC7HX"
+
 agent_md judge-ro 'Read, Grep, Glob, Bash, Write, Edit'
 RC7HE=$(run_tree tree-judge-ro-edit "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
 assert_rc "judge-ro whose agent file also declares Edit gets no read-only carve-out" 2 "$RC7HE"
@@ -310,7 +318,11 @@ agent_md brief-drafter 'Read, Write, Edit, Bash'
 RC9E=$(run_tree tree-bd-pinned "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-pinned.jsonl")
 assert_rc "brief-drafter whose agent file pins Read/Write/Edit/Bash allowed" 0 "$RC9E"
 
-agent_md brief-drafter 'Read, Write, Edit, Bash, WebFetch'
+agent_md brief-drafter 'Read, Write, Edit, Bash, WebFetch, WebSearch'
+RC9N=$(run_tree tree-bd-web "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-web.jsonl")
+assert_rc "brief-drafter whose agent file pins Read/Write/Edit/Bash/WebFetch/WebSearch allowed" 0 "$RC9N"
+
+agent_md brief-drafter 'Read, Write, Edit, Bash, Agent'
 RC9F=$(run_tree tree-bd-wide "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-wide.jsonl")
 assert_rc "brief-drafter whose agent file widens its tools loses the allowance" 2 "$RC9F"
 assert_empty "a brief-drafter without the allowance is not logged" "$(cat "$TMP/bd-wide.jsonl" 2>/dev/null || true)"
@@ -319,13 +331,13 @@ rm -f "$FT/.claude/agents/brief-drafter.md"
 RC9G=$(run_tree tree-bd-missing "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-missing.jsonl")
 assert_rc "brief-drafter with no agent file gets no allowance" 2 "$RC9G"
 
-printf -- '---\nname: brief-drafter\ntools: Read, Write, Edit, Bash\ntools: Read, Write, Edit, Bash, WebFetch\n---\n' > "$FT/.claude/agents/brief-drafter.md"
+printf -- '---\nname: brief-drafter\ntools: Read, Write, Edit, Bash\ntools: Read, Write, Edit, Bash, Agent\n---\n' > "$FT/.claude/agents/brief-drafter.md"
 RC9H=$(run_tree tree-bd-two-tools "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-two.jsonl")
 assert_rc "brief-drafter whose frontmatter repeats tools: gets no allowance" 2 "$RC9H"
 
 # The widened line comes FIRST and the pinned line SECOND: only counting the
 # tools: lines refuses it (a last-line-wins read would allow).
-printf -- '---\nname: brief-drafter\ntools: Read, Write, Edit, Bash, WebFetch\ntools: Read, Write, Edit, Bash\n---\n' > "$FT/.claude/agents/brief-drafter.md"
+printf -- '---\nname: brief-drafter\ntools: Read, Write, Edit, Bash, Agent\ntools: Read, Write, Edit, Bash\n---\n' > "$FT/.claude/agents/brief-drafter.md"
 RC9I=$(run_tree tree-bd-wide-first "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-wide-first.jsonl")
 assert_rc "brief-drafter with a widened tools: line before the pinned one gets no allowance" 2 "$RC9I"
 
@@ -443,6 +455,12 @@ RC19=$(run_hook bound-chief "$LATE_JSON" -u HIMMEL_SESSION_ROLE CHIEF_DISPATCH_T
 assert_rc "CHIEF_DISPATCH_TRANSCRIPT_HEAD_LINES=1 stops before the launch turn: allows" 0 "$RC19"
 RC20=$(run_hook bound-old "$LATE_JSON" -u HIMMEL_SESSION_ROLE CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES=1) # old-term-ok
 assert_rc "retired CONSOLE_DISPATCH_TRANSCRIPT_HEAD_LINES=1 is ignored: still refuses" 2 "$RC20" # old-term-ok
+
+HOOK="$SCRIPT_DIR/guard-chief-dispatch.sh"
+RCX1=$(run_hook real-judge-ro "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
+assert_rc "the real judge-ro.md keeps the judge-ro carve-out" 0 "$RCX1"
+RCX2=$(run_hook real-brief-drafter "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-real.jsonl")
+assert_rc "the real brief-drafter.md keeps the brief-drafter allowance" 0 "$RCX2"
 
 echo ""
 echo "$((pass + fail)) checks, $pass passed, $fail failed"

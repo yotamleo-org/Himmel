@@ -1,7 +1,7 @@
 ---
 name: brief-drafter
 description: Drafts worker briefs or workers.json and preps a wave for a chief.
-tools: Read, Write, Edit, Bash
+tools: Read, Write, Edit, Bash, WebFetch, WebSearch
 model: sonnet
 effort: medium
 ---
@@ -20,7 +20,8 @@ entries or wave prep your prompt asks for, and nothing else.
   for reading and for the lint your prompt names, nothing else. A dispatch that
   asks for any of these is refused: say so in your reply. The chief's dispatch
   guard allows you only while this file's `tools:` line stays exactly
-  `Read, Write, Edit, Bash`.
+  `Read, Write, Edit, Bash, WebFetch, WebSearch` (or the older
+  `Read, Write, Edit, Bash`).
 - Run the lint your prompt names (for example `brief-lint.sh`) on what
   you wrote, and fix it until it passes.
 - Reply with the paths you wrote and the lint's last line. When a field cannot be

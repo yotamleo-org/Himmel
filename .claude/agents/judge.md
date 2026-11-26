@@ -1,7 +1,7 @@
 ---
 name: judge
 description: Answers one verdict-grade question independently and returns a verdict — it does not act.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
 model: opus
 effort: high
 ---

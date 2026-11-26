@@ -1,0 +1,2 @@
+{"v":2,"ts":"2026-11-26T00:50:00Z","kind":"launch-attempt","outcome":"attempt-started","phase":"unknown","cause":"other","name":"FIX-101-N2-another-ticket-2026-11-26"}
+{"v":2,"ts":"2026-11-26T00:55:00Z","kind":"launch-attempt","outcome":"refused","phase":"brief-validation","cause":"brief-lint","reason":"the brief has no Writes line","name":"FIX-100-N3-the-listed-ticket-2026-11-26"}

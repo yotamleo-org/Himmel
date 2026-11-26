@@ -1,0 +1,4 @@
+{"v":2,"ts":"2026-11-25T23:00:00Z","kind":"launch-attempt","outcome":"attempt-started","phase":"unknown","cause":"other","name":"FIX-100-N1-before-the-window-2026-11-25"}
+{"v":2,"ts":"2026-11-26T00:50:00Z","kind":"launch-attempt","outcome":"attempt-started","phase":"unknown","cause":"other","name":"FIX-101-N2-another-ticket-2026-11-26"}
+{"v":2,"ts":"2026-11-26T00:51:00Z","kind":"launch-attempt","outcome":"launched","phase":"runtime","cause":"runtime","name":"FIX-101-N2-another-ticket-2026-11-26"}
+not json

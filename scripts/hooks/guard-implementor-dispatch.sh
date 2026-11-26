@@ -152,7 +152,8 @@ ro_judge_pinned() {
     f="$(dirname "${BASH_SOURCE[0]}")/../../.claude/agents/$1.md"
     [ -f "$f" ] && [ -r "$f" ] || return 1
     t="$(awk 'NR == 1 { if ($0 != "---") exit; next } /^---$/ { exit } /^tools:/ { n++; t = $0 } END { if (n == 1) print t }' "$f")"
-    [ "$t" = "tools: Read, Grep, Glob, Bash" ] || [ "$t" = "tools: Read, Grep, Glob, Bash, Write" ]
+    [ "$t" = "tools: Read, Grep, Glob, Bash" ] || [ "$t" = "tools: Read, Grep, Glob, Bash, Write" ] \
+        || [ "$t" = "tools: Read, Grep, Glob, Bash, Write, WebFetch, WebSearch" ]
 }
 lane_exempt=0
 case "$subagent_type" in

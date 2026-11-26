@@ -3451,6 +3451,13 @@ mergeability poll, so machines without the plugin hook still get the gate on
 that path (a block there exits `pr-merge.sh` with code 5, distinct from a
 real `gh pr merge` failure's code 4).
 
+Every GitHub read the hook makes, its own PR lookup and the gate libraries'
+calls alike, goes through the hook's shadow `gh` function, bounded to 10 seconds
+inside one 45-second hook budget. That function calls `gh_read`
+(`scripts/lib/gh-read.sh`), so the reads ride the read-token pool and its REST
+core gate rather than the main token. A call that runs past its bound is killed
+with its whole process tree, and the merge is refused.
+
 **On Bitbucket Cloud** `pr-merge.sh` runs `bb_forge_cr_gate` (`scripts/lib/forge-bitbucket.sh`)
 instead. Every inline review thread must be resolved (read with the CLI's `pr comments`),
 and the reviewer set must pass at the head: it calls `cr_reviewer_gate`, the same
@@ -4214,12 +4221,12 @@ marker families — `worktree` (`.claude/worktrees`, `clean-garden.sh`,
 `clear-cr-marker`, "CodeRabbit"). A single-family match never denies — that
 conjunction is the false-positive budget keeping bounded read-only research
 frictionless. `subagent_type: Explore` always allows, and `judge-ro` allows while `.claude/agents/<id>.md` pins exactly
-one `tools:` line, `tools: Read, Grep, Glob, Bash` or `tools: Read, Grep, Glob, Bash, Write`, the same structural
+one `tools:` line, `tools: Read, Grep, Glob, Bash`, `tools: Read, Grep, Glob, Bash, Write` or `tools: Read, Grep, Glob, Bash, Write, WebFetch, WebSearch`, the same structural
 read-only lane: [`guard-judge-write-scope.sh`](#guard-judge-write-scopesh--judge-ro-write-fence) confines that Write
 to `.md`/`.txt` files directly in a judge dir `judge-dir.sh` made. Any other grant (`Edit`, `MultiEdit`, `NotebookEdit`) costs the lane.
 `brief-drafter` is a separate allowance for drafting worker briefs: it allows
 while `.claude/agents/brief-drafter.md` pins exactly `tools: Read, Write, Edit,
-Bash`, and each such dispatch is appended to the `CHIEF_DISPATCH_LOG` audit log
+Bash` or `tools: Read, Write, Edit, Bash, WebFetch, WebSearch`, and each such dispatch is appended to the `CHIEF_DISPATCH_LOG` audit log
 as `brief-drafter-dispatch`, best-effort: a failed write never blocks the
 dispatch. These three subagent types are the
 ONLY carve-outs. `guard-implementor-dispatch.sh` exempts `Explore` and

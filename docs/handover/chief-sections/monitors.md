@@ -224,3 +224,14 @@ ticket with no version, no worker or open PR holding it), `0` is clean, `?` is n
 UNKNOWN row (a gh read failed) or a zero count from a scan that skipped files, and the field is absent when this machine has no Jira mirror.
 The waiter wakes while `vmismatch` is positive and on any change of the count (not on `0` or `?`).
 On a wake, run the audit by hand and reset each RESET row to To Do with a reason comment.
+
+**24-hour trust run samplers.** During the 24-hour trust run the chief runs four read-only samplers
+from `<kit>/`; none writes Jira, a status, a version, a launch, a ledger or a doc, each prints JSON
+lines on stdout, and a source it cannot read prints `UNKNOWN <what>` and exits 3 (never an empty list):
+`trust-owner-sample.sh` prints one row per started ticket with its owner kind (worker, t3, cloud, peer,
+chief-go or UNOWNED) and the mirror age; `trust-slot-sample.sh [--since ISO]` prints one row per sample
+with cap, live, free, the listed tickets and which of them started, were refused or stayed silent;
+`trust-refusal-sample.sh [--since ISO]` prints one row per refusal (launch, merge or command) with its
+reason tag and a verdict of real, false or unsorted, a refusal seen in two sources counted once;
+`trust-reach-sample.sh [--since ISO]` prints one row per item that reached the operator with its class
+(a kind with no class is UNCLASSIFIED) and the operator's own messages by time only.
