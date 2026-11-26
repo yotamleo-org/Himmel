@@ -82,6 +82,10 @@ function unwire(text) {
       commandHook.command = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/redirect-webfetch-walled-hosts.sh"';
       continue;
     }
+    if (command.includes('/hooks/steer-t3-tool-calls.sh')) {
+      commandHook.command = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/steer-t3-tool-calls.sh"';
+      continue;
+    }
     const peer = command.match(/\/hooks\/(peer-taint-(?:gate|mark|resume)\.sh|phi-read-mark\.sh|suggest-missing-path\.sh)"$/);
     if (peer) {
       commandHook.command = `bash "\${CLAUDE_PLUGIN_ROOT}/hooks/${peer[1]}"`;

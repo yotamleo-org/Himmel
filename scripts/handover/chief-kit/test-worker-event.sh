@@ -701,7 +701,7 @@ unset HIMMEL_FLAG_AUTO_GO HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR LE_AUTOGO
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME
 AG="$W/ag"; mkdir -p "$AG/scripts/handover/chief-kit" "$AG/scripts/guardrails"
 ln -s "$HERE/../../lib" "$AG/scripts/lib"; ln -s "$HERE/../../cr" "$AG/scripts/cr"
-cp "$HERE/auto-go.sh" "$AG/scripts/handover/chief-kit/auto-go.sh"
+cp "$HERE/auto-go.sh" "$HERE/go-deliver.sh" "$HERE/close-facts.sh" "$AG/scripts/handover/chief-kit/"
 printf '[]\n' > "$AG/scripts/guardrails/himmel-adapters.json"; printf '[]\n' > "$AG/scripts/guardrails/himmel-adopted.json"
 printf '#!/usr/bin/env bash\nprintf "TRUST: hit scripts/ci/x.sh\\nREADY-GO PASS\\n"\n' > "$AG/scripts/handover/chief-kit/ready-go.sh"
 git init -q "$AG"

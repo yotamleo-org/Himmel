@@ -3683,7 +3683,12 @@ refuses an unsigned or edited record, so a hand-written exact-format file no
 longer passes, here or in `review-round.sh` (NO-GO delta, layer-decision and
 scope paths). A `layer-decision:` lifts the repeated-class stop only
 from a record whose mac verified (an unsigned NO-GO still feeds the classes and
-still vetoes, but cannot unlock). Every consumer reads a record once and
+still vetoes, but cannot unlock). The line is read from a signed NO-GO at the last
+reviewed head, and from a signed judge GO at the round head (the `--head` the delta
+runs on) that is bound to the branch's PR and sits in a qid holding the current NO-GO;
+a GO carrying `delta-scope:`/`delta-from:` or `delta: no-op`, and any NO-GO for the
+round head in any qid (signed or not, or a record that cannot be read whole), withhold
+it. That GO adds no class and buys no round. Every consumer reads a record once and
 verifies and parses that one copy (`go_verdict_snapshot`), so a rewrite between
 the check and the read cannot reuse a verified mac. A record that cannot be read
 whole (unreadable, empty, NUL byte) fails closed: `go_trust_verdict` refuses (rc 2)
@@ -5186,7 +5191,13 @@ shapes (`ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_` + 36 alphanumerics, `github_pat_` +
 result. On a hit it emits `systemMessage` plus `additionalContext` and sends
 one Telegram DM through `merge-block-alert.sh`'s sender, naming the tool, the
 token kind and the variable it was assigned to when the text shows one, never
-the value. One DM per (session, token); the sentinel under
+the value. The alert says LIVE or PLACEHOLDER and shows only the prefix and the
+last four characters: a 40-char `ghp_`-family value that fails the GitHub CRC32
+checksum, a longer one (an 80-char `ghr_`) with fewer than 8 distinct
+characters, or a `github_pat_` body with fewer than 8 distinct characters or a
+run of 8 consecutive alphabet characters, is a PLACEHOLDER (a test fixture) and
+gets one `systemMessage` line, no agent report and no DM; only LIVE pages.
+One DM per (session, token); the sentinel under
 `~/.himmel/state/token-in-output` is a sha256 prefix, never the token, and a
 failed send removes it so a later call retries; a sent DM writes `sent` into
 it, and an empty one older than 2 minutes (a hook killed mid-send) is

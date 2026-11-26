@@ -99,7 +99,7 @@ script_rows=""
 while IFS="$TAB" read -r ev matcher cmd kind src loc; do
   [ -n "$cmd" ] || continue
   for s in $(printf '%s' "$cmd" | grep -oE '[A-Za-z0-9_.-]+\.(sh|js|mjs|py|ps1)' | sort -u); do
-    case "$s" in run-hook-with-bash.js|run-node.sh|index.js) continue ;; esac
+    case "$s" in run-hook-with-bash.js|run-node.sh|translate-tool-call.sh|index.js) continue ;; esac
     script_rows="$script_rows$ev$TAB$matcher$TAB$s$TAB$kind$TAB$src$TAB$loc$NL"
   done
 done <<EOF

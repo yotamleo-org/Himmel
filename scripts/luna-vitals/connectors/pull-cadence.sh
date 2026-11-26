@@ -4,7 +4,7 @@
 # ALPHA opt-in - cadence pull wrapper for the Google Health connector.
 # Scheduled-pull entry point; inert until the operator arms it.
 #
-# Runs `bun google-health.ts pull` for a yesterday-to-today window and
+# Runs `bun google-health.ts pull` for the window 3 to 2 days ago and
 # stops at the artifact file. The operator reviews the artifact and runs
 # `luna-vitals write` separately. This wrapper does NOT call write.
 #
@@ -16,11 +16,11 @@
 #
 # Environment:
 #   FROM                     Override pull window start (YYYY-MM-DD).
-#                            Default: yesterday (UTC).
+#                            Default: 3 days ago (UTC).
 #   TO                       Override pull window end (YYYY-MM-DD).
-#                            Default: today (UTC).
+#                            Default: 2 days ago (UTC).
 #   LUNA_VITALS_ARTIFACT_DIR Artifact output directory.
-#                            Default: .gh-vitals/ sibling to this script.
+#                            Default: ~/.claude/gh-vitals (outside the repo).
 #   PULL_CMD                 TEST SEAM: if set, passed to `bash -c` instead
 #                            of the real connector. Example: PULL_CMD='exit 75'
 #
@@ -487,17 +487,16 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # -- date window --------------------------------------------------------------
 
 if [ -z "${TO:-}" ]; then
-    TO="$(TZ=UTC date +%Y-%m-%d)"
+    TO="$(TZ=UTC date -v-2d +%Y-%m-%d 2>/dev/null || TZ=UTC date -u -d '2 days ago' +%Y-%m-%d)"
 fi
 
 if [ -z "${FROM:-}" ]; then
-    # Try BSD date (-v-1d), fall back to GNU date (-d '1 day ago').
-    FROM="$(TZ=UTC date -v-1d +%Y-%m-%d 2>/dev/null || TZ=UTC date -u -d '1 day ago' +%Y-%m-%d)"
+    FROM="$(TZ=UTC date -v-3d +%Y-%m-%d 2>/dev/null || TZ=UTC date -u -d '3 days ago' +%Y-%m-%d)"
 fi
 
 # -- artifact output ----------------------------------------------------------
 
-artifact_dir="${LUNA_VITALS_ARTIFACT_DIR:-$SCRIPT_DIR/../.gh-vitals}"
+artifact_dir="${LUNA_VITALS_ARTIFACT_DIR:-$HOME/.claude/gh-vitals}"
 mkdir -p "$artifact_dir"
 artifact="$artifact_dir/gh-${TO}.json"
 

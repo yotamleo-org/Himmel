@@ -1031,12 +1031,12 @@ done
 # only when its stage runs. Pin the driver's size, that every reference file the
 # driver names exists, and that no reference file is orphaned (a file the driver
 # never points at would be loaded by nobody).
-driver_limit=10240
-driver_bytes=$(wc -c < "$CLAUDE_DRIVER" | tr -d ' ')
-if [ "$driver_bytes" -lt "$driver_limit" ]; then
-    pass "pr-check.md driver is $driver_bytes bytes (< $driver_limit)"
+if driver_out="$(bash "$ROOT/scripts/ci/check-doc-byte-budgets.sh" .claude/commands/pr-check.md 2>&1)"; then
+    printf '%s\n' "$driver_out"
+    pass "pr-check.md driver is within its byte budget"
 else
-    fail "pr-check.md driver is $driver_bytes bytes (>= $driver_limit) -- move per-stage detail into scripts/cr/pr-check-ref/ and point at it"
+    printf '%s\n' "$driver_out"
+    fail "pr-check.md driver is over its byte budget -- move per-stage detail into scripts/cr/pr-check-ref/ and point at it"
 fi
 named_refs=$(grep -oE '`[0-9]{2}-[a-z0-9.-]+\.md`' "$CLAUDE_DRIVER" | tr -d '`' | sort -u)
 if [ -n "$named_refs" ]; then

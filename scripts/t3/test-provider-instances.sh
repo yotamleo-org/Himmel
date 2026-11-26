@@ -247,5 +247,168 @@ printf '{"providerInstances":{"claudeAgent":{"driver":"claudeAgent","enabled":tr
 env T3_PI_RESOLVER= T3_PI_PROFILES="user" bash "$GEN" --apply --settings-file "$U3" >/dev/null 2>&1
 expect_eq "launchArgs the script wrote earlier are refreshed" "$(artifact_of "$(settings_of "$U3" claudeAgent)")" 0
 
+cat > "$T/agy-stub.sh" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+  --list) [ -n "${STUB_LIST_RC:-}" ] && exit "$STUB_LIST_RC"; echo design; exit 0 ;;
+  --check)
+    printf '%s' "${T3CODE_HOME-unset}" > "${STUB_HOME_FILE:?}"
+    printf 'ran\n' >> "${STUB_HOME_FILE}.runs"
+    if [ -n "${STUB_ERR:-}" ]; then echo "$STUB_ERR" >&2; fi
+    if [ "${STUB_OUT+set}" = set ]; then printf '%s' "$STUB_OUT"; [ -z "$STUB_OUT" ] || echo
+    elif [ "${STUB_RC:-0}" = 0 ]; then echo "OK antigravity_design"
+    else echo "NOT OK antigravity_design; home missing"; fi
+    exit "${STUB_RC:-0}" ;;
+esac
+exit 2
+STUB
+chmod +x "$T/agy-stub.sh"
+mkdir -p "$T/t3/userdata" "$T/other" "$T/nobin"
+for tool in bash env jq node cksum sha256sum shasum cut date diff cmp mkdir cp mv rm cat tr dirname basename mktemp sed grep; do
+    tp="$(command -v "$tool" 2>/dev/null)" && [ -x "$tp" ] && ln -sf "$tp" "$T/nobin/$tool"
+done
+export T3_PI_AGY_PROFILES="$T/agy-stub.sh" STUB_HOME_FILE="$T/stub.home"
+export T3CODE_HOME="$T/other"
+AS="$T/t3/userdata/settings.json"
+EMPTY_PI='{"providerInstances":{}}'
+fresh_as() { printf '%s' "${1:-$EMPTY_PI}" > "$AS"; rm -f "$T/stub.home" "$T/stub.home.runs"; }
+agy_run() { env T3_PI_PROFILES=alpha T3_PI_RESOLVER="$T/resolver2.sh" "$@" bash "$GEN" --apply --settings-file "$AS" 2>&1; }
+
+fresh_as
+out="$(agy_run STUB_RC=0)"; rc=$?
+expect_eq "R1 an ok home is registered: rc 0" "$rc" 0
+expect_eq "R1 antigravity_design is an antigravity driver instance" "$(jq -c '.providerInstances.antigravity_design' "$AS")" '{"driver":"antigravity","displayName":"Antigravity (design)","enabled":true}'
+expect_eq "R1 the check ran under the settings file's T3 home, not the ambient one" "$(cat "$T/stub.home" 2>/dev/null)" "$T/t3"
+expect_eq "R1 the Claude entries are still written" "$(jq -r '.providerInstances|has("claudeAgent_alpha")' "$AS")" true
+
+fresh_as
+out="$(agy_run STUB_RC=1 PATH="$T/nobin")"; rc=$?
+expect_eq "R2 a home not ready: rc 0" "$rc" 0
+expect_eq "R2 a home not ready: no antigravity_design key" "$(jq -r '.providerInstances|has("antigravity_design")' "$AS")" false
+expect_ok "R2 no agy and no providers dir: the neutral line" grep -q 'antigravity_design: not provisioned' <<<"$out"
+expect_fail "R2 no agy and no providers dir: no run --apply advice" grep -q 'run: bash scripts/t3/antigravity-profiles.sh --apply' <<<"$out"
+mkdir -p "$T/t3/userdata/providers/antigravity"
+fresh_as
+out="$(agy_run STUB_RC=1 PATH="$T/nobin")"
+expect_ok "R2 providers dir present: skipped, home not ready, with the --apply command" grep -q 'antigravity_design skipped, home not ready (run: bash scripts/t3/antigravity-profiles.sh --apply --profile design)' <<<"$out"
+rmdir "$T/t3/userdata/providers/antigravity" "$T/t3/userdata/providers"
+
+for want in 2 3; do
+    fresh_as '{"providerInstances":{"mine":{"driver":"codex","enabled":true}}}'; cp "$AS" "$T/as.orig"
+    out="$(agy_run STUB_RC=$want STUB_ERR=stub-says-no)"; rc=$?
+    expect_eq "R2b/c the check exits $want: rc 2" "$rc" 2
+    expect_ok "R2b/c the check exits $want: settings byte-identical" cmp -s "$AS" "$T/as.orig"
+    expect_ok "R2b/c the check exits $want: its stderr is shown" grep -q stub-says-no <<<"$out"
+done
+
+fresh_as; cp "$AS" "$T/as.orig"
+agy_run STUB_LIST_RC=1 >/dev/null; rc=$?
+expect_eq "R2d --list exits 1: rc 2" "$rc" 2
+expect_ok "R2d --list exits 1: settings byte-identical" cmp -s "$AS" "$T/as.orig"
+fresh_as; cp "$AS" "$T/as.orig"
+agy_run STUB_RC=5 >/dev/null; rc=$?
+expect_eq "R2e the check exits 5: rc 2" "$rc" 2
+expect_ok "R2e the check exits 5: settings byte-identical" cmp -s "$AS" "$T/as.orig"
+fresh_as; cp "$AS" "$T/as.orig"
+agy_run T3_PI_AGY_PROFILES="$T/no-such-script.sh" >/dev/null; rc=$?
+expect_eq "R2e a missing check script: rc 2" "$rc" 2
+expect_ok "R2e a missing check script: settings byte-identical" cmp -s "$AS" "$T/as.orig"
+fresh_as; cp "$AS" "$T/as.orig"
+agy_run STUB_RC=1 STUB_OUT= >/dev/null; rc=$?
+expect_eq "R2e rc 1 with no NOT OK line: rc 2" "$rc" 2
+expect_ok "R2e rc 1 with no NOT OK line: settings byte-identical" cmp -s "$AS" "$T/as.orig"
+expect_eq "R2e the stub printed nothing on stdout" "$(env STUB_RC=1 STUB_OUT= STUB_HOME_FILE="$T/x.home" bash "$T/agy-stub.sh" --check 2>/dev/null)" ""
+fresh_as; cp "$AS" "$T/as.orig"
+agy_run STUB_RC=0 STUB_OUT="OK antigravity_other" >/dev/null; rc=$?
+expect_eq "F27 an OK line naming another id: rc 2" "$rc" 2
+expect_ok "F27 an OK line naming another id: settings byte-identical" cmp -s "$AS" "$T/as.orig"
+
+AG='{"providerInstances":{"antigravity":{"driver":"antigravity","displayName":"Antigravity","enabled":false,"config":{"x":1}},"antigravity_design":{"driver":"antigravity","displayName":"mine","enabled":false,"config":{"y":2}}}}'
+for want in 0 1; do
+    fresh_as "$AG"; jq -S '.providerInstances | {antigravity, antigravity_design}' "$AS" > "$T/ag.before"
+    out="$(agy_run STUB_RC=$want)"
+    jq -S '.providerInstances | {antigravity, antigravity_design}' "$AS" > "$T/ag.after"
+    expect_ok "R3 existing antigravity entries byte-identical (check rc $want)" cmp -s "$T/ag.before" "$T/ag.after"
+done
+expect_ok "R3 an existing entry on a not-ready home: the stale line" grep -q 'antigravity_design: home is stale, run --apply' <<<"$out"
+
+set_cfg '{"t3":{"relay_instances":["antigravity_design"]}}'
+fresh_as
+out="$(agy_run STUB_RC=0)"
+expect_eq "R6 no relay copy of antigravity_design" "$(jq -r '.providerInstances|has("antigravity_design_relay")' "$AS")" false
+expect_eq "R6 the instance itself is still registered" "$(jq -r '.providerInstances|has("antigravity_design")' "$AS")" true
+expect_ok "R6 a warning names the skipped relay id" grep -q "skip relay copy of 'antigravity_design'" <<<"$out"
+fresh_as
+out="$(env T3_PI_PROFILES=alpha T3_PI_RESOLVER="$T/resolver2.sh" STUB_RC=1 bash "$GEN" --apply --settings-file "$AS" 2>&1)"
+expect_eq "R6 a not-ready profile: no relay copy either" "$(jq -r '.providerInstances|has("antigravity_design_relay")' "$AS")" false
+rm -f "$CFG"
+
+fresh_as
+SOUT="$T/loose-settings.json"; printf '{"providerInstances":{}}' > "$SOUT"
+out="$(env T3_PI_PROFILES=alpha T3_PI_RESOLVER="$T/resolver2.sh" STUB_RC=0 bash "$GEN" --apply --settings-file "$SOUT" 2>&1)"; rc=$?
+expect_eq "R7 a settings file outside userdata/: rc 0" "$rc" 0
+expect_eq "R7 no Antigravity key" "$(jq -r '.providerInstances|has("antigravity_design")' "$SOUT")" false
+expect_eq "R7 the stub check never ran" "$(test -e "$T/stub.home.runs" && echo yes || echo no)" no
+expect_eq "R7 the Claude entries are written as before" "$(jq -r '.providerInstances|has("claudeAgent_alpha")' "$SOUT")" true
+expect_ok "R7 a warning says why" grep -q 'no Antigravity instance is added or checked' <<<"$out"
+fresh_as
+out="$( cd "$T/t3" && env T3_PI_PROFILES=alpha T3_PI_RESOLVER="$T/resolver2.sh" STUB_RC=0 bash "$GEN" --apply --settings-file userdata/settings.json 2>&1)"; rc=$?
+expect_eq "R7 a relative path gives the same result as the absolute one: rc" "$rc" 0
+expect_eq "R7 a relative path: the key is present" "$(jq -r '.providerInstances|has("antigravity_design")' "$AS")" true
+expect_eq "R7 a relative path: the check ran under the same T3 home" "$(cat "$T/stub.home")" "$T/t3"
+mkdir -p "$T/rootless"; printf '{"providerInstances":{}}' > "$T/rootless/settings.json"
+out="$(cd "$T/rootless" && env T3_PI_PROFILES=alpha T3_PI_RESOLVER="$T/resolver2.sh" STUB_RC=0 bash "$GEN" --apply --settings-file settings.json 2>&1)"
+expect_eq "R7 a relative path with no userdata/ parent: no Antigravity key" "$(jq -r '.providerInstances|has("antigravity_design")' "$T/rootless/settings.json")" false
+
+set_cfg '{"t3":{"relay_instances":["antigravity_design"]}}'
+printf '{"providerInstances":{"antigravity_design":{"driver":"antigravity","enabled":true}}}' > "$SOUT"
+out="$(env T3_PI_PROFILES=alpha T3_PI_RESOLVER="$T/resolver2.sh" STUB_RC=0 bash "$GEN" --apply --settings-file "$SOUT" 2>&1)"
+expect_eq "R6 a settings file outside userdata/: no relay copy" "$(jq -r '.providerInstances|has("antigravity_design_relay")' "$SOUT")" false
+rm -f "$CFG"
+
+fresh_as; cp "$AS" "$T/as.orig"
+agy_run STUB_RC=1 STUB_OUT="NOT OK antigravity_design2; home missing" >/dev/null; rc=$?
+expect_eq "a NOT OK line naming another id that starts with the expected one: rc 2" "$rc" 2
+expect_ok "a NOT OK line naming another id: settings byte-identical" cmp -s "$AS" "$T/as.orig"
+fresh_as; cp "$AS" "$T/as.orig"
+agy_run STUB_RC=1 STUB_OUT="NOT OK antigravity_design" >/dev/null; rc=$?
+expect_eq "a bare NOT OK line for the expected id: rc 0" "$rc" 0
+
+set_cfg '{"t3":{"relay_instances":["antigravity_gone"]}}'
+fresh_as '{"providerInstances":{"antigravity_gone":{"driver":"antigravity","enabled":true}}}'
+out="$(agy_run STUB_RC=0)"
+expect_eq "no relay copy of an antigravity_ id whose profile left the registry" "$(jq -r '.providerInstances|has("antigravity_gone_relay")' "$AS")" false
+rm -f "$CFG"
+
+cat > "$T/agy-registry.json" <<'JSON'
+{"profiles":{"design":{"fromProfiles":["design"]}}}
+JSON
+cat > "$T/agy-plugin-profiles.json" <<'JSON'
+{"profiles":{"design":{"enable":[]}}}
+JSON
+cat > "$T/agy-backstop.sh" <<'STUB'
+#!/usr/bin/env bash
+for d in "${T3CODE_HOME:?}"/userdata/providers/antigravity/*/; do
+  [ -d "$d" ] || continue
+  mkdir -p "$d/config"
+  f="$d/config/hooks.json"
+  [ -f "$f" ] || printf '{}' > "$f"
+  jq '. * {"himmel-antigravity-backstop":{}}' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+done
+STUB
+chmod +x "$T/agy-backstop.sh"
+mkdir -p "$T/agyhome"
+REAL_AP="$HERE/antigravity-profiles.sh"
+real_env() { env -u T3_PI_AGY_PROFILES T3_AP_REGISTRY="$T/agy-registry.json" T3_AP_PLUGIN_PROFILES="$T/agy-plugin-profiles.json" T3_AP_BACKSTOP="$T/agy-backstop.sh" HOME="$T/agyhome" "$@"; }
+fresh_as
+real_env env T3_PI_PROFILES=alpha T3_PI_RESOLVER="$T/resolver2.sh" bash "$GEN" --apply --settings-file "$AS" >/dev/null 2>&1; rc=$?
+expect_eq "R8 before the home is applied: rc 0" "$rc" 0
+expect_eq "R8 before the home is applied: no antigravity_design key" "$(jq -r '.providerInstances|has("antigravity_design")' "$AS")" false
+real_env env T3CODE_HOME="$T/t3" bash "$REAL_AP" --apply --profile design >/dev/null 2>&1; rc=$?
+expect_eq "R8 the real --apply on the settings file's home: rc 0" "$rc" 0
+real_env env T3_PI_PROFILES=alpha T3_PI_RESOLVER="$T/resolver2.sh" bash "$GEN" --apply --settings-file "$AS" >/dev/null 2>&1; rc=$?
+expect_eq "R8 after the home is applied: rc 0" "$rc" 0
+expect_eq "R8 after the home is applied: the key is present" "$(jq -r '.providerInstances|has("antigravity_design")' "$AS")" true
+
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" = 0 ]

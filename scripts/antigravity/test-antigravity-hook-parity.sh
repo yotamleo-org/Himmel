@@ -161,7 +161,7 @@ for (const src of sources) {
     if (!/(^|\|)Bash(\||$)|^\*$/.test(matcher)) continue;
     for (const h of g.hooks || []) {
       for (const m of String(h.command || "").matchAll(/([\w.-]+\.sh)/g)) {
-        if (m[1] === "run-node.sh") continue;
+        if (m[1] === "run-node.sh" || m[1] === "translate-tool-call.sh") continue;
         claudeBash.add(m[1]);
       }
     }

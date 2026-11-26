@@ -176,7 +176,7 @@ function layered() {
     "himmel-ops@himmel": [{ scope: "user", installPath: ops, version: "1" }],
   } });
   json(join(guard, "hooks", "hooks.json"), { hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command",
-    command: "if grep -qs 'block-destructive-commands.sh' \"$CLAUDE_PROJECT_DIR/.claude/settings.json\"; then exit 0; fi; bash \"${CLAUDE_PLUGIN_ROOT}/hooks/block-destructive-commands.sh\"" }] }] } });
+    command: "if grep -qs 'block-destructive-commands.sh' \"$CLAUDE_PROJECT_DIR/.claude/settings.json\"; then exit 0; fi; bash \"${CLAUDE_PLUGIN_ROOT}/hooks/translate-tool-call.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/block-destructive-commands.sh\"" }] }] } });
   json(join(ops, "hooks", "hooks.json"), { hooks: { PreToolUse: [{ matcher: "WebFetch", hooks: [{ type: "command", command: "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" \"${CLAUDE_PLUGIN_ROOT}/hooks/redirect-webfetch-walled-hosts.sh\"" }] }] } });
   return { HOME: home, HIMMEL_REPO: repo, PATH: "/nonexistent" };
 }
@@ -191,6 +191,7 @@ test("a hook that skips itself under the project layer reads single, a declared 
   }
   expect(rows("redirect-webfetch-walled-hosts.sh").map((h: any) => [h.source, h.runs_twice, h.declared_dual])).toEqual([["himmel-ops@himmel", false, true], ["project", false, true]]);
   expect(rows("real-twin.sh").map((h: any) => h.runs_twice)).toEqual([true, true]);
+  expect(rows("translate-tool-call.sh")).toEqual([]);
 });
 
 test("only the declared dual is named: another hook wired in the project and the plugin reads double, a declared dual wired once reads single", async () => {

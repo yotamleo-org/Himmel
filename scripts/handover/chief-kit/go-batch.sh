@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/go-batch.sh - the chief's one-step GO for every green judged PR.
 # It decides per open PR whether a GO can be written now, fast-forwards the primary checkout once,
-# runs go.sh for every GO-able PR in parallel and sends each worker its GO with that worker's token.
-# It never writes a GO file itself: go.sh does, and go.sh re-runs ready-check.sh and every gate of
-# its own, so this script only chooses which PRs to try and with which contract and judge qid.
+# runs go.sh --no-deliver for every GO-able PR in parallel and sends each worker its GO with that
+# worker's token through go-deliver.sh (the token, the PR's worker, the session, the wording, the
+# bus send and the fallback line are that library's). It never writes a GO file itself: go.sh
+# does, and go.sh re-runs ready-check.sh and every gate of its own, so this script only chooses
+# which PRs to try and with which contract and judge qid.
 #
 # Usage: go-batch.sh --doc <chief doc> --fleet <fleet manifest> [--dry-run] [--jobs <n>]
 #   --doc      the chief's handover doc: its `## Live state` workers: span holds each worker's token,
@@ -33,7 +35,8 @@
 #      rules GO for this PR at this head, a delta no-op record included. Its qid goes to go.sh as
 #      --trust-reviewed. A PR that needs none runs go.sh plain; go.sh's exit 8 (the diff hits a CI
 #      trust path) retries once with the newest verdict's qid, and no verdict holds the PR
-#   6. the worker has a usable token: the one in the chief doc's workers: span, else the first
+#   6. the worker has a usable token: the one in the chief doc's workers: span (its legs: span
+#      too while legacy names are on), else the first
 #      backticked value of the last `> **RETASK:**` line of its brief above `## Results`. A
 #      usable token has dash-joined parts (CJ-N1-b07851f7) and is not NONCE-UNKNOWN; with none
 #      the row is NO-TOKEN and no GO is written, so no GO exists that its worker is never told
@@ -50,7 +53,9 @@
 #   HOLD <pr> <head8> <reason>
 #   NO-TOKEN <pr> <label>
 #   go-batch: <n> GO, <m> held
-# Exit: 0 done; 1 setup failed (a library, the gh read or its 200-PR limit, the chief doc, the fast-forward); 2 usage;
+# A worker relaunched under a lettered label (doc N90, session N90b) is matched to its session.
+# Exit: 0 done; 1 setup failed (a library, go-deliver.sh included, the gh read or its 200-PR limit,
+# the chief doc, the fast-forward); 2 usage;
 # 3 run from a chief-spawned worker or a relay, only the chief writes a GO; 11 a GO is written but a
 # worker message was not delivered: send each SENDMESSAGE row by hand.
 #
@@ -96,9 +101,13 @@ esac
 # shellcheck source=scripts/lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/handover-path.sh" || { echo "go-batch: cannot load scripts/lib/handover-path.sh" >&2; exit 1; }
-# shellcheck source=scripts/handover/chief-kit/close-facts.sh
+# shellcheck source=scripts/handover/chief-kit/go-deliver.sh
 # shellcheck disable=SC1091
-. "$HERE/close-facts.sh" || { echo "go-batch: cannot load close-facts.sh" >&2; exit 1; }
+. "$HERE/go-deliver.sh" || { echo "go-batch: cannot load go-deliver.sh - refusing" >&2; exit 1; }
+for f in gd_worker_token gd_worker_map gd_brief_merge_chief gd_census gd_session gd_message gd_send \
+        gd_fallback_due gd_sendmessage_line doc_ready_head cf_git; do
+    declare -F "$f" >/dev/null 2>&1 || { echo "go-batch: go-deliver.sh defines no $f - refusing" >&2; exit 1; }
+done
 for f in "$DOC" "$FLEET"; do
     [ -f "$f" ] && [ -r "$f" ] || { echo "go-batch: $f is not a readable file" >&2; exit 1; }
 done
@@ -125,37 +134,11 @@ GH_OK=0
 [ "$GH_OK" -eq 0 ] || { echo "go-batch: cannot read the open PR list (gh: $(head -n 1 "$WORK/gh.err" | cut -c1-200)) - nothing was judged" >&2; exit 1; }
 [ "$(jq length "$WORK/prs.json")" -lt 200 ] || { echo "go-batch: the open PR list reached the 200 limit, so PRs beyond it were not read - nothing was judged" >&2; exit 1; }
 : > "$WORK/map"
-jq -r '(.workers // .legs // [])[]? | [.label, .doc, (.lane // "unknown")] | @tsv' "$FLEET" > "$WORK/fleet.tsv" 2>/dev/null \
-    || { echo "go-batch: cannot read the fleet manifest $FLEET" >&2; exit 1; }
-while IFS=$'\t' read -r label wdoc lane; do
-    [ -n "$label" ] && [ -f "$wdoc" ] || continue
-    wpr=$(doc_pr "$wdoc"); [ -n "$wpr" ] || continue
+gd_worker_map "$FLEET" > "$WORK/fleet.tsv" || { echo "go-batch: cannot read the fleet manifest $FLEET" >&2; exit 1; }
+while IFS=$'\t' read -r wpr label wdoc lane; do
     printf '%s\t%s\t%s\t%s\t%s\n' "$wpr" "$label" "$wdoc" "$lane" "$(doc_ready_head "$wdoc" "$wpr")" >> "$WORK/map"
 done < "$WORK/fleet.tsv"
 
-# shellcheck disable=SC2016  # the backticks are the Live state entry's literal markers
-live_token() {
-    awk '
-        $0 == "## Live state" { s = 1; next }
-        s && /^## / { exit }
-        s && index($0, "workers:") == 1 { b = 1; print; next }
-        b && (/^[[:space:]]*$/ || /^[0-9]+\. / || /^[A-Za-z][A-Za-z ]*:/ || /^[-*+>#]/) { b = 0 }
-        b { print }
-    ' "$DOC" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`' | tr -d '`' \
-        | awk -F: -v l="$1" '$1 == l { print $2; n++ } END { exit n != 1 }'
-}
-token_usable() { [[ "$1" =~ ^[A-Za-z0-9]+(-[A-Za-z0-9._]+)+$ ]] && [ "$1" != NONCE-UNKNOWN ]; }
-# shellcheck disable=SC2016  # the backticks are the RETASK line's literal markers
-brief_token() {
-    awk '/^## Results/ { exit } /^> \*\*RETASK:\*\*/ { l = $0 } END { print l }' "$1" | grep -oE '`[^`]*`' | head -n 1 | tr -d '`'
-}
-worker_token() {
-    local t
-    t=$(live_token "$1") || t=""  # swallow-ok: no live token falls to the brief's below
-    token_usable "$t" || t=$(brief_token "$2") || t=""  # swallow-ok: no brief token is NO-TOKEN at the caller
-    token_usable "$t" || return 1
-    printf '%s\n' "$t"
-}
 remainder_answer() {
     local key ans rc=0
     key=$( . "$HERE/../../lib/ticket-status.sh" >/dev/null 2>&1 || exit 3; ticket_key_from_title "$1" ) || { printf 'no [KEY] in the title\n'; return 1; }
@@ -225,7 +208,7 @@ while IFS=$'\t' read -r PR HEADSHA _base DRAFT <&3; do
         for key in $KEYS; do [ "$tok" = "$key" ] && BLOCK="merge-hold: $key"; done
     done
     if [ -n "$BLOCK" ]; then hold "the chief doc's Live state says $BLOCK"; continue; fi
-    if grep -qE '^> \*\*Merge:\*\* chief([^A-Za-z0-9_-]|$)' "$WDOC" 2>/dev/null; then hold "the brief says Merge: chief"; continue; fi
+    if gd_brief_merge_chief "$WDOC" 2>/dev/null; then hold "the brief says Merge: chief"; continue; fi
     CONTRACT=$(grep -oE '^> \*\*Completes ticket:\*\* (yes|no)([^A-Za-z0-9_-]|$)' "$WDOC" | tail -n 1 | sed -E 's/^> \*\*Completes ticket:\*\* (yes|no).*/\1/')
     BRIEF_LINE="$CONTRACT"
     [ -n "$CONTRACT" ] || CONTRACT=no
@@ -254,7 +237,7 @@ while IFS=$'\t' read -r PR HEADSHA _base DRAFT <&3; do
         QID=$(newest_qid "$PR" "$HEADSHA")
         if [ -z "$QID" ]; then hold "no judge verdict at head ($WHY)"; continue; fi
     fi
-    TOKEN=$(worker_token "$LABEL" "$WDOC") || {
+    TOKEN=$(gd_worker_token "$DOC" "$LABEL" "$WDOC") || {
         printf 'NO-TOKEN %s %s\n' "$PR" "$LABEL"; HELD=$((HELD + 1)); continue
     }
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$PR" "$HEADSHA" "$LABEL" "$WDOC" "$CONTRACT" "$TOKEN" "$CWHY" "$QID" >> "$WORK/golist"
@@ -279,14 +262,14 @@ if ! PULL=$(cf_git "$ANCHOR" pull --ff-only 2>&1); then
 fi
 run_one() {
     local pr="$1" head="$2" c="$3" q="$4" out rc=0
-    out=$(bash "$GO_BIN" --model go-batch --effort script --contract "$c" ${q:+--trust-reviewed "$q"} "$pr" "$head" 2>&1 < /dev/null) || rc=$?
+    out=$(bash "$GO_BIN" --no-deliver --model go-batch --effort script --contract "$c" ${q:+--trust-reviewed "$q"} "$pr" "$head" 2>&1 < /dev/null) || rc=$?
     if [ "$rc" -eq 8 ] && [ -z "$q" ]; then
         q=$(newest_qid "$pr" "$head")
         if [ -z "$q" ]; then
             rc=88; out="trust path: no judge verdict at head"
         else
             rc=0
-            out=$(bash "$GO_BIN" --model go-batch --effort script --contract "$c" --trust-reviewed "$q" "$pr" "$head" 2>&1 < /dev/null) || rc=$?
+            out=$(bash "$GO_BIN" --no-deliver --model go-batch --effort script --contract "$c" --trust-reviewed "$q" "$pr" "$head" 2>&1 < /dev/null) || rc=$?
         fi
     fi
     { printf '%s\n%s\n' "$rc" "${q:-none}"; printf '%s\n' "$out"; } > "$WORK/res.$pr"
@@ -299,32 +282,16 @@ while IFS=$'\t' read -r pr head _label _doc contract _tok _cwhy qid; do
 done < "$WORK/golist"
 wait
 
-# shellcheck source=scripts/lanes/lib/claude-sessions.sh
-# shellcheck disable=SC1091
-[ -n "${GO_BATCH_CENSUS:-}" ] || . "$HERE/../../lanes/lib/claude-sessions.sh" 2>/dev/null || true  # swallow-ok: an unloadable census leaves no live session, reported per row as bus-failed
 send_bus() {
-    local ident cands census hits=0 cname _cpid _crest msgdir bus_rc=0 bus_out wait_cmd=""
-    SESSION=""; BUS_REF=""; BUS_ERR=""
-    ident=$(worker_identity "$2"); cands=",${ident#*$'\t'},$(basename "$2" .md),"
-    if [ -n "${GO_BATCH_CENSUS:-}" ]; then
-        census=$(bash "$GO_BATCH_CENSUS" 2>/dev/null) || census=""  # swallow-ok: an empty census reads as no live session, reported below
+    SESSION=""; BUS_REF=""; BUS_ERR=""; BUS_CLASS=""
+    gd_session "$1" "$(gd_census "${GO_BATCH_CENSUS:-}")"
+    if [ "$GD_HITS" -ne 1 ]; then BUS_ERR="$GD_HITS live session(s) match the worker"; BUS_CLASS=no-session; return 0; fi
+    SESSION="$GD_SESSION"
+    if gd_send "$SESSION" "$2" "${GO_BATCH_BUS:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}" "$3"; then
+        BUS_REF="$GD_REF"
     else
-        census=""; declare -F claude_sessions >/dev/null 2>&1 && { census=$(claude_sessions 2>/dev/null) || true; }  # swallow-ok: as above
+        BUS_ERR="$GD_ERR"; BUS_CLASS=bus-failed
     fi
-    while IFS=$'\t' read -r _cpid cname _crest; do
-        [ -n "$cname" ] || continue
-        case "$cands" in *",$cname,"*) hits=$((hits + 1)); SESSION="$cname" ;; esac
-    done <<< "$census"
-    if [ "$hits" -ne 1 ]; then BUS_ERR="$hits live session(s) match the worker"; SESSION=""; return 0; fi
-    msgdir=$(mktemp -d "${TMPDIR:-/tmp}/go-batch-bus.XXXXXX") || { BUS_ERR="mktemp failed"; return 0; }  # prim-ok: holds one message file and is removed right after the send
-    printf '%s\n' "$3" > "$msgdir/msg" || { rm -rf "$msgdir"; BUS_ERR="cannot write the bus message file"; return 0; }
-    command -v timeout >/dev/null 2>&1 && wait_cmd="timeout 15"
-    # shellcheck disable=SC2086  # wait_cmd is empty or the two words `timeout 15`
-    bus_out=$($wait_cmd "${GO_BATCH_BUS:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}" send "$SESSION" "$msgdir/msg" 2>&1) || bus_rc=$?
-    rm -rf "$msgdir"
-    BUS_REF=$(printf '%s\n' "$bus_out" | sed -nE 's/^sent (#[0-9]+) to .*/\1/p' | head -n 1)
-    if [ "$bus_rc" -ne 0 ]; then BUS_ERR="bus send exit $bus_rc: $(printf '%s\n' "$bus_out" | head -n 1 | cut -c1-150)"
-    elif [ -z "$BUS_REF" ]; then BUS_ERR="bus send printed no record number"; fi
 }
 while IFS=$'\t' read -r pr head label wdoc contract tok cwhy _qid; do
     { read -r rc; read -r qid; GOOUT=$(cat); } < "$WORK/res.$pr"
@@ -344,17 +311,15 @@ while IFS=$'\t' read -r pr head label wdoc contract tok cwhy _qid; do
         HELD=$((HELD + 1)); continue
     fi
     WRITTEN=$((WRITTEN + 1))
-    JT=" --jira-transition"; [ "$contract" = yes ] || JT=""
-    MSG=$(printf 'GO %s %s - merge with: bash %q%s --go %q' "$pr" "$head" "$ANCHOR/scripts/handover/merge-on-green.sh" "$JT" "$GOFILE")
-    [ "$cwhy" = - ] || MSG="$MSG"$'\n'"contract no: ${cwhy//-/ }; merge without --jira-transition"
-    MSG="$MSG"$'\n'"Your token \`$tok\`."
-    send_bus "$label" "$wdoc" "$MSG"
+    why="-"; [ "$cwhy" = - ] || why="${cwhy//-/ }"
+    MSG=$(gd_message "$pr" "$head" "$GOFILE" "$ANCHOR" "$contract" "$why" "$tok")
+    send_bus "$wdoc" "$MSG" "$tok"
     if [ -z "$BUS_ERR" ]; then
         printf 'GO-SENT %s %s to %s bus=%s contract=%s%s qid=%s\n' "$pr" "$h8" "$label" "$BUS_REF" "$contract" "$(cwhy_field "$cwhy")" "$qid"
     else
         UNDELIVERED=$((UNDELIVERED + 1))
         printf 'GO-WRITTEN %s %s contract=%s qid=%s%s bus-failed: %s\n' "$pr" "$h8" "$contract" "$qid" "$(cwhy_field "$cwhy")" "$BUS_ERR"
-        printf 'SENDMESSAGE to=%s :: %s\n' "${SESSION:-$(basename "$wdoc" .md)}" "$(printf '%s' "$MSG" | tr '\n' ' ')"
+        if gd_fallback_due "$BUS_CLASS"; then gd_sendmessage_line "${SESSION:-$(basename "$wdoc" .md)}" "$MSG"; fi
     fi
 done < "$WORK/golist"
 printf 'go-batch: %s GO, %s held\n' "$WRITTEN" "$HELD"

@@ -2675,6 +2675,19 @@ carry_operator_priority() {
     fi
 }
 
+superseded_direction_paras() {
+    awk -v mode="$1" '
+        function flush(   i, sup) {
+            if (n == 0) return
+            sup = (para[1] ~ /^RECOVERY ADMINISTRATION ONLY/ || para[1] ~ /^OPERATOR 2026-11-22 03:20Z/)
+            if ((mode == "drop") == sup) for (i = 1; i <= n; i++) print para[i]
+            n = 0; blank = 0
+        }
+        /^[[:space:]]*$/ { if (n) { para[++n] = $0; blank = 1 }; next }
+        { if (blank) flush(); para[++n] = $0 }
+        END { flush() }'
+}
+
 # seed_live_fields <doc> <predecessor live state> <predecessor stem> [<predecessor doc>]: replace each
 # `<field>: <...>` placeholder line in the doc's `## Live state` with the
 # predecessor's value, verbatim; a field the predecessor lacks keeps its
@@ -2685,6 +2698,7 @@ carry_operator_priority() {
 # to move shift history to, so earlier content survives), named in LS_HISTORY_REF
 # for the HANDOFF; a failed write seeds both whole.
 LS_HISTORY_REF=""
+CHAIN_RENAMED=0
 seed_live_fields() {
     local doc="$1" live="$2" stem="$3" workers go new_legs new_go hdir hfile sep="" wkey=workers
     # the predecessor's worker line is `workers:`; the pre-rename `legs:` is read only while legacy
@@ -2695,6 +2709,7 @@ seed_live_fields() {
     go="$(seeded_live_field "$live" "last GO")"
     new_legs="$(open_legs_block "$workers" "${doc%.md}.fleet.json")"
     new_go="$(latest_go_only "$go")"
+    [ "$CHAIN_RENAMED" -ne 1 ] || new_go="$(printf '%s\n' "$new_go" | sed -E 's/[;,] earlier [`#]?[0-9]+:[0-9a-f]{7,}.*$//')"
     if [ "$new_legs" != "$workers" ] || [ "$new_go" != "$go" ]; then
         hdir="$(dirname "$doc")/specs/history"
         hfile="$hdir/chief-live-state-$stem.md"
@@ -2871,8 +2886,9 @@ cmd_next() {
     predecessor_base="$(basename "$predecessor_doc")"
     predecessor_stem="${predecessor_base%.md}"
     CHIEF_BUS_PREDECESSOR="$predecessor_stem"
-    if [[ "$predecessor_stem" =~ ^[A-Z0-9]+-nextleg-[0-9]{4}-[0-9]{2}-[0-9]{2}([A-Z]{1,2})-.+$ ]]; then
+    if [[ "$predecessor_stem" =~ ^[A-Z0-9]+-nextleg-[0-9]{4}-[0-9]{2}-[0-9]{2}([A-Z]{1,2})-(.+)$ ]]; then
         predecessor_letter="${BASH_REMATCH[1]}"
+        [ "$(chief_name "${BASH_REMATCH[2]}")" = "$name" ] || CHAIN_RENAMED=1
     else
         err "cannot parse predecessor doc name '$predecessor_base' (expected <prefix>-nextleg-<date><letter>-<name>.md)"
         exit 1
@@ -3048,6 +3064,20 @@ cmd_next() {
             predecessor_direction="$dir_in_force"
         else
             err "warning: could not render the rulings in force from $ledger; carried the Current direction as it was"
+        fi
+    fi
+    if [ "$CHAIN_RENAMED" -eq 1 ]; then
+        local dir_old dir_left
+        dir_old="$(printf '%s\n' "$predecessor_direction" | superseded_direction_paras drop)"
+        if [ -n "$dir_old" ]; then
+            if hist_file_append "$state_dir" "Current direction: superseded recovery paragraphs, left out by chief.sh next from $predecessor_stem" "$dir_old"; then
+                dir_left="$(printf '%s\n' "$predecessor_direction" | superseded_direction_paras keep)"
+                predecessor_direction="$dir_left${dir_left:+
+
+}Superseded recovery paragraphs of this direction: $HIST_REL"
+            else
+                err "warning: could not write the superseded recovery paragraphs to the history file; carried the Current direction whole"
+            fi
         fi
     fi
     render_template "$console_template" "$doc" \

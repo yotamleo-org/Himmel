@@ -1,0 +1,26 @@
+{
+ "cwd": "/work/grokcap",
+ "hookEventName": "pre_tool_use",
+ "hook_event_name": "PreToolUse",
+ "permissionMode": "bypassPermissions",
+ "permission_mode": "bypassPermissions",
+ "sessionId": "01a21045-0d14-7593-9922-011f6b056d0e",
+ "session_id": "01a21045-0d14-7593-9922-011f6b056d0e",
+ "timestamp": "2026-11-25T01:14:59.203741462+00:00",
+ "toolInput": {
+  "content": "probe",
+  "file_path": "/work/grokcap/notes.txt"
+ },
+ "toolInputTruncated": false,
+ "toolName": "write",
+ "toolUseId": "call-75441e1e-ee75-4799-8ce6-2dc094bba2ce-3",
+ "tool_input": {
+  "content": "probe",
+  "file_path": "/work/grokcap/notes.txt"
+ },
+ "tool_name": "write",
+ "tool_use_id": "call-75441e1e-ee75-4799-8ce6-2dc094bba2ce-3",
+ "transcriptPath": "/home/user/.grok/sessions/fixture/updates.jsonl",
+ "transcript_path": "/home/user/.grok/sessions/fixture/updates.jsonl",
+ "workspaceRoot": "/work/grokcap"
+}

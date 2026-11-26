@@ -1781,6 +1781,24 @@ contains 'a LIVE bullet "isn'"'"'t holding at READY" stays LIVE' "$(tail3393 "- 
 contains 'a newer prose-leading bullet naming holding at READY does not promote the earlier LIVE' "$(tail3393 '- 23:48 Still holding at READY, waiting on the chief')" 'N393:LIVE'
 contains 'READY held then a newer plain LIVE bullet reads LIVE' "$(tail3393 '- 23:47 LIVE — holding at READY for GO' '- 23:50 LIVE — fixing a review finding')" 'N393:LIVE'
 
+cat > "$W/redmain-probe" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' 'red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes' 'red-main run 900 #101 scripts/test-c.sh suite in its impacted list: no'
+STUB
+out="$(TICK_REDMAIN_PROBE="$W/redmain-probe" bash "$SUT")"
+contains 'a red main run prints its yes postmortem line as an ACTION row' "$out" 'ACTION red-main-postmortem red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes'
+contains 'a red main run prints its no postmortem line as an ACTION row' "$out" 'ACTION red-main-postmortem red-main run 900 #101 scripts/test-c.sh suite in its impacted list: no'
+out="$(TICK_REDMAIN_PROBE="$W/redmain-probe" bash "$SUT" --verbose)"
+contains 'verbose shows the postmortem lines' "$out" 'red-main postmortem: red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes'
+out="$(TICK_REDMAIN_PROBE="$W/no-redmain-probe" bash "$SUT")"
+if grep -Fq 'red-main' <<< "$out"; then fail 'a missing probe printed a postmortem row'; else pass 'a missing probe prints no postmortem row'; fi
+printf '#!/usr/bin/env bash\nexit 1\n' > "$W/redmain-bad"
+out="$(TICK_REDMAIN_PROBE="$W/redmain-bad" bash "$SUT")"
+if grep -Fq 'red-main' <<< "$out"; then fail 'a failing probe printed a postmortem row'; else pass 'a failing probe prints no postmortem row'; fi
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes"\nexit 124\n' > "$W/redmain-late"
+out="$(TICK_REDMAIN_PROBE="$W/redmain-late" bash "$SUT")"
+contains 'a probe killed after it printed keeps its lines' "$out" 'ACTION red-main-postmortem red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes'
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
     exit 0

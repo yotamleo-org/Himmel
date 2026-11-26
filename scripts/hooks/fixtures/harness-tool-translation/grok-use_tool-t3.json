@@ -1,0 +1,30 @@
+{
+ "cwd": "/work/grokcap1073",
+ "hookEventName": "pre_tool_use",
+ "hook_event_name": "PreToolUse",
+ "permissionMode": "bypassPermissions",
+ "permission_mode": "bypassPermissions",
+ "sessionId": "01a215da-18c4-7933-87be-57970f36cfa2",
+ "session_id": "01a215da-18c4-7933-87be-57970f36cfa2",
+ "timestamp": "2026-11-26T03:16:04.131670800+00:00",
+ "toolInput": {
+  "tool_input": {
+   "limit": 1
+  },
+  "tool_name": "t3-code__t3_thread_list"
+ },
+ "toolInputTruncated": false,
+ "toolName": "t3-code__t3_thread_list",
+ "toolUseId": "call-4040650a-1160-4eaf-aa76-e10f8105dbf9-6",
+ "tool_input": {
+  "tool_input": {
+   "limit": 1
+  },
+  "tool_name": "t3-code__t3_thread_list"
+ },
+ "tool_name": "t3-code__t3_thread_list",
+ "tool_use_id": "call-4040650a-1160-4eaf-aa76-e10f8105dbf9-6",
+ "transcriptPath": "/home/user/.grok/sessions/fixture/updates.jsonl",
+ "transcript_path": "/home/user/.grok/sessions/fixture/updates.jsonl",
+ "workspaceRoot": "/work/grokcap1073"
+}
