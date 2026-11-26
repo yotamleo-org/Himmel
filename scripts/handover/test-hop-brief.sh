@@ -587,6 +587,12 @@ for fire in fire hook; do
     probe akinds "$T/gm-$fire.json" "$CHIEF" >"$T/gm-$fire.kinds"
     check "gemini: a web-sourced scheduled-task $fire row is an unreadable sender, neither eligible nor a delivery" 'grep -q "^$gm_op unreadable-sender - - " "$T/gm-$fire.kinds"'
 done
+jq '(.items[] | select(.text | startswith("RULING-OP"))) |= (.messageId = null)' "$GM" >"$T/gm-nomsgid.json"
+jq '(.items[] | select(.text | startswith("RULING-OP"))) |= (.messageId = "")' "$GM" >"$T/gm-emptymsgid.json"
+for part in nomsgid emptymsgid; do
+    probe akinds "$T/gm-$part.json" "$CHIEF" >"$T/gm-$part.kinds"
+    check "gemini: a web row with no usable messageId ($part) is an unreadable sender, neither eligible nor a delivery" 'grep -q "^$gm_op unreadable-sender - - " "$T/gm-$part.kinds"'
+done
 probe akinds "$GM" "$CHIEF" >"$T/gm-uuid.kinds"
 check "gemini: control: a web row with a UUID messageId stays operator" 'grep -q "^$gm_op operator E D " "$T/gm-uuid.kinds"'
 build "$T/cs.jsonl" tokens ruling-a own-1 contains-shapes
