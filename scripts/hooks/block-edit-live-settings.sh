@@ -1061,7 +1061,8 @@ _agy_seg_writes() {
         if [ "$first" = 1 ]; then
             case "$w" in [a-z_]*=*) continue ;; esac
             first=0
-            case "${w##*[/\\]}" in *'$'*|*\}*) st=1 ;; esac
+            case "${w##*[/\\]}" in *'$'*) st=1 ;; esac
+            case "$w" in *\$\{*) case "${w##*[/\\]}" in *\}*) st=1 ;; esac ;; esac
         fi
         case "$st" in
             0) case "${w##*[/\\]}" in agy|agy.exe|agy.cmd) st=1 ;; esac ;;
