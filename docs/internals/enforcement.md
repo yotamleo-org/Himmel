@@ -2586,10 +2586,14 @@ and a heredoc body that writes a file naming both words are allowed, and every
 `jira release operator` verb (`declare`, `freeze`, `decision`, `takeover`, …) is
 denied plain or wrapped. Where a command's words can reach the CLI as data, both
 words still deny: an `xargs` segment (anywhere in the whole command); a shell,
-`eval`, `source`, node, python, perl, ruby, php or lua segment fed by a heredoc, a
-`|` or `|&` pipe or a `<<<` here-string (anywhere in the whole command), else
-anywhere in that segment; a launcher or code-running tool (`script`, `flock`,
-`watch`, `taskset`, `strace`, `find`, `ssh`, `sed`, `awk` and the like), and `git` or
+`eval`, `source`, node, python, perl, ruby, php or lua segment in a command that has
+any other input path (more than one segment, a redirect, a substitution or a
+heredoc: a pipe, a here-string, a process substitution, a subshell, a brace group
+and an fd all end up there) is tested on the whole command, and one that stands
+alone is tested on its own words; a launcher or code-running tool (`script`,
+`flock`, `watch`, `taskset`, `strace`, `find`, `ssh`, `sed`, `awk` and the like; so
+`find -exec grep 'release operator'` and `ssh host grep 'release operator'` are
+refused too, and the refusal points to plain `grep`), and `git` or
 `rg` given `--pre`, `-O`, `--open-files-in-pager` or an `alias.` setting, anywhere
 in that segment; and any segment with a live `$` or glob word, anywhere in that
 segment, since an empty expansion can sit between the two words. A command whose quoting the tokenizer

@@ -93,6 +93,15 @@ guard_unwrap "${BASH_SOURCE[0]}" "$cmd" 2>/dev/null || deny "$RULE"
 scan_segments() {
     local s=0 n j w prev segtext core cb fed live runs k
     local -a idx
+    fed=0
+    [ "$ST_NSEG" -gt 1 ] && fed=1
+    [ "$ST_SUBST" = 1 ] && fed=1
+    [ "$ST_HEREDOC" = 1 ] && fed=1
+    k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        [ -z "${ST_RO[k]}" ] || fed=1
+        k=$((k + 1))
+    done
     while [ "$s" -lt "$ST_NSEG" ]; do
         idx=()
         read -r -a idx <<<"${GU_SW[s]:-}"
@@ -117,14 +126,6 @@ scan_segments() {
         if [ -n "${GU_XA[s]:-}" ]; then
             both_words "$cmd" && return 0
         fi
-        fed=0
-        [ "$ST_HEREDOC" = 1 ] && fed=1
-        if [ "$s" -gt 0 ]; then
-            case "${ST_SEP[s-1]}" in '|'|'|&') fed=1 ;; esac
-        fi
-        for k in ${GU_SR[s]:-}; do
-            case "${ST_RO[k]}" in *'<<<') fed=1 ;; esac
-        done
         core=${GU_CORE[s]:-0}
         if [ "$core" -lt "$n" ]; then
             cb=${ST_W[idx[core]]##*/}
