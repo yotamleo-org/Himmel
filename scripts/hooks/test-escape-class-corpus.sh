@@ -57,6 +57,7 @@ block-himmel-config-writes.sh|||deny|||-|||-|||cp /tmp/f ~/.himmel/config.json
 block-jira-compound-write.sh|||deny|||-|||-|||node /x/scripts/jira/dist/index.js create --type Task --title a --desc "$(cat /tmp/a.md)"
 block-read-secrets.sh|||deny|||-|||-|||cat .env
 block-rogue-claude-schedule.sh|||deny|||-|||-|||schtasks /create /tn X /tr claude.exe /sc ONCE
+block-station-load-test.sh|||deny|||HIMMEL_WORKER=1|||-|||seq 32 | xargs -P 32 -I{} bash x.sh
 block-subagent-release-operator.sh|||deny-subagent|||-|||-|||node /x/scripts/jira/dist/index.js release operator spec-review R1 --keys K-2
 block-tail-pipe-on-gates.sh|||deny|||-|||-|||bash scripts/ci/run-shell-tests.sh | tail -5
 block-write-into-main-checkout.sh|||deny|||-|||-|||echo x > @@REPO@@/f
