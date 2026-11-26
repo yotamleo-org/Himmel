@@ -91,9 +91,8 @@ esac
 [ "${#paths[@]}" -gt 0 ] || exit 0
 [ "${#paths[@]}" -le 256 ] || mark
 
-here=$(cd "$(dirname "$0")" && pwd -P)
-lib="$here/phi-egress-lib.sh"
-[ -r "$lib" ] || lib="$here/../guardrails/phi-egress-lib.sh"
+lib=${BASH_SOURCE[0]%/*}/phi-egress-lib.sh
+[ -r "$lib" ] || lib=${BASH_SOURCE[0]%/*}/../guardrails/phi-egress-lib.sh
 # shellcheck source=/dev/null
 if ! { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then mark; fi
 
