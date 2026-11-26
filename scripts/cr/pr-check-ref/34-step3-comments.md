@@ -9,7 +9,7 @@
    git diff -U0 --no-color --no-ext-diff <db_sha> <head>
    ```
 
-   **The dispatch.** Use the Agent tool with `subagent_type: himmel-ops:comment-review` and `model: sonnet`. The prompt names exactly two paths: the charter `<himmel_dir>/.claude/agents/comment-sicko.md` and the diff file above. The agent has Read, Grep and Glob only, reports and deletes nothing, and ends with `COMMENT-REVIEW <n>`.
+   **The dispatch.** Use the Agent tool with `subagent_type: himmel-ops:comment-review` and `model: sonnet`. The prompt names exactly two paths: the charter `<himmel_dir>/.claude/agents/comment-sicko.md` and the diff file above. The agent has Read, WebFetch and WebSearch only, with no search tool and no Bash, reports and deletes nothing, and ends with `COMMENT-REVIEW <n>`.
 
    - The Codex lane has no `Agent` dispatch: record the skip with `--status off --reason codex-lane`.
    - If the Agent tool reports that `himmel-ops:comment-review` is not a known agent type (the plugin is not loaded in this session), record `--status off --reason agent-not-loaded` and say so in the report. Any other reason is refused by `ledger-append.sh`.

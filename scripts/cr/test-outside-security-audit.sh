@@ -67,7 +67,7 @@ case "$rc" in 0|4) ;; *) exit "$rc" ;; esac
 [ -z "${STUB_CRIT_OUT:-}" ] || printf '%s\n' "$STUB_CRIT_OUT"
 if [ "${STUB_CRIT_NOROW:-0}" != 1 ]; then
     bash "$(dirname "$0")/ledger-append.sh" score --branch "$CR_TARGET_BRANCH" --head "$CR_TARGET_HEAD" --model outside-security \
-        --responding-model gpt-6.1-sol --critical "${STUB_CRIT_C:-0}" --important "${STUB_CRIT_I:-0}" --suggestions 0 \
+        --responding-model gpt-6.2-sol --critical "${STUB_CRIT_C:-0}" --important "${STUB_CRIT_I:-0}" --suggestions 0 \
         --dropped "${STUB_CRIT_D:-0}" --raw-path "$LOG/raw" >/dev/null 2>&1 || echo "stub: score append failed" >&2
 fi
 exit "$rc"
@@ -142,7 +142,7 @@ rpt="$(last report)"
 eq "$( [ -f "$rpt" ] && sha "$rpt")" "$(last report_sha256)" "T3.1 control: report_sha256 is the report's sha256"
 eq "$(last perspective_sha256)" "$(sha "$PERSP")" "T3.1 control: the row carries the perspective's sha256"
 eq "$(last base_sha)" "$(git -C "$W" rev-parse main)" "T3.1 control: base_sha is the merge base"
-eq "$(last auditor)/$(last model)/$(last branch)/$(last pr)" "codex/gpt-6.1-sol/feat/outside-thing/7" "T3.1 control: auditor, model, branch and pr"
+eq "$(last auditor)/$(last model)/$(last branch)/$(last pr)" "codex/gpt-6.2-sol/feat/outside-thing/7" "T3.1 control: auditor, model, branch and pr"
 eq "$(cd "$P" && HOME="$tmp/home" bash -c '. "$1"; outside_audit_passed 7 "$2" feat/outside-thing && echo yes || echo no' _ "$A/scripts/lib/outside-contributors.sh" "$H")" yes \
     "T3.1 control: outside_audit_passed accepts the head once its pass row exists"
 reset
@@ -422,15 +422,15 @@ cap=$(sed -n 's/.*CRITIC_FIRST_PASS_CAP_BYTES=\([0-9]*\).*/\1/p' "$LOG/critic.en
 eq "$( [ "${cap:-0}" -gt 196608 ] && echo above || echo "not above ($cap)")" above "T3.14 the critic runs with CRITIC_FIRST_PASS_CAP_BYTES above 192 KiB"
 
 reset; audit CRITICS_BASE_JSON="$tmp/elsewhere.json" CR_LEDGER="$tmp/elsewhere.jsonl" CRITIC_KNOWN_FINDINGS=1 CRITIC_PERSPECTIVES=0
-eq "$(cat "$LOG/critic.argv" 2>/dev/null)" "--model gpt-6.1-sol --provider openai-codex --slug outside-security --perspective-file $PERSP" "T3.20 the critic argv"
+eq "$(cat "$LOG/critic.argv" 2>/dev/null)" "--model gpt-6.2-sol --provider openai-codex --slug outside-security --perspective-file $PERSP" "T3.20 the critic argv"
 eq "$(cat "$LOG/critic.env" 2>/dev/null | sed 's/ CRITIC_FIRST_PASS_CAP_BYTES=[0-9]*//')" \
     "CR_TARGET_PR=7 CR_TARGET_HEAD=$H CR_TARGET_BRANCH=feat/outside-thing CRITIC_KNOWN_FINDINGS=0 CRITICS_BASE_JSON=unset CR_LEDGER=unset CRITIC_PERSPECTIVES=1" \
     "T3.20 the critic env: the target seam, no known findings, no registry or ledger redirect"
 eq "$rc/$(audits)" "0/1" "T3.20 the row lands in the ledger the audit reads"
 if [ -e "$tmp/elsewhere.jsonl" ]; then fail "T3.20 a score row went to the exported CR_LEDGER"; else pass "T3.20 nothing was written to the exported CR_LEDGER"; fi
 cp "$A/scripts/cr/critics.json" "$tmp/critics.keep"
-jq '.panel |= map(select(.model != "gpt-6.1-sol"))' "$tmp/critics.keep" > "$A/scripts/cr/critics.json"
-reset; audit; expect_none "T3.20 a registry with no gpt-6.1-sol row" 7
+jq '.panel |= map(select(.model != "gpt-6.2-sol"))' "$tmp/critics.keep" > "$A/scripts/cr/critics.json"
+reset; audit; expect_none "T3.20 a registry with no gpt-6.2-sol row" 7
 eq "$(called)" no "T3.20 no critic call without a registry row"
 cp "$tmp/critics.keep" "$A/scripts/cr/critics.json"
 

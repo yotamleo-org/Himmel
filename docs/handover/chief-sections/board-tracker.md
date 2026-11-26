@@ -19,7 +19,11 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     never publishes, and the board stays LOCAL (operator ruling 10-29): the
     chief profile denies the `Artifact` tool. Record the local
     file's path on the `board:` line of `## Live state`; `chief.sh next`
-    carries it to your successor, who re-renders the same file.
+    carries it to your successor, who re-renders the same file. Re-render on a 2-3 minute timer
+    (`timeout 60 node "<kit>/board.mjs" --doc "<this file>" --changed`, 60 s total budget): board.mjs
+    asks tick.sh for its fast mode (`TICK_FAST=1`, which skips the worktree sweep, queue latency, the rm queue,
+    leaks, versionless-done and vmismatch, and changes no board-fp input), and a wrap's board step
+    that stalls (rc 3) is only a warning the next timer render repairs.
     The tick's `board=` field is your reminder:
     `board=MISSING` (never rendered) or `board=STALE:<age>` (the state moved
     since the last render) means re-run it now; `board=ok` means the LOCAL

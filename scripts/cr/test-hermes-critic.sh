@@ -422,11 +422,11 @@ got=$(route_of)
 got=$(route_of --implementer hermes)
 [ "$got" = "claude" ] || fail "--implementer hermes: expected claude, got '${got:-<none>}'"
 # the hermes reviewer now defaults to the critics.json-pinned
-# codex model (gpt-6.1-sol; codex family under any pin), so a codex implementer
+# codex model (gpt-6.2-sol; codex family under any pin), so a codex implementer
 # is SAME-family by default — the cross-family guarantee sends this to claude,
 # not hermes (the ox-alpha profile default would be a different family from codex).
 got=$(route_of --implementer codex)
-[ "$got" = "claude" ] || fail "--implementer codex (gpt-6.1-sol default, same-family): expected claude, got '${got:-<none>}'"
+[ "$got" = "claude" ] || fail "--implementer codex (gpt-6.2-sol default, same-family): expected claude, got '${got:-<none>}'"
 got=$(route_of --implementer other)
 [ "$got" = "hermes" ] || fail "--implementer other: expected hermes, got '${got:-<none>}'"
 echo "  ok" >&2
@@ -515,16 +515,16 @@ rc=$?
 echo "  ok" >&2
 
 # 14. default (no --model, no HERMES_CRITIC_MODEL) resolves to
-#     the critics.json-pinned model (gpt-6.1-sol), with --provider openai-codex forced (family
+#     the critics.json-pinned model (gpt-6.2-sol), with --provider openai-codex forced (family
 #     inference -> codex) — CR critics no longer ride the himmel_agent hermes
 #     profile default.
-echo "test: default hermes model pins gpt-6.1-sol (the CR critic pins its own model, never the profile default)" >&2
+echo "test: default hermes model pins gpt-6.2-sol (the CR critic pins its own model, never the profile default)" >&2
 STUB_MODEL_CAPTURE="$work/model-capture" \
     run_critic '{"passed": true, "security_concerns": [], "logic_errors": [], "architectural_mismatches": [], "suggestions": [], "summary": "ok"}' >/dev/null
 rc=$?
 [ "$rc" -eq 0 ] || fail "default model: expected exit 0, got $rc"
 captured="$(cat "$work/model-capture" 2>/dev/null)"
-expected="$(printf 'gpt-6.1-sol\topenai-codex')"
+expected="$(printf 'gpt-6.2-sol\topenai-codex')"
 [ "$captured" = "$expected" ] \
     || fail "default model: expected '$expected' (model<TAB>provider), got '$captured'"
 echo "  ok" >&2

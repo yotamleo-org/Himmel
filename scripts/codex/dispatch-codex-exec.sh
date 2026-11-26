@@ -837,7 +837,7 @@ fi
 # Invariant 2: share the critic's model source.
 # left this lane's pin divergent; that stale default later 404'd. Only an
 # unreadable registry permits the named fallback; invalid content must refuse.
-FALLBACK_MODEL="gpt-6.1-sol"
+FALLBACK_MODEL="gpt-6.2-sol"
 CRITICS_FILE="${CODEX_CRITICS_FILE:-$SCRIPT_DIR/../cr/critics.json}"
 # Sandbox pin (codex-adv r4): ambient $CODEX_HOME/config.toml can default the
 # sandbox to danger-full-access - always pass an EXPLICIT safe --sandbox when

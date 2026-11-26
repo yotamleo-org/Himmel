@@ -306,7 +306,10 @@ section teaches the bare `graphify` command, which failed 35 of 58 times from a
 worktree; the verbatim claim stays true because the section is not
 edited. The fix is the Retrieval routing rule above it, which names
 `bash scripts/graphify/worker-graph.sh`, and `scripts/ci/check-taught-search-forms.sh`
-keeps every other taught file on a working form. The budget gate
+keeps every other taught file on a working form. Likewise
+`scripts/ci/check-no-absent-search-tools.sh` fails when an agent `tools:` line
+or a hook refusal names the Grep or Glob tool, which sessions here do not load.
+The budget gate
 (`scripts/ci/check-claude-md-budget.sh`) counts ONLY himmel's bytes (it
 excludes the section using the installer's own boundary rule) and asserts
 exactly one section (zero = anchor deleted, hint to reinstall; duplicates never
