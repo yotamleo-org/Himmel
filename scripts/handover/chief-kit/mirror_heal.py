@@ -112,10 +112,12 @@ def heal_root(cli, root, prefix, deadline):
     fh = open(root + '.lock', 'a')
     try:
         last_poll = time.monotonic()
-        while True:
+        locked = False
+        while not locked:
             try:
                 fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
+                locked = True
+                continue
             except BlockingIOError:
                 pass
             if left() <= 0:
