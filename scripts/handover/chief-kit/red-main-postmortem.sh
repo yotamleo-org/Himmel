@@ -25,8 +25,9 @@
 # Env seams: RED_MAIN_GH (default gh-read.sh, else gh), RED_MAIN_IMPACTED (default
 # scripts/cr/impacted-suites.sh beside this kit), RED_MAIN_STATE (seen file, default
 # ${TICK_STATE_DIR:-$HOME/.himmel/state}/red-main-postmortem.seen), RED_MAIN_REPO (checkout).
-# A failed artifact download leaves the run unreported for the next call; the third failed call
-# (counted in <seen file>.tries) prints an unknown line and marks it seen.
+# A failed artifact download leaves the run unreported for the next call; every attempt is
+# counted in <seen file>.tries before it starts, and the call after the third prints an unknown
+# line and marks the run seen. One probe runs at a time (flock on <seen file>.lock).
 # Exit 0, or 2 on a bad option; an unreadable run list prints nothing.
 #
 # PLATFORM GUARD: chief kit, Linux-only; Bash 3.2-compatible.
@@ -67,6 +68,8 @@ trap 'rm -rf "$work"' EXIT
 printf '%s\n' "$runs" > "$work/runs"
 mkdir -p "$(dirname "$state")" 2>/dev/null || exit 0  # swallow-ok: an unwritable state dir would repeat lines every tick, so report nothing
 touch "$state" 2>/dev/null || exit 0  # swallow-ok: as above
+exec 9> "$state.lock" || exit 0  # swallow-ok: as above
+flock -n 9 || exit 0  # prim-ok: nonblocking, a second probe reports nothing this tick; gnu-ok: chief kit is Linux-only; swallow-ok: a held lock means another probe is reporting
 
 ids=(); shas=(); concs=()
 while IFS=$'\t' read -r id sha conc; do
@@ -90,13 +93,17 @@ while [ "$i" -lt "$n" ] && [ "$done_runs" -lt "$max_runs" ]; do
         dl="$work/dl-$id"
         mkdir -p "$dl"
         red="$dl/shard-red-suites.txt"
+        prior="$(grep -Fxc -- "$id" "$state.tries" 2>/dev/null)"  # swallow-ok: no tries file reads as zero tries below
+        case "$prior" in '' | *[!0-9]*) prior=0 ;; esac
+        if [ "$prior" -ge 3 ]; then
+            printf 'red-main run %s unknown: the failing-suite artifact could not be read after 3 tries\n' "$id"
+            printf '%s\n' "$id" >> "$state"
+            i=$((i + 1))
+            continue
+        fi
+        printf '%s\n' "$id" >> "$state.tries"
         dlerr="$(cd "$repo" && "$gh_bin" run download "$id" -n selector-miss-ledger -D "$dl" 2>&1 >/dev/null)"; dlrc=$?  # swallow-ok: rc and message decide absent artifact versus a failed read below
         if [ "$dlrc" -ne 0 ] && ! grep -Fq 'no valid artifacts' <<< "$dlerr"; then
-            printf '%s\n' "$id" >> "$state.tries"
-            if [ "$(grep -Fxc -- "$id" "$state.tries")" -ge 3 ]; then
-                printf 'red-main run %s unknown: the failing-suite artifact could not be read after 3 tries\n' "$id"
-                printf '%s\n' "$id" >> "$state"
-            fi
             i=$((i + 1))
             continue
         fi

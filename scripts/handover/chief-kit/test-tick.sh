@@ -1796,6 +1796,9 @@ if grep -Fq 'red-main' <<< "$out"; then fail 'a missing probe printed a postmort
 printf '#!/usr/bin/env bash\nexit 1\n' > "$W/redmain-bad"
 out="$(TICK_REDMAIN_PROBE="$W/redmain-bad" bash "$SUT")"
 if grep -Fq 'red-main' <<< "$out"; then fail 'a failing probe printed a postmortem row'; else pass 'a failing probe prints no postmortem row'; fi
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes"\nexit 124\n' > "$W/redmain-late"
+out="$(TICK_REDMAIN_PROBE="$W/redmain-late" bash "$SUT")"
+contains 'a probe killed after it printed keeps its lines' "$out" 'ACTION red-main-postmortem red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'

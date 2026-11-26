@@ -77,25 +77,25 @@ lacks 'yes: no no-line for a suite some PR selected' "$out" 'impacted list: no'
 out="$(run_sut)"
 if [ -z "$out" ] && rc_zero; then pass 'a reported run prints nothing on the next call'; else fail "second call printed: $out (rc $(cat "$W/rc"))"; fi
 
-rm -f "$W/seen"
+rm -f "$W/seen" "$W/seen.tries"
 printf 'scripts/test-c.sh\n' > "$W/red-900"
 out="$(run_sut)"
 contains 'no: the first PR of the range is named' "$out" 'red-main run 900 #101 scripts/test-c.sh suite in its impacted list: no'
 contains 'no: the second PR of the range is named' "$out" 'red-main run 900 #102 scripts/test-c.sh suite in its impacted list: no'
 lacks 'no: no yes line' "$out" 'impacted list: yes'
 
-rm -f "$W/seen"
+rm -f "$W/seen" "$W/seen.tries"
 printf 'scripts/test-a.sh\nscripts/test-c.sh\n' > "$W/red-900"
 out="$(run_sut)"
 contains 'mixed: the selected suite reads yes with its PR' "$out" '#101 scripts/test-a.sh suite in its impacted list: yes'
 contains 'mixed: the missed suite reads no' "$out" 'scripts/test-c.sh suite in its impacted list: no'
 
-rm -f "$W/seen" "$W/red-900"
+rm -f "$W/seen" "$W/seen.tries" "$W/red-900"
 out="$(run_sut)"
 contains 'unknown: a missing failing-suite list is said, not guessed' "$out" 'red-main run 900 unknown: no failing-suite list'
 if grep -Fxq 900 "$W/seen"; then pass 'unknown: the run is marked seen'; else fail 'unknown: run 900 not in the seen file'; fi
 
-rm -f "$W/seen"
+rm -f "$W/seen" "$W/seen.tries"
 printf '900\t%s\tsuccess\n' "$head" > "$W/runs"
 out="$(run_sut)"
 if [ -z "$out" ] && rc_zero; then pass 'a green main prints nothing'; else fail "green main printed: $out (rc $(cat "$W/rc"))"; fi
@@ -111,12 +111,12 @@ else
     pass 'a trailing --repo row skipped: no timeout binary to bound it'
 fi
 
-rm -f "$W/seen"
+rm -f "$W/seen" "$W/seen.tries"
 out="$(RED_MAIN_MAX_COMMITS=1 run_sut)"
 contains 'a range longer than the commit cap says so' "$out" 'red-main run 900 unknown: range holds more than 1 commit'
 lacks 'a range longer than the commit cap prints no no-line' "$out" 'impacted list: no'
 
-rm -f "$W/seen"
+rm -f "$W/seen" "$W/seen.tries"
 printf 'scripts/test-c.sh\n' > "$W/red-900"
 cat > "$W/bin/is" <<STUB
 #!/usr/bin/env bash
@@ -135,11 +135,21 @@ out="$(run_sut)"
 contains 'the retry after a failed download reports the run' "$out" 'red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes'
 
 rm -f "$W/seen" "$W/seen.tries"
+early=""
+for _ in 1 2 3; do early="$early$(STUB_DL_FAIL=1 run_sut)"; done
+if [ -z "$early" ]; then pass 'the first three failed downloads are silent'; else fail "a failed download reported early: $early"; fi
 out="$(STUB_DL_FAIL=1 run_sut)"
-out="$(STUB_DL_FAIL=1 run_sut)"
-out="$(STUB_DL_FAIL=1 run_sut)"
-contains 'a download that fails three ticks running is reported unknown' "$out" 'red-main run 900 unknown: the failing-suite artifact could not be read after 3 tries'
+contains 'a download that has failed three ticks is reported unknown on the next' "$out" 'red-main run 900 unknown: the failing-suite artifact could not be read after 3 tries'
 if grep -Fxq 900 "$W/seen"; then pass 'a run whose download keeps failing is marked seen'; else fail 'run 900 not marked seen after three failed downloads'; fi
+
+rm -f "$W/seen" "$W/seen.tries"
+printf '900\n900\n900\n' > "$W/seen.tries"
+out="$(run_sut)"
+contains 'three attempts that never returned are reported without a fourth download' "$out" 'red-main run 900 unknown: the failing-suite artifact could not be read after 3 tries'
+
+rm -f "$W/seen" "$W/seen.tries"
+out="$( ( exec 9>"$W/seen.lock"; flock -n 9; run_sut ) )"
+if [ -z "$out" ] && ! grep -Fxq 900 "$W/seen"; then pass 'a second probe while one runs reports nothing and marks nothing'; else fail "probe ran under a held lock: out=$out"; fi
 
 rm -f "$W/seen" "$W/seen.tries"
 out="$(STUB_DL_ABSENT=1 run_sut)"

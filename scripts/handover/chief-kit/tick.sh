@@ -5189,7 +5189,7 @@ redmain_lines=""
 redmain_probe="${TICK_REDMAIN_PROBE:-$HERE/red-main-postmortem.sh}"
 if [ "$tick_fast" != 1 ] && [ -f "$redmain_probe" ]; then
     tick_deadline_off
-    redmain_lines="$(RED_MAIN_GH="${TICK_GH_CMD:-$GH_READ_BIN}" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 20)"} bash "$redmain_probe" --repo "$pr_repo" 2>/dev/null | grep '^red-main run ')" || redmain_lines=""  # swallow-ok: a failed probe reports no postmortem line this tick
+    redmain_lines="$(RED_MAIN_GH="${TICK_GH_CMD:-$GH_READ_BIN}" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 20)"} bash "$redmain_probe" --repo "$pr_repo" 2>/dev/null | grep '^red-main run ')" || true  # swallow-ok: a probe killed at its bound keeps the lines it printed
 fi
 
 # vmrun=off|ok:<up>/<want>,busy=<n>|DISAGREE:<up>/<want>,online=<n>|DEAD|STUCK|
