@@ -599,6 +599,15 @@
       "autocompact": 200000,
       "_comment_contextBudget": "Audit 2026-10-02: n=0 attributable merged workers in PR bodies (#643-#1604, merged 2026-09-12 to 2026-10-02 UTC); keep contextBudget under n<3. Existing observations and source PRs, if any, are recorded in the registry-level _comment_contextBudget and docs/internals/lane-calibration.md."
     },
+    "t3-relay": {
+      "_comment": "The on-demand T3 relay (operator decision 1219): a T3 thread on the claudeAgent_t3-relay provider instance that scripts/t3/provider-instances.sh generates from this entry. Allow-list: the floor plugins and the himmel-bus MCP server (its send and read tools via mcpAllow) and nothing else; T3 serves its own t3-code tools to every thread. drop removes lean-skills, the one non-floor id registry.base carries. No gateAllow (a relay has no gate-shaped calls), no keepalive, no background waits: docs/internals/t3-relay.md. Launched through scripts/t3/relay-launch.sh.",
+      "enable": [],
+      "drop": ["lean-skills@himmel"],
+      "mcpServers": ["himmel-bus"],
+      "contextBudget": 45000,
+      "contextMode": "standard",
+      "autocompact": 200000
+    },
     "console-judge": {
       "_comment": "Design §3.2: a judge session, launched via headed-arm-worker.sh --judge (\"the judge is a worker\"). drop removes the non-floor id chief-relay drops above (lean-skills@himmel) -- a judge reads and writes a verdict, it does not implement or ship. Deliberately no gateAllow, unlike chief-relay: a judge's few gate-shaped calls (inbox-send.sh, queue-lock.sh, write-verdicts.sh) take the ordinary classifier path rather than being pre-approved wholesale -- its custody rule is \"transport is the disk\" (a verdict file), not a permission grant, so this name does NOT belong in plugin-profiles.mjs's WORKER_SESSION_PROFILES set (:29, its only reader) and that file is not touched for this profile. mcpServers names only qmd, same reasoning as worker-impl/telegram above: the one MCP tool a judge's evidence-gathering actually needs; graphify/obsidian-vault/context7 are USER-level servers a judge never touches.",
       "enable": [],

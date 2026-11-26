@@ -1443,8 +1443,8 @@ function probeQmdDaemon(item, ctx) {
   const token = qmdBearerToken(env, ctx);
   const tokenFile = qmdTokenFile(env);
   const started = Date.now();
-  const r = spawnProbeSync(curl, ['-s', '-m', String(budget), '-w', '%{http_code}', '-X', 'POST',
-    ...(token ? ['-K', '-'] : []),
+  const r = spawnProbeSync(curl, [...(token ? ['-q'] : []), '-s', '-m', String(budget), '-w', '%{http_code}', '-X', 'POST',
+    ...(token ? ['-g', '-K', '-'] : []),
     '-H', 'Content-Type: application/json', '-H', 'Accept: application/json, text/event-stream', '-d', payload, url],
   { env, encoding: 'utf8', timeout: (budget + 5) * 1000, ...(token ? { input: `header = "Authorization: Bearer ${token}"\n` } : {}) });
   const elapsed = (Date.now() - started) / 1000;

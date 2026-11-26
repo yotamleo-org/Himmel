@@ -45,7 +45,7 @@
 // transcript arrives as a PATH the job opens for itself, never as text. So what
 // lands on disk here is harness metadata, at 0600, under the operator's own
 // home. A caller that ever pipes real content into an enqueue would be changing
-// that contract and should redact before it does.
+// that contract and should redact first (the one exception is documented in docs/internals/enforcement.md).
 //
 // KNOWN CEILINGS, both consequences of a queue that can hold work for minutes:
 //
