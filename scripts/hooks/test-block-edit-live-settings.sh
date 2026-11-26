@@ -4155,6 +4155,21 @@ y
 EOF" HOME="$T3H")"
 assert_rc "11257b9 agy plugin import after a read-only agy plugin list in one command denies" 2 \
     "$(bash_rc_of "$WT2" "agy plugin list; agy plugin import claude" HOME="$T3H")"
+assert_rc "11257b10 a variable command word followed by plugin import denies" 2 \
+    "$(bash_rc_of "$WT2" 'a=agy; $a plugin import claude' HOME="$T3H")"
+assert_rc "11257b11 agy.exe in a heredoc command (text fallback) denies" 2 \
+    "$(bash_rc_of "$WT2" "agy.exe plugin import claude <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b12 a line continuation inside a heredoc command denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin \\
+ import claude <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b13 bash -c with a trailing plugin word after the verb denies" 2 \
+    "$(bash_rc_of "$WT2" 'bash -c "agy plugin install plugin"' HOME="$T3H")"
+assert_rc "11257b14 bash -c with a quoted subcommand denies" 2 \
+    "$(bash_rc_of "$WT2" "bash -c \"agy 'plugin' import claude\"" HOME="$T3H")"
 assert_rc "11257c1 agy plugin list allows" 0 \
     "$(bash_rc_of "$WT2" "agy plugin list" HOME="$T3H")"
 assert_rc "11257c2 agy plugin list --json allows" 0 \
@@ -4179,6 +4194,12 @@ assert_rc "11257c11 a plugin install of another CLI allows" 0 \
     "$(bash_rc_of "$WT2" "claude plugin install foo" HOME="$T3H")"
 assert_rc "11257c12 grep for agy plugin install in a file allows" 0 \
     "$(bash_rc_of "$WT2" "grep -n 'agy plugin install' README.md" HOME="$T3H")"
+assert_rc "11257c13 a variable command word with plugin list allows" 0 \
+    "$(bash_rc_of "$WT2" '$X plugin list' HOME="$T3H")"
+assert_rc "11257c14 agy plugin list in a heredoc command (text fallback) allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin list <<'EOF'
+y
+EOF" HOME="$T3H")"
 
 S9INPLACE=-i
 S9H="$SANDBOX/s9256home"

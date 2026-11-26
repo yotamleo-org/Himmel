@@ -1054,29 +1054,54 @@ _agy_verb_ro() {
     return 1
 }
 
-_agy_text_writes() {
-    local s rest re v
-    s=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
-    re='(^|[^a-z0-9_.-])agy[[:space:]]([^;&|]*[[:space:]])?(plugins?|mcp)([[:space:]]+([^[:space:];&|]+))?'
-    while [[ $s =~ $re ]]; do
-        v=${BASH_REMATCH[5]}
-        _agy_verb_ro "$v" || return 0
-        rest=${s#*"${BASH_REMATCH[0]}"}
-        [ "$rest" != "$s" ] || return 1
-        s=$rest
+_agy_seg_writes() {
+    local st=0 first=1 w
+    for w in "$@"; do
+        if [ "$first" = 1 ]; then
+            case "$w" in [a-z_]*=*) continue ;; esac
+            first=0
+            case "$w" in *'$'*|*'`'*) st=1 ;; esac
+        fi
+        case "$st" in
+            0) case "${w##*/}" in agy|agy.exe|agy.cmd) st=1 ;; esac ;;
+            1) case "$w" in plugin|plugins|mcp) st=2 ;; esac ;;
+            2) _agy_verb_ro "$w" || return 0; st=0 ;;
+        esac
     done
     return 1
 }
 
+_agy_text_writes() {
+    local s seg had_f=0 rc=1
+    s=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    s=${s//\\$'\n'/ }
+    s=${s//[\"\']/}
+    s=${s//[;&|()\`]/$'\n'}
+    case $- in *f*) had_f=1 ;; esac
+    set -f
+    while IFS= read -r seg || [ -n "$seg" ]; do
+        # shellcheck disable=SC2086
+        set -- $seg
+        if [ "$#" -gt 0 ] && _agy_seg_writes "$@"; then rc=0; break; fi
+    done <<< "$s"
+    if [ "$had_f" = 1 ]; then set -f; else set +f; fi
+    return "$rc"
+}
+
 agy_cli_writes() {
-    local i=0 seg=-1 st=0 first=0 nested=0 w
+    local i=0 seg=-1 first=0 nested=0 w
+    local -a sw=()
     if [ "$TOK" != 1 ]; then
         _agy_text_writes "$cmd_n"
         return
     fi
-    while [ "$i" -lt "$ST_N" ]; do
-        if [ -n "${ST_RO[i]}" ]; then i=$((i + 1)); continue; fi
-        if [ "${ST_S[i]}" != "$seg" ]; then seg=${ST_S[i]} st=0 first=1 nested=0; fi
+    while [ "$i" -le "$ST_N" ]; do
+        if [ "$i" -lt "$ST_N" ] && [ -n "${ST_RO[i]}" ]; then i=$((i + 1)); continue; fi
+        if [ "$i" -eq "$ST_N" ] || [ "${ST_S[i]}" != "$seg" ]; then
+            if [ "${#sw[@]}" -gt 0 ] && _agy_seg_writes "${sw[@]}"; then return 0; fi
+            [ "$i" -lt "$ST_N" ] || break
+            sw=() seg=${ST_S[i]} first=1 nested=0
+        fi
         if [ "$first" = 1 ] && [ "${ST_A[i]}" = 1 ]; then i=$((i + 1)); continue; fi
         w=${ST_LW[i]}
         if [ "$first" = 1 ]; then
@@ -1086,11 +1111,7 @@ agy_cli_writes() {
             esac
         fi
         if [ "$nested" = 1 ] && _agy_text_writes "$w"; then return 0; fi
-        case "$st" in
-            0) case "${w##*/}" in agy|agy.exe|agy.cmd) st=1 ;; esac ;;
-            1) case "$w" in plugin|plugins|mcp) st=2 ;; esac ;;
-            2) _agy_verb_ro "$w" || return 0; st=0 ;;
-        esac
+        sw[${#sw[@]}]=$w
         i=$((i + 1))
     done
     return 1
