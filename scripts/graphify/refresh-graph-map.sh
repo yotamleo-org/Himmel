@@ -2591,11 +2591,37 @@ SHIM
   esac
   _STOP_KILL_GRACE=$((10#$_STOP_KILL_GRACE))
 
+  _probe_claude_auth() {
+    local verdict out left t
+    _AUTH_CAUSE=""
+    if [[ $_nc_fallback != 1 ]]; then
+      [ -n "$_deadline_bin" ] || return 0
+      left="$(_deadline_left)"
+      t=60
+      if [ "$left" != unbounded ]; then
+        [ "$left" -gt 31 ] || return 0
+        [ $((left - 30)) -ge 60 ] || t=$((left - 30))
+      fi
+      if [ -f "${_bank_preflight:-}" ]; then
+        verdict="$(CADENCE_USAGE_WORKER="graphmap-$NAME" "$_deadline_bin" -k 5 20 bash "$_bank_preflight" || true)"
+        [ "$verdict" != "SKIPPED-BANK" ] || return 0
+      fi
+      # launch-profile-ok: a one-word auth probe under the dedicated config dir that runs no tools
+      out="$(printf 'ok\n' | "$_deadline_bin" -k 5 "$t" claude -p --output-format json --permission-mode default 2>/dev/null || true)"
+      _AUTH_CAUSE="$(printf '%s' "$out" | python3 -I -c 'import json,sys
+try:
+    d=json.loads(sys.stdin.read())
+except Exception:
+    sys.exit(0)
+if isinstance(d,dict) and d.get("is_error"):
+    print(str(d.get("result",""))[:300].replace("\n"," "))' || true)"
+    fi
+  }
   # Reads graphify's merged output on stdin, relays it to stderr, and kills
   # graphify ($1 = its pid) at the chunk cap or after too many hollow retries,
   # recording why in $_STOP_FILE. The last chunk of the run never trips the cap.
   _extract_monitor() {
-    local gpid="$1" line done_n=0 hollow_n=0 giveup_n=0 pending_g=0 k n
+    local gpid="$1" line done_n=0 hollow_n=0 giveup_n=0 pending_g=0 k n probed=0
     while IFS= read -r line; do
       printf '%s\n' "$line" >&2
       case "$line" in
@@ -2604,6 +2630,14 @@ SHIM
       case "$line" in
         *'has not been trusted'*|*'workspace trust'*)
           [ -s "$_TRUST_FILE" ] || printf '%s\n' "$line" > "$_TRUST_FILE" ;;
+      esac
+      case "$line" in
+        '[graphify] chunk '*' failed: '*)
+          if [ "$probed" -eq 0 ] && [ "$GRAPHIFY_BACKEND" = "claude-cli" ]; then
+            probed=1
+            ( _probe_claude_auth
+              [ -z "$_AUTH_CAUSE" ] || printf 'refresh-graph-map: chunk failed: the Claude call reports: %s\n' "$_AUTH_CAUSE" >&2 ) < /dev/null &
+          fi ;;
       esac
       case "$line" in
         '[graphify] chunk of '*' still hollow after '*' giving up on this chunk'*)
@@ -2640,6 +2674,7 @@ SHIM
           fi ;;
       esac
     done
+    wait
   }
 
   # _run_bounded under the chunk monitor. graphify runs in the background so
@@ -2783,32 +2818,6 @@ SHIM
     _run_extract "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$GRAPHIFY_BACKEND" ${_TOKEN_BUDGET_ARGS[@]+"${_TOKEN_BUDGET_ARGS[@]}"} --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
   fi
   _AUTH_CAUSE=""
-  _probe_claude_auth() {
-    local verdict out left t
-    _AUTH_CAUSE=""
-    if [[ $_nc_fallback != 1 ]]; then
-      [ -n "$_deadline_bin" ] || return 0
-      left="$(_deadline_left)"
-      t=60
-      if [ "$left" != unbounded ]; then
-        [ "$left" -gt 31 ] || return 0
-        [ $((left - 30)) -ge 60 ] || t=$((left - 30))
-      fi
-      if [ -f "${_bank_preflight:-}" ]; then
-        verdict="$(CADENCE_USAGE_WORKER="graphmap-$NAME" "$_deadline_bin" -k 5 20 bash "$_bank_preflight" || true)"
-        [ "$verdict" != "SKIPPED-BANK" ] || return 0
-      fi
-      # launch-profile-ok: a one-word auth probe under the dedicated config dir that runs no tools
-      out="$(printf 'ok\n' | "$_deadline_bin" -k 5 "$t" claude -p --output-format json --permission-mode default 2>/dev/null || true)"
-      _AUTH_CAUSE="$(printf '%s' "$out" | python3 -I -c 'import json,sys
-try:
-    d=json.loads(sys.stdin.read())
-except Exception:
-    sys.exit(0)
-if isinstance(d,dict) and d.get("is_error"):
-    print(str(d.get("result",""))[:300].replace("\n"," "))' || true)"
-    fi
-  }
   _cred_sum() { { cksum < "$GRAPHIFY_CLAUDE_CONFIG_DIR/.credentials.json"; } 2>/dev/null || true; }
   if [ "$_SKIP_MAIN" -eq 0 ] && [ "$_rc" -ne 0 ] && [ "$GRAPHIFY_BACKEND" = "claude-cli" ] \
      && [ ! -s "$_FAILED_FILE" ] && [ ! -s "$_STOP_FILE" ] \

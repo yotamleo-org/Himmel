@@ -67,6 +67,7 @@ PROOF_WORD = re.compile(r'^[\s*_`]*(?:MET|PASS(?:ED)?|' + UNMET + r'|' + NOT_DUE
 STATUS_HEADER = re.compile(r'\b(?:result|status|verdict|outcome|state)\b', re.I)
 SECTIONS = {'Impact', 'What', 'Why', 'Plan', 'DoD', 'Proof', 'Agent detail'}
 MAX_FILE_BYTES = 8 * 1024 * 1024
+OWE_METADATA_MAX_BYTES = 1024 * 1024
 
 
 def is_separator(line):
@@ -311,9 +312,12 @@ def decision(opt):
         raise ValueError('decision identity/verdict mismatch')
     close = verdict['verdict'] == 'CLOSE'
     decision_hash = hashlib.sha256(raw).hexdigest()
+    if opt.decision_hash and opt.decision_hash != decision_hash:
+        raise ValueError('decision changed since the check (checked %s, now %s); run the check again' % (opt.decision_hash[:12], decision_hash[:12]))
     # Closed actions are immutable. A retry never reopens them or appends another
     # next action, including after the evidence was subsequently retired.
     if row['closed']:
+        owe(['close-confirm', '--bucket', opt.bucket, '--id', row['id']])
         print(json.dumps({'id': row['id'], 'closed': True}))
         return
     if not opt.current_stdin:
@@ -323,6 +327,14 @@ def decision(opt):
         raise ValueError('current ticket identity mismatch')
     if not isinstance(current.get('mirror', current.get('description')), str):
         raise ValueError('current description unreadable')
+    if not close and opt.settle and current.get('status') == 'Done' and current.get('category') == 'done':
+        raise ValueError('a KEEP never settles on a Done ticket; the ticket is Done now, so run the check again')
+    rationale = verdict.get('rationale')
+    if isinstance(rationale, str):
+        outcome = dict(identity=row['identity'], decision_hash=decision_hash, verdict=verdict['verdict'], status=current.get('status', ''),
+                       version_pending=bool(current.get('unstamped')), rationale=rationale, decision_json=raw.decode('utf-8'))
+        if len(json.dumps({'outcome': outcome}).encode()) > OWE_METADATA_MAX_BYTES:
+            raise ValueError('decision outcome exceeds the 1 MiB ledger limit; shorten the rationale')
     try:
         current_digest = requirement_text(current['mirror'] if 'mirror' in current else '## Description\n' + current['description'])
     except ValueError:
@@ -335,6 +347,11 @@ def decision(opt):
         if close and opt.settle and not opt.dry_run and actual_done and current_digest is not None:
             # The ticket really is Done but its DoD/Proof moved after the evidence was bound. Keep the validation unresolved and
             # leave the chief an owned, idempotent step that names both identities; never reopen, close or mutate Jira here.
+            closed_owner = next((r for r in rows if r.get('action') == 'requirements-reconciliation' and r.get('source_id') == row['id'] and r['closed']
+                                 and r.get('requirements_digest') == current_digest), None)
+            if closed_owner:
+                raise ValueError('requirements-reconciliation %s is already closed and the DoD/Proof still differ from the validated text; '
+                                 'record a new pending validation' % closed_owner['id'])
             metadata = dict(actor='chief', capability='requirement reconciliation', action='requirements-reconciliation', source_id=row['id'],
                             due=datetime.datetime.now(datetime.timezone.utc).date().isoformat(), wake='requirements reconciled',
                             actual_status=current.get('status', ''), original_requirements_digest=row['requirements_digest'], requirements_digest=current_digest)
@@ -382,6 +399,7 @@ def decision(opt):
         # `--check` and a settle on a ticket that is not Done refuse and write nothing; a settle on a ticket that is already Done leaves the
         # chief ONE owned, idempotent step that names it and discharges nothing. A KEEP is never asked.
         remainder, unreadable = live_remainder(row['key'])
+        rows = json.loads(owe(['list', '--bucket', opt.bucket, '--all', '--json']))
         done_settle = opt.settle and not opt.dry_run and current.get('status') == 'Done' and current.get('category') == 'done'
         if unreadable and not done_settle:
             raise ValueError('live pull-request remainder unreadable: ' + '; '.join(unreadable) + '; the CLOSE is refused until it can be read')
@@ -455,12 +473,10 @@ def decision(opt):
         metadata = {k: nxt[k] for k in ('actor', 'capability', 'due', 'wake')}
         metadata['source_id'] = row['id']
         metadata['action'] = 'next-step' if not close else 'version-reconciliation'
+        metadata['decision_hash'] = decision_hash
         owe(['add', '--bucket', opt.bucket, '--chief', row['chief'], '--kind', 'step', '--key', row['key'],
              '--text', nxt['text'], '--identity', digest([row['identity'], decision_hash, metadata['action']]),
              '--metadata-stdin'], json.dumps(metadata))
-    outcome = dict(identity=row['identity'], decision_hash=decision_hash, verdict=verdict['verdict'],
-                   status=current.get('status', ''), version_pending=bool(current.get('unstamped')), rationale=rationale,
-                   decision_json=raw.decode('utf-8'))
     # Discharge only proof steps this handoff could cover, never later/new work
     # or a real chief/operator exception. Persist the replacement first on KEEP.
     for old in rows:
@@ -514,7 +530,8 @@ def record(opt):
     # metadata. The label is routing data, never closure authority.
     if not doc and opt.label:
         rows = json.loads(owe(['list', '--bucket', opt.bucket, '--all', '--json']))
-        docs = {r.get('source_doc') for r in rows if r.get('action') == 'validate-proof' and r.get('source_label') == opt.label and r.get('source_doc')}
+        stored = [r for r in rows if r.get('action') == 'validate-proof' and r.get('source_label') == opt.label]
+        docs = {r.get('source_doc') for r in stored if r.get('source_doc')}
         if len(docs) > 1:
             raise ValueError('ambiguous proof replay source')
         if docs:
@@ -523,6 +540,12 @@ def record(opt):
                 source = read_text(doc)
             except (OSError, UnicodeError):
                 pass
+        if not source.strip():
+            frozen = {}
+            for r in stored:
+                if r.get('key') and r.get('original_requirements_digest'):
+                    frozen.setdefault(r['key'], set()).add(r['original_requirements_digest'])
+            source = ''.join('requirements-sha256 %s=%s\n' % (k, next(iter(v))) for k, v in sorted(frozen.items()) if len(v) == 1)
     result_lines = []
     in_results = False
     for line in source.splitlines():
@@ -679,10 +702,13 @@ def main():
     mode.add_argument('--check', metavar='OWED_ID')
     mode.add_argument('--settle', metavar='OWED_ID')
     parser.add_argument('--decision')
+    parser.add_argument('--decision-hash', help='the decision_hash the check returned; a settle refuses when the decision file no longer hashes to it')
     parser.add_argument('--current-stdin', action='store_true')
     opt = parser.parse_args()
     if (opt.check or opt.settle) and (not opt.decision or not opt.current_stdin or opt.dry_run or opt.doc or opt.message_stdin):
         parser.error('decision modes require --decision and --current-stdin; do not combine with recorder/dry-run arguments')
+    if opt.decision_hash is not None and (not opt.settle or not re.fullmatch(r'[0-9a-f]{64}', opt.decision_hash)):
+        parser.error('--decision-hash is a full sha256 and goes with --settle')
     try:
         if opt.check or opt.settle:
             decision(opt)

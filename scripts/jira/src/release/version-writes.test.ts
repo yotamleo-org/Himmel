@@ -160,6 +160,12 @@ describe('writer table', () => {
     expect(unlisted([...writingFiles(), 'scripts/jira/src/commands/new-writer.ts'])).toEqual(['scripts/jira/src/commands/new-writer.ts']);
   });
 
+  it('create-rules is a journal writer in create.ts with machine false, so a lost record is held for the chief (I9)', () => {
+    expect(WRITER_TABLE.filter((w) => w.mechanism === 'create-rules')).toEqual([
+      { site: 'scripts/jira/src/commands/create.ts', mechanism: 'create-rules', machine: false },
+    ]);
+  });
+
   it('the machine rows are exactly the ten machine mechanisms; hand rows are not machine', () => {
     for (const w of WRITER_TABLE) {
       expect(w.mechanism).toMatch(/^[a-z][a-z-]*$/);
