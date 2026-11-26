@@ -300,7 +300,7 @@ fi
 stem_closed() {
     local s="${worker##*/}"
     s="${s%.md}"
-    grep -F -- "$s" "$DOC" 2>/dev/null | grep -qE 'closed its window|window closed\.'
+    awk -v s="$s" 'index($0, s) && /closed its window|window closed\./ { f = 1 } END { exit !f }' "$DOC" 2>/dev/null
 }
 if [ "$marker" = WRAPPED ] && [ -r "$worker" ] \
     && { grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null || stem_closed; } \
