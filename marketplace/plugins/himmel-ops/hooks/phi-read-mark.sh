@@ -15,7 +15,8 @@
 #   Bash and Monitor command: every word that starts with "/" in either of two
 #   splits of the text: on unquoted, unescaped blanks and shell punctuation, quotes
 #   and backslashes honoured as a shell reads them; and on every blank, quote and
-#   shell punctuation character.
+#   shell punctuation character. Both run on the text as given and with every
+#   backslash-newline removed. A command holding ANSI-C quoting ($'...') marks.
 # A path is PHI when a .salus or .salus-profile marker sits at or above its raw or
 # canonical form, or _guard_phi_decision returns 1 (listed) or 2 (unreadable).
 #
@@ -61,8 +62,11 @@ case "$tool" in
         ;;
     Bash | Monitor)
         cmd=$(str '.tool_input.command // ""')
-        plain=$(printf '%s\n' "$cmd" | tr -s " \t\r;|&<>()'\"\`=:,{}" '\n')
-        words=$(printf '%s\n' "$cmd" | awk 'BEGIN { sep = " \t\r;|&<>()`=:,{}" }
+        case "$cmd" in *"\$'"*) mark ;; esac
+        joined=${cmd//$'\\\n'/}
+        plain=$(printf '%s\n%s\n' "$cmd" "$joined" | tr -s " \t\r;|&<>()'\"\`=:,{}" '\n')
+        # shellcheck disable=SC2016 # an awk program, not shell text
+        shell='BEGIN { sep = " \t\r;|&<>()`=:,{}" }
         {
             n = length($0)
             for (i = 1; i <= n; i++) {
@@ -76,7 +80,8 @@ case "$tool" in
             }
             if (q == "") { if (w != "") print w; w = "" } else w = w " "
         }
-        END { if (w != "") print w }')
+        END { if (w != "") print w }'
+        words=$(printf '%s\n' "$cmd" | awk "$shell"; printf '%s\n' "$joined" | awk "$shell")
         words=$(printf '%s\n%s\n' "$plain" "$words" | LC_ALL=C sort -u)
         while IFS= read -r w; do
             case "$w" in /*) add "$w" ;; esac

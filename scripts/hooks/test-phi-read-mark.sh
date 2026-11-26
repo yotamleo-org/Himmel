@@ -89,6 +89,14 @@ BSL="$tmp/patient\\records"
 mkdir -p "$BSL"; : > "$BSL/.salus"
 run "$HOOK" "$(post sBsl Bash "$(bash_in "cat \"$BSL/chart.md\"")")"
 expect_mark sBsl "a backslash before an ordinary character inside double quotes stays in the path"
+NL='
+'
+run "$HOOK" "$(post sCont Bash "$(bash_in "cat \"$tmp/sal\\${NL}us-vault/notes/visit.md\"")")"
+expect_mark sCont "a backslash-newline inside a quoted path marks"
+run "$HOOK" "$(post sContU Bash "$(bash_in "cat $tmp/sal\\${NL}us-vault/notes/visit.md")")"
+expect_mark sContU "a backslash-newline inside an unquoted path marks"
+run "$HOOK" "$(post sAnsi Bash "$(bash_in "cat \$'$tmp/sal\\x75s-vault/notes/visit.md'")")"
+expect_mark sAnsi "an ANSI-C quoted string marks"
 run "$HOOK" "$(post sMon Monitor "$(bash_in "tail -f $VAULT/notes/visit.md")")"
 expect_mark sMon "a Monitor command naming a salus path marks"
 

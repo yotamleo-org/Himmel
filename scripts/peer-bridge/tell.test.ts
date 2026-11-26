@@ -123,6 +123,16 @@ test("a quoted or backslash-escaped salus path holding a space in a Bash or Moni
   ]);
 });
 
+test("a backslash-newline inside a salus path or ANSI-C quoting in a Bash command refuses phi-root", async () => {
+  const v = salusVault();
+  const cut = v.length - 3;
+  await phiCases([
+    ["quoted continuation", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cat "${v.slice(0, cut)}\\\n${v.slice(cut)}/a.md"` })])],
+    ["unquoted continuation", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cat ${v.slice(0, cut)}\\\n${v.slice(cut)}/a.md` })])],
+    ["ANSI-C quoting", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cat $'${v.slice(0, cut)}\\x${v.charCodeAt(cut).toString(16)}${v.slice(cut + 1)}/a.md'` })])],
+  ]);
+});
+
 test("a relative path after a cd, and a directory with a salus marker anywhere below it, refuse phi-root", async () => {
   const docs = mkdtempSync(join(tmpdir(), "peer-tell-docs-"));
   mkdirSync(join(docs, "salus", "notes"), { recursive: true });
