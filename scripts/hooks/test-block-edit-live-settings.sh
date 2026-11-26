@@ -4113,6 +4113,229 @@ assert_rc "9997 Bash redirect onto T3 antigravity config/hooks.json denies" 2 \
 assert_rc "9998 Bash read of ~/.gemini/config/hooks.json allows" 0 \
     "$(bash_rc_of "$WT2" "cat $AGY_GEM_CFG/hooks.json" HOME="$T3H")"
 
+assert_rc "11257a1 agy plugin import claude denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin import claude" HOME="$T3H")"
+assert_rc "11257a2 agy plugin install <dir> denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin install ./some-plugin" HOME="$T3H")"
+assert_rc "11257a3 agy plugin uninstall denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin uninstall demolab" HOME="$T3H")"
+assert_rc "11257a4 agy plugin enable denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin enable demolab" HOME="$T3H")"
+assert_rc "11257a5 agy plugin disable denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin disable demolab" HOME="$T3H")"
+assert_rc "11257a6 agy plugins (alias) install denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugins install ./some-plugin" HOME="$T3H")"
+assert_rc "11257a7 agy plugin link denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin link mp target" HOME="$T3H")"
+assert_rc "11257a8 agy mcp add denies" 2 \
+    "$(bash_rc_of "$WT2" "agy mcp add srv -- cmd" HOME="$T3H")"
+assert_rc "11257a9 agy mcp remove denies" 2 \
+    "$(bash_rc_of "$WT2" "agy mcp remove srv" HOME="$T3H")"
+assert_rc "11257a10 agy mcp enable denies" 2 \
+    "$(bash_rc_of "$WT2" "agy mcp enable srv" HOME="$T3H")"
+assert_rc "11257a11 agy mcp disable denies" 2 \
+    "$(bash_rc_of "$WT2" "agy mcp disable srv" HOME="$T3H")"
+assert_rc "11257b1 GEMINI_HOME on a scratch path does not exempt agy plugin import (agy ignores it)" 2 \
+    "$(bash_rc_of "$WT2" "GEMINI_HOME=$SANDBOX/scratch agy plugin import claude" HOME="$T3H")"
+assert_rc "11257b2 a global flag before the subcommand still denies" 2 \
+    "$(bash_rc_of "$WT2" "agy --model m plugin install ./p" HOME="$T3H")"
+assert_rc "11257b3 agy by absolute path denies" 2 \
+    "$(bash_rc_of "$WT2" "$T3H/.local/bin/agy plugin import claude" HOME="$T3H")"
+assert_rc "11257b4 agy behind a wrapper command denies" 2 \
+    "$(bash_rc_of "$WT2" "timeout 30 agy plugin import claude" HOME="$T3H")"
+assert_rc "11257b5 agy after && denies" 2 \
+    "$(bash_rc_of "$WT2" "echo go && agy plugin import claude" HOME="$T3H")"
+assert_rc "11257b6 uppercase spelling denies" 2 \
+    "$(bash_rc_of "$WT2" "AGY PLUGIN IMPORT claude" HOME="$T3H")"
+assert_rc "11257b7 bash -c carrying an agy install denies" 2 \
+    "$(bash_rc_of "$WT2" "bash -c 'agy plugin import claude'" HOME="$T3H")"
+assert_rc "11257b8 a heredoc command (text fallback) carrying agy plugin import denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin import claude <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b9 agy plugin import after a read-only agy plugin list in one command denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin list; agy plugin import claude" HOME="$T3H")"
+assert_rc "11257b10 a variable command word followed by plugin import denies" 2 \
+    "$(bash_rc_of "$WT2" 'a=agy; $a plugin import claude' HOME="$T3H")"
+assert_rc "11257b11 a default expansion in the subcommand slot denies" 2 \
+    "$(bash_rc_of "$WT2" 'agy ${x:-plugin} install ./p' HOME="$T3H")"
+assert_rc "11257b12 a line continuation inside a heredoc command denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin \\
+ import claude <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b13 bash -c with a trailing plugin word after the verb denies" 2 \
+    "$(bash_rc_of "$WT2" 'bash -c "agy plugin install plugin"' HOME="$T3H")"
+assert_rc "11257b14 bash -c with a quoted subcommand denies" 2 \
+    "$(bash_rc_of "$WT2" "bash -c \"agy 'plugin' import claude\"" HOME="$T3H")"
+assert_rc "11257b15 a variable assigned in the same command fills the subcommand slot and denies" 2 \
+    "$(bash_rc_of "$WT2" 'P=plugin; agy "$P" import claude' HOME="$T3H")"
+assert_rc "11257b23 an ANSI-C quoted subcommand denies" 2 \
+    "$(bash_rc_of "$WT2" "agy \$'plugin' install ./p" HOME="$T3H")"
+assert_rc "11257b24 a glob in the subcommand slot denies" 2 \
+    "$(bash_rc_of "$WT2" 'agy plug* install ./p' HOME="$T3H")"
+assert_rc "11257b25 xargs supplying the verb to agy plugin denies" 2 \
+    "$(bash_rc_of "$WT2" "printf 'import claude\\n' | xargs agy plugin" HOME="$T3H")"
+assert_rc "11257b26 xargs supplying the verb to agy mcp denies" 2 \
+    "$(bash_rc_of "$WT2" 'xargs -n1 agy mcp' HOME="$T3H")"
+assert_rc "11257b28 a redirect target named list does not stand in for the verb" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin >list install ./p <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b29 a spaced redirect target named list does not stand in for the verb" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin > list install ./p <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b30 xargs behind a wrapper supplying the verb denies" 2 \
+    "$(bash_rc_of "$WT2" 'sudo xargs agy plugin' HOME="$T3H")"
+assert_rc "11257b31 a stderr redirect before the write verb denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin 2>&1 install ./p <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b32 a variable path ending in agy denies" 2 \
+    "$(bash_rc_of "$WT2" '"$HOME/.local/bin/agy" plugin install ./p' HOME="$T3H")"
+assert_rc "11257b33 an unquoted variable path ending in agy denies" 2 \
+    "$(bash_rc_of "$WT2" '$HOME/.local/bin/agy plugin import claude' HOME="$T3H")"
+assert_rc "11257b34 a quoted redirect character before the subcommand does not hide it" 2 \
+    "$(bash_rc_of "$WT2" "agy --x '>' plugin install ./p <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b35 bash -lc carrying an agy install denies" 2 \
+    "$(bash_rc_of "$WT2" "bash -lc 'agy plugin import claude'" HOME="$T3H")"
+assert_rc "11257b36 bash with an option argument before -c carrying an agy install denies" 2 \
+    "$(bash_rc_of "$WT2" "bash -o pipefail -c 'agy plugin import claude'" HOME="$T3H")"
+assert_rc "11257b43 an assignment from a substitution before bash -c carrying an agy install denies" 2 \
+    "$(bash_rc_of "$WT2" "X=\$(pwd) bash -c 'agy plugin import claude'" HOME="$T3H")"
+assert_rc "11257b44 an assignment from a substitution before an agy install denies" 2 \
+    "$(bash_rc_of "$WT2" 'X=$(echo y) agy plugin import claude' HOME="$T3H")"
+assert_rc "11257b37 a command substitution filling the namespace slot denies" 2 \
+    "$(bash_rc_of "$WT2" 'agy $(echo plugin) install ./p' HOME="$T3H")"
+assert_rc "11257b38 a backtick substitution filling the namespace slot denies" 2 \
+    "$(bash_rc_of "$WT2" 'agy `echo plugin` install ./p' HOME="$T3H")"
+assert_rc "11257b39 a command substitution filling the verb slot denies" 2 \
+    "$(bash_rc_of "$WT2" 'agy plugin $(echo install) ./p' HOME="$T3H")"
+assert_rc "11257b40 a command substitution as the command word denies" 2 \
+    "$(bash_rc_of "$WT2" '$(echo agy) plugin install ./p' HOME="$T3H")"
+assert_rc "11257b41 an ampersand redirect glued to the subcommand in a heredoc command denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin&>/dev/null install ./p <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b42 a clobber redirect before the write verb in a heredoc command denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin >|/dev/null install ./p <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b27 a redirect glued to the subcommand in a heredoc command denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin>/dev/null install ./p <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b16 a subcommand word split by a line continuation in a heredoc command denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plug\\
+in import claude <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b17 an empty word before the verb does not hide it" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin '' import claude" HOME="$T3H")"
+assert_rc "11257b18 a parenthesis inside a quoted flag value before plugin import denies" 2 \
+    "$(bash_rc_of "$WT2" "bash -c \"agy --log-file 'run(log)' plugin import claude\"" HOME="$T3H")"
+assert_rc "11257b19 a command substitution carrying plugin import in a heredoc command denies" 2 \
+    "$(bash_rc_of "$WT2" "echo \$(agy plugin import claude) <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b20 a variable command word with an absolute-path default denies" 2 \
+    "$(bash_rc_of "$WT2" '${X:-/usr/bin/agy} plugin import claude' HOME="$T3H")"
+assert_rc "11257b21 a quoted variable command word with an absolute-path default denies" 2 \
+    "$(bash_rc_of "$WT2" '"${X:-/usr/bin/agy}" plugin import claude' HOME="$T3H")"
+assert_rc "11257c1 agy plugin list allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin list" HOME="$T3H")"
+assert_rc "11257c2 agy plugin list --json allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin list --json" HOME="$T3H")"
+assert_rc "11257c3 agy print-mode /skills allows" 0 \
+    "$(bash_rc_of "$WT2" "agy -p \"/skills\"" HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
+assert_rc "11257c4 agy print-mode /usage allows" 0 \
+    "$(bash_rc_of "$WT2" "agy -p \"/usage\"" HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
+assert_rc "11257c5 agy plugin validate allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin validate ./some-plugin --json" HOME="$T3H")"
+assert_rc "11257c6 agy plugin help allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin help" HOME="$T3H")"
+assert_rc "11257c7 agy mcp list allows" 0 \
+    "$(bash_rc_of "$WT2" "agy mcp list" HOME="$T3H")"
+assert_rc "11257c8 agy models allows" 0 \
+    "$(bash_rc_of "$WT2" "agy models" HOME="$T3H")"
+assert_rc "11257c9 an agy prompt that merely mentions plugin install allows" 0 \
+    "$(bash_rc_of "$WT2" "agy -p \"explain agy plugin install and mcp add\"" HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
+assert_rc "11257c10 a git commit message that mentions agy plugin install allows" 0 \
+    "$(bash_rc_of "$WT2" "git commit -m \"doc: agy plugin install is refused\"" HOME="$T3H")"
+assert_rc "11257c11 a plugin install of another CLI allows" 0 \
+    "$(bash_rc_of "$WT2" "claude plugin install foo" HOME="$T3H")"
+assert_rc "11257c12 grep for agy plugin install in a file allows" 0 \
+    "$(bash_rc_of "$WT2" "grep -n 'agy plugin install' README.md" HOME="$T3H")"
+assert_rc "11257c13 a variable command word with plugin list allows" 0 \
+    "$(bash_rc_of "$WT2" '$X plugin list' HOME="$T3H")"
+assert_rc "11257c15 a quoted variable path to another CLI's plugin install allows" 0 \
+    "$(bash_rc_of "$WT2" '"$HOME/bin/claude" plugin install foo' HOME="$T3H")"
+assert_rc "11257c17 a quoted braced variable path to another CLI's plugin install allows" 0 \
+    "$(bash_rc_of "$WT2" '"${HOME}/bin/claude" plugin install foo' HOME="$T3H")"
+assert_rc "11257c18 a braced default with a slash before a fixed claude basename allows" 0 \
+    "$(bash_rc_of "$WT2" '"${HOME:-/home/operator}/bin/claude" plugin install foo' HOME="$T3H")"
+assert_rc "11257c19 a literal closing brace ending another executable's name allows" 0 \
+    "$(bash_rc_of "$WT2" '/opt/tool} plugin install foo' HOME="$T3H")"
+assert_rc "11257b22 a braced default whose suffix completes the agy name denies" 2 \
+    "$(bash_rc_of "$WT2" '${X:-/usr/bin/ag}y plugin import claude' HOME="$T3H")"
+assert_rc "11257c20 an agy prompt held in a variable allows" 0 \
+    "$(bash_rc_of "$WT2" 'agy -p "$PROMPT"' HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
+assert_rc "11257c21 a variable subcommand followed by a read verb allows" 0 \
+    "$(bash_rc_of "$WT2" 'agy "$M" list' HOME="$T3H")"
+assert_rc "11257c22 xargs feeding a read verb to agy plugin allows" 0 \
+    "$(bash_rc_of "$WT2" 'xargs agy plugin list' HOME="$T3H")"
+assert_rc "11257c23 a redirect glued to a read verb in a heredoc command allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin list>/dev/null <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257c26 a variable path ending in agy with a read verb allows" 0 \
+    "$(bash_rc_of "$WT2" '"$HOME/.local/bin/agy" plugin list' HOME="$T3H")"
+assert_rc "11257c27 a script argument that only names agy plugin install allows" 0 \
+    "$(bash_rc_of "$WT2" "bash scripts/x.sh --ceiling 'harmless text: agy plugin install foo'" HOME="$T3H")"
+assert_rc "11257c31 an assignment from a substitution before gh api allows" 0 \
+    "$(bash_rc_of "$WT2" 'GH_TOKEN=$(cat f) gh api "repos/$R/pulls" --paginate' HOME="$T3H")"
+assert_rc "11257c32 an assignment from a substitution before cp allows" 0 \
+    "$(bash_rc_of "$WT2" 'TMP=$(mktemp -d /tmp/x.XXXXXX) cp src/*.ts "$TMP"' HOME="$T3H")"
+assert_rc "11257c33 an assignment from a substitution before ls allows" 0 \
+    "$(bash_rc_of "$WT2" 'X=$(pwd) ls *.md -la' HOME="$T3H")"
+assert_rc "11257c37 a quoted assignment from a substitution before ls allows" 0 \
+    "$(bash_rc_of "$WT2" 'X="$(pwd)" ls *.md -la' HOME="$T3H")"
+assert_rc "11257c38 a quoted assignment from a substitution before gh api allows" 0 \
+    "$(bash_rc_of "$WT2" 'GH_TOKEN="$(cat f)" gh api "repos/$R/pulls" --paginate' HOME="$T3H")"
+assert_rc "11257c39 a quoted assignment from a templated mktemp before cp allows" 0 \
+    "$(bash_rc_of "$WT2" 'TMP="$(mktemp -d /tmp/x.XXXXXX)" cp src/*.ts "$TMP"' HOME="$T3H")"
+assert_rc "11257c35 an assignment with a prefix glued to a substitution before gh api allows" 0 \
+    "$(bash_rc_of "$WT2" 'X=pre$(cat f) gh api r' HOME="$T3H")"
+assert_rc "11257c36 an assignment from a backtick substitution before ls allows" 0 \
+    "$(bash_rc_of "$WT2" 'X=`pwd` ls -la' HOME="$T3H")"
+assert_rc "11257c34 an assignment from a substitution before agy plugin list allows" 0 \
+    "$(bash_rc_of "$WT2" 'X=$(echo y) agy plugin list' HOME="$T3H")"
+assert_rc "11257c28 a substitution before a read verb allows" 0 \
+    "$(bash_rc_of "$WT2" 'agy $(echo plugin) list' HOME="$T3H")"
+assert_rc "11257c29 a substitution holding agy plugin list inside another command allows" 0 \
+    "$(bash_rc_of "$WT2" 'echo $(agy plugin list)' HOME="$T3H")"
+assert_rc "11257c30 an ampersand redirect after a read verb in a heredoc command allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin list&>/dev/null <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257c24 a quoted prompt ending in a question mark allows" 0 \
+    "$(bash_rc_of "$WT2" 'agy -p "What changed?" --model m' HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
+assert_rc "11257c25 a read verb after a stderr redirect in a heredoc command allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin 2>&1 list <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257c16 a command substitution carrying plugin list in a heredoc command allows" 0 \
+    "$(bash_rc_of "$WT2" "echo \$(agy plugin list) <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257c14 agy plugin list in a heredoc command (text fallback) allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin list <<'EOF'
+y
+EOF" HOME="$T3H")"
+
 S9INPLACE=-i
 S9H="$SANDBOX/s9256home"
 S9SP="$SANDBOX/tmp/claude-1000/-home-u-Documents-github-himmel--claude-worktrees-slug/sess-1/scratchpad"
