@@ -50,7 +50,7 @@ do_sample() {
         case "$row" in
             *[!0-9[:space:]]*|'') echo "gh-core-per-token: unreadable rate_limit body for the $tok token" >&2; rc=1; continue ;;
         esac
-        printf '%s\t%s\t%s\n' "$now" "$tok" "$row" >> "$log"
+        printf '%s\t%s\t%s\n' "$now" "$tok" "$row" >> "$log" 2>/dev/null || { echo "gh-core-per-token: cannot write the $tok row to $log" >&2; rc=1; }
     done
     return "$rc"
 }

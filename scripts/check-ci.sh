@@ -294,7 +294,7 @@ DECIDE_TTL="${CHECK_CI_DECIDE_TTL:-5}"
 WATCH_INTERVAL_MAX="${CHECK_CI_WATCH_INTERVAL_MAX:-120}"
 case "$CACHE_TTL" in
     ''|*[!0-9]*|0) echo "check-ci: CHECK_CI_CACHE_TTL='$CACHE_TTL' is not a positive integer — using 120" >&2
-        CACHE_TTL=60 ;;
+        CACHE_TTL=120 ;;
 esac
 case "$DECIDE_TTL" in
     ''|*[!0-9]*|0) echo "check-ci: CHECK_CI_DECIDE_TTL='$DECIDE_TTL' is not a positive integer — using 5" >&2

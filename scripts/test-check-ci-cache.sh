@@ -532,6 +532,8 @@ setclock 1000000090
 if [ "$rc" -eq 0 ] && [ "$(sleeps)" = "30 " ] && [ "$(fetches)" -eq 2 ]; then pass "17 default poll TTL 120: a read at age 90 is a hit, the next wake fetches"; else fail "17 default TTL" "rc=$rc sleeps=[$(sleeps)] fetches=$(fetches)"; fi
 if grep -q 'CHECK_CI_CACHE_TTL:-120' "$CHECK_CI" && grep -q 'CHECK_CI_CACHE_TTL:-120' "$HELPER"; then pass "17b check-ci.sh and the watch helper agree on the 120 s default"; else fail "17b defaults" "one of them still names another default"; fi
 
+if grep -A1 "CHECK_CI_CACHE_TTL='\$CACHE_TTL' is not a positive integer" "$CHECK_CI" | grep -q 'CACHE_TTL=120 ;;'; then pass "18 a malformed CHECK_CI_CACHE_TTL falls back to the 120 s the message names"; else fail "18 TTL fallback" "the fallback assignment is not the 120 in the message"; fi
+
 echo
 echo "check-ci-cache: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

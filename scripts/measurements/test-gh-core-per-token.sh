@@ -96,5 +96,10 @@ slept=$(tr '\n' ' ' < "$TMP/slept" 2>/dev/null)
 if [ "$rc" -eq 0 ] && [ "$rows" = 6 ] && [ "$slept" = "300 300 " ]; then ok "loop takes N samples with the sleep seam between them"
 else bad "loop takes N samples with the sleep seam between them" "rc=$rc rows=$rows slept=$slept"; fi
 
+GHCT_MAIN_CMD="$TMP/main-ok" GHCT_READ_CMD="$TMP/read-ok" GHCT_NOW=1700000000 bash "$SCRIPT" sample --log "$TMP/no-such-dir/x.log" 2>"$TMP/w.err"
+rc=$?
+if [ "$rc" -eq 1 ] && grep -q 'cannot write' "$TMP/w.err"; then ok "an unwritable log exits 1 and says so"
+else bad "an unwritable log exits 1 and says so" "rc=$rc err=$(cat "$TMP/w.err")"; fi
+
 echo "passes=$passes fails=$fails"
 [ "$fails" -eq 0 ]
