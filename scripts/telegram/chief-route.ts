@@ -1482,7 +1482,10 @@ export async function cappedReturnEvidence(input: CappedReturnInput, policy: Cap
   const row = latestRow(rows, kind); const sum = returnSha(text);
   const named = basename(path); const prefix = `${basename(spec)}.critic-${kind}-r`;
   const fileRound = named.startsWith(prefix) && named.endsWith(".md") && /^[1-9]\d*$/.test(named.slice(prefix.length, -3)) ? Number(named.slice(prefix.length, -3)) : 0;
-  if (!row || row.verdict_path !== path || row.return_sha !== sum || row.verdict !== lastLine(text) || fileRound < row.round
+  const fileRoundOf = (name: unknown) => Number(/-r([1-9]\d*)\.md$/.exec(basename(String(name)))?.[1] ?? 0);
+  const before = row ? roundRows(rows, kind).find(r => Number(r.round) === Number(row.round) - 1) : undefined;
+  const expectedRound = before && fileRoundOf(before.verdict_path) ? fileRoundOf(before.verdict_path) + 1 : row?.round;
+  if (!row || row.verdict_path !== path || row.return_sha !== sum || row.verdict !== lastLine(text) || fileRound !== expectedRound
     || roundRows(rows, kind).filter(r => r.round === row.round).length !== 1) throw new Error(`capped-fold: not the actual latest real ${kind} round`);
   policy.reviewed(text, specSha, kind);
   const findings = cappedFindings(text, kind, row.round, row, policy.headingOk);

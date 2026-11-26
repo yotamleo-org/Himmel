@@ -8308,6 +8308,48 @@ test("capped carry: a closure return's READ quote that names no seal is context 
   expect(v2Cli(wrong.args).code).toBe(1);
 });
 
+const planSpecOnlyQuoted = async (edit?: (text: string) => string) => {
+  const { returnSha } = await import("./chief-route");
+  const f = await cappedFixture(); const planReturn = f.args.planReturn; const specPath = realpathSync(f.spec);
+  const text = readFileSync(planReturn, "utf8");
+  const sealsSpec = (line: string) => { const m = /^CONTENT-SHA256 [0-9a-f]{64} (\S.*)$/.exec(line); return !!m && resolve(dirname(planReturn), m[1]) === specPath; };
+  expect(text.split("\n").filter(sealsSpec), "the fixture's plan return seals the spec").toHaveLength(1);
+  writeFileSync(planReturn, text.split("\n").filter(line => !sealsSpec(line)).join("\n"));
+  const planPath = realpathSync(f.plan); const planSha = sha(readFileSync(f.plan, "utf8"));
+  editLedger(f, rows => {
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (rows[i].return_sha !== returnSha(text)) continue;
+      if (rows[i].row === "round") { rows[i].read_path = planPath; rows[i].read_sha = planSha; }
+      else if (rows[i].row === "seal" && (rows[i].read_path === specPath || rows[i].read_path === planPath)) rows.splice(i, 1);
+    }
+  });
+  if (edit) await editCappedReturn(f, planReturn, edit);
+  return f;
+};
+const specQuote = /^READ-SHA256 ([0-9a-f]{64}) (\S*designs\/\S*\.md)$/m;
+
+test("capped carry: a plan return whose spec is only quoted at the current sha is covered on the v2 route and refused on the strict v1 route", async () => {
+  const f = await planSpecOnlyQuoted();
+  expect(readFileSync(f.args.planReturn, "utf8")).toMatch(specQuote);
+  const v2 = v2Cli(f.args); expect(v2.err).toBe(""); expect(v2.code).toBe(0);
+  const v1 = p1Fold(f.args); expect(v1.out).toBe(""); expect(v1.err).toContain("missing/extra ledger seals or review coverage");
+});
+
+test("capped carry: a plan return whose spec is quoted at another sha or not quoted at all is refused on coverage", async () => {
+  const flipped = await planSpecOnlyQuoted(text => text.replace(specQuote, (_line, digest: string, path: string) => `READ-SHA256 ${"0".repeat(64) === digest ? "1".repeat(64) : "0".repeat(64)} ${path}`));
+  const wrong = v2Cli(flipped.args); expect(wrong.out).toBe(""); expect(wrong.err).toContain("missing/extra ledger seals or review coverage");
+  const absent = await planSpecOnlyQuoted(text => text.replace(specQuote, "").replace(/\n\n+/g, "\n"));
+  const none = v2Cli(absent.args); expect(none.out).toBe(""); expect(none.err).toContain("missing/extra ledger seals or review coverage");
+});
+
+test("capped carry: a return sealed under a file name ahead of the ledger's own offset refuses on both routes", async () => {
+  const f = await specAheadOfLedger({}, true);
+  const inflated = f.args.specReturn.replace("-r4.md", "-r9.md"); renameSync(f.args.specReturn, inflated);
+  editLedger(f, rows => rows.filter(row => row.critic === "spec" && row.verdict_path === f.args.specReturn).forEach(row => { row.verdict_path = inflated; }));
+  f.args.specReturn = inflated;
+  for (const run of [p1Fold(f.args), v2Cli(f.args)]) { expect(run.out).toBe(""); expect(run.err).toContain("not the actual latest real spec round"); }
+});
+
 const signShape = (...argv: string[]): P1Run => {
   const p = Bun.spawnSync(["bun", P1_ROUTE, "sign-shape", ...argv], { stdout: "pipe", stderr: "pipe", timeout: 60_000 });
   return { code: p.exitCode, signal: p.signalCode ?? null, out: p.stdout.toString(), err: p.stderr.toString() };
