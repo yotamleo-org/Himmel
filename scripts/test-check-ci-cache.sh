@@ -521,7 +521,7 @@ for sel in "" 42 "https://github.com/octo/demo/pull/42"; do
 done
 n=$(fetches)
 if [ "$n" -eq 1 ]; then pass "16 branch, number and URL watchers of one PR -> 1 fetch"; else fail "16 selectors" "got $n fetches, want 1"; fi
-n=$(find "$CASE_DIR/cache" -maxdepth 1 -name 'pr-*.rows' | wc -l | tr -d ' ')
+n=0; for f in "$CASE_DIR"/cache/pr-*.rows; do [ -e "$f" ] && n=$((n + 1)); done
 if [ "$n" -eq 1 ]; then pass "16b one cache entry for the PR"; else fail "16b entries" "got $n entries, want 1"; fi
 
 new_case
