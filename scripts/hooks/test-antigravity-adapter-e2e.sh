@@ -129,6 +129,8 @@ assert_pass "invoke_subagent allowed (decision 1246 1C)" "$(cat "$FIX/pre-invoke
 assert_pass "send_message allowed" "$(cat "$FIX/pre-send-message.json")"
 assert_pass "ask_question allowed" "$(make_pre ask_question '{"questions":[]}')"
 assert_pass "search_web allowed" "$(make_pre search_web '{"query":"test"}')"
+assert_pass "exit_plan_mode allowed" "$(make_pre exit_plan_mode '{}')"
+assert_pass "update_steps allowed" "$(make_pre update_steps '{"steps":[]}')"
 assert_pass "list_resources allowed" "$(make_pre list_resources '{"ServerName":"t3-code"}')"
 assert_pass "read_resource allowed" "$(make_pre read_resource '{"ServerName":"t3-code","Uri":"x"}')"
 assert_pass "benign mcp_t3-code_t3_environment_read fixture" "$(cat "$FIX/pre-mcp-t3-code.json")"
@@ -192,6 +194,16 @@ for dt in schedule swarm run_workflow define_subagent manage_subagents manage_ta
     assert_deny "denied built-in tool $dt" "denied" "$(make_pre "$dt" '{}')"
 done
 assert_deny "unknown tool fails closed" "unrecognized" "$(make_pre unknown_tool_xyz '{}')"
+assert_deny "made-up near-name exit_plan_mode_x still fails closed" "unrecognized" "$(make_pre exit_plan_mode_x '{}')"
+assert_deny "made-up near-name update_steps_x still fails closed" "unrecognized" "$(make_pre update_steps_x '{}')"
+
+TAINT_HOME="$TMP/taint-home"
+mkdir -p "$TAINT_HOME/.himmel/peer-bridge/taint"
+: > "$TAINT_HOME/.himmel/peer-bridge/taint/conv-1"
+assert_deny "exit_plan_mode denied when the session is peer-tainted" "peer-taint-gate" \
+    "$(make_pre exit_plan_mode '{}')" HOME="$TAINT_HOME"
+assert_deny "update_steps denied when the session is peer-tainted" "peer-taint-gate" \
+    "$(make_pre update_steps '{"steps":[]}')" HOME="$TAINT_HOME"
 assert_deny "unlisted MCP server denied" "not allowlisted" "$(make_pre mcp_evil_run '{}')"
 assert_deny "malformed JSON stdin fails closed" "malformed" "{not-json"
 

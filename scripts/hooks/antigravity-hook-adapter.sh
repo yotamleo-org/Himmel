@@ -488,7 +488,7 @@ case "$RAW_TOOL" in
             peer-taint-gate.sh
         exit 0
         ;;
-    search_web|send_message|ask_question)
+    search_web|send_message|ask_question|exit_plan_mode|update_steps)
         PAYLOAD="$(build_claude_payload "$RAW_TOOL" raw)" || emit_deny "antigravity-hook-adapter: failed to translate $RAW_TOOL payload"
         run_chain_with_payload gate "$PAYLOAD" peer-taint-gate.sh
         exit 0
