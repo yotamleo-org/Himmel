@@ -24,6 +24,11 @@ BUS_READ_TOOL = "mcp__himmel-bus__read"
 WAKE_LINE = "You have unread himmel messages: call mcp__himmel-bus__read now."
 CROSS_SESSION_STARTS = ("Another Claude session sent a message:", "<cross-session-message")
 MONITOR_STARTS = ("<task-notification>", "[SYSTEM NOTIFICATION", "[Cross-session idle notice]")
+T3_RELAY_HEAD = '[T3 Code: the agent in T3 thread "{thread}" sent this message, not the user.]'
+T3_TOOLS_HEAD = "[T3 Code: this message came through T3 Code's tools, not from the user typing in this chat.]"
+T3_RELAY_START = '[T3 Code: the agent in T3 thread "'
+T3_TOOLS_START = "[T3 Code: this message came through T3 Code's tools"
+T3_RELAY_RE = re.compile(r'^\[T3 Code: the agent in T3 thread "([^"\n]+)" sent this message')
 CS_TAG = re.compile(r"<cross-session-message\b[^>]*>")
 FROM_NAME = re.compile(r'\sfrom-name="([^"]*)"')
 CHIEF_CLAUSE = "your chief is **`{chief}`**"
@@ -102,6 +107,11 @@ def sort_user_text(text, meta):
             return "unreadable-sender", None
     if meta:
         return "meta", None
+    if text.startswith(T3_RELAY_START):
+        m = T3_RELAY_RE.match(text)
+        return ("cross-session", m.group(1)) if m else ("unreadable-sender", None)
+    if text.startswith(T3_TOOLS_START):
+        return "unreadable-sender", None
     if text.startswith(MONITOR_STARTS):
         return "monitor", None
     trig = classify_trigger(text)
