@@ -127,8 +127,14 @@ allowed "a status the hook does not know passes (fail open)"
 run_case "$(send_payload t-nl steer)"
 allowed "a status that is a known word plus a newline is not that word (fail open)"
 
-run_case "$(wait_payload '["b001oqmbs\n"]')"
-refused "an id with a trailing newline" "run_in_background"
+run_case "$(wait_payload '["thread:delegated-task:abc123"]')"
+allowed "an id of a form the hook does not know passes (fail open)"
+
+run_case "$(wait_payload '["task-PLACEHOLDER-1"]')"
+refused "a placeholder inside a longer string" "run_in_background"
+
+run_case "$(wait_payload '["a839ea3b49cc59393\n"]')"
+refused "an Agent id with a trailing newline" "its result arrives as a message"
 
 run_case "$(send_payload t-idle steer)" "T3_STEER_BYPASS=1"
 allowed "T3_STEER_BYPASS=1 passes a refused steer"

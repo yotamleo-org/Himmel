@@ -19,10 +19,10 @@ case "$tool" in
         bad=$(printf '%s' "$input" | jq -r '
             (.tool_input // {}) | if type == "object" then .taskIds else null end
             | if type == "array" then .[] else empty end
-            | select((type == "string" and test("\\Ab[a-z0-9]{6,}\\z")) | not) | tojson' 2>/dev/null) || exit 0
+            | select(type != "string" or test("\\A\\s*\\z") or test("placeholder"; "i") or test("\\Aa[0-9a-f]{16,}\\s*\\z")) | tojson' 2>/dev/null) || exit 0
         [ -n "$bad" ] || exit 0
         list=$(printf '%s' "$bad" | awk 'NR > 1 { printf ", " } { printf "%s", $0 }')
-        deny "t3_background_wait takes the id of a running background Bash command or Monitor (it starts with b, e.g. b001oqmbs), and these are not: ${list}. An Agent id (starts with a) or a placeholder never works here. To wait on a subagent, end your turn and its result arrives as a message; to wait on a command, start it with Bash run_in_background (or Monitor) and pass the id that call printed."
+        deny "t3_background_wait takes the id of a running background Bash command or Monitor (it starts with b, e.g. b001oqmbs), and these are not: ${list}. An Agent id (starts with a, then hex), a placeholder, a blank or a non-string never works here. To wait on a subagent, end your turn and its result arrives as a message; to wait on a command, start it with Bash run_in_background (or Monitor) and pass the id that call printed."
         ;;
     mcp__t3-code__t3_thread_send)
         mode=$(printf '%s' "$input" | jq -r '.tool_input | if type == "object" then .mode else null end | if type == "string" then . else "" end' 2>/dev/null) || exit 0
