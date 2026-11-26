@@ -16,7 +16,7 @@
 #   splits of the text: on unquoted, unescaped blanks and shell punctuation, quotes
 #   and backslashes honoured as a shell reads them; and on every blank, quote and
 #   shell punctuation character. Both run on the text as given and with every
-#   backslash-newline removed. A command holding ANSI-C quoting ($'...') marks.
+#   backslash-newline removed. A command holding $'...' or $"..." quoting marks.
 # A path is PHI when a .salus or .salus-profile marker sits at or above its raw or
 # canonical form, or _guard_phi_decision returns 1 (listed) or 2 (unreadable).
 #
@@ -62,7 +62,7 @@ case "$tool" in
         ;;
     Bash | Monitor)
         cmd=$(str '.tool_input.command // ""')
-        case "$cmd" in *"\$'"*) mark ;; esac
+        case "$cmd" in *"\$'"* | *'$"'*) mark ;; esac
         joined=${cmd//$'\\\n'/}
         plain=$(printf '%s\n%s\n' "$cmd" "$joined" | tr -s " \t\r;|&<>()'\"\`=:,{}" '\n')
         # shellcheck disable=SC2016 # an awk program, not shell text

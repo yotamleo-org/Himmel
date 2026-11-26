@@ -100,7 +100,7 @@ function pathsOf(r: Record<string, any>, home: string, add: (p: string) => void)
     for (const k of ["file_path", "path", "notebook_path"]) put(input[k], r.cwd);
     if (typeof input.pattern === "string" && (item.name === "Glob" || input.pattern.startsWith("/") || input.pattern.startsWith("~/"))) put(input.pattern.split(/[*?[{]/)[0], typeof input.path === "string" && input.path !== "" ? abs(input.path, r.cwd) ?? undefined : r.cwd);
     if ((item.name === "Bash" || item.name === "Monitor") && typeof input.command === "string") {
-      if (/\\[ \t\n]/.test(input.command) || input.command.includes("$'")) return false;
+      if (/\\[ \t\n]|\$['"]/.test(input.command)) return false;
       for (const m of input.command.matchAll(TOKEN_RE)) put(m[1]);
       for (const m of input.command.matchAll(QUOTED_RE)) put(m[1] ?? m[2]);
       relativeWords(input.command, r.cwd, home, put);
