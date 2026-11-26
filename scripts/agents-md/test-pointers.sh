@@ -52,6 +52,13 @@ if [ -f "$E/AGENTS.md" ]; then bad "write never creates the root AGENTS.md"; els
 mkdir -p "$F/café"; printf '# u\n' > "$F/café/CLAUDE.md"; git -C "$F" add -A
 bash "$PTR" --write >/dev/null 2>&1
 if [ -f "$F/café/AGENTS.md" ]; then ok "non-ASCII directory gets its pointer"; else bad "non-ASCII directory gets its pointer"; fi
+L="$TMP/lunarepo"; mkdir -p "$L/templates/luna-second-brain"; git -C "$L" init -q
+printf '# manual\n' > "$L/templates/luna-second-brain/_CLAUDE.md"
+printf 'pointer plus the Antigravity addendum\n' > "$L/templates/luna-second-brain/AGENTS.md"
+git -C "$L" add -A
+expect 0 "check leaves the luna template's hand-owned AGENTS.md alone" env POINTERS_ROOT="$L" bash "$PTR" --check
+POINTERS_ROOT="$L" bash "$PTR" --write >/dev/null 2>&1
+if [ "$(cat "$L/templates/luna-second-brain/AGENTS.md")" = "pointer plus the Antigravity addendum" ]; then ok "write never clobbers the luna template's AGENTS.md"; else bad "write never clobbers the luna template's AGENTS.md"; fi
 unset POINTERS_ROOT
 
 # ---- the real repo ---------------------------------------------------------

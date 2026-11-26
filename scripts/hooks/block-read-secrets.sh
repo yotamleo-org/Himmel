@@ -46,9 +46,7 @@
 # shell tracing that can print the inherited environment (`bash -x`, `-o xtrace`,
 # `set -x`, SHELLOPTS=xtrace, BASH_XTRACEFD; denied even under `env -i`). Another entry adds
 # a python/node/bun/deno command that prints the whole environment or reads
-# /proc/*/environ (interp_env_dump; a single named key still passes) and a Read
-# of a session transcript .jsonl (is_transcript_path) or a Grep over one or
-# over ~/.claude/projects (is_transcript_tree).
+# /proc/*/environ (interp_env_dump; a single named key still passes).
 #
 # Known limitations (consciously accepted — gate targets accidental leaks,
 # not a determined attacker):
@@ -352,6 +350,7 @@ _fp_plain_file() {
         *.env*|*id_rsa*|*id_ed25519*|*credentials*|*secrets*|*.pem*|*.key*|*.p12*|*.pfx*) hit=1 ;;
         *.netrc*|*_netrc*|*.npmrc*|*.pgpass*|*.pypirc*|*terraform.tfstate*) hit=1 ;;
         *.ssh*|*.aws*|*.kube*|*.gnupg*|*config*|*hosts.yml*|*environ*) hit=1 ;;
+        *auth.json*|*oauth*|*token*) hit=1 ;;
     esac
     [ "$nc" = 1 ] || shopt -u nocasematch
     [ "$hit" = 0 ]
@@ -365,6 +364,17 @@ is_secret_path() {
     _fp_plain_file "$1" && return 1
     is_secret_basename "$@" && return 0
     g4_secret_path "$1"
+}
+
+login_token_path() {
+    local b="${1##*/}"
+    case "$1" in
+        */.codex/auth.json|*/.gemini/oauth_creds.json) return 0 ;;
+        */.gemini/gemini-credentials.json|*/.gemini/mcp-oauth-tokens*.json) return 0 ;;
+        */userdata/providers/?*/?*)
+            case "$b" in auth.json|oauth_creds.json|*token*|*oauth*|*credentials*) return 0 ;; esac ;;
+    esac
+    return 1
 }
 
 # g4_secret_path PATH_OR_TOKEN: the secret files the shared
@@ -382,6 +392,7 @@ g4_secret_path() {
     b="${p##*/}"; b="${b##*\\}"
     _tolower_ascii "$b"; b="$_TOLOWER_OUT"
     _tolower_ascii "$p"; p="$_TOLOWER_OUT"   # `.AWS/credentials` is the same file on a case-folding volume
+    login_token_path "$p" && return 0
     case "$b" in
         .netrc|_netrc|.npmrc|.pgpass|.pypirc|.git-credentials|.credentials.json) return 0 ;;
         terraform.tfstate|terraform.tfstate.backup|.ssh|.aws|.kube|.gnupg)       return 0 ;;
@@ -426,6 +437,7 @@ g4_secret_path() {
         fi
         case "$c" in */config-audit|*/config-audit/backups|*/config-audit/backups/*|*/.himmel/secrets|*/.himmel/secrets/*) return 0 ;; esac
         case "$c" in */.himmel/peer-bridge|*/.himmel/peer-bridge/*|*/.config/himmel/peer-bridge|*/.config/himmel/peer-bridge/*) return 0 ;; esac
+        _tolower_ascii "$c"; login_token_path "$_TOLOWER_OUT" && return 0
     fi
     return 1
 }
@@ -1573,42 +1585,6 @@ rs_interp_text() {
     REPLY=$t
 }
 
-# is_transcript_path PATH: a Claude Code session transcript
-# (`~/.claude/projects/<slug>/<session>.jsonl`, subagent ones below it). A
-# transcript holds every earlier tool result verbatim, so one that once printed
-# a token hands it to whoever Reads it.
-is_transcript_path() {
-    case "$1" in
-        */.claude/projects/*.jsonl|*\\.claude\\projects\\*.jsonl) return 0 ;;
-    esac
-    return 1
-}
-
-# is_transcript_tree PATH: a Grep path that reaches transcripts:
-# a transcript itself, `~/.claude/projects`, or anything below it. Only the
-# per-project `memory/` subtree stays allowed, and only with no `..` in the
-# path (`memory/..` is the project directory again). A slug can hold a dot
-# (`-home-u-repo.example`), so a basename is never taken as "a file".
-is_transcript_tree() {
-    local p="${1%/}"
-    is_transcript_path "$p" && return 0
-    p="${p//\\//}"
-    case "$p" in
-        */.claude/projects|*/.claude/projects/*) ;;
-        *) return 1 ;;
-    esac
-    case "/$p/" in */../*) return 0 ;; esac
-    # The exemption is exactly <projects>/<one slug>/memory: a glob `*` would
-    # span `/` and exempt a `memory` dir below a session directory.
-    local rel slug
-    rel="${p#*/.claude/projects/}"
-    slug="${rel%%/*}"
-    case "${rel#"$slug"}" in
-        /memory|/memory/*) [ -n "$slug" ] && [ "$slug" != . ] && return 1 ;;
-    esac
-    return 0
-}
-
 # scan_clause CLAUSE DEPTH: scan ONE clause and set the global
 # `block` (plus `glued_tok`, named in the denial) when it reads a secret. A
 # shell interpreter's `-c` body is rejoined into its own command text and
@@ -1959,13 +1935,6 @@ case "$tool" in
             bypass_hint
             exit 2
         fi
-        if is_transcript_path "$fp"; then
-            [ "${READ_SECRETS_OK:-0}" = "1" ] && exit 0
-            echo "⛔ block-read-secrets: refusing Read of a session transcript: $fp" >&2
-            echo "    (a transcript replays every earlier tool result, credentials included)" >&2
-            bypass_hint
-            exit 2
-        fi
         ;;
 
     Grep)
@@ -1975,13 +1944,6 @@ case "$tool" in
             [ "${READ_SECRETS_OK:-0}" = "1" ] && exit 0
             echo "⛔ block-read-secrets: refusing Grep on secret path: $gpath" >&2
             jira_hint "$gpath"
-            bypass_hint
-            exit 2
-        fi
-        if is_transcript_tree "$gpath"; then
-            [ "${READ_SECRETS_OK:-0}" = "1" ] && exit 0
-            echo "⛔ block-read-secrets: refusing Grep over session transcripts: $gpath" >&2
-            echo "    (a transcript replays every earlier tool result, credentials included)" >&2
             bypass_hint
             exit 2
         fi

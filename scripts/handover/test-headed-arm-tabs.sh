@@ -100,7 +100,6 @@ printf '%s\n' "$*" >> "$d/qdbus-record"
 [ -e "$d/qdbus-fail" ] && { echo "Error: org.freedesktop.DBus.Error.ServiceUnknown" ; exit 2; }
 svc="$1"; obj="$2"; method="$3"; shift 3
 [ -e "$d/runcommand-fail" ] && [ "$method" = runCommand ] && { echo "Error: org.freedesktop.DBus.Error.NoReply"; exit 2; }
-# runcommand-late: the typed line IS delivered, 0.6 s after the call, but the caller is told NoReply.
 if [ -e "$d/runcommand-late" ] && [ "$method" = runCommand ]; then
   lpid="${svc#org.kde.konsole-}"
   ( sleep 0.6; env -i bash -c '. "$1"; eval "$2"' tabshell "$d/window-env.$lpid" "$1" < /dev/null > /dev/null 2>&1 ) &
@@ -429,5 +428,11 @@ check "20a a seeded launch exits 0" "$rc20" 0
 check "20b the seed's row is in the dedicated holds root" "$(find "$HOLDS_FAKE/.himmel/state/holds" -type f -name '*tabs-leak-probe*' 2>/dev/null | grep -c . || true)" 1
 check "20c no row or register of this suite reached the real holds register" "$(grep -rlF "$tmp" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)" 0
 check "20d no register directory named for this suite reached the real holds register" "$(find "$REAL_HOME/.himmel/state/holds" -maxdepth 1 -name "*$(basename "$tmp")*" 2>/dev/null | grep -c . || true)" 0
+
+d21="$tmp/c21"; mk_env "$d21"
+arm "$d21" PROJ-21-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A IMPL_GUARD_OK=1 INLINE_IMPL_OK=1; rc21a=$?
+arm "$d21" PROJ-21-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A IMPL_GUARD_OK=1 INLINE_IMPL_OK=1; rc21b=$?
+check "21a both implementing-worker launches exit 0" "$rc21a$rc21b" 00
+check "21b an implementing worker's own IMPL_GUARD_OK and INLINE_IMPL_OK do not stop it joining the shared window" "$(konsole_count "$d21")" 1
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

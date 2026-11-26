@@ -321,5 +321,39 @@ done
 assert_pass "t3_thread_launch with an allowlisted instance passes the shared chain" \
     "$(make_pre mcp_t3-code_t3_thread_launch '{"title":"Work","modelSelection":{"instanceId":"claudeAgent","model":"claude-sonnet-5-5"}}')"
 
+echo "== 8. Non-himmel cwd: luna and salus vaults =="
+mk_vault() {
+    local d="$1"
+    mkdir -p "$d"
+    git -C "$d" init -q -b main
+    git -C "$d" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+    printf 'ok\n' > "$d/note.md"
+}
+LUNA_FX="$TMP/luna-fx"; mk_vault "$LUNA_FX"; touch "$LUNA_FX/.single-writer"
+LUNA_NOSW="$TMP/luna-nosw-fx"; mk_vault "$LUNA_NOSW"
+SALUS_VAULT="$TMP/salus-vault-fx"; mk_vault "$SALUS_VAULT"; touch "$SALUS_VAULT/.single-writer" "$SALUS_VAULT/.salus"
+assert_pass "luna cwd: benign run_command is not failed closed" \
+    "$(make_pre run_command '{"CommandLine":"git status"}' "$LUNA_FX")"
+assert_pass "luna cwd with .single-writer: edit_file on main allowed" \
+    "$(make_pre edit_file "$(jq -cn --arg p "$LUNA_FX/note.md" '{Path:$p,Target:"ok",Replacement:"x"}')" "$LUNA_FX")"
+assert_deny "luna cwd without .single-writer: edit_file on main denied" "main" \
+    "$(make_pre edit_file "$(jq -cn --arg p "$LUNA_NOSW/note.md" '{Path:$p,Target:"ok",Replacement:"x"}')" "$LUNA_NOSW")"
+assert_deny "luna cwd: read_file on .env still denied" "secret" \
+    "$(make_pre read_file "$(jq -cn --arg p "$LUNA_FX/.env" '{Path:$p}')" "$LUNA_FX")"
+assert_pass "salus cwd: read_file on a vault note allowed for agy" \
+    "$(make_pre read_file "$(jq -cn --arg p "$SALUS_VAULT/note.md" '{Path:$p}')" "$SALUS_VAULT")"
+assert_pass "salus cwd: edit_file in the vault allowed for agy" \
+    "$(make_pre edit_file "$(jq -cn --arg p "$SALUS_VAULT/note.md" '{Path:$p,Target:"ok",Replacement:"x"}')" "$SALUS_VAULT")"
+assert_deny "salus cwd: read_file on .env still denied" "secret" \
+    "$(make_pre read_file "$(jq -cn --arg p "$SALUS_VAULT/.env" '{Path:$p}')" "$SALUS_VAULT")"
+assert_deny "salus cwd: run_command cat .env still denied" "secret" \
+    "$(make_pre run_command "$(jq -cn --arg c "cat $SALUS_VAULT/.env" '{CommandLine:$c}')" "$SALUS_VAULT")"
+assert_deny "salus cwd: provider-home read still denied" "provider home" \
+    "$(make_pre read_file "$(jq -cn --arg p "$T3CODE_HOME/userdata/providers/antigravity/hash1/config/hooks.json" '{Path:$p}')" "$SALUS_VAULT")"
+assert_deny "salus cwd: ~/.gemini/config read still denied" ".gemini" \
+    "$(make_pre read_file "$(jq -cn --arg p "$HOME/.gemini/config/hooks.json" '{Path:$p}')" "$SALUS_VAULT")"
+assert_deny "salus cwd: git push still denied" "external-write" \
+    "$(make_pre run_command '{"CommandLine":"git push origin main"}' "$SALUS_VAULT")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

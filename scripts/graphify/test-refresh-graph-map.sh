@@ -419,8 +419,8 @@ for mode in auth authstale seedfail capauth ratelimit trust other; do
     auth)
       printf '%s\n' "$out" | grep -q "auth probe reports, cause: .*OAuth session expired" && pass "T6c-auth names the probe's auth error" || fail "T6c-auth must name the auth cause: $out"
       printf '%s\n' "$out" | grep -q "cause: .*not been trusted" && fail "T6c-auth named the trust warning as the cause: $out" || pass "T6c-auth does not blame the trust warning"
-      [ "$(wc -l < "$WS/calls-$mode")" -eq 2 ] && pass "T6c-auth reseeded and retried exactly once" || fail "T6c-auth should run graphify twice: $(cat "$WS/calls-$mode")"
-      [ "$(tr '\n' ' ' < "$WS/state-$mode")" = "differs same " ] && pass "T6c-auth the login copy went stale, then matched the rotated login at the retry" || fail "T6c-auth copy states: $(cat "$WS/state-$mode")"
+      [ "$(wc -l < "$WS/calls-$mode")" -eq 1 ] && pass "T6c-auth does not retry: the config dir already follows the rotated login" || fail "T6c-auth should run graphify once: $(cat "$WS/calls-$mode")"
+      [ "$(tr '\n' ' ' < "$WS/state-$mode")" = "same " ] && pass "T6c-auth the login copy matched the rotated login when graphify ran" || fail "T6c-auth copy states: $(cat "$WS/state-$mode")"
       cmp -s "$HERMETIC_HOME/.claude/.credentials.json" "$WS/cause-cfg-$mode/.credentials.json" && pass "T6c-auth the copy matches the rotated login afterwards" || fail "T6c-auth the copy does not match the source" ;;
     authstale)
       printf '%s\n' "$out" | grep -q "left the login copy unchanged" && pass "T6c-authstale does not retry when the reseed changed nothing" || fail "T6c-authstale must say the copy is unchanged: $out"

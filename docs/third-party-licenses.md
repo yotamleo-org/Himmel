@@ -488,6 +488,8 @@ Regenerate and check with `node scripts/docs/generate-credits.mjs` and
 | fork:yotamleo-org/codex | — | OpenAI | Apache-2.0 | — |
 | fork:yotamleo-org/core | — | Home Assistant contributors | Apache-2.0 | — |
 | fork:yotamleo-org/home-assistant.io | — | Home Assistant contributors | CC-BY-NC-SA-4.0 | — |
+| fork:yotamleo-org/claude-video | — | bradautomates | MIT | — |
+| fork:yotamleo-org/obsidian-second-brain | — | eugeniughelbur | MIT | — |
 <!-- credits-metadata:end -->
 
 <!-- credits-passages:start -->

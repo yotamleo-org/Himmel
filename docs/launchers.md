@@ -54,10 +54,16 @@ effort, the readiness gate and the `CLAUDEX_LANE_OK` marker:
 
 | Variable | Default | Effect |
 |---|---|---|
-| `CODEX_MODEL` | `gpt-6.1-sol` | Main model slug |
+| `CODEX_MODEL` | `gpt-6.2-sol` | Main model slug |
 | `CLAUDE_CODE_EFFORT_LEVEL` | `xhigh` | Effort sent to the Codex model; a per-dispatch export or `spawn-claudex --effort` overrides it |
 | `CODEX_HAIKU`, `CODEX_SUBAGENT_MODEL` | `CODEX_MODEL` | Small-model and subagent slugs |
-| `CODEX_CONTEXT_WINDOW` | `272000` | Compaction window. Above about 272k input is billed at a higher rate; above about 372k exceeds the backend window and warns. `spawn-claudex --context-tier 272k\|353k\|900k` sets it per dispatch and always overrides an ambient value (unstated = 272k, the cheapest); `dispatch-codex-exec.sh` takes the same flag with the same rule, and `/lanes` shows the default and the enum on each of those lanes; the tier used is recorded as `context_tier` in the session `meta.json` |
+| `CODEX_CONTEXT_WINDOW` | `272000` | Compaction window. The launcher notes OpenAI’s API pricing threshold above 272k input and warns above about 372k based on earlier proxy measurements. `spawn-claudex --context-tier 272k\|353k\|900k` sets it per dispatch and always overrides an ambient value (unstated = 272k, the cheapest); `dispatch-codex-exec.sh` takes the same flag with the same rule, and `/lanes` shows the default and the enum on each of those lanes; the tier used is recorded as `context_tier` in the session `meta.json` |
+
+Select Astra for a direct launch with
+`CODEX_MODEL=gpt-6.2-astra bash scripts/claude-codex`. Set `CODEX_MODEL`
+to `gpt-6.1-sol` or another supported GPT-6 model to run an earlier version.
+For Telegram workers, pass the same model ID with `--model`.
+[Prompting GPT-6.2 Sol and Astra](internals/lane-calibration.md#prompting-gpt-62-sol-and-astra)
 
 ## `claude-openrouter`
 

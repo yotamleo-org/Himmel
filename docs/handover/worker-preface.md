@@ -77,7 +77,7 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
   free file outside `Writes` is claimed and named on your PR's `outside-writes:` line. [prose]
 - **Search with Bash** (`git grep`, `git ls-files`), no Grep/Glob. Structure:
   `bash scripts/graphify/worker-graph.sh <explain "<symbol>" | path "<a>" "<b>">`;
-  `query` on a sentence is noise.
+  `query` on a sentence is noise. One search per response.
   Pasted x.com/instagram.com links: `scripts/web/fetch-url.sh '<url>'`. [prose]
 - **Pre-check a bucket file** with `bash scripts/handover/chief-kit/bucket-gitleaks.sh <file>`
   before writing it; a real credential goes to the chief, never reworded. [prose]
@@ -176,7 +176,7 @@ chief `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is
 subtree clean** with
 `bash scripts/handover/wrap-subtree-check.sh --queue-doc <doc>`: paste its
 `CLOSABLE:` line; on `WITHHELD:` TaskStop only what it lists as still running,
-re-run, no `WRAPPED`.
+re-run, no `WRAPPED`. A halted worker ends the same way, never on a `HALTED` last line.
 
 **Context past 75 % of your `--autocompact` ceiling, when the guard
 is on** (off by default; on in Sonnet 5.5 worker-impl/eval, Opus 5.5 worker-*;

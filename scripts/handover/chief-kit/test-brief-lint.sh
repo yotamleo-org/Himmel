@@ -569,6 +569,10 @@ bk_lint bash "$LINT" "$tmp/bk_out.md"
 bk_set HIMMEL-9421 'IN HIMMEL-9421 current=v1.1.3 via=mirror'
 bk_lint bash "$LINT" "$tmp/bk_out.md"
 [ "$rc" -eq 0 ] && ok "8r6 a ticket in the current version passes" || bad "8r6 IN rc=$rc want 0: $err"
+mk bk_filed '# HIMMEL-9439 — a ticket create filed into current by the rules' "$PA" '> **Contract:** y' "$RES0"
+bk_set HIMMEL-9439 'IN HIMMEL-9439 current=v1.1.3 via=mirror'
+bk_lint bash "$LINT" "$tmp/bk_filed.md"
+[ "$rc" -eq 0 ] && ok "8r6b a key create filed into v1.1.3 with no ruling passes the bucket check (R19, guard)" || bad "8r6b filed key rc=$rc want 0: $err"
 bk_set HIMMEL-9421 'OUTSIDE HIMMEL-9421 v1.1.4 current=v1.1.3 open=0'
 bk_lint bash "$LINT" --core-only "$tmp/bk_out.md"
 [ "$rc" -eq 3 ] && ok "8r7 --core-only cannot skip the bucket rule on an outside key" || bad "8r7 --core-only outside rc=$rc want 3: $err"

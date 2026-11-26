@@ -1162,37 +1162,55 @@ const changedLines = (diff: string) => {
   return body.filter(l => l.startsWith("+") || l.startsWith("-")).map(l => l.slice(1));
 };
 
-async function closureCheck(specs: string, key: string, kind: Kind, r: number, rows: LedgerRow[], text: string | null, page: string): Promise<string[]> {
+async function inferredBaseline(from: { verdict: string; text: string }): Promise<SealedFile[]> {
+  const files: SealedFile[] = [];
+  for (const q of readQuotesOf(from.text)) {
+    const abs = resolve(dirname(from.verdict), q.path);
+    files.push(sealedFileOf({ read_path: await realpath(abs).catch(() => abs), read_sha: q.sha }, true));
+  }
+  return distinctFiles(files);
+}
+
+async function closureCheck(specs: string, key: string, kind: Kind, r: number, rows: LedgerRow[], text: string | null, page: string, from: { verdict: string; text: string }): Promise<{ changed: string[]; baseline: SealedFile[] | null }> {
   const prev = roundBefore(rows, kind, r);
   if (text !== null) {
     const markers = prev.returns.map(x => closureMarker(key, kind, r, x.return_sha));
     if (!text.split("\n").map(l => l.trim()).some(l => markers.includes(l))) throw new Error(`${key} ${kind} round ${r} is a closure check of round ${r - 1}; build its input with closure-pack`);
   }
-  if (!prev.sealed.some(s => s.read_path === page)) throw new Error(`${key} ${kind} round ${r} is a closure check of the files round ${r - 1} read: ${[...new Set(prev.sealed.map(s => s.read_path))].join(", ")}`);
-  const snaps = await snapshotsOf(specs, key, prev.sealed);
+  const baseline = prev.sealed.length || r !== CRITIC_ROUND_CAP + 1 ? null : await inferredBaseline(from);
+  const sealed = baseline ?? prev.sealed;
+  const pageSha = baseline ? sha256(await readFile(page)) : null;
+  if (!sealed.some(s => s.read_path === page && (pageSha === null || s.read_sha === pageSha))) throw new Error(`${key} ${kind} round ${r} is a closure check of the files round ${r - 1} read: ${[...new Set(sealed.map(s => s.read_path))].join(", ")}`);
+  const snaps = await snapshotsOf(specs, key, sealed);
   const changed: string[] = [];
   for (const [path, snap] of snaps) changed.push(...changedLines(await diffOf(snap, path, basename(path))));
-  return changed;
+  const held: SealedFile[] = [];
+  for (const s of baseline ?? []) {
+    const bytes = await readFile(s.read_path).catch(() => null);
+    if (bytes !== null && sha256(bytes) === s.read_sha) held.push(s);
+  }
+  return { changed, baseline: baseline && held };
 }
 
-function sortClosure(text: string, findings: Finding[], openIds: Set<string>, changed: string[]): Finding[] {
+function sortClosure(text: string, findings: Finding[], openIds: Set<string>, changed: string[], inferred: boolean): Finding[] {
   const lines = text.split("\n");
   const bare = (id: string) => id.replace(/^R\d+-(?=\S)/, "");
   const open = new Set([...openIds].map(bare));
   return findings.map(f => {
     const line = (lines.find(l => FINDING_LINE.exec(l)?.[1] === f.id) ?? "").replaceAll("\\`", "`");
     const quoted = [...line.matchAll(/`([^`]{12,})`/g)].map(m => m[1]);
-    const cls = f.reopens && open.has(bare(f.reopens)) ? "reopens" : f.regression && quoted.some(q => changed.some(l => l.includes(q))) ? "regression" : "out-of-closure";
+    const cls = f.reopens && open.has(bare(f.reopens)) ? "reopens" : f.regression && (inferred || quoted.some(q => changed.some(l => l.includes(q)))) ? "regression" : "out-of-closure";
     return { ...f, class: cls };
   });
 }
 
-type Admission = { round: number; mode: "full" | "closure"; findings?: Finding[] };
+type Admission = { round: number; mode: "full" | "closure"; findings?: Finding[]; baseline?: SealedFile[] };
 async function admit(t: SealTarget, rows: Rows): Promise<Admission | null> {
   const sum = returnSha(t.text);
+  const from = { verdict: t.v, text: t.text };
   const prior = rows.find(r => r.row === "round" && r.return_sha === sum && (Number(r.epoch) || 0) === rows.checked.epoch);
   if (prior || KINDS.some(k => seededReturns(rows, k).some(x => x.return_sha === sum))) {
-    if (prior?.mode === "closure") await closureCheck(t.specs, t.key, prior.critic, Number(prior.round), rows, null, t.page);
+    if (prior?.mode === "closure") await closureCheck(t.specs, t.key, prior.critic, Number(prior.round), rows, null, t.page, from);
     return null;
   }
   const round = kindRound(rows, t.kind) + 1;
@@ -1209,8 +1227,8 @@ async function admit(t: SealTarget, rows: Rows): Promise<Admission | null> {
     }
   }
   if (round <= CRITIC_ROUND_CAP) return { round, mode: "full" };
-  const changed = await closureCheck(t.specs, t.key, t.kind, round, rows, t.text, t.page);
-  return { round, mode: "closure", findings: sortClosure(t.text, parseFindings(t.text, t.kind, round).findings, new Set(openBlocking(rows).map(b => b.id)), changed) };
+  const { changed, baseline } = await closureCheck(t.specs, t.key, t.kind, round, rows, t.text, t.page, from);
+  return { round, mode: "closure", findings: sortClosure(t.text, parseFindings(t.text, t.kind, round).findings, new Set(openBlocking(rows).map(b => b.id)), changed, baseline !== null), ...(baseline ? { baseline } : {}) };
 }
 
 export async function refuseRoundPastCap(verdict: string, readPath: string): Promise<void> {
@@ -1234,7 +1252,7 @@ export async function sealRound(verdict: string, readPath: string): Promise<void
       return;
     }
     if (!seedOf(rows) && !rows.some(r => r.row === "round") && !namesTicket(await readFile(t.governing, "utf8"), t.key)) throw new Error(`${t.governing}: front matter has no tickets: line naming ${t.key}`);
-    const row = { v: 1, ts: Date.now(), key: t.key, row: "round", critic: t.kind, round: admitted.round, epoch: rows.checked.epoch, return_sha: sum, verdict_path: t.v, read_path: t.page, read_sha: readSha, verdict: lastLine(t.text), mode: admitted.mode, ...parseFindings(t.text, t.kind, admitted.round), ...(admitted.findings ? { findings: admitted.findings } : {}) };
+    const row = { v: 1, ts: Date.now(), key: t.key, row: "round", critic: t.kind, round: admitted.round, epoch: rows.checked.epoch, return_sha: sum, verdict_path: t.v, read_path: t.page, read_sha: readSha, verdict: lastLine(t.text), mode: admitted.mode, ...parseFindings(t.text, t.kind, admitted.round), ...(admitted.findings ? { findings: admitted.findings } : {}), ...(admitted.baseline ? { baseline: "inferred", baseline_files: admitted.baseline.map(({ read_path, read_sha }) => ({ read_path, read_sha })) } : {}) };
     await snapshotBytes(t.specs, t.key, bytes, readSha);
     await appendFile(file, `${JSON.stringify(row)}\n`);
   });
@@ -1314,6 +1332,7 @@ function cappedDeclaredKey(text: string, key: string, frontmatter: boolean): voi
     return;
   }
   const lines = [...text.matchAll(/^Keys?:\s*(.+)$/gm)];
+  if (!lines.length) return;
   if (lines.length !== 1 || !new RegExp(`^(?:${key}|\\[\\s*${key}\\s*\\])$`).test(lines[0][1].trim())) throw new Error(`capped-fold: return must declare only ${key}`);
 }
 
@@ -1404,11 +1423,13 @@ type CappedPolicy = {
   reviewed(text: string, specSha: string, kind: Kind): void;
   headingOk(parenthetical: string): boolean;
   quotes(text: string): { sha: string; path: string }[];
+  closureReads: boolean;
 };
 // `path` is the return path as supplied: the evidence canonicalizes and reads it itself, in the order the verifier always did.
 type CappedReturnInput = { key: string; kind: Kind; path: string; spec: string; plan: string; specSha: string; planSha: string; rows: Rows; reader: CappedReader };
 
 export const v1Policy: CappedPolicy = {
+  closureReads: false,
   declaration: (text, expectedKey) => cappedDeclaredKey(text, expectedKey, false),
   reviewed: (text, specSha, kind) => {
     const reviewed = reviewedSpecHashes(text);
@@ -1434,6 +1455,7 @@ export const v2Policy = (keys: readonly string[]): CappedPolicy => ({
       && heading.critical === undefined && heading.critical_refused === undefined && !heading.reopens && !heading.regression;
   },
   quotes: readQuotesOf,
+  closureReads: true,
 });
 
 export async function cappedLedger(specs: string, key: string, reader: CappedReader): Promise<Rows> {
@@ -1458,14 +1480,20 @@ export async function cappedReturnEvidence(input: CappedReturnInput, policy: Cap
   if (cappedPathKeys(path).some(pathKey => pathKey !== key)) throw new Error("capped-fold: return filename/folder key disagrees");
   policy.declaration(text, key);
   const row = latestRow(rows, kind); const sum = returnSha(text);
-  if (!row || row.verdict_path !== path || row.return_sha !== sum || row.verdict !== lastLine(text)
-    || basename(path) !== `${basename(spec)}.critic-${kind}-r${row.round}.md`
+  const named = basename(path); const prefix = `${basename(spec)}.critic-${kind}-r`;
+  const fileRound = named.startsWith(prefix) && named.endsWith(".md") && /^[1-9]\d*$/.test(named.slice(prefix.length, -3)) ? Number(named.slice(prefix.length, -3)) : 0;
+  const fileRoundOf = (name: unknown) => Number(/-r([1-9]\d*)\.md$/.exec(basename(String(name)))?.[1] ?? 0);
+  const before = row ? roundRows(rows, kind).find(r => Number(r.round) === Number(row.round) - 1) : undefined;
+  const expectedRound = before && fileRoundOf(before.verdict_path) ? fileRoundOf(before.verdict_path) + 1 : row?.round;
+  if (!row || row.verdict_path !== path || row.return_sha !== sum || row.verdict !== lastLine(text) || fileRound !== expectedRound
     || roundRows(rows, kind).filter(r => r.round === row.round).length !== 1) throw new Error(`capped-fold: not the actual latest real ${kind} round`);
   policy.reviewed(text, specSha, kind);
   const findings = cappedFindings(text, kind, row.round, row, policy.headingOk);
   if (findings.length && (row.round < CRITIC_ROUND_CAP || !capRefusal(key, rows, kind, row.round + 1))) throw new Error("capped-fold: findings have not reached the refused round cap");
   const recorded = distinctFiles([sealedFileOf(row, false), ...rows.filter(r => r.row === "seal" && r.return_sha === sum).map(r => sealedFileOf(r, false))]);
-  const seals = sealsOf(text); const quotes = policy.quotes(text);
+  const seals = sealsOf(text); const base = dirname(path);
+  const artifactNames = new Set([...seals.map(seal => resolve(base, seal.rel)), spec, plan]);
+  const quotes = policy.quotes(text).filter(quote => !policy.closureReads || artifactNames.has(resolve(base, quote.path)));
   if (text.split("\n").filter(l => /^CONTENT-SHA256(?:\s|$)/.test(l)).length !== seals.length) throw new Error("capped-fold: malformed seal or READ quote");
   const quoted = new Map<string, string>();
   for (const quote of quotes) {
@@ -1487,10 +1515,13 @@ export async function cappedReturnEvidence(input: CappedReturnInput, policy: Cap
     const snapshot = await reader.read(join(ledgerDirOf(specs), ledgerEntryNames(key).folder, seal.sha));
     if (snapshot.sha256 !== seal.sha) throw new Error("capped-fold: content-addressed snapshot changed");
   }
-  if (recorded.length !== declared.size || quoted.size !== declared.size || recorded.some(s => declared.get(s.read_path) !== s.read_sha)
-    || declared.get(spec) !== specSha || (kind === "plan" && declared.get(plan) !== planSha)) throw new Error("capped-fold: missing/extra ledger seals or review coverage");
-  return { pin: { kind, path, sha256: got.sha256, round: row.round, return_sha: sum, residuals: findings.length },
-    carried: findings.map(finding => ({ key, epoch: rows.checked.epoch, kind, round: row.round, return_path: path, return_sha: sum,
+  const unsealed = [...quoted.keys()].filter(artifact => !declared.has(artifact));
+  const unsealedOk = policy.closureReads ? unsealed.every(artifact => quoted.get(artifact) === (artifact === spec ? specSha : artifact === plan ? planSha : null)) : quoted.size === declared.size;
+  const specBound = declared.get(spec) === specSha || (policy.closureReads && kind === "plan" && quoted.get(spec) === specSha);
+  if (recorded.length !== declared.size || !unsealedOk || recorded.some(s => declared.get(s.read_path) !== s.read_sha)
+    || !specBound || (kind === "plan" && declared.get(plan) !== planSha)) throw new Error("capped-fold: missing/extra ledger seals or review coverage");
+  return { pin: { kind, path, sha256: got.sha256, round: fileRound, return_sha: sum, residuals: findings.length },
+    carried: findings.map(finding => ({ key, epoch: rows.checked.epoch, kind, round: fileRound, return_path: path, return_sha: sum,
       finding_id: finding.id, severity: finding.severity as "minor" | "medium", status: "open-carried" as const })) };
 }
 
@@ -1800,7 +1831,7 @@ export async function closurePack(specs: string, key: string, kind: Kind): Promi
     const f = findingsNamed(rows, String(x.row.id)).find(h => h.return_sha === x.row.return_sha);
     if (f) out.push(await sealedBlock({ id: String(x.row.id), severity: String(f.f.severity), verdict_path: f.verdict_path, return_sha: f.return_sha }), restoreCheckBlock(x));
   }
-  out.push("", `## files round ${r - 1} read (sha256)`, ...prev.sealed.map(s => `${s.read_sha}  ${s.read_path}`), "", `## diff against the round ${r - 1} snapshots`);
+  out.push("", `## files round ${r - 1} read (sha256)`, ...(prev.sealed.length || r !== CRITIC_ROUND_CAP + 1 ? prev.sealed.map(s => `${s.read_sha}  ${s.read_path}`) : [`(round ${r - 1} sealed no file; the READ-SHA256 lines of the closure return are its baseline)`]), "", `## diff against the round ${r - 1} snapshots`);
   for (const s of prev.sealed) {
     const snap = snaps.get(s.read_path);
     out.push(snap ? (await diffOf(snap, s.read_path, basename(s.read_path))).trimEnd() || `(${basename(s.read_path)} is unchanged)` : `(no snapshot of ${s.read_path}; no diff)`);

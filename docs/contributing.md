@@ -143,14 +143,16 @@ for the rationale).
 node scripts/jira/dist/index.js create --type Task --skeleton   # prints the seven headings
 node scripts/jira/dist/index.js create --project HIMMEL --type Task \
   --title "Short subject" --desc-file body.md \
-  --parent HIMMEL-NNN --proposed-version <v>
+  --parent HIMMEL-NNN
 ```
 
 A Task, Story or Bug needs a body with the seven sections (Impact, What, Why,
-Plan, DoD, Proof, Agent detail), either `--parent <epic>` or
-`--labels standalone`, and a placement (`--proposed-version <v>`,
-`--fix-version`, or `--backlog --proposed-version backlog --why <line>`);
-`create` refuses it otherwise. `--sector` is required only where the project
+Plan, DoD, Proof, Agent detail) and either `--parent <epic>` or
+`--labels standalone`; `create` refuses it otherwise. It places the ticket by
+the four rules and needs no placement flag (an operator ask goes to the current
+version or the one it names via `--proposed-version <v>`, High and Highest to the
+current version, anything else to the backlog); `--fix-version` and
+`--backlog --proposed-version backlog --why <line>` place it by hand. `--sector` is required only where the project
 uses sectors (`jira.sectorField` in `~/.himmel/config.json`).
 
 ## Guard changes: one structural round

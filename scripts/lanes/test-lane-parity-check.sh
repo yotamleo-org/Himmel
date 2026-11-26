@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(cd "$HERE/../.." && pwd)"
+SUT="$HERE/lane-parity-check.sh"
+W="$(mktemp -d "${TMPDIR:-/tmp}/lane-parity-test.XXXXXX")" || exit 1
+trap 'rm -rf "$W"' EXIT
+fails=0
+
+pass() { printf 'ok - %s\n' "$1"; }
+fail() { printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }
+
+WIRING="
+.claude/settings.json
+marketplace/plugins/himmel-ops/hooks/hooks.json
+.codex/hooks.json
+scripts/hooks/antigravity-hook-adapter.sh
+docs/internals/lane-parity.md
+"
+
+fresh_root() {
+    local r="$W/$1" f
+    mkdir -p "$r"
+    for f in $WIRING; do
+        mkdir -p "$r/$(dirname "$f")"
+        cp "$REPO/$f" "$r/$f"
+    done
+    printf '%s' "$r"
+}
+
+set_cell() {
+    local doc="$1/docs/internals/lane-parity.md"
+    awk -F'|' -v OFS='|' -v cap="$2" -v col="$3" -v txt="$4" '
+        { c = $2; gsub(/[ `]/, "", c) }
+        c == cap { $(col + 2) = " " txt " " }
+        { print }
+    ' "$doc" > "$doc.new" && mv "$doc.new" "$doc"
+}
+
+run() { bash "$SUT" --root "$1" 2>&1; }
+
+out="$(bash "$SUT" 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ]; then pass "(a) real tree passes"; else fail "(a) real tree rc=$rc: $out"; fi
+
+r="$(fresh_root b)"
+sed 's/block-docker-privesc\.sh+//' "$r/.codex/hooks.json" > "$r/x" && mv "$r/x" "$r/.codex/hooks.json"
+out="$(run "$r")"; rc=$?
+if [ "$rc" -eq 1 ] && grep -q 'block-docker-privesc' <<< "$out"; then
+    pass "(b) lane missing a guard another has, no recorded reason: FAIL names the guard"
+else
+    fail "(b) rc=$rc out=$out"
+fi
+
+set_cell "$r" "guard:block-docker-privesc.sh" 2 "structural: fixture reason"
+out="$(run "$r")"; rc=$?
+if [ "$rc" -eq 0 ]; then pass "(c) recorded structural reason passes"; else fail "(c) rc=$rc out=$out"; fi
+
+r="$(fresh_root d)"
+sed 's/block-docker-privesc\.sh+//' "$r/.codex/hooks.json" > "$r/x" && mv "$r/x" "$r/.codex/hooks.json"
+set_cell "$r" "guard:block-docker-privesc.sh" 2 "gap" || fail "(d1) set_cell"
+out="$(run "$r")"; rc=$?
+if [ "$rc" -eq 1 ] && grep -q "cell 'gap' is not has" <<< "$out"; then pass "(d1) bare word cell fails"; else fail "(d1) rc=$rc out=$out"; fi
+set_cell "$r" "guard:block-docker-privesc.sh" 2 "structural:" || fail "(d2) set_cell"
+out="$(run "$r")"; rc=$?
+if [ "$rc" -eq 1 ] && grep -q "'structural' with no recorded reason" <<< "$out"; then pass "(d2) empty reason fails"; else fail "(d2) rc=$rc out=$out"; fi
+
+r="$(fresh_root e)"
+sed 's/block-docker-privesc\.sh+/block-docker-privesc.sh+zz-fixture-guard.sh+/' "$r/.codex/hooks.json" > "$r/x" && mv "$r/x" "$r/.codex/hooks.json"
+out="$(run "$r")"; rc=$?
+if [ "$rc" -eq 1 ] && grep -q 'zz-fixture-guard' <<< "$out"; then
+    pass "(e) wired guard with no row fails"
+else
+    fail "(e) rc=$rc out=$out"
+fi
+
+r="$(fresh_root f)"
+set_cell "$r" "guard:block-docker-privesc.sh" 2 "structural: stale reason"
+out="$(run "$r")"; rc=$?
+if [ "$rc" -eq 1 ] && grep -q 'block-docker-privesc' <<< "$out"; then
+    pass "(f) reason recorded for a wired guard fails"
+else
+    fail "(f) rc=$rc out=$out"
+fi
+
+r="$(fresh_root g)"
+printf '    # block-fork-sync-pr.sh is not wired here, this is only a comment\n' >> "$r/scripts/hooks/antigravity-hook-adapter.sh"
+out="$(run "$r")"; rc=$?
+if [ "$rc" -eq 0 ]; then pass "(g) a guard name in an adapter comment is not wiring"; else fail "(g) rc=$rc out=$out"; fi
+
+r="$(fresh_root "h dir")"
+out="$(run "$r")"; rc=$?
+if [ "$rc" -eq 0 ]; then pass "(h) a root path with a space is read whole"; else fail "(h) rc=$rc out=$out"; fi
+
+r="$(fresh_root i)"
+printf '{"hooks":{"PreToolUse":[]}}\n' > "$r/.codex/hooks.json"
+out="$(run "$r")"; rc=$?
+if [ "$rc" -eq 1 ] && grep -q 'codex wiring does not carry' <<< "$out"; then
+    pass "(i) an empty codex inventory reaches the table comparison"
+else
+    fail "(i) rc=$rc out=$out"
+fi
+
+if [ "$fails" -eq 0 ]; then echo "test-lane-parity-check: all pass"; exit 0; fi
+echo "test-lane-parity-check: $fails failed"
+exit 1

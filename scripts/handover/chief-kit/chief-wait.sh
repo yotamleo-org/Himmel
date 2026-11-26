@@ -517,6 +517,11 @@
 # Worker messages (SendMessage) wake a chief on their own; only the Telegram
 # and tick paths depend on this waiter.
 #
+# Station heal (needs --doc): after three consecutive samples whose tick line reads station=BEHIND:<components>
+# the waiter starts `station-sync.sh --heal` detached for the chief doc's bucket, at most once per 1800 s;
+# the streak and the start time live in <inbox>.wait.station-heal. CHIEF_WAIT_STATION replaces
+# station-sync.sh (tests).
+#
 # A pool-unresolved wake joins the housekeeping digest unless its value changed since the last
 # one: the capacity, the dispatchable keys or the unresolved lines (marker <inbox>.wait.poolhk,
 # cleared when the pool resolves). First sight and any change wake at once.
@@ -3215,6 +3220,38 @@ fail_woke() {
     [ "$(sed -n 1p "$key_file" 2>/dev/null)" = "$args_hash" ] && [ "$(sed -n 3p "$key_file" 2>/dev/null)" = failwoke ]
 }
 
+STATION_HEAL_SAMPLES=3
+STATION_HEAL_WINDOW=1800
+station_heal_file="$inbox.wait.station-heal"
+if [ -n "${CHIEF_WAIT_STATION:-}" ]; then station_cmd=("$CHIEF_WAIT_STATION"); else station_cmd=(bash "$HERE/station-sync.sh"); fi
+station_heal_step() {
+    local val="$1" streak last now hlog
+    [ -n "$console_doc" ] || return 0
+    streak=0; last=0
+    [ ! -f "$station_heal_file" ] || { IFS= read -r streak; IFS= read -r last; } < "$station_heal_file"
+    case "$streak" in ''|*[!0-9]*) streak=0 ;; esac
+    case "$last" in ''|*[!0-9]*) last=0 ;; esac
+    case "$val" in
+        BEHIND:pending|BEHIND:) streak=0 ;;
+        BEHIND:*) streak=$((streak + 1)) ;;
+        *) streak=0 ;;
+    esac
+    now="$(date +%s)"
+    if [ "$streak" -ge "$STATION_HEAL_SAMPLES" ] && [ $((now - last)) -ge "$STATION_HEAL_WINDOW" ]; then
+        printf '0\n%s\n' "$now" | atomic_write "$station_heal_file" 2>/dev/null || return 0
+        hlog="$HOME/.himmel/state/station-sync.out"
+        mkdir -p "$(dirname "$hlog")" 2>/dev/null
+        if command -v setsid >/dev/null 2>&1; then
+            setsid "${station_cmd[@]}" --heal --bucket "$(dirname "$console_doc")" --chief "$(basename "$console_doc" .md)" 9>&- >>"$hlog" 2>&1 </dev/null &
+        else
+            "${station_cmd[@]}" --heal --bucket "$(dirname "$console_doc")" --chief "$(basename "$console_doc" .md)" 9>&- >>"$hlog" 2>&1 </dev/null &
+        fi
+        return 0
+    fi
+    printf '%s\n%s\n' "$streak" "$last" | atomic_write "$station_heal_file" 2>/dev/null || true
+    return 0
+}
+
 succ_file="$inbox.wait.succession"
 pending=""
 r0_fold=""; r0_refold=""
@@ -3369,6 +3406,7 @@ while :; do
         if [ -n "$key" ]; then
             fail_streak=0
             fail_woke && save_key "${saved:-$key}"
+            station_heal_step "$(field station "$tick_line")"
             if record_usage_word_and_detect_recovery; then
                 printf 'WAKE budget-recovered from=%s usage=PROCEED\n' "$recovered_from"
                 [ -z "$legs_from" ] || timeout -k 5 60 bash "${CHIEF_WAIT_NUDGE:-$HERE/budget-nudge.sh}" "$legs_from" 2>&1 9>&- || true  # gnu-ok: Linux-only kit (timeout); swallow-ok: a failed or hung nudge never suppresses the wake

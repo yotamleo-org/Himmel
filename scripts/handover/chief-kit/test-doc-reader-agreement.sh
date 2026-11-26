@@ -12,7 +12,7 @@
 # grammar; the generator checks it against each doc's built-in intent):
 #   chief doc  worker set   tick.sh legset=unarmed (--workers "")  | board.mjs | fleet.mjs
 #   chief doc  malformed tick.sh livestate=MALFORMED
-#   worker doc      tail      tick.sh tails= | close-wrapped-worker.sh --check (rc 4 = not WRAPPED)
+#   worker doc      tail      tick.sh tails= | close-wrapped-worker.sh --check (rc 4 = not finished)
 #   worker doc      PR        board.mjs
 # A disagreement prints the doc, the reader and both values.
 #
@@ -108,9 +108,7 @@ if [ "${1:-}" = --one ]; then
     close-worker)
         bash "$CK/close-wrapped-worker.sh" --check "$doc" >/dev/null 2>&1
         rc=$?
-        # rc 4 = tail is not WRAPPED; rc 0 = tail WRAPPED, then no live session matched
-        # (CLOSED-ALREADY; the stubbed census has none); any other rc is a failure, never a tail verdict
-        case "$rc" in 4) v=notwrapped ;; 0) v=WRAPPED ;; *) v="rc$rc" ;; esac
+        case "$rc" in 4) v=unfinished ;; 0) v=finished ;; *) v="rc$rc" ;; esac
         printf 'close-tail\t%s\t%s\n' "$base" "$v"
         ;;
     esac
@@ -272,7 +270,7 @@ for row in csv.reader(open(expect), delimiter="\t"):
         if got != tail:
             disagree(doc, "worker-tail-status", got, tail)
         got = read.get(("close-tail", doc), "<no output>")
-        want = "WRAPPED" if tail == "WRAPPED" else "notwrapped"
+        want = "finished" if tail in ("WRAPPED", "HALTED") else "unfinished"
         if "close-wrapped-worker.sh" not in absent and got != want:
             disagree(doc, "close-wrapped-worker", got, want)
         if "board.mjs" in absent:

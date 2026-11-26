@@ -290,3 +290,132 @@ write / delete (symlink/junction-safe via `realpath`, fail-closed on an
 unreadable list). It is `present` and proved by `test-parity-guard.sh`; it is
 not one of the six deny-guards, so it is not a parity GAP, just an additional
 fence hermes carries.
+
+## CLI lane parity: Claude Code, Codex CLI and Antigravity
+
+The three command-line lanes are equals (operator, 2026-11-24; decision 1306, one
+trust model). A session on any of them should allow or refuse the same call. This
+table lists every capability once, with one cell per lane, so a difference is a
+row that says why. `scripts/lanes/lane-parity-check.sh` reads it and fails when a
+lane lacks a guard another lane has and the table records no reason; its suite is
+`scripts/lanes/test-lane-parity-check.sh`.
+
+Each lane cell is one of:
+
+- `has` (a note may follow): the lane carries the capability.
+- `structural: <reason>`: the lane cannot have it, because the CLI has no such tool
+  or the session role never runs there.
+- `gap-ticketed: <reason>`: the lane should have it, and the fix is a launcher, hook
+  or adapter edit that rides its own ticket. The reason names the file and the
+  change.
+
+A `guard:<hook>.sh` row is also checked against the real wiring: the PreToolUse
+entries of `.claude/settings.json` and the himmel-ops plugin `hooks.json` (Claude),
+`.codex/hooks.json` (Codex), and the tool arms of
+`scripts/hooks/antigravity-hook-adapter.sh` (Antigravity). `has` must be wired; a
+recorded reason must not be wired; a hook wired on any lane must have a row. A
+guard counts as wired on a lane when any hook entry or tool arm of that lane names
+it in code (a comment does not count); the check does not tell which tool arms
+carry it. The other rows are read by people.
+
+<!-- BEGIN cli-lane-parity -->
+
+| capability | claude | codex | antigravity |
+|---|---|---|---|
+| launcher | has: scripts/lanes/worker-claude-launcher.sh under headed-arm | has: the codex CLI with the himmel plugin set from scripts/codex/install-himmel-codex.sh; headless through scripts/codex/dispatch-codex-exec.sh | has: agy in a guarded T3 thread (lane antigravity-t3 in scripts/lanes/lanes.json); a headless agy call needs a headless-gemini-ok reason |
+| role profile | has: scripts/lanes/plugin-profiles.json resolved to --settings and an MCP allowlist | gap-ticketed: no Codex consumer reads scripts/lanes/plugin-profiles.json: a launcher edit under scripts/codex/ owes a role profile | gap-ticketed: no Antigravity consumer reads scripts/lanes/plugin-profiles.json: one always-on rule in .agents/rules/himmel-lane.md serves every role |
+| instruction projection | has: CLAUDE.md read natively | has: generated AGENTS.md, freshness-gated by agents-md-fresh | has: generated AGENTS.md plus .agents/rules/himmel-lane.md |
+| hook wiring | has: .claude/settings.json and the himmel-ops plugin hooks.json | has: .codex/hooks.json through .codex/run-hook.sh | has: .agents/hooks.json through scripts/hooks/antigravity-hook-adapter.sh |
+| deny bridge | has: a guard exits 2 to block | has: codex-hook-adapter.sh turns exit 2 into a JSON deny | has: the adapter emits a JSON deny and fails closed on error, timeout or a missing tool name |
+| tool: shell | has: Bash | has: Bash matcher | has: run_command, with a self-protect check over .agents, the gemini config and the T3 provider home |
+| tool: file read | has: Read and Grep | has: Read and Grep matcher | has: read_file |
+| tool: file write | has: Edit, Write, MultiEdit, NotebookEdit | has: Edit, Write, MultiEdit, NotebookEdit, apply_patch | has: edit_file and write_file, with a self-protect check on the path |
+| tool: subagent | has: the Agent tool behind the dispatch guards | has: an Agent PostToolUse hook (auto-arm-on-subagent-cap) | has: invoke_subagent behind peer-taint-gate; swarm, run_workflow, define_subagent, manage_subagents and manage_task are denied |
+| mcp: allowlist | has: a per-profile mcpAllow, strict MCP config | has: servers in the user config behind the mcp__.* guard chain | has: the adapter admits graphify and t3-code only, every other server is denied |
+| mcp: qmd | has: the qmd MCP server | has: the shared qmd daemon, added by the codex installer | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: the MCP allowlist (graphify, t3-code) refuses qmd; the run_command route scripts/lib/qmd-bounded.sh still works |
+| web: search | has: WebSearch | has: hosted web_search, cached by default | has: search_web |
+| web: fetch a URL | has: WebFetch | structural: the Codex CLI reads the web through hosted web_search only | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: the read_url_content arm is open, its URL argument key is unread without a live thread |
+| skills | has: .claude/skills and the himmel-ops plugin skills | has: the himmel-ops plugin skills | has: the .agents/skills subset |
+| `guard:allow-thread-resolve.sh` | has | structural: allow-only helper for Claude's permission prompt, it denies nothing | structural: allow-only helper for Claude's permission prompt, it denies nothing |
+| `guard:approval-grant-check.sh` | has | structural: allow-only helper for Claude's permission prompt, it denies nothing | structural: allow-only helper for Claude's permission prompt, it denies nothing |
+| `guard:auto-approve-safe-bash.sh` | has | has | structural: fail-open approver, not a deny-guard; the adapter allows a clean pass by default |
+| `guard:auto-arm-on-cap.sh` | has | has | structural: watchdog on the Claude subscription cap, fail-open by design, no Antigravity analog |
+| `guard:block-agent-native-egress.sh` | has | gap-ticketed: .codex/hooks.json: add block-agent-native-egress.sh to the mcp__.* chain | structural: MCP server agent-native is not on the adapter allowlist, which admits graphify and t3-code only |
+| `guard:block-antigravity-read-fence.sh` | structural: fences the Antigravity home and oauth token, a path Claude Code does not have | structural: fences the Antigravity home and oauth token, a path Codex does not have | has |
+| `guard:block-backend-tier.sh` | has | has | has |
+| `guard:block-bank-lift-writes.sh` | has | has | has |
+| `guard:block-bare-qmd-query.sh` | has | has | has |
+| `guard:block-busy-loop.sh` | has | gap-ticketed: .codex/hooks.json: add block-busy-loop.sh to the Bash chain | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: add block-busy-loop.sh to the run_command chain |
+| `guard:block-chokepoint-env-prefix.sh` | has | gap-ticketed: .codex/hooks.json: add block-chokepoint-env-prefix.sh to the Bash chain | has |
+| `guard:block-destructive-commands.sh` | has | has | has |
+| `guard:block-docker-privesc.sh` | has | has | has |
+| `guard:block-edit-live-settings.sh` | has | has | has |
+| `guard:block-edit-on-main.sh` | has | has | has |
+| `guard:block-fork-sync-pr.sh` | has | has | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: add block-fork-sync-pr.sh to the run_command chain |
+| `guard:block-git-stash.sh` | has | has | has |
+| `guard:block-graphify-egress.sh` | has | gap-ticketed: .codex/hooks.json: add block-graphify-egress.sh to the Bash chain | has |
+| `guard:block-himmel-config-writes.sh` | has | has | has |
+| `guard:block-infra-destroy.sh` | has | has | has |
+| `guard:block-jira-compound-write.sh` | has | gap-ticketed: .codex/hooks.json: add block-jira-compound-write.sh to the Bash chain | has |
+| `guard:block-lesson-enforcement-writes.sh` | has | has | has |
+| `guard:block-merged-pr-commit.sh` | has | has | has |
+| `guard:block-read-secrets.sh` | has | has | has |
+| `guard:block-rogue-claude-schedule.sh` | has | has | has |
+| `guard:block-rogue-codex-exec.sh` | has | gap-ticketed: .codex/hooks.json: add block-rogue-codex-exec.sh to the Bash chain | has |
+| `guard:block-subagent-park.sh` | has | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs |
+| `guard:block-subagent-release-operator.sh` | has | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs |
+| `guard:block-t3code-unwatch-open-pr.sh` | has | has | has |
+| `guard:block-tail-pipe-on-gates.sh` | has | gap-ticketed: .codex/hooks.json: add block-tail-pipe-on-gates.sh to the Bash chain | has |
+| `guard:block-terminal-write-fence.sh` | structural: the auto-mode classifier fences external writes on the Claude lane | has | has |
+| `guard:block-unresolved-cr-merge.sh` | has | gap-ticketed: .codex/hooks.json: add block-unresolved-cr-merge.sh to the Bash chain | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: add block-unresolved-cr-merge.sh to the run_command chain |
+| `guard:block-vault-sweep.sh` | has | structural: POC, off by default, measured on the Claude lane before another lane gets it | structural: POC, off by default, measured on the Claude lane before another lane gets it |
+| `guard:block-worker-askuserquestion.sh` | has | structural: AskUserQuestion is a Claude tool the other lanes do not have | structural: AskUserQuestion is a Claude tool; the adapter denies an unlisted tool |
+| `guard:block-worker-write-fence.sh` | has | gap-ticketed: .codex/hooks.json: add block-worker-write-fence.sh to the Bash chain | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: add block-worker-write-fence.sh to the run_command chain |
+| `guard:block-write-into-main-checkout.sh` | has | gap-ticketed: .codex/hooks.json: add block-write-into-main-checkout.sh to the Bash chain | has |
+| `guard:check-cr-marker-on-pr-create.sh` | has | has | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: add check-cr-marker-on-pr-create.sh to the run_command chain |
+| `guard:check-write-hold.sh` | has | gap-ticketed: .codex/hooks.json: add check-write-hold.sh to the Bash chain | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: add check-write-hold.sh to the run_command chain |
+| `guard:guard-agent-model.sh` | has | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs |
+| `guard:guard-bus-store.sh` | has | gap-ticketed: .codex/hooks.json: add guard-bus-store.sh to the Bash chain | has |
+| `guard:guard-chief-dispatch.sh` | has | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs |
+| `guard:guard-chief-foreground.sh` | has | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs |
+| `guard:guard-identical-denied-retry.sh` | has | has | has |
+| `guard:guard-implementor-dispatch.sh` | has | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs |
+| `guard:guard-judge-write-scope.sh` | has | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs |
+| `guard:guard-judge-writes.sh` | has | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs |
+| `guard:guard-memory-capture.sh` | has | structural: guards the Claude auto-memory store, which the other lanes do not have | structural: guards the Claude auto-memory store, which the other lanes do not have |
+| `guard:guard-merge-compound.sh` | has | gap-ticketed: .codex/hooks.json: add guard-merge-compound.sh to the Bash chain | has |
+| `guard:guard-pr-check-literal.sh` | has | has | has |
+| `guard:guard-readiness-tools.sh` | has | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs |
+| `guard:guard-relay-writes.sh` | has | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs |
+| `guard:guard-rm-writes.sh` | has | gap-ticketed: .codex/hooks.json: add guard-rm-writes.sh to the Bash chain | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: add guard-rm-writes.sh to the run_command chain |
+| `guard:guard-subagent-model.sh` | has | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs |
+| `guard:guard-t3-thread-tools.sh` | has | has | has |
+| `guard:guard-worker-context-handoff.sh` | has | has | structural: keys on the headed-arm --autocompact ceiling, which an Antigravity T3 thread does not carry |
+| `guard:guard-worker-wakeup.sh` | has | structural: ScheduleWakeup is a Claude tool the other lanes do not have | structural: ScheduleWakeup is a Claude tool; the adapter denies an unlisted tool |
+| `guard:inject-minerva-critic.sh` | has | structural: fires on the Claude Skill tool, which the other lanes do not have | structural: fires on the Claude Skill tool, which the other lanes do not have |
+| `guard:mcp-policy.sh` | has | has | has |
+| `guard:orchestrator-inline-guard.sh` | has | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs | structural: a Claude-session role (chief, judge, readiness, orchestrator or in-process subagent) that no CLI lane other than Claude Code runs |
+| `guard:peer-taint-gate.sh` | has | has | has |
+| `guard:read-clamp.sh` | has | has | has |
+| `guard:redirect-webfetch-walled-hosts.sh` | has | structural: no URL-fetch tool: Codex reads the web through hosted web_search only | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: the read_url_content arm is open, add the walled-host redirect when it lands |
+| `guard:require-quiet-run.sh` | has | has | has |
+
+<!-- END cli-lane-parity -->
+
+Reading the gaps:
+
+- **Codex** lacks eight Bash-command guards that Claude Code and Antigravity both
+  carry (`block-chokepoint-env-prefix`, `block-graphify-egress`,
+  `block-jira-compound-write`, `block-rogue-codex-exec`, `block-tail-pipe-on-gates`,
+  `block-write-into-main-checkout`, `guard-bus-store`, `guard-merge-compound`), and
+  six that only Claude Code carries. The fix is one edit to the Bash chain in
+  `.codex/hooks.json`.
+- **Antigravity** lacks `block-fork-sync-pr` and `check-cr-marker-on-pr-create`,
+  which Claude Code and Codex both carry. The fix is one edit to the `run_command`
+  chain in `scripts/hooks/antigravity-hook-adapter.sh`.
+- **Both** lack `block-busy-loop`, `block-unresolved-cr-merge`,
+  `block-worker-write-fence`, `check-write-hold` and `guard-rm-writes`, which only
+  Claude Code wires today.
+- The Claude-session role guards (chief, judge, readiness, orchestrator, in-process
+  subagent) are `structural`: those roles do not run on the other lanes. A role
+  that later runs on Codex or Antigravity turns its row into a `gap-ticketed` one.

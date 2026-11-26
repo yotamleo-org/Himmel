@@ -385,8 +385,11 @@ node scripts/api-lane/openai-api.mjs -p [prompt] --model M --max-budget-usd N [-
     [--effort none|low|medium|high|xhigh] [--append-system-prompt-file F]
 ```
 
-With no prompt after `-p` the prompt is read from stdin (a terminal and a prompt over 8 MiB are refused). The
-system-prompt file is sent as `instructions`. Any other flag is refused.
+With no prompt after `-p` the prompt is read from stdin (a terminal and a prompt over 8 MiB are refused).
+For GPT-6.2 Sol and Astra, the launcher sends the system-prompt file as a developer message before
+the user prompt so reusable instructions are eligible for prefix caching. It maps `--effort none`
+to `low`. Earlier models keep top-level `instructions` and receive effort as provided.
+[OpenAI GPT-6.2 migration guide](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6.2-astra#migration-quickstart)
 
 | Env | Meaning |
 |---|---|

@@ -36,7 +36,7 @@ fires.
 
 ## Scope and standing permissions
 
-These three notes are hand-written here rather than generated from `CLAUDE.md`:
+These notes are hand-written here rather than generated from `CLAUDE.md`:
 they are addressed to non-Claude harnesses reading this file, and `CLAUDE.md`
 is not the place to describe how another harness should scope its reading.
 
@@ -62,6 +62,12 @@ once they pass, broaden or repeat only when new changes justify it. Do not add
 tests that merely restate the implementation for a reversible, low-impact
 edit; the preference for the minimum code that solves the problem governs
 test code too.
+
+**Codex task completion.** Work toward the requested result and verify it
+before handing back. State reasonable, reversible assumptions and keep
+working within the task's permissions. If an approval, scope decision, or
+external dependency blocks one step, continue independent work. In the final
+report, give the result, the checks you ran, and any unresolved blockers.
 
 ---
 
@@ -107,8 +113,9 @@ call; work above your tier is returned.
 Invariants: spawn depth and concurrency are capped by
 `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` / `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`;
 haiku does NOT spawn; single-writer (many readers, ONE writer); salus dev/impl
-work routes to Claude tiers + Codex lanes + antigravity-t3, the Google trusted
-route, only; never GLM. Salus PHI egress is governed by
+work may route to the six harnesses decision 1375 approved: Gemini, Cursor, xAI/Grok,
+Copilot, Anthropic, OpenAI; Cursor, Grok and Copilot launches stay refused until their
+lane descriptors are complete; never GLM. Salus PHI egress is governed by
 `scripts/guardrails/egress-matrix.json`. Every dispatch
 carries a RETASK block with a fresh nonce; a revision arrives only as a direct
 message quoting it (a narrowing or halt needs no token), never widens
@@ -136,7 +143,8 @@ description: fix the cause, no larger than the ticket, and change the text in th
 
 ### Retrieval routing
 qmd finds content: `bash scripts/lib/qmd-bounded.sh query -c <name> "<question>"` (a miss is not proof of absence; a bare qmd call is refused).
-graphify explains structure: `bash scripts/graphify/worker-graph.sh query|explain|path "<x>"` (the bare graphify form fails in a worktree; this line wins over the section below).
+graphify explains structure: `bash scripts/graphify/worker-graph.sh explain|path "<symbol>"` (a query on a sentence is noise; the bare graphify form fails in a worktree; this line wins over the section below).
+Send each search as its own tool call, with no other call in the same response: a call sent beside one that a hook rewrites is refused unrun.
 Extraction runs on scratchpad copies, never live vaults. A live URL → `WebFetch` directly.
 
 ## WORKFLOWS

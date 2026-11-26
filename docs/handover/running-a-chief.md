@@ -284,7 +284,7 @@ pointers with their source, never your conclusion; nothing found is
 search under Dispatching a worker. Name the same route in the brief of any
 subagent you send looking for knowledge (for example
 bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c luna "worker brief Prior art"): a subagent inherits no
-search step and has hit a missing tool error on the connected route. A salus-marked repo searches
+search step and has hit a missing tool error on the connected route. Send each search as its own tool call, with no other call in the same response: a call sent beside one that a hook rewrites is refused unrun. A salus-marked repo searches
 nothing: no route in its brief, and no search on its ticket's words.
 
 The chief writes a brief from

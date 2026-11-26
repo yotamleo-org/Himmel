@@ -221,13 +221,17 @@ refuse() { mv "$1" "$1.refused"; log "REFUSED $2 $1"; send bypass-result "bypass
 live() { [ ! -e "$Q/stop" ] && [ "$(date +%s)" -lt "$EXPIRES" ]; }
 deadline() { if [ "$until" = forever ]; then echo $(( $(date +%s) + TTL )); else echo "$EXPIRES"; fi; }
 launch_env() {
-    local tmo=()
+    local tmo=() kid_env=() tabs_off=() b
     if [ -n "$SERVICE" ]; then
         [ -z "${LE_TIMEOUT:-}" ] || tmo=(timeout -k 2 "$LE_TIMEOUT")
-        ${tmo[@]+"${tmo[@]}"} env -i "${CHILD_BASE[@]}" ${SESS[@]+"${SESS[@]}"} "${envs[@]}" "$@"
+        for b in "${CHILD_BASE[@]}"; do
+            [ "$b" = HIMMEL_WORKER_SESSION_TABS=1 ] && [ -n "${names:-}" ] || kid_env+=("$b")
+        done
+        ${tmo[@]+"${tmo[@]}"} env -i "${kid_env[@]}" ${SESS[@]+"${SESS[@]}"} "${envs[@]}" "$@"
         return
     fi
-    env "${strip[@]}" -u WORKER_SESSION_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL -u WORKER_SESSION_API_LANE -u WORKER_SESSION_API_ACCOUNT \
+    [ -z "${names:-}" ] || tabs_off=(-u HIMMEL_WORKER_SESSION_TABS)
+    env "${strip[@]}" ${tabs_off[@]+"${tabs_off[@]}"} -u WORKER_SESSION_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL -u WORKER_SESSION_API_LANE -u WORKER_SESSION_API_ACCOUNT \
         -u HEADED_ARM_LAUNCHER_ENV -u HEADED_ARM_LAUNCHER_ENV_LINES "${envs[@]}" "$@"
 }
 session_env() {
@@ -388,18 +392,16 @@ lock_owner_alive() {
     local args re='(^|[ /])bypass-launchd\.sh'
     [ -n "$1" ] && kill -0 "$1" 2>/dev/null && args=$(ps -p "$1" -o args= 2>/dev/null) && [[ $args =~ $re ]]
 }
-take_lock() {
-    local seen cur rc=1 rl="$LOCK.reclaim"
-    ln -s "$$" "$LOCK" 2>/dev/null && return 0
-    seen=$(readlink "$LOCK" 2>/dev/null)
-    ! lock_owner_alive "$seen" || return 1
-    # Only the holder of the reclaim link may remove the stale lock, so a live lock is never moved aside. A
-    # reclaim link left by a starter that died is never removed here (that would be a second check-then-unlink):
-    # the operator removes it, and the start is refused with its path.
+refuse_dead_reclaim_link() {
+    echo "bypass-launchd: $1 was left by a starter that died; remove it and start again" >&2
+    return 2
+}
+reclaim_stale_lock() {
+    local seen=$1 cur rc=1 rl="$LOCK.reclaim"
     if ! ln -s "$$" "$rl" 2>/dev/null; then
         lock_owner_alive "$(readlink "$rl" 2>/dev/null)" && return 1
-        echo "bypass-launchd: $rl was left by a starter that died; remove it and start again" >&2
-        return 2
+        refuse_dead_reclaim_link "$rl"
+        return
     fi
     cur=$(readlink "$LOCK" 2>/dev/null)
     if [ "$cur" = "$seen" ] || [ -z "$cur" ]; then
@@ -408,6 +410,13 @@ take_lock() {
     fi
     rm -f "$rl"
     return $rc
+}
+take_lock() {
+    local seen
+    ln -s "$$" "$LOCK" 2>/dev/null && return 0
+    seen=$(readlink "$LOCK" 2>/dev/null)
+    ! lock_owner_alive "$seen" || return 1
+    reclaim_stale_lock "$seen"
 }
 release_lock() { [ "$(readlink "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"; }
 
