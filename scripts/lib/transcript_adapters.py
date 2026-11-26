@@ -29,6 +29,7 @@ CODEX_INJECTED_STARTS = ("# AGENTS.md instructions", "<environment_context>")
 CODEX_USER_KIND = "user.text"
 T3_MESSAGES = ("user_message", "assistant_message")
 T3_HUMAN_SOURCES = ("web", "mobile")
+T3_SERVER_MESSAGE_PREFIXES = ("scheduled-task-message:", "async-answer:")
 
 
 class AdapterError(Exception):
@@ -112,7 +113,8 @@ def t3_item_rows(path, upto=None):
         text = str(it["text"])
         if it["type"] == "assistant_message":
             out.append((n, _assistant(text)))
-        elif it.get("createdBy") == "user" and it.get("creationSource") in T3_HUMAN_SOURCES and not it.get("senderThreadId"):
+        elif it.get("createdBy") == "user" and it.get("creationSource") in T3_HUMAN_SOURCES and not it.get("senderThreadId") \
+                and not str(it.get("messageId") or "").startswith(T3_SERVER_MESSAGE_PREFIXES):
             out.append((n, _user(text)))
         else:
             sender = it.get("senderThreadId")
