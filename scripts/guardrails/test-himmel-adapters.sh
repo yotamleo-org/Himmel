@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # scripts/guardrails/test-himmel-adapters.sh - shape and coverage of the fork registry
 # scripts/guardrails/himmel-adapters.json: every yotamleo fork and first-party adapter repo has
-# exactly one row, each row has the six fields with a legal role, and the operator-ruled
-# merge_allowed set holds. A first-party repo has upstream null and role first-party.
+# exactly one row, each row has the seven fields with a legal role and a legal tier, and the
+# operator-ruled merge_allowed and CORE sets hold. A first-party repo has upstream null and
+# role first-party.
 #
 # Platform guard: POSIX bash 3.2+, jq.
 set -uo pipefail
@@ -15,8 +16,9 @@ check() { # name actual expected
   if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi
 }
 
-ROWS="yotamleo-org/caveman yotamleo-org/claude-hud yotamleo-org/claude-obsidian yotamleo-org/claude-squad yotamleo-org/claude-statusline yotamleo-org/codex yotamleo-org/codex-plugin-cc yotamleo-org/core yotamleo-org/effective-html yotamleo-org/graphify yotamleo-org/hermes-agent yotamleo-org/himmel-voice yotamleo-org/home-assistant.io yotamleo-org/obsidian-skills yotamleo-org/qmd yotamleo-org/twitter-cli"
+ROWS="yotamleo-org/caveman yotamleo-org/claude-hud yotamleo-org/claude-obsidian yotamleo-org/claude-squad yotamleo-org/claude-statusline yotamleo-org/claude-video yotamleo-org/codex yotamleo-org/codex-plugin-cc yotamleo-org/core yotamleo-org/effective-html yotamleo-org/graphify yotamleo-org/hermes-agent yotamleo-org/himmel-voice yotamleo-org/home-assistant.io yotamleo-org/obsidian-second-brain yotamleo-org/obsidian-skills yotamleo-org/qmd yotamleo-org/twitter-cli"
 MERGE_TRUE="yotamleo-org/graphify yotamleo-org/himmel-voice yotamleo-org/obsidian-skills yotamleo-org/qmd"
+CORE_ROWS="yotamleo-org/graphify yotamleo-org/qmd"
 # the recorded output of `gh repo list yotamleo-org --fork --json name` (2026-10-19)
 FORK_LIST="$HERE/fixtures/himmel-adapters/yotamleo-org-forks.json"
 # the recorded output of `gh repo list yotamleo-org --source --json name,isFork` for the
@@ -30,8 +32,11 @@ check "every fork row is yotamleo-org/<a fork in the recorded gh repo list>" "$(
 check "every first-party row is yotamleo-org/<a non-fork in the recorded gh repo list>" "$(jq -n -r --slurpfile reg "$REG" --slurpfile own "$FIRST_PARTY_LIST" '[$reg[0][] | select(.upstream == null) | .nwo | select((split("/")[0] != "yotamleo-org") or ((split("/")[1]) as $n | any($own[0][]; .name == $n and .isFork == false) | not))] | length' 2>/dev/null)" "0"
 check "every fork and first-party repo has a row, none extra" "$(jq -r '[.[].nwo] | sort | join(" ")' "$REG" 2>/dev/null)" "$ROWS"
 check "no nwo is listed twice" "$(jq -r '[.[].nwo] | length - (unique | length)' "$REG" 2>/dev/null)" "0"
-check "every row has the six fields" "$(jq -r '[.[] | select((keys | sort) != ["himmel_branch","merge_allowed","nwo","pin_site","role","upstream"])] | length' "$REG" 2>/dev/null)" "0"
+check "every row has the seven fields" "$(jq -r '[.[] | select((keys | sort) != ["himmel_branch","merge_allowed","nwo","pin_site","role","tier","upstream"])] | length' "$REG" 2>/dev/null)" "0"
 check "every role is one of the five" "$(jq -r '[.[] | select(.role | IN("runtime-dependency","upstream-contribution","vendored-source","dormant","first-party") | not)] | length' "$REG" 2>/dev/null)" "0"
+check "every row has a tier of CORE, LIGHT or PARK" "$(jq -r '[.[] | select(.tier | IN("CORE","LIGHT","PARK") | not)] | length' "$REG" 2>/dev/null)" "0"
+check "CORE only for the forks himmel runs on" "$(jq -r '[.[] | select(.tier == "CORE") | .nwo] | sort | join(" ")' "$REG" 2>/dev/null)" "$CORE_ROWS"
+check "obsidian-skills tracks its true upstream obsidianmd/obsidian-skills" "$(jq -r '[.[] | select(.nwo == "yotamleo-org/obsidian-skills") | .upstream] | first' "$REG" 2>/dev/null)" "obsidianmd/obsidian-skills"
 check "role first-party exactly when upstream is null" "$(jq -r '[.[] | select((.role == "first-party") != (.upstream == null))] | length' "$REG" 2>/dev/null)" "0"
 check "merge_allowed is a boolean and himmel_branch a non-empty string" "$(jq -r '[.[] | select((.merge_allowed | type) != "boolean" or (.himmel_branch | type) != "string" or .himmel_branch == "")] | length' "$REG" 2>/dev/null)" "0"
 check "every upstream is an owner/name, or null for a first-party repo" "$(jq -r '[.[] | select(.upstream != null) | select((.upstream | type) != "string" or (.upstream | test("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$") | not))] | length' "$REG" 2>/dev/null)" "0"
@@ -45,23 +50,25 @@ out=$(registry_checks "$HERE/himmel-adapters.json")
 printf '%s\n' "$out"
 fails=$(printf '%s\n' "$out" | grep -c '^FAIL')
 
-# a broken copy of the real registry must be refused by the role/upstream check itself
-refused() { # name jq-filter
+# a broken copy of the real registry must be refused by the named check itself
+refused() { # name jq-filter check-name
   if ! jq "$2" "$HERE/himmel-adapters.json" > "$TMP/reg.json"; then
     echo "FAIL $1: jq could not build the broken copy"; fails=$((fails + 1)); return
   fi
   case "$(registry_checks "$TMP/reg.json")" in
-    *"FAIL role first-party exactly when upstream is null:"*) hit=1 ;;
+    *"FAIL $3:"*) hit=1 ;;
     *) hit=0 ;;
   esac
   if [ "$hit" -eq 1 ]; then
     echo "ok   $1"
   else
-    echo "FAIL $1: the role/upstream check did not refuse it"; fails=$((fails + 1))
+    echo "FAIL $1: the '$3' check did not refuse it"; fails=$((fails + 1))
   fi
 }
-refused "a dormant row with upstream null is refused" 'map(if .nwo == "yotamleo-org/himmel-voice" then .role = "dormant" else . end)'
-refused "a first-party row with an upstream is refused" 'map(if .nwo == "yotamleo-org/himmel-voice" then .upstream = "x/y" else . end)'
+refused "a dormant row with upstream null is refused" 'map(if .nwo == "yotamleo-org/himmel-voice" then .role = "dormant" else . end)' "role first-party exactly when upstream is null"
+refused "a first-party row with an upstream is refused" 'map(if .nwo == "yotamleo-org/himmel-voice" then .upstream = "x/y" else . end)' "role first-party exactly when upstream is null"
+refused "a row with no tier is refused" 'map(if .nwo == "yotamleo-org/twitter-cli" then del(.tier) else . end)' "every row has a tier of CORE, LIGHT or PARK"
+refused "a row with an unknown tier is refused" 'map(if .nwo == "yotamleo-org/twitter-cli" then .tier = "WARM" else . end)' "every row has a tier of CORE, LIGHT or PARK"
 
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-himmel-adapters.sh"
