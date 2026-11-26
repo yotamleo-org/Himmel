@@ -1,5 +1,4 @@
 {
-  "_comment": "Antigravity profiles T3 Code gets as provider instances (antigravity_<name>). Each profile gets a private agy home whose skills.json points at the plugin skills of its fromProfiles (from scripts/lanes/plugin-profiles.json) plus the pinned skills below; see docs/internals/t3-antigravity-profiles.md.",
   "profiles": {
     "design": {
       "fromProfiles": ["design", "design-imagegen"],
