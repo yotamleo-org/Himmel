@@ -24,6 +24,8 @@ const BUDGET_BOUNDS: Record<keyof Budgets, [number, number]> = {
 };
 export const DEFAULT_BUDGETS: Budgets = { jobsPerDay: 10, vmMinutesPerDay: 120, queueMax: 3, maxJobMinutes: 130 };
 export const ALIAS_RE = /^[a-z0-9-]{1,32}$/;
+export const PAIR_CARD_RE = /^#pair station=([a-z0-9][a-z0-9-]{0,31}) key=([A-Za-z0-9+/]{43}=)$/;
+export const pairCard = (station: string, pub: string) => `#pair station=${station} key=${pub}`;
 
 export type Theirs = { username: string; opens: OpenKind[]; maxOpenThreads: number; maxPerMinute: number; copiedAt: string; stationName?: string; keys: TheirKey[]; imageDigest?: string };
 export type Peer = {
@@ -46,6 +48,7 @@ export type Config = {
   self: { stationName?: string };
   operatorBotId: string;
   operatorChatId: number;
+  operatorDmChatId: number | null;
   bridgeRoot: string;
   himmelRoot: string;
   peers: Record<string, Peer>;
@@ -216,6 +219,8 @@ export function readPeersFile(path: string): Config {
   const operatorBotId = str(raw.operatorBotId, "operatorBotId");
   if (!BOT_ID_RE.test(operatorBotId)) bad("operatorBotId must be digits");
   if (typeof raw.operatorChatId !== "number" || !Number.isSafeInteger(raw.operatorChatId)) bad("operatorChatId must be a number");
+  const operatorDmChatId = raw.operatorDmChatId ?? null;
+  if (operatorDmChatId !== null && operatorDmChatId !== raw.operatorChatId) bad("operatorDmChatId must be null or the operator chat id");
   const bridgeRoot = str(raw.bridgeRoot, "bridgeRoot");
   const himmelRoot = str(raw.himmelRoot, "himmelRoot");
   if (!isAbsolute(bridgeRoot) || !isAbsolute(himmelRoot)) bad("bridgeRoot and himmelRoot must be absolute paths");
@@ -230,7 +235,7 @@ export function readPeersFile(path: string): Config {
   }
   const self = raw.self === undefined ? {} : raw.self;
   if (!self || typeof self !== "object" || Array.isArray(self)) bad("self must be an object");
-  return { self: { stationName: stationName(self.stationName, "self.stationName") }, operatorBotId, operatorChatId: raw.operatorChatId, bridgeRoot, himmelRoot, peers, maxTextChars, addressing: "command" };
+  return { self: { stationName: stationName(self.stationName, "self.stationName") }, operatorBotId, operatorChatId: raw.operatorChatId, operatorDmChatId, bridgeRoot, himmelRoot, peers, maxTextChars, addressing: "command" };
 }
 
 export function loadConfig(path: string, env: NodeJS.ProcessEnv = process.env): Config {

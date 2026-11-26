@@ -4,10 +4,10 @@ import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Chain, readChain, signTap, submitSpool } from "./chain";
-import { makePeerTap } from "../telegram/peer-notify-route";
+import { readNotifyCursor } from "./poller";
 import { draftState } from "./drafts";
 import { notifyFile, renderNotify } from "./notify";
-import type { Config } from "./config";
+import { ConfigError, type Config } from "./config";
 import { ackToken, digestFile } from "./digests";
 import { admit, createGateState, noteAdmitted } from "./gate";
 import { checkEnvelopeOutbound } from "./egress";
@@ -40,19 +40,21 @@ function himmelRoot(): string {
 }
 
 function makeTg() {
-  const sent: { chat: number; text: string; replyTo?: number }[] = [];
+  const sent: { chat: number; text: string; replyTo?: number; markup?: any }[] = [];
+  const answers: string[] = [];
   const script: (() => void)[] = [];
   let mid = 9000;
   const tg: TgLike = {
     getUpdates: async () => [],
     getChatMember: async () => ({ user: { username: OUR_NAME } }),
-    sendMessage: async (chat: number, text: string, replyTo?: number) => {
-      sent.push({ chat, text, replyTo });
+    sendMessage: async (chat: number, text: string, replyTo?: number, markup?: any) => {
+      sent.push({ chat, text, replyTo, ...(markup ? { markup } : {}) });
       script.shift()?.();
       return { message_id: ++mid };
     },
+    answerCallbackQuery: async (_id: string, text: string) => { answers.push(text); },
   };
-  return { tg, sent, script };
+  return { tg, sent, script, answers };
 }
 
 type Env = Awaited<ReturnType<typeof setup>>;
@@ -395,7 +397,7 @@ test("a root resend with the same id goes out once egress allows it", async () =
 });
 
 test.skipIf(!!process.env.PEER_RED_COPY)("I4 mutation: with the egress call removed from the poller every send path turns red", () => {
-  const root = makeRedCopy(["scripts/telegram/peer-notify-route.ts", "scripts/telegram/bus.ts","scripts/telegram/gate.ts", "scripts/telegram/lockdown.ts", "scripts/guardrails/egress-matrix-eval.mjs", "scripts/guardrails/egress-matrix.json", "scripts/lib/redact.sh"]);
+  const root = makeRedCopy(["scripts/telegram/bus.ts","scripts/telegram/gate.ts", "scripts/telegram/lockdown.ts", "scripts/guardrails/egress-matrix-eval.mjs", "scripts/guardrails/egress-matrix.json", "scripts/lib/redact.sh"]);
   const run = () => spawnSync("bun", ["test", "./scripts/peer-bridge/poller.test.ts"], { cwd: root, encoding: "utf8", env: { ...process.env, PEER_RED_COPY: "1" } });
   const clean = run();
   expect(clean.status).toBe(0);
@@ -525,6 +527,41 @@ test("a refusal at steps 2-7 logs the step, the msg and a sha256 only, and write
   expect(chainOf(e, "envelope-ids.jsonl")).toEqual([]);
   expect(e.sent).toEqual([]);
   expect(Number(readFileSync(join(e.stateDir, "offset"), "utf8"))).toBe(bad.update_id + 1);
+});
+
+test("envelopes dropped for an untrusted key give exactly one operator alert naming the pairing step, and an unset station name gives its own", async () => {
+  const e = await envSetup();
+  const stranger = TE.mkStation("example");
+  await e.poller.processBatch([envMsg(e, stranger), envMsg(e, stranger), envMsg(e, stranger, "capacity-ask")]);
+  const alerts = () => readChain(notifyFile(e.stateDir)).filter(r => (r as any).type === "unpaired") as any[];
+  expect(alerts().map(r => [r.missing, r.key])).toEqual([["their-key", stranger.key.id]]);
+  expect(renderNotify(alerts()[0], e.cfg.himmelRoot).text).toBe(`peer example · a signed message was dropped: its key ${stranger.key.id} is not trusted yet. Finish pairing: bun ${e.cfg.himmelRoot}/scripts/peer-bridge/setup.ts pair example --card '<their card>'`);
+  (e.cfg as any).self = {};
+  await e.poller.processBatch([envMsg(e, e.st), envMsg(e, e.st)]);
+  expect(alerts().map(r => r.missing)).toEqual(["their-key", "our-name"]);
+  const again = await Poller.create(e.deps);
+  await again.processBatch([envMsg(e, stranger)]);
+  expect(alerts()).toHaveLength(2);
+  expect(e.sent.filter(s => s.chat === CHAT)).toEqual([]);
+  TE.dropStation(stranger);
+});
+
+test("a trust written to peers.json reaches the running poller through reload, with no confirm record", async () => {
+  const e = await envSetup();
+  const next = TE.mkStation("example");
+  await e.poller.processBatch([envMsg(e, next)]);
+  expect(chainOf(e, "inbox.jsonl")).toEqual([]);
+  const cfg2 = structuredClone(e.cfg);
+  cfg2.peers.example.theirs.keys = [...cfg2.peers.example.theirs.keys, { id: next.key.id, pub: next.key.pub, addedAt: "2026-11-08T00:00:00Z" }];
+  const poller = await Poller.create({ ...e.deps, reloadConfig: () => cfg2 });
+  await poller.recover();
+  expect(await poller.reload()).toBe(true);
+  await poller.processBatch([envMsg(e, next)]);
+  expect(chainOf(e, "inbox.jsonl")).toHaveLength(1);
+  expect(chainOf(e, "outbox.jsonl").some(r => r.kind === "confirmed")).toBe(false);
+  const bad = await Poller.create({ ...e.deps, reloadConfig: () => { throw new ConfigError("peers.json must be mode 0600"); } });
+  expect(await bad.reload()).toBe(false);
+  TE.dropStation(next);
 });
 
 test("the envelope window survives a restart: a replay of an admitted envelope is dropped", async () => {
@@ -657,7 +694,7 @@ test("restart order: the Telegram backlog lands before the first deadline tick, 
 });
 
 test.skipIf(!!process.env.PEER_RED_COPY)("RED control: a start that ticks before it drains the backlog sends the cancel", () => {
-  const root = makeRedCopy(["scripts/telegram/peer-notify-route.ts", "scripts/telegram/bus.ts","scripts/telegram/gate.ts", "scripts/telegram/lockdown.ts", "scripts/guardrails/egress-matrix-eval.mjs", "scripts/guardrails/egress-matrix.json", "scripts/lib/redact.sh"]);
+  const root = makeRedCopy(["scripts/telegram/bus.ts","scripts/telegram/gate.ts", "scripts/telegram/lockdown.ts", "scripts/guardrails/egress-matrix-eval.mjs", "scripts/guardrails/egress-matrix.json", "scripts/lib/redact.sh"]);
   const run = () => spawnSync("bun", ["test", "./scripts/peer-bridge/poller.test.ts"], { cwd: root, encoding: "utf8", env: { ...process.env, PEER_RED_COPY: "1" } });
   expect(run().status).toBe(0);
   const target = join(root, "scripts/peer-bridge/poller.ts");
@@ -1306,15 +1343,78 @@ test("a tap naming the operator but carrying no signature leaves the draft pendi
   expect(e.sent).toHaveLength(0);
 });
 
-test("a tap written by the Telegram side's makePeerTap approves the draft", async () => {
+const dmUpdate = (over: Record<string, any>) => ({ update_id: ++uid, message: { message_id: ++mid, date: 1, chat: { id: Number(OP), type: "private" }, from: { id: Number(OP), is_bot: false }, ...over } });
+const tapUpdate = (data: string, from = Number(OP), chat = Number(OP)) => ({ update_id: ++uid, callback_query: { id: `cb${uid}`, data, from: { id: from }, message: { message_id: 1, chat: { id: chat } } } });
+const dmSends = (e: Env) => e.sent.filter(s => s.chat === Number(OP));
+
+test("an Approve tap in the operator DM approves the draft; a tap from another user or chat, or under lockdown, is refused", async () => {
   const e = await setup();
+  e.cfg.operatorDmChatId = Number(OP);
   const id = await draftIt(e, { kind: "info", text: "real approval" });
-  const t = makePeerTap({ stateDir: e.stateDir, configDir: e.configDir, root: tmp("peer-poller-root-"), access: () => ({ allowFrom: [OP] }) as any, answer: async () => {}, clock: () => e.c.t });
-  t({ callback_id: "cb", from: Number(OP), chat_id: Number(OP), data: `peer:ok:example:${id}` });
-  await t.idle();
+  await e.poller.processBatch([tapUpdate(`peer:ok:example:${id}`, 777), tapUpdate(`peer:ok:example:${id}`, Number(OP), -100777)]);
+  writeFileSync(join(e.cfg.bridgeRoot, "lockdown"), "locked\n");
+  await e.poller.processBatch([tapUpdate(`peer:ok:example:${id}`)]);
+  rmSync(join(e.cfg.bridgeRoot, "lockdown"));
   await e.poller.drainSpool();
+  expect(e.answers).toEqual(["Not authorized.", "Not authorized.", "locked, reset at the station"]);
+  expect(draftState(outbox(e), id)).toBe("PENDING");
+  await e.poller.processBatch([tapUpdate(`peer:ok:example:${id}`)]);
+  await e.poller.drainSpool();
+  expect(e.answers.at(-1)).toBe("Received");
   expect(outbox(e).filter(r => r.kind === "intent")).toHaveLength(1);
-  expect(e.sent).toHaveLength(1);
+  expect(e.sent.filter(s => s.chat === CHAT)).toHaveLength(1);
+});
+
+test("notify records reach the operator DM once, a draft carries Approve and Reject, and the cursor survives a restart", async () => {
+  const e = await setup();
+  await e.poller.processBatch([askRoot()]);
+  expect(dmSends(e)).toHaveLength(0);
+  e.cfg.operatorDmChatId = Number(OP);
+  const id = await draftIt(e, { kind: "info", text: "status line" });
+  const dm = dmSends(e);
+  expect(dm.map(s => s.text.split("\n")[0])).toEqual(readChain(notifyFile(e.stateDir)).map(r => renderNotify(r as any, e.cfg.himmelRoot).text.split("\n")[0]));
+  expect(dm.at(-1)!.markup).toEqual({ inline_keyboard: [[{ text: "Approve", callback_data: `peer:ok:example:${id}` }, { text: "Reject", callback_data: `peer:no:example:${id}` }]] });
+  expect(readNotifyCursor(e.stateDir).n).toBe(readChain(notifyFile(e.stateDir)).length);
+  const again = await Poller.create(e.deps);
+  await again.recover();
+  await again.tick();
+  expect(dmSends(e)).toHaveLength(dm.length);
+});
+
+test("a malformed line in the notify chain stops notify delivery with one alert instead of throwing", async () => {
+  const e = await setup();
+  e.cfg.operatorDmChatId = Number(OP);
+  await draftIt(e, { kind: "info", text: "status line" });
+  const sent = dmSends(e).length;
+  writeFileSync(notifyFile(e.stateDir), "{not json\n", { flag: "a" });
+  await e.poller.flushIntents();
+  await e.poller.flushIntents();
+  expect(dmSends(e).slice(sent).map(s => s.text)).toEqual([`peer notify chain failed verification at #${sent + 1}; nothing more is sent until it is checked`]);
+});
+
+test("a DM reply to an escalation drafts an answer; a stranger's private message and a non-reply draft nothing", async () => {
+  const e = await setup();
+  e.cfg.operatorDmChatId = Number(OP);
+  await e.poller.processBatch([askRoot()]);
+  const esc = e.sent.find(s => s.chat === Number(OP) && s.text.includes("UNTRUSTED"))!;
+  expect(esc).toBeDefined();
+  const escMid = 9000 + e.sent.indexOf(esc) + 1;
+  await e.poller.processBatch([
+    dmUpdate({ chat: { id: 31337, type: "private" }, from: { id: 31337, is_bot: false }, text: "stranger", reply_to_message: { message_id: escMid, from: { id: Number(OUR_ID), is_bot: true } } }),
+    dmUpdate({ text: "not a reply" }),
+    dmUpdate({ text: "my answer", reply_to_message: { message_id: escMid, from: { id: Number(OUR_ID), is_bot: true } } }),
+  ]);
+  await e.poller.drainSpool();
+  expect(outbox(e).filter(r => r.kind === "draft").map(r => [r.source, r.msgKind, r.text])).toEqual([["telegram", "answer", "my answer"]]);
+  expect(dmSends(e).map(s => s.text)).toContain("reply to a peer message to draft an answer; nothing was sent");
+  writeFileSync(join(e.stateDir, "notify", "sent", "777"), JSON.stringify({ n: 1, type: "escalate", peer: "example", root: 101, dir: "in", ts: e.c.t }));
+  await e.poller.processBatch([dmUpdate({ text: "to an operator-bot entry", reply_to_message: { message_id: 777, from: { id: Number(OUR_ID), is_bot: true } } })]);
+  expect(dmSends(e).at(-1)!.text).toBe("that message is not on record; nothing was sent");
+  const before = dmSends(e).length;
+  await e.poller.processBatch([dmUpdate({ text: "/start" }), dmUpdate({ text: "/lockdown" })]);
+  expect(dmSends(e).slice(before).map(s => s.text)).toEqual(["commands are not taken in this chat, /lockdown included: send them to your operator bot; nothing was done"]);
+  expect(e.sent.some(s => s.chat === 31337)).toBe(false);
+  expect(readChain(join(e.peerDir, "inbox.jsonl")).some(r => JSON.stringify(r).includes("my answer") || JSON.stringify(r).includes("stranger"))).toBe(false);
 });
 
 test("a signature over a different draft, verdict, operator, time or peer is refused", async () => {
