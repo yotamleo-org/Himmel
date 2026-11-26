@@ -70,4 +70,5 @@ right one:
 It is a workflow nudge, so it fails **open**: no `jq`, input it cannot parse, a missing or failing `t3` CLI, or a
 thread absent from the list all allow the call. It cannot see a finished task (rule 1) or a thread that ends
 between the check and the send. Bypass for one session: `T3_STEER_BYPASS=1` in the launching shell. Test seams:
-`T3_STEER_BIN` (the `t3` CLI) and `T3_STEER_PROJECT`.
+`T3_STEER_BIN` (the `t3` CLI; default `$HOME/.t3/bin/t3`) and `T3_STEER_PROJECT` (the project the thread list is
+read for; default the Git top-level of the payload's working directory).
