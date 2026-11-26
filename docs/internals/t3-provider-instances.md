@@ -21,8 +21,8 @@ One `providerInstances.claudeAgent_<profile>` entry per profile:
   Artifact tool denied. The built-in default instance, `providerInstances.claudeAgent`
   (created when absent, its other `config` kept), gets the same file, so a T3 thread on
   either writes local HTML like a terminal session. A `launchArgs` the user set on
-  `claudeAgent` is left alone with a warning (only a `--settings .../artifact-deny.json`
-  the script wrote itself is refreshed), and that entry never counts as covering a profile. A profile
+  `claudeAgent` is left alone with a warning (only a `--settings .../<12 hex>/artifact-deny.json`
+  of the shape the script writes is refreshed), and that entry never counts as covering a profile. A profile
   with `artifact: true` (`user`, the design family) keeps the tool through its own file.
 - A profile already reachable through another instance (same `<profile>.json` in
   its `--settings`, e.g. the hand-made `claudeAgent_claude_chief`) gets no new id.

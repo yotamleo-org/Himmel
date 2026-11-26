@@ -90,7 +90,7 @@ for p in $PROFILES; do
     GEN="$(printf '%s' "$GEN" | jq --arg p "$p" --arg a "$args" '.[$p] = $a')" || die 2 "jq failed"
 done
 
-OWNED_RE='^--settings [^ ]*/artifact-deny\.json$'
+OWNED_RE='^--settings [^ ]*/[0-9a-f]{12}/artifact-deny\.json$'
 USER_ARGS="$(jq -r --arg re "$OWNED_RE" '(.providerInstances.claudeAgent.config.launchArgs // "") | if . == "" or test($re) then "" else . end' "$FILE")" || die 2 "jq failed"
 [ -z "$USER_ARGS" ] || echo "provider-instances: claudeAgent carries its own launchArgs; left alone, so the default Artifact deny is not added to it" >&2
 

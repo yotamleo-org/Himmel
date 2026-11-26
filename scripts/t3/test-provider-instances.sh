@@ -237,8 +237,13 @@ env T3_PI_RESOLVER="$T/resolver.sh" T3_PI_PROFILES="alpha" bash "$GEN" --apply -
 expect_eq "default instance naming a profile's --settings is kept" "$(launch_args "$U2" claudeAgent)" "--settings /stable/h1/alpha.json"
 expect_eq "that profile still gets its own instance" "$(launch_args "$U2" claudeAgent_alpha)" "--settings /stable/h1/alpha.json --mcp-config /stable/mcp-aaa/alpha.mcp.json --strict-mcp-config"
 
+U4="$T/userargs4.json"
+printf '{"providerInstances":{"claudeAgent":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /custom/artifact-deny.json"}}}}' > "$U4"
+env T3_PI_RESOLVER= T3_PI_PROFILES="user" bash "$GEN" --apply --settings-file "$U4" >/dev/null 2>&1
+expect_eq "a user's own artifact-deny.json outside the generator's hash dir is kept" "$(launch_args "$U4" claudeAgent)" "--settings /custom/artifact-deny.json"
+
 U3="$T/userargs3.json"
-printf '{"providerInstances":{"claudeAgent":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /old/abc/artifact-deny.json"}}}}' > "$U3"
+printf '{"providerInstances":{"claudeAgent":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /old/0123456789ab/artifact-deny.json"}}}}' > "$U3"
 env T3_PI_RESOLVER= T3_PI_PROFILES="user" bash "$GEN" --apply --settings-file "$U3" >/dev/null 2>&1
 expect_eq "launchArgs the script wrote earlier are refreshed" "$(artifact_of "$(settings_of "$U3" claudeAgent)")" 0
 
