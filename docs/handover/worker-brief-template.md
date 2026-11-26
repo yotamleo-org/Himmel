@@ -205,7 +205,7 @@ template_version: 3
 >    Append nothing (no
 >    `>`, `2>&1`, `| tail`, `; echo rc`, `timeout`/`env` prefix): to show a RED
 >    row, run it that way and Read the log path the ERR line prints.
->    A station is never load tested: "works under load" is proved with a stubbed clock, a simulated slow tick or CI.
+>    A station is never load tested: use a stubbed clock, a simulated slow tick or CI.
 >    Edit files with the Edit tool; a script that must name a seam variable,
 >    `unset` or `-u` goes in a file run as `python3 -I <file>`, never a
 >    heredoc or `perl -pi` on the command line (`block-chokepoint-env-prefix`).

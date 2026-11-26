@@ -97,7 +97,7 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
   cgroup `memory.events`; all-zero → run the suite foreground, `BLOCKED` with numbers. [prose]
 - **Never pipe into a gate script.** [enforced: block-tail-pipe-on-gates]
 - **Never bare `git stash`.** [enforced: block-git-stash]
-- **A station is never load tested**: "works under load" is proved with a stubbed clock, a simulated slow tick or CI. [prose]
+- **A station is never load tested**: use a stubbed clock, a simulated slow tick or CI. [prose]
 - **Token discipline.** Batch every independent tool call of a step into ONE
   turn, never emit a text-only turn between tool calls; narrate in the Results
   bullet, not in chat. [prose]
@@ -123,7 +123,7 @@ commands: VM only): `worker-sections/shell-and-tests.md`.
 - **Attestation trailers go in the FIRST commit** (`Platforms tested: <os>`;
   `Security reviewed: <token>`, tokens listed in `check-security-reviewed.sh`).
   Never `git commit --amend` (blocked): use the stuck playbook. [enforced: security-reviewed]
-- **Order: commit → push → `/pr-check` → open the PR** with `bash scripts/lanes/worker-pr-open.sh <title-file> <body-file>` (refused while review is pending). **One push per review round**: one commit of every fix, title/body/`## Ticket coverage` edits too. [prose]
+- **Order: commit → push → `/pr-check` → open the PR** with `bash scripts/lanes/worker-pr-open.sh <title-file> <body-file>`. **One push per review round**: one commit of every fix, title/body/`## Ticket coverage` edits too. [prose]
 - Once open: `/pr-check` at the `READY` head → as it enters final CI, `JUDGE-REQUEST <pr> <head>` (`worker-sections/judge-request.md`) → `scripts/check-ci.sh <pr> --max-wait 3000` in `run_in_background`; its exit code decides → `READY` bullet. [prose]
 - **Lint `## Ticket coverage` before `READY`:**
   `bash scripts/handover/chief-kit/ready-check.sh --only 7 <pr>` until it prints
@@ -147,7 +147,7 @@ commands: VM only): `worker-sections/shell-and-tests.md`.
   a reply, nudge once, then wrap. [prose]
 - **Adapter repo: you stop at `READY`.** On a registered himmel adapter repo
   (`scripts/guardrails/himmel-adapters.json`) not confirmed PRIVATE,
-  `merge-on-green.sh` refuses; the chief merges with `merge-fork-pr.sh` (`--jira-transition` if `completes-ticket: yes`). Write `READY`, hold for
+  `merge-on-green.sh` refuses; the chief merges with `merge-fork-pr.sh`. Write `READY`, hold for
   the chief's merge, then wrap. [prose]
 - **Closing the ticket at merge.** `<anchor>` is the primary
   checkout's absolute path (`git rev-parse
@@ -168,7 +168,7 @@ it (no Epic) and `--jira-transition` did not (`failed`
 or any `skip=` but the two below). Never close it by hand on `skip=never-touch-type` or
 `skip=cannot-verify-type`: report it to the chief. Run the live proof
 (`worker-sections/live-proof.md`), release the
-lock (paste the line), append `WRAPPED`, print the closable-window banner and stop:
+lock, append `WRAPPED`, print the closable-window banner and stop:
 the chief's `close-wrapped-worker.sh` ends the session
 once the lock frees. A worker never idles: on an outside event, write `LIVE — HOLD-OUTSIDE pr=<n>` and WRAP with a resume brief; send the
 chief `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is open.
