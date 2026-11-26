@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# test-chief-load-row.sh - chief-load-row.sh on fixture transcripts and a fixture bucket only.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_REAL="$(cd "$HERE/../../.." && pwd)"
@@ -15,7 +14,7 @@ cfg="$tmp/cfg"; mkdir -p "$cfg/projects/p"
 transcript() {
     printf '{"type":"custom-title","customTitle":"%s","sessionId":"%s"}\n' "$1" "$sid"
     printf '{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"id":"m0","usage":{"input_tokens":90000},"content":[{"type":"tool_use","id":"t0","name":"Bash","input":{"command":"grep -n wake scripts/handover/chief-kit/chief-wait.sh"}}]}}\n'
-    printf '{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"id":"m1","usage":{"input_tokens":100000},"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"bash chief-wait.sh"}}]}}\n'
+    printf '{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"id":"m1","usage":{"input_tokens":100000},"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"bash \\"/opt/kit/chief-wait.sh\\" --doc x"}}]}}\n'
     printf '{"type":"user","timestamp":"2026-01-01T00:05:00Z","message":{"role":"user","content":"<task-notification>w</task-notification>"}}\n'
     printf '{"type":"assistant","timestamp":"2026-01-01T00:05:10Z","isSidechain":true,"message":{"id":"s1","usage":{"input_tokens":900000},"content":[]}}\n'
     printf '{"type":"assistant","timestamp":"2026-01-01T00:30:00Z","message":{"id":"m2","usage":{"input_tokens":%s},"content":[]}}\n' "$2"
@@ -35,9 +34,9 @@ check "an end context at the 45 % fill gives reason fill" "$(jq -r '.reason' "$L
 check "the row's keys come in the fixed order" "$(jq -r 'keys_unsorted | .[0:3] | join(",")' "$L")" "schema,shift,next_shift"
 
 transcript S-B 300000 > "$cfg/projects/p/$sid.jsonl"
-printf '[]\nnull\n' >> "$L"
+printf '[]\nnull\n{"partial' >> "$L"
 write --shift S-B --next-shift S-C --workers-end 20 --rulings 0 --spans-unknown 0 >/dev/null 2>&1
-check "a line that is JSON but no object does not stop the next append" "$(tail -n 1 "$L" | jq -r '.shift')" "S-B"
+check "a line that is JSON but no object, or a partial last line, does not stop the next append or join it" "$(tail -n 1 "$L" | jq -r '.shift')" "S-B"
 check "workers_start is the previous shift's workers_end" "$(tail -n 1 "$L" | jq -r '"\(.workers_start) \(.workers_mean == 16) \(.workers_peak)"')" "12 true 20"
 check "an end context under the fill gives reason unstated" "$(tail -n 1 "$L" | jq -r '.reason')" "unstated"
 

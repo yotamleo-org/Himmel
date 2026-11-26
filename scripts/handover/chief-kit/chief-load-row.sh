@@ -5,9 +5,8 @@
 #                     --workers-end <n> --rulings <n> --spans-unknown <n>
 #                     [--reason <text>] [--fill-percent <p>] [--window <tokens>]
 #
-# chief.sh next runs it once per handover, after the successor doc, HANDOFF and digest exist.
 # The file is append-only JSON lines, one flat object per shift with a fixed key order, so it
-# imports as a table. chief-load-report.py reads it; no other script writes it.
+# imports as a table.
 #
 # Read from the outgoing chief's main-loop transcript, found by CLAUDE_CODE_SESSION_ID under
 # ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects and used only when its custom title is --shift.
@@ -74,7 +73,7 @@ import datetime, errno, json, os, re, stat, statistics, sys
 path, transcript, shift, next_shift = sys.argv[1:5]
 workers_end, rulings, spans_unknown = (int(x) for x in sys.argv[5:8])
 reason, fill_percent, window = sys.argv[8], int(sys.argv[9]), int(sys.argv[10])
-WAITER_ARM = re.compile(r"^\s*bash\s+\S*chief-wait\.sh(\s|$)")
+WAITER_ARM = re.compile(r"(^|[;&|(]\s*)bash\s+[\"']?[^\s\"']*chief-wait\.sh[\"']?(\s|$)")
 HOOK_TIMEOUT = re.compile(r"hook[^\n]{0,80}timed out|timed out[^\n]{0,40}\bhook", re.I)
 
 
@@ -195,7 +194,8 @@ while True:
     if not chunk:
         break
     chunks.append(chunk)
-previous = b"".join(chunks).decode("utf-8", "replace").splitlines()
+content = b"".join(chunks)
+previous = content.decode("utf-8", "replace").splitlines()
 
 m = None
 if transcript:
@@ -253,6 +253,8 @@ row = {
     "transcript": "read" if m else "unavailable",
 }
 data = (json.dumps(row, separators=(",", ":")) + "\n").encode()
+if content and not content.endswith(b"\n"):
+    data = b"\n" + data
 written = os.write(fd, data)
 os.close(fd)
 if written != len(data):

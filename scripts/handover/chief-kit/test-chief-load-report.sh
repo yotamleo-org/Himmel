@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# test-chief-load-report.sh - chief-load-report.py on fixture rows only, never a live record.
-# The seven-shift fixture is the chief-split review's shifts DB to DH (fit-r2.out): workers mean,
-# hours, context at the first waiter arm and the peak context.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 R="$HERE/chief-load-report.py"
