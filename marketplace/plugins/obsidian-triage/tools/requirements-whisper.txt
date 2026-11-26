@@ -3,7 +3,6 @@
 # av 19 dropped the av.open(metadata_errors=) kwarg that faster-whisper 1.2.1's
 # decode_audio passes; unpinned, uv resolved 1.2.1 + av 19.0.1 and every reel
 # failed with "open() got an unexpected keyword argument 'metadata_errors'".
-# av 15.0.0 through 18.1.0 decode; 18.1.0 is the newest that does.
 # Direct pins: faster-whisper==1.2.1, av==18.1.1 (the rest is the hashed closure).
 # Regenerate: uv pip compile <a .in with those two pins> --python-version 3.12 --universal --generate-hashes -o requirements-whisper.txt
 # Bump the pair together, then prove it:
