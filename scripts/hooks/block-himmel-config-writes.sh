@@ -29,6 +29,12 @@
 #     cfg` (quotes), `cat cfg 2>/dev/null` (redirect), `grep x cfg | head`,
 #     a CRLF-terminated read and a trailing `# comment` are all denied; the
 #     deny message points at the quote-free reads and the Read tool.
+#     Two more Bash rules run first. A path operand spelled through a symlinked
+#     directory (a Mac's /tmp is /private/tmp) is also judged by where it
+#     resolves, so it names a guarded file when its physical form does. A cp,
+#     rsync, mv or install whose destination (last operand, or -t DIR) is a
+#     config directory (~/.himmel, a repo's .himmel, the station directory or
+#     its profiles) denies, since it replaces the files in it without naming one.
 #   Edit|Write|MultiEdit|NotebookEdit - file_path / notebook_path whose literal
 #     name is `.himmel/config.json`, or which resolves (`readlink -m`: `..`
 #     segments, symlinked components) to $HOME/.himmel/config.json. The path is
@@ -119,6 +125,7 @@ STATION_DIR="${HIMMEL_CONFIG_DIR:-${HOME:-/nonexistent}/.himmel}"
 STATION_CONF=$(hook_resolve_m "$STATION_DIR/himmel.conf") || deny "station config path could not be resolved (fail-closed)"
 STATION_LOCAL=$(hook_resolve_m "$STATION_DIR/himmel.conf.local") || deny "station local path could not be resolved (fail-closed)"
 STATION_PROFILES=$(hook_resolve_m "${STATION_CONF%/*}/profiles") || deny "station profile directory could not be resolved (fail-closed)"
+STATION_DIR_R=$(hook_resolve_m "$STATION_DIR") || deny "station directory could not be resolved (fail-closed)"
 
 ROLES_RAW="" ROLES_CFG=""
 if [ -n "${HIMMEL_API_CREDIT_CONFIG:-}" ]; then
@@ -143,6 +150,7 @@ fold_to "$STATION_DIR"; F_STATION_DIR="$FOLDED"
 fold_to "$STATION_CONF"; F_STATION_CONF="$FOLDED"
 fold_to "$STATION_LOCAL"; F_STATION_LOCAL="$FOLDED"
 fold_to "$STATION_PROFILES"; F_STATION_PROFILES="$FOLDED"
+fold_to "$STATION_DIR_R"; F_STATION_DIR_R="$FOLDED"
 fold_to "$ROLES_CFG"; F_ROLES_CFG="$FOLDED"
 
 lexnorm() {
@@ -180,7 +188,7 @@ station_path() {
     fold_to "$1"
     case "$FOLDED" in
         */.himmel/himmel.conf|.himmel/himmel.conf|*/.himmel/himmel.conf.local|.himmel/himmel.conf.local|*/.himmel/profiles/*.conf|.himmel/profiles/*.conf) return 0 ;;
-        "$F_STATION_DIR/himmel.conf"|"$F_STATION_DIR/himmel.conf.local"|"$F_STATION_DIR"/profiles/*.conf|"$F_STATION_CONF"|"$F_STATION_LOCAL"|"$F_STATION_PROFILES"/*.conf) return 0 ;;
+        "$F_STATION_DIR/himmel.conf"|"$F_STATION_DIR/himmel.conf.local"|"$F_STATION_DIR"/profiles/*.conf|"$F_STATION_DIR_R"/himmel.conf|"$F_STATION_DIR_R"/himmel.conf.local|"$F_STATION_DIR_R"/profiles/*.conf|"$F_STATION_CONF"|"$F_STATION_LOCAL"|"$F_STATION_PROFILES"/*.conf) return 0 ;;
     esac
     return 1
 }
@@ -202,13 +210,73 @@ names_guarded_file() {
     return 1
 }
 
+CFG_REAL="${HOME:-/nonexistent}/.himmel/config.json"
+
+operand_clean() {
+    local w="${1//[\"\']/}" re='^[0-9]*[<>(]+(.*)$'
+    if [[ "$w" =~ $re ]]; then w="${BASH_REMATCH[1]}"; fi
+    w="${w#--target-directory=}"
+    w="${w%%[;&|)]*}"
+    case "$w" in
+        \~) w="$HOME" ;;
+        \~/*) w="$HOME/${w#\~/}" ;;
+    esac
+    w="${w/#\$\{HOME\}/$HOME}"
+    w="${w/#\$HOME/$HOME}"
+    OPERAND="$w"
+}
+
+names_guarded_physically() {
+    local text="$1" cwd="$2" w o res cfgr fcfg r n_slash=0 n_plain=0
+    local -a phys
+    phys=()
+    set -f
+    for w in $text; do
+        operand_clean "$w"; o="$OPERAND"
+        case "$o" in ""|-*) continue ;; esac
+        case "$o" in *'$'*|*'`'*|*'*'*|*'?'*|*'['*|*'{'*) continue ;; esac
+        case "$o" in
+            */*) [ "$n_slash" -lt 100 ] || continue; n_slash=$((n_slash + 1)) ;;
+            *) [ "$n_plain" -lt 100 ] || continue; n_plain=$((n_plain + 1)) ;;
+        esac
+        case "$o" in /*) ;; *) o="$cwd/$o" ;; esac
+        phys[${#phys[@]}]="$o"
+    done
+    set +f
+    [ "${#phys[@]}" -gt 0 ] || return 1
+    res=$(hook_resolve_m "${phys[@]}") || deny "a path operand could not be resolved (fail-closed)"
+    cfgr=$(hook_resolve_m "$CFG_REAL") || deny "the config path could not be resolved (fail-closed)"
+    fold_to "$cfgr"; fcfg="$FOLDED"
+    while IFS= read -r r; do
+        [ -n "$r" ] || continue
+        names_guarded_file "$r" && return 0
+        station_path "$r" && return 0
+        roles_path "$r" && return 0
+        fold_to "$r"
+        if [ "$DARWIN" = 1 ] && names_guarded_file "$FOLDED"; then return 0; fi
+        if [ -n "$fcfg" ] && [ "$FOLDED" = "$fcfg" ]; then return 0; fi
+    done <<EOF
+$res
+EOF
+    return 1
+}
+
+raw_names_guarded_physically() {
+    local tok
+    tok=$(printf '%s' "$input" | tr '"{}[]' ' ') || deny "the payload could not be split into words (fail-closed)"
+    names_guarded_physically "$input" "$PWD" && return 0
+    [ "$tok" != "$input" ] || return 1
+    names_guarded_physically "$tok" "$PWD"
+}
+
 if ! command -v jq >/dev/null 2>&1; then
-    # No parser: raw-text scan, deny only a mention of the subject.
     names_guarded_file "$input" && deny "jq not found and the payload names a guarded .himmel config file (fail-closed)"
+    raw_names_guarded_physically && deny "jq not found and a path in the payload resolves to a guarded .himmel config file (fail-closed)"
     exit 0
 fi
 if ! printf '%s' "$input" | jq -e 'type == "object"' >/dev/null 2>&1; then
     names_guarded_file "$input" && deny "unparseable payload names a guarded .himmel config file (fail-closed)"
+    raw_names_guarded_physically && deny "unparseable payload has a path that resolves to a guarded .himmel config file (fail-closed)"
     exit 0
 fi
 
@@ -512,7 +580,82 @@ fi
 if [[ "$lcv" =~ api-roles\.mjs[^\|\;\&]*[[:space:]]write([^a-z0-9_-]|$) ]]; then
     deny "a session runs api-roles.mjs write. Only the operator maps API roles (the config UI, or node scripts/lib/api-roles.mjs write at their own prompt); read-only: api-roles.mjs check"
 fi
-names_guarded_file "$cmd" || names_guarded_file "$lc" || exit 0
+
+cmd_cwd=$(printf '%s' "$input" | jq -r '.cwd // ""') || deny "the payload cwd could not be read (fail-closed)"
+[ -n "$cmd_cwd" ] || cmd_cwd="$PWD"
+
+config_dir_operand() {
+    local o="$1" f r
+    while :; do
+        case "$o" in
+            ?*/.|?*/\*) o="${o%/?}" ;;
+            ?*/) o="${o%/}" ;;
+            *) break ;;
+        esac
+    done
+    fold_to "$o"; f="$FOLDED"
+    case "$f" in .himmel|*/.himmel) return 0 ;; esac
+    case "$o" in /*) ;; *) o="$cmd_cwd/$o" ;; esac
+    r=$(hook_resolve_m "$o") || deny "a destination ($o) could not be resolved (fail-closed)"
+    fold_to "$r"; f="$FOLDED"
+    case "$f" in */.himmel) return 0 ;; esac
+    [ "$f" = "$F_STATION_DIR_R" ] && return 0
+    [ "$f" = "${F_STATION_CONF%/*}" ] && return 0
+    [ "$f" = "$F_STATION_PROFILES" ] && return 0
+    return 1
+}
+
+config_dir_destination() {
+    local t w o seg_verb="" last="" tdir="" expect_t=0 skip_next=0 re_op='^[0-9]*[<>]+$' re_red='^[0-9]*[<>]'
+    DEST_VERB=""
+    case "$cmd" in *cp*|*mv*|*rsync*|*install*) ;; *) return 1 ;; esac
+    t="${cmd//[;&|]/ ; }"; t="${t//$'\n'/ ; }"
+    set -f
+    for w in $t ";"; do
+        if [ "$w" = ";" ]; then
+            case "$seg_verb" in
+                cp|mv|rsync|install)
+                    o="${tdir:-$last}"
+                    if [ -n "$o" ] && config_dir_operand "$o"; then DEST_VERB="$seg_verb"; set +f; return 0; fi ;;
+            esac
+            seg_verb="" last="" tdir="" expect_t=0 skip_next=0
+            continue
+        fi
+        if [ "$skip_next" = 1 ]; then skip_next=0; continue; fi
+        if [[ "$w" =~ $re_op ]]; then skip_next=1; continue; fi
+        if [[ "$w" =~ $re_red ]]; then continue; fi
+        operand_clean "$w"; o="$OPERAND"
+        [ -n "$o" ] || continue
+        if [ -z "$seg_verb" ]; then
+            case "$o" in
+                *=*|-*|sudo|env|command|nohup|time|exec|nice|if|then|else|elif|while|until|do|\!|\{) continue ;;
+            esac
+            seg_verb="${o##*/}"
+            continue
+        fi
+        if [ "$expect_t" = 1 ]; then tdir="$o"; expect_t=0; continue; fi
+        if [ "$seg_verb" != rsync ]; then
+            case "$w" in
+                -t|--target-directory) expect_t=1; continue ;;
+                --target-directory=*) tdir="$o"; continue ;;
+                -t?*) tdir="${o#-t}"; continue ;;
+                -[!-]*t) expect_t=1; continue ;;
+            esac
+        fi
+        case "$w" in -*) continue ;; esac
+        last="$o"
+    done
+    set +f
+    return 1
+}
+
+if config_dir_destination; then
+    deny "$DEST_VERB onto a config directory replaces the files in it without naming one (the operator's ~/.himmel holds config.json and the station config): copy single named files with the file tools, or ask the operator to do it at their own prompt"
+fi
+
+if ! names_guarded_file "$cmd" && ! names_guarded_file "$lc"; then
+    names_guarded_physically "$cmd" "$cmd_cwd" || exit 0
+fi
 # rm/mv/unlink as a command word: every such command denies below, so the row is
 # written from deny(). The first word naming a guarded file is the row's path.
 if [[ "$lc" =~ (^|[^a-z0-9_.-])(rm|mv|unlink)([[:space:]]|$) ]]; then
