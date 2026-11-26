@@ -22,6 +22,12 @@
 # blocked_by link. Rank: earliest unreleased fixVersion (HIMMEL.versions.tsv,
 # natural order; none last), then priority, then key.
 #
+# --top and the RESUME rows: the worker-less In Progress / In Review / IN CI rows (RESUME and MERGED-NOT-CLOSED) go
+# first, but at most half of --top (rounded up); the fresh rows (LOCAL, CLOUD, LOCAL?, DESIGN) follow while slots are
+# left; the RESUME rows the cap skipped (the backfill) fill what the fresh rows leave, so a listing keeps its row
+# count. The plain listing ends its rows with `# resume=<k>`, the RESUME and MERGED-NOT-CLOSED rows it printed.
+# --resume-only has no cap and no such line.
+#
 # Tiers (the first that applies; tier_of() in the script): 1 the operator pool
 # head: label ps3-blocker / must-<earliest unreleased version>, or a key on the ordered `priority:` line
 # in --doc's `## Live state` (line order ranks within the tier, labelled-only
@@ -32,7 +38,8 @@
 # stale `priority:` line every unblocked To Do ticket of that version is still in the
 # pool); 5 later or versionless work, by the rank above. --priority-pool-only prints
 # tiers 1-4 only: per tier, the RESUME rows (In Progress / In Review / IN CI, no worker, no open PR)
-# lead that tier's To Do rows, filtered like To Do rows (dropped platform, residual depth);
+# lead that tier's To Do rows, filtered like To Do rows (dropped platform, residual depth), up to half the slots left
+# when the tier starts (rounded up); the tier's other RESUME rows follow its To Do rows, before the next tier;
 # the RESUME rows need a worker source (--owners or --workers-from, plus the cloud-sessions.tsv
 # next to --doc, 48h) and print none without one. It ends with `# pool=<rows>/<top>`,
 # `,LOW` when the pool printed fewer rows than --top (the free-slot count); open tickets with no fixVersion
@@ -134,8 +141,7 @@
 # is counted by reason on a `# dropped from <version>:` line (owned,
 # blocker, type, label, platform, residual-depth, classification, below --top ...; a shared file is no reason);
 # --why adds one `# drop <KEY> <reason>` line each, and one `# why <KEY> listed <lane> tier <n>` line each for the listed ones; --why with no
-# --top lists up to 50 rows (the fleet cap), so the RESUME rows do not fill the default 8 slots and hide the
-# To Do rows the waiter counts. --dispositions adds `# disposition <KEY> <class> <holder, blocker or question>`
+# --top lists up to 50 rows (the fleet cap), the whole list the waiter counts against. --dispositions adds `# disposition <KEY> <class> <holder, blocker or question>`
 # for EVERY open ticket of that version (To Do or in work), listed ones too (`listed LOCAL`,
 # `listed RESUME`), so no ticket is silent. --resume-only prints neither.
 #
@@ -237,7 +243,7 @@ if [ -n "$scope_batch" ] && { [ -e "$scope_batch" ] || [ -L "$scope_batch" ]; };
 fi
 export ND_WHY_TICKET="$why_ticket" ND_BODY_FILE="$body_file" ND_SCOPE_BATCH="$scope_batch" ND_BATCH_SIZE="${batch_size:-25}"
 case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive number" >&2; exit 2 ;; esac
-# --why with no --top asks for the whole list, not the first 8 slots the worker-less RESUME rows fill; the
+# --why with no --top asks for the whole list, not the default 8 slots; the
 # waiter counts dispatchable work against the free slots, and 50 is the fleet cap
 [ "$why" != 1 ] || [ "$top_set" = 1 ] || top=50
 ledger="${HIMMEL_ADMISSIONS_LEDGER:-}"
@@ -2537,11 +2543,26 @@ def warn_missing():
         if gone:
             print('# warn: %s names %s (not in the repo: a new file, or the collision check is blind)' % (i['key'], ', '.join(gone)))
 
-def emit_resume(rows):
+def half_up(x):
+    # the one place the RESUME cap is computed: ceil(x / 2)
+    return (x + 1) // 2
+
+held_back = []  # RESUME rows the cap skipped and no backfill has listed yet: their files join no series (emit_free)
+
+def held_back_hit(i):
+    return any(blocks(f, h, False) for f in i['files'] for r in held_back for h in r['files'])
+
+def emit_resume(rows, cap=None):
+    # lists RESUME and MERGED-NOT-CLOSED rows in rank order while n < top; with a cap it stops after `cap` rows and
+    # returns the rows it skipped (the backfill lists them), cap=None is the uncapped walk
     global n
-    for i in rows:
+    done = 0
+    for idx, i in enumerate(rows):
         if n >= top:
             break
+        if cap is not None and done >= cap:
+            return rows[idx:]
+        done += 1
         if i['merged']:
             lane_of[i['key']] = 'MERGED-NOT-CLOSED'
             say('\t'.join(['MERGED-NOT-CLOSED', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')]))
@@ -2555,6 +2576,7 @@ def emit_resume(rows):
                        + ['partial=PR #%s merged, Remaining: %s' % (pr, text) for pr, text in i.get('partial', [])]
                        + ([proof_field(i)] if i.get('nowrite') else [])))
         n += 1
+    return []
 
 classified = os.environ.get('ND_CLASSIFY') == '1'
 cls_cache = {}
@@ -2566,19 +2588,22 @@ def classify_new(batch):
     if fresh:
         cls_cache.update(classify(fresh))
 
-# One classify call costs a fixed ~20 s: the first 2*--top free rows go in two parallel calls
-# of --top rows each, so a refused or colliding row in the first call does not cost a serial round.
-if classified and top > len(resume):
+# One classify call costs a fixed ~20 s: the first 2*fresh_budget free rows go in two parallel calls
+# of fresh_budget rows each, so a refused or colliding row in the first call does not cost a serial round. The fresh
+# budget is --top less the RESUME rows that go ahead of the fresh rows (at most half_up(--top)), so it is
+# above 0 even when the RESUME rows alone would fill --top.
+fresh_budget = top - min(len(resume), half_up(top))
+if classified and fresh_budget > 0:
     from concurrent.futures import ThreadPoolExecutor
     ok_rows = []
     for i in free:
-        if len(ok_rows) >= top * 2:
+        if len(ok_rows) >= fresh_budget * 2:
             break
         if i['key'] in design:  # a DESIGN row is not classified
             continue
         if not proof_refuse(i):
             ok_rows.append(i)
-    halves = [ok_rows[:top], ok_rows[top:]]
+    halves = [ok_rows[:fresh_budget], ok_rows[fresh_budget:]]
     halves = [h for h in halves if h]
     for h in halves:
         asked.update(i['key'] for i in h)
@@ -2635,7 +2660,7 @@ def emit_free(rows):
             if rc is None:
                 continue
             lane, c = rc
-            if picked_hit(i) and stacked and join_series(i, lane, c):
+            if picked_hit(i) and stacked and not held_back_hit(i) and join_series(i, lane, c):
                 continue
             say_overlaps(i)
             list_free(i, lane, c, '\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' and not i.get('nowrite') else []) + ([proof_field(i)] if i.get('nowrite') else [])))
@@ -2660,11 +2685,19 @@ def emit_free(rows):
             break
 
 if pool_only:
-    # tier by tier: a tier's worker-less In Progress rows lead its To Do rows
+    # tier by tier: a tier's worker-less In Progress rows (at most half_up of the slots left when the tier starts) lead
+    # its To Do rows; the tier's other RESUME rows follow its To Do rows, before the next tier. --resume-only lists
+    # every orphan, uncapped.
     for t in (1, 2, 3, 4):
-        emit_resume([i for i in resume if tier_of(i) == t])
-        if not resume_only:
-            emit_free([i for i in free if tier_of(i) == t])
+        tier_resume = [i for i in resume if tier_of(i) == t]
+        if resume_only:
+            emit_resume(tier_resume)
+            continue
+        skipped = emit_resume(tier_resume, half_up(top - n))
+        held_back[:] = skipped
+        emit_free([i for i in free if tier_of(i) == t])
+        emit_resume(skipped)
+        held_back[:] = []
     flush_rows()
     if not resume_only:
         emit_stackable()
@@ -2680,13 +2713,20 @@ if pool_only:
     if not resume_only:
         drop_summary()
     sys.exit(0)
-emit_resume(resume)
 if resume_only:
+    emit_resume(resume)
     flush_rows()
     warn_missing()
     sys.exit(0)
+# RESUME rows take at most half_up(--top) slots ahead of the fresh rows; the rest of the slots go to fresh rows, and
+# RESUME rows the cap skipped fill whatever the fresh rows leave
+skipped = emit_resume(resume, half_up(top))
+held_back[:] = skipped
 emit_free(free)
+emit_resume(skipped)
+held_back[:] = []
 flush_rows()
+print('# resume=%d' % sum(1 for v in lane_of.values() if v in ('RESUME', 'MERGED-NOT-CLOSED')))
 emit_stackable()
 warn_missing()
 drop_summary()
