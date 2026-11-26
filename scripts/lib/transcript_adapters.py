@@ -95,8 +95,8 @@ def t3_item_rows(path, upto=None):
         raise AdapterError("%s holds no list of thread items with a position" % path)
     if data.get("hasMore") is not False:
         raise AdapterError("%s is a partial thread read (hasMore is not false): newer items are missing" % path)
-    if data.get("earlierPosition") is not None:
-        raise AdapterError("%s is a partial thread read (earlierPosition is set): older items are missing" % path)
+    if "earlierPosition" not in data or data["earlierPosition"] is not None:
+        raise AdapterError("%s is a partial thread read (earlierPosition is not null): older items may be missing" % path)
     out = []
     for it in sorted(items, key=lambda i: i["position"]):
         n = it["position"] + 1

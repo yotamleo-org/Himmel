@@ -537,7 +537,8 @@ check "gemini: an item the thread read cut off is no input: write exits 3 naming
 jq '.hasMore = true' "$GM" >"$T/gm-newer.json"
 jq '.earlierPosition = 3' "$GM" >"$T/gm-older.json"
 jq 'del(.hasMore)' "$GM" >"$T/gm-noflag.json"
-for part in newer:hasMore older:earlierPosition noflag:hasMore; do
+jq 'del(.earlierPosition)' "$GM" >"$T/gm-noearlier.json"
+for part in newer:hasMore older:earlierPosition noflag:hasMore noearlier:earlierPosition; do
     hb write --transcript "$T/gm-${part%%:*}.json" --doc "$DOC" --worktree "$T/wt" --out "$T/out/gm-${part%%:*}.md" >/dev/null 2>"$T/gm-${part%%:*}.err"; prc=$?
     check "gemini: a partial thread read (${part%%:*}) is no input: write exits 3 naming ${part##*:}" '[ "$prc" = 3 ] && grep -q "partial thread read.*${part##*:}" "$T/gm-${part%%:*}.err" && [ ! -e "$T/out/gm-${part%%:*}.md" ]'
 done
