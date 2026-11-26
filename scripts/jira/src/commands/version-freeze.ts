@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { request, projectKey } from '../client.js';
@@ -53,16 +53,16 @@ export function mainCiGreen(sha?: string): CiResult {
     const runs = JSON.parse(
       execFileSync(
         'gh',
-        ['run', 'list', '--branch', 'main', '--commit', head, '--limit', String(CI_RUN_LIMIT), '--json', 'conclusion,headSha,workflowName,number,event'],
+        ['run', 'list', '--branch', 'main', '--commit', head, '--limit', String(CI_RUN_LIMIT), '--json', 'conclusion,headSha,workflowName,workflowDatabaseId,number,event'],
         { encoding: 'utf8' },
       ),
-    ) as Array<{ conclusion: string; headSha: string; workflowName: string; number?: number; event?: string }>;
+    ) as Array<{ conclusion: string; headSha: string; workflowName: string; workflowDatabaseId?: number; number?: number; event?: string }>;
     if (runs.length >= CI_RUN_LIMIT) return { ok: false, detail: `${runs.length}+ runs at ${head.slice(0, 9)}: list may be truncated` };
     const mine = runs.filter((r) => r.headSha.startsWith(head));
     if (mine.length === 0) return { ok: false, detail: `no CI run found for ${head}` };
     const newest = new Map<string, (typeof mine)[number]>();
     mine.forEach((r, i) => {
-      const group = typeof r.number === 'number' ? `${r.workflowName}\u0000${r.event ?? ''}` : `#${i}`;
+      const group = typeof r.number === 'number' ? `${r.workflowDatabaseId ?? r.workflowName}\u0000${r.event ?? ''}` : `#${i}`;
       const seen = newest.get(group);
       if (seen === undefined || (r.number ?? 0) > (seen.number ?? 0)) newest.set(group, r);
     });
@@ -333,11 +333,15 @@ function promiseProofRow(name: string, bucket: string): Row {
   const lines = text.split('\n').map((l) => l.replace(/\r$/, ''));
   if (lines[0] !== PROMISE_HEADER) return fail(`bad header in ${path}`);
   const bad: string[] = [];
+  const seen = new Set<string>();
   let sentences = 0;
   for (let at = 1; at < lines.length; at += 1) {
     if (lines[at].trim() === '') continue;
     const fields = lines[at].split('\t');
     if (fields.length < 4 || fields.length > 5) return fail(`bad row ${at + 1} in ${path}: ${fields.length} fields`);
+    if (fields[0].trim() === '' || fields[2].trim() === '') return fail(`bad row ${at + 1} in ${path}: blank sentence number or text`);
+    if (seen.has(fields[0])) return fail(`bad row ${at + 1} in ${path}: duplicate sentence ${fields[0]}`);
+    seen.add(fields[0]);
     sentences += 1;
     const proof = (fields[4] ?? '').trim();
     if (fields[3].trim() !== 'shown_true' || proof === '' || PLACEHOLDER.test(proof)) bad.push(`${fields[0]} "${clip(fields[2])}"`);
@@ -376,6 +380,7 @@ export async function versionReady(
   name: string,
   opts: { chiefOverride?: Override[]; sha?: string; out?: string },
 ): Promise<string[]> {
+  if (opts.out !== undefined) rmSync(opts.out, { force: true });
   const version = await findVersion(project, name);
   const frozen = parseFrozen(version.description);
   const ledger = readAdmissions(name);
@@ -414,9 +419,13 @@ export async function versionReady(
   const code = rows.some((r) => !r.ok) ? 1 : 0;
   if (code === 1) process.exitCode = 1;
   if (opts.out !== undefined) {
-    const tmp = `${opts.out}.tmp-${process.pid}`;
-    writeFileSync(tmp, `${out.join('\n')}\nsha=${opts.sha}\nat=${new Date().toISOString()}\nexit=${code}\n`);
-    renameSync(tmp, opts.out);
+    const tmp = `${opts.out}.tmp-${process.pid}-${Date.now()}`;
+    try {
+      writeFileSync(tmp, `${out.join('\n')}\nsha=${opts.sha}\nat=${new Date().toISOString()}\nexit=${code}\n`, { flag: 'wx' });
+      renameSync(tmp, opts.out);
+    } finally {
+      rmSync(tmp, { force: true });
+    }
   }
   return out;
 }

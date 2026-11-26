@@ -588,7 +588,6 @@ describe('version-freeze / version-ready / version-defer', () => {
     expect(process.exitCode).toBe(1);
     const bugJql = jqls().find((j) => j.includes('issuetype=Bug')) ?? '';
     expect(bugJql).toContain('priority in (Highest, High)');
-    expect('priority = Highest OR labels in (critical, blocker, v1-blocker)').not.toContain('priority in (Highest, High)');
   });
 
   it('R1 control: with no bug, no-blocker-bug passes and says what it read', async () => {
@@ -644,6 +643,18 @@ describe('version-freeze / version-ready / version-defer', () => {
     promise([]);
     await run(['version-ready', 'v1.1.3']);
     expect(out()).toMatch(/FAIL\s+promise-proof\s+no sentences in /);
+    vi.mocked(console.log).mockClear();
+    promise([PASSING_PROMISE[0], '1\tA\tSame number again.\tshown_true\tPR 6102']);
+    await run(['version-ready', 'v1.1.3']);
+    expect(out()).toMatch(/FAIL\s+promise-proof\s+bad row 3 in .*: duplicate sentence 1/);
+    vi.mocked(console.log).mockClear();
+    promise([PASSING_PROMISE[0], '2\tA\t \tshown_true\tPR 6102']);
+    await run(['version-ready', 'v1.1.3']);
+    expect(out()).toMatch(/FAIL\s+promise-proof\s+bad row 3 in .*: blank sentence number or text/);
+    vi.mocked(console.log).mockClear();
+    promise([PASSING_PROMISE[0], '\tA\tNo number.\tshown_true\tPR 6102']);
+    await run(['version-ready', 'v1.1.3']);
+    expect(out()).toMatch(/FAIL\s+promise-proof\s+bad row 3 in .*: blank sentence number or text/);
     vi.mocked(console.log).mockClear();
     promise(PASSING_PROMISE);
     await run(['version-ready', 'v1.1.3']);
@@ -842,6 +853,20 @@ describe('version-freeze / version-ready / version-defer', () => {
       const listArgs = exec.mock.calls[0][1] as string[];
       expect(listArgs[listArgs.indexOf('--json') + 1]).toMatch(/number/);
       expect(listArgs[listArgs.indexOf('--json') + 1]).toMatch(/event/);
+      expect(listArgs[listArgs.indexOf('--json') + 1]).toMatch(/workflowDatabaseId/);
+    });
+
+    it('two workflows that share a display name are judged apart by workflow id', () => {
+      gh([
+        { ...run1('CI', 'schedule', 10, 'failure'), workflowDatabaseId: 1 },
+        { ...run1('CI', 'schedule', 11, 'success'), workflowDatabaseId: 2 },
+      ]);
+      expect(mainCiGreen(SHA).ok).toBe(false);
+      gh([
+        { ...run1('CI', 'schedule', 10, 'success'), workflowDatabaseId: 1 },
+        { ...run1('CI', 'schedule', 11, 'success'), workflowDatabaseId: 2 },
+      ]);
+      expect(mainCiGreen(SHA).detail).toBe(`2 workflow(s) green at ${SHA.slice(0, 9)}`);
     });
 
     it('n counts the workflow and event pairs judged', () => {
@@ -879,6 +904,14 @@ describe('version-freeze / version-ready / version-defer', () => {
     mockRequest.mockClear();
     await expect(run(['version-ready', 'v1.1.3', '--out', file])).rejects.toThrow(/--out needs --sha/);
     expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it('R8b: a run that fails before it can publish leaves no earlier --out file behind', async () => {
+    const file = join(tmp, 'vr.txt');
+    writeFileSync(file, 'PASS\tfrozen-set\told\nsha=old\nexit=0\n');
+    world({ description: FROZEN_DESC });
+    await expect(run(['version-ready', 'v9.9.9', '--sha', SHA, '--out', file])).rejects.toThrow(/no version named/);
+    expect(existsSync(file)).toBe(false);
   });
 
   it('R9: --out refuses --chief-override before any request; --chief-override alone still works', async () => {
