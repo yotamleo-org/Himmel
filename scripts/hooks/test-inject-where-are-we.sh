@@ -309,6 +309,70 @@ for failure in failed interrupted; do
     fi
 done
 
+race_shim="$TMP/race-shim"; mkdir -p "$race_shim"
+real_node_for_race="$(command -v node)"
+cat > "$race_shim/node" <<EOF
+#!/bin/bash
+if [ "\${1:-}" = "-e" ] && [[ "\${2:-}" == *statSync* ]]; then
+  out="\$("$real_node_for_race" "\$@")"; rc=\$?; sleep 1; printf '%s' "\$out"; exit \$rc
+fi
+exec "$real_node_for_race" "\$@"
+EOF
+chmod +x "$race_shim/node"
+race_state="$TMP/race"; seed_ledger "$race_state"
+for racer in A B; do
+    PATH="$race_shim:$PATH" HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$race_state" \
+        HIMMEL_WHERE_ARE_WE=1 WHERE_ARE_WE_BRANCH_OVERRIDE=main \
+        HIMMEL_WHERE_ARE_WE_COLLECT_CMD="echo $racer >> '$race_state/attempts'" \
+        bash "$HOOK" </dev/null >/dev/null 2>&1 &
+done
+wait
+sleep 1.5
+race_n="$(wc -l < "$race_state/attempts" 2>/dev/null | tr -d ' ')"
+if [ "${race_n:-0}" = 1 ]; then
+    pass "two simultaneous stale startups -> exactly one collector start"
+else
+    fail "two simultaneous stale startups -> ${race_n:-0} collector starts (want 1)"
+fi
+
+age_dir() { node -e 'const fs=require("fs"); const t=Date.now()/1000-120; fs.utimesSync(process.argv[1], t, t)' "$1"; }
+
+stale_state="$TMP/stale-claim"; seed_ledger "$stale_state"; mkdir "$stale_state/.refresh-started-at.claim"; age_dir "$stale_state/.refresh-started-at.claim"
+HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$stale_state" HIMMEL_WHERE_ARE_WE=1 WHERE_ARE_WE_BRANCH_OVERRIDE=main \
+    HIMMEL_WHERE_ARE_WE_COLLECT_CMD="echo S >> '$stale_state/attempts'" bash "$HOOK" </dev/null >/dev/null 2>&1
+sleep 1
+if [ "$(wc -l < "$stale_state/attempts" 2>/dev/null | tr -d ' ')" = 1 ] && [ ! -e "$stale_state/.refresh-started-at.claim" ]; then
+    pass "a crashed holder's stale claim is taken over: one collector start, claim released"
+else
+    fail "stale claim takeover -> starts=$(wc -l < "$stale_state/attempts" 2>/dev/null | tr -d ' ') claim=$([ -e "$stale_state/.refresh-started-at.claim" ] && echo left || echo gone)"
+fi
+
+stale_race="$TMP/stale-race"; seed_ledger "$stale_race"; mkdir "$stale_race/.refresh-started-at.claim"; age_dir "$stale_race/.refresh-started-at.claim"
+for racer in A B; do
+    PATH="$race_shim:$PATH" HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$stale_race" \
+        HIMMEL_WHERE_ARE_WE=1 WHERE_ARE_WE_BRANCH_OVERRIDE=main \
+        HIMMEL_WHERE_ARE_WE_COLLECT_CMD="echo $racer >> '$stale_race/attempts'" \
+        bash "$HOOK" </dev/null >/dev/null 2>&1 &
+done
+wait
+sleep 1.5
+stale_race_n="$(wc -l < "$stale_race/attempts" 2>/dev/null | tr -d ' ')"
+if [ "${stale_race_n:-0}" = 1 ] && [ -z "$(find "$stale_race" -maxdepth 1 -name '.refresh-started-at.claim*' | head -n 1)" ]; then
+    pass "two startups racing over a stale claim -> one collector start, no claim left behind"
+else
+    fail "stale-claim race -> ${stale_race_n:-0} collector starts, leftovers: $(find "$stale_race" -maxdepth 1 -name '.refresh-started-at.claim*' | tr '\n' ' ')"
+fi
+
+live_state="$TMP/live-claim"; seed_ledger "$live_state"; mkdir "$live_state/.refresh-started-at.claim"
+HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$live_state" HIMMEL_WHERE_ARE_WE=1 WHERE_ARE_WE_BRANCH_OVERRIDE=main \
+    HIMMEL_WHERE_ARE_WE_COLLECT_CMD="echo L >> '$live_state/attempts'" bash "$HOOK" </dev/null >/dev/null 2>&1
+sleep 1
+if [ ! -e "$live_state/attempts" ] && [ -d "$live_state/.refresh-started-at.claim" ]; then
+    pass "a live claim held by another startup is left alone: no collector start"
+else
+    fail "live claim -> a startup went past a held claim or removed it"
+fi
+
 # --- Case 4: ON but broken node path → still exit 0 (fail-open) -------------
 state4="$TMP/s4"; seed_ledger "$state4"
 HIMMEL_REPO="$TMP/nonexistent-repo" WHERE_ARE_WE_STATE_DIR="$state4" \
