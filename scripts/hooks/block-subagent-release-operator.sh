@@ -207,8 +207,8 @@ else
       | gsub("\\$\u0027"; "\u0027") | gsub("\\$\""; "\"")
       | gsub("[\u0027\"\\\\]"; "")
       | [splits("[ \t\r\n;&|()<>{}`]+")]) as $w
-  | ($w | map(splits("=+"))) as $split_at_eq
-  | (any($split_at_eq[]; startswith("--decision")) and any($split_at_eq[]; startswith("--words"))) as $p2
+  | ($w | map(splits("[=,]+"))) as $split_at_join
+  | (any($split_at_join[]; startswith("--decision")) and any($split_at_join[]; startswith("--words"))) as $p2
   | (any($w[]; . == "release") and any($w[]; . == "operator")) as $both
   | if $p2 then (if $both then "deny-p1p2" else "deny-p2" end)
     elif ($both | not) then "allow"
