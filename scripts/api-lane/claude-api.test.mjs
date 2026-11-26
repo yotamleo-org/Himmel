@@ -532,7 +532,7 @@ test('with no HIMMEL_CONSOLE_NAME the newest armed chief gets the call-failed al
 const waitFile = (root, name, tail) => writeFileSync(join(root, 'consoles', `${name}.md.wait`), `hb=${Math.floor(Date.now() / 1000) - 5} pid=1 key=k tick=ok ${tail}\n`);
 
 test('a named chief whose waiter exited cannot swallow the alert: it pages the operator', () => {
-  for (const tail of ['state=exited exit=stream-stop', 'state=exited exit=signal', 'state=exited']) {
+  for (const tail of ['state=exited exit=stream-stop', 'state=exited exit=signal', 'state=exited', 'exit=wake-inbox']) {
     const f = fixture();
     const root = chiefBridge(f, ['gone-chief']);
     waitFile(root, 'gone-chief', tail);

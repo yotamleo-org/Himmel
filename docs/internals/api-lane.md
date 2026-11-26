@@ -109,8 +109,9 @@ For every other failure the launcher:
      Telegram message. Only a chief whose waiter heartbeat is under 30 minutes old
      and whose waiter has not exited counts as armed (a waiter that exited on a
      `wake-` reason still does; a chief that has stopped leaves its inbox file
-     behind, and that file takes no line once its waiter has exited or its
-     heartbeat has aged out). The inbox is `HIMMEL_CONSOLE_NAME`'s when that
+     behind, and that file takes no line once its waiter has exited on a
+     non-`wake-` reason or its heartbeat has aged out; a wait file with no
+     recognised `state=` takes none either). The inbox is `HIMMEL_CONSOLE_NAME`'s when that
      chief is armed, else the armed chief with the freshest heartbeat across every
      project; the launcher never creates an inbox. With no armed chief inbox it pages the
      operator as below, so an alert is never lost. A `rejected` alert (credit gone,
