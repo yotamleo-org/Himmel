@@ -1381,6 +1381,17 @@ test("notify records reach the operator DM once, a draft carries Approve and Rej
   expect(dmSends(e)).toHaveLength(dm.length);
 });
 
+test("a malformed line in the notify chain stops notify delivery with one alert instead of throwing", async () => {
+  const e = await setup();
+  e.cfg.operatorDmChatId = Number(OP);
+  await draftIt(e, { kind: "info", text: "status line" });
+  const sent = dmSends(e).length;
+  writeFileSync(notifyFile(e.stateDir), "{not json\n", { flag: "a" });
+  await e.poller.flushIntents();
+  await e.poller.flushIntents();
+  expect(dmSends(e).slice(sent).map(s => s.text)).toEqual([`peer notify chain failed verification at #${sent + 1}; nothing more is sent until it is checked`]);
+});
+
 test("a DM reply to an escalation drafts an answer; a stranger's private message and a non-reply draft nothing", async () => {
   const e = await setup();
   e.cfg.operatorDmChatId = Number(OP);

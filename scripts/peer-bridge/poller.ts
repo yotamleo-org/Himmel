@@ -457,7 +457,8 @@ export class Poller {
     }
     if (this.notifyStopped || this.now() < this.retryAt) return;
     const S = this.deps.stateDir, file = notifyFile(S), cursor = readNotifyCursor(S);
-    const check = verifyChain(file, cursor);
+    let check: ReturnType<typeof verifyChain>;
+    try { check = verifyChain(file, cursor); } catch { check = { ok: false, n: cursor.n, h: "" }; }
     if (!check.ok) {
       this.notifyStopped = true;
       this.log(`peer-notify: chain failed verification at #${check.n + 1}`);
@@ -1035,9 +1036,10 @@ async function writeCodeStamp(S: string): Promise<void> {
   await atomicWrite(join(S, "notify", "bot.code"), JSON.stringify({ pid: process.pid, start: startIdentity(process.pid), code: CODE_VERSION }));
 }
 
-const fileStamp = (path: string) => { try { const st = fs.statSync(path); return `${st.ino}:${st.size}:${st.mtimeMs}`; } catch { return ""; } };
+const fileStamp = (path: string) => { try { const st = fs.statSync(path); return `${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`; } catch { return ""; } };
 
 export async function main(): Promise<void> {
+  let seen = fileStamp(peersFile());
   let cfg: Config;
   try { cfg = loadConfig(peersFile()); } catch (e) {
     if (e instanceof ConfigError) { console.error(`peer-bridge: ${e.message}`); process.exit(EXIT_CONFIG); }
@@ -1069,7 +1071,6 @@ export async function main(): Promise<void> {
   const guard = (fn: () => Promise<void>) => () => fn().catch(e => { console.error(`peer-bridge: ${(e as Error).message}`); process.exit(1); });
   setInterval(guard(() => poller.tick()), 30_000); // t13b-ok: the poller's own deadline tick
   setInterval(guard(() => poller.drainSpool()), 1_000); // t13b-ok: the poller's own spool drain
-  let seen = fileStamp(peersFile());
   setInterval(guard(async () => { const now = fileStamp(peersFile()); if (now !== seen) { seen = now; await poller.reload(); } }), 2_000); // t13b-ok: the poller's own peers.json watch
 
   while (!stop) {

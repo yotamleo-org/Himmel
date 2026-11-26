@@ -296,8 +296,10 @@ export async function dm(deps: Deps): Promise<void> {
     refuse(`the peer bridge bot has no chat with you yet (${(e as Error).message}); press Start in its chat and run setup.ts dm again`);
   }
   if (chat?.type !== "private" || chat?.id !== raw.operatorChatId) refuse("that chat is not your private chat with the peer bridge bot");
-  raw.operatorDmChatId = raw.operatorChatId;
-  replaceJson(peersFile(), raw);
+  const fresh = loadRaw();
+  if (fresh.operatorChatId !== raw.operatorChatId) refuse("peers.json changed its operator while you were in Telegram; run setup.ts dm again");
+  fresh.operatorDmChatId = fresh.operatorChatId;
+  replaceJson(peersFile(), fresh);
   deps.out("peer escalations, drafts and their buttons now arrive in your chat with the peer bridge bot; the running poller picks this up by itself");
 }
 
@@ -389,8 +391,9 @@ export async function pair(peer: string, name: string | undefined, card: string 
   if (station === undefined) {
     station = (name ?? (await deps.ask("Our station name (lowercase letters, digits and dashes): "))).trim();
     checkStationName(station, deps);
-    raw.self = { ...(raw.self ?? {}), stationName: station };
-    replaceJson(peersFile(), raw);
+    const fresh = loadRaw();
+    fresh.self = { ...(fresh.self ?? {}), stationName: station };
+    replaceJson(peersFile(), fresh);
     deps.out(`our station name is ${station}`);
   } else if (name !== undefined && name !== station) refuse(`our station name is already ${station}`);
   mkdir0700(configDir());

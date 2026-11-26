@@ -2700,7 +2700,7 @@ export async function main(): Promise<void> {
     answer: (id, text) => answerCallbackQuery(token, id, text),
   }, afkPrompts);
   const configRestore = makeConfigRestoreGate({ access: () => access, enrolled: configRestoreEnrolled, run: spawnConfigRestore, reply: (chat: number, text: string) => replyViaOutbox(root, chat, text), log: logRedacted });
-  const peerReply = makeLegacyPeerReply({ root, operatorChat: () => operatorChatId(access), reply: (chat, text) => sendMessage(token, chat, text).then(() => undefined) });
+  const peerReply = makeLegacyPeerReply({ root, operatorChat: () => operatorChatId(access), reply: (chat, text) => replyViaOutbox(root, chat, text) });
   const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo, configRestore, peerReply };
   // Operator -> chief routing. Same authorize as /arm, global
   // allowFrom sender AND an allowed chat, so the gate is unchanged; the ack rides
