@@ -277,9 +277,9 @@ EOF
 build_mcp_json() {
     local p="$1" out="$2" n
     jq -e --arg p "$p" '.profiles[$p]
-        | (if has("mcpServers") then (.mcpServers | type == "object" and all(.[]; type == "object")) else true end)
-        and (if has("optionalMcpServers") then (.optionalMcpServers | type == "array" and all(.[]; type == "string")) else true end)' "$REGISTRY" >/dev/null 2>&1 \
-        || die 2 "profile '$p': mcpServers must be an object of server objects and optionalMcpServers a list of names"
+        | (if has("mcpServers") then (.mcpServers | type == "object" and all(.[]; type == "object") and all(keys[]; test("^[A-Za-z0-9._-]+$"))) else true end)
+        and (if has("optionalMcpServers") then (.optionalMcpServers | type == "array" and all(.[]; type == "string" and test("^[A-Za-z0-9._-]+$"))) else true end)' "$REGISTRY" >/dev/null 2>&1 \
+        || die 2 "profile '$p': mcpServers must be an object of server objects and optionalMcpServers a list of names, every name made of letters, digits, . _ -"
     for n in $(jq -r --arg p "$p" --slurpfile pp "$PLUGIN_PROFILES" '(.profiles[$p].optionalMcpServers // [])[] as $n
         | select((($pp[0].mcpCatalog // {})[$n]) == null or ((($pp[0].mcpCatalog // {})[$n] | tostring) | contains("${"))) | $n' "$REGISTRY"); do
         echo "antigravity-profiles: skip optional MCP server '$n': not in mcpCatalog, or it needs a checkout path" >&2
@@ -446,7 +446,7 @@ run_smoke() {
                 case "$spec" in
                     http://*|https://*)
                         command -v curl >/dev/null 2>&1 && curl -s -o /dev/null --max-time 5 "$spec" || why="$k(unreachable $spec)" ;;
-                    '') why="$k(no command or url)" ;;
+                    '') bad="$bad $k(no command or url)"; continue ;;
                     *) command -v "$spec" >/dev/null 2>&1 || why="$k(command $spec not on PATH)" ;;
                 esac
                 if [ -z "$why" ]; then n=$((n+1))

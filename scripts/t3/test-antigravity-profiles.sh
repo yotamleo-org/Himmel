@@ -561,6 +561,20 @@ expect_eq "38 an optional MCP server missing from PATH does not fail smoke" "$SR
 expect_ok "38 the required server still counts as reachable" grep -q '^PASS mcp: 1 MCP servers reachable' <<<"$SOUT"
 expect_ok "38 the missing optional server is an INFO line" grep -q '^INFO mcp: optional servers not available: playwright(command no-such-optional-cmd-xyz' <<<"$SOUT"
 
+jq '.mcpCatalog = {playwright:{}}' "$T/plugin-profiles.json" > "$T/plugin-profiles-opt2.json"
+fresh
+mk_bare_tok
+env T3_AP_REGISTRY="$T/registry-opt.json" T3_AP_PLUGIN_PROFILES="$T/plugin-profiles-opt2.json" bash "$GEN" --apply --profile design >/dev/null 2>&1
+smoke_hooks "$T/adp-deny/antigravity-hook-adapter.sh"
+jq -n '{providerInstances:{antigravity_design:{driver:"antigravity",enabled:true}}}' > "$T3CODE_HOME/userdata/settings.json"
+jq -n '{t3:{instance_allowlist:["antigravity_design"]}}' > "$HOME/.himmel/config.json"
+SOUT="$(env T3_AP_REGISTRY="$T/registry-opt.json" T3_AP_PLUGIN_PROFILES="$T/plugin-profiles-opt2.json" T3_AP_ADAPTER="$T/adp-deny/antigravity-hook-adapter.sh" bash "$GEN" --smoke --profile design 2>&1)"; SRC=$?
+expect_eq "38 an optional MCP server with no command or URL still fails smoke" "$SRC" 1
+expect_ok "38 the FAIL names the malformed optional server" grep -q '^FAIL mcp: not reachable: playwright(no command or url)' <<<"$SOUT"
+jq '.profiles.design.mcpServers = {"team ctx":{command:"sh"}}' "$REG_ORIG" > "$T/registry-badname.json"
+env T3_AP_REGISTRY="$T/registry-badname.json" bash "$GEN" --dry-run --profile design >/dev/null 2>&1; rc=$?
+expect_eq "38 an MCP server name with a space exits 2" "$rc" 2
+
 fresh
 mcp_env bash "$GEN" --apply --profile design >/dev/null 2>&1
 M="$(home_of)/config/mcp_config.json"

@@ -15,7 +15,7 @@ Optional registry fields per profile:
   `mcpServers` nor `optionalMcpServers` leaves `mcp_config.json` alone; a profile that names either key
   (even an empty one) owns the file, so a removed server leaves it. `--check` also needs mode 600, and
   `--apply` sets it. A non-object `mcpServers`, a non-object server entry, a non-list
-  `optionalMcpServers` or a non-list `excludePlugins` exits 2.
+  `optionalMcpServers`, a non-list `excludePlugins` or a server name outside letters, digits, `.`, `_`, `-` exits 2.
 - `optionalMcpServers`: names resolved from `mcpCatalog` in `scripts/lanes/plugin-profiles.json` and
   added to the same file. A name missing from the catalog, or whose definition needs a checkout path
   (`${...}`), is skipped with a note on stderr, not an error. An own `mcpServers` entry wins over a
