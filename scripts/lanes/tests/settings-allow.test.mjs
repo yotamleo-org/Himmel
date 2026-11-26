@@ -425,7 +425,7 @@ const WORKER_FACING_DOCS = ['docs/handover/worker-brief-template.md', 'docs/hand
 const MERGE_ANCHOR = '/home/u/himmel';
 const CHIEF_RENDERED_ALLOW = resolveProfile(REG, 'chief', { installed: [] }).permissions?.allow ?? [];
 const WORKER_RENDERED_ALLOW = [...ALLOW, ...resolveProfile(REG, 'worker-impl', { installed: [], anchor: MERGE_ANCHOR }).permissions.allow];
-// the worker messages auto-go.sh and verdict-go.sh print: `GO <pr> <head> - merge with: bash %q...`, the first %q being the anchor path
+// the worker message go-deliver.sh's gd_message prints: `GO <pr> <head> - merge with: bash %q...`, the first %q being the anchor path
 function mergePrintfCommands() {
   const out = [];
   for (const f of printingShellFiles()) {
@@ -453,7 +453,7 @@ test('every printed merge-on-green and merge-fork-pr command matches one allow p
   const printfs = mergePrintfCommands();
   assert.ok(spans.some((s) => s.worker) && spans.some((s) => !s.worker), 'anti-vacuity: worker-facing and chief-facing doc spans');
   assert.ok(spans.length >= 4, `anti-vacuity: expected the doc spans, got ${spans.length}`);
-  assert.equal(printfs.length, 3, 'anti-vacuity: the auto-go, verdict-go and go-batch worker messages');
+  assert.equal(printfs.length, 2, 'anti-vacuity: the worker GO message go-deliver.sh words for go.sh, auto-go, verdict-go and go-batch, with and without --go');
   const bad = [];
   for (const hit of [...spans, ...printfs]) {
     const problems = mergePrintedProblems(hit);

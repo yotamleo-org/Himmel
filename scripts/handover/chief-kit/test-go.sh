@@ -1300,7 +1300,7 @@ case "${BUS33_MODE:-ok}" in
 esac
 STUB
 # shellcheck disable=SC2016  # the stub expands CENSUS33 when it runs
-printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${CENSUS33:-}"\nexit "${CENSUS33_RC:-0}"\n' > "$D33/bin/census"
+printf '#!/usr/bin/env bash\n[ -z "${CENSUS33_SLEEP:-}" ] || exec sleep "$CENSUS33_SLEEP"\nprintf "%%s\\n" "${CENSUS33:-}"\nexit "${CENSUS33_RC:-0}"\n' > "$D33/bin/census"
 chmod +x "$D33/bin/bus" "$D33/bin/census"
 w33() {
   { printf '# %s\n\n' "$2"
@@ -1327,9 +1327,10 @@ go33() {
 }
 nrec33() { if [ -f "$BUSLOG33" ]; then wc -l < "$BUSLOG33" | tr -d ' '; else echo 0; fi; }
 tokleak33() {
-  { printf '%s\n' "$out33" | grep -v '^SENDMESSAGE to='; printf '%s\n' "$err33"; cat "$GO33" 2>/dev/null  # read-sink-ok: the suite's own GO file under its temp root
+  { printf '%s\n' "$out33" | grep -v '^SENDMESSAGE to='; printf '%s\n' "$err33"; fxread33 "$GO33"
     find "$ROOT33" -path '*/verdicts/*' -type f -exec cat {} + 2>/dev/null; } | grep -cE "$TOK33|$BTOK33" || true
 }
+fxread33() { case "$1" in "$D33"/*) cat "$1" 2>/dev/null ;; esac; }
 line33() { printf '%s\n' "$out33" | sed -n "${1}p"; }
 msg33() {
   # shellcheck disable=SC2016  # the backticks are the message's literal markers
@@ -1339,7 +1340,7 @@ msg33() {
 fx33; go33 --doc "$C33" --contract yes 42 "$SHA"
 check "GD1: exit 0" "$rc33" "0"
 check "GD1: one bus record, to N1's session" "$(cat "$BUSLOG33" 2>/dev/null)" "send $STEM33"
-check "GD1: the body names the merge and quotes the Live state token" "$(cat "$BODY33" 2>/dev/null)" "$(msg33 "$TOK33" " --jira-transition")"  # read-sink-ok: the bus stub's copy of the body, inside the suite's temp dir
+check "GD1: the body names the merge and quotes the Live state token" "$(fxread33 "$BODY33")" "$(msg33 "$TOK33" " --jira-transition")"
 check "GD1: stdout is SENT, then the GO path" "$out33" "SENT 42 $H833 to N1 bus=#7"$'\n'"$GO33"
 check "GD1: no token in stdout, stderr, the GO file or the record" "$(tokleak33)" "0"
 fx33; READY_STUB_HEAD=0000000000000000000000000000000000000000 go33 --doc "$C33" --contract yes 42 "$SHA"
@@ -1351,7 +1352,7 @@ check "GD2: exit 0, the GO file exists, no record" "$rc33|$(test -f "$GO33" && e
 check "GD2c: the last stdout line is the GO path" "${out33##*$'\n'}" "$GO33"
 
 fx33; c33 "$C33" "workers: \`N1:NONCE-UNKNOWN:lock-n1:4242\`"; go33 --doc "$C33" --contract yes 42 "$SHA"
-check "GD3: a NONCE-UNKNOWN span -> the body quotes the brief's token" "$(cat "$BODY33" 2>/dev/null)" "$(msg33 "$BTOK33" " --jira-transition")"  # read-sink-ok: the bus stub's copy of the body, inside the suite's temp dir
+check "GD3: a NONCE-UNKNOWN span -> the body quotes the brief's token" "$(fxread33 "$BODY33")" "$(msg33 "$BTOK33" " --jira-transition")"
 fx33; c33 "$C33" "workers: \`N1:NONCE-UNKNOWN:lock-n1:4242\`"; w33 "$W33" N1 - "- 10:00 READY 42 $SHA GREEN"
 go33 --doc "$C33" --contract yes 42 "$SHA"
 check "GD3c: no usable token -> NOT-SENT no-token, no record" "$(line33 1)|$(nrec33)" "NOT-SENT 42 $H833 reason=no-token N1|0"
@@ -1370,8 +1371,10 @@ check "GD4d: a token across character 150 is redacted before the cut" "$(line33 
 fx33; BUS33_MODE=noref BUS33_TOK="$TOK33" go33 --doc "$C33" --contract yes 42 "$SHA"
 check "GD4e: exit 0 with no record number -> bus-failed, redacted" "$(line33 1)" "NOT-SENT 42 $H833 reason=bus-failed bus send printed no record number: bus: rejected token <token>"
 check "GD4e: no token outside the SENDMESSAGE line" "$(tokleak33)" "0"
-fx33; go33 --fix-main-red 9 42 "$SHA"
-check "GD4c: a FIX-GO sends no record" "$(nrec33)" "0"
+fx33; mkdir -p "$ROOT33/$VSCOPE"; cp "$C33" "$ROOT33/$VSCOPE/chief-33.md"; cp "${C33%.md}.fleet.json" "$ROOT33/$VSCOPE/chief-33.fleet.json"
+BUS_NAME33=chief-33 go33 --fix-main-red 9 42 "$SHA"
+check "GD4c: a FIX-GO with a resolvable chief doc: the fix-GO file is written" "$(test -f "$ROOT33/.locks/go/fix-main-red.42.$SHA.9" && echo yes)" "yes"
+check "GD4c: no bus record and no SENT or NOT-SENT line" "$(nrec33)|$(grep -cE '^(SENT|NOT-SENT) ' <<< "$out33")" "0|0"
 if command -v timeout >/dev/null 2>&1; then
   fx33; t33=$SECONDS; BUS33_MODE='sleep' go33 --doc "$C33" --contract yes 42 "$SHA"; t33=$((SECONDS - t33))
   check "GD4b: a hung bus send is cut: bus-failed, exit 0, the path last" "$(line33 1 | grep -c 'reason=bus-failed bus send exit 124')|$rc33|${out33##*$'\n'}" "1|0|$GO33"
@@ -1394,8 +1397,15 @@ check "GD6c: a row with no lane -> no record" "$(line33 1)|$(nrec33)" "NOT-SENT 
 
 fx33; go33 --no-deliver --contract yes 42 "$SHA"
 check "GD7: --no-deliver -> the path alone, exit 0, no record" "$out33|$rc33|$(nrec33)" "$GO33|0|0"
-fx33; go33 --repo o/r --trust-reviewed q33 42 "$SHA"
-check "GD7c: a fork GO sends no record" "$(nrec33)" "0"
+fx33; rm -f "$ROOT23/.locks/go/88.$SHA"; mkdir -p "$ROOT23/$VSCOPE"
+w33 "$W33" N1 "$BTOK33" "- 10:00 READY 88 $SHA GREEN"
+cp "$C33" "$ROOT23/$VSCOPE/chief-33.md"; m33 "$ROOT23/$VSCOPE/chief-33.md" "$(row33 N1 "$W33" native)"
+averdict u/acme--widget W1 "repo: acme/widget"
+rc33=0; out33=$(PATH="$A23_BIN:$PATH" HANDOVER_DIR="$ROOT23" HIMMEL_BUS_NAME=chief-33 GO_DELIVER_BUS="$D33/bin/bus" GO_DELIVER_CENSUS="$D33/bin/census" \
+  CENSUS33="$CENSUS33_DEF" bash "$SCRIPT" --repo acme/widget --trust-reviewed W1 88 "$SHA" 2>/dev/null) || rc33=$?
+check "GD7c: a fork GO with a resolvable chief doc: exit 0, the GO file is written" "$rc33|$(test -f "$ROOT23/.locks/go/88.$SHA" && echo yes)" "0|yes"
+check "GD7c: no bus record and no SENT or NOT-SENT line" "$(nrec33)|$(grep -cE '^(SENT|NOT-SENT) ' <<< "$out33")" "0|0"
+rm -f "$ROOT23/.locks/go/88.$SHA"
 
 fx33; w33 "$W33" N1 "$BTOK33" "- 10:00 READY 42 $SHA GREEN" 1; go33 --doc "$C33" --contract yes 42 "$SHA"
 check "GD8: a Merge: chief brief is GOed by hand -> SENT" "$(line33 1)" "SENT 42 $H833 to N1 bus=#7"
@@ -1421,6 +1431,12 @@ check "GD13: two rows name PR 42 -> the last one is sent to" "$(line33 1)|$(cat 
 fx33; CENSUS33="" go33 --doc "$C33" --contract yes 42 "$SHA"
 check "GD14: no live session -> NOT-SENT no-session" "$(line33 1)|$(nrec33)" "NOT-SENT 42 $H833 reason=no-session N1 (0 live matches)|0"
 check "GD14: then the SENDMESSAGE line to the worker doc's stem" "$(line33 2)" "SENDMESSAGE to=$STEM33 :: $(msg33 "$TOK33" " --jira-transition" | tr '\n' ' ')"
+if command -v timeout >/dev/null 2>&1; then
+  fx33; t33=$SECONDS; CENSUS33_SLEEP=60 go33 --doc "$C33" --contract yes 42 "$SHA"; t33=$((SECONDS - t33))
+  check "GD19: a hung census is cut at 10 s: no-session, the path last, within 30 s" "$(line33 1)|${out33##*$'\n'}|$([ "$t33" -lt 30 ] && echo fast || echo "slow ($t33 s)")" "NOT-SENT 42 $H833 reason=no-session N1 (0 live matches)|$GO33|fast"
+else
+  echo "ok - GD19: skipped, no timeout binary"
+fi
 fx33; CENSUS33_RC=3 go33 --doc "$C33" --contract yes 42 "$SHA"
 check "GD18: an incomplete census (exit 3) is never read as a unique match" "$(line33 1)|$(nrec33)" "NOT-SENT 42 $H833 reason=no-session N1 (0 live matches)|0"
 fx33; CENSUS33="$(printf '4242\t%s' "$STEM33B")" go33 --doc "$C33" --contract yes 42 "$SHA"

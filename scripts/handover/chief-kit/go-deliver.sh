@@ -138,8 +138,11 @@ gd_session() {
 gd_message() {
     local jt=" --jira-transition" msg
     [ "$5" != no ] || jt=""
-    msg=$(printf 'GO %s %s - merge with: bash %q%s' "$1" "$2" "$4/scripts/handover/merge-on-green.sh" "$jt")
-    [ -z "$3" ] || msg="$msg$(printf ' --go %q' "$3")"
+    if [ -n "$3" ]; then
+        msg=$(printf 'GO %s %s - merge with: bash %q%s --go %q' "$1" "$2" "$4/scripts/handover/merge-on-green.sh" "$jt" "$3")
+    else
+        msg=$(printf 'GO %s %s - merge with: bash %q%s' "$1" "$2" "$4/scripts/handover/merge-on-green.sh" "$jt")
+    fi
     [ "$6" = - ] || msg="$msg"$'\n'"contract no: $6; merge without --jira-transition"
     [ -z "${7:-}" ] || msg="$msg"$'\n'"Your token \`$7\`."
     printf '%s\n' "$msg"
