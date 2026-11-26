@@ -29,7 +29,7 @@ run() {
     local r="$1"; shift
     out=$(cd "$r" && bash scripts/ci/check-doc-byte-budgets.sh "$@" 2>&1); rc=$?
 }
-pad() { head -c "$2" /dev/zero | tr '\0' x > "$1"; }
+pad() { awk -v n="$2" 'BEGIN { for (i = 0; i < n; i++) printf "x" }' > "$1"; }
 
 base="$tmp/base"; mkroot "$base"
 run "$base"
