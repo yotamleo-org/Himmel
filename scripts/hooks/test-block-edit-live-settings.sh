@@ -4178,6 +4178,20 @@ assert_rc "11257b25 xargs supplying the verb to agy plugin denies" 2 \
     "$(bash_rc_of "$WT2" "printf 'import claude\\n' | xargs agy plugin" HOME="$T3H")"
 assert_rc "11257b26 xargs supplying the verb to agy mcp denies" 2 \
     "$(bash_rc_of "$WT2" 'xargs -n1 agy mcp' HOME="$T3H")"
+assert_rc "11257b28 a redirect target named list does not stand in for the verb" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin >list install ./p <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b29 a spaced redirect target named list does not stand in for the verb" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin > list install ./p <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b30 xargs behind a wrapper supplying the verb denies" 2 \
+    "$(bash_rc_of "$WT2" 'sudo xargs agy plugin' HOME="$T3H")"
+assert_rc "11257b31 a stderr redirect before the write verb denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin 2>&1 install ./p <<'EOF'
+y
+EOF" HOME="$T3H")"
 assert_rc "11257b27 a redirect glued to the subcommand in a heredoc command denies" 2 \
     "$(bash_rc_of "$WT2" "agy plugin>/dev/null install ./p <<'EOF'
 y
@@ -4242,7 +4256,13 @@ assert_rc "11257c21 a variable subcommand followed by a read verb allows" 0 \
 assert_rc "11257c22 xargs feeding a read verb to agy plugin allows" 0 \
     "$(bash_rc_of "$WT2" 'xargs agy plugin list' HOME="$T3H")"
 assert_rc "11257c23 a redirect glued to a read verb in a heredoc command allows" 0 \
-    "$(bash_rc_of "$WT2" "agy plugin list >/dev/null <<'EOF'
+    "$(bash_rc_of "$WT2" "agy plugin list>/dev/null <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257c24 a quoted prompt ending in a question mark allows" 0 \
+    "$(bash_rc_of "$WT2" 'agy -p "What changed?" --model m' HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
+assert_rc "11257c25 a read verb after a stderr redirect in a heredoc command allows" 0 \
+    "$(bash_rc_of "$WT2" "agy plugin 2>&1 list <<'EOF'
 y
 EOF" HOME="$T3H")"
 assert_rc "11257c16 a command substitution carrying plugin list in a heredoc command allows" 0 \

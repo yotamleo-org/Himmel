@@ -1055,7 +1055,7 @@ _agy_verb_ro() {
 }
 
 _agy_seg_writes() {
-    local st=0 first=1 w cw=''
+    local st=0 first=1 app=0 w cw=''
     for w in "$@"; do
         [ -n "$w" ] || continue
         if [ "$first" = 1 ]; then
@@ -1065,30 +1065,35 @@ _agy_seg_writes() {
             case "$cw" in *'$'*) st=1; continue ;; esac
             case "$w" in *\$\{*) case "$cw" in *\}*) st=1; continue ;; esac ;; esac
         fi
+        case "${w##*/}" in xargs|parallel|entr) app=1 ;; esac
         case "$st" in
             0) [ "${w##*/}" != agy ] || st=1 ;;
-            1) case "$w" in plugin|plugins|mcp|*'$'*|*'*'*|*'?'*|*'['*|*'{'*) st=2 ;; esac ;;
+            1) case "$w" in plugin|plugins|mcp|*$'\001') st=2 ;; esac ;;
             2) _agy_verb_ro "$w" || return 0; st=0 ;;
         esac
     done
-    if [ "$st" = 2 ]; then
-        case "$cw" in xargs|parallel|entr) return 0 ;; esac
-    fi
+    [ "$st" = 2 ] && [ "$app" = 1 ] && return 0
     return 1
 }
 
 _agy_text_writes() {
-    local s seg rc=1
+    local s seg k rc=1
     local -a ws
+    local rre='[0-9]*[<>]+&?[[:space:]]*[^[:space:]<>;&|()`]*'
     s=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
     s=${s//\\$'\n'/}
     s=${s//[\"\']/}
-    s=${s//[()\`<>]/ }
+    while [[ $s =~ $rre ]]; do s=${s/"${BASH_REMATCH[0]}"/ }; done
+    s=${s//[()\`]/ }
     s=${s//[;&|]/$'\n'}
     while IFS= read -r seg || [ -n "$seg" ]; do
         ws=()
         read -ra ws <<< "$seg"
-        if [ "${#ws[@]}" -gt 0 ] && _agy_seg_writes "${ws[@]}"; then rc=0; break; fi
+        [ "${#ws[@]}" -gt 0 ] || continue
+        for k in "${!ws[@]}"; do
+            case "${ws[k]}" in *'$'*|*'*'*|*'?'*|*'['*|*'{'*) ws[k]=${ws[k]}$'\001' ;; esac
+        done
+        if _agy_seg_writes "${ws[@]}"; then rc=0; break; fi
     done <<< "$s"
     return "$rc"
 }
@@ -1116,6 +1121,7 @@ agy_cli_writes() {
             esac
         fi
         if [ "$nested" = 1 ] && _agy_text_writes "$w"; then return 0; fi
+        if [ "${ST_X[i]}" = 1 ] || [ "${ST_G[i]}" = 1 ]; then w=$w$'\001'; fi
         sw[${#sw[@]}]=$w
         i=$((i + 1))
     done
