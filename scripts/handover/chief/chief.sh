@@ -115,6 +115,7 @@ usage: chief.sh new  [--name <slug>] [--arm] [--dry-run] [--model <m>]
                        [--arm] [--dry-run] [--model <m>] [--bucket <b>]
                        [--prefix <P>] [--project <dir>] [--deadline-min <n>]
                        [--context <1m|standard>] [--no-relay-on-live]
+                       [--reason <text>]
        chief.sh wrap <chief-doc> <release-token> [<text>]
        chief.sh -h|--help
 
@@ -130,6 +131,8 @@ then wakes the outgoing console ONCE, when the successor holds its queue lock, w
 relay-batch.sh's SENDMESSAGE lines, so the outgoing console need not ask before
 relaying. It sends nothing itself. --no-relay-on-live (next only) leaves no marker;
 --relay-on-live is the default and stays accepted.
+next appends the outgoing shift's load row to the bucket's load record
+(chief-kit/chief-load-row.sh); --reason (next only) is the handover reason it records.
 --name on next selects which supervisor-session succession to continue; defaults to the name
 implied by --doc's own basename when --doc is given and --name is not,
 else "chief". A name must be "chief" or end in "-chief"; a pre-rename
@@ -729,6 +732,7 @@ PROJECT_ARG=""
 DEADLINE_MIN=480
 DOC_ARG=""
 DATE_ARG=""
+REASON=""
 DATE_GIVEN=0
 
 while [ "$#" -gt 0 ]; do
@@ -752,6 +756,10 @@ while [ "$#" -gt 0 ]; do
         --date=*)
             [ "$CMD" = next ] || { err "--date is only valid for 'next'"; usage >&2; exit 1; }
             DATE_ARG="${1#--date=}"; DATE_GIVEN=1; shift ;;
+        --reason)
+            [ "$CMD" = next ] || { err "--reason is only valid for 'next'"; usage >&2; exit 1; }
+            [ "$#" -ge 2 ] || { usage >&2; exit 1; }
+            REASON="$2"; shift 2 ;;
         --arm) ARM=1; shift ;;
         --relay-on-live)
             [ "$CMD" = next ] || { err "--relay-on-live is only valid for 'next'"; usage >&2; exit 1; }
@@ -3241,6 +3249,14 @@ cmd_next() {
     # blocked by "successor doc already exists".
     launch_line=$(launch_cmd "$session" "$doc") || exit $?
     trap - EXIT
+    local load_window=1000000
+    [ "$CHIEF_CONTEXT_RESOLVED_MODE" = 1m ] || load_window=200000
+    bash "$kit/chief-load-row.sh" --bucket "$state_dir" --shift "$predecessor_stem" --next-shift "$session" \
+        --workers-end "$(printf '%s' "$LIVE_WORKER_ROWS" | grep -c .)" \
+        --rulings "$(verbatim_rulings "$predecessor_doc" | grep -c .)" \
+        --spans-unknown "$(grep -o 'NONCE-UNKNOWN' "$doc" | grep -c .)" \
+        --reason "$REASON" --fill-percent "$fill_percent" --window "$load_window" \
+        || err "warning: could not append the shift's load row to the load record in $state_dir"
     retire_manifest_rows "$predecessor_manifest" "$dead_rows"
     retire_manifest_rows "$successor_manifest" "$dead_rows"
     console_metadata "$inbox"
