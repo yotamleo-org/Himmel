@@ -678,10 +678,15 @@ patch_case "7888 Darwin control: apply_patch header through an alias to notes.tx
 export HIMMEL_CONFIG_DIR="$T/CoNf"
 file_case "7888 Darwin: HIMMEL_CONFIG_DIR written to in another case -> block" block Write "$T/CONF/himmel.conf"
 file_case "7888 Darwin control: HIMMEL_CONFIG_DIR, another file -> allow" allow Write "$T/CONF/notes.txt"
+bash_case "7888 Darwin: a Bash redirect onto HIMMEL_CONFIG_DIR's himmel.conf in another case -> block" block "echo x > $T/CONF/himmel.conf"
+bash_case "7888 Darwin: a Bash tee onto a HIMMEL_CONFIG_DIR profile in another case -> block" block "tee $T/CONF/profiles/lab.conf"
+bash_case "7888 Darwin control: a Bash redirect onto another file in HIMMEL_CONFIG_DIR in another case -> allow" allow "echo x > $T/CONF/notes.txt"
 unset HIMMEL_CONFIG_DIR
 export HIMMEL_API_CREDIT_CONFIG="$T/CrEdIt/config.json"
 file_case "7888 Darwin: HIMMEL_API_CREDIT_CONFIG role map written to in another case -> block" block Write "$T/CREDIT/roles.json"
 file_case "7888 Darwin control: HIMMEL_API_CREDIT_CONFIG, another file -> allow" allow Write "$T/CREDIT/config.json"
+bash_case "7888 Darwin: a Bash redirect onto the HIMMEL_API_CREDIT_CONFIG role map in another case -> block" block "echo x > $T/CREDIT/roles.json"
+bash_case "7888 Darwin control: a Bash redirect onto another file beside the role map in another case -> allow" allow "echo x > $T/CREDIT/config.json"
 unset HIMMEL_API_CREDIT_CONFIG
 unset HIMMEL_GUARD_FORCE_DARWIN
 ln -s "$HOME/.himmel" "$T/S"
@@ -704,6 +709,18 @@ bash_case "10322 control: many plain words and an unrelated operand -> allow" al
 run "10322 malformed payload naming himmel.conf through a symlinked directory -> block" block "{not json $T/station-alias/himmel.conf"
 run "10322 malformed payload naming a profile through a symlinked directory -> block" block "{not json $T/station-alias/profiles/lab.conf"
 run "10322 unparseable JSON with the station path as a string value -> block" block "{\"tool_input\":{\"file_path\":\"$T/station-alias/himmel.conf\""
+ln -s "$T/station" "$T/a,b" || { echo "FAIL: cannot build the comma fixture" >&2; exit 1; }
+run "10322 malformed payload with a literal comma in a symlinked station path -> block" block "{not json $T/a,b/himmel.conf"
+{ mkdir -p "$T/nojq-bin" && for _t in bash cat tr readlink dirname; do ln -sf "$(command -v "$_t")" "$T/nojq-bin/$_t"; done; } || { echo "FAIL: cannot build the jq-less PATH" >&2; exit 1; }
+nojq_case() {
+    local rc got
+    printf '%s' "$3" | PATH="$T/nojq-bin" "$T/nojq-bin/bash" "$HOOK" >/dev/null 2>&1
+    rc=$?
+    case "$rc" in 0) got=allow ;; 2) got=block ;; *) got="?(rc=$rc)" ;; esac
+    if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 - expected $2 got $got"; fi
+}
+nojq_case "10322 no jq: a JSON payload with a station path through a symlinked directory -> block" block "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$T/station-alias/himmel.conf\"}}"
+nojq_case "10322 no jq: control, an unrelated path through a symlinked directory -> allow" allow "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$T/station-alias/notes.txt\"}}"
 run "10322 control: unparseable JSON with an unrelated string value -> allow" allow "{\"tool_input\":{\"file_path\":\"$T/station-alias/notes.txt\""
 run "10322 control: malformed payload naming an unrelated file through a symlinked directory -> allow" allow "{not json $T/station-alias/notes.txt"
 bash_case "10322 control: cat through a symlinked directory -> allow" allow "cat $T/station-alias/himmel.conf"
