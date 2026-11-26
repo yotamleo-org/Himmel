@@ -825,7 +825,7 @@ for ok in 'Close WRAPPED chief windows' 'Stop worker windows piling up' 'Spread 
     [ "$rc" = 0 ] && pl_complete && pass "'$ok' is chief wording, not the OS" || fail "'$ok' refused rc=$rc: $(cat "$WORK/pl.err")"
 done
 # Fail closed: with the pattern file gone the script exits 2 rather than briefing unfiltered.
-NF="$WORK/nopat"; mkdir -p "$NF"; cp "$SUT" "$NF/gen-briefs.py"; cp "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/proof_staging.py" "$NF/"
+NF="$WORK/nopat"; mkdir -p "$NF"; cp "$SUT" "$NF/gen-briefs.py"; cp "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/proof_staging.py" "$HERE/minerva_siblings.py" "$NF/"
 python3 "$NF/gen-briefs.py" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$NF/out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "a missing pattern file exits 2" || fail "missing pattern file rc=$rc"
 pl_gen title 'Remove runtime Windows compatibility'; rc=$?
@@ -896,7 +896,7 @@ rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$SUT" "$WORK/workers.json" --base 
 # adopter worktree as WORKER_SESSION_REPO (headed-arm.sh starts the session in that dir) ---
 KIT="$WORK/kit"; mkdir -p "$KIT/scripts/handover/chief-kit"
 mkdir -p "$KIT/scripts/ci"
-cp "$SUT" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/proof_staging.py" "$HERE/platform-dropped.re" "$HERE/size-override.sh" "$KIT/scripts/handover/chief-kit/"
+cp "$SUT" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/proof_staging.py" "$HERE/minerva_siblings.py" "$HERE/platform-dropped.re" "$HERE/size-override.sh" "$KIT/scripts/handover/chief-kit/"
 cp "$HERE/../../ci/ci-trust-paths.txt" "$HERE/../../ci/pr-size-bands.tsv" "$KIT/scripts/ci/"
 mkdir -p "$KIT/scripts/lib"; cp "$HERE/../../lib/flags.py" "$HERE/../../lib/flags.tsv" "$HERE/../../lib/go-gate.sh" "$HERE/../../lib/handover-path.sh" "$KIT/scripts/lib/"
 cp "$HERE/brief-lint.sh" "$KIT/scripts/handover/chief-kit/"; cp -R "$HERE/../../lib/." "$KIT/scripts/lib/"
@@ -2276,7 +2276,7 @@ has "S8b control: GEN_BRIEFS_GH_CMD set still wins and answers" "$s8o" "REM='S5 
 [ ! -s "$S8LOG" ] && pass "S8b control: GEN_BRIEFS_GH_CMD set leaves the two-token stub uncalled" || fail "S8b control: the stub was called: $(cat "$S8LOG")"
 [ "$(cat "$WORK/s8quiet" 2>/dev/null)" = 1 ] && pass "S8b control: GEN_BRIEFS_GH_CMD set runs its gh child with GH_READ_QUIET=1" || fail "S8b control: GH_READ_QUIET not set: $(cat "$WORK/s8quiet" 2>/dev/null)"
 mkdir -p "$WORK/s8 sp/scripts/handover/chief-kit" "$WORK/s8 sp/scripts/lib"
-cp "$HERE/gen-briefs.py" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/proof_staging.py" "$HERE/platform-dropped.re" "$WORK/s8 sp/scripts/handover/chief-kit/"
+cp "$HERE/gen-briefs.py" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/proof_staging.py" "$HERE/minerva_siblings.py" "$HERE/platform-dropped.re" "$WORK/s8 sp/scripts/handover/chief-kit/"
 cp "$HERE/../../lib/gh-read.sh" "$HERE/../../lib/timeout-bin.sh" "$HERE/../../lib/load-dotenv.sh" "$HERE/../../lib/env_alias.py" "$HERE/../../lib/pr_remainder.py" "$WORK/s8 sp/scripts/lib/"
 : > "$S8LOG"
 s8o="$("${S8ENV[@]}" GH_STUB_MAINFAIL=rate python3 -I "$WORK/s8reads.py" "$WORK/s8 sp/scripts/handover/chief-kit" "$REPO" 2>&1)"
@@ -2405,6 +2405,159 @@ same="$(python3 -I -c 'import json,sys; a,b=(json.load(open(f))[0] for f in sys.
 cl1="$(grep '^> \*\*Core gate:\*\*' "$(cg_brief p4proof)" 2>/dev/null)"; cl2="$(grep '^> \*\*Core gate:\*\*' "$(cg_brief p4plain)" 2>/dev/null)"
 { [ -n "$cl1" ] && [ "$cl1" = "$cl2" ]; } && pass "P4 the same Core gate line with and without the kind" || fail "P4 Core gate lines: [$cl1] vs [$cl2]"
 [ "$(lk_lines "$(cg_brief p4plain)")" = "$LK_DESIGN" ] && [ -z "$(lk_lines "$(cg_brief p4proof)")" ] && pass "P4 only the entry without the kind carries the design Leg kind line" || fail "P4 Leg kind: proof [$(lk_lines "$(cg_brief p4proof)")] plain [$(lk_lines "$(cg_brief p4plain)")]"
+
+MS_ROOT="$WORK/handovers"; MS_DIR="$WS/designs"; MS_PLANS="$WS/plans"
+ms_expect() {
+    local n
+    printf '%s\n%s\n%s\n' "$1/$2.estimate.json" "$1/$2.html" "$3/$2.md"
+    for n in 1 2 3 4 5 6; do printf '%s\n%s\n' "$1/$2.md.critic-spec-r$n.md" "$1/$2.md.critic-plan-r$n.md"; done
+}
+ms_workers() {
+    local ks="" k ka; IFS=, read -r -a ka <<< "$2"
+    for k in "${ka[@]}"; do ks="$ks\"$k\","; done
+    cat > "$CG/$1.json" <<MSEOF
+[{"label":"N941","keys":[${ks%,}],"slug":"cg","branch":"feat/himmel-9400-cg","title":"a core design","desc":"d","why":"w","prior":"HIMMEL-9000 (the earlier fix). Source: \`git log -3 -- scripts/x\`.","writes":"$3","scope":"design the thing","scope_short":"x","commit":"docs(x): [${2%%,*}] f"}]
+MSEOF
+}
+ms_gen() { ms_workers "$1" "$2" "$3"; cgo="$(cgrun "$1")"; rc=$?; }
+ms_has() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
+ms_line() { grep -m1 '^> \*\*Writes:\*\* ' "$1" 2>/dev/null; }
+ms_added() { ms_line "$1" | sed 's/^> \*\*Writes:\*\* //' | tr ' ' '\n' | grep -vxF -- "$2"; }
+ms_next() { sed -n '/^> \*\*Writes:\*\* /{n;p;}' "$1" 2>/dev/null; }
+cat > "$WORK/ms_check.py" <<'MSPY'
+import importlib.util, os, re, sys
+mode, here, rest = sys.argv[1], sys.argv[2], sys.argv[3:]
+sys.path.insert(0, here)
+lines = [l.strip() for l in sys.stdin.read().splitlines() if l.strip()]
+if mode == 'r4':  # every added path: absolute, under the root by realpath, in the spec's or the plans directory, carrying the key
+    key, specdir, plansdir, root = rest
+    spec = importlib.util.spec_from_file_location('gen_briefs', os.path.join(here, 'gen-briefs.py'))
+    gb = importlib.util.module_from_spec(spec); spec.loader.exec_module(gb)
+    root = os.path.realpath(root)
+    bad = [p for p in lines if not (os.path.isabs(p) and os.path.commonpath((root, os.path.realpath(p))) == root
+                                    and os.path.dirname(p) in (specdir, plansdir) and gb.spec_key(p) == key)]
+    print('checked=%d bad=%s' % (len(lines), ' '.join(bad))); sys.exit(1 if bad or not lines else 0)
+if mode == 'r5':  # the barrier's one parser reads every added path as a file hold
+    import holds
+    got = set(p for k, p in holds.parse_text(open(rest[0]).read()) if k == 'file')
+    miss = [p for p in lines if p not in got]
+    print('parsed=%d missing=%s' % (len(lines) - len(miss), ' '.join(miss))); sys.exit(1 if miss or not lines else 0)
+if mode == 'r5ctl':  # a glob on a Writes line parses to a cut path, never to the glob
+    import holds
+    got = [p for k, p in holds.parse_text('> **Writes:** ' + rest[0])]
+    print('paths=%s' % ' '.join(got)); sys.exit(0 if got and rest[0] not in got else 1)
+if mode == 'r6':  # ROUNDS stays above the critic round cap chief-route.ts holds
+    import minerva_siblings as m
+    cap = int(re.search(r'CRITIC_ROUND_CAP = (\d+)', open(rest[0]).read()).group(1))
+    print('cap=%d rounds=%d' % (cap, m.ROUNDS)); sys.exit(0 if m.ROUNDS >= cap + 1 else 1)
+if mode == 'r8':  # every critic return name matches spec-sign's SERIES, read from the file
+    series = re.compile(re.search(r'const SERIES = /(.*)/;', open(rest[0]).read()).group(1))
+    name = rest[1]
+    ret = [os.path.basename(p) for p in lines if '.critic-' in os.path.basename(p)]
+    bad = [n for n in ret if not (n.startswith(name) and series.match(n[len(name):]))]
+    print('returns=%d bad=%s' % (len(ret), ' '.join(bad))); sys.exit(1 if bad or not ret else 0)
+if mode == 'r10':  # the page and the plan map back to the spec by chief-route's own rules
+    ts, spec = rest
+    problems = []
+    if '["design", "designs", "spec"]' not in open(ts).read():
+        problems.append('chief-route.ts lost the design folder list')
+    page = [p for p in lines if p.endswith('.html')]
+    plan = [p for p in lines if os.path.dirname(p).endswith('/plans')]
+    if len(page) != 1 or page[0][:-len('.html')] + '.md' != spec:
+        problems.append('the page does not map to the spec')
+    if len(plan) != 1 or os.path.join(os.path.dirname(os.path.dirname(plan[0])), os.path.basename(os.path.dirname(spec)), os.path.basename(plan[0])) != spec:
+        problems.append('the plan does not map to the spec')
+    print('problems=' + '; '.join(problems)); sys.exit(1 if problems else 0)
+sys.exit(2)
+MSPY
+msck() { python3 -I "$WORK/ms_check.py" "$@" 2>&1; }
+
+MS_K=HIMMEL-9461; MS_SPEC="$MS_DIR/$MS_K-x.md"
+cg_mirror $MS_K Task Medium '["core"]'
+ms_gen ms1 $MS_K "$MS_SPEC"
+MS1="$(cg_brief ms1)"
+ms_want="$(ms_expect "$MS_DIR" "$MS_K-x" "$MS_PLANS" | tr '\n' ' ')"
+{ [ "$rc" = 0 ] && [ "$(ms_line "$MS1")" = "> **Writes:** $MS_SPEC ${ms_want% }" ]; } && pass "R1 a design entry's Writes names its spec and the 15 minerva siblings, in order" || fail "R1 rc=$rc Writes=[$(ms_line "$MS1")] out=$cgo"
+lacks "R1 control: no path of another stem" "$(ms_line "$MS1")" "$MS_K-y"
+lacks "R1 control: no r7 return" "$(ms_line "$MS1")" "-r7."
+
+cg_mirror HIMMEL-9462 Task Medium '[]'; cg_workers ms2build HIMMEL-9462 "scripts/x.sh" ''; cgrun ms2build >/dev/null
+cg_mirror HIMMEL-9463 Task Medium '["core"]'; ms_gen ms2audit HIMMEL-9463 "$MS_ROOT/specs/audits/HIMMEL-9463-a.md"; rc2a=$rc
+cg_mirror HIMMEL-9464 Task Medium '["core"]'; ms_gen ms2key HIMMEL-9464 "$WS/HIMMEL-9464/x-spec.md"; rc2k=$rc
+ms2_ok=1
+for b in "$(cg_brief ms2build)" "$(cg_brief ms2audit)" "$(cg_brief ms2key)" "$PB" "$RMD" "$NWB"; do
+    [ -f "$b" ] || { ms2_ok=0; continue; }
+    case "$(cat "$b")" in *".estimate.json"*|*"> **Minerva files:**"*) ms2_ok=0 ;; esac
+done
+{ [ "$rc2a" = 0 ] && [ "$rc2k" = 0 ] && [ "$ms2_ok" = 1 ]; } && pass "R2 no sibling and no Minerva files line for a build, proof, audit-only design, specs/<KEY>/ design, rm or none-named brief" || fail "R2 rc=$rc2a/$rc2k ok=$ms2_ok"
+
+MS3K=HIMMEL-9465; MS3="$MS_DIR/$MS3K-x"
+cg_mirror $MS3K Task Medium '["core"]'
+ms_gen ms3bare $MS3K "$MS3.md $MS3.estimate.json $MS3.html"
+B3="$(cg_brief ms3bare)"
+{ [ "$rc" = 0 ] && ms_has "$(cat "$B3" 2>/dev/null)" "> **Core gate:** $MS3K bypass=design" && [ "$(lk_lines "$B3")" = "$LK_DESIGN" ]; } && pass "R3 a bare estimate and page beside the spec: rc 0, bypass=design, design Leg kind line" || fail "R3 bare rc=$rc: $cgo"
+ms_gen ms3tick $MS3K "\`$MS3.md\` \`$MS3.estimate.json\` \`$MS3.html\`"
+B3T="$(cg_brief ms3tick)"
+{ [ "$rc" = 0 ] && ms_has "$(cat "$B3T" 2>/dev/null)" "> **Core gate:** $MS3K bypass=design" && [ "$(lk_lines "$B3T")" = "$LK_DESIGN" ]; } && pass "R3 the same names in backticks: rc 0, bypass=design, design Leg kind line" || fail "R3 backticks rc=$rc: $cgo"
+for b in "$B3" "$B3T"; do
+    r3n="$(ms_line "$b" | sed 's/^> \*\*Writes:\*\* //' | tr ' ' '\n' | grep -c .)"
+    r3d="$(ms_line "$b" | sed 's/^> \*\*Writes:\*\* //' | tr ' ' '\n' | sort | uniq -d)"
+    { [ "$r3n" = 16 ] && [ -z "$r3d" ]; } && pass "R3 a sibling the ticket names is on the Writes line once (16 distinct paths)" || fail "R3 Writes line has a duplicate or the wrong count ($r3n paths, repeated [$r3d]): $(ms_line "$b")"
+done
+mkdir -p "$WORK/outside-ms/specs/designs"; : > "$WORK/outside-ms/real.json"
+ln -s "$WORK/outside-ms" "$MS_ROOT/lnk-ms"; ln -s "$WORK/outside-ms/real.json" "$MS_DIR/$MS3K-sym.estimate.json"
+ms3_refused() {
+    ms_gen "$1" $MS3K "$2"
+    { [ "$rc" = 1 ] && [ -z "$(cg_brief "$1")" ]; } && pass "R3 control: $3 is refused as before" || fail "R3 control $3 rc=$rc: $cgo"
+}
+ms3_refused ms3data "$MS3.md $MS_DIR/$MS3K-data.json" "a non-sibling .json beside the spec"
+ms3_refused ms3list "$MS_DIR/ ($MS3K-x.md, $MS3K-x.estimate.json)" "the absolute dir/ (a, b) list form"
+ms3_refused ms3out "$WORK/outside-ms/specs/designs/$MS3K-x.md $WORK/outside-ms/specs/designs/$MS3K-x.estimate.json" "a spec and estimate outside the handover root"
+ms3_refused ms3lnk "$MS_ROOT/lnk-ms/specs/designs/$MS3K-x.md $MS_ROOT/lnk-ms/specs/designs/$MS3K-x.estimate.json" "a spec and estimate reached through a symlink out of the root"
+ms3_refused ms3sym "$MS_DIR/$MS3K-sym.md $MS_DIR/$MS3K-sym.estimate.json" "an estimate that is a symlink to a file outside the root"
+
+ms_added "$MS1" "$MS_SPEC" > "$WORK/ms1.added"
+o="$(msck r4 "$HERE" "$MS_K" "$MS_DIR" "$MS_PLANS" "$MS_ROOT" < "$WORK/ms1.added")"; rc=$?
+{ [ "$rc" = 0 ] && ms_has "$o" "checked=15 "; } && pass "R4 each of the 15 added paths is absolute, under the root, in the spec's or plans directory and carries the key" || fail "R4 rc=$rc: $o"
+o="$(printf '%s\n' "$MS_DIR/$MS3K-x.estimate.json" | msck r4 "$HERE" "$MS_K" "$MS_DIR" "$MS_PLANS" "$MS_ROOT")"; rc=$?
+{ [ "$rc" = 1 ] && ms_has "$o" "bad=$MS_DIR/$MS3K-x.estimate.json"; } && pass "R4 control: a path of another key fails on the key" || fail "R4 control rc=$rc: $o"
+o="$(msck r5 "$HERE" "$MS1" < "$WORK/ms1.added")"; rc=$?
+{ [ "$rc" = 0 ] && ms_has "$o" "parsed=15 "; } && pass "R5 holds.parse_text reads each of the 15 added paths as a file hold" || fail "R5 rc=$rc: $o"
+o="$(msck r5ctl "$HERE" "$MS_DIR/$MS_K-x.md.critic-spec-r*.md")"; rc=$?
+[ "$rc" = 0 ] && pass "R5 control: a glob parses to a cut path, not the glob" || fail "R5 control rc=$rc: $o"
+TSROUTE="$HERE/../../telegram/chief-route.ts"; TSSIGN="$HERE/../../jira/src/release/spec-sign.ts"
+o="$(msck r6 "$HERE" "$TSROUTE")"; rc=$?
+[ "$rc" = 0 ] && pass "R6 ROUNDS is at least the critic round cap + 1 ($o)" || fail "R6 rc=$rc: $o"
+sed 's/CRITIC_ROUND_CAP = [0-9]*;/CRITIC_ROUND_CAP = 6;/' "$TSROUTE" > "$WORK/chief-route-cap6.ts"
+o="$(msck r6 "$HERE" "$WORK/chief-route-cap6.ts")"; rc=$?
+{ [ "$rc" = 1 ] && ms_has "$o" "cap=6 rounds=6"; } && pass "R6 control: a cap of 6 leaves ROUNDS short" || fail "R6 control rc=$rc: $o"
+o="$(msck r8 "$HERE" "$TSSIGN" "$MS_K-x.md" < "$WORK/ms1.added")"; rc=$?
+{ [ "$rc" = 0 ] && ms_has "$o" "returns=12 "; } && pass "R8 all 12 critic return names match spec-sign's SERIES" || fail "R8 rc=$rc: $o"
+o="$(printf '%s\n' "$MS_DIR/$MS_K-x.md.critic-spec-1.md" | msck r8 "$HERE" "$TSSIGN" "$MS_K-x.md")"; rc=$?
+{ [ "$rc" = 1 ] && ms_has "$o" "bad=$MS_K-x.md.critic-spec-1.md"; } && pass "R8 control: .critic-spec-1.md does not match SERIES" || fail "R8 control rc=$rc: $o"
+o="$(msck r10 "$HERE" "$TSROUTE" "$MS_SPEC" < "$WORK/ms1.added")"; rc=$?
+[ "$rc" = 0 ] && pass "R10 the page and the plan map back to the spec by chief-route's rules" || fail "R10 rc=$rc: $o"
+sed 's/\["design", "designs", "spec"\]/[]/' "$TSROUTE" > "$WORK/chief-route-nolist.ts"
+o="$(msck r10 "$HERE" "$WORK/chief-route-nolist.ts" "$MS_SPEC" < "$WORK/ms1.added")"; rc=$?
+{ [ "$rc" = 1 ] && [ "$o" = "problems=chief-route.ts lost the design folder list" ]; } && pass "R10 control: chief-route.ts without the folder list fails the check, and only that" || fail "R10 control rc=$rc: $o"
+
+cg_mirror HIMMEL-9466 Task Medium '["core"]'
+ms_gen ms7 HIMMEL-9466 "$MS_DIR/HIMMEL-9466-x.md $MS_PLANS/HIMMEL-9466-x-plan.md"
+B7="$(cg_brief ms7)"
+{ [ "$rc" = 0 ] && ms_added "$B7" "$MS_DIR/HIMMEL-9466-x.md" | grep -qxF "$MS_DIR/HIMMEL-9466-x.estimate.json" && ! ms_added "$B7" x | grep -qxF "$MS_PLANS/HIMMEL-9466-x.md"; } && pass "R7 a plan of the key already on the line gets no second plan sibling, and the estimate is still named" || fail "R7 rc=$rc Writes=[$(ms_line "$B7")]"
+cg_mirror HIMMEL-9467 Task Medium '["core"]'; cg_mirror HIMMEL-9468 Task Medium '["core"]'
+ms_gen ms7two HIMMEL-9467,HIMMEL-9468 "$MS_DIR/HIMMEL-9467-x.md $MS_PLANS/HIMMEL-9468-y-plan.md"
+B7T="$(cg_brief ms7two)"
+{ [ "$rc" = 0 ] && ms_added "$B7T" x | grep -qxF "$MS_PLANS/HIMMEL-9467-x.md"; } && pass "R7 control: a plan of another key leaves the spec's own plan sibling in" || fail "R7 control rc=$rc Writes=[$(ms_line "$B7T")] out=$cgo"
+
+MS_ROUNDS="$(python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import minerva_siblings as m; print(m.ROUNDS)' "$HERE" 2>/dev/null)"
+MS_LINE="> **Minerva files:** the Writes line also names this spec's minerva files (estimate, page, plan, critic returns r1-r${MS_ROUNDS:-?} beside the spec); they are part of your Writes, whatever the Writes note or Scope says."
+[ -n "$MS_ROUNDS" ] && [ "$(ms_next "$MS1")" = "$MS_LINE" ] && pass "R9 the Minerva files line follows the Writes line, its round range built from ROUNDS" || fail "R9 line after Writes is [$(ms_next "$MS1")] want [$MS_LINE]"
+r9c=1
+for b in "$(cg_brief ms2build)" "$(cg_brief ms2audit)" "$(cg_brief ms2key)" "$PB" "$RMD" "$NWB"; do
+    [ -f "$b" ] && case "$(cat "$b")" in *"> **Minerva files:**"*) r9c=0 ;; esac
+done
+[ "$r9c" = 1 ] && pass "R9 control: no build, proof, audit-only design, specs/<KEY>/ design, rm or none-named brief carries the line" || fail "R9 control: a brief without added paths carries the Minerva files line"
 
 cat > "$WORK/pf5.py" <<'PFPY'
 import re, shlex, sys
