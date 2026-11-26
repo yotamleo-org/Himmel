@@ -673,10 +673,10 @@ is set and not the doc's concrete `focus-version: vN` as KEY@<its fixVersion>. `
 --from-chains <chain-state.json>` prints a replacement line in dependency order and never writes the doc.
 Advisory: not in chief-wait's action key.
 
-wt-orphans=<n|n@<age>|unknown> and wt-ceiling=<live>/<cap> come from one
+wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap> come from one
 `scripts/worktree.sh prune --orphans` read, which a detached refresh makes and the tick
 never waits on (more than TICK_SECTION_WAIT seconds). The tick serves the last good reading;
-one older than TICK_WT_ORPHANS_TTL minutes (30) is refreshed and shows its age as <n>@<age>
+one older than TICK_WT_ORPHANS_TTL minutes (30) is refreshed and shows its age as wt-orphans=<n>@<age>
 (minutes or hours); a failed or timed-out read is not retried for TICK_WT_ORPHANS_FAIL_TTL
 minutes (5) and reads unknown while no reading exists:
 worktrees with no open PR and nothing holding them, and the live worktree count once it
@@ -4012,7 +4012,7 @@ if [ "$tick_fast" != 1 ] && [ -f "$REPO/scripts/worktree.sh" ]; then
     ) 2>/dev/null || true  # swallow-ok: an unavailable state directory or lock skips this attempt
 fi
 
-# wt-orphans=<n|n@<age>|unknown> and wt-ceiling=<live>/<cap>: leftover worktrees (no
+# wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap>: leftover worktrees (no
 # open PR, nothing holding them) and the live worktree count once it reaches
 # HIMMEL_WORKTREE_ALARM, from one `worktree.sh prune --orphans` read that a detached refresh makes
 # (~20s on a 50-tree fleet, 90 s under load); the tick serves the last good reading from TICK_STATE_DIR,
