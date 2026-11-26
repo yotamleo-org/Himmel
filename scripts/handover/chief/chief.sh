@@ -133,6 +133,7 @@ relaying. It sends nothing itself. --no-relay-on-live (next only) leaves no mark
 --relay-on-live is the default and stays accepted.
 next appends the outgoing shift's load row to the bucket's load record
 (chief-kit/chief-load-row.sh); --reason (next only) is the handover reason it records.
+chief-kit/chief-load-report.py <bucket> prints tokens per live worker-hour and T(N) from it.
 --name on next selects which supervisor-session succession to continue; defaults to the name
 implied by --doc's own basename when --doc is given and --name is not,
 else "chief". A name must be "chief" or end in "-chief"; a pre-rename
