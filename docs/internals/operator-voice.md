@@ -38,8 +38,8 @@ The chief carries these rules as its reply style (`docs/handover/chief-adhd-brie
    the user should be through telegram as well as in cli as we can never know if the
    user is where. and as long as this duplication is short sentences its ok".
    The Stop hook `scripts/hooks/stop-chief-ask-mirror.sh` does the Telegram half: a
-   chief writes each ask once, in its console reply, and never posts an ask to
-   Telegram itself. The hook hands each finished reply that holds `Needs you:` to
+   chief writes each ask once, in the final text of its console reply (after any tool
+   call), and never posts an ask to Telegram itself. The hook hands each finished reply that holds `Needs you:` to
    `scripts/handover/chief-kit/ask-mirror.sh` through the stop queue, which posts every
    `Needs you:` block to the operator as an owed `chief-route.ts reply --kind chief-reply`
    send, once per distinct block, with a fenced code or command sent alone right after
