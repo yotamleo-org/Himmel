@@ -571,6 +571,15 @@ for shape in delegated-wake leading-slash leading-dollar plain; do
     hb write --transcript "$T/cd-$shape-late.jsonl" --doc "$DOC" --worktree "$T/wt" --out "$T/out/cd-$shape-late.md" >"$T/cd-$shape-late.out" 2>&1; cdlc=$?
     check "$shape: newer than the chief's message it stops the write, it never becomes the must-carry item" '[ "$cdlc" = 3 ] && grep -q "L$((cx_rows + 1))" "$T/cd-$shape-late.out" && [ ! -e "$T/out/cd-$shape-late.md" ]'
 done
+echo "t3-items-source (T3 labels an agent's async answer to a pending question createdBy user from the server: only a human-input source is the operator)"
+for src in server mcp provider; do
+    jq --arg s "$src" '(.items[] | select(.text | startswith("RULING-OP"))) |= (.createdBy = "user" | .creationSource = $s)' "$GM" >"$T/gm-src-$src.json"
+    probe akinds "$T/gm-src-$src.json" "$CHIEF" >"$T/gm-src-$src.kinds"
+    check "gemini: a createdBy user row from creationSource $src is an unreadable sender, neither eligible nor a delivery" 'grep -q "^$gm_op unreadable-sender - - " "$T/gm-src-$src.kinds"'
+done
+jq '(.items[] | select(.text | startswith("RULING-OP"))) |= (.creationSource = "mobile")' "$GM" >"$T/gm-src-mobile.json"
+probe akinds "$T/gm-src-mobile.json" "$CHIEF" >"$T/gm-src-mobile.kinds"
+check "gemini: control: a createdBy user row from creationSource mobile stays operator" 'grep -q "^$gm_op operator E D " "$T/gm-src-mobile.kinds"'
 build "$T/cs.jsonl" tokens ruling-a own-1 contains-shapes
 probe kinds "$T/cs.jsonl" "$CHIEF" >"$T/cs.kinds"
 check "control: a Claude transcript message that only contains Delegated task or a slash stays operator, eligible and a delivery" 'grep -F "RULING-K" "$T/cs.kinds" | grep -q " operator E D "'

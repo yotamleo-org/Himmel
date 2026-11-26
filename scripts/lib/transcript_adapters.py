@@ -28,6 +28,7 @@ import transcript_deliveries as td  # noqa: E402
 CODEX_INJECTED_STARTS = ("# AGENTS.md instructions", "<environment_context>")
 CODEX_USER_KIND = "user.text"
 T3_MESSAGES = ("user_message", "assistant_message")
+T3_HUMAN_SOURCES = ("web", "mobile")
 
 
 class AdapterError(Exception):
@@ -111,7 +112,7 @@ def t3_item_rows(path, upto=None):
         text = str(it["text"])
         if it["type"] == "assistant_message":
             out.append((n, _assistant(text)))
-        elif it.get("createdBy") == "user" and not it.get("senderThreadId"):
+        elif it.get("createdBy") == "user" and it.get("creationSource") in T3_HUMAN_SOURCES and not it.get("senderThreadId"):
             out.append((n, _user(text)))
         else:
             sender = it.get("senderThreadId")
