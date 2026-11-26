@@ -243,8 +243,6 @@ if [ -n "$scope_batch" ] && { [ -e "$scope_batch" ] || [ -L "$scope_batch" ]; };
 fi
 export ND_WHY_TICKET="$why_ticket" ND_BODY_FILE="$body_file" ND_SCOPE_BATCH="$scope_batch" ND_BATCH_SIZE="${batch_size:-25}"
 case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive number" >&2; exit 2 ;; esac
-# --why with no --top asks for the whole list, not the default 8 slots; the
-# waiter counts dispatchable work against the free slots, and 50 is the fleet cap
 [ "$why" != 1 ] || [ "$top_set" = 1 ] || top=50
 ledger="${HIMMEL_ADMISSIONS_LEDGER:-}"
 # shellcheck source=scripts/lib/handover-path.sh
@@ -2544,17 +2542,14 @@ def warn_missing():
             print('# warn: %s names %s (not in the repo: a new file, or the collision check is blind)' % (i['key'], ', '.join(gone)))
 
 def half_up(x):
-    # the one place the RESUME cap is computed: ceil(x / 2)
     return (x + 1) // 2
 
-held_back = []  # RESUME rows the cap skipped and no backfill has listed yet: their files join no series (emit_free)
+held_back = []
 
 def held_back_hit(i):
     return any(blocks(f, h, False) for f in i['files'] for r in held_back for h in r['files'])
 
 def emit_resume(rows, cap=None):
-    # lists RESUME and MERGED-NOT-CLOSED rows in rank order while n < top; with a cap it stops after `cap` rows and
-    # returns the rows it skipped (the backfill lists them), cap=None is the uncapped walk
     global n
     done = 0
     for idx, i in enumerate(rows):
@@ -2589,9 +2584,7 @@ def classify_new(batch):
         cls_cache.update(classify(fresh))
 
 # One classify call costs a fixed ~20 s: the first 2*fresh_budget free rows go in two parallel calls
-# of fresh_budget rows each, so a refused or colliding row in the first call does not cost a serial round. The fresh
-# budget is --top less the RESUME rows that go ahead of the fresh rows (at most half_up(--top)), so it is
-# above 0 even when the RESUME rows alone would fill --top.
+# of fresh_budget rows each, so a refused or colliding row in the first call does not cost a serial round.
 fresh_budget = top - min(len(resume), half_up(top))
 if classified and fresh_budget > 0:
     from concurrent.futures import ThreadPoolExecutor
@@ -2685,9 +2678,7 @@ def emit_free(rows):
             break
 
 if pool_only:
-    # tier by tier: a tier's worker-less In Progress rows (at most half_up of the slots left when the tier starts) lead
-    # its To Do rows; the tier's other RESUME rows follow its To Do rows, before the next tier. --resume-only lists
-    # every orphan, uncapped.
+    # tier by tier: a tier's worker-less In Progress rows lead its To Do rows
     for t in (1, 2, 3, 4):
         tier_resume = [i for i in resume if tier_of(i) == t]
         if resume_only:
@@ -2718,8 +2709,6 @@ if resume_only:
     flush_rows()
     warn_missing()
     sys.exit(0)
-# RESUME rows take at most half_up(--top) slots ahead of the fresh rows; the rest of the slots go to fresh rows, and
-# RESUME rows the cap skipped fill whatever the fresh rows leave
 skipped = emit_resume(resume, half_up(top))
 held_back[:] = skipped
 emit_free(free)
