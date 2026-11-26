@@ -198,9 +198,20 @@ fi
 # worker doc's stem, which a wrap message may quote without any N<k>)
 labels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+[a-z]*\>' | sort -u)" || labels=""
 if [ -n "$labels" ]; then
-    [ "$(printf '%s\n' "$labels" | wc -l)" -eq 1 ] || escalate "ambiguous-label"
-    label="$labels"
     listing="$("${LIST[@]}" "$FLEET" 2>/dev/null)" || listing=""
+    if [ "$(printf '%s\n' "$labels" | wc -l)" -ne 1 ]; then
+        listed_labels=""
+        while IFS= read -r cand_label; do
+            if listed_doc "$cand_label" "$listing" >/dev/null || [ -n "$(successor_docs "$cand_label" "$listing")" ]; then
+                listed_labels="$listed_labels$cand_label"$'\n'
+            fi
+        done <<EOF
+$labels
+EOF
+        [ "$(printf '%s' "$listed_labels" | grep -c .)" -eq 1 ] || escalate "ambiguous-label"
+        labels="${listed_labels%$'\n'}"
+    fi
+    label="$labels"
     worker="$(listed_doc "$label" "$listing")" || worker=""
     if [ -z "$worker" ]; then
         succ="$(successor_docs "$label" "$listing")"
