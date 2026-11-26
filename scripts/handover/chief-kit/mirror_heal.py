@@ -91,6 +91,14 @@ def status(cli, root, prefix, limit):
     return st
 
 
+def kill_group(p):
+    try:
+        os.killpg(p.pid, signal.SIGKILL)
+    except OSError:
+        pass
+    p.wait()
+
+
 def heal_root(cli, root, prefix, deadline):
     def left():
         return deadline - time.monotonic()
@@ -135,13 +143,12 @@ def heal_root(cli, root, prefix, deadline):
         try:
             rc = p.wait(timeout=max(left(), 0))
         except subprocess.TimeoutExpired:
-            try:
-                os.killpg(p.pid, signal.SIGKILL)
-            except OSError:
-                pass
-            p.wait()
+            kill_group(p)
             say('mirror %s heal timed out after %d s' % (root, round(time.monotonic() - started)))
             return
+        except BaseException:
+            kill_group(p)
+            raise
         try:
             now = status(cli, root, prefix, left())['complete']
         except Skip:
@@ -172,6 +179,7 @@ def main(doc, cli):
 
 
 if __name__ == '__main__':
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     try:
         main(sys.argv[1], sys.argv[2])
     except Exception as e:

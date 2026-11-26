@@ -398,6 +398,13 @@ describe('release bucket-check verdict', () => {
       expect(line).toMatch(/^FAILED BKT-1 mirror sync incomplete since /);
     });
 
+    it('BC1g: a cursor whose complete field is anything but absent never passes a key', async () => {
+      world(key1);
+      cursor({ complete: true });
+      const [line] = await checkCli(['BKT-1'], '/x/index.js');
+      expect(line).toMatch(/^FAILED BKT-1 mirror sync incomplete since /);
+    });
+
     it('BC1f: a root with a space is single-quoted in the heal command and the repair kind is named', async () => {
       const dir = join(root, 'my mirror', 'BKT');
       mkdirSync(dir, { recursive: true });

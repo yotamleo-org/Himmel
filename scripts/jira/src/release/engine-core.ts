@@ -149,7 +149,7 @@ export function readMirrorFilesUnverified(root: string | null): { issues: Map<st
   if (!root || !existsSync(root)) return { issues: null, sync: null, complete: false };
   const cur = readCursor(root);
   const sync = cur ? cur.lastSync : null;
-  const complete = cur ? cur.complete !== false : false;
+  const complete = cur ? cur.complete === undefined : false;
   const issues = new Map<string, IssueSnap>();
   for (const name of readdirSync(root)) {
     if (!name.endsWith('.md')) continue;

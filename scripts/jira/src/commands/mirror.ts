@@ -295,7 +295,6 @@ export async function runMirror(opts: MirrorOptions, req: Req): Promise<MirrorRe
     residual = residual.filter((k) => !filled.includes(k));
   }
   res.mirrorCount = localKeys(root, project).length;
-  // A live key with no local file (within the count tolerance) also forces a full run.
   if (!res.deleteSkipped && live && residual.length > 0) res.deleteSkipped = 'live keys missing locally';
   if (res.deleteSkipped || (res.jiraTotal !== null && res.mirrorCount < res.jiraTotal * COUNT_TOLERANCE)) {
     const total = res.jiraTotal;

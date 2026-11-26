@@ -792,7 +792,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
     [ "$alive" -eq 0 ] && break; sleep 0.5
 done
 lock_ok="$(python3 -I -c 'import fcntl,sys; f=open(sys.argv[1],"a"); fcntl.flock(f, fcntl.LOCK_EX|fcntl.LOCK_NB); print("free")' "$HL/m6.lock" 2>&1)"
-{ [ "$rc" -eq 3 ] && [ "$took" -lt 10 ] && grep -Fq 'heal timed out after' <<< "$err" && [ "$alive" -eq 0 ] && [ "$lock_ok" = free ]; } \
+{ [ "$rc" -eq 3 ] && [ "$took" -lt 10 ] && grep -Fq 'heal timed out after' <<< "$err" && [ -n "$p1" ] && [ -n "$p2" ] && [ "$alive" -eq 0 ] && [ "$lock_ok" = free ]; } \
     && ok "BL6 a hung repair is killed with its group at the budget and its lock is freed" || bad "BL6 rc=$rc took=$took alive=$alive lock=$lock_ok: $err"
 
 hl_mirror m7 "$HL_FULL"
