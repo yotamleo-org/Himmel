@@ -4,7 +4,8 @@
 # or invented (a judge once pasted an invented ghr_ string into a search). The built-in regex below is the
 # gitleaks GitHub rules and always applies; the regex in the checkout's detect-token-in-output.sh is read as
 # extra coverage only, so a checkout can widen the guard and never narrow it (a suite row pins the built-in
-# regex to the detector). No checksum or entropy test: an invented token is refused too.
+# regex to the detector). A checkout regex that can match the empty string is ignored: its leftmost match is
+# empty wherever the text does not start with a hit, so it cannot be applied soundly. No checksum or entropy test: an invented token is refused too.
 # Hook I/O: the tool-call JSON on stdin. Exit 0 allows; exit 2 refuses and stderr is shown to Claude.
 # The text is also checked with its %XX escapes decoded (a URL the destination decodes).
 # Fence, so it fails CLOSED on its own parse problems: bad JSON scans the raw input; with no jq the raw input
@@ -45,17 +46,11 @@ percent_decode() {
 }
 
 match_token() {
-    local re rest tries
+    local re
     for re in "$default_re" "$extra_re"; do
         [ -n "$re" ] || continue
-        rest="$1"
-        tries=0
-        while [[ $rest =~ $re ]]; do
-            if [ -n "${BASH_REMATCH[0]}" ]; then found="${BASH_REMATCH[1]:-${BASH_REMATCH[0]}}"; return 0; fi
-            tries=$((tries + 1))
-            if [ -z "$rest" ] || [ "$tries" -ge 512 ]; then break; fi
-            rest="${rest:1}"
-        done
+        if [[ "" =~ $re ]]; then continue; fi
+        if [[ $1 =~ $re ]]; then found="${BASH_REMATCH[1]:-${BASH_REMATCH[0]}}"; return 0; fi
     done
     return 1
 }
