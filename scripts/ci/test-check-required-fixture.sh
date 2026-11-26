@@ -75,6 +75,9 @@ if [ "$(grep -cF -- "contexts-fixture" <<< "$out")" = 0 ]; then ok "an app-pin d
 printf '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"build","integration_id":"15368"},{"context":"lint","integration_id":15368}]}}]' > "$tmp/rules.json"
 STUB_RULES=$(rules_of build lint) run
 expect "a fixture pin written as a string is drift, never equal to the number: exit 1" 1 'stale-in-rules-fixture: build (app invalid "15368")'
+printf '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"build","integration_id":false},{"context":"lint","integration_id":15368}]}}]' > "$tmp/rules.json"
+STUB_RULES='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"build"},{"context":"lint","integration_id":15368}]}}]' run
+expect "a fixture pin of false is drift against an unpinned live check: exit 1" 1 'stale-in-rules-fixture: build (app invalid false)'
 rules_of lint build > "$tmp/rules.json"
 
 STUB_FAIL=1 STUB_RULES=x run

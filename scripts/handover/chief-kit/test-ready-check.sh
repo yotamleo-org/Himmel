@@ -1425,6 +1425,13 @@ contains "11356-set-unreadable: says the required set is unreadable" "$out" "blo
 contains "11356-set-unreadable: still names the owed review" "$out" "blocked by: review owed (reviewDecision=REVIEW_REQUIRED"
 contains "11356-set-unreadable: still names the threads, as a possible blocker" "$out" "may block: 2 unresolved review thread(s)"
 
+reset_stubs
+STUB_MSS=BLOCKED
+rc=0; out="$(STUB_UNRESOLVED=1 STUB_REQ_RULES='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"build"}]}}]' run)" || rc=$?
+check "11356-threads-only: exit 1" "$rc" "1"
+contains "11356-threads-only: the thread is a possible blocker" "$out" "may block: 1 unresolved review thread(s)"
+contains "11356-threads-only: the unexplained BLOCKED still gets the fallback" "$out" "blocked by: no unmet required check or review found"
+
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
