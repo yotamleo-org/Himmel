@@ -871,7 +871,7 @@ assert_contains "invalid tracker: setting named" "tracker setting is invalid" "$
 
 adopted_control_run() {
     local out="$1" rc=0; shift
-    ( cd "$ADOPTED"; env "$@" GH_CMD="$FAKE_GH" bash scripts/handover/generate-morning-briefing.sh --out "$out" >/dev/null 2>&1 ) || rc=$?
+    ( cd "$ADOPTED" && env "$@" GH_CMD="$FAKE_GH" bash scripts/handover/generate-morning-briefing.sh --out "$out" >/dev/null 2>&1 ) || rc=$?
     if [ "$rc" -eq 0 ]; then pass "control run exits 0: ${out##*/}"; else fail "control run exits 0: ${out##*/}" "rc=$rc"; fi
 }
 echo "TEST: control — a station conf naming JIRA_PROJECT_KEY puts the adopted runs back on jira"
@@ -913,6 +913,10 @@ adopted_control_run "$OUT_LE" -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER GIT_CON
 file=$(cat "$OUT_LE" 2>/dev/null || true)
 assert_contains "control: git config injected through the environment — the adopted run names an invalid tracker setting" "tracker setting is invalid" "$file"
 assert_absent "control: git config injected through the environment — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
+OUT_LP="$TMP_ROOT/adopted-leak-envparams.md"
+adopted_control_run "$OUT_LP" -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER GIT_CONFIG_PARAMETERS="'himmel.tracker=jira'"
+file=$(cat "$OUT_LP" 2>/dev/null || true)
+assert_contains "control: git config parameters in the environment — the adopted run names an invalid tracker setting" "tracker setting is invalid" "$file"
 
 # Shifts, chiefs and per-shift spend ---------------------------------
 # The generator reads the shift record (shifts.jsonl), counts each shift id in exactly one
