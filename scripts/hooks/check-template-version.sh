@@ -60,7 +60,8 @@ command -v jq >/dev/null 2>&1 || { echo "â†’ template-version: jq not on PATH â€
 owned_class() {
     case "$1" in
         _CLAUDE.md)                                   echo threeway ;;
-        _Templates/*.md)                              echo report ;;
+        AGENTS.md)                                    echo overwrite ;;
+        _Templates/*.md)                             echo report ;;
         .obsidian/community-plugins.json)             echo jsonmerge ;;
         .obsidian/plugins/*/data.json)                echo skipexists ;;
         .obsidian/plugins/*/main.js|.obsidian/plugins/*/manifest.json|.obsidian/plugins/*/styles.css) echo skipexists ;;

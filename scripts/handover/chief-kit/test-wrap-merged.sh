@@ -526,5 +526,80 @@ ttwm "$W/emptyroot"
 check "27 control, no read token: rc 0" "$rc" 0
 check "27 control: the merge-state read logs tok=main" "$(ttn '^tok=main argv=pr view 777 --json state,mergeCommit$')" 1
 check "27 control: no call logs tok=read" "$(ttn '^tok=read ')" 0
+WTR="$W/wtrepo"; WTBIN="$W/wtbin"; mkdir -p "$WTBIN" "$W/wt-handover"
+git init -q --initial-branch=main "$WTR" 2>/dev/null || { git init -q "$WTR"; git -C "$WTR" symbolic-ref HEAD refs/heads/main; }
+git -C "$WTR" config user.email t@test.com; git -C "$WTR" config user.name t; git -C "$WTR" config maintenance.auto false
+printf 'base\n' > "$WTR/README"; git -C "$WTR" add README; git -C "$WTR" commit -q -m base
+git init -q --bare "$W/wtorigin.git"; git -C "$WTR" remote add origin "$W/wtorigin.git"
+cat > "$WTBIN/gh" <<'EOF'
+#!/usr/bin/env bash
+args="$*"
+case "$args" in *"auth status"*) exit 0 ;; *"repo view"*) echo "owner/repo"; exit 0 ;; esac
+case "$args" in
+    *"api --paginate repos/owner/repo/pulls"*)
+        git for-each-ref --format='%(refname:short) %(objectname)' refs/heads/feat | while IFS=' ' read -r b s; do printf 'owner/repo\t%s\tmerged\t%s\n' "$b" "$s"; done
+        git for-each-ref --format='%(refname:short) %(objectname)' refs/heads/open | while IFS=' ' read -r b s; do printf 'owner/repo\t%s\topen\t%s\n' "$b" "$s"; done
+        exit 0 ;;
+esac
+exit 0
+EOF
+chmod +x "$WTBIN/gh"
+wt_add() { git -C "$WTR" worktree add -q "$WTR/.claude/worktrees/$1" -b "$2" >/dev/null 2>&1; }
+wt_fixture() {
+    fixture
+    [ -z "$1" ] || { printf -- '---\nresume_cwd: %s\n---\n' "$1" | cat - "$WORKER" > "$WORKER.new" && mv "$WORKER.new" "$WORKER"; }
+}
+run_wt() { HANDOVER_DIR="$W/wt-handover" HANDOVER_REGISTRY="$W/wt-registry.json" FORGE=github PATH="$WTBIN:$PATH" WM_WORKTREE="$HERE/../../worktree.sh" run "$@"; }
+WT_A="$WTR/.claude/worktrees/feat+a"; WT_B="$WTR/.claude/worktrees/feat+b"
+WT_DIRTY="$WTR/.claude/worktrees/feat+dirty"; WT_OPEN="$WTR/.claude/worktrees/open+wip"
+wt_add feat+a feat/a; wt_add feat+b feat/b; wt_add feat+dirty feat/dirty; wt_add open+wip open/wip
+printf 'changed\n' >> "$WT_DIRTY/README"
+is_dir() { [ -d "$1" ] && echo yes || echo no; }
+
+wt_fixture "$WT_A"
+run_wt --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+check "29: merged + closed worker: rc 0" "$rc" 0
+check "29: its worktree is removed" "$(is_dir "$WT_A")" no
+contains "29: the run says it was pruned" "$out" "worktree=pruned"
+check "29: another worker's merged worktree survives" "$(is_dir "$WT_B")" yes
+check "29: the primary checkout survives" "$(is_dir "$WTR/.git")" yes
+check "29: the bullet is still logged" "$(tail -n 1 "$CHIEF" | grep -c 'MERGED #777')" 1
+run_wt --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+check "29: a re-run over the removed worktree is rc 0" "$rc" 0
+contains "29: and says it is gone" "$out" "worktree=gone"
+
+wt_fixture "$WT_DIRTY"
+run_wt --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+check "29: dirty worktree: the wrap still succeeds (rc 0)" "$rc" 0
+check "29: dirty worktree is kept" "$(is_dir "$WT_DIRTY")" yes
+contains "29: one line names the worktree and the reason" "$out" "worktree=kept:"
+contains "29: the reason is the uncommitted work" "$(printf '%s\n' "$out" | grep 'worktree=kept:')" "uncommitted"
+contains "29: the line names the path" "$(printf '%s\n' "$out" | grep 'worktree=kept:')" "$WT_DIRTY"
+
+wt_fixture "$WT_OPEN"
+run_wt --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+check "29: unmerged worktree: the wrap still succeeds (rc 0)" "$rc" 0
+check "29: unmerged worktree is kept" "$(is_dir "$WT_OPEN")" yes
+contains "29: unmerged worktree is reported kept" "$out" "worktree=kept:"
+
+wt_fixture "$WTR"
+run_wt --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+check "29: resume_cwd naming the primary checkout: rc 0" "$rc" 0
+check "29: the primary checkout is never pruned" "$(is_dir "$WTR/.git")" yes
+contains "29: the primary is skipped by name" "$out" "worktree=skip:"
+
+wt_fixture ""
+run_wt --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+contains "29: a worker doc with no resume_cwd is skipped" "$out" "worktree=skip:no-resume_cwd"
+
+wt_add feat+c feat/c
+WT_C="$WTR/.claude/worktrees/feat+c"
+wt_fixture "$WT_C"
+WM_CLOSE_RC=4 run_wt --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+check "29: a refused close prunes nothing" "$(is_dir "$WT_C")" yes
+wt_fixture "$WT_C"
+WM_PR_STATE=OPEN run_wt --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+check "29: an unmerged PR prunes nothing" "$(is_dir "$WT_C")" yes
+
 check "28: no case wrote the default mirror's versions file" "$SENT_BEFORE" "$(cksum < "$SENT" 2>/dev/null)"
 [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails FAILED"; exit 1; }
