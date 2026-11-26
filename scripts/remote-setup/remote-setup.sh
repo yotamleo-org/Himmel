@@ -7,6 +7,7 @@
 #   bash scripts/remote-setup/remote-setup.sh away [--off]
 #   bash scripts/remote-setup/remote-setup.sh sudo [--replace]
 #   bash scripts/remote-setup/remote-setup.sh peer [--replace] [--remove]
+#   bash scripts/remote-setup/remote-setup.sh monitor
 #   bash scripts/remote-setup/remote-setup.sh status [--json]
 #
 # Run each writing part in a separate plain Terminal (not inside Claude, not with !), from your
@@ -26,8 +27,9 @@ rs_usage() {
             away) echo "usage: remote-setup.sh away [--off]" ;;
             sudo) echo "usage: remote-setup.sh sudo [--replace]" ;;
             peer) echo "usage: remote-setup.sh peer [--replace] [--remove]" ;;
+            monitor) echo "usage: remote-setup.sh monitor" ;;
             status) echo "usage: remote-setup.sh status [--json]" ;;
-            *) echo "usage: remote-setup.sh {bot|away|sudo|peer|status} [--replace] [--json] [--off] [--remove]" ;;
+            *) echo "usage: remote-setup.sh {bot|away|sudo|peer|monitor|status} [--replace] [--json] [--off] [--remove]" ;;
         esac
     } >&2
     RS_FINISHED=1
@@ -49,7 +51,7 @@ OPT_JSON=0
 
 SUB=${1:-}
 case "$SUB" in
-    bot | away | sudo | peer | status) shift ;;
+    bot | away | sudo | peer | monitor | status) shift ;;
     *) rs_usage ;;
 esac
 for a in "$@"; do
@@ -171,6 +173,78 @@ cmd_bot() {
     fi
     rs_step "the status check passes"
     rs_done "bot — @$RS_BOT_USER (id $RS_BOT_ID) reachable, bridge running, survives reboot"
+}
+
+monitor_stored() {
+    node -e '
+const fs = require("fs");
+const roles = require(process.argv[1]);
+const key = process.argv[2];
+let raw = "";
+try { raw = fs.readFileSync(roles.mainEnvFile({ home: process.env.HOME, env: process.env }), "utf8"); } catch (_e) { process.exit(0); }
+for (const line of raw.split(/\r?\n/)) {
+  const m = /^\s*(?:export\s+)?([A-Z_]+)\s*=\s*(.*?)\s*$/.exec(line);
+  if (m && m[1] === key) { process.stdout.write(m[2].replace(/^(["\x27])(.*)\1$/, (_all, _quote, inner) => inner)); break; }
+}
+' "$RS_ROOT/scripts/himmelctl/lib/bot-roles.js" "$1"
+}
+
+monitor_store() {
+    node -e '
+const fs = require("fs");
+const path = require("path");
+const cp = require("child_process");
+const root = process.argv[1];
+const key = process.argv[2];
+const store = require(root + "/scripts/himmelctl/lib/secret-store.js");
+const value = fs.readFileSync(0, "utf8").replace(/\r?\n$/, "");
+const gitCheckIgnore = (f) => cp.spawnSync("git", ["check-ignore", "-q", f], { cwd: path.dirname(f) }).status === 0;
+const ctx = { home: process.env.HOME, himmelRoot: root, projectRoot: root, env: process.env, gitCheckIgnore };
+try {
+  if (value === "") store.remove(key, ctx); else store.write(key, value, ctx);
+} catch (e) {
+  process.stderr.write("store refused: " + (e && e.message ? e.message : "unknown") + "\n");
+  process.exit(1);
+}
+' "$RS_ROOT" "$1"
+}
+
+cmd_monitor() {
+    rs_preflight curl jq node
+    local chat="" tok="" out type title prev_chat err
+    rs_secret chat "Paste the monitoring group's chat id (a negative number such as -1001234567890):" \
+        || rs_fix "no chat id was entered: run the same command again and paste the monitoring group's chat id; nothing was written"
+    [[ $chat =~ ^-[0-9]{1,15}$ ]] \
+        || rs_fix "that is not a group chat id: a group's id is a negative number such as -1001234567890. Nothing was written"
+    rs_secret tok "Paste the monitor bot's token from @BotFather (a second bot, not your main one):" \
+        || rs_fix "no token was entered: run the same command again and paste the monitor bot's token; nothing was written"
+    rs_token_shape_ok "$tok" \
+        || rs_fix "that is not a bot token: copy the whole token from @BotFather again, it looks like 123456789 then a colon then 35 letters and digits. Nothing was written"
+    [ "$tok" != "$(rs_stored_token)" ] \
+        || rs_fix "that is your main bot's token: the monitoring group needs a second bot, so make one with @BotFather (send /newbot). Nothing was written"
+    RS_TOKEN=$tok
+    tok=""
+    rs_getme
+    rs_step "the monitor bot works (@$RS_BOT_USER)"
+    out=$(rs_tg getChat "{\"chat_id\":$chat}") || rs_tg_fail "$out" "the group check"
+    type=$(printf '%s' "$out" | jq -r '.result.type // ""' 2>/dev/null)
+    case "$type" in
+        group | supergroup) ;;
+        *) rs_fix "chat $chat is not a group (Telegram says ${type:-nothing}): use the monitoring group's id. Nothing was written" ;;
+    esac
+    title=$(rs_clean "$(printf '%s' "$out" | jq -r '.result.title // ""' 2>/dev/null)")
+    rs_step "the monitor bot can read the group ${title:0:60}"
+
+    prev_chat=$(monitor_stored TELEGRAM_MONITOR_CHAT_ID)
+    err=$(printf '%s\n' "$chat" | monitor_store TELEGRAM_MONITOR_CHAT_ID 2>&1) \
+        || rs_fix "the chat id could not be saved (${err#store refused: }). Nothing was written"
+    if ! err=$(printf '%s\n' "$RS_TOKEN" | monitor_store TELEGRAM_MONITOR_BOT_TOKEN 2>&1); then
+        printf '%s\n' "$prev_chat" | monitor_store TELEGRAM_MONITOR_CHAT_ID > /dev/null 2>&1 \
+            || rs_fix "the token could not be saved (${err#store refused: }) and the chat id could NOT be put back: delete the TELEGRAM_MONITOR_CHAT_ID line in $(rs_tilde "$HOME")/.claude/channels/telegram/.env by hand, then run the same command again"
+        rs_fix "the token could not be saved (${err#store refused: }), so the chat id was put back as it was"
+    fi
+    rs_step "both values are saved"
+    rs_done "monitoring: ok ${title:0:60}. Restart the bridge so it starts posting there: bash scripts/telegram/restart-bridge.sh"
 }
 
 # ── part 4: bot-to-bot ──────────────────────────────────────────────────
@@ -1068,6 +1142,7 @@ case "$SUB" in
     away) rs_begin away "arm away launches" ;;
     sudo) rs_begin sudo "set up the sudo bot" ;;
     peer) rs_begin peer "connect this station to another station's bot" ;;
+    monitor) rs_begin monitor "set up the monitoring group's bot" ;;
 esac
 
 [ "$SUB" = status ] || rs_guard
@@ -1078,5 +1153,6 @@ case "$SUB" in
     away) cmd_away ;;
     sudo) cmd_sudo ;;
     peer) cmd_peer ;;
+    monitor) cmd_monitor ;;
     status) cmd_status ;;
 esac
