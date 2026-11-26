@@ -134,26 +134,27 @@ def result_texts(content):
 
 
 def measure(file):
-    records, title = [], None
-    with open(file, errors="replace") as fh:
-        for line in fh:
-            try:
-                d = json.loads(line)
-            except ValueError:
-                continue
-            if d.get("type") == "custom-title":
-                title = d.get("customTitle")
-            elif not d.get("isSidechain") and d.get("timestamp"):
-                records.append(d)
-    if title != shift:
-        return None
-    ctx, arm, stamps, requests, waits = {}, None, [], [], []
+    title, first, last = None, None, None
+    ctx, arm, requests, waits = {}, None, [], []
     m = dict(waiter=0, worker=0, subagent=0, other=0, operator=0, operator_turns=0,
              judge_requests=0, judge_dispatches=0, hook_timeouts=0)
     trigger = None
-    for d in records:
+    fh = open(file, errors="replace")
+    for line in fh:
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(d, dict):
+            continue
+        if d.get("type") == "custom-title":
+            title = d.get("customTitle")
+            continue
+        if d.get("isSidechain") or not d.get("timestamp"):
+            continue
         t = ts(d["timestamp"])
-        stamps.append(t)
+        first = t if first is None or t < first else first
+        last = t if last is None or t > last else last
         msg = d.get("message") or {}
         if d.get("type") == "user":
             content = msg.get("content") or ""
@@ -183,10 +184,11 @@ def measure(file):
                     m["judge_dispatches"] += 1
                     if requests:
                         waits.append((t - requests.pop(0)).total_seconds() / 60)
-    if not stamps:
+    fh.close()
+    if title != shift or first is None:
         return None
-    m["hours"] = round((max(stamps) - min(stamps)).total_seconds() / 3600, 3)
-    m["started_at"] = min(stamps).isoformat().replace("+00:00", "Z")
+    m["hours"] = round((last - first).total_seconds() / 3600, 3)
+    m["started_at"] = first.isoformat().replace("+00:00", "Z")
     m["ctx_start"] = ctx[arm] if arm is not None else None
     m["ctx_end"] = max(ctx.values()) if ctx else None
     m["judge_wait_min"] = round(statistics.median(waits), 1) if waits else None

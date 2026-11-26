@@ -4369,4 +4369,19 @@ CLAUDE_CONFIG_DIR="$cfg11266" CLAUDE_CODE_SESSION_ID="$sid11266" chief next --bu
 check "11266 a second next for the same shift is refused" "$rc11266b" "1"
 check "11266 a refused second next for the same shift appends no second row" "$(wc -l < "$L11266" 2>/dev/null | tr -d ' ')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$A11266" "$tok11266" >/dev/null 2>&1
+
+tokf11266="$(token_of "$(chief new --bucket loadfail11266)")"
+Af11266="$root/tester/loadfail11266/DEMO-nextleg-${today}A-chief.md"
+mkfifo "$root/tester/loadfail11266/chief-load.jsonl"
+logf11266="$HIMMELCTL_CACHE_DIR/launch-logs/DEMO-nextleg-${today}A-chief.log"
+chmod 000 "$logf11266"
+rcf11266=0
+outf11266="$(chief next --bucket loadfail11266 --doc "$Af11266" 2>/dev/null)" || rcf11266=$?
+check "11266 next exits 0 when the load row cannot be written" "$rcf11266" "0"
+check "11266 next still prints the launch line when the load row cannot be written" "$(printf '%s\n' "$outf11266" | grep -c '^launch: ')" "1"
+if [ -r "$logf11266" ]; then
+    echo "SKIP - 11266 an unreadable launch log: chmod 000 did not deny reads (root or filesystem permissions)"
+fi
+chmod 644 "$logf11266"
+HANDOVER_DIR="$root" bash "$QL" release "$Af11266" "$tokf11266" >/dev/null 2>&1
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

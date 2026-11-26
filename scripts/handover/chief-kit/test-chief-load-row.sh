@@ -20,34 +20,34 @@ transcript() {
     printf '{"type":"assistant","timestamp":"2026-01-01T00:05:10Z","isSidechain":true,"message":{"id":"s1","usage":{"input_tokens":900000},"content":[]}}\n'
     printf '{"type":"assistant","timestamp":"2026-01-01T00:30:00Z","message":{"id":"m2","usage":{"input_tokens":%s},"content":[]}}\n' "$2"
 }
-B="$tmp/bucket"; mkdir -p "$B"; L="$B/chief-load.jsonl"
+B="$tmp/bucket"; mkdir -p "$B"; rec="$B/chief-load.jsonl"
 transcript S-A 460000 > "$cfg/projects/p/$sid.jsonl"
 write() { CLAUDE_CONFIG_DIR="$cfg" CLAUDE_CODE_SESSION_ID="$sid" bash "$W" --bucket "$B" "$@"; }
 
 rc=0; write --shift S-A --next-shift S-B --workers-end 12 --rulings 2 --spans-unknown 3 >/dev/null 2>&1 || rc=$?
 check "a row is appended (exit 0)" "$rc" "0"
-check "one row in the record" "$(wc -l < "$L" | tr -d ' ')" "1"
-check "the transcript is read" "$(jq -r '.transcript' "$L")" "read"
-check "a sidechain call is not the shift's context, a command that only names or quotes chief-wait.sh is not the arm, a chained quoted run is" "$(jq -r '"\(.ctx_start) \(.ctx_end)"' "$L")" "100000 460000"
-check "the arguments land in the row" "$(jq -r '"\(.workers_end) \(.rulings) \(.spans_unknown)"' "$L")" "12 2 3"
-check "the first row of a chain has no workers_start; mean and peak are the end" "$(jq -r '"\(.workers_start) \(.workers_mean == 12) \(.workers_peak)"' "$L")" "null true 12"
-check "an end context at the 45 % fill gives reason fill" "$(jq -r '.reason' "$L")" "fill"
-check "the row's keys come in the fixed order" "$(jq -r 'keys_unsorted | .[0:3] | join(",")' "$L")" "schema,shift,next_shift"
+check "one row in the record" "$(wc -l < "$rec" | tr -d ' ')" "1"
+check "the transcript is read" "$(jq -r '.transcript' "$rec")" "read"
+check "a sidechain call is not the shift's context, a command that only names or quotes chief-wait.sh is not the arm, a chained quoted run is" "$(jq -r '"\(.ctx_start) \(.ctx_end)"' "$rec")" "100000 460000"
+check "the arguments land in the row" "$(jq -r '"\(.workers_end) \(.rulings) \(.spans_unknown)"' "$rec")" "12 2 3"
+check "the first row of a chain has no workers_start; mean and peak are the end" "$(jq -r '"\(.workers_start) \(.workers_mean == 12) \(.workers_peak)"' "$rec")" "null true 12"
+check "an end context at the 45 % fill gives reason fill" "$(jq -r '.reason' "$rec")" "fill"
+check "the row's keys come in the fixed order" "$(jq -r 'keys_unsorted | .[0:3] | join(",")' "$rec")" "schema,shift,next_shift"
 
 transcript S-B 300000 > "$cfg/projects/p/$sid.jsonl"
-printf '[]\nnull\n{"partial' >> "$L"
+printf '[]\nnull\n{"partial' >> "$rec"
 write --shift S-B --next-shift S-C --workers-end 20 --rulings 0 --spans-unknown 0 >/dev/null 2>&1
-check "a line that is JSON but no object, or a partial last line, does not stop the next append or join it" "$(tail -n 1 "$L" | jq -r '.shift')" "S-B"
-check "workers_start is the previous shift's workers_end" "$(tail -n 1 "$L" | jq -r '"\(.workers_start) \(.workers_mean == 16) \(.workers_peak)"')" "12 true 20"
-check "an end context under the fill gives reason unstated" "$(tail -n 1 "$L" | jq -r '.reason')" "unstated"
+check "a line that is JSON but no object, or a partial last line, does not stop the next append or join it" "$(tail -n 1 "$rec" | jq -r '.shift')" "S-B"
+check "workers_start is the previous shift's workers_end" "$(tail -n 1 "$rec" | jq -r '"\(.workers_start) \(.workers_mean == 16) \(.workers_peak)"')" "12 true 20"
+check "an end context under the fill gives reason unstated" "$(tail -n 1 "$rec" | jq -r '.reason')" "unstated"
 
 write --shift S-OTHER --next-shift S-D --workers-end 1 --rulings 0 --spans-unknown 0 --reason operator-asked >/dev/null 2>&1
-check "a transcript titled for another session is not read" "$(tail -n 1 "$L" | jq -r '"\(.transcript) \(.ctx_end) \(.hours)"')" "unavailable null null"
-check "--reason is recorded as given" "$(tail -n 1 "$L" | jq -r '.reason')" "operator-asked"
+check "a transcript titled for another session is not read" "$(tail -n 1 "$rec" | jq -r '"\(.transcript) \(.ctx_end) \(.hours)"')" "unavailable null null"
+check "--reason is recorded as given" "$(tail -n 1 "$rec" | jq -r '.reason')" "operator-asked"
 
 bash "$W" --bucket "$B" --shift S-E --next-shift S-F --workers-end 1 --rulings 0 --spans-unknown 0 >/dev/null 2>&1
-check "no session id still writes a row, transcript unavailable" "$(tail -n 1 "$L" | jq -r '.shift + " " + .transcript')" "S-E unavailable"
-check "four rows after four handovers" "$(grep -c '"schema"' "$L")" "4"
+check "no session id still writes a row, transcript unavailable" "$(tail -n 1 "$rec" | jq -r '.shift + " " + .transcript')" "S-E unavailable"
+check "four rows after four handovers" "$(grep -c '"schema"' "$rec")" "4"
 B3="$tmp/bucket3"; mkdir -p "$B3"; mkfifo "$B3/chief-load.jsonl"
 rc=0; bash "$W" --bucket "$B3" --shift S-A --next-shift S-B --workers-end 1 --rulings 0 --spans-unknown 0 >/dev/null 2>&1 || rc=$?
 check "a FIFO in the record's place is refused with exit 3, without blocking" "$rc" "3"
