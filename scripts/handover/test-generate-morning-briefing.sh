@@ -879,7 +879,9 @@ assert_contains "control: leaked key — 'jira unavailable' is back (adopted: no
 OUT_LKI="$TMP_ROOT/adopted-leak-invalid.md"
 ( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD HIMMEL_CONFIG_DIR="$LEAK_CONF" TRACKER=jira GH_CMD="$FAKE_GH" \
     bash scripts/handover/generate-morning-briefing.sh --out "$OUT_LKI" >/dev/null 2>&1 ) || true
-assert_absent "control: leaked key — the tracker setting is no longer invalid (invalid tracker: setting named)" "tracker setting is invalid" "$(cat "$OUT_LKI" 2>/dev/null || true)"
+file=$(cat "$OUT_LKI" 2>/dev/null || true)
+assert_contains "control: leaked key — the invalid-tracker run still wrote its report, on jira" "jira unavailable" "$file"
+assert_absent "control: leaked key — the tracker setting is no longer invalid (invalid tracker: setting named)" "tracker setting is invalid" "$file"
 
 # Shifts, chiefs and per-shift spend ---------------------------------
 # The generator reads the shift record (shifts.jsonl), counts each shift id in exactly one
