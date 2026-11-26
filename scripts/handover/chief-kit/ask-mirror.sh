@@ -60,7 +60,7 @@ if [ -z "$reply" ] && [ -n "$transcript" ] && [ -r "$transcript" ]; then
     ' "$transcript" 2>/dev/null)"
 fi
 [ -n "$reply" ] || exit 0
-case "$reply" in *"Needs you:"*) ;; *) exit 0 ;; esac
+grep -Eq '^[[:blank:]]*((([0-9]+[.)])|-|\*|•)[[:blank:]]*)?Needs you:' <<<"$reply" || exit 0
 
 blocks="$(printf '%s' "$reply" | python3 -c '
 import hashlib, json, re, sys
@@ -77,17 +77,19 @@ def squeeze(t):
     return re.sub(r"[ \t]+", " ", t).rstrip()
 def digest(*parts):
     return hashlib.sha256("\0".join(parts).encode()).hexdigest()
+mark = re.compile(r"^[ \t]*(?:(?:\d+[.)]|[-*•])[ \t]*)?Needs you:")
 while i < n:
-    if "Needs you:" not in lines[i]:
+    m = mark.match(lines[i])
+    if not m:
         i += 1; continue
     first = lines[i]
-    cut = first.index("Needs you:")
+    cut = m.end() - len("Needs you:")
     num = re.search(r"(?:^|\s)(\d+[.)])\s*$", first[:cut])
     first_n = squeeze(first[cut:])
     first_p = num.group(1) + " " + first_n if num else first_n
     more, codes = [], []
     i += 1
-    while i < n and lines[i].strip() and "Needs you:" not in lines[i]:
+    while i < n and lines[i].strip() and not mark.match(lines[i]):
         if lines[i].lstrip().startswith("```"):
             c, i = fence(i); codes.append(c)
         else:
