@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Usage: bash marketplace/plugins/himmel-ops/hooks/test-steer-t3-tool-calls.sh
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_DIR="$(cd "$HERE/.." && pwd)"

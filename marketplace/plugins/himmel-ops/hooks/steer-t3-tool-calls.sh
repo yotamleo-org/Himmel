@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# steer-t3-tool-calls.sh — PreToolUse hook: refuses the two commonest wrong T3 calls and names the right one (docs/internals/t3-tool-call-rules.md).
 # Hook I/O: the tool-call JSON on stdin. Exit 0 allows; exit 2 refuses and stderr is shown to Claude.
 # Bash 3.2-compatible.
 set -uo pipefail
