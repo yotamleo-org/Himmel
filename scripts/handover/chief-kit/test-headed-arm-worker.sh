@@ -2710,7 +2710,7 @@ EOF
 chmod 755 "$gate_script26"
 rc2=0
 ( cd "$worktree26" && HOME="$home26" HANDOVER_DIR="$worker_handover_dir26" bash "$gate_script26" ) >/dev/null 2>&1 || rc2=$?
-check "HANDOVER_DIR e2e: go.sh wrote the GO from the chief cwd" "$go_out26" "$primary26/handovers/.locks/go/26260.$sha26"
+check "HANDOVER_DIR e2e: go.sh wrote the GO from the chief cwd" "${go_out26##*$'\n'}" "$primary26/handovers/.locks/go/26260.$sha26"
 check "HANDOVER_DIR e2e: go_gate resolved from a linked worktree (HANDOVER_DIR only) finds the GO" "$rc2" "0"
 
 # --- 27. An unprofiled launch is REFUSED, not silently launched

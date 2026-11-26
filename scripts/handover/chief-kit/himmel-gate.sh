@@ -17,8 +17,12 @@
 #     and scripts/cr/anchor-handoff.sh equal main's committed bytes and modes
 #     (scripts/hooks/lib/anchor-bytes.sh), and so do the files the script
 #     runs or sources: all of scripts/cr, scripts/guardrails/lib.sh and
-#     scripts/lib/load-dotenv.sh for pr-check-context / pr-check-env, and
-#     scripts/lib/go-gate.sh and handover-path.sh for go.
+#     scripts/lib/load-dotenv.sh for pr-check-context / pr-check-env, and for
+#     go: scripts/lib/go-gate.sh, handover-path.sh and timeout-bin.sh, its delivery
+#     library go-deliver.sh with what that sources (close-facts.sh, git-clean.sh,
+#     worker-identity.sh, legacy-names.sh, scripts/lanes/lib/claude-sessions.sh) and
+#     the himmel-bus CLI it runs (bin/bus, all of its lib/, scripts/telegram/bus.ts,
+#     scripts/lib/env-alias.mjs).
 #   - stdout is not a pipe: `| tail` would hide the rc and part of the output.
 #     A lone --help / -h is exempt (a read-only usage print).
 # Then it execs the anchor's copy with argv from the caller's cwd, so the
@@ -70,9 +74,6 @@ fi
 if ! (
     # shellcheck source=/dev/null # the anchor's copies, not this tree's
     . "$gitclean" && git_env_scrub && . "$lib" || exit 1
-    # What the gate runs or sources beyond itself, as guard-pr-check-literal.sh
-    # holds it: the pr-check pair execs other scripts/cr files and sources
-    # lib.sh / load-dotenv.sh; go.sh sources two scripts/lib siblings.
     deps=
     case "$name" in
         pr-check-context | pr-check-env)
@@ -80,7 +81,15 @@ if ! (
             deps=$(git -C "$repo" ls-tree -r --name-only --full-tree refs/heads/main -- scripts/cr) || exit 1
             deps="$deps scripts/guardrails/lib.sh scripts/lib/load-dotenv.sh"
             ;;
-        go) deps='scripts/lib/go-gate.sh scripts/lib/handover-path.sh' ;;
+        go)
+            # git-env-ok: git_env_scrub from the anchor's git-clean.sh ran above, in this subshell
+            deps=$(git -C "$repo" ls-tree -r --name-only --full-tree refs/heads/main -- marketplace/plugins/himmel-bus/lib) || exit 1
+            deps="$deps scripts/lib/go-gate.sh scripts/lib/handover-path.sh scripts/lib/timeout-bin.sh"
+            deps="$deps scripts/handover/chief-kit/go-deliver.sh scripts/handover/chief-kit/close-facts.sh"
+            deps="$deps scripts/lib/git-clean.sh scripts/lib/worker-identity.sh scripts/lib/legacy-names.sh"
+            deps="$deps scripts/lanes/lib/claude-sessions.sh marketplace/plugins/himmel-bus/bin/bus"
+            deps="$deps scripts/telegram/bus.ts scripts/lib/env-alias.mjs"
+            ;;
     esac
     # shellcheck disable=SC2086 # deps is a space-free path list
     anchor_bytes_match "$repo" "$repo" "$rel" scripts/handover/chief-kit/himmel-gate.sh scripts/cr/anchor-handoff.sh $deps

@@ -9,6 +9,7 @@
 #   5. a piped stdout refuses, except a lone --help.
 #   6. a relative entry from a linked worktree runs the anchor's gate, not the
 #      branch's.
+#   7. a dirty file the gate runs or sources refuses (HG1: go.sh's delivery library and the bus).
 #
 # Platform guard: POSIX bash 3.2+.
 set -uo pipefail
@@ -48,7 +49,13 @@ mkdir -p "$ORIGIN/scripts/guardrails"
 for f in scripts/cr/pr-check-context.sh scripts/cr/pr-check-env.sh scripts/handover/chief-kit/go.sh; do
     cp "$ORIGIN/scripts/cr/orphan-check.sh" "$ORIGIN/$f"
 done
-for f in scripts/cr/sibling.sh scripts/guardrails/lib.sh scripts/lib/load-dotenv.sh scripts/lib/go-gate.sh scripts/lib/handover-path.sh; do
+GO_DEPS="scripts/lib/timeout-bin.sh scripts/handover/chief-kit/go-deliver.sh scripts/handover/chief-kit/close-facts.sh
+    scripts/lib/worker-identity.sh scripts/lib/legacy-names.sh scripts/lanes/lib/claude-sessions.sh
+    marketplace/plugins/himmel-bus/bin/bus marketplace/plugins/himmel-bus/lib/store.mjs scripts/telegram/bus.ts
+    scripts/lib/env-alias.mjs"
+mkdir -p "$ORIGIN/scripts/lanes/lib" "$ORIGIN/marketplace/plugins/himmel-bus/bin" "$ORIGIN/marketplace/plugins/himmel-bus/lib" "$ORIGIN/scripts/telegram"
+# shellcheck disable=SC2086 # GO_DEPS is a space-free path list
+for f in scripts/cr/sibling.sh scripts/guardrails/lib.sh scripts/lib/load-dotenv.sh scripts/lib/go-gate.sh scripts/lib/handover-path.sh $GO_DEPS; do
     echo ': dependency' >"$ORIGIN/$f"
 done
 g -C "$ORIGIN" add -A
@@ -124,6 +131,15 @@ for row in pr-check-context:scripts/guardrails/lib.sh pr-check-context:scripts/c
 done
 runf "$WT" env HIMMEL_REPO="$ANCHOR" bash "$GATE" pr-check-context
 check "7. pr-check-context on a clean anchor runs" 0 "$rc"
+# shellcheck disable=SC2086 # GO_DEPS is a space-free path list
+for f in scripts/lib/git-clean.sh $GO_DEPS; do
+    echo ': tampered' >>"$ANCHOR/$f"
+    runf "$WT" env HIMMEL_REPO="$ANCHOR" bash "$GATE" go
+    check "HG1. go with a dirty $f refuses" 2 "$rc"
+    g -C "$ANCHOR" checkout -q -- "$f"
+done
+runf "$WT" env HIMMEL_REPO="$ANCHOR" bash "$GATE" go
+check "HG1c. go on a clean anchor runs" 0 "$rc"
 echo ': tampered' >>"$ANCHOR/scripts/lib/load-dotenv.sh"
 runf "$WT" env HIMMEL_REPO="$ANCHOR" bash "$GATE" orphan-check
 check "7. orphan-check is held to itself, not the pr-check set" 0 "$rc"
