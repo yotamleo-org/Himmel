@@ -429,7 +429,7 @@ rows below use. `claudex` is the exception: a live implementation lane with no
 | Lane (`lanes.json` id) | Class | Default effort convention | Cost-optimal context window | Quota | Calibration status |
 |---|---|---|---|---|---|
 | `glm` — GLM lane | impl | — | — | — | removed: dropped, registry row and dispatcher deleted |
-| `claudex` — claudex lane (claude-codex over CLIProxyAPI) | impl | model `gpt-6.2-sol`; launcher default `xhigh` (decision 223); a brief's `effort` key or `WORKER_SESSION_EFFORT` overrides it per dispatch; never `ultra`/`max` | 900000 — declared window raised by operator ruling (2026-08-17) alongside `hermes-oneshot`; the CLIProxyAPI path itself is UNMEASURED at 900k (see below) — the launcher's `CODEX_CONTEXT_WINDOW` default stays 272000 (its own code warns past the ~372k backend ceiling it has evidence for), so a caller opts UP toward 900k per-dispatch and accepts the risk | codex | live — calibrated; `dispatch-lane.sh` accepts it once 5 consecutive verified passes exist (`readiness.passesRequired`) |
+| `claudex` — claudex lane (claude-codex over CLIProxyAPI) | impl | launcher default model `gpt-6.2-sol` (a headed worker started by `headed-arm-worker.sh` runs that script's own default, `gpt-6.1-sol`); launcher default `xhigh` (decision 223); a brief's `effort` key or `WORKER_SESSION_EFFORT` overrides it per dispatch; never `ultra`/`max` | 900000 — declared window raised by operator ruling (2026-08-17) alongside `hermes-oneshot`; the CLIProxyAPI path itself is UNMEASURED at 900k (see below) — the launcher's `CODEX_CONTEXT_WINDOW` default stays 272000 (its own code warns past the ~372k backend ceiling it has evidence for), so a caller opts UP toward 900k per-dispatch and accepts the risk | codex | live — calibrated; `dispatch-lane.sh` accepts it once 5 consecutive verified passes exist (`readiness.passesRequired`) |
 | `hermes-critics` — hermes free critics (scripts/cr/hermes-critic.sh) | critic | — (critic pass, not effort-tiered) | unverified/varies | none (dashboard-omitted) | calibrated — model is PINNED to gpt-6.2-sol via `critics.json`; the `himmel_agent` profile supplies a separate default for `hermes-oneshot`; not yet wired into the `/pr-check` gate |
 | `codex` (paid, via hermes) | critic | — (critic pass) | 900000 — raised by operator ruling (2026-08-17); pins gpt-6.2-sol via `critics.json` — the window figure predates and is independent of the model pin; least-verified of the four raised lanes | none (dashboard-omitted); opt-in `CR_PROFILE=paid` | calibrated — automated review escalation / second opinions only |
 | `copilot-cli` — GitHub Copilot CLI (free tier) | bulk | small tasks; model tier is mini-class unless the caller overrides the auto pin | unverified/varies | none (dashboard-omitted); 2,000 completions/mo | **not calibrated yet** — worker-spawn-matrix row UNVERIFIED (live smoke pending eval); route only for free chores / second opinions, and only through the `dispatch-copilot.sh` sanctioned script |
@@ -1122,7 +1122,7 @@ to gate new arms, not reads.
 
 `headed-arm-worker.sh --lane claudex` (or `WORKER_SESSION_LANE=claudex`) routes a worker arm
 through `scripts/claude-codex` — the Claude Code harness running against
-GPT-6.2 Sol (`gpt-6.2-sol`) via the local CLIProxyAPI service — drawing on the **codex weekly
+a GPT model (the launcher's default is GPT-6.2 Sol, `gpt-6.2-sol`) via the local CLIProxyAPI service — drawing on the **codex weekly
 usage budget** (`usage-preflight.sh` parks a claudex worker on
 `scripts/lanes/codex-usage-probe.ts`'s cache, never the Claude five-hour/weekly
 check) instead of the Claude subscription usage budget the native lane spends from.
@@ -1132,9 +1132,10 @@ check) instead of the Claude subscription usage budget the native lane spends fr
 without a DORMANT note, and no opt-in variable is needed to dispatch it. Two
 routes reach it:
 
-- **A worker** (`headed-arm-worker.sh --lane claudex`) runs `gpt-6.2-sol` by
-  default (a brief's `model` key overrides it). The launcher's own default
-  effort is `xhigh`; a brief's `effort` key exports `WORKER_SESSION_EFFORT`
+- **A worker** (`headed-arm-worker.sh --lane claudex`) runs `gpt-6.1-sol` by
+  default, that script's own default (a brief's `model` key overrides it); the
+  launcher's own default, used when no model is passed, is `gpt-6.2-sol`. The
+  launcher's own default effort is `xhigh`; a brief's `effort` key exports `WORKER_SESSION_EFFORT`
   to override it per dispatch.
 - **A one-off dispatch** (`dispatch-lane.sh --lane claudex`) is accepted once
   the flow-runs ledger holds 5 consecutive verified passes on `claudex/`
@@ -1187,7 +1188,7 @@ or message anything else running — it is not a substitute for:
   ambiguous ticket) belongs on a native tier that can actually escalate.
 
 **Operating model — claudex workers cannot ask, so they never park.** A claudex
-worker is `scripts/claude-codex` (Claude Code) talking to GPT-6.2 Sol (`gpt-6.2-sol`) through
+worker is `scripts/claude-codex` (Claude Code) talking to a GPT model (the launcher's default is `gpt-6.2-sol`) through
 CLIProxyAPI; it is not a peer session in this operator's `ListAgents`
 registry and structurally cannot see or message any native session —
 `ListAgents`/`SendMessage` simply do not reach it, and it cannot reach them.

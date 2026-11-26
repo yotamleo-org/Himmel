@@ -154,7 +154,7 @@ field on the inbox record it writes, so a session's poller-delivered inbox
 can distinguish a programmatically-sent (potential chief) message from
 a directly Telegram-relayed one.
 
-**Claudex file inbox:** a claudex worker (gpt-6.2-sol via
+**Claudex file inbox:** a claudex worker (a GPT model via
 `scripts/claude-codex`) cannot `ListAgents`/`SendMessage` a native session, so
 it has no A→B bus to receive a RETASK revision on. The file inbox
 (`<handover root>/inbox/<session-name>.md`, written by
