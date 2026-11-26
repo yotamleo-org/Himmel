@@ -989,6 +989,13 @@ export function createWriterOf(
   return chose.bugDefault ? 'create-bug-default' : undefined;
 }
 
+export function chiefMissRefusal(o: { type: string; labels?: string; notChiefMiss?: boolean }, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  if (env['HIMMEL_CONSOLE'] !== '1' || !/^bug$/i.test(o.type) || o.notChiefMiss) return undefined;
+  const labels = o.labels === undefined ? [] : parseLabels(o.labels).map((l) => l.toLowerCase());
+  if (labels.includes('chief-miss')) return undefined;
+  return 'jira create: a Bug filed from a chief session must carry the label chief-miss (a miss of the chief\'s own: file it with scripts/handover/chief-kit/file-chief-miss.sh --kind wake|relay|go|unowned) or pass --not-chief-miss (it is not one)';
+}
+
 export function registerCreate(program: Command): void {
   program
     .command('create')
@@ -1060,6 +1067,7 @@ export function registerCreate(program: Command): void {
     .option('--fu-override <id>', 'The named override a hardening residual needs: a judge verdict id (XX-jNNNN-N) or decision-N; printed into the ticket as an unverified label')
     .option('--class <id>', 'Residual class id, stamped as the class-<id> label')
     .option('--area <name>', 'Residual area; an open residual with the same class and area is commented on instead of filing a new one')
+    .option('--not-chief-miss', 'Chief session only (HIMMEL_CONSOLE=1): this Bug is not about a miss of the chief\'s own, so it carries no chief-miss label')
     .option('--project <key>', 'Project key (default: JIRA_PROJECT_KEY env var)')
     .option('--change-class <class>', 'rename or bulk: a mechanical change touching a core path adds no core label and prints core-review for the chief')
     .option('--attach <path>', 'File to attach (repeatable)', collect, [])
@@ -1068,12 +1076,14 @@ export function registerCreate(program: Command): void {
       'Print the seven-section body (Impact, What, Why, Plan, DoD, Proof, Agent detail) to fill, then exit; creates nothing',
     )
     .action(
-      async (options: CreateOptions & { skeleton?: boolean; operatorUpdate?: number }) => {
+      async (options: CreateOptions & { skeleton?: boolean; operatorUpdate?: number; notChiefMiss?: boolean }) => {
         if (options.skeleton) {
           console.log(PLAIN_BLOCK_TEMPLATE);
           return;
         }
         try {
+          const refusal = chiefMissRefusal(options);
+          if (refusal) throw new CreateRefused(refusal);
           const withPointer: CreateOptions & { pointer?: BridgePointer } = { ...options, pointer: bridgePointer(options), checkDuplicates: true };
           await runCreate(withPointer);
         } catch (e) {
