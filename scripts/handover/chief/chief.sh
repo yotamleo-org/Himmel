@@ -2709,7 +2709,7 @@ seed_live_fields() {
     go="$(seeded_live_field "$live" "last GO")"
     new_legs="$(open_legs_block "$workers" "${doc%.md}.fleet.json")"
     new_go="$(latest_go_only "$go")"
-    [ "$CHAIN_RENAMED" -ne 1 ] || new_go="$(printf '%s\n' "$new_go" | sed -E 's/(;|,)? earlier [`#]?[0-9]+:.*$//')"
+    [ "$CHAIN_RENAMED" -ne 1 ] || new_go="$(printf '%s\n' "$new_go" | sed -E 's/[;,] earlier [`#]?[0-9]+:[0-9a-f]{7,}.*$//')"
     if [ "$new_legs" != "$workers" ] || [ "$new_go" != "$go" ]; then
         hdir="$(dirname "$doc")/specs/history"
         hfile="$hdir/chief-live-state-$stem.md"
