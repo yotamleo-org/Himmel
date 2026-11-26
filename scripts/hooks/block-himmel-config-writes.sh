@@ -582,7 +582,7 @@ config_dir_destination() {
         [ -n "$o" ] || continue
         if [ -z "$seg_verb" ]; then
             case "$o" in
-                *=*|-*|sudo|env|command|nohup|time|exec|nice) continue ;;
+                *=*|-*|sudo|env|command|nohup|time|exec|nice|if|then|else|elif|while|until|do|\!|\{) continue ;;
             esac
             seg_verb="${o##*/}"
             continue
@@ -613,7 +613,7 @@ if ! names_guarded_file "$cmd" && ! names_guarded_file "$lc"; then
     set -f
     for _w in $cmd; do
         operand_clean "$_w"; _o="$OPERAND"
-        case "$_o" in */*) ;; *) continue ;; esac
+        case "$_o" in ""|-*) continue ;; esac
         case "$_o" in *'$'*|*'`'*|*'*'*|*'?'*|*'['*|*'{'*) continue ;; esac
         case "$_o" in /*) ;; *) _o="$cmd_cwd/$_o" ;; esac
         phys[${#phys[@]}]="$_o"
