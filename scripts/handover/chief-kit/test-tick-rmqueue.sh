@@ -589,5 +589,41 @@ out="$(tick)"
 check 'S4: a state that is not OK prints neither field and asks nothing' '||no' "$(field unplaced "$out")|$(field serious-later "$out")|$([ -e "$W/unplaced-asked" ] && echo asked || echo no)"
 check 'S4: the tick runs no git read of its own for the date' '0' "$(sed -n '/^unplaced_f=/,/^# held=/p' "$HERE/tick.sh" | grep -c 'git ')"
 
+mkdir -p "$W/cwr/consoles" "$W/decoy/repo"
+cat > "$W/cwr/tick.sh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "${REPO-<unset>}" >> "$CWR_SEEN"
+cat "$W/cw-base.line"
+STUB
+cwr_seen() {
+    local mode="$1" seen="$W/cwr/seen-$1" ev i pid
+    : > "$seen"
+    case "$mode" in
+        fixture) ev=(REPO="$W/repo") ;;
+        relative) ev=(REPO=repo) ;;
+        cdpath) ev=(REPO=repo CDPATH="$W/decoy") ;;
+        unset) ev=(-u REPO) ;;
+        missing) ev=(REPO="$W/no-such-dir") ;;
+    esac
+    : > "$W/cwr/consoles/$mode.md"
+    ( cd "$W" && exec env "${ev[@]}" CWR_SEEN="$seen" CHIEF_WAIT_TICK="$W/cwr/tick.sh" CHIEF_WAIT_RMLEASE="$W/cw-off.sh" \
+        CHIEF_WAIT_USAGE="$W/cw-bank.sh" CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000 \
+        CHIEF_WAIT_PAGE_CMD="$W/cw-off.sh" CHIEF_WAIT_BUDGET="$W/cw-budget.sh" CHIEF_WAIT_ORPHAN="$W/cw-off.sh" CHIEF_WAIT_DISPATCH="$W/cw-off.sh" \
+        WAIT_SWEEP_CMD="$W/cw-off.sh" WAIT_FOCUS_CMD="$W/cw-off.sh" HIMMEL_DENIAL_ACK_DIR="$W/acks" \
+        timeout -k 5 90 bash "$HERE/chief-wait.sh" "$W/cwr/consoles/$mode.md" --doc "$W/handover/chief.md" --workers N1.md >/dev/null 2>&1 ) &  # gnu-ok: Linux-only kit
+    pid=$!
+    for i in $(seq 150); do [ -s "$seen" ] && break; sleep 0.2; done
+    kill -TERM "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+    if [ -s "$seen" ]; then sort -u "$seen"; else echo '<no tick>'; fi
+}
+fx="$(CDPATH='' cd -- "$W/repo" && pwd)"
+own="$(CDPATH='' cd -- "$HERE/../../.." && pwd)"
+check '11153 I4: the fixture repo has no prim.sh, so the waiter must still load its libraries from its own checkout' 'absent' "$([ -e "$W/repo/scripts/lib/prim.sh" ] && echo present || echo absent)"
+check '11153 I1: a fixture REPO reaches the tick' "$fx" "$(cwr_seen fixture)"
+check '11153 I1: a relative REPO reaches the tick absolute' "$fx" "$(cwr_seen relative)"
+check '11153 I1: CDPATH does not redirect the REPO the tick gets' "$fx" "$(cwr_seen cdpath)"
+check '11153 I2: REPO unset: the tick gets no REPO' '<unset>' "$(cwr_seen unset)"
+check "11153 I3: a REPO naming no directory: the tick gets the waiter's own checkout" "$own" "$(cwr_seen missing)"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
