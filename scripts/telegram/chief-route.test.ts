@@ -3474,10 +3474,10 @@ const closureTree = async (plan3: string[] = []) => {
 };
 const overrideOf = (specs: string, ids: string) => verb(true, "round-override", CAP_KEY, "--findings", ids, "--why", "a regression the fix made", "--chief", "chief-x", "--specs", specs);
 
-const legacyTree = async (spec3: string[]) => {
+const legacyTree = async (spec3: string[], top = 3) => {
   const t = specsTree(); const a = join(t.dir, `${CAP_KEY}-a.md`); const html = join(t.dir, `${CAP_KEY}-a.html`);
   writeFileSync(a, front(CAP_KEY, "# A\n")); writeFileSync(html, "<h1>A</h1>\n");
-  for (const n of [1, 2, 3]) { const s = n === 3 ? spec3 : []; writeFileSync(`${a}.critic-spec-r${n}.md`, ret(verdictFor("SPEC", s), "a return from before the round ledger", ...s)); }
+  for (const n of Array.from({ length: top }, (_, i) => i + 1)) { const s = n === top ? spec3 : []; writeFileSync(`${a}.critic-spec-r${n}.md`, ret(verdictFor("SPEC", s), "a return from before the round ledger", ...s)); }
   expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
   return { ...t, a, html };
 };
@@ -3504,6 +3504,31 @@ test("a round-4 closure over a round 3 that sealed no file is still refused when
   const wrong = await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", `READ-SHA256 ${sha("not the spec")} ${t.a}`, "- **M2** (major; reopens M1) still open");
   expect(wrong.err).toContain(T3("spec", 4, t.a)); expect(wrong.code).not.toBe(0);
   expect(ledgerRows(t.specs, CAP_KEY).filter((x) => x.row === "round").length).toBe(0);
+});
+
+test("under an inferred baseline a regression finding is blocking, since no round 3 bytes show it out of closure, and the override can name it", async () => {
+  const t = await legacyTree(MAJOR);
+  const ok = await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", readLine(t.a), "- **P1** (major; regression `the realpath of the primary checkout`) the fix broke it", "- **n1** (minor) a note");
+  expect(ok.err).toBe("");
+  const round4 = ledgerRows(t.specs, CAP_KEY).filter((x) => x.row === "round").at(-1);
+  expect(round4.findings).toMatchObject([{ id: "P1", severity: "major", regression: true, class: "regression" }, { id: "n1", class: "out-of-closure" }]);
+  expect((await overrideOf(t.specs, "P1")).code).toBe(0);
+});
+
+test("an inferred baseline serves round 4 only: a round-5 closure over a seeded round 4 that sealed no file is refused", async () => {
+  const t = await legacyTree(MAJOR, 4);
+  const over = await verb(true, "round-override", CAP_KEY, "--findings", "M1", "--why", "the build cannot carry it", "--chief", "chief-x", "--specs", t.specs);
+  expect(over.err).toBe("");
+  const five = await closeOn(t, "spec", 5, [t.a], "SPEC FINDINGS 1", readLine(t.a), "- **M2** (major; reopens M1) still open");
+  expect(five.err).toContain(T3("spec", 5, "")); expect(five.code).not.toBe(0);
+});
+
+test("baseline_files of an inferred baseline holds only the quoted files whose bytes match their quoted sha", async () => {
+  const t = await legacyTree(MAJOR);
+  const ok = await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", readLine(t.a), `READ-SHA256 ${sha("not the page")} ${t.html}`, "- **M2** (major; reopens M1) still open");
+  expect(ok.err).toBe("");
+  const round4 = ledgerRows(t.specs, CAP_KEY).filter((x) => x.row === "round").at(-1);
+  expect(round4.baseline_files).toEqual([{ read_path: t.a, read_sha: sha(readFileSync(t.a, "utf8")) }]);
 });
 
 test("a round 3 that sealed a file keeps the strict match: a closure return quoting another file for its READ line is refused", async () => {
