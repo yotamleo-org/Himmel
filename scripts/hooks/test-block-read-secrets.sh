@@ -1236,8 +1236,7 @@ assert_rc "11232 Grep projects/./memory allowed"         0 "$(run_case "$(j_grep
 assert_rc "11232 ctl Grep .env still refused"            2 "$(run_case "$(j_grep '/home/u/repo/.env')")"
 assert_rc "5412 ctl Grep memory dir"          0 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/memory')")"
 assert_rc "5412 ctl Grep memory .md"            0 "$(run_case "$(j_grep '/home/u/.claude/projects/-home-u-repo/memory/MEMORY.md')")"
-# bun/deno whole-env objects.
-assert_rc "5412 bun Bun.env"                  2 "$(run_case "$(j_bash "bun -e 'console.log(Bun.env)'")")"
+assert_rc "5412 bun Bun.env"                    2 "$(run_case "$(j_bash "bun -e 'console.log(Bun.env)'")")"
 assert_rc "5412 bun JSON.stringify(Bun.env)"    2 "$(run_case "$(j_bash "bun -e 'console.log(JSON.stringify(Bun.env))'")")"
 assert_rc "5412 deno Deno.env.toObject()"       2 "$(run_case "$(j_bash "deno eval 'console.log(Deno.env.toObject())'")")"
 assert_rc "5412 python os.environb"             2 "$(run_case "$(j_bash "python3 -c 'import os; print(os.environb)'")")"
