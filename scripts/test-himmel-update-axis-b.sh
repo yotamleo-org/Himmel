@@ -325,6 +325,51 @@ OUT="$(run_update_novault "$LUNA_CLONE" "$FH9" "$STUB1" --only luna_template)"; 
 assert_contains "settings env vault: upgraded and source named" 'luna_template  *up-to-date .*vault from Claude settings' "$OUT"
 
 echo ""
+echo "Test 2e: a missing pre-commit prints one FIX line and the luna row names it"
+cat > "$LUNA_CLONE/templates/luna-second-brain/scripts/upgrade.sh" <<'UPGRADE'
+#!/usr/bin/env bash
+echo 'upgrade: the hook installer failed' >&2
+exit 1
+UPGRADE
+git -C "$LUNA_CLONE" add -A
+git -C "$LUNA_CLONE" commit --quiet -m "hook-installer-failing upgrade fixture"
+PC_FREE_BIN="$TMP/pc-free-bin"; mkdir -p "$PC_FREE_BIN"
+for _exe in "$NO_PWSH_BIN"/*; do
+    _n="${_exe##*/}"
+    case "$_n" in pre-commit|uv|uvx|pipx) continue ;; esac
+    ln -s "$_exe" "$PC_FREE_BIN/$_n"
+done
+make_tool_stub_dir() {
+    local d="$1"; shift
+    mkdir -p "$d"
+    local t
+    for t in "$@"; do printf '#!/bin/sh\nexit 0\n' > "$d/$t"; chmod +x "$d/$t"; done
+}
+make_tool_stub_dir "$TMP/pc-stub-bin" pre-commit
+make_tool_stub_dir "$TMP/uv-stub-bin" uv
+make_tool_stub_dir "$TMP/pipx-stub-bin" pipx
+run_luna_path() {
+    LUNA_VAULT_PATH="$LUNA_VAULT" HIMMEL_TEST_UNAME_S="${2:-Linux}" PATH="$1" \
+        run_update "$LUNA_CLONE" "$TMP/luna-home" "$STUB1" --only luna_template
+}
+OUT="$(run_luna_path "$PC_FREE_BIN")"; RC=$?
+assert_eq "no pre-commit: the luna row still fails (the secret scan stays fail-closed)" "1" "$RC"
+assert_contains "no pre-commit: a FIX line says pre-commit is missing" 'FIX: pre-commit is not on PATH' "$OUT"
+assert_eq "no pre-commit: exactly one FIX line" "1" "$(grep -c 'FIX: pre-commit' <<< "$OUT")"
+assert_contains "no pre-commit: the luna row detail names the missing tool" 'luna_template  *failed  *upgrade.sh exited 1.*pre-commit is not on PATH' "$OUT"
+assert_contains "no uv, no pipx, Linux: FIX names the uv installer then the pre-commit install" 'astral.sh/uv/install.sh.*uv tool install pre-commit' "$OUT"
+OUT="$(run_luna_path "$PC_FREE_BIN" Darwin)"
+assert_contains "no uv, no pipx, macOS: FIX names brew install uv" 'brew install uv.*uv tool install pre-commit' "$OUT"
+OUT="$(run_luna_path "$TMP/uv-stub-bin:$PC_FREE_BIN")"
+assert_contains "uv present: FIX is uv tool install pre-commit" 'Install: uv tool install pre-commit' "$OUT"
+OUT="$(run_luna_path "$TMP/pipx-stub-bin:$PC_FREE_BIN")"
+assert_contains "pipx only: FIX is pipx install pre-commit" 'Install: pipx install pre-commit' "$OUT"
+OUT="$(run_luna_path "$TMP/pc-stub-bin:$PC_FREE_BIN")"; RC=$?
+assert_eq "RED control: pre-commit present, same failing upgrade still exits 1" "1" "$RC"
+assert_not_contains "RED control: pre-commit present prints no FIX line" 'FIX:' "$OUT"
+assert_contains "RED control: pre-commit present keeps the plain upgrade.sh detail" 'luna_template  *failed  *upgrade.sh exited 1 — upgrade: the hook installer failed' "$OUT"
+
+echo ""
 echo "Test 3: --only pull honours the dirty-tree pre-check"
 printf 'dirty\n' >> "$CLONE1/file.txt"
 OUT="$(run_update "$CLONE1" "$FH1" "$STUB1" --only pull)"; RC=$?
