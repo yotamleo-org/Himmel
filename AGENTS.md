@@ -136,7 +136,8 @@ description: fix the cause, no larger than the ticket, and change the text in th
 
 ### Retrieval routing
 qmd finds content: `bash scripts/lib/qmd-bounded.sh query -c <name> "<question>"` (a miss is not proof of absence; a bare qmd call is refused).
-graphify explains structure: `bash scripts/graphify/worker-graph.sh query|explain|path "<x>"` (the bare graphify form fails in a worktree; this line wins over the section below).
+graphify explains structure: `bash scripts/graphify/worker-graph.sh explain|path "<symbol>"` (a query on a sentence is noise; the bare graphify form fails in a worktree; this line wins over the section below).
+Send each search as its own tool call, with no other call in the same response: a call sent beside one that a hook rewrites is refused unrun.
 Extraction runs on scratchpad copies, never live vaults. A live URL → `WebFetch` directly.
 
 ## WORKFLOWS

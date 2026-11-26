@@ -77,7 +77,7 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
   free file outside `Writes` is claimed and named on your PR's `outside-writes:` line. [prose]
 - **Search with Bash** (`git grep`, `git ls-files`), no Grep/Glob. Structure:
   `bash scripts/graphify/worker-graph.sh <explain "<symbol>" | path "<a>" "<b>">`;
-  `query` on a sentence is noise.
+  `query` on a sentence is noise. Send each search alone in its response (a batched one can be refused unrun).
   Pasted x.com/instagram.com links: `scripts/web/fetch-url.sh '<url>'`. [prose]
 - **Pre-check a bucket file** with `bash scripts/handover/chief-kit/bucket-gitleaks.sh <file>`
   before writing it; a real credential goes to the chief, never reworded. [prose]
