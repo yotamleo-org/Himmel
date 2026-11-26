@@ -272,6 +272,13 @@ if grep -q 'TOKEN-IN-OUTPUT LIVE' "$TMP/out" && [ "$(sent_count)" = "$((before +
     pass "a token first seen glued is still checked again where it stands alone"
 else fail "glued-then-standalone (count=$(sent_count)): $(head -c 300 "$TMP/out")"; fi
 before=$(sent_count)
+over="ghp""_${pat_body:0:36}"
+[ "$over" != "$(mk_tok "ghp""_" "${pat_body:0:30}")" ] || over="ghp""_${pat_body:1:36}"
+run_hook "$(j_post Bash s12h "T=${over}x9")"
+if grep -q 'TOKEN-IN-OUTPUT LIVE' "$TMP/out" && [ "$(sent_count)" = "$((before + 1))" ]; then
+    pass "a varied ghp_ body with a wrong checksum and no right boundary pages as LIVE"
+else fail "unbounded wrong-checksum ghp_ (count=$(sent_count)): $(head -c 300 "$TMP/out")"; fi
+before=$(sent_count)
 run_hook "$(j_post Bash s12g "T=$ghr_long$TOK_GHO")"
 if grep -qF "$(masked "$ghr_long")" "$TMP/out" && grep -qF "$(masked "$TOK_GHO")" "$TMP/out" && [ "$(sent_count)" = "$((before + 1))" ]; then
     pass "an 80-char ghr_ glued to a token keeps its own last four, and the next token is found"
