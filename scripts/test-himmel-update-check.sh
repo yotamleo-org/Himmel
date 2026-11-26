@@ -1306,7 +1306,14 @@ else
 fi
 rm -f "$TMP/qmd-argvlog"
 qserving "export QSTUB_ARGVLOG=$TMP/qmd-argvlog QMD_MCP_URL=http://127.0.0.1:8181/mcp QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;" >/dev/null
-assert_contains "33h: the token-bearing probe never goes through a proxy" "noproxy [*] -K" "$(cat "$TMP/qmd-argvlog" 2>/dev/null)"
+assert_contains "33h: the token-bearing probe never goes through a proxy" "noproxy [*] -g -K" "$(cat "$TMP/qmd-argvlog" 2>/dev/null)"
+rm -f "$TMP/qmd-argvlog"
+qserving "export QSTUB_ARGVLOG=$TMP/qmd-argvlog QMD_MCP_URL='http://{a@localhost:8181/,evil.example/}/mcp' QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;" >/dev/null
+assert_contains "33i: a brace URL reaches the token-bearing probe unexpanded (-g, curl config skipped)" "^-q .* -g " "$(cat "$TMP/qmd-argvlog" 2>/dev/null)"
+assert_contains "33i: the brace URL itself is passed whole" "http://{a@localhost:8181/,evil.example/}/mcp" "$(cat "$TMP/qmd-argvlog" 2>/dev/null)"
+rm -f "$TMP/qmd-argvlog"
+qserving "export QSTUB_ARGVLOG=$TMP/qmd-argvlog QMD_MCP_URL=http://127.0.0.1:8181/mcp QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;" >/dev/null
+assert_contains "33j: control: an ordinary loopback URL is passed unchanged" "http://127.0.0.1:8181/mcp" "$(cat "$TMP/qmd-argvlog" 2>/dev/null)"
 
 echo "Test 34: update_antigravity_backstop check/apply and skip-when-absent"
 AGY_HOME="$TMP/agy-home"

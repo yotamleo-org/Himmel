@@ -2039,7 +2039,7 @@ qmd_daemon_serving() {
     command -v curl >/dev/null 2>&1 || return 1
     tok="$(bash "$hdrs" --token-for "$url" 2>/dev/null)"
     if [ -n "$tok" ]; then
-        body="$(printf 'header = "Authorization: Bearer %s"\n' "$tok" | curl -s -m 2 --noproxy '*' -K - -X POST \
+        body="$(printf 'header = "Authorization: Bearer %s"\n' "$tok" | curl -q -s -m 2 --noproxy '*' -g -K - -X POST \
             -H 'Content-Type: application/json' \
             -H 'Accept: application/json, text/event-stream' \
             -d "$payload" "$url" 2>/dev/null)" || return 1

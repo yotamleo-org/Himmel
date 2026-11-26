@@ -181,7 +181,7 @@ probe_body() {
   local tok
   tok="$(bash "$(dirname "${BASH_SOURCE[0]}")/qmd-auth-headers.sh" --token-for "$QMD_MCP_URL" 2>/dev/null)"
   if [ -n "$tok" ]; then
-    printf 'header = "Authorization: Bearer %s"\n' "$tok" | "$QMD_CURL" -s -m "$PROBE_TIMEOUT" --noproxy '*' -X POST \
+    printf 'header = "Authorization: Bearer %s"\n' "$tok" | "$QMD_CURL" -q -s -m "$PROBE_TIMEOUT" --noproxy '*' -g -X POST \
       -K - \
       -H 'Content-Type: application/json' \
       -H 'Accept: application/json, text/event-stream' \
