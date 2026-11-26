@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# worker-state.sh — a worker's lifecycle state: one table, one reducer, one record, one CLI.
-#
-# The table is scripts/lib/worker-states.tsv. ws_reduce turns the facts about a worker (lock class,
-# newest marker, hand-off, sweep text, and the tick's transcript and census reads) into one row of it.
-# Source this file for the functions, or run it:
-#
 #   worker-state.sh --json [--stdin] [<doc>...]
 #       one JSON object per doc: {doc, state, tick, reason, source, age, holds_lock, ended,
 #       needs_chief, display, remedy}. --stdin reads lines of <doc><TAB><tick label or empty>.
@@ -18,11 +12,6 @@
 #   ws_gather <doc> [<tick label>]            the ten ws_reduce inputs, tab-separated
 #   ws_record_put <doc> <state> <reason> <sig> <0|1 lockless>, ws_record_prune
 #       the per-doc record under <state dir>/worker-lifecycle/. Only the tick writes it.
-#
-# A record older than 360 s is not used: twice the waiter's default tick interval (CHIEF_WAIT_INTERVAL,
-# 180 s). A record or a tick label may only refine the live cheap answer (FREE to NOLIVE, FORKED or
-# NOLOCK; FRESH or STALE to IDLE-HELD; WRAPPED to CLOSABLE), never contradict the lock and the marker.
-# A lockless doc (a NOLOCK label, or a record under the bound that says so) reads NOLOCK on the cheap state.
 #
 # Seams: WS_QUEUE_LOCK (the queue-lock script), WS_STATES_TSV (the table), WS_NOW (epoch seconds),
 # TICKET_STATUS_STATE_DIR (through ts_state_dir). Sourcing sets no shell option and runs nothing.
@@ -43,7 +32,7 @@ _WS_LIB_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$_WS_LIB_DIR/canon-path.sh"
 
-_WS_RECORD_BOUND=360
+_WS_RECORD_MAX_AGE_SECS=360
 _WS_REDUCER_STATES="FRESH STALE STALE-DEAD IDLE-HELD CLOSABLE WRAPPED FREE HALTED-SWEPT PARKED-USAGE NOLIVE FORKED NOLOCK UNVERIFIED CORRUPT UNKNOWN NOTFOUND"
 
 _WS_T_PATH=""
@@ -222,7 +211,7 @@ ws_record_prune() {
         seen="$(jq -r '.seen // empty | floor' "$f" 2>/dev/null)" || seen=""  # swallow-ok: an unparsable record is deleted below
         case "$seen" in
             ''|*[!0-9]*) rm -f -- "$f" ;;
-            *) [ $((now - seen)) -lt "$_WS_RECORD_BOUND" ] || rm -f -- "$f" ;;
+            *) [ $((now - seen)) -lt "$_WS_RECORD_MAX_AGE_SECS" ] || rm -f -- "$f" ;;
         esac
     done
     return 0
@@ -239,7 +228,7 @@ ws_record_read() {
     IFS=$'\t' read -r WS_REC_STATE WS_REC_SIG seen WS_REC_LOCKLESS WS_REC_REASON <<< "$line"
     case "$seen" in ''|*[!0-9]*) return 1 ;; esac
     WS_REC_AGE=$(($(_ws_now) - seen))
-    [ "$WS_REC_AGE" -lt "$_WS_RECORD_BOUND" ] || return 1
+    [ "$WS_REC_AGE" -lt "$_WS_RECORD_MAX_AGE_SECS" ] || return 1
     return 0
 }
 

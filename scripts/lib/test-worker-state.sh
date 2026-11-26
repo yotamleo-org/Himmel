@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# Test for scripts/lib/worker-state.sh and scripts/lib/worker-states.tsv.
-#
-# The reducer rows pass fixed inputs to ws_reduce. The CLI rows run the real CLI over fixture docs,
-# a stub queue lock (WS_QUEUE_LOCK) and a scratch state directory (TICKET_STATUS_STATE_DIR).
-# Every expected display, remedy and needs_chief value is read from the table at test time.
-#
-# Usage: bash scripts/lib/test-worker-state.sh
 # Platform guard: POSIX bash 3.2+.
 # shellcheck disable=SC1090,SC2030,SC2031  # the lib path is a variable; a WS_NOW export inside a subshell is the point
 set -uo pipefail

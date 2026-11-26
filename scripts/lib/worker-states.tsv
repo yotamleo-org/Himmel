@@ -1,9 +1,4 @@
-# worker-states.tsv: the one table of a worker's lifecycle states.
-# Read through scripts/lib/worker-state.sh only; a reader keeps no list of these states or their text.
-# Tab-separated. holds_lock: yes | no | unknown. needs_chief: yes | no.
-# tick: the exact workers= label the tick prints for the state (HALTED-SWEPT and PARKED-USAGE print FREE).
 # remedy: <doc> is replaced by the doc's realpath.
-# A wrong row count or column count loads nothing.
 state	holds_lock	needs_chief	tick	display	remedy
 # rows: 16
 FRESH	yes	no	FRESH	working	none
