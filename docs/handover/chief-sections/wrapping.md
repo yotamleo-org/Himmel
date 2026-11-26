@@ -51,6 +51,7 @@ never a chain or a `VAR=` prefix:
 | closing wrapped windows one by one | `! bash scripts/handover/chief-kit/close-wrapped-workers.sh` |
 | `HANDOVER_DIR=… JIRA_PROJECT_KEY=… node …/dist/index.js <op> …` | `! node <primary>/scripts/jira/dist/index.js <op> …`, run from any himmel checkout: the CLI resolves both keys itself from the primary checkout's config (its `.env` today) |
 | `for id in …; do gh run cancel $id; done` | `! bash scripts/handover/chief-kit/cancel-runs.sh --keep-pr <n> --live` (or `--all --live`; a dry run without `--live`) |
+| `pkill -f <path>` or a `kill` loop over a runaway worker's scratchpad processes | `! bash scripts/handover/chief-kit/stop-worker-processes.sh <scratchpad dir> --live` (one literal `<root>/claude-<uid>/<project>/<session>/scratchpad` path; a dry run without `--live` lists the processes first) |
 | `cd <worktree> && bash scripts/<x>.sh …` | `! bash <worktree>/scripts/<x>.sh …` (the script finds its own checkout) |
 | a scratchpad prune script for merged worktrees | `! bash scripts/clean.sh` |
 
