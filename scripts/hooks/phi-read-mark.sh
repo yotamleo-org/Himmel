@@ -12,9 +12,9 @@
 #   Read file_path, NotebookRead notebook_path, Grep path, Glob path and the part
 #   of an absolute Glob pattern before its first wildcard (Grep and Glob with no
 #   path: the cwd).
-#   Bash and Monitor command: every word that starts with "/" once quotes are
-#   joined to their word (a quoted or backslash-escaped blank stays in it) and the
-#   text is split on blanks and shell punctuation.
+#   Bash and Monitor command: every word that starts with "/" once the text is
+#   split on unquoted, unescaped blanks and shell punctuation, quotes and
+#   backslashes honoured as a shell reads them.
 # A path is PHI when a .salus or .salus-profile marker sits at or above its raw or
 # canonical form, or _guard_phi_decision returns 1 (listed) or 2 (unreadable).
 #
@@ -59,19 +59,23 @@ case "$tool" in
         fi
         ;;
     Bash | Monitor)
-        words=$(str '.tool_input.command // ""' | awk '{
-            o = ""
-            for (i = 1; i <= length($0); i++) {
+        words=$(str '.tool_input.command // ""' | awk 'BEGIN { sep = " \t\r;|&<>()`=:,{}" }
+        {
+            n = length($0)
+            for (i = 1; i <= n; i++) {
                 c = substr($0, i, 1)
-                if (q != "") { if (c == q) q = ""; else o = o (c == " " ? "\001" : c); continue }
+                if (q == "\047") { if (c == q) q = ""; else w = w c; continue }
+                if (c == "\\" && i < n) { i++; w = w substr($0, i, 1); continue }
+                if (q == "\"") { if (c == q) q = ""; else w = w c; continue }
                 if (c == "\047" || c == "\"") { q = c; continue }
-                if (c == "\\" && substr($0, i + 1, 1) == " ") { o = o "\001"; i++; continue }
-                o = o c
+                if (index(sep, c)) { if (w != "") print w; w = ""; continue }
+                w = w c
             }
-            print o
-        }' | tr -s " \t\r;|&<>()\`=:,{}" '\n')
+            if (q == "") { if (w != "") print w; w = "" } else w = w " "
+        }
+        END { if (w != "") print w }')
         while IFS= read -r w; do
-            case "$w" in /*) add "${w//$'\001'/ }" ;; esac
+            case "$w" in /*) add "$w" ;; esac
         done <<<"$words"
         ;;
 esac
