@@ -12,8 +12,9 @@
 #   Read file_path, NotebookRead notebook_path, Grep path, Glob path and the part
 #   of an absolute Glob pattern before its first wildcard (Grep and Glob with no
 #   path: the cwd).
-#   Bash and Monitor command: every word that starts with "/" once the text is
-#   split on blanks, quotes and shell punctuation. This is a command-text match:
+#   Bash and Monitor command: every quoted string that starts with "/", and every
+#   word that starts with "/" once the text is split on blanks, quotes and shell
+#   punctuation (a backslash-escaped blank stays in its word). This is a command-text match:
 #   a path built at run time (a variable, a glob, a cd then a relative name)
 #   escapes it, so it narrows the residual tell.ts's transcript scan leaves and is
 #   not a boundary.
@@ -61,9 +62,15 @@ case "$tool" in
         fi
         ;;
     Bash | Monitor)
-        words=$(str '.tool_input.command // ""' | tr -s " \t\r;|&<>()'\"\`=:,{}" '\n')
+        cmd=$(str '.tool_input.command // ""')
+        quoted=$(printf '%s\n' "$cmd" | grep -oE "'/[^']*'|\"/[^\"]*\"")
         while IFS= read -r w; do
-            case "$w" in /*) add "$w" ;; esac
+            [ -n "$w" ] && add "${w:1:${#w}-2}"
+        done <<<"$quoted"
+        cmd=${cmd//\\ /$'\001'}
+        words=$(printf '%s\n' "$cmd" | tr -s " \t\r;|&<>()'\"\`=:,{}" '\n')
+        while IFS= read -r w; do
+            case "$w" in /*) add "${w//$'\001'/ }" ;; esac
         done <<<"$words"
         ;;
 esac
