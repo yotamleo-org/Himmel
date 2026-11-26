@@ -319,7 +319,7 @@ without it), pins `HOME`, `PATH` (system directories only), the operator id file
 test seams. The script takes `HOME` from the passwd entry and refuses a different one, ignores its own test seams, and
 runs every child (launcher, preflight, fleet manifest, sender) from an empty environment plus an allowlist: `HOME`,
 `USER`, `LOGNAME`, `PATH` (system directories, then your `~/.local/bin` and `~/.bun/bin`), a shaped `LANG`,
-the runtime dir, `HANDOVER_DIR` when pinned, `HIMMEL_WORKER_SESSION_TABS` when pinned (`worker_tabs=1`), the two bridge paths, a pinned bus address, the granted flags and the
+the runtime dir, `HANDOVER_DIR` when pinned, `HIMMEL_WORKER_SESSION_TABS` when pinned (`worker_tabs=1`) but never for a launch that carries granted bypass flags, which always opens its own window and never joins or becomes the shared workers window (the daemon decides, in the service and in hand-start mode alike: it strips the switch from the child whenever any flag is granted, `HIMMEL_BILLED_OK` included), the two bridge paths, a pinned bus address, the granted flags and the
 worker effort and API names. The session names a headed terminal needs (`DISPLAY`, `WAYLAND_DISPLAY`, `XAUTHORITY`,
 `XDG_SESSION_TYPE`, `XDG_CURRENT_DESKTOP`) are read by name as data and checked (`DISPLAY` must equal logind's;
 the Wayland socket must exist; `XAUTHORITY` must be a file you own); a failed check, or no graphical session at all,
