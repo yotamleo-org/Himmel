@@ -50,7 +50,7 @@ match_token() {
     for re in "$default_re" "$extra_re"; do
         [ -n "$re" ] || continue
         if [[ "" =~ $re ]]; then continue; fi
-        if [[ $1 =~ $re ]]; then found="${BASH_REMATCH[1]:-${BASH_REMATCH[0]}}"; return 0; fi
+        if [[ $1 =~ $re ]] && [ -n "${BASH_REMATCH[0]}" ]; then found="${BASH_REMATCH[1]:-${BASH_REMATCH[0]}}"; return 0; fi
     done
     return 1
 }
