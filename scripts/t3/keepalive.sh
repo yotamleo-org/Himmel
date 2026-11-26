@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # scripts/t3/keepalive.sh - hold a T3 Code session open until something wakes it.
 #
-# RETIRED from the T3 relay contract: a relay is launched on demand by relay-launch.sh and holds no
-# background task. This script stays only for a session an operator chooses to pin by hand.
 # Usage: keepalive.sh [--wake-file <path>] [--max-seconds N]
 # Run as ONE background task (run_in_background): T3 keeps a thread's process alive while
 # background work runs (the pin lasts at most 4 h, so the default max is 12600 s).

@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# scripts/t3/test-relay-launch.sh - suite for the slim T3 relay: the `t3-relay` registry profile and relay-launch.sh.
-# Platform: POSIX bash 3.2+, jq, node. Fixture copies only; no T3 server and no model call.
 set -u
 unset T3_RELAY_MODEL STUB_LIST_FAIL HANDOVER_DIR
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
