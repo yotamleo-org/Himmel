@@ -49,5 +49,10 @@ check "a missing record exits 2" "$rc" "2"
 printf '{"schema":1,"shift":"DY","workers_mean":0,"hours":1,"ctx_start":1,"ctx_end":2}\n' > "$tmp/empty.jsonl"
 rc=0; python3 "$R" "$tmp/empty.jsonl" >/dev/null 2>&1 || rc=$?
 check "a record with no usable row exits 3" "$rc" "3"
+printf '{"schema":1,"shift":"DZ","workers_mean":2,"hours":1,"ctx_start":5,"ctx_end":5}\n' > "$tmp/flat.jsonl"
+check "a shift with no context growth leaves T(N) undefined" "$(python3 "$R" "$tmp/flat.jsonl" | grep -c '^T(2.0) undefined')" "1"
+printf '\377\376 not utf-8\n' >> "$tmp/flat.jsonl"
+rc=0; python3 "$R" "$tmp/flat.jsonl" >/dev/null 2>&1 || rc=$?
+check "a line of invalid UTF-8 is skipped" "$rc" "0"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

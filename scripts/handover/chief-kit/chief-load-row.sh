@@ -13,7 +13,7 @@
 # ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects and used only when its custom title is --shift.
 # Only counts, timestamps, token usage and tool names are kept, never text.
 #   hours            first to last timestamp of the transcript
-#   ctx_start        context (input + cache read + cache creation) at the first chief-wait call
+#   ctx_start        context (input + cache read + cache creation) at the first Bash call running chief-wait.sh
 #   ctx_end          the largest context of the shift
 #   wakes_*          user turns that are not tool results: waiter (task-notification), worker
 #                    (cross-session message), subagent (hand-back), other (session load, local
@@ -30,7 +30,8 @@
 # reason is --reason, else `fill` when ctx_end reached --fill-percent of --window, else `unstated`.
 # A field that cannot be read is null; the row is still written.
 #
-# Exit: 0 row appended; 2 usage; 3 the record is not a regular file (a symlink or other), refused.
+# Exit: 0 row appended; 1 the row was not written whole; 2 usage; 3 the record is not a regular
+# file (a symlink, FIFO or other), refused.
 set -uo pipefail
 
 usage() { sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
@@ -73,6 +74,7 @@ import datetime, errno, json, os, re, stat, statistics, sys
 path, transcript, shift, next_shift = sys.argv[1:5]
 workers_end, rulings, spans_unknown = (int(x) for x in sys.argv[5:8])
 reason, fill_percent, window = sys.argv[8], int(sys.argv[9]), int(sys.argv[10])
+WAITER_ARM = re.compile(r"^\s*bash\s+\S*chief-wait\.sh(\s|$)")
 HOOK_TIMEOUT = re.compile(r"hook[^\n]{0,80}timed out|timed out[^\n]{0,40}\bhook", re.I)
 
 
@@ -158,7 +160,7 @@ def measure(file):
                 if not isinstance(b, dict) or b.get("type") != "tool_use":
                     continue
                 inp = b.get("input") or {}
-                if arm is None and "chief-wait" in json.dumps(inp):
+                if arm is None and b.get("name") == "Bash" and WAITER_ARM.search(str(inp.get("command") or "")):
                     arm = mid
                 if b.get("name") in ("Agent", "Task") and inp.get("subagent_type") in ("judge", "judge-ro"):
                     m["judge_dispatches"] += 1
@@ -174,13 +176,26 @@ def measure(file):
     return m
 
 
+def refuse():
+    print("chief-load-row: refusing %s, it is not a regular file" % path, file=sys.stderr)
+    sys.exit(3)
+
+
 try:
-    st = os.lstat(path)
-    if not stat.S_ISREG(st.st_mode):
-        print("chief-load-row: refusing %s, it is not a regular file" % path, file=sys.stderr)
-        sys.exit(3)
-except FileNotFoundError:
-    pass
+    fd = os.open(path, os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+except OSError as e:
+    if e.errno in (errno.ELOOP, errno.ENXIO, errno.EISDIR):
+        refuse()
+    raise
+if not stat.S_ISREG(os.fstat(fd).st_mode):
+    refuse()
+chunks = []
+while True:
+    chunk = os.read(fd, 65536)
+    if not chunk:
+        break
+    chunks.append(chunk)
+previous = b"".join(chunks).decode("utf-8", "replace").splitlines()
 
 m = None
 if transcript:
@@ -191,17 +206,13 @@ if transcript:
 m = m or {}
 
 workers_start = None
-try:
-    with open(path) as fh:
-        for line in fh:
-            try:
-                r = json.loads(line)
-            except ValueError:
-                continue
-            if r.get("next_shift") == shift and isinstance(r.get("workers_end"), int):
-                workers_start = r["workers_end"]
-except FileNotFoundError:
-    pass
+for line in previous:
+    try:
+        r = json.loads(line)
+    except ValueError:
+        continue
+    if isinstance(r, dict) and r.get("next_shift") == shift and isinstance(r.get("workers_end"), int):
+        workers_start = r["workers_end"]
 ends = [x for x in (workers_start, workers_end) if x is not None]
 ctx_end = m.get("ctx_end")
 if not reason:
@@ -241,16 +252,11 @@ row = {
     "reason": reason,
     "transcript": "read" if m else "unavailable",
 }
-try:
-    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-except OSError as e:
-    if e.errno == errno.ELOOP:
-        print("chief-load-row: refusing %s, it is not a regular file" % path, file=sys.stderr)
-        sys.exit(3)
-    raise
-try:
-    os.write(fd, (json.dumps(row, separators=(",", ":")) + "\n").encode())
-finally:
-    os.close(fd)
+data = (json.dumps(row, separators=(",", ":")) + "\n").encode()
+written = os.write(fd, data)
+os.close(fd)
+if written != len(data):
+    print("chief-load-row: wrote %d of %d bytes of the row to %s" % (written, len(data), path), file=sys.stderr)
+    sys.exit(1)
 print("chief-load: %s" % path)
 PY

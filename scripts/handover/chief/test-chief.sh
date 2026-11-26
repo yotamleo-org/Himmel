@@ -4346,6 +4346,8 @@ cfg11266="$tmp/cfg11266"; mkdir -p "$cfg11266/projects/p"
     printf '{"type":"assistant","timestamp":"2026-01-01T00:31:00Z","message":{"id":"m4","usage":{"input_tokens":10,"cache_read_input_tokens":249990,"cache_creation_input_tokens":0},"content":[{"type":"text","text":"ok"}]}}\n'
     printf '{"type":"assistant","timestamp":"2026-01-01T02:00:00Z","message":{"id":"m5","usage":{"input_tokens":10,"cache_read_input_tokens":299990,"cache_creation_input_tokens":0},"content":[{"type":"text","text":"handing over"}]}}\n'
 } > "$cfg11266/projects/p/$sid11266.jsonl"
+mkdir -p "$HIMMELCTL_CACHE_DIR/launch-logs"
+printf 'headed-arm: role=chief session=DEMO-nextleg-%sA-chief context=standard source=explicit autocompact=0 launched=x lane=native\n' "$today" > "$HIMMELCTL_CACHE_DIR/launch-logs/DEMO-nextleg-${today}A-chief.log"
 rc11266=0
 CLAUDE_CONFIG_DIR="$cfg11266" CLAUDE_CODE_SESSION_ID="$sid11266" chief next --bucket load11266 --doc "$A11266" --reason operator-asked >/dev/null 2>"$tmp/11266.err" || rc11266=$?
 check "11266 next with a fixture transcript exits 0" "$rc11266" "0"
@@ -4361,7 +4363,10 @@ check "11266 the row counts judge requests, dispatches and the wait" "$(jq -r '"
 check "11266 the row counts hook-timeout refusals" "$(jq -r '.hook_timeouts' "$L11266" 2>/dev/null)" "1"
 check "11266 the row carries the handover reason given to next" "$(jq -r '.reason' "$L11266" 2>/dev/null)" "operator-asked"
 check "11266 the row carries a host load" "$(jq -r '.host_load | type' "$L11266" 2>/dev/null)" "number"
-CLAUDE_CONFIG_DIR="$cfg11266" CLAUDE_CODE_SESSION_ID="$sid11266" chief next --bucket load11266 --doc "$A11266" >/dev/null 2>&1
+check "11266 the row's context window is the outgoing chief's launch mode" "$(jq -r '.ctx_window' "$L11266" 2>/dev/null)" "200000"
+rc11266b=0
+CLAUDE_CONFIG_DIR="$cfg11266" CLAUDE_CODE_SESSION_ID="$sid11266" chief next --bucket load11266 --doc "$A11266" >/dev/null 2>&1 || rc11266b=$?
+check "11266 a second next for the same shift is refused" "$rc11266b" "1"
 check "11266 a refused second next for the same shift appends no second row" "$(wc -l < "$L11266" 2>/dev/null | tr -d ' ')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$A11266" "$tok11266" >/dev/null 2>&1
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

@@ -11,8 +11,8 @@ Then, over the rows that carry hours, workers and both contexts:
   g      tokens per live worker-hour = sum(ctx_end - ctx_start) / sum(workers_mean x hours)
   C_boot start-up context, the median ctx_start
   T(N)   hours a chief lasts with N live workers = (E - C_boot) / (g x N), where E is the mean
-         ctx_end of the rows (the context the chiefs actually handed over at); N defaults to the
-         rows' mean workers, sum(workers_mean x hours) / sum(hours)
+         ctx_end of the rows (each shift's peak context); N defaults to the rows' mean workers,
+         sum(workers_mean x hours) / sum(hours). With no growth (g = 0) T(N) is undefined.
 
 Exit: 0 printed; 2 usage or an unreadable record; 3 no row carries the fields the figures need.
 """
@@ -33,7 +33,7 @@ def main(argv=None):
     path = os.path.join(a.record, "chief-load.jsonl") if os.path.isdir(a.record) else a.record
     rows = []
     try:
-        with open(path) as fh:
+        with open(path, errors="replace") as fh:
             for line in fh:
                 try:
                     r = json.loads(line)
@@ -68,7 +68,10 @@ def main(argv=None):
     print("shifts %d of %d, chief-hours %.2f, worker-hours %.1f" % (len(full), len(rows), hours, worker_hours))
     print("tokens per live worker-hour: %s" % format(round(g), ","))
     print("start-up context (median at the first waiter arm): %s" % format(round(boot), ","))
-    print("T(%.1f) = %.2f h, handing over at the mean end context %s" % (n, (end - boot) / (g * n), format(round(end), ",")))
+    if g <= 0:
+        print("T(%.1f) undefined: no context growth in these shifts" % n)
+    else:
+        print("T(%.1f) = %.2f h, handing over at the mean peak context %s" % (n, (end - boot) / (g * n), format(round(end), ",")))
     return 0
 
 
