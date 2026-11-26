@@ -89,7 +89,6 @@ printf '%s\n' "$*" > "$STUB/le.args"
 cat > "$STUB/le.stdin"
 cp "$STUB/le.stdin" "$STUB/le.stdin.$n"
 [ -f "$STUB/le.sleep" ] && sleep "$(cat "$STUB/le.sleep")"
-# le.timeout-once: this call times out silently (rc 124); the next one is served as usual
 if [ -f "$STUB/le.timeout-once" ]; then rm -f "$STUB/le.timeout-once"; exit 124; fi
 if [ -f "$STUB/le.retry-first" ] && grep -q '^N1 ' "$STUB/le.stdin"; then
     printf 'ESCALATE wrap-merged-failed rc=3 close-wrapped-worker: refusing - queue lock held\n'
