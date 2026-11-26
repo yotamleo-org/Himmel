@@ -25,7 +25,7 @@ if [ "$kind" != tool ]; then
     printf '%s' "$input" | bash "$guard"
     exit $?
 fi
-if [ "$(printf '%s' "$input" | jq -r '.toolInputTruncated == true and (.hook_event_name | IN("PostToolUse", "PostToolUseFailure") | not)')" != false ]; then
+if [ "$(printf '%s' "$input" | jq -r '.toolInputTruncated == true and .hook_event_name != "PostToolUse" and .hook_event_name != "PostToolUseFailure"')" != false ]; then
     echo "translate-tool-call: the harness marked this tool input truncated, so no guard can judge all of it; refusing the tool call" >&2
     exit 2
 fi

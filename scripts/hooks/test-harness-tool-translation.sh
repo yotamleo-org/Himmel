@@ -562,10 +562,12 @@ for ep in project plugin guard user; do
     seen_by "$ep"
     if [ "$SEEN_RC" = 2 ] && [ ! -e "$SB/seen.json" ]; then pass "$ep: a grok call marked toolInputTruncated is refused"
     else fail "$ep: truncated grok call - rc $SEEN_RC, member saw $(cat "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
-    jq -c '.hook_event_name = "PostToolUse"' "$SB/p.json" > "$SB/p2.json" && mv "$SB/p2.json" "$SB/p.json"
-    seen_by "$ep"
-    if [ "$SEEN_RC" = 0 ] && [ "$(jq -r .tool_name "$SB/seen.json" 2>/dev/null)" = Bash ]; then pass "$ep: a truncated grok PostToolUse event still reaches its members"
-    else fail "$ep: truncated grok PostToolUse - rc $SEEN_RC, member saw $(cat "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
+    for post in PostToolUse PostToolUseFailure; do
+        jq -c --arg e "$post" '.hook_event_name = $e' "$SB/p.json" > "$SB/p2.json" && mv "$SB/p2.json" "$SB/p.json"
+        seen_by "$ep"
+        if [ "$SEEN_RC" = 0 ] && [ "$(jq -r .tool_name "$SB/seen.json" 2>/dev/null)" = Bash ]; then pass "$ep: a truncated grok $post event still reaches its members"
+        else fail "$ep: truncated grok $post - rc $SEEN_RC, member saw $(cat "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
+    done
 done
 
 echo "== fail-closed: no readable table, every entry point refuses =="
@@ -588,7 +590,7 @@ stage() {
             missing) rm -f "$t" ;;
             unreadable) [ -f "$t" ] && chmod 000 "$t" ;;
             unparseable) mkdir -p "$(dirname "$t")"; printf '{ not json\n' > "$t" ;;
-            two-document) printf '{}\n' | cat - "$HERE/$TABLE_REL" > "$t" && [ "$(jq -s length "$t")" = 2 ] \
+            two-document) { cat "$HERE/$TABLE_REL"; printf '{}\n'; } > "$t" && [ "$(jq -s length "$t")" = 2 ] \
                 || { echo "FAIL fixture: two-document table"; exit 1; } ;;
         esac
     done
