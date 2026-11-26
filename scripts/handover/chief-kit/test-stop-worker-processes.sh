@@ -11,10 +11,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STOP="$SCRIPT_DIR/stop-worker-processes.sh"
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/himmel-stop-worker.XXXXXX")" || exit 1
-PIDS=""
+PIDS=()
 cleanup() {
-    # shellcheck disable=SC2086 # PIDS is a list of numbers this suite started
-    [ -z "$PIDS" ] || kill -KILL $PIDS 2>/dev/null
+    [ "${#PIDS[@]}" -eq 0 ] || kill -KILL "${PIDS[@]}" 2>/dev/null
     rm -rf "$TMP"
 }
 trap cleanup EXIT
@@ -50,7 +49,7 @@ down() {
 start() {
     bash "$1/hold.sh" >/dev/null 2>&1 &
     STARTED=$!
-    PIDS="$PIDS $STARTED"
+    PIDS+=("$STARTED")
 }
 
 run_stop() {
@@ -64,7 +63,7 @@ start "$OTHER"; B1=$STARTED
 start "$PREFIX"; C1=$STARTED
 ( cd "$SP" && exec sleep 300 ) &
 CWD1=$!
-PIDS="$PIDS $CWD1"
+PIDS+=("$CWD1")
 sleep 1
 
 echo "== dry run lists and stops nothing =="
@@ -93,7 +92,7 @@ while :; do sleep 1; done
 STUBBORN
 bash "$SP/stubborn.sh" >/dev/null 2>&1 &
 S1=$!
-PIDS="$PIDS $S1"
+PIDS+=("$S1")
 sleep 1
 run_stop "$SP" --live
 case $out in *" killed=0 "*) bad "KILL follows an ignored TERM: $out" ;; *"remaining=0"*) ok "KILL follows an ignored TERM" ;; *) bad "KILL follows an ignored TERM: $out" ;; esac
@@ -110,10 +109,10 @@ wait
 SPAWN
 bash "$DESC/spawn.sh" >/dev/null 2>&1 &
 D1=$!
-PIDS="$PIDS $D1"
+PIDS+=("$D1")
 sleep 1
 DCHILD=$(cat "$DESC/child.pid")
-PIDS="$PIDS $DCHILD"
+PIDS+=("$DCHILD")
 run_stop "$DESC"
 case $out in *"$DCHILD"*) ok "dry run lists the sleep child that names no scratchpad path" ;; *) bad "dry run lists the child: $out" ;; esac
 run_stop "$DESC" --live

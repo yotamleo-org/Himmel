@@ -82,17 +82,16 @@ for d in /proc/[0-9]*; do
     case $skip in *" $pid "*) continue ;; esac
     [ -O "$d" ] || continue
     fields=$(stat_fields "$pid")
-    # shellcheck disable=SC2086 # the stat fields are plain words
-    set -- $fields
-    [ -n "${20:-}" ] && [ "$1" != Z ] || continue
-    pairs="$pairs $pid:$2:${20}"
+    read -ra sf <<<"$fields"
+    [ -n "${sf[19]:-}" ] && [ "${sf[0]}" != Z ] || continue
+    pairs="$pairs $pid:${sf[1]}:${sf[19]}"
     cmdline=$(tr '\0' ' ' <"$d/cmdline" 2>/dev/null) || continue  # swallow-ok: a process that exited mid-scan has no cmdline and is skipped
     cwd=$(readlink "$d/cwd" 2>/dev/null) || cwd=""  # swallow-ok: a process with no readable cwd matches on its command line only
     hit=0
     case $cmdline in *"$dir/"*) hit=1 ;; esac
     case $cwd in "$dir" | "$dir"/*) hit=1 ;; esac
     [ "$hit" = 1 ] || continue
-    enroll "$pid" "${20}"
+    enroll "$pid" "${sf[19]}"
 done
 
 grew=1

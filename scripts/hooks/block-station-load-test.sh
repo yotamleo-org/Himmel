@@ -21,8 +21,7 @@
 #                  file of at most 1 MiB which git does not track, whose text
 #                  holds one of the shapes above. At most 8 files are read; a
 #                  tracked suite is never read, so a committed test that
-#                  legitimately backgrounds work still runs. The loop often sits
-#                  in such a file while the command line only names it.
+#                  legitimately backgrounds work still runs.
 #
 # A single foreground suite run, and a fan-out of at most 2 copies (xargs -P 2,
 # parallel -j 2, `for i in 1 2; do ...& done`), pass.
@@ -128,9 +127,8 @@ loop_copies() {
             return
         fi
         case $list in *\$* | *\`* | *\** | *\?* | *\[* | *\{* | *\(*) printf unknown; return ;; esac
-        # shellcheck disable=SC2086 # counts words of a list the case above proved free of glob characters
-        set -- $list
-        printf '%s' "$#"
+        read -ra wordlist <<<"$list"
+        printf '%s' "${#wordlist[@]}"
         return
     fi
     if [[ $head =~ -(lt|le)[[:space:]]+\"?([0-9]+)\"? ]]; then
