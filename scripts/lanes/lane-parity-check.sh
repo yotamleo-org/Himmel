@@ -60,7 +60,7 @@ names_of < "$T/claude.raw" > "$T/claude.txt"
 jq -r '.hooks.PreToolUse[]?.hooks[]?.command // empty' "$CODEX_SRC" | sed 's/.*--sandbox//' | tr '+' '\n' | names_of > "$T/codex.txt" \
     || { echo "lane-parity-check: unreadable json: $CODEX_SRC" >&2; exit 2; }
 
-sed -n '/^build_claude_payload() {/,$p' "$ADAPTER" | names_of > "$T/antigravity.txt"
+sed -n '/^build_claude_payload() {/,$p' "$ADAPTER" | sed -e 's/^[[:space:]]*#.*//' -e 's/[[:space:]]#.*//' | names_of > "$T/antigravity.txt"
 
 cat "$T/claude.txt" "$T/codex.txt" "$T/antigravity.txt" | sort -u > "$T/all.txt"
 

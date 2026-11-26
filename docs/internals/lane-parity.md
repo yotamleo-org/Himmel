@@ -313,8 +313,10 @@ A `guard:<hook>.sh` row is also checked against the real wiring: the PreToolUse
 entries of `.claude/settings.json` and the himmel-ops plugin `hooks.json` (Claude),
 `.codex/hooks.json` (Codex), and the tool arms of
 `scripts/hooks/antigravity-hook-adapter.sh` (Antigravity). `has` must be wired; a
-recorded reason must not be wired; a hook wired on any lane must have a row. The
-other rows are read by people.
+recorded reason must not be wired; a hook wired on any lane must have a row. A
+guard counts as wired on a lane when any hook entry or tool arm of that lane names
+it in code (a comment does not count); the check does not tell which tool arms
+carry it. The other rows are read by people.
 
 <!-- BEGIN cli-lane-parity -->
 

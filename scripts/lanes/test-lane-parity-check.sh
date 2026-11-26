@@ -93,6 +93,11 @@ else
     fail "(f) rc=$rc out=$out"
 fi
 
+r="$(fresh_root g)"
+printf '    # block-fork-sync-pr.sh is not wired here, this is only a comment\n' >> "$r/scripts/hooks/antigravity-hook-adapter.sh"
+out="$(run "$r")"; rc=$?
+if [ "$rc" -eq 0 ]; then pass "(g) a guard name in an adapter comment is not wiring"; else fail "(g) rc=$rc out=$out"; fi
+
 if [ "$fails" -eq 0 ]; then echo "test-lane-parity-check: all pass"; exit 0; fi
 echo "test-lane-parity-check: $fails failed"
 exit 1
