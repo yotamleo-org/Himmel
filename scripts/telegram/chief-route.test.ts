@@ -8925,8 +8925,10 @@ test("HIMMEL-11321 5c round-4 closure", async () => {
 test("HIMMEL-11321 5d lagging-only override", async () => {
   const t = await lag3Tree(); const before = readFileSync(ledgerFile(t.specs), "utf8");
   const x = await overrideOf(t.specs, "R1,R2");
-  expect(x.code).not.toBe(0); expect(x.err).toContain("--closure --round");
+  expect(x.code).not.toBe(0); expect(x.err).toContain("--closure --round plan:5 or round-extension");
   expect(readFileSync(ledgerFile(t.specs), "utf8")).toBe(before);
+  const split = await lag3Tree(true); const none = await overrideOf(split.specs, "R1,R2");
+  expect(none.code).not.toBe(0); expect(none.err).toContain("--closure --round plan:5,"); expect(none.err).not.toContain("round-extension");
 });
 
 test("HIMMEL-11321 5e id in both kinds", async () => {
