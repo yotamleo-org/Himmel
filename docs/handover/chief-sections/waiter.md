@@ -617,7 +617,7 @@ recorded included. An ask on settings or `.github/`
 
     **A T3 relay event wakes you once.** With `--workers-from`, the waiter runs
     `relay-bind.sh scan` once per `CHIEF_WAIT_T3_RELAY_SEC` (default 120) and prints
-    `WAKE t3-relay <kind> <id|list|stem|label>` plus the tick line. `<id>` is a threadId, `list`
+    `WAKE t3-relay <kind> <id|list|stem|label>` plus the tick line (with the digest off, `BOUND` and `UNBOUND` print `WAKE t3-relay <kind> <id> <label>`). `<id>` is a threadId, `list`
     is literal, `stem` is the old owner's chief doc stem, `label` is an ask row's label (kinds `ask-ready` and `ask-resolve`). The kind decides your action:
     - `ask-thread-pr <id>`: an ask thread now has a linked PR. Read the thread's `T3ASK-` doc and the PR, and answer through `t3-send.sh <id> <msg-file>`.
     - `bind-gave-up <id>`: the send of the doc path to the thread failed three times, so the row's notice is `failed`. Send the doc path by hand with `t3-send.sh <id> <msg-file>`.
@@ -655,7 +655,7 @@ recorded included. An ask on settings or `.github/`
     - `done`: nothing is due for this write time: the nudge ran and the relaunch either ran, is not yet due, or is inside the grace after the nudge. The relaunch is due only at twice the first bound and after the grace, so take over by hand only once both have passed and no `relaunched` or `relaunch=failed` followed; until then the waiter may relaunch on its own (not when `live-silent` or `census=unknown` rule it out).
     - `busy`: another helper holds this worker's lock. Wait for the next call.
     - `nudged`: the bus nudge reached its one live window. Wait; the relaunch comes only past the grace.
-    - `nudge=no-window`: no single live window named the worker. Past bound one it also opens an owed row (`owed=`) unless the relaunch is already due; find the worker with `ListAgents` and nudge it by hand.
+    - `nudge=no-window`: no single live window named the worker. Past bound one it also opens an owed row (`owed=`) unless the relaunch is already due; with no nudge sent there is no grace to wait out, so the relaunch is due as soon as silence passes twice the first bound; find the worker with `ListAgents` and nudge it by hand.
     - `nudge=failed`: the bus send failed, there is no bus identity, or the message file could not be made; an owed row names why (`owed=`). Message the worker yourself.
     - `relaunched`: the worker was relaunched from its RESUME doc and the launch was confirmed. Nothing to do; confirm its first bullet.
     - `relaunch=failed`: no manifest doc, no RESUME doc, no launch record naming profile, lane and model, or an unconfirmed launch; an owed row names why. Write the RESUME doc or fix the cause, then relaunch it yourself (`worker-resume-brief.sh <worker doc>`, `headed-arm-worker.sh --fleet <your manifest>`, `launch-confirm.sh --since <epoch> <session> <log>`).
