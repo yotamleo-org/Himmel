@@ -89,8 +89,6 @@ tick_line() {
 }
 reset_stub() { rm -f "$STUB/tick.rc" "$STUB/tick.blip" "$STUB/tick.churn" "$STUB/tick.sleep" "$STUB/tick.failafter" "$STUB/tick.ignoreterm"; tick_line "N1:FRESH" "ok"; printf 'PROCEED\n' > "$STUB/bank"; }
 
-# wait_hb <inbox>: block until the waiter has taken its baseline (heartbeat
-# carries a key), at most ~60 s; it returns at once when the waiter itself is gone.
 wait_hb() {
     n=0
     while [ "$n" -lt 600 ]; do
