@@ -72,8 +72,8 @@
 # auto-go.sh's `GO-WRITTEN …` lines (rc 11: the GO file stands, the bus send failed).
 # Usage errors exit 2 before anything runs.
 #
-# `HANDLED closed-already <label>` (rc 0): a WRAPPED worker the chief already closed (the chief doc holds `<label> WRAPPED,
-# window closed.`, or a line naming its full session name and `closed its window`), tail WRAPPED, lock free, session gone; nothing runs.
+# `HANDLED closed-already <label>` (rc 0): a WRAPPED worker the chief already closed (its bullet is in the chief
+# doc), whose doc tail is WRAPPED, queue lock free and session gone; nothing runs.
 # `HANDLED closed-already <label>` also answers a wrap-merged or close step that outlives LE_STEP_BOUND seconds, one bound counted from the start of the run for the wrap and its close fallback together
 # (default 200, under the waiter's 240 s limit; no GNU timeout, no bound) for a worker whose doc tail is terminal
 # (worker_terminal_tail), queue lock free and session gone.
@@ -297,13 +297,8 @@ if [ -n "$halted" ]; then
     escalate "marker-HALTED"
 fi
 
-stem_closed() {
-    local s="${worker##*/}"
-    s="${s%.md}"
-    awk -v s="$s" 'index($0, s) && /closed its window|window closed\./ { f = 1 } END { exit !f }' "$DOC" 2>/dev/null
-}
 if [ "$marker" = WRAPPED ] && [ -r "$worker" ] \
-    && { grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null || stem_closed; } \
+    && grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null \
     && "${LOCK[@]}" status "$worker" >/dev/null 2>&1 \
     && [ "$(results_tail "$worker")" = WRAPPED ]; then
     gstem="${worker##*/}"; gstem="${gstem%.md}"

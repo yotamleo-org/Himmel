@@ -964,18 +964,10 @@ t0=$SECONDS
 LE_STEP_BOUND=4 LE_LIST="$W/list20" LE_WRAP="$W/slowopen" LE_CLOSE="$W/slowclose" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
 contains "20e a slow wrap then a slow close share one bound: closed, not escalated" "$out" "HANDLED closed-already N6020"
 check "20e both steps together stay under one bound" "$([ $((SECONDS - t0)) -lt 6 ] && echo fast || echo slow)" fast
-printf '%s\n' '# chief' '' '## Results' '- 22:56 LIVE — wrapped worker HIMMEL-20-N6020-closed-by-hand-2026-10-14 (N6020) was WRAPPED and lock-free; the waiter closed its window' > "$W/doc"
-t0=$SECONDS
-LE_LIST="$W/list20" LE_WRAP="$W/slowwrap" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
-contains "20f a close bullet naming the full stem is read as closed: done at once" "$out" "HANDLED closed-already N6020"
-check "20f nothing ran" "$calls" ""
-check "20f returns within 5 s" "$([ $((SECONDS - t0)) -lt 5 ] && echo fast || echo slow)" fast
-printf '%s\n' '# chief' '' '## Results' '- 22:56 LIVE — wrapped worker HIMMEL-99-N6099-other-2026-10-14 (N6099) was WRAPPED; the waiter closed its window' > "$W/doc"
-LE_LIST="$W/list20" LE_WRAP="$W/wrap" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
-contains "20g another worker's close bullet does not close this one: the normal path runs" "$calls" "wrap --doc"
-awk 'BEGIN { for (i = 0; i < 4000; i++) print "- 22:56 LIVE — wrapped worker HIMMEL-20-N6020-closed-by-hand-2026-10-14 (N6020) was WRAPPED and lock-free; the waiter closed its window, filler filler filler" }' > "$W/doc"
-LE_LIST="$W/list20" LE_WRAP="$W/slowwrap" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
-contains "20h a chief doc with thousands of close lines is still read as closed" "$out" "HANDLED closed-already N6020"
+printf '%s\n' '# chief' '' '## Results' '- 22:56 LIVE — wrapped worker HIMMEL-20-N6020-closed-by-hand-2026-10-14 was WRAPPED and lock-free; the waiter closed its window' > "$W/doc"
+LE_LIST="$W/list20" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
+contains "20f a sweep close bullet naming the stem still runs wrap-merged: the merge record and retirement are not skipped" "$calls" "wrap --doc"
+contains "20f it is handled by wrap-merged" "$out" "HANDLED wrap-merged N6020"
 : > "$W/doc"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
