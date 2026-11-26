@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # block-station-load-test.sh — PreToolUse Bash chain member: in a dispatched
-# worker session (HIMMEL_WORKER=1) denies a command that would load the station,
-# the way worker N31239 looped a suite in about 32 background copies and pushed
-# load to 110 on 32 cores (decision 1309: a station is never load
-# tested). The shapes it refuses, and no others:
+# worker session (HIMMEL_WORKER=1) denies a command that would load the station.
+# The shapes it refuses, and no others:
 #
 #   xargs-fanout   xargs with -P / --max-procs above 2 (or 0, unlimited).
 #   parallel       GNU parallel with no job flag (it defaults to every core), or
@@ -15,8 +13,7 @@
 #                  does not.
 #   bg-fanout      more than 2 standalone background `&` launches in one command.
 #   busy-loop      a sleepless `while :; do :; done` (or `true`) loop together
-#                  with a background launch, the N31239 `( while :; do :; done ) &`
-#                  repeated once per core.
+#                  with a background launch, repeated once per core.
 #   load-tool      stress or stress-ng at command position; `yes` sent to
 #                  /dev/null or put in the background.
 #   script-file    a script the command runs (the command word, or the operand of
@@ -24,9 +21,8 @@
 #                  file of at most 1 MiB which git does not track, whose text
 #                  holds one of the shapes above. At most 8 files are read; a
 #                  tracked suite is never read, so a committed test that
-#                  legitimately backgrounds work still runs. This is the N31239
-#                  shape: scratchpad/loaded-runs.sh held the loop, the command
-#                  line only named it.
+#                  legitimately backgrounds work still runs. The loop often sits
+#                  in such a file while the command line only names it.
 #
 # A single foreground suite run, and a fan-out of at most 2 copies (xargs -P 2,
 # parallel -j 2, `for i in 1 2; do ...& done`), pass.
@@ -37,9 +33,7 @@
 # never by loading the station.
 #
 # A workflow guard, not a security fence: no jq or stdin that is not a JSON
-# object allows the call. It reads the command text only; text built at run
-# time (a script written then run in one call, an eval, a variable holding the
-# flag) is the residual every command-text hook here carries.
+# object allows the call. It reads the command text only.
 #
 # Hook I/O: the tool-call JSON on stdin. Exit 0 allows; exit 2 denies and the
 # reason is shown to Claude. bash 3.2-safe.

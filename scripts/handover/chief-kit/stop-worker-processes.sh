@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/stop-worker-processes.sh - end a worker's runaway
 # scratchpad processes by one literal path.
-# A chief's own `pkill -f`/`kill` loop over a runaway worker's processes is
-# refused by the auto-mode classifier, which left the station loaded; this named
-# verb is the chief's sanctioned way to stop them.
 #
 # Usage:
 #   stop-worker-processes.sh <scratchpad dir> [--live]

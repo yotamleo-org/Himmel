@@ -4,9 +4,8 @@
 # Usage: bash scripts/hooks/test-block-station-load-test.sh
 #
 # Every row feeds a real payload to the real hook and asserts on its exit status
-# and output. The N31239 rows replay the captured shape: the worker's scratchpad
-# loaded-runs.sh (one busy loop per core, then the suite run in the foreground)
-# and the brief's "about 32 background copies of test-chief-wait-stream.sh".
+# and output. The loaded-runs rows replay a captured scratchpad script: one busy
+# loop per core, then the suite run in the foreground.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -97,7 +96,7 @@ bash "$suite" > "$2" 2>&1
 echo "rc=$?" >> "$2"
 ONE
 
-echo "== the N31239 shape is refused =="
+echo "== the loaded-runs shape is refused =="
 expect deny "the captured loaded-runs.sh run by bash" "bash $SCR/loaded-runs.sh $SUITE 3 $TMP/log" "script-file"
 expect deny "the captured loaded-runs.sh run in the background" "bash $SCR/loaded-runs.sh $SUITE 3 $TMP/log &" "script-file"
 expect deny "the captured loaded-runs.sh run after cd" "cd $SCR && bash loaded-runs.sh $SUITE 3 $TMP/log" "script-file"

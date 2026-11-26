@@ -4,7 +4,7 @@
 # Usage: bash scripts/handover/chief-kit/test-stop-worker-processes.sh
 #
 # The fixture processes sleep; none of them burns CPU. Each runs a script out of
-# a fixture scratchpad dir, the way the N31239 loaded-runs.sh did.
+# a fixture scratchpad dir.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
