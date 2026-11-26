@@ -192,7 +192,8 @@ def load(reserved=False):
                 ok = (type(r["id"]) is int and r["id"] >= 0 and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", r["date"])
                       and r["line"].strip() and "\n" not in r["line"] and r["path"].strip()
                       and re.fullmatch(r"in-force|done|superseded-by [0-9]+", r["status"])
-                      and (r.get("topic") is None or re.fullmatch(TOPIC, r["topic"])))
+                      and (r.get("topic") is None or re.fullmatch(TOPIC, r["topic"]))
+                      and r.get("reserved") in (None, True))
             except (ValueError, KeyError, TypeError, AttributeError):
                 ok = False
             if not ok:
@@ -254,7 +255,7 @@ if verb == "record":
         die("decision %s is already held by %s; --path %s names another file" % (rid, held["path"], path))
     if prev.get("reserved"):
         prev = {}
-    if m.group(1) and int(m.group(1)) not in known:
+    if m.group(1) and (int(m.group(1)) not in known or known[int(m.group(1))].get("reserved")):
         sys.stderr.write("rulings-in-force: warning: decision %s has no ledger row yet; record it too\n" % m.group(1))
     date = date or prev.get("date", "")
     line = line or prev.get("line", "")

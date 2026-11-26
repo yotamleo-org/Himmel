@@ -480,7 +480,7 @@ out="$(nrec --id 99 --status in-force --date 2026-11-23 --line 'ruling 99' --pat
 same "record: a file that spells the id with leading zeros holds the id" "$(printf '%s\n' "$out" | tail -n 1)" "rc=1"
 RS="$W/reserved"; RSD="$RS/specs/decisions"; mkdir -p "$RSD"
 printf 'OPERATOR words.\n' > "$RSD/verbatim-decision-950-x.txt"
-bash "$SUT" record --bucket "$RS" --id 950 --status in-force --date 2026-11-26 --line 'ruling 950' --path specs/decisions/verbatim-decision-950-x.txt >/dev/null 2>&1
+same "next-id: the fixture's real ruling 950 is recorded" "$(bash "$SUT" record --bucket "$RS" --id 950 --status in-force --date 2026-11-26 --line 'ruling 950' --path specs/decisions/verbatim-decision-950-x.txt >/dev/null 2>&1; echo $?)" "0"
 rn="$(bash "$SUT" next-id --bucket "$RS" 2>/dev/null)"
 printf 'OPERATOR words.\n' > "$RSD/verbatim-decision-$rn-x.txt"
 printf '%s\n\n' '# Current direction, full text (part 1 of 1), byte for byte, written by chief.sh next' "OPERATOR 11-26 ZA (BINDING, decision $rn): unrecorded reading, the full text." > "$RSD/chief-direction-2026-11-26-p1.md"
@@ -492,7 +492,12 @@ rout="$(printf '%s\n' "$rblk" | bash "$SUT" render --bucket "$RS" 2>/dev/null)"
 same "next-id: render keeps the line of a reserved id nobody has recorded" "$(printf '%s\n' "$rout" | grep -cF "OPERATOR 11-26 ZA, decision $rn: unrecorded")" "1"
 same "next-id: render does not count a reserved id as done" "$(printf '%s\n' "$rout" | grep -c 'left out: 0 done, 0 superseded')" "1"
 same "next-id: check --before reports no lost line" "$(printf '%s\n' "$rout" | bash "$SUT" check --bucket "$RS" --before "$W/reserved-in.txt" 2>/dev/null | grep -c '^LOST ')" "0"
+same "next-id: check --before exits 0 on that render" "$(printf '%s\n' "$rout" | bash "$SUT" check --bucket "$RS" --before "$W/reserved-in.txt" >/dev/null 2>&1; echo $?)" "0"
 same "next-id: find does not list a reserved id" "$(bash "$SUT" find --bucket "$RS" "$rn" >/dev/null 2>&1; echo $?)" "1"
+same "next-id: superseding by a reserved id warns that it has no ledger row" "$(bash "$SUT" record --bucket "$RS" --id 950 --status "superseded-by $rn" 2>&1 >/dev/null | grep -c 'has no ledger row yet')" "1"
+RB="$W/rsvbad"; mkdir -p "$RB/specs/decisions"
+printf '{"id": 1, "date": "2026-11-26", "line": "x", "status": "done", "path": "specs/decisions/v.txt", "reserved": "false"}\n' > "$RB/specs/decisions/rulings-in-force.jsonl"
+same "next-id: a reserved marker that is not true or absent is an unreadable row, exit 3" "$(bash "$SUT" find --bucket "$RB" x >/dev/null 2>&1; echo $?)" "3"
 
 printf 'not json\n' >> "$L"
 out="$(render "$blk")"; rc=$?
