@@ -331,6 +331,7 @@ Granting it is an operator call. Defense in depth around it:
 | `phi-egress-guard.ts` (renamed from `glm-guard.ts`) | same `salus`/denylist row |
 | `scripts/hermes/egress-gate.sh` — the Hermes dispatch sanctioned script (`invoke.sh`, which `dispatch-trusted.sh` execs) | target = the `--prompt-file` path → corpus (`salus` / `luna-personal` / `luna-clippings` / `handover-state`), `--provider` → provider (required for a gated corpus), purpose = `inference`; verdict via `egress-matrix-eval.mjs`. Refuses with rc 4 before hermes spawns; `conditional` is honored only for `handover-state × openai-codex` (brief-scoped: exactly ONE regular file per dispatch — a directory / non-regular path, or a path under the handover root that resolves outside it, is refused), every other conditional cell fails closed. Permitted gated dispatches append `~/.himmel/hermes-egress.jsonl` (resolved path + byte size + sha256 of the dispatched snapshot — the "chokepoint audit is the ledger"). `invoke.sh` dispatches an immutable private mode-0600 snapshot the gate copied into a private directory it creates itself (`mktemp -d`, mode 0700, holding a 0600 file written exclusively under umask 077; the caller passes no destination and removes the directory on every exit path, so the gated bytes never sit in a caller-chosen or umask-perm file and the prompt is never opened for writing; the file identity and the resolved path are re-checked around the copy; a change detected there, or any copy/stat error, refuses), never the gated path again — so a swap or symlink retarget after the copy cannot change what hermes reads. Residual window a shell cannot close: a same-inode in-place edit before the copy, a swap undone before the post-copy checks, or a plain-file replacement landing before the first identity read is not detected. Public-code prompts are not gated, so `qwen`/`alibaba` stays a valid `--model` for `himmel-code` work. Limit: text/stdin prompts carry no path and are not classified |
 | `marketplace/plugins/himmel-ops/hooks/block-agent-native-egress.sh` | the `salus` × `builder-io` row (hard deny): refuses an `mcp__*agent-native*` call (the hosted Builder.io MCP that `builder-visual@himmel` registers) when the session cwd, its git toplevel or remotes, a `.salus` marker or a phi-roots/egress-denylist root marks salus, or the tool payload names salus. Plugin-shipped so it also fires in a salus session; it does not read the matrix at runtime, and `test-egress-matrix.mjs` pins the row |
+| `marketplace/plugins/himmel-ops/hooks/phi-read-mark.sh` (plugin lane; `scripts/hooks/phi-read-mark.sh` is the byte-identical Codex-lane copy) and `scripts/peer-bridge/tell.ts` | the refusal side of the `chief-tell` row: a PostToolUse and PostToolUseFailure hook writes `~/.himmel/phi-taint/<session_id>` when a Read, NotebookRead, Grep or Glob path, or an absolute-path word in a Bash or Monitor command (the text split both as a shell reads quotes and backslashes and on every quote and punctuation character, as given and with backslash-newlines removed; a command holding `$'...'` or `$"..."` marks outright), has a `.salus` or `.salus-profile` marker at or above it (raw or canonical) or `_guard_phi_decision` calls it listed or unreadable, and `tell.ts` refuses a marked session with `refused: phi-root` before it reads its arguments or writes anything. The Read-family path is exact; the Bash and Monitor path is a command-text match, so a path built at run time (a variable, a glob, a `cd` then a relative name) still escapes it. It narrows the residual of the transcript scan and is not a boundary. Fail direction is toward the mark: a missing lib beside the hook, or more than 256 path words, marks. The plugin carries a comment-stripped copy of `scripts/guardrails/phi-egress-lib.sh` beside the hook, and `test-plugin-hook-bash-wiring.sh` pins the two to the same `declare -f` output; a human clears a mark by deleting the file |
 | embedding/rerank pilot client | the `alibaba` × `embedding`/`rerank`/`vision-embedding` cells — all now explicit `deny` (Alibaba de-listed; the pilot is not being pursued) |
 | `scripts/eval/worker-digest/failure_router.py` | the `worker-failure-metadata` × `jira` × `ticketing` row (conditional): the router files and comments only a summary and body its own closed-alphabet check (`check-body`) passes, through the Jira CLI by absolute path, and logs one decision line per send. It does not read the matrix at runtime; `test-egress-matrix.mjs` 5d pins the conditional row |
 | the peer bridge's egress gate | the `peer-desk` × `peer-telegram` × `peer-message` row (allow), evaluated in-process through the `evaluate` export of `egress-matrix-eval.mjs` (no spawn). The peer desk is a fresh session started for one peer under `~/.himmel/peer-bridge/desk/`; the taint gate lets it read nothing of ours, so the only text it holds, and the only text a reply to the peer can carry, is what the operator types into it. Every other corpus to `peer-telegram` stays default-deny, and `test-egress-matrix.mjs` pins the cell and the CLI's agreement with the import |
@@ -414,6 +415,29 @@ review, not a code edit.
   process when the config names a remote model. A hand-typed `qmd` on PATH
   bypasses it: salus is protected by living in its own local-only index.
   Windows launchers are out of scope (Windows is dropped).
+- `openai-chatgpt` (Dots) and `xai-grokbot` (Grokbot), the operator's external
+  personal assistants, may read through the audited qmd MCP read service for the
+  purpose `luna-mcp-read`, and for nothing else. Each of the seven non-salus qmd
+  corpora (`luna-clippings`, `luna-personal`, `himmel-code`, `operator-repos`,
+  `jira-mirror`, `roadmap-plan`, `skill-index`) has its own literal `allow+log`
+  row per provider, 14 in all, so the service must append a ledger line per call.
+  The purpose is read only: no write purpose is declared, and a write row waits
+  for the stage that exercises it. `himmel-code × <provider> × *` is an explicit
+  deny placed right after that provider's `luna-mcp-read` allow and ahead of the
+  `himmel-code × * × *` wildcard allow, the same shape as the `jina` rows, so the
+  wildcard cannot open `inference`, `extraction` or any other purpose for them.
+  A later `himmel-code × <provider> × pa-*` allow row goes ahead of these two
+  provider-wide denies or it is shadowed. Every other corpus stays default-deny
+  for both providers, and `salus` and `voice-audio` resolve through their hard
+  wildcards. `openai-chatgpt` is a different provider from `openai-codex`: no
+  codex cell carries over, and the test pins that. Nested `handovers/`,
+  `sessions/`, `chats/` and `repo: salus` notes inside the vault classify as
+  `luna-personal`, so the matrix cannot tell them apart; they are governed by
+  the consumer's per-key collection scope, `manager` role path and
+  disk-frontmatter `salus` guards, not by this file.
+  `scripts/qmd/qmd-collection-corpus.json` also maps the optional `luna-pa`
+  clean-notes collection to `luna-personal` and `luna-clippings`, so it is mapped
+  before it joins an index; the gate refuses an unmapped collection.
 - **qmd enforcement.** qmd's model config is per index, not per
   collection, so salus lives in its own index (`qmd --index salus`, own
   `salus.yml`/db/daemon port, local models). `scripts/qmd/qmd-jina-gate.mjs`

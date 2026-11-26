@@ -42,7 +42,7 @@ else
   # repo's first tracked state already carries the ignore rules.
   git add .gitignore 2>/dev/null || true
   for _p in .env.example .gitattributes .pre-commit-config.yaml .vault-template.json \
-            README.md _CLAUDE.md index.md log.md scripts marketplace docs _Templates \
+            README.md _CLAUDE.md AGENTS.md index.md log.md scripts marketplace docs _Templates \
             00-Inbox 10-Projects 20-Areas 30-Resources 40-Archive 50-Journal 60-Maps; do
     [ -e "$REPO_ROOT/$_p" ] && git add "$_p"
   done

@@ -41,7 +41,9 @@
 #   - `queue-lock.sh status <worker-doc>` reports free (rc=0);
 #   - the doc's last `## Results` marker-bullet (one of LIVE/FINDING/
 #     RESOLVED/READY/BLOCKED/HALTED/WRAPPED, leading token of the newest
-#     such bullet) is WRAPPED (or a BLOCKED that is itself the hand-off naming its successor),
+#     such bullet) is WRAPPED, or HALTED (a worker the chief halted: worker_terminal_tail reads it as
+#     finished because the lock is free; not for a doc that names a hand-off successor, nor for --chief),
+#     (or a BLOCKED that is itself the hand-off naming its successor),
 #     read from the Results section and the `## Chief Rulings` / `## Console Rulings` sections the
 #     writers add below it (a bullet in any other later section, a `## Notes` line naming WRAPPED or
 #     starting with LIVE, is no tail); a -RESUME doc with no marker-bullet of its own reads the original's
@@ -458,6 +460,7 @@ if ! last_marker=$(doc_tail_status "$DOC"); then
     exit 4
 fi
 [ "$FINISHED_MODE" -eq 0 ] || last_marker=WRAPPED
+if [ -z "$NAMED_SUCCESSOR" ] && [ "$CHIEF_MODE" -eq 0 ] && worker_terminal_tail "$last_marker" free; then last_marker=WRAPPED; fi
 tail_doc="$DOC"   # the doc last_marker is read from
 PREDECESSOR=0
 ORPHAN_RESUME=0

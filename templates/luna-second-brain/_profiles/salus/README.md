@@ -35,6 +35,12 @@ bash scripts/setup.sh --medical      # base setup + apply the salus overlay
 (`_skin-photo-archive.md`, `_media/skin/`, the derm-prep template) are written on
 **scaffold-new only** — `upgrade.sh` never overwrites them on an existing vault.
 
+## Trusted processors
+Interactive inference may run on Claude, Codex and Google Antigravity (`agy`, the
+Gemini harness; operator decision 1259). API-key Gemini and untrusted clouds stay
+denied. The overlay installs no repo-local `.agents/hooks.json`: Antigravity hooks
+come from the user-scope backstop.
+
 ## Safety invariant
 Salus and this overlay contain **zero PHI**. All personal health data lives only
 in the private vault instance, never in the template.

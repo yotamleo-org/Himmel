@@ -75,7 +75,7 @@ docs/operator-conventions.md	- **Linux + macOS are Supported (Linux CI-gated per
 docs/operator-conventions.md	  prompting guide flags that Fable 5.1 can write denser than Fable 5
 docs/operator-conventions.md	qmd bun-install Windows hotfix (already a structural fix in
 docs/why-himmel.md	  run, with each change attesting the platform it was tested on. Windows is
-docs/internals/claude-md-detail.md	work routes to Claude tiers + Codex lanes only (never GLM)** — a routing
+docs/internals/claude-md-detail.md	OpenAI (Codex lanes); never GLM** — a routing invariant distinct from salus PHI
 docs/internals/egress-matrix.md	ad-hoc egress decisions (ollama-only → DeepSeek override → GLM-Clippings
 docs/internals/egress-matrix.md	  de-listed (bad results). The GLM enrichment cell that replaced it
 docs/internals/egress-matrix.md	  (`luna-personal × zai-glm × enrichment`) was itself **REVERSED

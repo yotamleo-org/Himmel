@@ -28,6 +28,12 @@
 #                 MERGED #<n> → <sha8> (<label>, <ticket> <status>). <label> WRAPPED, window closed.
 #                 <status> is read with the Jira CLI `get`; this script never
 #                 transitions a ticket. An unreadable status is `?`.
+#   4b. worktree  best effort, never fails the wrap: the worker doc's resume_cwd, when it is a
+#                 `<repo>/.claude/worktrees/<name>` path, goes through `worktree.sh prune --only`
+#                 (run from <repo>; a dirty, unmerged, locked or in-use tree and the primary
+#                 checkout are refused there; an `in use` refusal is retried 3 times, WM_PRUNE_WAIT
+#                 2 s apart). Prints worktree=pruned|gone|kept:<reason> <path>|skip:<why>.
+#                 Seam: WM_WORKTREE (one executable, else worktree.sh beside this kit).
 #   5. board      board.mjs --doc <chief doc> --changed (rc 7); its output is
 #                 passed through.
 #   5. tracker    best effort, never fails the wrap: when the chief doc has a
@@ -65,6 +71,7 @@ if [ -n "${WM_CLOSE:-}" ]; then CLOSE=("$WM_CLOSE"); else CLOSE=(bash "$HERE/clo
 if [ -n "${WM_BOARD:-}" ]; then BOARD=("$WM_BOARD"); else BOARD=(node "$HERE/board.mjs"); fi
 if [ -n "${WM_TRACKER_PY:-}" ]; then TRACKER=("$WM_TRACKER_PY"); else TRACKER=(python3 "$HERE/tracker.py"); fi
 if [ -n "${WM_FOCUS:-}" ]; then FOCUS=("$WM_FOCUS"); else FOCUS=(bash "$HERE/focus-refresh.sh"); fi
+if [ -n "${WM_WORKTREE:-}" ]; then WORKTREE=("$WM_WORKTREE"); else WORKTREE=(bash "$HERE/../../worktree.sh"); fi
 
 usage() { echo "usage: wrap-merged.sh --doc <chief doc> --fleet <manifest> <worker doc> [--pr <n>]" >&2; exit 2; }
 BOARD_ON_FAIL=""
@@ -151,6 +158,34 @@ else
     text="MERGED #$PR → $sha8 ($label, ${ticket:-no-ticket} $status). $label WRAPPED, window closed."
     bash "$HERE/append-results.sh" "$DOC" "$text" || fail log "append-results.sh" 6
 fi
+
+worktree_prune() {
+    local wt repo out rc try=0 reason
+    wt="$(awk '/^---[[:space:]]*$/ { n++; next } n == 1 && /^resume_cwd:/ { sub(/^resume_cwd:[[:space:]]*/, ""); print; exit } n >= 2 { exit }' "$WORKER")"
+    wt="${wt%\"}"; wt="${wt#\"}"
+    [ -n "$wt" ] || { echo "worktree=skip:no-resume_cwd"; return 0; }
+    case "$wt" in
+        */.claude/worktrees/?*) ;;
+        *) echo "worktree=skip:not-a-worktree-path $wt"; return 0 ;;
+    esac
+    case "${wt#*/.claude/worktrees/}" in */*) echo "worktree=skip:not-a-worktree-path $wt"; return 0 ;; esac
+    [ -d "$wt" ] || { echo "worktree=gone"; return 0; }
+    repo="${wt%/.claude/worktrees/*}"
+    while :; do
+        out="$(unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; cd "$repo" && timeout -k 5 "${WM_PRUNE_TIMEOUT:-120}" "${WORKTREE[@]}" prune --only "$wt" 2>&1 </dev/null)"; rc=$?  # gnu-ok: Linux-only kit
+        [ "$rc" -ne 0 ] || break
+        case "$out" in *'in use'*) ;; *) break ;; esac
+        [ "$try" -lt 3 ] || break
+        try=$((try + 1)); sleep "${WM_PRUNE_WAIT:-2}"
+    done
+    if [ "$rc" -eq 0 ]; then echo "worktree=pruned"; return 0; fi
+    if [ ! -d "$wt" ]; then echo "worktree=gone"; return 0; fi
+    reason="$(printf '%s\n' "$out" | sed -n -e '/uncommitted\|in use\|is locked\|PR not merged\|not a prune candidate/{p;q;}')"
+    [ -n "$reason" ] || reason="$(printf '%s\n' "$out" | tail -n 1)"
+    echo "worktree=kept:${reason:-worktree.sh exited $rc} $wt"
+    return 0
+}
+worktree_prune
 
 # 5. tracker - best effort, never fails the wrap. The chief doc's `tracker:` line
 # opts in (the same line, plan dir and paths tick.sh's tracker= reads). Mirror Jira,

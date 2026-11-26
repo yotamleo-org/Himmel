@@ -48,6 +48,7 @@ statusf() { if [ -e "$FX/status.$1" ]; then echo "$FX/status.$1"; else echo "$FX
 case "$1" in
     get)
         [ -e "$FX/get.sleep" ] && sleep "$(cat "$FX/get.sleep")"
+        [ -e "$FX/get.404.$2" ] && { echo "Error: HTTP 404: Issue does not exist" >&2; exit 1; }
         [ -e "$FX/get.nolabels" ] && { printf '{"fields":{"status":{"name":"To Do"}}}\n'; exit 0; }
         printf '{"fields":{"status":{"name":"%s"},"issuetype":{"name":"Task"},"labels":%s}}\n' "$(cat "$(statusf "$2")")" \
             "$(cat "$FX/labels.$2" 2>/dev/null | jq -Rsc 'split("\n") | map(select(length > 0))')" ;;
@@ -724,6 +725,16 @@ contains "3b (HIMMEL-8834): a slice that reaches its limit is a HEALTH row, not 
 reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] a\"},{\"number\":78,\"title\":\"fix: [$K] b\"}]"
 drift
 check "3b (HIMMEL-8834): two unrecorded PRs of one key give one row, naming the newest" "$(dcount MERGED-NO-ROW)/$(drows MERGED-NO-ROW | grep -c 'PR #78')" 1/1
+reset "To Do"; mergedpr "[{\"number\":80,\"title\":\"fix(guard): [SCRUM-15] upstream issue\"}]"; : > "$FX/get.404.SCRUM-15"
+drift
+check "11188 3: a merged PR keyed to a foreign Jira project raises no HEALTH and no MERGED-NO-ROW row" "$(dcount HEALTH)/$(dcount MERGED-NO-ROW)" 0/0
+check "11188 3: and no Jira read is spent on the foreign key" "$(grep -c '^get SCRUM-15' "$STUB_LOG" || true)" 0
+reset "To Do"; mergedpr "[{\"number\":81,\"title\":\"fix: [HIMMEL-90099] gone\"}]"; : > "$FX/get.404.HIMMEL-90099"
+drift
+contains "11188 3: control: a key of this project that 404s still reads HEALTH" "$(drows HEALTH)" "HEALTH HIMMEL-90099 status unknown (stage=get)"
+reset "To Do"; mergedpr "[{\"number\":80,\"title\":\"fix(guard): [SCRUM-15] upstream\"},{\"number\":82,\"title\":\"fix: [$K] shipped by hand\"}]"
+drift
+check "11188 3: control: a foreign key does not hide this project's unrecorded merge" "$(dcount MERGED-NO-ROW)/$(drows MERGED-NO-ROW | grep -c "MERGED-NO-ROW $K ")" 1/1
 reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] a\"}]"; mkdir -p "$TICKET_STATUS_STATE_DIR"; mkdir "$LOG"
 drift
 check "3b (HIMMEL-8834): an unreadable merge log is a HEALTH row, never MERGED-NO-ROW for every merged PR" "$(dcount MERGED-NO-ROW)/$(drows HEALTH | grep -c 'merge rows are unreadable')" 0/1
@@ -837,6 +848,19 @@ contains "3b: an idle record whose lock is released is WORKER-STALE" "$(drows WO
 reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"
 drift
 check "3b: a live record with a held lock is not stale" "$(dcount WORKER-STALE)" 0
+
+reset "wont do"; owned "$K" WRAPPED '{"state":"live"}'; jl "$K" "wont do"
+sweep
+check "11188 1: a wont-do close with a stale live record is refreshed to wrapped by one sweep" "$(rjq "$K" '.state')" wrapped
+drift
+check "11188 1: and its WORKER-STALE row is gone" "$(dcount WORKER-STALE)" 0
+check "11188 1: the sweep moved no ticket" "$(ntrans)" 0
+reset "Done"; owned "$K" WRAPPED '{"state":"live"}'; jl "$K" "Done"
+sweep
+check "11188 1: control: a Done close is still refreshed to wrapped" "$(rjq "$K" '.state')" wrapped
+reset "wont do"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "wont do"
+sweep
+check "11188 1: control: a wont-do close whose worker still holds the lock keeps its live record" "$(rjq "$K" '.state')" live
 
 reset "In Progress"; owned "$K" LIVE '{"state":"live","comment_id":"5001","comment_hash":"1"}'; jl "$K" "In Progress"
 drift

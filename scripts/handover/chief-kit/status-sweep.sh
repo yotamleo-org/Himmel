@@ -183,10 +183,7 @@ outside_repo() {
     return 1
 }
 
-# done_record_stale <KEY> - rc 0 when a Done ticket's worker record reads live, idle, IDLE-HELD or parked
-# while its doc/lock says the worker ended: the funnel skips a Done ticket's move but
-# refreshes that record.
-done_record_stale() {
+off_ladder_record_stale() {
     local doc rstate
     ts_record_read "$1" || return 1
     rstate=$(jq -r '.state // ""' <<<"$TS_REC")
@@ -328,7 +325,7 @@ while IFS= read -r key; do
         if [ "$TS_RESULT" = miss ]; then
             miss=$((miss + 1))
             add_fail miss "${TS_STAGE:-}" "$TS_WORKER_STATE"
-        elif [ "$TS_RULE" = D0 ] && [ "$TS_J_STATUS" = Done ] && done_record_stale "$key"; then
+        elif [ "$TS_RULE" = D0 ] && off_ladder_record_stale "$key"; then
             TS_SNAPSHOT_DIR="" TS_EVENT=""
             funnel=$((funnel + 1))
             bash "$HERE/worker-jira-status.sh" "$key" --event sweep --repo "$REPO" >/dev/null 2>&1
