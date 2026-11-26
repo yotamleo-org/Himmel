@@ -2348,7 +2348,7 @@ pool9="$(run9181 --priority-pool-only --top 50 | grep -E '^(LOCAL|CLOUD)' | cut 
 [ "$w9keys" = "$pool9" ] && pass "9181: --why lists the keys the waiter's pool pass counts" || fail "9181: --why '$w9keys' vs the pool pass '$pool9'"
 for k in HIMMEL-9711 HIMMEL-9712 HIMMEL-9713; do has "9181: --why gives a reason for $k" "$w9" "# why $k listed LOCAL tier 4"; done
 w9t="$(run9181 --why --top 2 | grep -E '^(LOCAL|CLOUD)' | grep -c .)"
-[ "$w9t" = 0 ] && pass "9181: an explicit --top is still the cap (two slots, both RESUME rows)" || fail "9181: --why --top 2 listed $w9t To Do rows"
+[ "$w9t" = 1 ] && pass "9181: an explicit --top is still the cap (two slots: one RESUME row, one To Do row)" || fail "9181: --why --top 2 listed $w9t To Do rows"
 
 # A ticket waits only on the files its next step writes: the latest remainder, else a Writes: or Files: line, else the
 # description without its comments. A path it only runs holds nothing, and a ticket with no readable scope is a chief question.
@@ -5218,7 +5218,7 @@ trap 'rm -rf "$WORK" "$BASE_ND"' EXIT
 if git -C "$HERE" show origin/main:scripts/handover/chief-kit/next-dispatchable.sh > "$BASE_ND" 2>/dev/null && [ -s "$BASE_ND" ]; then
     ctl_new="$(run107 --why; echo "rc=$?")"
     ctl_base="$(NEXT_DISPATCH_MIRROR="$M107" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$BASE_ND" --top 60 --workers-dir "$WORK/s107/workers" --workers-from "$WORK/fleet5.json" --why 2>/dev/null; echo "rc=$?")"
-    norm107() { sed -e 's/, or batch it: --scope-batch FILE (docs\/handover\/chief-sections\/scope-helper.md)//' -e 's/^\(# source mirror_age_min=\).*/\1/'; }
+    norm107() { sed -e 's/, or batch it: --scope-batch FILE (docs\/handover\/chief-sections\/scope-helper.md)//' -e 's/^\(# source mirror_age_min=\).*/\1/' -e '/^# resume=[0-9]*$/d'; }
     check "10774 B1.ctl: without the flag the listing is the base listing, the remedy suffix aside" "$(printf '%s\n' "$ctl_base" | norm107)" "$(printf '%s\n' "$ctl_new" | norm107)"
 else
     echo "SKIP: 10774 B1.ctl: no origin/main ref to read the base script from"
@@ -5243,6 +5243,147 @@ for bs in 0 51 abc 007; do
 done
 run107 --batch-size 5 > /dev/null; check "10774 B5: --batch-size without --scope-batch exits 2" "2" "$?"
 check "10774 B5: and no refused run wrote a file" "0" "$(find "$B107" -name 'b5-*' | grep -c .)"
+
+V69='[]'
+nm69() {
+    M="$WORK/s69-$1/HIMMEL"; mkdir -p "$M"
+    if [ "$2" = ver ]; then printf 'v1.0.1\tfalse\t\n' > "$WORK/s69-$1/HIMMEL.versions.tsv"; V69='["v1.0.1"]'; else V69='[]'; fi
+}
+ip69() { mk "HIMMEL-$1" "${3:-In Progress}" Medium "${4:-[]}" "$V69" '[]' "t$1" "Edit ${2:-scripts/lib/f69-$1.sh} only."; }
+td69() { mk "HIMMEL-$1" "To Do" Medium "${3:-[]}" "$V69" '[]' "t$1" "Edit ${2:-scripts/lib/f69-$1.sh} only."; }
+cat > "$WORK/classify69" <<'EOF'
+#!/usr/bin/env bash
+[ -n "${CLASSIFY69_LOG:-}" ] && printf 'call %s\n' "$#" >> "$CLASSIFY69_LOG"
+for k in "$@"; do
+    [ -n "${CLASSIFY69_LOG:-}" ] && printf 'key %s\n' "$k" >> "$CLASSIFY69_LOG"
+    case " ${BLOCK69:-} " in *" $k "*) printf '%s\tBLOCKED\tstub\n' "$k" ;; *) printf '%s\tLOCAL-NATIVE\tstub\n' "$k" ;; esac
+done
+EOF
+chmod +x "$WORK/classify69"
+export CLASSIFY69_LOG="$WORK/classify69.log" BLOCK69=""
+r69() {
+    local mir="$1"; shift
+    NEXT_DISPATCH_MIRROR="$mir" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify69" bash "$SUT" --workers-from "$WORK/fleet5.json" "$@" 2>/dev/null
+}
+k69() { grep -v '^#' | cut -f1,2 | tr '\t' ':' | paste -sd, -; }
+pri69() { printf '# chief\n\n## Live state\n\npriority: %s\n' "$2" > "$1"; }
+: > "$MERGED_TSV"; printf '4310\tfix(x): [HIMMEL-71] open\tfix/himmel-71-o\n' > "$PRS_TSV"
+
+nm69 p nover; ip69 6901; ip69 6902; ip69 6903; td69 6904; td69 6905; td69 6906; MP69="$M"
+p1="$(r69 "$MP69" --no-classify --top 3)"
+check "10769 T-P1: top 3 over 3 RESUME and 3 To Do lists 2 RESUME then a fresh row" "RESUME:HIMMEL-6901,RESUME:HIMMEL-6902,LOCAL?:HIMMEL-6904" "$(printf '%s\n' "$p1" | k69)"
+has "10769 T-P1: and prints # resume=2" "$p1" "# resume=2"
+p2="$(r69 "$MP69" --no-classify --top 6)"
+check "10769 T-P2: top 6 lists every row, RESUME first" "RESUME:HIMMEL-6901,RESUME:HIMMEL-6902,RESUME:HIMMEL-6903,LOCAL?:HIMMEL-6904,LOCAL?:HIMMEL-6905,LOCAL?:HIMMEL-6906" "$(printf '%s\n' "$p2" | k69)"
+has "10769 T-P2: and prints # resume=3" "$p2" "# resume=3"
+
+nm69 m nover; ip69 6911; ip69 6912 scripts/lib/f69-6912.sh "IN CI"; ip69 6913; td69 6914; td69 6915; MM69="$M"
+printf '4320\tfix(x): [HIMMEL-6912] merged\tfix/himmel-6912-m\n' > "$MERGED_TSV"
+m1="$(r69 "$MM69" --no-classify --top 3)"
+check "10769 T-M1: top 3 lists RESUME, MERGED-NOT-CLOSED, then a fresh row; the second RESUME row waits" "RESUME:HIMMEL-6911,MERGED-NOT-CLOSED:HIMMEL-6912,LOCAL?:HIMMEL-6914" "$(printf '%s\n' "$m1" | k69)"
+has "10769 T-M1: # resume= counts the MERGED-NOT-CLOSED row" "$m1" "# resume=2"
+: > "$MERGED_TSV"
+
+nm69 o ver; ip69 7011; ip69 7012; ip69 7013 scripts/lib/f69-shared.sh; td69 7014 scripts/lib/f69-shared.sh; MO69="$M"
+o2="$(r69 "$MO69" --no-classify --top 3)"
+check "10769 T-O2: plain top 3 lists X, W and the fresh row" "RESUME:HIMMEL-7011,RESUME:HIMMEL-7012,LOCAL?:HIMMEL-7014" "$(printf '%s\n' "$o2" | k69)"
+lacks "10769 T-O2: and no overlap note, the sharing RESUME row is not listed" "$o2" "# overlap"
+o2b="$(r69 "$MO69" --no-classify --top 4)"
+check "10769 T-O2: plain top 4 lists the backfilled RESUME row last" "RESUME:HIMMEL-7011,RESUME:HIMMEL-7012,LOCAL?:HIMMEL-7014,RESUME:HIMMEL-7013" "$(printf '%s\n' "$o2b" | k69)"
+has "10769 T-O2: and the note is on the RESUME row, once" "$o2b" "# overlap HIMMEL-7013 scripts/lib/f69-shared.sh with listed HIMMEL-7014"
+check "10769 T-O2: exactly one overlap note" "1" "$(printf '%s\n' "$o2b" | grep -c '^# overlap')"
+DO69="$WORK/chief-o69.md"; pri69 "$DO69" "7011 7012 7013 7014"
+o1="$(r69 "$MO69" --no-classify --top 3 --doc "$DO69" --priority-pool-only)"
+check "10769 T-O1: pool top 3 lists X, W and the fresh row" "RESUME:HIMMEL-7011,RESUME:HIMMEL-7012,LOCAL?:HIMMEL-7014" "$(printf '%s\n' "$o1" | k69)"
+lacks "10769 T-O1: and no overlap note" "$o1" "# overlap"
+o1b="$(r69 "$MO69" --no-classify --top 4 --doc "$DO69" --priority-pool-only)"
+check "10769 T-O1: pool top 4 backfills the RESUME row after the fresh row" "RESUME:HIMMEL-7011,RESUME:HIMMEL-7012,LOCAL?:HIMMEL-7014,RESUME:HIMMEL-7013" "$(printf '%s\n' "$o1b" | k69)"
+has "10769 T-O1: and the note is on the RESUME row" "$o1b" "# overlap HIMMEL-7013 scripts/lib/f69-shared.sh with listed HIMMEL-7014"
+
+nm69 q1 ver; ip69 6931; ip69 6932; ip69 6933; td69 6934; td69 6935; td69 6936; MQ1="$M"
+DQ1="$WORK/chief-q1-69.md"; pri69 "$DQ1" "6931 6932 6933 6934 6935 6936"
+q1="$(r69 "$MQ1" --no-classify --top 4 --doc "$DQ1" --priority-pool-only)"
+check "10769 T-Q1: pool top 4 lists 2 RESUME then 2 fresh rows" "RESUME:HIMMEL-6931,RESUME:HIMMEL-6932,LOCAL?:HIMMEL-6934,LOCAL?:HIMMEL-6935" "$(printf '%s\n' "$q1" | k69)"
+has "10769 T-Q1: # pool=4/4" "$q1" "# pool=4/4"
+lacks "10769 T-Q1: the pool prints no # resume= line" "$q1" "# resume="
+
+nm69 q2 ver; ip69 6941; ip69 6942; ip69 6943; td69 6944; MQ2="$M"
+DQ2="$WORK/chief-q2-69.md"; pri69 "$DQ2" "6941 6942 6943 6944"
+q2="$(r69 "$MQ2" --no-classify --top 4 --doc "$DQ2" --priority-pool-only)"
+check "10769 T-Q2: R, R, F, then the skipped RESUME row" "RESUME:HIMMEL-6941,RESUME:HIMMEL-6942,LOCAL?:HIMMEL-6944,RESUME:HIMMEL-6943" "$(printf '%s\n' "$q2" | k69)"
+has "10769 T-Q2: # pool=4/4" "$q2" "# pool=4/4"
+
+nm69 q3 ver; ip69 6951; td69 6952; MQ3="$M"
+DQ3="$WORK/chief-q3-69.md"; pri69 "$DQ3" "6951 6952"
+check "10769 T-Q3: top 1 lists the RESUME row" "RESUME:HIMMEL-6951" "$(r69 "$MQ3" --no-classify --top 1 --doc "$DQ3" --priority-pool-only | k69)"
+
+nm69 q4 ver; ip69 6961; ip69 6962; MQ4="$M"
+DQ4="$WORK/chief-q4-69.md"; pri69 "$DQ4" "6961 6962"
+q4="$(r69 "$MQ4" --no-classify --top 2 --doc "$DQ4" --priority-pool-only)"
+check "10769 T-Q4: both RESUME rows" "RESUME:HIMMEL-6961,RESUME:HIMMEL-6962" "$(printf '%s\n' "$q4" | k69)"
+has "10769 T-Q4: # pool=2/2" "$q4" "# pool=2/2"
+
+nm69 q5 ver; ip69 6971; ip69 6972; td69 6973; td69 6974
+ip69 6975 "" "In Progress" '["operator-directed"]'; ip69 6976 "" "In Progress" '["operator-directed"]'; td69 6977 "" '["operator-directed"]'; td69 6978 "" '["operator-directed"]'; MQ5="$M"
+DQ5="$WORK/chief-q5-69.md"; pri69 "$DQ5" "6971 6972 6973 6974"
+check "10769 T-Q5: tier 1 R, R, F, F; tier 2 starts with 2 slots: R, F" "RESUME:HIMMEL-6971,RESUME:HIMMEL-6972,LOCAL?:HIMMEL-6973,LOCAL?:HIMMEL-6974,RESUME:HIMMEL-6975,LOCAL?:HIMMEL-6977" "$(r69 "$MQ5" --no-classify --top 6 --doc "$DQ5" --priority-pool-only | k69)"
+
+nm69 q6 ver; ip69 6981; ip69 6982; ip69 6983; ip69 6984; td69 6985; td69 6986; MQ6="$M"
+DQ6="$WORK/chief-q6-69.md"; pri69 "$DQ6" "6981 6982 6983 6984"
+check "10769 T-Q6: the tier-1 backfill precedes tier 4" "RESUME:HIMMEL-6981,RESUME:HIMMEL-6982,RESUME:HIMMEL-6983,RESUME:HIMMEL-6984" "$(r69 "$MQ6" --no-classify --top 4 --doc "$DQ6" --priority-pool-only | k69)"
+
+nm69 b1 ver; ip69 6991; td69 6992; td69 6993; MB1="$M"
+DB1="$WORK/chief-b1-69.md"; pri69 "$DB1" "6991 6992 6993"
+BLOCK69="$KP-6992"
+check "10769 T-B1: the BLOCKED row is dropped and the next fresh row takes the slot" "RESUME:HIMMEL-6991,LOCAL:HIMMEL-6993" "$(r69 "$MB1" --top 2 --doc "$DB1" --priority-pool-only | k69)"
+nm69 b2 ver; ip69 7001; ip69 7002; td69 7003; MB2="$M"
+DB2="$WORK/chief-b2-69.md"; pri69 "$DB2" "7001 7002 7003"
+BLOCK69="$KP-7003"
+b2="$(r69 "$MB2" --top 2 --doc "$DB2" --priority-pool-only)"
+BLOCK69=""
+check "10769 T-B2: BLOCKED fresh rows use up the slots: the backfill lists the second RESUME row" "RESUME:HIMMEL-7001,RESUME:HIMMEL-7002" "$(printf '%s\n' "$b2" | k69)"
+has "10769 T-B2: # pool=2/2" "$b2" "# pool=2/2"
+
+r1p="$(r69 "$MP69" --resume-only --top 3 | grep -v '^# source ')"
+r1q="$(r69 "$MQ1" --resume-only --top 3 --doc "$DQ1" --priority-pool-only | grep -v '^# source ')"
+gold69() {
+    local v="$1" n="$2" k
+    printf '# next-dispatchable: 3 To Do candidate(s), 3 collision-free, 3 RESUME (in work, no worker, no open PR)\n'
+    for k in $n $((n + 1)) $((n + 2)); do printf 'RESUME\tHIMMEL-%s\tMedium\t%s\tt%s\tfiles=scripts/lib/f69-%s.sh\tstatus=In Progress\tlast=-\n' "$k" "$v" "$k" "$k"; done
+    for k in $n $((n + 1)) $((n + 2)); do printf '# warn: HIMMEL-%s names scripts/lib/f69-%s.sh (not in the repo: a new file, or the collision check is blind)\n' "$k" "$k"; done
+}
+GOLD_R1P="$(gold69 - 6901)"
+GOLD_R1Q="$(gold69 v1.0.1 6931)"
+check "10769 T-R1: plain --resume-only is byte-identical to the base" "$GOLD_R1P" "$r1p"
+check "10769 T-R1: pool --resume-only is byte-identical to the base" "$GOLD_R1Q" "$r1q"
+
+nm69 s ver; ip69 7021; ip69 7022; ip69 7023; ip69 7024 scripts/lib/f69-s.sh; td69 7025 scripts/lib/f69-s.sh; td69 7026 scripts/lib/f69-s.sh; MS69="$M"
+DS69="$WORK/chief-s69.md"; pri69 "$DS69" "7021 7022 7023 7024 7025 7026"
+for s69 in plain pool; do
+    if [ "$s69" = plain ]; then s69args=(--no-classify --top 6); else s69args=(--no-classify --top 6 --doc "$DS69" --priority-pool-only); fi
+    ss="$(HIMMEL_FLAG_STACKED_SERIES=1 r69 "$MS69" ${s69args[@]+"${s69args[@]}"})"
+    check "10769 T-S($s69): 6 rows, none a SERIES row" "6:0" "$(printf '%s\n' "$ss" | grep -vc '^#'):$(printf '%s\n' "$ss" | grep -c '^SERIES')"
+    check "10769 T-S($s69): the fresh rows come before the held-back RESUME row" "HIMMEL-7021,HIMMEL-7022,HIMMEL-7023,HIMMEL-7025,HIMMEL-7026,HIMMEL-7024" "$(printf '%s\n' "$ss" | grep -v '^#' | cut -f2 | paste -sd, -)"
+done
+
+cl69() {
+    : > "$CLASSIFY69_LOG"; r69 "$1" --top "$2" > "$WORK/cl69.out"
+    printf '%s %s\n' "$(grep -c '^call ' "$CLASSIFY69_LOG")" "$(grep -c '^key ' "$CLASSIFY69_LOG")"
+}
+nm69 c1 nover; for n in 7031 7032 7033; do ip69 $n; done; for n in 7041 7042 7043 7044 7045 7046 7047 7048 7049 7050; do td69 $n; done; MC1="$M"
+c1="$(cl69 "$MC1" 4)"; c1keys="${c1#* }"
+[ "$c1keys" -le 4 ] && pass "10769 T-C1: top 4 over 3 RESUME and 10 To Do classifies at most 4 keys ($c1)" || fail "10769 T-C1: classified $c1 (calls keys), want at most 4 keys"
+nm69 c3 nover; for n in 7051 7052 7053 7054 7055 7056; do ip69 $n; done; for n in 7061 7062 7063 7064 7065 7066 7067 7068 7069 7070; do td69 $n; done; MC3="$M"
+c3="$(cl69 "$MC3" 4)"
+check "10769 T-C3: RESUME rows fill --top and the prefetch still runs: 2 calls, 4 keys" "2 4" "$c3"
+check "10769 T-C3: and the listing ends in 2 fresh rows" "RESUME:HIMMEL-7051,RESUME:HIMMEL-7052,LOCAL:HIMMEL-7061,LOCAL:HIMMEL-7062" "$(k69 < "$WORK/cl69.out")"
+nm69 c2 nover; for n in 7071 7072 7073; do ip69 $n; done; for n in 7081 7082 7083 7084 7085 7086; do td69 $n; done; MC2="$M"
+BLOCK69="$KP-7081 $KP-7082 $KP-7083 $KP-7084"
+c2="$(cl69 "$MC2" 4)"
+check "10769 T-C2: 4 BLOCKED fresh rows: 2 RESUME and the 2 unblocked fresh rows" "RESUME:HIMMEL-7071,RESUME:HIMMEL-7072,LOCAL:HIMMEL-7085,LOCAL:HIMMEL-7086" "$(k69 < "$WORK/cl69.out")"
+check "10769 T-C2: the classify call count is pinned" "3 6" "$c2"
+BLOCK69=""
+M="$WORK/jira-mirror/HIMMEL"
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.

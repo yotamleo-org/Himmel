@@ -36,7 +36,12 @@
 # whether to wait for WRAPPED, say) is never retroactively promoted -- only
 # the truly last bullet in the doc is checked this way.
 #
-# Source this file; it defines one function, runs nothing. Bash 3.2-compatible.
+# worker_terminal_tail <tail marker> <lock state: free|held> is the ONE rule for "this worker is finished"
+# (exit 0): a WRAPPED tail, or a HALTED tail while the queue lock is free (the chief halted the worker and
+# it stopped without a WRAPPED line). A HALTED tail with the lock held is a worker still winding down, and
+# every other marker (a LIVE after the halt too) is a worker still going.
+#
+# Source this file; it defines functions, runs nothing. Bash 3.2-compatible.
 worker_tail_status() {  # worker_tail_status <worker doc> -- prints the marker, or nothing
     local marker_re='^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_].*)?$'
     local final
@@ -53,6 +58,13 @@ worker_tail_status() {  # worker_tail_status <worker doc> -- prints the marker, 
         return
     fi
     sed -nE "s/$marker_re/\\3/p" "$1" 2>/dev/null | tail -n 1 | tr -d '\n'
+}
+
+worker_terminal_tail() {
+    case "$1:$2" in
+        WRAPPED:free|WRAPPED:held|HALTED:free) return 0 ;;
+    esac
+    return 1
 }
 
 # worker_actionable_status <worker doc> -- prints `<MARKER>#<n>`, or nothing: the marker of the
