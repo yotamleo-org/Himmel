@@ -455,9 +455,11 @@ const takenBeforeRouting = async (root: string, auto: AutoGate | undefined, msg:
 
 const PEER_NOTIFY_LINE1_RE = /^peer [a-z0-9][a-z0-9-]{0,31} · /;
 export const PEER_MOVED_LINE = "peer messages now arrive in your chat with the peer bridge bot: reply there; nothing was sent";
-export const makeLegacyPeerReply = (reply: (chat: number, text: string) => Promise<void>) => async (msg: DeliveredMsg): Promise<boolean> => {
+export const makeLegacyPeerReply = (d: { root: string; operatorChat(): number | null; reply(chat: number, text: string): Promise<void> }) => async (msg: DeliveredMsg): Promise<boolean> => {
   if (msg.reply_to_bot !== true || msg.caption === true || msg.text.trimStart().startsWith("/") || !PEER_NOTIFY_LINE1_RE.test(msg.reply_to_text ?? "")) return false;
-  await reply(msg.chat_id, PEER_MOVED_LINE);
+  const chat = d.operatorChat();
+  if (chat === null || msg.chat_id !== chat || msg.from !== chat || lockdownEnabled(d.root)) return false;
+  await d.reply(chat, PEER_MOVED_LINE);
   return true;
 };
 
@@ -2698,7 +2700,7 @@ export async function main(): Promise<void> {
     answer: (id, text) => answerCallbackQuery(token, id, text),
   }, afkPrompts);
   const configRestore = makeConfigRestoreGate({ access: () => access, enrolled: configRestoreEnrolled, run: spawnConfigRestore, reply: (chat: number, text: string) => replyViaOutbox(root, chat, text), log: logRedacted });
-  const peerReply = makeLegacyPeerReply((chat, text) => sendMessage(token, chat, text).then(() => undefined));
+  const peerReply = makeLegacyPeerReply({ root, operatorChat: () => operatorChatId(access), reply: (chat, text) => sendMessage(token, chat, text).then(() => undefined) });
   const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo, configRestore, peerReply };
   // Operator -> chief routing. Same authorize as /arm, global
   // allowFrom sender AND an allowed chat, so the gate is unchanged; the ack rides

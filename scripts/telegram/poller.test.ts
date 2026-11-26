@@ -4347,11 +4347,25 @@ test("T17: start-up writes poller-epoch from bridge-envelope-epoch.txt on a scra
 test("a reply to a peer notification the operator bot sent earlier is refused with one line and reaches no session", async () => {
   const { makeLegacyPeerReply, PEER_MOVED_LINE } = await import("./poller");
   const r = root(); const ran: string[] = []; const said: string[] = [];
-  const auto = { authorize: () => true, enabledOps: new Set(), fire: () => {}, peerReply: makeLegacyPeerReply(async (_c, t) => { said.push(t); }) } as any;
-  await handleInbound(r, { from: 1, chat_id: 7, text: "my answer", reply_to_bot: true, reply_to_text: "peer example · T12 · new question" }, async (s) => { ran.push(s); }, auto, undefined, () => true);
+  const auto = { authorize: () => true, enabledOps: new Set(), fire: () => {}, peerReply: makeLegacyPeerReply({ root: r, operatorChat: () => 7, reply: async (_c, t) => { said.push(t); } }) } as any;
+  await handleInbound(r, { from: 7, chat_id: 7, text: "my answer", reply_to_bot: true, reply_to_text: "peer example · T12 · new question" }, async (s) => { ran.push(s); }, auto, undefined, () => true);
   expect(ran).toEqual([]);
   expect(said).toEqual([PEER_MOVED_LINE]);
-  await handleInbound(r, { from: 1, chat_id: 7, text: "my answer", reply_to_bot: true, reply_to_text: "a chief line" }, async (s) => { ran.push(s); }, auto, undefined, () => true);
+  await handleInbound(r, { from: 7, chat_id: 7, text: "my answer", reply_to_bot: true, reply_to_text: "a chief line" }, async (s) => { ran.push(s); }, auto, undefined, () => true);
   expect(ran).toEqual(["__chat__"]);
   expect(said).toHaveLength(1);
+});
+
+test("a reply to a peer notification gets no line from a non-operator sender, or from anyone under lockdown", async () => {
+  const { makeLegacyPeerReply } = await import("./poller");
+  const r = root(); const said: string[] = [];
+  const peerReply = makeLegacyPeerReply({ root: r, operatorChat: () => 7, reply: async (_c, t) => { said.push(t); } });
+  const peerLine = { text: "my answer", reply_to_bot: true, reply_to_text: "peer example · T12 · new question" };
+  expect(await peerReply({ from: 8, chat_id: -100, ...peerLine } as any)).toBe(false);
+  expect(await peerReply({ from: 7, chat_id: -100, ...peerLine } as any)).toBe(false);
+  expect(await peerReply({ from: 8, chat_id: 7, ...peerLine } as any)).toBe(false);
+  expect(await makeLegacyPeerReply({ root: r, operatorChat: () => null, reply: async (_c, t) => { said.push(t); } })({ from: 7, chat_id: 7, ...peerLine } as any)).toBe(false);
+  writeFileSync(join(r, "lockdown"), "locked\n");
+  expect(await peerReply({ from: 7, chat_id: 7, ...peerLine } as any)).toBe(false);
+  expect(said).toEqual([]);
 });
