@@ -56,7 +56,7 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   |---|---|
   | 1 to 3 | always, as a full round |
   | 4 | round 3 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record without `--restores` (a finding ruling or a `--closure` round) opens it; it is a closure check, built with `closure-pack <KEY> <spec\|plan> --specs <bucket>/specs` |
-  | 5 and on | the chief's one `round-override`, or a `round-critical` record without `--restores` (a finding ruling or a `--closure` round), opens that writer round |
+  | 5 and on | only the operator's words open it: ask the operator one plain line, write the verbatim-decision file, run `round-critical <KEY> --decision <d> --quote "<operator words>" --closure` (or `--finding <id>` for an operator-critical finding); under standing decision 1418 the chief writes that decision file itself: it names the ticket, quotes the operator's words of 1418 and gives its own reason (decision 1419 is the worked example); the chief never skips the file |
 
   A record opens a round only for the kind or kinds whose next round it is: a finding ruling or an unscoped `--closure`
   opens round N for each kind whose next round is N (both kinds when spec and plan are level), a `round-override` for the
@@ -66,8 +66,8 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   decision any earlier record already spent. The refusal text of a lagging kind ends with the `--closure --round` line to type.
 
   The four records run only from the chief's console (`HIMMEL_CONSOLE=1`), each with `--specs <bucket>/specs` like
-  `closure-pack` and `round-status`, and each is checked again on every read: `round-override <KEY> --findings <id,...> --why "<line>" --chief <session>`, once per ticket, ever, naming
-  open blocking ids; `round-reclass <KEY> --round <spec|plan>:<n> --why "<line>" --chief <session>`, once per closure round, which re-classes a closure round stored before a classifier fix towards blocking and is refused once a `reset`, `critical`, `override` or `extension` record, or a later round or re-class of the same critic, follows that round; `round-critical <KEY> --finding <id> --decision <d> --quote "<operator words>" [--no-round]`, the
+  `closure-pack` and `round-status`, and each is checked again on every read: `round-override <KEY> --findings <id,...> --why "<line>" --chief <session> --decision <d> --quote "<operator words>"`, once per ticket, ever, naming
+  open blocking ids, with the same decision file and quote as `round-critical` (a call without them is refused; an old ledger row without them still reads); `round-reclass <KEY> --round <spec|plan>:<n> --why "<line>" --chief <session>`, once per closure round, which re-classes a closure round stored before a classifier fix towards blocking and is refused once a `reset`, `critical`, `override` or `extension` record, or a later round or re-class of the same critic, follows that round; `round-critical <KEY> --finding <id> --decision <d> --quote "<operator words>" [--no-round]`, the
   operator's ruling on an operator-critical finding, which closes it and, without `--no-round`, also opens one
   further writer round; `round-critical <KEY> --decision <d> --quote "<operator words>" --closure [--round <spec|plan>:<n>]`, with no `--finding`,
   the operator's yes to one more round when no finding is operator-critical, which opens the next refused round as a
