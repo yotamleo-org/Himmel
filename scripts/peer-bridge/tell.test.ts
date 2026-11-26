@@ -87,6 +87,17 @@ test("tell.ts refuses without a session id, in a desk, and in a tainted or pendi
   await refused(h, info, 3, /^refused: tell.ts never runs in a peer desk/);
 });
 
+test("a session carrying the phi-read mark refuses phi-root and writes nothing; the same session unmarked queues", async () => {
+  const h = newHome();
+  const mark = join(h.home, ".himmel/phi-taint", SID);
+  mkdirSync(join(mark, ".."), { recursive: true });
+  writeFileSync(mark, "");
+  await refused(h, info, 3, /^refused: phi-root: /);
+  await refused(h, ["--status", "0a1b2c3d"], 3, /^refused: phi-root: /);
+  rmSync(mark);
+  expect((await tell(h, info)).code).toBe(4);
+});
+
 test("a transcript that names a salus path in a Read, a cwd, a Bash token, a Glob prefix or a subagent's Grep refuses phi-root", async () => {
   const vault = salusVault();
   const cases: [string, (h: Home) => void][] = [
@@ -109,6 +120,17 @@ test("a quoted or backslash-escaped salus path holding a space in a Bash or Moni
     ["double-quoted", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cat "${spaced}/a b.md"` })])],
     ["single-quoted", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Monitor", { command: `tail -f '${spaced}/log'` })])],
     ["backslash-escaped", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cat ${spaced.replaceAll(" ", "\\ ")}/a.md` })])],
+  ]);
+});
+
+test("a backslash-newline inside a salus path, ANSI-C or locale quoting in a Bash command refuses phi-root", async () => {
+  const v = salusVault();
+  const cut = v.length - 3;
+  await phiCases([
+    ["quoted continuation", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cat "${v.slice(0, cut)}\\\n${v.slice(cut)}/a.md"` })])],
+    ["unquoted continuation", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cat ${v.slice(0, cut)}\\\n${v.slice(cut)}/a.md` })])],
+    ["ANSI-C quoting", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cat $'${v.slice(0, cut)}\\x${v.charCodeAt(cut).toString(16)}${v.slice(cut + 1)}/a.md'` })])],
+    ["locale quoting", h => transcript(h, [{ type: "user", cwd: h.launch }, use(h.launch, "Bash", { command: `cat $"${v.slice(0, cut)}"${v.slice(cut)}/a.md` })])],
   ]);
 });
 
