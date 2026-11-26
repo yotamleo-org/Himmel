@@ -29,7 +29,7 @@
 # which left the script dir empty, made the `.` below fail, and exited 2 — a
 # PreToolUse DENY on EVERY tool call, on every Debian/Ubuntu box.
 #
-# FAIL-OPEN: if no node is found, write ONE breadcrumb line to
+# FAIL-OPEN (exit 2 when HIMMEL_READINESS=1): if no node is found, write ONE breadcrumb line to
 # ${CLAUDE_DIR:-$HOME/.claude}/himmel-node.log and exit 0 with NOTHING on
 # stdout/stderr — converting the old per-session "node: command not found" hook
 # error (which Claude Code surfaces) into actual silence. `/himmel-doctor` C1 is
