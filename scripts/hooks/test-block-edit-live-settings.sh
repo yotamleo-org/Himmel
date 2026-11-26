@@ -4170,6 +4170,23 @@ assert_rc "11257b13 bash -c with a trailing plugin word after the verb denies" 2
     "$(bash_rc_of "$WT2" 'bash -c "agy plugin install plugin"' HOME="$T3H")"
 assert_rc "11257b14 bash -c with a quoted subcommand denies" 2 \
     "$(bash_rc_of "$WT2" "bash -c \"agy 'plugin' import claude\"" HOME="$T3H")"
+assert_rc "11257b15 a Windows path to agy.exe in a heredoc command denies" 2 \
+    "$(bash_rc_of "$WT2" "C:\\Users\\x\\agy.exe plugin import claude <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b16 a subcommand word split by a line continuation in a heredoc command denies" 2 \
+    "$(bash_rc_of "$WT2" "agy plug\\
+in import claude <<'EOF'
+y
+EOF" HOME="$T3H")"
+assert_rc "11257b17 an empty word before the verb does not hide it" 2 \
+    "$(bash_rc_of "$WT2" "agy plugin '' import claude" HOME="$T3H")"
+assert_rc "11257b18 a parenthesis inside a quoted flag value before plugin import denies" 2 \
+    "$(bash_rc_of "$WT2" "bash -c \"agy --log-file 'run(log)' plugin import claude\"" HOME="$T3H")"
+assert_rc "11257b19 a command substitution carrying plugin import in a heredoc command denies" 2 \
+    "$(bash_rc_of "$WT2" "echo \$(agy plugin import claude) <<'EOF'
+y
+EOF" HOME="$T3H")"
 assert_rc "11257c1 agy plugin list allows" 0 \
     "$(bash_rc_of "$WT2" "agy plugin list" HOME="$T3H")"
 assert_rc "11257c2 agy plugin list --json allows" 0 \
@@ -4196,6 +4213,12 @@ assert_rc "11257c12 grep for agy plugin install in a file allows" 0 \
     "$(bash_rc_of "$WT2" "grep -n 'agy plugin install' README.md" HOME="$T3H")"
 assert_rc "11257c13 a variable command word with plugin list allows" 0 \
     "$(bash_rc_of "$WT2" '$X plugin list' HOME="$T3H")"
+assert_rc "11257c15 a quoted variable path to another CLI's plugin install allows" 0 \
+    "$(bash_rc_of "$WT2" '"$HOME/bin/claude" plugin install foo' HOME="$T3H")"
+assert_rc "11257c16 a command substitution carrying plugin list in a heredoc command allows" 0 \
+    "$(bash_rc_of "$WT2" "echo \$(agy plugin list) <<'EOF'
+y
+EOF" HOME="$T3H")"
 assert_rc "11257c14 agy plugin list in a heredoc command (text fallback) allows" 0 \
     "$(bash_rc_of "$WT2" "agy plugin list <<'EOF'
 y

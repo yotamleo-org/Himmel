@@ -1050,20 +1050,21 @@ mentions_agy_live_config() {
 }
 
 _agy_verb_ro() {
-    case "$1" in list|validate|help|-h|--help|'') return 0 ;; esac
+    case "$1" in list|validate|help|-h|--help) return 0 ;; esac
     return 1
 }
 
 _agy_seg_writes() {
     local st=0 first=1 w
     for w in "$@"; do
+        [ -n "$w" ] || continue
         if [ "$first" = 1 ]; then
             case "$w" in [a-z_]*=*) continue ;; esac
             first=0
-            case "$w" in *'$'*|*'`'*) st=1 ;; esac
+            case "${w##*[/\\]}" in *'$'*) st=1 ;; esac
         fi
         case "$st" in
-            0) case "${w##*/}" in agy|agy.exe|agy.cmd) st=1 ;; esac ;;
+            0) case "${w##*[/\\]}" in agy|agy.exe|agy.cmd) st=1 ;; esac ;;
             1) case "$w" in plugin|plugins|mcp) st=2 ;; esac ;;
             2) _agy_verb_ro "$w" || return 0; st=0 ;;
         esac
@@ -1074,9 +1075,10 @@ _agy_seg_writes() {
 _agy_text_writes() {
     local s seg had_f=0 rc=1
     s=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
-    s=${s//\\$'\n'/ }
+    s=${s//\\$'\n'/}
     s=${s//[\"\']/}
-    s=${s//[;&|()\`]/$'\n'}
+    s=${s//[()\`]/ }
+    s=${s//[;&|]/$'\n'}
     case $- in *f*) had_f=1 ;; esac
     set -f
     while IFS= read -r seg || [ -n "$seg" ]; do
@@ -1092,7 +1094,7 @@ agy_cli_writes() {
     local i=0 seg=-1 first=0 nested=0 w
     local -a sw=()
     if [ "$TOK" != 1 ]; then
-        _agy_text_writes "$cmd_n"
+        _agy_text_writes "$cmd"
         return
     fi
     while [ "$i" -le "$ST_N" ]; do
