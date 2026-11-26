@@ -114,6 +114,7 @@ const OPENINGS: [RegExp, string][] = [
   [/^busy-loop guard: /, "block-busy-loop"],
   [/^judge write-deny: /, "guard-judge-writes"],
   [/^BLOCKED: guard-t3-thread-tools refused\b/, "guard-t3-thread-tools"],
+  [/^block-subagent-release-operator-word-free:/, "block-subagent-release-operator-word-free"],
 ];
 const DENY_OPENING = /^run-hook-with-bash: DENY ([\w.-]+)\.sh\b/;
 const STOP_NOOP = /\bis not running\b|\bNo task found\b/;

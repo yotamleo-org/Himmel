@@ -28,12 +28,6 @@
 # NO ${BASH_SOURCE[0]}: dash rejects the array subscript as "Bad substitution",
 # which left the script dir empty, made the `.` below fail, and exited 2 — a
 # PreToolUse DENY on EVERY tool call, on every Debian/Ubuntu box.
-#
-# FAIL-OPEN: if no node is found, write ONE breadcrumb line to
-# ${CLAUDE_DIR:-$HOME/.claude}/himmel-node.log and exit 0 with NOTHING on
-# stdout/stderr — converting the old per-session "node: command not found" hook
-# error (which Claude Code surfaces) into actual silence. `/himmel-doctor` C1 is
-# what surfaces a genuinely-missing node.
 set -u
 
 # Refuse LOUDLY rather than run a payload-less node. A launcher
@@ -76,8 +70,8 @@ fi
 # would be sourced, and a hostile one could plant it. So when CLAUDE_PLUGIN_ROOT
 # is set we are the plugin copy and the plugin root is the ONLY trusted location;
 # a damaged plugin install then finds nothing and takes the FAIL-OPEN path below
-# — one breadcrumb line and exit 0 — which is the right outcome. A missing
-# resolver must degrade to silence, never to sourcing a substitute from a
+# — one breadcrumb line and exit 0, or 2 for the readiness guard — which is the right outcome. A missing
+# resolver must degrade to the no-node exit below, never to sourcing a substitute from a
 # different trust domain.
 #
 # Candidates are tested with -r, not -f: `.` on an existing-but-unreadable file
@@ -194,9 +188,26 @@ if [ -n "$_node" ]; then
     exec "$_node" "$@"
 fi
 
-# No node: silent fail-open + a breadcrumb for the doctor / a curious operator.
+# No node: silent fail-open (exit 2 only for the readiness guard's --fail-closed-when HIMMEL_READINESS=1) + a breadcrumb for the doctor / a curious operator.
 _log_dir="${CLAUDE_DIR:-${HOME:-.}/.claude}"
 mkdir -p "$_log_dir" 2>/dev/null || true
 printf '%s node not found; skipped: %s\n' "$(date '+%Y-%m-%dT%H:%M:%S' 2>/dev/null || echo '?')" "$*" \
     >> "$_log_dir/himmel-node.log" 2>/dev/null || true
+_closed=0
+_prev=''
+_n=0
+for _a in "$@"; do
+    _n=$((_n + 1))
+    [ "$_n" -gt 1 ] || continue
+    if [ "$_prev" = --fail-closed-when ] && [ "$_a" = HIMMEL_READINESS=1 ]; then _closed=1; fi
+    case "$_a" in
+        --*) ;;
+        *) [ "$_prev" = --fail-closed-when ] || break ;;
+    esac
+    _prev="$_a"
+done
+if [ "$_closed" = 1 ] && [ "${HIMMEL_READINESS-}" = 1 ]; then
+    printf '%s\n' 'run-node.sh: no usable node while HIMMEL_READINESS=1 - failing closed' >&2
+    exit 2
+fi
 exit 0
