@@ -727,7 +727,7 @@ check "22: the reserved qid writes no GO" "$(test -e "$ROOT22F/.locks/go/78.$SHA
 ROOT23="$tmp/root23"; mkdir -p "$ROOT23"
 A23_BIN="$tmp/a23-bin"; mkdir -p "$A23_BIN"
 A23_ORIGIN=$(git -C "$HERE" remote get-url origin | sed -E 's#^(https?://[^/]+/|git@[^:]+:|ssh://git@[^/]+/)##; s#\.git$##')
-export A23_ORIGIN A23_ADOPTED="$tmp/a23-adopted.json" A23_ADAPTERS="$tmp/a23-adapters.json" A23_HEAD="$SHA"
+export A23_ORIGIN A23_ADOPTED="$tmp/a23-adopted.json" A23_ADAPTERS="$tmp/a23-adapters.json" A23_ADAPTERS_OTHER="$tmp/a23-adapters-other.json" A23_HEAD="$SHA"
 cat > "$A23_BIN/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$1 $2" in
@@ -740,6 +740,7 @@ case "$1 $2" in
         case "$2" in
             "repos/$A23_ORIGIN/contents/scripts/guardrails/himmel-adopted.json?ref=main") cat "$A23_ADOPTED" 2>/dev/null || exit 1 ;;
             "repos/$A23_ORIGIN/contents/scripts/guardrails/himmel-adapters.json?ref=main") cat "$A23_ADAPTERS" 2>/dev/null || exit 1 ;;
+            "repos/$A23_ORIGIN/contents/scripts/guardrails/himmel-adapters.json"*) cat "$A23_ADAPTERS_OTHER" 2>/dev/null || exit 1 ;;
             *) exit 1 ;;
         esac ;;
     "pr view")
@@ -806,6 +807,9 @@ printf '[{"nwo":"%s","merge_allowed":true}]\n' "$A23_ORIGIN" > "$A23_ADOPTED"
 t23 "the harness repo itself" 6 --repo "$A23_ORIGIN" --trust-reviewed W1 88 "$SHA"
 printf '[{"nwo":"acme/widget","merge_allowed":true}]\n' > "$A23_ADOPTED"
 A23_BASE=dev t23 "a PR not based on the default branch" 7 --repo acme/widget --trust-reviewed W1 88 "$SHA"
+printf '[{"nwo":"acme/widget","merge_allowed":true,"pin_branch":"pin-x"}]\n' > "$A23_ADOPTED"
+A23_BASE=pin-x t23 "an adopted row's pin_branch is ignored" 7 --repo acme/widget --trust-reviewed W1 88 "$SHA"
+printf '[{"nwo":"acme/widget","merge_allowed":true}]\n' > "$A23_ADOPTED"
 # only acme/widget's own bucket counts, and its record must name acme/widget
 averdict "$VSCOPE" W2 ""
 t23 "a judge GO in the harness bucket" 5 --repo acme/widget --trust-reviewed W2 88 "$SHA"
@@ -835,6 +839,23 @@ averdict "$VSCOPE" G2 "repo: acme/gadget"
 t23 "an adapter verdict in the harness bucket" 5 --repo acme/gadget --trust-reviewed G2 88 "$SHA"
 averdict u/acme--gadget G3 ""
 t23 "an adapter record naming no repo" 5 --repo acme/gadget --trust-reviewed G3 88 "$SHA"
+
+PIN23='{"nwo":"acme/gadget","merge_allowed":true,"himmel_branch":"main","pin_branch":"pin-x"}'
+printf '[%s]\n' "$PIN23" > "$A23_ADAPTERS"
+rc=0; A23_BASE=pin-x a23 --repo acme/gadget --trust-reviewed G1 88 "$SHA" >/dev/null 2>&1 || rc=$?
+check    "11118: a PR on the pin branch -> exit 0" "$rc" "0"
+check    "11118: a PR on the pin branch writes the GO" "$(test -e "$GO23" && echo yes || echo no)" "yes"
+rm -f "$GO23"
+A23_BASE=main  t23 "pin_branch set, a PR on himmel_branch" 7 --repo acme/gadget --trust-reviewed G1 88 "$SHA"
+A23_BASE=other t23 "pin_branch set, a PR on another base" 7 --repo acme/gadget --trust-reviewed G1 88 "$SHA"
+for pv in 42 '"-x"' null false '""'; do
+  printf '[{"nwo":"acme/gadget","merge_allowed":true,"himmel_branch":"main","pin_branch":%s}]\n' "$pv" > "$A23_ADAPTERS"
+  A23_BASE=main t23 "pin_branch [$pv] never falls back to himmel_branch" 6 --repo acme/gadget --trust-reviewed G1 88 "$SHA"
+done
+printf '[%s]\n' "$PIN23" > "$A23_ADAPTERS_OTHER"
+printf '[{"nwo":"acme/gadget","merge_allowed":true,"himmel_branch":"main"}]\n' > "$A23_ADAPTERS"
+A23_BASE=pin-x t23 "pin_branch present only off the default branch" 7 --repo acme/gadget --trust-reviewed G1 88 "$SHA"
+rm -f "$A23_ADAPTERS_OTHER"
 
 # --- 27. a trust GO never rests on a no-op verdict for a delta that needs a judge ---
 # write-verdict.sh --delta-noop signs `delta: no-op` / `delta-judged: <sha>` into a

@@ -1,6 +1,6 @@
 [
-  {"nwo": "yotamleo-org/qmd", "upstream": "tobi/qmd", "himmel_branch": "main", "pin_site": "scripts/lib/qmd-bin.sh", "role": "runtime-dependency", "merge_allowed": true, "tier": "CORE"},
-  {"nwo": "yotamleo-org/graphify", "upstream": "Graphify-Labs/graphify", "himmel_branch": "himmel-main", "pin_site": "scripts/lib/graphify-bin.sh", "role": "runtime-dependency", "merge_allowed": true, "tier": "CORE"},
+  {"nwo": "yotamleo-org/qmd", "upstream": "tobi/qmd", "himmel_branch": "main", "pin_site": "scripts/lib/qmd-bin.sh", "role": "runtime-dependency", "merge_allowed": true, "tier": "CORE", "pin_branch": "himmel-main-upstream-2.9.0"},
+  {"nwo": "yotamleo-org/graphify", "upstream": "Graphify-Labs/graphify", "himmel_branch": "himmel-main", "pin_site": "scripts/lib/graphify-bin.sh", "role": "runtime-dependency", "merge_allowed": true, "tier": "CORE", "pin_branch": "himmel-main-upstream-0.9.106"},
   {"nwo": "yotamleo-org/obsidian-skills", "upstream": "obsidianmd/obsidian-skills", "himmel_branch": "himmel-main", "pin_site": null, "role": "dormant", "merge_allowed": true, "tier": "PARK"},
   {"nwo": "yotamleo-org/twitter-cli", "upstream": "public-clis/twitter-cli", "himmel_branch": "himmel-main", "pin_site": null, "role": "dormant", "merge_allowed": false, "tier": "PARK"},
   {"nwo": "yotamleo-org/claude-obsidian", "upstream": "AgriciDaniel/claude-obsidian", "himmel_branch": "main", "pin_site": null, "role": "dormant", "merge_allowed": false, "tier": "PARK"},

@@ -649,7 +649,7 @@ cat > "$FG/bin/gh" <<'STUB'
 # default repo = the fork (what gh's default-repo setting could resolve to)
 case "$1 $2" in
     "repo view") case "$*" in *defaultBranchRef*) printf 'main' ;; *) printf 'yotamleo-org/qmd' ;; esac ;;
-    "api repos/"*) case "$2" in "repos/$FG_ORIGIN/contents/"*) printf '%s' '[{"nwo":"yotamleo-org/qmd","himmel_branch":"himmel/pin","merge_allowed":true}]' ;; *) exit 1 ;; esac ;;
+    "api repos/"*) case "$2" in "repos/$FG_ORIGIN/contents/"*) if [ -n "${FG_ALLOW:-}" ] && [ -f "$FG_ALLOW" ]; then printf '%s' "$(cat "$FG_ALLOW")"; else printf '%s' '[{"nwo":"yotamleo-org/qmd","himmel_branch":"himmel/pin","merge_allowed":true}]'; fi ;; *) exit 1 ;; esac ;;
     "pr view") cat "$FG_PRVIEW" ;;
     "api graphql") printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}\n' ;;
     *) exit 91 ;;
@@ -677,6 +677,29 @@ for a in junk none; do
     rc=0; got=$(GH="$FG/bin/gh" bash -c '. "$1"; go_adapter_entry "$2" yotamleo-org/qmd' _ "$GO_GATE_SRC" "$FG/$a") || rc=$?
     { [ "$rc" = 2 ] && printf '%s' "$got" | grep -q 'origin remote'; } || fail "10c: anchor origin [$a] must refuse fail-closed (rc=$rc, out=[$got])"
 done
+fg_entry() {
+    printf '%s' "$1" > "$FG/allow.json"
+    rc=0; got=$(FG_ALLOW="$FG/allow.json" GH="$FG/bin/gh" bash -c '. "$1"; go_adapter_entry "$2" yotamleo-org/qmd' _ "$GO_GATE_SRC" "$FG/https") || rc=$?
+}
+fg_obj() {
+    printf '{"nwo":"yotamleo-org/qmd","himmel_branch":"himmel/pin","merge_allowed":true%s}' "$1"
+}
+fg_entry "[$(fg_obj ',"pin_branch":"pin-x"')]"
+{ [ "$rc" = 0 ] && [ "$got" = pin-x ]; } || fail "10c2a: pin_branch pin-x must be the one GO base (rc=$rc, out=[$got])"
+fg_entry "[$(fg_obj '')]"
+{ [ "$rc" = 0 ] && [ "$got" = himmel/pin ]; } || fail "10c2b: a row without pin_branch keeps himmel_branch (rc=$rc, out=[$got])"
+for pv in '"-x"' 42 null false '""'; do
+    fg_entry "[$(fg_obj ",\"pin_branch\":$pv")]"
+    { [ "$rc" = 2 ] && printf '%s' "$got" | grep -q 'pin_branch'; } || fail "10c2c: pin_branch [$pv] must refuse naming pin_branch, never fall back (rc=$rc, out=[$got])"
+done
+fg_entry "[$(fg_obj ''),$(fg_obj '')]"
+[ "$rc" = 2 ] || fail "10c2d: two matching rows must refuse (rc=$rc, out=[$got])"
+fg_entry "[$(fg_obj ',"pin_branch":"pin-x"'),$(fg_obj ',"pin_branch":"pin-x"')]"
+[ "$rc" = 2 ] || fail "10c2e: two matching rows with pin_branch must refuse (rc=$rc, out=[$got])"
+fg_entry '[{"nwo":"yotamleo-org/qmd","himmel_branch":"himmel/pin","merge_allowed":"true","pin_branch":"pin-x"}]'
+[ "$rc" = 2 ] || fail "10c2f: merge_allowed \"true\" (string) with pin_branch must refuse (rc=$rc, out=[$got])"
+fg_entry '[{"nwo":"yotamleo-org/qmd","himmel_branch":"himmel/pin","merge_allowed":false,"pin_branch":"pin-x"}]'
+[ "$rc" = 2 ] || fail "10c2g: merge_allowed false with pin_branch must refuse (rc=$rc, out=[$got])"
 # 10d. the case mapping holds under a non-C locale (the Turkish dotless-i trap needs tr_TR, which is
 # not installed here; the structural row below pins every call site, this one proves a real
 # non-C locale still compares equal).
