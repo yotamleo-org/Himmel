@@ -44,6 +44,7 @@ _WS_LIB_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$_WS_LIB_DIR/canon-path.sh"
 
 _WS_RECORD_BOUND=360
+_WS_REDUCER_STATES="FRESH STALE STALE-DEAD IDLE-HELD CLOSABLE WRAPPED FREE HALTED-SWEPT PARKED-USAGE NOLIVE FORKED NOLOCK UNVERIFIED CORRUPT UNKNOWN NOTFOUND"
 
 _WS_T_PATH=""
 _WS_T_ROWS=""
@@ -56,7 +57,7 @@ _ws_sha1() {
 
 ws_load_table() {
     local path="${WS_STATES_TSV:-$_WS_LIB_DIR/worker-states.tsv}"
-    local line decl="" hdr=0 n=0 rows="" s h nc t d r tabs
+    local line decl="" hdr=0 n=0 rows="" s h nc t d r tabs names=$'\n' need
     if [ "$_WS_T_PATH" = "$path" ] && [ -n "$_WS_T_ROWS" ]; then return 0; fi
     [ -r "$path" ] || return 3
     while IFS= read -r line || [ -n "$line" ]; do
@@ -75,11 +76,16 @@ ws_load_table() {
         IFS=$'\t' read -r s h nc t d r <<< "$line"
         case "$h" in yes|no|unknown) ;; *) return 3 ;; esac
         case "$nc" in yes|no) ;; *) return 3 ;; esac
+        case "$names" in *$'\n'"$s"$'\n'*) return 3 ;; esac
+        names="$names$s"$'\n'
         rows="$rows$line"$'\n'
         n=$((n + 1))
     done < "$path"
     case "$decl" in ''|*[!0-9]*) return 3 ;; esac
     [ "$n" -eq "$((10#$decl))" ] && [ "$n" -gt 0 ] || return 3
+    for need in $_WS_REDUCER_STATES; do
+        case "$names" in *$'\n'"$need"$'\n'*) ;; *) return 3 ;; esac
+    done
     _WS_T_ROWS="$rows"
     _WS_T_PATH="$path"
     return 0

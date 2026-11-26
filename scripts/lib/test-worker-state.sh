@@ -146,6 +146,10 @@ awk -F'\t' 'BEGIN { OFS = "\t" } /^#/ { print; next } $1 == "FRESH" { print $1, 
 check 'loader: a row with five columns exits 3' "$(WS_STATES_TSV="$tmp/bad-cols.tsv" cli --json "$doc_ok" >/dev/null; echo $?)" 3
 grep -v '^FRESH	' "$TSV" > "$tmp/missing-row.tsv"
 check 'loader: a missing row against # rows exits 3' "$(WS_STATES_TSV="$tmp/missing-row.tsv" cli --json "$doc_ok" >/dev/null; echo $?)" 3
+sed 's/^NOLIVE	/NOLIVEX	/' "$TSV" > "$tmp/renamed-state.tsv"
+check 'loader: a table without a state the reducer can emit exits 3' "$(WS_STATES_TSV="$tmp/renamed-state.tsv" cli --json "$doc_ok" >/dev/null; echo $?)" 3
+{ sed 's/^# rows: 16$/# rows: 17/' "$TSV"; grep '^FRESH	' "$TSV"; } > "$tmp/dup-state.tsv"
+check 'loader: a duplicate state exits 3' "$(WS_STATES_TSV="$tmp/dup-state.tsv" cli --json "$doc_ok" >/dev/null; echo $?)" 3
 check 'loader: a missing table exits 3' "$(WS_STATES_TSV="$tmp/none.tsv" cli --json "$doc_ok" >/dev/null; echo $?)" 3
 check 'loader: a changed table is the one the CLI reads' \
     "$(sed 's/^FRESH\(	[a-z]*	[a-z]*	FRESH	\)working/FRESH\1doing the work/' "$TSV" > "$tmp/changed.tsv"; jget "$(WS_STATES_TSV="$tmp/changed.tsv" cli --json "$(mkdoc lock-fresh-changed.md '- 10:00 LIVE — x')")" display)" 'doing the work'
@@ -216,7 +220,8 @@ clear_records
 old="$(mkdoc free-old.md)"; new="$(mkdoc free-new.md)"
 ( export WS_NOW=$(( $(now) - 400 )); . "$LIB" >/dev/null 2>&1 && ws_record_put "$old" NOLIVE r "$s0" 0 ) >/dev/null 2>&1
 lib ws_record_put "$new" NOLIVE r "$s0" 0 >/dev/null
-check 'prune: a record past the bound is deleted, a fresh one is kept' "$(lib ws_record_prune >/dev/null; [ ! -e "$(lib ws_record_path "$old")" ] && [ -e "$(lib ws_record_path "$new")" ] && echo yes)" yes
+check 'prune: both records exist before the prune' "$([ -e "$(lib ws_record_path "$old")" ] && [ -e "$(lib ws_record_path "$new")" ] && echo yes)" yes
+check 'prune: a record past the bound is deleted, a fresh one is kept' "$(lib ws_record_prune >/dev/null; rc=$?; [ ! -e "$(lib ws_record_path "$old")" ] && [ -e "$(lib ws_record_path "$new")" ] && echo "rc$rc")" rc0
 
 clear_records
 d="$(mkdoc free-refine.md)"
@@ -287,7 +292,8 @@ b="$(cli --json "$lh")"
 check 'lockless HALTED agreement: the label and the unlabelled record both read NOLOCK' "$(jget "$a" state)/$(jget "$b" state)" NOLOCK/NOLOCK
 
 o="$(cli --json "$d" "$fr")"
-check 'cli: one JSON object per doc' "$(printf '%s\n' "$o" | jq -c 'keys | join(",")' | sort -u)" '"age,display,doc,ended,holds_lock,needs_chief,reason,remedy,source,state,tick"'
+check 'cli: one JSON object per doc, in argument order' "$(printf '%s\n' "$o" | jq -r '.doc' | tr '\n' ' ')" "$d $fr "
+check 'cli: every object carries the same eleven keys' "$(printf '%s\n' "$o" | jq -c 'keys | join(",")' | sort -u)" '"age,display,doc,ended,holds_lock,needs_chief,reason,remedy,source,state,tick"'
 
 if [ "$fails" -eq 0 ]; then
     echo "all rows passed"
