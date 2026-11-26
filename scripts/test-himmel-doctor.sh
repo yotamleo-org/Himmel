@@ -2673,4 +2673,32 @@ if ! grepq "$out" 'filed since the door shipped'; then pass "C84 a serious-later
 if [ "$(sed -n '/^_c84_unplaced()/,/^}/p' "$DOC" | grep -c 'git ')" = 0 ]; then pass "C84 the doctor runs no git read of its own for the date"; else fail "C84 the doctor reads git itself"; fi
 rm -rf "$t"
 
+echo "== C95: the repo-gone probes run inside the holds read budget =="
+# shellcheck disable=SC1091
+{ . "$REPO_ROOT/scripts/lib/timeout-bin.sh"; } 2>/dev/null || _TIMEOUT_BIN=""
+if [ -n "${_TIMEOUT_BIN:-}" ]; then
+    t="$(mktemp -d "${TMPDIR:-/tmp}/c95-probe.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }
+    mkdir -p "$t/root/scripts/handover/chief-kit" "$t/claude" "$t/r1" "$t/r2"
+    ln -s "$REPO_ROOT/scripts/lib" "$t/root/scripts/lib"
+    cat > "$t/root/scripts/handover/chief-kit/holds.py" <<'EOF'
+import os, sys, time
+if sys.argv[1] == 'repo-gone':
+    repo = sys.argv[sys.argv.index('--repo') + 1]
+    open(os.environ['C95_STUB_LOG'], 'a').write(repo + '\n')
+    time.sleep(3)
+    sys.exit(1 if os.path.lexists(repo) else 0)
+sys.exit(0)
+EOF
+    for r in "$t/r1" "$t/r2" "$t/r3"; do e="${r//%/%25}"; mkdir -p "$t/home/.himmel/state/holds/${e//\//%2F}"; done
+    : > "$t/probes.log"
+    SECONDS=0
+    out="$(env CLAUDE_DIR="$t/claude" HOME="$t/home" HIMMEL_DOCTOR_HOLDS_T=4 C95_STUB_LOG="$t/probes.log" "$_TIMEOUT_BIN" -k 2 40 bash "$DOC" --root "$t/root" --only C95 --no-color 2>&1 < /dev/null)"
+    if ! grep -qx "$t/r3" "$t/probes.log"; then pass "C95 no repo-gone probe starts once the budget is spent"; else fail "C95 a probe started after the budget ($(tr '\n' ' ' < "$t/probes.log"))"; fi
+    if grepq "$out" -E "WARN C95-barrier-off.*NOT ATTEMPTED for $t/r3" && ! grepq "$out" 'removed repo'; then pass "C95 the register no probe had time for is read, not skipped as gone"; else fail "C95 unprobed register -> $(printf '%s' "$out" | head -4)"; fi
+    if [ "$SECONDS" -lt 8 ]; then pass "C95 probes and reads together end near the budget (${SECONDS}s)"; else fail "C95 probes ran past the budget (${SECONDS}s)"; fi
+    rm -rf "$t"
+else
+    echo "  SKIP: C95 probe budget — no timeout binary"
+fi
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
