@@ -96,8 +96,6 @@ class Item:
 
 
 def sort_user_text(text, meta, sender_known=True):
-    """sender_known is false for a row whose source records no sender (a Codex user.text row): text that no
-    recognised prefix places is then an unreadable sender, never the operator's."""
     if text == WAKE_LINE:
         return "wake", None
     if text.startswith(CROSS_SESSION_STARTS):
