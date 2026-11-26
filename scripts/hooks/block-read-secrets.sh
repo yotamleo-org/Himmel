@@ -352,6 +352,7 @@ _fp_plain_file() {
         *.env*|*id_rsa*|*id_ed25519*|*credentials*|*secrets*|*.pem*|*.key*|*.p12*|*.pfx*) hit=1 ;;
         *.netrc*|*_netrc*|*.npmrc*|*.pgpass*|*.pypirc*|*terraform.tfstate*) hit=1 ;;
         *.ssh*|*.aws*|*.kube*|*.gnupg*|*config*|*hosts.yml*|*environ*) hit=1 ;;
+        *auth.json*|*oauth*|*token*) hit=1 ;;
     esac
     [ "$nc" = 1 ] || shopt -u nocasematch
     [ "$hit" = 0 ]
@@ -365,6 +366,17 @@ is_secret_path() {
     _fp_plain_file "$1" && return 1
     is_secret_basename "$@" && return 0
     g4_secret_path "$1"
+}
+
+login_token_path() {
+    local b="${1##*/}"
+    case "$1" in
+        */.codex/auth.json|*/.gemini/oauth_creds.json) return 0 ;;
+        */.gemini/gemini-credentials.json|*/.gemini/mcp-oauth-tokens*.json) return 0 ;;
+        */userdata/providers/?*/?*)
+            case "$b" in auth.json|oauth_creds.json|*token*|*oauth*|*credentials*) return 0 ;; esac ;;
+    esac
+    return 1
 }
 
 # g4_secret_path PATH_OR_TOKEN: the secret files the shared
@@ -382,6 +394,7 @@ g4_secret_path() {
     b="${p##*/}"; b="${b##*\\}"
     _tolower_ascii "$b"; b="$_TOLOWER_OUT"
     _tolower_ascii "$p"; p="$_TOLOWER_OUT"   # `.AWS/credentials` is the same file on a case-folding volume
+    login_token_path "$p" && return 0
     case "$b" in
         .netrc|_netrc|.npmrc|.pgpass|.pypirc|.git-credentials|.credentials.json) return 0 ;;
         terraform.tfstate|terraform.tfstate.backup|.ssh|.aws|.kube|.gnupg)       return 0 ;;
@@ -426,6 +439,7 @@ g4_secret_path() {
         fi
         case "$c" in */config-audit|*/config-audit/backups|*/config-audit/backups/*|*/.himmel/secrets|*/.himmel/secrets/*) return 0 ;; esac
         case "$c" in */.himmel/peer-bridge|*/.himmel/peer-bridge/*|*/.config/himmel/peer-bridge|*/.config/himmel/peer-bridge/*) return 0 ;; esac
+        _tolower_ascii "$c"; login_token_path "$_TOLOWER_OUT" && return 0
     fi
     return 1
 }
