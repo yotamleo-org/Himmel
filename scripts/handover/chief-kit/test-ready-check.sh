@@ -1413,6 +1413,12 @@ notcontains "11356-head-moved: no check is attributed" "$out" "blocked by: requi
 
 reset_stubs
 STUB_MSS=BLOCKED
+rc=0; out="$(STUB_OR_BASE_HEAD='' STUB_REQ_RULES="[$adopter_checks]" run)" || rc=$?
+check "11356-head-unreadable: exit 1" "$rc" "1"
+contains "11356-head-unreadable: an empty head reads as unreadable, not moved" "$out" "blocked by: unknown (the PR head is unreadable)"
+
+reset_stubs
+STUB_MSS=BLOCKED
 rc=0; out="$(STUB_OR_RULES_FAIL=1 STUB_OR_RD=REVIEW_REQUIRED STUB_UNRESOLVED=2 run)" || rc=$?
 check "11356-set-unreadable: exit 1" "$rc" "1"
 contains "11356-set-unreadable: says the required set is unreadable" "$out" "blocked by: unknown (the required checks of main are unreadable"

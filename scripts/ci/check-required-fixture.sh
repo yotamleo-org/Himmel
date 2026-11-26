@@ -4,7 +4,7 @@
 #
 # Reads rules/branches/<branch> (rulesets, the layer that carries main's
 # required checks) and compares its required_status_checks contexts with:
-#   - scripts/ci/check-run-timelines/testdata/rules-main.json (the suites' fixture)
+#   - scripts/ci/check-run-timelines/testdata/rules-main.json, each with its app id
 #   - scripts/ci/fixtures/ci-go-gate-required-contexts.txt
 # and checks that no line of scripts/lib/non-gating-contexts.txt is required.
 #
