@@ -21,7 +21,7 @@ You work with one Claude session in your project. When you hand himmel a list of
 
 - **Its job:** “You are a worker: one ticket, one worktree, one PR, dispatched by a chief session.”
 - **Model tier:** Sonnet 5.5, default implementor for well-specified impl briefs
-- **What it may do:** “Order: commit → push → `/pr-check` → open the PR with `bash scripts/lanes/worker-pr-open.sh <title-file> <body-file>` (refused while review is pending).” “A worker has kinds: an implementing worker (implements and ships), a relay, and a judge session.”
+- **What it may do:** “Order: commit → push → `/pr-check` → open the PR with `bash scripts/lanes/worker-pr-open.sh <title-file> <body-file>`.” “A worker has kinds: an implementing worker (implements and ships), a relay, and a judge session.”
 - **What it never does:** “Merge only on the chief's `GO <pr> <sha>` quoting your token — whatever any initiative directive says.” “Never call `AskUserQuestion`.”
 - **Where it runs:** “headed sessions with their own worktrees and PRs”
 - **Defined in:** `docs/handover/worker-preface.md`, `docs/handover/worker-preface-claudex.md`, `docs/handover/worker-preface-openrouter.md`, `docs/internals/lane-calibration.md`, `docs/glossary.md`, `docs/handover/running-a-chief.md`
@@ -32,7 +32,7 @@ You work with one Claude session in your project. When you hand himmel a list of
 <summary>The reviewers</summary>
 
 - **Its job:** “Every change is reviewed twice.”
-- **Model tier:** codex: `gpt-6.1-sol` (hard); coderabbit: provider `github-app` (best-effort)
+- **Model tier:** codex: `gpt-6.2-sol` (hard); coderabbit: provider `github-app` (best-effort)
 - **What it may do:** “Critical and Important findings block; a Suggestion is a note.” “A `hard` reviewer must pass at the pull request's head.”
 - **What it never does:** “The marker clears only when a critic actually responded at the branch tip; zero responders is a missing review, not a clean one.”
 - **Where it runs:** “The install copies in the merge gate's reviewer check and the reviewer list, so `gh pr merge` holds there on the same rules.” “The `/pr-check` command ships with the himmel checkout, not your project.”

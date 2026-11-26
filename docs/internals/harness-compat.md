@@ -1078,6 +1078,10 @@ gate fails closed with a message naming the remedy (re-run the installer);
 
 ## Prompt anatomy — why rules must be *adapted*, not copied
 
+For current Codex and claudex briefs, see
+[Prompting GPT-6.2 Sol and Astra](lane-calibration.md#prompting-gpt-62-sol-and-astra).
+The recommendations below cover the earlier GPT-5 harness migration.
+
 Mirroring `CLAUDE.md` verbatim into `AGENTS.md` would misfire. Validated
 differences (GPT-5 prompting guide + the `everything-codex` migration):
 

@@ -79,6 +79,8 @@ EOF
 export CHIEF_WAIT_BUDGET="$STUB/budget-off.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/sweep-off.sh"
 export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$STUB/size-off.sh"
+export CHIEF_WAIT_SIZE="$STUB/size-off.sh"
 
 # tick_line <workers> <board> [hb] [prs] [or] [fails]: a tick line whose action fields are set.
 tick_line() {
@@ -87,12 +89,11 @@ tick_line() {
 }
 reset_stub() { rm -f "$STUB/tick.rc" "$STUB/tick.blip" "$STUB/tick.churn" "$STUB/tick.sleep" "$STUB/tick.failafter" "$STUB/tick.ignoreterm"; tick_line "N1:FRESH" "ok"; printf 'PROCEED\n' > "$STUB/bank"; }
 
-# wait_hb <inbox>: block until the waiter has taken its baseline (heartbeat
-# carries a key), at most ~5 s.
 wait_hb() {
     n=0
-    while [ "$n" -lt 50 ]; do
+    while [ "$n" -lt 600 ]; do
         grep -q 'key=[0-9a-f]' "$1.wait" 2>/dev/null && return 0
+        kill -0 "$WPID" 2>/dev/null || { grep -q 'key=[0-9a-f]' "$1.wait" 2>/dev/null; return; }
         sleep 0.1; n=$((n + 1))
     done
     return 1

@@ -8,7 +8,7 @@ it):
 
 | Tier | What it does | Status |
 |------|--------------|--------|
-| **CR critic** | Independent model-family reviewer over a branch diff, wired into `/pr-check` (`scripts/cr/hermes-critic.sh` + `critic-first-pass.sh` → `scripts/hermes/invoke.sh`). No free critic is registered (`scripts/cr/critics.json`); the panel defaults straight to the paid `codex`/`gpt-6.1-sol` anchor — set `CR_PROFILE=none` for claude-only. There is no standing `claude` row. The `claude_floor` field of `critics.json` runs one Claude critic (`claude-opus-5-5`, effort `medium`, the official claude binary read-only, not hermes) only when codex ran out of quota, and the panel sends a loud alert each time; an adopter can re-add a `claude` row in `critics.local.json` (provider `claude-api`, per-token key through `scripts/api-lane/claude-api.sh`, or `claude-subscription`, behind bank-preflight and the native-auth pin). The API lane is used by the eval only, so a closed lane sends no refused alert for a critic. A missing key, closed lane, exhausted credit or non-PROCEED usage is a clean skip (`critic-first-pass.sh` exit 5), never a red panel. It is same-family, so it never counts toward `CR_REQUIRE_CROSS_MODEL`. Tune with `CR_CLAUDE_CRITIC_EFFORT` / `CR_CLAUDE_CRITIC_MAX_USD`; turn the floor off with `"claude_floor": null` in `critics.local.json`. Fail-closed verdict, fail-open transport. Routes + the proven invocation: [CR critic: routes + proven invocation](#cr-critic-routes--proven-invocation). | **Working — the production hermes lane today.** |
+| **CR critic** | Independent model-family reviewer over a branch diff, wired into `/pr-check` (`scripts/cr/hermes-critic.sh` + `critic-first-pass.sh` → `scripts/hermes/invoke.sh`). No free critic is registered (`scripts/cr/critics.json`); the panel defaults straight to the paid `codex`/`gpt-6.2-sol` anchor — set `CR_PROFILE=none` for claude-only. There is no standing `claude` row. The `claude_floor` field of `critics.json` runs one Claude critic (`claude-opus-5-5`, effort `medium`, the official claude binary read-only, not hermes) only when codex ran out of quota, and the panel sends a loud alert each time; an adopter can re-add a `claude` row in `critics.local.json` (provider `claude-api`, per-token key through `scripts/api-lane/claude-api.sh`, or `claude-subscription`, behind bank-preflight and the native-auth pin). The API lane is used by the eval only, so a closed lane sends no refused alert for a critic. A missing key, closed lane, exhausted credit or non-PROCEED usage is a clean skip (`critic-first-pass.sh` exit 5), never a red panel. It is same-family, so it never counts toward `CR_REQUIRE_CROSS_MODEL`. Tune with `CR_CLAUDE_CRITIC_EFFORT` / `CR_CLAUDE_CRITIC_MAX_USD`; turn the floor off with `"claude_floor": null` in `critics.local.json`. Fail-closed verdict, fail-open transport. Routes + the proven invocation: [CR critic: routes + proven invocation](#cr-critic-routes--proven-invocation). | **Working — the production hermes lane today.** |
 | **`himmel_agent` main tier** | A full-control orchestrator (Codex / gpt-6.1-sol) carrying `parity_guard`. It does real engineering / research / vault work. | **Alpha - guard parity now tests green; still treat as experimental until more live mileage.** |
 
 See the registry row in [`docs/tool-adoption/registry.md`](tool-adoption/registry.md)
@@ -57,7 +57,7 @@ hermes config set model.default <provider/model>
 The `model:` block in `config.yaml` is `{default, provider, base_url}`, with an
 ordered `fallback_providers:` list for resilience. himmel's live chain and
 fallback policy are in [Provider routes](#provider-routes-wired-2026-06-12)
-below. For himmel's **automated review paid-escalation** lane (`codex` / `gpt-6.1-sol`), log in to
+below. For himmel's **automated review paid-escalation** lane (`codex` / `gpt-6.2-sol`), log in to
 Codex once:
 
 ```bash
@@ -190,7 +190,7 @@ In short: never pair a free model with write/git/PR control.
 
 | Route | Reviewer | Cost |
 |---|---|---|
-| `hermes` (**default**) | `scripts/hermes/invoke.sh` with the `scripts/cr/critics.json` `codex` row's model (`gpt-6.1-sol` on `openai-codex`) unless `--model` or `HERMES_CRITIC_MODEL` names another | codex subscription, no Claude usage budget (see below) |
+| `hermes` (**default**) | `scripts/hermes/invoke.sh` with the `scripts/cr/critics.json` `codex` row's model (`gpt-6.2-sol` on `openai-codex`) unless `--model` or `HERMES_CRITIC_MODEL` names another | codex subscription, no Claude usage budget (see below) |
 | `claude` (opt-in) | `claude -p` print-mode, `--permission-mode plan --output-format json --max-turns 1 --strict-mcp-config` in a scratch cwd | **spends the Claude subscription usage budget** — gated by `scripts/lib/usage-preflight.sh`: a `SKIPPED-BANK` verdict refuses the route (exit 3, fall back to another reviewer); `BANK-STALE` / `BANK-UNKNOWN` are fail-open |
 
 Route selection: an explicit `--route` / `CRITIC_ROUTE` always wins; otherwise
@@ -206,7 +206,7 @@ it is derived from `--implementer`:
 
 **The `codex → hermes` cell is same-family by default.** With no `--model` and
 no `HERMES_CRITIC_MODEL`, the hermes reviewer runs the critics.json pin
-`gpt-6.1-sol`, which is codex, so a codex implementer falls back to `claude`.
+`gpt-6.2-sol`, which is codex, so a codex implementer falls back to `claude`.
 The script infers the reviewer family from the resolved model id
 (`gpt-*`/`o<N>*`/`codex*` → codex). Pin the answer with
 **`HERMES_CRITIC_FAMILY`** when that inference stops holding; pin the model itself
@@ -321,7 +321,7 @@ discarding orphaned upstream commits safe.
 
 > **SUPERSEDED: since 2026-06-24 the live route is Codex via the
 > `openai-codex` provider, today `gpt-6.1-sol`** (the impl profiles; the CR critic pins its
-> own model, `gpt-6.1-sol`, independently; see the tier table above), not the
+> own model, `gpt-6.2-sol`, independently; see the tier table above), not the
 > NVIDIA/OpenRouter chain documented below. The Nemotron block is kept for history; a full re-doc of
 > the current routing is tracked. Verify the live model with
 > `hermes profile list` (Model column) or `hermes model`.

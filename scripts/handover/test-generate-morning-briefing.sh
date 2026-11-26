@@ -69,6 +69,11 @@ if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); 
 export HIMMEL_FAILURE_REVIEW_DIR="$TMP_ROOT/failure-review"
 mkdir -p "$TMP_ROOT/emptyroot"; : > "$TMP_ROOT/emptyroot/.env"
 export GH_READ_ENV_ROOT="$TMP_ROOT/emptyroot" HIMMEL_SECRETS_KEYRING=off
+mkdir -p "$TMP_ROOT/emptyconf" "$TMP_ROOT/emptycache"
+: > "$TMP_ROOT/emptygitconfig"
+export HIMMEL_CONFIG_DIR="$TMP_ROOT/emptyconf" HIMMEL_JIRA_MIRROR="$TMP_ROOT/no-mirror"
+export HIMMELCTL_CACHE_DIR="$TMP_ROOT/emptycache" GIT_CONFIG_GLOBAL="$TMP_ROOT/emptygitconfig" GIT_CONFIG_NOSYSTEM=1
+unset HANDOVER_DIR HIMMEL_CHIEF_DOC HIMMEL_BUCKET_DIR TRACKER JIRA_PROJECT_KEY GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS 2>/dev/null || true
 
 # Fake gh + jira + claude CLIs -----------------------------------------
 
@@ -430,6 +435,19 @@ rm -f "$OW_BK/owed.jsonl"; mkdir "$OW_BK/owed.jsonl"
 out=$(HIMMEL_BUCKET_DIR="$OW_BK" HIMMEL_JIRA_MIRROR="$TMP_ROOT/no-mirror" run_script --since "$MARKER" --out "$TMP_ROOT/owed-partial.md")
 assert_contains "10764: one owed source unread while others read is still said" "owed ledger" "$(grep -o 'What you owe could not be read ([^)]*' "$TMP_ROOT/owed-partial.md")"
 
+echo "TEST: 10947 — the morning report's Needs you list holds the operator's items only: a chief signature, a judge GO and a relaunch are the chief's"
+OW2_BK="$TMP_ROOT/owed-bucket-owner"; mkdir -p "$OW2_BK"
+printf '%s\n' '## Open operator items' '- the chief signs the v1.1.3 spec' '- the judge GO for PR 5900' '- relaunch N70947' '- type the bypass go code on your phone' > "$OW2_BK/x-HANDOFF.md"
+printf '%s\n' '{"op":"add","id":"o1","kind":"ask","text":"chief signature on the release notes","actor":"operator"}' '{"op":"add","id":"o2","kind":"ask","text":"approve the held spend","actor":"operator"}' > "$OW2_BK/owed.jsonl"
+out=$(HIMMEL_BUCKET_DIR="$OW2_BK" HIMMEL_JIRA_MIRROR="$TMP_ROOT/no-mirror" run_script --since "$MARKER" --out "$TMP_ROOT/owed-owner.md")
+file=$(cat "$TMP_ROOT/owed-owner.md")
+assert_contains "10947: a bypass go code is the operator's" "Needs you: type the bypass go code on your phone" "$file"
+assert_contains "10947: a spend approval is the operator's" "Needs you: approve the held spend" "$file"
+assert_absent "10947: a chief signature in the handoff is not the operator's" "the chief signs the v1.1.3 spec" "$file"
+assert_absent "10947: a judge GO is not the operator's" "the judge GO for PR 5900" "$file"
+assert_absent "10947: a relaunch is not the operator's" "relaunch N70947" "$file"
+assert_absent "10947: a chief signature in the ledger is not the operator's" "chief signature on the release notes" "$file"
+
 # Test 14: --llm splices enriched blocks -----------------------------
 
 echo "TEST: --llm splices multi-line enriched blocks"
@@ -459,6 +477,14 @@ OUT_BLK="$TMP_ROOT/blankorder.md"
 out=$( cd "$REPO"; GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" CLAUDE_CMD="$FAKE_CLAUDE_BLANK" \
        bash "$SCRIPT" --since "$MARKER" --out "$OUT_BLK" --llm )
 assert_contains "blank-first order: next step" "Next step: 1. FIRST NONBLANK STEP" "$(lead_of "$(cat "$OUT_BLK")")"
+OW_ROOT="$TMP_ROOT/owed-root"; mkdir -p "$OW_ROOT/slug/himmel"
+: > "$OW_ROOT/slug/himmel/a-chief.md"
+printf '%s\n' '{"op":"add","id":"c1","kind":"step","text":"sign the control spec","key":"HIMMEL-9","actor":"operator"}' > "$OW_ROOT/slug/himmel/owed.jsonl"
+OUT_BLK_C="$TMP_ROOT/blankorder-control.md"
+out=$( cd "$REPO"; HANDOVER_DIR="$OW_ROOT" GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" CLAUDE_CMD="$FAKE_CLAUDE_BLANK" \
+       bash "$SCRIPT" --since "$MARKER" --out "$OUT_BLK_C" --llm )
+assert_absent "control: a handover root's owed ledger replaces the LLM next step (blank-first order: next step)" "Next step: 1. FIRST NONBLANK STEP" "$(lead_of "$(cat "$OUT_BLK_C")")"
+assert_contains "control: the owed item is the next step" "Next step: 1. Needs you: HIMMEL-9 sign the control spec" "$(lead_of "$(cat "$OUT_BLK_C")")"
 
 # Test 16: --llm per-block fail-open (only TLDR present) --------------
 
@@ -842,6 +868,56 @@ rc=0
 if [ "$rc" -eq 0 ]; then pass "invalid tracker: run exits 0"; else fail "invalid tracker: run exits 0" "rc=$rc"; fi
 file=$(cat "$OUT_ADI" 2>/dev/null || true)
 assert_contains "invalid tracker: setting named" "tracker setting is invalid" "$file"
+
+adopted_control_run() {
+    local out="$1" rc=0; shift
+    ( cd "$ADOPTED" && env "$@" GH_CMD="$FAKE_GH" bash scripts/handover/generate-morning-briefing.sh --out "$out" >/dev/null 2>&1 ) || rc=$?
+    if [ "$rc" -eq 0 ]; then pass "control run exits 0: ${out##*/}"; else fail "control run exits 0: ${out##*/}" "rc=$rc"; fi
+}
+echo "TEST: control — a station conf naming JIRA_PROJECT_KEY puts the adopted runs back on jira"
+LEAK_CONF="$TMP_ROOT/leakconf"; mkdir -p "$LEAK_CONF"
+printf 'JIRA_PROJECT_KEY=LEAK\n' > "$LEAK_CONF/himmel.conf"
+OUT_LK="$TMP_ROOT/adopted-leak.md"
+adopted_control_run "$OUT_LK" -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER HIMMEL_CONFIG_DIR="$LEAK_CONF"
+file=$(cat "$OUT_LK" 2>/dev/null || true)
+assert_absent "control: leaked key — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
+assert_contains "control: leaked key — 'jira unavailable' is back (adopted: no 'jira unavailable')" "jira unavailable" "$file"
+OUT_LKI="$TMP_ROOT/adopted-leak-invalid.md"
+adopted_control_run "$OUT_LKI" -u JIRA_PROJECT_KEY -u JIRA_CMD HIMMEL_CONFIG_DIR="$LEAK_CONF" TRACKER=jira
+file=$(cat "$OUT_LKI" 2>/dev/null || true)
+assert_contains "control: leaked key — the invalid-tracker run still wrote its report, on jira" "jira unavailable" "$file"
+assert_absent "control: leaked key — the tracker setting is no longer invalid (invalid tracker: setting named)" "tracker setting is invalid" "$file"
+
+echo "TEST: control — a cache .env naming JIRA_PROJECT_KEY, or a global git config naming a tracker, puts the adopted runs back on the station's tracker"
+LEAK_CACHE="$TMP_ROOT/leakcache"; mkdir -p "$LEAK_CACHE"
+printf 'JIRA_PROJECT_KEY=LEAK\n' > "$LEAK_CACHE/.env"
+OUT_LC="$TMP_ROOT/adopted-leak-cache.md"
+adopted_control_run "$OUT_LC" -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER HIMMELCTL_CACHE_DIR="$LEAK_CACHE"
+file=$(cat "$OUT_LC" 2>/dev/null || true)
+assert_contains "control: leaked cache .env — the adopted run is back on jira (adopted: no 'jira unavailable')" "jira unavailable" "$file"
+assert_absent "control: leaked cache .env — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
+OUT_LCI="$TMP_ROOT/adopted-leak-cache-invalid.md"
+adopted_control_run "$OUT_LCI" -u JIRA_PROJECT_KEY -u JIRA_CMD HIMMELCTL_CACHE_DIR="$LEAK_CACHE" TRACKER=jira
+file=$(cat "$OUT_LCI" 2>/dev/null || true)
+assert_contains "control: leaked cache .env — the invalid-tracker run is on jira" "jira unavailable" "$file"
+assert_absent "control: leaked cache .env — the tracker setting is no longer invalid (invalid tracker: setting named)" "tracker setting is invalid" "$file"
+LEAK_GITCFG="$TMP_ROOT/leakgitconfig"
+printf '[himmel]\n\ttracker = jira\n' > "$LEAK_GITCFG"
+OUT_LG="$TMP_ROOT/adopted-leak-gitcfg.md"
+adopted_control_run "$OUT_LG" -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER GIT_CONFIG_GLOBAL="$LEAK_GITCFG"
+file=$(cat "$OUT_LG" 2>/dev/null || true)
+assert_contains "control: leaked global git config — the adopted run names an invalid tracker setting" "tracker setting is invalid" "$file"
+assert_absent "control: leaked global git config — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
+OUT_LE="$TMP_ROOT/adopted-leak-envcfg.md"
+adopted_control_run "$OUT_LE" -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=himmel.tracker GIT_CONFIG_VALUE_0=jira
+file=$(cat "$OUT_LE" 2>/dev/null || true)
+assert_contains "control: git config injected through the environment — the adopted run names an invalid tracker setting" "tracker setting is invalid" "$file"
+assert_absent "control: git config injected through the environment — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
+OUT_LP="$TMP_ROOT/adopted-leak-envparams.md"
+adopted_control_run "$OUT_LP" -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER GIT_CONFIG_PARAMETERS="'himmel.tracker=jira'"
+file=$(cat "$OUT_LP" 2>/dev/null || true)
+assert_contains "control: git config parameters in the environment — the adopted run names an invalid tracker setting" "tracker setting is invalid" "$file"
+assert_absent "control: git config parameters in the environment — 'No Jira tracker configured' is gone (adopted: no tracker said so)" "No Jira tracker configured" "$file"
 
 # Shifts, chiefs and per-shift spend ---------------------------------
 # The generator reads the shift record (shifts.jsonl), counts each shift id in exactly one

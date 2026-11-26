@@ -1,0 +1,20 @@
+# Read through scripts/lib/worker-state.sh only; a reader keeps no list of these states or their text.
+# remedy: <doc> is replaced by the doc's realpath.
+state	holds_lock	needs_chief	tick	display	remedy
+# rows: 16
+FRESH	yes	no	FRESH	working	none
+STALE	yes	yes	STALE	lock heartbeat stale	look at the window; take the lock over or reap it
+STALE-DEAD	yes	yes	STALE-DEAD	holder dead, lock not freed	queue-lock.sh status --sweep --reap-dead, then relaunch or wrap
+IDLE-HELD	yes	no	IDLE-HELD	idle, lock held	look at the window; nudge or wrap
+CLOSABLE	no	yes	CLOSABLE	wrapped, window still open	close-wrapped-worker.sh <doc>
+WRAPPED	no	no	WRAPPED	wrapped	none
+FREE	no	yes	FREE	lock lost	read the doc; relaunch from a resume brief or wrap
+HALTED-SWEPT	no	yes	FREE	halted, lock free	close the window if one is open (close-wrapped-worker.sh <doc>; it refuses when a successor is named); relaunch from a resume brief only if the ticket's work is unfinished
+PARKED-USAGE	no	yes	FREE	parked on usage	relaunch with RESUMED once usage lifts
+NOLIVE	no	yes	NOLIVE	never went LIVE	relaunch the worker
+FORKED	no	yes	FORKED	continued in another session	adopt the continued session or relaunch
+NOLOCK	no	no	NOLOCK	lockless row	none
+UNVERIFIED	unknown	yes	UNVERIFIED	lock names another path	queue-lock.sh status <doc>; fix the lock path
+CORRUPT	unknown	yes	CORRUPT	lock unreadable	inspect the lock directory
+UNKNOWN	unknown	yes	UNKNOWN	state unreadable	run the tick again
+NOTFOUND	unknown	yes	NOTFOUND	doc not found	fix the Live-state entry

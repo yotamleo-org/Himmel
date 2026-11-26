@@ -68,7 +68,7 @@ the fields retain their normal interpretation.
 | Sprint      | `... boards` / `... sprints [--board N]` / `... sprint HIMMEL-N <sprintId\|backlog>` (Agile API `/rest/agile/1.0`; `JIRA_BOARD_ID` default) | (none — MCP has no Agile-board ops) |
 | Sector      | `... edit HIMMEL-N --sector "Ship loop"` (single-select custom field named by `jira.sectorField` in `~/.himmel/config.json`, opt-in via `... sector setup`; case-insensitive against the live option list, unknown option refused, value read back after the PUT) / `... edit-batch --file <tsv>` (columns `key`, `sector`; prints one `key<TAB>sector<TAB>set\|unchanged\|failed[<TAB>reason]` row per input row; a failed row never aborts, exit 1 if any failed; re-running is idempotent). `get` prints a `Sector:` line. | (none) |
 | Versions    | `... versions` / `... version-create <name> [--start-date YYYY-MM-DD] [--release-date YYYY-MM-DD] [--released] [--description ...]` / `... version-edit <name> [--name <new>] [--start-date] [--release-date] [--description]` (`--name` renames in place; `version-create` and `--name` refuse a non-semver name - only `vX.Y.Z` or `vX.Y.Z-pre.N`) / `... version-release <name> [--date YYYY-MM-DD]` / `... version-archive <name> [--unarchive] [--force]` (REST `PUT /version/{id}` `archived`, refused while `relatedIssueCounts` shows issues unless `--force`; MCP twin `manageJiraProjectVersion` action=archive) / `... version-move <name> --after <name>\|--position First\|Last` (REST `POST /version/{id}/move`) / `... affects-version HIMMEL-N --add\|--remove <name\|current>` (the `update.versions` add/remove verbs, same validation; `current` = earliest unreleased version) / `... fix-version HIMMEL-N --add\|--remove <name> [--gate G] [--chief-override R]` (REST `/project/{key}/versions`, `/version`, and the issue `update.fixVersions` add/remove verbs, so other versions on the ticket are untouched) | `manageJiraProjectVersion` action=archive for `version-archive`; no other version op has an MCP twin |
-| Freeze      | `... version-freeze <name> [--at YYYY-MM-DD] [--keys-file <path>] [--dry-run]` (writes `frozen: <date>` and `frozen-keys: A,B` into the version description and labels the set `scope-<name>`; the set is the version's open tickets, or the `--keys-file` list (one key per line, `#` comments) for a freeze that happened before the tool; refused on an already-frozen version) / `... version-ready <name> [--chief-override <row-id> "<reason>"]...` (prints the P1 tag criterion as tab-separated `PASS`/`FAIL` rows: `frozen-set` every frozen key Done or deferred from this version (label `deferred` plus a deferral ledger row for it) and every key in the version but not in the frozen list either carrying an admission ledger row or Done (a Done key with no row is a Done-fold; any other without a row is a leak and fails the row), `no-blocker-bug` no open Highest-priority or `critical`/`blocker`/`v1-blocker`-labelled Bug in the version, `main-ci` every CI run green at main's head, `done-fold` every Done frozen key still carries the version; then `frozen-open`, `admitted-after-freeze` and `done-folded` counts, one `admitted<TAB><key><TAB><reason>[<TAB><by>]` line per ruled admission, and every ledger override/deferral; informational, exit 0, it refuses nothing, gates on no count and prints no roll date) / `... version-admit <KEY> --version <name> --reason "<why>" --by <rm-session>` (records a release-manager admission as an `rm-admit` ledger row) / `... version-defer <KEY> --version <name> --reason "<why>" [--to <version>]` (with `--to`, first adds that version through the intake gate, so a refused target leaves the ticket where it was; then removes the source version, read back, and takes the target off again if the source stays on; then labels `deferred` and records the deferral). `--chief-override` is per row and repeatable, each overridden row gets its own ledger row; it and `version-admit` and `version-defer` need `HIMMEL_CONSOLE=1` (the same marker as `create --chief-override`) and a non-blank reason; every row lands in the admissions ledger (`$HANDOVER_DIR/admissions-ledger.jsonl`, `HIMMEL_ADMISSIONS_LEDGER` overrides) | (none) |
+| Freeze      | `... version-freeze <name> [--at YYYY-MM-DD] [--keys-file <path>] [--dry-run]` (writes `frozen: <date>` and `frozen-keys: A,B` into the version description and labels the set `scope-<name>`; the set is the version's open tickets, or the `--keys-file` list (one key per line, `#` comments) for a freeze that happened before the tool; refused on an already-frozen version) / `... version-ready <name> [--sha <40-hex>] [--out <path>] [--chief-override <row-id> "<reason>"]...` (prints the checks before a cut as tab-separated `PASS`/`FAIL` rows: `frozen-set` on an unfrozen version no open member, on a frozen one every frozen key Done or deferred from this version (label `deferred` plus a deferral ledger row for it) and every key in the version but not in the frozen list either carrying an admission ledger row or Done (a Done key with no row is a Done-fold; any other without a row is a leak and fails the row), `no-blocker-bug` no open Highest- or High-priority, or `critical`/`blocker`/`v1-blocker`-labelled, Bug in the version, `station-adhoc` no open ticket labelled `station-adhoc` in the version, `main-ci` the newest run, by run number, of each workflow and event green at `--sha <40-hex, lowercase>` (else at main's head), `done-fold` every Done frozen key still carries the version (it passes on an unfrozen version and says it checks nothing), `promise-proof` every sentence of `<bucket>/specs/versions/<name>-promise.tsv` is `shown_true` with a proof that is not blank or a placeholder (a missing or malformed record fails), `owed-steps` no open `owe.sh list` row keyed to a member of the version, notify rows aside (a missing `owed.jsonl` fails); then `frozen-open`, `admitted-after-freeze` and `done-folded` counts, one `admitted<TAB><key><TAB><reason>[<TAB><by>]` line per ruled admission, and every ledger override/deferral; exit 1 when a row FAILs after overrides, else 0; it gates on no count and prints no roll date; `--out <path>` needs `--sha`, refuses `--chief-override`, and also writes the rows, then `sha=`, `at=` (advisory, nothing reads it) and a last `exit=` line, the file READY row 3 reads) / `... version-admit <KEY> --version <name> --reason "<why>" --by <rm-session>` (records a release-manager admission as an `rm-admit` ledger row) / `... version-defer <KEY> --version <name> --reason "<why>" [--to <version>]` (with `--to`, first adds that version through the intake gate, so a refused target leaves the ticket where it was; then removes the source version, read back, and takes the target off again if the source stays on; then labels `deferred` and records the deferral). `--chief-override` is per row and repeatable, each overridden row gets its own ledger row; it and `version-admit` and `version-defer` need `HIMMEL_CONSOLE=1` (the same marker as `create --chief-override`) and a non-blank reason; every row lands in the admissions ledger (`$HANDOVER_DIR/admissions-ledger.jsonl`, `HIMMEL_ADMISSIONS_LEDGER` overrides) | (none) |
 | Mirror      | `... mirror [--full] [--status] [--qmd] [--root DIR]` (read-only Jira → one `<KEY>.md` per issue under `~/.himmel/state/jira-mirror/<PROJECT>/`, first run full backfill, later runs `updated >=` cursor; `--qmd` registers/re-embeds the `jira-himmel` qmd collection, non-fatal; `--status` prints mirror age, no network; a failed or short key listing deletes nothing) | (none) |
 | Roadmap     | `... roadmap fields [--json]` / `... roadmap set HIMMEL-N [--readiness 0-4] [--theme T] [--goals G1,G3] [--impact 1-5] [--alignment N] [--effort XS\|S\|M\|L\|XL [--guard]] [--audit-date D] [--audit-evidence URL] [--close-candidate yes\|no] [--no-roi]` / `... roadmap get HIMMEL-N` (prints `declared readiness N (source jira); evidence <state>`, the state one of declared, linked, verified, stale or unknown; verified only from a passing spec check, never from a score or a URL) / `... roadmap export --out F.json` / `... roadmap sync-sprints [--board N] [--dry-run]` (`--theme` is the retired Theme field: it works only while `HIMMEL_LEGACY_NAMES` is on (the default) and is refused when that is 0, false, no or off, naming `edit --sector`; the config-ui Roadmap and Kanban group by Sector (the mirror's `sector:` line, the old `theme-*` label as the fallback, "no sector" for neither) and a card's select writes the Sector with `edit --sector`, never a theme label; fields resolved by name, ROI = impact × alignment × confidence ÷ effort recomputed after every set; `sync-sprints` gives each dated unreleased fixVersion a same-named sprint carrying its dates and moves its open issues in — an issue on several dated versions goes to the earliest-releasing one — and `--dry-run` exits 1 on drift) | (none) |
 | Rank        | `... rank HIMMEL-N --before\|--after HIMMEL-M` / `... rank --file order.txt` (Agile `PUT /issue/rank`, the file ranks top-down in chunks of 50) | (none) |
@@ -419,54 +419,46 @@ version-repair request is set aside as held, any other request stays claimed). A
 `jira.sectorField` means sectors are off; malformed JSON or a non-string value throws instead. Code:
 `scripts/jira/src/commands/sector.ts` (config + options) and `sector-setup.ts`.
 
-**Bug placement.** `create --type Bug` without `--fix-version` is
-placed at filing, never defaulted silently. `--proposed-version <v>` files it with a
-`proposed-<v>` label and no fixVersion and queues its INTAKE request toward `<v>` in the
-same call; `--backlog` alone is refused: it needs `--proposed-version backlog`
-and a one-line `--why`, and then files the `backlog` label with no fixVersion.
-The door places the ticket from its priority, so `--backlog` does not keep a mild ticket out of the next version: the
-door admits it into the next version and takes the `backlog` label off. A ticket stays in the backlog only by an operator record, or when no next version is declared.
-Besides the door, `create` still places a ticket at filing in three cases, a second placer: `bugDefault` (a gated ticket
-or a Highest Bug takes the active version; a Bug with no placement is refused), blocker inheritance (`--blocks` takes the
-target's version) and split inheritance (`--split-from` takes the source's version).
-`--proposed-version` cannot be combined with `--fix-version` or `--gate`, applies to a Bug, Task or
-Story only, and a named version must exist and be unreleased. The same rule covers a Task or Story, so no ticket
-is filed without at least a proposed version; a residual (`--residual-of`, `--follow-up-of`) of a declared project is placed by the door from its priority
-(it files with no version and queues its INTAKE; only `--gate` files it into the current version), and a project no
-declared release names keeps the class route in `docs/release/follow-up-triage.md`.
-`--follow-up-of <KEY>` reads the parent's status and fixVersion. An open parent in the current
-(earliest unreleased) version: the follow-up's INTAKE asks for that version, its why states only facts (parent,
-status, version) and its evidence carries them; it does not claim a remainder. `--remainder`, which needs
-`--follow-up-of`, is for a ticket that holds a deferred DoD row of the parent: the why then says the parent cannot
-close without this ticket and that it holds the parent's remainder. A Done or closed parent in the current, unfrozen version: the follow-up is filed into that
-version at the parent's priority (the caller's `--priority` wins) and linked to it with `relates`, so a chain's
-leftovers stay in the chain's version and no INTAKE is queued. This covers a Bug, Task or Story; an Epic or Sub-task follow-up keeps the old rule. A closed parent that is not in
-the current version, or whose version is frozen: no version, the request is the backlog one and the why says the
-parent is closed. A parent that cannot be read is not treated as closed: the request asks for no version, with a warning (with `--remainder` its evidence still carries `follow_up_of` and `remainder`). A parent in a frozen current version: the
-request still asks for that version and the why says it is frozen; the release manager rules on the frozen intake,
-and the filing never routes around it (operator decisions 383, 489 and 512). An INTAKE-only follow-up writes no fixVersion of its own (the closed-parent case above does). An open
-parent with no current version, or a parent that cannot be read (a warning on stderr), asks for no version (with `--remainder` the evidence still records `follow_up_of` and `remainder`, also under an explicit `--why` or `--proposed-version`):
-no version, filed to the backlog. A caller's own `--fix-version`, `--backlog`, `--proposed-version` or `--why` wins
-and skips the read, and `--blocks`/`--split-from` place the ticket in the target's version, so no request is queued.
-An unversioned create, a residual or follow-up included, is refused before the POST when no release can take the INTAKE (no release declared, several
-declared, the state unreadable, or a placeholder why); an INTAKE that fails after the POST leaves the key on stdout,
-says `PARTIAL: Created <KEY> but INTAKE not queued` and exits 1. The release root comes from the CLI's own
-checkout, never the caller's cwd. `edit`'s depth-2 drop only warns, and says so when no release is declared.
-No count of what a version holds refuses, labels, redirects or displaces a filing: a residual of a declared project is placed by the door from its priority (a `--gate` keeps the current version),
-and no resident is moved out to make room for it.
+**Placement at filing.** `create` places a Bug, Task or Story with no explicit placement by the four rules, through
+`placeByRules` (`scripts/jira/src/release/filing-rules.ts`, the function the door calls too), and writes the version in the
+create POST: an operator ask (the `operator-directed` label, the bridge pointer, or the operator's verified `--decision` and
+`--words`) goes to the version it names, else current; a `--remainder` follow-up goes to its parent's declared version;
+High and Highest go to current; anything else goes to the backlog (the label `backlog`, no INTAKE). In a frozen current a
+filer-set label (`red-main`, `regression`, `update-item`, `user-facing` on a Bug), `--gate critical|regression` and an ordinary
+follow-up of a current parent only propose: the ticket is filed with no version, the label `proposed-<current>` and an INTAKE
+whose evidence carries the `rules:*` ground, and the chief or the operator's words place it. On a `--residual-of` a gate or
+label only proposes, frozen or not. `--proposed-version <v>` names a version only for an operator ask; on any other ticket it
+places nothing and create says so on stderr. Every placement prints `jira: placed <KEY> in <v|backlog> by <ground> (<reason>)`.
+Create's own explicit placements skip the rules: `--backlog` (with `--proposed-version backlog` and `--why`; the label
+`backlog` only), `--fix-version` with its gate or chief override, `--gate must:<ref>` and `--gate receipt` (the earliest
+unreleased version, an admissions row with no kind), `--blocks`/`--split-from` inheritance, a Done parent in an unfrozen
+current (`create-followup`) and a test project. `--proposed-version` cannot be combined with `--fix-version` or `--gate`,
+applies to a Bug, Task or Story only, and a named version must exist and be unreleased.
+Everything refuses before the POST: a release declaration that cannot be read or several that name the project; a declared
+current that differs from Jira's earliest unreleased version; a ledger and a Jira `frozen:` line that disagree; a
+`--follow-up-of` parent that cannot be read; an operator ask naming an undeclared version; operator words that fail
+`operatorFence` or `decisionWords`; an admissions ledger that cannot take the `filed` row. A project no declaration names
+runs the rules on Jira alone (current is the earliest unreleased version, frozen is its `frozen:` line); there are no
+words, no `filed` row, and a proposal is refused naming `--fix-version --chief-override` and `--gate must:<ref>`.
+After the POST the write order is the operator record (words given: op `add` into the version, `none` for the backlog),
+then the `filed` admissions row that cites it, then the links; a failed step leaves the later ones named in `PARTIAL`. The
+journal writer is `create-rules`, `machine: false`, so a lost record is held for the chief and never re-admitted. An
+operator ask filed with `--backlog` needs `--decision` and `--words`, as a High or security ticket does.
+`--follow-up-of <KEY>` reads the parent's status, fixVersions and priority first. A Done parent in the current, unfrozen
+version files the follow-up into it at the parent's priority (the caller's `--priority` wins), linked with `relates`
+(`create-followup`); any other open or closed parent in the current version makes the follow-up a proposal whose why
+states only facts (parent, status, version).
+A proposal is the only filing that queues an INTAKE: it is refused before the POST when no release can take it (a
+placeholder why, the state unreadable), and an INTAKE that fails after the POST leaves the key on stdout, says
+`PARTIAL: Created <KEY> but INTAKE not queued` and exits 1. The release root comes from the CLI's own checkout, never the
+caller's cwd. `edit`'s depth-2 drop only warns, and says so when no release is declared.
+No count of what a version holds refuses, labels, redirects or displaces a filing, and no resident is moved out to make
+room for it.
 `next-dispatchable.sh` counts the open versionless operator-directed, High+ Bug, `scope-<version>`, `proposed-<earliest version>`
-and worker-held tickets and prints `# pool=<n>/<top>,INTAKE:<m>` (never a bare LOW) with a
+and worker-held tickets (a key labelled `backlog` is left out) and prints `# pool=<n>/<top>,INTAKE:<m>` (never a bare LOW) with a
 `# intake <m> for <version>: <keys>` line; the waiter's WAKE text names them and the INTAKE command.
-`--priority Highest` or a valid `--gate`
-(see the intake gate below) sets the earliest unreleased, unarchived version from the
-project's versions and prints one stderr line saying so (no readable unreleased
-version: filed with no fixVersion and a warning). With none of those the create
-is refused, naming both choices and the `--sector` given. An explicit
-`--fix-version` is untouched, as are other types. `create --priority <name>`
-sets the Jira priority. This reverses the PR #1237 earliest-unreleased default
-(decision 100, 2026-10-20); there is still no date cutoff (the v1 bug freeze was
-removed by operator ruling 2026-10-05) and the release gate is the `v1-blocker`
-label and priority.
+`create --priority <name>` sets the Jira priority. There is no date cutoff (the v1 bug freeze was removed by operator
+ruling 2026-10-05) and the release gate is the `v1-blocker` label and priority.
 
 **Override and admissions ledger.** `create --fix-version <v>
 --chief-override "<reason>"` is honoured only with `HIMMEL_CONSOLE=1` set, a

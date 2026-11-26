@@ -331,6 +331,27 @@ check "zero-match: rc 0 (the window already exited)" "$rc" "0"
 contains "zero-match: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
 check "zero-match: kill never called" "$(cat "$CALLS")" ""
 
+mkdoc "- 10:30 HALTED - fleet pause" "- 10:00 WRAPPED - done"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "11183 WRAPPED then HALTED, lock free: rc 0" "$rc" "0"
+contains "11183 WRAPPED then HALTED, lock free: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
+mkdoc "- 10:30 HALTED - fleet pause"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "11183 a bare HALTED tail, lock free: rc 0" "$rc" "0"
+mkdoc "- 10:30 HALTED - fleet pause" "- 10:00 WRAPPED - done"
+reset_calls
+acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$DOC" "cwl-test-holder" 2>&1)"
+token="$(printf '%s' "$acq_out" | sed -n "s/.*release-token: \`\([^\`]*\)\`.*/\\1/p")"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "11183 HALTED tail, lock held: not closable (rc 3)" "$rc" "3"
+[ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$DOC" "$token" >/dev/null 2>&1
+mkdoc "- 10:45 LIVE - resumed" "- 10:30 HALTED - fleet pause"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "11183 HALTED then LIVE, lock free: still refused (rc 4)" "$rc" "4"
+
 fleet_env() { HOME="$W/home" HIMMEL_POLICY_FOLLOWS_HOME=1 HIMMEL_FLEET_SLOTS="$W/slots" "$@"; }
 mk_launched_attempt() {
     rm -f "$W/chief.fleet.json" "$W/fleet-control.json"; rm -rf "${W:?}/home" "${W:?}/slots"; mkdir -p "$W/home"
@@ -1596,6 +1617,12 @@ rc=0; out=$(run --chief "$CDOC" 2>&1) || rc=$?
 check "console: non-WRAPPED tail -> rc 4" "$rc" "4"
 not_contains "console: non-WRAPPED -> nothing signalled" "$(cat "$CALLS")" "kill"
 
+mkcdoc "- 10:00 HALTED - fleet pause"
+reset_calls
+rc=0; out=$(run --chief "$CDOC" 2>&1) || rc=$?
+check "console: a HALTED tail is not WRAPPED, rc 4" "$rc" "4"
+not_contains "console: a HALTED tail signals nothing" "$(cat "$CALLS")" "kill"
+
 mkcdoc "- 10:00 WRAPPED - done"
 reset_calls
 acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$CDOC" "cwl-test-holder" 2>&1)"
@@ -1871,6 +1898,12 @@ rc=0; out=$(run "$HP" 2>&1) || rc=$?
 check "handoff: final context BLOCKED naming successor closes predecessor (base rc 4)" "$rc" "0"
 exact_count "handoff: BLOCKED hand-off signals predecessor alone" "$(cat "$CALLS")" "kill -TERM 389" "1"
 not_contains "handoff: BLOCKED hand-off never signals successor" "$(cat "$CALLS")" "kill -TERM 390"
+
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 10:00 BLOCKED - context 34 percent, RESUME written: %s\n- 10:30 HALTED - fleet pause\n' "$HS" > "$HP"
+reset_calls
+rc=0; out=$(run "$HP" 2>&1) || rc=$?
+check "halt after a named hand-off: the HALTED tail is not finished (rc 4)" "$rc" "4"
+check "halt after a named hand-off: nothing signaled" "$(cat "$CALLS")" ""
 
 # Safety controls: a named file alone and an unrelated held sibling prove no hand-off.
 printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - waiting for review\n' > "$HP"

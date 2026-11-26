@@ -51,6 +51,73 @@ test("10947: the unfilled HANDOFF template line is no operator item; a real ask 
   expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["approve the held spend", "<https://example.invalid/approve>"]);
 });
 
+test("10947: a HANDOFF ask is one row with its indented lines; a none line, a checked item, a struck item and an item of a closed ticket are no ask; a ledger row of a closed ticket is dropped", () => {
+  const s = scratch();
+  const env = owedFixture(s, "queue: HIMMEL-2 chief step");
+  writeFileSync(join(s.d, "chief-HANDOFF.md"), [
+    "## Open operator items", "",
+    "- approve the held spend", "  - detail of the spend", "  wrapped text of the spend", "",
+    "- [x] approve the paid seat (answered)",
+    "- ~~approve the old account~~ done",
+    "- HIMMEL-1: approve the paid grant",
+    "- HIMMEL-1 and HIMMEL-2: approve the paid billing",
+    "**None** other.", "",
+  ].join("\n"));
+  const add = (id: string, key: string | null, text: string) => JSON.stringify({ op: "add", id, actor: "operator", key, text, kind: "ask" });
+  writeFileSync(join(s.d, "owed.jsonl"), [add("o1", "HIMMEL-2", "approve the paid seat"), add("o2", "HIMMEL-1", "approve the paid grant of a closed ticket"), add("o3", null, "approve the account renewal")].join("\n") + "\n");
+  const o = readOwed(env);
+  if (o.state !== "ok") throw new Error(o.reason);
+  expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["approve the held spend detail of the spend wrapped text of the spend", "HIMMEL-1 and HIMMEL-2: approve the paid billing"]);
+  expect(o.items.filter((i) => i.source === "owed ledger").map((i) => [i.key, i.title])).toEqual([["HIMMEL-2", "approve the paid seat"], [null, "approve the account renewal"]]);
+});
+
+test("10947: equally indented sibling HANDOFF bullets stay separate asks, so a checked one hides only itself", () => {
+  const s = scratch();
+  const env = owedFixture(s, "queue: HIMMEL-2 chief step");
+  writeFileSync(join(s.d, "chief-HANDOFF.md"), [
+    "## Open operator items", "",
+    "  - [x] approve the paid seat (answered)",
+    "  - approve the held spend",
+    "    - detail of the spend",
+    "- approve the account renewal", "  - detail of the renewal", "",
+    "**None** other.", "",
+    "  - approve the seat after the blank line", "",
+  ].join("\n"));
+  const o = readOwed(env);
+  if (o.state !== "ok") throw new Error(o.reason);
+  expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["approve the held spend detail of the spend", "approve the account renewal detail of the renewal", "approve the seat after the blank line"]);
+});
+
+test("10947: one owner classifier: a chief signature, a judge GO and a relaunch are the chief's in every source; a bypass go code is the operator's", () => {
+  const s = scratch();
+  for (const n of [2, 3, 4]) writeFileSync(join(s.mirror, `HIMMEL-${n}.md`), mirrorIssue(n, "To Do", "To Do", [], `ticket ${n}`));
+  const env = owedFixture(s, "queue: HIMMEL-2 operator words: the chief signs the release spec | HIMMEL-3 operator-owed: relaunch the stalled worker | HIMMEL-4 operator on Telegram: type the bypass go code");
+  writeFileSync(join(s.d, "chief-HANDOFF.md"), "## Open operator items\n- the chief signs the v1.1.3 spec\n- the judge GO for PR 5900\n- relaunch N70947\n- type the bypass go code on your phone\n- approve the held spend\n");
+  const add = (id: string, text: string) => JSON.stringify({ op: "add", id, actor: "operator", kind: "ask", text });
+  writeFileSync(join(s.d, "owed.jsonl"), [add("o1", "chief signature on the release notes"), add("o2", "judge GO for PR 5901"), add("o3", "relaunch the silent worker"), add("o4", "approve the bypass go code")].join("\n") + "\n");
+  const o = readOwed(env);
+  if (o.state !== "ok") throw new Error(o.reason);
+  const by = (source: string) => o.items.filter((i) => i.source === source).map((i) => [i.title.slice(0, 40), i.actor]);
+  expect(by("handoff")).toEqual([["the chief signs the v1.1.3 spec", "chief"], ["the judge GO for PR 5900", "chief"], ["relaunch N70947", "chief"], ["type the bypass go code on your phone", "operator"], ["approve the held spend", "operator"]]);
+  expect(by("owed ledger")).toEqual([["chief signature on the release notes", "chief"], ["judge GO for PR 5901", "chief"], ["relaunch the silent worker", "chief"], ["approve the bypass go code", "operator"]]);
+  expect(o.items.filter((i) => i.source === "chief doc").map((i) => [i.key, i.actor])).toEqual([["HIMMEL-2", "chief"], ["HIMMEL-3", "chief"], ["HIMMEL-4", "operator"]]);
+});
+
+test("10947: an explicit operator sign-off keeps its owner beside a GO; a chief action that names a billing word stays the chief's", () => {
+  const s = scratch();
+  const env = owedFixture(s, "queue: HIMMEL-2 chief step");
+  writeFileSync(join(s.d, "chief-HANDOFF.md"), "## Open operator items\n- operator signs off: give GO for PR 5900\n- the chief signs the billing report\n- the judge relaunches the paid worker\n- approve payment for the worker relaunch\n- Payment approval for the worker relaunch\n- the chief signs the proposal to approve payment\n- the paid account renewal\n");
+  const o = readOwed(env);
+  if (o.state !== "ok") throw new Error(o.reason);
+  expect(o.items.filter((i) => i.source === "handoff").map((i) => [i.title, i.actor])).toEqual([["operator signs off: give GO for PR 5900", "operator"], ["the chief signs the billing report", "chief"], ["the judge relaunches the paid worker", "chief"], ["approve payment for the worker relaunch", "operator"], ["Payment approval for the worker relaunch", "operator"], ["the chief signs the proposal to approve payment", "chief"], ["the paid account renewal", "operator"]]);
+  const doc = join(s.d, "chief.md");
+  writeFileSync(doc, "## Live state\nqueue: HIMMEL-2 operator signs off: give GO for PR 5900 | HIMMEL-3 GO requires operator sign-off\n");
+  writeFileSync(join(s.mirror, "HIMMEL-3.md"), mirrorIssue(3, "To Do", "To Do", [], "ticket 3"));
+  const c = readOwed(env);
+  if (c.state !== "ok") throw new Error(c.reason);
+  expect(c.items.filter((i) => i.source === "chief doc").map((i) => i.actor)).toEqual(["operator", "operator"]);
+});
+
 test("view parity: raw categories keep valid peers; malformed category remains reconciliation with a warning", () => {
   const s = scratch();
   writeFileSync(join(s.mirror, "HIMMEL-1.md"), mirrorIssue(1, "To Do", "To Do", [], "unread category").replace('statusCategory: "To Do"', 'statusCategory: "broken'));

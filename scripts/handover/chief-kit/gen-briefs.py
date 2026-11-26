@@ -55,6 +55,10 @@ is refused, since it would otherwise fall through to the closing merge.
 Every worker the core gate sees also gets `> **Leg kind:** design|build` after the Tier line: design
 when its Writes are docs-only and every path is under the handover root, build otherwise; a `none named` leg and an
 rm worker get no line. The exact lines are fixtures/leg-kind-lines.txt; the status funnel reads them.
+A design leg that names an absolute spec under specs/design, specs/designs or specs/spec also gets that spec's minerva files
+(minerva_siblings.py: the estimate json, the page, the plan and the critic returns beside the spec) on its Writes line, after the
+ticket's own paths, with one `> **Minerva files:**` line right after it; and the same files named by the ticket beside
+the spec are folded out of the docs-only test, so they never turn a design leg into a build leg.
 grants: a list of {text, paths}, rendered in order as the brief's
 `> **Pre-granted follow-ups**` block, G1 first; a ruling may later select one by ID. text is
 non-blank single-line; paths is a non-empty list of literal repo-relative file paths (no glob,
@@ -160,6 +164,7 @@ from datetime import date as _date, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from salus_marked import salus_marked, is_adapter  # noqa: E402
 import holds  # noqa: E402  the one parser of a Writes line, and the one grant-path rule
+import minerva_siblings  # noqa: E402
 import proof_staging  # noqa: E402
 
 
@@ -316,6 +321,11 @@ def search_fields(worker):
     return q, (s or None)
 
 
+ALONE = ('Send each search as its own tool call, with no other call in the same response: '
+         'a call sent beside one that a hook rewrites is refused unrun. '
+         'Run the wrapper as the whole command: no `cd`, pipe, redirect or chained command (it already caps its output). ')
+
+
 def search_directive(worker, ctx):
     if ctx.get('salus') or (worker.get('wt') and salus_marked(worker['wt'])):
         # A query leaves the machine (embedding and rerank send the text to a provider), which scripts/guardrails/egress-matrix.json denies for a salus path.
@@ -331,12 +341,12 @@ def search_directive(worker, ctx):
     notes += ')'
     if ctx['adapter'] or s is None:
         why = 'an adopter repo has no himmel graph' if ctx['adapter'] else 'it names no code path to look up'
-        return ('Before you design, run %s, and cite what each returned, or write none found with the query you ran. '
+        return ('Before you design, run %s, and cite what each returned, or write none found with the query you ran. %s'
                 'This leg has no graph lookup (%s). Your Results carry a `graph-qmd: <what the notes search returned and whether used>` bullet saying so.'
-                % (notes, why))
-    return ('Before you design, run %s, and `bash scripts/graphify/worker-graph.sh explain "%s"`, and cite what each returned, or write none found with the query you ran. '
+                % (notes, ALONE, why))
+    return ('Before you design, run %s, and `bash scripts/graphify/worker-graph.sh explain "%s"`, and cite what each returned, or write none found with the query you ran. %s'
             'Your Results carry a `graph-qmd: <what each returned and whether used>` bullet, '
-            'or `graph-qmd: n/a, shipping` on a resume that only ships.' % (notes, s))
+            'or `graph-qmd: n/a, shipping` on a resume that only ships.' % (notes, s, ALONE))
 
 
 TRUST_LINE = "If your diff touches a pattern in `scripts/ci/ci-trust-paths.txt`, say so in READY (trust-reviewed GO)."
@@ -1076,13 +1086,13 @@ def core_worker_gate(l, ctx):
     groups = {}
     for k in keys:
         groups.setdefault(os.path.abspath(mirror_dir(k)), []).append(k)  # absolute: the CLI runs from its own checkout
-    wp = write_paths(l.get('writes', '')).split()
+    wp = write_paths(l['writes_folded']).split()
     paths = [] if wp in ([], ['none', 'named']) else wp
     # core-check refuses an absolute path: one under the handover root is a non-core Writes path, sent as a relative stand-in
     # (a .md reads as docs); any other absolute token names no path and keeps the leg off the design bypass. Same mapping as brief-lint.sh.
     hroot = os.path.realpath(ctx['hroot']) if ctx.get('hroot') else ''
     stray_absolute = False
-    for tok in re.findall(r'[\w.+@/-]+', _writes_scope(l.get('writes', ''))):
+    for tok in re.findall(r'[\w.+@/-]+', _writes_scope(l['writes_folded'])):
         tok = tok.rstrip('.,;:)]')
         if not tok.startswith('/'):
             continue
@@ -1092,7 +1102,7 @@ def core_worker_gate(l, ctx):
                 paths.append(q)
         else:
             stray_absolute = True
-    design = docs_only(l.get('writes', '')) and not stray_absolute
+    design = docs_only(l['writes_folded']) and not stray_absolute
     l['leg_kind'] = None if not paths else 'design' if design and all(p.startswith('state/') for p in paths) else 'build'
     verdict = {}
     for mdir, ks in groups.items():
@@ -1171,6 +1181,7 @@ SIGNATURE_DIRS = ('design', 'designs', 'spec', 'plan', 'plans')
 KEY_FOLDER_RE = re.compile(r'^[A-Z][A-Z0-9]+-[0-9]+$')
 LEAD_KEY_RE = re.compile(r'^([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])')
 INNER_KEY_RE = re.compile(r'(?<![A-Z0-9])([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])')
+MINERVA_FILES_LINE = "> **Minerva files:** the Writes line also names this spec's minerva files (estimate, page, plan, critic returns r1-r{rounds} beside the spec); they are part of your Writes, whatever the Writes note or Scope says."
 FOLD_INSTRUCTION = 'each kind-scoped id is a `## Ticket coverage` line: `- <kind>:<id>: done` or `- <kind>:<id>: deferred → HIMMEL-<n>` (for example `spec:F1` and `plan:F1` are separate)'
 
 
@@ -1182,6 +1193,20 @@ def spec_key(path):
         return parts[-2]
     m = LEAD_KEY_RE.match(parts[-1]) or (INNER_KEY_RE.search(parts[-1]) if len(parts) >= 2 and parts[-2] == 'plans' else None)
     return m.group(1) if m else None
+
+
+def design_writes(writes, hroot):
+    named = write_paths(writes, hroot).split()
+    plan_keys = {spec_key(p) for p in named if p.endswith('.md') and os.path.basename(os.path.dirname(p)) in ('plan', 'plans')}
+    out = []
+    for spec in named:
+        for s in minerva_siblings.siblings(spec, hroot):
+            if s in named or s in out or not under_root(s, hroot):
+                continue
+            if os.path.basename(os.path.dirname(s)) == 'plans' and spec_key(spec) in plan_keys:
+                continue
+            out.append(s)
+    return out
 
 
 def run_route(label, args):
@@ -1632,7 +1657,7 @@ template_version: 3
 > 4. Ship: commit `{commit}`; FIRST-commit trailers `Platforms tested: linux` (shell/script diffs), `Security reviewed: manual — <what you checked>` (non-docs code); `## Ticket coverage` in the PR body (`ready-check.sh --only 7 <pr>`); {shipct}. /pr-check (≤3 rounds; the moment you mark a finding agreed or fixed, write its `SWEEP [<id>@<head>] class=… :: sites=…` line (a one-site finding: `:: single-site search=git grep …`) with `bash scripts/cr/write-verdicts.sh sweep --branch <b> --from-file <f>`, else `clear-review-marker.sh` refuses with exit 14), CI green, `ready-check.sh <pr> <full-head>`, then write the `READY <pr> <full-40-hex-head> GREEN` bullet with `append-results.sh` (a bullet only, never a message, as the preface says: the chief's waiter wakes the chief on it and shows it the bullet's text). {judge} {shipmerge} `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`.
 > 5. CI: a shell-unit shard dying with exit 124 in apt-get before any suite ran is a known mirror flake; you may `gh run rerun <id> --failed` once per run and report it.
 """, """
-{inhblock}{vmline}{uiline}> **Writes:** {scope_line}
+{inhblock}{vmline}{uiline}> **Writes:** {scope_line}{minervaline}
 
 {overlaps}
 
@@ -1648,7 +1673,9 @@ template_version: 3
            branch=l['branch'], cutline=('resumes at `%s` (%s)' % l['resumed']) if l.get('resumed') else 'cut from `%s`' % ctx['base'], nonce=l['nonce'], chief=ctx['chief'], hroot=ctx['hroot'], doc=shlex.quote(os.path.join(ctx['bucket'], l['stem'] + '.md')),
            hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'], search=search_directive(l, ctx),
            extra=l.get('extra', ''), envline=(' ' + ENV_LINE) if l.get('env') else '', commit=l['commit'], judge=JUDGE_LINE if l['judge'] else TRUST_LINE,
-           scope=l['scope'], scope_line=write_paths(l.get('writes', ''), ctx['hroot']), overlaps=overlaps_line(l, ctx), others=others, also=also,
+           scope=l['scope'], scope_line=' '.join(filter(None, [write_paths(l.get('writes', ''), ctx['hroot'])] + l.get('design_writes', []))),
+           minervaline=('\n' + MINERVA_FILES_LINE.format(rounds=minerva_siblings.ROUNDS)) if l.get('design_writes') else '',
+           overlaps=overlaps_line(l, ctx), others=others, also=also,
            tierline=('\n> **Tier:** %s — %s: %s\n' % (tier_gate(l['model']), l['tier']['category'], l['tier']['reason'].strip())
                      if l.get('tier') and tier_gate(l['model']) else ''),
            legline=('\n> **Leg kind:** %s\n' % l['leg_kind']) if l.get('leg_kind') else '',
@@ -1889,7 +1916,8 @@ def main():
         if l.get('kind') not in ('rm', 'proof'):
             check_pr_size(l, a.repo, a.base, a.handover_root)
         if l.get('kind') != 'rm':
-            l['profile'] =l.get('profile') or (UI_PROFILE if UI_PATH_RE.search(write_paths(l.get('writes', ''))) else DOCS_PROFILE if docs_only(l.get('writes', '')) else 'worker-impl')
+            l['writes_folded'] = minerva_siblings.fold(l.get('writes', ''), a.handover_root, _writes_scope(l.get('writes', '')))
+            l['profile'] =l.get('profile') or (UI_PROFILE if UI_PATH_RE.search(write_paths(l.get('writes', ''))) else DOCS_PROFILE if docs_only(l['writes_folded']) else 'worker-impl')
         rm = l.get('kind') == 'rm'
         l['model'] = l.get('model') or (RM_MODEL if rm else LANE_MODELS.get(l.get('lane', 'native'), DEFAULT_MODEL))
         if l.get('ab_arm') and l.get('lane', 'native') == 'native' and l['model'].startswith('claude-sonnet-5') and sonnet_ceiling_profile(l['profile']):
@@ -1911,6 +1939,10 @@ def main():
             core_worker_gate(l, ctx)
             if l.get('kind') == 'proof':
                 l['leg_kind'] = None
+            if l.get('leg_kind') == 'design':
+                added = design_writes(l.get('writes', ''), a.handover_root)
+                if added:
+                    l['design_writes'] = added
             writer_round_gate(l, ctx)
             live_test_gate(l)
         if os.path.exists(os.path.join(a.bucket, l['stem'] + '.md')):

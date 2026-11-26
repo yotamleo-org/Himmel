@@ -357,7 +357,7 @@ STUB
     touch -d '61 minutes ago' "$stamp"
     rm -f "$state/tick-wt-orphans-$(printf '%s' "$repo" | cksum | cut -d' ' -f1)"
     out="$(prune_tick)"
-    if [ -f "$PRUNE_BUDGET" ] && [ "$(cat "$PRUNE_BUDGET")" -le 30 ]; then pass 'the census shares the sweep deadline'; else fail 'the census exceeded the combined maintenance budget'; fi
+    if [ -f "$PRUNE_BUDGET" ] && [ "$(cat "$PRUNE_BUDGET")" -eq 90 ]; then pass 'the census runs detached under its own 90 s cap, outside the tick budget'; else fail 'the census did not run detached under its own 90 s cap'; fi
     [ "$fails" -eq 0 ]
 )
 if ! worktree_prune_cases; then fails=$((fails + 1)); fi

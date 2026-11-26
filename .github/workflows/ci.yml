@@ -1500,6 +1500,9 @@ jobs:
           - pkg: himmel-bus
             dir: marketplace/plugins/himmel-bus
             node: '26.13.1'
+          - pkg: luna-mcp
+            dir: marketplace/plugins/luna-mcp
+            node: '26.13.1'
           - pkg: jira-node22-floor
             dir: scripts/jira
             node: '22.22.0'
@@ -1515,23 +1518,23 @@ jobs:
         run: npm ci --ignore-scripts
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
       - name: JS suite report dir
-        if: ${{ matrix.pkg != 'himmel-bus' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        if: ${{ matrix.pkg != 'himmel-bus' && matrix.pkg != 'luna-mcp' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: mkdir -p "$RUNNER_TEMP/js-suite-report"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         if: ${{ (matrix.pkg == 'jira' || matrix.pkg == 'jira-node22-floor') && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         with:
           bun-version-file: .bun-version
-      - if: ${{ matrix.pkg != 'himmel-bus' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+      - if: ${{ matrix.pkg != 'himmel-bus' && matrix.pkg != 'luna-mcp' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/${{ matrix.pkg }} -- npm test -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/js-suite-report/vitest.json"
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
-      - if: ${{ matrix.pkg == 'himmel-bus' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+      - if: ${{ (matrix.pkg == 'himmel-bus' || matrix.pkg == 'luna-mcp') && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/${{ matrix.pkg }} -- npm test
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
       - name: JS suite manifest
-        if: ${{ !cancelled() && matrix.pkg != 'himmel-bus' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        if: ${{ !cancelled() && matrix.pkg != 'himmel-bus' && matrix.pkg != 'luna-mcp' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: node scripts/ci/js-suite-manifest.mjs --out js-suite-manifest/manifest-js-node-suites-${{ matrix.pkg }}.txt --report vitest "$RUNNER_TEMP/js-suite-report/vitest.json" . || echo "::warning title=js-suite-manifest::the writer failed, so these suites go local"
       - name: Upload JS suite manifest
-        if: ${{ !cancelled() && matrix.pkg != 'himmel-bus' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        if: ${{ !cancelled() && matrix.pkg != 'himmel-bus' && matrix.pkg != 'luna-mcp' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: js-suite-manifest-node-suites-${{ matrix.pkg }}

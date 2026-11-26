@@ -31,16 +31,20 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GH_READ_BIN="$HERE/../../lib/gh-read.sh"
 [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 
-# tick_bound <seconds>: a probe's cap, cut to what is left of TICK_DEADLINE_SEC (default 90,
+# tick_bound <seconds>: a probe's cap, at most a quarter of what is left of TICK_DEADLINE_SEC (default 90,
 # from the tick's start). The waiter kills a tick at 120 s and discards its output, so a slow
 # tick must spend its last probes' caps, not lose the worker state. The floor is 1 s because
 # `timeout 0` means no timeout.
 tick_deadline="${TICK_DEADLINE_SEC:-90}"
 case "$tick_deadline" in '' | *[!0-9]*) tick_deadline=90 ;; esac
+tick_fast=0
+[ "${TICK_FAST:-0}" != 1 ] || tick_fast=1
 tick_bound() {
-    local left=$((tick_deadline - SECONDS))
+    local left=$((tick_deadline - SECONDS)) quarter
     [ "$left" -ge 1 ] || left=1
-    if [ "$1" -lt "$left" ]; then printf '%s\n' "$1"; else printf '%s\n' "$left"; fi
+    quarter=$((left / 4))
+    [ "$quarter" -ge 1 ] || quarter=1
+    if [ "$1" -lt "$quarter" ]; then printf '%s\n' "$1"; else printf '%s\n' "$quarter"; fi
 }
 
 # tick_detach <cmd...>: start <cmd> with no input or output and print its pid. The tick reaps a
@@ -128,6 +132,13 @@ are read from. supply=SHORT:<free> is its own field, printed only beside
 capacity=UNDERFILLED:<slack> when the pool count is numeric and free (the listed
 rows minus the pool-parked ones) is below the slack: the shortage is startable
 work, not the chief. capacity= itself never changes, chief-wait.sh matches it.
+With --workers-from a manifest that names a fleet control, <cap> is the lower of that census cap and
+the family target a managed launch is refused at, and a target below the policy cap prints as
+fleet=<live>/<target>(policy-cap=<cap>); capacity= is held to the same number.
+stale-attempts=<n> follows capacity= (only with such a manifest): the launched or unknown attempt
+records whose session is proven gone, read-only through fleet_runtime.py ack, so the
+tick never settles or edits a record; ? when the control cannot be read. A count above 0 adds one
+`ACTION stale-attempts=<n>: ...` line naming fleet-manifest.sh runtime ack. Not in chief-wait's key.
 
 flakes=<rows>/<suites>@<top-suite>*<k> sits between fails= and spare=
 and is ABSENT unless this repo's suite-flake ledger (run-shell-tests.sh)
@@ -670,10 +681,17 @@ is set and not the doc's concrete `focus-version: vN` as KEY@<its fixVersion>. `
 Advisory: not in chief-wait's action key.
 
 wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap> come from one
-`scripts/worktree.sh prune --orphans` read, cached TICK_WT_ORPHANS_TTL minutes (30):
+`scripts/worktree.sh prune --orphans` read, which a detached refresh makes and the tick
+never waits on (more than TICK_SECTION_WAIT seconds). The tick serves the last good reading;
+one older than TICK_WT_ORPHANS_TTL minutes (30) is refreshed and shows its age as wt-orphans=<n>@<age>
+(minutes or hours); a failed or timed-out read is not retried for TICK_WT_ORPHANS_FAIL_TTL
+minutes (5) and reads unknown while no reading exists:
 worktrees with no open PR and nothing holding them, and the live worktree count once it
 reaches HIMMEL_WORKTREE_ALARM (70, the hard ceiling is 100). Shown only when non-zero or
-alarming, each with an `ACTION wt-orphans=…` line after the TICK line. The tick also
+alarming, each with an `ACTION wt-orphans=…` line after the TICK line. TICK_FAST=1 (the board's tick)
+skips this read, the hourly prune below, queue latency (ciq=), the rm queue, leaks=,
+versionless-done= and vmismatch=, and changes no board-fp input. No probe spends more than a
+quarter of what is left of TICK_DEADLINE_SEC; a field past it reads ?/unknown. The tick also
 runs `scripts/worktree.sh prune` at most once an hour under a repository-shared lock;
 it reuses the existing sweep's dirty/locked/in-use gates without new removal logic.
 
@@ -3253,7 +3271,7 @@ fi
 # machine, so no Jira is called; unknown = the read failed. Not in chief-wait's wake key.
 vdone_summary=skip
 vdone_probe="${TICK_VERSIONLESS_DONE_PROBE:-$HERE/versionless-done.sh}"
-if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-$tick_mirror_default}" ]; then
+if [ "$tick_fast" != 1 ] && [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-$tick_mirror_default}" ]; then
     vdone_out="$(timeout -k 2 "$(tick_bound 30)" bash "$vdone_probe" 2>/dev/null)" || vdone_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read falls through to versionless-done=unknown
     case "${vdone_out%+}" in
         ''|*[!0-9]*) vdone_summary=unknown ;;
@@ -3267,7 +3285,7 @@ fi
 # mirror on this machine. In chief-wait's wake key.
 vmismatch_summary=skip
 vm_probe="${TICK_VMISMATCH_PROBE:-$HERE/version-status-audit.sh}"
-if [ -f "$vm_probe" ] && [ -d "$nd_mirror" ]; then
+if [ "$tick_fast" != 1 ] && [ -f "$vm_probe" ] && [ -d "$nd_mirror" ]; then
     vm_owners="${owner_keys# }"
     [ -n "${vm_owners// }" ] || vm_owners=NONE-0  # the audit reads an empty owner list as ownership unknown
     vm_rc=0
@@ -3288,7 +3306,7 @@ fi
 leaks_summary=skip
 leaks_version=""
 lk_vf="$nd_mirror.versions.tsv"
-if [ -d "$nd_mirror" ] && [ -f "$lk_vf" ]; then
+if [ "$tick_fast" != 1 ] && [ -d "$nd_mirror" ] && [ -f "$lk_vf" ]; then
     leaks_version="$(awk -F'\t' '$2 == "false" && $4 != "true" && $1 !~ /^zz-/ { print $1 }' "$lk_vf" | sort -V | head -n 1)" || leaks_version=""  # gnu-ok: console kit is Linux-only (sort -V); swallow-ok: no readable version reads skip
 fi
 if [ -n "$leaks_version" ]; then
@@ -3435,7 +3453,7 @@ rm_launch_run() {
         fi
     fi
 }
-if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+if [ "$tick_fast" != 1 ] && [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
     rm_cli="${rm_anchor%/.git}/scripts/jira/dist/index.js"
     rm_pk="$tick_project_key"
     rm_rc=0 rm_json=""
@@ -3497,7 +3515,7 @@ fi
 # unchanged set prints the same text on every tick; absent when none; ? when the tick cannot tell: the state read is not OK, the mirror input is
 # UNKNOWN (the engine then lists every ruling as replay) or unfinished_rulings is not a list of rows with a key and a ruling id. A key row of wake-rules.tsv.
 rm_blocked=""
-if [ -n "$rm_rel" ]; then
+if [ "$tick_fast" != 1 ] && [ -n "$rm_rel" ]; then
     rm_blocked='?'
     if [ "${rm_status:-}" = OK ]; then
         # shellcheck disable=SC2016  # the python program is single-quoted on purpose
@@ -3520,7 +3538,7 @@ rm_refused=""
 rf_stem="${console_doc##*/}"
 rf_stem="${rf_stem%.md}"
 rf_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
-if [ -n "$rf_stem" ]; then
+if [ "$tick_fast" != 1 ] && [ -n "$rf_stem" ]; then
     if [ "${rm_status:-}" = OK ]; then
         # shellcheck disable=SC2016  # the python program is single-quoted on purpose
         rm_refused="$(printf '%s' "$rm_json" | python3 -I -c '
@@ -3979,10 +3997,8 @@ fi
 # The tick already owns the worktree census: reuse the existing reclaiming
 # sweep once an hour, under a lock shared by all checkouts of this repository.
 # Stamp attempts before running so a failing sweep cannot storm on every tick.
-# Sweep and census share the census's existing 90-second budget.
-wts_started="$(date +%s)"
 wto_cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-wt-orphans-$(printf '%s' "$REPO" | cksum | cut -d' ' -f1)"
-if [ -f "$REPO/scripts/worktree.sh" ]; then
+if [ "$tick_fast" != 1 ] && [ -f "$REPO/scripts/worktree.sh" ]; then
     (
         cd "$REPO" || exit 0
         # shellcheck source=../../lib/git-clean.sh
@@ -4005,36 +4021,51 @@ fi
 
 # wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap>: leftover worktrees (no
 # open PR, nothing holding them) and the live worktree count once it reaches
-# HIMMEL_WORKTREE_ALARM, from one `worktree.sh prune --orphans` read. The read
-# takes ~20s on a 50-tree fleet, so its output is cached under TICK_STATE_DIR
-# for TICK_WT_ORPHANS_TTL minutes (default 30), one file per REPO so chiefs
-# on different checkouts never share a reading. wt-ceiling is in the waiter's wake key.
+# HIMMEL_WORKTREE_ALARM, from one `worktree.sh prune --orphans` read. wt-ceiling is in the waiter's wake key.
 wto_summary=0
 wtc_summary=""
 wto_probe="${TICK_WORKTREE_ORPHANS_PROBE:-$REPO/scripts/worktree.sh}"
 wto_ttl="${TICK_WT_ORPHANS_TTL:-30}"
 case "$wto_ttl" in ''|*[!0-9]*) wto_ttl=30 ;; esac
-if [ -f "$wto_probe" ]; then
-    if [ -s "$wto_cache" ] && [ -n "$(find "$wto_cache" -mmin "-$wto_ttl" 2>/dev/null)" ]; then  # swallow-ok: an unreadable cache age reads stale, so the tick reads afresh
-        wto_out="$(cat "$wto_cache" 2>/dev/null)" || wto_out="SWEEP-ERROR (tick) cache unreadable"  # swallow-ok: a failed cache read becomes wt-orphans=unknown
+wto_ttl=$((10#$wto_ttl))
+wto_fail_ttl="${TICK_WT_ORPHANS_FAIL_TTL:-5}"
+case "$wto_fail_ttl" in ''|*[!0-9]*) wto_fail_ttl=5 ;; esac
+wto_fail_ttl=$((10#$wto_fail_ttl))
+if [ "$tick_fast" != 1 ] && [ -f "$wto_probe" ]; then
+    wto_age="$(tick_cache_age "$wto_cache")"
+    case "$wto_age" in ''|*[!0-9]*) wto_age='' ;; esac
+    if [ ! -s "$wto_cache" ] || [ -z "$wto_age" ] || [ "$wto_age" -ge $((wto_ttl * 60)) ]; then
+        wto_failed="$(tick_cache_age "$wto_cache.fail")"
+        case "$wto_failed" in ''|*[!0-9]*) wto_failed=999999999 ;; esac
+        if [ "$wto_failed" -ge $((wto_fail_ttl * 60)) ]; then
+            # shellcheck disable=SC2016
+            tick_section_refresh "$wto_cache.refresh" 0 'out="$(cd "$3" && timeout -k 2 90 bash "$2" prune --orphans 2>/dev/null)"; rc=$?; if [ "$rc" -gt 1 ] || { [ "$rc" -eq 1 ] && ! grep -qE "^(ORPHAN|CEILING|SWEEP-ERROR) " <<<"$out"; } || case "$out" in *SWEEP-ERROR*) true ;; *) false ;; esac; then touch "$1.fail"; exit 0; fi; [ -n "$out" ] || out="# clean"; printf "%s\n" "$out" >"$1.$$" && mv -f "$1.$$" "$1" && rm -f "$1.fail"; rm -f "$1.$$"' _ "$wto_cache" "$wto_probe" "$REPO"  # gnu-ok: console kit is Linux-only; swallow-ok: the sweep's rc is kept in rc and a failure writes the .fail marker
+        fi
+    fi
+    wto_age="$(tick_cache_age "$wto_cache")"
+    case "$wto_age" in ''|*[!0-9]*) wto_age='' ;; esac
+    wto_failed="$(tick_cache_age "$wto_cache.fail")"
+    case "$wto_failed" in ''|*[!0-9]*) wto_failed='' ;; esac
+    if [ ! -s "$wto_cache" ]; then
+        wto_out="SWEEP-ERROR (tick) no worktree sweep reading yet"
+    elif [ -n "$wto_failed" ] && { [ -z "$wto_age" ] || { [ "$wto_age" -ge $((wto_ttl * 60)) ] && [ "$wto_failed" -le "$wto_age" ]; }; }; then
+        wto_out="SWEEP-ERROR (tick) the sweep failed since the last reading"
     else
-        wto_rc=0
-        wto_timeout=$((90 - $(date +%s) + wts_started))
-        if [ "$wto_timeout" -le 0 ]; then
-            wto_rc=2; wto_out=""
-        else
-            wto_out="$(cd "$REPO" && timeout -k 2 "$(tick_bound "$wto_timeout")" bash "$wto_probe" prune --orphans 2>/dev/null)" || wto_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the rc is kept and a failure reads wt-orphans=unknown
-        fi
-        # rc 1 means alarms were printed; rc 1 with none is an errexit failure.
-        if [ "$wto_rc" -gt 1 ] || { [ "$wto_rc" -eq 1 ] && ! grep -qE '^(ORPHAN|CEILING|SWEEP-ERROR) ' <<<"$wto_out"; }; then
-            wto_out="SWEEP-ERROR (tick) worktree.sh prune --orphans failed (rc=$wto_rc)"
-        elif [[ "$wto_out" != *SWEEP-ERROR* ]]; then
-            mkdir -p "${wto_cache%/*}" 2>/dev/null && printf '%s\n' "$wto_out" > "$wto_cache.$$" 2>/dev/null && mv -f "$wto_cache.$$" "$wto_cache" 2>/dev/null || rm -f "$wto_cache.$$" 2>/dev/null || true  # swallow-ok: an unwritable cache only costs the next tick a fresh read; the rename keeps a concurrent tick from reading a half-written cache
-        fi
+        wto_out="$(cat "$wto_cache" 2>/dev/null)" || wto_out="SWEEP-ERROR (tick) cache unreadable"  # swallow-ok: a failed cache read becomes wt-orphans=unknown
     fi
     case "$wto_out" in
         *SWEEP-ERROR*) wto_summary=unknown ;;
-        *) wto_summary=$(grep -c '^ORPHAN ' <<<"$wto_out") || true ;;  # swallow-ok: grep -c exits 1 on a count of 0
+        *)
+            wto_summary=$(grep -c '^ORPHAN ' <<<"$wto_out") || true  # swallow-ok: grep -c exits 1 on a count of 0
+            case "$wto_summary:$wto_age" in
+                *:'' | *[!0-9:]*) ;;
+                *)
+                    if [ "$wto_age" -ge 60 ] && [ "$wto_age" -gt $((wto_ttl * 60)) ]; then
+                        if [ "$wto_age" -ge 3600 ]; then wto_summary="$wto_summary@$((wto_age / 3600))h"; else wto_summary="$wto_summary@$((wto_age / 60))m"; fi
+                    fi
+                    ;;
+            esac
+            ;;
     esac
     wtc_summary=$(sed -n 's|^CEILING \([0-9]*/[0-9]*\) .*|\1|p' <<<"$wto_out")
 fi
@@ -4872,10 +4903,46 @@ fleet_total="$(printf '%s\n' "$fleet_out" | sed -n 's/^bank-preflight: FLEET .*t
 supply=""
 underfill_min="${TICK_UNDERFILL_MIN:-10}"
 case "$underfill_min" in ''|*[!0-9]*) underfill_min=10 ;; esac
+fleet_target=""
+stale_attempts=""
+stale_attempts_listing=""
+if [ -n "$WORKERS_FROM" ] && [ -r "$WORKERS_FROM" ]; then
+    fleet_rt="$(timeout -k 2 "$(tick_bound 20)" python3 -I -c '
+import importlib.util, json, subprocess, sys, time
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("fleet_runtime", sys.argv[1])
+fr = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(fr)
+manifest = Path(sys.argv[2]).absolute()
+try:
+    if "control" not in json.loads(manifest.read_text()):
+        sys.exit(0)
+    ack = fr.ack_read_only(manifest)
+    deadline = time.monotonic() + 5
+    stale = [r for r in ack["unknown"] + ack["launched"] if fr.session_ended(r, deadline)]
+    print(ack["target"], len(stale))
+except (fr.Refused, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+    print("? ?")
+' "$HERE/../../lib/fleet_runtime.py" "$WORKERS_FROM" 2>/dev/null)" || fleet_rt="? ?"  # gnu-ok: Linux-only kit; swallow-ok: an unreadable control reads ?, never a clean 0
+    if [ -n "$fleet_rt" ]; then
+        fleet_target="${fleet_rt% *}"
+        stale_attempts="${fleet_rt#* }"
+        case "$stale_attempts" in
+            ''|*[!0-9]*) stale_attempts='?' ;;
+            0) ;;
+            *) stale_attempts_listing="$(printf 'ACTION stale-attempts=%s: %s launch record(s) still hold family-target slots with no live session; list them: bash %q runtime ack --read-only --manifest %q (its settle commands are for you to type, the tick settles nothing: settle for an unknown attempt, attempt end for a launched one)' "$stale_attempts" "$stale_attempts" "$HERE/fleet-manifest.sh" "$WORKERS_FROM")" ;;
+        esac
+        case "$fleet_target" in ''|*[!0-9]*) fleet_target="" ;; esac
+    fi
+fi
 if [ -n "$fleet_total" ]; then
     fleet_live="${fleet_total% *}"
     fleet_cap="${fleet_total#* }"
     fleet="$fleet_live/$fleet_cap"
+    if [ -n "$fleet_target" ] && [ $((10#$fleet_target)) -lt $((10#$fleet_cap)) ]; then
+        fleet="$fleet_live/$((10#$fleet_target))(policy-cap=$((10#$fleet_cap)))"
+        fleet_cap=$((10#$fleet_target))
+    fi
     # Last dispatch = newest <name>.launch.log under the chief work dir: the
     # file's final write is the "konsole launched" line, so its mtime is the
     # real window start (the sig- file is touched again at release, and lock
@@ -5048,7 +5115,7 @@ fi
 # count must not wake the chief.
 ciq_summary=unknown
 ciq_probe="$REPO/scripts/ci/queue-latency.sh"
-if [ -f "$ciq_probe" ]; then
+if [ "$tick_fast" != 1 ] && [ -f "$ciq_probe" ]; then
     # shellcheck source=../../lib/timeout-bin.sh
     . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
     ciq_bound="${TICK_CIQ_TIMEOUT:-45}"
@@ -5241,6 +5308,7 @@ if [ "$verbose" -eq 1 ]; then
     fi
     printf 'fleet: %s\n' "$fleet"
     printf 'capacity: %s\n' "$capacity"
+    [ -z "$stale_attempts" ] || printf 'stale-attempts: %s\n' "$stale_attempts"
     [ -z "$supply" ] || printf 'supply: %s\n' "$supply"
     printf 'gql: %s\n' "$gql"
     [ -z "$quota_items" ] || printf 'quota: %s\n' "$quota_items"
@@ -5362,6 +5430,7 @@ else
     [ "$burn" -eq 0 ] || compact_field burn "$burn_summary"
     compact_field fleet "$fleet"
     compact_field capacity "$capacity"
+    compact_field stale-attempts "$stale_attempts"
     compact_field gql "$gql"
     compact_field rest-main "$(rest_compact "$rest_main_line")"
     compact_field rest-read "$(rest_compact "$rest_read_line")"
@@ -5444,6 +5513,7 @@ else
             find "$arr_sdir" -maxdepth 1 -name 'tick-arrivals-wake-*' -mtime +7 -delete 2>/dev/null  # gnu-ok: console kit is Linux-only # swallow-ok: an unprunable old claim is harmless
         fi
     fi
+    [ -z "$stale_attempts_listing" ] || printf '%s\n' "$stale_attempts_listing"
     if [ -n "$holdout_summary" ]; then
         printf 'ACTION holdout=%s: an idle worker holds on an outside event; have it WRAP with what it owes written down, then bash %q watch %q add <pr> --head <sha> --comments <n> --reviews <n> and close-wrapped-worker.sh --fleet %q <doc> (chief-wait wakes you as WAKE pr-watch)\n' \
             "$holdout_summary" "$HERE/fleet-manifest.sh" "${WORKERS_FROM:-<manifest>}" "${WORKERS_FROM:-<manifest>}"

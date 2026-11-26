@@ -160,7 +160,7 @@ CODEX_ONLY="block-terminal-write-fence.sh end-session-wiki.sh"
 # Claude-side guards that MUST also be wired on Codex. The checks above run only
 # from Codex to Claude, so a guard never ported to Codex would pass them silently.
 #   peer-taint-*.sh : a session that read peer text is restricted on either harness.
-CODEX_PORTED="peer-taint-gate.sh peer-taint-mark.sh peer-taint-resume.sh guard-t3-thread-tools.sh block-t3code-unwatch-open-pr.sh"
+CODEX_PORTED="peer-taint-gate.sh peer-taint-mark.sh peer-taint-resume.sh phi-read-mark.sh guard-t3-thread-tools.sh block-t3code-unwatch-open-pr.sh"
 
 # Claude Stop/SessionEnd hooks deliberately not mirrored to Codex Stop/SessionEnd.
 CLAUDE_END_ONLY=(
@@ -180,6 +180,7 @@ CLAUDE_END_ONLY=(
                              # enforce is itself Claude-only (chief-kit/tick.sh's
                              # own header: "Linux-only... Bash 3.2-compatible" with
                              # no Codex wiring). Not ported.
+  stop-chief-ask-mirror.sh
   readiness-session.sh     # deliberate: the readiness role is a native-lane (Claude Code)
                              # launch only -- headed-arm-worker.sh refuses --profile readiness
                              # on every other lane and the startup config it writes must say

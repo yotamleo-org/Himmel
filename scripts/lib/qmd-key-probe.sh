@@ -96,7 +96,7 @@ fi
 # curl's own -m sits just inside the whole-tree deadline so the usual timeout
 # is a clean curl rc 28; qmd_bounded is the backstop that kills the group.
 reply="$(printf 'header = "Authorization: Bearer %s"\n' "$token" |
-  qmd_bounded "$((secs + 5))" curl -q --noproxy '*' ${auth[@]+"${auth[@]}"} -s -m "$secs" -w '\n%{http_code}' -X POST \
+  qmd_bounded "$((secs + 5))" curl -q --noproxy '*' -g ${auth[@]+"${auth[@]}"} -s -m "$secs" -w '\n%{http_code}' -X POST \
     -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
     -d "$payload" -- "$url" 2>/dev/null)"
 rc=$?

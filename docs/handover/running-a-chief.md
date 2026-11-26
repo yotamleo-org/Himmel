@@ -284,7 +284,7 @@ pointers with their source, never your conclusion; nothing found is
 search under Dispatching a worker. Name the same route in the brief of any
 subagent you send looking for knowledge (for example
 bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c luna "worker brief Prior art"): a subagent inherits no
-search step and has hit a missing tool error on the connected route. A salus-marked repo searches
+search step and has hit a missing tool error on the connected route. Send each search as its own tool call, with no other call in the same response: a call sent beside one that a hook rewrites is refused unrun. A salus-marked repo searches
 nothing: no route in its brief, and no search on its ticket's words.
 
 The chief writes a brief from
@@ -540,8 +540,9 @@ effort guidance, including the chief's own wake-up budget, is in
   brief. Run a minerva worker for each `CORE` key without `SPEC ok`.
 - **The minerva design worker launches on a key with no spec.** The
   brief for that minerva worker carries the line `> **Design leg:** minerva`,
-  spelled exactly so, and a `Writes:` line that names only `.md` files in the
-  state repo's `specs/` folder. Each file is either relative to the bucket,
+  spelled exactly so, and a `Writes:` line that names the `.md` files of the
+  state repo's `specs/` folder (and, beside an absolute spec, that spec's own
+  minerva files, below). Each file is either relative to the bucket,
   such as `specs/designs/<KEY>-<slug>.md` or `specs/plans/<KEY>-<slug>.md`,
   or an absolute path under the handover root. `brief-lint.sh` then reads the
   brief as a design worker. A key that is core only because of its label gets
@@ -550,6 +551,20 @@ effort guidance, including the chief's own wake-up budget, is in
   file or a word of prose, the marker brief is refused outright. A build brief
   never carries the marker, so it still needs `SPEC ok`. Without the marker, a
   `specs/` token is not a path, and the ticket's own paths decide.
+- **A design leg's `Writes:` line also names its spec's minerva files.**
+  `gen-briefs.py` adds them itself, after the core gate, for every absolute spec
+  under `specs/design`, `specs/designs` or `specs/spec` on a design leg: the
+  `<stem>.estimate.json`, the `<stem>.html` page, the plan in `specs/plans/`, and
+  the spec and plan critic returns r1 to r6 beside the spec. So a design leg's
+  `scope` text need not list them and should not say "spec and plan only": a
+  `> **Minerva files:**` line right after the `Writes:` line tells the worker they
+  are part of its Writes. `brief-lint.sh` and `gen-briefs.py` fold those exact names
+  out of the docs-only test, so a ticket may name them too and the leg stays a
+  design leg; any other `.json` or `.html` still makes it a build leg. Siblings fold
+  only beside an absolute spec path under the handover root: next to a
+  bucket-relative spec, a sibling still refuses the `Design leg: minerva` brief.
+  A spec that keeps its estimate under another name, the `specs/<KEY>/` layout and a
+  round past r6 are not added; those still cost one ask to the chief.
 
 The chief's own helper subagents (`Agent` dispatches inside the chief session)
 follow the same policy: raise *effort* before tier, and name the model per
@@ -1486,13 +1501,13 @@ its subagent children too.
   `HIMMEL_T3_CHIEF_TITLES` (newline-separated; default `Manage T3 Code Sync`).
   This binds the operator's own T3 UI as well. A released or settled thread is
   not lost: it is woken from outside (below).
-- **The co-chief arms keepalive.** As its one background task
-  (`run_in_background`) it runs `bash scripts/t3/keepalive.sh`. That keeps its
-  session pinned so it stays on the bus. It ends (exit 0) when the wake file
-  `${XDG_RUNTIME_DIR:-/tmp}/himmel-t3/cochief.wake` appears (`WOKEN`, with the
-  file's contents) or after 3.5 hours (`KEEPALIVE-EXPIRED`). Either way the
-  co-chief gets a turn and re-arms it. `--wake-file` and `--max-seconds`
-  override the defaults.
+- **A relay is launched on demand and runs no keepalive.** When you need one, or the
+  last one has gone silent, run `bash scripts/t3/relay-launch.sh`: it refuses a second
+  live relay and prints the launch block (provider `claudeAgent_t3-relay`, model, title,
+  brief) that you send through the guarded `mcp__t3-code__` launch tool. The relay
+  holds no background task, so T3 closes it 30 minutes after its last turn and you
+  launch a fresh one. [`docs/internals/t3-relay.md`](../internals/t3-relay.md).
+  `scripts/t3/keepalive.sh` is no longer part of any relay contract.
 - **A chief wakes a released thread** with
   `bash scripts/t3/t3-send.sh <title|threadId> <msg-file>` (`-` reads stdin). It
   starts a turn with full context, queued if the thread is busy, and unsettles
@@ -1515,7 +1530,8 @@ its subagent children too.
   It also prints `LINKED-PR <id> <title> linked=<n> open=<m>` for an unsettled
   chief-role thread holding any linked PR, open or merged (report only, never
   woken).
-  `keepalive.sh` runs it with `--wake` every 15 polls (about 5 minutes).
+  Run it by hand or from a chief duty; the retired `keepalive.sh` ran it with `--wake`
+  every 15 polls (about 5 minutes) while it was armed.
 
 ### A worker in a T3 thread reaches the chief: no relay thread
 

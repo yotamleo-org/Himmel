@@ -97,9 +97,8 @@ Run these, in order, and write the result as the first bullet under
     and is never a GO: read `chief-sections/voice-lines.md` first.
 12. **Render the chief board (local only):**
     `node "{{KIT}}/board.mjs" --doc "<this file>" --changed` prints `CHANGED <path>`
-    or `UNCHANGED <path>`; record it on `board:`, never publish it (`Artifact` is denied).
-    The operator opens it in the AG-UI Fleet page (`himmelctl ui --agui`); a
-    `board-section.mjs` note shows there in about 5 s. Notes, tracker: `chief-sections/board-tracker.md`.
+    or `UNCHANGED <path>`; record it on `board:`, never publish it (`Artifact` is denied).    The operator opens it in the AG-UI Fleet page (`himmelctl ui --agui`); a
+    `board-section.mjs` note shows there in about 5 s. Notes, tracker, the 2-3 min board timer: `chief-sections/board-tracker.md`.
 13. **Never call `AskUserQuestion`:** it hangs you and every waiting worker;
     decide on a stated default.
 

@@ -79,6 +79,14 @@
 # subjects. A .deferred-to that cannot be removed or written exits 5, like
 # every other state-file error; a write failure names the filed key for
 # --defer-to.
+# start runs bounded: an outer holds CR_REVIEW_START_TIMEOUT_SECS (1 to 280, default
+# 240) over a body in its own process group, with its output in temp files. A body that
+# answered, or exited by itself, is never refused. At the bound the outer stops the
+# body's group, releases the counter lock only when its record names the body, and
+# exits 5 with one line naming the last step reached and the processes it was waiting
+# on. It does not give the round back: the files stay as a hand kill leaves them, and
+# the next start settles them. When ps cannot confirm the caller, start does not split
+# and runs unbounded, with one stderr line saying so.
 # Bash 3.2-safe.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
@@ -112,6 +120,183 @@ usage() {
     echo "       review-round.sh start|check --pr <n> --head <40-hex sha>   (an outside PR reviewed from its diff, its branch not checked out; check reads only)" >&2
     echo "       review-round.sh abort --pr <n> --head <40-hex sha>   (give back that PR's round when its panel reviewed nothing)" >&2
     exit 2
+}
+
+rr_phase_file=""
+rr_caller="$PPID"
+rr_body=""
+rr_wd=""
+rr_dir=""
+rr_bound=240
+rr_usr1=0
+rr_lock_clause=""
+rr_phase() { [ -z "$rr_phase_file" ] || printf '%s\n' "$1" > "$rr_phase_file" 2>/dev/null; return 0; }
+
+rr_tree() {
+    local f="$1" n=0
+    {
+        { ps -ww -A -o pgid=,pid=,ppid=,stat=,args= 2>/dev/null || ps -A -o pgid=,pid=,ppid=,stat=,args= 2>/dev/null; } \
+            | awk -v g="$rr_body" '
+                { pg[NR] = $1; pd[NR] = $2; pp[NR] = $3; st[NR] = $4; ln[NR] = $0; n = NR; if ($1 == g) ing[$2] = 1 }
+                END {
+                    for (i = 1; i <= n; i++) if (st[i] !~ /^Z/ && (pg[i] == g || (pp[i] in ing))) {
+                        s = ln[i]
+                        sub(/^[ \t]*[0-9]+[ \t]+[0-9]+[ \t]+[0-9]+[ \t]+[^ \t]+[ \t]*/, "", s)
+                        print pd[i] " " substr(s, 1, 100)
+                    }
+                }' > "$f.part"
+    } </dev/null >/dev/null 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- &
+    rr_rt=$!
+    while [ "$n" -lt 20 ] && kill -0 "$rr_rt" 2>/dev/null; do n=$((n + 1)); sleep 0.1; done
+    if kill -0 "$rr_rt" 2>/dev/null || ! cat "$f.part" > "$f" 2>/dev/null; then
+        printf 'tree not read\n' > "$f"
+    fi
+    return 0
+}
+
+rr_stop_group() {
+    local n=0
+    kill -TERM -- "-$rr_body" 2>/dev/null || return 0
+    while [ "$n" -lt 2 ]; do
+        sleep 1
+        kill -0 -- "-$rr_body" 2>/dev/null || return 0
+        n=$((n + 1))
+    done
+    kill -KILL -- "-$rr_body" 2>/dev/null
+    return 0
+}
+
+rr_stop_watchdog() {
+    kill -KILL -- "-$rr_wd" 2>/dev/null
+    wait "$rr_wd" 2>/dev/null
+    return 0
+}
+
+rr_release_lock() {
+    local lib="$HIMMEL_ROOT/scripts/lib/shared-branch-lock.sh" rec rc
+    rr_lock_clause="the counter lock was not checked"
+    [ -f "$lib" ] && [ -f "$HIMMEL_ROOT/scripts/lib/qmd-bounded.sh" ] || return 0
+    # shellcheck source=scripts/lib/qmd-bounded.sh
+    # shellcheck disable=SC1091
+    . "$HIMMEL_ROOT/scripts/lib/qmd-bounded.sh" 2>/dev/null || return 0
+    # swallow-ok: rc 2 or 124 from the capped status call leaves the clause at "not checked"
+    rec="$(SHARED_BRANCH_LOCK_NS=himmel-cr-review-round QMD_KILL_GRACE_SECS=1 qmd_bounded 10 bash "$lib" status "." "$branch" 2>/dev/null)"
+    rc=$?
+    case "$rc" in
+        0) rr_lock_clause="it holds no counter lock" ;;
+        11)
+            case "$rec" in
+                "{\"pid\":$rr_body,"*|"{\"pid\":$rr_body}"*)
+                    SHARED_BRANCH_LOCK_NS=himmel-cr-review-round QMD_KILL_GRACE_SECS=1 \
+                        qmd_bounded 10 bash "$lib" release-if-owner "." "$branch" "$rec" >/dev/null 2>&1
+                    case $? in
+                        0) rr_lock_clause="the counter lock it held was released" ;;
+                        3) rr_lock_clause="it holds no counter lock" ;;
+                    esac ;;
+                '{"pid":'*) rr_lock_clause="it holds no counter lock" ;;
+                *) rr_lock_clause="the counter lock has no owner record; if no start or grant is running on $branch, clear it with SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash scripts/lib/shared-branch-lock.sh release . $branch" ;;
+            esac ;;
+    esac
+    return 0
+}
+
+rr_refuse() {
+    local last="unknown" tree round
+    [ -e "$rr_dir/flag" ] || rr_tree "$rr_dir/tree"
+    rr_stop_group
+    rr_stop_watchdog
+    rr_release_lock
+    cat "$rr_dir/err" >&2 2>/dev/null
+    [ ! -s "$rr_dir/phase" ] || read -r last < "$rr_dir/phase" || last="unknown"
+    # swallow-ok: an unreadable tree file reads as "nothing recorded" in the refusal line
+    tree="$(awk 'NR > 1 { printf "; " } { printf "%s", $0 }' "$rr_dir/tree" 2>/dev/null)"
+    [ -n "$tree" ] || tree="nothing recorded"
+    case "$last" in
+        snapshot-write|delta-write|persist)
+            round="its round may stay counted; a restart at ${head_sha:-unknown} continues it, and a start at another head may wait up to two hours" ;;
+        *) round="its round files are left as a killed start leaves them, and the next start settles them" ;;
+    esac
+    printf 'review-round: start on %s at %s %s (last step: %s) - %s; %s; it was waiting on: %s\n' \
+        "$branch" "${head_sha:-unknown}" "$1" "$last" "$rr_lock_clause" "$round" "$tree" >&2
+    exit 5
+}
+rr_on_signal() {
+    trap : TERM INT HUP
+    rr_refuse "was stopped by signal inside its ${rr_bound}s bound"
+}
+
+rr_start_outer() {
+    local why="" pp
+    # swallow-ok: a failed ps read leaves start unsplit, and the stderr line says why
+    pp="$(ps -o ppid= -p "$$" 2>/dev/null)" || pp=""
+    pp="${pp//[[:space:]]/}"
+    if [ "$pp" != "$PPID" ]; then why="ps cannot confirm the caller"
+    elif ! command -v sleep >/dev/null 2>&1; then why="no sleep on PATH"
+    # prim-ok: fixture copies of this script have no scripts/lib/prim.sh
+    elif ! rr_dir="$(mktemp -d "${TMPDIR:-/tmp}/review-round-start.XXXXXX" 2>/dev/null)"; then why="no temp dir"  # swallow-ok: a failed mktemp leaves start unsplit, and the stderr line says why
+    fi
+    if [ -n "$why" ]; then
+        rr_dir=""
+        echo "review-round: start runs unbounded ($why)" >&2
+        return 0
+    fi
+    trap 'rm -rf "$rr_dir"' EXIT
+    rr_bound="${CR_REVIEW_START_TIMEOUT_SECS:-240}"
+    case "$rr_bound" in ''|*[!0-9]*) rr_bound=240 ;; esac
+    { [ "$rr_bound" -ge 1 ] && [ "$rr_bound" -le 280 ]; } 2>/dev/null || rr_bound=240
+    trap 'rr_usr1=1' USR1
+    set -m
+    _RR_START_INNER=1 _RR_START_CALLER="$PPID" _RR_START_PHASE="$rr_dir/phase" "$BASH" "$0" start ${rr_args[@]+"${rr_args[@]}"} \
+        </dev/null >"$rr_dir/out" 2>"$rr_dir/err" 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- &
+    rr_body=$!
+    (
+        sleep "$rr_bound"
+        rr_tree "$rr_dir/tree"
+        : > "$rr_dir/flag"
+        rr_stop_group
+        kill -USR1 "$$" 2>/dev/null
+    ) </dev/null >/dev/null 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- &
+    rr_wd=$!
+    set +m
+    trap rr_on_signal TERM INT HUP
+    local w=0 w2 st rc=0
+    while :; do
+        wait "$rr_body" 2>/dev/null
+        w=$?
+        if kill -0 "$rr_body" 2>/dev/null; then
+            if [ "$rr_usr1" -eq 1 ]; then
+                # swallow-ok: no stat means the body is gone, which the next wait settles
+                st="$(ps -o stat= -p "$rr_body" 2>/dev/null)"
+                st="${st//[[:space:]]/}"
+                case "$st" in ''|Z*) continue ;; *) rc=137; break ;; esac
+            fi
+            continue
+        fi
+        if [ "$rr_usr1" -eq 1 ] && [ "$w" -gt 128 ]; then
+            wait "$rr_body" 2>/dev/null
+            w2=$?
+            [ "$w2" -eq 127 ] || w="$w2"
+        fi
+        rc="$w"
+        break
+    done
+    trap : TERM INT HUP
+    if [ -s "$rr_dir/out" ]; then
+        rr_stop_watchdog
+        cat "$rr_dir/err" >&2
+        cat "$rr_dir/out"
+        [ "$rc" -le 128 ] || rc=0
+        exit "$rc"
+    fi
+    if [ "$rc" -ne 0 ] && [ "$rc" -le 128 ]; then
+        rr_stop_watchdog
+        cat "$rr_dir/err" >&2
+        exit "$rc"
+    fi
+    if [ -e "$rr_dir/flag" ]; then rr_refuse "did not finish within ${rr_bound}s"
+    elif [ "$rc" -gt 128 ]; then rr_refuse "was killed by signal $((rc - 128))"
+    else rr_refuse "exited 0 but its answer was lost"
+    fi
 }
 
 # test_path_p <path>: the test-path rule of the scope record.
@@ -279,6 +464,7 @@ EOF
 # inc_t, inc_merge, inc_mt_out, inc_mt_rc, inc_empty and inc_size (empty when
 # unknown); fails when there is no increment. .delta and .free record R, not L.
 increment_of() {
+    rr_phase increment
     inc_l="" inc_b="" inc_t="" inc_merge=0 inc_mt_out="" inc_mt_rc=0 inc_empty=0 inc_size=""
     git merge-base --is-ancestor "$1" "$2" 2>/dev/null || return 1
     if [ -n "$base_sha" ]; then
@@ -456,6 +642,7 @@ clean_merge_forward() {
 verb="${1:-}"
 [ -n "$verb" ] || usage
 shift
+rr_args=("$@")
 # read-only, writes no state, so it needs no --branch: the answer
 # is a pure function of the two commits in cwd's repository.
 if [ "$verb" = "trivial-descendant" ]; then
@@ -521,6 +708,23 @@ case "$verb" in
     *) usage ;;
 esac
 
+if [ "$verb" = "start" ] && [ "${_RR_START_INNER:-}" = 1 ]; then
+    rr_c="${_RR_START_CALLER:-}"
+    rr_phase_file="${_RR_START_PHASE:-}"
+    unset _RR_START_INNER _RR_START_CALLER _RR_START_PHASE
+    # swallow-ok: a failed ps read cannot confirm the caller, and the body then exits 5
+    rr_pp="$(ps -o ppid= -p "$PPID" 2>/dev/null)" || rr_pp=""
+    rr_pp="${rr_pp//[[:space:]]/}"
+    if [ -n "$rr_c" ] && [ "$rr_pp" = "$rr_c" ]; then
+        rr_caller="$rr_c"
+    else
+        echo "review-round: cannot confirm the caller of start" >&2
+        exit 5
+    fi
+elif [ "$verb" = "start" ]; then
+    rr_start_outer
+fi
+
 if ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
     echo "review-round: invalid branch name '$branch'" >&2
     exit 2
@@ -546,6 +750,7 @@ fi
 # no consumer re-resolves the caller string. Offline, no gh, an unreadable
 # answer or any other status refuses EVERY --base-sha round (exit 8, fail closed).
 if [ -n "$base_sha" ]; then
+    rr_phase verify-base
     # shellcheck source=scripts/lib/timeout-bin.sh
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
@@ -686,6 +891,7 @@ state_sha() {
 # start-written records name a candidate, never a ledger row the session could
 # append itself, and a missing .head stays fail-closed.
 reviewed_head() {
+    rr_phase reviewed-head
     _rh_head="$(state_sha "$head_state")" || return 1
     if [ "$(ledger_query avail "$_rh_head")" = "ok" ]; then
         printf '%s\n' "$_rh_head"
@@ -823,7 +1029,7 @@ EOF
 
 snap_starter() {
     if [ -z "$snap_pid" ]; then echo unknown
-    elif [ "$snap_pid" = "$PPID" ]; then echo caller
+    elif [ "$snap_pid" = "$rr_caller" ]; then echo caller
     elif kill -0 "$snap_pid" 2>/dev/null; then echo alive
     else echo ended
     fi
@@ -920,7 +1126,7 @@ EOF
 # candidate evidence is the explicit way out of a repeated-class stop.
 # shellcheck disable=SC2016  # JavaScript template fields are literal here
 judge_class_check() {
-    VERDICT_DIR="$dir" HISTORY="$verdict_state" CANDIDATE="$1" WANT="$2" SIGNED="$3" ALT="${4:-}" node -e '
+    VERDICT_DIR="$5" HISTORY="$verdict_state" CANDIDATE="$1" WANT="$2" SIGNED="$3" ALT="${4:-}" node -e '
 const fs = require("fs"), path = require("path"), cp = require("child_process"), crypto = require("crypto"), e = process.env;
 // A layer-decision counts only from a record whose mac verified; the
 // bash side hands over qid/name:sha256 of the bytes it verified, and the record
@@ -1066,6 +1272,87 @@ _origin_nwo() {
     printf '%s\n' "${nwo%.git}"
 }
 
+# shellcheck disable=SC2016  # JavaScript source is literal here
+verdict_select() {
+    VS_DIR="$1" VS_WANT="$2" VS_MODE="$3" node -e '
+const fs = require("fs"), path = require("path"), e = process.env;
+const seg = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const nogo = /^\*\*NO-GO\*\* for head `([0-9a-f]{40})`\.?$/;
+const want = Buffer.from(e.VS_WANT || "");
+let top;
+try { top = fs.readdirSync(e.VS_DIR); } catch (_) { process.exit(2); }
+const out = [], heads = new Set();
+let probe = "";
+for (const q of top) {
+  if (q.startsWith(".")) continue;
+  const qdir = path.join(e.VS_DIR, q);
+  let names;
+  try {
+    if (!fs.statSync(qdir).isDirectory()) continue;
+    names = fs.readdirSync(qdir);
+  } catch (_) { continue; }
+  const plain = seg.test(q);
+  let named = false;
+  for (const n of names) {
+    if (n.startsWith(".") || !n.endsWith(".md")) continue;
+    const f = path.join(qdir, n);
+    let buf;
+    try {
+      if (!fs.lstatSync(f).isFile()) { named = true; continue; }
+      buf = fs.readFileSync(f);
+    } catch (_) { named = true; continue; }
+    if (buf.length === 0 || buf.includes(0)) { named = true; continue; }
+    if (buf.includes(want)) named = true;
+    if (e.VS_MODE === "nogo" && plain) {
+      const l8 = buf.toString("latin1").split("\n")[7];
+      const m = l8 === undefined ? null : nogo.exec(l8.replace(/\r/g, ""));
+      if (m && m[1] !== e.VS_WANT) { out.push("N " + q + " " + m[1]); heads.add(m[1]); }
+    }
+    if (!probe && plain && seg.test(n.slice(0, -3))) probe = q + "/" + n;
+  }
+  if (named && plain) out.push("S " + q);
+}
+for (const h of heads) out.push("H " + h);
+if (probe) out.push("P " + probe);
+if (out.length) process.stdout.write(out.join("\n") + "\n");
+'
+}
+
+verdict_sel_read() {
+    sel="" vs_heads="" vs_probe=""
+    while read -r vs_k vs_q vs_h; do
+        case "$vs_k" in
+            S) sel="$sel $vs_q" ;;
+            H) vs_heads="$vs_heads$vs_q
+" ;;
+            P) vs_probe="$vs_q" ;;
+        esac
+    done <<EOF
+$1
+EOF
+}
+
+verdict_sel_descendants() {
+    vs_crc=0
+    [ -n "$vs_heads" ] || return 0
+    vs_types="$(printf '%s' "$vs_heads" | git cat-file --batch-check)" || vs_crc=$?
+    [ "$vs_crc" -eq 0 ] || return 1
+    vs_keep=""
+    while read -r vs_sha vs_type _; do
+        case "$vs_type" in
+            commit|tag) git merge-base --is-ancestor "$1" "$vs_sha" 2>/dev/null && vs_keep="$vs_keep $vs_sha " ;;
+        esac
+    done <<EOF
+$vs_types
+EOF
+    while read -r vs_k vs_q vs_h; do
+        [ "$vs_k" = N ] || continue
+        case "$vs_keep" in *" $vs_h "*) sel="$sel $vs_q" ;; esac
+    done <<EOF
+$2
+EOF
+}
+
 # Print space-separated "<qid>/<name>" records ruling NO-GO for
 # head $1 (one per qid), in chief-kit/write-verdict.sh format, under this repo's
 # verdict scope; rc 1 when there is none. A qid counts only when every record
@@ -1074,6 +1361,7 @@ _origin_nwo() {
 # consumed on this branch still contributes current-head class vetoes.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 judge_nogo_record() (
+    rr_phase judge-nogo
     want="$1"
     lib="$HIMMEL_ROOT/scripts/lib"
     # shellcheck source=scripts/lib/handover-path.sh
@@ -1091,6 +1379,36 @@ judge_nogo_record() (
         dir="$dir/$seg"
         [ -d "$dir" ] && [ ! -L "$dir" ] || exit 1
     done
+    vs_out="$(verdict_select "$dir" "$want" nogo)"; vs_rc=$?
+    if [ "$vs_rc" -ne 0 ]; then
+        echo "review-round: verdict selection failed (rc $vs_rc) - the judge record is refused" >&2
+        exit 8
+    fi
+    verdict_sel_read "$vs_out"
+    if ! verdict_sel_descendants "$want" "$vs_out"; then
+        echo "review-round: verdict selection failed (cat-file rc $vs_crc) - the judge record is refused" >&2
+        exit 8
+    fi
+    if [ -d "$git_dir/cr-review-rounds" ]; then
+        vs_scan=0
+        grep -rqsF --include='*.verdicts' ' ./' "$git_dir/cr-review-rounds" 2>/dev/null || vs_scan=$?
+        if [ "$vs_scan" -ne 1 ]; then
+            echo "review-round: cannot scan $git_dir/cr-review-rounds (grep rc $vs_scan) - the judge record is refused" >&2
+            exit 8
+        fi
+    fi
+    if [ -e "$verdict_state" ] || [ -L "$verdict_state" ]; then
+        vs_scan=0
+        grep -qsF ' ./' "$verdict_state" 2>/dev/null || vs_scan=$?
+        if [ "$vs_scan" -ne 1 ]; then
+            echo "review-round: cannot read $verdict_state for class history - delta round refused" >&2
+            exit 8
+        fi
+    fi
+    if [ -n "$vs_probe" ] && ! go_verdict_snapshot "$dir/$vs_probe"; then
+        echo "review-round: cannot snapshot a verdict record ($vs_probe) - the judge record is refused" >&2
+        exit 8
+    fi
     pr_want=""
     re_session='^writer-session: [A-Za-z0-9-]+$'
     re_written='^written-at: [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
@@ -1100,6 +1418,13 @@ judge_nogo_record() (
         qid="${qdir##*/}"
         if [ ! -d "$qdir" ] || [ -L "$qdir" ]; then continue; fi
         case "$qid" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) continue ;; esac
+        case "$qid" in
+            [ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789]*)
+                case "$qid" in
+                    *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]*) ;;
+                    *) case " $sel " in *" $qid "*) ;; *) continue ;; esac ;;
+                esac ;;
+        esac
         # A qid consumed on any branch buys no other round, so
         # two branches sharing a last reviewed head cannot each spend it.
         # A scan that fails (rc 2) refuses the record - only rc 1
@@ -1187,7 +1512,7 @@ EOF_SNAP
         fi
     done
     [ -n "$check_hits" ] || exit 1
-    judge_class_check "$check_hits" "$want" "$signed" "$alt" || exit 8
+    judge_class_check "$check_hits" "$want" "$signed" "$alt" "$dir" || exit 8
     [ "$pr_want" != "-" ] || exit 8
     [ -n "$hits" ] || exit 1
     printf '%s\n' "$hits"
@@ -1202,6 +1527,7 @@ EOF_SNAP
 # branch is skipped, so one record buys one round.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 judge_scope_record() (
+    rr_phase judge-scope
     from="$1" want="$2"
     lib="$HIMMEL_ROOT/scripts/lib"
     # shellcheck source=scripts/lib/handover-path.sh
@@ -1221,11 +1547,37 @@ judge_scope_record() (
     re_session='^writer-session: [A-Za-z0-9-]+$'
     re_written='^written-at: [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
     pr_want=""
+    vs_out="$(verdict_select "$dir" "$want" scope)"; vs_rc=$?
+    if [ "$vs_rc" -ne 0 ]; then
+        echo "review-round: verdict selection failed (rc $vs_rc) - the scope round is refused" >&2
+        exit 8
+    fi
+    verdict_sel_read "$vs_out"
+    if [ -d "$git_dir/cr-review-rounds" ]; then
+        vs_scan=0
+        grep -rqsF --include='*.verdicts' ' ./' "$git_dir/cr-review-rounds" 2>/dev/null || vs_scan=$?
+        if [ "$vs_scan" -ne 1 ]; then
+            echo "review-round: cannot scan $git_dir/cr-review-rounds (grep rc $vs_scan) - the scope record is refused" >&2
+            exit 8
+        fi
+    fi
+    if [ -n "$vs_probe" ] && ! go_verdict_snapshot "$dir/$vs_probe"; then
+        echo "review-round: $vs_probe cannot be read whole (unreadable, empty or NUL) - the scope round is refused" >&2
+        exit 8
+    fi
     # Any NO-GO for the new head, in any qid (consumed or not, signed
     # or not - a NO-GO only narrows), blocks the scope round: a GO beside it is
     # not the judges' last word.
     for nf in "$dir"/*/*.md; do
         if [ ! -f "$nf" ] || [ -L "$nf" ]; then continue; fi
+        qid="${nf#"$dir"/}"; qid="${qid%%/*}"
+        case "$qid" in
+            [ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789]*)
+                case "$qid" in
+                    *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]*) ;;
+                    *) case " $sel " in *" $qid "*) ;; *) continue ;; esac ;;
+                esac ;;
+        esac
         # A record that cannot be read whole may be a NO-GO: it vetoes, never skips.
         if ! go_verdict_snapshot "$nf"; then
             echo "review-round: ${nf#"$dir"/} cannot be read whole (unreadable, empty or NUL) - the scope round is refused" >&2
@@ -1243,6 +1595,13 @@ judge_scope_record() (
         qid="${qdir##*/}"
         if [ ! -d "$qdir" ] || [ -L "$qdir" ]; then continue; fi
         case "$qid" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) continue ;; esac
+        case "$qid" in
+            [ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789]*)
+                case "$qid" in
+                    *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]*) ;;
+                    *) case " $sel " in *" $qid "*) ;; *) continue ;; esac ;;
+                esac ;;
+        esac
         if [ -d "$git_dir/cr-review-rounds" ]; then
             scan=0
             grep -rqsF --include='*.verdicts' " $qid/" "$git_dir/cr-review-rounds" 2>/dev/null || scan=$?
@@ -1498,7 +1857,7 @@ delta_check() {
             case "$run_pid" in
                 ''|*[!0-9]*) run_pid="" ;;
             esac
-            if [ -n "$run_pid" ] && [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; then
+            if [ -n "$run_pid" ] && [ "$run_pid" != "$rr_caller" ] && kill -0 "$run_pid" 2>/dev/null; then
                 echo "review-round: the delta round on $branch is already running (start by pid $run_pid) - wait for it" >&2
                 return 8
             fi
@@ -1563,6 +1922,7 @@ EOF
     fi
     delta_verdict="$(judge_nogo_record "$delta_from" "$delta_to")"
     judge_rc=$?
+    rr_phase delta-check
     [ "$judge_rc" -ne 8 ] || return 8
     if ! increment_of "$delta_from" "$delta_to"; then
         delta_refuse "review-round: no increment from $delta_from to $delta_to can be computed (git could not answer or merge-tree failed) - $full_note"
@@ -1622,6 +1982,7 @@ EOF
     # A judge-signed test- or lint-only record for the new head.
     scope_hit="$(judge_scope_record "$delta_from" "$delta_to")"
     scope_rc=$?
+    rr_phase delta-check
     [ "$scope_rc" -ne 8 ] || return 8
     if [ "$scope_rc" -eq 0 ] && [ -n "$scope_hit" ]; then
         scope_hit="${scope_hit%% *}"
@@ -1894,7 +2255,7 @@ if [ -n "$pr" ]; then
         [ "$verb" != "start" ] || SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
             bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
     }
-    if [ "$verb" = "start" ]; then counter_lock || exit 5; fi
+    if [ "$verb" = "start" ]; then rr_phase lock; counter_lock || exit 5; fi
     read_round || { pr_unlock; exit 5; }
     # A start at the head the counted round already ran on is bookkeeping: it reuses that
     # round, and that round does not count against the cap when it is authorized.
@@ -1906,13 +2267,14 @@ if [ -n "$pr" ]; then
         pr_reuse=1
         pr_used=$((round - 1))
     fi
+    rr_phase authorize
     if ! pr_auth="$(outside_pr_authorize "$pr" "$head_sha" "$pr_used")"; then
         pr_unlock
         echo "review-round: PR #$pr at $head_sha is not authorized for a no-checkout review (author not on the allowlist, no recorded approval for exactly this head, the full-round cap used, or the forge could not be read) - nothing was recorded" >&2
         exit 5
     fi
     if [ "$pr_reuse" -eq 1 ]; then
-        [ "$verb" != "start" ] || { [ -f "$delta_run" ] && printf '%s\n' "$PPID" >> "$delta_run" 2>/dev/null; } || rm -f "$delta_run" 2>/dev/null
+        [ "$verb" != "start" ] || { [ -f "$delta_run" ] && printf '%s\n' "$rr_caller" >> "$delta_run" 2>/dev/null; } || rm -f "$delta_run" 2>/dev/null
         pr_unlock
         if [ "$verb" = "check" ]; then printf '%s %s\n' "$round" "$pr_auth"; else printf '%s\n' "$round"; fi
         exit 0
@@ -1922,6 +2284,7 @@ if [ -n "$pr" ]; then
         printf '%s %s\n' "$pr_next" "$pr_auth"
         exit 0
     fi
+    rr_phase persist
     pr_tmp_state="$state.tmp.$$"
     pr_tmp_head="$head_state.tmp.$$"
     # swallow-ok: an unreadable lock status reads as "not the owner", which refuses the write below
@@ -1935,7 +2298,7 @@ if [ -n "$pr" ]; then
         echo "review-round: cannot persist round $pr_next for PR #$pr under the counter lock" >&2
         exit 5
     fi
-    printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
+    printf '%s\n' "$rr_caller" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
     if ! SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
         bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1; then
         echo "review-round: persisted round $pr_next for PR #$pr but could not release its counter lock" >&2
@@ -1946,6 +2309,7 @@ if [ -n "$pr" ]; then
 fi
 
 if [ "$verb" = "start" ]; then
+    rr_phase lock
     counter_lock || exit 5
     start_unlock() {
         SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
@@ -1962,6 +2326,7 @@ if [ "$verb" = "start" ]; then
     fi
     snap_wrote=0
     snap_rc=1
+    rr_phase snapshot
     [ -z "$start_head" ] || { snap_rc=0; snap_load || snap_rc=$?; }
     if [ "$snap_rc" -eq 5 ]; then
         start_unlock
@@ -1990,12 +2355,12 @@ if [ "$verb" = "start" ]; then
             restore_snapshot || snap_rc=5
         elif [ "$snap_head" = "$start_head" ] && [ "$snap_complete" = 1 ] \
             && { [ "$snap_who" = caller ] || [ "$snap_who" = ended ]; }; then
-            if ! snap_write continue "$PPID"; then
+            if ! snap_write continue "$rr_caller"; then
                 start_unlock
                 echo "review-round: cannot record the restart in the round snapshot $snap_state" >&2
                 exit 5
             fi
-            printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
+            printf '%s\n' "$rr_caller" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
             start_unlock
             printf '%s\n' "$snap_answer"
             exit 0
@@ -2049,6 +2414,7 @@ if [ "$verb" = "start" ]; then
             start_class="$inc_class"
         fi
     else
+        rr_phase delta-check
         delta_check
         delta_rc=$?
         if [ "$delta_rc" -ne 0 ]; then
@@ -2065,7 +2431,8 @@ if [ "$verb" = "start" ]; then
     fi
     snap_start() {
         [ -n "$start_head" ] || return 0
-        if ! snap_write before "$start_head" "$PPID" "$(date +%s)" "${snap_list[@]}"; then
+        rr_phase snapshot-write
+        if ! snap_write before "$start_head" "$rr_caller" "$(date +%s)" "${snap_list[@]}"; then
             echo "review-round: cannot write the round snapshot $snap_state - no round is started" >&2
             return 5
         fi
@@ -2079,6 +2446,7 @@ if [ "$verb" = "start" ]; then
     if [ "$postcap" -eq 1 ]; then
         delta_rc=0
         if [ "$start_class" = work ] && [ "${delta_reuse:-0}" -eq 0 ]; then
+            rr_phase delta-write
             # The delta round is recorded first and the judge
             # record consumed after it; a failed consume restores the prior
             # .delta, so a record is never spent on a round that never started.
@@ -2137,6 +2505,7 @@ if [ "$verb" = "start" ]; then
             exit "$delta_rc"
         fi
     fi
+    rr_phase persist
     counted=1
     case "$start_class" in tests|comments|merge-resolution|fix) counted=0 ;; esac
     # A reused pending delta round keeps the counter it already took.
@@ -2205,7 +2574,7 @@ if [ "$verb" = "start" ]; then
     # Written under the counter lock, so the pid checks in delta_check and
     # abort and this claim cannot interleave between two starts.
     # Best effort - a failed write only loses the guard.
-    printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
+    printf '%s\n' "$rr_caller" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
     if [ "$postcap" -eq 1 ]; then
         start_answer="$round delta $inc_l"
     elif [ "$start_class" != full ] && [ "$inc_empty" -eq 0 ]; then

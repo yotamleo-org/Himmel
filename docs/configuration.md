@@ -444,6 +444,7 @@ plugin is installed. Scripts live under `scripts/hooks/`, or under
 | `mcp-policy` | every `mcp__*` call, classified against `scripts/guardrails/mcp-policy.json` and audited | warn-only as shipped (`observe` mode); a server set to `enforce` denies | the registry's `mode` |
 | `allow-thread-resolve`, `approval-grant-check` | the audited review-thread resolve call; a call the operator granted over Telegram | not a veto — only ever emits *allow* | — |
 | `stop-chief-idle-guard` | Stop: a chief session ending its turn while it still holds its queue lock (once per turn) | workflow guard (fail-open) | release the lock (wrap) or `/chief next` |
+| `stop-chief-ask-mirror` | Stop: a finished reply holding `Needs you:`, handed to `ask-mirror.sh` through the stop queue so the ask reaches Telegram | workflow nudge (fail-open) | — |
 | `block-infra-destroy` *(plugin)* | one-step data destruction: `terraform`/`tofu`/`pulumi destroy`, `kubectl delete`, `helm uninstall`, cloud delete/terminate, SQL `DROP`/`TRUNCATE`/`DELETE FROM`, docker prune, … | auth-gated (fail-closed) | `INFRADESTROYOK=1` |
 | `block-worker-write-fence` *(plugin)* | a dispatched worker (`HIMMEL_WORKER=1`) naming the hook-integrity pin directory, or repointing `origin/<default branch>` | auth-gated | `HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1` |
 | `block-lesson-enforcement-writes` *(plugin)* | in a lesson-loop worker (`HIMMEL_LESSON_LOOP=1`), a write to an enforcement path | HARD | none |
@@ -488,7 +489,7 @@ in `.env` or the launching shell):
 |---|---|---|
 | `CHECK_CI_CACHE` | `1` | `0` = no cache: gh's own `--watch` and one gh call per probe (the pre-cache behaviour) |
 | `CHECK_CI_CACHE_DIR` | `$HOME/.himmel/state/ci-cache` | shared cache dir; point every caller at one dir (per user) |
-| `CHECK_CI_CACHE_TTL` | `60` | seconds a snapshot serves poll-grade reads |
+| `CHECK_CI_CACHE_TTL` | `120` | seconds a snapshot serves poll-grade reads |
 | `CHECK_CI_DECIDE_TTL` | `5` | max age of the snapshot a terminal verdict (green/red confirm, required-check gate) may rest on |
 | `CHECK_CI_WATCH_INTERVAL` / `CHECK_CI_WATCH_INTERVAL_MAX` | `30` / `120` | poll-interval floor / ceiling; doubles while the rollup is unchanged, resets on a change |
 | `CHECK_CI_LOW_CORE_FACTOR` | `6` | check-ci multiplies its poll sleeps and `CR_FIRST_EVERY` by this while every live REST `core` row in quota.tsv is under `GHQ_SCAN_FLOOR`. At the start check-ci also waits for the REST core reset when every token (`read`, `read2`, `main`) is under `GHQ_SCAN_FLOOR`, as it already does for GraphQL, and after a refusal or a `QUOTA-PAUSE` it waits on main alone (a read that ends on main, such as the classic protection endpoint, needs it); a reset beyond `--max-wait` is exit 2 |
@@ -521,6 +522,7 @@ prints the live budget as one read-only line (`gh-api: remaining=R/5000 reset=HH
 `next-dispatchable` and `ticket-status`; every other caller is `main`. A scan gates on the token its
 reads ride (`ghq_scan_token`), and a `blocked/` marker records the caller's routes.
 `scripts/measurements/gh-graphql-callers.sh` is a read-only measurement that prints an estimate of GraphQL points per hour by calling script (1 point per call), with `watch` (samples the live fleet, changes nothing), `run` (one command under a counting shim) and `report` modes.
+`scripts/measurements/gh-core-per-token.sh` is the free per-token counterpart: `sample` and `loop` write `rate_limit` for the main and the read token to a log (every 5 minutes by default), and `report` prints core calls an hour per token for any window (`--from`, `--to`), leaving out an interval that crosses a reset.
 Never run your own `gh pr checks` poll loop — that is the spend this replaces;
 call `scripts/check-ci.sh` once, bounded by `--max-wait`. Run a long wait with
 `run_in_background`: its completion notification carries the exit code.
@@ -971,8 +973,8 @@ change; token and access config live *outside* the repo):
 |---|---|---|---|
 | `TELEGRAM_BOT_TOKEN` | — | `~/.claude/channels/telegram/.env` (path override `TELEGRAM_ENV`) | bot auth. A *separate* copy in the repo `.env` feeds only the opt-in jira-nudge / session-status relays |
 | `access.json` (`TELEGRAM_ACCESS_PATH`) | — | `~/.claude/channels/telegram/access.json` | the allowlist: `allowFrom` (DM senders), `groups` (chat-id keys), per-group `allowFrom`/`vault`, `defaultVault`. Fails closed |
-| `TELEGRAM_MONITOR_BOT_TOKEN` | unset | bridge .env only | token of a second bot that posts monitor-class lines to the monitoring group. It must differ from `TELEGRAM_BOT_TOKEN` (the same token is refused). Unset or refused: monitor lines stay on the station in `<bridge root>/monitor/outbox.jsonl`, and escalations still reach the operator. The poller logs `monitoring: ok`, `unset` or `refused <reason>` at start. See [message classes](internals/telegram-bridge.md#message-classes) |
-| `TELEGRAM_MONITOR_CHAT_ID` | unset | bridge .env only | the monitoring group's chat id (a group or supergroup, negative; a channel or private chat is refused). Needs `TELEGRAM_MONITOR_BOT_TOKEN` too |
+| `TELEGRAM_MONITOR_BOT_TOKEN` | unset | bridge .env only | token of a second bot that posts monitor-class lines to the monitoring group. It must differ from `TELEGRAM_BOT_TOKEN` (the same token is refused). Unset or refused: monitor lines stay on the station in `<bridge root>/monitor/outbox.jsonl`, and escalations still reach the operator. The poller logs `monitoring: ok`, `unset` or `refused <reason>` at start. Set it and the chat id together with `bash scripts/remote-setup/remote-setup.sh monitor`, never by hand: it asks for both without showing them, checks that the bot works and can read the group, writes neither unless both pass, and ends with `monitoring: ok <group>` or the reason. Restart the bridge after it. See [message classes](internals/telegram-bridge.md#message-classes) |
+| `TELEGRAM_MONITOR_CHAT_ID` | unset | bridge .env only | the monitoring group's chat id (a group or supergroup, negative; a channel or private chat is refused). Needs `TELEGRAM_MONITOR_BOT_TOKEN` too, and is set with it by `remote-setup.sh monitor` |
 | `TELEGRAM_AUTO_ACTIONS` | OFF | bridge .env *or* process env (process wins) | enables privileged bridge ops one by one, e.g. `/arm` (`arm-resume`), `/restart` (`restart`), `/mergepub` (`merge-public`) and the break-glass ops; the full op list is in the [bridge guide](telegram-bridge.md#slash-chief-requests-and-emergency-lockdown) and [`scripts/telegram/README.md`](../scripts/telegram/README.md#break-glass-ops). The whole-value aliases `1`/`all`/`on`/`yes`/`true` enable only `arm-resume` + `restart`; every other op, `merge-public` included, must be named explicitly. An unrecognized token parses to nothing (the poller warns at startup, naming the dropped tokens) |
 | `TELEGRAM_CLAUDE_MODEL` | `claude-opus-5-5` | own .env | model pin for bounded bridge runs (never inherits your default) |
 | `TELEGRAM_MAX_CONCURRENT_RUNS` / `TELEGRAM_RETRY_MS` / `TELEGRAM_MAX_RETRIES` / `RUN_TIMEOUT_MS` | 2 / 15min / 3 / 30min | own .env | run concurrency/retry/deadline |

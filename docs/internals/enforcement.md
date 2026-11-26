@@ -2064,20 +2064,18 @@ print or grep the contents of a secret file (`.env`, `.env.*`,
 `.envrc`, `id_rsa`, `id_ed25519`, `*.pem`, `*.key`, `*.p12`, `*.pfx`,
 `credentials.json`, `secrets.y[a]ml`). Bypass: `READ_SECRETS_OK=1`.
 
-**Environment dumps and transcript reads.** Two GitHub tokens
+**Environment dumps.** Two GitHub tokens
 reached 33 and 29 transcripts through shapes this guard did not know. It now
 also denies a python/node/bun/deno command that prints the whole environment
 (`print(os.environ)`, `dict(os.environ)`, `os.environb`,
 `console.log(process.env)`, `Bun.env`, `Deno.env.toObject()`) or reads
-`/proc/<pid>/environ`, and a `Read` or `Grep` of a session transcript
-(`~/.claude/projects/**/*.jsonl`, subagent transcripts included; a `Grep`
-rooted at `~/.claude/projects` or a project directory below it too, except the
-`memory/` subtree): a transcript holds every earlier tool result verbatim. A
+`/proc/<pid>/environ`. A `Read` or `Grep` of a session transcript
+(`~/.claude/projects/**/*.jsonl`) is allowed: an agent reading
+its own history only sees what the model already saw. A
 single named key stays allowed (`os.environ.get("PATH")`, `os.environ["HOME"]`,
 `process.env.HOME`, `Bun.env.HOME`, `Deno.env.get("HOME")`), as do
-`printenv HOME` and `echo $PATH`. Not yet matched: a Bash reader
-of a transcript (`cat`, `grep -r`, `jq`), a `Grep` rooted above
-`~/.claude/projects`, an interpreter shell-out to `env`, `process['env']` and a
+`printenv HOME` and `echo $PATH`. Not yet matched: an interpreter shell-out to
+`env`, `process['env']` and a
 destructured `{env} = process`. The filtered shell dumps
 (`env | grep`, `printenv | grep`, `export -p | grep`, `set | grep`) and shell
 `/proc/*/environ` reads were denied before and keep
@@ -4221,7 +4219,7 @@ marker families — `worktree` (`.claude/worktrees`, `clean-garden.sh`,
 `clear-cr-marker`, "CodeRabbit"). A single-family match never denies — that
 conjunction is the false-positive budget keeping bounded read-only research
 frictionless. `subagent_type: Explore` always allows, and `judge-ro` allows while `.claude/agents/<id>.md` pins exactly
-one `tools:` line, `tools: Read, Grep, Glob, Bash`, `tools: Read, Grep, Glob, Bash, Write` or `tools: Read, Grep, Glob, Bash, Write, WebFetch, WebSearch`, the same structural
+one `tools:` line, `tools: Read, Bash`, `tools: Read, Bash, Write` or `tools: Read, Bash, Write, WebFetch, WebSearch` (each also accepted with `Grep, Glob` after `Read`), the same structural
 read-only lane: [`guard-judge-write-scope.sh`](#guard-judge-write-scopesh--judge-ro-write-fence) confines that Write
 to `.md`/`.txt` files directly in a judge dir `judge-dir.sh` made. Any other grant (`Edit`, `MultiEdit`, `NotebookEdit`) costs the lane.
 `brief-drafter` is a separate allowance for drafting worker briefs: it allows
@@ -5383,6 +5381,24 @@ wired 10 s Stop timeout), and the JSON is printed only as the last statement.
 It does not inspect the held Jira/dispatch queue. Test seams:
 `HIMMEL_STOP_GUARD_USAGE_PREFLIGHT`, `HIMMEL_STOP_GUARD_QUEUE_LOCK`. Spec:
 `scripts/hooks/test-stop-chief-idle-guard.sh`.
+
+### `stop-chief-ask-mirror.sh` — a chief's asks reach Telegram without the chief posting them
+
+A third `Stop` entry in `.claude/settings.json`, through the same launcher as the
+idle guard. A post to Telegram waits for a send receipt, longer than a Stop hook may
+block, so the hook only hands the work to the stop queue and returns. When the
+payload's `last_assistant_message` holds `Needs you:` it pipes the payload to
+`stop-queue.mjs enqueue --key chief-ask-mirror-<16 hex of the reply's sha256> -- bash
+scripts/handover/chief-kit/ask-mirror.sh`, adding `HANDOVER_DIR`, `BRIDGE_ROOT` and
+`TELEGRAM_ACCESS_PATH` to the env names the entry carries (paths, not credentials). The
+digest is in the key because the queue keys a waiting entry by (name, session) and a
+newer enqueue replaces it: a plain key would drop a first ask when a second ask-bearing
+reply is queued behind it. `ask-mirror.sh` keeps the chief gate, the parse and the
+dedupe. The hook prints nothing and always exits 0 (fail-open; no `jq` or `node`, junk
+input, no reply or no marker all exit 0), and Stop is not an event `wire-hook-bash.mjs`
+owns, so it has no `EXPECTED_SCRIPT_ORDER` row. The queue entry holds the reply text at
+0600 until the job runs, the one queue entry that carries reply text rather than harness metadata. Spec:
+`scripts/hooks/test-stop-chief-ask-mirror.sh`.
 
 ### `chief-precompact-snapshot.sh` — snapshot a chief's Live state at compaction
 

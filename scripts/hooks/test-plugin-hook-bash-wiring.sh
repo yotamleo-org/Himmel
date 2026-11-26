@@ -98,13 +98,22 @@ fi
 
 # The peer taint hooks ship in the plugin (a peer desk's cwd is outside any
 # checkout); the scripts/hooks copies are what the Codex lane wires.
-for peer_hook in peer-taint-gate.sh peer-taint-mark.sh peer-taint-resume.sh; do
+for peer_hook in peer-taint-gate.sh peer-taint-mark.sh peer-taint-resume.sh phi-read-mark.sh; do
     if cmp -s "$HOOKS_DIR/$peer_hook" "$PLUGIN_ROOT/hooks/$peer_hook"; then
         ok "plugin $peer_hook is byte-identical to scripts/hooks/$peer_hook"
     else
         bad "plugin $peer_hook drifted from scripts/hooks/$peer_hook"
     fi
 done
+
+# shellcheck disable=SC2016 # $1 is the inner shell's argument
+lib_fns() { env -i bash -c '. "$1" >/dev/null 2>&1 && declare -f' lib-fns "$1"; }
+canon_fns="$(lib_fns "$REPO_ROOT/scripts/guardrails/phi-egress-lib.sh")"
+if [ -n "$canon_fns" ] && [ "$canon_fns" = "$(lib_fns "$PLUGIN_ROOT/hooks/phi-egress-lib.sh")" ]; then
+    ok "plugin phi-egress-lib.sh defines the same functions as scripts/guardrails/phi-egress-lib.sh"
+else
+    bad "plugin phi-egress-lib.sh drifted from scripts/guardrails/phi-egress-lib.sh"
+fi
 
 # No hardcoded inventory count here — wire-plugin-hook-bash.mjs's
 # own EXPECTED_HOOKS/EXPECTED_COUNTS (exercised by

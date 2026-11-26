@@ -4,7 +4,7 @@
   "coderabbit_outside_precision": 0.55,
   "claude_floor": { "slug": "claude", "model": "claude-opus-5-5", "provider": "claude-subscription", "effort": "medium", "when": "codex-exhausted" },
   "panel": [
-    { "slug": "codex",      "model": "gpt-6.1-sol",                           "provider": "openai-codex", "route_provider": "openai-codex", "tier": "paid", "mode": "hard", "required": true },
+    { "slug": "codex",      "model": "gpt-6.2-sol",                           "provider": "openai-codex", "route_provider": "openai-codex", "tier": "paid", "mode": "hard", "required": true },
     { "slug": "coderabbit", "provider": "github-app", "mode": "best-effort" }
   ]
 }

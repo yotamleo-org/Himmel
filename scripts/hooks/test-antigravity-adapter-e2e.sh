@@ -59,6 +59,12 @@ printf '{}\n' > "$WT_REPO/.agents/hooks.json"
 printf 'ok\n' > "$WT_REPO/.agents/skills/x/SKILL.md"
 printf 'ok\n' > "$WT_REPO/work.txt"
 printf 'ok\n' > "$MAIN_REPO/work.txt"
+mkdir -p "$HOME/.agents/skills/sk" "$HOME/.claude/skills"
+printf 'ok\n' > "$HOME/.agents/skills/sk/SKILL.md"
+ln -s ../../.agents/skills/sk "$HOME/.claude/skills/sk"
+ln -s "$WT_REPO/.agents/hooks.json" "$WT_REPO/lnk-hooks"
+ln -s "$HOME/.gemini/config" "$WT_REPO/lnk-gemini"
+ln -s "$T3CODE_HOME/userdata/providers/antigravity/hash1/config" "$WT_REPO/lnk-t3"
 
 ARTIFACT_DIR="$T3CODE_HOME/userdata/providers/antigravity/hash1/antigravity-acp/brain/conv-1"
 
@@ -275,6 +281,31 @@ assert_deny "run_command cd ~/.gemini && mv config c2 denied" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"cd ~/.gemini && mv config c2"}')"
 assert_deny "run_command ls ~/.gemini (no subpath) denied" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"ls ~/.gemini"}')"
+assert_deny "run_command write through ~/.claude/skills symlink into ~/.agents denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo x > ~/.claude/skills/sk/SKILL.md"}')"
+# shellcheck disable=SC2016
+assert_deny "run_command write through \$HOME/.claude/skills symlink denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo x > $HOME/.claude/skills/sk/SKILL.md"}')"
+assert_deny "run_command write through absolute .claude/skills symlink denied" "self-protect" \
+    "$(make_pre run_command "$(jq -cn --arg c "echo x > $HOME/.claude/skills/sk/SKILL.md" '{CommandLine:$c}')")"
+assert_deny "run_command relative scratch symlink onto .agents/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo {} > lnk-hooks"}')"
+assert_deny "run_command no-space redirect through scratch symlink denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo {} >lnk-hooks"}')"
+assert_deny "run_command dd of= through scratch symlink denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"dd if=/dev/null of=lnk-hooks"}')"
+assert_deny "run_command write through symlink into ~/.gemini/config denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo {} > lnk-gemini/hooks.json"}')"
+assert_deny "run_command write through symlink into T3 antigravity home denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo {} > lnk-t3/hooks.json"}')"
+assert_deny "run_command direct write ~/.gemini/config/hooks.json denied" "self-protect" \
+    "$(make_pre run_command '{"CommandLine":"echo {} > ~/.gemini/config/hooks.json"}')"
+assert_deny "run_command direct write T3 antigravity config denied" "self-protect" \
+    "$(make_pre run_command "$(jq -cn --arg c "echo {} > $T3CODE_HOME/userdata/providers/antigravity/hash1/config/hooks.json" '{CommandLine:$c}')")"
+assert_pass "run_command ls -la ~/.claude/skills (the directory itself, no symlink into .agents) allowed" \
+    "$(make_pre run_command '{"CommandLine":"ls -la ~/.claude/skills"}')"
+assert_pass "run_command echo to ordinary worktree file allowed" \
+    "$(make_pre run_command '{"CommandLine":"echo ok > work.txt"}')"
 assert_pass "read_file on worktree .agents/hooks.json allowed" \
     "$(make_pre read_file "$(jq -cn --arg p "$WT_REPO/.agents/hooks.json" '{Path:$p}')")"
 assert_pass "read_file on worktree .agents/skills/x/SKILL.md allowed" \
@@ -320,6 +351,40 @@ for t3_tool in preview_open preview_act preview_navigate preview_snapshot previe
 done
 assert_pass "t3_thread_launch with an allowlisted instance passes the shared chain" \
     "$(make_pre mcp_t3-code_t3_thread_launch '{"title":"Work","modelSelection":{"instanceId":"claudeAgent","model":"claude-sonnet-5-5"}}')"
+
+echo "== 8. Non-himmel cwd: luna and salus vaults =="
+mk_vault() {
+    local d="$1"
+    mkdir -p "$d"
+    git -C "$d" init -q -b main
+    git -C "$d" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+    printf 'ok\n' > "$d/note.md"
+}
+LUNA_FX="$TMP/luna-fx"; mk_vault "$LUNA_FX"; touch "$LUNA_FX/.single-writer"
+LUNA_NOSW="$TMP/luna-nosw-fx"; mk_vault "$LUNA_NOSW"
+SALUS_VAULT="$TMP/salus-vault-fx"; mk_vault "$SALUS_VAULT"; touch "$SALUS_VAULT/.single-writer" "$SALUS_VAULT/.salus"
+assert_pass "luna cwd: benign run_command is not failed closed" \
+    "$(make_pre run_command '{"CommandLine":"git status"}' "$LUNA_FX")"
+assert_pass "luna cwd with .single-writer: edit_file on main allowed" \
+    "$(make_pre edit_file "$(jq -cn --arg p "$LUNA_FX/note.md" '{Path:$p,Target:"ok",Replacement:"x"}')" "$LUNA_FX")"
+assert_deny "luna cwd without .single-writer: edit_file on main denied" "main" \
+    "$(make_pre edit_file "$(jq -cn --arg p "$LUNA_NOSW/note.md" '{Path:$p,Target:"ok",Replacement:"x"}')" "$LUNA_NOSW")"
+assert_deny "luna cwd: read_file on .env still denied" "secret" \
+    "$(make_pre read_file "$(jq -cn --arg p "$LUNA_FX/.env" '{Path:$p}')" "$LUNA_FX")"
+assert_pass "salus cwd: read_file on a vault note allowed for agy" \
+    "$(make_pre read_file "$(jq -cn --arg p "$SALUS_VAULT/note.md" '{Path:$p}')" "$SALUS_VAULT")"
+assert_pass "salus cwd: edit_file in the vault allowed for agy" \
+    "$(make_pre edit_file "$(jq -cn --arg p "$SALUS_VAULT/note.md" '{Path:$p,Target:"ok",Replacement:"x"}')" "$SALUS_VAULT")"
+assert_deny "salus cwd: read_file on .env still denied" "secret" \
+    "$(make_pre read_file "$(jq -cn --arg p "$SALUS_VAULT/.env" '{Path:$p}')" "$SALUS_VAULT")"
+assert_deny "salus cwd: run_command cat .env still denied" "secret" \
+    "$(make_pre run_command "$(jq -cn --arg c "cat $SALUS_VAULT/.env" '{CommandLine:$c}')" "$SALUS_VAULT")"
+assert_deny "salus cwd: provider-home read still denied" "provider home" \
+    "$(make_pre read_file "$(jq -cn --arg p "$T3CODE_HOME/userdata/providers/antigravity/hash1/config/hooks.json" '{Path:$p}')" "$SALUS_VAULT")"
+assert_deny "salus cwd: ~/.gemini/config read still denied" ".gemini" \
+    "$(make_pre read_file "$(jq -cn --arg p "$HOME/.gemini/config/hooks.json" '{Path:$p}')" "$SALUS_VAULT")"
+assert_deny "salus cwd: git push still denied" "external-write" \
+    "$(make_pre run_command '{"CommandLine":"git push origin main"}' "$SALUS_VAULT")"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

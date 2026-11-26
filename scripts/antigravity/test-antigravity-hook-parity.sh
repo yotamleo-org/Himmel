@@ -57,7 +57,7 @@ assert_empty() {
 
 ANTIGRAVITY_ONLY="block-terminal-write-fence.sh block-antigravity-read-fence.sh"
 ANTIGRAVITY_REQUIRED="block-edit-on-main.sh block-read-secrets.sh block-antigravity-read-fence.sh block-graphify-egress.sh block-backend-tier.sh block-docker-privesc.sh block-rogue-claude-schedule.sh block-merged-pr-commit.sh block-terminal-write-fence.sh block-edit-live-settings.sh block-chokepoint-env-prefix.sh block-rogue-codex-exec.sh require-quiet-run.sh block-tail-pipe-on-gates.sh block-jira-compound-write.sh block-write-into-main-checkout.sh guard-t3-thread-tools.sh block-t3code-unwatch-open-pr.sh mcp-policy.sh peer-taint-gate.sh peer-taint-resume.sh record-primary-baseline.sh detect-dirty-primary.sh record-hook-integrity.sh"
-ANTIGRAVITY_POST_EXEMPT="detect-token-in-output.sh peer-taint-mark.sh"
+ANTIGRAVITY_POST_EXEMPT="detect-token-in-output.sh peer-taint-mark.sh phi-read-mark.sh"
 
 echo "== antigravity hook inventory parity =="
 
@@ -77,6 +77,7 @@ const claudeBashExempt = {
   "block-unresolved-cr-merge.sh": "Subsumed by block-terminal-write-fence.sh (denies gh pr merge)",
   "guard-worker-context-handoff.sh": "Worker role only; no Antigravity worker role is wired yet (Decision 1306: one shared trust model; the role guards land with that role)",
   "block-worker-write-fence.sh": "Worker role only; no Antigravity worker role is wired yet (Decision 1306: one shared trust model; the role guards land with that role)",
+  "block-station-load-test.sh": "Worker role only; no Antigravity worker role is wired yet (Decision 1306: one shared trust model; the role guards land with that role)",
   "guard-chief-foreground.sh": "Chief role only; no Antigravity chief role is wired yet (Decision 1306: one shared trust model; the role guards land with that role)",
   "guard-relay-writes.sh": "Chief relay role only; no Antigravity chief relay role is wired yet (Decision 1306: one shared trust model; the role guards land with that role)",
   "guard-judge-writes.sh": "Judge role only (plugin-local); no Antigravity judge role is wired yet (Decision 1306: one shared trust model; the role guards land with that role)",

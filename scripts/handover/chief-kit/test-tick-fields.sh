@@ -398,21 +398,56 @@ wto_zero="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-0.sh
 case "$wto_zero" in *wt-orphans*|*wt-ceiling*) fail "a clean fleet hides wt-orphans and wt-ceiling (out='$wto_zero')" ;; *) pass 'a clean fleet hides wt-orphans and wt-ceiling' ;; esac
 wto_err="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-err.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'an unavailable open-PR list reads wt-orphans=unknown, not an all-clear' "$wto_err" ' wt-orphans=unknown'
-rm -f "$wto_cache_f"
+rm -f "$wto_cache_f.fail"
 wto_crash="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-crash.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a failed probe reads wt-orphans=unknown' "$wto_crash" ' wt-orphans=unknown'
-wto_after="$(TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
-contains 'a failed probe is not cached, so the next tick reads afresh' "$wto_after" ' wt-orphans=2'
 rm -f "$wto_cache_f"
+wto_after="$(TICK_WT_ORPHANS_FAIL_TTL=0 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'a failed probe is not cached, so the next tick reads afresh' "$wto_after" ' wt-orphans=2'
+printf '# clean\n' > "$wto_cache_f"
+rm -f "$wto_cache_f.fail"
 wto_silent="$(TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-silent1.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a probe exiting 1 with no alarm line reads wt-orphans=unknown' "$wto_silent" ' wt-orphans=unknown'
-wto_after="$(TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+rm -f "$wto_cache_f"
+wto_after="$(TICK_WT_ORPHANS_FAIL_TTL=0 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'a silent exit 1 is not cached as an all-clear' "$wto_after" ' wt-orphans=2'
 : > "$wto_cache_f"
-wto_empty="$(TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+wto_empty="$(TICK_WT_ORPHANS_FAIL_TTL=0 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 contains 'an empty cache is not an all-clear, so the tick reads afresh' "$wto_empty" ' wt-orphans=2'
-case "$(find "$TICK_STATE_DIR" -name 'tick-wt-orphans-*.*' 2>/dev/null)" in '') pass 'the cache write leaves no temp file behind' ;; *) fail 'the cache write leaves no temp file behind' ;; esac
+case "$(find "$TICK_STATE_DIR" -name 'tick-wt-orphans-*.[0-9]*' 2>/dev/null)" in '') pass 'the cache write leaves no temp file behind' ;; *) fail 'the cache write leaves no temp file behind' ;; esac
 rm -f "$wto_cache_f"
+printf '#!/bin/sh\necho $$ > "%s"\nexec sleep 100\n' "$W/wto-slow.pid" > "$W/wto-probe-slow.sh"
+printf '#!/bin/sh\necho x >> "%s"\nexit 3\n' "$W/wto-runs" > "$W/wto-probe-count.sh"
+printf 'ORPHAN /w/a branch=x dirty=0 ahead=1 idle=2d\nORPHAN /w/b branch=y dirty=0 ahead=0 idle=3d\n' > "$wto_cache_f"
+touch -d '2 hours ago' "$wto_cache_f"
+rm -f "$W/wto-slow.pid"
+wto_t0=$SECONDS
+wto_slow="$(TICK_DEADLINE_SEC=30 TICK_SECTION_WAIT=2 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-slow.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+wto_slow_secs=$((SECONDS - wto_t0))
+if [ "$wto_slow_secs" -lt 20 ]; then pass 'a 100 s sweep does not stall the tick'; else fail "a 100 s sweep stalled the tick for ${wto_slow_secs}s"; fi
+contains 'a slow sweep serves the last good reading with its age' "$wto_slow" ' wt-orphans=2@2h'
+if [ -s "$W/wto-slow.pid" ]; then kill "$(cat "$W/wto-slow.pid")" 2>/dev/null || true; fi  # swallow-ok: the stub may already be gone
+for _ in $(seq 1 40); do [ -e "$wto_cache_f.fail" ] && break; sleep 0.25; done
+rm -f "$wto_cache_f" "$wto_cache_f.fail" "$W/wto-runs"
+TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-count.sh" TOKEN='' bash "$SUT" --doc "$d4670" >/dev/null 2>&1
+TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-count.sh" TOKEN='' bash "$SUT" --doc "$d4670" >/dev/null 2>&1
+same 'a failed sweep is not re-run inside its negative TTL' "$(wc -l < "$W/wto-runs" 2>/dev/null | tr -d ' ')" '1'
+TICK_WT_ORPHANS_FAIL_TTL=0 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-count.sh" TOKEN='' bash "$SUT" --doc "$d4670" >/dev/null 2>&1
+same 'a failed sweep is re-run once its negative TTL has passed' "$(wc -l < "$W/wto-runs" 2>/dev/null | tr -d ' ')" '2'
+rm -f "$wto_cache_f" "$wto_cache_f.fail" "$W/wto-slow.pid"
+printf '# clean\n' > "$wto_cache_f"
+touch -d '2 hours ago' "$wto_cache_f"
+wto_slow0="$(TICK_DEADLINE_SEC=30 TICK_SECTION_WAIT=2 TICK_WT_ORPHANS_TTL=30 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-slow.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+contains 'a stale clean reading shows its age, never a current all-clear' "$wto_slow0" ' wt-orphans=0@2h'
+if [ -s "$W/wto-slow.pid" ]; then kill "$(cat "$W/wto-slow.pid")" 2>/dev/null || true; fi  # swallow-ok: the stub may already be gone
+for _ in $(seq 1 40); do [ -e "$wto_cache_f.fail" ] && break; sleep 0.25; done
+rm -f "$wto_cache_f" "$wto_cache_f.fail" "$W/wto-slow.pid"
+wto_fast="$(TICK_FAST=1 TICK_WT_ORPHANS_TTL=0 TICK_WORKTREE_ORPHANS_PROBE="$W/wto-probe-2.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+case "$wto_fast" in *wt-orphans*) fail "a fast tick skips the worktree sweep (out='$wto_fast')" ;; *) pass 'a fast tick skips the worktree sweep' ;; esac
+fp_full="$(TOKEN='' bash "$SUT" --doc "$d4670" --emit-fp 2>/dev/null | sed -n 's/^board-fp=//p')"
+fp_fast="$(TICK_FAST=1 TOKEN='' bash "$SUT" --doc "$d4670" --emit-fp 2>/dev/null | sed -n 's/^board-fp=//p')"
+if [ -n "$fp_full" ] && [ "$fp_full" = "$fp_fast" ]; then pass 'board-fp is equal under the fast and the full tick'; else fail "board-fp differs (full '$fp_full', fast '$fp_fast')"; fi
+rm -f "$wto_cache_f" "$wto_cache_f.fail"
 contains 'verbose labels worker failures' "$(TOKEN='' bash "$SUT" --doc "$d4670" --verbose 2>/dev/null)" 'worker-session failures: 1/1@error/Edit*1'
 printf '%s\n' '{"v":1,"ts":"2026-10-07T03:05:00Z","leg":"N8","class":"denied/a b\tc","failure":"denied","count":1}' > "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 same 'whitespace in the top class cannot split the TICK line' "$(fails_of "$d4670")" '1/1@denied/a_b_c*1'
@@ -1063,6 +1098,76 @@ for q_field in workers livestate prs tails acts vmrun; do
     contains "chief-wait's key field list holds $q_field" "$q_key_line" " $q_field "
 done
 not_contains "chief-wait's key field list gains no quota" "$q_key_line" 'quota'
+
+fr_build="$W/fr-build.py"
+cat > "$fr_build" <<'PY'
+import json, socket, sys
+bucket, target, mode = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+host = socket.gethostname()
+boot = open('/proc/sys/kernel/random/boot_id').read().strip()
+def ident(pid, dead):
+    if dead:
+        return {'host': host, 'boot': boot, 'pid': pid, 'start': '1'}
+    start = open('/proc/%d/stat' % pid).read().rsplit(')', 1)[1].split()[19]
+    return {'host': host, 'boot': boot, 'pid': pid, 'start': start}
+attempts = {}
+for spec in sys.argv[4:]:
+    aid, kind, pid = spec.split(':')
+    pid = int(pid)
+    attempts[aid] = {'attempt_id': aid, 'phase': 'unknown' if kind == 'unknown' else 'launched', 'doc': bucket + '/' + aid + '.md', 'name': 'HIMMEL-' + aid,
+                     'keys': [], 'manifest': bucket + '/chief.fleet.json', 'family': 'fam', 'control_generation': 1,
+                     'owner': ident(pid, True), 'session': ident(pid, kind != 'live'), 'began_ticks': 0, 'initial_marker': '',
+                     'receipt': {'v': 2, 'kind': 'launch-attempt', 'attempt_id': aid}}
+json.dump({'schema': 1, 'family': 'fam', 'mode': mode, 'generation': 1, 'target': target,
+           'updated': '2026-11-26T00:00:00Z', 'reason': 'test', 'attempts': attempts}, open(bucket + '/fleet-control.json', 'w'))
+json.dump({'schema': 1, 'workers': [], 'control': {'family': 'fam', 'anchor': bucket + '/fleet-control.json'}}, open(bucket + '/chief.fleet.json', 'w'))
+PY
+sleep 300 & fr_live=$!
+{ true & fr_dead=$!; wait "$fr_dead"; } 2>/dev/null
+fr_root="$(cd "$W" && pwd -P)"
+fr_tick() {
+    if [ "$2" = - ]; then
+        STUB_FLEET_LINE="$1" TICK_LAUNCH_DIR="$W/no-launch-dir-fr" bash "$SUT" 2>/dev/null
+    else
+        STUB_FLEET_LINE="$1" TICK_LAUNCH_DIR="$W/no-launch-dir-fr" bash "$SUT" --workers-from "$2" 2>/dev/null
+    fi
+}
+fr_census='bank-preflight: FLEET native=31 claudex=0 openrouter=0 reserved=0 total=31/50'
+mkdir -p "$fr_root/fr-low" "$fr_root/fr-eq" "$fr_root/fr-high"
+python3 -I "$fr_build" "$fr_root/fr-low" 35 active "live1:live:$fr_live"
+python3 -I "$fr_build" "$fr_root/fr-eq" 50 active "live1:live:$fr_live"
+python3 -I "$fr_build" "$fr_root/fr-high" 60 active "live1:live:$fr_live"
+fr_low="$(fr_tick "$fr_census" "$fr_root/fr-low/chief.fleet.json")"
+contains 'a family target of 35 under a policy cap of 50 reads fleet=<live>/35' "$fr_low" ' fleet=31/35'
+contains 'the line names the policy cap beside the family target' "$fr_low" 'policy-cap=50'
+contains 'capacity= is held to the family target too: 35 minus 31 live' "$fr_low" 'capacity=UNDERFILLED:4'
+fr_eq="$(fr_tick "$fr_census" "$fr_root/fr-eq/chief.fleet.json")"
+contains 'control: a target equal to the policy cap keeps fleet=<live>/<cap>' "$fr_eq" ' fleet=31/50 '
+not_contains 'control: no policy-cap note when the target equals the cap' "$fr_eq" 'policy-cap'
+contains 'control: capacity= still reads against the cap' "$fr_eq" 'capacity=UNDERFILLED:19'
+fr_high="$(fr_tick "$fr_census" "$fr_root/fr-high/chief.fleet.json")"
+contains 'a target above the policy cap leaves the policy cap the effective cap' "$fr_high" ' fleet=31/50 '
+fr_none="$(fr_tick "$fr_census" -)"
+contains 'no manifest: fleet= reads the census cap unchanged' "$fr_none" ' fleet=31/50 '
+not_contains 'no manifest: no stale-attempts field' "$fr_none" 'stale-attempts'
+printf '%s\n' '{"schema":1,"workers":[]}' > "$fr_root/fr-unbound.fleet.json"
+fr_unbound="$(fr_tick "$fr_census" "$fr_root/fr-unbound.fleet.json")"
+contains 'an unmanaged manifest (no control reference): fleet= reads the census cap unchanged' "$fr_unbound" ' fleet=31/50 '
+not_contains 'an unmanaged manifest: no stale-attempts field' "$fr_unbound" 'stale-attempts'
+contains 'only live records: stale-attempts=0' "$fr_low" 'stale-attempts=0'
+not_contains 'only live records: no stale-attempts wake line' "$fr_low" 'ACTION stale-attempts'
+mkdir -p "$fr_root/fr-stale"
+python3 -I "$fr_build" "$fr_root/fr-stale" 35 active "live1:live:$fr_live" "gone1:dead:$fr_dead"
+fr_before="$(cksum "$fr_root/fr-stale/fleet-control.json" "$fr_root/fr-stale/chief.fleet.json" | tr -d '\n')"
+fr_stale="$(fr_tick "$fr_census" "$fr_root/fr-stale/chief.fleet.json")"
+contains 'one launched record whose session is gone: stale-attempts=1' "$fr_stale" 'stale-attempts=1'
+contains 'a wake line names fleet-manifest.sh runtime ack' "$fr_stale" 'ACTION stale-attempts=1:'
+contains 'the wake line points at the read-only ack listing' "$fr_stale" 'fleet-manifest.sh runtime ack --read-only --manifest'
+mkdir -p "$fr_root/fr-unk"
+python3 -I "$fr_build" "$fr_root/fr-unk" 35 active "live1:live:$fr_live" "lost1:unknown:$fr_dead"
+contains 'an unknown attempt whose session is gone counts too: stale-attempts=1' "$(fr_tick "$fr_census" "$fr_root/fr-unk/chief.fleet.json")" 'stale-attempts=1'
+same 'a tick settles and edits no record: fleet-control.json and the manifest are byte-identical' "$(cksum "$fr_root/fr-stale/fleet-control.json" "$fr_root/fr-stale/chief.fleet.json" | tr -d '\n')" "$fr_before"
+kill "$fr_live" 2>/dev/null
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick-fields.sh'

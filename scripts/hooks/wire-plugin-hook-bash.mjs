@@ -13,8 +13,8 @@ const EXPECTED_COUNTS = Object.freeze({
   SessionStart: 7,
   SessionEnd: 4,
   Notification: 1,
-  PostToolUse: 1,
-  PostToolUseFailure: 1,
+  PostToolUse: 2,
+  PostToolUseFailure: 3,
 });
 const EXPECTED_HOOKS = Object.freeze([
   { event: 'PreToolUse', script: 'inject-minerva-critic.sh', source: 'plugin' },
@@ -100,7 +100,10 @@ const EXPECTED_HOOKS = Object.freeze([
   { event: 'Notification', script: 'telegram-notification.sh' },
   // a tool result carrying a verified peer fence taints the session, success or failure.
   { event: 'PostToolUse', script: 'peer-taint-mark.sh', source: 'plugin' },
+  { event: 'PostToolUse', script: 'phi-read-mark.sh', source: 'plugin' },
   { event: 'PostToolUseFailure', script: 'peer-taint-mark.sh', source: 'plugin' },
+  { event: 'PostToolUseFailure', script: 'phi-read-mark.sh', source: 'plugin' },
+  { event: 'PostToolUseFailure', script: 'suggest-missing-path.sh', source: 'plugin' },
 ]);
 const COMMAND_FIELD = /("command")(\s*:\s*)("(?:\\.|[^"\\])*")/g;
 const COMMAND_SENTINEL = '__WIRE_PLUGIN_HOOK_BASH_COMMAND__';

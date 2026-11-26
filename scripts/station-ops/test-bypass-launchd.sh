@@ -212,7 +212,7 @@ assert_absent "no refusal sends an ask" " → launch · no " "$(cat "$D/sent" 2>
 stop
 
 echo "== current-style worker names are accepted, N-series stays accepted =="
-for name in HIMMEL-10310-F10310h-macos-hook-ports-2026-11-21 HIMMEL-2-U2-slug-2026-11-21 HIMMEL-1-N1-sweep-pr1; do
+for name in HIMMEL-10310-F10310h-macos-hook-ports-2026-11-21 HIMMEL-2-U2-slug-2026-11-21 HIMMEL-1-N1-sweep-pr1 HIMMEL-11073-TP1073b-bypass-launcher-2026-11-26 HIMMEL-9929-N39929-slug-2026-11-26 HIMMEL-10862-TP0862-slug-2026-11-26; do
     setup "name-$name"
     BRIEF="$B/$name.md"
     printf -- '---\ndescription: "a stub brief"\n---\n# brief\n' > "$BRIEF"
@@ -227,8 +227,8 @@ echo "== every refusal names the failed field and no value =="
 setup field-names
 start
 CH=HIMMEL-nextleg-2026-11-13A-roadmap-chief
-for n in n3 NN3; do
-    printf -- '---\n---\n' > "$B/HIMMEL-3-$n-slug.md"
+for n in HIMMEL-3-n3-slug HIMMEL-1-tp1-x HIMMEL-1-T-x HIMMEL-3-NNN3-slug; do
+    printf -- '---\n---\n' > "$B/$n.md"
 done
 ln -s "$BRIEF" "$B/HIMMEL-1-N2-link.md"
 refuse_row() {
@@ -243,7 +243,9 @@ refuse_row() {
     assert_eq "RED 10558 $label: every send so far is bypass-result" 0 "$(kind_seq | tr ' ' '\n' | grep -vxc bypass-result || true)"
 }
 refuse_row m1 "a lowercase series" "malformed: brief-name" "brief=$B/HIMMEL-3-n3-slug.md" model=claude-sonnet-5-5 "chief=$CH"
-refuse_row m2 "a two-letter series" "malformed: brief-name" "brief=$B/HIMMEL-3-NN3-slug.md" model=claude-sonnet-5-5 "chief=$CH"
+refuse_row m2 "a lowercase two-letter label" "malformed: brief-name" "brief=$B/HIMMEL-1-tp1-x.md" model=claude-sonnet-5-5 "chief=$CH"
+refuse_row m10 "a letter with no digits" "malformed: brief-name" "brief=$B/HIMMEL-1-T-x.md" model=claude-sonnet-5-5 "chief=$CH"
+refuse_row m11 "a three-letter label" "malformed: brief-name" "brief=$B/HIMMEL-3-NNN3-slug.md" model=claude-sonnet-5-5 "chief=$CH"
 refuse_row m3 "a bad model" "malformed: model" "brief=$BRIEF" model=claude-opus-4-1 "chief=$CH"
 refuse_row m4 "a bad chief" "malformed: chief" "brief=$BRIEF" model=claude-sonnet-5-5 "chief=a b"
 refuse_row m5 "a bad effort" "malformed: effort" "brief=$BRIEF" model=claude-sonnet-5-5 "chief=$CH" effort=ultra
@@ -490,12 +492,12 @@ start
 wait_for "$Q/daemon.log" "start pid="
 self_a=$(blob "$DAEMON_REL")
 assert_contains "RED 10717: the start line names the daemon's own blob" "self=$self_a " "$(start_line)"
-sed -i.bak 's/-\[A-Z\]\[0-9\]+\[a-z\]?-/-[A-Z]{1,2}[0-9]+[a-z]?-/' "$R/$DAEMON_REL"; rm -f "$R/$DAEMON_REL.bak"
-assert_contains "control: commit B widens the brief-name pattern" '-[A-Z]{1,2}[0-9]+[a-z]?-' "$(cat "$R/$DAEMON_REL")"
+sed -i.bak 's/-\[A-Z\]{1,2}\[0-9\]+\[a-z\]?-/-[A-Z]{1,3}[0-9]+[a-z]?-/' "$R/$DAEMON_REL"; rm -f "$R/$DAEMON_REL.bak"
+assert_contains "control: commit B widens the brief-name pattern" '-[A-Z]{1,3}[0-9]+[a-z]?-' "$(cat "$R/$DAEMON_REL")"
 g -C "$R" commit -q -am "B widens brief names"
 self_b=$(blob "$DAEMON_REL")
-NN="$B/HIMMEL-3-NN3-slug.md"
-printf -- '---\ndescription: "a two-letter series brief"\n---\n' > "$NN"
+NN="$B/HIMMEL-3-NNN3-slug.md"
+printf -- '---\ndescription: "a three-letter series brief"\n---\n' > "$NN"
 printf '%s\n' "brief=$NN" model=claude-sonnet-5-5 "chief=$CH" recommend=go > "$Q/r.req"
 wait_for "$Q/daemon.log" "STALE hold"
 wait_for "$D/sent" "bypass request r.req waits"
@@ -522,8 +524,8 @@ stop; rm -f "$Q/stop"
 start
 for _ in $(seq 100); do [ "$(grep -c 'start pid=' "$Q/daemon.log")" -ge 2 ] && break; sleep 0.1; done
 assert_contains "RED 10717 DoD1: the restarted daemon's start line carries B's self=" "self=$self_b " "$(grep 'start pid=' "$Q/daemon.log" | sed -n 2p)"
-wait_for "$Q/daemon.log" "ASK HIMMEL-3-NN3-slug"
-assert_contains "RED 10717 DoD1: after the restart the held request is asked" "ASK HIMMEL-3-NN3-slug" "$(cat "$Q/daemon.log")"
+wait_for "$Q/daemon.log" "ASK HIMMEL-3-NNN3-slug"
+assert_contains "RED 10717 DoD1: after the restart the held request is asked" "ASK HIMMEL-3-NNN3-slug" "$(cat "$Q/daemon.log")"
 assert_eq "10717 guard, also true before the change: the restart removes .hold" "no" "$(has_hold)"
 stop
 
@@ -1276,7 +1278,8 @@ wait_for "$Q/daemon.log" "start pid="
 code=$(ask_code r)
 reply "$OPERATOR" "$OPERATOR" "go $code"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
-assert_contains "RED 11164: a recorded worker_tabs=1 puts HIMMEL_WORKER_SESSION_TABS=1 in the launched child" "HIMMEL_WORKER_SESSION_TABS=1" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+assert_absent "RED 11169: a recorded worker_tabs=1 never puts the tabs switch in a child that carries granted bypass flags" "HIMMEL_WORKER_SESSION_TABS" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+assert_eq "11169: the child still carries its granted flag, exactly 1" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(grep -x 'HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1' "$D/launch.fullenv" 2>/dev/null)"
 assert_absent "11164: and the pin's own name never joins the child" "worker_tabs=" "$(cat "$D/launch.fullenv" 2>/dev/null)"
 stop
 setup_repo tabs-unpinned
@@ -1298,6 +1301,22 @@ code=$(ask_code r)
 reply "$OPERATOR" "$OPERATOR" "go $code"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
 assert_absent "11164: a worker_tabs value other than 1 adds nothing to the child" "HIMMEL_WORKER_SESSION_TABS" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+stop
+setup tabs-handstart
+start HIMMEL_WORKER_SESSION_TABS=1
+code=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $code"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_absent "RED 11169: a hand-start launch with a granted registry flag never inherits the operator shell's tabs switch" "HIMMEL_WORKER_SESSION_TABS" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+assert_eq "11169: the hand-start child still carries its granted flag, exactly 1" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(grep -x 'HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1' "$D/launch.fullenv" 2>/dev/null)"
+stop
+setup tabs-handstart-billed
+start HIMMEL_WORKER_SESSION_TABS=1
+code=$(ask_code r flags=HIMMEL_BILLED_OK decision=921)
+reply "$OPERATOR" "$OPERATOR" "go $code"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_absent "RED 11169: a hand-start launch granted HIMMEL_BILLED_OK (not in the registry) never inherits the tabs switch" "HIMMEL_WORKER_SESSION_TABS" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+assert_eq "11169: the billed child still carries its granted flag, exactly 1" "HIMMEL_BILLED_OK=1" "$(grep -x 'HIMMEL_BILLED_OK=1' "$D/launch.fullenv" 2>/dev/null)"
 stop
 
 echo "-- the session environment is data, checked, and a failure refuses before the ask (N2) --"

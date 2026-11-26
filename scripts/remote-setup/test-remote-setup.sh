@@ -261,7 +261,7 @@ case_guard_matrix_every_writer() {
     local sub mode
     feed "$(mk_token 5000000001)"
     snapshot_stores
-    for sub in bot away sudo peer; do
+    for sub in bot away sudo peer monitor; do
         for mode in claudecode session notty root; do
             case "$mode" in
                 claudecode) run_sut --inject CLAUDECODE=1 "$T/in" "$sub" ;;
@@ -318,7 +318,7 @@ case_usage_exits_2() {
 
 case_usage_rows_every_subcommand() {
     local sub
-    for sub in bot away sudo peer status; do
+    for sub in bot away sudo peer monitor status; do
         run_sut --no-tty --no-contract "$T/in" "$sub" --bogus
         check "$sub --bogus: exit 2" eq "$RC" 2
         check "$sub --bogus: usage line on stderr" has "$ERR" "usage:"
@@ -2431,7 +2431,7 @@ case_peer_name_32_char_base_with_suffix_fits() {
     check "the next free suffix" eq "$(sed -n 2p "$T/out")" "abcdefghijklmnopqrstuvwxyzabcd-3"
 }
 
-CASES="mk_token_ends_when_tr_ignores_sigpipe guard_matrix_every_writer usage_exits_2 usage_rows_every_subcommand contract_rows_every_subcommand
+CASES="monitor_checks_then_writes_both_and_echoes_neither monitor_a_wrong_value_is_named_and_writes_nothing mk_token_ends_when_tr_ignores_sigpipe guard_matrix_every_writer usage_exits_2 usage_rows_every_subcommand contract_rows_every_subcommand
 curl_argv_is_exact getme_401_gives_revoked_fix tg_429_waits_retry_after_once outside_checkout_gives_cd_fix
 status_skips_unshipped_parts status_na_counts_not_ok status_part_prereq_message status_runs_under_claudecode
 status_json_is_single_object_on_success status_json_on_item_failure status_json_never_appends_done_line
@@ -2466,6 +2466,99 @@ peer_mac_bootout_then_bootstrap_order peer_mac_old_agent_is_not_accepted_as_the_
 peer_different_bridge_id_without_replace_refuses peer_hello_timeout_fixes peer_wait_is_bounded_by_the_clock_not_by_the_loop_count peer_a_failed_merge_of_updates_leaves_no_temp_file peer_retry_after_a_timed_out_discovery_asks_for_a_fresh_hello peer_no_group_hello_fix_puts_the_rerun_before_the_hello peer_409_names_a_webhook_or_a_competing_poller peer_sole_candidate_needs_a_yes peer_hostile_username_refused
 bun_shim_fails_when_it_cannot_write_peers_json systemctl_shim_changes_the_running_state_only_with_now
 peer_name_second_collision_gets_3 peer_name_32_char_base_with_suffix_fits"
+
+MON_CHAT=-1009876543210
+set_mon_chat() {
+    printf '{"ok":true,"result":{"id":%s,"type":"%s","title":"Station Monitor"}}' "$MON_CHAT" "$1" > "$T/tg/getChat.json"
+    printf '{"ok":true,"result":{"status":"member","user":{"id":222,"is_bot":true}}}' > "$T/tg/getChatMember.json"
+}
+monitor_lines() { grep -c '^TELEGRAM_MONITOR_' "$(STORE_FILE)" 2>/dev/null || true; }
+
+case_monitor_checks_then_writes_both_and_echoes_neither() {
+    local main tok
+    main=$(mk_token 111)
+    tok=$(mk_token 222)
+    seed_store "$main"
+    set_getme 222 station_monitor_bot
+    set_mon_chat supergroup
+    feed "$MON_CHAT" "$tok"
+    run_sut "$T/in" monitor
+    check "exit 0" eq "$RC" 0
+    check "DONE says monitoring: ok with the group" has "$LAST" "monitoring: ok Station Monitor"
+    check "the chat id is stored" file_has "$(STORE_FILE)" "TELEGRAM_MONITOR_CHAT_ID=$MON_CHAT"
+    check "the token is stored" file_has "$(STORE_FILE)" "TELEGRAM_MONITOR_BOT_TOKEN=$tok"
+    check "the main token is kept" file_has "$(STORE_FILE)" "TELEGRAM_BOT_TOKEN=$main"
+    check "the store is private" eq "$(file_mode "$(STORE_FILE)")" 600
+    check "the token is not on stdout" lacks "$(cat "$T/out")" "${tok#*:}"
+    check "the token is not on stderr" lacks "$ERR" "${tok#*:}"
+    check "the token is not in any curl argv" file_lacks "$T/curl.argv" "${tok#*:}"
+    check "the chat id is not echoed" lacks "$(cat "$T/out")" "$MON_CHAT"
+    printf '{"ok":true,"result":{"status":"restricted","is_member":true,"can_send_messages":true,"user":{"id":222,"is_bot":true}}}' > "$T/tg/getChatMember.json"
+    feed "$MON_CHAT" "$tok"
+    run_sut "$T/in" monitor
+    check "a restricted bot that may post: exit 0" eq "$RC" 0
+}
+
+case_monitor_a_wrong_value_is_named_and_writes_nothing() {
+    local main tok
+    main=$(mk_token 111)
+    tok=$(mk_token 222)
+    seed_store "$main"
+    set_getme 222 station_monitor_bot
+    set_mon_chat supergroup
+    feed "1009876543210" "$tok"
+    run_sut "$T/in" monitor
+    check "a positive chat id: exit 3" eq "$RC" 3
+    check "a positive chat id: named" has "$LAST" "not a group chat id"
+    feed "$MON_CHAT" "$main"
+    run_sut "$T/in" monitor
+    check "the main token: exit 3" eq "$RC" 3
+    check "the main token: named" has "$LAST" "your main bot's token"
+    feed "$MON_CHAT" "not-a-token"
+    run_sut "$T/in" monitor
+    check "a malformed token: named" has "$LAST" "not a bot token"
+    set_mon_chat private
+    feed "$MON_CHAT" "$tok"
+    run_sut "$T/in" monitor
+    check "a private chat: exit 3" eq "$RC" 3
+    check "a private chat: named" has "$LAST" "is not a group"
+    set_mon_chat supergroup
+    printf '{"ok":true,"result":{"status":"left","user":{"id":222,"is_bot":true}}}' > "$T/tg/getChatMember.json"
+    feed "$MON_CHAT" "$tok"
+    run_sut "$T/in" monitor
+    check "a public group the bot is not in: exit 3" eq "$RC" 3
+    check "a public group the bot is not in: named" has "$LAST" "is not a member"
+    printf '{"ok":true,"result":{"status":"restricted","can_send_messages":false,"user":{"id":222,"is_bot":true}}}' > "$T/tg/getChatMember.json"
+    feed "$MON_CHAT" "$tok"
+    run_sut "$T/in" monitor
+    check "a muted bot: named" has "$LAST" "is not a member"
+    printf '{"ok":true,"result":{"status":"restricted","is_member":false,"can_send_messages":true,"user":{"id":222,"is_bot":true}}}' > "$T/tg/getChatMember.json"
+    feed "$MON_CHAT" "$tok"
+    run_sut "$T/in" monitor
+    check "a restricted bot that left the group: exit 3" eq "$RC" 3
+    check "a restricted bot that left the group: named" has "$LAST" "is not a member"
+    printf '{"ok":true,"result":{"id":%s,"type":"supergroup","title":"Station Monitor","permissions":{"can_send_messages":false}}}' "$MON_CHAT" > "$T/tg/getChat.json"
+    printf '{"ok":true,"result":{"status":"member","user":{"id":222,"is_bot":true}}}' > "$T/tg/getChatMember.json"
+    feed "$MON_CHAT" "$tok"
+    run_sut "$T/in" monitor
+    check "a member of a group where members may not post: exit 3" eq "$RC" 3
+    check "a member of a group where members may not post: named" has "$LAST" "is not a member"
+    printf '{"ok":false,"error_code":401,"description":"Unauthorized"}' > "$T/tg/getMe.json"
+    feed "$MON_CHAT" "$tok"
+    run_sut "$T/in" monitor
+    check "a refused token: exit 3" eq "$RC" 3
+    check "no monitor key was ever written" eq "$(monitor_lines)" 0
+    check "the main token is untouched" file_has "$(STORE_FILE)" "TELEGRAM_BOT_TOKEN=$main"
+    set_getme 222 station_monitor_bot
+    set_mon_chat supergroup
+    chmod 000 "$(STORE_FILE)"
+    feed "$MON_CHAT" "$tok"
+    run_sut "$T/in" monitor
+    chmod 600 "$(STORE_FILE)"
+    check "an unreadable store: exit 3" eq "$RC" 3
+    check "an unreadable store: named" has "$LAST" "could not be read"
+    check "an unreadable store: nothing written" eq "$(monitor_lines)" 0
+}
 
 # ── run ─────────────────────────────────────────────────────────────────
 

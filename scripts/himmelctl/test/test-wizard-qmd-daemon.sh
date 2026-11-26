@@ -23,6 +23,7 @@ trap 'rm -rf "$work"' EXIT
 cat > "$work/curl" <<'STUB'
 #!/usr/bin/env bash
 w=""; cfg=""
+[ -z "${QD_ARGLOG:-}" ] || printf '%s\n' "$*" > "$QD_ARGLOG"
 while [ $# -gt 0 ]; do case "$1" in -w) w="$2"; shift ;; -K) cfg=$(cat) ;; esac; shift; done
 finish() { [ -n "$w" ] && printf '%s' "$1"; exit "${2:-0}"; }
 case "${QD_MODE:-ok}" in
@@ -46,7 +47,7 @@ const { runProbe } = require('$(winpath "$probes_lib")');
 const manifest = JSON.parse(require('fs').readFileSync('$(winpath "$manifest_path")', 'utf8'));
 const item = manifest.items.find((i) => i.id === 'qmd-daemon');
 if (!item) { console.log(JSON.stringify({ actual: 'NO-ITEM' })); process.exit(0); }
-const env = { ...process.env, QD_MODE: '$1', HIMMEL_DOCTOR_QMD_CURL: '$(winpath "$work/curl")', HIMMEL_DOCTOR_QMD_URL: 'http://localhost:1/mcp' };
+const env = { ...process.env, QD_MODE: '$1', HIMMEL_DOCTOR_QMD_CURL: '$(winpath "$work/curl")', HIMMEL_DOCTOR_QMD_URL: process.env.QD_URL || 'http://localhost:1/mcp' };
 console.log(JSON.stringify(runProbe(item, { repoRoot: '$(winpath "$repo_root")', targetPath: '$(winpath "$repo_root")', scope: 'user', env })));
 "
 }
@@ -77,6 +78,18 @@ echo "$out" | jq -e '.actual == "present"' >/dev/null || fail "token file + daem
 out=$(probe_auth auth "$work/no-such-token")
 echo "$out" | jq -e '.actual == "degraded" and (.detail | test("401")) and (.detail | test("token")) and (.detail | test("NOT qmd") | not)' >/dev/null || fail "401 with no token -> degraded, names the token, not NOT-qmd (got: $out)"
 echo "ok: qmd-daemon authenticates with the bearer token; a 401 names the token"
+
+rm -f "$work/argv.log"
+brace_url='http://{a@localhost:8181/,evil.example/}/mcp'
+out=$(QD_ARGLOG="$work/argv.log" QD_URL="$brace_url" probe_auth auth "$work/http-token")
+echo "$out" | jq -e '.actual == "present"' >/dev/null || fail "brace URL with a token still probes (got: $out)"
+grep -q -e '^-q ' "$work/argv.log" || fail "token-bearing probe lacks -q as its first argument (argv: $(cat "$work/argv.log"))"
+grep -q -e ' -g ' "$work/argv.log" || fail "token-bearing probe lacks -g, so a brace in the URL would be expanded (argv: $(cat "$work/argv.log"))"
+grep -q -F "$brace_url" "$work/argv.log" || fail "the brace URL was not passed whole"
+rm -f "$work/argv.log"
+QD_ARGLOG="$work/argv.log" probe_auth auth "$work/http-token" >/dev/null
+grep -q -F 'http://localhost:1/mcp' "$work/argv.log" || fail "control: an ordinary URL was changed (argv: $(cat "$work/argv.log"))"
+echo "ok: the token-bearing qmd-daemon probe turns off curl URL globbing"
 
 # A non-qmd listener is named by pid and command, from ss + /proc (read only).
 cat > "$work/ss" <<'SSSTUB'

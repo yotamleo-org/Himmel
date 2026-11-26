@@ -77,7 +77,7 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
   free file outside `Writes` is claimed and named on your PR's `outside-writes:` line. [prose]
 - **Search with Bash** (`git grep`, `git ls-files`), no Grep/Glob. Structure:
   `bash scripts/graphify/worker-graph.sh <explain "<symbol>" | path "<a>" "<b>">`;
-  `query` on a sentence is noise.
+  `query` on a sentence is noise. One search per response.
   Pasted x.com/instagram.com links: `scripts/web/fetch-url.sh '<url>'`. [prose]
 - **Pre-check a bucket file** with `bash scripts/handover/chief-kit/bucket-gitleaks.sh <file>`
   before writing it; a real credential goes to the chief, never reworded. [prose]
@@ -97,6 +97,7 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
   cgroup `memory.events`; all-zero → run the suite foreground, `BLOCKED` with numbers. [prose]
 - **Never pipe into a gate script.** [enforced: block-tail-pipe-on-gates]
 - **Never bare `git stash`.** [enforced: block-git-stash]
+- **A station is never load tested**: use a stubbed clock, a simulated slow tick or CI. [prose]
 - **Token discipline.** Batch every independent tool call of a step into ONE
   turn, never emit a text-only turn between tool calls; narrate in the Results
   bullet, not in chat. [prose]
@@ -122,7 +123,7 @@ commands: VM only): `worker-sections/shell-and-tests.md`.
 - **Attestation trailers go in the FIRST commit** (`Platforms tested: <os>`;
   `Security reviewed: <token>`, tokens listed in `check-security-reviewed.sh`).
   Never `git commit --amend` (blocked): use the stuck playbook. [enforced: security-reviewed]
-- **Order: commit → push → `/pr-check` → open the PR** with `bash scripts/lanes/worker-pr-open.sh <title-file> <body-file>` (refused while review is pending). **One push per review round**: one commit of every fix, title/body/`## Ticket coverage` edits too. [prose]
+- **Order: commit → push → `/pr-check` → open the PR** with `bash scripts/lanes/worker-pr-open.sh <title-file> <body-file>`. **One push per review round**: one commit of every fix, title/body/`## Ticket coverage` edits too. [prose]
 - Once open: `/pr-check` at the `READY` head → as it enters final CI, `JUDGE-REQUEST <pr> <head>` (`worker-sections/judge-request.md`) → `scripts/check-ci.sh <pr> --max-wait 3000` in `run_in_background`; its exit code decides → `READY` bullet. [prose]
 - **Lint `## Ticket coverage` before `READY`:**
   `bash scripts/handover/chief-kit/ready-check.sh --only 7 <pr>` until it prints
@@ -146,7 +147,7 @@ commands: VM only): `worker-sections/shell-and-tests.md`.
   a reply, nudge once, then wrap. [prose]
 - **Adapter repo: you stop at `READY`.** On a registered himmel adapter repo
   (`scripts/guardrails/himmel-adapters.json`) not confirmed PRIVATE,
-  `merge-on-green.sh` refuses; the chief merges with `merge-fork-pr.sh` (`--jira-transition` if `completes-ticket: yes`). Write `READY`, hold for
+  `merge-on-green.sh` refuses; the chief merges with `merge-fork-pr.sh`. Write `READY`, hold for
   the chief's merge, then wrap. [prose]
 - **Closing the ticket at merge.** `<anchor>` is the primary
   checkout's absolute path (`git rev-parse
@@ -167,7 +168,7 @@ it (no Epic) and `--jira-transition` did not (`failed`
 or any `skip=` but the two below). Never close it by hand on `skip=never-touch-type` or
 `skip=cannot-verify-type`: report it to the chief. Run the live proof
 (`worker-sections/live-proof.md`), release the
-lock (paste the line), append `WRAPPED`, print the closable-window banner and stop:
+lock, append `WRAPPED`, print the closable-window banner and stop:
 the chief's `close-wrapped-worker.sh` ends the session
 once the lock frees. A worker never idles: on an outside event, write `LIVE — HOLD-OUTSIDE pr=<n>` and WRAP with a resume brief; send the
 chief `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is open.
@@ -176,7 +177,7 @@ chief `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is
 subtree clean** with
 `bash scripts/handover/wrap-subtree-check.sh --queue-doc <doc>`: paste its
 `CLOSABLE:` line; on `WITHHELD:` TaskStop only what it lists as still running,
-re-run, no `WRAPPED`.
+re-run, no `WRAPPED`. A halted worker ends the same way, never on a `HALTED` last line.
 
 **Context past 75 % of your `--autocompact` ceiling, when the guard
 is on** (off by default; on in Sonnet 5.5 worker-impl/eval, Opus 5.5 worker-*;

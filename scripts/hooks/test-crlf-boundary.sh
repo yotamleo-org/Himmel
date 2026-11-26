@@ -168,6 +168,11 @@ check block-subagent-release-operator Bash 2 "$D_RELOP" "deny a subagent's opera
 check block-subagent-release-operator Bash 0 "$A_OK"    "allow git status from a subagent"
 CRLF_AGENT=""
 check block-subagent-release-operator Bash 0 "$D_RELOP" "allow the same text from the main session"
+check block-station-load-test     Bash 2 "seq 32 | xargs -P 32 -I{} bash x.sh" "deny a 32-way xargs fan-out from a worker" HIMMEL_WORKER=1
+check block-station-load-test     Bash 2 "for i in \$(seq 32); do bash x.sh & done; wait" "deny a 32-way background loop from a worker" HIMMEL_WORKER=1
+check block-station-load-test     Bash 2 $'for i in $(seq 32)\ndo\n  bash x.sh &\ndone' "deny a multi-line 32-way background loop from a fleet worker" HIMMEL_CONSOLE_LEG=1
+check block-station-load-test     Bash 0 "seq 2 | xargs -P 2 -I{} bash x.sh" "allow a 2-way xargs fan-out from a worker" HIMMEL_WORKER=1
+check block-station-load-test     Bash 0 "seq 32 | xargs -P 32 -I{} bash x.sh" "allow the same text outside a worker session" -u HIMMEL_WORKER -u HIMMEL_CONSOLE_LEG
 check guard-identical-denied-retry Bash 0 "$A_OK"    "allow git status (byte-exact match, so a CR-tail command is a different command)"
 
 # A multi-line command is where the class actually bites: with CRLF endings the
@@ -901,6 +906,21 @@ check block-antigravity-read-fence Bash 2 "$D_AGY_FENCE_GEMINI" "deny ~/.gemini/
 check block-antigravity-read-fence Bash 2 "$D_AGY_FENCE_CD" "deny cd into ~/.gemini"
 check block-antigravity-read-fence Bash 2 "$(printf 'echo hello\n%s' "$D_AGY_FENCE_CD")" "deny cd into ~/.gemini on second line"
 check block-antigravity-read-fence Bash 0 "$A_OK" "allow git status"
+
+PHI_TMP="$(mktemp -d "${TMPDIR:-/tmp}/crlf-phi.XXXXXX")" || { printf 'FAIL: mktemp\n'; exit 1; }
+mkdir -p "$PHI_TMP/salus-vault/notes" "$PHI_TMP/himmel"
+: > "$PHI_TMP/salus-vault/.salus"
+_decide_phi_mark() {
+    local cmd="$1" h
+    h="$(mktemp -d "$PHI_TMP/h.XXXXXX")" || { echo MKTEMP-FAILED; return; }
+    printf '{"session_id":"crlf-phi","tool_name":"Bash","cwd":%s,"tool_input":{"command":%s}}' \
+        "$(printf '%s' "$PHI_TMP/himmel" | jq -Rs .)" "$(printf '%s' "$cmd" | jq -Rs .)" \
+        | env -u CLAUDE_GLM_CONFIG_DIR HOME="$h" bash "$SCRIPT_DIR/phi-read-mark.sh" >/dev/null 2>&1
+    if [ -e "$h/.himmel/phi-taint/crlf-phi" ]; then echo MARKED; else echo CLEAR; fi
+}
+check_verdict _decide_phi_mark phi-read-mark MARKED "cat $PHI_TMP/salus-vault/notes/visit.md" "a cat under a .salus root marks"
+check_verdict _decide_phi_mark phi-read-mark CLEAR "cat $PHI_TMP/himmel/README.md" "a himmel-only read is not marked"
+rm -rf "$PHI_TMP"
 
 # ── Completeness guard ──────────────────────────────────────────────────────
 # The audit's real deliverable. Enumerate the command-text hooks FROM THE

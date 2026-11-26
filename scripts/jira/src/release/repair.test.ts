@@ -389,6 +389,12 @@ describe('test-version-repair', () => {
     expect(offerFor(c, w.input)).toEqual({ op: 'keep', from: 'v1.1.4', to: null });
   });
 
+  it('a key whose newest journal writer is create-rules lands in lane 12', () => {
+    const w = build(machineWrite({ journal: [jr('K-1', 'create-rules', [], ['v1.1.4'], '100')] }));
+    expect(one(w.out, 'K-1')).toMatchObject({ lane: 'held' });
+    expect(w.out.filter((c) => c.key === 'K-1' && c.action.kind === 'request')).toEqual([]);
+  });
+
   it('newer operator ruling makes bound ineligible', () => {
     const w = build(machineWrite({
       operator: [decision('O-R1-0001', ['K-1'], 'remove', 'v1.1.4', null, at(20))],

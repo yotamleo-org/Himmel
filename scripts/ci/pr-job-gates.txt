@@ -34,12 +34,13 @@ benign          ^\.gitattributes$
 benign          ^\.github/(CODEOWNERS|ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE)
 
 # node-suites matrix (jira, bitbucket, himmel-run, ci-orchestrator, himmel-gh,
-# himmel-jira, himmel-bus): each package's own dir plus what it imports.
+# himmel-jira, himmel-bus, luna-mcp): each package's own dir plus what it imports.
 node_suites     ^scripts/(jira|bitbucket|himmel-run|ci-orchestrator|telegram|guardrails|lanes)/
 node_suites     ^scripts/handover/(console|chief)-kit/
 node_suites     ^scripts/himmelctl/lib/secret-store\.js$
 node_suites     ^plugins/(himmel-gh|himmel-jira)/
-node_suites     ^marketplace/plugins/himmel-bus/
+node_suites     ^marketplace/plugins/(himmel-bus|luna-mcp)/
+node_suites     ^scripts/qmd/qmd-collection-corpus\.json$
 # scripts/jira/src/release/engine.test.ts copies the two minerva validators into a
 # fixture checkout and the release engine runs them there.
 node_suites     ^marketplace/plugins/himmel-ops/scripts/minerva-(spec-gate|trace-lint)\.sh$

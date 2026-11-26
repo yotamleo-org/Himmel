@@ -38,6 +38,7 @@ HOOK="$SCRIPT_DIR/block-unresolved-cr-merge.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export HOME="$TMP/home"; mkdir -p "$HOME"
+export HIMMEL_POLICY_FOLLOWS_HOME=1
 mkdir -p "$TMP/ghread-none" "$TMP/ghread-pool"
 : > "$TMP/ghread-none/.env"
 printf 'himmel_github_token_vm2=hookpooltoken\n' > "$TMP/ghread-pool/.env"
@@ -71,6 +72,7 @@ cat > "$TMP/bin/gh" <<'EOF'
 echo "$*" >> "${GH_STUB_LOG:?}"
 [ -z "${GH_TOKEN:-}" ] || echo "$GH_TOKEN $*" >> "$GH_STUB_LOG.tok"
 [ -n "${GH_STUB_SLOW:-}" ] && sleep "$GH_STUB_SLOW"
+repo_mode() { case "$1" in *"repos/o/r/"*) printf '%s' "$GH_STUB_MODE" ;; *) printf '%s' "${GH_STUB_FORK_MODE:-$GH_STUB_MODE}" ;; esac; }
 case "${GH_STUB_MODE:?}" in
   error) exit 1 ;;
 esac
@@ -107,7 +109,7 @@ case "$1 $2" in
       fail) exit 1 ;;
       hang) sleep 30; exit 1 ;;
     esac
-    echo '{"number":42,"headRefOid":"abc123","url":"https://github.com/'"${GH_STUB_PR_NWO:-o/r}"'/pull/42"}' ;;
+    echo '{"number":42,"headRefOid":"abc123","reviewDecision":"'"${GH_STUB_REVIEW_DECISION:-}"'","url":"https://github.com/'"${GH_STUB_PR_NWO:-o/r}"'/pull/42"}' ;;
   "api graphql")
     case "$GH_STUB_MODE" in
       cr-ci-api-error) exit 1 ;;
@@ -119,8 +121,8 @@ case "$1 $2" in
     esac ;;
   # CodeRabbit posts NO check-run — these carry only the
   # tests/lint/build signal the CI gate reads.
-  "api repos/o/r/commits/abc123/check-runs"*)
-    case "$GH_STUB_MODE" in
+  "api repos/"*"/commits/abc123/check-runs"*)
+    case "$(repo_mode "$*")" in
       cr-ci-api-error) exit 1 ;;
       ci-hang)  sleep 30; exit 1 ;;
       ci-red)   echo '{"check_runs":[{"name":"tests","status":"completed","conclusion":"failure"}]}' ;;
@@ -130,8 +132,8 @@ case "$1 $2" in
   # CodeRabbit's real signal: a commit STATUS with creator identity. Glob the
   # tail — the gates query `/statuses?per_page=100`, and an exact-match arm
   # silently falls through to the `*)` catch-all and degrades the gate open.
-  "api repos/o/r/commits/abc123/statuses"*)
-    case "$GH_STUB_MODE" in
+  "api repos/"*"/commits/abc123/statuses"*)
+    case "$(repo_mode "$*")" in
       cr-ci-api-error) exit 1 ;;
       inflight)   echo '[{"context":"CodeRabbit","state":"pending","created_at":"2026-07-16T19:08:46Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
       cr-absent)  echo '[]' ;;
@@ -264,6 +266,68 @@ FORK_SHA="0123456789abcdef0123456789abcdef01234567"
 GH_STUB_MODE=clean t fork-bare-merge-refuses 2 Bash "gh pr merge 18 --repo yotamleo-org/qmd --squash --match-head-commit $FORK_SHA"
 if grep -q "project repo" "$TMP/err-fork-bare-merge-refuses"; then pass=$((pass+1)); echo "ok   fork-bare-merge-names-repos"; else fail=$((fail+1)); echo "FAIL fork-bare-merge-names-repos"; fi
 GH_STUB_MODE=clean t fork-chokepoint-passes 0 Bash "bash scripts/handover/merge-fork-pr.sh yotamleo-org/qmd 18 $FORK_SHA"
+
+OWN_PIN="--match-head-commit abc123"
+set_forks() { mkdir -p "$HOME/.himmel"; printf '%s' "$1" > "$HOME/.himmel/config.json"; }
+forks_json() { set_forks "{\"policy\":{\"HIMMEL_MERGE_OWN_FORKS\":\"$1\"}}"; }
+err_has() {
+  if grep -q -- "$2" "$TMP/err-$1"; then pass=$((pass+1)); echo "ok   $1-names-$2"; else fail=$((fail+1)); echo "FAIL $1: stderr lacks '$2': $(cat "$TMP/err-$1")"; fi
+}
+err_lacks() {
+  if grep -q -- "$2" "$TMP/err-$1"; then fail=$((fail+1)); echo "FAIL $1: stderr has '$2': $(cat "$TMP/err-$1")"; else pass=$((pass+1)); echo "ok   $1-omits-$2"; fi
+}
+forks_json "x/y"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-listed-green-allows 0 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-listed-long-repo-allows 0 Bash "gh --repo x/y pr merge 42 --squash $OWN_PIN"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-listed-host-case-allows 0 Bash "gh pr merge 42 --squash -R github.com/X/Y $OWN_PIN"
+PAYLOAD_CWD="$TMP/other" GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-listed-cwd-repo-allows 0 Bash "gh pr merge 42 --squash $OWN_PIN"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-red t own-fork-listed-red-check-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+err_has own-fork-listed-red-check-refuses block-red-ci-merge
+err_lacks own-fork-listed-red-check-refuses "project repo"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-red GH_STUB_FORK_MODE=ci-green t own-fork-checks-read-from-fork-allows 0 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green GH_STUB_FORK_MODE=ci-red t own-fork-checks-read-from-fork-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+err_has own-fork-checks-read-from-fork-refuses block-red-ci-merge
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green GH_STUB_REVIEW_DECISION=CHANGES_REQUESTED t own-fork-listed-changes-requested-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+err_has own-fork-listed-changes-requested-refuses "requests changes"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-listed-no-head-pin-refuses 2 Bash "gh pr merge 42 --squash -R x/y"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-listed-unresolved-pr-no-reanchor-refuses 2 Bash "gh pr merge deadbeef --squash -R x/y $OWN_PIN"
+err_has own-fork-listed-unresolved-pr-no-reanchor-refuses "cannot resolve the PR"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-listed-cd-chain-refuses 2 Bash "cd $TMP/other && gh pr merge 42 --squash -R x/y $OWN_PIN"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-listed-other-host-refuses 2 Bash "gh pr merge 42 --squash -R enterprise.example/x/y $OWN_PIN"
+err_has own-fork-listed-other-host-refuses "project repo"
+GH_STUB_MODE=ci-green t own-fork-longer-name-refuses 2 Bash "gh pr merge 42 --squash -R x/yz $OWN_PIN"
+err_has own-fork-longer-name-refuses "project repo"
+GH_STUB_MODE=ci-green t own-fork-longer-owner-refuses 2 Bash "gh pr merge 42 --squash -R ax/y $OWN_PIN"
+forks_json "a/b, x/y"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-list-with-spaces-allows 0 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+forks_json "a/b"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-unlisted-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+err_has own-fork-unlisted-refuses "project repo"
+forks_json "x/*"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-owner-wildcard-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+forks_json "*"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-star-entry-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+forks_json ""
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-empty-list-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+err_has own-fork-empty-list-refuses "project repo"
+set_forks '{"policy":{}}'
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-key-absent-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+set_forks '{"policy":{"HIMMEL_MERGE_OWN_FORKS":["x/y"]}}'
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-array-value-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+set_forks '{"policy":{"HIMMEL_MERGE_OWN_FORKS":"x/y"'
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-unparseable-config-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+set_forks '{"HIMMEL_MERGE_OWN_FORKS":"x/y"}'
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-key-outside-policy-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+rm -f "$HOME/.himmel/config.json"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-no-config-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+err_has own-fork-no-config-refuses "project repo"
+HIMMEL_MERGE_OWN_FORKS=x/y GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-env-var-cannot-widen 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+forks_json "zz-fixture/home-only"
+GH_STUB_PR_NWO=zz-fixture/home-only GH_STUB_MODE=ci-green t own-fork-home-file-read-with-seam-allows 0 Bash "gh pr merge 42 --squash -R zz-fixture/home-only $OWN_PIN"
+HIMMEL_POLICY_FOLLOWS_HOME='' GH_STUB_PR_NWO=zz-fixture/home-only GH_STUB_MODE=ci-green t own-fork-home-file-ignored-without-seam 2 Bash "gh pr merge 42 --squash -R zz-fixture/home-only $OWN_PIN"
+forks_json "x/ y"
+GH_STUB_PR_NWO=x/y GH_STUB_MODE=ci-green t own-fork-inner-space-entry-refuses 2 Bash "gh pr merge 42 --squash -R x/y $OWN_PIN"
+rm -f "$HOME/.himmel/config.json"
 
 GH_STUB_MODE=unresolved t merge-with-unresolved-blocks   2 Bash "gh pr merge 42 --squash"
 GH_STUB_MODE=clean      t merge-clean-allows             0 Bash "gh pr merge 42 --squash --match-head-commit abc123"

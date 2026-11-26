@@ -3523,8 +3523,8 @@ check_c40_qmd_vec() {
     # the daemon requires a bearer token; it goes to
     # curl as a config on stdin (never argv), read through the plugin's helper.
     local qd_tok qd_auth=()
-    qd_tok="$(bash "$REPO_ROOT/marketplace/plugins/qmd/scripts/qmd-auth-headers.sh" --token 2>/dev/null)" || qd_tok=""
-    [ -n "$qd_tok" ] && qd_auth=(-K -)
+    qd_tok="$(bash "$REPO_ROOT/marketplace/plugins/qmd/scripts/qmd-auth-headers.sh" --token-for "$url" 2>/dev/null)" || qd_tok=""
+    [ -n "$qd_tok" ] && qd_auth=(-q --noproxy '*' -g -K -)
     # `-w '%{http_code}'` appends the status after the body ("000" when no HTTP
     # exchange happened); peel it off so an empty body can be told apart by status.
     init="$(printf 'header = "Authorization: Bearer %s"\n' "$qd_tok" | "$curl_bin" ${qd_auth[@]+"${qd_auth[@]}"} -s -m "$init_timeout" -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$init_payload" "$url" 2>/dev/null)"; init_rc=$?
@@ -3554,7 +3554,11 @@ check_c40_qmd_vec() {
     case "$init_code" in
     401|403)
         local tok_state="none is readable"
-        [ -n "$qd_tok" ] && tok_state="rejected the one read from the token file"
+        if [ -n "$qd_tok" ]; then
+            tok_state="rejected the one read from the token file"
+        elif [ -n "$(bash "$REPO_ROOT/marketplace/plugins/qmd/scripts/qmd-auth-headers.sh" --token 2>/dev/null)" ]; then
+            tok_state="the readable one was not sent (the URL is not a loopback address, or the token holds a character a curl config cannot carry)"
+        fi
         emit WARN C40-qmd-vec "the qmd server on $url answered HTTP $init_code: it requires a bearer token and $tok_state -- vec search is not being served" \
             "set QMD_HTTP_AUTH_FILE to the qmd server's token file (default ~/.config/qmd/http-token, mode 600); see marketplace/plugins/qmd/README.md"
         return
@@ -4488,8 +4492,8 @@ check_c94_graph_config() {
 # a register whose repo path is gone is skipped. Whether it is gone is holds.py's answer (repo-gone: a real ENOENT and nothing
 # else), the same question the doctor cadence asks before it prunes a register; no answer, a slow one or an older holds.py without
 # the verb reads the register as before.
-c95_repo_gone() { # <holds.py> <repo>
-    ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 1 10} python3 -I "$1" repo-gone --repo "$2" </dev/null >/dev/null 2>&1
+c95_repo_gone() {
+    ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 1 "$(( $3 < 10 ? $3 : 10 ))"} python3 -I "$1" repo-gone --repo "$2" </dev/null >/dev/null 2>&1
 }
 
 check_c95_barrier_off() {
@@ -4530,7 +4534,8 @@ check_c95_barrier_off() {
     for name in "${regs[@]}"; do
         [ -e "$name" ] || [ -L "$name" ] || continue
         repo="$(printf '%s' "${name##*/}" | sed -e 's/%2F/\//g' -e 's/%25/%/g')"
-        if c95_repo_gone "$py" "$repo"; then gone=$((gone + 1)); continue; fi
+        left=$(( ${HIMMEL_DOCTOR_HOLDS_T:-33} - (SECONDS - started) ))
+        if { [ -z "$_TIMEOUT_BIN" ] || [ "$left" -ge 1 ]; } && c95_repo_gone "$py" "$repo" "$left"; then gone=$((gone + 1)); continue; fi
         left=$(( ${HIMMEL_DOCTOR_HOLDS_T:-33} - (SECONDS - started) ))
         if [ -n "$_TIMEOUT_BIN" ] && [ "$left" -lt 1 ]; then
             warned=1

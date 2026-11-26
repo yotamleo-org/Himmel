@@ -33,6 +33,12 @@
 #                        A WRAPPED whose PR wrap-merged finds still OPEN (rc 3 at its pr-state step) is closed the
 #                        same way: HANDLED close-wrapped, or ESCALATE close-wrapped-failed when that close refuses.
 #                        A MERGED line for an OPEN PR still escalates wrap-merged-failed.
+#   HALTED            -> a worker whose doc still ends on HALTED with its queue lock free is finished
+#                        (worker_terminal_tail, scripts/lib/worker-tail-status.sh): one line
+#                        `ESCALATE halted-closable <label> doc=<worker doc>` tells the chief to close it
+#                        (close-wrapped-worker.sh closes it). A HALTED worker that is still running, a worker
+#                        not found, or a doc that moved on is the old `ESCALATE marker-HALTED`; a worker
+#                        already closed (the chief doc holds `<label> WRAPPED, window closed.`) is `HANDLED noop`.
 #   anything else     -> ESCALATE (READY with the flag off, and FINDING, need a judge or the chief)
 #
 #   stacked_series on: series-ledger.py find (the bucket is the manifest's directory) says whether the worker's
@@ -66,9 +72,14 @@
 # auto-go.sh's `GO-WRITTEN …` lines (rc 11: the GO file stands, the bus send failed).
 # Usage errors exit 2 before anything runs.
 #
-# `HANDLED closed-already <label>` (rc 0): a WRAPPED worker the chief already closed (its bullet is in the chief
-# doc), whose doc tail is WRAPPED, queue lock free and session gone; nothing runs.
-# Test seams (env): LE_LOCK LE_SESSIONS LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_STATION_STATE LE_AUTOGO LE_GH LE_DRYRUN_BOUND.
+# `HANDLED closed-already <label>` (rc 0): a WRAPPED worker the chief already closed (the chief doc holds `<label> WRAPPED,
+# window closed.`), whose doc tail is WRAPPED, queue lock free and session gone; nothing runs.
+# `HANDLED closed-already <label>` also answers a wrap-merged or close step that outlives LE_STEP_BOUND seconds, one bound counted from the start of the run for the wrap and its close fallback together
+# (default 200, under the waiter's 240 s limit; no GNU timeout, no bound) for a worker whose doc tail is terminal
+# (worker_terminal_tail), queue lock free and session gone.
+# A bullet `CLOSED-ALREADY <label> WRAPPED, window closed, relay step outlived <n>s, not escalated` is appended to the
+# chief doc. The same step for a worker that is not closed is `ESCALATE relay-timeout <label> rc=<n> limit=<bound>s`.
+# Test seams (env): LE_STEP_BOUND LE_LOCK LE_SESSIONS LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_STATION_STATE LE_AUTOGO LE_GH LE_DRYRUN_BOUND.
 # Platform guard: Linux bash 3.2+ (wrap-merged.sh needs flock + jq).
 set -uo pipefail
 
@@ -92,8 +103,29 @@ auto_go_on() { ( . "$HERE/../../lib/flags.sh" && himmel_flag auto_go ) >/dev/nul
 # exit 0 on, 1 off, 2 the flag could not be read (an unknown name, an unreadable registry or an invalid value)
 stacked_series_state() { ( . "$HERE/../../lib/flags.sh" && himmel_flag stacked_series ) >/dev/null 2>&1; }
 
+# shellcheck source=scripts/lib/timeout-bin.sh
+. "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
+STEP_BOUND="${LE_STEP_BOUND:-200}"
+STEP_T0=$SECONDS
+bounded() { local left=$((STEP_BOUND - (SECONDS - STEP_T0))); [ "$left" -ge 1 ] || left=1; ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$left"} "$@"; }
+worker_closed() {
+    local lock_state=held wstem wsess
+    [ -r "$worker" ] || return 1
+    "${LOCK[@]}" status "$worker" >/dev/null 2>&1 && lock_state=free
+    [ "$lock_state" = free ] || return 1
+    # shellcheck source=scripts/lib/worker-tail-status.sh
+    . "$HERE/../../lib/worker-tail-status.sh"
+    worker_terminal_tail "$(results_tail "$worker")" "$lock_state" || return 1
+    wstem="${worker##*/}"; wstem="${wstem%.md}"
+    wsess="$("${SESSIONS[@]}")" || return 1
+    ! printf '%s\n' "$wsess" | awk -F'\t' -v s="$wstem" '$2 == s { f = 1 } END { exit !f }'
+}
+
 usage() { echo "usage: worker-event.sh --doc <chief doc> --fleet <manifest> <message-file | ->" >&2; exit 2; }
-escalate() { echo "ESCALATE $1"; exit 10; }
+escalate() { if [ -n "${halted:-}" ] && [ "${1%% *}" != halted-closable ]; then echo "ESCALATE marker-HALTED"; else echo "ESCALATE $1"; fi; exit 10; }
+results_tail() {
+    awk '/^## Results( |$)/ { seen = 1; r = 1; next } /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next } r && match($0, /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/) { m = substr($0, RSTART, RLENGTH); sub(/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?/, "", m); sub(/[^A-Za-z0-9_]$/, "", m); last = m } END { print last }' "$1"
+}
 listed_doc() {
     local cand
     while IFS= read -r cand; do
@@ -178,8 +210,10 @@ dry_run_ready() {
     return 0
 }
 
+halted=""
 case "$marker" in
     MERGED|WRAPPED) ;;
+    HALTED) halted=1 ;;
     READY) auto_go_on || { dry_run_ready; escalate "marker-READY"; } ;;
     *) escalate "marker-${marker:-none}" ;;
 esac
@@ -253,10 +287,20 @@ EOF
     [[ $stem =~ -(N[0-9]+)- ]] && label="${BASH_REMATCH[1]}"
 fi
 
+if [ -n "$halted" ]; then
+    if [ -r "$worker" ]; then
+        . "$HERE/../../lib/worker-tail-status.sh"
+        lock_state=held
+        "${LOCK[@]}" status "$worker" >/dev/null 2>&1 && lock_state=free
+        if worker_terminal_tail "$(results_tail "$worker")" "$lock_state"; then escalate "halted-closable $label doc=$worker"; fi
+    fi
+    escalate "marker-HALTED"
+fi
+
 if [ "$marker" = WRAPPED ] && [ -r "$worker" ] \
     && grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null \
     && "${LOCK[@]}" status "$worker" >/dev/null 2>&1 \
-    && [ "$(awk '/^## Results( |$)/ { r = 1; next } /^## / { r = 0; next } r && match($0, /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/) { m = substr($0, RSTART, RLENGTH); sub(/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?/, "", m); sub(/[^A-Za-z0-9_]$/, "", m); last = m } END { print last }' "$worker")" = WRAPPED ]; then
+    && [ "$(results_tail "$worker")" = WRAPPED ]; then
     gstem="${worker##*/}"; gstem="${gstem%.md}"
     if gsess="$("${SESSIONS[@]}")" && ! printf '%s\n' "$gsess" | awk -F'\t' -v s="$gstem" '$2 == s { f = 1 } END { exit !f }'; then
         echo "HANDLED closed-already $label"; exit 0
@@ -377,19 +421,28 @@ fi
 
 errf="$(mktemp "${TMPDIR:-/tmp}/worker-event.XXXXXX")" || escalate "wrap-merged-failed rc=1 mktemp"
 if [ -n "$close_only" ]; then
-    "${CLOSE[@]}" --fleet "$FLEET" "$worker" >/dev/null 2>"$errf"; rc=$?
+    bounded "${CLOSE[@]}" --fleet "$FLEET" "$worker" >/dev/null 2>"$errf"; rc=$?
     what=close-wrapped
 else
     args=(--doc "$DOC" --fleet "$FLEET" "$worker")
     [ -z "$pr" ] || args+=(--pr "$pr")
     outf="$(mktemp "${TMPDIR:-/tmp}/worker-event-out.XXXXXX")" || { rm -f "$errf"; escalate "wrap-merged-failed rc=1 mktemp"; }
-    "${WRAP[@]}" "${args[@]}" >"$outf" 2>"$errf"; rc=$?
+    bounded "${WRAP[@]}" "${args[@]}" >"$outf" 2>"$errf"; rc=$?
     what=wrap-merged
     if [ "$rc" -eq 3 ] && [ "$marker" = WRAPPED ] && grep -qE "step pr-state failed: PR #[0-9]+ is 'OPEN'" "$errf"; then
         rm -f "$outf"; outf=""
-        "${CLOSE[@]}" --fleet "$FLEET" "$worker" >/dev/null 2>"$errf"; rc=$?
+        bounded "${CLOSE[@]}" --fleet "$FLEET" "$worker" >/dev/null 2>"$errf"; rc=$?
         what=close-wrapped
     fi
+fi
+if { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; } && [ -n "${_TIMEOUT_BIN:-}" ]; then
+    rm -f "$errf" "${outf:-}"
+    if worker_closed; then
+        if cerr="$(bash "$HERE/append-results.sh" "$DOC" "CLOSED-ALREADY $label WRAPPED, window closed, relay step outlived ${STEP_BOUND}s, not escalated" 2>&1)"; then cbul=""
+        else cbul=" doc-bullet=failed $(printf '%s' "$cerr" | tr '\n' ' ')"; fi
+        echo "HANDLED closed-already $label$cbul"; exit 0
+    fi
+    escalate "relay-timeout $label rc=$rc limit=${STEP_BOUND}s"
 fi
 if [ "$rc" -ne 0 ]; then
     msg="$(tr '\n' ' ' <"$errf")"

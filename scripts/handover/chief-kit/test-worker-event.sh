@@ -892,4 +892,82 @@ check "18f the marketplace step ran once" "$(grep -c 'update --only marketplace'
 check "18f the jira_cli step ran once" "$(grep -c 'update --only jira_cli' "$LE_UCALLS")" 1
 check "18f --versions then shows none behind" "$(grep -cE '^ +(plugins|jira_cli) +behind' "$LE_VERS")" 0
 
+HDOC="$W/HIMMEL-5-N5555-halt-2026-11-26.md"
+cat > "$W/list-halt" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$LE_HDOC"
+EOF
+cat > "$W/lock-halt" <<'EOF'
+#!/usr/bin/env bash
+[ "${LE_LOCK_HELD:-0}" != 1 ]
+EOF
+chmod +x "$W/list-halt" "$W/lock-halt"
+export LE_HDOC="$HDOC"
+printf '# t\n\n## Results\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - done\n- 10:30 HALTED - fleet pause\n' > "$HDOC"
+: > "$W/doc"
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N5555 fleet pause"
+check "19a HALTED tail, lock free: rc" "$rc" 10
+check "19a HALTED tail, lock free: one wake naming the worker and its doc" "$out" "ESCALATE halted-closable N5555 doc=$HDOC"
+check "19a nothing was wrapped or closed" "$calls" ""
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" LE_LOCK_HELD=1 run "HALTED N5555 fleet pause"
+check "19b HALTED tail, lock held: rc" "$rc" 10
+check "19b HALTED tail, lock held: not closable" "$out" "ESCALATE marker-HALTED"
+printf '# t\n\n## Results\n\n- 10:30 HALTED - fleet pause\n- 10:45 LIVE - resumed\n' > "$HDOC"
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N5555 fleet pause"
+check "19c HALTED message but the doc resumed: not closable" "$out" "ESCALATE marker-HALTED"
+printf '# t\n\n## Results\n\n- 10:30 HALTED - fleet pause\n' > "$HDOC"
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED fleet pause, no label"
+check "19d HALTED with no worker named: the old escalation" "$out" "ESCALATE marker-HALTED"
+printf '# t\n\n## Results\n\n- 09:00 LIVE - go\n\n## Chief Rulings\n\n- 10:30 HALTED - fleet pause\n' > "$HDOC"
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N5555 fleet pause"
+check "19f a HALTED bullet below a Chief Rulings section is the tail: one wake" "$out" "ESCALATE halted-closable N5555 doc=$HDOC"
+printf '# t\n\n## Results\n\n- 10:30 HALTED - fleet pause\n\n## Chief Rulings\n\n- 10:45 LIVE - resumed\n' > "$HDOC"
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N5555 fleet pause"
+check "19g a LIVE below the rulings section after the halt: not closable" "$out" "ESCALATE marker-HALTED"
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N9999 fleet pause"
+check "19e HALTED for a worker not in the manifest: the old escalation" "$out" "ESCALATE marker-HALTED"
+printf '%s\n' '- 10:00 N9999 WRAPPED, window closed.' > "$W/doc"
+LE_LIST="$W/list-halt" LE_LOCK="$W/lock-halt" run "HALTED N9999 fleet pause"
+check "19h HALTED for a worker already closed and gone from the manifest: noop" "$out" "HANDLED noop N9999"
+: > "$W/doc"
+
+D20="$W/d20"; mkdir -p "$D20"
+W20="$D20/HIMMEL-20-N6020-closed-by-hand-2026-10-14.md"
+printf '%s\n' '## Results' '- 10:00 LIVE — x' '- 10:20 READY #77 abc' '- 10:30 WRAPPED — done' > "$W20"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" %s\n' "$W20" > "$W/list20"
+chmod +x "$W/list20"
+printf '# chief\n\n## Results\n' > "$W/doc"
+t0=$SECONDS
+LE_STEP_BOUND=1 LE_LIST="$W/list20" LE_WRAP="$W/slowwrap" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
+check "20a a closed worker whose wrap outlives its bound: rc" "$rc" 0
+contains "20a it is done, not escalated" "$out" "HANDLED closed-already N6020"
+lacks "20a no ESCALATE" "$out" "ESCALATE"
+check "20a returns within 5 s" "$([ $((SECONDS - t0)) -lt 5 ] && echo fast || echo slow)" fast
+check "20a the chief doc names the worker as closed, not escalated" "$(lastb)" "CLOSED-ALREADY N6020 WRAPPED, window closed, relay step outlived 1s, not escalated"
+printf '# chief\n\n## Results\n' > "$W/doc"
+printf '#!/usr/bin/env bash\nprintf "4242\\tHIMMEL-20-N6020-closed-by-hand-2026-10-14\\tm\\t1\\n"\n' > "$W/livesession20"
+chmod +x "$W/livesession20"
+LE_STEP_BOUND=1 LE_LIST="$W/list20" LE_WRAP="$W/slowwrap" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/livesession20" run "WRAPPED N6020"
+check "20b a live session: rc" "$rc" 10
+check "20b a live session escalates relay-timeout" "$out" "ESCALATE relay-timeout N6020 rc=124 limit=1s"
+LE_STEP_BOUND=1 LE_LIST="$W/list20" LE_WRAP="$W/slowwrap" LE_LOCK="$W/lockheld" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
+check "20c a held queue lock escalates relay-timeout" "$out" "ESCALATE relay-timeout N6020 rc=124 limit=1s"
+printf '%s\n' '## Results' '- 10:00 LIVE — x' '- 10:20 READY #77 abc' > "$W20"
+LE_STEP_BOUND=1 LE_LIST="$W/list20" LE_WRAP="$W/slowwrap" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
+check "20d a worker whose doc is not terminal escalates relay-timeout" "$out" "ESCALATE relay-timeout N6020 rc=124 limit=1s"
+printf '%s\n' '## Results' '- 10:00 LIVE — x' '- 10:20 READY #77 abc' '- 10:30 WRAPPED — done' > "$W20"
+printf '#!/usr/bin/env bash\nsleep 3\necho "wrap-merged: step pr-state failed: PR #77 is '"'"'OPEN'"'"'" >&2\nexit 3\n' > "$W/slowopen"
+printf '#!/usr/bin/env bash\nsleep 20\n' > "$W/slowclose"
+chmod +x "$W/slowopen" "$W/slowclose"
+printf '# chief\n\n## Results\n' > "$W/doc"
+t0=$SECONDS
+LE_STEP_BOUND=4 LE_LIST="$W/list20" LE_WRAP="$W/slowopen" LE_CLOSE="$W/slowclose" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
+contains "20e a slow wrap then a slow close share one bound: closed, not escalated" "$out" "HANDLED closed-already N6020"
+check "20e both steps together stay under one bound" "$([ $((SECONDS - t0)) -lt 6 ] && echo fast || echo slow)" fast
+printf '%s\n' '# chief' '' '## Results' '- 22:56 LIVE — wrapped worker HIMMEL-20-N6020-closed-by-hand-2026-10-14 was WRAPPED and lock-free; the waiter closed its window' > "$W/doc"
+LE_LIST="$W/list20" LE_LOCK="$W/lockfree" LE_SESSIONS="$W/nosessions" run "WRAPPED N6020"
+contains "20f a sweep close bullet naming the stem still runs wrap-merged: the merge record and retirement are not skipped" "$calls" "wrap --doc"
+contains "20f it is handled by wrap-merged" "$out" "HANDLED wrap-merged N6020"
+: > "$W/doc"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

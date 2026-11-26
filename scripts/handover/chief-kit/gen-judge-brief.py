@@ -212,6 +212,10 @@ def persist_text(s):
             % (s['qid'], s['pr'], s['qid'], s['head'], s['pr'], model_of(s), judge_effort()))
 
 
+SEARCH_ALONE = ('Send each search as its own tool call, with no other call in the same response: '
+                'a call sent beside one that a hook rewrites is refused unrun.')
+
+
 def dispatch_prompt(s, a, alias):
     lines = ['You are a judge call (judge-ro) for `%s`: rule on ONE question, read-only. Your reply follows '
              'the contract in your agent definition.' % s['qid'],
@@ -231,6 +235,8 @@ def dispatch_prompt(s, a, alias):
               '**Reason (why this needs a judge):** %s' % s['reason'],
               '',
               '**Prior art:** %s' % s['prior'],
+              '',
+              '**Searching:** %s' % SEARCH_ALONE,
               '',
               '**Evidence:**',
               evidence_text(s),

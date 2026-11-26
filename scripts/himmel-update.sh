@@ -2039,7 +2039,7 @@ qmd_daemon_serving() {
     command -v curl >/dev/null 2>&1 || return 1
     tok="$(bash "$hdrs" --token-for "$url" 2>/dev/null)"
     if [ -n "$tok" ]; then
-        body="$(printf 'header = "Authorization: Bearer %s"\n' "$tok" | curl -s -m 2 --noproxy '*' -K - -X POST \
+        body="$(printf 'header = "Authorization: Bearer %s"\n' "$tok" | curl -q -s -m 2 --noproxy '*' -g -K - -X POST \
             -H 'Content-Type: application/json' \
             -H 'Accept: application/json, text/event-stream' \
             -d "$payload" "$url" 2>/dev/null)" || return 1
@@ -2270,6 +2270,18 @@ update_luna_template() {
         return 0
     fi
 
+    local pc_note=""
+    if ! command -v pre-commit >/dev/null 2>&1; then
+        local pc_fix
+        if command -v uv >/dev/null 2>&1; then pc_fix="uv tool install pre-commit"
+        elif command -v pipx >/dev/null 2>&1; then pc_fix="pipx install pre-commit"
+        elif [ "$(uname -s)" = "Darwin" ]; then pc_fix="brew install uv, then uv tool install pre-commit"
+        else pc_fix="bash scripts/machine-setup/ubuntu.sh (installs the checksum-pinned uv), then uv tool install pre-commit"
+        fi
+        echo "    FIX: pre-commit is not on PATH — the vault's git hooks (the secret scan) need it, so the upgrade fails closed. Install: $pc_fix"
+        pc_note=" — pre-commit is not on PATH (install: $pc_fix)"
+    fi
+
     local flag="--check"
     [ "$mode" = "apply" ] && flag="--yes"
     local out rc
@@ -2317,7 +2329,7 @@ EOF
         return 0
     fi
     STATUS_luna_template="failed"
-    if [ -f "$vault/_CLAUDE.md.template-merge" ]; then DETAIL_luna_template="upgrade.sh exited $rc — see docs/luna, resolve any _CLAUDE.md.template-merge conflict"; else DETAIL_luna_template="upgrade.sh exited $rc — ${out%%$'\n'*}"; fi
+    if [ -f "$vault/_CLAUDE.md.template-merge" ]; then DETAIL_luna_template="upgrade.sh exited $rc$pc_note — see docs/luna, resolve any _CLAUDE.md.template-merge conflict"; else DETAIL_luna_template="upgrade.sh exited $rc$pc_note — ${out%%$'\n'*}"; fi
     return 1
 }
 
