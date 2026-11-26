@@ -281,11 +281,15 @@ run "row: an unwritable log path never changes the refusal" 2 '"claudeBypass"' "
 # shellcheck source=../lib/portable-timeout.sh
 # shellcheck disable=SC1091
 . "$HOOKS/../lib/portable-timeout.sh"
-FIFO="$TMP/fifo.jsonl"; mkfifo "$FIFO"
+FIFO="$TMP/fifo.jsonl"
 N=$((N+1))
-printf '%s' "$LAUNCH_BAD" | timeout 5 env HIMMEL_GUARD_REFUSALS_LOG="$FIFO" bash "$HOOK" >/dev/null 2>&1; rc=$?
-if [ "$rc" = 2 ]; then echo "ok   row: a log path that is a pipe with no reader never hangs the refusal"
-else echo "FAIL row: a log path that is a pipe with no reader never hangs the refusal: rc=$rc (124 = the guard hung)"; FAIL=$((FAIL+1)); fi
+if ! mkfifo "$FIFO" 2>/dev/null || [ ! -p "$FIFO" ]; then
+    echo "FAIL row: a log path that is a pipe with no reader never hangs the refusal: the test could not create the pipe"; FAIL=$((FAIL+1))
+else
+    printf '%s' "$LAUNCH_BAD" | timeout 5 env HIMMEL_GUARD_REFUSALS_LOG="$FIFO" bash "$HOOK" >/dev/null 2>&1; rc=$?
+    if [ "$rc" = 2 ]; then echo "ok   row: a log path that is a pipe with no reader never hangs the refusal"
+    else echo "FAIL row: a log path that is a pipe with no reader never hangs the refusal: rc=$rc (124 = the guard hung)"; FAIL=$((FAIL+1)); fi
+fi
 
 echo "$((N-FAIL))/$N cases; failures=$FAIL"
 [ "$FAIL" = 0 ]
