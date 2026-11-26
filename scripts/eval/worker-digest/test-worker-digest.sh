@@ -348,6 +348,15 @@ PRE='PreToolUse:Bash hook error: [bash $CLAUDE_PROJECT_DIR/scripts/hooks'
   pair op7 Bash '{"command":"x=\"\" rm"}' "$PRE/block-read-secrets.sh]: guard-empty-expansion: a \${...} holding a command substitution sits in a command that names this guard's target - denied."
   pair op8 Bash '{"command":"other"}' "$PRE/block-read-secrets.sh]: some words no guard table claims"
   pair op9 Bash '{"command":"run-hook"}' "$PRE/run-hook-with-bash.sh]: run-hook-with-bash: DENY not-a-real-hook.sh — nothing vouches for it."
+  pair op10 Bash '{"command":"bash scripts/lanes/x.sh \"mentions graphify\""}' "PreToolUse:Bash hook error: [bash \$CLAUDE_PROJECT_DIR/scripts/hooks/block-graphify-egress.sh]: graphify-fence: DENY command-local endpoint-selector assignment (X=...) in front of graphify"
+  pair op11 Edit '{"file_path":"scripts/a.sh"}' "PreToolUse:Edit hook error: [bash \$CLAUDE_PROJECT_DIR/scripts/hooks/check-write-hold.sh]: scripts/a.sh is held by HIMMEL-1234 (N1234, chief-grant). Keep working on other files, and send your chief: HOLD-ASK scripts/a.sh HIMMEL-1111."
+  pair op12 Monitor '{"command":"tail -f x"}' "PreToolUse:Monitor hook error: [bash \$CLAUDE_PROJECT_DIR/scripts/hooks/block-subagent-park.sh]: You are a subagent (worker) — the Monitor tool is DENIED here."
+  pair op13 Edit '{"file_path":"scripts/b.sh"}' "PreToolUse:Edit hook error: [bash \$CLAUDE_PROJECT_DIR/scripts/hooks/orchestrator-inline-guard.sh]: You are the dispatching parent and this is implementation — DENIED. The ONE per-PR inline exemption is already spent."
+  pair op14 mcp__t3-code__unwatch_pull_request '{"url":"https://github.com/o/r/pull/1"}' "PreToolUse:mcp__t3-code__unwatch_pull_request hook error: [bash \$CLAUDE_PROJECT_DIR/scripts/hooks/block-t3code-unwatch-open-pr.sh]: BLOCKED: unwatch_pull_request refused - PR o/r#1 is still open (state=OPEN)."
+  pair op15 Edit '{"file_path":"MEMORY.md"}' "PreToolUse:Edit hook error: [bash \$CLAUDE_PROJECT_DIR/scripts/hooks/guard-memory-capture.sh]: MEMORY CAPTURE DENIED (line-too-long) An added/changed pointer line exceeds 200 chars."
+  pair op16 Bash '{"command":"while true; do :; done"}' "PreToolUse:Bash hook error: [bash \$CLAUDE_PLUGIN_ROOT/hooks/block-busy-loop.sh]: busy-loop guard: sleepless busy loop refused. A while loop whose body is only \":\" spins a core at 100% CPU."
+  pair op17 Bash '{"command":"npx x"}' "PreToolUse:Bash hook error: [bash \$CLAUDE_PROJECT_DIR/scripts/hooks/guard-judge-writes.sh]: judge write-deny: package-fetch (npx: run an installed tool by its own name) — a judge reports by SendMessage"
+  pair op18 mcp__t3-code__delegate_task '{"x":1}' "PreToolUse:mcp__t3-code__delegate_task hook error: [bash \$CLAUDE_PROJECT_DIR/scripts/hooks/guard-t3-thread-tools.sh]: BLOCKED: guard-t3-thread-tools refused mcp__t3-code__delegate_task."
   pair ts1 TaskStop '{"task_id":"t1"}' "Task t1 is not running (status: completed)"
   pair ts2 TaskStop '{"task_id":"t2"}' "No task found with ID: t2"
   pair ts3 TaskStop '{"task_id":"t3"}' "TaskStop failed: the task runner crashed"
@@ -361,6 +370,15 @@ check "a Refusing a repeat refusal is denied/guard-identical-denied-retry" '[ "$
 check "a run-hook-with-bash DENY X.sh refusal is keyed by X" '[ "$(orow denied/block-read-secrets | jq .count)" = 1 ]'
 check "a guard-unwrap refusal is denied/guard-unwrap" '[ "$(orow denied/guard-unwrap | jq .count)" = 1 ]'
 check "a guard-empty-expansion refusal is denied/guard-empty-expansion" '[ "$(orow denied/guard-empty-expansion | jq .count)" = 1 ]'
+check "a graphify-fence refusal is denied/block-graphify-egress" '[ "$(orow denied/block-graphify-egress | jq .count)" = 1 ]'
+check "a file-held refusal is denied/check-write-hold" '[ "$(orow denied/check-write-hold | jq .count)" = 1 ]'
+check "a worker Monitor/background refusal is denied/block-subagent-park" '[ "$(orow denied/block-subagent-park | jq .count)" = 1 ]'
+check "an inline-implementation refusal is denied/orchestrator-inline-guard" '[ "$(orow denied/orchestrator-inline-guard | jq .count)" = 1 ]'
+check "an open-PR unwatch refusal is denied/block-t3code-unwatch-open-pr" '[ "$(orow denied/block-t3code-unwatch-open-pr | jq .count)" = 1 ]'
+check "a memory-capture refusal is denied/guard-memory-capture" '[ "$(orow denied/guard-memory-capture | jq .count)" = 1 ]'
+check "a busy-loop refusal is denied/block-busy-loop" '[ "$(orow denied/block-busy-loop | jq .count)" = 1 ]'
+check "a judge write-deny refusal is denied/guard-judge-writes" '[ "$(orow denied/guard-judge-writes | jq .count)" = 1 ]'
+check "a t3 thread-tools refusal is denied/guard-t3-thread-tools" '[ "$(orow denied/guard-t3-thread-tools | jq .count)" = 1 ]'
 check "control: a refusal no guard claims, and a DENY of a name that is no hook, stay denied/other" '[ "$(orow denied/other | jq .count)" = 2 ]'
 check "a TaskStop error saying not running or No task found is a no-op, not error/TaskStop" '[ "$(orow error/TaskStop | jq .count)" = 1 ] && jq -e ".metrics.ok_noop_stop == 2" "$TMP/op/out.json" >/dev/null'
 check "control: any other TaskStop error is still a failure" '[ "$(jq -r "[.tool_health[] | select(.tool == \"TaskStop\")] | .[0] | \"\(.calls) \(.failures)\"" "$TMP/op/out.json")" = "3 1" ]'
