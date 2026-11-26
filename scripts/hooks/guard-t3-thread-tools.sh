@@ -10,8 +10,7 @@
 # malformed (entry, config, environment entry name or launchArgs), or whose launchArgs carry
 # --dangerously-skip-permissions or bypassPermissions. A maintainer-profile instance
 # (claudeAgent_maintainer-hooks or claudeAgent_maintainer-billed, each with an optional
-# _relay suffix) is a bypass instance by id, because its grant rides the profile's
-# settings file, which the scan above never sees. Any other instance id is
+# _relay suffix) is a bypass instance by id. Any other instance id is
 # allowed, from any provider to any provider.
 #
 # Narrowing: .t3.instance_narrow in $HOME/.himmel/config.json, an array of
