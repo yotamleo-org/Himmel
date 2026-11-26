@@ -110,6 +110,16 @@ new notification ids wake immediately and pending debt reminds after 60 minutes
 (`CHIEF_WAIT_NOTIFY_REWAKE_MIN`). Stream notifications use the same reminder
 interval. Observation does not assert receipt or discharge any obligation.
 
+Station heal (needs `--doc`): three consecutive samples whose tick line reads
+`station=BEHIND:<components>` (`BEHIND:pending` resets the count) start
+`station-sync.sh --heal` detached, at most once per 1800 s (count and start
+time in `<inbox>.wait.station-heal`, output in `~/.himmel/state/station-sync.out`).
+It runs the step for `plugins`, `jira_cli` and `qmd_fork`, re-checks with
+`--versions`, rewrites the station state, and a failed step writes one owed row
+for that day. Any other behind component stays reported; hermes stays
+reported until its 3-day age rule lands. Result lines: `SKIP heal not-behind`, `sync-running`, `backoff`,
+`no-stamp`, `nothing-healable <components>`.
+
 On startup or document replacement, the stream collector selects only the
 newest READY per worker; normal appended READY entries retain their order.
 Unreadable worker documents are diagnosed in `<inbox>.wait.pending-diagnostic`
