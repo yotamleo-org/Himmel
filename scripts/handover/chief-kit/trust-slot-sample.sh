@@ -60,7 +60,7 @@ verdict="$(printf '%s\n' "$pf_out" | sed '/^[[:space:]]*$/d' | tail -n 1)"
 
 dp_rc=0
 dp_out="$(bash "$dispatch" --why --dispositions ${dispatch_args[@]+"${dispatch_args[@]}"} 2>/dev/null)" || dp_rc=$?  # swallow-ok: the rc is kept in dp_rc and read on the next line
-if [ "$dp_rc" -ne 0 ] || grep -q -E '^# (quota-pause|gh-stall)|open PRs unknown|live workers unknown' <<< "$dp_out"; then
+if grep -q -E '^# (quota-pause|gh-stall)|open PRs unknown|live workers unknown' <<< "$dp_out" || [ "$dp_rc" -ne 0 ]; then
     unknown+=("dispatcher")
 fi
 [ -r "$refusals" ] || unknown+=("launch-refusals")
