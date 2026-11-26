@@ -161,6 +161,7 @@ done
 has "brief 1 defaults the notes query to the title" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" 'query -c luna "a plain fix"'
 has "brief 1 defaults the graph symbol to the first Writes path" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" 'worker-graph.sh explain "scripts/x/"'
 has "brief 1 tells the worker to send each search alone" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" 'Send each search as its own tool call, with no other call in the same response'
+has "brief 1 tells the worker to run the search wrapper as the whole command" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" 'Run the wrapper as the whole command: no '"\`cd\`"', pipe, redirect or chained command'
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["search_query"]="brief prior art cite duty"; l[0]["search_symbol"]="brief-lint.sh"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/named.json"
 nout="$(python3 "$SUT" "$WORK/named.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/named-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wn" --deadline 1791475000 2>&1)"; rc=$?
 NB="$(tr '\n' ' ' < "$WORK/named-bucket/$KP-9001-N901-plain-fix-2026-10-08.md" | tr -s ' ')"
