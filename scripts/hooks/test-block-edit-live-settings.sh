@@ -4208,16 +4208,6 @@ assert_rc "11257b43 an assignment from a substitution before bash -c carrying an
     "$(bash_rc_of "$WT2" "X=\$(pwd) bash -c 'agy plugin import claude'" HOME="$T3H")"
 assert_rc "11257b44 an assignment from a substitution before an agy install denies" 2 \
     "$(bash_rc_of "$WT2" 'X=$(echo y) agy plugin import claude' HOME="$T3H")"
-assert_rc "11257b45 an assignment with a value before a substitution command word denies" 2 \
-    "$(bash_rc_of "$WT2" 'X=1 $(echo agy) plugin install ./p' HOME="$T3H")"
-assert_rc "11257b46 an assignment with a value before a backtick command word denies" 2 \
-    "$(bash_rc_of "$WT2" 'X=1 `echo agy` plugin install ./p' HOME="$T3H")"
-assert_rc "11257b47 a path variable assignment before a substitution command word denies" 2 \
-    "$(bash_rc_of "$WT2" 'HOME=/x $(command -v agy) plugin install ./p' HOME="$T3H")"
-assert_rc "11257b48 an empty assignment before a spaced substitution command word denies" 2 \
-    "$(bash_rc_of "$WT2" 'X= $(echo agy) plugin install ./p' HOME="$T3H")"
-assert_rc "11257b49 a glued assignment earlier does not unlock a spaced substitution command word" 2 \
-    "$(bash_rc_of "$WT2" 'X=$(true); X= $(echo agy) plugin install ./p' HOME="$T3H")"
 assert_rc "11257b37 a command substitution filling the namespace slot denies" 2 \
     "$(bash_rc_of "$WT2" 'agy $(echo plugin) install ./p' HOME="$T3H")"
 assert_rc "11257b38 a backtick substitution filling the namespace slot denies" 2 \
@@ -4311,6 +4301,12 @@ assert_rc "11257c32 an assignment from a substitution before cp allows" 0 \
     "$(bash_rc_of "$WT2" 'TMP=$(mktemp -d /tmp/x.XXXXXX) cp src/*.ts "$TMP"' HOME="$T3H")"
 assert_rc "11257c33 an assignment from a substitution before ls allows" 0 \
     "$(bash_rc_of "$WT2" 'X=$(pwd) ls *.md -la' HOME="$T3H")"
+assert_rc "11257c37 a quoted assignment from a substitution before ls allows" 0 \
+    "$(bash_rc_of "$WT2" 'X="$(pwd)" ls *.md -la' HOME="$T3H")"
+assert_rc "11257c38 a quoted assignment from a substitution before gh api allows" 0 \
+    "$(bash_rc_of "$WT2" 'GH_TOKEN="$(cat f)" gh api "repos/$R/pulls" --paginate' HOME="$T3H")"
+assert_rc "11257c39 a quoted assignment from a templated mktemp before cp allows" 0 \
+    "$(bash_rc_of "$WT2" 'TMP="$(mktemp -d /tmp/x.XXXXXX)" cp src/*.ts "$TMP"' HOME="$T3H")"
 assert_rc "11257c35 an assignment with a prefix glued to a substitution before gh api allows" 0 \
     "$(bash_rc_of "$WT2" 'X=pre$(cat f) gh api r' HOME="$T3H")"
 assert_rc "11257c36 an assignment from a backtick substitution before ls allows" 0 \

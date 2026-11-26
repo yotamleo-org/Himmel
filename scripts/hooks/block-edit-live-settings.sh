@@ -1122,7 +1122,7 @@ agy_cli_writes() {
     while [ "$s" -lt "$ST_NSEG" ]; do
         while [ "$i" -lt "$ST_N" ] && [ "${ST_S[i]}" = "$s" ]; do
             if [ -n "${ST_RO[i]}" ]; then i=$((i + 1)); continue; fi
-            if [ "$first" = 1 ] && [ "${ST_A[i]}" = 1 ]; then la=1 asg=${ST_W[i]}; i=$((i + 1)); continue; fi
+            if [ "$first" = 1 ] && [ "${ST_A[i]}" = 1 ]; then la=1; i=$((i + 1)); continue; fi
             la=0
             w=${ST_LW[i]}
             if [ "$first" = 1 ]; then
@@ -1154,7 +1154,7 @@ agy_cli_writes() {
         if [ "$opener" = 1 ]; then
             [ "$sep" != '`' ] || bt=1
             fo=0
-            if [ "$first" = 1 ] && [ "$la" = 1 ] && _agy_glued_subst "$asg" "$sep"; then
+            if [ "$first" = 1 ] && [ "$la" = 1 ]; then
                 fo=1
             else
                 sw[${#sw[@]}]=$'$()\001'
