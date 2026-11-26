@@ -40,8 +40,11 @@ set -uo pipefail
 
 [ "${HIMMEL_WORKER:-0}" = "1" ] || [ "${HIMMEL_CONSOLE_LEG:-0}" = "1" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
+export LC_ALL=C
 
-input=$(cat 2>/dev/null) || exit 0  # swallow-ok: a workflow guard allows a call it cannot read
+input=""
+IFS= read -r -d '' input 2>/dev/null || true  # swallow-ok: read -d '' returns 1 at EOF on every input; empty input is allowed below
+[ -n "$input" ] || exit 0
 fields=$(jq -r '(.tool_name // "") + "\n" + (.cwd // "") + "\n" + (.tool_input.command // "")' <<<"$input" 2>/dev/null) || exit 0  # swallow-ok: a workflow guard allows a call it cannot parse
 tool=${fields%%$'\n'*}
 rest=${fields#*$'\n'}
@@ -71,9 +74,9 @@ CMD_PREFIX='((sudo|env|nice|nohup|exec|command|time|timeout|do|then|else|elif|if
 CMDSTART_RE='(^|[;&|(`{]|'$NL')[[:space:]]*'$CMD_PREFIX'$'
 
 norm_text() {
-    local rest=$1 pre span inner
+    local rest=$1 pre span inner ctx
     normed=""
-    if [ "${#rest}" -gt 65536 ]; then
+    if [ "${#rest}" -gt 12288 ]; then
         normed=$rest
         return
     fi
@@ -82,11 +85,13 @@ norm_text() {
         span=${BASH_REMATCH[2]}
         rest=${BASH_REMATCH[4]}
         inner=${span:1:${#span}-2}
-        if [[ $normed$pre =~ $CFLAG_RE ]]; then
+        ctx=$normed$pre
+        [ "${#ctx}" -le 120 ] || ctx=${ctx: -120}
+        if [[ $ctx =~ $CFLAG_RE ]]; then
             normed+="$pre;$inner;"
         elif [[ ${span:0:1} = '"' && ( $inner == *\$\(* || $inner == *\`* ) ]]; then
             normed+="$pre;$inner;"
-        elif [[ $normed$pre =~ $CMDSTART_RE && $inner != *[[:space:]]* ]]; then
+        elif [[ $inner != *[[:space:]]* && $ctx =~ $CMDSTART_RE ]]; then
             normed+="$pre$inner"
         else
             normed+="$pre${span//&/_}"
