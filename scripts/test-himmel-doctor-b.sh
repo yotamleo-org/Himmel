@@ -2077,8 +2077,6 @@ while [ $# -gt 0 ]; do
     shift
 done
 mode="${C40_MODE:-ok}"
-# one record per call: whether the bearer reached curl's config and whether --noproxy was set
-# (the token value itself is only compared, never written)
 case "$k" in *"Authorization: Bearer tok-for-the-test-only"*) hdr_auth=yes ;; *) hdr_auth=no ;; esac
 case "$d" in *'"method":"initialize"'*) hdr_call=init ;; *) hdr_call=vec ;; esac
 [ -n "${C40_HDR_LOG:-}" ] && echo "$hdr_call auth=$hdr_auth noproxy=${np:-none}" >> "$C40_HDR_LOG"
