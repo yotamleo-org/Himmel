@@ -1,7 +1,7 @@
 ---
 name: judge
 description: Answers one verdict-grade question independently and returns a verdict — it does not act.
-tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
+tools: Read, Bash, WebFetch, WebSearch
 model: opus
 effort: high
 ---
@@ -72,8 +72,8 @@ ruling, and anything you found that was out of scope for the question asked.
 Do not edit files (the verdict file below is the one exception), write commits, send messages on your parent's behalf, or
 take any follow-up step. If the question turns out to need editing to
 answer honestly (e.g. "does this pattern actually occur" requires running a
-read-only check, which is fine — `Bash`/`Grep`/`Glob` for reading and
-searching are exactly what they are here for), stop at the boundary between
+read-only check, which is fine — `Bash` for reading and searching —
+`grep`, `git grep`, `find <dir> -maxdepth N`, `git ls-files` — is exactly what it is here for), stop at the boundary between
 reading and changing anything.
 
 ## Writing a verdict file
