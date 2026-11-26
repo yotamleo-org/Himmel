@@ -1112,8 +1112,19 @@ _agy_text_writes() {
     return "$rc"
 }
 
+_agy_glued_subst() {
+    local w=$1 o=$2 rest
+    case "$o" in '`') ;; *) o=\$\( ;; esac
+    case "$cmd" in *"$w$o"*) ;; *) return 1 ;; esac
+    rest=${cmd//"$w$o"/}
+    rest=${rest//$'\t'/ }
+    while [[ $rest == *"  "* ]]; do rest=${rest//  / }; done
+    case "$rest" in *"$w $o"*) return 1 ;; esac
+    return 0
+}
+
 agy_cli_writes() {
-    local i=0 s=0 d=0 bt=0 sep first=1 la=0 fo=0 nested=0 shellc=0 w prevw='' opener closer
+    local i=0 s=0 d=0 bt=0 sep first=1 la=0 asg='' fo=0 nested=0 shellc=0 w prevw='' opener closer
     local -a sw=() stw=() stf=()
     if [ "$TOK" != 1 ]; then
         _agy_text_writes "$cmd"
@@ -1122,7 +1133,7 @@ agy_cli_writes() {
     while [ "$s" -lt "$ST_NSEG" ]; do
         while [ "$i" -lt "$ST_N" ] && [ "${ST_S[i]}" = "$s" ]; do
             if [ -n "${ST_RO[i]}" ]; then i=$((i + 1)); continue; fi
-            if [ "$first" = 1 ] && [ "${ST_A[i]}" = 1 ]; then la=1; i=$((i + 1)); continue; fi
+            if [ "$first" = 1 ] && [ "${ST_A[i]}" = 1 ]; then la=1 asg=${ST_W[i]}; i=$((i + 1)); continue; fi
             la=0
             w=${ST_LW[i]}
             if [ "$first" = 1 ]; then
@@ -1154,7 +1165,7 @@ agy_cli_writes() {
         if [ "$opener" = 1 ]; then
             [ "$sep" != '`' ] || bt=1
             fo=0
-            if [ "$first" = 1 ] && [ "$la" = 1 ]; then
+            if [ "$first" = 1 ] && [ "$la" = 1 ] && _agy_glued_subst "$asg" "$sep"; then
                 fo=1
             else
                 sw[${#sw[@]}]=$'$()\001'
