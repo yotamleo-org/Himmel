@@ -2693,8 +2693,8 @@ EOF
     : > "$t/probes.log"
     SECONDS=0
     out="$(env CLAUDE_DIR="$t/claude" HOME="$t/home" HIMMEL_DOCTOR_HOLDS_T=4 C95_STUB_LOG="$t/probes.log" "$_TIMEOUT_BIN" -k 2 40 bash "$DOC" --root "$t/root" --only C95 --no-color 2>&1 < /dev/null)"
-    if ! grep -qx "$t/r3" "$t/probes.log"; then pass "C95 no repo-gone probe starts once the budget is spent"; else fail "C95 a probe started after the budget ($(tr '\n' ' ' < "$t/probes.log"))"; fi
-    if grepq "$out" -E "WARN C95-barrier-off.*NOT ATTEMPTED for $t/r3" && ! grepq "$out" 'removed repo'; then pass "C95 the register no probe had time for is read, not skipped as gone"; else fail "C95 unprobed register -> $(printf '%s' "$out" | head -4)"; fi
+    if grep -Fxq -- "$t/r1" "$t/probes.log" && ! grep -Fxq -- "$t/r3" "$t/probes.log"; then pass "C95 no repo-gone probe starts once the budget is spent"; else fail "C95 a probe started after the budget ($(tr '\n' ' ' < "$t/probes.log"))"; fi
+    if grepq "$out" -E "WARN C95-barrier-off.*NOT ATTEMPTED for $t/r3" && ! grepq "$out" 'removed repo'; then pass "C95 the register no probe had time for is reported NOT ATTEMPTED, not skipped as gone"; else fail "C95 unprobed register -> $(printf '%s' "$out" | head -4)"; fi
     if [ "$SECONDS" -lt 8 ]; then pass "C95 probes and reads together end near the budget (${SECONDS}s)"; else fail "C95 probes ran past the budget (${SECONDS}s)"; fi
     rm -rf "$t"
 else
