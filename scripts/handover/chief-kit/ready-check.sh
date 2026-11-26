@@ -739,7 +739,7 @@ owner_review_mode() {
 if [ "$OWNER_MODE" -eq 1 ]; then owner_review_mode; fi
 
 blocked_by() {
-    local tb="" rb base rset rs_err why rules req rd n_open lines
+    local tb="" rb base rset="" rs_err why rules req rd n_open lines=""
     # shellcheck source=../../lib/timeout-bin.sh
     _TIMEOUT_BIN=""; . "$SELF_DIR/../../lib/timeout-bin.sh" 2>/dev/null || true  # swallow-ok: no timeout binary makes every read below report unknown
     tb="$_TIMEOUT_BIN"
@@ -747,14 +747,15 @@ blocked_by() {
     rb=$("$tb" -k 5 20 "$GH" api "repos/$nwo/pulls/$PR" --jq '[.base.ref,.base.sha,.head.sha]|@tsv' 2>/dev/null) || rb=""  # swallow-ok: an unreadable base prints the unknown line below
     base=${rb%%$'\t'*}
     [ -n "$base" ] || { echo "       blocked by: unknown (the PR's base branch is unreadable)"; return 0; }
+    [ "${rb##*$'\t'}" = "$SHA" ] || { echo "       blocked by: unknown (the PR head moved during the read)"; return 0; }
     rs_err=$(mktemp "${TMPDIR:-/tmp}/ready-check-blocked.XXXXXX" 2>/dev/null) || { echo "       blocked by: unknown (no scratch file)"; return 0; }  # prim-ok: removed on every path below
     # shellcheck disable=SC2016  # the body expands in the child shell
     if ! rset=$("$tb" -k 5 30 bash -c '. "$1" >/dev/null 2>&1 || exit 3; ts_required_set "$2"' _ "$SELF_DIR/../../lib/ticket-status.sh" "$base" 2>"$rs_err"); then  # read-sink-ok: $1 is the own lib path built from this script dir
-        why=$(head -n 1 "$rs_err" | tr -cd '[:print:]' | cut -c1-120); rm -f "$rs_err"
-        echo "       blocked by: unknown (the required checks of $base are unreadable${why:+: $why})"; return 0
+        why=$(head -n 1 "$rs_err" | tr -cd '[:print:]' | cut -c1-120)
+        lines="       blocked by: unknown (the required checks of $base are unreadable${why:+: $why})"
     fi
     rm -f "$rs_err"
-    lines=$(printf '%s' "$rollup" | jq -r --argjson ng "$ng_json" --arg req "$(printf '%s\n' "$rset" | cut -f1)" --arg base "$base" "$ROLLUP_LATEST_DEFS"'
+    [ -n "$lines" ] || lines=$(printf '%s' "$rollup" | jq -r --argjson ng "$ng_json" --arg req "$(printf '%s\n' "$rset" | cut -f1)" --arg base "$base" "$ROLLUP_LATEST_DEFS"'
         (if type == "array" then . else [] end) | rollup_rows | latest_per_check as $rows
         | ($req | split("\n") | map(select(length > 0)) | unique)[] as $n
         | ($rows | map(select(.name == $n))) as $r
@@ -781,7 +782,7 @@ blocked_by() {
     case "$n_open" in ''|*[!0-9]*) n_open=0 ;; esac
     [ "$n_open" -eq 0 ] || lines="${lines:+$lines
 }       blocked by: $n_open unresolved review thread(s) (see item 3)"
-    [ -n "$lines" ] || lines="       blocked by: no unmet required check, review or thread found — GitHub reports BLOCKED for a rule ready-check does not read (see the PR page)"
+    [ -n "$lines" ] || lines="       blocked by: no unmet required check, review or thread found — GitHub reports BLOCKED for a rule ready-check does not read, or a producer-pinned check came from another app (checks match by name; see the PR page)"
     printf '%s\n' "$lines"
 }
 

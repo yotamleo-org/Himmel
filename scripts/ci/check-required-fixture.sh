@@ -40,9 +40,9 @@ live=$(printf '%s' "$raw" | jq -r "$ctx_of_rules" | sort -u) || { echo "required
 [ -n "$live" ] || { echo "required-fixture: $repo $branch requires no status check — refusing to call that a match" >&2; exit 2; }
 fix_rules=$(jq -r "$ctx_of_rules" "$RULES_FIXTURE" | sort -u) || { echo "required-fixture: cannot read $RULES_FIXTURE" >&2; exit 2; }
 [ -r "$CONTEXTS_FIXTURE" ] || { echo "required-fixture: cannot read $CONTEXTS_FIXTURE" >&2; exit 2; }
-fix_contexts=$(sed '/^[[:space:]]*$/d' "$CONTEXTS_FIXTURE" | sort -u)
+fix_contexts=$(sed '/^[[:space:]]*$/d' "$CONTEXTS_FIXTURE" | sort -u) || { echo "required-fixture: cannot read $CONTEXTS_FIXTURE" >&2; exit 2; }
 [ -r "$NON_GATING" ] || { echo "required-fixture: cannot read $NON_GATING" >&2; exit 2; }
-non_gating=$(sed -e '/^#/d' -e '/^[[:space:]]*$/d' "$NON_GATING" | sort -u)
+non_gating=$(sed -e '/^#/d' -e '/^[[:space:]]*$/d' "$NON_GATING" | sort -u) || { echo "required-fixture: cannot read $NON_GATING" >&2; exit 2; }
 
 drift=0
 compare() {
