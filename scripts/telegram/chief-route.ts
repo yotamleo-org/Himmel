@@ -1185,7 +1185,10 @@ async function closureCheck(specs: string, key: string, kind: Kind, r: number, r
   const changed: string[] = [];
   for (const [path, snap] of snaps) changed.push(...changedLines(await diffOf(snap, path, basename(path))));
   const held: SealedFile[] = [];
-  for (const s of baseline ?? []) if (sha256(await readFile(s.read_path).catch(() => new Uint8Array())) === s.read_sha) held.push(s);
+  for (const s of baseline ?? []) {
+    const bytes = await readFile(s.read_path).catch(() => null);
+    if (bytes !== null && sha256(bytes) === s.read_sha) held.push(s);
+  }
   return { changed, baseline: baseline && held };
 }
 

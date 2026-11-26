@@ -3525,7 +3525,7 @@ test("an inferred baseline serves round 4 only: a round-5 closure over a seeded 
 
 test("baseline_files of an inferred baseline holds only the quoted files whose bytes match their quoted sha", async () => {
   const t = await legacyTree(MAJOR);
-  const ok = await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", readLine(t.a), `READ-SHA256 ${sha("not the page")} ${t.html}`, "- **M2** (major; reopens M1) still open");
+  const ok = await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", readLine(t.a), `READ-SHA256 ${sha("not the page")} ${t.html}`, `READ-SHA256 ${sha("")} ${join(t.dir, "missing.md")}`, "- **M2** (major; reopens M1) still open");
   expect(ok.err).toBe("");
   const round4 = ledgerRows(t.specs, CAP_KEY).filter((x) => x.row === "round").at(-1);
   expect(round4.baseline_files).toEqual([{ read_path: t.a, read_sha: sha(readFileSync(t.a, "utf8")) }]);
