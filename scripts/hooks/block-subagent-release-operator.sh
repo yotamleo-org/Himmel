@@ -13,6 +13,7 @@
 # simple commands are scanned for `release` directly followed by `operator`.
 # The full match rules and the fence residual (what it cannot see) are in
 # docs/internals/enforcement.md.
+# git-env-ok: git is matched as a command word in a case pattern and never run here
 #
 # Bypass (set in the shell that launched Claude Code; session-sticky, a per-call
 # prefix does not reach the hook): SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1
@@ -90,7 +91,7 @@ guard_unwrap "${BASH_SOURCE[0]}" "$cmd" 2>/dev/null || deny "$RULE"
 [ "$GU_TOKENIZED" = 1 ] || deny "$RULE"
 
 scan_segments() {
-    local s=0 n j w prev segtext core cb
+    local s=0 n j w prev segtext core cb fed live runs k
     local -a idx
     while [ "$s" -lt "$ST_NSEG" ]; do
         idx=()
@@ -98,25 +99,46 @@ scan_segments() {
         n=${#idx[@]}
         prev=''
         segtext=''
+        live=0
+        runs=0
         j=0
         while [ "$j" -lt "$n" ]; do
             w=${ST_W[idx[j]]}
             [ "$prev" = release ] && [ "$w" = operator ] && return 0
             prev=$w
             segtext=$segtext${segtext:+ }$w
+            if [ "${ST_X[idx[j]]}" = 1 ] || [ "${ST_G[idx[j]]}" = 1 ]; then live=1; fi
+            case "$w" in --pre|--pre=*|--open-files-in-pager*|-O*|alias.*) runs=1 ;; esac
             j=$((j + 1))
         done
+        if [ "$live" = 1 ]; then
+            both_words "$segtext" && return 0
+        fi
         if [ -n "${GU_XA[s]:-}" ]; then
             both_words "$cmd" && return 0
         fi
+        fed=0
+        [ "$ST_HEREDOC" = 1 ] && fed=1
+        if [ "$s" -gt 0 ]; then
+            case "${ST_SEP[s-1]}" in '|'|'|&') fed=1 ;; esac
+        fi
+        for k in ${GU_SR[s]:-}; do
+            case "${ST_RO[k]}" in *'<<<') fed=1 ;; esac
+        done
         core=${GU_CORE[s]:-0}
         if [ "$core" -lt "$n" ]; then
             cb=${ST_W[idx[core]]##*/}
             case "$cb" in
                 bash|sh|zsh|dash|ksh|mksh|ash|yash|posh|eval|source|.|node*|bun|deno|tsx|npx|python*|perl*|ruby*|php*|lua*)
-                    if [ "$ST_HEREDOC" = 1 ]; then
+                    if [ "$fed" = 1 ]; then
                         both_words "$cmd" && return 0
                     else
+                        both_words "$segtext" && return 0
+                    fi ;;
+                script|flock|watch|taskset|strace|ltrace|chrt|numactl|setpriv|unshare|nsenter|runuser|su|ssh|parallel|find|tmux|screen|systemd-run|at|busybox|chroot|expect|sed|gsed|awk|gawk)
+                    both_words "$segtext" && return 0 ;;
+                git|rg|ripgrep)
+                    if [ "$runs" = 1 ]; then
                         both_words "$segtext" && return 0
                     fi ;;
             esac

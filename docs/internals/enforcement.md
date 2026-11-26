@@ -2585,9 +2585,14 @@ followed by `operator` in its words, redirects aside. So `git diff -G
 and a heredoc body that writes a file naming both words are allowed, and every
 `jira release operator` verb (`declare`, `freeze`, `decision`, `takeover`, …) is
 denied plain or wrapped. Where a command's words can reach the CLI as data, both
-words anywhere still deny: an `xargs` segment (the whole command), and a shell,
-`eval`, `source`, node, python, perl, ruby, php or lua segment (that segment, or
-the whole command when it has a heredoc). A command whose quoting the tokenizer
+words still deny: an `xargs` segment (anywhere in the whole command); a shell,
+`eval`, `source`, node, python, perl, ruby, php or lua segment fed by a heredoc, a
+`|` or `|&` pipe or a `<<<` here-string (anywhere in the whole command), else
+anywhere in that segment; a launcher or code-running tool (`script`, `flock`,
+`watch`, `taskset`, `strace`, `find`, `ssh`, `sed`, `awk` and the like), and `git` or
+`rg` given `--pre`, `-O`, `--open-files-in-pager` or an `alias.` setting, anywhere
+in that segment; and any segment with a live `$` or glob word, anywhere in that
+segment, since an empty expansion can sit between the two words. A command whose quoting the tokenizer
 cannot read, and that holds both words, is denied. The refusal tells a subagent to
 quote the phrase as one argument to `grep` or `git grep` through Bash. An
 `agent_id` of `false`, `""`, a number or an object counts as a subagent, and so does
@@ -2607,8 +2612,7 @@ What it cannot see is the fence residual, tracked as one follow-up ticket of the
 variable, an alias, a function, an expansion, an `eval`, a script written then
 run, an encoded string), a nested `claude` session started from a subagent, a
 chief session in another repo, the Monitor tool, and a command that runs its
-argument as code through a tool the word-sequence rule does not read as an
-executor (sed `e`, `rg --pre`, `git grep -O`, a git alias). Bypass:
+argument as code through a tool the executor list above does not name. Bypass:
 `SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1` (launching shell). Spec:
 `scripts/hooks/test-block-subagent-release-operator.sh`.
 
