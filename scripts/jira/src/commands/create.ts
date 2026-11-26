@@ -437,7 +437,6 @@ interface IntakeOptions {
   decision?: string;
   words?: string;
   pointer?: BridgePointer;
-  /** The rules only propose current for this ticket, so it is filed with no version and waits for its INTAKE. */
   proposal?: boolean;
 }
 
@@ -869,7 +868,6 @@ export async function residualInheritedVersion(
   return residual && inherited && o.gate === undefined && residual.frozen.includes(inherited) ? undefined : inherited;
 }
 
-/** The release the rules place against: the declaration (a name) or, in a project no declaration names, Jira alone (no name). */
 type Declared = { release: string; current: string; versions: string[] };
 
 /** The one declared release naming the project, or null when none does (an adopter repo); an unreadable or ambiguous declaration refuses (D5). */
@@ -943,7 +941,6 @@ function groundOf(p: Placement): string {
   }
 }
 
-/** The release the rules place against, read before the POST: the signed declaration cross-checked against Jira (current and freeze), or Jira alone for an adopter repo. */
 async function filingRelease(project: string, declared: Declared | null): Promise<ReleaseIn> {
   const versions = await fetchVersions(project);
   const jiraCurrent = earliestUnreleased(versions);

@@ -179,7 +179,6 @@ async function placement(
   return { labels: core.labels, inherited, bugDefault: placed.bugDefault, coreVerdict: core.verdict };
 }
 
-/** A residual's own version and affects-version go into the POST; its routed version is named on stderr. */
 function applyResidual(fields: Record<string, unknown>, residual: ResidualPlan, inherited: string | undefined): void {
   if (residual.fixVersion) fields['fixVersions'] = [{ name: residual.fixVersion }];
   if (residual.affectsVersion) fields['versions'] = [{ name: residual.affectsVersion }];
@@ -195,12 +194,6 @@ interface Decided {
   rules: RulesPlacement | undefined;
 }
 
-/**
- * Decides who places the ticket: an explicit placement (--backlog, a version, an inherited or closed-parent version,
- * --gate must|receipt, a residual's own version, a test project, an Epic or Subtask) skips the rules; everything else
- * goes to placeByRules. The parent of a follow-up is read once here, and the operator's words are verified here, so every
- * refusal lands before the POST.
- */
 async function decidePlacement(
   project: string,
   options: CreateOptions,
@@ -229,7 +222,6 @@ async function decidePlacement(
   return { parentFacts, closedParent, explicitVersion, words, rules };
 }
 
-/** The options an INTAKE is queued from: a proposal carries the follow-up facts and the rules ground; any other filing queues none. */
 function proposalIntake(options: CreateOptions, rules: RulesPlacement | undefined, parentFacts: FollowUpParent | undefined): CreateOptions & { evidence?: Record<string, unknown>; proposal?: boolean } {
   const proposed = rules?.placement.propose;
   if (rules === undefined || proposed === undefined) return options;
@@ -322,7 +314,6 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
 
 type Step = [string, () => Promise<unknown> | unknown];
 
-/** Runs the steps owed after the POST in order; the first failure is a PARTIAL naming every step still owed. */
 async function runSteps(key: string, steps: Step[]): Promise<void> {
   for (let i = 0; i < steps.length; i += 1) {
     const [name, step] = steps[i]!;
@@ -334,7 +325,6 @@ async function runSteps(key: string, steps: Step[]): Promise<void> {
   }
 }
 
-/** The freeze gate for the version the filing writes: a rules placement passes it (its filed row is the record) after the ledger is proven writable; a gate or override files its own row. */
 async function versionGate(
   project: string,
   options: CreateOptions,
@@ -347,7 +337,6 @@ async function versionGate(
   return admission;
 }
 
-/** The one stderr line a rules placement prints: where the ticket went and why, or what it proposes and who places it. */
 function placementLine(key: string, r: RulesPlacement): string {
   if (r.placement.propose !== undefined) {
     return `jira: ${r.placement.reason}; the chief places it (release request --chief-reason) or the operator's words do; INTAKE queued for ${key}`;
@@ -355,7 +344,6 @@ function placementLine(key: string, r: RulesPlacement): string {
   return `jira: placed ${key} in ${r.target ?? 'backlog'} by ${r.ground} (${r.placement.reason})`;
 }
 
-/** The write order after the POST (D2): the operator record, then the filed row that cites it, then the links; a failed step leaves the later ones owed. */
 function afterCreateSteps(
   options: CreateOptions,
   key: string,
