@@ -1272,6 +1272,85 @@ _origin_nwo() {
     printf '%s\n' "${nwo%.git}"
 }
 
+# shellcheck disable=SC2016  # JavaScript source is literal here
+verdict_select() {
+    VS_DIR="$1" VS_WANT="$2" VS_MODE="$3" node -e '
+const fs = require("fs"), path = require("path"), e = process.env;
+const seg = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const nogo = /^\*\*NO-GO\*\* for head `([0-9a-f]{40})`\.?$/;
+const want = Buffer.from(e.VS_WANT || "");
+let top;
+try { top = fs.readdirSync(e.VS_DIR); } catch (_) { process.exit(2); }
+const out = [];
+let probe = "";
+for (const q of top) {
+  if (q.startsWith(".")) continue;
+  const qdir = path.join(e.VS_DIR, q);
+  let names;
+  try {
+    if (!fs.statSync(qdir).isDirectory()) continue;
+    names = fs.readdirSync(qdir);
+  } catch (_) { continue; }
+  const plain = seg.test(q);
+  let named = false;
+  for (const n of names) {
+    if (n.startsWith(".") || !n.endsWith(".md")) continue;
+    const f = path.join(qdir, n);
+    let buf;
+    try {
+      if (!fs.lstatSync(f).isFile()) { named = true; continue; }
+      buf = fs.readFileSync(f);
+    } catch (_) { named = true; continue; }
+    if (buf.length === 0 || buf.includes(0)) { named = true; continue; }
+    if (buf.includes(want)) named = true;
+    if (e.VS_MODE === "nogo" && plain) {
+      const l8 = buf.toString("latin1").split("\n")[7];
+      const m = l8 === undefined ? null : nogo.exec(l8.replace(/\r/g, ""));
+      if (m && m[1] !== e.VS_WANT) out.push("N " + q + " " + m[1]);
+    }
+    if (!probe && plain && seg.test(n.slice(0, -3))) probe = q + "/" + n;
+  }
+  if (named && plain) out.push("S " + q);
+}
+if (probe) out.push("P " + probe);
+if (out.length) process.stdout.write(out.join("\n") + "\n");
+'
+}
+
+verdict_sel_read() {
+    sel="" vs_heads="" vs_probe=""
+    while read -r vs_k vs_q vs_h; do
+        case "$vs_k" in
+            S) sel="$sel $vs_q" ;;
+            N) case " $vs_heads " in *" $vs_h "*) ;; *) vs_heads="${vs_heads:+$vs_heads }$vs_h" ;; esac ;;
+            P) vs_probe="$vs_q" ;;
+        esac
+    done <<EOF
+$1
+EOF
+}
+
+verdict_sel_descendants() {
+    vs_crc=0
+    [ -n "$vs_heads" ] || return 0
+    vs_types="$(printf '%s\n' "$vs_heads" | tr ' ' '\n' | git cat-file --batch-check)" || vs_crc=$?
+    [ "$vs_crc" -eq 0 ] || return 1
+    vs_keep=""
+    while read -r vs_sha vs_type _; do
+        case "$vs_type" in
+            commit|tag) git merge-base --is-ancestor "$1" "$vs_sha" 2>/dev/null && vs_keep="$vs_keep $vs_sha " ;;
+        esac
+    done <<EOF
+$vs_types
+EOF
+    while read -r vs_k vs_q vs_h; do
+        [ "$vs_k" = N ] || continue
+        case "$vs_keep" in *" $vs_h "*) sel="$sel $vs_q" ;; esac
+    done <<EOF
+$2
+EOF
+}
+
 # Print space-separated "<qid>/<name>" records ruling NO-GO for
 # head $1 (one per qid), in chief-kit/write-verdict.sh format, under this repo's
 # verdict scope; rc 1 when there is none. A qid counts only when every record
@@ -1280,6 +1359,7 @@ _origin_nwo() {
 # consumed on this branch still contributes current-head class vetoes.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 judge_nogo_record() (
+    rr_phase judge-nogo
     want="$1"
     lib="$HIMMEL_ROOT/scripts/lib"
     # shellcheck source=scripts/lib/handover-path.sh
@@ -1297,6 +1377,36 @@ judge_nogo_record() (
         dir="$dir/$seg"
         [ -d "$dir" ] && [ ! -L "$dir" ] || exit 1
     done
+    vs_out="$(verdict_select "$dir" "$want" nogo)"; vs_rc=$?
+    if [ "$vs_rc" -ne 0 ]; then
+        echo "review-round: verdict selection failed (rc $vs_rc) - the judge record is refused" >&2
+        exit 8
+    fi
+    verdict_sel_read "$vs_out"
+    if ! verdict_sel_descendants "$want" "$vs_out"; then
+        echo "review-round: verdict selection failed (cat-file rc $vs_crc) - the judge record is refused" >&2
+        exit 8
+    fi
+    if [ -d "$git_dir/cr-review-rounds" ]; then
+        vs_scan=0
+        grep -rqsF --include='*.verdicts' ' ./' "$git_dir/cr-review-rounds" 2>/dev/null || vs_scan=$?
+        if [ "$vs_scan" -ne 1 ]; then
+            echo "review-round: cannot scan $git_dir/cr-review-rounds (grep rc $vs_scan) - the judge record is refused" >&2
+            exit 8
+        fi
+    fi
+    if [ -e "$verdict_state" ] || [ -L "$verdict_state" ]; then
+        vs_scan=0
+        grep -qsF ' ./' "$verdict_state" 2>/dev/null || vs_scan=$?
+        if [ "$vs_scan" -ne 1 ]; then
+            echo "review-round: cannot read $verdict_state for class history - delta round refused" >&2
+            exit 8
+        fi
+    fi
+    if [ -n "$vs_probe" ] && ! go_verdict_snapshot "$dir/$vs_probe"; then
+        echo "review-round: cannot snapshot a verdict record ($vs_probe) - the judge record is refused" >&2
+        exit 8
+    fi
     pr_want=""
     re_session='^writer-session: [A-Za-z0-9-]+$'
     re_written='^written-at: [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
@@ -1306,6 +1416,13 @@ judge_nogo_record() (
         qid="${qdir##*/}"
         if [ ! -d "$qdir" ] || [ -L "$qdir" ]; then continue; fi
         case "$qid" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) continue ;; esac
+        case "$qid" in
+            [ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789]*)
+                case "$qid" in
+                    *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]*) ;;
+                    *) case " $sel " in *" $qid "*) ;; *) continue ;; esac ;;
+                esac ;;
+        esac
         # A qid consumed on any branch buys no other round, so
         # two branches sharing a last reviewed head cannot each spend it.
         # A scan that fails (rc 2) refuses the record - only rc 1
@@ -1408,6 +1525,7 @@ EOF_SNAP
 # branch is skipped, so one record buys one round.
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 judge_scope_record() (
+    rr_phase judge-scope
     from="$1" want="$2"
     lib="$HIMMEL_ROOT/scripts/lib"
     # shellcheck source=scripts/lib/handover-path.sh
@@ -1427,11 +1545,37 @@ judge_scope_record() (
     re_session='^writer-session: [A-Za-z0-9-]+$'
     re_written='^written-at: [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
     pr_want=""
+    vs_out="$(verdict_select "$dir" "$want" scope)"; vs_rc=$?
+    if [ "$vs_rc" -ne 0 ]; then
+        echo "review-round: verdict selection failed (rc $vs_rc) - the scope round is refused" >&2
+        exit 8
+    fi
+    verdict_sel_read "$vs_out"
+    if [ -d "$git_dir/cr-review-rounds" ]; then
+        vs_scan=0
+        grep -rqsF --include='*.verdicts' ' ./' "$git_dir/cr-review-rounds" 2>/dev/null || vs_scan=$?
+        if [ "$vs_scan" -ne 1 ]; then
+            echo "review-round: cannot scan $git_dir/cr-review-rounds (grep rc $vs_scan) - the scope record is refused" >&2
+            exit 8
+        fi
+    fi
+    if [ -n "$vs_probe" ] && ! go_verdict_snapshot "$dir/$vs_probe"; then
+        echo "review-round: $vs_probe cannot be read whole (unreadable, empty or NUL) - the scope round is refused" >&2
+        exit 8
+    fi
     # Any NO-GO for the new head, in any qid (consumed or not, signed
     # or not - a NO-GO only narrows), blocks the scope round: a GO beside it is
     # not the judges' last word.
     for nf in "$dir"/*/*.md; do
         if [ ! -f "$nf" ] || [ -L "$nf" ]; then continue; fi
+        qid="${nf#"$dir"/}"; qid="${qid%%/*}"
+        case "$qid" in
+            [ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789]*)
+                case "$qid" in
+                    *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]*) ;;
+                    *) case " $sel " in *" $qid "*) ;; *) continue ;; esac ;;
+                esac ;;
+        esac
         # A record that cannot be read whole may be a NO-GO: it vetoes, never skips.
         if ! go_verdict_snapshot "$nf"; then
             echo "review-round: ${nf#"$dir"/} cannot be read whole (unreadable, empty or NUL) - the scope round is refused" >&2
@@ -1449,6 +1593,13 @@ judge_scope_record() (
         qid="${qdir##*/}"
         if [ ! -d "$qdir" ] || [ -L "$qdir" ]; then continue; fi
         case "$qid" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) continue ;; esac
+        case "$qid" in
+            [ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789]*)
+                case "$qid" in
+                    *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]*) ;;
+                    *) case " $sel " in *" $qid "*) ;; *) continue ;; esac ;;
+                esac ;;
+        esac
         if [ -d "$git_dir/cr-review-rounds" ]; then
             scan=0
             grep -rqsF --include='*.verdicts' " $qid/" "$git_dir/cr-review-rounds" 2>/dev/null || scan=$?
@@ -1769,6 +1920,7 @@ EOF
     fi
     delta_verdict="$(judge_nogo_record "$delta_from" "$delta_to")"
     judge_rc=$?
+    rr_phase delta-check
     [ "$judge_rc" -ne 8 ] || return 8
     if ! increment_of "$delta_from" "$delta_to"; then
         delta_refuse "review-round: no increment from $delta_from to $delta_to can be computed (git could not answer or merge-tree failed) - $full_note"
@@ -1828,6 +1980,7 @@ EOF
     # A judge-signed test- or lint-only record for the new head.
     scope_hit="$(judge_scope_record "$delta_from" "$delta_to")"
     scope_rc=$?
+    rr_phase delta-check
     [ "$scope_rc" -ne 8 ] || return 8
     if [ "$scope_rc" -eq 0 ] && [ -n "$scope_hit" ]; then
         scope_hit="${scope_hit%% *}"
