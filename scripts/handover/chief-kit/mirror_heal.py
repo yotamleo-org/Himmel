@@ -23,7 +23,6 @@ KEY_RE = r'[A-Z][A-Z0-9]*-[0-9]+'
 
 
 def brief_keys(doc):
-    """The title's keys plus the key in the file name."""
     with open(doc, encoding='utf-8', errors='replace') as fh:
         lines = fh.read().splitlines()
     title = next((l for l in lines if l.startswith('# ')), '')
@@ -35,7 +34,6 @@ def brief_keys(doc):
 
 
 def mirror_root(key):
-    """BRIEF_LINT_MIRROR, or the project's default mirror under the station state, made absolute."""
     root = os.environ.get('BRIEF_LINT_MIRROR') or os.path.expanduser('~/.himmel/state/jira-mirror/' + key.split('-')[0])
     return os.path.abspath(root)
 
