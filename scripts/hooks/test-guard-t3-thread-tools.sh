@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016 # the row checks hand check() their conditions as single-quoted strings it evals
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
@@ -231,6 +232,50 @@ run "bypass allows a bad instance, on stderr" 0 'override: allowed' "$LAUNCH_BAD
 run "bypass allows a chief title, on stderr" 0 'T3_THREAD_TOOLS_OK=1' \
     '{"tool_name":"'$T't3_thread_update","tool_input":{"action":"rename","title":"X-chief"}}' T3_THREAD_TOOLS_OK=1
 run "a bypass value other than 1 keeps the guard on" 2 '"claudeBypass"' "$LAUNCH_BAD" T3_THREAD_TOOLS_OK=yes
+
+ROWS="$HOME/.himmel/state/guard-refusals.jsonl"
+check() {
+    local name="$1" cond="$2"
+    N=$((N+1))
+    if eval "$cond"; then echo "ok   $name"; else echo "FAIL $name: rows=$(tail -n 2 "$ROWS" 2>/dev/null | tr '\n' ' ')"; FAIL=$((FAIL+1)); fi
+}
+row_count() { if [ -f "$1" ]; then wc -l <"$1" | tr -d ' '; else echo 0; fi; }
+
+rm -rf "$HOME/.himmel/state"
+write_t3_settings
+run "row: a refused bypass-instance launch still refuses" 2 '"claudeBypass"' "$LAUNCH_BAD"
+check "row: a refused launch writes exactly one row" '[ "$(row_count "$ROWS")" = 1 ]'
+check "row: it names the guard, the rule, the instance and the thread title" \
+    'jq -e ".guard == \"guard-t3-thread-tools\" and .rule == \"bypass-instance\" and .instance == \"claudeBypass\" and .title == \"Work\" and (.ts | test(\"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$\"))" "$ROWS" >/dev/null'
+check "row: it carries the ledgers.json envelope v, ts, host, source, kind" \
+    'jq -e ".v == 1 and (.host | length > 0) and .source == .guard and .kind == \"refusal\"" "$ROWS" >/dev/null'
+run "row: a chief-title rename still refuses" 2 'chief-shaped' \
+    '{"tool_name":"'$T't3_thread_update","tool_input":{"action":"rename","title":"X-chief"}}'
+check "row: a chief title writes a second row naming the title rule" \
+    '[ "$(row_count "$ROWS")" = 2 ] && [ "$(tail -n1 "$ROWS" | jq -r "[.rule, .title, .instance] | join(\"|\")")" = "chief-title|X-chief|" ]'
+run "row: a maintainer-profile launch still refuses" 2 'maintainer-profile instance' "$(from_to codex claudeAgent_maintainer-hooks)"
+check "row: a maintainer-profile launch names the maintainer-instance rule" \
+    '[ "$(tail -n1 "$ROWS" | jq -r "[.rule, .instance] | join(\"|\")")" = "maintainer-instance|claudeAgent_maintainer-hooks" ]'
+run "row: an allowed call still allows" 0 - "$LAUNCH_OK"
+run "row: the operator override still allows" 0 'override: allowed' "$LAUNCH_BAD" T3_THREAD_TOOLS_OK=1
+check "row: an allow and an override write no row" '[ "$(row_count "$ROWS")" = 3 ]'
+run "row: an unparseable payload refuses" 2 'not JSON' '{"tool_name":"'$T't3_thread_launch","tool_input":{"title":'
+check "row: a fail-closed refusal also writes a row" '[ "$(tail -n1 "$ROWS" | jq -r .rule)" = "bad-payload" ]'
+run "row: a non-T3 tool writes nothing" 0 - '{"tool_name":"mcp__other__launch","tool_input":{"instanceId":"claudeBypass"}}'
+check "row: a non-T3 tool wrote no row" '[ "$(row_count "$ROWS")" = 4 ]'
+
+SECRET='ghp''_abcdefghijklmnopqrstuvwxyz0123456789'
+printf '{"providerInstances":{"secretEnv":{"driver":"claudeAgent","environment":[{"name":"AGENTS_MD_OK","value":"%s"}],"config":{"launchArgs":"--dangerously-skip-permissions --token %s"}}}}\n' "$SECRET" "$SECRET" > "$T3_SETTINGS"
+run "row: a secret-bearing bypass instance still refuses" 2 '"secretEnv"' "$(from_to codex secretEnv)"
+check "row: a secret-looking settings value never reaches the row file" '(grep -q "$SECRET" "$ROWS"; [ $? = 1 ]) && (grep -q "abcdefghijklmnop" "$ROWS"; [ $? = 1 ])'
+check "row: that refusal did write a row for the instance" '[ "$(tail -n1 "$ROWS" | jq -r .instance)" = "secretEnv" ]'
+write_t3_settings
+
+ALT="$TMP/alt/refusals.jsonl"
+run "row: a refusal with HIMMEL_GUARD_REFUSALS_LOG set still refuses" 2 '"claudeBypass"' "$LAUNCH_BAD" HIMMEL_GUARD_REFUSALS_LOG="$ALT"
+check "row: HIMMEL_GUARD_REFUSALS_LOG moves the row" '[ "$(row_count "$ALT")" = 1 ] && [ "$(row_count "$ROWS")" = 5 ]'
+mkdir -p "$TMP/ro"; : > "$TMP/ro/blocker"
+run "row: an unwritable log path never changes the refusal" 2 '"claudeBypass"' "$LAUNCH_BAD" HIMMEL_GUARD_REFUSALS_LOG="$TMP/ro/blocker/x.jsonl"
 
 echo "$((N-FAIL))/$N cases; failures=$FAIL"
 [ "$FAIL" = 0 ]

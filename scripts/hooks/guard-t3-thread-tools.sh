@@ -20,6 +20,11 @@
 # unreadable or malformed T3 settings file or bypass registry, and a malformed or
 # symlinked narrowing config are refused.
 #
+# Refusal row: each refusal appends one JSONL row (ts, host, guard, rule, instance,
+# thread title; never a settings value) to ${HIMMEL_GUARD_REFUSALS_LOG:-
+# ~/.himmel/state/guard-refusals.jsonl}. The write is fail-open and runs after the
+# refusal is decided, so the exit code and stderr are unchanged.
+#
 # Bypass: T3_THREAD_TOOLS_OK=1 in the launching shell; the allow is printed to
 # stderr.
 #
@@ -30,11 +35,33 @@ CONFIG="${HOME:-/nonexistent}/.himmel/config.json"
 T3_SETTINGS="${T3CODE_HOME:-${HOME:-/nonexistent}/.t3}/userdata/settings.json"
 REGISTRY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../himmelctl/lib/bypass-flags.json"
 
+REFUSALS="${HIMMEL_GUARD_REFUSALS_LOG:-${HOME:-/nonexistent}/.himmel/state/guard-refusals.jsonl}"
+
+record_refusal() {
+    (
+        umask 077
+        here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 0
+        { [ -r "$here/../lib/redact.sh" ] && . "$here/../lib/redact.sh"; } 2>/dev/null || exit 0
+        command -v jq >/dev/null 2>&1 || exit 0
+        title="$3"
+        if [ -z "$title" ]; then
+            title=$(jq -r '[.tool_input // {} | .. | objects | .title? | strings] | first // ""' <<<"$input" 2>/dev/null) || title="" # swallow-ok: a title that cannot be read is an empty field
+        fi
+        cap() { printf '%s' "$(redact "$1")" | tr '\n\r' '  ' | cut -c1-200; }
+        mkdir -p "$(dirname "$REFUSALS")" || exit 0
+        host=$(hostname 2>/dev/null || uname -n 2>/dev/null || echo unknown) # swallow-ok: the host is a label, unknown stands in
+        jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg host "$host" \
+            --arg rule "$1" --arg instance "$(cap "$2")" --arg title "$(cap "$title")" \
+            '{v:1, ts:$ts, host:$host, source:"guard-t3-thread-tools", kind:"refusal", guard:"guard-t3-thread-tools", rule:$rule, instance:$instance, title:$title}' >>"$REFUSALS"
+    ) >/dev/null 2>&1 || true
+}
+
 refuse() {
     if [ "${T3_THREAD_TOOLS_OK:-0}" = "1" ]; then
         echo "guard-t3-thread-tools: override: allowed $1 (T3_THREAD_TOOLS_OK=1)" >&2
         exit 0
     fi
+    record_refusal "$3" "${4:-}" "${5:-}"
     printf 'BLOCKED: guard-t3-thread-tools refused %s.\n%s\nBypass (operator only): relaunch from a shell with T3_THREAD_TOOLS_OK=1 (the allow is printed to stderr).\n' "$1" "$2" >&2
     exit 2
 }
@@ -43,11 +70,11 @@ input=""
 IFS= read -r -d '' input 2>/dev/null || true  # swallow-ok: read -d '' returns 1 at EOF by design
 
 command -v jq >/dev/null 2>&1 \
-    || refuse "a T3 tool call" "jq is not on PATH, so the tool input cannot be checked for a provider instance or a chief title."
+    || refuse "a T3 tool call" "jq is not on PATH, so the tool input cannot be checked for a provider instance or a chief title." no-jq
 
 # swallow-ok: a failed parse refuses on the next line
 tool=$(jq -er '.tool_name | strings' <<<"$input" 2>/dev/null) \
-    || refuse "a T3 tool call" "The hook input is not JSON with a string tool_name, so it cannot be checked."
+    || refuse "a T3 tool call" "The hook input is not JSON with a string tool_name, so it cannot be checked." bad-payload
 case "$tool" in
     mcp__t3-code__*) ;;
     *) exit 0 ;;
@@ -67,7 +94,7 @@ findings=$(jq -r '
       ($pairs[] | select((.df | not) and (.key | ascii_downcase == "title")) | .value | strings
         | select(gsub("^\\s+|\\s+$"; "") | ascii_downcase | test("-(chief|console)$")) | "title\t" + tojson)
 ' <<<"$input" 2>/dev/null) \
-    || refuse "$tool" "Its tool_input could not be walked, so it cannot be checked."
+    || refuse "$tool" "Its tool_input could not be walked, so it cannot be checked." walk-failed
 [ -n "$findings" ] || exit 0
 
 narrow="" narrow_err="" bypass='{}' settings_err=""
@@ -121,35 +148,51 @@ case "$findings" in
         ;;
 esac
 
-bad_instances="" bad_titles=""
+bad_instances="" bad_titles="" bad_rules="" bad_ids="" bad_title_vals=""
+note_rule() { bad_rules="$bad_rules$1"$'\n'; }
+note_id() {
+    local d
+    d=$(jq -rn --argjson v "$1" '$v | if type == "string" then . else tojson end' 2>/dev/null) || d="" # swallow-ok: an id that cannot be decoded is left out of the row only
+    bad_ids="$bad_ids${bad_ids:+,}$d"
+}
 while IFS= read -r line; do
     case "$line" in
         instance$'\t'*)
             val=${line#instance$'\t'}
             case "$val" in
-                'non-string '*) bad_instances="$bad_instances  ${val}: not a string instance id"$'\n'; continue ;;
+                'non-string '*) bad_instances="$bad_instances  ${val}: not a string instance id"$'\n'; note_rule non-string-instance; note_id "${val#non-string }"; continue ;;
             esac
             if jq -en --argjson v "$val" '$v | test("^claudeAgent_maintainer-(hooks|billed)(_relay)?$")' >/dev/null 2>&1; then
                 bad_instances="$bad_instances  ${val}: is a maintainer-profile instance (its hook bypass rides the profile's settings file)"$'\n'
+                note_rule maintainer-instance; note_id "$val"
                 continue
             fi
             if [ -n "$settings_err" ]; then
                 bad_instances="$bad_instances  ${val}: whether it carries a bypass flag is unknown ($settings_err)"$'\n'
+                note_rule settings-unreadable; note_id "$val"
                 continue
             fi
             if ! flags=$(jq -rn --argjson m "$bypass" --argjson v "$val" '$m[$v] // [] | join(", ")' 2>&1); then
                 bad_instances="$bad_instances  ${val}: whether it carries a bypass flag is unknown (the bypass lookup failed: ${flags%%$'\n'*})"$'\n'
+                note_rule bypass-lookup-failed; note_id "$val"
                 continue
             fi
             if [ -n "$flags" ]; then
                 bad_instances="$bad_instances  ${val}: carries a himmel bypass flag (${flags})"$'\n'
+                note_rule bypass-instance; note_id "$val"
             elif [ -n "$narrow_err" ]; then
                 bad_instances="$bad_instances  ${val}: the narrowing list cannot be read ($narrow_err)"$'\n'
+                note_rule narrow-config-unreadable; note_id "$val"
             elif [ -n "$narrow" ] && ! jq -en --argjson allow "$narrow" --argjson v "$val" '$allow | index([$v]) != null' >/dev/null 2>&1; then
                 bad_instances="$bad_instances  ${val}: off .t3.instance_narrow in $CONFIG ($(jq -r 'map(tojson) | join(", ")' <<<"$narrow"))"$'\n'
+                note_rule off-narrow; note_id "$val"
             fi
             ;;
-        title$'\t'*) bad_titles="$bad_titles  ${line#title$'\t'}"$'\n' ;;
+        title$'\t'*)
+            bad_titles="$bad_titles  ${line#title$'\t'}"$'\n'
+            t=$(jq -rn --argjson v "${line#title$'\t'}" '$v' 2>/dev/null) || t="" # swallow-ok: a title that cannot be decoded is left out of the row only
+            bad_title_vals="$bad_title_vals${bad_title_vals:+, }$t"
+            ;;
     esac
 done <<<"$findings"
 
@@ -159,11 +202,12 @@ ${bad_instances}A bypass instance (a T3 instance whose environment or launchArgs
 picked by an agent: a hook bypass is granted per session, by the operator choosing that instance in the T3 UI,
 never to every thread T3 starts. Every other instance is allowed, from any provider to any provider, unless
 the operator narrows the list with .t3.instance_narrow in \$HOME/.himmel/config.json, an operator-owned file.
-Omit the instance id to keep the thread's instance, or name an instance without a bypass flag."
+Omit the instance id to keep the thread's instance, or name an instance without a bypass flag." \
+        "$(printf '%s' "$bad_rules" | sort -u | tr '\n' ',' | sed 's/,$//')" "$bad_ids"
 fi
 if [ -n "$bad_titles" ]; then
     refuse "$tool with a chief-shaped thread title" "Refused title(s):
 ${bad_titles}A T3 thread is named as a chief (a -chief or -console suffix) only by the operator in the T3 UI,
-because the chief guards trust that name as the session's identity. Pick a title without that suffix."
+because the chief guards trust that name as the session's identity. Pick a title without that suffix." chief-title "" "$bad_title_vals"
 fi
 exit 0
