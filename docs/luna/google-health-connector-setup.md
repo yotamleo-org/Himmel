@@ -172,8 +172,9 @@ bun scripts/luna-vitals/cli.ts write /tmp/merged.json --dir /path/to/50-Vitals
 `scripts/luna-vitals/connectors/pull-cadence.sh` is a
 thin wrapper that:
 
-- Defaults the pull window to yesterday → today (UTC).
-- Writes the artifact to `LUNA_VITALS_ARTIFACT_DIR` (default: a `.gh-vitals/` sibling to the script).
+- Defaults the pull window to 3 days ago → 2 days ago (UTC), so it never pulls a day that is
+  still being recorded or synced from the phone.
+- Writes the artifact to `LUNA_VITALS_ARTIFACT_DIR` (default: `~/.claude/gh-vitals/`, outside the repo).
 - Exits 75 with a re-consent reminder if the OAuth token has expired.
 - Exits non-zero on any other error.
 - Does **not** call `write`; that remains a manual step.
