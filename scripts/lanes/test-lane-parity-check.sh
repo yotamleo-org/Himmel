@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# scripts/lanes/test-lane-parity-check.sh - paired suite of lane-parity-check.sh.
-#
-# Cases run the check against a fixture root: copies of the four wiring files
-# and of docs/internals/lane-parity.md, mutated one way per case.
-#   (a) the real tree passes
-#   (b) a lane that lost a guard another lane has, the table still claiming it: FAIL
-#   (c) negative control: the same loss with a recorded structural reason: PASS
-#   (d) a cell with no recorded reason (bare word, empty reason): FAIL
-#   (e) a guard wired on a lane with no table row: FAIL
-#   (f) a recorded reason for a guard that is wired: FAIL
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

@@ -3,18 +3,6 @@
 # (Claude Code, Codex CLI, Gemini through Antigravity) and missing on another with
 # no recorded reason.
 #
-# Reads the table between <!-- BEGIN cli-lane-parity --> and <!-- END cli-lane-parity -->
-# in docs/internals/lane-parity.md: `| capability | claude | codex | antigravity |`.
-# Each lane cell is one of
-#   has[: note]               the lane has the capability
-#   structural: <reason>      the lane cannot have it (the CLI has no such tool or role)
-#   gap-ticketed: <reason>    a launcher, hook or adapter edit owed under a ticket
-# A `guard:<hook>.sh` row is also checked against the real wiring of each lane:
-#   claude        PreToolUse in .claude/settings.json and the himmel-ops plugin hooks.json
-#   codex         PreToolUse in .codex/hooks.json
-#   antigravity   the PreToolUse tool arms of scripts/hooks/antigravity-hook-adapter.sh
-# and a hook wired on any lane with no row fails.
-#
 # Usage: bash scripts/lanes/lane-parity-check.sh [--root <dir>] [--doc <file>]
 # Exit: 0 pass, 1 drift found, 2 usage or unreadable input.
 set -uo pipefail
