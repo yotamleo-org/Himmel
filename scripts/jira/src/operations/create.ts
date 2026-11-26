@@ -10,7 +10,7 @@ import { parseLabels } from '../commands/labels.js';
 import { bodyDiagnostics, homeVerdict, plainBlockVerdict, titleVerdict, type BodyInput } from '../plain-block.js';
 import { sectorField, sectorOptions } from '../commands/sector.js';
 import { createIssueLink } from '../commands/link.js';
-import { appendAdmission } from '../commands/admissions-ledger.js';
+import { appendAdmission, assertAdmissionsWritable } from '../commands/admissions-ledger.js';
 import { checkIntakeGate } from '../commands/intake-gate.js';
 import { refuseTestJiraPost } from '../commands/release.js';
 import { isTestProject } from '../live-test-guard.js';
@@ -25,20 +25,28 @@ import {
   checkExistingBlocker,
   checkPlacementFlags,
   createWriterOf,
+  declaredFor,
   followUpIntake,
   closedParentPlacement,
-  intakeOwed,
   markCore,
   placeAtFiling,
   planResidual,
   preflightIntake,
   printCore,
   queueIntakeIfUnversioned,
+  readFollowUpParent,
+  recordWords,
   refuseOpenDuplicate,
   residualInheritedVersion,
   resolveTitle,
+  rulesPlacement,
   sectorForCreate,
+  verifyWords,
+  type BridgePointer,
+  type FollowUpParent,
   type ResidualPlan,
+  type RulesPlacement,
+  type VerifiedWords,
 } from '../commands/create.js';
 
 export interface CreateOptions {
@@ -79,6 +87,8 @@ export interface CreateOptions {
   area?: string;
   project?: string;
   changeClass?: string;
+  /** The Telegram bridge's pointer to the operator's update, set by `jira create --operator-update`. */
+  pointer?: BridgePointer;
   attach: string[];
 }
 
@@ -169,6 +179,61 @@ async function placement(
   return { labels: core.labels, inherited, bugDefault: placed.bugDefault, coreVerdict: core.verdict };
 }
 
+/** A residual's own version and affects-version go into the POST; its routed version is named on stderr. */
+function applyResidual(fields: Record<string, unknown>, residual: ResidualPlan, inherited: string | undefined): void {
+  if (residual.fixVersion) fields['fixVersions'] = [{ name: residual.fixVersion }];
+  if (residual.affectsVersion) fields['versions'] = [{ name: residual.affectsVersion }];
+  const routed = inherited ?? residual.fixVersion;
+  if (routed) console.error(`jira: residual routed to ${routed}`);
+}
+
+interface Decided {
+  parentFacts: FollowUpParent | undefined;
+  closedParent: ReturnType<typeof closedParentPlacement>;
+  explicitVersion: string | undefined;
+  words: VerifiedWords | undefined;
+  rules: RulesPlacement | undefined;
+}
+
+/**
+ * Decides who places the ticket: an explicit placement (--backlog, a version, an inherited or closed-parent version,
+ * --gate must|receipt, a residual's own version, a test project, an Epic or Subtask) skips the rules; everything else
+ * goes to placeByRules. The parent of a follow-up is read once here, and the operator's words are verified here, so every
+ * refusal lands before the POST.
+ */
+async function decidePlacement(
+  project: string,
+  options: CreateOptions,
+  o: { testProject: boolean; inherited: string | undefined; residual: ResidualPlan | undefined; bugDefault: boolean; labels: string[] },
+): Promise<Decided> {
+  const { testProject, inherited, residual } = o;
+  const typeFiled = /^(bug|task|story)$/i.test(options.type);
+  const reads = !testProject && typeFiled && options.followUpOf !== undefined && inherited === undefined && options.fixVersion === undefined && !options.backlog;
+  const parentFacts = reads ? await readFollowUpParent(options.followUpOf!) : undefined;
+  const closedParent = inherited === undefined && residual === undefined ? closedParentPlacement(options, parentFacts) : undefined;
+  const explicitVersion = inherited ?? closedParent?.fixVersion ?? options.fixVersion;
+  const explicit = testProject || !typeFiled || options.backlog === true || explicitVersion !== undefined || residual?.fixVersion !== undefined || o.bugDefault;
+  const wordsGiven = !testProject && (options.decision !== undefined || options.words !== undefined);
+  const declared = !explicit || wordsGiven ? declaredFor(project) : null;
+  const words = wordsGiven ? verifyWords(options, declared) : undefined;
+  const rules = explicit
+    ? undefined
+    : await rulesPlacement({
+      project, type: options.type, priority: options.priority, labels: o.labels, gate: options.gate,
+      proposedVersion: options.proposedVersion, followUpOf: options.followUpOf, remainder: options.remainder,
+      pointer: options.pointer, parent: parentFacts, words: words !== undefined,
+    }, declared);
+  return { parentFacts, closedParent, explicitVersion, words, rules };
+}
+
+/** The options an INTAKE is queued from: a proposal carries the follow-up facts and the rules ground; any other filing queues none. */
+function proposalIntake(options: CreateOptions, rules: RulesPlacement | undefined, parentFacts: FollowUpParent | undefined): CreateOptions & { evidence?: Record<string, unknown>; proposal?: boolean } {
+  const proposed = rules?.placement.propose;
+  if (rules === undefined || proposed === undefined) return options;
+  const base: CreateOptions & { evidence?: Record<string, unknown> } = followUpIntake(options, parentFacts);
+  return { ...base, proposal: true, proposedVersion: proposed, evidence: { ...base.evidence, rule: rules.ground } };
+}
+
 export async function runCreate(options: CreateOptions, run: { check?: boolean } = {}): Promise<CreateResult> {
   if (!run.check) refuseTestJiraPost('create');
   checkFlagCombinations(options);
@@ -220,25 +285,23 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   }
 
   if (options.parent) fields['parent'] = { key: options.parent };
-  if (labels) fields['labels'] = labels;
   if (sector && sectorId) fields[sectorId] = { value: sector };
-  if (residual) {
-    if (residual.fixVersion) fields['fixVersions'] = [{ name: residual.fixVersion }];
-    if (residual.affectsVersion) fields['versions'] = [{ name: residual.affectsVersion }];
-    console.error(`jira: residual routed to ${inherited ?? residual.fixVersion ?? 'no version, its INTAKE is placed by the door'}`);
-  }
-  const closedParent = inherited === undefined && residual === undefined ? await closedParentPlacement(options) : undefined;
+  if (residual) applyResidual(fields, residual, inherited);
+
+  const { parentFacts, closedParent, explicitVersion, words, rules } = await decidePlacement(project, options, { testProject, inherited, residual, bugDefault, labels: labels ?? [] });
   if (closedParent?.priority !== undefined && options.priority === undefined) fields['priority'] = { name: closedParent.priority };
-  const versionOptions = { ...options, fixVersion: inherited ?? closedParent?.fixVersion ?? options.fixVersion };
+  labels = [...new Set([...(labels ?? []), ...(rules?.labels ?? [])])];
+  if (labels.length > 0) fields['labels'] = labels;
+  const versionOptions = { ...options, fixVersion: explicitVersion ?? rules?.target };
   await applyVersions(project, versionOptions, fields, { bugDefault });
-  const admission = testProject ? undefined : await checkIntakeGate(project, fields['fixVersions'], { gate: options.gate, override: overrideReason !== undefined });
+  const admission = await versionGate(project, options, fields, { testProject, overrideReason, rules });
   await checkExistingBlocker(project, fields['fixVersions'], options);
-  const intake = intakeOwed(options.type, fields, testProject) ? await followUpIntake(versionOptions) : options;
+  const intake = proposalIntake(options, rules, parentFacts);
   preflightIntake(intake, fields, title, testProject);
   if (options.checkDuplicates && !testProject) await refuseOpenDuplicate(project, title, options);
   if (run.check) return { disposition: 'checked' };
 
-  const writer = createWriterOf(options, { placed: fields['fixVersions'] !== undefined, inherited: inherited ?? closedParent?.fixVersion, residual, bugDefault });
+  const writer = createWriterOf(options, { placed: fields['fixVersions'] !== undefined, inherited: inherited ?? closedParent?.fixVersion, residual, bugDefault, rules: rules?.target !== undefined });
   const result = await postIssue(fields, writer);
   const key = result.key;
   writeJiraBreadcrumb(key);
@@ -246,9 +309,18 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   const browse = browseLine(key);
   if (browse) console.log(browse);
   printCore(coreVerdict);
+  if (rules) console.error(placementLine(key, rules));
   queueIntakeIfUnversioned(key, fields, title, intake, testProject);
 
-  const steps = afterCreateSteps(options, key, title, { overrideReason: testProject ? undefined : overrideReason, admission });
+  const filedInto = (fields['fixVersions'] as Array<{ name: string }> | undefined)?.[0]?.name ?? null;
+  await runSteps(key, afterCreateSteps(options, key, title, { overrideReason: testProject ? undefined : overrideReason, admission, words, wordsInto: filedInto, rules }));
+  return { disposition: 'created', key };
+}
+
+type Step = [string, () => Promise<unknown> | unknown];
+
+/** Runs the steps owed after the POST in order; the first failure is a PARTIAL naming every step still owed. */
+async function runSteps(key: string, steps: Step[]): Promise<void> {
   for (let i = 0; i < steps.length; i += 1) {
     const [name, step] = steps[i]!;
     try {
@@ -257,20 +329,52 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
       throw new CreatePartial(key, name, e, steps.slice(i + 1).map(([n]) => n));
     }
   }
-  return { disposition: 'created', key };
 }
 
-type Step = [string, () => Promise<unknown> | unknown];
+/** The freeze gate for the version the filing writes: a rules placement passes it (its filed row is the record) after the ledger is proven writable; a gate or override files its own row. */
+async function versionGate(
+  project: string,
+  options: CreateOptions,
+  fields: Record<string, unknown>,
+  o: { testProject: boolean; overrideReason: string | undefined; rules: RulesPlacement | undefined },
+): Promise<Awaited<ReturnType<typeof checkIntakeGate>>> {
+  const placed = o.rules?.target !== undefined;
+  const admission = o.testProject ? undefined : await checkIntakeGate(project, fields['fixVersions'], { gate: options.gate, override: o.overrideReason !== undefined, rules: placed });
+  if (placed && o.rules?.release !== undefined) assertAdmissionsWritable();
+  return admission;
+}
 
+/** The one stderr line a rules placement prints: where the ticket went and why, or what it proposes and who places it. */
+function placementLine(key: string, r: RulesPlacement): string {
+  if (r.placement.propose !== undefined) {
+    return `jira: ${r.placement.reason}; the chief places it (release request --chief-reason) or the operator's words do; INTAKE queued for ${key}`;
+  }
+  return `jira: placed ${key} in ${r.target ?? 'backlog'} by ${r.ground} (${r.placement.reason})`;
+}
+
+/** The write order after the POST (D2): the operator record, then the filed row that cites it, then the links; a failed step leaves the later ones owed. */
 function afterCreateSteps(
   options: CreateOptions,
   key: string,
   title: string,
-  o: { overrideReason?: string; admission?: Awaited<ReturnType<typeof checkIntakeGate>> },
+  o: {
+    overrideReason?: string; admission?: Awaited<ReturnType<typeof checkIntakeGate>>;
+    words?: VerifiedWords; wordsInto: string | null; rules?: RulesPlacement;
+  },
 ): Step[] {
-  const { overrideReason, admission } = o;
+  const { overrideReason, admission, words, rules } = o;
   const parentKey = options.residualOf ?? options.followUpOf;
   const steps: Step[] = [];
+  let record: string | undefined;
+  if (words) steps.push(['writing the operator record', () => { record = recordWords(words, key, o.wordsInto); }]);
+  if (rules?.target !== undefined && rules.release !== undefined) {
+    const version = rules.target;
+    steps.push(['writing the filed row', () => appendAdmission({
+      version, key, kind: 'filed', ground: rules.ground, reason: rules.placement.reason,
+      ...(record !== undefined ? { ruling: record } : {}),
+      ...(options.pointer !== undefined ? { evidence: options.pointer } : {}),
+    })]);
+  }
   if (overrideReason !== undefined) {
     steps.push(['writing the admissions ledger row', () => appendAdmission({ version: options.fixVersion!, kind: 'override', reason: overrideReason, key })]);
   }

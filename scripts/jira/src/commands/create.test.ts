@@ -58,6 +58,7 @@ beforeEach(async () => {
   vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(baseRoot, 'keys'));
   vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
   vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+  vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(baseRoot, 'adm.jsonl'));
   // create posts to Jira; a loopback Jira is a stub, so the post door stays open.
   vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
   vi.stubEnv('JIRA_ALLOW_HOST', '127.0.0.1:9');
@@ -73,6 +74,13 @@ afterEach(() => {
 
 // A Sector and a parent epic: the home a Task, Story or Bug needs to be filed.
 const HOME = ['--sector', 'Ship loop', '--parent', 'HIMMEL-9'];
+
+const freezeBase = async (): Promise<void> => {
+  const p = new Command();
+  p.exitOverride();
+  registerRelease(p);
+  await p.parseAsync(['node', 'jira', 'release', 'operator', 'freeze', 'R1', '--version', 'v1.1.3', '--keys', 'HIMMEL-1', '--decision', '104', '--verbatim-file', join(baseRoot, 'verbatim.txt')]);
+};
 
 describe('create — resolveTitle', () => {
   it('accepts --title', () => {
@@ -200,9 +208,9 @@ describe('create — Bug default fixVersion wiring', () => {
     return (call?.[2] as { fields: { fixVersions?: { name: string }[] } }).fields;
   };
 
-  it('defaults a Bug to the earliest unreleased version and says so', async () => {
+  it('defaults a Bug filed with --gate receipt to the earliest unreleased version and says so', async () => {
     withVersions(VERSIONS);
-    await createFields(['--type', 'Bug', '--priority', 'Highest']);
+    await createFields(['--type', 'Bug', '--gate', 'receipt']);
     expect(postedFields().fixVersions).toEqual([{ name: 'v1.0.2' }]);
     expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/defaults to fixVersion v1\.0\.2/));
   });
@@ -211,7 +219,7 @@ describe('create — Bug default fixVersion wiring', () => {
 
   it('bug default names create-bug-default', async () => {
     withVersions(VERSIONS);
-    await createFields(['--type', 'Bug', '--priority', 'Highest']);
+    await createFields(['--type', 'Bug', '--gate', 'receipt']);
     expect(postWriter()).toBe('create-bug-default');
   });
 
@@ -229,7 +237,7 @@ describe('create — Bug default fixVersion wiring', () => {
 
   it('files with no fixVersion and a warning when no unreleased version can be found', async () => {
     withVersions([{ id: '1', name: 'v1.0.0', released: true }]);
-    await createFields(['--type', 'Bug', '--priority', 'Highest']);
+    await createFields(['--type', 'Bug', '--gate', 'receipt']);
     expect(postedFields().fixVersions).toBeUndefined();
     expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/no unreleased version.*no fixVersion/));
   });
@@ -239,7 +247,7 @@ describe('create — Bug default fixVersion wiring', () => {
       if (method === 'GET') throw new Error('boom');
       return { key: 'HIMMEL-1' };
     });
-    await createFields(['--type', 'Bug', '--priority', 'Highest']);
+    await createFields(['--type', 'Bug', '--gate', 'receipt']);
     expect(postedFields().fixVersions).toBeUndefined();
     expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/no unreleased version.*no fixVersion/));
   });
@@ -742,7 +750,7 @@ describe('create --residual-of', () => {
     await file('--residual-of', 'HIMMEL-50', '--fu-class', 'escape', '--area', 'cr scripts',
       '--desc', `${PLAIN}\nclass: unclassified`);
     const f = created()!;
-    expect(f['labels']).toEqual(['residual', 'fu-escape', 'area-cr-scripts', `residual-depth-${depth + 1}`]);
+    expect(f['labels']).toEqual(['residual', 'fu-escape', 'area-cr-scripts', `residual-depth-${depth + 1}`, ...(depth === 0 ? [] : ['backlog'])]);
     expect(f['versions']).toEqual([{ name: 'v1.1.3' }]);
     expect(f['fixVersions']).toEqual(depth === 0 ? [{ name: 'v1.1.3' }] : undefined);
     expect(JSON.stringify(f['description'])).toContain('class: unclassified');
@@ -838,11 +846,22 @@ describe('create --residual-of placement', () => {
     expect(created()).toBeUndefined();
   });
 
-  it('row c: a gate files into the frozen current and records the admission', async () => {
+  it('row c: --gate receipt files into the frozen current and records the admission', async () => {
     play({ frozen: true });
-    await file(...HARD, '--gate', 'regression');
+    await file(...HARD, '--gate', 'receipt');
     expect(lands()).toEqual(['v1.1.3']);
-    expect(readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8')).toContain('"gate":"regression"');
+    expect(readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8')).toContain('"gate":"receipt"');
+  });
+
+  it('row c: --gate regression on a residual is only a proposal, which a project no release names refuses', async () => {
+    play({ frozen: true });
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    await expect(file(...HARD, '--gate', 'regression')).rejects.toThrow('exit');
+    expect(created()).toBeUndefined();
+    expect((console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).join('\n')).toMatch(/--gate must:<ref>/);
+    exit.mockRestore();
   });
 
   it('row d: an escape files into the unfrozen current', async () => {
@@ -1067,9 +1086,13 @@ describe('create — unplaced follow-up', () => {
     errs = [];
     vi.spyOn(console, 'error').mockImplementation((s: unknown) => { errs.push(String(s)); });
     root = mkdtempSync(join(tmpdir(), 'create-unplaced-'));
+    vi.spyOn(process, 'exit').mockImplementation(((c?: number) => { throw new Error(`exit ${c}`); }) as never);
     mockRequest.mockImplementation(async (method: string, path: string) => {
       if (method === 'GET' && path.endsWith('/versions')) return [{ name: 'v1.1.3', released: false }];
       if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-5?')) {
+        return { fields: { project: { key: 'HIMMEL' }, status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } }, fixVersions: [{ name: 'v1.1.3' }] } };
+      }
       return { key: 'HIMMEL-77' };
     });
   });
@@ -1078,9 +1101,10 @@ describe('create — unplaced follow-up', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('RED 8723 i: with no release declared, a follow-up with no version is refused before it is filed', async () => {
+  it('RED 8723 i: with no release declared, a follow-up the rules only propose is refused before it is filed', async () => {
     vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'none'));
-    await expect(file('--follow-up-of', 'HIMMEL-5')).rejects.toThrow(/no release is declared/);
+    await expect(file('--follow-up-of', 'HIMMEL-5')).rejects.toThrow(/exit 1/);
+    expect(errs.join('\n')).toMatch(/no release names HIMMEL to take an INTAKE.*--gate must:<ref>/s);
     expect(posted()).toBe(false);
   });
 
@@ -1159,25 +1183,24 @@ describe('create — unplaced follow-up', () => {
       expect(queued()[0]!.to_v).toBe('v1.1.3');
       expect(queued()[0]!.why).toBe('follow-up of HIMMEL-5 (In Progress), which is in v1.1.3');
       expect(queued()[0]!.why).not.toMatch(/remainder|cannot close/);
-      expect(queued()[0]!.evidence).toEqual({ follow_up_of: 'HIMMEL-5', parent_status: 'In Progress', parent_version: 'v1.1.3' });
+      expect(queued()[0]!.evidence).toEqual({ follow_up_of: 'HIMMEL-5', parent_status: 'In Progress', parent_version: 'v1.1.3', rule: 'rules:follow-up-of:HIMMEL-5' });
       expect(issueBody().fields['fixVersions']).toBeUndefined();
     });
 
-    it('RED 9002 remainder: --remainder says the parent cannot close without this ticket and records it', async () => {
+    it('9002 remainder: a remainder of a parent in the current version is placed there by rule S, with no INTAKE', async () => {
       parentIs({});
       await file('--follow-up-of', 'HIMMEL-5', '--remainder');
-      expect(queued()[0]!.to_v).toBe('v1.1.3');
-      expect(queued()[0]!.why).toBe('follow-up of HIMMEL-5 (In Progress), which is in v1.1.3; HIMMEL-5 cannot close without this ticket, which holds its remainder');
-      expect(queued()[0]!.evidence).toEqual({ follow_up_of: 'HIMMEL-5', parent_status: 'In Progress', parent_version: 'v1.1.3', remainder: true });
+      expect(issueBody().fields['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+      expect(queued()).toEqual([]);
     });
 
     it.each([
-      ['a parent in v1.1.3', {}, []],
-      ['a parent in v1.1.4', { versions: ['v1.1.4'] }, []],
-      ['--proposed-version', { versions: ['v1.1.4'] }, ['--proposed-version', 'v1.1.4']],
-    ] as const)('R3-F12: a remainder split with --why and %s records follow_up_of and remainder in the INTAKE evidence', async (_n, parent, extra) => {
-      parentIs(parent);
-      await file('--follow-up-of', 'HIMMEL-5', '--remainder', '--why', 'the rest of the parent', ...extra);
+      ['no --why', []],
+      ['--why', ['--why', 'the rest of the parent']],
+    ] as const)('R3-F12: a remainder of a parent in no declared version that only proposes (a regression label, frozen current) with %s records follow_up_of and remainder in the INTAKE evidence', async (_n, extra) => {
+      await freezeBase();
+      parentIs({ versions: ['v1.1.2'], frozen: true });
+      await file('--follow-up-of', 'HIMMEL-5', '--remainder', '--labels', 'regression', ...extra);
       expect(queued()).toHaveLength(1);
       expect(queued()[0]!.evidence).toMatchObject({ follow_up_of: 'HIMMEL-5', remainder: true });
     });
@@ -1216,11 +1239,12 @@ describe('create — unplaced follow-up', () => {
       expect(issueBody().fields['priority']).toEqual({ name: 'Low' });
     });
 
-    it('10588 control: a closed parent with no current version keeps the backlog request', async () => {
+    it('10588 control: a closed parent with no current version leaves the follow-up to the backlog, with no request', async () => {
       parentIs({ status: 'Done', done: true, priority: 'High', versions: ['v1.0.0'] });
       await file('--follow-up-of', 'HIMMEL-5');
       expect(issueBody().fields['fixVersions']).toBeUndefined();
-      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: 'follow-up of HIMMEL-5, which is closed (Done)' })]);
+      expect(issueBody().fields['labels']).toContain('backlog');
+      expect(queued()).toEqual([]);
     });
 
     it('10588 control: a caller\'s own version is unchanged and the parent is not read', async () => {
@@ -1236,10 +1260,12 @@ describe('create — unplaced follow-up', () => {
       await file('--follow-up-of', 'HIMMEL-5', '--backlog', '--proposed-version', 'backlog', '--why', 'waits in the backlog');
       expect(issueBody().fields['fixVersions']).toBeUndefined();
       expect(issueBody().fields['priority']).toBeUndefined();
-      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: 'waits in the backlog' })]);
+      expect(issueBody().fields['labels']).toEqual(expect.arrayContaining(['backlog']));
+      expect(queued()).toEqual([]);
     });
 
     it('RED C2: a follow-up of a parent in a frozen current version asks for that version, and the why says it is frozen', async () => {
+      await freezeBase();
       parentIs({ frozen: true });
       await file('--follow-up-of', 'HIMMEL-5');
       expect(queued()[0]!.to_v).toBe('v1.1.3');
@@ -1249,6 +1275,7 @@ describe('create — unplaced follow-up', () => {
     it.each<[string, Parent]>([['the next version is frozen too', { frozen: true, next: 'frozen' }], ['there is no next version', { frozen: true, next: 'none' }]])(
       'C2: still asks for the parent\'s frozen version when %s',
       async (_name, p) => {
+        await freezeBase();
         parentIs(p);
         await file('--follow-up-of', 'HIMMEL-5');
         expect(queued()[0]!.to_v).toBe('v1.1.3');
@@ -1258,15 +1285,22 @@ describe('create — unplaced follow-up', () => {
     it('9002 i control: an explicit backlog proposal with a why stays backlog, and the parent is not read', async () => {
       parentIs({});
       await file('--follow-up-of', 'HIMMEL-5', '--remainder', '--backlog', '--proposed-version', 'backlog', '--why', 'low importance remainder, waits in the backlog');
-      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: 'low importance remainder, waits in the backlog', evidence: { follow_up_of: 'HIMMEL-5', remainder: true } })]);
+      expect(queued()).toEqual([]);
+      expect(issueBody().fields['labels']).toEqual(expect.arrayContaining(['backlog']));
       expect(parentRead()).toBe(false);
     });
 
-    it('9002 d: an explicit --proposed-version or --why keeps its meaning', async () => {
+    it('9002 d: a caller-written --why keeps its meaning in the proposal INTAKE', async () => {
       parentIs({});
-      await file('--follow-up-of', 'HIMMEL-5', '--proposed-version', 'v1.1.3', '--why', 'a caller-written reason');
-      await file('--follow-up-of', 'HIMMEL-5', '--why', 'only a why');
-      expect(queued().map((r) => [r.to_v, r.why])).toEqual([['v1.1.3', 'a caller-written reason'], [null, 'only a why']]);
+      await file('--follow-up-of', 'HIMMEL-5', '--why', 'a caller-written reason');
+      expect(queued().map((r) => [r.to_v, r.why])).toEqual([['v1.1.3', 'a caller-written reason']]);
+    });
+
+    it('9002 d: --proposed-version on a non-ask places nothing, so the follow-up is still a proposal of the parent\'s version', async () => {
+      parentIs({});
+      await file('--follow-up-of', 'HIMMEL-5', '--proposed-version', 'v1.1.4');
+      expect(queued().map((r) => r.to_v)).toEqual(['v1.1.3']);
+      expect(errs.join('\n')).toMatch(/--proposed-version v1\.1\.4 places nothing/);
     });
 
     it.each(['--blocks', '--split-from'])('9002 d: %s places the ticket in its own version, so no request is queued and the parent is not read', async (relation) => {
@@ -1277,50 +1311,31 @@ describe('create — unplaced follow-up', () => {
       expect(parentRead()).toBe(false);
     });
 
-    it('9002 ii: an open parent with no current version asks for none and the request records no parent facts', async () => {
+    it('9002 ii: an open parent with no declared version is not a proposal: the follow-up goes to the backlog with no request', async () => {
       parentIs({ versions: ['v1.1.2'] });
       await file('--follow-up-of', 'HIMMEL-5');
-      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: expect.stringMatching(/filed to the backlog/), evidence: {} })]);
+      expect(issueBody().fields['labels']).toEqual(expect.arrayContaining(['backlog']));
+      expect(queued()).toEqual([]);
     });
 
-    it('9002 ii: the same parent with --remainder records both keys and the parent facts', async () => {
-      parentIs({ versions: ['v1.1.2'] });
-      await file('--follow-up-of', 'HIMMEL-5', '--remainder');
-      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: expect.stringMatching(/filed to the backlog/), evidence: { follow_up_of: 'HIMMEL-5', parent_status: 'In Progress', parent_version: null, remainder: true } })]);
-    });
-
-    it('U1: a remainder of a parent in a later version, with no why, records both keys', async () => {
-      parentIs({ versions: ['v1.1.4'] });
-      await file('--follow-up-of', 'HIMMEL-5', '--remainder');
-      expect(queued()).toEqual([expect.objectContaining({ evidence: expect.objectContaining({ follow_up_of: 'HIMMEL-5', remainder: true }) })]);
-    });
-
-    it('U1: a remainder whose parent cannot be read records both keys, without parent_version', async () => {
+    it.each([[false], [true]])('9002 iii: a parent that cannot be read refuses the filing before the POST (remainder %s)', async (remainder) => {
       parentIs({ fail: new Error('boom') });
-      await file('--follow-up-of', 'HIMMEL-5', '--remainder');
-      expect(posted()).toBe(true);
-      expect(queued()).toEqual([expect.objectContaining({ evidence: { follow_up_of: 'HIMMEL-5', remainder: true } })]);
+      await expect(file('--follow-up-of', 'HIMMEL-5', ...(remainder ? ['--remainder'] : []))).rejects.toThrow(/exit 1/);
+      expect(errs.join('\n')).toMatch(/HIMMEL-5 cannot be read.*boom/s);
+      expect(posted()).toBe(false);
+      expect(queued()).toEqual([]);
     });
 
-    it('9002 iii: a parent read that fails still files the ticket, with today\'s backlog request and a warning', async () => {
-      parentIs({ fail: new Error('boom') });
-      await file('--follow-up-of', 'HIMMEL-5');
-      expect(posted()).toBe(true);
-      expect(queued()).toEqual([expect.objectContaining({ to_v: null, evidence: {} })]);
-      expect(errs.some((e) => /HIMMEL-5.*boom/.test(e))).toBe(true);
-      expect(process.exitCode).toBeUndefined();
-    });
-
-    it('an operator-directed --follow-up-of create files with no words, and with them records them', async () => {
+    it('an operator-directed --follow-up-of create is filed into current with no request, and its words are recorded', async () => {
       parentIs({});
       await file('--follow-up-of', 'HIMMEL-5', '--labels', 'operator-directed');
-      expect(posted()).toBe(true);
-      expect(queued().at(-1)).toMatchObject({ to_v: 'v1.1.3', evidence: { follow_up_of: 'HIMMEL-5' } });
+      expect(issueBody().fields['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+      expect(queued()).toEqual([]);
       mkdirSync(join(baseRoot, 'specs', 'decisions'), { recursive: true });
       writeFileSync(join(baseRoot, 'specs', 'decisions', 'verbatim-decision-9-op.txt'), 'Operator:\n\n"Approved one more round"\n');
       await file('--follow-up-of', 'HIMMEL-5', '--labels', 'operator-directed', '--decision', '9', '--words', 'Approved one more round');
-      expect(posted()).toBe(true);
-      expect(queued().at(-1)).toMatchObject({ to_v: 'v1.1.3', evidence: { follow_up_of: 'HIMMEL-5', operator: expect.stringMatching(/^O-R1-\d{4}$/) } });
+      const operator = readFileSync(join(baseRoot, 'state', 'R1', 'operator.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as { kind: string; id: string; op?: string; to_v?: string });
+      expect(operator.filter((o) => o.kind === 'decision')).toEqual([expect.objectContaining({ op: 'add', to_v: 'v1.1.3', id: expect.stringMatching(/^O-R1-\d{4}$/) })]);
     });
   });
 });
@@ -1344,6 +1359,9 @@ describe('create — no count gate', () => {
         searches.push(decodeURIComponent(path));
         return { issues: Array.from({ length: o.open ?? 0 }, (_, i) => ({ key: `HIMMEL-${900 + i}`,
           fields: { labels: ['residual', 'fu-hardening'], status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } } })) };
+      }
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-50?')) {
+        return { fields: { project: { key: 'HIMMEL' }, status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } }, fixVersions: [{ name: 'v1.1.3' }] } };
       }
       return { key: 'HIMMEL-77' };
     });
@@ -1411,7 +1429,7 @@ describe('create — no count gate', () => {
     await file('--type', 'Bug', '--priority', 'Highest');
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
     expect(created()!['labels']).toBeUndefined();
-    expect(stderr()).toMatch(/defaults to fixVersion v1\.1\.3/);
+    expect(stderr()).toMatch(/placed HIMMEL-77 in v1\.1\.3 by rules:serious:Highest/);
     expect(stderr()).not.toMatch(/over its cap|over-cap/);
   });
 
@@ -1465,6 +1483,9 @@ describe('create — Bug placement', () => {
         ];
       }
       if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-5?')) {
+        return { fields: { project: { key: 'HIMMEL' }, status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } }, fixVersions: [{ name: 'v1.1.3' }] } };
+      }
       return { key: 'HIMMEL-77' };
     });
   const file = async (...args: string[]) => {
@@ -1503,9 +1524,10 @@ describe('create — Bug placement', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('refuses a Bug with no placement, naming both choices and the sector hint, without POSTing', async () => {
-    await expect(file()).rejects.toThrow(/Ship loop.*--backlog.*--fix-version/s);
-    expect(created()).toBeUndefined();
+  it('files a Bug with no placement flag into the backlog by rule M: the label backlog, no version', async () => {
+    await file();
+    expect(created()!['fixVersions']).toBeUndefined();
+    expect(created()!['labels']).toEqual(['backlog']);
   });
 
   it('files a --backlog Bug with the backlog label and no fixVersion', async () => {
@@ -1543,7 +1565,7 @@ describe('create — Bug placement', () => {
     expect(ledger()).toEqual([]);
   });
 
-  it('does not default a Task into a version', async () => {
+  it('does not put a follow-up Task into a version: a follow-up of a current parent only proposes it', async () => {
     const p = new Command();
     p.exitOverride();
     registerCreate(p);
@@ -1668,9 +1690,10 @@ describe('create — intake gate for a frozen version', () => {
     expect(ledger()).toEqual([]);
   });
 
-  it('a gated Task with no --fix-version takes the earliest unreleased version, so --gate places it', async () => {
-    await file('Task', '--gate', 'critical');
+  it('a Task filed with --gate receipt and no --fix-version takes the earliest unreleased version', async () => {
+    await file('Task', '--gate', 'receipt');
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+    expect(ledger()).toMatchObject([{ key: 'HIMMEL-77', version: 'v1.1.3', gate: 'receipt' }]);
   });
 
   it('admits a Task with --gate must:98 and writes a ledger row', async () => {
@@ -1699,18 +1722,29 @@ describe('create — intake gate for a frozen version', () => {
     expect(ledger()).toEqual([]);
   });
 
-  it('holds a Highest Bug, whose default is the frozen version, to the gate', async () => {
-    await expect(file('Bug', '--priority', 'Highest')).rejects.toThrow(/frozen/);
-    expect(created()).toBeUndefined();
-    await file('Bug', '--priority', 'Highest', '--gate', 'critical');
+  it('places a Highest Bug in the frozen current by rule H with a filed row, once the ledger freezes it too', async () => {
+    await freezeBase();
+    await file('Bug', '--priority', 'Highest');
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
-    expect(ledger()).toMatchObject([{ version: 'v1.1.3', gate: 'critical' }]);
+    expect(ledger()).toMatchObject([{ version: 'v1.1.3', kind: 'filed', ground: 'rules:serious:Highest' }]);
   });
 
-  it('sends an ungated escape residual past the frozen version, and admits it only with a gate', async () => {
+  it('refuses a rules placement when Jira freezes a version the ledger does not, before the POST', async () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    await expect(file('Bug', '--priority', 'Highest')).rejects.toThrow('exit');
+    expect((console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).join('\n')).toMatch(/ledger says v1\.1\.3 is not frozen/);
+    expect(created()).toBeUndefined();
+    exit.mockRestore();
+  });
+
+  it('sends an ungated escape residual to the backlog, and admits it into the frozen version only with a gate', async () => {
+    await freezeBase();
     const residual = ['--residual-of', 'HIMMEL-1', '--fu-class', 'escape', '--class', 'c'];
     await file('Task', ...residual);
     expect(created()!['fixVersions']).toBeUndefined();
+    expect(created()!['labels']).toContain('backlog');
     expect(ledger()).toEqual([]);
     vi.clearAllMocks();
     play('Release train.\nfrozen: 2026-10-20');
@@ -1956,6 +1990,9 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
         ];
       }
       if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-5?')) {
+        return { fields: { project: { key: 'HIMMEL' }, status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } }, fixVersions: [{ name: 'v1.1.3' }] } };
+      }
       if (method === 'GET' && path.includes('/issue/')) return { fields: { labels: [], status: { name: 'To Do' }, fixVersions: [] } };
       return { key: 'HIMMEL-77' };
     });
@@ -1982,6 +2019,7 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
     root = mkdtempSync(join(tmpdir(), 'create-intake-'));
     vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'state'));
     vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));
+    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'adm.jsonl'));
     vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
     vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
     play();
@@ -1992,9 +2030,10 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it.each(['Task', 'Story'])('refuses a %s with no placement, naming every way to place it, without POSTing', async (type) => {
-    await expect(file(type)).rejects.toThrow(/--backlog.*--fix-version.*--gate.*--residual-of.*--follow-up-of/s);
-    expect(posted()).toBe(false);
+  it.each(['Task', 'Story'])('files a %s with no placement flag into the backlog by rule M: the label backlog only, with no release declared', async (type) => {
+    await file(type);
+    expect(posted()).toBe(true);
+    expect(labelsPosted()).toEqual(['backlog']);
   });
 
   it.each([
@@ -2006,11 +2045,6 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
     await declare();
     await file('Task', ...args);
     expect(posted()).toBe(true);
-  });
-
-  it('refuses a Bug with no placement and points a Bug that blocks open work at INTAKE', async () => {
-    await expect(file('Bug')).rejects.toThrow(/request INTAKE/);
-    expect(posted()).toBe(false);
   });
 
   // no ticket is filed without a version, at least a proposed one.
@@ -2035,23 +2069,25 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
     expect(posted()).toBe(false);
   });
 
-  it('files --backlog --proposed-version backlog --why with the backlog and proposed-backlog labels', async () => {
+  it('files --backlog --proposed-version backlog --why with the backlog label only', async () => {
     await declare();
     await file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'waits for the next planning pass');
-    expect(labelsPosted()).toEqual(expect.arrayContaining(['backlog', 'proposed-backlog']));
+    expect(labelsPosted()).toEqual(['backlog']);
   });
 
-  it('files --proposed-version <v> with a proposed-<v> label and no fixVersion', async () => {
+  it('--proposed-version on a ticket that is not an operator ask places nothing: the backlog label, no version, and a line saying so', async () => {
     await declare();
     await file('Task', '--proposed-version', 'v1.1.3');
-    expect(labelsPosted()).toContain('proposed-v1.1.3');
+    expect(labelsPosted()).toEqual(['backlog']);
     const call = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
     expect((call?.[2] as { fields: Record<string, unknown> }).fields['fixVersions']).toBeUndefined();
+    expect(errs.join('\n')).toMatch(/--proposed-version v1\.1\.3 places nothing/);
   });
 
-  it('queues the INTAKE toward the proposed version in the same call', async () => {
+  it('queues the INTAKE toward the parent\'s version when the rules only propose it', async () => {
     await declare();
-    await file('Task', '--proposed-version', 'v1.1.3');
+    await file('Task', '--follow-up-of', 'HIMMEL-5');
+    expect(labelsPosted()).toContain('proposed-v1.1.3');
     expect(errs.some((e) => /REQ Q-R1-0001/.test(e))).toBe(true);
   });
 
@@ -2061,28 +2097,27 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
     expect(posted()).toBe(false);
   });
 
-  it('queues an INTAKE for a --backlog filing under a declared release and prints the REQ id', async () => {
-    await declare();
+  it('a --backlog filing queues no INTAKE, so it needs no release and prints no REQ id', async () => {
     await file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test');
-    expect(errs.some((e) => /REQ Q-R1-0001/.test(e))).toBe(true);
+    expect(posted()).toBe(true);
+    expect(errs.some((e) => /REQ /.test(e))).toBe(false);
   });
 
-  it('refuses a placeholder title before POSTing, since no INTAKE could be queued', async () => {
+  it('refuses a proposal whose why is a placeholder before POSTing, since no INTAKE could be queued', async () => {
     await declare();
-    await expect(file('Task', '--proposed-version', 'v1.1.3', '--title', 't')).rejects.toThrow(/placeholder/);
+    await expect(file('Task', '--follow-up-of', 'HIMMEL-5', '--why', 'x')).rejects.toThrow(/placeholder/);
     expect(posted()).toBe(false);
   });
 
-  it('refuses an unversioned filing before POSTing when no release is declared', async () => {
-    await expect(file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test')).rejects.toThrow(/no release is declared/);
-    expect(posted()).toBe(false);
-  });
-
-  it('refuses an unversioned filing before POSTing when several releases are declared', async () => {
+  it('refuses a rules placement before POSTing when two releases name the project', async () => {
     await declare();
-    mkdirSync(join(root, 'state', 'R2'), { recursive: true });
-    writeFileSync(join(root, 'state', 'R2', 'release.json'), '{}');
-    await expect(file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test')).rejects.toThrow(/2 releases are declared/);
+    const p = new Command();
+    p.exitOverride();
+    registerRelease(p);
+    await p.parseAsync(['node', 'jira', 'release', 'operator', 'declare', 'R2', '--versions', 'v1.1.3', '--decision', '214', '--verbatim-file', join(root, 'verbatim.txt')]);
+    vi.spyOn(process, 'exit').mockImplementation(((c?: number) => { throw new Error(`exit ${c}`); }) as never);
+    await expect(file('Task')).rejects.toThrow(/exit 1/);
+    expect(errs.join('\n')).toMatch(/2 releases name HIMMEL/);
     expect(posted()).toBe(false);
   });
 
@@ -2095,14 +2130,16 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
   it('refuses before the POST when the release cannot be loaded (a missing signing key)', async () => {
     await declare();
     vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'no-keys'));
-    await expect(file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test')).rejects.toThrow(/UNKNOWN/);
+    vi.spyOn(process, 'exit').mockImplementation(((c?: number) => { throw new Error(`exit ${c}`); }) as never);
+    await expect(file('Task')).rejects.toThrow(/exit 1/);
+    expect(errs.join('\n')).toMatch(/cannot be read, so the rules cannot place this ticket/);
     expect(posted()).toBe(false);
   });
 
   it('refuses before POSTing when the release state cannot be read', async () => {
     writeFileSync(join(root, 'not-a-dir'), 'x');
     vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'not-a-dir'));
-    await expect(file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test')).rejects.toThrow();
+    await expect(file('Task')).rejects.toThrow();
     expect(posted()).toBe(false);
   });
 
@@ -2110,11 +2147,10 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
     readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8')
       .split('\n').filter(Boolean).map((l) => JSON.parse(l) as { to_v: string | null });
 
-  it('stores the proposed version as the INTAKE to_v, and null for the backlog', async () => {
+  it('stores the parent\'s version as the proposal\'s INTAKE to_v', async () => {
     await declare();
-    await file('Task', '--proposed-version', 'v1.1.3');
-    await file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test');
-    expect(storedToV().map((r) => r.to_v)).toEqual(['v1.1.3', null]);
+    await file('Task', '--follow-up-of', 'HIMMEL-5');
+    expect(storedToV().map((r) => r.to_v)).toEqual(['v1.1.3']);
   });
 
   it.each(['--blocks', '--split-from'])('refuses --proposed-version with %s when the target carries the current version, instead of dropping the proposal', async (relation) => {
@@ -2125,14 +2161,6 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
         : base(method, path));
     await expect(file('Task', '--proposed-version', 'v1.1.3', relation, 'HIMMEL-5')).rejects.toThrow(/--proposed-version.*v1\.1\.3/);
     expect(posted()).toBe(false);
-  });
-
-  it('files the default INTAKE why from the proposed version, not the backlog', async () => {
-    await declare();
-    await file('Task', '--proposed-version', 'v1.1.3');
-    const why = readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8');
-    expect(why).toMatch(/proposed for v1\.1\.3/);
-    expect(why).not.toMatch(/filed to the backlog/);
   });
 
   it('refuses a released proposed version without POSTing', async () => {
@@ -2154,7 +2182,9 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
     vi.stubEnv('HOME', join(root, 'home'));
     execFileSync('git', ['init', '-q', join(root, 'repo')]);
     vi.stubEnv('GIT_DIR', join(root, 'repo', '.git'));
-    await expect(file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test')).rejects.toThrow(/USER_SLUG/);
+    vi.spyOn(process, 'exit').mockImplementation(((c?: number) => { throw new Error(`exit ${c}`); }) as never);
+    await expect(file('Task')).rejects.toThrow(/exit 1/);
+    expect(errs.join('\n')).toMatch(/release declaration for HIMMEL cannot be read/);
     expect(posted()).toBe(false);
   });
 
@@ -2167,15 +2197,16 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
     };
     const operatorDecisions = () => readFileSync(join(root, 'state', 'R1', 'operator.jsonl'), 'utf8').trim().split('\n')
       .map((l) => JSON.parse(l) as Record<string, unknown>).filter((o) => o.kind === 'decision');
-    const requests = () => readFileSync(join(root, 'state', 'R1', 'requests.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>);
+    const filedRows = () => readFileSync(join(root, 'adm.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>).filter((r) => r['kind'] === 'filed');
     const gated = ['--labels', 'operator-directed', '--proposed-version', 'v1.1.3'];
 
-    it('an operator-directed or High create with no --decision files, and its INTAKE names no operator record', async () => {
+    it('an operator-directed or High create with no --decision is filed into current and records no operator decision', async () => {
       await declare();
       await file('Task', ...gated);
       expect(posted()).toBe(true);
-      expect(requests().at(-1)).toMatchObject({ key: 'HIMMEL-77', to_v: 'v1.1.3', evidence: {}, state: 'open' });
-      await file('Task', '--priority', 'High', '--proposed-version', 'v1.1.3');
+      expect(filedRows()).toEqual([expect.objectContaining({ key: 'HIMMEL-77', version: 'v1.1.3', ground: 'rules:operator-ask:label' })]);
+      await file('Task', '--priority', 'High');
+      expect(filedRows()).toHaveLength(2);
       expect(operatorDecisions()).toEqual([]);
     });
 
@@ -2191,20 +2222,25 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
       expect(posted()).toBe(false);
     });
 
-    it('with --decision and --words the create writes one O- row and its INTAKE cites it', async () => {
+    it('with --decision and --words the create writes one O- row and the filed row cites it', async () => {
       await declare();
       decisionFile('verbatim-decision-9-op.txt');
       await file('Task', ...gated, '--decision', '9', '--words', WORDS);
       expect(posted()).toBe(true);
       const rows = operatorDecisions();
       expect(rows).toEqual([expect.objectContaining({ keys: ['HIMMEL-77'], op: 'add', to_v: 'v1.1.3', verbatim: WORDS, words: 1 })]);
-      expect(requests().at(-1)).toMatchObject({ key: 'HIMMEL-77', to_v: 'v1.1.3', evidence: { operator: rows[0]!.id }, state: 'open' });
+      expect(filedRows()).toEqual([expect.objectContaining({ key: 'HIMMEL-77', version: 'v1.1.3', ruling: rows[0]!.id })]);
     });
 
-    it('a gated ticket filed to the backlog is not gated', async () => {
+    it('an operator ask filed to the backlog needs the operator\'s words, and with them records one operator record of op none (P4)', async () => {
       await declare();
-      await file('Task', '--labels', 'operator-directed', '--backlog', '--proposed-version', 'backlog', '--why', 'waits for the next planning pass');
+      decisionFile('verbatim-decision-9-op.txt');
+      const backlog = ['Task', '--labels', 'operator-directed', '--backlog', '--proposed-version', 'backlog', '--why', 'waits for the next planning pass'];
+      await expect(file(...backlog)).rejects.toThrow(/--decision.*--words/s);
+      expect(posted()).toBe(false);
+      await file(...backlog, '--decision', '9', '--words', WORDS);
       expect(posted()).toBe(true);
+      expect(operatorDecisions()).toEqual([expect.objectContaining({ keys: ['HIMMEL-77'], op: 'none', verbatim: WORDS })]);
     });
 
     it('the post-create call never reads the mirror', async () => {
@@ -2215,9 +2251,9 @@ describe('create — Task/Story placement and backlog INTAKE', () => {
       writeFileSync(join(mirror, 'HIMMEL-77.md'), '---\nkey: "HIMMEL-77"\nstatus: "To Do"\ntype: "Task"\npriority: "High"\nlabels: ["operator-directed"]\nfixVersions: []\n---\n');
       vi.stubEnv('HOME', join(root, 'home'));
       vi.stubEnv('JIRA_PROJECT_KEY', 'HIMMEL');
-      await file('Task', '--proposed-version', 'v1.1.3');
+      await file('Task', '--follow-up-of', 'HIMMEL-5');
       expect(mockRequest.mock.calls.some((x) => String(x[1]).includes('fields=labels,priority,status'))).toBe(false);
-      expect(requests().at(-1)).toMatchObject({ key: 'HIMMEL-77', to_v: 'v1.1.3', state: 'open' });
+      expect(storedToV()).toEqual([expect.objectContaining({ to_v: 'v1.1.3' })]);
     });
   });
 });
@@ -2402,21 +2438,26 @@ describe('create — a test project is not work (I13)', () => {
     expect((posts()[0]![2] as { fields: Record<string, unknown> }).fields['customfield_10212']).toBeUndefined();
   });
 
-  it('control: the same Task in HIMMEL is still refused for placement', async () => {
-    await expect(file('HIMMEL', '--desc', PLAIN, ...HOME)).rejects.toThrow(/needs a placement/);
-    expect(posts().length).toBe(0);
+  const postedLabels = () => (posts()[0]![2] as { fields: { labels?: string[] } }).fields.labels;
+
+  it('control: the same Task in HIMMEL is placed by the rules (the backlog label), where the test project gets none', async () => {
+    await file('HTEST', '--desc', PLAIN);
+    expect(postedLabels()).toBeUndefined();
+    mockRequest.mockClear();
+    await file('HIMMEL', '--desc', PLAIN, ...HOME);
+    expect(postedLabels()).toEqual(['backlog']);
   });
 
-  it('fail-closed: with no JIRA_TEST_PROJECT an HTEST Task is refused for placement and posts nothing', async () => {
+  it('fail-closed: with no JIRA_TEST_PROJECT an HTEST Task is a work ticket the rules place', async () => {
     writeFileSync(join(root, 'conf', 'himmel.conf'), 'JIRA_PROJECTS=HIMMEL,LUNA\n');
-    await expect(file('HTEST', '--desc', PLAIN, ...HOME)).rejects.toThrow(/needs a placement/);
-    expect(posts().length).toBe(0);
+    await file('HTEST', '--desc', PLAIN, ...HOME);
+    expect(postedLabels()).toEqual(['backlog']);
   });
 
-  it('fail-closed: a work project named as JIRA_TEST_PROJECT does not exempt a HIMMEL Task', async () => {
+  it('fail-closed: a work project named as JIRA_TEST_PROJECT does not exempt a HIMMEL Task from the rules', async () => {
     writeFileSync(join(root, 'conf', 'himmel.conf'), 'JIRA_PROJECTS=HIMMEL,LUNA\nJIRA_TEST_PROJECT=HIMMEL\n');
-    await expect(file('HIMMEL', '--desc', PLAIN, ...HOME)).rejects.toThrow(/needs a placement/);
-    expect(posts().length).toBe(0);
+    await file('HIMMEL', '--desc', PLAIN, ...HOME);
+    expect(postedLabels()).toEqual(['backlog']);
   });
 
   it('control: a test-project create with no body is still refused for the body shape', async () => {
@@ -2424,9 +2465,10 @@ describe('create — a test project is not work (I13)', () => {
     expect(posts().length).toBe(0);
   });
 
-  it('control: a HIMMEL Task with placement still queues its INTAKE', async () => {
+  it('control: a HIMMEL Task naming a version without being an operator ask places nothing, so it queues no INTAKE', async () => {
     await file('HIMMEL', '--desc', PLAIN, '--proposed-version', 'v1.1.3', ...HOME);
-    expect(errs.some((e) => /INTAKE queued/.test(e))).toBe(true);
+    expect(errs.some((e) => /INTAKE queued/.test(e))).toBe(false);
+    expect(errs.some((e) => /--proposed-version v1\.1\.3 places nothing/.test(e))).toBe(true);
   });
 });
 
@@ -2485,13 +2527,15 @@ describe('create --operator-update: the bridge names the operator\'s update (T4,
     rmSync(procRoot, { recursive: true, force: true });
   });
 
-  it('T4: under the bridge marker with the poller stamp 111 on the farthest marked ancestor, the INTAKE evidence carries the pointer', async () => {
+  it('T4/R17: under the bridge marker with the poller stamp 111 on the farthest marked ancestor, a pointer with no version files into current, and the filed row carries it', async () => {
     tree({ ...BRIDGE, HIMMEL_BRIDGE_CHAT: '111' }, { ...BRIDGE, HIMMEL_BRIDGE_CHAT: '222' });
-    await file('--type', 'Task', '--proposed-version', 'v1.1.3');
-    expect(requests()).toEqual([expect.objectContaining({
-      verb: 'INTAKE', key: 'HIMMEL-77', to_v: 'v1.1.3', from: 'console',
+    await file('--type', 'Task');
+    const rows = readFileSync(join(baseRoot, 'adm.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(rows).toEqual([expect.objectContaining({
+      kind: 'filed', key: 'HIMMEL-77', version: 'v1.1.3', ground: 'rules:operator-ask:pointer',
       evidence: { operator_update: 900000001, filed_by: 'bridge', bridge_chat: 111 },
     })]);
+    expect(requests()).toEqual([]);
   });
 
   it('refuses an update_id that is not digits only, at option parse', async () => {
@@ -2500,7 +2544,7 @@ describe('create --operator-update: the bridge names the operator\'s update (T4,
     expect(mockRequest).not.toHaveBeenCalled();
   });
 
-  type Setup = { env?: Record<string, string>; farthest?: Record<string, string>; nearer?: Record<string, string>; opts?: { type?: string; fixVersion?: string; proposedVersion?: string } };
+  type Setup = { env?: Record<string, string>; farthest?: Record<string, string>; nearer?: Record<string, string>; opts?: { type?: string; fixVersion?: string; backlog?: boolean; proposedVersion?: string } };
   type Row = [string, RegExp, string[], Setup, Setup];
   const STAMP = { ...BRIDGE, HIMMEL_BRIDGE_CHAT: '111' };
   const FORGED = { ...BRIDGE, HIMMEL_BRIDGE_CHAT: '111' };
@@ -2509,9 +2553,9 @@ describe('create --operator-update: the bridge names the operator\'s update (T4,
     ['no bridge marker', /HIMMEL_BRIDGE_SESSION=1/, TASK, { env: { HIMMEL_BRIDGE_SESSION: '' } }, { env: { HIMMEL_BRIDGE_SESSION: '1' } }],
     ['the marker plus HIMMEL_CONSOLE_LEG=1', /chief-spawned worker or the release manager/, TASK, { env: { HIMMEL_CONSOLE_LEG: '1' } }, { env: { HIMMEL_CONSOLE_LEG: '' } }],
     ['the marker plus HIMMEL_RELEASE_MANAGER=1', /chief-spawned worker or the release manager/, TASK, { env: { HIMMEL_RELEASE_MANAGER: '1' } }, { env: { HIMMEL_RELEASE_MANAGER: '' } }],
-    ['--fix-version', /no INTAKE is owed/, ['--type', 'Task', '--fix-version', 'v1.1.3', '--proposed-version', 'v1.1.3'], {}, { opts: { fixVersion: undefined } }],
-    ['--type Epic', /no INTAKE is owed/, ['--type', 'Epic', '--proposed-version', 'v1.1.3'], {}, { opts: { type: 'Task' } }],
-    ['no version', /names no version/, ['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'waits'], {}, { opts: { proposedVersion: 'v1.1.3' } }],
+    ['--fix-version', /rides on a rules placement; drop --fix-version/, ['--type', 'Task', '--fix-version', 'v1.1.3', '--proposed-version', 'v1.1.3'], {}, { opts: { fixVersion: undefined } }],
+    ['--type Epic', /rides on a rules placement/, ['--type', 'Epic', '--proposed-version', 'v1.1.3'], {}, { opts: { type: 'Task' } }],
+    ['--backlog', /drop --backlog/, ['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'waits'], {}, { opts: { backlog: false } }],
     ['no chat stamp in the ancestry', /chat stamp .* is missing/, TASK, { farthest: BRIDGE }, { farthest: STAMP }],
     ['a negative (group) stamp under a nearer forged 111', /chat stamp .* is -100500/, TASK, { farthest: { ...BRIDGE, HIMMEL_BRIDGE_CHAT: '-100500' }, nearer: FORGED }, { farthest: STAMP, nearer: FORGED }],
     ['a stamp only in the command\'s own env (a prefix, absent from the farthest marked ancestor)', /chat stamp .* is missing/, TASK, { farthest: BRIDGE, nearer: FORGED }, { farthest: STAMP, nearer: FORGED }],
@@ -2527,7 +2571,7 @@ describe('create --operator-update: the bridge names the operator\'s update (T4,
     expect(requests()).toEqual([]);
 
     const flag = (n: string) => (args.includes(n) ? args[args.indexOf(n) + 1] : undefined);
-    const opts = { operatorUpdate: Number(UPDATE), type: flag('--type')!, fixVersion: flag('--fix-version'), proposedVersion: flag('--proposed-version') };
+    const opts = { operatorUpdate: Number(UPDATE), type: flag('--type')!, fixVersion: flag('--fix-version'), backlog: args.includes('--backlog'), proposedVersion: flag('--proposed-version') };
     expect(() => bridgePointer(opts)).toThrow(why);
     rmSync(procRoot, { recursive: true, force: true });
     tree(fix.farthest ?? bad.farthest ?? STAMP, fix.nearer ?? bad.nearer ?? {});
@@ -2602,16 +2646,24 @@ describe('create --residual-of is placed by the door', () => {
     play();
   });
 
-  it.each([[[]], [['--priority', 'High']]])('a residual of a parent in v1.1.3 (%j) files with no version and queues one INTAKE naming the parent', async (args) => {
-    await file('HIMMEL-50', ...args);
+  it('a Medium residual of a parent in v1.1.3 goes to the backlog by rule M, with no INTAKE', async () => {
+    await file('HIMMEL-50');
     expect(lands()).toBeUndefined();
-    expect(queued()).toEqual([expect.objectContaining({ key: 'HIMMEL-77', to_v: null, evidence: { residual_of: 'HIMMEL-50' } })]);
+    expect(created()!['labels']).toContain('backlog');
+    expect(queued()).toEqual([]);
   });
 
-  it('--gate critical files into the current version at filing', async () => {
-    await file('HIMMEL-50', '--gate', 'critical');
+  it('a High residual of a parent in v1.1.3 is filed into current by rule H, with a filed row and no INTAKE', async () => {
+    await file('HIMMEL-50', '--priority', 'High');
     expect(lands()).toEqual(['v1.1.3']);
     expect(queued()).toEqual([]);
+    expect(readFileSync(join(baseRoot, 'adm.jsonl'), 'utf8')).toMatch(/"kind":"filed".*"ground":"rules:serious:High"/);
+  });
+
+  it('--gate critical on a residual is only a proposal: no version, and one INTAKE naming the parent and the rule', async () => {
+    await file('HIMMEL-50', '--gate', 'critical');
+    expect(lands()).toBeUndefined();
+    expect(queued()).toEqual([expect.objectContaining({ key: 'HIMMEL-77', to_v: 'v1.1.3', evidence: { residual_of: 'HIMMEL-50', rule: 'rules:residual-label:gate-critical' } })]);
   });
 
   it('a SALUS residual of a SALUS parent keeps its class routing and queues nothing', async () => {
@@ -2649,12 +2701,14 @@ describe('create --residual-of is placed by the door', () => {
     expect(created()).toBeUndefined();
   });
 
-  it('U5: with two declared releases a residual that owes an INTAKE fails with the existing exactly-one refusal', async () => {
+  it('U5: with two declared releases a residual the rules would place fails with the exactly-one refusal', async () => {
     const p = new Command();
     p.exitOverride();
     registerRelease(p);
     await p.parseAsync(['node', 'jira', 'release', 'operator', 'declare', 'R2', '--versions', 'v1.1.3', '--decision', '214', '--verbatim-file', join(baseRoot, 'verbatim.txt')]);
-    await expect(file('HIMMEL-50')).rejects.toThrow(/an INTAKE needs exactly one/);
+    vi.spyOn(process, 'exit').mockImplementation(((c?: number) => { throw new Error(`exit ${c}`); }) as never);
+    await expect(file('HIMMEL-50')).rejects.toThrow(/exit 1/);
+    expect(errs.join('\n')).toMatch(/2 releases name HIMMEL/);
     expect(created()).toBeUndefined();
   });
 });
@@ -2924,5 +2978,383 @@ describe('create — topic search over open tickets', () => {
     await fileTopic(NEW_TITLE, NEW_WHAT);
     expect(created()).toBe(true);
     expect(stderr()).toMatch(/duplicate search failed.*search boom.*filed unchecked/s);
+  });
+});
+
+describe('create — placed by the four rules (S2)', () => {
+  let root: string;
+  let errs: string[];
+  type Setup = { ledgerFrozen?: boolean; jiraFrozen?: boolean; declared?: boolean; jiraCurrent?: string; extraVersion?: string };
+  type Parent = { versions?: string[]; done?: boolean; fail?: boolean };
+  let parent: Parent = {};
+  let parentLabels: string[] = [];
+  const WORDS = 'Approved one more round';
+
+  const release = async (...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerRelease(p);
+    await p.parseAsync(['node', 'jira', 'release', ...args]);
+  };
+  const setup = async (o: Setup = {}) => {
+    const vf = join(root, 'verbatim.txt');
+    writeFileSync(vf, 'R1 = v1.1.3\n');
+    if (o.declared !== false) {
+      await release('operator', 'declare', 'R1', '--versions', 'v1.1.3,v1.1.4', '--decision', '214', '--verbatim-file', vf);
+      if (o.ledgerFrozen !== false) await release('operator', 'freeze', 'R1', '--version', 'v1.1.3', '--keys', 'HIMMEL-1', '--decision', '104', '--verbatim-file', vf);
+    }
+    const jiraFrozen = o.jiraFrozen ?? true;
+    const current = o.jiraCurrent ?? 'v1.1.3';
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) {
+        return [
+          ...(current === 'v1.1.4' ? [{ name: 'v1.1.3', released: true }] : [{ name: 'v1.1.3', released: false, description: jiraFrozen ? 'frozen: 2026-10-20' : '' }]),
+          { name: 'v1.1.4', released: false },
+          ...(o.extraVersion ? [{ name: o.extraVersion, released: false }] : []),
+        ];
+      }
+      if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-5?')) {
+        if (parent.fail) throw new Error('Jira unavailable');
+        return {
+          fields: {
+            project: { key: 'HIMMEL' }, priority: { name: 'Medium' },
+            status: { name: parent.done ? 'Done' : 'In Progress', statusCategory: { key: parent.done ? 'done' : 'indeterminate' } },
+            fixVersions: (parent.versions ?? ['v1.1.3']).map((name) => ({ name })),
+          },
+        };
+      }
+      if (method === 'GET' && path.startsWith('/issue/HIMMEL-3?')) return { fields: { labels: parentLabels, status: { statusCategory: { key: 'indeterminate' } }, fixVersions: [] } };
+      if (method === 'GET' && path.includes('/issue/')) return { fields: { labels: [], status: { name: 'To Do' }, fixVersions: [] } };
+      return { key: 'HIMMEL-77' };
+    });
+  };
+  const file = async (type: string, ...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', type, '--title', 'the console loses a worker', '--desc', PLAIN, ...HOME, ...args]);
+  };
+  const posts = () => mockRequest.mock.calls.filter((x) => x[0] === 'POST' && x[1] === '/issue');
+  const refuses = async (run: Promise<unknown>, re: RegExp) => {
+    const e = await run.then(() => null, (x: Error) => x);
+    expect(e).not.toBeNull();
+    expect(`${e!.message}\n${errs.join('\n')}`).toMatch(re);
+  };
+  const issue = () => (posts()[0]![2] as { fields: { fixVersions?: { name: string }[]; labels?: string[]; priority?: unknown } }).fields;
+  const jsonl = (...path: string[]) => {
+    try {
+      return readFileSync(join(root, ...path), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw e;
+    }
+  };
+  const ledger = () => jsonl('adm.jsonl');
+  const filed = () => ledger().filter((r) => r['kind'] === 'filed');
+  const requests = () => jsonl('state', 'R1', 'requests.jsonl');
+  const operatorRows = () => jsonl('state', 'R1', 'operator.jsonl').filter((o) => o['kind'] === 'decision');
+  const decisionFile = () => {
+    mkdirSync(join(root, 'specs', 'decisions'), { recursive: true });
+    writeFileSync(join(root, 'specs', 'decisions', 'verbatim-decision-9-op.txt'), 'Operator, verbatim:\n\n"Approved one more round"\n\nAnswering the ask on HIMMEL-1: stop and park.\n');
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    errs = [];
+    vi.spyOn(console, 'error').mockImplementation((s: unknown) => { errs.push(String(s)); });
+    vi.spyOn(process, 'exit').mockImplementation(((c?: number) => { throw new Error(`exit ${c}`); }) as never);
+    parent = {};
+    parentLabels = [];
+    root = mkdtempSync(join(tmpdir(), 'create-rules-'));
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'state'));
+    vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));
+    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'adm.jsonl'));
+    vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    process.exitCode = undefined;
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('R1: an operator-directed Medium Task with no flag is filed into current, with one filed row and no request', async () => {
+    await setup();
+    await file('Task', '--labels', 'operator-directed');
+    expect(issue().fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(issue().labels).not.toContain('proposed-v1.1.3');
+    expect(filed()).toEqual([expect.objectContaining({ version: 'v1.1.3', key: 'HIMMEL-77', ground: 'rules:operator-ask:label' })]);
+    expect(requests()).toEqual([]);
+    expect(errs.join('\n')).toMatch(/jira: placed HIMMEL-77 in v1\.1\.3 by rules:operator-ask:label/);
+  });
+
+  it('R2: a Highest Task with no flag is filed into current by rules:serious:Highest, with no INTAKE', async () => {
+    await setup();
+    await file('Task', '--priority', 'Highest');
+    expect(issue().fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(filed()).toEqual([expect.objectContaining({ version: 'v1.1.3', ground: 'rules:serious:Highest' })]);
+    expect(requests()).toEqual([]);
+  });
+
+  it('R3: a Medium Task with no flag goes to the backlog: the label backlog only, no version, no INTAKE', async () => {
+    await setup();
+    await file('Task');
+    expect(issue().fixVersions).toBeUndefined();
+    expect(issue().labels).toEqual(['backlog']);
+    expect(requests()).toEqual([]);
+    expect(filed()).toEqual([]);
+  });
+
+  it('R4: an operator ask naming v1.1.4 is filed into v1.1.4 with a filed row for it', async () => {
+    await setup();
+    await file('Task', '--labels', 'operator-directed', '--proposed-version', 'v1.1.4');
+    expect(issue().fixVersions).toEqual([{ name: 'v1.1.4' }]);
+    expect(filed()).toEqual([expect.objectContaining({ version: 'v1.1.4', ground: 'rules:operator-named:v1.1.4' })]);
+    expect(requests()).toEqual([]);
+  });
+
+  it.each([
+    ['regression'],
+    ['update-item'],
+  ])('R5: a Low Task labelled %s in frozen current is only proposed: no version, proposed-v1.1.3, an INTAKE, no filed row', async (label) => {
+    await setup();
+    await file('Task', '--priority', 'Low', '--labels', label);
+    expect(issue().fixVersions).toBeUndefined();
+    expect(issue().labels).toContain('proposed-v1.1.3');
+    expect(requests()).toEqual([expect.objectContaining({ verb: 'INTAKE', key: 'HIMMEL-77', to_v: 'v1.1.3' })]);
+    expect(filed()).toEqual([]);
+  });
+
+  it('R5: a Low Task filed with --gate critical in frozen current is only proposed, with the gate in the INTAKE evidence', async () => {
+    await setup();
+    await file('Task', '--priority', 'Low', '--gate', 'critical');
+    expect(issue().fixVersions).toBeUndefined();
+    expect(issue().labels).toContain('proposed-v1.1.3');
+    expect(requests()).toEqual([expect.objectContaining({ to_v: 'v1.1.3', evidence: expect.objectContaining({ rule: 'rules:label:gate-critical' }) })]);
+    expect(filed()).toEqual([]);
+  });
+
+  it.each([
+    [['--labels', 'regression'], 'rules:label:regression'],
+    [['--labels', 'update-item'], 'rules:label:update-item'],
+    [['--gate', 'critical'], 'rules:label:gate-critical'],
+  ])('R6: the same Low Task (%j) with current unfrozen is filed into v1.1.3 with a filed row', async (args, ground) => {
+    await setup({ ledgerFrozen: false, jiraFrozen: false });
+    await file('Task', '--priority', 'Low', ...args);
+    expect(issue().fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(filed()).toEqual([expect.objectContaining({ version: 'v1.1.3', ground })]);
+    expect(requests()).toEqual([]);
+  });
+
+  it('R7: a Medium Bug labelled user-facing is filed into current when it is unfrozen', async () => {
+    await setup({ ledgerFrozen: false, jiraFrozen: false });
+    await file('Bug', '--labels', 'user-facing');
+    expect(issue().fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(filed()).toEqual([expect.objectContaining({ ground: 'rules:label:user-facing' })]);
+  });
+
+  it('R7: the same Bug in frozen current is proposed', async () => {
+    await setup();
+    await file('Bug', '--labels', 'user-facing');
+    expect(issue().fixVersions).toBeUndefined();
+    expect(issue().labels).toContain('proposed-v1.1.3');
+    expect(requests()).toHaveLength(1);
+  });
+
+  it.each([
+    ['a Done parent', { done: true }],
+    ['an open parent', {}],
+  ] as Array<[string, Parent]>)('R8/R9: a follow-up (no --remainder) of %s in frozen v1.1.3 is a proposal, with rules:follow-up-of in the evidence', async (_n, p) => {
+    await setup();
+    parent = p;
+    await file('Task', '--follow-up-of', 'HIMMEL-5');
+    expect(issue().fixVersions).toBeUndefined();
+    expect(issue().labels).toContain('proposed-v1.1.3');
+    expect(requests()).toEqual([expect.objectContaining({ to_v: 'v1.1.3', evidence: expect.objectContaining({ follow_up_of: 'HIMMEL-5', rule: 'rules:follow-up-of:HIMMEL-5' }) })]);
+    expect(filed()).toEqual([]);
+  });
+
+  it('R10: a follow-up whose parent cannot be read is refused before the POST', async () => {
+    await setup();
+    parent = { fail: true };
+    await refuses(file('Task', '--follow-up-of', 'HIMMEL-5'), /HIMMEL-5 cannot be read.*--fix-version/s);
+    expect(posts()).toEqual([]);
+  });
+
+  it('R11 (guard): bad words on --backlog for an operator ask are refused before the POST with the words message', async () => {
+    await setup();
+    await refuses(file('Task', '--labels', 'operator-directed', '--backlog', '--proposed-version', 'backlog', '--why', 'waits for the next planning pass', '--decision', '999', '--words', 'not the words'), /no verbatim file/);
+    expect(posts()).toEqual([]);
+  });
+
+  it('R25 (guard): bad words with an operator ask on a version path are refused before the POST with the words message', async () => {
+    await setup();
+    await refuses(file('Task', '--labels', 'operator-directed', '--proposed-version', 'v1.1.3', '--decision', '999', '--words', 'not the words'), /no verbatim file/);
+    expect(posts()).toEqual([]);
+  });
+
+  it('R12: valid words are refused by the fence in a chief-spawned worker, and otherwise recorded before the filed row, which cites the record', async () => {
+    await setup();
+    decisionFile();
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '1');
+    await refuses(file('Task', '--decision', '9', '--words', WORDS), /chief-spawned worker/);
+    expect(posts()).toEqual([]);
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+    await file('Task', '--decision', '9', '--words', WORDS);
+    const rows = operatorRows();
+    expect(rows).toEqual([expect.objectContaining({ keys: ['HIMMEL-77'], op: 'add', to_v: 'v1.1.3', verbatim: WORDS, words: 1 })]);
+    expect(filed()).toEqual([expect.objectContaining({ version: 'v1.1.3', ground: 'rules:operator-ask:words', ruling: rows[0]!['id'] })]);
+    expect(requests()).toEqual([]);
+  });
+
+  it('R13 (guard): --gate must:<ref> keeps today\'s path: current, and an admissions row with no kind', async () => {
+    await setup();
+    await file('Task', '--gate', 'must:D1');
+    expect(issue().fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(ledger()).toEqual([expect.objectContaining({ version: 'v1.1.3', gate: 'must:D1', key: 'HIMMEL-77' })]);
+    expect(ledger()[0]!['kind']).toBeUndefined();
+    expect(filed()).toEqual([]);
+  });
+
+  it('R18: ledger frozen but no frozen: line in Jira is refused before the POST, naming both sources', async () => {
+    await setup({ jiraFrozen: false });
+    await refuses(file('Task', '--labels', 'operator-directed', '--proposed-version', 'v1.1.3'), /ledger.*Jira|Jira.*ledger/s);
+    expect(posts()).toEqual([]);
+  });
+
+  it('R27: an unreadable declaration is refused before the POST and names --fix-version', async () => {
+    await setup();
+    vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'no-keys'));
+    await refuses(file('Task', '--labels', 'operator-directed', '--proposed-version', 'v1.1.3'), /the rules cannot place this ticket; pass --fix-version/);
+    expect(posts()).toEqual([]);
+  });
+
+  it('R28: a declared current that differs from Jira\'s earliest unreleased version is refused, naming both', async () => {
+    await setup({ jiraCurrent: 'v1.1.4' });
+    await refuses(file('Task', '--labels', 'operator-directed'), /v1\.1\.3.*v1\.1\.4/s);
+    expect(posts()).toEqual([]);
+  });
+
+  it('R29: an unwritable admissions ledger refuses a version target before the POST', async () => {
+    await setup();
+    writeFileSync(join(root, 'blocked'), 'x');
+    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'blocked', 'adm.jsonl'));
+    await refuses(file('Task', '--labels', 'operator-directed', '--proposed-version', 'v1.1.3'), /./);
+    expect(posts()).toEqual([]);
+  });
+
+  it('R30: an operator ask naming a version Jira has open but the declaration does not is refused as not declared', async () => {
+    await setup({ extraVersion: 'v9.9.9' });
+    await refuses(file('Task', '--labels', 'operator-directed', '--proposed-version', 'v9.9.9'), /not declared/);
+    expect(posts()).toEqual([]);
+  });
+
+  it('R23: a --remainder follow-up of a parent in frozen v1.1.3 is filed into v1.1.3 by rules:remainder-of', async () => {
+    await setup();
+    await file('Task', '--follow-up-of', 'HIMMEL-5', '--remainder');
+    expect(issue().fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(filed()).toEqual([expect.objectContaining({ version: 'v1.1.3', ground: 'rules:remainder-of:HIMMEL-5' })]);
+    expect(requests()).toEqual([]);
+  });
+
+  it('R24: valid words with --backlog on an operator ask file the backlog label, no version, and an operator record with op none', async () => {
+    await setup();
+    decisionFile();
+    await file('Task', '--labels', 'operator-directed', '--backlog', '--proposed-version', 'backlog', '--why', 'waits for the next planning pass', '--decision', '9', '--words', WORDS);
+    expect(issue().fixVersions).toBeUndefined();
+    expect(issue().labels).toEqual(expect.arrayContaining(['backlog']));
+    expect(operatorRows()).toEqual([expect.objectContaining({ keys: ['HIMMEL-77'], op: 'none', to_v: null, verbatim: WORDS })]);
+    expect(requests()).toEqual([]);
+  });
+
+  it('R26: a Medium --residual-of is filed to the backlog: the label backlog, no version, no filed row', async () => {
+    await setup();
+    await file('Task', '--residual-of', 'HIMMEL-3', '--fu-class', 'escape', '--class', 'routing');
+    expect(issue().fixVersions).toBeUndefined();
+    expect(issue().labels).toContain('backlog');
+    expect(filed()).toEqual([]);
+    expect(requests()).toEqual([]);
+  });
+
+  it.each([[true], [false]])('R31: a depth-1 --residual-of with --gate critical only proposes (frozen %s): no version, proposed-v1.1.3, an INTAKE, no filed row', async (frozen) => {
+    await setup({ ledgerFrozen: frozen, jiraFrozen: frozen });
+    await file('Task', '--residual-of', 'HIMMEL-3', '--fu-class', 'escape', '--class', 'routing', '--gate', 'critical');
+    expect(issue().fixVersions).toBeUndefined();
+    expect(issue().labels).toContain('proposed-v1.1.3');
+    expect(requests()).toEqual([expect.objectContaining({ to_v: 'v1.1.3', evidence: expect.objectContaining({ rule: 'rules:residual-label:gate-critical' }) })]);
+    expect(filed()).toEqual([]);
+  });
+
+  it('R33a: a depth-2 --residual-of with --gate critical in unfrozen current is proposed, never filed', async () => {
+    await setup({ ledgerFrozen: false, jiraFrozen: false });
+    parentLabels = ['residual-depth-1'];
+    await file('Task', '--residual-of', 'HIMMEL-3', '--fu-class', 'escape', '--class', 'routing', '--gate', 'critical');
+    expect(issue().fixVersions).toBeUndefined();
+    expect(issue().labels).toEqual(expect.arrayContaining(['proposed-v1.1.3', 'residual-depth-2']));
+    expect(filed()).toEqual([]);
+  });
+
+  it('R34: a gated follow-up of an open parent in unfrozen current is filed into current by rules:label:gate-critical', async () => {
+    await setup({ ledgerFrozen: false, jiraFrozen: false });
+    await file('Task', '--follow-up-of', 'HIMMEL-5', '--gate', 'critical');
+    expect(issue().fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(filed()).toEqual([expect.objectContaining({ ground: 'rules:label:gate-critical' })]);
+  });
+
+  it('R32: when the operator record write fails after the POST, PARTIAL names the record and the filed row, and no filed row is written', async () => {
+    await setup();
+    decisionFile();
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string, ...rest: unknown[]) => {
+      if (method === 'POST' && path === '/issue') chmodSync(join(root, 'state', 'R1'), 0o500);
+      return base(method, path, ...rest);
+    });
+    try {
+      await refuses(file('Task', '--decision', '9', '--words', WORDS), /PARTIAL.*operator record.*filed row/s);
+    } finally {
+      chmodSync(join(root, 'state', 'R1'), 0o700);
+    }
+    expect(filed()).toEqual([]);
+  });
+
+  it('R35: an operator ask filed to the backlog with no --decision is refused before the POST, naming --decision and --words', async () => {
+    await setup();
+    await refuses(file('Task', '--labels', 'operator-directed', '--backlog', '--proposed-version', 'backlog', '--why', 'waits for the next planning pass'), /--decision.*--words/s);
+    expect(posts()).toEqual([]);
+  });
+
+  it('R38: a Medium Task filed with --backlog gets the label backlog, no proposed-backlog label, and no request', async () => {
+    await setup();
+    await file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'waits for the next planning pass');
+    expect(issue().labels).toEqual(['backlog']);
+    expect(requests()).toEqual([]);
+  });
+
+  describe('R37: a project no declaration names (the adopter path)', () => {
+    it('places a Highest Task in Jira\'s earliest unreleased version and writes no filed row; a Medium Task goes to the backlog', async () => {
+      await setup({ declared: false, jiraFrozen: false });
+      await file('Task', '--priority', 'Highest');
+      expect(issue().fixVersions).toEqual([{ name: 'v1.1.3' }]);
+      expect(filed()).toEqual([]);
+      mockRequest.mockClear();
+      await file('Task');
+      expect(issue().labels).toEqual(['backlog']);
+    });
+
+    it('refuses a proposal naming --fix-version --chief-override and --gate must:<ref>, and refuses words', async () => {
+      await setup({ declared: false });
+      await refuses(file('Task', '--priority', 'Low', '--labels', 'regression'), /--fix-version --chief-override.*--gate must:/s);
+      await refuses(file('Task', '--decision', '1', '--words', 'x'), /--decision|--words/);
+      expect(posts()).toEqual([]);
+    });
+
+    it('refuses a Highest Task when Jira has no unreleased version', async () => {
+      await setup({ declared: false });
+      mockRequest.mockImplementation(async (method: string, path: string) => (method === 'GET' && path.endsWith('/versions') ? [{ name: 'v1.1.2', released: true }] : method === 'GET' ? { issues: [] } : { key: 'HIMMEL-77' }));
+      await refuses(file('Task', '--priority', 'Highest'), /no unreleased version/);
+      expect(posts()).toEqual([]);
+    });
   });
 });

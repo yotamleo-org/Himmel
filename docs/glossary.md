@@ -269,7 +269,7 @@ exists, the code word last.
 | **Frozen scope** (industry: scope freeze; code word: frozen set) | The tickets a version holds on its freeze date (`frozen: <date>` in the version description). After the freeze, new work enters only through the intake gate. |
 | **Intake gate** | The check a filing into a frozen version must pass, naming one of four kinds: `critical`, `regression`, `must:<decision>` (industry: release blocker) or `receipt`. Flag `jira create --gate`; the same flag is required to move a ticket into a frozen version. |
 | **Receipt** | A ticket filed to record work being dispatched now and closed within a day. It enters a frozen version through `--gate receipt`. |
-| **Admission** | The ledger record that a ticket entered a frozen version, with its gate and who admitted it (`kind: rm-admit`; a chief override is recorded as such). |
+| **Admission** | The ledger record that a ticket entered a frozen version, with its gate and who admitted it (`kind: rm-admit`; a chief override is recorded as such). `kind: filed` is the row `jira create` writes for a placement the four rules made into a declared version, with its `rules:*` ground and, when words placed it, the operator record. |
 | **Backlog** / **icebox** | Backlog: no version, waiting for planning. Icebox: parked indefinitely in the ICE project and out of every count (`ice-followups.sh`). |
 | **Ad hoc** / **station ad hoc** | Ad hoc: a quick fix for our own setup, filed with no version. Station ad hoc: a reversible change made on the station before its repo fix, recorded under the label `station-adhoc` so the repo fix is never dropped. |
 | **Operator-directed** | Filed on the operator's explicit instruction. Label `operator-directed`. |

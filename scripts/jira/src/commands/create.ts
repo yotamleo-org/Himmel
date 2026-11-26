@@ -20,9 +20,10 @@ import { appendAdmission, type AdmissionInput } from './admissions-ledger.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, chiefOverrideOf, frozenDate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 import { ctxFor, refuseRequest, refuseTestJiraPost } from './release.js';
-import { decisionWords, operatorFence, releaseForProject, request as releaseRequest, requestWithWords } from '../release/engine.js';
+import { decisionWords, operatorDecision, operatorFence, releaseForProject, request as releaseRequest, requestWithWords } from '../release/engine.js';
 import type { TicketFacts } from '../release/operator-work.js';
 import { loadOrThrow } from '../release/engine-core.js';
+import { currentFrozen, placeByRules, ticketFromCreate, type Placement, type ReleaseIn } from '../release/filing-rules.js';
 import { releaseRoot } from '../release/paths.js';
 import { ancestorValue } from '../release/fence-ancestry.js';
 import { isTestProject } from '../live-test-guard.js';
@@ -198,10 +199,11 @@ interface ParentIssue {
 
 /**
  * Places a residual. A residual of a project a declared release names is placed
- * by the door from its priority: it files with no version and queues its INTAKE,
- * and keeps a filing-time version only under --gate (the current version). For
- * a project no declaration names, the first matching row wins: a. depth >= 2,
- * b. polish: backlog. c. --gate: current. d. escape: current if unfrozen, else
+ * by the rules at filing (placeByRules, from runCreate): this writes no version
+ * for it, and keeps a filing-time version only under --gate must|receipt (the
+ * current version); --gate critical|regression goes to the rules, which only
+ * propose for a residual. For a project no declaration names, the first matching
+ * row wins: a. depth >= 2, b. polish: backlog. c. --gate must|receipt: current. d. escape: current if unfrozen, else
  * next. e. hardening with a chain: its version V if unfrozen, else next.
  * f. hardening, no chain, High or above: next. g. anything else: backlog. Next
  * is the earliest unreleased version after current. It never throws on a
@@ -271,9 +273,9 @@ export async function planResidual(project: string, o: ResidualOptions): Promise
 
   let fixVersion: string | undefined;
   if (current && depth < 2 && o.fuClass !== 'polish') {
-    if (o.gate !== undefined) {
+    if (o.gate === 'receipt' || o.gate?.startsWith('must:')) {
       fixVersion = current;
-    } else if (doorPlaces) {
+    } else if (doorPlaces || o.gate !== undefined) {
       fixVersion = undefined;
     } else if (o.fuClass === 'escape') {
       fixVersion = unfrozenOrNext(current);
@@ -336,6 +338,7 @@ interface PlacementOptions {
   why?: string;
   labels?: string;
   decision?: string;
+  operatorUpdate?: number;
 }
 
 /** The label a proposed version leaves on the ticket until the release manager confirms or moves it. */
@@ -344,9 +347,12 @@ const proposedLabel = (v: string): string => `proposed-${labelSlug(v)}`;
 function assertBacklogDecision(o: PlacementOptions): void {
   if (o.decision !== undefined || !/^(bug|task|story)$/i.test(o.type)) return;
   const highBug = /^bug$/i.test(o.type) && /^(high|highest|critical|blocker)$/i.test(o.priority ?? '');
-  const security = (o.labels === undefined ? [] : parseLabels(o.labels)).some((l) => l.toLowerCase() === 'security');
-  if (highBug || security) {
+  const labels = (o.labels === undefined ? [] : parseLabels(o.labels)).map((l) => l.toLowerCase());
+  if (highBug || labels.includes('security')) {
     throw new Error(`a High or security ${o.type} enters the backlog only by an operator decision: pass --decision <n> --words "<the operator's words>", or place it in a version (--fix-version, --proposed-version <v>, --gate)`);
+  }
+  if (labels.includes('operator-directed') || o.operatorUpdate !== undefined) {
+    throw new Error(`an operator ask enters the backlog only by the operator's words (rule 1, their explicit "later"): pass --decision <n> --words "<the operator's words>", or drop --backlog and let the rules place it`);
   }
 }
 
@@ -396,10 +402,10 @@ export function assertProposalNotInherited(o: { proposedVersion?: string }, inhe
 }
 
 /**
- * A Bug, Task or Story is placed at filing. A gated one, or a Highest Bug,
- * takes the active version (bugDefault); --backlog, --fix-version, --gate,
- * --residual-of, --follow-up-of or a version inherited from a blocker place
- * any of them; with none of these it is refused rather than defaulted silently.
+ * A Bug, Task or Story with no explicit placement is placed by the rules (placeByRules, called from runCreate).
+ * This places only --backlog (the label backlog, no INTAKE) and --gate must|receipt, which keep the version-writing
+ * path (bugDefault). --fix-version, a residual's own version and a blocker's inherited version place the ticket before
+ * the rules run.
  */
 export function placeAtFiling(
   o: PlacementOptions,
@@ -408,34 +414,18 @@ export function placeAtFiling(
   testProject = false,
 ): { labels: string[] | undefined; bugDefault: boolean } {
   const type = o.type.toLowerCase();
-  const isBug = type === 'bug';
-  if ((!isBug && type !== 'task' && type !== 'story') || residual || testProject || o.fixVersion !== undefined) return { labels, bugDefault: false };
-  if (o.backlog) return { labels: [...new Set([...(labels ?? []), BACKLOG_LABEL, proposedLabel('backlog')])], bugDefault: false };
-  if (o.proposedVersion !== undefined) return { labels: [...new Set([...(labels ?? []), proposedLabel(o.proposedVersion)])], bugDefault: false };
-  if (o.gate !== undefined || (isBug && o.priority?.toLowerCase() === 'highest')) return { labels, bugDefault: true };
-  if (o.followUpOf !== undefined) return { labels, bugDefault: false };
-  const sector = 'sector: ' + (o.sector ?? 'none given');
-  if (isBug) {
-    throw new Error(
-      `A Bug needs a placement (${sector}): pass --proposed-version <v> to file it with a proposed version and its INTAKE request, ` +
-        '--backlog --proposed-version backlog --why <why> if it blocks no open work, ' +
-        'or --fix-version <v> / --gate critical|regression / --priority Highest to file it into a version; ' +
-        'a Bug that blocks open work, such as a PR, goes into a version, then request INTAKE ' +
-        '(jira release request <release> --verb INTAKE --key <key> --why <why>)',
-    );
-  }
-  throw new Error(
-    `A ${o.type} needs a placement (${sector}): pass --proposed-version <v> to file it with a proposed version and its INTAKE request, ` +
-      '--backlog --proposed-version backlog --why <why> for the backlog, ' +
-      'or --fix-version <v> / --gate critical|regression / --residual-of <key> / --follow-up-of <key> to place it',
-  );
+  if ((type !== 'bug' && type !== 'task' && type !== 'story') || residual || testProject || o.fixVersion !== undefined) return { labels, bugDefault: false };
+  if (o.backlog) return { labels: [...new Set([...(labels ?? []), BACKLOG_LABEL])], bugDefault: false };
+  return { labels, bugDefault: o.gate === 'receipt' || o.gate?.startsWith('must:') === true };
 }
 
 const intakeWhy = (o: { why?: string; proposedVersion?: string }, title: string): string => {
   const proposed = o.proposedVersion !== undefined && o.proposedVersion !== 'backlog' ? `proposed for ${o.proposedVersion}` : 'filed to the backlog';
   return o.why?.trim() || `${proposed}: ${title}`;
 };
-export const intakeOwed = (type: string, fields: Record<string, unknown>, testProject = false): boolean => !testProject && !fields['fixVersions'] && /^(bug|task|story)$/i.test(type);
+/** An INTAKE is owed only for a proposal: the rules place every other ticket in a version or the backlog, and only a proposal waits for the chief. */
+export const intakeOwed = (type: string, fields: Record<string, unknown>, testProject = false, proposal = false): boolean =>
+  proposal && !testProject && !fields['fixVersions'] && /^(bug|task|story)$/i.test(type);
 
 export interface BridgePointer { operator_update: number; filed_by: 'bridge'; bridge_chat: number }
 
@@ -447,6 +437,8 @@ interface IntakeOptions {
   decision?: string;
   words?: string;
   pointer?: BridgePointer;
+  /** The rules only propose current for this ticket, so it is filed with no version and waits for its INTAKE. */
+  proposal?: boolean;
 }
 
 type IntakeWords = { decision?: string; words?: string; ticket?: TicketFacts; pointer?: BridgePointer };
@@ -460,7 +452,7 @@ export function parseOperatorUpdate(v: string): number {
 }
 
 export function bridgePointer(
-  o: { operatorUpdate?: number; type: string; fixVersion?: string; proposedVersion?: string; project?: string },
+  o: { operatorUpdate?: number; type: string; fixVersion?: string; backlog?: boolean; proposedVersion?: string; project?: string },
 ): BridgePointer | undefined {
   if (o.operatorUpdate === undefined) return undefined;
   const env = process.env;
@@ -471,12 +463,10 @@ export function bridgePointer(
   if (env['HIMMEL_CONSOLE_LEG'] === '1' || env['HIMMEL_RELEASE_MANAGER'] === '1') {
     throw refuse('a chief-spawned worker or the release manager never names the operator\'s update');
   }
-  const fields = o.fixVersion === undefined ? {} : { fixVersions: [{ name: o.fixVersion }] };
-  if (!intakeOwed(o.type, fields, isTestProject(o.project ?? projectKey()))) {
-    throw refuse('no INTAKE is owed (--fix-version, an Epic or Subtask, or a test project), so no request carries the pointer');
-  }
-  if (toVersionOf(o) === null) {
-    throw refuse('the INTAKE names no version; pass --proposed-version <v>, the version the operator\'s line states');
+  if (o.fixVersion !== undefined) throw refuse('the pointer rides on a rules placement; drop --fix-version');
+  if (o.backlog) throw refuse('the pointer rides on a rules placement; drop --backlog');
+  if (!/^(bug|task|story)$/i.test(o.type) || isTestProject(o.project ?? projectKey())) {
+    throw refuse('the pointer rides on a rules placement, and an Epic, a Subtask or a test project is placed by no rule');
   }
   const stamp = ancestorValue('HIMMEL_BRIDGE_SESSION') === '1' ? ancestorValue('HIMMEL_BRIDGE_CHAT') : null;
   if (!/^[1-9]\d*$/.test(stamp ?? '')) {
@@ -526,81 +516,82 @@ export function assertIntakeQueueable(why: string, o: IntakeWords & { toVersion?
 
 /** Refuses an unversioned Bug, Task or Story (a follow-up or residual too) whose INTAKE could not be queued; runs before the POST. */
 export function preflightIntake(o: IntakeOptions, fields: Record<string, unknown>, title: string, testProject = false): void {
-  if (intakeOwed(o.type, fields, testProject)) {
+  if (intakeOwed(o.type, fields, testProject, o.proposal)) {
     assertIntakeQueueable(intakeWhy(o, title), { toVersion: toVersionOf(o), ticket: factsOf(fields), decision: o.decision, words: o.words });
   }
 }
 
 interface ParentState {
-  fields: { project: { key: string }; status?: { name?: string; statusCategory?: { key?: string } }; fixVersions?: { name: string }[] };
+  fields: { project: { key: string }; status?: { name?: string; statusCategory?: { key?: string } }; fixVersions?: { name: string }[]; priority?: { name?: string } };
+}
+
+/** A follow-up's parent as Jira holds it now, with its project's current version (the earliest unreleased) and whether that is frozen. */
+export interface FollowUpParent {
+  key: string;
+  status: string;
+  done: boolean;
+  versions: string[];
+  priority?: string;
+  current?: string;
+  frozen: boolean;
+}
+
+/** Reads the parent of a follow-up before the POST; a parent that cannot be read refuses the filing (D5), never files it unplaced. */
+export async function readFollowUpParent(key: string): Promise<FollowUpParent> {
+  try {
+    const parent = (await request<ParentState>('GET', `/issue/${key}?fields=project,status,fixVersions,priority`)).fields;
+    const versions = await fetchVersions(parent.project.key);
+    const current = earliestUnreleased(versions);
+    return {
+      key,
+      status: parent.status?.name ?? 'unknown',
+      done: parent.status?.statusCategory?.key === 'done',
+      versions: (parent.fixVersions ?? []).map((v) => v.name),
+      ...(parent.priority?.name ? { priority: parent.priority.name } : {}),
+      ...(current !== undefined ? { current } : {}),
+      frozen: frozenDate(versions.find((v) => v.name === current)?.description) !== undefined,
+    };
+  } catch (e) {
+    throw new CreateRefused(`jira create: ${key} cannot be read, so its follow-up cannot be placed; retry, or pass --fix-version <v> (${(e as Error).message})`);
+  }
 }
 
 /**
- * A follow-up of an open parent in the current version asks for that version;
- * the why states only facts (parent, status, version), plus the parent's
- * remainder when the caller declares it with --remainder. A Done or closed
- * parent asks for none and the why says so. Parent, status and version go in
- * the request's evidence. Explicit wins: a version, --backlog, --proposed-version or --why
- * keeps its meaning. A parent with no current version, or one that cannot be
- * read, asks for no version (the ticket is filed either way); with --remainder
- * the evidence still carries follow_up_of and remainder, also under an explicit
- * why or version, and for an unreadable parent without the parent facts.
+ * The INTAKE facts for a follow-up whose placement is a proposal: the why states only facts (parent, status,
+ * version), plus the parent's remainder when the caller declares it with --remainder; a Done parent says so.
+ * Parent, status and version go in the evidence. Which version it proposes is the rules' call (rule P), not this
+ * function's. An explicit --why or --proposed-version keeps its meaning and the evidence carries only the parent
+ * and its remainder.
  */
-export async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; residualOf?: string; remainder?: boolean; backlog?: boolean; fixVersion?: string }>(o: T): Promise<T> {
+export function followUpIntake<T extends IntakeOptions & { followUpOf?: string; residualOf?: string; remainder?: boolean; backlog?: boolean; fixVersion?: string }>(o: T, p?: FollowUpParent): T {
   if (o.residualOf !== undefined && o.followUpOf === undefined && o.fixVersion === undefined && o.evidence === undefined) {
     return { ...o, evidence: { residual_of: o.residualOf } };
   }
-  if (hasOwnPlacement(o)) {
+  if (p === undefined || hasOwnPlacement(o)) {
     return o.followUpOf !== undefined && o.remainder ? { ...o, evidence: { ...o.evidence, follow_up_of: o.followUpOf, remainder: true } } : o;
   }
-  const parentKey = o.followUpOf!;
-  let parent: ParentState['fields'];
-  let versions: Awaited<ReturnType<typeof fetchVersions>>;
-  try {
-    parent = (await request<ParentState>('GET', `/issue/${parentKey}?fields=project,status,fixVersions`)).fields;
-    versions = await fetchVersions(parent.project.key);
-  } catch (e) {
-    console.error(`jira: warning: could not read ${parentKey}'s status and version, so the follow-up's INTAKE names none: ${(e as Error).message}`);
-    return o.remainder ? { ...o, evidence: { ...o.evidence, follow_up_of: parentKey, remainder: true } } : o;
-  }
-  const status = parent.status?.name ?? 'unknown';
-  const current = earliestUnreleased(versions);
-  const inCurrent = current !== undefined && parent.fixVersions?.some((v) => v.name === current) === true;
+  const inCurrent = p.current !== undefined && p.versions.includes(p.current);
   const evidence = {
-    follow_up_of: parentKey, parent_status: status, parent_version: inCurrent ? current : null,
+    follow_up_of: p.key, parent_status: p.status, parent_version: inCurrent ? p.current : null,
     ...(o.remainder ? { remainder: true } : {}),
   };
-  if (parent.status?.statusCategory?.key === 'done') {
-    return { ...o, why: `follow-up of ${parentKey}, which is closed (${status})`, evidence };
-  }
+  if (p.done) return { ...o, why: `follow-up of ${p.key}, which is closed (${p.status})`, evidence };
   if (!inCurrent) return o.remainder ? { ...o, evidence } : o;
-  const isFrozen = frozenDate(versions.find((v) => v.name === current)?.description) !== undefined;
-  const target = current;
-  const facts = `follow-up of ${parentKey} (${status}), which is in ${current}${isFrozen ? ' (frozen)' : ''}`;
-  const why = o.remainder ? `${facts}; ${parentKey} cannot close without this ticket, which holds its remainder` : facts;
-  return { ...o, proposedVersion: target, why, evidence };
+  return { ...o, why: `follow-up of ${p.key} (${p.status}), which is in ${p.current}${p.frozen ? ' (frozen)' : ''}`, evidence };
 }
 
 type PlacementChoice = { followUpOf?: string; fixVersion?: string; backlog?: boolean; proposedVersion?: string; why?: string };
 const hasOwnPlacement = (o: PlacementChoice): boolean => o.followUpOf === undefined || o.fixVersion !== undefined || !!o.backlog || o.proposedVersion !== undefined || !!o.why?.trim();
 
-export async function closedParentPlacement(o: PlacementChoice & { type: string }): Promise<{ fixVersion: string; priority?: string } | undefined> {
-  if (hasOwnPlacement(o) || !/^(bug|task|story)$/i.test(o.type)) return undefined;
-  try {
-    const parent = (await request<ParentState & { fields: { priority?: { name?: string } } }>('GET', `/issue/${o.followUpOf}?fields=project,status,fixVersions,priority`)).fields;
-    if (parent.status?.statusCategory?.key !== 'done') return undefined;
-    const versions = await fetchVersions(parent.project.key);
-    const current = earliestUnreleased(versions);
-    if (current === undefined || parent.fixVersions?.some((v) => v.name === current) !== true) return undefined;
-    if (frozenDate(versions.find((v) => v.name === current)?.description) !== undefined) return undefined;
-    return { fixVersion: current, ...(parent.priority?.name ? { priority: parent.priority.name } : {}) };
-  } catch {
-    return undefined;
-  }
+/** A Done parent in the current version, when that version is not frozen, takes its follow-up into it at the parent's priority (create-followup); ahead of the rules. */
+export function closedParentPlacement(o: PlacementChoice & { type: string }, p: FollowUpParent | undefined): { fixVersion: string; priority?: string } | undefined {
+  if (p === undefined || hasOwnPlacement(o) || !/^(bug|task|story)$/i.test(o.type)) return undefined;
+  if (!p.done || p.current === undefined || !p.versions.includes(p.current) || p.frozen) return undefined;
+  return { fixVersion: p.current, ...(p.priority ? { priority: p.priority } : {}) };
 }
 
 export function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions, testProject = false): void {
-  if (!intakeOwed(o.type, fields, testProject)) return;
+  if (!intakeOwed(o.type, fields, testProject, o.proposal)) return;
   try {
     queueBacklogIntake(key, intakeWhy(o, title), toVersionOf(o), true, o.evidence, { decision: o.decision, words: o.words, ticket: factsOf(fields), pointer: o.pointer });
   } catch (e) {
@@ -878,12 +869,134 @@ export async function residualInheritedVersion(
   return residual && inherited && o.gate === undefined && residual.frozen.includes(inherited) ? undefined : inherited;
 }
 
+/** The release the rules place against: the declaration (a name) or, in a project no declaration names, Jira alone (no name). */
+type Declared = { release: string; current: string; versions: string[] };
+
+/** The one declared release naming the project, or null when none does (an adopter repo); an unreadable or ambiguous declaration refuses (D5). */
+export function declaredFor(project: string): Declared | null {
+  const declared = releaseForProject(process.env, project);
+  if (declared === 'unreadable') {
+    throw new CreateRefused(`jira create: the release declaration for ${project} cannot be read, so the rules cannot place this ticket; pass --fix-version <v>, or --backlog --proposed-version backlog --why <why>`);
+  }
+  if (declared.length > 1) {
+    throw new CreateRefused(`jira create: ${declared.length} releases name ${project} (${declared.map((d) => d.release).join(', ')}), so the rules cannot place this ticket; pass --fix-version <v>, or --backlog --proposed-version backlog --why <why>`);
+  }
+  return declared[0] ?? null;
+}
+
+export interface VerifiedWords { ctx: ReturnType<typeof ctxFor>; decision: string; words: string; record: ReturnType<typeof decisionWords> }
+
+/** D3: the operator's words, verified before the POST wherever --decision or --words is given, exactly as an INTAKE would verify them. */
+export function verifyWords(o: { decision?: string; words?: string }, declared: Declared | null): VerifiedWords | undefined {
+  if (o.decision === undefined && o.words === undefined) return undefined;
+  if (o.decision === undefined) throw new Error('jira create: --words needs --decision <n>, the decision whose file holds them');
+  if (o.words === undefined) throw new Error('jira create: --decision needs --words "<the operator\'s exact words>"');
+  if (declared === null) {
+    throw new CreateRefused('jira create: --decision and --words need a declared release to verify them against, and none names this project');
+  }
+  const ctx = ctxFor(declared.release);
+  operatorFence(ctx);
+  return { ctx, decision: o.decision, words: o.words, record: decisionWords(ctx, o.decision, o.words) };
+}
+
+/** Writes the operator decision record for verified words: op `add` into a version, `none` for the backlog. */
+export function recordWords(w: VerifiedWords, key: string, to: string | null): string {
+  return operatorDecision(w.ctx, { decision: w.decision, keys: [key], op: to ? 'add' : 'none', from_v: null, to_v: to, verbatim: w.words, ...w.record }).id;
+}
+
+export interface RulesInput {
+  project: string;
+  type: string;
+  priority?: string;
+  labels: string[];
+  gate?: string;
+  proposedVersion?: string;
+  followUpOf?: string;
+  remainder?: boolean;
+  pointer?: BridgePointer;
+  parent?: FollowUpParent;
+  words: boolean;
+}
+
+export interface RulesPlacement {
+  placement: Placement;
+  /** The `rules:*` ground the filed row, the INTAKE evidence and the stderr line carry. */
+  ground: string;
+  /** The version the ticket is filed into; absent for the backlog and for a proposal. */
+  target: string | undefined;
+  /** The labels the placement adds: `backlog`, or `proposed-<current>` on a proposal. */
+  labels: string[];
+  /** The declared release, whose admissions ledger gets the filed row; absent in a project no declaration names. */
+  release: string | undefined;
+}
+
+function groundOf(p: Placement): string {
+  switch (p.rule) {
+    case 'A': return p.ask === 'named' ? `rules:operator-named:${p.arg}` : p.ask === 'undeclared' ? `rules:operator-undeclared:${p.arg}` : `rules:operator-ask:${p.arg}`;
+    case 'S': return `rules:remainder-of:${p.arg}`;
+    case 'W': return 'rules:started';
+    case 'H': return `rules:serious:${p.arg}`;
+    case 'L': return p.residual ? `rules:residual-label:${p.arg}` : `rules:label:${p.arg}`;
+    case 'P': return `rules:follow-up-of:${p.arg}`;
+    case 'M': return 'rules:mild';
+    default: return `rules:${p.rule}`;
+  }
+}
+
+/** The release the rules place against, read before the POST: the signed declaration cross-checked against Jira (current and freeze), or Jira alone for an adopter repo. */
+async function filingRelease(project: string, declared: Declared | null): Promise<ReleaseIn> {
+  const versions = await fetchVersions(project);
+  const jiraCurrent = earliestUnreleased(versions);
+  const jiraFrozen = jiraCurrent !== undefined && frozenDate(versions.find((v) => v.name === jiraCurrent)?.description) !== undefined;
+  if (declared === null) {
+    return { current: jiraCurrent ?? '', versions: versions.filter((v) => !v.released && !v.archived).map((v) => v.name), frozen: jiraFrozen };
+  }
+  if (declared.current !== jiraCurrent) {
+    throw new CreateRefused(`jira create: the declared current ${declared.current} differs from Jira's earliest unreleased version ${jiraCurrent ?? 'none'}, so the rules cannot place this ticket; fix the declaration or Jira, or pass --fix-version <v>`);
+  }
+  let ledgerFrozen: boolean;
+  try {
+    ledgerFrozen = currentFrozen(loadOrThrow(ctxFor(declared.release)));
+  } catch (e) {
+    throw new CreateRefused(`jira create: ${(e as Error).message}, so the rules cannot place this ticket; pass --fix-version <v>, or --backlog --proposed-version backlog --why <why>`);
+  }
+  if (ledgerFrozen !== jiraFrozen) {
+    throw new CreateRefused(`jira create: the ledger says ${declared.current} is ${ledgerFrozen ? 'frozen' : 'not frozen'}, but Jira's ${declared.current} ${jiraFrozen ? 'carries a frozen: line' : 'carries no frozen: line'}; the two must agree before the rules can place this ticket`);
+  }
+  return { current: declared.current, versions: declared.versions, frozen: ledgerFrozen };
+}
+
+/** Places a new ticket by the four rules; every refusal of D5 lands here, before the POST. */
+export async function rulesPlacement(o: RulesInput, declared: Declared | null): Promise<RulesPlacement> {
+  const rel = await filingRelease(o.project, declared);
+  const gate = o.gate === 'critical' || o.gate === 'regression' ? o.gate : null;
+  const parent = o.parent === undefined || o.followUpOf === undefined ? null : { key: o.followUpOf, versions: o.parent.versions, remainder: o.remainder === true };
+  const t = ticketFromCreate({ priority: o.priority ?? '', labels: o.labels, type: o.type, gate, proposedVersion: o.proposedVersion, pointer: o.pointer !== undefined, words: o.words, parent });
+  const placement = placeByRules(t, rel)!;
+  const ground = groundOf(placement);
+  if (placement.rule === 'A' && placement.ask === 'undeclared') {
+    throw new CreateRefused(`jira create: the operator named ${placement.arg}, which is not declared by the release (${rel.versions.join(', ')}); name a declared version, or drop --proposed-version for ${rel.current}`);
+  }
+  if (rel.current === '' && (placement.target === '' || placement.propose === '')) {
+    throw new CreateRefused(`jira create: ${placement.reason}, but ${o.project} has no unreleased version; create one, or file with --backlog --proposed-version backlog --why <why>`);
+  }
+  if (declared === null && placement.propose !== undefined) {
+    throw new CreateRefused(`jira create: ${placement.reason}, and only the chief or the operator's words place it; no release names ${o.project} to take an INTAKE, so pass --fix-version --chief-override <reason> (the chief) or --gate must:<ref>`);
+  }
+  if (o.proposedVersion !== undefined && o.proposedVersion !== 'backlog' && placement.rule !== 'A') {
+    console.error(`jira: --proposed-version ${o.proposedVersion} places nothing: only an operator ask names a version`);
+  }
+  const labels = placement.propose !== undefined ? [proposedLabel(placement.propose)] : placement.target === null ? [BACKLOG_LABEL] : [];
+  return { placement, ground, target: placement.target ?? undefined, labels, release: declared?.release };
+}
+
 /** The journal name of the code path that chose a new ticket's Fix Version; undefined (hand) when the caller typed it or none was set. */
 export function createWriterOf(
   options: { fixVersion?: string; residualOf?: string; followUpOf?: string },
-  chose: { placed: boolean; inherited: string | undefined; residual: ResidualPlan | undefined; bugDefault: boolean },
+  chose: { placed: boolean; inherited: string | undefined; residual: ResidualPlan | undefined; bugDefault: boolean; rules?: boolean },
 ): string | undefined {
   if (!chose.placed || options.fixVersion !== undefined) return undefined;
+  if (chose.rules) return 'create-rules';
   if (chose.inherited !== undefined) {
     return options.residualOf !== undefined ? 'create-residual' : options.followUpOf !== undefined ? 'create-followup' : 'create-blocker-inherit';
   }
@@ -919,10 +1032,10 @@ export function registerCreate(program: Command): void {
       "Set the fixVersion (validated against the project's versions; an explicit value wins over the Bug default of the earliest unreleased version)",
     )
     .option('--priority <name>', 'Priority name (e.g. Highest); a Highest Bug is placed in the active version')
-    .option('--backlog', 'File to the backlog: label backlog, no inherited fixVersion; needs --proposed-version backlog and --why. Queues an INTAKE request when one release is declared; the door places it, and --backlog does not keep a mild ticket out of the next version')
+    .option('--backlog', 'File to the backlog: label backlog, no version, no INTAKE; needs --proposed-version backlog and --why (and --decision --words for an operator ask)')
     .option(
       '--proposed-version <v>',
-      'A Bug, Task or Story without --fix-version is filed with a proposed version (label proposed-<v>) and its INTAKE request queued in the same call; `backlog` needs --backlog and --why',
+      'The version an operator ask names (operator-directed, or verified --decision --words); on any other ticket it places nothing, the rules do. `backlog` needs --backlog and --why',
     )
     .option('--why <why>', 'One line: why the ticket waits in the backlog (required with --backlog); the INTAKE request carries it')
     .option('--decision <n>', 'The operator decision that places an operator-directed or High ticket into a version (its specs/decisions verbatim file); needs --words')
@@ -934,7 +1047,7 @@ export function registerCreate(program: Command): void {
     )
     .option(
       '--gate <reason>',
-      'Why this may enter a version (' + INTAKE_GATES + '): a Bug without --fix-version goes to the earliest unreleased version, and a frozen version takes nothing without it',
+      'Why this may enter a version (' + INTAKE_GATES + '): must:<ref> and receipt file the ticket into the earliest unreleased version; critical and regression go to the rules (a frozen current only takes the proposal), and a frozen version takes nothing by --fix-version without it',
     )
     .option(
       '--chief-override <reason>',
