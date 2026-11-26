@@ -470,6 +470,12 @@ touch "$N1/release.fail"
 FAILURE_ROUTE_JIRA="$N1/jira" bash "$N" intake HIMMEL-6 "why" >/dev/null 2>&1; rci=$?
 check "a failed INTAKE request exits 1 and alerts with the cause" '[ "$rci" = 1 ] && grep -q "failure-review-route .*HIMMEL-6" "$N1/alerts.log"'
 rm -f "$N1/release.fail"
+: >"$N1/sweep"
+rcl=0; lc="$(FAILURE_ROUTE_SWEEP_CMD="$N1/sweep.sh" bash "$N" live-chief 2>/dev/null)" || rcl=$?
+check "live-chief with no live console prints nothing and exits 1" '[ "$rcl" = 1 ] && [ -z "$lc" ]'
+printf 'slug=u__himmel__newest-chief session=s3 host=h age=30s status=OK\nslug=u__himmel__old-chief session=s1 host=h age=900s status=OK\n' >"$N1/sweep"
+rcl=0; lc="$(FAILURE_ROUTE_SWEEP_CMD="$N1/sweep.sh" bash "$N" live-chief 2>/dev/null)" || rcl=$?
+check "live-chief prints the newest live chief's session name and exits 0" '[ "$rcl" = 0 ] && [ "$lc" = newest-chief ]'
 
 echo "an unparseable notify command is said on stderr and never fails the run"
 F17="$TMP/f17"; mkdir -p "$F17"

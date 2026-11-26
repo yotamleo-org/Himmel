@@ -38,6 +38,6 @@ for nothing. A finding without a heading line counts as major.
 line, unchanged, as its own line. Report only two kinds of finding:
 `(major; reopens <id>)` for each open finding the change did not fix, wherever
 its text sits, and `(major; regression)` for a fault the change made, quoting the
-changed line in backticks (12 characters or more) on the same heading line. An
+changed text exactly in backticks (12 characters or more; it may wrap over lines) on the same heading line. A major regression whose quote matches no changed text still blocks, as regression-unverified. An
 open finding you do not reopen counts as fixed. Raise no new finding about text
 the change did not touch.

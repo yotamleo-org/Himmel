@@ -12,7 +12,7 @@
 # Operational controls (#27): see docs/luna/end-session-wiki.md
 #   - Env opt-out:  CLAUDE_END_SESSION_WIKI=0 (or "false") skips silently.
 #   - Repo config:  $CLAUDE_PROJECT_DIR/.claude/end-session-wiki.json
-#                   { enabled, dry_run, min_duration_seconds }
+#                   { enabled, dry_run, min_duration_seconds, write_order }
 #   - Dry-run:      renders note to log file instead of vault HTTP PUT.
 #   - Min duration: sessions shorter than min_duration_seconds are skipped.
 #   - Error isol.:  set +e + EXIT trap; any failure logs + EXITS 0.
@@ -319,6 +319,7 @@ CFG_MIN_DUR=60
 CFG_CRYSTALLIZE="true"
 CFG_CRYSTALLIZE_MODEL=""
 CFG_CRYSTALLIZE_RULES=""
+CFG_WRITE_ORDER="rest-first"
 # vault_path / vault are read by resolve_vault_root (scripts/lib/vault-resolve.sh),
 # not here, so the shared @tsv parse stays focused on the gate fields.
 if [ -r "$CONFIG_PATH" ]; then
@@ -331,7 +332,8 @@ if [ -r "$CONFIG_PATH" ]; then
             (if has("min_duration_seconds") then .min_duration_seconds else 60 end | tostring),
             (if has("crystallize") then .crystallize else true end | tostring),
             (if has("crystallize_model") then .crystallize_model else "" end | tostring),
-            (if has("crystallize_rules") then .crystallize_rules else "" end | tostring)
+            (if has("crystallize_rules") then .crystallize_rules else "" end | tostring),
+            (if has("write_order") then .write_order else "rest-first" end | tostring)
         ] | @tsv
     ' "$CONFIG_PATH" 2>/dev/null)"
     if [ -n "$parsed" ]; then
@@ -341,6 +343,7 @@ if [ -r "$CONFIG_PATH" ]; then
         CFG_CRYSTALLIZE="$(printf '%s' "$parsed" | cut -f4)"
         CFG_CRYSTALLIZE_MODEL="$(printf '%s' "$parsed" | cut -f5)"
         CFG_CRYSTALLIZE_RULES="$(printf '%s' "$parsed" | cut -f6)"
+        CFG_WRITE_ORDER="$(printf '%s' "$parsed" | cut -f7)"
     else
         log_msg "config parse failed (using defaults): $CONFIG_PATH"
     fi
@@ -791,6 +794,24 @@ _esw_collect_sibling_keys() {
         done
     fi
 }
+
+case "$CFG_WRITE_ORDER" in
+    disk-first)
+        if write_note_to_file "$ABS_PATH" "$MARKDOWN"; then
+            log_msg "wrote (local fs, disk-first) ${REL_PATH}"
+            WROTE=1
+            spawn_crystallizer
+            rm -f "$DEGRADED_MARKER_PATH" 2>/dev/null || true
+        else
+            log_msg "ERROR: local fs write failed: $ABS_PATH"
+            _esw_release_early "$SESSION_ID"
+        fi
+        HOOK_OK=1
+        exit 0
+        ;;
+    rest-first) ;;
+    *) log_msg "unknown write_order '${CFG_WRITE_ORDER}' (using rest-first)" ;;
+esac
 
 API_KEY="${OBSIDIAN_API_KEY:-}"
 if [ -z "$API_KEY" ]; then

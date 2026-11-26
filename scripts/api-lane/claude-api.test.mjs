@@ -489,6 +489,145 @@ test('a failed call alerts once and falls back; a failing fallback returns its o
   assert.equal(rows(g).at(-1).outcome, 'sub-fallback-failed');
 });
 
+const BUDGET_CAP = JSON.stringify({ type: 'result', is_error: true, subtype: 'error_max_budget_usd', result: 'budget' });
+const chiefBridge = (f, names, ageSecs = 5) => {
+  const root = join(f.dir, 'bridge');
+  mkdirSync(join(root, 'consoles'), { recursive: true });
+  for (const n of names) {
+    writeFileSync(join(root, 'consoles', `${n}.md`), '');
+    writeFileSync(join(root, 'consoles', `${n}.md.wait`), `hb=${Math.floor(Date.now() / 1000) - ageSecs} pid=1 key=k tick=ok state=waiting\n`);
+  }
+  return root;
+};
+const inboxText = (root, name) => readFileSync(join(root, 'consoles', `${name}.md`), 'utf8');
+
+test('a budget-capped judge call alerts the chief inbox and does not page the operator', () => {
+  const f = fixture();
+  const root = chiefBridge(f, ['test-chief']);
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_KIND: 'judge', BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'test-chief', STUB_OUT: BUDGET_CAP, STUB_RC: '1', STUB_FB_OUT: FB_OK });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(alerts(f).length, 0, 'the operator was paged for a chief-actionable failure');
+  const line = inboxText(root, 'test-chief');
+  assert.match(line, /\[api-lane call-failed\]/);
+  assert.match(line, /kind judge, account A, call-failed \(exit 1\): the call exited 1 \(error_max_budget_usd\)/);
+  assert.match(line, /fallback: running on the subscription/);
+  assert.equal(line.trim().split('\n').length, 1);
+  keyNowhere(f, r);
+});
+
+test('with no HIMMEL_CONSOLE_NAME the newest armed chief gets the call-failed alert', () => {
+  const f = fixture();
+  const root = chiefBridge(f, ['old-chief', 'new-chief']);
+  const stamp = (n, hb) => writeFileSync(join(root, 'consoles', `${n}.md.wait`), `hb=${hb} pid=1 key=k tick=ok state=waiting\n`);
+  const now = Math.floor(Date.now() / 1000);
+  stamp('old-chief', now - 100);
+  stamp('new-chief', now - 5);
+  const r = f.run(f.good, { BRIDGE_ROOT: root, STUB_OUT: CALL_FAIL, STUB_RC: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(alerts(f).length, 0);
+  assert.match(inboxText(root, 'new-chief'), /call-failed/);
+  assert.equal(inboxText(root, 'old-chief'), '');
+});
+
+const waitFile = (root, name, tail) => writeFileSync(join(root, 'consoles', `${name}.md.wait`), `hb=${Math.floor(Date.now() / 1000) - 5} pid=1 key=k tick=ok ${tail}\n`);
+
+test('a named chief whose waiter exited on a non-wake reason, or whose wait file has no state, cannot swallow the alert', () => {
+  for (const tail of ['state=exited exit=stream-stop', 'state=exited exit=signal', 'state=exited', 'exit=wake-inbox']) {
+    const f = fixture();
+    const root = chiefBridge(f, ['gone-chief']);
+    waitFile(root, 'gone-chief', tail);
+    const r = f.run(f.good, { BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'gone-chief', STUB_OUT: BUDGET_CAP, STUB_RC: '1' });
+    assert.equal(r.status, 1, r.stderr);
+    assert.equal(alerts(f).length, 1, tail);
+    assert.equal(inboxText(root, 'gone-chief'), '', tail);
+  }
+});
+
+test('the freshest heartbeat is skipped when its waiter exited: the alert goes to the armed chief, or pages the operator', () => {
+  const f = fixture();
+  const root = chiefBridge(f, ['a-armed-chief', 'z-exited-chief']);
+  writeFileSync(join(root, 'consoles', 'a-armed-chief.md.wait'), `hb=${Math.floor(Date.now() / 1000) - 300} pid=1 key=k tick=ok state=waiting\n`);
+  waitFile(root, 'z-exited-chief', 'state=exited exit=stream-stop');
+  const r = f.run(f.good, { BRIDGE_ROOT: root, STUB_OUT: BUDGET_CAP, STUB_RC: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(alerts(f).length, 0);
+  assert.match(inboxText(root, 'a-armed-chief'), /call-failed/);
+  assert.equal(inboxText(root, 'z-exited-chief'), '');
+  const g = fixture();
+  const only = chiefBridge(g, ['z-exited-chief']);
+  waitFile(only, 'z-exited-chief', 'state=exited exit=signal');
+  assert.equal(g.run(g.good, { BRIDGE_ROOT: only, STUB_OUT: BUDGET_CAP, STUB_RC: '1' }).status, 1);
+  assert.equal(alerts(g).length, 1);
+  assert.equal(inboxText(only, 'z-exited-chief'), '');
+});
+
+test('a waiter that exited on a wake reason is still armed and takes the alert', () => {
+  const f = fixture();
+  const root = chiefBridge(f, ['wake-chief']);
+  waitFile(root, 'wake-chief', 'state=exited exit=wake-inbox');
+  const r = f.run(f.good, { BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'wake-chief', STUB_OUT: BUDGET_CAP, STUB_RC: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(alerts(f).length, 0);
+  assert.match(inboxText(root, 'wake-chief'), /call-failed/);
+});
+
+test('a named chief whose waiter heartbeat is stale cannot swallow the alert: it pages the operator', () => {
+  const f = fixture();
+  const root = chiefBridge(f, ['stale-chief'], 7200);
+  const r = f.run(f.good, { BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'stale-chief', STUB_OUT: BUDGET_CAP, STUB_RC: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(alerts(f).length, 1);
+  assert.equal(inboxText(root, 'stale-chief'), '');
+});
+
+test('a stale named chief hands the alert to a fresh armed chief instead of paging the operator', () => {
+  const f = fixture();
+  const root = chiefBridge(f, ['stale-chief'], 7200);
+  writeFileSync(join(root, 'consoles', 'zfresh-chief.md'), '');
+  writeFileSync(join(root, 'consoles', 'zfresh-chief.md.wait'), `hb=0${Math.floor(Date.now() / 1000) - 5} pid=1 key=k tick=ok state=waiting\n`);
+  const r = f.run(f.good, { BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'stale-chief', STUB_OUT: BUDGET_CAP, STUB_RC: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(alerts(f).length, 0);
+  assert.equal(inboxText(root, 'stale-chief'), '');
+  assert.match(inboxText(root, 'zfresh-chief'), /call-failed/);
+});
+
+test('a call-failed alert with no chief inbox still pages the operator', () => {
+  const f = fixture();
+  const root = chiefBridge(f, []);
+  const r = f.run(f.good, { BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'gone-chief', STUB_OUT: BUDGET_CAP, STUB_RC: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(alerts(f).length, 1);
+  assert.match(alertText(f), /call-failed/);
+  assert.equal(existsSync(join(root, 'consoles', 'gone-chief.md')), false, 'a missing chief inbox was created');
+});
+
+test('an operator-actionable failure (credit gone, key rejected) pages the operator even with a chief inbox', () => {
+  for (const out of [CREDIT_LOW, JSON.stringify({ type: 'result', is_error: true, result: 'Invalid API key' })]) {
+    const f = fixture();
+    const root = chiefBridge(f, ['test-chief']);
+    const r = f.run(f.good, { BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'test-chief', STUB_OUT: out, STUB_RC: '1' });
+    assert.equal(r.status, 6, r.stderr);
+    assert.equal(alerts(f).length, 1, out);
+    assert.match(alertText(f), /rejected/);
+    assert.equal(inboxText(root, 'test-chief'), '', 'an operator-actionable alert reached the chief inbox');
+  }
+});
+
+test('every account out of credit still pages the operator, chief inbox present', () => {
+  const f = fixture();
+  const root = chiefBridge(f, ['test-chief']);
+  const marked = spawnSync(process.execPath, [STATE, 'exhausted'], { env: { ...f.env, HIMMEL_API_ACCOUNT: 'B' }, encoding: 'utf8' });
+  assert.equal(marked.status, 0, marked.stderr);
+  const r = launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-all-dry',
+    BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'test-chief', STUB_DEAD_TAILS: 'AAAA', STUB_DEAD_OUT: DEAD });
+  assert.equal(r.status, 6, r.stderr);
+  assert.doesNotMatch(r.stderr, /rotating this call/);
+  assert.equal(alerts(f).length, 1);
+  assert.match(alertText(f), /rejected/);
+  assert.equal(inboxText(root, 'test-chief'), '', 'an all-accounts-exhausted alert reached the chief inbox');
+});
+
 test('a call granted Edit, Write or Bash re-runs only after a refusal before any request; a run that started is never replayed', () => {
   for (const tools of ['Read,Edit', 'Write', 'Read,Grep,Bash']) {
     const f = fixture();
