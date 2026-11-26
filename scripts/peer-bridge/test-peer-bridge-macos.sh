@@ -17,8 +17,7 @@ if ! command -v bun >/dev/null 2>&1; then
     exit 1
 fi
 cd "$root" || exit 1
-bash scripts/ci/run-bun-tests.sh scripts/peer-bridge \
+exec bash scripts/ci/run-bun-tests.sh scripts/peer-bridge \
     scripts/peer-bridge/chain.test.ts scripts/peer-bridge/gate.test.ts scripts/peer-bridge/threads.test.ts \
     scripts/peer-bridge/envelope.test.ts scripts/peer-bridge/sign.test.ts scripts/peer-bridge/resolve.test.ts \
-    scripts/peer-bridge/jobstate.test.ts || exit 1
-exec bash scripts/ci/run-bun-tests.sh scripts/telegram scripts/telegram/peer-notify-route.test.ts
+    scripts/peer-bridge/jobstate.test.ts

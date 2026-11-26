@@ -2,12 +2,10 @@ import { expect, test } from "bun:test";
 import fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { readNewLines } from "../telegram/bus";
-import { makePeerNotifyFlusher, makePeerReplyRoute, DRAFTING_LINE } from "../telegram/peer-notify-route";
-import { flushOutboxes, handleInbound, inboundToDelivered, ingestUpdates, type AutoGate } from "../telegram/poller";
 import type { Config } from "./config";
 import { stateDir } from "./ids";
 import { readChain } from "./chain";
+import * as P from "./poller";
 import { Poller, type PollerDeps, type TgLike } from "./poller";
 import { procHooks } from "./proc";
 
@@ -75,20 +73,13 @@ test("RED control: a config that lists the state directory fails the same check"
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-const FENCE = [
-  "scripts/telegram/peer-notify-route.test.ts -> ../peer-bridge/chain",
-  "scripts/telegram/peer-notify-route.test.ts -> ../peer-bridge/notify",
-  "scripts/telegram/peer-notify-route.ts -> ../peer-bridge/chain",
-  "scripts/telegram/peer-notify-route.ts -> ../peer-bridge/config",
-  "scripts/telegram/peer-notify-route.ts -> ../peer-bridge/ids",
-  "scripts/telegram/peer-notify-route.ts -> ../peer-bridge/notify",
-];
+const FENCE: string[] = [];
 const fencePairs = (root: string): string[] => walk(join(root, "scripts"))
   .filter(f => /\.(ts|mjs|js)$/.test(f) && !f.includes(`${join("scripts", "peer-bridge")}/`) && !f.includes("/node_modules/"))
   .flatMap(f => [...fs.readFileSync(f, "utf8").matchAll(/from\s+["']([^"']*peer-bridge\/[^"']*)["']/g)].map(m => `${relative(root, f)} -> ${m[1]}`))
   .sort();
 
-test("only the peer notify flusher, outside scripts/peer-bridge, imports a peer-bridge module, and only chain, config, ids and notify", () => {
+test("no module outside scripts/peer-bridge imports a peer-bridge module, the operator poller included", () => {
   expect(fencePairs(REPO)).toEqual(FENCE);
 });
 
@@ -96,11 +87,10 @@ test("RED control: a planted importer outside scripts/peer-bridge fails the fenc
   const root = fs.mkdtempSync(join(tmpdir(), "peer-routes-fence-"));
   try {
     fs.mkdirSync(join(root, "scripts/telegram"), { recursive: true });
-    fs.writeFileSync(join(root, "scripts/telegram/peer-notify-route.ts"), 'import { verifyChain } from "../peer-bridge/chain";\nimport { readPeersFile } from "../peer-bridge/config";\nimport { peersFile } from "../peer-bridge/ids";\nimport { renderNotify } from "../peer-bridge/notify";\n');
-    fs.writeFileSync(join(root, "scripts/telegram/peer-notify-route.test.ts"), 'import { Chain } from "../peer-bridge/chain";\nimport { notifyFile } from "../peer-bridge/notify";\n');
+    fs.writeFileSync(join(root, "scripts/telegram/poller.ts"), 'import { atomicWrite } from "./bus";\n');
     expect(fencePairs(root)).toEqual(FENCE);
-    fs.writeFileSync(join(root, "scripts/telegram/chief-route.ts"), 'import { readChain } from "../peer-bridge/chain";\n');
-    expect(fencePairs(root)).not.toEqual(FENCE);
+    fs.writeFileSync(join(root, "scripts/telegram/poller.ts"), 'import { readChain } from "../peer-bridge/chain";\n');
+    expect(fencePairs(root)).toEqual(["scripts/telegram/poller.ts -> ../peer-bridge/chain"]);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -138,30 +128,24 @@ function canaryHome() {
 const leaks = (home: string, S: string): string[] =>
   walk(home).filter(f => !f.startsWith(S + "/") && fs.readFileSync(f, "utf8").includes(CANARY)).map(f => relative(home, f)).sort();
 
-test("canary sweep, PR1 routes", async () => {
+test("canary sweep: a peer canary reaches only the peer state dir and the peer-bot DM, and a DM reply is taken by the peer poller only", async () => {
   const h = canaryHome();
   const origSpawn = procHooks.spawn;
   procHooks.spawn = ((cmd: string, args: string[], o: any) => origSpawn(cmd === "claude" ? h.stub : cmd, args, o)) as any;
   try {
     const cfg = {
-      operatorBotId: OP_BOT, operatorChatId: OP_CHAT, bridgeRoot: h.bridgeRoot, himmelRoot: h.himmel, maxTextChars: 4000, addressing: "command",
+      operatorBotId: OP_BOT, operatorChatId: OP_CHAT, operatorDmChatId: OP_CHAT, bridgeRoot: h.bridgeRoot, himmelRoot: h.himmel, maxTextChars: 4000, addressing: "command",
       peers: { example: { peerBotId: PEER_ID, chatId: PEER_CHAT, allowFrom: [PEER_ID], opens: ["question", "status", "info"], maxOpenThreads: 50, maxPerMinute: 1000, maxReaderRunsPerDay: 50, maxReaderRunsPerKindPerDay: { question: 30, status: 10, info: 10 }, maxWakesPerDay: 30,
         theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" } } },
     } as unknown as Config;
     const clock = { t: Date.UTC(2026, 10, 20, 12) };
-    const peerChat: string[] = [];
+    const peerChat: string[] = [], dm: { mid: number; text: string }[] = [];
     let pmid = 9000;
-    const tg: TgLike = { getUpdates: async () => [], getChatMember: async () => ({ user: { username: OUR_NAME } }), sendMessage: async (_c: number, text: string) => { peerChat.push(text); return { message_id: ++pmid }; } };
+    const tg: TgLike = {
+      getUpdates: async () => [], getChatMember: async () => ({ user: { username: OUR_NAME } }), answerCallbackQuery: async () => {},
+      sendMessage: async (c: number, text: string) => { ++pmid; if (c === OP_CHAT) dm.push({ mid: pmid, text }); else { expect(c).toBe(PEER_CHAT); peerChat.push(text); } return { message_id: pmid }; },
+    };
     const deps: PollerDeps = { cfg, tg, ourBotId: "111000111", stateDir: h.S, configDir: h.conf, clock: () => clock.t, hostname: "testbox", log: () => {} };
-    const opSent: { mid: number; text: string }[] = [];
-    let omid = 700;
-    const access = { allowFrom: [String(OP_CHAT)] };
-    const flusher = makePeerNotifyFlusher({
-      stateDir: h.S, himmelRoot: h.himmel, token: `${OP_BOT}:${"A".repeat(35)}`, access: () => access, peersCfg: () => ({ operatorChatId: OP_CHAT, operatorBotId: OP_BOT }),
-      send: async (_t, chat, text) => { expect(chat).toBe(OP_CHAT); opSent.push({ mid: ++omid, text }); return { ok: true, messageId: omid }; },
-      procs: () => [], botPids: () => [], clock: () => clock.t, log: () => {},
-    });
-    const tick = async () => { flusher.notePoll(true); await flusher.flush(); await flushOutboxes(h.bridgeRoot, async () => true); };
     let uid = 500, mid = 100;
     const hex8 = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, "0");
     const peerMsg = (head: string, body: string) => ({ update_id: ++uid, message: { message_id: ++mid, from: { id: Number(PEER_ID), is_bot: true }, chat: { id: PEER_CHAT, type: "supergroup" }, date: 1, text: `/peer@${OUR_NAME}\n${head} id=${hex8()}\n${body} ${CANARY}` } });
@@ -170,34 +154,34 @@ test("canary sweep, PR1 routes", async () => {
     await poller.recover();
     for (const [head, body] of [["#ask:question", "escalate me"], ["#status", "ROUTE=ack"], ["#status", "ROUTE=drop"], ["#ask:question", "FAILRUN"]]) {
       await poller.processBatch([peerMsg(head, body)]);
-      await tick();
+      await poller.tick();
     }
     const waker = (poller as any).waker;
     for (let i = 0; i < 30 && (await waker.escalate({ peer: "example", root: 8000 + i, dir: "in", label: "new question", message_id: 8000 + i, digest: { route: "escalate", summary: "seed", asks: [] } })) === "escalated"; i++);
     await poller.processBatch([peerMsg("#ask:question", "over the cap")]);
-    await tick();
+    await poller.tick();
     poller = await Poller.create(deps);
     await poller.recover();
     await poller.processBatch([peerMsg("#ask:question", "after restart")]);
-    await tick();
+    await poller.tick();
 
-    const esc = opSent.find(s => s.text.includes(CANARY))!;
+    const esc = dm.find(s => s.text.includes(CANARY))!;
     expect(esc).toBeDefined();
-    await ingestUpdates(h.bridgeRoot, [{ update_id: 1, message: { message_id: 90, date: Math.floor(Date.now() / 1000), chat: { id: OP_CHAT, type: "private" }, from: { id: OP_CHAT }, text: "my answer", reply_to_message: { message_id: esc.mid, from: { id: Number(OP_BOT), is_bot: true }, text: esc.text } } }], () => true);
-    const [rec] = await readNewLines(join(h.bridgeRoot, "inbound.jsonl"), join(h.bridgeRoot, "inbound.jsonl.cursor"));
-    const ran: string[] = [];
-    const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, peerReply: makePeerReplyRoute({ stateDir: h.S, root: h.bridgeRoot, access: () => access, reply: async (_c, text) => { opSent.push({ mid: 0, text }); } }) };
-    await handleInbound(h.bridgeRoot, inboundToDelivered(rec), async s => { ran.push(s); }, auto, async () => "spawn-low", () => true, async () => {}, () => false, null, { authorize: () => true, reply: async () => {} });
-    await tick();
+    await poller.processBatch([{ update_id: ++uid, message: { message_id: 90, date: 1, chat: { id: OP_CHAT, type: "private" }, from: { id: OP_CHAT, is_bot: false }, text: "my answer", reply_to_message: { message_id: esc.mid, from: { id: 111000111, is_bot: true }, text: esc.text } } }]);
+    await poller.drainSpool();
+    await poller.tick();
 
     const digests = readChain(join(h.S, "example", "digests.jsonl"));
     expect(digests.filter(r => r.kind === "effect").map(r => r.outcome)).toEqual(["escalated", "acked", "dropped", "escalated", "fallback-wake", "fallback-wake"]);
     expect(digests.filter(r => r.kind === "digest").map(r => r.reason ?? r.summary)).toEqual([`digest ${CANARY}`, `digest ${CANARY}`, `digest ${CANARY}`, "exit:1", `digest ${CANARY}`, `digest ${CANARY}`]);
-    expect(ran).toEqual([]);
-    expect(opSent.at(-1)!.text).toBe(DRAFTING_LINE);
+    const draft = readChain(join(h.S, "example", "outbox.jsonl")).find(r => r.kind === "draft")!;
+    expect([draft.source, draft.msgKind, draft.text]).toEqual(["telegram", "answer", "my answer"]);
+    expect(dm.some(s => s.text === P.DRAFTING_LINE)).toBe(true);
+    expect(dm.some(s => s.text.includes(`draft ${draft.id} from telegram`))).toBe(true);
     expect(peerChat.some(t => t.includes(CANARY))).toBe(false);
     expect(walk(h.S).some(f => fs.readFileSync(f, "utf8").includes(CANARY))).toBe(true);
     expect(leaks(h.home, h.S)).toEqual([]);
+    expect(walk(h.bridgeRoot).filter(f => fs.readFileSync(f, "utf8").includes("my answer"))).toEqual([]);
 
     for (const planted of ["bridge/sessions/__chat__/context.md", `bridge/consoles/replies/${OP_CHAT}_1.json`, "luna/note.md"]) {
       const f = join(h.home, planted), before = fs.readFileSync(f, "utf8");

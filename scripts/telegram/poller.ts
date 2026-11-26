@@ -9,8 +9,7 @@ import { classify, isTicketKey, type Route } from "./router";
 import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, consoleInboxPath, rememberConsoleReply, owedSendReceipt, owedReceiptSnapshot, withOwedOutboxLock, makeChiefTap, type OwedReceipt, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { getUpdates, getMe, sendMessage, sendMessageResult, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId, TelegramApiError } from "./telegram-api";
-import { makePeerReplyRoute, makePeerTap, startPeerNotify } from "./peer-notify-route";
+import { getUpdates, getMe, sendMessage, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
 import { installTimestampedLogging } from "./log-timestamp";
 import { lockdownEnabled } from "./lockdown";
 import { cwdForChat, isAllowed, isGroupAllowed, isOperatorIdentity, loadAccess, operatorChatId, requireMentionForChat, vaultForChat, type Access } from "./gate";
@@ -453,6 +452,16 @@ const mfaRouteConsumed = (root: string, auto: AutoGate | undefined, msg: Deliver
   !lockdownEnabled(root) && (auto?.afkSudo?.(msg) === true || auto?.configRestore?.(msg) === true);
 const takenBeforeRouting = async (root: string, auto: AutoGate | undefined, msg: DeliveredMsg): Promise<boolean> =>
   mfaRouteConsumed(root, auto, msg) || (await auto?.peerReply?.(msg)) === true;
+
+const PEER_NOTIFY_LINE1_RE = /^peer [a-z0-9][a-z0-9-]{0,31} · /;
+export const PEER_MOVED_LINE = "peer messages now arrive in your chat with the peer bridge bot: reply there; nothing was sent";
+export const makeLegacyPeerReply = (d: { root: string; operatorChat(): number | null; reply(chat: number, text: string): Promise<void> }) => async (msg: DeliveredMsg): Promise<boolean> => {
+  if (msg.reply_to_bot !== true || msg.caption === true || msg.text.trimStart().startsWith("/") || !PEER_NOTIFY_LINE1_RE.test(msg.reply_to_text ?? "")) return false;
+  const chat = d.operatorChat();
+  if (chat === null || msg.chat_id !== chat || msg.from !== chat || lockdownEnabled(d.root)) return false;
+  await d.reply(chat, PEER_MOVED_LINE);
+  return true;
+};
 
 // Single-threaded dispatch: the poller calls handleInbound serially, so the
 // "status === running" in-flight check needs no atomic CAS.
@@ -2427,10 +2436,9 @@ export function startMonitoringCheck(d: { check: () => ReturnType<typeof checkMo
   run();
 }
 
-export function startFlushTimers(d: { root: string; send: SendFn; sendDoc?: SendDocFn; flushMs: number; monitorMs: number; monitor: () => MonitorCfg | null; now?: () => number; peerFlush?: () => Promise<void> }): () => void {
+export function startFlushTimers(d: { root: string; send: SendFn; sendDoc?: SendDocFn; flushMs: number; monitorMs: number; monitor: () => MonitorCfg | null; now?: () => number }): () => void {
   const outboxTick = guarded(() => flushOutboxes(d.root, d.send, d.sendDoc));
-  const peerTick = d.peerFlush ? guarded(d.peerFlush) : null;
-  const flushTimer = setInterval(() => { outboxTick(); peerTick?.(); }, d.flushMs); // t13b-ok: the outbox and peer notify flush timer in the existing poller process, no new service
+  const flushTimer = setInterval(outboxTick, d.flushMs); // t13b-ok: the outbox flush timer in the existing poller process, no new service
   const monitorTimer = setInterval(guarded(async () => { const m = d.monitor(); if (m) await flushMonitor(d.root, m.send, (d.now ?? Date.now)(), m); }), d.monitorMs); // t13b-ok: the monitoring flush's own timer in the existing poller process, no new service
   for (const t of [flushTimer, monitorTimer]) if (typeof t.unref === "function") t.unref();
   return () => { clearInterval(flushTimer); clearInterval(monitorTimer); };
@@ -2692,8 +2700,7 @@ export async function main(): Promise<void> {
     answer: (id, text) => answerCallbackQuery(token, id, text),
   }, afkPrompts);
   const configRestore = makeConfigRestoreGate({ access: () => access, enrolled: configRestoreEnrolled, run: spawnConfigRestore, reply: (chat: number, text: string) => replyViaOutbox(root, chat, text), log: logRedacted });
-  const peerReply = makePeerReplyRoute({ root, access: () => access, reply: (chat, text) => sendMessage(token, chat, text).then(() => undefined) });
-  const peerTap = makePeerTap({ root, access: () => access, answer: (id, text) => answerCallbackQuery(token, id, text) });
+  const peerReply = makeLegacyPeerReply({ root, operatorChat: () => operatorChatId(access), reply: (chat, text) => replyViaOutbox(root, chat, text) });
   const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo, configRestore, peerReply };
   // Operator -> chief routing. Same authorize as /arm, global
   // allowFrom sender AND an allowed chat, so the gate is unchanged; the ack rides
@@ -2737,8 +2744,7 @@ export async function main(): Promise<void> {
   const FLUSH_MS = intervalEnvMs(process.env.TELEGRAM_FLUSH_MS, 1000);
   const MONITOR_FLUSH_MS = 3000;
   let monitorCfg: MonitorCfg | null = null;
-  const peerNotify = startPeerNotify({ token, access: () => access, send: sendMessageResult, log: logRedacted });
-  startFlushTimers({ root, send, sendDoc: makeSendDoc(token, root, operatorChat), flushMs: FLUSH_MS, monitorMs: MONITOR_FLUSH_MS, monitor: () => monitorCfg, peerFlush: peerNotify?.flush });
+  startFlushTimers({ root, send, sendDoc: makeSendDoc(token, root, operatorChat), flushMs: FLUSH_MS, monitorMs: MONITOR_FLUSH_MS, monitor: () => monitorCfg });
   startMonitoringCheck({ check: () => checkMonitoring(bridgeEnv), apply: (m) => { monitorCfg = { send: m.send, reason: m.reason, operatorChat }; } });
   // Stale chief-waiter heartbeat alert. chief-wait.sh
   // rewrites consoles/<name>.md.wait on every poll; a gap past
@@ -2771,7 +2777,6 @@ export async function main(): Promise<void> {
     let updates: any[] = [];
     try {
       updates = await getUpdates(token, offset, 30);
-      peerNotify?.notePoll(true);
       if (outageStartedAt !== null) {
         const downSec = Math.round((Date.now() - outageStartedAt) / 1000);
         console.error(`[poller] getUpdates recovered after ${pollFails} consecutive failure(s) — outage ran ~${downSec}s (started ${new Date(outageStartedAt).toISOString()})`);
@@ -2786,7 +2791,6 @@ export async function main(): Promise<void> {
       console.error(`[poller] heartbeat: getUpdates ok (offset=${offset}, updates=${updates.length})`);
       pollFails = 0; outageStartedAt = null; lastOutageAlertAt = null;
     } catch (e) {
-      peerNotify?.notePoll(false, e instanceof TelegramApiError ? e.code : undefined);
       pollFails++;
       if (outageStartedAt === null) outageStartedAt = Date.now();
       const backoffMs = getUpdatesBackoffMs(pollFails);
@@ -2805,7 +2809,7 @@ export async function main(): Promise<void> {
       continue;
     }
     // Button taps are not messages: ingest skips them, and they advance the offset like any update.
-    dispatchAfkCallbacks(updates, afkTapUnlessLocked(root, (t) => afkTap(t) || chiefTap(t) || peerTap(t)));
+    dispatchAfkCallbacks(updates, afkTapUnlessLocked(root, (t) => afkTap(t) || chiefTap(t)));
     // Ordering: see repairThenIngest's own comment for why
     // the repair must run before the ingest append, not after.
     await repairThenIngest(root, updates, allow, fetchImage, fetchVoice, fetchDoc, notifyDocFail, onCursorReset);

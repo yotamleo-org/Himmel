@@ -4040,13 +4040,6 @@ test("R2.5 an operator line queued while a monitoring send hangs is sent within 
   } finally { stop(); }
 });
 
-test("the flush tick runs the peer notify flush beside the outbox flush; a hung outbox send does not hold it", async () => {
-  const r = root();
-  await replyViaOutbox(r, OPCHAT, "first");
-  let peer = 0;
-  const stop = startFlushTimers({ root: r, send: () => new Promise<boolean>(() => {}), flushMs: 10, monitorMs: 10_000, monitor: () => null, peerFlush: async () => { peer++; } });
-  try { expect(await waitFor(() => peer >= 3)).toBe(true); } finally { stop(); }
-});
 
 test("R2.6 the monitoring keys come from the bridge env file only; a non-group or the bridge's own bot reads as unset; the down-after knob is clamped and fixture-only", async () => {
   const dir = mkdtempSync(join(tmpdir(), "bridgecfg-"));
@@ -4351,23 +4344,28 @@ test("T17: start-up writes poller-epoch from bridge-envelope-epoch.txt on a scra
   expect(main.slice(0, 600)).toContain("await writePollerEpoch(root)");
 });
 
-test("an Approve or Reject tap on a peer draft goes through the callback chain, and lockdown stops it before any handler", async () => {
-  const { makePeerTap } = await import("./peer-notify-route");
-  const { dispatchAfkCallbacks } = await import("./afk-sudo-route");
-  const { afkTapUnlessLocked } = await import("./poller");
-  const r = root(), S = mkdtempSync(join(tmpdir(), "poller-peer-S-"));
-  mkdirSync(join(S, "example", "spool"), { recursive: true, mode: 0o700 });
-  const answers: string[] = [];
-  const peerTap = makePeerTap({ stateDir: S, root: r, access: () => ({ allowFrom: ["4242"] }), answer: async (_id, text) => { answers.push(text); } });
-  const chain = afkTapUnlessLocked(r, (t: any) => false || peerTap(t));
-  const update = (data: string) => ({ callback_query: { id: "cb", data, from: { id: 4242 }, message: { chat: { id: 4242 } } } });
-  dispatchAfkCallbacks([update("peer:ok:example:0a1b2c3d"), update("peer:no:example:ffffffff")], chain);
-  await peerTap.idle();
-  expect(readdirSync(join(S, "example", "spool")).filter(n => n.endsWith(".json"))).toHaveLength(2);
-  expect(answers).toEqual(["Received", "Received"]);
+test("a reply to a peer notification the operator bot sent earlier is refused with one line and reaches no session", async () => {
+  const { makeLegacyPeerReply, PEER_MOVED_LINE } = await import("./poller");
+  const r = root(); const ran: string[] = []; const said: string[] = [];
+  const auto = { authorize: () => true, enabledOps: new Set(), fire: () => {}, peerReply: makeLegacyPeerReply({ root: r, operatorChat: () => 7, reply: async (_c, t) => { said.push(t); } }) } as any;
+  await handleInbound(r, { from: 7, chat_id: 7, text: "my answer", reply_to_bot: true, reply_to_text: "peer example · T12 · new question" }, async (s) => { ran.push(s); }, auto, undefined, () => true);
+  expect(ran).toEqual([]);
+  expect(said).toEqual([PEER_MOVED_LINE]);
+  await handleInbound(r, { from: 7, chat_id: 7, text: "my answer", reply_to_bot: true, reply_to_text: "a chief line" }, async (s) => { ran.push(s); }, auto, undefined, () => true);
+  expect(ran).toEqual(["__chat__"]);
+  expect(said).toHaveLength(1);
+});
+
+test("a reply to a peer notification gets no line from a non-operator sender, or from anyone under lockdown", async () => {
+  const { makeLegacyPeerReply } = await import("./poller");
+  const r = root(); const said: string[] = [];
+  const peerReply = makeLegacyPeerReply({ root: r, operatorChat: () => 7, reply: async (_c, t) => { said.push(t); } });
+  const peerLine = { text: "my answer", reply_to_bot: true, reply_to_text: "peer example · T12 · new question" };
+  expect(await peerReply({ from: 8, chat_id: -100, ...peerLine } as any)).toBe(false);
+  expect(await peerReply({ from: 7, chat_id: -100, ...peerLine } as any)).toBe(false);
+  expect(await peerReply({ from: 8, chat_id: 7, ...peerLine } as any)).toBe(false);
+  expect(await makeLegacyPeerReply({ root: r, operatorChat: () => null, reply: async (_c, t) => { said.push(t); } })({ from: 7, chat_id: 7, ...peerLine } as any)).toBe(false);
   writeFileSync(join(r, "lockdown"), "locked\n");
-  dispatchAfkCallbacks([update("peer:ok:example:0a1b2c3d")], chain);
-  await peerTap.idle();
-  expect(readdirSync(join(S, "example", "spool")).filter(n => n.endsWith(".json"))).toHaveLength(2);
-  expect(answers).toHaveLength(2);
+  expect(await peerReply({ from: 7, chat_id: 7, ...peerLine } as any)).toBe(false);
+  expect(said).toEqual([]);
 });

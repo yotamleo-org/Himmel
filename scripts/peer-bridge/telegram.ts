@@ -1,4 +1,4 @@
-// The peer bridge's whole Telegram surface: four Bot API calls. Plain text only,
+// The peer bridge's whole Telegram surface: five Bot API calls. Plain text only,
 // link previews always off, no parse_mode. This is the only file that names the
 // Bot API's send method.
 type F = typeof fetch;
@@ -45,11 +45,14 @@ export class PeerTelegram {
     return this.call("getUpdates", { offset, timeout }, timeout * 1000 + POLL_MARGIN_MS).then(r => (Array.isArray(r) ? r : []));
   }
 
-  sendMessage(chatId: number, text: string, replyTo?: number): Promise<{ message_id: number }> {
+  sendMessage(chatId: number, text: string, replyTo?: number, replyMarkup?: Record<string, unknown>): Promise<{ message_id: number }> {
     const body: Record<string, unknown> = { chat_id: chatId, text, link_preview_options: { is_disabled: true } };
     if (replyTo !== undefined) body.reply_parameters = { message_id: replyTo };
+    if (replyMarkup !== undefined) body.reply_markup = replyMarkup;
     return this.call("sendMessage", body);
   }
+
+  answerCallbackQuery(id: string, text: string): Promise<unknown> { return this.call("answerCallbackQuery", { callback_query_id: id, text }); }
 
   getChat(chatId: number): Promise<any> { return this.call("getChat", { chat_id: chatId }); }
   getChatMember(chatId: number, userId: number): Promise<any> { return this.call("getChatMember", { chat_id: chatId, user_id: userId }); }
