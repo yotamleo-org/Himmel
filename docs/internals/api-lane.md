@@ -106,9 +106,11 @@ For every other failure the launcher:
      `error_max_budget_usd`, a call timeout, any other non-zero exit) is the chief's
      to handle, so it is one line in a chief's bridge inbox
      (`<bridge root>/consoles/<name>.md`, tagged `[api-lane call-failed]`) and no
-     Telegram message. The inbox is `HIMMEL_CONSOLE_NAME`'s, else the armed chief
-     whose waiter heartbeat is freshest (a heartbeat up to 30 minutes old counts);
-     the launcher never creates an inbox. With no armed chief inbox it pages the
+     Telegram message. Only a chief whose waiter heartbeat is under 30 minutes old
+     counts as armed (a chief that ended leaves its inbox file behind, and that
+     file never takes the line): the inbox is `HIMMEL_CONSOLE_NAME`'s when that
+     chief is armed, else the armed chief with the freshest heartbeat; the
+     launcher never creates an inbox. With no armed chief inbox it pages the
      operator as below, so an alert is never lost. A `rejected` alert (credit gone,
      or the key is invalid) and an eval `refused` alert need an operator act and
      still page the operator, whatever chief is armed. The message class is

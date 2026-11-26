@@ -538,6 +538,18 @@ test('a named chief whose waiter heartbeat is stale cannot swallow the alert: it
   assert.equal(inboxText(root, 'stale-chief'), '');
 });
 
+test('a stale named chief hands the alert to a fresh armed chief instead of paging the operator', () => {
+  const f = fixture();
+  const root = chiefBridge(f, ['stale-chief'], 7200);
+  writeFileSync(join(root, 'consoles', 'fresh-chief.md'), '');
+  writeFileSync(join(root, 'consoles', 'fresh-chief.md.wait'), `hb=${Math.floor(Date.now() / 1000) - 5} pid=1 key=k tick=ok state=waiting\n`);
+  const r = f.run(f.good, { BRIDGE_ROOT: root, HIMMEL_CONSOLE_NAME: 'stale-chief', STUB_OUT: BUDGET_CAP, STUB_RC: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.equal(alerts(f).length, 0);
+  assert.equal(inboxText(root, 'stale-chief'), '');
+  assert.match(inboxText(root, 'fresh-chief'), /call-failed/);
+});
+
 test('a call-failed alert with no chief inbox still pages the operator', () => {
   const f = fixture();
   const root = chiefBridge(f, []);
