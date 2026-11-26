@@ -17,7 +17,7 @@ export type Cli = { name: string; path: string | null; version: string | null; s
 export type Inventory = { state: State; scanned_at: string; sources: Source[]; tools: InvTool[]; hooks: InvHook[]; clis: Cli[] };
 
 export const CLIS = ["rtk", "qmd", "graphify", "gh", "bun", "node", "codex", "skillspector"];
-const RUNNERS = new Set(["run-hook-with-bash.js", "run-node.sh"]);
+const RUNNERS = new Set(["run-hook-with-bash.js", "run-node.sh", "translate-tool-call.sh"]);
 const SCRIPT = /^[\w.-]+\.(?:sh|bash|js|mjs|cjs|py|ts)$/;
 const NAME = /^[\w.:-]{1,120}$/;
 // A wiring that skips itself when the project layer covers the script (the user-level guardrail-skip-in-himmel.js wrapper,

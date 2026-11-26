@@ -82,10 +82,22 @@ const bash = process.env.GUARDRAIL_BASH || 'bash';
 
 let input = '';
 try {
-  input = fs.readFileSync(0);
+  input = fs.readFileSync(0, 'utf8');
 } catch (_e) {
   input = '';
 }
+
+let translated;
+try {
+  translated = require('./lib/harness-tool-translate.js').translateToolCall(input);
+} catch (e) {
+  translated = { refuse: `harness tool translation failed to load: ${e.message}` };
+}
+if (translated.refuse) {
+  process.stderr.write(`guardrail-skip-in-himmel: ${translated.refuse}\n`);
+  process.exit(2);
+}
+input = translated.text;
 
 try {
   execFileSync(bash, [script], { input, stdio: ['pipe', 'inherit', 'inherit'] });

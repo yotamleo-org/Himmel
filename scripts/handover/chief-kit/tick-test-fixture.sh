@@ -237,6 +237,7 @@ export HIMMEL_RELEASE_STATE_DIR="$W/no-release-root"
 export TICK_STATE_DIR="$W/state"
 # ciguard= runs this probe; the default is a missing one (ciguard=unknown), never a live fetch.
 export TICK_CIGUARD_PROBE="$W/no-ciguard-probe"
+export TICK_REDMAIN_PROBE="$W/no-redmain-probe"
 # A fixture mirror must not send a tick to live Jira: versionless-done= reads this probe (a missing
 # one reads skip) and leaks= this one (empty output reads 0). Rows on those fields set their own.
 # A fixture tracker render reads its parity line unavailable through a missing CLI.
