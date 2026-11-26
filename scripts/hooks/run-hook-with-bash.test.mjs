@@ -3671,19 +3671,20 @@ test('readiness residuals: the lone deadline kills the stalled grandchild, not j
     assert.ok(elapsed < 8000, `the deny came at the deadline, not after the grandchild's own exit (${elapsed}ms)`);
     const pid = Number(readFileSync(pidFile, 'utf8').trim());
     assert.ok(pid > 1, 'the guard recorded its grandchild');
+    const hasProcfs = existsSync('/proc/self/stat');
+    const isAlive = () => {
+      try { process.kill(pid, 0); } catch (_e) { return false; }
+      try { return readFileSync(`/proc/${pid}/stat`, 'utf8').replace(/^.*\) /, '').charAt(0) !== 'Z'; } catch (_e) { return true; }
+    };
     let alive = true;
     const until = Date.now() + 3000;
     while (alive && Date.now() < until) {
-      try { process.kill(pid, 0); } catch (_e) { alive = false; }
-      if (alive) {
-        let state = '';
-        try { state = readFileSync(`/proc/${pid}/stat`, 'utf8').replace(/^.*\) /, '').charAt(0); } catch (_e) { state = ''; }
-        if (state === 'Z') alive = false;
-      }
+      alive = isAlive();
       if (alive) spawnSync('sleep', ['0.1']);
     }
-    if (alive) process.kill(pid, 'SIGKILL');
-    assert.equal(alive, false, 'the stalled grandchild is gone after the deadline');
+    alive = isAlive();
+    try { process.kill(pid, 'SIGKILL'); } catch (_e) { alive = false; }
+    if (hasProcfs) assert.equal(alive, false, 'the stalled grandchild is gone after the deadline');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
