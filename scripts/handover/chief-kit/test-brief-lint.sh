@@ -662,6 +662,206 @@ bk_lint -u BRIEF_LINT_MIRROR HOME="$tmp/bkhome" bash "$LINT" --core-only "$tmp/b
 { [ "$rc" -eq 0 ] && grep -Fq -- "--mirror $tmp/bkhome/.himmel/state/jira-mirror/ZZZ" "$BKLOG"; } && ok "8r24 the --mirror argument is the key's own project" || bad "8r24 mirror argument rc=$rc: $(cat "$BKLOG") $err"  # read-sink-ok: BKLOG is this suite's own scratch log under its mktemp dir
 unset BRIEF_LINT_MIRROR BRIEF_LINT_JIRA_CLI BRIEF_LINT_TEST_SIGNED BRIEF_LINT_TEST_BUCKET BRIEF_LINT_TEST_LOG
 
+HL="$tmp/heal"; mkdir -p "$HL/stub"
+cat > "$HL/stub/index.js" <<'STUBEOF'
+const fs = require('fs');
+const cp = require('child_process');
+const a = process.argv.slice(2);
+const opt = (n) => { const i = a.indexOf(n); return i < 0 ? null : a[i + 1]; };
+const log = (s) => { if (process.env.BRIEF_LINT_TEST_LOG) fs.appendFileSync(process.env.BRIEF_LINT_TEST_LOG, s + '\n'); };
+const readCur = (root) => { try { return JSON.parse(fs.readFileSync(root + '/.cursor.json', 'utf8')); } catch (e) { return null; } };
+const state = (root, project) => {
+  const c = readCur(root);
+  if (!c) return { complete: 'none', repair: null, lastSync: null, project: null, next: 'full', repairable: false };
+  const complete = c.complete === undefined ? 'yes' : 'no';
+  const repair = complete === 'yes' ? null : (c.repair === 'full' ? 'full' : 'incremental');
+  const other = project && c.project && c.project !== project;
+  const next = (other || repair === 'full') ? 'full' : 'incremental';
+  return { complete, repair, lastSync: c.lastSync, project: c.project || null, next, repairable: complete === 'no' && next === 'incremental' };
+};
+const heal = (root) => {
+  const c = readCur(root);
+  fs.writeFileSync(root + '/.cursor.json', JSON.stringify({ lastSync: c ? c.lastSync : '2026-11-26T17:00:00.000Z', total: 1, project: c ? c.project : 'QQQ' }) + '\n');
+  const w = process.env.BRIEF_LINT_TEST_HEAL_WRITE;
+  if (w) fs.copyFileSync(w, root + '/' + w.split('/').pop());
+};
+if (a[0] === 'mirror') {
+  const root = opt('--root');
+  if (a.includes('--status')) {
+    log('mirror --status --json ' + root);
+    console.log(JSON.stringify({ root, files: 1, age_minutes: 5, ...state(root, process.env.JIRA_PROJECT_KEY) }));
+  } else if (a.includes('--repair')) {
+    log('mirror --repair ' + root);
+    const mode = process.env.BRIEF_LINT_TEST_HEAL || '';
+    if (mode === 'fail') process.exit(1);
+    if (mode === 'hang') {
+      const kid = cp.spawn('sleep', ['300'], { stdio: 'ignore' });
+      fs.writeFileSync(process.env.BRIEF_LINT_TEST_PIDS, process.pid + ' ' + kid.pid + '\n');
+      setTimeout(() => process.exit(0), 30000);
+    } else if (mode === 'slow') {
+      setTimeout(() => { heal(root); process.exit(0); }, 12000);
+    } else { heal(root); }
+  } else { console.error('stub jira: unknown mirror flags'); process.exit(2); }
+} else if (a[0] === 'release' && a[1] === 'core-check') {
+  log('core-check');
+  const mirror = opt('--mirror');
+  for (const k of a.slice(a.indexOf('--key') + 1)) console.log((fs.existsSync(mirror + '/' + k + '.md') ? 'NOT-CORE ' : 'UNKNOWN ') + k);
+} else if (a[0] === 'release' && a[1] === 'bucket-check') {
+  log('bucket-check');
+  const root = opt('--mirror');
+  const st = state(root, null);
+  for (const k of a.slice(a.indexOf('--mirror') + 2)) {
+    if (st.complete === 'no') console.log('FAILED ' + k + ' mirror sync incomplete since ' + st.lastSync + ' at ' + root + ' (cursor complete: false, repair: ' + st.repair + '); heal: JIRA_PROJECT_KEY=' + k.split('-')[0] + ' node ' + process.argv[1] + ' mirror --root ' + root);
+    else if (st.complete === 'none') console.log('FAILED ' + k + ' no readable mirror at ' + root);
+    else console.log('IN ' + k + ' current=v1.1.3 via=mirror');
+  }
+} else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+STUBEOF
+cat > "$HL/holder.py" <<'HOLDEOF'
+import fcntl, sys, time
+lock, ready, cursor = sys.argv[1], sys.argv[2], sys.argv[3]
+f = open(lock, 'a')
+fcntl.flock(f, fcntl.LOCK_EX)
+open(ready, 'w').write('1')
+if cursor != '-':
+    time.sleep(2)
+    open(cursor, 'w').write('{"lastSync":"2026-11-26T16:33:57.000Z","total":1,"project":"QQQ"}\n')
+time.sleep(60)
+HOLDEOF
+HLLOG="$HL/log"
+HL_INC='{"lastSync":"2026-11-26T16:33:57.000Z","total":1,"project":"QQQ","complete":false,"repair":"incremental"}'
+HL_FULL='{"lastSync":"2026-11-26T16:33:57.000Z","total":1,"project":"QQQ","complete":false,"repair":"full"}'
+HL_DONE='{"lastSync":"2026-11-26T16:33:57.000Z","total":1,"project":"QQQ"}'
+hl_mirror() {
+    local n="$1" c="$2" k; shift 2; [ "$#" -gt 0 ] || set -- QQQ-9441
+    mkdir -p "$HL/$n"; [ "$c" = - ] || printf '%s\n' "$c" > "$HL/$n/.cursor.json"
+    for k in "$@"; do printf -- '---\nkey: "%s"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: []\n---\n# %s: t\n' "$k" "$k" > "$HL/$n/$k.md"; done
+}
+hl_lint() {
+    local n="$1"; shift; rc=0; : > "$HLLOG"
+    err="$(env BRIEF_LINT_MIRROR="$HL/$n" BRIEF_LINT_JIRA_CLI="$HL/stub/index.js" BRIEF_LINT_TEST_LOG="$HLLOG" "$@" 2>&1 >/dev/null)" || rc=$?
+}
+hl_n() { grep -c "$1" "$HLLOG" || true; }  # swallow-ok: grep -c exits 1 on a count of 0
+hl_first() { grep -n "$1" "$HLLOG" | head -1 | cut -d: -f1; }
+mk hl_brief '# QQQ-9441 — a heal row' "$PA" '> **Contract:** y' "$RES0"
+
+hl_mirror m1 "$HL_INC"
+hl_lint m1 bash "$LINT" "$tmp/hl_brief.md"
+{ [ "$rc" -eq 0 ] && [ "$(hl_n 'mirror --repair')" -eq 1 ] && [ "$(hl_first 'mirror --repair')" -lt "$(hl_first 'core-check')" ] && grep -Fq 'heal ran (rc 0), now complete=yes' <<< "$err"; } \
+    && ok "BL1 an incomplete mirror is repaired once before core-check and the launch passes" || bad "BL1 rc=$rc log=$(cat "$HLLOG") err=$err"  # read-sink-ok: HLLOG is this suite's own scratch log
+hl_mirror m1c "$HL_DONE"
+hl_lint m1c bash "$LINT" "$tmp/hl_brief.md"
+{ [ "$rc" -eq 0 ] && [ "$(hl_n 'mirror --repair')" -eq 0 ]; } && ok "BL1c a complete mirror is not repaired" || bad "BL1c rc=$rc: $err"
+hl_mirror m1d "$HL_INC"
+hl_lint m1d BRIEF_LINT_HEAL_BUDGET=abc bash "$LINT" "$tmp/hl_brief.md"
+grep -Fq 'BRIEF_LINT_HEAL_BUDGET abc is not a whole number of seconds; using 90' <<< "$err" && ok "BL1d a bad budget prints its line and uses 90" || bad "BL1d bad budget: $err"
+b_unset="$(python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import mirror_heal; print(mirror_heal.budget({}))' "$HERE" 2>&1)"
+b_cap="$(python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import mirror_heal; print(mirror_heal.budget({"BRIEF_LINT_HEAL_BUDGET": "500"}))' "$HERE" 2>&1)"
+{ [ "$b_unset" = 90 ] && [ "$b_cap" = 120 ]; } && ok "BL1d the budget defaults to 90 and is capped at 120" || bad "BL1d budget unset=$b_unset 500=$b_cap"
+
+hl_mirror m2 "$HL_INC"
+hl_lint m2 BRIEF_LINT_TEST_HEAL=fail bash "$LINT" "$tmp/hl_brief.md"
+{ [ "$rc" -eq 3 ] && [ "$(hl_n 'mirror --repair')" -eq 1 ] && grep -Fq 'mirror sync incomplete since' <<< "$err" && grep -Fq 'heal:' <<< "$err" && grep -Fq 'heal ran (rc 1), now complete=no' <<< "$err"; } \
+    && ok "BL2 a failed repair is not retried and the refusal names the cause and the heal command" || bad "BL2 rc=$rc: $err"
+
+hl_mirror m3 "$HL_INC"
+python3 -I "$HL/holder.py" "$HL/m3.lock" "$HL/m3.ready" - & hold3=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do [ -e "$HL/m3.ready" ] && break; sleep 0.5; done
+hl_lint m3 BRIEF_LINT_HEAL_BUDGET=3 bash "$LINT" "$tmp/hl_brief.md"
+kill "$hold3" 2>/dev/null; wait "$hold3" 2>/dev/null
+{ [ "$rc" -eq 3 ] && [ "$(hl_n 'mirror --repair')" -eq 0 ] && grep -Fq 'its lock is held; no heal' <<< "$err"; } \
+    && ok "BL3 a held lock means no repair" || bad "BL3 rc=$rc: $err"
+
+mkdir -p "$HL/m4"; printf -- '---\nkey: "QQQ-9441"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: []\n---\n# QQQ-9441: t\n' > "$HL/m4/QQQ-9441.md"
+hl_lint m4 bash "$LINT" "$tmp/hl_brief.md"
+{ [ "$rc" -eq 3 ] && [ "$(hl_n 'mirror --repair')" -eq 0 ]; } && ok "BL4 a root with no cursor is not repaired" || bad "BL4 rc=$rc: $err"
+
+hl_mirror m5 "$HL_INC"
+hl_lint m5 bash "$LINT" --judge "$tmp/hl_brief.md"
+{ [ "$(hl_n 'mirror')" -eq 0 ]; } && ok "BL5 --judge makes no mirror call" || bad "BL5 --judge: $(cat "$HLLOG")"  # read-sink-ok: HLLOG is this suite's own scratch log
+hl_lint m5 bash "$LINT" --skip-bucket "$tmp/hl_brief.md"
+{ [ "$(hl_n 'mirror')" -eq 0 ]; } && ok "BL5 --skip-bucket makes no mirror call" || bad "BL5 --skip-bucket: $(cat "$HLLOG")"  # read-sink-ok: HLLOG is this suite's own scratch log
+
+hl_mirror m6 "$HL_INC"
+t0=$SECONDS
+hl_lint m6 BRIEF_LINT_TEST_HEAL=hang BRIEF_LINT_TEST_PIDS="$HL/m6.pids" BRIEF_LINT_HEAL_BUDGET=2 bash "$LINT" "$tmp/hl_brief.md"
+took=$((SECONDS - t0)); alive=1
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    alive=0; p1=""; p2=""; [ ! -r "$HL/m6.pids" ] || read -r p1 p2 < "$HL/m6.pids"  # read-sink-ok: the stub's own pid file
+    for p in $p1 $p2; do kill -0 "$p" 2>/dev/null && alive=1; done
+    [ "$alive" -eq 0 ] && break; sleep 0.5
+done
+lock_ok="$(python3 -I -c 'import fcntl,sys; f=open(sys.argv[1],"a"); fcntl.flock(f, fcntl.LOCK_EX|fcntl.LOCK_NB); print("free")' "$HL/m6.lock" 2>&1)"
+{ [ "$rc" -eq 3 ] && [ "$took" -lt 10 ] && grep -Fq 'heal timed out after' <<< "$err" && [ "$alive" -eq 0 ] && [ "$lock_ok" = free ]; } \
+    && ok "BL6 a hung repair is killed with its group at the budget and its lock is freed" || bad "BL6 rc=$rc took=$took alive=$alive lock=$lock_ok: $err"
+
+hl_mirror m7 "$HL_FULL"
+hl_lint m7 bash "$LINT" "$tmp/hl_brief.md"
+{ [ "$rc" -eq 3 ] && [ "$(hl_n 'mirror --repair')" -eq 0 ] && grep -Fq 'needs a full backfill; no heal at launch' <<< "$err" && grep -Fq 'repair: full' <<< "$err"; } \
+    && ok "BL7 a repair-full cursor is never repaired at launch" || bad "BL7 rc=$rc: $err"
+
+hl_mirror m8 "$HL_INC"
+mkdir -p "$HL/bl8"
+printf -- '---\ndescription: Check the lint on a test brief\nresume_cwd: %s\n---\n# a title with no key\n%s\n> **Contract:** y\n%s\n' "$CW_HIM" "$PA" "$RES0" > "$HL/bl8/QQQ-9441-x.md"
+hl_lint m8 bash "$LINT" "$HL/bl8/QQQ-9441-x.md"
+{ [ "$rc" -eq 0 ] && [ "$(hl_n 'mirror --repair')" -eq 1 ]; } && ok "BL8 a key only in the doc name is healed" || bad "BL8 rc=$rc: $err"
+
+hl_mirror m9 '{"lastSync":"2026-11-26T16:33:57.000Z","total":1,"project":"OTHER","complete":false}'
+hl_lint m9 bash "$LINT" "$tmp/hl_brief.md"
+[ "$(hl_n 'mirror --repair')" -eq 0 ] && ok "BL9 a cursor of another project is not repaired" || bad "BL9 rc=$rc: $err"
+
+hl_mirror m10 "$HL_INC"
+: > "$HLLOG"
+( BRIEF_LINT_MIRROR="$HL/m10" BRIEF_LINT_JIRA_CLI="$HL/stub/index.js" BRIEF_LINT_TEST_LOG="$HLLOG" BRIEF_LINT_TEST_HEAL=slow BRIEF_LINT_HEAL_BUDGET=30 bash "$LINT" "$tmp/hl_brief.md" >/dev/null 2>"$HL/m10.a"; echo $? > "$HL/m10.a.rc" ) & pa=$!
+( BRIEF_LINT_MIRROR="$HL/m10" BRIEF_LINT_JIRA_CLI="$HL/stub/index.js" BRIEF_LINT_TEST_LOG="$HLLOG" BRIEF_LINT_TEST_HEAL=slow BRIEF_LINT_HEAL_BUDGET=30 bash "$LINT" "$tmp/hl_brief.md" >/dev/null 2>"$HL/m10.b"; echo $? > "$HL/m10.b.rc" ) & pb=$!
+wait "$pa" "$pb"
+both="$(cat "$HL/m10.a" "$HL/m10.b")"  # read-sink-ok: this row's own scratch stderr
+{ [ "$(hl_n 'mirror --repair')" -eq 1 ] && [ "$(cat "$HL/m10.a.rc")" = 0 ] && [ "$(cat "$HL/m10.b.rc")" = 0 ] && grep -Fq 'heal ran' <<< "$both" && grep -Fq 'was healed by another run' <<< "$both"; } \
+    && ok "BL10 two launches at once end with one repair" || bad "BL10 repairs=$(hl_n 'mirror --repair') rcs=$(cat "$HL/m10.a.rc" "$HL/m10.b.rc" | tr '\n' ' '): $both"  # read-sink-ok: this row's own scratch files
+
+hl_mirror m11 "$HL_INC" QQQ-9441
+printf -- '---\nkey: "QQQ-9442"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: []\n---\n# QQQ-9442: t\n' > "$HL/QQQ-9442.md"
+mk hl_brief2 '# QQQ-9442 — a key the half-sync missed' "$PA" '> **Contract:** y' "$RES0"
+hl_lint m11 BRIEF_LINT_TEST_HEAL_WRITE="$HL/QQQ-9442.md" bash "$LINT" "$tmp/hl_brief2.md"
+{ [ "$rc" -eq 0 ] && [ "$(hl_n 'mirror --repair')" -eq 1 ] && [ "$(hl_first 'mirror --repair')" -lt "$(hl_first 'core-check')" ]; } \
+    && ok "BL11 a key the half-sync missed is healed before core-check refuses it" || bad "BL11 rc=$rc: $err"
+
+hl_mirror m12 "$HL_INC"; mkdir -p "$HL/m12.lock"
+hl_lint m12 bash "$LINT" "$tmp/hl_brief.md"
+{ [ "$rc" -eq 3 ] && [ "$(hl_n 'mirror --repair')" -eq 0 ] && grep -Fq 'heal skipped (' <<< "$err" && grep -Fq 'mirror sync incomplete since' <<< "$err"; } \
+    && ok "BL12 a lock that cannot be opened skips the heal and the refusal names the cause" || bad "BL12 rc=$rc: $err"
+
+mkdir -p "$HL/h13"
+HL13="$HL/h13/.himmel/state/jira-mirror"
+mkdir -p "$HL13/QQQ" "$HL13/ZZZ"
+printf '%s\n' "$HL_INC" > "$HL13/QQQ/.cursor.json"
+printf '%s\n' '{"lastSync":"2026-11-26T16:33:57.000Z","total":1,"project":"ZZZ","complete":false}' > "$HL13/ZZZ/.cursor.json"
+printf -- '---\nkey: "QQQ-9441"\n---\n' > "$HL13/QQQ/QQQ-9441.md"; printf -- '---\nkey: "ZZZ-2"\n---\n' > "$HL13/ZZZ/ZZZ-2.md"
+mk hl_two '# QQQ-9441 + ZZZ-2 — two roots' "$PA" '> **Contract:** y' "$RES0"
+: > "$HLLOG"; t0=$SECONDS; rc=0
+err="$(env -u BRIEF_LINT_MIRROR HOME="$HL/h13" BRIEF_LINT_JIRA_CLI="$HL/stub/index.js" BRIEF_LINT_TEST_LOG="$HLLOG" BRIEF_LINT_TEST_HEAL=hang BRIEF_LINT_TEST_PIDS="$HL/m13.pids" BRIEF_LINT_HEAL_BUDGET=3 bash "$LINT" "$tmp/hl_two.md" 2>&1 >/dev/null)" || rc=$?
+took=$((SECONDS - t0))
+{ [ "$took" -lt 10 ] && [ "$(hl_n 'mirror --repair')" -eq 1 ] && ! grep -q 'mirror --repair .*ZZZ' "$HLLOG" && grep -Fq 'heal timed out after' <<< "$err"; } \
+    && ok "BL13 a hung first root spends the budget and the second root gets no repair" || bad "BL13 rc=$rc took=$took: $err $(cat "$HLLOG")"  # read-sink-ok: HLLOG is this suite's own scratch log
+p1=""; p2=""; [ ! -r "$HL/m13.pids" ] || read -r p1 p2 < "$HL/m13.pids"  # read-sink-ok: the stub's own pid file
+for p in $p1 $p2; do kill -9 "$p" 2>/dev/null; done
+
+hl_mirror m14 "$HL_INC" QQQ-9441 ZZZ-2
+mk hl_mixed '# QQQ-9441 + ZZZ-2 — two projects, one root' "$PA" '> **Contract:** y' "$RES0"
+hl_lint m14 bash "$LINT" "$tmp/hl_mixed.md"
+{ grep -Fq 'holds keys of two projects; no heal' <<< "$err" && [ "$(hl_n 'mirror --repair')" -eq 0 ]; } \
+    && ok "BL14 two prefixes on one root are not healed" || bad "BL14 rc=$rc: $err"
+
+hl_mirror m15 "$HL_INC"
+python3 -I "$HL/holder.py" "$HL/m15.lock" "$HL/m15.ready" "$HL/m15/.cursor.json" & hold15=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do [ -e "$HL/m15.ready" ] && break; sleep 0.5; done
+t0=$SECONDS
+hl_lint m15 BRIEF_LINT_HEAL_BUDGET=10 bash "$LINT" "$tmp/hl_brief.md"
+took=$((SECONDS - t0))
+kill "$hold15" 2>/dev/null; wait "$hold15" 2>/dev/null
+{ [ "$rc" -eq 0 ] && [ "$took" -lt 8 ] && [ "$(hl_n 'mirror --repair')" -eq 0 ] && grep -Fq 'was healed by another run' <<< "$err"; } \
+    && ok "BL15 a launch during a focus-refresh-shaped sync waits for it and passes" || bad "BL15 rc=$rc took=$took: $err"
+
 # 9. A worker brief (a Contract line) carries the search directive, the notes query over BOTH collections and the graph
 # symbol named, whatever its Prior art line cites. A ticket key or #PR does not replace it.
 VAGUE='> **Prior art:** related work exists, see the ticket'
@@ -758,7 +958,7 @@ unset CLAUDE_GLM_CONFIG_DIR
 H_BADB="$tmp/home-badbytes"; mkdir -p "$H_BADB/.config/claude-codex"; printf '\377\376\000bad\n' > "$H_BADB/.config/claude-codex/phi-roots"
 sal_rc "10a a phi-roots list with bad bytes reads as salus-marked, not as a crash" 0 "$H_BADB" "$CW_HIM"
 KIT="$tmp/kit"; mkdir -p "$KIT/scripts/handover/chief-kit" "$KIT/scripts/lib"
-cp "$LINT" "$HERE/minerva_siblings.py" "$KIT/scripts/handover/chief-kit/"; cp "$HERE/../../lib/"*.sh "$KIT/scripts/lib/"
+cp "$LINT" "$HERE/minerva_siblings.py" "$HERE/mirror_heal.py" "$KIT/scripts/handover/chief-kit/"; cp "$HERE/../../lib/"*.sh "$KIT/scripts/lib/"
 mkc s_kit_ok "$CW_HIM" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
 KLINT="$KIT/scripts/handover/chief-kit/brief-lint.sh"
 rc=0; bash "$KLINT" "$tmp/s_kit_ok.md" >/dev/null 2>&1 || rc=$?

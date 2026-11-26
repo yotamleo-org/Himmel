@@ -9,6 +9,7 @@ import type { ADFDocument } from '../adf-render.js';
 import { fetchAllComments } from './comments.js';
 import type { JiraCommentEntry } from './comments.js';
 import { sectorField, sectorOf } from './sector.js';
+import { CURSOR_FILE, mirrorState, readCursor } from '../mirror-cursor.js';
 
 // Jira -> markdown mirror: one <KEY>.md per issue under a root
 // outside any repo/vault, plus a qmd collection over it. Read-only against Jira.
@@ -17,7 +18,6 @@ const PAGE_MAX = 100;
 const OVERLAP_MINUTES = 10;
 const COLLECTION = 'jira-himmel';
 const DELETE_SAFETY_RATIO = 0.5;
-const CURSOR_FILE = '.cursor.json';
 const BASE_FIELDS =
   'summary,status,issuetype,priority,labels,fixVersions,parent,created,updated,resolution,resolutiondate,issuelinks,description,comment';
 const fieldList = (): string => BASE_FIELDS + (sectorField() ? `,${sectorField()}` : '');
@@ -50,12 +50,11 @@ export interface MirrorIssue {
 interface SearchPage { issues: MirrorIssue[]; nextPageToken?: string }
 export type Req = typeof request;
 
-export interface Cursor { lastSync: string; total: number; project?: string; complete?: boolean }
-
 export interface MirrorOptions {
   root: string;
   project: string;
   full?: boolean;
+  incrementalOnly?: boolean;
   concurrency?: number;
   now?: () => Date;
   warn?: (msg: string) => void;
@@ -70,6 +69,7 @@ export interface MirrorResult {
   deleteSkipped: string | null;
   mirrorCount: number;
   jiraTotal: number | null;
+  refused?: string;
 }
 
 // Mirror files must never carry emails; ADF mentions/pasted text can.
@@ -131,15 +131,6 @@ export function renderIssue(issue: MirrorIssue, comments: JiraCommentEntry[]): s
 
 export const defaultRoot = (project: string): string => join(homedir(), '.himmel', 'state', 'jira-mirror', project);
 
-export function readCursor(root: string): Cursor | null {
-  try {
-    const c = JSON.parse(readFileSync(join(root, CURSOR_FILE), 'utf8')) as Cursor;
-    return typeof c.lastSync === 'string' && !Number.isNaN(Date.parse(c.lastSync)) ? c : null;
-  } catch {
-    return null;
-  }
-}
-
 function writeFileAtomic(path: string, content: string): void {
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, content);
@@ -182,22 +173,34 @@ const localKeys = (root: string, project?: string): string[] =>
 
 // The approximate count can lag a little; a listing this far short of it is truncated, not current.
 const COUNT_TOLERANCE = 0.98;
+export const FILL_MAX = 50;
 
 export async function runMirror(opts: MirrorOptions, req: Req): Promise<MirrorResult> {
   const { root, project } = opts;
   const now = opts.now ?? (() => new Date());
   const warn = opts.warn ?? ((m: string) => process.stderr.write(`jira mirror: ${m}\n`));
   const startedAt = now();
+
+  const state = mirrorState(root, project);
+  if (opts.incrementalOnly) {
+    const why =
+      state.complete === 'none' ? `no cursor at ${root}; a full backfill is needed`
+      : state.project !== null && state.project !== project ? `the cursor is for ${state.project}`
+      : state.complete === 'yes' ? 'not needed'
+      : !state.repairable ? 'a full backfill is needed'
+      : null;
+    if (why) {
+      return { mode: 'incremental', fetched: 0, written: 0, unchanged: 0, deleted: 0, deleteSkipped: null, mirrorCount: 0, jiraTotal: null, refused: why };
+    }
+  }
   mkdirSync(root, { recursive: true });
 
-  const stored = opts.full ? null : readCursor(root);
-  // A cursor written for another project must not drive this run's incremental window.
-  const cursor = stored && stored.complete !== false && (stored.project === undefined || stored.project === project) ? stored : null;
-  const mode = cursor ? 'incremental' : 'full';
+  const lastSync = (!opts.full || opts.incrementalOnly) && state.next === 'incremental' ? state.lastSync : null;
+  const mode = lastSync ? 'incremental' : 'full';
   let jql = `project = ${project} ORDER BY key ASC`;
-  if (cursor) {
+  if (lastSync) {
     // Relative JQL ("-Nm") is timezone-independent, unlike an absolute datetime.
-    const mins = Math.max(1, Math.ceil((startedAt.getTime() - Date.parse(cursor.lastSync)) / 60000)) + OVERLAP_MINUTES;
+    const mins = Math.max(1, Math.ceil((startedAt.getTime() - Date.parse(lastSync)) / 60000)) + OVERLAP_MINUTES;
     jql = `project = ${project} AND updated >= "-${mins}m" ORDER BY updated ASC`;
   }
 
@@ -205,22 +208,27 @@ export async function runMirror(opts: MirrorOptions, req: Req): Promise<MirrorRe
     mode, fetched: 0, written: 0, unchanged: 0, deleted: 0, deleteSkipped: null, mirrorCount: 0, jiraTotal: null,
   };
   const fullKeys = new Set<string>();
+  const chunk = Math.max(1, Math.floor(opts.concurrency || 5));
+
+  const writeIssue = async (issue: MirrorIssue): Promise<void> => {
+    res.fetched++;
+    const c = issue.fields.comment;
+    const embedded = c?.comments ?? [];
+    const comments =
+      (c?.total ?? 0) === 0 ? [] : embedded.length >= (c?.total ?? 0) ? embedded : await fetchAllComments(issue.key, req);
+    const md = renderIssue(issue, comments);
+    const path = join(root, `${issue.key}.md`);
+    if (existsSync(path) && readFileSync(path, 'utf8') === md) res.unchanged++;
+    else {
+      writeFileAtomic(path, md);
+      res.written++;
+    }
+  };
 
   await searchPages(jql, fieldList(), req, async (issues) => {
-    await inChunks(issues, Math.max(1, Math.floor(opts.concurrency || 5)), async (issue) => {
-      res.fetched++;
+    await inChunks(issues, chunk, async (issue) => {
       fullKeys.add(issue.key);
-      const c = issue.fields.comment;
-      const embedded = c?.comments ?? [];
-      const comments =
-        (c?.total ?? 0) === 0 ? [] : embedded.length >= (c?.total ?? 0) ? embedded : await fetchAllComments(issue.key, req);
-      const md = renderIssue(issue, comments);
-      const path = join(root, `${issue.key}.md`);
-      if (existsSync(path) && readFileSync(path, 'utf8') === md) res.unchanged++;
-      else {
-        writeFileAtomic(path, md);
-        res.written++;
-      }
+      await writeIssue(issue);
     });
   });
 
@@ -234,14 +242,15 @@ export async function runMirror(opts: MirrorOptions, req: Req): Promise<MirrorRe
     res.jiraTotal = null;
   }
   let live: Set<string> | null = null;
-  if (mode === 'full') live = fullKeys;
+  let listing: Set<string> | null = null;
+  if (mode === 'full') live = listing = fullKeys;
   else {
     try {
       const keys = new Set<string>();
       await searchPages(`project = ${project} ORDER BY key ASC`, 'key', req, (is) => {
         for (const i of is) keys.add(i.key);
       });
-      live = keys;
+      live = listing = keys;
     } catch (err) {
       res.deleteSkipped = `key listing failed: ${err instanceof Error ? err.message : String(err)}`;
     }
@@ -265,14 +274,40 @@ export async function runMirror(opts: MirrorOptions, req: Req): Promise<MirrorRe
   }
 
   const localNow = new Set(localKeys(root, project));
-  res.mirrorCount = localNow.size;
+  let residual = listing ? [...listing].filter((k) => !localNow.has(k)).sort() : [];
+  if (residual.length > 0 && residual.length <= FILL_MAX) {
+    const filled: string[] = [];
+    await inChunks(residual, chunk, async (key) => {
+      let got: MirrorIssue;
+      try {
+        got = await req<MirrorIssue>('GET', `/issue/${key}?fields=${fieldList()}`);
+      } catch {
+        return;
+      }
+      if (got.key !== key) {
+        warn(`fill: ${key} answered as ${got.key}; left missing`);
+        return;
+      }
+      await writeIssue(got);
+      filled.push(key);
+    });
+    if (filled.length > 0) warn(`filled ${filled.length} live key(s) missing locally: ${filled.sort().join(', ')}`);
+    residual = residual.filter((k) => !filled.includes(k));
+  }
+  res.mirrorCount = localKeys(root, project).length;
   // A live key with no local file (within the count tolerance) also forces a full run.
-  if (!res.deleteSkipped && live && [...live].some((k) => !localNow.has(k))) res.deleteSkipped = 'live keys missing locally';
+  if (!res.deleteSkipped && live && residual.length > 0) res.deleteSkipped = 'live keys missing locally';
   if (res.deleteSkipped || (res.jiraTotal !== null && res.mirrorCount < res.jiraTotal * COUNT_TOLERANCE)) {
-    warn(`mirror not verified complete (${res.deleteSkipped ?? `holds ${res.mirrorCount}, Jira counts ${res.jiraTotal}`}); next sync runs full`);
+    const total = res.jiraTotal;
+    const gap = total === null ? 0 : total - res.mirrorCount;
+    const repair: 'full' | 'incremental' =
+      mode === 'full' && total !== null && fullKeys.size < total * COUNT_TOLERANCE ? 'full'
+      : listing ? (residual.length > FILL_MAX ? 'full' : 'incremental')
+      : gap > Math.max(FILL_MAX, Math.ceil((total ?? 0) * (1 - COUNT_TOLERANCE))) ? 'full' : 'incremental';
+    warn(`mirror not verified complete (${res.deleteSkipped ?? `holds ${res.mirrorCount}, Jira counts ${res.jiraTotal}`}); next sync runs ${repair === 'full' ? 'full' : 'an incremental repair'}`);
     writeFileAtomic(
       join(root, CURSOR_FILE),
-      JSON.stringify({ lastSync: startedAt.toISOString(), total: res.mirrorCount, project, complete: false }) + '\n',
+      JSON.stringify({ lastSync: startedAt.toISOString(), total: res.mirrorCount, project, complete: false, repair }) + '\n',
     );
     return res;
   }
@@ -305,23 +340,34 @@ export function qmdRefresh(root: string, run: (args: string[]) => string = (a) =
   }
 }
 
-export function registerMirror(program: Command): void {
+export function registerMirror(program: Command, req: Req = request): void {
   program
     .command('mirror')
     .description('Mirror Jira issues to markdown files (full backfill, then incremental) for qmd retrieval; read-only against Jira')
     .option('--root <dir>', 'Mirror root (default: ~/.himmel/state/jira-mirror/<PROJECT>)')
     .option('--full', 'Ignore the cursor and re-fetch everything')
     .option('--status', 'Print mirror age and file count, then exit (no network)')
+    .option('--json', 'With --status: print one JSON object (the cursor state: complete, repair, lastSync, project, next, repairable)')
+    .option('--repair', 'Run an incremental repair when the cursor says one is due; never a full backfill (exit 3 when it cannot)')
     .option('--qmd', `Register the ${COLLECTION} qmd collection if missing, then qmd update + embed (failure is reported, not fatal)`)
-    .action(async (options: { root?: string; full?: boolean; status?: boolean; qmd?: boolean }) => {
+    .action(async (options: { root?: string; full?: boolean; status?: boolean; json?: boolean; repair?: boolean; qmd?: boolean }) => {
       const project = projectKey();
       const root = options.root ?? defaultRoot(project);
       if (options.status) {
         const age = mirrorAgeMinutes(root);
-        console.log(`mirror root=${root} files=${localKeys(root).length} age_minutes=${age ?? 'never-synced'}`);
+        if (options.json) {
+          console.log(JSON.stringify({ root, files: localKeys(root).length, age_minutes: age, ...mirrorState(root, project) }));
+        } else {
+          console.log(`mirror root=${root} files=${localKeys(root).length} age_minutes=${age ?? 'never-synced'}`);
+        }
         return;
       }
-      const r = await runMirror({ root, project, full: options.full }, request);
+      const r = await runMirror({ root, project, full: options.full, incrementalOnly: options.repair }, req);
+      if (r.refused !== undefined) {
+        console.log(`repair: ${r.refused}`);
+        if (r.refused !== 'not needed') process.exitCode = 3;
+        return;
+      }
       console.log(
         `mirror ${r.mode}: fetched=${r.fetched} written=${r.written} unchanged=${r.unchanged} deleted=${r.deleted}\n` +
           `mirror count=${r.mirrorCount} jira total=${r.jiraTotal ?? 'unknown'}`,

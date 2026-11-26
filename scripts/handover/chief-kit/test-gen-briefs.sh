@@ -893,7 +893,7 @@ rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$SUT" "$WORK/workers.json" --base 
 # adopter worktree as WORKER_SESSION_REPO (headed-arm.sh starts the session in that dir) ---
 KIT="$WORK/kit"; mkdir -p "$KIT/scripts/handover/chief-kit"
 mkdir -p "$KIT/scripts/ci"
-cp "$SUT" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/proof_staging.py" "$HERE/minerva_siblings.py" "$HERE/platform-dropped.re" "$HERE/size-override.sh" "$KIT/scripts/handover/chief-kit/"
+cp "$SUT" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/proof_staging.py" "$HERE/minerva_siblings.py" "$HERE/mirror_heal.py" "$HERE/platform-dropped.re" "$HERE/size-override.sh" "$KIT/scripts/handover/chief-kit/"
 cp "$HERE/../../ci/ci-trust-paths.txt" "$HERE/../../ci/pr-size-bands.tsv" "$KIT/scripts/ci/"
 mkdir -p "$KIT/scripts/lib"; cp "$HERE/../../lib/flags.py" "$HERE/../../lib/flags.tsv" "$HERE/../../lib/go-gate.sh" "$HERE/../../lib/handover-path.sh" "$KIT/scripts/lib/"
 cp "$HERE/brief-lint.sh" "$KIT/scripts/handover/chief-kit/"; cp -R "$HERE/../../lib/." "$KIT/scripts/lib/"

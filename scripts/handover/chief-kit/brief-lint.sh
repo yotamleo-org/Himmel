@@ -73,6 +73,12 @@ resolve_cli() {
     printf '%s' "$cli"
 }
 
+mirror_heal() {
+    [ "$judge" -eq 0 ] || return 0
+    [ "$skip_bucket" -eq 0 ] || return 0
+    python3 -I "$(dirname "$0")/mirror_heal.py" "$doc" "$(resolve_cli)" >&2 || true  # swallow-ok: the heal is advisory, the rules that follow still refuse an unhealed mirror
+}
+
 core_rule() {
     local cli core_err core_rc=0 core_state_root=""
     [ "$judge" -eq 0 ] || return 0
@@ -88,6 +94,9 @@ core_rule() {
     core_err="$(python3 -I - "$doc" "$cli" "$core_state_root" "$(cd "$(dirname "$0")" && pwd)" <<'PY'
 import json, os, re, subprocess, sys
 from datetime import datetime
+
+sys.path.insert(0, sys.argv[4])
+from mirror_heal import mirror_root
 
 doc, cli = sys.argv[1], sys.argv[2]
 lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
@@ -219,8 +228,7 @@ def per_key(out, ks, spec=False):
 
 groups = {}
 for k in keys:
-    mirror = os.environ.get('BRIEF_LINT_MIRROR') or os.path.expanduser('~/.himmel/state/jira-mirror/' + k.split('-')[0])
-    mirror = os.path.abspath(mirror)
+    mirror = mirror_root(k)
     # no usable Writes path: classify by the paths the ticket itself names
     groups.setdefault((mirror, tuple(paths or ticket_paths(mirror, k)), docs_only and bool(paths)), []).append(k)
 verdict, spec = {}, {}
@@ -291,16 +299,14 @@ bucket_rule() {
     [ "$skip_bucket" -eq 0 ] || return 0
     cli="$(resolve_cli)"
     worker_doc_has_run "$doc" && ran=1
-    bucket_err="$(python3 -I - "$doc" "$cli" "$ran" <<'PY'
+    bucket_err="$(python3 -I - "$doc" "$cli" "$ran" "$(cd "$(dirname "$0")" && pwd)" <<'PY'
 import os, re, subprocess, sys
 
+sys.path.insert(0, sys.argv[4])
+from mirror_heal import brief_keys, mirror_root
+
 doc, cli, ran = sys.argv[1], sys.argv[2], sys.argv[3] == '1'
-lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
-title = next((l for l in lines if l.startswith('# ')), '')
-keys = list(dict.fromkeys(re.findall(r'\b[A-Z][A-Z0-9]*-[0-9]+\b', title)))
-named = re.search(r'[A-Z][A-Z0-9]*-[0-9]+', os.path.basename(doc))
-if named and named.group(0) not in keys:
-    keys.append(named.group(0))
+keys = brief_keys(doc)
 if not keys:
     sys.exit(0)
 
@@ -320,8 +326,7 @@ def failed(why):
 
 groups = {}
 for k in keys:
-    mirror = os.environ.get('BRIEF_LINT_MIRROR') or os.path.expanduser('~/.himmel/state/jira-mirror/' + k.split('-')[0])
-    groups.setdefault(os.path.abspath(mirror), []).append(k)
+    groups.setdefault(mirror_root(k), []).append(k)
 
 VERDICTS = ('IN', 'NONE', 'APPROVED', 'DONE', 'OUTSIDE', 'FAILED')
 got = {}
@@ -562,6 +567,7 @@ if [ "$judge" -eq 0 ] && [ -n "$cwd" ] && grep -Eq '^> \*\*Contract:\*\*' "$doc"
 fi
 
 if [ "$core_only" -eq 1 ]; then
+    mirror_heal
     core_rule
     bucket_rule
     exit 0
@@ -700,6 +706,7 @@ if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_
     fi
 fi
 
+mirror_heal
 core_rule
 bucket_rule
 exit 0

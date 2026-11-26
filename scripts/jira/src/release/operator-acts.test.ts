@@ -356,6 +356,58 @@ describe('release bucket-check verdict', () => {
     expect(await check(['BKT-1'])).toEqual([`FAILED BKT-1 no readable mirror at ${mir()}`]);
   });
 
+  describe('an incomplete mirror (BC1)', () => {
+    const SYNC = '2026-11-26T16:33:57.000Z';
+    const cursor = (c: Record<string, unknown>, dir = mir()) => writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync: SYNC, total: 1, project: 'BKT', ...c }));
+    const checkCli = (keys: string[], cli?: string, dir = mir()) => bucketCheck(env(), keys, dir, { get: stub().get, deadlineMs: 5000, now: NOW, ...(cli ? { cli } : {}) });
+    const key1 = [{ key: 'BKT-1', fixVersions: ['v1.1.9'] }];
+
+    it('BC1: a cursor complete:false names the cause, lastSync, root, repair kind and the heal command', async () => {
+      world(key1);
+      cursor({ complete: false, repair: 'incremental' });
+      expect(await checkCli(['BKT-1'], '/x/index.js')).toEqual([
+        `FAILED BKT-1 mirror sync incomplete since ${SYNC} at ${mir()} (cursor complete: false, repair: incremental); heal: JIRA_PROJECT_KEY=BKT node /x/index.js mirror --root ${mir()}`,
+      ]);
+    });
+
+    it('BC1b: no cli and a cursor with no repair field reads repair incremental and jira mirror', async () => {
+      world(key1);
+      cursor({ complete: false });
+      expect(await checkCli(['BKT-1'])).toEqual([
+        `FAILED BKT-1 mirror sync incomplete since ${SYNC} at ${mir()} (cursor complete: false, repair: incremental); heal: JIRA_PROJECT_KEY=BKT jira mirror --root ${mir()}`,
+      ]);
+    });
+
+    it('BC1c (control): the same mirror with a complete cursor answers IN', async () => {
+      world(key1);
+      cursor({});
+      expect(await checkCli(['BKT-1'], '/x/index.js')).toEqual(['IN BKT-1 current=v1.1.9 via=mirror']);
+    });
+
+    it('BC1d (control): no cursor and no files keeps no readable mirror', async () => {
+      declared();
+      versions();
+      mkdirSync(mir(), { recursive: true });
+      expect(await checkCli(['BKT-1'], '/x/index.js')).toEqual([`FAILED BKT-1 no readable mirror at ${mir()}`]);
+    });
+
+    it('BC1e: an incomplete mirror never passes a key, Done included', async () => {
+      world([{ key: 'BKT-1', fixVersions: ['v1.1.9'], status: 'Done', category: 'Done' }]);
+      cursor({ complete: false, repair: 'incremental' });
+      const [line] = await checkCli(['BKT-1'], '/x/index.js');
+      expect(line).toMatch(/^FAILED BKT-1 mirror sync incomplete since /);
+    });
+
+    it('BC1f: a root with a space is single-quoted in the heal command and the repair kind is named', async () => {
+      const dir = join(root, 'my mirror', 'BKT');
+      mkdirSync(dir, { recursive: true });
+      cursor({ complete: false, repair: 'full' }, dir);
+      const [line] = await checkCli(['BKT-1'], '/x/index.js', dir);
+      expect(line).toContain('(cursor complete: false, repair: full)');
+      expect(line).toContain(`mirror --root '${dir}'`);
+    });
+  });
+
   it('row 0, no versions file while a release.json names the project: FAILED, not NONE', async () => {
     declared();
     mirror([{ key: 'BKT-1', fixVersions: ['v1.1.9'] }]);
