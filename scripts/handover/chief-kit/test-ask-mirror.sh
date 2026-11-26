@@ -211,11 +211,13 @@ check "R16 the store lists two files that start with 2., the texts of B and C" \
 
 echo "R17: a reply that only names the marker mid-line posts nothing"
 run chief-sid "Status: Needs you: R17 A"
-check "R17 a mid-line marker after a label posts nothing" "$(ncalls)" "0"
+check "R17 a mid-line marker after a label posts nothing, rc 0" "$(ncalls) $(cat "$TMP/rc")" "0 rc=0"
 run chief-sid "The hook looks for the Needs you: marker at the start of a line."
-check "R17 a marker named in prose posts nothing" "$(ncalls)" "0"
+check "R17 a marker named in prose posts nothing, rc 0" "$(ncalls) $(cat "$TMP/rc")" "0 rc=0"
 run chief-sid "$(printf 'All merged.\n\nSee the Needs you: line above.\nNothing else.')"
-check "R17 a marker named in a later line posts nothing" "$(ncalls)" "0"
+check "R17 a marker named in a later line posts nothing, rc 0" "$(ncalls) $(cat "$TMP/rc")" "0 rc=0"
+run chief-sid $' Needs you: R17 nbsp'
+check "R17 a line led by a non-breaking space is not a marker line, rc 0" "$(ncalls) $(cat "$TMP/rc")" "0 rc=0"
 run chief-sid "Needs you: R17 start"
 check "R17 control: the marker at the start of a line posts" "$(ncalls)" "1"
 run chief-sid "4. Needs you: R17 numbered"

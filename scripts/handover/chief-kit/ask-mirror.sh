@@ -60,7 +60,7 @@ if [ -z "$reply" ] && [ -n "$transcript" ] && [ -r "$transcript" ]; then
     ' "$transcript" 2>/dev/null)"
 fi
 [ -n "$reply" ] || exit 0
-grep -Eq '^[[:space:]]*((([0-9]+[.)])|-|\*|•)[[:space:]]*)?Needs you:' <<<"$reply" || exit 0
+grep -Eq '^[[:blank:]]*((([0-9]+[.)])|-|\*|•)[[:blank:]]*)?Needs you:' <<<"$reply" || exit 0
 
 blocks="$(printf '%s' "$reply" | python3 -c '
 import hashlib, json, re, sys
@@ -77,7 +77,7 @@ def squeeze(t):
     return re.sub(r"[ \t]+", " ", t).rstrip()
 def digest(*parts):
     return hashlib.sha256("\0".join(parts).encode()).hexdigest()
-mark = re.compile(r"^\s*(?:(?:\d+[.)]|[-*•])\s*)?Needs you:")
+mark = re.compile(r"^[ \t]*(?:(?:\d+[.)]|[-*•])[ \t]*)?Needs you:")
 while i < n:
     m = mark.match(lines[i])
     if not m:
