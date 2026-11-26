@@ -488,7 +488,7 @@ in `.env` or the launching shell):
 |---|---|---|
 | `CHECK_CI_CACHE` | `1` | `0` = no cache: gh's own `--watch` and one gh call per probe (the pre-cache behaviour) |
 | `CHECK_CI_CACHE_DIR` | `$HOME/.himmel/state/ci-cache` | shared cache dir; point every caller at one dir (per user) |
-| `CHECK_CI_CACHE_TTL` | `60` | seconds a snapshot serves poll-grade reads |
+| `CHECK_CI_CACHE_TTL` | `120` | seconds a snapshot serves poll-grade reads |
 | `CHECK_CI_DECIDE_TTL` | `5` | max age of the snapshot a terminal verdict (green/red confirm, required-check gate) may rest on |
 | `CHECK_CI_WATCH_INTERVAL` / `CHECK_CI_WATCH_INTERVAL_MAX` | `30` / `120` | poll-interval floor / ceiling; doubles while the rollup is unchanged, resets on a change |
 | `CHECK_CI_LOW_CORE_FACTOR` | `6` | check-ci multiplies its poll sleeps and `CR_FIRST_EVERY` by this while every live REST `core` row in quota.tsv is under `GHQ_SCAN_FLOOR`. At the start check-ci also waits for the REST core reset when every token (`read`, `read2`, `main`) is under `GHQ_SCAN_FLOOR`, as it already does for GraphQL, and after a refusal or a `QUOTA-PAUSE` it waits on main alone (a read that ends on main, such as the classic protection endpoint, needs it); a reset beyond `--max-wait` is exit 2 |

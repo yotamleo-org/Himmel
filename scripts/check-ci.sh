@@ -59,7 +59,7 @@
 # use the existing reset wait bounded by --max-wait. Knobs (env):
 #   CHECK_CI_CACHE=0            legacy path: gh's own --watch, no cache
 #   CHECK_CI_CACHE_DIR          default $HOME/.himmel/state/ci-cache
-#   CHECK_CI_CACHE_TTL          poll-read TTL, default 60
+#   CHECK_CI_CACHE_TTL          poll-read TTL, default 120
 #   CHECK_CI_DECIDE_TTL         terminal/decide-read TTL, default 5
 #   CHECK_CI_WATCH_INTERVAL     adaptive-interval floor, default 30
 #   CHECK_CI_WATCH_INTERVAL_MAX adaptive-interval ceiling, default 120
@@ -289,11 +289,11 @@ esac
 # the helper re-read the same env names.
 CACHE_ON=1
 [ "${CHECK_CI_CACHE:-1}" = 0 ] && CACHE_ON=0
-CACHE_TTL="${CHECK_CI_CACHE_TTL:-60}"
+CACHE_TTL="${CHECK_CI_CACHE_TTL:-120}"
 DECIDE_TTL="${CHECK_CI_DECIDE_TTL:-5}"
 WATCH_INTERVAL_MAX="${CHECK_CI_WATCH_INTERVAL_MAX:-120}"
 case "$CACHE_TTL" in
-    ''|*[!0-9]*|0) echo "check-ci: CHECK_CI_CACHE_TTL='$CACHE_TTL' is not a positive integer — using 60" >&2
+    ''|*[!0-9]*|0) echo "check-ci: CHECK_CI_CACHE_TTL='$CACHE_TTL' is not a positive integer — using 120" >&2
         CACHE_TTL=60 ;;
 esac
 case "$DECIDE_TTL" in

@@ -515,6 +515,23 @@ if [ "$(grep -c '^main$' "$CASE_DIR/toks.log")" -eq 0 ] && [ "$(grep -c '^read$'
 got=$(bash -c '. "$1"; _cic_is_rl "API rate limit already exceeded" && echo y1; _cic_is_rl "You have exceeded a secondary rate limit" && echo y2; _cic_is_rl "HTTP 502: Bad Gateway" || echo n3' _ "$LIB" 2>/dev/null | tr '\n' ' ')
 if [ "$got" = "y1 y2 n3 " ] && grep -q '^_cic_is_rl() { ghb_is_rate_limited ' "$LIB"; then pass "15 _cic_is_rl delegates to the shared rule"; else fail "15 _cic_is_rl" "got [$got]"; fi
 
+new_case
+for sel in "" 42 "https://github.com/octo/demo/pull/42"; do
+    ( export GH_REPO=octo/demo; cd "$CASE_DIR/cwd" && cic_init "$sel" && cic_get 60 )
+done
+n=$(fetches)
+if [ "$n" -eq 1 ]; then pass "16 branch, number and URL watchers of one PR -> 1 fetch"; else fail "16 selectors" "got $n fetches, want 1"; fi
+n=$(find "$CASE_DIR/cache" -maxdepth 1 -name 'pr-*.rows' | wc -l | tr -d ' ')
+if [ "$n" -eq 1 ]; then pass "16b one cache entry for the PR"; else fail "16b entries" "got $n entries, want 1"; fi
+
+new_case
+printf 'pending\tunit-tests\n' > "$CASE_DIR/rows"; printf 'pass\tunit-tests\n' > "$CASE_DIR/rows.2"
+( cd "$CASE_DIR/cwd" && cic_init "" && cic_get 60 )
+setclock 1000000090
+( cd "$CASE_DIR/cwd" && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 60} bash "$HELPER" >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 0 ] && [ "$(sleeps)" = "30 " ] && [ "$(fetches)" -eq 2 ]; then pass "17 default poll TTL 120: a read at age 90 is a hit, the next wake fetches"; else fail "17 default TTL" "rc=$rc sleeps=[$(sleeps)] fetches=$(fetches)"; fi
+if grep -q 'CHECK_CI_CACHE_TTL:-120' "$CHECK_CI" && grep -q 'CHECK_CI_CACHE_TTL:-120' "$HELPER"; then pass "17b check-ci.sh and the watch helper agree on the 120 s default"; else fail "17b defaults" "one of them still names another default"; fi
+
 echo
 echo "check-ci-cache: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
