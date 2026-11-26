@@ -8,6 +8,11 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.119] — 2026-11-26
+
+### Changed
+- `scripts/vault-autosync.sh`'s stall alert names the reason a commit was refused beside the hook and file: the shellcheck code, else the gitleaks rule id, else pre-commit's exit code. It never carries a source line or a match.
+
 ## [0.4.118] — 2026-11-26
 
 ### Changed

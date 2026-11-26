@@ -95,6 +95,19 @@
       "grandfathered": true
     },
     {
+      "id": "guard-refusals",
+      "default_path": "~/.himmel/state/guard-refusals.jsonl",
+      "override_env": "HIMMEL_GUARD_REFUSALS_LOG",
+      "writer": "scripts/hooks/guard-t3-thread-tools.sh",
+      "readers": [],
+      "format": "jsonl",
+      "rotation": "none",
+      "retention": "unbounded",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
+      "grandfathered": false
+    },
+    {
       "id": "cadence-bank",
       "default_path": "~/.himmel/cadence-ledger.jsonl",
       "override_env": "CADENCE_USAGE_LEDGER",

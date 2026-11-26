@@ -189,6 +189,13 @@ asked for it gets the Jira label `operator-directed`, and its Results bullet rea
 `OPERATOR: <ask>. Filed HIMMEL-n`. The roadmap tracker builds the
 operator-directed bundle from that label and that bullet.
 
+**Label your own misses.** A ticket you file about a miss of your own (a missed wake, a
+missed relay, a missed GO, work nobody owned) is filed with
+`bash scripts/handover/chief-kit/file-chief-miss.sh --kind wake|relay|go|unowned <jira create args>`,
+which adds the label `chief-miss` and records the kind on the ticket. From a chief session
+(`HIMMEL_CONSOLE=1`) a `jira create --type Bug` without that label is refused unless it
+carries `--not-chief-miss`; the operator counts your misses with the label.
+
 **CI guardrail.** To see whether the fleet is at a real GitHub Actions limit, run
 `<kit>/ci-guardrail.sh` by hand. Operator decision 850 (11-08): 500 concurrent jobs is
 the only real limit, so only one metric can read OVER. It prints `ciguard=ok`,

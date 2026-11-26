@@ -26,12 +26,15 @@ index_up || { sleep 5; index_up; } || skip "package index unreachable"
 printf 'scrapling[fetchers]\n' > "$tmp/fetchers.in"
 resolve() { local py=$1; shift; uv pip compile --universal --python-version "$py" --no-header --no-annotate -o /dev/null "$@" 2>&1; }
 
-# The scrapling venv is built with a bare `python3`, so its lock must resolve below 3.12
+# The scrapling venv is built with any python 3.11.5+, so its lock must resolve below 3.12
 # (pyee 14 needs 3.12+). 3.11.5 is the lowest the lock reaches: soupsieve 4.0 requires
 # Python 3.11.5 (cssselect 1.6.0 needs 3.11+).
 # The whisper lock only runs under `uv run --python 3.12`.
 rc=0; out=$(resolve 3.11.5 "$tools/requirements-scrapling.txt" "$tmp/fetchers.in") || rc=$?
 if [ "$rc" = 0 ]; then ok "requirements-scrapling.txt resolves with the fetchers extra on python 3.11.5"; else no "requirements-scrapling.txt resolves with the fetchers extra on python 3.11.5 (rc=$rc: $out)"; fi
+repo="$(cd "$here/../../../.." && pwd)"
+if grep -qE 'scrapling venv.*3\.11\.5' "$repo/docs/setup/new-machine.md"; then ok "new-machine.md states python 3.11.5 as the scrapling venv floor"; else no "new-machine.md states python 3.11.5 as the scrapling venv floor"; fi
+if grep -qE '^#.*3\.11\.5' "$tools/requirements-scrapling.txt" && ! grep -qE '^#[[:space:]]+python3 -m venv' "$tools/requirements-scrapling.txt"; then ok "requirements-scrapling.txt venv recipe names python 3.11.5+, not a bare python3"; else no "requirements-scrapling.txt venv recipe names python 3.11.5+, not a bare python3"; fi
 rc=0; out=$(resolve 3.12 "$tools/requirements-whisper.txt") || rc=$?
 if [ "$rc" = 0 ]; then ok "requirements-whisper.txt resolves"; else no "requirements-whisper.txt resolves (rc=$rc: $out)"; fi
 

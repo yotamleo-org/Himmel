@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2034,SC2153,SC2154
 set -uo pipefail
+# shellcheck source=scripts/lib/portable-timeout.sh
+. "$(cd "$(dirname "$0")" && pwd)/../../lib/portable-timeout.sh"
 # shellcheck source=tests/testlib-ready-check.sh
 . "$(cd "$(dirname "$0")" && pwd)/tests/testlib-ready-check.sh"
 

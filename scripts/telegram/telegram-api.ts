@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { basename } from "node:path";
+import { splitParts } from "./chief-route";
 
 const API = (t: string, m: string) => `https://api.telegram.org/bot${t}/${m}`;
 type F = typeof fetch;
@@ -161,8 +162,19 @@ export async function sendMessageResult(token: string, chat_id: number, text: st
   return r.ok ? { ok: true, messageId: r.messageId } : { ok: false, code: r.code, kind: r.kind };
 }
 
+const TELEGRAM_MESSAGE_LIMIT = 4096;
 export async function sendMessage(token: string, chat_id: number, text: string,
     f: F = fetch, sleep: (ms:number)=>Promise<void> = (ms)=>Bun.sleep(ms), receipt?: (messageId: number) => void, replyToMessageId?: number, replyMarkup?: object, format?: boolean): Promise<boolean> {
+  if (text.length <= TELEGRAM_MESSAGE_LIMIT) return sendOneMessage(token, chat_id, text, f, sleep, receipt, replyToMessageId, replyMarkup, format);
+  const parts = splitParts(text);
+  for (let i = 0; i < parts.length; i++) {
+    if (!await sendOneMessage(token, chat_id, parts[i], f, sleep, receipt, i === 0 ? replyToMessageId : undefined, i === parts.length - 1 ? replyMarkup : undefined, format)) return false;
+  }
+  return true;
+}
+
+async function sendOneMessage(token: string, chat_id: number, text: string,
+    f: F, sleep: (ms:number)=>Promise<void>, receipt?: (messageId: number) => void, replyToMessageId?: number, replyMarkup?: object, format?: boolean): Promise<boolean> {
   let html = format ? toTelegramHtml(text) : null;
   for (let attempt = 0; attempt < 5; attempt++) {
     const r = await sendOnce(token, chat_id, html ?? text, { replyToMessageId, replyMarkup }, f, undefined, html !== null);
