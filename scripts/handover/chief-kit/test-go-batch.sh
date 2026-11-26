@@ -125,11 +125,11 @@ STUB
 cat > "$tmp/bus" <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = send ] || exit 2
+case "$3" in "${TMPDIR:-/tmp}"/*) ;; *) exit 2 ;; esac
 cp "$3" "$GB_FIX/bus/$2.msg"
 printf 'send %s\n' "$2" >> "$GB_FIX/sends.log"
 if [ "${GB_BUS_MODE:-ok}" = fail ]; then
     tok=$(sed -n 's/^Your token `\(.*\)`\.$/\1/p' "$3")
-    case "$3" in "${TMPDIR:-/tmp}"/*) ;; *) exit 2 ;; esac
     printf 'bus: rejected token %s: %s\n' "$tok" "$(tr '\n' ' ' < "$3")" >&2; exit 1
 fi
 echo "sent #7 to $2"

@@ -425,7 +425,6 @@ const WORKER_FACING_DOCS = ['docs/handover/worker-brief-template.md', 'docs/hand
 const MERGE_ANCHOR = '/home/u/himmel';
 const CHIEF_RENDERED_ALLOW = resolveProfile(REG, 'chief', { installed: [] }).permissions?.allow ?? [];
 const WORKER_RENDERED_ALLOW = [...ALLOW, ...resolveProfile(REG, 'worker-impl', { installed: [], anchor: MERGE_ANCHOR }).permissions.allow];
-// the worker message go-deliver.sh's gd_message prints: `GO <pr> <head> - merge with: bash %q...`, the first %q being the anchor path
 function mergePrintfCommands() {
   const out = [];
   for (const f of printingShellFiles()) {

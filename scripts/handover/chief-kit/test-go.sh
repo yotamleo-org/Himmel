@@ -1278,6 +1278,7 @@ for cwd32 in "$NOWHERE32" "$DECOY32" "$READY_REPO"; do
   check "cwd ${cwd32##*/}: the GO is written" "$(test -f "$ROOT32/.locks/go/77.$SHA" && echo yes)" "yes"
 done
 
+unset CENSUS33_SLEEP CENSUS33_RC CENSUS33 BUS33_MODE BUS33_TOK BUS_NAME33 SCRIPT33
 TOK33=CJ-N1-b07851f7; BTOK33=CJ-N1-aaaa1111; H833="${SHA:0:8}"
 STEM33=HIMMEL-1-N1-go-s1-2026-11-26; STEM33B=HIMMEL-1-N1b-go-s1-2026-11-26; STEM33N2=HIMMEL-2-N2-go-s1-2026-11-26
 ANCHOR33="$(cd "$HERE/../../.." && pwd)"
@@ -1373,7 +1374,7 @@ check "GD4e: exit 0 with no record number -> bus-failed, redacted" "$(line33 1)"
 check "GD4e: no token outside the SENDMESSAGE line" "$(tokleak33)" "0"
 fx33; mkdir -p "$ROOT33/$VSCOPE"; cp "$C33" "$ROOT33/$VSCOPE/chief-33.md"; cp "${C33%.md}.fleet.json" "$ROOT33/$VSCOPE/chief-33.fleet.json"
 BUS_NAME33=chief-33 go33 --fix-main-red 9 42 "$SHA"
-check "GD4c: a FIX-GO with a resolvable chief doc: the fix-GO file is written" "$(test -f "$ROOT33/.locks/go/fix-main-red.42.$SHA.9" && echo yes)" "yes"
+check "GD4c: a FIX-GO with a resolvable chief doc: exit 0, the fix-GO file is written" "$rc33|$(test -f "$ROOT33/.locks/go/fix-main-red.42.$SHA.9" && echo yes)" "0|yes"
 check "GD4c: no bus record and no SENT or NOT-SENT line" "$(nrec33)|$(grep -cE '^(SENT|NOT-SENT) ' <<< "$out33")" "0|0"
 if command -v timeout >/dev/null 2>&1; then
   fx33; t33=$SECONDS; BUS33_MODE='sleep' go33 --doc "$C33" --contract yes 42 "$SHA"; t33=$((SECONDS - t33))
