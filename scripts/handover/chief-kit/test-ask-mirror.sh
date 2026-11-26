@@ -158,7 +158,7 @@ export ASK_MIRROR_TEST_FAIL_FIRST=1
 run chief-sid "$(printf 'Needs you: R11 one.\n\nNeeds you: R11 two.\n\nNeeds you: R11 three.\n\nNeeds you: R11 four.')"
 unset ASK_MIRROR_TEST_FAIL_FIRST
 check "R11 four calls" "$(ncalls)" "4"
-check "R11 the first call keeps the receipt wait, the three later ones carry 0" "$(tr '\n' ' ' < "$WAITS")" "unset 0 0 0 "
+check "R11 the first call keeps the receipt wait, the three later ones carry 0" "$(tr '\n' ' ' < "$TMP/waits.log")" "unset 0 0 0 "
 check "R11 the first block has an owed row" "$(owed_rows 'R11 one')" "1"
 check "R11 the later blocks have none" "$(owed_rows 'R11 [ttf]')" "0"
 
