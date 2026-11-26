@@ -229,19 +229,23 @@ export function registerTransition(program: Command): void {
     .action(async (key: string, status: string, options: { version: boolean; proof?: string; proofBucket?: string; proofDecision?: string }) => {
       const proofArgs = [options.proof, options.proofBucket, options.proofDecision];
       if (proofArgs.some(Boolean) && !proofArgs.every(Boolean)) throw new Error('--proof, --proof-bucket and --proof-decision are required together');
-      const proof = async (mode: '--check' | '--settle', unstamped?: string) => {
+      const proof = async (mode: '--check' | '--settle', unstamped?: string, decisionHash?: string) => {
         const issue = await request<MirrorIssue & { fields: { status?: { name?: string; statusCategory?: { key?: string } } } }>(
           'GET', `/issue/${key}?fields=description,status`);
         if (issue.fields.description === undefined) throw new Error('proof: current requirements unreadable');
         const mirror = renderIssue(issue, []);
         const output = execFileSync('python3', [fileURLToPath(new URL('../../../handover/chief-kit/proof-validate.py', import.meta.url)),
-          '--bucket', options.proofBucket!, mode, options.proof!, '--decision', options.proofDecision!, '--current-stdin'],
+          '--bucket', options.proofBucket!, mode, options.proof!, '--decision', options.proofDecision!, '--current-stdin',
+          ...(decisionHash ? ['--decision-hash', decisionHash] : [])],
           { input: JSON.stringify({ key, mirror, status: issue.fields.status?.name, category: issue.fields.status?.statusCategory?.key, unstamped }), encoding: 'utf8', timeout: 100_000 }); // the validator's remainder read has one 90 s budget (PROOF_REMAINDER_BUDGET_SECS); it refuses inside it, so the wait must outlast it
-        return JSON.parse(output) as { closed?: boolean; verdict?: string; reconciliation?: string | null; remainder?: string[] };
+        return JSON.parse(output) as { closed?: boolean; verdict?: string; decision_hash?: string; reconciliation?: string | null; remainder?: string[] };
       };
+      let checkedHash: string | undefined;
       if (options.proof) {
         const checked = await proof('--check');
         if (checked.closed) { console.log(`${key} proof action ${options.proof} already discharged`); return; }
+        if (!/^[0-9a-f]{64}$/.test(checked.decision_hash ?? '')) throw new Error('proof: the check returned no decision hash');
+        checkedHash = checked.decision_hash;
         if (status.toLowerCase() !== (checked.verdict === 'CLOSE' ? 'done' : 'to do')) throw new Error('proof decision requires Done for CLOSE or To Do for KEEP');
       }
       let result: TransitionResult;
@@ -257,7 +261,7 @@ export function registerTransition(program: Command): void {
       if (options.proof) {
         let settled: Awaited<ReturnType<typeof proof>>;
         try {
-          settled = await proof('--settle', result.unstamped);
+          settled = await proof('--settle', result.unstamped, checkedHash);
         } catch (e) {
           // The move already happened and nothing moves back: say where the ticket stands, why the validation did not settle, and the command that finishes it.
           const why = String((e as { stderr?: unknown }).stderr || (e as Error).message).trim();

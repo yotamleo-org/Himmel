@@ -141,6 +141,17 @@ class TransitionFlow(LoopbackFlow):
         self.assertEqual(len([r for r in self.rows() if r.get('action') == 'requirements-reconciliation']), 1)
         self.assertFalse(any(r['op'] == 'close' for r in self.rows()))
 
+    def test_actual_cli_decision_swapped_after_the_post_is_not_settled(self):
+        keep = {'actor': 'proof', 'capability': 'read-only proof worker', 'text': 'Run the missing positive control',
+                'due': '2026-11-20', 'wake': 'after station update'}
+        self.after_post = lambda: self.change_decision(verdict='KEEP', next=keep)
+        result = self.cli(status='Done')
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn('NOT settled', result.stderr)
+        self.assertIn('decision changed since the check', result.stderr)
+        self.assertEqual(self.status, 'Done')
+        self.assertEqual(len(self.rows()), 1)
+
     def test_actual_cli_exit3_retains_done_and_owned_version_debt(self):
         (self.b / 'admissions.jsonl').write_text(json.dumps(dict(ts='t', version='v1', key='HIMMEL-9848', kind='deferral', actor='fixture')) + '\n')
         result = self.cli(stamp=True)

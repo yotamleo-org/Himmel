@@ -53,12 +53,12 @@ class ChiefDecision(unittest.TestCase):
             'ancestry': 'main=' + 'a'*40 + ' includes the candidate; station is not applicable',
             'rationale': 'Chief reviewed each actual requirement and three empty reads.'}))
 
-    def decide(self, mode='--check', status='Done', env=None, action_id='o1', **extra):
+    def decide(self, mode='--check', status='Done', env=None, action_id='o1', decision_hash=None, **extra):
         data = {'key': 'HIMMEL-9848', 'description': self.requirements + '\n', 'status': status,
                 'category': 'done' if status == 'Done' else 'new', **extra}
         return subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b), mode, action_id,
-            '--decision', str(self.decision), '--current-stdin'], input=json.dumps(data), text=True,
-            capture_output=True, timeout=5, env={**os.environ, **(env or {})})
+            '--decision', str(self.decision), '--current-stdin', *(['--decision-hash', decision_hash] if decision_hash else [])],
+            input=json.dumps(data), text=True, capture_output=True, timeout=5, env={**os.environ, **(env or {})})
 
     def change_decision(self, **extra):
         self.decision.write_text(json.dumps({**json.loads(self.decision.read_text()), **extra}))
@@ -1683,6 +1683,125 @@ class ChiefDecision(unittest.TestCase):
         r = self.decide('--check', env=env)
         self.assertNotEqual(r.returncode, 0, r.stdout)
         self.assertIn('PR #77', r.stderr)
+
+    KEEP_NEXT = {'actor': 'worker', 'capability': 'code worker', 'text': 'Finish the rest', 'due': '2026-12-01', 'wake': 'worker done'}
+
+    def checked_hash(self):
+        r = self.decide('--check')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)['decision_hash']
+
+    def ledger_bytes(self):
+        return (self.b / 'owed.jsonl').read_bytes()
+
+    def test_a_decision_swapped_after_the_check_is_refused_before_any_write(self):
+        checked = self.checked_hash()
+        self.change_decision(verdict='KEEP', rationale='edited while the Jira request was in flight', next=self.KEEP_NEXT)
+        before = self.ledger_bytes()
+        r = self.decide('--settle', decision_hash=checked)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('decision changed since the check', r.stderr)
+        self.assertEqual(self.ledger_bytes(), before)
+
+    def test_a_settle_with_the_checked_hash_settles_and_a_malformed_hash_is_refused(self):
+        checked = self.checked_hash()
+        bad = self.decide('--settle', decision_hash='not-a-hash')
+        self.assertNotEqual(bad.returncode, 0, bad.stdout)
+        self.assertEqual(len(self.rows()), 1)
+        r = self.decide('--settle', decision_hash=checked)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual([row['outcome']['decision_hash'] for row in self.rows() if row['op'] == 'close'], [checked])
+
+    def test_a_keep_never_settles_on_a_done_ticket_and_writes_nothing(self):
+        self.change_decision(verdict='KEEP', next=self.KEEP_NEXT)
+        before = self.ledger_bytes()
+        r = self.decide('--settle', status='Done')
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn('KEEP', r.stderr)
+        self.assertEqual(self.ledger_bytes(), before)
+        self.assertEqual(self.decide('--settle', status='To Do').returncode, 0)
+
+    def test_the_next_step_row_carries_the_closed_parents_decision_hash(self):
+        self.change_decision(verdict='KEEP', next=self.KEEP_NEXT)
+        digest = self.module().hashlib.sha256(self.decision.read_bytes()).hexdigest()
+        self.assertEqual(self.decide('--settle', status='To Do').returncode, 0)
+        step = [row for row in self.rows() if row.get('action') == 'next-step'][0]
+        self.assertEqual(step['decision_hash'], digest)
+        self.assertEqual([row['outcome']['decision_hash'] for row in self.rows() if row['op'] == 'close'], [digest])
+
+    def test_a_worker_step_appended_during_the_remainder_read_stops_the_close(self):
+        env = self.world()
+        self.partial(77, self.OWED_PROOF)
+        armed = self.live / 'armed'
+        (self.live / 'gh').write_text('#!/usr/bin/env bash\n[ -e "' + str(armed) + '" ] && bash ' + str(HERE / 'owe.sh') + ' add --bucket ' + str(self.b) +
+                                      ' --chief chief --kind step --key HIMMEL-9848 --text "Implement the late accepted case" '
+                                      '--metadata \'{"actor":"worker","action":"next-step"}\' >/dev/null\ncat "$PR_BODY_DIR/$3"\nexit 0\n')
+        self.assertEqual(self.decide('--check', env=env).returncode, 0)
+        armed.write_text('')
+        r = self.decide('--settle', env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('Implement the late accepted case', ' '.join(row.get('text', '') for row in self.rows()))
+        self.assertNotIn('o1', self.closed_refs())
+        self.assertEqual(json.loads(r.stdout)['closed'], False)
+
+    def test_an_oversize_outcome_is_refused_at_the_check_and_settle_writes_nothing(self):
+        self.add_row('proof step to discharge', actor='proof')
+        row = self.pending_with(self.evidence.read_text() + '| second | MET | main=' + 'a' * 40 + ' | PASS yes |\n')
+        self.assertTrue(row.get('owed_refs'))
+        self.change_decision(rationale='a' * (560 * 1024))
+        before = self.ledger_bytes()
+        for mode in ('--check', '--settle'):
+            r = self.decide(mode, action_id=row['id'])
+            self.assertNotEqual(r.returncode, 0, r.stdout)
+            self.assertIn('1 MiB', r.stderr)
+            self.assertEqual(self.ledger_bytes(), before)
+
+    def test_a_closed_requirements_reconciliation_is_never_returned_as_the_owner(self):
+        changed = self.requirements.replace('two spaces', 'different obligation')
+        first = self.decide('--settle', description=changed)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        step = json.loads(first.stdout)['reconciliation']
+        self.close_row(step)
+        before = self.ledger_bytes()
+        again = self.decide('--settle', description=changed)
+        self.assertNotEqual(again.returncode, 0, again.stdout)
+        self.assertIn(step, again.stderr)
+        self.assertIn('already closed', again.stderr)
+        self.assertEqual(self.ledger_bytes(), before)
+
+    def test_a_retry_over_a_closed_row_syncs_the_ledger_before_it_answers(self):
+        stub = self.b / 'stubbin'
+        stub.mkdir()
+        log = self.b / 'fsync.log'
+        flag = self.b / 'failed-once'
+        (stub / 'python3').write_text('#!/bin/bash\nif [ "$1" = -c ] && [[ "$2" == *os.fsync* ]]; then echo sync >> ' + str(log) + '\n'
+                                      '  if [ ! -e ' + str(flag) + ' ]; then touch ' + str(flag) + '; exit 1; fi\nfi\nexec ' + shutil.which('python3') + ' "$@"\n')
+        (stub / 'python3').chmod(0o755)
+        env = {'PATH': str(stub) + ':' + os.environ['PATH']}
+        first = self.decide('--settle', env=env)
+        self.assertNotEqual(first.returncode, 0, first.stdout)
+        self.assertEqual(log.read_text().count('sync'), 1)
+        retry = self.decide('--settle', env=env)
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(json.loads(retry.stdout), {'id': 'o1', 'closed': True})
+        self.assertEqual(log.read_text().count('sync'), 2)
+        self.assertEqual(len([row for row in self.rows() if row['op'] == 'close']), 1)
+
+    def replay(self, label):
+        return subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b), '--label', label, '--message-stdin', '--mirror', str(self.mirror)],
+                              input='- 10:00 WRAPPED — proof HIMMEL-9848 verdict=CLOSE evidence=' + str(self.evidence) + '\n', text=True, capture_output=True)
+
+    def test_a_replay_with_the_brief_gone_returns_the_stored_validation(self):
+        stored = self.rows()[0]
+        label = stored['source_label']
+        for present in (True, False):
+            with self.subTest(brief_present=present):
+                if not present:
+                    self.doc.unlink()
+                r = self.replay(label)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(r.stdout.strip(), 'PROOF-RECORDED HIMMEL-9848 ' + stored['id'])
+                self.assertEqual([row['id'] for row in self.rows() if row['op'] == 'add'], [stored['id']])
 
 
 def setUpModule():
