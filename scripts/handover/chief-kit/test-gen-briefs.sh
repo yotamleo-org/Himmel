@@ -838,8 +838,6 @@ done
 # Every worker and chief pays these two files on every turn: keep the always-on core small
 # (rarely-read rules live in docs/handover/worker-sections/ and chief-sections/).
 HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
-# The byte budgets live in scripts/ci/check-doc-byte-budgets.sh, which the merge-time
-# static re-check runs as well.
 if budget_out="$(bash "$HERE/../../ci/check-doc-byte-budgets.sh" docs/handover/worker-preface.md docs/handover/chief-template.md 2>&1)"; then
     printf '%s\n' "$budget_out"
     pass "worker-preface.md and chief-template.md are within their byte budgets"

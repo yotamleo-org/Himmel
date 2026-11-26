@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# Unit suite for scripts/ci/check-doc-byte-budgets.sh.
-#
-# Fixture roots live under mktemp -d with a copy of the script at
-# scripts/ci/. No budget number is written here: each row's max is read from
-# the script's own `ok` lines on 1-byte docs.
-#
 # Usage: bash scripts/ci/test-check-doc-byte-budgets.sh
 # Exit: 0 all passed, 1 at least one case failed.
 set -uo pipefail

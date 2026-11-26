@@ -1647,8 +1647,8 @@ fi
 # sweep finds the pair only after the second merge. This is the one place that
 # sees the live base, so it builds the merge of the freshly fetched base tip and
 # the certified PR head in a throwaway repo (git merge-tree, the same tree the
-# squash will land) and runs the static checks there: the sr_run calls below are
-# the one list. The scripts run are the merge result's own copies, which is what main's sweep
+# squash will land) and runs the static checks there. The scripts run are the
+# merge result's own copies, which is what main's sweep
 # runs after the merge. Fail CLOSED (exit 24, naming every failing check): an
 # unfetchable base or head, a head that is not the certified one, a merge-tree
 # error, a missing check script, a check that times out. A textual conflict is
@@ -1681,10 +1681,8 @@ static_refuse() {
 }
 sr_git() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$sr_tmp/work" -c core.hooksPath=/dev/null "$@"; }
 sr_failed=""
-# sr_run [--refuse-link <path>] <name> <script under the merge result> [args...] —
-# one check, run from the merge result's root with a per-check ceiling; a
-# failing one is named. --refuse-link names a merge-result file the check reads:
-# a symlink there is a failure, recorded before the check runs and never read.
+# sr_run <name> <script under the merge result> [args...] — one check, run from
+# the merge result's root with a per-check ceiling; a failing one is named.
 sr_run() {
     local name script rc=0 link=""
     if [ "$1" = "--refuse-link" ]; then link="$2"; shift 2; fi
