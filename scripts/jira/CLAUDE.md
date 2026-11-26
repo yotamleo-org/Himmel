@@ -49,19 +49,23 @@ helpers.
   live option supplies the Sector and an unknown prefix on a Task, Story or Bug is
   refused (`titleSector`, same file). Open tickets with an empty Sector:
   `JIRA_PROJECT_KEY=HIMMEL bash scripts/jira/empty-sector-check.sh`.
-- `create` refuses a Task, Story or Bug with no placement: `--proposed-version <v>`
-  (labels `proposed-<v>` and files the INTAKE request in the same call; the backlog is
-  `--backlog --proposed-version backlog --why <line>`), `--fix-version`,
-  `--gate`, `--residual-of`, `--follow-up-of` or an inherited blocker version (a Bug may
-  also be Highest). A ticket filed with no version queues an INTAKE request to the one
-  declared release, on stderr (`jira release request`); `--follow-up-of <key>` makes that
-  request ask for an open parent's current version, with a why of facts (parent, status,
-  version) and the same in its evidence; `--remainder` adds that the parent cannot close
-  without this ticket; for a Bug, Task or Story a Done parent in the current unfrozen version is filed into it at its priority, one elsewhere asks for none; a parent in a frozen version still asks
-  for that version (the why says frozen) and the release manager rules (an explicit `--fix-version`, `--backlog`,
-  `--proposed-version` or `--why` wins); a Bug that blocks open work goes
-  into a version, then needs a requested INTAKE. Open tickets
-  that already have no version: `scripts/handover/chief-kit/intake-backfill.sh` prints a
+- `create` places a Task, Story or Bug with no explicit placement by the four rules (`placeByRules`,
+  `src/release/filing-rules.ts`, the same function the door calls) and writes the version in the POST: an operator ask
+  (the `operator-directed` label, the bridge pointer, or verified `--decision --words`) goes to the version it names, else
+  current; a `--remainder` follow-up to its parent's declared version; High and Highest to current; anything else to the
+  backlog (the label `backlog`, no INTAKE). Each placement into a declared version writes an admissions row of kind
+  `filed` (after the operator record, when words were given); stderr prints `jira: placed <KEY> in <v|backlog> by <ground>`.
+  In a frozen current a filer-set label, `--gate critical|regression` and a follow-up of a current parent only propose:
+  no version, the label `proposed-<current>` and an INTAKE (the only filing that queues one). `--proposed-version <v>`
+  names a version only for an operator ask. Explicit placements skip the rules: `--backlog` (needs `--proposed-version
+  backlog --why`, and `--decision --words` for an operator ask), `--fix-version`, `--gate must:<ref>|receipt`,
+  `--blocks`/`--split-from` inheritance, a Done parent in an unfrozen current, a test project. Refusals before the POST:
+  an unreadable or ambiguous declaration, a declared current that differs from Jira's, a ledger and a `frozen:` line
+  that disagree, an unreadable `--follow-up-of` parent, an undeclared named version, words that do not verify, an
+  unwritable admissions ledger. A project no declaration names runs the rules on Jira alone and refuses a proposal.
+  `--follow-up-of <key>` reads the parent first; a Done parent in the current unfrozen version is filed into it at its
+  priority (`create-followup`); an open parent in current makes the follow-up a proposal whose why states only facts.
+  Open tickets that already have no version: `scripts/handover/chief-kit/intake-backfill.sh` prints a
   proposed version for each (dry run; `--commands` adds the lines for one rm-run).
   The model release judge is parked: the door (`src/release/door.ts`) places each INTAKE by fixed rules through
   `placeByRules` (`src/release/filing-rules.ts`); a mild INTAKE goes to the backlog, and a labelled or gated one goes to
@@ -69,9 +73,10 @@ helpers.
   mild). `intake-backfill.sh --unplaced` counts the open tickets with no
   version and no backlog label (read-only; the tick's `unplaced=` and `serious-later=` read it).
 - `create --operator-update <update_id>` (digits only) is the Telegram bridge's pointer to the
-  operator's update: the INTAKE evidence gains `operator_update`, `filed_by: bridge` and `bridge_chat`;
-  no words are recorded. Refused before any Jira call unless `HIMMEL_BRIDGE_SESSION=1` with no worker or
-  RM marker, an INTAKE is owed toward a `--proposed-version`, and `HIMMEL_BRIDGE_CHAT` on the farthest
+  operator's update: it makes the ticket an operator ask, the `filed` row's evidence (and a proposal's INTAKE evidence)
+  gains `operator_update`, `filed_by: bridge` and `bridge_chat`; no words are recorded. Refused before any Jira call
+  unless `HIMMEL_BRIDGE_SESSION=1` with no worker or RM marker, the filing rides on a rules placement (not
+  `--fix-version`, `--backlog`, an Epic, a Subtask or a test project) and `HIMMEL_BRIDGE_CHAT` on the farthest
   marked ancestor (`ancestorValue`, never the command's own env) is a positive id.
 - `edit` that touches description, labels, parent or sector reads the ticket first and
   refuses, before the PUT, any standard error the ticket did not already have. A legacy

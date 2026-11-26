@@ -13,10 +13,10 @@ PR introducing this file).
 
 ## Usage
 
-- Default project (HIMMEL): `jira list`, `jira create --type Story --title "..." --desc-file body.md --labels standalone --proposed-version <v>`
+- Default project (HIMMEL): `jira list`, `jira create --type Story --title "..." --desc-file body.md --labels standalone`
 - Non-default project: pass `--project <KEY>` to any subcommand. Example:
-  `jira create --project LUNA --type Story --title "..." --desc-file body.md --labels standalone --proposed-version <v>`
-- A Task, Story or Bug needs either `--parent <epic>` or `--labels standalone`, a placement (`--proposed-version <v>`, `--fix-version`, or `--backlog --proposed-version backlog --why <line>`), and a body with the seven sections (`jira create --type Task --skeleton` prints them). `--sector` is required only where sectors are configured (`jira.sectorField`).
+  `jira create --project LUNA --type Story --title "..." --desc-file body.md --labels standalone`
+- A Task, Story or Bug needs either `--parent <epic>` or `--labels standalone`, and a body with the seven sections (`jira create --type Task --skeleton` prints them). It needs no placement flag: the four rules place it (an operator ask in the current or a named version, High and Highest in the current version, anything else in the backlog), and `--fix-version` or `--backlog --proposed-version backlog --why <line>` place it by hand. `--sector` is required only where sectors are configured (`jira.sectorField`).
 - Test project: live tests and audits write only to `JIRA_TEST_PROJECT` (HTEST here). Set it with
   `himmelctl config set jira.testProject HTEST`; `jira live-test --json` prints the value in force.
 - Refresh this catalog: run `jira projects` and update the table above.
