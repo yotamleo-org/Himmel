@@ -30,13 +30,26 @@ deny() {
 }
 
 percent_decode() {
-    local rest="$1" out="" ch pct_re='^([^%]*)%([0-9A-Fa-f]{2})(.*)$'
-    while [[ $rest =~ $pct_re ]]; do
-        printf -v ch '%b' "\\x${BASH_REMATCH[2]}"
-        out="${out}${BASH_REMATCH[1]}${ch}"
-        rest="${BASH_REMATCH[3]}"
+    local rest="$1" out="" ch hex
+    while [[ $rest == *%* ]]; do
+        out="${out}${rest%%\%*}"
+        rest="${rest#*\%}"
+        hex="${rest:0:2}"
+        case "$hex" in
+            [0-9A-Fa-f][0-9A-Fa-f]) printf -v ch '%b' "\\x${hex}"; out="${out}${ch}"; rest="${rest:2}" ;;
+            *) out="${out}%" ;;
+        esac
     done
     printf '%s' "${out}${rest}"
+}
+
+match_token() {
+    local re
+    for re in "$default_re" "$extra_re"; do
+        [ -n "$re" ] || continue
+        if [[ $1 =~ $re ]] && [ -n "${BASH_REMATCH[0]}" ]; then found="${BASH_REMATCH[1]:-${BASH_REMATCH[0]}}"; return 0; fi
+    done
+    return 1
 }
 
 input=$(cat 2>/dev/null) || input=""
@@ -48,17 +61,13 @@ else
     [[ $input =~ $esc_re ]] && deny "holds a JSON escape of a printable character, which cannot be checked for a token without jq"
 fi
 [ -n "$scan" ] || scan=$input
-decoded=$(percent_decode "$scan")
 
 found=""
-for text in "$scan" "$decoded"; do
-    for re in "$default_re" "$extra_re"; do
-        [ -n "$re" ] || continue
-        if [[ $text =~ $re ]]; then found="${BASH_REMATCH[1]:-${BASH_REMATCH[0]}}"; break 2; fi
-    done
-done
-[ -n "$found" ] || exit 0
+match_token "$scan" || match_token "$(percent_decode "$scan")" || exit 0
 
-kind="${found%%_*}_"
-case "$found" in github_pat_*) kind="github_pat_" ;; esac
+kind="token"
+case "$found" in
+    github_pat_*) kind="github_pat_" ;;
+    gh[opusr]_*) kind="${found:0:4}" ;;
+esac
 deny "holds a GitHub-token-shaped string (${kind}…)"

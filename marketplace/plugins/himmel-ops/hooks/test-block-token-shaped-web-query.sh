@@ -116,18 +116,25 @@ tok=$(gh_token r "$good_sum")
 PROJ="$TMP/no-checkout" run_case "$(search_payload "x $tok")"
 refused "a checkout without detect-token-in-output.sh still refuses (built-in regex)"
 
-mkdir -p "$TMP/narrowed/scripts/hooks" "$TMP/invalid/scripts/hooks" "$TMP/wider/scripts/hooks" "$TMP/nojq"
+mkdir -p "$TMP/narrowed/scripts/hooks" "$TMP/invalid/scripts/hooks" "$TMP/wider/scripts/hooks" "$TMP/empty/scripts/hooks" "$TMP/plain/scripts/hooks" "$TMP/nojq"
 printf "tok_re='(ghp_[0-9A-Za-z]{99})'\n" >"$TMP/narrowed/scripts/hooks/detect-token-in-output.sh"
 printf "tok_re='(['\n" >"$TMP/invalid/scripts/hooks/detect-token-in-output.sh"
-printf "tok_re='(gh[opusr]_[0-9A-Za-z]{36}|zzq_[0-9]{4})'\n" >"$TMP/wider/scripts/hooks/detect-token-in-output.sh"
+printf "tok_re='(zzq_[0-9]{4})'\n" >"$TMP/wider/scripts/hooks/detect-token-in-output.sh"
+printf "tok_re='(x*)'\n" >"$TMP/empty/scripts/hooks/detect-token-in-output.sh"
+printf "tok_re='(secretword)'\n" >"$TMP/plain/scripts/hooks/detect-token-in-output.sh"
 ln -s "$(command -v cat)" "$TMP/nojq/cat"
 fixtures=0
-for d in narrowed invalid wider; do [ -s "$TMP/$d/scripts/hooks/detect-token-in-output.sh" ] && fixtures=$((fixtures + 1)); done
-assert_eq "the three detector fixtures were written" 3 "$fixtures"
+for d in narrowed invalid wider empty plain; do if [ -s "$TMP/$d/scripts/hooks/detect-token-in-output.sh" ]; then fixtures=$((fixtures + 1)); fi; done
+assert_eq "the five detector fixtures were written" 5 "$fixtures"
 if [ -L "$TMP/nojq/cat" ] && [ -x "$TMP/nojq/cat" ]; then echo "PASS the no-jq PATH holds cat"; else echo "FAIL the no-jq PATH holds cat"; FAILED=$((FAILED + 1)); fi
 tok=$(gh_token r "$good_sum")
 PROJ="$TMP/wider" run_case "$(search_payload "look up zzq_1234")"
 refused "a checkout regex that adds a shape is followed as extra coverage"
+PROJ="$TMP/plain" run_case "$(search_payload "look up secretword")"
+refused "a checkout regex match with no underscore is refused"
+assert_lacks "a checkout regex match with no underscore: message omits the match" "secretword" "$ERR"
+PROJ="$TMP/empty" run_case "$(fetch_payload "https://example.com/lookup?q=${pct}67${tok#g}")"
+refused "a checkout regex that matches the empty string does not hide a percent-encoded token"
 PROJ="$TMP/narrowed" run_case "$(search_payload "x $tok")"
 refused "a checkout whose detector regex is narrowed still refuses (built-in regex)"
 PROJ="$TMP/invalid" run_case "$(search_payload "x $tok")"
@@ -151,6 +158,8 @@ run_nojq "$(printf '{"tool_name":"WebSearch","tool_input":{"query":"x %s%s%su006
 refused "without jq, an escape behind an escaped backslash is still refused"
 
 tok=$(gh_token r "$good_sum")
+run_case "$(fetch_payload "https://example.com/lookup?a=${pct}zz&q=${pct}67${tok#g}")"
+refused "a percent escape after a malformed one is still decoded"
 run_case "$(fetch_payload "https://example.com/a${bs}n${pct}67${tok#g}")"
 refused "a percent escape after a backslash sequence is still decoded"
 run_case "$(fetch_payload "https://example.com/a${bs}c${pct}67${tok#g}")"
