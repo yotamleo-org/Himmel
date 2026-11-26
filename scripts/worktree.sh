@@ -694,7 +694,7 @@ is_ignorable_stray() {
         # WORKER_SESSION_SCRATCH_OK=0 on the --only-allow-unmerged path (the branch never
         # merged): a no-commit worker's scratch may be its only copy, so only
         # the tool churn above stays discardable there.
-        .scratch/*|.himmel-scratch/*|.os-verify-logs-*/*) [ "$WORKER_SESSION_SCRATCH_OK" -eq 1 ] && return 0; return 1 ;;
+        .scratch/*|.himmel-scratch/*|.os-verify-logs-*/*|.base-qmd-check/*|.superpowers/*) [ "$WORKER_SESSION_SCRATCH_OK" -eq 1 ] && return 0; return 1 ;;
         # A case `*` matches "/", so the filename shapes below need an
         # explicit no-slash guard or `.pr-body-notes/design.md` would match.
         */*) return 1 ;;
@@ -809,7 +809,7 @@ classify_worktree() {
     if [ -z "$untracked" ]; then echo "clean"; return 0; fi
     while IFS= read -r u; do
         [ -z "$u" ] && continue
-        if is_ignorable_stray "$u"; then
+        if is_ignorable_stray "$u" || { case "$u" in node_modules|*/node_modules) [ -L "$wt/$u" ] ;; *) false ;; esac; }; then
             strays="${strays:+$strays }$u"
         else
             nonign="${nonign:+$nonign }$u"
