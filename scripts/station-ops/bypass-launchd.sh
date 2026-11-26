@@ -186,6 +186,7 @@ if [ -n "$SERVICE" ]; then
     elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then CHILD_BASE+=(XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR"); fi
     pinned_handover=$(sed -n 's/^handover_dir=//p' "$HOMEDIR/.himmel/state/bypass-service/config" 2>/dev/null | head -n 1)
     [[ "$pinned_handover" =~ ^/[A-Za-z0-9._/@+-]+$ ]] && CHILD_BASE+=(HANDOVER_DIR="$pinned_handover")
+    [ "$(sed -n 's/^worker_tabs=//p' "$HOMEDIR/.himmel/state/bypass-service/config" 2>/dev/null | head -n 1)" = 1 ] && CHILD_BASE+=(HIMMEL_WORKER_SESSION_TABS=1)
     CHILD_BASE+=(TELEGRAM_ACCESS_PATH="$ACCESS" BRIDGE_ROOT="${INBOUND%/inbound.jsonl}")
     if [ -z "$MANAGED" ]; then
         for pass_n in ${BYPASSD_CHILD_PASS:-}; do

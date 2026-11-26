@@ -681,5 +681,62 @@ check "(p6) an unwritable record dir still wakes with rc 0" "0" "$rc"
 chmod 700 "$WORK/ro"
 unset CHIEF_WAIT_PROC
 
+export CHIEF_WAIT_PAGE_TIMEOUT=30
+denials_rise p7 none 'N1:1:SHIP-STEP'
+check "(p7) control: the first SHIP-STEP pages once" "1" "$(pages_n)"
+p7_ts="$(sed -n 's/^ts=//p' "$HIMMEL_DENIAL_ACK_DIR/N1.page" 2>/dev/null)"
+sed -i 's/denials=N1:1:SHIP-STEP/denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox p7b)"
+start "$I" "$WORK/p7b.out" --workers "N1.md"
+wait_hb "$I" || fail "(p7b) no baseline heartbeat"
+sleep 1.2
+sed -i 's/denials=none/denials=N1:1:SHIP-STEP/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(p7) the same worker back in the same unacked state still wakes" "0" "$rc"
+check "(p7) but does not page a second time" "1" "$(pages_n)"
+check "(p7) and keeps the first page record, so the 30-minute clock is not reset" "$p7_ts" "$(sed -n 's/^ts=//p' "$HIMMEL_DENIAL_ACK_DIR/N1.page" 2>/dev/null)"
+printf 'leg=N1\ncount=1\nclass=SHIP-STEP\nts=%s\n' "$(( p7_ts + 100 ))" > "$HIMMEL_DENIAL_ACK_DIR/N1.ack"
+sed -i 's/denials=N1:1:SHIP-STEP/denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox p7c)"
+start "$I" "$WORK/p7c.out" --workers "N1.md"
+wait_hb "$I" || fail "(p7c) no baseline heartbeat"
+sleep 1.2
+sed -i 's/denials=none/denials=N1:1:SHIP-STEP/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(p7) after the operator acked, the same state pages again" "2" "$(pages_n)"
+
+rm -f "$HIMMEL_DENIAL_ACK_DIR/N1.ack"
+p7d_ts="$(sed -n 's/^ts=//p' "$HIMMEL_DENIAL_ACK_DIR/N1.page" 2>/dev/null)"
+mkdir -p "$WORK/p7d"; : > "$WORK/p7d/N1.md"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$WORK/p7d/N1.md" > "$WORK/p7d/chief.fleet.json"
+touch -d "@$(( p7d_ts + 60 ))" "$WORK/p7d/N1.md"
+sed -i 's/denials=N1:1:SHIP-STEP/denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox p7d)"
+start "$I" "$WORK/p7d.out" --workers "N1.md" --workers-from "$WORK/p7d/chief.fleet.json"
+wait_hb "$I" || fail "(p7d) no baseline heartbeat"
+sleep 1.2
+sed -i 's/denials=none/denials=N1:1:SHIP-STEP/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(p7d) an un-acked record and a doc written since: a second park pages again" "3" "$(pages_n)"
+p7e_ts="$(sed -n 's/^ts=//p' "$HIMMEL_DENIAL_ACK_DIR/N1.page" 2>/dev/null)"
+touch -d "@$(( p7e_ts - 100 ))" "$WORK/p7d/N1.md"
+sed -i 's/denials=N1:1:SHIP-STEP/denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox p7e)"
+start "$I" "$WORK/p7e.out" --workers "N1.md" --workers-from "$WORK/p7d/chief.fleet.json"
+wait_hb "$I" || fail "(p7e) no baseline heartbeat"
+sleep 1.2
+sed -i 's/denials=none/denials=N1:1:SHIP-STEP/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(p7e) control: a doc not written since the record keeps the park held, no new page" "3" "$(pages_n)"
+sed -i 's/denials=N1:1:SHIP-STEP/denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox p7f)"
+HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW=$(( p7e_ts + 86401 )) start "$I" "$WORK/p7f.out" --workers "N1.md"
+wait_hb "$I" || fail "(p7f) no baseline heartbeat"
+sleep 1.2
+sed -i 's/denials=none/denials=N1:1:SHIP-STEP/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(p7f) no doc found and the record older than 24 h: a second park pages again" "4:yes" "$(pages_n):$([ "$(sed -n 's/^ts=//p' "$HIMMEL_DENIAL_ACK_DIR/N1.page" 2>/dev/null)" != "$p7e_ts" ] && echo yes)"
+export CHIEF_WAIT_PAGE_TIMEOUT=2
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
