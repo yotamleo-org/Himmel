@@ -838,16 +838,15 @@ done
 # Every worker and chief pays these two files on every turn: keep the always-on core small
 # (rarely-read rules live in docs/handover/worker-sections/ and chief-sections/).
 HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
-# worker-preface.md carries the adapter-repo stop-at-READY rule, so its budget is 12800.
-# chief-template.md carries the AG-UI board pointer in step 12 and the item 19 suite-evidence
-# note, so its budget is 17400; worker-preface.md's 12800 was raised to 12900 for the same change,
-# and to 13100 for the write-barrier bullet. chief-template.md's was raised to 18000 for the
-# two lines that make a chief read the direction companion files in its first batch.
-for budget in "worker-preface.md:13500" "chief-template.md:19000"; do
-    f="${budget%%:*}"; max="${budget##*:}"
-    size="$(wc -c < "$HANDOVER_DOCS/$f" 2>/dev/null | tr -d '[:space:]')"
-    [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"
-done
+# The byte budgets live in scripts/ci/check-doc-byte-budgets.sh, which the merge-time
+# static re-check runs as well.
+if budget_out="$(bash "$HERE/../../ci/check-doc-byte-budgets.sh" docs/handover/worker-preface.md docs/handover/chief-template.md 2>&1)"; then
+    printf '%s\n' "$budget_out"
+    pass "worker-preface.md and chief-template.md are within their byte budgets"
+else
+    printf '%s\n' "$budget_out"
+    fail "worker-preface.md or chief-template.md is over its byte budget or cannot be measured"
+fi
 
 tr '\n' ' ' < "$HANDOVER_DOCS/worker-preface.md" | grep -Eq 'ONE +turn.*text-only turn' \
     && pass "worker-preface.md tells a worker to batch tool calls into ONE turn and skip text-only turns" \
