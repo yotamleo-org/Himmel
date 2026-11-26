@@ -392,6 +392,7 @@ export async function pair(peer: string, name: string | undefined, card: string 
     station = (name ?? (await deps.ask("Our station name (lowercase letters, digits and dashes): "))).trim();
     checkStationName(station, deps);
     const fresh = loadRaw();
+    if (fresh.self?.stationName !== undefined && fresh.self.stationName !== station) refuse(`our station name is already ${fresh.self.stationName}`);
     fresh.self = { ...(fresh.self ?? {}), stationName: station };
     replaceJson(peersFile(), fresh);
     deps.out(`our station name is ${station}`);
