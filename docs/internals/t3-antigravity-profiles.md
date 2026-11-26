@@ -125,7 +125,7 @@ no model; the thread's `modelSelection` names it, as every T3 thread does.
 rc: 0 ok (`--list` too); 1 `--check` not satisfied; 2 usage, missing `jq`, malformed registry or JSON input,
 unknown `fromProfiles` name, a reserved `--list` profile name, pinned fetch or verify failure, backstop failure,
 a symlinked profile `antigravity-acp` or a token path that is not a file or link; 3 fence refusal.
-`--smoke`: 0 every line PASS, 1 any FAIL, 2 malformed registry data (the same rc 2 causes as above). `--flag-on`: 0 flag on, 1 off, 2 bad value or unreadable reader.
+`--smoke`: 0 every line PASS, 1 any FAIL, 2 malformed registry data (a bad profile field or registry file). `--flag-on`: 0 flag on, 1 off, 2 bad value or unreadable reader.
 
 Env seams (tests): `T3_AP_REGISTRY`, `T3_AP_PLUGIN_PROFILES`, `T3_AP_BACKSTOP`, `T3_AP_ADAPTER`,
 `HIMMEL_AGY_SKILL_CACHE`; `HOME` and `T3CODE_HOME` as usual. Modes also include `--smoke` and `--flag-on`

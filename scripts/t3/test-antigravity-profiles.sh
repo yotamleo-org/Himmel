@@ -553,8 +553,12 @@ M="$(home_of)/config/mcp_config.json"
 chmod 644 "$M"
 mcp_env bash "$GEN" --check --profile design >/dev/null 2>&1; rc=$?
 expect_eq "39 check fails on a byte-identical mcp_config.json with mode 644" "$rc" 1
-mcp_env bash "$GEN" --apply --profile design >/dev/null 2>&1
+out="$(mcp_env bash "$GEN" --apply --profile design 2>&1)"
 expect_eq "39 apply sets mode 600 on an identical file" "$(mode_of "$M")" 600
+expect_ok "39 a mode repair prints WROTE, not UNCHANGED" grep -q "^WROTE .*mcp_config.json" <<<"$out"
+chmod 644 "$M"
+mcp_env T3_AP_ADAPTER="$T/adp-deny/antigravity-hook-adapter.sh" bash "$GEN" --smoke --profile design 2>&1 | grep -q '^FAIL mcp: .*mode 644'
+expect_eq "39 smoke FAILs a byte-identical mcp_config.json with mode 644" "$?" 0
 
 fresh
 bash "$GEN" --apply --profile design >/dev/null 2>&1

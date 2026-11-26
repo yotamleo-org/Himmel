@@ -432,9 +432,11 @@ run_smoke() {
         mc="$home/config/mcp_config.json"
         build_mcp_json "$p" "$WORK/$p.mcp.json"
         if [ -L "$mc" ]; then
-            smoke_line FAIL mcp "config/mcp_config.json is a symlink (run --apply --profile $p)"
+            smoke_line FAIL mcp "config/mcp_config.json is a symlink; replace it with a regular file (--apply does when the registry manages MCP servers)"
         elif [ -s "$WORK/$p.mcp.json" ] && ! cmp -s "$WORK/$p.mcp.json" "$mc" 2>/dev/null; then
             smoke_line FAIL mcp "config/mcp_config.json is missing or differs from the registry's MCP servers (run --apply --profile $p)"
+        elif [ -s "$WORK/$p.mcp.json" ] && [ "$(mode_of "$mc")" != 600 ]; then
+            smoke_line FAIL mcp "config/mcp_config.json is mode $(mode_of "$mc"), not 600 (run --apply --profile $p)"
         elif [ ! -s "$mc" ]; then
             smoke_line PASS mcp "no MCP servers in the profile home (T3 serves its own t3-code server to each thread)"
         elif ! jq -e '(.mcpServers // {}) | type == "object"' "$mc" >/dev/null 2>&1; then
@@ -550,16 +552,14 @@ for p in $SELECTED; do
             share_login "$id" "$home"
             if [ -s "$WORK/$p.mcp.json" ]; then
                 mcur="$home/config/mcp_config.json"
-                if [ -f "$mcur" ] && [ ! -L "$mcur" ] && cmp -s "$WORK/$p.mcp.json" "$mcur"; then
-                    chmod 600 "$mcur" || die 2 "cannot set mode 600 on $mcur"
+                if [ -f "$mcur" ] && [ ! -L "$mcur" ] && cmp -s "$WORK/$p.mcp.json" "$mcur" && [ "$(mode_of "$mcur")" = 600 ]; then
                     echo "UNCHANGED $mcur"
                 else
                     atomic_write "$mcur" < "$WORK/$p.mcp.json" || die 2 "cannot write $mcur"
                     echo "WROTE $mcur"
                 fi
             fi
-            if [ -f "$cur" ] && [ ! -L "$cur" ] && cmp -s "$new" "$cur"; then
-                chmod 600 "$cur" || die 2 "cannot set mode 600 on $cur"
+            if [ -f "$cur" ] && [ ! -L "$cur" ] && cmp -s "$new" "$cur" && [ "$(mode_of "$cur")" = 600 ]; then
                 echo "UNCHANGED $cur"
             else
                 atomic_write "$cur" < "$new" || die 2 "cannot write $cur"
