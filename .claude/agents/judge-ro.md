@@ -1,7 +1,7 @@
 ---
 name: judge-ro
 description: Read-only judge for a chief; use it, not Explore.
-tools: Read, Grep, Glob, Bash, Write
+tools: Read, Grep, Glob, Bash, Write, WebFetch, WebSearch
 model: opus
 effort: high
 ---

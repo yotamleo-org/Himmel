@@ -1,0 +1,4 @@
+{"timestamp":"2026-11-25T10:20:10.000Z","sessionId":"s1","message":{"content":[{"type":"tool_result","is_error":true,"content":"Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Out-of-Place Publication] LEAKCHECK-COMMAND-TEXT-1"}]}}
+{"timestamp":"2026-11-25T10:22:00.000Z","sessionId":"s1","message":{"content":[{"type":"tool_result","is_error":false,"content":"all good"}]}}
+{"timestamp":"2026-11-25T10:25:00.000Z","sessionId":"s2","message":{"content":[{"type":"tool_result","is_error":true,"content":"PreToolUse:Bash hook error: [command hook 5]: guard-pr-check-literal: the gate path does not resolve to this root LEAKCHECK-COMMAND-TEXT-2"}]}}
+{"timestamp":"2026-11-25T08:00:00.000Z","sessionId":"s9","message":{"content":[{"type":"tool_result","is_error":true,"content":"Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Unauthorized Persistence] before the window"}]}}

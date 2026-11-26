@@ -1,0 +1,3 @@
+# next-dispatchable: 1 To Do candidate(s), 1 collision-free, open PRs unknown (gh failed)
+LOCAL	FIX-100	High	v1.1.3	fixture ticket one	files=scripts/a.sh
+# disposition FIX-100 listed LOCAL

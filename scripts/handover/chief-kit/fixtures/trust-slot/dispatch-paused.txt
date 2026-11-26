@@ -1,0 +1,1 @@
+# quota-pause QUOTA-PAUSE graphql bucket under the floor: the unread rows are unknown, not empty
