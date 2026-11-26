@@ -45,6 +45,7 @@ value that isn't backed by one of these links.
 | `npm` | 11+ (needs node `^20.17.0 \|\| >=22.9.0`) | Lockfile audit hooks + plugin install. NOT bundled on Debian/Ubuntu, and apt's own `npm` is 9.2 — old enough that its expired registry key fails `npm audit signatures` on every push. See the Linux table. |
 | `bun` | 1.0+ | Runs the handover armed-resume resolver, the qmd search index, the Telegram bridge, and the obsidian-triage tools. Install: `curl -fsSL https://bun.sh/install \| bash` |
 | `python3` | 3.10+ | `realpath -m` fallback (macOS) + JSON helpers in 28 scripts. PEP 668 (Ubuntu 24.04+) blocks system pip — use `uv` or `pipx` for pre-commit. |
+| `python3` (scrapling venv) | 3.11.5+ | The optional `~/.himmel/scrapling-venv` (`requirements-scrapling.txt`, the `local-headless` scrape backend) needs a higher floor than the 3.10+ above: its hashed lock does not install on 3.10 (`cssselect` 1.6.0 needs 3.11+, `soupsieve` 4.0 needs 3.11.5). Build that venv with a 3.11.5+ python (e.g. `python3.12 -m venv ~/.himmel/scrapling-venv`); on a 3.10 box the backend falls through to jina. |
 | `jq` | 1.6+ | Hook input parsing (13 scripts incl. all Claude PreToolUse hooks) |
 | `gh` | 2.x | Issue + PR + CR workflows (12 scripts) |
 | `mktemp` | BSD or GNU (both fine) | 19 scripts |

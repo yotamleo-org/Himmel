@@ -32,6 +32,9 @@ resolve() { local py=$1; shift; uv pip compile --universal --python-version "$py
 # The whisper lock only runs under `uv run --python 3.12`.
 rc=0; out=$(resolve 3.11.5 "$tools/requirements-scrapling.txt" "$tmp/fetchers.in") || rc=$?
 if [ "$rc" = 0 ]; then ok "requirements-scrapling.txt resolves with the fetchers extra on python 3.11.5"; else no "requirements-scrapling.txt resolves with the fetchers extra on python 3.11.5 (rc=$rc: $out)"; fi
+repo="$(cd "$here/../../../.." && pwd)"
+if grep -qE 'scrapling venv.*3\.11\.5' "$repo/docs/setup/new-machine.md"; then ok "new-machine.md states python 3.11.5 as the scrapling venv floor"; else no "new-machine.md states python 3.11.5 as the scrapling venv floor"; fi
+if grep -qE '^#.*3\.11\.5' "$tools/requirements-scrapling.txt" && ! grep -qE '^#[[:space:]]+python3 -m venv' "$tools/requirements-scrapling.txt"; then ok "requirements-scrapling.txt venv recipe names python 3.11.5+, not a bare python3"; else no "requirements-scrapling.txt venv recipe names python 3.11.5+, not a bare python3"; fi
 rc=0; out=$(resolve 3.12 "$tools/requirements-whisper.txt") || rc=$?
 if [ "$rc" = 0 ]; then ok "requirements-whisper.txt resolves"; else no "requirements-whisper.txt resolves (rc=$rc: $out)"; fi
 
