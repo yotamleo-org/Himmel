@@ -56,7 +56,7 @@ if [ "$rc" -eq 0 ]; then pass "(a) real tree passes"; else fail "(a) real tree r
 r="$(fresh_root b)"
 sed 's/block-docker-privesc\.sh+//' "$r/.codex/hooks.json" > "$r/x" && mv "$r/x" "$r/.codex/hooks.json"
 out="$(run "$r")"; rc=$?
-if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'block-docker-privesc'; then
+if [ "$rc" -eq 1 ] && grep -q 'block-docker-privesc' <<< "$out"; then
     pass "(b) lane missing a guard another has, no recorded reason: FAIL names the guard"
 else
     fail "(b) rc=$rc out=$out"
@@ -78,7 +78,7 @@ if [ "$rc" -eq 1 ]; then pass "(d2) empty reason fails"; else fail "(d2) rc=$rc 
 r="$(fresh_root e)"
 sed 's/block-docker-privesc\.sh+/block-docker-privesc.sh+zz-fixture-guard.sh+/' "$r/.codex/hooks.json" > "$r/x" && mv "$r/x" "$r/.codex/hooks.json"
 out="$(run "$r")"; rc=$?
-if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'zz-fixture-guard'; then
+if [ "$rc" -eq 1 ] && grep -q 'zz-fixture-guard' <<< "$out"; then
     pass "(e) wired guard with no row fails"
 else
     fail "(e) rc=$rc out=$out"
@@ -87,7 +87,7 @@ fi
 r="$(fresh_root f)"
 set_cell "$r" "guard:block-docker-privesc.sh" 2 "structural: stale reason"
 out="$(run "$r")"; rc=$?
-if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'block-docker-privesc'; then
+if [ "$rc" -eq 1 ] && grep -q 'block-docker-privesc' <<< "$out"; then
     pass "(f) reason recorded for a wired guard fails"
 else
     fail "(f) rc=$rc out=$out"
