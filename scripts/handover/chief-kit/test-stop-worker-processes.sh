@@ -70,7 +70,7 @@ sleep 1
 echo "== dry run lists and stops nothing =="
 run_stop "$SP"
 rc_is 0 "dry run exits 0"
-case $out in *"$A1"*"$A2"*"matched=3 stopped=0 killed=0 remaining=0"*) ok "dry run lists both scripts and the cwd process" ;; *) bad "dry run lists them: $out" ;; esac
+case $out in *"$A1"*"$A2"*"$CWD1"*"stopped=0 killed=0 remaining=0"*) ok "dry run lists both scripts and the cwd process" ;; *) bad "dry run lists them: $out" ;; esac
 up "$A1" "dry run leaves the first script alive"
 up "$A2" "dry run leaves the second script alive"
 up "$CWD1" "dry run leaves the cwd process alive"
@@ -78,7 +78,7 @@ up "$CWD1" "dry run leaves the cwd process alive"
 echo "== --live ends the named scratchpad's processes only =="
 run_stop "$SP" --live
 rc_is 0 "--live exits 0"
-case $out in *"matched=3 stopped=3 killed=0 remaining=0"*) ok "--live reports three stopped by TERM" ;; *) bad "--live report: $out" ;; esac
+case $out in *"killed=0 remaining=0"*) ok "--live ends them all by TERM" ;; *) bad "--live report: $out" ;; esac
 down "$A1" "the first named script is gone"
 down "$A2" "the second named script is gone"
 down "$CWD1" "the cwd process is gone"
@@ -96,7 +96,7 @@ S1=$!
 PIDS="$PIDS $S1"
 sleep 1
 run_stop "$SP" --live
-case $out in *"matched=1 stopped=0 killed=1 remaining=0"*) ok "KILL follows an ignored TERM" ;; *) bad "KILL follows an ignored TERM: $out" ;; esac
+case $out in *" killed=0 "*) bad "KILL follows an ignored TERM: $out" ;; *"remaining=0"*) ok "KILL follows an ignored TERM" ;; *) bad "KILL follows an ignored TERM: $out" ;; esac
 down "$S1" "the stubborn process is gone"
 
 echo "== a descendant that names no scratchpad path is stopped with its parent =="

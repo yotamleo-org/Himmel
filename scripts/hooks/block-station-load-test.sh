@@ -61,7 +61,7 @@ cmd=${rest#*$'\n'}
 
 CAP=2
 NL=$'\n'
-CMD_POS="(^|[;&|(\`{'\"${NL}])[[:space:]]*((sudo|env|nice|nohup|exec|command|time|timeout|do|then|else|elif|if|while|until|!|-[^[:space:]]+|[0-9]+[smhd]?|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*([^[:space:];&|]*/)?"
+CMD_POS="(^|[;&|(\`{${NL}])[[:space:]]*((sudo|env|nice|nohup|exec|command|time|timeout|do|then|else|elif|if|while|until|!|-[^[:space:]]+|[0-9]+[smhd]?|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*([^[:space:];&|]*/)?"
 XARGS_RE="${CMD_POS}xargs[[:space:]]([^;&|]*[[:space:]])?(-[[:alnum:]]*P[[:space:]]*|--max-procs(=|[[:space:]]+))([0-9]+)"
 PARALLEL_RE="${CMD_POS}parallel([[:space:]]+[^;&|]*)?"
 JOBS_RE='(^|[[:space:]])(-j|-P|--jobs|--max-procs)(=|[[:space:]]+)?\+?([0-9]+)(%?)'
@@ -71,6 +71,30 @@ YES_BG_RE="${CMD_POS}yes([[:space:]][^;&|]*)?[[:space:]]&([^&>]|\$)"
 BUSY_LOOP_RE='(^|[^[:alnum:]_-])(while|until)[[:space:]][^;]*[;[:space:]]+do[[:space:]]+(:|true)[[:space:];]*done([^[:alnum:]_]|$)'
 BG_RE='(^|[^&>|])&([[:space:];)]|$)'
 LOOP_KW_RE='(^|[^[:alnum:]_-])(for|while|until)[[:space:]]'
+
+QUOTED_RE="^([^'\"]*)('[^']*'|\"([^\"\\\\]|\\\\.)*\")(.*)\$"
+CFLAG_RE='-[[:alnum:]]*[ce][[:space:]]*$'
+
+norm_text() {
+    local rest=$1 pre span inner
+    normed=""
+    if [ "${#rest}" -gt 65536 ]; then
+        normed=$rest
+        return
+    fi
+    while [[ $rest =~ $QUOTED_RE ]]; do
+        pre=${BASH_REMATCH[1]}
+        span=${BASH_REMATCH[2]}
+        rest=${BASH_REMATCH[4]}
+        inner=${span:1:${#span}-2}
+        if [[ $normed$pre =~ $CFLAG_RE ]]; then
+            normed+="$pre;$inner;"
+        else
+            normed+="$pre${span//&/_}"
+        fi
+    done
+    normed+=$rest
+}
 
 last_group() { printf '%s' "${BASH_REMATCH[${#BASH_REMATCH[@]}-1]}"; }
 
@@ -130,6 +154,8 @@ detail=""
 
 scan_shapes() {
     local text=$1 rest n m after head body kind copies bg segment per
+    norm_text "$1"
+    text=$normed
 
     rest=$text
     while [[ $rest =~ $XARGS_RE ]]; do

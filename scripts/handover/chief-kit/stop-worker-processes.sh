@@ -72,18 +72,30 @@ pids=""
 idents=""
 matched=0
 pairs=""
+
+enroll() {
+    pids="$pids $1"
+    idents="$idents $1:$2"
+    matched=$((matched + 1))
+    printf '%s\t%s\n' "$1" "$(tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null | cut -c1-120)"  # swallow-ok: a process gone since the scan prints an empty command line
+}
+
 for d in /proc/[0-9]*; do
     pid=${d#/proc/}
     case $skip in *" $pid "*) continue ;; esac
     [ -O "$d" ] || continue
-    pairs="$pairs $pid:$(ppid_of "$pid")"
+    fields=$(stat_fields "$pid")
+    # shellcheck disable=SC2086 # the stat fields are plain words
+    set -- $fields
+    [ -n "${20:-}" ] && [ "$1" != Z ] || continue
+    pairs="$pairs $pid:$2:${20}"
     cmdline=$(tr '\0' ' ' <"$d/cmdline" 2>/dev/null) || continue  # swallow-ok: a process that exited mid-scan has no cmdline and is skipped
     cwd=$(readlink "$d/cwd" 2>/dev/null) || cwd=""  # swallow-ok: a process with no readable cwd matches on its command line only
     hit=0
     case $cmdline in *"$dir/"*) hit=1 ;; esac
     case $cwd in "$dir" | "$dir"/*) hit=1 ;; esac
     [ "$hit" = 1 ] || continue
-    pids="$pids $pid"
+    enroll "$pid" "${20}"
 done
 
 grew=1
@@ -91,18 +103,11 @@ while [ "$grew" = 1 ]; do
     grew=0
     for pair in $pairs; do
         pid=${pair%%:*}
-        parent=${pair#*:}
+        rest=${pair#*:}
+        parent=${rest%%:*}
         case " $pids " in *" $pid "*) continue ;; esac
-        case " $pids " in *" $parent "*) pids="$pids $pid"; grew=1 ;; esac
+        case " $pids " in *" $parent "*) enroll "$pid" "${rest#*:}"; grew=1 ;; esac
     done
-done
-
-for pid in $pids; do
-    st=$(starttime "$pid")
-    [ -n "$st" ] || continue
-    idents="$idents $pid:$st"
-    matched=$((matched + 1))
-    printf '%s\t%s\n' "$pid" "$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | cut -c1-120)"  # swallow-ok: a process gone since the scan prints an empty command line
 done
 
 ident_ok() {
