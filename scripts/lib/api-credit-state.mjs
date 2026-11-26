@@ -47,18 +47,20 @@ function lockFacts(lock) {
   const pid = holderPid(lock);
   return { age, entries, pid, alive: pid !== null && running(pid) };
 }
-// A transaction holds the lock for milliseconds, so an empty lock older than the call timeout whose recorded holder
-// is not running is a crashed one. The check and the removal run under a second mutex: two waiters never both remove
-// it, and one that saw the old lock never removes the fresh lock a third process took meanwhile.
+function isCrashedLock(f, env) {
+  return f.age !== null && f.age > callTimeout(env) + KILL_GRACE && f.entries === 0 && !f.alive;
+}
+function removeLock(lock, f) {
+  rmdirSync(lock);
+  console.error(`api credit-state: reclaimed a stale empty ledger lock ${lock} (age ${f.age}s, holder ${f.pid ?? 'unrecorded'} not running)`);
+  return true;
+}
 function reclaim(lock, env) {
   const guard = `${lock}.reclaim`;
   try { mkdirSync(guard, { mode: 0o700 }); } catch { return false; }
   try {
     const f = lockFacts(lock);
-    if (f.age === null || f.age <= callTimeout(env) + KILL_GRACE || f.entries !== 0 || f.alive) return false;
-    rmdirSync(lock);
-    console.error(`api credit-state: reclaimed a stale empty ledger lock ${lock} (age ${f.age}s, holder ${f.pid ?? 'unrecorded'} not running)`);
-    return true;
+    return isCrashedLock(f, env) && removeLock(lock, f);
   } catch { return false; } finally { try { rmdirSync(guard); } catch { /* already gone */ } }
 }
 function takeLock(lock, env) {

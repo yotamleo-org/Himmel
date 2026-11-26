@@ -713,11 +713,11 @@ SOURCE="$(printf '%s' "$RESERVED" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')"
     "${U_IN:-null}" "${U_CREATE:-null}" "${U_READ:-null}" "$R_BRANCH" "$R_HEAD" "${R_PR:-null}"
 } >>"$STATE_DIR/launches.jsonl" 2>/dev/null || echo "claude-api: warning: launch record not written" >&2
 
-# --- an auto call the provider refused for credit runs again on the next unmarked account: one pass, then the fallback ---
-# Only a replayable prompt rotates, and never a call granted Edit, Write or Bash (a run that started may have half-done
-# its edits). A named account never rotates. The next call takes its own reservation, slot and launch record.
-if [ "$REJECTED" = exhausted ] && [ "$AUTO_ROUTED" = 1 ] && [ "$STOPPED" = 0 ] && [ -z "$NO_FB" ] &&
-   ! [[ ",$ALLOWED_TOOLS," =~ ,(Edit|Write|Bash), ]] && { [ "$HAS_PROMPT" = 1 ] || [ -n "$PROMPT_FILE" ]; }; then
+rotation_allowed() {
+  [ "$REJECTED" = exhausted ] && [ "$AUTO_ROUTED" = 1 ] && [ "$STOPPED" = 0 ] && [ -z "$NO_FB" ] &&
+    ! [[ ",$ALLOWED_TOOLS," =~ ,(Edit|Write|Bash), ]] && { [ "$HAS_PROMPT" = 1 ] || [ -n "$PROMPT_FILE" ]; }
+}
+rotate_to_next_account() {
   TRIED="${ROTATED:+$ROTATED,}$HIMMEL_API_ACCOUNT"
   REST="$(printf '%s' "${ROLE_ACCTS:-${LLM_API_ACCOUNTS// /,}}" | tr ',' '\n' | grep -vxF "$HIMMEL_API_ACCOUNT" | paste -sd, -)"
   NEXT=""
@@ -737,7 +737,8 @@ if [ "$REJECTED" = exhausted ] && [ "$AUTO_ROUTED" = 1 ] && [ "$STOPPED" = 0 ] &
     wait "$ROT_PID"
     exit $?
   fi
-fi
+}
+if rotation_allowed; then rotate_to_next_account; fi
 
 # --- a failed call: alert, then the subscription fallback (never returns when it ran) ---
 # the reason is a class and a subtype only: the call's own result text may quote the prompt
