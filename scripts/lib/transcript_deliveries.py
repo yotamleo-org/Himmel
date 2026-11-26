@@ -24,6 +24,11 @@ BUS_READ_TOOL = "mcp__himmel-bus__read"
 WAKE_LINE = "You have unread himmel messages: call mcp__himmel-bus__read now."
 CROSS_SESSION_STARTS = ("Another Claude session sent a message:", "<cross-session-message")
 MONITOR_STARTS = ("<task-notification>", "[SYSTEM NOTIFICATION", "[Cross-session idle notice]")
+T3_RELAY_HEAD = '[T3 Code: the agent in T3 thread "{thread}" sent this message, not the user.]'
+T3_TOOLS_HEAD = "[T3 Code: this message came through T3 Code's tools, not from the user typing in this chat.]"
+T3_RELAY_START = '[T3 Code: the agent in T3 thread "'
+T3_TOOLS_START = "[T3 Code: this message came through T3 Code's tools"
+T3_RELAY_RE = re.compile(r'^\[T3 Code: the agent in T3 thread "([^"\n]+)" sent this message')
 CS_TAG = re.compile(r"<cross-session-message\b[^>]*>")
 FROM_NAME = re.compile(r'\sfrom-name="([^"]*)"')
 CHIEF_CLAUSE = "your chief is **`{chief}`**"
@@ -90,7 +95,7 @@ class Item:
         return self.delivery(chiefs) and self.kind != "bus-read"
 
 
-def sort_user_text(text, meta):
+def sort_user_text(text, meta, sender_known=True):
     if text == WAKE_LINE:
         return "wake", None
     if text.startswith(CROSS_SESSION_STARTS):
@@ -102,6 +107,11 @@ def sort_user_text(text, meta):
             return "unreadable-sender", None
     if meta:
         return "meta", None
+    if text.startswith(T3_RELAY_START):
+        m = T3_RELAY_RE.match(text)
+        return ("cross-session", m.group(1)) if m else ("unreadable-sender", None)
+    if text.startswith(T3_TOOLS_START):
+        return "unreadable-sender", None
     if text.startswith(MONITOR_STARTS):
         return "monitor", None
     trig = classify_trigger(text)
@@ -111,7 +121,7 @@ def sort_user_text(text, meta):
         return "hand-back", None
     if trig == "local-command":
         return "local-command", None
-    return "operator", None
+    return ("operator", None) if sender_known else ("unreadable-sender", None)
 
 
 def _result_text(content):
@@ -184,7 +194,7 @@ def classify_rows(rows):
             if not text:
                 items.append(Item(n, "other", ""))
                 continue
-            kind, sender = sort_user_text(text, meta)
+            kind, sender = sort_user_text(text, meta, not d.get("senderUnknown"))
             items.append(Item(n, kind, text, sender))
         elif t == "attachment" and att.get("type") == "queued_command":
             text = att.get("prompt") if isinstance(att.get("prompt"), str) else ""

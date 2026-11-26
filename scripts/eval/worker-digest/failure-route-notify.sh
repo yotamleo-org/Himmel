@@ -7,6 +7,7 @@
 #
 #   failure-route-notify.sh chief <text>        one line into the live chief's inbox
 #   failure-route-notify.sh intake <key> <why>    `jira release request <R> --verb INTAKE`, backlog to <R>
+#   failure-route-notify.sh live-chief            print the live chief's session name; exit 1 when none is live
 #
 # The live chief is resolved at RUN time like cache-health-cadence.sh: the newest held `*-chief`
 # queue lock from `queue-lock.sh status --sweep`. No live chief, or a failed send, alerts through
@@ -31,7 +32,7 @@ refused_as_test() {
     [ "$rc" = 77 ]
 }
 
-# live_console: newest held *-chief / *-console queue lock's session name ("" if none).
+# live_chief: newest held *-chief / *-console queue lock's session name ("" if none).
 live_chief() {
     local line slug age st best="" best_age=-1
     while IFS= read -r line; do
@@ -63,6 +64,13 @@ cmd_chief() {
     fi
 }
 
+cmd_live_chief() {
+    local chief
+    chief="$(live_chief)"
+    [ -n "$chief" ] || return 1
+    printf '%s\n' "$chief"
+}
+
 cmd_intake() {
     local key="${1:-}" why="${2:-}" rel jira=() out
     [ -n "$key" ] && [ -n "$why" ] || { echo "ERR failure-route-notify: intake needs a key and a why" >&2; return 64; }
@@ -89,5 +97,6 @@ sub="${1:-}"; [ $# -gt 0 ] && shift
 case "$sub" in
     chief|console) cmd_chief "$@" ;;
     intake) cmd_intake "$@" ;;
-    *) echo "Usage: failure-route-notify.sh <chief <text> | intake <key> <why>>" >&2; exit 64 ;;
+    live-chief) cmd_live_chief ;;
+    *) echo "Usage: failure-route-notify.sh <chief <text> | intake <key> <why> | live-chief>" >&2; exit 64 ;;
 esac
