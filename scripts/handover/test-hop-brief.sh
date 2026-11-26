@@ -534,6 +534,13 @@ adapter_checks gemini "$GM" "$gm_op" "$gm_rel" "$T/gm-rel.json"
 jq '(.items[] | select(.text | startswith("OWN-1"))) |= (.textTruncated = true | .nextTextOffset = 20)' "$GM" >"$T/gm-trunc.json"
 hb write --transcript "$T/gm-trunc.json" --doc "$DOC" --worktree "$T/wt" --out "$T/out/gm-trunc.md" >/dev/null 2>"$T/gm-trunc.err"; gtrc=$?
 check "gemini: an item the thread read cut off is no input: write exits 3 naming textTruncated" '[ "$gtrc" = 3 ] && grep -q "textTruncated" "$T/gm-trunc.err" && [ ! -e "$T/out/gm-trunc.md" ]'
+jq '.hasMore = true' "$GM" >"$T/gm-newer.json"
+jq '.earlierPosition = 3' "$GM" >"$T/gm-older.json"
+jq 'del(.hasMore)' "$GM" >"$T/gm-noflag.json"
+for part in newer:hasMore older:earlierPosition noflag:hasMore; do
+    hb write --transcript "$T/gm-${part%%:*}.json" --doc "$DOC" --worktree "$T/wt" --out "$T/out/gm-${part%%:*}.md" >/dev/null 2>"$T/gm-${part%%:*}.err"; prc=$?
+    check "gemini: a partial thread read (${part%%:*}) is no input: write exits 3 naming ${part##*:}" '[ "$prc" = 3 ] && grep -q "partial thread read.*${part##*:}" "$T/gm-${part%%:*}.err" && [ ! -e "$T/out/gm-${part%%:*}.md" ]'
+done
 jq '(.items[] | select(.text | startswith("RELAYED-B"))) |= del(.senderThreadId)' "$GM" >"$T/gm-nosender.json"
 hb write --transcript "$T/gm-nosender.json" --doc "$DOC" --worktree "$T/wt" --out "$T/out/gm-nosender.md" >"$T/gm-nosender.out" 2>&1; gnrc=$?
 check "gemini: a relayed item with no sender thread, newer than the newest delivery: write exits 3" '[ "$gnrc" = 3 ] && [ ! -e "$T/out/gm-nosender.md" ]'

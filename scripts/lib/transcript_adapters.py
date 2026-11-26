@@ -5,7 +5,8 @@ read_rows(path, upto) is a drop-in for transcript_deliveries.read_rows: it retur
 record has the shape of a Claude Code transcript row. The format is found from the file itself:
 
   a Codex rollout (JSONL, first row `session_meta`)     row number = the line number of the rollout
-  T3 thread items (a `t3_thread_read` activity JSON)     row number = the item's position + 1
+  T3 thread items (a whole `t3_thread_read` activity      row number = the item's position + 1
+  JSON: hasMore false, earlierPosition null)
   anything else                                          a Claude Code transcript, read by transcript_deliveries
 
 Only messages map: the user's and the assistant's. Developer rows, tool calls and results, reasoning, compaction and
@@ -40,7 +41,7 @@ def detect(path):
         return "t3-items" if first.strip() in ("{", "[") else "claude"
     if isinstance(d, dict) and d.get("type") == "session_meta" and isinstance(d.get("payload"), dict):
         return "codex"
-    if isinstance(d, list) or (isinstance(d, dict) and isinstance(d.get("items"), list)):
+    if isinstance(d, dict) and isinstance(d.get("items"), list):
         return "t3-items"
     return "claude"
 
@@ -89,9 +90,13 @@ def t3_item_rows(path, upto=None):
             data = json.load(f)
     except (ValueError, UnicodeDecodeError):
         raise AdapterError("%s is not valid JSON" % path)
-    items = data.get("items") if isinstance(data, dict) else data
+    items = data.get("items") if isinstance(data, dict) else None
     if not isinstance(items, list) or not all(isinstance(i, dict) and isinstance(i.get("position"), int) for i in items):
         raise AdapterError("%s holds no list of thread items with a position" % path)
+    if data.get("hasMore") is not False:
+        raise AdapterError("%s is a partial thread read (hasMore is not false): newer items are missing" % path)
+    if data.get("earlierPosition") is not None:
+        raise AdapterError("%s is a partial thread read (earlierPosition is set): older items are missing" % path)
     out = []
     for it in sorted(items, key=lambda i: i["position"]):
         n = it["position"] + 1
