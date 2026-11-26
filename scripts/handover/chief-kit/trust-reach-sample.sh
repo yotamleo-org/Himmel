@@ -44,14 +44,18 @@ default_bucket() {
     . "$HERE/../../lib/load-dotenv.sh" || return 1
     # shellcheck source=../../lib/user-slug.sh
     . "$HERE/../../lib/user-slug.sh" || return 1
+    # shellcheck source=../../lib/git-clean.sh
+    . "$HERE/../../lib/git-clean.sh" || return 1
     # shellcheck source=../../lib/handover-path.sh
     . "$HERE/../../lib/handover-path.sh" || return 1
-    local primary root slug
-    primary="$(_load_dotenv_primary_for "$HERE/../../..")" || return 1
+    local top primary common root slug
+    top="$(cd "$HERE/../../.." && pwd)" || return 1
+    primary="$(_load_dotenv_primary_for "$top")" || return 1
     load_dotenv --root "$primary" HANDOVER_DIR USER_SLUG || return 1
     root="$(handover_root)" || return 1
-    slug="$(cd "$HERE/../../.." && user_slug)" || return 1
-    printf '%s/%s/%s\n' "$root" "$slug" "$(basename "$primary")"
+    slug="$(cd "$top" && user_slug)" || return 1
+    common="$(cd "$top" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir)" || return 1
+    printf '%s/%s/%s\n' "$root" "$slug" "$(basename "$(dirname "$common")")"
 }
 
 bridge="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}"
