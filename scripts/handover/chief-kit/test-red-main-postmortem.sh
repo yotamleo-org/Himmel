@@ -100,8 +100,14 @@ if [ -z "$out" ] && rc_zero; then pass 'a green main prints nothing'; else fail 
 
 printf '900\t%s\tfailure\n899\t%s\tsuccess\n' "$head" "$base" > "$W/runs"
 printf 'scripts/test-b.sh\n' > "$W/red-900"
-timeout 5 bash "$SUT" --repo >/dev/null 2>&1; rc=$?
-if [ "$rc" -eq 2 ]; then pass 'a trailing --repo is a usage error, not a hang'; else fail "trailing --repo exited $rc (124 = hang)"; fi
+# shellcheck source=../../lib/timeout-bin.sh
+. "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
+if [ -n "$_TIMEOUT_BIN" ]; then
+    "$_TIMEOUT_BIN" -k 1 5 bash "$SUT" --repo >/dev/null 2>&1; rc=$?
+    if [ "$rc" -eq 2 ]; then pass 'a trailing --repo is a usage error, not a hang'; else fail "trailing --repo exited $rc (124 = hang)"; fi
+else
+    pass 'a trailing --repo row skipped: no timeout binary to bound it'
+fi
 
 rm -f "$W/seen"
 out="$(RED_MAIN_MAX_COMMITS=1 run_sut)"
