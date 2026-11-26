@@ -73,18 +73,25 @@ import datetime, errno, json, os, re, shlex, stat, statistics, sys
 path, transcript, shift, next_shift = sys.argv[1:5]
 workers_end, rulings, spans_unknown = (int(x) for x in sys.argv[5:8])
 reason, fill_percent, window = sys.argv[8], int(sys.argv[9]), int(sys.argv[10])
-SEPARATORS = {";", "&&", "||", "|", "&", "(", "{"}
+SEPARATOR_CHARS = ";&|(){}"
+
+
+def is_separator(tok):
+    return tok != "" and set(tok) <= set(SEPARATOR_CHARS)
 
 
 def runs_waiter(cmd):
     try:
-        lexer = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+        lexer = shlex.shlex(cmd, posix=False, punctuation_chars=SEPARATOR_CHARS)
         lexer.whitespace_split = True
+        lexer.commenters = ""
         toks = list(lexer)
     except ValueError:
         return False
-    return any(t == "bash" and (i == 0 or toks[i - 1] in SEPARATORS) and i + 1 < len(toks)
-               and toks[i + 1].endswith("chief-wait.sh") for i, t in enumerate(toks))
+    return any(t == "bash" and (i == 0 or is_separator(toks[i - 1])) and i + 1 < len(toks)
+               and toks[i + 1].strip("\"'").endswith("chief-wait.sh") for i, t in enumerate(toks))
+
+
 HOOK_TIMEOUT = re.compile(r"hook[^\n]{0,80}timed out|timed out[^\n]{0,40}\bhook", re.I)
 
 

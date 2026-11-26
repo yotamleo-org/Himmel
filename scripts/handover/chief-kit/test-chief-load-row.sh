@@ -14,7 +14,7 @@ cfg="$tmp/cfg"; mkdir -p "$cfg/projects/p"
 transcript() {
     printf '{"type":"custom-title","customTitle":"%s","sessionId":"%s"}\n' "$1" "$sid"
     printf '{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"id":"m0","usage":{"input_tokens":90000},"content":[{"type":"tool_use","id":"t0","name":"Bash","input":{"command":"grep -n wake scripts/handover/chief-kit/chief-wait.sh"}}]}}\n'
-    printf '{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"id":"m00","usage":{"input_tokens":95000},"content":[{"type":"tool_use","id":"t00","name":"Bash","input":{"command":"echo '"'"'example; bash chief-wait.sh --doc x'"'"'"}}]}}\n'
+    printf '{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"id":"m00","usage":{"input_tokens":95000},"content":[{"type":"tool_use","id":"t00","name":"Bash","input":{"command":"echo '"'"';'"'"' bash chief-wait.sh '"'"'a; bash chief-wait.sh'"'"'"}}]}}\n'
     printf '{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"id":"m1","usage":{"input_tokens":100000},"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"  cd /opt/kit \\u0026\\u0026 bash \\"./chief-wait.sh\\" --doc x"}}]}}\n'
     printf '{"type":"user","timestamp":"2026-01-01T00:05:00Z","message":{"role":"user","content":"<task-notification>w</task-notification>"}}\n'
     printf '{"type":"assistant","timestamp":"2026-01-01T00:05:10Z","isSidechain":true,"message":{"id":"s1","usage":{"input_tokens":900000},"content":[]}}\n'
