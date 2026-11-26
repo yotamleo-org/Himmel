@@ -8,7 +8,8 @@ envelopes that no model reads (see "The typed path").
 
 It is user-level: no `sudo`, no system change. It writes two state dirs and one
 user unit. What it tells the operator goes onto its own notify chain, which the
-operator bridge sends (see "Triage and the notify chain").
+peer poller sends to the operator's own chat with the peer bridge bot (see
+"Triage and the notify chain").
 
 | Where | Path |
 |---|---|
@@ -82,6 +83,18 @@ supergroup with a new chat id, and `confirm` refuses the old id.
    It prints the sanitized chat title, writes the chat id and submits a
    `confirm` record to the spool. The poller reloads its config when it drains
    it.
+6a. **Open the operator chat with the peer bridge bot.** Escalations, drafts and
+   their Approve and Reject buttons arrive there, never on the operator bot:
+
+   ```bash
+   bun scripts/peer-bridge/setup.ts dm
+   ```
+
+   It asks you to open a chat with the peer bridge bot in Telegram and press
+   Start, then calls `getChat` on your operator chat id with the peer bot's
+   token. It writes `operatorDmChatId` (always the operator chat id, the only
+   value `peers.json` accepts) only when that chat is private. Until then the
+   notify records wait on their chain and nothing is sent.
 7. **Run the poller.** Install the unit for your OS. Replace `@HIMMEL_ROOT@`
    (and `@HOME@` on macOS) with absolute paths.
    - Linux: `units/himmel-peer-bridge.service` goes to
@@ -170,13 +183,24 @@ Claude session, a TTY):
 
 | Command | Does |
 |---|---|
+| `pair <peer> [<station-name>] [--card '<their card>']` | the guided form, one command per side: sets our station name if it is unset, makes the station key once (later runs show the same key again), and prints our pairing card `#pair station=<name> key=<pubkey>` to post in the group by hand, then the fingerprint to read out of band. The card never holds the fingerprint. With `--card` and the peer's card it runs the `trust` check below on their name and key |
 | `station-name <name>` | sets our `self.stationName` (what `from` carries). A name `egress.ts` `badHost` would refuse (the host's name or first label, `localhost`, a `.local` name) is refused, because egress would refuse every envelope that holds it |
+| `keygen --show` | prints the current key's public part, key id and fingerprint again; never the private key |
 | `keygen` | creates `C/station.ed25519` (PKCS8, 0600, `O_CREAT\|O_EXCL`) and prints the public key (base64), its key id (8 hex of `sha256(pub)`) and its fingerprint (20 hex in groups of four) |
 | `trust <peer> <station-name> <pubkey>` | prints the key's fingerprint and asks you to **type** the one the peer's operator gave you out of band. It writes `theirs.stationName` and adds the key to `theirs.keys` (at most two) only on a match. The public key may travel over the group; the fingerprint must not |
 | `keygen --rotate`, `--activate` | `--rotate` makes a next key and prints it while we keep signing with the current one; the peer runs `trust` with it; `--activate` switches and deletes the old key file |
 | `untrust <peer> [--key <id>]` | removes one trusted key, or all. A key also ages out 30 days after its successor was added |
 | `allow-suite <peer> <alias> <path>`, `deny-suite <peer> <alias>` | the only writers of `C/<peer>.suites` (0600): the suites this station will run for that peer, by the alias you type |
 | `kill <peer>`, `unkill <peer>` | the only writers of `C/<peer>.killed` |
+
+The running poller watches `peers.json` and reloads it within a few seconds of
+any write, so a `trust`, `pair`, `dm` or station name takes effect with no
+`confirm`. A reload that fails its checks keeps the old config and logs why.
+
+A signed message dropped because pairing is not finished (no trusted key with
+its key id, our station name unset, or theirs unset) puts one `unpaired` record
+on the notify chain per peer, missing step and key id. The operator reads one
+line naming the step and the `setup.ts pair` command that finishes it.
 
 ### The envelope
 
@@ -455,7 +479,8 @@ Peer text is never shown to a normal session. A **wake** tells you something
 arrived: a message in the operator chat with the peer name, the thread number, a
 label and a deadline on line 1 and the desk command on line 2, and never peer
 text. An **escalation** carries the reader's digest instead, marked untrusted.
-The operator bridge sends both with no model run.
+The peer poller sends both to the operator's chat with the peer bridge bot, with
+no model run.
 
 Start the desk from a terminal:
 
@@ -533,36 +558,37 @@ its route, then an `effect` record, all in `S/<peer>/digests.jsonl`. On start it
 replays any job whose effect is missing, once. The desk shows each digest's
 route, and once a day the operator gets one triage count per peer.
 
-Wakes, escalations, budget lines and daily counts are chained records in
-`S/notify/notify.jsonl`, written only by the peer poller. The operator bridge's
-flusher (`scripts/telegram/peer-notify-route.ts`) verifies the chain from its
-cursor (`S/notify/cursor`), renders each record with `notify.ts`, and sends it
-to the operator chat with link previews off, recording each sent message in
-`S/notify/sent/`. Line 1 of every message is built from our own values only.
-A failed verification sends one alert and stops the flusher until it restarts.
-A message Telegram refuses outright is skipped with one fallback line.
+Wakes, escalations, drafts, results, budget lines, daily counts and pairing
+alerts are chained records in `S/notify/notify.jsonl`, written only by the peer
+poller. The same poller verifies the chain from its cursor (`S/notify/cursor`),
+renders each record with `notify.ts`, and sends it to `operatorDmChatId`, the
+operator's direct chat with the peer bridge bot, with link previews off. It
+records each sent message, with the chat it went to, in `S/notify/sent/`
+(pruned after 7 days); an entry for another chat never answers a reply. Line 1
+of every message is built from our own values only. A failed verification sends
+one alert and stops delivery until the poller restarts. A message Telegram
+refuses outright is skipped with one fallback line.
 
-The flusher sends nothing while a Claude session could also be polling the
-operator bot and so read the reply text:
+The peer poller is the only program that polls the peer bridge bot, so it is
+the only one that ever receives the operator's replies and taps in that chat. No
+Claude session, plugin or operator-bridge process can poll it, and nothing waits
+on a poll hold. The operator bridge imports no peer-bridge module
+(`routes.test.ts` pins an empty import fence).
 
-- the bridge's last good `getUpdates` is over 60 s old;
-- it got a 409 in the last 10 minutes;
-- a `telegram-himmel` plugin process that polls (`TELEGRAM_OWN_POLLER=1` in its
-  environment or its state-dir `.env`) resolves to the operator bot, or to no
-  single bot. A send-only plugin process never holds. Where the environment
-  cannot be read (or, on macOS, reads ambiguously), the plugin's `bot.pid`
-  decides, or the process holds.
-
-The queue waits. After 10 minutes held, one line says the notifications are held
-and why. A reply to a peer notification is never routed to a session: in this
-slice it gets one fixed line saying drafts arrive with the next update, and
-nothing is sent to the peer.
+In that chat, the poller takes only messages whose chat and sender are the
+operator. A private message from anyone else is dropped with a log line naming
+the ids, never its text, and is never chained. An operator reply to an
+escalation or wake about an inbound thread becomes a `draft` spool record
+(`source: telegram`, kind `answer`) and gets the drafting line; a reply to any
+other message gets one fixed refusal line, and lockdown answers every reply with
+the lockdown line. Nothing reaches the peer before the signed tap below.
 
 ### The signed tap
 
-A peer draft is approved or rejected only by a `tap` spool record the Telegram
-poller wrote after a real button press by the operator. The poller signs the
-record: an HMAC-SHA256 over a fixed domain tag (`himmel-peer-tap-v1`), the draft
+A peer draft is approved or rejected only by a `tap` spool record the peer
+poller writes after a real button press in the operator's chat with the peer
+bridge bot: the callback must come from the operator, in that chat, while
+lockdown is off. The poller signs the record: an HMAC-SHA256 over a fixed domain tag (`himmel-peer-tap-v1`), the draft
 id, the verdict, the operator id (`by`) and `ts`, in the record's `sig` field (64
 hex), and over the peer name so a signed tap cannot be copied into another peer's spool. The bridge's `applyTap` recomputes it, compares in constant time, and only
 then checks `by` against the operator chat id. A tap with no `sig` is refused
@@ -572,6 +598,12 @@ refusal is written to the spool result and logged as
 before any draft state changes: the draft stays PENDING and nothing is sent. The
 tap's age is not bounded separately: the draft's own deadline and its settled
 state (`already-*`) stop a replayed tap.
+
+A session that read a salus or PHI path carries the mark
+`~/.himmel/phi-taint/<sid>`, set by `scripts/hooks/phi-read-mark.sh`, and
+`tell.ts` refuses a marked session with `refused: phi-root`. The Bash part of
+that mark matches the command text, so it narrows what a session can pass on;
+it is not a boundary.
 
 The key is `C/tap.key` (mode 0600, owned by you, 32 random bytes as hex), a file
 of its own and not the fence key. Whichever side reads first creates it (written
@@ -609,11 +641,10 @@ signed tap, like every draft. The script refuses, and queues nothing, when:
   over 64 MiB (`phi-root`).
   It reads only those fields, never a tool's output, and prints nothing from it;
 - the peer is not in peers.json (`unknown-peer`);
-- the poller's `poller.pid` or the operator bot's `notify/bot.code` does not
-  show a live process running this checkout's peer-bridge code (`poller-stale`,
-  `operator-bot-stale`). The operator bot writes `bot.code` when its peer-notify
-  route starts, only once peers.json loads and its token is the operator bot's;
-  restart the bot after a pull so the review can render;
+- the poller's `poller.pid` or `notify/bot.code` does not show a live process
+  running this checkout's peer-bridge code (`poller-stale`,
+  `operator-bot-stale`). The peer poller writes `bot.code` at start, since it
+  now shows the review; restart it after a pull;
 - the kind is not `status` or `info`, or the text is empty or not one line;
 - the egress rules refuse the text under corpus `chief-tell`.
 
@@ -749,7 +780,7 @@ These are known and accepted for this slice.
 - **A harness timeout kill allows the call.** The gate is one `jq` call and string
   tests so it finishes far inside its 10 s timeout, but a kill still fails open.
 - **Admin rights are checked once, at `confirm`.** The group owner can grant a
-  right later. Our client makes only four Bot API calls, so it never uses a
+  right later. Our client makes only five Bot API calls, so it never uses a
   right, but a granted right changes what the other bot may do. Re-checking
   `getChatMember` at poller start is the planned upgrade.
 - **The setup refusals stop accidents, not a determined session.** From an
@@ -794,7 +825,7 @@ Beside them: `S/unknown-chats.jsonl` lists supergroups our bot was added to that
 are not configured, `S/taint/cleared.log` lists each `untaint.sh` run, and each
 dropped message is one redacted line in the poller's log (journald under
 systemd, `S/poller.log` under launchd). Every operator-bound record is in
-`S/notify/notify.jsonl`, and each one the flusher sent has an entry in
+`S/notify/notify.jsonl`, and each one the poller sent has an entry in
 `S/notify/sent/` for 7 days.
 
 ## Tests

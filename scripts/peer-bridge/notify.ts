@@ -16,7 +16,9 @@ export type ResultNotify = Base & { type: "result"; root: number; draft: string;
 export type DailyNotify = Base & { type: "daily"; day: string; escalated: number; digests: number; wakes: number; skipped: Record<string, number>; acked: number; dropped: number };
 export type BudgetNotify = Base & { type: "budget"; which: "wake" | "escalate"; cap: number };
 export type AlertNotify = Base & { type: "alert"; count: number };
-export type NotifyRec = WakeNotify | EscalateNotify | DraftNotify | ResultNotify | DailyNotify | BudgetNotify | AlertNotify;
+export const UNPAIRED_STEPS = ["their-key", "our-name", "their-name"] as const;
+export type UnpairedNotify = Base & { type: "unpaired"; missing: (typeof UNPAIRED_STEPS)[number]; key: string };
+export type NotifyRec = WakeNotify | EscalateNotify | DraftNotify | ResultNotify | DailyNotify | BudgetNotify | AlertNotify | UnpairedNotify;
 
 export const notifyFile = (stateDir: string) => join(stateDir, "notify", "notify.jsonl");
 
@@ -95,6 +97,17 @@ export function renderNotify(rec: NotifyRec, himmelRoot: string): { text: string
     case "alert":
       need(Number.isSafeInteger(rec.count) && rec.count > 0, "count");
       return { text: `peer ${rec.peer} · ${rec.count} bad signatures in 1 h` };
+    case "unpaired": {
+      need(/^[0-9a-f]{8}$/.test(rec.key), "key");
+      const pairCmd = `bun ${himmelRoot}/scripts/peer-bridge/setup.ts pair ${rec.peer}`;
+      const step: Record<string, string> = {
+        "their-key": `its key ${rec.key} is not trusted yet. Finish pairing: ${pairCmd} --card '<their card>'`,
+        "our-name": `our station name is not set yet. Finish pairing: ${pairCmd}`,
+        "their-name": `their station name is not set yet. Finish pairing: ${pairCmd} --card '<their card>'`,
+      };
+      need(rec.missing in step, "missing");
+      return { text: `peer ${rec.peer} · a signed message was dropped: ${step[rec.missing]}` };
+    }
     default:
       throw new Error("notify: unknown type");
   }

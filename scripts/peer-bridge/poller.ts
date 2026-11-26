@@ -6,13 +6,13 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import { join } from "node:path";
 import { atomicWrite } from "../telegram/bus";
-import { Chain, PidLockError, acquirePidLock, drainSpool, readChain, sweepResults, tapSigOk, writeResult, type IntentRec, type SpoolRec } from "./chain";
+import { CODE_VERSION, Chain, PidLockError, acquirePidLock, drainSpool, readChain, signTap, startIdentity, submitSpool, sweepResults, tapSigOk, verifyChain, writeResult, type IntentRec, type SpoolRec } from "./chain";
 import { ConfigError, DEFAULT_BUDGETS, EXIT_CONFIG, clampToSchema, loadAllowlist, loadConfig, type AllowEntry, type Config } from "./config";
 import { digestFile, parseAck, writeCursor, type DigestRec, type EffectRec, type JobRec } from "./digests";
 import { checkEnvelopeOutbound, checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
 import { OUTCOMES, buildEnvelope, encodeCanonical, type Envelope } from "./envelope";
 import { admit, admitEnvelope, appendUnknownChat, createGateState, looksLikeEnvelope, matchEnvelope, noteAdmitted, noteRate, rebuildFromInbox, type GateState, type PeerEnvRec, type PeerMsgRec } from "./gate";
-import { mintId } from "./grammar";
+import { ENV_LINE_RE, mintId } from "./grammar";
 import { botIdFromToken, configDir, peersFile, stateDir, utcDay } from "./ids";
 import { dueJobs, isTerminal, newInJob, newOutJob, queueDepth, remaining, step, type JobEvent, type SendSpec } from "./jobstate";
 import { ReaderLedger, runReader, type Digest, type ModelRoute, type ReaderKind } from "./reader";
@@ -20,12 +20,12 @@ import { resolveCapacity, resolveReq, resolveRes, type JobRecord } from "./resol
 import { currentSigningKey, sign } from "./sign";
 import { PeerTelegram, RetryAfter, TelegramError } from "./telegram";
 import { MAX_AUTO_PER_HOUR, Threads, effectiveRoute, templateLine, type Action, type Route, type ThreadRec, type Transition, type WakeEvent, type WakeLabel } from "./threads";
-import { appendNotify, notifyFile, type DailyNotify, type NotifyRec, type ResultNotify } from "./notify";
+import { appendNotify, notifyFile, renderChainAlert, renderFallback, renderNotify, type DailyNotify, type NotifyRec, type ResultNotify, type UnpairedNotify } from "./notify";
 import { DRAFT_TTL_MS, MAX_CHIEF_PER_DAY, MAX_DRAFTS_PER_DAY, MAX_PENDING_CHIEF, MAX_PENDING_DRAFTS, badChars, draftState, draftsToday, pendingCount, reviewTooLong } from "./drafts";
 import { lockdownEnabled } from "../telegram/lockdown";
 import { Tripwire, Waker } from "./wake";
 
-export type TgLike = Pick<PeerTelegram, "getUpdates" | "sendMessage" | "getChatMember">;
+export type TgLike = Pick<PeerTelegram, "getUpdates" | "sendMessage" | "getChatMember"> & Partial<Pick<PeerTelegram, "answerCallbackQuery">>;
 export type PollerDeps = {
   cfg: Config;
   tg: TgLike;
@@ -60,6 +60,38 @@ const READ_TAGS = new Set(["ask:question", "status", "info", "answer", "untagged
 type ReadJob = { rec: PeerMsgRec; kind: ReaderKind; transition: Transition; held: WakeEvent };
 const kindLine = (k: string) => (k === "question" ? "ask:question" : k);
 const PERMANENT = [400, 403, 404];
+const SENT_PRUNE_MS = 7 * 86_400_000;
+const PEER_TAP_RE = /^peer:(ok|no):([a-z0-9][a-z0-9-]{0,31}):([0-9a-f]{8})$/;
+
+export const DRAFTING_LINE = "drafted; approve or reject it with the buttons on the draft message";
+export const OUTBOUND_REFUSAL_LINE = "a reply about our own outbound thread needs the peer desk's send.ts; nothing was sent";
+export const OTHER_REFUSAL_LINE = "replies to this kind of message are not taken; nothing was sent";
+export const UNRECORDED_REFUSAL_LINE = "that message is not on record; nothing was sent";
+export const REPLY_HINT_LINE = "reply to a peer message to draft an answer; nothing was sent";
+export const NO_DESK_LINE = "the peer bridge is not set up for this peer; nothing was sent";
+export const LOCKED_LINE = "locked, reset at the station";
+export const COMMANDS_LINE = "commands are not taken in this chat, /lockdown included: send them to your operator bot; nothing was done";
+
+export const notifyCursorFile = (S: string) => join(S, "notify", "cursor");
+export const dmSentDir = (S: string) => join(S, "notify", "sent");
+
+export function readNotifyCursor(S: string): { n: number; h: string } {
+  try {
+    const c = JSON.parse(fs.readFileSync(notifyCursorFile(S), "utf8"));
+    if (Number.isSafeInteger(c.n) && c.n >= 0 && typeof c.h === "string") return { n: c.n, h: c.h };
+  } catch {}
+  return { n: 0, h: "" };
+}
+
+export function readDmSent(S: string, messageId: number, chat?: number): Record<string, unknown> | null {
+  if (!Number.isSafeInteger(messageId) || messageId <= 0) return null;
+  try {
+    const e = JSON.parse(fs.readFileSync(join(dmSentDir(S), String(messageId)), "utf8"));
+    return chat === undefined || e?.chat === chat ? e : null;
+  } catch { return null; }
+}
+
+const tapKeyboard = (k: { peer: string; draft: string }) => ({ inline_keyboard: [[{ text: "Approve", callback_data: `peer:ok:${k.peer}:${k.draft}` }, { text: "Reject", callback_data: `peer:no:${k.peer}:${k.draft}` }]] });
 
 export function sendRule(threads: Threads, peers: Config["peers"], peer: string, rec: { replyTo?: number }): { ok: true } | { ok: false; rule: string } {
   if (!peers[peer]) return { ok: false, rule: "unknown-peer" };
@@ -86,6 +118,9 @@ export class Poller {
   private sentTimes = new Map<string, number[]>();
   private retryAt = 0;
   private failures = 0;
+  private notifyStopped = false;
+  private noDmLogged = false;
+  private unpairedSeen: Set<string> | null = null;
   private queue: Promise<unknown> = Promise.resolve();
   private now: () => number;
   private log: (line: string) => void;
@@ -332,6 +367,11 @@ export class Poller {
       this.refreshKilled();
       for (const u of [...updates].sort((a, b) => a.update_id - b.update_id)) {
         this.gate.now = this.now();
+        if (u?.callback_query || (u?.message ?? u?.edited_message)?.chat?.type === "private") {
+          if (Number.isSafeInteger(u.update_id) && u.update_id > this.gate.committed) await this.onOperator(u);
+          if (Number.isSafeInteger(u.update_id)) max = Math.max(max, u.update_id);
+          continue;
+        }
         if (looksLikeEnvelope(u)) {
           await this.onEnvelope(u);
           if (Number.isSafeInteger(u.update_id)) max = Math.max(max, u.update_id);
@@ -365,6 +405,96 @@ export class Poller {
     for (const rec of jobs) await this.readAndDigest(rec);
   }
 
+  private async onOperator(u: any): Promise<void> {
+    const dm = this.cfg.operatorDmChatId ?? null;
+    if (u.callback_query) return this.onTap(u.callback_query, dm);
+    const msg = u.message ?? u.edited_message;
+    if (!u.message || dm === null || msg.chat?.id !== dm || msg.from?.id !== this.cfg.operatorChatId || msg.from?.is_bot !== false) {
+      this.log(`dm-drop update=${u.update_id} chat=${msg?.chat?.id} from=${msg?.from?.id}`);
+      return;
+    }
+    if (typeof msg.text !== "string") return;
+    const say = async (text: string) => { await this.dmSend(dm, text); };
+    if (msg.text.trimStart().startsWith("/")) return /^\/start(@\w+)?$/.test(msg.text.trim()) ? undefined : say(COMMANDS_LINE);
+    const replyTo = msg.reply_to_message;
+    if (!replyTo || String(replyTo.from?.id) !== this.deps.ourBotId) return say(REPLY_HINT_LINE);
+    if (lockdownEnabled(this.cfg.bridgeRoot)) return say(LOCKED_LINE);
+    const entry = readDmSent(this.deps.stateDir, replyTo.message_id, dm);
+    if (entry === null) return say(UNRECORDED_REFUSAL_LINE);
+    if (entry.type !== "escalate" && entry.type !== "wake") return say(OTHER_REFUSAL_LINE);
+    if (entry.dir !== "in") return say(OUTBOUND_REFUSAL_LINE);
+    const peer = String(entry.peer), root = entry.root as number;
+    if (!this.cfg.peers[peer] || !Number.isSafeInteger(root) || root <= 0 || !fs.existsSync(join(this.dir(peer), "spool"))) return say(NO_DESK_LINE);
+    try {
+      submitSpool(this.dir(peer), { type: "draft", source: "telegram", kind: "answer", replyTo: root, text: msg.text });
+    } catch { return say(NO_DESK_LINE); }
+    await say(DRAFTING_LINE);
+  }
+
+  private async onTap(cq: any, dm: number | null): Promise<void> {
+    const answer = async (text: string) => { try { await this.deps.tg.answerCallbackQuery?.(String(cq.id), text); } catch {} };
+    const m = PEER_TAP_RE.exec(typeof cq.data === "string" ? cq.data : "");
+    if (!m) return answer("Unknown button.");
+    if (dm === null || cq.from?.id !== this.cfg.operatorChatId || cq.message?.chat?.id !== dm) return answer("Not authorized.");
+    if (lockdownEnabled(this.cfg.bridgeRoot)) return answer(LOCKED_LINE);
+    if (!this.cfg.peers[m[2]] || !fs.existsSync(join(this.dir(m[2]), "spool"))) return answer("Unknown peer.");
+    try {
+      const rec = { verb: m[1] as "ok" | "no", draft: m[3], by: String(cq.from.id), ts: this.now() };
+      submitSpool(this.dir(m[2]), { type: "tap", ...rec, sig: signTap(this.deps.configDir, { ...rec, peer: m[2] }) });
+    } catch { return answer("Could not record the tap."); }
+    await answer("Received");
+  }
+
+  private async dmSend(chat: number, text: string): Promise<void> {
+    try { await this.deps.tg.sendMessage(chat, text); } catch (e) { this.log(`peer-notify: a line to the operator was not sent: ${(e as Error).message}`); }
+  }
+
+  private async deliverNotify(): Promise<void> {
+    const chat = this.cfg.operatorDmChatId ?? null;
+    if (chat === null) {
+      if (!this.noDmLogged) { this.log("peer-notify: peers.json has no operator DM; run setup.ts dm"); this.noDmLogged = true; }
+      return;
+    }
+    if (this.notifyStopped || this.now() < this.retryAt) return;
+    const S = this.deps.stateDir, file = notifyFile(S), cursor = readNotifyCursor(S);
+    let check: ReturnType<typeof verifyChain>;
+    try { check = verifyChain(file, cursor); } catch { check = { ok: false, n: cursor.n, h: "" }; }
+    if (!check.ok) {
+      this.notifyStopped = true;
+      this.log(`peer-notify: chain failed verification at #${check.n + 1}`);
+      await this.dmSend(chat, renderChainAlert(check.n + 1));
+      return;
+    }
+    for (const rec of readChain(file).slice(cursor.n, check.n) as unknown as (NotifyRec & { n: number; h: string })[]) {
+      let rendered: ReturnType<typeof renderNotify> | null = null;
+      try { rendered = renderNotify(rec, this.cfg.himmelRoot); } catch { this.log(`peer-notify: #${rec.n} does not render; skipped`); }
+      if (rendered) {
+        try {
+          const { message_id } = await this.deps.tg.sendMessage(chat, rendered.text, undefined, rendered.keyboard ? tapKeyboard(rendered.keyboard) : undefined);
+          const r = rec as any;
+          fs.mkdirSync(dmSentDir(S), { recursive: true, mode: 0o700 });
+          await atomicWrite(join(dmSentDir(S), String(message_id)), JSON.stringify({ n: rec.n, chat, type: rec.type, peer: rec.peer, ...(r.root !== undefined ? { root: r.root } : {}), ...(r.dir ? { dir: r.dir } : {}), ...(r.draft ? { draft: r.draft } : {}), ts: this.now() }));
+        } catch (e) {
+          if (e instanceof RetryAfter) { this.retryAt = this.now() + e.seconds * 1000; return; }
+          if (!(e instanceof TelegramError && PERMANENT.includes(e.code))) { this.log(`peer-notify: #${rec.n} not sent (${(e as Error).message}); retry next tick`); return; }
+          this.log(`peer-notify: #${rec.n} refused by Telegram ${e.code}`);
+          await this.dmSend(chat, renderFallback(rec.n, e.code));
+        }
+      }
+      await atomicWrite(notifyCursorFile(S), JSON.stringify({ n: rec.n, h: rec.h }));
+    }
+    this.pruneDmSent();
+  }
+
+  private pruneDmSent(): void {
+    let names: string[];
+    try { names = fs.readdirSync(dmSentDir(this.deps.stateDir)); } catch { return; }
+    for (const name of names) {
+      const e = readDmSent(this.deps.stateDir, Number(name));
+      if (!e || typeof e.ts !== "number" || this.now() - e.ts > SENT_PRUNE_MS) fs.rmSync(join(dmSentDir(this.deps.stateDir), name), { force: true });
+    }
+  }
+
   private async onEnvelope(u: any): Promise<void> {
     const r = admitEnvelope(u, this.cfg, this.gate, this.match);
     if (!r.ok) {
@@ -372,6 +502,7 @@ export class Poller {
       if (r.unknownChat) appendUnknownChat(join(this.deps.stateDir, "unknown-chats.jsonl"), r.unknownChat);
       if (r.step === 1 || !r.peer) return;
       noteRate(this.gate, r.peer, this.ts());
+      await this.noteUnpaired(r.peer, r.step, r.reason, u.message.text);
       if (r.step === 5) {
         await this.chain.append(this.file(r.peer, "sig-fails.jsonl"), { kind: "sig-fail", at: this.now() });
         if (this.tripwire.note(r.peer, this.now())) await this.waker.alert(r.peer, TRIPWIRE_COUNT);
@@ -387,6 +518,23 @@ export class Poller {
     noteRate(this.gate, r.peer, this.ts());
     await this.chain.append(this.file(r.peer, "inbox.jsonl"), r.rec);
     await this.withEnvId(r.rec, r.env.exp, () => this.handleEnvelope(r.peer, r.env));
+  }
+
+  private async noteUnpaired(peer: string, step: number, reason: string, text: string): Promise<void> {
+    const p = this.cfg.peers[peer];
+    const missing: UnpairedNotify["missing"] | null =
+      step === 4 && reason === "no trusted key with that id" ? "their-key"
+      : step === 7 && reason === "to is not our station name" && this.cfg.self?.stationName === undefined ? "our-name"
+      : step === 7 && reason === "from is not the trusted station name" && p?.theirs.stationName === undefined ? "their-name"
+      : null;
+    const key = ENV_LINE_RE.exec(text.split("\n")[1] ?? "")?.[1];
+    if (!missing || !key) return;
+    const file = notifyFile(this.deps.stateDir);
+    this.unpairedSeen ??= new Set((readChain(file) as unknown as NotifyRec[]).filter(r => r.type === "unpaired").map(r => `${r.peer}:${(r as UnpairedNotify).missing}:${(r as UnpairedNotify).key}`));
+    const id = `${peer}:${missing}:${key}`;
+    if (this.unpairedSeen.has(id)) return;
+    await appendNotify(this.chain, file, { kind: "notify", type: "unpaired", peer, missing, key, ts: this.now() });
+    this.unpairedSeen.add(id);
   }
 
   private async withEnvId(rec: PeerEnvRec, exp: number, handle: () => Promise<void>): Promise<void> {
@@ -659,22 +807,32 @@ export class Poller {
       return;
     }
     if (rec.type === "confirm") {
-      try {
-        this.cfg = this.deps.reloadConfig ? this.deps.reloadConfig() : this.cfg;
-      } catch (e) {
-        if (!(e instanceof ConfigError)) throw e;
-        writeResult(dir, name, { ok: false, rule: "config" });
-        return;
-      }
-      this.threads = Threads.load(this.threads.all(), this.threadOpts());
-      this.waker = new Waker(this.cfg, this.chain, notifyFile(this.deps.stateDir), this.now);
+      if (!(await this.reloadNow())) { writeResult(dir, name, { ok: false, rule: "config" }); return; }
       await this.chain.append(this.file(peer, "outbox.jsonl"), { kind: "confirmed", chat_id: rec.chatId, ts: this.ts() });
-      await this.ensureUsername();
       writeResult(dir, name, { ok: true });
       return;
     }
     if (rec.type === "draft") return this.applyDraft(peer, name, rec);
     return this.applyTap(peer, name, rec);
+  }
+
+  private async reloadNow(): Promise<boolean> {
+    try {
+      this.cfg = this.deps.reloadConfig ? this.deps.reloadConfig() : this.cfg;
+    } catch (e) {
+      if (!(e instanceof ConfigError)) throw e;
+      this.log(`peer-bridge: peers.json not reloaded: ${e.message}`);
+      return false;
+    }
+    this.threads = Threads.load(this.threads.all(), this.threadOpts());
+    this.waker = new Waker(this.cfg, this.chain, notifyFile(this.deps.stateDir), this.now);
+    this.noDmLogged = false;
+    await this.ensureUsername();
+    return true;
+  }
+
+  reload(): Promise<boolean> {
+    return this.serial(async () => { const ok = await this.reloadNow(); await this.flush(); return ok; });
   }
 
   private outbox = (peer: string) => readChain(this.file(peer, "outbox.jsonl")) as Record<string, any>[];
@@ -831,6 +989,11 @@ export class Poller {
   }
 
   private async flush(): Promise<void> {
+    await this.flushPeer();
+    await this.deliverNotify();
+  }
+
+  private async flushPeer(): Promise<void> {
     if (this.now() < this.retryAt) return;
     for (const i of [...this.pending.values()].sort((a, b) => a.n - b.n || (a.peer < b.peer ? -1 : 1))) {
       const peer = this.cfg.peers[i.peer];
@@ -868,7 +1031,15 @@ export class Poller {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+async function writeCodeStamp(S: string): Promise<void> {
+  fs.mkdirSync(join(S, "notify"), { recursive: true, mode: 0o700 });
+  await atomicWrite(join(S, "notify", "bot.code"), JSON.stringify({ pid: process.pid, start: startIdentity(process.pid), code: CODE_VERSION }));
+}
+
+const fileStamp = (path: string) => { try { const st = fs.statSync(path); return `${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`; } catch { return ""; } };
+
 export async function main(): Promise<void> {
+  let seen = fileStamp(peersFile());
   let cfg: Config;
   try { cfg = loadConfig(peersFile()); } catch (e) {
     if (e instanceof ConfigError) { console.error(`peer-bridge: ${e.message}`); process.exit(EXIT_CONFIG); }
@@ -886,6 +1057,7 @@ export async function main(): Promise<void> {
   process.on("SIGTERM", done);
   process.on("SIGINT", done);
 
+  try { await writeCodeStamp(stateDir()); } catch (e) { console.error(`peer-bridge: cannot write the code stamp: ${(e as Error).message}`); }
   const tg = new PeerTelegram(token);
   const poller = await Poller.create({
     cfg, tg, ourBotId: botIdFromToken(token), stateDir: stateDir(), configDir: configDir(),
@@ -899,6 +1071,7 @@ export async function main(): Promise<void> {
   const guard = (fn: () => Promise<void>) => () => fn().catch(e => { console.error(`peer-bridge: ${(e as Error).message}`); process.exit(1); });
   setInterval(guard(() => poller.tick()), 30_000); // t13b-ok: the poller's own deadline tick
   setInterval(guard(() => poller.drainSpool()), 1_000); // t13b-ok: the poller's own spool drain
+  setInterval(guard(async () => { const now = fileStamp(peersFile()); if (now !== seen) { seen = now; await poller.reload(); } }), 2_000); // t13b-ok: the poller's own peers.json watch
 
   while (!stop) {
     try {

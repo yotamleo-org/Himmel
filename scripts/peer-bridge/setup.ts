@@ -7,8 +7,10 @@
 //   setup.ts remove <peer>
 //   setup.ts uninstall
 //   setup.ts runner          install the runner unit while a peer serves run-suite, remove it otherwise
+//   setup.ts dm              record the operator's own chat with the peer bridge bot
 //   setup.ts station-name <name>
-//   setup.ts keygen [--rotate | --activate]
+//   setup.ts keygen [--rotate | --activate | --show]
+//   setup.ts pair <peer> [<station-name>] [--card '<their card>']
 //   setup.ts trust <peer> <station-name> <pubkey-b64>
 //   setup.ts untrust <peer> [--key <id>]
 //   setup.ts allow-suite <peer> <alias> <path> | deny-suite <peer> <alias>
@@ -24,12 +26,12 @@ import { createInterface } from "node:readline";
 import { defaultRoot } from "../telegram/bus";
 import { loadAccess, operatorChatId, type Access } from "../telegram/gate";
 import { submitSpool } from "./chain";
-import { ALIAS_RE, ConfigError, loadAllowlist, readPeersFile, type AllowEntry } from "./config";
+import { ALIAS_RE, ConfigError, PAIR_CARD_RE, loadAllowlist, pairCard, readPeersFile, type AllowEntry } from "./config";
 import { badHost } from "./egress";
 import { STATION_NAME_RE, SUITE_PATH_RE } from "./envelope";
 import { BOT_ID_RE, PEER_NAME_RE, TOKEN_RE, botIdFromToken, configDir, peerDir, peersFile, stateDir } from "./ids";
 import { sanitize } from "./sanitize";
-import { fingerprint, keyId, keygen, keygenActivate, keygenRotate, type KeyInfo } from "./sign";
+import { currentSigningKey, fingerprint, keyId, keygen, keygenActivate, keygenRotate, publicKeyOf, type KeyInfo } from "./sign";
 import { PeerTelegram, TelegramError } from "./telegram";
 
 export class SetupError extends Error {
@@ -283,6 +285,24 @@ export async function confirm(peer: string, chatArg: string, deps: Deps): Promis
   deps.out(`confirmed ${peer}; the poller picks it up on its next tick`);
 }
 
+export async function dm(deps: Deps): Promise<void> {
+  guard(deps);
+  const raw = loadRaw();
+  const token = (deps.loadToken ?? readToken)();
+  const tg = (deps.makeTg ?? (t => new PeerTelegram(t)))(token);
+  await deps.ask("In Telegram, open a chat with the peer bridge bot and press Start, then press Enter here: ");
+  let chat: any;
+  try { chat = await tg.getChat(raw.operatorChatId); } catch (e) {
+    refuse(`the peer bridge bot has no chat with you yet (${(e as Error).message}); press Start in its chat and run setup.ts dm again`);
+  }
+  if (chat?.type !== "private" || chat?.id !== raw.operatorChatId) refuse("that chat is not your private chat with the peer bridge bot");
+  const fresh = loadRaw();
+  if (fresh.operatorChatId !== raw.operatorChatId) refuse("peers.json changed its operator while you were in Telegram; run setup.ts dm again");
+  fresh.operatorDmChatId = fresh.operatorChatId;
+  replaceJson(peersFile(), fresh);
+  deps.out("peer escalations, drafts and their buttons now arrive in your chat with the peer bridge bot; the running poller picks this up by itself");
+}
+
 export async function remove(peer: string, deps: Deps): Promise<void> {
   guard(deps);
   if (!PEER_NAME_RE.test(peer)) refuse("peer name must match ^[a-z0-9][a-z0-9-]{0,31}$");
@@ -316,11 +336,18 @@ export async function stationName(name: string, deps: Deps): Promise<void> {
 const showKey = (what: string, k: KeyInfo, deps: Deps) =>
   deps.out(`${what}\n  public key:  ${k.pub}\n  key id:      ${k.id}\n  fingerprint: ${k.fingerprint}\nGive the public key to the peer's operator; read the fingerprint to them by call or another messenger, never over the group.`);
 
-export async function keygenCmd(mode: "new" | "rotate" | "activate", deps: Deps): Promise<void> {
+function currentKey(): KeyInfo {
+  const k = currentSigningKey();
+  const pub = publicKeyOf(k.path);
+  return { id: k.id, pub, fingerprint: fingerprint(pub) };
+}
+
+export async function keygenCmd(mode: "new" | "rotate" | "activate" | "show", deps: Deps): Promise<void> {
   guard(deps);
   mkdir0700(configDir());
   try {
-    if (mode === "new") showKey("created the station key", keygen(), deps);
+    if (mode === "show") showKey("the station key (public part only)", currentKey(), deps);
+    else if (mode === "new") showKey("created the station key", keygen(), deps);
     else if (mode === "rotate") showKey("created the next key; we keep signing with the current one until --activate", keygenRotate(), deps);
     else showKey("the next key is now the station key; the old key is deleted", keygenActivate(), deps);
   } catch (e) {
@@ -330,6 +357,10 @@ export async function keygenCmd(mode: "new" | "rotate" | "activate", deps: Deps)
 
 export async function trust(peer: string, name: string, pub: string, deps: Deps): Promise<void> {
   guard(deps);
+  await trustKey(peer, name, pub, deps);
+}
+
+async function trustKey(peer: string, name: string, pub: string, deps: Deps): Promise<void> {
   if (!PEER_NAME_RE.test(peer)) refuse("peer name must match ^[a-z0-9][a-z0-9-]{0,31}$");
   checkStationName(name, deps);
   const raw = loadRaw();
@@ -349,7 +380,35 @@ export async function trust(peer: string, name: string, pub: string, deps: Deps)
   theirs.stationName = name;
   theirs.keys = [...keys, { id, pub, addedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z") }];
   replaceJson(peersFile(), raw);
-  deps.out(`trusted ${peer} as ${name} with key ${id}`);
+  deps.out(`trusted ${peer} as ${name} with key ${id}; the running poller picks this up by itself`);
+}
+
+export async function pair(peer: string, name: string | undefined, card: string | undefined, deps: Deps): Promise<void> {
+  guard(deps);
+  knownPeer(peer);
+  const raw = loadRaw();
+  let station: string | undefined = raw.self?.stationName;
+  if (station === undefined) {
+    station = (name ?? (await deps.ask("Our station name (lowercase letters, digits and dashes): "))).trim();
+    checkStationName(station, deps);
+    const fresh = loadRaw();
+    if (fresh.self?.stationName !== undefined && fresh.self.stationName !== station) refuse(`our station name is already ${fresh.self.stationName}`);
+    fresh.self = { ...(fresh.self ?? {}), stationName: station };
+    replaceJson(peersFile(), fresh);
+    deps.out(`our station name is ${station}`);
+  } else if (name !== undefined && name !== station) refuse(`our station name is already ${station}`);
+  mkdir0700(configDir());
+  let k: KeyInfo;
+  try { k = currentKey(); } catch { k = keygen(); deps.out("created the station key"); }
+  deps.out(`pairing card: post this one line in the group you share with ${peer}:\n${pairCard(station, k.pub)}`);
+  deps.out(`fingerprint: ${k.fingerprint}\nRead the fingerprint to the peer's operator by call or another messenger, never over the group.`);
+  if (card === undefined) {
+    deps.out(`next: when their card is in the group, run setup.ts pair ${peer} --card '<their card>'`);
+    return;
+  }
+  const m = PAIR_CARD_RE.exec(card.trim());
+  if (!m) refuse("their card must be one line: #pair station=<name> key=<public key>");
+  await trustKey(peer, m[1], m[2], deps);
 }
 
 export async function untrust(peer: string, key: string | undefined, deps: Deps): Promise<void> {
@@ -478,6 +537,10 @@ async function main(): Promise<void> {
     else if (cmd === "keygen" && args.length === 0) await keygenCmd("new", deps);
     else if (cmd === "keygen" && args.length === 1 && args[0] === "--rotate") await keygenCmd("rotate", deps);
     else if (cmd === "keygen" && args.length === 1 && args[0] === "--activate") await keygenCmd("activate", deps);
+    else if (cmd === "keygen" && args.length === 1 && args[0] === "--show") await keygenCmd("show", deps);
+    else if (cmd === "dm" && args.length === 0) await dm(deps);
+    else if (cmd === "pair" && (args.length === 1 || args.length === 2) && !args.some(a => a.startsWith("--"))) await pair(args[0], args[1], undefined, deps);
+    else if (cmd === "pair" && (args.length === 3 || args.length === 4) && args.at(-2) === "--card" && !args.slice(0, -2).some(a => a.startsWith("--"))) await pair(args[0], args.length === 4 ? args[1] : undefined, args.at(-1), deps);
     else if (cmd === "trust" && args.length === 3) await trust(args[0], args[1], args[2], deps);
     else if (cmd === "untrust" && args.length === 1) await untrust(args[0], undefined, deps);
     else if (cmd === "untrust" && args.length === 3 && args[1] === "--key") await untrust(args[0], args[2], deps);
@@ -485,7 +548,7 @@ async function main(): Promise<void> {
     else if (cmd === "deny-suite" && args.length === 2) await denySuite(args[0], args[1], deps);
     else if (cmd === "kill" && args.length === 1) await kill(args[0], deps);
     else if (cmd === "unkill" && args.length === 1) await unkill(args[0], deps);
-    else { console.error("usage: setup.ts add <peer> --peer-bot-id N [--operator-bot-id N] [--peer-username U] | confirm <peer> <chatId> | remove <peer> | uninstall | runner | station-name <name> | keygen [--rotate|--activate] | trust <peer> <station-name> <pubkey-b64> | untrust <peer> [--key <id>] | allow-suite <peer> <alias> <path> | deny-suite <peer> <alias> | kill <peer> | unkill <peer>"); process.exit(2); }
+    else { console.error("usage: setup.ts add <peer> --peer-bot-id N [--operator-bot-id N] [--peer-username U] | confirm <peer> <chatId> | remove <peer> | uninstall | runner | dm | station-name <name> | keygen [--rotate|--activate|--show] | pair <peer> [<station-name>] [--card '<card>'] | trust <peer> <station-name> <pubkey-b64> | untrust <peer> [--key <id>] | allow-suite <peer> <alias> <path> | deny-suite <peer> <alias> | kill <peer> | unkill <peer>"); process.exit(2); }
   } catch (e) {
     if (e instanceof SetupError) { console.error(`setup: ${e.message}`); process.exit(3); }
     throw e;
