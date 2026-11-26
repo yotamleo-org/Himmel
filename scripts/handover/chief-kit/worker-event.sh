@@ -76,10 +76,9 @@
 # doc), whose doc tail is WRAPPED, queue lock free and session gone; nothing runs.
 # `HANDLED closed-already <label>` also answers a wrap-merged or close step that outlives LE_STEP_BOUND seconds, one bound counted from the start of the run for the wrap and its close fallback together
 # (default 200, under the waiter's 240 s limit; no GNU timeout, no bound) for a worker whose doc tail is terminal
-# (worker_terminal_tail), queue lock free and session gone: the chief closed it by hand before the wrap was recorded.
+# (worker_terminal_tail), queue lock free and session gone.
 # A bullet `CLOSED-ALREADY <label> WRAPPED, window closed, relay step outlived <n>s, not escalated` is appended to the
-# chief doc. The same step for a worker that is not closed is `ESCALATE relay-timeout <label> rc=<n> limit=<bound>s`:
-# an escalation always names a live worker that did not answer.
+# chief doc. The same step for a worker that is not closed is `ESCALATE relay-timeout <label> rc=<n> limit=<bound>s`.
 # Test seams (env): LE_STEP_BOUND LE_LOCK LE_SESSIONS LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_STATION_STATE LE_AUTOGO LE_GH LE_DRYRUN_BOUND.
 # Platform guard: Linux bash 3.2+ (wrap-merged.sh needs flock + jq).
 set -uo pipefail
