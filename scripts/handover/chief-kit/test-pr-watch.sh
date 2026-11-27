@@ -57,13 +57,21 @@ wenv() { wexec "$1" "$2" timeout -k 2 "$3" > "$4" 2>"$4.err"; }
 pr_reads() { grep -cE '/pulls/[0-9]+$' "$S/gh.log" 2>/dev/null; }
 wenv_quiet() {
     local pid i=0 n0
-    n0="$(pr_reads)"
+    n0="$(pr_reads)"; quiet_state=""
     wexec "$1" "$2" exec > "$3" 2>"$3.err" &
-    pid=$!
-    while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ] && [ $(( $(pr_reads) - n0 )) -lt 2 ]; do sleep 0.1; i=$((i + 1)); done
+    pid=$!; quiet_pid=$pid
+    while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ]; do
+        if [ $(( $(pr_reads) - n0 )) -ge 2 ]; then
+            kill -STOP "$pid" 2>/dev/null
+            quiet_state="$(sed -n "s/.* pid=$pid .* state=\([a-z]*\).*/\1/p" "$1.wait" 2>/dev/null)"
+            [ "$quiet_state" != waiting ] || break
+            kill -CONT "$pid" 2>/dev/null
+        fi
+        sleep 0.1; i=$((i + 1))
+    done
     quiet_polls=$(( $(pr_reads) - n0 ))
     if ! kill -0 "$pid" 2>/dev/null; then wait "$pid"; rc=$?; return; fi
-    kill "$pid" 2>/dev/null
+    kill "$pid" 2>/dev/null; kill -CONT "$pid" 2>/dev/null
     i=0; while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ]; do sleep 0.1; i=$((i + 1)); done
     if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rc=137; return; fi
     wait "$pid" 2>/dev/null; rc=124
@@ -72,7 +80,7 @@ wenv_quiet() {
 mkdir -p "$S/slow"
 {
     printf '%s\n' '#!/usr/bin/env bash'
-    printf '%s\n' 'case "$(cat "${2:-/dev/null}" 2>/dev/null)" in *" exit=signal-"*) sleep "$(cat "$S/slow.hold")" ;; esac'  # read-sink-ok: the test's mv shim reads only the heartbeat temp file the waiter under test hands mv
+    printf '%s\n' 'case "$(cat "${2:-/dev/null}" 2>/dev/null)" in *" exit=signal-"*) printf "%s\n" "$PPID" > "$S/slow.held"; sleep "$(cat "$S/slow.hold")" ;; esac'  # read-sink-ok: the test's mv shim reads only the heartbeat temp file the waiter under test hands mv
     printf '%s\n' 'PATH="${PATH#"$S/slow:"}"; exec mv "$@"'
 } > "$S/slow/mv"
 chmod +x "$S/slow/mv"; printf '3\n' > "$S/slow.hold"
@@ -97,12 +105,15 @@ check 'A2. the row now holds the new head' "$H2" "$(jq -r '.watch[0].head' "$M" 
 wenv_quiet "$S/in2/consoles/c.md" "$M" "$S/o3"
 check 'A3. the same change never wakes twice (a re-armed waiter stays silent)' 124 "$rc"
 check 'A3. and prints no second wake' 0 "$(grep -c 'WAKE pr-watch' "$S/o3")"
-t0=$SECONDS
+rm -f "$S/slow.held"
 PATH="$S/slow:$PATH" wenv_quiet "$S/in2/consoles/c.md" "$M" "$S/o3s"
+a3s_hb="$(cat "$S/in2/consoles/c.md.wait" 2>/dev/null)"
+a3s_diag="no (HIMMEL-11507 hb: ${a3s_hb:-none}; wake: $(grep -m1 '^WAKE' "$S/o3s" || echo none))"
 check 'A3s. with the exit held 3 s (a loaded runner), the row still ends at rc 124' 124 "$rc"
-check 'A3s. and prints no second wake' 0 "$(grep -c 'WAKE pr-watch' "$S/o3s")"
-check 'A3s. control: the seam held the exit (the row took 3 s or more)' yes "$([ $((SECONDS - t0)) -ge 3 ] && echo yes)"
-check 'A3s. control: the held exit heartbeat still landed' yes "$(grep -q 'exit=signal-TERM' "$S/in2/consoles/c.md.wait" && echo yes)"
+check 'A3s. the stop landed while the waiter was waiting, never mid-sample where it decides a wake' waiting "$quiet_state"
+check 'A3s. and prints no wake of any kind' 0 "$(grep -c '^WAKE' "$S/o3s")"
+check 'A3s. control: the seam held the exit (the shim held the exit heartbeat of this waiter)' yes "$([ "$(cat "$S/slow.held" 2>/dev/null)" = "$quiet_pid" ] && echo yes || printf '%s' "$a3s_diag")"
+check 'A3s. control: the held exit heartbeat still landed (with the pid of this waiter)' yes "$(case "$a3s_hb" in (*" pid=$quiet_pid "*" exit=signal-TERM"*) echo yes ;; (*) printf '%s' "$a3s_diag" ;; esac)"
 
 gh_state "$H2" 3 1 1
 wenv "$S/in3/consoles/c.md" "$M" 8 "$S/o4"; rc=$?
