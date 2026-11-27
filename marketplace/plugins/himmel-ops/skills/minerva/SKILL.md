@@ -60,6 +60,16 @@ tree, rounds and question format, with the himmel rules below taking
 precedence over it. When the stop condition below and its confirmation are
 met, go on to 1b; never end at a shared understanding.
 
+**Prior art before design.** Before the first grill round, run
+`bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel "<topic>"`
+(tickets and PRs), `bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c luna "<topic>"`
+(specs, audits and decisions) and
+`bash <primary checkout>/scripts/graphify/worker-graph.sh explain "<symbol>"`,
+and cite what each returned in the spec, or write none found with the query
+you ran. Send each search as its own tool call, with no other call in the same
+response: a call sent beside one that a hook rewrites is refused unrun. Run the
+wrapper as the whole command: no `cd`, pipe, redirect or chained command.
+
 **Round 1 asks why.** When the request does not state the goal
 behind it, round 1 asks why, open-ended, even when you can guess; the answer
 feeds `effort-assess --goal`. Never re-ask what the request already settled.
