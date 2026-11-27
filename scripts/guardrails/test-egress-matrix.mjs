@@ -787,10 +787,10 @@ assert(!m.rules.some(r => r.purpose === "luna-mcp-write"), "no rule may name lun
 }
 
 assert(corpora.includes("gmail"), "corpus gmail must be declared");
-assert(m.rules.filter(r => r.corpus === "gmail").length === 3, "gmail must have exactly the grokbot read row, the anthropic inference row and the wildcard deny");
+assert(m.rules.filter(r => r.corpus === "gmail").length === 2, "gmail must have exactly the grokbot read row and the wildcard deny");
 for (const p of providers) {
   for (const u of purposes) {
-    const open = (p === "xai-grokbot" && u === "luna-mcp-read") || (p === "anthropic" && u === "inference");
+    const open = p === "xai-grokbot" && u === "luna-mcp-read";
     const { effective, rule } = evaluate("gmail", p, u);
     assert(effective === (open ? "allow" : "deny"), `gmail x ${p} x ${u} must ${open ? "allow" : "deny"}, got ${effective}`);
     if (open) assert(rule && rule.corpus === "gmail" && rule.provider === p && rule.purpose === u && rule.hard === undefined,
@@ -799,7 +799,7 @@ for (const p of providers) {
 }
 {
   assert(evaluate("gmail", "xai-grokbot", "luna-mcp-read").rule?.verdict === "allow+log", "gmail x xai-grokbot x luna-mcp-read must be allow+log (a ledger line per call)");
-  assert(evaluate("gmail", "anthropic", "inference").rule?.verdict === "allow", "gmail x anthropic x inference must be allow");
+  assert(evaluate("gmail", "anthropic", "inference").effective === "deny", "gmail x anthropic x inference must deny: only Grokbot reads the mail");
   assert(evaluate("gmail", "openai-chatgpt", "luna-mcp-read").effective === "deny", "gmail x openai-chatgpt x luna-mcp-read must deny: only Grokbot reads the mail");
   const wild = m.rules.findIndex(r => r.corpus === "gmail" && r.provider === "*" && r.purpose === "*");
   const firstStar = m.rules.findIndex(r => r.corpus === "*" && r.provider !== "google-gemini");

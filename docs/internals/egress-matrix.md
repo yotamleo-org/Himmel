@@ -446,13 +446,13 @@ review, not a code edit.
 - **`gmail`** is the operator's Gmail archive as markdown (one file per email,
   `~/Mail/gmail-md`), indexed by its own local-only qmd index (`qmd --index gmail`,
   own daemon on loopback, own token), the same shape as salus. It is private mail,
-  not PHI. Two cells are open: `gmail × xai-grokbot × luna-mcp-read` (`allow+log`,
+  not PHI. One cell is open: `gmail × xai-grokbot × luna-mcp-read` (`allow+log`,
   operator ruling 2026-11-27: Grokbot reads it through the audited
-  read service, full result text leaves the machine, one ledger line per call) and
-  `gmail × anthropic × inference` (the local Claude sessions on the station, through
-  the local qmd-gmail MCP). `gmail × * × *` is an explicit deny placed after the hard
+  read service, full result text leaves the machine, one ledger line per call).
+  `gmail × * × *` is an explicit deny placed after the hard
   `* × google-gemini` deny and ahead of every other wildcard-corpus row, so
-  `* × ollama-cloud × extraction` cannot open it. `openai-chatgpt` stays denied. The
+  `* × ollama-cloud × extraction` cannot open it. `anthropic` and `openai-chatgpt`
+  stay denied. The
   read service never includes `gmail` in a default search and refuses a search that
   mixes it with another collection; `scripts/qmd/qmd-collection-corpus.json` maps
   the collection `gmail` to the corpus `gmail`.

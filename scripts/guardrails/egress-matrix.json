@@ -175,11 +175,6 @@
       "why": "Operator-ratified read policy (operator ruling 2026-11-27): Grokbot (xai-grokbot) may search and read gmail through the audited qmd MCP read service, scoped per key by the service's allowed collections; the service searches gmail on its own index and never as part of a default search. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Placed ahead of the gmail wildcard deny below and of every wildcard-corpus row except the hard google-gemini deny, which is a different provider."
     },
     {
-      "corpus": "gmail", "provider": "anthropic", "purpose": "inference",
-      "verdict": "allow",
-      "why": "Operator ruling 2026-11-27: Anthropic (the operating harness, provider anthropic) may read gmail, inference only; local Claude sessions on the station query it through the local qmd-gmail MCP. Every other purpose stays on the gmail wildcard deny below"
-    },
-    {
       "corpus": "gmail", "provider": "*", "purpose": "*",
       "verdict": "deny",
       "why": "Every other cell for the mail archive stays closed; mail stays on local models. Placed after the hard `* x google-gemini` deny and before every other wildcard-corpus row (the `* x ollama-cloud x extraction` allow below would otherwise open it). Not hard: a future operator decision may widen it by editing one cell"
