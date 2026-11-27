@@ -38,7 +38,7 @@ if [ ! -f "$SCRIPT" ]; then
 fi
 
 TMP="$(mktemp -d)" || exit 1
-trap 'rm -rf "$TMP"' EXIT
+trap 'chmod -R u+rwx "$TMP" 2>/dev/null; rm -rf "$TMP"' EXIT
 
 pass=0
 fail=0
@@ -98,6 +98,7 @@ make_mock_clone() {
     cp "$src_scripts/lib/resolve-bun.sh"        "$clone/scripts/lib/resolve-bun.sh"
     cp "$src_scripts/lib/claude-version.sh"        "$clone/scripts/lib/claude-version.sh"
     cp "$src_scripts/lib/update-channel.sh"        "$clone/scripts/lib/update-channel.sh"
+    cp "$src_scripts/lib/plugin-cache-drift.sh"        "$clone/scripts/lib/plugin-cache-drift.sh"
     git -C "$clone" add -A
     git -C "$clone" commit --quiet -m "scaffold"
     CHECKOUT_DIR="$clone"
@@ -655,16 +656,12 @@ EOF
     local n tree cache inst=""
     for n in p1 same remote nosrc; do
         cache="$DRIFT_HOME/.claude/plugins/cache/himmel/$n/1.0.0"
-        mkdir -p "$cache/hooks"
-        if [ "$n" = same ]; then
-            printf '{ %s }\n' "$drift_main_matcher" > "$cache/hooks/hooks.json"
-        else
-            printf '{ %s }\n' "$drift_cache_matcher" > "$cache/hooks/hooks.json"
-        fi
         tree="$CHECKOUT_DIR/marketplace/plugins/$n"
-        mkdir -p "$tree/.claude-plugin" "$tree/hooks"
+        mkdir -p "$tree/.claude-plugin" "$tree/hooks" "$cache"
         printf '{"name":"%s","version":"1.0.0"}\n' "$n" > "$tree/.claude-plugin/plugin.json"
         printf '{ %s }\n' "$drift_main_matcher" > "$tree/hooks/hooks.json"
+        cp -R "$tree/." "$cache/"
+        [ "$n" = same ] || printf '{ %s }\n' "$drift_cache_matcher" > "$cache/hooks/hooks.json"
         inst="$inst\"$n@himmel\":[{\"scope\":\"user\",\"installPath\":\"$cache\",\"version\":\"1.0.0\"}],"
     done
     printf '{"version":2,"plugins":{%s}}\n' "${inst%,}" > "$DRIFT_HOME/.claude/plugins/installed_plugins.json"
@@ -683,7 +680,7 @@ out_drift=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_
       bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || rc=$?
 log_drift_content="$(cat "$log_drift")"
 if [ "$rc" -eq 0 ]; then assert_pass "drift run completed (rc=$rc)"; else assert_fail "drift run completed (rc=$rc) — out: $out_drift"; fi
-assert_contains "drifted p1 is uninstalled (data kept)" "plugin uninstall --keep-data p1@himmel" "$log_drift_content"
+assert_contains "(11344-d4) drifted p1 is uninstalled (data kept)" "plugin uninstall --keep-data p1@himmel" "$log_drift_content"
 assert_contains "drifted p1 is installed again" "plugin install p1@himmel" "$log_drift_content"
 un_pos="${log_drift_content%%plugin uninstall --keep-data p1@himmel*}"
 in_pos="${log_drift_content%%plugin install p1@himmel*}"
@@ -819,6 +816,121 @@ out_lag=$(USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_st
 log_lag="$(cat "$log_drift")"
 if [ "$rc" -eq 0 ]; then assert_pass "version-lag run completed (rc=$rc)"; else assert_fail "version-lag run rc=$rc — out: $out_lag"; fi
 assert_not_contains "a cache older than the checkout is left to the version update" "p1@himmel" "$log_lag"
+
+drift_new() {
+    make_drift_scenario "$1"
+    p1t="$CHECKOUT_DIR/marketplace/plugins/p1"; p1c="$DRIFT_HOME/.claude/plugins/cache/himmel/p1/1.0.0"
+    samet="$CHECKOUT_DIR/marketplace/plugins/same"; samec="$DRIFT_HOME/.claude/plugins/cache/himmel/same/1.0.0"
+}
+drift_p1_equal() { cp "$p1t/hooks/hooks.json" "$p1c/hooks/hooks.json"; }
+drift_put() {
+    mkdir -p "$(dirname "$1")" && printf '%s\n' "$2" > "$1"
+}
+drift_run() {
+    : > "$log_drift"
+    rc_d=0
+    out_d=$(env "$@" USERPROFILE='' HOME="$DRIFT_HOME" HIMMEL_UPDATE_CLAUDE_BIN="$claude_stub_drift" HERMES_HOME="$TMP/no-hermes" \
+          CLAUDE_USER_SETTINGS="$DRIFT_HOME/.claude/settings.json" \
+          bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --only plugin-refresh 2>&1) || rc_d=$?
+    log_d="$(cat "$log_drift")"
+}
+drift_same_alone() {
+    assert_contains "$1 (the refresh ran)" "plugin install p1@himmel" "$log_d"
+    assert_not_contains "$1" "same@himmel" "$log_d"
+}
+
+echo "Test: (11344-d1) a same-version commands/ change reinstalls once"
+drift_new d1; drift_p1_equal
+drift_put "$p1t/commands/c.md" new; drift_put "$p1c/commands/c.md" old
+drift_run
+assert_contains "(11344-d1) p1 is uninstalled" "plugin uninstall --keep-data p1@himmel" "$log_d"
+assert_contains "(11344-d1) p1 is installed again" "plugin install p1@himmel" "$log_d"
+if cmp -s "$p1t/commands/c.md" "$p1c/commands/c.md"; then assert_pass "(11344-d1) the cache carries the checkout's commands/c.md"; else assert_fail "(11344-d1) cache still differs — out: $out_d"; fi
+drift_run
+assert_not_contains "(11344-d1) a second run reinstalls nothing for p1" "p1@himmel" "$log_d"
+
+echo "Test: (11344-d2) install artifacts never trigger a reinstall"
+drift_new d2
+drift_put "$samec/node_modules/x/index.js" x
+drift_run
+drift_same_alone "(11344-d2) a cache-only node_modules/ is ignored"
+drift_new d2b
+drift_put "$samec/skills/s/__pycache__/y.pyc" y
+drift_run
+drift_same_alone "(11344-d2b) a cache-only __pycache__/ under skills/ is ignored"
+
+echo "Test: (11344-d3) a file the checkout deleted leaves the cache"
+drift_new d3; drift_p1_equal
+drift_put "$p1c/bin/old" gone
+drift_run
+assert_contains "(11344-d3) p1 is reinstalled" "plugin install p1@himmel" "$log_d"
+if [ ! -e "$p1c/bin/old" ] && [ "$rc_d" -eq 0 ]; then assert_pass "(11344-d3) the cache no longer has bin/old"; else assert_fail "(11344-d3) bin/old stays (rc=$rc_d) — out: $out_d"; fi
+
+echo "Test: (11344-d10) removing a space-prefixed extra never takes its ignored namesake"
+drift_new d10; drift_p1_equal
+drift_put "$p1t/.gitignore" kp.txt; drift_put "$p1c/.gitignore" kp.txt
+drift_put "$p1c/kp.txt" runtime; drift_put "$p1c/ kp.txt" extra
+drift_run
+if [ -f "$p1c/kp.txt" ] && [ ! -e "$p1c/ kp.txt" ]; then assert_pass "(11344-d10) only the space-prefixed extra is removed"; else assert_fail "(11344-d10) wrong file removed (rc=$rc_d) — out: $out_d"; fi
+
+echo "Test: (11344-d5) a gitignored runtime file is left alone"
+drift_new d5
+drift_put "$samet/.gitignore" cache/; drift_put "$samec/.gitignore" cache/
+drift_put "$samet/cache/kp.json" one; drift_put "$samec/cache/kp.json" two
+drift_run
+drift_same_alone "(11344-d5) an ignored file differing is no drift"
+
+echo "Test: (11344-d6) an incomplete compare reinstalls, removes nothing and fails the run"
+if [ "$(id -u)" -eq 0 ]; then
+    echo "  SKIP: (11344-d6) running as root"
+else
+    drift_new d6; drift_p1_equal
+    drift_put "$p1c/bin/keep" keep
+    drift_put "$p1t/scripts/x.sh" x
+    chmod 000 "$p1t/scripts"
+    drift_run
+    chmod 755 "$p1t/scripts"
+    assert_contains "(11344-d6) the failed compare is named" "compare failed for p1@himmel; reinstalling" "$out_d"
+    assert_contains "(11344-d6) the install is attempted" "plugin install p1@himmel" "$log_d"
+    assert_contains "(11344-d6) the post-reinstall compare is loud" "p1@himmel still differs from the checkout after the reinstall" "$out_d"
+    if [ "$rc_d" -ne 0 ]; then assert_pass "(11344-d6) the run fails (rc=$rc_d)"; else assert_fail "(11344-d6) rc=0 — out: $out_d"; fi
+    if [ -f "$p1c/bin/keep" ]; then assert_pass "(11344-d6) nothing is removed from the cache"; else assert_fail "(11344-d6) a cache file was removed"; fi
+fi
+
+echo "Test: (11344-d7) Claude Code's own cache files are left alone"
+drift_new d7
+drift_put "$samec/.orphaned_at" 1; drift_put "$samec/.in_use/4242" 1
+drift_run
+drift_same_alone "(11344-d7) .orphaned_at and .in_use/ are no drift"
+
+echo "Test: (11344-d8) a file the checkout added is delivered"
+drift_new d8; drift_p1_equal
+drift_put "$p1t/commands/new.md" new
+drift_run
+assert_contains "(11344-d8) p1 is reinstalled" "plugin install p1@himmel" "$log_d"
+assert_not_contains "(11344-d8) it is not reported as a failed compare" "compare failed" "$out_d"
+if [ -f "$p1c/commands/new.md" ]; then assert_pass "(11344-d8) the cache has the new file"; else assert_fail "(11344-d8) new file missing — out: $out_d"; fi
+
+echo "Test: (11344-d9) a UTF-8 locale does not disturb the set compare"
+d9_locales="$(locale -a 2>/dev/null)" || d9_locales=""
+if grep -qix -E 'en_US\.utf-?8' <<<"$d9_locales"; then
+    drift_new d9
+    for d9_d in "$samet" "$samec"; do
+        drift_put "$d9_d/skills/s/SKILL.md" s; drift_put "$d9_d/skills/s/references/r.md" r
+    done
+    drift_run LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+    drift_same_alone "(11344-d9) mixed-case siblings are no drift under en_US.UTF-8"
+else
+    echo "  SKIP: (11344-d9) no en_US.UTF-8 locale"
+fi
+
+echo "Test: (11344-d11) a missing compare lib is loud, fails the run and touches no plugin"
+drift_new d11
+rm -f "$CHECKOUT_DIR/scripts/lib/plugin-cache-drift.sh"
+drift_run
+assert_contains "(11344-d11) the missing lib is named" "ERROR: scripts/lib/plugin-cache-drift.sh is missing" "$out_d"
+if [ "$rc_d" -ne 0 ]; then assert_pass "(11344-d11) the run fails (rc=$rc_d)"; else assert_fail "(11344-d11) rc=0 — out: $out_d"; fi
+if [ -z "$log_d" ]; then assert_pass "(11344-d11) no plugin is uninstalled or installed"; else assert_fail "(11344-d11) claude was invoked: $log_d"; fi
 
 echo ""
 echo "=== $pass passed, $fail failed ==="

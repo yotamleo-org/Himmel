@@ -1713,7 +1713,7 @@ BP_V2="$(bp_plus "$BP_BASE_VER" 2)"
 # unchanged); a sibling that changes it is a release cut, and MOG_BUMP_REL=1
 # makes the PR one too; MOG_BUMP_NOPULL=1 leaves the PR ref off origin; MOG_BUMP_EVIL=1 plants a
 # permissive checker in the PR head; MOG_BUMP_MOVED=1 advances the PR ref past
-# the certified head.
+# the certified head. MOG_BUMP_SIBCUT=0: a sibling raises the plugin, no VERSION.
 bp_setup() {
     local a="$1" b0
     local g="git -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false -c core.hooksPath=/dev/null"
@@ -1757,7 +1757,7 @@ bp_setup() {
     $g -C "$a" checkout -q -b sibling "$b0" || return 1
     printf 'sibling\n' > "$a/marketplace/plugins/himmel-ops/b.txt"
     jq --arg v "${MOG_BUMP_SIB:-$BP_BASE_VER}" '.version=$v' "$a/$BP_MAN" > "$a/m.tmp" && mv "$a/m.tmp" "$a/$BP_MAN" || return 1
-    [ "${MOG_BUMP_SIB:-$BP_BASE_VER}" = "$BP_BASE_VER" ] || printf '1.0.1\n' > "$a/VERSION"
+    [ "${MOG_BUMP_SIB:-$BP_BASE_VER}" = "$BP_BASE_VER" ] || [ "${MOG_BUMP_SIBCUT:-1}" = 0 ] || printf '1.0.1\n' > "$a/VERSION"
     $g -C "$a" add marketplace VERSION && $g -C "$a" commit -qm sibling && $g -C "$a" push -q origin HEAD:main || return 1
     return 0
 }
@@ -1818,7 +1818,13 @@ STUB_PR_FILES_JSON="$BP_REN" MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
 # grep under pipefail would SIGPIPE the producer and read as "no plugin file").
 BP_LONG=$(jq -nc '[{filename: "marketplace/plugins/himmel-ops/a.txt"}] + [range(2500) | {filename: ("docs/f\(.).md")}]')
 STUB_PR_FILES_JSON="$BP_LONG" MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
-    bp_run 23 "5188-h: plugin file first in a 2501-file list is still found → exit 23"
+    bp_run 23 "(11344-c5) 5188-h: plugin file first in a 2501-file list is still found → exit 23"
+MOG_BUMP_SIBCUT=0 MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
+    bp_run 0 "(11344-c1) equal version the PR raised itself → merged"
+assert_audit_has "(11344-c1) audited as a plugin-bump pass" "PLUGIN-BUMP ok"
+assert_audit_has "(11344-c1) the audit names the equal plugin" "equal=himmel-ops@$BP_V1"
+MOG_BUMP_SIBCUT=0 MOG_BUMP_SIB="$BP_V1" MOG_BUMP_EVIL=1 MOG_BUMP_PR="$BP_BASE_VER" \
+    bp_run 23 "(11344-c4) unbumped PR with its own permissive checker → exit 23"
 # 5203-a (RED) — an EMPTY checker blob at the base tip runs as `exit 0`: the
 # gate must refuse it, not read the empty script's success as a bump.
 MOG_BUMP_EMPTY=scripts/check-plugin-drift.sh MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \

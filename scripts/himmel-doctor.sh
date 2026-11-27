@@ -5874,20 +5874,24 @@ check_c78_shfmt() {
 }
 
 # --- C79: an installed plugin cache that differs from the checkout at the same version ---
-# Claude Code caches a plugin by version and plugin versions change only in a
-# release cut, so a merged hooks change never reaches the cached copy of the same
-# version: the guard main shows as shipped is not the one running. Compares hooks/,
-# hooks.json and skills/ of each checkout-sourced @himmel plugin's user-scope installPath
-# against the checkout tree when the installed version equals plugin.json's (a
-# version lag is a different finding) and the plugin is enabled in the user
-# settings (the repair leaves a disabled one alone). WARN names the files; the
-# repair is himmel-update.sh --only plugin-refresh.
+# WARN when an enabled checkout-sourced @himmel plugin's same-version cache differs anywhere in its tree: a shipped file differing or missing, or
+# a cache file neither shipped, excluded nor ignored (scripts/lib/plugin-cache-drift.sh); an incomplete compare WARNs too.
 check_c79_plugin_cache_drift() {
     local manifest="$REPO_ROOT/marketplace/.claude-plugin/marketplace.json"
     local installed="$CLAUDE_DIR_R/plugins/installed_plugins.json"
     command -v jq >/dev/null 2>&1 || return 0
     [ -r "$manifest" ] && [ -r "$installed" ] || return 0
-    local name src row have path want tree f drift="" drifted="" n=0
+    local lib="$REPO_ROOT/scripts/lib/plugin-cache-drift.sh"
+    [ -f "$lib" ] || lib="$SELF_DIR/lib/plugin-cache-drift.sh"
+    if [ ! -f "$lib" ]; then
+        emit WARN C79-plugin-cache-drift "plugin-cache-drift.sh missing, so installed plugin caches were not compared" \
+            "bash scripts/himmel-update.sh (restores the checkout), then re-run the doctor"
+        return 0
+    fi
+    # shellcheck source=lib/plugin-cache-drift.sh
+    # shellcheck disable=SC1090,SC1091
+    . "$lib"
+    local name src row have path want tree out drift="" drifted="" n=0
     while IFS=' ' read -r name src; do
         [ -n "$name" ] || continue
         row="$(jq -r --arg k "$name@himmel" '[.plugins[$k][]? | select(.scope == "user")][0] | "\(.version // "") \(.installPath // "")"' "$installed" 2>/dev/null)" || row=""
@@ -5898,19 +5902,17 @@ check_c79_plugin_cache_drift() {
         want="$(jq -r '.version // empty' "$tree/.claude-plugin/plugin.json" 2>/dev/null)" || want=""
         [ -n "$want" ] && [ "$want" = "$have" ] || continue
         n=$((n + 1))
-        drift=""
-        while IFS= read -r f; do
-            [ -n "$f" ] || continue
-            cmp -s "$tree/$f" "$path/$f" 2>/dev/null || drift="$drift${drift:+, }$f"
-        done <<EOF_FILES
-$({ ( cd "$tree" && find hooks hooks.json skills -type f 2>/dev/null ) || true; ( cd "$path" && find hooks hooks.json skills -type f 2>/dev/null ) || true; } | sort -u)
-EOF_FILES
+        if ! out="$(plugin_cache_drift "$tree" "$path")"; then
+            drifted="$drifted${drifted:+; }$name@himmel: cannot compare"
+            continue
+        fi
+        drift="$(printf '%s' "$out" | cut -c3- | paste -sd, - | sed 's/,/, /g')"
         [ -z "$drift" ] || drifted="$drifted${drifted:+; }$name@himmel $have: $drift"
     done <<EOF_PLUGINS
 $(jq -r '.plugins[]? | select(.source | type == "string") | "\(.name) \(.source)"' "$manifest" 2>/dev/null)
 EOF_PLUGINS
     if [ -n "$drifted" ]; then
-        emit WARN C79-plugin-cache-drift "installed plugin cache differs from the checkout at the same version, so the merged hooks are not the ones running — $drifted" \
+        emit WARN C79-plugin-cache-drift "installed plugin cache differs from the checkout at the same version, so the merged plugin files are not the ones running — $drifted" \
             "bash scripts/himmel-update.sh --only plugin-refresh (reinstalls the cache), then restart Claude sessions"
         return 0
     fi

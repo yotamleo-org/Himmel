@@ -138,13 +138,16 @@ deliberate merge commit, never a rebase and never a force-push.
    gate or e2e proof pinned to a sha) is re-taken after the merge.
 
 A sibling's plugin bump IS a reason for the plugin it bumped. A PR that
-changes a plugin bumps that plugin's `plugin.json` version above the base's, so two PRs
-bumping one plugin from the same base collide on the version line (or merge clean to the
-same number): the second merges main and bumps above it. `plugin-version-bump`, the
-ready-check item 9 and the merge-on-green recheck (which runs the base-tip checker against
-the live base) refuse a plugin change whose version is not above the base's, a version
-bump with no other change in that plugin, and a release cut that leaves a plugin it
-changes at or below the base's version, so two contents never ship under one version.
+changes a plugin bumps that plugin's `plugin.json` version above the base's.
+`plugin-version-bump`, the ready-check item 9 and the merge-on-green recheck (which runs
+the base-tip checker against the live base) refuse a plugin change whose version is below
+the base's or unraised, a version bump with no other change in that plugin, and a release
+cut that leaves a plugin it changes at or below the base's version. A version equal to the
+base's passes in one case: the PR raised the plugin itself, the base moved it only from
+that same old version to that same new one, and no commit since the merge-base touched
+`VERSION`, so two PRs that raced from one base both merge. Until a higher version ships,
+the base can hold several contents under that version (`himmel-update` reinstalls such a
+cache, a marketplace install does not).
 A PR open across this change that edits a plugin must bump it; a sibling's bump on an
 unrelated plugin is no reason to merge main.
 
