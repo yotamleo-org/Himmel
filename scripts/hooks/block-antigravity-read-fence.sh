@@ -103,8 +103,71 @@ if [ -n "$RAW_ART" ]; then
     unset _ar
 fi
 
+OWN_MCP_REAL=""
+if [ -n "$ARTIFACT_REAL" ]; then
+    _acp="${ARTIFACT_REAL%/brain/*}"
+    _conv="${ARTIFACT_REAL#"$_acp/brain/"}"
+    _home="${_acp%/antigravity-acp}"
+    if [ "$_acp" = "$_home/antigravity-acp" ]; then
+        case "$_conv" in
+            ''|*/*) ;;
+            *)
+                for _t3h in "$T3_HOME_1" "$T3_HOME_2"; do
+                    [ -n "$_t3h" ] || continue
+                    _prov="$(canon_path "$_t3h/userdata/providers/antigravity")" || continue
+                    [ "${_home%/*}" != "$_prov" ] || OWN_MCP_REAL="$_acp/mcp"
+                done
+                ;;
+        esac
+    fi
+    unset _acp _conv _home _t3h _prov
+fi
+
+deny_own_mcp_symlink() {
+    [ -n "$OWN_MCP_REAL" ] || return 0
+    local rest="$1" cur="" part="" parent="" inside=0
+    while [ -n "$rest" ]; do
+        part="${rest%%/*}"
+        if [ "$part" = "$rest" ]; then rest=""; else rest="${rest#*/}"; fi
+        case "$part" in ''|.) continue ;; esac
+        if [ "$inside" -eq 0 ] && [ "$part" = mcp ]; then
+            parent="$(canon_path "${cur:-/}")" || deny "cannot canonicalize an mcp/ parent — fail closed"
+            [ "$parent/mcp" != "$OWN_MCP_REAL" ] || inside=1
+        fi
+        cur="$cur/$part"
+        if [ "$inside" -eq 1 ] && [ -L "$cur" ]; then
+            deny "denies a symlink at or below the own mcp/ schema dir ($cur)"
+        fi
+    done
+    return 0
+}
+
+is_own_mcp_schema_read() {
+    local raw="$1" real="$2" rel=""
+    case "$TOOL_NAME" in
+        Read|read_file) ;;
+        *) return 1 ;;
+    esac
+    [ -n "$raw" ] && [ -n "$OWN_MCP_REAL" ] || return 1
+    case "$raw/" in */../*) return 1 ;; esac
+    case "$real" in
+        "$OWN_MCP_REAL"/*) rel="${real#"$OWN_MCP_REAL"/}" ;;
+        *) return 1 ;;
+    esac
+    case "$rel" in
+        */*/*) return 1 ;;
+        ?*/?*.json) ;;
+        *) return 1 ;;
+    esac
+    case "$raw" in
+        */mcp/"$rel") ;;
+        *) return 1 ;;
+    esac
+    [ "$(canon_path "${raw%/mcp/"$rel"}")/mcp" = "$OWN_MCP_REAL" ] && [ -f "$real" ]
+}
+
 check_forbidden_homes() {
-    local real="$1" real_lc=""
+    local real="$1" raw="${2:-}" real_lc=""
     real_lc="$(lower_str "$real")"
 
     case "$real_lc" in
@@ -126,6 +189,8 @@ check_forbidden_homes() {
             deny "denies reading ~/.gemini/config ($real)"
             ;;
     esac
+
+    is_own_mcp_schema_read "$raw" "$real" && return 0
 
     local art_lc="" t3h t3_lc
     [ -n "$ARTIFACT_REAL" ] && art_lc="$(lower_str "$ARTIFACT_REAL")"
@@ -168,7 +233,8 @@ check_read_path() {
     esac
     real="$(canon_path "$full")" || deny "cannot canonicalize path '$raw' — fail closed"
 
-    check_forbidden_homes "$real"
+    deny_own_mcp_symlink "$full"
+    check_forbidden_homes "$real" "$full"
 
     real_lc="$(lower_str "$real")"
     if is_under_dir "$real_lc" "/tmp" || is_under_dir "$real_lc" "/private/tmp"; then
