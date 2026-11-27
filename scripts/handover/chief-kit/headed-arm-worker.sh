@@ -1079,10 +1079,12 @@ if [ "$READINESS" -eq 1 ]; then
         fi
         [ "$mk" = "himmel-readiness-fixture-v1" ] || { _ready_fx_why="the fixture root carries no valid .himmel-readiness-fixture marker"; return 1; }
         # a root that holds the account's real home is not a fixture (its config, keyring and .env live there)
-        v="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"  # swallow-ok: a host without getent has no real home to compare, and every in-root check below still applies
-        if [ -n "$v" ] && v="$(cd -P "$v" 2>/dev/null && pwd -P)"; then  # swallow-ok: an unresolvable home directory leaves nothing to compare, and every in-root check below still applies
-            case "$v" in "$_ready_fx_root"|"$_ready_fx_root"/*) _ready_fx_why="the fixture root contains the account's real home ($v)"; return 1 ;; esac
+        if ! v="$(set -o pipefail; getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)" ||
+            [ -z "$v" ] || ! v="$(cd -P "$v" 2>/dev/null && pwd -P)"; then
+            _ready_fx_why="the account's real home cannot be resolved (passwd lookup), so the fixture root cannot be checked against it"
+            return 1
         fi
+        case "$v" in "$_ready_fx_root"|"$_ready_fx_root"/*) _ready_fx_why="the fixture root contains the account's real home ($v)"; return 1 ;; esac
         # the usage preflight too: its default reads machine-wide usage state and may refresh it from the provider. The claude binary
         # is required as well: an unset, empty, relative or bare one is resolved by name through PATH, and a launch-floor gate
         # that finds a native claude there would execute it
@@ -1093,7 +1095,11 @@ if [ "$READINESS" -eq 1 ]; then
         done
         # a config directory, when named, is inside too
         v="${CLAUDE_CONFIG_DIR:-}"
-        case "$v" in ''|[!/]*) ;; *) _ready_inside "$_ready_fx_root" "$v" || { _ready_fx_why="CLAUDE_CONFIG_DIR=$v is outside the fixture root"; return 1; } ;; esac
+        case "$v" in
+            '') ;;
+            /*) _ready_inside "$_ready_fx_root" "$v" || { _ready_fx_why="CLAUDE_CONFIG_DIR=$v is outside the fixture root"; return 1; } ;;
+            *) _ready_fx_why="CLAUDE_CONFIG_DIR must be an absolute path inside the fixture root"; return 1 ;;
+        esac
         # a managed doc (the production layout) makes headed-arm.sh run the machine's REAL usage preflight, a fixed in-repo path
         # with no seam that reads machine-wide state and may refresh it from the provider: only an exec target inside the root,
         # which stands in for headed-arm.sh, may run for one. The in-repo target, an empty one and any outside one are refused.

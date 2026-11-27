@@ -606,6 +606,20 @@ rs_launch HEADED_ARM_WORKER_PREFLIGHT=;                   rs_refused "no usage p
 mkdir -p "$RS/getent-shim"
 printf '%s\n' '#!/usr/bin/env bash' "echo \"fixture-user:x:\$2:\$2::$RS:/bin/bash\"" > "$RS/getent-shim/getent"; chmod 755 "$RS/getent-shim/getent"
 rs_launch PATH="$RS/getent-shim:$RS/bin:$RS_OUT/canary-bin:$PATH"; rs_refused "a fixture root that contains the account's real home"; rs_msg "fixture boundary: the real home" "the fixture root contains the account's real home"
+mkdir -p "$RS/getent-fail" "$RS/getent-empty" "$RS/getent-missing"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 2' > "$RS/getent-fail/getent"
+# shellcheck disable=SC2016 # written literally for the stub's positional arguments
+printf '%s\n' '#!/usr/bin/env bash' 'printf "fixture-user:x:%s:%s:::/bin/bash\n" "$2" "$2"' > "$RS/getent-empty/getent"
+printf '%s\n' '#!/usr/bin/env bash' "echo \"fixture-user:x:\$2:\$2::$tmp/rs-nohome-missing:/bin/bash\"" > "$RS/getent-missing/getent"
+chmod 755 "$RS/getent-fail/getent" "$RS/getent-empty/getent" "$RS/getent-missing/getent"
+for rs_home_case in T4:fail T4b:empty T4c:missing; do
+  rs_launch PATH="$RS/getent-${rs_home_case#*:}:$RS/bin:$RS_OUT/canary-bin:$PATH"
+  rs_refused "10351 ${rs_home_case%%:*} an unresolved passwd home"
+  rs_msg "10351 ${rs_home_case%%:*} fixture boundary: unresolved passwd home" "the account's real home cannot be resolved"
+done
+rs_launch CLAUDE_CONFIG_DIR=.claude-rel
+rs_refused "10351 T5 a relative CLAUDE_CONFIG_DIR"
+rs_msg "10351 T5 fixture boundary: relative CLAUDE_CONFIG_DIR" "CLAUDE_CONFIG_DIR must be an absolute path inside the fixture root"
 RS_DOC_OUTSIDE=1; rs_launch; RS_DOC_OUTSIDE=0
 check "17s fixture boundary: a doc outside the fixture root is refused before the acquire" "$([ "$RS_RC" -ne 0 ] && echo refused):$([ -e "$RS_D/record" ] && echo launched || echo no):$(rs_attempts)" "refused:no:0"
 rs_msg "fixture boundary: doc" "is outside the fixture root"
