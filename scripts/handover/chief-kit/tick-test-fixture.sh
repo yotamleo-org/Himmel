@@ -163,7 +163,7 @@ if [ -n "${STUB_PR_JSON:-}" ]; then
   jq -r "$2" "$STUB_PR_JSON"
   exit $?
 fi
-printf '%b'"${STUB_PR_ROWS-2247\\tfeat/x\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n2250\\tfeat/y\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n}"
+printf '%b' "${STUB_PR_ROWS-2247\\tfeat/x\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n2250\\tfeat/y\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n}"
 STUB
 # orphans= reads `ps -ww -eo pid=,ppid=,etime=,args=` (orphan-loops.sh).
 # Answered from $PS_FIXTURE so the suite never reads the live process table;

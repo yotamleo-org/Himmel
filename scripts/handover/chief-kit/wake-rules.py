@@ -31,26 +31,26 @@ def remedy_of(doc, release_root):
     return (record.get('operator_command') or '') if isinstance(record, dict) else ''
 
 
-def dependabot_wake(value, extract, minutes, file, now):
-    """Wake once per new PR set, after its newest PR has settled; the marker holds the set."""
+def dependabot_wake(value, extract, minutes, set_marker, now):
+    settle_minutes = int(extract.split(':')[1])
     if value in ('', '0'):
-        file.unlink(missing_ok=True)
+        set_marker.unlink(missing_ok=True)
         return False
     match = re.fullmatch(r'[1-9][0-9]*:([0-9]+)m:([0-9]+)m:(#[0-9]+(?:,#[0-9]+)*)', value)
     if not match:
         return False
     oldest, newest, prs = match.groups()
-    if int(newest) < int(extract.split(':')[1]):
+    if int(newest) < settle_minutes:
         return False
     current = prs.split(',')
     reminder = float(os.getenv('CHIEF_WAIT_DEPENDABOT_REWAKE_MIN', minutes))
-    if file.exists():
-        stamp = file.stat()
-        if set(current) <= set(file.read_text().split()) and (not reminder or now - stamp.st_mtime < reminder * 60):
-            file.write_text('\n'.join(current) + '\n')
-            os.utime(file, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    if set_marker.exists():
+        stamp = set_marker.stat()
+        if set(current) <= set(set_marker.read_text().split()) and (not reminder or now - stamp.st_mtime < reminder * 60):
+            set_marker.write_text('\n'.join(current) + '\n')
+            os.utime(set_marker, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
             return False
-    file.write_text('\n'.join(current) + '\n')
+    set_marker.write_text('\n'.join(current) + '\n')
     print('WAKE dependabot ' + prs + ' oldest=' + oldest + 'm')
     return True
 

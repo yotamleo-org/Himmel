@@ -152,7 +152,7 @@ template_version: 3
 
 > **Writes:** marketplace/ scripts/upstreams/ scripts/upstreams.json scripts/machine-setup/ site/package.json site/package-lock.json scripts/hooks/check-oxlint-complexity.sh scripts/hooks/check-oxlint-hardening.sh{writes_extra}
 
-> **Writes note:** marketplace.json pins and forked plugin dirs, pin-holds.json, installer pins, upstreams.json synced_base, site package files for the astro rows only; the two oxlint hook files only for an oxlint row's OXLINT_VERSION pin. Stay off scripts/lib/, every other file under scripts/hooks/ and {workflow_ban}
+> **Writes note:** marketplace.json pins and forked plugin dirs, pin-holds.json, installer pins, upstreams.json synced_base, site package files for the astro rows only{own_files}; the two oxlint hook files only for an oxlint row's OXLINT_VERSION pin. Stay off scripts/lib/, every other file under scripts/hooks/ and {workflow_ban}
 
 > **Do not:** upgrade a station tool on the live station before its VM proof; run any paid model call; force-push; touch a fork whose branch is HELD.
 
@@ -219,8 +219,11 @@ DELIVERABLES = """
 > - A PR closed unmerged tells Dependabot not to raise that version again, so the deferral ticket is its only record: file it at High or above, naming the PR and its advisory if it has one."""
 
 
+class PrNotOpen(Exception):
+    pass
+
+
 def pr_numbers(text):
-    """The numbers of a `#a,#b` list, in order, each once; None when an item is no number."""
     items = [i.strip().lstrip("#") for i in text.split(",") if i.strip()]
     if not all(i.isdecimal() for i in items):
         return None
@@ -228,14 +231,12 @@ def pr_numbers(text):
 
 
 def core_hit(files):
-    """The first of these files that a core pattern matches, or None."""
     with open(CORE_PATHS, encoding="utf-8") as f:
         pats = [re.compile(l.strip()) for l in f if l.strip() and not l.startswith("#")]
     return next((p for p in files if any(pat.search(p) for pat in pats)), None)
 
 
-def carried(name, dirs, prs):
-    """(the dirs no PR carries, {PR number: the dirs it carries}) for one package."""
+def split_by_carrier(name, dirs, prs):
     pkg = re.escape(re.sub(r"^(npm|pypi|gh):", "", name))
     by = {}
     for pr in prs:
@@ -257,12 +258,11 @@ def carry_note(name, left, by):
 
 
 def drop_carried(body, rows, holds, prs):
-    """Rows and holds less what the given PRs carry, plus a note for each."""
     kept_rows, kept_holds, notes = [], [], []
     for r in rows:
         m = re.match(r"bump (.+?) (to \S.*)$", r[4])
         if m:
-            left, by = carried(r[0], m.group(1).split(", "), prs)
+            left, by = split_by_carrier(r[0], m.group(1).split(", "), prs)
             if by:
                 notes.append(carry_note(r[0], left, by))
                 if not left:
@@ -273,7 +273,7 @@ def drop_carried(body, rows, holds, prs):
         key = str(h["key"])
         dirs = [d for m in re.finditer(r"(?m)^\s*(?:[a-z]+:)?%s \S+ \(([^)]*)\): HELD" % re.escape(key), body)
                 for d in m.group(1).split(", ")]
-        left, by = carried(key, dirs, prs)
+        left, by = split_by_carrier(key, dirs, prs)
         if by:
             notes.append(carry_note(key, left, by))
             if not left:
@@ -283,9 +283,11 @@ def drop_carried(body, rows, holds, prs):
 
 
 def given_prs(numbers, prs_path):
-    """The named PRs from the PR file, each with its paths; raises KeyError for one not in it."""
     with open(prs_path, encoding="utf-8") as f:
         by_number = {p["number"]: p for p in json.load(f)}
+    for n in numbers:
+        if n not in by_number:
+            raise PrNotOpen(n)
     return [dict(by_number[n], paths=[f["path"] for f in by_number[n]["files"]]) for n in numbers]
 
 
@@ -311,10 +313,10 @@ def cmd_brief(args):
                     prs.append(pr)
             rows, holds, carry = drop_carried(body, rows, holds, given)
             notes += carry
-        except KeyError as e:
-            print("drift-brief: PR #%s is not open" % e.args[0], file=sys.stderr)
+        except PrNotOpen as e:
+            print("drift-brief: PR #%d is not open" % e.args[0], file=sys.stderr)
             return 2
-        except (OSError, ValueError, TypeError) as e:
+        except (OSError, ValueError, TypeError, KeyError) as e:
             print("drift-brief: cannot read the PR file or core-paths.txt: %s" % e, file=sys.stderr)
             return 2
     n = len(rows) + len(holds)
@@ -326,7 +328,7 @@ def cmd_brief(args):
     extra = dict(
         headline="the actionable 4470 drift rows are current",
         description="Land the %d actionable fork-drift rows of the open drift issue (%s) so the nightly drift report clears" % (n, args.date),
-        apart="", blocks="", deliverables="", writes_extra="", workflow_ban=".github/workflows/.")
+        apart="", blocks="", deliverables="", writes_extra="", own_files="", workflow_ban=".github/workflows/.")
     if combined:
         lines = lines or ["> - no drift row listed apart from the blocks below"]
         paths = list(dict.fromkeys(p for pr in prs for p in pr["paths"]))
@@ -344,6 +346,7 @@ def cmd_brief(args):
             description="Land the %d open Dependabot bumps and the %d actionable fork-drift rows of the open drift issue (%s) in one bump PR" % (len(prs), n, args.date),
             apart=" Apart: %s." % "; ".join(notes) if notes else "",
             blocks=blocks, deliverables=DELIVERABLES, writes_extra="".join(" " + p for p in paths),
+            own_files=", or as a Dependabot PR's own files",
             workflow_ban="every `.github/workflows/` file except `ci.yml` and the Dependabot PRs' own files. "
             "Every `.github/` path and `%s` is a CI trust path, so the READY needs a trust-reviewed GO; the trust paths of this brief: %s." % (
                 ALLOW_LIST, ", ".join(p for p in paths if p.startswith(".github/") or p == ALLOW_LIST)))

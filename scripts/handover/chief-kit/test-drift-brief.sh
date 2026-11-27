@@ -216,14 +216,19 @@ contains 'B2: and says no actionable row' "$comb_err" 'no actionable row'
 comb '#99'
 same 'B2: a PR that is not in the file exits 2' "$comb_rc" '2'
 contains 'B2: and names the PR' "$comb_err" 'drift-brief: PR #99 is not open'
-for alone in '--dependabot-prs #11' "--prs-file $W/prs.json"; do
-    alone_rc=0
-    # shellcheck disable=SC2086  # one flag and its value, split on purpose
+one_flag_alone() {
+    local alone_rc=0 alone_err
     alone_err="$(python3 -I "$GEN" brief --body-file "$DRIFT_BODY_FILE" --holds "$W/repo/scripts/upstreams/pin-holds.json" \
-        --out "$W/comb-alone" --worktree "$W/wt" --chief HIMMEL-test-chief --worker D1 --date 2026-11-24 $alone 2>&1 >/dev/null)" || alone_rc=$?
-    same "B2: ${alone%% *} alone exits 2" "$alone_rc" '2'
-    contains "B2: ${alone%% *} alone prints the usage line" "$alone_err" 'usage:'
-done
+        --out "$W/comb-alone" --worktree "$W/wt" --chief HIMMEL-test-chief --worker D1 --date 2026-11-24 "$1" "$2" 2>&1 >/dev/null)" || alone_rc=$?
+    same "B2: $1 alone exits 2" "$alone_rc" '2'
+    contains "B2: $1 alone prints the usage line" "$alone_err" 'usage:'
+}
+one_flag_alone --dependabot-prs '#11'
+one_flag_alone --prs-file "$W/prs.json"
+printf '[{"number": 11, "title": "Bump a from 1 to 2", "headRefName": "dependabot/x/a"}]\n' > "$W/prs.json"
+comb '#11'
+same 'B2: a PR file entry with no files exits 2' "$comb_rc" '2'
+contains 'B2: and says the file cannot be read, never that the PR is closed' "$comb_err" 'cannot read the PR file'
 
 CI_REQ=.github/ci-image/requirements.txt
 X_REQ=marketplace/plugins/x/tools/requirements.txt
@@ -234,6 +239,7 @@ for want in "$CI_REQ" "$X_REQ" .github/workflows/ci.yml scripts/ci/release-age-a
     contains "B3: Writes carry $want" "$(writes_of) " " $want "
 done
 contains 'B3: the trust sentence names the trust paths' "$(line_of 'trust-reviewed GO')" "$CI_REQ, .github/workflows/ci.yml, scripts/ci/release-age-allow.txt"
+contains 'B3: the Writes note lets a Dependabot PR edit its own site files' "$(line_of '> **Writes note:**')" "site package files for the astro rows only, or as a Dependabot PR's own files"
 contains 'B3: hashes are regenerated' "$comb_text" 'gets its hashes regenerated'
 contains 'B3: a young security release gets an allow line' "$comb_text" 'line naming the advisory'
 contains 'B3: a landed PR is closed as superseded' "$comb_text" '--comment "Superseded by #'
@@ -258,7 +264,8 @@ contains 'B5: stderr names the core path' "$comb_err" "drift-brief: PR #31 touch
 contains 'B5: the NOT-in-scope line names it' "$(line_of '> NOT in scope:')" '#31'
 lint_err="$(keyed_lint "$comb_brief")" && pass 'B5: the brief without it passes brief-lint.sh' || fail "B5: brief-lint refused: $lint_err"
 sed "s#^> \*\*Writes:\*\* #&$BUS #" "$comb_brief" > "$comb_dir/with-core.md"
-keyed_lint "$comb_dir/with-core.md" > /dev/null && fail 'B5: the core path put back into Writes was accepted' || pass 'B5: the core path put back into Writes is refused'
+lint_err="$(keyed_lint "$comb_dir/with-core.md")" && fail 'B5: the core path put back into Writes was accepted' \
+    || contains 'B5: the core path put back into Writes is refused as core' "$lint_err" "is core ($BUS) and has no signed minerva spec"
 mk_body '' ''
 comb '#31'
 same 'B5: only a core-path PR and no row exits 1' "$comb_rc" '1'
