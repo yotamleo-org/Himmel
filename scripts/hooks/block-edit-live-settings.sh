@@ -1055,19 +1055,27 @@ _agy_verb_ro() {
 }
 
 _agy_seg_writes() {
-    local st=0 first=1 app=0 w b cw='' asg_re='^[a-z_][a-z0-9_]*\+?='
+    _agy_seg_scan 0 "$@" || _agy_seg_scan 1 "$@"
+}
+
+_agy_seg_scan() {
+    local mk=$1 st=0 first=1 app=0 w b cw='' asg_re='^[a-z_][a-z0-9_]*\+?='
+    shift
     for w in "$@"; do
         [ -n "$w" ] || continue
         b=${w%$'\001'}
         b=${b##*/}
         if [ "$first" = 1 ]; then
-            case "$w" in [a-z_]*=*) [[ $w =~ $asg_re ]] || st=1; continue ;; esac
+            case "$w" in [a-z_]*=*) [[ $w =~ $asg_re ]] || st=$mk; continue ;; esac
             first=0
             cw=$b
-            case "$cw" in
-                '{'|'['|'[[') ;;
-                *'$'*|*'{'*|*'*'*|*'?'*|*'['*) st=1; continue ;;
-            esac
+            case "$cw" in *'$'*) st=1; continue ;; esac
+            if [ "$mk" = 1 ]; then
+                case "$cw" in
+                    '{'|'['|'[[') ;;
+                    *'{'*|*'*'*|*'?'*|*'['*) st=1; continue ;;
+                esac
+            fi
             case "$w" in *\$\{*) case "$cw" in *\}*) st=1; continue ;; esac ;; esac
         fi
         case "$b" in xargs|parallel|entr) app=1 ;; esac

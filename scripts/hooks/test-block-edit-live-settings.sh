@@ -4325,6 +4325,12 @@ assert_rc "11341a13 a quoted subscript assignment with a slash in its value befo
     "$(bash_rc_of "$WT2" 'a["k"]=/opt/x $X plugin install ./p' HOME="$T3H" X=agy)"
 assert_rc "11341a14 any subscript assignment prefix marks a possible agy, so another CLI's plugin install is refused fail-closed" 2 \
     "$(bash_rc_of "$WT2" 'k[i[0]]=v claude plugin install foo' HOME="$T3H")"
+assert_rc "11341a15 a read verb after a marked agy word does not hide the plugin install that follows" 2 \
+    "$(bash_rc_of "$WT2" 'k[0]=v $D/agy help plugin install ./p' HOME="$T3H")"
+assert_rc "11341a16 a help flag after a marked agy word does not hide the plugin install that follows" 2 \
+    "$(bash_rc_of "$WT2" 'k[0]=v $D/agy --help plugin install ./p' HOME="$T3H")"
+assert_rc "11341a17 a brace prefix word does not hide an agy plugin install behind a read flag" 2 \
+    "$(bash_rc_of "$WT2" '{nice,} $HOME/bin/agy -h plugin install ./p' HOME="$T3H")"
 assert_rc "11257c20 an agy prompt held in a variable allows" 0 \
     "$(bash_rc_of "$WT2" 'agy -p "$PROMPT"' HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
 assert_rc "11257c21 a variable subcommand followed by a read verb allows" 0 \
