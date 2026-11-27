@@ -2512,8 +2512,11 @@ assert_allow "6015 printf with no %n conversion keeps the relief" "$(j "printf '
 # hands it to write-verdict.sh. A body line opening with a verb word beside a
 # glob path under scripts/ is prose, not a seam write.
 EV=/tmp/claude-1000/j3611/evidence.md
-WV="bash /srv/himmel/scripts/handover/console-kit/write-verdict.sh q1 GO a12735b67a5e763806f7407125f91372168d63b2 --pr 3611 --evidence-file $EV --model claude-opus-5-5 --effort high"
+WV="bash /srv/himmel/scripts/handover/chief-kit/write-verdict.sh q1 GO a12735b67a5e763806f7407125f91372168d63b2 --pr 3611 --evidence-file $EV --model claude-opus-5-5 --effort high"
 EVH="cat > $EV <<'EOF2'"
+R6_BODY="$EVH"$'\n'"read scripts/{hooks,cr}/*.sh"$'\n'"EOF2"$'\n'
+assert_deny "R6 control: an unlisted write-verdict path gets no evidence strip" "$(j "$R6_BODY${WV/chief-kit/other}")"
+assert_deny "R6 the retired kit spelling gets no evidence strip either" "$(j "$R6_BODY${WV/chief-kit/console-kit}")" # old-term-ok: the retired name is the input under test
 assert_allow "7009 evidence heredoc, line-start read beside a glob scripts/ path" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh before judging; all unchanged."$'\n'"EOF2")"
 assert_allow "7009 evidence heredoc, verb line after a glob mention" "$(j "$EVH"$'\n'"- checked scripts/hooks/*.sh"$'\n'"export the notes."$'\n'"EOF2")"
 assert_allow "7009 evidence heredoc then the literal write-verdict.sh call" "$(j "$EVH"$'\n'"read scripts/{hooks,cr}/*.sh"$'\n'"EOF2"$'\n'"$WV")"

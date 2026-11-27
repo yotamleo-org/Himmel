@@ -138,16 +138,9 @@ EOF
         fi
     fi
 
-    # `workers:` first; the pre-rename line only while legacy names are on.
-    # shellcheck source=scripts/lib/legacy-names.sh
-    . "$REPO/scripts/lib/legacy-names.sh" 2>/dev/null
-    local body workers_v
-    workers_v="$(live_field workers)"
-    if [ -z "$workers_v" ] && type legacy_names_on >/dev/null 2>&1 && legacy_names_on; then
-        workers_v="$(live_field legs)"
-    fi
+    local body
     body="lock=$lock
-workers=$workers_v
+workers=$(live_field workers)
 queue=$(live_field queue)
 last-go=$(live_field 'last GO')
 go-file=$gofile
