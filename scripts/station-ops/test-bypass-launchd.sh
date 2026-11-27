@@ -1323,7 +1323,7 @@ start HIMMEL_WORKER_SESSION_TABS=0
 code=$(ask_code r)
 reply "$OPERATOR" "$OPERATOR" "go $code"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
-assert_absent "11164: a hand-start shell without the switch on passes no join-only value" "HIMMEL_WORKER_SESSION_TABS=join" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+assert_eq "11164: a hand-start shell with the switch off reaches the child unchanged, never as 1 or join" "HIMMEL_WORKER_SESSION_TABS=0" "$(grep '^HIMMEL_WORKER_SESSION_TABS=' "$D/launch.fullenv" 2>/dev/null)"
 stop
 
 echo "-- the session environment is data, checked, and a failure refuses before the ask (N2) --"

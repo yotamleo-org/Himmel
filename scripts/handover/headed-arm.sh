@@ -1803,12 +1803,6 @@ fi
 # process is the worker itself (runCommand execs it over the tab's shell),
 # so closing a worker - close-wrapped-worker TERMs its claude pid - closes only
 # its tab, and a crashed worker leaves only its own tab dead.
-# Returns 1 to open a window instead: the switch is off, this is a chief
-# arm, the macOS shim, no valid HIMMEL_CONSOLE_NAME to group by, or no live
-# window recorded for the chief or its predecessor chief yet (TAB_RECORD=1:
-# the window this arm opens, or adopts from a live konsole predecessor, becomes
-# the chief's window). A D-Bus failure also returns 1, with a WARN:
-# a worker is never lost to a tab.
 # The tab's shell inherits the WINDOW's environment (the first worker's), not
 # this arm's, so the tab runs a one-shot script that rebuilds this arm's env
 # with `env -i`, keeping only the tab's own terminal variables. That script
@@ -1872,14 +1866,14 @@ tab_launch() {
     [ "$ROLE" != "chief" ] && [ "$KONSOLE_IS_MACOS_SHIM" != "1" ] || return 1
     case "${HIMMEL_CONSOLE_NAME:-}" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
     TAB_WINDOW_FILE="$LOCKDIR/tabs-$HIMMEL_CONSOLE_NAME.window"
-    wpid="$(cat "$TAB_WINDOW_FILE" 2>/dev/null)"  # swallow-ok: no readable record means no window yet, so this arm opens one and records it
-    case "$wpid" in ''|*[!0-9]*|0|1) wpid="" ;; esac
-    [ "$record" = 1 ] || wpid="$(tab_live_window "$HIMMEL_CONSOLE_NAME")" || wpid=""
+    wpid=""
+    if [ "$record" = 0 ]; then
+        wpid="$(tab_live_window "$HIMMEL_CONSOLE_NAME")" || wpid=""
+    elif [ -r "$TAB_WINDOW_FILE" ]; then
+        wpid="$(cat "$TAB_WINDOW_FILE")"
+        case "$wpid" in ''|*[!0-9]*|0|1) wpid="" ;; esac
+    fi
     if [ -z "$wpid" ] || ! kill -0 "$wpid" 2>/dev/null; then
-        # No live window of this chief's own: a successor chief adopts a live
-        # konsole window of its chain and records it as its own. In order: the
-        # predecessor chief.sh next named, the previous letter, then the newest
-        # live window any chief of the chain recorded.
         TAB_RECORD=$record; wpid=""
         case "${HIMMEL_CHIEF_PREDECESSOR:-}" in
             ''|*[!A-Za-z0-9._-]*) ;;

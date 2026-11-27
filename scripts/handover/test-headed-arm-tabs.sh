@@ -466,11 +466,13 @@ arm "$d24" PROJ-24-N1-a HIMMEL_WORKER_SESSION_TABS=join HIMMEL_CONSOLE_NAME=${NL
 check "24a join, no window: exit 0" "$rc24" 0
 check "24b join, no window: one window" "$(konsole_count "$d24")" 1
 contains "24c join, no window: it is --separate" "$(cat "$d24/konsole-record")" "--separate"
-check "24d join, no window: no window record is written" "$(find "$d24/locks" -name 'tabs-*.window' | grep -c . || true)" 0
+rc24f=0; found24="$(find "$d24/locks" -name 'tabs-*.window')" || rc24f=$?
+check "24d join, no window: no window record is written" "${rc24f}[$found24]" "0[]"
 arm "$d24" PROJ-24-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief; rc24b=$?
 w24b="$(window_of "$d24" PROJ-24-N2-b)"
 check "24e next successor launch: opens a window of its own, not the bypass one" "$rc24b $(konsole_count "$d24")" "0 2"
 check "24f next successor launch: records its own window" "$(cat "$d24/locks/tabs-${NL}FY-roadmap-chief.window" 2>/dev/null)" "${w24b:-unset}"
-lacks "24g next successor launch: its window env holds no granted flag" "$(cat "$d24/window-env.${w24b:-x}" 2>/dev/null)" "DESTRUCTIVE_OK"
+contains "24g next successor launch: its window env was captured" "$(cat "$d24/window-env.${w24b:-x}" 2>/dev/null)" "HIMMEL_CONSOLE_NAME="
+lacks "24h next successor launch: its window env holds no granted flag" "$(cat "$d24/window-env.${w24b:-x}" 2>/dev/null)" "DESTRUCTIVE_OK"
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }
