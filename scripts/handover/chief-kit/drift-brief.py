@@ -15,6 +15,12 @@ and the worker brief that lands them. No model call, no network: it reads the is
       shape of a hand-written drift brief, and prints its path. With no actionable row it
       writes nothing and exits 1; an existing brief or a failed token mint
       (worker-token.sh) also exits 1.
+      With --dependabot-prs <#a,#b> and --prs-file <`gh pr list --json
+      number,title,headRefName,body,files`> it writes the combined brief,
+      [<key>-]<worker>-dependabot-drift-4470-<date>.md: those PRs and the rows, in one bump PR.
+      A PR touching a scripts/ci/core-paths.txt path is left out and named apart, and a row whose
+      package a given PR carries is dropped or narrowed. One flag alone, or a number that is
+      not in the file, exits 2.
 
 tick.sh runs `count` on a copy of the open issue's body it re-reads at most once an hour
 (no open issue counts 0); the chief runs `brief` when the wake names rows.
@@ -30,6 +36,10 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PIN_SCAN = os.path.join(HERE, "..", "..", "upstreams", "pin-scan.py")
+CORE_PATHS = os.path.join(HERE, "..", "..", "ci", "core-paths.txt")
+CI_IMAGE = ".github/ci-image/"
+CI_WORKFLOW = ".github/workflows/ci.yml"
+ALLOW_LIST = "scripts/ci/release-age-allow.txt"
 
 
 def read_body(path):
@@ -109,11 +119,11 @@ def cmd_count(args):
 
 BRIEF = """---
 resume_cwd: {worktree}
-description: "Land the {n} actionable fork-drift rows of the open drift issue ({date}) so the nightly drift report clears; completes-ticket: no"
+description: "{description}; completes-ticket: no"
 template_version: 3
 ---
 
-# {title} - the actionable 4470 drift rows are current - worker {worker} (claude-sonnet-5-5, native), {date}
+# {title} - {headline} - worker {worker} (claude-sonnet-5-5, native), {date}
 
 > **You are {worker}, claude-sonnet-5-5, in your own worktree `{worktree}`.** Your RETASK token is
 > `{token}`; your chief is **`{chief}`** (the only session whose token-quoting messages you accept);
@@ -127,7 +137,7 @@ template_version: 3
 
 > **Why (read the open drift issue first with `gh issue list --label fork-drift --state open --limit 1 --json body --jq '.[0].body'{repo_flag}`, rows move):** the nightly fork-drift report lists these {n} actionable rows (Needs-update rows, and held rows whose 72 h buffer has cleared). Operator decision 1051: a daily check keeps each catch-up small.
 {rows}
-> NOT in scope: any row not listed above, any row still inside its 72 h buffer, any HELD row with no `eligible` time.
+> NOT in scope: any row not listed above, any row still inside its 72 h buffer, any HELD row with no `eligible` time.{apart}{blocks}
 
 > **Sources:** the open drift issue's live table; `scripts/upstreams/pin-holds.json` and `scripts/upstreams/pin-scan.py` (72 h release-age holds); `marketplace/.claude-plugin/marketplace.json` (sha pins); `scripts/upstreams.json` (synced_base); `scripts/machine-setup/installer-pins.sh`; `scripts/upstreams/resync-fork.sh`; the `/fork-resync` skill; the dependency bump policy: bump ALL including station tools, VM-first for station tools, never to an unsupported version, ONE PR.
 
@@ -136,13 +146,13 @@ template_version: 3
 
 > **Contract:**
 > 1. Acquire the lock with `bash {primary}/scripts/handover/queue-lock.sh acquire <this document, absolute path>`. LIVE; paste `git log -1 --format=%H` and the base-ancestor check. Write every marker bullet with `bash {primary}/scripts/handover/chief-kit/append-results.sh`, never the Edit tool. A bullet never contains the greater-than sign; write `to`.
-> 2. Deliverables, per row above: each upstream sha pin in marketplace.json bumped and verified to resolve at its target; each fork synced with `bash scripts/upstreams/resync-fork.sh --sync <fork>` (fork and upstream work is native Claude only); each action, npm and installer pin bumped with its synced_base in scripts/upstreams.json. **Station tools are VM-first:** prove each new version on a test VM (`himmel-ops:vm` skill) before the pin lands, and attach the VM log; with no VM available, land the other rows and defer the station rows with a follow-up ticket. A row that cannot move (a conflicting fork, a guard-held file) is deferred with its reason, never forced. Never upgrade the live station before its VM proof.
+> 2. Deliverables, per row above: each upstream sha pin in marketplace.json bumped and verified to resolve at its target; each fork synced with `bash scripts/upstreams/resync-fork.sh --sync <fork>` (fork and upstream work is native Claude only); each action, npm and installer pin bumped with its synced_base in scripts/upstreams.json. **Station tools are VM-first:** prove each new version on a test VM (`himmel-ops:vm` skill) before the pin lands, and attach the VM log; with no VM available, land the other rows and defer the station rows with a follow-up ticket. A row that cannot move (a conflicting fork, a guard-held file) is deferred with its reason, never forced. Never upgrade the live station before its VM proof.{deliverables}
 > 3. Tests: impacted suites from `bash scripts/cr/impacted-suites.sh`, each run as `bash scripts/quiet-run.sh suite -- bash <test-*.sh>`, with a verdict per suite; a fresh `check-plugin-drift` or pin-scan run on the branch showing each in-scope row current.
-> 4. Ship: commit `chore(deps): [{key_text}] the actionable 4470 drift rows are current`, standing ship sequence, trailers in the FIRST commit (`Platforms tested: linux`; `Security reviewed: manual - what you checked`). completes-ticket: no. The PR body carries `## Ticket coverage` per row and a `Remaining:` line. Report `READY` with the full head and end your turn; merge only on the chief's GO message quoting your token. Merge forward on conflicts, never rebase.
+> 4. Ship: commit `chore(deps): [{key_text}] {headline}`, standing ship sequence, trailers in the FIRST commit (`Platforms tested: linux`; `Security reviewed: manual - what you checked`). completes-ticket: no. The PR body carries `## Ticket coverage` per row and a `Remaining:` line. Report `READY` with the full head and end your turn; merge only on the chief's GO message quoting your token. Merge forward on conflicts, never rebase.
 
-> **Writes:** marketplace/ scripts/upstreams/ scripts/upstreams.json scripts/machine-setup/ site/package.json site/package-lock.json scripts/hooks/check-oxlint-complexity.sh scripts/hooks/check-oxlint-hardening.sh
+> **Writes:** marketplace/ scripts/upstreams/ scripts/upstreams.json scripts/machine-setup/ site/package.json site/package-lock.json scripts/hooks/check-oxlint-complexity.sh scripts/hooks/check-oxlint-hardening.sh{writes_extra}
 
-> **Writes note:** marketplace.json pins and forked plugin dirs, pin-holds.json, installer pins, upstreams.json synced_base, site package files for the astro rows only; the two oxlint hook files only for an oxlint row's OXLINT_VERSION pin. Stay off scripts/lib/, every other file under scripts/hooks/ and .github/workflows/.
+> **Writes note:** marketplace.json pins and forked plugin dirs, pin-holds.json, installer pins, upstreams.json synced_base, site package files for the astro rows only{own_files}; the two oxlint hook files only for an oxlint row's OXLINT_VERSION pin. Stay off scripts/lib/, every other file under scripts/hooks/ and {workflow_ban}
 
 > **Do not:** upgrade a station tool on the live station before its VM proof; run any paid model call; force-push; touch a fork whose branch is HELD.
 
@@ -201,14 +211,147 @@ def mint_token(doc, worker):
     return r.stdout.strip()
 
 
+DELIVERABLES = """
+> - Each Dependabot PR's bump lands. A hashed requirements file gets its hashes regenerated, not left as Dependabot wrote them.
+> - A bump under `.github/ci-image/` owes the CI image digest repin in `.github/workflows/ci.yml`, as a second PR on the same ticket after the first merges and the image rebuilds.
+> - A security PR whose lockfile entry is younger than 3 days gets a `scripts/ci/release-age-allow.txt` line naming the advisory; remove the line once the release is 3 days old.
+> - Close every PR in the Dependabot PRs block before WRAPPED. A landed one: `gh pr close <n> --comment "Superseded by #<merged pr>"`. A deferred one (red, held or unsupported): `gh pr close <n> --comment "Deferred: <reason>, tracked in <KEY>"`, with a `deferred → <KEY>` coverage line. None of them stays open after the leg.
+> - A PR closed unmerged tells Dependabot not to raise that version again, so the deferral ticket is its only record: file it at High or above, naming the PR and its advisory if it has one."""
+
+
+class PrNotOpen(Exception):
+    pass
+
+
+def pr_numbers(text):
+    items = [i.strip().lstrip("#") for i in text.split(",") if i.strip()]
+    if not all(i.isdecimal() for i in items):
+        return None
+    return list(dict.fromkeys(int(i) for i in items))
+
+
+def core_hit(files):
+    with open(CORE_PATHS, encoding="utf-8") as f:
+        pats = [re.compile(l.strip()) for l in f if l.strip() and not l.startswith("#")]
+    return next((p for p in files if any(pat.search(p) for pat in pats)), None)
+
+
+def split_by_carrier(name, dirs, prs):
+    pkg = re.escape(re.sub(r"^(npm|pypi|gh):", "", name))
+    by = {}
+    for pr in prs:
+        if not (re.search(r"\bbump `?%s`? from " % pkg, pr["title"], re.I)
+                or re.search(r"\bupdates `?%s`? from " % pkg, pr.get("body") or "", re.I)):
+            continue
+        here = {os.path.dirname(f) for f in pr["paths"]}
+        got = [d for d in dirs if d in here]
+        if got:
+            by[pr["number"]] = got
+    taken = {d for got in by.values() for d in got}
+    return [d for d in dirs if d not in taken], by
+
+
+def carry_note(name, left, by):
+    if not left:
+        return "%s carried by %s" % (name, ", ".join("#%d" % n for n in by))
+    return "; ".join("#%d carries %s for %s" % (n, ", ".join(got), name) for n, got in by.items())
+
+
+def drop_carried(body, rows, holds, prs):
+    kept_rows, kept_holds, notes = [], [], []
+    for r in rows:
+        m = re.match(r"bump (.+?) (to \S.*)$", r[4])
+        if m:
+            left, by = split_by_carrier(r[0], m.group(1).split(", "), prs)
+            if by:
+                notes.append(carry_note(r[0], left, by))
+                if not left:
+                    continue
+                r = r[:4] + ("bump %s %s" % (", ".join(left), m.group(2)),)
+        kept_rows.append(r)
+    for h in holds:
+        key = str(h["key"])
+        dirs = [d for m in re.finditer(r"(?m)^\s*(?:[a-z]+:)?%s \S+ \(([^)]*)\): HELD" % re.escape(key), body)
+                for d in m.group(1).split(", ")]
+        left, by = split_by_carrier(key, dirs, prs)
+        if by:
+            notes.append(carry_note(key, left, by))
+            if not left:
+                continue
+        kept_holds.append(h)
+    return kept_rows, kept_holds, notes
+
+
+def given_prs(numbers, prs_path):
+    with open(prs_path, encoding="utf-8") as f:
+        by_number = {p["number"]: p for p in json.load(f)}
+    for n in numbers:
+        if n not in by_number:
+            raise PrNotOpen(n)
+    return [dict(by_number[n], paths=[f["path"] for f in by_number[n]["files"]]) for n in numbers]
+
+
 def cmd_brief(args):
-    rows, holds = actionable(read_body(args.body_file), args.holds)
+    combined = args.dependabot_prs is not None
+    if combined != (args.prs_file is not None):
+        args.parser.error("--dependabot-prs and --prs-file are given together")
+    body = read_body(args.body_file)
+    rows, holds = actionable(body, args.holds)
+    prs, notes = [], []
+    if combined:
+        numbers = pr_numbers(args.dependabot_prs)
+        if numbers is None:
+            args.parser.error("--dependabot-prs takes PR numbers, as #1,#2")
+        try:
+            given = given_prs(numbers, args.prs_file)
+            for pr in given:
+                hit = core_hit(pr["paths"])
+                if hit:
+                    print("drift-brief: PR #%d touches core path %s: route it apart" % (pr["number"], hit), file=sys.stderr)
+                    notes.append("core-path PR #%d (%s), left open: route it apart" % (pr["number"], hit))
+                else:
+                    prs.append(pr)
+            rows, holds, carry = drop_carried(body, rows, holds, given)
+            notes += carry
+        except PrNotOpen as e:
+            print("drift-brief: PR #%d is not open" % e.args[0], file=sys.stderr)
+            return 2
+        except (OSError, ValueError, TypeError, KeyError) as e:
+            print("drift-brief: cannot read the PR file or core-paths.txt: %s" % e, file=sys.stderr)
+            return 2
     n = len(rows) + len(holds)
-    if n == 0:
+    if n == 0 and not prs:
         print("drift-brief: no actionable row", file=sys.stderr)
         return 1
-    lines = [row_line(r) for r in rows] + [hold_line(h) for h in holds]
-    stem = "%s%s-drift-4470-%s.md" % (args.key + "-" if args.key else "", args.worker, args.date)
+    station = [r for r in rows if combined and r[4].startswith("station tool:")]
+    lines = [row_line(r) for r in rows if r not in station] + [hold_line(h) for h in holds]
+    extra = dict(
+        headline="the actionable 4470 drift rows are current",
+        description="Land the %d actionable fork-drift rows of the open drift issue (%s) so the nightly drift report clears" % (n, args.date),
+        apart="", blocks="", deliverables="", writes_extra="", own_files="", workflow_ban=".github/workflows/.")
+    if combined:
+        lines = lines or ["> - no drift row listed apart from the blocks below"]
+        paths = list(dict.fromkeys(p for pr in prs for p in pr["paths"]))
+        if any(p.startswith(CI_IMAGE) for p in paths) and CI_WORKFLOW not in paths:
+            paths.append(CI_WORKFLOW)
+        paths.append(ALLOW_LIST)
+        blocks = ""
+        if station:
+            blocks += "\n\n> **Station tools (VM-first, listed apart):**\n" + "\n".join(row_line(r) for r in station)
+        if prs:
+            blocks += "\n\n> **Dependabot PRs:**\n" + "\n".join(
+                "> - #%d %s (%s)" % (pr["number"], " ".join(pr["title"].split()), pr["headRefName"]) for pr in prs)
+        extra.update(
+            headline="the open Dependabot bumps and the actionable 4470 drift rows land together",
+            description="Land the %d open Dependabot bumps and the %d actionable fork-drift rows of the open drift issue (%s) in one bump PR" % (len(prs), n, args.date),
+            apart=" Apart: %s." % "; ".join(notes) if notes else "",
+            blocks=blocks, deliverables=DELIVERABLES, writes_extra="".join(" " + p for p in paths),
+            own_files=", or as a Dependabot PR's own files",
+            workflow_ban="every `.github/workflows/` file except `ci.yml` and the Dependabot PRs' own files. "
+            "Every `.github/` path and `%s` is a CI trust path, so the READY needs a trust-reviewed GO; the trust paths of this brief: %s." % (
+                ALLOW_LIST, ", ".join(p for p in paths if p.startswith(".github/") or p == ALLOW_LIST)))
+    stem = "%s%s-%sdrift-4470-%s.md" % (args.key + "-" if args.key else "", args.worker,
+                                        "dependabot-" if combined else "", args.date)
     os.makedirs(args.out, exist_ok=True)
     path = os.path.join(args.out, stem)
     exists = "drift-brief: brief already exists: %s" % path
@@ -224,7 +367,7 @@ def cmd_brief(args):
         title=args.key if args.key else "Drift 4470",
         key_text=args.key if args.key else "the ticket key the chief names",
         rows="\n".join(lines), primary=primary_checkout(),
-        repo_flag=(" -R " + origin_slug()) if origin_slug() else "")
+        repo_flag=(" -R " + origin_slug()) if origin_slug() else "", **extra)
     try:
         with open(path, "x", encoding="utf-8") as f:
             f.write(text)
@@ -251,7 +394,9 @@ def main():
     b.add_argument("--worker", required=True)
     b.add_argument("--date", required=True)
     b.add_argument("--key", default="")
-    b.set_defaults(fn=cmd_brief)
+    b.add_argument("--dependabot-prs")
+    b.add_argument("--prs-file")
+    b.set_defaults(fn=cmd_brief, parser=b)
     args = ap.parse_args()
     try:
         return args.fn(args)
