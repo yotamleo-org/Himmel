@@ -291,6 +291,10 @@ assert_eq "T8f a search naming no fleet word keeps its verb and words, a dash wo
 
 mkdir -p "$TMP/t10bin"
 printf '%s\n' '#!/bin/sh' \
+    'case "$T10_MODE" in' \
+    '  busy-ok) echo "SQLiteError: database is locked" >&2; echo "result: doc.md"; exit 0 ;;' \
+    '  busy-124) echo "SQLiteError: database is locked" >&2; exit 124 ;;' \
+    'esac' \
     'if [ -n "$T10_WRITER_PID" ] && kill -0 "$T10_WRITER_PID" 2>/dev/null; then' \
     '  cat >&2 <<DDL' \
     '25 |     CREATE TABLE IF NOT EXISTS processor_outputs (' \
@@ -332,6 +336,11 @@ out=$(t10 query -c luna boom); rc=$?
 assert_eq "T10 control: an ordinary failure keeps its rc and text" "qmd: some other failure|3" "$out|$rc"
 out=$(PATH="$TMP/t10bin:$PATH" BUN_INSTALL="$TMP/bun" QMD_VOCAB_EXPAND=0 bash "$LIB_DIR/qmd-bounded.sh" query -c luna x </dev/null 2>/dev/null); rc=$?
 assert_eq "T10 control: a success keeps its result on stdout" "result: doc.md|0" "$out|$rc"
+out=$(T10_MODE=busy-ok PATH="$TMP/t10bin:$PATH" BUN_INSTALL="$TMP/bun" QMD_VOCAB_EXPAND=0 bash "$LIB_DIR/qmd-bounded.sh" query -c luna x </dev/null 2>"$TMP/t10err"); rc=$?
+case "$(cat "$TMP/t10err")" in *"qmd-bounded: qmd index busy"*) named=yes ;; *) named=no ;; esac
+assert_eq "T10 a success with busy text on stderr keeps rc 0, its result on stdout and no busy line" "result: doc.md|0|no" "$out|$rc|$named"
+out=$(T10_MODE=busy-124 t10 query -c luna x); rc=$?
+assert_eq "T10 a deadline rc 124 with busy text on stderr stays 124" "124" "$rc"
 unset T10_WRITER_PID
 
 if command -v qmd >/dev/null 2>&1; then

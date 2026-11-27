@@ -13,7 +13,8 @@
 #   the literal term, expanded or not. A leading dash is therefore never a NOT
 #   here; a deliberate one is written -"term", which is passed on as typed.
 #   A query or search that finds the index locked by another qmd process exits
-#   75 with one plain line on stderr instead of the fork's schema SQL excerpt;
+#   75 with one plain line on stderr instead of the fork's schema SQL excerpt
+#   (a deadline 124 or a signal rc above 128 passes through unchanged);
 #   qmd's stderr is held until it exits so it can be read (stdout stays live).
 # Source it, then: qmd_bounded <secs> <cmd> [args...]
 #   rc      the command's own rc, or 124 when the deadline fired (as timeout(1))
@@ -158,7 +159,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ] && [ -z "${_QMD_BOUNDED_MAIN:-}" ]; then
   case "$1" in
     query | search)
       { _qmd_err=$(qmd_cmd "$@" 2>&1 1>&3 3>&-); _qmd_rc=$?; } 3>&1
-      if [ "$_qmd_rc" -ne 0 ] && qmd_output_is_busy "$_qmd_err"; then
+      if [ "$_qmd_rc" -ne 0 ] && [ "$_qmd_rc" -ne 124 ] && [ "$_qmd_rc" -le 128 ] && qmd_output_is_busy "$_qmd_err"; then
         echo "qmd-bounded: qmd index busy (another qmd process holds the database lock); no search ran, this is not 'no results' - retry in a few seconds" >&2
         exit 75
       fi
