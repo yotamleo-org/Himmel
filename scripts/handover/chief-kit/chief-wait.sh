@@ -805,7 +805,8 @@ duty_run() {
         duty_state_update "$t" && duty_t="$t"
         rm -f "$duty_fail"
     else
-        since="$(awk 'NR == 1 { print $2 }' "$duty_fail" 2>/dev/null)"  # swallow-ok: no streak yet reads empty
+        since=""
+        [ ! -f "$duty_fail" ] || since="$(awk 'NR == 1 { print $2 }' "$duty_fail")"
         case "$since" in ''|*[!0-9]*) since="$t" ;; esac
         printf '%s %s\n' "$rc" "$since" | atomic_write "$duty_fail"
     fi
@@ -854,7 +855,7 @@ duty_wake() {
             else if ($1 == "dispatch-owed" || $1 == "judge-running" || $1 == "owed-stale" || $1 == "?") age = -1
             else if ($1 == "ci-masked" && ($3 == "sent" || $3 == "drain")) age = -1
             if (age >= 0 && t - $4 >= age) print $1 ":" $2
-        }' "$duty_state" 2>/dev/null | LC_ALL=C sort)"  # swallow-ok: no state file means no id to count
+        }' "$duty_state" | LC_ALL=C sort)"
     [ -n "$ids" ] || return 1
     printf 'WAKE chief-duty %s new=%s\n' "$(printf '%s\n' "$ids" | grep -c .)" "$(printf '%s\n' "$ids" | paste -sd, -)"
 }
@@ -880,7 +881,7 @@ duty_carry() {
                 for (i = 1; i <= m; i++) print out[i]
             }' "$duty_file")" || return 1
         printf 'chief-duty %s as of %sZ%s:\n%s\n' "$(grep -c '^DUTY ' "$duty_file")" \
-            "$(date -u -d "@$at" +%Y-%m-%dT%H:%M:%S)" "$stale" "$body" || return 1  # gnu-ok: Linux-only kit; a failed write marks nothing shown
+            "$(date -u -d "@$at" +%Y-%m-%dT%H:%M:%S)" "$stale" "$body" || return 1  # gnu-ok: Linux-only kit
         if [ -f "$duty_state" ]; then
             marked="$(awk '
                 FILENAME == ARGV[1] { if ($1 == "DUTY" && $2 != "owed-stale") printed[$2 " " $3] = 1; next }

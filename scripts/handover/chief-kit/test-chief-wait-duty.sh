@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# test-chief-wait-duty.sh — the waiter runs chief-duty-sweep.sh on each successful
-# sample, carries its list on every wake and wakes once when a new duty stays listed.
-#
 # Linux-only kit (touch -d, /proc).
 #
 # CHIEF_WAIT overrides the script under test; DUTY_ROWS="D1 D9" runs only those rows.
@@ -211,18 +208,18 @@ failing_row() {
     quiet 1 'failing sweep'
     if cmp -s "$WORK/duty.before" "$inbox.wait.duty"; then pass "$1 the list is byte-identical"; else fail "$1 the list changed: $(cat "$inbox.wait.duty" 2>/dev/null)"; fi
     if cmp -s "$WORK/state.before" "$inbox.wait.duty-state"; then pass "$1 the state is byte-identical"; else fail "$1 the state changed: $(state)"; fi
-    # shellcheck disable=SC2254  # $2 is a glob on purpose
-    case "$(cat "$inbox.wait.duty-fail" 2>/dev/null)" in
-        $2) pass "$1 duty-fail names the rc" ;;
-        *) fail "$1 duty-fail: $(cat "$inbox.wait.duty-fail" 2>/dev/null)" ;;
-    esac
+    if [[ $(cat "$inbox.wait.duty-fail" 2>/dev/null) =~ $2 ]]; then
+        pass "$1 duty-fail names the rc"
+    else
+        fail "$1 duty-fail: $(cat "$inbox.wait.duty-fail" 2>/dev/null)"
+    fi
 }
-if want D7; then reset D7; lists ""; printf '1\n' > "$WORK/rc"; failing_row D7 '1 [0-9]*'; fi
-if want D7b; then reset D7b; lists ""; printf '2\n' > "$WORK/rc"; failing_row D7b '2 [0-9]*'; fi
+if want D7; then reset D7; lists ""; printf '1\n' > "$WORK/rc"; failing_row D7 '^1 [0-9]+$'; fi
+if want D7b; then reset D7b; lists ""; printf '2\n' > "$WORK/rc"; failing_row D7b '^2 [0-9]+$'; fi
 if want D7c; then
     reset D7c; lists ""; printf '30\n' > "$WORK/sleep"
     export CHIEF_WAIT_DUTY_TIMEOUT=1
-    failing_row D7c '1[23][47] [0-9]*'
+    failing_row D7c '^(124|137) [0-9]+$'
     unset CHIEF_WAIT_DUTY_TIMEOUT
 fi
 
