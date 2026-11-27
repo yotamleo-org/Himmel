@@ -1115,6 +1115,47 @@ if grepq "$c33_line" 'WARN C33-graph-stale' && grepq "$c33_line" -F 'FAILED (no 
 else
     fail "C33 no-room refusal -> $c33_line"
 fi
+c33_lock_row() {
+    printf '{"ts":"%s","head":"aaa","graph_head":null,"merges_behind":null,"action":"failed","pr":null,"duration_s":97,"error":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" > "$t/handover/.graph-cadence/ledger.jsonl"
+    out="$(CLAUDE_DIR="$t/claude" HOME="$t/home" HANDOVER_DIR="$t/handover" HIMMEL_API_CREDIT_CONFIG="$t/api-credit.json" bash "$DOC" --no-color 2>&1)"
+    c33_line="$(printf '%s' "$out" | grep -A1 'C33-graph-stale')"
+}
+no_room_err='semantic-update.sh exited 2: semantic-update: refusing the batch: auto routing: no account has room ({\"verdict\":\"SKIPPED-BANK\",\"reason\":\"no-account-with-headroom\"}) semantic-update: submitting the batch failed (rc 2)'
+walk_err='semantic-update.sh exited 2: semantic-update: refusing the batch: the credit state of account A cannot be read ({\"verdict\":\"SKIPPED-BANK\",\"reason\":\"no-account-with-headroom\",\"rows\":[{\"account\":\"A\",\"verdict\":\"BANK-UNKNOWN\",\"reason\":\"ledger-locked-or-unwritable\"}]}); the walk stops'
+status_err='api credit-state: ledger-locked-or-unwritable (/x/ledger.json.lock age 18000s, empty, holder unrecorded)'
+printf '{"ledger_path":"%s/credit/ledger.json"}\n' "$t" > "$t/api-credit.json"
+mkdir -p "$t/credit/ledger.json.lock"
+touch -t 202601010000 "$t/credit/ledger.json.lock"
+for c33_case in "$no_room_err" "$walk_err"; do
+    c33_lock_row "$c33_case"
+    if grepq "$c33_line" -E "FAILED \(credit ledger locked: $t/credit/ledger.json.lock, age [0-9]+d\)" \
+        && ! grepq "$c33_line" -F 'credit room' && ! grepq "$c33_line" -F 'top it up'; then
+        pass "C33 -> WARN names the locked ledger and its age, not missing credit"
+    else
+        fail "C33 locked ledger -> $c33_line"
+    fi
+done
+touch "$t/credit/ledger.json.lock"
+c33_lock_row "$no_room_err"
+if grepq "$c33_line" -F 'FAILED (no API account has credit room)'; then
+    pass "C33 -> a lock younger than the bound keeps the credit-room wording"
+else
+    fail "C33 young lock -> $c33_line"
+fi
+rmdir "$t/credit/ledger.json.lock"
+c33_lock_row "$status_err"
+if grepq "$c33_line" -F 'FAILED (credit ledger locked at that fire: lock age 18000s;'; then
+    pass "C33 -> WARN takes the lock age from the reason line once the lock is gone"
+else
+    fail "C33 locked reason line -> $c33_line"
+fi
+c33_lock_row "$walk_err"
+if grepq "$c33_line" -F 'FAILED (credit ledger locked at that fire: lock age not recorded;'; then
+    pass "C33 -> WARN names a locked ledger whose error records no age"
+else
+    fail "C33 locked walk with no lock left -> $c33_line"
+fi
 # a cadence alert whose Telegram send failed is its own WARN.
 mkdir -p "$t/home/.himmel/state"
 printf '2026-10-23T14:35:00Z graph-cadence semantic-failed\n' > "$t/home/.himmel/state/cadence-alert-send-failed"
