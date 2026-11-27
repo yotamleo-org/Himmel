@@ -680,7 +680,7 @@ exit 1
 STUB
 printf '%s\n' "$(date -u +%s)" > "$STAMP24"
 run24
-[ "$rc24" -eq 5 ] && plain24 && echo "$out24" | grep -q "Refusing to overwrite" \
+[ "$rc24" -eq 5 ] && plain24 && grep -q "Refusing to overwrite" <<<"$out24" \
   && pass "T24e a refused shrink on the plain path exits 5 (the cadence alerts) and shows the refusal" \
   || fail "T24e (rc=$rc24) call=$(cat "$WS/call.log"): $out24"
 printf '%s\n' "$stale24" > "$STAMP24"
