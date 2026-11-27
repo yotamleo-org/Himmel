@@ -2768,5 +2768,30 @@ EOF
 }
 test_generator_resume_worktree
 
+cat > "$WORK/wt-gw.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >> "$WT_LOG"
+w="$PWD/.claude/worktrees/$(printf '%s' "$1" | tr / +)"; mkdir -p "$w/.claude" "$w/scripts/hooks" "$w/scripts/lib"
+[ ! -e "$PWD/.git" ] || printf 'gitdir: %s\n' "$PWD/.git" > "$w/.git"
+printf '. "$(dirname "$0")/../lib/g-lib.sh"\n' > "$w/scripts/hooks/guard-g.sh"
+printf '# g-lib\n' > "$w/scripts/lib/g-lib.sh"
+printf '%s\n' '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"node \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh\""}]}]}}' > "$w/.claude/settings.json"
+echo "created worktree $1"
+EOF
+chmod +x "$WORK/wt-gw.sh"
+gb1_run() {
+    python3 -I -c 'import json,sys
+w=json.load(open(sys.argv[1]))[0]
+w.update(label=sys.argv[3], keys=[sys.argv[4]], slug="gb1-" + sys.argv[3].lower(), branch="fix/gb1-" + sys.argv[3].lower(), writes="scripts/lib/g-lib.sh", hook=sys.argv[5] == "true")
+json.dump([w], open(sys.argv[2], "w"))' "$WORK/workers.json" "$WORK/gb1-$1.json" "$1" "$2" "$3"
+    HIMMEL_HOOK_INTEGRITY_BYPASS_OK="$4" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt-gw.sh" python3 "$SUT" "$WORK/gb1-$1.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/gb1-bucket-$1" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/gb1-w-$1" --deadline 1791475000 2>&1
+}
+gout="$(gb1_run N905 "$KP-9005" false 1)"; grc=$?
+{ [ "$grc" = 1 ] && case "$gout" in *'brief-lint refuses the brief'*) true ;; *) false ;; esac && [ ! -e "$WORK/gb1-bucket-N905/$KP-9005-N905-gb1-n905-2026-10-08.md" ]; } \
+    && pass "GB1 a hook:false worker writing a guard-run lib is refused under an inherited bypass, no brief kept" || fail "GB1 hook:false rc=$grc: $gout"
+gout="$(gb1_run N906 "$KP-9006" true '')"; grc=$?
+{ [ "$grc" = 0 ] && grep -Fq 'export HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1' "$WORK/gb1-bucket-N906/launch-N906.sh" 2>/dev/null; } \
+    && pass "GB1 the same worker with hook:true generates under a blank bypass and its launcher exports it" || fail "GB1 hook:true rc=$grc: $gout"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
