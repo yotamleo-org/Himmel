@@ -919,7 +919,7 @@ start "$I" "$WORK/dr7f.out" --workers-from "$WM"
 wait_hb "$I" || fail "(dr7f) no baseline heartbeat"
 check "(dr7f) today's combined Dependabot leg holds the drift wake" "running|drift-actionable 2 held-by N10995" "$(dr_alive)|$(cat "$I.wait.drift.held" 2>/dev/null)"
 stop_waiter "$WPID"
-dr_set_I_WM_for_fleet dr7g "HIMMEL-1-N1-dependabot-drift-4470-$(date -u -d yesterday +%F).md"  # gnu-ok: Linux-only kit
+dr_set_I_WM_for_fleet dr7g "HIMMEL-1-N1-dependabot-drift-4470-$(date -u -d yesterday +%F).md"
 start "$I" "$WORK/dr7g.out" --workers-from "$WM"
 wait_exit "$WPID"
 check "(dr7g) yesterday's combined leg does not hold the wake: the rule line covers the crossover" "0|WAKE drift-actionable 2" "$rc|$(head -n1 "$WORK/dr7g.out")"
