@@ -198,6 +198,7 @@ repos:
         entry: bash scripts/lint/check-new-comments.sh --staged
         language: system
         pass_filenames: false
+        stages: [pre-commit]
 
       - id: no-new-swallowed-errors
         name: no new swallowed error in gate/hook scripts (baseline-first; swallow-ok exempts) (himmel-dev only)

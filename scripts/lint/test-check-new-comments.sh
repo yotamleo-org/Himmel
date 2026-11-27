@@ -50,7 +50,14 @@ rows() {
 }
 gate() { OUT="$(cd "$R" && bash scripts/lint/check-new-comments.sh "$@" 2>&1)"; RC=$?; }
 has() { case "$OUT" in *"$1"*) return 0 ;; *) return 1 ;; esac; }
-stage() { git -C "$R" add -A; gate --staged; }
+stage() {
+    local left
+    if git -C "$R" add -A && git -C "$R" diff --quiet && left="$(git -C "$R" ls-files --others --exclude-standard)" && [ -z "$left" ]; then
+        gate --staged
+    else
+        OUT="the fixture in $R is not staged, or git could not check it"; RC=125
+    fi
+}
 want() {
     if [ "$RC" -eq "$2" ]; then pass "$1"; else fail "$1 -> rc=$RC, wanted $2: $OUT"; fi
 }
@@ -202,36 +209,59 @@ awk '
     on && /^        run: \|$/ { run = 1; next }
     on && run { sub(/^          /, ""); print }
 ' "$CI_YML" > "$STEP"
+pr_merge() {
+    git -C "$R" checkout -q main
+    git -C "$R" merge -q --no-ff -m "the PR merge ref" topic || fail "the merge commit setup failed"
+}
+step() { OUT="$(cd "$R" && RUNNER_TEMP="$T/$1" BASE_SHA="$2" bash "$STEP" 2>&1)"; RC=$?; }
+refused_at() {
+    if [ "$RC" -eq 1 ] && has "$2"; then pass "$1"; else fail "$1 -> rc=$RC: $OUT"; fi
+}
+third() {
+    git -C "$R" checkout -q -b topic
+    printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"
+    git -C "$R" commit -q -am third
+}
+finding="src/a.sh: 3 comment lines outside the keep list, baseline 2"
 if [ -s "$STEP" ]; then
     mkrepo
     base="$(git -C "$R" rev-parse HEAD)"
-    printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"
-    git -C "$R" commit -q -am third
-    OUT="$(cd "$R" && RUNNER_TEMP="$T/rt1" BASE_SHA="$base" bash "$STEP" 2>&1)"; RC=$?
-    want "the step refuses an added comment" 1
+    third
+    step rt0 "$base"
+    refused_at "a checkout that is not a merge commit is red" "not a merge commit"
+    pr_merge
+    step rt1 "$base"
+    refused_at "the step refuses an added comment" "$finding"
+    git -C "$R" reset -q --hard "$base"
+    git -C "$R" checkout -q topic
     : > "$R/scripts/lint/comment-count.awk"
     git -C "$R" commit -q -am "blank the classifier"
-    mkdir -p "$T/rt2"
-    OUT="$(cd "$R" && RUNNER_TEMP="$T/rt2" BASE_SHA="$base" bash "$STEP" 2>&1)"; RC=$?
-    want "the step judges with the base classifier, not the branch copy" 1
-    OUT="$(cd "$R" && RUNNER_TEMP="$T/rt3" BASE_SHA="" bash "$STEP" 2>&1)"; RC=$?
-    want "a missing base sha is red" 1
+    pr_merge
+    step rt2 "$base"
+    refused_at "the step judges with the base classifier, not the branch copy" "$finding"
     mkrepo
     git -C "$R" rm -q scripts/lint/check-new-comments.sh
     git -C "$R" commit -q -m "a base before the gate"
     base="$(git -C "$R" rev-parse HEAD)"
-    printf '%s third\necho t\n' "$HASH" >> "$R/src/a.sh"
-    git -C "$R" commit -q -am third
-    OUT="$(cd "$R" && RUNNER_TEMP="$T/rt4" BASE_SHA="$base" bash "$STEP" 2>&1)"; RC=$?
+    third
+    pr_merge
+    step rt4 "$base"
     if [ "$RC" -eq 0 ] && has "absent at base"; then pass "a base without the gate passes with a notice"; else fail "base without gate -> rc=$RC: $OUT"; fi
+    mkrepo
+    git -C "$R" rm -q scripts/lint/check-new-comments.sh
+    git -C "$R" commit -q -m "a base before the gate"
+    lagged="$(git -C "$R" rev-parse HEAD)"
+    cp "$GATE" "$R/scripts/lint/"
+    git -C "$R" add -A; git -C "$R" commit -q -m "main gains the gate"
+    third
+    pr_merge
+    step rt5 "$lagged"
+    refused_at "a base.sha that predates the gate does not skip a PR whose merge parent has it" "$finding"
 else
     fail "ci.yml has no 'new-comment gate (PR range)' step"
 fi
 
 echo "== 14. shapes that must not hide a comment =="
-refused_at() {
-    if [ "$RC" -eq 1 ] && has "$2"; then pass "$1"; else fail "$1 -> rc=$RC: $OUT"; fi
-}
 mkrepo
 printf 'f();// note\n' > "$R/src/t.mjs"; stage; refused_at "a trailing // with no space before it" "src/t.mjs:1: // note"
 mkrepo
