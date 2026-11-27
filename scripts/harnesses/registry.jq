@@ -8,6 +8,7 @@
 # gets a non-zero status refuses. A parseable descriptor always supplies its tool
 # map; only a launchable one lets an agent launch its T3 driver.
 
+def lowercase_tail_glob: ltrimstr("~") | if startswith("/") then "*" + . else . end | ascii_downcase;
 def str: type == "string" and length > 0;
 def strs: type == "array" and all(.[]; str);
 def tool_entry: type == "object" and (.claude | str)
@@ -38,7 +39,4 @@ def launchable: .complete
 | if ($gone | length) > 0 then error("no descriptor for the listed harness \($gone[0])") else . end
 | if ([$reg[].t3.driver] | length) != ([$reg[].t3.driver] | unique | length)
     then error("two descriptors name the same T3 driver") else . end
-# A token path is matched as a shell glob on the path tail, lower-cased as the secrets guard folds paths.
-| if $ARGS.named.out == "tokens"
-    then $reg[].token_paths[] | ltrimstr("~") | if startswith("/") then "*" + . else . end | ascii_downcase
-    else $reg end
+| if $ARGS.named.out == "tokens" then $reg[].token_paths[] | lowercase_tail_glob else $reg end

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Schema test for scripts/harnesses/*.json, run through the loader the guards use.
 # shellcheck disable=SC2016,SC2034 # check() evals single-quoted conditions that read the variables
 # shellcheck disable=SC2088 # token paths are literal ~/ globs, as the descriptors spell them
 set -uo pipefail

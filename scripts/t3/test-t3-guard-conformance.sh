@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# T3 guard conformance, run over every harness in scripts/harnesses. grok reaches
-# the guard through himmel-guard's translator. Cursor's MCP tool name is not
-# captured, so its rows feed the guard the Claude shape.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
