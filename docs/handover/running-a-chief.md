@@ -337,6 +337,13 @@ explicit model**: an unnamed one draws on the scarcer parent quota. Tier and
 effort guidance, including the chief's own wake-up budget, is in
 [`../internals/lane-calibration.md`](../internals/lane-calibration.md).
 
+**What is not ready to launch.** When you need to see why open tickets cannot be
+launched, run `chief-kit/not-ready.sh --doc <chief doc> --keys <file with one
+ticket key per line> --version <version>`. It prints one reason per ticket from
+the dispatcher pass your tick keeps and the other launch checks. It is
+read-only and runs no dispatcher pass; with no usable pass it prints one banner
+line and no per-ticket reason.
+
 **A core ticket builds only after a signed minerva spec.**
 
 - **What core means.** The operator's definition: the ship loop, the chain a
