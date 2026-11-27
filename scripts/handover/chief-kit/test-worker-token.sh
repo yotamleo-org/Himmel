@@ -285,6 +285,15 @@ bucket; mkdoc "$D"; wt mint "$D" Y-N1 >/dev/null
 PATH="$SHIM:$PATH" wt rotate "$D" --to "$S" >/dev/null; eq "WT15c: rotate with a failed handshake read is rc 6" "$?" 6
 eq "WT15c: and writes nothing" "$(rows)" 1
 
+bucket; ln -s "$WORK/planted-lock" "$REC.lock"
+wt mint "$D" Y-N1 >/dev/null; eq "WT16: a symlinked lock is refused (rc 6)" "$?" 6
+[ ! -e "$WORK/planted-lock" ] && pass "WT16: and its target is never created" || fail "WT16: the dangling lock target was created"
+
+bucket; mkdoc "$D"; wt mint "$D" Y-N1 >/dev/null; mv "$REC" "$WORK/planted-rec"; ln -s "$WORK/planted-rec" "$REC"
+before="$(cat "$WORK/planted-rec")"
+wt rotate "$D" --to "$S" >/dev/null; eq "WT17: a record that is a symlink to a regular file is refused (rc 6)" "$?" 6
+eq "WT17: and nothing is written through it" "$(cat "$WORK/planted-rec")" "$before"
+
 wt >/dev/null; eq "no arguments is a usage error (rc 2)" "$?" 2
 wt frob "$D" >/dev/null; eq "an unknown subcommand is a usage error (rc 2)" "$?" 2
 wt rotate "$D" >/dev/null; eq "rotate without --to is a usage error (rc 2)" "$?" 2
