@@ -46,14 +46,14 @@ usage() {
 [ "$#" -ge 2 ] || usage
 KEY="$1"
 shift
-REASON="" OWNER="" UNTIL="" KIND="" ON="" THREAD="" RELEASE=0 CLOUD=""
+REASON="" OWNER="" UNTIL="" KIND="" ON="" THREAD="" RELEASE=0 CLOUD="" CLOUD_SET=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --release) RELEASE=1; shift ;;
         --reason | --owner | --until | --kind | --on | --thread | --cloud-session)
             [ "$#" -ge 2 ] || usage
             case "$1" in
-                --cloud-session) CLOUD="$2" ;;
+                --cloud-session) CLOUD="$2"; CLOUD_SET=1 ;;
                 --reason) REASON="$2" ;;
                 --owner) OWNER="$2" ;;
                 --until) UNTIL="$2" ;;
@@ -68,14 +68,14 @@ done
 [[ "$KEY" =~ ^[A-Za-z][A-Za-z0-9]*-[0-9]+$ ]] || usage
 if [ "$RELEASE" -eq 0 ]; then
     [ -n "$REASON" ] && [ -n "$OWNER" ] || usage
-elif [ -n "$CLOUD" ]; then
+elif [ "$CLOUD_SET" -eq 1 ]; then
     [ -n "$REASON" ] && [ -n "$OWNER" ] || usage
     [ -z "$UNTIL$KIND$ON$THREAD" ] || usage
     [[ "$CLOUD" =~ ^session_[A-Za-z0-9]+$ ]] || usage
 else
     [ -z "$REASON$UNTIL$KIND$ON$THREAD" ] || usage
 fi
-[ -z "$CLOUD" ] || [ "$RELEASE" -eq 1 ] || usage
+[ "$CLOUD_SET" -eq 0 ] || [ "$RELEASE" -eq 1 ] || usage
 case "$KIND" in "" | chain-order | gate | file-collision | operator | date) ;; *) usage ;; esac
 [ "$KIND" != date ] || [ -n "$UNTIL" ] || usage
 [ -z "$ON" ] || [[ "$ON" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]] || usage
@@ -95,7 +95,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$HERE/../../lib/ticket-status.sh"
 
-if [ -n "$CLOUD" ]; then
+if [ "$CLOUD_SET" -eq 1 ]; then
     takeover_err=$(status_event event=cloud-takeover key="$KEY" session="$CLOUD" owner="$OWNER" reason="$(printf '%s' "$REASON" | tr -d '|\t\r\n')" result=done 2>&1 >/dev/null)
     case "$takeover_err" in
         *status-log-unwritable*)

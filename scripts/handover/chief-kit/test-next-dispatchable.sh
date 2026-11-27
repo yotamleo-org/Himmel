@@ -2968,7 +2968,7 @@ o = json.load(sys.stdin)[0]
 exec(sys.argv[1])
 print(json.dumps([o]))' "$1"; }
 cl_run() { NEXT_DISPATCH_NOW="$CL_NOW" CL_DIR="$CL" TICKET_STATUS_STATE_DIR="$CL/state" NEXT_DISPATCH_MIRROR="$CLM" NEXT_DISPATCH_GH_CMD="$WORK/gh-cl" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --top 20 --why --doc "$CL/doc.md" --workers-from "$CL/own.fleet.json" --workers-dir "$CL/state/workers" 2>/dev/null; }
-cl_run_t() { NEXT_DISPATCH_NOW="$CL_NOW" CL_DIR="$CL" TICKET_STATUS_STATE_DIR="$CL/state" NEXT_DISPATCH_MIRROR="$CLM" NEXT_DISPATCH_GH_CMD="$WORK/gh-cl" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --why-ticket HIMMEL-9710 --doc "$CL/doc.md" --workers-from "$CL/own.fleet.json" --workers-dir "$CL/state/workers" 2>/dev/null; }
+cl_run_t() { NEXT_DISPATCH_NOW="$CL_NOW" CL_DIR="$CL" TICKET_STATUS_STATE_DIR="$CL/state" NEXT_DISPATCH_MIRROR="$CLM" NEXT_DISPATCH_GH_CMD="$WORK/gh-cl" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --why-ticket HIMMEL-9710 --doc "$CL/doc.md" --workers-dir "$CL/state/workers" 2>/dev/null; }
 cl_reset() { rm -rf "$CL/fail" "$CL/stall" "$CL/state/status-events.jsonl" "$CL/gh.args"; : > "$CL/gh.args"; printf '[]\n' > "$CL/search.json"; }
 cl_take() { printf '{"event":"cloud-takeover","key":"%s","session":"%s","owner":"chief","reason":"r","result":"done"}\n' "$1" "$2" >> "$CL/state/status-events.jsonl"; }
 cl_reads() { grep -c -e '--state all' "$CL/gh.args"; }
@@ -3042,6 +3042,7 @@ has "10378 C15: a PR with no createdAt is unknown, so owned" "$o" "(idle 0d, end
 
 cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"
 o="$(cl_run_t)"
+has "10378 C16: --why-ticket still reports the ticket" "$o" "HIMMEL-9710"
 check "10378 C16: --why-ticket makes no cloud read" "0" "$(cl_reads)"
 
 cl_reset; { cl_row "$(cl_at 10)" session_p HIMMEL-9710; cl_row "$(cl_at 10)" session_v HIMMEL-9712; cl_row "$(cl_at 10)" session_d HIMMEL-9713; } > "$CL/cloud-sessions.tsv"
@@ -3068,6 +3069,7 @@ has "10378 C20: and the session still owns" "$o" "owned by cloud session session
 
 cl_reset; cl_row "$(cl_at 10)" session_p > "$CL/cloud-sessions.tsv"; cl_take HIMMEL-9710 session_p
 o="$(cl_run_t)"
+has "10378 C21: control: --why-ticket still reports the ticket" "$o" "HIMMEL-9710"
 lacks "10378 C21: control: --why-ticket prints no cloud owner text" "$o" "owned by cloud session"
 lacks "10378 C21: control: and no old cloud owner text" "$o" "owned by a cloud session"
 check "10378 C21: control: and makes no read" "0" "$(cl_reads)"

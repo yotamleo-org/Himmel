@@ -600,6 +600,8 @@ hold "$K" --release --cloud-session session_abc --reason r --owner chief --until
 check "10378 H3: control: the form refuses --until" "$rc" 2
 hold "$K" --release --cloud-session session_abc --reason r --owner chief --on HIMMEL-1; rc=$?
 check "10378 H3: control: the form refuses --on" "$rc" 2
+hold "$K" --release --cloud-session '' --owner chief; rc=$?
+check "10378 H3: an empty --cloud-session value is a usage error, never a plain release" "$rc" 2
 check "10378 H3: and these add no row and call no Jira" "$(nrows) $(grep -c -E "^(edit|get|comment|transition) " "$STUB_LOG")" "$n1 0"
 reset "To Do"
 : > "$tmp/not-a-dir"
