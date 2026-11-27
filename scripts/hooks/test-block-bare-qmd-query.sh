@@ -704,9 +704,9 @@ allow 'env -- printf "%s %s" "$(grep -c a qmd.sh)" "$(grep -c b qmd.sh)"'
 
 # The nested scan is linear: padding with shell words must not push the hook
 # past the chain's budget, where it would be skipped instead of deciding.
-# A fixed wall-clock budget failed on loaded CI, so the faster of two padded
-# runs, interleaved with two runs padded a quarter as long, may take 3x both
-# controls plus slack (wider on a whole-second clock): load scales both sides.
+# A fixed wall-clock budget failed on loaded CI: the faster of two padded runs
+# may take 3x two quarter-size runs between them, plus slack, so load scales
+# both sides; never past run-hook-with-bash.js's 15 s member timeout.
 run_ms() {
     local input t0 t1 rc
     input=$(j_bash "$1")
@@ -723,9 +723,12 @@ within_bound() {
     local c1 p p2 c2 bound slack=300
     [ -n "${EPOCHREALTIME:-}" ] || slack=5000
     c1=$(run_ms "$2"); p=$(run_ms "$1"); c2=$(run_ms "$2"); p2=$(run_ms "$1")
-    bound_rc=${p%% *} p=${p#* } p2=${p2#* } c1=${c1#* } c2=${c2#* }
+    bound_rc=${p%% *} p=${p#* } c1=${c1#* } c2=${c2#* }
+    [ "${p2%% *}" = "$bound_rc" ] || bound_rc="$bound_rc then ${p2%% *}"
+    p2=${p2#* }
     [ "$p2" -ge "$p" ] || p=$p2
     bound=$(( 3 * (c1 + c2) + slack ))
+    [ "$bound" -le 15000 ] || bound=15000
     bound_why="${p}ms (controls ${c1}ms and ${c2}ms, bound ${bound}ms)"
     [ "$p" -le "$bound" ]
 }
@@ -762,6 +765,7 @@ elif HOOK=$STUBS/slow.sh within_bound "qmd status; echo ${pad_w}" "qmd status; e
     echo "FAIL a slow path that grows with the input passed the bound: $bound_why"
     FAILED=$((FAILED + 1))
 else
+    assert_rc 'a slow path that grows with the input still allows' 0 "$bound_rc"
     echo "PASS a slow path that grows with the input fails the bound: $bound_why"
 fi
 
@@ -1062,8 +1066,8 @@ run_case "$(j_bash "echo hi$pad_a; qmd query x")" >/dev/null
 t1=$(now_ms)
 deny "echo hi$pad_o; qmd query x"
 t2=$(now_ms)
-if [ $((t2 - t1)) -gt $(( (t1 - t0) * 3 + 500 )) ]; then
-    echo "FAIL open-paren run x16000 took $((t2 - t1))ms (control $((t1 - t0))ms, budget 3x + 500ms)"; FAILED=$((FAILED + 1)); fi
+if [ $((t2 - t1)) -gt $(( (t1 - t0) * 3 + 500 )) ] || [ $((t2 - t1)) -gt 15000 ]; then
+    echo "FAIL open-paren run x16000 took $((t2 - t1))ms (control $((t1 - t0))ms, budget 3x + 500ms, at most 15000ms)"; FAILED=$((FAILED + 1)); fi
 # A `(` or `)` inside the path must still reach the program name.
 deny '/tmp/a(b)/qmd query x'
 deny '"/tmp/a(b)/qmd" query x'
