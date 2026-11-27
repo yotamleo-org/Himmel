@@ -124,8 +124,7 @@ parallel workers:
   Telegram alerts.
 
 The interactive [adoption trail](https://yotamleo-org.github.io/Himmel/adoption-trail.html)
-lays out the Guarded Core and each track: what it needs, what it installs, what
-it costs, and how to turn it off.
+lists what each capability installs, what it costs, and how to turn it off.
 
 ---
 
