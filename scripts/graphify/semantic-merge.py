@@ -419,8 +419,7 @@ def cmd_untracked(a):
 def cmd_unrestore(a):
     """Set aside the semantic nodes graphify did not write (it stamps a community on every node it emits).
 
-    Left in, graphify drops them again and its shrink guard refuses an incremental run. The caller's
-    snapshot keeps them; restore puts them back after the rebuild.
+    Left in, graphify drops them again and its shrink guard refuses an incremental run.
     """
     graph_path = os.path.join(a.out, "graph.json")
     g = load_json(graph_path)

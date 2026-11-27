@@ -407,8 +407,7 @@ fi
 # replaces their nodes, dropping the `_origin: semantic` nodes attached to them
 # (245 nodes lost at the 2026-10-16 09:15 tick). Snapshot the live graph, and
 # after a successful update put back every semantic item the rebuild lost
-# (semantic-merge.py restore). The snapshot lives in OUT_DIR, which this
-# script's lock owns.
+# (semantic-merge.py restore).
 _pre_ast="$OUT_DIR/.graph.pre-ast.json"
 if [ -f "$_pre_ast" ] \
    && ! python3 "$(dirname "${BASH_SOURCE[0]}")/semantic-merge.py" restore --out "$OUT_DIR" --before "$_pre_ast" --root "$CORPUS_ROOT"; then
