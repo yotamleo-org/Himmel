@@ -275,6 +275,60 @@ for c in 'curl -sS https://e/a' 'curl -q https://e/a' 'curl -q -g -o f https://e
     "curl -q -g 'https://e/[1-9]'" 'wget -qO- https://e/a'; do
     lg "T7 refused: $c" block "$c"
 done
+
+echo "== lane fetch host lists (HIMMEL-11410) =="
+LG_NET='{"codex":["net-read"],"antigravity":["net-read"]}'
+lg_hosts() { lg_cfg "{\"lane_grants\":$LG_NET,\"lane_grants_hosts\":$1}"; }
+lg_nohosts() { lg_cfg "{\"lane_grants\":$LG_NET}"; }
+LG_OTHER='curl -q -g https://other.example.net/a'
+LG_UNLISTED='curl -q -g https://unlisted.example.net/x'
+lg_open() {
+    local c
+    for c in "$LG_CURL" "$LG_WGET" "$LG_UNLISTED" \
+        'wget --no-config --max-redirect=0 -qO- https://unlisted.example.net/x'; do
+        lg "H1 open ($1): $c" allow "$c"
+    done
+}
+lg_nohosts; lg_open 'no lane_grants_hosts'
+for h in '{"codex":{}}' '{"codex":{"deny":[]}}' '{"antigravity":{"deny":["example.com","unlisted.example.net"]}}' \
+    '{"antigravity":[]}' '{"zzz":{"deny":["example.com"]}}'; do
+    lg_hosts "$h"; lg_open "$h"
+done
+
+lg_hosts '{"codex":{"deny":["example.com"]}}'
+lg "H2 a denied host is refused on codex" block "$LG_CURL"
+lg "H2 the same host on antigravity" allow "$LG_CURL" "$LGW" antigravity
+lg "H2 another host on codex" allow "$LG_OTHER"
+
+lg_hosts '{"codex":{"allow":["example.com"]}}'
+lg "H3a a host off the allow list" block "$LG_UNLISTED"
+lg "H3b a listed host, curl" allow "$LG_CURL"
+lg "H3b a listed host, wget" allow "$LG_WGET"
+lg_hosts '{"codex":{"allow":[]}}'
+lg "H3a an empty allow list" block "$LG_CURL"
+
+for h in '"x"' 'null' '{"codex":[]}' '{"codex":null}' '{"codex":{"allow":"example.com"}}' \
+    '{"codex":{"allow":null}}' '{"codex":{"allow":[1]}}' '{"codex":{"allow":["example.com"],"allowed":[]}}' \
+    '{"codex":{"allowed":["example.com"]}}' '{"codex":{"deny":null}}' '{"codex":{"deny":"example.com"}}' \
+    '{"codex":{"deny":[],"zzz":[]}}' '{"codex":{"deny":["https://example.com"]}}' \
+    '{"codex":{"deny":["example.com:443"]}}' '{"codex":{"deny":["example.com/a"]}}' \
+    '{"codex":{"deny":["*example.com"]}}' '{"codex":{"deny":["*."]}}' '{"codex":{"deny":[""]}}' \
+    '{"codex":{"deny":["127.1"]}}' "$(jq -cn '{codex:{deny:["example.com\n"]}}')" \
+    "$(jq -cn '{codex:{allow:["example.com\n"]}}')"; do
+    lg_hosts "$h"; lg "H4 malformed refuses: $h" block "$LG_CURL"
+done
+lg_hosts '"x"'
+lg "H4 a non-object lane_grants_hosts refuses antigravity too" block "$LG_CURL" "$LGW" antigravity
+lg_hosts '{"codex":[]}'
+lg "H4 a malformed codex list leaves antigravity open" allow "$LG_CURL" "$LGW" antigravity
+
+for h in '{"codex":{"allow":["example.com"]}}' '"x"' '{"codex":[]}'; do
+    lg_cfg "{\"lane_grants\":{\"codex\":$LG_ALL},\"lane_grants_origin\":\"github.com/acme/fixture\",\"lane_grants_hosts\":$h}"
+    lg "H5 push is not touched by $h" allow 'git push -u origin feat/x'
+    lg "H5 pr create is not touched by $h" allow "$LG_PR"
+done
+rm -f "$LGC"
+
 lg_cfg "{\"lane_grants\":{\"antigravity\":$LG_ALL},\"lane_grants_origin\":\"github.com/acme/fixture\"}"
 lg "T2 antigravity grant, codex payload" block 'git push origin feat/x'
 lg_all
