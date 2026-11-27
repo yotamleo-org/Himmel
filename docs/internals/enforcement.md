@@ -1867,9 +1867,9 @@ to is refused (found from the hook's own `.git`, so a worktree session is held
 to it too); a worktree's own copy stays editable.
 
 `block-read-secrets.sh` takes each harness's login-token paths from the
-`token_paths` of those descriptors, and refuses every Read, Grep, Bash and
-PowerShell call while the registry does not load (`READ_SECRETS_OK=1` in the
-launching shell is the operator route). The codex and gemini token paths and
+`token_paths` of those descriptors, and refuses every call it is matched on
+while the registry does not load (`READ_SECRETS_OK=1` in the launching shell is
+the operator route). The codex and gemini token paths and
 T3's `userdata/providers/` token rule also stay in the hook, so no descriptor
 edit unfences them.
 
