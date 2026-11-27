@@ -1451,10 +1451,8 @@ if [ "$ONLY7" -eq 0 ]; then
 # ── 9. a plugin change bumps that plugin's version ──────────────
 # The --bump-required rule of scripts/check-plugin-drift.sh. A PR
 # that changes a plugin's files must carry a version strictly above origin/main's
-# as it is NOW, or one EQUAL to it that the PR raised itself: the plugin is at the merge-base, main moved it only from that old version to this one, and no commit since the merge-base touched VERSION.
-# A bump with no other change in that plugin (a manifest edit beyond "version" counts as a change) is refused. A release cut (a PR that changes the root
-# VERSION file) raises every plugin it touches strictly above main. Inline rather than calling check-plugin-drift.sh, which hardwires HEAD and the
-# caller's checkout; test-ready-check-d.sh pins the two to one verdict.
+# as it is NOW, or equal to it when the PR raised it from the same old version main moved from and no commit since the merge-base touched VERSION.
+# A release cut stays strictly above main; a bump with no other change in that plugin is refused.
 # A file moved out of a plugin lists only its destination as filename, so the
 # plugin path comes from previous_filename. A PR touching no plugin never
 # reaches git. Fetch or read failure = FAIL.
@@ -1504,7 +1502,7 @@ else
         cuts=$(git rev-list --first-parent "$mb..refs/remotes/origin/main" -- VERSION 2>/dev/null) || return 1  # swallow-ok: rc checked, a failure refuses equality
         [ -z "$cuts" ]
     }
-    plug_above_main() {  # <plugin> [merge-base] — appends to bump_err unless the PR's version is strictly above origin/main's, or (with a merge-base) equal to it by plug_equal_raised
+    plug_above_main() {
         local p="$1" mpath="marketplace/plugins/$1/.claude-plugin/plugin.json" m_ls p_ls m_ver p_ver
         # absent on main = new plugin, nothing to collide with; a failed tree read or an
         # unreadable manifest = FAIL

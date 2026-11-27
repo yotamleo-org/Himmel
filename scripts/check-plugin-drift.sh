@@ -177,9 +177,8 @@ fi
 # plugin (a manifest edit beyond "version" counts as a change) is refused.
 # A release cut (a change to the root VERSION file, which only the release-cut
 # PR makes) raises every plugin it touches above the base, bump-only included.
-# The manifest keeps its "version" field (check_manifest_versions). Range mode, non-release: a version EQUAL to the base tip's also passes (equal_raised) when the plugin is at the merge-base, the PR raised it from there,
-# the base moved it only from that same old version to that same new one, and no first-parent commit since the merge-base touched VERSION (equal_raised rc 2). A release cut stays strictly above the tip it judges. Until a higher
-# version ships the base can hold several contents under one version: himmel-update reinstalls such a cache (scripts/lib/plugin-cache-drift.sh), a marketplace install keeps the first content of that version.
+# The manifest keeps its "version" field (check_manifest_versions). Range mode, non-release: a version equal to the base tip's passes only when the PR raised it there from the same
+# old version the base moved from, and no first-parent commit since the merge-base touched VERSION; a release cut stays strictly above the tip.
 #
 # Two modes, both git-diff based (never DRIFT_PLUGINS_DIR — that override
 # exists for the network-free class above; this check is inherently

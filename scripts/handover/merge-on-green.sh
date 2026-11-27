@@ -1541,9 +1541,8 @@ elif [ "$mr_conc" != success ]; then
 fi
 
 # PLUGIN-BUMP RECHECK GATE — CI's plugin-version-bump job went
-# green against whatever the base was when it ran, and the job body itself is PR-editable. The recheck refuses a plugin version below the live base tip's, an
-# unraised one, or one equal to it that the base-tip checker's equal clause (the PR raised it from the same old version, no commit since the merge-base touched
-# VERSION) does not accept; it binds the tip it fetched, not the one GitHub squashes onto a moment later. An accepted equal version is named on the audit line. This is the one
+# green against whatever the base was when it ran. The recheck refuses a version below the live base tip's, unraised, or equal to it outside the
+# base-tip checker's equal clause (same old version, no VERSION commit since the merge-base). The job body is PR-editable, and this is the one
 # place that sees the live base, so it re-runs `check-plugin-drift.sh
 # --bump-required` here: the checker comes from a freshly fetched base tip
 # (never the PR checkout's copy — the same blobs the CI job copies)

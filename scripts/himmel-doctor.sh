@@ -5874,11 +5874,8 @@ check_c78_shfmt() {
 }
 
 # --- C79: an installed plugin cache that differs from the checkout at the same version ---
-# Claude Code caches a plugin by version, and a merged change can keep the version, so what main shows as shipped is not what runs. Compares the whole
-# plugin tree of each checkout-sourced @himmel plugin's user-scope installPath against the checkout when the installed version equals plugin.json's
-# (a version lag is a different finding) and the plugin is enabled in the user settings (the repair leaves a disabled one alone). WARN names a file the
-# checkout ships that differs or is missing, or a cache file it does not ship that is neither excluded nor ignored (scripts/lib/plugin-cache-drift.sh
-# owns the compare); a compare that cannot finish WARNs too. The repair is himmel-update.sh --only plugin-refresh.
+# WARN when an enabled checkout-sourced @himmel plugin's same-version cache differs anywhere in its tree: a shipped file differing or missing, or
+# a cache file neither shipped, excluded nor ignored (scripts/lib/plugin-cache-drift.sh); an incomplete compare WARNs too.
 check_c79_plugin_cache_drift() {
     local manifest="$REPO_ROOT/marketplace/.claude-plugin/marketplace.json"
     local installed="$CLAUDE_DIR_R/plugins/installed_plugins.json"

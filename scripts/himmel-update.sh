@@ -3428,15 +3428,8 @@ EOF
 }
 
 # ─── same-version plugin cache refresh ─────────────────────────
-# Claude Code caches a plugin by version, and a merged change can keep the version (two PRs may land at one number, scripts/check-plugin-drift.sh), so
-# it reaches the checkout but not the cached copy of the SAME version: `marketplace update` and `plugin update` both report "nothing to update".
-# `plugin uninstall` then `plugin install` re-copies the checkout bytes into that version dir. This reinstalls an enabled, checkout-sourced @himmel
-# plugin whose installed version equals its plugin.json version and whose cache differs from the checkout anywhere in the plugin tree (the version-lag
-# case is update_installed_plugins' job): a file the checkout ships that differs or is missing in the cache, or a cache file the checkout does not ship
-# that is neither excluded nor ignored. scripts/lib/plugin-cache-drift.sh owns that compare, and one that cannot finish counts as drift. After the
-# reinstall, a file only the cache has is removed from the install dir (an installer may keep deleted files), and only after a completed compare.
-# A url-sourced or source-less plugin has no checkout tree to compare, so it is never touched. Runs BEFORE reconcile_plugins (a reinstall
-# re-enables), and a failed install after the uninstall is loud and fails the run: a plugin must never be left uninstalled silently.
+# Reinstalls an enabled checkout-sourced @himmel plugin whose same-version cache differs anywhere in its tree: a shipped file differing or
+# missing, or a cache file neither shipped, excluded nor ignored (scripts/lib/plugin-cache-drift.sh); an incomplete compare counts as drift.
 
 _remove_cache_extras() {
     local tree="$1" cache="$2" line rel

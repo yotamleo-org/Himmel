@@ -202,7 +202,6 @@ contains "plugin edit, version untouched: check 9 fails" "$out" "[FAIL] 9."
 contains "plugin edit, version untouched: names the plugin" "$out" "demo"
 p1 "unraised head" "$PR_UNBUMPED" fail
 
-# (11344-b1) The PR raised the plugin to the number main reached on its own: accepted.
 run_bump "$PR_SAME" "$PLUG/body.txt"
 contains "(11344-b1) equal version the PR raised itself: check 9 passes" "$out" "[PASS] 9."
 contains "(11344-b1) equal version: the PASS line names the plugin" "$out" "equal to current origin/main, raised from an older merge-base: demo 0.4.71"

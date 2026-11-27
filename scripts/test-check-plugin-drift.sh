@@ -568,8 +568,6 @@ git -C "$W_DOD/c1" branch -m main || bad "c1 fixture: branch rename failed"
 bump_run "$W_DOD/c1"
 if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (staged): a second commit after the bump needs no second bump"; else bad "--bump-required (staged): second commit demanded another bump (rc=$br_rc): $br_out"; fi
 
-# Base moved: a sibling already shipped the version this PR bumps to, and
-# the PR raised it itself from the same old one: accepted at that number.
 bump_fixture "$W_DOD/b1" foo
 git -C "$W_DOD/b1" branch -m main || bad "b1 fixture: branch rename failed"
 (cd "$W_DOD/b1" && git checkout -q -b feat && bump_edit "$W_DOD/b1" && bump_ver "$W_DOD/b1" 0.1.1 && git add -A && git commit -q -m 'fix: pr edit and bump' \
