@@ -1288,6 +1288,22 @@ eq "own-dir: no qmd, graphify or combined row lists or scores it" "4 clean" "$(o
 eq "own-dir control: the grep family never lists it" "5 clean" "$(own grep,grep-rtk,path,ident-grep,ident-grep-rtk)"
 eq "own-dir: graphify fills its top 5 from the files after it" "docs/n1.md docs/n2.md docs/n3.md docs/n4.md docs/n5.md" "$(py -c 'import json,sys
 print(" ".join(next(r for r in map(json.loads, open(sys.argv[1])) if r["arm"] == "graphify")["files"]))' "$W/outo/results.jsonl")"
+cat > "$W/qmd-cut" <<'EOF'
+#!/usr/bin/env python3
+import json, sys
+a = json.load(sys.stdin)
+files = ["scripts/eval/retrieval-eval/pilot/task-prompt.md", "docs/n1.md", "docs/n2.md", "docs/n3.md", "docs/n4.md",
+         "scripts/eval/retrieval-eval/pilot/judge-prompt.md", "docs/n5.md"] + ["docs/m%d.md" % i for i in range(30)]
+print(json.dumps([{"file": "qmd://himmel/" + f, "snippet": "x"} for f in files[:a["limit"]]]))
+EOF
+chmod +x "$W/qmd-cut"
+RETRIEVAL_EVAL_QMD_CMD="$W/qmd-cut" HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-cut.jsonl" py "$EV" run --repo "$R" --questions "$W/qo.jsonl" --out "$W/outcut" --arms qmd-lex > /dev/null 2>&1
+eq "own-dir: qmd cuts at its limit, so a reply holding an own file is asked again until the top 5 is full" "docs/n1.md docs/n2.md docs/n3.md docs/n4.md docs/n5.md" "$(py -c 'import json,sys
+print(" ".join(json.loads(open(sys.argv[1]).readline())["files"]))' "$W/outcut/results.jsonl")"
+eq "own-dir: the refilled arm still reads five rows" "5" "$(RETRIEVAL_EVAL_QMD_CMD="$W/qmd-cut" py -c 'import importlib.util,sys
+s = importlib.util.spec_from_file_location("ev", sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+print(len(m.arm_qmd("x", False, 5, 5, "himmel")[1].splitlines()))' "$EV")"
+eq "own-dir: every ask is counted (scored query 3, top-20 query 2)" "5" "$(awk -F'\t' 'NR==1{for(i=1;i<=NF;i++)h[$i]=i;next} {print $h["qmd_lex"]}' "$W/outcut/scores.tsv")"
 
 cat > "$W/qmd-count" <<'EOF'
 #!/usr/bin/env bash

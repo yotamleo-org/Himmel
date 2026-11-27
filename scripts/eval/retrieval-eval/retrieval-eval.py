@@ -96,10 +96,13 @@ scripts/eval/README.md). Rows keep files_top20, from a second query at max(k, 20
 evidence only; files and scoring come from the limit-k query. qmd_error keeps failure details; skipped is false for real rows
 (skipped arms have no rows, and their reasons stay in the ledger config).
 No arm returns a file under this directory. qmd_lex, qmd_vec and qmd_rerank in
-scores.tsv count the calls the run sent (both queries per question; a fused row
-carries a part that has no row of its own), also as <arm>.qmd_*_requests,
-qmd_requests_total and spend_cap_hit (0/1) in the ledger. --max-qmd-requests N
-sends at most N qmd requests in the run; later ones are error rows.
+scores.tsv count the calls the run sent (both queries per question, and every
+refill of a reply that held a file of this directory; a fused row carries a part
+that has no row of its own), also as <arm>.qmd_*_requests in the ledger, with
+qmd_requests_total and spend_cap_hit (0/1). The total and --max-qmd-requests N
+count requests, not kinds: one hybrid request is one lex, one vec and one rerank.
+After N requests no more are sent: a scored query then is an error row, a top-20
+evidence query a deep failure.
 Exit: 0 scored, 1 check found problems or a graph arm's stamp is unavailable,
 64 usage error. A missing graph stamp still writes all run outputs.
 Stdlib only.
@@ -452,38 +455,57 @@ def qmd_requests(args):
     return {"lex": kinds.count("lex"), "vec": kinds.count("vec"), "rerank": int(bool(args.get("rerank")))}
 
 
-def arm_qmd(q, hybrid, timeout, k, collection, rerank=True, admit=None):
-    """admit, when given, takes the request's counts before it is sent; False means do not send it."""
-    vec = vocab_expand.shape_vec(q) if hybrid else ""
-    args = {"searches": [{"type": "lex", "query": vocab_expand.shape_lex(q, quote_flags=True)}] + ([{"type": "vec", "query": vec}] if vec else []),
-            "collections": [collection], "limit": k, "intent": q}
-    args["rerank"] = hybrid and rerank
+def qmd_ask(args, timeout, admit):
+    """(rows, None), or (None, the arm's failed result). admit, when given, takes the request's
+    counts before it is sent; False means do not send it."""
     if admit and not admit(qmd_requests(args)):
-        return [], "", False, True, "not sent: --max-qmd-requests reached"
+        return None, ([], "", False, True, "not sent: --max-qmd-requests reached")
     cmd = os.environ.get("RETRIEVAL_EVAL_QMD_CMD")
     if cmd:
         out, to, rc = run_cmd(shlex.split(cmd), timeout, stdin=json.dumps(args))
         if to:
-            return [], "", True, False, "timed out"
+            return None, ([], "", True, False, "timed out")
         if rc != 0:
-            return [], "", False, True, "qmd failed (rc %s)" % rc
+            return None, ([], "", False, True, "qmd failed (rc %s)" % rc)
         try:
             rows = json.loads(out or "[]")
         except ValueError:
-            return [], "", False, True, "qmd returned unreadable output"
+            return None, ([], "", False, True, "qmd returned unreadable output")
     else:
         try:
             rows = qmd_server(args, timeout)
         except Exception as e:  # a timeout or a dead server is a scored miss, not a crash
             to = "timed out" in str(e).lower() or isinstance(e, TimeoutError)
-            return [], "", to, not to, str(e)[:100]
+            return None, ([], "", to, not to, str(e)[:100])
     if not isinstance(rows, list) or any(not isinstance(r, dict) for r in rows):
-        return [], "", False, True, "qmd returned unreadable output"
+        return None, ([], "", False, True, "qmd returned unreadable output")
+    return rows, None
+
+
+def arm_qmd(q, hybrid, timeout, k, collection, rerank=True, admit=None):
+    """qmd cuts at its limit, so a reply holding a file of this directory is asked again with that
+    many more rows: the arm still reads k rows, and a clean reply costs one request."""
+    vec = vocab_expand.shape_vec(q) if hybrid else ""
+    args = {"searches": [{"type": "lex", "query": vocab_expand.shape_lex(q, quote_flags=True)}] + ([{"type": "vec", "query": vec}] if vec else []),
+            "collections": [collection], "limit": k, "intent": q}
+    args["rerank"] = hybrid and rerank
+    path = lambda r: re.sub(r"^(?:qmd://[^/]+|%s)/" % re.escape(collection), "", str(r.get("file", "")))  # noqa: E731
+    spare, t0 = 0, time.time()
+    while True:
+        args["limit"] = k + spare
+        left = timeout - (time.time() - t0) if spare else timeout
+        if left <= 0:
+            return [], "", True, False, "timed out"
+        rows, failed = qmd_ask(args, left, admit)
+        if failed:
+            return failed
+        own = sum(own_path(path(r)) for r in rows)
+        if own <= spare or len(rows) < args["limit"]:
+            break
+        spare = own
     files, text = [], []
-    for r in rows:
-        f = re.sub(r"^(?:qmd://[^/]+|%s)/" % re.escape(collection), "", str(r.get("file", "")))
-        if own_path(f):
-            continue
+    for r in [r for r in rows if not own_path(path(r))][:k]:
+        f = path(r)
         if f and f not in files:
             files.append(f)
         text.append("%s %s %s" % (r.get("file", ""), r.get("title", ""), r.get("snippet", "")))
@@ -992,7 +1014,7 @@ def cmd_run(a):
             cases[r["id"]]["heldout"] = r["split"] == "heldout"
     metrics.update(qmd_requests_total=requests, spend_cap_hit=int(cap_hit))
     if cap_hit:
-        print("retrieval-eval: --max-qmd-requests %d reached: later qmd queries were not sent and count as errors" % cap,
+        print("retrieval-eval: --max-qmd-requests %d reached: later qmd queries were not sent (see errors and deep_failures)" % cap,
               file=sys.stderr)
     with open(os.path.join(a.out, "scores.tsv"), "w") as fh:
         fh.write("\n".join(lines) + "\n")
