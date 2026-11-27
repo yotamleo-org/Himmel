@@ -9290,6 +9290,14 @@ test("lint: sign-shape --lint refuses a path:line citation, with and without a p
   }
 });
 
+test("lint: sign-shape --lint accepts a lint-clean spec, with and without a plan, given as relative paths too", async () => {
+  const f = await lintTree(lintSpecText({ inv: "I1. one rule." }), "# P\n\n- I1: test-x.sh\n");
+  const ok = { code: 0, signal: null, out: "SIGN-SHAPE OK\n", err: "" };
+  expect(routeRun(["sign-shape", f.spec, "--plan", f.plan, "--lint"])).toEqual(ok);
+  expect(routeRun(["sign-shape", f.spec, "--lint"])).toEqual(ok);
+  expect(routeRun(["sign-shape", relative(process.cwd(), f.spec), "--plan", relative(process.cwd(), f.plan), "--lint"])).toEqual(ok);
+});
+
 test("lint: sign-shape without --lint runs no trace lint", async () => {
   const f = await lintTree(lintSpecText({ cite: "scripts/telegram/chief-route.ts:12" }), "# P\n\n- Task 1: build.\n");
   const shim = lintShim();
