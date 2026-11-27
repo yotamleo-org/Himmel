@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { constants } from "node:fs";
 import { GROUP_ANONYMOUS_BOT_ID } from "../telegram/gate";
 import { readChain } from "./chain";
-import { DEFAULT_BUDGETS, type Config } from "./config";
+import { DEFAULT_BUDGETS, parseCard, type Config } from "./config";
 import { ALLOWANCE_S, IAT_FUTURE_SKEW_S, MAX_LINE_BYTES, parseEnvelopeLine, type Envelope, type Refused } from "./envelope";
 import { ENV_LINE_RE, SIG_LINE_RE, parseControl, type Control } from "./grammar";
 import { queueDepth, remaining } from "./jobstate";
@@ -172,7 +172,33 @@ export function admit(update: any, cfg: Pick<Config, "peers" | "maxTextChars">, 
 }
 
 
-export type PeerEnvRec = { kind: "peer-env"; untrusted: true; peer: string; from_id: string; chat_id: number; message_id: number; ts: number; id: string; text: string };
+export type PeerCardRec = { kind: "peer-card"; untrusted: true; peer: string; from_id: string; chat_id: number; message_id: number; ts: number; station: string; key: string };
+export type CardAdmit =
+  | { ok: true; peer: string; rec: PeerCardRec }
+  | { ok: false; rule: number; reason: string; log: string; peer?: string; unknownChat?: UnknownChat };
+
+export function looksLikeCard(update: any): boolean {
+  const text = update?.message?.text;
+  return typeof text === "string" && (text.split("\n")[1] ?? "").startsWith("#pair ");
+}
+
+export function admitCard(update: any, cfg: Pick<Config, "peers" | "maxTextChars">, state: GateState): CardAdmit {
+  const a = admit(update, cfg, state);
+  const m = update?.message;
+  const fail = (rule: number, reason: string, peer?: string, unknownChat?: UnknownChat): CardAdmit => ({
+    ok: false, rule, reason, ...(peer ? { peer } : {}), ...(unknownChat ? { unknownChat } : {}),
+    log: `card-drop rule=${rule} reason=${reason} peer=${peer ?? "-"} sha256=${createHash("sha256").update(String(m?.text ?? "")).digest("hex")}`,
+  });
+  if (!a.ok) return fail(a.rule, a.reason, a.peer, a.unknownChat);
+  const p = cfg.peers[a.peer];
+  if (String(m.from.id) !== p.peerBotId || m.from.is_bot !== true) return fail(4, "sender is not the peer bot", a.peer);
+  if (m.reply_to_message) return fail(6, "reply", a.peer);
+  const card = parseCard(m.text, state.ourUsername);
+  if (!card) return fail(6, "not a card", a.peer);
+  return { ok: true, peer: a.peer, rec: { kind: "peer-card", untrusted: true, peer: a.peer, from_id: String(m.from.id), chat_id: m.chat.id, message_id: m.message_id, ts: Math.floor(state.now / 1000), station: card.station, key: card.pub } };
+}
+
+export type PeerEnvRec ={ kind: "peer-env"; untrusted: true; peer: string; from_id: string; chat_id: number; message_id: number; ts: number; id: string; text: string };
 export type MatchFn = (env: Envelope, peer: string, cfg: Pick<Config, "peers" | "self">, nowS: number) => { ok: true } | { ok: false; step: 8 | 9; reason: string; refused?: Refused };
 export type EnvAdmit =
   | { ok: true; peer: string; env: Envelope; rec: PeerEnvRec }

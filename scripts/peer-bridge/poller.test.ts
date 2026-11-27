@@ -1705,3 +1705,31 @@ test("every card sent passed the real card check twice: when queued and just bef
   expect(seen.map(s => s.ok)).toEqual([true, true]);
   expect(seen.every(s => s.text === e.sent[0].text)).toBe(true);
 });
+
+const THEIR_PUB = Buffer.alloc(32, 5).toString("base64");
+const cardUpdate = (station = "example", pub = THEIR_PUB, over: Record<string, unknown> = {}) => rootUpdate(`/peer@${OUR_NAME}\n#pair station=${station} key=${pub}`, over);
+const inboxOf = (e: Env) => readChain(join(e.peerDir, "inbox.jsonl")) as any[];
+
+test("an admitted card is chained as peer-card and starts no reader; a refused one writes no inbox record and no digest job", async () => {
+  const e = await setup();
+  await e.poller.processBatch([cardUpdate("example", THEIR_PUB, { from: { id: 42, is_bot: true } })]);
+  expect([inboxOf(e).length, existsSync(digestFile(e.peerDir))]).toEqual([0, false]);
+  await e.poller.processBatch([cardUpdate()]);
+  expect(inboxOf(e).map(r => [r.kind, r.station, r.key])).toEqual([["peer-card", "example", THEIR_PUB]]);
+  expect([existsSync(digestFile(e.peerDir)), e.reads.length]).toEqual([false, 0]);
+});
+
+test("a card from an unknown chat leaves its unknown-chats row", async () => {
+  const e = await setup();
+  await e.poller.processBatch([cardUpdate("example", THEIR_PUB, { chat: { id: -100555, type: "supergroup", title: "t" } })]);
+  expect(readChain(join(e.stateDir, "unknown-chats.jsonl")).map(r => (r as any).chat_id)).toEqual([-100555]);
+});
+
+test("peer-card records count toward the rate cap after a restart", async () => {
+  const e = await setup({ peerOver: { maxPerMinute: 1 } });
+  await e.poller.processBatch([cardUpdate()]);
+  const again = await Poller.create(e.deps);
+  await again.recover();
+  await again.processBatch([cardUpdate()]);
+  expect(inboxOf(e).length).toBe(1);
+});

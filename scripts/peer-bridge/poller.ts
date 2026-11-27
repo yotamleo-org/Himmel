@@ -11,7 +11,7 @@ import { ConfigError, DEFAULT_BUDGETS, EXIT_CONFIG, cardMessage, clampToSchema,l
 import { digestFile, parseAck, writeCursor, type DigestRec, type EffectRec, type JobRec } from "./digests";
 import { checkCardOutbound, checkEnvelopeOutbound, checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
 import { OUTCOMES, buildEnvelope, encodeCanonical, type Envelope } from "./envelope";
-import { admit, admitEnvelope, appendUnknownChat, createGateState, looksLikeEnvelope, matchEnvelope, noteAdmitted, noteRate, rebuildFromInbox, type GateState, type PeerEnvRec, type PeerMsgRec } from "./gate";
+import { admit, admitCard, admitEnvelope, appendUnknownChat, createGateState, looksLikeCard, looksLikeEnvelope,matchEnvelope, noteAdmitted, noteRate, rebuildFromInbox, type GateState, type PeerEnvRec, type PeerMsgRec } from "./gate";
 import { ENV_LINE_RE, mintId } from "./grammar";
 import { botIdFromToken, configDir, peersFile, stateDir, utcDay } from "./ids";
 import { dueJobs, isTerminal, newInJob, newOutJob, queueDepth, remaining, step, type JobEvent, type SendSpec } from "./jobstate";
@@ -162,7 +162,7 @@ export class Poller {
       for (const r of readChain(this.file(peer, "threads.jsonl"))) if (r.kind === "thread") threadRecs.push(r as unknown as ThreadRec);
       for (const r of readChain(this.file(peer, "inbox.jsonl"))) {
         if (r.kind === "peer-msg") inbox.push(r as unknown as PeerMsgRec);
-        else if (r.kind === "peer-env") inbox.push({ peer: r.peer, chat_id: r.chat_id, from_id: r.from_id, ts: r.ts });
+        else if (r.kind === "peer-env" || r.kind === "peer-card") inbox.push({ peer: r.peer, chat_id: r.chat_id, from_id: r.from_id, ts: r.ts });
       }
       for (const r of readChain(this.file(peer, "envelope-ids.jsonl"))) {
         if (r.kind === "env-id-done" || (r.kind === "env-id" && !r.open)) envIds.push(r as any);
@@ -387,6 +387,11 @@ export class Poller {
           if (Number.isSafeInteger(u.update_id)) max = Math.max(max, u.update_id);
           continue;
         }
+        if (looksLikeCard(u)) {
+          await this.onCard(u);
+          if (Number.isSafeInteger(u.update_id)) max = Math.max(max, u.update_id);
+          continue;
+        }
         const r = admit(u, this.cfg, this.gate);
         if (Number.isSafeInteger(u.update_id)) max = Math.max(max, u.update_id);
         if (!r.ok) {
@@ -503,6 +508,17 @@ export class Poller {
       const e = readDmSent(this.deps.stateDir, Number(name));
       if (!e || typeof e.ts !== "number" || this.now() - e.ts > SENT_PRUNE_MS) fs.rmSync(join(dmSentDir(this.deps.stateDir), name), { force: true });
     }
+  }
+
+  private async onCard(u: any): Promise<void> {
+    const r = admitCard(u, this.cfg, this.gate);
+    if (!r.ok) {
+      this.log(r.log);
+      if (r.unknownChat) appendUnknownChat(join(this.deps.stateDir, "unknown-chats.jsonl"), r.unknownChat);
+      return;
+    }
+    await this.chain.append(this.file(r.peer, "inbox.jsonl"), r.rec);
+    noteAdmitted(this.gate, r.rec);
   }
 
   private async onEnvelope(u: any): Promise<void> {
