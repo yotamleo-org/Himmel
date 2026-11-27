@@ -122,37 +122,12 @@ pr_field() {
     printf '%s\n' "$prs_tsv" | awk -F'\t' -v p="$1" -v c="$2" '$1 == p { print $c; exit }'
 }
 
-doc_state() {
-    local body
-    body=$(sed -n '/^## Results/,$p' "$1" 2>/dev/null)  # swallow-ok: an unreadable doc is named by the caller before this runs
-    [ -n "$body" ] || body=$(sed -n 'p' "$1" 2>/dev/null)  # swallow-ok: a doc with no Results heading is scanned whole
-    printf '%s\n' "$body" | sed -nE '/^- /p' | awk '
-        function marker(s,   m) {
-            if (match(s, /^- ([0-9]{1,2}:[0-9]{2}[ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|PARKED-[A-Z]+|RESUMED|MERGED)([^A-Za-z0-9_]|$)/)) {
-                m = substr(s, RSTART, RLENGTH); sub(/^- ([0-9]{1,2}:[0-9]{2}[ \t]+)?(\*\*)?/, "", m); sub(/[^A-Za-z0-9-].*$/, "", m); return m
-            }
-            return ""
-        }
-        { m = marker($0) }
-        m == "READY" {
-            rp = ""; rh = ""
-            if (match($0, /READY[ \t]+[0-9]+[ \t]+[0-9a-f]{40}/)) { split(substr($0, RSTART, RLENGTH), a, /[ \t]+/); rp = a[2]; rh = a[3] }
-            ready_pr = rp; ready_head = rh; ask = ""; next
-        }
-        m == "LIVE" && match($0, /holding at READY[ \t]+[0-9]+[ \t]+[0-9a-f]{40}/) { split(substr($0, RSTART, RLENGTH), a, /[ \t]+/); ready_pr = a[4]; ready_head = a[5]; next }
-        m == "BLOCKED" || m == "FINDING" { ask = m; ready_pr = ""; ready_head = ""; next }
-        m == "HALTED" || m == "WRAPPED" || m == "MERGED" { ask = ""; ready_pr = ""; ready_head = ""; next }
-        m ~ /^PARKED/ { ready_pr = ""; ready_head = ""; next }
-        m == "RESOLVED" { ask = ""; next }
-        END {
-            if (ready_pr != "") printf "ready %s %s\n", ready_pr, ready_head
-            if (ask != "") printf "ask %s\n", ask
-        }'
-}
+# shellcheck source=../../lib/chief-owed.sh
+. "$REPO/scripts/lib/chief-owed.sh" || exit 2
 
 go_root="${CHIEF_DUTY_SWEEP_GO_ROOT:-}"
 if [ -z "$go_root" ]; then
-    go_root=$( . "$REPO/scripts/lib/handover-path.sh" 2>/dev/null && . "$REPO/scripts/lib/go-gate.sh" 2>/dev/null && go_resolve_root "$REPO" 2>/dev/null ) || go_root=""  # swallow-ok: an unresolved GO root is reported as unread below, and go-owed and merge-owed are left out
+    go_root="$(chief_owed_go_root "$REPO")" || go_root=""  # swallow-ok: an unresolved GO root is reported as unread below, and go-owed and merge-owed are left out
 fi
 [ -n "$go_root" ] || unread "go-root"
 
@@ -173,7 +148,7 @@ legitems=""
 while IFS=$'\t' read -r label ldoc lane; do
     [ -n "$label" ] || continue
     { [ -f "$ldoc" ] && [ -r "$ldoc" ]; } || { add "DUTY? worker $label unread"; continue; }
-    st=$(doc_state "$ldoc")
+    st=$(chief_owed_state "$ldoc")
     ask=$(printf '%s\n' "$st" | sed -n 's/^ask //p')
     rd=$(printf '%s\n' "$st" | sed -n 's/^ready //p')
     if [ -n "$ask" ]; then
@@ -481,7 +456,7 @@ if [ "$prs_ok" = 1 ] && [ "$fleet_ok" = 1 ]; then
         if [ -z "$odoc" ] || [ "$label" = none ]; then
             blocker="no owner"; nx="relaunch the leg or name an owner; gh pr view $pr"
         else
-            st=$(doc_state "$odoc")
+            st=$(chief_owed_state "$odoc")
             ask=$(printf '%s\n' "$st" | sed -n 's/^ask //p')
             rd=$(printf '%s\n' "$st" | sed -n 's/^ready //p')
             nx="read $(q "$odoc"), then reply or relaunch $label"

@@ -57,9 +57,9 @@ last accepted and that quotes your token is accepted; no further reads.
 
 ## Chief holds: keep the own-inbox wake armed
 
-Before ending a turn at **BLOCKED, READY, PR-READY, or a question whose ruling
-blocks all remaining work** (including a PROBE-style ask), record the state in
-Results and arm **ONE Monitor**. Do not wrap immediately on a chief-owned
+Before ending a turn at **BLOCKED, READY or FINDING** (a question or
+PROBE-style ask whose ruling blocks all remaining work is a FINDING), record the
+state in Results and arm **ONE Monitor**. Do not wrap immediately on a chief-owned
 blocker. External blockers still wrap unless the chief can resolve them.
 
 **A pending or queued CI is never an external blocker.** A busy runner queue is
@@ -70,7 +70,7 @@ red is yours to triage, as on the native lane: read
 `docs/handover/worker-sections/ci-red.md`. The wait is bounded: after at most 3
 `DEADLINE-PENDING` re-runs or 90 minutes, whichever comes first, post
 `BLOCKED ci-pending: <pr> <head> <pending checks>` to Results and take the
-bounded inbox hold below; never wrap before the hold deadline. If `check-ci` reports no checks registered
+inbox hold below. If `check-ci` reports no checks registered
 (the workflow never triggered), do not wait for it: escalate the same way at once.
 
 Resolve `<handover-root>` through `scripts/lib/handover-path.sh`'s
@@ -95,13 +95,10 @@ ruling lets work resume, stop the Monitor; on HALT/WRAP stop it and all other
 tasks, then run the subtree check.
 
 Keep the hold's start time and Monitor ID in Results so compaction can recover
-them. Re-arm for at most **eight 30-minute windows (four hours total)** per
-unresolved hold, counting the initial window. The wall-clock four-hour deadline
-does not reset on unrelated wakes, errors, or compaction. At the deadline,
-post `BLOCKED inbox-wait: <state> no resolving ruling after 4h`, stop tasks,
-write the head and ordered resume steps, release the queue lock, prove the
-subtree clean, append WRAPPED, and stop. A new resolved-and-later-blocked step
-may start a new hold; unrelated messages do not resolve the current one.
+them. Re-arm 30-minute windows until a resolving ruling arrives, with no cap:
+while your hold stands, the chief's waiter wakes the chief again every 30
+minutes. A new resolved-and-later-blocked step may start a new hold; unrelated
+messages do not resolve the current one.
 
 **GO arrives only via the authoritative hook:** an inbox bullet from your
 named chief quoting your token with literal `GO <pr> <head>`, after the
@@ -117,8 +114,7 @@ whose parent chain contains the head you already pushed (a fixup commit on top,
 for example after a review finding), never a rewritten, rebased, amended or
 different-base head, which stays refused. If the lane
 classifier refuses a push, post `BLOCKED lane:` with the commit SHA (or
-`LIVE PR-READY <head>` if your brief specifies that publication handoff) and
-use the bounded own-inbox hold above. The chief owns the next publication
-step and sends a RUN note naming the resume point; wrap only on the hold cap
-or a halt. Do not retry the push or work around a refusal. Use ONE simple command per Bash call — no
+`BLOCKED lane: PR-READY <head>` for a publication handoff) and
+use the own-inbox hold above. The chief owns the next publication
+step and sends a RUN note naming the resume point; wrap only on a halt. Do not retry the push or work around a refusal. Use ONE simple command per Bash call — no
 pipes, `&&`, or `$( )`; read files with the Read tool by line range.

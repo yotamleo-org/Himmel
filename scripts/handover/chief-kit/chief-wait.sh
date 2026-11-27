@@ -178,6 +178,21 @@
 #   WAKE t3-relay ask-resolve <label> t3_kind is ask. The waiter takes no READY or resolve action on such a row (no worker-ready,
 #                               ready or resolve wake, no ready-check, worker-event or auto-go; auto_go on or off), so the chief
 #                               sees the attempt and nothing runs. Once per bullet; the tick line follows and its key is saved.
+#   WAKE worker-renudge <label> <go-owed|answer-owed> waited=<m>m n=<k> hold=<hold id> [id=<id> head=<sha>] [t3=ask]
+#                               with --workers-from: a worker still owed a GO or an answer (chief_owed_state, scripts/lib/
+#                               chief-owed.sh), again once per 30-minute slot of this inbox, with no cap on k. A slot
+#                               wakes at its first sampled pass, if that pass has an unheld item first seen 1800 s or more
+#                               before; a slot is spent by its first sampled pass whether or not anything is due, at most
+#                               once. It names every such item in one block, then the tick line; another wake of a sampled
+#                               pass ends its block with the due lines. An item stops on a bullet that changes what the
+#                               worker is owed, on a GO file for its READY id and head (not on a t3_kind ask row), on an
+#                               open owe.sh `ruling` row whose source_label and source_id are its label and hold id, or
+#                               when its row leaves the manifest; an unreadable doc or manifest drops nothing. Never in
+#                               stream or handover mode. The line carries no bullet text. State: <inbox>.wait.renudge
+#                               (line 1 `anchor <epoch> <last slot>`, then tab-separated hold id, label, kind, first-seen
+#                               epoch, count); send log: <inbox>.wait.renudge.log (`<epoch> <hold id> n=<n> waited=<m>m`).
+#                               A failed state write sends nothing. Test seams (HIMMEL_TEST_FIXTURE=1 only):
+#                               CHIEF_WAIT_NOW, CHIEF_WAIT_NOW_FILE, CHIEF_OWED_GO_ROOT, CHIEF_WAIT_RENUDGE_KILL_AT.
 #   WAKE worker-doc-missing <label> <path> [writes=<original>]  with --workers-from, once per path:
 #                               a manifest row whose doc does not exist, or a -RESUME doc with no
 #                               marker bullet whose original beside it holds a newer one.
@@ -604,6 +619,8 @@ gate_nwo() {
 . "$REPO/scripts/lib/gh-quota.sh" || exit 2
 # shellcheck source=../../lib/jira-project.sh
 . "$REPO/scripts/lib/jira-project.sh" || exit 2
+# shellcheck source=../../lib/chief-owed.sh
+. "$REPO/scripts/lib/chief-owed.sh" || exit 2
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 if legacy_names_on; then JQ_WR='def W: [(.workers // .legs)[]? | select((.t3_kind // "") != "ask")];'; else JQ_WR='def W: [.workers[]? | select((.t3_kind // "") != "ask")];'; fi
 
@@ -897,7 +914,7 @@ duty_carry() {
     printf 'chief-duty sweep failing rc=%s since %sZ\n' "$rc" "$(date -u -d "@$since" +%Y-%m-%dT%H:%M:%S)"  # gnu-ok: Linux-only kit
 }
 child_stop() { [ -z "$child_pid" ] || kill "$child_pid" 2>/dev/null; return 0; }  # swallow-ok: a child that already ended needs no kill
-trap '[ -z "${marker_carry_on:-}" ] || marker_carry; duty_carry; lookonly_carry; digest_flush; heartbeat exited "$exit_reason"' EXIT
+trap '[ -z "${marker_carry_on:-}" ] || marker_carry; [ -z "${renudge_sampled:-}" ] || renudge_carry; duty_carry; lookonly_carry; digest_flush; heartbeat exited "$exit_reason"' EXIT
 trap "exit_reason='signal-TERM'; child_stop; exit 143" TERM
 trap "exit_reason='signal-INT'; child_stop; exit 130" INT
 trap "exit_reason='signal-HUP'; child_stop; exit 129" HUP
@@ -1349,6 +1366,11 @@ page_denials() {
 stuck_secs=1800
 stuck_bound_secs=86400
 stuck_now() {
+    local filenow=""
+    if [ "${HIMMEL_TEST_FIXTURE:-}" = 1 ] && [ -n "${CHIEF_WAIT_NOW_FILE:-}" ] && [ -r "$CHIEF_WAIT_NOW_FILE" ]; then
+        read -r filenow < "$CHIEF_WAIT_NOW_FILE"  # swallow-ok: an empty or torn file falls through to the next clock
+        case "$filenow" in ''|*[!0-9]*) ;; *) printf '%s' "$filenow"; return 0 ;; esac
+    fi
     case "${CHIEF_WAIT_NOW:-}" in ''|*[!0-9]*) ;; *) [ "${HIMMEL_TEST_FIXTURE:-}" = 1 ] && { printf '%s' "$CHIEF_WAIT_NOW"; return 0; } ;; esac
     date +%s
 }
@@ -3238,6 +3260,123 @@ marker_carry() {
     case "$exit_reason" in wake-worker-marker) return 0 ;; wake-*) ;; *) return 0 ;; esac
     worker_marker_wake any || return 0
 }
+renudge_file="$inbox.wait.renudge"; renudge_log="$inbox.wait.renudge.log"; renudge_secs=1800
+renudge_go_root="$(chief_owed_go_root "$REPO")" || renudge_go_root=""
+[ -n "$renudge_go_root" ] || echo "renudge: no GO root resolved; no GO file stops a re-nudge" >&2
+renudge_sampled=""
+renudge_items() {
+    [ -n "$legs_from" ] || return 3
+    local rows label ldoc kind f1 f2 f3 f4 t3
+    rows="$(jq -r "$JQ_W"'if (W | type) == "array" then W[] | [(.label // "?"), (.doc // "?"), (.t3_kind // "-")] | @tsv else error("no workers array") end' "$legs_from" 2>/dev/null)" || return 2  # swallow-ok: an unreadable manifest is rc 2, which keeps the state
+    while IFS=$'\t' read -r label ldoc kind; do
+        [[ $label =~ ^[A-Za-z0-9._#+-]+$ ]] || continue
+        if ! { [ -f "$ldoc" ] && [ -r "$ldoc" ]; }; then printf 'KEEP\t%s\n' "$label"; continue; fi
+        t3=-; [ "$kind" != ask ] || t3=ask
+        while read -r f1 f2 f3 f4; do
+            case "$f1" in
+                ready)
+                    [[ $f2 =~ ^[0-9a-z._-]+$ && $f3 =~ ^[0-9a-f]{7,40}$ && $f4 =~ ^[0-9]+$ ]] || continue
+                    [ "$t3" = ask ] || [ -z "$renudge_go_root" ] || [ ! -e "$renudge_go_root/.locks/go/$f2.$f3" ] || continue
+                    printf '%s:go:%s:%s:%s\t%s\tgo-owed\t%s\t%s\t%s\n' "$label" "$f2" "$f3" "$f4" "$label" "$f2" "$f3" "$t3" ;;
+                ask)
+                    [[ $f2 =~ ^(BLOCKED|FINDING)$ && $f3 =~ ^[0-9]+$ ]] || continue
+                    printf '%s:ask:%s:%s\t%s\tanswer-owed\t-\t-\t%s\n' "$label" "$f2" "$f3" "$label" "$t3" ;;
+            esac
+        done <<EOF
+$(chief_owed_state "$ldoc" --gen)
+EOF
+    done <<EOF
+$rows
+EOF
+}
+renudge_write() {
+    printf 'anchor %s %s\n%s\n' "$1" "$2" "$3" | atomic_write "$renudge_file" 2>/dev/null ||  # swallow-ok: the next line names the failure
+        { echo "renudge: state write failed" >&2; return 1; }
+}
+renudge_step() {
+    local now items rows="" anchor="" last="" new slot due out held="" listed
+    now="$(stuck_now)"
+    items="$(renudge_items)" || return 1
+    if [ -f "$renudge_file" ]; then
+        read -r _ anchor last < "$renudge_file"  # swallow-ok: a torn first line is reset below
+        rows="$(sed 1d "$renudge_file")"
+    fi
+    case "$anchor:$last" in *[!0-9:]*|:*|*:) anchor=""; last="" ;; esac
+    new="$(RN_ITEMS="$items" RN_ROWS="$rows" awk -F'\t' -v now="$now" 'BEGIN {
+        n = split(ENVIRON["RN_ITEMS"], it, "\n")
+        for (i = 1; i <= n; i++) {
+            split(it[i], f, "\t")
+            if (f[1] == "KEEP") keep[f[2]] = 1
+            else if (f[1] != "") { have[f[1]] = 1; order[++m] = f[1] "\t" f[2] "\t" f[3] }
+        }
+        n = split(ENVIRON["RN_ROWS"], r, "\n")
+        for (i = 1; i <= n; i++) {
+            split(r[i], f, "\t")
+            if (f[1] != "" && ((f[1] in have) || (f[2] in keep))) { print r[i]; seen[f[1]] = 1 }
+        }
+        for (i = 1; i <= m; i++) { split(order[i], f, "\t"); if (!(f[1] in seen)) { print order[i] "\t" now "\t0"; seen[f[1]] = 1 } }
+    }')" || return 1
+    if [ "$new" != "$rows" ] || { [ -n "$new" ] && [ -z "$anchor" ]; }; then
+        if [ -z "$new" ]; then rm -f "$renudge_file"; return 1; fi
+        [ -n "$anchor" ] || { anchor="$now"; last=0; }
+        renudge_write "$anchor" "$last" "$new" || return 1
+    fi
+    [ -n "$new" ] || return 1
+    [ "$now" -ge "$anchor" ] || return 1
+    slot=$(( (now - anchor) / renudge_secs ))
+    [ "$slot" -gt "$last" ] || return 1
+    due="$(RN_ITEMS="$items" awk -F'\t' -v now="$now" -v secs="$renudge_secs" '
+        BEGIN { n = split(ENVIRON["RN_ITEMS"], it, "\n"); for (i = 1; i <= n; i++) { split(it[i], f, "\t"); if (f[1] == "KEEP") keep[f[2]] = 1 } }
+        !($2 in keep) && now - $4 >= secs { print $2 "\t" $1 }' <<EOF
+$new
+EOF
+)" || return 1
+    if [ -n "$due" ] && [ -n "$console_doc" ]; then
+        if listed="$(bash "$HERE/owe.sh" list --bucket "${console_doc%/*}" --json 2>/dev/null)" &&  # swallow-ok: the else branch reports the failed read
+           held="$(printf '%s' "$listed" | jq -r '.[] | select(.kind == "ruling" and .source_label and .source_id) | .source_label + "\t" + .source_id' 2>/dev/null)"; then  # swallow-ok: the else branch reports the failed parse
+            :
+        else
+            held=""; echo "renudge: owed ledger unread" >&2
+        fi
+    fi
+    out="$(RN_ITEMS="$items" RN_DUE="$due" RN_HELD="$held" awk -F'\t' -v now="$now" '
+        BEGIN {
+            n = split(ENVIRON["RN_ITEMS"], it, "\n")
+            for (i = 1; i <= n; i++) { split(it[i], f, "\t"); if (f[1] != "KEEP") { cid[f[1]] = f[4]; sha[f[1]] = f[5]; t3[f[1]] = f[6] } }
+            n = split(ENVIRON["RN_HELD"], h, "\n"); for (i = 1; i <= n; i++) if (h[i] != "") held[h[i]] = 1
+            n = split(ENVIRON["RN_DUE"], d, "\n"); for (i = 1; i <= n; i++) { split(d[i], f, "\t"); if (d[i] != "" && !(d[i] in held)) send[f[2]] = 1 }
+        }
+        {
+            if ($1 in send) {
+                $5 = $5 + 1; w = int((now - $4) / 60)
+                print "L\t" now " " $1 " n=" $5 " waited=" w "m"
+                line = "WAKE worker-renudge " $2 " " $3 " waited=" w "m n=" $5 " hold=" $1
+                if ($3 == "go-owed") line = line " id=" cid[$1] " head=" sha[$1]
+                if (t3[$1] == "ask") line = line " t3=ask"
+                print "W\t" line
+            }
+            print "S\t" $1 "\t" $2 "\t" $3 "\t" $4 "\t" $5
+        }' OFS='\t' <<EOF
+$new
+EOF
+)" || return 1
+    new="$(printf '%s\n' "$out" | sed -n $'s/^S\t//p')"
+    renudge_write "$anchor" "$slot" "$new" || return 1
+    [ "${HIMMEL_TEST_FIXTURE:-}" != 1 ] || [ "${CHIEF_WAIT_RENUDGE_KILL_AT:-}" != state ] || exit 137
+    printf '%s\n' "$out" | sed -n $'s/^L\t//p' >> "$renudge_log"
+    [ "${HIMMEL_TEST_FIXTURE:-}" != 1 ] || [ "${CHIEF_WAIT_RENUDGE_KILL_AT:-}" != log ] || exit 137
+    out="$(printf '%s\n' "$out" | sed -n $'s/^W\t//p')"
+    [ -n "$out" ] || return 1
+    printf '%s\n' "$out"
+}
+renudge_carry() {
+    case "$exit_reason" in wake-worker-renudge) return 0 ;; wake-*) ;; *) return 0 ;; esac
+    [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" != 1 ] && [ -z "$handover_live" ] || return 0
+    local out rc
+    out="$(renudge_step)"; rc=$?
+    [ "$rc" != 137 ] || kill -KILL $$
+    [ -z "$out" ] || printf '%s\n' "$out"
+}
 marker_note() {
     local ev label k w ct
     [ -n "$1" ] || return 0
@@ -3482,6 +3621,7 @@ if [ ! -e "$inbox.announced" ] && command -v bun >/dev/null 2>&1; then
 fi
 while :; do
     marker_carry_on=""
+    renudge_sampled=""
     # Telegram first: it is the cheap check and the operator's line. Peek, print
     # the header, then let --once stream the lines: each line is on stdout
     # before its cursor moves, so a kill mid-wake replays, never drops.
@@ -3606,6 +3746,7 @@ while :; do
         if close_sweep_woke; then exit_reason='wake-predecessor-open'; exit 0; fi
         sample "$@" 9>&-
         marker_carry_on=1
+        renudge_sampled=1
         if [ -z "$key" ] && [ "$fail_step" = "tick-exit:2" ]; then
             printf 'WAKE tick-usage rc=2%s\n' "${tick_err:+ $tick_err}"
             exit_reason='wake-tick-usage'; exit 0
@@ -3891,6 +4032,14 @@ while :; do
                 if housekeeping_add tick-fail "samples=$fail_streak step=$fail_step"; then
                     exit_reason='wake-tick-fail'; exit 0
                 fi
+            fi
+        fi
+        if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" != 1 ] && [ -z "$handover_live" ]; then
+            rn_out="$(renudge_step)"; rn_rc=$?
+            [ "$rn_rc" != 137 ] || kill -KILL $$
+            if [ "$rn_rc" = 0 ]; then
+                printf '%s\n%s\n' "$rn_out" "$tick_line"
+                exit_reason='wake-worker-renudge'; exit 0
             fi
         fi
     fi
