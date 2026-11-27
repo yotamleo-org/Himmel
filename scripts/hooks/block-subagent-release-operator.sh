@@ -205,9 +205,13 @@ else
   | ($cmd
       | gsub("\\\\\n"; "")
       | gsub("\\$\u0027"; "\u0027") | gsub("\\$\""; "\"")
-      | gsub("[\u0027\"\\\\]"; "")
-      | [splits("[ \t\r\n;&|()<>{}`]+")]) as $w
-  | (any($w[]; startswith("--decision")) and any($w[]; startswith("--words"))) as $p2
+      | gsub("[\u0027\"\\\\]"; "")) as $t
+  | ($t | [splits("[ \t\r\n;&|()<>{}`]+")]) as $w
+  | ($w | map(splits("=+"))) as $pairwords
+  | ($t | ascii_downcase) as $lower
+  | ($lower | gsub("[{},]"; "")) as $flat
+  | (($t | contains("{")) and (($lower | contains("decision") and contains("words")) or ($flat | contains("decision") and contains("words")))) as $braced
+  | ((any($pairwords[]; startswith("--decision")) and any($pairwords[]; startswith("--words"))) or $braced) as $p2
   | (any($w[]; . == "release") and any($w[]; . == "operator")) as $both
   | if $p2 then (if $both then "deny-p1p2" else "deny-p2" end)
     elif ($both | not) then "allow"
