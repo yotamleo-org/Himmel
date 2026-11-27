@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2015  # A && B || C is intentional in the pass/fail reporting lines
-# test-judge-queue.sh — judge-queue.sh, the one writer of the judge desk's request queue:
-# scan reads JUDGE-REQUEST <pr> <40 hex> bullets from the worker documents of
-# every chief fleet manifest, appends one request row per new pair and cuts a snapshot at the
-# bullet; replay appends a lane: replay row. Every document, manifest and bucket is a fixture under
-# a temp dir; the clock is stubbed. bash 3.2-safe.
-#
-# Run: bash scripts/handover/chief-kit/test-judge-queue.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
@@ -18,7 +10,7 @@ pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; fails=$((fails + 1)); }
 has() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1 (missing '$3')" ;; esac; }
 lacks() { case "$2" in *"$3"*) fail "$1 (found '$3')" ;; *) pass "$1" ;; esac; }
-eq() { [ "$2" = "$3" ] && pass "$1" || fail "$1 (got '$2', want '$3')"; }
+eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi; }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/judge-queue-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
@@ -44,7 +36,7 @@ for l in open(sys.argv[1]):
     if str(r.get("pr")) == sys.argv[2]:
         v = r.get(sys.argv[3]); print("null" if v is None else v); break' "$1" "$2" "$3" 2>/dev/null
 }
-rows() { [ -f "$1" ] && wc -l < "$1" | tr -d ' ' || echo 0; }
+rows() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }
 
 B="$WORK/bucket"; mkdir -p "$B"
 manifest "$B/old-chief.fleet.json" "$D/native.md:native" "$D/bus.md:claudex"
@@ -115,7 +107,7 @@ eq "replay: the record path" "$(field "$PQ" 6150 record)" "$WORK/verdicts/j6150a
 eq "replay: no worker document" "$(field "$PQ" 6150 worker_doc)" null
 eq "replay: the snapshot holds only pr, head and base" "$(cat "$P/judge-desk/requests/6150-${RH:0:7}.md" 2>/dev/null)" "$(printf 'pr: 6150\nhead: %s\nbase: %s' "$RH" "$RB")"
 out="$(cd "$R" && JUDGE_QUEUE_NOW=1795789800 bash "$SUT" replay 6151 "$H2" --base "$RB" --record "$WORK/r.md" --bucket "$P" 2>&1)"; rc=$?
-[ "$rc" != 0 ] && pass "replay: a head git cat-file -e cannot resolve is refused (rc $rc)" || fail "replay: unresolvable head rc=$rc: $out"
+if [ "$rc" != 0 ]; then pass "replay: a head git cat-file -e cannot resolve is refused (rc $rc)"; else fail "replay: unresolvable head rc=$rc: $out"; fi
 eq "replay: the refused head adds no row" "$(rows "$PQ")" 1
 
 writers() {
@@ -131,14 +123,13 @@ for f in sys.argv[1:]:
     if any(path.search(l) and write.search(l) for l in lines):
         print(f)' "$@"
 }
-owners=""
+owners=()
 while IFS= read -r f; do
     case "$f" in */test-*|*/fixtures/*) continue ;; esac
-    owners="$owners $REPO_ROOT/$f"
+    owners+=("$REPO_ROOT/$f")
 done < <(git -C "$REPO_ROOT" ls-files scripts)
-# shellcheck disable=SC2086  # owners is a space-separated path list with no spaces in himmel paths
-w="$(writers $owners)"
-[ -z "$w" ] || [ "$w" = "$SUT" ] && pass "grep: no file but judge-queue.sh writes the queue paths" || fail "grep: other writers: $w"
+w="$(writers "${owners[@]}")"
+if [ -z "$w" ] || [ "$w" = "$SUT" ]; then pass "grep: no file but judge-queue.sh writes the queue paths"; else fail "grep: other writers: $w"; fi
 cp "$SUT" "$WORK/planted.sh"
 # shellcheck disable=SC2016  # the planted line is literal text, never run
 printf '%s\n' 'printf x >> "$B/judge-desk/judge-requests.jsonl"' >> "$WORK/planted.sh"
