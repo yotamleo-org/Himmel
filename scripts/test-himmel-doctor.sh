@@ -2143,6 +2143,100 @@ else
 fi
 rm -rf "$t"
 
+echo "== C103 (HIMMEL-11369): the doctor shows the bypass launcher's state, one row per state, running only 'status' =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c103.XXXXXX")" || { fail "C103: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home"; write_settings "$t/claude" "$WRAPPER"
+cat > "$t/status" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$t/argv"
+[ -f "$t/nap" ] && sleep 3
+cat "$t/block"
+exit "\$(cat "$t/rc")"
+STUB
+chmod +x "$t/status"
+cat > "$t/systemctl" <<STUB
+#!/usr/bin/env bash
+[ -f "$t/hang" ] && sleep 3
+cat "$t/sctl"
+exit 1
+STUB
+cat > "$t/launchctl" <<STUB
+#!/usr/bin/env bash
+[ -f "$t/hang" ] && sleep 3
+exit "\$(cat "$t/lrc")"
+STUB
+chmod +x "$t/systemctl" "$t/launchctl"
+printf 'disabled\n' > "$t/sctl"; printf '0' > "$t/lrc"
+: > "$t/argv"; : > "$t/all"
+c103_block() {
+    printf '%s' "$1" > "$t/rc"; shift
+    local line kv
+    for line in 'bucket: /b' 'enabled: yes' 'active: yes' 'pid: 4242' 'since: Fri 2026-11-27 10:00:00 UTC' 'linger: yes' 'unit: current' 'code: current' 'stop file: no' 'heartbeat: 7s ago'; do
+        for kv in "$@"; do [ "${line%%:*}" = "${kv%%=*}" ] && line="${kv%%=*}: ${kv#*=}"; done
+        printf '%s\n' "$line"
+    done > "$t/block"
+}
+c103_run() {
+    out="$(env BYPASSD_SERVICE_OS=Linux HIMMEL_DOCTOR_BYPASS_STATUS="$t/status" HIMMEL_DOCTOR_SYSTEMCTL="$t/systemctl" HIMMEL_DOCTOR_LAUNCHCTL="$t/launchctl" CLAUDE_DIR="$t/claude" HOME="$t/home" "$@" bash "$DOC" --no-color --only C103 2>&1)"
+    c103="$(printf '%s' "$out" | grep -A1 'C103-bypass-launcher')"
+    printf '%s\n' "$c103" >> "$t/all"
+}
+c103_expect() {
+    if grepq "$c103" "^$(printf '%-4s' "$2") C103-bypass-launcher" && grepq "$c103" -F -- "$3"; then pass "C103 $1 -> $2"; else fail "C103 $1: wanted $2 naming '$3', got: ${c103:-no C103 line}"; fi
+}
+
+c103_block 0; c103_run HIMMEL_DOCTOR_TIMEOUT_BINS=none-such
+c103_expect "(0) no timeout binary" INFO 'launcher state not read: no timeout or gtimeout to bound the call'
+if [ ! -s "$t/argv" ]; then pass "C103 (0) status is not run unbounded"; else fail "C103 (0) status ran: $(cat "$t/argv")"; fi
+: > "$t/nap"; c103_run HIMMEL_DOCTOR_BYPASS_TIMEOUT=1; rm -f "$t/nap"
+c103_expect "(1) status hangs" INFO 'launcher state unreadable: timeout'
+printf '2' > "$t/rc"; printf 'bypass-service: boom\n' > "$t/block"; c103_run
+c103_expect "(1) rc 2 and no enabled: line" INFO 'launcher state unreadable: rc 2: bypass-service: boom'
+printf '0' > "$t/rc"; : > "$t/block"; c103_run
+c103_expect "(1) empty output" INFO 'launcher state unreadable: rc 0'
+c103_block 3; c103_run
+c103_expect "(1) an unknown rc is not parsed" INFO 'launcher state unreadable: rc 3'
+c103_block 1 bucket=none enabled=no active=no; c103_run
+c103_expect "(2) not installed" INFO 'not installed as a service (optional)'
+if ! grepq "$c103" -F 'himmelctl bypass'; then pass "C103 (2) names no command"; else fail "C103 (2) recommends a command: $c103"; fi
+c103_block 1 enabled=no active=no 'stop file=yes'; c103_run
+c103_expect "(3) turned off" INFO 'off; from your own shell: himmelctl bypass on'
+printf 'Failed to connect to user scope bus via local transport: No such file or directory\n' > "$t/sctl"; c103_run
+c103_expect "(3b) enabled: no with the user bus unreachable" WARN 'launcher state unreadable: systemd user bus unreachable'
+printf 'disabled\n' > "$t/sctl"; c103_run BYPASSD_SERVICE_OS=Darwin
+c103_expect "(3c) macOS turned off in a GUI session" INFO 'off; from your own shell: himmelctl bypass on'
+printf '1' > "$t/lrc"; c103_run BYPASSD_SERVICE_OS=Darwin; printf '0' > "$t/lrc"
+c103_expect "(3d) macOS enabled: no with no GUI session" WARN 'launcher state unreadable: no answer from the launchd GUI session'
+: > "$t/hang"; c103_run HIMMEL_DOCTOR_BYPASS_TIMEOUT=1
+c103_expect "(3e) a hanging user bus probe is bounded" WARN 'launcher state unreadable'
+c103_run BYPASSD_SERVICE_OS=Darwin HIMMEL_DOCTOR_BYPASS_TIMEOUT=1; rm -f "$t/hang"
+c103_expect "(3f) a hanging launchctl probe is bounded" WARN 'launcher state unreadable'
+c103_block 0 'stop file=yes'; c103_run
+c103_expect "(3) enabled with a stop file, ahead of every later row" WARN 'himmelctl bypass on'
+c103_block 1 active=no; c103_run
+c103_expect "(4) enabled but not running, rc 1" WARN 'enabled but not running (failed or stopped); from your own shell: himmelctl bypass restart'
+c103_block 1 'unit=STALE (run: himmelctl bypass on)' code=STALE; c103_run
+c103_expect "(5) stale unit file, ahead of stale code" WARN 'STALE (run: himmelctl bypass on)'
+c103_block 1 code=STALE; c103_run
+c103_expect "(6) older code" WARN '/scripts/himmel-update.sh --only bypass_daemon; on a Linux chief station'
+c103_block 0 linger=no; c103_run
+c103_expect "(7) lingering off" WARN 'loginctl enable-linger'
+c103_block 0 linger=no; c103_run BYPASSD_SERVICE_OS=Darwin
+c103_expect "(7b) macOS has no lingering" OK 'pid 4242'
+c103_block 0; c103_run
+c103_expect "(8) healthy" OK 'pid 4242, since Fri 2026-11-27 10:00:00 UTC, heartbeat 7s ago'
+if ! grepq "$c103" '^WARN'; then pass "C103 (8) no WARN on a healthy launcher"; else fail "C103 (8) WARNs: $c103"; fi
+if [ -s "$t/argv" ] && ! grep -qv '^status$' "$t/argv"; then pass "C103 (9) the only argv ever passed is 'status'"; else fail "C103 (9) argv: $(sort "$t/argv" | uniq -c)"; fi
+c103_verbs="$(grep -o 'himmelctl bypass [a-z]*' "$t/all" | sort -u)"
+c103_missing=""
+while IFS= read -r v; do [ -z "$v" ] || grep -qF -- "$v" "$REPO_ROOT/scripts/station-ops/bypass-service.sh" || c103_missing="$c103_missing [$v]"; done <<< "$c103_verbs"
+if grepq "$c103_verbs" -x 'himmelctl bypass on' && grepq "$c103_verbs" -x 'himmelctl bypass restart' && [ -z "$c103_missing" ]; then
+    pass "C103 (10) every himmelctl bypass verb the doctor names is one bypass-service.sh names"
+else
+    fail "C103 (10) verbs '$c103_verbs', unknown to bypass-service.sh: $c103_missing"
+fi
+rm -rf "$t"
+
 echo "== C24 (HIMMEL-2515, CR round 1 finding 3): systemd bus unreachable AND no crontab row -> INDETERMINATE, never a false expected-but-absent WARN, never silently dropped =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-sysd.XXXXXX")" || { fail "C24 finding-3: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
