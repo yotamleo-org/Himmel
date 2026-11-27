@@ -315,6 +315,7 @@ check "14: with a Chief Rulings section after Results the bullet lands at its en
 mkdir -p "$tmp/sep/co/scripts/lib" "$tmp/sep/meta"
 cp "$HERE/../../lib/git-clean.sh" "$HERE/../../lib/jira-cli-path.sh" "$tmp/sep/co/scripts/lib/"
 git init -q --separate-git-dir "$tmp/sep/meta/gitdir" "$tmp/sep/co"
+check "14: the separate-git-dir fixture was built" "$(cat "$tmp/sep/co/.git" 2>/dev/null)" "gitdir: $tmp/sep/meta/gitdir"
 # shellcheck disable=SC2016  # $1 expands in the child shell
 check "14: a separate git dir names no primary root, never its parent" "$(bash -c '. "$1"; himmel_primary_root; echo "rc=$?"' _ "$tmp/sep/co/scripts/lib/jira-cli-path.sh")" "rc=1"
 
@@ -420,7 +421,7 @@ check "16: a chief doc calls nothing" "$(calls16)" ""
 
 jira_src="$(cd "$HERE/../../jira" && pwd)"
 sha16() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
-if command -v bun >/dev/null 2>&1 && [ -d "$jira_src/node_modules/commander" ]; then
+if command -v bun >/dev/null 2>&1 && [ -n "$(command -v sha256sum shasum)" ] && [ -d "$jira_src/node_modules/commander" ]; then
     printf '#!/bin/sh\nexec bun "%s/src/index.ts" "$@"\n' "$jira_src" > "$tmp/jira-real"
     chmod +x "$tmp/jira-real"
     export OWE_JIRA_CLI="$tmp/jira-real"
@@ -443,7 +444,7 @@ if command -v bun >/dev/null 2>&1 && [ -d "$jira_src/node_modules/commander" ]; 
     contains "16: the real refusal is printed" "$err" "SIGN-CHECK REFUSED: "
     contains "16: the real refusal names the spec gate" "$err" "minerva-spec-gate"
 else
-    echo "ok - 16: real-verb rows skipped (no bun, or no scripts/jira/node_modules)"
+    echo "ok - 16: real-verb rows skipped (no bun, sha tool or scripts/jira/node_modules)"
 fi
 unset OWE_JIRA_CLI STUB_DIR
 
