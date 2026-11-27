@@ -297,7 +297,7 @@ printf '%s\n' '#!/bin/sh' \
     '  busy-143) echo "SQLiteError: database is locked" >&2; exit 143 ;;' \
     'esac' \
     'if [ -n "$T10_WRITER_PID" ] && kill -0 "$T10_WRITER_PID" 2>/dev/null; then' \
-    '  cat >&2 <<DDL' \
+    "  cat >&2 <<'DDL'" \
     '25 |     CREATE TABLE IF NOT EXISTS processor_outputs (' \
     '26 |       collection TEXT NOT NULL, source TEXT NOT NULL, path TEXT NOT NULL, hash TEXT NOT NULL, current INTEGER NOT NULL DEFAULT 1,' \
     '30 |   `)).immediate();' \
