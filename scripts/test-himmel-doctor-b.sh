@@ -1129,7 +1129,8 @@ mkdir -p "$t/credit/ledger.json.lock"
 touch -t 202601010000 "$t/credit/ledger.json.lock"
 for c33_case in "$no_room_err" "$walk_err"; do
     c33_lock_row "$c33_case"
-    if grepq "$c33_line" -E "FAILED \(credit ledger locked: $t/credit/ledger.json.lock, age [0-9]+d\)" \
+    if grepq "$c33_line" -F "WARN C33-graph-stale" && grepq "$c33_line" -F "clear the lock before topping up" \
+        && grepq "$c33_line" -E "FAILED \(credit ledger locked: $t/credit/ledger.json.lock, age [0-9]+d\)" \
         && ! grepq "$c33_line" -F 'credit room' && ! grepq "$c33_line" -F 'top it up'; then
         pass "C33 -> WARN names the locked ledger and its age, not missing credit"
     else
@@ -1138,20 +1139,23 @@ for c33_case in "$no_room_err" "$walk_err"; do
 done
 touch "$t/credit/ledger.json.lock"
 c33_lock_row "$no_room_err"
-if grepq "$c33_line" -F 'FAILED (no API account has credit room)'; then
+if grepq "$c33_line" -F 'WARN C33-graph-stale' && grepq "$c33_line" -F 'no single command fixes a credit refusal' \
+    && grepq "$c33_line" -F 'FAILED (no API account has credit room)'; then
     pass "C33 -> a lock younger than the bound keeps the credit-room wording"
 else
     fail "C33 young lock -> $c33_line"
 fi
-rmdir "$t/credit/ledger.json.lock"
+rmdir "$t/credit/ledger.json.lock" || fail "C33 removed-lock setup failed"
 c33_lock_row "$status_err"
-if grepq "$c33_line" -F 'FAILED (credit ledger locked at that fire: lock age 18000s;'; then
+if grepq "$c33_line" -F 'WARN C33-graph-stale' && grepq "$c33_line" -F 'check that the ledger folder is writable' \
+    && grepq "$c33_line" -F 'FAILED (credit ledger locked at that fire: lock age 18000s;'; then
     pass "C33 -> WARN takes the lock age from the reason line once the lock is gone"
 else
     fail "C33 locked reason line -> $c33_line"
 fi
 c33_lock_row "$walk_err"
-if grepq "$c33_line" -F 'FAILED (credit ledger locked or unwritable at that fire: lock age not recorded;'; then
+if grepq "$c33_line" -F 'WARN C33-graph-stale' && grepq "$c33_line" -F 'check that the ledger folder is writable' \
+    && grepq "$c33_line" -F 'FAILED (credit ledger locked or unwritable at that fire: lock age not recorded;'; then
     pass "C33 -> WARN names a locked or unwritable ledger whose error records no age"
 else
     fail "C33 locked walk with no lock left -> $c33_line"
