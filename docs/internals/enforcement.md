@@ -2495,10 +2495,14 @@ fixed text and never carries the key or the Authorization header. Spec:
 ### `block-subagent-release-operator.sh`
 
 A member of the PreToolUse `Bash` chain. It denies an in-process subagent (a
-payload whose `agent_id` is present and not `null`) any Bash command that names
-both the word `release` and the word `operator`, so a subagent never writes an
-operator-chain row with `jira release operator …`; `spec-review` is one of those
-verbs, so a critic subagent cannot record its own verdict. `operatorFence` in the
+payload whose `agent_id` is present and not `null`) a Bash command that matches
+either of two co-occurrence pairs, so a subagent never writes an operator-chain
+row. Pair 1 is the word `release` together with the word `operator`
+(`jira release operator …`); `spec-review` is one of those verbs, so a critic
+subagent cannot record its own verdict. Pair 2 is a word that starts with
+`--decision` together with a word that starts with `--words`, the two options
+with which `jira create`, `jira move` and `jira release request` write an
+operator-chain row without naming either word of pair 1. `operatorFence` in the
 jira CLI reads markers from the environment and the process tree (below), and a
 subagent inherits the chief's environment and ancestry, so neither tells it from
 the chief. The main session (no `agent_id`, or `null`) is allowed without reading
@@ -2572,13 +2576,52 @@ test-only bun preload. JF runs the real CLI with neither and asserts the
 refusal.
 
 The match: the command is normalised (backslash-newline pairs deleted, `$'` and
-`$"` turned into `'` and `"`, then every `'`, `"` and `\` deleted), split into
-words at every space, TAB, carriage return, newline and shell metacharacter (`;&|()<>{}` and the
-backtick), and matches when both words appear anywhere, in either order. There
-is no allow-list of read-only commands, no split into simple commands and no
-order check, so `git grep "release operator"` is denied too: a subagent searches
-for the phrase with the Grep tool. An `agent_id` of `false`, `""`, a number or an
-object counts as a subagent.
+`$"` turned into `'` and `"`, then every `'`, `"` and `\` deleted) and split into
+words at every space, TAB, carriage return, newline and shell metacharacter
+(`;&|()<>{}` and the backtick). Pair 1 matches when both words appear anywhere,
+in either order. Pair 2 splits each word again at `=`, so `--decision=1
+--words=y` and `--words=--decision` match. It also matches a command that holds
+a `{` and whose lower-cased text holds both `decision` and `words`, with or
+without its braces and commas deleted, so a brace list (`--{decision=1,words=y}`,
+`--wo{rds,x}`) cannot split the option names. That brace rule also denies a
+quoted title such as `'{"decision":…,"words":…}'`, an accepted over-deny. Pair 2
+is read first and has no allow grammar: a quoted-heredoc write whose body holds
+both options is denied. Its refusal says to give a ticket an explicit placement
+and no `--words`, or to hand the exact command line back to the chief.
+
+A command that matches pair 1 only is still allowed when the whole command fits
+one of two closed grammars, read over the unsplit command:
+
+- **R, the plain read.** Every simple command (split at `&&`, `||`, `;`, `|` and
+  newline) starts with an unquoted program from a fixed table, with only its
+  listed options: `cd` with one operand; `grep` (`-nilLcwvEFrRHhosqxI` bundles,
+  `-A`/`-B`/`-C`/`-m` with a number, `-e`, `--include=`, `--exclude=`,
+  `--exclude-dir=`); `sed -n` whose script is only `Np` or `N,Mp` addresses;
+  `cat [-n]`; `head` and `tail` with a count; `wc -l|-c|-w`; `ls` with `-l`,
+  `-a`, `-la`, `-1` or `-d`; `cut -c|-d|-f`; `uniq [-c]` with at most one operand;
+  `echo` with any option; and `git [--no-pager] [-C <dir>]` running `grep`
+  (`-n -i -l -w -E -F -c --cached -e`), `diff` (`--stat --name-only --name-status
+  --no-ext-diff --cached -G -S -U<n>`), `log` (`--oneline --stat -n -<n> -G -S
+  --grep` and a `--format=` without `%G`) or `show` (`--stat --name-only
+  --no-ext-diff`). Outside single quotes a word may hold no `$`, backtick or
+  `!`; a glob is allowed only in an operand of `grep`, `cat`, `head`, `tail`,
+  `wc` and `ls`, and never at the start of a word; an operand that looks like an
+  assignment (`X=y`), a quoted command word and any redirect but `2>/dev/null` or
+  `2>&1` after a blank fail the grammar, and so does a command over 20000
+  characters.
+- **H, the quoted-heredoc write.** The first line is `cat > PATH <<'DELIM'`
+  (also `>>` or `>|`, a single-quoted delimiter of letters and `_`), optionally
+  after one `cd` on the same line or on the line before. The body runs to a line
+  that is exactly the delimiter. After it come only `echo`, or `wc`, `ls`,
+  `head`, `tail` or `cat` whose operands are PATH itself, each fitting R.
+
+Suite rows A1 to A10, K1e and H-sp1 to H-sp2 are the allowed shapes, with a
+negative twin each, and D3 to D11 and K1a to K1c are the denied neighbours. Pair
+2 is rows D1 to D2y, each deny with a chief twin. When both pairs match, the
+refusal opens with pair 1's text and carries pair 2's route (row D1o). A refused
+pair 1 command that only writes a file should use the Write tool where the
+session has it. An `agent_id` of `false`, `""`, a number or an object counts as
+a subagent.
 
 It is a security fence and fails CLOSED: no `jq` on `PATH` denies every Bash call
 (`cannot read the hook input without jq`), and stdin that is not one JSON object
@@ -2592,7 +2635,15 @@ corpus shape.
 What it cannot see is the fence residual, tracked as one follow-up ticket of the core-bypass spec work: text built at run time (a
 variable, an alias, a function, an expansion, an `eval`, a script written then
 run, an encoded string), a nested `claude` session started from a subagent, a
-chief session in another repo, and the Monitor tool. Bypass:
+chief session in another repo, and the Monitor tool. Two more residuals are
+open. Pair 1 does not read a brace list: `jira {release,x} {operator,y}` reaches
+the hook as the words `release,x` and `operator,y`, which pair 1 does not match,
+while the shell expands them to `release x operator y`. And no text rule sees an
+operator-chain write made below the shell: the jira stdio MCP server started
+from a subagent's Bash, or a direct import of an engine module such as
+`dist/release/operator-acts.js`. That one closes only when `operatorFence` can
+read the calling agent's id from the Bash tool's start-up environment, which
+Claude Code does not set today; the hook is then deleted. Bypass:
 `SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1` (launching shell). Spec:
 `scripts/hooks/test-block-subagent-release-operator.sh`.
 
