@@ -31,6 +31,7 @@ if ! { [ -r "$HERE/tick-test-fixture.sh" ] && . "$HERE/tick-test-fixture.sh"; } 
     printf 'FAIL - %s (tick-test-fixture.sh missing, unreadable or failing to load)\n' "$(basename "$0")"
     exit 1
 fi
+export HIMMEL_SUITE_SEMAPHORE_DIR="$W/suite-semaphore"
 mkdir -p "$W/leak-mirror/HIMMEL"
 printf '%s\n' '# chief' > "$W/handover/leak-chief.md"
 NEXT_DISPATCH_MIRROR="$W/leak-mirror/HIMMEL" TOKEN='' bash "$SUT" --doc "$W/handover/leak-chief.md" > /dev/null 2>&1
@@ -655,6 +656,30 @@ contains 'a wrapped lockless row stays NOLOCK, not FREE or WRAPPED-lock' "$lk_ou
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N61"},{"doc":"%s","label":"N90","lane":"deepseek"}]}\n' "$fm_n61" "$lk_doc" > "$fm"
 contains 'a row without the lockless key is still judged by its lock' "$(WORKERS='' bash "$SUT" --workers-from "$fm")" ' workers=N61:FRESH,N90:WRAPPED '
 rm -f "$fm" "$lk_doc"
+
+md_real="$W/handover/HIMMEL-10257-BL1a-pilot-2026-11-23.md"
+md_gone="${md_real%.md}-RESUME.md"
+md_lreal="${md_real##*/}"; md_lreal="${md_lreal%.md}"
+md_lgone="$md_lreal-RESUME"
+md_lclosed="HIMMEL-10258-BH4a-closed-2026-11-23"
+printf '%s\n' '# BL1a' '- READY 5793 GREEN' > "$md_real"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N61"},{"doc":"%s","label":"BL1a"}]}\n' "$fm_n61" "$md_gone" > "$fm"
+md_out="$(WORKERS='' bash "$SUT" --workers-from "$fm" 2>/dev/null)"
+contains '(10901) a manifest row naming a missing doc is named in workerdoc=' "$md_out" " workerdoc=MISSING:$md_lgone "
+contains '(10901) the missing row keeps its tails= token' "$md_out" " tails=N61:LIVE,$md_lgone:? "
+contains '(10901) --verbose names the missing worker doc' \
+    "$(WORKERS='' bash "$SUT" --workers-from "$fm" --verbose 2>/dev/null)" "worker-session docs: MISSING:$md_lgone"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"BL1a"},{"doc":"%s","label":"BH4a"}]}\n' \
+    "$md_gone" "$W/handover/$md_lclosed.md" > "$fm"
+contains '(10901) every missing row is named' "$(WORKERS='' bash "$SUT" --workers-from "$fm" 2>/dev/null)" " workerdoc=MISSING:$md_lgone,$md_lclosed "
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N61"},{"doc":"%s","label":"BL1a"}]}\n' "$fm_n61" "$md_real" > "$fm"
+md_ok="$(WORKERS='' bash "$SUT" --workers-from "$fm")"
+contains '(10901) control: the row whose doc exists is judged by its tail' "$md_ok" " tails=N61:LIVE,$md_lreal:READY "
+not_contains '(10901) control: a manifest whose docs all exist prints no workerdoc=' "$md_ok" ' workerdoc='
+md_typo="$(WORKERS='' bash "$SUT" --workers "$md_gone" --workers-from "$fm" 2>/dev/null)"
+contains '(10901) control: the tick reads the --workers typo as NOTFOUND' "$md_typo" "$md_lgone:NOTFOUND"
+not_contains '(10901) control: a --workers typo is not a manifest row' "$md_typo" ' workerdoc='
+rm -f "$fm" "$md_real"
 
 # --- livestate= drift field --------------------------------
 # workers=N61:FRESH,N65:FREE above -- only N61 is actually held (the stub
