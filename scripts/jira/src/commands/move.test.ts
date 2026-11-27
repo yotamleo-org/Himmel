@@ -17,6 +17,7 @@ import {
   type JiraComment,
 } from './move.js';
 import { registerRelease } from './release.js';
+import { makeNdStub } from '../operations/readiness-stub.test-helper.js';
 import { request } from '../client.js';
 import { markdownToAdf } from '../adf.js';
 import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
@@ -285,6 +286,20 @@ describe('jira move into a version, for operator work', () => {
     expect(posted()).toBe(true);
     expect(filedRow()).toMatchObject({ kind: 'filed', key: 'HIMMEL-78', version: 'v1.1.3', ground: 'rules:operator-ask:label' });
     expect(operatorDecisions()).toEqual([]);
+  });
+
+  it('10944 R7 a move whose target the dispatcher reads no scope from is refused and the source is untouched', async () => {
+    const conf = join(root, 'conf');
+    mkdirSync(conf, { recursive: true });
+    writeFileSync(join(conf, 'himmel.conf'), 'JIRA_PROJECT_KEY=HIMMEL\n');
+    vi.stubEnv('HIMMEL_CONFIG_DIR', conf);
+    const stub = makeNdStub({ lines: ['GATE HIMMEL-0 no-scope: x'], exit: 1 });
+    vi.stubEnv('JIRA_READINESS_CHECK', stub.path);
+    await expect(move()).rejects.toThrow(/^exit /);
+    expect(vi.mocked(console.error).mock.calls.map((c) => String(c[0])).join('\n'))
+      .toMatch(/the target create was refused, nothing was written: .*Writes: none \(no code\)/);
+    expect(mockRequest.mock.calls.filter((c) => c[0] !== 'GET')).toEqual([]);
+    expect(stub.calls()).toHaveLength(1);
   });
 
   it('an operator-directed move --proposed-version with --decision and --words still records them', async () => {

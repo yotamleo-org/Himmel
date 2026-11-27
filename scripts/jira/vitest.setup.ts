@@ -27,6 +27,12 @@ process.env.HIMMEL_ADMISSIONS_LEDGER = join(mkdtempSync(join(tmpdir(), 'jira-tes
 process.env.HIMMEL_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'jira-test-conf-'));
 process.env.HANDOVER_DIR = mkdtempSync(join(tmpdir(), 'jira-test-handover-'));
 
+const readinessStub = join(mkdtempSync(join(tmpdir(), 'jira-test-readiness-')), 'next-dispatchable.sh');
+writeFileSync(readinessStub, 'exit 0\n');
+process.env.JIRA_READINESS_CHECK = readinessStub;
+delete process.env.JIRA_READINESS_TIMEOUT_MS;
+delete process.env.HIMMEL_JIRA_MIRROR;
+
 // Keep every test off the real keyring; the resolver test turns it back on with a stub.
 process.env.HIMMEL_SECRETS_KEYRING = "off";
 

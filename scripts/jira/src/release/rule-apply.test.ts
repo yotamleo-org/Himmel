@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { markdownToAdf } from '../adf.js';
+import type { ADFDocument } from '../adf-render.js';
+import { renderIssue } from '../commands/mirror.js';
+import { DISPATCHER, makeNdFixture, makeNdStub } from '../operations/readiness-stub.test-helper.js';
+import { runReadiness } from '../readiness.js';
+import type { DoorJiraPort } from './rule-apply.js';
 import {
   apply, claim, declare, freeze, leaseAcquire, leaseRelease, operatorDecision, request, rule, state, withdraw,
   rmRun,
@@ -365,5 +371,134 @@ describe('version-repair entry check and held state', () => {
       operatorDecision(ctx(), { decision: '200', keys: ['K-2'], op: 'remove', from_v: 'v1', to_v: null, verbatim: 'x' });
       expect(latestReq(q.req)?.state).toMatch(/^withdrawn:/);
     });
+  });
+});
+
+describe('10944 apply asks the dispatcher about a ticket admitted into current', () => {
+  const KEY = 'HIMMEL-2';
+  const gateLine = (name: string) => `GATE ${KEY} ${name}: x`;
+  const door = () => jira as DoorJiraPort;
+  const readinessComments = () => (jira.comments.get(KEY) ?? []).filter((c) => c.body.startsWith('readiness-check:')).map((c) => c.body);
+  const stubNd = (o: Parameters<typeof makeNdStub>[0] = {}) => {
+    const stub = makeNdStub({ lockPath: join(ctx().dir, '.lock'), ...o });
+    vi.stubEnv('JIRA_READINESS_CHECK', stub.path);
+    return stub;
+  };
+  const gated = (...names: string[]) => stubNd({ lines: names.map(gateLine), exit: 1 });
+  const ruled = async (o: Partial<Parameters<typeof rule>[1]> = {}, ask: Partial<Parameters<typeof request>[1]> = {}) => {
+    await setup();
+    const q = request(ctx(), { verb: 'INTAKE', key: KEY, from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console', ...ask });
+    claim(ctx(rmEnv));
+    return admit(q.req, o);
+  };
+
+  beforeEach(() => {
+    const conf = join(root, 'conf');
+    mkdirSync(conf, { recursive: true });
+    writeFileSync(join(conf, 'himmel.conf'), 'JIRA_PROJECT_KEY=HIMMEL\n');
+    vi.stubEnv('HIMMEL_CONFIG_DIR', conf);
+    door().addLabels = async (key, labels) => { jira.lbl.set(key, [...new Set([...(jira.lbl.get(key) ?? []), ...labels])]); };
+  });
+
+  it('10944 A1 an admitted ticket the filer must act on is labelled and told once, outside the release lock', async () => {
+    const stub = gated('no-proof', 'core-no-spec');
+    const r = await ruled();
+    const got = await apply(ctx(rmEnv), r.id);
+    expect(got).toMatchObject({ phase: 'receipted' });
+    expect(got.note).toBeUndefined();
+    expect(await jira.fixVersions(KEY)).toEqual(['v1']);
+    expect(await jira.labels(KEY)).toEqual(['needs-readiness']);
+    expect(readinessComments()).toEqual(['readiness-check: needs no-proof']);
+    const [call] = stub.calls();
+    expect(call!.argv.slice(0, 2)).toEqual(['--why-ticket', KEY]);
+    expect(call!.argv).not.toContain('--body-file');
+    expect(call!.lockHeld).toBe(false);
+  });
+
+  it('10944 A2 a second apply adds no comment, whatever the gates are by then', async () => {
+    gated('no-proof');
+    const r = await ruled();
+    await apply(ctx(rmEnv), r.id);
+    await apply(ctx(rmEnv), r.id);
+    const later = gated('prose-dependency');
+    await apply(ctx(rmEnv), r.id);
+    expect(later.calls()).toHaveLength(1);
+    expect(readinessComments()).toEqual(['readiness-check: needs no-proof']);
+  });
+
+  it.each<[string, Partial<Parameters<typeof rule>[1]>, Partial<Parameters<typeof request>[1]>, string[]]>([
+    ['a REMOVE', { outcome: 'MOVE', op: { kind: 'remove', from_v: 'v1', to_v: null } }, { verb: 'REVERSION', from_v: 'v1', to_v: null }, ['v1']],
+    ['an admission into a later version', { op: { kind: 'add', from_v: null, to_v: 'v2' } }, { to_v: 'v2' }, []],
+    ['a backlog ruling', { outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null } }, {}, []],
+  ])('10944 A3 %s runs no check', async (_what, ruling, ask, holds) => {
+    const stub = gated('no-proof');
+    jira.fv.set(KEY, holds);
+    const r = await ruled(ruling, ask);
+    await apply(ctx(rmEnv), r.id);
+    expect(stub.calls()).toEqual([]);
+    expect(readinessComments()).toEqual([]);
+  });
+
+  it.each<[string, string, () => void]>([
+    ['A4', 'a check that exits 3', () => { stubNd({ lines: [`UNKNOWN ${KEY}: mirror down`], exit: 3 }); }],
+    ['A4b', 'an absent check script', () => { vi.stubEnv('JIRA_READINESS_CHECK', join(root, 'absent.sh')); }],
+    ['A4c', 'a check that never answers', () => {
+      stubNd({ sleepMs: 20_000 });
+      vi.stubEnv('JIRA_READINESS_TIMEOUT_MS', '200');
+    }],
+  ])('10944 %s %s writes the version, nothing else, and warns', async (_row, _what, arrange) => {
+    arrange();
+    const r = await ruled();
+    const got = await apply(ctx(rmEnv), r.id);
+    expect(got.phase).toBe('receipted');
+    expect(await jira.fixVersions(KEY)).toEqual(['v1']);
+    expect(await jira.labels(KEY)).toEqual([]);
+    expect(readinessComments()).toEqual([]);
+    expect(got.note).toMatch(new RegExp(`readiness check not run on ${KEY} \\(.+\\)`));
+  });
+
+  it('10944 A5 the check comment leaves a chief\'s readiness scope the one the dispatcher reads', async () => {
+    gated('no-proof');
+    const r = await ruled();
+    await apply(ctx(rmEnv), r.id);
+    const fixture = makeNdFixture();
+    const comment = (body: string, created: string) => ({ id: created, created, body: markdownToAdf(body) });
+    const ticket = (comments: ReturnType<typeof comment>[]) => writeFileSync(join(fixture.mirror, `${KEY}.md`), renderIssue({
+      key: KEY, fields: { summary: 's', issuetype: { name: 'Task' }, status: { name: 'To Do' }, description: markdownToAdf('no path here') as ADFDocument },
+    }, comments));
+    const posted = comment(readinessComments()[0]!, '2026-10-22T00:00:00.000Z');
+    const judge = async () => {
+      vi.stubEnv('JIRA_READINESS_CHECK', DISPATCHER);
+      const got = await runReadiness({ key: KEY }, 'HIMMEL', undefined, fixture);
+      expect(got.warning).toBeUndefined();
+      return got.gates.map((g) => g.name);
+    };
+    ticket([comment('readiness: ruled Writes: scripts/lib/a.sh', '2026-10-21T00:00:00.000Z'), posted]);
+    expect(await judge()).not.toContain('no-scope');
+    ticket([posted]);
+    expect(await judge()).toContain('no-scope');
+  });
+
+  it('10944 A6 a port that cannot add labels still gets the comment, and the note names the label', async () => {
+    delete door().addLabels;
+    gated('no-proof');
+    const r = await ruled();
+    const got = await apply(ctx(rmEnv), r.id);
+    expect(got.phase).toBe('receipted');
+    expect(got.note).toContain(`the needs-readiness label on ${KEY}: this Jira port cannot add labels`);
+    expect(readinessComments()).toEqual(['readiness-check: needs no-proof']);
+  });
+
+  it('10944 A6 a comment that cannot be posted changes no phase, and the note names the step', async () => {
+    const add = jira.addComment.bind(jira);
+    jira.addComment = async (key, body) => {
+      if (body.startsWith('readiness-check:')) throw new Error('comment down');
+      return add(key, body);
+    };
+    gated('no-proof');
+    const r = await ruled();
+    const got = await apply(ctx(rmEnv), r.id);
+    expect(got.phase).toBe('receipted');
+    expect(got.note).toContain(`readiness on ${KEY}: the readiness comment failed: comment down`);
   });
 });
