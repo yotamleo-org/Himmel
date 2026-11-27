@@ -332,12 +332,12 @@ if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
             continue
         fi
         hold=""
-        [ "${CHIEF_DUTY_AUTORUN:-1}" != 0 ] || hold="autorun off"
         pace="${CANCEL_RUNS_PACE_STATE:-$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/cancel-runs-pace}"  # swallow-ok: no git dir means no pace file, so nothing is held back for a drain
         if [ -z "$hold" ] && [ -r "$pace" ]; then
             newest=$(awk '/^[0-9]+$/ && $1 > m { m = $1 } END { print m + 0 }' "$pace" 2>/dev/null)  # swallow-ok: an unreadable pace file holds nothing back
             if [ "${newest:-0}" -gt 0 ] && [ $(( now - newest )) -lt 3600 ]; then hold="drain $(( (now - newest) / 60 ))m ago"; fi
         fi
+        [ -n "$hold" ] || [ "${CHIEF_DUTY_AUTORUN:-1}" != 0 ] || hold="autorun off"
         [ -n "$hold" ] || [ -n "$slug" ] || hold="no repo slug"
         if [ -z "$hold" ] && [ "$rerun_count" -ge 2 ]; then hold="two reruns this sweep"; fi
         if [ -z "$hold" ]; then

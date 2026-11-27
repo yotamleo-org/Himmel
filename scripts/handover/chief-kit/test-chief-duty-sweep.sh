@@ -171,6 +171,10 @@ sweep
 has "ci-masked: a drain 10 min ago holds the rerun" "held: drain" "$OUT"
 check "ci-masked: held means no gh call" "" "$(cat "$STUB/gh-calls")"
 world; masked_runs success cancelled 1
+printf '%s\n' "$((NOW - 300))" > "$WORK/w/pace"
+CHIEF_DUTY_AUTORUN=0 sweep
+has "ci-masked: drain beats autorun off" "held: drain 5m ago" "$OUT"
+world; masked_runs success cancelled 1
 sweep_env >"$WORK/w/p1" 2>&1 &
 sweep_env >"$WORK/w/p2" 2>&1 &
 wait
