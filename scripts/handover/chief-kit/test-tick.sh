@@ -31,6 +31,7 @@ if ! { [ -r "$HERE/tick-test-fixture.sh" ] && . "$HERE/tick-test-fixture.sh"; } 
     printf 'FAIL - %s (tick-test-fixture.sh missing, unreadable or failing to load)\n' "$(basename "$0")"
     exit 1
 fi
+export HIMMEL_SUITE_SEMAPHORE_DIR="$W/suite-semaphore"
 mkdir -p "$W/leak-mirror/HIMMEL"
 printf '%s\n' '# chief' > "$W/handover/leak-chief.md"
 NEXT_DISPATCH_MIRROR="$W/leak-mirror/HIMMEL" TOKEN='' bash "$SUT" --doc "$W/handover/leak-chief.md" > /dev/null 2>&1
