@@ -3,9 +3,8 @@
 # scripts/handover/test-merge-fork-pr.sh - suite for the chief's fork-merge path:
 # chief-kit/go.sh --repo (writes a GO for an allowlisted fork PR) and
 # merge-fork-pr.sh (the only chokepoint that merges one). gh is a stub.
-#   1. go.sh --repo: usage, allowlist (absent / merge_allowed false), PR state
-#      (head, MERGEABLE, OPEN, base = the GO base: pin_branch else himmel_branch), judge verdict, worker refused,
-#      and a valid write.
+#   1. go.sh --repo: usage, allowlist (absent / merge_allowed false), PR state,
+#      judge verdict, worker refused, and a valid write.
 #   2. merge-fork-pr.sh: usage, worker/relay refused, non-allowlisted repo refused,
 #      missing / forged / stale / other-repo / non-judged GO refused, head moved
 #      after the GO refused, and an allowlisted repo with a valid GO merges.

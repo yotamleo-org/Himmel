@@ -477,9 +477,6 @@ if _go_in_harness "$ROOT" "$ANCHOR"; then
     echo "go: note - writing the GO under the harness repo's inline handovers/ ($ROOT): no external HANDOVER_DIR is configured, so this is Mode A" >&2
 fi
 
-# a fork GO only for an allowlisted adapter or adopted repo, and only for a PR
-# that is OPEN at this head, MERGEABLE and based on the adapter's GO base (its
-# pin_branch when it has one, else its himmel_branch; an adopted repo's default branch).
 VREPO=""
 if [ "$FORK_SET" -eq 1 ]; then
     if HBRANCH=$(go_adapter_entry "$ANCHOR" "$FORK"); then
