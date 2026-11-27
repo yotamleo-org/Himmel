@@ -1428,6 +1428,10 @@ if [ "$have_jq_2869" = "1" ]; then
         run_mog 0 "realistic protected-branch JSON through the real filter → merged"
     assert_merge_has "2869-1b: merge pins the certified sha" "--match-head-commit jqok01"
     assert_gh_has "2869-1b: reads branch protection on the configured origin" "api repos/yotamleo-org/Himmel/branches/main/protection"
+    STUB_NWO="yotamleo-org/Himmel" STUB_CWD_NWO="yotamleo-org/Himmel" STUB_PRIVATE=false STUB_SHA="jqok02" \
+        STUB_PROTECTION_JSON='{"enforce_admins":{"enabled":true},"required_status_checks":{"strict":false,"contexts":["lint","shell-unit (ubuntu-latest)"],"checks":[{"context":"lint","app_id":15368},{"context":"shell-unit (ubuntu-latest)","app_id":15368},{"context":"pr-title-lint","app_id":15368}]}}' \
+        run_mog 0 "11356: contexts and checks[] naming the same checks → merged"
+    assert_audit_has "11356-unique-count: PROTECTION-OK counts each required name once" "required_checks=3 "
 else
     echo "  SKIP: jq not installed — realistic protected-branch-JSON allow case ([codex-1])"
 fi

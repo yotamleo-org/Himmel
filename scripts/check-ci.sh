@@ -133,7 +133,7 @@
 #       line naming the rule and sends ONE operator DM per (repo, PR, head)
 #       (scripts/lib/merge-block-alert.sh); a delivery failure never changes the
 #       exit code. Sits ABOVE 3 in severity: 3 is "fix the review state and
-#       re-run", 5 is "a rule GitHub enforces will refuse this until it changes".
+#       re-run", 5 is "a rule GitHub enforces blocks this until it changes".
 #   6 — every gate above passed but GitHub's own mergeStateStatus refuses the
 #       merge: BLOCKED, BEHIND, DIRTY or DRAFT at the watched head,
 #       still so after polling through --grace. GitHub's answer IS the verdict —
@@ -226,7 +226,7 @@ exit codes: 0 = checks green + all review threads resolved
             5 = GitHub will block this merge: a required check never reported within --grace, or the
                 required-check set could not be read (fails closed). One MERGE-BLOCKED line + one operator DM,
                 except a transient read failure (rate limit, 5xx, network) past --grace: stderr only, no DM.
-            6 = every gate passed but GitHub's mergeStateStatus refuses the merge (BLOCKED/BEHIND/DIRTY/DRAFT
+            6 = every gate passed but GitHub's mergeStateStatus blocks the merge (BLOCKED/BEHIND/DIRTY/DRAFT
                 through --grace). CLEAN/HAS_HOOKS/UNSTABLE pass; UNKNOWN or unreadable = 2.
             7 = only under CHECK_CI_DISTINCT_DEADLINE=1: checks still pending at the --max-wait
                 deadline (the DEADLINE-PENDING verdict that is otherwise 2). Never a red.
@@ -966,7 +966,7 @@ required_gate() {
         if [ -n "$failed" ]; then
             echo "check-ci: checks FAILED — required check(s) failed: $failed" >&2
             _job_log_hint
-            _alert "required check(s) FAILED: $failed — GitHub will refuse this merge until they pass"
+            _alert "required check(s) FAILED: $failed — the base branch requires them, so this PR cannot merge until they pass (no merge was tried)"
             _threads_at_exit 1
             exit 1
         fi
@@ -1006,13 +1006,13 @@ required_gate() {
         tries=$((tries + 1))
         if [ "$wait_ok" -ne 1 ] || [ $((SECONDS - req_start)) -ge "$GRACE" ] || [ "$tries" -ge "$max_tries" ]; then
             missing="${missing:+$missing, }$pending"
-            echo "check-ci: BLOCKED — required check(s) never reported within ${GRACE}s: $missing. GitHub will refuse this merge; is the workflow configured for this branch, or did it not trigger? (exit 5)" >&2
+            echo "check-ci: BLOCKED — required check(s) never reported within ${GRACE}s: $missing. The base branch requires them, so this PR cannot merge (no merge was tried); is the workflow configured for this branch, or did it not trigger? (exit 5)" >&2
             status_only=$(_status_only "$st")
             if [ -n "$status_only" ]; then
                 echo "check-ci: BLOCKED — status-only producer: $status_only appear as a commit status but not as a check run from the pinned app. A commit status carries no app id, so the app this requirement pins cannot be verified; refusing rather than matching by name alone (exit 5)" >&2
                 missing="$missing (status-only, producer unverifiable: $status_only)"
             fi
-            _alert "required check(s) never reported within ${GRACE}s: $missing — GitHub will refuse this merge"
+            _alert "required check(s) never reported within ${GRACE}s: $missing — the base branch requires them, so this PR cannot merge (no merge was tried)"
             _threads_at_exit 5
             exit 5
         fi
@@ -1030,7 +1030,7 @@ _red_alert() {
     rows=$(_required_rows) || return 0
     if _has_producer_ids "$reqs"; then prows=$(_producer_rows) || return 0; fi
     failed=$(_join_by_status fail "$(_required_status "$reqs" "$rows" "$prows")")
-    [ -z "$failed" ] || _alert "required check(s) FAILED: $failed — GitHub will refuse this merge until they pass"
+    [ -z "$failed" ] || _alert "required check(s) FAILED: $failed — the base branch requires them, so this PR cannot merge until they pass (no merge was tried)"
 }
 
 red_exit() {
@@ -1995,7 +1995,7 @@ _cbg_note() {
 # computed yet", and a BLOCKED can lag checks that just went green), then
 # decided on the last read.
 merge_state_gate() {
-    local row state mhead="" start=$SECONDS tries=0 max_tries runs
+    local row state mhead="" start=$SECONDS tries=0 max_tries runs rev
     max_tries=$(( GRACE / (POLL > 0 ? POLL : 1) + 1 ))
     while :; do
         state=""
@@ -2018,7 +2018,9 @@ merge_state_gate() {
             # Diagnosis only: which runs on the head did not pass. Never a verdict input.
             runs=$(gh_read api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
                 --jq '.check_runs[] | select(.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped") | "\(.name) \(.conclusion // .status)"' 2>/dev/null | sort -u | paste -sd, - | sed 's/,/, /g')
-            echo "check-ci: every gate passed but GitHub refuses the merge: mergeStateStatus=$state at ${head0}. Non-passing check runs on this head: ${runs:-none found}. GitHub's state is the verdict (exit 6)" >&2
+            rev=""
+            case "${initial_decision:-}" in REVIEW_REQUIRED|CHANGES_REQUESTED) rev=" When the watch started, a review was owed: reviewDecision=$initial_decision." ;; esac
+            echo "check-ci: every gate passed but GitHub's mergeStateStatus=$state at ${head0} blocks merging this PR (no merge was tried). Non-passing check runs on this head: ${runs:-none found}.${rev} GitHub's state is the verdict (exit 6)" >&2
             exit 6 ;;
         "")
             echo "check-ci: could not read GitHub's mergeStateStatus within ${GRACE}s — cannot evaluate; re-run" >&2
@@ -2116,9 +2118,6 @@ review_state_gate
 # longer gated here — CodeRabbit is best effort.
 cr_body_gate
 
-# GitHub's own verdict decides, last: our gates can all be green
-# while GitHub refuses the merge. Run after every other gate so a reported cause
-# of ours (red check, thread, body finding) still names itself first.
 merge_state_gate
 
 # Re-read the head: the green verdict only holds for the SHA we watched.

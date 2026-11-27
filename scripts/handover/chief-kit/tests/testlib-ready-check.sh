@@ -59,7 +59,7 @@ case "$args" in
         [ -z "${STUB_OR_BASE_FAIL:-}" ] || { echo "gh: boom (HTTP 500)" >&2; exit 1; }
         n="${args#api repos/*/pulls/}"; n="${n%% *}"
         c="$STUB_OR_DIR/base.$n.count"; k=$(( $(cat "$c" 2>/dev/null || echo 0) + 1 )); echo "$k" > "$c"  # swallow-ok: an absent counter starts at zero
-        h="${STUB_HEAD:-}"; b="${STUB_OR_BASE_SHA:-0123456789abcdef0123456789abcdef01234567}"
+        h="${STUB_OR_BASE_HEAD-${STUB_HEAD:-}}"; b="${STUB_OR_BASE_SHA:-0123456789abcdef0123456789abcdef01234567}"
         if [ "$k" -ge 2 ]; then
             [ -z "${STUB_OR_MOVE_HEAD:-}" ] || h="$STUB_OR_MOVE_HEAD"
             [ -z "${STUB_OR_MOVE_BASE:-}" ] || b="$STUB_OR_MOVE_BASE"
@@ -69,7 +69,8 @@ case "$args" in
         or_hang
         [ -z "${STUB_OR_RATELIMIT:-}" ] || { echo "gh: API rate limit exceeded for user ID 1. (HTTP 403)" >&2; exit 1; }
         [ -z "${STUB_OR_RULES_FAIL:-}" ] || { echo "gh: boom (HTTP 500)" >&2; exit 1; }
-        if [ -n "${STUB_OR_NOGATE:-}" ]; then printf '[]'
+        if [ -n "${STUB_REQ_RULES:-}" ]; then printf '%s' "$STUB_REQ_RULES"
+        elif [ -n "${STUB_OR_NOGATE:-}" ]; then printf '[]'
         else printf '%s' '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"codeowner-review-gate","integration_id":15368}]}}]'; fi
         exit 0 ;;
     "api repos/{owner}/{repo}/branches/"*"/protection/required_status_checks")

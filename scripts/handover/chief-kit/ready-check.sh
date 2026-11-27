@@ -738,6 +738,59 @@ owner_review_mode() {
 }
 if [ "$OWNER_MODE" -eq 1 ]; then owner_review_mode; fi
 
+blocked_by() {
+    local tb="" rb base rset="" rs_err why rules req rd n_open lines=""
+    # shellcheck source=../../lib/timeout-bin.sh
+    _TIMEOUT_BIN=""; . "$SELF_DIR/../../lib/timeout-bin.sh" 2>/dev/null || true  # swallow-ok: no timeout binary makes every read below report unknown
+    tb="$_TIMEOUT_BIN"
+    [ -n "$tb" ] || { echo "       blocked by: unknown (no timeout binary to bound the protection reads)"; return 0; }
+    rb=$("$tb" -k 5 20 "$GH" api "repos/$nwo/pulls/$PR" --jq '[.base.ref,.base.sha,.head.sha]|@tsv' 2>/dev/null) || rb=""  # swallow-ok: an unreadable base prints the unknown line below
+    base=${rb%%$'\t'*}
+    [ -n "$base" ] || { echo "       blocked by: unknown (the PR's base branch is unreadable)"; return 0; }
+    case "${rb##*$'\t'}" in
+        "$SHA") ;;
+        ''|"$rb") echo "       blocked by: unknown (the PR head is unreadable)"; return 0 ;;
+        *) echo "       blocked by: unknown (the PR head moved during the read)"; return 0 ;;
+    esac
+    rs_err=$(mktemp "${TMPDIR:-/tmp}/ready-check-blocked.XXXXXX" 2>/dev/null) || { echo "       blocked by: unknown (no scratch file)"; return 0; }  # prim-ok: removed on every path below
+    # shellcheck disable=SC2016  # the body expands in the child shell
+    if ! rset=$(env -u GH_READ_REFUSED_FILE "$tb" -k 5 30 bash -c '. "$1" >/dev/null 2>&1 || exit 3; ts_required_set "$2"' _ "$SELF_DIR/../../lib/ticket-status.sh" "$base" 2>"$rs_err"); then  # read-sink-ok: $1 is the own lib path built from this script dir
+        why=$(head -n 1 "$rs_err" | tr -cd '[:print:]' | cut -c1-120)
+        lines="       blocked by: unknown (the required checks of $base are unreadable${why:+: $why})"
+    fi
+    rm -f "$rs_err"
+    [ -n "$lines" ] || lines=$(printf '%s' "$rollup" | jq -r --argjson ng "$ng_json" --arg req "$(printf '%s\n' "$rset" | cut -f1)" --arg base "$base" "$ROLLUP_LATEST_DEFS"'
+        (if type == "array" then . else [] end) | rollup_rows | latest_per_check as $rows
+        | ($req | split("\n") | map(select(length > 0)) | unique)[] as $n
+        | ($rows | map(select(.name == $n))) as $r
+        | if ($r | length) == 0 then "       blocked by: required check \($n) never reported at the head"
+          elif all($r[]; .ok) then empty
+          else "       blocked by: required check \($n)=\([$r[] | select(.ok | not) | .detail] | join(","))"
+               + (if ($ng | index($n)) != null then " — listed non-gating, but \($base) requires it" else "" end) end' 2>/dev/null) \
+        || lines="       blocked by: unknown (the check rollup is unreadable)"
+    rd=$(printf '%s' "$snapshot" | jq -r '.[0].reviewDecision // ""' 2>/dev/null) || rd=""  # swallow-ok: an unreadable decision names no review
+    case "$rd" in
+        REVIEW_REQUIRED|CHANGES_REQUESTED)
+            rules=$("$tb" -k 5 20 "$GH" api "repos/{owner}/{repo}/rules/branches/$base" 2>/dev/null) || rules=""  # swallow-ok: unreadable rules leave the rule text generic
+            req=$(printf '%s' "$rules" | jq -r '[(if type == "array" then . else [] end)[] | select(.type == "pull_request") | .parameters] as $p
+                | if ($p | length) == 0 then "" else
+                  ([$p[] | .required_approving_review_count // 0] | max) as $n
+                  | [ (if $n > 0 then "\($n) approving review\(if $n > 1 then "s" else "" end)" else empty end),
+                      (if any($p[]; .require_code_owner_review == true) then "a code-owner review" else empty end),
+                      (if any($p[]; .require_last_push_approval == true) then "approval of the last push" else empty end) ] | join(", ") end' 2>/dev/null) || req=""  # swallow-ok: unreadable rules leave the rule text generic
+            if [ -n "$req" ]; then req="$base requires $req"; else req="required by classic protection or CODEOWNERS"; fi
+            lines="${lines:+$lines
+}       blocked by: review owed (reviewDecision=$rd; $req)" ;;
+    esac
+    n_open=$(printf '%s' "$snapshot" | jq -r '[.[0].reviewThreads.nodes[]? | select(.isResolved == false)] | length' 2>/dev/null) || n_open=0  # swallow-ok: item 3 judges the threads
+    case "$n_open" in ''|*[!0-9]*) n_open=0 ;; esac
+    [ "$n_open" -eq 0 ] || lines="${lines:+$lines
+}       may block: $n_open unresolved review thread(s) (item 3; GitHub blocks on them only when $base requires conversation resolution)"
+    case "$lines" in *"blocked by:"*) ;; *) lines="${lines:+$lines
+}       blocked by: no unmet required check or review found — GitHub reports BLOCKED for a rule ready-check does not read, or a producer-pinned check came from another app (checks match by name; see the PR page)" ;; esac
+    printf '%s\n' "$lines"
+}
+
 if [ "$ONLY7" -eq 0 ]; then
 
 # ── 1. head + mergeStateStatus ──────────────────────────────────────────────
@@ -842,6 +895,7 @@ else
         echo "[FAIL] 1. head=$head_now (want $SHA), mergeStateStatus=$mss (want CLEAN)"
     fi
     mark_fail
+    if [ "$head_now" = "$SHA" ] && [ "$mss" = "BLOCKED" ]; then blocked_by; fi
 fi
 [ -z "$snapshot_fail_reason" ] || echo "       PR snapshot read failed: $snapshot_fail_reason"
 
