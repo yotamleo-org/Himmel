@@ -27,8 +27,9 @@
 #
 # resume <branch>: the branch already exists (a RESUME row).
 # It fetches it and recreates the worktree at a tip it can account for (a worktree
-# already registered for it at the standard path is handed back untouched), never
-# prunes other worktrees, and never makes a branch from the default branch. `resume --check
+# already registered for it at the standard path is handed back untouched once the
+# same refusal checks pass), never prunes other worktrees, and never makes a branch
+# from the default branch. `resume --check
 # <branch>` writes nothing and prints local|origin|both|none|unknown.
 # Both go through scripts/_new-worktree.sh --resume.
 #

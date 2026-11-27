@@ -236,7 +236,8 @@ if [ "$RESUME" -eq 1 ]; then
     if [ -e "$WORKTREE_PATH" ]; then
         if [ -n "$_reg_path" ] && [ "$_reg_path" -ef "$WORKTREE_PATH" ] &&
             [ "$(git -C "$WORKTREE_PATH" rev-parse --show-toplevel 2>/dev/null)" -ef "$WORKTREE_PATH" ] &&
-            [ "$(git -C "$WORKTREE_PATH" symbolic-ref -q HEAD)" = "refs/heads/$BRANCH" ]; then
+            [ "$(git -C "$WORKTREE_PATH" symbolic-ref -q HEAD)" = "refs/heads/$BRANCH" ] &&
+            [ "$(cd "$WORKTREE_PATH" && cd "$(git rev-parse --git-common-dir)" && pwd)" -ef "$COMMON_DIR_ABS" ]; then
             HANDBACK=1
         else
             resume_refuse path-exists "worktree path exists: $WORKTREE_PATH"
@@ -286,8 +287,9 @@ if [ "$RESUME" -eq 1 ]; then
         resume_refuse diverged "local $L and origin $O have diverged; nothing created - reconcile by hand (git -C $PRIMARY_WORKTREE log --oneline --graph $L $O)"
     fi
     if [ "$HANDBACK" -eq 1 ]; then
+        _wt_head=$(git -C "$WORKTREE_PATH" rev-parse --verify -q HEAD) || resume_refuse path-exists "worktree path exists but its HEAD cannot be read: $WORKTREE_PATH"
         if [ -n "$RESUME_NOTE" ]; then echo "NOTE new-worktree: $RESUME_NOTE"; fi
-        echo "RESUMED $WORKTREE_PATH $BRANCH $(git -C "$WORKTREE_PATH" rev-parse HEAD) $RESUME_STATE"
+        echo "RESUMED $WORKTREE_PATH $BRANCH $_wt_head $RESUME_STATE"
         exit 0
     fi
     if command -v flock >/dev/null 2>&1; then

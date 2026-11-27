@@ -167,8 +167,21 @@ rm -rf "$(wt_dir $B2)"
 mkdir -p "$(wt_dir $B2)"
 run bash "$WT" resume "$B2" --no-install
 refused "stale registration under a plain directory: path-exists" "path-exists"
-rmdir "$(wt_dir $B2)"
+git init -q -b "$B2" "$(wt_dir $B2)"
+git -C "$(wt_dir $B2)" -c user.email=t@t.local -c user.name=T commit -q --allow-empty -m unrelated
+run bash "$WT" resume "$B2" --no-install
+refused "stale registration under another repo on the same branch name: path-exists" "path-exists"
+rm -rf "$(wt_dir $B2)"
 g worktree prune
+
+B15=fix/r-unborn
+push_branch "$B15" u1
+run bash "$WT" resume "$B15" --no-install
+g update-ref -d "refs/heads/$B15"
+run bash "$WT" resume "$B15" --no-install
+if [ "$rc" -ne 0 ] && ! grep -Fq "RESUMED " "$OUT"; then _pass "registered but no readable HEAD: no RESUMED line"
+else _fail "registered but no readable HEAD" "rc=$rc out=[$(cat "$OUT")] err=[$(cat "$ERR")]"; fi
+g worktree remove --force "$(wt_dir $B15)"
 
 g branch -q fix/r-other main
 git -C "$REPO" worktree add -q "$(wt_dir fix/r-wrong)" fix/r-other >/dev/null 2>&1
