@@ -44,10 +44,10 @@ check "claude, codex and antigravity are launchable with a pending quota source"
     'q "[.[] | select(.launchable and .quota_source == \"pending\") | .id] | sort == [\"antigravity\",\"claude\",\"codex\"]"'
 check "grok and cursor ship incomplete" \
     'q "[.[] | select(.launchable | not) | .id] | sort == [\"cursor\",\"grok\"]"'
-check "every complete descriptor names an egress matrix row" '[ -z "$(egress_check "$HERE")" ]'
+check "every complete descriptor names an egress matrix row" 'out="$(egress_check "$HERE")" && [ -z "$out" ]'
 check "every schema-required field is present in every shipped descriptor" \
     'jq -e --argjson reg "$REG" ".required as \$r | all(\$reg[]; . as \$d | all(\$r[]; . as \$k | \$d | has(\$k)))" "$HERE/harness.schema.json" >/dev/null'
-for id in claude codex antigravity; do
+for id in $(jq -r '.[] | select(.launchable) | .id' <<<"$REG"); do
     for f in hook_config adapter; do
         p="$(jq -r --arg i "$id" --arg f "$f" '.[] | select(.id == $i) | .[$f]' <<<"$REG")"
         check "$id: its $f exists in the repo" '[ -n "$p" ] && [ -e "$REPO/$p" ]'
@@ -73,6 +73,10 @@ jq '.lane = null' "$HERE/fixtures/fake-harness-complete.json" > "$TMP/complete/f
 C="$(load "$TMP/complete")" || C='[]'
 check "complete:true with a null lane is not launchable" 'jq -e "any(.[]; .id == \"fake-harness\" and (.launchable | not))" <<<"$C" >/dev/null'
 
+jq '.event_map = {"PostToolUse": "after"}' "$HERE/fixtures/fake-harness-complete.json" > "$TMP/complete/fake-harness.json"
+C="$(load "$TMP/complete")" || C='[]'
+check "complete:true with no PreToolUse event is not launchable" 'jq -e "any(.[]; .id == \"fake-harness\" and (.launchable | not))" <<<"$C" >/dev/null'
+
 jq '.egress_provider = "no-such-provider"' "$HERE/fixtures/fake-harness-complete.json" > "$TMP/complete/fake-harness.json"
 check "a complete descriptor with no egress matrix row fails the check" '[ "$(egress_check "$TMP/complete")" = fake-harness ]'
 jq '.egress_provider = "no-such-provider" | .complete = false' "$HERE/fixtures/fake-harness-complete.json" > "$TMP/complete/fake-harness.json"
@@ -96,6 +100,10 @@ broken b7 "a relative token path" "codex.json is malformed" 'jq ".token_paths = 
 broken b8 "two descriptors for one driver" "two descriptors name the same T3 driver" 'jq ".id = \"extra\"" codex.json > extra.json'
 broken b9 "a schema with no harness list" "names no harness list" 'jq "del(.\"x-listed-harnesses\")" harness.schema.json > x && mv x harness.schema.json'
 broken b10 "a missing schema" "names no harness list" 'rm harness.schema.json'
+
+broken b11 "an incomplete descriptor with a numeric adapter" "grok.json is malformed" 'jq ".adapter = 7" grok.json > x && mv x grok.json'
+broken b12 "a numeric mcp_prefix" "codex.json is malformed" 'jq ".tool_map.mcp_prefix = 7" codex.json > x && mv x codex.json'
+broken b13 "an event map that is not strings" "codex.json is malformed" 'jq ".event_map = [\"PreToolUse\"]" codex.json > x && mv x codex.json'
 
 printf '\n%d cases, %d failed\n' "$N" "$FAIL"
 [ "$FAIL" -eq 0 ]

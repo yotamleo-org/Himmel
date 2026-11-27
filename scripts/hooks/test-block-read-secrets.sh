@@ -1016,6 +1016,17 @@ assert_rc "11089 a malformed descriptor refuses Read"       2 "$(ht "$(j_read "$
 assert_rc "11089 the refusal names the registry"            0 "$(grep -q 'codex.json is not one JSON document' "$HH/ht.err"; echo $?)"
 assert_rc "11089 READ_SECRETS_OK=1 is the operator route"   0 "$(printf '%s' "$(j_bash 'ls')" | HOME="$HH" READ_SECRETS_OK=1 bash "$HT/scripts/hooks/block-read-secrets.sh" >/dev/null 2>&1; echo $?)"
 cp "$(dirname "$HOOK")/../harnesses/codex.json" "$HT/scripts/harnesses/codex.json"
+for f in codex antigravity; do
+    jq '.token_paths = []' "$(dirname "$HOOK")/../harnesses/$f.json" > "$HT/scripts/harnesses/$f.json"
+done
+for p in .codex/auth.json .gemini/oauth_creds.json .gemini/gemini-credentials.json .gemini/mcp-oauth-tokens-v2.json; do
+    assert_rc "11089 no descriptor edit unfences ~/$p"      2 "$(ht "$(j_bash "cat ~/$p")")"
+done
+cp "$(dirname "$HOOK")/../harnesses/codex.json" "$(dirname "$HOOK")/../harnesses/antigravity.json" "$HT/scripts/harnesses/"
+cp "$HT/scripts/harnesses/registry.jq" "$HH/registry.jq.keep"
+printf 'empty\n' > "$HT/scripts/harnesses/registry.jq"
+assert_rc "11089 a loader that returns nothing refuses"     2 "$(ht "$(j_bash 'ls')")"
+cp "$HH/registry.jq.keep" "$HT/scripts/harnesses/registry.jq"
 rm -f "$HT/scripts/harnesses/grok.json"
 assert_rc "11089 a missing listed descriptor refuses"       2 "$(ht "$(j_bash 'ls')")"
 rm -rf "$HH"

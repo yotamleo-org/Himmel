@@ -108,8 +108,9 @@ case "$findings" in
     instance$'\t'* | *$'\n'instance$'\t'* | source$'\t'* | *$'\n'source$'\t'*)
         harness_args=()
         for f in "$HARNESSES"/*.json; do harness_args+=(--rawfile "${f##*/}" "$f"); done
-        if ! harnesses=$(jq -nc "${harness_args[@]}" --arg out registry -f "$HARNESSES/registry.jq" 2>&1); then
-            harness_err="the harness registry cannot be read: ${harnesses}" harnesses='[]'
+        if ! harnesses=$(jq -nc "${harness_args[@]}" --arg out registry -f "$HARNESSES/registry.jq" 2>&1) \
+            || ! jq -e 'type == "array" and length > 0' <<<"$harnesses" >/dev/null 2>&1; then
+            harness_err="the harness registry cannot be read: ${harnesses:-the loader returned nothing}" harnesses='[]'
         fi
         if [ -L "${HOME:-/nonexistent}/.himmel" ] || [ -L "$CONFIG" ]; then
             narrow_err="$CONFIG is a symlink"

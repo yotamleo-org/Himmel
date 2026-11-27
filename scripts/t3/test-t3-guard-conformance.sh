@@ -191,7 +191,7 @@ for id in $HARNESS_IDS; do
     args="$(jq -c '{title:"Work",message:"go",modelSelection:{instanceId:.t3.instance_ids[0],model:"m"}}' "$d")"
     if jq -e '.complete' "$d" >/dev/null; then
         for from in $HARNESS_IDS; do
-            [ "$from" = cursor ] || [ "$from" = grok ] || run_harness "$from" t3_thread_launch "$args" allow "launch onto $id allowed"
+            run_harness "$from" t3_thread_launch "$args" allow "launch onto $id allowed"
         done
     else
         for from in $HARNESS_IDS; do

@@ -229,6 +229,10 @@ run "a malformed descriptor: the source instance is refused too" 2 'the harness 
 cp "$HOOKS/../harnesses/codex.json" "$TMP/regtree/harnesses/codex.json"
 rm -f "$TMP/regtree/harnesses/grok.json"
 run "a missing listed descriptor: an instance id refused" 2 'no descriptor for the listed harness grok' "$(from_to codex antigravity)"
+cp "$HOOKS/../harnesses/grok.json" "$TMP/regtree/harnesses/grok.json"
+printf 'empty\n' > "$TMP/regtree/harnesses/registry.jq"
+run "a loader that returns nothing: the source instance is refused" 2 'the harness registry cannot be read' \
+    '{"tool_name":"'$T't3_thread_launch","tool_input":{"title":"w","delegatedFrom":{"instanceId":"codex"}}}'
 rm -rf "$TMP/regtree/harnesses"
 run "a missing harness registry: an instance id refused" 2 'the harness registry cannot be read' "$(from_to codex antigravity)"
 HOOK="$REAL_HOOK"

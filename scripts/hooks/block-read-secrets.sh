@@ -277,7 +277,8 @@ case "$tool" in
     Read|Grep|Bash|PowerShell)
         _hr_args=()
         for _hr_f in "$SCRIPT_DIR/../harnesses"/*.json; do _hr_args+=(--rawfile "${_hr_f##*/}" "$_hr_f"); done
-        if _hr_out=$(jq -nr "${_hr_args[@]}" --arg out tokens -f "$SCRIPT_DIR/../harnesses/registry.jq" 2>&1); then
+        if _hr_out=$(jq -nr "${_hr_args[@]}" --arg out tokens -f "$SCRIPT_DIR/../harnesses/registry.jq" 2>&1) \
+            && [ -n "$_hr_out" ]; then
             while IFS= read -r _hr_f; do
                 HARNESS_TOKEN_GLOBS[${#HARNESS_TOKEN_GLOBS[@]}]="${_hr_f%$'\r'}"
             done <<<"$_hr_out"
@@ -397,6 +398,8 @@ login_token_path() {
         case "$1" in $g) return 0 ;; esac
     done
     case "$1" in
+        */.codex/auth.json|*/.gemini/oauth_creds.json) return 0 ;;
+        */.gemini/gemini-credentials.json|*/.gemini/mcp-oauth-tokens*.json) return 0 ;;
         */userdata/providers/?*/?*)
             case "$b" in auth.json|oauth_creds.json|*token*|*oauth*|*credentials*) return 0 ;; esac ;;
     esac

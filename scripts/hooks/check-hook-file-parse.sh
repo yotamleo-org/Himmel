@@ -80,7 +80,11 @@ if [ "$harness" = 1 ]; then
     dir=$(dirname "$target")
     args=()
     for f in "$dir"/*.json; do args+=(--rawfile "${f##*/}" "$f"); done
-    if ! findings="$(jq -nc "${args[@]}" --arg out registry -f "$dir/registry.jq" 2>&1 >/dev/null)"; then
+    loaded=1
+    findings="$(jq -nc "${args[@]}" --arg out registry -f "$dir/registry.jq" 2>&1)" || loaded=0
+    case "$findings" in '[{'*) ;; *) loaded=0 ;; esac
+    if [ "$loaded" = 0 ]; then
+        [ -n "$findings" ] || findings="the loader returned nothing"
         {
             printf 'check-hook-file-parse: the harness registry you just wrote is BROKEN.\n\n'
             printf '%s\n\n' "$findings"

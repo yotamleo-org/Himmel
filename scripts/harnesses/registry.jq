@@ -12,16 +12,20 @@ def str: type == "string" and length > 0;
 def strs: type == "array" and all(.[]; str);
 def tool_entry: type == "object" and (.claude | str)
     and ((has("keys") | not) or ((.keys | type) == "object" and all(.keys[]; str)));
+def optstr: . == null or type == "string";
+def opt_events: . == null or (type == "object" and all(.[]; str));
 def shape: type == "object" and (.id | str)
+    and ([.hook_config, .adapter, .deny_dialect, .egress_provider, .lane, .quota_source] | all(.[]; optstr))
+    and (.event_map | opt_events)
     and (.t3 | type) == "object" and (.t3.driver | str) and (.t3.instance_ids | strs)
     and (.tool_map | type) == "object" and (.tool_map.tools | type) == "object"
-    and all(.tool_map.tools[]; tool_entry)
+    and all(.tool_map.tools[]; tool_entry) and (.tool_map.mcp_prefix | optstr)
     and (.token_paths | strs)
     and all(.token_paths[]; startswith("~/") or startswith("*/"))
     and (.complete | type) == "boolean";
 def launchable: .complete
     and ([.hook_config, .adapter, .deny_dialect, .egress_provider, .lane, .quota_source] | all(.[]; str))
-    and (.event_map | type) == "object" and (.event_map | length) > 0;
+    and (.event_map.PreToolUse? | str);
 
 [$ARGS.named | to_entries[] | select(.key | endswith(".json")) | .key as $f | .value as $text
     | {file: $f, doc: (try ($text | fromjson) catch error("\($f) is not one JSON document"))}] as $all

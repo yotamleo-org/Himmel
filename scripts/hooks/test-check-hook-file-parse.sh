@@ -162,6 +162,9 @@ cp "$SCRIPT_DIR/../harnesses/codex.json" "$TMP/scripts/harnesses/codex.json"
 printf '.\n' >> "$TMP/scripts/harnesses/registry.jq"
 RC="$(run Edit "$TMP/scripts/harnesses/registry.jq")"
 assert_rc "a broken loader denies" 2 "$RC"
+printf 'empty\n' > "$TMP/scripts/harnesses/registry.jq"
+RC="$(run Edit "$TMP/scripts/harnesses/registry.jq")"
+assert_rc "a loader that returns nothing denies" 2 "$RC"
 
 printf '\nReal corpus (a guard that fires on healthy production files is unshippable)\n'
 CORPUS_FAIL=""
