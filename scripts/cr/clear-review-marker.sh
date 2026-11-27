@@ -1277,7 +1277,7 @@ exhausted_lanes=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("d
 # merge (promote amends the ledger as it checks) or --check for the read (the same verdict, nothing written).
 # Exits 14 on a still-open finding or a promote error, returns on a pass.
 gate_4c_promote() {
-    local _promote_out _promote_rc _stillopen_count _pline
+    local _promote_out _promote_rc _stillopen_count _pline _needs_decision
     # --check only: a tip this repository does not hold cannot be compared with the branch's rounds; it is
     # read in the ledger by name, as gates 4 and 4b do, and promote has no commit to resolve.
     if [ -n "$1" ] && ! git cat-file -e "$tip^{commit}" 2>/dev/null; then
@@ -1293,18 +1293,27 @@ gate_4c_promote() {
     if [ "$_promote_rc" -eq 3 ]; then
         echo "clear-cr-marker: review-round.sh promote found still-open finding(s) at an earlier round head on $branch — refusing. Every round's ledger rows must carry a decision before the branch can clear, not just the tip's." >&2
         _stillopen_count=0
+        _needs_decision=0
         if [ -n "$_promote_out" ] && [ -f "$_promote_out" ]; then
             while IFS= read -r _pline; do
                 case "$_pline" in
                     "still-open "*)
                         echo "  $_pline" >&2
                         _stillopen_count=$((_stillopen_count + 1))
+                        case "$_pline" in
+                            *" (unadjudicated) [earlier polish]")
+                                printf '    scripts/cr/review-round.sh defer --head %q --branch %q\n' "$tip" "$branch" >&2
+                                ;;
+                            *) _needs_decision=1 ;;
+                        esac
                         ;;
                 esac
             done < "$_promote_out"
         fi
-        echo "  Record a decision for each row above at its OWN head with the amend verb:" >&2
-        echo "    scripts/cr/ledger-append.sh amend --head <head-from-above> --id <finding-id> --artifact <artifact> --perspective <perspective> --set verdict=<agreed-or-disproved> --reason \"<one line>\"" >&2
+        if [ "$_needs_decision" -eq 1 ]; then
+            echo "  For each row without a defer command, resolve the finding and record its actual verdict at its own head:" >&2
+            printf '    scripts/cr/ledger-append.sh amend --head <finding-head> --branch %q --id <finding-id> --artifact <artifact> --perspective <perspective> --set verdict=<actual-verdict> --reason "<evidence>"\n' "$branch" >&2
+        fi
         rm -f "$_promote_out"
         audit "REFUSED reason=unadjudicated-earlier-round branch=$branch sha=$tip count=$_stillopen_count"
         exit 14

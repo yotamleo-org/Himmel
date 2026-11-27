@@ -66,9 +66,12 @@
 # hardening finding is filed only with --fu-override <judge verdict id|decision-N>;
 # without one defer exits 6 naming the flag. A pre-existing Important classed polish
 # cannot be noted: reclassify it or supply --defer-to <plain ticket>.
+# Defer also notes unadjudicated polish Suggestions/nits from ancestor
+# rounds on this branch. It exits 4 if only open rows outside this route
+# remain, and propagates the final marker clearance result after writing.
 # A Suggestions-only round below the cap closes early on a change that touches
 # no CI trust path. Its polish rows file nothing (see above); an explicit
-# --defer-to attaches every pending finding to that existing ticket, and a
+# --defer-to attaches pending findings at the requested head to that existing ticket, and a
 # hardening row with an override is filed as ONE
 # batch residual per branch and keeps its key in
 # <branch>.deferred-to, which every later early close reuses, adding its
@@ -109,7 +112,7 @@ if [ -f "$HIMMEL_ROOT/scripts/lib/gh-read.sh" ]; then _RR_GH=(bash "$HIMMEL_ROOT
 
 usage() {
     echo "usage: review-round.sh start --branch <name> [--head <sha> [--base-sha <sha>]] [--full]   (prints <round>, <round> increment <L>, <round> delta <L> or <round> carried <R>; --full reviews the whole PR and is never classified)" >&2
-    echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>] [--fu-why <code>] [--fu-override <id>]" >&2
+    echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>] [--fu-why <code>] [--fu-override <id>]   (includes earlier polish; exit 4 for open findings outside the deferral path when no work remains, otherwise propagates clearance after writing)" >&2
     echo "       review-round.sh promote [--check] --branch <name> --head <sha>   (--check: the same verdict, read only, nothing written)" >&2
     echo "       review-round.sh judge-go --branch <name> --head <sha> [--open-threads-ok <reason>]   (after the cap: a signed judge GO at <sha> stands in for the review; refused while the PR has an unresolved review thread unless the chief names the override)" >&2
     echo "       review-round.sh evidence --branch <name> --head <sha>   (ledger ok row for a tests-only head after a reviewed head; spends no round)" >&2
@@ -2703,18 +2706,7 @@ fi
 # as it will once the real verb runs), so it exits 0, 3, 1, 2 or 5 exactly as the real verb would on
 # that ledger and writes nothing. The branch need not be the one checked out in cwd. Callers: the
 # marker's --check-findings (the GO-time read of gate 4c), through which ready-check.sh item 18 reads it.
-if [ "$verb" = "promote" ]; then
-    if ! full_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$full_head" ]; then
-        echo "review-round: --head $head_sha does not resolve to a commit" >&2
-        exit 2
-    fi
-    ledger="$git_dir/cr-critic-scores.jsonl"
-    if [ ! -f "$ledger" ]; then
-        echo "review-round: CR ledger is missing at $ledger" >&2
-        exit 5
-    fi
-    decisions_tmp="$(mktemp -t cr-promote-decisions.XXXXXX)" || { echo "review-round: cannot create scratch state" >&2; exit 1; }
-    analysis="$(FULL_HEAD="$full_head" LEDGER="$ledger" BRANCH="$branch" DECISIONS_FILE="$decisions_tmp" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
+ledger_reader_js='
 const fs = require("fs"), cp = require("child_process"), e = process.env;
 const lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean);
 const SEP = String.fromCharCode(31);
@@ -2743,10 +2735,10 @@ function isCommit(value) {
   return commitCache.get(h);
 }
 const resolveCache = new Map();
-function resolvesToHead(value) {
+function resolveCommit(value) {
   const h = String(value || "");
-  if (h === e.FULL_HEAD) return true;
-  if (!/^[0-9a-f]{7,64}$/i.test(h)) return false;
+  if (h === e.FULL_HEAD) return h;
+  if (!/^[0-9a-f]{7,64}$/i.test(h)) return "";
   if (!resolveCache.has(h)) {
     let resolved = "";
     try {
@@ -2755,8 +2747,9 @@ function resolvesToHead(value) {
     } catch { resolved = ""; }
     resolveCache.set(h, resolved);
   }
-  return resolveCache.get(h) === e.FULL_HEAD;
+  return resolveCache.get(h);
 }
+const resolvesToHead = (value) => resolveCommit(value) === e.FULL_HEAD;
 // "not re-raised at --head" is only
 // meaningful evidence of a fix when --head actually descends from the
 // finding own commit — otherwise an unrelated or divergent clean head
@@ -2804,6 +2797,33 @@ const amendSetFor = (branch, head, id, artifact, perspective) => {
   return (legacy || scoped) ? Object.assign({}, legacy || {}, scoped || {}) : null;
 };
 const findingRows = rows.filter((o) => o.kind === "finding" && o.branch === e.BRANCH);
+const effectiveFinding = (row) => Object.assign({}, row,
+  amendSetFor(row.branch, row.head, row.finding_id, row.artifact || "diff", row.perspective || "off") || {});
+const polishSeverity = (severity) => severity === "sug" || severity === "nit";
+function earlierPolishRefusal(row, effective) {
+  const head = resolveCommit(row.head);
+  if (!head) return "unresolvable head";
+  if (!isAncestorOfHead(head)) return "non-ancestor head";
+  if (row.head !== effective.head) return "re-keyed finding";
+  if (!polishSeverity(row.severity) || !polishSeverity(effective.severity)) return "severity requires a decision";
+  const fuClass = String(effective.fu_class || "").trim();
+  if ((fuClass && fuClass !== "polish") || effective.deferred_to) return "follow-up requires a decision";
+  return "";
+}
+'
+
+if [ "$verb" = "promote" ]; then
+    if ! full_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$full_head" ]; then
+        echo "review-round: --head $head_sha does not resolve to a commit" >&2
+        exit 2
+    fi
+    ledger="$git_dir/cr-critic-scores.jsonl"
+    if [ ! -f "$ledger" ]; then
+        echo "review-round: CR ledger is missing at $ledger" >&2
+        exit 5
+    fi
+    decisions_tmp="$(mktemp -t cr-promote-decisions.XXXXXX)" || { echo "review-round: cannot create scratch state" >&2; exit 1; }
+    analysis="$(FULL_HEAD="$full_head" LEDGER="$ledger" BRANCH="$branch" DECISIONS_FILE="$decisions_tmp" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e "$ledger_reader_js"'
 const atHead = findingRows.filter((o) => resolvesToHead(o.head));
 // Only a LIVE occurrence at --head is a genuine re-raise: a matching finding at --head that is itself already
 // fixed/disproved is a DISPOSITIONED instance, not an open one, and must not
@@ -2817,7 +2837,7 @@ const fpAtHead = new Map();
 for (const o of atHead) {
   if (!o.fingerprint) continue;
   const idKey = [o.head, o.finding_id, o.artifact || "diff", o.perspective || "off"].join(SEP);
-  const effectiveAtHead = Object.assign({}, o, amendSetFor(o.branch || "", o.head, o.finding_id, o.artifact || "diff", o.perspective || "off") || {});
+  const effectiveAtHead = effectiveFinding(o);
   if (!liveVerdicts.has(String(effectiveAtHead.verdict || "").trim())) continue;
   if (!fpAtHead.has(o.fingerprint)) fpAtHead.set(o.fingerprint, new Set());
   fpAtHead.get(o.fingerprint).add(idKey);
@@ -2845,7 +2865,7 @@ for (let ri = 0; ri < findingRows.length; ri++) {
     continue;
   }
   const idKey = [row.head, row.finding_id, row.artifact || "diff", row.perspective || "off"].join(SEP);
-  const effective = Object.assign({}, row, amendSetFor(row.branch || "", row.head, row.finding_id, row.artifact || "diff", row.perspective || "off") || {});
+  const effective = effectiveFinding(row);
   const verdict = String(effective.verdict || "").trim();
   let action;
   if (verdict === "fixed" || verdict === "disproved" || verdict === "deferred") action = "skip-terminal";
@@ -2881,6 +2901,8 @@ for (let ri = 0; ri < findingRows.length; ri++) {
   outLines.push(JSON.stringify({
     action, id: row.finding_id, head: row.head, branch: row.branch,
     artifact: row.artifact || "diff", perspective: row.perspective || "off", verdict,
+    earlierPolish: action === "still-open-unadjudicated" &&
+      !resolvesToHead(row.head) && !earlierPolishRefusal(row, effective),
   }));
 }
 fs.writeFileSync(e.DECISIONS_FILE, outLines.length ? outLines.join("\n") + "\n" : "");
@@ -2952,7 +2974,8 @@ process.stdout.write(JSON.stringify({malformed: 0, blank: blankRefused.join(", "
                 still_open=$((still_open + 1))
                 ;;
             still-open-unadjudicated)
-                echo "still-open ${id}@${row_head8} (unadjudicated)"
+                row_polish="$(printf '%s' "$decision" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{if(JSON.parse(s).earlierPolish) process.stdout.write(" [earlier polish]")})')" || row_polish=""
+                echo "still-open ${id}@${row_head8} (unadjudicated)$row_polish"
                 still_open=$((still_open + 1))
                 ;;
             skip-terminal)
@@ -3102,47 +3125,9 @@ tracker_jira=0
 if [ "$defer_tracker" = jira ]; then tracker_jira=1; fi
 explicit_defer=0
 if [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then explicit_defer=1; fi
-analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" PRE_OK="$pre_ok" PRE_REASON="$pre_reason" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" NOTE_REASON="$note_reason" TRACKER_JIRA="$tracker_jira" EXPLICIT_DEFER="$explicit_defer" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
-const fs = require("fs"), cp = require("child_process"), e = process.env;
-const lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean);
-const SEP = String.fromCharCode(31), amends = new Map(), findings = new Map();
-let malformed = 0;
-// Past the cutover only a signed lowering amend counts (ledger-amend-auth.js).
-for (const line of require(e.AMEND_AUTH).filterLines(lines)) {
-  let o;
-  try { o = JSON.parse(line); } catch { malformed++; continue; }
-  if (o.kind === "amend" && o.set && typeof o.set === "object") {
-    const key = [o.target_head, o.finding_id, o.artifact || "diff", o.perspective || "off"].join(SEP);
-    amends.set(key, Object.assign({}, amends.get(key) || {}, o.set));
-  }
-}
-const cache = new Map();
-function resolvesToHead(value) {
-  const h = String(value || "");
-  if (h === e.FULL_SHA) return true;
-  if (!/^[0-9a-f]{7,64}$/.test(h) || !e.FULL_SHA.startsWith(h)) return false;
-  if (!cache.has(h)) {
-    let resolved = "";
-    try { resolved = cp.execFileSync("git", ["rev-parse", "--verify", "--quiet", h + "^{commit}"], {encoding:"utf8", stdio:["ignore","pipe","ignore"]}).trim(); }
-    catch { resolved = ""; }
-    cache.set(h, resolved);
-  }
-  return cache.get(h) === e.FULL_SHA;
-}
-const origSeverities = new Map();
-for (const line of lines) {
-  let o;
-  try { o = JSON.parse(line); } catch { continue; }
-  if (o.kind !== "finding") continue;
-  const raisedAs = String(o.severity || "");
-  const original = [o.head, o.finding_id, o.artifact || "diff", o.perspective || "off"].join(SEP);
-  if (amends.has(original)) o = Object.assign({}, o, amends.get(original));
-  if (!resolvesToHead(o.head)) continue;
-  const key = [o.finding_id || "?", o.artifact || "diff", o.perspective || "off"].join(SEP);
-  if (!origSeverities.has(key)) origSeverities.set(key, raisedAs);
-  findings.set(key, o);
-}
-const pending = [], capDeferred = [], blocking = [], unclassified = [];
+analysis="$(FULL_HEAD="$full_head" LEDGER="$ledger" BRANCH="$branch" DELTA="$delta_mode" PRE_OK="$pre_ok" PRE_REASON="$pre_reason" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" NOTE_REASON="$note_reason" TRACKER_JIRA="$tracker_jira" EXPLICIT_DEFER="$explicit_defer" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e "$ledger_reader_js"'
+const findings = new Map(), origSeverities = new Map();
+const pending = [], capDeferred = [], blocking = [], unclassified = [], earlierOpen = [];
 const CAP_REASONS = [e.CAP_REASON, e.DELTA_REASON];
 const RANK = {nit: 0, sug: 1, imp: 2, crit: 3};
 const rankOf = (s) => (s in RANK ? RANK[s] : -1);
@@ -3156,6 +3141,8 @@ function sugClass(fuClass) {
 function pendingRow(o, id, severity, fuClass, classSource, extra) {
   return Object.assign({
     id,
+    head: e.FULL_HEAD,
+    note_head: e.FULL_HEAD,
     artifact: o.artifact || "diff",
     perspective: o.perspective || "off",
     severity,
@@ -3167,6 +3154,35 @@ function pendingRow(o, id, severity, fuClass, classSource, extra) {
     line: o.line === undefined || o.line === null ? "" : String(o.line),
     text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
   }, extra || {});
+}
+for (const row of findingRows) {
+  const o = effectiveFinding(row);
+  const atHead = resolvesToHead(o.head);
+  // A design row re-keyed onto this commit can still be a current finding.
+  // A prior commit row uses the earlier-round rules and its original tuple.
+  if (atHead && (resolvesToHead(row.head) || !resolveCommit(row.head))) {
+    const key = [o.finding_id || "?", o.artifact || "diff", o.perspective || "off"].join(SEP);
+    if (!origSeverities.has(key)) origSeverities.set(key, String(row.severity || ""));
+    findings.set(key, o);
+    continue;
+  }
+  if (!row.head || resolvesToHead(row.head)) continue;
+  const verdict = String(o.verdict || "").trim();
+  const alreadyNoted = verdict === "deferred" && o.reason === e.NOTE_REASON && o.fu_class === "polish";
+  if (verdict && !alreadyNoted) continue;
+  const refusal = earlierPolishRefusal(row, o);
+  if (refusal) {
+    if (!verdict) earlierOpen.push(row.finding_id + "@" + row.head + " (" + refusal + ")");
+    continue;
+  }
+  if (alreadyNoted) {
+    capDeferred.push({id: row.finding_id, ticket: ""});
+    continue;
+  }
+  pending.push(pendingRow(o, row.finding_id, o.severity, "polish", o.fu_class === "polish" ? "ledger" : "default", {
+    head: row.head, note_head: resolveCommit(row.head), noted: true,
+    artifact: row.artifact || "diff", perspective: row.perspective || "off",
+  }));
 }
 for (const [key, o] of findings) {
   const id = String(o.finding_id || "?");
@@ -3225,15 +3241,18 @@ for (const [key, o] of findings) {
   else if (notedPolish) capDeferred.push({id, ticket: ""});
   else if (!verdict) blocking.push(id);
 }
-for (const f of pending) f.noted = e.EXPLICIT_DEFER !== "1" && f.fu_class === "polish" && (f.severity === "sug" || f.severity === "nit");
-const noted = pending.filter((f) => f.noted);
-process.stdout.write(JSON.stringify({malformed, pending, noted, capDeferred, blocking, unclassified}));
+for (const f of pending) f.noted = !!f.noted || (e.EXPLICIT_DEFER !== "1" && f.fu_class === "polish" && polishSeverity(f.severity));
+process.stdout.write(JSON.stringify({malformed, pending, capDeferred, blocking, unclassified, earlierOpen}));
 ' 2>/dev/null)"
 if [ -z "$analysis" ]; then
     echo "review-round: could not evaluate findings at $full_head" >&2
     exit 5
 fi
 malformed="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).malformed)))' 2>/dev/null)" || malformed=""
+if [ -n "$malformed" ] && [ "$malformed" -ne 0 ]; then
+    echo "review-round: malformed CR ledger row(s) — refusing automatic disposition" >&2
+    exit 5
+fi
 blocking="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).blocking.join(" ")))' 2>/dev/null)" || blocking=""
 pending_count="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).pending.length)))' 2>/dev/null)" || pending_count=""
 cap_deferred_count="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).capDeferred.length)))' 2>/dev/null)" || cap_deferred_count=""
@@ -3241,9 +3260,9 @@ if [ -z "$malformed" ] || [ -z "$pending_count" ] || [ -z "$cap_deferred_count" 
     echo "review-round: could not parse the ledger evaluation" >&2
     exit 5
 fi
-if [ "$malformed" -ne 0 ]; then
-    echo "review-round: malformed CR ledger row(s) — refusing automatic disposition" >&2
-    exit 5
+earlier_open="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).earlierOpen.join("\n  ")))')" || exit 5
+if [ -n "$earlier_open" ]; then
+    printf 'review-round: open findings outside the earlier-round polish route:\n  %s\n' "$earlier_open" >&2
 fi
 if [ -n "$blocking" ] && [ "$delta_mode" -eq 1 ]; then
     echo "review-round: Critical or escape-class finding(s) remain blocking in the delta round: $blocking" >&2
@@ -3263,6 +3282,7 @@ if [ -n "$blocking" ]; then
     exit 4
 fi
 if [ "$pending_count" -eq 0 ] && [ "$cap_deferred_count" -eq 0 ]; then
+    [ -z "$earlier_open" ] || exit 4
     exit 0
 fi
 
@@ -3288,9 +3308,11 @@ fi
 # leaves nothing behind for a retry to repeat.
 ticketed_analysis="$analysis"
 ticketed_count="$pending_count"
-if [ "$explicit_defer" -eq 0 ] && [ "$pending_count" -gt 0 ]; then
+if [ "$pending_count" -gt 0 ]; then
     ticketed_analysis="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);a.pending=a.pending.filter(f=>!f.noted);process.stdout.write(JSON.stringify(a))})')" || exit 5
     ticketed_count="$(printf '%s' "$ticketed_analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).pending.length)))')" || exit 5
+fi
+if [ "$explicit_defer" -eq 0 ] && [ "$ticketed_count" -gt 0 ]; then
     polish_unnotable="$(printf '%s' "$ticketed_analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).pending.filter(f=>f.fu_class==="polish").map(f=>f.id).join(" ")))')" || exit 5
     if [ -n "$polish_unnotable" ]; then
         echo "review-round: pre-existing Important finding(s) classed polish cannot be noted without a ticket: $polish_unnotable; marker remains pending" >&2
@@ -3331,23 +3353,33 @@ if [ "$pending_count" -gt 0 ]; then
         [ -n "$resolved_primary" ] && primary_root="$resolved_primary"
     fi
 fi
-if [ "$tracker_jira" -eq 1 ] && [ "$explicit_defer" -eq 0 ]; then
+noted_heads=""
+if [ "$tracker_jira" -eq 1 ]; then
+    noted_heads="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write([...new Set(JSON.parse(s).pending.filter(f=>f.noted).map(f=>f.note_head))].join("\n")))')" || exit 5
+fi
+if [ -n "$noted_heads" ]; then
     noted_list="$(mktemp -t cr-noted-list.XXXXXX)" || exit 5
-    if ! printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const f of JSON.parse(s).noted) process.stdout.write(JSON.stringify({id:f.id,file:f.file,line:f.line,severity:f.severity,class_source:f.class_source,text:f.text})+"\n")})' > "$noted_list"; then
-        rm -f "$noted_list"
-        exit 5
-    fi
-    if [ -s "$noted_list" ]; then
+    while IFS= read -r noted_head; do
+        if ! printf '%s' "$analysis" | NOTE_HEAD="$noted_head" node -e '
+let s="";
+process.stdin.on("data",d=>s+=d).on("end",()=>{
+  for (const f of JSON.parse(s).pending) {
+    if (f.noted && f.note_head === process.env.NOTE_HEAD) process.stdout.write(JSON.stringify(f)+"\n");
+  }
+})' > "$noted_list"; then
+            rm -f "$noted_list"
+            exit 5
+        fi
         note_rc=0
         JIRA_CMD="node $primary_root/scripts/jira/dist/index.js" bash "$SCRIPT_DIR/note-polish.sh" \
-            --branch "$branch" --head "$full_head" --list-file "$noted_list" || note_rc=$?
+            --branch "$branch" --head "$noted_head" --list-file "$noted_list" || note_rc=$?
         if [ "$note_rc" -ne 0 ]; then
             rm -f "$noted_list"
             echo "review-round: could not record the polish finding(s) noted with no ticket on the PR ticket; marker remains pending" >&2
             echo "review-round: put the PR's ticket key in its title as [KEY-n] (or in the branch name), then rerun the same command" >&2
             exit 6
         fi
-    fi
+    done <<< "$noted_heads"
     rm -f "$noted_list"
 fi
 # A reused batch ticket gets this round's findings as a comment, before any
@@ -3472,8 +3504,9 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
         break
     fi
     if [ "$finding_noted" = 1 ]; then
+        finding_head="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).head))')" || { amend_rc=5; break; }
         if ! bash "$SCRIPT_DIR/ledger-append.sh" amend \
-            --branch "$branch" --head "$full_head" --id "$finding_id" \
+            --branch "$branch" --head "$finding_head" --id "$finding_id" \
             --artifact "$artifact" --perspective "$perspective" \
             --set verdict=deferred --set fu_class=polish \
             --set class=unattributed --set "reason=$note_reason" \

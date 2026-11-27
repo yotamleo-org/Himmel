@@ -56,6 +56,7 @@ head_a="$(git -C "$repo" rev-parse HEAD~1)"
 head_b="$(git -C "$repo" rev-parse HEAD)"
 git_dir="$(cd "$repo" && cd "$(git rev-parse --git-common-dir)" && pwd)"
 ledger="$git_dir/cr-critic-scores.jsonl"
+fixture_path="$PATH"
 : > "$ledger"
 LA="$fx/scripts/cr/ledger-append.sh"
 RR="$fx/scripts/cr/review-round.sh"
@@ -913,6 +914,92 @@ left="$(ls -d "$RRTMP"/review-round-start.* 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "$left" "0" "$row: no review-round-start directory is left after the success, refusal and signal rows"
 
 git -C "$repo" checkout -q main 2>/dev/null
+
+cp "$HERE/../lib/"{project-mode,ticket-status,required-checks,prim,status-marker}.sh "$fx/scripts/lib/" || exit 1
+cp "$HERE/note-polish.sh" "$fx/scripts/cr/" || exit 1
+mkdir -p "$fx/scripts/ci" "$fx/scripts/jira/dist" "$tmp/defer-bin"
+cp "$HERE/../ci/ci-trust-paths-core.txt" "$fx/scripts/ci/" || exit 1
+cat > "$tmp/defer-bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+    'pr list') case "$*" in *'--json title'*) echo '[HIMMEL-11392] replay';; *) echo 6158;; esac ;;
+    'repo view') echo 'example/replay main' ;;
+    'api repos/example/replay/contents/scripts/ci/ci-trust-paths.txt?ref=main') cat "$CORE_TRUST" ;;
+    'api repos/example/replay/pulls/6158') printf '%s|1\n' "$PR_HEAD" ;;
+    'api repos/example/replay/pulls/6158/files') printf 'f.txt\t\n' ;;
+    *) exit 1 ;;
+esac
+STUB
+cat > "$fx/scripts/jira/dist/index.js" <<'STUB'
+const fs = require("fs");
+if (process.argv[2] !== "comment" || process.argv[3] !== "HIMMEL-11392") process.exit(1);
+fs.appendFileSync(process.env.JIRA_LOG, fs.readFileSync(process.argv[5]));
+STUB
+printf '#!/usr/bin/env bash\ncat >/dev/null\n' > "$fx/scripts/cr/write-verdicts.sh"
+cat > "$fx/scripts/cr/clear-review-marker.sh" <<'STUB'
+#!/usr/bin/env bash
+bash "${0%/*}/review-round.sh" promote --check --branch "$1" --head "$PR_HEAD" || exit 14
+rm ".git/cr-pending/$1"
+STUB
+chmod +x "$tmp/defer-bin/gh"
+git -C "$repo" checkout -qb rr-earlier "$head_b" || exit 1
+mkdir -p "$git_dir/cr-review-rounds" "$git_dir/cr-pending"
+printf '2\n' > "$git_dir/cr-review-rounds/rr-earlier.round"
+defer_earlier() {
+    out="$(cd "$repo" && PATH="$tmp/defer-bin:$fixture_path" GH="$tmp/defer-bin/gh" GH_CMD="$tmp/defer-bin/gh" \
+        CORE_TRUST="$fx/scripts/ci/ci-trust-paths-core.txt" PR_HEAD="$head_b" JIRA_LOG="$tmp/jira-notes" \
+        TRACKER=jira JIRA_PROJECT_KEY=HIMMEL CR_DEFER_TO='' \
+        bash "$RR" defer --branch rr-earlier --head "${head_b:0:8}" "$@" 2>&1)"; rc=$?
+}
+: > "$ledger"
+shapes
+printf '{"kind":"finding","branch":"rr-earlier","head":"%s","finding_id":"r1-sug-a","severity":"sug"}\n' "${head_a:0:8}" >> "$ledger"
+TW_ART=spec TW_PERSP=on
+real_row rr-earlier "$head_a" r1-sug-b ""
+shapes
+TW_SEV=nit
+real_row rr-earlier "$head_a" r1-nit ""
+shapes
+real_row other-branch "$head_a" foreign ""
+printf '{"kind":"amend","branch":"other-branch","target_head":"%s","finding_id":"r1-sug-a","set":{"verdict":"fixed"}}\n' "${head_a:0:8}" >> "$ledger"
+: > "$tmp/jira-notes"
+touch "$git_dir/cr-pending/rr-earlier"
+git -C "$repo" commit --allow-empty -qm 'unreviewed local commit' || exit 1
+defer_earlier --defer-to HIMMEL-9001
+assert_eq "$rc" 0 "11392 PR 6158 replay closes at the abbreviated reviewed head ($out)"
+for id in r1-sug-a r1-sug-b r1-nit; do
+    amend="$(grep '"kind":"amend","' "$ledger" | grep '"branch":"rr-earlier"' | grep "\"finding_id\":\"$id\"")"
+    assert_has "$amend" '"verdict":"deferred","fu_class":"polish"' "11392 replay defers $id as polish at R1"
+    assert_lacks "$amend" 'deferred_to' "11392 replay gives $id no ticket"
+    assert_has "$(cat "$tmp/jira-notes")" "- $id " "11392 replay notes $id on the PR ticket"
+done
+assert_has "$(cat "$tmp/jira-notes")" "polish-noted: rr-earlier $head_a" "11392 replay notes at the resolved finding head"
+assert_eq "$(grep -c '"kind":"amend".*"branch":"other-branch"' "$ledger")" 1 "11392 replay writes no foreign amend"
+assert_eq "$(test -e "$git_dir/cr-pending/rr-earlier" && echo kept)" "" "11392 replay clears the marker"
+: > "$ledger"
+TW_SEV=imp
+real_row rr-earlier "$head_a" r1-important ""
+real_row rr-earlier "$head_a" r1-lowered ""
+TW_SEV=crit
+real_row rr-earlier "$head_a" r1-critical ""
+shapes
+divergent="$(git -C "$repo" rev-parse HEAD)"
+unresolved=0123456789012345678901234567890123456789
+real_row rr-earlier "$divergent" divergent ""
+real_row rr-earlier "$unresolved" unresolved ""
+real_row rr-earlier "$head_a" r1-escape ""
+printf '{"kind":"amend","branch":"rr-earlier","target_head":"%s","finding_id":"r1-lowered","set":{"severity":"sug","pre_existing":true,"fu_class":"polish"}}\n' "$head_a" >> "$ledger"
+printf '{"kind":"amend","branch":"rr-earlier","target_head":"%s","finding_id":"r1-escape","set":{"fu_class":"escape"}}\n' "$head_a" >> "$ledger"
+before="$(cksum < "$ledger")"
+: > "$tmp/jira-notes"
+defer_earlier
+assert_eq "$rc" 4 "11392 earlier rows outside the polish route refuse"
+for id in r1-important r1-critical r1-lowered r1-escape "divergent@$divergent" "unresolved@$unresolved"; do
+    assert_has "$out" "$id" "11392 refusal names $id"
+done
+assert_lacks "$out" 'review-round.sh defer --head' "11392 refusal gives no defer command for excluded rows"
+assert_eq "$(cksum < "$ledger")" "$before" "11392 refusal leaves the ledger unchanged"
+assert_eq "$(cat "$tmp/jira-notes")" "" "11392 refusal posts no Jira note"
 
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-review-round (%s failures)\n' "$fails" >&2
