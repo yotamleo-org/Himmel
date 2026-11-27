@@ -378,6 +378,9 @@ has "no-persist: a finding delta keeps its DELTA-JUDGE line" "$p" "
 DELTA-JUDGE: $HEAD40
 "
 has "no-persist: a finding delta carries the do-not line" "$p" "$DO_NOT_LINE"
+rm -rf "$BUCKET"
+python3 "$SUT" "$WORK/spec.json" --chief "$CHIEF" --no-persist --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>"$WORK/np.err"; rc=$?
+if [ "$rc" = 2 ] && grep -q -- '--no-persist needs --dispatch-json' "$WORK/np.err" && [ ! -e "$BUCKET" ]; then pass "no-persist: without --dispatch-json is a usage error (rc 2, nothing written)"; else fail "no-persist without --dispatch-json rc=$rc: $(cat "$WORK/np.err")"; fi
 
 masked() {
     python3 -I -c 'import json,sys; d=json.load(sys.stdin); p=d.pop("prompt"); print(json.dumps(d, sort_keys=True)); print(p, end="")' \

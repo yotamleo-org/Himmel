@@ -91,6 +91,26 @@ lacks "edge: a judge desk document is skipped" "$out" "6144"
 has "edge: the 23:58 request is queued" "$out" "QUEUED 6143 $H4"
 eq "edge: a bullet at 23:58 seen at 00:03 resolves to the previous day" "$(field "$EQ" 6143 requested_at)" 2026-11-27T23:58:00+00:00
 
+L="$WORK/lockb"; mkdir -p "$L"
+mkfifo "$WORK/slow.md"
+manifest "$L/chief.fleet.json" "$WORK/slow.md:native"
+JUDGE_QUEUE_NOW=1795789800 bash "$SUT" scan --bucket "$L" --since "$SINCE" >/dev/null 2>&1 &
+scan_pid=$!
+held="$(python3 -I -c '
+import fcntl, signal, sys
+signal.alarm(30)
+w = open(sys.argv[1], "w")
+f = open(sys.argv[2], "a")
+try:
+    fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    print("free")
+except OSError:
+    print("held")
+w.write("## Results\n")
+w.close()' "$WORK/slow.md" "$L/judge-desk/.lock" 2>&1)"
+wait "$scan_pid"
+eq "lock: a scan holds judge-desk/.lock while it reads the worker documents" "$held" held
+
 R="$WORK/repo"; mkdir -p "$R"
 (
     cd "$R" && git -c init.defaultBranch=main init -q && git config user.email t@t && git config user.name t \
