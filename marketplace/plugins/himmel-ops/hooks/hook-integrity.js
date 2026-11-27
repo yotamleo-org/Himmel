@@ -1447,10 +1447,15 @@ const RUNNER_LIBS = ['lib/harness-tool-translate.js', 'lib/harness-tool-map.json
 function verifyRunnerLibs(runnerDir, sessionId) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR;
   if (!projectDir) return { ok: true };
+  if (pathLocality(runnerDir, projectDir) === 'foreign') return { ok: true };
+  const realRunnerDir = normalize(resolveReal(runnerDir));
   for (const rel of RUNNER_LIBS) {
     const file = path.join(runnerDir, rel);
-    if (pathLocality(file, projectDir) === 'foreign') continue;
     let verdict = verifyOneFile(file, sessionId, true);
+    const resolved = normalize(resolveReal(file));
+    if (verdict.ok && resolved !== normalize(path.join(realRunnerDir, rel))) {
+      verdict = { ok: false, relPath: normalize(path.relative(resolveReal(projectDir), file)), reason: `${SOURCED_DENY}it resolves through a link to ${resolved}, where the translator would read another table` };
+    }
     if (!verdict.ok && process.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK === '1' && honourBypass(file, sessionId)) verdict = { ok: true };
     if (!verdict.ok) return verdict;
   }

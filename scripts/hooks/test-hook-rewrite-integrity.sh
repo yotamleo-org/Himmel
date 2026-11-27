@@ -2477,6 +2477,29 @@ ln -s "$T/lib-p6-outside" "$P6P/scripts/hooks/lib"
 run_lib "$P6P" "$P6P" "$P6P.out" "$P6P/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s6 run_terminal_command)" --optional "$P6P/scripts/hooks/probe-a.sh"
 expect_unloaded_deny "P6: a lib/ symlinked out of the project is refused as an escape" 'spelled inside the project' 'outside the project' "$XLATE_REL"
 
+P6B="$T/lib-p6b"
+P6BL="$T/lib-p6b-link"
+mk_lib_project "$P6B" lib-s6b
+ln -s "$P6B" "$P6BL"
+mkdir -p "$T/lib-p6b-outside"
+cp "$P6B/scripts/hooks/lib/"* "$T/lib-p6b-outside/"
+jq 'del(.tools.run_terminal_command)' "$T/lib-p6b-outside/harness-tool-map.json" > "$T/lib-p6b-outside/m.new" \
+  && mv "$T/lib-p6b-outside/m.new" "$T/lib-p6b-outside/harness-tool-map.json"
+rm -rf "$P6B/scripts/hooks/lib"
+ln -s "$T/lib-p6b-outside" "$P6B/scripts/hooks/lib"
+run_lib "$P6BL" "$P6BL" "$P6B.out" "$P6BL/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s6b run_terminal_command)" --optional "$P6BL/scripts/hooks/probe-a.sh"
+expect_unloaded_deny "P6b: with the project spelled through a link, a lib/ symlinked out of it is still refused" 'DENY run-hook-with-bash.js'
+
+P6C="$T/lib-p6c"
+mk_lib_project "$P6C" lib-s6c
+mkdir -p "$P6C/scripts/other"
+cp "$P6C/$XLATE_REL" "$P6C/scripts/other/"
+jq 'del(.tools.run_terminal_command)' "$P6C/$MAP_REL" > "$P6C/scripts/other/harness-tool-map.json"
+rm -f "$P6C/$XLATE_REL"
+ln -s ../../other/harness-tool-translate.js "$P6C/$XLATE_REL"
+run_lib "$P6C" "$P6C" "$P6C.out" "$P6C/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s6c run_terminal_command)" --optional "$P6C/scripts/hooks/probe-a.sh"
+expect_unloaded_deny "P6c: a translator linked to an identical copy beside another table is refused" 'resolves through a link'
+
 lib_fixture() {
   fixture "$1"
   lib_files "$FX_PROJ"

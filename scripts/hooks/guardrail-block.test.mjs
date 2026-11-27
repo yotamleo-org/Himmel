@@ -1240,6 +1240,23 @@ test('wrapper libs: G3 — a deleted lib file reads degraded/unreadable', () => 
   assert.equal(out.contentIntegrityComplete, false);
 });
 
+test('wrapper libs: G5 — a translator linked to an identical copy elsewhere reads degraded', () => {
+  const ctx = libFixture();
+  const other = join(ctx.repo, 'scripts', 'other');
+  mkdirSync(other, { recursive: true });
+  const xlate = join(ctx.repo, 'scripts', 'hooks', 'lib', 'harness-tool-translate.js');
+  writeFileSync(join(other, 'harness-tool-translate.js'), readFileSync(xlate));
+  rmSync(xlate);
+  fs.symlinkSync(join(other, 'harness-tool-translate.js'), xlate);
+  const out = libStatus(ctx);
+  for (const hook of out.hooks) {
+    const lib = libEntry(hook, 'scripts/hooks/lib/harness-tool-translate.js');
+    assert.equal(lib?.verdict, 'degraded');
+    assert.equal(lib?.reason, 'resolves-elsewhere');
+  }
+  assert.equal(out.contentIntegrityComplete, false);
+});
+
 test('wrapper libs: G4 — a guard that is not wired reports two missing-path lib elements', () => {
   const ctx = libFixture();
   const data = installedData(ctx);
