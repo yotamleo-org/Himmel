@@ -205,6 +205,18 @@ test("competing first adds leave one peers.json, and the loser creates no peer d
   agrees();
 });
 
+test("a pairing step that cannot take the lock leaves another writer's pairing record alone", async () => {
+  await addExample();
+  const before = pairingRow();
+  fs.rmSync(join(configDir(), STATION_KEY), { force: true });
+  liveLock();
+  let t = Date.now();
+  const { deps, lines } = mk({ lockClock: { now: () => t, sleep: async ms => { t += ms; } } });
+  await keygenCmd("new", deps);
+  expect(pairingRow()).toEqual(before);
+  expect(lines.join("\n")).toContain("pairing steps record could not be updated (busy)");
+});
+
 test("first add, pair run twice and keygen under contention each leave a pairing.json that agrees with peers.json", async () => {
   await addExample();
   agrees();

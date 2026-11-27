@@ -179,7 +179,9 @@ export type CardAdmit =
 
 export function looksLikeCard(update: any): boolean {
   const text = update?.message?.text;
-  return typeof text === "string" && (text.split("\n")[1] ?? "").startsWith("#pair ");
+  if (typeof text !== "string") return false;
+  const [first, second = ""] = text.split("\n");
+  return first.startsWith("/peer@") && second.startsWith("#pair ");
 }
 
 export function admitCard(update: any, cfg: Pick<Config, "peers" | "maxTextChars">, state: GateState): CardAdmit {

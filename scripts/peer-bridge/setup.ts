@@ -174,9 +174,11 @@ const writePeers = (expected: Buffer, value: unknown, deps: Deps) =>
 async function recordPairing(deps: Deps): Promise<void> {
   try {
     await withPeersLock(configDir(), () => {
-      if (fs.existsSync(peersFile())) writePairingRecord(readPeersBytes(peersFile()));
+      try {
+        if (fs.existsSync(peersFile())) writePairingRecord(readPeersBytes(peersFile()));
+      } catch (e) { deps.out(dropPairingRecord(e as Error)); }
     }, lockClock(deps));
-  } catch (e) { deps.out(dropPairingRecord(e as Error)); }
+  } catch (e) { deps.out(`the pairing steps record could not be updated (${(e as Error).message}); the next pairing step writes it again`); }
 }
 
 function hasJq(env: NodeJS.ProcessEnv): boolean {

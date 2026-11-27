@@ -496,12 +496,14 @@ export class Poller {
       await addTrustedKey(this.deps.peersPath, peer, offer.station, offer.key, {
         hostname: this.hostName(), now: this.now, sleep: this.deps.lockSleep ?? sleep, firstOnly: true, hooks: this.deps.peersHooks, log: this.log,
         guard: () => {
+          if (this.now() > offer.exp) throw new ConfigError("expired");
           if (lockdownEnabled(this.cfg.bridgeRoot)) throw new ConfigError("lockdown");
           if (fs.existsSync(join(this.deps.configDir, `${peer}.killed`))) throw new ConfigError("killed");
         },
       });
     } catch (e) {
       const why = (e as Error).message;
+      if (e instanceof ConfigError && why === "expired") { await this.closeOffer(offer, "EXPIRED"); return "Already expired."; }
       if (e instanceof ConfigError && why === "lockdown") return LOCKED_LINE;
       if (e instanceof ConfigError && why === "busy") return "Busy, tap again.";
       if (e instanceof ConfigError && CLOSING_RULES.includes(why)) return refused(why);
@@ -563,7 +565,15 @@ export class Poller {
     }
   }
 
+  private uncountReplay(m: any): void {
+    const peer = Object.entries(this.cfg.peers).find(([, p]) => p.chatId === m?.chat?.id)?.[0];
+    if (!peer) return;
+    const seen = readChain(this.file(peer, "inbox.jsonl")).some(r => r.kind === "peer-card" && r.chat_id === m.chat.id && r.message_id === m.message_id && this.now() - (r.ts as number) * 1000 < 60_000);
+    if (seen) this.gate.rate.get(peer)?.pop();
+  }
+
   private async onCard(u: any): Promise<void> {
+    this.uncountReplay(u?.message);
     const r = admitCard(u, this.cfg, this.gate);
     if (!r.ok) {
       this.log(r.log);

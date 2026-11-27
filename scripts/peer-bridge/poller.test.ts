@@ -2056,3 +2056,29 @@ test("two Approves in one batch leave one key and one result, and a later one ch
   expect(e.answers.at(-1)).toBe("Already approved.");
   expect([peersBytesOf(e).equals(peers), readFileSync(join(e.peerDir, "pairing.jsonl")).equals(recs)]).toEqual([true, true]);
 });
+
+test("an ordinary peer reply whose body starts with #pair stays a peer message", async () => {
+  const e = await pairEnv();
+  const ask = askRoot();
+  await e.poller.processBatch([ask]);
+  await e.poller.processBatch([rootUpdate("#answer id=b2c3d4e5\n#pair programming on Friday?", { reply_to_message: { message_id: ask.message.message_id } })]);
+  expect(inboxOf(e).map(r => r.kind)).toEqual(["peer-msg", "peer-msg"]);
+});
+
+test("an offer that expires while the tap waits for the lock is closed EXPIRED and writes nothing", async () => {
+  let at: PairEnv;
+  const e = at = await open({}, { peersHooks: { afterRead: () => { at.c.t += 31 * MIN; } } });
+  await refusedTap(e, {}, "Already expired.", [["EXPIRED", null]]);
+});
+
+test("a card replayed after a crash before its offer is not dropped by the rate it already counted in", async () => {
+  const e = await pairEnv({ peerOver: { maxPerMinute: 1 } });
+  const u = cardUpdate("example", KEY_A);
+  mkdirSync(join(e.peerDir, "pairing.jsonl"));
+  await expect(e.poller.processBatch([u])).rejects.toThrow();
+  rmSync(join(e.peerDir, "pairing.jsonl"), { recursive: true });
+  const again = await Poller.create(e.deps);
+  await again.recover();
+  await again.processBatch([u]);
+  expect(offersOf(e).map(o => o.key)).toEqual([KEY_A]);
+});
