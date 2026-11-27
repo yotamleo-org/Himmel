@@ -1335,10 +1335,11 @@ def compare_paired(base_runs, cand_runs, key_path):
     return out
 
 
-def null_draws(fixtures, cases):
+def null_draws(fixtures, cases, window=DEFAULT_WINDOW):
     """{seeded case id: (file, line)}: one added line of the seeded diff at least NULL_MIN_GAP lines from every defect
-    line (a line of another file qualifies), drawn with random.Random(NULL_SEED) over the key in id order. A diff with
-    no such line draws none, so it leaves the control's denominator."""
+    line of its file, and more than two windows off so no finding is within the window of both (a line of another file
+    qualifies), drawn with random.Random(NULL_SEED) over the key in id order. A diff with no such line draws none, so
+    it leaves the control's denominator."""
     rng, out = random.Random(NULL_SEED), {}
     for cid, c in sorted(cases.items()):
         if c["kind"] != "seeded":
@@ -1346,8 +1347,9 @@ def null_draws(fixtures, cases):
         name = cid + (DELTA_SUFFIX if c.get("delta") is True else ".patch")
         with open(os.path.join(fixtures, name), encoding="utf-8") as fh:
             files = patch_files(fh.read())
+        gap = max(NULL_MIN_GAP, 2 * max(d.get("window", window) for d in c["defects"]) + 1)
         pool = sorted((f, n) for f, lines in files.items() for n in lines
-                      if all(f != norm_path(d["file"]) or abs(n - d["line"]) >= NULL_MIN_GAP for d in c["defects"]))
+                      if all(f != norm_path(d["file"]) or abs(n - d["line"]) >= gap for d in c["defects"]))
         if pool:
             out[cid] = rng.choice(pool)
     return out
@@ -1442,7 +1444,9 @@ def misses(bundles, fixtures, key_path, critics, window=DEFAULT_WINDOW, validati
     halves = [h for h in HALVES if any(c["split"] == h for c in cases.values())]
     critics = sorted(set(critics))
     members = critics + (["panel"] if len(critics) > 1 else [])
-    draws = null_draws(fixtures, cases)
+    if "panel" in critics:
+        raise ValueError("panel is a reserved name: two or more critics add the panel row")
+    draws = null_draws(fixtures, cases, window)
     gold = None
     if adjudications:
         if not validation:
@@ -1524,8 +1528,8 @@ def report_misses(res):
             for who in res["members"]:
                 t, head = members[who], "%-6s %s" % (half, who)
                 out.append("%s bins: %s" % (head, ", ".join("%s %d" % (x, t["bins"][x]) for x in BINS)))
-                out.append("%s location-only share %d/%d; null window %d/%d; clean twin at the seed line (secondary) "
-                           "%d/%d" % ((head, t["bins"]["location-only"], _scored(t)) + tuple(t["null_window"])
+                out.append("%s location-only share %d/%d defects; null window %d/%d cases; clean twin at the seed line "
+                           "(secondary) %d/%d" %((head, t["bins"]["location-only"], _scored(t)) + tuple(t["null_window"])
                                       + tuple(t["clean_twin"])))
                 if res["graded"]:
                     g = t["grades"]

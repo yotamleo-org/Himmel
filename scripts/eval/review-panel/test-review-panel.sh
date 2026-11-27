@@ -1549,6 +1549,13 @@ has "MA1b misses: three seeded diffs give a denominator of 3" "$out" "null windo
 mscase case-63 8 case-63 "$MS/fx-short"
 out=$(python3 "$SCORE" misses --fixtures "$MS/fx-short" --key "$MS/k1.json" --outputs "$M1" 2>&1)
 has "MA1b misses: a diff with no line 10 off is skipped and the denominator drops by 1" "$out" "null window 0/2"
+misses "$MS/k1b.json" --outputs "$M1" --window 7 --json "$MS/m1w.json" >/dev/null
+wdrawn=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["null_window"]["draws"]["case-61"][1])' "$MS/m1w.json" 2>/dev/null)
+wwant=$(python3 -c 'import random; print(random.Random(11085).choice([n for n in range(1, 41) if abs(n - 5) >= 15]))')
+eq "MA1b misses: under a wide window the null window never overlaps the defect's window" "$wdrawn" "$wwant"
+has "MA1b misses: the two shares name their units" "$out" "location-only share 1/3 defects; null window 0/2 cases"
+out=$(misses "$MS/k1.json" --outputs "$M1" --critics codex,panel); rc=$?
+eq "MA1 misses: panel is a reserved critic name" "$rc:$(printf '%s' "$out" | grep -c 'reserved')" "2:1"
 
 for c in case-71 case-72; do mscase "$c" 40; mscase "${c}c" 40 "$c"; done
 mskey "$MS/k2.json" case-61:logic:open:5 case-71:fail-open:sealed:5 case-72:spec-miss:sealed:5
