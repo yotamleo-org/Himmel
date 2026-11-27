@@ -263,8 +263,7 @@ def test_first(rows, as_of):
     return out
 
 
-def kept_cost(path):
-    """The cost section already in the output file: its figures come from written audits, which no ledger holds."""
+def cost_carried_from_previous_output(path):
     try:
         with open(path, encoding="utf-8") as fh:
             return json.load(fh).get("cost")
@@ -288,7 +287,6 @@ def day(iso):
 
 
 def cost_section(c):
-    """The first cost audit beside its re-measure, with the re-measure's figures without the T3 Code lane."""
     first, now = c["runs"]
     nt, rec, gap = now["without_t3"], now["reconciliation"], now["usage_store"]
     dated = cost_stamp(c["runs"])
@@ -359,7 +357,7 @@ def build(args):
     cache["command"] = CACHE_CMD
     cache["scope"] = args.cache_scope
     cache["as_of"] = as_of
-    cost = kept_cost(args.out)
+    cost = cost_carried_from_previous_output(args.out)
     data = {
         "v": 4, "generator": "scripts/cr/evals-page-gen.py",
         "review": {
