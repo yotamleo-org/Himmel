@@ -2206,7 +2206,7 @@ c103_expect "(3b) enabled: no with the user bus unreachable" WARN 'launcher stat
 printf 'disabled\n' > "$t/sctl"; c103_run BYPASSD_SERVICE_OS=Darwin
 c103_expect "(3c) macOS turned off in a GUI session" INFO 'off; from your own shell: himmelctl bypass on'
 printf '1' > "$t/lrc"; c103_run BYPASSD_SERVICE_OS=Darwin; printf '0' > "$t/lrc"
-c103_expect "(3d) macOS enabled: no with no GUI session" WARN 'launcher state unreadable: no launchd GUI session'
+c103_expect "(3d) macOS enabled: no with no GUI session" WARN 'launcher state unreadable: no answer from the launchd GUI session'
 : > "$t/hang"; c103_run HIMMEL_DOCTOR_BYPASS_TIMEOUT=1
 c103_expect "(3e) a hanging user bus probe is bounded" WARN 'launcher state unreadable'
 c103_run BYPASSD_SERVICE_OS=Darwin HIMMEL_DOCTOR_BYPASS_TIMEOUT=1; rm -f "$t/hang"

@@ -6382,7 +6382,7 @@ _c103_systemctl() { "$tb" -k 2 "$secs" "${HIMMEL_DOCTOR_SYSTEMCTL:-systemctl}" "
 _c103_manager_blind() {
     local state tb="$1" secs="$2"
     if [ "${BYPASSD_SERVICE_OS:-$(uname -s)}" = Darwin ]; then
-        "$tb" -k 2 "$secs" "${HIMMEL_DOCTOR_LAUNCHCTL:-launchctl}" print "gui/$(id -u)" >/dev/null 2>&1 </dev/null || printf 'no launchd GUI session'
+        "$tb" -k 2 "$secs" "${HIMMEL_DOCTOR_LAUNCHCTL:-launchctl}" print "gui/$(id -u)" >/dev/null 2>&1 </dev/null || printf 'no answer from the launchd GUI session'
     else
         state="$(_systemd_user_unit_state _c103_systemctl himmel-bypass-launchd.service --reason)"
         case "$state" in unknown*) printf '%s' "${state#unknown: }" ;; esac
