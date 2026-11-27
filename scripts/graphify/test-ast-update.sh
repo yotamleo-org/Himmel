@@ -621,7 +621,7 @@ echo "T23: graphify runs niced (>= 15) with at most 8 extraction workers"
 BIN23="$WS/bin23"; mkdir -p "$BIN23"
 cat > "$BIN23/graphify" <<STUB
 #!/usr/bin/env bash
-echo "nice=\$(nice) workers=\${GRAPHIFY_MAX_WORKERS-unset} io=\$(command -v ionice >/dev/null 2>&1 && ionice -p \$\$ || echo none)" > "$WS/prio.log"
+echo "nice=\$(ps -o nice= -p \$\$ | tr -d ' ') workers=\${GRAPHIFY_MAX_WORKERS-unset} io=\$(command -v ionice >/dev/null 2>&1 && ionice -p \$\$ || echo none)" > "$WS/prio.log"
 exit 0
 STUB
 chmod +x "$BIN23/graphify"
