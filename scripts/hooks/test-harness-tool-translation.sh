@@ -578,11 +578,11 @@ for ep in project plugin guard user; do
         else fail "$ep: truncated grok $post - rc $SEEN_RC, member saw $(cat "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
     done
     ROW_JQ='.tool_input.cwd = "/x"'; payload cursor shell "$ORDINARY_CMD"; seen_by "$ep"
-    refused "$ep: a cursor Shell with a non-empty cwd is refused" '"cwd"'
+    refused "$ep: a cursor Shell with a non-empty cwd is refused" '"cwd" must be empty'
     ROW_JQ='.tool_input.cwd = null'; payload cursor shell "$ORDINARY_CMD"; seen_by "$ep"
-    refused "$ep: a cursor Shell with a null cwd is refused" '"cwd"'
+    refused "$ep: a cursor Shell with a null cwd is refused" '"cwd" must be empty'
     ROW_JQ='.tool_input.zz_extra = "x"'; payload grok shell "$ORDINARY_CMD"; seen_by "$ep"
-    refused "$ep: a grok run_terminal_command with a key outside its allow list is refused" '"zz_extra"'
+    refused "$ep: a grok run_terminal_command with a key outside its allow list is refused" '"zz_extra" is not allowed'
     jq -c '.hook_event_name = "PostToolUse"' "$SB/p.json" > "$SB/p2.json" && mv "$SB/p2.json" "$SB/p.json"
     seen_by "$ep"
     if [ "$SEEN_RC" = 0 ] && [ "$(jq -r .tool_name "$SB/seen.json" 2>/dev/null)" = Bash ]; then pass "$ep: a grok post event with an extra key still reaches its members"

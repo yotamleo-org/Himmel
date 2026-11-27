@@ -39,7 +39,7 @@ shape='type == "object"
     and all(.tools[]; type == "object" and (.claude | type) == "string"
         and (.allow | type) == "array" and all(.allow[]; type == "string")
         and ((has("empty") | not) or ((.empty | type) == "array" and all(.empty[]; type == "string")))
-        and ((has("keys") | not)or ((.keys | type) == "object" and all(.keys[]; type == "string"))))'
+        and ((has("keys") | not) or((.keys | type) == "object" and all(.keys[]; type == "string"))))'
 if ! { tbl=$(cat "$table" 2>/dev/null) && printf '%s' "$tbl" | jq -se "length == 1 and (.[0] | $shape)" >/dev/null 2>&1; }; then
     echo "translate-tool-call: harness tool table $table is missing, unreadable or malformed; refusing the tool call" >&2
     exit 2
