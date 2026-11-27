@@ -149,6 +149,9 @@
 #                               both the sample's key and the saved one, so a move the saved key lacks
 #                               stays the tick change's wake. A READY past the relay's <inbox>.wait.ready
 #                               cursor is the relay's: it wakes nothing here until the relay hands it on.
+#                               The one-shot relay offers a newest-marker READY first (before any wrap); a
+#                               retried candidate moves behind the others; a refused READY (auto-go
+#                               refused it) wakes with this line first, then the WAKE worker-event line.
 #                               Named = in <inbox>.wait.markerwoke: this wake, a WAKE tick
 #                               whose tails=/acts= move is that worker's (only an event whose marker that
 #                               tick's tails= token shows, so a READY written mid-tick under a FINDING token
@@ -2248,7 +2251,10 @@ close_sweep_woke() {
 # again); anything else
 # prints `WAKE worker-event <first line> rc=<n> out=<file>` and returns 0. After one
 # call the relay yields to the inbox; the next sample starts after a retryable worker
-# so its standing refusal cannot starve later workers. HANDLED and WAKE record
+# so its standing refusal cannot starve later workers. One-shot, auto_go on: a newest-marker READY
+# (tails= READY or READY!stale) goes before any wrap, a retried candidate moves behind the others
+# (label plus marker), a READY its own wrap follows stays after the wraps, and a refused READY
+# (ESCALATE auto-go or auto-go-error, rc 10) prints `WAKE worker-ready` first. HANDLED and WAKE record
 # `<label> <marker> <cksum>` in $r0_file, so one bullet is never run or woken twice.
 # R0 takes no lock and sends nothing; RETASK-token-shaped strings are scrubbed from the
 # line it passes and the output it keeps.
@@ -2266,8 +2272,15 @@ ready_dry_re='^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?READY[[:space:]]+#?[0-9]+[[:space
 ready_label=""; ready_line=""; ready_bullet=""; ready_off=""
 auto_go_on() { ( . "$HERE/../../lib/flags.sh" && himmel_flag auto_go ) >/dev/null 2>&1; }
 dry_run_ready_answer() { [ "$1" -eq 10 ] && [ "$2" = "ESCALATE marker-READY" ]; }
-ready_pick() { # sets ready_label/line/bullet to the oldest READY bullet past its worker's cursor
-    local label ldoc cur last entry re="$ready_re"
+ready_newest() {
+    case "$(field tails "$tick_line" | tr ',' '\n' | awk -v l="$1" 'index($0, l ":") == 1 { print substr($0, length(l) + 2); exit }')" in
+        READY|READY!stale) return 0 ;;
+    esac
+    return 1
+}
+ready_pick() {
+    local label ldoc cur last entry re="$ready_re" rk="${1:-}" skip="" pass i pick=-1
+    local -a pl=() pn=() pb=()
     ready_label=""; ready_off=""
     auto_go_on || { ready_off=1; re="$ready_dry_re"; }
     while IFS=$'\t' read -r label ldoc; do
@@ -2281,15 +2294,28 @@ ready_pick() { # sets ready_label/line/bullet to the oldest READY bullet past it
             printf '%s\t%s\n' "$label" "${last:-0}" >> "$ready_file"
             continue
         fi
-        # one pick per call, but every later worker is still visited so its cursor is set
-        [ -z "$ready_label" ] || continue
         entry="$(printf '%s\n' "$entry" | awk -F: -v c="$cur" '$1 + 0 > c { print; exit }')"
         [ -n "$entry" ] || continue
-        ready_label="$label"; ready_line="${entry%%:*}"; ready_bullet="${entry#*:}"
+        pl+=("$label"); pn+=("${entry%%:*}"); pb+=("${entry#*:}")
     done <<EOF
 $(jq -r "$JQ_WR"'W[]? | [.label, .doc] | @tsv' "$legs_from")
 EOF
-    [ -n "$ready_label" ]
+    [ "${#pl[@]}" -gt 0 ] || return 1
+    if [ -n "$ready_off" ]; then
+        pick=0
+    else
+        case "$rk" in *" READY") skip="${rk% READY}" ;; esac
+        for pass in newest other last; do
+            for ((i = 0; i < ${#pl[@]}; i++)); do
+                case "$pass" in
+                    newest) if [ "${pl[i]}" = "$skip" ] || ! ready_newest "${pl[i]}"; then continue; fi ;;
+                    other) [ "${pl[i]}" != "$skip" ] || continue ;;
+                esac
+                pick=$i; break 2
+            done
+        done
+    fi
+    ready_label="${pl[pick]}"; ready_line="${pn[pick]}"; ready_bullet="${pb[pick]}"
 }
 ready_advance() { # <label> <line>: the cursor moves once the bullet was handed on
     { awk -F'\t' -v l="$1" '$1 != l' "$ready_file" 2>/dev/null; printf '%s\t%s\n' "$1" "$2"; } | atomic_write "$ready_file"
@@ -2335,18 +2361,36 @@ r0_log_attempt() { # <label> <marker> <event line> <call start ns> <call end ns>
     [ "$6" -ne 0 ] || r0_seen="$(printf '%s' "$r0_seen" | awk -v k="$1 $2 $3 " 'index($0, k) != 1')"
 }
 
+r0_retry_set() {
+    if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ]; then r0_retry="$1"; else r0_retry="$1 $2"; fi
+    printf '%s\n' "$r0_retry" | atomic_write "$inbox.wait.r0-next"
+}
+r0_retry_clear() {
+    [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" != 1 ] || return 0
+    [ "$r0_retry" = "$1 $2" ] || [ "$r0_retry" = "$1" ] || return 0
+    r0_retry=""
+    rm -f "$inbox.wait.r0-next"
+}
 r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
-    local cands label marker ldoc bullet sum line stem out rc outf what pr wake_line pending_slow pending_to pending_rc h0 h1
+    local cands label marker ldoc bullet sum line stem out rc outf what pr wake_line pending_slow pending_to pending_rc h0 h1 rin ready_first="" ready_picked="" ready_wake_line
     r0_handled=""
     [ -n "$console_doc" ] && [ -n "$legs_from" ] || return 1
-    # Prefer WRAPPED once per label, then start after the last retryable worker.
-    cands="$( { field tails "$tick_line" | tr ',' '\n' | sed -n 's/^\(.*\):WRAPPED$/\1 WRAPPED/p'
-                field acts "$tick_line" | tr ',' '\n' | sed -n 's/^\(.*\):MERGED#[0-9]*$/\1 MERGED/p'; } |
-        awk -v last="$r0_retry" '
-            !NF || seen[$1]++ { next }
+    rin="$( { field tails "$tick_line" | tr ',' '\n' | sed -n 's/^\(.*\):WRAPPED$/\1 WRAPPED/p'
+              field acts "$tick_line" | tr ',' '\n' | sed -n 's/^\(.*\):MERGED#[0-9]*$/\1 MERGED/p'; } )"
+    if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" != 1 ] && ready_pick "$r0_retry"; then
+        ready_picked=1
+        if [ -z "$ready_off" ] && ready_newest "$ready_label"; then
+            ready_first=1
+            rin="$ready_label READY${rin:+$'\n'$rin}"
+        fi
+    fi
+    cands="$(printf '%s\n' "$rin" | awk -v last="$r0_retry" '
+            !NF { next }
+            { k = ($2 == "READY") ? $1 " READY" : $1 }
+            seen[k]++ { next }
             past { print; next }
             { before = before $0 "\n" }
-            $1 == last { past = 1 }
+            (index(last, " ") ? $1 " " $2 : $1) == last { past = 1 }
             END { printf "%s", before }
         ' )"
     if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ]; then
@@ -2387,8 +2431,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
                 return 1 ;;
         esac
     else
-        # a READY past its cursor comes after any WRAPPED or MERGED worker
-        if ready_pick; then cands="${cands:+$cands$'\n'}$ready_label READY"; fi
+        if [ -n "$ready_picked" ] && [ -z "$ready_first" ]; then cands="${cands:+$cands$'\n'}$ready_label READY"; fi
     fi
     r0_stamp_seen "$cands"
     [ -z "$cands" ] || r0_offered=1
@@ -2449,10 +2492,12 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
             rm -f "$outf.tries"
             printf '%s\n' "$sum" >> "$r0_file"
             ready_advance "$label" "$ready_line"
+            r0_retry_clear "$label" "$marker"
             break
         fi
         if [ "$rc" -eq 0 ]; then
             rm -f "$outf.tries" "$outf.slow"
+            r0_retry_clear "$label" "$marker"
             printf '%s\n' "$sum" >> "$r0_file"
             [ "$marker" != READY ] || { ready_advance "$label" "$ready_line"; marker_note_bullet "$label" "$bullet"; }
             r0_handled=1
@@ -2470,16 +2515,14 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         fi
         if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" != 1 ] && { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; } && [ "$(cat "$outf.slow" 2>/dev/null)" != "${sum##* }" ]; then  # swallow-ok: no marker file reads empty, a first timeout
             printf '%s\n' "${sum##* }" > "$outf.slow"
-            r0_retry="$label"
-            printf '%s\n' "$label" | atomic_write "$inbox.wait.r0-next"
+            r0_retry_set "$label" "$marker"
             break
         fi
         case "$rc:$out" in
             *"step pr-state"*) ;;
             *"wrap-merged: step log failed"*|*"wrap-merged: step board failed"*) ;;
             10:*-failed\ rc=[3467]\ *)
-                r0_retry="$label"
-                printf '%s\n' "$label" | atomic_write "$inbox.wait.r0-next"
+                r0_retry_set "$label" "$marker"
                 if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ] && r0_ladder "$label" "${sum##* }" "$marker" "$out"; then
                     printf '%s' "$r0_warning_lines"
                     return 0
@@ -2487,10 +2530,17 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
                 break ;;
         esac
         rm -f "$outf.tries" "$outf.slow"
+        r0_retry_clear "$label" "$marker"
         # Print the wake before recording it: a kill between the two leaves the READY or
         # bullet unrecorded, so it is relayed once more (idempotent) and woken again,
         # never recorded and lost.
         wake_line="$(printf 'WAKE worker-event %s rc=%s out=%s' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$rc" "$outf")"
+        if [ "$marker" = READY ] && [ -z "$ready_off" ] && [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" != 1 ] && [ "$rc" -eq 10 ]; then
+            case "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" in
+                "ESCALATE auto-go "*|"ESCALATE auto-go-error "*)
+                    ready_wake_line="$(marker_key "$label" "$bullet")" && printf '%s\n' "${ready_wake_line#*$'\t'}" ;;
+            esac
+        fi
         printf '%s\n' "$wake_line"
         printf '%s' "$r0_warning_lines"
         printf '%s\n' "$sum" >> "$r0_file"

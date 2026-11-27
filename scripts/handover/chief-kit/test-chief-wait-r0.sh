@@ -27,6 +27,20 @@
 #   (r0p) Telegram is serviced between pending slow wraps
 #   (r0q) a standing retry does not starve a later worker's wrap
 #   (r0r) retry rotation survives a Telegram wake and waiter re-arm
+#   (10901-r1a/r1h) a READY that is its worker's newest marker (READY, READY!stale) is offered before
+#         any WRAPPED or MERGED candidate
+#   (10901-r1b/r1e) controls: no READY, or auto_go off, keeps the wraps in their order
+#   (10901-r1c/r1g) controls: a READY its own WRAPPED follows is not offered ahead of that wrap, is still
+#         relayed after it, and is never called while that wrap's close retries
+#   (10901-r1d/r1k/r1m) a retried candidate moves behind the others; none starves another
+#   (10901-r1f) a retried READY's record is cleared once it is handled
+#   (10901-r1j) a newest-marker READY goes before a READY its own wrap follows
+#   (10901-r1p) a newest-marker READY goes before another label's MERGED that escalates (the DT inbox)
+#   (10901-r1n) a retryable READY and its worker's retryable MERGED alternate
+#   (10901-r2a/r2g) a refused READY (ESCALATE auto-go, auto-go-error) wakes with WAKE worker-ready first
+#   (10901-r2b/r2c/r2e/r2f/r2i) controls: no WAKE worker-ready for a wrap, flag off, GO-WRITTEN, another
+#         rc, the stream service, or another escalation
+#   (10901-r2h) the READY the relay wake names is not named a second time by the marker carry
 #   Run only the wrap-bound regressions with --wrap-relay.
 #   (hd)  holds=: a worker entering the set wakes once; ageing, a worker leaving and the set
 #         emptying do not wake
@@ -94,6 +108,23 @@ if [ -f "$STUB/le.retry-first" ] && grep -q '^N1 ' "$STUB/le.stdin"; then
     printf 'ESCALATE wrap-merged-failed rc=3 close-wrapped-worker: refusing - queue lock held\n'
     exit 10
 fi
+# le.by-marker: a WRAPPED line answers le.wrap-out / le.wrap-rc (default: rc 10 ambiguous-label), any other line falls through
+if [ -f "$STUB/le.by-marker" ] && grep -q ' WRAPPED' "$STUB/le.stdin"; then
+    if [ -f "$STUB/le.wrap-out" ]; then cat "$STUB/le.wrap-out"; else printf 'ESCALATE ambiguous-label\n'; fi
+    if [ -f "$STUB/le.wrap-rc" ]; then exit "$(cat "$STUB/le.wrap-rc")"; fi
+    exit 10
+fi
+# le.merged-escalates: a MERGED line answers rc 10 ESCALATE ambiguous-label, any other line falls through
+if [ -f "$STUB/le.merged-escalates" ] && grep -q ' MERGED' "$STUB/le.stdin"; then
+    printf 'ESCALATE ambiguous-label\n'
+    exit 10
+fi
+# le.out.<n> / le.rc.<n>: the n-th call answers from its own file instead of le.out / le.rc
+if [ -f "$STUB/le.out.$n" ] && [ ! -f "$STUB/le.echo" ]; then
+    cat "$STUB/le.out.$n"
+    if [ -f "$STUB/le.rc.$n" ]; then exit "$(cat "$STUB/le.rc.$n")"; fi
+    exit "$(cat "$STUB/le.rc")"
+fi
 # le.rm: act like wrap-merged, drop N1 from the manifest and from the tick line
 if [ -f "$STUB/le.rm" ]; then
     jq -c '.workers |= map(select(.label != "N1"))' "$4" > "$4.tmp" && mv "$4.tmp" "$4"
@@ -102,6 +133,7 @@ if [ -f "$STUB/le.rm" ]; then
 fi
 if [ -f "$STUB/le.echo" ]; then printf 'ESCALATE unfiled-residual: %s\n' "$(cat "$STUB/le.stdin")"
 else cat "$STUB/le.out"; fi
+if [ -f "$STUB/le.rc.$n" ]; then exit "$(cat "$STUB/le.rc.$n")"; fi
 exit "$(cat "$STUB/le.rc")"
 EOF
 cat > "$STUB/budget-off.sh" <<'EOF'
@@ -185,6 +217,16 @@ fleet2() {
     fleet "$1"
     L2="$WORK/$1/HIMMEL-2-N2-b.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$L2"
     printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$L" "$L2" > "$M"
+}
+fleet3() {
+    fleet2 "$1"
+    L3="$WORK/$1/HIMMEL-3-N3-c.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$L3"
+    printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"},{"doc":"%s","label":"N3"}]}\n' "$L" "$L2" "$L3" > "$M"
+    printf 'N1\t0\nN2\t0\nN3\t0\n' > "$I.wait.ready"
+}
+wait_call() {
+    local k=0
+    while [ "$k" -lt "${2:-80}" ] && [ ! -s "$STUB/le.stdin.$1" ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; k=$((k + 1)); done
 }
 
 # --- (r0k/l) the wrap bound and silent timeout diagnostics -------------------
@@ -373,7 +415,9 @@ wait_exit "$WPID"
 check "(r0s) the READY wakes the chief" "0" "$rc"
 check "(r0s) one worker-event call" "1" "$(cat "$STUB/le.calls" 2>/dev/null)"
 check "(r0s) the call carries the READY bullet, labelled" "N1 READY 2566 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa GREEN" "$(cat "$STUB/le.stdin" 2>/dev/null)"
-contains "(r0s) the wake names the escalation" "$(head -n 1 "$WORK/r0s.out")" "WAKE worker-event ESCALATE auto-go 3 not-ready rc=10 out=$I.wait.le-N1"
+check "(r0s)(10901-r2a) line 1 names the READY, its worker, PR and head" "WAKE worker-ready N1 pr=2566 head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$(head -n 1 "$WORK/r0s.out")"
+check "(r0s)(10901-r2a) the block holds one WAKE worker-ready N1" "1" "$(grep -c '^WAKE worker-ready N1 ' "$WORK/r0s.out")"
+contains "(r0s)(10901-r2a) line 2 names the escalation" "$(sed -n 2p "$WORK/r0s.out")" "WAKE worker-event ESCALATE auto-go 3 not-ready rc=10 out=$I.wait.le-N1"
 # a re-armed waiter does not relay the same bullet again
 reset_stub
 printf 'ESCALATE auto-go 3 not-ready\n' > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
@@ -503,6 +547,225 @@ wait_hb "$I" || fail "(r0s7) no baseline heartbeat"
 printf -- '%s\n- 10:01 LIVE — waiting on CI\n' "$READY_A" >> "$L"
 wait_exit "$WPID"
 check "(r0s7) flag off: another rc 10 answer to a READY is one WAKE worker-event" "1" "$(grep -c '^WAKE worker-event ESCALATE auto-go-error rc=1 x rc=10 ' "$WORK/r0s7.out")"
+check "(r0s7)(10901-r2c) flag off: no WAKE worker-ready line" "0" "$(grep -c '^WAKE worker-ready' "$WORK/r0s7.out")"
+stop_waiter
+
+H_C="$(printf '%040d' 0 | tr 0 c)"; H_D="$(printf '%040d' 0 | tr 0 d)"
+H_E="$(printf '%040d' 0 | tr 0 e)"; H_F="$(printf '%040d' 0 | tr 0 f)"
+READY_C="- 21:36 READY 6010 $H_C GREEN"
+WRAP_P='- 21:30 WRAPPED — paused'
+WRAP_C='- 21:40 WRAPPED — PR 6010 left open, READY written'
+WRAP_OUT_RETRY='ESCALATE close-wrapped-failed rc=6 subtree alive'
+RETRYABLE='ESCALATE series-find-failed rc=3 x'
+
+reset_stub; fleet3 r1a
+: > "$STUB/le.by-marker"; printf 'HANDLED auto-go N3\n' > "$STUB/le.out"
+printf -- '%s\n' "$WRAP_P" >> "$L"; printf -- '%s\n' "$WRAP_P" >> "$L2"; printf -- '%s\n' "$READY_C" >> "$L3"
+tick_line "N1:WRAPPED,N2:WRAPPED,N3:READY"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1a.out" --doc "$D" --workers-from "$M"
+wait_call 1 80
+check "(10901-r1a) the newest-marker READY is the first call" "N3 READY 6010 $H_C GREEN" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
+stop_waiter
+
+reset_stub; fleet3 r1h
+: > "$STUB/le.by-marker"; printf 'HANDLED auto-go N3\n' > "$STUB/le.out"
+printf -- '%s\n' "$WRAP_P" >> "$L"; printf -- '%s\n' "$WRAP_P" >> "$L2"; printf -- '%s\n' "$READY_C" >> "$L3"
+tick_line "N1:WRAPPED,N2:WRAPPED,N3:READY!stale"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1h.out" --doc "$D" --workers-from "$M"
+wait_call 1 80
+check "(10901-r1h) a READY!stale is still the first call" "N3 READY 6010 $H_C GREEN" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
+stop_waiter
+
+reset_stub; fleet3 r1b
+: > "$STUB/le.by-marker"; printf 'HANDLED auto-go N3\n' > "$STUB/le.out"
+printf -- '%s\n' "$WRAP_P" >> "$L"; printf -- '%s\n' "$WRAP_P" >> "$L2"
+tick_line "N1:WRAPPED,N2:WRAPPED,N3:LIVE"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1b.out" --doc "$D" --workers-from "$M"
+wait_call 1 80
+check "(10901-r1b) with no READY the first call is N1's wrap" "N1 WRAPPED — paused" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
+wait_exit "$WPID"
+stop_waiter
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1b2.out" --doc "$D" --workers-from "$M"
+wait_call 2 80
+check "(10901-r1b) after a re-arm the second call is N2's wrap" "N2 WRAPPED — paused" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
+stop_waiter
+
+reset_stub; fleet3 r1c
+: > "$STUB/le.by-marker"; printf 'HANDLED auto-go N3\n' > "$STUB/le.out"
+printf -- '%s\n%s\n' "$READY_C" "$WRAP_C" >> "$L3"
+tick_line "N1:LIVE,N2:LIVE,N3:WRAPPED"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1c.out" --doc "$D" --workers-from "$M"
+wait_exit "$WPID"
+check "(10901-r1c) the wrapped worker's wrap goes first" "N3 WRAPPED — PR 6010 left open, READY written" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
+stop_waiter
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1c2.out" --doc "$D" --workers-from "$M"
+wait_call 2 80
+check "(10901-r1c) its READY is still relayed after the wrap" "N3 READY 6010 $H_C GREEN" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
+stop_waiter
+
+reset_stub; fleet3 r1g
+: > "$STUB/le.by-marker"; printf 'HANDLED auto-go N3\n' > "$STUB/le.out"
+printf '%s\n' "$WRAP_OUT_RETRY" > "$STUB/le.wrap-out"; echo 10 > "$STUB/le.wrap-rc"
+printf -- '%s\n%s\n' "$READY_C" "$WRAP_C" >> "$L3"
+tick_line "N1:LIVE,N2:LIVE,N3:WRAPPED"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1g.out" --doc "$D" --workers-from "$M"
+wait_call 2 80
+check "(10901-r1g) the first call is the wrap" "N3 WRAPPED — PR 6010 left open, READY written" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
+check "(10901-r1g) the second call is the wrap again" "N3 WRAPPED — PR 6010 left open, READY written" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
+check "(10901-r1g) no call carries N3's READY while the wrap retries" "0" "$(cat "$STUB"/le.stdin.* 2>/dev/null | grep -c '^N3 READY ')"
+stop_waiter
+
+reset_stub; fleet3 r1d
+: > "$STUB/le.retry-first"; printf '%s\n' "$RETRYABLE" > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+printf -- '%s\n' "$WRAP_P" >> "$L"; printf -- '%s\n' "$WRAP_P" >> "$L2"; printf -- '%s\n' "$READY_C" >> "$L3"
+tick_line "N1:WRAPPED,N2:WRAPPED,N3:READY"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1d.out" --doc "$D" --workers-from "$M"
+wait_call 3 100
+check "(10901-r1d) N2's wrap is one of the first three calls" "1" "$(cat "$STUB/le.stdin.1" "$STUB/le.stdin.2" "$STUB/le.stdin.3" 2>/dev/null | grep -c '^N2 WRAPPED — paused$')"
+r1d_s1="$(cat "$STUB/le.stdin.1" 2>/dev/null)"; r1d_s2="$(cat "$STUB/le.stdin.2" 2>/dev/null)"; r1d_s3="$(cat "$STUB/le.stdin.3" 2>/dev/null)"
+r1d_same=0
+if [ "$r1d_s1" = "$r1d_s2" ] || [ "$r1d_s2" = "$r1d_s3" ]; then r1d_same=1; fi
+check "(10901-r1d) no two consecutive calls are equal" "0" "$r1d_same"
+stop_waiter
+
+reset_stub; fleet3 r1e
+printf 'ESCALATE marker-READY\n' > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+printf -- '%s\n' "$WRAP_P" >> "$L"; printf -- '%s\n' "$WRAP_P" >> "$L2"; printf -- '%s\n' "$READY_C" >> "$L3"
+tick_line "N1:WRAPPED,N2:WRAPPED,N3:READY"
+start "$I" "$WORK/r1e.out" --doc "$D" --workers-from "$M"
+wait_call 1 80
+check "(10901-r1e) flag off: the first call is N1's wrap" "N1 WRAPPED — paused" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
+stop_waiter
+
+reset_stub; fleet3 r1f
+: > "$STUB/le.by-marker"; printf '%s\n' "$RETRYABLE" > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+printf -- '%s\n' "$WRAP_P" >> "$L"; printf -- '%s\n' "$READY_C" >> "$L3"
+tick_line "N1:WRAPPED,N2:LIVE,N3:READY"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1f.out" --doc "$D" --workers-from "$M"
+wait_exit "$WPID"
+check "(10901-r1f) (a) call 1 is N3's retryable READY" "N3 READY 6010 $H_C GREEN" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
+check "(10901-r1f) (a) call 2 is N1's wrap, which wakes" "N1 WRAPPED — paused" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
+stop_waiter
+printf 'HANDLED auto-go N3\n' > "$STUB/le.out"; echo 0 > "$STUB/le.rc"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1f2.out" --doc "$D" --workers-from "$M"
+n=0
+while [ "$n" -lt 80 ] && ! grep -qx 'N3 auto-go 6010' "$I.wait.digest" 2>/dev/null && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+check "(10901-r1f) (b) call 3 is N3's READY, now handled" "N3 READY 6010 $H_C GREEN" "$(cat "$STUB/le.stdin.3" 2>/dev/null)"
+check "(10901-r1f) (b) the digest names the GO" "1" "$(grep -cx 'N3 auto-go 6010' "$I.wait.digest" 2>/dev/null)"
+printf -- '- 21:50 READY 6011 %s GREEN\n' "$H_D" >> "$L3"; printf -- '- 21:51 WRAPPED — paused\n' >> "$L2"
+tick_line "N1:WRAPPED,N2:WRAPPED,N3:READY"
+wait_call 4 80
+check "(10901-r1f) (c) a newer READY of N3 goes before N2's wrap" "N3 READY 6011 $H_D GREEN" "$(cat "$STUB/le.stdin.4" 2>/dev/null)"
+stop_waiter
+
+reset_stub; fleet3 r1j
+: > "$STUB/le.by-marker"; printf 'HANDLED auto-go\n' > "$STUB/le.out"; echo 0 > "$STUB/le.rc"
+printf -- '%s\n' "$WRAP_P" >> "$L"
+printf -- '- 21:32 READY 6020 %s GREEN\n- 21:33 WRAPPED — PR 6020 left open\n' "$H_E" >> "$L2"
+printf -- '- 21:36 READY 6030 %s GREEN\n' "$H_F" >> "$L3"
+tick_line "N1:WRAPPED,N2:WRAPPED,N3:READY"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1j.out" --doc "$D" --workers-from "$M"
+wait_call 1 80
+check "(10901-r1j) N3's newest-marker READY goes first" "N3 READY 6030 $H_F GREEN" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
+stop_waiter
+
+reset_stub; fleet3 r1k
+: > "$STUB/le.by-marker"; printf '%s\n' "$RETRYABLE" > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+printf -- '%s\n' "$WRAP_P" >> "$L"
+printf -- '%s\n%s\n' "$READY_C" "$WRAP_C" >> "$L3"
+printf 'N3 WRAPPED %s\n' "$(printf '%s\n' "$WRAP_C" | cksum | cut -d' ' -f1)" > "$I.wait.r0"
+printf 'N3\n' > "$I.wait.r0-next"
+tick_line "N1:WRAPPED,N2:LIVE,N3:WRAPPED"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1k.out" --doc "$D" --workers-from "$M"
+wait_call 3 80
+check "(10901-r1k) N1's wrap is one of the first two calls" "1" "$(cat "$STUB/le.stdin.1" "$STUB/le.stdin.2" 2>/dev/null | grep -c '^N1 WRAPPED')"
+stop_waiter
+
+reset_stub; fleet3 r1m
+L4="$WORK/r1m/HIMMEL-4-N4-d.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$L4"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"},{"doc":"%s","label":"N3"},{"doc":"%s","label":"N4"}]}\n' "$L" "$L2" "$L3" "$L4" > "$M"
+printf 'N1\t0\nN2\t0\nN3\t0\nN4\t0\n' > "$I.wait.ready"
+: > "$STUB/le.by-marker"
+printf '%s\n' "$RETRYABLE" > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+printf '%s\n' "$RETRYABLE" > "$STUB/le.out.1"; echo 10 > "$STUB/le.rc.1"
+printf 'HANDLED auto-go N4\n' > "$STUB/le.out.2"; echo 0 > "$STUB/le.rc.2"
+printf -- '%s\n' "$READY_C" >> "$L3"; printf -- '- 21:37 READY 6040 %s GREEN\n' "$H_D" >> "$L4"
+tick_line "N1:LIVE,N2:LIVE,N3:READY,N4:READY"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1m.out" --doc "$D" --workers-from "$M"
+wait_call 3 80
+check "(10901-r1m) call 1 is N3's retryable READY" "N3 READY 6010 $H_C GREEN" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
+check "(10901-r1m) call 2 is N4's READY, not N3's again" "N4 READY 6040 $H_D GREEN" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
+stop_waiter
+
+reset_stub; fleet3 r1n
+printf '%s\n' "$RETRYABLE" > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+printf -- '%s\n- 21:38 MERGED #6010 → abcdef01\n' "$READY_C" >> "$L3"
+tick_line "N1:LIVE,N2:LIVE,N3:READY" "N3:MERGED#1"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1n.out" --doc "$D" --workers-from "$M"
+wait_call 4 120
+check "(10901-r1n) call 1 is N3's READY" "N3 READY 6010 $H_C GREEN" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
+check "(10901-r1n) call 2 is N3's MERGED" "N3 MERGED #6010 → abcdef01" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
+check "(10901-r1n) call 3 is N3's READY again" "N3 READY 6010 $H_C GREEN" "$(cat "$STUB/le.stdin.3" 2>/dev/null)"
+check "(10901-r1n) call 4 is N3's MERGED again" "N3 MERGED #6010 → abcdef01" "$(cat "$STUB/le.stdin.4" 2>/dev/null)"
+stop_waiter
+
+reset_stub; fleet3 r1p
+: > "$STUB/le.merged-escalates"; printf 'HANDLED auto-go N3\n' > "$STUB/le.out"
+printf -- '- 20:09 MERGED #6001 → abcdef01\n' >> "$L"; printf -- '- 20:10 MERGED #6002 → abcdef02\n' >> "$L2"; printf -- '%s\n' "$READY_C" >> "$L3"
+tick_line "N1:LIVE,N2:LIVE,N3:READY" "N1:MERGED#1,N2:MERGED#1"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1p.out" --doc "$D" --workers-from "$M"
+wait_call 1 80
+check "(10901-r1p) a READY goes before another label's escalating MERGED" "N3 READY 6010 $H_C GREEN" "$(cat "$STUB/le.stdin.1" 2>/dev/null)"
+wait_exit "$WPID"
+check "(10901-r1p) the MERGEDs are still relayed after the READY (N1)" "N1 MERGED #6001 → abcdef01" "$(cat "$STUB/le.stdin.2" 2>/dev/null)"
+stop_waiter
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r1p2.out" --doc "$D" --workers-from "$M"
+wait_call 3 80
+check "(10901-r1p) and N2's MERGED after a re-arm" "N2 MERGED #6002 → abcdef02" "$(cat "$STUB/le.stdin.3" 2>/dev/null)"
+stop_waiter
+
+r0s_run() {
+    reset_stub; fleet "$1"
+    printf '%s\n' "$2" > "$STUB/le.out"; echo "$3" > "$STUB/le.rc"
+    start "$I" "$WORK/$1.out" --doc "$D" --workers-from "$M"
+    wait_hb "$I" || fail "($1) no baseline heartbeat"
+    printf -- '%s\n- 10:01 LIVE — waiting on CI\n' "$READY_A" >> "$L"
+    wait_exit "$WPID"
+}
+
+HIMMEL_FLAG_AUTO_GO=1 r0s_run r2e1 'GO-WRITTEN 2566 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa qid=q bus-failed: x' 11
+contains "(10901-r2e) rc 11 GO-WRITTEN is a plain worker-event wake" "$(head -n 1 "$WORK/r2e1.out")" "WAKE worker-event GO-WRITTEN 2566"
+check "(10901-r2e) rc 11 names no WAKE worker-ready" "0" "$(grep -c '^WAKE worker-ready' "$WORK/r2e1.out")"
+stop_waiter
+HIMMEL_FLAG_AUTO_GO=1 r0s_run r2e2 'ESCALATE auto-go 3 not-ready' 12
+contains "(10901-r2e) an auto-go refusal at rc 12 is a plain worker-event wake" "$(head -n 1 "$WORK/r2e2.out")" "WAKE worker-event ESCALATE auto-go 3"
+check "(10901-r2e) rc 12 names no WAKE worker-ready" "0" "$(grep -c '^WAKE worker-ready' "$WORK/r2e2.out")"
+stop_waiter
+
+HIMMEL_FLAG_AUTO_GO=1 CHIEF_WAIT_STREAM_SERVICE=1 r0s_run r2f 'ESCALATE auto-go 3 not-ready' 10
+check "(10901-r2f) stream: one worker-event call" "1" "$(cat "$STUB/le.calls" 2>/dev/null)"
+contains "(10901-r2f) stream: line 1 is the plain worker-event wake" "$(head -n 1 "$WORK/r2f.out")" "WAKE worker-event ESCALATE auto-go 3 not-ready"
+check "(10901-r2f) stream: no WAKE worker-ready line" "0" "$(grep -c '^WAKE worker-ready' "$WORK/r2f.out")"
+stop_waiter
+
+HIMMEL_FLAG_AUTO_GO=1 r0s_run r2g 'ESCALATE auto-go-error rc=1 x' 10
+check "(10901-r2g) line 1 names the READY" "WAKE worker-ready N1 pr=2566 head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "$(head -n 1 "$WORK/r2g.out")"
+stop_waiter
+
+HIMMEL_FLAG_AUTO_GO=1 r0s_run r2i 'ESCALATE series-writer-unlisted x' 10
+contains "(10901-r2i) line 1 is the plain worker-event wake" "$(head -n 1 "$WORK/r2i.out")" "WAKE worker-event ESCALATE series-writer-unlisted"
+check "(10901-r2i) no WAKE worker-ready line" "0" "$(grep -c '^WAKE worker-ready' "$WORK/r2i.out")"
+stop_waiter
+
+reset_stub; fleet r2h
+printf 'ESCALATE auto-go 3 not-ready\n' > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+tick_line "N1:READY"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r2h.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r2h) no baseline heartbeat"
+printf -- '%s\n' "$READY_A" >> "$L"
+wait_exit "$WPID"
+check "(10901-r2h) the wake block holds exactly one WAKE worker-ready N1" "1" "$(grep -c '^WAKE worker-ready N1 ' "$WORK/r2h.out")"
+check "(10901-r2h) the READY is recorded as named once" "1" "$(grep -cx 'READY 2566 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$I.wait.markerwoke" 2>/dev/null)"
 stop_waiter
 
 export PATH="$relay_path"
@@ -542,6 +805,7 @@ tick_line "N1:WRAPPED"
 wait_exit "$WPID"
 check "(r0b) an ESCALATE wakes (rc 0)" "0" "$rc"
 check "(r0b) naming worker-event, the line and the out file" "WAKE worker-event ESCALATE ambiguous-label rc=10 out=$I.wait.le-N1" "$(head -n 1 "$WORK/r0b.out")"
+check "(r0b)(10901-r2b) a wrap's escalation names no READY" "0" "$(head -n 1 "$WORK/r0b.out" | grep -c '^WAKE worker-ready')"
 check "(r0b) then the tick line" "$(cat "$STUB/tick.line")" "$(sed -n 2p "$WORK/r0b.out")"
 check "(r0b) the out file holds worker-event's output" "ESCALATE ambiguous-label" "$(cat "$I.wait.le-N1" 2>/dev/null)"
 start "$I" "$WORK/r0b2.out" --doc "$D" --workers-from "$M"

@@ -424,7 +424,13 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     subtree alive) stays retryable. The next sample starts after that worker,
     using an atomically saved label in `<inbox>.wait.r0-next` even after a
     waiter re-arm; a missing or stale label leaves plain candidate order.
-    A standing refusal cannot starve later workers. In stream mode it is also paced, so a
+    A standing refusal cannot starve later workers. On the one-shot waiter (not `--stream`) with auto_go on, a newest-marker READY
+    (the worker's `tails=` token reads `READY` or `READY!stale`) is offered before any wrap, and a
+    retried candidate moves behind the others, keyed on label plus marker; a READY that a wrap
+    of its own worker follows is still offered after the wraps. There, a refused READY (auto-go's
+    `ESCALATE auto-go` or `auto-go-error` answer) wakes with
+    `WAKE worker-ready <label> pr=<pr> head=<head40>` as the first line, then the
+    `WAKE worker-event` line. In stream mode it is also paced, so a
     stacked series waiting on a live worker does not read GitHub every few seconds: each refusal
     in a row of the same cleanup event holds that event back longer, the retry window
     (`CHIEF_WAIT_SERVICE_RETRY_SEC`, 5 s) times 1, 2, 6, 24 and 60, that is 5, 10, 30, 120, then
@@ -559,7 +565,9 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     first after its existing READYs), one already in the doc at the first sample (a
     silent baseline), and one another wake folded into its saved key; the tick's tails=
     must already show it in the saved key, so a fresh move still wakes as `WAKE tick`, and a READY
-    the relay has not yet handed on (past its `.wait.ready` cursor) is left to the relay. A `WAKE tick` on
+    the relay has not yet handed on (past its `.wait.ready` cursor) is left to the relay. The one-shot relay's own
+    refused READY wake (auto-go refused it) is one of the wakes that names a READY: its first line is
+    `WAKE worker-ready`, so a READY is never first named as a bare `WAKE worker-event ESCALATE auto-go` line. A `WAKE tick` on
     that worker's tails= or acts=, a READY the relay handed to worker-event, and the
     earlier wake itself count as named (`<inbox>.wait.markerwoke`): the same head or
     bullet never wakes twice, and a successor's new inbox wakes once more (a tails= move
