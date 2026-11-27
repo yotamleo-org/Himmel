@@ -1337,9 +1337,9 @@ def compare_paired(base_runs, cand_runs, key_path):
 
 def null_draws(fixtures, cases, window=DEFAULT_WINDOW):
     """{seeded case id: (file, line)}: one added line of the seeded diff at least NULL_MIN_GAP lines from every defect
-    line of its file, and more than two windows off so no finding is within the window of both (a line of another file
-    qualifies), drawn with random.Random(NULL_SEED) over the key in id order. A diff with no such line draws none, so
-    it leaves the control's denominator."""
+    line of its file, and further than that defect's window plus the case's widest, so no finding is within both (a
+    line of another file qualifies), drawn with random.Random(NULL_SEED) over the key in id order. A diff with no such
+    line draws none, so it leaves the control's denominator."""
     rng, out = random.Random(NULL_SEED), {}
     for cid, c in sorted(cases.items()):
         if c["kind"] != "seeded":
@@ -1347,9 +1347,11 @@ def null_draws(fixtures, cases, window=DEFAULT_WINDOW):
         name = cid + (DELTA_SUFFIX if c.get("delta") is True else ".patch")
         with open(os.path.join(fixtures, name), encoding="utf-8") as fh:
             files = patch_files(fh.read())
-        gap = max(NULL_MIN_GAP, 2 * max(d.get("window", window) for d in c["defects"]) + 1)
+        wide = max(d.get("window", window) for d in c["defects"])
         pool = sorted((f, n) for f, lines in files.items() for n in lines
-                      if all(f != norm_path(d["file"]) or abs(n - d["line"]) >= gap for d in c["defects"]))
+                      if all(f != norm_path(d["file"])
+                             or abs(n - d["line"]) >= max(NULL_MIN_GAP, d.get("window", window) + wide + 1)
+                             for d in c["defects"]))
         if pool:
             out[cid] = rng.choice(pool)
     return out

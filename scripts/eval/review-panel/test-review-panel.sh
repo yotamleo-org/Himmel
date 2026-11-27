@@ -1549,7 +1549,16 @@ has "MA1b misses: three seeded diffs give a denominator of 3" "$out" "null windo
 mscase case-63 8 case-63 "$MS/fx-short"
 out=$(python3 "$SCORE" misses --fixtures "$MS/fx-short" --key "$MS/k1.json" --outputs "$M1" 2>&1)
 has "MA1b misses: a diff with no line 10 off is skipped and the denominator drops by 1" "$out" "null window 0/2"
-misses "$MS/k1b.json" --outputs "$M1" --window 7 --json "$MS/m1w.json" >/dev/null
+misses "$MS/k1b.json" --outputs "$M1" --window 7 --json "$MS/m1w.json" >/dev/null; rc=$?
+eq "MA1b misses: a wide-window run exits 0" "$rc" "0"
+python3 -c 'import json,sys
+k = json.load(open(sys.argv[1]))
+k["cases"]["case-61"]["defects"].append({"id": "pcase-61-2", "class": "logic", "file": "scripts/zz.sh", "line": 1, "window": 12})
+json.dump(k, open(sys.argv[2], "w"))' "$MS/k1b.json" "$MS/k1m.json"
+misses "$MS/k1m.json" --outputs "$M1" --json "$MS/m1m.json" >/dev/null; rc=$?
+mdrawn=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["null_window"]["draws"]["case-61"][1])' "$MS/m1m.json" 2>/dev/null)
+mwant=$(python3 -c 'import random; print(random.Random(11085).choice([n for n in range(1, 41) if abs(n - 5) >= 16]))')
+eq "MA1b misses: each defect is cleared by its own window plus the case's widest" "$rc:$mdrawn" "0:$mwant"
 wdrawn=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["null_window"]["draws"]["case-61"][1])' "$MS/m1w.json" 2>/dev/null)
 wwant=$(python3 -c 'import random; print(random.Random(11085).choice([n for n in range(1, 41) if abs(n - 5) >= 15]))')
 eq "MA1b misses: under a wide window the null window never overlaps the defect's window" "$wdrawn" "$wwant"

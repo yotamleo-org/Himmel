@@ -224,8 +224,8 @@ defect gets one bin per critic and bundle:
   per-class cell is printed or written to `--json`, and a refusal's message has
   sealed case ids replaced.
 - **Null window**: per seeded case, one added line of the seeded diff at least
-  10 lines from every defect line, and more than two windows from it under a wide
-  `--window` (a line of another file qualifies), drawn with
+  10 lines from every defect line, and under a wide window further than that
+  defect's window plus the case's widest (a line of another file qualifies), drawn with
   `random.Random(11085)` and recorded for open cases. The share of cases with a
   finding of that critic within the window of the drawn line is the
   location-only rate that finding density alone would give. It counts cases and
