@@ -127,7 +127,7 @@ ledger_registry_path() {
 # answer for every project), "project" = the default. The per-repo index checks (graph freshness, semantic graph)
 # are project rows that name the repo they judge, so a feed saved under another project does not carry them.
 # A check id is its Cn prefix (C40-qmd-vec -> C40).
-DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 C96 C97 C100 C101 "
+DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 C96 C97 C100 C101 C102 "
 DOCTOR_REPO_CHECKS=" C33 C70 "
 DOCTOR_REPO_NAME="himmel"
 
@@ -6155,6 +6155,28 @@ check_c88_graph_api_optin() {
     fi
 }
 
+check_c102_lane_grants() {
+    local out line lanes="" fix
+    fix="edit lane_grants in ~/.himmel/config.json by hand; see docs/internals/enforcement.md#lane-capability-grants"
+    out="$(
+        for lib in lib/load-dotenv.sh lib/nwo.sh guardrails/lib.sh lib/lane-grants.sh; do
+            # shellcheck disable=SC1090
+            . "$SELF_DIR/$lib" || exit 1
+        done
+        lane_grants_report "$(primary_checkout_root "$REPO_ROOT")"
+    )" || { emit WARN C102-lane-grants "the lane-grants report did not run" "$fix"; return; }
+    while IFS= read -r line; do
+        case "$line" in
+            'problem: '*) emit WARN C102-lane-grants "${line#problem: }" "$fix" ;;
+            'info: '*) emit INFO C102-lane-grants "${line#info: }" ;;
+            'antigravity: '*|'codex: '*) lanes="${lanes:+$lanes; }$line" ;;
+        esac
+    done <<EOF
+$out
+EOF
+    [ -z "$lanes" ] || emit INFO C102-lane-grants "$lanes"
+}
+
 # --- C87-stub-handover-state: state written under the stub handover folder after the root was configured ---
 # The stub folder is <checkout>/handovers, the root a script falls back to when HANDOVER_DIR is
 # unset. With the root configured elsewhere (any layer load_dotenv reads), a chief script that
@@ -6494,6 +6516,7 @@ run_check C98 check_c98_wrapped_window
 run_check C99 check_c99_gemini_local
 run_check C100 check_c100_fleet
 run_check C101 check_c101_guard_refusals
+run_check C102 check_c102_lane_grants
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
