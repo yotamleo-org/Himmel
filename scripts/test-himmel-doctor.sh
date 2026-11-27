@@ -2156,11 +2156,13 @@ STUB
 chmod +x "$t/status"
 cat > "$t/systemctl" <<STUB
 #!/usr/bin/env bash
+[ -f "$t/hang" ] && sleep 3
 cat "$t/sctl"
 exit 1
 STUB
 cat > "$t/launchctl" <<STUB
 #!/usr/bin/env bash
+[ -f "$t/hang" ] && sleep 3
 exit "\$(cat "$t/lrc")"
 STUB
 chmod +x "$t/systemctl" "$t/launchctl"
@@ -2205,6 +2207,10 @@ printf 'disabled\n' > "$t/sctl"; c103_run BYPASSD_SERVICE_OS=Darwin
 c103_expect "(3c) macOS turned off in a GUI session" INFO 'off; from your own shell: himmelctl bypass on'
 printf '1' > "$t/lrc"; c103_run BYPASSD_SERVICE_OS=Darwin; printf '0' > "$t/lrc"
 c103_expect "(3d) macOS enabled: no with no GUI session" WARN 'launcher state unreadable: no launchd GUI session'
+: > "$t/hang"; c103_run HIMMEL_DOCTOR_BYPASS_TIMEOUT=1
+c103_expect "(3e) a hanging user bus probe is bounded" WARN 'launcher state unreadable'
+c103_run BYPASSD_SERVICE_OS=Darwin HIMMEL_DOCTOR_BYPASS_TIMEOUT=1; rm -f "$t/hang"
+c103_expect "(3f) a hanging launchctl probe is bounded" WARN 'launcher state unreadable'
 c103_block 0 'stop file=yes'; c103_run
 c103_expect "(3) enabled with a stop file, ahead of every later row" WARN 'himmelctl bypass on'
 c103_block 1 active=no; c103_run
