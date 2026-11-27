@@ -29,7 +29,9 @@ require('fs').writeFileSync(process.env.CAPTURE_CHILD,JSON.stringify({env:proces
  return {root,home,bin,work,env};
 }
 function run(f, want=0, args=[]) {
- const r=cp.spawnSync('bash',[launcher,...args],{env:f.env,cwd:f.cwd||path.dirname(scripts),encoding:'utf8'});
+ // A mode-000 working directory cannot be spawned into: enter it first, then lock it.
+ const argv=f.lockCwd?['-c','cd "$1" && chmod 000 . && shift && exec bash "$@"','_',f.cwd,launcher,...args]:[launcher,...args];
+ const r=cp.spawnSync('bash',argv,{env:f.env,cwd:f.lockCwd?f.home:f.cwd||path.dirname(scripts),encoding:'utf8'});
  assert.strictEqual(r.status,want,'exit '+r.status+' want '+want+'; '+r.stderr);
  if(want!==0) assert(!fs.existsSync(f.env.CAPTURE_CHILD),'Claude launched after refusal');
  assert(!(r.stdout+r.stderr).includes('ds-hermetic-secret'),'secret leaked in output');
@@ -64,6 +66,27 @@ test('exact balance floor accepted',()=>{const f=setup();f.env.BALANCE_RESPONSE=
 test('custom balance floor enforced',()=>{const f=setup();f.env.DEEPSEEK_MIN_BALANCE_USD='51';run(f,5);});
 test('missing key refuses',()=>{const f=setup();delete f.env.DEEPSEEK_API_KEY;run(f,2);});
 test('malformed seed refuses',()=>{const f=setup();fs.mkdirSync(path.join(f.home,'.claude-deepseek'));fs.writeFileSync(path.join(f.home,'.claude-deepseek','.claude.json'),'{');run(f,4);});
+const phiLib=path.join(scripts,'guardrails','testlib-phi-dirs.sh');
+function phi(...args){const r=cp.spawnSync('bash',['-c','. "$1" && shift && "$@"','_',phiLib,...args],{encoding:'utf8'});assert.strictEqual(r.status,0,args.join(' ')+': '+r.stderr);return r.stdout.replace(/\n$/,'');}
+const needsChmod=['C8','C9','C12','C13','C14','C17','C22','C23'];
+for(const id of phi('phi_dirs_cases').split('\n')){
+ if(needsChmod.includes(id)&&process.getuid()===0){console.log('skip: '+id+' — chmod 000 takes nothing away from root');continue;}
+ const reader=phi('phi_dirs_expect',id,'reader'), covered=reader.startsWith('covered'), unreadable=reader==='unreadable';
+ test('PHI list row '+id+' ('+reader+')',()=>{
+  const f=setup();phi('phi_dirs_build',id,f.home);
+  try {
+   const override=phi('phi_dirs_expect',id,'override');
+   delete f.env.CLAUDE_GLM_CONFIG_DIR;
+   if(override.startsWith('home:'))f.env.CLAUDE_GLM_CONFIG_DIR=path.join(f.home,override.slice(5));
+   if(override.startsWith('rel:'))f.env.CLAUDE_GLM_CONFIG_DIR=override.slice(4);
+   // HANDOVER_DIR makes the workspace permitted unless a PHI list covers it.
+   f.cwd=path.join(f.home,id==='C22'?'work':'phi-root-fixture');f.env.HANDOVER_DIR=f.cwd;f.lockCwd=id==='C22';
+   const r=run(f,covered||unreadable?3:0);
+   if(covered)assert(r.stderr.includes('guarded workspace'),r.stderr);
+   if(phi('phi_dirs_expect',id,'rc_roots')==='2')assert(r.stderr.includes('unprovable: '),r.stderr);
+  } finally { phi('phi_dirs_restore',f.home); }
+ });
+}
 for(const root of roots)fs.rmSync(root,{recursive:true,force:true});
 console.log(count+' passed; '+fails+' failed');process.exit(fails?1:0);
 NODE

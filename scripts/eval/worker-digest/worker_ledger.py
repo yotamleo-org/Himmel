@@ -89,6 +89,7 @@ import argparse
 import fcntl
 import glob
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -756,13 +757,25 @@ def refresh(digest, who, failures_ledger, eval_ledger, index=None):
 
 # --- backfill ------------------------------------------------------------------
 
+PHI_LIST_PATHS_MODULE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "guardrails", "phi_list_paths.py")
+
+
 def _roots(name):
-    try:
-        with open(os.path.expanduser("~/.config/claude-glm/" + name), encoding="utf-8") as fh:
-            return [os.path.realpath(os.path.expanduser(l.strip())) for l in fh
-                    if l.strip() and not l.lstrip().startswith("#")]
-    except FileNotFoundError:
-        return []  # absent = no listed roots; any other read error raises (fail closed)
+    """The roots of every present copy of the list; raises on anything unreadable (fail closed)."""
+    spec = importlib.util.spec_from_file_location("phi_list_paths", PHI_LIST_PATHS_MODULE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    rc, paths, unprovable = module.phi_list_paths(name)
+    if rc == 2:
+        raise OSError("PHI list dir cannot be proven: %s" % unprovable)
+    roots = []
+    for path in paths:
+        if not os.path.isfile(path):
+            raise OSError("PHI list is not a readable regular file: %s" % path)
+        with open(path, encoding="utf-8") as fh:
+            roots += [os.path.realpath(os.path.expanduser(l.strip())) for l in fh
+                      if l.strip() and not l.lstrip().startswith("#")]
+    return roots
 
 
 def salus_rooted(cwd, roots):
