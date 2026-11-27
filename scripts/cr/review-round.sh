@@ -3093,6 +3093,8 @@ pre_reason='Important finding deferred: the cited code is older than this PR (ta
 # A polish Suggestion/nit files no ticket: its row is amended
 # verdict=deferred, fu_class=polish with no deferred_to, and this reason.
 note_reason='Polish finding noted in the PR body: no ticket filed (decisions 746, 762).'
+earlier_note_prefix="$note_reason Reviewed through "
+earlier_note_reason="$earlier_note_prefix$full_head"
 amend_why='deferred by review-round.sh after the three-round cap'
 if [ "$delta_mode" -eq 1 ]; then
     defer_reason="$delta_reason"
@@ -3126,7 +3128,7 @@ tracker_jira=0
 if [ "$defer_tracker" = jira ]; then tracker_jira=1; fi
 explicit_defer=0
 if [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then explicit_defer=1; fi
-analysis="$(FULL_HEAD="$full_head" LEDGER="$ledger" BRANCH="$branch" DELTA="$delta_mode" PRE_OK="$pre_ok" PRE_REASON="$pre_reason" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" NOTE_REASON="$note_reason" TRACKER_JIRA="$tracker_jira" EXPLICIT_DEFER="$explicit_defer" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e "$ledger_reader_js"'
+analysis="$(FULL_HEAD="$full_head" LEDGER="$ledger" BRANCH="$branch" DELTA="$delta_mode" PRE_OK="$pre_ok" PRE_REASON="$pre_reason" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" NOTE_REASON="$note_reason" EARLIER_NOTE_PREFIX="$earlier_note_prefix" EARLIER_NOTE_REASON="$earlier_note_reason" TRACKER_JIRA="$tracker_jira" EXPLICIT_DEFER="$explicit_defer" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e "$ledger_reader_js"'
 const findings = new Map(), origSeverities = new Map();
 const pending = [], capDeferred = [], blocking = [], unclassified = [], otherOpen = [];
 let earlierBlocking = false;
@@ -3170,7 +3172,7 @@ for (const row of findingRows) {
   }
   if (!row.head || resolvesToHead(row.head)) continue;
   const verdict = String(o.verdict || "").trim();
-  const alreadyNoted = verdict === "deferred" && o.reason === e.NOTE_REASON && o.fu_class === "polish";
+  const alreadyNoted = verdict === "deferred" && o.reason === e.EARLIER_NOTE_REASON && o.fu_class === "polish";
   if (verdict && !alreadyNoted) continue;
   const refusal = earlierPolishRefusal(row, o);
   if (refusal) {
@@ -3198,7 +3200,9 @@ for (const [key, o] of findings) {
   const ticket = typeof o.deferred_to === "string" ? o.deferred_to.trim() : "";
   const reason = typeof o.reason === "string" ? o.reason.trim() : "";
   const trackedDeferred = verdict === "deferred" && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(ticket) && reason;
-  const notedPolish = verdict === "deferred" && !ticket && reason === e.NOTE_REASON &&
+  const carriedNote = reason.startsWith(e.EARLIER_NOTE_PREFIX) &&
+    /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(reason.slice(e.EARLIER_NOTE_PREFIX.length));
+  const notedPolish = verdict === "deferred" && !ticket && (reason === e.NOTE_REASON || carriedNote) &&
     (severity === "sug" || severity === "nit") && (origSeverity === "sug" || origSeverity === "nit") &&
     String(o.fu_class || "").trim() === "polish";
   const resolved = verdict === "disproved" || trackedDeferred || notedPolish;
@@ -3216,7 +3220,7 @@ for (const [key, o] of findings) {
       pending.push(pendingRow(o, id, severity, c.fu_class, c.class_source));
     }
     else if (trackedDeferred && CAP_REASONS.includes(reason)) capDeferred.push({id, ticket});
-    else if (notedPolish) capDeferred.push({id, ticket: ""});
+    else if (notedPolish && !carriedNote) capDeferred.push({id, ticket: ""});
     else if (!settled) blocking.push(id);
     continue;
   }
@@ -3244,7 +3248,7 @@ for (const [key, o] of findings) {
            reason === e.DEFER_REASON) {
     capDeferred.push({id, ticket});
   }
-  else if (notedPolish) capDeferred.push({id, ticket: ""});
+  else if (notedPolish && !carriedNote) capDeferred.push({id, ticket: ""});
   else if (!verdict) blocking.push(id);
 }
 for (const f of pending) f.noted = !!f.noted || (e.EXPLICIT_DEFER !== "1" && f.fu_class === "polish" && polishSeverity(f.severity));
@@ -3514,11 +3518,13 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
     fi
     if [ "$finding_noted" = 1 ]; then
         finding_head="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).head))')" || { amend_rc=5; break; }
+        finding_note_reason="$note_reason"
+        [ "$finding_head" = "$full_head" ] || finding_note_reason="$earlier_note_reason"
         if ! bash "$SCRIPT_DIR/ledger-append.sh" amend \
             --branch "$branch" --head "$finding_head" --id "$finding_id" \
             --artifact "$artifact" --perspective "$perspective" \
             --set verdict=deferred --set fu_class=polish \
-            --set class=unattributed --set "reason=$note_reason" \
+            --set class=unattributed --set "reason=$finding_note_reason" \
             --reason "$amend_why"; then
             amend_rc=5
             break

@@ -945,11 +945,12 @@ chmod +x "$tmp/defer-bin/gh"
 git -C "$repo" checkout -qb rr-earlier "$head_b" || exit 1
 mkdir -p "$git_dir/cr-review-rounds" "$git_dir/cr-pending"
 printf '2\n' > "$git_dir/cr-review-rounds/rr-earlier.round"
+reviewed_head="$head_b"
 defer_earlier() {
     out="$(cd "$repo" && PATH="$tmp/defer-bin:$fixture_path" GH="$tmp/defer-bin/gh" GH_CMD="$tmp/defer-bin/gh" \
-        CORE_TRUST="$fx/scripts/ci/ci-trust-paths-core.txt" PR_HEAD="$head_b" JIRA_LOG="$tmp/jira-notes" \
+        CORE_TRUST="$fx/scripts/ci/ci-trust-paths-core.txt" PR_HEAD="$reviewed_head" JIRA_LOG="$tmp/jira-notes" \
         TRACKER=jira JIRA_PROJECT_KEY=HIMMEL CR_DEFER_TO='' \
-        bash "$RR" defer --branch rr-earlier --head "${head_b:0:8}" "$@" 2>&1)"; rc=$?
+        bash "$RR" defer --branch rr-earlier --head "${reviewed_head:0:8}" "$@" 2>&1)"; rc=$?
 }
 : > "$ledger"
 shapes
@@ -976,6 +977,21 @@ done
 assert_has "$(cat "$tmp/jira-notes")" "polish-noted: rr-earlier $head_a" "11392 replay notes at the resolved finding head"
 assert_eq "$(grep -c '"kind":"amend".*"branch":"other-branch"' "$ledger")" 1 "11392 replay writes no foreign amend"
 assert_eq "$(test -e "$git_dir/cr-pending/rr-earlier" && echo kept)" "" "11392 replay clears the marker"
+before="$(cksum < "$ledger")"
+: > "$tmp/jira-notes"
+touch "$git_dir/cr-pending/rr-earlier"
+defer_earlier
+assert_eq "$rc" 0 "retry at the same reviewed head succeeds ($out)"
+assert_eq "$(test -e "$git_dir/cr-pending/rr-earlier" && echo kept)" "" "retry recovers clearance at the same reviewed head"
+later="$(git -C "$repo" rev-parse HEAD)"
+reviewed_head="$later"
+touch "$git_dir/cr-pending/rr-earlier"
+defer_earlier
+assert_eq "$rc" 0 "settled ancestors leave a later clean defer as a no-op ($out)"
+assert_eq "$(test -e "$git_dir/cr-pending/rr-earlier" && echo kept)" kept "settled ancestors do not trigger clearance at a later tip"
+assert_eq "$(cksum < "$ledger")" "$before" "recovery and later no-op leave the ledger unchanged"
+assert_eq "$(cat "$tmp/jira-notes")" "" "recovery and later no-op do not repost Jira notes"
+reviewed_head="$head_b"
 : > "$ledger"
 TW_SEV=imp
 real_row rr-earlier "$head_a" r1-important ""
@@ -983,7 +999,6 @@ real_row rr-earlier "$head_a" r1-lowered ""
 TW_SEV=crit
 real_row rr-earlier "$head_a" r1-critical ""
 shapes
-later="$(git -C "$repo" rev-parse HEAD)"
 divergent="$(git -C "$repo" commit-tree "$head_a^{tree}" -p "$head_a" -m 'divergent review head')" || exit 1
 unresolved=0123456789012345678901234567890123456789
 real_row rr-earlier "$later" later ""
