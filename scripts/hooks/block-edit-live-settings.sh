@@ -1055,17 +1055,13 @@ _agy_verb_ro() {
 }
 
 _agy_seg_writes() {
-    local st=0 first=1 app=0 w b cw='' asg_re='^[a-z_][a-z0-9_]*(\[([^][]|\[[^][]*\])*\])?\+?='
+    local st=0 first=1 app=0 w b cw='' asg_re='^[a-z_][a-z0-9_]*\+?='
     for w in "$@"; do
         [ -n "$w" ] || continue
         b=${w%$'\001'}
-        b=${b%$'\003'}
         b=${b##*/}
         if [ "$first" = 1 ]; then
-            if [[ $w =~ $asg_re ]]; then
-                case "$w" in *\\*|*$'\003'*) st=1 ;; esac
-                continue
-            fi
+            case "$w" in [a-z_]*=*) [[ $w =~ $asg_re ]] || st=1; continue ;; esac
             first=0
             cw=$b
             case "$cw" in
@@ -1147,9 +1143,6 @@ agy_cli_writes() {
             fi
             prevw=$w
             if [ "$nested" = 1 ] && _agy_text_writes "$w"; then return 0; fi
-            if [ "${ST_Q[i]}" = 1 ] && [ "${ST_A[i]}" != 1 ]; then
-                case "$w" in *=*) w=$w$'\003' ;; esac
-            fi
             if [ "${ST_X[i]}" = 1 ] || [ "${ST_G[i]}" = 1 ]; then w=$w$'\001'; fi
             sw[${#sw[@]}]=$w
             i=$((i + 1))

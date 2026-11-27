@@ -4319,7 +4319,11 @@ assert_rc "11341a11 a quoted closing bracket inside a bracket glob ahead of an a
     "$(bash_rc_of "$WT2" 's[c"]"=]ripts/../../../../../../../../../usr/bin/agy plugin install ./p' HOME="$T3H")"
 assert_rc "11341c10 a quoted value after a legal name before another CLI's plugin install allows" 0 \
     "$(bash_rc_of "$WT2" 'k="v w" claude plugin install foo' HOME="$T3H")"
-assert_rc "11341c9 a nested array subscript assignment prefix before another CLI's plugin install allows" 0 \
+assert_rc "11341a12 a three-deep subscript assignment with a slash in its value before a variable command word denies" 2 \
+    "$(bash_rc_of "$WT2" 'a[b[c[0]]]=/usr/bin $X plugin install ./p' HOME="$T3H" X=agy)"
+assert_rc "11341a13 a quoted subscript assignment with a slash in its value before a variable command word denies" 2 \
+    "$(bash_rc_of "$WT2" 'a["k"]=/opt/x $X plugin install ./p' HOME="$T3H" X=agy)"
+assert_rc "11341a14 any subscript assignment prefix marks a possible agy, so another CLI's plugin install is refused fail-closed" 2 \
     "$(bash_rc_of "$WT2" 'k[i[0]]=v claude plugin install foo' HOME="$T3H")"
 assert_rc "11257c20 an agy prompt held in a variable allows" 0 \
     "$(bash_rc_of "$WT2" 'agy -p "$PROMPT"' HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
