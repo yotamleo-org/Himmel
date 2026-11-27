@@ -59,8 +59,8 @@ _guard_endpoint_host() {
 
 # --- The PHI config dir ------------------------------------------------------
 # ~/.config/himmel/phi is the neutral dir for phi-roots / egress-denylist;
-# ~/.config/claude-glm (or $CLAUDE_GLM_CONFIG_DIR, which replaces only that dir)
-# is the old one. NO GUARD READS THE NEUTRAL DIR YET: only the doctor calls the
+# ~/.config/claude-glm (and $CLAUDE_GLM_CONFIG_DIR, when set) are the old
+# ones. NO GUARD READS THE NEUTRAL DIR YET: only the doctor calls the
 # functions below, until a later change re-points the readers. Until then the old
 # path stays authoritative. A list under EITHER dir counts (a union, so a
 # neutral list can never hide an old one). The neutral dir keys on HOME alone,
@@ -89,20 +89,31 @@ _guard_phi_dir_provable() {
     [ -d "$d" ] && [ -x "$d" ]
 }
 
-# _guard_phi_list_paths <list name> -> prints every present copy of the list,
-# neutral first, one per line. rc 0 = at least one printed; 2 = unreadable (a
-# dir that cannot be proven, or no HOME); 3 = none declared, which is NOT an
-# empty list and NOT clear. A dangling symlink counts as present.
-_guard_phi_list_paths() {
-    local name="$1" d found=3
+_guard_phi_dirs() {
+    local o="${CLAUDE_GLM_CONFIG_DIR:-}"
     [ -n "${HOME:-}" ] || return 2
-    for d in "$HOME/.config/himmel/phi" "${CLAUDE_GLM_CONFIG_DIR:-$HOME/.config/claude-glm}"; do
-        _guard_phi_dir_provable "$d" || return 2
+    printf '%s\n' "$HOME/.config/himmel/phi"
+    [ -z "$o" ] || printf '%s\n' "$o"
+    [ "$o" = "$HOME/.config/claude-glm" ] || printf '%s\n' "$HOME/.config/claude-glm"
+}
+
+# _guard_phi_list_paths <list name> -> prints each present copy over
+# _guard_phi_dirs (neutral, override, default). rc 0 printed; 2 = no HOME or an
+# unproven dir (`unprovable: <dir>` on stderr); 3 = none declared, which is NOT
+# clear. A dangling symlink counts as present. Contract: phi-dir-cases.tsv.
+_guard_phi_list_paths() {
+    local name="$1" d dirs found=3
+    dirs="$(_guard_phi_dirs)" || return 2
+    while IFS= read -r d; do
+        if ! _guard_phi_dir_provable "$d"; then
+            printf 'unprovable: %s\n' "$d" >&2
+            return 2
+        fi
         if [ -e "$d/$name" ] || [ -L "$d/$name" ]; then
             printf '%s\n' "$d/$name"
             found=0
         fi
-    done
+    done <<<"$dirs"
     return "$found"
 }
 

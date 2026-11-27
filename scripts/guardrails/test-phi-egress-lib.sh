@@ -97,64 +97,16 @@ else
     fail "lookalike host -> expected verbatim api.anthropic.com.evil.example got [$out]"
 fi
 
-echo "== _guard_phi_list_paths =="
-# rc 0 = paths printed, 2 = unreadable, 3 = none declared. Each row runs in a
-# subshell with its own HOME, so the station's real lists are never read.
+# The list-paths answers live in phi-dir-cases.tsv (test-phi-list-paths.sh).
+# Each row runs in a subshell with its own HOME, so the station's real lists are never read.
 phi_home() { # <case> -> a fresh fixture HOME with both config parents
     local h="$WS/$1"
     mkdir -p "$h/.config/himmel/phi" "$h/.config/claude-glm"
     printf '%s' "$h"
 }
-paths_of() { # <home> <list name> -> "<rc>:<paths joined by a space>"
-    local out rc
-    out="$(unset CLAUDE_GLM_CONFIG_DIR; HOME="$1" _guard_phi_list_paths "$2")"
-    rc=$?
-    printf '%s:%s' "$rc" "$(printf '%s' "$out" | tr '\n' ' ')"
-}
 expect_paths() { # <label> <want> <got>
     if [ "$3" = "$2" ]; then pass "$1"; else fail "$1 -> expected [$2] got [$3]"; fi
 }
-
-H="$(phi_home only-neutral)"; : > "$H/.config/himmel/phi/phi-roots"
-expect_paths "neutral only -> the neutral file" "0:$H/.config/himmel/phi/phi-roots" "$(paths_of "$H" phi-roots)"
-
-H="$(phi_home only-old)"; : > "$H/.config/claude-glm/phi-roots"
-expect_paths "old only -> the old file (fallback)" "0:$H/.config/claude-glm/phi-roots" "$(paths_of "$H" phi-roots)"
-
-H="$(phi_home both)"; : > "$H/.config/himmel/phi/phi-roots"; : > "$H/.config/claude-glm/phi-roots"
-expect_paths "both -> both files, neutral first (a list under either dir counts)" \
-    "0:$H/.config/himmel/phi/phi-roots $H/.config/claude-glm/phi-roots" "$(paths_of "$H" phi-roots)"
-
-H="$(phi_home neither)"
-expect_paths "dirs but no list -> rc 3 (none declared), never rc 0 with no paths" "3:" "$(paths_of "$H" phi-roots)"
-
-H="$WS/no-dirs"; mkdir -p "$H"
-expect_paths "neither dir -> rc 3 (none declared)" "3:" "$(paths_of "$H" phi-roots)"
-
-H="$(phi_home override)"; G="$WS/override-glm"; mkdir -p "$G"; : > "$G/phi-roots"; : > "$H/.config/claude-glm/phi-roots"
-got="$(CLAUDE_GLM_CONFIG_DIR="$G" HOME="$H" _guard_phi_list_paths phi-roots)"
-expect_paths "CLAUDE_GLM_CONFIG_DIR replaces only the old dir" "$G/phi-roots" "$got"
-
-H="$(phi_home override-neutral)"; G="$WS/override-neutral-glm"; mkdir -p "$G"; : > "$H/.config/himmel/phi/phi-roots"
-got="$(CLAUDE_GLM_CONFIG_DIR="$G" HOME="$H" _guard_phi_list_paths phi-roots)"
-expect_paths "CLAUDE_GLM_CONFIG_DIR cannot steer the neutral list away" "$H/.config/himmel/phi/phi-roots" "$got"
-
-H="$(phi_home dangling)"; ln -s "$WS/nowhere" "$H/.config/himmel/phi/phi-roots"
-expect_paths "a dangling list symlink is present, not absent" "0:$H/.config/himmel/phi/phi-roots" "$(paths_of "$H" phi-roots)"
-
-H="$(phi_home dir-is-file)"; rmdir "$H/.config/himmel/phi"; : > "$H/.config/himmel/phi"
-expect_paths "a plain file where the neutral dir belongs -> rc 2" "2:" "$(paths_of "$H" phi-roots)"
-
-H="$(phi_home dir-dangling)"; rmdir "$H/.config/claude-glm"; ln -s "$WS/nowhere" "$H/.config/claude-glm"
-expect_paths "a dangling symlink where the old dir belongs -> rc 2" "2:" "$(paths_of "$H" phi-roots)"
-
-H="$(phi_home dir-locked)"; : > "$H/.config/himmel/phi/phi-roots"
-if chmod 000 "$H/.config/himmel/phi" 2>/dev/null && [ ! -x "$H/.config/himmel/phi" ]; then
-    expect_paths "an unreadable neutral dir -> rc 2, never read as absent" "2:" "$(paths_of "$H" phi-roots)"
-    chmod 755 "$H/.config/himmel/phi"
-else
-    echo "  SKIP  unreadable-dir case (chmod 000 did not deny access on this fs/user)"
-fi
 
 echo "== _guard_phi_list_entries =="
 # Only the two list names are read, whichever dir the path comes from.
@@ -246,6 +198,11 @@ fi
 
 expect_rc "no HOME -> unreadable, the lists cannot be located" 2 "$(decision_of "" "$ROOT")"
 
+H="$(phi_home d-override-default)"; G="$WS/d-override-glm"; mkdir -p "$G"
+printf '%s\n' "$OTHER" > "$G/phi-roots"; printf '%s\n' "$ROOT" > "$H/.config/claude-glm/phi-roots"
+got="$( HOME="$H" CLAUDE_GLM_CONFIG_DIR="$G" _guard_phi_decision "$ROOT/sub"; printf '%s' "$?" )"
+expect_rc "an override set -> a root only in the default old dir is still denied" 1 "$got"
+
 H="$(phi_home d-empty-path)"; printf '%s\n' "$ROOT" > "$H/.config/himmel/phi/phi-roots"
 expect_rc "an empty path -> unreadable, never clear" 2 "$(decision_of "$H" "")"
 
@@ -262,10 +219,6 @@ expect_rc "a list entry is a literal path, never a glob" 0 "$(decision_of "$H" "
 
 H="$(phi_home d-slashes)"; printf '%s///\n' "$ROOT" > "$H/.config/himmel/phi/phi-roots"
 expect_rc "several trailing slashes still match" 1 "$(decision_of "$H" "$ROOT/sub")"
-
-H="$(phi_home d-relative)"
-got="$( cd "$WS" && HOME="$H" CLAUDE_GLM_CONFIG_DIR="relative-cfg-absent/x" _guard_phi_list_paths phi-roots; printf '%s' "$?" )"
-expect_paths "a relative override with no such dir terminates -> rc 3" "3" "$got"
 
 if ( set -euo pipefail; H="$(phi_home d-errexit)"; rc=0; HOME="$H" _guard_phi_decision "$ROOT" || rc=$?; [ "$rc" -eq 3 ] ); then
     pass "rc 3 survives a caller under set -euo pipefail"

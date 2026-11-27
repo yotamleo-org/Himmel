@@ -37,16 +37,27 @@ _guard_phi_dir_provable() {
     [ -d "$d" ] && [ -x "$d" ]
 }
 
-_guard_phi_list_paths() {
-    local name="$1" d found=3
+_guard_phi_dirs() {
+    local o="${CLAUDE_GLM_CONFIG_DIR:-}"
     [ -n "${HOME:-}" ] || return 2
-    for d in "$HOME/.config/himmel/phi" "${CLAUDE_GLM_CONFIG_DIR:-$HOME/.config/claude-glm}"; do
-        _guard_phi_dir_provable "$d" || return 2
+    printf '%s\n' "$HOME/.config/himmel/phi"
+    [ -z "$o" ] || printf '%s\n' "$o"
+    [ "$o" = "$HOME/.config/claude-glm" ] || printf '%s\n' "$HOME/.config/claude-glm"
+}
+
+_guard_phi_list_paths() {
+    local name="$1" d dirs found=3
+    dirs="$(_guard_phi_dirs)" || return 2
+    while IFS= read -r d; do
+        if ! _guard_phi_dir_provable "$d"; then
+            printf 'unprovable: %s\n' "$d" >&2
+            return 2
+        fi
         if [ -e "$d/$name" ] || [ -L "$d/$name" ]; then
             printf '%s\n' "$d/$name"
             found=0
         fi
-    done
+    done <<<"$dirs"
     return "$found"
 }
 
