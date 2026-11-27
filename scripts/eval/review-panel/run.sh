@@ -36,10 +36,12 @@
 #   <repo> (default this checkout) without scripts/eval/review-panel/, one commit,
 #   then the case diff as a second commit. No later history, no CR ledger, no key (I9).
 # Env: REVIEW_PANEL_CMD (default scripts/cr/critic-panel.sh; the test seam),
-#      REVIEW_PANEL_SCRATCH (default a fresh mktemp -d).
+#      REVIEW_PANEL_SCRATCH (default a fresh mktemp -d), CRITIC_PARALLEL (default 1: the
+#      panel runs a case's critics at once; 0 runs them one by one; the manifest records it).
 # Exit: 0 scored; 2 usage, refused lint or bad dirs; else score.py's exit.
 # Draws codex bank per fixture: the chief runs it, never a test (README).
 set -uo pipefail
+export CRITIC_PARALLEL="${CRITIC_PARALLEL:-1}"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PANEL="${REVIEW_PANEL_CMD:-$HERE/../../cr/critic-panel.sh}"

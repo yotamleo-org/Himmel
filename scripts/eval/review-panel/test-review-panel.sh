@@ -8,7 +8,7 @@ set -u
 # shellcheck source=test_review_panel_lib.sh
 . "$(cd "$(dirname "$0")" && pwd)/test_review_panel_lib.sh"
 export CRITICS_LOCAL_JSON="$TMP/no-overlay.json"
-unset CRITICS_JSON CRITICS_BASE_JSON
+unset CRITICS_JSON CRITICS_BASE_JSON CRITIC_PARALLEL STUB_PAR_LOG
 
 # --- fixture + key integrity ------------------------------------------------------
 eq "fixtures: 24 frozen diffs" "$(find "$FIX" -name 'case-*.patch' | wc -l | tr -d ' ')" "24"
@@ -447,6 +447,7 @@ printf '%s\n' "$CRITIC_PANEL_TIERS" > "$STUB_LOG_DIR/tiers"
 printf '%s %s\n' "${CR_TRIVIALITY_OVERRIDE:-}" "${CRITIC_KNOWN_FINDINGS:-}" > "$STUB_LOG_DIR/env"
 printf '%s\n' "${CRITICS_JSON:-}" > "$STUB_LOG_DIR/critics_json"
 printf '%s|%s\n' "${CRITIC_FIRST_PASS-unset}" "${CRITIC_INVOKE-unset}" > "$STUB_LOG_DIR/seams"
+printf '%s\n' "${CRITIC_PARALLEL-unset}" > "$STUB_LOG_DIR/parallel"
 printf '# Critic Panel Review (1/1 critics responded)\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n'
 EOF
 mkdir -p "$TMP/stublog"
@@ -467,6 +468,12 @@ eq "run: one output per fixture" "$(find "$TMP/run1" -name 'case-*.md' | wc -l |
 eq "run: no stub refusal" "$(grep -c 'STUB:' "$TMP"/run1/*.err 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')" "0"
 eq "run: the tier set reaches the panel" "$(cat "$TMP/stublog/tiers" 2>/dev/null)" "paid"
 eq "run: triviality override on, known-findings off" "$(cat "$TMP/stublog/env" 2>/dev/null)" "full 0"
+eq "run: CRITIC_PARALLEL unset hands the panel 1" "$(cat "$TMP/stublog/parallel" 2>/dev/null)" "1"
+eq "manifest: the default parallel setting is recorded in the protocol" "$(mget "$TMP/run1" protocol/overrides/CRITIC_PARALLEL)" "1"
+mkdir -p "$TMP/stublog0"
+CRITIC_PARALLEL=0 STUB_LOG_DIR="$TMP/stublog0" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+  bash "$RUN" --out "$TMP/run0" --fixtures "$FIX" --key "$KEY" --no-ledger --critics codex --tiers paid >/dev/null 2>&1; rc=$?
+eq "run: an explicit CRITIC_PARALLEL=0 wins" "$rc:$(cat "$TMP/stublog0/parallel" 2>/dev/null):$(mget "$TMP/run0" protocol/overrides/CRITIC_PARALLEL)" "0:0:0"
 cj="$(cat "$TMP/stublog/critics_json" 2>/dev/null)"
 slugs() { python3 -c 'import json,sys; print(",".join(r["slug"] for r in json.load(open(sys.argv[1]))["panel"]))' "$1" 2>&1; }
 codexrow() { python3 -c 'import json,sys; print([r for r in json.load(open(sys.argv[1]))["panel"] if r["slug"]=="codex"])' "$1" 2>&1; }
@@ -619,6 +626,9 @@ printf '#!/bin/sh\n' > "$RR/scripts/cr/critic-x.sh"
 cat > "$RR/scripts/cr/critic-panel.sh" <<'EOF'
 #!/usr/bin/env bash
 cmp -s - diff.patch || exit 9
+if [ -n "${STUB_PAR_LOG:-}" ]; then
+  side="${0#*/trees/}"; printf '%s %s\n' "${side%%/*}" "${CRITIC_PARALLEL-unset}" >> "$STUB_PAR_LOG"
+fi
 [ -z "${STUB_DIRTY:-}" ] || printf '# mid-sweep\n' >> "$(dirname "$0")/critic-x.sh"
 printf 'panel-availability: codex ok responding-model(gpt-6.1-sol)\n' >&2
 printf '# Critic Panel Review (1/1 critics responded)\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n'
@@ -670,8 +680,9 @@ PRUN="$RP/scripts/eval/review-panel/run.sh"
 paired() { REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-pr" bash "$PRUN" "$@" --no-ledger --critics codex; }
 rowsof() { python3 -c 'import json,sys
 for l in open(sys.argv[1]): r = json.loads(l); print(r["side"], r["snapshot"] == sys.argv[2], r["tree"][:7], r["cbs_hash"][:7], r["decision_eligible"])' "$1" "$2"; }
-paired --paired "$PS" --head "$PH" --out "$TMP/pair1" --results "$TMP/pair1.jsonl" >"$TMP/pair1.txt" 2>&1; rc=$?
+STUB_PAR_LOG="$TMP/pair1.parallel" paired --paired "$PS" --head "$PH" --out "$TMP/pair1" --results "$TMP/pair1.jsonl" >"$TMP/pair1.txt" 2>&1; rc=$?
 eq "paired: a sweep of base and head from one snapshot exits 0" "$rc" "0"
+eq "paired: both sides hand their panel CRITIC_PARALLEL=1" "$(sort -u "$TMP/pair1.parallel" 2>/dev/null | tr '\n' ';')" "base 1;head 1;"
 eq "paired: it writes two rows that both name the snapshot, one per side, each at its own tree" \
   "$(rowsof "$TMP/pair1.jsonl" "$PS" | cut -d' ' -f1-3 | tr '\n' ';')" "base True ${PS:0:7};head True ${PH:0:7};"
 eq "paired: the two sides carry different cbs hashes when the head changed a critic file" \
