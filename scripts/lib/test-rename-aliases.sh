@@ -574,7 +574,7 @@ check "H1 the swept hooks name no retired path ($H1_HITS)" "1:" "$h1_rc:$H1_HITS
 # shellcheck disable=SC2016
 H1_CONTROL='case "$1" in *[cC]onsole-kit/go*) rc=0 ;; esac' # old-term-ok: the retired name is the input under test
 check "H1 control: the pattern matches a retired-path arm" yes \
-  "$(printf '%s\n' "$H1_CONTROL" | grep -qE "$I1_NAMES" && echo yes || echo no)"
+  "$(grep -qE "$I1_NAMES" <<< "$H1_CONTROL" && echo yes || echo no)"
 for gone in scripts/handover/console-kit scripts/handover/chief-kit/console-wait.sh scripts/lanes/leg-pr-open.sh; do # old-term-ok: the retired name is the input under test
   check "$gone is gone" "no" "$([ -e "$ROOT/$gone" ] && echo yes || echo no)"
 done
