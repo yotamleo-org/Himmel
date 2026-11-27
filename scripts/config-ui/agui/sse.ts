@@ -192,7 +192,7 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
   // delivered/acked/expired follow-ups of those. A follow-up may land in a later poll than its send, hence `mine`.
   type BusDelta = AguiEvent & { timestamp: number; delta: { path: string; value?: { f?: string; r?: string } }[] };
   let scanning = false, restUntil = 0, scanned: { name: string; at: number; batch: BusDelta[] } | undefined;
-  let collected: { name: string; at: number } | undefined;
+  let collected: { name: string; at: number } | undefined, fails = 0;
   const collect = () => {
     const root = o.busRoot, name = session;
     if (!root || !name || scanning || Date.now() < restUntil) return;
@@ -200,9 +200,9 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
     const at = Date.now();
     void (async () => {
       let batch: BusDelta[] = [];
-      try { for await (const e of busEvents(root, { since: 0 })) batch.push(e as BusDelta); } catch { batch = []; } // no store yet: nothing to merge
-      scanned = { name, at, batch };
-      restUntil = Date.now() * 2 - at;
+      try { for await (const e of busEvents(root, { since: 0 })) batch.push(e as BusDelta); fails = 0; } catch { batch = []; fails++; } // no store yet: nothing to merge
+      scanned = { name, at: fails && fails < 3 ? 0 : at, batch };
+      restUntil = Math.max(Date.now() * 2 - at, fails ? Date.now() + o.pollMs : 0);
       wake?.();
     })();
   };
