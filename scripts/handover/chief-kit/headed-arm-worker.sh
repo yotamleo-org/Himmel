@@ -3603,8 +3603,8 @@ fi
 # transport file. Every refusal before (4) acquires nothing and leaves nothing behind. The launcher keeps only its OWN
 # captured token: every exit between the acquire and the child's start (a refusal, the managed fleet hand-off refusal,
 # a fatal or remembered signal) and a definite hand-off failure release exactly that token (a successor's lock refuses
-# it) and remove the attempt directory; hand-off statuses 0, 7 and 9 keep both for the session. The acquire is a background
-# child this launcher owns: a trappable exit first reaps it (bounded), so the lease it was about to create is released too.
+# it) and remove the attempt directory; hand-off statuses 0, 7 and 9 keep both unless the child confirms an existing session.
+# A trappable exit first reaps the acquire child (bounded), so the lease it was about to create is released too.
 # The session start adopts the lease and deletes the transport (scripts/hooks/readiness-session.sh).
 READINESS_TOKEN="" READINESS_PRE_HANDOFF=0 READINESS_ACQ_PID="" READINESS_ACQ_STATE="" READINESS_ACQ_OUT="" READINESS_REAP_SECS=20
 _ready_uuid() { local u; u="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null)"; printf '%s' "$u" | tr 'A-F' 'a-f'; }  # swallow-ok: an empty attempt id is refused by every reader of the startup config
@@ -3802,7 +3802,7 @@ if [ "$READINESS" -eq 1 ] && [ "$_ha_sig_early" -eq 1 ]; then _launch_refusal_no
 "${HA_SH[@]}" -c 'export HEADED_ARM_CONTEXT_PID="$$"; exec "$@"' bash \
     "${HA_RUN[@]}" "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "$MODEL" "$CONTEXT" <&0 &
 _ha_child=$!
-# the child exists: the status rule below (0, 7 and 9 keep the lease) decides from here on; a signal that landed in the
+# the child exists: the status and outcome rule below decides from here on; a signal that landed in the
 # instant between the check above and the start is forwarded like any other
 READINESS_PRE_HANDOFF=0
 if [ "$READINESS" -eq 1 ] && [ "$_ha_sig_early" -eq 1 ]; then _ha_forward; fi
@@ -3823,9 +3823,13 @@ else _launch_refusal_note headed-arm
 fi
 unset -v _ha_word
 case "$launch_rc" in 0|7|9) ;; *) _release_fleet_reservation ;; esac
-# the same rule for the readiness lease: a session may be coming up on 0, 7 and 9 (it adopts the lease), so only a
-# definite failure releases the launcher's own captured token and drops the attempt directory
-[ "$READINESS" -eq 0 ] || case "$launch_rc" in 0|7|9) ;; *) _readiness_release ;; esac
+# A readiness lease is only for this attempt. An existing session leaves it unused.
+# Other 0, 7 and 9 outcomes keep it for adoption, including an indeterminate outcome after a forwarded signal.
+[ "$READINESS" -eq 0 ] || case "$launch_rc:$_LAUNCH_OUTCOME" in
+    0:already-running) _readiness_release ;;
+    0:*|7:*|9:*) ;;
+    *) _readiness_release ;;
+esac
 if [ -n "$FLEET_MANIFEST" ]; then
     [ "$launch_rc" -eq 0 ] || exit "$launch_rc"
     _fm_arm=()

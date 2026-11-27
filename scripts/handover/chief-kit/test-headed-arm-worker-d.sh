@@ -458,6 +458,24 @@ for rs_rc in 7 9; do
   rs_kept "hand-off status $rs_rc"
 done
 
+RS_PRE_CONFIRM=1 rs_launch
+check "17s-10351 T3: already-running succeeds without reaching konsole" \
+  "$RS_RC:$([ -e "$RS_D/record" ] && echo launched || echo no)" "0:no"
+check "17s-10351 T3: already-running releases the lease and removes the attempt" \
+  "$(rs_status):$(find "$RS_D/xdg/himmel-readiness" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')" "free:0"
+cat > "$RS/word-target.sh" <<'WORD_TARGET'
+#!/usr/bin/env bash
+trap 'sleep 1; exit 0' TERM
+printf '%s\n' already-running > "$HEADED_ARM_OUTCOME_FILE"
+: > "$(dirname "$0")/word-mark"
+sleep 10 &
+wait
+WORD_TARGET
+chmod 755 "$RS/word-target.sh"
+RS_SIGNAL_AFTER="$RS/word-mark" rs_launch HEADED_ARM_WORKER_TARGET="$RS/word-target.sh"
+check "17s-10351 T3b: the signalled child wrote its word and returned zero" "$([ -e "$RS/word-mark" ] && echo yes):$RS_RC" "yes:0"
+rs_kept "10351 T3b forwarded signal with an already-running word"
+
 # every post-acquire, pre-hand-off exit releases the launcher's OWN lease and never a successor's. The managed layout is
 # the production one: a readiness doc is a managed doc (keyless manifest row + fleet-control.json), and the wrapper's
 # hand-off then asks the fleet runtime, which refuses once the fleet is paused.
