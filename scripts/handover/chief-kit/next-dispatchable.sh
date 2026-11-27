@@ -339,6 +339,7 @@ fi
 export ND_TOK="$nd_tok"
 nd_deadline="${NEXT_DISPATCH_DEADLINE:-400}"
 case "$nd_deadline" in ''|*[!0-9]*) nd_deadline=400 ;; esac
+nd_deadline=$((10#$nd_deadline))
 nd_out=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-out.XXXXXX") || nd_temp_failure
 nd_flags=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-flags.XXXXXX") || nd_temp_failure
 if [ -n "$why_ticket" ]; then

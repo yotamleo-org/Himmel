@@ -834,7 +834,7 @@ st_first() {
     local name="$1"; shift
     : > "$STUB/deadlines"
     I="$(new_inbox "$name")"
-    env "$@" CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 timeout 15 bash "$WAIT" "$I" --workers N1.md > /dev/null 2>&1
+    env "$@" CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 timeout 15 bash "$WAIT" "$I" --workers N1.md > /dev/null 2>&1  # gnu-ok: Linux-only kit
     st_deadline
 }
 check "(stale-deadline-env) a first sample passes 400" "400" "$(st_first dl-first)"
@@ -845,7 +845,7 @@ st_repool() {
     : > "$STUB/deadlines"
     I="$(new_inbox "$1")"
     printf 'HIMMEL-9999\n' > "$I.wait.underfill"; touch -d "@$st_old" "$I.wait.underfill"  # gnu-ok: Linux-only kit
-    CHIEF_WAIT_REPOOL_TIMEOUT="$2" CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 timeout 15 bash "$WAIT" "$I" --workers N1.md > /dev/null 2>&1
+    CHIEF_WAIT_REPOOL_TIMEOUT="$2" CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 timeout 15 bash "$WAIT" "$I" --workers N1.md > /dev/null 2>&1  # gnu-ok: Linux-only kit
     st_deadline
 }
 check "(stale-deadline-env) a repool probe passes 100" "100" "$(st_repool dl-repool 120)"

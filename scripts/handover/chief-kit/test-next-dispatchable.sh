@@ -3299,6 +3299,8 @@ has "10222 stale-small: a 10s deadline cuts the GitHub pass at 5s" "$(q7line 1)"
 [ "$Q6_SECS" -le 12 ] && pass "10222 stale-small: ends inside 12s (${Q6_SECS}s)" || fail "10222 stale-small: ends inside 12s (${Q6_SECS}s)"
 q7run hung-after-probe NEXT_DISPATCH_DEADLINE=21 NEXT_DISPATCH_STALE_BUDGET=20 -- --priority-pool-only
 has "10222 stale-monotonic: a budget over half is halved" "$(q7line 1)" "after 11s"
+q7run hung-after-probe NEXT_DISPATCH_DEADLINE=09 -- --priority-pool-only
+has "10222 stale-leading-zero: a deadline of 09 is nine seconds" "$(q7line 1)" "after 5s"
 q7run hung-after-probe NEXT_DISPATCH_DEADLINE=2 -- --priority-pool-only
 has "10222 stale-floor: d=2 cuts at 1s" "$(q7line 1)" "after 1s"
 q7run hung-after-probe NEXT_DISPATCH_DEADLINE=1 -- --priority-pool-only
