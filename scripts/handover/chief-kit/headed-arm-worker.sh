@@ -1388,12 +1388,17 @@ _worker_rcwd="${_worker_rcwd%"${_worker_rcwd##*[![:space:]]}"}"
 _worker_rcwd="${_worker_rcwd#\'}"; _worker_rcwd="${_worker_rcwd%\'}"
 _worker_rcwd="${_worker_rcwd#\"}"; _worker_rcwd="${_worker_rcwd%\"}"
 case "$_worker_rcwd" in \~|\~/*) _worker_rcwd="${HOME:-}${_worker_rcwd#\~}" ;; esac
+_worker_rcwd_phys="" _worker_rc_scratch=0 _worker_rc_claude=0 _worker_rc_top=""
+if [ -n "$_worker_rcwd" ]; then
+    _worker_rcwd_phys="$(_worker_phys_path "$_worker_rcwd")" || _worker_rcwd_phys="" # swallow-ok: no resolved path to check
+    case "$_worker_rcwd_phys" in */.cache/himmel/verdicts/*/scratch) _worker_rc_scratch=1 ;; esac
+    case "$_worker_rcwd" in */.claude/worktrees/*) _worker_rc_claude=1 ;; esac
+fi
 _worker_vroot="${HANDOVER_DIR:-}"
 if [ -z "$_worker_vroot" ] && command -v handover_root >/dev/null 2>&1; then
     _worker_vroot="$(handover_root 2>/dev/null)" || _worker_vroot=""
 fi
 if [ -n "$_worker_rcwd" ] && [ -n "$_worker_vroot" ]; then
-    _worker_rcwd_phys="$(_worker_phys_path "$_worker_rcwd")" || _worker_rcwd_phys=""
     _worker_vroot_phys="$(_worker_phys_path "$_worker_vroot")" || _worker_vroot_phys=""
     if [ -n "$_worker_rcwd_phys" ] && [ -n "$_worker_vroot_phys" ]; then
         case "$_worker_rcwd_phys" in
@@ -1405,20 +1410,17 @@ if [ -n "$_worker_rcwd" ] && [ -n "$_worker_vroot" ]; then
         esac
     fi
 fi
-# refuse (exit 2) a worker whose resume_cwd names a worker worktree path
-# (.../.claude/worktrees/<type>+<slug>) that is not an existing git worktree: 8
-# of 38 audited workers failed their first call on exactly this, and the worker then
-# spends one to three turns creating it at the most expensive moment. Verify and
-# refuse, never create: the launcher stays read-only on the repo. Only that path
-# shape is checked, so a judge's scratch dir and a doc with no resume_cwd launch
-# unchanged. Runs before --dry-run's exit so a chief's dry-run sees it.
+# A worktree-shaped resume_cwd must name a live Git toplevel. The raw .claude
+# spelling supplies its branch hint. Other shapes use the physical path and
+# exempt judge scratch. Both checks run before the dry-run report.
 # shellcheck source=../../lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
-case "$_worker_rcwd" in
-*/.claude/worktrees/*)
-    _worker_wt_top="$(git_clean -C "$_worker_rcwd" rev-parse --show-toplevel 2>/dev/null)" || _worker_wt_top=""
-    _worker_wt_phys="$(cd -P "$_worker_rcwd" 2>/dev/null && pwd -P)" || _worker_wt_phys=""
-    if [ -z "$_worker_wt_top" ] || [ "$_worker_wt_top" != "$_worker_wt_phys" ]; then
+if [ -d "$_worker_rcwd_phys" ]; then
+    _worker_rc_top="$(git_clean -C "$_worker_rcwd_phys" rev-parse --show-toplevel 2>/dev/null)" || _worker_rc_top="" # swallow-ok: an unverified toplevel cannot qualify
+fi
+case "$_worker_rc_claude" in
+1)
+    if [ -z "$_worker_rc_top" ] || [ "$_worker_rc_top" != "$_worker_rcwd_phys" ]; then
         _worker_wt_base="${_worker_rcwd%/}"; _worker_wt_base="${_worker_wt_base##*/}"
         _launch_refusal_note worktree-missing "the doc's resume_cwd ($_worker_rcwd) is not an existing git worktree"
         _worker_wt_branch="${_worker_wt_base/+//}"
@@ -1444,23 +1446,53 @@ case "$_worker_rcwd" in
         echo "headed-arm-worker: refusing to launch $NAME: the doc's resume_cwd ($_worker_rcwd) is not an existing git worktree. $_worker_wt_fix" >&2
         exit 2
     fi
-    # With no repo override, use this repo's worktree or a registered adopter's
-    # worktree as the session cwd, never the launcher's primary checkout.
-    # An unregistered repo and --consult launch as before.
-    if [ -z "${WORKER_SESSION_REPO:-}" ] && [ -z "${HEADED_ARM_REPO:-}" ] && [ "$CONSULT" -ne 1 ]; then
-        _worker_rc_common="$(git_clean -C "$_worker_rcwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _worker_rc_common="" # swallow-ok: empty means no registry match, the launch keeps the harness cwd
-        _worker_self_common="$(git_clean -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _worker_self_common="" # swallow-ok: empty leaves the harness cwd rule to the registry match alone
-        if [ -n "$_worker_rc_common" ] && { [ "$_worker_rc_common" = "$_worker_self_common" ] \
-            || bash "$HERE/../register-state.sh" --check --repo-path "${_worker_rc_common%/.git}" >/dev/null 2>&1; }; then
-            HEADED_ARM_REPO="$_worker_wt_phys"
-            export HEADED_ARM_REPO
-            # headed-arm.sh passes DOC to the session as written and starts it in the new cwd
-            case "$DOC" in /*) ;; *) DOC="$PWD/$DOC" ;; esac
-        fi
-        unset -v _worker_rc_common _worker_self_common
+    ;;
+0)
+    if [ "$_worker_rc_scratch" -eq 0 ]; then
+        case "$_worker_rcwd_phys" in
+        */worktrees|*/worktrees/*|*-worktrees|*-worktrees/*|*-wt|*-wt/*)
+            if [ -z "$_worker_rc_top" ] || [ "$_worker_rc_top" != "$_worker_rcwd_phys" ]; then
+                _launch_refusal_note worktree-missing "the doc's resume_cwd ($_worker_rcwd) is not an existing git worktree"
+                echo "headed-arm-worker: refusing to launch $NAME: the doc's resume_cwd ($_worker_rcwd) is not an existing git worktree. Its branch cannot be read from this path: from the repo's primary checkout, resume the branch's worktree (bash scripts/worktree.sh resume <branch>; in a repo without that script, bash $HERE/../../_new-worktree.sh <branch> --resume --no-install) and set resume_cwd to it, or restore the worktree at $_worker_rcwd." >&2
+                exit 2
+            fi
+            ;;
+        esac
     fi
     ;;
 esac
+# With no override, start in a linked worktree of this repo or a registered
+# repo. Consult keeps its own folder. Other layouts also exclude state repos.
+if [ -z "${WORKER_SESSION_REPO:-}" ] && [ -z "${HEADED_ARM_REPO:-}" ] && [ "$CONSULT" -ne 1 ] \
+    && [ -n "$_worker_rc_top" ] && [ "$_worker_rc_top" = "$_worker_rcwd_phys" ]; then
+    _worker_rc_git="$(git_clean -C "$_worker_rcwd_phys" rev-parse --absolute-git-dir 2>/dev/null)" || _worker_rc_git="" # swallow-ok: an unreadable git dir cannot establish a linked worktree
+    _worker_rc_common="$(git_clean -C "$_worker_rcwd_phys" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _worker_rc_common="" # swallow-ok: an unreadable common dir cannot establish a linked worktree
+    if [ -n "$_worker_rc_git" ] && [ -n "$_worker_rc_common" ]; then
+        _worker_rc_git="$(cd -P -- "$_worker_rc_git" 2>/dev/null && pwd -P)" || _worker_rc_git="" # swallow-ok: an unresolvable git dir cannot establish a linked worktree
+        _worker_rc_common="$(cd -P -- "$_worker_rc_common" 2>/dev/null && pwd -P)" || _worker_rc_common="" # swallow-ok: an unresolvable common dir cannot establish a linked worktree
+    fi
+    if [ -n "$_worker_rc_git" ] && [ -n "$_worker_rc_common" ] && [ "$_worker_rc_git" != "$_worker_rc_common" ]; then
+        _worker_self_common="$(git_clean -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _worker_self_common="" # swallow-ok: the registry can still vouch for the repo
+        if [ -n "$_worker_self_common" ]; then
+            _worker_self_common="$(cd -P -- "$_worker_self_common" 2>/dev/null && pwd -P)" || _worker_self_common="" # swallow-ok: the registry can still vouch for the repo
+        fi
+        if [ "$_worker_rc_common" = "$_worker_self_common" ] \
+            || bash "$HERE/../register-state.sh" --check --repo-path "${_worker_rc_common%/.git}" >/dev/null 2>&1; then
+            _worker_rc_state=1
+            if [ "$_worker_rc_claude" -eq 0 ]; then
+                _worker_rc_state=0
+                bash "$HERE/../../lib/launch-guard-check.sh" --state-repo "$_worker_rcwd_phys" >/dev/null 2>&1 || _worker_rc_state=$?
+            fi
+            if [ "$_worker_rc_state" -eq 1 ]; then
+                HEADED_ARM_REPO="$_worker_rcwd_phys"
+                export HEADED_ARM_REPO
+                # headed-arm.sh passes DOC to the session as written and starts it in the new cwd
+                case "$DOC" in /*) ;; *) DOC="$PWD/$DOC" ;; esac
+            fi
+        fi
+    fi
+    unset -v _worker_rc_git _worker_rc_common _worker_self_common _worker_rc_state
+fi
 # the judge's own doc and qid, resolved while _worker_phys_path
 # exists; exported for guard-judge-writes.sh with the judge marker below. A
 # qid is the <qid> of a resume_cwd ~/.cache/himmel/verdicts/<qid>/scratch,
@@ -1468,21 +1500,16 @@ esac
 _judge_doc=""; _judge_qid=""
 if [ "$JUDGE" -eq 1 ]; then
     _judge_doc="$(_worker_phys_path "$DOC")" || _judge_doc=""
-    if [ -n "$_worker_rcwd" ]; then
-        _judge_rcwd="$(_worker_phys_path "$_worker_rcwd")" || _judge_rcwd=""
-        case "$_judge_rcwd" in
-            */.cache/himmel/verdicts/*/scratch)
-                _judge_qid="${_judge_rcwd%/scratch}"; _judge_qid="${_judge_qid##*/}"
-                case "$_judge_qid" in "" | *[!A-Za-z0-9._-]*) _judge_qid="" ;; esac
-                ;;
-        esac
+    if [ "$_worker_rc_scratch" -eq 1 ]; then
+        _judge_qid="${_worker_rcwd_phys%/scratch}"; _judge_qid="${_judge_qid##*/}"
+        case "$_judge_qid" in "" | *[!A-Za-z0-9._-]*) _judge_qid="" ;; esac
     fi
 fi
 # the release manager's own doc, for guard-rm-writes.sh the same way.
 _rm_doc=""
 [ "$RM" -eq 1 ] && { _rm_doc="$(_worker_phys_path "$DOC")" || _rm_doc=""; }
 unset -f _worker_phys_path
-unset -v _worker_rcwd _worker_rcwd_phys _worker_vroot _worker_vroot_phys _worker_wt_top _worker_wt_phys _worker_wt_base
+unset -v _worker_rcwd _worker_rcwd_phys _worker_rc_scratch _worker_rc_claude _worker_rc_top _worker_vroot _worker_vroot_phys _worker_wt_base
 # A session folder that would not load the himmel guard hooks is refused before the dry-run report and
 # every side effect below (preflight slot, doc edit, launch log, pretrust, exec). UNGUARDED_LAUNCH_OK=1
 # (launching shell) launches anyway with one WARN; the exported marker keeps headed-arm.sh from repeating it.
