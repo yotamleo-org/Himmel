@@ -18,17 +18,15 @@
 # egress-matrix provider has a corpus:* purpose:* deny row.
 #
 # Mode (registry `mode`, overridable per server):
-#   observe  exit 0. This is the shipped `mode` everywhere: unknown, unlisted
-#            and malformed calls must never break or stall a current MCP call.
+#   observe  exit 0.
 #   enforce  a deny verdict exits 2 with the registry entry to add.
 # `enforce_classes` (shipped: destructive) puts a call of a listed class on a
 # registered server in enforce, whatever `mode` says.
 #
 # Fail direction: OPEN, deliberately, on every infrastructure error (no jq,
-# missing or malformed registry, jq timeout, unwritable audit log) — a tracker
-# that can deny on its own bug would stall every MCP call. Enforce-mode
-# denials of malformed input still fail closed, because they are policy, not
-# infrastructure. jq runs under a 2 s internal timeout.
+# missing or malformed registry, jq timeout, unwritable audit log).
+# Enforce-mode denials of malformed input still fail closed, because they are
+# policy, not infrastructure. jq runs under a 2 s internal timeout.
 #
 # The Atlassian MCP-to-CLI redirect stays its own hook
 # (block-backend-tier.sh, matcher mcp__plugin_atlassian_atlassian__.*) and

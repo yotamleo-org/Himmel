@@ -2,11 +2,6 @@
 # Tests for scripts/hooks/mcp-policy.sh: MCP call tracking plus
 # the gating seam.
 #
-#   observe (shipped): unknown server, unlisted tool, egress-denied server,
-#     malformed or ANSI input are all allowed and audited with the class and
-#     the verdict it WOULD give.
-#   enforce_classes (shipped: destructive): a would-deny of that class on a
-#     registered server is applied in any mode.
 #   enforce (test fixtures only): the same calls are denied.
 #   audit: one line per call, no argument content, size cap with rotation.
 #   latency: p95 per call under a budget.
@@ -52,7 +47,6 @@ expect() {
 
 [ -f "$HOOK" ] || { echo "FAIL hook missing: $HOOK"; exit 1; }
 
-# --- 1. shipped registry: observe, except the destructive class -------------
 run_hook "$(call mcp__nosuchserver__do_thing)"
 expect "observe: unknown server allowed, would-deny" 0 unknown-server deny
 run_hook "$(call mcp__qmd__drop_everything)"
