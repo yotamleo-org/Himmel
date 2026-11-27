@@ -2963,7 +2963,7 @@ c102_hosts() { c102_cfg "{$c102_net,\"lane_grants_hosts\":$1}"; out="$(c102_run)
 c102_no_echo() {
     local line bad=''
     while IFS= read -r line; do
-        case "$line" in *'$(id)'*|example.com|'") '*) bad=$line ;; esac
+        case "$line" in *'$(id)'*|*example.com*) bad=$line ;; esac
     done <<<"$out"
     if [ -z "$bad" ]; then pass "C102 $1"; else fail "C102 $1 -> $bad"; fi
 }
