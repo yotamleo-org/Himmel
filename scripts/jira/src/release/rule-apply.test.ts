@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { markdownToAdf } from '../adf.js';
 import type { ADFDocument } from '../adf-render.js';
 import { renderIssue } from '../commands/mirror.js';
-import { DISPATCHER, makeNdFixture, makeNdStub } from '../operations/readiness-stub.test-helper.js';
+import { DISPATCHER, makeNdFixture, makeNdStub } from '../operations/testlib-readiness-stub.js';
 import { runReadiness } from '../readiness.js';
 import type { DoorJiraPort } from './rule-apply.js';
 import {

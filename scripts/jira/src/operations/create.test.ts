@@ -18,7 +18,7 @@ import { registerRelease } from '../commands/release.js';
 import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 import { runReadiness } from '../readiness.js';
 import { CreatePartial, CreateRefused, readinessIssue, runCreate, type CreateOptions } from './create.js';
-import { DISPATCHER, makeNdFixture, makeNdStub } from './readiness-stub.test-helper.js';
+import { DISPATCHER, makeNdFixture, makeNdStub } from './testlib-readiness-stub.js';
 
 const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
 const BODY = PLAIN_BLOCK_TEMPLATE.replace(/<[^>\n]*>/g, 'filled');

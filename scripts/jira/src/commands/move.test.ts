@@ -17,7 +17,7 @@ import {
   type JiraComment,
 } from './move.js';
 import { registerRelease } from './release.js';
-import { makeNdStub } from '../operations/readiness-stub.test-helper.js';
+import { makeNdStub } from '../operations/testlib-readiness-stub.js';
 import { request } from '../client.js';
 import { markdownToAdf } from '../adf.js';
 import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';

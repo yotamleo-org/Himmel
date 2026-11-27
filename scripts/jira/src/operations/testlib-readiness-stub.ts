@@ -5,12 +5,6 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ReadinessFixture } from '../readiness.js';
 
-export function makePassingNdStub(): string {
-  const path = join(mkdtempSync(join(tmpdir(), 'jira-test-readiness-')), 'next-dispatchable.sh');
-  writeFileSync(path, 'exit 0\n');
-  return path;
-}
-
 export const DISPATCHER = fileURLToPath(new URL('../../../handover/chief-kit/next-dispatchable.sh', import.meta.url));
 
 export function makeNdFixture(): ReadinessFixture {

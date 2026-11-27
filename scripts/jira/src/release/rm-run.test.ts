@@ -11,7 +11,7 @@ import {
 import { judgeOperatorRows } from './judge-input.js';
 import { doorJudge } from './door.js';
 import { ctxFor } from '../commands/release.js';
-import { makeNdStub } from '../operations/readiness-stub.test-helper.js';
+import { makeNdStub } from '../operations/testlib-readiness-stub.js';
 import { execFileSync, spawnSync } from 'node:child_process';
 import * as pinned from './pinned.js';
 import * as ledger from './ledger.js';
