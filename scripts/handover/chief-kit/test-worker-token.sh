@@ -151,10 +151,11 @@ bucket; t1="$(wt mint "$D" Y-N1)"; mkdoc "$D"; wt rotate "$D" --to "$S" >/dev/nu
 bullet "$D" "$S"
 eq "WT12b: a rotation retired by set never becomes current" "$(wt current "$D")" "$t1"
 
+_as_claude() { (exec -a claude bash -c '"$@"; exit $?' _ "$@"); }
 for var in HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY; do
     bucket; printf '{}\n' > "$REC"; chmod 000 "$REC"; mkdoc "$D"; rm -f "$KEYF"
     for sub in mint current gen rotate tokens set; do
-        env "$var=1" bash "$SUT" "$sub" "$D" Y-N1 >/dev/null 2>&1; rc=$?
+        (export "$var=1"; _as_claude bash "$SUT" "$sub" "$D" Y-N1) >/dev/null 2>&1; rc=$?
         eq "WT3: $sub under $var is refused (rc 3)" "$rc" 3
     done
     [ ! -e "$KEYF" ] && pass "WT3: no key was minted under $var" || fail "WT3: a key was minted under $var"

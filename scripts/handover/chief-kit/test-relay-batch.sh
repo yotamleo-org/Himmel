@@ -407,7 +407,8 @@ check "RB4: an unreadable record is UNRESOLVED" "1" "$(cnt "$o" '^UNRESOLVED N1 
 check "RB4: with nothing sent" "0" "$(cnt "$o" '^SENDMESSAGE')"
 o="$(rbrun "$RBC")"
 check "RB4: a bus identity sends no record either" "" "$(cat "$WORK/bus.log")"
-o="$(HIMMEL_CONSOLE_LEG=1 rbrun "")"
+_as_claude() { (exec -a claude bash -c '"$@"; exit $?' _ "$@"); }
+o="$(export HIMMEL_CONSOLE_LEG=1; _as_claude env HIMMEL_BUS_NAME= bash "$RB" "$RDOC" --successor "$SUCC" 2>&1)"
 check "RB4c: where the record is not consulted (a worker), the span is quoted as before" "tok-span" "$(quoted "$o")"
 chmod 600 "$RDIR"/*.jsonl
 
