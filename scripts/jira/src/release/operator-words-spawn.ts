@@ -19,13 +19,18 @@ export interface VerifySeams { spawn?: VerifierSpawn; env?: Readonly<Record<stri
 
 const run: VerifierSpawn = (cmd, args, o) => spawnSync(cmd, args, { ...o, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
-export function verifyUpdate(id: number, seams: VerifySeams = {}): VerifiedLine {
-  const from = seams.env ?? process.env;
+/** The only variables a child of the go-answer verb inherits. */
+export function pinnedEnv(from: Readonly<Record<string, string | undefined>>): Record<string, string> {
   const env: Record<string, string> = {};
   for (const name of PINNED_ENV) {
     const v = from[name];
     if (v !== undefined) env[name] = v;
   }
+  return env;
+}
+
+export function verifyUpdate(id: number, seams: VerifySeams = {}): VerifiedLine {
+  const env = pinnedEnv(seams.env ?? process.env);
   const r = (seams.spawn ?? run)('bun', [join(repo, 'scripts', 'telegram', 'operator-words.ts'), '--update', String(id)],
     { cwd: repo, env, timeout: TIMEOUT_MS });
   if (r.error || r.status !== 0) {

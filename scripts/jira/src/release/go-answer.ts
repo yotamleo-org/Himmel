@@ -2,7 +2,7 @@
 // Run by the bypass daemon only; every refusal throws and writes nothing.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +11,7 @@ import { AGENT_COMMANDS, AGENT_MARKERS, walk, type WalkOpts } from './fence-ance
 import { loadKey, readChain } from './ledger.js';
 import { recordDecision, releaseForProject } from './operator-acts.js';
 import { releaseKeyPath, releaseRoot } from './paths.js';
-import type { VerifiedLine } from './operator-words-spawn.js';
+import { pinnedEnv, type VerifiedLine } from './operator-words-spawn.js';
 import type { OperatorRow } from './types.js';
 
 export interface GoAnswerArgs {
@@ -59,7 +59,7 @@ const askLine = (code: string, key: string, from: string): string =>
 
 export function bucketGitleaks(file: string, env: Record<string, string | undefined>): number | null {
   const script = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'handover', 'chief-kit', 'bucket-gitleaks.sh');
-  return spawnSync('bash', [script, file], { env: env as NodeJS.ProcessEnv, stdio: 'ignore', timeout: 60_000 }).status;
+  return spawnSync('bash', [script, file], { env: pinnedEnv(env), stdio: 'ignore', timeout: 60_000 }).status;
 }
 
 function gates(d: GoAnswerDeps): void {
@@ -83,11 +83,25 @@ function checkArgs(a: GoAnswerArgs): void {
   if (a.code !== undefined && !CODE.test(a.code)) throw new Error('--code is six characters of A-Z and 2-9, with no N');
 }
 
+function readRegularFile(path: string): Buffer {
+  let fd: number;
+  try {
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch (e) {
+    throw new Error(`--request is not a regular file that can be read: ${(e as Error).message}`);
+  }
+  try {
+    if (!fstatSync(fd).isFile()) throw new Error('--request is not a regular file');
+    return readFileSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function readRequest(a: GoAnswerArgs): Request {
   if (!a.request.endsWith('.answer.pending')) throw new Error('--request must name a .answer.pending file');
   if (basename(dirname(a.request)) !== 'bypass-queue') throw new Error('--request must sit in a bypass-queue directory');
-  if (!lstatSync(a.request).isFile()) throw new Error('--request is not a regular file');
-  const bytes = readFileSync(a.request);
+  const bytes = readRegularFile(a.request);
   const sha = createHash('sha256').update(bytes).digest('hex');
   if (sha !== a.requestSha256) throw new Error('the request sha256 is not --request-sha256');
   const lines = bytes.toString('utf8').split('\n');

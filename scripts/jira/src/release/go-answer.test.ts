@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyUpdate, type VerifiedLine } from './operator-words-spawn.js';
-import { goAnswer, type GoAnswerArgs, type GoAnswerDeps, type GoAnswerOut } from './go-answer.js';
+import { bucketGitleaks, goAnswer, type GoAnswerArgs, type GoAnswerDeps, type GoAnswerOut } from './go-answer.js';
 import { declare, operatorDecision, request, type Ctx, type JiraPort } from './engine.js';
 import { loadKey, readChain } from './ledger.js';
 import type { OperatorRow, RequestRow } from './types.js';
@@ -190,6 +190,15 @@ describe('the verifier spawn', () => {
     for (const stdout of ['', one, `${one}\n${one}\n`, 'not json\n', 'null\n', `${JSON.stringify({ ...line, update_id: UPDATE + 1 })}\n`, `${JSON.stringify({ ...line, ts: '1' })}\n`]) {
       expect(() => verifyUpdate(UPDATE, { spawn: answer(stdout) }), JSON.stringify(stdout)).toThrow(/exactly one JSON line/);
     }
+  });
+});
+
+describe('the secret check child', () => {
+  it('does not inherit BASH_ENV, so a startup hook cannot answer for the scan', () => {
+    const dir = temp('go-answer-hook-');
+    writeFileSync(join(dir, 'hook.sh'), 'exit 7\n');
+    writeFileSync(join(dir, 'empty.txt'), '');
+    expect(bucketGitleaks(join(dir, 'empty.txt'), { PATH: process.env.PATH, HOME: dir, BASH_ENV: join(dir, 'hook.sh') })).not.toBe(7);
   });
 });
 
