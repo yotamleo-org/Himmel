@@ -136,16 +136,16 @@ out.port_calls = calls.length;
 if (mode === 'finish') out.finish = await t.finishAttempt(startup);
 process.stdout.write(`${JSON.stringify(out)}\n`);
 DRIVER_EOF
-adapter() { env -i PATH="$PATH" HOME="$HOME" node "$DRIVER" "$HERE" "$D/PROJ-9999-rw$n.leg-mcp.json" "$1" 2>"$tmp/adapter.err"; }
+adapter() { env -i PATH="$PATH" HOME="$HOME" node "$DRIVER" "$HERE" "$A/leg-mcp.json" "$1" 2>"$tmp/adapter.err"; }
 
 launch 1
 check "launch: exit 0 and the launch reached konsole" "$RC:$([ -s "$D/record" ] && echo yes)" "0:yes"
 check "launch: the lease is held on behalf, fresh, before any session exists" "$(lock_status "$DOC")" "status: FRESH"
-check "launch: the attempt directory holds only the private startup config and the transport" \
-    "$(find "$A" -mindepth 1 -printf '%f\n' 2>/dev/null | sort | tr '\n' ' ')" "lease-token startup.json "
+check "launch: the attempt directory holds the private configs and the transport" \
+    "$(find "$A" -mindepth 1 -printf '%f\n' 2>/dev/null | sort | tr '\n' ' ')" "lease-token leg-mcp.json leg-settings.json startup.json "
 TOKEN="$(cat "$A/lease-token" 2>/dev/null || true)"
 check "launch: the token reached no launch output, record, settings, MCP config, startup config, doc or launch log" \
-    "$(grep -rlF -- "$TOKEN" "$D" "$HIMMELCTL_CACHE_DIR" "$A/startup.json" "$DOC" 2>/dev/null | tr '\n' ' ')" ""
+    "$(grep -rlF -- "$TOKEN" "$D" "$HIMMELCTL_CACHE_DIR" "$A/startup.json" "$A/leg-settings.json" "$A/leg-mcp.json" "$DOC" 2>/dev/null | tr '\n' ' ')" ""
 adapter check > "$tmp/a0.json"
 check "before the session starts: every act is refused and the port is never touched" \
     "$(jq -c '[.check.code, .label.code, .port_calls]' "$tmp/a0.json" 2>/dev/null)" '["not-adopted","not-adopted",0]'
