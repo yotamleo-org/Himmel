@@ -51,8 +51,7 @@
 #      files, or its two shas are not the ones sign-check printed - nothing written.
 #      The bullet carries spec= plan= spec-return= plan-return= (absolute paths with
 #      no spaces) keys=<K[,K]> spec-sha= plan-sha=, and route=spec-review when that
-#      signs it. It records a check made when the bullet was written; the files can
-#      change afterwards
+#      signs it
 #  11  sign-check gave neither answer (no Jira CLI, or a build without the verb) -
 #      nothing written
 #
