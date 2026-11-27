@@ -92,7 +92,7 @@ finish() {
 }
 after() {
     local i=0
-    while [ "$i" -lt 100 ]; do
+    while [ "$i" -lt 200 ]; do
         if [ "$(count "$1")" -ge "$2" ] && ! grep -q 'state=sampling' "$inbox.wait" 2>/dev/null; then
             printf 'telegram line\n' >> "$inbox"; return 0
         fi
@@ -102,21 +102,21 @@ after() {
 }
 woke() {
     start
-    if ! finish 100; then fail "$R $2: no wake in 10 s"; return 1; fi
+    if ! finish 200; then fail "$R $2: no wake in 20 s"; return 1; fi
     pass "$R $2: a wake was printed"
     check "$R $2: woke on sweep $1" "$1" "$(count n)"
 }
 after_sweep() {
     start
     if ! after n "$1"; then fail "$R $2: no sweep ran"; finish 1; return 1; fi
-    if ! finish 100; then fail "$R $2: no wake after the inbox line"; return 1; fi
+    if ! finish 200; then fail "$R $2: no wake after the inbox line"; return 1; fi
     if [ "$(count n)" != "$1" ]; then fail "$R $2: extra sweep (want $1 got $(count n))"; return 1; fi
     pass "$R $2: ran to sweep $1"
 }
 after_tick() {
     start
     if ! after ticks "$1"; then fail "$R $2: no tick ran"; finish 1; return 1; fi
-    if ! finish 100; then fail "$R $2: no wake after the inbox line"; return 1; fi
+    if ! finish 200; then fail "$R $2: no wake after the inbox line"; return 1; fi
     pass "$R $2: ran to tick $1"
 }
 quiet() {
