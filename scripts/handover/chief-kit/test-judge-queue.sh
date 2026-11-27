@@ -104,12 +104,14 @@ f = open(sys.argv[2], "a")
 try:
     fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
     print("free")
-except OSError:
+except BlockingIOError:
     print("held")
 w.write("## Results\n")
 w.close()' "$WORK/slow.md" "$L/judge-desk/.lock" 2>&1)"
-wait "$scan_pid"
+case "$held" in held|free) ;; *) kill "$scan_pid" 2>/dev/null ;; esac
+wait "$scan_pid"; scan_rc=$?
 eq "lock: a scan holds judge-desk/.lock while it reads the worker documents" "$held" held
+eq "lock: the scan behind the lock probe exits 0" "$scan_rc" 0
 
 R="$WORK/repo"; mkdir -p "$R"
 (
