@@ -405,7 +405,7 @@
 # while it stays; the marker clears when the field is gone. It is not part of the action key.
 # `WAKE owed-undelivered <keys>` (with --doc): the chief doc holds an owed-item
 # bullet `- [HH:MM ]OWED <key> <what the operator must do>` (key = [A-Za-z0-9_.-]+) and no
-# receipt bullet `- [HH:MM ]DELIVERED <key> msg=<telegram message id> chat=<chat id>` once the
+# receipt bullet `- [HH:MM[Z] ]DELIVERED <key> msg=<telegram message id> chat=<chat id>` once the
 # waiter has seen it for CHIEF_WAIT_OWED_SEC (default 300). Only
 # `chief-route.ts reply --owed <key> --doc <chief doc> <chat> <text>` writes the DELIVERED
 # bullet, from the bridge's send receipt, never by hand. Wakes once per key (marker
