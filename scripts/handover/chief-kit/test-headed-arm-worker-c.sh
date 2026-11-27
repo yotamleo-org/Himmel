@@ -1261,7 +1261,7 @@ init53() {
     git -C "$1" init -q &&
     git -C "$1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 }
-tmp53="$(cd -P "$tmp" && pwd -P)"
+tmp53="${tmp:?missing fixture root}"
 case "$tmp53/" in
   */worktrees/*|*-worktrees/*|*-wt/*) check "53 fixture outside shaped paths" "$tmp53" "unshaped directory" ;;
 esac
@@ -1312,24 +1312,25 @@ real53() {
   if [ "$rc53" = 0 ]; then wait_record "$stub" || true; fi
 }
 snap53() {
-  git -C "$r53" worktree list --porcelain
-  ls -R "$r53/.git/worktrees"
-  cksum "$r53/.git/config" "$r53"/.git/worktrees/*/gitdir "$r53"/.git/worktrees/*/HEAD "$r53"/.git/worktrees/*/commondir
-  git -C "$r53" config --list --local
-  git -C "$r53" for-each-ref
+  git -C "$r53" worktree list --porcelain &&
+    ls -R "$r53/.git/worktrees" &&
+    cksum "$r53/.git/config" "$r53"/.git/worktrees/*/gitdir "$r53"/.git/worktrees/*/HEAD "$r53"/.git/worktrees/*/commondir &&
+    git -C "$r53" config --list --local &&
+    git -C "$r53" for-each-ref
 }
 refusal53="is not an existing git worktree"
 derived53='HEADED_ARM_REPO=<derived by headed-arm.sh>'
-before53="$(snap53)"
+before53="$(snap53)" || exit 1
 dry53 "$t3live53"
 check "53a shaped live worktree dry-run exits 0" "$rc53" 0
 contains "53a dry-run selects the shaped linked worktree" "$out53" "HEADED_ARM_REPO=$t3live53 "
 real53 "$tmp53/c53b" PROJ-53-b ""
 check "53b shaped live worktree launch exits 0" "$rc53" 0
 contains "53b launch uses the shaped linked worktree" "$(cat "$tmp53/c53b/record" 2>/dev/null)" "--workdir $t3live53"
-check "53p fold leaves Git state unchanged" "$(snap53)" "$before53"
+after53="$(snap53)" || exit 1
+check "53p fold leaves Git state unchanged" "$after53" "$before53"
 
-before53="$(snap53)"
+before53="$(snap53)" || exit 1
 dry53 "$t3gone53"
 check "53c gone worktree dry-run exits 2" "$rc53" 2
 contains "53c refusal gives the repo resume command" "$out53" 'bash scripts/worktree.sh resume <branch>'
@@ -1344,7 +1345,8 @@ for launch53 in c1 c2; do
   check "53c $launch53 leaves no launch record" "$([ -e "$stub53/record" ] && echo record || echo absent)" absent
   check "53c $launch53 leaves the worktree absent" "$([ -e "$t3gone53" ] && echo exists || echo absent)" absent
 done
-check "53p refusal leaves Git state unchanged" "$(snap53)" "$before53"
+after53="$(snap53)" || exit 1
+check "53p refusal leaves Git state unchanged" "$after53" "$before53"
 
 refused53() {
   check "53$1 $2 exits 2" "$rc53" 2
