@@ -27,7 +27,9 @@ release is declared (`jira release state <R>` prints a status other than
   of that file, never in a paragraph that opens with a gloss word (`Read`,
   `Reading`, `Chief`, `Asked`, `Answering`, `Note`, `Ruling`, `Relayed`, `Facts`
   and the rest of the list in `scripts/jira/src/release/verbatim.ts`), and be at
-  least 20 characters or the whole paragraph (a bare "yes"). Your own reading of a
+  least 20 characters or the whole paragraph (a bare "yes"). In a file that opens with
+  a Question block (`scripts/handover/chief-kit/ask-question.ts` writes one), only the answer paragraph counts, and a paragraph that opens with
+  `Question` is a gloss. Your own reading of a
   ruling is never the operator's words. The same call writes one `O-` record with
   `words: 1` (or reuses the one an earlier call wrote), withdraws an open duplicate
   that cites no `O-` record, and files the request citing it; it prints

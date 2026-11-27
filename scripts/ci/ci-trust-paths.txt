@@ -108,6 +108,8 @@
 ^scripts/telegram/fixtures/
 # The core match the ticket spec gate asks; the list it reads is under ^scripts/ci/ above.
 ^scripts/jira/src/release/core\.ts$
+# The Question-block parser and the short-answer rule behind the record verbs' quote floor.
+^scripts/jira/src/release/verbatim(\.test)?\.ts$
 ^scripts/jira/src/release/signer\.ts$
 ^scripts/jira/src/release/signer\.test\.ts$
 # The operator fence's ancestry walk: a marked ancestor or a bad stop refuses every operator verb.

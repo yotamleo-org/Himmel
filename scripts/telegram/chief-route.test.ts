@@ -3128,6 +3128,7 @@ test("keyOf reads the ticket key by the D1 rule, and parseFindings gives every u
 });
 
 import { dirname, relative } from "node:path";
+import { renderQuestion } from "../jira/src/release/verbatim.ts";
 
 const CAP_KEY = "HIMMEL-9711";
 const T1 = (kind: string) => `${CAP_KEY} ${kind} round 4 needs a blocking finding in round 3 of either kind; sign it under 848, its minors go to the build`;
@@ -9081,4 +9082,120 @@ test("HIMMEL-11321 8e stored kinds", async () => {
   const again = await lagExtend(t, { decision: 988 });
   expect(again.err).toContain("already open"); expect(again.code).not.toBe(0);
   expect(rowsOf(t.specs, "extension")).toHaveLength(2);
+});
+
+const ANSWERS = [{ answer: "a1", meaning: "sign the spec exactly as it stands today" }, { answer: "a2", meaning: "revise the spec and run the critic again" }];
+const askedText = (answer: string, o: { options?: typeof ANSWERS; subject?: string; ask?: string; tail?: string } = {}) =>
+  `${renderQuestion({ subject: o.subject ?? `${CAP_KEY} round-critical C1`, asked: null, ask: [o.ask ?? "sign it as it stands, or revise it?"], options: o.options ?? ANSWERS })}\n${answer}\n${o.tail ?? ""}`;
+const askedFile = (specs: string, d: number, answer: string, o: Parameters<typeof askedText>[1] = {}, older = false) => decide(specs, d, askedText(answer, o), older);
+const criticalTree = async () => {
+  const t = await roundTree(["- **C1** (major; operator-critical: spend-grant) the spec grants a spend"], []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **C2** (major; reopens C1) still grants it")).err).toBe("");
+  return t;
+};
+const capTree = async () => {
+  const t = await roundTree(MAJOR, []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "- **M2** (major; reopens M1) still open")).err).toBe("");
+  expect((await overrideOf(t.specs, "M2")).code).toBe(0);
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toBe("");
+  writeFileSync(t.a, front(CAP_KEY, "# A\n\na lint fix after the seal\n"));
+  return t;
+};
+const shortClosure = (specs: string, d: number, quote: string) => verb(true, "round-critical", CAP_KEY, "--decision", String(d), "--quote", quote, "--closure", "--specs", specs);
+const noInvalid = async (specs: string) => expect((await routeCli("round-status", CAP_KEY, "--specs", specs)).out).not.toContain("invalid:");
+const refusedWith = async (r: Promise<{ code: number; err: string }>, specs: string, text: string) => {
+  const x = await r; expect(x.err).toContain(text); expect(x.code).not.toBe(0); expect(rowsOf(specs, "critical")).toEqual([]);
+};
+
+test("short answer: round-critical a1 closes C1", async () => {
+  const t = await criticalTree(); askedFile(t.specs, 1401, "a1");
+  const ok = await critical(true, t.specs, "C1", 1401, "a1");
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "critical")).toMatchObject([{ id: "C1", decision: "1401", quote: "a1" }]);
+  await noInvalid(t.specs);
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC CLEAN")).err).toBe("");
+});
+
+test("short answer: round-reset a1", async () => {
+  const t = await roundTree(MAJOR, []); askedFile(t.specs, 1402, "a1");
+  expect((await verb(true, "round-reset", CAP_KEY, "--decision", "1402", "--quote", "a1", "--specs", t.specs)).err).toBe("");
+  await noInvalid(t.specs);
+  const again = `${t.a}.critic-spec-r9.md`;
+  writeFileSync(again, readFileSync(`${t.a}.critic-spec-r1.md`, "utf8").split("\n").filter((l) => !l.startsWith("CONTENT-SHA256 ")).join("\n"));
+  expect((await seal(again, t.a, sha(front(CAP_KEY, "# A\n")))).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", round: 1, epoch: 1 });
+});
+
+test("short answer: round-extension a1", async () => {
+  const t = await extTree(); askedFile(t.specs, 986, "a1");
+  expect((await extend(true, t, { quote: "a1" })).err).toBe("");
+  await noInvalid(t.specs);
+  expect((await closeOn(t, "spec", 6, [t.a], "SPEC CLEAN")).err).toBe("");
+});
+
+test("short answer: round-critical --closure yes opens the next round", async () => {
+  const t = await capTree();
+  askedFile(t.specs, 1403, "yes", { options: [{ answer: "yes", meaning: "open one more round" }, { answer: "no", meaning: "stop here" }] });
+  const ok = await shortClosure(t.specs, 1403, "yes");
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0);
+  expect(rowsOf(t.specs, "critical")).toMatchObject([{ closure: true, opens: 6, quote: "yes" }]);
+  await noInvalid(t.specs);
+  const pack = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs);
+  expect(pack.code).toBe(0); expect(pack.out).toContain(markerFor(t.specs, CAP_KEY, "spec", 6));
+  expect((await closeOn(t, "spec", 6, [t.a], "SPEC CLEAN")).err).toBe("");
+});
+
+test("short answer: a short quote with no block is refused, and a hand-appended row reads invalid", async () => {
+  const t = await criticalTree(); const f = decide(t.specs, 1404, `${CAP_KEY} operator:\n\na1\n`);
+  await refusedWith(critical(true, t.specs, "C1", 1404, "a1"), t.specs, "or the answer to a Question block");
+  const hand = (specs: string, path: string, quote: string) => appendFileSync(join(roundsDir(specs), `${CAP_KEY}.jsonl`), `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "critical", epoch: 0, opens: 5, id: "C1", class: "spend-grant", decision: "1404", quote, decision_path: path, decision_sha: sha(readFileSync(path, "utf8")), return_sha: rowsOf(specs, "round").find((x) => x.critic === "spec" && x.round === 3).return_sha })}\n`);
+  hand(t.specs, f, "a1");
+  expect((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out).toContain("invalid: critical 1404");
+  const twin = await criticalTree(); const g = decide(twin.specs, 1404, `${CAP_KEY} operator:\n\na1\n`);
+  hand(twin.specs, g, `${CAP_KEY} operator:`);
+  await noInvalid(twin.specs);
+});
+
+test("short answer: --closure with no block is refused", async () => {
+  const t = await capTree(); decide(t.specs, 1405, `${CAP_KEY} operator:\n\nyes\n`);
+  await refusedWith(shortClosure(t.specs, 1405, "yes"), t.specs, "or the answer to a Question block");
+});
+
+test("short answer: a quote that is not the listed answer is refused", async () => {
+  const t = await criticalTree();
+  const cases: [number, string, string, Parameters<typeof askedText>[1]?][] = [
+    [1411, "a1", "a3"], [1412, "a3", "a3"], [1413, "a1", "a2"],
+    [1414, "a1", "a1", { subject: "HIMMEL-2 round-critical C1", ask: `about ${CAP_KEY}?` }], [1415, "a1", "a1 for now"],
+  ];
+  for (const [d, answer, quote, o] of cases) {
+    askedFile(t.specs, d, answer, o);
+    await refusedWith(critical(true, t.specs, "C1", d, quote), t.specs, `holds no recorded question for ${CAP_KEY}`);
+  }
+  askedFile(t.specs, 1416, "a1", { tail: "\nand a second thing the operator never said\n" });
+  await refusedWith(critical(true, t.specs, "C1", 1416, "a1"), t.specs, "has a Question block that does not hold");
+});
+
+test("short answer: the block's own text and a Context note never count", async () => {
+  const t = await criticalTree();
+  askedFile(t.specs, 1421, "a1"); askedFile(t.specs, 1422, "a1", { tail: "\nContext: the operator wants a longer test run\n" });
+  await refusedWith(critical(true, t.specs, "C1", 1421, ANSWERS[0].meaning), t.specs, "decision 1421");
+  await refusedWith(critical(true, t.specs, "C1", 1422, "the operator wants a longer test run"), t.specs, "decision 1422");
+});
+
+test("short answer: a malformed block refuses a long quote", async () => {
+  const t = await criticalTree();
+  decide(t.specs, 1431, `Question: ${CAP_KEY} round-critical C1\nWhy: unknown line\n\n${SPEND}\n`);
+  await refusedWith(critical(true, t.specs, "C1", 1431, SPEND), t.specs, "has a Question block that does not hold");
+});
+
+test("short answer: a reused decision is refused", async () => {
+  const t = await criticalTree(); askedFile(t.specs, 1441, "a1");
+  await critical(true, t.specs, "C1", 1441, "a1");
+  const again = await critical(true, t.specs, "C1", 1441, "a1");
+  expect(again.err).toContain(`decision 1441 was already used for ${CAP_KEY}`); expect(again.code).not.toBe(0);
+});
+
+test("short answer: an older block file is refused as not newer", async () => {
+  const t = await criticalTree(); askedFile(t.specs, 1442, "a1", {}, true);
+  await refusedWith(critical(true, t.specs, "C1", 1442, "a1"), t.specs, "is not newer than the latest round");
 });
