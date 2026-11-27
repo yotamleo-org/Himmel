@@ -386,6 +386,21 @@ build_claude_payload() {
           }'
 }
 
+in_design_profile() {
+    local sum=""
+    if command -v sha256sum >/dev/null 2>&1; then
+        sum="$(printf '%s' antigravity_design | sha256sum)"
+    elif command -v shasum >/dev/null 2>&1; then
+        sum="$(printf '%s' antigravity_design | shasum -a 256)"
+    fi
+    sum="${sum%% *}"
+    [ -n "$sum" ] || return 1
+    case "$ARTIFACT_REAL" in
+        */userdata/providers/antigravity/"$sum"/antigravity-acp/brain/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 run_mcp_gate() {
     local srv="$1" tool="$2" mode="$3" payload=""
     local -a chain=(mcp-policy.sh block-backend-tier.sh)
@@ -401,7 +416,10 @@ run_mcp_gate() {
             ;;
     esac
     case "$srv" in
-        graphify|t3-code|context7|shadcn|playwright) ;;
+        graphify|t3-code) ;;
+        context7|shadcn|playwright)
+            in_design_profile || emit_deny "antigravity-hook-adapter: MCP server '$srv' is allowlisted for the antigravity_design profile only, and this session is not in that design profile"
+            ;;
         *)
             emit_deny "antigravity-hook-adapter: MCP server '$srv' is not allowlisted on the Antigravity lane"
             ;;
@@ -547,7 +565,8 @@ case "$RAW_TOOL" in
         LAZY_META="$(printf '%s' "$INPUT" | jq -r '
             .toolCall.args as $a
             | if ($a | type) == "object"
-                and ($a | [keys[] | select(ascii_downcase | . == "servername" or . == "toolname" or . == "arguments")] - ["ServerName", "ToolName", "Arguments"] == [])
+                and ($a | keys - ["ServerName", "ToolName", "Arguments", "toolSummary"] == [])
+                and (($a | has("toolSummary") | not) or ($a.toolSummary | type == "string"))
                 and ($a.ServerName | type == "string" and test("\\A[ -~]+\\z"))
                 and ($a.ToolName | type == "string" and test("\\A[A-Za-z0-9_.-]+\\z") and (contains("__") | not))
                 and ($a.Arguments | type == "object" or type == "null")
