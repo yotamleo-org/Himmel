@@ -56,15 +56,19 @@ wexec() {
 wenv() { wexec "$1" "$2" timeout -k 2 "$3" > "$4" 2>"$4.err"; }
 pr_reads() { grep -cE '/pulls/[0-9]+$' "$S/gh.log" 2>/dev/null; }
 wenv_quiet() {
-    local pid i=0 j n0
+    local pid i=0 j stopped n0
     n0="$(pr_reads)"; quiet_state=""
     wexec "$1" "$2" exec > "$3" 2>"$3.err" &
     pid=$!; quiet_pid=$pid
     while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ]; do
         if [ $(( $(pr_reads) - n0 )) -ge 2 ]; then
             kill -STOP "$pid" 2>/dev/null
-            j=0; while [ "$(awk '{print $3}' "/proc/$pid/stat" 2>/dev/null)" != T ] && [ "$j" -lt 100 ]; do sleep 0.01; j=$((j + 1)); done
-            if [ "$j" -ge 100 ]; then quiet_state=""; kill -CONT "$pid" 2>/dev/null; break; fi
+            j=0; stopped=""
+            while [ "$j" -le 100 ]; do
+                case "$(ps -o stat= -p "$pid" 2>/dev/null)" in (*T*) stopped=1; break ;; esac
+                sleep 0.01; j=$((j + 1))
+            done
+            if [ -z "$stopped" ]; then quiet_state=""; kill -CONT "$pid" 2>/dev/null; break; fi
             quiet_state="$(sed -n "s/.* pid=$pid .* state=\([a-z]*\).*/\1/p" "$1.wait" 2>/dev/null)"
             [ "$quiet_state" != waiting ] || break
             kill -CONT "$pid" 2>/dev/null
