@@ -287,7 +287,7 @@ a new head starts over:
 | 16e | zero unresolved threads, each resolved by a maintainer, and `check-ci.sh --threads-only` exits 0 within 20 s |
 | 16f | the newest `impacted` row at the head reads exit 0 with no SKIP |
 | 16g | a diff touching the blast scope (`scripts/cr/blast-scope.cjs`) has a `blast` row with status `ran` |
-| 16h | no CodeRabbit commit status of `failure` or `error` at the head, read within 20 s; a running, missing, skipped, rate-limited or unreadable status passes with a note |
+| 16h | no CodeRabbit commit status of `failure` or `error` at the head, read within 20 s; a running, missing, skipped, rate-limited, paged or unreadable status passes with a note |
 | 16i | a passed (or flagged) `security-audit` row for this PR and head whose report hash and perspective hash still match |
 
 16h and 16i apply only to an author not in `~/.himmel/outside-contributors.json`
