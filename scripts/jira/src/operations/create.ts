@@ -247,7 +247,6 @@ function plannedLinks(options: CreateOptions): PlannedLinks {
   ];
 }
 
-/** The ticket as the mirror will hold it right after the filing, under the placeholder key <project>-0. */
 export function readinessIssue(type: string, adf: unknown, fields: Record<string, unknown>, links: PlannedLinks, project: string): MirrorIssue {
   return {
     key: `${project}-0`,
@@ -300,7 +299,6 @@ async function readinessGate(
   }
 }
 
-/** Refuses a filing the dispatcher could never start; otherwise warns or adds the readiness label to `fields`. */
 async function applyReadiness(
   options: CreateOptions, adf: unknown, fields: Record<string, unknown>, project: string,
   intake: { proposal?: boolean; proposedVersion?: string },

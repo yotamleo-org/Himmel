@@ -6,14 +6,12 @@ import { fileURLToPath } from 'node:url';
 import { defaultRoot } from './commands/mirror.js';
 import { envFilePath, readEnvFile, underTest } from './env-file.js';
 
-/** The readiness role's own label, loaded on use: an install without the chief kit still starts every other op. */
 export async function readinessLabel(): Promise<string> {
   // @ts-expect-error readiness-tools.mjs ships no declaration file
   const tools = await import('../../handover/chief-kit/readiness-tools.mjs');
   return tools.READINESS_LABEL as string;
 }
 
-/** The gates a filer must act on: only these label a ticket. */
 export const FILER_GATES: ReadonlySet<string> = new Set(['no-proof', 'prose-dependency', 'blocker-no-version']);
 
 const CHECK = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'handover', 'chief-kit', 'next-dispatchable.sh');
@@ -30,7 +28,6 @@ export interface Readiness {
   warning?: string;
 }
 
-/** Tests only: no production caller names a tree, a mirror or a dispatcher seam. */
 export interface ReadinessFixture {
   gitDir: string;
   mainRef: string;
@@ -38,10 +35,6 @@ export interface ReadinessFixture {
   seams?: Record<string, string>;
 }
 
-/**
- * The station's own Jira project, from its files only: himmel.conf.local, himmel.conf, then the CLI checkout's .env.
- * Never the process JIRA_PROJECT_KEY, which a cross-project filing sets.
- */
 export function ownProject(envPath: string | undefined = underTest() ? undefined : envFilePath()): string | undefined {
   const confDir = process.env.HIMMEL_CONFIG_DIR || join(process.env.HOME || homedir(), '.himmel');
   const keys = new Set(['JIRA_PROJECT_KEY']);
@@ -101,7 +94,6 @@ function runGroup(args: string[], env: NodeJS.ProcessEnv, ms: number, signal: Ab
   });
 }
 
-/** Runs `next-dispatchable.sh --why-ticket` on one ticket: of the dispatcher's mirror, or of `bodyFile` over it. */
 export async function runReadiness(
   target: { key: string; bodyFile?: string }, project: string, signal?: AbortSignal, fixture?: ReadinessFixture,
 ): Promise<Readiness> {

@@ -29,7 +29,6 @@ export interface Ctx {
   jira: JiraPort;
   mirrorRoot: string | null;
   deliveredPr?: (key: string) => number | undefined;
-  /** The caller's stop: a child process the ctx's work runs ends with it. */
   signal?: AbortSignal;
   procRoot?: string;
   hostNsPath?: string;

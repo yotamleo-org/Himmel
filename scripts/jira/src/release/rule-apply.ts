@@ -379,7 +379,6 @@ async function finishHalf(ctx: Ctx, l: Loaded, epoch: number, last: RulingRow, c
 
 type Applied = { phase: RulingRow['phase']; line: string; note?: string };
 
-/** What the ruling was, as read under the lock, for the work that runs after it. */
 type Settled = { verb: Verb; kind: Op['kind']; cls: PlacementClass; key: string; readback: string | undefined };
 
 export async function apply(ctx: Ctx, id: string): Promise<Applied> {
@@ -492,7 +491,6 @@ export async function apply(ctx: Ctx, id: string): Promise<Applied> {
 
 const READINESS_COMMENT = 'readiness-check:';
 
-/** Runs outside the release lock; whatever goes wrong here is a note and the ruling stands. */
 async function readinessAtAdmission(ctx: Ctx, key: string): Promise<string | undefined> {
   const notes: string[] = [];
   let step = 'the check';

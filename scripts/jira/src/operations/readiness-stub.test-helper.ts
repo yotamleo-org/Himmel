@@ -5,17 +5,14 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ReadinessFixture } from '../readiness.js';
 
-/** The dispatcher every unit test gets unless it names another: it passes each ticket and records nothing. */
 export function makePassingNdStub(): string {
   const path = join(mkdtempSync(join(tmpdir(), 'jira-test-readiness-')), 'next-dispatchable.sh');
   writeFileSync(path, 'exit 0\n');
   return path;
 }
 
-/** This checkout's own dispatcher, for the rows that read its verdict with no stub. */
 export const DISPATCHER = fileURLToPath(new URL('../../../handover/chief-kit/next-dispatchable.sh', import.meta.url));
 
-/** What the real dispatcher needs to answer offline: a repo with scripts/lib/a.sh on main, a mirror and a silent gh. */
 export function makeNdFixture(): ReadinessFixture {
   const root = mkdtempSync(join(tmpdir(), 'jira-test-nd-fixture-'));
   const gitDir = join(root, 'repo');
@@ -43,7 +40,6 @@ export interface NdCall {
 
 const quote = (s: string): string => `'${s.replaceAll("'", `'\\''`)}'`;
 
-/** A stand-in for next-dispatchable.sh: records each call, may sleep, prints `lines` and exits `exit`. */
 export function makeNdStub(o: { lines?: string[]; exit?: number; sleepMs?: number; lockPath?: string } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'jira-test-nd-stub-'));
   const calls = join(root, 'calls');
@@ -80,7 +76,6 @@ export function makeNdStub(o: { lines?: string[]; exit?: number; sleepMs?: numbe
           lockHeld: existsSync(join(c, 'lock')),
         }));
     },
-    /** True while any process of the last call's process group still runs. */
     alive(): boolean {
       if (!existsSync(pidFile)) return false;
       try {
