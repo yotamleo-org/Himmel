@@ -3082,6 +3082,17 @@ doctor_handover_root() {
     fi
 }
 
+_c33_ledger_lock() {
+    local cfg="${HIMMEL_API_CREDIT_CONFIG:-${HOME:-}/.himmel/state/api-credit/config.json}" ledger lock mtime age
+    ledger="$(jq -r '.ledger_path // empty' "$cfg" 2>/dev/null | tr -d '\r')"
+    lock="$ledger.lock"
+    [ -n "$ledger" ] && [ -d "$lock" ] || return 1
+    mtime="$(stat -c %Y "$lock" 2>/dev/null || stat -f %m "$lock" 2>/dev/null)" || return 1
+    age=$(($(date -u +%s) - mtime))
+    [ "$age" -gt 60 ] || return 1
+    printf '%s, age %s' "$lock" "$(_c33_age_human "$age")"
+}
+
 check_c33_graph_stale() {
     local root ledger
     _c33_alert_delivery
@@ -3149,7 +3160,7 @@ check_c33_graph_stale() {
         [ "$age_s" -gt $((3 * DOCTOR_C33_CADENCE_INTERVAL_S)) ] && stale_on_age=1
     fi
     if [ "$action" = "failed" ]; then
-        local err why head_txt fail_remedy
+        local err why head_txt fail_remedy lock_now lock_age
         err="$(printf '%s' "$last_line" | jq -r '.error // empty' 2>/dev/null)"
         why="$(printf '%s' "$err" | sed -n 's/.*(refused: \([^)]*\)).*/\1/p' | head -n 1)"
         fail_remedy="read the failing fire in the publish task's run log (bash scripts/luna/graphmap-cadence.sh status names it); once its cause is fixed, the armed cadence's next --semantic fire retries"
@@ -3166,6 +3177,24 @@ check_c33_graph_stale() {
                     fail_remedy="no single command fixes a credit refusal: an API account needs credit room again (top it up or wait for its grant to reset, see docs/internals/api-lane.md); the armed cadence's next --semantic fire then submits the batch -- a run without --semantic only records a skipped row and hides this failure" ;;
             esac
         fi
+        case "$err" in
+            *"no account has room"*|*"ledger-locked-or-unwritable"*)
+                if lock_now="$(_c33_ledger_lock)"; then
+                    why=" (credit ledger locked: $lock_now)"
+                    fail_remedy="clear the lock before topping up any account; it is on disk now and may not be what failed that fire, so if the next fire still reports no room, check credit. The next ledger call reclaims an empty lock with no running holder once it is older than the call timeout (HIMMEL_API_CALL_TIMEOUT_S, default 3600s); for any other lock, with no other API-lane job running, confirm the process in the lock's .pid file is not running, then remove the lock folder (docs/internals/api-lane.md)"
+                else
+                    case "$err" in
+                        *"ledger-locked-or-unwritable"*)
+                            lock_age="$(printf '%s' "$err" | sed -n 's/.*\.lock age \([0-9][0-9]*s\),.*/\1/p' | head -n 1)"
+                            if [ -n "$lock_age" ]; then
+                                why=" (credit ledger locked at that fire: lock age $lock_age; no lock older than 60s found now)"
+                            else
+                                why=" (credit ledger locked or unwritable at that fire: lock age not recorded; no lock older than 60s found now)"
+                            fi
+                            fail_remedy="that fire could not use the ledger, which says nothing about credit: the armed cadence's next --semantic fire retries; if it fails the same way, check that the ledger folder is writable (docs/internals/api-lane.md)" ;;
+                    esac
+                fi ;;
+        esac
         head_txt="graph stale: $behind commits behind main"
         [ "$behind" = "?" ] && head_txt="graph publish failed (commits behind main not recorded)"
         emit WARN C33-graph-stale "$head_txt / last cadence run $age_human ago FAILED$why" "$fail_remedy"

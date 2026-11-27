@@ -408,7 +408,8 @@ _himmel_key_class() {
         HIMMEL_WHERE_ARE_WE_SEG_TIMEOUT|HIMMEL_JIRA_NUDGE|CR_APP|CR_PUBLIC_REPO|\
         CLAUDE_END_SESSION_WIKI|SKILL_INDEX_DIR|ALIBABA_ANTHROPIC_BASE_URL|\
         ALIBABA_CODING_PLAN_BASE_URL|ALIBABA_DASHSCOPE_BASE_URL|ALIBABA_OPENAI_BASE_URL|\
-        JIRA_BASE_URL|TELEGRAM_CHAT_ID|TELEGRAM_GROUP_CHAT_ID|FIRECRAWL_BASE_URL|WHISPER_MODEL)
+        JIRA_BASE_URL|TELEGRAM_CHAT_ID|TELEGRAM_GROUP_CHAT_ID|TELEGRAM_ALERTS_CHAT_ID|\
+        TELEGRAM_STATUS_CHAT_ID|FIRECRAWL_BASE_URL|WHISPER_MODEL)
             printf 'config' ;;
         *)
             printf 'secret' ;;
@@ -427,7 +428,7 @@ _himmel_env_only_key() {
 # Chat ids pick where messages go, so a git-tracked .env must not serve them.
 _himmel_chat_key() {
     case "$1" in
-        TELEGRAM_CHAT_ID|TELEGRAM_GROUP_CHAT_ID) return 0 ;;
+        TELEGRAM_CHAT_ID|TELEGRAM_GROUP_CHAT_ID|TELEGRAM_ALERTS_CHAT_ID|TELEGRAM_STATUS_CHAT_ID) return 0 ;;
     esac
     return 1
 }

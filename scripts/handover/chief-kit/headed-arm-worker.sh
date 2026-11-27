@@ -165,7 +165,7 @@
 #      re-injecting it only after a compaction (contract x (compactions+1)).
 #      Instead it is written to its own per-worker <name>.worker-contract.md, and a
 #      SessionStart hook with `"matcher": "compact"` is added to the
-#      generated <name>.leg-settings.json to `cat` it back in whenever a
+#      generated settings beside the launch log to read it back in whenever a
 #      compaction fires - the `load <brief> and continue` first turn is the
 #      only thing still compactable, and this hook re-supplies the contract
 #      the moment it would otherwise be lost.
@@ -174,7 +174,8 @@
 #      worker never acts on. inject-initiative.sh deliberately still speaks.
 #   4. When the profile declares an mcpServers allowlist,
 #      plugin-profiles.mjs's definitions are written as a second JSON next to
-#      the settings file, and the shim additionally prepends `--mcp-config
+#      the settings file. Readiness writes both inside its private attempt directory.
+#      The shim additionally prepends `--mcp-config
 #      <that file> --strict-mcp-config` — stripping every MCP server NOT
 #      named there, including the user-level ones (graphify, obsidian-vault,
 #      context7 in ~/.claude.json) that were the bulk of the un-measured
@@ -923,8 +924,8 @@ if [ "$DRY_RUN" -ne 1 ]; then
         exit 10
     fi
     unset -v _fl_err _fl_rc _fl_line
-elif ! FLEET_LAUNCH_WORKER_INTENT=1 python3 -I "$_csg_dir/../../lib/fleet_runtime.py" admit --doc "$DOC" --manifest "$FLEET_MANIFEST" --name "$NAME" >/dev/null; then
-    exit 10
+else
+    _fl_scope="$(FLEET_LAUNCH_WORKER_INTENT=1 python3 -I "$_csg_dir/../../lib/fleet_runtime.py" admit --doc "$DOC" --manifest "$FLEET_MANIFEST" --name "$NAME")" || exit 10
 fi
 if [ "$DRY_RUN" -ne 1 ]; then _lr_row attempt-started null; fi
 
@@ -1010,6 +1011,9 @@ case ",$PROFILE," in
         ;;
 esac
 if [ "$READINESS" -eq 1 ]; then
+    if [ "$DRY_RUN" -eq 1 ]; then
+        FLEET_LAUNCH_MANAGED="$(printf '%s\n' "$_fl_scope" | jq -r .managed)" || exit 10
+    fi
     if [ "$LANE" != "native" ] || [ "$CONSULT" -ne 0 ] || [ "$JUDGE" -ne 0 ] || [ "$RELAY" -ne 0 ] || [ "$RM" -ne 0 ] \
         || [ "$HEADLESS" -ne 0 ] || [ "$NO_PROFILE" -ne 0 ] || [ -n "$FLEET_MANIFEST" ]; then
         echo "headed-arm-worker: refusing the readiness role: it is a native, headed, plain launch only (not --lane $LANE, --consult, --judge, --relay, a release manager, --headless, --no-profile or --fleet)" >&2
@@ -1078,10 +1082,12 @@ if [ "$READINESS" -eq 1 ]; then
         fi
         [ "$mk" = "himmel-readiness-fixture-v1" ] || { _ready_fx_why="the fixture root carries no valid .himmel-readiness-fixture marker"; return 1; }
         # a root that holds the account's real home is not a fixture (its config, keyring and .env live there)
-        v="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"  # swallow-ok: a host without getent has no real home to compare, and every in-root check below still applies
-        if [ -n "$v" ] && v="$(cd -P "$v" 2>/dev/null && pwd -P)"; then  # swallow-ok: an unresolvable home directory leaves nothing to compare, and every in-root check below still applies
-            case "$v" in "$_ready_fx_root"|"$_ready_fx_root"/*) _ready_fx_why="the fixture root contains the account's real home ($v)"; return 1 ;; esac
+        if ! v="$(set -o pipefail; getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)" ||
+            [ -z "$v" ] || ! v="$(cd -P "$v" 2>/dev/null && pwd -P)"; then
+            _ready_fx_why="the account's real home cannot be resolved (passwd lookup), so the fixture root cannot be checked against it"
+            return 1
         fi
+        case "$v" in "$_ready_fx_root"|"$_ready_fx_root"/*) _ready_fx_why="the fixture root contains the account's real home ($v)"; return 1 ;; esac
         # the usage preflight too: its default reads machine-wide usage state and may refresh it from the provider. The claude binary
         # is required as well: an unset, empty, relative or bare one is resolved by name through PATH, and a launch-floor gate
         # that finds a native claude there would execute it
@@ -1092,7 +1098,11 @@ if [ "$READINESS" -eq 1 ]; then
         done
         # a config directory, when named, is inside too
         v="${CLAUDE_CONFIG_DIR:-}"
-        case "$v" in ''|[!/]*) ;; *) _ready_inside "$_ready_fx_root" "$v" || { _ready_fx_why="CLAUDE_CONFIG_DIR=$v is outside the fixture root"; return 1; } ;; esac
+        case "$v" in
+            '') ;;
+            /*) _ready_inside "$_ready_fx_root" "$v" || { _ready_fx_why="CLAUDE_CONFIG_DIR=$v is outside the fixture root"; return 1; } ;;
+            *) _ready_fx_why="CLAUDE_CONFIG_DIR must be an absolute path inside the fixture root"; return 1 ;;
+        esac
         # a managed doc (the production layout) makes headed-arm.sh run the machine's REAL usage preflight, a fixed in-repo path
         # with no seam that reads machine-wide state and may refresh it from the provider: only an exec target inside the root,
         # which stands in for headed-arm.sh, may run for one. The in-repo target, an empty one and any outside one are refused.
@@ -2499,7 +2509,20 @@ if [ -n "$PROFILE" ]; then
         echo "headed-arm-worker: --profile $PROFILE: cannot resolve log directory for $LOG" >&2
         exit 2
     }
-    PROFILE_SETTINGS="$_worker_log_dir/$NAME.leg-settings.json"
+    if [ "$READINESS" -eq 1 ]; then
+        READINESS_SID="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null)"  # swallow-ok: no uuid source leaves an empty id, refused by the shape check below
+        READINESS_SID="$(printf '%s' "$READINESS_SID" | tr 'A-F' 'a-f')"
+        if ! [[ "$READINESS_SID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+            echo "headed-arm-worker: refusing the readiness role: no session id could be minted" >&2
+            exit 2
+        fi
+        READINESS_ROOT="${XDG_RUNTIME_DIR:+$XDG_RUNTIME_DIR/himmel-readiness}"
+        READINESS_ROOT="${READINESS_ROOT:-/tmp/himmel-readiness-$(id -u)}"
+        READINESS_ATTEMPT="$READINESS_ROOT/$READINESS_SID"
+        PROFILE_SETTINGS="$READINESS_ATTEMPT/leg-settings.json"
+    else
+        PROFILE_SETTINGS="$_worker_log_dir/$NAME.leg-settings.json"
+    fi
     PROFILE_CONTRACT="$_worker_log_dir/$NAME.worker-contract.md"
     for _worker_need in "$PROFILES_MJS" "$WORKER_SESSION_SHIM" "$WORKER_SESSION_PREFACE"; do
         if [ ! -f "$_worker_need" ]; then
@@ -2923,23 +2946,16 @@ EOF_CS_FILES
             echo "headed-arm-worker: --profile $PROFILE: mcp-config resolution failed: $MCP_CONFIG_JSON" >&2
             exit 2
         fi
-        PROFILE_MCP_CONFIG="$_worker_log_dir/$NAME.leg-mcp.json"
+        if [ "$READINESS" -eq 1 ]; then
+            PROFILE_MCP_CONFIG="$READINESS_ATTEMPT/leg-mcp.json"
+        else
+            PROFILE_MCP_CONFIG="$_worker_log_dir/$NAME.leg-mcp.json"
+        fi
         worker_propagate_env WORKER_SESSION_PROFILE_MCP_CONFIG "$PROFILE_MCP_CONFIG"
     fi
-    # The readiness role mints its ACTUAL session id here, before any private config or lease: the id is immutable
-    # from now on, written into the private startup config and handed to the launcher as --session-id. The strict
-    # MCP config is generated for this launch (the registry holds no server): exactly one readiness adapter, started
-    # against that private startup config. Nothing is written yet; the real-launch block below writes it.
+    # The strict MCP config for readiness names one adapter bound to this attempt's startup config.
+    # The startup config binds the session id minted above and handed to the launcher as --session-id.
     if [ "$READINESS" -eq 1 ]; then
-        READINESS_SID="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null)"  # swallow-ok: no uuid source leaves an empty id, refused by the shape check below
-        READINESS_SID="$(printf '%s' "$READINESS_SID" | tr 'A-F' 'a-f')"
-        if ! [[ "$READINESS_SID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
-            echo "headed-arm-worker: refusing the readiness role: no session id could be minted" >&2
-            exit 2
-        fi
-        READINESS_ROOT="${XDG_RUNTIME_DIR:+$XDG_RUNTIME_DIR/himmel-readiness}"
-        READINESS_ROOT="${READINESS_ROOT:-/tmp/himmel-readiness-$(id -u)}"
-        READINESS_ATTEMPT="$READINESS_ROOT/$READINESS_SID"
         READINESS_ADAPTER="$(cd -P "$HERE" && pwd -P)/readiness-tools.mjs"
         if [ "$MCP_NAMES_JSON" = "null" ]; then
             echo "headed-arm-worker: refusing the readiness role: its profile resolved no MCP allowlist" >&2
@@ -2949,6 +2965,25 @@ EOF_CS_FILES
             '{mcpServers:{readiness:{command:"node",args:[$adapter,"--startup-config",$startup]}}}')"; then
             echo "headed-arm-worker: refusing the readiness role: cannot build its MCP config" >&2
             exit 2
+        fi
+        # the host-admitted catalog (thin C0): a launching-shell seam like the port and the primary CLI, never a model argument
+        READINESS_CATALOG="${WORKER_SESSION_READINESS_CATALOG:-}"
+        # The host-admitted catalog is copied verbatim into the private startup config, exactly three keys and no other, so
+        # nothing else can ride into it; the adapter (readiness-tools.mjs loadStartup) is the one validator of its contents. No
+        # catalog leaves the startup config without these fields and the adapter then admits nothing. Refused before the attempt
+        # directory exists.
+        READINESS_CATALOG_JSON='{}'
+        if [ -n "$READINESS_CATALOG" ]; then
+            case "$READINESS_CATALOG" in /*) ;; *) echo "headed-arm-worker: refusing the readiness role: WORKER_SESSION_READINESS_CATALOG must be an absolute path" >&2; exit 2 ;; esac
+            { [ -f "$READINESS_CATALOG" ] && [ ! -L "$READINESS_CATALOG" ] && [ "$(_ready_fx_stat %s %z "$READINESS_CATALOG")" -le 16384 ]; } \
+                || { echo "headed-arm-worker: refusing the readiness role: the host catalog must be a regular, non-symlink file of at most 16 KiB" >&2; exit 2; }
+            # swallow-ok: a jq failure fails this assignment, and the `||` below refuses the launch before anything is written
+            READINESS_CATALOG_JSON="$(jq -c 'if type == "object" and (keys | sort) == ["catalog","roots","source_head"] then {source_head, roots, catalog} else error("not exactly source_head, roots and catalog") end' "$READINESS_CATALOG" 2>/dev/null)" \
+                || { echo "headed-arm-worker: refusing the readiness role: the host catalog must be a JSON object holding exactly source_head, roots and catalog" >&2; exit 2; }
+            # the adapter's own validator runs over these very bytes (the ones embedded below), host-only, before anything is
+            # created or acquired; it reads no credential and its diagnostics are fixed, so only the refusal itself is said here
+            printf '%s' "$READINESS_CATALOG_JSON" | node "$READINESS_ADAPTER" --check-catalog >/dev/null 2>&1 \
+                || { echo "headed-arm-worker: refusing the readiness role: the host catalog contents are not a valid readiness catalog (the adapter's validator refused them)" >&2; exit 2; }
         fi
     fi
 fi
@@ -3134,11 +3169,13 @@ fi
 
 # Real launch: now write the resolved settings the shim will pass to claude.
 if [ -n "$PROFILE" ]; then
-    if ! printf '%s\n' "$PROFILE_JSON" > "$PROFILE_SETTINGS"; then
-        echo "headed-arm-worker: --profile $PROFILE: cannot write settings to $PROFILE_SETTINGS" >&2
-        exit 2
+    if [ "$READINESS" -eq 0 ]; then
+        if ! printf '%s\n' "$PROFILE_JSON" > "$PROFILE_SETTINGS"; then
+            echo "headed-arm-worker: --profile $PROFILE: cannot write settings to $PROFILE_SETTINGS" >&2
+            exit 2
+        fi
+        chmod 600 "$PROFILE_SETTINGS" 2>/dev/null || true
     fi
-    chmod 600 "$PROFILE_SETTINGS" 2>/dev/null || true
     if [ "$LANE_CHANNEL" = "file" ]; then
         if ! awk -v identity="$WORKER_LAUNCH_IDENTITY" 'NR == 1 { print; print ""; print identity; next } { print }' \
             "$WORKER_SESSION_PREFACE" "$CLAUDEX_PREFACE" > "$WORKER_SESSION_PROFILE_PREFACE"; then
@@ -3227,7 +3264,7 @@ if [ -n "$PROFILE" ]; then
             echo "$(date +%F_%T) headed-arm-worker: WARN repo-map not injected (graph=$_rm_graph, $_rm_why); launching without it" >> "$LOG"
         fi
     fi
-    if [ -n "${WORKER_SESSION_PROFILE_MCP_CONFIG:-}" ]; then
+    if [ "$READINESS" -eq 0 ] && [ -n "${WORKER_SESSION_PROFILE_MCP_CONFIG:-}" ]; then
         if ! printf '%s\n' "$MCP_CONFIG_JSON" > "$WORKER_SESSION_PROFILE_MCP_CONFIG"; then
             echo "headed-arm-worker: --profile $PROFILE: cannot write mcp config to $WORKER_SESSION_PROFILE_MCP_CONFIG" >&2
             exit 2
@@ -3586,27 +3623,26 @@ if [ "${#WORKER_SESSION_SCOPE[@]}" -gt 0 ]; then
     HA_RUN=("${WORKER_SESSION_SCOPE[@]}" "${HA_RUN[@]}")
 fi
 # --- The readiness role: private startup config, pre-acquire gate, on-behalf lease (C0s cycle 2). ---
-# Order is the contract. The session id was minted and the settings/MCP files written above. Here: (1) the private
-# attempt directory and its startup config (which binds that id); (2) the REAL launcher render of the final argv;
+# Order is the contract. The session id was minted above. Here: (1) the private attempt directory, its startup
+# config (which binds that id), settings and MCP config; (2) the REAL launcher render of the final argv;
 # (3) the C0p effectiveness reader (effective only: ineffective and unknown refuse); (3b) the jira port's credential
 # initialization, the only step that resolves a secret; (4) ONLY THEN the on-behalf acquire
 # (nothing registered for this launcher: no token file, .doc sidecar or liveness marker) and the token's private
 # transport file. Every refusal before (4) acquires nothing and leaves nothing behind. The launcher keeps only its OWN
 # captured token: every exit between the acquire and the child's start (a refusal, the managed fleet hand-off refusal,
 # a fatal or remembered signal) and a definite hand-off failure release exactly that token (a successor's lock refuses
-# it) and remove the attempt directory; hand-off statuses 0, 7 and 9 keep both for the session. The acquire is a background
-# child this launcher owns: a trappable exit first reaps it (bounded), so the lease it was about to create is released too.
+# it) and remove the attempt directory; hand-off statuses 0, 7 and 9 keep both unless the child confirms an existing session.
+# A trappable exit first reaps the acquire child (bounded), so the lease it was about to create is released too.
 # The session start adopts the lease and deletes the transport (scripts/hooks/readiness-session.sh).
 READINESS_TOKEN="" READINESS_PRE_HANDOFF=0 READINESS_ACQ_PID="" READINESS_ACQ_STATE="" READINESS_ACQ_OUT="" READINESS_REAP_SECS=20
 _ready_uuid() { local u; u="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null)"; printf '%s' "$u" | tr 'A-F' 'a-f'; }  # swallow-ok: an empty attempt id is refused by every reader of the startup config
-_ready_stat() { stat -c "$1" -- "$3" 2>/dev/null || stat -f "$2" -- "$3" 2>/dev/null; }
 # _ready_private_dir <dir>: a directory that is this user's, not a symlink, mode 0700 (created when absent)
 _ready_private_dir() {
     [ ! -L "$1" ] || return 1
     [ -d "$1" ] || ( umask 077 && mkdir -p -- "$1" ) 2>/dev/null || return 1
-    [ -d "$1" ] && [ ! -L "$1" ] && [ "$(_ready_stat %u %u "$1")" = "$(id -u)" ] || return 1
+    [ -d "$1" ] && [ ! -L "$1" ] && [ "$(_ready_fx_stat %u %u "$1")" = "$(id -u)" ] || return 1
     chmod -- 700 "$1" 2>/dev/null || return 1
-    [ "$(_ready_stat %a %Lp "$1")" = 700 ]
+    [ "$(_ready_fx_stat %a %Lp "$1")" = 700 ]
 }
 # the attempt directory is removed only when it is exactly <root>/<uuid>
 _readiness_cleanup() {
@@ -3655,8 +3691,6 @@ if [ "$READINESS" -eq 1 ]; then
     READINESS_QL="$(cd -P "$HERE/.." && pwd -P)/queue-lock.sh"
     READINESS_PORT="${WORKER_SESSION_READINESS_PORT:-copy}"
     READINESS_PRIMARY_CLI="${WORKER_SESSION_READINESS_PRIMARY_CLI:-}"
-    # the host-admitted catalog (thin C0): a launching-shell seam like the port and the primary CLI, never a model argument
-    READINESS_CATALOG="${WORKER_SESSION_READINESS_CATALOG:-}"
     # how long a cleanup waits for an acquire that was still running (whole seconds, 1..60)
     case "${WORKER_SESSION_READINESS_REAP_SECS:-}" in
         ''|*[!0-9]*) ;;
@@ -3677,23 +3711,6 @@ if [ "$READINESS" -eq 1 ]; then
             ;;
         *) _readiness_refuse "WORKER_SESSION_READINESS_PORT must be copy or jira (got: $READINESS_PORT)" ;;
     esac
-    # The host-admitted catalog is copied verbatim into the private startup config, exactly three keys and no other, so
-    # nothing else can ride into it; the adapter (readiness-tools.mjs loadStartup) is the one validator of its contents. No
-    # catalog leaves the startup config without these fields and the adapter then admits nothing. Refused before the attempt
-    # directory exists.
-    READINESS_CATALOG_JSON='{}'
-    if [ -n "$READINESS_CATALOG" ]; then
-        case "$READINESS_CATALOG" in /*) ;; *) _readiness_refuse "WORKER_SESSION_READINESS_CATALOG must be an absolute path" ;; esac
-        { [ -f "$READINESS_CATALOG" ] && [ ! -L "$READINESS_CATALOG" ] && [ "$(_ready_stat %s %z "$READINESS_CATALOG")" -le 16384 ]; } \
-            || _readiness_refuse "the host catalog must be a regular, non-symlink file of at most 16 KiB"
-        # swallow-ok: a jq failure fails this assignment, and the `||` below refuses the launch before anything is written
-        READINESS_CATALOG_JSON="$(jq -c 'if type == "object" and (keys | sort) == ["catalog","roots","source_head"] then {source_head, roots, catalog} else error("not exactly source_head, roots and catalog") end' "$READINESS_CATALOG" 2>/dev/null)" \
-            || _readiness_refuse "the host catalog must be a JSON object holding exactly source_head, roots and catalog"
-        # the adapter's own validator runs over these very bytes (the ones embedded below), host-only, before anything is
-        # created or acquired; it reads no credential and its diagnostics are fixed, so only the refusal itself is said here
-        printf '%s' "$READINESS_CATALOG_JSON" | node "$READINESS_ADAPTER" --check-catalog >/dev/null 2>&1 \
-            || _readiness_refuse "the host catalog contents are not a valid readiness catalog (the adapter's validator refused them)"
-    fi
     # (1) the private attempt directory and the startup config that binds the minted id
     _ready_private_dir "$READINESS_ROOT" || _readiness_refuse "the private attempt root $READINESS_ROOT is not this user's mode-0700 directory"
     ( umask 077 && mkdir -m 700 -- "$READINESS_ATTEMPT" ) 2>/dev/null || _readiness_refuse "cannot create the private attempt directory $READINESS_ATTEMPT"
@@ -3704,6 +3721,10 @@ if [ "$READINESS" -eq 1 ]; then
         || _readiness_refuse "cannot build the private startup config"
     ( umask 077 && set -C && printf '%s\n' "$_ready_startup" > "$READINESS_ATTEMPT/startup.json" ) 2>/dev/null \
         || _readiness_refuse "cannot write the private startup config"
+    ( umask 077 && set -C && printf '%s\n' "$PROFILE_JSON" > "$PROFILE_SETTINGS" ) 2>/dev/null \
+        || _readiness_refuse "cannot write the private settings"
+    ( umask 077 && set -C && printf '%s\n' "$MCP_CONFIG_JSON" > "$PROFILE_MCP_CONFIG" ) 2>/dev/null \
+        || _readiness_refuse "cannot write the private MCP config"
     unset -v _ready_startup
     # (2) the REAL launcher render of the final argv, with the same environment the launch will carry
     WORKER_SESSION_RENDER_ARGV=1 bash "$WORKER_SESSION_SHIM" --model "$MODEL" --autocompact "$RESOLVED_AUTOCOMPACT" -n "$NAME" "load $DOC and continue" >/dev/null \
@@ -3789,7 +3810,7 @@ if [ "$READINESS" -eq 1 ] && [ "$_ha_sig_early" -eq 1 ]; then _launch_refusal_no
 "${HA_SH[@]}" -c 'export HEADED_ARM_CONTEXT_PID="$$"; exec "$@"' bash \
     "${HA_RUN[@]}" "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "$MODEL" "$CONTEXT" <&0 &
 _ha_child=$!
-# the child exists: the status rule below (0, 7 and 9 keep the lease) decides from here on; a signal that landed in the
+# the child exists: the status and outcome rule below decides from here on; a signal that landed in the
 # instant between the check above and the start is forwarded like any other
 READINESS_PRE_HANDOFF=0
 if [ "$READINESS" -eq 1 ] && [ "$_ha_sig_early" -eq 1 ]; then _ha_forward; fi
@@ -3810,9 +3831,13 @@ else _launch_refusal_note headed-arm
 fi
 unset -v _ha_word
 case "$launch_rc" in 0|7|9) ;; *) _release_fleet_reservation ;; esac
-# the same rule for the readiness lease: a session may be coming up on 0, 7 and 9 (it adopts the lease), so only a
-# definite failure releases the launcher's own captured token and drops the attempt directory
-[ "$READINESS" -eq 0 ] || case "$launch_rc" in 0|7|9) ;; *) _readiness_release ;; esac
+# A readiness lease is only for this attempt. An existing session leaves it unused.
+# Other 0, 7 and 9 outcomes keep it for adoption, including an indeterminate outcome after a forwarded signal.
+[ "$READINESS" -eq 0 ] || case "$launch_rc:$_LAUNCH_OUTCOME" in
+    0:already-running) _readiness_release ;;
+    0:*|7:*|9:*) ;;
+    *) _readiness_release ;;
+esac
 if [ -n "$FLEET_MANIFEST" ]; then
     [ "$launch_rc" -eq 0 ] || exit "$launch_rc"
     _fm_arm=()

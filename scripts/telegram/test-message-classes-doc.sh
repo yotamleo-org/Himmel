@@ -29,7 +29,7 @@ for path in sys.argv[1:]:
             if words[0] == "--kind":
                 kind = words[1]
             words = words[2:]
-        if kind != "chief-reply":
+        if kind not in ("chief-reply", "chief-status"):
             errs.append("%s: %s" % (path, span))
 print("\n".join(errs))
 sys.exit(1 if errs else 0)
@@ -41,9 +41,9 @@ real=()
 for d in $DOCS; do real+=("$REPO/$d"); done
 
 if out="$(lint "${real[@]}")"; then
-    pass "every chief-route.ts reply command and bare reply --flag form in the four chief docs passes --kind chief-reply before the chat id"
+    pass "every chief-route.ts reply command and bare reply --flag form in the four chief docs passes a chief kind before the chat id"
 else
-    fail "every chief-route.ts reply command and bare reply --flag form in the four chief docs passes --kind chief-reply before the chat id" "$out"
+    fail "every chief-route.ts reply command and bare reply --flag form in the four chief docs passes a chief kind before the chat id" "$out"
 fi
 
 sites=0
@@ -73,6 +73,26 @@ if ! lint "$T/late-kind.md" > /dev/null; then
     pass "a --kind after the chat id fails the lint (the router reads flags only before it)"
 else
     fail "a --kind after the chat id fails the lint (the router reads flags only before it)"
+fi
+
+# shellcheck disable=SC2016
+printf 'send a status with `bun scripts/telegram/chief-route.ts reply --kind chief-status operator "<text>"`\n' > "$T/status-kind.md"
+if out="$(lint "$T/status-kind.md")"; then
+    pass "K15: a reply span with --kind chief-status passes the lint"
+else
+    fail "K15: a reply span with --kind chief-status passes the lint" "$out"
+fi
+# shellcheck disable=SC2016
+printf 'send with `bun scripts/telegram/chief-route.ts reply --kind chief-stat operator "<text>"`\n' > "$T/unknown-kind.md"
+if ! lint "$T/unknown-kind.md" > /dev/null; then
+    pass "K15: a reply span with an unknown kind fails the lint"
+else
+    fail "K15: a reply span with an unknown kind fails the lint"
+fi
+if grep -q -- 'chief-route.ts reply --kind chief-status ' "$REPO/docs/handover/running-a-chief.md"; then
+    pass "K15: running-a-chief.md names the --kind chief-status reply command"
+else
+    fail "K15: running-a-chief.md names the --kind chief-status reply command"
 fi
 
 for key in TELEGRAM_MONITOR_BOT_TOKEN TELEGRAM_MONITOR_CHAT_ID; do

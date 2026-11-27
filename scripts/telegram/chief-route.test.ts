@@ -4948,7 +4948,7 @@ const cappedKey = "HIMMEL-10205";
 const cappedFixture = async (options: { specFindings?: string; planFindings?: string; rounds?: number; historical?: string; status?: boolean; specText?: string; planText?: string; pageName?: string } = {}) => {
   const { buildRoundFixture } = await import("./testlib-capped-fold.ts");
   const r = root();
-  const specText = options.specText ?? fixtureSpecText.replace("# HIMMEL", "Key: HIMMEL-10205\n\n# HIMMEL") + "\nReference: HIMMEL-8626 remains a body reference.\n";
+  const specText = options.specText ?? fixtureSpecText.replace("# HIMMEL", "Key: HIMMEL-10205\n\n# HIMMEL").replace("## Alternatives considered", "Reference: HIMMEL-8626 remains a body reference.\n\n## Alternatives considered");
   const planText = options.planText ?? `---\ntickets: ${cappedKey}\n---\nKey: ${cappedKey}\n${fixturePlanText}`;
   const returns = [1, 2, 3, 4, 5].slice(0, options.rounds ?? 5).flatMap(round => (["spec", "plan"] as const).map(kind => {
     const findings = round === 1 && options.historical ? options.historical : kind === "spec" ? options.specFindings ?? "- **F1** (minor) carry this wording fix" : options.planFindings ?? "";
@@ -8540,7 +8540,7 @@ test("DoD 11: the capped fold refuses while a restore check is owed", async () =
 });
 
 test("T-T1..T-T4: v1 capped-fold reads the tickets line with the one parser", async () => {
-  const headerless = (tickets: string) => `---\ntickets: ${tickets}\n---\n` + fixtureSpecText.replace(/^---\ntickets: .*\n---\n/, "") + "\nReference: HIMMEL-8626 remains a body reference.\n";
+  const headerless = (tickets: string) => `---\ntickets: ${tickets}\n---\n` + fixtureSpecText.replace(/^---\ntickets: .*\n---\n/, "").replace("## Alternatives considered", "Reference: HIMMEL-8626 remains a body reference.\n\n## Alternatives considered");
   const kinds = (r: P1Run) => ["tickets must declare only", "header must declare only"].filter(t => r.err.includes(t));
   const titled = await cappedFixture({ specText: headerless(`${cappedKey} (a title)`) });
   expect(kinds(p1Fold(titled.args)), "T-T1: a titled tickets line with no Key header passes the v1 header checks").toEqual([]);
@@ -8705,7 +8705,7 @@ test("T-T5: v1, v2, the signer's binding and sign-shape agree on one tickets tab
   const { declaredTickets } = await import("../jira/src/release/pinned.ts");
   const rows: [string, boolean][] = [[cappedKey, true], [`${cappedKey} (a title)`, true], [`[${cappedKey}]`, true], [`${cappedKey} ()`, true], [`${cappedKey} (Relates: HIMMEL-2)`, false]];
   const got = await Promise.all(rows.map(async ([tickets]) => {
-    const specText = `---\ntickets: ${tickets}\n---\n` + fixtureSpecText.replace(/^---\ntickets: .*\n---\n/, "") + "\nReference: HIMMEL-8626 remains a body reference.\n";
+    const specText = `---\ntickets: ${tickets}\n---\n` + fixtureSpecText.replace(/^---\ntickets: .*\n---\n/, "").replace("## Alternatives considered", "Reference: HIMMEL-8626 remains a body reference.\n\n## Alternatives considered");
     const f = await cappedFixture({ specText });
     const declares = (r: P1Run) => !/(?:tickets|header) must declare only/.test(r.err);
     const signer = JSON.stringify(declaredTickets(specText)) === JSON.stringify([cappedKey]);
@@ -9238,4 +9238,297 @@ test("short answer: a reused decision is refused", async () => {
 test("short answer: an older block file is refused as not newer", async () => {
   const t = await criticalTree(); askedFile(t.specs, 1442, "a1", {}, true);
   await refusedWith(critical(true, t.specs, "C1", 1442, "a1"), t.specs, "is not newer than the latest round");
+});
+
+import { routeReply, queueFile, kindChat, readKindGroupKeys } from "./chief-route";
+
+const KG_DM = 7;
+const KG_ALERTS = -1001111;
+const KG_STATUS = -1002222;
+const KG_LISTED = -1007;
+
+type KgOpts = { conf?: string; local?: string; env?: Record<string, string> };
+async function kindGroups<T>(o: KgOpts, run: (r: string, dir: string) => Promise<T>): Promise<T> {
+  const dir = mkdtempSync(join(tmpdir(), "kg-conf-"));
+  if (o.conf !== undefined) writeFileSync(join(dir, "himmel.conf"), o.conf);
+  if (o.local !== undefined) writeFileSync(join(dir, "himmel.conf.local"), o.local);
+  const access = join(dir, "access.json");
+  writeFileSync(access, JSON.stringify({ allowFrom: [String(KG_DM)], groups: { [String(KG_LISTED)]: {} } }));
+  const vars: Record<string, string> = { HIMMEL_CONFIG_DIR: dir, TELEGRAM_ACCESS_PATH: access, ...o.env };
+  const saved = Object.entries(vars).map(([k]) => [k, process.env[k]] as const);
+  Object.assign(process.env, vars);
+  try { return await run(root(), dir); }
+  finally { for (const [k, v] of saved) { if (v === undefined) Reflect.deleteProperty(process.env, k); else process.env[k] = v; } }
+}
+const KG_BOTH = `TELEGRAM_ALERTS_CHAT_ID=${KG_ALERTS}\nTELEGRAM_STATUS_CHAT_ID=${KG_STATUS}\n`;
+type KgRow = { text?: string; console?: string; fallback_chat?: number; fallback_group?: string; fallback_console?: string; document_path?: string; request_id?: string };
+const chatRows = (r: string, session: string): KgRow[] => lines(join(r, "sessions", session, "outbox.jsonl")).map((l) => JSON.parse(l));
+const kgSend = (r: string, kind: string, text = `${kind} line`, chat = KG_DM) => routeReply(r, chat, text, { kind, consoleName: NAME, dest: "operator" });
+
+test("kind groups K3: with both groups set, an ask, an alert and a status line land in three chats", () => kindGroups({ conf: KG_BOTH }, async (r) => {
+  await kgSend(r, "chief-reply"); await kgSend(r, "token-in-output"); await kgSend(r, "chief-status");
+  expect(chatRows(r, "__chat__").map((x) => x.text)).toEqual(["chief-reply line"]);
+  expect(chatRows(r, `group_${KG_ALERTS}`).map((x) => x.text)).toEqual(["token-in-output line"]);
+  expect(chatRows(r, `group_${KG_STATUS}`).map((x) => x.text)).toEqual(["chief-status line"]);
+  const log = routeLog(r);
+  expect(log[1]).toContain(" group:alerts ");
+  expect(log[2]).toContain(" group:status ");
+}));
+
+test("kind groups K3: himmel.conf.local wins over himmel.conf and an empty local value falls through", () => kindGroups({ conf: KG_BOTH, local: "TELEGRAM_ALERTS_CHAT_ID=-1003333\nTELEGRAM_STATUS_CHAT_ID=\n" }, async (r) => {
+  await kgSend(r, "token-in-output"); await kgSend(r, "chief-status");
+  expect(chatRows(r, "group_-1003333")).toHaveLength(1);
+  expect(chatRows(r, `group_${KG_STATUS}`)).toHaveLength(1);
+}));
+
+test("kind groups K5: an override that cannot be read sets no group, so the base file never routes in its place", () => kindGroups({ conf: KG_BOTH }, async (r, dir) => {
+  mkdirSync(join(dir, "himmel.conf.local"));
+  await kgSend(r, "token-in-output");
+  expect(chatRows(r, "__chat__")).toHaveLength(1);
+  expect(chatRows(r, `group_${KG_ALERTS}`)).toHaveLength(0);
+}));
+
+test("kind groups K5: an override that is a dangling link sets no group either", () => kindGroups({ conf: KG_BOTH }, async (r, dir) => {
+  symlinkSync(join(dir, "gone"), join(dir, "himmel.conf.local"));
+  await kgSend(r, "token-in-output");
+  expect(chatRows(r, "__chat__")).toHaveLength(1);
+  expect(chatRows(r, `group_${KG_ALERTS}`)).toHaveLength(0);
+}));
+
+test("kind groups K4: with no groups set, the same three land in the DM", () => kindGroups({}, async (r) => {
+  await kgSend(r, "chief-reply"); await kgSend(r, "token-in-output"); await kgSend(r, "chief-status");
+  expect(chatRows(r, "__chat__")).toHaveLength(3);
+}));
+
+test("kind groups K5: a positive, non-numeric or access-listed id falls back to the DM, logged and shown invalid", async () => {
+  for (const bad of ["12345", "abc", String(KG_LISTED), "-0", "-99999999999999999999"]) {
+    await kindGroups({ conf: `TELEGRAM_ALERTS_CHAT_ID=${bad}\n` }, async (r) => {
+      await kgSend(r, "token-in-output");
+      expect(chatRows(r, "__chat__"), bad).toHaveLength(1);
+      expect(routeLog(r)[0]).toContain(" operator-fallback:alerts ");
+      const p = Bun.spawn(["bun", CLI, "kind-groups", "--json"], { env: { ...process.env }, stdout: "pipe" });
+      const rows = JSON.parse(await new Response(p.stdout).text());
+      expect(rows.map((x: { group: string }) => x.group)).toEqual(["asks", "alerts", "status"]);
+      expect(rows[0]).toMatchObject({ key: null, state: "fixed", chat: KG_DM });
+      expect(rows[1]).toMatchObject({ key: "TELEGRAM_ALERTS_CHAT_ID", value: bad, state: "invalid", chat: KG_DM });
+      expect(rows[2]).toMatchObject({ state: "unset", chat: KG_DM });
+    });
+  }
+});
+
+test("kind groups K6: a line addressed to another chat stays there", () => kindGroups({ conf: KG_BOTH }, async (r) => {
+  await kgSend(r, "token-in-output", "x line", -999);
+  expect(chatRows(r, "group_-999")).toHaveLength(1);
+}));
+
+test("kind groups K7: a salus line never re-routes", () => kindGroups({ conf: KG_BOTH }, async (r) => {
+  await kgSend(r, "token-in-output", "a Salus record leaked");
+  expect(chatRows(r, "__chat__")).toHaveLength(1);
+  expect(chatRows(r, `group_${KG_ALERTS}`)).toHaveLength(0);
+}));
+
+test("kind groups K8: owed sends, the ask record and send-file stay in the DM", () => kindGroups({ conf: KG_BOTH }, async (r) => {
+  await routeReply(r, KG_DM, "status owed", { kind: "chief-status", consoleName: NAME, dest: "operator", owedIdentity: "doc k" });
+  const owed = chatRows(r, "__chat__");
+  expect(owed).toHaveLength(1);
+  expect(owed[0].request_id).toBeTruthy();
+  await kgSend(r, "chief-reply", "Needs you: pick one");
+  expect(lines(join(r, "consoles", "asks.ndjson")).map((l) => JSON.parse(l).chat)).toEqual([KG_DM]);
+  const doc = join(r, "note.txt"); writeFileSync(doc, "hello\n");
+  await queueFile(r, KG_DM, doc);
+  expect(chatRows(r, "__chat__").some((x) => x.document_path)).toBe(true);
+  expect(chatRows(r, `group_${KG_ALERTS}`)).toHaveLength(0);
+}));
+
+test("kind groups K9: a re-routed row carries no chief binding; the DM row keeps it", () => kindGroups({ conf: KG_BOTH }, async (r) => {
+  await kgSend(r, "token-in-output"); await kgSend(r, "chief-reply");
+  const [alert] = chatRows(r, `group_${KG_ALERTS}`);
+  expect(alert).not.toHaveProperty("console");
+  expect(alert).toMatchObject({ fallback_chat: KG_DM, fallback_group: "alerts", fallback_console: NAME });
+  expect(chatRows(r, "__chat__")[0].console).toBe(NAME);
+}));
+
+test("kind groups K10: the process environment never sets a group chat", () => kindGroups({ env: { TELEGRAM_ALERTS_CHAT_ID: String(KG_ALERTS) } }, async (r) => {
+  await kgSend(r, "token-in-output");
+  expect(chatRows(r, "__chat__")).toHaveLength(1);
+  expect(readKindGroupKeys(mkdtempSync(join(tmpdir(), "kg-empty-")))).toEqual({});
+  expect(kindChat("token-in-output", KG_DM, "x", { table: null, access: { allowFrom: [String(KG_DM)] }, keys: {} }).chat).toBe(KG_DM);
+}));
+
+const LINT_REFUSAL = "reads bytes the signer's trace lint refuses";
+const LINT_ESTIMATE = '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n';
+const lintSpecText = (o: { cite?: string; inv?: string; plan?: boolean } = {}) =>
+  `---\ntickets: HIMMEL-1\n${o.plan ? "plan: ../plans/HIMMEL-1-p.md\n" : ""}---\n# D\n\nEstimate record: estimate.json\n\n## Fact ownership\n\n| Fact | Existing surfaces | Owner after | Non-owners |\n|---|---|---|---|\n| route | \`${o.cite ?? "scripts/telegram/chief-route.ts"}\` | route | n/a |\n\n## Invariants\n\n${o.inv ?? "none"}\n`;
+const plainSpecText = (inv: string) => `---\ntickets: HIMMEL-1\nplan: ../plans/HIMMEL-1-p.md\n---\n# D\n\nEstimate record: estimate.json\n\n## Invariants\n\n${inv}\n`;
+const lintShim = (mode: "log" | "exit2" = "log", also = "") => {
+  const dir = root(); const log = join(dir, "lint.log");
+  const answer = mode === "exit2" ? "; echo 'shim: lint cannot run' >&2; exit 2" : also;
+  writeFileSync(join(dir, "bash"), `#!/bin/sh\ncase "$*" in *minerva-trace-lint.sh*) printf '%s\\n' "$*" >> '${log}'` + answer + `;; esac\nexec '${Bun.which("bash")}' "$@"\n`);
+  chmodSync(join(dir, "bash"), 0o755);
+  return { env: { ...process.env, PATH: `${dir}:${process.env.PATH}` }, runs: () => existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").length : 0 };
+};
+const routeRun = (argv: string[], env: Record<string, string | undefined> = process.env): P1Run => {
+  const p = Bun.spawnSync(["bun", P1_ROUTE, ...argv], { stdout: "pipe", stderr: "pipe", timeout: 60_000, env });
+  return { code: p.exitCode, signal: p.signalCode ?? null, out: p.stdout.toString(), err: p.stderr.toString() };
+};
+const lintTree = async (specText: string, planText?: string, specs = specsTree().specs) => {
+  const spec = join(specs, "designs", "HIMMEL-1-d.md"); writeFileSync(spec, specText);
+  const plan = join(specs, "plans", "HIMMEL-1-p.md"); if (planText !== undefined) writeFileSync(plan, planText);
+  const page = join(specs, "designs", "HIMMEL-1-d.html"); writeFileSync(page, "<h1>D</h1>\n");
+  const estimate = join(specs, "designs", "estimate.json"); writeFileSync(estimate, LINT_ESTIMATE);
+  await seedIfNeeded(specs);
+  return { specs, spec, plan, page, estimate };
+};
+const lintReturn = (spec: string, kind: "spec" | "plan", reads: string[]) => {
+  const v = `${spec}.critic-${kind}-r1.md`;
+  writeFileSync(v, `read ${reads.map(f => sha(readFileSync(f, "utf8"))).join(" and ")}\n${kind.toUpperCase()} CLEAN\n`);
+  return v;
+};
+const sealRead = (v: string, f: string) => seal(v, f, sha(readFileSync(f, "utf8")));
+const refusedEveryCall = async (specs: string, v: string, reads: string[], label: string) => {
+  const before = wTree(roundsDir(specs)); const text = readFileSync(v, "utf8");
+  for (const f of reads) {
+    const res = await sealRead(v, f);
+    expect(res.err, `${label} ${basename(f)}`).toContain(LINT_REFUSAL);
+    expect(res.code, `${label} ${basename(f)}`).toBe(1);
+    expect(wTree(roundsDir(specs)), `${label} ${basename(f)} ledger`).toEqual(before);
+    expect(readFileSync(v, "utf8"), `${label} ${basename(f)} return`).toBe(text);
+  }
+};
+
+test("lint: sign-shape --lint refuses a path:line citation, with and without a plan", async () => {
+  const f = await lintTree(lintSpecText({ cite: "scripts/telegram/chief-route.ts:12" }), "# P\n\n- Task 1: build.\n");
+  for (const argv of [["--plan", f.plan, "--lint"], ["--lint"]]) {
+    const res = routeRun(["sign-shape", f.spec, ...argv]);
+    expect(res.code, argv.join(" ")).toBe(3);
+    expect(res.out, argv.join(" ")).toMatch(/^SIGN-SHAPE REFUSED: minerva-trace-lint: .*chief-route\.ts:12/m);
+  }
+});
+
+test("lint: sign-shape --lint accepts a lint-clean spec, with and without a plan, given as relative paths too", async () => {
+  const f = await lintTree(lintSpecText({ inv: "I1. one rule." }), "# P\n\n- I1: test-x.sh\n");
+  const ok = { code: 0, signal: null, out: "SIGN-SHAPE OK\n", err: "" };
+  expect(routeRun(["sign-shape", f.spec, "--plan", f.plan, "--lint"])).toEqual(ok);
+  expect(routeRun(["sign-shape", f.spec, "--lint"])).toEqual(ok);
+  expect(routeRun(["sign-shape", relative(process.cwd(), f.spec), "--plan", relative(process.cwd(), f.plan), "--lint"])).toEqual(ok);
+  writeFileSync(f.plan, "# P\n\n- I1: build it.\n");
+  const bad = routeRun(["sign-shape", f.spec, "--plan", f.plan, "--lint"]);
+  expect(bad.code, "the named plan is linted").toBe(3);
+  expect(bad.out).toContain("I1 has no plan line naming its acceptance test");
+});
+
+test("lint: sign-shape without --lint runs no trace lint", async () => {
+  const f = await lintTree(lintSpecText({ cite: "scripts/telegram/chief-route.ts:12" }), "# P\n\n- Task 1: build.\n");
+  const shim = lintShim();
+  expect(routeRun(["sign-shape", f.spec, "--plan", f.plan], shim.env)).toEqual({ code: 0, signal: null, out: "SIGN-SHAPE OK\n", err: "" });
+  expect(shim.runs()).toBe(0);
+  expect(routeRun(["sign-shape", f.spec, "--plan", f.plan, "--lint"], shim.env).code, "control: the shim sees the lint").toBe(3);
+  expect(shim.runs()).toBe(1);
+});
+
+test("lint seal: a spec return whose spec cites a bare file name is refused on every call", async () => {
+  const f = await lintTree(lintSpecText({ cite: "chief-route.ts" }));
+  await refusedEveryCall(f.specs, lintReturn(f.spec, "spec", [f.spec, f.page]), [f.spec, f.page], "spec return");
+});
+
+test("lint seal: a plan return whose plan names no test for an invariant is refused in either call order", async () => {
+  for (const order of [["plan", "spec"], ["spec", "plan"]] as const) {
+    const f = await lintTree(lintSpecText({ inv: "I1. one rule.", plan: true }), "# P\n\n- I1: build it.\n");
+    const reads = order.map(k => f[k]);
+    await refusedEveryCall(f.specs, lintReturn(f.spec, "plan", reads), reads, order.join(","));
+  }
+});
+
+test("lint seal: a lint-clean plan return seals the plan, the spec and the estimate record", async () => {
+  const f = await lintTree(lintSpecText({ inv: "I1. one rule.", plan: true }), "# P\n\n- I1: test-x.sh\n");
+  const reads = [f.plan, f.spec, f.estimate]; const v = lintReturn(f.spec, "plan", reads);
+  for (const read of reads) expect(await sealRead(v, read), basename(read)).toEqual({ code: 0, err: "" });
+  expect(ledgerRows(f.specs, "HIMMEL-1").map(r => r.row)).toEqual(["round", "seal", "seal"]);
+});
+
+const onPath = async (path: string, run: () => Promise<void>) => {
+  const prior = process.env.PATH; process.env.PATH = path;
+  try { await run(); } finally { process.env.PATH = prior; }
+};
+
+test("lint seal: one process remembers only a passing lint of the same spec and plan bytes", async () => {
+  const { sealRound } = await import("./chief-route");
+  const cleanPlan = "# P\n\n- I1: test-x.sh\n";
+  const f = await lintTree(plainSpecText("I1. one rule."), cleanPlan);
+  const v = lintReturn(f.spec, "plan", [f.plan, f.spec]);
+  const shim = lintShim();
+  await onPath(shim.env.PATH, async () => { await sealRound(v, f.plan); await sealRound(v, f.spec); });
+  expect(shim.runs(), "a pass on the same bytes is linted once").toBe(1);
+  writeFileSync(f.plan, "# P\n\n- I1: build it.\n");
+  await expect(sealRound(v, f.spec), "changed plan bytes").rejects.toThrow(LINT_REFUSAL);
+  await expect(sealRound(v, f.spec), "a refusal is not remembered").rejects.toThrow(LINT_REFUSAL);
+  writeFileSync(f.plan, cleanPlan);
+  writeFileSync(f.spec, plainSpecText("I1. one rule.\n- a stray line"));
+  await expect(sealRound(v, f.plan), "changed spec bytes").rejects.toThrow(LINT_REFUSAL);
+  const g = await lintTree(plainSpecText("a stray line"));
+  const w = lintReturn(g.spec, "spec", [g.spec]);
+  await onPath(lintShim("exit2").env.PATH, () => sealRound(w, g.spec));
+  await expect(sealRound(w, g.spec), "an unavailable lint is not remembered").rejects.toThrow(LINT_REFUSAL);
+});
+
+test("lint seal: a plan swapped while the lint runs does not remember a pass for the bytes hashed before it", async () => {
+  const { sealRound } = await import("./chief-route");
+  const badPlan = "# P\n\n- I1: build it.\n";
+  const f = await lintTree(plainSpecText("I1. one rule."), badPlan);
+  const v = lintReturn(f.spec, "plan", [f.spec]);
+  const clean = join(root(), "clean-plan.md"); writeFileSync(clean, "# P\n\n- I1: test-x.sh\n");
+  await onPath(lintShim("log", `; cp '${clean}' '${f.plan}'`).env.PATH, () => sealRound(v, f.spec));
+  writeFileSync(f.plan, badPlan);
+  await expect(sealRound(v, f.spec)).rejects.toThrow(LINT_REFUSAL);
+});
+
+test("lint seal: a cited file removed after a passing seal is noticed by the next seal", async () => {
+  const { sealRound } = await import("./chief-route");
+  const t = specsTree();
+  expect(Bun.spawnSync(["git", "init", "-q", t.specs]).exitCode).toBe(0);
+  mkdirSync(join(t.specs, "only-here")); writeFileSync(join(t.specs, "only-here", "source.ts"), "export {};\n");
+  const f = await lintTree(lintSpecText({ cite: "only-here/source.ts" }), undefined, t.specs);
+  const v = lintReturn(f.spec, "spec", [f.spec]);
+  await sealRound(v, f.spec);
+  unlinkSync(join(t.specs, "only-here", "source.ts"));
+  await expect(sealRound(v, f.spec)).rejects.toThrow(LINT_REFUSAL);
+});
+
+test("lint seal: a spec-kind and a plan-kind closure return whose diff adds a bare-name cell are refused", async () => {
+  const { buildRoundFixture } = await import("./testlib-capped-fold.ts");
+  const { closureMarker, returnSha } = await import("./chief-route");
+  for (const kind of ["spec", "plan"] as const) {
+    const clean = lintSpecText();
+    const f = await buildRoundFixture({ scratchRoot: root(), key: "HIMMEL-1", specText: clean, planText: "# P\n\n- Task 1: build.\n",
+      returns: [1, 2, 3, 4, 5].map(round => ({ kind, round,
+        text: `- **M${round}** (${round === 5 ? "major" : "minor"}) a finding\n${kind.toUpperCase()} FINDINGS 1\n`,
+        reads: kind === "spec" ? ["spec"] : ["spec", "plan"] })) });
+    writeFileSync(f.spec, clean.replace("\n\n## Invariants", "\n| other | `chief-route.ts` | route | n/a |\n\n## Invariants"));
+    const reads = kind === "spec" ? [f.spec] : [f.spec, f.plan];
+    const v = `${f.spec}.critic-${kind}-r6.md`;
+    writeFileSync(v, `read ${reads.map(p => sha(readFileSync(p, "utf8"))).join(" and ")}\n${closureMarker("HIMMEL-1", kind, 6, returnSha(readFileSync(f.verdicts.at(-1)!, "utf8")))}\n${kind.toUpperCase()} CLEAN\n`);
+    await refusedEveryCall(f.specsRoot, v, reads, `${kind} closure`);
+  }
+});
+
+test("lint seal: a spec in another git repo may cite a path of that repo", async () => {
+  const t = specsTree();
+  expect(Bun.spawnSync(["git", "init", "-q", t.specs]).exitCode).toBe(0);
+  mkdirSync(join(t.specs, "only-here")); writeFileSync(join(t.specs, "only-here", "source.ts"), "export {};\n");
+  const f = await lintTree(lintSpecText({ cite: "only-here/source.ts" }), undefined, t.specs);
+  const v = lintReturn(f.spec, "spec", [f.spec]);
+  expect(await sealRead(v, f.spec)).toEqual({ code: 0, err: "" });
+});
+
+test("lint seal: a trace lint that cannot run is a NOTE, not a refusal, at the seal and at sign-shape --lint", async () => {
+  const f = await lintTree(lintSpecText({ cite: "chief-route.ts" }));
+  const shim = lintShim("exit2");
+  const v = lintReturn(f.spec, "spec", [f.spec]);
+  const note = "NOTE: trace lint unavailable (shim: lint cannot run); not checked\n";
+  const sealed = routeRun(["critic-round-check", v, f.spec], shim.env);
+  expect(sealed.err).toBe(note);
+  expect(sealed.code).toBe(0);
+  expect(ledgerRows(f.specs, "HIMMEL-1").map(r => r.row)).toEqual(["round"]);
+  expect(routeRun(["sign-shape", f.spec, "--lint"], shim.env)).toEqual({ code: 0, signal: null, out: "SIGN-SHAPE OK\n", err: note });
+  expect(shim.runs()).toBe(2);
 });

@@ -985,6 +985,7 @@ change; token and access config live *outside* the repo):
 | `CR_PUBLIC_REPO` | `yotamleo-org/Himmel` | env | the pinned public repo `/mergepub` may merge into |
 | `TELEGRAM_OWN_POLLER` / `HIMMEL_MCP_TELEGRAM` | OFF | shell | opt a Claude session into the vendored telegram plugin (poll-owner / send-only). Never run both the plugin poller and the bun bridge — one `getUpdates` consumer per token |
 | `TELEGRAM_CHAT_ID` / `TELEGRAM_GROUP_CHAT_ID` | unset (silent no-op) | `.env` (bridged) | targets for the opt-in jira-nudge and session-status relays. An explicitly EMPTY `TELEGRAM_GROUP_CHAT_ID` in the process env also suppresses the session-status hooks — it never falls back to `.env` |
+| `TELEGRAM_ALERTS_CHAT_ID` / `TELEGRAM_STATUS_CHAT_ID` | unset (the operator's DM) | `himmel.conf.local`, then `himmel.conf` | the group chats for the bridge's alert and status lines ([chats by group](internals/telegram-bridge.md#chats-by-group)). A valid value is a negative group id that is not in access.json `groups`; anything else goes to the DM. Routing never reads them from the process environment or `.env` |
 
 **Session nudges & ambient context** (all warn-only, all default-OFF except
 the statusline segment):

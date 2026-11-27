@@ -4400,3 +4400,55 @@ test("HIMMEL-10763 a short direct reply still goes out as one unmarked message",
   expect(await makeMonitorSend("999:TESTTOKEN", -100123, { f, sleep: async () => {} })("hello")).toBe(true);
   expect(bodies).toEqual(["hello"]);
 });
+
+import { makeHeartbeatAlert, makeRepeatedFailureAlert } from "./poller";
+import { appendOutboxLine } from "./bus";
+import { kindChat } from "./chief-route";
+
+const KG_ALERTS = -1001111;
+const kgRows = (r: string, session: string): { text: string; console?: string; fallback_chat?: number; fallback_group?: string }[] => {
+  const f = join(r, "sessions", session, "outbox.jsonl");
+  return existsSync(f) ? readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
+};
+
+test("kind groups K11: a fallback row Telegram does not take is queued once to the DM with a prefix and its console", async () => {
+  const r = root();
+  await appendOutboxLine(r, KG_ALERTS, { text: "alert one", fallback_chat: 7, fallback_group: "alerts", fallback_console: "chief-x" });
+  const sent: [number, string][] = [];
+  await flushOutboxes(r, async (c: number, t: string) => { sent.push([c, t]); return undefined; });
+  expect(kgRows(r, "__chat__")).toEqual([{ text: "(the alerts group did not take this) alert one", format: true, console: "chief-x" }]);
+  await flushOutboxes(r, async () => undefined);
+  expect(kgRows(r, "__chat__")).toHaveLength(1);
+});
+
+test("kind groups K11: a delivered fallback row and an ordinary failing row add nothing", async () => {
+  const r = root();
+  await appendOutboxLine(r, KG_ALERTS, { text: "delivered", fallback_chat: 7, fallback_group: "alerts" });
+  await flushOutboxes(r, async () => 11);
+  await appendOutboxLine(r, KG_ALERTS, { text: "plain" });
+  await flushOutboxes(r, async () => undefined);
+  expect(kgRows(r, "__chat__")).toEqual([]);
+});
+
+test("kind groups K12: the heartbeat, dispatch-failure and monitor-down notices go to the alerts group when set, else the DM", async () => {
+  for (const set of [true, false]) {
+    const dir = mkdtempSync(join(tmpdir(), "kg-poller-"));
+    if (set) writeFileSync(join(dir, "himmel.conf"), `TELEGRAM_ALERTS_CHAT_ID=${KG_ALERTS}\n`);
+    const access = join(dir, "access.json"); writeFileSync(access, JSON.stringify({ allowFrom: ["7"] }));
+    const vars: Record<string, string> = { HIMMEL_CONFIG_DIR: dir, TELEGRAM_ACCESS_PATH: access, HIMMEL_TEST_FIXTURE: "1", TELEGRAM_MONITOR_DOWN_AFTER_MS: "1" };
+    const saved = Object.entries(vars).map(([k]) => [k, process.env[k]] as const);
+    Object.assign(process.env, vars);
+    try {
+      const r = root();
+      await makeHeartbeatAlert(r, () => 7, kindChat)("chief-x", 999);
+      await makeRepeatedFailureAlert(r, () => 7, kindChat)("group_1", "boom", 5);
+      mkdirSync(join(r, "monitor"), { recursive: true });
+      writeFileSync(join(r, "monitor", "outbox.jsonl"), JSON.stringify({ text: "m", at: "2020-01-01T00:00:00Z" }) + "\n");
+      await flushMonitor(r, null, Date.parse("2026-01-01T00:00:00Z"), { operatorChat: 7, reason: "unset" });
+      const rows = kgRows(r, set ? `group_${KG_ALERTS}` : "__chat__");
+      expect(rows, String(set)).toHaveLength(3);
+      expect(rows.map((x) => x.fallback_chat)).toEqual(set ? [7, 7, 7] : [undefined, undefined, undefined]);
+      expect(kgRows(r, set ? "__chat__" : `group_${KG_ALERTS}`)).toEqual([]);
+    } finally { for (const [k, v] of saved) { if (v === undefined) Reflect.deleteProperty(process.env, k); else process.env[k] = v; } }
+  }
+});
