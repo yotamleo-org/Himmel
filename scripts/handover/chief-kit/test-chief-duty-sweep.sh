@@ -461,6 +461,15 @@ replay() {
 WAKE_AG="DUTY guard-refusal guard=guard-t3-thread-tools rule=off-narrow instance=antigravity :: a new guard refusal class :: next: find the open ticket that owns this guard and rule, or file one"
 
 rworld; replay
+mkdir -p "$WORK/w/nohash"
+# shellcheck disable=SC2016  # the stub body expands when the stub runs
+printf '#!/usr/bin/env bash\n[ "$1" != hash-object ] || exit 1\nexec %q "$@"\n' "$(command -v git)" > "$WORK/w/nohash/git"
+chmod +x "$WORK/w/nohash/git"
+PATH="$WORK/w/nohash:$PATH" sweep
+PATH="$WORK/w/nohash:$PATH" sweep
+check "refusal: a failed digest never folds a class, it wakes again" "$WAKE_AG" "$OUT"
+
+rworld; replay
 sweep
 check "refusal: the 11-25 Antigravity replay wakes once, naming only the three key fields" "$WAKE_AG" "$OUT"
 hasnt "refusal: no thread title in the wake" "Orchestrator" "$OUT"

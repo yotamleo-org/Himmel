@@ -570,10 +570,11 @@ elif [ -e "$refusal_file" ]; then
             END { for (k in last) print shown[k] FS last[k] FS k }')
         while IFS=$'\t' read -r rguard rrule rinst rlast rkey; do
             [ -n "$rguard" ] || continue
-            rsum=$(printf '%s' "$rkey" | git hash-object --stdin)
-            rwoke=$(awk -F'\t' -v k="$rsum" '$1 == k { print $2; exit }' "$refusal_stamps" 2>/dev/null)  # swallow-ok: no stamp file means no class was woken
+            rsum=$(printf '%s' "$rkey" | git hash-object --stdin) || rsum=""  # swallow-ok: with no digest the class wakes and is not stamped
+            rwoke=""
+            [ -z "$rsum" ] || rwoke=$(awk -F'\t' -v k="$rsum" '$1 == k { print $2; exit }' "$refusal_stamps" 2>/dev/null)  # swallow-ok: no stamp file means no class was woken
             case "$rwoke" in ''|*[!0-9]*) ;; *) [ "${rlast%.*}" -ge $(( rwoke + 86400 )) ] || continue ;; esac
-            refusal_woken="$refusal_woken$(printf '%s\t%s' "$rsum" "$now")"$'\n'
+            [ -z "$rsum" ] || refusal_woken="$refusal_woken$(printf '%s\t%s' "$rsum" "$now")"$'\n'
             add "DUTY guard-refusal guard=$rguard rule=$rrule instance=$rinst :: a new guard refusal class :: next: find the open ticket that owns this guard and rule, or file one"
         done <<< "$refusal_classes"
     else
