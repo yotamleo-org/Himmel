@@ -196,9 +196,11 @@ describe('the verifier spawn', () => {
 describe('the secret check child', () => {
   it('does not inherit BASH_ENV, so a startup hook cannot answer for the scan', () => {
     const dir = temp('go-answer-hook-');
-    writeFileSync(join(dir, 'hook.sh'), 'exit 7\n');
+    writeFileSync(join(dir, 'hook.sh'), `: > '${join(dir, 'hook-ran')}'\nexit 7\n`);
     writeFileSync(join(dir, 'empty.txt'), '');
-    expect(bucketGitleaks(join(dir, 'empty.txt'), { PATH: process.env.PATH, HOME: dir, BASH_ENV: join(dir, 'hook.sh') })).not.toBe(7);
+    const rc = bucketGitleaks(join(dir, 'empty.txt'), { PATH: process.env.PATH, HOME: dir, BASH_ENV: join(dir, 'hook.sh') });
+    expect([0, 2]).toContain(rc);
+    expect(existsSync(join(dir, 'hook-ran'))).toBe(false);
   });
 });
 
