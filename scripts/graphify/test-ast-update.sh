@@ -741,5 +741,60 @@ n25=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["nodes
 grep -Eq '"id":[[:space:]]*"kept"' "$OUT25/graph.json" && pass "T25 surviving node kept" \
   || fail "T25 expected the kept node in graph.json"
 
+echo "T26: an incremental run over a graph carrying restored semantic nodes is not refused"
+CORPUS26="$WS/c26"; OUT26="$CORPUS26/graphify-out"; mkdir -p "$OUT26"
+touch "$CORPUS26/a.sh" "$CORPUS26/b.sh" "$CORPUS26/doc.md"
+printf '%s\n' "$(date -u +%s)" > "$OUT26/.ast-forced-at"
+cat > "$OUT26/graph.json" <<'JSON'
+{"nodes":[
+ {"id":"a1","_origin":"ast","source_file":"a.sh","community":0},
+ {"id":"s_kept","_origin":"semantic","source_file":"doc.md","community":0},
+ {"id":"s_restored","_origin":"semantic","source_file":"doc.md","label":"stub"},
+ {"id":"s_restored2","_origin":"semantic","source_file":"doc.md","label":"stub2"}],
+ "links":[{"source":"s_restored","target":"a1","_origin":"semantic","relation":"mentions"}],
+ "hyperedges":[]}
+JSON
+BIN26="$WS/bin26"; mkdir -p "$BIN26"
+cat > "$BIN26/graphify" <<'STUB'
+#!/usr/bin/env bash
+python3 - "$2" <<'PY'
+import json, os, sys
+p = os.path.join(sys.argv[1], "graphify-out", "graph.json")
+g = json.load(open(p))
+cand = [n for n in g["nodes"] if "community" in n] + [{"id": "a2", "_origin": "ast", "source_file": "b.sh", "community": 0}]
+ids = {n["id"] for n in cand}
+lost = [n for n in g["nodes"] if n["id"] not in ids and n.get("source_file") != "b.sh"]
+if len(cand) < len(g["nodes"]) and lost:
+    print(f"[graphify] WARNING: new graph has {len(cand)} nodes but existing graph.json has {len(g['nodes'])}. Refusing to overwrite", file=sys.stderr)
+    sys.exit(1)
+g["nodes"] = cand
+g["links"] = [e for e in g["links"] if e["source"] in ids and e["target"] in ids]
+json.dump(g, open(p, "w"))
+PY
+STUB
+chmod +x "$BIN26/graphify"
+out26=$( PATH="$BIN26:$PATH" bash "$SCRIPT" "$CORPUS26" 2>&1 ); rc26=$?
+ids26=$(python3 -c 'import json,sys;g=json.load(open(sys.argv[1]));print(" ".join(sorted(n["id"] for n in g["nodes"])), len(g["links"]))' "$OUT26/graph.json")
+[ "$rc26" -eq 0 ] && pass "T26 the incremental run is not refused" || fail "T26 (rc=$rc26): $out26"
+[ "$ids26" = "a1 a2 s_kept s_restored s_restored2 1" ] \
+  && pass "T26 the restored nodes and their edge are back after the rebuild" || fail "T26 graph: $ids26"
+
+echo "T27: a killed rebuild's leftover snapshot gives the set-aside nodes back on the next run"
+CORPUS27="$WS/c27"; OUT27="$CORPUS27/graphify-out"; mkdir -p "$OUT27"
+touch "$CORPUS27/a.sh" "$CORPUS27/b.sh" "$CORPUS27/doc.md"
+printf '%s\n' "$(date -u +%s)" > "$OUT27/.ast-forced-at"
+cat > "$OUT27/.graph.pre-ast.json" <<'JSON'
+{"nodes":[
+ {"id":"a1","_origin":"ast","source_file":"a.sh","community":0},
+ {"id":"s_restored","_origin":"semantic","source_file":"doc.md","label":"stub"}],
+ "links":[{"source":"s_restored","target":"a1","_origin":"semantic","relation":"mentions"}],
+ "hyperedges":[]}
+JSON
+printf '%s\n' '{"nodes":[{"id":"a1","_origin":"ast","source_file":"a.sh","community":0}],"links":[],"hyperedges":[]}' > "$OUT27/graph.json"
+out27=$( PATH="$BIN26:$PATH" bash "$SCRIPT" "$CORPUS27" 2>&1 ); rc27=$?
+ids27=$(python3 -c 'import json,sys;g=json.load(open(sys.argv[1]));print(" ".join(sorted(n["id"] for n in g["nodes"])), len(g["links"]))' "$OUT27/graph.json")
+[ "$rc27" -eq 0 ] && [ "$ids27" = "a1 a2 s_restored 1" ] && [ ! -e "$OUT27/.graph.pre-ast.json" ] \
+  && pass "T27 the set-aside node and its edge came back, leftover removed" || fail "T27 (rc=$rc27) graph: $ids27 :: $out27"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

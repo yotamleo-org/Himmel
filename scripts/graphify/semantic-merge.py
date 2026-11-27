@@ -8,6 +8,8 @@
 #   plan  --root R --out O --max-files N --plan P   diff corpus vs manifest
 #   seed  --root R --out O                          stamp current hashes only
 #   merge --out O --scratch S --plan P --runtime-s T --tokens-in I --tokens-out J
+#   unrestore --out O              before an AST rebuild: set aside the semantic nodes graphify
+#                                  never wrote (no community), with their edges; restore puts them back
 #   restore --out O --before B [--root R]  put back the semantic items an AST rebuild
 #                                  (ast-update.sh) dropped from B's snapshot; with --root,
 #                                  not those of files R no longer tracks, and drop those too
@@ -414,6 +416,29 @@ def cmd_untracked(a):
         print(f)
 
 
+def cmd_unrestore(a):
+    """Set aside the semantic nodes graphify did not write (it stamps a community on every node it emits).
+
+    Left in, graphify drops them again and its shrink guard refuses an incremental run. The caller's
+    snapshot keeps them; restore puts them back after the rebuild.
+    """
+    graph_path = os.path.join(a.out, "graph.json")
+    g = load_json(graph_path)
+    ekey = "edges" if "edges" in g and "links" not in g else "links"
+    gone = {n.get("id") for n in g.get("nodes", [])
+            if n.get("_origin") == "semantic" and "community" not in n}
+    if not gone:
+        return
+    g["nodes"] = [n for n in g["nodes"] if n.get("id") not in gone]
+    g[ekey] = [e for e in g.get(ekey, [])
+               if e.get("source") not in gone and e.get("target") not in gone]
+    if g.get("hyperedges"):
+        g["hyperedges"] = [h for h in g["hyperedges"]
+                           if not (h.get("_origin") == "semantic" and set(h.get("nodes", [])) & gone)]
+    write_json_atomic(graph_path, g)
+    print("semantic-merge: set aside %d restored semantic node(s) for the rebuild" % len(gone), file=sys.stderr)
+
+
 def cmd_restore(a):
     # After an AST rebuild (`graphify update`, which re-extracts code files and
     # replaces their nodes): put back every semantic node, edge and hyperedge the
@@ -714,6 +739,8 @@ def main():
     r.add_argument("--out", required=True)
     r.add_argument("--before", required=True)
     r.add_argument("--root", default="")
+    ur = sub.add_parser("unrestore")
+    ur.add_argument("--out", required=True)
     pr = sub.add_parser("prune")
     pr.add_argument("--root", required=True)
     pr.add_argument("--out", required=True)
@@ -731,6 +758,7 @@ def main():
     nf.add_argument("--root", required=True)
     a = ap.parse_args()
     {"plan": cmd_plan, "seed": cmd_seed, "merge": cmd_merge, "failrow": cmd_failrow, "restore": cmd_restore,
+     "unrestore": cmd_unrestore,
      "prune": cmd_prune, "untracked": cmd_untracked, "status": cmd_status, "unstick": cmd_unstick, "held": cmd_held,
      "noncontent-filter": cmd_noncontent_filter}[a.cmd](a)
 

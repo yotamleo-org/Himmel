@@ -405,10 +405,21 @@ fi
 # (semantic-merge.py restore). The snapshot lives in OUT_DIR, which this
 # script's lock owns, and is removed on every path.
 _pre_ast="$OUT_DIR/.graph.pre-ast.json"
+if [ -f "$_pre_ast" ] \
+   && ! python3 "$(dirname "${BASH_SOURCE[0]}")/semantic-merge.py" restore --out "$OUT_DIR" --before "$_pre_ast" --root "$CORPUS_ROOT"; then
+  echo "ast-update: FAILED -- a snapshot left by an interrupted rebuild could not be restored into $OUT_DIR/graph.json; it is kept at $_pre_ast, nothing run. Exiting 5" >&2
+  exit 5
+fi
 rm -f "$_pre_ast"
 if [ -f "$OUT_DIR/graph.json" ] && ! cp "$OUT_DIR/graph.json" "$_pre_ast" 2>/dev/null; then
   rm -f "$_pre_ast"
   echo "ast-update: FAILED -- could not snapshot $OUT_DIR/graph.json before the rebuild (unreadable or disk full), so the semantic nodes it would drop could not be restored; nothing run. Exiting 5" >&2
+  exit 5
+fi
+if [ -f "$_pre_ast" ] \
+   && ! python3 "$(dirname "${BASH_SOURCE[0]}")/semantic-merge.py" unrestore --out "$OUT_DIR"; then
+  mv -f "$_pre_ast" "$OUT_DIR/graph.json" 2>/dev/null || true
+  echo "ast-update: FAILED -- could not set aside the restored semantic nodes before the rebuild; graph.json left as it was, nothing run. Exiting 5" >&2
   exit 5
 fi
 _workers="${GRAPHIFY_MAX_WORKERS:-8}"
