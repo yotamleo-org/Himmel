@@ -387,7 +387,7 @@ build_claude_payload() {
 }
 
 in_design_profile() {
-    local sum=""
+    local sum="" t3h="" root=""
     if command -v sha256sum >/dev/null 2>&1; then
         sum="$(printf '%s' antigravity_design | sha256sum)"
     elif command -v shasum >/dev/null 2>&1; then
@@ -395,10 +395,14 @@ in_design_profile() {
     fi
     sum="${sum%% *}"
     [ -n "$sum" ] || return 1
-    case "$ARTIFACT_REAL" in
-        */userdata/providers/antigravity/"$sum"/antigravity-acp/brain/*) return 0 ;;
-        *) return 1 ;;
-    esac
+    for t3h in "$T3_HOME_1" "$T3_HOME_2"; do
+        [ -n "$t3h" ] || continue
+        root="$(canon_path "$t3h/userdata/providers/antigravity/$sum/antigravity-acp/brain")" || continue
+        case "$ARTIFACT_REAL" in
+            "$root"/*) return 0 ;;
+        esac
+    done
+    return 1
 }
 
 run_mcp_gate() {

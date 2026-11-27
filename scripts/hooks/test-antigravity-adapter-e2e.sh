@@ -493,7 +493,12 @@ done
 assert_deny "eager unlisted MCP server still denied" "not allowlisted" "$(make_pre mcp_evil_query-docs '{}')"
 
 DESIGN_ARTIFACT_DIR="$ARTIFACT_DIR"
-for other_art in "$OTHER_ARTIFACT_DIR" "" "$TMP/home/antigravity-acp/brain/conv-1" "$DESIGN_ARTIFACT_DIR/../../../../hash1/antigravity-acp/brain/conv-1"; do
+HOME_T3_ART="$HOME/.t3/userdata/providers/antigravity/${DESIGN_HEX%% *}/antigravity-acp/brain/conv-1"
+ARTIFACT_DIR="$HOME_T3_ART"
+assert_pass "design profile under the default \$HOME/.t3 allowed" "$(make_lazy context7 query-docs)"
+for other_art in "$OTHER_ARTIFACT_DIR" "" \
+    "$TMP/elsewhere/userdata/providers/antigravity/${DESIGN_HEX%% *}/antigravity-acp/brain/conv-1" \
+    "$OTHER_ARTIFACT_DIR/userdata/providers/antigravity/${DESIGN_HEX%% *}/antigravity-acp/brain/conv-1""$TMP/home/antigravity-acp/brain/conv-1" "$DESIGN_ARTIFACT_DIR/../../../../hash1/antigravity-acp/brain/conv-1"; do
     ARTIFACT_DIR="$other_art"
     for srv_tool in context7:query-docs shadcn:get_audit_checklist playwright:browser_snapshot; do
         srv="${srv_tool%%:*}"; tool="${srv_tool#*:}"
