@@ -281,8 +281,9 @@ build_mcp_json() {
     local p="$1" out="$2" n
     jq -e --arg p "$p" '.profiles[$p]
         | (if has("mcpServers") then (.mcpServers | type == "object" and all(.[]; type == "object") and all(keys[]; test("^[A-Za-z0-9._-]+$"))) else true end)
-        and (if has("optionalMcpServers") then (.optionalMcpServers | type == "array" and all(.[]; type == "string" and test("^[A-Za-z0-9._-]+$"))) else true end)' "$REGISTRY" >/dev/null 2>&1 \
-        || die 2 "profile '$p': mcpServers must be an object of server objects and optionalMcpServers a list of names, every name made of letters, digits, . _ -"
+        and (if has("optionalMcpServers") then (.optionalMcpServers | type == "array" and all(.[]; type == "string" and test("^[A-Za-z0-9._-]+$"))) else true end)
+        and (if has("mcpEnv") then (.mcpEnv | type == "object" and all(.[]; type == "object" and all(.[]; type == "string") and all(keys[]; test("^[A-Za-z_][A-Za-z0-9_]*$")))) else true end)' "$REGISTRY" >/dev/null 2>&1 \
+        || die 2 "profile '$p': mcpServers must be an object of server objects and optionalMcpServers a list of names, every name made of letters, digits, . _ -; mcpEnv must map a server name to an object of string variables"
     for n in $(jq -r --arg p "$p" --slurpfile pp "$PLUGIN_PROFILES" '(.profiles[$p].optionalMcpServers // [])[] as $n
         | select((($pp[0].mcpCatalog // {})[$n]) == null or ((($pp[0].mcpCatalog // {})[$n] | tostring) | contains("${"))) | $n' "$REGISTRY"); do
         echo "antigravity-profiles: skip optional MCP server '$n': not in mcpCatalog, or it needs a checkout path" >&2
@@ -292,6 +293,7 @@ build_mcp_json() {
         | (($pp[0].mcpCatalog // {}) as $cat
            | [($prof.optionalMcpServers // [])[] | select($cat[.] != null and (($cat[.] | tostring) | contains("${") | not)) | {(.): $cat[.]}] | add // {})
           + ($prof.mcpServers // {})
+        | with_entries(.key as $k | if (($prof.mcpEnv // {}) | has($k)) then .value.env = ((.value.env // {}) + $prof.mcpEnv[$k]) else . end)
         | if ($prof | has("mcpServers") or has("optionalMcpServers")) then {mcpServers: .} else empty end' "$REGISTRY" > "$out" || die 2 "cannot build mcp_config.json for '$p'"
 }
 
