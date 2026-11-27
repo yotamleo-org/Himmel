@@ -142,6 +142,7 @@ make_mock_clone() {
     cp "$SRC_SCRIPTS/lib/resolve-bun.sh"        "$clone/scripts/lib/resolve-bun.sh"
     cp "$SRC_SCRIPTS/lib/claude-version.sh"        "$clone/scripts/lib/claude-version.sh"
     cp "$SRC_SCRIPTS/lib/update-channel.sh"        "$clone/scripts/lib/update-channel.sh"
+    cp "$SRC_SCRIPTS/lib/plugin-cache-drift.sh"        "$clone/scripts/lib/plugin-cache-drift.sh"
     cp "$SRC_SCRIPTS/lib/vm-mode.sh"           "$clone/scripts/lib/vm-mode.sh"
     cp "$SRC_SCRIPTS/upstreams/update-marketplaces.sh" "$clone/scripts/upstreams/update-marketplaces.sh"
     git -C "$clone" add -A

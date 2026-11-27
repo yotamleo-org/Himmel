@@ -1997,6 +1997,7 @@ c79_setup() {   # <cache hooks.json content>
     printf '{"name":"himmel","plugins":[{"name":"p1","source":"./plugins/p1"}]}\n' > "$c79_t/repo/marketplace/.claude-plugin/marketplace.json"
     printf '{"name":"p1","version":"1.0.0"}\n' > "$c79_t/repo/marketplace/plugins/p1/.claude-plugin/plugin.json"
     printf '%s\n' "$c79_main" > "$c79_t/repo/marketplace/plugins/p1/hooks/hooks.json"
+    cp -R "$c79_t/repo/marketplace/plugins/p1/." "$c79_t/claude/plugins/cache/himmel/p1/1.0.0/"
     printf '%s\n' "$1" > "$c79_t/claude/plugins/cache/himmel/p1/1.0.0/hooks/hooks.json"
     printf '{"version":2,"plugins":{"p1@himmel":[{"scope":"user","installPath":"%s","version":"1.0.0"}]}}\n' \
         "$c79_t/claude/plugins/cache/himmel/p1/1.0.0" > "$c79_t/claude/plugins/installed_plugins.json"
@@ -2058,6 +2059,60 @@ if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F 'skills/s/SKILL
     pass "C79 skills-only drift -> WARN naming the skill file"
 else
     fail "C79 skills-only drift -> $(printf '%s' "$out" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
+c79_paths() { c79_tree="$c79_t/repo/marketplace/plugins/p1"; c79_cachedir="$c79_t/claude/plugins/cache/himmel/p1/1.0.0"; }
+c79_run() { CLAUDE_DIR="$c79_t/claude" HOME="$c79_t/home" bash "$DOC" --only C79 --no-color --root "$c79_t/repo" 2>&1; }
+
+echo "== C79 (11344-e1): an agents/ drift -> WARN naming the file =="
+c79_setup "$c79_main"; c79_paths
+mkdir -p "$c79_tree/agents" "$c79_cachedir/agents"
+printf 'new\n' > "$c79_tree/agents/a.md"; printf 'old\n' > "$c79_cachedir/agents/a.md"
+out="$(c79_run)"
+if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F 'agents/a.md'; then
+    pass "(11344-e1) agents/ drift -> WARN naming the file"
+else
+    fail "(11344-e1) -> $(printf '%s' "$out" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
+echo "== C79 (11344-e2): a cache-only node_modules/ -> OK =="
+c79_setup "$c79_main"; c79_paths
+mkdir -p "$c79_cachedir/node_modules/x"; printf 'x\n' > "$c79_cachedir/node_modules/x/index.js"
+out="$(c79_run)"
+if grepq "$out" 'OK   C79-plugin-cache-drift' && ! grepq "$out" 'WARN C79-plugin-cache-drift'; then
+    pass "(11344-e2) node_modules/ -> OK"
+else
+    fail "(11344-e2) -> $(printf '%s' "$out" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
+echo "== C79 (11344-e3): an unreadable checkout dir -> WARN cannot compare =="
+if [ "$(id -u)" -eq 0 ]; then
+    echo "SKIP (11344-e3): running as root"
+else
+    c79_setup "$c79_main"; c79_paths
+    mkdir -p "$c79_tree/agents"; printf 'a\n' > "$c79_tree/agents/a.md"
+    chmod 000 "$c79_tree/agents"
+    out="$(c79_run)"
+    chmod 755 "$c79_tree/agents"
+    if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F 'cannot compare'; then
+        pass "(11344-e3) unreadable tree -> WARN cannot compare"
+    else
+        fail "(11344-e3) -> $(printf '%s' "$out" | grep -A1 C79)"
+    fi
+    rm -rf "$c79_t"
+fi
+
+echo "== C79 (11344-e4): a file the cache lacks is drift, not a failed compare =="
+c79_setup "$c79_main"; c79_paths
+mkdir -p "$c79_tree/agents"; printf 'n\n' > "$c79_tree/agents/new.md"
+out="$(c79_run)"
+if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F 'agents/new.md' && ! grepq "$out" -F 'cannot compare'; then
+    pass "(11344-e4) added file -> WARN naming it"
+else
+    fail "(11344-e4) -> $(printf '%s' "$out" | grep -A1 C79)"
 fi
 rm -rf "$c79_t"
 

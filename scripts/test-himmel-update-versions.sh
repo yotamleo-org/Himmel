@@ -106,6 +106,7 @@ make_mock_clone() {
     cp "$src_scripts/lib/resolve-bun.sh"        "$clone/scripts/lib/resolve-bun.sh"
     cp "$src_scripts/lib/claude-version.sh"     "$clone/scripts/lib/claude-version.sh"
     cp "$src_scripts/lib/update-channel.sh"     "$clone/scripts/lib/update-channel.sh"
+    cp "$src_scripts/lib/plugin-cache-drift.sh"     "$clone/scripts/lib/plugin-cache-drift.sh"
     CHECKOUT_DIR="$clone"
     UPSTREAM_BARE="$bare"
 }

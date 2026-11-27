@@ -318,7 +318,7 @@ if [ "$staged_rc" -ne 0 ] && grepq "$staged_out" "plugin-a changed but its plugi
 # The same edit plus a version bump passes.
 (cd "$W_BUMP" && printf '{"name": "plugin-a", "version": "0.1.1"}\n' > marketplace/plugins/plugin-a/.claude-plugin/plugin.json && git add -A)
 staged_red_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; staged_red_rc=$?
-if [ "$staged_red_rc" -eq 0 ] && grepq "$staged_red_out" "every changed plugin carries a version bump above the base"; then ok "--bump-required (staged): an edit plus a version bump passes"; else bad "--bump-required (staged): bumped edit refused (rc=$staged_red_rc): $staged_red_out"; fi
+if [ "$staged_red_rc" -eq 0 ] && grepq "$staged_red_out" "every changed plugin carries a version bump above the base"; then ok "(11344-a6) --bump-required (staged): an edit plus a version bump passes"; else bad "--bump-required (staged): bumped edit refused (rc=$staged_red_rc): $staged_red_out"; fi
 # Release cut (staged): the same bump with VERSION changed passes.
 (cd "$W_BUMP" && printf '1.1.0\n' > VERSION && git add -A)
 staged_rel_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; staged_rel_rc=$?
@@ -568,14 +568,14 @@ git -C "$W_DOD/c1" branch -m main || bad "c1 fixture: branch rename failed"
 bump_run "$W_DOD/c1"
 if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (staged): a second commit after the bump needs no second bump"; else bad "--bump-required (staged): second commit demanded another bump (rc=$br_rc): $br_out"; fi
 
-# Base moved: a sibling already shipped the version this PR bumps to, so the PR
-# must merge main and bump above it (two contents never share a version).
+# Base moved: a sibling already shipped the version this PR bumps to, and
+# the PR raised it itself from the same old one: accepted at that number.
 bump_fixture "$W_DOD/b1" foo
 git -C "$W_DOD/b1" branch -m main || bad "b1 fixture: branch rename failed"
 (cd "$W_DOD/b1" && git checkout -q -b feat && bump_edit "$W_DOD/b1" && bump_ver "$W_DOD/b1" 0.1.1 && git add -A && git commit -q -m 'fix: pr edit and bump' \
   && git checkout -q main && printf '# sibling\n' > "$P/foo/sibling.md" && bump_ver "$W_DOD/b1" 0.1.1 && git add -A && git commit -q -m 'fix: sibling edit and bump' && git checkout -q feat) || bad "b1 fixture: history setup failed"
 base_moved_out="$(cd "$W_DOD/b1" && bash "$SCRIPT" --bump-required main 2>&1)"; base_moved_rc=$?
-if [ "$base_moved_rc" -ne 0 ] && grepq "$base_moved_out" "foo changed but its plugin.json version 0.1.1 is not above 0.1.1 on the base"; then ok "--bump-required (range): a bump the base already shipped is refused"; else bad "--bump-required (range): duplicate of the base's version passed (rc=$base_moved_rc): $base_moved_out"; fi
+if [ "$base_moved_rc" -eq 0 ] && grepq "$base_moved_out" "foo 0.1.1 equals the base tip, raised from 0.1.0 at the merge-base: accepted"; then ok "--bump-required (range): a bump the PR raised to the base's number is accepted"; else bad "--bump-required (range): equal raised version refused (rc=$base_moved_rc): $base_moved_out"; fi
 
 # A version-only commit after an earlier plugin edit (a correction above a
 # sibling's version) is part of the same PR: judged against the branch base, not HEAD.
@@ -695,7 +695,62 @@ if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'himmel-ops changed but its p
   git commit -q -m 'fix: bump himmel-ops to the version the sibling shipped'
 )
 current_out="$(run_current_job 2>&1)"; current_rc=$?
-if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'himmel-ops changed but its plugin.json version 0.4.61 is not above 0.4.61 on the base'; then ok "same-base replay: a second PR bumping to the base's version is refused"; else bad "same-base replay: duplicate bump passed (rc=$current_rc): $current_out"; fi
+accept_line='himmel-ops 0.4.61 equals the base tip, raised from 0.4.60 at the merge-base: accepted'
+if [ "$current_rc" -eq 0 ] && grepq "$current_out" "$accept_line" && grepq "$current_out" "$nochange_line"; then ok "(11344-a1) same-base replay: a second PR that raised to the base's version is accepted"; else bad "(11344-a1) same-base replay: equal raised version refused (rc=$current_rc): $current_out"; fi
+raise_branch() {
+  (
+    set -e
+    cd "$W_CURRENT"
+    git checkout -q -b "$1" "$2"
+    sed "s/$3/$4/" marketplace/plugins/himmel-ops/.claude-plugin/plugin.json > manifest.tmp
+    mv manifest.tmp marketplace/plugins/himmel-ops/.claude-plugin/plugin.json
+    printf '# %s\n' "$1" > "marketplace/plugins/himmel-ops/$5"
+    if [ -n "${6:-}" ]; then printf '%s\n' "$6" > VERSION; fi
+    git add -A
+    git commit -q -m "fix: $1"
+  )
+}
+refused_equal='himmel-ops changed but its plugin.json version 0.4.61 is not above 0.4.61 on the base'
+(
+  set -e
+  cd "$W_CURRENT"
+  git checkout -q -b a3-merged-forward bumping-pr
+  git merge -q --no-edit current-base
+) || bad "(11344-a3) fixture: merge-forward failed"
+current_out="$(run_current_job 2>&1)"; current_rc=$?
+if [ "$current_rc" -ne 0 ] && grepq "$current_out" "$refused_equal"; then ok "(11344-a3) a PR that merged main forward and kept its number is refused"; else bad "(11344-a3) merged-forward equal version passed (rc=$current_rc): $current_out"; fi
+raise_branch a4-base current-base 0.4.61 0.4.62 a4.md || bad "(11344-a4) fixture failed"
+git -C "$W_CURRENT" checkout -q bumping-pr
+current_out="$(run_current_job a4-base 2>&1)"; current_rc=$?
+if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'himmel-ops changed but its plugin.json version 0.4.61 is not above 0.4.62 on the base'; then ok "(11344-a4) a version below the moved base is refused"; else bad "(11344-a4) lower version passed (rc=$current_rc): $current_out"; fi
+raise_branch cut-base stored-base 0.4.60 0.4.61 cut.md 1.1.3 || bad "(11344-a7) fixture failed"
+git -C "$W_CURRENT" checkout -q bumping-pr
+current_out="$(run_current_job cut-base 2>&1)"; current_rc=$?
+if [ "$current_rc" -ne 0 ] && grepq "$current_out" "$refused_equal"; then ok "(11344-a7) an equal version after a release cut is refused"; else bad "(11344-a7) equal after a cut passed (rc=$current_rc): $current_out"; fi
+if grepq "$current_out" 'a release cut since the merge-base may have set it'; then ok "(11344-a7b) the cut refusal says why"; else bad "(11344-a7b) the cut refusal does not name the cut: $current_out"; fi
+raise_branch two-step-mid stored-base 0.4.60 0.4.61 step1.md || bad "(11344-a8) fixture failed"
+raise_branch two-step-base two-step-mid 0.4.61 0.4.62 step2.md || bad "(11344-a8) fixture failed"
+raise_branch a8-pr stored-base 0.4.60 0.4.62 a8.md || bad "(11344-a8) fixture failed"
+current_out="$(run_current_job two-step-base 2>&1)"; current_rc=$?
+if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'himmel-ops changed but its plugin.json version 0.4.62 is not above 0.4.62 on the base'; then ok "(11344-a8) an equal version main reached through another number is refused"; else bad "(11344-a8) two-step equal passed (rc=$current_rc): $current_out"; fi
+add_fresh() {
+  (
+    set -e
+    cd "$W_CURRENT"
+    git checkout -q -b "$1" stored-base
+    mkdir -p marketplace/plugins/fresh/.claude-plugin marketplace/.claude-plugin
+    printf '{"name":"fresh","version":"1.0.0"}\n' > marketplace/plugins/fresh/.claude-plugin/plugin.json
+    printf '{"plugins":[{"name":"fresh","source":"./plugins/fresh"}]}\n' > marketplace/.claude-plugin/marketplace.json
+    printf '# %s\n' "$1" > "marketplace/plugins/fresh/$2"
+    git add -A
+    git commit -q -m "feat: $1"
+  )
+}
+add_fresh new-base base.md || bad "(11344-a9) fixture failed"
+add_fresh a9-pr pr.md || bad "(11344-a9) fixture failed"
+current_out="$(run_current_job new-base 2>&1)"; current_rc=$?
+if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'fresh changed but its plugin.json version 1.0.0 is not above 1.0.0'; then ok "(11344-a9) a plugin new at the merge-base and equal to the base is refused"; else bad "(11344-a9) duplicate new plugin passed (rc=$current_rc): $current_out"; fi
+git -C "$W_CURRENT" checkout -q bumping-pr
 # After the PR merges main and bumps above it, it passes.
 (
   cd "$W_CURRENT" || exit 1
@@ -730,7 +785,7 @@ if [ "$current_rc" -eq 0 ] && grepq "$current_out" "$nochange_line"; then ok "sa
 current_out="$(run_current_job stored-base 2>&1)"; current_rc=$?
 if [ "$current_rc" -eq 0 ] && grepq "$current_out" "$release_line"; then ok "release cut: raising himmel-ops above the base passes"; else bad "release cut above the base failed (rc=$current_rc): $current_out"; fi
 current_out="$(run_current_job release-a 2>&1)"; current_rc=$?
-if [ "$current_rc" -ne 0 ] && grepq "$current_out" '0.4.61 is not above 0.4.61 on the base' && ! grepq "$current_out" "$release_line"; then ok "release cut: a second cut to the version the base already ships fails, never two contents under one version"; else bad "release cut: duplicate version passed (rc=$current_rc): $current_out"; fi
+if [ "$current_rc" -ne 0 ] && grepq "$current_out" '0.4.61 is not above 0.4.61 on the base' && ! grepq "$current_out" "$release_line"; then ok "(11344-a5) release cut: a second cut to the version the base already ships fails, never two contents under one version"; else bad "release cut: duplicate version passed (rc=$current_rc): $current_out"; fi
 (
   cd "$W_CURRENT" || exit 1
   sed 's/0.4.61/0.4.62/' marketplace/plugins/himmel-ops/.claude-plugin/plugin.json > manifest.tmp

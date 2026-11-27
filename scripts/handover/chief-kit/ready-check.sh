@@ -89,10 +89,13 @@
 #      A Jira error reads UNKNOWN and fails — never a PASS.
 #   9. A PR that changes a plugin bumps that plugin's version (same
 #      rule as check-plugin-drift.sh --bump-required): the manifest version must
-#      be strictly above CURRENT origin/main's (two PRs raising to the same
-#      version merge CLEAN). A bump with no other file change in that plugin is
-#      refused. A release cut (a PR that changes the root VERSION file) must
-#      version every plugin it touches above main, bump-only included. Fetches origin/main and the PR
+#      be strictly above CURRENT origin/main's, or equal to it when the plugin
+#      is at the merge-base, the PR raised it from there, main moved it only
+#      from that same old to that same new version, and no first-parent commit
+#      since the merge-base touched VERSION. A bump with no other file change in
+#      that plugin is refused. A release cut (a PR that changes the root VERSION
+#      file) must version every plugin it touches strictly above main, bump-only
+#      included. Fetches origin/main and the PR
 #      head (refs/pull/<n>/head) into the caller's repo; a PR touching no
 #      plugin never reaches git. Any fetch/read failure FAILs.
 #  10. Workflow dispatch: every .github/workflows/*.yml the PR
@@ -1448,12 +1451,10 @@ if [ "$ONLY7" -eq 0 ]; then
 # ── 9. a plugin change bumps that plugin's version ──────────────
 # The --bump-required rule of scripts/check-plugin-drift.sh. A PR
 # that changes a plugin's files must carry a version strictly above origin/main's
-# as it is NOW: two PRs can raise one plugin to the same version with different
-# content, which merges cleanly (check 1 stays CLEAN) and leaves stale installs.
-# A bump with no other change in that plugin (a manifest edit beyond "version"
-# counts as a change) is refused. A release cut (a PR that changes the root
-# VERSION file) raises every plugin it touches above main. Inline rather than
-# calling check-plugin-drift.sh, which hardwires HEAD and the caller's checkout.
+# as it is NOW, or one EQUAL to it that the PR raised itself: the plugin is at the merge-base, main moved it only from that old version to this one, and no commit since the merge-base touched VERSION.
+# A bump with no other change in that plugin (a manifest edit beyond "version" counts as a change) is refused. A release cut (a PR that changes the root
+# VERSION file) raises every plugin it touches strictly above main. Inline rather than calling check-plugin-drift.sh, which hardwires HEAD and the
+# caller's checkout; test-ready-check-d.sh pins the two to one verdict.
 # A file moved out of a plugin lists only its destination as filename, so the
 # plugin path comes from previous_filename. A PR touching no plugin never
 # reaches git. Fetch or read failure = FAIL.
@@ -1473,6 +1474,7 @@ elif [ -z "$plug_files" ]; then
     echo "[PASS] 9. no plugin files touched — version bump not applicable"
 else
     bump_err=""
+    plug_equal=""
     plug_manifest_ver() {  # <ref> <plugin> — prints the manifest "version", empty when absent
         git show "$1:marketplace/plugins/$2/.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version // empty' 2>/dev/null
     }
@@ -1488,7 +1490,21 @@ else
         r=$(git show "$1:marketplace/plugins/$2/.claude-plugin/plugin.json" 2>/dev/null | jq -S -c 'del(.version)' 2>/dev/null) || r="!"  # swallow-ok: an unreadable manifest compares as "!"
         printf '%s' "$r"
     }
-    plug_above_main() {  # <plugin> — appends to bump_err unless the PR's version is strictly above origin/main's
+    plug_equal_raised() {
+        local mb="$1" p="$2" mpath="marketplace/plugins/$2/.claude-plugin/plugin.json" mb_v shas sha v cuts
+        [ "$3" = "$4" ] || return 1
+        mb_v=$(plug_manifest_ver "$mb" "$p") || return 1
+        grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' <<<"$mb_v" || return 1
+        jq -n -e --arg a "$mb_v" --arg b "$4" 'def k: split(".") | map(tonumber); ($b | k) > ($a | k)' >/dev/null 2>&1 || return 1
+        shas=$(git rev-list --first-parent "$mb..refs/remotes/origin/main" -- "$mpath" 2>/dev/null) || return 1  # swallow-ok: rc checked, a failure refuses equality
+        for sha in $shas; do
+            v=$(plug_manifest_ver "$sha" "$p") || return 1
+            [ "$v" = "$mb_v" ] || [ "$v" = "$4" ] || return 1
+        done
+        cuts=$(git rev-list --first-parent "$mb..refs/remotes/origin/main" -- VERSION 2>/dev/null) || return 1  # swallow-ok: rc checked, a failure refuses equality
+        [ -z "$cuts" ]
+    }
+    plug_above_main() {  # <plugin> [merge-base] — appends to bump_err unless the PR's version is strictly above origin/main's, or (with a merge-base) equal to it by plug_equal_raised
         local p="$1" mpath="marketplace/plugins/$1/.claude-plugin/plugin.json" m_ls p_ls m_ver p_ver
         # absent on main = new plugin, nothing to collide with; a failed tree read or an
         # unreadable manifest = FAIL
@@ -1512,6 +1528,10 @@ else
         if ! jq -n -e --arg a "$m_ver" --arg b "$p_ver" '
             def k: split(".") | map(tonumber);
             ($b | k) > ($a | k)' >/dev/null 2>&1; then
+            if [ -n "${2:-}" ] && plug_equal_raised "$2" "$p" "$m_ver" "$p_ver"; then
+                plug_equal="$plug_equal${plug_equal:+, }$p $p_ver"
+                return 0
+            fi
             bump_err="$bump_err; $p is $p_ver in the PR but origin/main is already $m_ver — bump above main"
         fi
         return 0
@@ -1550,7 +1570,7 @@ else
                 fi
                 continue
             fi
-            plug_above_main "$plug"
+            plug_above_main "$plug" "$plug_mb"
         done
     else
         for plug in $(printf '%s\n' "$plug_files" | sed -n 's#^marketplace/plugins/\([^/]*\)/.*#\1#p' | sort -u); do
@@ -1559,7 +1579,7 @@ else
     fi
     if [ -z "$bump_err" ]; then
         if [ -z "$plug_rel" ]; then
-            echo "[PASS] 9. every plugin the PR changes is bumped above current origin/main"
+            echo "[PASS] 9. every plugin the PR changes is bumped above current origin/main${plug_equal:+; equal to current origin/main, raised from an older merge-base: $plug_equal}"
         else
             echo "[PASS] 9. release cut: every plugin the PR touches is versioned above current origin/main"
         fi

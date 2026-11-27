@@ -1541,10 +1541,9 @@ elif [ "$mr_conc" != success ]; then
 fi
 
 # PLUGIN-BUMP RECHECK GATE — CI's plugin-version-bump job went
-# green against whatever the base was when it ran. A PR that changes a plugin
-# bumps its version; a sibling that raised the same plugin to the
-# same version and merged afterwards leaves this PR green yet shipping a second
-# content under that version, and the job body itself is PR-editable. This is the one
+# green against whatever the base was when it ran, and the job body itself is PR-editable. The recheck refuses a plugin version below the live base tip's, an
+# unraised one, or one equal to it that the base-tip checker's equal clause (the PR raised it from the same old version, no commit since the merge-base touched
+# VERSION) does not accept; it binds the tip it fetched, not the one GitHub squashes onto a moment later. An accepted equal version is named on the audit line. This is the one
 # place that sees the live base, so it re-runs `check-plugin-drift.sh
 # --bump-required` here: the checker comes from a freshly fetched base tip
 # (never the PR checkout's copy — the same blobs the CI job copies)
@@ -1635,8 +1634,13 @@ if [ -n "$bp_hit" ] || [ "${bp_nlines:-0}" -ge 3000 ]; then
         | *$'\n'"${bp_pfx}no plugin files changed"$'\n'*) ;;
         *) bump_refuse "the base-tip checker exited 0 without its success line, so it gave no verdict on PR #$pr_num" "phase=checker-blob no-success-line=1 base=$bp_base" ;;
     esac
+    bp_equal=""
+    while IFS=' ' read -r bp_w1 bp_w2 bp_p bp_v bp_w5 bp_w6 bp_w7 _; do
+        [ "$bp_w1 $bp_w2 $bp_w5 $bp_w6 $bp_w7" != "check-plugin-drift --bump-required: equals the base" ] \
+            || bp_equal="$bp_equal${bp_equal:+,}$bp_p@$bp_v"
+    done <<<"$bp_out"
     bp_cleanup
-    audit "PLUGIN-BUMP ok repo=$nwo pr=#$pr_num sha=$sha base=$bp_base"
+    audit "PLUGIN-BUMP ok repo=$nwo pr=#$pr_num sha=$sha base=$bp_base${bp_equal:+ equal=$bp_equal}"
 fi
 
 # STATIC RE-CHECK GATE — two PRs that are each green alone can be red together

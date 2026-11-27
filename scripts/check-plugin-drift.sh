@@ -177,9 +177,9 @@ fi
 # plugin (a manifest edit beyond "version" counts as a change) is refused.
 # A release cut (a change to the root VERSION file, which only the release-cut
 # PR makes) raises every plugin it touches above the base, bump-only included.
-# Two PRs bumping one plugin from the same base collide on the version line, so
-# the second merges main and bumps above it. The manifest keeps its "version"
-# field (check_manifest_versions).
+# The manifest keeps its "version" field (check_manifest_versions). Range mode, non-release: a version EQUAL to the base tip's also passes (equal_raised) when the plugin is at the merge-base, the PR raised it from there,
+# the base moved it only from that same old version to that same new one, and no first-parent commit since the merge-base touched VERSION (equal_raised rc 2). A release cut stays strictly above the tip it judges. Until a higher
+# version ships the base can hold several contents under one version: himmel-update reinstalls such a cache (scripts/lib/plugin-cache-drift.sh), a marketplace install keeps the first content of that version.
 #
 # Two modes, both git-diff based (never DRIFT_PLUGINS_DIR — that override
 # exists for the network-free class above; this check is inherently
@@ -215,6 +215,27 @@ try:
     print(json.dumps(d,sort_keys=True))
 except Exception:
     print("!")' 2>/dev/null
+}
+
+version_above() {
+  python3 -c 'import sys
+def key(v):
+    return [int(p) if p.isdigit() else p for p in v.replace("-", ".").split(".")]
+sys.exit(0 if key(sys.argv[2]) > key(sys.argv[1]) else 1)' "$1" "$2" 2>/dev/null
+}
+
+equal_raised() {
+  local mb="$1" tip="$2" manifest="$3" old="$4" new="$5" shas sha v cuts
+  git cat-file -e "$mb:$manifest" 2>/dev/null || return 1
+  [ -n "$old" ] && [ "$new" = "$6" ] && version_above "$old" "$new" || return 1
+  shas="$(git rev-list --first-parent "$mb..$tip" -- "$manifest")" || return 1
+  while IFS= read -r sha; do
+    [ -n "$sha" ] || continue
+    v="$(manifest_version "$sha:$manifest")"
+    [ "$v" = "$old" ] || [ "$v" = "$new" ] || return 1
+  done <<<"$shas"
+  cuts="$(git rev-list --first-parent "$mb..$tip" -- VERSION)" || return 1
+  [ -z "$cuts" ] || return 2
 }
 
 check_bump_required() {
@@ -363,11 +384,17 @@ except Exception:
         continue  # plugin.json absent at the base — nothing to compare against
       fi
       tip_ver="$(manifest_version "$tip_ref:$manifest")"
-      if [ -z "$new_ver" ] || ! python3 -c 'import sys
-def key(v):
-    return [int(p) if p.isdigit() else p for p in v.replace("-", ".").split(".")]
-sys.exit(0 if key(sys.argv[2]) > key(sys.argv[1]) else 1)' "$tip_ver" "$new_ver" 2>/dev/null; then
-        echo "ERR check-plugin-drift --bump-required: $name changed but its plugin.json version ${new_ver:-<none>} is not above ${tip_ver:-<none>} on the base — bump the version in marketplace/plugins/$name/.claude-plugin/plugin.json (patch at least) so himmel-update refreshes it" >&2
+      if [ -z "$new_ver" ] || ! version_above "$tip_ver" "$new_ver"; then
+        local equal_rc=1 cut_why=""
+        if [ -n "$base_ref" ]; then
+          equal_raised "$old_ref" "$base_ref" "$manifest" "$old_ver" "$new_ver" "$tip_ver"; equal_rc=$?
+        fi
+        if [ "$equal_rc" -eq 0 ]; then
+          echo "check-plugin-drift --bump-required: $name $new_ver equals the base tip, raised from $old_ver at the merge-base: accepted"
+          continue
+        fi
+        [ "$equal_rc" -ne 2 ] || cut_why=" — a release cut since the merge-base may have set it"
+        echo "ERR check-plugin-drift --bump-required: $name changed but its plugin.json version ${new_ver:-<none>} is not above ${tip_ver:-<none>} on the base — bump the version in marketplace/plugins/$name/.claude-plugin/plugin.json (patch at least) so himmel-update refreshes it$cut_why" >&2
         bad=1
       fi
       continue
