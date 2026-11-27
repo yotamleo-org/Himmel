@@ -2955,6 +2955,54 @@ c102_cfg '{}'; out="$(c102_run '')"
 c102_want "redirected HOME, no key -> INFO not checked" 'INFO C102-lane-grants: lane grants not checked (HOME is not the account home)'
 c102_cfg '{"lane_grants":{"codex":["net-read"]}}'; out="$(c102_run '')"
 c102_want "redirected HOME with the key -> WARN" 'WARN C102-lane-grants: the two config paths are not the same file; no grant applies'
+
+echo "== C102: fetch host lists (HIMMEL-11410) =="
+c102_net='"lane_grants":{"codex":["net-read"]}'
+c102_hosts() { c102_cfg "{$c102_net,\"lane_grants_hosts\":$1}"; out="$(c102_run)"; }
+# shellcheck disable=SC2016
+c102_no_echo() {
+    local line bad=''
+    while IFS= read -r line; do
+        case "$line" in *'$(id)'*|example.com|'") '*) bad=$line ;; esac
+    done <<<"$out"
+    if [ -z "$bad" ]; then pass "C102 $1"; else fail "C102 $1 -> $bad"; fi
+}
+c102_hosts '{"codex":{"allow":["Docs.Example.ORG.","*.Example.com."],"deny":["Tracker.Example.org"]}}'
+c102_want "H10 the hosts line, canonical" 'codex: net-read (hook only; the exec-lane sandbox blocks network and the git dir, a full-access T3 thread has no sandbox); codex hosts: allow docs.example.org, *.example.com | deny tracker.example.org'
+c102_hosts '{"codex":{"allow":[]}}'
+c102_want "H10 allow [] -> allow (none)" 'codex hosts: allow (none)'
+c102_lacks "H10 allow [] -> no WARN" 'WARN C102'
+c102_hosts '{"codex":{"allow":[],"deny":["tracker.example.org"]}}'
+c102_want "H10 allow [] with a deny list -> both halves" 'codex hosts: allow (none) | deny tracker.example.org'
+# shellcheck disable=SC2016
+c102_hosts '{"codex":{"deny":["$(id)"]}}'
+# shellcheck disable=SC2016
+c102_want 'H10 $(id) entry -> WARN' 'WARN C102-lane-grants: lane_grants_hosts.codex is malformed; that lane fetches nothing'
+# shellcheck disable=SC2016
+c102_no_echo 'H10 $(id) entry is not echoed'
+c102_cfg "{$c102_net,\"lane_grants_hosts\":$(jq -cn '{codex:{deny:["example.com\n"]}}')}"; out="$(c102_run)"
+c102_want "H10 newline entry -> WARN" 'WARN C102-lane-grants: lane_grants_hosts.codex is malformed'
+c102_no_echo 'H10 newline entry is not echoed or split'
+for h in '{"codex":{"deny":null}}' '{"codex":{"allowed":["example.com"]}}'; do
+    c102_hosts "$h"
+    c102_want "H10 $h -> WARN" 'WARN C102-lane-grants: lane_grants_hosts.codex is malformed'
+done
+for h in '"x"' 'null'; do
+    c102_hosts "$h"
+    c102_want "H10 lane_grants_hosts $h -> WARN" 'WARN C102-lane-grants: lane_grants_hosts is not an object; no lane fetches'
+done
+c102_hosts '{"zzz-lane":{}}'
+c102_want "H10 unknown lane key -> WARN" 'WARN C102-lane-grants: a key under lane_grants_hosts other than antigravity and codex is ignored'
+c102_hosts '{"codex":{}}'
+c102_lacks "H10 {} -> no hosts line" 'codex hosts:'
+c102_lacks "H10 {} -> no WARN" 'WARN C102'
+c102_cfg '{"lane_grants_hosts":{"codex":{"deny":["tracker.example.org"]}}}'; out="$(c102_run)"
+c102_want "H10 hosts without lane_grants -> hosts line" 'codex hosts: deny tracker.example.org'
+c102_lacks "H10 hosts without lane_grants -> no lane_grants WARN" 'lane_grants is not an object'
+c102_cfg "{\"lane_grants\":{\"codex\":[\"git-push-branch\",\"gh-pr-create\",\"net-read\"]},$c102_pin,\"lane_grants_hosts\":{\"codex\":[]}}"; out="$(c102_run)"
+c102_want "H10 a malformed list keeps push and PR on the lane line" 'codex: git-push-branch, gh-pr-create, net-read'
+c102_cfg "{$c102_net}"; out="$(c102_run)"
+c102_lacks "H10 no lane_grants_hosts -> no hosts line" ' hosts:'
 rm -rf "$c102_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
