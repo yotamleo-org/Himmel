@@ -924,8 +924,9 @@ if [ "$DRY_RUN" -ne 1 ]; then
         exit 10
     fi
     unset -v _fl_err _fl_rc _fl_line
-elif ! FLEET_LAUNCH_WORKER_INTENT=1 python3 -I "$_csg_dir/../../lib/fleet_runtime.py" admit --doc "$DOC" --manifest "$FLEET_MANIFEST" --name "$NAME" >/dev/null; then
-    exit 10
+else
+    _fl_scope="$(FLEET_LAUNCH_WORKER_INTENT=1 python3 -I "$_csg_dir/../../lib/fleet_runtime.py" admit --doc "$DOC" --manifest "$FLEET_MANIFEST" --name "$NAME")" || exit 10
+    FLEET_LAUNCH_MANAGED="$(printf '%s\n' "$_fl_scope" | jq -r .managed)" || exit 10
 fi
 if [ "$DRY_RUN" -ne 1 ]; then _lr_row attempt-started null; fi
 
@@ -2963,6 +2964,25 @@ EOF_CS_FILES
             echo "headed-arm-worker: refusing the readiness role: cannot build its MCP config" >&2
             exit 2
         fi
+        # the host-admitted catalog (thin C0): a launching-shell seam like the port and the primary CLI, never a model argument
+        READINESS_CATALOG="${WORKER_SESSION_READINESS_CATALOG:-}"
+        # The host-admitted catalog is copied verbatim into the private startup config, exactly three keys and no other, so
+        # nothing else can ride into it; the adapter (readiness-tools.mjs loadStartup) is the one validator of its contents. No
+        # catalog leaves the startup config without these fields and the adapter then admits nothing. Refused before the attempt
+        # directory exists.
+        READINESS_CATALOG_JSON='{}'
+        if [ -n "$READINESS_CATALOG" ]; then
+            case "$READINESS_CATALOG" in /*) ;; *) echo "headed-arm-worker: refusing the readiness role: WORKER_SESSION_READINESS_CATALOG must be an absolute path" >&2; exit 2 ;; esac
+            { [ -f "$READINESS_CATALOG" ] && [ ! -L "$READINESS_CATALOG" ] && [ "$(_ready_fx_stat %s %z "$READINESS_CATALOG")" -le 16384 ]; } \
+                || { echo "headed-arm-worker: refusing the readiness role: the host catalog must be a regular, non-symlink file of at most 16 KiB" >&2; exit 2; }
+            # swallow-ok: a jq failure fails this assignment, and the `||` below refuses the launch before anything is written
+            READINESS_CATALOG_JSON="$(jq -c 'if type == "object" and (keys | sort) == ["catalog","roots","source_head"] then {source_head, roots, catalog} else error("not exactly source_head, roots and catalog") end' "$READINESS_CATALOG" 2>/dev/null)" \
+                || { echo "headed-arm-worker: refusing the readiness role: the host catalog must be a JSON object holding exactly source_head, roots and catalog" >&2; exit 2; }
+            # the adapter's own validator runs over these very bytes (the ones embedded below), host-only, before anything is
+            # created or acquired; it reads no credential and its diagnostics are fixed, so only the refusal itself is said here
+            printf '%s' "$READINESS_CATALOG_JSON" | node "$READINESS_ADAPTER" --check-catalog >/dev/null 2>&1 \
+                || { echo "headed-arm-worker: refusing the readiness role: the host catalog contents are not a valid readiness catalog (the adapter's validator refused them)" >&2; exit 2; }
+        fi
     fi
 fi
 
@@ -3614,14 +3634,13 @@ fi
 # The session start adopts the lease and deletes the transport (scripts/hooks/readiness-session.sh).
 READINESS_TOKEN="" READINESS_PRE_HANDOFF=0 READINESS_ACQ_PID="" READINESS_ACQ_STATE="" READINESS_ACQ_OUT="" READINESS_REAP_SECS=20
 _ready_uuid() { local u; u="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null)"; printf '%s' "$u" | tr 'A-F' 'a-f'; }  # swallow-ok: an empty attempt id is refused by every reader of the startup config
-_ready_stat() { stat -c "$1" -- "$3" 2>/dev/null || stat -f "$2" -- "$3" 2>/dev/null; }
 # _ready_private_dir <dir>: a directory that is this user's, not a symlink, mode 0700 (created when absent)
 _ready_private_dir() {
     [ ! -L "$1" ] || return 1
     [ -d "$1" ] || ( umask 077 && mkdir -p -- "$1" ) 2>/dev/null || return 1
-    [ -d "$1" ] && [ ! -L "$1" ] && [ "$(_ready_stat %u %u "$1")" = "$(id -u)" ] || return 1
+    [ -d "$1" ] && [ ! -L "$1" ] && [ "$(_ready_fx_stat %u %u "$1")" = "$(id -u)" ] || return 1
     chmod -- 700 "$1" 2>/dev/null || return 1
-    [ "$(_ready_stat %a %Lp "$1")" = 700 ]
+    [ "$(_ready_fx_stat %a %Lp "$1")" = 700 ]
 }
 # the attempt directory is removed only when it is exactly <root>/<uuid>
 _readiness_cleanup() {
@@ -3670,8 +3689,6 @@ if [ "$READINESS" -eq 1 ]; then
     READINESS_QL="$(cd -P "$HERE/.." && pwd -P)/queue-lock.sh"
     READINESS_PORT="${WORKER_SESSION_READINESS_PORT:-copy}"
     READINESS_PRIMARY_CLI="${WORKER_SESSION_READINESS_PRIMARY_CLI:-}"
-    # the host-admitted catalog (thin C0): a launching-shell seam like the port and the primary CLI, never a model argument
-    READINESS_CATALOG="${WORKER_SESSION_READINESS_CATALOG:-}"
     # how long a cleanup waits for an acquire that was still running (whole seconds, 1..60)
     case "${WORKER_SESSION_READINESS_REAP_SECS:-}" in
         ''|*[!0-9]*) ;;
@@ -3692,23 +3709,6 @@ if [ "$READINESS" -eq 1 ]; then
             ;;
         *) _readiness_refuse "WORKER_SESSION_READINESS_PORT must be copy or jira (got: $READINESS_PORT)" ;;
     esac
-    # The host-admitted catalog is copied verbatim into the private startup config, exactly three keys and no other, so
-    # nothing else can ride into it; the adapter (readiness-tools.mjs loadStartup) is the one validator of its contents. No
-    # catalog leaves the startup config without these fields and the adapter then admits nothing. Refused before the attempt
-    # directory exists.
-    READINESS_CATALOG_JSON='{}'
-    if [ -n "$READINESS_CATALOG" ]; then
-        case "$READINESS_CATALOG" in /*) ;; *) _readiness_refuse "WORKER_SESSION_READINESS_CATALOG must be an absolute path" ;; esac
-        { [ -f "$READINESS_CATALOG" ] && [ ! -L "$READINESS_CATALOG" ] && [ "$(_ready_stat %s %z "$READINESS_CATALOG")" -le 16384 ]; } \
-            || _readiness_refuse "the host catalog must be a regular, non-symlink file of at most 16 KiB"
-        # swallow-ok: a jq failure fails this assignment, and the `||` below refuses the launch before anything is written
-        READINESS_CATALOG_JSON="$(jq -c 'if type == "object" and (keys | sort) == ["catalog","roots","source_head"] then {source_head, roots, catalog} else error("not exactly source_head, roots and catalog") end' "$READINESS_CATALOG" 2>/dev/null)" \
-            || _readiness_refuse "the host catalog must be a JSON object holding exactly source_head, roots and catalog"
-        # the adapter's own validator runs over these very bytes (the ones embedded below), host-only, before anything is
-        # created or acquired; it reads no credential and its diagnostics are fixed, so only the refusal itself is said here
-        printf '%s' "$READINESS_CATALOG_JSON" | node "$READINESS_ADAPTER" --check-catalog >/dev/null 2>&1 \
-            || _readiness_refuse "the host catalog contents are not a valid readiness catalog (the adapter's validator refused them)"
-    fi
     # (1) the private attempt directory and the startup config that binds the minted id
     _ready_private_dir "$READINESS_ROOT" || _readiness_refuse "the private attempt root $READINESS_ROOT is not this user's mode-0700 directory"
     ( umask 077 && mkdir -m 700 -- "$READINESS_ATTEMPT" ) 2>/dev/null || _readiness_refuse "cannot create the private attempt directory $READINESS_ATTEMPT"

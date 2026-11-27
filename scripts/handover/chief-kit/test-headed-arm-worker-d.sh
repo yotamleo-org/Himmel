@@ -365,6 +365,12 @@ jq -c '.roots.repo = "relative/repo"' "$RS/catalog-ok.json" > "$RS/catalog-badro
 jq -c '.catalog[0].kind = "url"' "$RS/catalog-ok.json" > "$RS/catalog-badkind.json"
 jq -c '.catalog = [range(0; 9) as $i | .catalog[0] + {id: ("issue.n" + ($i | tostring))}]' "$RS/catalog-ok.json" > "$RS/catalog-nine.json"
 jq -c '.catalog[0].size = 70000' "$RS/catalog-ok.json" > "$RS/catalog-oversize.json"
+RS_FLAGS=(--dry-run)
+rs_launch WORKER_SESSION_READINESS_CATALOG="$RS/catalog-badhead.json"
+RS_FLAGS=()
+check "17s-10351 T7: dry run refuses a malformed catalog without writing" \
+  "$RS_RC:$(rs_attempts):$(rs_status):$([ -e "$RS_D/record" ] && echo launched || echo none)" "2:0:free:none"
+rs_msg "10351 T7: dry-run catalog reason" "the host catalog contents are not a valid readiness catalog"
 for rs_cat_case in "a head that is not a 40-hex commit|$RS/catalog-badhead.json" "a relative repo root|$RS/catalog-badroot.json" "an unknown entry kind|$RS/catalog-badkind.json" \
   "nine entries (and several copied issues)|$RS/catalog-nine.json" "an entry larger than the per-request limit|$RS/catalog-oversize.json"; do
   rs_launch WORKER_SESSION_READINESS_CATALOG="${rs_cat_case#*|}"
@@ -554,6 +560,15 @@ if command -v flock >/dev/null 2>&1; then
   rm -f "$RS/target-mark-ok"
   rs_launch HEADED_ARM_WORKER_TARGET="$RS/deaf-target.sh" RS_TARGET_MARK="$RS/target-mark-ok"
   check "17s managed target: a target inside the fixture root launches" "$RS_RC:$([ -e "$RS/target-mark-ok" ] && echo started || echo never)" "0:started"
+  RS_FLAGS=(--dry-run)
+  rs_launch
+  check "17s-10351 T6: managed dry run refuses the in-repo target without a lease or attempt" \
+    "$RS_RC:$(rs_status):$(rs_attempts)" "2:free:0"
+  rs_msg "10351 T6: managed dry-run target reason" "a managed doc needs HEADED_ARM_WORKER_TARGET inside the fixture root"
+  rs_launch HEADED_ARM_WORKER_TARGET="$RS/deaf-target.sh" RS_TARGET_MARK="$RS/dry-target-mark"
+  check "17s-10351 T6 control: managed dry run accepts an in-root target without writing" \
+    "$RS_RC:$(rs_status):$(rs_attempts):$([ -e "$RS/dry-target-mark" ] && echo launched || echo none):$(find "$RS_D" -name 'leg-*.json' -o -name '*.leg-*.json' | wc -l | tr -d ' ')" "0:free:0:none:0"
+  RS_FLAGS=()
   RS_MANAGED=0
 else
   echo "SKIP - 17s managed hand-off rows (fleet-manifest.sh needs util-linux flock, absent here)"
