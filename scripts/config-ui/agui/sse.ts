@@ -200,7 +200,7 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
     const at = Date.now();
     void (async () => {
       let batch: BusDelta[] = [];
-      try { for await (const e of busEvents(root, { since: 0 })) batch.push(e as BusDelta); fails = 0; } catch { batch = []; fails++; } // no store yet: nothing to merge
+      try { for await (const e of busEvents(root, { since: 0 })) batch.push(e as BusDelta); fails = 0; } catch { batch = []; fails++; }
       scanned = { name, at: fails && fails < 3 ? 0 : at, batch };
       restUntil = Math.max(Date.now() * 2 - at, fails ? Date.now() + o.pollMs : 0);
       wake?.();
