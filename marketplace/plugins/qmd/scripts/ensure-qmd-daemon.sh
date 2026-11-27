@@ -756,10 +756,6 @@ if ! mkdir "$swap_lock" 2>/dev/null; then
   if swap_lock_stale "$swap_lock"; then
     swap_lock_reclaim
   fi
-  # Contended. WHO holds it decides: role=ensure for this index is another session's start already on
-  # it, so this one exits quietly; for another index it is waited out (swap_wait s); role=swap refuses.
-  # The index and role files are written before the pid, so a holder with neither is brand new:
-  # poll briefly (SessionStart must stay fast); one that never names a role is treated as a swap.
   swap_role=""
   swap_i=0
   swap_max=8
