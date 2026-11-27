@@ -1213,7 +1213,6 @@ scripts/upstreams/test-upstream-watch-cadence.sh	local	behaviour suite, 0 catche
 scripts/upstreams/test-upstream-watch.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/usage/test-usage.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-adopted-features-stage.sh	local	behaviour suite, new
-scripts/vm/test-adopt-plugins-vm.sh	local	drives a real VM and a live claude session, not a CI suite
 scripts/vm/test-after-report.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-assert-provenance.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-ci-runner.sh	local	behaviour suite, 0 catches in the 400-PR audit window

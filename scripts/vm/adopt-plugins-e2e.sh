@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# selector: tree-scan
-# test-adopt-plugins-vm.sh - VM proof for a project adopt that keeps plugin enablement out of
+# adopt-plugins-e2e.sh - VM proof for a project adopt that keeps plugin enablement out of
 # the user file (given scopes slice S2b-1, spec A26).
 #
 # Takes the vm-lock on <vm>, restores it to the clean snapshot, stages THIS worktree's tracked
@@ -13,7 +12,7 @@
 # enablement. The VM is restored and powered off afterwards, and the lock released, on every
 # exit path.
 #
-# Usage: bash scripts/vm/test-adopt-plugins-vm.sh <vm>
+# Usage: bash scripts/vm/adopt-plugins-e2e.sh <vm>
 #   <vm>  a himmel-ar-N / himmel-ci-N clone (never the golden image)
 #
 # Env (test seams): HIMMEL_ADOPT_PLUGINS_VMSDK, HIMMEL_ADOPT_PLUGINS_GUEST_EXEC,
@@ -87,7 +86,7 @@ fi
 VM="${1:-}"
 case "$VM" in
   himmel-ar-[0-9]|himmel-ar-[0-9][0-9]|himmel-ci-[0-9]|himmel-ci-[0-9][0-9]) ;;
-  *) echo "usage: test-adopt-plugins-vm.sh <vm>  (vm: himmel-ar-N or himmel-ci-N, never the golden image)" >&2; exit 2 ;;
+  *) echo "usage: adopt-plugins-e2e.sh <vm>  (vm: himmel-ar-N or himmel-ci-N, never the golden image)" >&2; exit 2 ;;
 esac
 
 SNAPSHOT="${HIMMEL_ADOPT_PLUGINS_SNAPSHOT:-suite-ready-v4}"
@@ -106,9 +105,9 @@ gx() {
 gx_run() { gx -- "$1"; }
 
 # shellcheck source=vm-lock.sh
-. "$HERE/vm-lock.sh" || { echo "test-adopt-plugins-vm: cannot load vm-lock.sh" >&2; exit 3; }
+. "$HERE/vm-lock.sh" || { echo "adopt-plugins-e2e: cannot load vm-lock.sh" >&2; exit 3; }
 # shellcheck source=../lib/vm-guest-excludes.sh
-. "$REPO/scripts/lib/vm-guest-excludes.sh" || { echo "test-adopt-plugins-vm: cannot load vm-guest-excludes.sh; nothing was copied" >&2; exit 3; }
+. "$REPO/scripts/lib/vm-guest-excludes.sh" || { echo "adopt-plugins-e2e: cannot load vm-guest-excludes.sh; nothing was copied" >&2; exit 3; }
 
 STAGE_TMP="${HIMMEL_ADOPT_PLUGINS_STAGE_TMP:-${TMPDIR:-/tmp}}"
 TARBALL="" OUT="" LOCKED=0 BOOTED=0
@@ -119,37 +118,37 @@ cleanup() {
   [ -z "$TARBALL" ] || rm -f "$TARBALL"
   [ -z "$OUT" ] || rm -f "$OUT"
   if [ "$BOOTED" = 1 ]; then
-    vmsdk restore "$SNAPSHOT" >/dev/null 2>&1 || { echo "test-adopt-plugins-vm: restore $SNAPSHOT after the run failed; $VM may be dirty" >&2; rc=3; }
-    vmsdk down >/dev/null 2>&1 || { echo "test-adopt-plugins-vm: could not power $VM off" >&2; rc=3; }
+    vmsdk restore "$SNAPSHOT" >/dev/null 2>&1 || { echo "adopt-plugins-e2e: restore $SNAPSHOT after the run failed; $VM may be dirty" >&2; rc=3; }
+    vmsdk down >/dev/null 2>&1 || { echo "adopt-plugins-e2e: could not power $VM off" >&2; rc=3; }
   fi
   [ "$LOCKED" != 1 ] || vm_lock_release "$VM"
   exit "$rc"
 }
 trap cleanup EXIT
 
-vm_lock_acquire_waiting "$VM" || { echo "test-adopt-plugins-vm: vm-lock for $VM is held; refusing" >&2; exit 3; }
+vm_lock_acquire_waiting "$VM" || { echo "adopt-plugins-e2e: vm-lock for $VM is held; refusing" >&2; exit 3; }
 LOCKED=1
 
-bash "$REPO/scripts/lib/usage-preflight.sh" || { echo "test-adopt-plugins-vm: usage preflight did not say PROCEED" >&2; exit 3; }
+bash "$REPO/scripts/lib/usage-preflight.sh" || { echo "adopt-plugins-e2e: usage preflight did not say PROCEED" >&2; exit 3; }
 
 echo "==> adopt-plugins stage: $VM @ $SNAPSHOT (worktree: $REPO)"
 BOOTED=1
-vmsdk restore "$SNAPSHOT" >/dev/null || { echo "test-adopt-plugins-vm: restore $SNAPSHOT failed" >&2; exit 3; }
-vmsdk up >/dev/null || { echo "test-adopt-plugins-vm: up failed" >&2; exit 3; }
+vmsdk restore "$SNAPSHOT" >/dev/null || { echo "adopt-plugins-e2e: restore $SNAPSHOT failed" >&2; exit 3; }
+vmsdk up >/dev/null || { echo "adopt-plugins-e2e: up failed" >&2; exit 3; }
 
 TARBALL="$(mktemp "$STAGE_TMP/adopt-plugins-tree.XXXXXX")" || exit 3
 tar_excl=(); while IFS= read -r _x; do tar_excl+=("$_x"); done < <(vm_guest_tar_excludes)
 { git -C "$REPO" ls-files -z --cached --others --exclude-standard -- "${STAGE_PATHS[@]}" \
     | while IFS= read -r -d '' _f; do [ -L "$REPO/$_f" ] || printf '%s\0' "$_f"; done; } \
   | tar -C "$REPO" "${tar_excl[@]}" -czf "$TARBALL" --null -T - \
-  || { echo "test-adopt-plugins-vm: could not build the stage tarball" >&2; exit 3; }
-vmsdk push "$TARBALL" /tmp/himmel-adopt-plugins-tree.tgz >/dev/null || { echo "test-adopt-plugins-vm: push failed" >&2; exit 3; }
+  || { echo "adopt-plugins-e2e: could not build the stage tarball" >&2; exit 3; }
+vmsdk push "$TARBALL" /tmp/himmel-adopt-plugins-tree.tgz >/dev/null || { echo "adopt-plugins-e2e: push failed" >&2; exit 3; }
 gx -- "rm -rf $REMOTE_DIR && mkdir -p $REMOTE_DIR && tar -xzf /tmp/himmel-adopt-plugins-tree.tgz -C $REMOTE_DIR && rm -f /tmp/himmel-adopt-plugins-tree.tgz" >/dev/null \
-  || { echo "test-adopt-plugins-vm: could not unpack the tree on $VM" >&2; exit 3; }
+  || { echo "adopt-plugins-e2e: could not unpack the tree on $VM" >&2; exit 3; }
 vm_guest_assert_clean gx_run "$REMOTE_DIR" full || exit 3
 
 OUT="$(mktemp "$STAGE_TMP/adopt-plugins-out.XXXXXX")" || exit 3
-gx --timeout 1800 -- "HIMMEL_ADOPT_PLUGINS_GUEST=1 bash $REMOTE_DIR/scripts/vm/test-adopt-plugins-vm.sh $REMOTE_DIR" 2>&1 | tee "$OUT"
+gx --timeout 1800 -- "HIMMEL_ADOPT_PLUGINS_GUEST=1 bash $REMOTE_DIR/scripts/vm/adopt-plugins-e2e.sh $REMOTE_DIR" 2>&1 | tee "$OUT"
 rc="${PIPESTATUS[0]}"
 if [ "$rc" -eq 0 ]; then echo "==> adopt-plugins stage PASSED"; else echo "==> adopt-plugins stage FAILED (rc=$rc)" >&2; fi
 exit "$rc"
