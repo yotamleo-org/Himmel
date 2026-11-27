@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { Chain, readChain, verifyChain } from "./chain";
 import { LINE1_MAX, NOTIFY_LINE1_RE, appendNotify, notifyFile, renderChainAlert, renderFallback, renderHeld, renderNotify, type NotifyRec } from "./notify";
 
+import { fingerprint, keyId } from "./sign";
+
 const ROOT = "/opt/himmel";
 const TS = new Date(2026, 10, 20, 14, 2).getTime();
 const BY = new Date(2026, 10, 21, 14, 0).getTime();
@@ -80,7 +82,8 @@ test("a word-initial / in summary or asks renders as ∕", () => {
 test("a draft render shows the source word, the absolute deadline and the exact bytes", () => {
   const r = renderNotify(every("exact  bytes\nline two ")[3], ROOT);
   expect(r.text).toBe("peer example · T4182 · draft 3fa9c1d2 from telegram · approve by 11-21 14:00\nText to send, exactly:\nexact  bytes\nline two ");
-  expect(r.keyboard).toEqual({ peer: "example", draft: "3fa9c1d2" });
+  expect(r.keyboard).toEqual({ prefix: "peer", peer: "example", id: "3fa9c1d2" });
+  expect(r.keyboard).not.toHaveProperty("draft");
   expect(renderNotify(every("x")[4], ROOT)).toEqual({ text: "peer example · T4182 · draft 3fa9c1d2 · sent as message 4190" });
   expect(renderNotify(every("x")[5], ROOT).text).toBe("peer example · T4182 · draft 3fa9c1d2 · refused (egress)");
 });
@@ -120,4 +123,33 @@ test("appendNotify writes chained records to S/notify/notify.jsonl", async () =>
   expect(notifyFile(S)).toBe(join(S, "notify", "notify.jsonl"));
   expect(readChain(notifyFile(S)).map(r => r.type)).toEqual(["wake", "escalate", "escalate"]);
   expect(verifyChain(notifyFile(S)).ok).toBe(true);
+});
+
+const PAIR_KEY = Buffer.alloc(32, 5).toString("base64");
+const pairOffer = (over: Record<string, unknown> = {}) => ({ kind: "notify", type: "pair-offer", peer: "example", offer: "0a1b2c3d", station: "example-box", key: PAIR_KEY, exp: Date.UTC(2026, 10, 27, 12), ts: 1, ...over }) as any as NotifyRec;
+
+test("a pair-offer shows the full fingerprint of its own key, no key id, and Approve and Reject", () => {
+  const r = renderNotify(pairOffer(), "/h");
+  const lines = r.text.split("\n");
+  expect(lines).toHaveLength(3);
+  expect(lines[0]).toMatch(/^peer example · pairing card from station example-box · approve by \d\d-\d\d \d\d:\d\d$/);
+  expect(lines[1]).toBe(`fingerprint: ${fingerprint(PAIR_KEY)}`);
+  expect(lines[2]).toBe("Compare all five groups with the fingerprint example's operator reads to you by call or another messenger. Approve only if every group matches.");
+  expect(lines.some(l => l.includes(keyId(PAIR_KEY)) && !l.startsWith("fingerprint:"))).toBe(false);
+  expect(r.keyboard).toEqual({ prefix: "pair", peer: "example", id: "0a1b2c3d" });
+});
+
+test("a pair-offer with a bad station, key, offer id or expiry does not render", () => {
+  for (const over of [{ station: "Bad Name" }, { key: "x" }, { offer: "zz" }, { exp: "soon" }]) expect(() => renderNotify(pairOffer(over), "/h")).toThrow();
+});
+
+test("pair-result and pair-alert render their lines", () => {
+  const result = (state: string, rule?: string) => renderNotify({ kind: "notify", type: "pair-result", peer: "example", offer: "0a1b2c3d", state, key: PAIR_KEY, ts: 1, ...(rule ? { rule } : {}) } as any, "/h").text;
+  expect(result("APPROVED")).toBe(`peer example · pairing offer 0a1b2c3d · approved: key ${keyId(PAIR_KEY)} is trusted`);
+  expect(result("REJECTED")).toBe("peer example · pairing offer 0a1b2c3d · rejected");
+  expect(result("EXPIRED")).toBe("peer example · pairing offer 0a1b2c3d · expired");
+  expect(result("REFUSED", "two-cards")).toBe("peer example · pairing offer 0a1b2c3d · refused (two-cards)");
+  expect(() => result("OTHER")).toThrow();
+  expect(renderNotify({ kind: "notify", type: "pair-alert", peer: "example", ts: 1 } as any, "/h").text)
+    .toBe("peer example · two different keys were offered for example within 30 minutes; nothing was trusted; pair at the terminal with the fingerprint their operator reads to you");
 });

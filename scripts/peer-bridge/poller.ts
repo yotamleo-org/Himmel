@@ -20,7 +20,7 @@ import { resolveCapacity, resolveReq, resolveRes, type JobRecord } from "./resol
 import { currentSigningKey, publicKeyOf, sign } from "./sign";
 import { PeerTelegram, RetryAfter, TelegramError } from "./telegram";
 import { MAX_AUTO_PER_HOUR, Threads, effectiveRoute, templateLine, type Action, type Route, type ThreadRec, type Transition, type WakeEvent, type WakeLabel } from "./threads";
-import { appendNotify, notifyFile, renderChainAlert, renderFallback, renderNotify, type DailyNotify, type NotifyRec, type ResultNotify, type UnpairedNotify } from "./notify";
+import { appendNotify, notifyFile, renderChainAlert, renderFallback, renderNotify, type DailyNotify, type Keyboard, type NotifyRec,type ResultNotify, type UnpairedNotify } from "./notify";
 import { DRAFT_TTL_MS, MAX_CHIEF_PER_DAY, MAX_DRAFTS_PER_DAY, MAX_PENDING_CHIEF, MAX_PENDING_DRAFTS, badChars, draftState, draftsToday, pendingCount, reviewTooLong } from "./drafts";
 import { lockdownEnabled } from "../telegram/lockdown";
 import { Tripwire, Waker } from "./wake";
@@ -96,7 +96,7 @@ export function readDmSent(S: string, messageId: number, chat?: number): Record<
   } catch { return null; }
 }
 
-const tapKeyboard = (k: { peer: string; draft: string }) => ({ inline_keyboard: [[{ text: "Approve", callback_data: `peer:ok:${k.peer}:${k.draft}` }, { text: "Reject", callback_data: `peer:no:${k.peer}:${k.draft}` }]] });
+const tapKeyboard = (k: Keyboard) => ({ inline_keyboard: [[{ text: "Approve", callback_data: `${k.prefix}:ok:${k.peer}:${k.id}` }, { text: "Reject", callback_data: `${k.prefix}:no:${k.peer}:${k.id}` }]] });
 
 export function sendRule(threads: Threads, peers: Config["peers"], peer: string, rec: { replyTo?: number }): { ok: true } | { ok: false; rule: string } {
   if (!peers[peer]) return { ok: false, rule: "unknown-peer" };
@@ -488,7 +488,7 @@ export class Poller {
           const { message_id } = await this.deps.tg.sendMessage(chat, rendered.text, undefined, rendered.keyboard ? tapKeyboard(rendered.keyboard) : undefined);
           const r = rec as any;
           fs.mkdirSync(dmSentDir(S), { recursive: true, mode: 0o700 });
-          await atomicWrite(join(dmSentDir(S), String(message_id)), JSON.stringify({ n: rec.n, chat, type: rec.type, peer: rec.peer, ...(r.root !== undefined ? { root: r.root } : {}), ...(r.dir ? { dir: r.dir } : {}), ...(r.draft ? { draft: r.draft } : {}), ts: this.now() }));
+          await atomicWrite(join(dmSentDir(S), String(message_id)), JSON.stringify({ n: rec.n, chat, type: rec.type, peer: rec.peer, ...(r.root !== undefined ? { root: r.root } : {}), ...(r.dir ? { dir: r.dir } : {}), ...(r.draft ? { draft: r.draft } : {}), ...(r.offer ? { offer: r.offer } : {}), ts: this.now() }));
         } catch (e) {
           if (e instanceof RetryAfter) { this.retryAt = this.now() + e.seconds * 1000; return; }
           if (!(e instanceof TelegramError && PERMANENT.includes(e.code))) { this.log(`peer-notify: #${rec.n} not sent (${(e as Error).message}); retry next tick`); return; }
