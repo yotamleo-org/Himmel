@@ -293,6 +293,7 @@ const MEMBERS = {
   'guard-memory-capture.sh': `sleep 3`,
   // The bare-qmd-query fence is must-run too.
   'block-bare-qmd-query.sh': `sleep 3`,
+  'block-agy-salus-egress.sh': `sleep 3`,
   // A must-run member that CRASHES (not a timeout) — named like
   // a real must-run guard so MUST_RUN_CHAIN_MEMBERS fires, exits 1 the way a
   // `set -u` abort or a failed `.` source would.
@@ -689,6 +690,7 @@ test('MUST_RUN_CHAIN_MEMBERS covers exactly the deny-capable security guards', (
   assert.deepEqual(
     [...MUST_RUN_CHAIN_MEMBERS].sort(),
     [
+      'block-agy-salus-egress.sh',
       'block-bank-lift-writes.sh',
       'block-bare-qmd-query.sh',
       'block-chokepoint-env-prefix.sh',
@@ -775,6 +777,19 @@ test('a must-run member over its budget DENIES the chain instead of being skippe
     assert.equal(rows[0].member, 'block-read-secrets.sh');
     assert.equal(rows[0].budget, 500);
     assert.equal(typeof rows[0].elapsed, 'number');
+  });
+});
+
+test('an overrunning salus egress floor denies even when a sibling emitted allow JSON', () => {
+  withChain((dir) => {
+    const result = spawnSync(
+      process.execPath,
+      [LAUNCHER, '--chain', join(dir, 'allow.sh'), join(dir, 'block-agy-salus-egress.sh')],
+      { encoding: 'utf8', input: PAYLOAD, env: { ...process.env, RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS: '500' } },
+    );
+    assert.equal(result.status, 2, result.stderr);
+    assert.match(result.stderr, /DENY block-agy-salus-egress\.sh .*must-run guard did not evaluate this call/);
+    assert.equal(ran(dir, 'allow.sh'), true);
   });
 });
 

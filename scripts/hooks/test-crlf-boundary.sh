@@ -68,6 +68,9 @@ _rc() {
     if [ -n "${CRLF_AGENT:-}" ]; then
         json=$(printf '%s' "$json" | jq -c --arg a "$CRLF_AGENT" '. + {agent_id:$a}')
     fi
+    if [ -n "${CRLF_CWD:-}" ]; then
+        json=$(printf '%s' "$json" | jq -c --arg c "$CRLF_CWD" '. + {cwd:$c}')
+    fi
     if [ $# -gt 0 ]; then
         printf '%s' "$json" | env "$@" bash "$SCRIPT_DIR/$hook.sh" >/dev/null 2>&1
     else
@@ -921,6 +924,12 @@ _decide_phi_mark() {
 check_verdict _decide_phi_mark phi-read-mark MARKED "cat $PHI_TMP/salus-vault/notes/visit.md" "a cat under a .salus root marks"
 check_verdict _decide_phi_mark phi-read-mark CLEAR "cat $PHI_TMP/himmel/README.md" "a himmel-only read is not marked"
 rm -rf "$PHI_TMP"
+
+AGY_SALUS="$TMP/agy-salus"
+mkdir -p "$AGY_SALUS"
+: > "$AGY_SALUS/.salus"
+CRLF_CWD="$AGY_SALUS" check block-agy-salus-egress Bash 2 "sc""p x h:" "deny a network copy in a salus cwd"
+CRLF_CWD="$AGY_SALUS" check block-agy-salus-egress Bash 0 "ls" "allow a local listing in a salus cwd"
 
 # ── Completeness guard ──────────────────────────────────────────────────────
 # The audit's real deliverable. Enumerate the command-text hooks FROM THE

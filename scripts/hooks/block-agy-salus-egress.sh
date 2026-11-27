@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# PreToolUse gate for Antigravity (agy) sessions: the network egress floor in a salus (patient-data) vault.
+#
+# A salus vault's own floor, .claude/hooks/block-cloud-egress.sh, is a Claude settings.json hook and never runs for
+# agy. antigravity-hook-adapter.sh runs this hook first on every arm that can send text off the station
+# (search_web, send_message, ask_question, list_resources, read_resource, every MCP call) and on run_command.
+#
+# - Not Bash: every call is egress-class. This hook keeps no tool list; being wired into an arm is what floors it.
+# - Bash: egress-class when the command holds one of the vault floor's ten substrings, the same list in the same
+#   order as block-cloud-egress.sh (test-block-agy-salus-egress.sh U1 pins it). Any other command exits 0 after
+#   one jq read, with no python or git.
+# - Scope: one call to chief-kit/salus_marked.py over the cwd and every workspace path. A scope it cannot decide
+#   counts as salus: a crash or missing classifier, an empty or relative path, more than 8 workspace paths, or a
+#   workspace_paths that is not an array of strings.
+#
+# No bypass variable, unlike the single-run bypass scripts/hooks/CLAUDE.md asks of a deny: egress-matrix.json
+# rules salus x * x * a hard deny ("No override exists"), and the adapter unsets every *_OK name anyway.
+# A timeout or crash refuses: the hook is on run-hook-with-bash.js MUST_RUN_CHAIN_MEMBERS, and the EXIT trap
+# maps any status other than 0 or 2 to 2.
+#
+# Exit: 0 allow, 2 refuse (reason on stderr). bash 3.2-safe; builtins only, apart from jq and python3.
+set -u
+# shellcheck disable=SC2154  # rc is assigned by rc=$? inside the same trap string
+trap 'rc=$?; if [ "$rc" != 0 ] && [ "$rc" != 2 ]; then exit 2; fi' EXIT
+
+case "${BASH_SOURCE[0]}" in
+    */*) SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd -P)" || exit 2 ;;
+    *) SCRIPT_DIR="$(pwd -P)" || exit 2 ;;
+esac
+
+refuse() {
+    printf "block-agy-salus-egress: '%s' refused: this Antigravity session is in a salus (patient-data) vault (%s), and egress-matrix.json rules salus x * x * a hard deny for anything but inference. No bypass exists.\n" "$1" "$2" >&2
+    exit 2
+}
+
+input=""
+IFS= read -r -d '' input || true # swallow-ok: read -d '' returns 1 at end of input after reading all of it; an empty payload fails the jq read below
+
+# shellcheck disable=SC2016
+meta="$(printf '%s' "$input" | jq -r '
+    def str: if type == "string" then . else "" end;
+    (if has("workspace_paths") then .workspace_paths else [] end) as $ws
+    | ($ws | type == "array" and all(.[]; type == "string")) as $ws_ok
+    | @sh "TOOL=\(.tool_name | str) CMD=\(.tool_input | if type == "object" then .command else null end | str) CWD=\(.cwd | str) CWD_OK=\(if (.cwd | type) == "string" then 1 else 0 end) WS_OK=\(if $ws_ok then 1 else 0 end) WS_N=\(if ($ws | type) == "array" then ($ws | length) else 0 end)",
+      "WS=(\(if $ws_ok then ($ws | @sh) else "" end))"
+' 2>/dev/null)" || {
+    printf 'block-agy-salus-egress: unparseable hook payload — refused fail-closed\n' >&2
+    exit 2
+}
+TOOL="" CMD="" CWD="" CWD_OK=0 WS_OK=0 WS_N=0
+WS=()
+eval "$meta"
+
+if [ "$TOOL" = "Bash" ]; then
+    case "$CMD" in
+        *"git push"*|*"git remote add"*|*"git remote set-url"*|*"curl "*|*"curl.exe"*|*"wget "*|*"Invoke-WebRequest"*|*"Invoke-RestMethod"*|*"scp "*|*"rclone "*) CLASS="network/push command" ;;
+        *) exit 0 ;;
+    esac
+else
+    CLASS="${TOOL:-unnamed tool}"
+fi
+
+[ "$CWD_OK" = 1 ] || refuse "$CLASS" "scope undecidable: cwd is missing or not a string, counted as salus"
+case "$CWD" in
+    /*) ;;
+    *) refuse "$CLASS" "scope undecidable: cwd '$CWD' is empty or relative, counted as salus" ;;
+esac
+[ "$WS_OK" = 1 ] || refuse "$CLASS" "scope undecidable: workspace_paths is not an array of strings, counted as salus"
+[ "$WS_N" -le 8 ] || refuse "$CLASS" "scope undecidable: $WS_N workspace paths, more than 8, counted as salus"
+for w in ${WS[@]+"${WS[@]}"}; do
+    case "$w" in
+        /*) ;;
+        *) refuse "$CLASS" "scope undecidable: workspace path '$w' is empty or relative, counted as salus" ;;
+    esac
+done
+
+python3 -I "$SCRIPT_DIR/../handover/chief-kit/salus_marked.py" salus "$CWD" ${WS[@]+"${WS[@]}"} </dev/null >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 10 ] && exit 0
+where="$CWD"
+[ "$WS_N" -gt 0 ] && where="$CWD, or one of its $WS_N workspace paths"
+[ "$rc" -eq 0 ] || where="$where; the salus classifier failed (rc=$rc), counted as salus"
+refuse "$CLASS" "$where"

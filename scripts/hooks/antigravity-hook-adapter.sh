@@ -309,6 +309,56 @@ is_under_dir() {
     esac
 }
 
+SCOPE_GUARD_READY=0 SCOPE_GUARD_FILES="" SCOPE_GUARD_DIRS=""
+scope_guard_paths() {
+    [ "$SCOPE_GUARD_READY" = 1 ] && return 0
+    SCOPE_GUARD_READY=1
+    local nl=$'\n' h="${HOME:-}" d="" c="" n="" f="" p="" top="" dirs=""
+    [ -n "$h" ] && dirs="$h/.config/claude-codex$nl$h/.config/claude-glm$nl"
+    [ -n "${CLAUDE_GLM_CONFIG_DIR:-}" ] && dirs="$dirs$CLAUDE_GLM_CONFIG_DIR$nl"
+    while IFS= read -r d; do
+        [ -n "$d" ] || continue
+        for c in "${d%/}" "$(canon_path "$d")"; do
+            [ -n "$c" ] || continue
+            SCOPE_GUARD_DIRS="$SCOPE_GUARD_DIRS$c$nl"
+            for n in phi-roots egress-denylist; do
+                SCOPE_GUARD_FILES="$SCOPE_GUARD_FILES$c/$n$nl"
+                f="$(canon_path "$c/$n")" && SCOPE_GUARD_FILES="$SCOPE_GUARD_FILES$f$nl"
+            done
+            for top in "${h%/}" "$HOME_REAL"; do
+                [ -n "$top" ] || continue
+                p="$c"
+                while p="${p%/*}"; [ -n "$p" ] && [ "$p" != "$top" ] && is_under_dir "$p" "$top"; do
+                    SCOPE_GUARD_DIRS="$SCOPE_GUARD_DIRS$p$nl"
+                done
+            done
+        done
+    done <<<"$dirs"
+    SCOPE_GUARD_FILES="$nl$(lower_str "$SCOPE_GUARD_FILES")$nl"
+    SCOPE_GUARD_DIRS="$nl$(lower_str "$SCOPE_GUARD_DIRS")$nl"
+}
+
+check_self_protect_scope() {
+    local full="$1" real="$2" real_lc="$3" full_lc="$3" nl=$'\n' cand=""
+    [ "$full" = "$real" ] || full_lc="$(lower_str "${full%/}")"
+    for cand in "$real_lc" "$full_lc"; do
+        case "${cand##*/}" in
+            .salus|.salus-profile)
+                emit_deny "antigravity-hook-adapter: self-protect denies modifying a salus scope marker ($real; use read_file to inspect)"
+                ;;
+        esac
+    done
+    scope_guard_paths
+    for cand in "$real_lc" "$full_lc"; do
+        case "$SCOPE_GUARD_FILES$SCOPE_GUARD_DIRS" in
+            *"$nl$cand$nl"*)
+                emit_deny "antigravity-hook-adapter: self-protect denies modifying a PHI root list or its directory ($real; use read_file to inspect)"
+                ;;
+        esac
+    done
+    return 0
+}
+
 check_self_protect_path() {
     local raw="$1" full="$1" real="" real_lc=""
     [ -n "$raw" ] || emit_deny "antigravity-hook-adapter: empty file path — fail closed"
@@ -322,6 +372,7 @@ check_self_protect_path() {
     esac
     real="$(canon_path "$full")" || emit_deny "antigravity-hook-adapter: cannot canonicalize path '$raw' — fail closed"
     real_lc="$(lower_str "$real")"
+    check_self_protect_scope "$full" "$real" "$real_lc"
 
     case "$real_lc" in
         */.agents|*/.agents/*)
@@ -421,6 +472,7 @@ build_claude_payload() {
             tool_name: $mt,
             tool_input: $ti,
             cwd: ($in.cwd // ""),
+            workspace_paths: (if $in | has("workspacePaths") then $in.workspacePaths else [] end),
             transcript_path: ($in.transcriptPath // "")
           }'
 }
@@ -467,7 +519,7 @@ mcp_allowed_set() {
 
 run_mcp_gate() {
     local srv="$1" tool="$2" mode="$3" payload=""
-    local -a chain=(mcp-policy.sh block-backend-tier.sh)
+    local -a chain=(block-agy-salus-egress.sh mcp-policy.sh block-backend-tier.sh)
     [ -n "$srv" ] && [ -n "$tool" ] || emit_deny "antigravity-hook-adapter: malformed MCP tool name '$RAW_TOOL' — fail closed"
     case "$srv" in
         *[!A-Za-z0-9.-]*)
@@ -534,6 +586,7 @@ case "$RAW_TOOL" in
             block-antigravity-read-fence.sh \
             block-read-secrets.sh \
             block-graphify-egress.sh \
+            block-agy-salus-egress.sh \
             read-clamp.sh \
             block-destructive-commands.sh \
             block-git-stash.sh \
@@ -608,11 +661,19 @@ case "$RAW_TOOL" in
     list_resources|read_resource)
         PAYLOAD="$(build_claude_payload "$RAW_TOOL" raw)" || emit_deny "antigravity-hook-adapter: failed to translate $RAW_TOOL payload"
         run_chain_with_payload gate "$PAYLOAD" \
+            block-agy-salus-egress.sh \
             block-antigravity-read-fence.sh \
             peer-taint-gate.sh
         exit 0
         ;;
-    search_web|send_message|ask_question|exit_plan_mode|update_steps)
+    search_web|send_message|ask_question)
+        PAYLOAD="$(build_claude_payload "$RAW_TOOL" raw)" || emit_deny "antigravity-hook-adapter: failed to translate $RAW_TOOL payload"
+        run_chain_with_payload gate "$PAYLOAD" \
+            block-agy-salus-egress.sh \
+            peer-taint-gate.sh
+        exit 0
+        ;;
+    exit_plan_mode|update_steps)
         PAYLOAD="$(build_claude_payload "$RAW_TOOL" raw)" || emit_deny "antigravity-hook-adapter: failed to translate $RAW_TOOL payload"
         run_chain_with_payload gate "$PAYLOAD" peer-taint-gate.sh
         exit 0

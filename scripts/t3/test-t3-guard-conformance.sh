@@ -9,6 +9,7 @@ command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 # shellcheck disable=SC1091
 . "$REPO/scripts/lib/override-env.sh"
 scrub_override_env
+unset CLAUDE_GLM_CONFIG_DIR
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/t3-guard-conformance.XXXXXX")" || exit 1
 trap 'rm -rf "$TMP"' EXIT
