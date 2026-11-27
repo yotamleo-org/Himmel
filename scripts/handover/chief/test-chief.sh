@@ -4915,7 +4915,6 @@ mk11407() {
     for i in $(seq 1 "$2"); do
         n=$((100 + i)); d="$w/DEMO-$n-N$n-worker.md"
         R11407[n]="$(wt11407 mint "$d" "CJ-N$n")"
-        # shellcheck disable=SC2016  # the backticks are the RETASK line's literal markers
         printf '%s\n' '# worker' "> **RETASK:** your nonce is \`${R11407[n]}\`." '## Results' '- 10:00 LIVE — fixture' "$relayed11407" > "$d"
         lock11277 "$d"
         rows="$rows${rows:+,}{\"label\":\"N$n\",\"doc\":\"$d\"}"
