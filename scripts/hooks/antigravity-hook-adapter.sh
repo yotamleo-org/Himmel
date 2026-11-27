@@ -406,11 +406,16 @@ run_mcp_gate() {
             emit_deny "antigravity-hook-adapter: MCP server '$srv' is not allowlisted on the Antigravity lane"
             ;;
     esac
-    case "$srv/$tool" in
-        playwright/browser_run_code_unsafe|playwright/browser_evaluate)
-            emit_deny "antigravity-hook-adapter: playwright '$tool' runs arbitrary code and is denied on the Antigravity lane"
-            ;;
-    esac
+    if [ "$srv" = "playwright" ]; then
+        local class=""
+        class="$(jq -r --arg t "$tool" '.servers.plugin_playwright_playwright.tools[$t] // empty' "$PRIMARY_ROOT/scripts/guardrails/mcp-policy.json")"
+        case "$class" in
+            read|write) ;;
+            *)
+                emit_deny "antigravity-hook-adapter: playwright '$tool' is not a read or write tool in mcp-policy.json and is denied on the Antigravity lane"
+                ;;
+        esac
+    fi
     payload="$(build_claude_payload "mcp__${srv}__${tool}" "$mode")" || emit_deny "antigravity-hook-adapter: failed to translate MCP payload"
     if [ "$srv" = "t3-code" ]; then
         chain+=(guard-t3-thread-tools.sh)
@@ -542,7 +547,8 @@ case "$RAW_TOOL" in
         LAZY_META="$(printf '%s' "$INPUT" | jq -r '
             .toolCall.args as $a
             | if ($a | type) == "object"
-                and ($a.ServerName | type == "string" and test("\\A[^\\r\\n]+\\z"))
+                and ($a | [keys[] | select(ascii_downcase | . == "servername" or . == "toolname" or . == "arguments")] - ["ServerName", "ToolName", "Arguments"] == [])
+                and ($a.ServerName | type == "string" and test("\\A[ -~]+\\z"))
                 and ($a.ToolName | type == "string" and test("\\A[A-Za-z0-9_.-]+\\z") and (contains("__") | not))
                 and ($a.Arguments | type == "object" or type == "null")
               then @sh "LAZY_SRV=\($a.ServerName) LAZY_TOOL=\($a.ToolName)"

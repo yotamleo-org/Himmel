@@ -433,7 +433,14 @@ printf '{"mode":"enforce","servers":{}}\n' > "$ENFORCE_REG"
 assert_deny "an enforce-mode mcp-policy deny stops a lazy design call" "mcp-policy" \
     "$(make_lazy shadcn get_audit_checklist)" MCP_POLICY_REGISTRY="$ENFORCE_REG"
 
-for pw_tool in browser_run_code_unsafe browser_evaluate; do
+assert_pass "lazy playwright write tool in the registry allowed" "$(make_lazy playwright browser_navigate '{"url":"https://example.com"}')"
+for case_variant in '{"ServerName":"context7","ToolName":"query-docs","servername":"evil"}' \
+                    '{"ServerName":"playwright","ToolName":"browser_snapshot","toolname":"browser_run_code_unsafe"}' \
+                    '{"ServerName":"context7","ToolName":"query-docs","arguments":{}}' \
+                    '{"ServerName":"context7\u0000","ToolName":"query-docs"}'; do
+    assert_deny "call_mcp_tool args $case_variant denied" "malformed call_mcp_tool" "$(make_pre call_mcp_tool "$case_variant")"
+done
+for pw_tool in browser_run_code_unsafe browser_evaluate browser_run_code browser_future_tool; do
     assert_deny "lazy playwright $pw_tool denied" "$pw_tool" "$(make_lazy playwright "$pw_tool")"
     assert_deny "eager playwright $pw_tool denied" "$pw_tool" "$(make_pre "mcp_playwright_$pw_tool" '{}')"
 done
