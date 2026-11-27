@@ -6,7 +6,7 @@
 # `git show <sha>`'d at test time: that commit is reachable from main today,
 # but a `git show` extraction still fails on a shallow clone or a source
 # archive (HIMMEL-3154's class, re-scoped to this suite by HIMMEL-3018). Used
-# by test-stop-console-idle-guard.sh's RED control (HIMMEL-3148, PREDICATE_BASE_SHA).
+# by test-stop-chief-idle-guard.sh's RED control (HIMMEL-3148, PREDICATE_BASE_SHA).
 # ---
 # stop-console-idle-guard.sh — Stop hook (HIMMEL-3144).
 #
@@ -35,7 +35,7 @@
 #
 # CONSOLE DETECTION — best-effort, via queue-lock.sh's persisted-token
 # mechanism (HIMMEL-2813): the console's queue-lock is acquired by
-# console.sh, a launcher script that exits before the actual `claude`
+# chief.sh, a launcher script that exits before the actual `claude`
 # process starts, so the lock's owner.json never carries this session's id
 # and there is no other artifact tying "this session" to "that lock" a Stop
 # hook can read. What queue-lock.sh DOES persist, keyed on
@@ -51,12 +51,12 @@
 # FAIL-OPEN CONTRACT: every step below that cannot positively confirm
 # "console session, first stop this turn, lock still held" allows the stop.
 # A malformed or missing payload, an unresolvable handover root, an
-# unreadable/corrupt lock dir, a missing sha256 tool, a `bank-preflight.sh`
+# unreadable/corrupt lock dir, a missing sha256 tool, a `usage-preflight.sh`
 # or `queue-lock.sh status --sweep` that fails or hangs — all of these
 # `exit 0` with NO stdout, which Claude Code reads as allow. The block JSON
 # is built and printed only as the LAST statement, once every input it
 # depends on has already succeeded — nothing partial is ever emitted. Every
-# subprocess this hook shells out to (`git`, `bank-preflight.sh`,
+# subprocess this hook shells out to (`git`, `usage-preflight.sh`,
 # `queue-lock.sh status --sweep`) is wrapped with a hard `timeout` so a
 # hung dependency degrades to "allow" rather than trapping the session.
 set -u
@@ -64,7 +64,7 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 # TOTAL budget shared across every subprocess this hook calls (root
-# resolution, bank-preflight.sh, queue-lock.sh status --sweep), not a
+# resolution, usage-preflight.sh, queue-lock.sh status --sweep), not a
 # per-call allowance -- three sequential 6s-per-call timeouts could sum past
 # the harness's own 10s Stop timeout, killing the hook before it ever
 # printed a decision (CodeRabbit round 1, PR #803). Left with ~2s margin
@@ -75,7 +75,7 @@ GUARD_DEADLINE_EPOCH=$(( $(date +%s) + GUARD_TIMEOUT_SECS ))
 # Test seams (default: the real scripts) -- so the fault-injection tests can
 # point these at a stub without PATH tricks, the same convention as tick.sh's
 # TICK_BANK_CACHE_FILE / FLEET_PS_CMD.
-BANK_PREFLIGHT_SH="${HIMMEL_STOP_GUARD_BANK_PREFLIGHT:-$REPO/scripts/lib/bank-preflight.sh}"
+USAGE_PREFLIGHT_SH="${HIMMEL_STOP_GUARD_USAGE_PREFLIGHT:-$REPO/scripts/lib/usage-preflight.sh}"
 QUEUE_LOCK_SH="${HIMMEL_STOP_GUARD_QUEUE_LOCK:-$REPO/scripts/handover/queue-lock.sh}"
 
 # _bounded <cmd...> -- run under whatever remains of the SHARED
@@ -143,7 +143,7 @@ digest_of() {
 token_dir="${XDG_RUNTIME_DIR:-/tmp}/himmel-queue-lock"
 
 console_doc=""
-for lockdir in "$lockdir_root"/*-console.lock; do
+for lockdir in "$lockdir_root"/*-chief.lock; do
     [ -d "$lockdir" ] || continue
     [ -f "$lockdir/owner.json" ] || continue
     owner_raw="$(cat "$lockdir/owner.json" 2>/dev/null)" || continue
@@ -173,7 +173,7 @@ done
 # outright rather than blocking with an empty/generic reason (HIMMEL-3144:
 # "a reason that only says do not idle is not acceptable").
 bank_err_file="$(mktemp "${TMPDIR:-/tmp}/stop-console-idle-guard-bank.XXXXXX" 2>/dev/null)" || exit 0
-bank_token="$(_bounded env CADENCE_BANK_LEG=stop-console-idle-guard bash "$BANK_PREFLIGHT_SH" 2>"$bank_err_file")"
+bank_token="$(_bounded env CADENCE_USAGE_WORKER=stop-console-idle-guard bash "$USAGE_PREFLIGHT_SH" 2>"$bank_err_file")" # old-term-ok
 bank_rc=$?
 bank_fleet_line="$(grep -m1 '^bank-preflight: FLEET ' "$bank_err_file" 2>/dev/null)"
 rm -f "$bank_err_file" 2>/dev/null
@@ -195,7 +195,7 @@ leg_count=0
 leg_names=""
 while IFS= read -r line; do
     case "$line" in
-        slug=*-console\ *) continue ;;   # the console's own lock, not a leg
+        slug=*-chief\ *) continue ;;   # the chief's own lock, not a worker
         slug=*)
             leg_count=$((leg_count + 1))
             leg_slug="${line#slug=}"
