@@ -2,7 +2,7 @@
 # test-worker-graph.sh — worker-graph.sh points graphify at the PRIMARY
 # checkout's graphify-out/ from a linked worktree, passes `path` through, and says so
 # when the graph is behind the worktree. A graphify stub on PATH echoes what it
-# was given, so no real graph is needed.
+# was given, so no real graph is needed. It also answers from the wrapper's own checkout graph when the cwd repo has none, and explains the file node when an ambiguity sits in one file.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$HERE/worker-graph.sh"
@@ -28,6 +28,14 @@ printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  --rationale"; exit 0; }\necho 
 chmod +x "$T/bin/graphify"
 mkdir -p "$T/home/.himmel" "$T/xdg"
 printf '{}\n' > "$T/home/.himmel/config.json"
+KIT="$T/kit"
+mkdir -p "$KIT/scripts/graphify" "$KIT/scripts/himmelctl/lib"
+cp "$HERE/worker-graph.sh" "$HERE"/*.py "$KIT/scripts/graphify/"
+cp -R "$HERE/../lib" "$KIT/scripts/lib"
+cp "$HERE/../himmelctl/lib/graph-choices.js" "$KIT/scripts/himmelctl/lib/"
+git init -q -b main "$KIT"
+git -C "$KIT" commit -q --allow-empty -m kit
+SCRIPT="$KIT/scripts/graphify/worker-graph.sh"
 run() { (cd "$T/wt" && HOME="$T/home" HIMMEL_CONFIG_DIR="$T/home/.himmel" XDG_DATA_HOME="$T/xdg" PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>"$T/err"); }
 
 # T1: query from the worktree resolves to the primary's graphify-out.
@@ -144,7 +152,7 @@ if [ "$rc" = 0 ] && grep -q "^GRAPHIFY_OUT=$T/seam ARGS=query .*--seed scripts_g
   pass "T9 worker_graph_out_seam reads the seam's graph and keeps its seeds and budget"
 else fail "T9 rc=$rc calls='$(cat "$T/calls" 2>/dev/null)' err='$(cat "$T/err")'"; fi
 
-GCJS="$HERE/../himmelctl/lib/graph-choices.js"
+GCJS="$KIT/scripts/himmelctl/lib/graph-choices.js"
 LISTED_OUT="$T/xdg/himmel/graphify/choices/mine/graphify-out"
 mkdir -p "$LISTED_OUT"
 printf '{"nodes":[],"built_at_commit": "%s"}\n' "$BASE" > "$LISTED_OUT/graph.json"
@@ -176,6 +184,50 @@ printf '{"graphify":{"semantic_api_ok":true}}\n' > "$T/home/.himmel/config.json"
 run query q >/dev/null; rc=$?
 if [ "$rc" = 2 ] && grep -q 'graph-refresh' "$T/err"; then pass "W4 a publisher keeps the build instruction"
 else fail "W4 rc=$rc err=$(cat "$T/err")"; fi
+
+V="$T/vault"
+git init -q -b main "$V"
+git -C "$V" commit -q --allow-empty -m v
+mkdir -p "$KIT/graphify-out"
+printf '{"nodes":[],"built_at_commit": "%s"}\n' "$(git -C "$KIT" rev-parse HEAD)" > "$KIT/graphify-out/graph.json"
+# shellcheck disable=SC2016  # the stub's own $-expansions must stay literal
+printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  --rationale"; exit 0; }\necho "STUB GRAPHIFY_OUT=$GRAPHIFY_OUT ARGS=$*"\n' > "$T/bin/graphify"
+vrun() { (cd "$V" && HOME="$T/home" HIMMEL_CONFIG_DIR="$T/home/.himmel" XDG_DATA_HOME="$T/xdg" PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>"$T/err"); }
+out="$(vrun explain "X")"; rc=$?
+if [ "$rc" = 0 ] && [ "$out" = "STUB GRAPHIFY_OUT=$KIT/graphify-out ARGS=explain X --rationale --budget 8000" ] \
+   && grep -qF "NOTE no graph at $V/graphify-out/graph.json; answering from $KIT/graphify-out/graph.json" "$T/err" \
+   && ! grep -q 'not an ancestor' "$T/err"; then
+  pass "F1 a cwd repo with no graph is answered from the wrapper's own checkout graph"
+else fail "F1 rc=$rc out='$out' err='$(cat "$T/err")'"; fi
+
+rm -f "$KIT/graphify-out/graph.json"
+vrun explain "X" >/dev/null; rc=$?
+want="worker-graph: no graph at $V/graphify-out/graph.json. The graph covers code repos, not notes: to search notes run: bash $KIT/scripts/lib/qmd-bounded.sh query -c <name> \"<question>\". In a code repo, build the graph from its primary checkout (/graph-refresh), then run: bash $KIT/scripts/graphify/worker-graph.sh query|explain|path \"<q>\""
+if [ "$rc" = 2 ] && [ "$(cat "$T/err")" = "$want" ]; then pass "F2 with no graph anywhere the no-graph message and exit 2 are unchanged"
+else fail "F2 rc=$rc err='$(cat "$T/err")'"; fi
+
+mkdir -p "$T/amb"
+printf '{"nodes":[{"id":"s_gate","label":"gate.sh","source_file":"s/gate.sh","metadata":{"kind":"file"}},{"id":"s_gate_sh__entry","label":"gate.sh script","source_file":"s/gate.sh","metadata":{"kind":"bash_entrypoint"}},{"id":"a_tool","label":"tool","source_file":"a/tool.sh","metadata":{"kind":"file"}},{"id":"b_tool","label":"tool","source_file":"b/tool.sh","metadata":{"kind":"file"}}],"built_at_commit": "%s"}\n' "$BASE" > "$T/amb/graph.json"
+cat > "$T/bin/graphify" <<'STUB'
+#!/bin/sh
+[ "$1" = --help ] && { echo "  --rationale"; exit 0; }
+case "$2" in
+  gate) printf "Ambiguous: 'gate' matches 2 nodes in s/gate.sh.\n  L1\n    id: s_gate\n  L1\n    id: s_gate_sh__entry\nRetry with the full node id.\n"; exit 3 ;;
+  tool) printf "Ambiguous: 'tool' matches 2 nodes in different files.\n  a/tool.sh\n    id: a_tool\n  b/tool.sh\n    id: b_tool\nRetry with path::symbol using one of the paths above.\n"; exit 3 ;;
+esac
+echo "STUB ARGS=$*"
+STUB
+chmod +x "$T/bin/graphify"
+arun() { (cd "$T/wt" && HOME="$T/home" HIMMEL_CONFIG_DIR="$T/home/.himmel" XDG_DATA_HOME="$T/xdg" WORKER_GRAPH_OUT="$T/amb" PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>"$T/err"); }
+out="$(arun explain gate)"; rc=$?
+if [ "$rc" = 0 ] && [ "$out" = "STUB ARGS=explain s_gate --rationale --budget 8000" ] && grep -q 'explaining its file node s_gate$' "$T/err"; then
+  pass "A1 a one-file ambiguity explains the file node"
+else fail "A1 rc=$rc out='$out' err='$(cat "$T/err")'"; fi
+
+out="$(arun explain tool)"; rc=$?
+if [ "$rc" = 3 ] && [ "$(printf '%s\n' "$out" | head -1)" = "Ambiguous: 'tool' matches 2 nodes in different files." ] && ! grep -q 'file node' "$T/err"; then
+  pass "A2 a multi-file ambiguity is untouched"
+else fail "A2 rc=$rc out='$out' err='$(cat "$T/err")'"; fi
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
