@@ -423,6 +423,8 @@ has "cost: the worker share sits beside its first value" "$(grep -F '| Worker sh
 has "cost: the chief share sits beside its first value" "$(grep -F '| Chief share |' "$PAGE")" "| 28.8% | 17.8% (28.0% without T3 Code) |"
 has "cost: the judge share sits beside its first value" "$(grep -F '| Judge share |' "$PAGE")" "| 13.2% | 6.2% (9.8% without T3 Code) |"
 has "cost: the reconciliation with cost-state, both measurements" "$(grep -F '| Reconciliation with cost-state |' "$PAGE")" "| 98.2% over 2,561 sessions | 98.77% over 2,768 sessions |"
+has "cost: the reconciliation row is sampled in sessions" "$(grep -F '| Reconciliation with cost-state |' "$PAGE")" "| as of 2026-11-06, n = 2,561 sessions; as of 2026-11-26, n = 2,768 sessions |"
+has "cost: the window total behind the per-PR figure sits apart from the whole-session total" "$(cat "$PAGE")" "The per-PR figure divides the window total, \$15,735.87. The reconciliation counts those sessions whole, so its totals differ"
 has "cost: the page states the list-price basis" "$(cat "$PAGE")" "All money is list price"
 has "cost: the page notes the usage store's missing day" "$(cat "$PAGE")" "The usage store misses 2026-11-22"
 cp "$DATA" "$TMP/refresh.json"

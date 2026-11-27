@@ -78,13 +78,15 @@ A merged PR is proof-first only when it has both halves; each half is shown on i
 | Worker share | 46.7% | 30.2% (47.5% without T3 Code) | as of 2026-11-06, n = 565 merged PRs; as of 2026-11-26, n = 445 merged PRs |
 | Chief share | 28.8% | 17.8% (28.0% without T3 Code) | as of 2026-11-06, n = 565 merged PRs; as of 2026-11-26, n = 445 merged PRs |
 | Judge share | 13.2% | 6.2% (9.8% without T3 Code) | as of 2026-11-06, n = 565 merged PRs; as of 2026-11-26, n = 445 merged PRs |
-| Reconciliation with cost-state | 98.2% over 2,561 sessions | 98.77% over 2,768 sessions | as of 2026-11-06, n = 565 merged PRs; as of 2026-11-26, n = 445 merged PRs |
+| Reconciliation with cost-state | 98.2% over 2,561 sessions | 98.77% over 2,768 sessions | as of 2026-11-06, n = 2,561 sessions; as of 2026-11-26, n = 2,768 sessions |
 
 All money is list price. The first window is 2026-10-29 to 2026-11-05, the re-measure 2026-11-18 to 2026-11-25 (CET days), the same length.
 
 T3 Code sessions and their subagents, a lane that did not exist in the first window, are 36.5% of the re-measured spend, as of 2026-11-26, n = 445 merged PRs. The figure without them still divides by every merged PR, including at least 20 merged from T3 Code branches, so it is a little low.
 
 The re-measure reconciles with cost-state inside the first audit's bound: $15,844.99 computed against $16,042.33, as of 2026-11-26, n = 2,768 sessions.
+
+The per-PR figure divides the window total, $15,735.87. The reconciliation counts those sessions whole, so its totals differ from that window total.
 
 The usage store misses 2026-11-22: it is short $2,028 for that day, so over the whole window it holds 86.8% of the transcript total (99.7% on the other days), as of 2026-11-26, n = 445 merged PRs. The transcript total is the one used.
 

@@ -307,7 +307,8 @@ def cost_section(c):
     out += [
         "| Reconciliation with cost-state | %s%% over %s sessions | %s%% over %s sessions | %s |" % (
             first["reconciliation"]["ratio_pct"], num(first["reconciliation"]["sessions"]),
-            rec["ratio_pct"], num(rec["sessions"]), dated), "",
+            rec["ratio_pct"], num(rec["sessions"]),
+            "; ".join(stamp(m["as_of"], m["reconciliation"]["sessions"], "sessions") for m in c["runs"])), "",
         "All money is list price. The first window is %s to %s, the re-measure %s to %s (CET days), the same length." % (
             first["window"]["from"], first["window"]["to"], now["window"]["from"], now["window"]["to"]), "",
         "T3 Code sessions and their subagents, a lane that did not exist in the first window, are %s%% of the "
@@ -317,6 +318,8 @@ def cost_section(c):
         "The re-measure reconciles with cost-state inside the first audit's bound: %s computed against %s, as of %s, "
         "n = %s sessions." % (usd(rec["computed_usd"]), usd(rec["cost_state_usd"]), now["as_of"], num(rec["sessions"])),
         "",
+        "The per-PR figure divides the window total, %s. The reconciliation counts those sessions whole, so its "
+        "totals differ from that window total." % usd(now["window_total_usd"]), "",
         "The usage store misses %s: it is short %s for that day, so over the whole window it holds %s%% of the "
         "transcript total (%s%% on the other days), as of %s, n = %s merged PRs. The transcript total is the one "
         "used." % (gap["missing_day"], "${:,}".format(gap["short_usd"]), gap["window_pct"], gap["other_days_pct"],

@@ -15,6 +15,7 @@
         "as_of": "2026-11-26",
         "window": {"from": "2026-11-18", "to": "2026-11-25"},
         "merged_prs": 445,
+        "window_total_usd": 15735.87,
         "per_pr_usd": 35.36,
         "shares_pct": {"worker": 30.2, "chief": 17.8, "judge": 6.2},
         "without_t3": {
